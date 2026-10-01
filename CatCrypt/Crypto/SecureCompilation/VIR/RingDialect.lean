@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Algebra.BigOperators.Fin
 public import Mathlib.Data.Nat.ChineseRemainder
-public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
+public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttInverse
 
 /-!
 # Ring dialect — RNS quotient rings `Z_Q[X]/(X^N + 1)`
@@ -41,6 +41,7 @@ upstream verifiers require.
 * `fromTensorF`, `toTensorF`, `limbsOfHVector` — the structural conversions.
 * `rowLanes`, `nttF` — a row as a lane function, and the per-limb negacyclic NTT
   with a layer count, the coefficient-to-evaluation conversion of `R_Q`.
+* `inttF` — its inverse: per limb, the Gentleman–Sande layers and the scaling.
 * `RingTy` / `RingOp` / `ringDialect` — the dialect, its signature and its
   denotation.
 * `ofInts ms c` — the residues of an integer coefficient vector in the basis `ms`.
@@ -62,6 +63,10 @@ upstream verifiers require.
 * `ntt_denote`, `lowerNega_denote` — the `ntt` op denotes `nttF`, and row `i` of
   it is the `fieldDialect` program `NegacyclicNttTemplate.nttProg` at the
   parameter record of limb `i`.
+* `intt_denote`, `lowerIntt_denote` — the same for `intt` and
+  `NegacyclicNttTemplate.inttProg`.
+* `inttF_nttF`, `nttF_inttF` — under the per-limb side conditions `NttParams.Ok`
+  and `ScaleOk`, `intt` and `ntt` are mutually inverse.
 -/
 
 @[expose] public section
@@ -116,6 +121,14 @@ def nttF (ms : List Nat) (logN L : Nat) (psis : List Nat) (x : Limbs ms (2 ^ log
     Limbs ms (2 ^ logN) := fun i j =>
   NegacyclicNttTemplate.nttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
     (rowLanes x i) j
+
+/-- The inverse of `nttF`, per limb: row `i` is `NegacyclicNttTemplate.inttSpec`,
+    the `L` Gentleman–Sande layers at the root `psis.getD i 0` followed by the
+    scaling by `scales.getD i 0`, modulo `ms.get i`. -/
+def inttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat) (x : Limbs ms (2 ^ logN)) :
+    Limbs ms (2 ^ logN) := fun i j =>
+  NegacyclicNttTemplate.inttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
+    ((scales.getD i 0 : Nat) : ZMod (ms.get i)) (rowLanes x i) j
 
 /-- The automorphism `X ↦ X^g` in the coefficient basis: coefficient `k` moves
     to position `g·k mod N`, negated when `g·k mod 2N ≥ N` (the wrap
@@ -226,6 +239,9 @@ inductive RingOp where
   /-- The coefficient-to-evaluation conversion of `R_Q` at length `2 ^ logN`, with
       `L` butterfly layers and per-limb roots `psis` (`nttF`). -/
   | ntt (ms : List Nat) (logN w L : Nat) (psis : List Nat)
+  /-- The evaluation-to-coefficient conversion inverse to `ntt`, with per-limb
+      scaling constants `scales` (`inttF`). -/
+  | intt (ms : List Nat) (logN w L : Nat) (psis scales : List Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -248,6 +264,7 @@ instance : DialectSignature ringDialect where
     | .fromLimbs ms n _ _ => ms.map (fun q => RingTy.limb q n)
     | .toLimb ms n w d _ => [.rq ms n w d]
     | .ntt ms logN w _ _ => [.rq ms (2 ^ logN) w .coeff]
+    | .intt ms logN w _ _ _ => [.rq ms (2 ^ logN) w .eval]
   ret op := match op with
     | .add ms n w d => .rq ms n w d
     | .sub ms n w d => .rq ms n w d
@@ -261,6 +278,7 @@ instance : DialectSignature ringDialect where
     | .fromLimbs ms n w d => .rq ms n w d
     | .toLimb ms n _ _ i => .limb (ms.get i) n
     | .ntt ms logN w _ _ => .rq ms (2 ^ logN) w .eval
+    | .intt ms logN w _ _ _ => .rq ms (2 ^ logN) w .coeff
 
 /-- Op denotation. -/
 instance ringDenote : DialectDenote ringDialect where
@@ -278,6 +296,7 @@ instance ringDenote : DialectDenote ringDialect where
     | .fromLimbs ms _ _ _ => fun args => limbsOfHVector ms args
     | .toLimb _ _ _ _ i => fun args => args.head i
     | .ntt ms logN _ L psis => fun args => nttF ms logN L psis args.head
+    | .intt ms logN _ L psis scales => fun args => inttF ms logN L psis scales args.head
 
 /-- `ntt` denotes `nttF`. -/
 theorem ntt_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
@@ -298,6 +317,63 @@ theorem lowerNega_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
             (fnVal (ms.get i) (rowLanes x i) (2 ^ logN) 0)) j := by
   rw [ntt_denote, nttProg_denote _ hP _ j j.isLt]
   rfl
+
+/-- `intt` denotes `inttF`. -/
+theorem intt_denote (ms : List Nat) (logN w L : Nat) (psis scales : List Nat)
+    (x : Limbs ms (2 ^ logN)) :
+    ringDenote.denote (.intt ms logN w L psis scales) (.cons x .nil)
+      = inttF ms logN L psis scales x := rfl
+
+open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
+/-- **The `intt` op lowers to the inverse template.** Row `i` of the `intt` op's
+    denotation is, lane by lane, the `fieldDialect` program `inttProg` at the
+    parameter record and scaling constant of limb `i`, run on that row. -/
+theorem lowerIntt_denote (ms : List Nat) (logN w L : Nat) (psis scales : List Nat)
+    (i : Fin ms.length) (hP : (NttParams.mk (ms.get i) logN L (psis.getD i 0)).Ok)
+    (x : Limbs ms (2 ^ logN)) (j : Fin (2 ^ logN)) :
+    ringDenote.denote (.intt ms logN w L psis scales) (.cons x .nil) i j
+      = NttStageFieldGeneral.hvGetD
+          ((inttProg ⟨ms.get i, logN, L, psis.getD i 0⟩ (scales.getD i 0)).denote
+            (fnVal (ms.get i) (rowLanes x i) (2 ^ logN) 0)) j := by
+  rw [intt_denote, inttProg_denote _ hP _ _ j j.isLt]
+  rfl
+
+open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
+/-- **`intt` inverts `ntt`.** When every limb's parameter record satisfies
+    `NttParams.Ok` and its scaling constant `ScaleOk`, `inttF` after `nttF` is the
+    identity. -/
+theorem inttF_nttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat)
+    (hP : ∀ i : Fin ms.length, (NttParams.mk (ms.get i) logN L (psis.getD i 0)).Ok ∧
+      ScaleOk ⟨ms.get i, logN, L, psis.getD i 0⟩ (scales.getD i 0))
+    (x : Limbs ms (2 ^ logN)) : inttF ms logN L psis scales (nttF ms logN L psis x) = x := by
+  funext i j
+  obtain ⟨hOk, hs⟩ := hP i
+  have hψ := NttParams.psi_pow _ hOk
+  have hsc := ScaleOk.cast _ _ hs
+  simp only [inttF, inttSpec]
+  rw [invRun_congr _ L logN L hOk.2.1 _ (nttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
+    (rowLanes x i)) (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j j.isLt]
+  have := inttSpec_nttSpec _ L logN hψ hOk.1 hOk.2.1 _ hsc (rowLanes x i) j j.isLt
+  simp only [inttSpec] at this
+  rw [this, rowLanes, dif_pos j.isLt]
+
+open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
+/-- **`ntt` inverts `intt`.** Under the same side conditions, `nttF` after `inttF`
+    is the identity. -/
+theorem nttF_inttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat)
+    (hP : ∀ i : Fin ms.length, (NttParams.mk (ms.get i) logN L (psis.getD i 0)).Ok ∧
+      ScaleOk ⟨ms.get i, logN, L, psis.getD i 0⟩ (scales.getD i 0))
+    (x : Limbs ms (2 ^ logN)) : nttF ms logN L psis (inttF ms logN L psis scales x) = x := by
+  funext i j
+  obtain ⟨hOk, hs⟩ := hP i
+  have hψ := NttParams.psi_pow _ hOk
+  have hsc := ScaleOk.cast _ _ hs
+  simp only [nttF]
+  rw [nttSpec_congr _ L logN hOk.2.1 _ (inttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
+    ((scales.getD i 0 : Nat) : ZMod (ms.get i)) (rowLanes x i))
+    (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j,
+    nttSpec_inttSpec _ L logN hψ hOk.1 hOk.2.1 _ hsc (rowLanes x i) j j.isLt, rowLanes,
+    dif_pos j.isLt]
 
 /-- `add` denotes the per-limb sum. -/
 theorem add_denote (ms : List Nat) (n w : Nat) (d : Domain) (x y : Limbs ms n) :
