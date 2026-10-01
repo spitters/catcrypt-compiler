@@ -136,6 +136,7 @@ From source to machine:
 |---|---|---|
 | [LeanSourceX86](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceX86.lean) | a Lean function compiled to x86 and ascended back | `add_descent_x86` |
 | [LeanSourceRiscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscv.lean) | the same on RV64 | `add_descent_riscv` |
+| [LeanSourceRiscvBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscvBytes.lean) | the same on RV64, at the encoded bytes | `addDescentBytes_correct` |
 | [SourceToBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean) | source-to-Jasmin capstones evaluated at their values | `feSub_value` |
 | [Strengthen](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Strengthen.lean) | the result monad chosen per kernel by type strengthening | `feSubC_ts_refines` |
 

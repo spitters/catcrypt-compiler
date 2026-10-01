@@ -142,6 +142,13 @@ The schoolbook multiply and the field multiply and square are proved in
 stated over `runRBlock64` with symbolic names, since its seventeen field elements need
 more registers than RV64 has.
 
+Descent output reaches the bytes through `../Ascent/DescentRiscvBytes.lean`:
+`com_riscv_bytes` carries `com_riscv_e2e` through a renaming that `renGo` accepts and
+`expandLi`, for any `ComOK` program. `../Ascent/Demos/LeanSourceRiscvBytes.lean`
+instantiates it on `a + b`, `a - b` and the multiply-accumulate column
+`fe25519MacColLoCom` (`addDescentBytes_correct`, `subDescentBytes_correct`,
+`macColLoBytes_correct`).
+
 ## What is not proved
 
 - `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with
