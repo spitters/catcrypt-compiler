@@ -813,6 +813,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
