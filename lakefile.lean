@@ -2342,6 +2342,7 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVComplete,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVCompleteKats,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.Curve25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Ed25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Ed25519Decompress,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.GHASH,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.GHASH,
     Lake.Glob.one `CatCrypt.Crypto.Vale.HgcdBY,
     Lake.Glob.one `CatCrypt.Crypto.Vale.LeafLeakage,
     Lake.Glob.one `CatCrypt.Crypto.Vale.MLKEM768,

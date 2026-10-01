@@ -10,6 +10,10 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVComplete
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVComplete
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 
 /-!
 # The hypotheses of the two-address completeness theorem on shipped bodies
@@ -31,10 +35,19 @@ agrees with it. The optimisation of `cpSubBody` is outside the hypotheses: its s
 `RAX := RBX - RAX` reads its destination as the second source, which the copy route does
 not legalise.
 
+`OwnedLprogTV.foldIndexed_ownedCheckM_complete` states that `ownedCheckM` accepts the spelled
+fold of a body against `ConstIndexFold.foldIndexedBody` when the eliminated immediate moves are
+dead at the level of the symbolic step (`OwnedLprogTV.dropOk`). On the comb select over four
+table entries (`CombSelectFront.combSelectLprog`, 290 instructions), the elimination removes
+four immediate moves, the hypotheses hold with a succeeding symbolic run, and the evaluated
+check agrees.
+
 ## Main definitions
 
 * `straightWF`: the hypotheses of the theorem on a body, with a succeeding symbolic run.
 * `copyCount`: the number of instructions the copy route legalises.
+* `combSelectBody`, `foldWF`, `deadCount`: the comb select body, the hypotheses of the
+  dead-move theorem on a body, and the number of eliminated moves.
 
 ## Main results
 
@@ -77,6 +90,7 @@ def copyCount (body : Lcmd) : Nat := (body.filter fun i => !tiedOk i.li_i).lengt
 /-- The X25519 ladder step without its trailing `Lret`. -/
 def monoStepBody : Lcmd := Fe25519LfundefBridge.monoStepLcmd.dropLast
 
+set_option kat.ms 1000 in
 #kat straightWF tagOf cpSubBody && copyCount cpSubBody == 2
 #kat ownedCheckM cpOuts (typeBody tagOf cpSubBody) (typeBody tagOf (twoAddrBody cpSubBody))
 #kat !(optimizeBasicBlocks cpSubBody).all (fun i => twoAddrWF i.li_i)
@@ -85,5 +99,37 @@ set_option kat.ms 1500 in
 set_option kat.ms 1500 in
 #kat ownedCheckM ["RDI"] (typeBody tagOf monoStepBody)
   (typeBody tagOf (twoAddrBody monoStepBody))
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
+  (constIndexFoldBody dropDeadImmBody spellMemBody foldIndexedBody)
+
+/-- The body of the exported comb select over `N` table entries, without its `Lret`. -/
+def combSelectBody (N : Nat) : Lcmd :=
+  match CombSelectFront.combSelectLprog "f" N with
+  | some lp =>
+      match lp.lp_funcs with
+      | f :: _ => f.2.lfd_body.filter fun i => match i.li_i with
+          | .Lret => false
+          | _ => true
+      | [] => []
+  | none => []
+
+/-- The hypotheses of `foldIndexed_ownedCheckM_complete` on a body at the typing `tg`, with
+    a succeeding symbolic run. -/
+def foldWF (tg : LinstrR → MemTag) (body : Lcmd) : Bool :=
+  let f := constIndexFoldBody body
+  !(dropDeadImmBody f).isEmpty && (spellMemBody f).all (fun i => straightR i.li_i) &&
+    dropOk [] (typeMarks tg (spellMarks (dropDeadImmMarks f))) &&
+    match symRun (typeBody tg (spellMemBody f)) SSt.start with
+    | .ok _ _ => true
+    | _ => false
+
+/-- The number of immediate moves the dead-move elimination removes from the folded body. -/
+def deadCount (body : Lcmd) : Nat :=
+  ((dropDeadImmMarks (constIndexFoldBody body)).filter (·.2)).length
+
+#kat foldWF tagOf (combSelectBody 4) && deadCount (combSelectBody 4) == 4
+#kat ownedCheckM ["RDX"] (typeBody tagOf (spellMemBody (constIndexFoldBody (combSelectBody 4))))
+  (typeBody tagOf (foldIndexedBody (combSelectBody 4)))
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVCompleteKats
