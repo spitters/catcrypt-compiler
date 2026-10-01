@@ -179,13 +179,23 @@ one program of 3098 instructions and states it at its encoded bytes
 `lake exe riscv-x25519-emit` writes it, and `bench/riscv_x25519/run.sh` links it into a C
 driver and checks it against RFC 7748 under qemu-riscv64.
 
+`SailRiscvPc64Refinement.lean` runs programs in Sail clauses: it adds the `ld`, `sd`, `bne`,
+`jal` and `jalr` clauses of the `riscv-zkvm` extraction of sail-riscv 0.13.1 over a state with
+a flat byte memory, `PC` and `nextPC`, and reuses the register clauses of
+`SailRiscv64Refinement.lean`. `sailStep_refines` shows one Sail step refines
+`RiscvPc64.step`, `sailRun_refines` composes the steps over a run, and `fnSpec_sail` carries
+a `FnSpec` across. `../Ascent/Demos/RiscvX25519LadderSailProof.lean` applies it to the ladder
+program (`x25519Ladder_sail`). The memory accesses are simplified (no translation, PMP or
+misaligned handling), as the module docstring lists.
+
 ## What is not proved
 
 - `RiscvPc64.step` fetches a word-aligned instruction and has no traps, compressed
   instructions or interrupts; that it agrees with an RV64 processor is not proved.
-- `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with
-  the Sail model over a whole block is not proved (the Sail refinements are per
-  instruction, for the written value). The bytes of `RiscvBytes64.encodeMBlock64` are
+- `runM64` executes the decoded instructions with `evalRInst64`. Its agreement with the
+  Sail model over a whole program is `SailRiscvPc64Refinement`, against in-file excerpts of
+  the Sail clauses with simplified memory accesses and step glue; the full generated model
+  is not imported. The bytes of `RiscvBytes64.encodeMBlock64` are
   not the ones `RiscvElfObject` or `as` produce: `encLi64` and `as` load constants with
   other sequences.
 
