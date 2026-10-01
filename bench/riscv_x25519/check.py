@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Check the RV64 X25519 ladder object against RFC 7748.
+"""Check the RV64 X25519 objects against RFC 7748.
 
-Usage: check.py <runner...>   (for example: check.py qemu-riscv64 gen/driver)
+Usage: check.py <runner...>          (for example: check.py qemu-riscv64 gen/driver)
+       check.py --full <runner...>   (for example: check.py --full qemu-riscv64 gen/driver_x25519)
 
-The driver prints the projective result (x2, z2) of the ladder; this script forms
-x2 / z2 mod p and compares it with the RFC 7748 Section 5 algorithm below, on the
-Section 5.2 vectors and on random inputs. The reference itself is checked against
-the published outputs first.
+Without --full the driver runs the ladder and prints its projective result (x2, z2);
+this script forms x2 / z2 mod p. With --full the driver runs the whole X25519 function
+on the unclamped scalar and unmasked u and prints its 32 output bytes. Either way the
+result is compared with the RFC 7748 Section 5 algorithm below, on the Section 5.2
+vectors and on random inputs. The reference itself is checked against the published
+outputs first.
 """
 import random
 import subprocess
@@ -72,7 +75,8 @@ RFC_VECTORS = [
 
 
 def main():
-    runner = sys.argv[1:]
+    full = sys.argv[1:2] == ["--full"]
+    runner = sys.argv[2:] if full else sys.argv[1:]
     if not runner:
         sys.exit(__doc__)
     for k, u, out in RFC_VECTORS:
@@ -82,20 +86,27 @@ def main():
     rng = random.Random(7748)
     cases = [(bytes.fromhex(k), bytes.fromhex(u)) for k, u, _ in RFC_VECTORS]
     cases += [(rng.randbytes(32), rng.randbytes(32)) for _ in range(32)]
-    lines = "".join(f"{clamp(k).hex()} {mask_u(u).hex()}\n" for k, u in cases)
+    if full:
+        lines = "".join(f"{k.hex()} {u.hex()}\n" for k, u in cases)
+    else:
+        lines = "".join(f"{clamp(k).hex()} {mask_u(u).hex()}\n" for k, u in cases)
     res = subprocess.run(runner, input=lines, capture_output=True, text=True, check=True)
     outs = res.stdout.split("\n")[: len(cases)]
     if len(outs) != len(cases):
         sys.exit(f"expected {len(cases)} lines, got {len(outs)}")
     for (k, u), line in zip(cases, outs):
-        x2h, z2h = line.split()
-        x2 = int.from_bytes(bytes.fromhex(x2h), "little")
-        z2 = int.from_bytes(bytes.fromhex(z2h), "little")
-        got = (x2 * pow(z2, P - 2, P) % P).to_bytes(32, "little")
+        if full:
+            got = bytes.fromhex(line.strip())
+        else:
+            x2h, z2h = line.split()
+            x2 = int.from_bytes(bytes.fromhex(x2h), "little")
+            z2 = int.from_bytes(bytes.fromhex(z2h), "little")
+            got = (x2 * pow(z2, P - 2, P) % P).to_bytes(32, "little")
         want = x25519_ref(k, u)
         if got != want:
             sys.exit(f"MISMATCH k={k.hex()} u={u.hex()}: {got.hex()} != {want.hex()}")
-    print(f"riscv_x25519: {len(cases)} cases agree with RFC 7748 "
+    what = "x25519" if full else "ladder"
+    print(f"riscv_x25519 ({what}): {len(cases)} cases agree with RFC 7748 "
           f"({len(RFC_VECTORS)} published vectors, {len(cases) - len(RFC_VECTORS)} random)")
 
 

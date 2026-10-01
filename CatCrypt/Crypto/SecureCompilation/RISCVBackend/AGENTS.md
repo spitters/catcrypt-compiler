@@ -158,8 +158,8 @@ block unchanged. `../Ascent/CorresRiscvMem.lean` states `CorresRM` over `runX`, 
 (`z` at `a0`, `x` at `a1`, `y` at `a2`) that saves and restores `s0..s11` in a 112-byte
 frame below `sp` (`feMulFnBytes_correct`, 1073 instructions); it stops before the return.
 The machine model has no alignment check; the externally callable entry conditions
-(`feMulFnBytes_correct`, `LadderPre`) require `sp` 16-byte and the buffer pointers 8-byte
-aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
+(`feMulFnBytes_correct`, `LadderPre`, `X25519Pre`, `X25519CPre`) require `sp` 16-byte and
+the buffer pointers 8-byte aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
 
 Control flow is `RiscvPc64.lean`: a program of `PInst64` (a straight-line `XInst64`,
 `bne`, `jal`, `jalr`) loaded at a base address, run by `steps` from a program counter.
@@ -178,6 +178,18 @@ one program of 3098 instructions and states it at its encoded bytes
 `RiscvElfObject.buildElfObject` (`x25519LadderObject_correct` states it over the `.text`),
 `lake exe riscv-x25519-emit` writes it, and `bench/riscv_x25519/run.sh` links it into a C
 driver and checks it against RFC 7748 under qemu-riscv64.
+`../Ascent/Demos/RiscvX25519Proof.lean` completes RFC 7748 `X25519(k, u)`: a block function
+after the ladder program clamps the scalar, masks `u`, sets up the ladder state, calls the
+ladder and computes `x2 · z2^(p - 2)` with the ref10 addition chain as 266 calls of the
+field-operation functions (`fnSpec_x25519`), and a C function
+`catcrypt_x25519(out, scalar, u)` copies the inputs into a block in its frame, calls it and
+copies the result out (`fnSpec_wrap`). `x25519Bytes_correct` and `x25519CBytes_correct` state
+them over the 4246 encoded instructions, against the specifications `CatCrypt.Util.x25519`
+and `x25519Bytes` (on 32-byte strings). `../Ascent/Demos/RiscvX25519SailProof.lean` carries
+both to the Sail clauses (`x25519SailBytes_correct`, `x25519CSailBytes_correct`), and
+`../Ascent/Demos/RiscvX25519Object.lean` wraps the program into an ELF64 object with the C
+entry point `catcrypt_x25519` (`x25519Object_correct`, over the `.text` bytes; no ELF parsing
+or linker is modelled), which `run.sh` also checks against RFC 7748 on its output bytes.
 
 `SailRiscvPc64Refinement.lean` runs programs in Sail clauses: it adds the `ld`, `sd`, `bne`,
 `jal` and `jalr` clauses of the `riscv-zkvm` extraction of sail-riscv 0.13.1 over a state with

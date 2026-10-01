@@ -2900,6 +2900,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderObject,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderSailProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderStepProof,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519Object,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519Proof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519SailProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr,
@@ -3034,8 +3035,8 @@ lean_exe «keccak-jinc-emit» where
   root := `CatCrypt.Crypto.Jasmin.KeccakJincEmit
 
 lean_exe «riscv-x25519-emit» where
-  -- Writes the RV64 X25519 ladder object into bench/riscv_x25519/gen/; its values are
-  -- checked by bench/riscv_x25519/run.sh under qemu.
+  -- Writes the RV64 X25519 ladder and X25519 objects into bench/riscv_x25519/gen/; their
+  -- values are checked by bench/riscv_x25519/run.sh under qemu.
   root := `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderEmit
 
 lean_exe «nasm-parse-kat» where
