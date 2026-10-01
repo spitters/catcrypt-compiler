@@ -149,6 +149,7 @@ Loops and early exit:
 | [EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, read as an exception program | `searchU_except_found` |
 | [MillerLoopKernelBench](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/MillerLoopKernelBench.lean) | a counted Miller loop over field leaves | `millerLoopProg_corres` |
 | [RiscvX25519LadderBytesProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519LadderBytesProof.lean) | the X25519 ladder as an RV64 program with a loop and calls, at its encoded bytes | `x25519LadderBytes_correct` |
+| [RiscvX25519Proof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519Proof.lean) | RFC 7748 X25519 (clamping, ladder, inversion) as an RV64 program with a C entry point `catcrypt_x25519(out, scalar, u)`, at its encoded bytes | `x25519CBytes_correct` |
 
 ## A worked path: from a `LowCT` kernel to its Jasmin program
 

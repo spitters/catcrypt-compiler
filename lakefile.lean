@@ -2900,6 +2900,8 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderObject,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderSailProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderStepProof,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519Proof,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519SailProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384GuardSat,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontsqrP384,
