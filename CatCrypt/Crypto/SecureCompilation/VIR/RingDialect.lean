@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Algebra.BigOperators.Fin
 public import Mathlib.Data.Nat.ChineseRemainder
+public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
 
 /-!
 # Ring dialect — RNS quotient rings `Z_Q[X]/(X^N + 1)`
@@ -38,6 +39,8 @@ upstream verifiers require.
 * `rescaleF` — exact division by the dropped trailing modulus.
 * `baseConvertF` — fast basis conversion (no `-vQ` correction).
 * `fromTensorF`, `toTensorF`, `limbsOfHVector` — the structural conversions.
+* `rowLanes`, `nttF` — a row as a lane function, and the per-limb negacyclic NTT
+  with a layer count, the coefficient-to-evaluation conversion of `R_Q`.
 * `RingTy` / `RingOp` / `ringDialect` — the dialect, its signature and its
   denotation.
 * `ofInts ms c` — the residues of an integer coefficient vector in the basis `ms`.
@@ -56,6 +59,9 @@ upstream verifiers require.
 * `toTensorF_fromTensorF`, `fromTensorF_toTensorF` — the tensor conversions are
   mutually inverse on in-range words and for moduli that fit the storage width.
 * `ringDialect_ctSafe_all` — every op of the dialect is data-oblivious.
+* `ntt_denote`, `lowerNega_denote` — the `ntt` op denotes `nttF`, and row `i` of
+  it is the `fieldDialect` program `NegacyclicNttTemplate.nttProg` at the
+  parameter record of limb `i`.
 -/
 
 @[expose] public section
@@ -96,6 +102,20 @@ def negF (x : Limbs ms n) : Limbs ms n := fun i j => -x i j
 /-- The pointwise product, per limb and per position. In the evaluation basis
     this is the product of `R_Q`. -/
 def mulF (x y : Limbs ms n) : Limbs ms n := fun i j => x i j * y i j
+
+/-- Row `i` of a residue array as a lane function, zero past the last position. -/
+def rowLanes (x : Limbs ms n) (i : Fin ms.length) (k : Nat) : ZMod (ms.get i) :=
+  if h : k < n then x i ⟨k, h⟩ else 0
+
+/-- The negacyclic NTT of length `2 ^ logN` with `L` merged-twiddle layers, per
+    limb: row `i` is `NegacyclicNttTemplate.nttSpec` at the root `psis.getD i 0`
+    modulo `ms.get i`.  At `L = logN` the result is the fully split evaluation
+    basis; at `L < logN` position `c · 2 ^ (logN - L) + t` holds coefficient `t`
+    of the residue modulo `X ^ (2 ^ (logN - L)) - ψ ^ (2 · BitRev_L c + 1)`. -/
+def nttF (ms : List Nat) (logN L : Nat) (psis : List Nat) (x : Limbs ms (2 ^ logN)) :
+    Limbs ms (2 ^ logN) := fun i j =>
+  NegacyclicNttTemplate.nttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
+    (rowLanes x i) j
 
 /-- The automorphism `X ↦ X^g` in the coefficient basis: coefficient `k` moves
     to position `g·k mod N`, negated when `g·k mod 2N ≥ N` (the wrap
@@ -203,6 +223,9 @@ inductive RingOp where
   | fromLimbs (ms : List Nat) (n w : Nat) (d : Domain)
   /-- Result `i` of `ring.to_limbs`. -/
   | toLimb (ms : List Nat) (n w : Nat) (d : Domain) (i : Fin ms.length)
+  /-- The coefficient-to-evaluation conversion of `R_Q` at length `2 ^ logN`, with
+      `L` butterfly layers and per-limb roots `psis` (`nttF`). -/
+  | ntt (ms : List Nat) (logN w L : Nat) (psis : List Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -224,6 +247,7 @@ instance : DialectSignature ringDialect where
     | .toTensor ms n w d => [.rq ms n w d]
     | .fromLimbs ms n _ _ => ms.map (fun q => RingTy.limb q n)
     | .toLimb ms n w d _ => [.rq ms n w d]
+    | .ntt ms logN w _ _ => [.rq ms (2 ^ logN) w .coeff]
   ret op := match op with
     | .add ms n w d => .rq ms n w d
     | .sub ms n w d => .rq ms n w d
@@ -236,6 +260,7 @@ instance : DialectSignature ringDialect where
     | .toTensor ms n w _ => .words ms.length n w
     | .fromLimbs ms n w d => .rq ms n w d
     | .toLimb ms n _ _ i => .limb (ms.get i) n
+    | .ntt ms logN w _ _ => .rq ms (2 ^ logN) w .eval
 
 /-- Op denotation. -/
 instance ringDenote : DialectDenote ringDialect where
@@ -252,6 +277,27 @@ instance ringDenote : DialectDenote ringDialect where
     | .toTensor ms n w _ => fun args => toTensorF ms n w args.head
     | .fromLimbs ms _ _ _ => fun args => limbsOfHVector ms args
     | .toLimb _ _ _ _ i => fun args => args.head i
+    | .ntt ms logN _ L psis => fun args => nttF ms logN L psis args.head
+
+/-- `ntt` denotes `nttF`. -/
+theorem ntt_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
+    (x : Limbs ms (2 ^ logN)) :
+    ringDenote.denote (.ntt ms logN w L psis) (.cons x .nil) = nttF ms logN L psis x := rfl
+
+open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
+/-- **The `ntt` op lowers to the template.** Row `i` of the `ntt` op's
+    denotation is, lane by lane, the `fieldDialect` program `nttProg` at the
+    parameter record of limb `i`, run on that row, whenever the record satisfies
+    `NttParams.Ok`. -/
+theorem lowerNega_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
+    (i : Fin ms.length) (hP : (NttParams.mk (ms.get i) logN L (psis.getD i 0)).Ok)
+    (x : Limbs ms (2 ^ logN)) (j : Fin (2 ^ logN)) :
+    ringDenote.denote (.ntt ms logN w L psis) (.cons x .nil) i j
+      = NttStageFieldGeneral.hvGetD
+          ((nttProg ⟨ms.get i, logN, L, psis.getD i 0⟩).denote
+            (fnVal (ms.get i) (rowLanes x i) (2 ^ logN) 0)) j := by
+  rw [ntt_denote, nttProg_denote _ hP _ j j.isLt]
+  rfl
 
 /-- `add` denotes the per-limb sum. -/
 theorem add_denote (ms : List Nat) (n w : Nat) (d : Domain) (x y : Limbs ms n) :

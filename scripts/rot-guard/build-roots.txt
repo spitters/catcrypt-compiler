@@ -41,6 +41,7 @@ CatCrypt.Crypto.Hax.HaxWideMulFuse
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
+CatCrypt.Crypto.Hax.NFToCat
 CatCrypt.Crypto.Hax.NFToLowCT
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
