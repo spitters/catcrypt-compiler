@@ -798,6 +798,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel
