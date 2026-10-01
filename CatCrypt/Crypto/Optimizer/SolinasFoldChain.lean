@@ -141,22 +141,18 @@ theorem secpCC :
       + 2 ^ solinasParamsSecp256k1.k < 2 ^ solinasParamsSecp256k1.k * 2 := by
   show (2 ^ 32 + 977 + 1) * (2 ^ 32 + 977) + 2 ^ 256 < 2 ^ 256 * 2
   norm_num
-  omega
 
 theorem secp3C : 3 * solinasParamsSecp256k1.c < 2 ^ solinasParamsSecp256k1.k := by
   show 3 * (2 ^ 32 + 977) < 2 ^ 256
   norm_num
-  omega
 
 theorem secp2C : 2 * solinasParamsSecp256k1.c < 2 ^ solinasParamsSecp256k1.k := by
   show 2 * (2 ^ 32 + 977) < 2 ^ 256
   norm_num
-  omega
 
 theorem secpCle : solinasParamsSecp256k1.c ≤ 2 ^ solinasParamsSecp256k1.k := by
   show (2 ^ 32 + 977 : Nat) ≤ 2 ^ 256
   norm_num
-  omega
 
 /-- **The secp256k1 four-fold chain lands below `2 ^ 256`.** -/
 theorem secpFourFold_lt {A B : Nat} (hA : A < 2 ^ 256) (hB : B < 2 ^ 256) :

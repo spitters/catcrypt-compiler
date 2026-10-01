@@ -219,6 +219,8 @@ CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.SolinasInstances
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsSolinas
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
