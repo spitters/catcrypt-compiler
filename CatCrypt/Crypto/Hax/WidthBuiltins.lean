@@ -139,9 +139,6 @@ theorem widthArrayOps_deepNoControlFlow : Builtins.DeepNoControlFlow widthArrayO
     rcases List.mem_or_eq_of_mem_set hy with hy | rfl
     · exact hvs y hy
     · exact hargs _ (by simp)
-  case h_9.isFalse | h_10.isFalse =>
-    obtain rfl := Option.some.inj h
-    exact h0 rfl
   case h_11 =>
     obtain rfl := Option.some.inj h
     have hvs := (deepNoControlFlow_array_iff _).mp (h0 rfl)

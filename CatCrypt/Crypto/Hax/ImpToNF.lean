@@ -3035,7 +3035,6 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
             · exact hints w hw
             · exact ⟨z, rfl⟩
           · cases hv
-            exact dec_slice_int _ hints
       · cases hr
     · cases hr
 
