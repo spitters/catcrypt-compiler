@@ -299,8 +299,8 @@ def qrBlk (a b c d t : String) : List ROp :=
 
 Lowered-and-run on the model: this exercises every lowered op
 (`ADDW`/`XOR`/`SLLIW`/`SRLIW`/`OR`) on a tiny register state, byte-identical to
-the RFC, fast under `native_decide`. The assembled + `qemu-riscv64`-run byte-KAT
-lives in `bench/riscv_compare/`. -/
+the RFC, fast under `native_decide`. The assembled `qemu-riscv64` byte-KAT was run in a
+local harness that is not vendored in this repository. -/
 
 /-- RFC 8439 §2.1.1 quarter-round input state: `a = 0x11111111`,
     `b = 0x01020304`, `c = 0x9b8d6f43`, `d = 0x01234567`. Other names read as

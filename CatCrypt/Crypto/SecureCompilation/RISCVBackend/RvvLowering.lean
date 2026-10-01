@@ -30,7 +30,8 @@ VOp (RFC 8439 quarter-rounds)  --lowerVBlock-->  VInst (RVV register machine)
 
 The trust boundary is the same shape as the NEON path: the lowering is verified
 down to the model; the model's lane semantics is differential-validated (the RFC
-8439 KAT below + the qemu-riscv64 emitted-kernel KAT in `bench/riscv_compare/`).
+8439 KAT below + a qemu-riscv64 emitted-kernel KAT in a local harness, not vendored in
+this repository).
 -/
 
 @[expose] public section
@@ -172,8 +173,9 @@ def doubleRoundBlk (pf : String) : List VOp :=
 
 /-! ## 5. The RFC 8439 §2.1.1 quarter-round KAT (the lane-level witness)
 
-The full 20-round ChaCha block KAT is run at the **bench level** (qemu-riscv64
-RVV-enabled assembled kernel against RFC 8439 in `bench/riscv_compare/`), where it
+The full 20-round ChaCha block KAT was run at the bench level (qemu-riscv64
+RVV-enabled assembled kernel against RFC 8439, in a local harness not vendored in this
+repository), where it
 is byte-identical to the reference. The **in-Lean** witness is the RFC 8439 §2.1.1
 single-quarter-round test vector, lowered-and-run on the model: this exercises
 every lowered op (`vadd`/`vxor`/`vsll`/`vsrl`/`vor`) on a tiny 4-register state,

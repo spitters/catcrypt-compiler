@@ -236,8 +236,9 @@ theorem runRBlock64_append (xs ys : List RInst64) (s : RState64) :
 /-! ## 4. Differential-validation pins (the 64-bit RV64 anchor)
 
 Unit-level witnesses for the new ops; the integration witness is the
-`bignum_add_p256` KAT (`RiscvBignumKernel.addp256_kat`) and the real
-qemu-riscv64 run-KAT in `bench/riscv_compare/`. -/
+`bignum_add_p256` KAT (`RiscvBignumKernel.addp256_kat`). The qemu-riscv64 run in this
+repository is `bench/riscv_x25519/`, which runs the encoded X25519 ladder program
+(`RiscvX25519LadderObject`) against RFC 7748. -/
 
 /-- `MUL`/`MULHU` pin: `(2⁶⁴-1)² = 0xfffffffffffffffe_0000000000000001`, so
     `MUL = 1` (low), `MULHU = 0xfffffffffffffffe` (high). -/

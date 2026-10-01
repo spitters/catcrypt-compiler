@@ -40,8 +40,8 @@ The fixed-config prelude (`li`, `vsetvli`, `mv`, `addi`, `vle32.v`, `vse32.v`) i
 scalar `RInst64.li`), and the `vsetvli`/`vle`/`vse` are the trusted lane-config /
 memory scaffolding (outside the verified packed-ALU body), the RVV analogue of the
 prologue. `encodeWord` returns `none` for nothing here — the verified subset is
-exactly the OPIVV/OPIVI ALU forms; the byte-diff (`bench/riscv_compare`,
-`qr-rvv-bytes-diff`) is run on the **packed-ALU body** (the verified `VInst`
+exactly the OPIVV/OPIVI ALU forms; the byte-diff (`qr-rvv-bytes-diff`, a local
+harness not vendored in this repository) is run on the **packed-ALU body** (the verified `VInst`
 block), with the prelude/epilogue factored out, exactly as the NEON QR byte-diff
 spans the ASIMD body.
 -/
