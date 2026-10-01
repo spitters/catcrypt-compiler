@@ -2109,6 +2109,7 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLayout,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLoopTV,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLoopTVSound,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels,
@@ -2257,9 +2258,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeakTV,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Model,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulTwoAddr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod8192,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod8380417,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381FieldMul,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381Msm,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.ChaCha20Vec256,
