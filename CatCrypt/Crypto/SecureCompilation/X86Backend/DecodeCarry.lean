@@ -45,6 +45,12 @@ both flags are live.
   lift instructions, tracking which of the two flags is live; an accepted instruction
   simulates its machine instructions.
 * `bodyOKC`, `decSim_of_bodyOKC`: the check over a body.
+* `decSimC_mulxMem`, `decSimC_loadC`: the memory-source `MULXMEM:64` and the cell load
+  `LOAD:64` against the decoded `mulx off(%B)` and `mov off(%B)`, from the cell facts
+  `CellFacts` (a register `π c`, named by no decoded instruction, holds the word at
+  `[B + off]`).
+* `stepOKCK`, `bodyOKCK`, `decSim_of_bodyOKCK`: the check over a body extended by the cell
+  classes, threading the cell facts.
 * `coreStepC`, `mbodyOKC_sound`, `decSim_of_loopOKC`: the word-array memory check of
   `DecodeGenMem` extended by the carry family, the flag writers and the flag-quiet lift
   instructions (`wideStepM`); the loads, stores, moves
@@ -783,7 +789,243 @@ theorem decSim_of_bodyOKC {N : List String} (hinj : InjOn π N) :
         exact (decSim_of_stepOKC hinj hs).append (ih jss fl' False h)
       · cases h
 
-/-! ## 9. The check on carry chains
+/-! ## 9. Fixed-offset memory cells
+
+The lifted field kernels name the memory word at `[B + off]` by a flag-machine name `c`
+(`mem.<B>.<off>`), which the flag machine reads as a register. A cell table lists triples
+`(c, B, off)`. The cell facts hold when the machine register `π c`, which no decoded
+instruction names, holds the word at `[B + off]`; with `c` live, the flag machine's `c` then
+holds that word. The cell classes are the memory-source `MULXMEM` and the load `LOAD` of a
+cell; every instruction of a body keeps the cell facts when its machine instructions store
+nothing and write neither a base register nor a register `π c`. -/
+
+/-- The cell facts of the table `C`: the register `π c` holds the word at `[B + off]`. -/
+def CellFacts (π : String → String) (C : List (String × String × Int)) (sa : AState) : Prop :=
+  ∀ c B off, (c, B, off) ∈ C → sa.regs (π c) = read64 sa.mem (sa.regs B + BitVec.ofInt 64 off)
+
+/-- The widening multiply with a cell source, `MULXMEM:64 lo, hi, c`. -/
+def mulxMemI (lo hi c : String) : LinstrRM :=
+  (.Lopn [.reg lo, .reg hi] (withWidthTag 64 "MULXMEM") [.reg c], .reg none)
+
+/-- The load of a cell, `LOAD:64 d, c`. -/
+def loadCI (d c : String) : LinstrRM :=
+  (.Lopn [.reg d] (withWidthTag 64 "LOAD") [.reg c], .reg none)
+
+theorem fstepF_mulxMemI (lo hi c : String) (s : LstateM) (zf : Bool) :
+    fstepF (mulxMemI lo hi c) s zf = (wideStep (.mulx lo hi (.reg c)) s).map (fun t => (t, zf)) :=
+  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxMemI, or_true, if_true])
+    s zf
+
+theorem fstepF_loadCI (d c : String) (b : LstateM) (zf : Bool) (v : BitVec 64)
+    (hv : b.reg.getW c 64 = some v) :
+    fstepF (loadCI d c) b zf = some ((b.setReg d v).nextPc, zf) := by
+  have hc : cmpArgs? (loadCI d c) = none := rfl
+  have hm : movRegArgs? (loadCI d c) = some (d, c) := by
+    simp only [movRegArgs?, loadCI]
+    rw [if_neg (by decide +kernel), if_pos (by decide +kernel)]
+  unfold fstepF
+  rw [hc, hm]
+  simp only [readReg_of_getW hv]
+
+/-- `MULXMEM:64 lo, hi, c` against `mulx off(%B), %lo, %hi` whose implicit source is the
+    register of `mulxSrc`, with distinct destination registers, when the register of `c` holds
+    the word at `[B + off]`. -/
+theorem decSimC_mulxMem (lo hi c B : String) (off : Int) (hR : L mulxSrc) (hc : L c)
+    (hHL : π hi ≠ π lo)
+    (hL : ∀ r, L' r → r = hi ∨ r = lo ∨ (L r ∧ π r ≠ π lo ∧ π r ≠ π hi)) :
+    DecSim (fun sa b zf => CCorr π L Lay frame K zl cl ol sa b zf
+        ∧ sa.regs (π c) = read64 sa.mem (sa.regs B + BitVec.ofInt 64 off))
+      (CCorr π L' Lay frame K False cl ol)
+      [mulxMemI lo hi c] [.mulxMem (π hi) (π lo) (.reg (π mulxSrc)) B off] := by
+  refine DecSim.single fun sa b zf h => ?_
+  obtain ⟨⟨hC, hcf, hof⟩, hcell⟩ := h
+  rw [fstepF_mulxMemI]
+  simp only [wideStep, evalOperandN, hC.regs mulxSrc hR, hC.regs c hc, hcell, Option.map_some]
+  exact ⟨_, zf, rfl, DecLsemCorr.write2 hC lo hi _ _ _ (fun _ => rfl) rfl hHL hL, hcf, hof⟩
+
+/-- `LOAD:64 d, c` against `mov off(%B), %d` when the register of `c` holds the word at
+    `[B + off]`. -/
+theorem decSimC_loadC (d c B : String) (off : Int) (hc : L c) (hL : Survives π L L' d) :
+    DecSim (fun sa b zf => CCorr π L Lay frame K zl cl ol sa b zf
+        ∧ sa.regs (π c) = read64 sa.mem (sa.regs B + BitVec.ofInt 64 off))
+      (CCorr π L' Lay frame K False cl ol)
+      [loadCI d c] [.loadMem (π d) B off] := by
+  refine DecSim.single fun sa b zf h => ?_
+  obtain ⟨⟨hC, hcf, hof⟩, hcell⟩ := h
+  have hv := hC.regs c hc
+  rw [hcell] at hv
+  exact ⟨_, zf, fstepF_loadCI d c b zf _ hv,
+    hC.write d _ _ (fun _ => rfl) rfl hL (fun hz : False => hz.elim), hcf, hof⟩
+
+/-- The cell classes against their machine instructions: `MULXMEM` against the memory-source
+    `mulx` and `LOAD` against the load, at a cell of the table `C`. The result is the names
+    read and the names written, or `none` for no class. -/
+def cellCls (π : String → String) (C : List (String × String × Int)) (i : LinstrRM)
+    (js : List (JInstr 64)) : Option (List String × List String) :=
+  match i, js with
+  | (.Lopn [.reg lo, .reg hi] opn [.reg c], .reg none), [.mulxMem H Lo A B off] =>
+      if opn == withWidthTag 64 "MULXMEM" && π hi != π lo && H == π hi && Lo == π lo
+          && A == .reg (π mulxSrc) && C.contains (c, B, off) then
+        some ([mulxSrc, c], [lo, hi])
+      else none
+  | (.Lopn [.reg d] opn [.reg c], .reg none), [.loadMem D B off] =>
+      if opn == withWidthTag 64 "LOAD" && D == π d && C.contains (c, B, off) then
+        some ([c], [d])
+      else none
+  | _, _ => none
+
+theorem cellCls_sound {C : List (String × String × Int)} {i : LinstrRM} {js : List (JInstr 64)}
+    {srcs ws : List String} (h : cellCls π C i js = some (srcs, ws)) (hs : ∀ r ∈ srcs, L r)
+    (hL : SurvivesL π L L' ws) :
+    DecSim (fun sa b zf => CCorr π L Lay frame K zl cl ol sa b zf ∧ CellFacts π C sa)
+      (CCorr π L' Lay frame K False cl ol) [i] js := by
+  unfold cellCls at h
+  split at h
+  · rename_i lo hi opn c H Lo A B off
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, List.contains_iff_mem] at hc
+    obtain ⟨⟨⟨⟨⟨rfl, hHL⟩, rfl⟩, rfl⟩, rfl⟩, hC⟩ := hc
+    refine (decSimC_mulxMem lo hi c B off (hs _ (by simp)) (hs c (by simp)) hHL
+      fun r hr => ?_).weaken (fun sa _ _ h => ⟨h.1, h.2 c B off hC⟩) (fun _ _ _ h => h)
+    rcases hL r hr with hw | ⟨hrL, hne⟩
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hw
+      rcases hw with rfl | rfl
+      · exact Or.inr (Or.inl rfl)
+      · exact Or.inl rfl
+    · exact Or.inr (Or.inr ⟨hrL, hne lo (by simp), hne hi (by simp)⟩)
+  · rename_i d opn c D B off
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem] at hc
+    obtain ⟨⟨rfl, rfl⟩, hC⟩ := hc
+    exact (decSimC_loadC d c B off (hs c (by simp)) fun r hr =>
+      (hL r hr).imp List.mem_singleton.mp fun h' => ⟨h'.1, h'.2 d (List.mem_singleton_self d)⟩).weaken
+      (fun sa _ _ h => ⟨h.1, h.2 c B off hC⟩) (fun _ _ _ h => h)
+  · cases h
+
+/-- The machine instructions that store nothing. -/
+def noStoreB : JInstr 64 → Bool
+  | .storeMem _ _ _ => false
+  | .storeMemIdx _ _ _ _ => false
+  | .addToMem _ _ _ => false
+  | _ => true
+
+theorem evalInstrA_mem_of_noStore {j : JInstr 64} (h : noStoreB j = true) (sa : AState) :
+    (evalInstrA sa j).mem = sa.mem := by
+  have hw : writeAddr sa j = none := by
+    cases j <;> first | rfl | exact absurd h (by simp [noStoreB])
+  simp only [evalInstrA, hw]
+
+theorem runBlock_mem_of_noStore :
+    ∀ (js : List (JInstr 64)) (sa : AState), js.all noStoreB = true →
+      (aMachine.runBlock sa js).mem = sa.mem
+  | [], _, _ => rfl
+  | j :: js, sa, h => by
+    simp only [List.all_cons, Bool.and_eq_true] at h
+    show (aMachine.runBlock (aMachine.exec sa j) js).mem = _
+    rw [runBlock_mem_of_noStore js _ h.2, DecSimTactic.aMachine_exec,
+      evalInstrA_mem_of_noStore h.1]
+
+/-- Machine instructions that keep the cell facts of `C`: they store nothing and write
+    neither a base register of `C` nor a register `π c`. -/
+def cellKeep (π : String → String) (C : List (String × String × Int)) (js : List (JInstr 64)) :
+    Bool :=
+  js.all noStoreB && (js.flatMap dsts).all fun D => C.all fun e => D != e.2.1 && D != π e.1
+
+theorem cellFacts_runBlock {C : List (String × String × Int)} {js : List (JInstr 64)}
+    (h : cellKeep π C js = true) {sa : AState} (hf : CellFacts π C sa) :
+    CellFacts π C (aMachine.runBlock sa js) := by
+  simp only [cellKeep, Bool.and_eq_true, List.all_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨hns, hd⟩ := h
+  have hmem := runBlock_mem_of_noStore js sa (List.all_eq_true.mpr hns)
+  intro c B off hc
+  have hB : B ∉ js.flatMap dsts := fun hm => (hd B hm (c, B, off) hc).1 rfl
+  have hk : π c ∉ js.flatMap dsts := fun hm => (hd (π c) hm (c, B, off) hc).2 rfl
+  rw [DecodeGenMem.runBlock_regs_of_not_flat js sa _ hB,
+    DecodeGenMem.runBlock_regs_of_not_flat js sa _ hk, hmem]
+  exact hf c B off hc
+
+/-- **The check with flag liveness and cells.** An instruction whose machine instructions
+    keep the cell facts of `C`, accepted by a cell class (`cellCls`) on names of `N`, which
+    keeps the live flags, or by `stepOKC`. -/
+def stepOKCK (π : String → String) (N : List String) (C : List (String × String × Int))
+    (fl : Bool × Bool) (i : LinstrRM) (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  if cellKeep π C js then
+    match cellCls π C i js with
+    | some (srcs, ws) =>
+        if srcs.all N.contains && ws.all N.contains then some fl else stepOKC π N fl i js
+    | none => stepOKC π N fl i js
+  else none
+
+theorem decSim_of_stepOKCK {N : List String} (hinj : InjOn π N)
+    {C : List (String × String × Int)} {fl fl' : Bool × Bool} {i : LinstrRM}
+    {js : List (JInstr 64)} (h : stepOKCK π N C fl i js = some fl') :
+    DecSim (fun sa b zf => CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true) sa b zf
+        ∧ CellFacts π C sa)
+      (fun sa b zf => CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true) sa b zf
+        ∧ CellFacts π C sa) [i] js := by
+  unfold stepOKCK at h
+  split_ifs at h with hk
+  have hfr := fun sa (hf : CellFacts π C sa) => cellFacts_runBlock hk hf
+  have hbase : stepOKC π N fl i js = some fl' →
+      DecSim (fun sa b zf => CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true) sa b zf
+          ∧ CellFacts π C sa)
+        (fun sa b zf => CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true) sa b zf
+          ∧ CellFacts π C sa) [i] js := fun hs =>
+    DecSimTactic.DecSim.frame _ _ (decSim_of_stepOKC hinj hs) hfr
+  split at h
+  · rename_i srcs ws hw
+    split_ifs at h with hN
+    · cases h
+      simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at hN
+      exact (DecSimTactic.DecSim.frame _ _ (cellCls_sound hw hN.1 (survivesL_of_injOn hinj hN.2))
+        hfr).weaken (fun _ _ _ h => ⟨h, h.2⟩) (fun _ _ _ h => h)
+    · exact hbase h
+  · exact hbase h
+
+/-- A body accepted instruction by instruction by `stepOKCK`, threading the live flags. -/
+def bodyOKCK (π : String → String) (N : List String) (C : List (String × String × Int)) :
+    Bool × Bool → List LinstrRM → List (List (JInstr 64)) → Bool
+  | _, [], [] => true
+  | fl, i :: is, js :: jss =>
+      match stepOKCK π N C fl i js with
+      | some fl' => bodyOKCK π N C fl' is jss
+      | none => false
+  | _, _, _ => false
+
+/-- **A body with cell reads simulates its machine instructions**, from the cell facts to
+    the cell facts. -/
+theorem decSim_of_bodyOKCK {N : List String} (hinj : InjOn π N)
+    {C : List (String × String × Int)} :
+    ∀ (is : List LinstrRM) (jss : List (List (JInstr 64))) (fl : Bool × Bool) (zl : Prop),
+      bodyOKCK π N C fl is jss = true →
+      DecSim (fun sa b zf => CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true) sa b zf
+          ∧ CellFacts π C sa)
+        (fun sa b zf => CCorr π (· ∈ N) Lay frame K False False False sa b zf
+          ∧ CellFacts π C sa) is jss.flatten := by
+  intro is
+  induction is with
+  | nil =>
+    intro jss fl zl h
+    cases jss with
+    | nil =>
+        exact (DecSim.nil _).weaken (fun _ _ _ h => h)
+          (fun _ _ _ h => ⟨⟨h.1.1.dropZf, fun hf => hf.elim, fun hf => hf.elim⟩, h.2⟩)
+    | cons _ _ => simp [bodyOKCK] at h
+  | cons i is ih =>
+    intro jss fl zl h
+    cases jss with
+    | nil => simp [bodyOKCK] at h
+    | cons js jss =>
+      simp only [bodyOKCK] at h
+      split at h
+      · rename_i fl' hs
+        rw [List.flatten_cons]
+        exact (decSim_of_stepOKCK hinj hs).append (ih jss fl' False h)
+      · cases h
+
+/-! ## 10. The check on carry chains
 
 An `ADD`, register copy, `ADC` chain is accepted from no live flag; an `ADC` with no live
 carry flag, and an `ADC` after a copy through `imul`, are rejected. -/
@@ -802,7 +1044,7 @@ set_option kat.ms 1000 in
   [addI "a" "a" "b", binRegI "MUL:64" "a" "a" "b", carryI "ADC" "c" "c" "d"]
   [[.add "a" (.reg "b")], [.imul "a" (.reg "b")], [.adc "c" (.reg "d")]]
 
-/-! ## 10. Word-array memory with flag liveness -/
+/-! ## 11. Word-array memory with flag liveness -/
 
 section Mem
 
