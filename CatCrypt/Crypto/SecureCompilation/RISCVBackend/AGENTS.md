@@ -133,6 +133,15 @@ the bytes decode to instructions that compute the same result, for every machine
 with inputs in `a0..a7` and the result in `a0..a3` (`cswap` swaps `a0..a3` and
 `a4..a7` in place).
 
+The schoolbook multiply and the field multiply and square are proved in
+`../Ascent/Demos/RiscvFe25519MulProof.lean` (`mul48_run`, `feMul_correct`,
+`feSqr_correct`) and carried to bytes in `../Ascent/Demos/RiscvMulBytesProof.lean`
+(`feMulBytes_correct`, `feSqrBytes_correct`, 1033 and 1037 instructions).
+`../Ascent/Demos/RiscvX25519LadderStepProof.lean` proves that `ladderStepBlock` computes
+`CatCrypt.Util.x25519DoubleAndAdd` (`ladderStep_correct`, for `z2, z3 ≤ 2·p25519`); it is
+stated over `runRBlock64` with symbolic names, since its seventeen field elements need
+more registers than RV64 has.
+
 ## What is not proved
 
 - `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with
