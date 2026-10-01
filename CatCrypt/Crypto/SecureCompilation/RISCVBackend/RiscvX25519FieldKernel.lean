@@ -77,10 +77,12 @@ For each field op block (`feAddBlock`, `feSubBlock`, `feMulBlock`, `feSqrBlock`,
 marshalled field-op blocks (`rfl`); `ladder_loop_denote` states that
 `runBoundedLoopR64 s n ladderStepBlock` equals running the unrolled `n`-copy block.
 
-No theorem here states a field op for all inputs (for example that `feMulBlock`
-computes `(x·y) mod p` for all limb vectors), the value of a ladder step, or the
-X25519 function. Checks of the emitted code against RFC 7748 are not part of this
-package.
+No theorem here states a field op for all inputs or the value of a ladder step; those
+are in `Ascent/Demos/RiscvFe25519AddSubProof.lean`, `Ascent/Demos/RiscvFe25519MulProof.lean`
+(for example `feMul_correct`: `feMulBlock` computes `(x·y) mod p` for all limb vectors)
+and `Ascent/Demos/RiscvX25519LadderStepProof.lean` (`ladderStep_correct`). No theorem
+states the X25519 function. Checks of the emitted code against RFC 7748 are not part of
+this package.
 -/
 
 @[expose] public section
