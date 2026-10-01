@@ -622,7 +622,8 @@ theorem lsemStepMem_binopWire (d x : String) (s1 : LOperand) (opn : String)
     (cd : Option Nat) (s : LstateM) :
     lsemStepMem (binopWire d x s1 opn, .reg cd) s
       = (lsemStepMC (binopWire d x s1 opn) s.reg).map (fun r => { s with reg := r }) := by
-  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inl rfl)]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _
+    (Or.inl ⟨rfl, by simp [movImmStruct?, binopWire]⟩)]
 
 /-- The straight step of a register-tagged binop that is not the flag compare is
     the flag machine's step `stepMemF`, with the zero flag unchanged. -/

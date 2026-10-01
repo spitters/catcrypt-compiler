@@ -107,7 +107,9 @@ theorem symCast_congr {R R' : String → STerm} {i : JasminLsemCast.LinstrRT}
     (h : ∀ q ∈ instrReadRegs i.1, R q = R' q) : symCast i R = symCast i R' := by
   unfold symCast
   split
-  · exact symMC_congr h
+  · split
+    · rfl
+    · exact symMC_congr h
   · split
     · exact symMC_congr h
     · rfl
@@ -482,27 +484,51 @@ theorem immMov?_spec {i : LinstrRM} {r : String} (h : immMov? i = some r) :
 theorem symStep_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) :
     ∃ w n, ∀ ss, symStep i ss = .ok (ss.setR r (.immW w n)) [] := by
   obtain ⟨opn, n, tag, rfl, hm, ht⟩ := immMov?_spec h
-  refine ⟨widthFromTag opn, n, fun ss => ?_⟩
-  have hn : symN (.Lopn [.reg r] opn [.imm n]) ss.regs =
-      .set r (.immW (widthFromTag opn) n) [] := by
+  have hn : ∀ R, symN (.Lopn [.reg r] opn [.imm n]) R =
+      .set r (.immW (widthFromTag opn) n) [] := fun R => by
     unfold symN
     simp only [hm, if_true]
-  have hc : ∀ cd, symCast (.Lopn [.reg r] opn [.imm n], cd) ss.regs =
-      .set r (.immW (widthFromTag opn) n) [] := by
-    intro cd
-    simp only [symCast, symMC, symSh, JasminLsemCast.castStruct?,
-      JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+  have hd : ∀ R, symMC (.Lopn [.reg r] opn [.imm n]) R =
+      .set r (.immW (widthFromTag opn) n) [] := fun R => by
+    simp only [symMC, symSh, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
       JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
       JasminLsemMulCarry.sbbhiStruct?, JasminLsemShift.sarStruct?, hn]
-  have hm' : symMem (.Lopn [.reg r] opn [.imm n], tag) ss =
-      .ok (ss.setR r (.immW (widthFromTag opn) n)) [] := by
+  have hc : ∀ cd, ∃ w, ∀ R, symCast (.Lopn [.reg r] opn [.imm n], cd) R =
+      .set r (.immW w n) [] := by
+    intro cd
+    by_cases ho : opn = "MOV"
+    · subst ho
+      cases cd with
+      | none =>
+          exact ⟨widthFromTag "MOV", fun R => by
+            simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, hd]⟩
+      | some w' =>
+          exact ⟨w', fun R => by
+            simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?]⟩
+    · have hmi : JasminLsemCast.movImmStruct? (.Lopn [.reg r] opn [.imm n]) = none := by
+        unfold JasminLsemCast.movImmStruct?
+        split
+        · rename_i heq
+          injection heq with _ h2 _
+          exact absurd h2 ho
+        · rfl
+      exact ⟨widthFromTag opn, fun R => by simp only [symCast, JasminLsemCast.castStruct?, hmi, hd]⟩
+  obtain ⟨w, hm'⟩ : ∃ w, ∀ ss : SSt, symMem (.Lopn [.reg r] opn [.imm n], tag) ss =
+      .ok (ss.setR r (.immW w n)) [] := by
     cases tag with
-    | load w k => simp [symMem, loadStruct?, hc, liftR]
-    | store w k => simp [symMem, storeStruct?, hc, liftR]
+    | load a k =>
+        obtain ⟨w, hw⟩ := hc none
+        exact ⟨w, fun ss => by simp [symMem, loadStruct?, hw, liftR]⟩
+    | store a k =>
+        obtain ⟨w, hw⟩ := hc none
+        exact ⟨w, fun ss => by simp [symMem, storeStruct?, hw, liftR]⟩
     | loadC => cases ht
     | storeC => cases ht
-    | reg cd => simp [symMem, hc, liftR]
-  simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hm', aluFl,
+    | reg cd =>
+        obtain ⟨w, hw⟩ := hc cd
+        exact ⟨w, fun ss => by simp [symMem, hw, liftR]⟩
+  refine ⟨w, n, fun ss => ?_⟩
+  simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hm' ss, aluFl,
     aluFlT, aluFlagOp?, SSt.setR]
 
 /-! ## 4. Interning states that agree on the interned registers -/

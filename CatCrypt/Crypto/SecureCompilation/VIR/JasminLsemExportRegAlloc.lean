@@ -245,6 +245,13 @@ theorem castStruct?_shape {i : LinstrR} {p : String × String}
     (h : castStruct? i = some p) : defNames i = [p.1] ∧ p.2 ∈ useNames i := by
   unfold castStruct? at h; recog_shape
 
+theorem movImmStruct?_shape {i : LinstrR} {p : String × Nat}
+    (h : movImmStruct? i = some p) : defNames i = [p.1] := by
+  unfold movImmStruct? at h
+  split at h
+  · cases h; simp [defNames, opNames]
+  · simp at h
+
 theorem loadStruct?_shape {i : LinstrR} {p : String × String × String}
     (h : loadStruct? i = some p) :
     defNames i = [p.1] ∧ p.2.1 ∈ useNames i ∧ p.2.2 ∈ useNames i := by
@@ -353,21 +360,31 @@ theorem lsemStepCast_live (hemp : N "") (hfix : σ "" = "") (i : LinstrR) (cd : 
     (hu : ∀ n ∈ useNames i, N n) (hK : Keeps σ N M (defNames i))
     {s s' t : LstateN} (hR : RelN σ N s s') (h : lsemStepCast (i, cd) s = some t) :
     ∃ t', lsemStepCast (renLinstrR σ i, cd) s' = some t' ∧ RelN σ M t t' := by
-  unfold lsemStepCast at h ⊢
-  dsimp only at h ⊢
-  rw [castStruct?_ren]
-  cases h1 : castStruct? i with
+  cases cd with
   | none =>
-      simp only [h1, Option.map_none] at h ⊢
+      rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)] at h
+      rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
       exact lsemStepMC_live hemp hfix i hu hK hR h
-  | some p =>
-      obtain ⟨d, a⟩ := p
-      obtain ⟨hd, ha⟩ := castStruct?_shape h1
-      cases cd with
+  | some w' =>
+      unfold lsemStepCast at h ⊢
+      dsimp only at h ⊢
+      rw [castStruct?_ren, movImmStruct?_ren]
+      cases h1 : castStruct? i with
       | none =>
-          simp only [h1, Option.map_some] at h ⊢
-          exact lsemStepMC_live hemp hfix i hu hK hR h
-      | some w' =>
+          cases h2 : movImmStruct? i with
+          | none =>
+              simp only [h1, h2, Option.map_none] at h ⊢
+              exact lsemStepMC_live hemp hfix i hu hK hR h
+          | some p =>
+              obtain ⟨d, n⟩ := p
+              have hd := movImmStruct?_shape h2
+              rw [hd] at hK
+              simp only [h1, h2, Option.map_none, Option.map_some] at h ⊢
+              cases h
+              exact ⟨_, rfl, relN_setReg_keeps hR hK _⟩
+      | some p =>
+          obtain ⟨d, a⟩ := p
+          obtain ⟨hd, ha⟩ := castStruct?_shape h1
           rw [hd] at hK
           simp only [h1, Option.map_some, hR.readReg_reg (hu _ ha)] at h ⊢
           live_close

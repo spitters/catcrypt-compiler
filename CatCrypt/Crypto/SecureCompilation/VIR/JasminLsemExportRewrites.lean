@@ -312,6 +312,10 @@ theorem castStruct?_ren (i : LinstrR) :
     castStruct? (renLinstrR σ i) = (castStruct? i).map (fun p => (σ p.1, σ p.2)) := by
   unfold castStruct?; ren_recog
 
+theorem movImmStruct?_ren (i : LinstrR) :
+    movImmStruct? (renLinstrR σ i) = (movImmStruct? i).map (fun p => (σ p.1, p.2)) := by
+  unfold movImmStruct?; ren_recog
+
 theorem loadStruct?_ren (i : LinstrR) :
     loadStruct? (renLinstrR σ i)
       = (loadStruct? i).map (fun p => (σ p.1, σ p.2.1, σ p.2.2)) := by
@@ -407,6 +411,13 @@ theorem sbbhiStruct?_names {i : LinstrR} {p : String × String × String × Stri
 theorem castStruct?_names {i : LinstrR} {p : String × String}
     (h : castStruct? i = some p) : p.1 ∈ instrNames i ∧ p.2 ∈ instrNames i := by
   unfold castStruct? at h; recog_names
+
+theorem movImmStruct?_names {i : LinstrR} {p : String × Nat}
+    (h : movImmStruct? i = some p) : p.1 ∈ instrNames i := by
+  unfold movImmStruct? at h
+  split at h
+  · cases h; simp [instrNames, opNames]
+  · simp at h
 
 theorem loadStruct?_names {i : LinstrR} {p : String × String × String}
     (h : loadStruct? i = some p) :
@@ -514,21 +525,30 @@ theorem lsemStepCast_ren (hσ : RenOn σ N) (i : LinstrR) (cd : Option Nat)
     (hi : ∀ n ∈ instrNames i, N n)
     {s s' t : LstateN} (hR : RelN σ N s s') (h : lsemStepCast (i, cd) s = some t) :
     ∃ t', lsemStepCast (renLinstrR σ i, cd) s' = some t' ∧ RelN σ N t t' := by
-  unfold lsemStepCast at h ⊢
-  dsimp only at h ⊢
-  rw [castStruct?_ren]
-  cases h1 : castStruct? i with
+  cases cd with
   | none =>
-      simp only [h1, Option.map_none] at h ⊢
+      rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)] at h
+      rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
       exact lsemStepMC_ren hσ i hi hR h
-  | some p =>
-      obtain ⟨d, a⟩ := p
-      obtain ⟨hd, ha⟩ := castStruct?_names h1
-      cases cd with
+  | some w' =>
+      unfold lsemStepCast at h ⊢
+      dsimp only at h ⊢
+      rw [castStruct?_ren, movImmStruct?_ren]
+      cases h1 : castStruct? i with
       | none =>
-          simp only [h1, Option.map_some] at h ⊢
-          exact lsemStepMC_ren hσ i hi hR h
-      | some w' =>
+          cases h2 : movImmStruct? i with
+          | none =>
+              simp only [h1, h2, Option.map_none] at h ⊢
+              exact lsemStepMC_ren hσ i hi hR h
+          | some p =>
+              obtain ⟨d, n⟩ := p
+              have hd := movImmStruct?_names h2
+              simp only [h1, h2, Option.map_none, Option.map_some] at h ⊢
+              cases h
+              exact ⟨_, rfl, RelN.setReg hσ hR (hi _ hd) _⟩
+      | some p =>
+          obtain ⟨d, a⟩ := p
+          obtain ⟨hd, ha⟩ := castStruct?_names h1
           simp only [h1, Option.map_some, hR.readReg_reg (hi _ ha)] at h ⊢
           ren_close (hi _ hd)
 
@@ -721,7 +741,8 @@ theorem lsemStepCast_carry (d opn : String) (a b : LOperand)
       obtain ⟨-, rfl, -⟩ := heq
       rcases hm with h | h | h | h <;> simp [h]
     · rfl
-  rw [lsemStepCast_of_delegate _ _ (Or.inl (by simp [castStruct?])),
+  rw [lsemStepCast_of_delegate _ _
+      (Or.inl ⟨by simp [castStruct?], by simp [movImmStruct?]⟩),
     lsemStepMC_of_delegate _ _ hmh (by cases a <;> cases b <;> rfl)
       (by cases a <;> cases b <;> rfl) (by cases a <;> cases b <;> rfl)
       (by cases a <;> cases b <;> rfl),
@@ -801,7 +822,8 @@ theorem lsemStepCast_mov2 (d opn : String) (a b : LOperand) (hm : stripWidthTag 
       obtain ⟨-, rfl, -⟩ := heq
       simp [hm]
     · rfl
-  rw [lsemStepCast_of_delegate _ _ (Or.inl (by simp [castStruct?])),
+  rw [lsemStepCast_of_delegate _ _
+      (Or.inl ⟨by simp [castStruct?], by simp [movImmStruct?]⟩),
     lsemStepMC_of_delegate _ _ hmh (by cases a <;> cases b <;> rfl)
       (by cases a <;> cases b <;> rfl) (by cases a <;> cases b <;> rfl)
       (by cases a <;> cases b <;> rfl),
@@ -841,8 +863,8 @@ theorem lsemStepMem_of_wideArgs {i : LinstrRM} {w : WideOp} (h : wideArgs? i = s
     cases tag <;> simp [lsemStepMem, loadStruct?, hst, loadCStruct?, storeCStruct?,
       lsemStepCast_mov2 d opn a b hm]
   · cases tag <;> simp [lsemStepMem, loadStruct?, storeStruct?, loadCStruct?, storeCStruct?,
-      lsemStepCast, castStruct?, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
-      sbbStruct?, sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN]
+      lsemStepCast, castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?,
+      adcxhiStruct?, sbbStruct?, sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN]
   · cases h
 
 /-- A flag-quiet lift instruction is an `Lopn`. -/

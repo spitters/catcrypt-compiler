@@ -149,13 +149,23 @@ def castStruct? : LinstrR → Option (String × String)
       else none
   | _ => none
 
+/-- Recognise the untagged immediate move `Lopn [.reg dst] "MOV" [.imm n]`, the wire form
+    of a `regConst w n` at a width `w ≠ 64`, and return `(dst, n)`; `none` otherwise. The
+    width of the constant is absent from that wire; a typed instruction carries it as its
+    descriptor. -/
+def movImmStruct? : LinstrR → Option (String × Nat)
+  | .Lopn [.reg dst] "MOV" [.imm n] => some (dst, n)
+  | _ => none
+
 /-- The typed single-step semantics for the width-cast fragment. On a cast-tagged
     instruction (`castStruct?` recognises the `"ZEROEXT"/"TRUNC"` wire form *and*
     the descriptor `some w'` is present) it reads the source `a` at its store
     width `w` (recovered from `a`'s tag), and writes `(va).zeroExtend w' =
     (castW w w').denote …` at the **descriptor width `w'`** — faithful to
-    `eval_instr`'s `Ozeroext` `Lopn`. On every other typed instruction it
-    delegates the wire to increment 7's `lsemStepMC` (the descriptor is `none`).
+    `eval_instr`'s `Ozeroext` `Lopn`. On an untagged immediate move `MOV dst, $n`
+    (`movImmStruct?`) with the descriptor `some w'` it writes `BitVec.ofNat w' n`: the
+    width of a `regConst` the wire does not carry. On every other typed instruction it
+    delegates the wire to increment 7's `lsemStepMC`.
 
     The descriptor `w'` is the typed-step parameter (jasmin reads it from the
     sopn descriptor, not the operand syntax); the wire `i.fst` is the REAL emitted
@@ -166,17 +176,34 @@ def lsemStepCast (i : LinstrRT) (s : LstateN) : Option LstateN :=
       match readReg s (.reg a) with
       | some ⟨_, va⟩ => some ((s.setReg dst (va.zeroExtend w')).nextPc)
       | none => none
-  | _, _ => lsemStepMC i.fst s
+  | _, _ =>
+      match movImmStruct? i.fst, i.snd with
+      | some (dst, n), some w' => some ((s.setReg dst (BitVec.ofNat w' n)).nextPc)
+      | _, _ => lsemStepMC i.fst s
 
-/-- On a typed instruction whose wire is recognised by *no* cast head (or whose
-    descriptor is `none`), `lsemStepCast` is exactly increment 7's `lsemStepMC`
-    over the wire. (So the increments-1–7 steps transfer unchanged.) -/
+/-- On a typed instruction whose wire is recognised by *no* cast head and no untagged
+    immediate move (or whose descriptor is `none`), `lsemStepCast` is exactly increment 7's
+    `lsemStepMC` over the wire. (So the increments-1–7 steps transfer unchanged.) -/
 theorem lsemStepCast_of_delegate (i : LinstrRT) (s : LstateN)
-    (h : castStruct? i.fst = none ∨ i.snd = none) :
+    (h : (castStruct? i.fst = none ∧ movImmStruct? i.fst = none) ∨ i.snd = none) :
     lsemStepCast i s = lsemStepMC i.fst s := by
-  rcases h with h | h
-  · simp only [lsemStepCast, h]
-  · simp only [lsemStepCast, h]; cases castStruct? i.fst <;> rfl
+  rcases h with ⟨h, h'⟩ | h
+  · simp only [lsemStepCast, h, h']
+  · simp only [lsemStepCast, h]; cases castStruct? i.fst <;> cases movImmStruct? i.fst <;> rfl
+
+/-- **The immediate move at a descriptor width.** An untagged immediate move
+    `MOV dst, $n` with the descriptor `some w'` writes `BitVec.ofNat w' n` to `dst`. -/
+theorem lsemStepCast_movImm (dst : String) (n w' : Nat) (s : LstateN) :
+    lsemStepCast (.Lopn [.reg dst] "MOV" [.imm n], some w') s =
+      some ((s.setReg dst (BitVec.ofNat w' n)).nextPc) := by
+  simp [lsemStepCast, castStruct?, movImmStruct?]
+
+/-- The descriptor of a `regConst w n` binding: none at the two widths the immediate move's
+    width tag carries (`64`, and `32` for the untagged move), the width `w` otherwise. -/
+def regConstDescr (w : Nat) : Option Nat := if w = 64 ∨ w = 32 then none else some w
+
+theorem regConstDescr_of_wide {w : Nat} (h : w = 64 ∨ w = 32) : regConstDescr w = none := by
+  simp [regConstDescr, h]
 
 /-! ### `lsemStraightCast` / leakage over the typed step -/
 
@@ -268,6 +295,7 @@ def straightOpsCast (nArgs : Nat) :
       let elem : LinstrRT :=
         match e.op with
         | .castW _ w' => (opToLinstrR e.op (regName curDepth) src, some w')
+        | .regConst w _ => (opToLinstrR e.op (regName curDepth) src, regConstDescr w)
         | _ =>
           let wire : LinstrR :=
             match e.op, src with
@@ -376,7 +404,8 @@ theorem straightOpsCast_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     straightOpsCast nArgs (.var ⟨JasminOp.regConst w n, heq, args⟩ body) curDepth =
       (opToLinstrR (JasminOp.regConst w n) (regName curDepth)
         (exprArgs curDepth nArgs argName (fun _ => none)
-          (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))), none)
+          (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))),
+        regConstDescr w)
       :: straightOpsCast nArgs body (curDepth + 1) := by
   match args with
   | .nil => rfl
@@ -511,6 +540,33 @@ theorem lsemStepCast_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         ((⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
   rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
   exact lsemStepMC_const (V := V) n hwn heq args hagree
+
+/-- **`regConst` per-binding step at its descriptor.** A `regConst w n` binding, typed with
+    its descriptor `regConstDescr w`, steps to the state that writes `BitVec.ofNat w n` at
+    every width `w`: through the width tag of the immediate move at `64` and `32`, through
+    the descriptor otherwise. -/
+theorem lsemStepCast_constD {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat} (n : Nat)
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.regConst w n)))
+    (hagree : StoreAgreesN nArgs curDepth st V) :
+    lsemStepCast
+        (opToLinstrR (JasminOp.regConst w n) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))),
+          regConstDescr w)
+        st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
+  by_cases hwn : w = 64 ∨ w = 32
+  · rw [regConstDescr_of_wide hwn]
+    exact lsemStepCast_const n hwn heq args hagree
+  · have hd : regConstDescr w = some w := by simp [regConstDescr, hwn]
+    have h64 : w ≠ 64 := fun h => hwn (Or.inl h)
+    rw [hd]
+    simp only [opToLinstrR, withWidthTag, h64, if_false]
+    exact lsemStepCast_movImm _ n w st
 
 theorem lsemStepCast_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat}
@@ -796,7 +852,8 @@ theorem lsemStraightCast_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
         hlen harg hagree
       obtain ⟨st', hrun, hret⟩ := ih hw (by simp [List.length_cons, hlen]) (by omega) hagree'
       refine ⟨st', ?_, ?_⟩
-      · rw [straightOpsCast_const, lsemStraightCast_cons, hstep]; exact hrun
+      · rw [straightOpsCast_const, regConstDescr_of_wide hwn, lsemStraightCast_cons, hstep]
+        exact hrun
       · simp only [comRetReg]; exact hret
   | sel heq args hbody ih =>
       intro nArgs curDepth st V w hw hlen harg hagree
@@ -944,7 +1001,7 @@ theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
       intro nArgs curDepth V₁ V₂ s₁ s₂ hlen harg hag1 hag2
       have hstep1 := lsemStepCast_const (V := V₁) n hwn heq args hag1
       have hstep2 := lsemStepCast_const (V := V₂) n hwn heq args hag2
-      rw [straightOpsCast_const]
+      rw [straightOpsCast_const, regConstDescr_of_wide hwn]
       simp only [lsemLeakCast_cons, hstep1, hstep2]
       refine congrArg (JasminLsemRobust.linstrLeak _ ++ ·) ?_
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)

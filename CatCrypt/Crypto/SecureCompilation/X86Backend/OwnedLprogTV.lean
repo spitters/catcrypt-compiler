@@ -90,6 +90,8 @@ over the table (`blockOkR`) implies `blockOk` (`blockOkR_spec`).
   `aluFlT_sound`, `symCarry_sound`, `symWide_sound`, `symStep_sound`: each layer of the
   step is described
   exactly.
+* `symStep_comm`: a commutative operation `opn d, [x, d]` and `opn d, [d, x]` have one
+  description (`commSwap`).
 * `symRun_sound`: the symbolic run describes the run of a list exactly.
 * `fuel_runL`, `runL_fuel`: a run through straight-line instructions of a body.
 * `decC_eq`: the symbolic branch condition describes the branch taken.
@@ -114,7 +116,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
   (lsemStepMC mulhiStruct? adcxStruct? adcxhiStruct? sbbStruct? sbbhiStruct?
    lsemStepMC_of_delegate)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
-  (LinstrRT lsemStepCast castStruct? lsemStepCast_of_delegate)
+  (LinstrRT lsemStepCast castStruct? movImmStruct? lsemStepCast_of_delegate)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
@@ -590,6 +592,46 @@ theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat
   simp only [shOk, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at h
   simp [applyImmShiftN, h.1.1, h.1.2, h.2]
 
+/-- The sources of the register operation `opn d, [a, b]` are described in exchanged order:
+    the base of `opn` is commutative (`TwoAddrLegalize.commBases`), `b` is the destination and
+    `a` is not. The order is decided on the names alone. -/
+def commSwap (opn d a b : String) : Bool :=
+  TwoAddrLegalize.commBases.contains (stripWidthTag opn) && b == d && a != d
+
+/-- The two-source operation `m` of `binW` applies to exchanged sources with the same
+    result, for `m` a commutative base. -/
+theorem binW_comm {w : Nat} {m : String} (hm : TwoAddrLegalize.commBases.contains m = true)
+    (a b : BitVec w) : binW w m a b = binW w m b a := by
+  simp only [TwoAddrLegalize.commBases, List.contains_iff_mem, List.mem_cons,
+    List.mem_nil_iff, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl <;>
+    simp [binW, applyOpnN, BitVec.add_comm, BitVec.mul_comm, BitVec.and_comm, BitVec.or_comm,
+      BitVec.xor_comm]
+
+/-- The register description of a two-source operation on terms of one width does not
+    depend on the order of the sources, for a commutative base `m`. -/
+theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, BitVec w}
+    {A : String → ArrCell} {C O : Bool} {r : LstateN} {m d : String} {x y : STerm}
+    (hm : TwoAddrLegalize.commBases.contains m = true)
+    (h : ROut.Desc f V A C O r (.set d (.bin m x y) [.eqW x y])) :
+    ROut.Desc f V A C O r (.set d (.bin m y x) [.eqW y x]) := by
+  have hg : AllG V A C O [.eqW x y] ↔ AllG V A C O [.eqW y x] := by
+    simp only [AllG, List.mem_singleton, forall_eq, SG.holds]
+    exact ⟨Eq.symm, Eq.symm⟩
+  have he : AllG V A C O [.eqW x y] →
+      (STerm.bin m x y).ev V A C O = (STerm.bin m y x).ev V A C O := by
+    simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev]
+    generalize x.ev V A C O = p
+    generalize y.ev V A C O = q
+    obtain ⟨w, a⟩ := p
+    obtain ⟨w', b⟩ := q
+    rintro (rfl : w = w')
+    simp [extW, binW_comm hm]
+  obtain ⟨h1, h2⟩ := h
+  refine ⟨fun r' hr' => ?_, fun g => h2 (hg.mpr g)⟩
+  obtain ⟨g, e⟩ := h1 r' hr'
+  exact ⟨hg.mp g, by rw [e, he g]⟩
+
 /-- The symbolic description of `lsemStepN`. A shift `SHL`/`SHR` by an immediate operand is
     described by the immediate-shift term `shImm`, the term of the count-in-name form
     `SHL:k`/`SHR:k`, so both spellings of one shift have one term. Another two-source
@@ -597,7 +639,9 @@ theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat
     described with the second source `immW w n`, the term of a move of `n` into a register, so
     an operation on a register that holds a moved constant and the operation on the immediate
     have one term. A shift by the count `0` in either form is described as the copy of its
-    source, the term of a register `MOV`. -/
+    source, the term of a register `MOV`. A commutative operation `opn d, [a, d]` with `a ≠ d`
+    is described with its sources exchanged (`commSwap`), so it has the term of
+    `opn d, [d, a]`. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg _] opn [_, _, _] => if stripWidthTag opn = "CMOV" then .unk else .fail
@@ -606,7 +650,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
       | .reg ra =>
           if binOk (stripWidthTag opn) then
             match b with
-            | .reg rb => .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]
+            | .reg rb =>
+                if commSwap opn dst ra rb then
+                  .set dst (.bin (stripWidthTag opn) (R rb) (R ra)) [.eqW (R rb) (R ra)]
+                else .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]
             | .imm n =>
                 if stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR" then
                   if n = 0 then .set dst (R ra) []
@@ -672,15 +719,21 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
       · rw [if_pos hb]
         split
         · rename_i rb
-          simp only [ROut.Desc]
-          rw [stepN_bin_reg, hr ra, hr rb]
-          obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
-            ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
-          simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW_of_binOk hb,
-            hv]
-          split_ifs with hw
-          · simp [hw, extW_of_eq hw, hv]
-          · simp [Ne.symm hw]
+          have key : ROut.Desc (lsemStepN (.Lopn [.reg dst] opn [.reg ra, .reg rb])) V A C O r
+              (.set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]) := by
+            simp only [ROut.Desc]
+            rw [stepN_bin_reg, hr ra, hr rb]
+            obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
+              ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
+            simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev,
+              binW_of_binOk hb, hv]
+            split_ifs with hw
+            · simp [hw, extW_of_eq hw, hv]
+            · simp [Ne.symm hw]
+          split_ifs with hs
+          · simp only [commSwap, Bool.and_eq_true] at hs
+            exact desc_bin_swap hs.1.1 key
+          · exact key
         · rename_i n
           simp only [ROut.Desc]
           rw [stepN_bin_imm, hr ra]
@@ -815,11 +868,15 @@ theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x)
       simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
     · trivial
 
-/-- The symbolic description of `lsemStepCast`: a cast with a descriptor is outside the
-    fragment. -/
+/-- The symbolic description of `lsemStepCast`: an untagged immediate move with a descriptor
+    `w'` sets its destination to the immediate at width `w'`; a cast with a descriptor is
+    outside the fragment. -/
 def symCast (i : LinstrRT) (R : String → STerm) : ROut :=
   match castStruct? i.1 with
-  | none => symMC i.1 R
+  | none =>
+      match movImmStruct? i.1, i.2 with
+      | some (d, n), some w' => .set d (.immW w' n) []
+      | _, _ => symMC i.1 R
   | some _ =>
       match i.2 with
       | none => symMC i.1 R
@@ -829,15 +886,30 @@ theorem symCast_sound (i : LinstrRT) (R : String → STerm) :
     RSound (lsemStepCast i) R (symCast i R) := by
   intro V A C O r hr
   unfold symCast
-  split
-  · rename_i h
-    have := symMC_sound i.1 R V A C O r hr
-    simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inl h)] using this
-  · split
-    · rename_i h
+  cases hc : castStruct? i.1 with
+  | none =>
+    cases hm : movImmStruct? i.1 with
+    | none =>
       have := symMC_sound i.1 R V A C O r hr
-      simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inr h)] using this
-    · trivial
+      simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inl ⟨hc, hm⟩)] using this
+    | some p =>
+      obtain ⟨d, n⟩ := p
+      cases hd : i.2 with
+      | none =>
+        have := symMC_sound i.1 R V A C O r hr
+        simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inr hd)] using this
+      | some w' =>
+        have hstep : lsemStepCast i r = some ((r.setReg d (BitVec.ofNat w' n)).nextPc) := by
+          simp only [lsemStepCast, hc, hm, hd]
+        refine ⟨fun r' h' => ?_, fun _ => by simp [hstep]⟩
+        rw [hstep] at h'
+        exact ⟨fun g hg => by simp at hg, (Option.some.inj h').symm⟩
+  | some _ =>
+    cases hd : i.2 with
+    | none =>
+      have := symMC_sound i.1 R V A C O r hr
+      simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inr hd)] using this
+    | some _ => trivial
 
 /-! ## 5. The memory layer and the flag layer -/
 
@@ -1030,14 +1102,33 @@ theorem symOp64_none {R : String → STerm} {r : LstateN} {o : LOperand}
     (h : symOp64 R o = none) : evalOperandN r 64 o = none := by
   cases o <;> simp_all [symOp64, evalOperandN]
 
+/-- The sources of the instruction are described in exchanged order (`commSwap`). -/
+def aluSwap (i : LinstrRM) : Bool :=
+  match i.1 with
+  | .Lopn [.reg d] opn [.reg a, .reg b] => commSwap opn d a b
+  | _ => false
+
+/-- The flags of a commutative arithmetic or logical operation do not depend on the order
+    of its sources. -/
+theorem aluBit_comm {op : AluOp} (hop : op ≠ .sub) (ofl : Bool) (a b : BitVec 64) :
+    aluBit op ofl a b = aluBit op ofl b a := by
+  cases op
+  · simp [aluBit, aluB5, Jasmin.x86_ADD, BitVec.add_comm, Nat.add_comm, Int.add_comm]
+  · exact absurd rfl hop
+  all_goals simp [aluBit, aluB5, Jasmin.x86_AND, Jasmin.x86_OR, Jasmin.x86_XOR,
+    BitVec.and_comm, BitVec.or_comm, BitVec.xor_comm]
+
 /-- The symbolic carry flag (`ofl = false`) or overflow flag (`ofl = true`) after the memref
     step of `i` from `ss`: for a recognised arithmetic or logical operation whose sources are
-    read at width `64`, the flag it writes (`STerm.aluF`); otherwise the flag of `ss`. -/
+    read at width `64`, the flag it writes (`STerm.aluF`), with the sources exchanged when
+    `aluSwap` holds and the operation is commutative; otherwise the flag of `ss`. -/
 def aluFlT (i : LinstrRM) (ss : SSt) (ofl : Bool) : STerm :=
   match aluFlagOp? i with
   | some (op, a, b) =>
       match symOp64 ss.regs a, symOp64 ss.regs b with
-      | some (ta, _), some (tb, _) => .aluF op ofl ta tb (if ofl then ss.of else ss.cf)
+      | some (ta, _), some (tb, _) =>
+          if aluSwap i && op != .sub then .aluF op ofl tb ta (if ofl then ss.of else ss.cf)
+          else .aluF op ofl ta tb (if ofl then ss.of else ss.cf)
       | _, _ => if ofl then ss.of else ss.cf
   | none => if ofl then ss.of else ss.cf
 
@@ -1152,9 +1243,18 @@ theorem aluFlT_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
         obtain ⟨tb, gb⟩ := p2
         obtain ⟨e1, -⟩ := symOp64_some hr h1
         obtain ⟨e2, -⟩ := symOp64_some hr h2
-        simp only [h1, h2, e1, e2, STerm.ev]
-        by_cases w1 : (ta.ev V A C O).1 = 64 <;> by_cases w2 : (tb.ev V A C O).1 = 64 <;>
-          simp [w1, w2, aluBit, hb.1, hb.2, hc, ho]
+        simp only [h1, h2, e1, e2]
+        by_cases hsw : (aluSwap i && op != AluOp.sub) = true
+        · have hop : op ≠ .sub := by
+            simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hsw
+            exact hsw.2
+          simp only [hsw, ↓reduceIte, STerm.ev]
+          by_cases w1 : (ta.ev V A C O).1 = 64 <;> by_cases w2 : (tb.ev V A C O).1 = 64 <;>
+            simp [w1, w2, aluBit, hb.1, hb.2, hc, ho]
+          exact ⟨aluBit_comm hop false _ _, aluBit_comm hop true _ _⟩
+        · simp only [hsw, Bool.false_eq_true, ↓reduceIte, STerm.ev]
+          by_cases w1 : (ta.ev V A C O).1 = 64 <;> by_cases w2 : (tb.ev V A C O).1 = 64 <;>
+            simp [w1, w2, aluBit, hb.1, hb.2, hc, ho]
 
 /-- A description of a memref step from the base of `s`, whose successful results keep the
     flags, describes the flag-machine step with the flags of `withALUFlags`. -/
@@ -1426,6 +1526,51 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
               exact descM_liftF i (symMem_zf i ss) hs
                 (symMem_sound i ss V A C O s.prog.base ⟨hs.1, hs.2.1⟩)
                 (fun b hb => lsemStepMem_flags hb)
+
+/-- The untagged and the `:64`-tagged mnemonics of the commutative bases
+    `TwoAddrLegalize.commBases`. -/
+def commOpns : List String :=
+  ["ADD", "MUL", "AND", "OR", "XOR", "ADD:64", "MUL:64", "AND:64", "OR:64", "XOR:64"]
+
+/-- **Commuted sources have one description.** For a commutative mnemonic, the step of
+    `opn d, [x, d]` and the step of `opn d, [d, x]` are described alike. -/
+theorem symStep_comm {opn d x : String} (hopn : opn ∈ commOpns) (hxd : x ≠ d) (τ : MemTag)
+    (ss : SSt) :
+    symStep (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss =
+      symStep (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss := by
+  have hF : TwoAddrLegalize.commBases.contains (stripWidthTag opn) = true ∧
+      binOk (stripWidthTag opn) = true ∧ stripWidthTag opn ≠ "MULXHI" ∧
+      stripWidthTag opn ≠ "SAR" ∧ opn ≠ withWidthTag 64 "CMP" ∧
+      opn ≠ withWidthTag 64 "ADC" ∧ opn ≠ withWidthTag 64 "SBB" ∧
+      opn ≠ withWidthTag 64 "ADCX" ∧ opn ≠ withWidthTag 64 "ADOX" ∧
+      opn ≠ withWidthTag 64 "MOV" ∧ opn ≠ withWidthTag 64 "SUB" := by
+    simp only [commOpns, List.mem_cons, List.mem_nil_iff, or_false] at hopn
+    rcases hopn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
+  obtain ⟨hc, hb, hmx, hsar, hcmp, hadc, hsbb, hadcx, hadox, hmov, hsub⟩ := hF
+  have hs1 : commSwap opn d x d = true := by
+    unfold commSwap
+    rw [hc]
+    simp [hxd]
+  have hs2 : commSwap opn d d x = false := by simp [commSwap]
+  have hC : ∀ cd, symCast (.Lopn [.reg d] opn [.reg x, .reg d], cd) ss.regs =
+      symCast (.Lopn [.reg d] opn [.reg d, .reg x], cd) ss.regs := by
+    intro cd
+    dsimp only [symCast, castStruct?, movImmStruct?, symMC, mulhiStruct?, adcxStruct?,
+      adcxhiStruct?, sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
+    simp only [hmx, if_false]
+    dsimp only [symN]
+    simp only [hb, hs1, hs2, Bool.false_eq_true, ↓reduceIte]
+  have hM : symMem (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss =
+      symMem (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss := by
+    cases τ <;> simp only [symMem, loadStruct?, storeStruct?, hC]
+  have hA : ∀ ofl, aluFlT (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss ofl =
+      aluFlT (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss ofl := by
+    intro ofl
+    simp only [aluFlT, aluFlagOp?, aluSwap, hs1, hs2, hsub, if_false]
+    split_ifs <;> simp [symOp64]
+  simp only [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hcmp, hadc,
+    hsbb, hadcx, hadox, hmov, if_false, hM]
+  cases symMem (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss <;> simp only [aluFl, hA]
 
 /-! ## 6. Straight-line runs -/
 
@@ -2789,7 +2934,9 @@ theorem symCast_subst (σ : Nat → STerm) (i : LinstrRT) (R : String → STerm)
     symCast i (fun r => (R r).subst σ) = (symCast i R).subst σ := by
   unfold symCast
   split
-  · exact symMC_subst σ i.1 R
+  · split
+    · rfl
+    · exact symMC_subst σ i.1 R
   · split
     · exact symMC_subst σ i.1 R
     · rfl
@@ -2826,7 +2973,8 @@ theorem aluFlT_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (ofl : Bool)
   split
   · rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
       symOp64_subst]
-    cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> cases ofl <;> rfl
+    cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> cases ofl <;> dsimp only <;>
+      (try split_ifs) <;> rfl
   · cases ofl <;> rfl
 
 theorem aluFl_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (o : SOut) :

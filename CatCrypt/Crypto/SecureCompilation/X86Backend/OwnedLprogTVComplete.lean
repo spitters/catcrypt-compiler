@@ -1100,15 +1100,26 @@ theorem symN_copy (R : String → STerm) (d x opn : String) (b : LOperand)
     symN (.Lopn [.reg d] opn [.reg x, b]) R =
       symN (.Lopn [.reg d] opn [.reg d, b]) (copyRegs R d x) := by
   cases b with
-  | reg y => dsimp only [symN]; rw [copyRegs_avoid_reg hb, copyRegs_self]
+  | reg y =>
+      have hy : y ≠ d := fun h => hb (by simp [LprogLeak.opNames, h])
+      have h1 : ∀ a, commSwap opn d a y = false := fun a => by simp [commSwap, hy]
+      dsimp only [symN]
+      simp only [h1, Bool.false_eq_true, ↓reduceIte]
+      rw [copyRegs_avoid_reg hb, copyRegs_self]
   | imm n => dsimp only [symN]; rw [copyRegs_self]
   | arr _ _ => dsimp only [symN]
   | arrIdx _ _ _ => dsimp only [symN]
 
+/-- A two-source instruction is not an immediate move. -/
+theorem movImmStruct?_pair (ds : List LOperand) (opn : String) (a b : LOperand) :
+    JasminLsemCast.movImmStruct? (.Lopn ds opn [a, b]) = none := by
+  unfold JasminLsemCast.movImmStruct?
+  split <;> simp_all
+
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (sarStruct?) in
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
   (mulhiStruct? adcxStruct? adcxhiStruct? sbbStruct? sbbhiStruct?) in
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct?) in
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct? movImmStruct?) in
 theorem symCast_copy (R : String → STerm) (d x opn : String) (b : LOperand)
     (cd : Option Nat) (hb : avoidsReg d b) :
     symCast (.Lopn [.reg d] opn [.reg x, b], cd) R =
@@ -1118,19 +1129,19 @@ theorem symCast_copy (R : String → STerm) (d x opn : String) (b : LOperand)
   | reg y =>
       have hy : copyRegs R d x y = R y := copyRegs_avoid_reg hb
       have hd : copyRegs R d x d = R x := copyRegs_self R d x
-      dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
       split_ifs <;> simp_all
   | imm n =>
-      dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
       split_ifs <;> simp_all
   | arr _ _ =>
-      dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
       exact hN
   | arrIdx _ _ _ =>
-      dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
       exact hN
 
@@ -1144,11 +1155,11 @@ def ROut.WritesOnly (d : String) : ROut → Prop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (sarStruct?) in
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
   (mulhiStruct? adcxStruct? adcxhiStruct? sbbStruct? sbbhiStruct?) in
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct?) in
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct? movImmStruct?) in
 theorem symCast_writesOnly (R : String → STerm) (d opn : String) (a b : LOperand)
     (cd : Option Nat) : (symCast (.Lopn [.reg d] opn [a, b], cd) R).WritesOnly d := by
-  cases a <;> cases b <;>
-    dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+  cases a <;> cases b <;> simp only [symCast, movImmStruct?_pair] <;>
+    dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
       sbbStruct?, sbbhiStruct?, symSh, sarStruct?, symN] <;>
     (try split_ifs) <;> trivial
 
@@ -1210,7 +1221,16 @@ theorem aluFlT_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOpe
       aluFlT (.Lopn [.reg d] opn [.reg x, b], tag) ss bo := by
   have hc : (ss'.setR d (ss'.regs x)).cf = ss.cf := e.2.2.2.1.symm
   have ho : (ss'.setR d (ss'.regs x)).of = ss.of := e.2.2.2.2.symm
-  simp only [aluFlT, aluFlagOp?, copyRegs_eq e, hc, ho]
+  have hsw : ∀ a, aluSwap (.Lopn [.reg d] opn [.reg a, b], tag) = false := fun a => by
+    cases b with
+    | reg y =>
+        have hy : y ≠ d := fun h => hb (by simp [LprogLeak.opNames, h])
+        simp [aluSwap, commSwap, hy]
+    | imm _ => rfl
+    | arr _ _ => rfl
+    | arrIdx _ _ _ => rfl
+  simp only [aluFlT, hsw, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  simp only [aluFlagOp?, copyRegs_eq e, hc, ho]
   split_ifs <;> simp only [symOp64_copy_src, symOp64_copy_avoid _ hb]
 
 theorem aluFl_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOperand)
