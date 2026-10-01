@@ -404,6 +404,9 @@ theorem WidthOp.eval_sexpr (k : Nat) (o : WidthOp) (a b : Nat) (σ : String → 
     (o.sexpr (2 ^ k) (.SLit a) (.SLit b)).eval σ = o.nat (2 ^ k) a b := by
   cases o <;> simp only [WidthOp.sexpr, WidthOp.nat, widthMask, orExprN, widthAmt, SExpr.eval,
     Nat.and_two_pow_sub_one_eq_mod, xor_xor_and_eq_or, rotrNat, rotlNat]
+  have hb : b % 2 ^ 2 ^ k < 2 ^ 2 ^ k := Nat.mod_lt _ (Nat.two_pow_pos _)
+  congr 1
+  omega
 
 theorem WidthOp.nat_lt {w : Nat} (hw : w ≤ 64) (o : WidthOp) (a b : Nat) :
     o.nat w a b < 2 ^ 64 := by

@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsValueLoop
+public import CatCrypt.Crypto.Hax.HaxToLowCTExitScalFrame
 
 /-!
 # The word-array scalarisation of the typed exit front
@@ -65,8 +66,8 @@ its check `exitArrOk` and its value theorem `exitArrLower_semG`.
 * `ExitArrRel`, `ExitArrRelL` — a program and its scalarisation, without and with loops.
 * `exitArrB`, `exitArrBL` — the Boolean tests on the input of the pass.
 * `ArrRunL`, `readsAL` — the bounds and read conditions with loops.
-* `scalarKeepsB`, `exitRunNorm`, `exitFrameTail`, `exitFrameNorm` — the exit-frame
-  normalisation.
+* `exitRunNorm`, `exitFrameTail`, `exitFrameNorm` — the exit-frame normalisation, with the
+  scalar frame `scalarKeepsB` of `HaxToLowCTExitScalFrame`.
 * `arrNames`, `exitArrLower`, `exitArrOk` — the word-array lowering and its check.
 
 ## Main results
@@ -78,8 +79,8 @@ its check `exitArrOk` and its value theorem `exitArrLower_semG`.
 * `exitArrB_sound`, `exitArrBL_sound` — an accepted input is related to its scalarisation, at
   the array names `Ts`.
 * `exitArrLoop_trips`, `exitArrL_semG` — the trip fold and `semG` track a run with loops.
-* `rustExec_scalarKeeps`, `rFor_guard_elim`, `exitRunNorm_run`, `exitFrameNorm_run` — the
-  runs of the normalised exit frame.
+* `rFor_guard_elim`, `exitRunNorm_run`, `exitFrameNorm_run` — the runs of the normalised exit
+  frame.
 * `exitArrLower_semG` — the value of the word-array lowering in `semG`.
 -/
 
@@ -899,66 +900,6 @@ theorem exitArrBL_sound (Ts : List String) :
 end Loops
 
 /-! ## 7. The exit frame of a function returning an array -/
-
-/-- The command leaves the scalar `s` unwritten: no scalar write, word binder or loop index
-    names `s`, and no command outside those listed. -/
-def scalarKeepsB (s : String) : LowCT → Bool
-  | .RSkip => true
-  | .RSeq a b => scalarKeepsB s a && scalarKeepsB s b
-  | .RLetU64Zero x b => x != s && scalarKeepsB s b
-  | .RLetZero _ _ b => scalarKeepsB s b
-  | .RScalarSet x _ => x != s
-  | .RScalarSetExpr x _ => x != s
-  | .RIfNz _ a b => scalarKeepsB s a && scalarKeepsB s b
-  | .RArrLoad _ _ _ => true
-  | .RArrStore _ _ _ => true
-  | .RLimbStoreExpr _ _ _ => true
-  | .RCopy _ _ => true
-  | .RFor x _ b => x != s && scalarKeepsB s b
-  | .RForRuntime x _ b => x != s && scalarKeepsB s b
-  | _ => false
-
-/-- **Scalar frame.** A run of a command that `scalarKeepsB s` accepts leaves the scalar `s`
-    unchanged. -/
-theorem rustExec_scalarKeeps {s : String} {c : LowCT} {rs rs' : RustState}
-    (h : RustExec N L c rs rs') (hk : scalarKeepsB s c = true) :
-    rs'.rsScalar s = rs.rsScalar s := by
-  induction h with
-  | skip => rfl
-  | seq _ _ _ _ _ _ _ ih1 ih2 =>
-      simp only [scalarKeepsB, Bool.and_eq_true] at hk
-      rw [ih2 hk.2, ih1 hk.1]
-  | letZero _ _ _ _ _ _ ih =>
-      exact ih hk
-  | letU64Zero x _ _ _ _ ih =>
-      simp only [scalarKeepsB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hk
-      rw [ih hk.2]
-      simp [rsSetScalar, Ne.symm hk.1]
-  | scalarSet x _ _ =>
-      simp only [scalarKeepsB, bne_iff_ne, ne_eq] at hk
-      simp [rsSetScalar, Ne.symm hk]
-  | ifTrue _ _ _ _ _ _ _ _ _ ih =>
-      simp only [scalarKeepsB, Bool.and_eq_true] at hk
-      exact ih hk.1
-  | ifFalse _ _ _ _ _ _ _ ih =>
-      simp only [scalarKeepsB, Bool.and_eq_true] at hk
-      exact ih hk.2
-  | forZero => rfl
-  | forSucc x _ _ _ _ _ _ _ ih1 ih2 =>
-      simp only [scalarKeepsB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hk
-      rw [ih2 hk.2, ← ih1 (by simp [scalarKeepsB, hk.1, hk.2])]
-      simp [rsSetScalar, Ne.symm hk.1]
-  | forRuntime _ _ _ _ _ _ ih =>
-      simp only [scalarKeepsB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hk
-      exact ih (by simp [scalarKeepsB, hk.1, hk.2])
-  | scalarSetExpr x _ _ =>
-      simp only [scalarKeepsB, bne_iff_ne, ne_eq] at hk
-      simp [rsSetScalar, Ne.symm hk]
-  | limbStoreExpr => rfl
-  | arrStore => rfl
-  | arrLoad => rfl
-  | copy => rfl
-  | _ => simp [scalarKeepsB] at hk
 
 /-- The loop bound `e - 0` as `e`. -/
 def normBound : SExpr → SExpr

@@ -153,10 +153,12 @@ def widthAmt (w : Nat) (b : SExpr) : SExpr := .SAnd b (.SLit (w - 1))
 
 /-- The scalar expression of the width-tagged operation `op` at width `w` on `a`
     and `b`, with `x % 2^w` written as `widthMask w x`, `n % w` as `widthAmt w n` and
-    `|||` as `orExprN`. -/
+    `|||` as `orExprN`. The difference is `((a % 2^w + (2^w - 1)) - b % 2^w) + 1` masked, whose
+    literals are words at every width `w ≤ 64`. -/
 def WidthOp.sexpr (w : Nat) : WidthOp → SExpr → SExpr → SExpr
   | .add, a, b => widthMask w (.SAdd a b)
-  | .sub, a, b => widthMask w (.SSub (.SAdd (widthMask w a) (.SLit (2 ^ w))) (widthMask w b))
+  | .sub, a, b => widthMask w
+      (.SAdd (.SSub (.SAdd (widthMask w a) (.SLit (2 ^ w - 1))) (widthMask w b)) (.SLit 1))
   | .mul, a, b => widthMask w (.SMul a b)
   | .and, a, b => .SAnd (widthMask w a) (widthMask w b)
   | .or, a, b => orExprN (widthMask w a) (widthMask w b)

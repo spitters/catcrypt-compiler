@@ -780,14 +780,19 @@ def isMask64 : SExpr → Bool
 
 /-- The expressions that agree at every heap of words (`agreeAllB_sound`): variables,
     literals below `2^64`, limb reads, a sum or product of variables and literals masked to
-    `64` bits, conjunctions, exclusive disjunctions and comparisons of agreeing expressions,
-    the complement `1 - (a < b)` and the sum `(a < b) + (c < d)` of comparisons. -/
+    `64` bits, the wrapping difference `((a + (2^64 - 1) - b) + 1) &&& (2^64 - 1)` of agreeing
+    expressions, conjunctions, exclusive disjunctions, right shifts and comparisons of
+    agreeing expressions, the complement `1 - (a < b)` and the sum `(a < b) + (c < d)` of
+    comparisons. -/
 def agreeAllB : SExpr → Bool
+  | .SAnd (.SAdd (.SSub (.SAdd a (.SLit m)) b) (.SLit 1)) (.SLit m') =>
+      isMask64 (.SLit m) && isMask64 (.SLit m') && agreeAllB a && agreeAllB b
   | .SVar _ => true
   | .SLit n => decide (n < 2 ^ 64)
   | .SLimb _ _ => true
   | .SAnd a b => (homB a && isMask64 b) || (agreeAllB a && agreeAllB b)
   | .SXor a b => agreeAllB a && agreeAllB b
+  | .SShr a b => agreeAllB a && agreeAllB b
   | .SLt a b => agreeAllB a && agreeAllB b
   | .SSub (.SLit 1) (.SLt a b) => agreeAllB a && agreeAllB b
   | .SAdd (.SLt a b) (.SLt c d) => agreeAllB a && agreeAllB b && agreeAllB c && agreeAllB d
@@ -805,18 +810,57 @@ theorem exprAgreeAt_lt {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeAt σ 
   · simp only [SExpr.evalBV, SExpr.eval, hA, hB]; split <;> rfl
   · simp only [SExpr.eval]; split <;> norm_num
 
+/-- The wrapping difference `((a + (2^64 - 1) - b) + 1) &&& (2^64 - 1)` of agreeing
+    expressions agrees. -/
+theorem exprAgreeAt_wrapSub {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeAt σ a)
+    (hb : ExprAgreeAt σ b) :
+    ExprAgreeAt σ (.SAnd (.SAdd (.SSub (.SAdd a (.SLit (2 ^ 64 - 1))) b) (.SLit 1))
+      (.SLit (2 ^ 64 - 1))) := by
+  obtain ⟨ha, ha2⟩ := ha
+  obtain ⟨hb, hb2⟩ := hb
+  have hM : (2 ^ 64 - 1) % 2 ^ 64 = 2 ^ 64 - 1 := Nat.mod_eq_of_lt (by omega)
+  have he : (SExpr.SAnd (.SAdd (.SSub (.SAdd a (.SLit (2 ^ 64 - 1))) b) (.SLit 1))
+      (.SLit (2 ^ 64 - 1))).eval σ = (a.eval σ + (2 ^ 64 - 1) - b.eval σ + 1) % 2 ^ 64 := by
+    rw [← Nat.and_two_pow_sub_one_eq_mod]
+    rfl
+  rw [ExprAgreeAt, he]
+  refine ⟨Nat.mod_lt _ (by omega), ?_⟩
+  apply BitVec.eq_of_toNat_eq
+  rw [SExpr.evalBV, SExpr.evalBV, SExpr.evalBV, SExpr.evalBV, SExpr.evalBV, SExpr.evalBV,
+    SExpr.evalBV, ha2, hb2, BitVec.toNat_and, BitVec.toNat_add, BitVec.toNat_sub,
+    BitVec.toNat_add, BitVec.toNat_ofNat, BitVec.toNat_ofNat, BitVec.toNat_ofNat,
+    BitVec.toNat_ofNat, BitVec.toNat_ofNat, hM, Nat.and_two_pow_sub_one_eq_mod,
+    Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb]
+  omega
+
+/-- The right shift of agreeing expressions agrees. -/
+theorem exprAgreeAt_shr {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeAt σ a)
+    (hb : ExprAgreeAt σ b) : ExprAgreeAt σ (.SShr a b) := by
+  obtain ⟨ha, ha2⟩ := ha
+  obtain ⟨hb, hb2⟩ := hb
+  have hlt : a.eval σ >>> b.eval σ < 2 ^ 64 := lt_of_le_of_lt (Nat.shiftRight_le _ _) ha
+  refine ⟨hlt, ?_⟩
+  apply BitVec.eq_of_toNat_eq
+  simp only [SExpr.evalBV, SExpr.eval, ha2, hb2, BitVec.toNat_ushiftRight, BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb, Nat.mod_eq_of_lt hlt]
+
 /-- **Agreement at every heap of words.** -/
 theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
     ∀ σ : String → Nat, (∀ y, σ y < 2 ^ 64) → ExprAgreeAt σ e := by
   intro e
   fun_induction agreeAllB e with
-  | case1 x => intro _ σ hσ; exact ⟨hσ x, rfl⟩
-  | case2 n =>
+  | case1 a m b m' iha ihb =>
+      intro h σ hσ
+      simp only [Bool.and_eq_true, isMask64, beq_iff_eq] at h
+      obtain ⟨⟨⟨rfl, rfl⟩, ha⟩, hb⟩ := h
+      exact exprAgreeAt_wrapSub (iha ha σ hσ) (ihb hb σ hσ)
+  | case2 x => intro _ σ hσ; exact ⟨hσ x, rfl⟩
+  | case3 n =>
       intro h σ _
       have hn : n < 2 ^ 64 := of_decide_eq_true h
       exact ⟨hn, rfl⟩
-  | case3 v i => intro _ σ _; exact exprAgreeAt_SLimb σ v i
-  | case4 a b iha ihb =>
+  | case4 v i => intro _ σ _; exact exprAgreeAt_SLimb σ v i
+  | case5 a b _ iha ihb =>
       intro h σ hσ
       simp only [Bool.or_eq_true, Bool.and_eq_true] at h
       rcases h with ⟨hh, hm⟩ | ⟨ha, hb⟩
@@ -841,7 +885,7 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
         apply BitVec.eq_of_toNat_eq
         simp only [SExpr.evalBV, SExpr.eval, hA.2, hB.2, BitVec.toNat_and, BitVec.toNat_ofNat,
           Nat.mod_eq_of_lt hA.1, Nat.mod_eq_of_lt hB.1, Nat.mod_eq_of_lt hlt]
-  | case5 a b iha ihb =>
+  | case6 a b iha ihb =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h
       have hA := iha h.1 σ hσ
@@ -851,11 +895,15 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
       apply BitVec.eq_of_toNat_eq
       simp only [SExpr.evalBV, SExpr.eval, hA.2, hB.2, BitVec.toNat_xor, BitVec.toNat_ofNat,
         Nat.mod_eq_of_lt hA.1, Nat.mod_eq_of_lt hB.1, Nat.mod_eq_of_lt hlt]
-  | case6 a b iha ihb =>
+  | case7 a b iha ihb =>
+      intro h σ hσ
+      simp only [Bool.and_eq_true] at h
+      exact exprAgreeAt_shr (iha h.1 σ hσ) (ihb h.2 σ hσ)
+  | case8 a b iha ihb =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h
       exact (exprAgreeAt_lt (iha h.1 σ hσ) (ihb h.2 σ hσ)).1
-  | case7 a b iha ihb =>
+  | case9 a b iha ihb =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h
       obtain ⟨hl, hle⟩ := exprAgreeAt_lt (iha h.1 σ hσ) (ihb h.2 σ hσ)
@@ -866,7 +914,7 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
       rw [hl2]
       simp only [SExpr.eval] at hle
       split <;> simp_all
-  | case8 a b c d iha ihb ihc ihd =>
+  | case10 a b c d iha ihb ihc ihd =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h
       obtain ⟨h1, h1le⟩ := exprAgreeAt_lt (iha h.1.1.1 σ hσ) (ihb h.1.1.2 σ hσ)
@@ -875,7 +923,7 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
       show (SExpr.SLt a b).evalBV _ + (SExpr.SLt c d).evalBV _ =
         BitVec.ofNat 64 ((SExpr.SLt a b).eval σ + (SExpr.SLt c d).eval σ)
       rw [h1.2, h2.2, BitVec.ofNat_add]
-  | case9 =>
+  | case11 =>
       intro h
       simp_all
 
