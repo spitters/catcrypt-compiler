@@ -149,6 +149,18 @@ instantiates it on `a + b`, `a - b` and the multiply-accumulate column
 `fe25519MacColLoCom` (`addDescentBytes_correct`, `subDescentBytes_correct`,
 `macColLoBytes_correct`).
 
+Memory is a layer over the register machine: `RiscvMem64.lean` pairs `RState64` with the
+byte memory of `../Memory64.lean` (`MState64`) and adds `ld`/`sd` (`XInst64`, `runX`), with their encoding and
+the decode round trip (`decodeXStream64_encode_b`); `runX_lift` runs any register-only
+block unchanged. `../Ascent/CorresRiscvMem.lean` states `CorresRM` over `runX`, with the
+`ld`/`sd` leaves and `corresRM_lift` for register blocks.
+`../Ascent/Demos/RiscvFeMulFnProof.lean` wraps `feMulPhys` into a buffer function
+(`z` at `a0`, `x` at `a1`, `y` at `a2`) that saves and restores `s0..s11` in a 112-byte
+frame below `sp` (`feMulFnBytes_correct`, 1073 instructions); it stops before the return,
+since the model has no control flow.
+The machine model has no alignment check; `feMulFnBytes_correct` requires `sp` 16-byte and
+the buffer pointers 8-byte aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
+
 ## What is not proved
 
 - `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with

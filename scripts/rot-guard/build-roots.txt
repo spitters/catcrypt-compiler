@@ -252,7 +252,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscvBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvMulBytesProof
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvFeMulFnProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderStepProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384GuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SolverGuardSat
