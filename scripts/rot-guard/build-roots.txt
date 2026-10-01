@@ -604,8 +604,8 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakAvx2Emit
@@ -793,6 +793,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttLoopEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheShoupEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
+CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
