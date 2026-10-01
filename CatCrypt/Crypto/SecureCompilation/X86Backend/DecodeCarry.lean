@@ -36,12 +36,18 @@ both flags are live.
 * `decSimC_adcx`, `decSimC_adox`: the two independent chains of the ADX extension.
 * `decSimC_add`, `decSimC_sub`, `decSimC_xor`: the flag writers, both flags live after.
 * `decSimC_add_adc`: an `ADD`, `ADC` carry chain decodes to `add`, `adc`.
+* `decSimC_mov2`, `decSimC_mov2_elided`, `decSimC_mov2Imm`, `decSimC_mulx`: the flag-quiet
+  lift instructions stepped by `wideStep`, the two-source `MOV:64` against `mov` (or nothing)
+  and the register `MULX:64` against `mulx`, both flags kept; `wideCls`, `wideCls_sound`:
+  their Boolean class.
 * `stepOKC`, `decSim_of_stepOKC`: the Boolean check `DecodeGenSim.stepOK` extended by the
-  carry family, the flag writers and the flag-preserving register copy, tracking which of
-  the two flags is live; an accepted instruction simulates its machine instructions.
+  carry family, the flag writers, the flag-preserving register copy and the flag-quiet
+  lift instructions, tracking which of the two flags is live; an accepted instruction
+  simulates its machine instructions.
 * `bodyOKC`, `decSim_of_bodyOKC`: the check over a body.
 * `coreStepC`, `mbodyOKC_sound`, `decSim_of_loopOKC`: the word-array memory check of
-  `DecodeGenMem` extended by the carry family and the flag writers; the loads, stores, moves
+  `DecodeGenMem` extended by the carry family, the flag writers and the flag-quiet lift
+  instructions (`wideStepM`); the loads, stores, moves
   and frame reloads keep the live flags (`MCorrC`: `MCorr` with the flag agreement).
 -/
 
@@ -59,7 +65,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
-  (lsemStepMem_of_carryArgs lsemStepMem_flags)
+  (lsemStepMem_of_carryArgs lsemStepMem_flags lsemStepMem_of_wideArgs)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
   (GCorr InjOn survives_of_injOn stepOK decSim_of_stepOK isCmpB)
@@ -363,10 +369,183 @@ theorem decSimC_movReg_elided (d s : String) (hs : L s) (hds : π d = π s)
       [movRI d s] [] :=
   DecSim.lsemOnly fun sa b zf h =>
     ⟨_, zf, fstepF_movRI d s b zf _ (h.1.regs s hs),
-      h.1.write d _ sa (fun r => by split <;> simp_all) rfl hL (fun hz : False => hz.elim),
+      h.1.write d (sa.regs (π s)) sa (fun r => by split <;> simp_all) rfl hL (fun hz : False => hz.elim),
       h.2.1, h.2.2⟩
 
-/-! ## 7. The check with flag liveness -/
+/-! ## 7. The flag-quiet lift instructions
+
+The two-source copy `MOV:64 d, x, b` (printed `mov b, d`; the first source is not read) and
+the widening multiply `MULX:64 lo, hi, c` (printed `mulx c, lo, hi`, with the implicit first
+source `mulxSrc`), which the flag machine steps by `wideStep`. Neither machine writes a
+flag, so the flag agreement is kept. -/
+
+/-- The two-source copy `MOV:64 d, x, b`. -/
+def mov2I (d : String) (x b : LOperand) : LinstrRM :=
+  (.Lopn [.reg d] (withWidthTag 64 "MOV") [x, b], .reg none)
+
+/-- The widening multiply `MULX:64 lo, hi, b`. -/
+def mulxI (lo hi : String) (b : LOperand) : LinstrRM :=
+  (.Lopn [.reg lo, .reg hi] (withWidthTag 64 "MULX") [b], .reg none)
+
+/-- The step of a flag-quiet lift instruction is `wideStep` on the base. -/
+theorem fstepF_of_wideArgs {i : LinstrRM} {w : WideOp} (hc : cmpArgs? i = none)
+    (hm : movRegArgs? i = none) (hk : carryArgs? i = none) (hw : wideArgs? i = some w)
+    (b : LstateM) (zf : Bool) :
+    fstepF i b zf = (wideStep w b).map (fun t => (t, zf)) := by
+  unfold fstepF stepMemF
+  rw [hc, hm]
+  simp only [lsemStepMem_of_wideArgs hw, hk, hw]
+
+theorem fstepF_mov2I (d : String) (x b : LOperand) (s : LstateM) (zf : Bool) :
+    fstepF (mov2I d x b) s zf = (wideStep (.mov d b) s).map (fun t => (t, zf)) :=
+  fstepF_of_wideArgs
+    (by simp only [cmpArgs?, mov2I]; rw [if_neg (by decide +kernel)])
+    (by cases x <;> cases b <;> rfl)
+    (by simp only [carryArgs?, mov2I]; rw [if_neg (by decide +kernel), if_neg (by decide +kernel),
+      if_neg (by decide +kernel), if_neg (by decide +kernel)])
+    (by simp only [wideArgs?, mov2I, if_true]) s zf
+
+theorem fstepF_mulxI (lo hi : String) (b : LOperand) (s : LstateM) (zf : Bool) :
+    fstepF (mulxI lo hi b) s zf = (wideStep (.mulx lo hi b) s).map (fun t => (t, zf)) :=
+  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxI, true_or, if_true]) s zf
+
+/-- `MOV:64 d, x, s` against `mov %s, %d`. -/
+theorem decSimC_mov2 (d : String) (x : LOperand) (s : String) (hs : L s)
+    (hL : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [mov2I d x (.reg s)] [.mov (π d) (.reg (π s))] :=
+  DecSim.single fun _ b zf h =>
+    ⟨_, zf, by rw [fstepF_mov2I]; simp only [wideStep, evalOperandN, h.1.regs s hs,
+        Option.map_some]; rfl,
+      h.1.write d _ _ (fun _ => rfl) rfl hL (fun hz : False => hz.elim), h.2.1, h.2.2⟩
+
+/-- `MOV:64 d, x, s` with `d` and `s` in one machine register, against nothing. -/
+theorem decSimC_mov2_elided (d : String) (x : LOperand) (s : String) (hs : L s)
+    (hds : π d = π s) (hL : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [mov2I d x (.reg s)] [] :=
+  DecSim.lsemOnly fun sa b zf h =>
+    ⟨_, zf, by rw [fstepF_mov2I]; simp only [wideStep, evalOperandN, h.1.regs s hs,
+        Option.map_some],
+      h.1.write d (sa.regs (π s)) sa (fun r => by split <;> simp_all) rfl hL (fun hz : False => hz.elim),
+      h.2.1, h.2.2⟩
+
+/-- `MOV:64 d, x, #n` against `mov $n, %d`. -/
+theorem decSimC_mov2Imm (d : String) (x : LOperand) (n : Nat) (hL : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [mov2I d x (.imm n)] [.mov (π d) (.imm n)] :=
+  DecSim.single fun _ b zf h =>
+    ⟨_, zf, by rw [fstepF_mov2I]; rfl,
+      h.1.write d _ _ (fun _ => rfl) rfl hL (fun hz : False => hz.elim), h.2.1, h.2.2⟩
+
+/-- A write of `vlo` to the name `lo` and then of `vhi` to the name `hi` on the flag machine,
+    and to the distinct registers `π lo` and `π hi` on the machine, memory unchanged,
+    preserves the correspondence on a surviving live set. -/
+theorem DecLsemCorr.write2 {sa : AState} {b : LstateM} {zf : Bool}
+    (h : DecLsemCorr π L Lay frame K zl sa b zf) (lo hi : String) (vlo vhi : BitVec 64)
+    (sa' : AState)
+    (hregs : ∀ r, sa'.regs r = if r = π hi then vhi else if r = π lo then vlo else sa.regs r)
+    (hmem : sa'.mem = sa.mem) (hHL : π hi ≠ π lo)
+    (hL : ∀ r, L' r → r = hi ∨ r = lo ∨ (L r ∧ π r ≠ π lo ∧ π r ≠ π hi)) :
+    DecLsemCorr π L' Lay frame K False sa' (((b.setReg lo vlo).setReg hi vhi).nextPc) zf where
+  regs r hr := by
+    rw [LstateM.reg_nextPc, LstateN.getW_nextPc, LstateM.reg_setReg, LstateM.reg_setReg]
+    rcases hL r hr with rfl | rfl | ⟨hrL, h1, h2⟩
+    · rw [LstateN.getW_setReg_same, hregs, if_pos rfl]
+    · have hne : r ≠ hi := fun e => hHL (by rw [e])
+      rw [LstateN.getW_setReg_other _ _ _ _ _ hne, LstateN.getW_setReg_same, hregs,
+        if_neg (Ne.symm hHL), if_pos rfl]
+    · have hne1 : r ≠ hi := fun e => h2 (by rw [e])
+      have hne2 : r ≠ lo := fun e => h1 (by rw [e])
+      rw [LstateN.getW_setReg_other _ _ _ _ _ hne1, LstateN.getW_setReg_other _ _ _ _ _ hne2,
+        h.regs r hrL, hregs, if_neg h2, if_neg h1]
+  zfEq hz := hz.elim
+  cells A j hk := by
+    obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hk
+    exact ⟨hj, arr, by simpa using ha, by rw [hmem]; exact hr⟩
+  slots A q hq := by rw [hmem]; exact h.slots A q hq
+
+/-- `MULX:64 lo, hi, c` against `mulx %c, %lo, %hi` whose implicit source is the register of
+    `mulxSrc`, with distinct destination registers. -/
+theorem decSimC_mulx (lo hi c : String) (hR : L mulxSrc) (hc : L c) (hHL : π hi ≠ π lo)
+    (hL : ∀ r, L' r → r = hi ∨ r = lo ∨ (L r ∧ π r ≠ π lo ∧ π r ≠ π hi)) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [mulxI lo hi (.reg c)] [.mulx (π hi) (π lo) (.reg (π mulxSrc)) (.reg (π c))] := by
+  refine DecSim.single fun sa b zf h => ?_
+  obtain ⟨hC, hcf, hof⟩ := h
+  rw [fstepF_mulxI]
+  simp only [wideStep, evalOperandN, hC.regs mulxSrc hR, hC.regs c hc, Option.map_some]
+  exact ⟨_, zf, rfl, DecLsemCorr.write2 hC lo hi _ _ _ (fun _ => rfl) rfl hHL hL, hcf, hof⟩
+
+/-- The names live after a write of the names `ws`: a written name, or a name live before
+    whose register is the register of no written name. -/
+def SurvivesL (π : String → String) (L L' : String → Prop) (ws : List String) : Prop :=
+  ∀ r, L' r → r ∈ ws ∨ (L r ∧ ∀ w ∈ ws, π r ≠ π w)
+
+theorem survivesL_of_injOn {N : List String} (hinj : InjOn π N) {ws : List String}
+    (hws : ∀ w ∈ ws, w ∈ N) : SurvivesL π (· ∈ N) (· ∈ N) ws := fun r hr =>
+  if h : r ∈ ws then Or.inl h
+  else Or.inr ⟨hr, fun w hw he => h (by rw [hinj r hr w (hws w hw) he]; exact hw)⟩
+
+/-- The flag-quiet lift classes against their machine instructions: the two-source copy of
+    a register (`mov`, or nothing when `d` and `s` share a register) or of an immediate, and
+    the register `MULX` with distinct destination registers. The result is the names read
+    and the names written, or `none` for no class. -/
+def wideCls (π : String → String) (i : LinstrRM) (js : List (JInstr 64)) :
+    Option (List String × List String) :=
+  match i with
+  | (.Lopn [.reg d] opn [_, .reg s], .reg none) =>
+      if opn == withWidthTag 64 "MOV"
+          && (js == [.mov (π d) (.reg (π s))] || (π d == π s && js.isEmpty)) then
+        some ([s], [d])
+      else none
+  | (.Lopn [.reg d] opn [_, .imm n], .reg none) =>
+      if opn == withWidthTag 64 "MOV" && js == [.mov (π d) (.imm n)] then some ([], [d])
+      else none
+  | (.Lopn [.reg lo, .reg hi] opn [.reg c], .reg none) =>
+      if opn == withWidthTag 64 "MULX" && π hi != π lo
+          && js == [.mulx (π hi) (π lo) (.reg (π mulxSrc)) (.reg (π c))] then
+        some ([mulxSrc, c], [lo, hi])
+      else none
+  | _ => none
+
+theorem wideCls_sound {i : LinstrRM} {js : List (JInstr 64)} {srcs ws : List String}
+    (h : wideCls π i js = some (srcs, ws)) (hs : ∀ r ∈ srcs, L r) (hL : SurvivesL π L L' ws) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol) [i] js := by
+  unfold wideCls at h
+  split at h
+  · rename_i d opn x s
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, List.isEmpty_iff] at hc
+    obtain ⟨rfl, hj⟩ := hc
+    have hS : Survives π L L' d := fun r hr =>
+      (hL r hr).imp List.mem_singleton.mp fun h' => ⟨h'.1, h'.2 d (List.mem_singleton_self d)⟩
+    rcases hj with rfl | ⟨hds, rfl⟩
+    · exact decSimC_mov2 d x s (hs s (List.mem_singleton_self s)) hS
+    · exact decSimC_mov2_elided d x s (hs s (List.mem_singleton_self s)) hds hS
+  · rename_i d opn x n
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc
+    obtain ⟨rfl, rfl⟩ := hc
+    exact decSimC_mov2Imm d x n fun r hr =>
+      (hL r hr).imp List.mem_singleton.mp fun h' => ⟨h'.1, h'.2 d (List.mem_singleton_self d)⟩
+  · rename_i lo hi opn c
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hc
+    obtain ⟨⟨rfl, hHL⟩, rfl⟩ := hc
+    refine decSimC_mulx lo hi c (hs _ (by simp)) (hs c (by simp)) hHL fun r hr => ?_
+    rcases hL r hr with hw | ⟨hrL, hne⟩
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hw
+      rcases hw with rfl | rfl
+      · exact Or.inr (Or.inl rfl)
+      · exact Or.inl rfl
+    · exact Or.inr (Or.inr ⟨hrL, hne lo (by simp), hne hi (by simp)⟩)
+  · cases h
+
+/-! ## 8. The check with flag liveness -/
 
 /-- A register instruction of `DecodeGenSim.stepOK` simulates its machine instructions
     with no flag live afterwards. -/
@@ -481,12 +660,10 @@ theorem carryClass_sound {N : List String} (hinj : InjOn π N) {fl fl' : Bool ×
   obtain ⟨⟨hd, ha⟩, hc⟩ := hN
   exact carryOp_sound h ha hc (survives_of_injOn hinj hd)
 
-/-- **The check with flag liveness.** An instruction against its machine instructions,
-    from the flags live before (`fl`): a carry-family instruction or a flag writer
-    (`carryClass`), a register copy that keeps the flags, or any instruction of
-    `DecodeGenSim.stepOK` with no flag live afterwards. The result is the flags live
-    afterwards. -/
-def stepOKC (π : String → String) (N : List String) (fl : Bool × Bool) (i : LinstrRM)
+/-- The check with flag liveness without the flag-quiet lift classes: a carry-family
+    instruction or a flag writer (`carryClass`), a register copy that keeps the flags, or any
+    instruction of `DecodeGenSim.stepOK` with no flag live afterwards. -/
+def stepOKCBase (π : String → String) (N : List String) (fl : Bool × Bool) (i : LinstrRM)
     (js : List (JInstr 64)) : Option (Bool × Bool) :=
   match i with
   | (.Lopn [.reg d] opn [.reg a, .reg c], .reg none) =>
@@ -501,8 +678,8 @@ def stepOKC (π : String → String) (N : List String) (fl : Bool × Bool) (i : 
       else if stepOK π N i js then some (false, false) else none
   | _ => if stepOK π N i js then some (false, false) else none
 
-theorem decSim_of_stepOKC {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
-    {i : LinstrRM} {js : List (JInstr 64)} (h : stepOKC π N fl i js = some fl') :
+theorem decSim_of_stepOKCBase {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
+    {i : LinstrRM} {js : List (JInstr 64)} (h : stepOKCBase π N fl i js = some fl') :
     DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
       (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true)) [i] js := by
   have hfb : stepOK π N i js = true → fl' = (false, false) →
@@ -512,7 +689,7 @@ theorem decSim_of_stepOKC {N : List String} (hinj : InjOn π N) {fl fl' : Bool �
     subst hfl
     exact (decSimC_of_stepOK hinj hs).weaken (fun _ _ _ h => h)
       (fun _ _ _ h => ⟨h.1, fun hf => by simp at hf, fun hf => by simp at hf⟩)
-  unfold stepOKC at h
+  unfold stepOKCBase at h
   split at h
   · rename_i d opn a c
     split at h
@@ -543,6 +720,31 @@ theorem decSim_of_stepOKC {N : List String} (hinj : InjOn π N) {fl fl' : Bool �
   · split_ifs at h with hs
     cases h
     exact hfb hs rfl
+
+/-- **The check with flag liveness.** An instruction against its machine instructions,
+    from the flags live before (`fl`): a flag-quiet lift instruction (`wideCls`) on names of
+    `N`, which keeps the live flags, or an instruction of `stepOKCBase`. The result is the
+    flags live afterwards. -/
+def stepOKC (π : String → String) (N : List String) (fl : Bool × Bool) (i : LinstrRM)
+    (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  match wideCls π i js with
+  | some (srcs, ws) =>
+      if srcs.all N.contains && ws.all N.contains then some fl else stepOKCBase π N fl i js
+  | none => stepOKCBase π N fl i js
+
+theorem decSim_of_stepOKC {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
+    {i : LinstrRM} {js : List (JInstr 64)} (h : stepOKC π N fl i js = some fl') :
+    DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+      (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true)) [i] js := by
+  unfold stepOKC at h
+  split at h
+  · rename_i srcs ws hw
+    split_ifs at h with hN
+    · cases h
+      simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at hN
+      exact wideCls_sound hw hN.1 (survivesL_of_injOn hinj hN.2)
+    · exact decSim_of_stepOKCBase hinj h
+  · exact decSim_of_stepOKCBase hinj h
 
 /-- A body accepted instruction by instruction, threading the live flags. -/
 def bodyOKC (π : String → String) (N : List String) :
@@ -581,7 +783,7 @@ theorem decSim_of_bodyOKC {N : List String} (hinj : InjOn π N) :
         exact (decSim_of_stepOKC hinj hs).append (ih jss fl' False h)
       · cases h
 
-/-! ## 8. The check on carry chains
+/-! ## 9. The check on carry chains
 
 An `ADD`, register copy, `ADC` chain is accepted from no live flag; an `ADC` with no live
 carry flag, and an `ADC` after a copy through `imul`, are rejected. -/
@@ -600,7 +802,7 @@ set_option kat.ms 1000 in
   [addI "a" "a" "b", binRegI "MUL:64" "a" "a" "b", carryI "ADC" "c" "c" "d"]
   [[.add "a" (.reg "b")], [.imul "a" (.reg "b")], [.adc "c" (.reg "d")]]
 
-/-! ## 9. Word-array memory with flag liveness -/
+/-! ## 10. Word-array memory with flag liveness -/
 
 section Mem
 
@@ -735,14 +937,59 @@ theorem carryStepM_sound {s s' : St} {fl fl' : Bool × Bool} {i : LinstrRM}
       (fun _ _ _ h => ⟨⟨corr_liveW h.1.1, h.2⟩, h.1.2.1, h.1.2.2⟩)
   · exact absurd h (by simp)
 
+/-- The live list after a write of the names `ws`: the written names, and the names of
+    `Ls` whose register is the register of no written name. -/
+def liveWs (π : String → String) (Ls ws : List String) : List String :=
+  ws ++ Ls.filter (fun r => ws.all (fun w => π r != π w))
+
+theorem mem_liveWs {π : String → String} {Ls ws : List String} {r : String} :
+    r ∈ liveWs π Ls ws ↔ r ∈ ws ∨ (r ∈ Ls ∧ ∀ w ∈ ws, π r ≠ π w) := by
+  simp [liveWs]
+
+/-- The flag-quiet lift classes (`wideCls`) on live registers, the machine instructions
+    writing no stack register; the live flags are kept. -/
+def wideStepM (E : MemEnv) (s : St) (fl : Bool × Bool) (i : LinstrRM) (js : List (JInstr 64)) :
+    Option (St × (Bool × Bool)) :=
+  match wideCls E.pi i js with
+  | some (srcs, ws) =>
+      if decide (E.sp ∉ js.flatMap dsts) && srcs.all (fun r => decide (r ∈ s.1)) then
+        some ((liveWs E.pi s.1 ws, s.2.kill (js.flatMap dsts)), fl)
+      else none
+  | none => none
+
+theorem wideStepM_sound {s s' : St} {fl fl' : Bool × Bool} {i : LinstrRM}
+    {js : List (JInstr 64)} (h : wideStepM E s fl i js = some (s', fl')) {zl : Prop} :
+    DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' False fl') [i] js := by
+  unfold wideStepM at h
+  split at h
+  · rename_i srcs ws hw
+    split_ifs at h with hc
+    cases h
+    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hc
+    obtain ⟨hsp, hs⟩ := hc
+    have hd := DecSim.frame (MachOK E base rsp s)
+      (MachOK E base rsp (s.1, s.2.kill (js.flatMap dsts)))
+      (wideCls_sound (Lay := regLay E.rs base) (frame := regFrame E.rs rsp) (K := regK E.rs)
+        (zl := zl) (cl := fl.1 = true) (ol := fl.2 = true) (L := (· ∈ s.1))
+        (L' := (· ∈ liveWs E.pi s.1 ws)) hw hs (fun _ hr => mem_liveWs.mp hr))
+      (fun sa hm => machOK_block hsp hm)
+    exact hd.weaken (fun _ _ _ h => ⟨⟨h.1.1, h.2.1, h.2.2⟩, h.1.2⟩)
+      (fun _ _ _ h => ⟨⟨h.1.1, h.2⟩, h.1.2.1, h.1.2.2⟩)
+  · exact absurd h (by simp)
+
 /-- **The class check with flag liveness on one instruction.** A carry-family instruction or
-    a flag writer on live registers (`carryStepM`); otherwise a class of `coreStep`, which
-    keeps the live flags when neither machine writes a flag and leaves none live otherwise. -/
+    a flag writer on live registers (`carryStepM`); a flag-quiet lift instruction on live
+    registers (`wideStepM`), which keeps the live flags; otherwise a class of `coreStep`,
+    which keeps the live flags when neither machine writes a flag and leaves none live
+    otherwise. -/
 def coreStepC (E : MemEnv) (s : St) (fl : Bool × Bool) (i : LinstrRM) (js : List (JInstr 64)) :
     Option (St × (Bool × Bool)) :=
   match carryStepM E s fl i js with
   | some r => some r
-  | none => (coreStep E s i js).map fun s' => (s', if quietB i js then fl else (false, false))
+  | none =>
+      match wideStepM E s fl i js with
+      | some r => some r
+      | none => (coreStep E s i js).map fun s' => (s', if quietB i js then fl else (false, false))
 
 theorem coreStepC_sound (hsep : MemSep E.rs base rsp) {s s' : St} {fl fl' : Bool × Bool}
     {i : LinstrRM} {js : List (JInstr 64)} (h : coreStepC E s fl i js = some (s', fl'))
@@ -753,6 +1000,10 @@ theorem coreStepC_sound (hsep : MemSep E.rs base rsp) {s s' : St} {fl fl' : Bool
   · rename_i r hr
     cases h
     exact carryStepM_sound hr
+  split at h
+  · rename_i r hr
+    cases h
+    exact wideStepM_sound hr
   · obtain ⟨s'', hc, he⟩ := Option.map_eq_some_iff.mp h
     cases he
     have hd := coreStep_sound hsep hc (zl := zl)
