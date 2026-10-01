@@ -158,6 +158,8 @@ theorem runSafe_frameIn (body : Lcmd) (frame : String → Option (BitVec 64))
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (spillQsaveOff cmovRedZone)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (Params)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+  (frameSize bodyIsU64 qsaveBytesFor)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (frameP frameP_gp redW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (frameRsp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk)
@@ -174,19 +176,83 @@ def offOf (body : Lcmd) (q : String) : Option Int :=
   spillQsaveOff (Params.ofBody body).frame (Params.ofBody body).spillW q
     (Params.ofBody body).qsaveB
 
+/-- The frame offsets of the distinct names of a body that have one, from the stack pointer
+    after the prologue. The frame size, spill width and save block are those of
+    `Params.ofBody`, computed once. -/
+def frameOffs (body : Lcmd) : List Int :=
+  let F := frameSize body
+  let W := if bodyIsU64 body then 64 else 32
+  let Q := qsaveBytesFor body
+  (bodyNamesI body).eraseDups.filterMap fun q => spillQsaveOff F W q Q
+
+/-- Two frame offsets are at least eight and at most `2 ^ 64 - 8` bytes apart. -/
+def sep8B (o o' : Int) : Bool := decide (8 ≤ (o - o').natAbs ∧ (o - o').natAbs ≤ 2 ^ 64 - 8)
+
+/-- Every two entries at distinct positions of a list of frame offsets pass `sep8B`. -/
+def pairSepB : List Int → Bool
+  | [] => true
+  | o :: os => os.all (sep8B o) && pairSepB os
+
 /-- **The frame check.** The frame word of each name of the body and the red-zone word lie
     in the frame range of the layout, from the entry stack pointer; the frame words of two
     distinct names of the body are at least eight bytes apart. -/
 def frameOkB (σ : AbiLayout) (body : Lcmd) : Bool :=
-  let F : Int := (Params.ofBody body).frame
-  let N := bodyNamesI body
-  N.all (fun q => match offOf body q with
-      | some o => decide (σ.frameLo ≤ o - F ∧ o - F ≤ σ.frameHi)
-      | none => true)
+  let F : Int := frameSize body
+  let os := frameOffs body
+  os.all (fun o => decide (σ.frameLo ≤ o - F ∧ o - F ≤ σ.frameHi))
     && decide (σ.frameLo ≤ cmovRedZone - F ∧ cmovRedZone - F ≤ σ.frameHi)
-    && N.all (fun q => N.all (fun q' => q == q' || match offOf body q, offOf body q' with
-      | some o, some o' => decide (8 ≤ (o - o').natAbs ∧ (o - o').natAbs ≤ 2 ^ 64 - 8)
-      | _, _ => true))
+    && pairSepB os
+
+theorem sep8B_comm (o o' : Int) : sep8B o o' = sep8B o' o := by
+  have h : (o - o').natAbs = (o' - o).natAbs := by rw [← Int.natAbs_neg, Int.neg_sub]
+  simp only [sep8B, h]
+
+theorem pairSepB_pairwise : ∀ {os : List Int}, pairSepB os = true →
+    os.Pairwise (fun a b => sep8B a b = true)
+  | [], _ => List.Pairwise.nil
+  | o :: os, h => by
+    simp only [pairSepB, Bool.and_eq_true, List.all_eq_true] at h
+    exact List.pairwise_cons.mpr ⟨h.1, pairSepB_pairwise h.2⟩
+
+/-- Two distinct members of a list pairwise related by a symmetric relation are related. -/
+theorem pairwise_of_ne {α : Type} {R : α → α → Prop} (hs : ∀ a b, R a b → R b a) :
+    ∀ {l : List α}, l.Pairwise R → ∀ {a b : α}, a ∈ l → b ∈ l → a ≠ b → R a b
+  | [], _, _, _, ha, _, _ => absurd ha List.not_mem_nil
+  | _ :: _, h, a, b, ha, hb, hne => by
+    rw [List.pairwise_cons] at h
+    rcases List.mem_cons.mp ha with rfl | ha' <;> rcases List.mem_cons.mp hb with rfl | hb'
+    · exact absurd rfl hne
+    · exact h.1 b hb'
+    · exact hs _ _ (h.1 a ha')
+    · exact pairwise_of_ne hs h.2 ha' hb' hne
+
+theorem mem_frameOffs {body : Lcmd} {q : String} {o : Int} (hq : q ∈ bodyNamesI body)
+    (ho : offOf body q = some o) : o ∈ frameOffs body := by
+  simp only [frameOffs, List.mem_filterMap, List.mem_eraseDups]
+  exact ⟨q, hq, ho⟩
+
+theorem frameOkB_range {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true)
+    {q : String} {o : Int} (hq : q ∈ bodyNamesI body) (ho : offOf body q = some o) :
+    σ.frameLo ≤ o - (Params.ofBody body).frame ∧ o - (Params.ofBody body).frame ≤ σ.frameHi := by
+  simp only [frameOkB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hf
+  exact hf.1.1 o (mem_frameOffs hq ho)
+
+theorem frameOkB_red {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true) :
+    σ.frameLo ≤ cmovRedZone - (Params.ofBody body).frame
+      ∧ cmovRedZone - (Params.ofBody body).frame ≤ σ.frameHi := by
+  simp only [frameOkB, Bool.and_eq_true, decide_eq_true_eq] at hf
+  exact hf.1.2
+
+theorem frameOkB_pair {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true)
+    {q q' : String} {o o' : Int} (hq : q ∈ bodyNamesI body) (hq' : q' ∈ bodyNamesI body)
+    (hne : q ≠ q') (ho : offOf body q = some o) (ho' : offOf body q' = some o') :
+    8 ≤ (o - o').natAbs ∧ (o - o').natAbs ≤ 2 ^ 64 - 8 := by
+  simp only [frameOkB, Bool.and_eq_true] at hf
+  have hp := pairSepB_pairwise hf.2
+  simp only [frameOffs, List.pairwise_filterMap] at hp
+  have h := pairwise_of_ne (fun a b hab x hx y hy => by rw [sep8B_comm]; exact hab y hy x hx)
+    hp (List.mem_eraseDups.mpr hq) (List.mem_eraseDups.mpr hq') hne o ho o' ho'
+  simpa only [sep8B, decide_eq_true_eq] using h
 
 theorem frameIn_some {body : Lcmd} {sa : AState} {q : String} {a : BitVec 64}
     (h : frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a) :
@@ -217,16 +283,12 @@ theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs 
       ∃ a, frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a) :
     ImgSep (frameIn body (frameP (Params.ofBody body) (frameRsp body sa))) slotArr
       (abiBase (abiReg σ) sa) (frameRsp body sa) := by
-  simp only [frameOkB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq,
-    Bool.or_eq_true, beq_iff_eq] at hf
-  obtain ⟨⟨hrange, hred⟩, hpair⟩ := hf
+  have hred := frameOkB_red hf
   have hword : ∀ q a, frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
     obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha
-    have := hrange q hq
-    rw [ho] at this
-    simp only [decide_eq_true_eq] at this
+    have := frameOkB_range hf hq ho
     exact ⟨_, this.1, this.2, rfl⟩
   have hcell : ∀ q A n j, slotArr q = some (A, n) → j < n → regK rs A j := by
     intro q A n j hq hj
@@ -237,18 +299,12 @@ theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs 
   · intro q q' a a' ha ha' hne
     obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha
     obtain ⟨hq', o', ho', rfl⟩ := frameIn_some ha'
-    have := hpair q hq q' hq'
-    rcases this with he | hd
-    · exact absurd he hne
-    · rw [ho, ho'] at hd
-      simp only [decide_eq_true_eq] at hd
-      apply disjoint8_add_ofInt
-      · have : (o - ↑(Params.ofBody body).frame - (o' - ↑(Params.ofBody body).frame)) = o - o' := by
-          omega
-        rw [this]; exact hd.1
-      · have : (o - ↑(Params.ofBody body).frame - (o' - ↑(Params.ofBody body).frame)) = o - o' := by
-          omega
-        rw [this]; exact hd.2
+    have hd := frameOkB_pair hf hq hq' hne ho ho'
+    have he : (o - ↑(Params.ofBody body).frame - (o' - ↑(Params.ofBody body).frame)) = o - o' := by
+      omega
+    apply disjoint8_add_ofInt
+    · rw [he]; exact hd.1
+    · rw [he]; exact hd.2
   · intro q A n j hq hj q' a ha
     obtain ⟨o, h1, h2, rfl⟩ := hword q' a ha
     exact (frameSep_of_regions hrs h A j (hcell q A n j hq hj) o h1 h2).symm
@@ -364,6 +420,57 @@ theorem frameIn_isSome (body : Lcmd) (r r' : BitVec 64) (q : String) :
       = (frameIn body (frameP (Params.ofBody body) r') q).isSome := by
   unfold frameIn frameP
   split <;> simp
+
+/-- The distinct names of a body that have a frame word. The frame size, spill width and
+    save block are those of `Params.ofBody`, computed once. -/
+def frameNames (body : Lcmd) : List String :=
+  let F := frameSize body
+  let W := if bodyIsU64 body then 64 else 32
+  let Q := qsaveBytesFor body
+  (bodyNamesI body).eraseDups.filter fun q => (spillQsaveOff F W q Q).isSome
+
+/-- The frame map that gives the word `0` to the names of `N` and no word to other names. -/
+def frameMark (N : List String) (q : String) : Option (BitVec 64) :=
+  if q ∈ N then some 0 else none
+
+/-- The names with a frame word under `frameMark (frameNames body)` are those under the
+    restricted frame of the body at any stack pointer. -/
+theorem frameMark_isSome (body : Lcmd) (r : BitVec 64) (q : String) :
+    (frameMark (frameNames body) q).isSome
+      = (frameIn body (frameP (Params.ofBody body) r) q).isSome := by
+  by_cases hq : q ∈ bodyNamesI body
+  · have e2 : frameIn body (frameP (Params.ofBody body) r) q
+        = frameP (Params.ofBody body) r q := if_pos hq
+    rw [e2]
+    unfold frameP
+    rw [Option.isSome_map]
+    by_cases ho : (offOf body q).isSome = true
+    · have h1 : q ∈ frameNames body := by
+        simp only [frameNames, List.mem_filter, List.mem_eraseDups]
+        exact ⟨hq, ho⟩
+      have e1 : frameMark (frameNames body) q = some 0 := if_pos h1
+      rw [e1]
+      exact ho.symm
+    · have h1 : q ∉ frameNames body := by
+        simp only [frameNames, List.mem_filter, List.mem_eraseDups, not_and]
+        exact fun _ => ho
+      have e1 : frameMark (frameNames body) q = none := if_neg h1
+      rw [e1]
+      exact (Bool.eq_false_iff.mpr ho).symm
+  · have h1 : q ∉ frameNames body := by
+      simp only [frameNames, List.mem_filter, List.mem_eraseDups, not_and]
+      exact fun h => absurd h hq
+    have e1 : frameMark (frameNames body) q = none := if_neg h1
+    have e2 : frameIn body (frameP (Params.ofBody body) r) q = none := if_neg hq
+    rw [e1, e2]
+
+/-- The gate of the image simulation at the restricted frame of a body, at any stack
+    pointer, is the gate at `frameMark (frameNames body)`. -/
+theorem imgGateB_frameMark (body : Lcmd) (r : BitVec 64)
+    (slotArr : String → Option (String × Nat)) :
+    imgGateB (frameIn body (frameP (Params.ofBody body) r)) slotArr body
+      = imgGateB (frameMark (frameNames body)) slotArr body :=
+  imgGateB_congr (fun q => (frameMark_isSome body r q).symm) slotArr body
 
 /-! ## 5. The image on the decoded bytes -/
 
