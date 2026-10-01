@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Algebra.BigOperators.Fin
 public import Mathlib.Data.Nat.ChineseRemainder
-public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttInverse
+public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttBasemul
 
 /-!
 # Ring dialect — RNS quotient rings `Z_Q[X]/(X^N + 1)`
@@ -42,6 +42,8 @@ upstream verifiers require.
 * `rowLanes`, `nttF` — a row as a lane function, and the per-limb negacyclic NTT
   with a layer count, the coefficient-to-evaluation conversion of `R_Q`.
 * `inttF` — its inverse: per limb, the Gentleman–Sande layers and the scaling.
+* `negaMulF`, `basemulF` — the product of `R_Q` in the coefficient basis, and the
+  blockwise product of the evaluation form after `L` layers.
 * `RingTy` / `RingOp` / `ringDialect` — the dialect, its signature and its
   denotation.
 * `ofInts ms c` — the residues of an integer coefficient vector in the basis `ms`.
@@ -67,6 +69,9 @@ upstream verifiers require.
   `NegacyclicNttTemplate.inttProg`.
 * `inttF_nttF`, `nttF_inttF` — under the per-limb side conditions `NttParams.Ok`
   and `ScaleOk`, `intt` and `ntt` are mutually inverse.
+* `basemul_denote`, `nttF_negaMulF`, `basemulF_eq_mulF` — `basemul` denotes
+  `basemulF`, `ntt` carries the product of `R_Q` to it, and at `L = logN` it is
+  `mul`.
 -/
 
 @[expose] public section
@@ -129,6 +134,21 @@ def inttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat) (x : Limbs ms 
     Limbs ms (2 ^ logN) := fun i j =>
   NegacyclicNttTemplate.inttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
     ((scales.getD i 0 : Nat) : ZMod (ms.get i)) (rowLanes x i) j
+
+/-- The product of `R_Q` in the coefficient basis, per limb: the negacyclic
+    product `NegacyclicNttTemplate.negaMul` of length `2 ^ logN`. -/
+def negaMulF (logN : Nat) (x y : Limbs ms (2 ^ logN)) : Limbs ms (2 ^ logN) := fun i j =>
+  NegacyclicNttTemplate.negaMul (2 ^ logN) (rowLanes x i) (rowLanes y i) j
+
+/-- The product of the evaluation form after `L` layers, per limb: the product in
+    `ZMod q [X]/(X ^ B - γ_c)` within every block of length `B = 2 ^ (logN - L)`,
+    `NegacyclicNttTemplate.blockMul` at the block roots of `psis.getD i 0`.  At
+    `L = logN` it is `mulF` (`basemulF_eq_mulF`). -/
+def basemulF (logN L : Nat) (psis : List Nat) (x y : Limbs ms (2 ^ logN)) :
+    Limbs ms (2 ^ logN) := fun i j =>
+  NegacyclicNttTemplate.blockMul (2 ^ (logN - L))
+    (NegacyclicNttTemplate.blockRoot ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L)
+    (rowLanes x i) (rowLanes y i) j
 
 /-- The automorphism `X ↦ X^g` in the coefficient basis: coefficient `k` moves
     to position `g·k mod N`, negated when `g·k mod 2N ≥ N` (the wrap
@@ -242,6 +262,9 @@ inductive RingOp where
   /-- The evaluation-to-coefficient conversion inverse to `ntt`, with per-limb
       scaling constants `scales` (`inttF`). -/
   | intt (ms : List Nat) (logN w L : Nat) (psis scales : List Nat)
+  /-- The product of the evaluation form after `L` layers (`basemulF`); FIPS 203's
+      `MultiplyNTTs` at `L = 7`, `ring.mul` at `L = logN`. -/
+  | basemul (ms : List Nat) (logN w L : Nat) (psis : List Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -265,6 +288,7 @@ instance : DialectSignature ringDialect where
     | .toLimb ms n w d _ => [.rq ms n w d]
     | .ntt ms logN w _ _ => [.rq ms (2 ^ logN) w .coeff]
     | .intt ms logN w _ _ _ => [.rq ms (2 ^ logN) w .eval]
+    | .basemul ms logN w _ _ => [.rq ms (2 ^ logN) w .eval, .rq ms (2 ^ logN) w .eval]
   ret op := match op with
     | .add ms n w d => .rq ms n w d
     | .sub ms n w d => .rq ms n w d
@@ -279,6 +303,7 @@ instance : DialectSignature ringDialect where
     | .toLimb ms n _ _ i => .limb (ms.get i) n
     | .ntt ms logN w _ _ => .rq ms (2 ^ logN) w .eval
     | .intt ms logN w _ _ _ => .rq ms (2 ^ logN) w .coeff
+    | .basemul ms logN w _ _ => .rq ms (2 ^ logN) w .eval
 
 /-- Op denotation. -/
 instance ringDenote : DialectDenote ringDialect where
@@ -297,6 +322,7 @@ instance ringDenote : DialectDenote ringDialect where
     | .toLimb _ _ _ _ i => fun args => args.head i
     | .ntt ms logN _ L psis => fun args => nttF ms logN L psis args.head
     | .intt ms logN _ L psis scales => fun args => inttF ms logN L psis scales args.head
+    | .basemul _ logN _ L psis => fun args => basemulF logN L psis args.head args.tail.head
 
 /-- `ntt` denotes `nttF`. -/
 theorem ntt_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
@@ -374,6 +400,43 @@ theorem nttF_inttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat)
     (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j,
     nttSpec_inttSpec _ L logN hψ hOk.1 hOk.2.1 _ hsc (rowLanes x i) j j.isLt, rowLanes,
     dif_pos j.isLt]
+
+/-- `basemul` denotes `basemulF`. -/
+theorem basemul_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
+    (x y : Limbs ms (2 ^ logN)) :
+    ringDenote.denote (.basemul ms logN w L psis) (.cons x (.cons y .nil))
+      = basemulF logN L psis x y := rfl
+
+open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
+/-- **`ntt` turns the product of `R_Q` into `basemul`.** When every limb's
+    parameter record satisfies `NttParams.Ok`, the transform of the negacyclic
+    product is the block product of the transforms. -/
+theorem nttF_negaMulF (ms : List Nat) (logN L : Nat) (psis : List Nat)
+    (hP : ∀ i : Fin ms.length, (NttParams.mk (ms.get i) logN L (psis.getD i 0)).Ok)
+    (x y : Limbs ms (2 ^ logN)) :
+    nttF ms logN L psis (negaMulF logN x y)
+      = basemulF logN L psis (nttF ms logN L psis x) (nttF ms logN L psis y) := by
+  funext i j
+  have hOk := hP i
+  have hψ := NttParams.psi_pow _ hOk
+  have hLM : L ≤ logN := hOk.2.1
+  have hN : (2 : ℕ) ^ logN = 2 ^ L * 2 ^ (logN - L) := by
+    rw [← pow_add]; congr 1; omega
+  simp only [nttF, basemulF]
+  rw [nttSpec_congr _ L logN hLM _ (negaMul (2 ^ logN) (rowLanes x i) (rowLanes y i))
+    (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j,
+    nttSpec_negaMul _ L logN hψ hOk.2.1 _ _ j]
+  refine blockMul_congr (2 ^ (logN - L)) (2 ^ L) (Nat.two_pow_pos _) _ _ _ _ _
+    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dif_pos hk]; rfl)
+    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dif_pos hk]; rfl) j
+    (by rw [← hN]; exact j.isLt)
+
+/-- With `L = logN` layers, `basemul` is the pointwise product `mul`. -/
+theorem basemulF_eq_mulF (logN : Nat) (psis : List Nat) (x y : Limbs ms (2 ^ logN)) :
+    basemulF logN logN psis x y = mulF x y := by
+  funext i j
+  simp only [basemulF, Nat.sub_self, pow_zero, NegacyclicNttTemplate.blockMul_one, mulF,
+    rowLanes, dif_pos j.isLt]
 
 /-- `add` denotes the per-limb sum. -/
 theorem add_denote (ms : List Nat) (n w : Nat) (d : Domain) (x y : Limbs ms n) :
