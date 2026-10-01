@@ -556,7 +556,9 @@ theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat
   simp only [shOk, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at h
   simp [applyImmShiftN, h.1.1, h.1.2, h.2]
 
-/-- The symbolic description of `lsemStepN`. -/
+/-- The symbolic description of `lsemStepN`. A shift `SHL`/`SHR` by an immediate operand is
+    described by the immediate-shift term `shImm`, the term of the count-in-name form
+    `SHL:k`/`SHR:k`, so both spellings of one shift have one term. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg _] opn [_, _, _] => if stripWidthTag opn = "CMOV" then .unk else .fail
@@ -566,7 +568,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
           if binOk (stripWidthTag opn) then
             match b with
             | .reg rb => .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]
-            | .imm n => .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
+            | .imm n =>
+                if stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR" then
+                  .set dst (.shImm (stripWidthTag opn) n (R ra)) []
+                else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
             | _ => .fail
           else .fail
       | _ => .fail
@@ -618,8 +623,9 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
   · rename_i dst opn a b
     split
     · rename_i ra
-      split_ifs with hb
-      · split
+      by_cases hb : binOk (stripWidthTag opn) = true
+      · rw [if_pos hb]
+        split
         · rename_i rb
           simp only [ROut.Desc]
           rw [stepN_bin_reg, hr ra, hr rb]
@@ -634,14 +640,22 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           rw [stepN_bin_imm, hr ra]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
             ((R ra).ev V A C O).2 (BitVec.ofNat ((R ra).ev V A C O).1 n))
-          simp [AllG, STerm.ev, hv]
+          split_ifs with hs
+          · have he : ∀ {w : Nat} (x : BitVec w), applyImmShiftN w (stripWidthTag opn) n x =
+                applyOpnN w (stripWidthTag opn) [x, BitVec.ofNat w n] := by
+              intro w x
+              unfold applyImmShiftN
+              rcases hs with hs | hs <;> simp [hs]
+            simp [AllG, STerm.ev, he, hv]
+          · simp [AllG, STerm.ev, hv]
         · rename_i hb1 hb2
           cases b with
           | reg rb => exact absurd rfl (hb1 rb)
           | imm n => exact absurd rfl (hb2 n)
           | arr _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
           | arrIdx _ _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
-      · simp only [ROut.Desc]
+      · rw [if_neg hb]
+        simp only [ROut.Desc]
         have hn : ∀ {w : Nat} (x y : BitVec w), applyOpnN w (stripWidthTag opn) [x, y] = none :=
           fun x y => applyOpnN_bin_none (Bool.eq_false_iff.mpr hb) x y
         cases b with
