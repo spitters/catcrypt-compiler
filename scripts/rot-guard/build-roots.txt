@@ -218,6 +218,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
+CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.SolinasInstances
