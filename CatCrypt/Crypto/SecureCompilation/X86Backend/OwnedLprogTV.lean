@@ -37,7 +37,8 @@ flag `CMP`, the register copies (`MOV` and the array-ABI moves `MOVQ`, `LOAD:64`
 `lsemStepMem`, the arms of `lsemStepN` (two-source arithmetic, immediate `MOV`, `NEG`,
 immediate shifts) with the carry and overflow flags `withALUFlags` writes, the carry
 family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`, and the two-source `MOV` and the
-widening multiplies `MULX`, `MULXMEM` of `wideStep` (`symWide`, the product words
+widening multiplies `MULX`, `MULXMEM` of `wideStep` (`symWide`: the low word the masked
+low `MUL` term `mulLoT`, the term of the front's masked low product, and the high word
 `STerm.mulx`), and the high word `MULXHI` of `lsemStepMC` (the term `bin "MULXHI"`, `binW`);
 the carry arms of `lsemStepMC`, `SAR`, `CMOV`, the
 casts and the compile-time-offset memory moves are `unk`. `symRun` composes the steps of a
@@ -92,6 +93,7 @@ over the table (`blockOkR`) implies `blockOk` (`blockOkR_spec`).
   exactly.
 * `symStep_comm`: a commutative operation `opn d, [x, d]` and `opn d, [d, x]` have one
   description (`commSwap`).
+* `mulLoT_ev`: the masked low `MUL` term is the low word of `x86_MULX_lo_hi`.
 * `symRun_sound`: the symbolic run describes the run of a list exactly.
 * `fuel_runL`, `runL_fuel`: a run through straight-line instructions of a body.
 * `decC_eq`: the symbolic branch condition describes the branch taken.
@@ -1155,9 +1157,34 @@ def symCarry (op : CarryOp) (d : String) (a b : LOperand) (ss : SSt) : SOut :=
           of := .carryF .adox true ta tb ss.of } (ga ++ gb)
   | _, _ => .fail
 
+/-- The term of the low word of the widening product of `x` and `y` read at width `64`: the
+    low `MUL` of `x` and `y` masked by the `64`-bit all-ones immediate, the term of a low
+    `MUL` followed by its `AND` with a register holding that immediate. -/
+def mulLoT (x y : STerm) : STerm := .bin "AND" (.bin "MUL" x y) (.immW 64 (2 ^ 64 - 1))
+
+theorem mulLoT_ev {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {x y : STerm} (hx : (x.ev V A C O).1 = 64) (hy : (y.ev V A C O).1 = 64) :
+    (mulLoT x y).ev V A C O
+      = ⟨64, (x86_MULX_lo_hi (castW (x.ev V A C O) 64) (castW (y.ev V A C O) 64)).1⟩ := by
+  unfold mulLoT
+  simp only [STerm.ev]
+  generalize x.ev V A C O = p at hx ⊢
+  generalize y.ev V A C O = q at hy ⊢
+  obtain ⟨w, a⟩ := p
+  obtain ⟨w', b⟩ := q
+  obtain rfl : w = 64 := hx
+  obtain rfl : w' = 64 := hy
+  simp only [binW, applyOpnN, extW, castW_mk, x86_MULX_lo_hi, Jasmin.wumul]
+  congr 1
+  apply BitVec.eq_of_toNat_eq
+  simp
+  rw [show (18446744073709551615 : Nat) = 2 ^ 64 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
+    Nat.mod_mod]
+
 /-- The symbolic description of the flag-quiet lift step `wideStep`: the sources are read
-    at width `64`, the implicit first source of `MULX` is the register `mulxSrc`, and the
-    high word of `MULX` is written after the low word. -/
+    at width `64`, the implicit first source of `MULX` is the register `mulxSrc`, the low
+    word of `MULX` has the term `mulLoT` of its sources, and the high word of `MULX` is
+    written after the low word. -/
 def symWide (w : WideOp) (ss : SSt) : SOut :=
   match w with
   | .mov d b =>
@@ -1167,7 +1194,7 @@ def symWide (w : WideOp) (ss : SSt) : SOut :=
   | .mulx lo hi b =>
       match symOp64 ss.regs (.reg mulxSrc), symOp64 ss.regs b with
       | some (tx, gx), some (tb, gb) =>
-          .ok ((ss.setR lo (.mulx false tx tb)).setR hi (.mulx true tx tb)) (gx ++ gb)
+          .ok ((ss.setR lo (mulLoT tx tb)).setR hi (.mulx true tx tb)) (gx ++ gb)
       | _, _ => .fail
 
 /-- The symbolic description of one instruction of `evalInstrPMemF`: the flag `CMP`, the
@@ -1414,7 +1441,8 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
               · simp [hq, STerm.ev]
               · by_cases hl : q = lo
                 · subst hl
-                  simp [hq, STerm.ev]
+                  simp only [hq, if_false, if_true]
+                  rw [mulLoT_ev c0 c1]
                 · simp only [hq, hl, if_false]
                   exact hs.1 q
             · simp [c0, c1] at ht
@@ -3011,7 +3039,7 @@ theorem symWide_subst (σ : Nat → STerm) (w : WideOp) (ss : SSt) :
   | mulx lo hi b =>
       simp only [symOp64_subst]
       cases symOp64 ss.regs (.reg mulxSrc) <;> cases symOp64 ss.regs b <;>
-        simp [SOut.subst, SSt.subst_setR, STerm.subst]
+        simp [SOut.subst, SSt.subst_setR, STerm.subst, mulLoT]
 
 /-- **The symbolic step commutes with substitution.** -/
 theorem symStep_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :

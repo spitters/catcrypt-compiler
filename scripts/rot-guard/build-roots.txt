@@ -595,6 +595,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportPhysAnd
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrNestInline
@@ -603,6 +604,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
