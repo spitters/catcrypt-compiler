@@ -28,11 +28,14 @@ register is `%rsp`; every other register an instruction names is one of `liftReg
 * an indexed load or store through a register holding the base of the region `A` is the
   indexed access to the array `A`, at the region's length, when the index register holds a
   value below that length;
-* a load or store of a frame word at an offset of the list `S` is a copy from or to the name
-  `slot.off` (`slotName`), and a compare with such a word compares with that name;
+* a store to a frame word at an offset of the list `S` is a copy to the name `slot.off`
+  (`slotName`); a load of such a word, and a compare with it, read that name, when the
+  reading state records that the name holds the word's value (`slive`);
 * the register and immediate moves, the two-address operations `add`, `sub`, `and`, `xor`,
   `or`, `imul` on registers, `add` and `sub` of an immediate, the shifts by an immediate
-  count in `[1, 63]` and the compares are their flag-machine forms;
+  count in `[1, 63]` (in the count-in-name form `immShiftI`) and the compares are their
+  flag-machine forms; a copy of a register whose name does not hold its value is
+  machine-only, and the name of its destination then does not hold its value either;
 * `mulx H, Lo` with its implicit source `%rdx` and the source `C` is the high word
   `H := MULXHI:64 [RDX, C]` and the low word `Lo := MUL:64 [RDX, C]`; when the reading
   state records that `Lo` already holds the low word of the product of `%rdx` and `C`, it is
@@ -104,6 +107,8 @@ structure LiftSt where
   /-- The registers whose value differs from the flag machine's name for them: a register a
       machine-only instruction wrote, until an instruction read back writes it. -/
   dead : List String := []
+  /-- The offsets of the frame words whose flag-machine name `slot.off` holds their value. -/
+  slive : List Int := []
 
 /-- The register `X` is read back and its flag-machine name holds its value. -/
 def LiftSt.live (st : LiftSt) (X : String) : Bool := liftRegs.contains X && !st.dead.contains X
@@ -184,15 +189,16 @@ def liftInstr (E : LiftEnv) (st : LiftSt) (j : JInstr 64) : Option (LiftSt × Li
       if B != "%rsp" || !ok S then none else
       match E.rs.find? (·.off == off) with
       | some g =>
+          if DecodeGenMem.regFind E.rs g.name != some g then none else
           let st' := st.kill [S]
           some ({ st' with ptr := (S, g.name) :: st'.ptr, dead := S :: st'.dead }, [])
       | none =>
-          if E.S.contains off then
+          if st.slive.contains off then
             some (st.kill [S], [opI "MOV" S [.reg (slotName off)]])
           else none
   | .storeMem B off (.reg X) =>
       if B != "%rsp" || !rd X || !E.S.contains off || E.rs.any (·.off == off) then none
-      else some (st,
+      else some ({ st with slive := off :: st.slive },
         [(.Lopn [.reg (slotName off)] (withWidthTag 64 "MOV") [.reg (liftReg X)], .reg none)])
   | .loadMemIdx D B X sc =>
       if !ok D || !ok B || !rd X || sc != 8 then none else
@@ -213,7 +219,10 @@ def liftInstr (E : LiftEnv) (st : LiftSt) (j : JInstr 64) : Option (LiftSt × Li
           else none
       | _, _ => none
   | .mov D (.reg X) =>
-      if !ok D || !rd X then none
+      if !ok D || !ok X then none
+      else if !rd X then
+        let st' := st.kill [D]
+        some ({ st' with dead := D :: st'.dead }, [])
       else some (if X == D then st else (st.kill [D]).copy D X,
         [opI "MOV" D [.reg (liftReg X)]])
   | .mov D (.imm n) =>
@@ -226,10 +235,12 @@ def liftInstr (E : LiftEnv) (st : LiftSt) (j : JInstr 64) : Option (LiftSt × Li
       else some ({ st.kill [D] with zl := false }, [opI "SUB" D [.reg (liftReg D), .imm k]])
   | .shr D (.imm k) =>
       if !rd D || k == 0 || !decide (k < 64) then none
-      else some ({ st.kill [D] with zl := false }, [opI "SHR" D [.reg (liftReg D), .imm k]])
+      else some ({ st.kill [D] with zl := false },
+        [DecodedLsemStep.immShiftI "SHR" (liftReg D) (liftReg D) k])
   | .shl D (.imm k) =>
       if !rd D || k == 0 || !decide (k < 64) then none
-      else some ({ st.kill [D] with zl := false }, [opI "SHL" D [.reg (liftReg D), .imm k]])
+      else some ({ st.kill [D] with zl := false },
+        [DecodedLsemStep.immShiftI "SHL" (liftReg D) (liftReg D) k])
   | .mulx H Lo (.reg S) (.reg C) =>
       if S != "%rdx" || H == Lo || !ok H || !ok Lo || !rd "%rdx" || !rd C then none else
       let srcs := [.reg (liftReg "%rdx"), .reg (liftReg C)]
@@ -246,7 +257,7 @@ def liftInstr (E : LiftEnv) (st : LiftSt) (j : JInstr 64) : Option (LiftSt × Li
       if !rd A then none
       else some ({ st with zl := true }, [opI "CMP" A [.reg (liftReg A), .imm k]])
   | .cmpMem A B off =>
-      if B != "%rsp" || !rd A || !E.S.contains off then none
+      if B != "%rsp" || !rd A || !st.slive.contains off then none
       else some ({ st with zl := true },
         [opI "CMP" A [.reg (liftReg A), .reg (slotName off)]])
   | j =>
