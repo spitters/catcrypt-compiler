@@ -217,6 +217,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
@@ -905,10 +906,8 @@ CatCrypt.Crypto.Util.Bls12381RPrimeCert
 CatCrypt.Crypto.Util.Falcon512Verified
 CatCrypt.Crypto.Util.Gf16MatRing
 CatCrypt.Crypto.Util.MsmToyVerified
-CatCrypt.Crypto.Util.P256Verified
 CatCrypt.Crypto.Util.P384NPrimeCert
 CatCrypt.Crypto.Util.P384PPrimeCert
-CatCrypt.Crypto.Util.Secp256k1Verified
 CatCrypt.Crypto.Util.ZMod8380417
 CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms
 CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms

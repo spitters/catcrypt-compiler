@@ -9,9 +9,9 @@ public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
 public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
-# Montgomery field blocks over four 64-bit limbs for an odd modulus below `2^255`
+# Montgomery field blocks over four 64-bit limbs for an odd modulus below `2^256`
 
-For a record `Mont4Prime` of an odd modulus `p < 2^255` and the constant
+For a record `Mont4Prime` of an odd modulus `p < 2^256` and the constant
 `nInv = -p⁻¹ mod 2^64`, an element `x` of `ZMod p` is represented by the four
 little-endian 64-bit limbs of the canonical representative of its Montgomery form
 `x · 2^256` (`enc`). The module gives multi-result `jasminDialect` blocks for
@@ -24,19 +24,25 @@ power `x^(p-2)`, the inverse at a prime modulus.
 The blocks reuse the list combinators of `FieldLimbs.Curve25519` (`adcR`, `rowR`,
 `selR`, `constsK`, `addK`, `mulRowK`, `prodK`) and bind `regArith`, `regConst`,
 `mulhi`, `addCarryLo`, `addCarryHi` and `select`. None branches or indexes on data.
+The algorithm is the word-by-word Montgomery arithmetic of fiat-crypto
+(`Arithmetic/WordByWordMontgomery.v`: `redc`, `add`, `conditional_sub`); a sum or a
+reduced product below `2p` may exceed `2^256`, so both carry a fifth limb into the
+final conditional subtraction.
 
-* Addition: the carry chain, then one conditional subtraction of `p` (`csubPK`),
-  which adds `2^256 - p` and selects the sum when its carry is set.
+* Conditional subtraction (`csubPCK`): on five limbs of value `V < p + 2^256`, the sum
+  `V + (2^320 - p)` carries exactly when `p ≤ V`, and then its low four limbs are
+  `V - p`; the carry selects between them and the low four input limbs.
+* Addition: the carry chain over the operands extended by a zero limb, then `csubPCK`.
 * Multiplication: the 4×4 schoolbook product (`prodK`), four words of Montgomery
-  reduction (`redcStepK`), each adding `m · p` for the digit
-  `m = (A mod 2^64) · nInv mod 2^64` and dropping the zero low limb, and one
-  conditional subtraction. The result `A₄` satisfies `A₄ · 2^256 = x y + M p` with
+  reduction (`redcStepK`) on a nine-limb accumulator, each adding `m · p` for the digit
+  `m = (A mod 2^64) · nInv mod 2^64` and dropping the zero low limb, and `csubPCK` on
+  the low five limbs. The result `A₄` satisfies `A₄ · 2^256 = x y + M p` with
   `M < 2^256` (`redc_chain`), so `A₄ < 2p`.
 
 ## Main definitions
 
 * `Mont4Prime`: the modulus record.
-* `csubPK`, `addMK`, `redcStepK`, `mulMK`: the list-level operations.
+* `csubPK`, `csubPCK`, `addMK`, `redcStepK`, `mulMK`: the list-level operations.
 * `R`, `enc`: the Montgomery factor and the encoding.
 * `addBlk`, `mulBlk`, `constBlk`: the blocks; the copy block is
   `FieldLimbs.Curve25519.copyBlk`.
@@ -47,6 +53,7 @@ The blocks reuse the list combinators of `FieldLimbs.Curve25519` (`adcR`, `rowR`
 ## Main results
 
 * `redc_digit`: the digit `m` makes `A + m p` divisible by `2^64`.
+* `csubPCK_denote`: the conditional subtraction on five limbs.
 * `redcStepK_denote`, `mulMK_denote`: one reduction word, and the product
   `out · 2^256 ≡ x y (mod p)` with `out < p`.
 * `addBlk_denote`, `mulBlk_denote`, `constBlk_denote`, `copyBlk_denote`: the value
@@ -76,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
 
 /-! ## 1. The modulus -/
 
-/-- An odd modulus below `2^255` with the Montgomery constant `nInv = -p⁻¹ mod 2^64`. -/
+/-- An odd modulus below `2^256` with the Montgomery constant `nInv = -p⁻¹ mod 2^64`. -/
 structure Mont4Prime where
   /-- The modulus. -/
   p : Nat
@@ -84,7 +91,7 @@ structure Mont4Prime where
   nInv : Nat
   one_lt : 1 < p
   p_odd : p % 2 = 1
-  p_lt : p < 2 ^ 255
+  p_lt : p < 2 ^ 256
   nInv_lt : nInv < 2 ^ 64
   nInv_spec : (p * nInv + 1) % 2 ^ 64 = 0
 
@@ -141,6 +148,20 @@ theorem nv_take_four {Δ : Ctxt jasminDialect} (W : Valuation Δ) (xs : List (Va
   rw [hsplit, h0]
   simp
 
+set_option exponentiation.threshold 600 in
+theorem nv_take_five {Δ : Ctxt jasminDialect} (W : Valuation Δ) (xs : List (Var Δ w64))
+    (hlen : 5 ≤ xs.length) (hv : nv W xs < 2 ^ 320) : nv W (xs.take 5) = nv W xs := by
+  have hsplit := nv_append W (xs.take 5) (xs.drop 5)
+  rw [List.take_append_drop, List.length_take_of_le hlen] at hsplit
+  have h0 : nv W (xs.drop 5) = 0 := by
+    by_contra hne
+    have : 2 ^ (64 * 5) ≤ 2 ^ (64 * 5) * nv W (xs.drop 5) :=
+      Nat.le_mul_of_pos_right _ (Nat.pos_of_ne_zero hne)
+    norm_num at this hsplit
+    omega
+  rw [hsplit, h0]
+  simp
+
 /-! ## 3. Conditional subtraction and addition -/
 
 /-- The four digits of `2^256 - p`. -/
@@ -189,6 +210,75 @@ theorem csubPK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List 
     rw [if_neg hc]
     split_ifs <;> omega
 
+/-- The five digits of `2^320 - p`. -/
+def negDigits5 : List Nat := digits (2 ^ 256 - P.p) ++ [2 ^ 64 - 1]
+
+theorem negDigits5_lt : ∀ d ∈ negDigits5 P, d < 2 ^ 64 := by
+  intro d hd
+  simp only [negDigits5, List.mem_append, List.mem_singleton] at hd
+  rcases hd with hd | rfl
+  · exact digits_lt _ d hd
+  · norm_num
+
+theorem negDigits5_length : (negDigits5 P).length = 5 := rfl
+
+theorem limbsNat_negDigits5 : limbsNat (negDigits5 P) = 2 ^ 320 - P.p := by
+  have hp := P.p_lt
+  have h1 := P.one_lt
+  have hd := limbsNat_digits (2 ^ 256 - P.p) (by omega)
+  simp only [negDigits5, digits, List.cons_append, List.nil_append, limbsNat] at hd ⊢
+  omega
+
+/-- One conditional subtraction of `p` from five limbs of value `V < p + 2^256`
+    (fiat-crypto's `conditional_sub`): the sum `V + (2^320 - p)` carries exactly when
+    `p ≤ V`, and the carry selects between its low four limbs and the low four input
+    limbs. -/
+def csubPCK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  constsK (negDigits5 P) fun r₁ K =>
+  addK (xs.map (fun v => r₁ v)) K fun r₂ T c =>
+  selR (fun v => v) c (T.take 4) ((xs.map (fun v => r₂ (r₁ v))).take 4) fun r₃ out =>
+    k (fun v => r₃ (r₂ (r₁ v))) out
+
+theorem csubPCK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hlen : xs.length = 5)
+    (hV : nv W xs < P.p + 2 ^ 256)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = 4 →
+      nv W' out = (if P.p ≤ nv W xs then nv W xs - P.p else nv W xs) →
+      (k r out).denote W' = G) :
+    (csubPCK P xs k).denote W = G := by
+  have hp := P.p_lt
+  refine constsK_denote _ _ W G (negDigits5_lt P) fun r₁ K W₁ h₁ hK hKv => ?_
+  rw [limbsNat_negDigits5] at hKv
+  rw [negDigits5_length] at hK
+  refine addK_denote _ K _ W₁ G (by simp [hlen, hK]) fun r₂ T c W₂ h₂ hT hTv => ?_
+  rw [nv_map h₁ xs, hKv] at hTv
+  simp only [List.length_map, hlen] at hTv hT
+  have hTl := nv_lt W₂ T
+  rw [hT] at hTl
+  have hc2 := (lk1 c W₂).isLt
+  refine selR_denote (fun v => v) c _ _ _ W₂ W₂ G (Pres.id W₂) (by simp [hT, hlen])
+    fun r₃ out W₃ h₃ hout hval => ?_
+  refine hk _ out W₃ (Pres.comp (Pres.comp h₁ h₂) h₃) (by simp [hout, hT]) ?_
+  rw [hval]
+  by_cases hc : lk1 c W₂ = 1#1
+  · have h1 : (lk1 c W₂).toNat = 1 := by rw [hc]; rfl
+    rw [if_pos hc]
+    rw [h1] at hTv
+    have hge : P.p ≤ nv W xs := by omega
+    rw [if_pos hge, nv_take_four W₂ T (by omega) (by omega)]
+    omega
+  · have h0 : (lk1 c W₂).toNat = 0 := by
+      have : (lk1 c W₂).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
+      omega
+    rw [if_neg hc]
+    rw [h0] at hTv
+    have hlt : ¬ P.p ≤ nv W xs := by omega
+    rw [if_neg hlt, nv_take_four W₂ _ (by simp [hlen]) (by rw [nv_map (Pres.comp h₁ h₂)]; omega),
+      nv_map (Pres.comp h₁ h₂)]
+
 /-- `if p ≤ V then V - p else V` is `V % p` below `2p`. -/
 theorem csub_eq_mod (V : Nat) (hV : V < 2 * P.p) :
     (if P.p ≤ V then V - P.p else V) = V % P.p := by
@@ -196,12 +286,15 @@ theorem csub_eq_mod (V : Nat) (hV : V < 2 * P.p) :
   · rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
   · rw [Nat.mod_eq_of_lt (by omega)]
 
-/-- Addition modulo `p` on four limbs: the carry chain, then one conditional
-    subtraction. -/
+/-- Addition modulo `p` on four limbs: the carry chain over the operands extended by a
+    zero limb, then the conditional subtraction on five limbs. -/
 def addMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
     (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
-  addK xs ys fun r₁ S _ => csubPK P S fun r₂ out => k (fun v => r₂ (r₁ v)) out
+  bindK (eConst 0) fun r₀ z =>
+  addK (xs.map (fun v => r₀ v) ++ [z]) (ys.map (fun v => r₀ v) ++ [z]) fun r₁ S _ =>
+  csubPCK P S fun r₂ out => k (fun v => r₂ (r₁ (r₀ v))) out
 
+set_option exponentiation.threshold 600 in
 theorem addMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
     (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
     (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = 4) (hys : ys.length = 4)
@@ -211,19 +304,22 @@ theorem addMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : Lis
       nv W' out = (nv W xs + nv W ys) % P.p → (k r out).denote W' = G) :
     (addMK P xs ys k).denote W = G := by
   have hp := P.p_lt
-  refine addK_denote xs ys _ W G (by rw [hxs, hys]) fun r₁ S c W₁ h₁ hS hSv => ?_
-  refine csubPK_denote P S _ W₁ G (by rw [hS, hxs]) fun r₂ out W₂ h₂ hout hv => ?_
-  refine hk _ out W₂ (Pres.comp h₁ h₂) hout ?_
-  rw [hxs] at hSv
-  have hc := (lk1 c W₁).isLt
+  refine bindK_denote _ _ _ _ fun r₀ z W₀ h₀ hz => ?_
+  have ez : (lk z W₀).toNat = 0 := by rw [show lk z W₀ = _ from hz, eConst_denote]; rfl
+  refine addK_denote _ _ _ W₀ G (by simp [hxs, hys]) fun r₁ S c W₁ h₁ hS hSv => ?_
+  simp only [nv_append, nv_map h₀, nv_cons, nv_nil, ez, List.length_append, List.length_map,
+    List.length_singleton, hxs, hys] at hSv hS
   have hS0 : nv W₁ S = nv W xs + nv W ys := by
+    have hc := (lk1 c W₁).isLt
     have : (lk1 c W₁).toNat = 0 := by
       by_contra hne
-      have : 2 ^ (64 * 4) * 1 ≤ 2 ^ (64 * 4) * (lk1 c W₁).toNat :=
+      have : 2 ^ (64 * 5) * 1 ≤ 2 ^ (64 * 5) * (lk1 c W₁).toNat :=
         Nat.mul_le_mul_left _ (by omega)
       omega
     rw [this] at hSv
     omega
+  refine csubPCK_denote P S _ W₁ G hS (by omega) fun r₂ out W₂ h₂ hout hv => ?_
+  refine hk _ out W₂ (Pres.comp (Pres.comp h₀ h₁) h₂) hout ?_
   rw [hv, hS0]
   exact csub_eq_mod P _ (by omega)
 
@@ -247,7 +343,7 @@ set_option exponentiation.threshold 600 in
 theorem redcStepK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (acc : List (Var Γ w64))
     (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
-    (W : Valuation Γ) (G : ListDenote ts) (hlen : acc.length = 9) (hA : nv W acc < 2 ^ 511)
+    (W : Valuation Γ) (G : ListDenote ts) (hlen : acc.length = 9) (hA : nv W acc < 2 ^ 512)
     (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
       (W' : Valuation Δ), Pres r W W' → out.length = 9 →
       (∃ m, m < 2 ^ 64 ∧ nv W' out * 2 ^ 64 = nv W acc + m * P.p) →
@@ -288,7 +384,7 @@ theorem redcStepK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   rw [nv_map h1to5, nv_append, nv_replicate W₅ _ ez5, hrowv] at hSv
   simp only [List.length_map, hlen] at hSv hS
   have hMlt : M < 2 ^ 64 := Nat.mod_lt _ (by norm_num)
-  have hMp : P.p * M < 2 ^ 255 * 2 ^ 64 := Nat.mul_lt_mul'' hp hMlt
+  have hMp : P.p * M < 2 ^ 256 * 2 ^ 64 := Nat.mul_lt_mul'' hp hMlt
   have hc := (lk1 c W₆).isLt
   have hS0 : nv W₆ S = nv W (x :: rest) + P.p * M := by
     have : (lk1 c W₆).toNat = 0 := by
@@ -314,21 +410,21 @@ theorem redcStepK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   rw [Nat.mul_comm M P.p]
   omega
 
-theorem redc_step_bound (p A A' m : Nat) (hp : p < 2 ^ 255) (hA : A < 2 ^ 511)
-    (hm : m < 2 ^ 64) (e : A' * 2 ^ 64 = A + m * p) : A' < 2 ^ 511 := by
-  have : m * p < 2 ^ 64 * 2 ^ 255 := Nat.mul_lt_mul'' hm hp
+theorem redc_step_bound (p A A' m : Nat) (hp : p < 2 ^ 256) (hA : A < 2 ^ 512)
+    (hm : m < 2 ^ 64) (e : A' * 2 ^ 64 = A + m * p) : A' < 2 ^ 512 := by
+  have : m * p < 2 ^ 64 * 2 ^ 256 := Nat.mul_lt_mul'' hm hp
   omega
 
 set_option exponentiation.threshold 600 in
 /-- Four words of Montgomery reduction from `T < p²`: the result `A₄` satisfies
     `A₄ · 2^256 = T + M p` with `M < 2^256`, so `A₄ < 2p`. -/
-theorem redc_chain (p T A₁ A₂ A₃ A₄ m₁ m₂ m₃ m₄ : Nat) (hp : p < 2 ^ 255)
+theorem redc_chain (p T A₁ A₂ A₃ A₄ m₁ m₂ m₃ m₄ : Nat) (hp : p < 2 ^ 256)
     (hT : T < p * p) (hm₁ : m₁ < 2 ^ 64) (hm₂ : m₂ < 2 ^ 64) (hm₃ : m₃ < 2 ^ 64)
     (hm₄ : m₄ < 2 ^ 64) (e₁ : A₁ * 2 ^ 64 = T + m₁ * p) (e₂ : A₂ * 2 ^ 64 = A₁ + m₂ * p)
     (e₃ : A₃ * 2 ^ 64 = A₂ + m₃ * p) (e₄ : A₄ * 2 ^ 64 = A₃ + m₄ * p) :
     A₄ * 2 ^ 256 = T + (m₁ + 2 ^ 64 * m₂ + 2 ^ 128 * m₃ + 2 ^ 192 * m₄) * p ∧
       A₄ < 2 * p := by
-  have hpp : p * p ≤ 2 ^ 255 * p := Nat.mul_le_mul_right _ hp.le
+  have hpp : p * p ≤ 2 ^ 256 * p := Nat.mul_le_mul_right _ hp.le
   have b₁ : m₁ * p ≤ (2 ^ 64 - 1) * p := Nat.mul_le_mul_right _ (by omega)
   have b₂ : m₂ * p ≤ (2 ^ 64 - 1) * p := Nat.mul_le_mul_right _ (by omega)
   have b₃ : m₃ * p ≤ (2 ^ 64 - 1) * p := Nat.mul_le_mul_right _ (by omega)
@@ -339,7 +435,7 @@ theorem redc_chain (p T A₁ A₂ A₃ A₄ m₁ m₂ m₃ m₄ : Nat) (hp : p <
   omega
 
 /-- Montgomery multiplication on four limbs: the schoolbook product, four words of
-    Montgomery reduction, and one conditional subtraction. -/
+    Montgomery reduction, and one conditional subtraction on the low five limbs. -/
 def mulMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
     (y₀ y₁ y₂ y₃ : Var Γ w64)
     (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
@@ -349,7 +445,7 @@ def mulMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64)
   redcStepK P A₁ fun r₄ A₂ =>
   redcStepK P A₂ fun r₅ A₃ =>
   redcStepK P A₃ fun r₆ A₄ =>
-  csubPK P (A₄.take 4) fun r₇ out =>
+  csubPCK P (A₄.take 5) fun r₇ out =>
   k (fun v => r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ v))))))) out
 
 set_option exponentiation.threshold 600 in
@@ -368,7 +464,7 @@ theorem mulMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (
   set X := nv W xs
   set Y := nv W [y₀, y₁, y₂, y₃]
   have hXY : X * Y < P.p * P.p := Nat.mul_lt_mul'' hx hy
-  have hT510 : X * Y < 2 ^ 511 :=
+  have hT510 : X * Y < 2 ^ 512 :=
     lt_of_lt_of_le hXY (le_trans (Nat.mul_le_mul hp.le hp.le) (by norm_num))
   refine bindK_denote _ _ _ _ fun r₂ z W₂ h₂ hz => ?_
   have ez : (lk z W₂).toNat = 0 := by rw [show lk z W₂ = _ from hz, eConst_denote]; rfl
@@ -388,9 +484,14 @@ theorem mulMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (
       (redc_step_bound _ _ _ _ hp hT510 hm₁ e₁) hm₂ e₂) hm₃ e₃)
     fun r₆ A₄ W₆ h₆ hA₄ ⟨m₄, hm₄, e₄⟩ => ?_
   obtain ⟨hEq, hlt⟩ := redc_chain _ _ _ _ _ _ _ _ _ _ hp hXY hm₁ hm₂ hm₃ hm₄ e₁ e₂ e₃ e₄
-  have htake : nv W₆ (A₄.take 4) = nv W₆ A₄ :=
-    nv_take_four W₆ A₄ (by rw [hA₄]; norm_num) (lt_of_lt_of_le hlt (by linarith))
-  refine csubPK_denote P (A₄.take 4) _ W₆ G (by simp [hA₄])
+  have h2p : 2 * P.p < 2 ^ 320 :=
+    lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_left hp (by norm_num)) (by norm_num)
+  have htake : nv W₆ (A₄.take 5) = nv W₆ A₄ :=
+    nv_take_five W₆ A₄ (by rw [hA₄]; norm_num) (lt_trans hlt h2p)
+  have hlt' : nv W₆ (A₄.take 5) < P.p + 2 ^ 256 := by
+    rw [htake]
+    exact lt_of_lt_of_le hlt (by rw [two_mul]; exact Nat.add_le_add_left hp.le _)
+  refine csubPCK_denote P (A₄.take 5) _ W₆ G (by simp [hA₄]) hlt'
     fun r₇ out W₇ h₇ hout hv => ?_
   refine hk _ out W₇ (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp
     h₁ h₂) h₃) h₄) h₅) h₆) h₇) hout ?_ ?_
