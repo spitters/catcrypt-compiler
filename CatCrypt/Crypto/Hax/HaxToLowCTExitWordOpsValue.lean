@@ -781,9 +781,9 @@ def isMask64 : SExpr → Bool
 /-- The expressions that agree at every heap of words (`agreeAllB_sound`): variables,
     literals below `2^64`, limb reads, a sum or product of variables and literals masked to
     `64` bits, the wrapping difference `((a + (2^64 - 1) - b) + 1) &&& (2^64 - 1)` of agreeing
-    expressions, conjunctions, exclusive disjunctions, right shifts and comparisons of
-    agreeing expressions, the complement `1 - (a < b)` and the sum `(a < b) + (c < d)` of
-    comparisons. -/
+    expressions, conjunctions, exclusive disjunctions, right shifts, comparisons and high
+    product words `SMulHiU` of agreeing expressions, the complement `1 - (a < b)` and the sum
+    `(a < b) + (c < d)` of comparisons. -/
 def agreeAllB : SExpr → Bool
   | .SAnd (.SAdd (.SSub (.SAdd a (.SLit m)) b) (.SLit 1)) (.SLit m') =>
       isMask64 (.SLit m) && isMask64 (.SLit m') && agreeAllB a && agreeAllB b
@@ -796,6 +796,7 @@ def agreeAllB : SExpr → Bool
   | .SLt a b => agreeAllB a && agreeAllB b
   | .SSub (.SLit 1) (.SLt a b) => agreeAllB a && agreeAllB b
   | .SAdd (.SLt a b) (.SLt c d) => agreeAllB a && agreeAllB b && agreeAllB c && agreeAllB d
+  | .SMulHiU a b => agreeAllB a && agreeAllB b
   | _ => false
 
 theorem exprAgreeAt_lt {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeAt σ a)
@@ -923,7 +924,15 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
       show (SExpr.SLt a b).evalBV _ + (SExpr.SLt c d).evalBV _ =
         BitVec.ofNat 64 ((SExpr.SLt a b).eval σ + (SExpr.SLt c d).eval σ)
       rw [h1.2, h2.2, BitVec.ofNat_add]
-  | case11 =>
+  | case11 a b iha ihb =>
+      intro h σ hσ
+      simp only [Bool.and_eq_true] at h
+      have hA := iha h.1 σ hσ
+      have hB := ihb h.2 σ hσ
+      refine ⟨sexprMulHiU_lt _ _, ?_⟩
+      simp only [SExpr.evalBV, SExpr.eval, hA.2, hB.2, BitVec.toNat_ofNat,
+        Nat.mod_eq_of_lt hA.1, Nat.mod_eq_of_lt hB.1]
+  | case12 =>
       intro h
       simp_all
 

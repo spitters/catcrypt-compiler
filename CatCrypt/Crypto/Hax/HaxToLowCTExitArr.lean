@@ -31,6 +31,9 @@ TArr n TU64⟩ i)) k` and the store by `RArrStore ⟨arr, TArr n TU64⟩ i ⟨x,
 accesses through a `TU64` word slot, the arms of the guarded fragment `IsCoveredSCtlGuarded`.
 The zero write binds `a` before the load, so the guarded conversion `ifConvert` reads it as a
 bound word.
+A word call of `exitWordOps` on two scalars, marshalled into the call slot `exitCallName`
+whose limb `0` is copied into a scalar `n`, is replaced by the assignment to `n` of the
+call's scalar expression (`wordOpSExpr`), as in the word scalarisation of the exit front.
 
 The relation `ExitArrRel T c c'` states that `c'` is `c` with such accesses of the arrays
 named by `T` replaced, over the scalar commands of the guarded fragment without conditionals;
@@ -58,7 +61,9 @@ its check `exitArrOk` and its value theorem `exitArrLower_semG`.
 
 ## Main definitions
 
-* `scalarizeArrIn` — the pass.
+* `arrCallOf`, `seqCall`, `scalarizeArrIn` — the scalar expression of a marshalled word call,
+  its lowering at the head of a sequence, and the pass.
+* `marshalNames` — the tower slots a marshalled call writes.
 * `ArrView` — a word view of the arrays of a leaf semantics, with its load and store laws.
 * `ArrOn`, `ArrRun`, `readsA` — the array relation, the bounds condition of a run and the
   read condition of the output.
@@ -103,10 +108,39 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedAgree
 
 /-! ## 1. The pass -/
 
+/-- The scalar expression of a marshalled word call `k` into the slot `c` whose limb `0` is read
+    from the slot `c'`: when both are `exitCallName` and `k` calls a word operation of
+    `exitWordOps` on two scalars `a` and `b`, the expression `wordOpSExpr` of the call on `a`
+    and `b`. -/
+def arrCallOf (c c' : String) (k : LowCT) : Option SExpr :=
+  if c = exitCallName ∧ c' = exitCallName then
+    match exitCallArgs [] k with
+    | some (f, [a, b]) => if f ∈ exitWordOps then wordOpSExpr f (.SVar a) (.SVar b) else none
+    | _ => none
+  else none
+
+/-- A sequence headed by a marshalled word call whose limb `0` is copied into a scalar `n`
+    (`arrCallOf`), as the assignment of the call's scalar expression to `n`; every other command
+    unchanged. -/
+def seqCall : LowCT → LowCT
+  | .RSeq (.RLetZero c dr k) (.RSeq (.RScalarSetExpr n (.SLimb c' 0)) b) =>
+      match arrCallOf c c' k with
+      | some se => .RSeq (.RScalarSetExpr n se) b
+      | none => .RSeq (.RLetZero c dr k) (.RSeq (.RScalarSetExpr n (.SLimb c' 0)) b)
+  | c => c
+
+/-- `seqCall` leaves a sequence whose head is no tower binder unchanged. -/
+theorem seqCall_seq {a b : LowCT} (h : ∀ c t k, a ≠ .RLetZero c t k) :
+    seqCall (.RSeq a b) = .RSeq a b := by
+  cases a with
+  | RLetZero c t k => exact absurd rfl (h c t k)
+  | _ => rfl
+
 /-- The pass replacing every load of a word-array element through a tower slot whose limb `0`
     is copied into a scalar, and every store of a scalar marshalled into a word slot, by the
-    word-array access through a `TU64` word slot, through sequences, bindings, branches and
-    loops. -/
+    word-array access through a `TU64` word slot, and every marshalled word call whose limb `0`
+    is copied into a scalar by the assignment of its scalar expression (`seqCall`), through
+    sequences, bindings, branches and loops. -/
 def scalarizeArrIn : LowCT → LowCT
   | .RLetZero c .TFp (.RSeq (.RArrLoad d s i) (.RSeq (.RScalarSetExpr a (.SLimb c' 0)) k)) =>
       if d.locVar = c ∧ c' = c then
@@ -117,12 +151,53 @@ def scalarizeArrIn : LowCT → LowCT
   | .RLetZero m .TU64 (.RSeq (.RLimbStoreExpr l 0 (.SVar x)) (.RArrStore arr i src)) =>
       if l.locVar = m ∧ src.locVar = m then .RArrStore arr i ⟨x, .TU64⟩
       else .RLetZero m .TU64 (.RSeq (.RLimbStoreExpr l 0 (.SVar x)) (.RArrStore arr i src))
-  | .RSeq a b => .RSeq (scalarizeArrIn a) (scalarizeArrIn b)
+  | .RSeq a b => seqCall (.RSeq (scalarizeArrIn a) (scalarizeArrIn b))
   | .RLetZero x t b => .RLetZero x t (scalarizeArrIn b)
   | .RLetU64Zero x b => .RLetU64Zero x (scalarizeArrIn b)
   | .RIfNz v t e => .RIfNz v (scalarizeArrIn t) (scalarizeArrIn e)
   | .RForRuntime x bd b => .RForRuntime x bd (scalarizeArrIn b)
   | c => c
+
+/-- The names of the tower slots a marshalled call writes: the marshalling slots, the slots
+    of their limb stores and the destination of the call. -/
+def marshalNames : LowCT → List String
+  | .RLetZero m _ (.RSeq (.RLimbStoreExpr l _ _) k) => m :: l.locVar :: marshalNames k
+  | .RCall _ d _ => [d.locVar]
+  | _ => []
+
+/-- The pass on a tower binder whose body is no load and no store of the pass is the binder
+    of the pass on its body. -/
+theorem scalarizeArrIn_letZero {x : String} {t : TowerType} {b : LowCT}
+    (h1 : ∀ d s i a c' k, b ≠ .RSeq (.RArrLoad d s i) (.RSeq (.RScalarSetExpr a (.SLimb c' 0)) k))
+    (h2 : ∀ l y arr i src, b ≠ .RSeq (.RLimbStoreExpr l 0 (.SVar y)) (.RArrStore arr i src)) :
+    scalarizeArrIn (.RLetZero x t b) = .RLetZero x t (scalarizeArrIn b) := by
+  rw [scalarizeArrIn.eq_def]
+  split
+  · rename_i heq; cases heq; exact absurd rfl (h1 _ _ _ _ _ _)
+  · rename_i heq; cases heq; exact absurd rfl (h2 _ _ _ _ _)
+  · rename_i heq; cases heq
+  · rename_i heq; cases heq; rfl
+  all_goals first | (rename_i heq; cases heq) | simp_all
+
+/-- `scalarizeArrIn` is the identity on a marshalled call. -/
+theorem scalarizeArrIn_marshal : ∀ k : LowCT, marshalOk k = true → scalarizeArrIn k = k := by
+  intro k
+  fun_induction marshalOk k with
+  | case1 m t l i e k ih =>
+      intro h
+      simp only [Bool.and_eq_true] at h
+      rw [scalarizeArrIn_letZero (fun _ _ _ _ _ _ e => by cases e) (fun _ _ _ _ _ e => by
+        cases e; simp [marshalOk] at h)]
+      simp only [scalarizeArrIn, ih h.2]
+      rw [seqCall_seq (fun _ _ _ e => by cases e)]
+  | case2 => intro _; rfl
+  | case3 => intro h; simp_all
+
+/-- The pass on a tower binder over a marshalled call is the binder itself. -/
+theorem scalarizeArrIn_letZero_marshal (c : String) (dr : TowerType) {k : LowCT}
+    (hm : marshalOk k = true) : scalarizeArrIn (.RLetZero c dr k) = .RLetZero c dr k := by
+  rw [scalarizeArrIn_letZero (fun _ _ _ _ _ _ e => by subst e; simp [marshalOk] at hm)
+    (fun _ _ _ _ _ e => by subst e; simp [marshalOk] at hm), scalarizeArrIn_marshal k hm]
 
 /-! ## 2. The word view of the arrays -/
 
@@ -130,7 +205,8 @@ def scalarizeArrIn : LowCT → LowCT
     words of an array `v` of type `TArr n TU64`, and `inb n v k` states that `k` is an element
     index of `v`. At an index in bounds, the load of the element into limb `0` of a zeroed
     `TFp` slot reads the view's word, and the store of a word marshalled into limb `0` of a
-    zeroed `TU64` slot writes it into the view. -/
+    zeroed `TU64` slot writes it into the view; the word calls satisfy their leaf law
+    `ExitWordLaw`. -/
 structure ArrView (L : LeafSpec) where
   /-- The words of an array. -/
   view : (n : Nat) → RustVal (.TArr n .TU64) → ⟦encodeTy (.TArr n .TU64)⟧
@@ -145,6 +221,8 @@ structure ArrView (L : LeafSpec) where
     (w : BitVec 64), inb n old k →
     view n (L.arrStore ⟨arr, .TArr n .TU64⟩ old k ⟨.TU64, L.limbStore ⟨m, .TU64⟩ default 0 w⟩) =
       memSetDyn (view n old) k w
+  /-- The leaf law of the word calls. -/
+  word : ExitWordLaw L
 
 variable {N : Nat} {L : LeafSpec}
 
@@ -218,6 +296,16 @@ inductive ExitArrRel (T : String → Prop) : LowCT → LowCT → Prop
         (.RLetZero m .TU64 (.RSeq (.RLimbStoreExpr ⟨m, .TU64⟩ 0 (.SVar x))
           (.RArrStore ⟨arr, .TArr n .TU64⟩ i ⟨m, .TU64⟩)))
         (.RArrStore ⟨arr, .TArr n .TU64⟩ i ⟨x, .TU64⟩)
+  | call {dr : TowerType} {k : LowCT} {n f a b : String} {se : SExpr} {body body' : LowCT}
+      (hk : exitCallArgs [] k = some (f, [a, b])) (hf : f ∈ exitWordOps)
+      (hse : wordOpSExpr f (.SVar a) (.SVar b) = some se) (hm : marshalOk k = true)
+      (hn : srcName n) (hnT : ¬ T n) (ha : srcName a) (hb : srcName b)
+      (hcT : ¬ T exitCallName) (hkT : ∀ y, T y → y ∉ marshalNames k) :
+      ExitArrRel T body body' →
+      ExitArrRel T
+        (.RSeq (.RLetZero exitCallName dr k)
+          (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) body))
+        (.RSeq (.RScalarSetExpr n se) body')
 
 /-- **The scalarised program is in the guarded fragment.** -/
 theorem ExitArrRel.covered {T : String → Prop} {c c' : LowCT} (h : ExitArrRel T c c') :
@@ -231,6 +319,9 @@ theorem ExitArrRel.covered {T : String → Prop} {c c' : LowCT} (h : ExitArrRel 
   | load _ ha _ _ hs _ hi _ ih =>
       exact .rSeq (.rSeq (.rScalarSet ha (by norm_num)) (.rArrLoad ha hs hi)) ih
   | store _ hx harr _ hi => exact .rArrStore harr hi hx
+  | call hk hf hse hm hn _ ha hb _ _ _ ih =>
+      obtain ⟨hvars, hcl⟩ := wordOpSExpr_vars hse
+      exact .rSeq (.rScalarSetExpr hn (hcl ha.1 hb.1) ((hvars srcName).mpr ⟨ha, hb⟩)) ih
 
 /-! ## 4. The simulation -/
 
@@ -286,6 +377,33 @@ theorem ifConvert_seq (flag : Option String) (S : List String) (k : Nat) (a b : 
 theorem ifConvert_scalarSet (flag : Option String) (S : List String) (k : Nat) (x : String)
     (n : Nat) : ifConvert flag S k (.RScalarSet x n) = (gWrite flag S x (.SLit n), x :: S, k) :=
   rfl
+
+/-- A run of a marshalled call writes no tower slot outside `marshalNames`. -/
+theorem marshal_tower : ∀ (k : LowCT), marshalOk k = true → ∀ {rs r : RustState},
+    RustExec N L k rs r → ∀ y, y ∉ marshalNames k → r.rsTower y = rs.rsTower y := by
+  intro k
+  fun_induction marshalOk k with
+  | case1 m t l i e k ih =>
+      intro h rs r hrun y hy
+      simp only [Bool.and_eq_true] at h
+      simp only [marshalNames, List.mem_cons, not_or] at hy
+      cases hrun with
+      | letZero _ _ _ _ _ hb =>
+      cases hb with
+      | seq _ _ _ r1 _ h1 h2 =>
+      cases h1 with
+      | limbStoreExpr _ _ _ _ old hlk =>
+      rw [ih h.2 h2 y hy.2.2]
+      simp only [locatedUpdate]
+      rw [rsSetTower_other _ _ _ _ (Ne.symm hy.2.1), rsSetTower_other _ _ _ _ (Ne.symm hy.1)]
+  | case2 f d ls =>
+      intro _ rs r hrun y hy
+      simp only [marshalNames, List.mem_cons, List.not_mem_nil, or_false] at hy
+      cases hrun with
+      | call _ _ _ _ old argList hlk hargs hty =>
+      simp only [locatedUpdate]
+      rw [rsSetTower_other _ _ _ _ (Ne.symm hy)]
+  | case3 => intro h; simp_all
 
 /-- **The guarded conversion of the scalarised program tracks the input's run.** Under the
     absent flag or a flag slot holding `1`, a `RustExec` run of `c` whose accesses are in
@@ -524,6 +642,71 @@ theorem exitArr_taken (V : ArrView L) {T : String → Prop} (hT : ∀ y, T y →
           simp only [locatedUpdate, rsSetTower_other _ _ _ _ (Ne.symm hya),
             rsSetTower_other _ _ _ _ hym]
           exact hw
+  | @call dr km n f a b se body body' hk hf hse hm hn hnT ha hb hcT hkT _ ihb =>
+      intro flag S k B rs rs' env hexec hrun hr hfl hS hbd hB henv hir hA
+      obtain ⟨hvars, hcl⟩ := wordOpSExpr_vars hse
+      have hcl' : ltClean se := hcl ha.1 hb.1
+      have hr1 : varsIn B se := hr.1
+      obtain ⟨hBa, hBb⟩ := (hvars B).mp hr1
+      obtain ⟨r1, h1, h3, hk1, h4⟩ := seg_run_inv hexec
+      have hrunB : ArrRun (N := N) V body _ := (hrun.2 r1 h1).2 _ h3
+      obtain ⟨hsc, dt, dts, old, args, hdt, htw, hF⟩ :=
+        marshal_run V.word km [] f [a, b] hk hm _ r1 hk1 hir (fun _ _ h => by cases h)
+      obtain ⟨pa, pb, rfl, hpa, hpb⟩ : ∃ pa pb, args = [pa, pb] ∧
+          towerLimb pa.2 0 = rs.rsScalar a ∧ towerLimb pb.2 0 = rs.rsScalar b := by
+        cases hF with
+        | cons h1 hF =>
+          cases hF with
+          | cons h2 hF => cases hF; exact ⟨_, _, rfl, h1, h2⟩
+      obtain ⟨r, hr0, hrlt⟩ := exitWordOps_total hf (rs.rsScalar a) (rs.rsScalar b)
+      have hlimb : towerLimb (L.call f dt dts old [pa, pb]) 0 = r :=
+        V.word.call f hf dt dts old pa pb r hdt (by rw [hpa, hpb]; exact hr0)
+      have hval_n : (SExpr.SLimb exitCallName 0).evalState r1 = r := by
+        simp only [SExpr.evalState, rsTowerLimb, htw]
+        exact hlimb
+      have hsev : se.evalBV (SExpr.liftEnv rs.rsScalar) = BitVec.ofNat 64 r := by
+        apply BitVec.eq_of_toNat_eq
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hrlt]
+        refine wordOpSExpr_evalBV (SExpr.liftEnv rs.rsScalar) hse ?_ hrlt
+        simp only [SExpr.evalBV, SExpr.liftEnv, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir a),
+          Nat.mod_eq_of_lt (hir b)]
+        exact hr0
+      obtain ⟨env2, hs2, hotb⟩ := gWrite_taken (v := elimLt se) (S := S) hfl hn
+        (srcClean_elimLt se hcl') (varsIn_elimLt se (varsIn_mono (bndP_of_sub hB hbd) se hr1))
+        hbd
+      have hval : (elimLt se).evalBV (envReader env) = BitVec.ofNat 64 r := by
+        rw [evalBV_elimLt, evalBV_congr_varsIn B (envReader env) (SExpr.liftEnv rs.rsScalar)
+          (fun s hs => envReader_of_envBoundOn henv s hs (hS s (hB s hs)).1) se hcl' hr1]
+        exact hsev
+      rw [hval] at hs2
+      obtain ⟨hb1, hg1⟩ := write_facts (w := BitVec.ofNat 64 r) hotb hn hS hbd
+      have henv1 : EnvBoundOn (rsSetScalar r1 n ((SExpr.SLimb exitCallName 0).evalState r1))
+          (env2.upd n (t := .sword 64) (BitVec.ofNat 64 r)) (fun y => B y ∨ y = n) := by
+        refine envBoundOn_congr ?_ (envBoundOn_updExpr henv hotb n r)
+        funext y
+        simp only [rsSetScalar, hval_n, hsc]
+        rfl
+      have hir1 : ScalarInRange (rsSetScalar r1 n ((SExpr.SLimb exitCallName 0).evalState r1)) := by
+        intro y
+        simp only [rsSetScalar, hval_n]
+        split
+        · exact hrlt
+        · rw [hsc]; exact hir y
+      have hA1 : ArrOn V (rsSetScalar r1 n ((SExpr.SLimb exitCallName 0).evalState r1))
+          (env2.upd n (t := .sword 64) (BitVec.ofNat 64 r)) T := by
+        refine arrOn_congr hA (fun y hy => ?_) (fun y hy => ?_)
+        · show r1.rsTower y = rs.rsTower y
+          rw [marshal_tower km hm hk1 y (hkT y hy),
+            rsSetTower_other _ _ _ _ (by rintro rfl; exact hcT hy)]
+        · rw [upd_ne (fun e : y = n => hnT (e ▸ hy))]
+          exact hotb y (Or.inl (hT y hy).1)
+      obtain ⟨env3, hs3, henv3, hir3, hb3, hg3, hA3⟩ :=
+        ihb flag (n :: S) k (fun y => B y ∨ y = n) _ rs' _ h4 hrunB hr.2
+          (flagOn_mono hfl (le_refl k) (fun i _ => hg1 i)) (srcList_cons hn hS) hb1
+          (sub_cons n hB) henv1 hir1 hA1
+      simp only [ifConvert]
+      exact ⟨env3, by rw [semScalar_seq, hs2, Option.bind_some]; exact hs3, henv3, hir3,
+        hb3, fun i hi => (hg3 i hi).trans (hg1 i), hA3⟩
 
 /-- **The scalarised program at top level.** A `RustExec` run of `c` whose accesses are in
     bounds, from a state whose scalars are words, which `env` reflects on the names `B` and
@@ -558,12 +741,44 @@ def exitArrB (Ts : List String) : LowCT → Bool
   | .RLetZero m .TU64 (.RSeq (.RLimbStoreExpr l 0 (.SVar x)) (.RArrStore arr i src)) =>
       decide (l = ⟨m, .TU64⟩) && decide (src = ⟨m, .TU64⟩) && !Ts.contains m && srcNameB x &&
         srcNameB arr.locVar && Ts.contains arr.locVar && isWordArrB arr.locSrc && srcNameB i
+  | .RSeq (.RLetZero c _ k) (.RSeq (.RScalarSetExpr n (.SLimb c' 0)) b) =>
+      decide (c = exitCallName) && decide (c' = exitCallName) && marshalOk k && srcNameB n &&
+        !Ts.contains n && !Ts.contains exitCallName &&
+        (marshalNames k).all (fun y => !Ts.contains y) &&
+        (match exitCallArgs [] k with
+          | some (f, [x, y]) => exitWordOps.contains f && srcNameB x && srcNameB y
+          | _ => false) && exitArrB Ts b
   | .RSeq a b => exitArrB Ts a && exitArrB Ts b
   | .RLetU64Zero x b => srcNameB x && !Ts.contains x && exitArrB Ts b
   | .RScalarSetExpr x e => srcNameB x && !Ts.contains x && ltCleanSrcB e && agreeWordB e
   | .RScalarSet x n => srcNameB x && !Ts.contains x && decide (n < 2 ^ 64)
   | .RSkip => true
   | _ => false
+
+/-- The pass on an input accepted by `exitArrB Ts` returns no tower binder. -/
+theorem scalarizeArrIn_ne_letZero (Ts : List String) :
+    ∀ c : LowCT, exitArrB Ts c = true → ∀ x t k, scalarizeArrIn c ≠ .RLetZero x t k := by
+  intro c
+  fun_induction exitArrB Ts c with
+  | case1 c d s i a c' k ih =>
+      intro h x t k' e
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hd, hc'⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+      subst hd hc'
+      simp [scalarizeArrIn] at e
+  | case2 m l x arr i src =>
+      intro h x' t k' e
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨⟨⟨hl, hsrc⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+      subst hl hsrc
+      simp [scalarizeArrIn] at e
+  | case3 => intro _ x t k e; simp only [scalarizeArrIn] at e; unfold seqCall at e; split at e <;> (try split at e) <;> cases e
+  | case4 => intro _ x t k e; simp only [scalarizeArrIn] at e; unfold seqCall at e; split at e <;> (try split at e) <;> cases e
+  | case5 => intro _ x t k e; simp [scalarizeArrIn] at e
+  | case6 => intro _ x t k e; simp [scalarizeArrIn] at e
+  | case7 => intro _ x t k e; simp [scalarizeArrIn] at e
+  | case8 => intro _ x t k e; simp [scalarizeArrIn] at e
+  | case9 => intro h; simp_all
 
 /-- **The pass on an accepted input.** An input accepted by `exitArrB Ts` is related by
     `ExitArrRel` at the names of `Ts` to its scalarisation `scalarizeArrIn c`. -/
@@ -597,18 +812,39 @@ theorem exitArrB_sound (Ts : List String) :
       simp only [scalarizeArrIn, and_self, if_true]
       exact .store hm (srcName_of_srcNameB hx) (srcName_of_srcNameB harr) harrT
         (srcName_of_srcNameB hi)
-  | case3 a b iha ihb =>
+  | case3 c dr k n c' b ih =>
+      intro h
+      simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true', List.contains_eq_mem,
+        decide_eq_false_iff_not, List.all_eq_true] at h
+      obtain ⟨⟨⟨⟨⟨⟨⟨⟨hc, hc'⟩, hm⟩, hn⟩, hnT⟩, hcT⟩, hkT⟩, hcall⟩, hb⟩ := h
+      subst hc hc'
+      split at hcall
+      · rename_i f x y hxy
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hcall
+        obtain ⟨⟨hf, hx⟩, hy⟩ := hcall
+        obtain ⟨se, hse⟩ := wordOpSExpr_of_mem hf (.SVar x) (.SVar y)
+        have hac : arrCallOf exitCallName exitCallName k = some se := by
+          simp [arrCallOf, hxy, hf, hse]
+        simp only [scalarizeArrIn]
+        rw [scalarizeArrIn_letZero_marshal _ _ hm,
+          seqCall_seq (a := .RScalarSetExpr n (.SLimb exitCallName 0)) (fun _ _ _ e => by cases e)]
+        simp only [seqCall, hac]
+        exact .call hxy hf hse hm (srcName_of_srcNameB hn) hnT (srcName_of_srcNameB hx)
+          (srcName_of_srcNameB hy) hcT (fun z hz hzk => hkT z hzk hz) (ih hb)
+      · cases hcall
+  | case4 a b _ iha ihb =>
       intro h
       simp only [Bool.and_eq_true] at h
       simp only [scalarizeArrIn]
+      rw [seqCall_seq (scalarizeArrIn_ne_letZero Ts a h.1)]
       exact .seq (iha h.1) (ihb h.2)
-  | case4 x b ih =>
+  | case5 x b ih =>
       intro h
       simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
         decide_eq_false_iff_not] at h
       simp only [scalarizeArrIn]
       exact .letU64Zero (srcName_of_srcNameB h.1.1) h.1.2 (ih h.2)
-  | case5 x e =>
+  | case6 x e =>
       intro h
       simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
         decide_eq_false_iff_not] at h
@@ -616,14 +852,14 @@ theorem exitArrB_sound (Ts : List String) :
       simp only [scalarizeArrIn]
       exact .scalarSetExpr (srcName_of_srcNameB hx) hxT (ltCleanSrcB_sound e he).1
         (ltCleanSrcB_sound e he).2 hag
-  | case6 x n =>
+  | case7 x n =>
       intro h
       simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
         decide_eq_false_iff_not, decide_eq_true_eq] at h
       simp only [scalarizeArrIn]
       exact .scalarSet (srcName_of_srcNameB h.1.1) h.1.2 h.2
-  | case7 => intro _; exact .skip
-  | case8 => intro h; simp_all
+  | case8 => intro _; exact .skip
+  | case9 => intro h; simp_all
 
 /-! ## 6. Runtime-count loops -/
 
@@ -653,7 +889,9 @@ theorem ExitArrRel.loopFreeB_right {T : String → Prop} {c c' : LowCT} (h : Exi
 
 theorem ExitArrRel.loopFreeB_left {T : String → Prop} {c c' : LowCT} (h : ExitArrRel T c c') :
     loopFreeB c = true := by
-  induction h <;> simp_all [loopFreeB]
+  induction h with
+  | call _ _ _ hm _ _ _ _ _ _ _ ih => simp [loopFreeB, loopFreeB_of_marshalOk _ hm, ih]
+  | _ => simp_all [loopFreeB]
 
 /-- A loop-free scalarisation of the relation with loops is one of the loop-free relation. -/
 theorem ExitArrRelL.toBase {T : String → Prop} {c c' : LowCT} (h : ExitArrRelL T c c')
@@ -867,6 +1105,18 @@ def exitArrBL (Ts : List String) : LowCT → Bool
       srcNameB x && !Ts.contains x && loopBoundB bd && exitArrB Ts body
   | c => exitArrB Ts c
 
+/-- The pass on an input accepted by `exitArrBL Ts` returns no tower binder. -/
+theorem scalarizeArrIn_ne_letZeroL (Ts : List String) :
+    ∀ c : LowCT, exitArrBL Ts c = true → ∀ x t k, scalarizeArrIn c ≠ .RLetZero x t k := by
+  intro c h x t k e
+  cases c with
+  | RSeq a b =>
+      simp only [scalarizeArrIn] at e; unfold seqCall at e
+      split at e <;> (try split at e) <;> cases e
+  | RLetU64Zero y b => simp [scalarizeArrIn] at e
+  | RForRuntime y bd b => simp [scalarizeArrIn] at e
+  | _ => exact scalarizeArrIn_ne_letZero Ts _ h x t k e
+
 /-- **The pass on an accepted input with loops.** An input accepted by `exitArrBL Ts` is
     related by `ExitArrRelL` at the names of `Ts` to its scalarisation. -/
 theorem exitArrBL_sound (Ts : List String) :
@@ -879,6 +1129,7 @@ theorem exitArrBL_sound (Ts : List String) :
       rcases h with h | ⟨ha, hb⟩
       · exact .base (exitArrB_sound Ts _ h)
       · simp only [scalarizeArrIn]
+        rw [seqCall_seq (scalarizeArrIn_ne_letZeroL Ts a ha)]
         exact .seq (iha ha) (ihb hb)
   | RLetU64Zero x b ih =>
       intro h
