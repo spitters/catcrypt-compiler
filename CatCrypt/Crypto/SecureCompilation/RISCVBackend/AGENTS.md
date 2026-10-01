@@ -174,6 +174,10 @@ ladder step in a 576-byte state block and makes the step a function of eighteen 
 (`fnSpec_ladder`). `../Ascent/Demos/RiscvX25519LadderBytesProof.lean` puts the functions in
 one program of 3098 instructions and states it at its encoded bytes
 (`x25519LadderBytes_correct`; `x25519Ladder_init` from the RFC 7748 initial state).
+`../Ascent/Demos/RiscvX25519LadderObject.lean` wraps those bytes into an ELF64 object with
+`RiscvElfObject.buildElfObject` (`x25519LadderObject_correct` states it over the `.text`),
+`lake exe riscv-x25519-emit` writes it, and `bench/riscv_x25519/run.sh` links it into a C
+driver and checks it against RFC 7748 under qemu-riscv64.
 
 ## What is not proved
 

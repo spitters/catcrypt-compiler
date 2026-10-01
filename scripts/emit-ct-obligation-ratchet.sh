@@ -11,8 +11,9 @@
 # forces an emitter to instantiate them, so a module can write a kernel out with
 # no constant-time result at all, and nothing goes red.
 #
-# This guard counts the modules that WRITE an artifact (`IO.FS.writeFile`) and
-# carry no constant-time result and no public-data declaration. It is a ratchet:
+# This guard counts the modules that WRITE an artifact (`IO.FS.writeFile` for text,
+# `IO.FS.writeBinFile` for object files) and carry no constant-time result and no
+# public-data declaration. It is a ratchet:
 # the count may fall, never rise. A new emitter therefore has to do one of two
 # things, the same choice the comparison dialect's `publicData` flag forces on a
 # comparison op (`VIR/FieldEcCmpOps.lean`):
@@ -45,6 +46,9 @@ BASELINE="scripts/ct-obligation-baseline.txt"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The calls that write an artifact: text and binary.
+WRITER='IO\.FS\.write(File|BinFile)'
+
 # Markers that a module discharges the obligation for what it emits.
 CT_MARKER='_constant_time|blockLeak|allDirect|lcmdDirect|ctSafe|publicData|leakTrace'
 
@@ -58,7 +62,7 @@ fi
 # Artifact writers with neither a constant-time result nor a declaration.
 : > "$tmp/missing"
 git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | while IFS= read -r f; do
-  grep -qE 'IO\.FS\.writeFile' "$f" || continue
+  grep -qE "$WRITER" "$f" || continue
   grep -qE "$CT_MARKER" "$f" && continue
   grep -qxF "$f" "$tmp/public" && continue
   echo "$f"
@@ -76,7 +80,7 @@ fi
 if [ -s "$tmp/public" ]; then
   while IFS= read -r p; do
     [ -f "$p" ] || { echo "  stale declaration (no such file): $p"; continue; }
-    grep -qE 'IO\.FS\.writeFile' "$p" || echo "  stale declaration (writes no artifact): $p"
+    grep -qE "$WRITER" "$p" || echo "  stale declaration (writes no artifact): $p"
   done < "$tmp/public"
 fi
 

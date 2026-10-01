@@ -26,6 +26,7 @@ CatCrypt/Crypto/Optimizer/ModReduceSelect.lean
 CatCrypt/Crypto/Pairing/Bls12_377Emit.lean
 CatCrypt/Crypto/Pairing/Bn254Fp2SubEmit.lean
 CatCrypt/Crypto/Pairing/EcPairingEmit.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519LadderEmit.lean
 CatCrypt/Crypto/SecureCompilation/Bn254TowerFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefRolledLoop.lean
 CatCrypt/Crypto/SecureCompilation/Dialects/LeafCall128Emit.lean
@@ -59,6 +60,9 @@ CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockResidentComEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockResidentEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/GgmDblLoopEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/GgmNodeLoopEmit.lean
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/Export.lean
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/ExportPhys.lean
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/ExportPhysAbi.lean
 CatCrypt/Crypto/SecureCompilation/VIR/JasminUprogExport.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakAvx2Emit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakLinearMain.lean
@@ -80,6 +84,7 @@ CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleLeafEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3NttLayerInlineEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3OrchLoopsEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3PaddingFreeSpongeEmit.lean
+CatCrypt/Crypto/SecureCompilation/VIR/Plonky3ProveDriverBytes.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3QuerySampleEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3SerializeEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Plonky3WholeProverEmit.lean
@@ -90,6 +95,7 @@ CatCrypt/Crypto/SecureCompilation/VIR/X25519EmitMLIR.lean
 CatCrypt/Crypto/SecureCompilation/VIR/X25519EmitVeir.lean
 CatCrypt/Crypto/SecureCompilation/VIR/ZkSumCheckWholeProverEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Aes128CtrVsimdEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/AesEcbBlockObjectEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Bignum4AddArrAbiDemo.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Blake2bGThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381FinalExp.lean
@@ -101,11 +107,14 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381Pairing.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381PairingMap.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/ChaChaQRThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Chacha4WayQrObjectEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/Chacha4WayTransposeObjectEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/CompileComToElf.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve4DotProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve4MontMulProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve6MontMulProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Dot4FrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/EcFeMulReduceComplete.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/Ed25519BytesEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519MulOptimized.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519MulProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/FheMontMulEmit.lean
@@ -135,6 +144,7 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/MpnDivRem1FrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnKara4SchedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnKara8SchedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLogicalFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopBytesEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontEmitOpt.lean
@@ -145,6 +155,7 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul2FixedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul4FixedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul4SchedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMulBasecaseFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnRuntimeBytesEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnShiftFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnSimdExtractEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Mul48ProvenEmit.lean

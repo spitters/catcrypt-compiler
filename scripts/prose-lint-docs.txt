@@ -23,6 +23,7 @@ bench/SCOREBOARD.md
 bench/p384_ecdsa_rust/README.md
 bench/p384_ecdsa_rust/PERF.md
 bench/p384_ecdsa_rust/gen/PROVENANCE.md
+bench/riscv_x25519/README.md
 bench/s2n_import/README.md
 CatCrypt/Crypto/Jasmin/AGENTS.md
 CatCrypt/Crypto/Hax/AGENTS.md

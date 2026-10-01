@@ -2893,8 +2893,10 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvFeMulFnProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvMulBytesProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderBytesProof,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderFnProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderLoopProof,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderObject,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderStepProof,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384GuardSat,
@@ -3026,6 +3028,11 @@ lean_exe «keccak-jinc-emit» where
   -- Writes keccak_f1600 imported from the formosa-keccak Jasmin source into
   -- bench/keccak_compare/gen_com/; checked by `make keccak-kat-jinc` there.
   root := `CatCrypt.Crypto.Jasmin.KeccakJincEmit
+
+lean_exe «riscv-x25519-emit» where
+  -- Writes the RV64 X25519 ladder object into bench/riscv_x25519/gen/; its values are
+  -- checked by bench/riscv_x25519/run.sh under qemu.
+  root := `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvX25519LadderEmit
 
 lean_exe «nasm-parse-kat» where
   -- NASM parser round-trip and coverage check on the CryptOpt carry_mul, run rather than elaborated.
