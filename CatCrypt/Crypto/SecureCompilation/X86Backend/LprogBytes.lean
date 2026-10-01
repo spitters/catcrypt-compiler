@@ -1025,9 +1025,14 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
         -- dropping it silently corrupts the next limb). The MULX high-word binding
         -- (`MULXHI`) stays nil — a fused body has none (`fuseMulHiLprog` consumed
         -- the pair), and the flag/high word is the data op's side effect.
+        -- A carry-out destination in a frame slot or a cell is the printer's
+        -- `movq $0, slot; setc slot`, which this arm does not build: it is left as the
+        -- empty byte list rather than written to `%rax`.
         if isCarryOutBinding opn then
           match dsts with
-          | [.reg dn] => encSetccMovzx (carryOutSetccOp (stripWidthTag opn)) (gpNumU dn)
+          | [.reg dn] =>
+              if isGpName dn then encSetccMovzx (carryOutSetccOp (stripWidthTag opn)) (gpNumU dn)
+              else []
           | _ => []
         else []
       else
@@ -2396,25 +2401,27 @@ theorem encodeLopn_setc (frame spillW : Nat) (dn : String) :
     Bool.false_eq_true, if_false, if_true]
 
 /-- `ADCXHI` (the CF carry-out binding) materialises through `setc`+`movzbq`
-    (`0x92`), for ANY source list — the sources are the SSA operands of the
-    matching data add, not x86 operands. -/
-theorem encodeLopn_adcxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand) :
+    (`0x92`) into a general-purpose register, for ANY source list — the sources are
+    the SSA operands of the matching data add, not x86 operands. -/
+theorem encodeLopn_adcxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand)
+    (hd : isGpName dn = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "ADCXHI:64" srcs)
       = encSetccMovzx 0x92 (gpNumU dn) := by
   simp only [encodeLopn,
     show isCarryOutBinding "ADCXHI:64" = true from by decide +kernel,
     show carryOutSetccOp (stripWidthTag "ADCXHI:64") = 0x92 from by decide +kernel,
-    Bool.true_or, reduceIte]
+    Bool.true_or, reduceIte, hd]
 
 /-- `ADOXHI` (the OF carry-out binding) materialises through `seto`+`movzbq`
-    (`0x90`). -/
-theorem encodeLopn_adoxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand) :
+    (`0x90`) into a general-purpose register. -/
+theorem encodeLopn_adoxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand)
+    (hd : isGpName dn = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "ADOXHI:64" srcs)
       = encSetccMovzx 0x90 (gpNumU dn) := by
   simp only [encodeLopn,
     show isCarryOutBinding "ADOXHI:64" = true from by decide +kernel,
     show carryOutSetccOp (stripWidthTag "ADOXHI:64") = 0x90 from by decide +kernel,
-    Bool.true_or, reduceIte]
+    Bool.true_or, reduceIte, hd]
 
 /-- The `MULXHI` high-word binding encodes to NO bytes (the fused body's
     two-output `mulx` already wrote the high word), with the carry-out

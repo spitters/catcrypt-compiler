@@ -208,10 +208,10 @@ theorem encodeLopn_adcx3 (F W : Nat) (D A S C : String) (qB : Nat) (hD : gpOk D 
       fA.notMem, fS.notSlot, fS.notMem, fC.notSlot, fC.notMem, hAD, LprogBytes.rexW, hst, hpx]
 
 /-- `ADCXHI:64 O, A, S, C`: the carry flag materialised into `O` by `setc` and `movzbq`. -/
-theorem encodeLopn_adcxhi (F W : Nat) (O A S C : String) (qB : Nat) :
+theorem encodeLopn_adcxhi3 (F W : Nat) (O A S C : String) (qB : Nat) (hO : gpOk O = true) :
     encodeLopn F W (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C]) qB
-      = encSetccMovzx 0x92 (gpNumU O) := by
-  simp (config := { decide := true }) [encodeLopn, carryOutSetccOp]
+      = encSetccMovzx 0x92 (gpNumU O) :=
+  LprogBytes.encodeLopn_adcxhi F W O [.reg A, .reg S, .reg C] (gpFacts hO).isGp
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder hiding regName
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen
@@ -257,11 +257,11 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
 
-/-- The address machine steps `ADCX:64 D, A, S, C` by writing `addCarryWord` of the 64-bit
-    values of `A`, `S` and the one-bit value of `C` to `D`. -/
+/-- The address machine steps `ADCX:64 D, A, S, C` on registers by writing `addCarryWord` of
+    the 64-bit values of `A`, `S` and the one-bit value of `C` to `D`. -/
 theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) (s : LstateA)
-    (zf : Bool) {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va)
-    (hS : s.reg.getW S 64 = some vb) :
+    (zf : Bool) (hfD : frame D = none) (hfA : frame A = none) (hfS : frame S = none)
+    {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C], .reg none) s zf
       = (s.reg.getW C 1).map fun vc =>
           ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc },
@@ -270,13 +270,13 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
-      aluFlagOp?, carryArgs?, wideArgs?, cellA?]
+      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, hfD, hfA, hfS]
 
-/-- The address machine steps `ADCXHI:64 O, A, S, C` by writing the one-bit `carryOutBit` of
-    the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
+/-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
+    `carryOutBit` of the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
 theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String) (s : LstateA)
-    (zf : Bool) {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va)
-    (hS : s.reg.getW S 64 = some vb) :
+    (zf : Bool) (hfO : frame O = none) (hfA : frame A = none) (hfS : frame S = none)
+    {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) s zf
       = (s.reg.getW C 1).map fun vc =>
           ({ s with reg := (s.reg.setReg O (VIR.JasminDialect.carryOutBit va vb vc)).nextPc },
@@ -285,7 +285,7 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
-      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?]
+      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, hfO, hfA, hfS]
 
 /-! ## 5. The machine steps of the carry chain -/
 
@@ -385,7 +385,9 @@ theorem CArm.bytes (P : Params) (c : CArm) (h : c.ok = true) :
       · exact pieceDec_bt _ (gpNumU_lt_16 C)
       · exact pieceDec_adcx _ _ (gpNumU_lt_16 D) (gpNumU_lt_16 S)
   | adcxhi O A S C =>
-    refine ⟨by simp [CArm.instr, CArm.pieces, encodeLopn_adcxhi], ?_⟩
+    simp only [CArm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨⟨⟨⟨hO, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+    refine ⟨by simp [CArm.instr, CArm.pieces, encodeLopn_adcxhi3 _ _ _ _ _ _ _ hO], ?_⟩
     intro q hq
     simp only [CArm.pieces, List.mem_singleton] at hq
     subst hq
@@ -420,11 +422,12 @@ theorem ACorrW.write {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
   sp := by rw [hregs, if_neg (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
   mem := hmem
 
-/-- The carry flag of the machine holds the carry-out of `A + S + C` on the values of the
-    address state. -/
-def CarryAt (sa : AState) (s : LstateA) (A S C : String) : Prop :=
-  ∃ co, sa.flags.cf = some co ∧ ∀ va vb vc, s.reg.getW A 64 = some va →
-    s.reg.getW S 64 = some vb → s.reg.getW C 1 = some vc → (waddcarry va vb (vc.getLsbD 0)).1 = co
+/-- The carry flag of the machine holds the carry-out of `A + S + C` on the words of the
+    address state at the frame `frame`. -/
+def CarryAt (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA)
+    (A S C : String) : Prop :=
+  ∃ co, sa.flags.cf = some co ∧ ∀ va vb vc, wordA frame s A = some va →
+    wordA frame s S = some vb → s.reg.getW C 1 = some vc → (waddcarry va vb (vc.getLsbD 0)).1 = co
 
 /-- A 64-bit general-purpose name under `ACorrW` reads its machine register. -/
 theorem ACorrW.wide {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
@@ -459,14 +462,15 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
     (hst : fstepA (frameP P rsp) ((CArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa (CArm.adcx D A S C).js) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S → D ≠ C →
-          CarryAt (aMachine.runBlock sa (CArm.adcx D A S C).js) s' A S C) := by
+          CarryAt (frameP P rsp) (aMachine.runBlock sa (CArm.adcx D A S C).js) s' A S C) := by
   simp only [CArm.ok, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at h
   obtain ⟨⟨⟨⟨⟨⟨hD, hA⟩, hS⟩, hC⟩, -⟩, -⟩, hal⟩ := h
   set va := sa.regs (phys A) with hva
   set vb := sa.regs (phys S) with hvb
   have hgA := hc.wide hA hwA
   have hgS := hc.wide hS hwS
-  rw [CArm.instr, fstepA_adcx3 _ D A S C s zf hgA hgS] at hst
+  rw [CArm.instr, fstepA_adcx3 _ D A S C s zf (frameP_gp hD) (frameP_gp hA) (frameP_gp hS)
+    hgA hgS] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -516,7 +520,8 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
   · left
     exact getW_setReg_nextPcN s.reg D D _ |>.trans (if_pos rfl)
   · rw [c3, r2, hcf2, h1D, h1S]; rfl
-  · have eA : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW A 64
+  · simp only [wordA, frameP_gp hA, frameP_gp hS] at ha hb
+    have eA : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW A 64
         = some va := by rw [getW_setReg_nextPcN, if_neg (Ne.symm hDA)]; exact hgA
     have eS : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW S 64
         = some vb := by rw [getW_setReg_nextPcN, if_neg (Ne.symm hDS)]; exact hgS
@@ -536,7 +541,7 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
 theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     (h : (CArm.adcxhi O A S C).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
     (hc : ACorrW rsp sa s) (hwA : (s.reg.lvm A).1 ≠ 1) (hwS : (s.reg.lvm S).1 ≠ 1)
-    (hcy : CarryAt sa s A S C) (s' : LstateA) (zf' : Bool)
+    (hcy : CarryAt (frameP P rsp) sa s A S C) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((CArm.adcxhi O A S C).instr, .reg none) s zf
       = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa (CArm.adcxhi O A S C).js) s' ∧ zf' = zf
@@ -545,7 +550,8 @@ theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
   obtain ⟨⟨⟨⟨⟨hO, hA⟩, hS⟩, hC⟩, -⟩, -⟩ := h
   have hgA := hc.wide hA hwA
   have hgS := hc.wide hS hwS
-  rw [CArm.instr, fstepA_adcxhi _ O A S C s zf hgA hgS] at hst
+  rw [CArm.instr, fstepA_adcxhi _ O A S C s zf (frameP_gp hO) (frameP_gp hA) (frameP_gp hS)
+    hgA hgS] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -553,7 +559,8 @@ theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
   obtain ⟨co, hcf, hco⟩ := hcy
-  have hco' := hco _ _ _ hgA hgS hgc
+  have hco' := hco _ _ _ (by simp only [wordA, frameP_gp hA]; exact hgA)
+    (by simp only [wordA, frameP_gp hS]; exact hgS) hgc
   obtain ⟨r1, m1, f1⟩ := evalInstrA_setc sa (phys O)
   have hrun : aMachine.runBlock sa (CArm.adcxhi O A S C).js = evalInstrA sa (.setc (phys O)) := rfl
   rw [hrun]
@@ -886,9 +893,10 @@ def SafeW (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
 
 /-- At position `k` a carry-out binding finds the carry-out of its add in the machine carry
     flag. -/
-def CarryReq (body : Lcmd) (k : Nat) (sa : AState) (s : LstateA) : Prop :=
+def CarryReq (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) (sa : AState)
+    (s : LstateA) : Prop :=
   ∀ ii O A S C, body[k]? = some ⟨ii, .Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C]⟩ →
-    CarryAt sa s A S C
+    CarryAt frame sa s A S C
 
 /-- The facts of a body in the class `printedAddrWB` that the simulation reads. -/
 structure BodyFactsW (body : Lcmd) (shs : List DShape) : Prop where
@@ -924,7 +932,8 @@ theorem haltedA_eq_falseW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW bod
 theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) {k : Nat}
     (hk : k + 1 < body.length) (h : ∀ ii d a s c, body[k]? ≠
       some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩)
-    (sa : AState) (s : LstateA) : CarryReq body (k + 1) sa s := by
+    (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA) :
+    CarryReq frame body (k + 1) sa s := by
   intro ii O A S C hb
   have hc := hF.carry (k + 1) hk
   unfold carryPrevB at hc
@@ -940,8 +949,8 @@ theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
 
 /-- A carry-out binding is required at a label. -/
 theorem carryReq_label {body : Lcmd} {k : Nat} {ii : Nat} {kd : LabelKind} {l : LLabel}
-    (hb : body[k]? = some ⟨ii, .Llabel kd l⟩) (sa : AState) (s : LstateA) :
-    CarryReq body k sa s := by
+    (hb : body[k]? = some ⟨ii, .Llabel kd l⟩) (frame : String → Option (BitVec 64))
+    (sa : AState) (s : LstateA) : CarryReq frame body k sa s := by
   intro ii' O A S C h
   rw [hb] at h
   simp at h
@@ -993,7 +1002,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
     ∀ (fuel k : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
       s.reg.lpc = k → (hk : k < body.length) → ACorrW rsp sa s →
       (isCondB (body[k]'hk).li_i = true → sa.flags.zf.getD false = zf) →
-      CarryReq body k sa s →
+      CarryReq (frameP (Params.ofBody body) rsp) body k sa s →
       runA (frameP (Params.ofBody body) rsp) body fuel s zf = some t →
       RunSafe (frameP (Params.ofBody body) rsp) body
         (SafeW rsp body) fuel s zf →
@@ -1055,8 +1064,8 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
     -- an instruction other than an add leaves no carry-out binding next
     have hnoadd : (∀ ii d a s c, body[k]? ≠
         some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩) →
-        ∀ sa s, CarryReq body (k + 1) sa s :=
-      fun h sa s => no_carryReq hF hkn h sa s
+        ∀ sa s, CarryReq frame body (k + 1) sa s :=
+      fun h sa s => no_carryReq hF hkn h frame sa s
     -- a conditional branch next follows a compare arm
     have hcondNext : isCondB (body[k + 1]'hkn).li_i = true →
         ((classifyA (body[k]'hk).li_i).any cmpArmB) = true := by
@@ -1109,7 +1118,8 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             have := hcondNext hcnd
             rw [classifyA_three_not_cmp] at this
             cases this
-          have hcy' : CarryReq body (k + 1) (aMachine.runBlock sa (CArm.adcx D A S C).js) s' := by
+          have hcy' : CarryReq frame body (k + 1) (aMachine.runBlock sa (CArm.adcx D A S C).js)
+              s' := by
             intro ii' O A' S' C' hb
             have hc2 := hF.carry (k + 1) hkn
             unfold carryPrevB at hc2
@@ -1295,7 +1305,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             revert hlabp hcnd
             rcases body[p] with ⟨ii', li'⟩
             cases li' <;> simp [isCondB, isLabelB]
-          have hcy' : CarryReq body p sa (s.setLpc p) := by
+          have hcy' : CarryReq frame body p sa (s.setLpc p) := by
             intro ii' O A' S' C' hb
             rw [List.getElem?_eq_getElem hpl] at hb
             rw [Option.some.inj hb] at hlabp
@@ -1452,7 +1462,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
     rw [List.getElem?_eq_getElem hF.pos]
     rcases body[0]'hF.pos with ⟨ii, li⟩
     cases li <;> simp [isCondB]
-  have hcy0 : CarryReq body 0 sa1 s := by
+  have hcy0 : CarryReq (frameP P rsp) body 0 sa1 s := by
     intro ii O A S C hb
     have hc := hF.carry 0 hF.pos
     unfold carryPrevB at hc

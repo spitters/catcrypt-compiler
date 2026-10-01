@@ -489,13 +489,13 @@ theorem jinstr_movzx8_self (alloc : GpAlloc) (d : String) :
 
 /-- **The `ADOXHI:64` byte agreement.** The gathered `setcc .o` + `movzx` block
     encodes to exactly the bytes `encodeLopn` gives for the overflow carry-out
-    binding, under the resolver agreement `hr` between the `JInstr` register name
-    and the Lprog `gpNumU` number. -/
+    binding into a general-purpose register, under the resolver agreement `hr`
+    between the `JInstr` register name and the Lprog `gpNumU` number. -/
 theorem adoxhi_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (dn : String)
-    (s0 s1 cin : LOperand) (hr : gpNum (regOf alloc dn) = gpNumU dn) :
+    (s0 s1 cin : LOperand) (hd : isGpName dn = true) (hr : gpNum (regOf alloc dn) = gpNumU dn) :
     (lowerLinstrExtCov (.Lopn [.reg dn] "ADOXHI:64" [s0, s1, cin])).map (encodeJBlock alloc)
       = some (encodeLopn frame spillW (.Lopn [.reg dn] "ADOXHI:64" [s0, s1, cin])) := by
-  rw [lowerLinstrExtCov_adoxhi, Option.map_some, encodeLopn_adoxhi,
+  rw [lowerLinstrExtCov_adoxhi, Option.map_some, encodeLopn_adoxhi _ _ _ _ hd,
     encSetccMovzx_seto_agree, ← hr]
   simp [encodeJBlock, jinstr_setcc_o, jinstr_movzx8_self]
 

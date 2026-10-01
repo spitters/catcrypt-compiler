@@ -595,7 +595,35 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
       | none =>
         simp only
         cases hcl : cellA? w with
-        | none => exact regStepA_congr _ h zf
+        | none =>
+          simp only
+          cases hsc : slotCarry? frame w with
+          | none => exact regStepA_congr _ h zf
+          | some q =>
+            obtain ⟨lo, d, a, s', c'⟩ := q
+            unfold slotCarry? at hsc
+            split at hsc
+            · split_ifs at hsc with h1
+              obtain ⟨-, rfl, rfl, rfl, rfl⟩ := hsc
+              have hwa : wordA frame s a = wordA frame t a := by
+                unfold wordA
+                split
+                · rw [hM]
+                · exact getW_congr hN (reg_reads (by simp)) 64
+              have hws : wordA frame s s' = wordA frame t s' := by
+                unfold wordA
+                split
+                · rw [hM]
+                · exact getW_congr hN (reg_reads (by simp)) 64
+              simp only
+              rw [hwa, hws, getW_congr hN (reg_reads (by simp)) 1, hM]
+              repeat' split
+              all_goals first
+                | exact ORel.none
+                | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, rfl, h.2.2.1,
+                    h.2.2.2, rfl⟩
+                | exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
+            · cases hsc
         | some op =>
           unfold cellA? at hcl
           split at hcl

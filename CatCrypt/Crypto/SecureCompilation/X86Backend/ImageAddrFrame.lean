@@ -68,6 +68,16 @@ def frameIn (body : Lcmd) (frame : String → Option (BitVec 64)) (q : String) :
 theorem instrNames_normA (x : LinstrR) : instrNames (normA x) = instrNames x := by
   cases x <;> rfl
 
+/-- The carry-chain recognizer reads the frame only at the names of the instruction. -/
+theorem slotCarry?_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
+    (h : ∀ q ∈ instrNames x, frame q = frame' q) : slotCarry? frame x = slotCarry? frame' x := by
+  unfold slotCarry?
+  split
+  · rw [h _ (by simp [instrNames, JasminLsemExportRewrites.opNames]),
+      h _ (by simp [instrNames, JasminLsemExportRewrites.opNames]),
+      h _ (by simp [instrNames, JasminLsemExportRewrites.opNames])]
+  · rfl
+
 /-- The address machine reads the frame only at the names of the instruction it steps. -/
 theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
     (h : ∀ q ∈ instrNames x, frame q = frame' q) (tag : MemTag) (sa : LstateA) (zf : Bool) :
@@ -93,7 +103,20 @@ theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR
                 rw [slotCmp?_eq hk]; simp [instrNames, JasminLsemExportRewrites.opNames]
               simp only
               rw [h q hq]
-          | none => rfl
+          | none =>
+              simp only
+              rw [← slotCarry?_congr h]
+              rcases hsc : slotCarry? frame x with _ | ⟨lo, d, a, s, c⟩
+              · rfl
+              · unfold slotCarry? at hsc
+                split at hsc
+                · split_ifs at hsc
+                  obtain ⟨-, rfl, rfl, rfl, rfl⟩ := hsc
+                  have hd := h d (by simp [instrNames, JasminLsemExportRewrites.opNames])
+                  have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
+                  have hs := h s (by simp [instrNames, JasminLsemExportRewrites.opNames])
+                  simp only [wordA, hd, ha, hs]
+                · cases hsc
   | _ => rfl
 
 theorem stepA_congr {frame frame' : String → Option (BitVec 64)} {body : Lcmd}
@@ -397,7 +420,12 @@ theorem regOkB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (x : Lins
     regOkB frame x = regOkB frame' x := by
   have hn : ∀ q, (frame q).isNone = (frame' q).isNone := fun q => by
     have := h q; cases e : frame q <;> cases e' : frame' q <;> simp_all
-  simp only [regOkB, hn]
+  have hsc : slotCarry? frame x = slotCarry? frame' x := by
+    unfold slotCarry?
+    split
+    · simp only [h]
+    · rfl
+  simp only [regOkB, hn, hsc]
 
 theorem regGateB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (x : LinstrR) :
     regGateB frame x = regGateB frame' x := by

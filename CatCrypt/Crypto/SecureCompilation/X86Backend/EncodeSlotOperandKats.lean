@@ -37,8 +37,8 @@ decode to the printed instructions.
 ## Main results
 
 * `#kat` pins of the slot-operand encodings of `ADC`/`ADD`/`MOV`, `MULX` and `ADCX`, of the
-  refused slot `MULX` destination, the refused three-source `ADOX`, and of the `shapeOf`
-  decode of both spilled `ADCX` forms.
+  refused slot `MULX` destination, the refused three-source `ADOX`, the refused carry-out
+  `ADCXHI` into a slot, and of the `shapeOf` decode of both spilled `ADCX` forms.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
@@ -116,6 +116,13 @@ def adcxSlotS : LinstrR := .Lopn [.reg "k.0"] "ADCX:64" [.reg "R10", .reg "k.1",
 -- the printer refuses the same instruction
 #kat (LprogAsmPrinter.renderLopn 0 0 false [.reg "RAX"] "ADOX:64"
     [.reg "RAX", .reg "RBX", .reg "RCX"]).all (fun l => "\t# UNHANDLED".isPrefixOf l)
+
+-- a carry-out into a frame slot has no encoding (the printer's `setc` into memory)
+#kat enc (.Lopn [.reg "k.0"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"]) == []
+
+-- a carry-out into a register is `setc` and `movzbq`
+#kat enc (.Lopn [.reg "RBX"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"])
+  == encSetccMovzx 0x92 3
 
 -- `ADCX` at 32-bit width with a slot source has no encoding
 #kat enc (.Lopn [.reg "k.0"] "ADCX" [.reg "k.1", .reg "R10", .reg "R11"]) == []
