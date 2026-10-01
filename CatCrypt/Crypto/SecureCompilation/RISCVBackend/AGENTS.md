@@ -156,13 +156,29 @@ block unchanged. `../Ascent/CorresRiscvMem.lean` states `CorresRM` over `runX`, 
 `ld`/`sd` leaves and `corresRM_lift` for register blocks.
 `../Ascent/Demos/RiscvFeMulFnProof.lean` wraps `feMulPhys` into a buffer function
 (`z` at `a0`, `x` at `a1`, `y` at `a2`) that saves and restores `s0..s11` in a 112-byte
-frame below `sp` (`feMulFnBytes_correct`, 1073 instructions); it stops before the return,
-since the model has no control flow.
-The machine model has no alignment check; `feMulFnBytes_correct` requires `sp` 16-byte and
-the buffer pointers 8-byte aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
+frame below `sp` (`feMulFnBytes_correct`, 1073 instructions); it stops before the return.
+The machine model has no alignment check; the externally callable entry conditions
+(`feMulFnBytes_correct`, `LadderPre`) require `sp` 16-byte and the buffer pointers 8-byte
+aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
+
+Control flow is `RiscvPc64.lean`: a program of `PInst64` (a straight-line `XInst64`,
+`bne`, `jal`, `jalr`) loaded at a base address, run by `steps` from a program counter.
+`FnSpec` states a function by its entry condition and its effect, returning to `ra`;
+`fnSpec_leaf`, `steps_call_at` and `steps_loop_inv` are the rules for a leaf, a call and a
+loop with an invariant. `../Ascent/Demos/RiscvFeFnProof.lean` makes the field operations
+and the conditional swap leaf functions (`fnSpec_buf`, `fnSpec_cswap`).
+`../Ascent/Demos/RiscvX25519LadderFnProof.lean` keeps the seventeen field elements of the
+ladder step in a 576-byte state block and makes the step a function of eighteen calls
+(`fnSpec_step`). `../Ascent/Demos/RiscvX25519LadderLoopProof.lean` is the ladder: a loop of
+255 iterations over the scalar bits, each two swaps, a step and two swaps
+(`fnSpec_ladder`). `../Ascent/Demos/RiscvX25519LadderBytesProof.lean` puts the functions in
+one program of 3098 instructions and states it at its encoded bytes
+(`x25519LadderBytes_correct`; `x25519Ladder_init` from the RFC 7748 initial state).
 
 ## What is not proved
 
+- `RiscvPc64.step` fetches a word-aligned instruction and has no traps, compressed
+  instructions or interrupts; that it agrees with an RV64 processor is not proved.
 - `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with
   the Sail model over a whole block is not proved (the Sail refinements are per
   instruction, for the written value). The bytes of `RiscvBytes64.encodeMBlock64` are

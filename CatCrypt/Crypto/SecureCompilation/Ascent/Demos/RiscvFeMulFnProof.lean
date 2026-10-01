@@ -39,7 +39,8 @@ slots are read back with `read64_writeSlots_mem` and the buffers across the fram
 ## Scope
 
 The block ends at the frame close: the return (`jalr zero, 0(ra)`) is control flow, which
-the RV64 model does not have, so `ra` is neither used nor written. That the block meets
+`runX` does not have, so `ra` is neither used nor written here; `RiscvFeFnProof.fnCode`
+adds the return over the program-counter machine `RiscvPc64`. That the block meets
 the rest of the RISC-V psABI (16-byte `sp` alignment at entry, which the frame size
 preserves; argument registers beyond `a0..a2`, which it clobbers as the ABI allows) is
 read off the code, not stated as a theorem.

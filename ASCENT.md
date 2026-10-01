@@ -148,6 +148,7 @@ Loops and early exit:
 | [WhileFunSumJasmin](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean) | the same loop through the compiler to Jasmin | `sumLoop_jasminDenote` |
 | [EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, read as an exception program | `searchU_except_found` |
 | [MillerLoopKernelBench](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/MillerLoopKernelBench.lean) | a counted Miller loop over field leaves | `millerLoopProg_corres` |
+| [RiscvX25519LadderBytesProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519LadderBytesProof.lean) | the X25519 ladder as an RV64 program with a loop and calls, at its encoded bytes | `x25519LadderBytes_correct` |
 
 ## A worked path: from a `LowCT` kernel to its Jasmin program
 
