@@ -762,6 +762,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarryKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLoopTV
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
