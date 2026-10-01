@@ -2095,6 +2095,7 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldRefinement,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecSimTactic,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarryKats,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic,
@@ -2257,9 +2258,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedcCarryFold,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdd4FixedFrontEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.HgcdBY,
     Lake.Glob.one `CatCrypt.Crypto.Vale.LeafLeakage,
     Lake.Glob.one `CatCrypt.Crypto.Vale.MLKEM768,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.MpnInvert,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.MpnInvert,
     Lake.Glob.one `CatCrypt.Crypto.Vale.P256FieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.P256FieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.P384FieldMul,
