@@ -5,27 +5,30 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.ComLoop
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
 public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyDenote
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
 /-!
-# The loop front: `LowCT` to `ComLoop catCryptDialect`
+# The loop front: `LowCT` to `NFProg catCryptDialect`
 
 `translateDialectLoop` translates a runtime-trip loop `RForRuntime x (SVar n) body`,
-alone or followed by a continuation (`RSeq (RForRuntime …) c₂`), to a
-`ComLoop.forRt` node. A prefix of scalar sets (`RSeq (RScalarSet name k) c₂`) and
-zero-initialised bindings (`RLetU64Zero name body`) becomes a chain of
-`ComLoop.var` bindings of word constants. Every other `LowCT` term becomes a
-`ComLoop.block` through `translateDialectControl`, returning its last scalar set,
-or the default result name the enclosing binding or loop supplies (`blockRet`).
+alone or followed by a continuation (`RSeq (RForRuntime …) c₂`), to an
+`NFProg.forLoop` node carrying one value. A prefix of scalar sets
+(`RSeq (RScalarSet name k) c₂`) and zero-initialised bindings (`RLetU64Zero name body`)
+becomes a chain of `NFProg.var` bindings of word constants. Every other `LowCT` term
+becomes a straight-line program (`NFProg.ofCom`) through `translateDialectControl`,
+returning its last scalar set, or the default result name the enclosing binding or
+loop supplies (`blockRet`). The output lies in the fragment of `NFProg` with one
+result, no `ifThenElse` and no `whileLoop`, so its denotation does not depend on the
+fuel.
 
 The loop node reads its trip count from the scalar `n`, which must be bound at
 `.sword 64`. The loop-carried value is the scalar `loopAccName body` names, the
 last scalar the body sets, which must be bound before the loop (its value is the
 seed). The body runs over the context `accTy :: .sword 64 :: Γ`: the accumulator,
-the trip index `x`, and the whole outer context `Γ` as invariants (`allVars Γ`).
+the trip index `x`, and the whole outer context `Γ`.
 It is front-compiled by `frontLoopBodyCD`, which caps the output of
 `translateDialectControl` with `ret accName`. After the loop the accumulator name
 is bound to the loop result.
@@ -46,9 +49,8 @@ accumulator and `x`, is written before the body reads it
 
 ## Main definitions
 
-* `allVars` — every variable of a context, as an argument vector.
 * `loopAccName` — the loop-carried scalar of a loop body.
-* `runtimeLoopNode` — the `forRt` node of a runtime-trip loop.
+* `runtimeLoopNode` — the `forLoop` node of a runtime-trip loop.
 * `blockRet` — a straight-line program returning a named scalar.
 * `translateDialectLoopR`, `translateDialectLoop` — the loop front.
 * `semTripsInv` — the source-side fold of the loop body.
@@ -57,7 +59,6 @@ accumulator and `x`, is written before the body reads it
 
 ## Main results
 
-* `lookupArgs_allVars` — `allVars Γ` reads back the whole valuation.
 * `consistentS_bind` — binding a name to a value preserves `ConsistentS`.
 * `frontLoopBodyCD_denote` — a front-compiled loop body computes the accumulator the
   body's `semScalar` run leaves.
@@ -95,39 +96,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop (fron
 open CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyDenote (frontLoopBodyCD_inv)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 
-/-! ## 1. The whole context as invariants -/
-
-/-- Shift an argument vector of variables under one more binding. -/
-def shiftVars {d : Dialect.{0, 0}} {Γ : Ctxt d} {s : d.Ty} :
-    {tys : List d.Ty} → HVector (fun ty => Ctxt.Var Γ ty) tys →
-    HVector (fun ty => Ctxt.Var (s :: Γ) ty) tys
-  | [], .nil => .nil
-  | _ :: _, .cons v rest => .cons (.there v) (shiftVars rest)
-
-/-- Every variable of `Γ`, in order, as an argument vector. -/
-def allVars {d : Dialect.{0, 0}} : (Γ : Ctxt d) → HVector (fun ty => Ctxt.Var Γ ty) Γ
-  | [] => .nil
-  | _ :: Γ => .cons .here (shiftVars (allVars Γ))
-
-/-- A shifted argument vector reads the valuation below the new binding. -/
-theorem lookupArgs_shiftVars {d : Dialect.{0, 0}} [TyDenote d.Ty] {Γ : Ctxt d} {s : d.Ty}
-    (x : ⟦s⟧) (V : Ctxt.Valuation Γ) :
-    {tys : List d.Ty} → (hv : HVector (fun ty => Ctxt.Var Γ ty) tys) →
-    Expr.lookupArgs (shiftVars (s := s) hv) (V.extend x) = Expr.lookupArgs hv V
-  | [], .nil => rfl
-  | _ :: _, .cons v rest => by
-      show HVector.cons (v.lookup V) (Expr.lookupArgs (shiftVars (s := s) rest) (V.extend x)) = _
-      rw [lookupArgs_shiftVars x V rest]
-      rfl
-
-/-- `allVars Γ` reads back the whole valuation. -/
-theorem lookupArgs_allVars {d : Dialect.{0, 0}} [TyDenote d.Ty] :
-    {Γ : Ctxt d} → (V : Ctxt.Valuation Γ) → Expr.lookupArgs (allVars Γ) V = V
-  | [], .nil => rfl
-  | _ :: _, .cons x V =>
-      congrArg (HVector.cons x) ((lookupArgs_shiftVars x V (allVars _)).trans (lookupArgs_allVars V))
-
-/-! ## 2. The loop front -/
+/-! ## 1. The loop front -/
 
 /-- The loop-carried scalar of a loop body: the last scalar it sets. -/
 def loopAccName : LowCT → Option String
@@ -139,14 +108,14 @@ def loopAccName : LowCT → Option String
       | none => loopAccName c₁
   | _ => none
 
-/-- A `ComLoop catCryptDialect` program over `Γ` with its result type. -/
-abbrev LoopOut (Γ : Ctx) : Type := Σ t : CryptoTy, ComLoop catCryptDialect Γ t
+/-- An `NFProg catCryptDialect` program over `Γ` with one result, and its result type. -/
+abbrev LoopOut (Γ : Ctx) : Type := Σ t : CryptoTy, NFProg catCryptDialect Γ [t]
 
 /-- The continuation returning the value at `.here`. -/
 def retHere {Γ : Ctx} {t : CryptoTy} (_ : VarMap (t :: Γ)) : Option (LoopOut (t :: Γ)) :=
-  some ⟨t, .block (.ret .here)⟩
+  some ⟨t, .ret (.cons .here .nil)⟩
 
-/-- The `forRt` node of `RForRuntime x (SVar n) body` with the continuation `kont`,
+/-- The `forLoop` node of `RForRuntime x (SVar n) body` with the continuation `kont`,
     which receives the `VarMap` binding the accumulator name to the loop result.
     `none` unless `n` is bound at `.sword 64`, the accumulator name is bound, and
     the body front-compiles. -/
@@ -162,8 +131,8 @@ def runtimeLoopNode {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body : LowCT)
               ((vm.bind (t := .sword 64) x).bind (t := accTy) accName) accName body,
             kont (vm.bind (t := accTy) accName) with
           | some bodyCom, some ⟨s, k⟩ =>
-              some ⟨s, .forRt (invTys := Γ) (toVIRVar cv) (toVIRVar av)
-                (allVars (d := catCryptDialect) Γ) bodyCom k⟩
+              some ⟨s, .forLoop (toVIRVar cv) (.cons (toVIRVar av) .nil)
+                (NFProg.ofCom bodyCom) k⟩
           | _, _ => none
       | _, _ => none
 
@@ -174,7 +143,7 @@ def blockRet {Γ : Ctx} (vm : VarMap Γ) (res : String) (c : LowCT) : Option (Lo
   match translateDialectControl vm c with
   | some o =>
       match o.vm.lookup res with
-      | some ⟨t, v⟩ => (o.cont (Com.ret (toVIRVar v))).map fun com => ⟨t, .block com⟩
+      | some ⟨t, v⟩ => (o.cont (Com.ret (toVIRVar v))).map fun com => ⟨t, NFProg.ofCom com⟩
       | none => none
   | none => none
 
@@ -184,10 +153,10 @@ def constWord {Γ : Ctx} (n : Nat) : Expr catCryptDialect Γ (.sword 64) :=
 
 /-- The loop front at the default result name `dflt`.
 
-    * A runtime-trip loop over a scalar bound becomes a `forRt` node returning the
-      loop result; followed by a continuation `c₂`, a `forRt` node continuing with
+    * A runtime-trip loop over a scalar bound becomes a `forLoop` node returning the
+      loop result; followed by a continuation `c₂`, a `forLoop` node continuing with
       the translation of `c₂` at the default result name `loopAccName body`.
-    * A scalar set `RScalarSet name n` followed by `c₂` becomes a `ComLoop.var`
+    * A scalar set `RScalarSet name n` followed by `c₂` becomes an `NFProg.var`
       binding of the constant, continuing with `c₂` at the default result `name`;
       `RLetU64Zero name body` becomes a binding of `0` continuing with `body`.
     * Every other term is translated by `translateDialectControl` and returns the
@@ -245,7 +214,7 @@ theorem translateDialectLoopR_rLetU64Zero {Γ : Ctx} (dflt : Option String)
       (translateDialectLoopR dflt (vm.bind (t := .sword 64) name) body).map
         fun p => ⟨p.1, .var (constWord 0) p.2⟩ := rfl
 
-/-! ## 3. The loop body -/
+/-! ## 2. The loop body -/
 
 /-- Binding a name to a value preserves `ConsistentS`. -/
 theorem consistentS_bind {Γ : Ctx} {t : CryptoTy} (vm : VarMap Γ)
@@ -287,7 +256,7 @@ theorem frontLoopBodyCD_denote {Γbody : Ctx} {accCTy : CryptoTy}
   rw [hden]
   exact hc'.lookup_eq hlk hval
 
-/-! ## 4. The source-side trip fold -/
+/-! ## 3. The source-side trip fold -/
 
 /-- The source-side fold of a runtime-trip loop body: trip `t` runs `semScalar body`
     on `env` updated at `x` to `t` and at `accName` to the current accumulator,
@@ -343,7 +312,7 @@ theorem foldl_body_eq_of_semTripsInv {Γ : Ctx} (vm : VarMap Γ)
         · cases h
       · cases h
 
-/-! ## 5. The loop node -/
+/-! ## 4. The loop node -/
 
 /-- **The loop node denotes its continuation at the loop result.** Suppose
     `runtimeLoopNode vm x n body kont = some cl`, the body is covered, `V` is
@@ -353,7 +322,7 @@ theorem foldl_body_eq_of_semTripsInv {Γ : Ctx} (vm : VarMap Γ)
     extended with `aF`. -/
 theorem runtimeLoopNode_denote {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body : LowCT)
     (kont : ∀ {t : CryptoTy}, VarMap (t :: Γ) → Option (LoopOut (t :: Γ)))
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : runtimeLoopNode vm x n body kont = some ⟨s, cl⟩)
     (hcov : IsCoveredSCtl body)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
@@ -363,9 +332,10 @@ theorem runtimeLoopNode_denote {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body 
     {accTy : CryptoTy} {av : CVar Γ accTy} (ha : vm.lookup accName = some ⟨accTy, av⟩)
     {aF : ⟦accTy⟧}
     (hsem : semTripsInv body x accName accTy env
-      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF) :
+      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF)
+    (fuel : Nat) :
     ∃ k, kont (vm.bind (t := accTy) accName) = some ⟨s, k⟩ ∧
-      cl.denote V = k.denote (V.extend aF) := by
+      cl.denote fuel V = k.denote fuel (V.extend aF) := by
   unfold runtimeLoopNode at h
   rw [hacc] at h
   simp only [hn, ha] at h
@@ -375,13 +345,15 @@ theorem runtimeLoopNode_denote {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body 
     obtain ⟨rfl, h⟩ := h
     cases h
     refine ⟨k, hk, ?_⟩
-    rw [ComLoop.denote_forRt (d := catCryptDialect)]
-    congr 2
-    show (List.range ((toVIRVar cv).lookup V).toNat).foldl
-        (fun acc t => bodyCom.denote (.cons acc (.cons (BitVec.ofNat 64 t)
-          (Expr.lookupArgs (allVars (d := catCryptDialect) Γ) V)))) ((toVIRVar av).lookup V) = aF
-    rw [lookupArgs_allVars (d := catCryptDialect)]
-    exact foldl_body_eq_of_semTripsInv vm V env hc x accName body hcov hcd _ _ _ hsem
+    rw [NFProg.denote_forLoop]
+    have hfold := NFProg.foldlM_single (d := catCryptDialect)
+      (fun acc i => (NFProg.ofCom bodyCom).denote fuel
+        (MultiBlockLowering.hvAppend acc (.cons (HasWord64.ofNat (d := catCryptDialect) i) V)))
+      (fun a i => bodyCom.denote (.cons a (.cons (BitVec.ofNat 64 i) V)))
+      (fun a i => NFProg.denote_ofCom bodyCom fuel _)
+      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V)
+    rw [foldl_body_eq_of_semTripsInv vm V env hc x accName body hcov hcd _ _ _ hsem] at hfold
+    exact (congrArg (· >>= _) hfold).trans rfl
   · cases h
 
 /-- `runtimeLoopNode_denote` at the `RSeq (RForRuntime x (SVar n) body) c₂` arm of
@@ -389,7 +361,7 @@ theorem runtimeLoopNode_denote {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body 
     `c₂` under the post-loop `VarMap`, at the default result name `accName`. -/
 theorem translateDialectLoop_rSeq_rForRuntime_denote {Γ : Ctx} (dflt : Option String)
     (vm : VarMap Γ)
-    (x n : String) (body c₂ : LowCT) {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    (x n : String) (body c₂ : LowCT) {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoopR dflt vm (.RSeq (.RForRuntime x (.SVar n) body) c₂) =
       some ⟨s, cl⟩)
     (hcov : IsCoveredSCtl body)
@@ -400,10 +372,11 @@ theorem translateDialectLoop_rSeq_rForRuntime_denote {Γ : Ctx} (dflt : Option S
     {accTy : CryptoTy} {av : CVar Γ accTy} (ha : vm.lookup accName = some ⟨accTy, av⟩)
     {aF : ⟦accTy⟧}
     (hsem : semTripsInv body x accName accTy env
-      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF) :
+      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF)
+    (fuel : Nat) :
     ∃ k, translateDialectLoopR (some accName) (vm.bind (t := accTy) accName) c₂ =
-        some ⟨s, k⟩ ∧ cl.denote V = k.denote (V.extend aF) := by
-  have := runtimeLoopNode_denote vm x n body _ h hcov V env hc hacc hn ha hsem
+        some ⟨s, k⟩ ∧ cl.denote fuel V = k.denote fuel (V.extend aF) := by
+  have := runtimeLoopNode_denote vm x n body _ h hcov V env hc hacc hn ha hsem fuel
   rwa [hacc] at this
 
 /-- **The runtime-trip loop denotes the loop result.** At the `RForRuntime x (SVar n)
@@ -411,7 +384,7 @@ theorem translateDialectLoop_rSeq_rForRuntime_denote {Γ : Ctx} (dflt : Option S
     `runtimeLoopNode_denote`, the program has the accumulator type and denotes the
     value `aF` of the source-side fold. -/
 theorem translateDialectLoop_rForRuntime_denote {Γ : Ctx} (vm : VarMap Γ)
-    (x n : String) (body : LowCT) {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    (x n : String) (body : LowCT) {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoop vm (.RForRuntime x (.SVar n) body) = some ⟨s, cl⟩)
     (hcov : IsCoveredSCtl body)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
@@ -421,15 +394,17 @@ theorem translateDialectLoop_rForRuntime_denote {Γ : Ctx} (vm : VarMap Γ)
     {accTy : CryptoTy} {av : CVar Γ accTy} (ha : vm.lookup accName = some ⟨accTy, av⟩)
     {aF : ⟦accTy⟧}
     (hsem : semTripsInv body x accName accTy env
-      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF) :
-    ∃ hs : accTy = s, cl.denote V = hs ▸ aF := by
-  obtain ⟨k, hk, hd⟩ := runtimeLoopNode_denote vm x n body retHere h hcov V env hc hacc hn ha hsem
+      (List.range ((toVIRVar cv).lookup V).toNat) ((toVIRVar av).lookup V) = some aF)
+    (fuel : Nat) :
+    ∃ hs : accTy = s, cl.denote fuel V = some (.cons (hs ▸ aF) .nil) := by
+  obtain ⟨k, hk, hd⟩ :=
+    runtimeLoopNode_denote vm x n body retHere h hcov V env hc hacc hn ha hsem fuel
   simp only [retHere, Option.some.injEq, Sigma.mk.inj_iff] at hk
   obtain ⟨rfl, hk⟩ := hk
   cases hk
   exact ⟨rfl, hd⟩
 
-/-! ## 6. The trip-wise fold against the threaded run -/
+/-! ## 5. The trip-wise fold against the threaded run -/
 
 open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
   (EnvBoundOn ScalarInRange IsCoveredAdeq IsCoveredAdeqS afterB readsOK varsBoundIn le_afterB
@@ -732,7 +707,7 @@ theorem semTripsInv_of_rustExec_rFor {N : Nat} {leafSpec : LeafSpec} {body : Low
     continuation at the accumulator's exit word. -/
 theorem runtimeLoopNode_denote_rustExec {Γ : Ctx} (vm : VarMap Γ) (x n : String) (body : LowCT)
     (kont : ∀ {t : CryptoTy}, VarMap (t :: Γ) → Option (LoopOut (t :: Γ)))
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : runtimeLoopNode vm x n body kont = some ⟨s, cl⟩)
     (hcov : IsCoveredAdeq body)
     {accName : String} (hacc : loopAccName body = some accName)
@@ -745,9 +720,10 @@ theorem runtimeLoopNode_denote_rustExec {Γ : Ctx} (vm : VarMap Γ) (x n : Strin
     (hexec : RustExec N leafSpec (.RForRuntime x (.SVar n) body) rs rs')
     (hnT : ¬ isTmpName n)
     (henv : EnvBoundOn rs env (fun y => y = n ∨ y ∈ accName :: frameReads body x accName))
-    (hir : ScalarInRange rs) :
+    (hir : ScalarInRange rs) (fuel : Nat) :
     ∃ k, kont (vm.bind (t := .sword 64) accName) = some ⟨s, k⟩ ∧
-      cl.denote V = k.denote (V.extend (BitVec.ofNat 64 (rs'.rsScalar accName))) := by
+      cl.denote fuel V =
+        k.denote fuel (V.extend (BitVec.ofNat 64 (rs'.rsScalar accName))) := by
   have hfr' := hfr
   simp only [loopBodyFrame, Bool.and_eq_true] at hfr'
   have hnt := not_isTmpName_of_notTmpB hfr'.1.2
@@ -763,7 +739,8 @@ theorem runtimeLoopNode_denote_rustExec {Γ : Ctx} (vm : VarMap Γ) (x n : Strin
   | forRuntime _ _ _ _ _ hfor =>
       obtain ⟨hsem, -, -⟩ := semTripsInv_of_rustExec_rFor hcov hfr
         (envBoundOn_mono henv (fun y hy => Or.inr hy)) hir _ rs' (le_of_lt (hir n)) hfor
-      refine runtimeLoopNode_denote vm x n body kont h hcov.toIsCoveredSCtl V env hc hacc hn ha ?_
+      refine runtimeLoopNode_denote vm x n body kont h hcov.toIsCoveredSCtl V env hc hacc hn ha
+        ?_ fuel
       rw [hcv, hav, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir n)]
       exact hsem
 
@@ -771,7 +748,7 @@ theorem runtimeLoopNode_denote_rustExec {Γ : Ctx} (vm : VarMap Γ) (x n : Strin
     `translateDialectLoop`: the program has type `.sword 64` and denotes the
     accumulator's exit word of the `RustExec` run. -/
 theorem translateDialectLoop_rForRuntime_denote_rustExec {Γ : Ctx} (vm : VarMap Γ)
-    (x n : String) (body : LowCT) {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    (x n : String) (body : LowCT) {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoop vm (.RForRuntime x (.SVar n) body) = some ⟨s, cl⟩)
     (hcov : IsCoveredAdeq body)
     {accName : String} (hacc : loopAccName body = some accName)
@@ -784,27 +761,28 @@ theorem translateDialectLoop_rForRuntime_denote_rustExec {Γ : Ctx} (vm : VarMap
     (hexec : RustExec N leafSpec (.RForRuntime x (.SVar n) body) rs rs')
     (hnT : ¬ isTmpName n)
     (henv : EnvBoundOn rs env (fun y => y = n ∨ y ∈ accName :: frameReads body x accName))
-    (hir : ScalarInRange rs) :
-    ∃ hs : CryptoTy.sword 64 = s, cl.denote V = hs ▸ BitVec.ofNat 64 (rs'.rsScalar accName) := by
+    (hir : ScalarInRange rs) (fuel : Nat) :
+    ∃ hs : CryptoTy.sword 64 = s,
+      cl.denote fuel V = some (.cons (hs ▸ BitVec.ofNat 64 (rs'.rsScalar accName)) .nil) := by
   obtain ⟨k, hk, hd⟩ := runtimeLoopNode_denote_rustExec vm x n body retHere h hcov hacc hfr V env
-    hc hn ha hexec hnT henv hir
+    hc hn ha hexec hnT henv hir fuel
   simp only [retHere, Option.some.injEq, Sigma.mk.inj_iff] at hk
   obtain ⟨rfl, hk⟩ := hk
   cases hk
   exact ⟨rfl, hd⟩
 
-/-! ## 7. The straight-line prefix and the loop-free fallback -/
+/-! ## 6. The straight-line prefix and the loop-free fallback -/
 
 /-- **The loop-free fallback returns the result scalar.** For a covered `c`, a
     valuation consistent with `env`, and a `semScalar` run leaving `w` in `res`,
     the program `blockRet vm res c` denotes `w`. -/
 theorem blockRet_denote {Γ : Ctx} (vm : VarMap Γ) (res : String) (c : LowCT)
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : blockRet vm res c = some ⟨s, cl⟩) (hcov : IsCoveredSCtl c)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env env' : SEnvScalar)
     (hc : ConsistentS vm V env) (hsem : semScalar c env = some env')
-    {w : ⟦s⟧} (hval : env' res = some ⟨s, w⟩) :
-    cl.denote V = w := by
+    {w : ⟦s⟧} (hval : env' res = some ⟨s, w⟩) (fuel : Nat) :
+    cl.denote fuel V = some (.cons w .nil) := by
   unfold blockRet at h
   split at h
   · rename_i o htr
@@ -817,8 +795,8 @@ theorem blockRet_denote {Γ : Ctx} (vm : VarMap Γ) (res : String) (c : LowCT)
       simp only [Option.map_some, Option.some.injEq, Sigma.mk.inj_iff] at h
       obtain ⟨rfl, h⟩ := h
       cases h
-      rw [ComLoop.denote_block (d := catCryptDialect), hden]
-      exact hc'.lookup_eq hlk hval
+      rw [NFProg.denote_ofCom, hden]
+      exact congrArg (fun x => some (HVector.cons x .nil)) (hc'.lookup_eq hlk hval)
     · cases h
   · cases h
 
@@ -826,11 +804,11 @@ theorem blockRet_denote {Γ : Ctx} (vm : VarMap Γ) (res : String) (c : LowCT)
     valuation extended with the constant. -/
 theorem translateDialectLoopR_rSeq_rScalarSet_denote {Γ : Ctx} (dflt : Option String)
     (vm : VarMap Γ) (name : String) (n : Nat) (c₂ : LowCT)
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoopR dflt vm (.RSeq (.RScalarSet name n) c₂) = some ⟨s, cl⟩) :
     ∃ k, translateDialectLoopR (some name) (vm.bind (t := .sword 64) name) c₂ = some ⟨s, k⟩ ∧
-      ∀ V : Ctxt.Valuation (d := catCryptDialect) Γ,
-        cl.denote V = k.denote (V.extend (BitVec.ofNat 64 n)) := by
+      ∀ (fuel : Nat) (V : Ctxt.Valuation (d := catCryptDialect) Γ),
+        cl.denote fuel V = k.denote fuel (V.extend (BitVec.ofNat 64 n)) := by
   rw [translateDialectLoopR_rSeq_rScalarSet] at h
   cases hk : translateDialectLoopR (some name) (vm.bind (t := .sword 64) name) c₂ with
   | none => rw [hk] at h; cases h
@@ -840,17 +818,17 @@ theorem translateDialectLoopR_rSeq_rScalarSet_denote {Γ : Ctx} (dflt : Option S
       simp only [Option.map_some, Option.some.injEq, Sigma.mk.inj_iff] at h
       obtain ⟨rfl, h⟩ := h
       cases h
-      exact ⟨k, rfl, fun V => rfl⟩
+      exact ⟨k, rfl, fun _ _ => rfl⟩
 
 /-- The binding `RLetU64Zero name body` denotes the translation of `body` at the
     valuation extended with `0`. -/
 theorem translateDialectLoopR_rLetU64Zero_denote {Γ : Ctx} (dflt : Option String)
     (vm : VarMap Γ) (name : String) (body : LowCT)
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoopR dflt vm (.RLetU64Zero name body) = some ⟨s, cl⟩) :
     ∃ k, translateDialectLoopR dflt (vm.bind (t := .sword 64) name) body = some ⟨s, k⟩ ∧
-      ∀ V : Ctxt.Valuation (d := catCryptDialect) Γ,
-        cl.denote V = k.denote (V.extend (0 : BitVec 64)) := by
+      ∀ (fuel : Nat) (V : Ctxt.Valuation (d := catCryptDialect) Γ),
+        cl.denote fuel V = k.denote fuel (V.extend (0 : BitVec 64)) := by
   rw [translateDialectLoopR_rLetU64Zero] at h
   cases hk : translateDialectLoopR dflt (vm.bind (t := .sword 64) name) body with
   | none => rw [hk] at h; cases h
@@ -860,7 +838,7 @@ theorem translateDialectLoopR_rLetU64Zero_denote {Γ : Ctx} (dflt : Option Strin
       simp only [Option.map_some, Option.some.injEq, Sigma.mk.inj_iff] at h
       obtain ⟨rfl, h⟩ := h
       cases h
-      exact ⟨k, rfl, fun V => rfl⟩
+      exact ⟨k, rfl, fun _ _ => rfl⟩
 
 /-- **A seeded runtime-trip loop against the threaded run.** The program
     `RSeq (RScalarSet accName v) (RForRuntime x (SVar n) body)` through
@@ -871,7 +849,7 @@ theorem translateDialectLoopR_rLetU64Zero_denote {Γ : Ctx} (dflt : Option Strin
     accumulator's exit word of the `RustExec` run. -/
 theorem translateDialectLoop_rSeq_rScalarSet_rForRuntime_denote_rustExec {Γ : Ctx}
     (vm : VarMap Γ) (accName : String) (v : Nat) (x n : String) (body : LowCT)
-    {s : CryptoTy} {cl : ComLoop catCryptDialect Γ s}
+    {s : CryptoTy} {cl : NFProg catCryptDialect Γ [s]}
     (h : translateDialectLoop vm
       (.RSeq (.RScalarSet accName v) (.RForRuntime x (.SVar n) body)) = some ⟨s, cl⟩)
     (hcov : IsCoveredAdeq body) (hacc : loopAccName body = some accName)
@@ -884,8 +862,9 @@ theorem translateDialectLoop_rSeq_rScalarSet_rForRuntime_denote_rustExec {Γ : C
       (.RSeq (.RScalarSet accName v) (.RForRuntime x (.SVar n) body)) rs rs')
     (hv : v < 2 ^ 64) (hnT : ¬ isTmpName n)
     (henv : EnvBoundOn rs env (fun y => y = n ∨ y ∈ frameReads body x accName))
-    (hir : ScalarInRange rs) :
-    ∃ hs : CryptoTy.sword 64 = s, cl.denote V = hs ▸ BitVec.ofNat 64 (rs'.rsScalar accName) := by
+    (hir : ScalarInRange rs) (fuel : Nat) :
+    ∃ hs : CryptoTy.sword 64 = s,
+      cl.denote fuel V = some (.cons (hs ▸ BitVec.ofNat 64 (rs'.rsScalar accName)) .nil) := by
   obtain ⟨k, hk, hkd⟩ := translateDialectLoopR_rSeq_rScalarSet_denote none vm accName v _ h
   rw [translateDialectLoopR_rForRuntime] at hk
   cases hexec with
@@ -907,10 +886,10 @@ theorem translateDialectLoop_rSeq_rScalarSet_rForRuntime_denote_rustExec {Γ : C
             · exact Or.inr hy
             · exact Or.inl (Or.inr hy))
       obtain ⟨k', hk', hd⟩ := runtimeLoopNode_denote_rustExec _ x n body retHere hk hcov hacc
-        hfr _ _ hc' hn' ha' h₂ hnT henv' (scalarInRange_upd hir accName hv)
+        hfr _ _ hc' hn' ha' h₂ hnT henv' (scalarInRange_upd hir accName hv) fuel
       simp only [retHere, Option.some.injEq, Sigma.mk.inj_iff] at hk'
       obtain ⟨rfl, hk'⟩ := hk'
       cases hk'
-      exact ⟨rfl, (hkd V).trans hd⟩
+      exact ⟨rfl, (hkd fuel V).trans hd⟩
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoop

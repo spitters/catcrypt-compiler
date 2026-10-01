@@ -5,7 +5,6 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.ComLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.Regions
 public import CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
 
@@ -32,17 +31,25 @@ The denotation is monadic in `Option` through `DialectDenoteM d Option`, so that
 op may fail, and takes a fuel bound for `whileLoop`; `forLoop` and `ifThenElse` do
 not consume fuel.
 
+The trip counter has the dialect's word type `HasWord64.word`; `HasWord64` also reads
+a counter value as a `Nat` and embeds a trip index into the word type, following the
+`HasBitType`/`HasBoolBit` pattern of `VIR/Regions.lean`.
+
 ## Main definitions
 
+* `HasWord64` — the dialect's trip-counter type and its `Nat` readings.
+* `allVars` — every variable of a context, as an argument vector.
 * `NFProg` — the structured programs.
 * `NFProg.whileIter` — the fuel-bounded iteration of an exit-flag loop body.
 * `NFProg.denote` — the denotation.
 * `NFProg.whileFree` — the programs without `whileLoop`.
-* `NFProg.ofCom`, `NFProg.ofComLoop`, `NFProg.ofComR` — the embeddings of `Com`,
-  `ComLoop` and `ComR`.
+* `NFProg.ofCom`, `NFProg.ofComR` — the embeddings of `Com` and `ComR`.
+* `NFProg.toCom?` — the straight-line program of a one-result `NFProg` made of
+  bindings and a return.
 
 ## Main results
 
+* `lookupArgs_allVars` — `allVars Γ` reads back the whole valuation.
 * `NFProg.denote_ret`, `NFProg.denote_var`, `NFProg.denote_forLoop`,
   `NFProg.denote_ifThenElse`, `NFProg.denote_whileLoop` — the equations of `denote`.
 * `NFProg.whileIter_zero` — a `whileLoop` at fuel `0` fails.
@@ -50,8 +57,10 @@ not consume fuel.
   independently of the fuel.
 * `NFProg.foldlM_single` — a counted loop over one carried value whose body always
   succeeds is `some` of the `List.foldl`.
-* `NFProg.denote_ofCom`, `NFProg.denote_ofComLoop`, `NFProg.denote_ofComR` — the
-  embeddings preserve the denotation.
+* `NFProg.denote_ofCom`, `NFProg.denote_ofComR` — the embeddings preserve the
+  denotation.
+* `NFProg.denote_of_toCom?` — a program `toCom?` reads as a straight-line program
+  returns that program's denotation.
 -/
 
 @[expose] public section
@@ -61,8 +70,58 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 
 open Ctxt (Var Valuation)
-open MultiBlockLowering (hvAppend hvToHom pullV_hvToHom lookupVars_eq_lookupArgs)
-open FieldDialectBlockDescent (pullV pullV_there)
+open MultiBlockLowering (hvAppend)
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (catCryptDialect)
+
+/-! ## 0. The trip-counter type and the whole context as arguments -/
+
+/-- Shift an argument vector of variables under one more binding. -/
+def shiftVars {d : Dialect.{0, 0}} {Γ : Ctxt d} {s : d.Ty} :
+    {tys : List d.Ty} → HVector (fun ty => Ctxt.Var Γ ty) tys →
+    HVector (fun ty => Ctxt.Var (s :: Γ) ty) tys
+  | [], .nil => .nil
+  | _ :: _, .cons v rest => .cons (.there v) (shiftVars rest)
+
+/-- Every variable of `Γ`, in order, as an argument vector. -/
+def allVars {d : Dialect.{0, 0}} : (Γ : Ctxt d) → HVector (fun ty => Ctxt.Var Γ ty) Γ
+  | [] => .nil
+  | _ :: Γ => .cons .here (shiftVars (allVars Γ))
+
+/-- A shifted argument vector reads the valuation below the new binding. -/
+theorem lookupArgs_shiftVars {d : Dialect.{0, 0}} [TyDenote d.Ty] {Γ : Ctxt d} {s : d.Ty}
+    (x : ⟦s⟧) (V : Ctxt.Valuation Γ) :
+    {tys : List d.Ty} → (hv : HVector (fun ty => Ctxt.Var Γ ty) tys) →
+    Expr.lookupArgs (shiftVars (s := s) hv) (V.extend x) = Expr.lookupArgs hv V
+  | [], .nil => rfl
+  | _ :: _, .cons v rest => by
+      show HVector.cons (v.lookup V) (Expr.lookupArgs (shiftVars (s := s) rest) (V.extend x)) = _
+      rw [lookupArgs_shiftVars x V rest]
+      rfl
+
+/-- `allVars Γ` reads back the whole valuation. -/
+theorem lookupArgs_allVars {d : Dialect.{0, 0}} [TyDenote d.Ty] :
+    {Γ : Ctxt d} → (V : Ctxt.Valuation Γ) → Expr.lookupArgs (allVars Γ) V = V
+  | [], .nil => rfl
+  | _ :: _, .cons x V =>
+      congrArg (HVector.cons x) ((lookupArgs_shiftVars x V (allVars _)).trans (lookupArgs_allVars V))
+
+/-- A dialect with a designated 64-bit word type `word`, used as the trip counter
+    of a counted loop, with the reading `toNat` of a counter value and the
+    embedding `ofNat` of a trip index. -/
+class HasWord64 (d : Dialect.{0, 0}) [TyDenote d.Ty] where
+  /-- The dialect's 64-bit word type. -/
+  word : d.Ty
+  /-- The trip count a counter value denotes. -/
+  toNat : ⟦word⟧ → Nat
+  /-- The counter value of a trip index. -/
+  ofNat : Nat → ⟦word⟧
+
+/-- The trip counter of `catCryptDialect` is `CryptoTy.sword 64`. -/
+instance : HasWord64 catCryptDialect where
+  word := CryptoTy.sword 64
+  toNat := BitVec.toNat
+  ofNat := BitVec.ofNat 64
 
 /-! ## 1. `NFProg` -/
 
@@ -212,7 +271,7 @@ theorem denote_fuel_of_whileFree {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ
 
 end NFProg
 
-/-! ## 4. The embeddings of `Com`, `ComLoop` and `ComR` -/
+/-! ## 4. The embeddings of `Com` and `ComR` -/
 
 /-- The `Option`-valued denotation of a dialect with a pure denotation: every op
     succeeds. -/
@@ -238,16 +297,23 @@ def ofCom : {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → NFProg d Γ [t]
   | _, _, .ret v => .ret (.cons v .nil)
   | _, _, .var e k => .var e (ofCom k)
 
-/-- A `ComLoop` as an `NFProg` with one result: `forRt` is a `forLoop` carrying one
-    value, whose body reads the invariants `invs` through the renaming `hvToHom invs`
-    into the enclosing context. -/
-def ofComLoop : {Γ : Ctxt d} → {t : d.Ty} → ComLoop d Γ t → NFProg d Γ [t]
-  | _, _, .block c => ofCom c
-  | _, _, .var e k => .var e (ofComLoop k)
-  | _, _, .forRt count init invs body k =>
-      .forLoop count (.cons init .nil)
-        (ofCom (Com.rename (Ctxt.Hom.lift (Ctxt.Hom.lift (hvToHom invs))) body))
-        (ofComLoop k)
+/-- The straight-line program of an `NFProg` with the one result `t` (`ts = [t]`) made of
+    let-bindings and a return; `none` on a region constructor. -/
+def toComAt : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → (t : d.Ty) → ts = [t] →
+    Option (Com d Γ t)
+  | _, _, .ret vs, _, h => by
+      subst h
+      exact match vs with
+        | .cons v .nil => some (.ret v)
+  | _, _, .var e k, t, h => (toComAt k t h).map (.var e)
+  | _, _, .forLoop .., _, _ => none
+  | _, _, .ifThenElse .., _, _ => none
+  | _, _, .whileLoop .., _, _ => none
+
+/-- The straight-line program of a one-result `NFProg` made of let-bindings and a
+    return; `none` on a region constructor. -/
+def toCom? {Γ : Ctxt d} {t : d.Ty} (p : NFProg d Γ [t]) : Option (Com d Γ t) :=
+  toComAt p t rfl
 
 /-- A `ComR` as an `NFProg` with one result: `ifBit` is an `ifThenElse` with one
     result returned by its continuation; the level tag is dropped. -/
@@ -268,13 +334,6 @@ theorem denote_ofCom {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (fuel : Nat)
   | ret v => rfl
   | var e k ih => simp only [ofCom, denote, Expr.denoteM_option_eq_some]; exact ih _
 
-omit [HasWord64 d] [HasBoolBit d] in
-/-- Pulling back along a lifted renaming keeps the head and pulls back the tail. -/
-theorem pullV_lift_cons {Γ Δ : Ctxt d} {s : d.Ty} (h : Ctxt.Hom Γ Δ) (x : ⟦s⟧)
-    (W : Valuation Δ) : pullV h.lift (HVector.cons x W) = HVector.cons x (pullV h W) := by
-  show HVector.cons x (pullV (fun v => (h v).there) (HVector.cons x W)) = _
-  rw [pullV_there]
-
 omit [HasWord64 d] [HasBoolBit d] [DialectSignature d] [DialectDenote d] in
 /-- A fold in `Option` over one carried value whose step always succeeds is `some` of
     the pure fold. -/
@@ -286,32 +345,34 @@ theorem foldlM_single {α : Type} {t : d.Ty}
       rw [List.foldlM_cons, hf]
       exact foldlM_single f g hf l (g a i)
 
-/-- The embedding of a `ComLoop` returns its denotation. -/
-theorem denote_ofComLoop {Γ : Ctxt d} {t : d.Ty} (c : ComLoop d Γ t) (fuel : Nat)
-    (V : Valuation Γ) : (ofComLoop c).denote fuel V = some (.cons (c.denote V) .nil) := by
-  induction c with
-  | block c => exact denote_ofCom c fuel V
+/-- A program `toComAt` reads as the straight-line program `c` returns the denotation
+    of `c`. -/
+theorem denote_of_toComAt {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (t : d.Ty)
+    (h : ts = [t]) {c : Com d Γ t} (hc : p.toComAt t h = some c) (fuel : Nat)
+    (V : Valuation Γ) : p.denote fuel V = some (h ▸ .cons (c.denote V) .nil) := by
+  induction p with
+  | ret vs =>
+      subst h
+      rcases vs with _ | ⟨v, _ | _⟩
+      simp only [toComAt, Option.some.injEq] at hc
+      subst hc
+      rfl
   | var e k ih =>
-      simp only [ofComLoop, denote, Expr.denoteM_option_eq_some]; exact ih _
-  | forRt count init invs body k ih =>
-      have hstep : ∀ (acc : Valuation [_]) (i : Nat),
-          (ofCom (Com.rename (Ctxt.Hom.lift (Ctxt.Hom.lift (hvToHom invs))) body)).denote fuel
-              (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)) =
-            some (.cons (body.denote (.cons acc.head (.cons (HasWord64.ofNat (d := d) i)
-              (Expr.lookupArgs invs V)))) .nil) := by
-        intro acc i
-        rcases acc with _ | ⟨a, _ | _⟩
-        rw [denote_ofCom, FieldDialectBlockDescent.Com.denote_rename]
-        show some (HVector.cons (body.denote (pullV _ (HVector.cons a (HVector.cons _ V))))
-          .nil) = _
-        rw [pullV_lift_cons, pullV_lift_cons, pullV_hvToHom, lookupVars_eq_lookupArgs]
-        rfl
-      simp only [ofComLoop, denote, hstep]
-      rw [show Expr.lookupArgs (HVector.cons init .nil) V = .cons (init.lookup V) .nil from rfl,
-        foldlM_single _ (fun a i => body.denote
-          (.cons a (.cons (HasWord64.ofNat (d := d) i) (Expr.lookupArgs invs V))))
-          (fun _ _ => rfl)]
-      exact ih _
+      simp only [toComAt, Option.map_eq_some_iff] at hc
+      obtain ⟨c', hk, rfl⟩ := hc
+      subst h
+      simp only [denote, Expr.denoteM_option_eq_some, Option.bind_eq_bind, Option.bind_some]
+      exact ih rfl hk _
+  | forLoop => simp [toComAt] at hc
+  | ifThenElse => simp [toComAt] at hc
+  | whileLoop => simp [toComAt] at hc
+
+/-- A program `toCom?` reads as the straight-line program `c` returns the denotation of
+    `c`. -/
+theorem denote_of_toCom? {Γ : Ctxt d} {t : d.Ty} (p : NFProg d Γ [t]) {c : Com d Γ t}
+    (hc : p.toCom? = some c) (fuel : Nat) (V : Valuation Γ) :
+    p.denote fuel V = some (.cons (c.denote V) .nil) :=
+  denote_of_toComAt p t rfl hc fuel V
 
 end Pure
 

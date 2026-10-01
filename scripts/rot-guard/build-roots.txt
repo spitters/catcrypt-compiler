@@ -218,6 +218,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
@@ -541,7 +542,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.ChachaRaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrBlock
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrWord
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeSelfContained
-CatCrypt.Crypto.SecureCompilation.VIR.ComLoopToComL
 CatCrypt.Crypto.SecureCompilation.VIR.ComParamDerive
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirWf
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_EcPoly
@@ -657,6 +657,8 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 CatCrypt.Crypto.SecureCompilation.VIR.NFProg
+CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
+CatCrypt.Crypto.SecureCompilation.VIR.NFProgToComL
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
@@ -765,6 +767,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit

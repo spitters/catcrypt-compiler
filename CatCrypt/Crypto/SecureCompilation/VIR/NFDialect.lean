@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.ComLoop
-public import CatCrypt.Crypto.SecureCompilation.VIR.Regions
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
+public import HaxLean.ImpType
 
 /-!
 # The dialect of the normal form
@@ -20,6 +20,13 @@ read by `index` and written by `update`, pairs, and typed leaf calls. It has no
 out-of-range index, a zero divisor, an oversized shift and a missing leaf are `none`.
 The leaves come from an `NfLeafTable`, the parameter of the denotation `nfDenote T`.
 
+The types `uint W`, `sint W`, `int`, `tnil`/`tcons` and `slice` are the types of the
+values of the source semantics of `HaxLean` (`.uint`, `.sint`, `.int`, `.tuple`,
+`.array`); the front `impToNF` (`Hax/ImpToNF.lean`) types its bindings with them,
+reads every call as a leaf, and uses the operations `ilit` (a typed integer literal),
+`ctr` and `trip` (the counter and the trip count of a counted loop) and `tnilV`,
+`tconsV`, `thead`, `ttail` (tuples).
+
 The structured programs over the dialect are `NFProg nfDialect` (`VIR/NFProg.lean`);
 `word 64` is the trip counter (`HasWord64`) and `bit` the branch condition
 (`HasBoolBit`).
@@ -31,6 +38,8 @@ The structured programs over the dialect are `NFProg nfDialect` (`VIR/NFProg.lea
 * `nfDialect` — the dialect, with its `DialectSignature`, `HasWord64` and
   `HasBoolBit` instances.
 * `NfLeafTable` — the typed leaves of `call`.
+* `NfTy.ofLit?`, `NfTy.toInt?` — a typed integer literal and the reading of a loop
+  bound.
 * `nfDenoteOp`, `nfDenote` — the `Option`-valued denotation of each operation.
 
 ## Main results
@@ -49,7 +58,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 /-! ## 1. Types -/
 
 /-- The value types of `nfDialect`: a bit, the unit type, a word of a width, an array
-    of a length, and a pair. -/
+    of a length, and a pair; and the types of the values of the source semantics of
+    `HaxLean`: an unsigned and a signed integer of an `IntWidth`, an unbounded integer,
+    a tuple, built from `tnil` by `tcons`, and a slice. -/
 inductive NfTy where
   /-- A bit. -/
   | bit
@@ -61,15 +72,36 @@ inductive NfTy where
   | arr (n : Nat) (t : NfTy)
   /-- A pair. -/
   | pair (a b : NfTy)
+  /-- An unsigned integer of the width `W`, the source value `.uint W`. -/
+  | uint (W : Hax.IntWidth)
+  /-- A signed integer of the width `W`, the source value `.sint W`. -/
+  | sint (W : Hax.IntWidth)
+  /-- An unbounded integer, the source value `.int`. -/
+  | int
+  /-- The empty tuple, the source value `.tuple []`. -/
+  | tnil
+  /-- The tuple with the first component `h` and the remaining components of the tuple
+      type `t`, the source value `.tuple (v :: vs)`. -/
+  | tcons (h t : NfTy)
+  /-- A slice of values of type `t`, the source value `.array`. -/
+  | slice (t : NfTy)
   deriving DecidableEq, Repr, Inhabited
 
-/-- The Lean type of an `NfTy`: `Bool`, `Unit`, `BitVec w`, `Fin n → ⟦t⟧`, a product. -/
+/-- The Lean type of an `NfTy`: `Bool`, `Unit`, `BitVec w`, `Fin n → ⟦t⟧`, a product,
+    `BitVec W.bits` for both integers of a width, `Int`, `Unit` and a product for the
+    tuples, and a list. -/
 @[reducible] def NfTy.denote : NfTy → Type
   | .bit => Bool
   | .unit => Unit
   | .word w => BitVec w
   | .arr n t => Fin n → t.denote
   | .pair a b => a.denote × b.denote
+  | .uint W => BitVec W.bits
+  | .sint W => BitVec W.bits
+  | .int => Int
+  | .tnil => Unit
+  | .tcons h t => h.denote × t.denote
+  | .slice t => List t.denote
 
 @[reducible] instance : TyDenote NfTy where
   denote := NfTy.denote
@@ -139,6 +171,21 @@ inductive NfOp where
   | snd (a b : NfTy)
   /-- A call of the leaf `f` at the argument types `args` and result type `ret`. -/
   | call (f : String) (args : List NfTy) (ret : NfTy)
+  /-- The integer literal `v` at the type `t` (`NfTy.ofLit?`). -/
+  | ilit (t : NfTy) (v : Int)
+  /-- The loop counter `lo + i` from the lower bound `lo` and the trip index `i`. -/
+  | ctr
+  /-- The trip count `hi - lo` of a counted loop from the lower bound `lo` and the
+      upper bound `hi` of type `t`, as a 64-bit word. -/
+  | trip (t : NfTy)
+  /-- The empty tuple. -/
+  | tnilV
+  /-- The tuple of a first component and a tuple of the remaining components. -/
+  | tconsV (h t : NfTy)
+  /-- The first component of a tuple. -/
+  | thead (h t : NfTy)
+  /-- The tuple of the components after the first. -/
+  | ttail (h t : NfTy)
   deriving Repr
 
 /-- The argument types of an operation. -/
@@ -155,6 +202,11 @@ def NfOp.sig : NfOp → List NfTy
   | .mkPair a b => [a, b]
   | .fst a b | .snd a b => [.pair a b]
   | .call _ args _ => args
+  | .ilit _ _ | .tnilV => []
+  | .ctr => [.int, .word 64]
+  | .trip t => [.int, t]
+  | .tconsV h t => [h, t]
+  | .thead h t | .ttail h t => [.tcons h t]
 
 /-- The result type of an operation. -/
 def NfOp.ret : NfOp → NfTy
@@ -169,6 +221,13 @@ def NfOp.ret : NfOp → NfTy
   | .fst a _ => a
   | .snd _ b => b
   | .call _ _ r => r
+  | .ilit t _ => t
+  | .ctr => .int
+  | .trip _ => .word 64
+  | .tnilV => .tnil
+  | .tconsV h t => .tcons h t
+  | .thead h _ => h
+  | .ttail _ t => t
 
 /-- The dialect of the normal form: value-semantic words, bits, arrays and pairs, and
     typed leaf calls. -/
@@ -240,6 +299,25 @@ def NfPred.denote {w : Nat} : NfPred → BitVec w → BitVec w → Bool
   | .sgt, x, y => y.slt x
   | .sge, x, y => y.sle x
 
+/-- The value of the integer literal `v` at the type `t`: an unsigned integer of a width
+    when `0 ≤ v < 2 ^ W.bits`, a signed integer of a width when
+    `-2 ^ (W.bits - 1) ≤ v < 2 ^ (W.bits - 1)`, and an unbounded integer; `none`
+    otherwise. -/
+def NfTy.ofLit? : (t : NfTy) → Int → Option t.denote
+  | .uint W, v => if 0 ≤ v ∧ v < 2 ^ W.bits then some (BitVec.ofInt W.bits v) else none
+  | .sint W, v =>
+      if -2 ^ (W.bits - 1) ≤ v ∧ v < 2 ^ (W.bits - 1) then some (BitVec.ofInt W.bits v)
+      else none
+  | .int, v => some v
+  | _, _ => none
+
+/-- The integer an unsigned integer of a width or an unbounded integer denotes, the
+    reading of a loop bound; `none` at every other type. -/
+def NfTy.toInt? : (t : NfTy) → t.denote → Option Int
+  | .uint _, x => some x.toNat
+  | .int, x => some x
+  | _, _ => none
+
 /-- The array of `n` listed values. -/
 def hvReplicateFun {t : NfTy} : (n : Nat) → HVector NfTy.denote (List.replicate n t) →
     Fin n → t.denote
@@ -277,6 +355,18 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) → HVector NfTy.denote op.sig �
   | .fst _ _, args => some args.head.1
   | .snd _ _, args => some args.head.2
   | .call f as r, args => T.call f as r args
+  | .ilit t v, _ => NfTy.ofLit? t v
+  | .ctr, args =>
+      let lo : Int := args.head
+      let i : BitVec 64 := args.tail.head
+      some (lo + (i.toNat : Int))
+  | .trip t, args =>
+      let lo : Int := args.head
+      (NfTy.toInt? t args.tail.head).map fun hi => BitVec.ofNat 64 (hi - lo).toNat
+  | .tnilV, _ => some ()
+  | .tconsV _ _, args => some (args.head, args.tail.head)
+  | .thead _ _, args => some args.head.1
+  | .ttail _ _, args => some args.head.2
 
 /-- The `Option`-valued denotation of `nfDialect` with the leaves of `T`. -/
 @[instance_reducible] def nfDenote (T : NfLeafTable) : DialectDenoteM nfDialect Option where
