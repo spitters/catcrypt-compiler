@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertStraight
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute
 
 @[expose] public section
 
@@ -315,5 +316,227 @@ theorem straight_chain_abi_arr {Γ : Ctxt jasminDialect} {w m : Nat}
   obtain ⟨c, o, hh⟩ := lsemFuelMemF_plain_halts fn _
     (arrMemN_straightOpsMem_plain hm _ _) b0 b zf hb.pc hrun
   exact ⟨_, _, hh, harr⟩
+
+/-! ## 5. A straight chain through the image of the printed body -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (IsLopn)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (runStraightF
+  runStraightF_lpc lsemFuelMemF_segF)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (physImgB virtImg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (argBind slotArrOf slotRen
+  entryA entryV entryB entryB_spec argBind_entryV boundFacts_entryV imgRel_entryV
+  imgSep_slotRen frameE)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (frameNames frameMark
+  frameOkB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (imgGateB cellAt)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMC)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (idxInvCheckB idxAnnot boundFacts
+  runIdxOk_of_idxInvCheckB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode (abiBase abiReg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (decodeLprog)
+open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64)
+
+/-- **A chain of `Lopn`s halts on the flag machine** in the state its straight-line run
+    reaches, from program counter `0`. -/
+theorem lsemFuelMemF_of_runStraightF (fn : String) (seg : List LinstrRM)
+    (hl : ∀ i ∈ seg, IsLopn i) (b0 b : LstateM) (zf z : Bool) (hpc : b0.lpc = 0)
+    (hrun : runStraightF seg b0 zf = some (b, z)) :
+    lsemFuelMemF (singletonProgM fn seg) seg.length
+        { prog := { base := b0, lfn := fn }, zf := zf }
+      = some { prog := { base := b, lfn := fn }, zf := z } := by
+  have hseg := lsemFuelMemF_segF (singletonProgM fn seg) fn rfl seg b0 zf 0 hl
+    (fun k _ => by rw [hpc, Nat.zero_add]; rfl)
+  rw [Nat.add_zero] at hseg
+  rw [hseg, hrun, Option.bind_some]
+  have hlpc : b.lpc = seg.length := by
+    rw [runStraightF_lpc seg b0 zf b z hrun, hpc, Nat.zero_add]
+  unfold lsemFuelMemF
+  simp only [JasminLsemMemLoop.findInstrMem, singletonProgM, if_true]
+  rw [hlpc, List.getElem?_eq_none (le_refl _)]
+
+/-- The state `entryV` at the frame map of the printed body `body` and the identity name
+    map, after the copies of the parameter registers: its program counter is the number of
+    parameters. -/
+def afterArgs (σ : AbiLayout) (body : Lcmd) (sa : AState) : LstateM :=
+  let b0 := entryV σ (frameE body sa) sa fun x => x
+  { b0 with reg := { b0.reg with lpc := σ.args.length } }
+
+/-- **The check of the straight image route** of the chain `C` against the printed body
+    `body`: with the virtual body `argBind σ nm ++ C` and the slot map `slotArrOf σ nm`
+    (array names unrenamed), the register allocation check `ownedCheckMC` of the virtual
+    body against the image of the printed body, the bounds invariant of the virtual body,
+    the printed body in the covered class and the image class, the gate of the image
+    simulation, the frame check and the entry check. The conjuncts are those of
+    `ImageAddrRoute.routeB` without the loop, the renaming and the fusion. -/
+def straightRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd)
+    (C : List LinstrRM) : Bool :=
+  let B := argBind σ nm ++ C
+  let sl := slotRen (slotArrOf σ nm) fun x => x
+  ownedCheckMC [] B (virtImg sl body)
+    && idxInvCheckB (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
+    && printedAddrB body && physImgB sl body
+    && imgGateB (frameMark (frameNames body)) sl body
+    && frameOkB σ body && entryB σ nm body
+
+/-- **A straight chain on the decoded bytes through the image route.** Let the printed body
+    `body` and the chain `C` of `Lopn`s pass `straightRouteB`, and let `A` be the array of
+    `n` words of the slot `q`. From every machine state `sa` satisfying `σ.Regions`, a run
+    of `C` from the state `afterArgs` to `b` is matched by a halting run of the decoded bytes
+    of the printed body from `sa`, at the end of which the words at the entry base of `A`
+    are the array `A` of `b`. -/
+theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {C : List LinstrRM} (hg : straightRouteB σ nm body C = true) (hC : ∀ i ∈ C, IsLopn i)
+    {q A : String} {n : Nat} (hq : slotArrOf σ nm q = some (A, n)) (sa : AState)
+    (hreg : σ.Regions sa) (fn : String) (b : LstateM) (z : Bool)
+    (hrun : runStraightF C (afterArgs σ body sa) false = some (b, z)) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ ∃ arr, b.getArr A 64 n = some arr
+        ∧ ∀ j (hj : j < n), read64 sa'.mem (cellAt (abiBase (abiReg σ) sa A) j)
+          = arr ⟨j, hj⟩ := by
+  simp only [straightRouteB, Bool.and_eq_true] at hg
+  obtain ⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩ := hg
+  have E := entryB_spec hent sa
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
+    (un := fun x => x) E.argF E.argG E.regs false
+  have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
+      = some (b, z) := by
+    rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
+    exact hrun
+  have hl : ∀ i ∈ argBind σ nm ++ C, IsLopn i := by
+    intro i hi
+    rcases List.mem_append.mp hi with hi | hi
+    · exact JasminLsemRenameLoop.movesOf_isLopn _ i hi
+    · exact hC i hi
+  have hrun' := lsemFuelMemF_of_runStraightF fn _ hl _ b false z rfl hB
+  have hents := boundFacts_entryV (nm := nm) (fr := frameE body sa) (un := fun x => x)
+    hreg E.bnds
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrun'
+  have hgate' : imgGateB (frameE body sa) (slotRen (slotArrOf σ nm) fun x => x) body
+      = true := by
+    rw [ImageAddrFrame.imgGateB_frameMark]
+    exact hgate
+  have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+  obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
+    hsep fn _ _ rfl rfl (entryA σ sa) false (imgRel_entryV (fun a ha =>
+      ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl) rfl (fun R hR => by
+        have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (DecodePrinted.phys R)⟩ := by
+          simp only [entryA, hR, if_true]
+        unfold JasminLsemWidthN.LstateN.getW
+        rw [hl]
+        simp) rfl _ hrun' hok
+  obtain ⟨arr, h1, h2⟩ := hcells q A n (by simp [slotRen, hq])
+  exact ⟨prog, sa', hdec, hh, arr, h1, h2⟩
+
+/-! ## 6. An array-returning program at the bytes -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (arrChainAlias canonMemrefName)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (PlainLopnBody cmpArgs?
+  movRegArgs?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (isLopnB isLopnB_isLopn
+  runStraightF_of_lsemStraightMem)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (entryV_abiEntry resultOf_words)
+
+/-- The coalescing renaming of a chain: the alias map `arrChainAlias` of the physical-ABI
+    export, which sends the destination of every store to the root of its base. -/
+def chainAlias (is : List LinstrRM) : String → String :=
+  canonMemrefName (arrChainAlias (is.map fun i => ⟨0, i.1⟩))
+
+/-- A decision of `PlainLopnBody`. -/
+def plainB (is : List LinstrRM) : Bool :=
+  is.all fun i => isLopnB i && (cmpArgs? i).isNone && (movRegArgs? i).isNone
+
+theorem plainB_sound {is : List LinstrRM} (h : plainB is = true) : PlainLopnBody is := by
+  intro i hi
+  have := List.all_eq_true.mp h i hi
+  simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at this
+  exact ⟨isLopnB_isLopn this.1.1, this.1.2, this.2⟩
+
+/-- **The gate of an array-returning straight-line program.** For a program returning a
+    word array of `m` words: the fragment `arrMemNB`; with its chain `straightOpsMem`, its
+    return name `ret` and the coalescing renaming `ρ := chainAlias` of the chain, the
+    coalescing check `coalesceB ρ chain [ret]`, `ρ` fixing every array name live at the
+    entry, the coalesced chain plain; the result of `σ` the `m` words at the register `RA`
+    of the parameter `ρ ret`, whose slot holds the array `ρ ret`; and the straight image
+    route `straightRouteB` of the coalesced chain against the printed body `body`. -/
+def straightArrB (σ : AbiLayout) (nm : String → String) (body : Lcmd) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
+  | Γ, .stackArr 64 m, com =>
+      let ch := straightOpsMem Γ.length com Γ.length
+      let ret := comRetReg Γ.length argName com Γ.length
+      let ρ := chainAlias ch
+      let C := ch.map (renRM ρ)
+      arrMemNB com && coalesceB ρ ch [ret] && (liveArr ch [ret]).all (fun r => ρ r == r)
+        && plainB C
+        && (match σ.result with
+          | .words RA k => k == m && abiReg σ (ρ ret) == some RA
+              && slotArrOf σ nm (slotOfReg (nm RA)) == some (ρ ret, m)
+          | _ => false)
+        && straightRouteB σ nm body C
+  | _, _, _ => false
+
+theorem storeAgreesM_lpc {nArgs d : Nat} {Γ : Ctxt jasminDialect} {V : Ctxt.Valuation Γ}
+    {s : LstateM} (k : Nat) (h : StoreAgreesM nArgs d s V) :
+    StoreAgreesM nArgs d { s with reg := { s.reg with lpc := k } } V :=
+  ⟨fun v => h.1 v, fun v => h.2 v⟩
+
+/-- **An array-returning straight-line program at the bytes.** For a program returning a
+    word array of `m` words that passes `straightArrB` against the printed body `body`:
+    from every entry state `sa` satisfying `σ.Regions`, at every valuation `V` the layout
+    reads off `sa` (`AbiValOf`), the decoded bytes of `body` halt in a state from which `σ`
+    reads back the words of the program's denotation. -/
+theorem straight_arr_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {Γ : Ctxt jasminDialect} {m : Nat} (com : Com jasminDialect Γ (.stackArr 64 m))
+    (hg : straightArrB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
+    (hV : AbiValOf σ sa V) (hreg : σ.Regions sa) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (.array ((List.range m).map fun j =>
+          .int (stackGet (com.denote V) j).toNat)) := by
+  simp only [straightArrB, Bool.and_eq_true] at hg
+  obtain ⟨⟨⟨⟨⟨hmem, hco⟩, hfix⟩, hpl⟩, hres⟩, hroute⟩ := hg
+  have hroute' := hroute
+  simp only [straightRouteB, Bool.and_eq_true] at hroute'
+  have E := entryB_spec hroute'.2 sa
+  have habi := entryV_abiEntry (un := fun x => x) (sa := sa) E.argF E.argG fun _ _ => rfl
+  have hagr := storeAgreesM_lpc σ.args.length (storeAgreesM_of_abi hV habi)
+  obtain ⟨b, hrun, -, harr⟩ :=
+    (arrMemNB_sound com hmem).straightOps_full rfl le_rfl hagr
+  set ch := straightOpsMem Γ.length com Γ.length with hch
+  set ret := comRetReg Γ.length argName com Γ.length with hret
+  set ρ := chainAlias ch with hρ
+  have hR0 : CoRel ρ (liveArr ch [ret]) (afterArgs σ body sa) (afterArgs σ body sa) :=
+    ⟨rfl, rfl, rfl, rfl, fun r hr => by
+      rw [show ρ r = r from by simpa using (List.all_eq_true.mp hfix) r hr]⟩
+  obtain ⟨b', hrun', hR⟩ := lsemStraightMem_coalesce ch [ret] hco hR0 hrun
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem _ (plainB_sound hpl) _ b' false hrun'
+  have hC : ∀ i ∈ ch.map (renRM ρ), IsLopn i := fun i hi => (plainB_sound hpl i hi).1
+  split at hres
+  · rename_i RA k hσ
+    simp only [Bool.and_eq_true, beq_iff_eq] at hres
+    obtain ⟨⟨hk, hA⟩, hslot⟩ := hres
+    subst hk
+    obtain ⟨prog, sa', hdec, hh, arr, h1, h2⟩ :=
+      straight_image_bytes hroute hC hslot sa hreg "" _ _ hF
+    refine ⟨prog, sa', hdec, hh, ?_⟩
+    have he : arr = com.denote V := by
+      have h3 : ({ b' with cf := c, of := o } : LstateM).getArr (ρ ret) 64 k
+          = b.getArr ret 64 k := by
+        unfold LstateM.getArr
+        rw [show ({ b' with cf := c, of := o } : LstateM).larr (ρ ret) = b.larr ret from
+          hR.arr ret (List.mem_singleton_self _)]
+      rw [h1, harr] at h3
+      exact Option.some.inj h3
+    have hb : abiBase (abiReg σ) sa (ρ ret) = sa.regs RA := by
+      simp [abiBase, hA]
+    rw [hb] at h2
+    have hR' := resultOf_words (σ := σ) (sa' := sa') hσ h2
+    rw [he] at hR'
+    exact hR'
+  · cases hres
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
