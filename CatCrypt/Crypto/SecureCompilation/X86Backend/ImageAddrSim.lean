@@ -245,11 +245,11 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (stackGet stackSet stackGet_id)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk isRetB)
 
-/-- **The gate condition of a register instruction** at the frame `frame`: it moves and
-    compares no frame word, its symbolic step from the start is described, reads no array,
-    and reads and writes only names without a frame word. -/
+/-- **The gate condition of a register instruction** at the frame `frame`: it accesses no
+    cell, moves and compares no frame word, its symbolic step from the start is described,
+    reads no array, and reads and writes only names without a frame word. -/
 def regOkB (frame : String → Option (BitVec 64)) (x : LinstrR) : Bool :=
-  (slotMov? x).all (fun ds => (frame ds.1).isNone && (frame ds.2).isNone)
+  (cellA? x).isNone && (slotMov? x).all (fun ds => (frame ds.1).isNone && (frame ds.2).isNone)
     && (slotCmp? x).all (fun dxq => (frame dxq.2.2).isNone)
     && match symStep (x, .reg none) SSt.start with
       | .ok ss gs => descArrFree ss gs && (descReads ss gs).all (fun r => (frame r).isNone)
@@ -305,7 +305,8 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
   simp only [regGateB, Bool.and_eq_true] at hgate
   obtain ⟨hok, hwg⟩ := hgate
   simp only [regOkB, Bool.and_eq_true] at hok
-  obtain ⟨⟨hmov, hcmp⟩, hsym⟩ := hok
+  obtain ⟨⟨⟨hcell, hmov⟩, hcmp⟩, hsym⟩ := hok
+  have hcell' : cellA? (x, MemTag.reg none).fst = none := Option.isNone_iff_eq_none.1 hcell
   have hmov' : ∀ d s, slotMov? (x, MemTag.reg none).fst = some (d, s) →
       frame s = none ∧ frame d = none := by
     intro d s' h
@@ -333,7 +334,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
       fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr => ?_⟩
-    · rw [fstepA_of_reg frame rfl hmov' hcmp']
+    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell']
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
       simp only [Option.map_some]
@@ -957,7 +958,7 @@ theorem regGateB_slotMov {frame : String → Option (BitVec 64)} {x : LinstrR}
     (h : regGateB frame x = true) {d src : String} (hm : slotMov? x = some (d, src)) :
     frame d = none ∧ frame src = none := by
   simp only [regGateB, regOkB, Bool.and_eq_true] at h
-  have h1 := h.1.1.1
+  have h1 := h.1.1.1.2
   rw [hm] at h1
   simpa using h1
 
