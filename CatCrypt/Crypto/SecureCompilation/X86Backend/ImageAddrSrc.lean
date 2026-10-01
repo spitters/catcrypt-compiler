@@ -96,7 +96,7 @@ theorem src_chain (fn : String) (pre0 seeds loop : List LinstrRM) (ps : List (St
     `src_chain`, and the fusion check `fuseOKL` of the renamed loop behind
     `pre0 ++ seeds ++ movesOf ps` at registers `E` of width `64` at entry, a halting run of the
     node is matched by a halting run of the virtual body with the renamed loop fused, in which
-    the array of the renamed name of `out`, a name other than `R15` and `RDX`, is the array of
+    the array of the renamed name of `out`, a name other than `R15`, is the array of
     `out` at the end of the node. -/
 theorem src_chain_fuse (fn : String) (pre0 seeds loop : List LinstrRM)
     (ps : List (String × String)) (N : String → Prop) (hpre0 : ∀ i ∈ pre0, IsLopn i)

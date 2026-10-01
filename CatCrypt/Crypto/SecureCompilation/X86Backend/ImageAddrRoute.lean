@@ -38,6 +38,8 @@ words at the frame names.
 * `movesState_same`: copies that write the value their target holds change only the program
   counter.
 * `entryA`, `entryV`: the entry states.
+* `slotRen`, `unren`: the slot map with renamed array names, and the inverse of a renaming
+  on its targets.
 * `virtB`, `routeB`: the virtual body and the decided checks of the route.
 
 ## Main results
@@ -45,6 +47,7 @@ words at the frame names.
 * `entryV_abiEntry`, `argBind_entryV`, `boundFacts_entryV`, `imgRel_entryV`: the entry states
   are an ABI entry, the copies leave them unchanged, the register bounds hold, and they are
   related by the relation of the image simulation.
+* `imgSep_slotRen`: the separation carries over to the renamed slot map.
 * `image_route_bytes`: a halting run of the node from `entryV` is matched by a halting run of
   the decoded bytes of the printed body, with the output array in memory at its entry base.
 * `resultOf_words`: the read-back of a word-array result.
@@ -113,8 +116,9 @@ def spillB (y : String) : Bool := y.startsWith "k."
     writing it, that is not a name of the loop, holds the same symbolic value at the end of
     the first block, and keeps its start value through the loop block exactly when the loop
     name does; registers before spill slots `k.N` before other dotted names, each image name
-    at most once. The checks of the route (`routeB`) check the result; the pairing carries no
-    trust. -/
+    at most once. A name that is both a pointer register and an array base is renamed in both
+    roles; the slot map of the image is renamed alongside (`slotRen`). The checks of the route
+    (`routeB`) check the result; the pairing carries no trust. -/
 def synthRen (src img : List LinstrRM) (k0 : Nat) : List (String × String) :=
   match AllocCheck.LcmdCFG.cfgOf (src.map Prod.fst),
       AllocCheck.LcmdCFG.cfgOf (img.map Prod.fst) with
@@ -255,16 +259,18 @@ def entryA (σ : AbiLayout) (sa : AState) : LstateA where
       lpc := 0 }
   mem := sa.mem
 
-/-- **The name-keyed state at entry** of the machine state `sa` under the frame map `fr`: a
-    name with a frame word holds the word at it, every other name its value in `entryA`; the
-    arrays of `abiEntryM`; program counter `0`. -/
-def entryV (σ : AbiLayout) (fr : String → Option (BitVec 64)) (sa : AState) : LstateM where
+/-- **The name-keyed state at entry** of the machine state `sa` under the frame map `fr` and
+    the name map `un`: a name with a frame word holds the word at it, every other name its
+    value in `entryA`; the name `x` holds the array of `abiEntryM` at `un x`; program counter
+    `0`. -/
+def entryV (σ : AbiLayout) (fr : String → Option (BitVec 64)) (sa : AState)
+    (un : String → String) : LstateM where
   reg :=
     { lvm := fun r => match fr r with
         | some a => ⟨64, read64 sa.mem a⟩
         | none => (entryA σ sa).reg.lvm r
       lpc := 0 }
-  larr := (abiEntryM σ sa).larr
+  larr := fun x => (abiEntryM σ sa).larr (un x)
 
 theorem abiArgOf_argName {σ : AbiLayout} {j : Nat} {a : AbiArg} (h : σ.args[j]? = some a) :
     abiArgOf σ (argName j) = some a :=
@@ -277,37 +283,46 @@ theorem abiBase_argName {σ : AbiLayout} {j : Nat} {a : AbiArg} (h : σ.args[j]?
 /-- The register of an argument name in `entryV`, when the name has no frame word and is no
     general-purpose name. -/
 theorem entryV_argName {σ : AbiLayout} {fr : String → Option (BitVec 64)} {sa : AState}
-    {j : Nat} {a : AbiArg} (h : σ.args[j]? = some a) (hF : fr (argName j) = none)
-    (hG : gpOk (argName j) = false) :
-    (entryV σ fr sa).reg.lvm (argName j) = ⟨64, sa.regs a.reg⟩ := by
+    {un : String → String} {j : Nat} {a : AbiArg} (h : σ.args[j]? = some a)
+    (hF : fr (argName j) = none) (hG : gpOk (argName j) = false) :
+    (entryV σ fr sa un).reg.lvm (argName j) = ⟨64, sa.regs a.reg⟩ := by
   simp only [entryV, entryA, hF, hG, abiEntryM, abiEntryM_lookup h]
   rfl
 
 /-- `entryV` is an ABI entry of the flag machine when no argument name has a frame word or
-    is a general-purpose name. -/
+    is a general-purpose name, and `un` fixes the argument names. -/
 theorem entryV_abiEntry {σ : AbiLayout} {fr : String → Option (BitVec 64)} {sa : AState}
+    {un : String → String}
     (hF : ∀ j, j < σ.args.length → fr (argName j) = none)
-    (hG : ∀ j, j < σ.args.length → gpOk (argName j) = false) :
-    AbiEntryM σ sa (entryV σ fr sa) where
+    (hG : ∀ j, j < σ.args.length → gpOk (argName j) = false)
+    (hU : ∀ j, j < σ.args.length → un (argName j) = argName j) :
+    AbiEntryM σ sa (entryV σ fr sa un) where
   pc := rfl
   reg := fun j a h => by
     have hj := (List.getElem?_eq_some_iff.mp h).1
     unfold LstateN.getW
     rw [entryV_argName h (hF j hj) (hG j hj)]
     simp
-  arr := fun j a n h hk => (abiEntryM_spec σ sa).arr j a n h hk
+  arr := fun j a n h hk => by
+    have hj := (List.getElem?_eq_some_iff.mp h).1
+    have he : (entryV σ fr sa un).getArr (argName j) 64 n
+        = (abiEntryM σ sa).getArr (argName j) 64 n :=
+      JasminLsemExportCanon.getArr_congr_cell (show (abiEntryM σ sa).larr (un (argName j)) = _
+        by rw [hU j hj]) 64 n
+    rw [he]
+    exact (abiEntryM_spec σ sa).arr j a n h hk
 
 /-- **The copies of the parameter registers leave `entryV` unchanged** but for the program
     counter, when each parameter register is named by a general-purpose name of that
     machine register without a frame word. -/
 theorem argBind_entryV {σ : AbiLayout} {nm : String → String}
-    {fr : String → Option (BitVec 64)} {sa : AState}
+    {fr : String → Option (BitVec 64)} {sa : AState} {un : String → String}
     (hF : ∀ j, j < σ.args.length → fr (argName j) = none)
     (hG : ∀ j, j < σ.args.length → gpOk (argName j) = false)
     (hR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
       ∧ fr (nm a.reg) = none) (zf : Bool) :
-    runStraightF (argBind σ nm) (entryV σ fr sa) zf
-      = some ({ entryV σ fr sa with reg := { (entryV σ fr sa).reg with
+    runStraightF (argBind σ nm) (entryV σ fr sa un) zf
+      = some ({ entryV σ fr sa un with reg := { (entryV σ fr sa un).reg with
           lpc := σ.args.length } }, zf) := by
   unfold argBind
   rw [JasminLsemRenameLoop.runStraightF_movesOf, movesState_same]
@@ -324,9 +339,10 @@ theorem argBind_entryV {σ : AbiLayout} {nm : String → String}
     register is named by a general-purpose name of that machine register without a frame
     word. -/
 theorem boundFacts_entryV {σ : AbiLayout} {nm : String → String}
-    {fr : String → Option (BitVec 64)} {sa : AState} (hreg : σ.Regions sa)
+    {fr : String → Option (BitVec 64)} {sa : AState} {un : String → String}
+    (hreg : σ.Regions sa)
     (hB : ∀ b ∈ σ.bounds, gpOk (nm b.1) = true ∧ phys (nm b.1) = b.1 ∧ fr (nm b.1) = none) :
-    ∀ f ∈ boundFacts σ nm, f.holds (entryV σ fr sa).reg.lvm :=
+    ∀ f ∈ boundFacts σ nm, f.holds (entryV σ fr sa un).reg.lvm :=
   boundFacts_holds hreg fun b hb => by
     obtain ⟨h1, h2, h3⟩ := hB b hb
     simp only [entryV, entryA, h3, h1, if_true, h2]
@@ -351,29 +367,89 @@ theorem slotArrOf_some {σ : AbiLayout} {nm : String → String} {q A : String} 
     · cases h
   · cases h
 
-/-- **The entry pair is related.** `entryV` and `entryA` are related by the relation of the
-    image simulation at the frame map `fr`, the slots of `slotArrOf σ nm` and the entry bases
-    of the parameters, when the register of each parameter is named by a general-purpose name
-    of that machine register. -/
+/-- The slot map `sl` with its array names renamed by `ren`. -/
+def slotRen (sl : String → Option (String × Nat)) (ren : String → String) (q : String) :
+    Option (String × Nat) :=
+  (sl q).map fun p => (ren p.1, p.2)
+
+theorem slotRen_some {sl : String → Option (String × Nat)} {ren : String → String}
+    {q A' : String} {n : Nat} (h : slotRen sl ren q = some (A', n)) :
+    ∃ A, sl q = some (A, n) ∧ A' = ren A := by
+  unfold slotRen at h
+  obtain ⟨⟨A, m⟩, hA, he⟩ := Option.map_eq_some_iff.mp h
+  simp only [Prod.mk.injEq] at he
+  obtain ⟨rfl, rfl⟩ := he
+  exact ⟨A, hA, rfl⟩
+
+/-- **The separation under a renaming of the array names.** A separation of the slot map `sl`
+    at the bases `base` is a separation of the renamed slot map at the bases `base ∘ un`, when
+    `un` undoes the renaming on the array names of `sl`. -/
+theorem imgSep_slotRen {fr : String → Option (BitVec 64)} {sl : String → Option (String × Nat)}
+    {base : String → BitVec 64} {rsp : BitVec 64} {ren un : String → String}
+    (h : ImageAddrSim.ImgSep fr sl base rsp)
+    (hun : ∀ q A n, sl q = some (A, n) → un (ren A) = A) :
+    ImageAddrSim.ImgSep fr (slotRen sl ren) (fun A => base (un A)) rsp := by
+  refine ⟨h.frames, fun q A' n j hq hj q' a ha => ?_, fun q A' n q' B' n' j j' hq hq' hj hj' hne => ?_,
+    fun q q' A' n n' hq hq' => ?_, fun q A' n j hq hj => ?_, h.gp, fun q A' n hq => ?_⟩
+  · obtain ⟨A, hA, rfl⟩ := slotRen_some hq
+    rw [hun q A n hA]
+    exact h.cellFrame q A n j hA hj q' a ha
+  · obtain ⟨A, hA, rfl⟩ := slotRen_some hq
+    obtain ⟨B, hB, rfl⟩ := slotRen_some hq'
+    rw [hun q A n hA, hun q' B n' hB]
+    refine h.cells q A n q' B n' j j' hA hB hj hj' ?_
+    rcases hne with hne | hne
+    · exact Or.inl fun he => hne (by rw [he])
+    · exact Or.inr hne
+  · obtain ⟨A, hA, he⟩ := slotRen_some hq
+    obtain ⟨B, hB, he'⟩ := slotRen_some hq'
+    have hAB : A = B := by rw [← hun q A n hA, ← hun q' B n' hB, ← he, ← he']
+    subst hAB
+    exact h.len q q' A n n' hA hB
+  · obtain ⟨A, hA, rfl⟩ := slotRen_some hq
+    rw [hun q A n hA]
+    exact h.red q A n j hA hj
+  · obtain ⟨A, hA, -⟩ := slotRen_some hq
+    exact h.slotFrame q A n hA
+
+/-- **The entry pair is related.** `entryV` at the name map `un` and `entryA` are related by
+    the relation of the image simulation at the frame map `fr`, the slots of `slotArrOf σ nm`
+    with their array names renamed by `ren`, and the entry bases of the parameters at the
+    names `un` gives, when `un` undoes `ren` on the argument names of the array parameters and
+    the register of each parameter is named by a general-purpose name of that machine
+    register. -/
 theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
     {fr : String → Option (BitVec 64)} {sa : AState} {body : Lcmd} {fn : String}
-    (hS : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg) :
-    ImgRel fr (slotArrOf σ nm) (abiBase (abiReg σ) sa) body
-      { prog := { base := entryV σ fr sa, lfn := fn }, zf := false } (entryA σ sa) false := by
+    {ren un : String → String}
+    (hS : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg)
+    (hUR : ∀ j, j < σ.args.length → un (ren (argName j)) = argName j) :
+    ImgRel fr (slotRen (slotArrOf σ nm) ren) (fun A => abiBase (abiReg σ) sa (un A)) body
+      { prog := { base := entryV σ fr sa un, lfn := fn }, zf := false } (entryA σ sa)
+      false := by
   refine ImageAddrFrame.imgRel_entry rfl rfl (fun r h => ?_) (fun q a h => ?_) rfl rfl rfl
     (fun r h => ?_) (fun q A n h => ?_) (fun R A n h => ?_)
   · simp [entryV, h]
   · simp [entryV, entryA, h]
   · simp [entryA, h]
-  · obtain ⟨j, a, hj, hk, rfl, -⟩ := slotArrOf_some h
-    rw [abiBase_argName hj]
+  · obtain ⟨A0, h0, rfl⟩ := slotRen_some h
+    obtain ⟨j, a, hj, hk, rfl, -⟩ := slotArrOf_some h0
+    have hu := hUR j (List.getElem?_eq_some_iff.mp hj).1
+    have he : (entryV σ fr sa un).getArr (ren (argName j)) 64 n
+        = (abiEntryM σ sa).getArr (argName j) 64 n :=
+      JasminLsemExportCanon.getArr_congr_cell
+        (show (abiEntryM σ sa).larr (un (ren (argName j))) = _ by rw [hu]) 64 n
+    show (entryV σ fr sa un).getArr (ren (argName j)) 64 n = _
+    rw [he, hu, abiBase_argName hj]
     exact (abiEntryM_spec σ sa).arr j a n hj hk
-  · obtain ⟨j, a, hj, -, rfl, hq⟩ := slotArrOf_some h
+  · obtain ⟨A0, h0, rfl⟩ := slotRen_some h
+    obtain ⟨j, a, hj, -, rfl, hq⟩ := slotArrOf_some h0
+    have hu := hUR j (List.getElem?_eq_some_iff.mp hj).1
     have hR : nm a.reg = R := by simpa [slotOfReg] using hq
     obtain ⟨h1, h2⟩ := hS a (List.mem_of_getElem? hj)
     have hl : (entryA σ sa).reg.lvm (nm a.reg) = ⟨64, sa.regs a.reg⟩ := by
       simp only [entryA, h1, if_true, h2]
-    rw [abiBase_argName hj, ← hR]
+    show _ = some (abiBase (abiReg σ) sa (un (ren (argName j))))
+    rw [hu, abiBase_argName hj, ← hR]
     unfold LstateN.getW
     rw [hl]
     simp
@@ -437,14 +513,28 @@ def virtB (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
     (ps : List (String × String)) (fuse : Bool) : List LinstrRM :=
   argBind σ nm ++ seeds ++ movesOf ps ++ loopOf loop ps fuse
 
-/-- The array cell of the name `x` in `abiEntryM` is the default cell: `x` names no array
-    parameter. -/
-def larrDefB (σ : AbiLayout) (x : String) : Bool :=
-  match (argIdxOf σ.args.length x).bind (σ.args[·]?) with
-  | some a => match a.kind with
-    | .words _ => false
-    | .scalar => true
-  | none => true
+/-- The inverse of the renaming `renOf ps` on its targets: a target `y` to the source of its
+    first pair, the identity off the targets. -/
+def unren (ps : List (String × String)) (y : String) : String :=
+  ((ps.find? (·.2 == y)).map (·.1)).getD y
+
+theorem unren_of_not_target {ps : List (String × String)} {y : String}
+    (h : ∀ q ∈ ps, q.2 ≠ y) : unren ps y = y := by
+  unfold unren
+  rw [List.find?_eq_none.mpr (fun q hq => by simpa using h q hq)]
+  rfl
+
+theorem unren_target {ps : List (String × String)} (hnd : (ps.map Prod.snd).Nodup)
+    {p : String × String} (hp : p ∈ ps) : unren ps p.2 = p.1 := by
+  unfold unren
+  cases hf : ps.find? (·.2 == p.2) with
+  | none => exact absurd (List.find?_eq_none.mp hf p hp) (by simp)
+  | some q =>
+      have hq := List.mem_of_find?_eq_some hf
+      have he : q.2 = p.2 := by simpa using List.find?_some hf
+      have := List.inj_on_of_nodup_map hnd hq hp he
+      subst this
+      rfl
 
 /-- The regions of the array parameters of `σ`, under their argument names. -/
 def rsOf (σ : AbiLayout) : List Region :=
@@ -458,8 +548,8 @@ def rsOf (σ : AbiLayout) : List Region :=
 /-- **The renaming check**: the seeds are `Lopn`s, the loop is in the covered classes and
     reads no implicit register, the renaming is injective on the names of the loop and fixes
     the empty name, its targets are distinct, no source and not names of the loop, it sends
-    each source to its target, the copies and seeds store no array, and no source or target
-    names an array parameter. -/
+    each source to its target, the copies and seeds store no array, and `unren ps` fixes each
+    argument name and undoes the renaming on it. -/
 def renB (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
     (ps : List (String × String)) : Bool :=
   let Ns := loopNames loop
@@ -469,7 +559,8 @@ def renB (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
     && decide ((ps.map Prod.snd).Nodup) && ps.all (fun p => ps.all fun q => q.2 != p.1)
     && ps.all (fun p => renOf ps p.1 == p.2) && ps.all (fun p => !Ns.contains p.2)
     && (argBind σ nm ++ seeds).all noStoreB
-    && ps.all (fun p => larrDefB σ p.1 && larrDefB σ p.2)
+    && (List.range σ.args.length).all (fun j => unren ps (argName j) == argName j
+      && unren ps (renOf ps (argName j)) == argName j)
 
 /-- **The entry check**: no argument name is a general-purpose name or has a frame word; the
     register of each parameter and each bounded register is named by a general-purpose name
@@ -491,6 +582,11 @@ def entryB (σ : AbiLayout) (nm : String → String) (body : Lcmd) : Bool :=
         | .scalar => true
       | none => true)
 
+/-- The names the fusion check reads at width `64` at entry: the argument names and the names
+    of the parameter registers. -/
+def fuseRegs (σ : AbiLayout) (nm : String → String) : List String :=
+  abiArgNames σ ++ σ.args.map fun a => nm a.reg
+
 /-- **The check of the image route** of the node `seeds ++ loop` with the renaming `ps`, the
     fusion flag `fuse` and the output array `out`, against the printed body `body`: the
     register allocation check `ownedCheckMC` of the virtual body against the image of the
@@ -503,14 +599,15 @@ def routeB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop :
   let B := virtB σ nm seeds loop ps fuse
   let pre := argBind σ nm ++ seeds ++ movesOf ps
   let L := loop.map (renRM (renOf ps))
-  ownedCheckMC [] B (virtImg (slotArrOf σ nm) body)
+  let sl := slotRen (slotArrOf σ nm) (renOf ps)
+  ownedCheckMC [] B (virtImg sl body)
     && idxInvCheckB (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
-    && printedAddrB body && physImgB (slotArrOf σ nm) body
-    && imgGateB (frameMark (frameNames body)) (slotArrOf σ nm) body
+    && printedAddrB body && physImgB sl body
+    && imgGateB (frameMark (frameNames body)) sl body
     && frameOkB σ body && entryB σ nm body && renB σ nm seeds loop ps
-    && (!fuse || (fuseOKL (abiArgNames σ) (fuseLoPre pre L) (pre ++ L)
-      && out != "R15" && out != "RDX"))
-    && (loopNames loop).contains out && !(ps.any (·.1 == out))
+    && (!fuse || (fuseOKL (fuseRegs σ nm) (fuseLoPre pre L) (pre ++ L)
+      && renOf ps out != "R15"))
+    && (loopNames loop).contains out
 
 /-! ## 6. The checks discharge the hypotheses of the image route -/
 
@@ -571,7 +668,8 @@ structure RenFacts (σ : AbiLayout) (nm : String → String) (seeds loop : List 
   tgt : ∀ p ∈ ps, renOf ps p.1 = p.2
   fresh : ∀ p ∈ ps, ¬ p.2 ∈ loopNames loop
   store : (argBind σ nm ++ seeds).all noStoreB = true
-  dflt : ∀ p ∈ ps, larrDefB σ p.1 = true ∧ larrDefB σ p.2 = true
+  unr : ∀ j, j < σ.args.length → unren ps (argName j) = argName j
+    ∧ unren ps (renOf ps (argName j)) = argName j
 
 theorem renB_spec {σ : AbiLayout} {nm : String → String} {seeds loop : List LinstrRM}
     {ps : List (String × String)} (h : renB σ nm seeds loop ps = true) :
@@ -582,7 +680,7 @@ theorem renB_spec {σ : AbiLayout} {nm : String → String} {seeds loop : List L
   refine ⟨fun i hi => isLopnB_isLopn (h1 i hi), fun i hi => (clsB_ctl_cond (h2 i hi).1
     (h2 i hi).2).1, fun i hi => (clsB_ctl_cond (h2 i hi).1 (h2 i hi).2).2,
     ⟨fun a b ha hb he => ?_, List.mem_cons_self .., h4⟩, fun i hi n hn => ?_, h5, h6, h7,
-    h8, ?_, fun p hp => h10 p hp⟩
+    h8, ?_, fun j hj => h10 j (List.mem_range.mpr hj)⟩
   · have := h3 a ha b hb
     simp only [Bool.or_eq_true, Bool.not_eq_true', beq_eq_false_iff_ne, ne_eq,
       beq_iff_eq] at this
@@ -591,21 +689,6 @@ theorem renB_spec {σ : AbiLayout} {nm : String → String} {seeds loop : List L
     · exact h
   · exact List.mem_cons_of_mem _ (List.mem_flatMap.mpr ⟨i, hi, hn⟩)
   · simpa only [List.all_eq_true] using h9
-
-/-- The cell of a name that `larrDefB` accepts in `abiEntryM` is the default cell. -/
-theorem larr_of_larrDefB {σ : AbiLayout} {sa : AState} {x : String}
-    (h : larrDefB σ x = true) : (abiEntryM σ sa).larr x = ArrCell.default := by
-  unfold larrDefB at h
-  simp only [abiEntryM]
-  split at h
-  · rename_i a ha
-    rw [ha]
-    split at h
-    · cases h
-    · rename_i hk
-      simp only [hk]
-  · rename_i ha
-    rw [ha]
 
 /-- The renaming sends a name to a target of `ps` or fixes it. -/
 theorem renOf_cases (ps : List (String × String)) (r : String) :
@@ -628,10 +711,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (runIdxOk_of_idxIn
 theorem routeB_abiEntry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
     (hg : routeB σ nm body seeds loop ps fuse out = true) (sa : AState) :
-    AbiEntryM σ sa (entryV σ (frameE body sa) sa) := by
+    AbiEntryM σ sa (entryV σ (frameE body sa) sa (unren ps)) := by
   simp only [routeB, Bool.and_eq_true] at hg
-  have E := entryB_spec hg.1.1.1.1.2 sa
-  exact entryV_abiEntry E.argF E.argG
+  have E := entryB_spec hg.1.1.1.2 sa
+  exact entryV_abiEntry E.argF E.argG fun j hj => ((renB_spec hg.1.1.2).unr j hj).1
 
 /-- **The node on the decoded bytes through the image route.** Let the printed body `body`,
     the node `seeds ++ loop`, the renaming `ps`, the fusion flag `fuse` and the output array
@@ -646,20 +729,20 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
     (hq : slotArrOf σ nm q = some (out, n)) (sa : AState) (hreg : σ.Regions sa) (fn : String)
     (fuel : Nat) (t : LstateMF)
     (hrun : lsemFuelMemF (singletonProgM fn (seeds ++ loop)) fuel
-      { prog := { base := entryV σ (frameE body sa) sa, lfn := fn }, zf := false } = some t) :
+      { prog := { base := entryV σ (frameE body sa) sa (unren ps), lfn := fn }, zf := false }
+        = some t) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ ∃ arr, t.prog.base.getArr out 64 n = some arr
         ∧ ∀ j (hj : j < n), read64 sa'.mem (cellAt (abiBase (abiReg σ) sa out) j) = arr ⟨j, hj⟩ := by
   simp only [routeB, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', bne_iff_ne, ne_eq,
-    List.contains_eq_mem, decide_eq_true_eq, List.any_eq_false, beq_iff_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hren⟩, hfuse⟩, hout⟩,
-    hnps⟩ := hg
+    List.contains_eq_mem, decide_eq_true_eq] at hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hren⟩, hfuse⟩, hout⟩ := hg
   have E := entryB_spec hent sa
   have R := renB_spec hren
   set fr := frameE body sa with hfrdef
-  set b0 := entryV σ fr sa with hb0
-  have habi : AbiEntryM σ sa b0 := entryV_abiEntry E.argF E.argG
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) E.argF E.argG E.regs false
+  set b0 := entryV σ fr sa (unren ps) with hb0
+  have habi : AbiEntryM σ sa b0 := entryV_abiEntry E.argF E.argG fun j hj => (R.unr j hj).1
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
   have hb1 : ({ b0 with reg := { b0.reg with lpc := σ.args.length } } : LstateM).setLpc 0
       = b0 := rfl
   have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds) b0 false = some (b2, z2) →
@@ -670,12 +753,14 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
     rcases renOf_cases ps r with he | ⟨p, hp, rfl, he⟩
     · rw [he]
     · rw [he]
-      show (abiEntryM σ sa).larr p.2 = (abiEntryM σ sa).larr p.1
-      rw [larr_of_larrDefB (R.dflt p hp).2, larr_of_larrDefB (R.dflt p hp).1]
-  have hfix : renOf ps out = out := JasminLsemRenameLoop.renOf_of_not_mem (by
-    intro hm
-    obtain ⟨p, hp, he⟩ := List.mem_map.mp hm
-    exact hnps p hp he)
+      show (abiEntryM σ sa).larr (unren ps p.2) = (abiEntryM σ sa).larr (unren ps p.1)
+      rw [unren_target R.nd hp, unren_of_not_target fun q hq => R.ts p hp q hq]
+  have hun : ∀ q A n, slotArrOf σ nm q = some (A, n) → unren ps (renOf ps A) = A := by
+    intro q A n h
+    obtain ⟨j, a, hj, -, rfl, -⟩ := slotArrOf_some h
+    exact (R.unr j (List.getElem?_eq_some_iff.mp hj).1).2
+  have hq' : slotRen (slotArrOf σ nm) (renOf ps) q = some (renOf ps out, n) := by
+    simp [slotRen, hq]
   -- the virtual body from the node
   obtain ⟨fuel', t', hrun', harr⟩ : ∃ fuel' t', lsemFuelMemF
       (singletonProgM fn (virtB σ nm seeds loop ps fuse)) fuel'
@@ -690,27 +775,35 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
         simp only [Bool.true_eq_false, false_or] at hfuse
         exact ImageAddrSrc.src_chain_fuse fn (argBind σ nm) seeds loop ps (· ∈ loopNames loop)
           (JasminLsemRenameLoop.movesOf_isLopn _) R.lopn R.ctl R.cond R.ren R.names R.nd
-          R.ts R.tgt R.fresh b0 _ false rfl hpr0 hb1 hA hfuse.1.1 (e64_of_abiEntryM habi)
-          fuel t hrun out hout (by rw [hfix]; exact ⟨hfuse.1.2, hfuse.2⟩) 64 n
+          R.ts R.tgt R.fresh b0 _ false rfl hpr0 hb1 hA hfuse.1 (fun x hx => by
+            rcases List.mem_append.mp hx with hx | hx
+            · exact e64_of_abiEntryM habi x hx
+            · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
+              obtain ⟨h1, -, h3⟩ := E.regs a ha
+              simp only [hb0, entryV, h3, entryA, h1, if_true])
+          fuel t hrun out hout hfuse.2 64 n
   -- the bounds invariant
-  have hents := boundFacts_entryV (nm := nm) (fr := fr) hreg E.bnds
+  have hents := boundFacts_entryV (nm := nm) (fr := fr) (un := unren ps) hreg E.bnds
   have hok := runIdxOk_of_idxInvCheckB hidx fn _ t' rfl rfl hents fuel' hrun'
   -- the image simulation
-  have hgate' : imgGateB fr (slotArrOf σ nm) body = true := by
+  have hgate' : imgGateB fr (slotRen (slotArrOf σ nm) (renOf ps)) body = true := by
     rw [hfrdef, ImageAddrFrame.imgGateB_frameMark]; exact hgate
-  have hsep := ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+  have hsep := imgSep_slotRen (ren := renOf ps)
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
   obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
     hsep fn _ t' rfl rfl (entryA σ sa) false (imgRel_entryV (fun a ha =>
-      ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩)) rfl (fun R hR => by
+      ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun j hj => (R.unr j hj).2) rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
           simp only [entryA, hR, if_true]
         unfold LstateN.getW
         rw [hl]
         simp) rfl fuel' hrun' hok
   refine ⟨prog, sa', hdec, hh, ?_⟩
-  obtain ⟨arr, h1, h2⟩ := hcells q out n hq
-  refine ⟨arr, ?_, h2⟩
-  rw [← harr, hfix, h1]
+  obtain ⟨arr, h1, h2⟩ := hcells q (renOf ps out) n hq'
+  refine ⟨arr, ?_, fun j hj => ?_⟩
+  · rw [← harr, h1]
+  · have := h2 j hj
+    rwa [hun q out n hq] at this
 
 /-- The read-back of a word-array result is the array whose words are at the entry value of
     its register. -/

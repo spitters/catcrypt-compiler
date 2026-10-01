@@ -34,11 +34,12 @@ decided check `fuseOKL` reads the two facts off the symbolic state.
   `lsemFuelMemF` under an expansion that depends on the instruction's index, with a
   per-index invariant of the source states.
 * `fuseMulHiRM`, `fuseMulHiRM_eq`: the fusion on a typed body, and its form as an expansion
-  by position when the body's names avoid `R15`, `R14`, `RDX` and spill slots.
+  by position when the body's names avoid `R15` and `R14` and the destination and multiplier
+  of each multiply are neither spill slots nor `RDX`.
 * `fuseOKL`, `fuseMulHiOK`: the decided side conditions, on the source body only.
 * `fuseMulHi_lsemFuelMemF`, `fuseMulHi_lsemFuelMemF_pre`: the fusion of a body, and of the
   loop part of a body, preserves halting runs from program counter `0`; the final states
-  agree outside `R15` and `RDX`.
+  agree outside `R15`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi
@@ -419,14 +420,33 @@ section Fuse
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames opNames)
 
-/-- A name the fusion leaves alone: not a reload scratch, not `RDX`, not a spill slot. -/
+/-- A name the fusion leaves alone: not a reload scratch. -/
 def nameOK (n : String) : Bool :=
-  n != "R15" && n != "R14" && n != "RDX" && !("k.".isPrefixOf n)
+  n != "R15" && n != "R14"
 
-/-- The names of the wire are left alone by the fusion, and its mnemonic is not the
-    untagged `MULX`. -/
+/-- A low `MUL` or a `MULXHI` has a destination and a multiplier that are neither spill slots,
+    the operands the fusion reloads through a scratch when they are spilled, nor `RDX`, the
+    register the fused site pins; every other instruction passes. -/
+def mulOK : LinstrR → Bool
+  | .Lopn [.reg d] opn [.reg _, .reg s2] =>
+      !(isLowMulMnem opn || isMulHiMnem opn)
+        || (!(LOperand.reg d).isSpill && !(LOperand.reg s2).isSpill
+          && d != "RDX" && s2 != "RDX")
+  | _ => true
+
+/-- The names of the wire are left alone by the fusion, the operands of a multiply are no
+    spill slots, and its mnemonic is not the untagged `MULX`. -/
 def wireOK (i : LinstrR) : Bool :=
-  (instrNames i).all nameOK && (match i with | .Lopn _ o _ => o != "MULX" | _ => true)
+  ((instrNames i).all nameOK && mulOK i) && (match i with | .Lopn _ o _ => o != "MULX" | _ => true)
+
+theorem mulOK_spill {d opn s1 s2 : String}
+    (h : mulOK (.Lopn [.reg d] opn [.reg s1, .reg s2]) = true)
+    (hm : (isLowMulMnem opn || isMulHiMnem opn) = true) :
+    (LOperand.reg d).isSpill = false ∧ (LOperand.reg s2).isSpill = false
+      ∧ d ≠ "RDX" ∧ s2 ≠ "RDX" := by
+  simp only [mulOK, hm, Bool.not_true, Bool.false_or, Bool.and_eq_true, Bool.not_eq_true',
+    bne_iff_ne, ne_eq] at h
+  exact ⟨h.1.1.1, h.1.1.2, h.1.2, h.2⟩
 
 /-- The low destination of each fused `MULXHI`, by position: the pending-`MUL` matching of
     `fuseMulHiAux` with the identity scratch environment. -/
@@ -465,13 +485,13 @@ theorem scratchStep_nil {i : Linstr} (h : wireOK i.li_i = true) : scratchStep []
   · rename_i dsts opn srcs hi
     have hd : ∀ dn, LOperand.reg dn ∈ dsts → fuseReloadScratches.contains dn = false := by
       intro dn hdn
-      have hall := (Bool.and_eq_true _ _ ▸ h).1
+      have hall := (Bool.and_eq_true _ _ ▸ (Bool.and_eq_true _ _ ▸ h).1).1
       rw [hi] at hall
       have hn := List.all_eq_true.mp hall dn (by
         simp only [instrNames, List.flatMap_append, List.mem_append, List.mem_flatMap]
         exact Or.inl ⟨_, hdn, by simp [opNames]⟩)
-      simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at hn
-      simp [fuseReloadScratches, reloadScratch, reloadScratch2, hn.1.1.1, hn.1.1.2]
+      simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq] at hn
+      simp [fuseReloadScratches, reloadScratch, reloadScratch2, hn.1, hn.2]
     clear hi
     induction dsts with
     | nil => rfl
@@ -486,13 +506,8 @@ theorem scratchStep_nil {i : Linstr} (h : wireOK i.li_i = true) : scratchStep []
 
 theorem scratchResolve_nil (r : String) : scratchResolve [] r = r := rfl
 
-theorem nameOK_spill {n : String} (h : nameOK n = true) : (LOperand.reg n).isSpill = false := by
-  simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at h
-  simp [LOperand.isSpill, h.2]
-
-theorem nameOK_rdx {n : String} (h : nameOK n = true) : (n == "RDX") = false := by
-  simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at h
-  simp [h.1.2]
+theorem beq_rdx {n : String} (h : n ≠ "RDX") : (n == "RDX") = false := by
+  simp [h]
 
 theorem foldl_scratchKill_nil (xs : List String) : xs.foldl scratchKill [] = [] := by
   induction xs with
@@ -508,13 +523,17 @@ theorem mem_of_span {α : Type} {p : α → Bool} {l a b : List α} (h : l.span 
 
 theorem nameOK_of_mem {i : LinstrR} (h : wireOK i = true) {n : String}
     (hn : n ∈ instrNames i) : nameOK n = true :=
-  List.all_eq_true.mp (Bool.and_eq_true _ _ ▸ h).1 n hn
+  List.all_eq_true.mp (Bool.and_eq_true _ _ ▸ (Bool.and_eq_true _ _ ▸ h).1).1 n hn
+
+theorem mulOK_of_wireOK {i : LinstrR} (h : wireOK i = true) : mulOK i = true :=
+  (Bool.and_eq_true _ _ ▸ (Bool.and_eq_true _ _ ▸ h).1).2
 
 /-- **The looped-body fusion as an expansion by position.** On a body whose names are left
     alone by the fusion, `fuseMulHiAux` keeps every instruction except a matched `MULXHI`,
     which it expands by `siteL` with the low destination `fuseLoAux` assigns. -/
 theorem fuseMulHiAux_eq : ∀ (xs : Lcmd) (pend : List (String × String)),
-    (∀ p ∈ pend, nameOK p.1 = true) → (∀ i ∈ xs, wireOK i.li_i = true) →
+    (∀ p ∈ pend, nameOK p.1 = true ∧ (LOperand.reg p.1).isSpill = false ∧ p.1 ≠ "RDX") →
+    (∀ i ∈ xs, wireOK i.li_i = true) →
     fuseMulHiAux true [] pend xs = fuseL xs (fuseLoAux pend (xs.map (·.li_i)))
   | [], _, _, _ => by rw [fuseMulHiAux]; rfl
   | i :: rest, pend, hp, hx => by
@@ -530,26 +549,27 @@ theorem fuseMulHiAux_eq : ∀ (xs : Lcmd) (pend : List (String × String)),
         have hn : ∀ n ∈ [d, s1, s2], nameOK n = true := fun n hn =>
           nameOK_of_mem hi (by simp [instrNames, opNames] at hn ⊢; omega)
         have hd := hn d (by simp)
-        have hs2 := hn s2 (by simp)
+        have hm := mulOK_of_wireOK hi
         by_cases hlo : isLowMulMnem opn = true
-        · simp only [hlo, if_true, fuseL, List.singleton_append]
+        · have hsp := mulOK_spill hm (by simp [hlo])
+          simp only [hlo, if_true, fuseL, List.singleton_append]
           rw [fuseMulHiAux_eq rest ((d, s2) :: pend)
             (fun p hp' => by
               rcases List.mem_cons.mp hp' with rfl | hp'
-              · exact hd
+              · exact ⟨hd, hsp.1, hsp.2.2.1⟩
               · exact hp p hp') hr]
         · simp only [hlo, Bool.false_eq_true, if_false]
           by_cases hhi : isMulHiMnem opn = true
-          · simp only [hhi, if_true]
+          · have hspm := mulOK_spill hm (by simp [hhi])
+            simp only [hhi, if_true]
             rcases hsp : List.span (fun p => p.2 != s2) pend with ⟨before, _ | ⟨⟨loDst, x⟩, after⟩⟩
             · simp only [hsp, fuseL, List.singleton_append]
               rw [fuseMulHiAux_eq rest pend hp hr]
-            · have hlo' : nameOK loDst = true :=
-                hp (loDst, x) (mem_of_span hsp (Or.inr (by simp)))
-              simp only [hsp, nameOK_spill hd, nameOK_rdx hd, nameOK_spill hs2, nameOK_rdx hs2,
-                nameOK_spill hlo', foldl_scratchKill_nil, Bool.and_false,
+            · have hlo2 := hp (loDst, x) (mem_of_span hsp (Or.inr (by simp)))
+              simp only [hsp, hspm.1, beq_rdx hspm.2.2.1, hspm.2.1, beq_rdx hspm.2.2.2,
+                hlo2.2.1, foldl_scratchKill_nil, Bool.and_false,
                 Bool.false_eq_true, if_false, Bool.not_false, fuseL, siteL]
-              have hb : (loDst != "RDX") = true := by simp [bne, nameOK_rdx hlo']
+              have hb : (loDst != "RDX") = true := by simp [bne, beq_rdx hlo2.2.2]
               rw [fuseMulHiAux_eq rest (before ++ after)
                 (fun p hp' => hp p (mem_of_span hsp (by
                   rcases List.mem_append.mp hp' with h | h
@@ -680,15 +700,16 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower (fstepF_setLpc)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 
-/-- The names the fused body may change beyond the source: `R15` and `RDX`. -/
-def KeptN (r : String) : Prop := r ≠ "R15" ∧ r ≠ "RDX"
+/-- The names the fused body may change beyond the source: `R15`, which holds the saved
+    `RDX`. -/
+def KeptN (r : String) : Prop := r ≠ "R15"
 
-/-- Two bases agree on every register and array name other than `R15` and `RDX`, on the
-    word memory and on the carry and overflow flags. -/
+/-- Two bases agree on every register and array name other than `R15`, on the word memory
+    and on the carry and overflow flags. -/
 structure Agree (s s' : LstateM) : Prop where
-  /-- The registers agree outside `R15` and `RDX`. -/
+  /-- The registers agree outside `R15`. -/
   reg : ∀ r, KeptN r → s'.reg.lvm r = s.reg.lvm r
-  /-- The arrays agree outside `R15` and `RDX`. -/
+  /-- The arrays agree outside `R15`. -/
   arr : ∀ r, KeptN r → s'.larr r = s.larr r
   /-- The word memories agree. -/
   mem : s'.lmem = s.lmem
@@ -718,9 +739,8 @@ theorem renProg_empty : RenProg id KeptN 0 emptyP emptyP :=
   ⟨rfl, fun _ => rfl, fun k _ => by simp [emptyP], fun k i _ h => by simp [emptyP] at h,
     fun k i _ h => by simp [emptyP] at h, fun l pc h => by simp⟩
 
-/-- **A source instruction on agreeing bases.** An `Lopn` that mentions neither `R15` nor
-    `RDX` and is not a `MULX` steps from agreeing bases to agreeing bases, with the same
-    zero flag. -/
+/-- **A source instruction on agreeing bases.** An `Lopn` that does not mention `R15` and is
+    not a `MULX` steps from agreeing bases to agreeing bases, with the same zero flag. -/
 theorem fstepF_agree {i : LinstrRM} (hl : IsLopn i) (hn : ∀ n ∈ instrNames i.1, KeptN n)
     (hm : mulxFree i = true) {s s' t : LstateM} {zf zt : Bool} (hA : Agree s s')
     (h : fstepF i s zf = some (t, zt)) :
@@ -836,7 +856,9 @@ theorem fstepF_mulhi (hd h1 s2 opn : String) (cd : Option Nat)
     the two width-`64` sources of `MULXHI hd, [h1, s2]`, the fused sequence runs from an
     agreeing base to a base that agrees with the source step's result. -/
 theorem site_sim {d hd h1 s2 opn : String} {cd : Option Nat}
-    (hhi : stripWidthTag opn = "MULXHI") (hkd : KeptN d) (hkh1 : KeptN h1) (hks2 : KeptN s2) {s s' t : LstateM} {zf zt : Bool} {x y : BitVec 64}
+    (hhi : stripWidthTag opn = "MULXHI") (hkd : KeptN d) (hkh1 : KeptN h1) (hks2 : KeptN s2)
+    (hkhd : KeptN hd) (hdR : d ≠ "RDX") (hhdR : hd ≠ "RDX") (hs2R : s2 ≠ "RDX")
+    {s s' t : LstateM} {zf zt : Bool} {x y : BitVec 64}
     (hA : Agree s s') (hx : s.reg.lvm h1 = ⟨64, x⟩) (hy : s.reg.lvm s2 = ⟨64, y⟩)
     (hlo : s.reg.lvm d = ⟨64, x * y⟩)
     (h : fstepF (.Lopn [.reg hd] opn [.reg h1, .reg s2], .reg cd) s zf = some (t, zt)) :
@@ -849,7 +871,8 @@ theorem site_sim {d hd h1 s2 opn : String} {cd : Option Nat}
   simp only [fuseSiteExp, runStraightF_cons, fstepF_saveRdx, Option.bind_some, fstepF_pinRdx,
     fstepF_mulx64]
   have e1 : ((s'.setReg "R15" (s'.reg.lvm "RDX").snd).nextPc).reg.lvm h1 = ⟨64, x⟩ := by
-    simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, hkh1.1, hx']
+    have hk1 : h1 ≠ "R15" := hkh1
+    simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, hk1, hx']
   rw [e1]
   have g1 : (((s'.setReg "R15" (s'.reg.lvm "RDX").snd).nextPc.setReg "RDX"
       (⟨64, x⟩ : (Σ w, BitVec w)).snd).nextPc).reg.getW "RDX" 64 = some x :=
@@ -857,13 +880,19 @@ theorem site_sim {d hd h1 s2 opn : String} {cd : Option Nat}
   have g2 : (((s'.setReg "R15" (s'.reg.lvm "RDX").snd).nextPc.setReg "RDX"
       (⟨64, x⟩ : (Σ w, BitVec w)).snd).nextPc).reg.getW s2 64 = some y :=
     getW_of_lvm (by
-      simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, hks2.1, hks2.2, hy'])
+      have hk2 : s2 ≠ "R15" := hks2
+      simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, hk2, hs2R, hy'])
   simp only [wideStep, evalOperandN, mulxSrc, g1, g2, Option.map_some, Option.bind_some,
     fstepF_restoreRdx, runStraightF_nil]
   refine ⟨_, rfl, ⟨fun r hr => ?_, fun r hr => hA.arr r hr, hA.mem, hA.cf, hA.of⟩⟩
   have hhi' : mulHiW x y = (X86Backend.Jasmin.x86_MULX_lo_hi x y).2 := rfl
-  simp only [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, if_neg hr.1,
-    if_neg hr.2]
+  by_cases hrx : r = "RDX"
+  · subst hrx
+    have hk : KeptN "RDX" := by simp [KeptN]
+    simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, Ne.symm hhdR,
+      Ne.symm hkhd, Ne.symm hkd, hA.reg "RDX" hk]
+  simp only [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, if_neg hr,
+    if_neg hrx]
   by_cases hrh : r = hd
   · simp [hrh, hhi']
   · rw [if_neg hrh, if_neg hrh]
@@ -979,11 +1008,12 @@ theorem mulLoB_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
 
 /-- The check of a fused site with low destination `d` on the symbolic state `ss` before
     it: a register-tagged `MULXHI hd, [h1, s2]` whose sources have width `64` and whose
-    low destination holds the low word of their product. -/
+    low destination, no reload scratch and not `RDX`, holds the low word of their product. -/
 def siteOK (E : List String) (d : String) (i : LinstrRM) (ss : SSt) : Bool :=
   match i with
   | (.Lopn [.reg _] opn [.reg h1, .reg s2], .reg _) =>
-      stripWidthTag opn == "MULXHI" && nameOK d && w64 E (ss.regs h1) && w64 E (ss.regs s2)
+      stripWidthTag opn == "MULXHI" && (nameOK d && d != "RDX") && w64 E (ss.regs h1)
+        && w64 E (ss.regs s2)
         && mulLoB (ss.regs d) (ss.regs h1) (ss.regs s2)
   | _ => false
 
@@ -998,11 +1028,12 @@ def clsB (i : LinstrRM) : Bool :=
   | _ => false
 
 /-- The check at position `k`: the symbolic state is described (not outside the fragment),
-    keeps every register of `E` at its start value, and a fused site passes `siteOK`. -/
+    gives every register of `E` a word of width `64` when the registers of `E` have width `64`
+    at the start of the block (`w64`), and a fused site passes `siteOK`. -/
 def posOK (E : List String) (L : List (Option String)) (c : List LinstrRM) (k : Nat) : Bool :=
   match blk c k with
   | .ok ss _ =>
-      E.all (fun x => ss.regs x == .reg x) &&
+      E.all (fun x => w64 E (ss.regs x)) &&
         (match L[k]? with
          | some (some d) => (c[k]?).any (fun i => siteOK E d i ss)
          | _ => true)
@@ -1081,14 +1112,13 @@ theorem finv_step {E : List String} {L : List (Option String)} {c : List LinstrR
           have hb' : blk c (k + 1) = .ok ss1 (gs ++ g1) := by rw [hb, symSnoc, hs]
           unfold posOK at hpos
           rw [hb'] at hpos
-          have hE : ∀ x ∈ E, ss1.regs x = .reg x := fun x hx => by
-            have := List.all_eq_true.mp (Bool.and_eq_true _ _ ▸ hpos).1 x hx
-            simpa using this
+          have hE : ∀ x ∈ E, w64 E (ss1.regs x) = true := fun x hx =>
+            List.all_eq_true.mp (Bool.and_eq_true _ _ ▸ hpos).1 x hx
           refine ⟨fun x hx => ?_, ?_⟩
           · have := hH1.1 x
             simp only at this
-            rw [this, hE x hx]
-            exact hV x hx
+            rw [this]
+            exact w64_sound hV (hE x hx)
           · rw [hb']
             exact ⟨V, A, C, O, Z, hV, allG_append.mpr ⟨hg, hg1⟩, hH1⟩
       | fail =>
@@ -1149,8 +1179,8 @@ theorem clsB_spec {i : LinstrRM} (h : clsB i = true) : IsLopn i ∨ CtlI i := by
   | _ => simp [clsB] at h
 
 theorem keptN_of_nameOK {n : String} (h : nameOK n = true) : KeptN n := by
-  simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at h
-  exact ⟨h.1.1.1, h.1.2⟩
+  simp only [nameOK, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  exact h.1
 
 theorem width64 (p : Σ w, BitVec w) (h : p.1 = 64) : ∃ x : BitVec 64, p = ⟨64, x⟩ := by
   obtain ⟨w, v⟩ := p
@@ -1196,16 +1226,21 @@ theorem expInv_fuse {E : List String} {L : List (Option String)} {c : List Linst
                 · rename_i hd opn h1 s2 cd heq
                   simp only [Prod.mk.injEq] at heq
                   obtain ⟨rfl, rfl⟩ := heq
-                  simp only [Bool.and_eq_true, beq_iff_eq] at hsite
-                  obtain ⟨⟨⟨⟨hhi, hdn⟩, hw1⟩, hw2⟩, hmul⟩ := hsite
+                  simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hsite
+                  obtain ⟨⟨⟨⟨hhi, hdn, hdR⟩, hw1⟩, hw2⟩, hmul⟩ := hsite
+                  have hmo := mulOK_spill (mulOK_of_wireOK hw)
+                    (by simp [X86Backend.FheMontMulEmit.isMulHiMnem, hhi] :
+                      (X86Backend.FheMontMulEmit.isLowMulMnem opn
+                        || X86Backend.FheMontMulEmit.isMulHiMnem opn) = true)
                   have hr : ∀ q, s.reg.lvm q = (ss.regs q).ev V A C O := hH.1
                   obtain ⟨x, hx⟩ := width64 _ (w64_sound (A := A) (C := C) (O := O) hV hw1)
                   obtain ⟨y, hy⟩ := width64 _ (w64_sound (A := A) (C := C) (O := O) hV hw2)
                   have hlo := mulLoB_sound hmul hx hy
                   have hn1 : KeptN h1 := hkept h1 (by simp [instrNames, opNames])
                   have hn2 : KeptN s2 := hkept s2 (by simp [instrNames, opNames])
-                  exact site_sim hhi (keptN_of_nameOK hdn) hn1 hn2 hA ((hr h1).trans hx)
-                    ((hr s2).trans hy) ((hr d).trans hlo) hst
+                  have hnh : KeptN hd := hkept hd (by simp [instrNames, opNames])
+                  exact site_sim hhi (keptN_of_nameOK hdn) hn1 hn2 hnh hdR hmo.2.2.1 hmo.2.2.2 hA
+                    ((hr h1).trans hx) ((hr s2).trans hy) ((hr d).trans hlo) hst
                 · simp at hsite
         | none =>
             have hfe : fuseE L k i = [i] := by simp [fuseE, hL]
@@ -1230,8 +1265,8 @@ theorem expInv_fuse {E : List String} {L : List (Option String)} {c : List Linst
     destinations `L` that pass `fuseOKL E L c`, every halting run of `c` from program
     counter `0`, from a base whose registers in `E` have width `64`, is matched by a
     halting run of the expanded body from the same state, with at most four times the
-    fuel; the final states agree on every register and array other than `R15` and `RDX`,
-    on the word memory, the carry, overflow and zero flags and the function name. -/
+    fuel; the final states agree on every register and array other than `R15`, on the word
+    memory, the carry, overflow and zero flags and the function name. -/
 theorem lsemFuelMemF_fuseOKL {E : List String} {L : List (Option String)}
     {c : List LinstrRM} (h : fuseOKL E L c = true) (fn : String) (s t : LstateMF)
     (hpc : s.prog.base.lpc = 0) (hE : E64 E s.prog.base) (fuel : Nat)
@@ -1261,8 +1296,7 @@ theorem wireOK_of_fuseOKL {E : List String} {L : List (Option String)} {c : List
     typed body `c` that passes `fuseMulHiOK E c`, every halting run of `c` from program
     counter `0`, from a base whose registers in `E` have width `64`, is matched by a halting
     run of `fuseMulHiRM c` from the same state, with at most four times the fuel; the final
-    states agree on every register and array other than `R15` and `RDX`, on the word
-    memory, the carry, overflow and zero flags and the function name. -/
+    states agree on every register and array other than `R15`, on the word memory, the carry, overflow and zero flags and the function name. -/
 theorem fuseMulHi_lsemFuelMemF {E : List String} {c : List LinstrRM}
     (h : fuseMulHiOK E c = true) (fn : String) (s t : LstateMF)
     (hpc : s.prog.base.lpc = 0) (hE : E64 E s.prog.base) (fuel : Nat)
