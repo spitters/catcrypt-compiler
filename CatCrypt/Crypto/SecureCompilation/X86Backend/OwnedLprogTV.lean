@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
+public import Std.Data.HashMap.Basic
 
 /-!
 # Value translation validation of a body rewrite under `lsemFuelMemF`
@@ -46,14 +47,23 @@ list.
 The two control-flow graphs (`AllocCheck.LcmdCFG.cfgOf`) must have the same number of
 blocks and the same terminators. Each block pair is run symbolically from one symbolic
 start state; the pair is accepted when the source block always fails or ends in `Lret`
-(no halting run passes through it), or when every guard of the rewritten block is a guard
-of the source block, two jumps name the same function, two branch conditions have the
-same symbolic value, and at each exit the final symbolic states agree on the registers live
-at the successor (on `outs` at an exit that leaves the body), on the zero, carry and
-overflow flags when the flags are live, and on every array written, with every start
-register these values read live at the block, and the flags live at the block when a value
-reads a start flag. The live sets are computed by a fixpoint iteration (`liveIter`) and
-checked, not trusted.
+(no halting run passes through it), or when every guard of the normal form (`normG`) of the
+rewritten block's guards is one of the source block, two jumps name the same function, two
+branch conditions have the same symbolic value, and at each exit the final symbolic states
+agree on the registers live at the successor (on `outs` at an exit that leaves the body), on
+the zero, carry and overflow flags when the flags are live, and on every array written,
+with every start register these values read live at the block, and the flags live at the
+block when a value reads a start flag. The live sets are computed by a fixpoint iteration
+(`liveIter`) and checked, not trusted.
+
+## Shared terms
+
+The two bodies of a block pair run over one hash-consed term table (`Tbl`, `tRun`), so the
+symbolic words of a block take space linear in its length and equal words are compared by
+index. A word over the table stands for its instance under a substitution of its entries
+(`STerm.subst`); the symbolic step commutes with substitution (`symStep_subst`), so the run
+over the table is the symbolic run up to that substitution (`tRun_subst`), and the check
+over the table (`blockOkR`) implies `blockOk` (`blockOkR_spec`).
 
 ## Main definitions
 
@@ -64,8 +74,13 @@ checked, not trusted.
   the symbolic step layer by layer, and runs.
 * `SDec`, `symDec`: the symbolic value of a branch condition.
 * `blockOk`, `ownedCheckWith`, `ownedCheckM`: the checker.
-* `typeBody`, `dropRet`, `ownedCheckTy`, `ownedCheck`: the checker on the first functions of
-  two programs, with the two-address gate `TwoAddrLegalize.bodyTiedOk`.
+* `STerm.subst`, `TEnt`, `Tbl`, `Tbl.intern`, `tRun`: substitution, the term table and the
+  run over it.
+* `blockRuns`, `blockOkR`, `runsOf`, `ownedCheckWithR`: the checker over the table.
+* `typeBody`, `dropRet`, `memOuts`, `resOuts`, `ownedCheckTy`, `ownedCheck`: the checker on
+  the first functions of two programs, observing the result registers and the memory cells
+  written at the argument pointers, with the two-address gate
+  `TwoAddrLegalize.bodyTiedOk`.
 * `Rel`, `Obs`: the agreement of two states at a block entry and at the end.
 
 ## Main results
@@ -77,8 +92,10 @@ checked, not trusted.
 * `symRun_sound`: the symbolic run describes the run of a list exactly.
 * `fuel_runL`, `runL_fuel`: a run through straight-line instructions of a body.
 * `decC_eq`: the symbolic branch condition describes the branch taken.
-* `ownedCheckWith_sound`, `ownedCheckM_sound`, `ownedCheckTy_sound`: soundness of the
-  checker.
+* `symStep_subst`, `symRun_subst`, `tRun_subst`, `blockOkR_spec`: the run and the check
+  over the table.
+* `ownedCheckWith_sound`, `ownedCheckM_sound`, `ownedCheckTy_sound`,
+  `ownedCheckTy_sound_mem`: soundness of the checker.
 -/
 
 @[expose] public section
@@ -177,6 +194,8 @@ def carryBit (op : CarryOp) (ofl : Bool) (a b : BitVec 64) (c : Bool) : Bool :=
   | .adcx => (x86_ADCX a b c).1.getD false
   | .adox => (x86_ADCX a b c).1.getD false
 
+deriving instance Hashable for AluOp, CarryOp
+
 mutual
 /-- A symbolic width-tagged word over the registers and arrays at the start of a
     block. -/
@@ -210,6 +229,9 @@ inductive STerm where
   /-- The low (`hi = false`) or high (`hi = true`) word of the widening product
       `x86_MULX_lo_hi` of `x` and `y` read at width `64`. -/
   | mulx (hi : Bool) (x y : STerm)
+  /-- Entry `k` of a term table (`TEnt`); a substitution (`STerm.subst`) gives it its term,
+      and `STerm.ev` gives it the word of width `0`. -/
+  | ref (k : Nat)
 
 /-- A symbolic array cell over the registers and arrays at the start of a block. -/
 inductive SArr where
@@ -219,7 +241,7 @@ inductive SArr where
   | aset (a : SArr) (w n : Nat) (i v : STerm)
 end
 
-deriving instance DecidableEq for STerm, SArr
+deriving instance DecidableEq, Hashable for STerm, SArr
 
 /-- A symbolic zero flag. -/
 inductive SFlag where
@@ -265,6 +287,7 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .mulx hi x y =>
       ⟨64, if hi then (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).2
         else (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).1⟩
+  | .ref _ => ⟨0, 0#0⟩
 
 /-- The value of a symbolic array, for the start registers `V`, arrays `A` and flags `C`,
     `O`. -/
@@ -342,6 +365,7 @@ theorem STerm.wbase_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) 
   | .carryW _ _ _ _ => rfl
   | .carryF _ _ _ _ _ => rfl
   | .mulx _ _ _ => rfl
+  | .ref _ => rfl
 
 theorem STerm.wknown_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
     {t : STerm} {w : Nat} (h : t.wknown = some w) : (t.ev V A C O).1 = w := by
@@ -1337,7 +1361,7 @@ def symRun : List LinstrRM → SSt → SOut
       match symStep i ss with
       | .ok ss1 g1 =>
           match symRun is ss1 with
-          | .ok ss2 g2 => .ok ss2 (normG g1 ++ g2)
+          | .ok ss2 g2 => .ok ss2 (g1 ++ g2)
           | .fail => .fail
           | .unk => .unk
       | .fail => .fail
@@ -1385,12 +1409,12 @@ theorem symRun_sound (P : LprogM) :
                 have ih := symRun_sound P is ss1 V A C O Z s1 hH1
                 rw [h2] at ih
                 obtain ⟨hg2, hH2, hF2⟩ := ih.1 t e2
-                refine ⟨allG_append.mpr ⟨allG_normG.mpr hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
+                refine ⟨allG_append.mpr ⟨hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
                 · rw [hF2.1, hF1.1]
                 · rw [hF2.2.1, hF1.2.1, List.length_cons]; omega
                 · rw [hF2.2.2, hF1.2.2]
               · obtain ⟨hg1, hg2⟩ := allG_append.mp hg
-                obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 (allG_normG.mp hg1))
+                obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 hg1)
                 have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                 rw [h2] at ih
                 rw [e1, Option.bind_some]
@@ -1536,6 +1560,7 @@ def STerm.vars : STerm → List String
   | .carryW _ x y c => x.vars ++ y.vars ++ c.vars
   | .carryF _ _ x y c => x.vars ++ y.vars ++ c.vars
   | .mulx _ x y => x.vars ++ y.vars
+  | .ref _ => []
 
 /-- The start registers a symbolic array reads. -/
 def SArr.vars : SArr → List String
@@ -1558,6 +1583,7 @@ def STerm.readsF : STerm → Bool
   | .carryW _ x y c => x.readsF || y.readsF || c.readsF
   | .carryF _ _ x y c => x.readsF || y.readsF || c.readsF
   | .mulx _ x y => x.readsF || y.readsF
+  | .ref _ => false
 
 /-- The symbolic array reads the carry or the overflow flag at the start. -/
 def SArr.readsF : SArr → Bool
@@ -1651,6 +1677,7 @@ theorem STerm.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCel
           (fun e => hf (by simp [STerm.readsF, e])),
         STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
           (fun e => hf (by simp [STerm.readsF, e]))]
+  | .ref _, _, _ => rfl
 
 theorem SArr.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
     {C O C' O' : Bool} :
@@ -1955,7 +1982,7 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start with
           | .ok ss' gs' =>
-              gs'.all (fun g => gs.contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false
@@ -2185,7 +2212,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
     symRun (bodyAt B b T) SSt.start = .fail ∨
       ∃ ss gs ss' gs', symRun (bodyAt B b T) SSt.start = .ok ss gs ∧
         symRun (bodyAt B' b' T) SSt.start = .ok ss' gs' ∧
-        (∀ g ∈ gs', g ∈ gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
+        (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
           (g.readsF = true → (L k).2 = true)) ∧
         termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? = true ∧
         exitAgree outs L (L k) T ss ss' = true := by
@@ -2195,7 +2222,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start with
           | .ok ss' gs' =>
-              gs'.all (fun g => gs.contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false) = true := by
@@ -2405,13 +2432,14 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
   have hD' := symRun_sound (singletonProgM fn B') ((B'.drop s'.prog.base.reg.lpc).take
     (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
   rw [symRun_entry hE' hle', hS'] at hD'
+  have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
-    fun g hg =>
+    allG_normG.mp fun g hg =>
       (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2.1 r hr)).symm)
         (fun e => by
           obtain ⟨-, hc, ho⟩ := hrel.2.2.2.2 ((hgs g hg).2.2 e)
           exact ⟨hc.symm, ho.symm⟩)).mp
-      (hAll g (hgs g hg).1)
+      (hAllN g (hgs g hg).1)
   obtain ⟨u', hu'⟩ := Option.isSome_iff_exists.mp (hD'.2 hAll')
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
   have hplain' := body_plain hc.hG' hk' hs1'
@@ -2567,71 +2595,1564 @@ theorem ownedCheckWith_sound {outs : List String} {L : Nat → List String × Bo
       ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun
   · cases h
 
-/-! ## 13. Live sets -/
+/-! ## 13. Substitution
 
-/-- The start registers and flags block `k` needs live for the checks of `blockOk` to pass,
-    given the live sets `L` of its successors. The result is a candidate only:
-    `ownedCheckWith` checks the live sets it is given. -/
+A substitution `σ : Nat → STerm` replaces each table entry `STerm.ref k` by `σ k`. The
+symbolic step never inspects a word, so it commutes with every substitution
+(`symStep_subst`, `symRun_subst`). -/
+
+mutual
+/-- The symbolic word `t` with each table entry `ref k` replaced by `σ k`. -/
+def STerm.subst (σ : Nat → STerm) : STerm → STerm
+  | .reg r => .reg r
+  | .immW w n => .immW w n
+  | .immAt n x => .immAt n (x.subst σ)
+  | .bin m x y => .bin m (x.subst σ) (y.subst σ)
+  | .un m x => .un m (x.subst σ)
+  | .shImm m k x => .shImm m k (x.subst σ)
+  | .aget a w n i => .aget (a.subst σ) w n (i.subst σ)
+  | .cin ofl => .cin ofl
+  | .aluF op ofl x y o => .aluF op ofl (x.subst σ) (y.subst σ) (o.subst σ)
+  | .carryW op x y c => .carryW op (x.subst σ) (y.subst σ) (c.subst σ)
+  | .carryF op ofl x y c => .carryF op ofl (x.subst σ) (y.subst σ) (c.subst σ)
+  | .mulx hi x y => .mulx hi (x.subst σ) (y.subst σ)
+  | .ref k => σ k
+
+/-- The symbolic array `a` with each table entry `ref k` replaced by `σ k`. -/
+def SArr.subst (σ : Nat → STerm) : SArr → SArr
+  | .cell r => .cell r
+  | .aset a w n i v => .aset (a.subst σ) w n (i.subst σ) (v.subst σ)
+end
+
+/-- The symbolic flag `f` under the substitution `σ`. -/
+def SFlag.subst (σ : Nat → STerm) : SFlag → SFlag
+  | .init => .init
+  | .cmp x y => .cmp (x.subst σ) (y.subst σ)
+
+/-- The guard `g` under the substitution `σ`. -/
+def SG.subst (σ : Nat → STerm) : SG → SG
+  | .wid t w => .wid (t.subst σ) w
+  | .eqW x y => .eqW (x.subst σ) (y.subst σ)
+  | .shp a w n => .shp (a.subst σ) w n
+
+/-- The symbolic branch condition `d` under the substitution `σ`. -/
+def SDec.subst (σ : Nat → STerm) : SDec → SDec
+  | .flag pol z => .flag pol (z.subst σ)
+  | .nz t => .nz (t.subst σ)
+  | .const b => .const b
+
+/-- The symbolic state `ss` under the substitution `σ`. -/
+def SSt.subst (σ : Nat → STerm) (ss : SSt) : SSt :=
+  ⟨fun r => (ss.regs r).subst σ, fun r => (ss.arrs r).subst σ, ss.zf.subst σ, ss.wr, ss.awr,
+    ss.cf.subst σ, ss.of.subst σ⟩
+
+/-- A register-file description under the substitution `σ`. -/
+def ROut.subst (σ : Nat → STerm) : ROut → ROut
+  | .set d t gs => .set d (t.subst σ) (gs.map (SG.subst σ))
+  | .nop => .nop
+  | .fail => .fail
+  | .unk => .unk
+
+/-- A step description under the substitution `σ`. -/
+def SOut.subst (σ : Nat → STerm) : SOut → SOut
+  | .ok ss gs => .ok (ss.subst σ) (gs.map (SG.subst σ))
+  | .fail => .fail
+  | .unk => .unk
+
+theorem SSt.subst_start (σ : Nat → STerm) : SSt.start.subst σ = SSt.start := rfl
+
+theorem SSt.subst_setR (σ : Nat → STerm) (ss : SSt) (d : String) (t : STerm) :
+    (ss.setR d t).subst σ = (ss.subst σ).setR d (t.subst σ) := by
+  simp only [SSt.subst, SSt.setR, SSt.mk.injEq, and_true]
+  funext r
+  split <;> rfl
+
+theorem SSt.subst_setA (σ : Nat → STerm) (ss : SSt) (d : String) (a : SArr) :
+    (ss.setA d a).subst σ = (ss.subst σ).setA d (a.subst σ) := by
+  simp only [SSt.subst, SSt.setA, SSt.mk.injEq, and_true, true_and]
+  funext r
+  split <;> rfl
+
+theorem SSt.subst_with (σ : Nat → STerm) (ss : SSt) (c o : STerm) :
+    ({ ss with cf := c, of := o } : SSt).subst σ =
+      { ss.subst σ with cf := c.subst σ, of := o.subst σ } := rfl
+
+theorem symOp64_subst (σ : Nat → STerm) (R : String → STerm) (o : LOperand) :
+    symOp64 (fun r => (R r).subst σ) o =
+      (symOp64 R o).map (fun p => (p.1.subst σ, p.2.map (SG.subst σ))) := by
+  cases o <;> rfl
+
+theorem symN_subst (σ : Nat → STerm) (x : LinstrR) (R : String → STerm) :
+    symN x (fun r => (R r).subst σ) = (symN x R).subst σ := by
+  unfold symN
+  split <;> (try split) <;> (try split_ifs) <;> (try split) <;> (try split_ifs) <;> rfl
+
+theorem symSh_subst (σ : Nat → STerm) (x : LinstrR) (R : String → STerm) :
+    symSh x (fun r => (R r).subst σ) = (symSh x R).subst σ := by
+  unfold symSh
+  split
+  · rfl
+  · exact symN_subst σ x R
+
+theorem symMC_subst (σ : Nat → STerm) (x : LinstrR) (R : String → STerm) :
+    symMC x (fun r => (R r).subst σ) = (symMC x R).subst σ := by
+  unfold symMC
+  split
+  · exact symSh_subst σ x R
+  · rfl
+
+theorem symCast_subst (σ : Nat → STerm) (i : LinstrRT) (R : String → STerm) :
+    symCast i (fun r => (R r).subst σ) = (symCast i R).subst σ := by
+  unfold symCast
+  split
+  · exact symMC_subst σ i.1 R
+  · split
+    · exact symMC_subst σ i.1 R
+    · rfl
+
+theorem liftR_subst (σ : Nat → STerm) (ss : SSt) (o : ROut) :
+    liftR (ss.subst σ) (o.subst σ) = (liftR ss o).subst σ := by
+  cases o with
+  | set d t gs => simp only [ROut.subst, liftR, SOut.subst, SSt.subst_setR]
+  | nop => rfl
+  | fail => rfl
+  | unk => rfl
+
+theorem symMem_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
+    symMem i (ss.subst σ) = (symMem i ss).subst σ := by
+  unfold symMem
+  split
+  · split
+    · simp only [SOut.subst, SSt.subst_setR, List.map_cons, List.map_nil,
+        SG.subst, STerm.subst]
+      rfl
+    · rw [← liftR_subst, ← symCast_subst]; rfl
+  · split
+    · simp only [SOut.subst, SSt.subst_setA, List.map_cons, List.map_nil,
+        SG.subst, SArr.subst]
+      rfl
+    · rw [← liftR_subst, ← symCast_subst]; rfl
+  · rfl
+  · rfl
+  · rw [← liftR_subst, ← symCast_subst]; rfl
+
+theorem aluFlT_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (ofl : Bool) :
+    aluFlT i (ss.subst σ) ofl = (aluFlT i ss ofl).subst σ := by
+  unfold aluFlT
+  split
+  · rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+      symOp64_subst]
+    cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> cases ofl <;> rfl
+  · cases ofl <;> rfl
+
+theorem aluFl_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (o : SOut) :
+    aluFl i (ss.subst σ) (o.subst σ) = (aluFl i ss o).subst σ := by
+  cases o with
+  | ok ss' gs => simp only [SOut.subst, aluFl, aluFlT_subst]; rfl
+  | fail => rfl
+  | unk => rfl
+
+theorem symCarry_subst (σ : Nat → STerm) (op : CarryOp) (d : String) (a b : LOperand)
+    (ss : SSt) : symCarry op d a b (ss.subst σ) = (symCarry op d a b ss).subst σ := by
+  unfold symCarry
+  rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+    symOp64_subst]
+  cases symOp64 ss.regs a with
+  | none => rfl
+  | some p =>
+      cases symOp64 ss.regs b with
+      | none => rfl
+      | some q =>
+          cases op <;>
+            simp only [Option.map_some, SOut.subst, List.map_append, SSt.subst_with,
+              SSt.subst_setR, STerm.subst] <;>
+            rfl
+
+theorem symWide_subst (σ : Nat → STerm) (w : WideOp) (ss : SSt) :
+    symWide w (ss.subst σ) = (symWide w ss).subst σ := by
+  unfold symWide
+  rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl]
+  cases w with
+  | mov d b =>
+      simp only [symOp64_subst]
+      cases symOp64 ss.regs b <;> simp [SOut.subst, SSt.subst_setR]
+  | mulx lo hi b =>
+      simp only [symOp64_subst]
+      cases symOp64 ss.regs (.reg mulxSrc) <;> cases symOp64 ss.regs b <;>
+        simp [SOut.subst, SSt.subst_setR, STerm.subst]
+
+/-- **The symbolic step commutes with substitution.** -/
+theorem symStep_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
+    symStep i (ss.subst σ) = (symStep i ss).subst σ := by
+  unfold symStep
+  split
+  · rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+      symOp64_subst]
+    cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> simp [SOut.subst, List.map_append]
+    rfl
+  · split
+    · simp only [SOut.subst, SSt.subst_setR, List.map_nil]; rfl
+    · split
+      · rfl
+      · split
+        · rfl
+        · rfl
+        · rfl
+        · split
+          · exact symCarry_subst σ _ _ _ _ ss
+          · split
+            · exact symWide_subst σ _ ss
+            · rw [symMem_subst, aluFl_subst]
+
+/-- **The symbolic run commutes with substitution.** -/
+theorem symRun_subst (σ : Nat → STerm) :
+    ∀ (is : List LinstrRM) (ss : SSt), symRun is (ss.subst σ) = (symRun is ss).subst σ
+  | [], _ => rfl
+  | i :: is, ss => by
+      simp only [symRun, symStep_subst]
+      cases symStep i ss with
+      | ok ss1 g1 =>
+          simp only [SOut.subst, symRun_subst σ is ss1]
+          cases symRun is ss1 <;> simp
+      | fail => rfl
+      | unk => rfl
+
+/-! ## 14. The term table
+
+A symbolic word of a long block shares its subterms, and a structural walk over it (an
+equality test, `STerm.vars`) takes time exponential in the length of the block. A term
+table (`TEnt`, `Tbl`) stores each distinct node once, with its children as entries
+`STerm.ref k`; equal words get equal entries, so they are compared by index. Each entry
+caches the registers its word reads, whether it reads a start flag, and its width base
+(`STerm.wbase`) with the width the base fixes. A substitution `σ` agrees with a table
+(`TblOK`) when `σ k` is the word of entry `k` with `σ` substituted, and the cached data
+describe `σ k`. Every table built by `Tbl.intern` from the empty table has such a
+substitution (`Tbl.Valid`). -/
+
+mutual
+/-- The word `t` reads only table entries below `n`. -/
+def STerm.refsLt (n : Nat) : STerm → Bool
+  | .reg _ => true
+  | .immW _ _ => true
+  | .immAt _ x => x.refsLt n
+  | .bin _ x y => x.refsLt n && y.refsLt n
+  | .un _ x => x.refsLt n
+  | .shImm _ _ x => x.refsLt n
+  | .aget a _ _ i => a.refsLt n && i.refsLt n
+  | .cin _ => true
+  | .aluF _ _ x y o => x.refsLt n && y.refsLt n && o.refsLt n
+  | .carryW _ x y c => x.refsLt n && y.refsLt n && c.refsLt n
+  | .carryF _ _ x y c => x.refsLt n && y.refsLt n && c.refsLt n
+  | .mulx _ x y => x.refsLt n && y.refsLt n
+  | .ref k => decide (k < n)
+
+/-- The array `a` reads only table entries below `n`. -/
+def SArr.refsLt (n : Nat) : SArr → Bool
+  | .cell _ => true
+  | .aset a _ _ i v => a.refsLt n && i.refsLt n && v.refsLt n
+end
+
+mutual
+theorem STerm.refsLt_mono {n m : Nat} (hnm : n ≤ m) :
+    ∀ t : STerm, t.refsLt n = true → t.refsLt m = true
+  | .reg _, _ => rfl
+  | .immW _ _, _ => rfl
+  | .immAt _ x, h => STerm.refsLt_mono hnm x h
+  | .bin _ x y, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨STerm.refsLt_mono hnm x h.1, STerm.refsLt_mono hnm y h.2⟩
+  | .un _ x, h => STerm.refsLt_mono hnm x h
+  | .shImm _ _ x, h => STerm.refsLt_mono hnm x h
+  | .aget a _ _ i, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨SArr.refsLt_mono hnm a h.1, STerm.refsLt_mono hnm i h.2⟩
+  | .cin _, _ => rfl
+  | .aluF _ _ x y o, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨⟨STerm.refsLt_mono hnm x h.1.1, STerm.refsLt_mono hnm y h.1.2⟩,
+        STerm.refsLt_mono hnm o h.2⟩
+  | .carryW _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨⟨STerm.refsLt_mono hnm x h.1.1, STerm.refsLt_mono hnm y h.1.2⟩,
+        STerm.refsLt_mono hnm c h.2⟩
+  | .carryF _ _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨⟨STerm.refsLt_mono hnm x h.1.1, STerm.refsLt_mono hnm y h.1.2⟩,
+        STerm.refsLt_mono hnm c h.2⟩
+  | .mulx _ x y, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨STerm.refsLt_mono hnm x h.1, STerm.refsLt_mono hnm y h.2⟩
+  | .ref _, h => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at h ⊢
+      omega
+
+theorem SArr.refsLt_mono {n m : Nat} (hnm : n ≤ m) :
+    ∀ a : SArr, a.refsLt n = true → a.refsLt m = true
+  | .cell _, _ => rfl
+  | .aset a _ _ i v, h => by
+      simp only [SArr.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨⟨SArr.refsLt_mono hnm a h.1.1, STerm.refsLt_mono hnm i h.1.2⟩,
+        STerm.refsLt_mono hnm v h.2⟩
+end
+
+mutual
+/-- Two substitutions that agree below `n` agree on a word that reads only entries below
+    `n`. -/
+theorem STerm.subst_congr {n : Nat} {σ σ' : Nat → STerm} (hσ : ∀ k, k < n → σ k = σ' k) :
+    ∀ t : STerm, t.refsLt n = true → t.subst σ = t.subst σ'
+  | .reg _, _ => rfl
+  | .immW _ _, _ => rfl
+  | .immAt _ x, h => by rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h]
+  | .bin _ x y, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1, STerm.subst_congr hσ y h.2]
+  | .un _ x, h => by rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h]
+  | .shImm _ _ x, h => by rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h]
+  | .aget a _ _ i, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, SArr.subst_congr hσ a h.1, STerm.subst_congr hσ i h.2]
+  | .cin _, _ => rfl
+  | .aluF _ _ x y o, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1.1, STerm.subst_congr hσ y h.1.2,
+        STerm.subst_congr hσ o h.2]
+  | .carryW _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1.1, STerm.subst_congr hσ y h.1.2,
+        STerm.subst_congr hσ c h.2]
+  | .carryF _ _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1.1, STerm.subst_congr hσ y h.1.2,
+        STerm.subst_congr hσ c h.2]
+  | .mulx _ x y, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1, STerm.subst_congr hσ y h.2]
+  | .ref k, h => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at h
+      exact hσ k h
+
+theorem SArr.subst_congr {n : Nat} {σ σ' : Nat → STerm} (hσ : ∀ k, k < n → σ k = σ' k) :
+    ∀ a : SArr, a.refsLt n = true → a.subst σ = a.subst σ'
+  | .cell _, _ => rfl
+  | .aset a _ _ i v, h => by
+      simp only [SArr.refsLt, Bool.and_eq_true] at h
+      rw [SArr.subst, SArr.subst, SArr.subst_congr hσ a h.1.1, STerm.subst_congr hσ i h.1.2,
+        STerm.subst_congr hσ v h.2]
+end
+
+/-- An entry of a term table: a node whose children are entries or leaves, the start
+    registers its word reads, whether its word reads a start flag, its width base and the
+    width the base fixes. -/
+structure TEnt where
+  /-- The node. -/
+  node : STerm
+  /-- The start registers the word reads. -/
+  vars : List String
+  /-- The word reads the carry or the overflow flag at the start. -/
+  rf : Bool
+  /-- The width base (`STerm.wbase`) of the word. -/
+  wb : STerm
+  /-- The width the width base fixes (`STerm.wknown`). -/
+  wbk : Option Nat
+
+mutual
+/-- The start registers the word `t` over the table `E` reads. -/
+def STerm.varsT (E : Array TEnt) : STerm → List String
+  | .reg r => [r]
+  | .immW _ _ => []
+  | .immAt _ x => x.varsT E
+  | .bin _ x y => x.varsT E ++ y.varsT E
+  | .un _ x => x.varsT E
+  | .shImm _ _ x => x.varsT E
+  | .aget a _ _ i => a.varsT E ++ i.varsT E
+  | .cin _ => []
+  | .aluF _ _ x y o => x.varsT E ++ y.varsT E ++ o.varsT E
+  | .carryW _ x y c => x.varsT E ++ y.varsT E ++ c.varsT E
+  | .carryF _ _ x y c => x.varsT E ++ y.varsT E ++ c.varsT E
+  | .mulx _ x y => x.varsT E ++ y.varsT E
+  | .ref k => (E[k]?.map TEnt.vars).getD []
+
+/-- The start registers the array `a` over the table `E` reads. -/
+def SArr.varsT (E : Array TEnt) : SArr → List String
+  | .cell _ => []
+  | .aset a _ _ i v => a.varsT E ++ i.varsT E ++ v.varsT E
+end
+
+mutual
+/-- The word `t` over the table `E` reads the carry or the overflow flag at the start. -/
+def STerm.readsFT (E : Array TEnt) : STerm → Bool
+  | .reg _ => false
+  | .immW _ _ => false
+  | .immAt _ x => x.readsFT E
+  | .bin _ x y => x.readsFT E || y.readsFT E
+  | .un _ x => x.readsFT E
+  | .shImm _ _ x => x.readsFT E
+  | .aget a _ _ i => a.readsFT E || i.readsFT E
+  | .cin _ => true
+  | .aluF _ _ x y o => x.readsFT E || y.readsFT E || o.readsFT E
+  | .carryW _ x y c => x.readsFT E || y.readsFT E || c.readsFT E
+  | .carryF _ _ x y c => x.readsFT E || y.readsFT E || c.readsFT E
+  | .mulx _ x y => x.readsFT E || y.readsFT E
+  | .ref k => (E[k]?.map TEnt.rf).getD true
+
+/-- The array `a` over the table `E` reads the carry or the overflow flag at the start. -/
+def SArr.readsFT (E : Array TEnt) : SArr → Bool
+  | .cell _ => false
+  | .aset a _ _ i v => a.readsFT E || i.readsFT E || v.readsFT E
+end
+
+/-- The width base of the word `t` over the table `E`. -/
+def STerm.wbT (E : Array TEnt) : STerm → STerm
+  | .immAt _ x => x.wbT E
+  | .bin _ x _ => x.wbT E
+  | .un _ x => x.wbT E
+  | .shImm _ _ x => x.wbT E
+  | .ref k => (E[k]?.map TEnt.wb).getD (.ref k)
+  | .reg r => .reg r
+  | .immW w n => .immW w n
+  | .aget a w n i => .aget a w n i
+  | .cin ofl => .cin ofl
+  | .aluF op ofl x y o => .aluF op ofl x y o
+  | .carryW op x y c => .carryW op x y c
+  | .carryF op ofl x y c => .carryF op ofl x y c
+  | .mulx hi x y => .mulx hi x y
+
+/-- The width the width base of the word `t` over the table `E` fixes. -/
+def STerm.wbkT (E : Array TEnt) : STerm → Option Nat
+  | .immAt _ x => x.wbkT E
+  | .bin _ x _ => x.wbkT E
+  | .un _ x => x.wbkT E
+  | .shImm _ _ x => x.wbkT E
+  | .ref k => (E[k]?.map TEnt.wbk).getD none
+  | .reg _ => none
+  | .immW w _ => some w
+  | .aget _ w _ _ => some w
+  | .cin _ => some 1
+  | .aluF .. => none
+  | .carryW .. => some 64
+  | .carryF .. => some 1
+  | .mulx .. => some 64
+
+/-- Entry `e` at index `k` describes `σ k`: `σ k` is its node with `σ` substituted, and its
+    cached registers, flag reading, width base and width hold of `σ k`. -/
+def EntOK (σ : Nat → STerm) (k : Nat) (e : TEnt) : Prop :=
+  σ k = e.node.subst σ ∧ (∀ v ∈ (σ k).vars, v ∈ e.vars) ∧
+    ((σ k).readsF = true → e.rf = true) ∧ (σ k).wbase = e.wb.subst σ ∧
+    (σ k).wbase.wknown = e.wbk
+
+/-- The substitution `σ` agrees with every entry of the table `E`. -/
+def TblOK (σ : Nat → STerm) (E : Array TEnt) : Prop :=
+  ∀ k (h : k < E.size), EntOK σ k E[k]
+
+/-- The table `E'` extends the table `E`. -/
+def TExt (E E' : Array TEnt) : Prop :=
+  ∀ k (h : k < E.size), E'[k]? = some E[k]
+
+theorem TExt.refl (E : Array TEnt) : TExt E E := fun k h => by simp [h]
+
+theorem TExt.trans {E E' E'' : Array TEnt} (h1 : TExt E E') (h2 : TExt E' E'') :
+    TExt E E'' := fun k h => by
+  have e1 := h1 k h
+  have hk' : k < E'.size := by
+    rcases Nat.lt_or_ge k E'.size with hk | hk
+    · exact hk
+    · rw [Array.getElem?_eq_none hk] at e1; cases e1
+  rw [h2 k hk', ← e1, Array.getElem?_eq_getElem hk']
+
+theorem TExt.push (E : Array TEnt) (e : TEnt) : TExt E (E.push e) := fun k h => by
+  simp [Array.getElem?_push, h, Nat.ne_of_lt h]
+
+theorem TblOK.mono {σ : Nat → STerm} {E E' : Array TEnt} (h : TblOK σ E') (hx : TExt E E') :
+    TblOK σ E := fun k hk => by
+  have e1 := hx k hk
+  have hk' : k < E'.size := by
+    rcases Nat.lt_or_ge k E'.size with h' | h'
+    · exact h'
+    · rw [Array.getElem?_eq_none h'] at e1; cases e1
+  have := h k hk'
+  rw [Array.getElem?_eq_getElem hk', Option.some.injEq] at e1
+  rwa [e1] at this
+
+theorem TblOK.entry {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {k : Nat} {e : TEnt}
+    (he : E[k]? = some e) : EntOK σ k e := by
+  have hk : k < E.size := by
+    rcases Nat.lt_or_ge k E.size with h' | h'
+    · exact h'
+    · rw [Array.getElem?_eq_none h'] at he; cases he
+  rw [Array.getElem?_eq_getElem hk, Option.some.injEq] at he
+  rw [← he]
+  exact h k hk
+
+section TblOK
+
+variable {σ : Nat → STerm} {E : Array TEnt}
+
+theorem TblOK.get {k : Nat} (h : TblOK σ E) (hk : k < E.size) : ∃ e, E[k]? = some e ∧ EntOK σ k e :=
+  ⟨E[k], Array.getElem?_eq_getElem hk, h k hk⟩
+
+mutual
+theorem STerm.varsT_spec (h : TblOK σ E) :
+    ∀ t : STerm, t.refsLt E.size = true → ∀ v ∈ (t.subst σ).vars, v ∈ t.varsT E
+  | .reg _, _, v, hv => by simpa [STerm.subst, STerm.vars, STerm.varsT] using hv
+  | .immW _ _, _, v, hv => by simp [STerm.subst, STerm.vars] at hv
+  | .immAt _ x, hb, v, hv => STerm.varsT_spec h x hb v (by simpa [STerm.subst, STerm.vars] using hv)
+  | .bin _ x y, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (STerm.varsT_spec h x hb.1 v) (STerm.varsT_spec h y hb.2 v)
+  | .un _ x, hb, v, hv => STerm.varsT_spec h x hb v (by simpa [STerm.subst, STerm.vars] using hv)
+  | .shImm _ _ x, hb, v, hv =>
+      STerm.varsT_spec h x hb v (by simpa [STerm.subst, STerm.vars] using hv)
+  | .aget a _ _ i, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (SArr.varsT_spec h a hb.1 v) (STerm.varsT_spec h i hb.2 v)
+  | .cin _, _, v, hv => by simp [STerm.subst, STerm.vars] at hv
+  | .aluF _ _ x y o, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_spec h x hb.1.1 v) (STerm.varsT_spec h y hb.1.2 v))
+        (STerm.varsT_spec h o hb.2 v)
+  | .carryW _ x y c, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_spec h x hb.1.1 v) (STerm.varsT_spec h y hb.1.2 v))
+        (STerm.varsT_spec h c hb.2 v)
+  | .carryF _ _ x y c, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_spec h x hb.1.1 v) (STerm.varsT_spec h y hb.1.2 v))
+        (STerm.varsT_spec h c hb.2 v)
+  | .mulx _ x y, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (STerm.varsT_spec h x hb.1 v) (STerm.varsT_spec h y hb.2 v)
+  | .ref k, hb, v, hv => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at hb
+      obtain ⟨e, he, ok⟩ := h.get hb
+      simp only [STerm.varsT, he, Option.map_some, Option.getD_some]
+      exact ok.2.1 v hv
+
+theorem SArr.varsT_spec (h : TblOK σ E) :
+    ∀ a : SArr, a.refsLt E.size = true → ∀ v ∈ (a.subst σ).vars, v ∈ a.varsT E
+  | .cell _, _, v, hv => by simp [SArr.subst, SArr.vars] at hv
+  | .aset a _ _ i w, hb, v, hv => by
+      simp only [SArr.refsLt, Bool.and_eq_true] at hb
+      simp only [SArr.subst, SArr.vars, List.mem_append] at hv
+      simp only [SArr.varsT, List.mem_append]
+      exact hv.imp (Or.imp (SArr.varsT_spec h a hb.1.1 v) (STerm.varsT_spec h i hb.1.2 v))
+        (STerm.varsT_spec h w hb.2 v)
+end
+
+mutual
+theorem STerm.readsFT_spec (h : TblOK σ E) :
+    ∀ t : STerm, t.refsLt E.size = true → (t.subst σ).readsF = true → t.readsFT E = true
+  | .reg _, _, hf => by simp [STerm.subst, STerm.readsF] at hf
+  | .immW _ _, _, hf => by simp [STerm.subst, STerm.readsF] at hf
+  | .immAt _ x, hb, hf => STerm.readsFT_spec h x hb (by simpa [STerm.subst, STerm.readsF] using hf)
+  | .bin _ x y, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (STerm.readsFT_spec h x hb.1) (STerm.readsFT_spec h y hb.2)
+  | .un _ x, hb, hf => STerm.readsFT_spec h x hb (by simpa [STerm.subst, STerm.readsF] using hf)
+  | .shImm _ _ x, hb, hf =>
+      STerm.readsFT_spec h x hb (by simpa [STerm.subst, STerm.readsF] using hf)
+  | .aget a _ _ i, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (SArr.readsFT_spec h a hb.1) (STerm.readsFT_spec h i hb.2)
+  | .cin _, _, _ => rfl
+  | .aluF _ _ x y o, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (Or.imp (STerm.readsFT_spec h x hb.1.1) (STerm.readsFT_spec h y hb.1.2))
+        (STerm.readsFT_spec h o hb.2)
+  | .carryW _ x y c, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (Or.imp (STerm.readsFT_spec h x hb.1.1) (STerm.readsFT_spec h y hb.1.2))
+        (STerm.readsFT_spec h c hb.2)
+  | .carryF _ _ x y c, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (Or.imp (STerm.readsFT_spec h x hb.1.1) (STerm.readsFT_spec h y hb.1.2))
+        (STerm.readsFT_spec h c hb.2)
+  | .mulx _ x y, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (STerm.readsFT_spec h x hb.1) (STerm.readsFT_spec h y hb.2)
+  | .ref k, hb, hf => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at hb
+      obtain ⟨e, he, ok⟩ := h.get hb
+      simp only [STerm.readsFT, he, Option.map_some, Option.getD_some]
+      exact ok.2.2.1 hf
+
+theorem SArr.readsFT_spec (h : TblOK σ E) :
+    ∀ a : SArr, a.refsLt E.size = true → (a.subst σ).readsF = true → a.readsFT E = true
+  | .cell _, _, hf => by simp [SArr.subst, SArr.readsF] at hf
+  | .aset a _ _ i w, hb, hf => by
+      simp only [SArr.refsLt, Bool.and_eq_true] at hb
+      simp only [SArr.subst, SArr.readsF, Bool.or_eq_true] at hf
+      simp only [SArr.readsFT, Bool.or_eq_true]
+      exact hf.imp (Or.imp (SArr.readsFT_spec h a hb.1.1) (STerm.readsFT_spec h i hb.1.2))
+        (STerm.readsFT_spec h w hb.2)
+end
+
+theorem STerm.wbT_spec (h : TblOK σ E) :
+    ∀ t : STerm, t.refsLt E.size = true →
+      (t.subst σ).wbase = (t.wbT E).subst σ ∧ (t.subst σ).wbase.wknown = t.wbkT E
+  | .immAt _ x, hb => by
+      simpa only [STerm.subst, STerm.wbase, STerm.wbT, STerm.wbkT] using STerm.wbT_spec h x hb
+  | .bin _ x _, hb => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simpa only [STerm.subst, STerm.wbase, STerm.wbT, STerm.wbkT] using STerm.wbT_spec h x hb.1
+  | .un _ x, hb => by
+      simpa only [STerm.subst, STerm.wbase, STerm.wbT, STerm.wbkT] using STerm.wbT_spec h x hb
+  | .shImm _ _ x, hb => by
+      simpa only [STerm.subst, STerm.wbase, STerm.wbT, STerm.wbkT] using STerm.wbT_spec h x hb
+  | .ref k, hb => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at hb
+      obtain ⟨e, he, ok⟩ := h.get hb
+      simp only [STerm.subst, STerm.wbT, STerm.wbkT, he, Option.map_some, Option.getD_some]
+      exact ⟨ok.2.2.2.1, ok.2.2.2.2⟩
+  | .reg _, _ => ⟨rfl, rfl⟩
+  | .immW _ _, _ => ⟨rfl, rfl⟩
+  | .aget _ _ _ _, _ => ⟨rfl, rfl⟩
+  | .cin _, _ => ⟨rfl, rfl⟩
+  | .aluF _ _ _ _ _, _ => ⟨rfl, rfl⟩
+  | .carryW _ _ _ _, _ => ⟨rfl, rfl⟩
+  | .carryF _ _ _ _ _, _ => ⟨rfl, rfl⟩
+  | .mulx _ _ _, _ => ⟨rfl, rfl⟩
+
+end TblOK
+
+/-- The entries of `E` read only entries below `E.size`, by node and by width base. -/
+def TBnd (E : Array TEnt) : Prop :=
+  ∀ k (h : k < E.size), E[k].node.refsLt E.size = true ∧ E[k].wb.refsLt E.size = true
+
+theorem STerm.wbT_refsLt {E : Array TEnt} (hE : TBnd E) :
+    ∀ t : STerm, t.refsLt E.size = true → (t.wbT E).refsLt E.size = true
+  | .immAt _ x, hb => STerm.wbT_refsLt hE x hb
+  | .bin _ x _, hb => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      exact STerm.wbT_refsLt hE x hb.1
+  | .un _ x, hb => STerm.wbT_refsLt hE x hb
+  | .shImm _ _ x, hb => STerm.wbT_refsLt hE x hb
+  | .ref k, hb => by
+      simp only [STerm.refsLt, decide_eq_true_eq] at hb
+      simp only [STerm.wbT, Array.getElem?_eq_getElem hb, Option.map_some, Option.getD_some]
+      exact (hE k hb).2
+  | .reg _, hb => hb
+  | .immW _ _, hb => hb
+  | .aget _ _ _ _, hb => hb
+  | .cin _, hb => hb
+  | .aluF _ _ _ _ _, hb => hb
+  | .carryW _ _ _ _, hb => hb
+  | .carryF _ _ _ _ _, hb => hb
+  | .mulx _ _ _, hb => hb
+
+/-- The entry of the node `n` over the table `E`. -/
+def mkEnt (E : Array TEnt) (n : STerm) : TEnt :=
+  ⟨n, (n.varsT E).eraseDups, n.readsFT E, n.wbT E, n.wbkT E⟩
+
+/-- A table that some substitution agrees with, and whose entries read only its own
+    entries. -/
+def TValid (E : Array TEnt) : Prop := (∃ σ, TblOK σ E) ∧ TBnd E
+
+theorem tValid_empty : TValid #[] :=
+  ⟨⟨fun k => .ref k, fun k h => by simp at h⟩, fun k h => by simp at h⟩
+
+theorem TValid.push {E : Array TEnt} (hv : TValid E) {n : STerm}
+    (hn : n.refsLt E.size = true) : TValid (E.push (mkEnt E n)) := by
+  obtain ⟨⟨σ, hσ⟩, hb⟩ := hv
+  let σ' : Nat → STerm := fun j => if j = E.size then n.subst σ else σ j
+  have hag : ∀ k, k < E.size → σ k = σ' k := fun k hk => by
+    simp only [σ', if_neg (Nat.ne_of_lt hk)]
+  have hwb := STerm.wbT_refsLt hb n hn
+  refine ⟨⟨σ', fun k hk => ?_⟩, fun k hk => ?_⟩
+  · rw [Array.size_push] at hk
+    rcases Nat.lt_or_ge k E.size with hk' | hk'
+    · rw [Array.getElem_push_lt hk']
+      obtain ⟨h1, h2, h3, h4, h5⟩ := hσ k hk'
+      have e : σ' k = σ k := (hag k hk').symm
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · rw [e, h1]; exact STerm.subst_congr hag _ (hb k hk').1
+      · rw [e]; exact h2
+      · rw [e]; exact h3
+      · rw [e, h4]; exact STerm.subst_congr hag _ (hb k hk').2
+      · rw [e]; exact h5
+    · have hk2 : k = E.size := by omega
+      subst hk2
+      rw [Array.getElem_push_eq]
+      have e : σ' E.size = n.subst σ := by simp [σ']
+      obtain ⟨w1, w2⟩ := STerm.wbT_spec hσ n hn
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · rw [e]; exact STerm.subst_congr hag _ hn
+      · intro v hv
+        rw [e] at hv
+        exact List.mem_eraseDups.mpr (STerm.varsT_spec hσ n hn v hv)
+      · intro hf
+        rw [e] at hf
+        exact STerm.readsFT_spec hσ n hn hf
+      · rw [e, w1]; exact STerm.subst_congr hag _ hwb
+      · rw [e]; exact w2
+  · rw [Array.size_push] at hk ⊢
+    rcases Nat.lt_or_ge k E.size with hk' | hk'
+    · rw [Array.getElem_push_lt hk']
+      exact ⟨STerm.refsLt_mono (by omega) _ (hb k hk').1,
+        STerm.refsLt_mono (by omega) _ (hb k hk').2⟩
+    · have hk2 : k = E.size := by omega
+      subst hk2
+      rw [Array.getElem_push_eq]
+      exact ⟨STerm.refsLt_mono (by omega) _ hn, STerm.refsLt_mono (by omega) _ hwb⟩
+
+/-- A term table with an index from nodes to entries. -/
+structure Tbl where
+  /-- The entries. -/
+  ents : Array TEnt
+  /-- The index of each node. -/
+  idx : Std.HashMap STerm Nat
+
+/-- The empty term table. -/
+def Tbl.empty : Tbl := ⟨#[], {}⟩
+
+/-- The table `T` with the node `n` appended, and the entry of `n`; `n` itself when it reads
+    an entry outside the table. -/
+def Tbl.push (T : Tbl) (n : STerm) : Tbl × STerm :=
+  if n.refsLt T.ents.size then
+    (⟨T.ents.push (mkEnt T.ents n), T.idx.insert n T.ents.size⟩, .ref T.ents.size)
+  else (T, n)
+
+/-- The entry of the node `n` in the table `T`, added when `T` has none. The index is a
+    hint: its answer is checked against the table. -/
+def Tbl.share (T : Tbl) (n : STerm) : Tbl × STerm :=
+  match T.idx[n]? with
+  | some k => if T.ents[k]?.map TEnt.node = some n then (T, .ref k) else T.push n
+  | none => T.push n
+
+/-- The word `t` as an entry of the table `T`, bottom-up: each node with children
+    interned is shared. -/
+def Tbl.intern (T : Tbl) : STerm → Tbl × STerm
+  | .immAt n x => let p := T.intern x; p.1.share (.immAt n p.2)
+  | .bin m x y =>
+      let p := T.intern x
+      let q := p.1.intern y
+      q.1.share (.bin m p.2 q.2)
+  | .un m x => let p := T.intern x; p.1.share (.un m p.2)
+  | .shImm m k x => let p := T.intern x; p.1.share (.shImm m k p.2)
+  | .aget a w n i => let p := T.intern i; p.1.share (.aget a w n p.2)
+  | .aluF op ofl x y o =>
+      let p := T.intern x
+      let q := p.1.intern y
+      let r := q.1.intern o
+      r.1.share (.aluF op ofl p.2 q.2 r.2)
+  | .carryW op x y c =>
+      let p := T.intern x
+      let q := p.1.intern y
+      let r := q.1.intern c
+      r.1.share (.carryW op p.2 q.2 r.2)
+  | .carryF op ofl x y c =>
+      let p := T.intern x
+      let q := p.1.intern y
+      let r := q.1.intern c
+      r.1.share (.carryF op ofl p.2 q.2 r.2)
+  | .mulx hi x y =>
+      let p := T.intern x
+      let q := p.1.intern y
+      q.1.share (.mulx hi p.2 q.2)
+  | .reg r => (T, .reg r)
+  | .immW w n => (T, .immW w n)
+  | .cin ofl => (T, .cin ofl)
+  | .ref k => (T, .ref k)
+
+theorem Tbl.push_ext (T : Tbl) (n : STerm) : TExt T.ents (T.push n).1.ents := by
+  unfold Tbl.push
+  split
+  · exact TExt.push _ _
+  · exact TExt.refl _
+
+theorem Tbl.share_ext (T : Tbl) (n : STerm) : TExt T.ents (T.share n).1.ents := by
+  unfold Tbl.share
+  split
+  · split
+    · exact TExt.refl _
+    · exact Tbl.push_ext T n
+  · exact Tbl.push_ext T n
+
+theorem Tbl.push_valid {T : Tbl} (hv : TValid T.ents) (n : STerm) :
+    TValid (T.push n).1.ents := by
+  unfold Tbl.push
+  split
+  · exact hv.push (by assumption)
+  · exact hv
+
+theorem Tbl.share_valid {T : Tbl} (hv : TValid T.ents) (n : STerm) :
+    TValid (T.share n).1.ents := by
+  unfold Tbl.share
+  split
+  · split
+    · exact hv
+    · exact Tbl.push_valid hv n
+  · exact Tbl.push_valid hv n
+
+theorem Tbl.push_subst {σ : Nat → STerm} {E : Array TEnt} (T : Tbl) (n : STerm)
+    (hx : TExt (T.push n).1.ents E) (h : TblOK σ E) : (T.push n).2.subst σ = n.subst σ := by
+  unfold Tbl.push at hx ⊢
+  split
+  · rename_i hn
+    rw [if_pos hn] at hx
+    have he : E[T.ents.size]? = some (mkEnt T.ents n) := by
+      have := hx T.ents.size (by simp)
+      simpa using this
+    exact (h.entry he).1
+  · rfl
+
+theorem Tbl.share_subst {σ : Nat → STerm} {E : Array TEnt} (T : Tbl) (n : STerm)
+    (hx : TExt (T.share n).1.ents E) (h : TblOK σ E) : (T.share n).2.subst σ = n.subst σ := by
+  unfold Tbl.share at hx ⊢
+  split
+  · rename_i k hidx
+    rw [hidx] at hx
+    split
+    · rename_i hk
+      simp only [hk, ↓reduceIte] at hx
+      obtain ⟨e, he, hn⟩ := Option.map_eq_some_iff.mp hk
+      have hks : k < T.ents.size := by
+        rcases Nat.lt_or_ge k T.ents.size with h' | h'
+        · exact h'
+        · rw [Array.getElem?_eq_none h'] at he; cases he
+      have he' : E[k]? = some e := by
+        rw [hx k hks, ← Array.getElem?_eq_getElem hks, he]
+      rw [STerm.subst, (h.entry he').1, hn]
+    · rename_i hk
+      simp only [hk, ↓reduceIte] at hx
+      exact Tbl.push_subst T n hx h
+  · rename_i hidx
+    rw [hidx] at hx
+    exact Tbl.push_subst T n hx h
+
+/-! ### Interning -/
+
+theorem Tbl.intern_ext : ∀ (T : Tbl) (t : STerm), TExt T.ents (T.intern t).1.ents
+  | T, .immAt _ x => (Tbl.intern_ext T x).trans (Tbl.share_ext _ _)
+  | T, .bin _ x y =>
+      ((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.share_ext _ _)
+  | T, .un _ x => (Tbl.intern_ext T x).trans (Tbl.share_ext _ _)
+  | T, .shImm _ _ x => (Tbl.intern_ext T x).trans (Tbl.share_ext _ _)
+  | T, .aget _ _ _ i => (Tbl.intern_ext T i).trans (Tbl.share_ext _ _)
+  | T, .aluF _ _ x y o =>
+      (((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.intern_ext _ o)).trans
+        (Tbl.share_ext _ _)
+  | T, .carryW _ x y c =>
+      (((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.intern_ext _ c)).trans
+        (Tbl.share_ext _ _)
+  | T, .carryF _ _ x y c =>
+      (((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.intern_ext _ c)).trans
+        (Tbl.share_ext _ _)
+  | T, .mulx _ x y =>
+      ((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.share_ext _ _)
+  | _, .reg _ => TExt.refl _
+  | _, .immW _ _ => TExt.refl _
+  | _, .cin _ => TExt.refl _
+  | _, .ref _ => TExt.refl _
+
+theorem Tbl.intern_valid : ∀ (T : Tbl) (t : STerm), TValid T.ents → TValid (T.intern t).1.ents
+  | T, .immAt _ x, hv => Tbl.share_valid (Tbl.intern_valid T x hv) _
+  | T, .bin _ x y, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ y (Tbl.intern_valid T x hv)) _
+  | T, .un _ x, hv => Tbl.share_valid (Tbl.intern_valid T x hv) _
+  | T, .shImm _ _ x, hv => Tbl.share_valid (Tbl.intern_valid T x hv) _
+  | T, .aget _ _ _ i, hv => Tbl.share_valid (Tbl.intern_valid T i hv) _
+  | T, .aluF _ _ x y o, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ o (Tbl.intern_valid _ y (Tbl.intern_valid T x hv))) _
+  | T, .carryW _ x y c, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ c (Tbl.intern_valid _ y (Tbl.intern_valid T x hv))) _
+  | T, .carryF _ _ x y c, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ c (Tbl.intern_valid _ y (Tbl.intern_valid T x hv))) _
+  | T, .mulx _ x y, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ y (Tbl.intern_valid T x hv)) _
+  | _, .reg _, hv => hv
+  | _, .immW _ _, hv => hv
+  | _, .cin _, hv => hv
+  | _, .ref _, hv => hv
+
+/-- **Interning keeps the word.** For every substitution that agrees with a table extending
+    the one interning ends in, the interned word and the word have one substitution
+    instance. -/
+theorem Tbl.intern_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) :
+    ∀ (T : Tbl) (t : STerm), TExt (T.intern t).1.ents E →
+      (T.intern t).2.subst σ = t.subst σ
+  | T, .immAt _ x, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst,
+        Tbl.intern_subst h T x ((Tbl.share_ext _ _).trans hx)]
+  | T, .bin _ x y, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h2 := (Tbl.share_ext _ _).trans hx
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2]
+  | T, .un _ x, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst,
+        Tbl.intern_subst h T x ((Tbl.share_ext _ _).trans hx)]
+  | T, .shImm _ _ x, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst,
+        Tbl.intern_subst h T x ((Tbl.share_ext _ _).trans hx)]
+  | T, .aget _ _ _ i, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst,
+        Tbl.intern_subst h T i ((Tbl.share_ext _ _).trans hx)]
+  | T, .aluF _ _ x y o, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h3 := (Tbl.share_ext _ _).trans hx
+      have h2 := (Tbl.intern_ext _ o).trans h3
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2, Tbl.intern_subst h _ o h3]
+  | T, .carryW _ x y c, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h3 := (Tbl.share_ext _ _).trans hx
+      have h2 := (Tbl.intern_ext _ c).trans h3
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2, Tbl.intern_subst h _ c h3]
+  | T, .carryF _ _ x y c, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h3 := (Tbl.share_ext _ _).trans hx
+      have h2 := (Tbl.intern_ext _ c).trans h3
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2, Tbl.intern_subst h _ c h3]
+  | T, .mulx _ x y, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h2 := (Tbl.share_ext _ _).trans hx
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2]
+  | _, .reg _, _ => rfl
+  | _, .immW _ _, _ => rfl
+  | _, .cin _, _ => rfl
+  | _, .ref _, _ => rfl
+
+/-! ### The shared run -/
+
+/-- The registers `ds` of `ss` interned in `T`. -/
+def Tbl.internRegs (T : Tbl) (ss : SSt) : List String → Tbl × SSt
+  | [] => (T, ss)
+  | d :: ds =>
+      let p := T.intern (ss.regs d)
+      p.1.internRegs { ss with regs := fun r => if r = d then p.2 else ss.regs r } ds
+
+/-- The registers `ds` and the carry and overflow flags of `ss` interned in `T`. -/
+def Tbl.internSt (T : Tbl) (ss : SSt) (ds : List String) : Tbl × SSt :=
+  let p := T.internRegs ss ds
+  let c := p.1.intern p.2.cf
+  let o := c.1.intern p.2.of
+  (o.1, { p.2 with cf := c.2, of := o.2 })
+
+theorem Tbl.internRegs_ext : ∀ (T : Tbl) (ss : SSt) (ds : List String),
+    TExt T.ents (T.internRegs ss ds).1.ents
+  | T, _, [] => TExt.refl T.ents
+  | T, ss, d :: ds => (Tbl.intern_ext T (ss.regs d)).trans (Tbl.internRegs_ext _ _ ds)
+
+theorem Tbl.internRegs_valid : ∀ (T : Tbl) (ss : SSt) (ds : List String), TValid T.ents →
+    TValid (T.internRegs ss ds).1.ents
+  | _, _, [], hv => hv
+  | T, ss, d :: ds, hv => Tbl.internRegs_valid _ _ ds (Tbl.intern_valid T (ss.regs d) hv)
+
+theorem Tbl.internRegs_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) :
+    ∀ (T : Tbl) (ss : SSt) (ds : List String), TExt (T.internRegs ss ds).1.ents E →
+      (T.internRegs ss ds).2.subst σ = ss.subst σ
+  | _, _, [], _ => rfl
+  | T, ss, d :: ds, hx => by
+      simp only [Tbl.internRegs] at hx ⊢
+      rw [Tbl.internRegs_subst h _ _ ds hx]
+      have hd := Tbl.intern_subst h T (ss.regs d) ((Tbl.internRegs_ext _ _ ds).trans hx)
+      simp only [SSt.subst, SSt.mk.injEq, and_true]
+      funext r
+      split
+      · subst r; exact hd
+      · rfl
+
+theorem Tbl.internSt_ext (T : Tbl) (ss : SSt) (ds : List String) :
+    TExt T.ents (T.internSt ss ds).1.ents :=
+  ((Tbl.internRegs_ext T ss ds).trans (Tbl.intern_ext _ _)).trans (Tbl.intern_ext _ _)
+
+theorem Tbl.internSt_valid {T : Tbl} (hv : TValid T.ents) (ss : SSt) (ds : List String) :
+    TValid (T.internSt ss ds).1.ents :=
+  Tbl.intern_valid _ _ (Tbl.intern_valid _ _ (Tbl.internRegs_valid T ss ds hv))
+
+theorem Tbl.internSt_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (T : Tbl)
+    (ss : SSt) (ds : List String) (hx : TExt (T.internSt ss ds).1.ents E) :
+    (T.internSt ss ds).2.subst σ = ss.subst σ := by
+  simp only [Tbl.internSt] at hx ⊢
+  have h3 := hx
+  have h2 := (Tbl.intern_ext _ _).trans h3
+  have h1 := (Tbl.intern_ext _ _).trans h2
+  have e := Tbl.internRegs_subst h T ss ds h1
+  rw [SSt.subst_with, Tbl.intern_subst h _ _ h2, Tbl.intern_subst h _ _ h3, ← e]
+  rfl
+
+/-- The symbolic run of a list of instructions over the table `T`: after each step the
+    registers it writes and the carry and overflow flags are interned. The result is the
+    final table and the description `symRun` gives, with words over the table. -/
+def tRun : List LinstrRM → SSt → Tbl → Tbl × SOut
+  | [], ss, T => (T, .ok ss [])
+  | i :: is, ss, T =>
+      match symStep i ss with
+      | .ok ss1 g1 =>
+          let p := T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
+          let r := tRun is p.2 p.1
+          match r.2 with
+          | .ok ss2 g2 => (r.1, .ok ss2 (g1 ++ g2))
+          | .fail => (r.1, .fail)
+          | .unk => (r.1, .unk)
+      | .fail => (T, .fail)
+      | .unk => (T, .unk)
+
+theorem tRun_ext : ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt T.ents (tRun is ss T).1.ents
+  | [], _, T => TExt.refl T.ents
+  | i :: is, ss, T => by
+      simp only [tRun]
+      split
+      · rename_i ss1 _ _
+        have := (Tbl.internSt_ext T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).trans
+          (tRun_ext is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _)
+        split <;> exact this
+      · exact TExt.refl _
+      · exact TExt.refl _
+
+theorem tRun_valid : ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TValid T.ents →
+    TValid (tRun is ss T).1.ents
+  | [], _, _, hv => hv
+  | i :: is, ss, T, hv => by
+      simp only [tRun]
+      split
+      · rename_i ss1 _ _
+        have := tRun_valid is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _
+          (Tbl.internSt_valid hv ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)))
+        split <;> exact this
+      · exact hv
+      · exact hv
+
+/-- **The shared run describes the symbolic run.** For every substitution that agrees with a
+    table extending the final table of `tRun`, its description is the description `symRun`
+    gives from the substituted start. -/
+theorem tRun_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) :
+    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt (tRun is ss T).1.ents E →
+      (tRun is ss T).2.subst σ = symRun is (ss.subst σ)
+  | [], _, _, _ => rfl
+  | i :: is, ss, T, hx => by
+      simp only [symRun, symStep_subst]
+      simp only [tRun] at hx ⊢
+      cases hs : symStep i ss with
+      | ok ss1 g1 =>
+          simp only [hs] at hx ⊢
+          generalize hp : T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)) = p at hx ⊢
+          have hx' : TExt (tRun is p.2 p.1).1.ents E := by split at hx <;> exact hx
+          have ih := tRun_subst h is _ _ hx'
+          have e2 := Tbl.internSt_subst h T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
+            (by rw [hp]; exact (tRun_ext is _ _).trans hx')
+          rw [hp] at e2
+          rw [e2] at ih
+          simp only [SOut.subst]
+          rw [← ih]
+          generalize tRun is p.2 p.1 = r
+          obtain ⟨T', o⟩ := r
+          cases o <;> simp [SOut.subst]
+      | fail => rfl
+      | unk => rfl
+
+/-! ## 15. The shared checker
+
+`blockOkR` is `blockOk` over the term table: both bodies of a block pair run over one table
+(`blockRuns`), so equal words are equal entries, and the registers and flags a value reads
+come from the cached entries. `blockOkR_spec` shows that it implies `blockOk`. -/
+
+/-- The start registers the flag `f` over the table `E` reads. -/
+def SFlag.varsT (E : Array TEnt) : SFlag → List String
+  | .init => []
+  | .cmp x y => x.varsT E ++ y.varsT E
+
+/-- The flag `f` over the table `E` reads a flag at the start. -/
+def SFlag.readsInitT (E : Array TEnt) : SFlag → Bool
+  | .init => true
+  | .cmp x y => x.readsFT E || y.readsFT E
+
+/-- The flag `f` reads only table entries below `n`. -/
+def SFlag.refsLt (n : Nat) : SFlag → Bool
+  | .init => true
+  | .cmp x y => x.refsLt n && y.refsLt n
+
+/-- The start registers the guard `g` over the table `E` reads. -/
+def SG.varsT (E : Array TEnt) : SG → List String
+  | .wid t _ => t.varsT E
+  | .eqW x y => x.varsT E ++ y.varsT E
+  | .shp a _ _ => a.varsT E
+
+/-- The guard `g` over the table `E` reads a flag at the start. -/
+def SG.readsFT (E : Array TEnt) : SG → Bool
+  | .wid t _ => t.readsFT E
+  | .eqW x y => x.readsFT E || y.readsFT E
+  | .shp a _ _ => a.readsFT E
+
+/-- The guard `g` reads only table entries below `n`. -/
+def SG.refsLt (n : Nat) : SG → Bool
+  | .wid t _ => t.refsLt n
+  | .eqW x y => x.refsLt n && y.refsLt n
+  | .shp a _ _ => a.refsLt n
+
+/-- The start registers the branch condition `d` over the table `E` reads. -/
+def SDec.varsT (E : Array TEnt) : SDec → List String
+  | .flag _ z => z.varsT E
+  | .nz t => t.varsT E
+  | .const _ => []
+
+/-- The branch condition `d` over the table `E` reads a flag at the start. -/
+def SDec.readsInitT (E : Array TEnt) : SDec → Bool
+  | .flag _ z => z.readsInitT E
+  | .nz t => t.readsFT E
+  | .const _ => false
+
+/-- The branch condition `d` reads only table entries below `n`. -/
+def SDec.refsLt (n : Nat) : SDec → Bool
+  | .flag _ z => z.refsLt n
+  | .nz t => t.refsLt n
+  | .const _ => true
+
+/-- The word `t` over the table `E` may be compared at a block with live set `n`. -/
+def okInT (E : Array TEnt) (n : List String × Bool) (t : STerm) : Bool :=
+  t.refsLt E.size && okIn n (t.varsT E) (t.readsFT E)
+
+/-- The array `a` over the table `E` may be compared at a block with live set `n`. -/
+def okInAT (E : Array TEnt) (n : List String × Bool) (a : SArr) : Bool :=
+  a.refsLt E.size && okIn n (a.varsT E) (a.readsFT E)
+
+/-- The flag `f` over the table `E` may be compared at a block with live set `n`. -/
+def okInFT (E : Array TEnt) (n : List String × Bool) (f : SFlag) : Bool :=
+  f.refsLt E.size && okIn n (f.varsT E) (f.readsInitT E)
+
+/-- The guard `g` over the table `E` may be compared at a block with live set `n`. -/
+def okInGT (E : Array TEnt) (n : List String × Bool) (g : SG) : Bool :=
+  g.refsLt E.size && okIn n (g.varsT E) (g.readsFT E)
+
+/-- The branch condition `d` over the table `E` may be compared at a block with live
+    set `n`. -/
+def okInDT (E : Array TEnt) (n : List String × Bool) (d : SDec) : Bool :=
+  d.refsLt E.size && okIn n (d.varsT E) (d.readsInitT E)
+
+theorem okIn_of {n : List String × Bool} {vs vs' : List String} {rf rf' : Bool}
+    (hv : ∀ v ∈ vs, v ∈ vs') (hr : rf = true → rf' = true) (h : okIn n vs' rf' = true) :
+    okIn n vs rf = true := by
+  obtain ⟨h1, h2⟩ := okIn_spec h
+  simp only [okIn, vIn, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem,
+    Bool.or_eq_true, Bool.not_eq_true']
+  refine ⟨fun v hv' => h1 v (hv v hv'), ?_⟩
+  cases rf
+  · exact Or.inl rfl
+  · exact Or.inr (h2 (hr rfl))
+
+section Shared
+
+variable {σ : Nat → STerm} {E : Array TEnt}
+
+theorem okInT_spec (h : TblOK σ E) {n : List String × Bool} {t : STerm}
+    (ht : okInT E n t = true) : okIn n (t.subst σ).vars (t.subst σ).readsF = true := by
+  simp only [okInT, Bool.and_eq_true] at ht
+  exact okIn_of (STerm.varsT_spec h t ht.1) (STerm.readsFT_spec h t ht.1) ht.2
+
+theorem okInAT_spec (h : TblOK σ E) {n : List String × Bool} {a : SArr}
+    (ha : okInAT E n a = true) : okIn n (a.subst σ).vars (a.subst σ).readsF = true := by
+  simp only [okInAT, Bool.and_eq_true] at ha
+  exact okIn_of (SArr.varsT_spec h a ha.1) (SArr.readsFT_spec h a ha.1) ha.2
+
+theorem okInFT_spec (h : TblOK σ E) {n : List String × Bool} {f : SFlag}
+    (hf : okInFT E n f = true) : okIn n (f.subst σ).vars (f.subst σ).readsInit = true := by
+  simp only [okInFT, Bool.and_eq_true] at hf
+  cases f with
+  | init => exact hf.2
+  | cmp x y =>
+      simp only [SFlag.refsLt, Bool.and_eq_true] at hf
+      refine okIn_of (vs' := SFlag.varsT E (.cmp x y)) (rf' := SFlag.readsInitT E (.cmp x y))
+        (fun v hv => ?_) (fun hr => ?_) hf.2
+      · simp only [SFlag.subst, SFlag.vars, List.mem_append] at hv
+        simp only [SFlag.varsT, List.mem_append]
+        exact hv.imp (STerm.varsT_spec h x hf.1.1 v) (STerm.varsT_spec h y hf.1.2 v)
+      · simp only [SFlag.subst, SFlag.readsInit, Bool.or_eq_true] at hr
+        simp only [SFlag.readsInitT, Bool.or_eq_true]
+        exact hr.imp (STerm.readsFT_spec h x hf.1.1) (STerm.readsFT_spec h y hf.1.2)
+
+theorem okInGT_spec (h : TblOK σ E) {n : List String × Bool} {g : SG}
+    (hg : okInGT E n g = true) : okIn n (g.subst σ).vars (g.subst σ).readsF = true := by
+  simp only [okInGT, Bool.and_eq_true] at hg
+  cases g with
+  | wid t w => exact okIn_of (STerm.varsT_spec h t hg.1) (STerm.readsFT_spec h t hg.1) hg.2
+  | eqW x y =>
+      simp only [SG.refsLt, Bool.and_eq_true] at hg
+      refine okIn_of (vs' := SG.varsT E (.eqW x y)) (rf' := SG.readsFT E (.eqW x y))
+        (fun v hv => ?_) (fun hr => ?_) hg.2
+      · simp only [SG.subst, SG.vars, List.mem_append] at hv
+        simp only [SG.varsT, List.mem_append]
+        exact hv.imp (STerm.varsT_spec h x hg.1.1 v) (STerm.varsT_spec h y hg.1.2 v)
+      · simp only [SG.subst, SG.readsF, Bool.or_eq_true] at hr
+        simp only [SG.readsFT, Bool.or_eq_true]
+        exact hr.imp (STerm.readsFT_spec h x hg.1.1) (STerm.readsFT_spec h y hg.1.2)
+  | shp a w m => exact okIn_of (SArr.varsT_spec h a hg.1) (SArr.readsFT_spec h a hg.1) hg.2
+
+theorem okInDT_spec (h : TblOK σ E) {n : List String × Bool} {d : SDec}
+    (hd : okInDT E n d = true) : okIn n (d.subst σ).vars (d.subst σ).readsInit = true := by
+  simp only [okInDT, Bool.and_eq_true] at hd
+  cases d with
+  | flag pol z =>
+      have := okInFT_spec h (n := n) (f := z) (by simp only [okInFT, Bool.and_eq_true]; exact hd)
+      simpa [SDec.subst, SDec.vars, SDec.readsInit] using this
+  | nz t =>
+      exact okIn_of (STerm.varsT_spec h t hd.1) (STerm.readsFT_spec h t hd.1) hd.2
+  | const b => exact hd.2
+
+end Shared
+
+/-- The normal form of a guard over the table `E` (`SG.norm`). -/
+def SG.normT (E : Array TEnt) : SG → List SG
+  | .wid t w =>
+      match t.wbkT E with
+      | some v => if v = w then [] else [SG.falseG]
+      | none => [.wid (t.wbT E) w]
+  | .eqW x y =>
+      match x.wbkT E, y.wbkT E with
+      | some a, some b => if a = b then [] else [SG.falseG]
+      | _, _ => [.eqW (x.wbT E) (y.wbT E)]
+  | .shp a w n => [.shp a w n]
+
+/-- The normal form of a list of guards over the table `E` (`normG`). -/
+def normGT (E : Array TEnt) (gs : List SG) : List SG := gs.flatMap (SG.normT E)
+
+theorem SG.normT_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (g : SG)
+    (hg : g.refsLt E.size = true) : (g.normT E).map (SG.subst σ) = (g.subst σ).norm := by
+  cases g with
+  | wid t w =>
+      obtain ⟨w1, w2⟩ := STerm.wbT_spec h t hg
+      simp only [SG.normT, SG.subst, SG.norm]
+      rw [w2, w1]
+      cases t.wbkT E with
+      | some v => by_cases hv : v = w <;> simp [hv, SG.falseG, SG.subst, STerm.subst]
+      | none => rfl
+  | eqW x y =>
+      simp only [SG.refsLt, Bool.and_eq_true] at hg
+      obtain ⟨x1, x2⟩ := STerm.wbT_spec h x hg.1
+      obtain ⟨y1, y2⟩ := STerm.wbT_spec h y hg.2
+      simp only [SG.normT, SG.subst, SG.norm]
+      rw [x2, y2, x1, y1]
+      cases x.wbkT E with
+      | none => cases y.wbkT E <;> rfl
+      | some a =>
+          cases y.wbkT E with
+          | none => rfl
+          | some b => by_cases hab : a = b <;> simp [hab, SG.falseG, SG.subst, STerm.subst]
+  | shp a w n => rfl
+
+theorem normGT_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) :
+    ∀ gs : List SG, gs.all (SG.refsLt E.size) = true →
+      (normGT E gs).map (SG.subst σ) = normG (gs.map (SG.subst σ))
+  | [], _ => rfl
+  | g :: gs, hb => by
+      simp only [List.all_cons, Bool.and_eq_true] at hb
+      have ih := normGT_subst h gs hb.2
+      simp only [normGT, normG] at ih ⊢
+      rw [List.flatMap_cons, List.map_append, ih, SG.normT_subst h g hb.1]
+      rfl
+
+theorem symDec_subst (σ : Nat → STerm) (ss : SSt) (c : LOperand) :
+    symDec (ss.subst σ) c = (symDec ss c).subst σ := by
+  unfold symDec
+  split
+  · rfl
+  · split <;> rfl
+
+/-- The guard check of `blockOk` over the table `E`. -/
+def guardsT (E : Array TEnt) (n : List String × Bool) (gs gs' : List SG) : Bool :=
+  (gs ++ gs').all (SG.refsLt E.size) &&
+    (normGT E gs').all (fun g => (normGT E gs).contains g && okInGT E n g)
+
+theorem guardsT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
+    {n : List String × Bool} {gs gs' : List SG} (hg : guardsT E n gs gs' = true) :
+    (normG (gs'.map (SG.subst σ))).all (fun g =>
+      (normG (gs.map (SG.subst σ))).contains g && okIn n g.vars g.readsF) = true := by
+  simp only [guardsT, Bool.and_eq_true, List.all_append] at hg
+  obtain ⟨⟨hb, hb'⟩, hc⟩ := hg
+  rw [← normGT_subst h gs hb, ← normGT_subst h gs' hb']
+  simp only [List.all_eq_true, List.mem_map, Bool.and_eq_true, List.contains_iff_mem] at hc ⊢
+  rintro _ ⟨g, hg, rfl⟩
+  exact ⟨⟨g, (hc g hg).1, rfl⟩, okInGT_spec h (hc g hg).2⟩
+
+/-- The terminator check of `blockOk` over the table `E` (`termAgree`). -/
+def termAgreeT (E : Array TEnt) (T : Term) (n : List String × Bool) (ss ss' : SSt) :
+    Option LinstrRM → Option LinstrRM → Bool
+  | some (.Lgoto (a, _), _), some (.Lgoto (b, _), _) =>
+      match T with
+      | .goto _ => a == b
+      | _ => false
+  | some (.Lcond c _, _), some (.Lcond c' _, _) =>
+      match T with
+      | .cond _ _ => symDec ss c == symDec ss' c' && okInDT E n (symDec ss c)
+      | _ => false
+  | _, _ =>
+      match T with
+      | .fall _ => true
+      | _ => false
+
+theorem termAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {T : Term}
+    {n : List String × Bool} {ss ss' : SSt} {x y : Option LinstrRM}
+    (ht : termAgreeT E T n ss ss' x y = true) :
+    termAgree T n (ss.subst σ) (ss'.subst σ) x y = true := by
+  unfold termAgreeT at ht
+  unfold termAgree
+  split at ht
+  · exact ht
+  · rename_i c _ _ c' _ _
+    split at ht
+    · simp only [Bool.and_eq_true, beq_iff_eq] at ht
+      have hd := okInDT_spec h ht.2
+      simp only [okIn, Bool.and_eq_true] at hd
+      simp only [symDec_subst, ht.1, Bool.and_eq_true, beq_self_eq_true, true_and]
+      rw [← ht.1]
+      exact hd
+    · cases ht
+  · exact ht
+
+/-- The exit check of `blockOk` over the table `E` (`exitAgree`). -/
+def exitAgreeT (E : Array TEnt) (outs : List String) (L : Nat → List String × Bool)
+    (n : List String × Bool) (T : Term) (ss ss' : SSt) : Bool :=
+  T.succs.all (fun j =>
+      (L j).1.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r)) &&
+        (!(L j).2 || (ss.zf == ss'.zf && okInFT E n ss.zf &&
+          ss.cf == ss'.cf && okInT E n ss.cf &&
+          ss.of == ss'.of && okInT E n ss.of))) &&
+    (!T.halts || outs.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r))) &&
+    (ss.awr ++ ss'.awr).all (fun q => ss.arrs q == ss'.arrs q && okInAT E n (ss.arrs q))
+
+theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
+    {outs : List String} {L : Nat → List String × Bool} {n : List String × Bool} {T : Term}
+    {ss ss' : SSt} (he : exitAgreeT E outs L n T ss ss' = true) :
+    exitAgree outs L n T (ss.subst σ) (ss'.subst σ) = true := by
+  simp only [exitAgreeT, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
+    Bool.not_eq_true'] at he
+  obtain ⟨⟨hs, hh⟩, ha⟩ := he
+  simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
+    Bool.not_eq_true']
+  refine ⟨⟨fun j hj => ⟨fun r hr => ?_, ?_⟩, ?_⟩, fun q hq => ?_⟩
+  · obtain ⟨e, o⟩ := (hs j hj).1 r hr
+    exact ⟨by simp only [SSt.subst, e], okInT_spec h o⟩
+  · rcases (hs j hj).2 with h0 | ⟨⟨⟨⟨⟨z1, z2⟩, c1⟩, c2⟩, o1⟩, o2⟩
+    · exact Or.inl h0
+    · exact Or.inr ⟨⟨⟨⟨⟨by simp only [SSt.subst, z1], okInFT_spec h z2⟩,
+        by simp only [SSt.subst, c1]⟩, okInT_spec h c2⟩, by simp only [SSt.subst, o1]⟩,
+        okInT_spec h o2⟩
+  · rcases hh with h0 | ho
+    · exact Or.inl h0
+    · exact Or.inr fun r hr => ⟨by simp only [SSt.subst, (ho r hr).1], okInT_spec h (ho r hr).2⟩
+  · have hq' : q ∈ ss.awr ++ ss'.awr := hq
+    exact ⟨by simp only [SSt.subst, (ha q hq').1], okInAT_spec h (ha q hq').2⟩
+
+/-- The shared runs of block `b` of `B` and block `b'` of `B'` with terminator `T`: the
+    final table and the two descriptions over it. -/
+def blockRuns (B B' : List LinstrRM) (b b' : Block) (T : Term) : Tbl × SOut × SOut :=
+  let p := tRun (bodyAt B b T) SSt.start Tbl.empty
+  let q := tRun (bodyAt B' b' T) SSt.start p.1
+  (q.1, p.2, q.2)
+
+/-- The check of block `k` from its shared runs `R` (`blockOk`). -/
+def blockOkR (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T : Term)
+    (R : Tbl × SOut × SOut) (B B' : List LinstrRM) (b b' : Block) : Bool :=
+  match T with
+  | .ret => true
+  | _ =>
+      match R.2.1 with
+      | .fail => true
+      | .unk => false
+      | .ok ss gs =>
+          match R.2.2 with
+          | .ok ss' gs' =>
+              guardsT R.1.ents (L k) gs gs' &&
+                termAgreeT R.1.ents T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
+                exitAgreeT R.1.ents outs L (L k) T ss ss'
+          | _ => false
+
+/-- **The shared check implies the check.** -/
+theorem blockOkR_spec {outs : List String} {L : Nat → List String × Bool} {k : Nat}
+    {T : Term} {B B' : List LinstrRM} {b b' : Block}
+    (h : blockOkR outs L k T (blockRuns B B' b b' T) B B' b b' = true) :
+    blockOk outs L k T B B' b b' = true := by
+  have hv : TValid (blockRuns B B' b b' T).1.ents :=
+    tRun_valid _ _ _ (tRun_valid _ _ _ tValid_empty)
+  obtain ⟨⟨σ, hσ⟩, -⟩ := hv
+  have e1 : symRun (bodyAt B b T) SSt.start = (blockRuns B B' b b' T).2.1.subst σ := by
+    rw [← SSt.subst_start σ, ← tRun_subst hσ _ _ _ (tRun_ext _ _ _)]
+    rfl
+  have e2 : symRun (bodyAt B' b' T) SSt.start = (blockRuns B B' b b' T).2.2.subst σ := by
+    rw [← SSt.subst_start σ, ← tRun_subst hσ _ _ _ (TExt.refl _)]
+    rfl
+  unfold blockOkR at h
+  unfold blockOk
+  split
+  · rfl
+  · rename_i hT
+    have h' : (match (blockRuns B B' b b' T).2.1 with
+      | .fail => true
+      | .unk => false
+      | .ok ss gs =>
+          match (blockRuns B B' b b' T).2.2 with
+          | .ok ss' gs' =>
+              guardsT (blockRuns B B' b b' T).1.ents (L k) gs gs' &&
+                termAgreeT (blockRuns B B' b b' T).1.ents T (L k) ss ss' B[b.stop - 1]?
+                  B'[b'.stop - 1]? &&
+                exitAgreeT (blockRuns B B' b b' T).1.ents outs L (L k) T ss ss'
+          | _ => false) = true := by
+      split at h
+      · exact absurd rfl hT
+      · exact h
+    rw [e1, e2]
+    revert h'
+    generalize blockRuns B B' b b' T = R at hσ
+    obtain ⟨Tb, o, o'⟩ := R
+    intro h'
+    cases o with
+    | fail => rfl
+    | unk => cases h'
+    | ok ss gs =>
+        cases o' with
+        | ok ss' gs' =>
+            simp only [Bool.and_eq_true] at h'
+            obtain ⟨⟨hg, hta⟩, hex⟩ := h'
+            simp only [SOut.subst, Bool.and_eq_true]
+            exact ⟨⟨guardsT_spec hσ hg, termAgreeT_spec hσ hta⟩, exitAgreeT_spec hσ hex⟩
+        | fail => cases h'
+        | unk => cases h'
+
+/-! ## 16. Live sets -/
+
+/-- The shared runs of the block pairs of `G` and `G'`. -/
+def runsOf (B B' : List LinstrRM) (G G' : CFG) : Array (Tbl × SOut × SOut) :=
+  (Array.range G.blocks.size).map fun k => blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term
+
+/-- The checker for the live sets `L` over the shared runs `R` of the block pairs of `G` and
+    `G'` (`ownedCheckWith`). -/
+def ownedCheckWithR (outs : List String) (L : Nat → List String × Bool)
+    (B B' : List LinstrRM) (G G' : CFG) (R : Array (Tbl × SOut × SOut)) : Bool :=
+  !B.isEmpty && !B'.isEmpty && G.blocks.size == G'.blocks.size &&
+    (List.range G.blocks.size).all (fun k =>
+      (G.blk k).term == (G'.blk k).term &&
+        match R[k]? with
+        | some r => blockOkR outs L k (G.blk k).term r B B' (G.blk k) (G'.blk k)
+        | none => false)
+
+theorem ownedCheckWithR_spec {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM} {G G' : CFG} (hG : cfgOf (B.map Prod.fst) = some G)
+    (hG' : cfgOf (B'.map Prod.fst) = some G')
+    (h : ownedCheckWithR outs L B B' G G' (runsOf B B' G G') = true) :
+    ownedCheckWith outs L B B' = true := by
+  unfold ownedCheckWith
+  rw [hG, hG']
+  simp only [ownedCheckWithR, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h ⊢
+  obtain ⟨hne, hall⟩ := h
+  refine ⟨hne, fun k hk => ?_⟩
+  obtain ⟨ht, hb⟩ := hall k hk
+  refine ⟨ht, ?_⟩
+  have hR : (runsOf B B' G G')[k]? =
+      some (blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term) := by
+    simp [runsOf, hk]
+  rw [hR] at hb
+  exact blockOkR_spec hb
+
+/-- The start registers and flags block `k` needs live for the checks of `blockOkR` to pass,
+    from its shared runs `R`, given the live sets `L` of its successors. The result is a
+    candidate only: `ownedCheckWith` checks the live sets it is given. -/
 def blockNeed (outs : List String) (L : Nat → List String × Bool) (T : Term)
-    (B B' : List LinstrRM) (b b' : Block) : List String × Bool :=
+    (R : Tbl × SOut × SOut) (B : List LinstrRM) (b : Block) : List String × Bool :=
   match T with
   | .ret => ([], false)
   | _ =>
-      match symRun (bodyAt B b T) SSt.start, symRun (bodyAt B' b' T) SSt.start with
+      let E := R.1.ents
+      match R.2.1, R.2.2 with
       | .ok ss _, .ok ss' gs' =>
           let dec : Option SDec :=
             match T, B[b.stop - 1]? with
             | .cond _ _, some (.Lcond c _, _) => some (symDec ss c)
             | _, _ => none
-          (gs'.flatMap SG.vars ++ (dec.map SDec.vars).getD [] ++
-              T.succs.flatMap (fun j => (L j).1.flatMap (fun r => (ss.regs r).vars) ++
-                (if (L j).2 then ss.zf.vars ++ ss.cf.vars ++ ss.of.vars else [])) ++
-              (if T.halts then outs.flatMap (fun r => (ss.regs r).vars) else []) ++
-              (ss.awr ++ ss'.awr).flatMap (fun q => (ss.arrs q).vars),
-            (dec.map SDec.readsInit).getD false || gs'.any SG.readsF ||
-              T.succs.any (fun j => (L j).1.any (fun r => (ss.regs r).readsF) ||
-                ((L j).2 && (ss.zf.readsInit || ss.cf.readsF || ss.of.readsF))) ||
-              (T.halts && outs.any (fun r => (ss.regs r).readsF)) ||
-              (ss.awr ++ ss'.awr).any (fun q => (ss.arrs q).readsF))
+          ((normGT E gs').flatMap (SG.varsT E) ++ (dec.map (SDec.varsT E)).getD [] ++
+              T.succs.flatMap (fun j => (L j).1.flatMap (fun r => (ss.regs r).varsT E) ++
+                (if (L j).2 then ss.zf.varsT E ++ ss.cf.varsT E ++ ss.of.varsT E else [])) ++
+              (if T.halts then outs.flatMap (fun r => (ss.regs r).varsT E) else []) ++
+              (ss.awr ++ ss'.awr).flatMap (fun q => (ss.arrs q).varsT E),
+            (dec.map (SDec.readsInitT E)).getD false || (normGT E gs').any (SG.readsFT E) ||
+              T.succs.any (fun j => (L j).1.any (fun r => (ss.regs r).readsFT E) ||
+                ((L j).2 && (ss.zf.readsInitT E || ss.cf.readsFT E || ss.of.readsFT E))) ||
+              (T.halts && outs.any (fun r => (ss.regs r).readsFT E)) ||
+              (ss.awr ++ ss'.awr).any (fun q => (ss.arrs q).readsFT E))
       | _, _ => ([], false)
 
 /-- `n` extended by the names and flag of `m`. -/
 def joinLive (n m : List String × Bool) : List String × Bool :=
   (m.1.foldl (fun acc v => if acc.contains v then acc else acc ++ [v]) n.1, n.2 || m.2)
 
-/-- One round of the live-set iteration over the blocks of `G` and `G'`. -/
-def liveRound (outs : List String) (B B' : List LinstrRM) (G G' : CFG)
-    (L : Array (List String × Bool)) : Array (List String × Bool) :=
+/-- One round of the live-set iteration over the blocks of `G`, from their shared runs
+    `R`. -/
+def liveRound (outs : List String) (B : List LinstrRM) (G : CFG)
+    (R : Array (Tbl × SOut × SOut)) (L : Array (List String × Bool)) :
+    Array (List String × Bool) :=
   (Array.range G.blocks.size).map fun k =>
     joinLive (L.getD k ([], false))
-      (blockNeed outs (fun j => L.getD j ([], false)) (G.blk k).term B B' (G.blk k) (G'.blk k))
+      (match R[k]? with
+        | some r => blockNeed outs (fun j => L.getD j ([], false)) (G.blk k).term r B (G.blk k)
+        | none => ([], false))
 
 /-- The live-set iteration from the empty sets, stopped at a fixpoint or after `n`
     rounds. -/
-def liveIter (outs : List String) (B B' : List LinstrRM) (G G' : CFG) :
+def liveIter (outs : List String) (B : List LinstrRM) (G : CFG)
+    (R : Array (Tbl × SOut × SOut)) :
     Nat → Array (List String × Bool) → Array (List String × Bool)
   | 0, L => L
   | n + 1, L =>
-      let L' := liveRound outs B B' G G' L
+      let L' := liveRound outs B G R L
       if L'.map (fun p => (p.1.length, p.2)) == L.map (fun p => (p.1.length, p.2)) then L
-      else liveIter outs B B' G G' n L'
+      else liveIter outs B G R n L'
 
-/-- **The checker.** The live sets are computed by `liveIter` and checked by
-    `ownedCheckWith`. -/
+/-- **The checker.** Each block pair runs once over a shared term table (`runsOf`); the live
+    sets are computed by `liveIter` and the runs checked by `ownedCheckWithR`. -/
 def ownedCheckM (outs : List String) (B B' : List LinstrRM) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let L := liveIter outs B B' G G' (4 * G.blocks.size + 64)
+      let R := runsOf B B' G G'
+      let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false))
-      ownedCheckWith outs (fun k => L.getD k ([], false)) B B'
+      ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R
   | _, _ => false
 
 theorem ownedCheckM_with {outs : List String} {B B' : List LinstrRM}
     (h : ownedCheckM outs B B' = true) : ∃ L, ownedCheckWith outs L B B' = true := by
   unfold ownedCheckM at h
-  split at h
-  · exact ⟨_, h⟩
-  · cases h
+  cases hG : cfgOf (B.map Prod.fst) with
+  | none => simp [hG] at h
+  | some G =>
+      cases hG' : cfgOf (B'.map Prod.fst) with
+      | none => simp [hG, hG'] at h
+      | some G' =>
+          rw [hG, hG'] at h
+          exact ⟨_, ownedCheckWithR_spec hG hG' h⟩
 
 /-- **Soundness of the checker.** If `ownedCheckM outs B B'` accepts, every halting
     `lsemFuelMemF` run of the singleton program over `B` from a state at pc `0` of that
@@ -2646,7 +4167,7 @@ theorem ownedCheckM_sound {outs : List String} {B B' : List LinstrRM}
   obtain ⟨L, hL⟩ := ownedCheckM_with h
   exact ownedCheckWith_sound hL fn s t hfn hpc fuel hrun
 
-/-! ## 14. Programs -/
+/-! ## 17. Programs -/
 
 /-- A body typed instruction by instruction with the memory tag `tag`. -/
 def typeBody (tag : LinstrR → MemTag) (c : Lcmd) : List LinstrRM :=
@@ -2659,20 +4180,65 @@ def dropRet (c : List LinstrRM) : List LinstrRM :=
   | some (.Lret, _) => c.dropLast
   | _ => c
 
+/-- The memory cells at the argument pointers `args` that the body `c` writes: the
+    destination registers `mem.<a>.<off>`, `a ∈ args`, of its operations, without
+    repetition. The array ABI keeps such a cell as a register of that name. -/
+def memOuts (args : List String) (c : Lcmd) : List String :=
+  (c.flatMap fun i =>
+    match i.li_i with
+    | .Lopn ds _ _ =>
+        ds.filterMap fun
+          | .reg d => if args.any (fun a => ("mem." ++ a ++ ".").isPrefixOf d) then some d else none
+          | _ => none
+    | _ => []).eraseDups
+
+/-- The observed registers of a function: its result registers and the memory cells at its
+    argument pointers that its body writes (`memOuts`). -/
+def resOuts (f : Lfundef) : List String := f.lfd_res ++ memOuts f.lfd_arg f.lfd_body
+
+theorem Obs.of_append {xs ys : List String} {t t' : LstateMF} (h : Obs (xs ++ ys) t t') :
+    Obs xs t t' :=
+  ⟨fun r hr => h.1 r (List.mem_append_left ys hr), h.2⟩
+
 /-- The checker on the first functions of two programs, for a typing `ty` of function
     bodies: the functions have the same name, the rewritten body satisfies the printer's
     two-address precondition `TwoAddrLegalize.bodyTiedOk`, and `ownedCheckM` accepts the
-    two typed bodies with the function's result registers as the observed registers. -/
+    two typed bodies with the function's result registers and the memory cells its body
+    writes at its argument pointers (`resOuts`) as the observed registers. -/
 def ownedCheckTy (ty : Lcmd → List LinstrRM) (P P' : Lprog) : Bool :=
   match P.lp_funcs.head?, P'.lp_funcs.head? with
   | some (n, f), some (n', f') =>
       n == n' && TwoAddrLegalize.bodyTiedOk f'.lfd_body &&
-        ownedCheckM f.lfd_res (ty f.lfd_body) (ty f'.lfd_body)
+        ownedCheckM (resOuts f) (ty f.lfd_body) (ty f'.lfd_body)
   | _, _ => false
 
 /-- The checker with every instruction at the register tag and the trailing `Lret` dropped. -/
 def ownedCheck (P P' : Lprog) : Bool :=
   ownedCheckTy (fun c => dropRet (typeBody (fun _ => .reg none) c)) P P'
+
+/-- **Soundness of the program checker, with the memory results.** If `ownedCheckTy ty P P'`
+    accepts, the first functions of `P` and `P'` have one name, the rewritten body satisfies
+    `bodyTiedOk`, and every halting `lsemFuelMemF` run of the typed source body from pc `0`
+    is matched by a halting run of the typed rewritten body from the same state, with end
+    states that agree on the result registers, on the memory cells the source body writes at
+    its argument pointers, on the arrays and on the word memory. -/
+theorem ownedCheckTy_sound_mem {ty : Lcmd → List LinstrRM} {P P' : Lprog}
+    (h : ownedCheckTy ty P P' = true) :
+    ∃ n f f', P.lp_funcs.head? = some (n, f) ∧ P'.lp_funcs.head? = some (n, f') ∧
+      TwoAddrLegalize.bodyTiedOk f'.lfd_body = true ∧
+      ∀ (fn : String) (s t : LstateMF), s.prog.lfn = fn → s.prog.base.reg.lpc = 0 →
+        ∀ fuel, lsemFuelMemF (singletonProgM fn (ty f.lfd_body)) fuel s = some t →
+        ∃ fuel' t', lsemFuelMemF (singletonProgM fn (ty f'.lfd_body)) fuel' s = some t' ∧
+          Obs (resOuts f) t t' := by
+  unfold ownedCheckTy at h
+  split at h
+  · rename_i n f n' f' h1 h2
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨⟨hn, htied⟩, hchk⟩ := h
+    subst hn
+    exact ⟨n, f, f', h1, h2, htied, fun fn s t hfn hpc fuel hrun =>
+      ownedCheckM_sound hchk fn s t hfn hpc fuel hrun⟩
+  · cases h
 
 /-- **Soundness of the program checker.** If `ownedCheckTy ty P P'` accepts, the first
     functions of `P` and `P'` have one name, the rewritten body satisfies `bodyTiedOk`, and
@@ -2687,14 +4253,9 @@ theorem ownedCheckTy_sound {ty : Lcmd → List LinstrRM} {P P' : Lprog}
         ∀ fuel, lsemFuelMemF (singletonProgM fn (ty f.lfd_body)) fuel s = some t →
         ∃ fuel' t', lsemFuelMemF (singletonProgM fn (ty f'.lfd_body)) fuel' s = some t' ∧
           Obs f.lfd_res t t' := by
-  unfold ownedCheckTy at h
-  split at h
-  · rename_i n f n' f' h1 h2
-    simp only [Bool.and_eq_true, beq_iff_eq] at h
-    obtain ⟨⟨hn, htied⟩, hchk⟩ := h
-    subst hn
-    exact ⟨n, f, f', h1, h2, htied, fun fn s t hfn hpc fuel hrun =>
-      ownedCheckM_sound hchk fn s t hfn hpc fuel hrun⟩
-  · cases h
+  obtain ⟨n, f, f', h1, h2, htied, hsim⟩ := ownedCheckTy_sound_mem h
+  refine ⟨n, f, f', h1, h2, htied, fun fn s t hfn hpc fuel hrun => ?_⟩
+  obtain ⟨fuel', t', hrun', hobs⟩ := hsim fn s t hfn hpc fuel hrun
+  exact ⟨fuel', t', hrun', hobs.of_append⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
