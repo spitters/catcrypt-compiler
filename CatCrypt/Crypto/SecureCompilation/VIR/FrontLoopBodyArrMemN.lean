@@ -198,7 +198,7 @@ theorem regHeadLowerable_bvXor {Γ : Ctx} {w : Nat}
 theorem regHeadLowerable_bvConst64 {Γ : Ctx} (v : BitVec 64)
     (args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty) []) :
     RegHeadLowerable (Γ := Γ) (w := 64) ⟨CatCryptOp.bvConst 64 v, rfl, args⟩ :=
-  ⟨_, rfl, ScalarMemN.const _ (Or.inl rfl) rfl _ (.ret .here)⟩
+  ⟨_, rfl, ScalarMemN.const _ (by decide) rfl _ (.ret .here)⟩
 
 /-- `bvShiftL` (immediate logical left shift) lowers to a `shlImm` head. -/
 theorem regHeadLowerable_bvShiftL {Γ : Ctx} {w k : Nat} (hk : k < 2 ^ w)

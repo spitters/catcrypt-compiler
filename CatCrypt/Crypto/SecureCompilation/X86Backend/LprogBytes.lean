@@ -347,6 +347,12 @@ def spillQsaveOff (frame spillW : Nat) (n : String)
     qsaveFrameOff frame (String.ofList (n.toList.drop 6)) qsaveB
   else none
 
+/-- A general-purpose register name is neither a frame slot nor a `mem.*` cell. -/
+theorem notSlotMem_of_isGpName {r : String} (h : isGpName r = true) :
+    isSpillOrQsave r = false ∧ parseMemName r = none := by
+  unfold isGpName at h
+  split at h <;> first | (constructor <;> decide) | cases h
+
 /-- A `MOV` between a register and `[%rsp + off]`. `%rsp` (SDM number 4) has
     `r/m = 100` in the ModRM, which x86 reserves as the **SIB escape** — so a base of
     `%rsp` REQUIRES a SIB byte. The SIB for `[%rsp + disp]` (no index) is `0x24`
@@ -404,6 +410,16 @@ def encAdxRspMem (pfx d : Nat) (off : Int) : List (BitVec 8) :=
   else
     head ++ (BitVec.ofNat 8 (modRMMem 2 d 4) :: sib :: disp32LE off)
 
+/-- The opcode of a two-address operation `op` (an `aluOpcode` value, in the
+    `r/m ← r` direction) with a memory destination: `op` itself, except the `LOAD`
+    opcode `0x8B`, whose memory-destination form is the `MOV` store `0x89`. -/
+def memDstOp (op : Nat) : Nat := if op = 0x8b then 0x89 else op
+
+/-- The opcode of a two-address operation `op` (an `aluOpcode` value) with a memory
+    source: the `r ← r/m` direction, `op + 2` for the legacy ALU and `MOV` rows
+    (`ADD` `01`→`03`, `ADC` `11`→`13`, `MOV` `89`→`8B`, …), and `0x8B` for `LOAD`. -/
+def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
+
 /-- Encode a two-address binop / move whose AT&T form is `op<sz> src, dst`, given the
     one-byte ALU opcode `op`, the frame size + body-uniform spill width (to resolve
     `%rsp`-relative spill/qsave operands to their offset, matching
@@ -415,10 +431,10 @@ def encAdxRspMem (pfx d : Nat) (off : Int) : List (BitVec 8) :=
     `mem.*` source/dest uses `encMemMov`, and a spill/qsave source/dest uses the
     RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). An
     uncovered shape (mem-mem, or a name that is neither reg / `mem.*` / spill / qsave)
-    returns `[]` (visible, KAT-catchable) rather than mis-resolving. The arm only
-    encodes the **move** opcode for a memory operand (`op` is `0x89`/`0x8b` for
-    `STORE`/`LOAD`); an ALU op against a spill (`add k.N, %rN`) is not produced by the
-    owned bodies (the reload is materialised first) and is left to the residual. -/
+    returns `[]` (visible, KAT-catchable) rather than mis-resolving. A memory
+    destination takes the `r/m ← r` opcode `memDstOp op` and a memory source the
+    `r ← r/m` opcode `memSrcOp op`, so `adc k.N, %rN` encodes `ADC r64, r/m64` as the
+    printer renders it, and a move (`op` = `0x89`/`0x8b`) the `MOV` store or load. -/
 def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
     (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
   match d, s with
@@ -427,11 +443,11 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
       -- store to a spill/qsave slot: dst is `%rsp`-relative, src is a register.
       | some off, none =>
           if isSpillOrQsave sn then []  -- mem,mem (spill→spill) not emitted
-          else encRspMem w 0x89 (gpNumU sn) off
+          else encRspMem w (memDstOp op) (gpNumU sn) off
       -- reload from a spill/qsave slot: src is `%rsp`-relative, dst is a register.
       | none, some off =>
           if isSpillOrQsave dn then []
-          else encRspMem w 0x8b (gpNumU dn) off
+          else encRspMem w (memSrcOp op) (gpNumU dn) off
       | some _, some _ => []  -- spill,spill not emitted (residual)
       | none, none =>
           if isSpillOrQsave dn || isSpillOrQsave sn then []  -- unparseable spill name
@@ -439,9 +455,9 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
             match parseMemName dn, parseMemName sn with
             | none, none => encAluRRw w op (gpNumU dn) (gpNumU sn)
             -- store: dst is memory, op = 0x89 (MOV r/m←r). `reg`=src, base=dst mem.
-            | some (bb, off), none => encMemMovw w 0x89 (gpNumU sn) bb off
+            | some (bb, off), none => encMemMovw w (memDstOp op) (gpNumU sn) bb off
             -- load: src is memory, op = 0x8B (MOV r←r/m). `reg`=dst, base=src mem.
-            | none, some (bb, off) => encMemMovw w 0x8b (gpNumU dn) bb off
+            | none, some (bb, off) => encMemMovw w (memSrcOp op) (gpNumU dn) bb off
             | some _, some _ => []  -- mem,mem not emitted (residual)
   | _, _ => []
 
@@ -838,6 +854,30 @@ def encMulxSameDst (h s : Nat) : List (BitVec 8) :=
   let scr := mulxSameScratch h s
   encRspMem 1 0x89 scr cmovRedZone ++ encMulxRR h scr s ++ encRspMem 1 0x8b scr cmovRedZone
 
+/-- The bytes of `renderLopn`'s coincident-destination `mulx` sequence with a memory
+    source `off(%base)`: `movq scr, -128(%rsp)`, `mulx off(%base), scr, h`,
+    `movq -128(%rsp), scr`. The printer's scratch test compares register names with
+    the source text, which a memory operand never equals, so the scratch is
+    `mulxSameScratch h 16` (`16` names no candidate). -/
+def encMulxSameDstMem (h base : Nat) (off : Int) : List (BitVec 8) :=
+  let scr := mulxSameScratch h 16
+  encRspMem 1 0x89 scr cmovRedZone ++ encMulxMem h scr base off
+    ++ encRspMem 1 0x8b scr cmovRedZone
+
+/-- The memory address of a `MULX` source: a frame slot (`k.N`, `qsave.X`) at its
+    `%rsp` offset (base number `4`), a `mem.<base>.<off>` cell at its parsed base and
+    offset, and `none` for a register name. -/
+def mulxSrcMem? (frame spillW : Nat) (s : String) (qsaveB : Nat := qsaveBytes) :
+    Option (Nat × Int) :=
+  if isSpillOrQsave s then (spillQsaveOff frame spillW s qsaveB).map (fun off => (4, off))
+  else parseMemName s
+
+/-- A general-purpose register name has no memory address as a `MULX` source. -/
+theorem mulxSrcMem?_of_isGpName (frame spillW : Nat) {s : String} (qsaveB : Nat)
+    (h : isGpName s = true) : mulxSrcMem? frame spillW s qsaveB = none := by
+  obtain ⟨h1, h2⟩ := notSlotMem_of_isGpName h
+  simp only [mulxSrcMem?, h1, h2, Bool.false_eq_true, if_false]
+
 /-- The scratch register a spilled-destination select borrows: the first of
     `%rax`, `%rbx`, `%rcx`, `%rdx` that is none of the three sources, as the
     printer's candidate list and order. Three sources cannot exhaust four
@@ -1005,6 +1045,20 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       if base == "MULX" then
         match dsts, srcs with
         | [.reg dlN, .reg dhN], [.reg s2] =>
+            -- `mulx` writes registers only: a destination in a frame slot or a
+            -- `mem.*` cell has no encoding and is left as the empty byte list.
+            if isSpillOrQsave dlN || isSpillOrQsave dhN
+                || (parseMemName dlN).isSome || (parseMemName dhN).isSome then []
+            else
+            -- A source in a frame slot or a `mem.*` cell is the memory form
+            -- `mulx off(%base), lo, hi` the printer renders.
+            match mulxSrcMem? frame spillW s2 qsaveB with
+            | some (bb, off) =>
+                if dlN == dhN then encMulxSameDstMem (gpNumU dhN) bb off
+                else encMulxMem (gpNumU dhN) (gpNumU dlN) bb off
+            | none =>
+            if isSpillOrQsave s2 then []
+            else
             -- Coincident destinations: the low word of this shape is already
             -- computed by a separate multiply, so the high half is the one to
             -- keep. `encMulxSameDst` encodes `renderLopn`'s sequence, which
@@ -1033,16 +1087,18 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
           -- real x86 adcx/adox is two-address), `bt $0, cin` (materialise the
           -- carry-in into CF/OF; `mov` preserves flags, so the `bt → adcx`
           -- dependency is intact), then the two-address `adcx`/`adox src, d`.
-          -- Register-resident operands only (the field/bignum rows keep the ADX
-          -- chain in registers); a spill/qsave/`mem.*` operand is left as the
-          -- visible empty byte list (KAT-catchable), never mis-encoded as `%rax`.
+          -- A `mem.*` operand and a spill/qsave carry-in are left as the visible
+          -- empty byte list, never mis-encoded as `%rax`.
           | [.reg dn], [.reg an, .reg sn, .reg cn] =>
               -- The carry-in is always a plain register here (`bt $0, cin` has only
               -- that form in this arm), and a `mem.*` operand in any position is
               -- left to the residual. A spill/qsave `a`, `s` or destination IS
               -- covered: those are the shapes the carry-chain kernels take under
               -- register pressure, and the printer resolves each to `off(%rsp)`.
-              if isSpillOrQsave cn || (parseMemName dn).isSome
+              -- `ADOX` (prefix `F3`) reads `OF`, which `bt` leaves undefined, so a
+              -- value carry-in has no `bt`-materialised form and is refused.
+              if pfx == 0xf3 then []
+              else if isSpillOrQsave cn || (parseMemName dn).isSome
                   || (parseMemName an).isSome || (parseMemName sn).isSome
                   || (parseMemName cn).isSome then []
               else
@@ -1071,13 +1127,15 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   --
                   -- The printer picks the first of `%rax, %rbx, %rcx, %rdx` that
                   -- occurs in none of the RENDERED operands. This arm picks by name
-                  -- inequality over `a`, `s`, `cin`, which agrees with that test
-                  -- exactly on the shape it accepts — destination a `%rsp` slot,
-                  -- the other three plain registers — because a slot renders as
-                  -- `N(%rsp)` and no GP name is a substring of another. A slot `a`
-                  -- or `s` here would widen the rendered set, so it is refused
-                  -- rather than encoded under the weaker test.
-                  if isSpillOrQsave an || isSpillOrQsave sn then []
+                  -- inequality over `a`, `s`, `cin`. At 64-bit width the two tests
+                  -- agree: a `%rsp` slot (destination, `a` or `s`) renders as
+                  -- `N(%rsp)`, which contains no GP register text, and no 64-bit
+                  -- GP name is a substring of another. A slot `a` is reloaded into
+                  -- the scratch (`mov N(%rsp), scratch`) and a slot `s` is the
+                  -- memory source of `adcx`/`adox`, the forms the printer renders.
+                  -- A slot `a` or `s` is accepted only at `REX.W = 1`, the width at
+                  -- which the printed and encoded scratch choices coincide.
+                  if (isSpillOrQsave an || isSpillOrQsave sn) && w != 1 then []
                   else
                     match spillQsaveOff frame spillW dn qsaveB with
                     | none => []
@@ -1261,9 +1319,7 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   -- mis-resolving. `CMP` reaches this arm last: it is in none of
                   -- `tagShiftExt` / `aluOpcode` / `twoByteOpcode`, so the
                   -- dispatch lemmas that enumerate those tables are unaffected
-                  -- by it — and `aluOpcode` must NOT gain a `CMP` row, since
-                  -- `encTwoAddr`'s memory arms encode the MOV opcodes and would
-                  -- turn a spill-operand compare into a silent move.
+                  -- by it.
                   else if base == "CMP" then
                     match d, s with
                     | .reg dn, .reg sn =>
@@ -1273,10 +1329,7 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                           -- Spill-source guard compare `cmp<sz> k.N(%rsp), %d`:
                           -- the `3B /r` (`r ← r/m`) direction with the spill's
                           -- RSP-SIB address, the byte image of the printer's
-                          -- single-memory-operand `cmp` render. A dedicated
-                          -- case, not an `aluOpcode` row, for the same reason
-                          -- as the reg-reg arm: `encTwoAddr`'s memory arms
-                          -- encode the MOV opcodes.
+                          -- single-memory-operand `cmp` render.
                           match spillQsaveOff frame spillW sn qsaveB with
                           | some off => encRspMem w 0x3B (gpNumU dn) off
                           | none => []

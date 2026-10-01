@@ -1355,7 +1355,12 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- for both the isolated widening AND the chained CIOS, where `cin` holds the
       -- previous limb's `setc`-materialised carry). `mov` preserves the flag, so the
       -- `bt → adcx` flag dependency is intact.
-      if base == "ADCX" || base == "ADOX" then
+      -- An `ADOX` whose carry-in is a value is refused: `bt` writes `CF` and leaves
+      -- `OF` undefined, so `bt $0, cin; adox` would read an undefined carry-in. Only
+      -- the fused form, whose carry-in is the live `OF` (`cfCarrySentinel`), prints.
+      if base == "ADOX" && cin != LOperand.reg cfCarrySentinel then
+        [ "\t# UNHANDLED-ADOX-VALUE-CARRY " ++ opn ]
+      else if base == "ADCX" || base == "ADOX" then
         let mn := if base == "ADOX" then "adox" else "adcx"
         let dOp := resolveOperand frame spillW w d qsaveB
         let aOp := resolveOperand frame spillW w a qsaveB

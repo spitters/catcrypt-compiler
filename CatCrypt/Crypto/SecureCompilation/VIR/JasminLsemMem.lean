@@ -499,6 +499,7 @@ def straightOpsMem (nArgs : Nat) :
         | .stackLoad w n => (opToLinstrR e.op (regName curDepth) src, .load w n)
         | .stackStore w n => (opToLinstrR e.op (regName curDepth) src, .store w n)
         | .castW _ w' => (opToLinstrR e.op (regName curDepth) src, .reg (some w'))
+        | .regConst w _ => (opToLinstrR e.op (regName curDepth) src, .reg (regConstDescr w))
         | _ =>
           -- mirror `straightOpsCast`'s register wire (shifts get the immediate
           -- form), tagged `.reg none` (the register binding has no cast descr).
@@ -608,7 +609,8 @@ theorem straightOpsMem_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     straightOpsMem nArgs (.var ⟨JasminOp.regConst w n, heq, args⟩ body) curDepth =
       (opToLinstrR (JasminOp.regConst w n) (regName curDepth)
         (exprArgs curDepth nArgs argName (fun _ => none)
-          (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))), .reg none)
+          (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))),
+          .reg (regConstDescr w))
       :: straightOpsMem nArgs body (curDepth + 1) := by
   match args with
   | .nil => rfl
@@ -896,8 +898,11 @@ theorem lsemStepMem_var {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
           Expr jasminDialect Γ (.reg w)).denote V)).nextPc) :=
   lsemStepMem_of_reg _ (lsemStepCast_var bop heq args hagree.reg)
 
+/-- **`regConst` per-binding step at its descriptor**, at every positive width: the
+    immediate move typed with `regConstDescr w` writes `BitVec.ofNat w n`
+    (`JasminLsemCast.lsemStepCast_constD`). -/
 theorem lsemStepMem_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
-    {V : Ctxt.Valuation Γ} {st : LstateM} {w : Nat} (n : Nat) (hwn : w = 64 ∨ w = 32)
+    {V : Ctxt.Valuation Γ} {st : LstateM} {w : Nat} (n : Nat) (_hwn : 0 < w)
     (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w)
     (args : HVector (fun ty => Ctxt.Var Γ ty)
       (DialectSignature.sig (d := jasminDialect) (JasminOp.regConst w n)))
@@ -905,12 +910,13 @@ theorem lsemStepMem_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     lsemStepMem
         (opToLinstrR (JasminOp.regConst w n) (regName curDepth)
           (exprArgs curDepth nArgs argName (fun _ => none)
-            (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))), .reg none)
+            (⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w))),
+          .reg (regConstDescr w))
         st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.regConst w n, heq, args⟩ :
           Expr jasminDialect Γ (.reg w)).denote V)).nextPc) :=
-  lsemStepMem_of_reg _ (lsemStepCast_const (V := V) n hwn heq args hagree.reg)
+  lsemStepMem_of_reg _ (lsemStepCast_constD (V := V) n heq args hagree.reg)
 
 theorem lsemStepMem_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateM} {w : Nat}
@@ -1196,7 +1202,7 @@ inductive ScalarMemN :
       (hbody : ScalarMemN body) :
       ScalarMemN (.var ⟨JasminOp.regArith bop w, heq, args⟩ body)
   | const {Γ : Ctxt jasminDialect} {s : JasminTy} {w : Nat} (n : Nat)
-      (hwn : w = 64 ∨ w = 32)
+      (hwn : 0 < w)
       (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w)
       (args : HVector (fun ty => Ctxt.Var Γ ty)
         (DialectSignature.sig (d := jasminDialect) (JasminOp.regConst w n)))
@@ -1283,7 +1289,7 @@ theorem ScalarMemN.of_scalarCastN {Γ : Ctxt jasminDialect} {t : JasminTy}
   induction h with
   | ret v => exact .ret v
   | var bop heq args _ ih => exact .var bop heq args ih
-  | const n hwn heq args _ ih => exact .const n hwn heq args ih
+  | const n hwn heq args _ ih => exact .const n (by rcases hwn with h | h <;> omega) heq args ih
   | sel heq args _ ih => exact .sel heq args ih
   | shr hn heq args _ ih => exact .shr hn heq args ih
   | shl hn heq args _ ih => exact .shl hn heq args ih

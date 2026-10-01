@@ -336,6 +336,10 @@ theorem straightOpsMem_instrOK (τ : String → String) (nArgs : Nat)
             rw [h] at hop ⊢
             exact instrOK_renRM_of_fixed τ (isLopn_opToLinstrR _ _ _ _)
               (immShiftExpand_opToLinstrR hop _ _ hreg)
+        · next w n h =>
+            rw [h] at hop ⊢
+            exact instrOK_renRM_of_fixed τ (isLopn_opToLinstrR _ _ _ _)
+              (immShiftExpand_opToLinstrR hop _ _ hreg)
         · split
           · next w n s h hs =>
               obtain ⟨r, rfl⟩ := exprArgs_isReg e s (by rw [hs]; simp)

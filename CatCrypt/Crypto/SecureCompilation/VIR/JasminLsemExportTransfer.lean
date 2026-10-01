@@ -221,6 +221,8 @@ theorem loopBodyWalkNM_eq_ren {σ : String → String} {d nInv : Nat} {accReg : 
           rw [h] at hop; simp [h, renRM, renLinstrR_opToLinstrR σ _ hop, memTagOfOp]
       · next w w' h =>
           rw [h] at hop; simp [h, renRM, renLinstrR_opToLinstrR σ _ hop, memTagOfOp]
+      · next w n h =>
+          rw [h] at hop; simp [h, renRM, renLinstrR_opToLinstrR σ _ hop, memTagOfOp]
       · split
         · next h _ => rw [h] at hns; exact absurd hns id
         · next h _ => rw [h] at hns; exact absurd hns id
@@ -575,6 +577,10 @@ theorem loopBodyWalkNM_eq_expand {σ : String → String} {d nInv : Nat} {accReg
           simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
           exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
       · next w w' h =>
+          rw [h] at hop ⊢
+          simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
+          exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
+      · next w n h =>
           rw [h] at hop ⊢
           simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
           exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm

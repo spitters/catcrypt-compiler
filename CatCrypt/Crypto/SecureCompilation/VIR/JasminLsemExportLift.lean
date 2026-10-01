@@ -86,12 +86,13 @@ theorem liftLinstrRM_isLopn (tag : Linstr → MemTag) (i : Linstr)
 /-! ## 2. The descriptor of a binding -/
 
 /-- The typed-environment descriptor of a `JasminOp` binding: the array shape of
-    a `stackLoad`/`stackStore`, the target width of a `castW`, and `.reg none`
-    for every other op. -/
+    a `stackLoad`/`stackStore`, the target width of a `castW`, the descriptor
+    `regConstDescr w` of a `regConst w`, and `.reg none` for every other op. -/
 def memTagOfOp : JasminOp → MemTag
   | .stackLoad w n => .load w n
   | .stackStore w n => .store w n
   | .castW _ w' => .reg (some w')
+  | .regConst w _ => .reg (JasminLsemCast.regConstDescr w)
   | _ => .reg none
 
 /-- The descriptors of a `Com`'s bindings, in program order. -/

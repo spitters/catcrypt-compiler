@@ -790,16 +790,23 @@ theorem encodeLopn_setc64 (frame spillW : Nat) (dn : String) (qsaveB : Nat) :
 /-- **The register widening-multiply dispatch.** `MULX` is matched by name first
     of all, on a two-destination `Lopn` with a single register source. As on the
     memory-folded form the destination list is `[low, high]` and `encMulxRR` takes
-    the high word first, so the dispatch transposes them. -/
+    the high word first, so the dispatch transposes them. The three operands are
+    general-purpose register names; a frame-slot or `mem.*` operand takes the memory
+    form or no encoding. -/
 theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
     (dlN dhN s2 : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true)
-    (hne : (dlN == dhN) = false) :
+    (hne : (dlN == dhN) = false)
+    (hl : isGpName dlN = true) (hh : isGpName dhN = true) (hs : isGpName s2 = true) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg s2]) qsaveB
       = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) := by
-  simp only [encodeLopn, hbind, hstrip, hmulx, hne, Bool.false_eq_true, if_false,
-    if_true]
+  obtain ⟨hl1, hl2⟩ := notSlotMem_of_isGpName hl
+  obtain ⟨hh1, hh2⟩ := notSlotMem_of_isGpName hh
+  obtain ⟨hs1, -⟩ := notSlotMem_of_isGpName hs
+  simp only [encodeLopn, hbind, hstrip, hmulx, hne, hl1, hl2, hh1, hh2, hs1,
+    mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
+    Bool.false_eq_true, if_false, if_true]
 
 /-- The register widening multiply with coincident destinations encodes the
     printer's scratch sequence `encMulxSameDst`: the high half lands in the
@@ -807,19 +814,24 @@ theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
 theorem encodeLopn_mulx_same (frame spillW : Nat) (mnem base : String)
     (dN s2 : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
-    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true) :
+    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true)
+    (hd : isGpName dN = true) (hs : isGpName s2 = true) :
     encodeLopn frame spillW (.Lopn [.reg dN, .reg dN] mnem [.reg s2]) qsaveB
       = encMulxSameDst (gpNumU dN) (gpNumU s2) := by
-  simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, Bool.false_eq_true, if_false,
-    if_true]
+  obtain ⟨hd1, hd2⟩ := notSlotMem_of_isGpName hd
+  obtain ⟨hs1, -⟩ := notSlotMem_of_isGpName hs
+  simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, hd1, hd2, hs1,
+    mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
+    Bool.false_eq_true, if_false, if_true]
 
 /-- `MULX:64` dispatches to the VEX register-form widening multiply. -/
 theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : Nat)
-    (hne : (dlN == dhN) = false) :
+    (hne : (dlN == dhN) = false)
+    (hl : isGpName dlN = true) (hh : isGpName dhN = true) (hs : isGpName s2 = true) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB
       = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) :=
   dispatch_mulx frame spillW "MULX:64" "MULX" dlN dhN s2 qsaveB
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) hne
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) hne hl hh hs
 
 /-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
     above the ADX and ALU tables, on a two-destination `Lopn` with a single
@@ -936,7 +948,7 @@ theorem store64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_store frame spillW qsaveB dn sn b off hd hb hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_store64,
     store_bytes_agree alloc frame spillW 0x89 b off sn dn sn (gpNumU b) qsaveB
-      hdk hsk (parseMemName_of_memNameParts hd) hsm hdsp hssp hr hbr]
+      hdk hsk (parseMemName_of_memNameParts hd) hsm hdsp hssp hr hbr (by decide)]
 
 /-- **The `LOAD:64` byte agreement.** The gathered `loadMem` block encodes to the
     bytes `encodeLopn` gives for the array-ABI load. -/
@@ -956,7 +968,7 @@ theorem load64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_load frame spillW qsaveB dn sn b off hs hb hd, Option.map_some,
     encodeJBlock_singleton, encodeLopn_load64,
     load_bytes_agree alloc frame spillW 0x8b dn b off dn sn (gpNumU b) qsaveB
-      hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hr hbr]
+      hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hr hbr (by decide)]
 
 /-- **The `LEA:64` byte agreement.** The gathered `lea` block encodes to the bytes
     `encodeLopn` gives for the array-ABI address computation. The source name's
@@ -1179,7 +1191,7 @@ theorem mulx64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
       = some (encodeLopn frame spillW
           (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB) := by
   rw [lowerMemOp_mulx frame spillW qsaveB dlN dhN s2 hl hh hs, Option.map_some,
-    encodeJBlock_singleton, encodeLopn_mulx64 frame spillW dlN dhN s2 qsaveB hne,
+    encodeJBlock_singleton, encodeLopn_mulx64 frame spillW dlN dhN s2 qsaveB hne hl hh hs,
     jinstr_mulx, hrh, hrl, hsr]
 
 /-- `JInstr` `mulxMem` reduces to `encMulxMem` over its high-word, low-word and

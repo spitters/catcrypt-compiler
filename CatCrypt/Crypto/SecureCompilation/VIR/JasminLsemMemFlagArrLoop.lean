@@ -297,6 +297,7 @@ theorem straightOpsMem_plain (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
+        · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · split
           · exact shiftLinstr_plain _ (Or.inl rfl) _ _ _ _ _
           · exact shiftLinstr_plain _ (Or.inr (Or.inl rfl)) _ _ _ _ _

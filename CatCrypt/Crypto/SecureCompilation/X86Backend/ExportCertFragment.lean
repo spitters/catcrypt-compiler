@@ -44,11 +44,11 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
 /-! ## 1. The op set -/
 
 /-- The ops of the stack-memory fragment with the side conditions `ScalarMemN` asks: a
-    constant at width `64` or `32`, an immediate shift by less than `2 ^ w`. -/
+    constant at a positive width, an immediate shift by less than `2 ^ w`. -/
 def opMemB : JasminOp → Bool
   | .regArith _ _ | .select _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
   | .stackLoad _ _ | .stackStore _ _ => true
-  | .regConst w _ => w == 64 || w == 32
+  | .regConst w _ => decide (0 < w)
   | .shrImm w m | .shlImm w m | .sarImm w m => decide (m < 2 ^ w)
   | _ => false
 

@@ -191,17 +191,19 @@ theorem encTwoAddr_rr (F W w op : Nat) (D S : String) (qB : Nat) (hD : gpOk D = 
   have fS := gpFacts hS
   simp [encTwoAddr, fD.off, fS.off, fD.notSlot, fS.notSlot, fD.notMem, fS.notMem]
 
-/-- The store of a general-purpose name to a frame word. -/
+/-- The operation `op` of a general-purpose name into a frame word: for a move, the
+    store `0x89`. -/
 theorem encTwoAddr_store (F W w op : Nat) (q S : String) (qB : Nat) (off : Int)
     (hq : spillQsaveOff F W q qB = some off) (hS : gpOk S = true) :
-    encTwoAddr F W w op (.reg q) (.reg S) qB = encRspMem w 0x89 (gpNumU S) off := by
+    encTwoAddr F W w op (.reg q) (.reg S) qB = encRspMem w (memDstOp op) (gpNumU S) off := by
   have fS := gpFacts hS
   simp [encTwoAddr, hq, fS.off, fS.notSlot]
 
-/-- The load of a frame word into a general-purpose name. -/
+/-- The operation `op` of a frame word into a general-purpose name: for a move, the
+    load `0x8b`. -/
 theorem encTwoAddr_load (F W w op : Nat) (D q : String) (qB : Nat) (off : Int)
     (hq : spillQsaveOff F W q qB = some off) (hD : gpOk D = true) :
-    encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w 0x8b (gpNumU D) off := by
+    encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w (memSrcOp op) (gpNumU D) off := by
   have fD := gpFacts hD
   simp [encTwoAddr, hq, fD.off, fD.notSlot]
 
@@ -548,7 +550,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
     · simp [Arm.instr, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_store _ _ _ _ _ _ _ _ hoff hS, hso]
+        encTwoAddr_store _ _ _ _ _ _ _ _ hoff hS, hso, memDstOp]
     · simp only [Arm.pieces, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_rspStore _ _ rest (gpNumU_lt_16 S) hd
@@ -559,7 +561,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
     · simp [Arm.instr, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso]
+        encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso, memSrcOp]
     · simp only [Arm.pieces, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_rspLoad _ _ rest (gpNumU_lt_16 D) hd

@@ -48,6 +48,20 @@ every array name `r ≠ d` read later (`liveArr`) has `σ r ≠ σ d`.
 * `straight_chain_abi_arr`: the chain of an array-returning program in the fragment
   `arrMemNB`, run from an ABI entry, halts with the program's denotation at its return
   name.
+* `straightRouteB`, `straight_image_bytes`: the checks of `ImageAddrRoute.routeB` without
+  the loop, the renaming and the fusion, on the virtual body `argBind ++ C` of a straight
+  chain `C`; a run of `C` is matched by a halting run of the decoded bytes of the printed
+  body, with each slot's array in memory at its entry base.
+* `chainAlias`, `straightArrB`, `straight_arr_bytes`: the coalescing renaming of a chain
+  (the export's alias map `arrChainAlias`), the gate of an array-returning straight-line
+  program, and its correctness at the bytes: from every separated entry state, the decoded
+  bytes of the printed body halt in a state from which the layout reads back the words of
+  the program's denotation.
+
+The coalesced chain is `chain.map (renRM ρ)` with `ρ = chainAlias chain`; the physical-ABI
+export applies the same alias map (`canonicalizeMemrefThread`) to its virtual body, so the
+stores of the printed body write the output parameter in place, and `ownedCheckMC` relates
+the coalesced chain to the printed body.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
@@ -479,6 +493,15 @@ def straightArrB (σ : AbiLayout) (nm : String → String) (body : Lcmd) :
           | _ => false)
         && straightRouteB σ nm body C
   | _, _, _ => false
+
+/-- A program accepted by `straightArrB` returns a word array. -/
+theorem straightArrB_ty {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {Γ : Ctxt jasminDialect} {t : JasminTy} {c : Com jasminDialect Γ t}
+    (h : straightArrB σ nm body c = true) : ∃ m, t = .stackArr 64 m := by
+  unfold straightArrB at h
+  split at h
+  · exact ⟨_, rfl⟩
+  · cases h
 
 theorem storeAgreesM_lpc {nArgs d : Nat} {Γ : Ctxt jasminDialect} {V : Ctxt.Valuation Γ}
     {s : LstateM} (k : Nat) (h : StoreAgreesM nArgs d s V) :

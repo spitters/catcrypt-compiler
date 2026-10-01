@@ -84,7 +84,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder (gpNum encodeJInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-  (gpNumU encTwoAddr spillQsaveOff parseMemName isSpillOrQsave)
+  (gpNumU encTwoAddr spillQsaveOff parseMemName isSpillOrQsave memDstOp memSrcOp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (gpReg64)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
@@ -281,11 +281,11 @@ theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
-    (hb : gpNum (regOf (stdGpAlloc names) base) = bb) :
+    (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memSrcOp op = 0x8b) :
     encodeJInstr (stdGpAlloc names) (.loadMem d base off)
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
   load_bytes_agree (stdGpAlloc names) frame spillW op d base off dn sn bb qsaveB
-    hdk hsk hdm hsm hdsp hssp (hd ▸ resolver_agree names d hdn hdt) hb
+    hdk hsk hdm hsm hdsp hssp (hd ▸ resolver_agree names d hdn hdt) hb hop
 
 /-- **`STORE` bytes agree (resolver-unconditional).** The JInstr `storeMem base off (reg r)`
     encoding equals the Lprog `mem.*`←reg `encTwoAddr` byte function, with the
@@ -298,10 +298,10 @@ theorem store_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
-    (hb : gpNum (regOf (stdGpAlloc names) base) = bb) :
+    (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memDstOp op = 0x89) :
     encodeJInstr (stdGpAlloc names) (.storeMem base off (.reg r))
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
   store_bytes_agree (stdGpAlloc names) frame spillW op base off r dn sn bb qsaveB
-    hdk hsk hdm hsm hdsp hssp (hr ▸ resolver_agree names r hrn hrt) hb
+    hdk hsk hdm hsm hdsp hssp (hr ▸ resolver_agree names r hrn hrt) hb hop
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree

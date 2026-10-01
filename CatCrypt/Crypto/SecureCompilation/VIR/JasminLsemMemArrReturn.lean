@@ -214,7 +214,7 @@ theorem lsemStraightMemArr_straightOps_store {Γ : Ctxt jasminDialect} {t : Jasm
   | const n hwn heq args hbody ih =>
       intro nArgs curDepth st V hlen harg hagree
       have hstep := lsemStepMem_const (V := V) (st := st) (nArgs := nArgs)
-        (curDepth := curDepth) n hwn heq args hagree
+        (curDepth := curDepth) n (by rcases hwn with h | h <;> omega) heq args hagree
       have hagree' := StoreAgreesM.stepReg
         ((⟨JasminOp.regConst _ n, heq, args⟩ : Expr jasminDialect _ _).denote V)
         hlen harg hagree

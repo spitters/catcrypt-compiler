@@ -263,16 +263,25 @@ theorem encodeLopn_mul (F W : Nat) (D S : String) (qB : Nat) :
     stripWidthTag, adxPrefix, LprogBytes.rexW]
 
 /-- The widening multiply `MULX H, H, S` with coincident destinations. -/
-theorem encodeLopn_mulxS (F W : Nat) (H S : String) (qB : Nat) :
+theorem encodeLopn_mulxS (F W : Nat) (H S : String) (qB : Nat) (hH : gpOk H = true)
+    (hS : gpOk S = true) :
     encodeLopn F W (.Lopn [.reg H, .reg H] "MULX" [.reg S]) qB
       = encMulxSameDst (gpNumU H) (gpNumU S) := by
-  simp (config := { decide := true }) [encodeLopn]
+  have fH := gpFacts hH
+  have fS := gpFacts hS
+  simp (config := { decide := true }) [encodeLopn, fH.notSlot, fH.notMem, fS.notSlot,
+    mulxSrcMem?_of_isGpName F W qB fS.isGp]
 
 /-- The widening multiply `MULX L, H, S` with distinct destinations. -/
-theorem encodeLopn_mulx (F W : Nat) (L H S : String) (qB : Nat) (hne : (L == H) = false) :
+theorem encodeLopn_mulx (F W : Nat) (L H S : String) (qB : Nat) (hne : (L == H) = false)
+    (hL : gpOk L = true) (hH : gpOk H = true) (hS : gpOk S = true) :
     encodeLopn F W (.Lopn [.reg L, .reg H] "MULX" [.reg S]) qB
       = ScalarEncoder.encMulxRR (gpNumU H) (gpNumU L) (gpNumU S) := by
-  simp (config := { decide := true }) [encodeLopn, hne]
+  have fL := gpFacts hL
+  have fH := gpFacts hH
+  have fS := gpFacts hS
+  simp (config := { decide := true }) [encodeLopn, hne, fL.notSlot, fL.notMem, fH.notSlot,
+    fH.notMem, fS.notSlot, mulxSrcMem?_of_isGpName F W qB fS.isGp]
 
 /-- The frame-word compare `CMP:64 c, c, q` against the word at the frame offset of `q`. -/
 theorem encodeLopn_cmpM (F W : Nat) (c q : String) (qB : Nat) (off : Int)
@@ -505,7 +514,7 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
     · simp [AArm.instr, AArm.pieces, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso]
+        encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso, memSrcOp]
     · simp only [AArm.pieces, Arm.pieces, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_rspLoad _ _ rest (gpNumU_lt_16 D) hd
@@ -544,9 +553,11 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
     exact ⟨by simp [AArm.instr, AArm.pieces, encodeLopn_mul],
       pieceDec_single (pieceDec_imul D S h.1 h.2)⟩
   | mulxS H S =>
+    simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨hlt, -, -, -, -⟩ := mulxSameScratch_spec (gpNumU H) (gpNumU S)
     refine ⟨?_, ?_⟩
-    · simp [AArm.instr, AArm.pieces, encodeLopn_mulxS, encMulxSameDst, scrOf]
+    · simp [AArm.instr, AArm.pieces, encodeLopn_mulxS _ _ _ _ _ h.1 h.2, encMulxSameDst,
+        scrOf]
     · simp only [AArm.pieces, List.mem_cons, List.not_mem_nil, or_false]
       rintro p (rfl | rfl | rfl)
       · exact fun rest => decodeLinstr_rspStore (scrOf H S) cmovRedZone rest hlt (by decide)
@@ -554,9 +565,9 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
       · exact fun rest => decodeLinstr_rspLoad (scrOf H S) cmovRedZone rest hlt (by decide)
   | mulx L H S =>
     simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
-    obtain ⟨⟨⟨-, -⟩, -⟩, hne⟩ := h
+    obtain ⟨⟨⟨hL, hH⟩, hS⟩, hne⟩ := h
     exact ⟨by simp [AArm.instr, AArm.pieces,
-        encodeLopn_mulx _ _ _ _ _ _ (beq_eq_false_iff_ne.mpr hne)],
+        encodeLopn_mulx _ _ _ _ _ _ (beq_eq_false_iff_ne.mpr hne) hL hH hS],
       pieceDec_single (pieceDec_mulx _ _ _ (gpNumU_lt_16 H) (gpNumU_lt_16 L) (gpNumU_lt_16 S))⟩
 
 /-! ## 6. The simulation of one arm -/
