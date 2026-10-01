@@ -39,8 +39,9 @@ the builtins.
 
 Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, `assign`,
 a call on atoms, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
-literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits as upper
-bound (`boundOk`), and a body in the fragment. Every other constructor is `none`.
+literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
+(`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
+the fragment. Every other constructor is `none`.
 
 Readback. `nfToImp` reads an `NFProg` program back to an `ImpExpr` from a reading `RBEnv`
 of its context: a binding named by `NfOp.named` is a `letBind` of its source name, an
@@ -69,7 +70,10 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `Out.prog`, `nfRoute` — the program of an output, and the route through `NFProg`.
 * `entryCtx`, `entryEnv`, `entryRB`, `EntryTyped`, `nfRouteEntry` — the parameters of a
   function body and the route from them.
-* `hax64SigOf` — the call typing of `u64` code.
+* `ScalarBin`, `ScalarUn`, `ScalarCmp`, `hax64BinTable`, `hax64UnTable`, `hax64CmpTable` —
+  the scalar calls of `u64` code at the widths `8`, `16`, `32`, `64`, with their operation.
+* `hax64ScalarSig`, `hax64SigOf` — the call typing of `u64` code: a `64`-bit word result for
+  an integer call, a bit for a comparison.
 
 ## Main results
 
@@ -85,6 +89,8 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `entryEnv_rel`, `entryRB_rel`, `nfRouteEntry_simulates_exit` — the environment of names
   and the reading of the parameters of a function body, related to a source environment
   typed at the parameters (`EntryTyped`).
+* `hax64BinTable_sem`, `hax64UnTable_sem`, `hax64CmpTable_sem` — the scalar calls compute
+  their operation.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
   `Hax.hax64Builtins`.
 -/
@@ -137,6 +143,7 @@ def tailVal (t : NfTy) (vs : List Value) : Value :=
 def dec : (t : NfTy) → Value → Option t.denote
   | .bit, .bool b => some b
   | .unit, .unit => some ()
+  | .word w, .int n => if 0 ≤ n ∧ n < 2 ^ w then some (BitVec.ofNat w n.toNat) else none
   | .uint W, .uint W' n =>
       if W' = W ∧ n < 2 ^ W.bits then some (BitVec.ofNat W.bits n) else none
   | .sint W, .sint W' n =>
@@ -334,6 +341,13 @@ def boundOk (lo : Int) : NfTy → Bool
   | .word w => decide (0 ≤ lo) && decide (w ≤ 64)
   | _ => false
 
+/-- The literal upper bounds the counted loop of the front accepts beside `boundOk`: a
+    non-negative lower bound and an integer literal below `2 ^ 64`, so that the trip count is
+    below `2 ^ 64`. -/
+def litBoundOk (lo : Int) : ImpExpr → Bool
+  | .lit (.int n) => decide (0 ≤ lo) && decide (n < 2 ^ 64)
+  | _ => false
+
 /-- The environment of names of a loop body or of the continuation of a loop: the carried
     names `xs` bound to the first variables, in front of the names of `σ` other than the
     counter `i`, moved by `g`. -/
@@ -391,7 +405,7 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .forFold i (.lit (.int lo)) hi body =>
       let oLo := bind1 σ (.ilit .int lo) .nil
       (atomOut oLo.σ hi).bind fun oHi =>
-        if boundOk lo oHi.t then
+        if boundOk lo oHi.t || litBoundOk lo hi then
           let oT := bind1 oHi.σ (.trip oHi.t) (.cons (oHi.pre.wk oLo.res) (.cons oHi.res .nil))
           let W := carried oT.σ i body
           loopOut tgt ((oLo.pre.append oHi.pre).append oT.pre) oT.σ
@@ -527,7 +541,20 @@ theorem dec_sound : ∀ (t : NfTy) (v : Value) (x : t.denote), dec t v = some x 
             apply List.ext_getElem <;> simp
           · cases h
       | _ => simp [dec] at h
-  | .word _, v, x, h => by cases v <;> simp [dec] at h
+  | .word w, v, x, h => by
+      cases v with
+      | int n =>
+          simp only [dec] at h
+          split at h
+          · rename_i hc
+            simp only [Option.some.injEq] at h
+            subst h
+            have hc2 : n < ((2 ^ w : Nat) : Int) := by exact_mod_cast hc.2
+            have hn : n.toNat < 2 ^ w := by omega
+            simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn, Value.int.injEq]
+            omega
+          · cases h
+      | _ => simp [dec] at h
   | .pair _ _, v, x, h => by cases v <;> simp [dec] at h
 
 /-- The current variable of a name after one more entry. -/
@@ -1440,6 +1467,27 @@ theorem trip_lt_of_boundOk {lo : Int} {t : NfTy} {x : t.denote} {h : Int}
       omega
   | _ => simp [boundOk] at hb
 
+/-- The integer `NfTy.toInt?` reads off a value encoding as the integer `n` is `n`. -/
+theorem toInt_of_enc_int {t : NfTy} {x : t.denote} {n h : Int} (he : enc t x = .int n)
+    (hx : NfTy.toInt? t x = some h) : h = n := by
+  cases t <;> simp only [enc, reduceCtorEq] at he <;> simp only [NfTy.toInt?] at hx
+  · obtain rfl := Option.some.inj hx
+    exact Value.int.inj he
+  · obtain rfl := Option.some.inj hx
+    exact Value.int.inj he
+
+/-- Under the bounds of `boundOk` or of `litBoundOk`, the trip count is below `2 ^ 64`. -/
+theorem trip_lt_of_bound {lo : Int} {t : NfTy} {x : t.denote} {h : Int} {hi : ImpExpr}
+    (hb : (boundOk lo t || litBoundOk lo hi) = true) (hx : NfTy.toInt? t x = some h)
+    (hlit : ∀ n, hi = .lit (.int n) → enc t x = .int n) : (h - lo).toNat < 2 ^ 64 := by
+  rcases Bool.or_eq_true_iff.mp hb with hb | hb
+  · exact trip_lt_of_boundOk hb hx
+  · match hi, hb with
+    | .lit (.int n), hb =>
+        simp only [litBoundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        obtain rfl := toInt_of_enc_int (hlit n rfl) hx
+        omega
+
 /-- **A counted loop is sound**, when the front is sound for its body. -/
 theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (fuel : Nat) (tgt : Option String) (i : String) (lo : Int) (hi body : ImpExpr)
@@ -1501,7 +1549,12 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
     e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (hLo tf) hW2) hTrip) hrelT
     (CarriedRel.of_entries hrelT _ (carried_lookup _ i body)) lo hInt hloW rfl
-    (trip_lt_of_boundOk hbd htoInt) r env' hloop
+    (trip_lt_of_bound hbd htoInt fun n hn => by
+      subst hn
+      rw [lit_run] at hh
+      have h1 := (Prod.mk.inj hh).1
+      injection h1 with h2
+      exact h2.symm) r env' hloop
 
 /-! ## 11. The front simulates `denote'` -/
 
@@ -2918,11 +2971,148 @@ theorem TypedCalls.mono {bi bi' : Builtins} {sigOf : String → List NfTy → Op
     TypedCalls bi' sigOf :=
   fun f as r hr xs v hv => h f as r hr xs v (hsub f as r hr _ v hv)
 
-/-- The scalar calls of `u64` code the route through `NFProg` types: two word operands, an
-    integer result. -/
+/-- The binary integer operations of `u64` code: the wrapping addition, subtraction and
+    multiplication, the bitwise conjunction, disjunction and exclusive disjunction, the shifts
+    and the rotations at a width, the high word of the `128`-bit product, and the checked
+    addition. -/
+inductive ScalarBin where
+  /-- Wrapping addition. -/
+  | add
+  /-- Wrapping subtraction. -/
+  | sub
+  /-- Wrapping multiplication. -/
+  | mul
+  /-- Bitwise conjunction. -/
+  | and
+  /-- Bitwise disjunction. -/
+  | or
+  /-- Bitwise exclusive disjunction. -/
+  | xor
+  /-- Left shift. -/
+  | shl
+  /-- Logical right shift. -/
+  | shr
+  /-- Rotation right. -/
+  | rotr
+  /-- Rotation left. -/
+  | rotl
+  /-- High word of the `128`-bit product. -/
+  | mulhi
+  /-- Checked addition. -/
+  | addc
+  deriving DecidableEq, Repr
+
+/-- The value of a binary operation at the width `w` on the natural numbers of two words, as
+    `Hax.hax64WordOps` computes it on words; `none` where Rust panics. -/
+def ScalarBin.nat : ScalarBin → Nat → Nat → Nat → Option Nat
+  | .add, w, x, y => some ((x + y) % 2 ^ w)
+  | .sub, w, x, y => some ((x % 2 ^ w + 2 ^ w - y % 2 ^ w) % 2 ^ w)
+  | .mul, w, x, y => some ((x * y) % 2 ^ w)
+  | .and, w, x, y => some ((x % 2 ^ w) &&& (y % 2 ^ w))
+  | .or, w, x, y => some ((x % 2 ^ w) ||| (y % 2 ^ w))
+  | .xor, w, x, y => some ((x % 2 ^ w) ^^^ (y % 2 ^ w))
+  | .shl, w, x, y => if y < w then some (((x % 2 ^ w) <<< y) % 2 ^ w) else none
+  | .shr, w, x, y => if y < w then some ((x % 2 ^ w) >>> y) else none
+  | .rotr, w, x, y => some (_root_.Hax.rotrNat w x y)
+  | .rotl, w, x, y => some (_root_.Hax.rotlNat w x y)
+  | .mulhi, _, x, y => some ((x * y) >>> 64)
+  | .addc, _, x, y => if x + y < 2 ^ 64 then some (x + y) else none
+
+/-- The unary integer operations of `u64` code: the complement at a width, the wrapping
+    negation of a `64`-bit word, and the truncation to a width. -/
+inductive ScalarUn where
+  /-- Complement. -/
+  | not
+  /-- Wrapping negation. -/
+  | neg
+  /-- Truncation. -/
+  | cast
+  deriving DecidableEq, Repr
+
+/-- The value of a unary operation at the width `w` on an integer, as `Hax.hax64WordOps`
+    computes it. -/
+def ScalarUn.val : ScalarUn → Nat → Int → Option Value
+  | .not, w, a => _root_.Hax.u64UnOp a fun x => 2 ^ w - 1 - x % 2 ^ w
+  | .neg, _, a => _root_.Hax.u64UnOp a fun x => (2 ^ 64 - x % 2 ^ 64) % 2 ^ 64
+  | .cast, w, a => if 0 ≤ a then some (.int (a.toNat % 2 ^ w : Nat)) else none
+
+/-- The comparisons of `u64` code, with a Boolean result. -/
+inductive ScalarCmp where
+  /-- Equality. -/
+  | eq
+  /-- Disequality. -/
+  | ne
+  /-- Less than. -/
+  | lt
+  /-- At most. -/
+  | le
+  /-- Greater than. -/
+  | gt
+  /-- At least. -/
+  | ge
+  deriving DecidableEq, Repr
+
+/-- The value of a comparison on two integers, as `Hax.hax64WordOps` computes it. -/
+def ScalarCmp.val : ScalarCmp → Int → Int → Bool
+  | .eq, a, b => a == b
+  | .ne, a, b => !(a == b)
+  | .lt, a, b => decide (a < b)
+  | .le, a, b => decide (a ≤ b)
+  | .gt, a, b => decide (b < a)
+  | .ge, a, b => decide (b ≤ a)
+
+/-- The binary integer calls of `u64` code with their operation and width; the width `size`
+    is `64`. -/
+def hax64BinTable : List (String × ScalarBin × Nat) :=
+  [("wrapping_add#8", .add, 8), ("wrapping_sub#8", .sub, 8), ("wrapping_mul#8", .mul, 8),
+    ("BitAnd#8", .and, 8), ("BitOr#8", .or, 8), ("BitXor#8", .xor, 8), ("Shl#8", .shl, 8),
+    ("Shr#8", .shr, 8), ("rotate_right#8", .rotr, 8), ("rotate_left#8", .rotl, 8),
+    ("wrapping_add#16", .add, 16), ("wrapping_sub#16", .sub, 16),
+    ("wrapping_mul#16", .mul, 16), ("BitAnd#16", .and, 16), ("BitOr#16", .or, 16),
+    ("BitXor#16", .xor, 16), ("Shl#16", .shl, 16), ("Shr#16", .shr, 16),
+    ("rotate_right#16", .rotr, 16), ("rotate_left#16", .rotl, 16),
+    ("wrapping_add#32", .add, 32), ("wrapping_sub#32", .sub, 32),
+    ("wrapping_mul#32", .mul, 32), ("BitAnd#32", .and, 32), ("BitOr#32", .or, 32),
+    ("BitXor#32", .xor, 32), ("Shl#32", .shl, 32), ("Shr#32", .shr, 32),
+    ("rotate_right#32", .rotr, 32), ("rotate_left#32", .rotl, 32),
+    ("wrapping_add#64", .add, 64), ("wrapping_sub#64", .sub, 64),
+    ("wrapping_mul#64", .mul, 64), ("BitAnd#64", .and, 64), ("BitOr#64", .or, 64),
+    ("BitXor#64", .xor, 64), ("Shl#64", .shl, 64), ("Shr#64", .shr, 64),
+    ("rotate_right#64", .rotr, 64), ("rotate_left#64", .rotl, 64),
+    ("wrapping_add#size", .add, 64), ("wrapping_sub#size", .sub, 64),
+    ("wrapping_mul#size", .mul, 64), ("BitAnd#size", .and, 64), ("BitOr#size", .or, 64),
+    ("BitXor#size", .xor, 64), ("Shl#size", .shl, 64), ("Shr#size", .shr, 64),
+    ("rotate_right#size", .rotr, 64), ("rotate_left#size", .rotl, 64),
+    ("shl#64", .shl, 64), ("shr#64", .shr, 64), ("mulhi#64", .mulhi, 64), ("Add", .addc, 64)]
+
+/-- The unary integer calls of `u64` code with their operation and width. -/
+def hax64UnTable : List (String × ScalarUn × Nat) :=
+  [("Not#8", .not, 8), ("Not#16", .not, 16), ("Not#32", .not, 32), ("Not#64", .not, 64),
+    ("Not#size", .not, 64), ("wrapping_neg#64", .neg, 64), ("cast#8", .cast, 8),
+    ("cast#16", .cast, 16), ("cast#32", .cast, 32), ("cast#64", .cast, 64),
+    ("cast#size", .cast, 64)]
+
+/-- The comparison calls of `u64` code with their comparison. -/
+def hax64CmpTable : List (String × ScalarCmp) :=
+  [("Eq", .eq), ("eq", .eq), ("Ne", .ne), ("ne", .ne), ("Lt", .lt), ("lt", .lt),
+    ("Le", .le), ("le", .le), ("Gt", .gt), ("gt", .gt), ("Ge", .ge), ("ge", .ge)]
+
+/-- The operation and the width of a binary integer call. -/
+def scalarBinOf (f : String) : Option (ScalarBin × Nat) :=
+  (hax64BinTable.find? (·.1 == f)).map (·.2)
+
+/-- The operation and the width of a unary integer call. -/
+def scalarUnOf (f : String) : Option (ScalarUn × Nat) :=
+  (hax64UnTable.find? (·.1 == f)).map (·.2)
+
+/-- The comparison of a comparison call. -/
+def scalarCmpOf (f : String) : Option ScalarCmp :=
+  (hax64CmpTable.find? (·.1 == f)).map (·.2)
+
+/-- The scalar calls of `u64` code the route through `NFProg` types: the binary and unary
+    integer calls and the comparisons. -/
 def hax64NFScalar : List String :=
-  ["BitXor#64", "BitAnd#64", "wrapping_add#64", "wrapping_sub#64", "wrapping_mul#64",
-    "mulhi#64", "Shr#64", "Shl#64", "Add"]
+  hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1)
 
 /-- The types whose values encode as integers: `int` and the `64`-bit word. -/
 def hax64NFWordTy : NfTy → Bool
@@ -2930,25 +3120,41 @@ def hax64NFWordTy : NfTy → Bool
   | .word 64 => true
   | _ => false
 
-/-- The call typing of `u64` code on integer arrays of a fixed length `n`: `index` of an
-    array at an integer is an integer; `array_update` of an array at an integer with a value
-    of a `hax64NFWordTy` type is an array of the same length. -/
+/-- The call typing of `u64` code on integer arrays of a fixed length `n`, at an index of a
+    `hax64NFWordTy` type: `index` of an array is an integer; `array_update` of an array with
+    a value of a `hax64NFWordTy` type is an array of the same length. -/
 def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
   match f, as with
-  | "index", [.arr _ .int, .int] => some .int
-  | "array_update", [.arr n .int, .int, t] => if hax64NFWordTy t then some (.arr n .int) else none
+  | "index", [.arr _ .int, ti] => if hax64NFWordTy ti then some .int else none
+  | "array_update", [.arr n .int, ti, t] =>
+      if hax64NFWordTy ti && hax64NFWordTy t then some (.arr n .int) else none
   | _, _ => none
 
-/-- **The call typing of `u64` code**: a scalar call of `hax64NFScalar` on two operands of
-    `hax64NFWordTy` types has an integer result; `index` of an integer slice at an integer
-    is an integer; `array_update` of an integer slice at an integer with a value of a
-    `hax64NFWordTy` type is an integer slice; on fixed-length arrays, `hax64SigOfArr`. -/
+/-- The call typing of the scalar calls of `u64` code on operands of `hax64NFWordTy` types: a
+    binary or unary integer call has a `64`-bit word result, a comparison a bit. -/
+def hax64ScalarSig (f : String) : List NfTy → Option NfTy
+  | [a, b] =>
+      if hax64NFWordTy a && hax64NFWordTy b then
+        if (scalarBinOf f).isSome then some (.word 64)
+        else if (scalarCmpOf f).isSome then some .bit
+        else none
+      else none
+  | [a] => if hax64NFWordTy a && (scalarUnOf f).isSome then some (.word 64) else none
+  | _ => none
+
+/-- **The call typing of `u64` code**: a scalar call by `hax64ScalarSig`; at an index of a
+    `hax64NFWordTy` type, `index` of an integer slice is an integer and `array_update` of an
+    integer slice with a value of a `hax64NFWordTy` type is an integer slice; on
+    fixed-length arrays, `hax64SigOfArr`. -/
 def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
-  if hax64NFScalar.contains f && as.length == 2 && as.all hax64NFWordTy then some .int
-  else match f, as with
-  | "index", [.slice .int, .int] => some .int
-  | "array_update", [.slice .int, .int, t] => if hax64NFWordTy t then some (.slice .int) else none
-  | _, _ => hax64SigOfArr f as
+  match hax64ScalarSig f as with
+  | some r => some r
+  | none =>
+    match f, as with
+    | "index", [.slice .int, ti] => if hax64NFWordTy ti then some .int else none
+    | "array_update", [.slice .int, ti, t] =>
+        if hax64NFWordTy ti && hax64NFWordTy t then some (.slice .int) else none
+    | _, _ => hax64SigOfArr f as
 
 /-- The encoding of a value of a `hax64NFWordTy` type is an integer. -/
 theorem hax64NFWordTy_enc {t : NfTy} (ht : hax64NFWordTy t = true) (x : t.denote) :
@@ -2967,23 +3173,196 @@ theorem u64BinOp_int {a b : Int} {g : Nat → Nat → Option Nat} {v : Value}
     exact ⟨_, rfl⟩
   · cases h
 
-/-- A value of a scalar call of `hax64NFScalar` on two integers is an integer. -/
-theorem hax64Builtins_scalar_int {f : String} (hf : f ∈ hax64NFScalar) {a b : Int}
-    {v : Value} (h : _root_.Hax.hax64Builtins f [.int a, .int b] = some v) :
-    ∃ z : Int, v = .int z := by
-  simp only [hax64NFScalar, List.mem_cons, List.not_mem_nil, or_false] at hf
-  rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-  · simp only [_root_.Hax.hax64Builtins] at h
-    rcases hw : _root_.Hax.hax64WordOps _ [.int a, .int b] with _ | w
-    · rw [hw] at h; simp [_root_.Hax.widthArrayOps] at h
-    · rw [hw] at h
-      obtain rfl : w = v := Option.some.inj h
-      simp only [_root_.Hax.hax64WordOps_bitXor, _root_.Hax.hax64WordOps_bitAnd,
-        _root_.Hax.hax64WordOps_wrapping_add, _root_.Hax.hax64WordOps_wrapping_sub,
-        _root_.Hax.hax64WordOps_wrapping_mul, _root_.Hax.hax64WordOps_mulhi,
-        _root_.Hax.hax64WordOps_shr, _root_.Hax.hax64WordOps_shl,
-        _root_.Hax.hax64WordOps_add] at hw
-      exact u64BinOp_int hw
+/-- `<|> none` is the identity on `Option Value`. -/
+theorem orElse_none_eq (x : Option Value) : (x <|> none) = x := by
+  cases x <;> rfl
+
+/-- An entry a lookup by name finds in a table is a member of the table. -/
+theorem mem_of_find?_map {α : Type} {L : List (String × α)} {f : String} {p : α}
+    (h : (L.find? (·.1 == f)).map (·.2) = some p) : (f, p) ∈ L := by
+  obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
+  have h1 := List.find?_some he
+  simp only [beq_iff_eq] at h1
+  subst h1
+  exact List.mem_of_find?_eq_some he
+
+/-- The binary integer calls of the table compute `ScalarBin.nat` by `u64BinOp`. -/
+theorem hax64BinTable_sem :
+    ∀ e ∈ hax64BinTable, ∀ a b : Int, _root_.Hax.hax64Builtins e.1 [.int a, .int b] =
+      (_root_.Hax.u64BinOp a b (e.2.1.nat e.2.2) <|> none) := by
+  simp only [hax64BinTable, List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff,
+    implies_true, and_true]
+  and_intros <;> intro a b <;> rfl
+
+/-- The unary integer calls of the table compute `ScalarUn.val`. -/
+theorem hax64UnTable_sem :
+    ∀ e ∈ hax64UnTable, ∀ a : Int,
+      _root_.Hax.hax64Builtins e.1 [.int a] = (e.2.1.val e.2.2 a <|> none) := by
+  simp only [hax64UnTable, List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff,
+    implies_true, and_true]
+  and_intros <;> intro a <;> rfl
+
+/-- The comparison calls of the table compute `ScalarCmp.val`. -/
+theorem hax64CmpTable_sem :
+    ∀ e ∈ hax64CmpTable, ∀ a b : Int,
+      _root_.Hax.hax64Builtins e.1 [.int a, .int b] = (some (.bool (e.2.val a b)) <|> none) := by
+  simp only [hax64CmpTable, List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff,
+    implies_true, and_true]
+  and_intros <;> intro a b <;> rfl
+
+/-- The widths of the binary integer calls are at most `64`. -/
+theorem hax64BinTable_w : ∀ e ∈ hax64BinTable, e.2.2 ≤ 64 := by decide
+
+/-- The widths of the unary integer calls are at most `64`. -/
+theorem hax64UnTable_w : ∀ e ∈ hax64UnTable, e.2.2 ≤ 64 := by decide
+
+/-- The scalar calls are none of the array constructors and array comparisons. -/
+theorem hax64NFScalar_ne_arr {f : String} (hf : f ∈ hax64NFScalar) :
+    f ≠ "array_lit" ∧ f ≠ "repeat" ∧ f ≠ "eq#arr" ∧ f ≠ "ne#arr" := by
+  have h : ∀ g ∈ hax64NFScalar,
+      g ≠ "array_lit" ∧ g ≠ "repeat" ∧ g ≠ "eq#arr" ∧ g ≠ "ne#arr" := by decide
+  exact h f hf
+
+/-- A value of `u64BinOp` is the integer of a value of the operation on two words. -/
+theorem u64BinOp_some {a b : Int} {g : Nat → Nat → Option Nat} {v : Value}
+    (h : _root_.Hax.u64BinOp a b g = some v) :
+    ∃ r : Nat, g a.toNat b.toNat = some r ∧ v = .int r ∧ a = a.toNat ∧ a.toNat < 2 ^ 64 ∧
+      b = b.toNat ∧ b.toNat < 2 ^ 64 := by
+  unfold _root_.Hax.u64BinOp at h
+  split at h
+  · rename_i hc
+    rcases hg : g a.toNat b.toNat with _ | r
+    · simp [hg] at h
+    · rw [hg] at h
+      obtain rfl := Option.some.inj h
+      exact ⟨r, rfl, rfl, by omega, by omega, by omega, by omega⟩
+  · cases h
+
+/-- A value of a binary integer operation at a width of at most `64` on two words is below
+    `2 ^ 64`. -/
+theorem ScalarBin.nat_lt (o : ScalarBin) {w x y r : Nat} (hw : w ≤ 64) (hx : x < 2 ^ 64)
+    (hy : y < 2 ^ 64) (h : o.nat w x y = some r) : r < 2 ^ 64 := by
+  have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
+  have hm : ∀ n, n % 2 ^ w < 2 ^ 64 := fun n =>
+    lt_of_lt_of_le (Nat.mod_lt _ (by positivity)) hp
+  cases o <;> simp only [ScalarBin.nat] at h
+  case add | sub | mul => obtain rfl := Option.some.inj h; exact hm _
+  case and => obtain rfl := Option.some.inj h; exact lt_of_le_of_lt Nat.and_le_left (hm x)
+  case or => obtain rfl := Option.some.inj h; exact Nat.or_lt_two_pow (hm x) (hm y)
+  case xor => obtain rfl := Option.some.inj h; exact Nat.xor_lt_two_pow (hm x) (hm y)
+  case shl =>
+    split at h
+    · obtain rfl := Option.some.inj h; exact hm _
+    · cases h
+  case shr =>
+    split at h
+    · obtain rfl := Option.some.inj h
+      exact lt_of_le_of_lt (Nat.shiftRight_le _ _) (hm x)
+    · cases h
+  case rotr | rotl => obtain rfl := Option.some.inj h; exact hm _
+  case mulhi =>
+    obtain rfl := Option.some.inj h
+    rw [Nat.shiftRight_eq_div_pow, Nat.div_lt_iff_lt_mul (by positivity)]
+    exact Nat.mul_lt_mul'' hx hy
+  case addc =>
+    split at h
+    · obtain rfl := Option.some.inj h; assumption
+    · cases h
+
+/-- A value of a unary integer operation at a width of at most `64` is the integer of a
+    natural number below `2 ^ 64`. -/
+theorem ScalarUn.val_int (o : ScalarUn) {w : Nat} (hw : w ≤ 64) {a : Int} {v : Value}
+    (h : o.val w a = some v) : ∃ r : Nat, v = .int r ∧ r < 2 ^ 64 := by
+  have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
+  have h0 : 0 < 2 ^ w := by positivity
+  cases o <;> simp only [ScalarUn.val, _root_.Hax.u64UnOp] at h <;> split at h
+  all_goals cases h
+  · exact ⟨_, rfl, by omega⟩
+  · exact ⟨_, rfl, Nat.mod_lt _ (by positivity)⟩
+  · exact ⟨_, rfl, lt_of_lt_of_le (Nat.mod_lt _ h0) hp⟩
+
+/-- A natural number below `2 ^ 64` decodes as a `64`-bit word. -/
+theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :
+    ∃ y, dec (.word 64) (.int r) = some y ∧ Value.int r = enc (.word 64) y := by
+  have hr' : (r : Int) < 2 ^ 64 := by exact_mod_cast hr
+  refine ⟨BitVec.ofNat 64 r, ?_, ?_⟩
+  · simp only [dec, Int.natCast_nonneg, hr', and_self, if_true, Int.toNat_natCast]
+  · simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr]
+
+/-- **The scalar call typing is sound for `Hax.hax64Builtins`.** -/
+theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
+    (hr : hax64ScalarSig f as = some r) (xs : HVector NfTy.denote as) (v : Value)
+    (hv : _root_.Hax.hax64Builtins f (encAll as xs) = some v) :
+    ∃ y, dec r v = some y ∧ v = enc r y := by
+  match as, xs, hr with
+  | [ta, tb], .cons x₁ (.cons x₂ .nil), hr =>
+    simp only [hax64ScalarSig] at hr
+    split at hr
+    · rename_i hab
+      simp only [Bool.and_eq_true] at hab
+      obtain ⟨a, ha⟩ := hax64NFWordTy_enc hab.1 x₁
+      obtain ⟨b, hb⟩ := hax64NFWordTy_enc hab.2 x₂
+      change _root_.Hax.hax64Builtins f [enc ta x₁, enc tb x₂] = some v at hv
+      rw [ha, hb] at hv
+      split at hr
+      · rename_i hbin
+        cases hr
+        obtain ⟨⟨o, w⟩, hp⟩ := Option.isSome_iff_exists.mp hbin
+        have hmem := mem_of_find?_map hp
+        rw [hax64BinTable_sem _ hmem, orElse_none_eq] at hv
+        obtain ⟨r', hr', rfl, -, hax, -, hbx⟩ := u64BinOp_some hv
+        exact dec_word64_nat (ScalarBin.nat_lt o (hax64BinTable_w _ hmem) hax hbx hr')
+      · split at hr
+        · rename_i hcmp
+          cases hr
+          obtain ⟨c, hp⟩ := Option.isSome_iff_exists.mp hcmp
+          rw [hax64CmpTable_sem _ (mem_of_find?_map hp), orElse_none_eq] at hv
+          cases hv
+          exact ⟨_, rfl, rfl⟩
+        · cases hr
+    · cases hr
+  | [ta], .cons x₁ .nil, hr =>
+    simp only [hax64ScalarSig] at hr
+    split at hr
+    · rename_i hab
+      cases hr
+      simp only [Bool.and_eq_true] at hab
+      obtain ⟨a, ha⟩ := hax64NFWordTy_enc hab.1 x₁
+      change _root_.Hax.hax64Builtins f [enc ta x₁] = some v at hv
+      rw [ha] at hv
+      obtain ⟨⟨o, w⟩, hp⟩ := Option.isSome_iff_exists.mp hab.2
+      have hmem := mem_of_find?_map hp
+      rw [hax64UnTable_sem _ hmem, orElse_none_eq] at hv
+      obtain ⟨r', rfl, hr'⟩ := ScalarUn.val_int o (hax64UnTable_w _ hmem) hv
+      exact dec_word64_nat hr'
+    · cases hr
+  | [], _, hr => simp [hax64ScalarSig] at hr
+  | _ :: _ :: _ :: _, _, hr => simp [hax64ScalarSig] at hr
+
+/-- The calls `hax64ScalarSig` types are the scalar calls of `hax64NFScalar`. -/
+theorem hax64ScalarSig_name {f : String} {as : List NfTy} {r : NfTy}
+    (h : hax64ScalarSig f as = some r) : f ∈ hax64NFScalar := by
+  simp only [hax64NFScalar, List.mem_append, List.mem_map]
+  unfold hax64ScalarSig at h
+  split at h
+  · split at h
+    · split at h
+      · rename_i hbin
+        obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hbin
+        exact Or.inl (Or.inl ⟨_, mem_of_find?_map hp, rfl⟩)
+      · split at h
+        · rename_i hcmp
+          obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hcmp
+          exact Or.inr ⟨_, mem_of_find?_map hp, rfl⟩
+        · cases h
+    · cases h
+  · split at h
+    · rename_i hun
+      simp only [Bool.and_eq_true] at hun
+      obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hun.2
+      exact Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩)
+    · cases h
+  · cases h
 
 /-- A list of integers decodes as an integer slice. -/
 theorem dec_slice_int : ∀ (vs : List Value), (∀ v ∈ vs, ∃ z : Int, v = .int z) →
@@ -3008,9 +3387,8 @@ theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
     (h : hax64SigOf f as = some r) : f ∈ hax64NFScalar ∨ f = "index" ∨ f = "array_update" := by
   unfold hax64SigOf at h
   split at h
-  · rename_i hc
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at hc
-    exact Or.inl (by simpa using hc.1.1)
+  · rename_i hs
+    exact Or.inl (hax64ScalarSig_name hs)
   · split at h
     · exact Or.inr (Or.inl rfl)
     · exact Or.inr (Or.inr rfl)
@@ -3043,46 +3421,53 @@ theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
     ∃ y, dec r v = some y ∧ v = enc r y := by
   unfold hax64SigOfArr at hr
   split at hr
-  · rename_i n
-    simp only [Option.some.injEq] at hr
-    subst hr
-    match xs with
-    | .cons g (.cons i .nil) =>
-      change (_root_.Hax.hax64WordOps "index" [enc (.arr n .int) g, .int i] <|>
-        _root_.Hax.widthArrayOps "index" [enc (.arr n .int) g, .int i]) = some v at hv
-      change (_root_.Hax.hax64WordOps "index"
-          [.array (List.ofFn fun k => enc .int (g k)), .int i] <|>
-        _root_.Hax.widthArrayOps "index"
-          [.array (List.ofFn fun k => enc .int (g k)), .int i]) = some v at hv
-      rw [_root_.Hax.hax64WordOps_index] at hv
-      change _root_.Hax.widthArrayOps "index"
-        [.array (List.ofFn fun k => enc .int (g k)), .int i] = some v at hv
-      rw [_root_.Hax.widthArrayOps_index_int] at hv
-      split at hv
-      · rcases hy : (List.ofFn fun k => enc .int (g k))[i.toNat]? with _ | y
-        · rw [hy] at hv; cases hv
-        · rw [hy] at hv
-          obtain ⟨k, hk⟩ := List.mem_ofFn.mp (List.mem_of_getElem? hy)
-          subst hk
-          change some (Value.int (g k)) = some v at hv
-          cases hv
-          exact ⟨g k, rfl, rfl⟩
-      · cases hv
-  · rename_i n t
+  · rename_i n ti
+    split at hr
+    · rename_i hti
+      simp only [Option.some.injEq] at hr
+      subst hr
+      match xs with
+      | .cons g (.cons i .nil) =>
+        obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc hti i
+        change (_root_.Hax.hax64WordOps "index" [enc (.arr n .int) g, enc ti i] <|>
+          _root_.Hax.widthArrayOps "index" [enc (.arr n .int) g, enc ti i]) = some v at hv
+        rw [hzi] at hv
+        change (_root_.Hax.hax64WordOps "index"
+            [.array (List.ofFn fun k => enc .int (g k)), .int zi] <|>
+          _root_.Hax.widthArrayOps "index"
+            [.array (List.ofFn fun k => enc .int (g k)), .int zi]) = some v at hv
+        rw [_root_.Hax.hax64WordOps_index] at hv
+        change _root_.Hax.widthArrayOps "index"
+          [.array (List.ofFn fun k => enc .int (g k)), .int zi] = some v at hv
+        rw [_root_.Hax.widthArrayOps_index_int] at hv
+        split at hv
+        · rcases hy : (List.ofFn fun k => enc .int (g k))[zi.toNat]? with _ | y
+          · rw [hy] at hv; cases hv
+          · rw [hy] at hv
+            obtain ⟨k, hk⟩ := List.mem_ofFn.mp (List.mem_of_getElem? hy)
+            subst hk
+            change some (Value.int (g k)) = some v at hv
+            cases hv
+            exact ⟨g k, rfl, rfl⟩
+        · cases hv
+    · cases hr
+  · rename_i n ti t
     split at hr
     · rename_i ht
+      simp only [Bool.and_eq_true] at ht
       simp only [Option.some.injEq] at hr
       subst hr
       match xs with
       | .cons g (.cons i (.cons x .nil)) =>
-        obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht x
+        obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc ht.1 i
+        obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht.2 x
         change (_root_.Hax.hax64WordOps "array_update"
-            [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x] <|>
+            [.array (List.ofFn fun k => enc .int (g k)), enc ti i, enc t x] <|>
           _root_.Hax.widthArrayOps "array_update"
-            [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x]) = some v at hv
-        rw [_root_.Hax.hax64WordOps_array_update] at hv
+            [.array (List.ofFn fun k => enc .int (g k)), enc ti i, enc t x]) = some v at hv
+        rw [hzi, _root_.Hax.hax64WordOps_array_update] at hv
         change _root_.Hax.widthArrayOps "array_update"
-          [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x] = some v at hv
+          [.array (List.ofFn fun k => enc .int (g k)), .int zi, enc t x] = some v at hv
         rw [_root_.Hax.widthArrayOps_array_update_int, hz] at hv
         split at hv
         · cases hv
@@ -3100,55 +3485,51 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
   intro f as r hr xs v hv
   unfold hax64SigOf at hr
   split at hr
-  · rename_i hc
-    simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq, List.all_eq_true] at hc
-    obtain ⟨⟨hf, hlen⟩, hall⟩ := hc
-    simp only [Option.some.injEq] at hr
-    subst hr
-    match as, xs, hlen, hall with
-    | [t₁, t₂], .cons x₁ (.cons x₂ .nil), _, hall =>
-      obtain ⟨a, ha⟩ := hax64NFWordTy_enc (hall t₁ List.mem_cons_self) x₁
-      obtain ⟨b, hb⟩ := hax64NFWordTy_enc
-        (hall t₂ (List.mem_cons_of_mem _ List.mem_cons_self)) x₂
-      change _root_.Hax.hax64Builtins f [enc t₁ x₁, enc t₂ x₂] = some v at hv
-      rw [ha, hb] at hv
-      obtain ⟨z, rfl⟩ := hax64Builtins_scalar_int (List.contains_iff_mem.mp (by simpa using hf))
-        hv
-      exact ⟨z, rfl, rfl⟩
+  · rename_i hs
+    cases hr
+    exact hax64ScalarSig_typed f as _ hs xs v hv
   · split at hr
-    · simp only [Option.some.injEq] at hr
-      subst hr
-      match xs with
-      | .cons ys (.cons i .nil) =>
-        change (_root_.Hax.hax64WordOps "index" [.array (ys.map (enc .int)), .int i] <|>
-          _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), .int i]) = some v at hv
-        rw [_root_.Hax.hax64WordOps_index] at hv
-        change _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), .int i] =
-          some v at hv
-        rw [_root_.Hax.widthArrayOps_index_int] at hv
-        split at hv
-        · rw [List.getElem?_map] at hv
-          rcases hy : ys[i.toNat]? with _ | y
-          · rw [hy] at hv; cases hv
-          · rw [hy] at hv
-            change some (Value.int y) = some v at hv
-            cases hv
-            exact ⟨y, rfl, rfl⟩
-        · cases hv
+    · rename_i ti _
+      split at hr
+      · rename_i hti
+        simp only [Option.some.injEq] at hr
+        subst hr
+        match xs with
+        | .cons ys (.cons i .nil) =>
+          obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc hti i
+          change (_root_.Hax.hax64WordOps "index" [.array (ys.map (enc .int)), enc ti i] <|>
+            _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), enc ti i]) =
+              some v at hv
+          rw [hzi, _root_.Hax.hax64WordOps_index] at hv
+          change _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), .int zi] =
+            some v at hv
+          rw [_root_.Hax.widthArrayOps_index_int] at hv
+          split at hv
+          · rw [List.getElem?_map] at hv
+            rcases hy : ys[zi.toNat]? with _ | y
+            · rw [hy] at hv; cases hv
+            · rw [hy] at hv
+              change some (Value.int y) = some v at hv
+              cases hv
+              exact ⟨y, rfl, rfl⟩
+          · cases hv
+      · cases hr
     · split at hr
-      · rename_i t _ ht
+      · rename_i ti t _ ht
+        simp only [Bool.and_eq_true] at ht
         simp only [Option.some.injEq] at hr
         subst hr
         match xs with
         | .cons ys (.cons i (.cons x .nil)) =>
-          obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht x
+          obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc ht.1 i
+          obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht.2 x
           change (_root_.Hax.hax64WordOps "array_update"
-              [.array (ys.map (enc .int)), .int i, enc t x] <|>
+              [.array (ys.map (enc .int)), enc ti i, enc t x] <|>
             _root_.Hax.widthArrayOps "array_update"
-              [.array (ys.map (enc .int)), .int i, enc t x]) = some v at hv
-          rw [_root_.Hax.hax64WordOps_array_update] at hv
+              [.array (ys.map (enc .int)), enc ti i, enc t x]) = some v at hv
+          rw [hzi, _root_.Hax.hax64WordOps_array_update] at hv
           change _root_.Hax.widthArrayOps "array_update"
-            [.array (ys.map (enc .int)), .int i, enc t x] = some v at hv
+            [.array (ys.map (enc .int)), .int zi, enc t x] = some v at hv
           rw [_root_.Hax.widthArrayOps_array_update_int, hz] at hv
           have hints : ∀ w ∈ ys.map (enc .int), ∃ z : Int, w = .int z := by
             intro w hw

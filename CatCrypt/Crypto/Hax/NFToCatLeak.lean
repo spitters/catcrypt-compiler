@@ -20,7 +20,8 @@ other value reads as `0`. The model has no variable-time scalar operation: it is
 parameters satisfy.
 
 `nfToCat` translates each operation to no binding (a literal, a loop counter or a trip count,
-all quiet), to one binding, or to a quiet `bvConst` binding followed by one binding. The
+all quiet), to one binding, to a quiet `bvConst` binding followed by one binding, or, for a
+call of the scalar table, to a sequence of quiet bindings (`scalarRes_quiet`). The
 binding of `index` is `memrefGetDyn` and that of `array_update` is `memrefSetDyn`, which leak
 the word of the index; the values are related by `VRel`. The leakage transformer is therefore
 the identity: a run of the source that succeeds from `V` is matched by a run of the
@@ -37,7 +38,9 @@ translated program from every valuation the readings relate to `V`, with the sam
 ## Main results
 
 * `nfValNat_vrel`, `valsNat_vrelL` — related values have equal readings.
+* `scalarRes_quiet` — the translation of a call of the scalar table is quiet.
 * `catOp_leak` — the events of an operation are the events of its translation.
+* `emitRes_leak` — the events of the bindings of a translated operation.
 * `nfToCat_leak` — the leakage transformer of `nfToCat` is the identity.
 -/
 
@@ -147,13 +150,15 @@ theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       obtain ⟨⟨n, a⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨i, -, rfl⟩ := Option.map_eq_some_iff.mp h
       simp [catKind, nfKind, hf]
-    · rename_i hf
-      obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-      rw [scalarCatExpr_kind hP h]
-      have hu : f ≠ "array_update" := by
-        rintro rfl; simp [scalarCatExpr] at h
-      simp [nfKind, hf, hu]
+    · cases h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+    rw [scalarCatExpr_kind hP h]
+    have hi : f ≠ "index" := by
+      rintro rfl; simp [scalarCatExpr] at h
+    have hu : f ≠ "array_update" := by
+      rintro rfl; simp [scalarCatExpr] at h
+    simp [nfKind, hi, hu]
   · split at h
     · rename_i hf
       obtain ⟨⟨n, m⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
@@ -217,17 +222,20 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       change [CTLeak.addr "" (((i.lookup W).toNat : Nat) : Int)] =
         [CTLeak.addr "" ((nfValNat tb x₂ : Nat) : Int)]
       rw [asWord_valNat hi W hx₂]
-    · rename_i hf
-      have hq : nfKind (.call f [ta, tb] .int) = .quiet := by
-        obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-        have hu : f ≠ "array_update" := by
-          rintro rfl; simp [scalarCatExpr] at h
-        simp [nfKind, hf, hu]
-      unfold Expr.ctLeak opLeak
-      rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
-        show nfLeakModel.kind (.call f [ta, tb] .int) = nfKind (.call f [ta, tb] .int) from rfl,
-        hq]
+    · cases h
+  · rename_i ta tb args
+    have hq : nfKind (.call f [ta, tb] (.word 64)) = .quiet := by
+      obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+      have hi : f ≠ "index" := by
+        rintro rfl; simp [scalarCatExpr] at h
+      have hu : f ≠ "array_update" := by
+        rintro rfl; simp [scalarCatExpr] at h
+      simp [nfKind, hi, hu]
+    unfold Expr.ctLeak opLeak
+    rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
+      show nfLeakModel.kind (.call f [ta, tb] (.word 64)) =
+        nfKind (.call f [ta, tb] (.word 64)) from rfl, hq]
   · rename_i ta ti tv n' args
     rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | ⟨x₃, _ | _⟩⟩⟩
     have hx₂ : VRel ti x₂ (args.tail.head.lookup W) := by
@@ -250,14 +258,17 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
   · cases h
 
 /-- The events of the translation of an operation at the valuation `W` of the target: none
-    for a reading, the events of the expression, and the events of the expression under the
-    binding of the literal (the `bvConst` binding is quiet). -/
-def resLeak (P : CatLeakParams) {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {t : NfTy} :
-    OpRes Δ t → List CTLeak
-  | .rd _ => []
-  | .expr e => Expr.ctLeak (catLeakModel P) e W
-  | .expr1 k e => Expr.ctLeak (catLeakModel P) e
+    for a reading, the events of the expression, the events of the expression under the
+    binding of the literal (the `bvConst` binding is quiet), and the events of an intermediate
+    binding followed by those of the rest. -/
+def resLeak (P : CatLeakParams) : {Δ : Ctxt catCryptDialect} → (W : Valuation Δ) →
+    {t : NfTy} → OpRes Δ t → List CTLeak
+  | _, _, _, .rd _ => []
+  | _, W, _, .expr e => Expr.ctLeak (catLeakModel P) e W
+  | _, W, _, .expr1 k e => Expr.ctLeak (catLeakModel P) e
       (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W)
+  | _, W, _, .bind _ e rest =>
+      Expr.ctLeak (catLeakModel P) e W ++ resLeak P (W.extend (e.denote W)) rest
 
 /-- A shift by an immediate and its source call are quiet. -/
 theorem shiftImm_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -289,14 +300,14 @@ theorem shiftImm_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDiale
     · cases h
   · cases h
 
-/-- **The events of a translated call.** The translation `catCallRd` of a call on readings
-    related to the arguments `xs` emits the events of the source call on `xs`. -/
-theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+/-- The translation `catCallRd0` of a call on readings related to the arguments `xs` emits
+    the events of the source call on `xs`. -/
+theorem catCallRd0_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
     (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
-    (h : catCallRd f as r rs = some res) (hx : RdRelL W as xs rs) :
+    (h : catCallRd0 f as r rs = some res) (hx : RdRelL W as xs rs) :
     resLeak P W res = opLeak nfLeakModel (.call f as r) xs := by
-  unfold catCallRd at h
+  unfold catCallRd0 at h
   split at h
   · rename_i ws hws
     obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -310,6 +321,193 @@ theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
       obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
       have hk64 := firstLit_lt xs rs hk hx
       exact catCall_leak hP _ f as r ws e xs he (pinLit_rel hk64 xs rs ws hws hx)
+
+/-! ### The scalar table is quiet -/
+
+/-- Every binding of a translation is quiet at the parameters `P`. -/
+def OpRes.Quiet (P : CatLeakParams) : {Δ : Ctxt catCryptDialect} → {t : NfTy} →
+    OpRes Δ t → Prop
+  | _, _, .rd _ => True
+  | _, _, .expr e => catKind P e.op = .quiet
+  | _, _, .expr1 _ e => catKind P e.op = .quiet
+  | _, _, .bind _ e k => catKind P e.op = .quiet ∧ OpRes.Quiet P k
+
+/-- At parameters with no variable-time operation, no operation is variable time. -/
+theorem opVT_none {P : CatLeakParams} (hP : NoVT P) (op : CatCryptOp) : P.opVT op = none :=
+  hP op
+
+/-- A quiet expression emits no event. -/
+theorem ctLeak_quiet {P : CatLeakParams} {Δ : Ctxt catCryptDialect} {c : CryptoTy}
+    (e : Expr catCryptDialect Δ c) (W : Valuation Δ) (h : catKind P e.op = .quiet) :
+    Expr.ctLeak (catLeakModel P) e W = [] := by
+  unfold Expr.ctLeak opLeak
+  rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, h]
+
+/-- A translation whose bindings are quiet emits no event. -/
+theorem resLeak_quiet {P : CatLeakParams} :
+    ∀ {Δ : Ctxt catCryptDialect} {t : NfTy} (W : Valuation Δ) (res : OpRes Δ t),
+      res.Quiet P → resLeak P W res = []
+  | _, _, _, .rd _, _ => rfl
+  | _, _, W, .expr e, h => ctLeak_quiet e W h
+  | _, _, _, .expr1 _ e, h => ctLeak_quiet e _ h
+  | _, _, W, .bind _ e k, h => by
+      simp only [resLeak, ctLeak_quiet e W h.1, resLeak_quiet _ k h.2, List.nil_append]
+
+/-- The reduction `maskRes` of a quiet expression is quiet. -/
+theorem maskRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect} (w : Nat)
+    (e : Expr catCryptDialect Δ (.sword 64)) (he : catKind P e.op = .quiet) :
+    (maskRes w e).Quiet P := by
+  unfold maskRes
+  split
+  · exact he
+  · exact ⟨he, by simp [cstE, catKind, opVT_none hP],
+      by simp [OpRes.Quiet, andE, catKind, opVT_none hP]⟩
+
+/-- The translation of a binary integer call is quiet. -/
+theorem binChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {o : ImpToNF.ScalarBin} {w : Nat} {a b : Var Δ (.sword 64)} {res : OpRes Δ (.word 64)}
+    (h : binChain o w a b = some res) : res.Quiet P := by
+  unfold binChain at h
+  split at h
+  · cases h
+    simp [OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
+  · obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
+    apply maskRes_quiet hP
+    cases o <;> simp only [binE, Option.some.injEq, reduceCtorEq] at he <;> subst he <;>
+      simp [catKind, opVT_none hP]
+
+/-- The translation of a rotation is quiet. -/
+theorem rotChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (right : Bool) (w k : Nat) (a : Var Δ (.sword 64)) : (rotChain right w k a).Quiet P := by
+  cases right <;> simp [rotChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
+
+/-- The translation of a unary call is quiet. -/
+theorem unChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (o : ImpToNF.ScalarUn) (w : Nat) (a : Var Δ (.sword 64)) : (unChain o w a).Quiet P := by
+  cases o
+  · exact maskRes_quiet hP w _ (by simp [catKind, opVT_none hP])
+  · simp [unChain, OpRes.Quiet, cstE, catKind, opVT_none hP]
+  · simp [unChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
+
+/-- The translation of a comparison is quiet. -/
+theorem cmpChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (c : ImpToNF.ScalarCmp) (a b : Var Δ (.sword 64)) : (cmpChain c a b).Quiet P := by
+  cases c <;> simp [cmpChain, geChain, notRes, bitRes, OpRes.Quiet, catKind, opVT_none hP]
+
+/-- `withVar1` of a continuation whose results are quiet is quiet. -/
+theorem withVar1_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {r ta : NfTy} {ra : Rd Δ ta}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Option (OpRes Δ' r)}
+    (hk : ∀ {Δ' : Ctxt catCryptDialect} (a : Var Δ' (.sword 64)) (res' : OpRes Δ' r),
+      k a = some res' → res'.Quiet P)
+    {res : OpRes Δ r} (h : withVar1 ta ra k = some res) : res.Quiet P := by
+  cases ra with
+  | var a =>
+      obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+      exact hk x res h
+  | lit n _ =>
+      obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+      exact ⟨by simp [cstE, catKind, opVT_none hP], hk _ res' hres'⟩
+
+/-- `withVar2` of a continuation whose results are quiet is quiet. -/
+theorem withVar2_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {r ta tb : NfTy} {ra : Rd Δ ta} {rb : Rd Δ tb}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Var Δ' (.sword 64) →
+      Option (OpRes Δ' r)}
+    (hk : ∀ {Δ' : Ctxt catCryptDialect} (a b : Var Δ' (.sword 64)) (res' : OpRes Δ' r),
+      k a b = some res' → res'.Quiet P)
+    {res : OpRes Δ r} (h : withVar2 ta tb ra rb k = some res) : res.Quiet P := by
+  have hc : ∀ {Δ' : Ctxt catCryptDialect} (v : BitVec 64),
+      catKind P (cstE (Δ := Δ') v).op = .quiet := fun _ => by simp [cstE, catKind, opVT_none hP]
+  cases ra with
+  | var a =>
+      cases rb with
+      | var b =>
+          obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨z, -, h⟩ := Option.bind_eq_some_iff.mp h
+          exact hk x z res h
+      | lit m _ =>
+          obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact ⟨hc _, hk _ _ res' hres'⟩
+  | lit n _ =>
+      cases rb with
+      | var b =>
+          obtain ⟨z, -, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact ⟨hc _, hk _ _ res' hres'⟩
+      | lit m _ =>
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact ⟨hc _, hc _, hk _ _ res' hres'⟩
+
+/-- The translation of a call of the scalar table is quiet, and the call is one of the
+    scalar calls. -/
+theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {f : String} {as : List NfTy} {r : NfTy} {rs : HVector (fun t => Rd Δ t) as}
+    {res : OpRes Δ r} (h : scalarRes? f as r rs = some res) :
+    res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar := by
+  match as, rs, h with
+  | [ta, tb], .cons ra (.cons rb .nil), h =>
+      change scalarRes2 f ta tb ra rb r = some res at h
+      unfold scalarRes2 at h
+      split at h
+      · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
+        dsimp only at h
+        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr
+          (Or.inl (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
+        split at h
+        · split at h
+          · exact withVar1_quiet hP (fun a res' h' => by
+              cases h'; exact rotChain_quiet hP _ _ _ a) h
+          · cases h
+        · exact withVar2_quiet hP (fun a b res' h' => binChain_quiet hP h') h
+      · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
+        refine ⟨?_, List.mem_append.mpr (Or.inr
+          (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))⟩
+        exact withVar2_quiet hP (fun a b res' h' => by
+          cases h'; exact cmpChain_quiet hP c a b) h
+      · cases h
+  | [ta], .cons ra .nil, h =>
+      change scalarRes1 f ta ra r = some res at h
+      unfold scalarRes1 at h
+      split at h
+      · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
+        dsimp only at h
+        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr
+          (Or.inr (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
+        split at h
+        · obtain ⟨rr, -, rfl⟩ := Option.map_eq_some_iff.mp h
+          trivial
+        · exact withVar1_quiet hP (fun a res' h' => by
+            cases h'; exact unChain_quiet hP o w a) h
+      · cases h
+  | [], .nil, h =>
+      change none = some res at h
+      cases h
+  | _ :: _ :: _ :: _, .cons _ (.cons _ (.cons _ _)), h =>
+      change none = some res at h
+      cases h
+
+/-- **The events of a translated call.** The translation `catCallRd` of a call on readings
+    related to the arguments `xs` emits the events of the source call on `xs`. -/
+theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
+    (h : catCallRd f as r rs = some res) (hx : RdRelL W as xs rs) :
+    resLeak P W res = opLeak nfLeakModel (.call f as r) xs := by
+  unfold catCallRd at h
+  split at h
+  next h₀ =>
+    cases h
+    exact catCallRd0_leak hP W f as r rs res xs h₀ hx
+  next =>
+    obtain ⟨hq, hf⟩ := scalarRes_quiet hP h
+    rw [resLeak_quiet W res hq]
+    have hn : ∀ g ∈ ImpToNF.hax64NFScalar, g ≠ "index" ∧ g ≠ "array_update" := by decide
+    obtain ⟨hi, hu⟩ := hn f hf
+    unfold opLeak
+    rw [show nfLeakModel.kind (.call f as r) = nfKind (.call f as r) from rfl]
+    simp [nfKind, hi, hu]
 
 /-- **The events of a translated operation.** Under readings that relate `V` to `W`, the
     translation `catOp` of an operation emits the events of the operation. -/
@@ -347,11 +545,16 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       intro args res h
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map OpRes.rd
+        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map tripRes
         | _ => none) = some res at h
       split at h
       · obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
-        rfl
+        cases r with
+        | var _ => rfl
+        | lit k _ =>
+            change Expr.ctLeak (catLeakModel P) (cstE (BitVec.ofNat 64 k)) W = _
+            rw [ctLeak_quiet _ W (by simp [cstE, catKind, opVT_none hP])]
+            rfl
       · cases h
   | _ =>
       intro args res h
@@ -369,6 +572,76 @@ def NFLeakSound (P : CatLeakParams) (bi : _root_.Hax.Builtins) (fuel : Nat)
     ∀ (V : Valuation Γ) (W : Valuation Δ) (r : Valuation (d := nfDialect) ts × List CTLeak),
     σ.Agree V W → nfLeakRun bi fuel p V = some r →
     ∃ r', NFProg.leakRun (catLeakModel P) fuel p' W = some r' ∧ r'.2 = r.2 ∧ VRelL ts r.1 r'.1
+
+/-- **The events of the bindings of a translated operation.** When the continuation `cont`
+    is matched from every reading that relates `V.extend y`, the bindings `emitRes` builds for
+    a translation `res` related to `y` are matched from every valuation the readings relate to
+    `V`, with the events `resLeak` of `res` in front. -/
+theorem emitRes_leak {P : CatLeakParams} (hP : NoVT P) (fuel : Nat) {Γ : Ctxt nfDialect}
+    {s : NfTy} {ts : List NfTy}
+    (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
+      Option (NFProg catCryptDialect Δ' (ts.map catTy)))
+    (V : Valuation Γ) (y : s.denote) (q : Valuation (d := nfDialect) ts × List CTLeak)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd (s :: Γ) Δ')
+      (p' : NFProg catCryptDialect Δ' (ts.map catTy)) (W' : Valuation Δ'),
+      cont σ' = some p' → σ'.Agree (V.extend y) W' →
+      ∃ q', NFProg.leakRun (catLeakModel P) fuel p' W' = some q' ∧ q'.2 = q.2 ∧
+        VRelL ts q.1 q'.1) :
+    ∀ {Δ : Ctxt catCryptDialect} (res : OpRes Δ s) (σ : TRd Γ Δ) (W : Valuation Δ)
+      (p' : NFProg catCryptDialect Δ (ts.map catTy)),
+      emitRes cont rfl res σ = some p' → σ.Agree V W → OpResRel W s y res →
+      ∃ q', NFProg.leakRun (catLeakModel P) fuel p' W = some q' ∧
+        q'.2 = resLeak P W res ++ q.2 ∧ VRelL ts q.1 q'.1 := by
+  intro Δ res
+  induction res with
+  | rd r₀ =>
+      intro σ W p' h hag hrel
+      obtain ⟨q', hq', he, hR⟩ := HK _ p' W h (TRd.agree_cons hag hrel)
+      exact ⟨q', hq', he, hR⟩
+  | expr e' =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨q', hq', he, hR⟩ := HK σ.lift k' (W.extend (e'.denote W)) hk'
+        (TRd.agree_lift hag hrel)
+      refine ⟨(q'.1, Expr.ctLeak (catLeakModel P) e' W ++ q'.2), ?_, ?_, hR⟩
+      · change (NFProg.leakRun (catLeakModel P) fuel k' (W.extend (e'.denote W))).map _ = _
+        rw [hq', Option.map_some]
+      · change Expr.ctLeak (catLeakModel P) e' W ++ q'.2 = _
+        rw [he]
+        rfl
+  | @expr1 Δ₀ t₀ c e' =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
+      let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: Δ₀) :=
+        W.extend (BitVec.ofNat 64 c)
+      obtain ⟨q', hq', he, hR⟩ := HK (TRd.lift (TRd.wk σ)) k' (W1.extend (e'.denote W1)) hk'
+        (TRd.agree_lift hW1 hrel)
+      have h0 : Expr.ctLeak (catLeakModel P)
+          (⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ : Expr catCryptDialect Δ₀ _) W =
+          [] := by
+        simp only [Expr.ctLeak, opLeak, catLeakModel, catKind]
+        rw [hP]
+      refine ⟨(q'.1, Expr.ctLeak (catLeakModel P)
+          (⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ : Expr catCryptDialect Δ₀ _) W ++
+        (Expr.ctLeak (catLeakModel P) e' W1 ++ q'.2)), ?_, ?_, hR⟩
+      · change ((NFProg.leakRun (catLeakModel P) fuel k' (W1.extend (e'.denote W1))).map
+          _).map _ = _
+        rw [hq', Option.map_some, Option.map_some]
+        rfl
+      · rw [h0, List.nil_append, he]
+        rfl
+  | bind c e rest ih =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨q', hq', he, hR⟩ := ih cont y HK σ.wk (W.extend (e.denote W)) k' hk'
+        (TRd.agree_wk hag _) hrel
+      refine ⟨(q'.1, Expr.ctLeak (catLeakModel P) e W ++ q'.2), ?_, ?_, hR⟩
+      · change (NFProg.leakRun (catLeakModel P) fuel k' (W.extend (e.denote W))).map _ = _
+        rw [hq', Option.map_some]
+      · change Expr.ctLeak (catLeakModel P) e W ++ q'.2 = _
+        rw [he]
+        simp only [resLeak, List.append_assoc]
 
 /-- **The leakage transformer of `nfToCat` is the identity.** Under `SubTable bi` and at
     parameters with no variable-time operation, a leakage run of a translated program that
@@ -395,46 +668,10 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
       have hrel := catOp_sound hbi σ hag op args res y hres hy
       have hlk := catOp_leak hP σ hag op args res hres
       change resLeak P W res = Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V at hlk
-      cases res with
-      | rd r₀ =>
-          obtain ⟨q', hq', he, hR⟩ :=
-            ih (TRd.cons r₀ σ) p' h (V.extend y) W q (TRd.agree_cons hag hrel) hq
-          refine ⟨q', hq', ?_, hR⟩
-          rw [he, ← hlk]
-          rfl
-      | expr e' =>
-          obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨q', hq', he, hR⟩ := ih σ.lift k' hk' (V.extend y) (W.extend (e'.denote W))
-            q (TRd.agree_lift hag hrel) hq
-          refine ⟨(q'.1, Expr.ctLeak (catLeakModel P) e' W ++ q'.2), ?_, ?_, hR⟩
-          · change (NFProg.leakRun (catLeakModel P) fuel k' (W.extend (e'.denote W))).map _ = _
-            rw [hq', Option.map_some]
-            rfl
-          · change Expr.ctLeak (catLeakModel P) e' W ++ q'.2 = _
-            rw [he, ← hlk]
-            rfl
-      | expr1 c e' =>
-          obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
-          let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: Δ) :=
-            W.extend (BitVec.ofNat 64 c)
-          obtain ⟨q', hq', he, hR⟩ := ih (TRd.lift (TRd.wk σ)) k' hk' (V.extend y)
-            (W1.extend (e'.denote W1)) q (TRd.agree_lift hW1 hrel) hq
-          have h0 : Expr.ctLeak (catLeakModel P)
-              (⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ : Expr catCryptDialect Δ _) W =
-              [] := by
-            simp only [Expr.ctLeak, opLeak, catLeakModel, catKind]
-            rw [hP]
-          refine ⟨(q'.1, Expr.ctLeak (catLeakModel P)
-              (⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ : Expr catCryptDialect Δ _) W ++
-            (Expr.ctLeak (catLeakModel P) e' W1 ++ q'.2)), ?_, ?_, hR⟩
-          · change ((NFProg.leakRun (catLeakModel P) fuel k' (W1.extend (e'.denote W1))).map
-              _).map _ = _
-            rw [hq', Option.map_some, Option.map_some]
-            rfl
-          · rw [h0, List.nil_append, he]
-            change resLeak P W (.expr1 c e') ++ q.2 = _
-            rw [hlk]
+      obtain ⟨q', hq', he, hR⟩ := emitRes_leak hP fuel (fun σ' => nfToCat k σ') V y q
+        (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' q hag' hq) res σ W p' h hag hrel
+      refine ⟨q', hq', ?_, hR⟩
+      rw [he, hlk]
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W r hag hr
       change (match σ count with

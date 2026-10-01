@@ -21,26 +21,34 @@ has a reading `Rd`: a variable of the target, or a literal in `[0, 2^64)`. A lit
 target binding; an operation that reads one binds it by `bvConst` immediately before itself,
 so that a literal used in a loop body is bound inside the body.
 
-The operations of the fragment are the scalar calls of `hax64NFScalar` on two words, `index`
-and `array_update` on integer arrays, integer literals in `[0, 2^64)` and the loop operations
+The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
+`array_update` on integer arrays, integer literals in `[0, 2^64)` and the loop operations
 `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
-immediate. A counted loop is translated when its lower bound reads as the literal `0`;
-`trip 0 hi` and `ctr 0 i` are then readings of `hi` and of `i`, with no binding.
+immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
+width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
+comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
+(`OpRes.bind`). A counted loop is translated when its lower bound reads as the literal `0`;
+`ctr 0 i` is then the reading of `i`, and `trip 0 hi` the reading of `hi`, or the binding of
+the literal `hi`.
 
 ## Main definitions
 
 * `catTy`, `VRel`, `VRelL` — the type map and the relation of values.
 * `Rd`, `RdRel`, `TRd`, `TRd.lift`, `TRd.liftApp`, `TRd.Agree` — readings, their relation to
   source values, and the readings of a context.
-* `catCallRd`, `catOp`, `nfToCat` — the translation of a call, of an operation and of a
-  program.
+* `scalarRes?`, `binChain`, `rotChain`, `unChain`, `cmpChain` — the translation of the
+  scalar table on `64`-bit words.
+* `catCallRd`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of an operation,
+  of the bindings of a translated operation and of a program.
 * `toCatVal`, `mapVal`, `TRd.id`, `abiParamsArr` — the entry: the mapped valuation, the
   readings of a context in its mapped context, and the parameters of a System V layout with
   integer array types.
 
 ## Main results
 
+* `scalarRes_sound` — a translated call of the scalar table is related to its value.
 * `catOp_sound` — a translated operation is related to the value of the source operation.
+* `emitRes_sound` — the bindings of a translated operation simulate.
 * `nfToCat_sound` — a translated program denotes values related to the values of the source
   program, under every leaf table that agrees with the `u64` table at the translated calls
   (`SubTable`).
@@ -278,7 +286,9 @@ def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
       if f = "index" then
         (asArr ta args.head).bind fun ⟨n, a⟩ => (asWord tb args.tail.head).map fun i =>
           ⟨.memrefGetDyn n, rfl, .cons a (.cons i .nil)⟩
-      else (asWord ta args.head).bind fun x => (asWord tb args.tail.head).bind fun y =>
+      else none
+  | [ta, tb], .word 64, args =>
+      (asWord ta args.head).bind fun x => (asWord tb args.tail.head).bind fun y =>
         scalarCatExpr f x y
   | [ta, ti, tv], .arr n' .int, args =>
       if f = "array_update" then
@@ -399,7 +409,7 @@ def firstLit {Δ : Ctxt catCryptDialect} : {ts : List NfTy} → HVector (fun t =
 def shiftImm? {Δ : Ctxt catCryptDialect} (f : String) :
     (as : List NfTy) → (r : NfTy) → HVector (fun t => Rd Δ t) as →
       Option (Expr catCryptDialect Δ (catTy r))
-  | [ta, _], .int, rs =>
+  | [ta, _], .word 64, rs =>
       match rs.head, rs.tail.head with
       | .var a, .lit k _ =>
           if k < 64 then
@@ -412,19 +422,26 @@ def shiftImm? {Δ : Ctxt catCryptDialect} (f : String) :
   | _, _, _ => none
 
 /-- The translation of an operation: a new reading (`rd`), an expression on the target
-    variables (`expr`), or an expression under a binding of the literal `k` (`expr1`). -/
-inductive OpRes (Δ : Ctxt catCryptDialect) (t : NfTy) : Type where
+    variables (`expr`), an expression under a binding of the literal `k` (`expr1`), or a
+    binding of an intermediate value followed by the translation in the extended context
+    (`bind`). -/
+inductive OpRes : Ctxt catCryptDialect → NfTy → Type where
   /-- The value is read by `r`; no binding. -/
-  | rd (r : Rd Δ t)
+  | rd {Δ : Ctxt catCryptDialect} {t : NfTy} (r : Rd Δ t) : OpRes Δ t
   /-- The value is bound by `e`. -/
-  | expr (e : Expr catCryptDialect Δ (catTy t))
+  | expr {Δ : Ctxt catCryptDialect} {t : NfTy} (e : Expr catCryptDialect Δ (catTy t)) :
+      OpRes Δ t
   /-- The literal `k` is bound, and then the value by `e`. -/
-  | expr1 (k : Nat) (e : Expr catCryptDialect (CryptoTy.sword 64 :: Δ) (catTy t))
+  | expr1 {Δ : Ctxt catCryptDialect} {t : NfTy} (k : Nat)
+      (e : Expr catCryptDialect (CryptoTy.sword 64 :: Δ) (catTy t)) : OpRes Δ t
+  /-- The intermediate value `e` of type `c` is bound, and then the translation `k`. -/
+  | bind {Δ : Ctxt catCryptDialect} {t : NfTy} (c : CryptoTy) (e : Expr catCryptDialect Δ c)
+      (k : OpRes (c :: Δ) t) : OpRes Δ t
 
-/-- **The translation of a call** of the `u64` table on readings: `catCall?` on the variables
-    when no reading is a literal; a shift by a literal as the shift by an immediate; otherwise
+/-- The translation of a call of `catCall?` on readings: `catCall?` on the variables when no
+    reading is a literal; a shift by a literal as the shift by an immediate; otherwise
     `catCall?` under one binding of the literal, which every literal reading must be. -/
-def catCallRd {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : NfTy)
+def catCallRd0 {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : NfTy)
     (rs : HVector (fun t => Rd Δ t) as) : Option (OpRes Δ r) :=
   match pinVars rs with
   | some ws => (catCall? f as r ws).map OpRes.expr
@@ -445,6 +462,208 @@ def Rd.toWord64 {Δ : Ctxt catCryptDialect} (t : NfTy) : Rd Δ t → Option (Rd 
   | .var w => (asWord t w).map .var
   | .lit k _ => some (.lit k rfl)
 
+/-! ### The scalar table on `64`-bit words
+
+Every scalar of the fragment is a `64`-bit word of the target. An operation of the scalar
+table at a width `w` below `64` computes on `64`-bit words and reduces the result modulo
+`2 ^ w` by a conjunction with the mask `maskW w`; a logical right shift and a rotation reduce
+their operand first. A rotation is by a literal amount, as two immediate shifts. A comparison
+is `bvEq` on two words, or the carry of `x + ~~~y + 1` (`bvAddCarryHi`), which is `1` exactly
+when `y ≤ x`. -/
+
+/-- The mask of the low `w` bits of a `64`-bit word. -/
+def maskW (w : Nat) : BitVec 64 := BitVec.ofNat 64 (2 ^ w - 1)
+
+/-- The constant `v`. -/
+def cstE {Δ : Ctxt catCryptDialect} (v : BitVec 64) : Expr catCryptDialect Δ (.sword 64) :=
+  ⟨.bvConst 64 v, rfl, .nil⟩
+
+/-- The conjunction of two words. -/
+def andE {Δ : Ctxt catCryptDialect} (a b : Var Δ (.sword 64)) :
+    Expr catCryptDialect Δ (.sword 64) :=
+  ⟨.bvAnd 64, rfl, .cons a (.cons b .nil)⟩
+
+/-- The expression of a binary operation of the scalar table on two words, before the
+    reduction modulo `2 ^ w`; `none` for a rotation. -/
+def binE {Δ : Ctxt catCryptDialect} :
+    ImpToNF.ScalarBin → Var Δ (.sword 64) → Var Δ (.sword 64) →
+      Option (Expr catCryptDialect Δ (.sword 64))
+  | .add, a, b => some ⟨.bvAdd 64, rfl, .cons a (.cons b .nil)⟩
+  | .sub, a, b => some ⟨.bvSub 64, rfl, .cons a (.cons b .nil)⟩
+  | .mul, a, b => some ⟨.bvMul 64, rfl, .cons a (.cons b .nil)⟩
+  | .and, a, b => some ⟨.bvAnd 64, rfl, .cons a (.cons b .nil)⟩
+  | .or, a, b => some ⟨.bvOr 64, rfl, .cons a (.cons b .nil)⟩
+  | .xor, a, b => some ⟨.bvXor 64, rfl, .cons a (.cons b .nil)⟩
+  | .shl, a, b => some ⟨.bvShiftLV 64, rfl, .cons a (.cons b .nil)⟩
+  | .shr, a, b => some ⟨.bvShiftRV 64, rfl, .cons a (.cons b .nil)⟩
+  | .mulhi, a, b => some ⟨.bvMulHi 64, rfl, .cons a (.cons b .nil)⟩
+  | .addc, a, b => some ⟨.bvAdd 64, rfl, .cons a (.cons b .nil)⟩
+  | .rotr, _, _ => none
+  | .rotl, _, _ => none
+
+/-- The word `binE` computes. -/
+def binBV : ImpToNF.ScalarBin → BitVec 64 → BitVec 64 → BitVec 64
+  | .add, x, y => x + y
+  | .sub, x, y => x - y
+  | .mul, x, y => x * y
+  | .and, x, y => x &&& y
+  | .or, x, y => x ||| y
+  | .xor, x, y => x ^^^ y
+  | .shl, x, y => x <<< y.toNat
+  | .shr, x, y => x >>> y.toNat
+  | .mulhi, x, y => mulHiC x y
+  | .addc, x, y => x + y
+  | .rotr, _, _ => 0
+  | .rotl, _, _ => 0
+
+/-- The value `e` reduced modulo `2 ^ w`: `e` at `w = 64`, otherwise `e`, the mask and their
+    conjunction. -/
+def maskRes {Δ : Ctxt catCryptDialect} (w : Nat) (e : Expr catCryptDialect Δ (.sword 64)) :
+    OpRes Δ (.word 64) :=
+  if w = 64 then .expr e
+  else .bind _ e (.bind _ (cstE (maskW w)) (.expr (andE (Var.there .here) .here)))
+
+/-- The translation of a binary operation of the scalar table at the width `w` on two words:
+    a logical right shift below `64` bits reduces its operand and shifts; every other
+    operation is `binE` reduced by `maskRes`. -/
+def binChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarBin) (w : Nat)
+    (a b : Var Δ (.sword 64)) : Option (OpRes Δ (.word 64)) :=
+  if o = .shr ∧ w ≠ 64 then
+    some (.bind _ (cstE (maskW w)) (.bind _ (andE a.there .here)
+      (.expr ⟨.bvShiftRV 64, rfl, .cons .here (.cons b.there.there .nil)⟩)))
+  else (binE o a b).map (maskRes w)
+
+/-- The translation of a rotation of the scalar table at the width `w` by the literal amount
+    `k`: the operand reduced modulo `2 ^ w`, shifted right and left by immediates, the
+    disjunction, reduced modulo `2 ^ w`. -/
+def rotChain {Δ : Ctxt catCryptDialect} (right : Bool) (w k : Nat) (a : Var Δ (.sword 64)) :
+    OpRes Δ (.word 64) :=
+  let j := k % w
+  .bind _ (cstE (maskW w)) (.bind _ (andE a.there .here)
+    (.bind _ (if right then ⟨.bvShiftR 64 j, rfl, .cons .here .nil⟩
+        else ⟨.bvShiftL 64 j, rfl, .cons .here .nil⟩)
+      (.bind _ (if right then ⟨.bvShiftL 64 (w - j), rfl, .cons (Var.there .here) .nil⟩
+          else ⟨.bvShiftR 64 (w - j), rfl, .cons (Var.there .here) .nil⟩)
+        (.bind _ ⟨.bvOr 64, rfl, .cons (Var.there .here) (.cons .here .nil)⟩
+          (.expr (andE .here (Var.there (Var.there (Var.there (Var.there .here))))))))))
+
+/-- The translation of a unary operation of the scalar table at the width `w` on a word: the
+    complement reduced by `maskRes`, the negation as `0 - x`, and the truncation as the
+    conjunction with the mask. -/
+def unChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
+    (a : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
+  match o with
+  | .not => maskRes w ⟨.bvNot 64, rfl, .cons a .nil⟩
+  | .neg => .bind _ (cstE 0) (.expr ⟨.bvSub 64, rfl, .cons .here (.cons a.there .nil)⟩)
+  | .cast => .bind _ (cstE (maskW w)) (.expr (andE a.there .here))
+
+/-- The bit `y ≤ x` of two words: the complement of `y`, the carry-in `1`, the carry of
+    `x + ~~~y + 1`, and its equality with `1`. -/
+def geChain {Δ : Ctxt catCryptDialect} {t : NfTy} (x y : Var Δ (.sword 64))
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, OpRes (.bit :: Δ') t) : OpRes Δ t :=
+  .bind _ ⟨.bvNot 64, rfl, .cons y .nil⟩
+    (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
+      (.bind (.sword 1) ⟨.bvAddCarryHi 64, rfl,
+          .cons x.there.there (.cons (Var.there .here) (.cons .here .nil))⟩
+        (.bind .bit ⟨.bvEq 1, rfl, .cons .here (.cons (Var.there .here) .nil)⟩ k)))
+
+/-- The negation of the bit just bound, as the value of a comparison. -/
+def notRes {Δ : Ctxt catCryptDialect} : OpRes (.bit :: Δ) .bit :=
+  .expr ⟨.not, rfl, .cons .here .nil⟩
+
+/-- The bit just bound, as the value of a comparison. -/
+def bitRes {Δ : Ctxt catCryptDialect} : OpRes (.bit :: Δ) .bit :=
+  .rd (.var .here)
+
+/-- The translation of a comparison of the scalar table on two words. -/
+def cmpChain {Δ : Ctxt catCryptDialect} (c : ImpToNF.ScalarCmp) (x y : Var Δ (.sword 64)) :
+    OpRes Δ .bit :=
+  match c with
+  | .eq => .expr ⟨.bvEq 64, rfl, .cons x (.cons y .nil)⟩
+  | .ne => .bind .bit ⟨.bvEq 64, rfl, .cons x (.cons y .nil)⟩ notRes
+  | .ge => geChain x y bitRes
+  | .le => geChain y x bitRes
+  | .lt => geChain x y notRes
+  | .gt => geChain y x notRes
+
+/-- The word variable of a reading of a type whose values encode as integers, passed to `k`;
+    a literal is bound by `bvConst` first. -/
+def withVar1 {Δ : Ctxt catCryptDialect} {r : NfTy} (ta : NfTy) (ra : Rd Δ ta)
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Option (OpRes Δ' r)) :
+    Option (OpRes Δ r) :=
+  match ra with
+  | .var a => (asWord ta a).bind fun x => k x
+  | .lit n _ => (k (Δ' := CryptoTy.sword 64 :: Δ) .here).map
+      (.bind _ (cstE (BitVec.ofNat 64 n)))
+
+/-- The word variables of two readings, passed to `k`; each literal is bound by `bvConst`
+    first. -/
+def withVar2 {Δ : Ctxt catCryptDialect} {r : NfTy} (ta tb : NfTy) (ra : Rd Δ ta)
+    (rb : Rd Δ tb)
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Var Δ' (.sword 64) →
+      Option (OpRes Δ' r)) : Option (OpRes Δ r) :=
+  match ra, rb with
+  | .var a, .var b => (asWord ta a).bind fun x => (asWord tb b).bind fun y => k x y
+  | .lit n _, .var b => (asWord tb b).bind fun y =>
+      (k (Δ' := CryptoTy.sword 64 :: Δ) .here y.there).map
+        (.bind _ (cstE (BitVec.ofNat 64 n)))
+  | .var a, .lit n _ => (asWord ta a).bind fun x =>
+      (k (Δ' := CryptoTy.sword 64 :: Δ) x.there .here).map
+        (.bind _ (cstE (BitVec.ofNat 64 n)))
+  | .lit n _, .lit m _ =>
+      (k (Δ' := CryptoTy.sword 64 :: CryptoTy.sword 64 :: Δ) (Var.there .here) .here).map
+        fun res => .bind _ (cstE (BitVec.ofNat 64 n)) (.bind _ (cstE (BitVec.ofNat 64 m)) res)
+
+/-- The translation of a binary call of the scalar table on two readings, at the result type
+    `r`: an integer call by `binChain`, a rotation by a literal amount by `rotChain`, a
+    comparison by `cmpChain`. -/
+def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd Δ ta)
+    (rb : Rd Δ tb) : (r : NfTy) → Option (OpRes Δ r)
+  | .word 64 =>
+      (ImpToNF.scalarBinOf f).bind fun ⟨o, w⟩ =>
+        if o = .rotr ∨ o = .rotl then
+          match rb with
+          | .lit k _ => withVar1 ta ra fun x => some (rotChain (o == .rotr) w k x)
+          | .var _ => none
+        else withVar2 ta tb ra rb fun x y => binChain o w x y
+  | .bit =>
+      (ImpToNF.scalarCmpOf f).bind fun c =>
+        withVar2 ta tb ra rb fun x y => some (cmpChain c x y)
+  | _ => none
+
+/-- The translation of a unary call of the scalar table on a reading, at the result type
+    `r`: the truncation to `64` bits as the reading of its operand, every other call by
+    `unChain`. -/
+def scalarRes1 {Δ : Ctxt catCryptDialect} (f : String) (ta : NfTy) (ra : Rd Δ ta) :
+    (r : NfTy) → Option (OpRes Δ r)
+  | .word 64 =>
+      (ImpToNF.scalarUnOf f).bind fun ⟨o, w⟩ =>
+        if o = .cast ∧ w = 64 then (Rd.toWord64 ta ra).map .rd
+        else withVar1 ta ra fun x => some (unChain o w x)
+  | _ => none
+
+/-- The translation of a call of the scalar table on readings at the result type `r`: a
+    binary call by `scalarRes2`, a unary call by `scalarRes1`. -/
+def scalarRes? {Δ : Ctxt catCryptDialect} (f : String) :
+    (as : List NfTy) → (r : NfTy) → HVector (fun t => Rd Δ t) as → Option (OpRes Δ r)
+  | [ta, tb], r, .cons ra (.cons rb .nil) => scalarRes2 f ta tb ra rb r
+  | [ta], r, .cons ra .nil => scalarRes1 f ta ra r
+  | _, _, _ => none
+
+/-- **The translation of a call** of the `u64` table on readings: `catCallRd0`, and else the
+    scalar table by `scalarRes?`. -/
+def catCallRd {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) : Option (OpRes Δ r) :=
+  match catCallRd0 f as r rs with
+  | some res => some res
+  | none => scalarRes? f as r rs
+
+/-- The translation of a trip count read by `r`: the reading of a variable, and the binding
+    of a literal by `bvConst`, so that the count of a counted loop is a variable. -/
+def tripRes {Δ : Ctxt catCryptDialect} : Rd Δ (.word 64) → OpRes Δ (.word 64)
+  | .var w => .rd (.var w)
+  | .lit k _ => .expr (cstE (BitVec.ofNat 64 k))
+
 /-- **The translation of an operation** of the fragment on the readings `σ` of its
     arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading;
     `ctr` and `trip` on a lower bound that reads as the literal `0` as the reading of the
@@ -463,7 +682,7 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
       | _ => none
   | .trip t, args =>
       match σ args.head with
-      | .lit 0 _ => (Rd.toWord64 t (σ args.tail.head)).map OpRes.rd
+      | .lit 0 _ => (Rd.toWord64 t (σ args.tail.head)).map tripRes
       | _ => none
   | _, _ => none
 
@@ -598,7 +817,7 @@ theorem scalarCatExpr_name {Δ : Ctxt catCryptDialect} {f : String} {a b : Var �
     {e : Expr catCryptDialect Δ (.sword 64)} (h : scalarCatExpr f a b = some e) :
     f ∈ ImpToNF.hax64NFScalar := by
   unfold scalarCatExpr at h
-  split at h <;> (try cases h) <;> simp [ImpToNF.hax64NFScalar]
+  split at h <;> (try cases h) <;> decide
 
 /-- **A call of the `u64` table simulates.** Under `SubTable bi`, the expression `catCall?`
     builds on variables reading values related to the arguments denotes a value related to the
@@ -635,18 +854,27 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       rw [memGetDyn_of_lt' _ hk, ← hgm]
       change _root_.Hax.Value.int _ = _root_.Hax.Value.int y at hyv
       exact (_root_.Hax.Value.int.inj hyv).symm
-    · obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
-      have hv := hbi _ _ _ (Or.inl (scalarCatExpr_name h)) hbv
-      rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
-      have := scalarSem_sound h _ _ hv
-      rw [this] at hyv
-      have hd : (e.denote W : BitVec 64) = scalarSem f (x.lookup W) (w.lookup W) :=
-        scalarCatExpr_denote h W
-      change _root_.Hax.Value.int _ = _root_.Hax.Value.int y at hyv
-      change y = (((e.denote W : BitVec 64)).toNat : Int)
-      rw [hd]
-      exact (_root_.Hax.Value.int.inj hyv).symm
+    · cases h
+  · rename_i ta tb args
+    rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+    rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | _⟩⟩
+    obtain ⟨hx₁, hx₂, -⟩ := hx
+    change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec (.word 64)) =
+      some y at hy
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hyv := ImpToNF.dec_sound (.word 64) v y hdv
+    obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
+    have hv := hbi _ _ _ (Or.inl (scalarCatExpr_name h)) hbv
+    rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
+    have := scalarSem_sound h _ _ hv
+    rw [this] at hyv
+    have hd : (e.denote W : BitVec 64) = scalarSem f (x.lookup W) (w.lookup W) :=
+      scalarCatExpr_denote h W
+    change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
+    change y = (e.denote W : BitVec 64)
+    rw [hd]
+    exact (BitVec.eq_of_toNat_eq (by exact_mod_cast (_root_.Hax.Value.int.inj hyv))).symm
   · rename_i ta ti tv n' args
     rcases args with _ | ⟨m₀, _ | ⟨i₀, _ | ⟨x₀, _ | _⟩⟩⟩
     rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | ⟨x₃, _ | _⟩⟩⟩
@@ -814,12 +1042,13 @@ theorem enc_of_toInt {t : NfTy} (h : ImpToNF.hax64NFWordTy t = true) {x : t.deno
     rfl
 
 /-- The relation of a value and an operation result at the valuation `W` of the target. -/
-def OpResRel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (t : NfTy) (y : t.denote) :
+def OpResRel : {Δ : Ctxt catCryptDialect} → (W : Valuation Δ) → (t : NfTy) → (y : t.denote) →
     OpRes Δ t → Prop
-  | .rd r => RdRel W t y r
-  | .expr e => VRel t y (e.denote W)
-  | .expr1 k e => VRel t y (e.denote (HVector.cons (t := CryptoTy.sword 64)
+  | _, W, t, y, .rd r => RdRel W t y r
+  | _, W, t, y, .expr e => VRel t y (e.denote W)
+  | _, W, t, y, .expr1 k e => VRel t y (e.denote (HVector.cons (t := CryptoTy.sword 64)
       (BitVec.ofNat 64 k) W))
+  | _, W, t, y, .bind _ e k => OpResRel (W.extend (e.denote W)) t y k
 
 /-- **A shift by an immediate simulates.** -/
 theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
@@ -853,10 +1082,10 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       split at h
       · rename_i hk64
         obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
-        change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec .int) =
+        change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec (.word 64)) =
           some y at hy
         obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-        have hyv := ImpToNF.dec_sound .int v y hdv
+        have hyv := ImpToNF.dec_sound (.word 64) v y hdv
         rw [asWord_enc hxa W hx₁, enc_of_toInt hkt hx₂.1] at hbv
         have hk2 : k < 2 ^ 64 := by omega
         have hk3 : k < 18446744073709551616 := hk2
@@ -866,43 +1095,53 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         · rename_i hf
           subst hf
           obtain rfl := Option.some.inj ‹some _ = some e›
-          have hv := hbi _ _ _ (Or.inl (by simp [ImpToNF.hax64NFScalar])) hbv
+          have hv := hbi _ _ _ (Or.inl (by decide)) hbv
           rw [← hk'] at hv
           have := scalarSem_sound (a := x) (b := x)
             (e := ⟨.bvShiftRV 64, rfl, .cons x (.cons x .nil)⟩) rfl (x.lookup W)
             (BitVec.ofNat 64 k) hv
           rw [this] at hyv
-          change _root_.Hax.Value.int _ = _root_.Hax.Value.int y at hyv
-          change y = ((BitVec.ushiftRight (x.lookup W) k).toNat : Int)
-          rw [← (_root_.Hax.Value.int.inj hyv)]
+          change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int)
+            at hyv
+          have hn : (y : BitVec 64).toNat =
+              (scalarSem "Shr#64" (x.lookup W) (BitVec.ofNat 64 k)).toNat := by
+            exact_mod_cast (_root_.Hax.Value.int.inj hyv).symm
+          change (y : BitVec 64) = BitVec.ushiftRight (x.lookup W) k
+          apply BitVec.eq_of_toNat_eq
+          rw [hn]
           simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3]
         · split at h
           · rename_i _ hf
             subst hf
             obtain rfl := Option.some.inj ‹some _ = some e›
-            have hv := hbi _ _ _ (Or.inl (by simp [ImpToNF.hax64NFScalar])) hbv
+            have hv := hbi _ _ _ (Or.inl (by decide)) hbv
             rw [← hk'] at hv
             have := scalarSem_sound (a := x) (b := x)
               (e := ⟨.bvShiftLV 64, rfl, .cons x (.cons x .nil)⟩) rfl (x.lookup W)
               (BitVec.ofNat 64 k) hv
             rw [this] at hyv
-            change _root_.Hax.Value.int _ = _root_.Hax.Value.int y at hyv
-            change y = ((((show BitVec 64 from x.lookup W)) <<< k).toNat : Int)
-            rw [← (_root_.Hax.Value.int.inj hyv)]
+            change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int)
+              at hyv
+            have hn : (y : BitVec 64).toNat =
+                (scalarSem "Shl#64" (x.lookup W) (BitVec.ofNat 64 k)).toNat := by
+              exact_mod_cast (_root_.Hax.Value.int.inj hyv).symm
+            change (y : BitVec 64) = (show BitVec 64 from x.lookup W) <<< k
+            apply BitVec.eq_of_toNat_eq
+            rw [hn]
             simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3]
           · cases h
       · cases h
     · cases h
   · cases h
 
-/-- **A call on readings simulates.** -/
-theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+/-- A call of `catCallRd0` on readings simulates. -/
+theorem catCallRd0_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
     (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
-    (y : r.denote) (h : catCallRd f as r rs = some res) (hx : RdRelL W as xs rs)
+    (y : r.denote) (h : catCallRd0 f as r rs = some res) (hx : RdRelL W as xs rs)
     (hy : (bi f (ImpToNF.encAll as xs)).bind (ImpToNF.dec r) = some y) :
     OpResRel W r y res := by
-  unfold catCallRd at h
+  unfold catCallRd0 at h
   split at h
   · rename_i ws hws
     obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -916,6 +1155,494 @@ theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
       have hk64 := firstLit_lt xs rs hk hx
       exact catCall_sound hbi _ f as r ws e xs y he (pinLit_rel hk64 xs rs ws hws hx) hy
+
+/-! ### The scalar table simulates -/
+
+/-- The natural number of a word reduced by the mask is its residue modulo `2 ^ w`. -/
+theorem toNat_and_maskW (z : BitVec 64) {w : Nat} (hw : w ≤ 64) :
+    (z &&& maskW w).toNat = z.toNat % 2 ^ w := by
+  have h1 : 2 ^ w - 1 < 2 ^ 64 := by
+    have : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
+    have : 0 < 2 ^ w := by positivity
+    omega
+  rw [BitVec.toNat_and, maskW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h1,
+    Nat.and_two_pow_sub_one_eq_mod]
+
+/-- The residue modulo `2 ^ w` of the residue modulo `2 ^ 64`, for `w ≤ 64`. -/
+theorem mod64_mod (n : Nat) {w : Nat} (hw : w ≤ 64) : n % 2 ^ 64 % 2 ^ w = n % 2 ^ w :=
+  Nat.mod_mod_of_dvd n (Nat.pow_dvd_pow 2 hw)
+
+/-- A word is related at `word 64` to the result of `maskRes w e` when its natural number is
+    the residue of the value of `e` modulo `2 ^ w`. -/
+theorem maskRes_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {w : Nat} (hw : w ≤ 64)
+    (e : Expr catCryptDialect Δ (.sword 64)) (y : BitVec 64)
+    (hy : y.toNat = (e.denote W).toNat % 2 ^ w) :
+    OpResRel W (.word 64) y (maskRes w e) := by
+  unfold maskRes
+  split
+  · rename_i h64
+    subst h64
+    change y = e.denote W
+    apply BitVec.eq_of_toNat_eq
+    rw [hy]
+    exact Nat.mod_eq_of_lt (e.denote W).isLt
+  · change y = (show BitVec 64 from e.denote W) &&& maskW w
+    apply BitVec.eq_of_toNat_eq
+    rw [hy, toNat_and_maskW _ hw]
+
+/-- The widths of the binary integer calls, and the width `64` of the high word and the
+    checked addition. -/
+theorem binTable_w : ∀ e ∈ ImpToNF.hax64BinTable,
+    (e.2.2 = 8 ∨ e.2.2 = 16 ∨ e.2.2 = 32 ∨ e.2.2 = 64) ∧
+      ((e.2.1 = .mulhi ∨ e.2.1 = .addc) → e.2.2 = 64) := by decide
+
+/-- The widths of the unary integer calls, and the width `64` of the negation. -/
+theorem unTable_w : ∀ e ∈ ImpToNF.hax64UnTable,
+    (e.2.2 = 8 ∨ e.2.2 = 16 ∨ e.2.2 = 32 ∨ e.2.2 = 64) ∧ (e.2.1 = .neg → e.2.2 = 64) := by
+  decide
+
+/-- **The words of `binE` reduced modulo `2 ^ w` are the values of the scalar table.** -/
+theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (h64 : (o = .shr ∨ o = .mulhi ∨ o = .addc) → w = 64) (hrot : o ≠ .rotr ∧ o ≠ .rotl)
+    (x y : BitVec 64) {r : Nat} (h : o.nat w x.toNat y.toNat = some r) :
+    (binBV o x y).toNat % 2 ^ w = r := by
+  have hx := x.isLt
+  have hy := y.isLt
+  have hw64 : w ≤ 64 := by omega
+  cases o <;> simp only [ImpToNF.ScalarBin.nat] at h
+  case add =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_add, mod64_mod _ hw64]
+  case sub =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_sub]
+    rcases hw with rfl | rfl | rfl | rfl <;> omega
+  case mul =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_mul, mod64_mod _ hw64]
+  case and =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_and, Nat.and_mod_two_pow]
+  case or =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_or, Nat.or_mod_two_pow]
+  case xor =>
+    obtain rfl := Option.some.inj h
+    simp only [binBV, BitVec.toNat_xor, Nat.xor_mod_two_pow]
+  case shl =>
+    split at h
+    · obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_shiftLeft, mod64_mod _ hw64, Nat.shiftLeft_eq]
+      conv_rhs => rw [Nat.mul_mod]
+      rw [Nat.mul_mod, Nat.mod_mod]
+    · cases h
+  case shr =>
+    obtain rfl := h64 (Or.inl rfl)
+    split at h
+    · obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_ushiftRight, Nat.mod_eq_of_lt hx]
+      exact Nat.mod_eq_of_lt (lt_of_le_of_lt (Nat.shiftRight_le _ _) hx)
+    · cases h
+  case mulhi =>
+    obtain rfl := h64 (Or.inr (Or.inl rfl))
+    obtain rfl := Option.some.inj h
+    have hlt : x.toNat * y.toNat / 2 ^ 64 < 2 ^ 64 := by
+      rw [Nat.div_lt_iff_lt_mul (by positivity)]
+      exact Nat.mul_lt_mul'' hx hy
+    simp only [binBV, mulHiC, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt,
+      Nat.shiftRight_eq_div_pow]
+  case addc =>
+    obtain rfl := h64 (Or.inr (Or.inr rfl))
+    split at h
+    · rename_i hs
+      obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_add, Nat.mod_eq_of_lt hs]
+    · cases h
+  case rotr => exact absurd rfl hrot.1
+  case rotl => exact absurd rfl hrot.2
+
+/-- The word `binE` denotes. -/
+theorem binE_denote {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {o : ImpToNF.ScalarBin}
+    {a b : Var Δ (.sword 64)} {e : Expr catCryptDialect Δ (.sword 64)}
+    (h : binE o a b = some e) : e.denote W = binBV o (a.lookup W) (b.lookup W) := by
+  cases o <;> simp only [binE, Option.some.injEq, reduceCtorEq] at h <;> subst h <;> rfl
+
+/-- A `64`-bit word decoded from the integer of a natural number is the word of that
+    number. -/
+theorem dec_word64_eq {n : Nat} {y : BitVec 64}
+    (h : ImpToNF.dec (.word 64) (.int (n : Int)) = some y) : y = BitVec.ofNat 64 n := by
+  simp only [ImpToNF.dec] at h
+  split at h
+  · cases h
+    simp
+  · cases h
+
+/-- **The translation of a binary operation of the scalar table is related to its value.** -/
+theorem binChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarBin)
+    {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (h64 : (o = .mulhi ∨ o = .addc) → w = 64) (hrot : o ≠ .rotr ∧ o ≠ .rotl)
+    (a b : Var Δ (.sword 64)) {res : OpRes Δ (.word 64)} (h : binChain o w a b = some res)
+    {r : Nat} (hr : o.nat w (a.lookup W).toNat (b.lookup W).toNat = some r) :
+    OpResRel W (.word 64) (BitVec.ofNat 64 r) res := by
+  have hw64 : w ≤ 64 := by omega
+  have hr64 : r < 2 ^ 64 :=
+    ImpToNF.ScalarBin.nat_lt o hw64 (a.lookup W).isLt (b.lookup W).isLt hr
+  unfold binChain at h
+  split at h
+  · rename_i hs
+    obtain ⟨rfl, -⟩ := hs
+    cases h
+    simp only [ImpToNF.ScalarBin.nat] at hr
+    split at hr
+    · obtain rfl := Option.some.inj hr
+      change BitVec.ofNat 64 _ =
+        ((show BitVec 64 from a.lookup W) &&& maskW w) >>> (b.lookup W).toNat
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr64, BitVec.toNat_ushiftRight,
+        toNat_and_maskW _ hw64]
+    · cases hr
+  · rename_i hs
+    obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
+    refine maskRes_rel W hw64 e _ ?_
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr64, binE_denote W he]
+    refine (binBV_mod o hw ?_ hrot _ _ hr).symm
+    rintro (rfl | rfl | rfl)
+    · by_contra hne
+      exact hs ⟨rfl, hne⟩
+    · exact h64 (Or.inl rfl)
+    · exact h64 (Or.inr rfl)
+
+/-- **The translation of a rotation is related to its value.** -/
+theorem rotChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Bool) {w : Nat}
+    (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (k : Nat) (a : Var Δ (.sword 64)) :
+    OpResRel W (.word 64)
+      (BitVec.ofNat 64 (if right then _root_.Hax.rotrNat w (a.lookup W).toNat k
+        else _root_.Hax.rotlNat w (a.lookup W).toNat k)) (rotChain right w k a) := by
+  have hw64 : w ≤ 64 := by omega
+  have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw64
+  have hm : ∀ n, n % 2 ^ w < 2 ^ 64 := fun n =>
+    lt_of_lt_of_le (Nat.mod_lt _ (by positivity)) hp
+  cases right
+  · change BitVec.ofNat 64 (_root_.Hax.rotlNat w (a.lookup W).toNat k) =
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<< (k % w)) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) >>> (w - k % w))) &&& maskW w
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat, _root_.Hax.rotlNat, Nat.mod_eq_of_lt (hm _), toNat_and_maskW _ hw64,
+      BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
+      toNat_and_maskW _ hw64, Nat.or_mod_two_pow, Nat.or_mod_two_pow, mod64_mod _ hw64]
+  · change BitVec.ofNat 64 (_root_.Hax.rotrNat w (a.lookup W).toNat k) =
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>> (k % w)) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) <<< (w - k % w))) &&& maskW w
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat, _root_.Hax.rotrNat, Nat.mod_eq_of_lt (hm _), toNat_and_maskW _ hw64,
+      BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
+      toNat_and_maskW _ hw64, Nat.or_mod_two_pow, Nat.or_mod_two_pow, mod64_mod _ hw64]
+
+/-- **The translation of a unary operation is related to its value.** -/
+theorem unChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarUn)
+    {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (hneg : o = .neg → w = 64)
+    (a : Var Δ (.sword 64)) {v : _root_.Hax.Value}
+    (hv : o.val w ((a.lookup W).toNat : Int) = some v) :
+    ∃ r : Nat, v = .int (r : Int) ∧ OpResRel W (.word 64) (BitVec.ofNat 64 r) (unChain o w a) := by
+  have hw64 : w ≤ 64 := by omega
+  have hx := (a.lookup W).isLt
+  cases o
+  · simp only [ImpToNF.ScalarUn.val, _root_.Hax.u64UnOp, Int.natCast_nonneg, true_and,
+      Int.toNat_natCast] at hv
+    split at hv
+    · obtain rfl := Option.some.inj hv
+      refine ⟨_, rfl, maskRes_rel W hw64 _ _ ?_⟩
+      obtain ⟨X, hX⟩ : ∃ X : BitVec 64, a.lookup W = X := ⟨_, rfl⟩
+      change _ = (~~~(show BitVec 64 from a.lookup W)).toNat % 2 ^ w
+      simp only [hX] at hx ⊢
+      rw [BitVec.toNat_not, BitVec.toNat_ofNat]
+      rcases hw with rfl | rfl | rfl | rfl <;> omega
+    · cases hv
+  · obtain rfl := hneg rfl
+    simp only [ImpToNF.ScalarUn.val, _root_.Hax.u64UnOp, Int.natCast_nonneg, true_and,
+      Int.toNat_natCast] at hv
+    split at hv
+    · obtain rfl := Option.some.inj hv
+      refine ⟨_, rfl, ?_⟩
+      obtain ⟨X, hX⟩ : ∃ X : BitVec 64, a.lookup W = X := ⟨_, rfl⟩
+      change BitVec.ofNat 64 _ = BitVec.ofNat 64 0 - (show BitVec 64 from a.lookup W)
+      simp only [hX] at hx ⊢
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat, BitVec.toNat_sub, BitVec.toNat_ofNat, Nat.zero_mod]
+      omega
+    · cases hv
+  · simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast] at hv
+    obtain rfl := Option.some.inj hv
+    refine ⟨_, rfl, ?_⟩
+    change BitVec.ofNat 64 _ = (show BitVec 64 from a.lookup W) &&& maskW w
+    apply BitVec.eq_of_toNat_eq
+    have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw64
+    have hlt : (a.lookup W).toNat % 2 ^ w < 2 ^ 64 :=
+      lt_of_lt_of_le (Nat.mod_lt _ (by positivity)) hp
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt, toNat_and_maskW _ hw64]
+
+/-- The carry of `x + ~~~y + 1` is `1` exactly when `y ≤ x`. -/
+theorem carry_not_eq_one (x y : BitVec 64) :
+    decide (carryOutBitC x (~~~y) (1 : BitVec 1) = 1) = decide (y.toNat ≤ x.toNat) := by
+  have hy := y.isLt
+  have h1 : (1 : BitVec 1).toNat = 1 := rfl
+  unfold carryOutBitC
+  rw [BitVec.toNat_not, h1]
+  by_cases h : y.toNat ≤ x.toNat
+  · rw [if_pos (by omega)]
+    simp [h]
+  · rw [if_neg (by omega)]
+    simp [h]
+
+/-- The comparison `bvEq` of two words is the equality of their natural numbers. -/
+theorem decide_eq_toNat (x y : BitVec 64) :
+    decide (x = y) = (((x.toNat : Int) == (y.toNat : Int)) : Bool) := by
+  by_cases h : x = y
+  · subst h; simp
+  · have : x.toNat ≠ y.toNat := fun he => h (BitVec.eq_of_toNat_eq he)
+    simp [h, this]
+
+/-- **The translation of a comparison is related to its value.** -/
+theorem cmpChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (c : ImpToNF.ScalarCmp)
+    (a b : Var Δ (.sword 64)) :
+    OpResRel W .bit (c.val ((a.lookup W).toNat : Int) ((b.lookup W).toNat : Int))
+      (cmpChain c a b) := by
+  have key : ∀ x y : BitVec 64, decide ((y.toNat : Int) ≤ (x.toNat : Int)) =
+      decide (carryOutBitC x (~~~y) (1 : BitVec 1) = 1) := by
+    intro x y
+    rw [carry_not_eq_one]
+    simp
+  cases c
+  · change ((((a.lookup W).toNat : Int) == ((b.lookup W).toNat : Int)) : Bool) =
+      decide ((show BitVec 64 from a.lookup W) = b.lookup W)
+    rw [decide_eq_toNat]
+  · change (!(((a.lookup W).toNat : Int) == ((b.lookup W).toNat : Int)) : Bool) =
+      !decide ((show BitVec 64 from a.lookup W) = b.lookup W)
+    rw [decide_eq_toNat]
+  · change decide (((a.lookup W).toNat : Int) < ((b.lookup W).toNat : Int)) =
+      !decide (carryOutBitC (show BitVec 64 from a.lookup W) (~~~(show BitVec 64 from
+        b.lookup W)) (1 : BitVec 1) = 1)
+    rw [← key, ← decide_not]
+    exact decide_eq_decide.mpr Int.not_le.symm
+  · change decide (((a.lookup W).toNat : Int) ≤ ((b.lookup W).toNat : Int)) =
+      decide (carryOutBitC (show BitVec 64 from b.lookup W) (~~~(show BitVec 64 from
+        a.lookup W)) (1 : BitVec 1) = 1)
+    rw [← key]
+  · change decide (((b.lookup W).toNat : Int) < ((a.lookup W).toNat : Int)) =
+      !decide (carryOutBitC (show BitVec 64 from b.lookup W) (~~~(show BitVec 64 from
+        a.lookup W)) (1 : BitVec 1) = 1)
+    rw [← key, ← decide_not]
+    exact decide_eq_decide.mpr Int.not_le.symm
+  · change decide (((b.lookup W).toNat : Int) ≤ ((a.lookup W).toNat : Int)) =
+      decide (carryOutBitC (show BitVec 64 from a.lookup W) (~~~(show BitVec 64 from
+        b.lookup W)) (1 : BitVec 1) = 1)
+    rw [← key]
+
+/-- The word of a literal reading, bound by `bvConst`, is the literal, and the value it reads
+    encodes as the literal. -/
+theorem lit_enc_word {t : NfTy} {x : t.denote} {n : Nat} {hn : ImpToNF.hax64NFWordTy t = true}
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (h : RdRel W t x (.lit n hn)) :
+    ImpToNF.enc t x = .int ((BitVec.ofNat 64 n).toNat : Int) := by
+  rw [enc_of_toInt hn h.1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h.2]
+
+/-- **`withVar1` simulates**: its result is related to `y` when the continuation is, on every
+    word variable reading the integer the value of the reading encodes as. -/
+theorem withVar1_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {r ta : NfTy}
+    {ra : Rd Δ ta} {x₁ : ta.denote} (h1 : RdRel W ta x₁ ra)
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Option (OpRes Δ' r))
+    (y : r.denote) {res : OpRes Δ r} (h : withVar1 ta ra k = some res)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (W' : Valuation Δ') (a : Var Δ' (.sword 64))
+      (res' : OpRes Δ' r), k a = some res' →
+      ImpToNF.enc ta x₁ = .int ((a.lookup W').toNat : Int) → OpResRel W' r y res') :
+    OpResRel W r y res := by
+  cases ra with
+  | var a =>
+      obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+      exact HK W x res h (asWord_enc hxa W h1)
+  | lit n hn =>
+      obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+      exact HK _ .here res' hres' (lit_enc_word W h1)
+
+/-- **`withVar2` simulates**: its result is related to `y` when the continuation is, on every
+    two word variables reading the integers the values of the readings encode as. -/
+theorem withVar2_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {r ta tb : NfTy}
+    {ra : Rd Δ ta} {rb : Rd Δ tb} {x₁ : ta.denote} {x₂ : tb.denote} (h1 : RdRel W ta x₁ ra)
+    (h2 : RdRel W tb x₂ rb)
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, Var Δ' (.sword 64) → Var Δ' (.sword 64) →
+      Option (OpRes Δ' r))
+    (y : r.denote) {res : OpRes Δ r} (h : withVar2 ta tb ra rb k = some res)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (W' : Valuation Δ') (a b : Var Δ' (.sword 64))
+      (res' : OpRes Δ' r), k a b = some res' →
+      ImpToNF.enc ta x₁ = .int ((a.lookup W').toNat : Int) →
+      ImpToNF.enc tb x₂ = .int ((b.lookup W').toNat : Int) → OpResRel W' r y res') :
+    OpResRel W r y res := by
+  cases ra with
+  | var a =>
+      cases rb with
+      | var b =>
+          obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨z, hz, h⟩ := Option.bind_eq_some_iff.mp h
+          exact HK W x z res h (asWord_enc hxa W h1) (asWord_enc hz W h2)
+      | lit m hm =>
+          obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact HK _ x.there .here res' hres' (asWord_enc hxa W h1) (lit_enc_word W h2)
+  | lit n hn =>
+      cases rb with
+      | var b =>
+          obtain ⟨z, hz, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact HK _ .here z.there res' hres' (lit_enc_word W h1) (asWord_enc hz W h2)
+      | lit m hm =>
+          obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
+          exact HK _ (Var.there .here) .here res' hres' (lit_enc_word W h1)
+            (lit_enc_word W h2)
+
+/-- A binary call of the scalar table on readings simulates. -/
+theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (ta tb r : NfTy)
+    (ra : Rd Δ ta) (rb : Rd Δ tb) (res : OpRes Δ r) (x₁ : ta.denote) (x₂ : tb.denote)
+    (y : r.denote) (h : scalarRes2 f ta tb ra rb r = some res) (h1 : RdRel W ta x₁ ra)
+    (h2 : RdRel W tb x₂ rb)
+    (hy : (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec r) = some y) :
+    OpResRel W r y res := by
+  unfold scalarRes2 at h
+  split at h
+  · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
+    dsimp only at h
+    have hmem := ImpToNF.mem_of_find?_map hp
+    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
+      (Or.inl (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
+    obtain ⟨hw, h64⟩ := binTable_w _ hmem
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hv := hbi _ _ _ hcat hbv
+    have key : ∀ (aN bN : Nat), ImpToNF.enc ta x₁ = .int (aN : Int) →
+        ImpToNF.enc tb x₂ = .int (bN : Int) →
+        ∃ rn, o.nat w aN bN = some rn ∧ y = BitVec.ofNat 64 rn := by
+      intro aN bN ha hb
+      rw [ha, hb, ImpToNF.hax64BinTable_sem _ hmem, ImpToNF.orElse_none_eq] at hv
+      obtain ⟨rn, hrn, rfl, -, -, -, -⟩ := ImpToNF.u64BinOp_some hv
+      simp only [Int.toNat_natCast] at hrn
+      exact ⟨rn, hrn, dec_word64_eq hdv⟩
+    split at h
+    · rename_i hrot
+      split at h
+      · rename_i k hk _
+        refine withVar1_sound W h1 _ y h ?_
+        intro Δ' W' a res' hres' he1
+        cases hres'
+        obtain ⟨rn, hrn, rfl⟩ := key _ k he1 (enc_of_toInt hk h2.1)
+        rcases hrot with rfl | rfl
+        · simp only [ImpToNF.ScalarBin.nat, Option.some.injEq] at hrn
+          subst hrn
+          exact rotChain_rel W' true hw k a
+        · simp only [ImpToNF.ScalarBin.nat, Option.some.injEq] at hrn
+          subst hrn
+          exact rotChain_rel W' false hw k a
+      · cases h
+    · rename_i hrot
+      refine withVar2_sound W h1 h2 _ y h ?_
+      intro Δ' W' a b res' hres' he1 he2
+      obtain ⟨rn, hrn, rfl⟩ := key _ _ he1 he2
+      exact binChain_rel W' o hw h64 ⟨fun h => hrot (Or.inl h), fun h => hrot (Or.inr h)⟩
+        a b hres' hrn
+  · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
+    have hmem := ImpToNF.mem_of_find?_map hp
+    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inr
+      (List.mem_map.mpr ⟨_, hmem, rfl⟩)))
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hv := hbi _ _ _ hcat hbv
+    refine withVar2_sound W h1 h2 _ y h ?_
+    intro Δ' W' a b res' hres' he1 he2
+    cases hres'
+    rw [he1, he2, ImpToNF.hax64CmpTable_sem _ hmem, ImpToNF.orElse_none_eq] at hv
+    cases hv
+    simp only [ImpToNF.dec, Option.some.injEq] at hdv
+    subst hdv
+    exact cmpChain_rel W' c a b
+  · cases h
+
+/-- A unary call of the scalar table on a reading simulates. -/
+theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (ta r : NfTy)
+    (ra : Rd Δ ta) (res : OpRes Δ r) (x₁ : ta.denote) (y : r.denote)
+    (h : scalarRes1 f ta ra r = some res) (h1 : RdRel W ta x₁ ra)
+    (hy : (bi f [ImpToNF.enc ta x₁]).bind (ImpToNF.dec r) = some y) :
+    OpResRel W r y res := by
+  unfold scalarRes1 at h
+  split at h
+  · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
+    dsimp only at h
+    have hmem := ImpToNF.mem_of_find?_map hp
+    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
+      (Or.inr (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
+    obtain ⟨hw, hneg⟩ := unTable_w _ hmem
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hv := hbi _ _ _ hcat hbv
+    split at h
+    · rename_i hc
+      obtain ⟨rfl, rfl⟩ := hc
+      obtain ⟨rr, hrr, rfl⟩ := Option.map_eq_some_iff.mp h
+      cases ra with
+      | var z =>
+          obtain ⟨z', hz', rfl⟩ := Option.map_eq_some_iff.mp hrr
+          rw [asWord_enc hz' W h1, ImpToNF.hax64UnTable_sem _ hmem,
+            ImpToNF.orElse_none_eq] at hv
+          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast,
+            Option.some.injEq] at hv
+          subst hv
+          rw [Nat.mod_eq_of_lt (z'.lookup W).isLt] at hdv
+          change y = z'.lookup W
+          rw [dec_word64_eq hdv, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+      | lit k hk =>
+          cases hrr
+          rw [enc_of_toInt hk h1.1, ImpToNF.hax64UnTable_sem _ hmem,
+            ImpToNF.orElse_none_eq] at hv
+          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast,
+            Option.some.injEq] at hv
+          subst hv
+          rw [Nat.mod_eq_of_lt h1.2] at hdv
+          refine ⟨?_, h1.2⟩
+          rw [dec_word64_eq hdv]
+          change some (((BitVec.ofNat 64 k).toNat : Nat) : Int) = some (k : Int)
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h1.2]
+    · refine withVar1_sound W h1 _ y h ?_
+      intro Δ' W' a res' hres' he1
+      cases hres'
+      rw [he1, ImpToNF.hax64UnTable_sem _ hmem, ImpToNF.orElse_none_eq] at hv
+      obtain ⟨rn, rfl, hrel⟩ := unChain_rel W' o hw hneg a hv
+      rw [dec_word64_eq hdv]
+      exact hrel
+  · cases h
+
+/-- **A call of the scalar table on readings simulates.** -/
+theorem scalarRes_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
+    (y : r.denote) (h : scalarRes? f as r rs = some res) (hx : RdRelL W as xs rs)
+    (hy : (bi f (ImpToNF.encAll as xs)).bind (ImpToNF.dec r) = some y) :
+    OpResRel W r y res :=
+  match as, rs, xs, hx, hy, h with
+  | [_, _], .cons ra (.cons rb .nil), .cons x₁ (.cons x₂ .nil), hx, hy, h =>
+      scalarRes2_sound hbi W f _ _ r ra rb res x₁ x₂ y h hx.1 hx.2.1 hy
+  | [_], .cons ra .nil, .cons x₁ .nil, hx, hy, h =>
+      scalarRes1_sound hbi W f _ r ra res x₁ y h hx.1 hy
+  | [], .nil, _, _, _, h => by cases h
+  | _ :: _ :: _ :: _, .cons _ (.cons _ (.cons _ _)), _, _, _, h => by cases h
+
+/-- **A call on readings simulates.** -/
+theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
+    (y : r.denote) (h : catCallRd f as r rs = some res) (hx : RdRelL W as xs rs)
+    (hy : (bi f (ImpToNF.encAll as xs)).bind (ImpToNF.dec r) = some y) :
+    OpResRel W r y res := by
+  unfold catCallRd at h
+  split at h
+  next res₀ h₀ =>
+    cases h
+    exact catCallRd0_sound hbi W f as r rs res xs y h₀ hx hy
+  next => exact scalarRes_sound hbi W f as r rs res xs y h hx hy
 
 /-- **An operation of the fragment simulates.** Under `SubTable bi`, the result `catOp`
     builds from readings relating the valuations is related to the value of the
@@ -986,7 +1713,7 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map OpRes.rd
+        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map tripRes
         | _ => none) = some res at h
       split at h
       · rename_i hz hlo
@@ -1026,10 +1753,8 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
             cases hr
             rw [hhi.1, Option.map_some, h0'] at hy
             obtain rfl := Option.some.inj hy
-            refine ⟨?_, hhi.2⟩
-            change some ((BitVec.ofNat 64 (((k : Int) - 0)).toNat).toNat : Int) = some (k : Int)
-            have h2 : k < 18446744073709551616 := hhi.2
-            simp only [sub_zero, Int.toNat_natCast, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h2]
+            change BitVec.ofNat 64 (((k : Int) - 0)).toNat = BitVec.ofNat 64 k
+            simp only [sub_zero, Int.toNat_natCast]
       · cases h
   | _ =>
       intro args res y h hy
@@ -1037,23 +1762,33 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
 
 /-! ## 6. Programs -/
 
+/-- The bindings of the translation `res` of an operation of result type `t = s`, from the
+    readings `σ`, followed by the translation `cont` of the continuation: no binding for a
+    reading, the binding of the expression, the binding of a literal and then of the
+    expression, or the binding of an intermediate value and then the rest. -/
+def emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
+    (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
+      Option (NFProg catCryptDialect Δ' (ts.map catTy))) :
+    {Δ : Ctxt catCryptDialect} → {t : NfTy} → t = s → OpRes Δ t → TRd Γ Δ →
+      Option (NFProg catCryptDialect Δ (ts.map catTy))
+  | _, _, h, .rd r, σ => cont (TRd.cons (h ▸ r) σ)
+  | _, _, h, .expr e', σ => (cont σ.lift).map fun k' =>
+      .var ⟨e'.op, e'.retTy_eq.trans (congrArg catTy h), e'.args⟩ k'
+  | _, _, h, .expr1 c e', σ => (cont (TRd.lift (TRd.wk σ))).map fun k' =>
+      .var ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩
+        (.var ⟨e'.op, e'.retTy_eq.trans (congrArg catTy h), e'.args⟩ k')
+  | _, _, h, .bind _ e rest, σ => (emitRes cont h rest σ.wk).map fun k' => .var e k'
+
 /-- **The translation of a program** of the fragment on the readings `σ`: a return to the
-    return of the variables it reads; a binding to no binding when `catOp` gives a reading, to
-    the binding of the expression, or to the binding of a literal and then of the expression;
-    and a counted loop whose count and seeds are variables to the counted loop of the
-    translated body and continuation. `none` on a branch and an exit-flag loop. -/
+    return of the variables it reads; a binding to the bindings `emitRes` gives for the
+    translation `catOp` of its operation; and a counted loop whose count and seeds are
+    variables to the counted loop of the translated body and continuation. `none` on a
+    branch and an exit-flag loop. -/
 def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : List NfTy} →
     NFProg nfDialect Γ ts → TRd Γ Δ → Option (NFProg catCryptDialect Δ (ts.map catTy))
   | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
   | _, _, _, .var ⟨op, h, args⟩ k, σ =>
-      (catOp σ op args).bind fun res =>
-        match res with
-        | .rd r => nfToCat k (TRd.cons (h ▸ r) σ)
-        | .expr e' => (nfToCat k σ.lift).map fun k' =>
-            .var ⟨e'.op, e'.retTy_eq.trans (congrArg catTy h), e'.args⟩ k'
-        | .expr1 c e' => (nfToCat k (TRd.lift (TRd.wk σ))).map fun k' =>
-            .var ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩
-              (.var ⟨e'.op, e'.retTy_eq.trans (congrArg catTy h), e'.args⟩ k')
+      (catOp σ op args).bind fun res => emitRes (fun σ' => nfToCat k σ') h res σ
   | _, _, _, .forLoop (cs := cs) count inits body k, σ =>
       match σ count with
       | .var c =>
@@ -1076,6 +1811,57 @@ def NFSound (bi : _root_.Hax.Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : Li
     σ.Agree V W → ImpToNF.PDenP bi tf p V = some out →
     ∀ fuel, ∃ out', p'.denote fuel W = some out' ∧ VRelL ts out out'
 
+/-- **The bindings of a translated operation simulate.** When the continuation `cont`
+    simulates from every reading that relates `V.extend y`, the bindings `emitRes` builds for
+    a translation `res` related to `y` simulate from every valuation the readings `σ` relate
+    to `V`. -/
+theorem emitRes_sound {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
+    (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
+      Option (NFProg catCryptDialect Δ' (ts.map catTy)))
+    (V : Valuation Γ) (y : s.denote) (out : Valuation (d := nfDialect) ts) (fuel : Nat)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd (s :: Γ) Δ')
+      (p' : NFProg catCryptDialect Δ' (ts.map catTy)) (W' : Valuation Δ'),
+      cont σ' = some p' → σ'.Agree (V.extend y) W' →
+      ∃ out', p'.denote fuel W' = some out' ∧ VRelL ts out out') :
+    ∀ {Δ : Ctxt catCryptDialect} (res : OpRes Δ s) (σ : TRd Γ Δ) (W : Valuation Δ)
+      (p' : NFProg catCryptDialect Δ (ts.map catTy)),
+      emitRes cont rfl res σ = some p' → σ.Agree V W → OpResRel W s y res →
+      ∃ out', p'.denote fuel W = some out' ∧ VRelL ts out out' := by
+  intro Δ res
+  induction res with
+  | rd r =>
+      intro σ W p' h hag hrel
+      exact HK _ p' W h (TRd.agree_cons hag hrel)
+  | expr e' =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨out', hden, hR⟩ := HK σ.lift k' (W.extend (e'.denote W)) hk'
+        (TRd.agree_lift hag hrel)
+      refine ⟨out', ?_, hR⟩
+      rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+      exact hden
+  | expr1 c e' =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
+      let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: _) :=
+        W.extend (BitVec.ofNat 64 c)
+      obtain ⟨out', hden, hR⟩ := HK (TRd.lift (TRd.wk σ)) k' (W1.extend (e'.denote W1)) hk'
+        (TRd.agree_lift hW1 hrel)
+      refine ⟨out', ?_, hR⟩
+      rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+      change NFProg.denote fuel (NFProg.var _ k') W1 = some out'
+      rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+      exact hden
+  | bind c e rest ih =>
+      intro σ W p' h hag hrel
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨out', hden, hR⟩ := ih cont y HK σ.wk (W.extend (e.denote W)) k' hk'
+        (TRd.agree_wk hag _) hrel
+      refine ⟨out', ?_, hR⟩
+      rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+      exact hden
+
 /-- **The translation simulates the denotation.** -/
 theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
     {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) : NFSound bi tf p := by
@@ -1094,28 +1880,9 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
         (fun x => ImpToNF.PDenP bi tf k (V.extend x)) = some out at hp
       obtain ⟨y, hy, hp⟩ := Option.bind_eq_some_iff.mp hp
       have hrel := catOp_sound hbi σ hag op args res y hres hy
-      cases res with
-      | rd r =>
-          exact ih (TRd.cons r σ) p' h (V.extend y) W out (TRd.agree_cons hag hrel) hp fuel
-      | expr e' =>
-          obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨out', hden, hR⟩ := ih σ.lift k' hk' (V.extend y) (W.extend (e'.denote W))
-            out (TRd.agree_lift hag hrel) hp fuel
-          refine ⟨out', ?_, hR⟩
-          rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
-          exact hden
-      | expr1 c e' =>
-          obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
-          let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: Δ) :=
-            W.extend (BitVec.ofNat 64 c)
-          obtain ⟨out', hden, hR⟩ := ih (TRd.lift (TRd.wk σ)) k' hk' (V.extend y)
-            (W1.extend (e'.denote W1)) out (TRd.agree_lift hW1 hrel) hp fuel
-          refine ⟨out', ?_, hR⟩
-          rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
-          change NFProg.denote fuel (NFProg.var _ k') W1 = some out'
-          rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
-          exact hden
+      exact emitRes_sound (fun σ' => nfToCat k σ') V y out fuel
+        (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' out hag' hp fuel)
+        res σ W p' h hag hrel
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W out hag hp fuel
       change (match σ count with
