@@ -89,7 +89,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecSimTactic
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim (unaryOK)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim (unaryOK shiftOK shift_sound)
 
 /-! ## 1. Regions -/
 
@@ -373,6 +373,7 @@ def regStep (π : String → String) (Ls : List String) (i : LinstrRM) (js : Lis
         else if π d == π a && ((opn == "ADD:64" && js == [.add (π d) (.imm k)])
             || (opn == "SUB:64" && js == [.sub (π d) (.imm k)])) then
           some (liveW π Ls d (π d))
+        else if shiftOK π d opn a k js then some (liveW π Ls d (π d))
         else none
       else none
   | _ => none
@@ -508,7 +509,13 @@ theorem regStep_sound {Ls Ls' : List String} {i : LinstrRM} {js : List (JInstr 6
           · exact (decSim_subImm_r (Lay := Lay) (frame := frame) (K := K) (zl := zl)
               (L := (· ∈ Ls)) d a (π d) k rfl hda.symm ha).weaken (fun _ _ _ h => h)
               (fun _ _ _ h => corr_liveW h)
-        · exact absurd h (by simp)
+        · split at h
+          · rename_i hsh
+            obtain rfl := Option.some.inj h
+            exact (shift_sound (Lay := Lay) (frame := frame) (K := K) (zl := zl)
+              (L := (· ∈ Ls)) (L' := liveAfter π (· ∈ Ls) d (π d)) ha (fun _ hr => hr)
+              hsh).weaken (fun _ _ _ h => h) (fun _ _ _ h => corr_liveW h)
+          · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 

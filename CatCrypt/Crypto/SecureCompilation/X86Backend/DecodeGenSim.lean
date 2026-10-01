@@ -34,6 +34,9 @@ every instruction; only the zero-flag component `zl` changes.
 * the register copy `MOV:64 d, a` and the count-`0` shift `SHL:0:64 d, a` against
   `mov %a, %d`, or against nothing when `d` and `a` share a register;
 * `SHR:k:64 d, a` with `0 < k < 64` against `shr $k, %d`, `d` and `a` in one register;
+* the shifts with the count as an immediate operand (`shiftOK`, the form `shiftLinstr` emits):
+  `SHL:64 d, a, #0` as the copy, and `SHR:64`/`SHL:64 d, a, #k` with `0 < k < 64` against the
+  machine shift in place or after `mov %a, %d`;
 * the immediate move `MOV:64 d, #n` against `mov $n, %d`;
 * the two-address operations `ADD`, `SUB`, `AND`, `XOR`, `OR`, `MUL` at width `64`, register
   and (`ADD`, `SUB`) immediate second source, against the machine operation on the register of
@@ -45,6 +48,7 @@ widening multiply carry machine-state side conditions and are not in the check.
 
 ## Main results
 
+* `shiftImmS`, `fstepF_shiftImmS`, `shiftOK`, `shift_sound`: the immediate-operand shifts.
 * `decSim_of_stepOK`: an accepted instruction simulates its machine instructions.
 * `decSim_of_bodyOK`: a body accepted instruction by instruction simulates the concatenation
   of its machine instructions.
@@ -131,6 +135,169 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.DecS
   obtain ⟨b', z', hr, hj⟩ := h sa b zf hi.1
   exact ⟨b', z', hr, hj, hm sa hi.2⟩
 
+/-! ### Shifts with the count as an immediate operand -/
+
+/-- The immediate shift `m:64 d, a, #k` with the count as a second, immediate operand: the form
+    `JasminLsemShift.shiftLinstr` emits. -/
+def shiftImmS (m d a : String) (k : Nat) : LinstrRM :=
+  (.Lopn [.reg d] (withWidthTag 64 m) [.reg a, .imm k], .reg none)
+
+/-- The flag machine steps the immediate-operand shift as the count-in-mnemonic shift. -/
+theorem fstepF_shiftImmS {m : String} (hm : m = "SHR" ∨ m = "SHL") (d a : String) (k : Nat)
+    (b : LstateM) (zf : Bool) :
+    fstepF (shiftImmS m d a k) b zf = fstepF (immShiftI m d a k) b zf := by
+  have hm' : m = "SHR" ∨ m = "SHL" ∨ m = "SAR" := by
+    rcases hm with h | h
+    · exact Or.inl h
+    · exact Or.inr (Or.inl h)
+  rw [shiftImmS, immShiftI, JasminLsemExportTransfer.fstepF_immShiftStruct hm' 64 k d a,
+    JasminLsemExportTransfer.fstepF_immShiftWire m hm' 64 k d a b zf,
+    JasminLsemExportTransfer.lsemStepN_immShiftCount hm' 64 k d a (Or.inl rfl) b.reg]
+
+open JasminLsemShift in
+theorem fstepF_shlImmI (d a : String) (k : Nat) (hk : k < 64) (b : LstateM) (zf : Bool)
+    (va : BitVec 64) (hva : b.reg.getW a 64 = some va) :
+    fstepF (immShiftI "SHL" d a k) b zf = some ((b.setReg d (va <<< k)).nextPc, zf) := by
+  have hkn : (BitVec.ofNat 64 k).toNat = k := by
+    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
+  rw [immShiftI, JasminLsemExportTransfer.fstepF_immShiftWire "SHL" (Or.inr (Or.inl rfl)) 64 k
+      d a b zf,
+    JasminLsemExportTransfer.lsemStepN_immShiftCount (Or.inr (Or.inl rfl)) 64 k d a (Or.inl rfl)
+      b.reg,
+    lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SHL]; decide))]
+  simp only [lsemStepN, readReg_of_getW hva, evalOperandN, stripWidthTag_withWidthTag_SHL,
+    applyOpnN, Option.map_some, hkn]
+  rfl
+
+/-- The data word of `shl $k` for a count `0 < k < 64`. -/
+theorem x86_SHL_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) :
+    (x86_SHL v (BitVec.ofNat 64 k)).word = v <<< k := by
+  have hkn : (BitVec.ofNat 64 k).toNat = k := by
+    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
+  simp only [x86_SHL, shiftCount, hkn, Nat.mod_eq_of_lt hk, if_neg hk0, rflags_OF, wshl,
+    Nat.min_eq_right hk.le]
+
+/-- **The immediate-operand shifts.** `SHL:64 d, a, #0` against `mov %a, %d` or, with `d` and
+    `a` in one register, nothing; `SHR:64`/`SHL:64 d, a, #k` with `0 < k < 64` against the
+    machine shift in place, or against `mov %a, %d` and the machine shift. -/
+def shiftOK (π : String → String) (d opn a : String) (k : Nat) (js : List (JInstr 64)) :
+    Bool :=
+  (opn == withWidthTag 64 "SHL" && k == 0
+      && (js == [.mov (π d) (.reg (π a))] || (π d == π a && js.isEmpty)))
+  || (k != 0 && decide (k < 64)
+      && ((opn == withWidthTag 64 "SHR"
+            && ((π d == π a && js == [.shr (π d) (.imm k)])
+              || js == [.mov (π d) (.reg (π a)), .shr (π d) (.imm k)]))
+        || (opn == withWidthTag 64 "SHL"
+            && ((π d == π a && js == [.shl (π d) (.imm k)])
+              || js == [.mov (π d) (.reg (π a)), .shl (π d) (.imm k)]))))
+
+section ShiftImmS
+
+variable {L L' : String → Prop} {zl : Prop}
+
+/-- `SHR:64 d, a, #k` against `shr $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/
+theorem decSim_shrImmS (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hda : π d = π a) (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [shiftImmS "SHR" d a k] [.shr (π d) (.imm k)] :=
+  DecSim.single fun sa b zf h =>
+    ⟨_, zf, (fstepF_shiftImmS (Or.inl rfl) d a k b zf).trans
+        (fstepF_shrImmI d a k hk b zf _ (h.regs a ha)),
+      h.write d _ _ (fun r => by
+        show (if r = π d then (x86_SHR (sa.regs (π d)) (BitVec.ofNat 64 k)).word
+          else sa.regs r) = _
+        rw [x86_SHR_word_imm _ k hk0 hk, hda]) rfl hL (fun hz => hz.elim)⟩
+
+/-- `SHL:64 d, a, #k` against `shl $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/
+theorem decSim_shlImmS (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hda : π d = π a) (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [shiftImmS "SHL" d a k] [.shl (π d) (.imm k)] :=
+  DecSim.single fun sa b zf h =>
+    ⟨_, zf, (fstepF_shiftImmS (Or.inr rfl) d a k b zf).trans
+        (fstepF_shlImmI d a k hk b zf _ (h.regs a ha)),
+      h.write d _ _ (fun r => by
+        show (if r = π d then (x86_SHL (sa.regs (π d)) (BitVec.ofNat 64 k)).word
+          else sa.regs r) = _
+        rw [x86_SHL_word_imm _ k hk0 hk, hda]) rfl hL (fun hz => hz.elim)⟩
+
+/-- `SHR:64 d, a, #k` against `mov %a, %d` and `shr $k, %d`, `0 < k < 64`. -/
+theorem decSim_shrImmS_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [shiftImmS "SHR" d a k] [.mov (π d) (.reg (π a)), .shr (π d) (.imm k)] := by
+  intro sa b zf h
+  refine ⟨_, zf, ?_, h.write d (sa.regs (π a) >>> k)
+    (aMachine.runBlock sa [.mov (π d) (.reg (π a)), .shr (π d) (.imm k)]) (fun r => ?_) rfl hL
+    (fun hz => hz.elim)⟩
+  · rw [runStraightF_singleton, fstepF_shiftImmS (Or.inl rfl) d a k b zf,
+      fstepF_shrImmI d a k hk b zf _ (h.regs a ha)]
+  · show (if r = π d then (x86_SHR (if π d = π d then sa.regs (π a) else sa.regs (π d))
+        (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
+    rw [if_pos rfl, x86_SHR_word_imm _ k hk0 hk]
+    split <;> simp_all
+
+/-- `SHL:64 d, a, #k` against `mov %a, %d` and `shl $k, %d`, `0 < k < 64`. -/
+theorem decSim_shlImmS_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [shiftImmS "SHL" d a k] [.mov (π d) (.reg (π a)), .shl (π d) (.imm k)] := by
+  intro sa b zf h
+  refine ⟨_, zf, ?_, h.write d (sa.regs (π a) <<< k)
+    (aMachine.runBlock sa [.mov (π d) (.reg (π a)), .shl (π d) (.imm k)]) (fun r => ?_) rfl hL
+    (fun hz => hz.elim)⟩
+  · rw [runStraightF_singleton, fstepF_shiftImmS (Or.inr rfl) d a k b zf,
+      fstepF_shlImmI d a k hk b zf _ (h.regs a ha)]
+  · show (if r = π d then (x86_SHL (if π d = π d then sa.regs (π a) else sa.regs (π d))
+        (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
+    rw [if_pos rfl, x86_SHL_word_imm _ k hk0 hk]
+    split <;> simp_all
+
+/-- The count-`0` shift `SHL:64 d, a, #0` against the copy `mov %a, %d`. -/
+theorem decSim_shl0S (d a : String) (ha : L a) (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K zl)
+      [shiftImmS "SHL" d a 0] [.mov (π d) (.reg (π a))] :=
+  DecSim.single fun _ b zf h =>
+    ⟨_, zf, (fstepF_shiftImmS (Or.inr rfl) d a 0 b zf).trans
+        (fstepF_shl0I d a b zf _ (h.regs a ha)),
+      h.write d _ _ (fun _ => rfl) rfl hL (fun hz => h.zfEq hz)⟩
+
+/-- The count-`0` shift `SHL:64 d, a, #0` with `d` and `a` in one register needs no machine
+    instruction. -/
+theorem decSim_shl0S_elided (d a : String) (ha : L a) (hda : π d = π a)
+    (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K zl)
+      [shiftImmS "SHL" d a 0] [] :=
+  DecSim.lsemOnly fun sa b zf h =>
+    ⟨_, zf, (fstepF_shiftImmS (Or.inr rfl) d a 0 b zf).trans
+        (fstepF_shl0I d a b zf _ (h.regs a ha)),
+      h.write d _ sa (fun r => by split <;> simp_all) rfl hL (fun hz => h.zfEq hz)⟩
+
+/-- **The immediate-operand shifts simulate their machine instructions.** -/
+theorem shift_sound {d opn a : String} {k : Nat} {js : List (JInstr 64)} (ha : L a)
+    (hS : Survives π L L' d) (h : shiftOK π d opn a k js = true) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [(.Lopn [.reg d] opn [.reg a, .imm k], .reg none)] js := by
+  have dz : ∀ {ls : List LinstrRM} {ms : List (JInstr 64)},
+      DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K zl) ls ms →
+      DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False) ls ms :=
+    fun h => h.weaken (fun _ _ _ h => h) (fun _ _ _ h => h.dropZf)
+  simp only [shiftOK, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
+    decide_eq_true_eq, List.isEmpty_iff] at h
+  rcases h with ⟨⟨rfl, rfl⟩, hjs⟩ | ⟨⟨hk0, hk⟩, ⟨rfl, hjs⟩ | ⟨rfl, hjs⟩⟩
+  · rcases hjs with rfl | ⟨hda, rfl⟩
+    · exact dz (decSim_shl0S d a ha hS)
+    · exact dz (decSim_shl0S_elided d a ha hda hS)
+  · rcases hjs with ⟨hda, rfl⟩ | rfl
+    · exact decSim_shrImmS d a k hk0 hk ha hda hS
+    · exact decSim_shrImmS_mov d a k hk0 hk ha hS
+  · rcases hjs with ⟨hda, rfl⟩ | rfl
+    · exact decSim_shlImmS d a k hk0 hk ha hda hS
+    · exact decSim_shlImmS_mov d a k hk0 hk ha hS
+
+end ShiftImmS
+
 /-! ## 2. The check on one instruction -/
 
 /-- The one-source register forms: the copy and the count-`0` shift against `mov` or
@@ -176,7 +343,7 @@ def stepOK (π : String → String) (N : List String) (i : LinstrRM) (js : List 
   | (.Lopn [.reg d] opn [.reg a, .reg c], .reg none) =>
       N.contains d && N.contains a && N.contains c && binOK π d opn a c js
   | (.Lopn [.reg d] opn [.reg a, .imm k], .reg none) =>
-      N.contains d && N.contains a && immOK π d opn a k js
+      N.contains d && N.contains a && (immOK π d opn a k js || shiftOK π d opn a k js)
   | _ => false
 
 /-- The flag compare, as a Boolean: the instructions after which the zero flag is tracked. -/
@@ -301,9 +468,15 @@ theorem decSim_of_stepOK (hinj : InjOn π N) {i : LinstrRM} {js : List (JInstr 6
     obtain ⟨⟨⟨hd, ha⟩, hc⟩, h⟩ := h
     exact bin_sound hinj hd ha hc h
   · rename_i d opn a k
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    obtain ⟨⟨hd, ha⟩, h⟩ := h
-    exact imm_sound hinj hd ha h
+    simp only [Bool.and_eq_true, Bool.or_eq_true, List.contains_iff_mem] at h
+    obtain ⟨⟨hd, ha⟩, h | h⟩ := h
+    · exact imm_sound hinj hd ha h
+    · have hnc : isCmpB (.Lopn [.reg d] opn [.reg a, .imm k], .reg none) = false := by
+        simp only [shiftOK, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at h
+        rcases h with ⟨⟨rfl, -⟩, -⟩ | ⟨-, ⟨rfl, -⟩ | ⟨rfl, -⟩⟩ <;> simp [isCmpB, withWidthTag]
+      rw [hnc]
+      exact (shift_sound ha (survives_of_injOn hinj hd) h).weaken (fun _ _ _ h => h)
+        (fun _ _ _ h => by simpa using h)
   · exact absurd h (by simp)
 
 /-- An accepted instruction is an `Lopn`. -/
