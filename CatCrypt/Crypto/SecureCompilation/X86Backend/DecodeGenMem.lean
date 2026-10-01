@@ -349,6 +349,19 @@ def opOK (π : String → String) (d opn a c : String) (js : List (JInstr 64)) :
     || (opn == "OR:64" && js == [.mov (π d) (.reg (π a)), .or_ (π d) (.reg (π c))])
     || (opn == "MUL:64" && js == [.mov (π d) (.reg (π a)), .imul (π d) (.reg (π c))])))
 
+/-- The high half `MULXHI:64 d, a, c` against the bracket `mov %S, %T`, `mov %a, %S`,
+    `mulx %c, %D, %d`, `mov %T, %S` of `DecSimTactic.decSim_mulhi_bracketD`, with the
+    registers distinct as that lemma asks: the low-half register `D` and the copy register
+    `T`. -/
+def mulhiOK (π : String → String) (d opn a c : String) :
+    List (JInstr 64) → Option (String × String)
+  | [.mov T (.reg S), .mov S₁ (.reg A), .mulx H D (.reg S₂) (.reg C), .mov S₃ (.reg T₁)] =>
+      if opn == withWidthTag 64 "MULXHI" && S₁ == S && S₂ == S && S₃ == S && T₁ == T
+          && A == π a && C == π c && H == π d && T != S && T != D && T != π d && S != D
+          && S != π d && D != π d && π a != T && π c != S && π c != T then some (D, T)
+      else none
+  | _ => none
+
 /-- **The register classes.** A flag-machine register instruction over live names against its
     machine instructions, with the live list after it. -/
 def regStep (π : String → String) (Ls : List String) (i : LinstrRM) (js : List (JInstr 64)) :
@@ -365,7 +378,7 @@ def regStep (π : String → String) (Ls : List String) (i : LinstrRM) (js : Lis
         if opn == withWidthTag 64 "CMP" && d == a && js == [.cmp (π a) (.reg (π c))] then
           some Ls
         else if opOK π d opn a c js then some (liveW π Ls d (π d))
-        else none
+        else (mulhiOK π d opn a c js).map fun p => liveW π (liveO π (liveO π Ls p.2) p.1) d (π d)
       else none
   | (.Lopn [.reg d] opn [.reg a, .imm k], .reg none) =>
       if decide (a ∈ Ls) then
@@ -452,6 +465,40 @@ theorem op_sound {L : String → Prop} {d opn a c : String} {js : List (JInstr 6
     · exact decSim_or_mov d a c _ _ _ rfl rfl rfl hcd ha hc
     · exact decSim_imul_mov_r d a c _ _ _ rfl rfl rfl hcd ha hc
 
+theorem mulhi_sound {L : String → Prop} {d opn a c D T : String} {js : List (JInstr 64)}
+    (ha : L a) (hc : L c) (h : mulhiOK π d opn a c js = some (D, T)) {zl : Prop} :
+    DecSim (DecLsemCorr π L Lay frame K zl)
+      (DecLsemCorr π (liveAfter π (liveOff π (liveOff π L T) D) d (π d)) Lay frame K False)
+      [(.Lopn [.reg d] opn [.reg a, .reg c], .reg none)] js := by
+  unfold mulhiOK at h
+  split at h
+  · rename_i T' S S₁ A H D' S₂ C S₃ T₁
+    split at h
+    · rename_i hc'
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hc'
+      obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, hTS⟩, hTD⟩, hTH⟩,
+        hSD⟩, hSH⟩, hDH⟩, haT⟩, hcS⟩, hcT⟩ := hc'
+      exact (decSim_mulhi_bracketD (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a c _ _ _
+        ha hc hTS hTD hTH hSD hSH hDH haT hcS hcT).weaken (fun _ _ _ h => h)
+        (fun _ _ _ h => h.dropZf)
+    · cases h
+  · cases h
+
+/-- The correspondence on `liveAfter` of two machine writes is the correspondence on
+    `liveW` of `liveO`. -/
+theorem corr_liveW_liveO {Ls : List String} {d D T : String} {zl : Prop} {sa : AState}
+    {b : LstateM} {zf : Bool}
+    (h : DecLsemCorr π (liveAfter π (liveOff π (liveOff π (· ∈ Ls) T) D) d (π d)) Lay frame K
+      zl sa b zf) :
+    DecLsemCorr π (· ∈ liveW π (liveO π (liveO π Ls T) D) d (π d)) Lay frame K zl sa b zf :=
+  h.mono (fun _ hr => by
+    rw [mem_liveW, mem_liveO, mem_liveO] at hr
+    rcases hr with rfl | ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩
+    · exact Or.inl rfl
+    · exact Or.inr ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩) id (fun _ _ h => h)
+
 /-- The correspondence on `liveAfter` is the correspondence on `liveW`. -/
 theorem corr_liveW {Ls : List String} {d : String} {zl : Prop} {sa : AState} {b : LstateM}
     {zf : Bool} (h : DecLsemCorr π (liveAfter π (· ∈ Ls) d (π d)) Lay frame K zl sa b zf) :
@@ -499,7 +546,9 @@ theorem regStep_sound {Ls Ls' : List String} {i : LinstrRM} {js : List (JInstr 6
           obtain rfl := Option.some.inj h
           exact (op_sound hac.1 hac.2 hop).weaken (fun _ _ _ h => h)
             (fun _ _ _ h => corr_liveW h)
-        · exact absurd h (by simp)
+        · obtain ⟨⟨D, T⟩, hm, rfl⟩ := Option.map_eq_some_iff.mp h
+          exact (mulhi_sound hac.1 hac.2 hm).weaken (fun _ _ _ h => h)
+            (fun _ _ _ h => corr_liveW_liveO h)
     · exact absurd h (by simp)
   · rename_i d opn a k
     split at h
