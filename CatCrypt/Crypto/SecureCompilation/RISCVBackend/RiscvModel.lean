@@ -27,8 +27,9 @@ to GAS RV64 assembly text with a linear-scan GP allocator.
 
 This module provides the *framework*: a Lean RV64 GP-ALU machine + verified
 lowering + GAS printer, with one scalar primitive (the RFC 8439 §2.1.1 ChaCha
-quarter-round) emitted, the in-Lean KAT pinned, and a **real `qemu-riscv64` run**
-of the emitted code against the RFC vector (`bench/riscv_compare/`). As with the
+quarter-round) emitted, the in-Lean KAT pinned, and a `qemu-riscv64` run of the
+emitted code against the RFC vector in a local harness that is not vendored in this
+repository. As with the
 x86/ARM models, the **lowering** `ROp → RInst → RState transform` is verified
 down to this model (`RiscvLowering.riscvBlock_lowering_denote`, no new custom
 axioms); the **model's per-instruction semantics** is written to be obviously
@@ -349,8 +350,8 @@ theorem runBoundedLoopR_eq_runRBlock_unroll (s : RState) (n : Nat) (body : List 
 /-! ## 4. Differential-validation pins (the scalar RV64 anchor)
 
 Unit-level witnesses for the ops; the integration witness is the ChaCha
-quarter-round KAT (`RiscvLowering.qr_rfc_kat`, RFC 8439 §2.1.1) and the real
-qemu-riscv64 run-KAT in `bench/riscv_compare/`. -/
+quarter-round KAT (`RiscvLowering.qr_rfc_kat`, RFC 8439 §2.1.1); the qemu-riscv64
+run-KAT was a local harness, not vendored in this repository. -/
 
 /-- `ADDW` pin: wrapping 32-bit add, `(2³²-1) + 3 = 2`. -/
 example : opAddw (BitVec.allOnes 32) (3 : BitVec 32) = 2 := by native_decide

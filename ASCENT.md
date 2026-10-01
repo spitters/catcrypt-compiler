@@ -136,6 +136,7 @@ From source to machine:
 |---|---|---|
 | [LeanSourceX86](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceX86.lean) | a Lean function compiled to x86 and ascended back | `add_descent_x86` |
 | [LeanSourceRiscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscv.lean) | the same on RV64 | `add_descent_riscv` |
+| [LeanSourceRiscvBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscvBytes.lean) | the same on RV64, at the encoded bytes | `addDescentBytes_correct` |
 | [SourceToBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean) | source-to-Jasmin capstones evaluated at their values | `feSub_value` |
 | [Strengthen](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Strengthen.lean) | the result monad chosen per kernel by type strengthening | `feSubC_ts_refines` |
 
@@ -147,6 +148,8 @@ Loops and early exit:
 | [WhileFunSumJasmin](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean) | the same loop through the compiler to Jasmin | `sumLoop_jasminDenote` |
 | [EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, read as an exception program | `searchU_except_found` |
 | [MillerLoopKernelBench](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/MillerLoopKernelBench.lean) | a counted Miller loop over field leaves | `millerLoopProg_corres` |
+| [RiscvX25519LadderBytesProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519LadderBytesProof.lean) | the X25519 ladder as an RV64 program with a loop and calls, at its encoded bytes | `x25519LadderBytes_correct` |
+| [RiscvX25519Proof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvX25519Proof.lean) | RFC 7748 X25519 (clamping, ladder, inversion) as an RV64 program with a C entry point `catcrypt_x25519(out, scalar, u)`, at its encoded bytes | `x25519CBytes_correct` |
 
 ## A worked path: from a `LowCT` kernel to its Jasmin program
 

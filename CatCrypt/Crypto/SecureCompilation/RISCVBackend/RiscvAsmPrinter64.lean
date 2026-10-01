@@ -113,10 +113,10 @@ def renderRBlock64Body (alloc : GpAlloc64) (block : List RInst64) : List String 
 
 /-! ## 3. Leaf-function helper: the allocated body lines
 
-The bignum body is rendered register-to-register through `allocGp64`; the emit
-file (`bench/riscv_compare`) wraps it in the trusted `ld`/`sd` prologue/epilogue
-(reading `x`/`y` into the allocated input registers, writing the result limbs
-back), exactly the ARM `addp256` leaf posture. -/
+The bignum body is rendered register-to-register through `allocGp64`; an emit file
+wraps it in the trusted `ld`/`sd` prologue/epilogue (reading `x`/`y` into the allocated
+input registers, writing the result limbs back), as in the ARM `addp256` leaf. That emit
+file is not vendored in this repository. -/
 
 /-- Render the allocated `RInst64` body lines (no prologue) for a fixed
     allocation. -/

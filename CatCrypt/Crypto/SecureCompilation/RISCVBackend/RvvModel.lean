@@ -37,7 +37,7 @@ posture as the fixed-128-bit NEON model.)
 There is no ported authoritative model for the packed-u32 RVV ALU semantics here;
 the faithfulness of `evalVInst` rests on **differential validation against the RFC
 8439 KAT** of the emitted ChaCha 4-way kernel (run under qemu-riscv64 with RVV
-enabled in `bench/riscv_compare/`). The semantics is written to be *obviously the
+enabled, in a local harness not vendored in this repository). The semantics is written to be *obviously the
 per-lane integer op the mnemonic computes* (a `VectorTy.map₂` / `map₁imm` over
 `BitVec 32` lanes), auditable against the RVV spec by eye. The **lowering**
 (`RvvLowering.rvvBlock_lowering_denote`, no new custom axioms) is verified down to
@@ -198,8 +198,8 @@ def runVBlock (s : VState) : List VInst → VState
 /-! ## 5. Differential-validation lane pins (the packed-u32 RVV anchor)
 
 Unit-level witnesses for the lane ops; the integration witness is the ChaCha
-4-way KAT byte-identity (`bench/riscv_compare/`, RFC 8439 §2.1.1, qemu-riscv64
-with RVV). -/
+4-way KAT byte-identity (RFC 8439 §2.1.1, qemu-riscv64 with RVV, in a local harness
+not vendored in this repository). -/
 
 -- `vadd.vv` lane pin: wrapping 32-bit add, `(2³²-1) + 3 = 2`.
 #guard laneAdd (BitVec.allOnes 32) (3 : BitVec 32) == 2

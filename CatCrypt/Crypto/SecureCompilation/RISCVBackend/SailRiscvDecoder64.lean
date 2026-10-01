@@ -24,7 +24,7 @@ riscvDecode64 (encodeWord64 i) = some i   -- for every non-LI RInst64 the backen
 ```
 
 It reuses the sail `@`⁻¹ field-slice lemmas (`SailRiscvDecoder.encR_slices` /
-`encI_slices`) and the register-name inverse (`regName_reg5`). The `MUL` arm adds
+`encI_slices`) and the register-name inverse (`regName_reg5_64`). The `MUL` arm adds
 the M-extension funct7 `0b0000001 = 0x01` dispatch.
 
 ## Scope
@@ -34,21 +34,16 @@ Every **fixed-width** `RInst64` arm round-trips here: `ADD`/`SUB`/`SLTU`/`AND`/
 ITYPE) and `SLLI`/`SRLI` (SHIFTIOP, ITYPE). The single exception is `LI` — the
 assembler pseudo-op `as` expands to a *variable-length* `lui`+`addi`(+…)
 sequence; it has no single 32-bit word, so `encodeWord64 (.li ..) = none` and it
-is **not** round-trip-proved (it is the trusted constant-materialisation
-scaffolding, the RV64 analogue of the prologue). The capstone
+is **not** round-trip-proved here. `RiscvBytes64.liSeq` expands it to `addi`/`slli`
+words, and `RiscvBytes64.decodeMStream64_encode` decodes those. The capstone
 `roundtrip_RInst64` quantifies over all non-`LI` `RInst64` with the
-`SailRiscvDecoder.emittedRegs` register-name well-formedness side-condition and,
+`emittedRegs64` register-name well-formedness side-condition and,
 for `SLLI`/`SRLI`, a shift count within the RV64 6-bit `shamt` field
 (`sh < 64`).
 
-**Register ceiling:** `emittedRegs = {zero, a0..a7, t0..t6}` (16 names). The
-64-bit backend's own allocator pool, `RiscvAsmPrinter64.gpPool64`, is wider — it
-also allocates the callee-saved `s2..s11` (25 names total, since the bignum body
-has a larger live set than the ChaCha QR). So `roundtrip_RInst64`'s round-trip
-is proved only for the `emittedRegs` register names; an `RInst64` whose operand
-is allocated from `s2..s11` satisfies the capstone's hypothesis only if that
-name is separately shown to be in `emittedRegs` (it is not) — the full `gpPool64` range is
-outside the round-trip's scope.
+**Registers:** the round trip is stated over `emittedRegs64`, the sixteen names of
+`SailRiscvDecoder.emittedRegs` (`zero`, `a0..a7`, `t0..t6`) and the saved registers
+`s0..s11`. That covers the 64-bit allocator pool `RiscvAsmPrinter64.gpPool64`.
 -/
 
 @[expose] public section
@@ -98,6 +93,17 @@ def riscvDecode64 (w : BitVec 32) : Option RInst64 :=
       if fImm12 w < 64 then some (.srli (regName rd) (regName rs1) (fImm12 w)) else none
   | _, _, _ => none
 
+/-- The register names the 64-bit round trip covers: `SailRiscvDecoder.emittedRegs`
+    and the saved registers `s0..s11`. -/
+def emittedRegs64 : List String :=
+  emittedRegs ++ ["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"]
+
+/-- `regName` inverts `reg5 ∘ regNum` on every name of `emittedRegs64`. -/
+theorem regName_reg5_64 (r : String) (h : r ∈ emittedRegs64) :
+    regName (reg5 r).toNat = r := by
+  simp only [emittedRegs64, emittedRegs, List.cons_append, List.nil_append] at h
+  fin_cases h <;> rfl
+
 /-! ## 2. The dispatch-constant reductions (the funct7/funct3/opcode literals) -/
 
 /-- The sail dispatch constants the decode matches on, reduced to Nat literals. -/
@@ -113,18 +119,18 @@ theorem decConsts64 :
 /-! ## 3. The per-instruction and capstone round-trip
 
 Each emitted non-`LI` arm decodes back to itself, via the sail `@`⁻¹ slice lemmas
-and `regName_reg5`. -/
+and `regName_reg5_64`. -/
 
 /-- **The capstone round-trip `decode (encode i) = i` for the full emitted 64-bit
     bignum subset** (every fixed-width arm; `LI` excluded as the variable-length
-    pseudo-op). For every non-`LI` `RInst64` whose register names are in the
-    backend's emitted pool and whose `SRLI`/`SLLI` shift count fits the RV64 6-bit
+    pseudo-op). For every non-`LI` `RInst64` whose register names are in
+    `emittedRegs64` and whose `SRLI`/`SLLI` shift count fits the RV64 6-bit
     `shamt` (`sh < 64`), decoding its encoder word recovers the original
     instruction — against the sail-riscv `encdec` discipline. -/
 theorem roundtrip_RInst64 (i : RInst64)
     (hnotli : ∀ d imm, i ≠ .li d imm)
-    (hregs : (rinst64DstSrcs i).1 ∈ emittedRegs ∧
-             ∀ r ∈ (rinst64DstSrcs i).2, r ∈ emittedRegs)
+    (hregs : (rinst64DstSrcs i).1 ∈ emittedRegs64 ∧
+             ∀ r ∈ (rinst64DstSrcs i).2, r ∈ emittedRegs64)
     (hsh : ∀ d a sh, i = .srli d a sh ∨ i = .slli d a sh → sh < 64) :
     riscvDecode64 (encodeWord64 i).get! = some i := by
   obtain ⟨hdst, hsrc⟩ := hregs
@@ -137,56 +143,56 @@ theorem roundtrip_RInst64 (i : RInst64)
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.1, D.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | sub d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.2.1, D.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | sltu d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.1, D.2.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | and d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.1, D.2.2.2.2.2.2.2.2.2]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | or d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.1, D.2.2.2.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | xor d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.1, D.2.2.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | mul d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]; rfl
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]; rfl
   | mulhu d a b =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); have hb := hsrc b (by simp [rinst64DstSrcs])
       simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (S ..).1, (S ..).2.1, (S ..).2.2.1, (S ..).2.2.2.1, (S ..).2.2.2.2.1, (S ..).2.2.2.2.2,
         D.1, D.2.2.2.2.1, D.2.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha, regName_reg5_64 b hb]
   | li d imm => exact absurd rfl (hnotli d imm)
   | srli d a sh =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
@@ -196,7 +202,7 @@ theorem roundtrip_RInst64 (i : RInst64)
         (encI_slices ..).1, (encI_slices ..).2.1, (encI_slices ..).2.2.1,
         (encI_slices ..).2.2.2.1, (encI_slices ..).2.2.2.2,
         D.2.1, h5]
-      rw [regName_reg5 d hdst, regName_reg5 a ha]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha]
       simp [Nat.mod_eq_of_lt (show sh < 4096 by omega), hlt]
   | slli d a sh =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
@@ -206,7 +212,7 @@ theorem roundtrip_RInst64 (i : RInst64)
         (encI_slices ..).1, (encI_slices ..).2.1, (encI_slices ..).2.2.1,
         (encI_slices ..).2.2.2.1, (encI_slices ..).2.2.2.2,
         D.2.1, h1]
-      rw [regName_reg5 d hdst, regName_reg5 a ha]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 a ha]
       simp [Nat.mod_eq_of_lt (show sh < 4096 by omega), hlt]
   | mv d s =>
       have hs := hsrc s (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
@@ -214,7 +220,7 @@ theorem roundtrip_RInst64 (i : RInst64)
         (encI_slices ..).1, (encI_slices ..).2.1, (encI_slices ..).2.2.1,
         (encI_slices ..).2.2.2.1, (encI_slices ..).2.2.2.2,
         D.2.1, D.2.2.2.2.2.1]
-      rw [regName_reg5 d hdst, regName_reg5 s hs]
+      rw [regName_reg5_64 d hdst, regName_reg5_64 s hs]
       simp
 
 /-- Doc-anchor pilot: the `SLTU` carry comparator round-trips (the instruction

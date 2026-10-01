@@ -66,9 +66,9 @@ so the body needs no complement op: every op is one of
 
 The seeding of `W[t]` and `K[t]` into named registers is the trusted ABI
 scaffolding — the RV64-leaf load posture of `RiscvBignumKernel`'s `ld`s. The
-emitted leaf `.s` (`bench/riscv_compare/sha256_rv64_emit.lean`) is stack-resident
-(the live set far exceeds 31 GP registers) and its qemu-riscv64 KAT against the
-same FIPS digest is in `bench/riscv_compare/` (`sha256-rv64-kat`).
+emitted leaf `.s` is stack-resident (the live set far exceeds 31 GP registers); its
+emit file and its qemu-riscv64 KAT against the same FIPS digest were local harnesses,
+not vendored in this repository.
 -/
 
 @[expose] public section

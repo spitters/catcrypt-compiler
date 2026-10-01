@@ -48,6 +48,9 @@ leaf-axiom side never invokes inversion (Montgomery-ladder steps use only
 * `x25519LadderStepVerified` : one Montgomery-ladder iteration over Fp25519
   — the verified reference for the opaque rustcmd leaf
   `x25519_ladder_iter`
+* `x25519Clamp`, `x25519LadderN`, `x25519` : RFC 7748 `X25519(k, u)` on integers;
+  `decodeLE`, `encodeLE`, `x25519Bytes` : the same on 32-byte strings, with
+  `encodeLE_decodeLE`
 
 The bridge file (`X25519/X25519HaxLowCTBridge.lean`) reduces the
 rustcmd leaf claim to an identity at this verified-spec level.
@@ -358,5 +361,60 @@ def ed25519ScalarStep (bit : Bool) (st : Ed25519Point × Ed25519Point) :
 def ed25519ScalarMul (bits : List Bool) (st : Ed25519Point × Ed25519Point) :
     Ed25519Point × Ed25519Point :=
   bits.foldl (fun acc b => ed25519ScalarStep b acc) st
+
+/-! ## §9  The X25519 function, on integers and on byte strings
+
+RFC 7748 §5 `X25519(k, u)` takes two 32-byte strings. `decodeScalar25519` reads `k`
+little-endian with bits 0, 1, 2 and 255 cleared and bit 254 set (`x25519Clamp` on the
+integer); `decodeUCoordinate` reads `u` little-endian with bit 255 masked; the ladder runs
+over bits 254 down to 0 from `(x2, z2, x3, z3) = (1, 0, u, 1)`, and the result
+`x2 · z2^(p - 2)` is encoded as 32 little-endian bytes of its canonical value
+(`encodeUCoordinate`). A `u` at least `p` is reduced modulo `p`, as the RFC requires. -/
+
+/-- `decodeScalar25519` on the scalar as an integer: clear bits 0, 1, 2 and 255 (and every
+    bit above), set bit 254. -/
+def x25519Clamp (k : Nat) : Nat := 8 * (k % 2 ^ 254 / 8) + 2 ^ 254
+
+/-- `n` iterations of `x25519LadderStepVerified`, on bits `n - 1` down to 0. -/
+def x25519LadderN : Nat → X25519State → X25519State
+  | 0, s => s
+  | n + 1, s => x25519LadderN n (x25519LadderStepVerified n s)
+
+/-- RFC 7748 `X25519(k, u)` on the scalar and the `u`-coordinate as integers. -/
+def x25519 (k u : Nat) : Fp25519 :=
+  let s := x25519LadderN 255 (X25519State.init (x25519Clamp k) (Fp25519.fromNat (u % 2 ^ 255)))
+  s.x2 * s.z2 ^ (P25519 - 2)
+
+/-- The little-endian integer of a byte string. -/
+def decodeLE : List (BitVec 8) → Nat
+  | [] => 0
+  | b :: bs => b.toNat + 256 * decodeLE bs
+
+/-- The `len` low bytes of `n`, little-endian. -/
+def encodeLE (n : Nat) : Nat → List (BitVec 8)
+  | 0 => []
+  | len + 1 => BitVec.ofNat 8 n :: encodeLE (n / 256) len
+
+/-- RFC 7748 `X25519(k, u)` on 32-byte strings. -/
+def x25519Bytes (k u : List (BitVec 8)) : List (BitVec 8) :=
+  encodeLE (x25519 (decodeLE k) (decodeLE u)).val 32
+
+/-- Encoding a byte string's integer at its length gives the string back. -/
+theorem encodeLE_decodeLE (bs : List (BitVec 8)) : encodeLE (decodeLE bs) bs.length = bs := by
+  induction bs with
+  | nil => rfl
+  | cons b bs ih =>
+    simp only [decodeLE, List.length_cons, encodeLE]
+    have hb := b.isLt
+    rw [show (b.toNat + 256 * decodeLE bs) / 256 = decodeLE bs by omega, ih]
+    congr 1
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_ofNat]
+    omega
+
+theorem encodeLE_length (n len : Nat) : (encodeLE n len).length = len := by
+  induction len generalizing n with
+  | zero => rfl
+  | succ len ih => simp [encodeLE, ih]
 
 end CatCrypt.Util

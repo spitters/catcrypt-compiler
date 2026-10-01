@@ -38,8 +38,8 @@ gap). The instance:
   memory-extended `RState`, so the generic `spillStore_establishes` / `evalReload_noop`
   / `reload_sandwich` give the RV64 spill soundness.
 
-The instance enables the register-resident SHA-256 re-emit
-(`bench/riscv_compare/sha256_rv64_ra_emit.lean`): the verified ops are
+The instance enables a register-resident SHA-256 re-emit (a local emit file, not
+vendored in this repository): the verified ops are
 unchanged, only the storage class of each value changes (resident in a GP register vs
 spilled to a frame cell), and the value identity is the qemu-riscv64 FIPS-180-4 KAT.
 The A64 twin (`ArmRegAlloc`) closes the analogous SHA-256 gap, 5.42× → 2.00×.
