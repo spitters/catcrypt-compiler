@@ -55,6 +55,10 @@ separation of the cells from the frame words.
 * `prun_sound`: the symbolic prologue describes the machine state it runs to.
 * `frun_sound`: the symbolic seeds describe the flag-machine state they run to.
 * `decSim_pre`: an accepted prologue simulates the seeds from `NodeEntry` to `MCorr`.
+* `FrameNames`, `frameRes`, `decSim_pre_fr`: names held in frame words at the loop head, the
+  prologue check that records them, and the prologue simulation that establishes them.
+* `decSim_cmp_mcorr_fr`, `decNodeMem_halts_fr`: the node on both machines with the loop
+  invariant extended by the names held in frame words, from a simulation of the loop body.
 * `decNodeMem_halts`: the node on both machines, from `NodeEntry`, under `MemSep`, the frame
   separation and the counter bound.
 * `memSep_of_regions`, `frameSep_of_regions`, `ctrBound_of_regions`: the per-trip
@@ -531,6 +535,73 @@ theorem decSim_pre {E : MemEnv} {abi : String → Option String} {bounds : List 
     · exact absurd hres (by simp)
   · exact absurd hres (by simp)
 
+/-- **Names held in frame words.** Each pair `(v, off)` of `Fr`: the flag-machine name `v`
+    reads at width `64` the word at `rsp + off`. -/
+def FrameNames (Fr : List (String × Int)) (rsp : BitVec 64) (sa : AState) (b : LstateM) :
+    Prop :=
+  ∀ p ∈ Fr, b.reg.getW p.1 64 = some (read64 sa.mem (rsp + BitVec.ofInt 64 p.2))
+
+/-- **The frame check of the prologue.** Each pair `(v, off)` of `Fr`: the seeds give the
+    name `v` a known value, and the symbolic prologue records that value in the stack word
+    at `off` from the stack pointer at the loop head. -/
+def frameRes (abi : String → Option String) (lo hi : Int) (Fr : List (String × Int))
+    (seeds : List LinstrRM) (pre : List (JInstr 64)) : Bool :=
+  match prun lo hi PSt.init pre, frun (fdflt abi) [] seeds with
+  | some p, some t =>
+      Fr.all fun q => (getV (fdflt abi) t q.1).isSome
+        && getV (fdflt abi) t q.1 == stkGet p.stk (p.sp + q.2)
+  | _, _ => false
+
+/-- **The prologue with names held in frame words.** `decSim_pre`, with the names of `Fr`
+    held in their frame words at the loop-head stack pointer when `frameRes` accepts. -/
+theorem decSim_pre_fr {E : MemEnv} {abi : String → Option String}
+    {bounds : List (String × Nat)} {lo hi : Int} {L0 : List String} {ctr R : String}
+    {seeds : List LinstrRM} {pre : List (JInstr 64)} {p : PSt} (hsp : E.sp = "%rsp")
+    (hres : preRes E abi bounds lo hi L0 ctr R seeds pre = some p) {Fr : List (String × Int)}
+    (hfr : frameRes abi lo hi Fr seeds pre = true) (sa0 : AState)
+    (hsep : ∀ A j, regK E.rs A j → ∀ o : Int, lo ≤ o → o ≤ hi →
+      Disjoint8 (sa0.regs "%rsp" + BitVec.ofInt 64 o) ((regLay E.rs (abiBase abi sa0)).addr A j))
+    (hb : ∀ x ∈ bounds, (sa0.regs x.1).toNat ≤ x.2) :
+    DecSim (fun sa b _ => sa = sa0 ∧ NodeEntry abi E.rs sa b)
+      (fun sa b zf => (MCorr E (abiBase abi sa0) (sa0.regs "%rsp" + BitVec.ofInt 64 p.sp)
+          (L0, Abs.empty) False sa b zf
+        ∧ sa.regs R = 0 ∧ (sa.regs (E.pi ctr)).toNat ≤ E.nb)
+        ∧ FrameNames Fr (sa0.regs "%rsp" + BitVec.ofInt 64 p.sp) sa b)
+      seeds pre := by
+  intro sa b zf hI
+  obtain ⟨b', z', hrun, hJ⟩ := decSim_pre hsp hres sa0 hsep hb sa b zf hI
+  obtain ⟨rfl, hent⟩ := hI
+  have hp : prun lo hi PSt.init pre = some p := by
+    unfold preRes at hres
+    split at hres
+    · rename_i p' t hp' _
+      split at hres
+      · obtain rfl := Option.some.inj hres; exact hp'
+      · exact absurd hres (by simp)
+    · exact absurd hres (by simp)
+  unfold frameRes at hfr
+  rw [hp] at hfr
+  split at hfr
+  · rename_i p' t hp'' ht
+    obtain rfl := Option.some.inj hp''
+    have hpi := prun_sound pre _ _ sa hp (pInv_init lo hi sa)
+    have hfi : FInv sa (fdflt abi) [] b := by
+      intro r v hv
+      simp only [getV, fdflt, Option.map_eq_some_iff] at hv
+      obtain ⟨R', hR', rfl⟩ := hv
+      exact hent.regs r R' hR'
+    obtain ⟨b'', hrun'', hfi', -⟩ := frun_sound seeds [] t b zf ht hfi
+    rw [hrun''] at hrun
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hrun)
+    refine ⟨_, _, hrun'', hJ, fun q hq => ?_⟩
+    simp only [List.all_eq_true, Bool.and_eq_true, beq_iff_eq, Option.isSome_iff_exists] at hfr
+    obtain ⟨⟨v, hv⟩, he⟩ := hfr q hq
+    rw [hv] at he
+    have hs := hpi.stk _ (stkGet_mem _ _ v he.symm)
+    simp only [BitVec.ofInt_add, ← BitVec.add_assoc] at hs
+    rw [hfi' q.1 v hv, hs]
+  · cases hfr
+
 /-! ## 5. The loop registers and the epilogue on the machine -/
 
 /-- The decoded loop body writes the register `R` once, by `add $1, %R`. -/
@@ -618,6 +689,139 @@ theorem decSim_cmp_mcorr {E : MemEnv} {base : String → BitVec 64} {rsp : BitVe
   exact h.weaken (fun _ _ _ hi => ⟨hi.1.1, hi.1.2.1, hi.2⟩)
     (fun sa _ _ hj => ⟨⟨hj.1, hj.2.1.1, Abs.holds_empty _ _ _⟩, hj.2.1.2, hj.2.2⟩)
 
+/-- The back-edge compare of `decSim_cmp_mcorr`, keeping the names held in frame words. -/
+theorem decSim_cmp_mcorr_fr {E : MemEnv} {base : String → BitVec 64} {rsp : BitVec 64}
+    {L0 : List String} {ctr : String} (hctr : ctr ∈ L0) (P : (String → BitVec 64) → Prop)
+    (zl : Prop) (Fr : List (String × Int)) :
+    DecSim (fun sa b zf => (MCorr E base rsp (L0, Abs.empty) zl sa b zf ∧ P sa.regs)
+        ∧ FrameNames Fr rsp sa b)
+      (fun sa b zf => (MCorr E base rsp (L0, Abs.empty) True sa b zf
+        ∧ P sa.regs ∧ sa.flags.zf.getD false = (sa.regs (E.pi ctr) == 0))
+        ∧ FrameNames Fr rsp sa b)
+      [cmpRI ctr (.imm 0)] [.cmp (E.pi ctr) (.imm 0)] := by
+  intro sa b zf ⟨h, hF⟩
+  obtain ⟨b', z', hr, hJ⟩ := decSim_cmp_mcorr (E := E) (base := base) (rsp := rsp) hctr P zl
+    sa b zf h
+  have hc := fstepF_cmpRI ctr (.imm 0) b zf _ _ (h.1.1.regs ctr hctr) rfl
+  rw [runStraightF_singleton, hc] at hr
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hr).symm
+  refine ⟨_, _, by rw [runStraightF_singleton, hc], hJ, fun p hp => ?_⟩
+  rw [LstateM.reg_nextPc, LstateN.getW_nextPc]
+  exact hF p hp
+
+/-- **A checked node whose loop keeps names in frame words.** `decNodeMem_halts` with the
+    loop invariant extended by the names `Fr` held in frame words at the loop-head stack
+    pointer `rsp` (`FrameNames`): the prologue `hpre` establishes them, the loop body `hbody`
+    simulates its machine instructions from `MCorr` with them and a valid index to `MCorr`
+    with them, and the back-edge compare keeps them. -/
+theorem decNodeMem_halts_fr {E : MemEnv} {base : String → BitVec 64} {rsp : BitVec 64}
+    (fn : String) (seeds body : List LinstrRM)
+    (top endL : LLabel) (ctr R : String) (L0 : List String) (Fr : List (String × Int))
+    (pre post : List (JInstr 64))
+    (l : XLoop 64) (hseedsL : seeds.all isLopnB = true) (hbodyL : body.all isLopnB = true)
+    (htopE : top ≠ endL)
+    (hbody : DecSim (fun sa b zf => (MCorr E base rsp (L0, Abs.empty) False sa b zf
+        ∧ FrameNames Fr rsp sa b) ∧ (sa.regs R).toNat < E.nb)
+      (fun sa b zf => MCorr E base rsp (L0, Abs.empty) False sa b zf ∧ FrameNames Fr rsp sa b)
+      body l.body)
+    (hctr : ctr ∈ L0) (hlctr : l.ctr = E.pi ctr) (hdec : decrOnce (E.pi ctr) l.body = true)
+    (hinc : incrOnce R l.body = true) (hpost : post.all noStoreB = true)
+    (E₀ : AState → LstateM → Bool → Prop)
+    (hpre : DecSim E₀ (fun sa b zf => (MCorr E base rsp (L0, Abs.empty) False sa b zf
+      ∧ sa.regs R = 0 ∧ (sa.regs (E.pi ctr)).toNat ≤ E.nb) ∧ FrameNames Fr rsp sa b) seeds pre)
+    (sa : AState) (b : LstateM) (zf : Bool) (hpc : b.lpc = 0) (hE : E₀ sa b zf) :
+    ∃ sa' t k, Halts aMachine (nodeLayout pre l post) 0 sa sa'
+      ∧ lsemFuelMemF (singletonProgM fn (seeds ++ guardedFlagLoopLinstrRM top endL ctr body)) k
+          { prog := { base := b, lfn := fn }, zf := zf } = some t
+      ∧ ∀ A j, regK E.rs A j → ∃ arr : Fin (regLen E.rs A) → BitVec 64,
+          t.prog.base.getArr A 64 (regLen E.rs A) = some arr
+            ∧ read64 sa'.mem ((regLay E.rs base).addr A j) = stackGet arr j := by
+  have hsL : ∀ i ∈ seeds, IsLopn i := fun i hi => isLopnB_isLopn (List.all_eq_true.mp hseedsL i hi)
+  have hbL : ∀ i ∈ body, IsLopn i := fun i hi => isLopnB_isLopn (List.all_eq_true.mp hbodyL i hi)
+  set C := E.pi ctr with hC
+  set m := ((aMachine.runBlock sa pre).regs C).toNat with hm
+  have hm64 : m < 2 ^ 64 := BitVec.isLt _
+  let Inv : Nat → AState → LstateM → Bool → Prop := fun t sa' b' zf' =>
+    (MCorr E base rsp (L0, Abs.empty) False sa' b' zf'
+      ∧ (sa'.regs C = BitVec.ofNat 64 (m - t) ∧ sa'.regs R = BitVec.ofNat 64 t ∧ m ≤ E.nb))
+      ∧ FrameNames Fr rsp sa' b'
+  let Inv' : Nat → AState → LstateM → Bool → Prop := fun t sa' b' zf' =>
+    (MCorr E base rsp (L0, Abs.empty) True sa' b' zf'
+      ∧ (sa'.regs C = BitVec.ofNat 64 (m - t) - 1 ∧ sa'.regs R = BitVec.ofNat 64 t + 1
+        ∧ m ≤ E.nb) ∧ sa'.flags.zf.getD false = (sa'.regs C == 0))
+      ∧ FrameNames Fr rsp sa' b'
+  -- the prologue, at the entry state `sa`
+  have hpre' : DecSim (fun sa' b' zf' => E₀ sa' b' zf' ∧ sa' = sa) (Inv 0) seeds pre := by
+    refine (hpre.andMach (P := (· = sa)) (Q := (· = aMachine.runBlock sa pre))
+      (fun _ h => by rw [h])).weaken (fun _ _ _ h => h) (fun sa' _ _ h => ?_)
+    obtain ⟨⟨⟨hc, hR, hle⟩, hF⟩, rfl⟩ := h
+    exact ⟨⟨hc, by rw [Nat.sub_zero, hm, BitVec.ofNat_toNat, BitVec.setWidth_eq], by
+      rw [hR]; rfl, hle⟩, hF⟩
+  -- the guard
+  have hg := decSim_cmp_mcorr_fr (E := E) (base := base) (rsp := rsp) hctr
+    (fun rg => rg C = BitVec.ofNat 64 (m - 0) ∧ rg R = BitVec.ofNat 64 0 ∧ m ≤ E.nb) False Fr
+  -- the trips
+  have hsim : ∀ t, t < m →
+      DecSim (Inv t) (Inv' t) (body ++ [cmpRI ctr (.imm 0)]) (l.body ++ [l.cmpInstr]) := by
+    intro t ht
+    have hB := hbody.andMach
+      (P := fun sa' => sa'.regs C = BitVec.ofNat 64 (m - t) ∧ sa'.regs R = BitVec.ofNat 64 t
+        ∧ m ≤ E.nb)
+      (Q := fun sa' => sa'.regs C = BitVec.ofNat 64 (m - t) - 1
+        ∧ sa'.regs R = BitVec.ofNat 64 t + 1 ∧ m ≤ E.nb) (fun sa' h => by
+        rw [runBlock_regs_of_decrOnce C _ sa' hdec, runBlock_regs_of_incrOnce R _ sa' hinc,
+          h.1, h.2.1]
+        exact ⟨rfl, rfl, h.2.2⟩)
+    have hC' := decSim_cmp_mcorr_fr (E := E) (base := base) (rsp := rsp) hctr
+      (fun rg => rg C = BitVec.ofNat 64 (m - t) - 1 ∧ rg R = BitVec.ofNat 64 t + 1
+        ∧ m ≤ E.nb) False Fr
+    rw [XLoop.cmpInstr, hlctr]
+    refine (hB.weaken (fun sa' _ _ h => ⟨⟨⟨h.1.1, h.2⟩, ?_⟩, h.1.2⟩)
+      (fun _ _ _ h => ⟨⟨h.1.1, h.2⟩, h.1.2⟩)).append hC'
+    rw [h.1.2.2.1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+    omega
+  obtain ⟨sa', t, k, hh, hrun, hQ⟩ := decNode_halts fn seeds body top endL ctr l m
+    (fun sa' b' zf' => E₀ sa' b' zf' ∧ sa' = sa) (Inv 0)
+    (fun sa' b' zf' => (MCorr E base rsp (L0, Abs.empty) True sa' b' zf'
+      ∧ (sa'.regs C = BitVec.ofNat 64 (m - 0) ∧ sa'.regs R = BitVec.ofNat 64 0 ∧ m ≤ E.nb)
+      ∧ sa'.flags.zf.getD false = (sa'.regs C == 0)) ∧ FrameNames Fr rsp sa' b')
+    Inv Inv'
+    (fun sa' b' => ∃ sa₀, MCorr E base rsp (L0, Abs.empty) False sa₀ b' true
+      ∧ sa'.mem = sa₀.mem)
+    pre post hsL hbL
+    (by rw [findLabelMem_append_lopn _ _ _ hsL, findLabelMem_guarded_top]; simp [Nat.add_comm])
+    (by
+      rw [findLabelMem_append_lopn _ _ _ hsL, findLabelMem_guarded_endL _ _ _ _ hbL htopE]
+      simp only [Option.map_some, Option.some.injEq]
+      omega)
+    hpre' (by rw [XLoop.cmpInstr, hlctr]; exact hg)
+    (fun sa' b' zf' ⟨⟨hc, ⟨hv, _⟩, hz⟩, _⟩ => by
+      refine ⟨hc.1.zfEq trivial, ?_⟩
+      rw [← hc.1.zfEq trivial, hz, hv, Nat.sub_zero]
+      simp only [beq_iff_eq]
+      constructor
+      · intro h
+        have h2 := congrArg BitVec.toNat h
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm64] at h2
+        simpa using h2
+      · intro h; rw [h]; rfl)
+    (fun sa' b' zf' pc ⟨⟨hc, hv, _⟩, hF⟩ =>
+      ⟨⟨⟨(hc.1.setLpc pc).dropZf, hc.2⟩, hv⟩, fun p hp => hF p hp⟩)
+    hsim
+    (fun t ht sa' b' zf' ⟨⟨hc, ⟨hv, _⟩, hz⟩, _⟩ => by
+      refine ⟨hc.1.zfEq trivial, ?_⟩
+      rw [← hc.1.zfEq trivial, hz, hv, ofNat_sub_one m t ht]
+      exact ofNat_eq_zero_iff m t ht hm64)
+    (fun t ht sa' b' zf' pc ⟨⟨hc, ⟨hv, hr, hle⟩, _⟩, hF⟩ =>
+      ⟨⟨⟨(hc.1.setLpc pc).dropZf, hc.2⟩, by rw [hv, ofNat_sub_one m t ht], by
+        rw [hr, BitVec.ofNat_add]; rfl, hle⟩, fun p hp => hF p hp⟩)
+    (fun sa' b' ⟨⟨hc, _⟩, _⟩ => ⟨sa', hc, runBlock_mem_of_noStoreB post sa' hpost⟩)
+    sa b zf hpc ⟨hE, rfl⟩
+  obtain ⟨sa₀, hc, hmem⟩ := hQ
+  refine ⟨sa', t, k, hh, hrun, fun A j hk => ?_⟩
+  obtain ⟨hj, arr, ha, hr⟩ := hc.1.cells A j hk
+  exact ⟨arr, ha, by rw [hmem]; exact hr⟩
+
 /-- **A checked node with word-array memory on both machines.** The flag-machine node
     `seeds ++ guardedFlagLoopLinstrRM top endL ctr body` with all-`Lopn` seeds and body and
     the decoded node `nodeLayout pre l post`: the prologue `hpre` simulates the seeds from
@@ -646,89 +850,13 @@ theorem decNodeMem_halts {E : MemEnv} {base : String → BitVec 64} {rsp : BitVe
       ∧ ∀ A j, regK E.rs A j → ∃ arr : Fin (regLen E.rs A) → BitVec 64,
           t.prog.base.getArr A 64 (regLen E.rs A) = some arr
             ∧ read64 sa'.mem ((regLay E.rs base).addr A j) = stackGet arr j := by
-  have hsL : ∀ i ∈ seeds, IsLopn i := fun i hi => isLopnB_isLopn (List.all_eq_true.mp hseedsL i hi)
-  have hbL : ∀ i ∈ body, IsLopn i := fun i hi => isLopnB_isLopn (List.all_eq_true.mp hbodyL i hi)
-  set C := E.pi ctr with hC
-  set m := ((aMachine.runBlock sa pre).regs C).toNat with hm
-  have hm64 : m < 2 ^ 64 := BitVec.isLt _
-  let Inv : Nat → AState → LstateM → Bool → Prop := fun t sa' b' zf' =>
-    MCorr E base rsp (L0, Abs.empty) False sa' b' zf'
-      ∧ (sa'.regs C = BitVec.ofNat 64 (m - t) ∧ sa'.regs R = BitVec.ofNat 64 t ∧ m ≤ E.nb)
-  let Inv' : Nat → AState → LstateM → Bool → Prop := fun t sa' b' zf' =>
-    MCorr E base rsp (L0, Abs.empty) True sa' b' zf'
-      ∧ (sa'.regs C = BitVec.ofNat 64 (m - t) - 1 ∧ sa'.regs R = BitVec.ofNat 64 t + 1
-        ∧ m ≤ E.nb) ∧ sa'.flags.zf.getD false = (sa'.regs C == 0)
-  -- the prologue, at the entry state `sa`
-  have hpre' : DecSim (fun sa' b' zf' => E₀ sa' b' zf' ∧ sa' = sa) (Inv 0) seeds pre := by
-    refine (hpre.andMach (P := (· = sa)) (Q := (· = aMachine.runBlock sa pre))
-      (fun _ h => by rw [h])).weaken (fun _ _ _ h => h) (fun sa' _ _ h => ?_)
-    obtain ⟨⟨hc, hR, hle⟩, rfl⟩ := h
-    exact ⟨hc, by rw [Nat.sub_zero, hm, BitVec.ofNat_toNat, BitVec.setWidth_eq], by
-      rw [hR]; rfl, hle⟩
-  -- the guard
-  have hg := decSim_cmp_mcorr (E := E) (base := base) (rsp := rsp) hctr
-    (fun rg => rg C = BitVec.ofNat 64 (m - 0) ∧ rg R = BitVec.ofNat 64 0 ∧ m ≤ E.nb) False
-  -- the trips
-  have hsim : ∀ t, t < m →
-      DecSim (Inv t) (Inv' t) (body ++ [cmpRI ctr (.imm 0)]) (l.body ++ [l.cmpInstr]) := by
-    intro t ht
-    have hB := (decSim_of_loopOK_idx (E := E) (base := base) (rsp := rsp) hsep hloop
-      False).andMach
-      (P := fun sa' => sa'.regs C = BitVec.ofNat 64 (m - t) ∧ sa'.regs R = BitVec.ofNat 64 t
-        ∧ m ≤ E.nb)
-      (Q := fun sa' => sa'.regs C = BitVec.ofNat 64 (m - t) - 1
-        ∧ sa'.regs R = BitVec.ofNat 64 t + 1 ∧ m ≤ E.nb) (fun sa' h => by
-        rw [runBlock_regs_of_decrOnce C _ sa' hdec, runBlock_regs_of_incrOnce R _ sa' hinc,
-          h.1, h.2.1]
-        exact ⟨rfl, rfl, h.2.2⟩)
-    have hC' := decSim_cmp_mcorr (E := E) (base := base) (rsp := rsp) hctr
-      (fun rg => rg C = BitVec.ofNat 64 (m - t) - 1 ∧ rg R = BitVec.ofNat 64 t + 1
-        ∧ m ≤ E.nb) False
-    rw [XLoop.cmpInstr, hlctr]
-    refine (hB.weaken (fun sa' _ _ h => ⟨⟨h.1, ?_⟩, h.2⟩) (fun _ _ _ h => h)).append hC'
-    rw [h.2.2.1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-    omega
-  obtain ⟨sa', t, k, hh, hrun, hQ⟩ := decNode_halts fn seeds body top endL ctr l m
-    (fun sa' b' zf' => E₀ sa' b' zf' ∧ sa' = sa) (Inv 0)
-    (fun sa' b' zf' => MCorr E base rsp (L0, Abs.empty) True sa' b' zf'
-      ∧ (sa'.regs C = BitVec.ofNat 64 (m - 0) ∧ sa'.regs R = BitVec.ofNat 64 0 ∧ m ≤ E.nb)
-      ∧ sa'.flags.zf.getD false = (sa'.regs C == 0))
-    Inv Inv'
-    (fun sa' b' => ∃ sa₀, MCorr E base rsp (L0, Abs.empty) False sa₀ b' true
-      ∧ sa'.mem = sa₀.mem)
-    pre post hsL hbL
-    (by rw [findLabelMem_append_lopn _ _ _ hsL, findLabelMem_guarded_top]; simp [Nat.add_comm])
-    (by
-      rw [findLabelMem_append_lopn _ _ _ hsL, findLabelMem_guarded_endL _ _ _ _ hbL htopE]
-      simp only [Option.map_some, Option.some.injEq]
-      omega)
-    hpre' (by rw [XLoop.cmpInstr, hlctr]; exact hg)
-    (fun sa' b' zf' ⟨hc, ⟨hv, _⟩, hz⟩ => by
-      refine ⟨hc.1.zfEq trivial, ?_⟩
-      rw [← hc.1.zfEq trivial, hz, hv, Nat.sub_zero]
-      simp only [beq_iff_eq]
-      constructor
-      · intro h
-        have h2 := congrArg BitVec.toNat h
-        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm64] at h2
-        simpa using h2
-      · intro h; rw [h]; rfl)
-    (fun sa' b' zf' pc ⟨hc, hv, _⟩ =>
-      ⟨⟨(hc.1.setLpc pc).dropZf, hc.2⟩, hv⟩)
-    hsim
-    (fun t ht sa' b' zf' ⟨hc, ⟨hv, _⟩, hz⟩ => by
-      refine ⟨hc.1.zfEq trivial, ?_⟩
-      rw [← hc.1.zfEq trivial, hz, hv, ofNat_sub_one m t ht]
-      exact ofNat_eq_zero_iff m t ht hm64)
-    (fun t ht sa' b' zf' pc ⟨hc, ⟨hv, hr, hle⟩, _⟩ =>
-      ⟨⟨(hc.1.setLpc pc).dropZf, hc.2⟩, by rw [hv, ofNat_sub_one m t ht], by
-        rw [hr, BitVec.ofNat_add]; rfl, hle⟩)
-    (fun sa' b' ⟨hc, _⟩ => ⟨sa', hc, runBlock_mem_of_noStoreB post sa' hpost⟩)
-    sa b zf hpc ⟨hE, rfl⟩
-  obtain ⟨sa₀, hc, hmem⟩ := hQ
-  refine ⟨sa', t, k, hh, hrun, fun A j hk => ?_⟩
-  obtain ⟨hj, arr, ha, hr⟩ := hc.1.cells A j hk
-  exact ⟨arr, ha, by rw [hmem]; exact hr⟩
+  have hnil : ∀ (sa' : AState) (b' : LstateM), FrameNames [] rsp sa' b' :=
+    fun _ _ p hp => by cases hp
+  exact decNodeMem_halts_fr fn seeds body top endL ctr R L0 [] pre post l hseedsL hbodyL htopE
+    ((decSim_of_loopOK_idx (E := E) (base := base) (rsp := rsp) hsep hloop False).weaken
+      (fun _ _ _ h => ⟨h.1.1, h.2⟩) (fun sa' b' _ h => ⟨h, hnil sa' b'⟩))
+    hctr hlctr hdec hinc hpost E₀
+    (hpre.weaken (fun _ _ _ h => h) (fun sa' b' _ h => ⟨h, hnil sa' b'⟩)) sa b zf hpc hE
 
 /-! ## 7. The System V layout -/
 
