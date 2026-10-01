@@ -43,9 +43,16 @@ modules declare into `RISCVBackend.<ModuleName>`. Exceptions: `RiscvModel.lean`,
   `roundtrip_roriw`, and `roundtrip_bcc` for branches (the offset is recovered with
   bit 0 cleared).
 - `SailRiscvDecoder64.lean`: `roundtrip_RInst64` for every `RInst64` other than `li`,
-  under the same `emittedRegs` hypothesis and shifts below 64. `emittedRegs` has 16
-  names; the 64-bit allocator pool `gpPool64` also allocates `s2..s11`, for which the
-  hypothesis fails.
+  with register names in `emittedRegs64` (`emittedRegs` and `s0..s11`, which covers
+  `gpPool64`) and shifts below 64.
+- `RiscvBytes64.lean`: `MInst64` (an `RInst64` or `ADDI`), `runM64`; `liSeq`/`expandLi`
+  load each `li` constant with `addi`/`slli` (`runM64_expandLi`); `decodeMStream64_encode`
+  decodes a block from its little-endian bytes (`encodeMBlock64`); `runM64_phys`
+  combines the two with a renaming checked by `RiscvRename64.renGo`.
+- `RiscvRename64.lean`: `renameRBlock64` and the liveness checker `renGo`;
+  `runRBlock64_rename` preserves the live-out values when `renGo` accepts, so registers
+  can be reused once their value is dead. `allocLive64` is an unproved linear scan whose
+  output `renGo` checks.
 - `SailRvvDecoder.lean`: `roundtrip_rvv` (register names in `vPool`, shifts below 32)
   and `roundtrip_rvv8x16` for `vmulh`.
 - `EncoderDiffAudit.lean`: `example`s pinning words with `zero` in each operand slot
@@ -101,7 +108,9 @@ is the concatenation of the field-operation blocks; its value is not checked in 
 | Per-step Sail relation | `ComToRiscvLsem.riscvStep64_sail_grounded` | `IsBaseAlu i`, destination not `zero`/`x0`, `RegAlign s rf nm`, `(nm (rinstD i)).toNat ≠ 0` | `ComToRiscvLsem.lean` |
 | Scalar waist | `RegToRiscv.regToROp_denote` | every `RegProg` and `RState64` | `RegToRiscv.lean` |
 | Block lowering | `riscvBlock_lowering_denote`, `riscvBlock64_lowering_denote`, `Rvv.rvvBlock_lowering_denote` | all blocks and states | `RiscvLowering.lean`, `RiscvLowering64.lean`, `RvvLowering.lean` |
-| Decode round trip | `SailRiscvDecoder64.roundtrip_RInst64` | not `li`, register names in `emittedRegs`, shifts below 64 | `SailRiscvDecoder64.lean` |
+| Decode round trip | `SailRiscvDecoder64.roundtrip_RInst64` | not `li`, register names in `emittedRegs64`, shifts below 64 | `SailRiscvDecoder64.lean` |
+| Block decode round trip | `RiscvBytes64.decodeMStream64_encode` | every instruction `MInstOK` | `RiscvBytes64.lean` |
+| Renaming under liveness | `RiscvRename64.runRBlock64_rename` | `renGo ρ b L = some Lin`, states agree on `Lin` | `RiscvRename64.lean` |
 
 ## Ascent over RV64
 
@@ -115,7 +124,50 @@ reads the descent theorem `com_riscv_e2e` as a `CorresR`. The demos are
 `../Ascent/Demos/LeanSourceRiscv.lean` (`add_descent_riscv`, a Lean function through
 the descent).
 
+The hand-written kernels are proved over their lowered blocks in
+`../Ascent/Demos/RiscvAddP256Proof.lean` (`addp256_correct`) and
+`../Ascent/Demos/RiscvFe25519AddSubProof.lean` (`feAdd_correct`, `feSub_correct`,
+`feMul121666_correct`, `cswap_correct`). `../Ascent/Demos/RiscvBytesProof.lean` carries
+each to the bytes of a physical block (`addp256Bytes_correct`, `feAddBytes_correct`, …):
+the bytes decode to instructions that compute the same result, for every machine state,
+with inputs in `a0..a7` and the result in `a0..a3` (`cswap` swaps `a0..a3` and
+`a4..a7` in place).
+
+The schoolbook multiply and the field multiply and square are proved in
+`../Ascent/Demos/RiscvFe25519MulProof.lean` (`mul48_run`, `feMul_correct`,
+`feSqr_correct`) and carried to bytes in `../Ascent/Demos/RiscvMulBytesProof.lean`
+(`feMulBytes_correct`, `feSqrBytes_correct`, 1033 and 1037 instructions).
+`../Ascent/Demos/RiscvX25519LadderStepProof.lean` proves that `ladderStepBlock` computes
+`CatCrypt.Util.x25519DoubleAndAdd` (`ladderStep_correct`, for `z2, z3 ≤ 2·p25519`); it is
+stated over `runRBlock64` with symbolic names, since its seventeen field elements need
+more registers than RV64 has.
+
+Descent output reaches the bytes through `../Ascent/DescentRiscvBytes.lean`:
+`com_riscv_bytes` carries `com_riscv_e2e` through a renaming that `renGo` accepts and
+`expandLi`, for any `ComOK` program. `../Ascent/Demos/LeanSourceRiscvBytes.lean`
+instantiates it on `a + b`, `a - b` and the multiply-accumulate column
+`fe25519MacColLoCom` (`addDescentBytes_correct`, `subDescentBytes_correct`,
+`macColLoBytes_correct`).
+
+Memory is a layer over the register machine: `RiscvMem64.lean` pairs `RState64` with the
+byte memory of `../Memory64.lean` (`MState64`) and adds `ld`/`sd` (`XInst64`, `runX`), with their encoding and
+the decode round trip (`decodeXStream64_encode_b`); `runX_lift` runs any register-only
+block unchanged. `../Ascent/CorresRiscvMem.lean` states `CorresRM` over `runX`, with the
+`ld`/`sd` leaves and `corresRM_lift` for register blocks.
+`../Ascent/Demos/RiscvFeMulFnProof.lean` wraps `feMulPhys` into a buffer function
+(`z` at `a0`, `x` at `a1`, `y` at `a2`) that saves and restores `s0..s11` in a 112-byte
+frame below `sp` (`feMulFnBytes_correct`, 1073 instructions); it stops before the return,
+since the model has no control flow.
+The machine model has no alignment check; `feMulFnBytes_correct` requires `sp` 16-byte and
+the buffer pointers 8-byte aligned (`RiscvMem64.Aligned`) as the contract a caller meets.
+
 ## What is not proved
+
+- `runM64` executes the decoded instructions with `evalRInst64`; that it agrees with
+  the Sail model over a whole block is not proved (the Sail refinements are per
+  instruction, for the written value). The bytes of `RiscvBytes64.encodeMBlock64` are
+  not the ones `RiscvElfObject` or `as` produce: `encLi64` and `as` load constants with
+  other sequences.
 
 - The second conjunct of `comToRiscvLsem_correct` and `comToRiscvLsem_correct_mul` is
   membership in the instruction subset. The per-step Sail relation holds under its own
