@@ -373,7 +373,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteFrame
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
-CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.LawfulArrByteOffset
 CatCrypt.Crypto.SecureCompilation.Dialects.LeafCall128Emit
 CatCrypt.Crypto.SecureCompilation.Dialects.MemrefArrayFrontValidate
@@ -381,7 +380,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity2
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity3
 CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
-CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFrontValidate
@@ -810,6 +809,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel

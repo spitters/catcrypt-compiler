@@ -35,7 +35,7 @@ and the secret level otherwise. The checker refuses branches and exit-flag loops
 ## Main definitions
 
 * `forIterLeak`, `whileIterLeak`, `NFProg.leakRun`, `NFCT`
-* `retLvls`, `LvlLe`, `lvlLe`, `allSecret`, `NFProg.levelCheck`
+* `retLvls`, `lvlLe`, `lvlsLe`, `allSecret`, `NFProg.levelCheck`
 
 ## Main results
 
