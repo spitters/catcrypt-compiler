@@ -378,7 +378,9 @@ def regStep (π : String → String) (Ls : List String) (i : LinstrRM) (js : Lis
         if opn == withWidthTag 64 "CMP" && d == a && js == [.cmp (π a) (.reg (π c))] then
           some Ls
         else if opOK π d opn a c js then some (liveW π Ls d (π d))
-        else (mulhiOK π d opn a c js).map fun p => liveW π (liveO π (liveO π Ls p.2) p.1) d (π d)
+        else if opn == withWidthTag 64 "MULXHI" then
+          (mulhiOK π d opn a c js).map fun p => liveW π (liveO π (liveO π Ls p.2) p.1) d (π d)
+        else none
       else none
   | (.Lopn [.reg d] opn [.reg a, .imm k], .reg none) =>
       if decide (a ∈ Ls) then
@@ -546,9 +548,11 @@ theorem regStep_sound {Ls Ls' : List String} {i : LinstrRM} {js : List (JInstr 6
           obtain rfl := Option.some.inj h
           exact (op_sound hac.1 hac.2 hop).weaken (fun _ _ _ h => h)
             (fun _ _ _ h => corr_liveW h)
-        · obtain ⟨⟨D, T⟩, hm, rfl⟩ := Option.map_eq_some_iff.mp h
-          exact (mulhi_sound hac.1 hac.2 hm).weaken (fun _ _ _ h => h)
-            (fun _ _ _ h => corr_liveW_liveO h)
+        · split at h
+          · obtain ⟨⟨D, T⟩, hm, rfl⟩ := Option.map_eq_some_iff.mp h
+            exact (mulhi_sound hac.1 hac.2 hm).weaken (fun _ _ _ h => h)
+              (fun _ _ _ h => corr_liveW_liveO h)
+          · exact absurd h (by simp)
     · exact absurd h (by simp)
   · rename_i d opn a k
     split at h
