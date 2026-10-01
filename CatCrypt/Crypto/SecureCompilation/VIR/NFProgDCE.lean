@@ -21,6 +21,12 @@ it, does not read the bound variable. The denotation is in `Option`, so a remove
 binding may be one that fails; the pass refines the denotation: a run of the source
 to `some out` is a run of the result to `some out` (`NFProg.denote_dce`).
 
+Removing the frame of a loop, dropping a zero initialisation and binding a literal at
+its use are choices of the lowering of `NFProg` to `LowCT`, not passes on `NFProg`.
+`NFProg.dce` is the pass on `NFProg` between the front `impToNF` and the readback
+`nfToImp`; the rewritings `fuseMulHiT` and `stripArrTailT` act on the typed body before
+the front.
+
 ## Main definitions
 
 * `PRen`, `PRen.lift`, `PRen.liftApp`, `PRen.drop` — partial renamings.

@@ -186,6 +186,9 @@ inductive NfOp where
   | thead (h t : NfTy)
   /-- The tuple of the components after the first. -/
   | ttail (h t : NfTy)
+  /-- The operation `op` with the source name `n` of the value it binds; the name does not
+      change the denotation. -/
+  | named (n : String) (op : NfOp)
   deriving Repr
 
 /-- The argument types of an operation. -/
@@ -207,6 +210,7 @@ inductive NfOp where
   | .trip t => [.int, t]
   | .tconsV h t => [h, t]
   | .thead h t | .ttail h t => [.tcons h t]
+  | .named _ op => op.sig
 
 /-- The result type of an operation. -/
 @[reducible] def NfOp.ret : NfOp → NfTy
@@ -228,6 +232,7 @@ inductive NfOp where
   | .tconsV h t => .tcons h t
   | .thead h _ => h
   | .ttail _ t => t
+  | .named _ op => op.ret
 
 /-- The dialect of the normal form: value-semantic words, bits, arrays and pairs, and
     typed leaf calls. -/
@@ -368,6 +373,7 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) → HVector NfTy.denote op.sig �
   | .tconsV _ _, args => some (args.head, args.tail.head)
   | .thead _ _, args => some args.head.1
   | .ttail _ _, args => some args.head.2
+  | .named _ op, args => nfDenoteOp T op args
 
 /-- The `Option`-valued denotation of `nfDialect` with the leaves of `T`. -/
 @[instance_reducible] def nfDenote (T : NfLeafTable) : DialectDenoteM nfDialect Option where

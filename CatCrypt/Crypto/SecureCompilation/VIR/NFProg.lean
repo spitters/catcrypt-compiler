@@ -46,6 +46,9 @@ a counter value as a `Nat` and embeds a trip index into the word type, following
 * `NFProg.ofCom`, `NFProg.ofComR` — the embeddings of `Com` and `ComR`.
 * `NFProg.toCom?` — the straight-line program of a one-result `NFProg` made of
   bindings and a return.
+* `NFPre`, `NFPre.plug`, `NFPre.append`, `NFPre.wk`, `NFPre.denote` — the prefixes of
+  bindings and structured nodes with a hole, their plugging, composition, weakening
+  and denotation.
 
 ## Main results
 
@@ -61,6 +64,9 @@ a counter value as a `Nat` and embeds a trip index into the word type, following
   denotation.
 * `NFProg.denote_of_toCom?` — a program `toCom?` reads as a straight-line program
   returns that program's denotation.
+* `NFPre.denote_plug`, `NFPre.denote_append` — a plugged prefix denotes the program at
+  the valuation of its hole; a composed prefix denotes the second prefix at the hole of
+  the first.
 -/
 
 @[expose] public section
