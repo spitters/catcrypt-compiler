@@ -34,6 +34,7 @@ they are closed by `decide`.
 
 * `upd`, `NZ`, `Reach`: the register valuation update, the non-zero-register
   predicate, and the reachability of a described state.
+* `limbs4`: the little-endian value of four registers.
 * `AddccOK`, `AddcOK`, `SubbbOK`, `SubbOK`, `CsubOK`: the name conditions of the macros.
 
 ## Main results
@@ -45,8 +46,10 @@ they are closed by `decide`.
 * `run_addcc`, `run_addc`, `run_subbb`, `run_subb`, `run_csub`: transport through a
   carry macro, with the `Nat` equation of the written words.
 * `mul_mulhu_recompose`: `lo + 2^64 · hi = a · b` for the `mul`/`mulhu` pair.
-* `lowerRBlock64_cons`, `lowerRBlock64_append`, `run_nil`: the block algebra the
-  segment proofs fold over.
+* `lowerRBlock64_cons`, `lowerRBlock64_append`, `run_nil`, `Reach.mono`: the block algebra
+  the segment proofs fold over.
+* `limbs4_lt`, `xor_one_toNat`: the value of four limbs is below `2^256`; `b ^^^ 1` is
+  `1 - b` on a `0`/`1` word.
 -/
 
 @[expose] public section
@@ -96,6 +99,25 @@ def Reach (P : AStateR → Prop) (t : RState64) : Prop := ∃ R, SRr t R ∧ P R
 theorem run_nil {P : AStateR → Prop} {R : AStateR} {t : RState64} (hs : SRr t R)
     (hP : P R) : Reach P (runRBlock64 t []) :=
   ⟨R, hs, hP⟩
+
+/-- The little-endian value of four registers. -/
+def limbs4 (R : AStateR) (a0 a1 a2 a3 : String) : Nat :=
+  (R a0).toNat + 2 ^ 64 * (R a1).toNat + 2 ^ 128 * (R a2).toNat + 2 ^ 192 * (R a3).toNat
+
+theorem limbs4_lt (R : AStateR) (a0 a1 a2 a3 : String) : limbs4 R a0 a1 a2 a3 < 2 ^ 256 := by
+  have := (R a0).isLt; have := (R a1).isLt; have := (R a2).isLt; have := (R a3).isLt
+  unfold limbs4; omega
+
+/-- `b ^^^ 1` for a `0`/`1` word is `1 - b`. -/
+theorem xor_one_toNat (b : X64R) (hb : b.toNat ≤ 1) :
+    (b ^^^ BitVec.ofNat 64 1).toNat = 1 - b.toNat := by
+  rcases Nat.le_one_iff_eq_zero_or_eq_one.mp hb with h | h
+  · rw [BitVec.eq_of_toNat_eq (x := b) (y := 0) (by simpa using h)]; decide
+  · rw [BitVec.eq_of_toNat_eq (x := b) (y := 1) (by simpa using h)]; decide
+
+theorem Reach.mono {P P' : AStateR → Prop} {t : RState64} (h : Reach P t)
+    (hPP : ∀ R, P R → P' R) : Reach P' t :=
+  let ⟨R, hs, hP⟩ := h; ⟨R, hs, hPP R hP⟩
 
 /-! ## The block algebra -/
 
