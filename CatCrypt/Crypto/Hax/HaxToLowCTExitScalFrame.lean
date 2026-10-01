@@ -26,8 +26,15 @@ The A-normal form of the front binds a literal operand to a word,
 `RLetU64Zero t (RSeq (RScalarSet t k) rest)`. When `rest` leaves `t` unwritten, `litProp`
 writes the literal `k` in place of `t` in the scalar expressions of `rest` (`substLitC`), so
 that, for example, a shift by a literal count is a shift by an immediate. A run of a program
-is a run of its propagated form to the same state (`litProp_run`). `exitScalPrep` is the frame
-normalisation followed by the propagation.
+is a run of its propagated form to the same state (`litProp_run`).
+
+A word binder whose word the program never reads is dead, with its writes (`deadElim`, outside
+the result words `isResName`); a word binder whose body reads no word before writing it is a
+dead initialisation (`dropInit`). The back end removes such code, and the straight-line check
+compares the flag machine with the machine instruction by instruction, so the front removes it
+first. A run of the program gives a run of the result to a state that agrees with it on the
+tower slots and the result words (`ResAgree`). `exitScalPrep` is the frame normalisation, the
+propagation, the dead-word elimination and the dead-initialisation removal.
 
 ## Main results
 
@@ -38,6 +45,10 @@ normalisation followed by the propagation.
 * `substLitE`, `evalState_substLitE`, `substLitC`, `substLitC_run` — a literal in place of a
   word that holds it.
 * `litLet`, `litProp`, `litProp_run` — the propagation of the literal bindings of a spine.
+* `noReadE`, `noReadC`, `writesX`, `AgreeOff`, `sim_off1`, `killK`, `killK_sim` — runs from
+  states agreeing off words the program never reads.
+* `isResName`, `ResAgree`, `deadElim`, `deadElim_run`, `dropInit`, `dropInit_run` — the dead
+  words and dead initialisations.
 * `exitScalPrep`, `exitScalPrep_run` — the normalisation the word scalarisation reads.
 -/
 
@@ -272,13 +283,272 @@ theorem litProp_run : ∀ (c : LowCT) {rs rs' : RustState}, RustExec N L c rs rs
       | letU64Zero _ _ _ _ hb => exact litLet_run (.letU64Zero _ _ _ _ (ih hb))
   | _ => intro rs rs' h; exact h
 
-/-- The normalisation the word scalarisation reads: the exit frame without its flag test
-    (`exitScalFrameNorm`), then literal propagation (`litProp`). -/
-def exitScalPrep (c : LowCT) : LowCT := litProp (exitScalFrameNorm c)
+/-! ## Dead words -/
 
-/-- **The normalised program keeps its runs.** -/
+/-- The expression reads no word of `K`. -/
+def noReadE (K : List String) : SExpr → Bool
+  | .SVar y => !K.contains y
+  | .SAdd a b | .SSub a b | .SMul a b | .SShr a b | .SShl a b | .SAnd a b | .SXor a b
+  | .SLt a b | .SAsr a b | .SMulS a b | .SMulHiU a b | .SMulHiS a b => noReadE K a && noReadE K b
+  | _ => true
+
+/-- Two states agree off the words `K`: equal tower slots, equal words outside `K`. -/
+def AgreeOff (K : List String) (r1 r2 : RustState) : Prop :=
+  r1.rsTower = r2.rsTower ∧ ∀ y, y ∉ K → r1.rsScalar y = r2.rsScalar y
+
+theorem evalState_congr_agreeOff {K : List String} {rs1 rs2 : RustState} (h : AgreeOff K rs1 rs2) :
+    ∀ e : SExpr, noReadE K e = true → e.evalState rs1 = e.evalState rs2 := by
+  intro e
+  induction e with
+  | SVar y =>
+      intro hy
+      simp only [noReadE, Bool.not_eq_true'] at hy
+      exact h.2 y (fun hm => by rw [List.contains_iff_mem.mpr hm] at hy; cases hy)
+  | SLit n => intro _; rfl
+  | SLimb v i => intro _; simp only [SExpr.evalState, rsTowerLimb, h.1]
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SShr a b iha ihb
+  | SShl a b iha ihb | SAnd a b iha ihb | SXor a b iha ihb | SLt a b iha ihb
+  | SAsr a b iha ihb | SMulS a b iha ihb | SMulHiU a b iha ihb | SMulHiS a b iha ihb =>
+      intro hab
+      simp only [noReadE, Bool.and_eq_true] at hab
+      simp only [SExpr.evalState, iha hab.1, ihb hab.2]
+
+/-- The command is built from skips, sequences, word binders and scalar writes, and reads no
+    word of `K`. -/
+def noReadC (K : List String) : LowCT → Bool
+  | .RSkip => true
+  | .RSeq a b => noReadC K a && noReadC K b
+  | .RLetU64Zero _ b => noReadC K b
+  | .RScalarSet _ _ => true
+  | .RScalarSetExpr _ e => noReadE K e
+  | _ => false
+
+/-- The command writes the word `x` on its spine, outside a binder of `x`. -/
+def writesX (x : String) : LowCT → Bool
+  | .RSeq a b => writesX x a || writesX x b
+  | .RLetU64Zero y b => y != x && writesX x b
+  | .RScalarSet y _ => y == x
+  | .RScalarSetExpr y _ => y == x
+  | _ => false
+
+theorem agreeOff_set {K : List String} {r1 r2 : RustState} (h : AgreeOff K r1 r2) (y : String)
+    (v : Nat) : AgreeOff K (rsSetScalar r1 y v) (rsSetScalar r2 y v) :=
+  ⟨h.1, fun z hz => by simp only [rsSetScalar]; split <;> [rfl; exact h.2 z hz]⟩
+
+theorem agreeOff_set_mem {K : List String} {r1 r2 : RustState} (h : AgreeOff K r1 r2)
+    {y : String} (hy : y ∈ K) (v : Nat) : AgreeOff K (rsSetScalar r1 y v) r2 :=
+  ⟨h.1, fun z hz => by
+    simp only [rsSetScalar]
+    split
+    · rename_i he; rw [beq_iff_eq] at he; subst he; exact absurd hy hz
+    · exact h.2 z hz⟩
+
+theorem agreeOff_refl (K : List String) (r : RustState) : AgreeOff K r r := ⟨rfl, fun _ _ => rfl⟩
+
+theorem eq_of_agreeOff_set {x : String} {r1 r2 : RustState} (h : AgreeOff [x] r1 r2) (v : Nat) :
+    rsSetScalar r1 x v = rsSetScalar r2 x v := by
+  obtain ⟨t1, s1⟩ := r1
+  obtain ⟨t2, s2⟩ := r2
+  obtain ⟨ht, hs⟩ := h
+  simp only at ht
+  subst ht
+  simp only [rsSetScalar, RustState.mk.injEq, true_and]
+  funext z
+  split
+  · rfl
+  · rename_i hz
+    exact hs z (by simpa using hz)
+
+/-- **A command that reads no `x`** runs from two states agreeing off `x` to states agreeing
+    off `x`, equal when it writes `x` on its spine. -/
+theorem sim_off1 {x : String} : ∀ (c : LowCT), noReadC [x] c = true →
+    ∀ {rs1 r1 rs2 : RustState}, RustExec N L c rs1 r1 → AgreeOff [x] rs1 rs2 →
+      ∃ r2, RustExec N L c rs2 r2 ∧ AgreeOff [x] r1 r2 ∧ (writesX x c = true → r1 = r2) := by
+  intro c
+  induction c with
+  | RSkip =>
+      intro _ rs1 r1 rs2 h hag
+      cases h
+      exact ⟨rs2, .skip _, hag, by simp [writesX]⟩
+  | RSeq a b iha ihb =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC, Bool.and_eq_true] at hn
+      cases h with
+      | seq _ _ _ m1 _ h1 h2 =>
+        obtain ⟨m2, h1', hag1, hw1⟩ := iha hn.1 h1 hag
+        by_cases hwa : writesX x a = true
+        · obtain rfl := hw1 hwa
+          exact ⟨r1, .seq _ _ _ _ _ h1' h2, agreeOff_refl _ _, fun _ => rfl⟩
+        · obtain ⟨r2, h2', hag2, hw2⟩ := ihb hn.2 h2 hag1
+          refine ⟨r2, .seq _ _ _ _ _ h1' h2', hag2, fun hw => hw2 ?_⟩
+          simpa [writesX, hwa] using hw
+  | RLetU64Zero y b ih =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC] at hn
+      cases h with
+      | letU64Zero _ _ _ _ hb =>
+        by_cases hy : y = x
+        · subst hy
+          rw [eq_of_agreeOff_set hag 0] at hb
+          exact ⟨r1, .letU64Zero _ _ _ _ hb, agreeOff_refl _ _, fun _ => rfl⟩
+        · obtain ⟨r2, hb', hag2, hw2⟩ := ih hn hb (agreeOff_set hag y 0)
+          refine ⟨r2, .letU64Zero _ _ _ _ hb', hag2, fun hw => hw2 ?_⟩
+          simpa [writesX, hy] using hw
+  | RScalarSet y n =>
+      intro _ rs1 r1 rs2 h hag
+      cases h
+      by_cases hy : y = x
+      · subst hy
+        exact ⟨_, .scalarSet _ _ _, by rw [eq_of_agreeOff_set hag n]; exact agreeOff_refl _ _,
+          fun _ => eq_of_agreeOff_set hag n⟩
+      · exact ⟨_, .scalarSet _ _ _, agreeOff_set hag y n, by simp [writesX, hy]⟩
+  | RScalarSetExpr y e =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC] at hn
+      cases h
+      rw [evalState_congr_agreeOff hag e hn]
+      by_cases hy : y = x
+      · subst hy
+        exact ⟨_, .scalarSetExpr _ _ _, by rw [eq_of_agreeOff_set hag]; exact agreeOff_refl _ _,
+          fun _ => eq_of_agreeOff_set hag _⟩
+      · exact ⟨_, .scalarSetExpr _ _ _, agreeOff_set hag y _, by simp [writesX, hy]⟩
+  | _ => intro hn; simp [noReadC] at hn
+
+/-- The command with the binders and the scalar writes of the words of `K` removed. -/
+def killK (K : List String) : LowCT → LowCT
+  | .RSeq a b => .RSeq (killK K a) (killK K b)
+  | .RLetU64Zero y b => if K.contains y then killK K b else .RLetU64Zero y (killK K b)
+  | .RScalarSet y n => if K.contains y then .RSkip else .RScalarSet y n
+  | .RScalarSetExpr y e => if K.contains y then .RSkip else .RScalarSetExpr y e
+  | c => c
+
+/-- **Removing the words of `K` that the command never reads** keeps its runs up to the words of
+    `K`. -/
+theorem killK_sim {K : List String} : ∀ (c : LowCT), noReadC K c = true →
+    ∀ {rs1 r1 rs2 : RustState}, RustExec N L c rs1 r1 → AgreeOff K rs1 rs2 →
+      ∃ r2, RustExec N L (killK K c) rs2 r2 ∧ AgreeOff K r1 r2 := by
+  intro c
+  induction c with
+  | RSkip =>
+      intro _ rs1 r1 rs2 h hag
+      cases h
+      exact ⟨rs2, .skip _, hag⟩
+  | RSeq a b iha ihb =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC, Bool.and_eq_true] at hn
+      cases h with
+      | seq _ _ _ m1 _ h1 h2 =>
+        obtain ⟨m2, h1', hag1⟩ := iha hn.1 h1 hag
+        obtain ⟨r2, h2', hag2⟩ := ihb hn.2 h2 hag1
+        exact ⟨r2, .seq _ _ _ _ _ h1' h2', hag2⟩
+  | RLetU64Zero y b ih =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC] at hn
+      cases h with
+      | letU64Zero _ _ _ _ hb =>
+        by_cases hy : K.contains y = true
+        · simp only [killK, hy, if_true]
+          exact ih hn hb (agreeOff_set_mem hag (List.contains_iff_mem.mp hy) 0)
+        · simp only [killK, hy, Bool.false_eq_true, if_false]
+          obtain ⟨r2, hb', hag2⟩ := ih hn hb (agreeOff_set hag y 0)
+          exact ⟨r2, .letU64Zero _ _ _ _ hb', hag2⟩
+  | RScalarSet y n =>
+      intro _ rs1 r1 rs2 h hag
+      cases h
+      by_cases hy : K.contains y = true
+      · simp only [killK, hy, if_true]
+        exact ⟨rs2, .skip _, agreeOff_set_mem hag (List.contains_iff_mem.mp hy) n⟩
+      · simp only [killK, hy, Bool.false_eq_true, if_false]
+        exact ⟨_, .scalarSet _ _ _, agreeOff_set hag y n⟩
+  | RScalarSetExpr y e =>
+      intro hn rs1 r1 rs2 h hag
+      simp only [noReadC] at hn
+      cases h
+      by_cases hy : K.contains y = true
+      · simp only [killK, hy, if_true]
+        exact ⟨rs2, .skip _, agreeOff_set_mem hag (List.contains_iff_mem.mp hy) _⟩
+      · simp only [killK, hy, Bool.false_eq_true, if_false]
+        rw [evalState_congr_agreeOff hag e hn]
+        exact ⟨_, .scalarSetExpr _ _ _, agreeOff_set hag y _⟩
+  | _ => intro hn; simp [noReadC] at hn
+
+/-- The word binders on the spine of sequences and word binders. -/
+def binders : LowCT → List String
+  | .RSeq a b => binders a ++ binders b
+  | .RLetU64Zero y b => y :: binders b
+  | _ => []
+
+/-- The result words of the exit front: the scalar result slot `__exit_res` and the component
+    slots `__exit_rc…`. -/
+def isResName (y : String) : Bool :=
+  y == "__exit_res" || y.toList.take 9 == "__exit_rc".toList
+
+/-- Two states agree on the tower slots and the result words. -/
+def ResAgree (r1 r2 : RustState) : Prop :=
+  r1.rsTower = r2.rsTower ∧ ∀ y, isResName y = true → r1.rsScalar y = r2.rsScalar y
+
+/-- The binders of the spine other than the result words. -/
+def deadNames (c : LowCT) : List String := (binders c).filter fun y => !isResName y
+
+/-- **Dead-word elimination.** When the command reads none of its bound words other than the
+    result words, those binders and their writes removed (`killK`); otherwise the command. -/
+def deadElim (c : LowCT) : LowCT :=
+  if noReadC (deadNames c) c then killK (deadNames c) c else c
+
+theorem deadElim_run {c : LowCT} {rs r : RustState} (h : RustExec N L c rs r) :
+    ∃ r', RustExec N L (deadElim c) rs r' ∧ ResAgree r r' := by
+  unfold deadElim
+  split
+  · rename_i hn
+    obtain ⟨r', h', hag⟩ := killK_sim c hn h (agreeOff_refl _ rs)
+    refine ⟨r', h', hag.1, fun y hy => hag.2 y (fun hm => ?_)⟩
+    simp only [deadNames, List.mem_filter, hy, Bool.not_true, Bool.false_eq_true,
+      and_false] at hm
+  · exact ⟨r, h, rfl, fun _ _ => rfl⟩
+
+/-- **Dead initialisation.** A word binder `RLetU64Zero x b` whose body reads no `x` and writes
+    `x` on its spine without the binder; along the spine. -/
+def dropInit : LowCT → LowCT
+  | .RSeq a b => .RSeq (dropInit a) (dropInit b)
+  | .RLetU64Zero x b =>
+      if noReadC [x] b && writesX x b then dropInit b else .RLetU64Zero x (dropInit b)
+  | c => c
+
+theorem dropInit_run : ∀ (c : LowCT) {rs r : RustState}, RustExec N L c rs r →
+    RustExec N L (dropInit c) rs r := by
+  intro c
+  induction c with
+  | RSeq a b iha ihb =>
+      intro rs r h
+      cases h with
+      | seq _ _ _ m _ h1 h2 => exact .seq _ _ _ _ _ (iha h1) (ihb h2)
+  | RLetU64Zero x b ih =>
+      intro rs r h
+      cases h with
+      | letU64Zero _ _ _ _ hb =>
+        simp only [dropInit]
+        split
+        · rename_i hc
+          simp only [Bool.and_eq_true] at hc
+          have hag : AgreeOff [x] (rsSetScalar rs x 0) rs :=
+            agreeOff_set_mem (agreeOff_refl [x] rs) (List.mem_singleton_self x) 0
+          obtain ⟨r2, hb', -, hw⟩ := sim_off1 b hc.1 hb hag
+          rw [hw hc.2]
+          exact ih hb'
+        · exact .letU64Zero _ _ _ _ (ih hb)
+  | _ => intro rs r h; exact h
+
+/-- The normalisation the word scalarisation reads: the exit frame without its flag test
+    (`exitScalFrameNorm`), literal propagation (`litProp`), dead-word elimination
+    (`deadElim`) and dead initialisation (`dropInit`). -/
+def exitScalPrep (c : LowCT) : LowCT := dropInit (deadElim (litProp (exitScalFrameNorm c)))
+
+/-- **The normalised program keeps its runs** up to the dead words: a run of `c` gives a run of
+    `exitScalPrep c` from the same state to a state that agrees with it on the tower slots and
+    the result words. -/
 theorem exitScalPrep_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs rs') :
-    RustExec N L (exitScalPrep c) rs rs' :=
-  litProp_run _ (exitScalFrameNorm_run h)
+    ∃ rs'', RustExec N L (exitScalPrep c) rs rs'' ∧ ResAgree rs' rs'' := by
+  obtain ⟨r', h', hra⟩ := deadElim_run (litProp_run _ (exitScalFrameNorm_run h))
+  exact ⟨r', dropInit_run _ h', hra⟩
 
 end CatCrypt.Crypto.Hax
