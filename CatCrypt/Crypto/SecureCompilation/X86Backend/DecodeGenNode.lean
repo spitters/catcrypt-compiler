@@ -64,8 +64,8 @@ separation of the cells from the frame words.
 * `memSep_of_regions`, `frameSep_of_regions`, `ctrBound_of_regions`: the per-trip
   hypotheses from `AbiLayout.Regions`.
 * `decNodeAbi_halts`: the node from the System V entry state, with no separation hypothesis.
-* `decNodeAbi_result`: the decoded bytes of a node halt in a state whose result read-back
-  (`AbiLayout.ResultOf`) is the flag machine's output array.
+* `result_of_cells`, `decNodeAbi_result`: the decoded bytes of a node halt in a state whose
+  result read-back (`AbiLayout.ResultOf`) is the flag machine's output array.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode
@@ -1053,6 +1053,33 @@ theorem decNodeAbi_halts (σ : AbiLayout) (E : MemEnv) (fn : String)
     hctr hlctr hdec hinc hpost _ (decSim_pre hsp hp sa (frameSep_of_regions hrs hreg) hreg.1)
     sa b zf hpc ⟨rfl, hent⟩
 
+/-- **The result read-back from the cells.** When the result of `σ` is the words of the
+    region `A`, and every cell of the regions is read in the memory of `sa'` at its layout
+    address as the flag-machine state `t` holds it, `σ` reads back the array `t` holds at
+    `A`. -/
+theorem result_of_cells (σ : AbiLayout) (E : MemEnv) (A RA : String)
+    (hA : abiReg σ A = some RA) (hres : σ.result = .words RA (regLen E.rs A))
+    (hn : 0 < regLen E.rs A) (sa sa' : AState) (t : LstateMF)
+    (hcells : ∀ A j, regK E.rs A j → ∃ arr : Fin (regLen E.rs A) → BitVec 64,
+      t.prog.base.getArr A 64 (regLen E.rs A) = some arr
+        ∧ read64 sa'.mem ((regLay E.rs (abiBase (abiReg σ) sa)).addr A j) = stackGet arr j) :
+    ∃ arr : Fin (regLen E.rs A) → BitVec 64,
+      t.prog.base.getArr A 64 (regLen E.rs A) = some arr
+        ∧ σ.ResultOf sa sa'
+            (.array ((List.range (regLen E.rs A)).map fun j => .int (stackGet arr j).toNat)) := by
+  obtain ⟨arr, ha, -⟩ := hcells A 0 hn
+  refine ⟨arr, ha, ?_⟩
+  show _ = σ.result.read sa sa'
+  rw [hres]
+  simp only [ResultKind.read, wordsAt]
+  congr 1
+  refine List.map_congr_left fun j hj => ?_
+  obtain ⟨arr', ha', hr⟩ := hcells A j (List.mem_range.mp hj)
+  rw [ha] at ha'
+  obtain rfl := Option.some.inj ha'
+  rw [← hr]
+  simp [Layout.addr, regLay, abiBase, hA]
+
 /-- **The decoded bytes of a node realise the result read-back.** For bytes that decode to
     the node layout and a node that passes `nodeCheck`, from an entry state satisfying
     `σ.Regions` and the entry correspondence: when the result of `σ` is the `n` words at the
@@ -1078,17 +1105,7 @@ theorem decNodeAbi_result (σ : AbiLayout) (E : MemEnv) (fn : String)
                 (.array ((List.range (regLen E.rs A)).map fun j => .int (stackGet arr j).toNat)) := by
   obtain ⟨sa', t, k, hh, hrun, hcells⟩ := decNodeAbi_halts σ E fn seeds body top endL ctr R L0
     pre post l hchk sa b zf hpc hreg hent
-  obtain ⟨arr, ha, -⟩ := hcells A 0 hn
-  refine ⟨_, sa', t, k, hdec, hh, hrun, arr, ha, ?_⟩
-  show _ = σ.result.read sa sa'
-  rw [hres]
-  simp only [ResultKind.read, wordsAt]
-  congr 1
-  refine List.map_congr_left fun j hj => ?_
-  obtain ⟨arr', ha', hr⟩ := hcells A j (List.mem_range.mp hj)
-  rw [ha] at ha'
-  obtain rfl := Option.some.inj ha'
-  rw [← hr]
-  simp [Layout.addr, regLay, abiBase, hA]
+  obtain ⟨arr, ha, hR⟩ := result_of_cells σ E A RA hA hres hn sa sa' t hcells
+  exact ⟨_, sa', t, k, hdec, hh, hrun, arr, ha, hR⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode
