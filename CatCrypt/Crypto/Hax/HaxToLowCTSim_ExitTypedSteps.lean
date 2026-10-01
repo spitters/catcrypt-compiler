@@ -1927,8 +1927,9 @@ theorem exec_letU64_set (n : String) (kk : Nat) (bC : LowCT) (rs rs' : RustState
   RustExec.letU64Zero _ _ _ _ (RustExec.seq _ _ _ _ _ (RustExec.scalarSet _ _ _)
     (by rw [rsSetScalar_rsSetScalar]; exact h))
 
-theorem ret_setScalar {rs : RustState} {n : String} (hn : exitReserved n = false) (kk : Nat)
-    (h : rs.rsScalar exitRetName = 0) : (rsSetScalar rs n kk).rsScalar exitRetName = 0 := by
+theorem ret_setScalar {rs : RustState} {n : String} {q : Nat} (hn : exitReserved n = false)
+    (kk : Nat) (h : rs.rsScalar exitRetName = q) :
+    (rsSetScalar rs n kk).rsScalar exitRetName = q := by
   rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, h]
 
 /-- The head of `let n = l`: on a scalar name, the scalar binding of `letHead`; on a name
@@ -2230,11 +2231,12 @@ theorem arrLitHeadN_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT
 variable {bi N leafSpec br A}
 
 /-- The result of a head of `let n = f(args)`: from `rs`, a state agreeing with the
-    environment extended by `n ↦ r`, with the exit flag `0`, through which every run of
-    the lowered body extends to a run of the head. -/
+    environment extended by `n ↦ r`, with the exit flag `q` (by default `0`), through which
+    every run of the lowered body extends to a run of the head. -/
 def HeadResT (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge) (A : ExitTowers)
-    (env : Env) (rs : RustState) (n : String) (r : Value) (k : LowCT → LowCT) : Prop :=
-  ∃ rs1, envAgreesT br A (env.extend n r) rs1 ∧ rs1.rsScalar exitRetName = 0 ∧
+    (env : Env) (rs : RustState) (n : String) (r : Value) (k : LowCT → LowCT)
+    (q : Nat := 0) : Prop :=
+  ∃ rs1, envAgreesT br A (env.extend n r) rs1 ∧ rs1.rsScalar exitRetName = q ∧
     ∀ bC rs', RustExec N leafSpec bC rs1 rs' → RustExec N leafSpec (k bC) rs rs'
 
 theorem forall₂_var2 {env : Env} {a b : String} {vals : List Value}
@@ -2265,8 +2267,8 @@ theorem headT_scalarOp {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r (fun b => .RSeq (.RScalarSetExpr n se) b) := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r (fun b => .RSeq (.RScalarSetExpr n se) b) q := by
   obtain ⟨a, b, rfl, hnA, haA, hbA, hse⟩ := scalarOpHeadT_some A hso
   simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hargs
   obtain ⟨va, vb, rfl, hva, hvb⟩ := forall₂_var2 hF
@@ -2291,8 +2293,8 @@ theorem headT_index {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi "index" vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q := by
   obtain ⟨arr, idx, t, rfl, htA, hiA, hcase⟩ := indexHeadT_some A hk
   simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hargs
   obtain ⟨vArr, vIdx, rfl, hva, hvi⟩ := forall₂_var2 hF
@@ -2361,8 +2363,8 @@ theorem headT_update {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi "array_update" vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q := by
   obtain ⟨arr, idx, src, t, ctx, srcLoc, rfl, hna, htA, hiA, hsrcA, hm, hsl, rfl⟩ :=
     updateHeadT_some A hk
   subst hna
@@ -2407,7 +2409,7 @@ theorem headT_update {D DO : String → Option TowerType}
     envAgreesT_of_eqOn hS1 (fun y hy => hT1 y (ne_marshal_of_nonreserved hy)) hag
   refine ⟨_, envAgreesT_extend_tower hn htA (hL.plain _ _ _ hbi) hbrR hag1, ?_,
     fun bC rs' h => RustExec.seq _ _ _ _ _ (hex _ _ hstore) h⟩
-  show rs1.rsScalar exitRetName = 0
+  show rs1.rsScalar exitRetName = q
   rw [hS1]; exact hret
 
 /-- The head of a call marshalling its scalar arguments at `dt` into a result slot of type
@@ -2437,8 +2439,8 @@ theorem headT_callAtR {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q := by
   obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hk
   have hloc := callMarshal_locDst A dt args ctx ls hm
   have hT0 : ∀ y, exitReserved y = false →
@@ -2472,8 +2474,8 @@ theorem headT_callAtR {D DO : String → Option TowerType}
     envAgreesT_setTower_reserved _ exitReserved_call
       (envAgreesT_of_eqOn hS1 (fun y hy => by
         rw [hT1 y (ne_marshal_of_nonreserved hy), hT0 y hy]) hag)
-  have hret2 : (rsSetTower rs1 exitCallName ⟨dr, resV⟩).rsScalar exitRetName = 0 := by
-    show rs1.rsScalar exitRetName = 0
+  have hret2 : (rsSetTower rs1 exitCallName ⟨dr, resV⟩).rsScalar exitRetName = q := by
+    show rs1.rsScalar exitRetName = q
     rw [hS1]; exact hret
   rcases hcase with ⟨hnA, rfl⟩ | ⟨hnA, rfl⟩
   · obtain ⟨hsr, hdr⟩ := hS hnA ls argList default hF2 ⟨ctx, hm⟩ htys
@@ -2515,8 +2517,8 @@ theorem headT_callAt {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k :=
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q :=
   headT_callAtR hL (hL.plain _ _ _ hbi)
     (fun h ls argList oldV hF2 _ _ _ => hT h ls vals argList oldV r rfl hbi hF2)
     (fun h ls argList oldV hF2 _ _ => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
@@ -2534,8 +2536,8 @@ theorem headT_callAtTyped {D DO : String → Option TowerType}
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k :=
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q :=
   headT_callAtR hL (hL.plain _ _ _ hbi)
     (fun h ls argList oldV hF2 hty _ _ => hT h ls vals argList oldV r rfl (hty hat) hbi hF2)
     (fun h ls argList oldV hF2 _ _ => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
@@ -2548,8 +2550,8 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q := by
   unfold appHeadT at hk
   rcases hso : scalarOpHeadT A n f args with _ | se
   · rw [hso] at hk
@@ -2606,8 +2608,8 @@ theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys
     (hk : repeatHeadT A n [.var v, .lit l] = some k) (hn : exitReserved n = false)
     (hvr : exitReserved v = false) (hv : env v = some vv)
     (hbi : bi "repeat" [vv, Value.ofLit l] = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q := by
   obtain ⟨v', l', c, kN, hargs, hnA, hkN, ⟨hlen, hmo⟩, hc⟩ := repeatHeadT_some A hk
   simp only [List.cons.injEq, ImpExpr.var.injEq, ImpExpr.lit.injEq, and_true] at hargs
   obtain ⟨rfl, rfl⟩ := hargs

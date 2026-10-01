@@ -898,8 +898,8 @@ theorem repeat_run_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (fuel
 /-- The head of `let n = l`: `HeadResT` at the literal's value. -/
 theorem headResT_lit (hmar : ExitMarshal br leafSpec) {n : String} {l : ImpLit} {k : LowCT → LowCT} {env : Env} {rs : RustState}
     (hl : exitLitOk l = true) (hn : exitReserved n = false) (hk : letHeadT A n (.lit l) = some k)
-    (hag : envAgreesT br A env rs) (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n (Value.ofLit l) k := by
+    (hag : envAgreesT br A env rs) {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n (Value.ofLit l) k q := by
   have hsv := exitLitOk_scalarValN hl
   rcases hsc' : A.lookup n with _ | t
   · have hk' : letHead n (.lit l) = some k := by simpa [letHeadT, hsc'] using hk
@@ -939,8 +939,8 @@ theorem headResT_var {n s : String} {k : LowCT → LowCT} {env : Env} {rs : Rust
     {w : Value} (hn : exitReserved n = false) (hs : exitReserved s = false)
     (hns : A.lookup n = A.lookup s) (hw : env s = some w)
     (hk : letHeadT A n (.var s) = some k)
-    (hag : envAgreesT br A env rs) (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n w k := by
+    (hag : envAgreesT br A env rs) {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n w k q := by
   have hcf := envAgreesT_not_cf hag hs hw
   rcases hA : A.lookup s with _ | t
   · rw [hA] at hns
@@ -982,8 +982,8 @@ theorem headResT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
-    (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k :=
+    {q : Nat} (hret : rs.rsScalar exitRetName = q) :
+    HeadResT N leafSpec br A env rs n r k q :=
   headT_app hL hk hn hargs hF hbi hag hret
 
 /-- The state a traced run of a head reaches is the state of `HeadResT`. -/
