@@ -35,6 +35,9 @@ hypothesis is the System V one: arrays and registers are named by ABI parameter.
 * `lsemFuelMemF_plain_halts` — a plain chain from program counter `0` halts under
   `lsemFuelMemF` in the state the straight-line fold reaches, up to the carry and
   overflow flags.
+* `straight_chain_abi` — for a straight-line program in the stack-memory fragment
+  (`scalarMemNB`), the chain run from an ABI entry halts with the program's denotation at
+  the return register.
 * `straight_export_faithful_abi` — for a straight-line program that passes
   `straightCertB`, the allocated body is the pin, the chain and the return, and the chain,
   run from an ABI entry, halts with the program's denotation at the return register.
@@ -119,6 +122,30 @@ theorem lsemFuelMemF_plain_halts (fn : String) (seg : List LinstrRM) (hplain : P
 
 /-! ## 3. The export theorem -/
 
+/-- **The chain of a straight-line program in the stack-memory fragment realises it.** For a
+    program returning a width-`w` register that passes `scalarMemNB`, every valuation `V` a
+    layout `σ` reads off an entry state `sa` (`AbiValOf`) and every flag-machine state `b0`
+    that is the ABI entry of `sa` (`AbiEntryM`), the chain `straightOpsMem` run by
+    `lsemFuelMemF` from `b0` halts with the return register `comRetReg` holding the program's
+    denotation at `V`. -/
+theorem straight_chain_abi {Γ : Ctxt jasminDialect} {w : Nat}
+    (com : Com jasminDialect Γ (.reg w)) (hmem : scalarMemNB com = true) :
+    ∀ (σ : AbiLayout) (sa : AState) (V : Ctxt.Valuation Γ) (fn : String) (b0 : LstateM)
+      (zf : Bool), AbiValOf σ sa V → AbiEntryM σ sa b0 →
+      ∃ (k : Nat) (t : LstateMF),
+        lsemFuelMemF (singletonProgM fn (straightOpsMem Γ.length com Γ.length)) k
+            { prog := { base := b0, lfn := fn }, zf := zf } = some t
+          ∧ t.prog.base.reg.getW (comRetReg Γ.length argName com Γ.length) w
+              = some (com.denote V) := by
+  intro σ sa V fn b0 zf hV hb
+  have hm := scalarMemNB_sound com hmem
+  obtain ⟨b, hrun, hval⟩ := lsemStraightMem_straightOps hm (w := w) rfl rfl le_rfl
+    (storeAgreesM_of_abi hV hb)
+  obtain ⟨c, o, hh⟩ := lsemFuelMemF_plain_halts fn _
+    (straightOpsMem_plain _ com (scalarMemN_comOpsPlain hm) _) b0 b zf hb.pc hrun
+  refine ⟨_, _, hh, ?_⟩
+  simpa only [evalOperandN] using hval
+
 /-- **The certified straight-line export realises its program.** For a straight-line
     program returning a width-`w` register that passes `straightCertB`: the body
     `Com.toLprogPhysAbi` allocates (liveness pin forced) is the pin, the typed chain
@@ -139,13 +166,8 @@ theorem straight_export_faithful_abi {Γ : Ctxt jasminDialect} {w : Nat}
                 { prog := { base := b0, lfn := fn }, zf := zf } = some t
               ∧ t.prog.base.reg.getW (comRetReg Γ.length argName com Γ.length) w
                   = some (com.denote V) := by
-  obtain ⟨hmem, hbody⟩ := straightCertB_spec hcert
-  refine ⟨hbody, fun σ sa V fn b0 zf hV hb => ?_⟩
-  obtain ⟨b, hrun, hval⟩ := lsemStraightMem_straightOps hmem (w := w) rfl rfl le_rfl
-    (storeAgreesM_of_abi hV hb)
-  obtain ⟨c, o, hh⟩ := lsemFuelMemF_plain_halts fn _
-    (straightOpsMem_plain _ com (scalarMemN_comOpsPlain hmem) _) b0 b zf hb.pc hrun
-  refine ⟨_, _, hh, ?_⟩
-  simpa only [evalOperandN] using hval
+  have h := hcert
+  simp only [straightCertB, Bool.and_eq_true] at h
+  exact ⟨(straightCertB_spec hcert).2, straight_chain_abi com h.1⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertStraight
