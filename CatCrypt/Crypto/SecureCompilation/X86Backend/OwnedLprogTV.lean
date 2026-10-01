@@ -137,6 +137,20 @@ def castA (c : ArrCell) (w n : Nat) : Fin n → BitVec w :=
 @[simp] theorem castW_self (x : Σ w, BitVec w) : castW x x.1 = x.2 := by
   simp [castW]
 
+/-- The word of a width-tagged value at width `w`, zero-extended or truncated. -/
+def extW (x : Σ w, BitVec w) (w : Nat) : BitVec w := x.2.setWidth w
+
+theorem extW_of_eq {x : Σ w, BitVec w} {w : Nat} (h : x.1 = w) : extW x w = castW x w := by
+  obtain ⟨w', v⟩ := x
+  simp only at h
+  subst h
+  simp [extW, castW]
+
+theorem extW_ofNat {w v n : Nat} (h : n < 2 ^ w) :
+    extW ⟨w, BitVec.ofNat w n⟩ v = BitVec.ofNat v n := by
+  apply BitVec.eq_of_toNat_eq
+  simp [extW, BitVec.toNat_setWidth, Nat.mod_eq_of_lt h]
+
 theorem sigma_of_castW {x : Σ w, BitVec w} {w : Nat} (h : x.1 = w) :
     (⟨w, castW x w⟩ : Σ w, BitVec w) = x := by
   obtain ⟨w', v⟩ := x
@@ -206,7 +220,8 @@ inductive STerm where
   | immW (w n : Nat)
   /-- The immediate `n` at the width of `x`. -/
   | immAt (n : Nat) (x : STerm)
-  /-- The two-source operation `m` of `applyOpnN` at the width of `x`. -/
+  /-- The two-source operation `m` of `applyOpnN` at the width of `x`, with `y` zero-extended
+      or truncated to that width (`extW`). -/
   | bin (m : String) (x y : STerm)
   /-- The one-source operation `m` of `applyOpnN` at the width of `x`. -/
   | un (m : String) (x : STerm)
@@ -272,7 +287,7 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .reg r => V r
   | .immW w n => ⟨w, BitVec.ofNat w n⟩
   | .immAt n x => ⟨(x.ev).1, BitVec.ofNat _ n⟩
-  | .bin m x y => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2, castW y.ev (x.ev).1]).getD (x.ev).2⟩
+  | .bin m x y => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2, extW y.ev (x.ev).1]).getD (x.ev).2⟩
   | .un m x => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2]).getD (x.ev).2⟩
   | .shImm m k x => ⟨(x.ev).1, (applyImmShiftN (x.ev).1 m k (x.ev).2).getD (x.ev).2⟩
   | .aget a w n i => ⟨w, stackGet (castA a.ev w n) (castW i.ev 64).toNat⟩
@@ -558,7 +573,11 @@ theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat
 
 /-- The symbolic description of `lsemStepN`. A shift `SHL`/`SHR` by an immediate operand is
     described by the immediate-shift term `shImm`, the term of the count-in-name form
-    `SHL:k`/`SHR:k`, so both spellings of one shift have one term. -/
+    `SHL:k`/`SHR:k`, so both spellings of one shift have one term. Another two-source
+    operation with an immediate `n` below `2 ^ w`, for the width `w` of its mnemonic's tag, is
+    described with the second source `immW w n`, the term of a move of `n` into a register, so
+    an operation on a register that holds a moved constant and the operation on the immediate
+    have one term. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg _] opn [_, _, _] => if stripWidthTag opn = "CMOV" then .unk else .fail
@@ -571,6 +590,8 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
             | .imm n =>
                 if stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR" then
                   .set dst (.shImm (stripWidthTag opn) n (R ra)) []
+                else if n < 2 ^ widthFromTag opn then
+                  .set dst (.bin (stripWidthTag opn) (R ra) (.immW (widthFromTag opn) n)) []
                 else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
             | _ => .fail
           else .fail
@@ -633,7 +654,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
             ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
           simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, hv]
           split_ifs with hw
-          · simp [hw]
+          · simp [hw, extW_of_eq hw, hv]
           · simp [Ne.symm hw]
         · rename_i n
           simp only [ROut.Desc]
@@ -647,7 +668,9 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
               unfold applyImmShiftN
               rcases hs with hs | hs <;> simp [hs]
             simp [AllG, STerm.ev, he, hv]
-          · simp [AllG, STerm.ev, hv]
+          · rename_i hlt
+            simp [AllG, STerm.ev, extW_ofNat hlt, hv]
+          · simp [AllG, STerm.ev, extW_of_eq, hv]
         · rename_i hb1 hb2
           cases b with
           | reg rb => exact absurd rfl (hb1 rb)
