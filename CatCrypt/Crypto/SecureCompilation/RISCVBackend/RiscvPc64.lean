@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvMem64
+import Mathlib.Tactic.IntervalCases
 
 /-!
 # An RV64 program counter: branches, loops, calls and returns
@@ -36,10 +37,9 @@ the program first. Branch and jump offsets are relative to `pc`, as in RISC-V;
 * `steps_call`: `jal ra` to a function meeting `FnSpec` returns to the next instruction.
 * `steps_x`, `steps_call_at`, `steps_loop_inv`: the same rules stated by the instruction
   fetched at an index, and a loop with an invariant.
-* `decodePStream64_encode_b`: the decode round trip for programs. Its proof uses the
-  `bv_decide` slice lemmas `encJ_slices` and `SailRiscvDecoder.encB_slices`, so it depends on
-  the native-evaluation axioms `bv_decide` adds; a concrete program can instead be checked by
-  `decide +kernel` on `decodePStream64` itself.
+* `decodePStream64_encode_b`: the decode round trip for programs. The B- and J-type slice
+  lemmas (`encB_slices'`, `encJ_slices`) are proved bit by bit, so it depends on no
+  native-evaluation axiom.
 
 That `step` agrees with an RV64 processor (instruction-address-misaligned traps,
 compressed instructions, interrupts) is not proved here.
@@ -348,7 +348,24 @@ def sImmJ (w : BitVec 32) : BitVec 21 :=
 theorem encJ_slices (imm : BitVec 21) (rd : BitVec 5) (opcode : BitVec 7) :
     sOpcode (encJ imm rd opcode) = opcode ∧ sRd (encJ imm rd opcode) = rd ∧
     sImmJ (encJ imm rd opcode) = imm &&& 0x1ffffe := by
-  refine ⟨?_, ?_, ?_⟩ <;> simp only [sOpcode, sRd, sImmJ, encJ] <;> bv_decide
+  refine ⟨?_, ?_, ?_⟩ <;> apply BitVec.eq_of_getLsbD_eq <;> intro i hi <;>
+    simp only [sOpcode, sRd, sImmJ, encJ, BitVec.getLsbD_cast, BitVec.getLsbD_append,
+      BitVec.getLsbD_extractLsb', BitVec.getLsbD_and] <;>
+    interval_cases i <;> simp
+
+/-- The B-type slices, by bits. `SailRiscvDecoder.encB_slices` states the same with
+    `bv_decide`. -/
+theorem encB_slices' (imm : BitVec 13) (rs2 rs1 : BitVec 5) (funct3 : BitVec 3)
+    (opcode : BitVec 7) :
+    sOpcode (encB imm rs2 rs1 funct3 opcode) = opcode ∧
+    sFunct3 (encB imm rs2 rs1 funct3 opcode) = funct3 ∧
+    sRs1 (encB imm rs2 rs1 funct3 opcode) = rs1 ∧
+    sRs2 (encB imm rs2 rs1 funct3 opcode) = rs2 ∧
+    sImmB (encB imm rs2 rs1 funct3 opcode) = imm &&& 0x1ffe := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> apply BitVec.eq_of_getLsbD_eq <;> intro i hi <;>
+    simp only [sOpcode, sFunct3, sRs1, sRs2, sImmB, encB, BitVec.getLsbD_cast,
+      BitVec.getLsbD_append, BitVec.getLsbD_extractLsb', BitVec.getLsbD_and] <;>
+    interval_cases i <;> simp
 
 /-- The word of an instruction (`none` for `li`). -/
 def encodePWord64 : PInst64 → Option (BitVec 32)
@@ -402,7 +419,7 @@ theorem decodeP64_encode (i : PInst64) (h : PInstOKb i = true) :
   | bne a b off =>
     simp only [PInstOKb, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
     obtain ⟨⟨ha, hb⟩, hoff⟩ := h
-    obtain ⟨ho, hf3, hr1, hr2, hi⟩ := encB_slices off (reg5 b) (reg5 a) 0b001 0x63
+    obtain ⟨ho, hf3, hr1, hr2, hi⟩ := encB_slices' off (reg5 b) (reg5 a) 0b001 0x63
     refine ⟨_, rfl, ?_⟩
     rw [decodeP64, decodeX64_none_of_opcode _ (by simp only [fOpcode, ho]; decide)]
     simp only [fOpcode, fFunct3, fRs1, fRs2, ho, hf3, hr1, hr2, hi, hoff,
@@ -569,5 +586,9 @@ theorem runX_frame (b : List XInst64) (st : MState64) (r : String) (h : r ∉ xW
     | sd v b off =>
       simp only [xWrites, List.filterMap_cons, xDst] at h
       exact ih _ h
+
+/-- info: 'CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvPc64.decodePStream64_encode_b' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms decodePStream64_encode_b
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvPc64
