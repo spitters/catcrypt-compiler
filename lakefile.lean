@@ -86,6 +86,7 @@ def pkgModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Hash.SHAKE,
     Lake.Glob.one `CatCrypt.Crypto.Hash.Security,
     Lake.Glob.one `CatCrypt.Crypto.Hash.TurboSHAKE,
+    Lake.Glob.one `CatCrypt.Crypto.Hax.DenoteKeeps,
     Lake.Glob.one `CatCrypt.Crypto.Hax.HaxBorrowAlignment,
     Lake.Glob.one `CatCrypt.Crypto.Hax.HaxExitCT,
     Lake.Glob.one `CatCrypt.Crypto.Hax.HaxExitLoopCT,

@@ -393,4 +393,127 @@ theorem denote_ofComR [DialectDenoteM d Option] {Γ : Ctxt d} {t : d.Ty} (c : Co
 
 end NFProg
 
+/-! ## 5. Programs with a hole -/
+
+/-- A variable of `Γ` as a variable of `cs ++ Γ`. -/
+def Var.shiftApp {d : Dialect} {Γ : Ctxt d} {t : d.Ty} :
+    (cs : List d.Ty) → Var Γ t → Var (cs ++ Γ) t
+  | [], v => v
+  | _ :: cs, v => .there (Var.shiftApp cs v)
+
+/-- A shifted variable reads the valuation below the prefix. -/
+theorem Var.lookup_shiftApp {d : Dialect} [TyDenote d.Ty] {Γ : Ctxt d} {t : d.Ty} :
+    (cs : List d.Ty) → (A : Valuation cs) → (v : Var Γ t) → (V : Valuation Γ) →
+    (Var.shiftApp cs v).lookup (hvAppend A V) = v.lookup V
+  | [], .nil, _, _ => rfl
+  | _ :: cs, .cons _ A, v, V => Var.lookup_shiftApp cs A v V
+
+/-- A prefix of an `NFProg` from the context `Γ` to a hole of context `Δ`: let-bindings,
+    counted loops and branches, each followed by the rest of the prefix. -/
+inductive NFPre (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+    [HasBoolBit d] : Ctxt d → Ctxt d → Type where
+  /-- The hole. -/
+  | nil {Γ} : NFPre d Γ Γ
+  /-- Let-bind an expression, then the rest. -/
+  | var {Γ Δ t} (e : Expr d Γ t) (p : NFPre d (t :: Γ) Δ) : NFPre d Γ Δ
+  /-- A counted loop carrying the tuple `cs`, then the rest. -/
+  | forLoop {Γ Δ cs} (count : Var Γ (HasWord64.word (d := d)))
+      (inits : HVector (fun t => Var Γ t) cs)
+      (body : NFProg d (cs ++ HasWord64.word (d := d) :: Γ) cs)
+      (p : NFPre d (cs ++ Γ) Δ) : NFPre d Γ Δ
+  /-- A two-armed branch with the results `rs`, then the rest. -/
+  | ifThenElse {Γ Δ rs} (cond : Var Γ (HasBitType.bit (d := d)))
+      (thn els : NFProg d Γ rs) (p : NFPre d (rs ++ Γ) Δ) : NFPre d Γ Δ
+
+namespace NFPre
+
+variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+  [HasBoolBit d]
+
+/-- The program of a prefix with the hole filled by `k`. -/
+def plug : {Γ Δ : Ctxt d} → {ts : List d.Ty} → NFPre d Γ Δ → NFProg d Δ ts → NFProg d Γ ts
+  | _, _, _, .nil, k => k
+  | _, _, _, .var e p, k => .var e (p.plug k)
+  | _, _, _, .forLoop count inits body p, k => .forLoop count inits body (p.plug k)
+  | _, _, _, .ifThenElse cond thn els p, k => .ifThenElse cond thn els (p.plug k)
+
+/-- The prefix `p` followed by the prefix `q` in its hole. -/
+def append : {Γ Δ Θ : Ctxt d} → NFPre d Γ Δ → NFPre d Δ Θ → NFPre d Γ Θ
+  | _, _, _, .nil, q => q
+  | _, _, _, .var e p, q => .var e (p.append q)
+  | _, _, _, .forLoop count inits body p, q => .forLoop count inits body (p.append q)
+  | _, _, _, .ifThenElse cond thn els p, q => .ifThenElse cond thn els (p.append q)
+
+/-- A variable of the context of a prefix as a variable of the context of its hole. -/
+def wk : {Γ Δ : Ctxt d} → {t : d.Ty} → NFPre d Γ Δ → Var Γ t → Var Δ t
+  | _, _, _, .nil, v => v
+  | _, _, _, .var _ p, v => p.wk v.there
+  | _, _, _, .forLoop (cs := cs) _ _ _ p, v => p.wk (Var.shiftApp cs v)
+  | _, _, _, .ifThenElse (rs := rs) _ _ _ p, v => p.wk (Var.shiftApp rs v)
+
+variable [DialectDenoteM d Option]
+
+/-- The valuation of the hole of a prefix, as `NFProg.denote` computes it. -/
+def denote (fuel : Nat) : {Γ Δ : Ctxt d} → NFPre d Γ Δ → Valuation Γ → Option (Valuation Δ)
+  | _, _, .nil, V => some V
+  | _, _, .var e p, V => e.denoteM V >>= fun x => p.denote fuel (V.extend x)
+  | _, _, .forLoop count inits body p, V =>
+      (List.range (HasWord64.toNat (d := d) (count.lookup V))).foldlM
+          (fun acc i => body.denote fuel (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (Expr.lookupArgs inits V) >>= fun acc =>
+        p.denote fuel (hvAppend acc V)
+  | _, _, .ifThenElse cond thn els p, V =>
+      (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
+        else els.denote fuel V) >>= fun r =>
+        p.denote fuel (hvAppend r V)
+
+/-- A filled prefix denotes its continuation at the valuation of the hole. -/
+theorem denote_plug (fuel : Nat) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ)
+    (k : NFProg d Δ ts) (V : Valuation Γ) :
+    (p.plug k).denote fuel V = p.denote fuel V >>= k.denote fuel := by
+  induction p with
+  | nil => rfl
+  | var e p ih =>
+      simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | forLoop count inits body p ih =>
+      simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | ifThenElse cond thn els p ih =>
+      simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+
+/-- A composed prefix denotes the second prefix at the hole of the first. -/
+theorem denote_append (fuel : Nat) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ) (q : NFPre d Δ Θ)
+    (V : Valuation Γ) : (p.append q).denote fuel V = p.denote fuel V >>= q.denote fuel := by
+  induction p with
+  | nil => rfl
+  | var e p ih =>
+      simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | forLoop count inits body p ih =>
+      simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | ifThenElse cond thn els p ih =>
+      simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+
+/-- A weakened variable reads at the hole what it reads at the start. -/
+theorem lookup_wk (fuel : Nat) {Γ Δ : Ctxt d} {t : d.Ty} (p : NFPre d Γ Δ) (v : Var Γ t)
+    {V : Valuation Γ} {W : Valuation Δ} (h : p.denote fuel V = some W) :
+    (p.wk v).lookup W = v.lookup V := by
+  induction p with
+  | nil =>
+      simp only [denote, Option.some.injEq] at h
+      subst h
+      rfl
+  | var e p ih =>
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+      obtain ⟨x, _, hp⟩ := h
+      exact (ih v.there hp).trans rfl
+  | forLoop count inits body p ih =>
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+      obtain ⟨acc, _, hp⟩ := h
+      exact (ih _ hp).trans (Var.lookup_shiftApp _ acc v _)
+  | ifThenElse cond thn els p ih =>
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+      obtain ⟨r, _, hp⟩ := h
+      exact (ih _ hp).trans (Var.lookup_shiftApp _ r v _)
+
+end NFPre
+
 end CatCrypt.Crypto.SecureCompilation.VIR

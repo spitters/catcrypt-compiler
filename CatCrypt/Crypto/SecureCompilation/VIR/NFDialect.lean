@@ -189,7 +189,7 @@ inductive NfOp where
   deriving Repr
 
 /-- The argument types of an operation. -/
-def NfOp.sig : NfOp → List NfTy
+@[reducible] def NfOp.sig : NfOp → List NfTy
   | .const _ _ | .constBit _ | .constUnit => []
   | .bin _ w | .cmp _ w => [.word w, .word w]
   | .un _ w | .cast w _ | .scast w _ => [.word w]
@@ -209,7 +209,7 @@ def NfOp.sig : NfOp → List NfTy
   | .thead h t | .ttail h t => [.tcons h t]
 
 /-- The result type of an operation. -/
-def NfOp.ret : NfOp → NfTy
+@[reducible] def NfOp.ret : NfOp → NfTy
   | .const w _ => .word w
   | .constBit _ | .cmp _ _ | .andB | .orB | .xorB | .eqB | .notB => .bit
   | .constUnit => .unit
@@ -311,9 +311,10 @@ def NfTy.ofLit? : (t : NfTy) → Int → Option t.denote
   | .int, v => some v
   | _, _ => none
 
-/-- The integer an unsigned integer of a width or an unbounded integer denotes, the
-    reading of a loop bound; `none` at every other type. -/
+/-- The integer a word, an unsigned integer of a width or an unbounded integer denotes,
+    the reading of a loop bound; `none` at every other type. -/
 def NfTy.toInt? : (t : NfTy) → t.denote → Option Int
+  | .word _, x => some x.toNat
   | .uint _, x => some x.toNat
   | .int, x => some x
   | _, _ => none
