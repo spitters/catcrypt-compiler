@@ -667,6 +667,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.NFProg
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgToComL
 CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
+CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWord
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
