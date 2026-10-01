@@ -173,7 +173,8 @@ def binRegLift (E : LiftEnv) (st : LiftSt) : JInstr 64 → Option (String × Str
   | .xor_ D (.reg Y) => some ("XOR", Y, { st.kill [D] with zl := false })
   | .or_ D (.reg Y) => some ("OR", Y, { st.kill [D] with zl := false })
   | .imul D (.reg Y) =>
-      let new := if Y == D then [] else (st.cp.filter (·.1 == D)).map fun p => (D, p.2, Y)
+      let new := if Y == D then [] else
+        (st.cp.filter fun p => p.1 == D && p.2 != D).map fun p => (D, p.2, Y)
       let st' := { st.kill [D] with zl := false }
       some ("MUL", Y, { st' with lo := new ++ st'.lo })
   | _ => none
