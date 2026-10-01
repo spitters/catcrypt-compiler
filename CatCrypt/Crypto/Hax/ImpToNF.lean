@@ -39,7 +39,7 @@ the builtins.
 
 Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, `assign`,
 a call on atoms, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
-literal as lower bound, an atom of an unsigned integer type of at most `64` bits as upper
+literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits as upper
 bound (`boundOk`), and a body in the fragment. Every other constructor is `none`.
 
 Readback. `nfToImp` reads an `NFProg` program back to an `ImpExpr` from a reading `RBEnv`
@@ -67,6 +67,9 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `RBRel`, `RBSound` — the relation of a reading to a source environment, and the
   simulation statement of the readback.
 * `Out.prog`, `nfRoute` — the program of an output, and the route through `NFProg`.
+* `entryCtx`, `entryEnv`, `entryRB`, `EntryTyped`, `nfRouteEntry` — the parameters of a
+  function body and the route from them.
+* `hax64SigOf` — the call typing of `u64` code.
 
 ## Main results
 
@@ -79,6 +82,11 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `rbProg_sound_aux`, `nfToImp_denote` — the readback simulates the denotation.
 * `nfRoute_run`, `nfRoute_simulates_exit` — the route through `NFProg` keeps the value,
   and its typed exit lowering simulates the source.
+* `entryEnv_rel`, `entryRB_rel`, `nfRouteEntry_simulates_exit` — the environment of names
+  and the reading of the parameters of a function body, related to a source environment
+  typed at the parameters (`EntryTyped`).
+* `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
+  `Hax.hax64Builtins`.
 -/
 
 @[expose] public section
@@ -316,10 +324,11 @@ def varsAt {Δ : Ctxt nfDialect} (σ : NfEnv Δ) :
   | _, _ => none
 
 /-- The bounds the counted loop of the front accepts: a non-negative lower bound and an
-    upper bound of an unsigned integer type of at most `64` bits, so that the trip count is
-    below `2 ^ 64`. -/
+    upper bound of an unsigned integer type or a word type of at most `64` bits, so that the
+    trip count is below `2 ^ 64`. -/
 def boundOk (lo : Int) : NfTy → Bool
   | .uint W => decide (0 ≤ lo) && decide (W.bits ≤ 64)
+  | .word w => decide (0 ≤ lo) && decide (w ≤ 64)
   | _ => false
 
 /-- The environment of names of a loop body or of the continuation of a loop: the carried
@@ -1383,6 +1392,13 @@ theorem trip_lt_of_boundOk {lo : Int} {t : NfTy} {x : t.denote} {h : Int}
       have h1 : x.toNat < 2 ^ W.bits := x.isLt
       have h2 : 2 ^ W.bits ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
       omega
+  | word w =>
+      simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+      simp only [NfTy.toInt?, Option.some.injEq] at hx
+      subst hx
+      have h1 : x.toNat < 2 ^ w := x.isLt
+      have h2 : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
+      omega
   | _ => simp [boundOk] at hb
 
 /-- **A counted loop is sound**, when the front is sound for its body. -/
@@ -2106,6 +2122,17 @@ theorem rbBind_sound (bi : Builtins) {Γ : Ctxt nfDialect} {ρ : RBEnv Γ} {env 
                 · exact hlt
                 · show Value.int ((BitVec.ofNat 64 _).toNat : Int) = _
                   rw [BitVec.toNat_ofNat, ← hlo, Nat.mod_eq_of_lt hlt]
+            | word w =>
+                change ((NfTy.toInt? (.word w) (hi.lookup V)).map
+                  fun hh => BitVec.ofNat 64 (hh - lo.lookup V).toNat) = some y at hy
+                simp only [NfTy.toInt?, Option.map_some, Option.some.injEq] at hy
+                subst hy
+                have hlt := trip_lt_of_boundOk hbd (x := hi.lookup V)
+                  (h := ((hi.lookup V).toNat : Int)) rfl
+                refine ⟨((hi.lookup V).toNat : Int), ⟨_, hev, Or.inl rfl⟩, ?_, ?_⟩
+                · exact hlt
+                · show Value.int ((BitVec.ofNat 64 _).toNat : Int) = _
+                  rw [BitVec.toNat_ofNat, ← hlo, Nat.mod_eq_of_lt hlt]
             | _ => simp [boundOk] at hbd
           · cases h
       | _ => cases h
@@ -2749,5 +2776,267 @@ theorem nfRoute_simulates_exit (bi : Builtins) (sigOf : String → List NfTy →
   obtain ⟨fuel', env₂, hrun'⟩ := nfRoute_run bi sigOf hT h hσ hρ hrun
   exact haxToLowCTFnT_simulates_exit bi N leafSpec br A R hL e' c hok hK fuel' env env₂
     (.val v) rs hrun' ⟨v, rfl⟩ hag
+
+/-! ## 15. The entry of a function -/
+
+/-- The context of the parameters `ps`, each a name with its type; the first parameter is the
+    newest variable. -/
+def entryCtx (ps : List (String × NfTy)) : Ctxt nfDialect := ps.map (·.2)
+
+/-- The environment of names of the parameters `ps`: each name bound to its variable. -/
+def entryEnv : (ps : List (String × NfTy)) → NfEnv (entryCtx ps)
+  | [] => []
+  | (x, t) :: ps => (x, ⟨t, Var.here⟩) :: NfEnv.mapV (fun v => Var.there v) (entryEnv ps)
+
+/-- The reading of the parameters `ps`: each variable read as its name. -/
+def entryRB : (ps : List (String × NfTy)) → RBEnv (entryCtx ps)
+  | [], _, v => nomatch v
+  | (x, _) :: ps, _, v => RBEnv.cons (.name x) (entryRB ps) v
+
+/-- The source environment `env` holds, at the name of each parameter of `ps`, the encoding
+    of its value in `V`. -/
+def EntryVals (env : Env) : (ps : List (String × NfTy)) → Valuation (entryCtx ps) → Prop
+  | [], _ => True
+  | (x, t) :: _, .cons y V => env x = some (enc t y) ∧ EntryVals env _ V
+
+/-- The source environment `env` holds, at the name of each parameter of `ps`, the encoding
+    of a value of its type. -/
+def EntryTyped (env : Env) (ps : List (String × NfTy)) : Prop :=
+  ∀ x t, (x, t) ∈ ps → ∃ y : t.denote, env x = some (enc t y)
+
+/-- An environment holding encodings at the parameters holds the encodings of a valuation. -/
+theorem entryVals_of_typed {env : Env} :
+    ∀ {ps : List (String × NfTy)}, EntryTyped env ps → ∃ V, EntryVals env ps V
+  | [], _ => ⟨.nil, trivial⟩
+  | (x, t) :: ps, h => by
+      obtain ⟨y, hy⟩ := h x t List.mem_cons_self
+      obtain ⟨V, hV⟩ := entryVals_of_typed (ps := ps)
+        (fun x' t' hm => h x' t' (List.mem_cons_of_mem _ hm))
+      exact ⟨.cons y V, hy, hV⟩
+
+/-- The environment of names of the parameters is related to a valuation whose encodings
+    the source environment holds. -/
+theorem entryEnv_rel {env : Env} :
+    ∀ {ps : List (String × NfTy)} {V : Valuation (entryCtx ps)}, EntryVals env ps V →
+      EnvRel (entryEnv ps) env V
+  | [], .nil, _ => by
+      intro x t v hx
+      simp [entryEnv, NfEnv.lookup] at hx
+  | (x, t) :: ps, .cons y V, ⟨hy, hV⟩ => by
+      intro x' t' v hx'
+      change NfEnv.lookup ((x, ⟨t, Var.here⟩) ::
+        NfEnv.mapV (fun v => Var.there v) (entryEnv ps)) x' = _ at hx'
+      rw [NfEnv.lookup_cons] at hx'
+      split at hx'
+      · rename_i hxx
+        subst hxx
+        cases hx'
+        exact hy
+      · exact EnvRel.mapV (entryEnv_rel hV) (fun v => Var.there v) (W := .cons y V)
+          (fun _ _ => rfl) x' t' v hx'
+
+/-- The reading of the parameters is related to a valuation whose encodings the source
+    environment holds. -/
+theorem entryRB_rel {env : Env} :
+    ∀ {ps : List (String × NfTy)} {V : Valuation (entryCtx ps)}, EntryVals env ps V →
+      RBRel (entryRB ps) env V
+  | [], .nil, _ => fun _ v => nomatch v
+  | (x, t) :: ps, .cons y V, ⟨hy, hV⟩ => fun t' v => by
+      cases v with
+      | here => exact hy
+      | there v => exact entryRB_rel hV t' v
+
+/-- The route through `NFProg` of a function body with the parameters `ps`. -/
+def nfRouteEntry (sigOf : String → List NfTy → Option NfTy) (ps : List (String × NfTy))
+    (e : ImpExpr) : Option ImpExpr :=
+  nfRoute sigOf (entryEnv ps) (entryRB ps) e
+
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in
+/-- **The typed exit lowering of the route through `NFProg` of a function body simulates
+    the source**, from every source environment holding at the parameters `ps` the encodings
+    of values of their types (`EntryTyped`). -/
+theorem nfRouteEntry_simulates_exit (bi : Builtins)
+    (sigOf : String → List NfTy → Option NfTy) (hT : TypedCalls bi sigOf) (N : Nat)
+    (leafSpec : LeafSpec) (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
+    {ps : List (String × NfTy)} {e e' : ImpExpr} {c : LowCT}
+    (h : nfRouteEntry sigOf ps e = some e') (hok : exitSimOkT A R true true e' = true)
+    (hK : haxToLowCTFnT A e' = some c) {env : Env} (hent : EntryTyped env ps) {fuel : Nat}
+    {v : Value} {env' : Env} (hrun : (denote' bi fuel e).run env = (.val v, env'))
+    (rs : RustState) (hag : envAgreesT br A env rs) :
+    ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeAgreesT br R (.val v) rs' := by
+  obtain ⟨V, hV⟩ := entryVals_of_typed hent
+  exact nfRoute_simulates_exit bi sigOf hT N leafSpec br A R hL h hok hK (entryEnv_rel hV)
+    (entryRB_rel hV) hrun rs hag
+
+/-! ## 16. The call typing of the `u64` table -/
+
+/-- `TypedCalls` passes to a sub-table: a table whose every value at a typed call is a value
+    of `bi`. -/
+theorem TypedCalls.mono {bi bi' : Builtins} {sigOf : String → List NfTy → Option NfTy}
+    (h : TypedCalls bi sigOf)
+    (hsub : ∀ f as r, sigOf f as = some r → ∀ vals v, bi' f vals = some v → bi f vals = some v) :
+    TypedCalls bi' sigOf :=
+  fun f as r hr xs v hv => h f as r hr xs v (hsub f as r hr _ v hv)
+
+/-- The scalar calls of `u64` code the route through `NFProg` types: two word operands, an
+    integer result. -/
+def hax64NFScalar : List String :=
+  ["BitXor#64", "BitAnd#64", "wrapping_add#64", "wrapping_sub#64", "wrapping_mul#64",
+    "mulhi#64", "Shr#64", "Shl#64", "Add"]
+
+/-- The types whose values encode as integers: `int` and the `64`-bit word. -/
+def hax64NFWordTy : NfTy → Bool
+  | .int => true
+  | .word 64 => true
+  | _ => false
+
+/-- **The call typing of `u64` code**: a scalar call of `hax64NFScalar` on two operands of
+    `hax64NFWordTy` types has an integer result; `index` of an integer slice at an integer
+    is an integer; `array_update` of an integer slice at an integer with a value of a
+    `hax64NFWordTy` type is an integer slice. -/
+def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
+  if hax64NFScalar.contains f && as.length == 2 && as.all hax64NFWordTy then some .int
+  else match f, as with
+  | "index", [.slice .int, .int] => some .int
+  | "array_update", [.slice .int, .int, t] => if hax64NFWordTy t then some (.slice .int) else none
+  | _, _ => none
+
+/-- The encoding of a value of a `hax64NFWordTy` type is an integer. -/
+theorem hax64NFWordTy_enc {t : NfTy} (ht : hax64NFWordTy t = true) (x : t.denote) :
+    ∃ z : Int, enc t x = .int z := by
+  match t, ht with
+  | .int, _ => exact ⟨x, rfl⟩
+  | .word 64, _ => exact ⟨_, rfl⟩
+
+/-- A value of `u64BinOp` is an integer. -/
+theorem u64BinOp_int {a b : Int} {g : Nat → Nat → Option Nat} {v : Value}
+    (h : _root_.Hax.u64BinOp a b g = some v) : ∃ z : Int, v = .int z := by
+  unfold _root_.Hax.u64BinOp at h
+  split at h
+  · rw [Option.map_eq_some_iff] at h
+    obtain ⟨r, -, rfl⟩ := h
+    exact ⟨_, rfl⟩
+  · cases h
+
+/-- A value of a scalar call of `hax64NFScalar` on two integers is an integer. -/
+theorem hax64Builtins_scalar_int {f : String} (hf : f ∈ hax64NFScalar) {a b : Int}
+    {v : Value} (h : _root_.Hax.hax64Builtins f [.int a, .int b] = some v) :
+    ∃ z : Int, v = .int z := by
+  simp only [hax64NFScalar, List.mem_cons, List.not_mem_nil, or_false] at hf
+  rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+  · simp only [_root_.Hax.hax64Builtins] at h
+    rcases hw : _root_.Hax.hax64WordOps _ [.int a, .int b] with _ | w
+    · rw [hw] at h; simp [_root_.Hax.widthArrayOps] at h
+    · rw [hw] at h
+      obtain rfl : w = v := Option.some.inj h
+      simp only [_root_.Hax.hax64WordOps_bitXor, _root_.Hax.hax64WordOps_bitAnd,
+        _root_.Hax.hax64WordOps_wrapping_add, _root_.Hax.hax64WordOps_wrapping_sub,
+        _root_.Hax.hax64WordOps_wrapping_mul, _root_.Hax.hax64WordOps_mulhi,
+        _root_.Hax.hax64WordOps_shr, _root_.Hax.hax64WordOps_shl,
+        _root_.Hax.hax64WordOps_add] at hw
+      exact u64BinOp_int hw
+
+/-- A list of integers decodes as an integer slice. -/
+theorem dec_slice_int : ∀ (vs : List Value), (∀ v ∈ vs, ∃ z : Int, v = .int z) →
+    ∃ ys, dec (.slice .int) (.array vs) = some ys ∧ Value.array vs = enc (.slice .int) ys
+  | [], _ => ⟨[], rfl, rfl⟩
+  | v :: vs, h => by
+      obtain ⟨z, rfl⟩ := h v List.mem_cons_self
+      obtain ⟨ys, hd, he⟩ := dec_slice_int vs fun w hw => h w (List.mem_cons_of_mem _ hw)
+      refine ⟨z :: ys, ?_, ?_⟩
+      · change (Value.int z :: vs).mapM (dec .int) = some (z :: ys)
+        change vs.mapM (dec .int) = some ys at hd
+        simp [List.mapM_cons, hd, dec]
+      · change Value.array vs = Value.array (ys.map (enc .int)) at he
+        simp only [Value.array.injEq] at he
+        change Value.array (Value.int z :: vs) = Value.array ((z :: ys).map (enc .int))
+        rw [List.map_cons, ← he]
+        rfl
+
+/-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index` and
+    `array_update`. -/
+theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
+    (h : hax64SigOf f as = some r) : f ∈ hax64NFScalar ∨ f = "index" ∨ f = "array_update" := by
+  unfold hax64SigOf at h
+  split at h
+  · rename_i hc
+    simp only [Bool.and_eq_true, List.contains_iff_mem] at hc
+    exact Or.inl (by simpa using hc.1.1)
+  · split at h
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inr (Or.inr rfl)
+    · cases h
+
+/-- **The call typing of `u64` code is sound for `Hax.hax64Builtins`.** -/
+theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigOf := by
+  intro f as r hr xs v hv
+  unfold hax64SigOf at hr
+  split at hr
+  · rename_i hc
+    simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq, List.all_eq_true] at hc
+    obtain ⟨⟨hf, hlen⟩, hall⟩ := hc
+    simp only [Option.some.injEq] at hr
+    subst hr
+    match as, xs, hlen, hall with
+    | [t₁, t₂], .cons x₁ (.cons x₂ .nil), _, hall =>
+      obtain ⟨a, ha⟩ := hax64NFWordTy_enc (hall t₁ List.mem_cons_self) x₁
+      obtain ⟨b, hb⟩ := hax64NFWordTy_enc
+        (hall t₂ (List.mem_cons_of_mem _ List.mem_cons_self)) x₂
+      change _root_.Hax.hax64Builtins f [enc t₁ x₁, enc t₂ x₂] = some v at hv
+      rw [ha, hb] at hv
+      obtain ⟨z, rfl⟩ := hax64Builtins_scalar_int (List.contains_iff_mem.mp (by simpa using hf))
+        hv
+      exact ⟨z, rfl, rfl⟩
+  · split at hr
+    · simp only [Option.some.injEq] at hr
+      subst hr
+      match xs with
+      | .cons ys (.cons i .nil) =>
+        change (_root_.Hax.hax64WordOps "index" [.array (ys.map (enc .int)), .int i] <|>
+          _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), .int i]) = some v at hv
+        rw [_root_.Hax.hax64WordOps_index] at hv
+        change _root_.Hax.widthArrayOps "index" [.array (ys.map (enc .int)), .int i] =
+          some v at hv
+        rw [_root_.Hax.widthArrayOps_index_int] at hv
+        split at hv
+        · rw [List.getElem?_map] at hv
+          rcases hy : ys[i.toNat]? with _ | y
+          · rw [hy] at hv; cases hv
+          · rw [hy] at hv
+            change some (Value.int y) = some v at hv
+            cases hv
+            exact ⟨y, rfl, rfl⟩
+        · cases hv
+    · split at hr
+      · rename_i t _ ht
+        simp only [Option.some.injEq] at hr
+        subst hr
+        match xs with
+        | .cons ys (.cons i (.cons x .nil)) =>
+          obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht x
+          change (_root_.Hax.hax64WordOps "array_update"
+              [.array (ys.map (enc .int)), .int i, enc t x] <|>
+            _root_.Hax.widthArrayOps "array_update"
+              [.array (ys.map (enc .int)), .int i, enc t x]) = some v at hv
+          rw [_root_.Hax.hax64WordOps_array_update] at hv
+          change _root_.Hax.widthArrayOps "array_update"
+            [.array (ys.map (enc .int)), .int i, enc t x] = some v at hv
+          rw [_root_.Hax.widthArrayOps_array_update_int, hz] at hv
+          have hints : ∀ w ∈ ys.map (enc .int), ∃ z : Int, w = .int z := by
+            intro w hw
+            rw [List.mem_map] at hw
+            obtain ⟨y, -, rfl⟩ := hw
+            exact ⟨y, rfl⟩
+          split at hv
+          · cases hv
+            refine dec_slice_int _ fun w hw => ?_
+            rcases List.mem_or_eq_of_mem_set hw with hw | rfl
+            · exact hints w hw
+            · exact ⟨z, rfl⟩
+          · cases hv
+            exact dec_slice_int _ hints
+      · cases hr
+    · cases hr
 
 end CatCrypt.Crypto.Hax.ImpToNF
