@@ -223,6 +223,7 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.SolinasInstances
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsSolinas
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
@@ -372,6 +373,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteFrame
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
+CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.LawfulArrByteOffset
 CatCrypt.Crypto.SecureCompilation.Dialects.LeafCall128Emit
 CatCrypt.Crypto.SecureCompilation.Dialects.MemrefArrayFrontValidate
@@ -379,6 +381,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity2
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity3
 CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
+CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFrontValidate
@@ -824,7 +827,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
-CatCrypt.Crypto.SecureCompilation.X86Backend.LoopTVLeg
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen

@@ -96,8 +96,8 @@ The legs of `haxc` fall into three classes.
 | Class | Legs |
 |---|---|
 | Proof | typed hax front (`haxFrontT_simulates_hax64W`); route from `LowCT` to the Jasmin dialect (`straightCompile_denote`, `loopCompile_denote`); export of a straight chain (`straight_export_faithful_abi`); decode equation of the encoder (`DecodeLayout.decodeLprog_encodeLfundefBytes`) |
-| Decided check with a soundness lemma | `haxFrontTOk`, `frontScalOk`/`frontArrOk`, `haxcChecksB`, `coveredGuardedB`, `loopTripOK`, the printer precondition `twoAddrOK` (`bodyTiedOk`), the name checks of the export certificate, `decodesToB` |
-| Translation validation | body equality of the loop export certificate (`comLCertB`); the post-pass `fuseMulHiLprog`; the owned back end (`optimizeLprogBasicBlocks`, `foldIndexedLprog`, `reallocLprog`, `twoAddrBody`), validated by `ownedCheckM` on the straight route; the printed body against the decoded bytes (`lineCheck`, `nodeCheck`, and `nodeCheckTV` on loops) |
+| Decided check with a soundness lemma | `haxFrontTOk`, `frontScalOk`/`frontArrOk`, `coveredGuardedB`, `loopTripOK`, the printer precondition `twoAddrOK` (`bodyTiedOk`), the name checks of the export certificate, `decodesToB` |
+| Translation validation | body equality of the loop export certificate (`comLCertB`); the post-pass `fuseMulHiLprog`; the owned back end (`optimizeLprogBasicBlocks`, `foldIndexedLprog`, `reallocLprog`, `twoAddrBody`), validated by `ownedCheckM` on the straight route; the printed body against the decoded bytes (`lineCheck`) on the straight route; on the loop route, the register allocation check inside the image route (`ImageAddrRoute.routeB`), with the printed body run on the address machine by theorem (`image_route_bytes`) |
 
 The theorems of the owned back-end passes are stated for `lsemStraight`, the labeled
 `lsem` or `runBlock`, not for the flag machine `lsemFuelMemF` that the export
@@ -112,7 +112,7 @@ The target in the project plan keeps one translation validation, `ownedCheckM` a
 pair before and after register allocation, with the completeness lemmas
 (`twoAddr_ownedCheckM_complete`, `foldIndexed_ownedCheckM_complete`) as the
 preservation theorems of the passes it covers. The general decode simulation replaces
-`lineCheck`, `nodeCheck` and `nodeCheckTV`; the loop export certificate and
+`lineCheck` on the straight route; the loop export certificate and
 `fuseMulHiLprog` receive proofs; constant time is derived from the source through
 per-pass leakage transformers.
 
