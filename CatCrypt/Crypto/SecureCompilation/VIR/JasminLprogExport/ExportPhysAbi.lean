@@ -1304,7 +1304,8 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false)
     (forwarderBody? : Option Lcmd := none)
-    (reserveVecScratch : Bool := false) :
+    (reserveVecScratch : Bool := false)
+    (retToRax : Bool := false) :
     Lfundef :=
   -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
   -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
@@ -1446,11 +1447,12 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
   -- guaranteed by the last call's return alone (the caller-side functional-leaf
   -- ABI reads the result from `RAX`). Move the barrier-resolved return name
   -- back into `RAX` before the callee-saved restore. Emitted only for
-  -- `bodyStraightCall` bodies whose return name is a body slot and does not
-  -- already resolve to `RAX` — every call-free / looped kernel is
-  -- byte-identical.
+  -- `bodyStraightCall` bodies, and for every body when `retToRax` is set (a
+  -- register result returned in `RAX`), whose return name is a body slot and
+  -- does not already resolve to `RAX`; with `retToRax` unset every call-free /
+  -- looped kernel is byte-identical.
   let retMat : Lcmd :=
-    if bodyStraightCall virt.lfd_body then
+    if bodyStraightCall virt.lfd_body || retToRax then
       match virt.lfd_res.head? with
       | some rn =>
           if nameSlot virt.lfd_body rn < (bodyNames virt.lfd_body).length then
@@ -1507,12 +1509,13 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (abiTyin : List Nat := [64, 64])
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
-    (forceLivePin : Bool := false) :
+    (forceLivePin : Bool := false)
+    (retToRax : Bool := false) :
     Lfundef :=
   comToLfundefPhysAbiFromVirt (comToLfundef com immSlotMap)
     (shiftImm := shiftImm) (inLoadMap := inLoadMap) (outStoreMap := outStoreMap)
     (abiArgs := abiArgs) (abiTyin := abiTyin) (residence := residence)
-    (abiW := abiW) (forceLivePin := forceLivePin)
+    (abiW := abiW) (forceLivePin := forceLivePin) (retToRax := retToRax)
     (forwarderBody? := (degenerateForwarderSym? com abiArgs).map
       (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩]))
 
@@ -1529,14 +1532,15 @@ def Com.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (abiTyin : List Nat := [64, 64])
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
-    (forceLivePin : Bool := false) : Lprog :=
+    (forceLivePin : Bool := false)
+    (retToRax : Bool := false) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, comToLfundefPhysAbi com shiftImm immSlotMap inLoadMap
-                 outStoreMap abiArgs abiTyin residence abiW forceLivePin)] }
+                 outStoreMap abiArgs abiTyin residence abiW forceLivePin retToRax)] }
 
 /-- Serialize the ABI-wrapped physical export to the textual lprog blob. -/
 def Com.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy}
