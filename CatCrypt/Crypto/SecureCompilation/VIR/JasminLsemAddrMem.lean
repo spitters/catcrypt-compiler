@@ -24,8 +24,9 @@ pattern of the export.
 `LstateA` is a register file `LstateN` and a byte memory `AMem` of `Ascent.AddrMem`.
 `fstepA frame` is the extended straight step `fstepF` with memory read at addresses:
 
-* `MOVQ dst, q` with `frame q = some a` loads the word at `a` into `dst`;
-* `MOVQ q, src` with `frame q = some a` stores `src` at `a`;
+* `MOVQ dst, q` or `MOV:64 dst, q` with `frame q = some a` loads the word at `a` into `dst`;
+* `MOVQ q, src` or `MOV:64 q, src` with `frame q = some a` stores `src` at `a`;
+* `CMP:64 d, x, q` with `frame q = some a` compares `x` with the word at `a`;
 * `LOADIDX dst, (base, idx, sc)` loads the word at `reg base + sc · reg idx`;
 * `STOREIDX _, (base, idx, sc), val` stores `val` at `reg base + sc · reg idx`;
 * every other register-tagged instruction is `fstepF` on the register file.
@@ -113,9 +114,17 @@ structure LstateA where
 def LstateA.setLpc (sa : LstateA) (pc : Nat) : LstateA :=
   { sa with reg := { sa.reg with lpc := pc } }
 
-/-- The wire form `Lopn [.reg dst] "MOVQ" [.reg src]`, as `(dst, src)`. -/
+/-- The wire form `Lopn [.reg dst] m [.reg src]` of a 64-bit move, `m` one of `MOVQ` and
+    `MOV:64`, as `(dst, src)`. -/
 def slotMov? : LinstrR → Option (String × String)
-  | .Lopn [.reg dst] opn [.reg src] => if opn = "MOVQ" then some (dst, src) else none
+  | .Lopn [.reg dst] opn [.reg src] =>
+      if opn = "MOVQ" ∨ opn = "MOV:64" then some (dst, src) else none
+  | _ => none
+
+/-- The wire form `Lopn [.reg d] "CMP:64" [.reg x, .reg q]` of a register compare, as
+    `(d, x, q)`. -/
+def slotCmp? : LinstrR → Option (String × String × String)
+  | .Lopn [.reg d] opn [.reg x, .reg q] => if opn = "CMP:64" then some (d, x, q) else none
   | _ => none
 
 /-- The wire form `Lopn [.reg dst] "LOADIDX" [.arrIdx base idx sc]`, as
@@ -170,7 +179,15 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
               | some v => some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
               | none => none
           | none, none => regStepA i sa zf
-      | none => regStepA i sa zf
+      | none =>
+          match slotCmp? i.fst with
+          | some (d, x, q) =>
+              match frame q with
+              | some a =>
+                  regStepA (.Lopn [.reg d] "CMP:64" [.reg x, .imm (read64 sa.mem a).toNat],
+                    i.snd) sa zf
+              | none => regStepA i sa zf
+          | none => regStepA i sa zf
   | _ => none
 
 /-- The straight fold of `fstepA`. -/
@@ -489,10 +506,12 @@ theorem store_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
 
 /-! ## 4. Register instructions -/
 
-/-- A register-tagged instruction that is no frame-slot move. -/
+/-- A register-tagged instruction that is no frame-slot move and no compare against a frame
+    slot. -/
 def IsRegInstr (frame : String → Option (BitVec 64)) (i : LinstrRM) : Prop :=
   (∃ c, i.snd = MemTag.reg c) ∧
-    ∀ d src, slotMov? i.fst = some (d, src) → frame src = none ∧ frame d = none
+    (∀ d src, slotMov? i.fst = some (d, src) → frame src = none ∧ frame d = none) ∧
+    ∀ d x q, slotCmp? i.fst = some (d, x, q) → frame q = none
 
 /-- The step of `i` is independent of the register `scr`: from register stores that agree
     off `scr` and the same carry and overflow flags, a successful step is matched by a step
@@ -507,12 +526,18 @@ def RegCompat (scr : String) (i : LinstrRM) : Prop :=
 theorem fstepA_reg {frame : String → Option (BitVec 64)} {i : LinstrRM}
     (hi : IsRegInstr frame i) (sa : LstateA) (zf : Bool) :
     fstepA frame i sa zf = regStepA i sa zf := by
-  obtain ⟨⟨c, hc⟩, hs⟩ := hi
+  obtain ⟨⟨c, hc⟩, hs, hq⟩ := hi
   unfold fstepA
   rw [hc]
   simp only
   cases hm : slotMov? i.fst with
-  | none => rfl
+  | none =>
+      simp only
+      cases hk : slotCmp? i.fst with
+      | none => rfl
+      | some dxq =>
+          obtain ⟨d, x, q⟩ := dxq
+          simp only [hq d x q hk]
   | some ds =>
       obtain ⟨d, src⟩ := ds
       obtain ⟨h1, h2⟩ := hs d src hm
@@ -684,11 +709,13 @@ theorem regCompat_subImmI (scr dst a : String) (k : Nat) (ha : a ≠ scr) :
 
 theorem isRegInstr_addImmI (frame : String → Option (BitVec 64)) (dst a : String) (k : Nat) :
     IsRegInstr frame (addImmI dst a k) :=
-  ⟨⟨none, rfl⟩, fun d src h => by simp [addImmI, slotMov?] at h⟩
+  ⟨⟨none, rfl⟩, fun d src h => by simp [addImmI, slotMov?] at h,
+    fun d x q h => by simp [addImmI, slotCmp?] at h⟩
 
 theorem isRegInstr_subImmI (frame : String → Option (BitVec 64)) (dst a : String) (k : Nat) :
     IsRegInstr frame (subImmI dst a k) :=
-  ⟨⟨none, rfl⟩, fun d src h => by simp [subImmI, slotMov?] at h⟩
+  ⟨⟨none, rfl⟩, fun d src h => by simp [subImmI, slotMov?] at h,
+    fun d x q h => by simp [subImmI, slotCmp?] at h⟩
 
 /-! ## 5. Segments -/
 
@@ -1247,13 +1274,16 @@ theorem regCompat_binRegI (scr opn base dst a b : String) (hstrip : stripWidthTa
     (fun w va vb => applyOpnN w base [va, vb])
     fun s zf _ va hg => fstepF_binRegI opn base dst a b hstrip hcmp hmul hcarry hmov s zf va hg
 
-theorem isRegInstr_binRegI (frame : String → Option (BitVec 64)) (opn dst a b : String) :
+theorem isRegInstr_binRegI (frame : String → Option (BitVec 64)) (opn dst a b : String)
+    (hopn : opn ≠ "CMP:64") :
     IsRegInstr frame (binRegI opn dst a b) :=
-  ⟨⟨none, rfl⟩, fun d src h => by simp [binRegI, slotMov?] at h⟩
+  ⟨⟨none, rfl⟩, fun d src h => by simp [binRegI, slotMov?] at h,
+    fun d x q h => by simp [binRegI, slotCmp?, hopn] at h⟩
 
 theorem isRegInstr_carryRegI (frame : String → Option (BitVec 64)) (opn dst a b c : String) :
     IsRegInstr frame (carryRegI opn dst a b c) :=
-  ⟨⟨none, rfl⟩, fun d src h => by simp [carryRegI, slotMov?] at h⟩
+  ⟨⟨none, rfl⟩, fun d src h => by simp [carryRegI, slotMov?] at h,
+    fun d x q h => by simp [carryRegI, slotCmp?] at h⟩
 
 /-- A two-source `applyOpnN` step leaves every register other than `dst` unchanged. -/
 theorem fstepF_binRegI_getW {opn base dst a b : String} (hstrip : stripWidthTag opn = base)
@@ -1497,7 +1527,7 @@ theorem andTrip_simSeg {L : Layout} {frame : String → Option (BitVec 64)} {scr
   have hand := SimSeg.reg (L := L) (frame := frame) (scr := scr) (andK L A B R t)
     (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
     (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t)) (andI z x y)
-    (isRegInstr_binRegI frame _ z x y) (regCompat_andI scr z x y hx hy)
+    (isRegInstr_binRegI frame _ z x y (by decide)) (regCompat_andI scr z x y hx hy)
     (fun s zf b z' hP h => by
       rw [fstepF_binRegI_getW stripWidthTag_AND64 (by decide +kernel) (by decide) (by decide)
         (by decide) h idx hzi, hP])

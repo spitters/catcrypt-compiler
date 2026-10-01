@@ -32,9 +32,10 @@ scratch register in that red-zone word; no other covered instruction writes it.
 ## The arms
 
 `AArm` is the covered instructions: the register arms `Arm` of `DecodePrinted` other than
-the frame-word moves; the frame-word store and load `MOVQ`; the flag compare `CMP:64` with a
-register or a sign-extended `imm8`; the indexed load `LOADIDX` and store `STOREIDX` at scale
-`8`; the low multiply `MUL:64`; the widening multiply `MULX` with coincident destinations.
+the frame-word moves; the frame-word store and load at `MOVQ` or `MOV:64`; the flag compare
+`CMP:64` with a register, a sign-extended `imm8` or a frame word; the indexed load `LOADIDX`
+and store `STOREIDX` at scale `8`; the low multiply `MUL:64`; the widening multiply `MULX`
+with coincident or with distinct destinations.
 `AArm.ok` is the Boolean condition of an arm, read off the instruction.
 
 ## Main results
@@ -165,11 +166,12 @@ theorem runBlock_mem_of_noWriteB :
 
 /-! ## 2. Register instructions -/
 
-/-- A register-tagged instruction that moves no frame slot is stepped by the flag machine on
-    the register file. -/
+/-- A register-tagged instruction that moves no frame slot and compares against no frame slot
+    is stepped by the flag machine on the register file. -/
 theorem fstepA_of_reg (frame : String → Option (BitVec 64)) {i : LinstrRM} {c : Option Nat}
     (ht : i.snd = .reg c)
     (hs : ∀ d s, slotMov? i.fst = some (d, s) → frame s = none ∧ frame d = none)
+    (hq : ∀ d x q, slotCmp? i.fst = some (d, x, q) → frame q = none)
     (s : LstateA) (zf : Bool) : fstepA frame i s zf = regStepA i s zf := by
   obtain ⟨w, t⟩ := i
   simp only at ht
@@ -177,7 +179,13 @@ theorem fstepA_of_reg (frame : String → Option (BitVec 64)) {i : LinstrRM} {c 
   unfold fstepA
   simp only
   cases h : slotMov? w with
-  | none => rfl
+  | none =>
+    simp only
+    cases hk : slotCmp? w with
+    | none => rfl
+    | some dxq =>
+      obtain ⟨d, x, q⟩ := dxq
+      simp only [hq d x q hk]
   | some ds =>
     obtain ⟨d, s'⟩ := ds
     obtain ⟨h1, h2⟩ := hs d s' h
@@ -259,6 +267,22 @@ theorem encodeLopn_mulxS (F W : Nat) (H S : String) (qB : Nat) :
     encodeLopn F W (.Lopn [.reg H, .reg H] "MULX" [.reg S]) qB
       = encMulxSameDst (gpNumU H) (gpNumU S) := by
   simp (config := { decide := true }) [encodeLopn]
+
+/-- The widening multiply `MULX L, H, S` with distinct destinations. -/
+theorem encodeLopn_mulx (F W : Nat) (L H S : String) (qB : Nat) (hne : (L == H) = false) :
+    encodeLopn F W (.Lopn [.reg L, .reg H] "MULX" [.reg S]) qB
+      = ScalarEncoder.encMulxRR (gpNumU H) (gpNumU L) (gpNumU S) := by
+  simp (config := { decide := true }) [encodeLopn, hne]
+
+/-- The frame-word compare `CMP:64 c, c, q` against the word at the frame offset of `q`. -/
+theorem encodeLopn_cmpM (F W : Nat) (c q : String) (qB : Nat) (off : Int)
+    (hc : gpOk c = true) (hg : isGpName q = false) (hs : isSpillOrQsave q = true)
+    (hoff : spillQsaveOff F W q qB = some off) :
+    encodeLopn F W (.Lopn [.reg c] "CMP:64" [.reg c, .reg q]) qB
+      = encRspMem 1 0x3b (gpNumU c) off := by
+  have fc := gpFacts hc
+  simp (config := { decide := true }) [encodeLopn, fc.isGp, hg, hs, hoff, tagShiftExt,
+    aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix, LprogBytes.rexW]
 
 /-! ## 4. The decoded pieces of the memory, compare and multiply arms -/
 
@@ -352,14 +376,16 @@ theorem mulxSameScratch_spec (h s : Nat) :
 inductive AArm where
   /-- A register arm of `DecodePrinted` other than the frame-word moves. -/
   | reg (a : Arm)
-  /-- The frame-word store `MOVQ q, S`. -/
-  | st (q S : String)
-  /-- The frame-word load `MOVQ D, q`. -/
-  | ld (D q : String)
+  /-- The frame-word store `m q, S`, `m` one of `MOVQ` and `MOV:64`. -/
+  | st (m q S : String)
+  /-- The frame-word load `m D, q`, `m` one of `MOVQ` and `MOV:64`. -/
+  | ld (m D q : String)
   /-- The register compare `CMP:64 c, c, r`. -/
   | cmpR (c r : String)
   /-- The immediate compare `CMP:64 c, c, #k`. -/
   | cmpI (c : String) (k : Nat)
+  /-- The frame-word compare `CMP:64 c, c, q`. -/
+  | cmpM (c q : String)
   /-- The indexed load `LOADIDX D, (B, I, 8)`. -/
   | ldx (D B I : String)
   /-- The indexed store `STOREIDX d, (B, I, 8), V`; the destination `d` names the array and
@@ -370,18 +396,23 @@ inductive AArm where
   /-- The widening multiply `MULX H, H, S` with coincident destinations: `H` receives the
       high word of the product of `RDX` and `S`. -/
   | mulxS (H S : String)
+  /-- The widening multiply `MULX L, H, S` with distinct destinations: `L` receives the low
+      and `H` the high word of the product of `RDX` and `S`. -/
+  | mulx (L H S : String)
 
 /-- The instruction of an arm. -/
 def AArm.instr : AArm → LinstrR
   | .reg a => a.instr
-  | .st q S => .Lopn [.reg q] "MOVQ" [.reg S]
-  | .ld D q => .Lopn [.reg D] "MOVQ" [.reg q]
+  | .st m q S => .Lopn [.reg q] m [.reg S]
+  | .ld m D q => .Lopn [.reg D] m [.reg q]
   | .cmpR c r => .Lopn [.reg c] "CMP:64" [.reg c, .reg r]
   | .cmpI c k => .Lopn [.reg c] "CMP:64" [.reg c, .imm k]
+  | .cmpM c q => .Lopn [.reg c] "CMP:64" [.reg c, .reg q]
   | .ldx D B I => .Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]
   | .stx d B I V => .Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V]
   | .mul D S => .Lopn [.reg D] "MUL:64" [.reg D, .reg S]
   | .mulxS H S => .Lopn [.reg H, .reg H] "MULX" [.reg S]
+  | .mulx L H S => .Lopn [.reg L, .reg H] "MULX" [.reg S]
 
 /-- The register arms of `DecodePrinted`: every arm but the frame-word moves. -/
 def regArmB : Arm → Bool
@@ -401,10 +432,12 @@ def scrOf (H S : String) : Nat := mulxSameScratch (gpNumU H) (gpNumU S)
 /-- The byte pieces of an arm. -/
 def AArm.pieces (P : Params) : AArm → List (List (BitVec 8) × JInstr 64)
   | .reg a => a.pieces P
-  | .st q S => Arm.pieces P (.store "MOVQ" q S)
-  | .ld D q => Arm.pieces P (.load "MOVQ" D q)
+  | .st m q S => Arm.pieces P (.store m q S)
+  | .ld m D q => Arm.pieces P (.load m D q)
   | .cmpR c r => [(encAluRRw 1 0x39 (gpNumU c) (gpNumU r), .cmp (phys c) (.reg (phys r)))]
   | .cmpI c k => [(encAluImm8 1 7 (gpNumU c) k, .cmp (phys c) (.imm k))]
+  | .cmpM c q => [(encRspMem 1 0x3b (gpNumU c) (slotOff P q),
+      .cmpMem (phys c) "%rsp" (slotOff P q))]
   | .ldx D B I => [(encMemMovSibw 1 0x8b (gpNumU D) (gpNumU B) (gpNumU I) 8,
       .loadMemIdx (phys D) (phys B) (phys I) 8)]
   | .stx _ B I V => [(encMemMovSibw 1 0x89 (gpNumU V) (gpNumU B) (gpNumU I) 8,
@@ -417,26 +450,33 @@ def AArm.pieces (P : Params) : AArm → List (List (BitVec 8) × JInstr 64)
           .mulx (phys H) (SailX86Decoder.regName (scrOf H S)) (.reg "%rdx") (.reg (phys S))),
         (encRspMem 1 0x8b (scrOf H S) cmovRedZone,
           .loadMem (SailX86Decoder.regName (scrOf H S)) "%rsp" cmovRedZone)]
+  | .mulx L H S => [(ScalarEncoder.encMulxRR (gpNumU H) (gpNumU L) (gpNumU S),
+      .mulx (phys H) (phys L) (.reg "%rdx") (.reg (phys S)))]
 
 /-- The machine instructions of an arm. -/
 def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.snd
 
 /-- **The conditions of an arm** under the body parameters `P`: general-purpose operands; a
-    frame word with an offset in `rel32` range, whose word a load reads disjoint from the
-    red-zone word; an immediate compare in the sign-extended `imm8` range; an indexed access
-    whose base and index registers have a SIB encoding. -/
+    frame word with an offset in `rel32` range, whose word a load or compare reads disjoint
+    from the red-zone word; a frame-word move at `MOVQ` or `MOV:64`; an immediate compare in
+    the sign-extended `imm8` range; an indexed access whose base and index registers have a
+    SIB encoding; distinct destinations of the widening multiply `mulx`. -/
 def AArm.ok (P : Params) : AArm → Bool
   | .reg a => regArmB a && a.ok P [] && plainB a.instr
-  | .st q S => gpOk S && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
-      && dispOk32 (slotOff P q)
-  | .ld D q => gpOk D && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
-      && dispOk32 (slotOff P q) && sepB cmovRedZone (slotOff P q)
+  | .st m q S => gpOk S && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
+      && dispOk32 (slotOff P q) && isMovM m
+  | .ld m D q => gpOk D && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
+      && dispOk32 (slotOff P q) && sepB cmovRedZone (slotOff P q) && isMovM m
   | .cmpR c r => gpOk c && gpOk r
   | .cmpI c k => gpOk c && fitsImm8S 1 k
+  | .cmpM c q => gpOk c && !isGpName q && isSpillOrQsave q
+      && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome && dispOk32 (slotOff P q)
+      && sepB cmovRedZone (slotOff P q)
   | .ldx D B I => gpOk D && gpOk B && gpOk I && (gpNumU B &&& 7 != 5) && (gpNumU I != 4)
   | .stx _ B I V => gpOk B && gpOk I && gpOk V && (gpNumU B &&& 7 != 5) && (gpNumU I != 4)
   | .mul D S => gpOk D && gpOk S
   | .mulxS H S => gpOk H && gpOk S
+  | .mulx L H S => gpOk L && gpOk H && gpOk S && L != H
 
 theorem pieceDec_single {q : List (BitVec 8) × JInstr 64} (h : PieceDec q) :
     ∀ p ∈ [q], PieceDec p := by
@@ -454,18 +494,17 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
   | reg a =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     exact a.bytes P [] h.1.2
-  | st q S =>
-    exact Arm.bytes P [] (.store "MOVQ" q S) (by
+  | st m q S =>
+    exact Arm.bytes P [] (.store m q S) (by
       simp only [AArm.ok, Bool.and_eq_true] at h
-      simp [Arm.ok, isMovM, h])
-  | ld D q =>
+      simp [Arm.ok, h])
+  | ld m D q =>
     simp only [AArm.ok, Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨hD, -⟩, hsome⟩, hd⟩, -⟩ := h
+    obtain ⟨⟨⟨⟨⟨hD, -⟩, hsome⟩, hd⟩, -⟩, hm⟩ := h
     obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
-    · simp [AArm.instr, AArm.pieces, Arm.pieces,
-        encodeLopn_movM _ _ _ _ _ _ (show isMovM "MOVQ" = true by decide),
+    · simp [AArm.instr, AArm.pieces, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
         encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso]
     · simp only [AArm.pieces, Arm.pieces, List.mem_singleton]
       rintro p rfl rest
@@ -478,6 +517,18 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
     simp only [AArm.ok, Bool.and_eq_true] at h
     exact ⟨by simp [AArm.instr, AArm.pieces, encodeLopn_cmpI _ _ _ _ _ h.1 h.2],
       pieceDec_single (pieceDec_cmpI c k h.2)⟩
+  | cmpM c q =>
+    simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
+    obtain ⟨⟨⟨⟨⟨hc, hg⟩, hs⟩, hsome⟩, hd⟩, -⟩ := h
+    obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
+    have hso : slotOff P q = off := by simp [slotOff, hoff]
+    rw [hso] at hd
+    refine ⟨?_, ?_⟩
+    · simp [AArm.instr, AArm.pieces, encodeLopn_cmpM _ _ _ _ _ _ hc hg hs hoff, hso]
+    · simp only [AArm.pieces, List.mem_singleton]
+      rintro p rfl rest
+      rw [hso]
+      exact decodeLinstr_rspCmp _ _ rest (gpNumU_lt_16 c) hd
   | ldx D B I =>
     simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
     obtain ⟨⟨⟨⟨hD, hB⟩, hI⟩, hb5⟩, hi4⟩ := h
@@ -501,6 +552,12 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
       · exact fun rest => decodeLinstr_rspStore (scrOf H S) cmovRedZone rest hlt (by decide)
       · exact pieceDec_mulx _ _ _ (gpNumU_lt_16 H) hlt (gpNumU_lt_16 S)
       · exact fun rest => decodeLinstr_rspLoad (scrOf H S) cmovRedZone rest hlt (by decide)
+  | mulx L H S =>
+    simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+    obtain ⟨⟨⟨-, -⟩, -⟩, hne⟩ := h
+    exact ⟨by simp [AArm.instr, AArm.pieces,
+        encodeLopn_mulx _ _ _ _ _ _ (beq_eq_false_iff_ne.mpr hne)],
+      pieceDec_single (pieceDec_mulx _ _ _ (gpNumU_lt_16 H) (gpNumU_lt_16 L) (gpNumU_lt_16 S))⟩
 
 /-! ## 6. The simulation of one arm -/
 
@@ -510,12 +567,14 @@ def AArm.li : AArm → LinstrRM
   | .ldx D B I => (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8], .load 64 0)
   | .stx d B I V => (.Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V], .store 64 0)
   | .mulxS H S => (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none)
+  | .mulx L H S => (.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none)
   | a => (a.instr, .reg none)
 
 /-- The compare arms. -/
 def cmpArmB : AArm → Bool
   | .cmpR .. => true
   | .cmpI .. => true
+  | .cmpM .. => true
   | _ => false
 
 theorem fstepA_lpc (frame : String → Option (BitVec 64)) (i : LinstrRM) (s s' : LstateA)
@@ -588,6 +647,17 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
       · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨hD, hS⟩
       · cases hs
 
+/-- A register arm whose conditions hold compares against a general-purpose name only. -/
+theorem regArm_slotCmp {P : Params} {a : Arm} (h : a.ok P [] = true) {d x q : String}
+    (hk : slotCmp? a.instr = some (d, x, q)) : gpOk q = true := by
+  cases a with
+  | alu m D S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    by_cases hm : m = "CMP:64" <;> simp [Arm.instr, slotCmp?, hm] at hk
+    obtain ⟨-, -, rfl⟩ := hk
+    exact h.2
+  | _ => simp [Arm.instr, slotCmp?] at hk
+
 /-- **A register arm.** -/
 theorem sim_reg (P : Params) (rsp : BitVec 64) (a : Arm) (hr : regArmB a = true)
     (h : a.ok P [] = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorr rsp sa s) :
@@ -598,7 +668,8 @@ theorem sim_reg (P : Params) (rsp : BitVec 64) (a : Arm) (hr : regArmB a = true)
   rw [hpost] at hsim
   obtain ⟨s', zf', h1, h2, -⟩ := simA_of_decSim
     (fun s zf => fstepA_of_reg (frameP P rsp) (i := (a.instr, .reg none)) rfl
-      (fun d x hs => ⟨frameP_gp (hslot d x hs).2, frameP_gp (hslot d x hs).1⟩) s zf)
+      (fun d x hs => ⟨frameP_gp (hslot d x hs).2, frameP_gp (hslot d x hs).1⟩)
+      (fun d x q hk => frameP_gp (regArm_slotCmp h hk)) s zf)
     hjs hsim sa s zf hc
   exact ⟨s', zf', h1, h2⟩
 
@@ -635,15 +706,18 @@ theorem getW_setReg_nextPcN (b : LstateN) (D r : String) (v : BitVec 64) :
   · rename_i h; exact LstateN.getW_setReg_other _ _ _ _ _ h
 
 /-- **The frame-word store.** -/
-theorem sim_st (P : Params) (rsp : BitVec 64) (q S : String) (h : (AArm.st q S).ok P = true)
+theorem sim_st (P : Params) (rsp : BitVec 64) (m q S : String)
+    (h : (AArm.st m q S).ok P = true)
     (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorr rsp sa s) :
-    ∃ s' zf', fstepA (frameP P rsp) (AArm.st q S).li s zf = some (s', zf')
-      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.st q S).js P)) s' := by
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.st m q S).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.st m q S).js P)) s' := by
   simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
-  obtain ⟨⟨⟨hS, -⟩, hsome⟩, -⟩ := h
+  obtain ⟨⟨⟨⟨hS, -⟩, hsome⟩, -⟩, hm⟩ := h
+  have hm' : m = "MOVQ" ∨ m = "MOV:64" := by
+    simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at hm; exact hm.symm
   obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
   have hso : slotOff P q = off := by simp [slotOff, hoff]
-  have hjs : (AArm.st q S).js P = [.storeMem "%rsp" off (.reg (phys S))] := by
+  have hjs : (AArm.st m q S).js P = [.storeMem "%rsp" off (.reg (phys S))] := by
     simp [AArm.js, AArm.pieces, Arm.pieces, hso]
   rw [hjs]
   obtain ⟨hregs, hmem⟩ := evalInstrA_storeMem_eq sa "%rsp" (phys S) off
@@ -651,22 +725,26 @@ theorem sim_st (P : Params) (rsp : BitVec 64) (q S : String) (h : (AArm.st q S).
       s.of⟩, zf, ?_,
     hc.keep (sa' := evalInstrA sa _) hregs (fun r => LstateN.getW_nextPc _ _ _)
     (fun x hx => ?_)⟩
-  · simp [AArm.li, AArm.instr, fstepA, slotMov?, frameP, (gpFacts hS).off, hoff, hc.regs S hS]
+  · simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, (gpFacts hS).off, hoff,
+      hc.regs S hS]
   · show write64 s.mem (rsp + BitVec.ofInt 64 off) (sa.regs (phys S)) x = _
     rw [hmem, hc.sp]
     exact agree_write64 hc.mem _ _ x hx
 
 /-- **The frame-word load.** -/
-theorem sim_ld (P : Params) (rsp : BitVec 64) (D q : String) (h : (AArm.ld D q).ok P = true)
+theorem sim_ld (P : Params) (rsp : BitVec 64) (m D q : String)
+    (h : (AArm.ld m D q).ok P = true)
     (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorr rsp sa s) :
-    ∃ s' zf', fstepA (frameP P rsp) (AArm.ld D q).li s zf = some (s', zf')
-      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.ld D q).js P)) s' := by
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.ld m D q).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.ld m D q).js P)) s' := by
   simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
-  obtain ⟨⟨⟨⟨hD, -⟩, hsome⟩, -⟩, hsep⟩ := h
+  obtain ⟨⟨⟨⟨⟨hD, -⟩, hsome⟩, -⟩, hsep⟩, hm⟩ := h
+  have hm' : m = "MOVQ" ∨ m = "MOV:64" := by
+    simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at hm; exact hm.symm
   obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
   have hso : slotOff P q = off := by simp [slotOff, hoff]
   rw [hso] at hsep
-  have hjs : (AArm.ld D q).js P = [.loadMem (phys D) "%rsp" off] := by
+  have hjs : (AArm.ld m D q).js P = [.loadMem (phys D) "%rsp" off] := by
     simp [AArm.js, AArm.pieces, Arm.pieces, hso]
   rw [hjs]
   obtain ⟨hregs, hmem⟩ := evalInstrA_loadMem_eq sa (phys D) "%rsp" off
@@ -679,7 +757,7 @@ theorem sim_ld (P : Params) (rsp : BitVec 64) (D q : String) (h : (AArm.ld D q).
       (fun r => by rw [hregs, hc.sp]) (fun x hx => by rw [hmem]; exact hc.mem x hx)
       (fun r hr => by rw [getW_setReg_nextPcN, if_neg hr])
       (by rw [getW_setReg_nextPcN, if_pos rfl, hrd])⟩
-  simp [AArm.li, AArm.instr, fstepA, slotMov?, frameP, hoff]
+  simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, hoff]
 
 /-- The machine compare writes no register and no memory, and sets the zero flag to the
     equality of its operands. -/
@@ -695,19 +773,76 @@ theorem evalInstrA_cmp (sa : AState) (X : String) (o : JOperand) :
     against the machine compare of `phys c` with an operand that evaluates to `vo`. -/
 theorem sim_cmp (P : Params) (rsp : BitVec 64) (c : String) (o : LOperand) (o' : JOperand)
     (hcg : gpOk c = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorr rsp sa s)
-    (ho : evalOperandN s.reg 64 o = some (o'.eval sa.view)) :
+    (ho : evalOperandN s.reg 64 o = some (o'.eval sa.view))
+    (hq : ∀ q, o = .reg q → frameP P rsp q = none) :
     ∃ s' zf', fstepA (frameP P rsp) (.Lopn [.reg c] "CMP:64" [.reg c, o], .reg none) s zf
         = some (s', zf')
       ∧ ACorr rsp (aMachine.runBlock sa [.cmp (phys c) o']) s'
       ∧ (aMachine.runBlock sa [.cmp (phys c) o']).flags.zf.getD false = zf' := by
+  have hw : withWidthTag 64 "CMP" = "CMP:64" := by decide
   have hi : (LinstrR.Lopn [.reg c] "CMP:64" [.reg c, o], MemTag.reg none) = cmpRI c o := by
-    simp only [cmpRI, show withWidthTag 64 "CMP" = "CMP:64" by decide]
+    simp only [cmpRI, hw]
   rw [hi, fstepA_of_reg (frameP P rsp) (i := cmpRI c o) rfl (fun d x hs => by
-    cases o <;> simp [cmpRI, slotMov?] at hs) s zf]
+    cases o <;> simp [cmpRI, slotMov?] at hs) (fun d x q hk => by
+    cases o with
+    | reg r =>
+      simp only [cmpRI, hw, slotCmp?, if_true, Option.some.injEq, Prod.mk.injEq] at hk
+      obtain ⟨-, -, rfl⟩ := hk
+      exact hq r rfl
+    | _ => simp [cmpRI, slotCmp?] at hk) s zf]
   have hf := fstepF_cmpRI c o (baseOf s) zf _ _ (hc.regs c hcg) ho
   obtain ⟨e1, e2, e3⟩ := evalInstrA_cmp sa (phys c) o'
   refine ⟨⟨s.reg.nextPc, s.mem, s.cf, s.of⟩, sa.regs (phys c) == o'.eval sa.view, ?_, ?_, ?_⟩
   · show (fstepF (cmpRI c o) (baseOf s) zf).map _ = _
+    rw [hf]
+    rfl
+  · exact hc.keep e1 (fun r => LstateN.getW_nextPc _ _ _) (fun x hx => by
+      show s.mem x = (evalInstrA sa _).mem x
+      rw [e2]; exact hc.mem x hx)
+  · exact e3
+
+/-- **The frame-word compare.** The flag compare `CMP:64 c, c, q`, which the address machine
+    takes against the memory word at the frame address of `q`, against the machine compare of
+    `phys c` with the word at the frame offset of `q`. -/
+theorem sim_cmpM (P : Params) (rsp : BitVec 64) (c q : String)
+    (h : (AArm.cmpM c q).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorr rsp sa s) :
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.cmpM c q).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.cmpM c q).js P)) s'
+      ∧ (aMachine.runBlock sa ((AArm.cmpM c q).js P)).flags.zf.getD false = zf' := by
+  simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨⟨⟨⟨hcg, -⟩, -⟩, hsome⟩, -⟩, hsep⟩ := h
+  obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
+  have hso : slotOff P q = off := by simp [slotOff, hoff]
+  rw [hso] at hsep
+  have hdis : Disjoint8 (redW rsp) (rsp + BitVec.ofInt 64 off) := by
+    simp only [sepB, Bool.and_eq_true, decide_eq_true_eq] at hsep
+    exact disjoint8_add_ofInt rsp cmovRedZone off hsep.1 hsep.2
+  have hrd := hc.read64_eq hdis
+  set v := read64 s.mem (rsp + BitVec.ofInt 64 off) with hv
+  have hjs : (AArm.cmpM c q).js P = [.cmpMem (phys c) "%rsp" off] := by
+    simp [AArm.js, AArm.pieces, hso]
+  rw [hjs]
+  -- the machine compare against the frame word
+  have e1 : (evalInstrA sa (.cmpMem (phys c) "%rsp" off)).regs = sa.regs := by
+    simp [evalInstrA, evalInstr, JState.writeB5, AState.view]
+  have e2 : (evalInstrA sa (.cmpMem (phys c) "%rsp" off)).mem = sa.mem := rfl
+  have e3 : (evalInstrA sa (.cmpMem (phys c) "%rsp" off)).flags.zf.getD false
+      = (sa.regs (phys c) == v) := by
+    show (some (ZF_of_word (sa.regs (phys c)
+      - read64 sa.mem (sa.regs "%rsp" + BitVec.ofInt 64 off)))).getD false = _
+    rw [ZF_of_word_sub, hc.sp, ← hrd]
+    rfl
+  -- the address machine compare against the frame word
+  have hstep : fstepA (frameP P rsp) (AArm.cmpM c q).li s zf
+      = regStepA (cmpRI c (.imm v.toNat)) s zf := by
+    simp [AArm.li, AArm.instr, fstepA, slotMov?, slotCmp?, frameP, hoff, cmpRI, hv,
+      show withWidthTag 64 "CMP" = "CMP:64" by decide]
+  have hf := fstepF_cmpRI c (.imm v.toNat) (baseOf s) zf _ v (hc.regs c hcg)
+    (by simp [evalOperandN])
+  refine ⟨⟨s.reg.nextPc, s.mem, s.cf, s.of⟩, sa.regs (phys c) == v, ?_, ?_, ?_⟩
+  · rw [hstep]
+    show (fstepF (cmpRI c (.imm v.toNat)) (baseOf s) zf).map _ = _
     rw [hf]
     rfl
   · exact hc.keep e1 (fun r => LstateN.getW_nextPc _ _ _) (fun x hx => by
@@ -806,22 +941,28 @@ theorem sim_mul (P : Params) (rsp : BitVec 64) (D S : String)
   obtain ⟨s', zf', h1, h2, -⟩ := simA_of_decSim (frame := frameP P rsp)
     (i := binRegI "MUL:64" D D S)
     (fun s zf => fstepA_of_reg (frameP P rsp) rfl (fun d x hs => by
-      simp [binRegI, slotMov?] at hs) s zf)
+      simp [binRegI, slotMov?] at hs) (fun d x q hk => by simp [binRegI, slotCmp?] at hk) s zf)
     rfl (decSim_mulP rsp D S h.1 h.2) sa s zf hc
   exact ⟨s', zf', h1, h2⟩
 
-/-- The flag machine steps the widening multiply `MULX:64 H, H, S` by `wideStep`. -/
-theorem fstepF_mulxS (H S : String) (b : LstateM) (zf : Bool) :
-    fstepF (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) b zf
-      = (wideStep (.mulx H H (.reg S)) b).map (fun t => (t, zf)) := by
-  have hw : wideArgs? ((.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S] : LinstrR),
-      MemTag.reg none) = some (.mulx H H (.reg S)) := by
+/-- The flag machine steps the widening multiply `MULX:64 L, H, S` by `wideStep`. -/
+theorem fstepF_mulx (L H S : String) (b : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) b zf
+      = (wideStep (.mulx L H (.reg S)) b).map (fun t => (t, zf)) := by
+  have hw : wideArgs? ((.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S] : LinstrR),
+      MemTag.reg none) = some (.mulx L H (.reg S)) := by
     simp only [wideArgs?, true_or, if_true]
   unfold fstepF stepMemF
   simp only [cmpArgs?, movRegArgs?,
     JasminLsemExportRewrites.lsemStepMem_of_wideArgs hw]
-  rw [show carryArgs? ((.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S] : LinstrR),
+  rw [show carryArgs? ((.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S] : LinstrR),
       MemTag.reg none) = none from rfl, hw]
+
+/-- The flag machine steps the widening multiply `MULX:64 H, H, S` by `wideStep`. -/
+theorem fstepF_mulxS (H S : String) (b : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) b zf
+      = (wideStep (.mulx H H (.reg S)) b).map (fun t => (t, zf)) :=
+  fstepF_mulx H H S b zf
 
 theorem regName_ne_of_ne {m n : Nat} (hm : m < 16) (hn : n < 16) (h : m ≠ n) :
     SailX86Decoder.regName m ≠ SailX86Decoder.regName n := fun e =>
@@ -893,7 +1034,8 @@ theorem sim_mulxS (P : Params) (rsp : BitVec 64) (H S : String)
     hc.write hH hi hfin (fun z hz => ?_) (fun r hr => ?_) ?_⟩
   · rw [show (AArm.mulxS H S).li
         = (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) from rfl,
-      fstepA_of_reg (frameP P rsp) rfl (fun d x hs => by simp [slotMov?] at hs) s zf]
+      fstepA_of_reg (frameP P rsp) rfl (fun d x hs => by simp [slotMov?] at hs)
+        (fun d x q hk => by simp [slotCmp?] at hk) s zf]
     show (fstepF _ (baseOf s) zf).map _ = _
     rw [fstepF_mulxS]
     simp [wideStep, evalOperandN, mulxSrc, baseOf, hxs, hys, ← hhi, ← hlo, LstateM.setReg,
@@ -905,6 +1047,60 @@ theorem sim_mulxS (P : Params) (rsp : BitVec 64) (H S : String)
       LstateN.getW_setReg_other _ _ _ _ _ hr]
   · show ((s.reg.setReg H lo).setReg H hi).nextPc.getW H 64 = _
     rw [LstateN.getW_nextPc, LstateN.getW_setReg_same]
+
+/-- **The widening multiply with distinct destinations.** The machine writes the high word
+    to `phys H` and the low word to `phys L`, as the flag machine writes them to `H` and `L`;
+    the memory is unchanged. -/
+theorem sim_mulx (P : Params) (rsp : BitVec 64) (L H S : String)
+    (h : (AArm.mulx L H S).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorr rsp sa s) :
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.mulx L H S).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.mulx L H S).js P)) s' := by
+  simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨hL, hH⟩, hS⟩, hne⟩ := h
+  have hrdx : phys "RDX" = "%rdx" := by decide
+  have hgRDX : gpOk "RDX" = true := by decide
+  set x := sa.regs "%rdx" with hx
+  set y := sa.regs (phys S) with hy
+  set hi := (x86_MULX_lo_hi x y).2 with hhi
+  set lo := (x86_MULX_lo_hi x y).1 with hlo
+  have hjs : (AArm.mulx L H S).js P
+      = [.mulx (phys H) (phys L) (.reg "%rdx") (.reg (phys S))] := rfl
+  rw [hjs]
+  set sa' := aMachine.runBlock sa [.mulx (phys H) (phys L) (.reg "%rdx") (.reg (phys S))]
+    with hsa'
+  have r1 : ∀ r, sa'.regs r = if r = phys H then hi else if r = phys L then lo else sa.regs r :=
+    fun r => DecodedLsemLoop.evalInstrA_mulx_regs sa _ _ _ _ r
+  have m1 : sa'.mem = sa.mem := evalInstrA_mem_of_noWriteB sa _ rfl
+  have hxs : s.reg.getW "RDX" 64 = some x := by rw [hc.regs "RDX" hgRDX, hrdx]
+  have hys : s.reg.getW S 64 = some y := hc.regs S hS
+  refine ⟨⟨((s.reg.setReg L lo).setReg H hi).nextPc, s.mem, s.cf, s.of⟩, zf, ?_,
+    ⟨fun r hr => ?_, ?_, fun z hz => ?_⟩⟩
+  · rw [show (AArm.mulx L H S).li
+        = (.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) from rfl,
+      fstepA_of_reg (frameP P rsp) rfl (fun _ _ hs => by simp [slotMov?] at hs)
+        (fun _ _ _ hk => by simp [slotCmp?] at hk) s zf]
+    show (fstepF _ (baseOf s) zf).map _ = _
+    rw [fstepF_mulx]
+    simp [wideStep, evalOperandN, mulxSrc, baseOf, hxs, hys, ← hhi, ← hlo, LstateM.setReg,
+      LstateM.nextPc]
+  · show ((s.reg.setReg L lo).setReg H hi).nextPc.getW r 64 = _
+    rw [r1, LstateN.getW_nextPc]
+    by_cases hrH : r = H
+    · subst hrH
+      rw [LstateN.getW_setReg_same, if_pos rfl]
+    · rw [LstateN.getW_setReg_other _ _ _ _ _ hrH, if_neg (fun e => hrH (phys_inj hr hH e))]
+      by_cases hrL : r = L
+      · subst hrL
+        rw [LstateN.getW_setReg_same, if_pos rfl]
+      · rw [LstateN.getW_setReg_other _ _ _ _ _ hrL, if_neg (fun e => hrL (phys_inj hr hL e)),
+          hc.regs r hr]
+  · rw [r1, if_neg (fun e => (gpFacts hH).physNe e.symm),
+      if_neg (fun e => (gpFacts hL).physNe e.symm)]
+    exact hc.sp
+  · show s.mem z = sa'.mem z
+    rw [m1]
+    exact hc.mem z hz
 
 /-- The address an indexed load of the arm `a` reads from the address state `s` is disjoint
     from the red-zone word. -/
@@ -927,20 +1123,24 @@ theorem AArm.sim (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) (
     simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨s', zf', h1, h2⟩ := sim_reg P rsp a h.1.1 h.1.2 sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
-  | st q S =>
-    obtain ⟨s', zf', h1, h2⟩ := sim_st P rsp q S h sa s zf hc
+  | st m q S =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_st P rsp m q S h sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
-  | ld D q =>
-    obtain ⟨s', zf', h1, h2⟩ := sim_ld P rsp D q h sa s zf hc
+  | ld m D q =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_ld P rsp m D q h sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
   | cmpR c r =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨s', zf', h1, h2, h3⟩ := sim_cmp P rsp c (.reg r) (.reg (phys r)) h.1 sa s zf hc
-      (hc.regs r h.2)
+      (hc.regs r h.2) (fun q hq => by cases hq; exact frameP_gp h.2)
     exact ⟨s', zf', h1, h2, fun _ => h3⟩
   | cmpI c k =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨s', zf', h1, h2, h3⟩ := sim_cmp P rsp c (.imm k) (.imm k) h.1 sa s zf hc rfl
+      (fun q hq => by cases hq)
+    exact ⟨s', zf', h1, h2, fun _ => h3⟩
+  | cmpM c q =>
+    obtain ⟨s', zf', h1, h2, h3⟩ := sim_cmpM P rsp c q h sa s zf hc
     exact ⟨s', zf', h1, h2, fun _ => h3⟩
   | ldx D B I =>
     obtain ⟨s', zf', h1, h2⟩ := sim_ldx P rsp D B I h sa s zf hc hsafe
@@ -954,6 +1154,9 @@ theorem AArm.sim (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) (
   | mulxS H S =>
     obtain ⟨s', zf', h1, h2⟩ := sim_mulxS P rsp H S h sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
+  | mulx L H S =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_mulx P rsp L H S h sa s zf hc
+    exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
 
 /-! ## 7. Reading an instruction into an arm -/
 
@@ -961,22 +1164,25 @@ theorem AArm.sim (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) (
     covered shapes. -/
 def classifyA : LinstrR → Option AArm
   | .Lopn [.reg d] m [.reg s] =>
-      if m == "MOVQ" && !gpOk d then some (.st d s)
-      else if m == "MOVQ" && !gpOk s then some (.ld d s)
+      if isMovM m && !gpOk d then some (.st m d s)
+      else if isMovM m && !gpOk s then some (.ld m d s)
       else (classify (.Lopn [.reg d] m [.reg s])).map .reg
   | .Lopn [.reg d] m [.arrIdx b i sc] =>
       if m == "LOADIDX" && sc == 8 then some (.ldx d b i) else none
   | .Lopn [.reg d] m [.arrIdx b i sc, .reg v] =>
       if m == "STOREIDX" && sc == 8 then some (.stx d b i v) else none
   | .Lopn [.reg d] m [.reg a, .reg s] =>
-      if m == "CMP:64" && d == a then some (.cmpR d s)
+      if m == "CMP:64" && d == a && gpOk s then some (.cmpR d s)
+      else if m == "CMP:64" && d == a then some (.cmpM d s)
       else if m == "MUL:64" && d == a then some (.mul d s)
       else (classify (.Lopn [.reg d] m [.reg a, .reg s])).map .reg
   | .Lopn [.reg d] m [.reg a, .imm k] =>
       if m == "CMP:64" && d == a then some (.cmpI d k)
       else (classify (.Lopn [.reg d] m [.reg a, .imm k])).map .reg
   | .Lopn [.reg h, .reg h'] m [.reg s] =>
-      if m == "MULX" && h == h' then some (.mulxS h s) else none
+      if m == "MULX" && h == h' then some (.mulxS h s)
+      else if m == "MULX" then some (.mulx h h' s)
+      else none
   | i => (classify i).map .reg
 
 theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.instr = i := by
@@ -987,12 +1193,8 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
   unfold classifyA at h
   split at h
   · split_ifs at h with h1 h2
-    · obtain rfl := Option.some.inj h
-      simp only [Bool.and_eq_true, beq_iff_eq] at h1
-      obtain ⟨rfl, -⟩ := h1; rfl
-    · obtain rfl := Option.some.inj h
-      simp only [Bool.and_eq_true, beq_iff_eq] at h2
-      obtain ⟨rfl, -⟩ := h2; rfl
+    · obtain rfl := Option.some.inj h; rfl
+    · obtain rfl := Option.some.inj h; rfl
     · exact hm h
   · split_ifs at h with h1
     · obtain rfl := Option.some.inj h
@@ -1002,23 +1204,29 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
     · obtain rfl := Option.some.inj h
       simp only [Bool.and_eq_true, beq_iff_eq] at h1
       obtain ⟨rfl, rfl⟩ := h1; rfl
+  · split_ifs at h with h1 h2 h3
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h1
+      obtain ⟨⟨rfl, rfl⟩, -⟩ := h1; rfl
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h2
+      obtain ⟨rfl, rfl⟩ := h2; rfl
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h3
+      obtain ⟨rfl, rfl⟩ := h3; rfl
+    · exact hm h
+  · split_ifs at h with h1
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h1
+      obtain ⟨rfl, rfl⟩ := h1; rfl
+    · exact hm h
   · split_ifs at h with h1 h2
     · obtain rfl := Option.some.inj h
       simp only [Bool.and_eq_true, beq_iff_eq] at h1
       obtain ⟨rfl, rfl⟩ := h1; rfl
     · obtain rfl := Option.some.inj h
-      simp only [Bool.and_eq_true, beq_iff_eq] at h2
-      obtain ⟨rfl, rfl⟩ := h2; rfl
-    · exact hm h
-  · split_ifs at h with h1
-    · obtain rfl := Option.some.inj h
-      simp only [Bool.and_eq_true, beq_iff_eq] at h1
-      obtain ⟨rfl, rfl⟩ := h1; rfl
-    · exact hm h
-  · split_ifs at h with h1
-    · obtain rfl := Option.some.inj h
-      simp only [Bool.and_eq_true, beq_iff_eq] at h1
-      obtain ⟨rfl, rfl⟩ := h1; rfl
+      simp only [beq_iff_eq] at h2
+      subst h2; rfl
   · exact hm h
 
 /-- The address machine steps an arm whose conditions hold as the tagged instruction
@@ -1032,6 +1240,14 @@ theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
     have hp := h.2
     simp only [AArm.instr, he, plainB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hp ⊢
     simp [AArm.li, AArm.instr, he, normA, tagA, hp.1.1, hp.1.2, hp.2]
+  | st m q S =>
+    simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
+    rcases h.2 with rfl | rfl <;>
+      simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA]
+  | ld m D q =>
+    simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
+    rcases h.2 with rfl | rfl <;>
+      simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA]
   | _ => simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA]
 
 theorem AArm.instr_lopn (a : AArm) : ∃ ds o ss, a.instr = .Lopn ds o ss := by
