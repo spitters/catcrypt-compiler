@@ -231,8 +231,15 @@ def ArrOn (V : ArrView L) (rs : RustState) (env : SEnvScalar) (T : String → Pr
   ∀ y, T y → ∃ (n : Nat) (v : RustVal (.TArr n .TU64)),
     rs.rsTower y = some ⟨.TArr n .TU64, v⟩ ∧ env y = some ⟨encodeTy (.TArr n .TU64), V.view n v⟩
 
+/-- The sum of a word and a literal, `z + k`, stays below `2^64` at the state; every other
+    expression is unconstrained. -/
+def offRange : SExpr → RustState → Prop
+  | .SAdd (.SVar z) (.SLit k), rs => rs.rsScalar z + k < 2 ^ 64
+  | _, _ => True
+
 /-- The bounds condition of a run: every element index a run of `c` from `rs` loads or stores
-    is an element index (`ArrView.inb`) of the array it accesses. -/
+    is an element index (`ArrView.inb`) of the array it accesses, and every sum of a word and a
+    literal it assigns stays below `2^64` (`offRange`). -/
 def ArrRun (V : ArrView L) : LowCT → RustState → Prop
   | .RSeq a b, rs => ArrRun V a rs ∧ ∀ r1, RustExec N L a rs r1 → ArrRun V b r1
   | .RLetU64Zero x b, rs => ArrRun V b (rsSetScalar rs x 0)
@@ -241,6 +248,7 @@ def ArrRun (V : ArrView L) : LowCT → RustState → Prop
       rs.rsTower src.locVar = some ⟨.TArr n .TU64, v⟩ → V.inb n v (rs.rsScalar i)
   | .RArrStore arr i _, rs => ∀ (n : Nat) (v : RustVal (.TArr n .TU64)),
       rs.rsTower arr.locVar = some ⟨.TArr n .TU64, v⟩ → V.inb n v (rs.rsScalar i)
+  | .RScalarSetExpr _ e, rs => offRange e rs
   | _, _ => True
 
 /-- Every read of `c` is in the bound set at the point of the read: `readsG`, with the stored
@@ -256,6 +264,22 @@ def readsA (B : String → Prop) : LowCT → Prop
 def agreeWordB : SExpr → Bool
   | .SAdd (.SVar _) (.SLit 0) => true
   | e => agreeAllB e
+
+/-- The sum of a word and a literal, `z + k`. -/
+def isOffB : SExpr → Bool
+  | .SAdd (.SVar _) (.SLit _) => true
+  | _ => false
+
+/-- A sum of a word and a literal that stays below `2^64` agrees at the state. -/
+theorem offAgree {e : SExpr} (h : isOffB e = true) {rs : RustState} (hr : offRange e rs) :
+    ExprAgreeAt rs.rsScalar e := by
+  unfold isOffB at h
+  split at h
+  · rename_i z k
+    have hr' : rs.rsScalar z + k < 2 ^ 64 := hr
+    refine ⟨by simpa [SExpr.eval] using hr', ?_⟩
+    simp [SExpr.evalBV, SExpr.eval, SExpr.liftEnv, BitVec.ofNat_add]
+  · cases h
 
 theorem agreeWordB_sound (e : SExpr) (h : agreeWordB e = true) (σ : String → Nat)
     (hσ : ∀ y, σ y < 2 ^ 64) : ExprAgreeAt σ e := by
@@ -277,7 +301,7 @@ inductive ExitArrRel (T : String → Prop) : LowCT → LowCT → Prop
   | scalarSet {x : String} {n : Nat} (hx : srcName x) (hxT : ¬ T x) (hn : n < 2 ^ 64) :
       ExitArrRel T (.RScalarSet x n) (.RScalarSet x n)
   | scalarSetExpr {x : String} {e : SExpr} (hx : srcName x) (hxT : ¬ T x) (he : ltClean e)
-      (hv : varsIn srcName e) (ha : agreeWordB e = true) :
+      (hv : varsIn srcName e) (ha : agreeWordB e = true ∨ isOffB e = true) :
       ExitArrRel T (.RScalarSetExpr x e) (.RScalarSetExpr x e)
   | seq {a a' b b' : LowCT} : ExitArrRel T a a' → ExitArrRel T b b' →
       ExitArrRel T (.RSeq a b) (.RSeq a' b')
@@ -438,9 +462,10 @@ theorem exitArr_taken (V : ArrView L) {T : String → Prop} (hT : ∀ y, T y →
       rw [upd_ne (fun e : y = x => hxT (e ▸ hy))]
       exact hotb y (Or.inl (hT y hy).1)
   | @scalarSetExpr x e hx hxT he _ hag =>
-      intro flag S k B rs rs' env hexec _ hr hf hS hb hB henv hir hA
+      intro flag S k B rs rs' env hexec hrun hr hf hS hb hB henv hir hA
       cases hexec
-      have hIR := agreeWordB_sound e hag rs.rsScalar hir
+      have hIR : ExprAgreeAt rs.rsScalar e :=
+        hag.elim (fun h => agreeWordB_sound e h rs.rsScalar hir) (fun h => offAgree h hrun)
       rw [SExpr.evalState_eq_eval rs e (limbFree_of_ltClean e he)]
       obtain ⟨env2, hs2, hotb⟩ := gWrite_taken (v := elimLt e) (S := S) hf hx
         (srcClean_elimLt e he) (varsIn_elimLt e (varsIn_mono (bndP_of_sub hB hb) e hr)) hb
@@ -750,7 +775,8 @@ def exitArrB (Ts : List String) : LowCT → Bool
           | _ => false) && exitArrB Ts b
   | .RSeq a b => exitArrB Ts a && exitArrB Ts b
   | .RLetU64Zero x b => srcNameB x && !Ts.contains x && exitArrB Ts b
-  | .RScalarSetExpr x e => srcNameB x && !Ts.contains x && ltCleanSrcB e && agreeWordB e
+  | .RScalarSetExpr x e =>
+      srcNameB x && !Ts.contains x && ltCleanSrcB e && (agreeWordB e || isOffB e)
   | .RScalarSet x n => srcNameB x && !Ts.contains x && decide (n < 2 ^ 64)
   | .RSkip => true
   | _ => false
@@ -851,7 +877,7 @@ theorem exitArrB_sound (Ts : List String) :
       obtain ⟨⟨⟨hx, hxT⟩, he⟩, hag⟩ := h
       simp only [scalarizeArrIn]
       exact .scalarSetExpr (srcName_of_srcNameB hx) hxT (ltCleanSrcB_sound e he).1
-        (ltCleanSrcB_sound e he).2 hag
+        (ltCleanSrcB_sound e he).2 (by simpa using hag)
   | case7 x n =>
       intro h
       simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
@@ -1218,38 +1244,37 @@ theorem exitRunNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs 
 /-- The flag, the result slot and the returned array of an exit frame
     `RLetU64Zero r (RLetU64Zero s (RSeq (RSeq (RSeq K (RScalarSet r 0)) (RCopy d a))
     (RIfNz r t RSkip)))` whose copy writes `s` from an array `a ≠ s`. -/
-def exitFrameTail : LowCT → Option (String × String × String)
+def frameTailCore : LowCT → Option (String × String × String)
   | .RLetU64Zero r (.RLetU64Zero s (.RSeq (.RSeq (.RSeq _ (.RScalarSet r' 0)) (.RCopy d a))
       (.RIfNz r'' _ .RSkip))) =>
       if r' = r ∧ r'' = r ∧ d.locVar = s ∧ a.locVar ≠ s then some (r, s, a.locVar) else none
   | _ => none
 
-/-- **The exit frame of a function returning an array, normalised.** On an exit frame
-    (`exitFrameTail`), the frame without its tail (the flag reset, the copy of the array into
+/-- **The exit frame of a function returning an array, normalised**, before the literal
+    binders are taken into account. On an exit frame (`frameTailCore`), the frame without its tail (the flag reset, the copy of the array into
     the result slot and the flag test), around the normalised run loop `exitRunNorm K`; every
     other command unchanged. -/
-def exitFrameNorm (c : LowCT) : LowCT :=
-  match c, exitFrameTail c with
+def frameNormCore (c : LowCT) : LowCT :=
+  match c, frameTailCore c with
   | .RLetU64Zero r (.RLetU64Zero s (.RSeq (.RSeq (.RSeq K _) _) _)), some _ =>
       .RLetU64Zero r (.RLetU64Zero s (exitRunNorm K))
   | c, _ => c
 
-/-- **Denotation of the exit-frame normalisation.** A run of `c` gives a run of
-    `exitFrameNorm c` from the same state. Off an exit frame the two runs end in the same state;
+/-- **Denotation of `frameNormCore`.** A run of `c` gives a run of `frameNormCore c` from the same state. Off an exit frame the two runs end in the same state;
     on an exit frame with flag `r`, result slot `s` and returned array `a`, they agree on every
     scalar other than `r` and every tower slot other than `s`, and the result slot of the
     original run holds the array `a` of the normalised run. -/
-theorem exitFrameNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs rs') :
-    ∃ rs1, RustExec N L (exitFrameNorm c) rs rs1 ∧
-      match exitFrameTail c with
+theorem frameNormCore_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs rs') :
+    ∃ rs1, RustExec N L (frameNormCore c) rs rs1 ∧
+      match frameTailCore c with
       | none => rs1 = rs'
       | some (r, s, a) => (∀ y, y ≠ r → rs1.rsScalar y = rs'.rsScalar y) ∧
           (∀ y, y ≠ s → rs1.rsTower y = rs'.rsTower y) ∧ rs'.rsTower s = rs1.rsTower a := by
-  cases ht : exitFrameTail c with
+  cases ht : frameTailCore c with
   | none =>
       refine ⟨rs', ?_, rfl⟩
-      have hn : exitFrameNorm c = c := by
-        unfold exitFrameNorm
+      have hn : frameNormCore c = c := by
+        unfold frameNormCore
         split
         · rename_i heq; rw [ht] at heq; cases heq
         · rfl
@@ -1259,7 +1284,7 @@ theorem exitFrameNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c r
       obtain ⟨K, d, a', t, rfl, hd, ha', has⟩ : ∃ K d a' t,
           c = .RLetU64Zero r (.RLetU64Zero s (.RSeq (.RSeq (.RSeq K (.RScalarSet r 0))
             (.RCopy d a')) (.RIfNz r t .RSkip))) ∧ d.locVar = s ∧ a'.locVar = a ∧ a ≠ s := by
-        unfold exitFrameTail at ht
+        unfold frameTailCore at ht
         split at ht
         · rename_i r₀ s₀ K₀ r' d₀ a₀ r'' t₀
           split at ht
@@ -1269,10 +1294,10 @@ theorem exitFrameNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c r
             exact ⟨K₀, d₀, a₀, t₀, rfl, hd, rfl, has⟩
           · cases ht
         · cases ht
-      have hn : exitFrameNorm (.RLetU64Zero r (.RLetU64Zero s (.RSeq (.RSeq (.RSeq K
+      have hn : frameNormCore (.RLetU64Zero r (.RLetU64Zero s (.RSeq (.RSeq (.RSeq K
           (.RScalarSet r 0)) (.RCopy d a')) (.RIfNz r t .RSkip)))) =
           .RLetU64Zero r (.RLetU64Zero s (exitRunNorm K)) := by
-        unfold exitFrameNorm
+        unfold frameNormCore
         rw [ht]
       rw [hn]
       dsimp only
@@ -1320,6 +1345,150 @@ theorem exitFrameNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c r
           · cases hl
         · cases hl
 
+/-- The literal word binders `RLetU64Zero x (RSeq (RScalarSet x k) b)` at the head of a
+    command, outermost first, and the command under them. -/
+def litPeel : LowCT → List (String × Nat) × LowCT
+  | .RLetU64Zero x (.RSeq (.RScalarSet x' k) b) =>
+      if x' = x then ((x, k) :: (litPeel b).1, (litPeel b).2)
+      else ([], .RLetU64Zero x (.RSeq (.RScalarSet x' k) b))
+  | c => ([], c)
+
+theorem litPeel_nil {c : LowCT} (h : (litPeel c).1 = []) : (litPeel c).2 = c := by
+  unfold litPeel at h ⊢
+  split
+  · split
+    · rename_i hx; simp only [hx, if_true] at h; cases h
+    · rfl
+  · rfl
+
+theorem agreeOff_trans {K : List String} {r1 r2 r3 : RustState} (h1 : AgreeOff K r1 r2)
+    (h2 : AgreeOff K r2 r3) : AgreeOff K r1 r3 :=
+  ⟨h1.1.trans h2.1, fun y hy => (h1.2 y hy).trans (h2.2 y hy)⟩
+
+theorem agreeOff_symm {K : List String} {r1 r2 : RustState} (h : AgreeOff K r1 r2) :
+    AgreeOff K r2 r1 :=
+  ⟨h.1.symm, fun y hy => (h.2 y hy).symm⟩
+
+/-- **The run of the literal binders.** A run of `c` gives a run of the command under its
+    literal binders from the same state, to a state agreeing off the words `K`, when `K` holds
+    the binders' words and the command under them reads none of `K`. -/
+theorem litPeel_run {K : List String} :
+    ∀ (c : LowCT), (∀ p ∈ (litPeel c).1, p.1 ∈ K) → readsNoneB K (litPeel c).2 = true →
+      ∀ {q q1 : RustState}, RustExec N L c q q1 →
+        ∃ q1', RustExec N L (litPeel c).2 q q1' ∧ AgreeOff K q1 q1' := by
+  intro c
+  fun_induction litPeel c with
+  | case1 x k b ih =>
+      intro hK hX q q1 h
+      have hxK : x ∈ K := hK (x, k) (List.mem_cons_self ..)
+      cases h with
+      | letU64Zero _ _ _ _ h =>
+      cases h with
+      | seq _ _ _ q2 _ h1 h2 =>
+      cases h1
+      obtain ⟨q1', h', hag⟩ := ih (fun p hp => hK p (List.mem_cons_of_mem _ hp)) hX h2
+      have hq : AgreeOff K (rsSetScalar (rsSetScalar q x 0) x k) q :=
+        agreeOff_set_mem (agreeOff_set_mem (agreeOff_refl K q) hxK 0) hxK k
+      obtain ⟨q1'', h'', hag'⟩ := readsNone_sim h' hX hq
+      exact ⟨q1'', h'', agreeOff_trans hag hag'⟩
+  | case2 => intro _ _ q q1 h; exact ⟨q1, h, agreeOff_refl _ _⟩
+  | case3 => intro _ _ q q1 h; exact ⟨q1, h, agreeOff_refl _ _⟩
+
+/-- The exit frame of `c` after literal propagation (`litProp`), with the literal binders at the
+    head of its body removed (`litPeel`), and the words of those binders. -/
+def framePrep (c : LowCT) : List String × LowCT :=
+  match litProp c with
+  | .RLetU64Zero r (.RLetU64Zero s (.RSeq B T)) =>
+      ((litPeel B).1.map Prod.fst, .RLetU64Zero r (.RLetU64Zero s (.RSeq (litPeel B).2 T)))
+  | c' => ([], c')
+
+/-- The words of the literal binders `framePrep` removes. -/
+def frameLits (c : LowCT) : List String := (framePrep c).1
+
+/-- **The flag, the result slot and the returned array of an exit frame**
+    `RLetU64Zero r (RLetU64Zero s (RSeq (RSeq (RSeq K (RScalarSet r 0)) (RCopy d a))
+    (RIfNz r t RSkip)))` whose copy writes `s` from an array `a ≠ s`, after literal propagation
+    and with literal binders at the head of its body (`framePrep`), whose words the rest of the
+    frame does not read. -/
+def exitFrameTail (c : LowCT) : Option (String × String × String) :=
+  if (framePrep c).1.isEmpty || readsNoneB (framePrep c).1 (framePrep c).2 then
+    frameTailCore (framePrep c).2
+  else none
+
+/-- **The exit frame of a function returning an array, normalised.** On an exit frame
+    (`exitFrameTail`), the frame of `framePrep` without its tail (the flag reset, the copy of the
+    array into the result slot and the flag test), around the normalised run loop
+    `exitRunNorm K`; every other command unchanged. -/
+def exitFrameNorm (c : LowCT) : LowCT :=
+  match exitFrameTail c with
+  | some _ => frameNormCore (framePrep c).2
+  | none => c
+
+/-- A run of a command gives a run of its `framePrep` form to a state agreeing off the words
+    of the removed literal binders, when the frame reads none of them. -/
+theorem framePrep_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs rs')
+    (hr : (framePrep c).1.isEmpty || readsNoneB (framePrep c).1 (framePrep c).2) :
+    ∃ rs'', RustExec N L (framePrep c).2 rs rs'' ∧ AgreeOff (framePrep c).1 rs' rs'' := by
+  have hp := litProp_run c h
+  unfold framePrep at hr ⊢
+  split
+  · rename_i r s B T heq
+    rw [heq] at hp hr
+    cases hp with
+    | letU64Zero _ _ _ _ hp =>
+    cases hp with
+    | letU64Zero _ _ _ _ hp =>
+    cases hp with
+    | seq _ _ _ q1 _ hB hT =>
+    by_cases hl : (litPeel B).1 = []
+    · refine ⟨rs', ?_, agreeOff_refl _ _⟩
+      rw [litPeel_nil hl]
+      exact .letU64Zero _ _ _ _ (.letU64Zero _ _ _ _ (.seq _ _ _ _ _ hB hT))
+    · have hr' : readsNoneB ((litPeel B).1.map Prod.fst)
+          (.RLetU64Zero r (.RLetU64Zero s (.RSeq (litPeel B).2 T))) = true := by
+        simpa [hl] using hr
+      simp only [readsNoneB, Bool.and_eq_true] at hr'
+      obtain ⟨q1', hX, hag⟩ := litPeel_run (K := (litPeel B).1.map Prod.fst) B
+        (fun p hp => List.mem_map_of_mem hp) hr'.1 hB
+      obtain ⟨r2, hT', hag2⟩ := readsNone_sim hT hr'.2 hag
+      exact ⟨r2, .letU64Zero _ _ _ _ (.letU64Zero _ _ _ _ (.seq _ _ _ _ _ hX hT')), hag2⟩
+  · rename_i heq
+    exact ⟨rs', hp, agreeOff_refl _ _⟩
+
+/-- **Denotation of the exit-frame normalisation.** A run of `c` gives a run of
+    `exitFrameNorm c` from the same state. Off an exit frame the two runs end in the same state;
+    on an exit frame with flag `r`, result slot `s` and returned array `a`, they agree on every
+    scalar other than `r` and the words of the literal binders `frameLits c`, and on every tower
+    slot other than `s`, and the result slot of the original run holds the array `a` of the
+    normalised run. -/
+theorem exitFrameNorm_run {c : LowCT} {rs rs' : RustState} (h : RustExec N L c rs rs') :
+    ∃ rs1, RustExec N L (exitFrameNorm c) rs rs1 ∧
+      match exitFrameTail c with
+      | none => rs1 = rs'
+      | some (r, s, a) => (∀ y, y ≠ r → y ∉ frameLits c → rs1.rsScalar y = rs'.rsScalar y) ∧
+          (∀ y, y ≠ s → rs1.rsTower y = rs'.rsTower y) ∧ rs'.rsTower s = rs1.rsTower a := by
+  cases ht : exitFrameTail c with
+  | none =>
+      refine ⟨rs', ?_, rfl⟩
+      simp only [exitFrameNorm, ht]
+      exact h
+  | some p =>
+      obtain ⟨r, s, a⟩ := p
+      have ht' := ht
+      unfold exitFrameTail at ht'
+      split at ht'
+      · rename_i hr
+        obtain ⟨rs'', h'', hag⟩ := framePrep_run h hr
+        obtain ⟨rs1, h1, hf⟩ := frameNormCore_run h''
+        rw [ht'] at hf
+        refine ⟨rs1, by simp only [exitFrameNorm, ht]; exact h1, ?_⟩
+        obtain ⟨hs, htw, hres⟩ := hf
+        refine ⟨fun y hyr hyl => (hs y hyr).trans (hag.2 y hyl).symm,
+          fun y hys => (htw y hys).trans (congrFun hag.1 y).symm, ?_⟩
+        rw [← hres]
+        exact congrFun hag.1 s
+      · cases ht'
+
 /-! ## 8. The word-array lowering of the typed exit front -/
 
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteSeq (semG)
@@ -1365,7 +1534,7 @@ theorem exitArrLower_semG (V : ArrView L) {c : LowCT} (hok : exitArrOk c = true)
     ∃ rs1 env', RustExec N L (exitFrameNorm c) rs rs1 ∧
       (match exitFrameTail c with
         | none => rs1 = rs'
-        | some (r, s, a) => (∀ y, y ≠ r → rs1.rsScalar y = rs'.rsScalar y) ∧
+        | some (r, s, a) => (∀ y, y ≠ r → y ∉ frameLits c → rs1.rsScalar y = rs'.rsScalar y) ∧
             (∀ y, y ≠ s → rs1.rsTower y = rs'.rsTower y) ∧ rs'.rsTower s = rs1.rsTower a) ∧
       semG S (exitArrLower c) env = some env' ∧
       EnvBoundOn rs1 env' (afterG B (exitArrLower c)) ∧ ScalarInRange rs1 ∧

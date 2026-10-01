@@ -44,7 +44,9 @@ propagation, the dead-word elimination and the dead-initialisation removal.
   runs.
 * `substLitE`, `evalState_substLitE`, `substLitC`, `substLitC_run` — a literal in place of a
   word that holds it.
-* `litLet`, `litProp`, `litProp_run` — the propagation of the literal bindings of a spine.
+* `rFor_map` — a map on trip bodies keeping their runs keeps the runs of a counted loop.
+* `litLet`, `litProp`, `litProp_run` — the propagation of the literal bindings, in loops and
+  under tower binders and branches as well.
 * `noReadE`, `noReadC`, `writesX`, `AgreeOff`, `sim_off1`, `killK`, `killK_sim` — runs from
   states agreeing off words the program never reads.
 * `isResName`, `ResAgree`, `deadElim`, `deadElim_run`, `dropInit`, `dropInit_run` — the dead
@@ -78,6 +80,7 @@ def scalarKeepsB (s : String) : LowCT → Bool
   | .RCopy _ _ => true
   | .RFor x _ b => x != s && scalarKeepsB s b
   | .RForRuntime x _ b => x != s && scalarKeepsB s b
+  | .RCall _ _ _ => true
   | _ => false
 
 /-- **Scalar frame.** A run of a command that `scalarKeepsB s` accepts leaves the scalar `s`
@@ -120,6 +123,7 @@ theorem rustExec_scalarKeeps {s : String} {c : LowCT} {rs rs' : RustState}
   | arrStore => rfl
   | arrLoad => rfl
   | copy => rfl
+  | call => rfl
   | _ => simp [scalarKeepsB] at hk
 
 /-- **The exit frame of a body without an early return, normalised.** On a frame
@@ -196,12 +200,32 @@ theorem evalState_substLitE {t : String} {k : Nat} {rs : RustState} (h : rs.rsSc
   | _ => rfl
 
 /-- The command with the literal `k` in place of the word `t` in the scalar expressions of its
-    sequences, word binders and scalar writes; every other command unchanged. -/
+    sequences, word and tower binders, branches, counted and runtime-count loops (the bound of
+    a runtime-count loop included), scalar writes and limb stores; every other command
+    unchanged. -/
 def substLitC (t : String) (k : Nat) : LowCT → LowCT
   | .RSeq a b => .RSeq (substLitC t k a) (substLitC t k b)
   | .RLetU64Zero x b => .RLetU64Zero x (substLitC t k b)
+  | .RLetZero x ty b => .RLetZero x ty (substLitC t k b)
+  | .RIfNz g a b => .RIfNz g (substLitC t k a) (substLitC t k b)
+  | .RFor x n b => .RFor x n (substLitC t k b)
+  | .RForRuntime x bd b => .RForRuntime x (substLitE t k bd) (substLitC t k b)
   | .RScalarSetExpr x e => .RScalarSetExpr x (substLitE t k e)
+  | .RLimbStoreExpr l i e => .RLimbStoreExpr l i (substLitE t k e)
   | c => c
+
+/-- A map on trip bodies that keeps their runs keeps the runs of a counted loop. -/
+theorem rFor_map {x : String} {b b' : LowCT} {P : RustState → Prop}
+    (hP : ∀ (n : Nat) {rs r : RustState}, RustExec N L (.RFor x n b) rs r → P rs →
+      P (rsSetScalar r x n))
+    (hb : ∀ {rs rs' : RustState}, RustExec N L b rs rs' → P rs → RustExec N L b' rs rs') :
+    ∀ (n : Nat) {rs rs' : RustState}, RustExec N L (.RFor x n b) rs rs' → P rs →
+      RustExec N L (.RFor x n b') rs rs'
+  | 0, _, _, h, _ => by cases h; exact .forZero _ _ _
+  | n + 1, _, _, h, hp => by
+      cases h with
+      | forSucc _ _ _ _ r1 _ h1 h2 =>
+          exact .forSucc _ _ _ _ _ _ (rFor_map hP hb n h1 hp) (hb h2 (hP n h1 hp))
 
 /-- **A literal in place of the word that holds it.** A run of a command that leaves `t`
     unwritten, from a state whose word `t` holds `k`, is a run of `substLitC t k` between the
@@ -231,6 +255,42 @@ theorem substLitC_run {t : String} {k : Nat} :
           show RustExec N L (.RScalarSetExpr x (substLitE t k e)) rs _
           rw [← evalState_substLitE ht e]
           exact .scalarSetExpr _ _ _
+  | RLetZero x ty b ih =>
+      intro rs rs' h ht hk
+      cases h with
+      | letZero _ _ _ _ _ hb => exact .letZero _ _ _ _ _ (ih hb ht hk)
+  | RIfNz g a b iha ihb =>
+      intro rs rs' h ht hk
+      simp only [scalarKeepsB, Bool.and_eq_true] at hk
+      cases h with
+      | ifTrue _ _ _ _ _ v hv hv0 h => exact .ifTrue _ _ _ _ _ v hv hv0 (iha h ht hk.1)
+      | ifFalse _ _ _ _ _ hv h => exact .ifFalse _ _ _ _ _ hv (ihb h ht hk.2)
+  | RFor x n b ih =>
+      intro rs rs' h ht hk
+      simp only [scalarKeepsB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hk
+      refine rFor_map (P := fun r => r.rsScalar t = k) (fun m r r' hr hp => ?_)
+        (fun h hp => ih h hp hk.2) n h ht
+      rw [show (rsSetScalar r' x m).rsScalar t = r'.rsScalar t by simp [rsSetScalar, Ne.symm hk.1],
+        rustExec_scalarKeeps hr (by simp [scalarKeepsB, hk.1, hk.2]), hp]
+  | RForRuntime x bd b ih =>
+      intro rs rs' h ht hk
+      simp only [scalarKeepsB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hk
+      cases h with
+      | forRuntime _ _ _ _ _ h =>
+          refine .forRuntime _ _ _ _ _ ?_
+          rw [evalState_substLitE ht bd]
+          refine rFor_map (P := fun r => r.rsScalar t = k) (fun m r r' hr hp => ?_)
+            (fun h hp => ih h hp hk.2) _ h ht
+          rw [show (rsSetScalar r' x m).rsScalar t = r'.rsScalar t by
+              simp [rsSetScalar, Ne.symm hk.1],
+            rustExec_scalarKeeps hr (by simp [scalarKeepsB, hk.1, hk.2]), hp]
+  | RLimbStoreExpr l i e =>
+      intro rs rs' h ht _
+      cases h with
+      | limbStoreExpr _ _ _ _ old hl =>
+          show RustExec N L (.RLimbStoreExpr l i (substLitE t k e)) rs _
+          rw [← evalState_substLitE ht e]
+          exact .limbStoreExpr _ _ _ _ _ hl
   | _ => intro rs rs' h _ _; exact h
 
 /-- The word binder `RLetU64Zero x b` with the literal of `b`'s leading write `x := k`
@@ -262,10 +322,15 @@ theorem litLet_run {x : String} {b : LowCT} {rs rs' : RustState}
     · exact h
   · exact h
 
-/-- **Literal propagation** along the spine of sequences and word binders (`litLet`). -/
+/-- **Literal propagation** at the word binders (`litLet`) of sequences, word and tower binders,
+    branches, counted and runtime-count loops. -/
 def litProp : LowCT → LowCT
   | .RSeq a b => .RSeq (litProp a) (litProp b)
   | .RLetU64Zero x b => litLet x (litProp b)
+  | .RLetZero x ty b => .RLetZero x ty (litProp b)
+  | .RIfNz g a b => .RIfNz g (litProp a) (litProp b)
+  | .RFor x n b => .RFor x n (litProp b)
+  | .RForRuntime x bd b => .RForRuntime x bd (litProp b)
   | c => c
 
 /-- **The propagated program keeps its runs.** -/
@@ -281,6 +346,24 @@ theorem litProp_run : ∀ (c : LowCT) {rs rs' : RustState}, RustExec N L c rs rs
       intro rs rs' h
       cases h with
       | letU64Zero _ _ _ _ hb => exact litLet_run (.letU64Zero _ _ _ _ (ih hb))
+  | RLetZero x ty b ih =>
+      intro rs rs' h
+      cases h with
+      | letZero _ _ _ _ _ hb => exact .letZero _ _ _ _ _ (ih hb)
+  | RIfNz g a b iha ihb =>
+      intro rs rs' h
+      cases h with
+      | ifTrue _ _ _ _ _ v hv hv0 h => exact .ifTrue _ _ _ _ _ v hv hv0 (iha h)
+      | ifFalse _ _ _ _ _ hv h => exact .ifFalse _ _ _ _ _ hv (ihb h)
+  | RFor x n b ih =>
+      intro rs rs' h
+      exact rFor_map (P := fun _ => True) (fun _ _ _ _ _ => trivial) (fun h _ => ih h) n h trivial
+  | RForRuntime x bd b ih =>
+      intro rs rs' h
+      cases h with
+      | forRuntime _ _ _ _ _ h =>
+          exact .forRuntime _ _ _ _ _
+            (rFor_map (P := fun _ => True) (fun _ _ _ _ _ => trivial) (fun h _ => ih h) _ h trivial)
   | _ => intro rs rs' h; exact h
 
 /-! ## Dead words -/
@@ -413,6 +496,119 @@ theorem sim_off1 {x : String} : ∀ (c : LowCT), noReadC [x] c = true →
           fun _ => eq_of_agreeOff_set hag _⟩
       · exact ⟨_, .scalarSetExpr _ _ _, agreeOff_set hag y _, by simp [writesX, hy]⟩
   | _ => intro hn; simp [noReadC] at hn
+
+/-- The command reads no word of `K`: no expression, branch guard or element index names a word
+    of `K`, over sequences, word and tower binders, branches, counted and runtime-count loops,
+    scalar writes, limb stores, element loads and stores, calls and copies. -/
+def readsNoneB (K : List String) : LowCT → Bool
+  | .RSkip => true
+  | .RSeq a b => readsNoneB K a && readsNoneB K b
+  | .RLetU64Zero _ b => readsNoneB K b
+  | .RLetZero _ _ b => readsNoneB K b
+  | .RScalarSet _ _ => true
+  | .RScalarSetExpr _ e => noReadE K e
+  | .RLimbStoreExpr _ _ e => noReadE K e
+  | .RIfNz g a b => !K.contains g && readsNoneB K a && readsNoneB K b
+  | .RFor _ _ b => readsNoneB K b
+  | .RForRuntime _ bd b => noReadE K bd && readsNoneB K b
+  | .RArrLoad _ _ i => !K.contains i
+  | .RArrStore _ i _ => !K.contains i
+  | .RCall _ _ _ => true
+  | .RCopy _ _ => true
+  | _ => false
+
+theorem locatedLookup_congr {r1 r2 : RustState} (h : r1.rsTower = r2.rsTower) (l : Located) :
+    locatedLookup r1 l = locatedLookup r2 l := by
+  simp only [locatedLookup, h]
+
+theorem agreeOff_setTower {K : List String} {r1 r2 : RustState} (h : AgreeOff K r1 r2)
+    (y : String) (v : Σ t : TowerType, RustVal t) :
+    AgreeOff K (rsSetTower r1 y v) (rsSetTower r2 y v) :=
+  ⟨by simp only [rsSetTower, h.1], h.2⟩
+
+/-- **A command that reads no word of `K` runs alike from states agreeing off `K`**: every run
+    from the first state is matched by a run from the second, to states agreeing off `K`. -/
+theorem readsNone_sim {K : List String} {c : LowCT} {rs1 r1 : RustState}
+    (h : RustExec N L c rs1 r1) (hk : readsNoneB K c = true) :
+    ∀ {rs2 : RustState}, AgreeOff K rs1 rs2 → ∃ r2, RustExec N L c rs2 r2 ∧ AgreeOff K r1 r2 := by
+  induction h with
+  | skip => intro rs2 hag; exact ⟨rs2, .skip _, hag⟩
+  | seq _ _ _ _ _ _ _ ih1 ih2 =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.and_eq_true] at hk
+      obtain ⟨m, hm, hag1⟩ := ih1 hk.1 hag
+      obtain ⟨r2, hr2, hag2⟩ := ih2 hk.2 hag1
+      exact ⟨r2, .seq _ _ _ _ _ hm hr2, hag2⟩
+  | letZero x t _ _ _ _ ih =>
+      intro rs2 hag
+      obtain ⟨r2, hr2, hag2⟩ := ih hk (agreeOff_setTower hag x _)
+      exact ⟨r2, .letZero _ _ _ _ _ hr2, hag2⟩
+  | letU64Zero x _ _ _ _ ih =>
+      intro rs2 hag
+      obtain ⟨r2, hr2, hag2⟩ := ih hk (agreeOff_set hag x 0)
+      exact ⟨r2, .letU64Zero _ _ _ _ hr2, hag2⟩
+  | scalarSet x v _ =>
+      intro rs2 hag
+      exact ⟨_, .scalarSet _ _ _, agreeOff_set hag x v⟩
+  | ifTrue g _ _ _ _ v hv hv0 _ ih =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
+        decide_eq_false_iff_not] at hk
+      obtain ⟨r2, hr2, hag2⟩ := ih hk.1.2 hag
+      exact ⟨r2, .ifTrue _ _ _ _ _ v (by rw [← hag.2 g hk.1.1]; exact hv) hv0 hr2, hag2⟩
+  | ifFalse g _ _ _ _ hv _ ih =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
+        decide_eq_false_iff_not] at hk
+      obtain ⟨r2, hr2, hag2⟩ := ih hk.2 hag
+      exact ⟨r2, .ifFalse _ _ _ _ _ (by rw [← hag.2 g hk.1.1]; exact hv) hr2, hag2⟩
+  | forZero => intro rs2 hag; exact ⟨rs2, .forZero _ _ _, hag⟩
+  | forSucc x n _ _ _ _ _ _ ih1 ih2 =>
+      intro rs2 hag
+      obtain ⟨m, hm, hag1⟩ := ih1 hk hag
+      obtain ⟨r2, hr2, hag2⟩ := ih2 hk (agreeOff_set hag1 x n)
+      exact ⟨r2, .forSucc _ _ _ _ _ _ hm hr2, hag2⟩
+  | forRuntime x bd _ _ _ _ ih =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.and_eq_true] at hk
+      obtain ⟨r2, hr2, hag2⟩ := ih hk.2 hag
+      refine ⟨r2, .forRuntime _ _ _ _ _ ?_, hag2⟩
+      rw [← evalState_congr_agreeOff hag bd hk.1]
+      exact hr2
+  | call f d args _ old argList hlk hargs hty =>
+      intro rs2 hag
+      refine ⟨_, .call f d args rs2 old argList (by rw [← locatedLookup_congr hag.1]; exact hlk)
+        (by rw [← hag.1]; exact hargs) (by rw [← hag.1]; exact hty), ?_⟩
+      exact agreeOff_setTower hag _ _
+  | limbStoreExpr l i e _ old hl =>
+      intro rs2 hag
+      refine ⟨_, .limbStoreExpr l i e rs2 old (by rw [← locatedLookup_congr hag.1]; exact hl), ?_⟩
+      rw [← evalState_congr_agreeOff hag e hk]
+      exact agreeOff_setTower hag _ _
+  | arrStore arr i src _ idx old srcV hi ho hsrc =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.not_eq_true', List.contains_eq_mem,
+        decide_eq_false_iff_not] at hk
+      refine ⟨_, .arrStore arr i src rs2 idx old srcV (by rw [← hag.2 i hk]; exact hi)
+        (by rw [← locatedLookup_congr hag.1]; exact ho)
+        (by rw [← locatedLookup_congr hag.1]; exact hsrc), agreeOff_setTower hag _ _⟩
+  | arrLoad d src i _ idx old srcV hi ho hsrc =>
+      intro rs2 hag
+      simp only [readsNoneB, Bool.not_eq_true', List.contains_eq_mem,
+        decide_eq_false_iff_not] at hk
+      refine ⟨_, .arrLoad d src i rs2 idx old srcV (by rw [← hag.2 i hk]; exact hi)
+        (by rw [← locatedLookup_congr hag.1]; exact ho)
+        (by rw [← locatedLookup_congr hag.1]; exact hsrc), agreeOff_setTower hag _ _⟩
+  | scalarSetExpr x e _ =>
+      intro rs2 hag
+      refine ⟨_, .scalarSetExpr _ _ _, ?_⟩
+      rw [evalState_congr_agreeOff hag e hk]
+      exact agreeOff_set hag x _
+  | copy d src _ hty srcV hl =>
+      intro rs2 hag
+      exact ⟨_, .copy d src rs2 hty srcV (by rw [← locatedLookup_congr hag.1]; exact hl),
+        agreeOff_setTower hag _ _⟩
+  | _ => simp [readsNoneB] at hk
 
 /-- The command with the binders and the scalar writes of the words of `K` removed. -/
 def killK (K : List String) : LowCT → LowCT
