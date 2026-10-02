@@ -21,7 +21,8 @@ model. An instruction emits:
 
 * for each array operand of an `Lopn`, an address event at the array base: the
   compile-time offset of `.arr b i`, and for `.arrIdx b x sc` the scale `sc` times the value
-  the index register `x` holds in the register file;
+  the index register `x` holds in the register file; a load-effective-address `LEA` computes
+  its operand's address without a memory access and emits nothing;
 * for a flag-reading conditional (`flagCondCC?`), the branch event of the decision the flag
   machine takes, `zf` against the polarity of the condition code;
 * for a register conditional, the branch event of its test `condNZ`;
@@ -93,12 +94,19 @@ def opLeakF (r : LstateN) : LOperand → List CTLeak
   | _ => []
 
 /-- The events of an instruction that reads no flag: the address events of the operands of
-    an `Lopn`, the branch event of a register conditional. -/
+    an `Lopn` other than a load-effective-address `LEA`, which accesses no memory, and the
+    branch event of a register conditional. -/
 def instrLeakB (r : LstateN) (i : LinstrRM) : List CTLeak :=
   match i.fst with
-  | .Lopn ds _ ss => (ds ++ ss).flatMap (opLeakF r)
+  | .Lopn ds o ss => if stripWidthTag o = "LEA" then [] else (ds ++ ss).flatMap (opLeakF r)
   | .Lcond c _ => [.branch (condNZ { reg := r } c)]
   | _ => []
+
+@[simp] theorem stripWidthTag_LOADIDX : stripWidthTag "LOADIDX" = "LOADIDX" := by
+  decide +kernel
+
+@[simp] theorem stripWidthTag_STOREIDX : stripWidthTag "STOREIDX" = "STOREIDX" := by
+  decide +kernel
 
 /-- The events of an instruction on the flag machine: the branch event of the decision a
     flag-reading conditional takes (`zf` equal to the polarity), otherwise `instrLeakB`. -/
@@ -458,7 +466,10 @@ theorem exprArgs_leak (r : LstateN) (d nArgs : Nat) {Γ : Ctxt jasminDialect} {t
 /-- An `Lopn` writing a register from operands that emit nothing emits nothing. -/
 theorem instrLeakB_quiet (r : LstateN) (dst opn : String) (ss : List LOperand) (tag : MemTag)
     (h : ∀ o ∈ ss, opLeakF r o = []) : instrLeakB r (.Lopn [.reg dst] opn ss, tag) = [] := by
-  simp only [instrLeakB, List.flatMap_eq_nil_iff, List.mem_append, List.mem_singleton]
+  simp only [instrLeakB]
+  split_ifs
+  · rfl
+  simp only [List.flatMap_eq_nil_iff, List.mem_append, List.mem_singleton]
   rintro o (rfl | ho)
   · rfl
   · exact h o ho

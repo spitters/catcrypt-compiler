@@ -972,14 +972,32 @@ theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
           cases o <;> simp_all [operandReads, LprogLeak.opNames]
         exact TwoAddrLegalize.ne_of_opAvoids (h.2 o ho) _ hn rfl
     | _ => simp [instrReadRegs] at hq
-  · cases x with
-    | Lopn ds opn ss =>
-        dsimp only at hq
-        split_ifs at hq
-        · simp only [List.mem_singleton] at hq
-          exact absurd hq (by decide)
-        · cases hq
-    | _ => cases hq
+  · rw [List.mem_append] at hq
+    rcases hq with hq | hq
+    · cases x with
+      | Lopn ds opn ss =>
+          simp only [instrAvoids, Bool.and_eq_true, List.all_eq_true] at h
+          unfold leaReads at hq
+          split at hq
+          · rename_i b i sc heq
+            injection heq with _ _ hs
+            subst hs
+            split_ifs at hq
+            · simp only [List.mem_singleton] at hq
+              have ha := h.2 _ (List.mem_singleton_self _)
+              subst hq
+              simp [TwoAddrLegalize.opAvoids, TwoAddrLegalize.mentionsScratch] at ha
+            · cases hq
+          · cases hq
+      | _ => simp [leaReads] at hq
+    · cases x with
+      | Lopn ds opn ss =>
+          dsimp only at hq
+          split_ifs at hq
+          · simp only [List.mem_singleton] at hq
+            exact absurd hq (by decide)
+          · cases hq
+      | _ => cases hq
 
 theorem legalR_ne_nil (ok : Bool) (x : LinstrR) : legalR ok x ≠ [] := by
   unfold legalR

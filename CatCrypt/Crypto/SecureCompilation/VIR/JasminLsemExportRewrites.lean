@@ -248,6 +248,16 @@ theorem lsemStepN_ren (hσ : RenOn σ N) (i : LinstrR) (hi : ∀ n ∈ instrName
       hR.readReg (.reg a) (ho (.reg a) (Or.inr (by simp)))
     simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, lsemStepN, hra]
     ren_close hd
+  · rename_i dst opn b x sc
+    have ho := names_of_lopn hi
+    have hd : N dst := ho (.reg dst) (Or.inl (by simp)) dst (by simp [opNames])
+    have hb : s'.getW (σ b) 64 = s.getW b 64 :=
+      hR.getW (ho (.arrIdx b x sc) (Or.inr (by simp)) b (by simp [opNames])) 64
+    have hx : s'.getW (σ x) 64 = s.getW x 64 :=
+      hR.getW (ho (.arrIdx b x sc) (Or.inr (by simp)) x (by simp [opNames])) 64
+    simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, renOperand_arrIdx,
+      lsemStepN, hb, hx]
+    ren_close hd
   · exact absurd h (by simp)
   · cases h; exact ⟨_, rfl, hR.nextPc⟩
   · cases h; exact ⟨_, rfl, hR.nextPc⟩

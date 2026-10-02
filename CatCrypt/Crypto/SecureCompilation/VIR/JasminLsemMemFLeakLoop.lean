@@ -183,6 +183,9 @@ theorem instrLeakB_renRM (τ : String → String) (r r' : LstateN) (i : LinstrRM
   obtain ⟨hds, hss⟩ := hok
   simp only [instrLeakB, renRM, renLinstrR, List.map_append, List.flatMap_append,
     List.map_flatMap, List.flatMap_map]
+  split_ifs
+  · rfl
+  simp only [List.map_append, List.map_flatMap]
   congr 1
   · rw [List.flatMap_eq_nil_iff.mpr, List.flatMap_eq_nil_iff.mpr]
     · intro x hx
@@ -1198,7 +1201,7 @@ theorem instrLeakF_shiftImage (i : LinstrRM) (s : LstateMF) :
     instrLeakF (shiftImage i) s = instrLeakF i s := by
   unfold shiftImage immShiftExpand
   split
-  · split <;> rfl
+  · split <;> simp [instrLeakF, instrLeakB, opLeakF, flagCondCC?]
   · rfl
 
 /-- The expansion keeps labels and their positions. -/

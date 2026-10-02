@@ -30,8 +30,9 @@ identity correspondence of the printer: a physical name `R` reads the machine re
 condition of an arm, and `Arm.pieces` its bytes with their decoded instructions. The arms are
 the register moves `MOV:64` and `MOVQ`, the immediate move of a sign-extended `imm32`, the
 store and the load of a frame word, the two-address `ADD`, `SUB`, `AND`, `OR`, `XOR` with a
-register or a sign-extended `imm8` source, the count-in-mnemonic right shift `SHR:k:64`, and
-the count-`0` shift `SHL:0:64`, a register copy.
+register or a sign-extended `imm8` source, the count-in-mnemonic right shift `SHR:k:64`, the
+count-`0` shift `SHL:0:64`, a register copy, and the load-effective-address `LEA:64` over the
+SIB form `[B + X · sc]`.
 
 ## Main results
 
@@ -424,6 +425,32 @@ theorem encodeLopn_shift0 (F W : Nat) (m D S : String) (qB ext : Nat)
   simp only [encodeLopn, hbind, hmulx, hmulxmem, hadx, hext, fD.isGp, fS.isGp,
     Bool.false_eq_true, if_false, Bool.and_self, if_true, hn, beq_iff_eq]
 
+/-- The load-effective-address `LEA:64 D, [B + X · sc]` between general-purpose names, with
+    an index other than `RSP` and a stride the SIB byte encodes, dispatches to the SIB form
+    `REX.W 8D /r`. -/
+theorem encodeLopn_leaIdx (F W : Nat) (D B X : String) (sc qB : Nat) (hD : gpOk D = true)
+    (hB : gpOk B = true) (hX : gpOk X = true) (h4 : gpNumU X ≠ 4)
+    (hs : ScalarEncoder.scaleOk sc = true) :
+    encodeLopn F W (.Lopn [.reg D] "LEA:64" [.arrIdx B X sc]) qB
+      = encMemMovSibw 1 0x8d (gpNumU D) (gpNumU B) (gpNumU X) sc := by
+  have fD := gpFacts hD
+  have fB := gpFacts hB
+  have fX := gpFacts hX
+  simp only [ScalarEncoder.scaleOk] at hs
+  simp only [encodeLopn,
+    show (isCarryOutBinding "LEA:64" || isMulHiBinding "LEA:64") = false from by decide +kernel,
+    show stripWidthTag "LEA:64" = "LEA" from by decide +kernel,
+    show mnemWidth "LEA:64" = 64 from by decide +kernel,
+    show ("LEA" == "MULX") = false from by decide +kernel,
+    show ("LEA" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "LEA" = none from by decide +kernel,
+    show tagShiftExt "LEA" = none from by decide +kernel,
+    show aluOpcode "LEA" = none from by decide +kernel,
+    show twoByteOpcode "LEA" = none from by decide +kernel,
+    show ("LEA" == "LEA") = true from by decide +kernel,
+    LprogBytes.rexW, fD.isGp, fB.isGp, fX.isGp, Bool.false_eq_true, if_false, if_true]
+  simp [h4, hs]
+
 /-! ## 4. The decoded pieces of the covered arms -/
 
 /-- `SHR $k, %d` (`REX.W C1 /5 ib`) on a general-purpose name decodes to the shift of its
@@ -481,6 +508,8 @@ inductive Arm where
   /-- The two-address shift `m D, D, #k` by an immediate count, `m` the mnemonic `SHL:64` or
       `SHR:64`. -/
   | shI (m D : String) (k : Nat)
+  /-- The load-effective-address `LEA:64 D, [B + X · sc]` over the SIB form. -/
+  | lea (D B X : String) (sc : Nat)
 
 /-- The instruction of an arm. -/
 def Arm.instr : Arm → LinstrR
@@ -493,6 +522,7 @@ def Arm.instr : Arm → LinstrR
   | .shr m D S => .Lopn [.reg D] m [.reg S]
   | .shl0 m D S => .Lopn [.reg D] m [.reg S]
   | .shI m D k => .Lopn [.reg D] m [.reg D, .imm k]
+  | .lea D B X sc => .Lopn [.reg D] "LEA:64" [.arrIdx B X sc]
 
 /-- The arm of an instruction, read off its operand shape and mnemonic; `none` outside the
     covered shapes. -/
@@ -508,6 +538,7 @@ def classify : LinstrR → Option Arm
   | .Lopn [.reg d] m [.reg a, .reg s] => if d == a then some (.alu m d s) else none
   | .Lopn [.reg d] m [.reg a, .imm v] =>
       if d == a then (if isShI m then some (.shI m d v) else some (.aluI m d v)) else none
+  | .Lopn [.reg d] m [.arrIdx b x sc] => if m == "LEA:64" then some (.lea d b x sc) else none
   | _ => none
 
 theorem classify_instr {i : LinstrR} {a : Arm} (h : classify i = some a) : a.instr = i := by
@@ -526,6 +557,11 @@ theorem classify_instr {i : LinstrR} {a : Arm} (h : classify i = some a) : a.ins
     rfl
   · split_ifs at h with hm <;> obtain rfl := Option.some.inj h <;>
       simp only [beq_iff_eq] at hm <;> subst hm <;> rfl
+  · split_ifs at h with hm
+    obtain rfl := Option.some.inj h
+    simp only [beq_iff_eq] at hm
+    subst hm
+    rfl
   · exact absurd h (by simp)
 
 /-- The frame offset of the frame-word name `q` under the body parameters `P`. -/
@@ -567,6 +603,9 @@ def Arm.pieces (P : Params) : Arm → List (List (BitVec 8) × JInstr 64)
       if D = S then [] else
         [(encAluRRw 1 0x89 (gpNumU D) (gpNumU S), .mov (phys D) (.reg (phys S)))]
   | .shI m D k => [(shIBytes m (gpNumU D) k, shIMk m (phys D) (.imm k))]
+  | .lea D B X sc =>
+      [(encMemMovSibw 1 0x8d (gpNumU D) (gpNumU B) (gpNumU X) sc,
+        .lea (phys D) (phys B) (phys X) sc 0)]
 
 /-- The machine instructions of an arm. -/
 def Arm.js (P : Params) (a : Arm) : List (JInstr 64) := (a.pieces P).map Prod.snd
@@ -604,6 +643,7 @@ def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
         && LprogBytes.rexW (mnemWidth m) == 1 && tagShiftCount (stripWidthTag m) == 0
         && m == withWidthTag 64 ("SHL" ++ ":" ++ toString 0)
   | .shI m D k => isShI m && gpOk D && decide (0 < k) && decide (k < 64)
+  | .lea D B X sc => gpOk D && gpOk B && gpOk X && gpNumU X != 4 && ScalarEncoder.scaleOk sc
 
 /-- The frame words written after an arm. -/
 def Arm.post (P : Params) (Q : List (String × Int)) : Arm → List (String × Int)
@@ -694,6 +734,15 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     · simp only [Arm.pieces, List.mem_singleton]
       rintro p rfl
       exact pieceDec_shI m D k hm hk
+  | lea D B X sc =>
+    simp only [Arm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+    obtain ⟨⟨⟨⟨hD, hB⟩, hX⟩, h4⟩, hs⟩ := h
+    refine ⟨?_, ?_⟩
+    · simp [Arm.instr, Arm.pieces, encodeLopn_leaIdx _ _ _ _ _ _ _ hD hB hX h4 hs]
+    · simp only [Arm.pieces, List.mem_singleton]
+      rintro p rfl rest
+      exact decodeLinstr_leaIdx _ _ _ sc rest (gpNumU_lt_16 D) (gpNumU_lt_16 B)
+        (gpNumU_lt_16 X) h4 hs
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, Bool.or_eq_false_iff] at h
@@ -781,6 +830,23 @@ theorem fstepF_movM (m d s : String) (hm : isMovM m = true) (b : LstateM) (zf : 
   · simp [fstepF, cmpArgs?, movRegArgs?, readReg_of_getW hv,
       show stripWidthTag "MOVQ" = "MOVQ" from by decide +kernel]
 
+/-- The flag-machine step of the load-effective-address `LEA:64 d, [b + x · sc]`: the
+    address `b + sc · x` written to `d`, the zero flag unchanged. -/
+theorem fstepF_lea (d b x : String) (sc : Nat) (s : LstateM) (zf : Bool) {p vi : BitVec 64}
+    (hb : s.reg.getW b 64 = some p) (hx : s.reg.getW x 64 = some vi) :
+    fstepF (.Lopn [.reg d] "LEA:64" [.arrIdx b x sc], .reg none) s zf
+      = some ((s.setReg d (p + BitVec.ofNat 64 (sc * vi.toNat))).nextPc, zf) := by
+  have hl : lsemStepMem (.Lopn [.reg d] "LEA:64" [.arrIdx b x sc], .reg none) s
+      = some ((s.setReg d (p + BitVec.ofNat 64 (sc * vi.toNat))).nextPc) := by
+    rw [lsemStepMem_reg, JasminLsemCast.lsemStepCast_of_delegate _ _ (Or.inr rfl),
+      JasminLsemMulCarry.lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
+      JasminLsemShift.lsemStepSh_of_not_sar _ _
+        (by simp (config := { decide := true }) [JasminLsemShift.sarStruct?])]
+    simp only [lsemStepN, show stripWidthTag "LEA:64" = "LEA" from by decide +kernel, if_true,
+      hb, hx, Option.map_some]
+    rfl
+  simp [fstepF, cmpArgs?, movRegArgs?, stepMemF_of_lsemStepMem hl, withALUFlags, aluFlagOp?]
+
 /-- The flag-machine and machine semantics of an arithmetic or logic mnemonic of
     `aluArm`. -/
 theorem aluArm_sem {m : String} {op : Nat} {mk : String → JOperand → JInstr 64}
@@ -819,6 +885,19 @@ theorem evalInstrA_loadMem_eq (sa : AState) (S B : String) (off : Int) :
       ∧ (evalInstrA sa (.loadMem S B off)).mem = sa.mem := by
   refine ⟨fun r => ?_, ?_⟩
   · by_cases hr : r = S <;> simp [evalInstrA, evalInstr, JState.setReg, AState.view, hr, x86_MOV]
+  · simp [evalInstrA, evalInstr, JState.setReg, AState.view, writeAddr]
+
+theorem evalInstrA_lea_eq (sa : AState) (D B X : String) (sc : Nat) :
+    (∀ r, (evalInstrA sa (.lea D B X sc 0)).regs r
+      = if r = D then sa.regs B + BitVec.ofNat 64 (sc * (sa.regs X).toNat) else sa.regs r)
+      ∧ (evalInstrA sa (.lea D B X sc 0)).mem = sa.mem := by
+  have hm : ∀ v : BitVec 64, v * BitVec.ofNat 64 sc = BitVec.ofNat 64 (sc * v.toNat) := by
+    intro v
+    apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toNat_mul, Nat.mul_mod, Nat.mul_comm]
+  refine ⟨fun r => ?_, ?_⟩
+  · by_cases hr : r = D <;>
+      simp [evalInstrA, evalInstr, JState.setReg, JState.get, AState.view, hr, x86_LEA, hm]
   · simp [evalInstrA, evalInstr, JState.setReg, AState.view, writeAddr]
 
 /-! ## 7. The simulation of one arm -/
@@ -956,6 +1035,16 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
               rw [x86_SHR_word_imm _ k (by omega) hk]) rfl
             (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
             (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+  | lea D B X sc =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨⟨⟨hD, hB⟩, hX⟩, -⟩, -⟩ := h
+    show DecSim _ _ [_] [.lea (phys D) (phys B) (phys X) sc 0]
+    refine DecSim.single fun sa b zf hc =>
+      ⟨_, zf, fstepF_lea D B X sc b zf (hc.regs B hB) (hc.regs X hX), ?_⟩
+    obtain ⟨hregs, hmem⟩ := evalInstrA_lea_eq sa (phys D) (phys B) (phys X) sc
+    exact hc.write hD _ hregs hmem
+      (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
+      (by rw [getW_setReg_nextPc, if_pos rfl])
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hm⟩ := h

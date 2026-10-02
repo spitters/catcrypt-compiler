@@ -694,7 +694,8 @@ inductive ICase where
 def icase (frame : String → Option (BitVec 64)) : LinstrR → ICase
   | .Llabel _ _ => .label
   | .Lcond (.reg cc) l => .cond cc l
-  | .Lopn [.reg d] o [.arrIdx b idx 8] => if o = "LOADIDX" then .ldx d b idx else .other
+  | .Lopn [.reg d] o [.arrIdx b idx 8] =>
+      if o = "LOADIDX" then .ldx d b idx else if o = "STOREIDX" then .other else .reg
   | .Lopn [.reg d] o [.arrIdx b idx 8, .reg v] =>
       if o = "STOREIDX" then .stx d b idx v else .other
   | .Lopn ds o ss =>

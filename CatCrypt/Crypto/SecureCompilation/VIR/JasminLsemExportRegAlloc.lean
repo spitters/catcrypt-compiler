@@ -189,6 +189,15 @@ theorem lsemStepN_live (hemp : N "") (hfix : σ "" = "") (i : LinstrR)
       hR.readReg (.reg a) (ho (.reg a) (by simp))
     simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, lsemStepN, hra]
     live_close
+  · rename_i dst opn b x sc
+    have ho := uses_of_lopn hu
+    have hb : s'.getW (σ b) 64 = s.getW b 64 :=
+      hR.getW (ho (.arrIdx b x sc) (by simp) b (by simp [opNames])) 64
+    have hx : s'.getW (σ x) 64 = s.getW x 64 :=
+      hR.getW (ho (.arrIdx b x sc) (by simp) x (by simp [opNames])) 64
+    simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, renOperand_arrIdx,
+      lsemStepN, hb, hx]
+    live_close
   · exact absurd h (by simp)
   · cases h; exact ⟨_, rfl, (relN_mono hR hK.sub).nextPc⟩
   · cases h; exact ⟨_, rfl, (relN_mono hR hK.sub).nextPc⟩

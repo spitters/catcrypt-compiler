@@ -62,37 +62,50 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN (widthFromTag)
 
 /-! ## 1. The registers a symbolic step reads -/
 
-/-- The registers the symbolic step of `x` reads: the registers its source operands read
-    and, for a widening multiply, its implicit first source `mulxSrc`. -/
+/-- The base register a load-effective-address `LEA d, [b + x · sc]` reads, which
+    `instrReadRegs` (the index registers of an indexed operand) does not list. -/
+def leaReads : LinstrR → List String
+  | .Lopn _ opn [.arrIdx b _ _] => if stripWidthTag opn = "LEA" then [b] else []
+  | _ => []
+
+/-- The registers the symbolic step of `x` reads: the registers its source operands read,
+    the base register of a load-effective-address and, for a widening multiply, its
+    implicit first source `mulxSrc`. -/
 def symReads (x : LinstrR) : List String :=
-  instrReadRegs x ++
+  instrReadRegs x ++ (leaReads x ++
     match x with
     | .Lopn _ opn _ =>
         if opn = withWidthTag 64 "MULX" ∨ opn = withWidthTag 64 "MULXMEM" then [mulxSrc] else []
-    | _ => []
+    | _ => [])
 
 theorem symOp64_congr {R R' : String → STerm} {o : LOperand}
     (h : ∀ q ∈ operandReads o, R q = R' q) : symOp64 R o = symOp64 R' o := by
   cases o <;> simp_all [symOp64, operandReads]
 
 theorem symN_congr {R R' : String → STerm} {x : LinstrR}
-    (h : ∀ q ∈ instrReadRegs x, R q = R' q) : symN x R = symN x R' := by
+    (h : ∀ q ∈ instrReadRegs x, R q = R' q) (hl : ∀ q ∈ leaReads x, R q = R' q) :
+    symN x R = symN x R' := by
   unfold symN
   repeat' split
-  all_goals simp_all [instrReadRegs, operandReads]
+  all_goals simp_all [instrReadRegs, operandReads, leaReads]
 
 theorem instrReadRegs_sub (x : LinstrR) : ∀ q ∈ instrReadRegs x, q ∈ symReads x :=
   fun _ h => List.mem_append_left _ h
 
+theorem leaReads_sub (x : LinstrR) : ∀ q ∈ leaReads x, q ∈ symReads x :=
+  fun _ h => List.mem_append_right _ (List.mem_append_left _ h)
+
 theorem symSh_congr {R R' : String → STerm} {x : LinstrR}
-    (h : ∀ q ∈ instrReadRegs x, R q = R' q) : symSh x R = symSh x R' := by
+    (h : ∀ q ∈ instrReadRegs x, R q = R' q) (hl : ∀ q ∈ leaReads x, R q = R' q) :
+    symSh x R = symSh x R' := by
   unfold symSh
   split
   · rfl
-  · exact symN_congr h
+  · exact symN_congr h hl
 
 theorem symMC_congr {R R' : String → STerm} {x : LinstrR}
-    (h : ∀ q ∈ instrReadRegs x, R q = R' q) : symMC x R = symMC x R' := by
+    (h : ∀ q ∈ instrReadRegs x, R q = R' q) (hl : ∀ q ∈ leaReads x, R q = R' q) :
+    symMC x R = symMC x R' := by
   unfold symMC
   split
   · rename_i d a b hm
@@ -119,17 +132,18 @@ theorem symMC_congr {R R' : String → STerm} {x : LinstrR}
             unfold JasminLsemMulCarry.sbbhiStruct? at hm
             repeat' split at hm
             all_goals simp_all [instrReadRegs, operandReads]
-          · exact symSh_congr h
+          · exact symSh_congr h hl
 
 theorem symCast_congr {R R' : String → STerm} {i : JasminLsemCast.LinstrRT}
-    (h : ∀ q ∈ instrReadRegs i.1, R q = R' q) : symCast i R = symCast i R' := by
+    (h : ∀ q ∈ instrReadRegs i.1, R q = R' q) (hl : ∀ q ∈ leaReads i.1, R q = R' q) :
+    symCast i R = symCast i R' := by
   unfold symCast
   split
   · split
     · rfl
-    · exact symMC_congr h
+    · exact symMC_congr h hl
   · split
-    · exact symMC_congr h
+    · exact symMC_congr h hl
     · rfl
 
 /-- The words of a state other than its registers and its write lists. -/
@@ -161,7 +175,8 @@ theorem liftR_congr {ss ss' : SSt} (hS : ss.Same ss') (o : ROut) :
   | unk => trivial
 
 theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
-    (hR : ∀ q ∈ instrReadRegs i.1, ss.regs q = ss'.regs q) :
+    (hR : ∀ q ∈ instrReadRegs i.1, ss.regs q = ss'.regs q)
+    (hL : ∀ q ∈ leaReads i.1, ss.regs q = ss'.regs q) :
     SOut.RelOn ss ss' (symMem i ss) (symMem i ss') := by
   obtain ⟨x, tag⟩ := i
   unfold symMem
@@ -178,7 +193,7 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
         · simp [SSt.setR, hS.1]
         · simp only [List.mem_singleton] at hq
           simp [SSt.setR, hq, hS.1, hi]
-      · rw [symCast_congr (R' := ss'.regs) hR]; exact liftR_congr hS _
+      · rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
   | store w n =>
       dsimp only
       split
@@ -189,10 +204,10 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
           all_goals simp_all [instrReadRegs, operandReads]
         refine ⟨by rw [hS.1, hi.1, hi.2], ⟨?_, hS.2⟩, [], rfl, rfl, fun _ h => by cases h⟩
         simp [SSt.setA, hS.1, hi.1, hi.2]
-      · rw [symCast_congr (R' := ss'.regs) hR]; exact liftR_congr hS _
+      · rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
   | loadC => trivial
   | storeC => trivial
-  | reg cd => dsimp only; rw [symCast_congr (R' := ss'.regs) hR]; exact liftR_congr hS _
+  | reg cd => dsimp only; rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
 
 theorem aluFlagOp?_reads {i : LinstrRM} {op : AluOp} {a c : LOperand}
     (h : aluFlagOp? i = some (op, a, c)) :
@@ -328,6 +343,8 @@ theorem symStep_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
     SOut.RelOn ss ss' (symStep i ss) (symStep i ss') := by
   have hR0 : ∀ q ∈ instrReadRegs i.1, ss.regs q = ss'.regs q :=
     fun q hq => hR q (instrReadRegs_sub _ q hq)
+  have hL : ∀ q ∈ leaReads i.1, ss.regs q = ss'.regs q :=
+    fun q hq => hR q (leaReads_sub _ q hq)
   obtain ⟨hA, hZ, hC, hO⟩ := hS
   unfold symStep
   split
@@ -358,7 +375,7 @@ theorem symStep_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
           · split
             · rename_i w hw
               exact symWide_congr ⟨hA, hZ, hC, hO⟩ i hw hR
-            · exact aluFl_congr ⟨hA, hZ, hC, hO⟩ i hR0 (symMem_congr ⟨hA, hZ, hC, hO⟩ i hR0)
+            · exact aluFl_congr ⟨hA, hZ, hC, hO⟩ i hR0 (symMem_congr ⟨hA, hZ, hC, hO⟩ i hR0 hL)
 
 /-! ## 2. The names a step writes -/
 

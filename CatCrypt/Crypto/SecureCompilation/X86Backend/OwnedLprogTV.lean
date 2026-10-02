@@ -668,7 +668,9 @@ theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, Bit
     is described with its sources exchanged (`commSwap`), so it has the term of
     `opn d, [d, a]`. A select `CMOV d, [c, a, b]` with register condition `c` and register
     first value `a` is the term `sel a b c`, under the guards that `c` has width `1` and, for
-    a register `b`, that `a` and `b` have one width; an immediate `b` is `immAt n a`. -/
+    a register `b`, that `a` and `b` have one width; an immediate `b` is `immAt n a`. A
+    load-effective-address `LEA d, [b + x · sc]` is the term `b + x · sc` at width `64`,
+    under the guards that `b` and `x` have width `64`. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg dst] opn [c, a, b] =>
@@ -712,6 +714,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
               else .set dst (.shImm m k (R a)) []
             else .fail
         | none => .fail
+  | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
+      if stripWidthTag opn = "LEA" then
+        .set dst (.bin "ADD" (R b) (.bin "MUL" (R x) (.immW 64 sc))) [.wid (R b) 64, .wid (R x) 64]
+      else .fail
   | .Lopn _ _ _ => .fail
   | .Lalign => .nop
   | .Llabel _ _ => .nop
@@ -740,6 +746,23 @@ theorem stepN_bin_imm (r : LstateN) (dst opn ra : String) (n : Nat) :
 
 @[simp] theorem castW_mk {w : Nat} (v : BitVec w) : castW ⟨w, v⟩ w = v := by
   simp [castW]
+
+theorem stepN_lea (r : LstateN) (dst opn b x : String) (sc : Nat)
+    (h : stripWidthTag opn = "LEA") :
+    lsemStepN (.Lopn [.reg dst] opn [.arrIdx b x sc]) r =
+      if (r.lvm b).1 = 64 ∧ (r.lvm x).1 = 64 then
+        some ((r.setReg dst (castW (r.lvm b) 64
+          + BitVec.ofNat 64 (sc * (castW (r.lvm x) 64).toNat))).nextPc)
+      else none := by
+  simp only [lsemStepN, h, if_true, getW_eq]
+  by_cases hb : (r.lvm b).1 = 64 <;> by_cases hx : (r.lvm x).1 = 64 <;> simp [hb, hx]
+
+/-- The effective address `sc · x` of a scaled index is the product of the index word and
+    the scale at width `64`. -/
+theorem ofNat_mul_toNat (sc : Nat) (v : BitVec 64) :
+    BitVec.ofNat 64 (sc * v.toNat) = v * BitVec.ofNat 64 sc := by
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_mul, Nat.mul_mod, Nat.mul_comm]
 
 theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R (symN x R) := by
   intro V A C O r hr
@@ -863,7 +886,25 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
             applyImmShiftN_none (Bool.eq_false_iff.mpr hs)]
       · rename_i hm
         simp [ROut.Desc, lsemStepN, h1, h2, hm]
-  · rename_i hA hB hC hD
+  · rename_i dst opn b x sc
+    split_ifs with h
+    · simp only [ROut.Desc]
+      rw [stepN_lea r dst opn b x sc h, hr b, hr x]
+      simp only [AllG, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp, forall_eq,
+        SG.holds, STerm.ev]
+      generalize STerm.ev V A C O (R b) = pb
+      generalize STerm.ev V A C O (R x) = px
+      obtain ⟨wb, vb⟩ := pb
+      obtain ⟨wx, vx⟩ := px
+      by_cases hb : wb = 64
+      · subst hb
+        by_cases hx : wx = 64
+        · subst hx
+          simp [extW, binW, applyOpnN, ofNat_mul_toNat]
+        · simp [hx]
+      · simp [hb]
+    · simp [ROut.Desc, lsemStepN, h]
+  · rename_i hA hB hC hD hE
     simp only [ROut.Desc]
     unfold lsemStepN
     split
@@ -879,10 +920,13 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · rename_i heq
       injection heq with h1 _ h3
       exact (hD _ _ h1 h3).elim
+    · rename_i heq
+      injection heq with h1 _ h3
+      exact (hE _ _ _ _ h1 h3).elim
     all_goals first | rfl | (rename_i heq; cases heq)
   · rfl
   · rfl
-  · rename_i hA hB hC hD hE hF hG
+  · rename_i hA hB hC hD hE hF hG hH
     simp only [ROut.Desc]
     unfold lsemStepN
     split
@@ -890,9 +934,10 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · exact (hB _ _ _ _ rfl).elim
     · exact (hC _ _ _ rfl).elim
     · exact (hD _ _ _ rfl).elim
-    · exact (hE _ _ _ rfl).elim
-    · exact (hF rfl).elim
-    · exact (hG _ _ rfl).elim
+    · exact (hE _ _ _ _ _ rfl).elim
+    · exact (hF _ _ _ rfl).elim
+    · exact (hG rfl).elim
+    · exact (hH _ _ rfl).elim
     all_goals rfl
 
 /-- The symbolic description of `lsemStepSh`: the structured `SAR` is outside the

@@ -397,6 +397,9 @@ theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
       `shrImm`/`shlImm`/`sarImm`: read the data width `wₐ` from `a`'s store tag,
       apply `applyImmShiftN wₐ m k`, write `dst` at width `wₐ`, advance pc.
       A one-source `Lopn` under any other mnemonic returns `none`.
+    * `Lopn [.reg dst] opn [.arrIdx b x sc]` with `stripWidthTag opn = "LEA"` — the
+      load-effective-address: read `b` and `x` at width 64, write the address
+      `b + sc · x` to `dst` at width 64, advance pc. No memory is read.
 
     The CMOV arm is matched *before* the generic binop arm (`select`'s mnemonic
     `CMOV` is not a binop name, but matching CMOV explicitly keeps the arms
@@ -462,6 +465,14 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
                 | none => none
             | none => none
         | none => none
+  | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
+      -- `LEA` image: the effective address `b + sc · x` of the SIB operand, computed
+      -- without a memory access and written to `dst` at width 64.
+      if stripWidthTag opn = "LEA" then
+        match s.getW b 64, s.getW x 64 with
+        | some p, some vi => some ((s.setReg dst (p + BitVec.ofNat 64 (sc * vi.toNat))).nextPc)
+        | _, _ => none
+      else none
   | .Lopn _ _ _ => none
   | .Lalign => some s.nextPc
   | .Llabel _ _ => some s.nextPc

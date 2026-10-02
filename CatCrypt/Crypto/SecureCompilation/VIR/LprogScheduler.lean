@@ -1283,6 +1283,12 @@ def stepEff (i : LinstrR) (s : LstateN) : Option (Option Cell) :=
                   | none => none
               | none => none
           | none => none
+  | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
+      if stripWidthTag opn = "LEA" then
+        match s.getW b 64, s.getW x 64 with
+        | some p, some vi => some (some (dst, ⟨64, p + BitVec.ofNat 64 (sc * vi.toNat)⟩))
+        | _, _ => none
+      else none
   | .Lopn _ _ _ => none
   | .Lalign => some none
   | .Llabel _ _ => some none
@@ -1327,7 +1333,7 @@ theorem lsemStepN_eq_applyEff (i : LinstrR) (s : LstateN) :
   | some e => simp [stepEff_eq_some i s e h]
 
 /-- A width-tagged step's write depends on the store only at its read keys. -/
-theorem stepEff_congr (i : LinstrR) (s1 s2 : LstateN)
+theorem stepEff_congr (i : LinstrR) (s1 s2 : LstateN) (hai : hasArrIdx i = false)
     (h : ∀ r ∈ readToksSem i, s1.lvm r = s2.lvm r) : stepEff i s1 = stepEff i s2 := by
   unfold stepEff
   split
@@ -1345,6 +1351,7 @@ theorem stepEff_congr (i : LinstrR) (s1 s2 : LstateN)
   · rename_i dst opn a
     have ha := readReg_congr (.reg a) (h _ (by simp [readToksSem]))
     simp only [ha]
+  · simp [hasArrIdx, opIsArrIdx] at hai
   all_goals rfl
 
 /-- A width-tagged step that writes is a single-register-destination `Lopn`
@@ -1409,9 +1416,10 @@ theorem applyEff_comm (s : LstateN) (e1 e2 : Option Cell)
 /-- An instruction whose read keys miss another's write target computes the same
     write before and after that other step. -/
 theorem stepEff_after (i j : LinstrR) (s : LstateN) (e : Option Cell)
-    (hj : stepEff j s = some e) (hd : disjointL (writeToks j) (readToksSem i) = true) :
+    (hai : hasArrIdx i = false) (hj : stepEff j s = some e)
+    (hd : disjointL (writeToks j) (readToksSem i) = true) :
     stepEff i (applyEff s e) = stepEff i s := by
-  refine stepEff_congr i _ s ?_
+  refine stepEff_congr i _ s hai ?_
   intro r hr
   refine applyEff_lvm_of_ne s e r ?_
   intro hcon
@@ -1426,20 +1434,22 @@ theorem lsemStraightN_swap (i1 i2 : LinstrR) (rest : List LinstrR) (s : LstateN)
   have hww := indep_ww h
   have hwr := indep_wr h
   have hrw := indep_rw h
+  have ha1 := indep_arrIdx_left h
+  have ha2 := indep_arrIdx_right h
   rcases h1 : stepEff i1 s with _ | e1 <;> rcases h2 : stepEff i2 s with _ | e2
   · simp [lsemStraightN, lsemStepN_eq_applyEff, h1, h2]
   · simp [lsemStraightN, lsemStepN_eq_applyEff, h1, h2,
-      stepEff_after i1 i2 s e2 h2 hrw]
+      stepEff_after i1 i2 s e2 ha1 h2 hrw]
   · simp [lsemStraightN, lsemStepN_eq_applyEff, h1, h2,
-      stepEff_after i2 i1 s e1 h1 hwr]
+      stepEff_after i2 i1 s e1 ha2 h1 hwr]
   · have hne : ∀ d1 ∈ effName e1, ∀ d2 ∈ effName e2, d1 ≠ d2 := by
       intro d1 hd1 d2 hd2
       have w1 : writeToks i1 = [d1] := stepEff_writeToks_of_effName h1 hd1
       have w2 : writeToks i2 = [d2] := stepEff_writeToks_of_effName h2 hd2
       exact disjointL_ne hww (by rw [w1]; simp) (by rw [w2]; simp)
     simp only [lsemStraightN, lsemStepN_eq_applyEff, h1, h2, Option.map_some,
-      stepEff_after i2 i1 s e1 h1 hwr,
-      stepEff_after i1 i2 s e2 h2 hrw]
+      stepEff_after i2 i1 s e1 ha2 h1 hwr,
+      stepEff_after i1 i2 s e2 ha1 h2 hrw]
     rw [applyEff_comm s e1 e2 hne]
 
 /-! ## 11. Lifting a commutation law along the schedule

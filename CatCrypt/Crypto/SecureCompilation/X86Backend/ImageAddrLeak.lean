@@ -154,6 +154,9 @@ theorem instrLeakF_renRM {σ : String → String} {N : String → Prop} (i : Lin
       | Lopn ds o ss =>
           simp only [instrLeakB, renRM, renLinstrR, ← List.map_append, List.flatMap_map,
             List.map_flatMap]
+          split_ifs
+          · rfl
+          simp only [List.map_flatMap]
           refine List.flatMap_congr fun x hx => ?_
           cases x with
           | reg q => rfl
@@ -612,6 +615,8 @@ theorem instrLeakB_agree {i : LinstrRM} (hl : IsLopn i) {r r' : LstateN}
   simp only at hd
   subst hd
   simp only [instrLeakB]
+  split_ifs
+  · rfl
   refine List.flatMap_congr fun x hx => ?_
   cases x with
   | arrIdx b q sc =>
@@ -649,7 +654,7 @@ theorem fuseE_leak {E : List String} {L : List (Option String)} {c : List Linstr
       obtain ⟨w, tag⟩ := i
       simp only at heq
       subst heq
-      rfl
+      simp [instrLeakB, opLeakF]
     · exact hone
   · exact hone
 

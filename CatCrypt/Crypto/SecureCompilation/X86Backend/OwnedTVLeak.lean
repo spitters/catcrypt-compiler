@@ -105,10 +105,11 @@ def opSLeak (ss : SSt) : LOperand → List SEv
   | _ => []
 
 /-- The symbolic events of an instruction from the symbolic state `ss`: those of the
-    operands of an `Lopn`. -/
+    operands of an `Lopn` other than a load-effective-address `LEA`, which accesses no
+    memory. -/
 def instrSLeak (i : LinstrRM) (ss : SSt) : List SEv :=
   match i.1 with
-  | .Lopn ds _ xs => (ds ++ xs).flatMap (opSLeak ss)
+  | .Lopn ds o xs => if stripWidthTag o = "LEA" then [] else (ds ++ xs).flatMap (opSLeak ss)
   | _ => []
 
 /-- The symbolic events of a list of instructions, collected along its symbolic run. -/
@@ -154,7 +155,10 @@ theorem instrLeakF_holds {V : String → Σ w, BitVec w} {A : String → ArrCell
   obtain ⟨x, tag⟩ := i
   cases x with
   | Lopn ds o xs =>
-      simp only [instrLeakF, flagCondCC?, instrLeakB, instrSLeak, List.map_flatMap]
+      simp only [instrLeakF, flagCondCC?, instrLeakB, instrSLeak]
+      split_ifs
+      · rfl
+      simp only [List.map_flatMap]
       refine congrArg (fun g => List.flatMap g (ds ++ xs)) (funext fun op => ?_)
       cases op with
       | arrIdx b x sc =>
