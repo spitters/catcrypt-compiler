@@ -33,6 +33,7 @@ map `n ↦ (n : ZMod p)`; `primeirBuiltins_*_zmod` state that each op agrees wit
 
 * `"mul"`, `"add"`, `"sub"` — binary, `(a ⋆ b) % p`.
 * `"neg"` — unary, `(-a) % p`.
+* `"square"`, `"double"` — unary, `(a * a) % p` and `(a + a) % p`.
 * `"inv"` — unary modular inverse, `((a : ZMod p)⁻¹).val`. Expressible directly on
   the `Value.int` payload through `ZMod p`'s computable `Inv`.
 
@@ -50,7 +51,7 @@ open _root_.Hax (ImpExpr Value Env Outcome Builtins defaultBuiltins denote)
 /-- Extend `defaultBuiltins` with the prime-field ops over the residue
     representation `Value.int n ↦ (n : ZMod p)`.
 
-    The four ring ops reduce with `Int.emod` so the payload stays canonical in
+    The ring ops reduce with `Int.emod` so the payload stays canonical in
     `[0, p)` when `0 < p`; `"inv"` uses `ZMod p`'s inverse. Any head or argument
     shape that is not a recognized field op falls through to `defaultBuiltins`. -/
 def primeirBuiltins (p : Nat) : Builtins
@@ -58,6 +59,8 @@ def primeirBuiltins (p : Nat) : Builtins
   | "add", [.int a, .int b] => some (.int ((a + b) % (p : Int)))
   | "sub", [.int a, .int b] => some (.int ((a - b) % (p : Int)))
   | "neg", [.int a]         => some (.int ((-a) % (p : Int)))
+  | "square", [.int a]      => some (.int ((a * a) % (p : Int)))
+  | "double", [.int a]      => some (.int ((a + a) % (p : Int)))
   | "inv", [.int a]         => some (.int (((a : ZMod p)⁻¹).val : Int))
   | f, args => defaultBuiltins f args
 
@@ -74,6 +77,12 @@ def primeirBuiltins (p : Nat) : Builtins
 
 @[simp] theorem primeirBuiltins_neg (p : Nat) (a : Int) :
     primeirBuiltins p "neg" [.int a] = some (.int ((-a) % (p : Int))) := rfl
+
+@[simp] theorem primeirBuiltins_square (p : Nat) (a : Int) :
+    primeirBuiltins p "square" [.int a] = some (.int ((a * a) % (p : Int))) := rfl
+
+@[simp] theorem primeirBuiltins_double (p : Nat) (a : Int) :
+    primeirBuiltins p "double" [.int a] = some (.int ((a + a) % (p : Int))) := rfl
 
 @[simp] theorem primeirBuiltins_inv (p : Nat) (a : Int) :
     primeirBuiltins p "inv" [.int a] = some (.int (((a : ZMod p)⁻¹).val : Int)) := rfl
