@@ -39,8 +39,9 @@ immediate shifts) with the carry and overflow flags `withALUFlags` writes, the c
 family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`, and the two-source `MOV` and the
 widening multiplies `MULX`, `MULXMEM` of `wideStep` (`symWide`: the low word the masked
 low `MUL` term `mulLoT`, the term of the front's masked low product, and the high word
-`STerm.mulx`), and the high word `MULXHI` of `lsemStepMC` (the term `bin "MULXHI"`, `binW`);
-the carry arms of `lsemStepMC`, `SAR`, `CMOV`, the
+`STerm.mulx`), the high word `MULXHI` of `lsemStepMC` (the term `bin "MULXHI"`, `binW`), and
+the register-carry arms `ADCX`, `SBB` (nested `bin "ADD"`, `bin "SUB"`) and `ADCXHI`, `SBBHI`
+(`STerm.cout`) of `lsemStepMC`; `SAR`, `CMOV`, the
 casts and the compile-time-offset memory moves are `unk`. `symRun` composes the steps of a
 list.
 
@@ -221,6 +222,13 @@ deriving instance Hashable for AluOp, CarryOp
 def binW (w : Nat) (m : String) (a b : BitVec w) : BitVec w :=
   if m = "MULXHI" then mulHiW a b else (applyOpnN w m [a, b]).getD a
 
+/-- The carry-out (`sub = false`, `carryOutBit`) or borrow-out (`sub = true`, `borrowOutBit`)
+    bit of the register-carry step on `x` and `y` at the width of `x`, with `y` extended or
+    truncated to that width and the carry-in `c` to width `1` (`extW`). -/
+def coutBit (sub : Bool) (x y c : Σ w, BitVec w) : BitVec 1 :=
+  if sub then JasminDialect.borrowOutBit x.2 (extW y x.1) (extW c 1)
+  else JasminDialect.carryOutBit x.2 (extW y x.1) (extW c 1)
+
 mutual
 /-- A symbolic width-tagged word over the registers and arrays at the start of a
     block. -/
@@ -255,6 +263,9 @@ inductive STerm where
   /-- The low (`hi = false`) or high (`hi = true`) word of the widening product
       `x86_MULX_lo_hi` of `x` and `y` read at width `64`. -/
   | mulx (hi : Bool) (x y : STerm)
+  /-- The carry-out (`sub = false`) or borrow-out (`sub = true`) bit `coutBit` of the
+      register-carry step on `x`, `y` and the carry-in `c`, as a word of width `1`. -/
+  | cout (sub : Bool) (x y c : STerm)
   /-- Entry `k` of a term table (`TEnt`); a substitution (`STerm.subst`) gives it its term,
       and `STerm.ev` gives it the word of width `0`. -/
   | ref (k : Nat)
@@ -313,6 +324,7 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .mulx hi x y =>
       ⟨64, if hi then (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).2
         else (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).1⟩
+  | .cout sub x y c => ⟨1, coutBit sub x.ev y.ev c.ev⟩
   | .ref _ => ⟨0, 0#0⟩
 
 /-- The value of a symbolic array, for the start registers `V`, arrays `A` and flags `C`,
@@ -375,6 +387,7 @@ def STerm.wknown : STerm → Option Nat
   | .carryW .. => some 64
   | .carryF .. => some 1
   | .mulx .. => some 64
+  | .cout .. => some 1
   | _ => none
 
 theorem STerm.wbase_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
@@ -391,6 +404,7 @@ theorem STerm.wbase_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) 
   | .carryW _ _ _ _ => rfl
   | .carryF _ _ _ _ _ => rfl
   | .mulx _ _ _ => rfl
+  | .cout _ _ _ _ => rfl
   | .ref _ => rfl
 
 theorem STerm.wknown_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
@@ -843,15 +857,29 @@ theorem symSh_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepSh x)
     simpa only [ROut.Desc, lsemStepSh_of_not_sar x r h] using this
 
 /-- The symbolic description of `lsemStepMC`: the high word `MULXHI d, a, b` of a product is
-    the term `bin "MULXHI"` under the guard that `a` and `b` have one width; the carry arms are
-    outside the fragment. -/
+    the term `bin "MULXHI"` under the guard that `a` and `b` have one width. A register-carry
+    step `ADCX`/`SBB d, a, b, c` is the sum `(a + b) + c` (the difference `(a - b) - c`) at the
+    width of `a`, and `ADCXHI`/`SBBHI d, a, b, c` is the carry-out (borrow-out) bit `cout`;
+    each under the guards that `a` and `b` have one width and the carry-in `c` has width
+    `1`. -/
 def symMC (x : LinstrR) (R : String → STerm) : ROut :=
   match mulhiStruct? x with
   | some (d, a, b) => .set d (.bin "MULXHI" (R a) (R b)) [.eqW (R a) (R b)]
   | none =>
-      match adcxStruct? x, adcxhiStruct? x, sbbStruct? x, sbbhiStruct? x with
-      | none, none, none, none => symSh x R
-      | _, _, _, _ => .unk
+  match adcxStruct? x with
+  | some (d, a, b, c) =>
+      .set d (.bin "ADD" (.bin "ADD" (R a) (R b)) (R c)) [.eqW (R a) (R b), .wid (R c) 1]
+  | none =>
+  match adcxhiStruct? x with
+  | some (d, a, b, c) => .set d (.cout false (R a) (R b) (R c)) [.eqW (R a) (R b), .wid (R c) 1]
+  | none =>
+  match sbbStruct? x with
+  | some (d, a, b, c) =>
+      .set d (.bin "SUB" (.bin "SUB" (R a) (R b)) (R c)) [.eqW (R a) (R b), .wid (R c) 1]
+  | none =>
+  match sbbhiStruct? x with
+  | some (d, a, b, c) => .set d (.cout true (R a) (R b) (R c)) [.eqW (R a) (R b), .wid (R c) 1]
+  | none => symSh x R
 
 theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x) R (symMC x R) := by
   intro V A C O r hr
@@ -865,10 +893,79 @@ theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x)
     · simp [Ne.symm hw]
   · rename_i h1
     split
-    · rename_i h2 h3 h4 h5
-      have := symSh_sound x R V A C O r hr
-      simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
-    · trivial
+    · rename_i d a b c h
+      simp only [ROut.Desc, lsemStepMC, h1, h, readReg_reg, hr a, getW_eq, hr b, hr c, AllG,
+        List.mem_cons, forall_eq_or_imp, SG.holds, STerm.ev]
+      generalize STerm.ev V A C O (R a) = pa
+      generalize STerm.ev V A C O (R b) = pb
+      generalize STerm.ev V A C O (R c) = pc
+      obtain ⟨wa, va⟩ := pa
+      obtain ⟨wb, vb⟩ := pb
+      obtain ⟨wc, vc⟩ := pc
+      by_cases hb : wb = wa
+      · subst hb
+        by_cases hc : wc = 1
+        · subst hc
+          simp [binW, applyOpnN, extW, JasminDialect.addCarryWord]
+        · simp [hc]
+      · simp [hb, Ne.symm hb]
+    · rename_i h2
+      split
+      · rename_i d a b c h
+        simp only [ROut.Desc, lsemStepMC, h1, h2, h, readReg_reg, hr a, getW_eq, hr b, hr c,
+          AllG, List.mem_cons, forall_eq_or_imp, SG.holds, STerm.ev]
+        generalize STerm.ev V A C O (R a) = pa
+        generalize STerm.ev V A C O (R b) = pb
+        generalize STerm.ev V A C O (R c) = pc
+        obtain ⟨wa, va⟩ := pa
+        obtain ⟨wb, vb⟩ := pb
+        obtain ⟨wc, vc⟩ := pc
+        by_cases hb : wb = wa
+        · subst hb
+          by_cases hc : wc = 1
+          · subst hc
+            simp [coutBit, extW]
+          · simp [hc]
+        · simp [hb, Ne.symm hb]
+      · rename_i h3
+        split
+        · rename_i d a b c h
+          simp only [ROut.Desc, lsemStepMC, h1, h2, h3, h, readReg_reg, hr a, getW_eq, hr b,
+            hr c, AllG, List.mem_cons, forall_eq_or_imp, SG.holds, STerm.ev]
+          generalize STerm.ev V A C O (R a) = pa
+          generalize STerm.ev V A C O (R b) = pb
+          generalize STerm.ev V A C O (R c) = pc
+          obtain ⟨wa, va⟩ := pa
+          obtain ⟨wb, vb⟩ := pb
+          obtain ⟨wc, vc⟩ := pc
+          by_cases hb : wb = wa
+          · subst hb
+            by_cases hc : wc = 1
+            · subst hc
+              simp [binW, applyOpnN, extW, JasminDialect.subBorrowWord]
+            · simp [hc]
+          · simp [hb, Ne.symm hb]
+        · rename_i h4
+          split
+          · rename_i d a b c h
+            simp only [ROut.Desc, lsemStepMC, h1, h2, h3, h4, h, readReg_reg, hr a, getW_eq,
+              hr b, hr c, AllG, List.mem_cons, forall_eq_or_imp, SG.holds, STerm.ev]
+            generalize STerm.ev V A C O (R a) = pa
+            generalize STerm.ev V A C O (R b) = pb
+            generalize STerm.ev V A C O (R c) = pc
+            obtain ⟨wa, va⟩ := pa
+            obtain ⟨wb, vb⟩ := pb
+            obtain ⟨wc, vc⟩ := pc
+            by_cases hb : wb = wa
+            · subst hb
+              by_cases hc : wc = 1
+              · subst hc
+                simp [coutBit, extW]
+              · simp [hc]
+            · simp [hb, Ne.symm hb]
+          · rename_i h5
+            have := symSh_sound x R V A C O r hr
+            simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
 
 /-- The symbolic description of `lsemStepCast`: an untagged immediate move with a descriptor
     `w'` sets its destination to the immediate at width `w'`; a cast with a descriptor is
@@ -1815,6 +1912,7 @@ def STerm.vars : STerm → List String
   | .carryW _ x y c => x.vars ++ y.vars ++ c.vars
   | .carryF _ _ x y c => x.vars ++ y.vars ++ c.vars
   | .mulx _ x y => x.vars ++ y.vars
+  | .cout _ x y c => x.vars ++ y.vars ++ c.vars
   | .ref _ => []
 
 /-- The start registers a symbolic array reads. -/
@@ -1838,6 +1936,7 @@ def STerm.readsF : STerm → Bool
   | .carryW _ x y c => x.readsF || y.readsF || c.readsF
   | .carryF _ _ x y c => x.readsF || y.readsF || c.readsF
   | .mulx _ x y => x.readsF || y.readsF
+  | .cout _ x y c => x.readsF || y.readsF || c.readsF
   | .ref _ => false
 
 /-- The symbolic array reads the carry or the overflow flag at the start. -/
@@ -1931,6 +2030,14 @@ theorem STerm.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCel
         STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
           (fun e => hf (by simp [STerm.readsF, e])),
         STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .cout _ x y c, h, hf => by
+      simp only [STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A c (fun r hr => h r (by simp [STerm.vars, hr]))
           (fun e => hf (by simp [STerm.readsF, e]))]
   | .ref _, _, _ => rfl
 
@@ -2871,6 +2978,7 @@ def STerm.subst (σ : Nat → STerm) : STerm → STerm
   | .carryW op x y c => .carryW op (x.subst σ) (y.subst σ) (c.subst σ)
   | .carryF op ofl x y c => .carryF op ofl (x.subst σ) (y.subst σ) (c.subst σ)
   | .mulx hi x y => .mulx hi (x.subst σ) (y.subst σ)
+  | .cout sub x y c => .cout sub (x.subst σ) (y.subst σ) (c.subst σ)
   | .ref k => σ k
 
 /-- The symbolic array `a` with each table entry `ref k` replaced by `σ k`. -/
@@ -2955,8 +3063,14 @@ theorem symMC_subst (σ : Nat → STerm) (x : LinstrR) (R : String → STerm) :
   split
   · rfl
   · split
-    · exact symSh_subst σ x R
     · rfl
+    · split
+      · rfl
+      · split
+        · rfl
+        · split
+          · rfl
+          · exact symSh_subst σ x R
 
 theorem symCast_subst (σ : Nat → STerm) (i : LinstrRT) (R : String → STerm) :
     symCast i (fun r => (R r).subst σ) = (symCast i R).subst σ := by
@@ -3104,6 +3218,7 @@ def STerm.refsLt (n : Nat) : STerm → Bool
   | .carryW _ x y c => x.refsLt n && y.refsLt n && c.refsLt n
   | .carryF _ _ x y c => x.refsLt n && y.refsLt n && c.refsLt n
   | .mulx _ x y => x.refsLt n && y.refsLt n
+  | .cout _ x y c => x.refsLt n && y.refsLt n && c.refsLt n
   | .ref k => decide (k < n)
 
 /-- The array `a` reads only table entries below `n`. -/
@@ -3142,6 +3257,10 @@ theorem STerm.refsLt_mono {n m : Nat} (hnm : n ≤ m) :
   | .mulx _ x y, h => by
       simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
       exact ⟨STerm.refsLt_mono hnm x h.1, STerm.refsLt_mono hnm y h.2⟩
+  | .cout _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h ⊢
+      exact ⟨⟨STerm.refsLt_mono hnm x h.1.1, STerm.refsLt_mono hnm y h.1.2⟩,
+        STerm.refsLt_mono hnm c h.2⟩
   | .ref _, h => by
       simp only [STerm.refsLt, decide_eq_true_eq] at h ⊢
       omega
@@ -3187,6 +3306,10 @@ theorem STerm.subst_congr {n : Nat} {σ σ' : Nat → STerm} (hσ : ∀ k, k < n
   | .mulx _ x y, h => by
       simp only [STerm.refsLt, Bool.and_eq_true] at h
       rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1, STerm.subst_congr hσ y h.2]
+  | .cout _ x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      rw [STerm.subst, STerm.subst, STerm.subst_congr hσ x h.1.1, STerm.subst_congr hσ y h.1.2,
+        STerm.subst_congr hσ c h.2]
   | .ref k, h => by
       simp only [STerm.refsLt, decide_eq_true_eq] at h
       exact hσ k h
@@ -3230,6 +3353,7 @@ def STerm.varsT (E : Array TEnt) : STerm → List String
   | .carryW _ x y c => x.varsT E ++ y.varsT E ++ c.varsT E
   | .carryF _ _ x y c => x.varsT E ++ y.varsT E ++ c.varsT E
   | .mulx _ x y => x.varsT E ++ y.varsT E
+  | .cout _ x y c => x.varsT E ++ y.varsT E ++ c.varsT E
   | .ref k => (E[k]?.map TEnt.vars).getD []
 
 /-- The start registers the array `a` over the table `E` reads. -/
@@ -3253,6 +3377,7 @@ def STerm.readsFT (E : Array TEnt) : STerm → Bool
   | .carryW _ x y c => x.readsFT E || y.readsFT E || c.readsFT E
   | .carryF _ _ x y c => x.readsFT E || y.readsFT E || c.readsFT E
   | .mulx _ x y => x.readsFT E || y.readsFT E
+  | .cout _ x y c => x.readsFT E || y.readsFT E || c.readsFT E
   | .ref k => (E[k]?.map TEnt.rf).getD true
 
 /-- The array `a` over the table `E` reads the carry or the overflow flag at the start. -/
@@ -3276,6 +3401,7 @@ def STerm.wbT (E : Array TEnt) : STerm → STerm
   | .carryW op x y c => .carryW op x y c
   | .carryF op ofl x y c => .carryF op ofl x y c
   | .mulx hi x y => .mulx hi x y
+  | .cout sub x y c => .cout sub x y c
 
 /-- The width the width base of the word `t` over the table `E` fixes. -/
 def STerm.wbkT (E : Array TEnt) : STerm → Option Nat
@@ -3292,6 +3418,7 @@ def STerm.wbkT (E : Array TEnt) : STerm → Option Nat
   | .carryW .. => some 64
   | .carryF .. => some 1
   | .mulx .. => some 64
+  | .cout .. => some 1
 
 /-- Entry `e` at index `k` describes `σ k`: `σ k` is its node with `σ` substituted, and its
     cached registers, flag reading, width base and width hold of `σ k`. -/
@@ -3393,6 +3520,12 @@ theorem STerm.varsT_spec (h : TblOK σ E) :
       simp only [STerm.subst, STerm.vars, List.mem_append] at hv
       simp only [STerm.varsT, List.mem_append]
       exact hv.imp (STerm.varsT_spec h x hb.1 v) (STerm.varsT_spec h y hb.2 v)
+  | .cout _ x y c, hb, v, hv => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_spec h x hb.1.1 v) (STerm.varsT_spec h y hb.1.2 v))
+        (STerm.varsT_spec h c hb.2 v)
   | .ref k, hb, v, hv => by
       simp only [STerm.refsLt, decide_eq_true_eq] at hb
       obtain ⟨e, he, ok⟩ := h.get hb
@@ -3453,6 +3586,12 @@ theorem STerm.readsFT_spec (h : TblOK σ E) :
       simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
       simp only [STerm.readsFT, Bool.or_eq_true]
       exact hf.imp (STerm.readsFT_spec h x hb.1) (STerm.readsFT_spec h y hb.2)
+  | .cout _ x y c, hb, hf => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at hb
+      simp only [STerm.subst, STerm.readsF, Bool.or_eq_true] at hf
+      simp only [STerm.readsFT, Bool.or_eq_true]
+      exact hf.imp (Or.imp (STerm.readsFT_spec h x hb.1.1) (STerm.readsFT_spec h y hb.1.2))
+        (STerm.readsFT_spec h c hb.2)
   | .ref k, hb, hf => by
       simp only [STerm.refsLt, decide_eq_true_eq] at hb
       obtain ⟨e, he, ok⟩ := h.get hb
@@ -3495,6 +3634,7 @@ theorem STerm.wbT_spec (h : TblOK σ E) :
   | .carryW _ _ _ _, _ => ⟨rfl, rfl⟩
   | .carryF _ _ _ _ _, _ => ⟨rfl, rfl⟩
   | .mulx _ _ _, _ => ⟨rfl, rfl⟩
+  | .cout _ _ _ _, _ => ⟨rfl, rfl⟩
 
 end TblOK
 
@@ -3522,6 +3662,7 @@ theorem STerm.wbT_refsLt {E : Array TEnt} (hE : TBnd E) :
   | .carryW _ _ _ _, hb => hb
   | .carryF _ _ _ _ _, hb => hb
   | .mulx _ _ _, hb => hb
+  | .cout _ _ _ _, hb => hb
 
 /-- The entry of the node `n` over the table `E`. -/
 def mkEnt (E : Array TEnt) (n : STerm) : TEnt :=
@@ -3632,6 +3773,11 @@ def Tbl.intern (T : Tbl) : STerm → Tbl × STerm
       let p := T.intern x
       let q := p.1.intern y
       q.1.share (.mulx hi p.2 q.2)
+  | .cout sub x y c =>
+      let p := T.intern x
+      let q := p.1.intern y
+      let r := q.1.intern c
+      r.1.share (.cout sub p.2 q.2 r.2)
   | .reg r => (T, .reg r)
   | .immW w n => (T, .immW w n)
   | .cin ofl => (T, .cin ofl)
@@ -3723,6 +3869,9 @@ theorem Tbl.intern_ext : ∀ (T : Tbl) (t : STerm), TExt T.ents (T.intern t).1.e
         (Tbl.share_ext _ _)
   | T, .mulx _ x y =>
       ((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.share_ext _ _)
+  | T, .cout _ x y c =>
+      (((Tbl.intern_ext T x).trans (Tbl.intern_ext _ y)).trans (Tbl.intern_ext _ c)).trans
+        (Tbl.share_ext _ _)
   | _, .reg _ => TExt.refl _
   | _, .immW _ _ => TExt.refl _
   | _, .cin _ => TExt.refl _
@@ -3743,6 +3892,8 @@ theorem Tbl.intern_valid : ∀ (T : Tbl) (t : STerm), TValid T.ents → TValid (
       Tbl.share_valid (Tbl.intern_valid _ c (Tbl.intern_valid _ y (Tbl.intern_valid T x hv))) _
   | T, .mulx _ x y, hv =>
       Tbl.share_valid (Tbl.intern_valid _ y (Tbl.intern_valid T x hv)) _
+  | T, .cout _ x y c, hv =>
+      Tbl.share_valid (Tbl.intern_valid _ c (Tbl.intern_valid _ y (Tbl.intern_valid T x hv))) _
   | _, .reg _, hv => hv
   | _, .immW _ _, hv => hv
   | _, .cin _, hv => hv
@@ -3803,6 +3954,13 @@ theorem Tbl.intern_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) 
       have h1 := (Tbl.intern_ext _ y).trans h2
       rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
         Tbl.intern_subst h _ y h2]
+  | T, .cout _ x y c, hx => by
+      simp only [Tbl.intern] at hx ⊢
+      have h3 := (Tbl.share_ext _ _).trans hx
+      have h2 := (Tbl.intern_ext _ c).trans h3
+      have h1 := (Tbl.intern_ext _ y).trans h2
+      rw [Tbl.share_subst _ _ hx h, STerm.subst, STerm.subst, Tbl.intern_subst h T x h1,
+        Tbl.intern_subst h _ y h2, Tbl.intern_subst h _ c h3]
   | _, .reg _, _ => rfl
   | _, .immW _ _, _ => rfl
   | _, .cin _, _ => rfl

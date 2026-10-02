@@ -175,6 +175,9 @@ theorem Tbl.intern_sub : ∀ (T : Tbl) (t : STerm), T.Sub (T.intern t).1
         (Tbl.share_sub _ _)
   | T, .mulx _ x y =>
       ((Tbl.intern_sub T x).trans (Tbl.intern_sub _ y)).trans (Tbl.share_sub _ _)
+  | T, .cout _ x y c =>
+      (((Tbl.intern_sub T x).trans (Tbl.intern_sub _ y)).trans (Tbl.intern_sub _ c)).trans
+        (Tbl.share_sub _ _)
   | T, .reg _ => Tbl.Sub.refl T
   | T, .immW _ _ => Tbl.Sub.refl T
   | T, .cin _ => Tbl.Sub.refl T
@@ -282,6 +285,19 @@ theorem Tbl.intern_refsLt : ∀ (T : Tbl) (t : STerm), t.refsLt T.ents.size = tr
           ((T.intern x).1.intern y).1.ents.size = true := by
         simp only [STerm.refsLt, Bool.and_eq_true]
         exact ⟨STerm.refsLt_mono (Tbl.intern_size_le _ y) _ hx.1, hy.1⟩
+      exact Tbl.share_atom hn
+  | T, .cout sub x y c, h => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      have hx := Tbl.intern_refsLt T x h.1.1
+      have hy := Tbl.intern_refsLt _ y (STerm.refsLt_mono (Tbl.intern_size_le T x) _ h.1.2)
+      have ho := Tbl.intern_refsLt _ c (STerm.refsLt_mono
+        ((Tbl.intern_size_le T x).trans (Tbl.intern_size_le _ y)) _ h.2)
+      have hn : (STerm.cout sub (T.intern x).2 ((T.intern x).1.intern y).2
+          (((T.intern x).1.intern y).1.intern c).2).refsLt
+          (((T.intern x).1.intern y).1.intern c).1.ents.size = true := by
+        simp only [STerm.refsLt, Bool.and_eq_true]
+        exact ⟨⟨STerm.refsLt_mono ((Tbl.intern_size_le _ y).trans (Tbl.intern_size_le _ c)) _
+          hx.1, STerm.refsLt_mono (Tbl.intern_size_le _ c) _ hy.1⟩, ho.1⟩
       exact Tbl.share_atom hn
   | T, .reg _, _ => ⟨rfl, rfl⟩
   | T, .immW _ _, _ => ⟨rfl, rfl⟩
@@ -395,6 +411,22 @@ theorem Tbl.intern_rerun : ∀ (T : Tbl) (t : STerm), t.refsLt T.ents.size = tru
       refine Tbl.share_rerun ?_ hS
       simp only [STerm.refsLt, Bool.and_eq_true]
       exact ⟨STerm.refsLt_mono (Tbl.intern_size_le _ y) _ hx.1, hy.1⟩
+  | T, .cout sub x y o, h, T', hS => by
+      simp only [STerm.refsLt, Bool.and_eq_true] at h
+      have hx := Tbl.intern_refsLt T x h.1.1
+      have hy' := STerm.refsLt_mono (Tbl.intern_size_le T x) _ h.1.2
+      have hy := Tbl.intern_refsLt _ y hy'
+      have ho' := STerm.refsLt_mono ((Tbl.intern_size_le T x).trans (Tbl.intern_size_le _ y)) _ h.2
+      have ho := Tbl.intern_refsLt _ o ho'
+      simp only [Tbl.intern] at hS ⊢
+      have h3 := (Tbl.share_sub _ _).trans hS
+      have h2 := (Tbl.intern_sub _ o).trans h3
+      rw [Tbl.intern_rerun T x h.1.1 T' ((Tbl.intern_sub _ y).trans h2),
+        Tbl.intern_rerun _ y hy' T' h2, Tbl.intern_rerun _ o ho' T' h3]
+      refine Tbl.share_rerun ?_ hS
+      simp only [STerm.refsLt, Bool.and_eq_true]
+      exact ⟨⟨STerm.refsLt_mono ((Tbl.intern_size_le _ y).trans (Tbl.intern_size_le _ o)) _
+        hx.1, STerm.refsLt_mono (Tbl.intern_size_le _ o) _ hy.1⟩, ho.1⟩
   | _, .reg _, _, _, _ => rfl
   | _, .immW _ _, _, _, _ => rfl
   | _, .cin _, _, _, _ => rfl
@@ -423,6 +455,8 @@ theorem STerm.subst_ref : ∀ t : STerm, t.subst STerm.ref = t
   | .carryF _ _ x y c => by
       simp only [STerm.subst, STerm.subst_ref x, STerm.subst_ref y, STerm.subst_ref c]
   | .mulx _ x y => by simp only [STerm.subst, STerm.subst_ref x, STerm.subst_ref y]
+  | .cout _ x y c => by
+      simp only [STerm.subst, STerm.subst_ref x, STerm.subst_ref y, STerm.subst_ref c]
   | .ref _ => rfl
 
 theorem SArr.subst_ref : ∀ a : SArr, a.subst STerm.ref = a
@@ -484,6 +518,11 @@ theorem STerm.refsLt_of_subst {n : Nat} :
       simp only [STerm.subst, STerm.mulx.injEq, true_and] at h
       simp only [STerm.refsLt, Bool.and_eq_true]
       exact ⟨STerm.refsLt_of_subst x h.1, STerm.refsLt_of_subst y h.2⟩
+  | .cout _ x y c, h => by
+      simp only [STerm.subst, STerm.cout.injEq, true_and] at h
+      simp only [STerm.refsLt, Bool.and_eq_true]
+      exact ⟨⟨STerm.refsLt_of_subst x h.1, STerm.refsLt_of_subst y h.2.1⟩,
+        STerm.refsLt_of_subst c h.2.2⟩
   | .ref k, h => by
       simp only [STerm.subst, keepBelow] at h
       simp only [STerm.refsLt, decide_eq_true_eq]

@@ -100,8 +100,26 @@ theorem symMC_congr {R R' : String → STerm} {x : LinstrR}
     repeat' split at hm
     all_goals simp_all [instrReadRegs, operandReads]
   · split
-    · exact symSh_congr h
-    · rfl
+    · rename_i d a b c hm
+      unfold JasminLsemMulCarry.adcxStruct? at hm
+      repeat' split at hm
+      all_goals simp_all [instrReadRegs, operandReads]
+    · split
+      · rename_i d a b c hm
+        unfold JasminLsemMulCarry.adcxhiStruct? at hm
+        repeat' split at hm
+        all_goals simp_all [instrReadRegs, operandReads]
+      · split
+        · rename_i d a b c hm
+          unfold JasminLsemMulCarry.sbbStruct? at hm
+          repeat' split at hm
+          all_goals simp_all [instrReadRegs, operandReads]
+        · split
+          · rename_i d a b c hm
+            unfold JasminLsemMulCarry.sbbhiStruct? at hm
+            repeat' split at hm
+            all_goals simp_all [instrReadRegs, operandReads]
+          · exact symSh_congr h
 
 theorem symCast_congr {R R' : String → STerm} {i : JasminLsemCast.LinstrRT}
     (h : ∀ q ∈ instrReadRegs i.1, R q = R' q) : symCast i R = symCast i R' := by
