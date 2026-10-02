@@ -670,6 +670,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
+CatCrypt.Crypto.SecureCompilation.VIR.PassChain
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
