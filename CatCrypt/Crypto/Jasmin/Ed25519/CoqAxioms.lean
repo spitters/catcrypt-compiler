@@ -176,7 +176,7 @@ libcrux + Jasmin verification level, not at AUCurves.
 | `point_eq` | ✅ proved | Point equality (decidable on `EdPoint`); deferred to fiat-crypto. |
 | `curve_d` | 📌 cite-only | Edwards-form `d = -121665/121666 mod p`; constant. |
 | `curve_two_d` | 📌 cite-only | `2 · curve_d` (precomputed for efficiency); constant. |
-| `fp_is_prime` | ✅ proved | `2^255 - 19` prime; deferred to fiat-crypto's Pratt certificate. |
+| `fp_is_prime` | ✅ proved | `2^255 - 19` prime; proved in Lean by the Pratt certificate `P25519PrimeCert.p25519lit_prime` (kernel-checked), surfaced as `CatCrypt.Crypto.ECC.curve25519Prime_prime`. |
 | `p_is_prime` | ✅ proved | Alias of `fp_is_prime`. |
 | `fp_pow_p58*` | ✅ proved in Lean | `fp_pow_p58` is the pow22523 chain over `fp_sqr`/`fp_mul` (`Ed25519/PowP58.lean`); `interp_fp_pow_p58` is a theorem from `interp_fp_sqr` and `interp_fp_mul`. |
 

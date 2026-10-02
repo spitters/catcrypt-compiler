@@ -375,8 +375,8 @@ triple follows by composing with `inv_chain_product_eq_pow_p_minus_2`
 (§6) and reducing to `ZMod p_25519`.
 
 The `Fact (Nat.Prime p_25519)` instance is satisfied by
-`CatCrypt.Crypto.ECC.curve25519Prime_prime` (the codebase's
-primality axiom for 2²⁵⁵ − 19).  Callers must provide a `Fact`
+`CatCrypt.Crypto.ECC.curve25519Prime_prime` (primality of 2²⁵⁵ − 19, proved
+by a Pratt certificate).  Callers must provide a `Fact`
 instance to invoke the bridge. -/
 
 /-- Fermat's little theorem in `ZMod p_25519`: for non-zero `a`,
