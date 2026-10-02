@@ -232,6 +232,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
+CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
@@ -282,9 +283,11 @@ CatCrypt.Crypto.SecureCompilation.Ascent.PhysAbiReduction
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.PrefixToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
+CatCrypt.Crypto.SecureCompilation.Ascent.RightUnitOffName
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
+CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
-CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrict
 CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
