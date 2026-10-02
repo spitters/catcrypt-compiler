@@ -169,13 +169,16 @@ theorem lbSum_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O :
 /-- **The linear form of a term**: atoms and a constant whose sum bounds the value of the
     term from above. An immediate at width `64` is a constant; an addition of an immediate
     adds it; a subtraction of an immediate below the lower bound of its source subtracts
-    it; every other term is an atom. -/
+    it; a conjunction `AND x y` and a disjunction `OR x x` take the form of `x`, which
+    bounds them; every other term is an atom. -/
 def linOf (F : List SFact) : STerm → List STerm × Int
   | .immW w n => if w = 64 then ([], ((n % 2 ^ 64 : Nat) : Int)) else ([.immW w n], 0)
   | .bin m x (.immW w k) =>
       if w = 64 ∧ m = "ADD" then ((linOf F x).1, (linOf F x).2 + k)
       else if w = 64 ∧ m = "SUB" ∧ k ≤ lbOf F x then ((linOf F x).1, (linOf F x).2 - k)
+      else if m = "AND" then linOf F x
       else ([.bin m x (.immW w k)], 0)
+  | .bin m x y => if m = "AND" ∨ (m = "OR" ∧ x = y) then linOf F x else ([.bin m x y], 0)
   | t => ([t], 0)
 
 theorem wval_bin (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
@@ -222,6 +225,22 @@ theorem wval_sub_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C 
     omega
   · omega
 
+/-- A conjunction `AND x y` and a disjunction `OR x x` are at most `x`. -/
+theorem wval_andOr_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    {m : String} {x y : STerm} (h : m = "AND" ∨ (m = "OR" ∧ x = y)) :
+    wval ((STerm.bin m x y).ev V A C O) ≤ wval (x.ev V A C O) := by
+  rw [wval_bin]
+  split
+  · rename_i hw
+    unfold wval
+    rcases h with rfl | ⟨rfl, rfl⟩
+    · simp only [binW, show ("AND" = "MULXHI") = False by decide, if_false, applyOpnN,
+        Option.getD_some, BitVec.toNat_and]
+      exact Nat.and_le_left
+    · simp only [binW, show ("OR" = "MULXHI") = False by decide, if_false, applyOpnN,
+        Option.getD_some, extW_of_eq hw, BitVec.or_self, le_refl]
+  · exact Nat.zero_le _
+
 theorem linOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
     (wval (t.ev V A C O) : Int) ≤ (tsum V A C O (linOf F t).1 : Int) + (linOf F t).2 := by
@@ -238,8 +257,15 @@ theorem linOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
       have := wval_sub_le V A C O x k (le_trans hk (lbOf_le F x hF))
       dsimp only
       omega
-  | case5 => simp [tsum]
+  | case5 x w k _ _ ih =>
+      have := wval_andOr_le V A C O (x := x) (y := .immW w k) (Or.inl rfl)
+      omega
   | case6 => simp [tsum]
+  | case7 m x y _ h ih =>
+      have := wval_andOr_le V A C O h
+      omega
+  | case8 => simp [tsum]
+  | case9 => simp [tsum]
 
 /-- The linear form of a sum of terms. -/
 def sumLin (F : List SFact) : List STerm → List STerm × Int
