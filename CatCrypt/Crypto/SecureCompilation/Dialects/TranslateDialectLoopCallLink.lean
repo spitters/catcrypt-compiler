@@ -293,14 +293,14 @@ def validateVm : VarMap validateΓ :=
       (t := .sword 64) "idx").bind (t := .sword 64) "acc")
 
 /-- The front-compiled `JLoopBodyN.update` for the leaf-calling body (or `none`). -/
-def validateFrontJ :
+def validateFrontJ (_ : Unit) :
     Option (Com jasminDialect
       (CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom.mapCtx validateΓ)
       (CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom.mapTy (.sword 64))) :=
   frontLoopBodyJ (accCTy := .sword 64) validateVm "acc2" validateBody
 
 /-- **(a) The leaf-calling loop body front-compiles.** -/
-theorem validateFrontJ_isSome : validateFrontJ.isSome := by native_decide
+theorem validateFrontJ_isSome : (validateFrontJ ()).isSome := by native_decide
 
 /-- The known-leaf generator: `sum(a, b)` lowers to the owned body `dst := a + b`. -/
 def validateLeafGen : LeafGen := fun sym dst args =>
@@ -312,24 +312,24 @@ def validateLeafGen : LeafGen := fun sym dst args =>
 
 /-- The front-lowered per-iteration body (`straightOpsMemCall`); `[]` if the front
     declined. `nArgs = 3` (the update body's three context slots). -/
-def validateFrontBody : List LinstrRM :=
-  (validateFrontJ.map (fun c => straightOpsMemCall 3 validateLeafGen c 3)).getD []
+def validateFrontBody (_ : Unit) : List LinstrRM :=
+  ((validateFrontJ ()).map (fun c => straightOpsMemCall 3 validateLeafGen c 3)).getD []
 
 /-- The `LeafEnvM` the front registers (`sum ↦ dst := acc + ai; Lret`). -/
-def validateEnv : LeafEnvM :=
-  envOfBindings ((validateFrontJ.map (fun c => leafBindings 3 validateLeafGen c 3)).getD [])
+def validateEnv (_ : Unit) : LeafEnvM :=
+  envOfBindings (((validateFrontJ ()).map (fun c => leafBindings 3 validateLeafGen c 3)).getD [])
 
 /-- The full A2 loop body: the front body, then the accumulator feedback
     (`acc := acc2`), the index advance (`idx += 1`), and the counter decrement
     (`n -= 1`) A2's counter-loop shape carries. -/
-def validateLoopBody : List LinstrRM :=
-  validateFrontBody ++
+def validateLoopBody (_ : Unit) : List LinstrRM :=
+  validateFrontBody () ++
   [ (LinstrR.Lopn [.reg "a2"] "ADD:64" [.reg "r4", .imm 0], MemTag.reg none)
   , (LinstrR.Lopn [.reg "a1"] "ADD:64" [.reg "a1", .imm 1], MemTag.reg none)
   , (LinstrR.Lopn [.reg "n"]  "SUB:64" [.reg "n", .imm 1], MemTag.reg none) ]
 
 /-- The counter-loop program over the front body. -/
-def validateProg : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" validateLoopBody)
+def validateProg (_ : Unit) : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" (validateLoopBody ()))
 
 /-- Start: `acc = 0`, `idx = 0`, `n = 3`, `a = [10, 20, 30]`. -/
 def validateStart : LstatePMC :=
@@ -341,7 +341,7 @@ def validateStart : LstatePMC :=
 
 /-- **(b) The emitted body carries a REAL `Lcall` — not the opaque `CALL:` shadow.** -/
 theorem validateFrontBody_realCall :
-    hasRealCall validateFrontBody = true ∧ hasCallShadow validateFrontBody = false := by
+    hasRealCall (validateFrontBody ()) = true ∧ hasCallShadow (validateFrontBody ()) = false := by
   native_decide
 
 /-- **(c) denote = concrete-leaf fold via A2's interpreter.** A2's `lsemFuelMemLC`
@@ -349,16 +349,16 @@ theorem validateFrontBody_realCall :
     the accumulator decodes to `10 + 20 + 30 = 60` — the real linked leaf, invoked
     per iteration, not the opaque `extCall` default. -/
 theorem validate_denote_eq_fold :
-    (lsemFuelMemLC validateEnv validateProg 60 validateStart).map
+    (lsemFuelMemLC (validateEnv ()) (validateProg ()) 60 validateStart).map
       (fun t => decodeM t.base "a2" 64) = some (some (60#64)) := by native_decide
 
 /-- **(c′) The interpreter run agrees with the concrete-leaf `runBoundedLoopMemC`
     fold** (which resolves each `Lcall` to the concrete leaf) — the front-emitted
     loop-with-call realises the fold. -/
 theorem validate_interp_eq_runBounded :
-    (lsemFuelMemLC validateEnv validateProg 60 validateStart).map
+    (lsemFuelMemLC (validateEnv ()) (validateProg ()) 60 validateStart).map
         (fun t => decodeM t.base "a2" 64)
-      = (runBoundedLoopMemC validateEnv validateLoopBody 3 validateStart.base).map
+      = (runBoundedLoopMemC (validateEnv ()) (validateLoopBody ()) 3 validateStart.base).map
           (fun b => decodeM b "a2" 64) := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoopCallLink

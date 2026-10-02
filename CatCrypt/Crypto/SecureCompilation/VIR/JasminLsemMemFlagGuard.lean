@@ -1428,11 +1428,11 @@ idiom — is dropped; program-end is the halt). -/
 
 /-- The real rendered runtime-count loop, lifted to the typed instruction list
     (register bindings only in this kernel), `Lret` dropped. -/
-def rtLoopRM : List LinstrRM :=
-  (loopSmokeRtBody.map (fun i => (i.li_i, MemTag.reg none))).dropLast
+def rtLoopRM (_ : Unit) : List LinstrRM :=
+  ((loopSmokeRtBody ()).map (fun i => (i.li_i, MemTag.reg none))).dropLast
 
 /-- The rendered loop as a singleton program. -/
-def rtLoopProg : LprogM := singletonProgM "f" rtLoopRM
+def rtLoopProg (_ : Unit) : LprogM := singletonProgM "f" (rtLoopRM ())
 
 /-- Entry state: the resolved arguments `a0 = count`, `a1 = seed`
     (`loopSmokeRtProg`'s resolution), pc 0, flag clear. -/
@@ -1445,7 +1445,7 @@ def rtStart (seed count : BitVec 64) : LstateMF :=
     `ComL.denote loopSmokeRtProg [3, 2] = 3^(2²) = 81` — the emitted
     `CMP`/`jne` back-edge was followed twice and the guard fell through. -/
 example :
-    (lsemFuelMemF rtLoopProg 40 (rtStart 3 2)).map
+    (lsemFuelMemF (rtLoopProg ()) 40 (rtStart 3 2)).map
         (fun t => decodeM t.prog.base "r2" 64)
       = some (some (ComL.denote loopSmokeRtProg
           (.cons (3 : BitVec 64) (.cons (2 : BitVec 64) .nil)))) := by
@@ -1456,7 +1456,7 @@ example :
     seed (`= ComL.denote` at count `0` — the empty fold), and the body never
     ran. -/
 example :
-    (lsemFuelMemF rtLoopProg 40 (rtStart 3 0)).map
+    (lsemFuelMemF (rtLoopProg ()) 40 (rtStart 3 0)).map
         (fun t => decodeM t.prog.base "r2" 64)
       = some (some (ComL.denote loopSmokeRtProg
           (.cons (3 : BitVec 64) (.cons (0 : BitVec 64) .nil)))) := by
@@ -1465,8 +1465,8 @@ example :
 /-- **Validate (halt, not stuck).**  Both runs halt (`some`), i.e.
     every rendered instruction — the reg-copy `MOV`s, the two `CMP`s, the
     `je`/`jne` conditionals — has a step. -/
-example : (lsemFuelMemF rtLoopProg 40 (rtStart 3 2)).isSome
-    ∧ (lsemFuelMemF rtLoopProg 40 (rtStart 3 0)).isSome := by
+example : (lsemFuelMemF (rtLoopProg ()) 40 (rtStart 3 2)).isSome
+    ∧ (lsemFuelMemF (rtLoopProg ()) 40 (rtStart 3 0)).isSome := by
   native_decide
 
 /-! ### Carry chains

@@ -105,7 +105,7 @@ def fe25519LeafSymbols : List String :=
     intra-object call targets the ladder driver's `call <leaf>` resolves against. -/
 def fe25519LeavesAsm (_ : Unit) : String :=
   String.intercalate "\n"
-    [ Fe25519MulKernel.feMulAsm
+    [ Fe25519MulKernel.feMulAsm ()
     , Fe25519OpsKernel.feSqrAsm
     , Fe25519OpsKernel.feAddAsm
     , Fe25519OpsKernel.feSubAsm
@@ -394,7 +394,7 @@ def feLeafArgs : List AbiArg := [⟨"z", .intPtr⟩, ⟨"x", .intPtr⟩, ⟨"y",
     multi-function `Lprog`'s `lp_funcs` entries for the field ops). -/
 def fe25519LeafFundefs : List (String × Lfundef) :=
   [ ("fe25519_mul_x86_from_lean",
-       jinstrBlockToLfundef Fe25519MulKernel.feMulAlloc feLeafArgs Fe25519MulKernel.feMulBlock)
+       jinstrBlockToLfundef (Fe25519MulKernel.feMulAlloc ()) feLeafArgs Fe25519MulKernel.feMulBlock)
   , ("fe25519_sqr_x86_from_lean",
        jinstrBlockToLfundef Fe25519OpsKernel.feSqrAlloc feLeafArgs Fe25519OpsKernel.feSqrBlock)
   , ("fe25519_add_x86_from_lean",
@@ -410,8 +410,8 @@ def fe25519LeafFundefs : List (String × Lfundef) :=
     renders to `movq %rdx, %rcx`. Without it the lifted leaf read `y` from an
     uninitialised register (SEGFAULT). -/
 theorem feMul_argMarshal_renders :
-    (argMarshalLinstrs Fe25519MulKernel.feMulAlloc feLeafArgs).length = 1
-      ∧ (argMarshalLinstrs Fe25519MulKernel.feMulAlloc feLeafArgs).flatMap
+    (argMarshalLinstrs (Fe25519MulKernel.feMulAlloc ()) feLeafArgs).length = 1
+      ∧ (argMarshalLinstrs (Fe25519MulKernel.feMulAlloc ()) feLeafArgs).flatMap
           (fun i => LprogAsmPrinter.renderLinstrR 0 64 i.li_i) = ["\tmovq %rdx, %rcx"] := by
   native_decide
 
@@ -453,7 +453,7 @@ theorem feSub_lift_byteEncodable :
     `mulx`/`adcx`/`adox` carry faithful `LinstrR`/byte images, so the
     byte-encoder `.o` route carries the field multiply. -/
 theorem feMul_lift_byteEncodable :
-    hasUnrepAdx (jinstrBlockToLcmd Fe25519MulKernel.feMulAlloc Fe25519MulKernel.feMulBlock)
+    hasUnrepAdx (jinstrBlockToLcmd (Fe25519MulKernel.feMulAlloc ()) Fe25519MulKernel.feMulBlock)
       = false := by native_decide
 
 /-- `feSqr` likewise lifts with no ADX sentinel — byte-encodable. -/
@@ -481,7 +481,7 @@ exercises the new arms.) -/
 
 /-- The byte-encoded `feMul` body (the lifted ADX schoolbook → machine bytes). -/
 def feMulEncodedBytes : List (BitVec 8) :=
-  LprogBytes.encodeLcmd (jinstrBlockToLcmd Fe25519MulKernel.feMulAlloc Fe25519MulKernel.feMulBlock)
+  LprogBytes.encodeLcmd (jinstrBlockToLcmd (Fe25519MulKernel.feMulAlloc ()) Fe25519MulKernel.feMulBlock)
 
 /-- Count of a single byte value `b` in a byte list. -/
 def countByte (b : BitVec 8) (bs : List (BitVec 8)) : Nat :=

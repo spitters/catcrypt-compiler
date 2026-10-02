@@ -82,30 +82,30 @@ def mpnLoopOptLprog (p : Lprog) : Lprog :=
 
 /-- `mpn_add_n_loop_owned_opt`: the front add loop under the `_opt` symbol,
     carry seeded `MOV acc, #0`, carry-out in `RAX`, optimized render. -/
-def addLprogOpt : Option Lprog :=
+def addLprogOpt (_ : Unit) : Option Lprog :=
   (addRtProgOpt ()).map (fun c =>
     mpnLoopOptLprog (ComL.toLprogPhysAbiScalarAcc c "mpn_add_n_loop_owned_opt"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]))
 
 /-- `mpn_sub_n_loop_owned_opt`: the front sub loop under the `_opt` symbol,
     borrow seeded `MOV acc, #0`, borrow-out in `RAX`, optimized render. -/
-def subLprogOpt : Option Lprog :=
+def subLprogOpt (_ : Unit) : Option Lprog :=
   (subRtProgOpt ()).map (fun c =>
     mpnLoopOptLprog (ComL.toLprogPhysAbiScalarAcc c "mpn_sub_n_loop_owned_opt"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]))
 
 /-- `mpn_and_n_loop_owned_opt`. -/
-def andLprogOpt : Option Lprog :=
+def andLprogOpt (_ : Unit) : Option Lprog :=
   (binLprog "mpn_and_n_loop_owned_opt" .SAnd).map mpnLoopOptLprog
 
 /-- `mpn_ior_n_loop_owned_opt` (`a OR b = (a XOR b) XOR (a AND b)`, as in the
     deployed kernel — the `SExpr` alphabet has no `SOr`). -/
-def iorLprogOpt : Option Lprog :=
+def iorLprogOpt (_ : Unit) : Option Lprog :=
   (binLprog "mpn_ior_n_loop_owned_opt"
     (fun x y => .SXor (.SXor x y) (.SAnd x y))).map mpnLoopOptLprog
 
 /-- `mpn_xor_n_loop_owned_opt`. -/
-def xorLprogOpt : Option Lprog :=
+def xorLprogOpt (_ : Unit) : Option Lprog :=
   (binLprog "mpn_xor_n_loop_owned_opt" .SXor).map mpnLoopOptLprog
 
 /-! ## 2. Front-acceptance gates
@@ -114,7 +114,7 @@ Each `_opt` kernel compiles iff its deployed twin does: the symbol name enters
 only the total export/optimize maps, so `Option.isSome` transfers from the
 `MpnLoopFrontEmit` gates with no re-evaluation of the front. -/
 
-theorem addLprogOpt_isSome : addLprogOpt.isSome := by
+theorem addLprogOpt_isSome : (addLprogOpt ()).isSome := by
   have h := MpnLoopFrontEmit.addLprogFront_isSome
   unfold MpnLoopFrontEmit.addLprogFront at h
   rw [Option.isSome_map] at h
@@ -122,7 +122,7 @@ theorem addLprogOpt_isSome : addLprogOpt.isSome := by
   rw [Option.isSome_map]
   exact h
 
-theorem subLprogOpt_isSome : subLprogOpt.isSome := by
+theorem subLprogOpt_isSome : (subLprogOpt ()).isSome := by
   have h := MpnLoopFrontEmit.subLprogFront_isSome
   unfold MpnLoopFrontEmit.subLprogFront at h
   rw [Option.isSome_map] at h
@@ -130,7 +130,7 @@ theorem subLprogOpt_isSome : subLprogOpt.isSome := by
   rw [Option.isSome_map]
   exact h
 
-theorem andLprogOpt_isSome : andLprogOpt.isSome := by
+theorem andLprogOpt_isSome : (andLprogOpt ()).isSome := by
   have h := MpnLoopFrontEmit.andLprog_isSome
   unfold MpnLoopFrontEmit.andLprog MpnLoopFrontEmit.binLprog
     rolledForLoopNRtLprog at h
@@ -139,7 +139,7 @@ theorem andLprogOpt_isSome : andLprogOpt.isSome := by
   rw [Option.isSome_map, Option.isSome_map]
   exact h
 
-theorem iorLprogOpt_isSome : iorLprogOpt.isSome := by
+theorem iorLprogOpt_isSome : (iorLprogOpt ()).isSome := by
   have h := MpnLoopFrontEmit.iorLprog_isSome
   unfold MpnLoopFrontEmit.iorLprog MpnLoopFrontEmit.binLprog
     rolledForLoopNRtLprog at h
@@ -148,7 +148,7 @@ theorem iorLprogOpt_isSome : iorLprogOpt.isSome := by
   rw [Option.isSome_map, Option.isSome_map]
   exact h
 
-theorem xorLprogOpt_isSome : xorLprogOpt.isSome := by
+theorem xorLprogOpt_isSome : (xorLprogOpt ()).isSome := by
   have h := MpnLoopFrontEmit.xorLprog_isSome
   unfold MpnLoopFrontEmit.xorLprog MpnLoopFrontEmit.binLprog
     rolledForLoopNRtLprog at h
@@ -159,51 +159,51 @@ theorem xorLprogOpt_isSome : xorLprogOpt.isSome := by
 
 /-! ## 3. Rendered text and shape pins -/
 
-def addAsmOpt : String := (addLprogOpt.map renderLprogAtt).getD ""
-def subAsmOpt : String := (subLprogOpt.map renderLprogAtt).getD ""
-def andAsmOpt : String := (andLprogOpt.map renderLprogAtt).getD ""
-def iorAsmOpt : String := (iorLprogOpt.map renderLprogAtt).getD ""
-def xorAsmOpt : String := (xorLprogOpt.map renderLprogAtt).getD ""
+def addAsmOpt (_ : Unit) : String := ((addLprogOpt ()).map renderLprogAtt).getD ""
+def subAsmOpt (_ : Unit) : String := ((subLprogOpt ()).map renderLprogAtt).getD ""
+def andAsmOpt (_ : Unit) : String := ((andLprogOpt ()).map renderLprogAtt).getD ""
+def iorAsmOpt (_ : Unit) : String := ((iorLprogOpt ()).map renderLprogAtt).getD ""
+def xorAsmOpt (_ : Unit) : String := ((xorLprogOpt ()).map renderLprogAtt).getD ""
 
 /-- The deployed unoptimized renders, for the size comparison pins. -/
-def addAsmBase : String := ((MpnLoopFrontEmit.addLprogFront ()).map renderLprogAtt).getD ""
-def subAsmBase : String := ((MpnLoopFrontEmit.subLprogFront ()).map renderLprogAtt).getD ""
-def andAsmBase : String := ((MpnLoopFrontEmit.andLprog ()).map renderLprogAtt).getD ""
-def iorAsmBase : String := ((MpnLoopFrontEmit.iorLprog ()).map renderLprogAtt).getD ""
-def xorAsmBase : String := ((MpnLoopFrontEmit.xorLprog ()).map renderLprogAtt).getD ""
+def addAsmBase (_ : Unit) : String := ((MpnLoopFrontEmit.addLprogFront ()).map renderLprogAtt).getD ""
+def subAsmBase (_ : Unit) : String := ((MpnLoopFrontEmit.subLprogFront ()).map renderLprogAtt).getD ""
+def andAsmBase (_ : Unit) : String := ((MpnLoopFrontEmit.andLprog ()).map renderLprogAtt).getD ""
+def iorAsmBase (_ : Unit) : String := ((MpnLoopFrontEmit.iorLprog ()).map renderLprogAtt).getD ""
+def xorAsmBase (_ : Unit) : String := ((MpnLoopFrontEmit.xorLprog ()).map renderLprogAtt).getD ""
 
 /-- Rendered line count. -/
 def lineCount (s : String) : Nat := (s.splitOn "\n").length
 
 /- Each `_opt` kernel reaches its own symbol, keeps the runtime-N guarded-loop
    back-edge, and renders every op (no `UNHANDLED` sentinel). -/
-#guard strContains addAsmOpt "mpn_add_n_loop_owned_opt"
-    && strContains addAsmOpt "jne .L"
-    && strContains addAsmOpt "cmpq $0,"
-    && !(strContains addAsmOpt "UNHANDLED")
-#guard strContains subAsmOpt "mpn_sub_n_loop_owned_opt"
-    && strContains subAsmOpt "jne .L"
-    && !(strContains subAsmOpt "UNHANDLED")
-#guard strContains andAsmOpt "mpn_and_n_loop_owned_opt"
-    && strContains andAsmOpt "andq"
-    && strContains andAsmOpt "jne .L"
-    && !(strContains andAsmOpt "UNHANDLED")
-#guard strContains iorAsmOpt "mpn_ior_n_loop_owned_opt"
-    && strContains iorAsmOpt "jne .L"
-    && !(strContains iorAsmOpt "UNHANDLED")
-#guard strContains xorAsmOpt "mpn_xor_n_loop_owned_opt"
-    && strContains xorAsmOpt "xorq"
-    && strContains xorAsmOpt "jne .L"
-    && !(strContains xorAsmOpt "UNHANDLED")
+#guard strContains (addAsmOpt ()) "mpn_add_n_loop_owned_opt"
+    && strContains (addAsmOpt ()) "jne .L"
+    && strContains (addAsmOpt ()) "cmpq $0,"
+    && !(strContains (addAsmOpt ()) "UNHANDLED")
+#guard strContains (subAsmOpt ()) "mpn_sub_n_loop_owned_opt"
+    && strContains (subAsmOpt ()) "jne .L"
+    && !(strContains (subAsmOpt ()) "UNHANDLED")
+#guard strContains (andAsmOpt ()) "mpn_and_n_loop_owned_opt"
+    && strContains (andAsmOpt ()) "andq"
+    && strContains (andAsmOpt ()) "jne .L"
+    && !(strContains (andAsmOpt ()) "UNHANDLED")
+#guard strContains (iorAsmOpt ()) "mpn_ior_n_loop_owned_opt"
+    && strContains (iorAsmOpt ()) "jne .L"
+    && !(strContains (iorAsmOpt ()) "UNHANDLED")
+#guard strContains (xorAsmOpt ()) "mpn_xor_n_loop_owned_opt"
+    && strContains (xorAsmOpt ()) "xorq"
+    && strContains (xorAsmOpt ()) "jne .L"
+    && !(strContains (xorAsmOpt ()) "UNHANDLED")
 
 /- The optimized render of each seam kernel is strictly shorter than the
    deployed unoptimized render (the two symbols differ only in name, which
    does not change the line count). -/
-#guard lineCount addAsmOpt < lineCount addAsmBase
-#guard lineCount subAsmOpt < lineCount subAsmBase
-#guard lineCount andAsmOpt < lineCount andAsmBase
-#guard lineCount iorAsmOpt < lineCount iorAsmBase
-#guard lineCount xorAsmOpt < lineCount xorAsmBase
+#guard lineCount (addAsmOpt ()) < lineCount (addAsmBase ())
+#guard lineCount (subAsmOpt ()) < lineCount (subAsmBase ())
+#guard lineCount (andAsmOpt ()) < lineCount (andAsmBase ())
+#guard lineCount (iorAsmOpt ()) < lineCount (iorAsmBase ())
+#guard lineCount (xorAsmOpt ()) < lineCount (xorAsmBase ())
 
 /-! ## 4. Emit driver -/
 
@@ -218,11 +218,11 @@ def emitMain : IO Unit := do
     match o with
     | some lp => IO.FS.writeFile p (renderLprogAtt lp)
     | none => throw (IO.userError s!"front-compile failed for {p}")
-  wr "bench/integration/gen_com/mpn_add_n_loop_owned_opt.s" addLprogOpt
-  wr "bench/integration/gen_com/mpn_sub_n_loop_owned_opt.s" subLprogOpt
-  wr "bench/integration/gen_com/mpn_and_n_loop_owned_opt.s" andLprogOpt
-  wr "bench/integration/gen_com/mpn_ior_n_loop_owned_opt.s" iorLprogOpt
-  wr "bench/integration/gen_com/mpn_xor_n_loop_owned_opt.s" xorLprogOpt
+  wr "bench/integration/gen_com/mpn_add_n_loop_owned_opt.s" (addLprogOpt ())
+  wr "bench/integration/gen_com/mpn_sub_n_loop_owned_opt.s" (subLprogOpt ())
+  wr "bench/integration/gen_com/mpn_and_n_loop_owned_opt.s" (andLprogOpt ())
+  wr "bench/integration/gen_com/mpn_ior_n_loop_owned_opt.s" (iorLprogOpt ())
+  wr "bench/integration/gen_com/mpn_xor_n_loop_owned_opt.s" (xorLprogOpt ())
   IO.println "wrote 5 optimized-twin mpn seam kernels (reloadElim + copyPropagate)"
 
 -- #eval emitMain

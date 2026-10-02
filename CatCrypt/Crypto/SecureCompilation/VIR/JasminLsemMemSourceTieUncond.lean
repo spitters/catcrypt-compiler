@@ -1167,52 +1167,52 @@ theorem counterN_ne_regName (k : Nat) : "n" ≠ regName k := by
 
 /-- The canonical emitted body of the doubling loop: the linearizer chain of
     `wUpd` (`acc := acc + acc`) + the canonical writeback. -/
-def wBodyU : List LinstrRM := loopBodyFullMN (invTys := []) wUpd "n"
+def wBodyU (_ : Unit) : List LinstrRM := loopBodyFullMN (invTys := []) wUpd "n"
 
 /-- The doubling-loop program on counter `"n"`. -/
-def wProgU : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" wBodyU)
+def wProgU (_ : Unit) : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" (wBodyU ()))
 
 /-- The seed base state: the encoded trip-0 valuation (`acc = 5`), counter
     `n = 2`, pc at the loop top. -/
-def wBaseU : LstateM :=
+def wBaseU (_ : Unit) : LstateM :=
   (((encodeM (tripValMN (invTys := []) .nil 0 (5#64))).setReg "n" (2#64)).setLpc 1)
 
 /-- The seed program state. -/
-def wStartU : LstatePM := { base := wBaseU, lfn := "f" }
+def wStartU (_ : Unit) : LstatePM := { base := wBaseU (), lfn := "f" }
 
 /-- The seed state agrees with the trip-0 valuation (the encoded arguments,
     with the untracked counter write and the pc move absorbed). -/
 theorem wBaseU_seed :
-    StoreAgreesM 2 2 wBaseU (tripValMN (invTys := []) .nil 0 (5#64)) :=
+    StoreAgreesM 2 2 (wBaseU ()) (tripValMN (invTys := []) .nil 0 (5#64)) :=
   StoreAgreesM.setLpc
     (StoreAgreesM.setReg_untracked "n" (2#64) counterN_ne_argName counterN_ne_regName
       (encodeM_StoreAgreesM (tripValMN (invTys := []) .nil 0 (5#64)))) 1
 
 /-- Trip 1 of the doubling loop reaches a state. -/
-theorem wPrev_isSome : (runBoundedLoopMem wBodyU 1 wBaseU).isSome := by native_decide
+theorem wPrev_isSome : (runBoundedLoopMem (wBodyU ()) 1 (wBaseU ())).isSome := by native_decide
 
 /-- The trip-1 state. -/
-def wPrevU : LstateM := (runBoundedLoopMem wBodyU 1 wBaseU).get wPrev_isSome
+def wPrevU (_ : Unit) : LstateM := (runBoundedLoopMem (wBodyU ()) 1 (wBaseU ())).get wPrev_isSome
 
-theorem wPrevU_eq : runBoundedLoopMem wBodyU 1 wBaseU = some wPrevU :=
+theorem wPrevU_eq : runBoundedLoopMem (wBodyU ()) 1 (wBaseU ()) = some (wPrevU ()) :=
   (Option.some_get wPrev_isSome).symm
 
 /-- The last body pass from the trip-1 state succeeds. -/
-theorem wLast_isSome : (lsemStraightMem wBodyU wPrevU).isSome := by native_decide
+theorem wLast_isSome : (lsemStraightMem (wBodyU ()) (wPrevU ())).isSome := by native_decide
 
 /-- The post-last-pass state. -/
-def wLastU : LstateM := (lsemStraightMem wBodyU wPrevU).get wLast_isSome
+def wLastU (_ : Unit) : LstateM := (lsemStraightMem (wBodyU ()) (wPrevU ())).get wLast_isSome
 
-theorem wLastU_eq : lsemStraightMem wBodyU wPrevU = some wLastU :=
+theorem wLastU_eq : lsemStraightMem (wBodyU ()) (wPrevU ()) = some (wLastU ()) :=
   (Option.some_get wLast_isSome).symm
 
 /-- The 2-trip fold reaches a state. -/
-theorem wFin_isSome : (runBoundedLoopMem wBodyU 2 wBaseU).isSome := by native_decide
+theorem wFin_isSome : (runBoundedLoopMem (wBodyU ()) 2 (wBaseU ())).isSome := by native_decide
 
 /-- The 2-trip fold state. -/
-def wFinU : LstateM := (runBoundedLoopMem wBodyU 2 wBaseU).get wFin_isSome
+def wFinU (_ : Unit) : LstateM := (runBoundedLoopMem (wBodyU ()) 2 (wBaseU ())).get wFin_isSome
 
-theorem wFinU_eq : runBoundedLoopMem wBodyU 2 wBaseU = some wFinU :=
+theorem wFinU_eq : runBoundedLoopMem (wBodyU ()) 2 (wBaseU ()) = some (wFinU ()) :=
   (Option.some_get wFin_isSome).symm
 
 /-- **Validate.** The doubling-loop conclusion derived THROUGH the
@@ -1223,12 +1223,12 @@ theorem wFinU_eq : runBoundedLoopMem wBodyU 2 wBaseU = some wFinU :=
     `JLoopBodyN.denote ⟨2, wUpd⟩ .nil 5`. -/
 theorem wLoop_export_uncond :
     ∃ t : LstatePM,
-      lsemFuelMemL wProgU (2 * (wBodyU.length + 1)) wStartU = some t
+      lsemFuelMemL (wProgU ()) (2 * ((wBodyU ()).length + 1)) (wStartU ()) = some t
         ∧ decodeM t.base (accRegMN []) 64
             = some (JLoopBodyN.denote ⟨2, wUpd⟩ .nil (5#64)) := by
   refine loopMem_export_faithful_denote_uncond (invTys := []) wUpd wUpd_scalarMemN
-    .nil "f" 0 "n" counterN_ne_argName counterN_ne_regName wStartU rfl rfl (5#64)
-    wBaseU_seed (by native_decide) 2 (by omega) wPrevU wLastU wFinU wPrevU_eq
+    .nil "f" 0 "n" counterN_ne_argName counterN_ne_regName (wStartU ()) rfl rfl (5#64)
+    wBaseU_seed (by native_decide) 2 (by omega) (wPrevU ()) (wLastU ()) (wFinU ()) wPrevU_eq
     wLastU_eq wFinU_eq ?_ (by native_decide)
   intro i h1 h2 bi hbi
   have hi : i = 1 := by omega
@@ -1240,7 +1240,7 @@ theorem wLoop_export_uncond :
     actually runs to a halt whose accumulator decodes `20` (`5 → 10 → 20`) —
     the theorem's existential is inhabited by the real run. -/
 example :
-    (lsemFuelMemL wProgU (2 * (wBodyU.length + 1)) wStartU).map
+    (lsemFuelMemL (wProgU ()) (2 * ((wBodyU ()).length + 1)) (wStartU ())).map
         (fun t => decodeM t.base (accRegMN []) 64)
       = some (some (20#64)) := by native_decide
 
@@ -1253,59 +1253,59 @@ def fSrc : Fin 4 → BitVec 64 := ![101#64, 202#64, 303#64, 404#64]
 def fInit : Fin 4 → BitVec 64 := ![7#64, 7#64, 7#64, 7#64]
 
 /-- The emitted fill body at `w = 64`, `n = 4`, counter `"n"`. -/
-def fBodyV : List LinstrRM := fillBodyM 64 4 "n"
+def fBodyV (_ : Unit) : List LinstrRM := fillBodyM 64 4 "n"
 
 /-- The fill-loop program. -/
-def fProgV : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" fBodyV)
+def fProgV (_ : Unit) : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" (fBodyV ()))
 
 /-- The seed base: encoded `[out = fInit, i = 0, a = fSrc]`, counter `n = 3`,
     pc at the loop top. -/
-def fBaseV : LstateM :=
+def fBaseV (_ : Unit) : LstateM :=
   (((encodeM (tripValArrMN (invTys := [JasminTy.stackArr 64 4])
       (.cons fSrc .nil) 0 fInit)).setReg "n" (3#64)).setLpc 1)
 
 /-- The seed program state. -/
-def fStartV : LstatePM := { base := fBaseV, lfn := "f" }
+def fStartV (_ : Unit) : LstatePM := { base := fBaseV (), lfn := "f" }
 
 /-- The fill seed agrees with the trip-0 valuation. -/
 theorem fBaseV_seed :
-    StoreAgreesM 3 3 fBaseV
+    StoreAgreesM 3 3 (fBaseV ())
       (tripValArrMN (invTys := [JasminTy.stackArr 64 4]) (.cons fSrc .nil) 0 fInit) :=
   StoreAgreesM.setLpc
     (StoreAgreesM.setReg_untracked "n" (3#64) counterN_ne_argName counterN_ne_regName
       (encodeM_StoreAgreesM (tripValArrMN (invTys := [JasminTy.stackArr 64 4])
         (.cons fSrc .nil) 0 fInit))) 1
 
-theorem fT1_isSome : (runBoundedLoopMem fBodyV 1 fBaseV).isSome := by native_decide
+theorem fT1_isSome : (runBoundedLoopMem (fBodyV ()) 1 (fBaseV ())).isSome := by native_decide
 
 /-- The trip-1 state. -/
-def fT1 : LstateM := (runBoundedLoopMem fBodyV 1 fBaseV).get fT1_isSome
+def fT1 (_ : Unit) : LstateM := (runBoundedLoopMem (fBodyV ()) 1 (fBaseV ())).get fT1_isSome
 
-theorem fT1_eq : runBoundedLoopMem fBodyV 1 fBaseV = some fT1 :=
+theorem fT1_eq : runBoundedLoopMem (fBodyV ()) 1 (fBaseV ()) = some (fT1 ()) :=
   (Option.some_get fT1_isSome).symm
 
-theorem fT2_isSome : (runBoundedLoopMem fBodyV 2 fBaseV).isSome := by native_decide
+theorem fT2_isSome : (runBoundedLoopMem (fBodyV ()) 2 (fBaseV ())).isSome := by native_decide
 
 /-- The trip-2 state. -/
-def fT2 : LstateM := (runBoundedLoopMem fBodyV 2 fBaseV).get fT2_isSome
+def fT2 (_ : Unit) : LstateM := (runBoundedLoopMem (fBodyV ()) 2 (fBaseV ())).get fT2_isSome
 
-theorem fT2_eq : runBoundedLoopMem fBodyV 2 fBaseV = some fT2 :=
+theorem fT2_eq : runBoundedLoopMem (fBodyV ()) 2 (fBaseV ()) = some (fT2 ()) :=
   (Option.some_get fT2_isSome).symm
 
-theorem fLast_isSome : (lsemStraightMem fBodyV fT2).isSome := by native_decide
+theorem fLast_isSome : (lsemStraightMem (fBodyV ()) (fT2 ())).isSome := by native_decide
 
 /-- The post-last-pass state. -/
-def fLastV : LstateM := (lsemStraightMem fBodyV fT2).get fLast_isSome
+def fLastV (_ : Unit) : LstateM := (lsemStraightMem (fBodyV ()) (fT2 ())).get fLast_isSome
 
-theorem fLastV_eq : lsemStraightMem fBodyV fT2 = some fLastV :=
+theorem fLastV_eq : lsemStraightMem (fBodyV ()) (fT2 ()) = some (fLastV ()) :=
   (Option.some_get fLast_isSome).symm
 
-theorem fFin_isSome : (runBoundedLoopMem fBodyV 3 fBaseV).isSome := by native_decide
+theorem fFin_isSome : (runBoundedLoopMem (fBodyV ()) 3 (fBaseV ())).isSome := by native_decide
 
 /-- The 3-trip fold state. -/
-def fFinV : LstateM := (runBoundedLoopMem fBodyV 3 fBaseV).get fFin_isSome
+def fFinV (_ : Unit) : LstateM := (runBoundedLoopMem (fBodyV ()) 3 (fBaseV ())).get fFin_isSome
 
-theorem fFinV_eq : runBoundedLoopMem fBodyV 3 fBaseV = some fFinV :=
+theorem fFinV_eq : runBoundedLoopMem (fBodyV ()) 3 (fBaseV ()) = some (fFinV ()) :=
   (Option.some_get fFin_isSome).symm
 
 /-- **Validate.** The fill loop `out[i] := a[i]` at runtime count 3 over 4
@@ -1315,14 +1315,14 @@ theorem fFinV_eq : runBoundedLoopMem fBodyV 3 fBaseV = some fFinV :=
     the source denotation's array output. -/
 theorem fillLoop_export_uncond :
     ∃ t : LstatePM,
-      lsemFuelMemL fProgV (3 * (fBodyV.length + 1)) fStartV = some t
+      lsemFuelMemL (fProgV ()) (3 * ((fBodyV ()).length + 1)) (fStartV ()) = some t
         ∧ decodeArrM t.base (argName 2) 64 4
             = some (JLoopBodyN.denote ⟨3, fillUpdate 64 4⟩
                 (.cons fSrc .nil :
                   Ctxt.Valuation (d := jasminDialect) [JasminTy.stackArr 64 4]) fInit) := by
   refine fillLoop_export_faithful_denote "f" 0 "n" counterN_ne_argName
-    counterN_ne_regName fStartV rfl rfl fSrc fInit fBaseV_seed (by native_decide)
-    3 (by omega) fT2 fLastV fFinV fT2_eq fLastV_eq fFinV_eq ?_ (by native_decide)
+    counterN_ne_regName (fStartV ()) rfl rfl fSrc fInit fBaseV_seed (by native_decide)
+    3 (by omega) (fT2 ()) (fLastV ()) (fFinV ()) fT2_eq fLastV_eq fFinV_eq ?_ (by native_decide)
   intro i h1 h2 bi hbi
   have hi : i = 1 ∨ i = 2 := by omega
   rcases hi with rfl | rfl
@@ -1344,7 +1344,7 @@ example :
 /-- The machine run's array cells equal the source fold's, read off the real
     `lsemFuelMemL` halt state (fuel/schedule non-vacuous). -/
 example :
-    (lsemFuelMemL fProgV (3 * (fBodyV.length + 1)) fStartV).map (fun t =>
+    (lsemFuelMemL (fProgV ()) (3 * ((fBodyV ()).length + 1)) (fStartV ())).map (fun t =>
         (decodeArrM t.base (argName 2) 64 4).map (fun f =>
           (List.finRange 4).map (fun i => (f i).toNat)))
       = some (some [101, 202, 303, 7]) := by native_decide

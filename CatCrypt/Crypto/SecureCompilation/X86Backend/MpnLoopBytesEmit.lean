@@ -53,7 +53,7 @@ def objBytes (p : Option Lprog) : Option (List (BitVec 8)) :=
 /-- The eight seam kernels, keyed by their artifact base name: the five
     arithmetic/logical kernels and the three adapter kernels the seam calls
     for zero-extension and length normalization. -/
-def kernels : List (String × Option Lprog) :=
+def kernels (_ : Unit) : List (String × Option Lprog) :=
   [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront ())
   , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront ())
   , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog ())
@@ -77,7 +77,7 @@ compiled it (`isSome`) and every body instruction reaches the byte stream
 
 /- Each object exports exactly its own deployed symbol (one function per front
 `Lprog`, named as the seam links it). -/
-#guard kernels.all (fun (n, p) =>
+#guard (kernels ()).all (fun (n, p) =>
   (p.map (fun q => q.lp_funcs.map Prod.fst == [n])).getD false)
 
 /-- Byte-list to `ByteArray`, for `IO.FS.writeBinFile`. -/
@@ -86,7 +86,7 @@ def toByteArray (bs : List (BitVec 8)) : ByteArray :=
 
 /-- The five arithmetic/logical kernels the `catcrypt-mpn` crate links, keyed
     by the object name the crate's `build.rs` archives. -/
-def crateKernels : List (String × Option Lprog) :=
+def crateKernels (_ : Unit) : List (String × Option Lprog) :=
   [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront ())
   , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront ())
   , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog ())
@@ -100,7 +100,7 @@ def crateKernels : List (String × Option Lprog) :=
     encoder fragment. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/integration_owned/gen_bytes"
-  for (name, p) in kernels do
+  for (name, p) in kernels () do
     match objBytes p with
     | some bs =>
         IO.FS.writeBinFile
@@ -112,7 +112,7 @@ def emitMain : IO Unit := do
   -- crate's own obj/ from the same bytes: the artifact the crate ships is the
   -- encoder's output, drift-proof against a stale hand copy.
   IO.FS.createDirAll "crates/catcrypt-mpn/obj"
-  for (name, p) in crateKernels do
+  for (name, p) in crateKernels () do
     match objBytes p with
     | some bs =>
         IO.FS.writeBinFile

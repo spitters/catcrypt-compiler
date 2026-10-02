@@ -60,7 +60,7 @@ theorem outerSigma0Thir_lowers :
   rfl
 
 /-- The outer `Com` (the front's output) at width 32. -/
-def outerSigma0Com : Com jasminDialect (frontCtxt 32 1 []) (rW 32) :=
+noncomputable def outerSigma0Com : Com jasminDialect (frontCtxt 32 1 []) (rW 32) :=
   (thirToJasmin (w := 32) (nIn := 1) [] (initFState 32 1) outerSigma0Thir).get
     outerSigma0Thir_lowers
 
@@ -76,27 +76,27 @@ theorem sigma0Thir_lowers :
 /-- The front-compiled σ₀ kernel denotes the FIPS 180-4 σ₀ formula on every input
     word. -/
 theorem sigma0Com_denote (x : BitVec 32) :
-    sigma0Com.denote (inputValuation 32 1 (fun _ => x)) = sigma0Spec x := by
+    (sigma0Com ()).denote (inputValuation 32 1 (fun _ => x)) = sigma0Spec x := by
   have hc : thirToJasmin (w := 32) (nIn := 1) [] (initFState 32 1) sigma0Thir
-      = some sigma0Com := by
+      = some (sigma0Com ()) := by
     obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp sigma0Thir_lowers
     simp only [sigma0Com, hc, Option.getD_some]
-  have h := sigma0_FrontValueAgrees (fun _ => x) sigma0Com hc
+  have h := sigma0_FrontValueAgrees (fun _ => x) (sigma0Com ()) hc
   rw [sigma0Thir_denote] at h
   exact (Option.some.inj h).symm
 
 /-! ## §3  Linking by inlining -/
 
 /-- The σ₀ kernel as a callee body over its one `rW 32` formal. -/
-def sigma0Callee : ComInlineCall.FunBodyN :=
-  { argTys := ctxtSigma0, retTy := rW 32, body := sigma0Com }
+noncomputable def sigma0Callee : ComInlineCall.FunBodyN :=
+  { argTys := ctxtSigma0, retTy := rW 32, body := sigma0Com () }
 
 /-- The registry that maps `"sha256_sigma0"` to the σ₀ kernel and no other name. -/
-def sigma0Funcs : ComInlineCall.FuncRegistryN :=
+noncomputable def sigma0Funcs : ComInlineCall.FuncRegistryN :=
   fun nm => if nm = sigma0Name then some sigma0Callee else none
 
 /-- The linked program: the outer with the σ₀ kernel inlined at its call. -/
-def linkedSigma0Com : Com jasminDialect (frontCtxt 32 1 []) (rW 32) :=
+noncomputable def linkedSigma0Com : Com jasminDialect (frontCtxt 32 1 []) (rW 32) :=
   ComInlineCall.inlineCalls sigma0Funcs outerSigma0Com
 
 /-- **The linked program denotes SHA-256 σ₀.** For every input word `x`, the
@@ -110,7 +110,7 @@ theorem linkedExample_correct (x : BitVec 32) :
   have key : ComInlineCall.denoteSubst sigma0Funcs outerSigma0Com
       (inputValuation 32 1 (fun _ => x))
       = (fun v : BitVec 32 => v ||| v)
-          (sigma0Com.denote (inputValuation 32 1 (fun _ => x))) := by
+          ((sigma0Com ()).denote (inputValuation 32 1 (fun _ => x))) := by
     with_unfolding_all rfl
   exact key.trans (BitVec.or_self.trans (sigma0Com_denote x))
 

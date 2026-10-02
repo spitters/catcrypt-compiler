@@ -36,6 +36,6 @@ def main (args : List String) : IO Unit := do
   let which := args.head?.getD "framed"
   out.putStrLn s!"probe start: {which}"; out.flush
   let t0 ← IO.monoMsNow
-  let b := if which == "scalar" then jacDblLowered.isSome else jacDblLoweredFramed.isSome
+  let b := if which == "scalar" then (jacDblLowered ()).isSome else jacDblLoweredFramed.isSome
   let t1 ← IO.monoMsNow
   out.putStrLn s!"{which.toUpper} isSome={b} {t1 - t0} ms"; out.flush

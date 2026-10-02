@@ -187,47 +187,47 @@ contains the expected NTT leaf calls. We also emit the unoptimized `srcCom`
 (`poly_mul`) to confirm the unexpanded path. -/
 
 /-- The Jasmin `Com` obtained by lowering `tgtCom 3329 256`. -/
-def tgtJasmin : Com jasminDialect ((LatticeDialect.inCtxt 3329 256).map tau) (tau (.polyC 3329 256)) :=
+def tgtJasmin (_ : Unit) : Com jasminDialect ((LatticeDialect.inCtxt 3329 256).map tau) (tau (.polyC 3329 256)) :=
   lowerLatticeToJasmin (LatticeDialect.tgtCom 3329 256)
 
 /-- The emitted `.jazz` for the NTT-expanded target program. -/
-def tgtJazz : String := emitLatticeJazz "ntt_mul" (LatticeDialect.tgtCom 3329 256)
+def tgtJazz (_ : Unit) : String := emitLatticeJazz "ntt_mul" (LatticeDialect.tgtCom 3329 256)
 
 /-- The emitted `.jazz` for the unexpanded source program (`poly_mul`). -/
-def srcJazz : String := emitLatticeJazz "poly_mul_src" (LatticeDialect.srcCom 3329 256)
+def srcJazz (_ : Unit) : String := emitLatticeJazz "poly_mul_src" (LatticeDialect.srcCom 3329 256)
 
 -- Print the emitted `.jazz` text for visual inspection.
-#eval IO.println tgtJazz
-#eval IO.println srcJazz
+#eval IO.println (tgtJazz ())
+#eval IO.println (srcJazz ())
 
 /-- The lowered target `Com` has four bindings (`ntt`, `ntt`, `basemul`,
     `invntt`) before its `ret`, so it lowers to a four-instruction body. -/
-def tgtProg : JasminProg := lowerComToProg "ntt_mul" tgtJasmin
+def tgtProg (_ : Unit) : JasminProg := lowerComToProg "ntt_mul" (tgtJasmin ())
 
 /-- Exactly one function is produced. -/
-theorem tgt_one_func : tgtProg.funcs.length = 1 := by decide
+theorem tgt_one_func : (tgtProg ()).funcs.length = 1 := by decide
 
 /-- The function takes two parameters (the two coefficient-form polynomial
     inputs `a`, `b`). -/
 theorem tgt_two_params :
-    (tgtProg.funcs.head?.map (fun fd => fd.params.length)) = some 2 := by
+    ((tgtProg ()).funcs.head?.map (fun fd => fd.params.length)) = some 2 := by
   decide
 
 /-- The body has four instructions: `ntt a`, `ntt b`, `basemul`, `invntt`. -/
 theorem tgt_four_instrs :
-    (tgtProg.funcs.head?.map (fun fd => fd.body.length)) = some 4 := by
+    ((tgtProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 4 := by
   decide
 
 /- The emitted target `.jazz` contains the `ntt_basemul_` leaf call. -/
-#guard (strContains tgtJazz "ntt_basemul_")
+#guard (strContains (tgtJazz ()) "ntt_basemul_")
 
 /- The emitted target `.jazz` contains the `ntt_invntt_` leaf call. -/
-#guard (strContains tgtJazz "ntt_invntt_")
+#guard (strContains (tgtJazz ()) "ntt_invntt_")
 
 /- The emitted target `.jazz` contains the forward `ntt_` leaf call. -/
-#guard (strContains tgtJazz "ntt_3329_256")
+#guard (strContains (tgtJazz ()) "ntt_3329_256")
 
 /- The emitted source `.jazz` contains the unexpanded `poly_mul` leaf call. -/
-#guard (strContains srcJazz "poly_mul")
+#guard (strContains (srcJazz ()) "poly_mul")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin

@@ -73,31 +73,31 @@ def binNames : List String := ["rp", "ap", "bp", "n"]
 def binKinds : List ParamKind :=
   [.limbs .write, .limbs .read, .limbs .read, .sharedLen]
 
-def addEntry : Option (Lprog × WrapperSpec) :=
+def addEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
   entry (addLprogFront ()) "mpn_add_n"
     "Limbwise little-endian sum: rp = ap + bp mod 2^(64 n)."
     binNames binKinds .carry
 
-def subEntry : Option (Lprog × WrapperSpec) :=
+def subEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
   entry (subLprogFront ()) "mpn_sub_n"
     "Limbwise little-endian difference: rp = ap - bp mod 2^(64 n)."
     binNames binKinds .borrow
 
-def andEntry : Option (Lprog × WrapperSpec) :=
+def andEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
   entry (andLprog ()) "mpn_and_n" "Limbwise AND: rp[i] = ap[i] & bp[i]."
     binNames binKinds .unused
 
-def iorEntry : Option (Lprog × WrapperSpec) :=
+def iorEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
   entry (iorLprog ()) "mpn_ior_n" "Limbwise OR: rp[i] = ap[i] | bp[i]."
     binNames binKinds .unused
 
-def xorEntry : Option (Lprog × WrapperSpec) :=
+def xorEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
   entry (xorLprog ()) "mpn_xor_n" "Limbwise XOR: rp[i] = ap[i] ^ bp[i]."
     binNames binKinds .unused
 
 /-- The five crate kernels, in extern-block order. -/
-def entries : List (Option (Lprog × WrapperSpec)) :=
-  [addEntry, subEntry, andEntry, iorEntry, xorEntry]
+def entries (_ : Unit) : List (Option (Lprog × WrapperSpec)) :=
+  [addEntry (), subEntry (), andEntry (), iorEntry (), xorEntry ()]
 
 /-- Crate root, relative to the repo root (the elaboration cwd). -/
 def crateDir : String := "crates/catcrypt-mpn"
@@ -109,7 +109,7 @@ def emitMain : IO Unit := do
   IO.FS.createDirAll (crateDir ++ "/asm")
   IO.FS.createDirAll (crateDir ++ "/src")
   let mut specs : Array WrapperSpec := #[]
-  for e? in entries do
+  for e? in entries () do
     match e? with
     | none => throw (IO.userError
         "catcrypt-mpn: spec derivation failed (front compile returned none, or asserted names/kinds mismatch the Lprog signature)")

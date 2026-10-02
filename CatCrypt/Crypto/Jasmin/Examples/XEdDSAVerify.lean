@@ -134,23 +134,25 @@ def params : List Located :=
 def results : List Located := [ u64 "verified" ]
 
 /-- The Rust source string for `xeddsa_verify_field`. -/
-def emitXEdDSAVerify : String :=
+def emitXEdDSAVerify (_ : Unit) : String :=
   ppRustFunction "xeddsa_verify_field" params results xeddsaVerifyBody
 
 /-- The Rust source string for the split-signature variant. -/
-def emitXEdDSAVerifySplit : String :=
+def emitXEdDSAVerifySplit (_ : Unit) : String :=
   ppRustFunction "xeddsa_verify_field_split" params results xeddsaVerifySplitBody
 
 /-- IO driver: write both emitted source strings. -/
 def runEmit : IO Unit := do
   let outPath := "/tmp/xeddsa_verify_field.rs"
-  IO.FS.writeFile outPath (emitXEdDSAVerify ++ "\n\n" ++ emitXEdDSAVerifySplit)
+  let a := emitXEdDSAVerify ()
+  let b := emitXEdDSAVerifySplit ()
+  IO.FS.writeFile outPath (a ++ "\n\n" ++ b)
   IO.println s!"wrote {outPath}"
-  IO.println s!"({emitXEdDSAVerify.length + emitXEdDSAVerifySplit.length + 2} bytes)"
+  IO.println s!"({a.length + b.length + 2} bytes)"
   IO.println "---"
-  IO.println emitXEdDSAVerify
+  IO.println a
   IO.println ""
-  IO.println emitXEdDSAVerifySplit
+  IO.println b
 
 /-! ## §4.  Functional correctness + panic-freeness theorems
 

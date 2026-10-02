@@ -785,30 +785,30 @@ def strContains (hay needle : String) : Bool :=
 
 /-- Lower the dialect's `smokeProg` (`reg 32` × `reg 32` → `reg 64`,
     `regArith add` then `castW 32 64`) and emit `.jazz`. -/
-def smokeProg : JasminProg :=
+def smokeProg (_ : Unit) : JasminProg :=
   lowerComToProg "smoke" JasminDialect.smokeProg
 
 /-- The emitted `.jazz` text. -/
-def smokeJazz : String := emitJazz "smoke" JasminDialect.smokeProg
+def smokeJazz (_ : Unit) : String := emitJazz "smoke" JasminDialect.smokeProg
 
 -- Print the emitted `.jazz` text for visual inspection.
-#eval IO.println smokeJazz
+#eval IO.println (smokeJazz ())
 
 /-- One function is produced. -/
-theorem smoke_one_func : smokeProg.funcs.length = 1 := by decide
+theorem smoke_one_func : (smokeProg ()).funcs.length = 1 := by decide
 
 /-- The function takes two parameters (the two `reg 32` inputs). -/
 theorem smoke_two_params :
-    (smokeProg.funcs.head?.map (fun fd => fd.params.length)) = some 2 := by
+    ((smokeProg ()).funcs.head?.map (fun fd => fd.params.length)) = some 2 := by
   decide
 
 /-- The body has two instructions (the `add` and the `castW`). -/
 theorem smoke_two_instrs :
-    (smokeProg.funcs.head?.map (fun fd => fd.body.length)) = some 2 := by
+    ((smokeProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 2 := by
   decide
 
 /- The emitted `.jazz` mentions the function name. -/
-#guard (strContains smokeJazz "fn smoke")
+#guard (strContains (smokeJazz ()) "fn smoke")
 
 /-- A small bounded-for example: accumulate `acc := acc + acc` for 4 iterations
     (a `regArith add` on `reg 64`). -/
@@ -824,38 +824,38 @@ theorem doubleLoop_denote :
     doubleLoop.denote (1 : BitVec 64) = (16 : BitVec 64) := by rfl
 
 /-- The loop lowers to a single-function program with a `Cfor` body. -/
-def doubleLoopProg : JasminProg := doubleLoop.toProg "double_loop"
+def doubleLoopProg (_ : Unit) : JasminProg := doubleLoop.toProg "double_loop"
 
 /-- The loop program emits to `.jazz` text. -/
-def doubleLoopJazz : String :=
-  CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg doubleLoopProg
+def doubleLoopJazz (_ : Unit) : String :=
+  CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg (doubleLoopProg ())
 
-#eval IO.println doubleLoopJazz
+#eval IO.println (doubleLoopJazz ())
 
 /-- The loop body is a single top-level instruction (the `Cfor`). -/
 theorem doubleLoop_one_instr :
-    (doubleLoopProg.funcs.head?.map (fun fd => fd.body.length)) = some 1 := by
+    ((doubleLoopProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 1 := by
   decide
 
 /- The emitted `.jazz` contains a `for` loop. -/
-#guard (strContains doubleLoopJazz "for ")
+#guard (strContains (doubleLoopJazz ()) "for ")
 
 /-- The jasminc-compilable `export fn` for the doubling loop. -/
-def doubleLoopExportJazz : String := JForProg.toJazzExport "double_loop" doubleLoop
+def doubleLoopExportJazz (_ : Unit) : String := JForProg.toJazzExport "double_loop" doubleLoop
 
-#eval IO.println doubleLoopExportJazz
+#eval IO.println (doubleLoopExportJazz ())
 
 /- The exported `.jazz` is a real `for` loop (structural check: it contains an
     actual `for i = 0 to 4` loop header, not an unrolled body). -/
-#guard (strContains doubleLoopExportJazz "for i = 0 to 4")
+#guard (strContains (doubleLoopExportJazz ()) "for i = 0 to 4")
 
 /- The exported `.jazz` is an `export fn` jasminc unit. -/
-#guard (strContains doubleLoopExportJazz "export fn double_loop")
+#guard (strContains (doubleLoopExportJazz ()) "export fn double_loop")
 
 /-- The exported `.jazz` does NOT unroll: it has a single `acc = acc + acc`
     inside the loop body (one occurrence), confirming the loop is emitted as a
     real `for`, not 4 copies of the body. -/
 theorem doubleLoopExport_not_unrolled :
-    (doubleLoopExportJazz.splitOn "(acc + acc)").length = 2 := by native_decide
+    ((doubleLoopExportJazz ()).splitOn "(acc + acc)").length = 2 := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint

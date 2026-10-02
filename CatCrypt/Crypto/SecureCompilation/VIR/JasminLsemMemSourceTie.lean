@@ -699,13 +699,13 @@ theorem wUpd_scalarMemN : ScalarMemN wUpd :=
     `r2 := a1 + a1`), the accumulator writeback `ADD a1 ← r2, #0` (a register
     move via the additive identity — the wire `MOV` is immediate-only in this
     machine model), the counter decrement `SUB n ← n, 1`. -/
-def wBody : List LinstrRM :=
+def wBody (_u : Unit := ()) : List LinstrRM :=
   loopBodyChainMN (invTys := []) wUpd ++
     [ (LinstrR.Lopn [.reg "a1"] "ADD:64" [.reg "r2", .imm 0], MemTag.reg none)
     , (LinstrR.Lopn [.reg "n"] "SUB:64" [.reg "n", .imm 1], MemTag.reg none) ]
 
 /-- The witness loop program: `wBody` wrapped in the back-edge on counter `"n"`. -/
-def wProg : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" wBody)
+def wProg (_u : Unit := ()) : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" wBody)
 
 /-- The witness start state: the encoded trip-0 valuation (`acc = 5` at `a1`,
     index `0` at `a0`) with the public counter `n = 2`. -/

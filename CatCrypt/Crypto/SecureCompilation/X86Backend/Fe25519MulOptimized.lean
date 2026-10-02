@@ -171,7 +171,7 @@ theorem optFeMulAsmBody_length : optFeMulAsmBody.length = 95 := by native_decide
     the generic pipeline is the identity on `feMulBlock` and the allocator + pins
     are the same, the per-instruction rendered AT&T lines coincide line-for-line.
     (Only the function symbol differs at the `renderSysVLeafFn` framing level.) -/
-theorem optFeMulAsmBody_eq_handTuned : optFeMulAsmBody = feMulAsmBody := by
+theorem optFeMulAsmBody_eq_handTuned : optFeMulAsmBody = feMulAsmBody () := by
   native_decide
 
 /-- Emit driver: write the generic-pipeline-optimized `.s` for the bench harness.

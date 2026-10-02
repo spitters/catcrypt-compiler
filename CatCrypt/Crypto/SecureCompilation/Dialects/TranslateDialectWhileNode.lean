@@ -194,7 +194,7 @@ def Γouter : Ctxt jasminDialect := [.reg 64, .reg 64, .stackArr 64 3]
 
 /-- The front-compiled data-dependent while: guard seed `n`, accumulator `acc`,
     invariant array `a`. ONE `ComL.whileNz` spine, the body front-compiled. -/
-def whileAccum : Option (ComL Γouter (.reg 64)) :=
+def whileAccum (_ : Unit) : Option (ComL Γouter (.reg 64)) :=
   rolledWhileNzComL (Γouter := Γouter) (accCTy := .sword 64) (invCTys := [.memref 3])
     whileVm "acc2" whileBody
     (guard := .here)                             -- n
@@ -202,11 +202,11 @@ def whileAccum : Option (ComL Γouter (.reg 64)) :=
     (invs := .cons (.there (.there .here)) .nil) -- a
 
 /-- The body front-compiles and wraps into ONE `ComL.whileNz`. -/
-theorem whileAccum_isSome : whileAccum.isSome := by native_decide
+theorem whileAccum_isSome : (whileAccum ()).isSome := by native_decide
 
 /-- The spine is the data-dependent while node. -/
 theorem whileAccum_is_whileNz_node :
-    (whileAccum.map (fun c => match c with
+    ((whileAccum ()).map (fun c => match c with
       | .whileNz _ _ _ _ _ => true
       | _ => false))
       = some true := by native_decide
@@ -219,13 +219,13 @@ def valAt (n : Nat) : Ctxt.Valuation Γouter :=
 /-- **denote at seed `n = 3` is `10 + 20 + 30 = 60`** — three data-dependent
     trips, the accumulate over `a[0..2]`. -/
 theorem whileAccum_denote_n3 :
-    (whileAccum.map (fun c => BitVec.toNat (ComL.denote c (valAt 3)))) = some 60 := by
+    ((whileAccum ()).map (fun c => BitVec.toNat (ComL.denote c (valAt 3)))) = some 60 := by
   native_decide
 
 /-- **denote at seed `n = 2` is `10 + 20 = 30`** (SAME program): the trip count
     is read off the guard seed, not baked in. -/
 theorem whileAccum_denote_n2 :
-    (whileAccum.map (fun c => BitVec.toNat (ComL.denote c (valAt 2)))) = some 30 := by
+    ((whileAccum ()).map (fun c => BitVec.toNat (ComL.denote c (valAt 2)))) = some 30 := by
   native_decide
 
 /-! ## 3. Machine run = `ComL.denote`
@@ -237,33 +237,33 @@ bottom-test `Lcond` back-edge on the countdown register `n`), run by A3's
 `ComL.denote` at the matching seed, and the trip is read off the run. -/
 
 /-- The front-compiled `JLoopBodyN.update` for the while body (or `none`). -/
-def whileFrontJ :
+def whileFrontJ (_ : Unit) :
     Option (Com jasminDialect (mapCtx whileΓ) (mapTy (.sword 64))) :=
   frontLoopBodyJ (accCTy := .sword 64) whileVm "acc2" whileBody
 
 /-- The front-lowered per-iteration body (`straightOpsMemCall`, no leaf calls);
     `[]` if the front declined. `nArgs = 3` (the update body's context slots). -/
-def whileFrontBody : List LinstrRM :=
-  (whileFrontJ.map (fun c => straightOpsMemCall 3 (fun _ _ _ => none) c 3)).getD []
+def whileFrontBody (_ : Unit) : List LinstrRM :=
+  ((whileFrontJ ()).map (fun c => straightOpsMemCall 3 (fun _ _ _ => none) c 3)).getD []
 
 /-- The front body's result register (the next-accumulator slot the feedback
     copies back), read off the front image. -/
-def whileFrontRet : String :=
-  (whileFrontJ.map (fun c => comRetReg 3 argName c 3)).getD "r0"
+def whileFrontRet (_ : Unit) : String :=
+  ((whileFrontJ ()).map (fun c => comRetReg 3 argName c 3)).getD "r0"
 
 /-- The full A3 do-while body: the front body, then the accumulator feedback
     (`a2 := <ret>`), the index advance (`a1 += 1`), and the countdown
     (`n -= 1`) — the `extra` tail of the committed `rolledWhileNz` shape. -/
-def whileMachineBody : List LinstrRM :=
-  whileFrontBody ++
-  [ (LinstrR.Lopn [.reg "a2"] "ADD:64" [.reg whileFrontRet, .imm 0], MemTag.reg none)
+def whileMachineBody (_ : Unit) : List LinstrRM :=
+  whileFrontBody () ++
+  [ (LinstrR.Lopn [.reg "a2"] "ADD:64" [.reg (whileFrontRet ()), .imm 0], MemTag.reg none)
   , (LinstrR.Lopn [.reg "a1"] "ADD:64" [.reg "a1", .imm 1], MemTag.reg none)
   , (LinstrR.Lopn [.reg "n"]  "SUB:64" [.reg "n", .imm 1], MemTag.reg none) ]
 
 /-- The emitted data-dependent do-while program (`whileLinstrRM 0 "n" []` — the
     bottom-test back-edge on the countdown register). -/
-def whileMachineProg : LprogM :=
-  singletonProgM "f" (whileLinstrRM 0 "n" [] whileMachineBody)
+def whileMachineProg (_ : Unit) : LprogM :=
+  singletonProgM "f" (whileLinstrRM 0 "n" [] (whileMachineBody ()))
 
 /-- Machine start at seed `n`: `acc = 0` (`a2`), `idx = 0` (`a1`), the countdown
     `n`, array `a0 = [10, 20, 30]`. -/
@@ -281,9 +281,9 @@ def whileMachineStart (n : Nat) : LstatePMC :=
     to the front-compiled `ComL.whileNz` node's `ComL.denote` at the same seed
     (both `= 60`). -/
 theorem whileAccum_machine_matches_denote :
-    (lsemFuelMemLC (fun _ => none) whileMachineProg 60 (whileMachineStart 3)).map
+    (lsemFuelMemLC (fun _ => none) (whileMachineProg ()) 60 (whileMachineStart 3)).map
         (fun t => decodeM t.base "a2" 64)
-      = (whileAccum.map (fun c => some (ComL.denote c (valAt 3)))) := by
+      = ((whileAccum ()).map (fun c => some (ComL.denote c (valAt 3)))) := by
   native_decide
 
 /-- **The data-dependent trip is read off the run:** `whileTripsMem = 3` — the
@@ -291,7 +291,7 @@ theorem whileAccum_machine_matches_denote :
     determined by the initial `n = 3`, not supplied as a proof parameter. -/
 theorem whileAccum_trips_data_dependent :
     whileTripsMem (fun _ => none) (fun b => condNZ b (.reg "n"))
-        whileMachineBody 10 (whileMachineStart 3).base = 3 := by
+        (whileMachineBody ()) 10 (whileMachineStart 3).base = 3 := by
   native_decide
 
 /-! ## 4. The lowering is a bottom-test do-while -/
@@ -308,7 +308,7 @@ def condEdges (cc : String) (body : Lcmd) : List LLabel :=
     `Lcond Z` — there is no zero-trip top guard: a do-while, not
     `forLoopNRt`'s top-guarded counted loop. -/
 theorem whileAccum_lowering_dowhile :
-    (whileAccum.map (fun c =>
+    ((whileAccum ()).map (fun c =>
         let body := comLToBody 3 argName (fun _ => none) c 3
         (condEdges "NZ" body).length == 1 && (condEdges "Z" body).length == 0))
       = some true := by native_decide

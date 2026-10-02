@@ -324,7 +324,7 @@ def inVM : VarMap inΓ :=
 /-! ## 4. Front-compile, lower -/
 
 /-- Push the body through the direct control front and cap with `ret out`. -/
-def frontCom : Option (Com catCryptDialect inΓ (.memref 4)) :=
+def frontCom (_ : Unit) : Option (Com catCryptDialect inΓ (.memref 4)) :=
   match translateDialectControl inVM feMulBody with
   | some r =>
       match r.vm.lookup "out" with
@@ -334,9 +334,9 @@ def frontCom : Option (Com catCryptDialect inΓ (.memref 4)) :=
 
 /-- The front-emitted dialect program lowers to a `Com jasminDialect`
     (`memrefGetDyn`/`memrefSetDyn` → `stackLoad`/`stackStore`). -/
-def loweredOpt :
+def loweredOpt (_ : Unit) :
     Option (Σ Γj : Ctxt jasminDialect, Σ t : JasminTy, Com jasminDialect Γj t) :=
-  match frontCom with
+  match frontCom () with
   | some c =>
       match DialectToJasminCom.cryptoDialectToJasminCom c with
       | some jc => some ⟨_, _, jc⟩
@@ -346,10 +346,10 @@ def loweredOpt :
 /-! ## 5. Front-compile / lower gates -/
 
 /-- The body front-compiles (`translateDialectControl` + `ret out`). -/
-theorem frontCom_isSome : frontCom.isSome := by native_decide
+theorem frontCom_isSome : (frontCom ()).isSome := by native_decide
 
 /-- The kernel lowers end-to-end to `Com jasminDialect`. -/
-theorem lowered_isSome : loweredOpt.isSome := by native_decide
+theorem lowered_isSome : (loweredOpt ()).isSome := by native_decide
 
 /-! ## 6. The `Nat` `(a·b) mod p` spec and a denotation reader -/
 
@@ -373,7 +373,7 @@ def encodeVal (av bv : Fin 4 → BitVec 64) : @Ctxt.Valuation catCryptDialect _ 
 
 /-- Denote the front kernel and read out all 4 result cells. -/
 def denoteCells (a b : List Nat) : Option (List Nat) :=
-  frontCom.map (fun c =>
+  (frontCom ()).map (fun c =>
     (List.range 4).map (fun i =>
       (c.denote (encodeVal (vecOf a) (vecOf b)) ⟨i % 4, Nat.mod_lt _ (by decide)⟩).toNat))
 
@@ -383,7 +383,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 
 /-- The lowered kernel as an owned AT&T `.s` under the SysV 3-pointer ABI. -/
 def femulAsm (_ : Unit) : Option String :=
-  loweredOpt.map (fun s =>
+  (loweredOpt ()).map (fun s =>
     CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (Com.toLprogPhysAbi s.2.2 "secp256k1_femul"
         (fun _ => none) (fun _ => none) (fun _ => none) []

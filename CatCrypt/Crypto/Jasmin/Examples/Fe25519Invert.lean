@@ -185,14 +185,15 @@ def params : List Located := [ fp "a" ]
 def results : List Located := [ fp "out" ]
 
 /-- The Rust source string for `fe25519_invert`. -/
-def emitFe25519Invert : String :=
+def emitFe25519Invert (_ : Unit) : String :=
   ppRustFunction "fe25519_invert" params results fe25519InvertBody
 
 /-- IO driver: write the emitted source to `/tmp/fe25519_invert.rs`. -/
 def runEmit : IO Unit := do
   let outPath := "/tmp/fe25519_invert.rs"
-  IO.FS.writeFile outPath emitFe25519Invert
+  let s := emitFe25519Invert ()
+  IO.FS.writeFile outPath s
   IO.println s!"wrote {outPath}"
-  IO.println s!"({(emitFe25519Invert.length)} bytes)"
+  IO.println s!"({s.length} bytes)"
 
 end CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert

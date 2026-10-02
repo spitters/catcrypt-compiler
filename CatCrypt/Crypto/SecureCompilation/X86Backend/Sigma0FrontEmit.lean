@@ -126,9 +126,9 @@ def sigma0OutStoreMap : OutStoreMap := [("RDI", 0)]
     then shift/rotate-immediate-legalised so the owned printer renders the two
     rotates and the shift. `fname` `"small_sigma0"` becomes the emitted asm label
     (matching the C extern). -/
-def sigma0Lprog : Lprog :=
+def sigma0Lprog (_ : Unit) : Lprog :=
   legalizeShiftImmLprog
-    (Com.toLprogPhysAbi sigma0Com "small_sigma0"
+    (Com.toLprogPhysAbi (sigma0Com ()) "small_sigma0"
       (fun _ => none)                       -- shiftImm oracle (unused)
       (fun _ => none)                       -- immSlotMap (no input immediates)
       sigma0InLoadMap                       -- inLoadMap
@@ -137,7 +137,7 @@ def sigma0Lprog : Lprog :=
       [32])                                 -- abiTyin (1 u32 input)
 
 /-- The rendered owned-backend AT&T `.s` for `small_sigma0` (no jasminc). -/
-def sigma0Asm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned sigma0Lprog
+def sigma0Asm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned (sigma0Lprog ())
 
 /-! ## 4. Shape checks on the emitted asm -/
 
@@ -150,7 +150,7 @@ def sigma0Asm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptP
 def emitMain : IO Unit := do
   let dir := "bench/thir_front_sigma0/gen"
   IO.FS.createDirAll dir
-  IO.FS.writeFile (dir ++ "/small_sigma0_owned.s") sigma0Asm
+  IO.FS.writeFile (dir ++ "/small_sigma0_owned.s") (sigma0Asm ())
   IO.println "WROTE bench/thir_front_sigma0/gen/small_sigma0_owned.s"
   IO.println "  (SHA-256 message-schedule small_sigma0, the front's own sigma0Com"
   IO.println "   through Com.toLprogPhysAbi -> renderLprogAtt onto the OWNED x86"

@@ -435,16 +435,16 @@ def mpnAddmul1LcmdBody : Lcmd :=
 /-- The looped owned-RA function body: `mpnAddmul1LcmdBody` wrapped once by
     `loopLcmd` at width 64 (U64 limb counter), counter register `R8`, top label
     `0`. -/
-def mpnAddmul1Looped : Lcmd := loopLcmd 64 0 "R8" mpnAddmul1LcmdBody
+def mpnAddmul1Looped (_ : Unit) : Lcmd := loopLcmd 64 0 "R8" mpnAddmul1LcmdBody
 
 /-- The looped emission is 12 linstrs (9 body + label + cmp + cond), independent
     of the trip count. -/
-example : mpnAddmul1Looped.length = 12 := by decide
+example : (mpnAddmul1Looped ()).length = 12 := by decide
 
 /-- For the real `mpn` trip counts (`n ≥ 4`, body 9 instrs ≥ 2) the looped
     emission is strictly shorter than the unrolled one. -/
 example (n : Nat) (hn : 4 ≤ n) :
-    mpnAddmul1Looped.length < (unrollLcmd n mpnAddmul1LcmdBody).length :=
+    (mpnAddmul1Looped ()).length < (unrollLcmd n mpnAddmul1LcmdBody).length :=
   looped_shorter_than_unrolled 64 0 "R8" mpnAddmul1LcmdBody n hn (by decide)
 
 /-- Decidable substring test: `needle` occurs in `hay` iff splitting `hay` on
@@ -1433,10 +1433,10 @@ def round16WhileGuard : Lcmd :=
 
 /-- The looped while emission: body + guard-compute wrapped in the runtime-guarded
     back-edge (`gReg = RCX`, top label `0`, width 64). -/
-def round16Looped : Lcmd := whileLcmd 64 0 "RCX" round16WhileGuard round16WhileBody
+def round16Looped (_ : Unit) : Lcmd := whileLcmd 64 0 "RCX" round16WhileGuard round16WhileBody
 
 /-- The emission is 6 linstrs (label + 1 body + 2 guard-compute + cmp + cond),
     independent of the (data-dependent) trip count. -/
-example : round16Looped.length = 6 := by decide
+example : (round16Looped ()).length = 6 := by decide
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow

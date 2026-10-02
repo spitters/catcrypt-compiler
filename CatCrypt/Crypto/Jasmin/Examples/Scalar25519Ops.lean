@@ -77,7 +77,7 @@ def fromBytesModOrderBody : LowCT :=
 def fromBytesModOrderParams  : List Located := [ bytes32 "bytes_in" ]
 def fromBytesModOrderResults : List Located := [ scalar "out" ]
 
-def emitFromBytesModOrder : String :=
+def emitFromBytesModOrder (_ : Unit) : String :=
   ppRustFunction "scalar25519_from_bytes_mod_order_emit"
     fromBytesModOrderParams fromBytesModOrderResults fromBytesModOrderBody
 
@@ -92,7 +92,7 @@ def toBytesBody : LowCT :=
 def toBytesParams  : List Located := [ scalar "mont" ]
 def toBytesResults : List Located := [ bytes32 "out" ]
 
-def emitToBytes : String :=
+def emitToBytes (_ : Unit) : String :=
   ppRustFunction "scalar25519_to_bytes_emit"
     toBytesParams toBytesResults toBytesBody
 
@@ -107,7 +107,7 @@ def mulBody : LowCT :=
 def mulParams  : List Located := [ scalar "a", scalar "b" ]
 def mulResults : List Located := [ scalar "out" ]
 
-def emitMul : String :=
+def emitMul (_ : Unit) : String :=
   ppRustFunction "scalar25519_mul_emit"
     mulParams mulResults mulBody
 
@@ -116,7 +116,7 @@ def emitMul : String :=
 def addBody : LowCT :=
   LowCT.RCall "scalar25519_add_mont" (scalar "out") [scalar "a", scalar "b"]
 
-def emitAdd : String :=
+def emitAdd (_ : Unit) : String :=
   ppRustFunction "scalar25519_add_emit"
     mulParams mulResults addBody
 
@@ -125,7 +125,7 @@ def emitAdd : String :=
 def subBody : LowCT :=
   LowCT.RCall "scalar25519_sub_mont" (scalar "out") [scalar "a", scalar "b"]
 
-def emitSub : String :=
+def emitSub (_ : Unit) : String :=
   ppRustFunction "scalar25519_sub_emit"
     mulParams mulResults subBody
 
@@ -139,7 +139,7 @@ def negateBody : LowCT :=
 def negateParams  : List Located := [ scalar "a" ]
 def negateResults : List Located := [ scalar "out" ]
 
-def emitNegate : String :=
+def emitNegate (_ : Unit) : String :=
   ppRustFunction "scalar25519_negate_emit"
     negateParams negateResults negateBody
 
@@ -147,20 +147,21 @@ def emitNegate : String :=
 
 /-- Concatenate all 6 emitted function bodies into a single Rust source
     blob, separated by blank lines. -/
-def emitAll : String :=
-  emitFromBytesModOrder ++ "\n\n" ++
-  emitToBytes           ++ "\n\n" ++
-  emitMul               ++ "\n\n" ++
-  emitAdd               ++ "\n\n" ++
-  emitSub               ++ "\n\n" ++
-  emitNegate
+def emitAll (_ : Unit) : String :=
+  emitFromBytesModOrder () ++ "\n\n" ++
+  emitToBytes ()           ++ "\n\n" ++
+  emitMul ()               ++ "\n\n" ++
+  emitAdd ()               ++ "\n\n" ++
+  emitSub ()               ++ "\n\n" ++
+  emitNegate ()
 
 def runEmit : IO Unit := do
   let outPath := "/tmp/scalar25519_emitted.rs"
-  IO.FS.writeFile outPath emitAll
+  let s := emitAll ()
+  IO.FS.writeFile outPath s
   IO.println s!"wrote {outPath}"
-  IO.println s!"({emitAll.length} bytes)"
+  IO.println s!"({s.length} bytes)"
   IO.println "---"
-  IO.println emitAll
+  IO.println s
 
 end CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops

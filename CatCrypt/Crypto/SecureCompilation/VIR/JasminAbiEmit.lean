@@ -1260,10 +1260,10 @@ def emitAbiOrchLoad (name : String) (w n : Nat) : String :=
 
 /-- ABI-faithful `.jazz` for the NTT-expanded ML-KEM multiply (`tgtCom 3329 256`
     lowered to jasmin). -/
-def nttMulAbiJazz : String :=
-  emitAbiJazz "ntt_mul" (LatticeToJasmin.tgtJasmin)
+def nttMulAbiJazz (_ : Unit) : String :=
+  emitAbiJazz "ntt_mul" (LatticeToJasmin.tgtJasmin ())
 
-#eval IO.println nttMulAbiJazz
+#eval IO.println (nttMulAbiJazz ())
 
 -- Emit-text KATs for `nttMulAbiJazz` moved to `JasminAbiEmitKat`.
 
@@ -1282,10 +1282,10 @@ def memDemoCom : Com jasminDialect [.stackArr 8 32] (.stackArr 8 32) :=
     (.ret .here)
 
 /-- The emitted memory-pointer-ABI `.jazz` for the single-leaf demo. -/
-def memDemoAbiJazz : String :=
+def memDemoAbiJazz (_ : Unit) : String :=
   emitAbiOrchMem "sha3_256_mem_orch" memDemoCom
 
-#eval IO.println memDemoAbiJazz
+#eval IO.println (memDemoAbiJazz ())
 
 -- Emit-text KATs for `memDemoAbiJazz` moved to `JasminAbiEmitKat`.
 
@@ -1847,7 +1847,7 @@ inductive GF16VVOp where
     cover both `u128` halves of the `u256` `#VPSHUFB_256` lane). `T0` is the
     identity; the others are `xtime`-iterates reduced by `0x3`. These are the
     constants the GF(16) `va·x^k` PSHUFB lookups index. -/
-def gf16TimesXkTables : String :=
+def gf16TimesXkTables (_ : Unit) : String :=
   let row (name vals : String) := "u8[32] " ++ name ++ " = { " ++ vals ++ " };"
   let t0 := "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
   let t1 := "0,2,4,6,8,10,12,14,3,1,7,5,11,9,15,13"
@@ -1922,7 +1922,7 @@ def gf16HxorGrpFn : String :=
     (the few scalar `gf16_mul`). ABI: `reg ptr u8[1] out`, `reg const ptr u8[72]
     inp` (`inp[0..7] = s`, `inp[8..71] = A` row-major) — **identical** to the
     scalar MAYO kernel, so the committed KAT/bench apply unchanged. -/
-def renderMayoVecBody : List String :=
+def renderMayoVecBody (_ : Unit) : List String :=
   [ "reg u256 va vb p0 p3 one t0 t1 t2 t3 srep;"
   , "reg u128 lo hi sl;"
   , "reg u8 acc sj rs prod a b;"
@@ -1959,11 +1959,11 @@ def renderMayoVecBody : List String :=
     by `VectorReduce.scalarFold_eq_hsum` at the GF(16) lane (carried in the MAYO
     emit file as `mayoVecQuadForm_dot`). -/
 def emitMayoVecJazz (name : String) : String :=
-  gf16TimesXkTables ++ "\n\n" ++ gf16VmulFn ++ "\n\n" ++ gf16ScalarMulFn ++ "\n\n"
+  gf16TimesXkTables () ++ "\n\n" ++ gf16VmulFn ++ "\n\n" ++ gf16ScalarMulFn ++ "\n\n"
     ++ gf16HxorGrpFn ++ "\n\n"
     ++ "export fn " ++ name ++ "(reg ptr u8[1] out, reg const ptr u8[72] inp) "
     ++ "-> reg ptr u8[1] {\n  "
-    ++ String.intercalate "\n  " renderMayoVecBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderMayoVecBody ()) ++ "\n  return out;\n}"
 
 /-! ## GF(127) packed-u16 AVX2 vector EMIT mode (the EIGHTH ABI mode — VECTORIZED)
 
@@ -2028,7 +2028,7 @@ def gfq127HaddFn : String :=
     conditional subtract). ABI: `reg ptr u16[3] out`, `reg const ptr u16[48] inp`
     — **identical** to the scalar QR-UOV block-dot, so the committed KAT/bench
     apply unchanged. -/
-def renderQruovVecBody : List String :=
+def renderQruovVecBody (_ : Unit) : List String :=
   [ "reg u256 va vb vp c127 c1 zero;"
   , "reg u16 acc tmp lo;"
   , "inline int k; inline int j; inline int l;"
@@ -2072,7 +2072,7 @@ def emitQruovVecJazz (name : String) : String :=
   gfq127VredFn ++ "\n\n" ++ gfq127HaddFn ++ "\n\n"
     ++ "export fn " ++ name ++ "(reg ptr u16[3] out, reg const ptr u16[48] inp) "
     ++ "-> reg ptr u16[3] {\n  "
-    ++ String.intercalate "\n  " renderQruovVecBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderQruovVecBody ()) ++ "\n  return out;\n}"
 
 /-! ## ChaCha 4-way lane-parallel-map AVX2 EMIT mode (the NINTH ABI mode — VECTORIZED)
 
@@ -2183,27 +2183,27 @@ def renderChacha4wayQR (a b c d : Nat) : List String :=
 
 /-- One ChaCha 4-way column round (RFC 8439 §2.3 on the 4-way packed state):
     four packed quarter-rounds on the four columns. -/
-def renderChacha4wayColumnRound : List String :=
+def renderChacha4wayColumnRound (_ : Unit) : List String :=
   renderChacha4wayQR 0 4 8  12 ++
   renderChacha4wayQR 1 5 9  13 ++
   renderChacha4wayQR 2 6 10 14 ++
   renderChacha4wayQR 3 7 11 15
 
 /-- One ChaCha 4-way diagonal round: packed QRs on the four diagonals. -/
-def renderChacha4wayDiagRound : List String :=
+def renderChacha4wayDiagRound (_ : Unit) : List String :=
   renderChacha4wayQR 0 5 10 15 ++
   renderChacha4wayQR 1 6 11 12 ++
   renderChacha4wayQR 2 7 8  13 ++
   renderChacha4wayQR 3 4 9  14
 
 /-- One double-round = column-round then diagonal-round. -/
-def renderChacha4wayDoubleRound : List String :=
-  renderChacha4wayColumnRound ++ renderChacha4wayDiagRound
+def renderChacha4wayDoubleRound (_ : Unit) : List String :=
+  renderChacha4wayColumnRound () ++ renderChacha4wayDiagRound ()
 
 /-- `n` double-rounds, concatenated. -/
 def renderChacha4wayDoubleRounds : Nat → List String
   | 0 => []
-  | (k+1) => renderChacha4wayDoubleRound ++ renderChacha4wayDoubleRounds k
+  | (k+1) => renderChacha4wayDoubleRound () ++ renderChacha4wayDoubleRounds k
 
 /-! ### SoA load/store: transpose 4 blocks × 16 words ↔ 16 lanes × 4 blocks
 
@@ -2217,7 +2217,7 @@ the readable form; HACL* uses the same logical transpose. -/
 /-- Render the SoA load: for each `j` in `0..15`, fill `m[j]` lane `b` with
     `inp[16*b + j]` for `b` in `0..3`. Uses a stack `u32[4]` scratch then a
     `:u128` load into the working `w0`, then stored into `m[j]`. -/
-def renderChacha4wayLoad : List String :=
+def renderChacha4wayLoad (_ : Unit) : List String :=
   let oneWord (j : Nat) : List String :=
     [ "tbuf[0] = inp[" ++ toString (0  + j) ++ "];"
     , "tbuf[1] = inp[" ++ toString (16 + j) ++ "];"
@@ -2232,7 +2232,7 @@ def renderChacha4wayLoad : List String :=
     `m[j]` (rounds output) and `orig[j]` (the saved original) into `w0`/`w1`,
     add `w0 += w1` (one `#VPADD_4u32`), then unpack the 4 lanes into
     `out[16*b + j]` for `b` in `0..3`. -/
-def renderChacha4wayStore : List String :=
+def renderChacha4wayStore (_ : Unit) : List String :=
   let oneWord (j : Nat) : List String :=
     [ "w0 = m[:u128 " ++ toString j ++ "];"
     , "w1 = orig[:u128 " ++ toString j ++ "];"
@@ -2254,15 +2254,15 @@ def renderChacha4wayStore : List String :=
     AVX2's 16 XMM. Every packed op (`#VPADD_4u32`, `#VPXOR_128`,
     `#VPSLL_4u32`/`#VPSRL_4u32`/`#VPOR_128`) acts on 4 lanes in parallel —
     the lane-parallel-MAP shape (`LaneMap.vmap`). -/
-def renderChacha4wayBody : List String :=
+def renderChacha4wayBody (_ : Unit) : List String :=
   let decls :=
     [ "reg u128 w0 w1;"
     , "stack u128[16] m;"
     , "stack u128[16] orig;"
     , "stack u32[4] tbuf;" ]
-  decls ++ renderChacha4wayLoad ++
+  decls ++ renderChacha4wayLoad () ++
     renderChacha4wayDoubleRounds 10 ++
-    renderChacha4wayStore
+    renderChacha4wayStore ()
 
 /-- Focused AVX2 vectorized emission of ChaCha20 4-way (the NINTH ABI mode, the
     LANE-PARALLEL-MAP analogue of `emitFrodoVecJazz`). ABI:
@@ -2283,7 +2283,7 @@ def emitChacha4wayJazz (name : String) : String :=
   let paramStrs := ["reg ptr u32[64] out", "reg const ptr u32[64] inp"]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
-    ++ String.intercalate "\n  " renderChacha4wayBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderChacha4wayBody ()) ++ "\n  return out;\n}"
 
 /-! ## ChaCha 4-way XMM-RESIDENT EMIT mode (the SIXTEENTH ABI mode — REG-RESIDENT 4-WAY)
 
@@ -2448,27 +2448,27 @@ def renderChacha4wayXmmQR (a b c d : Nat) : List String :=
   renderChacha4wayXmmRotL b 7              -- b <<<= 7
 
 /-- One column round (XMM-resident): four packed quarter-rounds on the columns. -/
-def renderChacha4wayXmmColumnRound : List String :=
+def renderChacha4wayXmmColumnRound (_ : Unit) : List String :=
   renderChacha4wayXmmQR 0 4 8  12 ++
   renderChacha4wayXmmQR 1 5 9  13 ++
   renderChacha4wayXmmQR 2 6 10 14 ++
   renderChacha4wayXmmQR 3 7 11 15
 
 /-- One diagonal round (XMM-resident). -/
-def renderChacha4wayXmmDiagRound : List String :=
+def renderChacha4wayXmmDiagRound (_ : Unit) : List String :=
   renderChacha4wayXmmQR 0 5 10 15 ++
   renderChacha4wayXmmQR 1 6 11 12 ++
   renderChacha4wayXmmQR 2 7 8  13 ++
   renderChacha4wayXmmQR 3 4 9  14
 
 /-- One double-round (XMM-resident). -/
-def renderChacha4wayXmmDoubleRound : List String :=
-  renderChacha4wayXmmColumnRound ++ renderChacha4wayXmmDiagRound
+def renderChacha4wayXmmDoubleRound (_ : Unit) : List String :=
+  renderChacha4wayXmmColumnRound () ++ renderChacha4wayXmmDiagRound ()
 
 /-- `n` double-rounds (XMM-resident), concatenated. -/
 def renderChacha4wayXmmDoubleRounds : Nat → List String
   | 0 => []
-  | (k+1) => renderChacha4wayXmmDoubleRound ++ renderChacha4wayXmmDoubleRounds k
+  | (k+1) => renderChacha4wayXmmDoubleRound () ++ renderChacha4wayXmmDoubleRounds k
 
 /-- SoA load (XMM-resident state, stack-spilled originals): for each `j` in
     `0..15`, gather `inp[16*b + j]` for `b` in `0..3` into a `u128` and bind
@@ -2478,7 +2478,7 @@ def renderChacha4wayXmmDoubleRounds : Nat → List String
     `Lib_IntVector_Intrinsics_vec256` state locals get XMM registers across
     rounds, but the 16 originals live on the stack (the AVX2 16-XMM file
     can't hold 32 live vectors). -/
-def renderChacha4wayXmmLoad : List String :=
+def renderChacha4wayXmmLoad (_ : Unit) : List String :=
   let oneWord (j : Nat) : List String :=
     let common :=
       [ "tbuf[0] = inp[" ++ toString (0  + j) ++ "];"
@@ -2503,7 +2503,7 @@ def renderChacha4wayXmmLoad : List String :=
     for each `j`, load `orig[j]` from the stack into the rotate scratch
     `w0`, add to the rounds output (`m{j}`) with ONE `#VPADD_4u32`, then
     scatter the 4 lanes to `out[16*b + j]`. -/
-def renderChacha4wayXmmStore : List String :=
+def renderChacha4wayXmmStore (_ : Unit) : List String :=
   let oneWord (j : Nat) : List String :=
     if chacha4wayXmmIsReg j then
       let mj := chacha4wayXmmSlotName j
@@ -2544,7 +2544,7 @@ def renderXmmRegDecl (pfx : String) (n : Nat) : String :=
     this matches HACL* `Hacl_Chacha20_Vec256`'s strategy exactly). The
     `tbuf` scalar staging u32[4] is reused for AoS↔SoA transpose at
     load/store time. -/
-def renderChacha4wayXmmBody : List String :=
+def renderChacha4wayXmmBody (_ : Unit) : List String :=
   -- Register budget. AVX2 has 16 XMM. The ARX rotate's three-line packed
   -- shift pattern (`x <<= n`, `tmp >>= 32-n`, `x |= tmp`) requires TWO
   -- temporary XMMs (`w0` for the new value, `w1` for the rotate-right). So
@@ -2571,9 +2571,9 @@ def renderChacha4wayXmmBody : List String :=
     , "stack u128 m15s;"
     , "stack u128[16] orig;"
     , "stack u32[4] tbuf;" ]
-  decls ++ renderChacha4wayXmmLoad ++
+  decls ++ renderChacha4wayXmmLoad () ++
     renderChacha4wayXmmDoubleRounds 10 ++
-    renderChacha4wayXmmStore
+    renderChacha4wayXmmStore ()
 
 /-- **SIXTEENTH ABI mode (XMM-RESIDENT 4-way ChaCha20, additive).** Same ABI
     as the stack-resident 4-way (`emitChacha4wayJazz`): 4 ChaCha blocks at
@@ -2592,7 +2592,7 @@ def emitChacha4wayXmmJazz (name : String) : String :=
   let paramStrs := ["reg ptr u32[64] out", "reg const ptr u32[64] inp"]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
-    ++ String.intercalate "\n  " renderChacha4wayXmmBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderChacha4wayXmmBody ()) ++ "\n  return out;\n}"
 
 -- Emit-text KATs for `emitChacha4wayXmmJazz` moved to `JasminAbiEmitKat`.
 
@@ -2705,27 +2705,27 @@ def renderChacha4wayXmmPshufbQR (a b c d : Nat) : List String :=
   renderChacha4wayXmmRotPshufbOrShl b 7                        -- b <<<= 7   (shift-or)
 
 /-- One column round (PSHUFB variant): four packed QRs on the columns. -/
-def renderChacha4wayXmmPshufbColumnRound : List String :=
+def renderChacha4wayXmmPshufbColumnRound (_ : Unit) : List String :=
   renderChacha4wayXmmPshufbQR 0 4 8  12 ++
   renderChacha4wayXmmPshufbQR 1 5 9  13 ++
   renderChacha4wayXmmPshufbQR 2 6 10 14 ++
   renderChacha4wayXmmPshufbQR 3 7 11 15
 
 /-- One diagonal round (PSHUFB variant): four packed QRs on the diagonals. -/
-def renderChacha4wayXmmPshufbDiagRound : List String :=
+def renderChacha4wayXmmPshufbDiagRound (_ : Unit) : List String :=
   renderChacha4wayXmmPshufbQR 0 5 10 15 ++
   renderChacha4wayXmmPshufbQR 1 6 11 12 ++
   renderChacha4wayXmmPshufbQR 2 7 8  13 ++
   renderChacha4wayXmmPshufbQR 3 4 9  14
 
 /-- One double-round (PSHUFB variant). -/
-def renderChacha4wayXmmPshufbDoubleRound : List String :=
-  renderChacha4wayXmmPshufbColumnRound ++ renderChacha4wayXmmPshufbDiagRound
+def renderChacha4wayXmmPshufbDoubleRound (_ : Unit) : List String :=
+  renderChacha4wayXmmPshufbColumnRound () ++ renderChacha4wayXmmPshufbDiagRound ()
 
 /-- `n` PSHUFB-variant double-rounds, concatenated. -/
 def renderChacha4wayXmmPshufbDoubleRounds : Nat → List String
   | 0 => []
-  | (k+1) => renderChacha4wayXmmPshufbDoubleRound ++
+  | (k+1) => renderChacha4wayXmmPshufbDoubleRound () ++
              renderChacha4wayXmmPshufbDoubleRounds k
 
 /-- The full body of the PSHUFB-variant XMM-resident 4-way ChaCha20. Same
@@ -2740,7 +2740,7 @@ def renderChacha4wayXmmPshufbDoubleRounds : Nat → List String
     The state-register file (`m0..m13` + spills + scratches) is the one of
     `emitChacha4wayXmmJazz` — the PSHUFB rotates reuse the existing `w0`/`w1` scratches
     for the mask load + apply sequence, so register pressure is identical. -/
-def renderChacha4wayXmmPshufbBody : List String :=
+def renderChacha4wayXmmPshufbBody (_ : Unit) : List String :=
   let decls :=
     [ renderXmmRegDecl "m" 14
     , "reg u128 w0 w1;"
@@ -2752,9 +2752,9 @@ def renderChacha4wayXmmPshufbBody : List String :=
     , "stack u128[16] orig;"
     , "stack u32[4] tbuf;" ]
   decls ++ chachaPshufbMaskLoad ++
-    renderChacha4wayXmmLoad ++
+    renderChacha4wayXmmLoad () ++
     renderChacha4wayXmmPshufbDoubleRounds 10 ++
-    renderChacha4wayXmmStore
+    renderChacha4wayXmmStore ()
 
 /-- **PSHUFB-rotate XMM-resident 4-way ChaCha20 (Phase C step 1).** Same
     ABI as `emitChacha4wayXmmJazz` (4 ChaCha blocks AoS in/out via two
@@ -2783,7 +2783,7 @@ def emitChacha4wayXmmPshufbJazz (name : String) : String :=
   chachaRot16MaskDecl ++ "\n" ++ chachaRot8MaskDecl ++ "\n\n" ++
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
-    ++ String.intercalate "\n  " renderChacha4wayXmmPshufbBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderChacha4wayXmmPshufbBody ()) ++ "\n  return out;\n}"
 
 -- Emit-text KATs for `emitChacha4wayXmmPshufbJazz` moved to `JasminAbiEmitKat`.
 
@@ -2848,7 +2848,7 @@ def multtab : List Nat := (List.range 256).map (fun i => gf16MulSlow (i / 16) (i
 
 /-- Rendered jasmin `u8[256]` global decl for the multtab — the constant the
     `gf16_mul_tab` inline lookup indexes. -/
-def gf16MulttabDecl : String :=
+def gf16MulttabDecl (_ : Unit) : String :=
   "u8[256] SNOVA_GF16_MULTTAB = { "
     ++ String.intercalate "," (multtab.map toString)
     ++ " };"
@@ -2925,7 +2925,7 @@ def emitSnovaRingDotTabExport (name : String) (numBlocks lring : Nat) : String :
 /-- Standalone TABLE-LOOKUP ring-matmul kernel `.jazz`: the multtab global +
     the `gf16_mul_tab` helper + the ring-dot export. -/
 def emitSnovaRingDotTabJazz (name : String) (numBlocks lring : Nat) : String :=
-  gf16MulttabDecl ++ "\n\n" ++ gf16MulTabFn ++ "\n\n"
+  gf16MulttabDecl () ++ "\n\n" ++ gf16MulTabFn ++ "\n\n"
     ++ emitSnovaRingDotTabExport name numBlocks lring
 
 /-! ### Denotation preservation: `gf16TabMul = gf16MulSlow` (the 256-byte
@@ -3059,7 +3059,7 @@ def renderKeccakAccumXor : List String :=
     (init), then XOR rows 1..4 into `v1` via `renderKeccakLoadRow` +
     `renderKeccakAccumXor`. Finally store `v1` lanes back to `k[25..28]` (the
     parity slots for columns 0..3). -/
-def renderThetaCSimd : List String :=
+def renderThetaCSimd (_ : Unit) : List String :=
   -- Init: v1 = row 0 of columns 0..3
   renderKeccakLoadRow 0 ++ [ "v1 = v0;" ] ++
   -- XOR rows 1..4
@@ -3141,7 +3141,7 @@ def renderThetaDApply (x : Nat) : List String :=
     , "k[" ++ toString slot ++ "] = w1;" ])
 
 /-- Render the θ step (D-computation + apply) for all 5 columns. -/
-def renderThetaDSimd : List String :=
+def renderThetaDSimd (_ : Unit) : List String :=
   (List.range 5).flatMap (fun x => renderThetaD x ++ renderThetaDApply x)
 
 /-- Render one ρ-rotate of lane `i` (rotation amount `rhoOffsetSimd i`),
@@ -3166,7 +3166,7 @@ def renderRhoPiLaneSimd (i : Nat) : List String :=
     , "k[" ++ toString bSlot ++ "] = w0;" ]
 
 /-- Render ρ∘π for all 25 lanes. -/
-def renderRhoPiSimd : List String :=
+def renderRhoPiSimd (_ : Unit) : List String :=
   (List.range 25).flatMap renderRhoPiLaneSimd
 
 /-- Render χ for one lane `(x,y)` (scalar; the χ nonlinear layer doesn't
@@ -3186,7 +3186,7 @@ def renderChiLaneSimd (x y : Nat) : List String :=
   , "k[" ++ toString aSlot ++ "] = w1;" ]
 
 /-- Render χ for all 25 lanes. -/
-def renderChiSimd : List String :=
+def renderChiSimd (_ : Unit) : List String :=
   (List.range 5).flatMap (fun y =>
     (List.range 5).flatMap (fun x => renderChiLaneSimd x y))
 
@@ -3198,31 +3198,31 @@ def renderIotaSimd (round : Nat) : List String :=
 
 /-- One full Keccak round (SIMD-θ + scalar ρ∘π + scalar χ + scalar ι). -/
 def renderKeccakRoundSimd (round : Nat) : List String :=
-  renderThetaCSimd ++ renderThetaDSimd ++ renderRhoPiSimd ++
-    renderChiSimd ++ renderIotaSimd round
+  renderThetaCSimd () ++ renderThetaDSimd () ++ renderRhoPiSimd () ++
+    renderChiSimd () ++ renderIotaSimd round
 
 /-- All 24 rounds, concatenated. -/
-def renderKeccak24RoundsSimd : List String :=
+def renderKeccak24RoundsSimd (_ : Unit) : List String :=
   (List.range 24).flatMap renderKeccakRoundSimd
 
 /-- Load input state: copy `inp[0..24]` to `k[0..24]`. -/
-def renderKeccakLoad : List String :=
+def renderKeccakLoad (_ : Unit) : List String :=
   (List.range 25).map (fun i =>
     "k[" ++ toString i ++ "] = inp[" ++ toString i ++ "];")
 
 /-- Store output state: copy `k[0..24]` to `out[0..24]`. -/
-def renderKeccakStore : List String :=
+def renderKeccakStore (_ : Unit) : List String :=
   (List.range 25).map (fun i =>
     "out[" ++ toString i ++ "] = k[" ++ toString i ++ "];")
 
 /-- The full Keccak SIMD body: decls + load + 24 rounds + store. -/
-def renderKeccakSimdBody : List String :=
+def renderKeccakSimdBody (_ : Unit) : List String :=
   let decls :=
     [ "reg u64 w0 w1;"
     , "reg u256 v0 v1;"
     , "stack u64[57] k;"
     , "stack u64[4] tbuf;" ]
-  decls ++ renderKeccakLoad ++ renderKeccak24RoundsSimd ++ renderKeccakStore
+  decls ++ renderKeccakLoad () ++ renderKeccak24RoundsSimd () ++ renderKeccakStore ()
 
 /-- Focused AVX2 vectorized emission of Keccak-p[1600,24] (the ELEVENTH ABI
     mode, the LANE-PARALLEL-MAP analogue of `emitChacha4wayJazz` at 64-bit
@@ -3248,7 +3248,7 @@ def emitKeccakSimdJazz (name : String) : String :=
   let paramStrs := ["reg ptr u64[25] out", "reg const ptr u64[25] inp"]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u64[25] {\n  "
-    ++ String.intercalate "\n  " renderKeccakSimdBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (renderKeccakSimdBody ()) ++ "\n  return out;\n}"
 
 -- Emit-text KATs for `emitKeccakSimdJazz` moved to `JasminAbiEmitKat`.
 
@@ -3569,7 +3569,7 @@ def renderSha256RoundFull (t : Nat) : List String :=
   (if t ≥ 16 then renderSched256Clean t else []) ++ renderRound256 t
 
 /-- Render the 64 rounds for one SHA-256 block. -/
-def renderSha256AllRounds : List String :=
+def renderSha256AllRounds (_ : Unit) : List String :=
   (List.range 64).flatMap renderSha256RoundFull
 
 /-- Load 16 message words for block `b` from `M[16*b .. 16*b + 15]` into the
@@ -3581,7 +3581,7 @@ def renderLoadBlock256 (b : Nat) : List String :=
 
 /-- The feed-forward at end of one block: `a..h += s_a..s_h`. The saved
     incoming chaining state lives in stack `S[0..7]`. -/
-def renderFeedForward256 : List String :=
+def renderFeedForward256 (_ : Unit) : List String :=
   -- s_a = a + s_a; ...; s_h = h + s_h; (we accumulate into S, the incoming
   -- digest, and reload a..h from S for the next block.)
   (List.range 8).flatMap (fun i =>
@@ -3591,7 +3591,7 @@ def renderFeedForward256 : List String :=
     , "S[" ++ toString i ++ "] = t0;" ])
 
 /-- Reload `a..h` from `S[0..7]` (start of each block after the first). -/
-def renderReloadState256 : List String :=
+def renderReloadState256 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ reg ++ " = S[" ++ toString i ++ "];" ])
@@ -3607,33 +3607,33 @@ def renderSha256Block (b : Nat) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ "S[" ++ toString i ++ "] = " ++ reg ++ ";" ]) ++
-  renderSha256AllRounds ++
-  renderFeedForward256 ++
-  renderReloadState256
+  renderSha256AllRounds () ++
+  renderFeedForward256 () ++
+  renderReloadState256 ()
 
 /-- Initial load: chaining digest `state[0..7]` → `a..h` (and save to `S` too —
     no, we'll save in the per-block step). -/
-def renderInitialLoad256 : List String :=
+def renderInitialLoad256 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ reg ++ " = state[" ++ toString i ++ "];" ])
 
 /-- Final store: chaining digest `S[0..7]` → `state[0..7]`. After the last
     block's feed-forward + reload, `S` holds the final digest. -/
-def renderFinalStore256 : List String :=
+def renderFinalStore256 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     [ "t0 = S[" ++ toString i ++ "];"
     , "state[" ++ toString i ++ "] = t0;" ])
 
 /-- The full N=4 SHA-256 batched body. -/
-def renderSha256BatchedBody : List String :=
+def renderSha256BatchedBody (_ : Unit) : List String :=
   let decls :=
     [ "reg u32 a b c d e f g h;"
     , "reg u32 t0 t1 t2 t3;"
     , "stack u32[16] W;"
     , "stack u32[8] S;" ]
   decls ++
-  renderInitialLoad256 ++
+  renderInitialLoad256 () ++
   ((List.range 4).flatMap renderSha256Block)
 
 /-- Focused register-resident emission of N=4 batched SHA-256 (the TWELFTH ABI
@@ -3659,8 +3659,8 @@ def emitSha256BatchedJazz (name : String) : String :=
     , "reg const ptr u32[64] M" ]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[8] {\n  "
-    ++ String.intercalate "\n  " renderSha256BatchedBody ++ "\n  "
-    ++ String.intercalate "\n  " renderFinalStore256 ++ "\n  return state;\n}"
+    ++ String.intercalate "\n  " (renderSha256BatchedBody ()) ++ "\n  "
+    ++ String.intercalate "\n  " (renderFinalStore256 ()) ++ "\n  return state;\n}"
 
 -- Emit-text KATs for `emitSha256BatchedJazz` moved to `JasminAbiEmitKat`.
 
@@ -3727,7 +3727,7 @@ def renderSched512 (t : Nat) : List String :=
 def renderSha512RoundFull (t : Nat) : List String :=
   (if t ≥ 16 then renderSched512 t else []) ++ renderRound512 t
 
-def renderSha512AllRounds : List String :=
+def renderSha512AllRounds (_ : Unit) : List String :=
   (List.range 80).flatMap renderSha512RoundFull
 
 def renderLoadBlock512 (b : Nat) : List String :=
@@ -3735,14 +3735,14 @@ def renderLoadBlock512 (b : Nat) : List String :=
     [ "t0 = M[" ++ toString (16 * b + j) ++ "];"
     , "W[" ++ toString j ++ "] = t0;" ])
 
-def renderFeedForward512 : List String :=
+def renderFeedForward512 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ "t0 = S[" ++ toString i ++ "];"
     , "t0 = t0 + " ++ reg ++ ";"
     , "S[" ++ toString i ++ "] = t0;" ])
 
-def renderReloadState512 : List String :=
+def renderReloadState512 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ reg ++ " = S[" ++ toString i ++ "];" ])
@@ -3752,28 +3752,28 @@ def renderSha512Block (b : Nat) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ "S[" ++ toString i ++ "] = " ++ reg ++ ";" ]) ++
-  renderSha512AllRounds ++
-  renderFeedForward512 ++
-  renderReloadState512
+  renderSha512AllRounds () ++
+  renderFeedForward512 () ++
+  renderReloadState512 ()
 
-def renderInitialLoad512 : List String :=
+def renderInitialLoad512 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let reg := workingRegs.getD i ""
     [ reg ++ " = state[" ++ toString i ++ "];" ])
 
-def renderFinalStore512 : List String :=
+def renderFinalStore512 (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     [ "t0 = S[" ++ toString i ++ "];"
     , "state[" ++ toString i ++ "] = t0;" ])
 
-def renderSha512BatchedBody : List String :=
+def renderSha512BatchedBody (_ : Unit) : List String :=
   let decls :=
     [ "reg u64 a b c d e f g h;"
     , "reg u64 t0 t1 t2 t3;"
     , "stack u64[16] W;"
     , "stack u64[8] S;" ]
   decls ++
-  renderInitialLoad512 ++
+  renderInitialLoad512 () ++
   ((List.range 4).flatMap renderSha512Block)
 
 /-- N=4 batched SHA-512 emit. ABI:
@@ -3785,8 +3785,8 @@ def emitSha512BatchedJazz (name : String) : String :=
     , "reg const ptr u64[64] M" ]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u64[8] {\n  "
-    ++ String.intercalate "\n  " renderSha512BatchedBody ++ "\n  "
-    ++ String.intercalate "\n  " renderFinalStore512 ++ "\n  return state;\n}"
+    ++ String.intercalate "\n  " (renderSha512BatchedBody ()) ++ "\n  "
+    ++ String.intercalate "\n  " (renderFinalStore512 ()) ++ "\n  return state;\n}"
 
 -- Emit-text KATs for `emitSha512BatchedJazz` moved to `JasminAbiEmitKat`.
 
@@ -3992,14 +3992,14 @@ def renderAllRounds (sp : MBSpec) : List String :=
 /-- Load the 16 message YMMs `msg[0..15]` into the schedule window `W[0..15]`.
     Routed through a register `vt0` — jasmin has no direct mem-to-mem
     `VMOVDQU_256` (ptr-element to stack-element). -/
-def renderLoadMsg : List String :=
+def renderLoadMsg (_ : Unit) : List String :=
   (List.range 16).flatMap (fun j =>
     [ "vt0 = msg[" ++ toString j ++ "];"
     , "W[" ++ toString j ++ "] = vt0;" ])
 
 /-- Load chaining `state[0..7]` into working YMMs `va..vh` and save a copy in
     `S[0..7]` for the feed-forward. -/
-def renderLoadState : List String :=
+def renderLoadState (_ : Unit) : List String :=
   (List.range 8).flatMap (fun i =>
     let r := vRegs.getD i ""
     [ r ++ " = state[" ++ toString i ++ "];"
@@ -4023,7 +4023,7 @@ def renderDecls : List String :=
 
 /-- The full multi-buffer body. -/
 def renderBody (sp : MBSpec) : List String :=
-  renderDecls ++ renderLoadState ++ renderLoadMsg ++ renderAllRounds sp ++ renderFeedStore sp
+  renderDecls ++ renderLoadState () ++ renderLoadMsg () ++ renderAllRounds sp ++ renderFeedStore sp
 
 /-- The full multi-buffer `.jazz` export. ABI: `reg ptr u256[8] state` (in/out
     chaining, SoA — `state[i]` is word `i` for all N lanes), `reg const ptr
@@ -4199,21 +4199,21 @@ def logTab : List Nat := Id.run do
 
 /-- Rendered jasmin `u8[256]` global decl for the logTab — the constant the
     `gf256_mul_tab` inline lookup indexes first. -/
-def gf256LogTabDecl : String :=
+def gf256LogTabDecl (_ : Unit) : String :=
   "u8[256] UOV_GF256_LOGTAB = { "
     ++ String.intercalate "," (logTab.map toString)
     ++ " };"
 
 /-- Rendered jasmin `u8[512]` global decl for the expTab — the constant the
     `gf256_mul_tab` inline lookup indexes second (with `logTab[a]+logTab[b]`). -/
-def gf256ExpTabDecl : String :=
+def gf256ExpTabDecl (_ : Unit) : String :=
   "u8[512] UOV_GF256_EXPTAB = { "
     ++ String.intercalate "," (expTab.map toString)
     ++ " };"
 
 /-- Both tables in one rendered string. -/
-def gf256TabDecls : String :=
-  gf256LogTabDecl ++ "\n" ++ gf256ExpTabDecl
+def gf256TabDecls (_ : Unit) : String :=
+  gf256LogTabDecl () ++ "\n" ++ gf256ExpTabDecl ()
 
 /-- The TABLE-LOOKUP GF(256) multiply helper `gf256_mul_tab`. Hot path:
     branchlessly compute the "both nonzero" mask `m = -(a!=0) & -(b!=0)` as
@@ -4341,7 +4341,7 @@ def emitUovQformTabExport (name : String) (n : Nat) : String :=
 /-- Standalone TABLE-LOOKUP UOV kernel `.jazz`: log+exp tables + the
     `gf256_mul_tab` helper + the dot + the qform exports. -/
 def emitUovKernelTabJazz (dotName qformName : String) (Llen n : Nat) : String :=
-  gf256TabDecls ++ "\n\n" ++ gf256MulTabFn ++ "\n\n"
+  gf256TabDecls () ++ "\n\n" ++ gf256MulTabFn ++ "\n\n"
     ++ emitUovDotTabExport dotName Llen ++ "\n\n"
     ++ emitUovQformTabExport qformName n
 
@@ -4752,7 +4752,7 @@ def renderGfInvLines (xIn yOut : String) : List String :=
 /-- Emit the bitsliced S-box as a jasmin `inline fn` taking 8 bit-plane
     inputs and writing 8 bit-plane outputs. The body is the pure-boolean
     `affine ∘ gfInv` composition — every line is `xor`/`and`/`not`. -/
-def emitAesSboxBitsliceFn : String :=
+def emitAesSboxBitsliceFn (_ : Unit) : String :=
   let header :=
     "inline fn aes_sbox_bitslice(\n"
     ++ "    reg u64 b0, reg u64 b1, reg u64 b2, reg u64 b3,\n"
@@ -4793,8 +4793,8 @@ def emitAesSboxBitsliceFn : String :=
     Correctness anchor: `aesSboxBitslice_eq_sbox` (256-entry `native_decide`).
     The KAT at `bench/aes_compare/` confirms byte-identity to FIPS 197
     Table 4 operationally over all 256 inputs. -/
-def emitAes128SboxKernelJazz : String :=
-  emitAesSboxBitsliceFn ++ "\n\n"
+def emitAes128SboxKernelJazz (_ : Unit) : String :=
+  emitAesSboxBitsliceFn () ++ "\n\n"
     ++ "export fn aes_sbox_apply("
     ++ "reg ptr u8[8] outp, reg const ptr u8[8] inp) -> reg ptr u8[8] {\n"
     ++ "  // 8-way packed AES S-box: 8 input bytes → 8 output bytes.\n"
@@ -4935,7 +4935,7 @@ def renderLaneAddRc (table : String) (r g : Nat) : List String :=
     (SIMD lane-add of RC, then scalar S-box + MDS) + 13 partial rounds
     (scalar) + 4 terminal external rounds (SIMD lane-add of RC, then scalar
     S-box + MDS) + store. -/
-def renderPoseidon2SimdBody : List String :=
+def renderPoseidon2SimdBody (_ : Unit) : List String :=
   let decls :=
     [ "stack u64[16] s;"
     , "stack u64[4] tbuf;"
@@ -5009,9 +5009,9 @@ def renderPoseidon2SimdBody : List String :=
     (`Poseidon2Emit.poseidon2Jazz`); this body assumes those helpers are
     already in scope (the emitted `.jazz` file concatenates the scalar
     helper block with this SIMD body). -/
-def emitPoseidon2SimdBodyJazz : String :=
+def emitPoseidon2SimdBodyJazz (_ : Unit) : String :=
   "export fn poseidon2_bb(reg u64 outp, reg u64 inp) -> reg u64 {\n  "
-    ++ String.intercalate "\n  " renderPoseidon2SimdBody
+    ++ String.intercalate "\n  " (renderPoseidon2SimdBody ())
     ++ "\n  return outp;\n}"
 
 -- Emit-text KATs for `emitPoseidon2SimdBodyJazz` moved to `JasminAbiEmitKat`.

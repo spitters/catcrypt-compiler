@@ -216,7 +216,7 @@ def demoΓouter : Ctxt jasminDialect :=
     `whileNz`'s guard is `n` (slot 3), init is `acc` (slot 0), its one invariant is
     `a` (slot 2).  The outer `forLoopBlock` trips `M` (slot 0 of `demoΓouter`),
     seeds `acc` (slot 1), invariants `a` (slot 2), `n` (slot 3). -/
-def demoNested : Option (ComL demoΓouter (.reg 64)) :=
+def demoNested (_ : Unit) : Option (ComL demoΓouter (.reg 64)) :=
   lowerNestedLoop
     (Γouter := demoΓouter) (accCTy := .sword 64)
     (outerInvCTys := [.memref 3, .sword 64]) (innerInvCTys := [.memref 3])
@@ -230,18 +230,18 @@ def demoNested : Option (ComL demoΓouter (.reg 64)) :=
                    (.cons (.there (.there (.there .here))) .nil))  -- n
 
 /-- **The front generates the nested loop** (the inner leaf body front-compiles). -/
-theorem demoNested_isSome : demoNested.isSome := by native_decide
+theorem demoNested_isSome : (demoNested ()).isSome := by native_decide
 
 /-- **The outer spine is the block-body loop node** `forLoopBlock`. -/
 theorem demoNested_is_forLoopBlock_node :
-    (demoNested.map (fun c => match c with
+    ((demoNested ()).map (fun c => match c with
       | .forLoopBlock _ _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
 /-- **The inner (recursive) body is a `whileNz` do-while NODE**, not an
     unrolled straight-line chain — the block node carries a real inner loop. -/
 theorem demoNested_inner_is_whileNz_node :
-    (demoNested.map (fun c => match c with
+    ((demoNested ()).map (fun c => match c with
       | .forLoopBlock (.whileNz _ _ _ _ _) _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
@@ -265,20 +265,20 @@ def demoDoubleRef (M n : Nat) : Nat :=
     front-generated `forLoopBlock`-over-`whileNz` denotes to
     `2 · (10+20+30) = 120` — the outer fold of the inner accumulate. -/
 theorem demoNested_denote_double :
-    (demoNested.map (fun c => BitVec.toNat (ComL.denote c (demoVal 2 3))))
+    ((demoNested ()).map (fun c => BitVec.toNat (ComL.denote c (demoVal 2 3))))
       = some (demoDoubleRef 2 3) := by native_decide
 
 /-- **Same program, different trip counts** — the trip counts are read off the
     seed valuation, not baked in: `M = 3`, `n = 2` → `3 · (10+20) = 90`. -/
 theorem demoNested_denote_double' :
-    (demoNested.map (fun c => BitVec.toNat (ComL.denote c (demoVal 3 2))))
+    ((demoNested ()).map (fun c => BitVec.toNat (ComL.denote c (demoVal 3 2))))
       = some (demoDoubleRef 3 2) := by native_decide
 
 /-- **Two bottom-test back-edges** (outer + inner): the `comLToBody`
     lowering of the nested loop carries exactly **two** `Lcond NZ` conditional
     jumps — real nested control flow, not an unrolled chain. -/
 theorem demoNested_two_backedges :
-    (demoNested.map (fun c =>
+    ((demoNested ()).map (fun c =>
         let body := comLToBody 4 argName (fun _ => none) c 4
         (body.filter (fun i => match i.li_i with
             | .Lcond (.reg "NZ") _ => true | _ => false)).length == 2))
@@ -289,7 +289,7 @@ theorem demoNested_two_backedges :
     `Lcond Z` in the lowering is the outer block's counted zero-trip skip (the
     `forLoopBlock` frame), so there is exactly **one** `Lcond Z`, not two. -/
 theorem demoNested_inner_dowhile :
-    (demoNested.map (fun c =>
+    ((demoNested ()).map (fun c =>
         let body := comLToBody 4 argName (fun _ => none) c 4
         (body.filter (fun i => match i.li_i with
             | .Lcond (.reg "Z") _ => true | _ => false)).length == 1))
@@ -298,7 +298,7 @@ theorem demoNested_inner_dowhile :
 /-- **The lowered nested body ends with `Lret`** — the two loop back-edges are
     interior control flow; the outer continuation's `.ret` is last. -/
 theorem demoNested_ends_Lret :
-    (demoNested.map (fun c =>
+    ((demoNested ()).map (fun c =>
         match (comLToBody 4 argName (fun _ => none) c 4).getLast? with
         | some i => (match i.li_i with | .Lret => true | _ => false)
         | none => false))
@@ -416,7 +416,7 @@ abbrev spliceΓ2 : Ctxt jasminDialect := (.reg 64) :: spliceΓblk
 abbrev spliceΓ3 : Ctxt jasminDialect := (.reg 64) :: spliceΓ2
 
 /-- Suffix glue phase (`acc += 1`), continuation `.ret .here`. -/
-def splicePhase3 : Option (ComL spliceΓ3 (.reg 64)) :=
+def splicePhase3 (_ : Unit) : Option (ComL spliceΓ3 (.reg 64)) :=
   rolledForLoopNCont (Γouter := spliceΓ3) (accCTy := .sword 64) (invCTys := [])
     1 spliceGlueVm "acc2" spliceSuffixBody
     (init := .here)                                   -- inner-sweep result
@@ -424,8 +424,8 @@ def splicePhase3 : Option (ComL spliceΓ3 (.reg 64)) :=
     (cont := .ret .here)
 
 /-- Inner countdown sweep (`for j in 0..n { acc += a[j] }`), continuation = suffix. -/
-def splicePhase2 : Option (ComL spliceΓ2 (.reg 64)) :=
-  match splicePhase3 with
+def splicePhase2 (_ : Unit) : Option (ComL spliceΓ2 (.reg 64)) :=
+  match splicePhase3 () with
   | some p3 =>
       rolledWhileNzComLCont (Γouter := spliceΓ2) (accCTy := .sword 64)
         (invCTys := [.memref 3])
@@ -439,8 +439,8 @@ def splicePhase2 : Option (ComL spliceΓ2 (.reg 64)) :=
 /-- The whole multi-phase block body: prefix glue → inner sweep → suffix glue → ret.
     ONE `ComL spliceΓblk (.reg 64)`, three front-compiled phases glued only through
     the `ComL` continuations. -/
-def spliceBodyChain : Option (ComL spliceΓblk (.reg 64)) :=
-  match splicePhase2 with
+def spliceBodyChain (_ : Unit) : Option (ComL spliceΓblk (.reg 64)) :=
+  match splicePhase2 () with
   | some p2 =>
       rolledForLoopNCont (Γouter := spliceΓblk) (accCTy := .sword 64) (invCTys := [])
         1 spliceGlueVm "acc2" splicePrefixBody
@@ -451,8 +451,8 @@ def spliceBodyChain : Option (ComL spliceΓblk (.reg 64)) :=
 
 /-- The outer loop wraps the multi-phase body with `ComL.forLoopBlock`: a runtime
     outer trip `M`, seeding `acc`, invariants `a`, `n`. -/
-def spliceDemo : Option (ComL spliceΓkern (.reg 64)) :=
-  match spliceBodyChain with
+def spliceDemo (_ : Unit) : Option (ComL spliceΓkern (.reg 64)) :=
+  match spliceBodyChain () with
   | some b =>
       some (ComL.forLoopBlock b
         (count := .here)                                          -- M
@@ -464,13 +464,13 @@ def spliceDemo : Option (ComL spliceΓkern (.reg 64)) :=
 
 /-- **The three-phase block body front-compiles** (all three phases + the block
     wrapper produced by the front). -/
-theorem spliceDemo_isSome : spliceDemo.isSome := by native_decide
+theorem spliceDemo_isSome : (spliceDemo ()).isSome := by native_decide
 
 /-- **The outer spine is the block-body loop node** whose recursive body's *first*
     phase is a `forLoopN` (the 1-trip prefix glue) — a multi-phase body,
     not a bare inner sweep. -/
 theorem spliceDemo_is_block_over_multiphase :
-    (spliceDemo.map (fun c => match c with
+    ((spliceDemo ()).map (fun c => match c with
       | .forLoopBlock (.forLoopN _ _ _ _) _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
@@ -478,7 +478,7 @@ theorem spliceDemo_is_block_over_multiphase :
     glue**: the recursive body is `forLoopN (prefix) … (forLoopN? no — whileNz sweep …)`.
     We witness the sweep node sitting as the prefix glue's continuation. -/
 theorem spliceDemo_splices_whileNz :
-    (spliceDemo.map (fun c => match c with
+    ((spliceDemo ()).map (fun c => match c with
       | .forLoopBlock (.forLoopN _ _ _ (.whileNz _ _ _ _ _)) _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
@@ -505,13 +505,13 @@ def spliceRef (M n : Nat) : Nat :=
     outer loop.  At `M = 2`, `n = 3`: `2 · (100 + 60 + 1) = 322` — witnessing that
     the prefix, the inner sweep, and the suffix all ran, in order, per outer pass. -/
 theorem spliceDemo_denote_seq :
-    (spliceDemo.map (fun c => BitVec.toNat (ComL.denote c (spliceVal 2 3))))
+    ((spliceDemo ()).map (fun c => BitVec.toNat (ComL.denote c (spliceVal 2 3))))
       = some (spliceRef 2 3) := by native_decide
 
 /-- **Same program, different trip counts** — `M = 3`, `n = 2` → `3 · (100+30+1) = 393`;
     both trip counts are read off the seed valuation, not baked in. -/
 theorem spliceDemo_denote_seq' :
-    (spliceDemo.map (fun c => BitVec.toNat (ComL.denote c (spliceVal 3 2))))
+    ((spliceDemo ()).map (fun c => BitVec.toNat (ComL.denote c (spliceVal 3 2))))
       = some (spliceRef 3 2) := by native_decide
 
 /-- **Four bottom-test back-edges** for the spliced body: the outer block
@@ -519,7 +519,7 @@ theorem spliceDemo_denote_seq' :
     loops, so the `comLToBody` lowering carries exactly **four** `Lcond NZ`
     back-edges — real nested + sequential control flow, no unrolling. -/
 theorem spliceDemo_backedges :
-    (spliceDemo.map (fun c =>
+    ((spliceDemo ()).map (fun c =>
         let body := comLToBody 4 argName (fun _ => none) c 4
         (body.filter (fun i => match i.li_i with
             | .Lcond (.reg "NZ") _ => true | _ => false)).length == 4))
@@ -651,7 +651,7 @@ def triΓouter : Ctxt jasminDialect := [.reg 64, .reg 64]
 
 /-- The front-generated triangular counted loop — a `ComL.forLoopNRtNested`
     whose inner trip is recomputed as the outer index each pass, or `none`. -/
-def triCounted : Option (ComL triΓouter (.reg 64)) :=
+def triCounted (_ : Unit) : Option (ComL triΓouter (.reg 64)) :=
   rolledForLoopNRtCountedCont
     (Γouter := triΓouter) (accCTy := .sword 64) (invCTys := [])
     triCountVm "cnt" triCountBody
@@ -662,12 +662,12 @@ def triCounted : Option (ComL triΓouter (.reg 64)) :=
     (cont := .ret .here)
 
 /-- **The front generates the triangular loop.** -/
-theorem triCounted_isSome : triCounted.isSome := by native_decide
+theorem triCounted_isSome : (triCounted ()).isSome := by native_decide
 
 /-- **The spine is the nested runtime-loop node** — a real recomputed-count
     2-deep loop, not an unrolled chain. -/
 theorem triCounted_is_nested_node :
-    (triCounted.map (fun c => match c with
+    ((triCounted ()).map (fun c => match c with
       | .forLoopNRtNested _ _ _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
@@ -685,20 +685,20 @@ def triRef (N : Nat) : Nat :=
     — the inner sweep ran `i` times on pass `i`, the count materialised from the outer
     index by the front-compiled `countBody`. -/
 theorem triCounted_denote_triangular :
-    (triCounted.map (fun c => BitVec.toNat (ComL.denote c (triVal 6)))) = some (triRef 6) := by
+    ((triCounted ()).map (fun c => BitVec.toNat (ComL.denote c (triVal 6)))) = some (triRef 6) := by
   native_decide
 
 /-- **Same program, different outer count** — `N = 5` → `0+1+2+3+4 = 10`; the trips
     are read off the seed valuation and recomputed per pass, not baked in. -/
 theorem triCounted_denote_triangular' :
-    (triCounted.map (fun c => BitVec.toNat (ComL.denote c (triVal 5)))) = some (triRef 5) := by
+    ((triCounted ()).map (fun c => BitVec.toNat (ComL.denote c (triVal 5)))) = some (triRef 5) := by
   native_decide
 
 /-- **Two bottom-test back-edges** (outer + the recomputed-count inner): the
     `comLToBody` lowering carries exactly **two** `Lcond NZ` conditional jumps — real
     nested control flow with a per-outer-pass recomputed inner trip. -/
 theorem triCounted_two_backedges :
-    (triCounted.map (fun c =>
+    ((triCounted ()).map (fun c =>
         let body := comLToBody 2 argName (fun _ => none) c 2
         (body.filter (fun i => match i.li_i with
             | .Lcond (.reg "NZ") _ => true | _ => false)).length == 2))
@@ -720,7 +720,7 @@ def triGlueVm : VarMap [CryptoTy.sword 64, CryptoTy.sword 64] :=
 def triSuffixBody : LowCT := seqAll [.RScalarSetExpr "acc2" (.SAdd (.SVar "acc") (.SLit 100))]
 
 /-- The counted triangular sweep with a `acc += 100` suffix phase spliced after it. -/
-def triCountedChain : Option (ComL triΓouter (.reg 64)) :=
+def triCountedChain (_ : Unit) : Option (ComL triΓouter (.reg 64)) :=
   rolledForLoopNRtCountedCont
     (Γouter := triΓouter) (accCTy := .sword 64) (invCTys := [])
     triCountVm "cnt" triCountBody
@@ -737,7 +737,7 @@ def triCountedChain : Option (ComL triΓouter (.reg 64)) :=
     suffix phase ran on the nested-sweep result, witnessing the counted loop as a
     phase in the multi-phase chain (`N = 6` → `15 + 100 = 115`). -/
 theorem triCountedChain_denote_seq :
-    (triCountedChain.map (fun c => BitVec.toNat (ComL.denote c (triVal 6))))
+    ((triCountedChain ()).map (fun c => BitVec.toNat (ComL.denote c (triVal 6))))
       = some (triRef 6 + 100) := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.VIR.RecursiveForLoopBlockFront

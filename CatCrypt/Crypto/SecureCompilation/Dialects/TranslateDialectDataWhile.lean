@@ -209,12 +209,12 @@ than the fixed-trip `loopLinstrRM`. The trip is fixed at run time by the initial
     validateLoopBody = loopLinstrRM 0 "n" (validateLoopBody ++ [])` — the same real
     `Lcond (.reg "n") 0` back-edge, *interpreted* as the data-dependent `while`
     whose trip is read off the run. -/
-def whileValidateProg : LprogM :=
-  singletonProgM "f" (whileLinstrRM 0 "n" [] validateLoopBody)
+def whileValidateProg (_ : Unit) : LprogM :=
+  singletonProgM "f" (whileLinstrRM 0 "n" [] (validateLoopBody ()))
 
 /-- **(a) The leaf-calling while body front-compiles** (same front output as the
     loop body — `frontLoopBodyJ` is reused verbatim). -/
-theorem whileValidate_frontJ_isSome : validateFrontJ.isSome := by native_decide
+theorem whileValidate_frontJ_isSome : (validateFrontJ ()).isSome := by native_decide
 
 /-- Predicate: a `LinstrRM` list contains a real `Lcond` back-edge. -/
 def hasBackEdge (body : List LinstrRM) : Bool :=
@@ -224,9 +224,9 @@ def hasBackEdge (body : List LinstrRM) : Bool :=
     `Lcall`** — a guard-driven loop over a real linked leaf, not a
     straight-line unroll or an opaque `CALL:` shadow. -/
 theorem whileValidate_realBackEdge_realCall :
-    hasBackEdge whileValidateProg.body = true
-      ∧ hasRealCall whileValidateProg.body = true
-      ∧ hasCallShadow whileValidateProg.body = false := by native_decide
+    hasBackEdge (whileValidateProg ()).body = true
+      ∧ hasRealCall (whileValidateProg ()).body = true
+      ∧ hasCallShadow (whileValidateProg ()).body = false := by native_decide
 
 /-- **(c) denote = `runWhileMem` do-while fold via A3's interpreter.** A3's
     `lsemFuelMemLC` follows the counter-guarded `Lcond` back-edge until `n` reaches
@@ -234,22 +234,22 @@ theorem whileValidate_realBackEdge_realCall :
     decodes equal to the `runWhileMem` (guard `n != 0`) do-while denotation of the
     same body over the same start. -/
 theorem whileValidate_denote_eq_runWhileMem :
-    (lsemFuelMemLC validateEnv whileValidateProg 60 validateStart).map
+    (lsemFuelMemLC (validateEnv ()) (whileValidateProg ()) 60 validateStart).map
         (fun t => decodeM t.base "a2" 64)
-      = (runWhileMem validateEnv (fun b => condNZ b (.reg "n")) validateLoopBody 10
+      = (runWhileMem (validateEnv ()) (fun b => condNZ b (.reg "n")) (validateLoopBody ()) 10
           validateStart.base).map (fun b => decodeM b "a2" 64) := by native_decide
 
 /-- **(c′) The decoded result is `10 + 20 + 30 = 60`** — the real linked leaf
     invoked per data-dependent iteration. -/
 theorem whileValidate_denote_eq_60 :
-    (lsemFuelMemLC validateEnv whileValidateProg 60 validateStart).map
+    (lsemFuelMemLC (validateEnv ()) (whileValidateProg ()) 60 validateStart).map
         (fun t => decodeM t.base "a2" 64) = some (some (60#64)) := by native_decide
 
 /-- **(c″) The data-dependent trip count is read off the run.** `whileTripsMem` for
     the while body equals `3` — determined by the initial `n = 3`, not supplied as a
     proof parameter. -/
 theorem whileValidate_trips :
-    whileTripsMem validateEnv (fun b => condNZ b (.reg "n")) validateLoopBody 10
+    whileTripsMem (validateEnv ()) (fun b => condNZ b (.reg "n")) (validateLoopBody ()) 10
         validateStart.base = 3 := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDataWhile

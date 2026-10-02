@@ -272,7 +272,7 @@ def feMulAllocL : GpAlloc :=
     ("t4", "%rbx"), ("hi", "%r12"), ("t5", "%r13"), ("t6", "%r14"), ("t7", "%r15")]
 
 /-- `feMulAllocL` is the allocation `Fe25519MulKernel.feMulAlloc` computes. -/
-theorem feMulAllocL_eq : feMulAlloc = feMulAllocL := by decide +kernel
+theorem feMulAllocL_eq : feMulAlloc () = feMulAllocL := by decide +kernel
 
 /-- `feMulBlock` with every name replaced by its register under `feMulAllocL`. -/
 def feMulPhys : List (JInstr 64) :=

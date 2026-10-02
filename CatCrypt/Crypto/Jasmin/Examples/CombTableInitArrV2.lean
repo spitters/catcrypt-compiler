@@ -131,15 +131,16 @@ def combTableInitArrV2Body : LowCT :=
 def params : List Located := [ cellLoc "B_xyzt", cellLoc "ID_xyzt" ]
 def results : List Located := []
 
-def emitCombTableInitArrV2 : String :=
+def emitCombTableInitArrV2 (_ : Unit) : String :=
   ppRustFunction "build_comb_table_arr_v2" params results combTableInitArrV2Body
 
 def runEmit : IO Unit := do
   let outPath := "/tmp/build_comb_table_arr_v2.rs"
-  IO.FS.writeFile outPath emitCombTableInitArrV2
+  let s := emitCombTableInitArrV2 ()
+  IO.FS.writeFile outPath s
   IO.println s!"wrote {outPath}"
-  IO.println s!"({emitCombTableInitArrV2.length} bytes)"
+  IO.println s!"({s.length} bytes)"
   IO.println "---"
-  IO.println emitCombTableInitArrV2
+  IO.println s
 
 end CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2

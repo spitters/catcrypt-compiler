@@ -179,7 +179,7 @@ def roundBodySrcCtx : Ctx := [.sword 64]
 def roundBodySrcVM : VarMap roundBodySrcCtx := VarMap.empty.bind "x"
 
 /-- Front-translate the doubling body and lower to jasmin; `none` if declined. -/
-def roundLoopFrontOpt : Option (Com jasminDialect (List.replicate 1 r64) r64) :=
+def roundLoopFrontOpt (_ : Unit) : Option (Com jasminDialect (List.replicate 1 r64) r64) :=
   (match translateDialectControl roundBodySrcVM roundBodyLowCT with
    | some r =>
        match r.vm.lookup "v1" with
@@ -188,11 +188,11 @@ def roundLoopFrontOpt : Option (Com jasminDialect (List.replicate 1 r64) r64) :=
    | none => none).bind DialectToJasminCom.cryptoDialectToJasminCom
 
 /-- The front translates + lowers end-to-end. -/
-theorem roundLoopFront_isSome : roundLoopFrontOpt.isSome := by native_decide
+theorem roundLoopFront_isSome : (roundLoopFrontOpt ()).isSome := by native_decide
 
 /-- **The round-loop body, front-generated** (`Com jasminDialect [r64] r64`). -/
-def roundLoopBodyFront : Com jasminDialect [r64] r64 :=
-  roundLoopFrontOpt.get roundLoopFront_isSome
+def roundLoopBodyFront (_ : Unit) : Com jasminDialect [r64] r64 :=
+  (roundLoopFrontOpt ()).get roundLoopFront_isSome
 
 /-- Bool purity predicate (`regArith`/`regConst`/`shlImm`/`shrImm` only). -/
 def allPureArithB : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
@@ -212,18 +212,18 @@ theorem straightLine_of_pureArith {Γ : Ctxt jasminDialect} {t : JasminTy} :
     exact ⟨by intro w n; cases hop : e.op <;> simp_all, straightLine_of_pureArith body h.2⟩
 
 /-- The front body is pure scalar arithmetic (no opaque leaf). -/
-theorem roundLoopBodyFront_pureArith : allPureArithB roundLoopBodyFront = true := by
+theorem roundLoopBodyFront_pureArith : allPureArithB (roundLoopBodyFront ()) = true := by
   native_decide
 
 /-- Hence the front body is straight-line. -/
-theorem roundLoopBodyFront_straightLine : StraightLine roundLoopBodyFront :=
+theorem roundLoopBodyFront_straightLine : StraightLine (roundLoopBodyFront ()) :=
   straightLine_of_pureArith _ roundLoopBodyFront_pureArith
 
 /-- The partial-round loop: iterate the front-generated multi-op body
     `partialRounds = 13` times. -/
-def roundLoop : JForProg r64 :=
+def roundLoop (_ : Unit) : JForProg r64 :=
   { n := CatCrypt.Crypto.Hash.Poseidon2.BabyBear.partialRounds
-    update := roundLoopBodyFront }
+    update := roundLoopBodyFront () }
 
 /-- The body binds **two** fresh SSA names — the fact that routes this through
     the *multi-op* loop theorem (not the single-leaf one). -/
@@ -239,7 +239,7 @@ theorem roundLoopBody_straightLine : StraightLine roundLoopBody := by
 
 /-- The loop's `update` (the front body) is straight-line (the loop theorem's
     hypothesis). -/
-theorem roundLoop_straightLine : StraightLine roundLoop.update :=
+theorem roundLoop_straightLine : StraightLine (roundLoop ()).update :=
   roundLoopBodyFront_straightLine
 
 /-- **Round-count loop — the emitted bounded loop denotes the `13`-fold
@@ -254,8 +254,8 @@ theorem roundLoop_straightLine : StraightLine roundLoop.update :=
     no leaf (pure `regArith`). -/
 theorem roundLoop_denote_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (init : ⟦r64⟧) :
-    loopRun roundLoop (bodyStepRun leafSem roundLoop) init = roundLoop.denote init :=
-  loop_denote_eq_multiOp hLeaf roundLoop roundLoop_straightLine init
+    loopRun (roundLoop ()) (bodyStepRun leafSem (roundLoop ())) init = (roundLoop ()).denote init :=
+  loop_denote_eq_multiOp hLeaf (roundLoop ()) roundLoop_straightLine init
 
 /-! ## 4. The MDS linear layer's row reduction through `scalarFold_eq_hsum`
 
@@ -729,7 +729,7 @@ def diagVFlat : List Nat :=
     pointers; the body is pure `regArith` scalar field arithmetic (no leaf), with
     the 10-fold BabyBear reduction loop, the `x^7` S-box, and the Plonky3
     external/internal MDS layers, looped over the round-constant tables. -/
-def poseidon2Jazz : String :=
+def poseidon2Jazz (_ : Unit) : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), emitted by CatCrypt's\n" ++
   " * verified front (CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2Emit.lean).\n" ++
   " * Pure scalar field arithmetic on u64 canonical reps; NO opaque leaf.\n" ++
@@ -815,9 +815,9 @@ theorem rc_table_sizes :
 
 /- The emitted text declares the `export fn` and renders the field reduction
     fold (no opaque leaf: a real `regArith` body). -/
-#guard (JasminPrint.strContains poseidon2Jazz "export fn poseidon2_bb(")
-    && (JasminPrint.strContains poseidon2Jazz "hi >>= 31; hi *= BBC;")
-    && !(JasminPrint.strContains poseidon2Jazz "extCall")
+#guard (JasminPrint.strContains (poseidon2Jazz ()) "export fn poseidon2_bb(")
+    && (JasminPrint.strContains (poseidon2Jazz ()) "hi >>= 31; hi *= BBC;")
+    && !(JasminPrint.strContains (poseidon2Jazz ()) "extCall")
 
 /-! ## SIMD-vectorized variant: emit the FIFTEENTH ABI mode -/
 
@@ -844,7 +844,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit.Poseidon2Simd
     theorem is the structural sibling that licences emit variants where the
     S-box itself runs lane-parallel; this emit keeps the byte-identical scalar
     S-box. -/
-def poseidon2SimdJazz : String :=
+def poseidon2SimdJazz (_ : Unit) : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), SIMD-vectorized\n" ++
   " * emit (FIFTEENTH ABI mode, #138) by CatCrypt's verified front\n" ++
   " * (JasminAbiEmit.Poseidon2Simd). The 16 BabyBear state slots pack into\n" ++
@@ -910,15 +910,15 @@ def poseidon2SimdJazz : String :=
   "  for i = 1 to 16 {\n" ++
   "    v = DIAGV[i];\n    x = s[i];\n    t = fmul(v, x);\n    t = fadd(t, sum);\n    s[i] = t;\n  }\n" ++
   "  return s;\n}\n\n" ++
-  emitPoseidon2SimdBodyJazz ++ "\n"
+  emitPoseidon2SimdBodyJazz () ++ "\n"
 
 /- The SIMD-vectorized `.jazz` declares the same `export fn poseidon2_bb`
     ABI and contains the FIFTEENTH ABI mode's `__m256i` lane registers and
     the packed-u64 `#VPADD_4u64` add intrinsic. -/
-#guard (JasminPrint.strContains poseidon2SimdJazz "export fn poseidon2_bb(")
-    && (JasminPrint.strContains poseidon2SimdJazz "reg u256 vlo vhi;")
-    && (JasminPrint.strContains poseidon2SimdJazz "#VPADD_4u64")
-    && !(JasminPrint.strContains poseidon2SimdJazz "extCall")
+#guard (JasminPrint.strContains (poseidon2SimdJazz ()) "export fn poseidon2_bb(")
+    && (JasminPrint.strContains (poseidon2SimdJazz ()) "reg u256 vlo vhi;")
+    && (JasminPrint.strContains (poseidon2SimdJazz ()) "#VPADD_4u64")
+    && !(JasminPrint.strContains (poseidon2SimdJazz ()) "extCall")
 
 /-! ## Denotation preservation: SIMD emit equals scalar emit
 

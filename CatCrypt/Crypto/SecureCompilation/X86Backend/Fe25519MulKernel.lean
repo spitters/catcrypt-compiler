@@ -332,10 +332,10 @@ the `y` pointer, is moved out of `%rdx` first). -/
 def feMulPinned : GpAlloc := [("z", "%rdi"), ("x", "%rsi"), ("yd", "%rdx"), ("zr", "%rbp")]
 
 /-- Register allocation (pointers + `yd` pinned, working regs first-fit). -/
-def feMulAlloc : GpAlloc := allocGp feMulPinned feMulBlock
+def feMulAlloc (_ : Unit) : GpAlloc := allocGp feMulPinned feMulBlock
 
 /-- The rendered AT&T body (one line per `JInstr`). -/
-def feMulAsmBody : List String := renderBlockBody feMulAlloc feMulBlock
+def feMulAsmBody (_ : Unit) : List String := renderBlockBody (feMulAlloc ()) feMulBlock
 
 /-- The System V AMD64 signature: three pointer arguments `z`, `x`, `y` (in
     `%rdi`, `%rsi`, `%rdx`). The body refers to the third by the source name `y`
@@ -351,24 +351,24 @@ def feMulArgs : List AbiArg :=
     argument out of `%rdx`; the epilogue restores them and returns. The body is
     `runBlock`-verified; the ABI glue is trusted scaffolding outside it, but is
     *derived from the allocation*, not hand-written. -/
-def feMulAsm : String :=
-  renderSysVLeafFn "fe25519_mul_x86_from_lean" feMulAlloc feMulArgs feMulAsmBody []
+def feMulAsm (_ : Unit) : String :=
+  renderSysVLeafFn "fe25519_mul_x86_from_lean" (feMulAlloc ()) feMulArgs (feMulAsmBody ()) []
 
 /-- The emitted asm has one body line per instruction. -/
-theorem feMulAsmBody_length : feMulAsmBody.length = 95 := by native_decide
+theorem feMulAsmBody_length : (feMulAsmBody ()).length = 95 := by native_decide
 
 /- Shape check: the emitted asm contains the dual carry-chain idiom
     (`mulx`, `adcx`, `adox`), the memory-operand `MULX` reads the multiplicand
     straight from `[x]` (`mulxq 0(%rsi)`, matching s2n's `mulxq (x)`), the result
     stores print in AT&T form (`(%rdi)`), the `%rdx`-pinned multiplier is the
     `MULX` src1, and the reduction's `38` and `19` Solinas constants appear. -/
-#guard (BignumMontMulKernel.hasSub feMulAsm "mulx") && (BignumMontMulKernel.hasSub feMulAsm "adcx") && (BignumMontMulKernel.hasSub feMulAsm "adox") && (BignumMontMulKernel.hasSub feMulAsm "mulxq 0(%rsi)") && (BignumMontMulKernel.hasSub feMulAsm "(%rdi)") && (BignumMontMulKernel.hasSub feMulAsm "$38") && (BignumMontMulKernel.hasSub feMulAsm "$19")
+#guard (BignumMontMulKernel.hasSub (feMulAsm ()) "mulx") && (BignumMontMulKernel.hasSub (feMulAsm ()) "adcx") && (BignumMontMulKernel.hasSub (feMulAsm ()) "adox") && (BignumMontMulKernel.hasSub (feMulAsm ()) "mulxq 0(%rsi)") && (BignumMontMulKernel.hasSub (feMulAsm ()) "(%rdi)") && (BignumMontMulKernel.hasSub (feMulAsm ()) "$38") && (BignumMontMulKernel.hasSub (feMulAsm ()) "$19")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/x25519_fieldmul_compare/gen_com"
   IO.FS.writeFile
-    "bench/x25519_fieldmul_compare/gen_com/fe25519_mul_x86_from_lean.s" feMulAsm
+    "bench/x25519_fieldmul_compare/gen_com/fe25519_mul_x86_from_lean.s" (feMulAsm ())
   IO.println "wrote gen_com/fe25519_mul_x86_from_lean.s (in-Lean x86 backend, no jasminc)"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel

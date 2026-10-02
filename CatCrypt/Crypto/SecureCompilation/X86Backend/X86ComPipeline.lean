@@ -482,19 +482,19 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel (feMulBlock)
 
 /-- The Curve25519 field-multiply block routed through the **driver** (one call,
     in place of the hand-wired `storeToLoadForward feMulBlock`). -/
-def optimizeFeMulBlock : List (JInstr 64) := optimizeX86Block feMulBlock
+def optimizeFeMulBlock (_ : Unit) : List (JInstr 64) := optimizeX86Block feMulBlock
 
 /-- **Driver-optimized `fe25519_mul` = hand kernel, on every state.**  An instance
     of `optimizeX86Block_runBlock` — the bespoke `runBlock` certificate is
     a one-liner through the composed driver. -/
 theorem optimizeFeMulBlock_runBlock (s : JState 64) :
-    runBlock s optimizeFeMulBlock = runBlock s feMulBlock :=
+    runBlock s (optimizeFeMulBlock ()) = runBlock s feMulBlock :=
   optimizeX86Block_runBlock feMulBlock s
 
 /-- **Driver-optimized `fe25519_mul` `Com`-denotation equality.**  An instance of
     `optimizeX86Block_lowering`. -/
 theorem optimizeFeMulBlock_lowering (s : JState 64) :
-    (lowerBlock (Γ := []) optimizeFeMulBlock).denote (.cons s .nil)
+    (lowerBlock (Γ := []) (optimizeFeMulBlock ())).denote (.cons s .nil)
       = (lowerBlock (Γ := []) feMulBlock).denote (.cons s .nil) :=
   optimizeX86Block_lowering feMulBlock s
 

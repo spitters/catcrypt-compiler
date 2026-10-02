@@ -195,17 +195,17 @@ theorem ior_decode : decodeLprog (encodeLfundefBytes iorBody)
     (by decide +kernel)
 
 theorem and_nodeCheck :
-    nodeCheck logicAbi andEnv (logicSeeds 8) andLoopBody 4 (4 + 0x40000000) "Lctr4" "%rax"
+    nodeCheck logicAbi andEnv (logicSeeds 8) (andLoopBody ()) 4 (4 + 0x40000000) "Lctr4" "%rax"
       logicLive (logicPre andBody) (logicPost andBody 15) (logicLoopD andBody 15) = true := by
   decide +kernel
 
 theorem xor_nodeCheck :
-    nodeCheck logicAbi andEnv (logicSeeds 8) xorLoopBody 4 (4 + 0x40000000) "Lctr4" "%rax"
+    nodeCheck logicAbi andEnv (logicSeeds 8) (xorLoopBody ()) 4 (4 + 0x40000000) "Lctr4" "%rax"
       logicLive (logicPre xorBody) (logicPost xorBody 15) (logicLoopD xorBody 15) = true := by
   decide +kernel
 
 theorem ior_nodeCheck :
-    nodeCheck logicAbi iorEnv (logicSeeds 10) iorLoopBody 4 (4 + 0x40000000) "Lctr4" "%rax"
+    nodeCheck logicAbi iorEnv (logicSeeds 10) (iorLoopBody ()) 4 (4 + 0x40000000) "Lctr4" "%rax"
       logicLive (logicPre iorBody) (logicPost iorBody 19) (logicLoopD iorBody 19) = true := by
   decide +kernel
 
@@ -215,7 +215,7 @@ theorem and_result (fn : String) (sa : AState) (b : LstateM) (zf : Bool) (hpc : 
     ∃ prog sa' t k, decodeLprog (encodeLfundefBytes andBody) = some prog
       ∧ Halts aMachine prog 0 sa sa'
       ∧ lsemFuelMemF (singletonProgM fn
-          (logicSeeds 8 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" andLoopBody)) k
+          (logicSeeds 8 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" (andLoopBody ()))) k
           { prog := { base := b, lfn := fn }, zf := zf } = some t
       ∧ ∃ arr : Fin 8 → BitVec 64, t.prog.base.getArr "a0" 64 8 = some arr
           ∧ logicAbi.ResultOf sa sa' (.array ((List.range 8).map
@@ -228,7 +228,7 @@ theorem xor_result (fn : String) (sa : AState) (b : LstateM) (zf : Bool) (hpc : 
     ∃ prog sa' t k, decodeLprog (encodeLfundefBytes xorBody) = some prog
       ∧ Halts aMachine prog 0 sa sa'
       ∧ lsemFuelMemF (singletonProgM fn
-          (logicSeeds 8 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" xorLoopBody)) k
+          (logicSeeds 8 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" (xorLoopBody ()))) k
           { prog := { base := b, lfn := fn }, zf := zf } = some t
       ∧ ∃ arr : Fin 8 → BitVec 64, t.prog.base.getArr "a0" 64 8 = some arr
           ∧ logicAbi.ResultOf sa sa' (.array ((List.range 8).map
@@ -241,7 +241,7 @@ theorem ior_result (fn : String) (sa : AState) (b : LstateM) (zf : Bool) (hpc : 
     ∃ prog sa' t k, decodeLprog (encodeLfundefBytes iorBody) = some prog
       ∧ Halts aMachine prog 0 sa sa'
       ∧ lsemFuelMemF (singletonProgM fn
-          (logicSeeds 10 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" iorLoopBody)) k
+          (logicSeeds 10 ++ guardedFlagLoopLinstrRM 4 (4 + 0x40000000) "Lctr4" (iorLoopBody ()))) k
           { prog := { base := b, lfn := fn }, zf := zf } = some t
       ∧ ∃ arr : Fin 8 → BitVec 64, t.prog.base.getArr "a0" 64 8 = some arr
           ∧ logicAbi.ResultOf sa sa' (.array ((List.range 8).map

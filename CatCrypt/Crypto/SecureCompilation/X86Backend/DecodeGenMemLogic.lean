@@ -69,17 +69,17 @@ def logicRho (k : Nat) (r : String) : String :=
   if r = "r4" ∨ r = "L4_r" ++ toString k then "a0" else r
 
 /-- The looped segment of the `and` node, renamed. -/
-def andLoopBody : List LinstrRM :=
+def andLoopBody (_ : Unit) : List LinstrRM :=
   (forLoopBodyNRtRM 4 (regName 4) (andUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 8))
 
 /-- The looped segment of the `xor` node, renamed. -/
-def xorLoopBody : List LinstrRM :=
+def xorLoopBody (_ : Unit) : List LinstrRM :=
   (forLoopBodyNRtRM 4 (regName 4) (xorUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 8))
 
 /-- The looped segment of the `ior` node, renamed. -/
-def iorLoopBody : List LinstrRM :=
+def iorLoopBody (_ : Unit) : List LinstrRM :=
   (forLoopBodyNRtRM 4 (regName 4) (iorUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 10))
 
@@ -98,7 +98,7 @@ def andLoopBodyLit : List LinstrRM :=
   , cmpRI "Lctr4" (.reg "a1")
   , cmpRI "Lctr4" (.reg "a2") ]
 
-theorem andLoopBody_eq : andLoopBody = andLoopBodyLit := by
+theorem andLoopBody_eq : andLoopBody () = andLoopBodyLit := by
   decide +kernel
 
 /-! ## 2. Register maps and regions -/
@@ -158,7 +158,7 @@ theorem and_loop_decSim {base : String → BitVec 64} {rsp : BitVec 64}
     (hsep : MemSep logicRegions base rsp) (zl : Prop) :
     DecSim (fun sa b zf => MCorr andEnv base rsp (logicLive, Abs.empty) zl sa b zf
         ∧ (sa.regs "%rax").toNat < 8)
-      (MCorr andEnv base rsp (logicLive, Abs.empty) False) andLoopBody andLoop.body := by
+      (MCorr andEnv base rsp (logicLive, Abs.empty) False) (andLoopBody ()) andLoop.body := by
   rw [andLoopBody_eq]
   exact decSim_of_loopOK_idx (E := andEnv) hsep and_loopOK zl
 
@@ -168,12 +168,12 @@ set_option kat.ms 1000 in
 #kat decLoopBody (binDecoded (andMidDecoded .and_)) == some andLoop.body
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (andMid "AND:64" "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") andLoopBody)
+  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") (andLoopBody ()))
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (andMid "XOR:64" "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") xorLoopBody)
+  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") (xorLoopBody ()))
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (iorMid "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK iorEnv logicLive (Abs.idx "%rax") iorLoopBody)
+  decLoopBody).any (loopOK iorEnv logicLive (Abs.idx "%rax") (iorLoopBody ()))
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic

@@ -65,7 +65,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry (bodyOKC bodyOKCK)
 
 /-- The lifted body of the field multiplication, each instruction with the register tag. -/
 def feMulOps : List LinstrRM :=
-  (jinstrBlockToLcmd Fe25519MulKernel.feMulAlloc Fe25519MulKernel.feMulBlock).map
+  (jinstrBlockToLcmd (Fe25519MulKernel.feMulAlloc ()) Fe25519MulKernel.feMulBlock).map
     fun li => (li.li_i, MemTag.reg none)
 
 /-- The straight-line machine instructions decoded from the encoded body. -/

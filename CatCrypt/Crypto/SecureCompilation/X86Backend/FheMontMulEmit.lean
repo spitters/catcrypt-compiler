@@ -116,7 +116,7 @@ Single-output: the last binding (`u`) IS the result. Context starts `[a, b]`
 where `cqinv = qinv`, `cq = q`, `czero : reg 1 = 0` are materialised constants.
 `cout : reg 1` is the carry-out of `lo + mqLo` (an `ADCXHI` binding, the carry
 of the low-word sum), and `u = hi + mqHi + cout` (an `ADCX` data word). -/
-def fheMontMulThir : Com thirDialect [.reg 64, .reg 64] (.reg 64) :=
+def fheMontMulThir (_ : Unit) : Com thirDialect [.reg 64, .reg 64] (.reg 64) :=
   -- lo = a * b                                  ctx: [a, b]
   .var (.mk (.thBin .mul 64) rfl (.cons .here (.cons (.there .here) .nil)))
   -- hi = mulhi(a, b)                            ctx: [lo, a, b]; a = dB1, b = dB2
@@ -174,20 +174,20 @@ Lean — exactly the lazy-leaf discipline of the §13 BabyBear REDC. -/
     (the closed-form REDC is in the section docstring above; its value is checked
     by the orchestrator's GMP KAT on the emitted `.s`). -/
 def fheMontMulSpec64 (a b : BitVec 64) : BitVec 64 :=
-  fheMontMulThir.denote (.cons a (.cons b .nil))
+  (fheMontMulThir ()).denote (.cons a (.cons b .nil))
 
 /-- The THIR-dialect lazy FHE Montgomery REDC denotes `fheMontMulSpec64` — true by
     definition (`fheMontMulSpec64` is that denotation). -/
 theorem fheMontMulThir_denote (a b : BitVec 64) :
-    fheMontMulThir.denote (.cons a (.cons b .nil)) = fheMontMulSpec64 a b := rfl
+    (fheMontMulThir ()).denote (.cons a (.cons b .nil)) = fheMontMulSpec64 a b := rfl
 
 /-- **FHE Montgomery REDC re-derived through the dialect spine.** The lowered
     (two-stage) `Com jasminDialect` denotes the same `BitVec 64` as the width-64
     REDC reference, obtained through `Com[thir] →lowerThir→ Com[jasmin]` (the
     generic, proved `lowerThir_denote`) rather than a bespoke lowering. -/
 theorem fheMontMul_via_thirDialect (a b : BitVec 64) :
-    (lowerThir fheMontMulThir).denote (.cons a (.cons b .nil)) = fheMontMulSpec64 a b :=
-  (lowerThir_denote fheMontMulThir (.cons a (.cons b .nil))).trans
+    (lowerThir (fheMontMulThir ())).denote (.cons a (.cons b .nil)) = fheMontMulSpec64 a b :=
+  (lowerThir_denote (fheMontMulThir ()) (.cons a (.cons b .nil))).trans
     (fheMontMulThir_denote a b)
 
 /-! ## 4. ABI maps for the 2-in / 1-out width-64 kernel
@@ -576,9 +576,9 @@ remaining un-closed seam is the ADX carry-chain rendering. -/
 /-- The FHE Montgomery REDC lowered through the thirDialect spine and exported to
     a physical, two-address SysV `Lprog`. The `fname` `"fhe_montmul"` becomes the
     emitted asm label (matching the C extern). -/
-def fheMontMulLprog : Lprog :=
+def fheMontMulLprog (_ : Unit) : Lprog :=
   fuseMulHiLprog
-    (Com.toLprogPhysAbi (lowerThir fheMontMulThir) "fhe_montmul"
+    (Com.toLprogPhysAbi (lowerThir (fheMontMulThir ())) "fhe_montmul"
       (fun _ => none)                       -- shiftImm oracle (unused)
       (fun _ => none)                       -- immSlotMap (constants are in-body regConst)
       fheMontMulInLoadMap                   -- inLoadMap
@@ -587,7 +587,7 @@ def fheMontMulLprog : Lprog :=
       [64, 64])                             -- abiTyin (a, b)
 
 /-- The rendered owned-backend AT&T `.s` for `fhe_montmul` (no jasminc). -/
-def fheMontMulAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned fheMontMulLprog
+def fheMontMulAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned (fheMontMulLprog ())
 
 /-! ## 6. Substring helper -/
 

@@ -1043,19 +1043,19 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
 /-- The FRONT-sourced deployed `.s` text for each core kernel (rendered from the
     `MpnLoopFrontEmit` rolled-loop `Lprog`; `""` iff the front declines, which
     the `*_isSome` gates in `MpnLoopFrontEmit` rule out). -/
-def addAsmFront  : String := ((MpnLoopFrontEmit.addLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def subAsmFront  : String := ((MpnLoopFrontEmit.subLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def andAsmFront  : String := ((MpnLoopFrontEmit.andLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def iorAsmFront  : String := ((MpnLoopFrontEmit.iorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def xorAsmFront  : String := ((MpnLoopFrontEmit.xorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def comAsmFront  : String := ((MpnLoopFrontEmit.comLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def copyAsmFront : String := ((MpnLoopFrontEmit.copyLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def zeroAsmFront : String := ((MpnLoopFrontEmit.zeroLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def addAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.addLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def subAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.subLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def andAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.andLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def iorAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.iorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def xorAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.xorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def comAsmFront  (_ : Unit) : String := ((MpnLoopFrontEmit.comLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def copyAsmFront (_ : Unit) : String := ((MpnLoopFrontEmit.copyLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def zeroAsmFront (_ : Unit) : String := ((MpnLoopFrontEmit.zeroLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
 
 /-- The FRONT-sourced normalization scan (`MpnLoopFrontEmit.normLprogFront`):
     branch-free forward scan returning the normalized u32 limb length of an
     `n`-u64-limb array in `RAX` (scalar-accumulator export, imm-`1` seed). -/
-def normAsmFront : String := ((MpnLoopFrontEmit.normLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def normAsmFront (_ : Unit) : String := ((MpnLoopFrontEmit.normLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
 
 -- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
 -- re-evaluate the optimizing back-end renderOwned at elaboration.
@@ -1068,11 +1068,11 @@ def normAsmFront : String := ((MpnLoopFrontEmit.normLprogFront ()).map CatCrypt.
     sign block on the first differing limb (`subRR` compare-by-subtract). The
     deployed `.s` is the front's rendered output verbatim (`cmpAsmFront_front`),
     NOT hand-authored. -/
-def cmpAsmFront : String := MpnCmpEarlyExitFront.cmpAsmFront
+def cmpAsmFront (_ : Unit) : String := MpnCmpEarlyExitFront.cmpAsmFront
 
 /-- The deployed `mpn_cmp` `.s` IS the front schedule's rendered output (byte-for-
-    byte); the re-point is definitional. -/
-theorem cmpAsmFront_front : cmpAsmFront = MpnCmpEarlyExitFront.cmpAsmFront := rfl
+    byte); the equality is definitional. -/
+theorem cmpAsmFront_front : cmpAsmFront () = MpnCmpEarlyExitFront.cmpAsmFront := rfl
 
 -- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
 -- re-evaluate the optimizing back-end renderOwned at elaboration.
@@ -1092,15 +1092,15 @@ theorem cmpAsmFront_front : cmpAsmFront = MpnCmpEarlyExitFront.cmpAsmFront := rf
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/integration/gen_com"
   -- Deployed symbols: FRONT-sourced (rolled-loop front → owned export).
-  IO.FS.writeFile "bench/integration/gen_com/mpn_add_n_loop_owned.s" addAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_sub_n_loop_owned.s" subAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_and_n_loop_owned.s" andAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_ior_n_loop_owned.s" iorAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_xor_n_loop_owned.s" xorAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_com_n_loop_owned.s" comAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_copyi_loop_owned.s" copyAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_zero_loop_owned.s" zeroAsmFront
-  IO.FS.writeFile "bench/integration/gen_com/mpn_norm_u32len_loop_owned.s" normAsmFront
+  IO.FS.writeFile "bench/integration/gen_com/mpn_add_n_loop_owned.s" (addAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_sub_n_loop_owned.s" (subAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_and_n_loop_owned.s" (andAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_ior_n_loop_owned.s" (iorAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_xor_n_loop_owned.s" (xorAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_com_n_loop_owned.s" (comAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_copyi_loop_owned.s" (copyAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_zero_loop_owned.s" (zeroAsmFront ())
+  IO.FS.writeFile "bench/integration/gen_com/mpn_norm_u32len_loop_owned.s" (normAsmFront ())
   -- Bench-perf twin: the hand-authored open-coded GPR-carry `Lcmd` bodies.
   IO.FS.writeFile "bench/integration/gen_com/mpn_add_n_loop_owned_handtwin.s" addAsm
   IO.FS.writeFile "bench/integration/gen_com/mpn_sub_n_loop_owned_handtwin.s" subAsm
@@ -1112,7 +1112,7 @@ def emitMain : IO Unit := do
   IO.FS.writeFile "bench/integration/gen_com/mpn_zero_loop_owned_handtwin.s" zeroAsm
   -- FRONT-sourced early-exit compare (SpStep schedule front `MpnCmpEarlyExitFront`):
   -- MSB-first scan, in-body forward break, `{-1,0,+1}` return over the GMP ABI.
-  IO.FS.writeFile "bench/integration/gen_com/mpn_cmp_loop_owned.s" cmpAsmFront
+  IO.FS.writeFile "bench/integration/gen_com/mpn_cmp_loop_owned.s" (cmpAsmFront ())
   -- Bench-perf twin: the hand-authored full-scan `Lcmd` compare stub.
   IO.FS.writeFile "bench/integration/gen_com/mpn_cmp_loop_owned_handtwin.s" cmpAsm
   -- Owned-only bench-perf twins (front does not cover the in-register CF-block):

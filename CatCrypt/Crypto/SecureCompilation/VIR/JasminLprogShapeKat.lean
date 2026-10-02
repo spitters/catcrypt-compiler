@@ -48,19 +48,19 @@ def goldenPath : System.FilePath :=
   "scripts/golden/jasmin-lprog-shape.txt"
 
 /-- The exported bodies whose instruction text is pinned. -/
-def shapes : List (String × List String) :=
-  [ ("loopSmokePhysBody",  loopSmokePhysBody.map (fun i => i.li_i.toText))
-  , ("mapAddOnePhysBody",  mapAddOnePhysBody.map (fun i => i.li_i.toText))
-  , ("framedDemoBodyText", framedDemoBodyText)
-  , ("mapAddOneAbiBody",   mapAddOneAbiBody.map (fun i => i.li_i.toText))
-  , ("mixedClassBody",     (physBody (fun _ => none) mixedClassBody).map (fun i => i.li_i.toText))
-  , ("edDblCallBodyW",     edDblCallBodyW.map (fun i => i.li_i.toText))
-  , ("edAddCallBodyW",     edAddCallBodyW.map (fun i => i.li_i.toText)) ]
+def shapes (_ : Unit) : List (String × List String) :=
+  [ ("loopSmokePhysBody",  (loopSmokePhysBody ()).map (fun i => i.li_i.toText))
+  , ("mapAddOnePhysBody",  (mapAddOnePhysBody ()).map (fun i => i.li_i.toText))
+  , ("framedDemoBodyText", framedDemoBodyText ())
+  , ("mapAddOneAbiBody",   (mapAddOneAbiBody ()).map (fun i => i.li_i.toText))
+  , ("mixedClassBody",     (physBody (fun _ => none) (mixedClassBody ())).map (fun i => i.li_i.toText))
+  , ("edDblCallBodyW",     (edDblCallBodyW ()).map (fun i => i.li_i.toText))
+  , ("edAddCallBodyW",     (edAddCallBodyW ()).map (fun i => i.li_i.toText)) ]
 
 /-- Renderings that must agree with each other, rather than with a literal.
     Splicing the call op into the loop alphabet must leave a call-free loop
     byte-identical to the shadow walk. -/
-def equalities : List (String × List String × List String) :=
+def equalities (_ : Unit) : List (String × List String × List String) :=
   [ ("loopBodyWalkNCall_callfree_eq_loopBodyWalkN"
     , (loopBodyWalkNCall 1 "RAX" "Lidx1" [] (fun _ => none) dblCallfreeBody 2).1.map
         (fun i => i.li_i.toText)
@@ -68,9 +68,9 @@ def equalities : List (String × List String × List String) :=
         (fun i => i.li_i.toText)) ]
 
 /-- One line per instruction, prefixed by its body's name. -/
-def render : String :=
+def render (_ : Unit) : String :=
   String.intercalate "\n"
-    (shapes.flatMap (fun p => p.2.map (fun s => p.1 ++ "\t" ++ s))) ++ "\n"
+    ((shapes ()).flatMap (fun p => p.2.map (fun s => p.1 ++ "\t" ++ s))) ++ "\n"
 
 section Sha512Sigma0
 
@@ -120,7 +120,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat in
 def main (args : List String) : IO UInt32 := do
   if args.contains "--write" then
     IO.FS.createDirAll (goldenPath.parent.getD ".")
-    IO.FS.writeFile goldenPath render
+    IO.FS.writeFile goldenPath (render ())
     IO.println s!"wrote {goldenPath}"
     return 0
   let checks := textChecks ()
@@ -134,16 +134,17 @@ def main (args : List String) : IO UInt32 := do
     return 1
   let expected ← IO.FS.readFile goldenPath
   let mut bad := 0
-  for (nm, a, b) in equalities do
+  let rendered := render ()
+  for (nm, a, b) in equalities () do
     if a != b then
       IO.eprintln s!"jasmin-lprog-shape: {nm} DIFFERS"
       bad := bad + 1
-  if expected == render && bad == 0 then
-    IO.println s!"jasmin-lprog-shape: {shapes.length} bodies match, {equalities.length} equalities hold"
+  if expected == rendered && bad == 0 then
+    IO.println s!"jasmin-lprog-shape: {(shapes ()).length} bodies match, {(equalities ()).length} equalities hold"
     return 0
-  if expected == render then return 1
+  if expected == rendered then return 1
   let el := expected.splitOn "\n"
-  let al := render.splitOn "\n"
+  let al := rendered.splitOn "\n"
   let firstDiff := (List.range (max el.length al.length)).find?
     (fun i => el[i]? != al[i]?)
   IO.eprintln "jasmin-lprog-shape: MISMATCH"

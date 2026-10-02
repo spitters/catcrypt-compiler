@@ -625,56 +625,56 @@ theorem ladderLoop_export_faithful_denote {w : Nat}
 def lInit : Fin 2 → BitVec 64 := ![9#64, 4#64]
 
 /-- The emitted coupled body at `w = 64`, counter `"n"`. -/
-def lBodyV : List LinstrRM := ladderBodyM 64 "n"
+def lBodyV (_ : Unit) : List LinstrRM := ladderBodyM 64 "n"
 
 /-- The coupled-loop program. -/
-def lProgV : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" lBodyV)
+def lProgV (_ : Unit) : LprogM := singletonProgM "f" (loopLinstrRM 0 "n" (lBodyV ()))
 
 /-- The seed base: encoded `[acc = lInit, i = 0]`, counter `n = 3`, pc at the
     loop top. -/
-def lBaseV : LstateM :=
+def lBaseV (_ : Unit) : LstateM :=
   (((encodeM (tripValArrMN (invTys := []) .nil 0 lInit)).setReg "n" (3#64)).setLpc 1)
 
 /-- The seed program state. -/
-def lStartV : LstatePM := { base := lBaseV, lfn := "f" }
+def lStartV (_ : Unit) : LstatePM := { base := lBaseV (), lfn := "f" }
 
 /-- The coupled seed agrees with the trip-0 valuation. -/
 theorem lBaseV_seed :
-    StoreAgreesM 2 2 lBaseV (tripValArrMN (invTys := []) .nil 0 lInit) :=
+    StoreAgreesM 2 2 (lBaseV ()) (tripValArrMN (invTys := []) .nil 0 lInit) :=
   StoreAgreesM.setLpc
     (StoreAgreesM.setReg_untracked "n" (3#64) counterN_ne_argName counterN_ne_regName
       (encodeM_StoreAgreesM (tripValArrMN (invTys := []) .nil 0 lInit))) 1
 
-theorem lT2_isSome : (runBoundedLoopMem lBodyV 2 lBaseV).isSome := by native_decide
+theorem lT2_isSome : (runBoundedLoopMem (lBodyV ()) 2 (lBaseV ())).isSome := by native_decide
 
 /-- The trip-2 state. -/
-def lT2 : LstateM := (runBoundedLoopMem lBodyV 2 lBaseV).get lT2_isSome
+def lT2 (_ : Unit) : LstateM := (runBoundedLoopMem (lBodyV ()) 2 (lBaseV ())).get lT2_isSome
 
-theorem lT2_eq : runBoundedLoopMem lBodyV 2 lBaseV = some lT2 :=
+theorem lT2_eq : runBoundedLoopMem (lBodyV ()) 2 (lBaseV ()) = some (lT2 ()) :=
   (Option.some_get lT2_isSome).symm
 
-theorem lT1_isSome : (runBoundedLoopMem lBodyV 1 lBaseV).isSome := by native_decide
+theorem lT1_isSome : (runBoundedLoopMem (lBodyV ()) 1 (lBaseV ())).isSome := by native_decide
 
 /-- The trip-1 state. -/
-def lT1 : LstateM := (runBoundedLoopMem lBodyV 1 lBaseV).get lT1_isSome
+def lT1 (_ : Unit) : LstateM := (runBoundedLoopMem (lBodyV ()) 1 (lBaseV ())).get lT1_isSome
 
-theorem lT1_eq : runBoundedLoopMem lBodyV 1 lBaseV = some lT1 :=
+theorem lT1_eq : runBoundedLoopMem (lBodyV ()) 1 (lBaseV ()) = some (lT1 ()) :=
   (Option.some_get lT1_isSome).symm
 
-theorem lLast_isSome : (lsemStraightMem lBodyV lT2).isSome := by native_decide
+theorem lLast_isSome : (lsemStraightMem (lBodyV ()) (lT2 ())).isSome := by native_decide
 
 /-- The post-last-pass state. -/
-def lLastV : LstateM := (lsemStraightMem lBodyV lT2).get lLast_isSome
+def lLastV (_ : Unit) : LstateM := (lsemStraightMem (lBodyV ()) (lT2 ())).get lLast_isSome
 
-theorem lLastV_eq : lsemStraightMem lBodyV lT2 = some lLastV :=
+theorem lLastV_eq : lsemStraightMem (lBodyV ()) (lT2 ()) = some (lLastV ()) :=
   (Option.some_get lLast_isSome).symm
 
-theorem lFin_isSome : (runBoundedLoopMem lBodyV 3 lBaseV).isSome := by native_decide
+theorem lFin_isSome : (runBoundedLoopMem (lBodyV ()) 3 (lBaseV ())).isSome := by native_decide
 
 /-- The 3-trip fold state. -/
-def lFinV : LstateM := (runBoundedLoopMem lBodyV 3 lBaseV).get lFin_isSome
+def lFinV (_ : Unit) : LstateM := (runBoundedLoopMem (lBodyV ()) 3 (lBaseV ())).get lFin_isSome
 
-theorem lFinV_eq : runBoundedLoopMem lBodyV 3 lBaseV = some lFinV :=
+theorem lFinV_eq : runBoundedLoopMem (lBodyV ()) 3 (lBaseV ()) = some (lFinV ()) :=
   (Option.some_get lFin_isSome).symm
 
 /-- **Validate.** The coupled differential-addition loop at runtime count 3,
@@ -684,13 +684,13 @@ theorem lFinV_eq : runBoundedLoopMem lBodyV 3 lBaseV = some lFinV :=
     the source denotation's pair output. -/
 theorem ladderLoop_export_uncond :
     ∃ t : LstatePM,
-      lsemFuelMemL lProgV (3 * (lBodyV.length + 1)) lStartV = some t
+      lsemFuelMemL (lProgV ()) (3 * ((lBodyV ()).length + 1)) (lStartV ()) = some t
         ∧ decodeCarrier (JasminTy.stackArr 64 2) t.base (argName 1)
             = some (JLoopBodyN.denote ⟨3, ladderUpdate 64⟩
                 (.nil : Ctxt.Valuation (d := jasminDialect) []) lInit) := by
   refine ladderLoop_export_faithful_denote "f" 0 "n" counterN_ne_argName
-    counterN_ne_regName lStartV rfl rfl lInit lBaseV_seed (by native_decide)
-    3 (by omega) lT2 lLastV lFinV lT2_eq lLastV_eq lFinV_eq ?_ (by native_decide)
+    counterN_ne_regName (lStartV ()) rfl rfl lInit lBaseV_seed (by native_decide)
+    3 (by omega) (lT2 ()) (lLastV ()) (lFinV ()) lT2_eq lLastV_eq lFinV_eq ?_ (by native_decide)
   intro i h1 h2 bi hbi
   have hi : i = 1 ∨ i = 2 := by omega
   rcases hi with rfl | rfl
@@ -710,7 +710,7 @@ example :
 /-- The machine run's accumulator cells equal the source fold's, read off the
     real `lsemFuelMemL` halt state (fuel/schedule non-vacuous). -/
 example :
-    (lsemFuelMemL lProgV (3 * (lBodyV.length + 1)) lStartV).map (fun t =>
+    (lsemFuelMemL (lProgV ()) (3 * ((lBodyV ()).length + 1)) (lStartV ())).map (fun t =>
         (decodeCarrier (JasminTy.stackArr 64 2) t.base (argName 1)).map (fun f =>
           (List.finRange 2).map (fun i => (f i).toNat)))
       = some (some [26, 10]) := by native_decide

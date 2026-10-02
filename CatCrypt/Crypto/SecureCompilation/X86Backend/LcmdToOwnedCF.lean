@@ -501,22 +501,22 @@ a control transfer. -/
 
 -- The skeleton of the exported loop body carries exactly one counted loop, whose
 -- trip count is the `4` of `dblLoopBody`, read off the counter seed `MOV RBX,#4`.
-#guard (parseLcmdCF (loopSmokePhysBody.length + 1)
-    (loopSmokePhysBody.filter (fun i => !isLret i))).map LcmdCF.loopCounts = some [4]
+#guard (parseLcmdCF ((loopSmokePhysBody ()).length + 1)
+    ((loopSmokePhysBody ()).filter (fun i => !isLret i))).map LcmdCF.loopCounts = some [4]
 
 -- The exported loop body recognises, leaves and all.
-#guard (lcmdToOwnedCF loopSmokePhysBody).isSome
+#guard (lcmdToOwnedCF (loopSmokePhysBody ())).isSome
 
 -- No operand of the exported loop body is register-indexed, so
 -- `lcmdToOwnedCF_cfAllDirect` applies to it.
-#guard lcmdDirect loopSmokePhysBody
+#guard lcmdDirect (loopSmokePhysBody ())
 
 -- A runtime trip count is outside the recogniser: `loopSmokeRtProg`'s lowered
 -- body seeds its counter from an operand rather than a compile-time immediate.
-#guard (lcmdToOwnedCF loopSmokeRtBody).isNone
+#guard (lcmdToOwnedCF (loopSmokeRtBody ())).isNone
 
 -- A register-indexed loop body is outside the recogniser's index-free
 -- hypothesis: `mapAddOneProg` lowers its element access to `LOADIDX`/`STOREIDX`.
-#guard !lcmdDirect mapAddOneBodyV
+#guard !lcmdDirect (mapAddOneBodyV ())
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdToOwnedCF

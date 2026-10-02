@@ -123,16 +123,17 @@ def params : List Located := [ fp "u" ]
 def results : List Located := [ fp "y_out", fp "den_out" ]
 
 /-- The Rust source string for `mont_u_to_edwards_field`. -/
-def emitMontUToEdwards : String :=
+def emitMontUToEdwards (_ : Unit) : String :=
   ppRustFunction "mont_u_to_edwards_field" params results montUToEdwardsBody
 
 /-- IO driver: write the emitted source to `/tmp/mont_u_to_edwards_field.rs`. -/
 def runEmit : IO Unit := do
   let outPath := "/tmp/mont_u_to_edwards_field.rs"
-  IO.FS.writeFile outPath emitMontUToEdwards
+  let s := emitMontUToEdwards ()
+  IO.FS.writeFile outPath s
   IO.println s!"wrote {outPath}"
-  IO.println s!"({emitMontUToEdwards.length} bytes)"
+  IO.println s!"({s.length} bytes)"
   IO.println "---"
-  IO.println emitMontUToEdwards
+  IO.println s
 
 end CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards

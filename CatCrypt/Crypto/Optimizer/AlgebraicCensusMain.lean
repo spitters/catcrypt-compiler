@@ -277,7 +277,7 @@ def kernels : List Kernel :=
         (ptr3Export "fe25519_mul_front"),
      ofLowered "p256_fe_mont_mul" P256FieldMulMontFront.loweredOpt
         (ptr3Export "p256_fe_mont_mul"),
-     ofLowered "secp256k1_femul" Secp256k1FeMulFront.loweredOpt
+     ofLowered "secp256k1_femul" (Secp256k1FeMulFront.loweredOpt ())
         (ptr3Export "secp256k1_femul"),
      ofLowered "m31_mul_owned"
         (Mersenne31FrontEmit.toJasmin Mersenne31FrontEmit.mulFrontCom)

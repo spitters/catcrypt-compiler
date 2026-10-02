@@ -144,17 +144,17 @@ theorem qr_render_eq_direct (a b c d : Nat) :
 
 /-- The column round matches. -/
 theorem column_render_eq_direct :
-    renderProgram columnProgram = renderChacha4wayColumnRound := by
+    renderProgram columnProgram = renderChacha4wayColumnRound () := by
   native_decide
 
 /-- The diagonal round matches. -/
 theorem diag_render_eq_direct :
-    renderProgram diagProgram = renderChacha4wayDiagRound := by
+    renderProgram diagProgram = renderChacha4wayDiagRound () := by
   native_decide
 
 /-- One double round matches. -/
 theorem double_render_eq_direct :
-    renderProgram doubleProgram = renderChacha4wayDoubleRound := by
+    renderProgram doubleProgram = renderChacha4wayDoubleRound () := by
   native_decide
 
 /-- `n` double rounds match (the full round-program leg). -/
@@ -164,10 +164,10 @@ theorem doubleRounds_render_eq_direct (n : Nat) :
   | zero => rfl
   | succ k ih =>
     show renderProgram (doubleProgram ++ doubleRoundsProgram k)
-      = renderChacha4wayDoubleRound ++ renderChacha4wayDoubleRounds k
+      = renderChacha4wayDoubleRound () ++ renderChacha4wayDoubleRounds k
     rw [renderProgram, List.flatMap_append]
     show renderProgram doubleProgram ++ renderProgram (doubleRoundsProgram k)
-      = renderChacha4wayDoubleRound ++ renderChacha4wayDoubleRounds k
+      = renderChacha4wayDoubleRound () ++ renderChacha4wayDoubleRounds k
     rw [double_render_eq_direct, ih]
 
 /-! ## 5. The full body and the full emitted `.jazz`, byte-identical
@@ -180,21 +180,21 @@ equals `renderChacha4wayBody`. -/
 
 /-- The ChaCha 4-way body, with the round-arithmetic emitted via the tagged-op
     path and the (non-arithmetic) SoA load/store reused from the direct emit. -/
-def vecBody : List String :=
+def vecBody (_ : Unit) : List String :=
   let decls :=
     [ "reg u128 w0 w1;"
     , "stack u128[16] m;"
     , "stack u128[16] orig;"
     , "stack u32[4] tbuf;" ]
-  decls ++ renderChacha4wayLoad ++
+  decls ++ renderChacha4wayLoad () ++
     renderProgram (doubleRoundsProgram 10) ++
-    renderChacha4wayStore
+    renderChacha4wayStore ()
 
 /-- **The tagged-op (VectorDialect) body is byte-identical to the
     direct-mnemonic body.** Every line is the same; only the round leg routes
     through `ChaCha4WayVecOp`. Hence the emitted `.jazz` (and its RFC 8439
     KAT in `bench/chacha_compare/`) is preserved verbatim. -/
-theorem vecBody_eq_direct : vecBody = renderChacha4wayBody := by
+theorem vecBody_eq_direct : vecBody () = renderChacha4wayBody () := by
   show _ ++ _ ++ renderProgram (doubleRoundsProgram 10) ++ _
     = _ ++ _ ++ renderChacha4wayDoubleRounds 10 ++ _
   rw [doubleRounds_render_eq_direct]
@@ -205,7 +205,7 @@ def chacha4wayVecJazz (name : String) : String :=
   let paramStrs := ["reg ptr u32[64] out", "reg const ptr u32[64] inp"]
   "export fn " ++ name ++ "("
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
-    ++ String.intercalate "\n  " vecBody ++ "\n  return out;\n}"
+    ++ String.intercalate "\n  " (vecBody ()) ++ "\n  return out;\n}"
 
 /-- **The full emitted text is byte-identical to the direct emit.** Therefore
     the KAT validating `emitChacha4wayJazz` validates this path verbatim — no

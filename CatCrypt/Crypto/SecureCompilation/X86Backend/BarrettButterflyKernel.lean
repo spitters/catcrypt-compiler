@@ -328,10 +328,10 @@ def butterflyPinned : GpAlloc := [("out", "%rdi"), ("inp", "%rsi")]
 
 /-- The register allocation for the kernel (pointers pinned, working regs
     first-fit over the remaining pool). -/
-def butterflyAlloc : GpAlloc := allocGp butterflyPinned butterflyBlock
+def butterflyAlloc (_ : Unit) : GpAlloc := allocGp butterflyPinned butterflyBlock
 
 /-- The rendered AT&T body (one line per `JInstr`). -/
-def butterflyAsmBody : List String := renderBlockBody butterflyAlloc butterflyBlock
+def butterflyAsmBody (_ : Unit) : List String := renderBlockBody (butterflyAlloc ()) butterflyBlock
 
 /-- The full emitted `.s` leaf function. The body is `runBlock`-verified; the
     callee-saved-register save/restore prologue/epilogue and the `ret` are
@@ -339,16 +339,16 @@ def butterflyAsmBody : List String := renderBlockBody butterflyAlloc butterflyBl
     allocator uses `%rbx`, `%r12`, `%r13` (callee-saved), so they are pushed on
     entry and popped before `ret`; `out`/`inp` arrive in `%rdi`/`%rsi` per the
     ABI. -/
-def butterflyAsm : String :=
+def butterflyAsm (_ : Unit) : String :=
   renderLeafFn "plonky3_ntt_butterfly_x86"
     ["\tpushq %rbx", "\tpushq %r12", "\tpushq %r13"]
-    butterflyAsmBody
+    (butterflyAsmBody ())
     ["\tpopq %r13", "\tpopq %r12", "\tpopq %rbx", "\tret"]
 
--- #eval IO.println butterflyAsm
+-- #eval IO.println (butterflyAsm ())
 
 /-- The emitted asm has one body line per instruction. -/
-theorem butterflyAsmBody_length : butterflyAsmBody.length = 36 := by native_decide
+theorem butterflyAsmBody_length : (butterflyAsmBody ()).length = 36 := by native_decide
 
 /-- Local substring test (`needle` occurs in `hay`), for the shape checks. -/
 def hasSub (hay needle : String) : Bool :=
@@ -357,13 +357,13 @@ def hasSub (hay needle : String) : Bool :=
 
 /- The Barrett constant and prime appear as immediates; the memory loads/stores
     print in AT&T `off(%base)` form; `negq` and `mulx`-free scalar body. -/
-#guard (hasSub butterflyAsm "2290649223") && (hasSub butterflyAsm "2013265921") && (hasSub butterflyAsm "(%rsi)") && (hasSub butterflyAsm "(%rdi)") && (hasSub butterflyAsm "negq")
+#guard (hasSub (butterflyAsm ()) "2290649223") && (hasSub (butterflyAsm ()) "2013265921") && (hasSub (butterflyAsm ()) "(%rsi)") && (hasSub (butterflyAsm ()) "(%rdi)") && (hasSub (butterflyAsm ()) "negq")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/plonky3_compare/gen_com"
   IO.FS.writeFile
-    "bench/plonky3_compare/gen_com/ntt_butterfly_x86_from_lean.s" butterflyAsm
+    "bench/plonky3_compare/gen_com/ntt_butterfly_x86_from_lean.s" (butterflyAsm ())
   IO.println "wrote gen_com/ntt_butterfly_x86_from_lean.s (in-Lean x86 backend, no jasminc)"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel

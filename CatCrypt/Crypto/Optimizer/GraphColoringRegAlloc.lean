@@ -495,7 +495,7 @@ def kpar (x : Nat) : String := s!"C_{x}"
     then fold each parity back into every lane (`A[x][y] ⊕= C[x±1]`). Every one of the
     25 lanes is BOTH read (into a parity) and written (the fold) in this round, so all
     25 are live across every round — the whole-program-live shape. -/
-def keccakRound : List (JInstr 64) :=
+def keccakRound (_u : Unit := ()) : List (JInstr 64) :=
   -- θ column sums: C[x] := A[x][0]; C[x] ^= A[x][1..4]
   (List.range 5).flatMap (fun x =>
     JInstr.mov (kpar x) (.reg (klane x 0)) ::
@@ -510,7 +510,7 @@ def keccakRound : List (JInstr 64) :=
     materialization's soundness (`spillReload_sandwich_runBlock`) requires — the spill
     store at a name's def precedes every reload of it. Lane `A[x][y]` loads from byte
     offset `8·(5x+y)`. -/
-def keccakPrologue : List (JInstr 64) :=
+def keccakPrologue (_u : Unit := ()) : List (JInstr 64) :=
   (List.range 5).flatMap (fun x =>
     (List.range 5).map (fun y =>
       JInstr.loadMem (klane x y) "%rdi" (8 * (5 * x + y))))

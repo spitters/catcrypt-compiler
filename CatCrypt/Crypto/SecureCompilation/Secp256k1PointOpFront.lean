@@ -373,20 +373,20 @@ def toJasmin4 (com : Option (Com catCryptDialect inΓ4 (.memref 4))) :
   | none => none
 
 /-- `secp256k1_fe_add` front (`out = (x + y) mod p`) as `Com catCryptDialect`. -/
-def secp256k1FeAddFront : Option (Com catCryptDialect inΓ4 (.memref 4)) := frontCom4 feAddBody
+def secp256k1FeAddFront (_ : Unit) : Option (Com catCryptDialect inΓ4 (.memref 4)) := frontCom4 feAddBody
 /-- `secp256k1_fe_sub` front (`out = (x − y) mod p`) as `Com catCryptDialect`. -/
-def secp256k1FeSubFront : Option (Com catCryptDialect inΓ4 (.memref 4)) := frontCom4 feSubBody
+def secp256k1FeSubFront (_ : Unit) : Option (Com catCryptDialect inΓ4 (.memref 4)) := frontCom4 feSubBody
 /-- `secp256k1_fe_add` lowered to `Com jasminDialect`. -/
-def feAddLowered := toJasmin4 secp256k1FeAddFront
+def feAddLowered (_ : Unit) := toJasmin4 (secp256k1FeAddFront ())
 /-- `secp256k1_fe_sub` lowered to `Com jasminDialect`. -/
-def feSubLowered := toJasmin4 secp256k1FeSubFront
+def feSubLowered (_ : Unit) := toJasmin4 (secp256k1FeSubFront ())
 
 /-- Split a `Nat` into four little-endian `u64` limbs. -/
 def limbs4 (n : Nat) : List Nat :=
   [n % 2 ^ 64, n / 2 ^ 64 % 2 ^ 64, n / 2 ^ 128 % 2 ^ 64, n / 2 ^ 192 % 2 ^ 64]
 
 /-- `secp256k1_fe_add` / `secp256k1_fe_sub` lower end-to-end to `Com jasminDialect`. -/
-theorem feAddSub_lowered_isSome : feAddLowered.isSome ∧ feSubLowered.isSome := by
+theorem feAddSub_lowered_isSome : (feAddLowered ()).isSome ∧ (feSubLowered ()).isSome := by
   constructor <;> native_decide
 
 /-! ### 5b. The composed point-op fronts (`.memref 12`) -/
@@ -407,7 +407,7 @@ def inVM3 : VarMap inΓ3 :=
     (t := .memref 12) "P1").bind (t := .memref 12) "P2"
 
 /-- Push the `jacDbl` body through the direct control front, cap with `ret out`. -/
-def jacDblFrontCom : Option (Com catCryptDialect inΓ2 (.memref 12)) :=
+def jacDblFrontCom (_ : Unit) : Option (Com catCryptDialect inΓ2 (.memref 12)) :=
   match translateDialectControl inVM2 jacDblBody with
   | some r =>
       match r.vm.lookup "out" with
@@ -416,7 +416,7 @@ def jacDblFrontCom : Option (Com catCryptDialect inΓ2 (.memref 12)) :=
   | none => none
 
 /-- Push the `jacAdd` body through the direct control front, cap with `ret out`. -/
-def jacAddFrontCom : Option (Com catCryptDialect inΓ3 (.memref 12)) :=
+def jacAddFrontCom (_ : Unit) : Option (Com catCryptDialect inΓ3 (.memref 12)) :=
   match translateDialectControl inVM3 jacAddBody with
   | some r =>
       match r.vm.lookup "out" with
@@ -435,9 +435,9 @@ def toJasmin {Γ : Ctx} (com : Option (Com catCryptDialect Γ (.memref 12))) :
   | none => none
 
 /-- `jacDbl` lowered to `Com jasminDialect`. -/
-def jacDblLowered := toJasmin jacDblFrontCom
+def jacDblLowered (_ : Unit) := toJasmin (jacDblFrontCom ())
 /-- `jacAdd` lowered to `Com jasminDialect`. -/
-def jacAddLowered := toJasmin jacAddFrontCom
+def jacAddLowered (_ : Unit) := toJasmin (jacAddFrontCom ())
 
 /-! ## 6. Structural gates — the schedules match the proven-realizer spines
 
@@ -531,9 +531,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 export CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm (ownedAsm)
 
 /-- The lowered `jacDbl` as owned `.s` (RDI = out, RSI = P). -/
-def jacDblAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_dbl" ["RDI", "RSI"] jacDblLowered
+def jacDblAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_dbl" ["RDI", "RSI"] (jacDblLowered ())
 /-- The lowered `jacAdd` as owned `.s` (RDI = out, RSI = P1, RDX = P2). -/
-def jacAddAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_add" ["RDI", "RSI", "RDX"] jacAddLowered
+def jacAddAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_add" ["RDI", "RSI", "RDX"] (jacAddLowered ())
 
 /-- Write the front-generated point-op kernels into one owned `.s`. The emitted
     bytes are checked outside Lean, by the external known-answer harness. -/

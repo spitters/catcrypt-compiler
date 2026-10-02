@@ -60,30 +60,30 @@ theorem loopSmokeProg_denote :
   rfl
 
 /-- The lowered body of `loopSmokeProg`. -/
-def loopSmokeBody : Lcmd := comLToBody 1 argName (fun _ => none) loopSmokeProg 1
+def loopSmokeBody (_ : Unit) : Lcmd := comLToBody 1 argName (fun _ => none) loopSmokeProg 1
 
 /-- **Real back-edge:** the lowered body contains a conditional jump (`Lcond`,
     rendered `jne .L<d>`). -/
 theorem loopSmokeBody_has_backedge :
-    loopSmokeBody.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
+    (loopSmokeBody ()).any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
       = true := by decide
 
 /-- **Real loop label:** the lowered body contains an internal `Llabel` (the
     back-edge target `.L<d>:`). -/
 theorem loopSmokeBody_has_label :
-    loopSmokeBody.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false)
+    (loopSmokeBody ()).any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false)
       = true := by decide
 
 /-- **One body copy, not `n`:** the doubling op `ADD:64` appears exactly **once**
     in the lowered body — the loop is rolled, not unrolled four times. -/
 theorem loopSmokeBody_one_body_copy :
-    (loopSmokeBody.filter
+    ((loopSmokeBody ()).filter
       (fun i => match i.li_i with | .Lopn _ m _ => m == "ADD:64" | _ => false)).length
       = 1 := by decide
 
 /-- The lowered body still ends with `Lret` (terminal return after the loop). -/
 theorem loopSmokeBody_ends_Lret :
-    loopSmokeBody.getLast?.map Linstr.li_i = some .Lret := rfl
+    (loopSmokeBody ()).getLast?.map Linstr.li_i = some .Lret := rfl
 
 /-! ### Physical-RA loop body (`ComL.toLfundefPhys`)
 
@@ -93,10 +93,10 @@ a real `jne .L<d>` back-edge with the accumulator / counter loop-carried in fixe
 physical registers. -/
 
 /-- The physical (post-RA) `lfundef` of the doubling loop. -/
-def loopSmokePhys : Lfundef := ComL.toLfundefPhys loopSmokeProg
+def loopSmokePhys (_ : Unit) : Lfundef := ComL.toLfundefPhys loopSmokeProg
 
 /-- The physical body of the doubling loop. -/
-def loopSmokePhysBody : Lcmd := loopSmokePhys.lfd_body
+def loopSmokePhysBody (_ : Unit) : Lcmd := (loopSmokePhys ()).lfd_body
 
 /-- True iff an operand names a real allocatable x86 GP register (one of
     `gpRegNames`, i.e. NOT a spill `k.N`, NOT an SSA `rN`/`L<d>_r<k>`/`Lctr<d>`
@@ -109,7 +109,7 @@ def isRealGPName (n : String) : Bool := gpRegNames.contains n || n == "R14" || n
     operands — immediates, the `NZ` condition flag carried by `Lcond` — are not
     register-file operands and are excluded.) -/
 theorem loopSmokePhysBody_all_real_registers :
-    loopSmokePhysBody.all (fun i =>
+    (loopSmokePhysBody ()).all (fun i =>
       match i.li_i with
       | .Lopn dsts _ srcs =>
           (dsts.filterMap LOperand.regName?).all isRealGPName &&
@@ -121,7 +121,7 @@ theorem loopSmokePhysBody_all_real_registers :
     The complement of `loopSmokePhysBody_all_real_registers`, stated as the
     absence of the SSA-name shapes the owned printer maps to `%<UNKNOWN>`. -/
 theorem loopSmokePhysBody_no_ssa_names :
-    loopSmokePhysBody.all (fun i =>
+    (loopSmokePhysBody ()).all (fun i =>
       match i.li_i with
       | .Lopn dsts _ srcs =>
           ((dsts ++ srcs).filterMap LOperand.regName?).all (fun n =>
@@ -131,20 +131,20 @@ theorem loopSmokePhysBody_no_ssa_names :
 /-- **Real back-edge preserved:** the physical loop body still contains the
     `Lcond` conditional jump (`jne .L<d>`). -/
 theorem loopSmokePhysBody_has_backedge :
-    loopSmokePhysBody.any (fun i =>
+    (loopSmokePhysBody ()).any (fun i =>
       match i.li_i with | .Lcond _ _ => true | _ => false) = true := by native_decide
 
 /-- **Real loop label preserved:** the physical loop body still contains the
     internal `Llabel` back-edge target. -/
 theorem loopSmokePhysBody_has_label :
-    loopSmokePhysBody.any (fun i =>
+    (loopSmokePhysBody ()).any (fun i =>
       match i.li_i with | .Llabel _ _ => true | _ => false) = true := by native_decide
 
 /-- **One body copy, not `n`:** the doubling op `ADD:64` appears exactly **once**
     in the physical body — RA preserves the rolled shape (the loop is not
     unrolled four times). -/
 theorem loopSmokePhysBody_one_body_copy :
-    (loopSmokePhysBody.filter
+    ((loopSmokePhysBody ()).filter
       (fun i => match i.li_i with | .Lopn _ m _ => m == "ADD:64" | _ => false)).length
       = 1 := by native_decide
 
@@ -213,16 +213,16 @@ theorem mapAddOneProg_denote :
   funext i; revert i; decide
 
 /-- The virtual (pre-RA) lowered body of the map loop. -/
-def mapAddOneBodyV : Lcmd := comLToBody 2 argName (fun _ => none) mapAddOneProg 2
+def mapAddOneBodyV (_ : Unit) : Lcmd := comLToBody 2 argName (fun _ => none) mapAddOneProg 2
 
 /-- The physical (post-RA) lowered body of the map loop. -/
-def mapAddOnePhysBody : Lcmd := (ComL.toLfundefPhys mapAddOneProg).lfd_body
+def mapAddOnePhysBody (_ : Unit) : Lcmd := (ComL.toLfundefPhys mapAddOneProg).lfd_body
 
 /-- **Indexed array load IN the loop body:** the virtual body contains exactly one
     `LOADIDX` whose source is a register-indexed SIB element `in[idx*8]` — a
     per-iteration `stackLoad in[i]`, not a compile-time `.arr` element. -/
 theorem mapAddOneBodyV_has_indexed_load :
-    (mapAddOneBodyV.filter (fun i => match i.li_i with
+    ((mapAddOneBodyV ()).filter (fun i => match i.li_i with
       | .Lopn _ "LOADIDX" [.arrIdx _ idx 8] => idx == loopIdx 2
       | _ => false)).length = 1 := by decide
 
@@ -230,28 +230,28 @@ theorem mapAddOneBodyV_has_indexed_load :
     destination is a SIB element `out[idx*8]` — a per-iteration `stackStore
     out[i]`. -/
 theorem mapAddOneBodyV_has_indexed_store :
-    (mapAddOneBodyV.filter (fun i => match i.li_i with
+    ((mapAddOneBodyV ()).filter (fun i => match i.li_i with
       | .Lopn _ "STOREIDX" [.arrIdx _ idx 8, _] => idx == loopIdx 2
       | _ => false)).length = 1 := by decide
 
 /-- **One body copy, not `n`:** the indexed load appears exactly once — the loop
     is rolled (one `LOADIDX in[i]`), not unrolled four times. -/
 theorem mapAddOneBodyV_one_body_copy :
-    (mapAddOneBodyV.filter (fun i => match i.li_i with
+    ((mapAddOneBodyV ()).filter (fun i => match i.li_i with
       | .Lopn _ m _ => m == "LOADIDX" | _ => false)).length = 1 := by decide
 
 /-- **Real back-edge + label:** the virtual body has both an internal `Llabel`
     (`.L<d>:`) and a `Lcond` (`jne .L<d>`). -/
 theorem mapAddOneBodyV_has_backedge :
-    mapAddOneBodyV.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
+    (mapAddOneBodyV ()).any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
       = true ∧
-    mapAddOneBodyV.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false)
+    (mapAddOneBodyV ()).any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false)
       = true := by exact ⟨by decide, by decide⟩
 
 /-- **Index advance:** the body advances the loop index `Lidx<d>` by one each trip
     (`ADD Lidx<d>, Lidx<d>, #1`) — distinct from the trip-counter decrement. -/
 theorem mapAddOneBodyV_has_index_advance :
-    mapAddOneBodyV.any (fun i => match i.li_i with
+    (mapAddOneBodyV ()).any (fun i => match i.li_i with
       | .Lopn [.reg d] _ [.reg s, .imm 1] => d == loopIdx 2 && s == loopIdx 2
       | _ => false) = true := by decide
 
@@ -263,7 +263,7 @@ theorem mapAddOneBodyV_has_index_advance :
     `%<UNKNOWN>`. (Immediates and the `NZ` flag are excluded — not register-file
     operands.) -/
 theorem mapAddOnePhysBody_all_real_registers :
-    mapAddOnePhysBody.all (fun i =>
+    (mapAddOnePhysBody ()).all (fun i =>
       match i.li_i with
       | .Lopn dsts _ srcs =>
           (dsts.filterMap LOperand.regName?).all isRealGPName &&
@@ -274,7 +274,7 @@ theorem mapAddOnePhysBody_all_real_registers :
     SIB base and index in the physical body is a real x86 register (so the
     indexed memory references assemble). -/
 theorem mapAddOnePhysBody_sib_real_registers :
-    mapAddOnePhysBody.all (fun i =>
+    (mapAddOnePhysBody ()).all (fun i =>
       match i.li_i with
       | .Lopn dsts _ srcs =>
           (dsts ++ srcs).all (fun o => match o with
@@ -285,7 +285,7 @@ theorem mapAddOnePhysBody_sib_real_registers :
 /-- **One body copy in the physical body too:** RA preserves the rolled shape —
     one `LOADIDX` (the loop is not unrolled). -/
 theorem mapAddOnePhysBody_one_body_copy :
-    (mapAddOnePhysBody.filter (fun i => match i.li_i with
+    ((mapAddOnePhysBody ()).filter (fun i => match i.li_i with
       | .Lopn _ m _ => m == "LOADIDX" | _ => false)).length = 1 := by native_decide
 
 /-! ### 7g″ demo: a self-allocating (frame-owning) straight-line export
@@ -322,12 +322,12 @@ def framedStoreLoadProg : ComL [.stackArr 64 4] (.reg 64) :=
 /-- The frame-allocating export of the store/load demo: a 32-byte self-owned
     frame, the frame base `%rsp` directly (no base LEA), a `STOREIDX`+`LOADIDX`
     in-frame, and a scalar `uint64_t` return — no SysV pointer args. -/
-def framedDemoFundef : Lfundef :=
+def framedDemoFundef (_ : Unit) : Lfundef :=
   ComL.toLfundefPhysFramed 32 [("arr", 0)] framedStoreLoadProg
 
 /-- The framed export's body as text (for inspection / the structural pins). -/
-def framedDemoBodyText : List String :=
-  framedDemoFundef.lfd_body.map (fun i => i.li_i.toText)
+def framedDemoBodyText (_ : Unit) : List String :=
+  (framedDemoFundef ()).lfd_body.map (fun i => i.li_i.toText)
 
 -- `framedDemoBodyText_expected` moved out of Lean: the instruction text is pinned by
 -- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
@@ -336,14 +336,14 @@ def framedDemoBodyText : List String :=
     printer reads to open the `leaq -F(%rsp)` frame), stating the exact 32-byte
     self-owned frame. -/
 theorem framedDemoFundef_frame_directive :
-    framedDemoBodyText.head? = some "Lopn [] FRAME [#32]" := by
+    (framedDemoBodyText ()).head? = some "Lopn [] FRAME [#32]" := by
   native_decide
 
 /-- **`lfd_stk_max` records the self-allocated frame size** (0 in the register-ABI
     export), and there are **no incoming SysV pointer arguments** (the arrays are
     self-owned, not passed). -/
 theorem framedDemoFundef_stk_and_args :
-    framedDemoFundef.lfd_stk_max = 32 ∧ framedDemoFundef.lfd_arg = [] := by
+    (framedDemoFundef ()).lfd_stk_max = 32 ∧ (framedDemoFundef ()).lfd_arg = [] := by
   native_decide
 
 /-- **Every array access reaches the self-owned frame base `%rsp`.** There is NO
@@ -351,9 +351,9 @@ theorem framedDemoFundef_stk_and_args :
     base); every `STOREIDX`/`LOADIDX` SIB base in the body is exactly `%rsp` — no
     caller pointer, no reserved register, no reused loop-carried register. -/
 theorem framedDemoFundef_accesses_frame_base :
-    framedDemoFundef.lfd_body.any (fun i => match i.li_i with
+    (framedDemoFundef ()).lfd_body.any (fun i => match i.li_i with
       | .Lopn _ "STOREIDX" (.arrIdx b _ _ :: _) => b == "RSP" | _ => false) = true ∧
-    framedDemoFundef.lfd_body.all (fun i => match i.li_i with
+    (framedDemoFundef ()).lfd_body.all (fun i => match i.li_i with
       | .Lopn _ "STOREIDX" (.arrIdx b _ _ :: _) => b == "RSP"
       | .Lopn _ "LOADIDX" [.arrIdx b _ _] => b == "RSP"
       | _ => true) = true := by native_decide
@@ -371,7 +371,7 @@ The smoke kernel is `mapAddOneProg` with `out = a1` (the `init` arg) and
 `in = a0` (the `invs` arg), ABI `out = RDI`, `in = RSI`. -/
 
 /-- The 2-pointer-ABI looped body of the map kernel. -/
-def mapAddOneAbiBody : Lcmd :=
+def mapAddOneAbiBody (_ : Unit) : Lcmd :=
   (ComL.toLfundefPhysAbi mapAddOneProg "a1" ["a0"]).lfd_body
 
 -- `mapAddOneAbiBody_expected` moved out of Lean: the instruction text is pinned by
@@ -382,7 +382,7 @@ def mapAddOneAbiBody : Lcmd :=
     the in-pointer (`MOVQ R14, [qsave.RSI]`), and every `STOREIDX` by a reload of
     the out-pointer (`MOVQ R14, [qsave.RDI]`), with the SIB base `R14`. -/
 theorem mapAddOneAbiBody_no_swap :
-    (mapAddOneAbiBody.zip (mapAddOneAbiBody.drop 1)).all (fun (prev, cur) =>
+    ((mapAddOneAbiBody ()).zip ((mapAddOneAbiBody ()).drop 1)).all (fun (prev, cur) =>
       match cur.li_i with
       | .Lopn _ "LOADIDX" [.arrIdx "R14" _ _] =>
           prev.li_i.toText == "Lopn [R14] MOVQ [qsave.RSI]"
@@ -395,7 +395,7 @@ theorem mapAddOneAbiBody_no_swap :
     red-zone qsave slot immediately before the access — so no body instruction can
     leave a stale data word in the base register (the segfault root cause). -/
 theorem mapAddOneAbiBody_sib_base_is_reloaded_scratch :
-    mapAddOneAbiBody.all (fun i =>
+    (mapAddOneAbiBody ()).all (fun i =>
       match i.li_i with
       | .Lopn _ _ srcs => srcs.all (fun o =>
           match o with
@@ -406,7 +406,7 @@ theorem mapAddOneAbiBody_sib_base_is_reloaded_scratch :
 /-- **One body copy in the ABI export too:** the loop stays rolled — exactly one
     `LOADIDX` (the array map is not unrolled). -/
 theorem mapAddOneAbiBody_one_body_copy :
-    (mapAddOneAbiBody.filter (fun i => match i.li_i with
+    ((mapAddOneAbiBody ()).filter (fun i => match i.li_i with
       | .Lopn _ m _ => m == "LOADIDX" | _ => false)).length = 1 := by native_decide
 
 /-! ### 7f. Mixed scalar+vector register-class allocation (smoke test)
@@ -417,7 +417,7 @@ registers, vector bindings to `XMM`, with disjoint pools so no value crosses
 class. -/
 
 /-- A mixed body: two GP `Lopn`s then two vector (`reg 128`) `Lopn`s. -/
-def mixedClassBody : Lcmd :=
+def mixedClassBody (_ : Unit) : Lcmd :=
   [ ⟨0, .Lopn [.reg "r0"] "ADD" [.reg "a0", .reg "a1"]⟩
   , ⟨0, .Lopn [.reg "r1"] "SUB" [.reg "r0", .reg "a0"]⟩
   , ⟨0, .Lopn [.reg "r2"] "VPXOR" [.reg "a2", .reg "a3"]⟩
@@ -429,14 +429,14 @@ def mixedClassBody : Lcmd :=
     `bodyNames` first-appearance order, destination-first; the trailing `false`
     is the universe-padding entry.) -/
 theorem mixedClassBody_vecSlots :
-    (bodyVecSlots mixedClassBody).toList
+    (bodyVecSlots (mixedClassBody ())).toList
       = [false, false, false, false, true, true, true, true, false] := by native_decide
 
 /-- The one-pass class-aware table: GP slots land in `0,1,2` (→ `RAX`,`RBX`,`RCX`),
     vector slots land in `vectorBase + 0/1/2` (→ `XMM0`,`XMM1`,`XMM2`). No GP slot
     reaches `vectorBase`, no vector slot stays below it — disjoint pools. -/
 theorem mixedClassBody_table :
-    (bodyPhysTable mixedClassBody).toList = [0, 1, 2, 2, 1000, 1001, 1002, 1002] := by
+    (bodyPhysTable (mixedClassBody ())).toList = [0, 1, 2, 2, 1000, 1001, 1002, 1002] := by
   native_decide
 
 -- `mixedClassBody_expected` moved out of Lean: the instruction text is pinned by
@@ -447,7 +447,7 @@ theorem mixedClassBody_table :
     carries only `XMM` operands — no GP name in a vector op and no `XMM` in a GP
     op. -/
 theorem mixedClassBody_no_cross_class :
-    (physBody (fun _ => none) mixedClassBody).all (fun i =>
+    (physBody (fun _ => none) (mixedClassBody ())).all (fun i =>
       match i.li_i with
       | .Lopn dsts opn srcs =>
           let names := (dsts ++ srcs).filterMap LOperand.regName?
@@ -456,7 +456,7 @@ theorem mixedClassBody_no_cross_class :
       | _ => true) = true := by native_decide
 
 /-- A pure-scalar body of the same shape (no vector op). -/
-def scalarClassBody : Lcmd :=
+def scalarClassBody (_ : Unit) : Lcmd :=
   [ ⟨0, .Lopn [.reg "r0"] "ADD" [.reg "a0", .reg "a1"]⟩
   , ⟨0, .Lopn [.reg "r1"] "SUB" [.reg "r0", .reg "a0"]⟩
   , ⟨0, .Lopn [.reg "r2"] "XOR" [.reg "a2", .reg "a3"]⟩
@@ -468,11 +468,11 @@ def scalarClassBody : Lcmd :=
     and its physical body equals the GP-only `physBody`. The vector register class
     is purely additive. -/
 theorem scalarClassBody_table_identical :
-    bodyPhysTable scalarClassBody = physTable (bodyTrace scalarClassBody) := by
+    bodyPhysTable (scalarClassBody ()) = physTable (bodyTrace (scalarClassBody ())) := by
   native_decide
 
 theorem scalarClassBody_allGP :
-    (bodyVecSlots scalarClassBody).all (· == false) = true := by native_decide
+    (bodyVecSlots (scalarClassBody ())).all (· == false) = true := by native_decide
 
 /-! ### 7g‴. Multi-input scalar-reduce looped export — accumulator/input base fix
 
@@ -529,13 +529,13 @@ theorem dg_denote :
 
 /-- The 3-pointer-ABI rolled body, exported with the caller's `outArg`/`inArgs`
     given in `Γ`-order (the convention the multi-input callers use). -/
-def dgBodyR : Lcmd := (ComL.toLfundefPhysAbi dgProg (argName 0) [argName 1, argName 2]
+def dgBodyR (_ : Unit) : Lcmd := (ComL.toLfundefPhysAbi dgProg (argName 0) [argName 1, argName 2]
     (fun _ => none) (fun _ => none) ["RDI","RSI","RDX"] [64,64,64]).lfd_body
 
 /-- The reload qsave-slot before each memref access, in body order
     `[a[i], b[i], acc[0]-load, acc[0]-store]`. -/
-def dgReloads : List String :=
-  (dgBodyR.zip (dgBodyR.drop 1)).filterMap (fun (prev, cur) =>
+def dgReloads (_ : Unit) : List String :=
+  ((dgBodyR ()).zip ((dgBodyR ()).drop 1)).filterMap (fun (prev, cur) =>
     match cur.li_i, prev.li_i with
     | .Lopn _ "LOADIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
     | .Lopn _ "STOREIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
@@ -546,14 +546,14 @@ def dgReloads : List String :=
     from the out slot `qsave.RDI`. No cross-wiring (before the fix, `b[i]`
     reloaded from `qsave.RDI`, reading the out array as `b`). -/
 theorem dg_reload_slots_fixed :
-    dgReloads = ["qsave.RSI", "qsave.RDX", "qsave.RDI", "qsave.RDI"] := by native_decide
+    dgReloads () = ["qsave.RSI", "qsave.RDX", "qsave.RDI", "qsave.RDI"] := by native_decide
 
 /-- The two inputs and the accumulator/out use THREE distinct qsave slots. -/
-theorem dg_three_distinct_slots : (dgReloads.take 3).Nodup := by native_decide
+theorem dg_three_distinct_slots : ((dgReloads ()).take 3).Nodup := by native_decide
 
 /-- Every SIB base is the reloaded scratch `R14` (no body-clobberable base). -/
 theorem dg_all_bases_r14 :
-    dgBodyR.all (fun i => match i.li_i with
+    (dgBodyR ()).all (fun i => match i.li_i with
       | .Lopn _ _ srcs => srcs.all (fun o => match o with
           | .arrIdx base _ _ => base == reloadScratch2 | _ => true)
       | _ => true) = true := by native_decide
@@ -562,7 +562,7 @@ theorem dg_all_bases_r14 :
     byte-identical to its byte-KAT-passing reference (the fix changes nothing
     when the caller's names already match the `resolveVar` convention). -/
 theorem mapAddOneAbiBody_unchanged_by_fix :
-    (ComL.toLfundefPhysAbi mapAddOneProg "a1" ["a0"]).lfd_body = mapAddOneAbiBody := by
+    (ComL.toLfundefPhysAbi mapAddOneProg "a1" ["a0"]).lfd_body = mapAddOneAbiBody () := by
   rfl
 
 /-! ### 7g″. Scalar-before-array invariant order
@@ -604,12 +604,12 @@ def dsProg : ComL [.reg 64, .stackArr DGW DGN, .stackArr DGW 1] (.stackArr DGW 1
     (.cons .here (.cons (.there .here) .nil)) (.ret .here)
 
 /-- The 3-argument-ABI rolled body of the scalar-before-array kernel. -/
-def dsBodyR : Lcmd := (ComL.toLfundefPhysAbi dsProg (argName 0) [argName 1]
+def dsBodyR (_ : Unit) : Lcmd := (ComL.toLfundefPhysAbi dsProg (argName 0) [argName 1]
     (fun _ => none) (fun _ => none) ["RDI","RSI","RDX"] [64,64,64]).lfd_body
 
 /-- The qsave slot each memref access reloads its SIB base from, in body order. -/
-def dsReloads : List String :=
-  (dsBodyR.zip (dsBodyR.drop 1)).filterMap (fun (prev, cur) =>
+def dsReloads (_ : Unit) : List String :=
+  ((dsBodyR ()).zip ((dsBodyR ()).drop 1)).filterMap (fun (prev, cur) =>
     match cur.li_i, prev.li_i with
     | .Lopn _ "LOADIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
     | .Lopn _ "STOREIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
@@ -617,8 +617,8 @@ def dsReloads : List String :=
 
 -- The input array reloads from the `RSI` slot, both accumulator accesses from the
 -- `RDI` slot. The scalar's slot `qsave.RDX` is not a base for any access.
-#guard dsReloads = ["qsave.RSI", "qsave.RDI", "qsave.RDI"]
-#guard !(dsReloads.contains "qsave.RDX")
+#guard dsReloads () = ["qsave.RSI", "qsave.RDI", "qsave.RDI"]
+#guard !((dsReloads ()).contains "qsave.RDX")
 
 /-! ## Real-`Lcall` leaf-call-in-loop-body smoke test (`loopBodyWalkNCall`)
 
@@ -635,7 +635,7 @@ def edDblCallBody : JLoopBodyN (.reg 64) [] :=
 
 /-- The lowered body via the real-`Lcall` walk (acc in `RAX`, idx `Lidx1`,
     no invariants; the body walk starts at `curDepth = 2 + 0`). -/
-def edDblCallBodyW : Lcmd :=
+def edDblCallBodyW (_ : Unit) : Lcmd :=
   (loopBodyWalkNCall 1 "RAX" "Lidx1" [] (fun _ => none) edDblCallBody.update 2).1
 
 -- `edDblCallBodyW_expected` moved out of Lean: the instruction text is pinned by
@@ -643,7 +643,7 @@ def edDblCallBodyW : Lcmd :=
 
 /-- **It is an `LinstrR.Lcall`,** not an `Lopn "CALL:…"` shadow. -/
 theorem edDblCallBodyW_has_real_Lcall :
-    edDblCallBodyW.any (fun i =>
+    (edDblCallBodyW ()).any (fun i =>
       match i.li_i with | .Lcall _ _ => true | _ => false) = true := by decide
 
 /-- A two-arg leaf-call body `acc := ed_point_add(acc, inv)` over the context
@@ -655,7 +655,7 @@ def edAddCallBody : JLoopBodyN (.reg 64) [.reg 64] :=
 
 /-- The lowered two-arg call body (acc `RAX`, invariant base `RBX`; the walk
     starts at `curDepth = 2 + 1`). -/
-def edAddCallBodyW : Lcmd :=
+def edAddCallBodyW (_ : Unit) : Lcmd :=
   (loopBodyWalkNCall 1 "RAX" "Lidx1" ["RBX"] (fun _ => none) edAddCallBody.update 3).1
 
 -- `edAddCallBodyW_expected` moved out of Lean: the instruction text is pinned by
@@ -724,7 +724,7 @@ names (`RDI`/`RAX`) verbatim. The barrier in `remapOperand` (engaged by
     whose loop-carried set is `acc` (accumulator), `Lidx1` (index), `Lctr1`
     (counter). The marshalling `MOV RDI, acc` and capture `MOV acc, RAX` name the
     SysV arg/return registers literally. -/
-def callBarrierBody : Lcmd :=
+def callBarrierBody (_ : Unit) : Lcmd :=
   [ ⟨0, .Lopn [.reg "acc"] (withWidthTag 64 "MOV") [.reg "a0"]⟩
   , ⟨0, .Lopn [.reg "Lidx1"] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg "Lctr1"] (withWidthTag 64 "MOV") [.imm 8]⟩
@@ -738,14 +738,14 @@ def callBarrierBody : Lcmd :=
   , ⟨0, .Lcond (.reg "NZ") 1⟩ ]
 
 /-- The barrier engages: the body has a real `Lcall`. -/
-theorem callBarrierBody_hasCall : bodyHasCall callBarrierBody = true := by decide
+theorem callBarrierBody_hasCall : bodyHasCall (callBarrierBody ()) = true := by decide
 
 /-- **Call-free regression guard.** The barrier is a no-op on the call-free loop
     smoke export (`bodyHasCall = false`): its physical body is byte-identical to
     the pre-barrier allocation (accumulator `RAX`, counter `RBX`). -/
 theorem loopSmoke_callfree_barrier_noop :
     bodyHasCall (ComL.toLfundefPhys loopSmokeProg).lfd_body = false ∧
-    loopSmokePhysBody.map (fun i => i.li_i.toText) =
+    (loopSmokePhysBody ()).map (fun i => i.li_i.toText) =
       [ "Lopn [RBX] MOVQ [RDI]"
       , "Lopn [RAX] MOV:64 [RBX]"
       , "Lopn [RBX] MOV:64 [#4]"
@@ -843,12 +843,12 @@ theorem loopSmokeRtProg_denote_count3 :
       = (256 : BitVec 64) := by rfl
 
 /-- The lowered body of `loopSmokeRtProg` (top-level, `nArgs = 2`). -/
-def loopSmokeRtBody : Lcmd := comLToBody 2 argName (fun _ => none) loopSmokeRtProg 2
+def loopSmokeRtBody (_ : Unit) : Lcmd := comLToBody 2 argName (fun _ => none) loopSmokeRtProg 2
 
 /-- **Real back-edge:** the runtime-count loop lowers to a conditional jump
     (`Lcond`, rendered `jne .L<d>`) — a rolled loop, not an unrolled chain. -/
 theorem loopSmokeRtBody_has_backedge :
-    loopSmokeRtBody.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
+    (loopSmokeRtBody ()).any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
       = true := by decide
 
 /-- **Runtime counter seed:** the trip counter `Lctr2` is initialised from a
@@ -856,7 +856,7 @@ theorem loopSmokeRtBody_has_backedge :
     `MOV Lctr2, #n`. This is the one instruction that distinguishes a runtime-trip
     loop from the fixed-trip `forLoopN`, and the whole point of the capability. -/
 theorem loopSmokeRtBody_runtime_counter_seed :
-    loopSmokeRtBody.any (fun i => match i.li_i with
+    (loopSmokeRtBody ()).any (fun i => match i.li_i with
       | .Lopn dsts mnem srcs =>
           mnem == withWidthTag 64 "MOV" &&
           (dsts.filterMap LOperand.regName?).contains (loopCtr 2) &&
@@ -866,23 +866,23 @@ theorem loopSmokeRtBody_runtime_counter_seed :
 /-- **One body copy, not `count`:** the squaring op `MUL:64` appears exactly once
     — the loop is rolled (one copy + back-edge), independent of the trip count. -/
 theorem loopSmokeRtBody_one_body_copy :
-    (loopSmokeRtBody.filter
+    ((loopSmokeRtBody ()).filter
       (fun i => match i.li_i with | .Lopn _ m _ => m == "MUL:64" | _ => false)).length
       = 1 := by decide
 
 /-- The lowered body still ends with `Lret`. -/
 theorem loopSmokeRtBody_ends_Lret :
-    loopSmokeRtBody.getLast?.map Linstr.li_i = some .Lret := rfl
+    (loopSmokeRtBody ()).getLast?.map Linstr.li_i = some .Lret := rfl
 
 /-- **Physical-RA export:** the runtime-count loop survives the same SSA→physical
     register allocation as a straight-line `Com` — every `Lopn` operand is a real
     x86 register (no `%<UNKNOWN>` SSA name), and the back-edge is preserved. -/
-def loopSmokeRtPhysBody : Lcmd := (ComL.toLfundefPhys loopSmokeRtProg).lfd_body
+def loopSmokeRtPhysBody (_ : Unit) : Lcmd := (ComL.toLfundefPhys loopSmokeRtProg).lfd_body
 
 /-- Every register operand of the physical runtime-count loop body is a real x86
     register name (no leftover SSA `rN`/`L<d>_r<k>`/`Lctr<d>` name). -/
 theorem loopSmokeRtPhysBody_all_real_registers :
-    loopSmokeRtPhysBody.all (fun i =>
+    (loopSmokeRtPhysBody ()).all (fun i =>
       match i.li_i with
       | .Lopn dsts _ srcs =>
           (dsts.filterMap LOperand.regName?).all isRealGPName &&
@@ -892,7 +892,7 @@ theorem loopSmokeRtPhysBody_all_real_registers :
 /-- **Real back-edge preserved through RA:** the physical body still contains the
     `Lcond` conditional jump. -/
 theorem loopSmokeRtPhysBody_has_backedge :
-    loopSmokeRtPhysBody.any (fun i =>
+    (loopSmokeRtPhysBody ()).any (fun i =>
       match i.li_i with | .Lcond _ _ => true | _ => false) = true := by native_decide
 
 /-! ### 3-argument ABI: a runtime count from the 3rd SysV int register (`RDX`)
@@ -933,14 +933,14 @@ theorem loopSmokeRt3Prog_denote :
       = (18 : BitVec 64) := by rfl
 
 /-- The lowered body of the 3-argument runtime-count loop (`nArgs = 3`). -/
-def loopSmokeRt3Body : Lcmd := comLToBody 3 argName (fun _ => none) loopSmokeRt3Prog 3
+def loopSmokeRt3Body (_ : Unit) : Lcmd := comLToBody 3 argName (fun _ => none) loopSmokeRt3Prog 3
 
 /-- **3rd SysV arg → counter seed:** the trip counter `Lctr3` is seeded from
     `a2` (the 3rd program-root argument, which the SysV projection maps to `RDX`)
     via `MOV Lctr3, a2` — the `poly1305_mac_hacl(…, nblk)` runtime count routed
     into the loop. -/
 theorem loopSmokeRt3Body_counter_from_a2 :
-    loopSmokeRt3Body.any (fun i => match i.li_i with
+    (loopSmokeRt3Body ()).any (fun i => match i.li_i with
       | .Lopn dsts mnem srcs =>
           mnem == withWidthTag 64 "MOV" &&
           (dsts.filterMap LOperand.regName?).contains (loopCtr 3) &&

@@ -595,10 +595,10 @@ one-per-line; the prologue/epilogue are trusted ABI scaffolding. -/
 def mul48Pinned : GpAlloc := [("z", "%rdi"), ("x", "%rsi"), ("yd", "%rdx")]
 
 /-- The register allocation (pointers + `yd` pinned, working regs first-fit). -/
-def mul48Alloc : GpAlloc := allocGp mul48Pinned mul48Block
+def mul48Alloc (_ : Unit) : GpAlloc := allocGp mul48Pinned mul48Block
 
 /-- The rendered AT&T body (one line per `JInstr`). -/
-def mul48AsmBody : List String := renderBlockBody mul48Alloc mul48Block
+def mul48AsmBody (_ : Unit) : List String := renderBlockBody (mul48Alloc ()) mul48Block
 
 /-- The System V AMD64 signature: three pointer arguments `z`, `x`, `y` (in
     `%rdi`, `%rsi`, `%rdx`). The third (`y`) is referred to by source name; the
@@ -613,13 +613,13 @@ def mul48Args : List AbiArg :=
     third pointer argument out of `%rdx`; the epilogue restores them and returns.
     The body is `runBlock`-verified; the ABI glue is trusted scaffolding outside it,
     *derived from the allocation* rather than hand-written. -/
-def mul48Asm : String :=
-  renderSysVLeafFn "bignum_mul_4_8_x86_from_lean" mul48Alloc mul48Args mul48AsmBody []
+def mul48Asm (_ : Unit) : String :=
+  renderSysVLeafFn "bignum_mul_4_8_x86_from_lean" (mul48Alloc ()) mul48Args (mul48AsmBody ()) []
 
--- #eval IO.println mul48Asm
+-- #eval IO.println (mul48Asm ())
 
 /-- The emitted asm has one body line per instruction. -/
-theorem mul48AsmBody_length : mul48AsmBody.length = 63 := by native_decide
+theorem mul48AsmBody_length : (mul48AsmBody ()).length = 63 := by native_decide
 
 /-- Local substring test (`needle` occurs in `hay`). -/
 def hasSub (hay needle : String) : Bool :=
@@ -631,7 +631,7 @@ def hasSub (hay needle : String) : Bool :=
     straight from `[x]` (`mulxq 0(%rsi)`, matching s2n's `mulxq (x)`), the result
     stores print in AT&T form (`(%rdi)`), and the `%rdx`-pinned multiplier is the
     `MULX` src1. -/
-#guard (hasSub mul48Asm "mulx") && (hasSub mul48Asm "adcx") && (hasSub mul48Asm "adox") && (hasSub mul48Asm "mulxq 0(%rsi)") && (hasSub mul48Asm "(%rdi)") && (hasSub mul48Asm "src1=%rdx")
+#guard (hasSub (mul48Asm ()) "mulx") && (hasSub (mul48Asm ()) "adcx") && (hasSub (mul48Asm ()) "adox") && (hasSub (mul48Asm ()) "mulxq 0(%rsi)") && (hasSub (mul48Asm ()) "(%rdi)") && (hasSub (mul48Asm ()) "src1=%rdx")
 
 /-! ## Constant time: straight-line, all-direct addressing
 
@@ -664,7 +664,7 @@ theorem mul24Block_constant_time (s₁ s₂ : JState 64) :
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/s2n_montmul_compare/gen_com"
   IO.FS.writeFile
-    "bench/s2n_montmul_compare/gen_com/bignum_mul_4_8_x86_from_lean.s" mul48Asm
+    "bench/s2n_montmul_compare/gen_com/bignum_mul_4_8_x86_from_lean.s" (mul48Asm ())
   IO.println "wrote gen_com/bignum_mul_4_8_x86_from_lean.s (in-Lean x86 backend, no jasminc)"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel

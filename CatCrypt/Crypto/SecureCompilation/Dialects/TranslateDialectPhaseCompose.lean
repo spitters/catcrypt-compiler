@@ -355,7 +355,7 @@ abbrev Γouter1 : Ctxt jasminDialect := (mapTy (CryptoTy.memref paramN)) :: Γou
 /-- Phase 2 (reduce), front-compiled over `Γouter1`. Its invariant is the phase-1
     loop **result** — `buf_filled` at `.here` — so the reduce reads the freshly
     filled buffer. Continuation `.ret .here` returns the reduced accumulator. -/
-def phase2 : Option (ComL Γouter1 (.stackArr 64 1)) :=
+def phase2 (_ : Unit) : Option (ComL Γouter1 (.stackArr 64 1)) :=
   rolledForLoopNRtCont (Γouter := Γouter1) (accCTy := .memref 1)
     (invCTys := [.memref paramN])
     vmBody2 "acc" reduceBody
@@ -367,8 +367,8 @@ def phase2 : Option (ComL Γouter1 (.stackArr 64 1)) :=
 /-- The full two-phase kernel: phase 1 (fill) with **phase 2 as its continuation**
     (the `.ret .here` replaced by the front-compiled next phase). ONE `ComL` spine,
     two rolled runtime loops, no hand-authored `Com`. -/
-def composeComL : Option (ComL Γouter (.stackArr 64 1)) :=
-  match phase2 with
+def composeComL (_ : Unit) : Option (ComL Γouter (.stackArr 64 1)) :=
+  match phase2 () with
   | some p2 =>
       rolledForLoopNRtCont (Γouter := Γouter) (accCTy := .memref paramN)
         (invCTys := [.memref paramN])
@@ -382,12 +382,12 @@ def composeComL : Option (ComL Γouter (.stackArr 64 1)) :=
 /-! ### 3.4 Gates + denote validates -/
 
 /-- The two-phase kernel front-compiles to a single `ComL` spine. -/
-theorem composeComL_isSome : composeComL.isSome := by native_decide
+theorem composeComL_isSome : (composeComL ()).isSome := by native_decide
 
 /-- The composed spine is a loop-inside-a-continuation: the outer loop's
     body continuation is itself a `forLoopNRt` (not `.ret`). -/
 theorem composeComL_body_is_loop :
-    (composeComL.map (fun c => match c with
+    ((composeComL ()).map (fun c => match c with
       | .forLoopNRt _ _ _ _ (.forLoopNRt _ _ _ _ _) => true
       | _ => false))
       = some true := by native_decide
@@ -410,17 +410,17 @@ def valAt (cnt : Nat) : Ctxt.Valuation Γouter :=
     the sum of the filled `buf`, which equals `Σ a` — so a correct value here
     witnesses BOTH the fill (phase 1) and the reduce (phase 2). -/
 theorem composeComL_denote_count5 :
-    (composeComL.map (fun c => (ComL.denote c (valAt 5) ⟨0, by decide⟩).toNat))
+    ((composeComL ()).map (fun c => (ComL.denote c (valAt 5) ⟨0, by decide⟩).toNat))
       = some (natSumRt sampleA 5) := by native_decide
 
 /-- **denote = Σ_{i<8} a[i]** (SAME program, different runtime count). -/
 theorem composeComL_denote_count8 :
-    (composeComL.map (fun c => (ComL.denote c (valAt 8) ⟨0, by decide⟩).toNat))
+    ((composeComL ()).map (fun c => (ComL.denote c (valAt 8) ⟨0, by decide⟩).toNat))
       = some (natSumRt sampleA 8) := by native_decide
 
 /-- **denote = 0 at count 0** (both phases empty). -/
 theorem composeComL_denote_count0 :
-    (composeComL.map (fun c => (ComL.denote c (valAt 0) ⟨0, by decide⟩).toNat))
+    ((composeComL ()).map (fun c => (ComL.denote c (valAt 0) ⟨0, by decide⟩).toNat))
       = some 0 := by native_decide
 
 /-! ### 3.5 The fill phase in isolation (phase-1 result witnessed directly)
@@ -431,7 +431,7 @@ theorem composeComL_denote_count0 :
 completed fill. -/
 
 /-- Phase 1 alone (fill), returning the filled buffer. -/
-def fillOnly : Option (ComL Γouter (.stackArr 64 paramN)) :=
+def fillOnly (_ : Unit) : Option (ComL Γouter (.stackArr 64 paramN)) :=
   rolledForLoopNRtCont (Γouter := Γouter) (accCTy := .memref paramN)
     (invCTys := [.memref paramN])
     vmBody1 "buf" fillBody
@@ -442,13 +442,13 @@ def fillOnly : Option (ComL Γouter (.stackArr 64 paramN)) :=
 
 /-- **Phase 1 fills `buf[3] = a[3]`** at runtime count 5 (`3 < 5`). -/
 theorem fillOnly_denote_idx3_count5 :
-    (fillOnly.map (fun c => (ComL.denote c (valAt 5) ⟨3, by decide⟩).toNat))
+    ((fillOnly ()).map (fun c => (ComL.denote c (valAt 5) ⟨3, by decide⟩).toNat))
       = some (sampleA ⟨3, by decide⟩).toNat := by native_decide
 
 /-- **Phase 1 leaves `buf[6]` at its scratch value 0** at runtime count 5
     (`6 ≥ 5`, so the fill never wrote it) — the count bounds the fill. -/
 theorem fillOnly_denote_idx6_count5 :
-    (fillOnly.map (fun c => (ComL.denote c (valAt 5) ⟨6, by decide⟩).toNat))
+    ((fillOnly ()).map (fun c => (ComL.denote c (valAt 5) ⟨6, by decide⟩).toNat))
       = some 0 := by native_decide
 
 /-! ### 3.6 Mixed fixed/runtime chain (the register-pressure shape)
@@ -460,8 +460,8 @@ the fixed phase consumes no count register, and both loop flavours live in one
 
 /-- Fill fixed at `N = paramN`, reduce at the runtime count (phase 2 reused
     verbatim): a mixed fixed/runtime two-phase spine. -/
-def composeFixedComL : Option (ComL Γouter (.stackArr 64 1)) :=
-  match phase2 with
+def composeFixedComL (_ : Unit) : Option (ComL Γouter (.stackArr 64 1)) :=
+  match phase2 () with
   | some p2 =>
       rolledForLoopNCont (Γouter := Γouter) (accCTy := .memref paramN)
         (invCTys := [.memref paramN])
@@ -474,7 +474,7 @@ def composeFixedComL : Option (ComL Γouter (.stackArr 64 1)) :=
 /-- The mixed spine front-compiles, and is a fixed-trip loop whose continuation is
     a runtime-trip loop. -/
 theorem composeFixedComL_shape :
-    (composeFixedComL.map (fun c => match c with
+    ((composeFixedComL ()).map (fun c => match c with
       | .forLoopN _ _ _ (.forLoopNRt _ _ _ _ _) => true
       | _ => false))
       = some true := by native_decide
@@ -482,7 +482,7 @@ theorem composeFixedComL_shape :
 /-- **denote = Σ_{i<5} a[i]** for the mixed spine: the fixed-`N` fill populates all
     `paramN` slots, the runtime reduce sums the first 5. -/
 theorem composeFixedComL_denote_count5 :
-    (composeFixedComL.map (fun c => (ComL.denote c (valAt 5) ⟨0, by decide⟩).toNat))
+    ((composeFixedComL ()).map (fun c => (ComL.denote c (valAt 5) ⟨0, by decide⟩).toNat))
       = some (natSumRt sampleA 5) := by native_decide
 
 /-! ## 4. Nested runtime loop: the front residual, stated against the (done) spec

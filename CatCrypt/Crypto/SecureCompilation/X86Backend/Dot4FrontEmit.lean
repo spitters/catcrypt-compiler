@@ -122,8 +122,8 @@ def dot4OutStoreMap : OutStoreMap := [("RDI", 0)]
 /-- The front's `dot4Com` exported to a physical, two-address SysV `Lprog`. No
     shift/rotate legalisation is needed (the body is `MUL`/`ADD` only). `fname`
     `"dot4"` becomes the emitted asm label (matching the C extern). -/
-def dot4Lprog : Lprog :=
-  Com.toLprogPhysAbi dot4Com "dot4"
+def dot4Lprog (_ : Unit) : Lprog :=
+  Com.toLprogPhysAbi (dot4Com ()) "dot4"
     (fun _ => none)                       -- shiftImm oracle (unused)
     (fun _ => none)                       -- immSlotMap (no input immediates)
     dot4InLoadMap                         -- inLoadMap
@@ -132,7 +132,7 @@ def dot4Lprog : Lprog :=
     [64, 64, 64, 64, 64, 64, 64, 64]      -- abiTyin (8 u64 inputs)
 
 /-- The rendered owned-backend AT&T `.s` for `dot4` (no jasminc). -/
-def dot4Asm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned dot4Lprog
+def dot4Asm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned (dot4Lprog ())
 
 /-! ## 4. Rendered asm -/
 
@@ -145,7 +145,7 @@ def dot4Asm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPip
 def emitMain : IO Unit := do
   let dir := "bench/thir_front_pilot/gen"
   IO.FS.createDirAll dir
-  IO.FS.writeFile (dir ++ "/dot4_owned.s") dot4Asm
+  IO.FS.writeFile (dir ++ "/dot4_owned.s") (dot4Asm ())
   IO.println "WROTE bench/thir_front_pilot/gen/dot4_owned.s"
   IO.println "  (dot4 inner product, the front's own dot4Com through"
   IO.println "   Com.toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend,"

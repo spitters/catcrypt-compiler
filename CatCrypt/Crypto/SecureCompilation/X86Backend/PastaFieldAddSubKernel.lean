@@ -329,16 +329,16 @@ def renderAddSub (name : String) (block : List (JInstr 64)) : String :=
     [ "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12", "\tpopq %rbx", "\tret" ]
 
 /-- The emitted Pallas field add leaf `pasta_field_add(r, a, b)`. -/
-def pallasAddAsm : String := renderAddSub "pasta_field_add" (addBlock pallasLimbs)
+def pallasAddAsm (_ : Unit) : String := renderAddSub "pasta_field_add" (addBlock pallasLimbs)
 
 /-- The emitted Pallas field sub leaf `pasta_field_sub(r, a, b)`. -/
-def pallasSubAsm : String := renderAddSub "pasta_field_sub" (subBlock pallasLimbs)
+def pallasSubAsm (_ : Unit) : String := renderAddSub "pasta_field_sub" (subBlock pallasLimbs)
 
 /-- The emitted Vesta field add leaf `vesta_field_add(r, a, b)`. -/
-def vestaAddAsm : String := renderAddSub "vesta_field_add" (addBlock vestaLimbs)
+def vestaAddAsm (_ : Unit) : String := renderAddSub "vesta_field_add" (addBlock vestaLimbs)
 
 /-- The emitted Vesta field sub leaf `vesta_field_sub(r, a, b)`. -/
-def vestaSubAsm : String := renderAddSub "vesta_field_sub" (subBlock vestaLimbs)
+def vestaSubAsm (_ : Unit) : String := renderAddSub "vesta_field_sub" (subBlock vestaLimbs)
 
 /-- Local substring test (`needle` occurs in `hay`). -/
 def hasSub (hay needle : String) : Bool :=
@@ -348,11 +348,11 @@ def hasSub (hay needle : String) : Bool :=
 /- Shape check: the emitted Pallas add uses the hardware ADD/ADC carry chain +
     `cmovb` select, and contains **no** `shrq $63` carry-synthesis idiom (the
     branchless form) — the witness that the carries are hardware carries. -/
-#guard (hasSub pallasAddAsm "addq") && (hasSub pallasAddAsm "adcq") && (hasSub pallasAddAsm "sbbq") && (hasSub pallasAddAsm "cmovb") && (hasSub pallasAddAsm "(%rdi)") && !(hasSub pallasAddAsm "shrq $63")
+#guard (hasSub (pallasAddAsm ()) "addq") && (hasSub (pallasAddAsm ()) "adcq") && (hasSub (pallasAddAsm ()) "sbbq") && (hasSub (pallasAddAsm ()) "cmovb") && (hasSub (pallasAddAsm ()) "(%rdi)") && !(hasSub (pallasAddAsm ()) "shrq $63")
 
 /- Shape check: the emitted Pallas sub uses the hardware SUB/SBB borrow chain +
     masked ADD/ADC add-back, and contains **no** `shrq $63` carry synthesis. -/
-#guard (hasSub pallasSubAsm "subq") && (hasSub pallasSubAsm "sbbq") && (hasSub pallasSubAsm "adcq") && (hasSub pallasSubAsm "(%rdi)") && !(hasSub pallasSubAsm "shrq $63")
+#guard (hasSub (pallasSubAsm ()) "subq") && (hasSub (pallasSubAsm ()) "sbbq") && (hasSub (pallasSubAsm ()) "adcq") && (hasSub (pallasSubAsm ()) "(%rdi)") && !(hasSub (pallasSubAsm ()) "shrq $63")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness.
     Pallas leaves use the bench's `pasta_field_{add,sub}` symbol names (drop-in
@@ -360,13 +360,13 @@ def hasSub (hay needle : String) : Bool :=
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/halo2_compare/gen_com"
   IO.FS.writeFile
-    "bench/halo2_compare/gen_com/pasta_field_add_owned_from_lean.s" pallasAddAsm
+    "bench/halo2_compare/gen_com/pasta_field_add_owned_from_lean.s" (pallasAddAsm ())
   IO.FS.writeFile
-    "bench/halo2_compare/gen_com/pasta_field_sub_owned_from_lean.s" pallasSubAsm
+    "bench/halo2_compare/gen_com/pasta_field_sub_owned_from_lean.s" (pallasSubAsm ())
   IO.FS.writeFile
-    "bench/halo2_compare/gen_com/vesta_field_add_owned_from_lean.s" vestaAddAsm
+    "bench/halo2_compare/gen_com/vesta_field_add_owned_from_lean.s" (vestaAddAsm ())
   IO.FS.writeFile
-    "bench/halo2_compare/gen_com/vesta_field_sub_owned_from_lean.s" vestaSubAsm
+    "bench/halo2_compare/gen_com/vesta_field_sub_owned_from_lean.s" (vestaSubAsm ())
   IO.println "wrote gen_com/{pasta,vesta}_field_{add,sub}_owned_from_lean.s (owned x86 backend, hardware ADD/ADC+CMOV)"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel

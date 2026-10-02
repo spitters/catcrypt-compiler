@@ -53,7 +53,7 @@ def binGate (op : SExpr → SExpr → SExpr) : Bool :=
 #kat binGate (fun x y => .SXor (.SXor x y) (.SAnd x y))
 
 -- SHA-2 `Maj` and `Ch`, straight-line
-#kat straightCertB majCom
-#kat straightCertB chCom
+#kat straightCertB (majCom ())
+#kat straightCertB (chCom ())
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels
