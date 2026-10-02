@@ -257,7 +257,7 @@ theorem cseHead_denote {Γ : Ctxt jasminDialect} {r t : JasminTy}
           simp only [cseHead, dif_pos, hd, if_true, Com.denote]
           -- Goal: `(body2.rename copyHom).denote ((V.extend x0).extend x1)`
           --       `= body2.denote ((V.extend x0).extend x1)`, where `x1 = x0`.
-          rw [Com.denote_rename (copyHom Ctxt.Var.here) body2
+          rw [CopyProp.Com.denote_rename (copyHom Ctxt.Var.here) body2
                 ((V.extend (e.denote V)).extend (e'.denote (V.extend (e.denote V))))]
           rw [hx]
           -- Both valuations are now `(V.extend x0).extend x0`; the pullback along
