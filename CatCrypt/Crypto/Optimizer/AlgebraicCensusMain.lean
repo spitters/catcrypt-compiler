@@ -34,6 +34,10 @@ input) and prints:
 * the bindings the peephole `Peephole.peepBin` rewrites (`a-a`, `a&a`);
 * two shapes no rule rewrites: a multiply by a constant power of two at least 2, and a
   constant `0` or `1` in the first operand;
+* four shapes on the input `Com` that a larger rule set would rewrite (`censusShapes`):
+  bindings repeating the operation and argument levels of an earlier binding, binary
+  bindings with both operands constant, an add of a constant to the result of an add of a
+  constant, and a mask by a constant of the result of a shift;
 * the instruction count of the exported `Lprog` and of `optimizeLprogBasicBlocks` of it,
   for the input `Com` and for the rewritten one, and whether the `renderOwned` text of
   the two is identical.
@@ -126,6 +130,76 @@ def censusPeep {Γ : Ctxt jasminDialect} {t : JasminTy} :
     Com jasminDialect Γ t → Census → Census
   | .ret _, c => c
   | .var e body, c => censusPeep body (censusPeepExpr e c)
+
+/-- The De Bruijn index of a variable. -/
+def varIdx : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Ctxt.Var Γ t → Nat
+  | _, _, .here => 0
+  | _, _, .there v => varIdx v + 1
+
+/-- The De Bruijn indices of an argument vector. -/
+def argIdx {Γ : Ctxt jasminDialect} : {tys : List JasminTy} →
+    HVector (fun ty => Ctxt.Var Γ ty) tys → List Nat
+  | [], .nil => []
+  | _ :: _, .cons v r => varIdx v :: argIdx r
+
+/-- Counts of shapes that a rule set beyond `rewriteBin` would rewrite. -/
+structure Shapes where
+  /-- Bindings whose operation and argument levels repeat an earlier binding. -/
+  gvnDup : Nat := 0
+  /-- Binary `regArith` bindings with both operands bound by `regConst`. -/
+  bothConst : Nat := 0
+  /-- `x + c₂` where `x` is bound by `y + c₁`, both constants bound by `regConst`. -/
+  addImmChain : Nat := 0
+  /-- `x & c` where `x` is bound by a shift. -/
+  shiftMask : Nat := 0
+
+/-- The defining binding of each level of the context: `none` for a parameter, otherwise
+    the operation, its argument levels and the constant claim on its second operand. -/
+abbrev DefTbl := Array (Option (JasminOp × List Nat × Option Nat))
+
+/-- The operation binding a level. -/
+def DefTbl.op (tbl : DefTbl) (lv : Nat) : Option JasminOp :=
+  match tbl[lv]? with
+  | some (some (op, _, _)) => some op
+  | _ => none
+
+/-- The constant claim on the second operand of the binding of a level. -/
+def DefTbl.const2 (tbl : DefTbl) (lv : Nat) : Option Nat :=
+  match tbl[lv]? with
+  | some (some (_, _, c)) => c
+  | _ => none
+
+/-- The shape counts of a `Com`, threading the environment as `rewriteCom` does and the
+    table of defining bindings by level. -/
+def censusShapes : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → KEnv Γ → DefTbl → Shapes → Shapes
+  | _, _, .ret _, _, _, c => c
+  | Γ, _, .var e body, k, tbl, c =>
+    let n := Γ.length
+    let lv := (argIdx e.args).map (fun i => n - 1 - i)
+    let dup := tbl.any fun
+      | some (op, l, _) => op == e.op && l == lv
+      | none => false
+    let c := { c with gvnDup := c.gvnDup + (if dup then 1 else 0) }
+    let (c, c2) : Shapes × Option Nat :=
+      match e with
+      | ⟨.regArith bop w, _, args⟩ =>
+        let a : Ctxt.Var Γ (.reg w) := args.head
+        let b : Ctxt.Var Γ (.reg w) := args.tail.head
+        let ca := KEnv.lookup a k
+        let cb := KEnv.lookup b k
+        let la := n - 1 - varIdx a
+        let c := { c with
+          bothConst := c.bothConst + (if ca.isSome && cb.isSome then 1 else 0)
+          addImmChain := c.addImmChain +
+            (if bop == .add && cb.isSome && tbl.op la == some (.regArith .add w)
+                && (tbl.const2 la).isSome then 1 else 0)
+          shiftMask := c.shiftMask +
+            (if bop == .and && cb.isSome && (tbl.op la == some (.regArith .shr w)
+                || tbl.op la == some (.regArith .shl w)) then 1 else 0) }
+        (c, cb)
+      | _ => (c, none)
+    censusShapes body (extendK e k) (tbl.push (some (e.op, lv, c2))) c
 
 /-- The number of instructions over every function body of an `Lprog`. -/
 def instrCount (p : Lprog) : Nat :=
@@ -222,16 +296,19 @@ def row (k : Kernel) : String :=
   let before := k.emit k.com
   let after := k.emit k'
   let same := renderOwned before == renderOwned after
+  let s := censusShapes k.com kU (Array.replicate k.Γ.length none) {}
   s!"{k.name}\t{c.bindings}\t{c.constSecond}\t{c.addZero}\t{c.xorZero}\t{c.orZero}\t" ++
   s!"{c.mulOne}\t{c.mulZero}\t{c.andZero}\t{c.peepSubSelf}\t{c.peepAndSelf}\t" ++
-  s!"{c.mulPow2}\t{c.constFirst}\t{instrCount before}\t{instrCount after}\t" ++
+  s!"{c.mulPow2}\t{c.constFirst}\t{s.gvnDup}\t{s.bothConst}\t{s.addImmChain}\t" ++
+  s!"{s.shiftMask}\t{instrCount before}\t{instrCount after}\t" ++
   s!"{instrCount (optimizeLprogBasicBlocks before)}\t" ++
   s!"{instrCount (optimizeLprogBasicBlocks after)}\t{same}"
 
 /-- The column header of the census table. -/
 def header : String :=
   "kernel\tbindings\tconst2nd\tx+0\tx^0\tx|0\tx*1\tx*0\tx&0\ta-a\ta&a\t" ++
-  "x*2^k\tconst1st\tinstr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame"
+  "x*2^k\tconst1st\tgvnDup\tbothConst\taddImmChain\tshiftMask\t" ++
+  "instr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame"
 
 end CatCrypt.Crypto.Optimizer.AlgebraicCensus
 

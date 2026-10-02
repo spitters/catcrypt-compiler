@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality
 
 /-!
 # `Com jasminDialect` rewrite pipeline: peephole then equality-saturation
@@ -53,6 +54,8 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   cost-non-increasing (the "extraction is no worse than the input" half of
   the equality-saturation contract, composed with the peephole's own
   cost-non-increase).
+* `optCom`, `optCom_denote` — the composed transform under `KEnv.unknown`, a
+  `Com → Com` stage whose denotation equality holds at every valuation.
 
 All goals closed. Axiom set: `propext`, `Quot.sound` (inherited from the
 two passes' preservation theorems).
@@ -121,7 +124,38 @@ theorem comAlgebraicPipeline_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   unfold comAlgebraicPipeline
   exact Nat.le_trans (saturate_cost_le fuel (peepCom c) k) (peepCom_cost_le c)
 
-/-! ## §5  Self-contained validation
+/-! ## §5  The unconditional stage
+
+With the environment `KEnv.unknown`, which claims no constant for any input, the
+composed transform needs no hypothesis on the valuation: the constants it uses are
+those the program binds itself with `regConst`, which `extendK` records as the
+engine descends. One saturation pass reaches the fixed point of the rule set
+(`saturateCom`), so the fuel is `1`. -/
+
+/-- **The `Com` optimisation stage**: the peephole, then one pass of the saturation
+    engine under `KEnv.unknown`. -/
+def optCom {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
+    Com jasminDialect Γ t :=
+  comAlgebraicPipeline 1 c (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown Γ)
+
+/-- **Denotation of the stage.** `optCom c` denotes the same function as `c`, at every
+    valuation. -/
+theorem optCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : (optCom c).denote = c.denote :=
+  funext fun V => comAlgebraicPipeline_denote 1 c _ V
+    (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V)
+
+/-- The stage preserves the structural CT predicate `ctSafeComJ`. -/
+theorem optCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : ctSafeComJ (optCom c) = ctSafeComJ c :=
+  comAlgebraicPipeline_ctSafe 1 c _
+
+/-- The stage does not increase `comCost`. -/
+theorem optCom_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : comCost (optCom c) ≤ comCost c :=
+  comAlgebraicPipeline_cost_le 1 c _
+
+/-! ## §6  Self-contained validation
 
 `Egraph.demoMulZero` is `x ↦ x * 0` via an explicit `regConst 0` binder.
 The composed pipeline (peephole then saturation) preserves its denotation
