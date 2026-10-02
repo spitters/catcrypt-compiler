@@ -40,7 +40,10 @@ input) and prints:
   constant, and a mask by a constant of the result of a shift;
 * the instruction count of the exported `Lprog` and of `optimizeLprogBasicBlocks` of it,
   for the input `Com` and for the rewritten one, and whether the `renderOwned` text of
-  the two is identical.
+  the two is identical;
+* after global value numbering (`ComGVN.gvnCom`) of the rewritten `Com`: its number of
+  bindings, and the instruction count of the exported `Lprog` and of
+  `optimizeLprogBasicBlocks` of it.
 
 Each kernel is exported with the arguments and `Lprog` post-passes of its emit module.
 -/
@@ -297,18 +300,22 @@ def row (k : Kernel) : String :=
   let after := k.emit k'
   let same := renderOwned before == renderOwned after
   let s := censusShapes k.com kU (Array.replicate k.Γ.length none) {}
+  let kG := Rewrite.ComGVN.gvnCom k'
+  let afterG := k.emit kG
   s!"{k.name}\t{c.bindings}\t{c.constSecond}\t{c.addZero}\t{c.xorZero}\t{c.orZero}\t" ++
   s!"{c.mulOne}\t{c.mulZero}\t{c.andZero}\t{c.peepSubSelf}\t{c.peepAndSelf}\t" ++
   s!"{c.mulPow2}\t{c.constFirst}\t{s.gvnDup}\t{s.bothConst}\t{s.addImmChain}\t" ++
   s!"{s.shiftMask}\t{instrCount before}\t{instrCount after}\t" ++
   s!"{instrCount (optimizeLprogBasicBlocks before)}\t" ++
-  s!"{instrCount (optimizeLprogBasicBlocks after)}\t{same}"
+  s!"{instrCount (optimizeLprogBasicBlocks after)}\t{same}\t" ++
+  s!"{UncomputePass.comLen kG}\t{instrCount afterG}\t" ++
+  s!"{instrCount (optimizeLprogBasicBlocks afterG)}"
 
 /-- The column header of the census table. -/
 def header : String :=
   "kernel\tbindings\tconst2nd\tx+0\tx^0\tx|0\tx*1\tx*0\tx&0\ta-a\ta&a\t" ++
   "x*2^k\tconst1st\tgvnDup\tbothConst\taddImmChain\tshiftMask\t" ++
-  "instr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame"
+  "instr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame\tbindingsGvn\tinstrGvn\tinstrOptGvn"
 
 end CatCrypt.Crypto.Optimizer.AlgebraicCensus
 
