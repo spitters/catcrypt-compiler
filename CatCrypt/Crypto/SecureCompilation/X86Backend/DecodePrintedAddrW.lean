@@ -1593,6 +1593,123 @@ theorem sim_sadcx (P : Params) (rsp : BitVec 64) (D A S C : String)
     obtain ⟨h1, h2, h3⟩ := sim_sadcx_reg P rsp D A S C h hDg sa s zf hc hwA hwS s' zf' hst
     exact ⟨h1, h2, fun hDA hDS hDC _ _ => h3 hDA hDS hDC⟩
 
+/-! ## 8b. The immediate store into a frame slot -/
+
+/-- The immediate move `MOV:64 q, #v` into a frame-slot name `q`, as `(q, v)`. -/
+def classifyI : LinstrR → Option (String × Nat)
+  | .Lopn [.reg q] m [.imm v] =>
+      if m = "MOV:64" ∧ isSpillOrQsave q = true then some (q, v) else none
+  | _ => none
+
+theorem classifyI_instr {i : LinstrR} {q : String} {v : Nat} (h : classifyI i = some (q, v)) :
+    i = .Lopn [.reg q] "MOV:64" [.imm v] := by
+  unfold classifyI at h
+  split at h
+  · split_ifs at h with hm
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    rw [hm.1]
+  · cases h
+
+/-- **The conditions of an immediate store into a frame slot**: `q` is a frame-slot name with a
+    frame offset in `rel32` range, and `v` is a 64-bit value that sign-extends from 32 bits. -/
+def iOk (P : Params) (q : String) (v : Nat) : Bool :=
+  isSpillOrQsave q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
+    && dispOk32 (slotOff P q) && decide (v < 2 ^ 64) && ScalarEncoder.fitsImm32S v
+
+/-- The byte piece of an immediate store into a frame slot: `movq $v, off(%rsp)`. -/
+def iPieces (P : Params) (q : String) (v : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(encMovImmRspMem 1 (slotOff P q) v, .storeMem "%rsp" (slotOff P q) (.imm v))]
+
+/-- `MOV:64 q, #v` into a frame slot `q` at offset `off`, with `v` sign-extending from
+    32 bits, encodes to `movq $v, off(%rsp)`. -/
+theorem encodeLopn_sti (F W : Nat) (q : String) (v : Nat) (qB : Nat) {off : Int}
+    (hq : isSpillOrQsave q = true) (ho : spillQsaveOff F W q qB = some off)
+    (hv : ScalarEncoder.fitsImm32S v = true) :
+    encodeLopn F W (.Lopn [.reg q] "MOV:64" [.imm v]) qB = encMovImmRspMem 1 off v := by
+  simp only [ScalarEncoder.fitsImm32S] at hv
+  have h3 : LprogAsmPrinter.mnemWidth "MOV:64" = 64 := by decide +kernel
+  simp only [encodeLopn,
+    show (LprogAsmPrinter.isCarryOutBinding "MOV:64" || LprogAsmPrinter.isMulHiBinding "MOV:64")
+      = false from by decide +kernel,
+    show stripWidthTag "MOV:64" = "MOV" from by decide +kernel,
+    show ("MOV" == "MULX") = false from by decide +kernel,
+    show ("MOV" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "MOV" = none from by decide +kernel,
+    LprogBytes.rexW, Bool.false_eq_true, if_false]
+  simp [hq, ho, hv, h3]
+
+/-- `movq $v, off(%rsp)` is the `[base + disp]` store-immediate encoder at base `%rsp`. -/
+theorem encMovImmRspMem_eq (off : Int) (v : Nat) :
+    encMovImmRspMem 1 off v = ScalarEncoder.encMemMovImm 4 off v := by
+  simp only [encMovImmRspMem, ScalarEncoder.encMemMovImm, ScalarEncoder.encMemMov,
+    ScalarEncoder.memTail, rexOpt_w1]
+  split_ifs <;> simp_all [ScalarEncoder.rex]
+
+/-- `movq $v, off(%rsp)` decodes to the store of `v` at `off` from `%rsp`. -/
+theorem pieceDec_storeImmRsp (off : Int) (v : Nat) (hv : v < 2 ^ 64)
+    (hf : ScalarEncoder.fitsImm32S v = true) (h : dispOk32 off = true) :
+    PieceDec (encMovImmRspMem 1 off v, .storeMem "%rsp" off (.imm v)) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_storeMemImm32 canonAlloc "%rsp" off v rest hv hf h
+  have h4 : ScalarEncoder.gpNum (AsmPrinter.regOf canonAlloc "%rsp") = 4 := by decide
+  have h5 : SailX86Decoder.regName 4 = "%rsp" := by decide
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, h4, h5, encMovImmRspMem_eq]
+    using e
+
+/-- **The bytes of an immediate store into a frame slot.** -/
+theorem iBytes (P : Params) (q : String) (v : Nat) (h : iOk P q v = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg q] "MOV:64" [.imm v]) P.qsaveB
+        = (iPieces P q v).flatMap Prod.fst
+      ∧ ∀ p ∈ iPieces P q v, PieceDec p := by
+  simp only [iOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨⟨⟨hq, hs⟩, hd⟩, hv⟩, hf⟩ := h
+  obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
+  have hso : slotOff P q = off := by simp [slotOff, ho]
+  refine ⟨by simp [iPieces, encodeLopn_sti _ _ _ _ _ hq ho hf, hso], ?_⟩
+  intro p hp
+  simp only [iPieces, List.mem_singleton] at hp
+  subst hp
+  exact pieceDec_storeImmRsp _ _ hv hf hd
+
+/-- The machine store of an immediate keeps the registers and writes the 64-bit word of the
+    immediate. -/
+theorem evalInstrA_storeImm_eq (sa : AState) (B : String) (off : Int) (v : Nat) :
+    (evalInstrA sa (.storeMem B off (.imm v))).regs = sa.regs
+      ∧ (evalInstrA sa (.storeMem B off (.imm v))).mem
+        = write64 sa.mem (sa.regs B + BitVec.ofInt 64 off) (BitVec.ofNat 64 v) := by
+  refine ⟨?_, ?_⟩ <;>
+    simp [evalInstrA, evalInstr, JState.store, AState.view, writeAddr, writeVal, JOperand.eval]
+
+/-- **The immediate store into a frame slot.** From `ACorrW`, the address-machine step of
+    `MOV:64 q, #v` is matched by `movq $v, off(%rsp)`. -/
+theorem sim_sti (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (h : iOk P q v = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg q] "MOV:64" [.imm v], .reg none) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((iPieces P q v).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [iOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨⟨⟨-, hs⟩, -⟩, -⟩, -⟩ := h
+  obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
+  have hso : slotOff P q = off := by simp [slotOff, ho]
+  have hfr : frameP P rsp q = some (rsp + BitVec.ofInt 64 off) := by simp [frameP, ho]
+  rw [fstepA_slotImm _ hfr] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  obtain ⟨hregs, hmem⟩ := evalInstrA_storeImm_eq sa "%rsp" off v
+  have hrun : aMachine.runBlock sa ((iPieces P q v).map Prod.snd)
+      = evalInstrA sa (.storeMem "%rsp" off (.imm v)) := by
+    simp only [iPieces, hso]; rfl
+  rw [hrun]
+  refine ⟨⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩, rfl⟩
+  · rw [hregs]
+    have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
+    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    rw [hg]
+    exact hc.regs r hr
+  · show write64 s.mem _ _ x = _
+    rw [hmem, hc.sp]
+    exact agree_write64 hc.mem _ _ x hx
+
 /-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
@@ -1665,9 +1782,12 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
           match classifyM (.Lopn ds o ss) with
           | some m => m.ok
           | none =>
-              match classifyA (.Lopn ds o ss) with
-              | some a => a.ok P
-              | none => false
+              match classifyI (.Lopn ds o ss) with
+              | some (q, v) => iOk P q v
+              | none =>
+                  match classifyA (.Lopn ds o ss) with
+                  | some a => a.ok P
+                  | none => false
   | .Llabel _ _ => true
   | .Lcond (.reg cc) l => (condPol cc).isSome && (labelAt body l).isSome
   | _ => false
@@ -2109,7 +2229,31 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             refine ⟨sa', ?_, hC⟩
             have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
             exact reaches_block a b hks hshk hops hR
-        · -- an arm of `DecodePrintedAddr`
+        · split at hok
+          · -- an immediate store into a frame slot
+            rename_i q v hclI
+            have hia := classifyI_instr hclI
+            have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+                = (.Lopn [.reg q] "MOV:64" [.imm v], MemTag.reg none) := by
+              rw [hia]; simp (config := { decide := true }) [normA, tagA]
+            rw [hli] at hst
+            obtain ⟨hc', -⟩ := sim_sti P rsp q v hok sa s zf hc s' zf' hst
+            have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+            have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+                (aMachine.runBlock sa ((iPieces P q v).map Prod.snd)).flags.zf.getD false
+                  = zf' := by
+              intro hcnd
+              have hcm := hcondNext hcnd
+              rw [hia] at hcm
+              simp [classifyA, classify, cmpArmB] at hcm
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            obtain ⟨hb, hp⟩ := iBytes P q v hok
+            have hops : shs[k].ops' = (iPieces P q v).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          -- an arm of `DecodePrintedAddr`
           split at hok
           · rename_i ar hcl
             have hia := classifyA_instr hcl
