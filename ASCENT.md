@@ -264,3 +264,5 @@ traces the longer path from a Rust-subset source through `legWeld`.
   precise hypotheses of each result.
 - [PROVENANCE.md](PROVENANCE.md): what the package takes from
   [sgraf812/ascent](https://github.com/sgraf812/ascent).
+- [ASCENT_OVERVIEW.md](ASCENT_OVERVIEW.md): the problem, provenance, the double-category
+  presentation, the relation to `mvcgen`, and a comparison with other approaches.
