@@ -325,6 +325,26 @@ theorem getArr_emptyArrs {R : Slots} {b : LstateM} {A : String} (h : isArrB R A 
   rw [LstateM.getArr, hc]
   simp only [dite_true]
 
+/-- The reloads of a body at `slotArrC` are those at the slot map: `slotArrC` names the
+    slots the slot map names. -/
+theorem reloadOf_slotArrC (R : Slots) (sl : String → Option (String × Nat)) (body : Lcmd) :
+    ∀ (k : Nat) (b : String), JasminLsemAddrImage.reloadOf (slotArrC R sl) body k b
+      = JasminLsemAddrImage.reloadOf sl body k b
+  | 0, _ => rfl
+  | k + 1, b => by
+      cases hb : body[k]? with
+      | none => simp [JasminLsemAddrImage.reloadOf, hb]
+      | some j =>
+          cases hm : JasminLsemAddrMem.slotMov? j.li_i with
+          | none =>
+              rw [JasminLsemAddrImage.reloadOf_succ_none hb hm,
+                JasminLsemAddrImage.reloadOf_succ_none hb hm]
+          | some p =>
+              obtain ⟨d, q⟩ := p
+              rw [JasminLsemAddrImage.reloadOf_succ_some hb hm,
+                JasminLsemAddrImage.reloadOf_succ_some hb hm, reloadOf_slotArrC R sl body k b]
+              simp [slotArrC]
+
 /-- **The relation with the cell arrays at length `0`.** A relation of the image
     simulation at a slot map is one at `slotArrC` from the state with the cell arrays
     emptied. -/
@@ -335,7 +355,7 @@ theorem imgRel_cellArrs {frame : String → Option (BitVec 64)}
     ImgRel frame (slotArrC R sl) base body
       { s with prog := { s.prog with base := emptyArrs R s.prog.base } } sa zf := by
   refine ⟨h.pc, h.regs, h.slots, h.zf, h.cf, h.of, h.wid, fun q A n hq => ?_,
-    fun k R' A n a hk hA ha => ?_, h.reload⟩
+    fun k R' A n a hk hA ha => ?_, fun b q a A n hr hq ha hbf => ?_⟩
   · obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     rcases hcase with ⟨hA, rfl⟩ | ⟨hA, rfl⟩
     · exact ⟨Fin.elim0, getArr_emptyArrs hA, fun j hj => absurd hj (Nat.not_lt_zero j)⟩
@@ -349,6 +369,9 @@ theorem imgRel_cellArrs {frame : String → Option (BitVec 64)}
       exact harr
   · obtain ⟨m, hsq, -⟩ := slotArrC_some hA
     exact h.saved k R' A m a hk hsq ha
+  · rw [reloadOf_slotArrC] at hr
+    obtain ⟨m, hsq, -⟩ := slotArrC_some hq
+    exact h.reload b q a A m hr hsq ha hbf
 
 /-! ## 6. The entry of the cell fold -/
 

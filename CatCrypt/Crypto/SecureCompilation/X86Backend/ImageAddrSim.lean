@@ -868,9 +868,43 @@ structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → O
     frame (slotOfReg R) = some a →
       (k < sa.reg.lpc → read64 sa.mem a = base A)
         ∧ (sa.reg.lpc ≤ k → sa.reg.getW R 64 = some (base A))
-  reload : ∀ b q a i, 1 ≤ sa.reg.lpc → body[sa.reg.lpc - 1]? = some i →
-    slotMov? i.li_i = some (b, q) → frame q = some a → frame b = none →
+  reload : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
+    slotArr q = some (A, n) → frame q = some a → frame b = none →
       sa.reg.lvm b = ⟨64, read64 sa.mem a⟩
+
+/-- **The reload component across a step** from `sa` at instruction `bi` to `sa'` at the next
+    counter: a reload of `b` from the slot of an array at `bi` leaves the slot's frame word
+    in `b`; a move at `bi` into a name `d` that is not the slot of an array keeps every other
+    name without a frame word and the frame words of the array slots. -/
+theorem reload_succ {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa sa' : LstateA} {bi : Linstr}
+    (hrl : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
+      slotArr q = some (A, n) → frame q = some a → frame b = none →
+        sa.reg.lvm b = ⟨64, read64 sa.mem a⟩)
+    (hb : body[sa.reg.lpc]? = some bi) (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
+    (hhit : ∀ b q a A n, slotMov? bi.li_i = some (b, q) → slotArr q = some (A, n) →
+      frame q = some a → frame b = none → sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩)
+    (hreg : ∀ d q0 b, slotMov? bi.li_i = some (d, q0) → slotArr d = none → b ≠ d →
+      frame b = none → sa'.reg.lvm b = sa.reg.lvm b)
+    (hmem : ∀ d q0 q a A n, slotMov? bi.li_i = some (d, q0) → slotArr d = none →
+      slotArr q = some (A, n) → frame q = some a → read64 sa'.mem a = read64 sa.mem a) :
+    ∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
+      slotArr q = some (A, n) → frame q = some a → frame b = none →
+        sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩ := by
+  intro b q a A n h hq ha hbf
+  rw [hpc] at h
+  cases hm : slotMov? bi.li_i with
+  | none => rw [reloadOf_succ_none hb hm] at h; cases h
+  | some p =>
+      obtain ⟨d, q0⟩ := p
+      rw [reloadOf_succ_some hb hm] at h
+      split_ifs at h with h1 h2
+      · cases h
+        subst h1
+        exact hhit d q a A n hm hq ha hbf
+      · have hd : slotArr d = none := Option.isNone_iff_eq_none.mp h2
+        rw [hreg d q0 b hm hd (Ne.symm h1) hbf, hmem d q0 q a A n hm hd hq ha]
+        exact hrl b q a A n h hq ha hbf
 
 /-! ## 8. Facts of the class `physImgB` and of the gate -/
 
@@ -919,22 +953,11 @@ theorem physImgB_slotStore {slotArr : String → Option (String × Nat)} {body :
 
 theorem accArr_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {b A : String} {n : Nat} (h : accArr slotArr body k b = some (A, n)) :
-    ∃ k', k = k' + 1 ∧ ∃ i q, body[k']? = some i ∧ slotMov? i.li_i = some (b, q)
-      ∧ slotArr q = some (A, n) := by
+    ∃ q, reloadOf slotArr body k b = some q ∧ slotArr q = some (A, n)
+      ∧ ∃ j i, j < k ∧ body[j]? = some i ∧ slotMov? i.li_i = some (b, q) := by
   unfold accArr at h
-  split at h
-  · cases h
-  · rename_i k'
-    refine ⟨k', rfl, ?_⟩
-    split at h
-    · rename_i j hj
-      split at h
-      · rename_i d q hdq
-        split_ifs at h with hd
-        subst hd
-        exact ⟨j, q, hj, hdq, h⟩
-      · cases h
-    · cases h
+  obtain ⟨q, hr, hq⟩ := Option.bind_eq_some_iff.mp h
+  exact ⟨q, hr, hq, reloadOf_spec hr⟩
 
 theorem reloadSavedB_spec {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (h : reloadSavedB slotArr body = true) {k : Nat} {i : Linstr} (hi : body[k]? = some i)
@@ -1109,11 +1132,15 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
         simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, Ne.symm hdR]
       rw [getW_congr e]
       exact (hrel.saved k R A n a ⟨i', hi', hm'⟩ hA ha).2 (by omega)
-  · intro b q a i hpc hbi hm hq hbf
-    rw [hlpcA, Nat.add_sub_cancel, hb] at hbi
-    cases hbi
-    rw [(hmovF _ _ hm).2] at hq
-    cases hq
+  · refine reload_succ hrel.reload hb hlpcA (fun b q a A n hm _ hq _ => ?_)
+      (fun d q0 b hm _ hbd hbf => ?_) (fun _ _ q a _ _ _ _ _ _ => by rw [hmem])
+    · rw [(hmovF _ _ hm).2] at hq
+      cases hq
+    · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+      rw [hs] at ht
+      cases ht
+      rw [← hregs' b hbf, ← hrel.regs b hbf]
+      simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hbd]
 
 theorem normA_of_slotMov {x : LinstrR} {d q : String} (h : slotMov? x = some (d, q)) :
     normA x = x := by
@@ -1178,14 +1205,16 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
       obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hm2)
       rw [getW_congr (r' := sa.reg) (by simp [Ne.symm hdR])]
       exact (hrel.saved k R A n a' ⟨i', hi', hm'⟩ hA ha').2 (by omega)
-  · intro b q' a' i hpc hbi hm' hq' hbf
-    simp only [LstateN.lpc_nextPc, LstateN.lpc_setReg, Nat.add_sub_cancel, hb] at hbi
-    cases hbi
-    rw [hm] at hm'
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
-    rw [ha] at hq'
-    cases hq'
-    simp
+  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ hq' _ => ?_)
+      (fun d' q0 b hm' _ hbd _ => ?_) (fun _ _ _ _ _ _ _ _ _ _ => rfl)
+    · rw [hm] at hm'
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+      rw [ha] at hq'
+      cases hq'
+      simp
+    · rw [hm] at hm'
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+      simp [hbd]
 
 /-- **A store into a frame word keeps the relation.** -/
 theorem rel_sstore {frame : String → Option (BitVec 64)}
@@ -1259,13 +1288,16 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
           exact hqR (Prod.mk.inj (Option.some.inj hm')).1.symm
     · rw [getW_congr (r := sa.reg.nextPc) (r' := sa.reg) rfl]
       exact (hrel.saved k R A n a' hS' hA ha').2 (by omega)
-  · intro b q' a' i hpc hbi hm' hq' hbf
-    simp only [LstateN.lpc_nextPc, Nat.add_sub_cancel, hb] at hbi
-    cases hbi
-    rw [hm] at hm'
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
-    rw [ha] at hbf
-    cases hbf
+  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ _ hbf => ?_)
+      (fun _ _ _ _ _ _ _ => by simp) (fun d q0 q' a' A n hm' hd hq' ha' => ?_)
+    · rw [hm] at hm'
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+      rw [ha] at hbf
+      cases hbf
+    · rw [hm] at hm'
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+      have hne : q ≠ q' := fun e => by rw [e, hq'] at hd; cases hd
+      exact read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' hne)
 
 /-- A step that only advances the program counter, at an instruction that is no move,
     keeps the save and reload components of the relation. -/
@@ -1280,10 +1312,10 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
       frame (slotOfReg R) = some a →
         (k < sa'.reg.lpc → read64 sa'.mem a = base A)
           ∧ (sa'.reg.lpc ≤ k → sa'.reg.getW R 64 = some (base A)))
-    ∧ (∀ b q a i, 1 ≤ sa'.reg.lpc → body[sa'.reg.lpc - 1]? = some i →
-      slotMov? i.li_i = some (b, q) → frame q = some a → frame b = none →
+    ∧ (∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
+      slotArr q = some (A, n) → frame q = some a → frame b = none →
         sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩) := by
-  refine ⟨fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩, fun b q a i _ hbi hm _ _ => ?_⟩
+  refine ⟨fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩, fun b q a A n hbi _ _ _ => ?_⟩
   · rw [hmem _ a ha]
     rw [hpc] at hk
     rcases Nat.lt_succ_iff_lt_or_eq.mp hk with hk | rfl
@@ -1300,10 +1332,8 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
     obtain ⟨d, src, hm2, -⟩ := entryRegB_spec hent (show sa.reg.lpc < k by omega) hb
     rw [hnm] at hm2
     cases hm2
-  · rw [hpc, Nat.add_sub_cancel, hb] at hbi
+  · rw [hpc, reloadOf_succ_none hb hnm] at hbi
     cases hbi
-    rw [hnm] at hm
-    cases hm
 
 /-- **A compare against a frame word keeps the relation.** -/
 theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
@@ -1348,9 +1378,9 @@ theorem ptr_of_reload {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) {b A : String} {n : Nat}
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hbf : frame b = none) :
     ∃ q, slotArr q = some (A, n) ∧ sa.reg.getW b 64 = some (base A) := by
-  obtain ⟨k', hk', i, q, hi, hm, hq⟩ := accArr_spec hacc
+  obtain ⟨q, hr, hq, k', i, hk', hi, hm⟩ := accArr_spec hacc
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
-  have hrl := hrel.reload b q a i (by omega) (by rw [hk', Nat.add_sub_cancel]; exact hi) hm ha hbf
+  have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := by
     simp only [imgGateB, Bool.and_eq_true] at hgate; exact hgate.2
   obtain ⟨j, R, hj, hS, hqR⟩ := reloadSavedB_spec hrs hi hm (by rw [hq]; rfl)
@@ -1522,8 +1552,8 @@ theorem rel_pc {frame : String → Option (BitVec 64)} {slotArr : String → Opt
       frame (slotOfReg R) = some a →
         (k < sa'.reg.lpc → read64 sa'.mem a = base A)
           ∧ (sa'.reg.lpc ≤ k → sa'.reg.getW R 64 = some (base A)))
-    (hrl : ∀ b q a i, 1 ≤ sa'.reg.lpc → body[sa'.reg.lpc - 1]? = some i →
-      slotMov? i.li_i = some (b, q) → frame q = some a → frame b = none →
+    (hrl : ∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
+      slotArr q = some (A, n) → frame q = some a → frame b = none →
         sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩) :
     ImgRel frame slotArr base body t sa' zf := by
   refine ⟨hpc, fun r hr => ?_, fun q a ha => ?_, by rw [hz, hrel.zf], by rw [hc', hc, hrel.cf],
@@ -1560,7 +1590,7 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
       { s with prog := { s.prog with base := s.prog.base.setLpc (p + 1) } }
       (sa.setLpc (p + 1)) zf := by
   refine rel_pc hrel rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl
-    (fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩) (fun b q a i _ hbi hm _ _ => ?_)
+    (fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩) (fun b q a A n hbi _ _ _ => ?_)
   · have hk' : k < sa.reg.lpc := by
       by_contra hc
       obtain ⟨i', hi', hm'⟩ := hS
@@ -1583,10 +1613,9 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
         omega
       obtain ⟨d, src, hm2, -⟩ := entryRegB_spec hent hpk hbp
       rw [hpl] at hm2; cases hm2
-  · simp only [LstateA.setLpc, Nat.add_sub_cancel] at hbi
-    rw [hbp] at hbi
+  · simp only [LstateA.setLpc] at hbi
+    rw [reloadOf_succ_none hbp hpl] at hbi
     cases hbi
-    rw [hpl] at hm; cases hm
 
 /-! ## 10. The dispatch over the kinds of instruction -/
 

@@ -408,7 +408,9 @@ theorem imgRel_entry {frame : String → Option (BitVec 64)}
   refine ⟨by rw [hpc, hspc], hregs, hslots, hz, hc, ho, hwid,
     fun q A n hq => ⟨_, hcells q A n hq, fun j hj => rfl⟩,
     fun k R A n a _ hA _ => ⟨fun hk => by omega, fun _ => hptr R A n hA⟩,
-    fun b q a i h1 => by omega⟩
+    fun b q a A n h => by
+      rw [hpc, CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage.reloadOf_zero] at h
+      cases h⟩
 
 /-! ## 4. The gate reads which names have a frame word -/
 
