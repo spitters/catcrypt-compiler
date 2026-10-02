@@ -35,7 +35,8 @@ scalar binding, and the constant index reaches the load register through one.
 gathered instruction: an immediate `mov` records its constant, a `mov` from one of
 the sixteen general-purpose registers copies a known value (a `mov` from a
 `mem.<base>.<off>` name forgets its destination), a memory load forgets its destination, a memory store keeps
-everything, and every other instruction forgets everything. `foldCore` threads the
+everything, and every other instruction forgets the registers it writes
+(`MachineConstantTime.dstRegs`). `foldCore` threads the
 environment through the body, reading the gathered block of each instruction.
 
 ## Main results
@@ -232,6 +233,44 @@ theorem KEnv.Holds.setReg_cons {s : JState 64} {env : KEnv} (h : KEnv.Holds s en
   · rw [if_neg hdr] at hr
     exact h.setReg_kill d w r v hr
 
+/-- Forget every register of `ds`. -/
+def KEnv.killAll (env : KEnv) (ds : List String) : KEnv := env.filter (fun p => !ds.contains p.1)
+
+theorem KEnv.find_killAll {env : KEnv} {ds : List String} {r : String} {v : BitVec 64}
+    (h : (env.killAll ds).find r = some v) : env.find r = some v ∧ r ∉ ds := by
+  induction env with
+  | nil => simp [KEnv.killAll, KEnv.find] at h
+  | cons p t ih =>
+      obtain ⟨a, w⟩ := p
+      by_cases ha : a ∈ ds
+      · have hk : KEnv.killAll ((a, w) :: t) ds = KEnv.killAll t ds := by
+          simp [KEnv.killAll, ha]
+        rw [hk] at h
+        obtain ⟨h1, h2⟩ := ih h
+        refine ⟨?_, h2⟩
+        have har : a ≠ r := fun he => h2 (he ▸ ha)
+        simp [KEnv.find, har, h1]
+      · have hk : KEnv.killAll ((a, w) :: t) ds = (a, w) :: KEnv.killAll t ds := by
+          simp [KEnv.killAll, ha]
+        rw [hk] at h
+        simp only [KEnv.find] at h ⊢
+        by_cases har : a = r
+        · subst har
+          simp only [if_true] at h ⊢
+          exact ⟨h, ha⟩
+        · simp only [har, if_false] at h ⊢
+          exact ih h
+
+/-- Forgetting the registers an instruction writes keeps the environment true across
+    the instruction. -/
+theorem KEnv.Holds.evalInstr_killAll {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
+    (i : JInstr 64) :
+    KEnv.Holds (evalInstr s i) (env.killAll (MachineConstantTime.dstRegs i)) := by
+  intro r v hr
+  obtain ⟨h1, h2⟩ := KEnv.find_killAll hr
+  rw [MachineConstantTime.evalInstr_get_of_not_dst _ _ _ h2]
+  exact h r v h1
+
 /-- The analysis step across one gathered instruction. -/
 def stepK (env : KEnv) : JInstr 64 → KEnv
   | .mov d (.imm k) => (d, BitVec.ofNat 64 k) :: env.kill d
@@ -245,7 +284,7 @@ def stepK (env : KEnv) : JInstr 64 → KEnv
   | .loadMemIdx d _ _ _ => env.kill d
   | .storeMem _ _ _ => env
   | .storeMemIdx _ _ _ _ => env
-  | _ => []
+  | i => env.killAll (MachineConstantTime.dstRegs i)
 
 /-- The analysis step across a gathered block. -/
 def stepKs (env : KEnv) (js : List (JInstr 64)) : KEnv := js.foldl stepK env
@@ -274,7 +313,7 @@ theorem KEnv.Holds.stepK {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
   | storeMemIdx B x sc src =>
       intro r v hr
       exact h r v hr
-  | _ => exact KEnv.Holds.nil _
+  | _ => exact h.evalInstr_killAll _
 
 theorem runBlock_append' (s : JState 64) (l₁ l₂ : List (JInstr 64)) :
     runBlock s (l₁ ++ l₂) = runBlock (runBlock s l₁) l₂ := by
@@ -316,15 +355,26 @@ def foldTarget? (env : KEnv) : LinstrR → Option LinstrR
 /-- Rewrite one instruction under `env`. -/
 def foldInstr (env : KEnv) (i : LinstrR) : LinstrR := (foldTarget? env i).getD i
 
+/-- The register names a destination operand names: a plain register, and the base
+    and index of a SIB element. -/
+def dstOpNames : LOperand → List String
+  | .reg r => [r]
+  | .arrIdx b x _ => [b, x]
+  | _ => []
+
 /-- The environment after instruction `i`: the analysis step across its gathered
-    block, and the empty environment after a return or an instruction the gather
-    does not lower. -/
+    block; after an `Lopn` the gather does not lower, the environment without the
+    names of its destination operands; the empty environment after a return or any
+    other instruction the gather does not lower. -/
 def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
   if isLret i then []
   else
     match lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
     | some js => stepKs env js
-    | none => []
+    | none =>
+        match i.li_i with
+        | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
+        | _ => []
 
 /-- The fold over a body at frame parameters `p`, from environment `env`. -/
 def foldCore (p : Nat × Nat × Nat) : KEnv → Lcmd → Lcmd
@@ -829,11 +879,11 @@ theorem gatherList_cons (p : Nat × Nat × Nat) (i : Linstr) (is : Lcmd) :
       else (lowerPrinted p.1 p.2.1 p.2.2 i.li_i).bind
         (fun js => (gatherList p is).map (js :: ·)) := by
   by_cases hr : isLret i = true
-  · simp [gatherList, List.filter_cons, hr]
+  · simp [gatherList, hr]
   · have hr0 : isLret i = false := by simpa using hr
     cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i <;>
       cases hrest : gatherList p is <;>
-      simp_all [gatherList, List.filter_cons, List.mapM_cons]
+      simp_all [gatherList, List.mapM_cons]
 
 /-- Along a body in which `r` is dead, two states that agree off `r` run to the same
     state. -/
