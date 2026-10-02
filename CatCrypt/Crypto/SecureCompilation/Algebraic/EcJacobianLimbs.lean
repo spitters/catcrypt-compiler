@@ -30,7 +30,8 @@ the addition are those of `padd_lowers_to_jacobian`: affine, on-curve, distinct 
 ## Main definitions
 
 * `JacAddMont4`, `JacDblMont4`, `JacAddSolinas`, `JacDblSolinas`: the value statements.
-* `bn254Mont`: the BN254 base prime as a four-limb Montgomery record.
+* `bn254Mont`: the BN254 base prime as a four-limb Montgomery record
+  (`Mont4Instances.bn254`).
 * `p256Curve`, `secp256k1Curve`, `bn254Curve`: the short-Weierstrass records of P-256
   (`a = −3`), secp256k1 (`a = 0`, `b = 7`) and BN254 `G1` (`a = 0`, `b = 3`).
 
@@ -219,15 +220,8 @@ end Solinas
 
 section Instances
 
-/-- The BN254 base prime with `nInv = 0x87d20782e4866389`. -/
-def bn254Mont : Mont4Prime where
-  p := CatCrypt.Util.BN254
-  nInv := 0x87d20782e4866389
-  one_lt := by decide
-  p_odd := by decide
-  p_lt := by decide
-  nInv_lt := by decide
-  nInv_spec := by decide
+/-- The BN254 base prime as a four-limb Montgomery record: `Mont4Instances.bn254`. -/
+abbrev bn254Mont : Mont4Prime := Mont4Instances.bn254
 
 instance fact_prime_p256 : Fact (Nat.Prime Mont4Instances.p256.p) := CatCrypt.Util.fact_prime_p256
 
