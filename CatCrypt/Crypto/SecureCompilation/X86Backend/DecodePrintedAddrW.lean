@@ -30,7 +30,10 @@ The carry arms (`CArm`) are the add `ADCX:64 D, A, S, C`, printed `bt $0, C; adc
 the copy of `A` into `D`, and its carry-out binding `ADCXHI:64 O, A, S, C`, printed `setc O`;
 the binding reads the carry flag the add leaves, which the run threads to it (`CarryAt`). The
 cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off`, printed
-`mov off(%B)`. The class `printedAddrWB` adds both to the bodies of `DecodePrintedCFG`.
+`mov off(%B)`. The carry constant, an untagged `MOV D, #n` with `n < 2` that the address
+machine steps at the one-bit tag (`JasminLsemAddrRun.tagAt`), is printed `mov $n, %r32`, which
+leaves the zero-extension of the bit in the register. The class `printedAddrWB` adds the three
+to the bodies of `DecodePrintedCFG`.
 
 ## Main definitions
 
@@ -45,8 +48,8 @@ cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off`, prin
 * `ACorr.toW`, `ACorrW.widen`: `ACorr` is the case of `ACorrW` without one-bit names, and an
   `ACorrW` state widens to an `ACorr` state.
 * `AArm.simW`: an arm of `DecodePrintedAddr` steps from `ACorrW` to `ACorrW`.
-* `CArm.bytes`, `sim_adcx`, `sim_adcxhi`, `MArm.bytes`, `sim_ldm`, `sim_stm`: the bytes and
-  the simulations of the carry and cell arms.
+* `CArm.bytes`, `sim_adcx`, `sim_adcxhi`, `MArm.bytes`, `sim_ldm`, `sim_stm`, `zBytes`,
+  `sim_bmov`: the bytes and the simulations of the carry, cell and carry-constant arms.
 * `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB` simulate its
   run on the address machine.
 -/
@@ -1710,6 +1713,82 @@ theorem sim_sti (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (h : iOk P
     rw [hmem, hc.sp]
     exact agree_write64 hc.mem _ _ x hx
 
+/-! ## 8c. The carry constant -/
+
+/-- **The conditions of a carry constant** `MOV D, #n`: `D` is a general-purpose name and `n`
+    is a bit. -/
+def zOk (D : String) (n : Nat) : Bool := gpOk D && decide (n < 2)
+
+/-- The byte piece of a carry constant: the 32-bit `mov $n, %r32`, which writes `n` to the
+    64-bit register. -/
+def zPieces (D : String) (n : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(encMovImmw 0 (gpNumU D) n, .mov (phys D) (.imm n))]
+
+/-- The untagged `MOV D, #n` into a general-purpose name, with `n` below `2 ^ 31`, encodes to
+    the 32-bit `mov $n, %r32`. -/
+theorem encodeLopn_movImm32 (F W : Nat) (D : String) (n qB : Nat) (hD : gpOk D = true)
+    (hn : n < 2 ^ 31) :
+    encodeLopn F W (.Lopn [.reg D] "MOV" [.imm n]) qB = encMovImmw 0 (gpNumU D) n := by
+  have fD := gpFacts hD
+  simp only [encodeLopn,
+    show (LprogAsmPrinter.isCarryOutBinding "MOV" || LprogAsmPrinter.isMulHiBinding "MOV")
+      = false from by decide +kernel,
+    show stripWidthTag "MOV" = "MOV" from by decide +kernel,
+    show LprogAsmPrinter.mnemWidth "MOV" = 32 from by decide +kernel,
+    show ("MOV" == "MULX") = false from by decide +kernel,
+    show ("MOV" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "MOV" = none from by decide +kernel,
+    LprogBytes.rexW, Bool.false_eq_true, if_false, fD.notSlot, Bool.false_and]
+  simp [encImmOp, fD.notSlot]
+  intro h
+  omega
+
+/-- `mov $n, %r32` decodes to the 64-bit move of `n` into the register. -/
+theorem pieceDec_movImm32 (D : String) (n : Nat) (hn : n < 2 ^ 32) :
+    PieceDec (encMovImmw 0 (gpNumU D) n, .mov (phys D) (.imm n)) := by
+  intro rest
+  by_cases h8 : gpNumU D < 8
+  · exact decodeLinstr_movImm32 _ _ rest h8 hn
+  · exact decodeLinstr_movImm32_rex _ _ rest (by omega) (gpNumU_lt_16 D) hn
+
+/-- **The bytes of a carry constant.** -/
+theorem zBytes (P : Params) (D : String) (n : Nat) (h : zOk D n = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] "MOV" [.imm n]) P.qsaveB
+        = (zPieces D n).flatMap Prod.fst
+      ∧ ∀ p ∈ zPieces D n, PieceDec p := by
+  simp only [zOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨hD, hn⟩ := h
+  refine ⟨by simp [zPieces, encodeLopn_movImm32 _ _ _ _ _ hD (show n < 2 ^ 31 by omega)], ?_⟩
+  intro p hp
+  simp only [zPieces, List.mem_singleton] at hp
+  subst hp
+  exact pieceDec_movImm32 _ _ (by omega)
+
+/-- **The carry constant.** From `ACorrW`, the address-machine step of `MOV D, #n` at the
+    one-bit tag, which writes the bit `n` to `D`, is matched by `mov $n, %r32`, whose register
+    holds the zero-extension of the bit. -/
+theorem sim_bmov (P : Params) (rsp : BitVec 64) (D : String) (n : Nat) (h : zOk D n = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "MOV" [.imm n], .reg (some 1)) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [zOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨hD, hn⟩ := h
+  rw [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun.fstepA_bitMov] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  have hrun : aMachine.runBlock sa ((zPieces D n).map Prod.snd)
+      = evalInstrA sa (.mov (phys D) (.imm n)) := rfl
+  rw [hrun]
+  refine ⟨hc.write hD (BitVec.ofNat 64 n) (fun r => rfl) (fun x hx => hc.mem x hx)
+    (fun r hr => ?_) ?_, rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · right
+    refine ⟨BitVec.ofNat 1 n, ?_, ?_⟩
+    · show (if D = D then _ else _) = _
+      rw [if_pos rfl]
+    · interval_cases n <;> decide
+
 /-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
@@ -1717,6 +1796,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLayout
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep (aMachine_step_op)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
 
 /-- The carry arm of an instruction: `ADCX:64` and `ADCXHI:64` on three register sources. -/
 def classifyC : LinstrR → Option CArm
@@ -1768,11 +1848,15 @@ theorem classifyS_instr {i : LinstrR} {c : SArm} (h : classifyS i = some c) : c.
   · cases h
 
 /-- An instruction other than the closing return of a printed body with carry chains: an
-    `Lopn` read into a slot carry arm, a carry arm, a cell arm or an arm of
-    `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
+    `Lopn` read into a carry constant, a slot carry arm, a carry arm, a cell arm, an immediate
+    store into a frame slot or an arm of `DecodePrintedAddr` whose conditions hold, a label,
+    or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
   | .Lopn ds o ss =>
+      match movImmStruct? (.Lopn ds o ss) with
+      | some (d, n) => zOk d n
+      | none =>
       match classifyS (.Lopn ds o ss) with
       | some c => c.ok P
       | none =>
@@ -1807,14 +1891,20 @@ def carryPrevB (body : Lcmd) (k : Nat) : Bool :=
       else true
   | _ => true
 
+/-- An untagged immediate move at position `k` is a carry constant (`bitMovB`). -/
+def bitMovPosB (body : Lcmd) (k : Nat) : Bool :=
+  (body[k]?).all fun j => (movImmStruct? j.li_i).isNone || bitMovB body k j.li_i
+
 /-- **The covered printed bodies with carry chains**: decodable, ending in the return, every
-    other instruction a carry arm or in the fragment of `DecodePrintedCFG`, every conditional
-    branch directly after a compare, and every carry-out binding directly after its add. -/
+    other instruction a carry arm, a carry constant or in the fragment of `DecodePrintedCFG`,
+    every conditional branch directly after a compare, every carry-out binding directly after
+    its add, and every untagged immediate move a carry constant. -/
 def printedAddrWB (body : Lcmd) : Bool :=
   decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
     && body.dropLast.all (fun i => instrOKWB body (Params.ofBody body) i.li_i)
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevB body)
+    && (List.range body.length).all (bitMovPosB body)
 
 /-- At the program counter of `s`, no general-purpose name the instruction reads, other than
     a carry-in, holds a one-bit value. -/
@@ -1857,6 +1947,8 @@ structure BodyFactsW (body : Lcmd) (shs : List DShape) : Prop where
   cond : ∀ k, k < body.length → condPrevB body k = true
   /-- Every carry-out binding follows its add. -/
   carry : ∀ k, k < body.length → carryPrevB body k = true
+  /-- Every untagged immediate move is a carry constant. -/
+  bit : ∀ k, k < body.length → bitMovPosB body k = true
 
 theorem acorrW_setLpc {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
     (p : Nat) : ACorrW rsp sa (s.setLpc p) :=
@@ -2027,11 +2119,50 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
     cases li with
     | Lopn ds o ss =>
       have hstepEq : stepA frame body s zf
-          = fstepA frame (normA (.Lopn ds o ss), tagA (.Lopn ds o ss)) s zf := by
+          = fstepA frame (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss)) s zf := by
         simp only [stepA, hget]
+        rw [hpc]
       rw [hstepEq] at hst
       have hws := hsafe.1.2.1 ii ds o ss (by rw [hget])
       simp only [instrOKWB] at hok
+      split at hok
+      · -- a carry constant
+        rename_i D n hmv
+        have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by
+          unfold movImmStruct? at hmv
+          split at hmv
+          · cases hmv; assumption
+          · cases hmv
+        have hbit : bitMovB body k (.Lopn ds o ss) = true := by
+          have := hF.bit k hk
+          simpa [bitMovPosB, hbk?, hmv] using this
+        have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
+            = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
+          rw [tagAt, if_pos hbit, hia]
+          simp (config := { decide := true }) [normA]
+        rw [hli] at hst
+        obtain ⟨hc', -⟩ := sim_bmov P rsp D n hok sa s zf hc s' zf' hst
+        have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+            (aMachine.runBlock sa ((zPieces D n).map Prod.snd)).flags.zf.getD false = zf' := by
+          intro hcnd
+          have hcm := hcondNext hcnd
+          rw [hia] at hcm
+          simp [classifyA, classify] at hcm
+        have hna : ∀ ii' d a s c, body[k]? ≠
+            some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+          intro ii' d a s c h
+          rw [hbk?, hia] at h
+          simp at h
+        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
+          hsafe'
+        refine ⟨sa', ?_, hC⟩
+        obtain ⟨hb, hp⟩ := zBytes P D n hok
+        have hops : shs[k].ops' = (zPieces D n).map Prod.snd :=
+          shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+        exact reaches_block a b hks hshk hops hR
+      rename_i hmv
+      rw [tagAt_of_ne hmv] at hst
       split at hok
       · -- a slot carry arm
         rename_i c hcl
@@ -2369,7 +2500,7 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     ∃ shs, BodyFactsW body shs := by
   simp only [printedAddrWB, Bool.and_eq_true, Option.any_eq_true, List.all_eq_true,
     List.mem_range] at h
-  obtain ⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩ := h
+  obtain ⟨⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩, hbit⟩ := h
   have hdec' := hdec
   simp only [decodableLcmd, Bool.and_eq_true] at hdec'
   obtain ⟨shs, hs⟩ := Option.isSome_iff_exists.mp hdec'.1.1.1.1.1
@@ -2377,7 +2508,8 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     cases body with
     | nil => simp at hlast
     | cons _ _ => simp
-  refine ⟨shs, ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => hcond k hk, fun k hk => hcar k hk⟩⟩
+  refine ⟨shs, ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => hcond k hk, fun k hk => hcar k hk,
+    fun k hk => hbit k hk⟩⟩
   · rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem (by omega)] at hlast
     obtain rfl := Option.some.inj hlast
     revert hret
@@ -2461,7 +2593,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
   obtain ⟨shs, hF⟩ := bodyFactsW_of h
   have hdec : decodableLcmd body = true := by
     simp only [printedAddrWB, Bool.and_eq_true] at h
-    exact h.1.1.1.1
+    exact h.1.1.1.1.1
   obtain ⟨hl, hsh⟩ := shapesOf_spec _ body shs hF.shapes
   set P := Params.ofBody body
   set F := P.frame

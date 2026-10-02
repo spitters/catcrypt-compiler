@@ -581,7 +581,7 @@ theorem run_sim {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rsp
         obtain ⟨s', zf', hst, hc', hzf'⟩ := AArm.sim P rsp ar hok sa s zf hc hsafeA
         have hstep : stepA frame body s zf = some (s', zf') := by
           simp only [stepA, hget]
-          rw [← hia, hli]
+          rw [← hia, AArm.tagAt_eq, hli]
           exact hst
         rw [hstep, Option.bind_some] at hrun
         have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]

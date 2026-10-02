@@ -26,7 +26,8 @@ name-keyed access of the array whose pointer its base register holds, at the len
 array. The array of an access is read off the instruction in front of it: a reload
 `MOVQ b, q` (or `MOV:64 b, q`) of the base register `b` from the frame slot `q`, with
 `slotArr q` the array whose pointer `q` holds. Every other instruction is kept, at the
-register tag, with the widening multiply read at its width (`normA`). The image has the
+tag of the address machine (`tagAt`: the one-bit tag for a carry constant, the register tag
+otherwise), with the widening multiply read at its width (`normA`). The image has the
 length and the program counters of the body without its final return.
 
 ## The class
@@ -71,7 +72,7 @@ def accArr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
 /-- The image of instruction `k` of `body`: an indexed load or store at scale `8` through a
     register that holds the pointer of the array `A` of length `n` is the name-keyed load or
     store on `A` at the shape `(64, n)`; every other instruction is `normA` of it at the
-    register tag. -/
+    tag `tagAt` of its position. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
   match i with
@@ -87,7 +88,7 @@ def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
         | some (A, n) => (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n)
         | none => (normA i, .reg none)
       else (normA i, .reg none)
-  | _ => (normA i, .reg none)
+  | _ => (normA i, tagAt body k i)
 
 /-- **The image of a physical body**: `imgInstr` at each instruction of the body without its
     final instruction (the return of a printed body). -/

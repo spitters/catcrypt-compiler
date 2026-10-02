@@ -1311,6 +1311,15 @@ theorem AArm.instr_lopn (a : AArm) : ∃ ds o ss, a.instr = .Lopn ds o ss := by
   | reg a => exact a.instr_lopn
   | _ => exact ⟨_, _, _, rfl⟩
 
+/-- The instruction of an arm is no untagged immediate move, so its tag at any position is
+    `tagA`. -/
+theorem AArm.tagAt_eq (body : Lcmd) (k : Nat) (a : AArm) :
+    tagAt body k a.instr = tagA a.instr := by
+  apply tagAt_of_ne
+  cases a with
+  | reg a => cases a <;> simp [AArm.instr, Arm.instr, JasminLsemCast.movImmStruct?]
+  | _ => simp [AArm.instr, JasminLsemCast.movImmStruct?]
+
 /-- The computed shape of an arm's instruction decodes to the arm's machine instructions. -/
 theorem AArm.shape_ops {P : Params} {a : AArm} (h : a.ok P = true) {sh : DShape}
     (hs : shapeOf P a.instr = some sh) : sh.ops' = a.js P := by

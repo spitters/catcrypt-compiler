@@ -743,7 +743,7 @@ theorem icase_cond {frame : String → Option (BitVec 64)} {x : LinstrR} {cc : S
     index, base, value and destination names without a frame word and a general-purpose
     destination of a load; a load of a frame word into a general-purpose name; a store of a
     general-purpose name into a frame word; a compare against a frame word; or a register
-    instruction passing `regGateB`. -/
+    instruction passing `regGateB` that is no carry constant (`bitMovB`). -/
 def instrGateB (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) (k : Nat) (x : LinstrR) : Bool :=
   match icase frame x with
@@ -756,7 +756,7 @@ def instrGateB (frame : String → Option (BitVec 64)) (slotArr : String → Opt
   | .sload d _ => gpOk d
   | .sstore _ S => gpOk S
   | .scmp _ y _ => (frame y).isNone
-  | .reg => regGateB frame (normA x)
+  | .reg => regGateB frame (normA x) && !bitMovB body k x
   | .other => false
 
 /-- Every reload of the pointer of an array follows a save of that pointer. -/
@@ -1549,19 +1549,34 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
 
 theorem imgInstr_reg (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
-    (h2 : o ≠ "STOREIDX") :
+    (h2 : o ≠ "STOREIDX") (h3 : bitMovB body k (.Lopn ds o ss) = false) :
     imgInstr slotArr body k (.Lopn ds o ss) = (normA (.Lopn ds o ss), .reg none) := by
   unfold imgInstr
-  split <;> simp_all
+  split <;> simp_all [tagAt_of_not h3, tagA]
 
 theorem tagA_reg {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
     (h2 : o ≠ "STOREIDX") : tagA (.Lopn ds o ss) = .reg none := by
   simp [tagA, h1, h2]
 
+/-- A move between names is no carry constant. -/
+theorem bitMovB_of_slotMov {body : Lcmd} {k : Nat} {x : LinstrR} {p : String × String}
+    (h : slotMov? x = some p) : bitMovB body k x = false := by
+  apply bitMovB_of_ne
+  unfold slotMov? at h
+  split at h
+  · simp [JasminLsemCast.movImmStruct?]
+  · cases h
+
+/-- The tag at a position of a register instruction that is no carry constant. -/
+theorem tagAt_reg {body : Lcmd} {k : Nat} {ds : List LOperand} {o : String}
+    {ss : List LOperand} (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX")
+    (h3 : bitMovB body k (.Lopn ds o ss) = false) : tagAt body k (.Lopn ds o ss) = .reg none := by
+  rw [tagAt_of_not h3, tagA_reg h1 h2]
+
 theorem stepA_lopn (frame : String → Option (BitVec 64)) {body : Lcmd} {sa : LstateA}
     {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) {ds : List LOperand} {o : String}
     {ss : List LOperand} (hx : bi.li_i = .Lopn ds o ss) (zf : Bool) :
-    stepA frame body sa zf = fstepA frame (normA bi.li_i, tagA bi.li_i) sa zf := by
+    stepA frame body sa zf = fstepA frame (normA bi.li_i, tagAt body sa.reg.lpc bi.li_i) sa zf := by
   obtain ⟨ii, li⟩ := bi
   simp only at hx
   subst hx
@@ -1720,42 +1735,51 @@ theorem img_step {frame : String → Option (BitVec 64)}
       have hm := (icase_sload hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      have h3 : bitMovB body sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide), evalInstrPMemFk_reg,
+      · rw [hx] at h3
+        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) h3, evalInstrPMemFk_reg,
           ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sload hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
   | sstore q S =>
       rw [hc] at hg
       have hm := (icase_sstore hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      have h3 : bitMovB body sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide), evalInstrPMemFk_reg,
+      · rw [hx] at h3
+        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) h3, evalInstrPMemFk_reg,
           ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
   | scmp d y q =>
       rw [hc] at hg
       have hx := slotCmp?_eq (icase_scmp hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
-      rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide), evalInstrPMemFk_reg,
+      have h3 : bitMovB body sa.reg.lpc (.Lopn [.reg d] "CMP:64" [.reg y, .reg q]) = false :=
+        bitMovB_of_ne (by simp [JasminLsemCast.movImmStruct?])
+      rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) h3, evalInstrPMemFk_reg,
         ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
-      rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
   | reg =>
       rw [hc] at hg
+      simp only [Bool.and_eq_true, Bool.not_eq_true'] at hg
+      obtain ⟨hg, h3⟩ := hg
       obtain ⟨ds, o, ss, hx, ho1, ho2⟩ := icase_reg hc
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
-      rw [hx, imgInstr_reg slotArr body _ ho1 ho2, evalInstrPMemFk_reg, ← hx] at hstep
+      rw [hx] at h3
+      rw [hx, imgInstr_reg slotArr body _ ho1 ho2 h3, evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys hgate P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
-      rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg ho1 ho2]
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 h3]
 
 /-- Where the image halts, the address machine has halted: the program counter is at the
     final return of the body or past its end. -/
