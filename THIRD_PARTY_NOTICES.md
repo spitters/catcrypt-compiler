@@ -321,8 +321,12 @@ repository states it. Paths are relative to the root of this package.
 - Licence: Apache-2.0 OR ISC OR MIT-0 (`LICENSE`).
 - Derived material: ports of `simple.s`, `arm/generic/word_negmodinv.S`,
   `word_bytereverse.S` and `word_avg`; the instruction sequence of
-  `bignum_mul_4_8.S`; the SM2 limbs of `bignum_mod_sm2_4.S`.
+  `bignum_mul_4_8.S`; the SM2 limbs of `bignum_mod_sm2_4.S`; the instruction
+  list of `x86_att/p384/bignum_montmul_p384.S` at commit
+  `7bd7c8ca1f3316fbc705d464e23f31358aff9e8a`, imported as a Lean list (the
+  module header records the file's SHA-256).
 - Files:
+  - `CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384.lean`
   - `CatCrypt/Crypto/Jasmin/S2NBignumRefSem.lean`
   - `CatCrypt/Crypto/SecureCompilation/Jasmin/S2NBignumSSADialect.lean`
   - `CatCrypt/Crypto/SecureCompilation/X86Backend/BignumMontMulKernel.lean`
