@@ -27,8 +27,8 @@ its instruction under one of the byte templates `pieceTemplates`, each of which 
 round-trip lemma of the form `decodeLinstr (bytes ++ rest) = some (.op j, rest)` for every
 continuation `rest` (`pieceTemplates_sound`). The templates are the encoder forms of
 `LprogBytesDecode` over register numbers (register copies and the group-1 `ALU` forms, the
-compares, the sign-extended `imm8` forms, the `%rsp`-relative loads and stores, the indexed
-moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts) and every instruction
+compares, the sign-extended `imm8` forms, the `%rsp`-relative loads, stores, compares and
+`cmovne`, the indexed moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts) and every instruction
 `SailX86Decoder.encodeJInstr` encodes and `decodeJ1` inverts (`roundtrip_decodeJ1`), at the
 identity allocation on the canonical `%rN` names. The template set is a closed list, so the
 proposal of the decoder is checked rather than trusted. Labels, `Lret` and `Lalign` carry no
@@ -118,12 +118,14 @@ def tmpl1 (d : Nat) : List (List (BitVec 8) × JInstr 64) :=
     :: [0x94, 0x95].map (fun op =>
       (encSetccReg op d, .setcc (if op = 0x94 then .e else .ne) (regName d)))
 
-/-- The `%rsp`-relative templates on register `r` at displacement `off`. -/
+/-- The `%rsp`-relative templates on register `r` at displacement `off`: load, store,
+    compare, and the conditional move `cmovne` from the frame word. -/
 def tmplRsp (r : Nat) (off : Int) : List (List (BitVec 8) × JInstr 64) :=
   if dispOk32 off then
     [(encRspMem 1 0x8b r off, .loadMem (regName r) "%rsp" off),
      (encRspMem 1 0x89 r off, .storeMem "%rsp" off (.reg (regName r))),
-     (encRspMem 1 0x3b r off, .cmpMem (regName r) "%rsp" off)]
+     (encRspMem 1 0x3b r off, .cmpMem (regName r) "%rsp" off),
+     (encCmovRspMem 1 0x45 r off, .cmovccMem .ne (regName r) "%rsp" off)]
   else []
 
 /-- The indexed-move templates at scale `8`: register `r`, base `b`, index `i`. -/
@@ -165,7 +167,7 @@ def guess : JInstr 64 → List String × List Nat × List Int
       (d :: opNames s, opImms s, [])
   | .neg d | .setcc _ d => ([d], [], [])
   | .imulri d s v => ([d, s], [v], [])
-  | .loadMem d b off | .cmpMem d b off => ([d, b], [], [off])
+  | .loadMem d b off | .cmpMem d b off | .cmovccMem _ d b off => ([d, b], [], [off])
   | .storeMem b off s => (b :: opNames s, [], [off])
   | .loadMemIdx d b i _ => ([d, b, i], [], [])
   | .storeMemIdx b i _ s => (b :: i :: opNames s, [], [])
@@ -272,10 +274,11 @@ theorem tmplRsp_sound (r : Nat) (off : Int) (hr : r < 16) :
   split at hq
   · rename_i hoff
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hq
-    rcases hq with rfl | rfl | rfl
+    rcases hq with rfl | rfl | rfl | rfl
     · exact decodeLinstr_rspLoad r off rest hr hoff
     · exact decodeLinstr_rspStore r off rest hr hoff
     · exact decodeLinstr_rspCmp r off rest hr hoff
+    · exact decodeLinstr_rspCmov .ne r off rest hr hoff
   · simp at hq
 
 theorem tmplIdx_sound (r b i : Nat) (hr : r < 16) (hb : b < 16) (hi : i < 16) :

@@ -643,7 +643,8 @@ def cellVirt (σ : AbiLayout) (nm : String → String) (C2 : List LinstrRM) (fus
     the image class and the gate `imgGateB` or the gate with carry chains `imgGateBW` at the
     frame marks with the cells, the frame and entry checks, the cell frames, no conditional
     branch, no slot name in a cell move, `C2` a list of `Lopn`s, and, when `fuse` holds, the
-    fusion check of `argBind σ nm ++ C2` and no observed name `R15`. -/
+    fusion check of `argBind σ nm ++ C2`, whose width-`64` start registers are those of
+    `fuseRegs` and the cell names, and no observed name `R15`. -/
 def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : List String)
     (C2 : List LinstrRM) (fuse : Bool) : Bool :=
   let R := cellArrs σ
@@ -656,8 +657,8 @@ def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : L
     && (imgGateB (frameMarkC R body) sl body' || imgGateBW (frameMarkC R body) sl body')
     && frameOkB σ body && entryB σ nm body
     && cellAccB sl R body && noCondB body && cellNoSlotB sl body && C2.all isLopnB
-    && (!fuse || (fuseOKL (fuseRegs σ nm) (fuseLoPre (argBind σ nm) C2) (argBind σ nm ++ C2)
-      && outs.all (· != "R15")))
+    && (!fuse || (fuseOKL (fuseRegs σ nm ++ cellNames R) (fuseLoPre (argBind σ nm) C2)
+      (argBind σ nm ++ C2) && outs.all (· != "R15")))
 
 theorem cellRouteB_entryB {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {outs : List String} {C2 : List LinstrRM} {fuse : Bool}
@@ -730,15 +731,19 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, List.all_eq_true,
           bne_iff_ne, ne_eq] at hfuse
         have habiC := ImageAddrRoute.entryV_abiEntry (un := fun x => x) (sa := sa) hfrA E.argG fun _ _ => rfl
-        have hE : JasminLsemFuseMulHi.E64 (fuseRegs σ nm) (emptyArrs (cellArrs σ)
+        have hE : JasminLsemFuseMulHi.E64 (fuseRegs σ nm ++ cellNames (cellArrs σ))
+            (emptyArrs (cellArrs σ)
             (entryV σ (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa
               fun x => x)) := by
           intro x hx
           rcases List.mem_append.mp hx with hx | hx
-          · exact e64_of_abiEntryM habiC x hx
-          · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-            obtain ⟨h1, -, h3⟩ := hfrR a ha
-            simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+          · rcases List.mem_append.mp hx with hx | hx
+            · exact e64_of_abiEntryM habiC x hx
+            · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
+              obtain ⟨h1, -, h3⟩ := hfrR a ha
+              simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+          · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
+            simp only [emptyArrs, entryV, frameC, hc]
         obtain ⟨f2, t2, -, ht2, hag, -, -⟩ :=
           fuseMulHi_lsemFuelMemF_pre hfuse.1 "" _ _ rfl hE _ hrun'
         exact ⟨f2, t2, ht2, fun r hr => hag.reg r (hfuse.2 r hr)⟩
