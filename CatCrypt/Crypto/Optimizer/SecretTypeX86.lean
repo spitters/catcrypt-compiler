@@ -169,6 +169,7 @@ def instrTaint (R : RegTaint) (C : CellTaint) : JInstr 64 → SecretLevel
   | .imulriMem _ base off _ => C (base, off)
   | .addToMem base off src  => C (base, off) ⊔ₛ operandTaint R src
   | .cmpMem a base off      => R a ⊔ₛ C (base, off)
+  | .cmovccMem _ dst base off => R dst ⊔ₛ C (base, off) ⊔ₛ .sec
 
 /-- Threading an instruction through the register-taint env: bind every register
 it writes (`writtenRegs`) to the instruction's output taint. -/
@@ -460,7 +461,7 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
   | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _
-  | cmpMem _ _ _ =>
+  | cmpMem _ _ _ | cmovccMem _ _ _ _ =>
       exact ⟨rfl, hv.killWrittenStep _ (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | addToMem base off src =>
     -- `add [base + off], src` kills the binding of its cell and writes no register;

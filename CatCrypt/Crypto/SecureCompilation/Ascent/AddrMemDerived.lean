@@ -393,6 +393,7 @@ def canonI (i : JInstr 64) (k : String × Int) : JInstr 64 :=
   | .imulMem d _ _ => .imulMem d k.1 k.2
   | .imulriMem d _ _ n => .imulriMem d k.1 k.2 n
   | .cmpMem a _ _ => .cmpMem a k.1 k.2
+  | .cmovccMem c d _ _ => .cmovccMem c d k.1 k.2
   | i => i
 
 /-- The canonical form of an instruction under the abstract state `A`. -/

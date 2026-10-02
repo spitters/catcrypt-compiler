@@ -895,6 +895,11 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       encMemMov 0x69 (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off ++ imm32LE imm
   -- `CMP r64, r/m64` = `REX.W 3B /r`.
   | .cmpMem a base off => encMemMov 0x3b (gpNum (regOf alloc a)) (gpNum (regOf alloc base)) off
+  -- `CMOVcc r64, m64` = `REX.W 0F 40+tttn /r` with a memory ModRM.
+  | .cmovccMem c d base off =>
+      let dn := gpNum (regOf alloc d); let bn := gpNum (regOf alloc base)
+      ([ rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0x40 + condCode c ].map (BitVec.ofNat 8))
+        ++ memTail dn bn off
   -- BZHI = VEX.LZ.0F38.W1 F5 /r; `vvvv` carries the index. Gas-pinned:
   -- `bzhi %rbx,%rcx,%rax` = `C4 E2 E0 F5 C1`, `bzhi %r11,%rbx,%r13` = `C4 62 A0 F5 EB`.
   | .bzhi d src idx =>

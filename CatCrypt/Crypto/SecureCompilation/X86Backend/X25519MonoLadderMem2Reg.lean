@@ -102,7 +102,8 @@ def mulxReadOffs (block : List (JInstr 64)) : List Int :=
   (block.filterMap (fun i => match i with
     | .mulxMem _ _ _ "fp" off => some off
     | .addMem _ "fp" off | .addToMem "fp" off _ | .adcxMem _ "fp" off | .adoxMem _ "fp" off
-    | .imulMem _ "fp" off | .imulriMem _ "fp" off _ | .cmpMem _ "fp" off => some off
+    | .imulMem _ "fp" off | .imulriMem _ "fp" off _ | .cmpMem _ "fp" off
+    | .cmovccMem _ _ "fp" off => some off
     | _ => none)).eraseDups
 
 /-! ### Cross-op store-to-load forwarding before mem2reg

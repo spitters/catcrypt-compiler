@@ -907,6 +907,20 @@ def encCmovSelectMem (w : Nat) (off : Int) (cn tn fn : Nat) : List (BitVec 8) :=
     ++ encRspMem w 0x89 scr off
     ++ encRspMem w 0x8b scr cmovRedZone
 
+/-- `CMOVcc` with a `[%rsp + off]` source: `cmov<cc><sz> off(%rsp), %d`, the bytes
+    `REX 0F op /r` with `reg` = `d` and the SIB-escaped `%rsp` base of `memTail`. -/
+def encCmovRspMem (w op d : Nat) (off : Int) : List (BitVec 8) :=
+  rexOpt w (bit d 3) 0 0 ++ [BitVec.ofNat 8 0x0f, BitVec.ofNat 8 op] ++ memTail d 4 off
+
+/-- The bytes of a branchless select whose true value is a `%rsp`-relative slot at
+    `off` and whose destination, condition and false value are registers:
+    `mov f, d` unless `d` is `f`, `test c, c`, `cmovne off(%rsp), d`. This is
+    `LprogAsmPrinter.renderLopn`'s CMOV arm on these operands: the destination text
+    never equals the slot text, so the printer takes its `cmovne` branch. -/
+def encCmovSelectSlotT (w dn cn fn : Nat) (off : Int) : List (BitVec 8) :=
+  (if dn == fn then [] else encAluRRw w 0x89 dn fn)
+    ++ encAluRRw w 0x85 cn cn ++ encCmovRspMem w 0x45 dn off
+
 /-! ## 3d. Register-indexed (SIB) element access — the `LOADIDX`/`STOREIDX` arms
 
 `Com.toLprogPhysAbi` exports a runtime-index array access as an `.arrIdx base idx
@@ -1375,9 +1389,11 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       -- Branchless constant-time select `CMOV:<w> [cond, t, f]` (§3c): the byte
       -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
       -- of which source defaults into `d` and which condition the `CMOVcc`
-      -- carries. Register-resident operands only — a spill/qsave/`mem.*` operand
-      -- denotes a memory form this arm does not build, and is left as the
-      -- visible empty byte list rather than addressed as `%rax`.
+      -- carries. The forms built are register operands, a slot destination with
+      -- register sources, and a slot true value with register destination,
+      -- condition and false value; any other spill/qsave/`mem.*` operand denotes a
+      -- memory form this arm does not build, and is left as the visible empty byte
+      -- list rather than addressed as `%rax`.
       | [d], [a, s, cin] =>
           if base == "CMOV" then
             match d, a, s, cin with
@@ -1392,7 +1408,16 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                       if isGpName cn && isGpName tn && isGpName fn then
                         encCmovSelectMem w off (gpNumU cn) (gpNumU tn) (gpNumU fn)
                       else []
-                  | none => []
+                  | none =>
+                      -- A true value in a `%rsp`-relative slot, with register
+                      -- destination, condition and false value: the conditional
+                      -- move reads the slot.
+                      if isGpName dn && isGpName cn && isGpName fn then
+                        match spillQsaveOff frame spillW tn qsaveB with
+                        | some off =>
+                            encCmovSelectSlotT w (gpNumU dn) (gpNumU cn) (gpNumU fn) off
+                        | none => []
+                      else []
             | _, _, _, _ => []
           else []
       | _, _ => []

@@ -152,7 +152,7 @@ theorem fstepA_bitMov (frame : String → Option (BitVec 64)) (D : String) (n : 
     fstepA frame (.Lopn [.reg D] "MOV" [.imm n], .reg (some 1)) s zf
       = some ({ s with reg := (s.reg.setReg D (BitVec.ofNat 1 n)).nextPc }, zf) := by
   simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?,
-    slotImm?, regStepA, JasminLsemMemFlagNestJoin.fstepF, JasminLsemMemFlagGuard.cmpArgs?,
+    slotImm?, slotCmov?, regStepA, JasminLsemMemFlagNestJoin.fstepF, JasminLsemMemFlagGuard.cmpArgs?,
     JasminLsemMemFlagGuard.movRegArgs?, JasminLsemMemFlagGuard.stepMemF, lsemStepMem,
     JasminLsemCast.lsemStepCast, JasminLsemCast.castStruct?, movImmStruct?,
     JasminLsemMemFlagGuard.withALUFlags, JasminLsemMemFlagGuard.aluFlagOp?]

@@ -324,6 +324,8 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
                                    [memOperand alloc base off, .imm imm]
   | .cmpMem a base off => .Lopn [] (withWidthTag 64 "CMPMEM")
                             [resolveReg alloc a, memOperand alloc base off]
+  | .cmovccMem _ d base off => .Lopn [resolveReg alloc d] (withWidthTag 64 "CMOVCCMEM")
+                                [resolveReg alloc d, memOperand alloc base off]
   -- BMI2 `bzhi`: the field leaves never emit it, and `BZHI` has no `attBase` entry.
   | .bzhi d s i => .Lopn [resolveReg alloc d] (withWidthTag 64 "BZHI")
                      [resolveReg alloc s, resolveReg alloc i]

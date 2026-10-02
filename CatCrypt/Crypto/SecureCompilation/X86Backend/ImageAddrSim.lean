@@ -294,6 +294,48 @@ theorem slotImm?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Lin
     have := h.2.2 q hw
     simp [hq] at this
 
+/-- An instruction passing `regOkB` is no select with a frame-slot value: the symbolic step of
+    `CMOV:64 d, [c, a, b]` reads `a` and `b`, which `regOkB` requires to have no frame word. -/
+theorem slotCmov?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : LinstrR}
+    (h : regOkB frame x = true) : slotCmov? frame x = none := by
+  cases hsv : slotCmov? frame x with
+  | none => rfl
+  | some p =>
+    exfalso
+    obtain ⟨d, c, a, b⟩ := p
+    obtain ⟨hx, hsl⟩ : x = .Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]
+        ∧ ((frame a).isSome || (frame b).isSome) = true := by
+      unfold slotCmov? at hsv
+      split at hsv
+      · split_ifs at hsv with ho
+        simp only [Bool.and_eq_true, beq_iff_eq] at ho
+        simp only [Option.some.injEq, Prod.mk.injEq] at hsv
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hsv
+        exact ⟨by rw [ho.1.1], ho.2⟩
+      · cases hsv
+    subst hx
+    have hm : stripWidthTag "CMOV:64" = "CMOV" := by decide +kernel
+    have hn : ∀ R, symN (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]) R
+        = .set d (.sel (R a) (R b) (R c)) [.wid (R c) 1, .eqW (R a) (R b)] := fun R => by
+      unfold symN
+      simp only [hm, if_true]
+    have hd : ∀ R, symMC (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]) R
+        = .set d (.sel (R a) (R b) (R c)) [.wid (R c) 1, .eqW (R a) (R b)] := fun R => by
+      simp [symMC, symSh, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+        JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+        JasminLsemMulCarry.sbbhiStruct?, VIR.JasminLsemShift.sarStruct?, hn, hm]
+    have hs : symStep (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b], .reg none) SSt.start
+        = .ok (SSt.start.setR d (.sel (.reg a) (.reg b) (.reg c)))
+          [.wid (.reg c) 1, .eqW (.reg a) (.reg b)] := by
+      simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, symMem, symCast,
+        JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, hd, liftR, aluFl, aluFlT, aluFlagOp?, SSt.start, SSt.setR]
+    simp only [regOkB, hs, Bool.and_eq_true, List.all_eq_true] at h
+    have hr : ∀ r ∈ [a, b], (frame r).isNone = true := fun r hr =>
+      h.2.1.2 r (by simp only [descReads, List.flatMap_cons, List.flatMap_nil, SG.vars,
+        STerm.vars, List.mem_append]; simp_all)
+    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq] at hr
+    cases ha : frame a <;> cases hb : frame b <;> simp_all
+
 /-- The symbolic word has width `64` when every general-purpose name has width `64`: its
     width base (`STerm.wbase`) is a general-purpose name or has the known width `64`. -/
 def wid64B (t : STerm) : Bool :=
@@ -343,6 +385,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
   simp only [regGateB, Bool.and_eq_true] at hgate
   obtain ⟨hok, hwg⟩ := hgate
   have hsi' : slotImm? frame (x, MemTag.reg none).fst = none := slotImm?_none_of_regOkB hok
+  have hsv' : slotCmov? frame (x, MemTag.reg none).fst = none := slotCmov?_none_of_regOkB hok
   simp only [regOkB, Bool.and_eq_true] at hok
   obtain ⟨⟨⟨⟨hcell, hsc⟩, hmov⟩, hcmp⟩, hsym⟩ := hok
   have hcell' : cellA? (x, MemTag.reg none).fst = none := Option.isNone_iff_eq_none.1 hcell
@@ -374,7 +417,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
       fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr => ?_⟩
-    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi']
+    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi' hsv']
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
       simp only [Option.map_some]

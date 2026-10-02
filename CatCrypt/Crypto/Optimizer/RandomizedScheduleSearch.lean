@@ -298,8 +298,9 @@ def readsFlags : JInstr 64 → Bool
   | .rol _ _ | .ror _ _ | .rorx _ _ _ => false
   | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
   | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
-  -- the memory-source carry additions read `CF` resp. `OF`.
-  | .adcxMem _ _ _ | .adoxMem _ _ _ => true
+  -- the memory-source carry additions read `CF` resp. `OF`; the memory-source
+  -- conditional move reads the flags of its condition.
+  | .adcxMem _ _ _ | .adoxMem _ _ _ | .cmovccMem _ _ _ _ => true
   | _ => false
 
 /-- Two registers-lists are disjoint. -/
@@ -505,7 +506,8 @@ def writeSet' : JInstr 64 → List String
   | .loadMem d _ _ => [d]
   | .storeMem _ _ _ => [memCell]
   -- the memory-source arithmetic writes its destination; `addToMem` writes memory.
-  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _
+  | .cmovccMem _ d _ _ => [d]
   | .addToMem _ _ _ => [memCell]
   -- `test` and `cmp` have no destination: their whole output is the flag state.
   | .test _ _ => []
@@ -570,6 +572,8 @@ def readSet' : JInstr 64 → List String
       [d, base, memCell]
   | .imulriMem _ base _ _ => [base, memCell]
   | .cmpMem a base _ => [a, base, memCell]
+  -- `cmovccMem` keeps its destination when the condition fails, so it reads it.
+  | .cmovccMem _ d base _ => [d, base, memCell]
   | .addToMem base _ (.reg r) => [base, r, memCell]
   | .addToMem base _ _ => [base, memCell]
   -- `lea` reads its two address registers and performs no memory access, so it

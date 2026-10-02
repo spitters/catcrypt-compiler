@@ -128,9 +128,24 @@ def signExt8 (b : BitVec 8) : Nat := (b.signExtend 64).toNat
 def aluImm8Mnemonic (digit : Nat) : Option (String → JOperand → JInstr 64) :=
   if digit = 7 then some JInstr.cmp else aluImmMnemonic digit
 
+/-- The condition whose `tttn` code (`ScalarEncoder.condCode`) is `n`; `none` above `15`. -/
+def condOfCode? : Nat → Option Condt
+  | 0x0 => some .o  | 0x1 => some .no  | 0x2 => some .b  | 0x3 => some .nb
+  | 0x4 => some .e  | 0x5 => some .ne  | 0x6 => some .be | 0x7 => some .nbe
+  | 0x8 => some .s  | 0x9 => some .ns  | 0xa => some .p  | 0xb => some .np
+  | 0xc => some .l  | 0xd => some .nl  | 0xe => some .le | 0xf => some .nle
+  | _ => none
+
+theorem condOfCode?_condCode (c : Condt) : condOfCode? (ScalarEncoder.condCode c) = some c := by
+  cases c <;> rfl
+
+theorem condCode_lt (c : Condt) : ScalarEncoder.condCode c < 16 := by
+  cases c <;> decide
+
 /-- The `REX.W`-prefixed forms `decodeJ1_6` has no arm for: the sign-extended-`imm8`
-    group-1 form `83 /digit ib`. The second
-    arm, the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
+    group-1 form `83 /digit ib`, the memory-source compare `3B /r` and the
+    memory-source conditional move `0F 40+tttn /r`. The
+    arm for the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
     `REX.X`), so `decodeLinstr` reaches it on no stream. An index field of `100`
     without `REX.X` names no index register and a base field of `101` at
@@ -153,6 +168,16 @@ def decodeRexExt (r : BitVec 8) :
           match rest with
           | ib :: rest1 => some (.imulri reg rm (signExt8 ib), rest1)
           | [] => none
+        else none
+      else if op.toNat = 0x0f then
+        -- `0F 40+tttn /r`: the byte after `0F` is the opcode, the ModRM follows it.
+        if 0x40 ≤ modrm.toNat ∧ modrm.toNat ≤ 0x4f then
+          match decodeMemTail (SailX86Decoder.rexX r) rest with
+          | some (rf, bLow, none, off, rest1) =>
+              (condOfCode? (modrm.toNat - 0x40)).map fun c =>
+                (.cmovccMem c (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) off,
+                  rest1)
+          | _ => none
         else none
       else if op.toNat = 0x3b then
         match decodeMemTail (SailX86Decoder.rexX r) (modrm :: rest) with
@@ -459,6 +484,52 @@ theorem decodeLinstr_rspCmp (r : Nat) (off : Int) (rest : List (BitVec 8))
     decodeRexExt, BitVec.toNat_ofNat, if_neg hmod,
     rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1), ne_eq,
     not_true_eq_false, if_false,
+    SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1), hdec,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1),
+    rexB_rex _ _ _ (Nat.zero_le 1), bitsplit _ hr]
+  rfl
+
+/-- The opcode byte of a conditional move is no register-direct ModRM. -/
+theorem modField_cmovOp (c : Condt) :
+    modField (BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c)) ≠ 3 := by
+  cases c <;> decide
+
+/-- `CMOVcc off(%rsp), %r` (`REX.W 0F 40+tttn /r` with a memory operand) decodes to a
+    `cmovccMem` off `%rsp`. -/
+theorem decodeLinstr_rspCmov (c : Condt) (r : Nat) (off : Int) (rest : List (BitVec 8))
+    (hr : r < 16) (h : dispOk32 off = true) :
+    decodeLinstr (encCmovRspMem 1 (0x40 + ScalarEncoder.condCode c) r off ++ rest)
+      = some (.op (.cmovccMem c (regName r) "%rsp" off), rest) := by
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head r 4 off
+  have hdec := decodeMemTail_memTail32 r 4 off rest h
+  rw [hm, List.cons_append] at hdec
+  have hop := modField_cmovOp c
+  have hlt := condCode_lt c
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0))
+      (BitVec.ofNat 8 0x0f :: BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c)
+        :: m :: (ts ++ rest)) = none := by
+    simp [decodeRex, hmod]
+  have hs : decodeShift1 (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 0x0f
+      :: BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c) :: m :: (ts ++ rest)) = none := by
+    simp [decodeShift1]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 0x0f
+      :: BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c) :: m :: (ts ++ rest)) = none := by
+    simp [decodeCmp, hop]
+  have hcc : (BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c)).toNat - 0x40
+      = ScalarEncoder.condCode c := by
+    rw [BitVec.toNat_ofNat]; omega
+  have hb : 0x40 ≤ (BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c)).toNat
+      ∧ (BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c)).toNat ≤ 0x4f := by
+    rw [BitVec.toNat_ofNat]; omega
+  have henc : encCmovRspMem 1 (0x40 + ScalarEncoder.condCode c) r off ++ rest
+      = BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 0x0f
+        :: BitVec.ofNat 8 (0x40 + ScalarEncoder.condCode c) :: m :: (ts ++ rest) := by
+    rw [encCmovRspMem, rexOpt_w1, hm]; rfl
+  rw [henc, decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1) _
+    hnone hs hc]
+  simp only [decodeRexExt, if_neg hop,
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1), ne_eq,
+    not_true_eq_false, if_false, if_pos hb, hcc, condOfCode?_condCode,
     SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1), hdec,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1),
     rexB_rex _ _ _ (Nat.zero_le 1), bitsplit _ hr]

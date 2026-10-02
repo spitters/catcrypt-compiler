@@ -174,7 +174,7 @@ def writesFlags' : JInstr 64 → Bool
   | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _ | .testN _ _ _
   | .bt _ _ | .btr _ _ | .bts _ _ => true
   -- `xchg` and the general conditional instructions write no flag.
-  | .xchg _ _ | .cmovcc _ _ _ | .setcc _ _ => false
+  | .xchg _ _ | .cmovcc _ _ _ | .cmovccMem _ _ _ _ | .setcc _ _ => false
   | _                  => true
 
 /-- Does instruction `b` read flags (carry-in for ADC/SBB/ADCX/ADOX, the carry of
@@ -194,7 +194,7 @@ def readsFlags' : JInstr 64 → Bool
   | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
   | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
   -- the rotates through carry read `CF`; `cmovcc`/`setcc` read their condition.
-  | .rcl _ _ | .rcr _ _ | .cmovcc _ _ _ | .setcc _ _ => true
+  | .rcl _ _ | .rcr _ _ | .cmovcc _ _ _ | .cmovccMem _ _ _ _ | .setcc _ _ => true
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .testN _ _ _ | .bt _ _ | .btr _ _
   | .bts _ _ => false

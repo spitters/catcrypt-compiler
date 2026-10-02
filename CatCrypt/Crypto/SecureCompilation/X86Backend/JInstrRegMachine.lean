@@ -173,6 +173,8 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
       [(dst, (x86_IMULt (s.load base off) (BitVec.ofNat 64 imm)).word)]
   -- `cmp a, [base + off]` writes the flags, no register.
   | .cmpMem _ _ _ => []
+  | .cmovccMem c dst base off =>
+      [(dst, x86_CMOVcc (s.condB c) (s.load base off) (s.get dst))]
   | .bzhi d src idx => [(d, (x86_BZHI (s.get src) (s.get idx)).word)]
 
 /- The written register names of one `JInstr` in the order `writesJ` applies them are
@@ -468,6 +470,11 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
     simp only [writesJ, renameInstr, JState.load, hload, List.map_cons, List.map_nil]
   | addToMem base off src => simp only [writesJ, renameInstr, List.map_nil]
   | cmpMem a base off => simp only [writesJ, renameInstr, List.map_nil]
+  | cmovccMem c d base off =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hload : t.mem (ρ base) off = s.mem base off := hmem base off
+    simp only [writesJ, renameInstr, JState.load, hload, hd, JState.condB, JState.flagB,
+      hflag, List.map_cons, List.map_nil]
   -- `rcl`/`rcr`, `cmovcc` and `setcc` read flags, carried by `hflag`.
   | rcl d amt | rcr d amt =>
     have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)

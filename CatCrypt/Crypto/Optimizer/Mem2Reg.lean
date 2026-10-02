@@ -82,12 +82,14 @@ and reads none. -/
 
 /-- The memory cell an instruction **reads** (if any): `loadMem`, `mulxMem` and the
     memory-operand arithmetic `addMem`, `addToMem`, `adcxMem`, `adoxMem`, `imulMem`,
-    `imulriMem` and the compare `cmpMem` read the cell at a constant offset. -/
+    `imulriMem`, the compare `cmpMem` and the conditional move `cmovccMem` read the cell
+    at a constant offset. -/
 def readCell : JInstr 64 → Option (String × Int)
   | .loadMem _ base off => some (base, off)
   | .mulxMem _ _ _ base off => some (base, off)
   | .addMem _ base off | .addToMem base off _ | .adcxMem _ base off | .adoxMem _ base off
-  | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off => some (base, off)
+  | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off
+  | .cmovccMem _ _ base off => some (base, off)
   -- `lea` computes `base + idx·scale + off` into a register without dereferencing
   -- it, so it reads no cell.
   | .lea _ _ _ _ _ => none
@@ -657,7 +659,7 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
   -- The memory-operand arithmetic reads its cell, which is not `(base, off)`, and
   -- registers and flags, all equal in `s`, `t`; `addToMem` writes that cell back.
   | addMem _ b' o' | addToMem b' o' _ | adcxMem _ b' o' | adoxMem _ b' o' | imulMem _ b' o'
-  | imulriMem _ b' o' _ | cmpMem _ b' o' =>
+  | imulriMem _ b' o' _ | cmpMem _ b' o' | cmovccMem _ _ b' o' =>
     have hne : ¬ (b' = base ∧ o' = off) := by
       intro hc; exact hread (by simp only [readCell]; rw [hc.1, hc.2])
     have hcell : s.mem b' o' = t.mem b' o' := hm b' o' hne
@@ -667,7 +669,7 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
     have hflagB : ∀ f, s.flagB f = t.flagB f := fun f => by simp only [JState.flagB, hf]
     refine ⟨?_, ?_, fun b o hbo => ?_⟩
     all_goals simp only [evalInstr, JState.writeB5W, JState.writeB5Mem, JState.writeB5,
-      JState.store, JState.setReg, JState.load, hop, hget, hflagB, hcell, hr, hf]
+      JState.store, JState.setReg, JState.load, JState.condB, hop, hget, hflagB, hcell, hr, hf]
     all_goals first
       | exact hm b o hbo
       | (split <;> first | rfl | exact hm b o hbo)
@@ -920,6 +922,7 @@ def readRegs : JInstr 64 → List String
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ => [d]
   | .imulriMem _ _ _ _ => []
   | .cmpMem a _ _ => [a]
+  | .cmovccMem _ d _ _ => [d]           -- cmovccMem reads dst (kept value)
   | .addToMem _ _ s => srcNames s
   | .bzhi _ a c => [a, c]               -- bzhi is non-destructive in both sources
 
@@ -949,7 +952,7 @@ where
   | .test _ _ => []
   | .cmp _ _ => []
   | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
-  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .cmovcc _ d _ | .cmovccMem _ d _ _ | .setcc _ d | .btr d _ | .bts d _ => [d]
   -- `xchg` writes both operands; the widening multiplies write the high and low word.
   | .xchg a b => [a, b]
   | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
@@ -1528,6 +1531,12 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     have hcellne : ¬ (base = b ∧ o = off) := by
       intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
     simp only [evalInstr]; rw [h.get haρ, h.load_other hcellne]; exact h.writeB5 _
+  | cmovccMem c d base o =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
+    simp only [evalInstr]; rw [h.get hd, h.load_other hcellne, h.condB c]
+    exact h.setReg_ne d hd _
   | adcxMem d base o | adoxMem d base o =>
     have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
     have hcellne : ¬ (base = b ∧ o = off) := by

@@ -601,7 +601,34 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
           | none =>
             simp only
             cases hsi : slotImm? frame w with
-            | none => exact regStepA_congr _ h zf
+            | none =>
+              simp only
+              cases hsv : slotCmov? frame w with
+              | none => exact regStepA_congr _ h zf
+              | some q =>
+                obtain ⟨d, c', a, b⟩ := q
+                unfold slotCmov? at hsv
+                split at hsv
+                · split_ifs at hsv with h1
+                  obtain ⟨rfl, rfl, rfl, rfl⟩ := hsv
+                  have hwa : wordA frame s a = wordA frame t a := by
+                    unfold wordA
+                    split
+                    · rw [hM]
+                    · exact getW_congr hN (reg_reads (by simp)) 64
+                  have hwb : wordA frame s b = wordA frame t b := by
+                    unfold wordA
+                    split
+                    · rw [hM]
+                    · exact getW_congr hN (reg_reads (by simp)) 64
+                  simp only
+                  rw [getW_congr hN (reg_reads (by simp)) 1, hwa, hwb]
+                  repeat' split
+                  all_goals first
+                    | exact ORel.none
+                    | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1,
+                        h.2.2.2, rfl⟩
+                · cases hsv
             | some p =>
               obtain ⟨a, v⟩ := p
               simp only [hM]

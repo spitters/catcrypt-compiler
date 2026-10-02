@@ -235,6 +235,7 @@ def readKey : JInstr 64 → Option (String × Int)
   | .imulMem _ b o => some (b, o)
   | .imulriMem _ b o _ => some (b, o)
   | .cmpMem _ b o => some (b, o)
+  | .cmovccMem _ _ b o => some (b, o)
   | _ => none
 
 /-- The cell `(base, offset)` an instruction writes at a compile-time displacement. -/
@@ -267,7 +268,7 @@ def dsts : JInstr 64 → List String
   | .adcx d _ | .adox d _ | .loadMem d _ _ | .loadMemIdx d _ _ _ | .loadSym d _ | .inc d
   | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
   | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ | .addMem d _ _ | .adcxMem d _ _
-  | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ | .bzhi d _ _ => [d]
+  | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ | .cmovccMem _ d _ _ | .bzhi d _ _ => [d]
   | .mulx h l _ _ | .mulxMem h l _ _ _ | .xchg h l | .mul h l _ | .imulWide h l _ => [h, l]
   | .test .. | .cmp .. | .testN .. | .bt .. | .clc | .stc | .storeMem .. | .storeMemIdx ..
   | .addToMem .. | .cmpMem .. => []

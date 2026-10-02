@@ -277,7 +277,8 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
-      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, hfD, hfA, hfS]
+      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
+      hfS]
 
 /-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
     `carryOutBit` of the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
@@ -292,8 +293,8 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
-      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, hfO, hfA,
-      hfS]
+      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
+      hfO, hfA, hfS]
 
 /-! ## 5. The machine steps of the carry chain -/
 
@@ -1874,7 +1875,8 @@ theorem fstepA_movImm64 (P : Params) (rsp : BitVec 64) (D : String) (v : Nat)
       = some ({ s with reg := (s.reg.setReg D (BitVec.ofNat 64 v)).nextPc }, zf) := by
   rw [fstepA_of_reg (frameP P rsp) (i := (.Lopn [.reg D] "MOV:64" [.imm v], .reg none)) rfl
     (fun d x hs => by simp [slotMov?] at hs) (fun d x q hk => by simp [slotCmp?] at hk)
-    (by simp [cellA?]) (by simp [slotCarry?]) (by simp [slotImm?, frameP_gp hD])]
+    (by simp [cellA?]) (by simp [slotCarry?]) (by simp [slotImm?, frameP_gp hD])
+    (by simp [slotCmov?])]
   have e := CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.fstepF_movII D v
     { reg := s.reg, cf := s.cf, of := s.of } zf
   rw [show CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.movII D v
@@ -2008,7 +2010,7 @@ theorem vBytes (P : Params) (D C A B : String) (h : vOk D C A B = true) :
 /-- The address machine steps `CMOV:64 D, [C, A, B]` on registers by writing the select of the
     one-bit value of `C` between the 64-bit values of `A` and `B` to `D`. -/
 theorem fstepA_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (hD : gpOk D = true)
-    (hC : gpOk C = true) (hA : gpOk A = true) (s : LstateA) (zf : Bool)
+    (hC : gpOk C = true) (hA : gpOk A = true) (hB : gpOk B = true) (s : LstateA) (zf : Bool)
     {va vb : BitVec 64} (ha : s.reg.getW A 64 = some va) (hb : s.reg.getW B 64 = some vb) :
     fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s zf
       = (s.reg.getW C 1).map fun vc =>
@@ -2020,8 +2022,8 @@ theorem fstepA_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (hD : gpOk
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
       VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
       readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
-      slotCarry?, slotImm?, frameP_gp hD, frameP_gp hC, frameP_gp hA, evalOperandN,
-      operandName]
+      slotCarry?, slotImm?, slotCmov?, frameP_gp hD, frameP_gp hC, frameP_gp hA,
+      frameP_gp hB, evalOperandN, operandName]
 
 /-- **The machine run of a register select.** With the condition register other than the
     destination, the run writes to `D` the value of `B` on a zero condition and the value of `A`
@@ -2087,7 +2089,7 @@ theorem sim_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (h : vOk D C 
   obtain ⟨⟨⟨⟨⟨⟨hD, hC⟩, hA⟩, hB⟩, hDC⟩, -⟩, -⟩ := h
   have hgA := hc.wide hA hwA
   have hgB := hc.wide hB hwB
-  rw [fstepA_cmov P rsp D C A B hD hC hA s zf hgA hgB] at hst
+  rw [fstepA_cmov P rsp D C A B hD hC hA hB s zf hgA hgB] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>

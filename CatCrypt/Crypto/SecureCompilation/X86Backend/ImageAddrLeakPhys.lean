@@ -99,7 +99,8 @@ def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
     from or to a frame slot, a compare against one and an immediate move into one access
     the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`; a carry-chain
     instruction accesses its frame-slot sources and, for the add, its frame-slot
-    destination. Every other instruction emits nothing. -/
+    destination; a select accesses its frame-slot values, whatever the condition. Every
+    other instruction emits nothing. -/
 def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) :
     List CTLeak :=
   match i.snd with
@@ -148,7 +149,11 @@ def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : Lsta
                   | none =>
                       match slotImm? frame i.fst with
                       | some (a, _) => [evA a]
-                      | none => []
+                      | none =>
+                          match slotCmov? frame i.fst with
+                          | some (_, _, a, b) =>
+                              (frame a).toList.map evA ++ (frame b).toList.map evA
+                          | none => []
   | _ => []
 
 /-- **The events of a step of the address machine** on the body `c`: `instrLeakA` at an
@@ -306,6 +311,7 @@ theorem instrLeakA_regOk {frame : String → Option (BitVec 64)} {x : LinstrR}
     (h : regOkB frame x = true) (tag : Option Nat) (sa : LstateA) :
     instrLeakA frame (x, .reg tag) sa = [] := by
   have hsi := slotImm?_none_of_regOkB h
+  have hsv := slotCmov?_none_of_regOkB h
   simp only [regOkB, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
   obtain ⟨⟨⟨⟨hcell, hcar⟩, hmov⟩, hcmp⟩, -⟩ := h
   cases hm : slotMov? x with
@@ -321,7 +327,7 @@ theorem instrLeakA_regOk {frame : String → Option (BitVec 64)} {x : LinstrR}
           rw [hc] at hcmp
           simp only [Option.all_some, Option.isNone_iff_eq_none] at hcmp
           simp [instrLeakA, hm, hc, hcmp]
-      | none => simp [instrLeakA, hm, hc, hcell, hcar, hsi]
+      | none => simp [instrLeakA, hm, hc, hcell, hcar, hsi, hsv]
 
 /-! ## 3. The map of the image simulation -/
 

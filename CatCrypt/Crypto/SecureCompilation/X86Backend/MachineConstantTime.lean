@@ -113,6 +113,8 @@ def instrLeak {w : Nat} (s : JState w) : JInstr w → List MLeak
   | .mulxMem _ _ _ base off => [.mem base off]
   | .addMem _ base off | .adcxMem _ base off | .adoxMem _ base off
   | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off => [.mem base off]
+  -- `cmov<c> dst, [base + off]` loads the cell whatever the condition
+  | .cmovccMem _ _ base off => [.mem base off]
   -- `add [base + off], src` reads the cell and writes it back: two accesses at one address
   | .addToMem base off _ => [.mem base off, .mem base off]
   -- register-indexed memory ops: effective offset depends on the index VALUE
@@ -347,7 +349,7 @@ def dstRegs {w : Nat} : JInstr w → List String
   | .clc | .stc => []
   | .testN _ _ _ | .bt _ _ => []
   | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
-  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .cmovcc _ d _ | .cmovccMem _ d _ _ | .setcc _ d | .btr d _ | .bts d _ => [d]
   | .xchg a b => [a, b]
   | .mul dHi dLo _ | .imulWide dHi dLo _ => [dHi, dLo]
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]

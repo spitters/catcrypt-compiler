@@ -512,6 +512,7 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
   simp only [regGateBW, Bool.and_eq_true] at hgate
   obtain ⟨hok, hwg⟩ := hgate
   have hsi' : slotImm? frame (x, MemTag.reg none).fst = none := slotImm?_none_of_regOkB hok
+  have hsv' : slotCmov? frame (x, MemTag.reg none).fst = none := slotCmov?_none_of_regOkB hok
   simp only [regOkB, Bool.and_eq_true] at hok
   obtain ⟨⟨⟨⟨hcell, hsc⟩, hmov⟩, hcmp⟩, hsym⟩ := hok
   have hcell' : cellA? (x, MemTag.reg none).fst = none := Option.isNone_iff_eq_none.1 hcell
@@ -543,7 +544,7 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
       fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr hrW => ?_⟩
-    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi']
+    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi' hsv']
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
       simp only [Option.map_some]

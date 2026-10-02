@@ -185,12 +185,13 @@ def redLeak (rsp : BitVec 64) : AArm → List CTLeak
   | _ => []
 
 /-- A register instruction that moves no frame word, compares against no frame word and
-    accesses no cell, carry chain or immediate slot has no events on the address machine. -/
+    accesses no cell, carry chain, immediate slot or slot select has no events on the address
+    machine. -/
 theorem instrLeakA_nil {frame : String → Option (BitVec 64)} {x : LinstrR} (tag : Option Nat)
     (hmov : ∀ d y, slotMov? x = some (d, y) → frame d = none ∧ frame y = none)
     (hcmp : ∀ d y q, slotCmp? x = some (d, y, q) → frame q = none)
     (hcell : cellA? x = none) (hcar : slotCarry? frame x = none)
-    (himm : slotImm? frame x = none) (s : LstateA) :
+    (himm : slotImm? frame x = none) (hsel : slotCmov? frame x = none) (s : LstateA) :
     instrLeakA frame (x, .reg tag) s = [] := by
   cases hm : slotMov? x with
   | some p =>
@@ -202,7 +203,7 @@ theorem instrLeakA_nil {frame : String → Option (BitVec 64)} {x : LinstrR} (ta
     | some p =>
       obtain ⟨d, y, q⟩ := p
       simp [instrLeakA, hm, hk, hcmp d y q hk]
-    | none => simp [instrLeakA, hm, hk, hcell, hcar, himm]
+    | none => simp [instrLeakA, hm, hk, hcell, hcar, himm, hsel]
 
 /-- **The leakage of one arm.** From the correspondence, the leakage of the decoded
     instructions of an arm whose conditions hold, under the regime `doitm`, is its leakage on
@@ -219,7 +220,8 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       instrLeakA_nil none
         (fun d y hs => ⟨frameP_gp (hslot d y hs).1, frameP_gp (hslot d y hs).2⟩)
         (fun d y q hk => frameP_gp (regArm_slotCmp h hk)) (regArm_cell hr h)
-        (by cases a <;> simp [Arm.instr, slotCarry?]) (regArm_slotImm rsp h) s
+        (by cases a <;> simp [Arm.instr, slotCarry?]) (regArm_slotImm rsp h)
+        (by cases a <;> simp [Arm.instr, slotCmov?]) s
     simp only [AArm.li, AArm.instr, redLeak, List.append_nil]
     rw [hR]
     cases a with
@@ -286,7 +288,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
   | cmpI c k =>
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
       DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr, instrLeakA, slotMov?,
-      slotCmp?, cellA?, slotCarry?, slotImm?, redLeak]
+      slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?, redLeak]
   | cmpM c q =>
     simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
     obtain ⟨⟨⟨⟨⟨-, -⟩, -⟩, hsome⟩, -⟩, -⟩ := h
@@ -314,7 +316,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
   | mul D S =>
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
       DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr, instrLeakA, slotMov?,
-      slotCmp?, cellA?, slotCarry?, slotImm?, redLeak]
+      slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?, redLeak]
   | mulxS H S =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨hH, -⟩ := h
@@ -333,7 +335,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       rw [DecodedLsemLoop.evalInstrA_mulx_regs, r1, if_neg hHsp.symm, if_neg hRsp.symm, hc.sp]
     have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, hc.sp]
     have hA : instrLeakA (frameP P rsp) (AArm.mulxS H S).li s = [] := by
-      simp [AArm.li, instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?]
+      simp [AArm.li, instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?]
     rw [hjs, hA]
     simp only [blockLeakA, opLeak, instrLeak, resolveEv, redLeak, List.map, List.nil_append,
       List.append_nil, List.cons_append]
@@ -346,7 +348,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
   | mulx L H S =>
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
       DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, instrLeakA, slotMov?,
-      slotCmp?, cellA?, slotCarry?, slotImm?, redLeak]
+      slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?, redLeak]
 
 /-! ## 3. The address machine with added events -/
 
@@ -1029,8 +1031,8 @@ theorem bytes_ct {body : Lcmd} (h : printedAddrB body = true) {rsp : BitVec 64}
 /-! ## 7. The frame at the names of a body, and the composition with the image -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame
-  (bodyNamesI frameIn frameIn_eq instrNames_normA slotCarry?_congr slotImm?_congr runA_frameIn
-    runSafe_frameIn)
+  (bodyNamesI frameIn frameIn_eq instrNames_normA slotCarry?_congr slotImm?_congr
+    slotCmov?_congr runA_frameIn runSafe_frameIn)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
   (slotMov?_cases slotCmp?_eq ImgSep ImgRel imgGateB image_addr_sim)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames)
@@ -1063,9 +1065,18 @@ theorem instrLeakA_congr {frame frame' : String → Option (BitVec 64)} {x : Lin
         rw [h q hq]
       | none =>
         simp only
-        rw [← slotCarry?_congr h, ← slotImm?_congr h]
+        rw [← slotCarry?_congr h, ← slotImm?_congr h, ← slotCmov?_congr h]
         rcases hsc : slotCarry? frame x with _ | ⟨lo, d, a, s, c⟩
-        · rfl
+        · rcases hsv : slotCmov? frame x with _ | ⟨d, c, a, b⟩
+          · rfl
+          · unfold slotCmov? at hsv
+            split at hsv
+            · split_ifs at hsv
+              obtain ⟨rfl, rfl, rfl, rfl⟩ := hsv
+              have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
+              have hb := h b (by simp [instrNames, JasminLsemExportRewrites.opNames])
+              simp only [ha, hb]
+            · cases hsv
         · unfold slotCarry? at hsc
           split at hsc
           · split_ifs at hsc

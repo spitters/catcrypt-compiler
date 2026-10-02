@@ -95,7 +95,7 @@ def writtenNames : JInstr 64 → List String
   -- `cmp` is `sub` with the difference discarded: five flags, no register.
   | .cmp _ _ => []
   | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
-  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .cmovcc _ d _ | .cmovccMem _ d _ _ | .setcc _ d | .btr d _ | .bts d _ => [d]
   -- `xchg` writes both operands.
   | .xchg a b => [a, b]
   -- the widening multiplies write the high word and the low word.
@@ -173,6 +173,8 @@ def readNames : JInstr 64 → List String
   | .addToMem base _ s => base :: srcNames s
   -- `cmp a, [base + off]` reads its register operand and the base register.
   | .cmpMem a base _ => [a, base]
+  -- `cmov<c> dst, [base + off]` keeps `dst` when the condition fails, so `dst` is read.
+  | .cmovccMem _ d base _ => [d, base]
   -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
   | .bzhi _ src idx => [src, idx]
 

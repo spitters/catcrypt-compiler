@@ -80,8 +80,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 /-- `readsFlag i` is `true` when `evalInstr` reads a condition flag: `adc`, `sbb`,
     `setc`, `cmovb`, `adcx`, `adcxMem`, `rcl` and `rcr` read `CF`; `adox` and
     `adoxMem` read `OF`; `cmove`
-    and `cmovne` read `ZF`; `cmovcc` and `setcc` read the flags of their condition.
-    Every other constructor reads no flag. -/
+    and `cmovne` read `ZF`; `cmovcc`, `cmovccMem` and `setcc` read the flags of their
+    condition. Every other constructor reads no flag. -/
 def readsFlag {w : Nat} : JInstr w → Bool
   | .adc _ _    => true
   | .sbb _ _    => true
@@ -97,6 +97,7 @@ def readsFlag {w : Nat} : JInstr w → Bool
   -- the general conditional instructions read the flags of their condition
   -- (`x86_eval_cond`), at least one for every `Condt`.
   | .cmovcc _ _ _ => true
+  | .cmovccMem _ _ _ _ => true
   | .setcc _ _  => true
   -- the memory-source carry additions read `CF` resp. `OF`.
   | .adcxMem _ _ _ => true

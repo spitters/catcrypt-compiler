@@ -136,6 +136,7 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   | _, .addMem d base _ | _, .adcxMem d base _ | _, .adoxMem d base _
   | _, .imulMem d base _ | _, .imulriMem d base _ _ => [d, base]
   | _, .cmpMem a base _ => [a, base]
+  | _, .cmovccMem _ d base _ => [d, base]
   | _, .addToMem base _ s => base :: srcNames s
   | _, .bzhi d src idx => [d, src, idx]
 
@@ -445,6 +446,9 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
         ++ regOf alloc d
   | .cmpMem a base off =>
       "\tcmpq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc a
+  | .cmovccMem c d base off =>
+      "\tcmov" ++ condSuffix c ++ "q " ++ toString off ++ "(" ++ regOf alloc base ++ "), "
+        ++ regOf alloc d
   -- BMI2 `BZHI dst, src, idx`; AT&T lists the index, the source, then the destination.
   | .bzhi d src idx =>
       "\tbzhiq " ++ regOf alloc idx ++ ", " ++ regOf alloc src ++ ", " ++ regOf alloc d

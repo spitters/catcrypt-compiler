@@ -914,6 +914,10 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
       let aN ← intelReg a
       let bN ← intelReg b
       return ("cmp", [.reg aN, memOp bN none off])
+  | .cmovccMem c d b off => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("cmov" ++ condName c, [.reg dN, memOp bN none off])
   | .bzhi d s i => do
       return ("bzhi", [.reg (← intelReg d), .reg (← intelReg s), .reg (← intelReg i)])
 

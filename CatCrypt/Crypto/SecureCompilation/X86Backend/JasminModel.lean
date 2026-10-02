@@ -1043,8 +1043,8 @@ inductive JOperand where
     `ADD` at both of `check_add`'s memory kinds (`addMem` for `r_rmi`, `addToMem`
     for `m_ri`, whose output word goes to the cell through `JState.writeB5Mem`),
     `ADCX` and `ADOX` at `check_adcx`'s `r_rm` (`adcxMem`, `adoxMem`), `IMULr` at
-    `r_rm` (`imulMem`), `IMULri` at `[r; rm; i]` (`imulriMem`) and `CMP` at `r_rm`
-    (`cmpMem`). Each evaluates as
+    `r_rm` (`imulMem`), `IMULri` at `[r; rm; i]` (`imulriMem`), `CMP` at `r_rm`
+    (`cmpMem`) and `CMOVcc` at `r_rm` (`cmovccMem`). Each evaluates as
     its register form with the cell's word in place of the register operand; the
     equations `runBlock_loadMem_add_eq_addMem` and its siblings (section 10) state
     that each is a `loadMem` into a scratch register followed by the register
@@ -1289,6 +1289,10 @@ inductive JInstr (w : Nat) where
       five flags of `a - [base + off]`, the difference discarded; no register is
       written. -/
   | cmpMem (a base : String) (off : Int)
+  /-- `Ox86_CMOVcc_instr` with a memory source (`r_rm`, the `0F 40+cc /r` form) at
+      condition `c`: `dst := if c then [base + off] else dst`. The cell is read
+      whatever the condition; no flag is written. -/
+  | cmovccMem (c : Condt) (dst base : String) (off : Int)
   /-- `BZHI` (BMI2) on registers, `x86_BZHI`: `dst := src` with the bits at and above
       the low byte of `idx` cleared, writing the five flags (`PF` undefined).
       Non-destructive in both sources. -/
@@ -1409,6 +1413,8 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .imulriMem dst base off imm =>
       s.writeB5W dst (x86_IMULt (s.load base off) (BitVec.ofNat w imm))
   | .cmpMem a base off => s.writeB5 (x86_CMP (s.get a) (s.load base off))
+  | .cmovccMem c dst base off =>
+      s.setReg dst (x86_CMOVcc (s.condB c) (s.load base off) (s.get dst))
   | .bzhi d src idx => s.writeB5W d (x86_BZHI (s.get src) (s.get idx))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
@@ -1543,6 +1549,18 @@ theorem runBlock_loadMem_cmp_eq_cmpMem {w : Nat} (s : JState w) (a base t : Stri
       (evalInstr s (.cmpMem a base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5,
     JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+
+/-- `cmov<c> dst, [base + off]` is `loadMem t base off; cmov<c> dst t`, with `t` holding
+    the loaded word. -/
+theorem runBlock_loadMem_cmovcc_eq_cmovccMem {w : Nat} (s : JState w) (c : Condt)
+    (dst base t : String) (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, .cmovcc c dst (.reg t)] =
+      (evalInstr s (.cmovccMem c dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.condB,
+    JState.flagB, JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
 
 /-- `add [base + off], src` is `loadMem t base off; add t src; storeMem base off t`,
     with `t` holding the sum, for a source other than `t`. -/
