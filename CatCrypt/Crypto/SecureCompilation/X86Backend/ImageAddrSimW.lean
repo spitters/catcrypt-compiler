@@ -31,7 +31,8 @@ the names outside `oneBitAt` at the program counter. `imgGateBW` is the gate of
 three sources is accepted with register or frame-slot word sources and a register carry-in, a
 register instruction writes width-`64` words from names outside the analysis, a store into a
 frame word stores a name outside it, an immediate move into a frame word writes a word that
-holds no array pointer, a branch is taken only where the analysis is empty, and every name an
+holds no array pointer, a select `CMOV:64` reads a frame-word value at its frame word, a branch
+is taken only where the analysis is empty, and every name an
 instruction reads, other than a carry-in or the condition of a `CMOV:64` select
 (`DecodePrintedAddrW.carryIns`), lies outside the analysis.
 
@@ -45,6 +46,7 @@ instruction reads, other than a carry-in or the condition of a `CMOV:64` select
   `ImgRelW`.
 * `rel_bmovW`: a carry constant keeps `ImgRelW`.
 * `rel_stiW`: an immediate move into a frame word without an array pointer keeps `ImgRelW`.
+* `rel_scmovW`: a select with a frame-word value keeps `ImgRelW`.
 * `img_stepW`: one step of the image at a position without a branch is one step of the
   address machine.
 * `haltedA_of_imgW`, `ptr_of_reloadW`, `wideSafe_of_gateW`, `imgGateBW_congr`.
@@ -279,12 +281,36 @@ theorem sImmB_spec {frame : String → Option (BitVec 64)}
     exact ⟨q, v, a, rfl, ha, hs⟩
   · cases h
 
+/-- A select `CMOV:64 d, [c, a, b]` with a frame-word value: a destination and a condition
+    without a frame word, a true value that is a general-purpose name or a frame word other
+    than the condition, and a frame word among the two values. -/
+def sCmovB (frame : String → Option (BitVec 64)) : LinstrR → Bool
+  | .Lopn [.reg d] o [.reg c, .reg a, .reg b] =>
+      o == "CMOV:64" && (frame d).isNone && (frame c).isNone && (gpOk a || (frame a).isSome)
+        && a != c && ((frame a).isSome || (frame b).isSome)
+  | _ => false
+
+theorem sCmovB_spec {frame : String → Option (BitVec 64)} {x : LinstrR}
+    (h : sCmovB frame x = true) :
+    ∃ d c a b, x = .Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b] ∧ frame d = none
+      ∧ frame c = none ∧ (gpOk a = true ∨ (frame a).isSome = true) ∧ a ≠ c
+      ∧ ((frame a).isSome || (frame b).isSome) = true := by
+  unfold sCmovB at h
+  split at h
+  · rename_i d o c a b
+    simp only [Bool.and_eq_true, beq_iff_eq, Option.isNone_iff_eq_none, Bool.or_eq_true,
+      bne_iff_ne, ne_eq] at h
+    obtain ⟨⟨⟨⟨⟨rfl, hd⟩, hc⟩, ha⟩, hac⟩, hsl⟩ := h
+    exact ⟨d, c, a, b, rfl, hd, hc, ha, hac, by simpa using hsl⟩
+  · cases h
+
 /-- **The gate of instruction `k` at the analysis `W`**: the names read lie outside `W`
     (`readOkB`), and the instruction is a carry-chain instruction passing `carryOkB`, a label,
     a branch where `W` is empty, an indexed access, a frame-word move or compare as in
     `instrGateB`, a carry constant (`bitMovB`) into a general-purpose name without a frame
-    word, an immediate move into a frame word without an array pointer (`sImmB`), or a
-    register instruction other than an untagged immediate move passing `regGateBW`. -/
+    word, an immediate move into a frame word without an array pointer (`sImmB`), a select
+    with a frame-word value (`sCmovB`), or a register instruction other than an untagged
+    immediate move passing `regGateBW`. -/
 def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) (k : Nat) (W : List String) (x : LinstrR) : Bool :=
   readOkB W x &&
@@ -304,7 +330,7 @@ def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option
         | .reg =>
             match movImmStruct? x with
             | some (d, _) => bitMovB body k x && gpOk d && (frame d).isNone
-            | none => sImmB frame slotArr x || regGateBW frame W (normA x)
+            | none => sImmB frame slotArr x || sCmovB frame x || regGateBW frame W (normA x)
         | .other => false
 
 /-- The gate of instruction `k` of a body at its width analysis. -/
@@ -962,6 +988,143 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
     rw [hnm] at hm'
     cases hm'
 
+/-- The flag machine steps `CMOV:64 D, [C, A, B]`, with `A` at width `64`, by writing the
+    select of the one-bit value of `C` between the 64-bit values of `A` and `B` to `D`. -/
+theorem fstepF_cmov64 (D C A B : String) (m : LstateM) (zf : Bool) {va : BitVec 64}
+    (ha : m.reg.getW A 64 = some va) :
+    fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) m zf
+      = match m.reg.getW C 1, m.reg.getW B 64 with
+        | some vc, some vb => some ((m.setReg D (JasminDialect.selectW vc va vb)).nextPc, zf)
+        | _, _ => none := by
+  cases hc : m.reg.getW C 1 <;> cases hb : m.reg.getW B 64 <;>
+    simp (config := { decide := true }) [fstepF, cmpArgs?, movRegArgs?, stepMemF, lsemStepMem,
+      lsemStepCast, castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?,
+      adcxhiStruct?, sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh,
+      VIR.JasminLsemShift.sarStruct?, lsemStepN, readReg_of_getW ha, hb, hc, withALUFlags,
+      aluFlagOp?, carryArgs?, wideArgs?, evalOperandN, operandName, LstateM.setReg,
+      LstateM.nextPc]
+
+/-- The symbolic step of the select `CMOV:64 D, [C, A, B]` from the start writes `D` only. -/
+theorem regOut_cmov (W : List String) (D C A B : String) {r : String} (hr : r ≠ D)
+    (h : r ∉ regOut W (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B])) : r ∉ W := by
+  intro hW
+  apply h
+  have hm : stripWidthTag "CMOV:64" = "CMOV" := by decide +kernel
+  have hn : ∀ R, symN (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B]) R
+      = .set D (.sel (R A) (R B) (R C)) [.wid (R C) 1, .eqW (R A) (R B)] := fun R => by
+    unfold symN
+    simp only [hm, if_true]
+  have hd : ∀ R, symMC (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B]) R
+      = .set D (.sel (R A) (R B) (R C)) [.wid (R C) 1, .eqW (R A) (R B)] := fun R => by
+    simp [symMC, symSh, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
+      VIR.JasminLsemShift.sarStruct?, hn, hm]
+  have hs : symStep (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) SSt.start
+      = .ok (SSt.start.setR D (.sel (.reg A) (.reg B) (.reg C)))
+        [.wid (.reg C) 1, .eqW (.reg A) (.reg B)] := by
+    simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, symMem, symCast,
+      castStruct?, movImmStruct?, hd, liftR, aluFl, aluFlT, aluFlagOp?, SSt.start, SSt.setR]
+  simp only [regOut, hs]
+  simp [SSt.setR, SSt.start, hW, hr]
+
+/-- **A select with a frame-word value keeps `ImgRelW`.** The image reads the values of
+    `CMOV:64 D, [C, A, B]` from its names, the address machine reads a frame-word value at
+    its frame word; both write the select to `D`. -/
+theorem rel_scmovW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    (hphys : physImgB slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi) {D C A B : String}
+    (hx : bi.li_i = .Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B]) (hD : frame D = none)
+    (hC : frame C = none) (hA : gpOk A = true ∨ (frame A).isSome = true)
+    (hAW : gpOk A = true → A ∉ oneBitAt frame body sa.reg.lpc)
+    (hsl : ((frame A).isSome || (frame B).isSome) = true)
+    (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
+    ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
+      ∧ ImgRelW frame slotArr base body t sa' t.zf := by
+  have hnA : normA bi.li_i = .Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B] := by
+    rw [hx]; simp (config := { decide := true }) [normA]
+  rw [hnA] at hs ⊢
+  have hl : IsLopn (LinstrR.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], MemTag.reg none) :=
+    ⟨_, _, _, rfl⟩
+  have hcongr : ∀ x, frame x = none → ∀ w, s.prog.base.reg.getW x w = sa.reg.getW x w := by
+    intro x hx w
+    unfold LstateN.getW
+    rw [hrel.regs x hx]
+  have hword : ∀ x, wordA frame sa x = s.prog.base.reg.getW x 64 := by
+    intro x
+    unfold wordA
+    split
+    · rename_i ad hfa
+      rw [getW_eq_some_iff.2 (hrel.slots x ad hfa)]
+    · rename_i hfa
+      exact (hcongr x hfa 64).symm
+  obtain ⟨va, hva⟩ : ∃ v, s.prog.base.reg.getW A 64 = some v := by
+    cases hfa : frame A with
+    | some ad => exact ⟨_, getW_eq_some_iff.2 (hrel.slots A ad hfa)⟩
+    | none =>
+      have hgA : gpOk A = true := by
+        rcases hA with h | h
+        · exact h
+        · rw [hfa] at h; cases h
+      have hw := hrel.wid A hgA (hAW hgA)
+      rw [← hrel.regs A hfa] at hw
+      rcases e : s.prog.base.reg.lvm A with ⟨w, v⟩
+      rw [e] at hw
+      simp only at hw
+      subst hw
+      exact ⟨v, getW_eq_some_iff.2 e⟩
+  rw [evalInstrPMemF_isLopn P _ s hl, fstepF_cmov64 D C A B _ _ hva] at hs
+  cases hgc : s.prog.base.reg.getW C 1 with
+  | none => rw [hgc] at hs; simp at hs
+  | some vc =>
+  cases hgb : s.prog.base.reg.getW B 64 with
+  | none => rw [hgc, hgb] at hs; simp at hs
+  | some vb =>
+  rw [hgc, hgb] at hs
+  simp only [Option.map_some, Option.some.injEq] at hs
+  subst hs
+  have hz := hrel.zf
+  subst hz
+  have hstA := fstepA_slotCmov frame (C := C) hD hsl none sa s.zf (by rw [hword]; exact hva)
+    (by rw [hword]; exact hgb)
+  rw [← hcongr C hC 1, hgc] at hstA
+  simp only [Option.map_some] at hstA
+  have hW1 := oneBitAt_succ (frame := frame) hb
+  have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
+  refine ⟨_, hstA, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_⟩⟩
+  · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
+  · intro r hr
+    by_cases e : r = D
+    · subst e
+      simp [LstateM.setReg, LstateM.nextPc]
+    · simp [LstateM.setReg, LstateM.nextPc, e, hrel.regs r hr]
+  · intro q a ha
+    have e : q ≠ D := fun e => by rw [e, hD] at ha; cases ha
+    simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, e,
+      if_false]
+    exact hrel.slots q a ha
+  · intro r hr hW
+    have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
+    have hic : icase frame bi.li_i = .reg := by
+      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+    have hmi : movImmStruct? bi.li_i = none := by rw [hx]; simp [movImmStruct?]
+    change r ∉ oneBitAt frame body (sa.reg.lpc + 1) at hW
+    simp only [hW1, oneBitStep_noCarry hci, hic, hmi, hnA] at hW
+    by_cases e : r = D
+    · subst e
+      simp
+    · simp only [LstateN.lvm_nextPc, LstateN.lvm_setReg, e, if_false]
+      exact hrel.wid r hr (regOut_cmov _ D C A B e hW)
+  · intro q A' n hq'
+    obtain ⟨arr, h1, h2⟩ := hrel.cells q A' n hq'
+    exact ⟨arr, by simpa using h1, h2⟩
+  all_goals
+    have hsr := saved_reload_nextW
+      (sa' := { sa with reg := (sa.reg.setReg D (JasminDialect.selectW vc va vb)).nextPc })
+      hphys hrel hb hnm rfl (fun _ _ _ _ => rfl)
+  · exact hsr.1
+  · exact hsr.2
+
 /-- **A compare against a frame word keeps `ImgRelW`.** -/
 theorem rel_scmpW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
@@ -1546,9 +1709,19 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
               obtain ⟨q, v, a, hx', hq, hA⟩ := sImmB_spec hsi
               exact rel_stiW hsep P hrel hb hx' hq hA hstep
             | false =>
-              have hg' : regGateBW frame (oneBitAt frame c sa.reg.lpc) (normA bi.li_i) = true := by
-                simpa [hsi] using hg
-              exact rel_regW hsep hphys hgate P hrel hb hc hci hmi hg' hstep
+              cases hsv : sCmovB frame bi.li_i with
+              | true =>
+                -- a select with a frame-word value
+                obtain ⟨D, C, A, B, hx', hD, hC, hA, hAC, hsl⟩ := sCmovB_spec hsv
+                have hAW : gpOk A = true → A ∉ oneBitAt frame c sa.reg.lpc := fun hgA =>
+                  readOkB_spec hrd (by rw [hx']; simp [readNames, srcNames]) hgA
+                    (by rw [hx']; simp [carryIns, hAC])
+                exact rel_scmovW hphys P hrel hb hx' hD hC hA hAW hsl hstep
+              | false =>
+                have hg' : regGateBW frame (oneBitAt frame c sa.reg.lpc) (normA bi.li_i)
+                    = true := by
+                  simpa [hsi, hsv] using hg
+                exact rel_regW hsep hphys hgate P hrel hb hc hci hmi hg' hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
           rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 h3]
 
@@ -1624,6 +1797,13 @@ theorem sImmB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
   unfold sImmB
   split <;> simp only [h]
 
+theorem sCmovB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (x : LinstrR) :
+    sCmovB frame x = sCmovB frame' x := by
+  have hn : ∀ q, (frame q).isNone = (frame' q).isNone := fun q => by
+    have := h q; cases e : frame q <;> cases e' : frame' q <;> simp_all
+  unfold sCmovB
+  split <;> simp only [h, hn]
+
 /-- `imgGateBW` reads only which names have a frame word. -/
 theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
     (slotArr : String → Option (String × Nat)) (body : Lcmd) :
@@ -1633,7 +1813,7 @@ theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
   have hi : ∀ k x, instrGateBW frame slotArr body k x = instrGateBW frame' slotArr body k x := by
     intro k x
     simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h, icase_congr h,
-      regGateBW_congr h, sImmB_congr h, hn, h]
+      regGateBW_congr h, sImmB_congr h, sCmovB_congr h, hn, h]
   simp only [imgGateBW, hi]
 
 end Congr
