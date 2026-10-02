@@ -1560,6 +1560,38 @@ theorem sim_sadcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     · rw [carryOutBit_eq, hco']
       cases co <;> decide
 
+/-- The frame words of `d` and `x` are disjoint when both are slots. -/
+def slotSepB (P : Params) (d x : String) : Bool :=
+  !(isSpillOrQsave d && isSpillOrQsave x) || sepB (slotOff P d) (slotOff P x)
+
+/-- **The slot carry add.** From `ACorrW`, the address-machine step of `ADCX:64 D, A, S, C`
+    with a frame slot among `D`, `A`, `S` is matched by the machine instructions of its slot
+    carry arm: the registers end related by `ACorrW`, the zero flag is kept, and, when `D` is
+    none of `A`, `S`, `C` and its frame word is disjoint from those of `A` and `S`, the machine
+    carry flag holds the carry-out of the add on the words of the result state. -/
+theorem sim_sadcx (P : Params) (rsp : BitVec 64) (D A S C : String)
+    (h : (SArm.adcx D A S C).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
+      ∧ (D ≠ A → D ≠ S → D ≠ C → slotSepB P D A = true → slotSepB P D S = true →
+          CarryAt (frameP P rsp) (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' A S C) := by
+  by_cases hDs : isSpillOrQsave D = true
+  · obtain ⟨h1, h2, h3⟩ := sim_sadcx_slot P rsp D A S C h hDs sa s zf hc hwA hwS s' zf' hst
+    refine ⟨h1, h2, fun hDA hDS hDC hsa hss => h3 hDA hDS hDC (fun hAs => ?_) (fun hSs => ?_)⟩
+    · simpa [slotSepB, hDs, hAs] using hsa
+    · simpa [slotSepB, hDs, hSs] using hss
+  · have hD : kOk P D = true := by
+      simp only [SArm.ok, Bool.and_eq_true] at h
+      exact h.1.1.1.1.2
+    have hDg : gpOk D = true := by
+      rcases kOk_cases hD with hg | ⟨off, hoff, -, -⟩
+      · exact hg
+      · exact absurd (slot_facts hoff).1 hDs
+    obtain ⟨h1, h2, h3⟩ := sim_sadcx_reg P rsp D A S C h hDg sa s zf hc hwA hwS s' zf' hst
+    exact ⟨h1, h2, fun hDA hDS hDC _ _ => h3 hDA hDS hDC⟩
+
 /-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
@@ -1598,11 +1630,34 @@ theorem carryIns_of_classifyC {i : LinstrR} (h : classifyC i = none) : carryIns 
     simp [h1, h2]
   · rfl
 
+/-- The slot carry arm of an instruction: `ADCX:64` with a frame slot among the destination
+    and the word sources, `ADCXHI:64` with a frame slot among the word sources. -/
+def classifyS : LinstrR → Option SArm
+  | .Lopn [.reg d] m [.reg a, .reg s, .reg c] =>
+      if m = "ADCX:64" ∧ (isSpillOrQsave d || isSpillOrQsave a || isSpillOrQsave s) = true then
+        some (.adcx d a s c)
+      else if m = "ADCXHI:64" ∧ (isSpillOrQsave a || isSpillOrQsave s) = true then
+        some (.adcxhi d a s c)
+      else none
+  | _ => none
+
+theorem classifyS_instr {i : LinstrR} {c : SArm} (h : classifyS i = some c) : c.instr = i := by
+  unfold classifyS at h
+  split at h
+  · split_ifs at h with h1 h2
+    · obtain rfl := Option.some.inj h; obtain ⟨rfl, -⟩ := h1; rfl
+    · obtain rfl := Option.some.inj h; obtain ⟨rfl, -⟩ := h2; rfl
+  · cases h
+
 /-- An instruction other than the closing return of a printed body with carry chains: an
-    `Lopn` read into a carry arm or an arm of `DecodePrintedAddr` whose conditions hold, a
-    label, or a conditional branch on the zero flag to a label the body defines. -/
+    `Lopn` read into a slot carry arm, a carry arm, a cell arm or an arm of
+    `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
+    flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
   | .Lopn ds o ss =>
+      match classifyS (.Lopn ds o ss) with
+      | some c => c.ok P
+      | none =>
       match classifyC (.Lopn ds o ss) with
       | some c => c.ok
       | none =>
@@ -1617,7 +1672,8 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
   | _ => false
 
 /-- A carry-out binding `ADCXHI:64 O, A, S, C` at position `k` directly follows the add
-    `ADCX:64 D, A, S, C` on the same sources, whose destination is none of them. -/
+    `ADCX:64 D, A, S, C` on the same sources, whose destination is none of them and, as a
+    slot, has a frame word disjoint from those of slot sources. -/
 def carryPrevB (body : Lcmd) (k : Nat) : Bool :=
   match body[k]? with
   | some ⟨_, .Lopn [.reg _] o [.reg a, .reg s, .reg c]⟩ =>
@@ -1625,6 +1681,7 @@ def carryPrevB (body : Lcmd) (k : Nat) : Bool :=
         k != 0 && (match body[k - 1]? with
           | some ⟨_, .Lopn [.reg d] o' [.reg a', .reg s', .reg c']⟩ =>
               o' == "ADCX:64" && a == a' && s == s' && c == c' && d != a && d != s && d != c
+                && slotSepB (Params.ofBody body) d a && slotSepB (Params.ofBody body) d s
           | _ => false)
       else true
   | _ => true
@@ -1708,7 +1765,7 @@ theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
   split at hc
   · next ii' d o' a' s' c' heq =>
     simp only [Bool.and_eq_true, beq_iff_eq] at hc
-    obtain ⟨-, ⟨⟨⟨⟨⟨⟨ho, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩⟩ := hc
+    obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨ho, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩⟩ := hc
     subst ho
     exact absurd heq (h ii' d a' s' c')
   · simp at hc
@@ -1855,6 +1912,66 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
       have hws := hsafe.1.2.1 ii ds o ss (by rw [hget])
       simp only [instrOKWB] at hok
       split at hok
+      · -- a slot carry arm
+        rename_i c hcl
+        have hia := classifyS_instr hcl
+        have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss)) = (c.instr, MemTag.reg none) := by
+          rw [← hia]
+          cases c <;> simp (config := { decide := true }) [normA, tagA, SArm.instr]
+        rw [hli] at hst
+        have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hz' : ∀ sa' : AState, isCondB (body[k + 1]'hkn).li_i = true →
+            sa'.flags.zf.getD false = zf' := by
+          intro sa' hcnd
+          have hcm := hcondNext hcnd
+          rw [← hia] at hcm
+          cases c <;> simp [SArm.instr, classifyA_three_not_cmp] at hcm
+        have hops := SArm.shape_ops hok (by rw [hia]; exact hshk)
+        cases c with
+        | adcx D A S C =>
+          have hok' := hok
+          simp only [SArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
+          obtain ⟨⟨⟨⟨⟨⟨⟨-, hAC⟩, hSC⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hok'
+          simp only [SArm.instr] at hia
+          simp only [← hia] at hws hbk?
+          have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+            hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
+          have hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1 := fun hS =>
+            hws S (reg_reads (by simp)) hS (by simp [carryIns, hSC])
+          obtain ⟨hc', hzz, hcyo⟩ := sim_sadcx P rsp D A S C hok sa s zf hc hwA hwS s' zf' hst
+          have hcy' : CarryReq frame body (k + 1)
+              (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' := by
+            intro ii' O A' S' C' hb
+            have hc2 := hF.carry (k + 1) hkn
+            unfold carryPrevB at hc2
+            rw [hb] at hc2
+            simp only [if_true, Nat.add_sub_cancel, hbk?] at hc2
+            simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
+              Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
+            obtain ⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, hsa⟩, hss⟩ := hc2
+            exact hcyo hDA hDS hDC hsa hss
+          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _) hcy' hrun hsafe'
+          exact ⟨sa', reaches_block a b hks hshk hops hR, hC⟩
+        | adcxhi O A S C =>
+          have hok' := hok
+          simp only [SArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
+          obtain ⟨⟨⟨⟨⟨⟨-, -⟩, hAC⟩, hSC⟩, -⟩, -⟩, -⟩ := hok'
+          simp only [SArm.instr] at hia
+          simp only [← hia] at hws hbk?
+          have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+            hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
+          have hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1 := fun hS =>
+            hws S (reg_reads (by simp)) hS (by simp [carryIns, hSC])
+          have hcyk := hcy ii O A S C hbk?
+          obtain ⟨hc', -, -⟩ :=
+            sim_sadcxhi P rsp O A S C hok sa s zf hc hwA hwS hcyk s' zf' hst
+          have hcy' := hnoadd (fun ii' d a' s'' c' h => by
+            rw [hbk?] at h
+            simp at h) (aMachine.runBlock sa ((SArm.adcxhi O A S C).js P)) s'
+          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _) hcy' hrun hsafe'
+          exact ⟨sa', reaches_block a b hks hshk hops hR, hC⟩
+      rename_i hclS
+      split at hok
       · -- a carry arm
         rename_i c hcl
         have hia := classifyC_instr hcl
@@ -1893,7 +2010,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             simp only [if_true, Nat.add_sub_cancel, hbk?] at hc2
             simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
               Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
-            obtain ⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩ := hc2
+            obtain ⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, -⟩, -⟩ := hc2
             exact hcyo hDA hDS hDC
           obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf t hpc' hkn hc' hz' hcy' hrun hsafe'
           refine ⟨sa', ?_, hC⟩
