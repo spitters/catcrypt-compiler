@@ -707,9 +707,9 @@ theorem emitFuncCanon_denote_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
     (comCanonical fuel k com).denote V = com.denote V :=
   comCanonical_denote fuel k com V hk
 
-/-- **The general optimizer preserves constant-time-safety before emit.** The
-    optimized `Com` is CT-safe exactly when the source is — the optimizer never
-    introduces a secret-dependent branch (`comCanonical_ctSafe`). -/
+/-- The instance of `ComCanonical.comCanonical_ctSafe` at the emit entry. Both sides
+    are `true` by `ctSafeComJ_true`, so the statement carries no information about
+    leakage. -/
 theorem emitFuncCanon_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (com : Com jasminDialect Γ t) (k : KEnv Γ) :
     ctSafeComJ (comCanonical fuel k com) = ctSafeComJ com :=

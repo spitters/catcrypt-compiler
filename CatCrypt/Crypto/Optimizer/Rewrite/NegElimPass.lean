@@ -65,7 +65,10 @@ discipline of `Egraph.rewriteBin`).
   `neg_neg_rewrite`).
 * `negElimCom_denote`  : `(negElimCom c V₀).denote V = c.denote V`, by induction
   over the `Com` let-chain. **Not `rfl`.**
-* `negElimCom_ctSafe`  : CT preservation (the dialect is branch-free).
+* `negElimCom_ctLeak`  : under a leakage model whose `regArith` operations are
+  quiet, `negElimCom c k` has the leakage of `c` at every valuation consistent
+  with `k`; the rewrite replaces a `regArith .sub` binding by a `regArith .or`
+  binding.
 * `negElimCom_cost_le` : cost-non-increasing.
 
 All goals closed.
@@ -511,14 +514,56 @@ theorem negElimCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
       exact negElimCom_denote body (extendN e k) (V.extend (e.denote V))
         (extendN_consistent e k V hk)
 
-/-! ## 9. CT preservation -/
+/-! ## 9. Leakage -/
 
-/-- **CT preservation for the neg-elim pass.** The dialect is branch-free, so
-both the input and the rewritten `Com` are CT-safe. -/
-theorem negElimCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) (k : NEnv Γ) :
-    ctSafeComJ (negElimCom c k) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (negElimCom c k), ctSafeComJ_true c]
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- Leakage of one rewritten expression of the neg-elim pass, under a leakage model whose
+    `regArith` operations are quiet. -/
+theorem negElimExpr_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) (k : NEnv Γ) (V : Ctxt.Valuation Γ) :
+    Expr.ctLeak L (negElimExpr e k) V = Expr.ctLeak L e V := by
+  rcases e with ⟨op, hop, args⟩
+  cases op
+  case regArith bop w =>
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [negElimExpr, HVector.head, HVector.tail]
+      rw [expr_ctLeak_regArith L hq ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ rfl V]
+      rcases hr : negElimBin bop a b k with _ | e'
+      · exact expr_ctLeak_regArith L hq _ rfl V
+      · have hop' : ∃ bop', e'.op = .regArith bop' w := by
+          unfold negElimBin at hr
+          split at hr
+          · split at hr
+            · split at hr
+              · cases hr; exact ⟨_, rfl⟩
+              · cases hr
+            · cases hr
+          · cases hr
+        obtain ⟨bop', hop'⟩ := hop'
+        exact expr_ctLeak_regArith L hq e' hop' V
+  all_goals rfl
+
+/-- **Leakage of the neg-elim pass.** Under a leakage model whose `regArith` operations are
+    quiet, `negElimCom c k` has the leakage of `c` at every valuation consistent with `k`. -/
+theorem negElimCom_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (k : NEnv Γ) (V : Ctxt.Valuation Γ),
+      NEnv.Consistent k V → Com.ctLeak L (negElimCom c k) V = Com.ctLeak L c V
+  | .ret _, _, _, _ => rfl
+  | .var e body, k, V, hk => by
+      simp only [negElimCom, Com.ctLeak]
+      rw [negElimExpr_ctLeak L hq e k V, negElimExpr_denote e k V hk,
+        negElimCom_ctLeak L hq body (extendN e k) (V.extend (e.denote V))
+          (extendN_consistent e k V hk)]
+
+end Leak
 
 /-! ## 10. Cost non-increase -/
 
@@ -615,9 +660,5 @@ example :
 /-- **Cost non-increasing on the demo.** -/
 example : comCost (negElimCom demoDoubleNeg demoEnv) ≤ comCost demoDoubleNeg :=
   negElimCom_cost_le demoDoubleNeg demoEnv
-
-/-- **CT preserved on the demo.** -/
-example : ctSafeComJ (negElimCom demoDoubleNeg demoEnv) = ctSafeComJ demoDoubleNeg :=
-  negElimCom_ctSafe demoDoubleNeg demoEnv
 
 end CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass

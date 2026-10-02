@@ -31,10 +31,10 @@ is the general-purpose optimizer `comCanonical`, wired into the MLIR emit entry
 
 * `comCanonical_denote` — denotation preservation (every valuation consistent
   with `k`).  Chains `comAlgebraicPipeline_denote` and `comCleanup_denote`.
-* `comCanonical_ctSafe` — constant-time preservation.  Immediate from
-  `ctSafeComJ_true` (the `jasminDialect` is branch-free, so every `Com` is
-  trivially CT-safe and the optimizer cannot introduce a secret-dependent
-  branch).
+* `comCanonical_ctSafe` — both sides are `true` by `ctSafeComJ_true`, so the
+  statement carries no information about leakage. The leakage of the
+  algebraic stage is `comAlgebraicPipeline_ctLeak`; the clean-up stack has no
+  leakage theorem for its CSE and uncompute passes.
 -/
 
 @[expose] public section
@@ -66,9 +66,9 @@ theorem comCanonical_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   rw [comCleanup_denote k (comAlgebraicPipeline fuel c k) V hk,
     comAlgebraicPipeline_denote fuel c k V hk]
 
-/-- **Constant-time preservation** of the canonical optimizer: the optimized
-    kernel is CT-safe exactly when the source is.  Immediate — the
-    `jasminDialect` is branch-free, so `ctSafeComJ` is universally `true`. -/
+/-- The structural predicate `ctSafeComJ` agrees on the optimized kernel and the
+    source. `ctSafeComJ` is `true` on every program (`ctSafeComJ_true`), so the
+    statement carries no information about leakage. -/
 theorem comCanonical_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (k : KEnv Γ) (c : Com jasminDialect Γ t) :
     ctSafeComJ (comCanonical fuel k c) = ctSafeComJ c := by

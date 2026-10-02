@@ -46,7 +46,8 @@ disturbing De Bruijn indices (the rewrite reuses the same argument variable `a`)
   conditioned on the syntactic equality witnessed by `varEq`).
 * `peepCom_denote`  : `(peepCom c).denote V = c.denote V`, by induction over the
   `Com` let-chain. **Not `rfl`.**
-* `peepCom_ctSafe`  : CT preservation (dialect is branch-free).
+* `peepCom_ctLeak`  : under a leakage model whose `regArith` operations are
+  quiet, `peepCom c` has the leakage of `c` at every valuation.
 * `peepCom_cost_le` : cost-non-increasing.
 
 All goals closed. Axiom set: `propext`, `Quot.sound`.
@@ -258,14 +259,53 @@ theorem peepCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
       rw [peepExpr_denote e V]
       exact peepCom_denote body (V.extend (e.denote V))
 
-/-! ## 6. CT preservation -/
+/-! ## 6. Leakage
 
-/-- **CT preservation for the peephole pass.** The dialect is branch-free, so
-both the input and the rewritten `Com` are CT-safe. -/
-theorem peepCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) :
-    ctSafeComJ (peepCom c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (peepCom c), ctSafeComJ_true c]
+Each rule replaces a binary `regArith` binding by another binary `regArith` binding. Under
+a leakage model whose `regArith` operations are quiet, the pass keeps the leakage of a
+program at every valuation. -/
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- Leakage of one rewritten expression of the peephole. -/
+theorem peepExpr_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
+    Expr.ctLeak L (peepExpr e) V = Expr.ctLeak L e V := by
+  rcases e with ⟨op, hop, args⟩
+  cases op
+  case regArith bop w =>
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [peepExpr, HVector.head, HVector.tail]
+      rw [expr_ctLeak_regArith L hq ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ rfl V]
+      rcases hr : peepBin bop a b with _ | e'
+      · exact expr_ctLeak_regArith L hq _ rfl V
+      · have hop' : ∃ bop', e'.op = .regArith bop' w := by
+          unfold peepBin at hr
+          split at hr
+          · split at hr <;> first | (cases hr; exact ⟨_, rfl⟩) | cases hr
+          · cases hr
+        obtain ⟨bop', hop'⟩ := hop'
+        exact expr_ctLeak_regArith L hq e' hop' V
+  all_goals rfl
+
+/-- **Leakage of the peephole pass.** Under a leakage model whose `regArith` operations
+    are quiet, `peepCom c` has the leakage of `c` at every valuation. -/
+theorem peepCom_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ),
+      Com.ctLeak L (peepCom c) V = Com.ctLeak L c V
+  | .ret _, _ => rfl
+  | .var e body, V => by
+      simp only [peepCom, Com.ctLeak]
+      rw [peepExpr_ctLeak L hq e V, peepExpr_denote e V, peepCom_ctLeak L hq body]
+
+end Leak
 
 /-! ## 7. Cost non-increase -/
 
@@ -320,10 +360,6 @@ example :
 example : comCost (peepCom demoSelfSub) ≤ comCost demoSelfSub :=
   peepCom_cost_le demoSelfSub
 
-/-- **CT preserved on the demo.** -/
-example : ctSafeComJ (peepCom demoSelfSub) = ctSafeComJ demoSelfSub :=
-  peepCom_ctSafe demoSelfSub
-
 /-- The idempotent-and demo: `x ↦ x & x`. -/
 def demoSelfAnd : Com jasminDialect [.reg 32] (.reg 32) :=
   .var (binE .and .here .here) (.ret .here)
@@ -343,8 +379,8 @@ example : demoSelfAnd.denote (.cons (42 : BitVec 32) .nil) = (42 : BitVec 32) :=
 /-! ## 9. Composition with the egraph pass
 
 The two passes compose: run the peephole, then the egraph engine (or vice
-versa); denotation and CT-safety are preserved by transitivity of the
-individual preservation theorems. -/
+versa); denotation is preserved by transitivity of the individual preservation
+theorems. The leakage of the composite is `ComPipeline.comAlgebraicPipeline_ctLeak`. -/
 
 /-- **Composed denotation preservation.** Peephole then egraph saturation
 preserves denotation, given a consistent known-constant env. -/
@@ -353,11 +389,5 @@ theorem peep_then_saturate_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (V : Ctxt.Valuation Γ) (hk : KEnv.Consistent k V) :
     (saturateCom fuel (peepCom c) k).denote V = c.denote V := by
   rw [saturateCom_denote fuel (peepCom c) k V hk, peepCom_denote c V]
-
-/-- **Composed CT preservation.** -/
-theorem peep_then_saturate_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (saturateCom fuel (peepCom c) k) = ctSafeComJ c := by
-  rw [saturateCom_ctSafe fuel (peepCom c) k, peepCom_ctSafe c]
 
 end CatCrypt.Crypto.Optimizer.Rewrite.Peephole

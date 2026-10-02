@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 public import CatCrypt.Crypto.Optimizer.CopyProp
 public import CatCrypt.Crypto.Optimizer.ComDCE
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComGVN
 
 /-!
 # The `Com → Com` optimizer pipeline
@@ -47,9 +48,11 @@ adapter.
 `Eq.trans`-chaining the three component `*_denote` lemmas. **Not `rfl`** — it
 inherits the inductive preservation proofs of the components.
 
-We also record `comOptPipeline_ctSafe`: the whole pipeline preserves
-constant-time safety (the dialect is branch-free; via the components'
-`*_ctSafe` corollaries).
+`comOptPipeline_ctLeak_eq`: under a leakage model whose `regArith` operations
+are quiet, equal leakage of `c` at two valuations gives equal leakage of
+`comOptPipeline c` there. The peephole keeps the leakage (`peepCom_ctLeak`),
+copy propagation keeps it for every leakage model (`copyProp_ctLeak`), and
+dead-let elimination maps equal leakage to equal leakage (`comDCE_ctLeak_eq`).
 
 All goals closed.
 -/
@@ -91,20 +94,63 @@ theorem comOptPipeline_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     ((copyProp_denote (peepCom c) V).trans
       (peepCom_denote c V))
 
-/-! ## 3. Constant-time preservation corollary
+/-! ## 3. Leakage
 
-Each component preserves CT-safety on `jasminDialect` (the dialect is
-branch-free). Chaining their `*_ctSafe` corollaries gives the same for the
-whole pipeline. -/
+Copy propagation keeps every binding and renames the continuation of a copy to read the
+source of the copy, which holds the same value, so it keeps the leakage of a program at
+every valuation for every leakage model. -/
 
-/-- **The pipeline preserves constant-time safety.** Via the components'
-`*_ctSafe` corollaries (the dialect has no conditional op, so every `Com` —
-before or after any pass — is CT-safe). -/
-theorem comOptPipeline_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) :
-    ctSafeComJ (comOptPipeline c) = ctSafeComJ c := by
-  -- every Com over the branch-free dialect is CT-safe
-  rw [ctSafeComJ_true (comOptPipeline c), ctSafeComJ_true c]
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- The events of a renamed program are those of the program at the pulled-back
+    valuation. -/
+theorem Com.ctLeak_rename (L : LeakModel jasminDialect) {Γ Γ' : Ctxt jasminDialect}
+    {τ : JasminTy} :
+    ∀ (h : Ctxt.Hom Γ Γ') (c : Com jasminDialect Γ τ) (V : Ctxt.Valuation Γ'),
+      Com.ctLeak L (c.rename h) V = Com.ctLeak L c (pullV h V)
+  | _, .ret _, _ => rfl
+  | h, .var e body, V => by
+      simp only [Com.rename, Com.ctLeak]
+      rw [Rewrite.ComGVN.Expr.ctLeak_rename L h e V, CopyProp.Expr.denote_rename h e V,
+        Com.ctLeak_rename L h.lift body (V.extend (e.denote (pullV h V))),
+        pullV_lift h V (e.denote (pullV h V))]
+
+/-- **Leakage of copy propagation.** For every leakage model, `copyProp c` has the
+    leakage of `c` at every valuation. -/
+theorem copyProp_ctLeak (L : LeakModel jasminDialect) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ),
+      Com.ctLeak L (copyProp c) V = Com.ctLeak L c V
+  | .ret _, _ => rfl
+  | .var e body, V => by
+      show Com.ctLeak L (match isCopy e with
+            | some a => Com.var e ((copyProp body).rename (copyHom a))
+            | none   => Com.var e (copyProp body)) V
+            = Com.ctLeak L (Com.var e body) V
+      rcases hc : isCopy e with _ | a
+      · simp only [Com.ctLeak]
+        rw [copyProp_ctLeak L body (V.extend (e.denote V))]
+      · simp only [Com.ctLeak]
+        rw [Com.ctLeak_rename L (copyHom a) (copyProp body) (V.extend (e.denote V)),
+          isCopy_denote e a V hc, pullV_copyHom a V,
+          copyProp_ctLeak L body (V.extend (a.lookup V))]
+
+/-- **Leakage of the pipeline.** Under a leakage model whose `regArith` operations are
+    quiet, equal leakage of `c` at two valuations gives equal leakage of
+    `comOptPipeline c` there. -/
+theorem comOptPipeline_ctLeak_eq (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t) (V₁ V₂ : Ctxt.Valuation Γ)
+    (h : Com.ctLeak L c V₁ = Com.ctLeak L c V₂) :
+    Com.ctLeak L (comOptPipeline c) V₁ = Com.ctLeak L (comOptPipeline c) V₂ :=
+  comDCE_ctLeak_eq L _ V₁ V₂ (by
+    show Com.ctLeak L (copyProp (peepCom c)) V₁ = Com.ctLeak L (copyProp (peepCom c)) V₂
+    rw [copyProp_ctLeak, copyProp_ctLeak, peepCom_ctLeak L hq, peepCom_ctLeak L hq]
+    exact h)
+
+end Leak
 
 /-! ## 4. Self-contained validation
 
@@ -140,10 +186,6 @@ example : demoPipeline.denote (.cons (42 : BitVec 32) .nil) = (42 : BitVec 32) :
 example :
     (comOptPipeline demoPipeline).denote (.cons (42 : BitVec 32) .nil)
       = (42 : BitVec 32) := rfl
-
-/-- **CT preserved** on the demo. -/
-example : ctSafeComJ (comOptPipeline demoPipeline) = ctSafeComJ demoPipeline :=
-  comOptPipeline_ctSafe demoPipeline
 
 /-- A bare `ret` program is a pipeline fixpoint. -/
 example :

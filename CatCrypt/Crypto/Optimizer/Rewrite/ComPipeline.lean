@@ -50,9 +50,6 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   `Peephole.peepCom_denote` with `Egraph.saturateCom_denote`.  **Not**
   `rfl` — the peephole and the saturation engine rewrite the
   `Com` term.
-* `comAlgebraicPipeline_ctSafe` — end-to-end constant-time preservation.
-  `jasminDialect` is branch-free, so the composed transform produces only
-  straight-line ops; `ctSafeComJ` is preserved.
 * `comAlgebraicPipeline_cost_le` — the composed transform is
   cost-non-increasing (the "extraction is no worse than the input" half of
   the equality-saturation contract, composed with the peephole's own
@@ -66,8 +63,8 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   denotation equality holds at every valuation.
 * `optCom`, `optCom_denote` — the `Com` optimisation stage, the range stage followed by the
   acyclic e-graph pass `Aegraph.aegraphOpt` (rules at node creation, hash-consing,
-  extraction), whose denotation equality holds at every valuation; `optCom_ctSafe`,
-  `optCom_cost_le` carry the CT predicate and the cost bound.
+  extraction), whose denotation equality holds at every valuation; `optCom_cost_le`
+  carries the cost bound.
 * `comAlgebraicPipeline_ctLeak` — under a leakage model whose `regArith` operations are
   quiet, the composed transform keeps the leakage of a program at every valuation;
   `comRangeOpt_constantTime`, `optCom_ctLeak_eq`, `optCom_constantTime` — under the same
@@ -113,19 +110,6 @@ theorem comAlgebraicPipeline_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (comAlgebraicPipeline fuel c k).denote V = c.denote V := by
   unfold comAlgebraicPipeline
   rw [saturateCom_denote fuel (peepCom c) k V hk, peepCom_denote c V]
-
-/-! ## §3  End-to-end constant-time preservation -/
-
-/-- **Composed CT preservation.**  `jasminDialect` is branch-free, so both
-    passes produce only straight-line ops; the composed transform
-    preserves the structural CT predicate `ctSafeComJ`.  This is exactly
-    `Peephole.peep_then_saturate_ctSafe`, re-exported as the headline
-    pipeline theorem. -/
-theorem comAlgebraicPipeline_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (comAlgebraicPipeline fuel c k) = ctSafeComJ c := by
-  unfold comAlgebraicPipeline
-  rw [saturateCom_ctSafe fuel (peepCom c) k, peepCom_ctSafe c]
 
 /-! ## §4  Cost non-increase -/
 
@@ -767,25 +751,11 @@ theorem comRangeOpt_cost_le {t : JasminTy} (c : Com jasminDialect Γ t) :
     comCost (comRangeOpt c) ≤ comCost c :=
   rangeCom_cost_le _ _ c
 
-/-- The range stage preserves the structural CT predicate `ctSafeComJ`. -/
-theorem comRangeOpt_ctSafe {t : JasminTy} (c : Com jasminDialect Γ t) :
-    ctSafeComJ (comRangeOpt c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (comRangeOpt c), ctSafeComJ_true c]
-
 section Leak
 
 open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
 open CatCrypt.Crypto.SecureCompilation.CT (ConstantTime)
 open CatCrypt.Crypto.Optimizer.Rewrite.ComGVN (opLeak_length)
-
-/-- An expression whose operation is a `regArith` emits no event under a leakage model whose
-    `regArith` operations are quiet. -/
-theorem expr_ctLeak_regArith (L : LeakModel jasminDialect)
-    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
-    {t : JasminTy} (e : Expr jasminDialect Γ t) {bop : JasminBinOp} {w : Nat}
-    (h : e.op = .regArith bop w) (V : Ctxt.Valuation Γ) : Expr.ctLeak L e V = [] := by
-  unfold Expr.ctLeak opLeak
-  split <;> rename_i heq <;> rw [h, hq] at heq <;> first | rfl | cases heq
 
 variable {L : LeakModel jasminDialect}
 
@@ -887,11 +857,6 @@ theorem optCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : (optCom c).denote = c.denote := by
   rw [optCom, Aegraph.aegraphOpt_denote, comRangeOpt_denote]
 
-/-- The stage preserves the structural CT predicate `ctSafeComJ`. -/
-theorem optCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) : ctSafeComJ (optCom c) = ctSafeComJ c := by
-  rw [optCom, Aegraph.aegraphOpt_ctSafe, comRangeOpt_ctSafe]
-
 /-- The stage does not increase `comCost`. -/
 theorem optCom_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (optCom c) ≤ comCost c :=
@@ -936,30 +901,6 @@ theorem rewriteExpr_ctLeak (L : LeakModel jasminDialect)
         exact expr_ctLeak_regArith L hq e' hop' V
   all_goals rfl
 
-/-- Leakage of one rewritten expression of the peephole. -/
-theorem peepExpr_ctLeak (L : LeakModel jasminDialect)
-    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
-    {t : JasminTy} (e : Expr jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
-    Expr.ctLeak L (peepExpr e) V = Expr.ctLeak L e V := by
-  rcases e with ⟨op, hop, args⟩
-  cases op
-  case regArith bop w =>
-    subst hop
-    match args, (rfl : args = args) with
-    | .cons a (.cons b .nil), _ =>
-      simp only [peepExpr, HVector.head, HVector.tail]
-      rw [expr_ctLeak_regArith L hq ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ rfl V]
-      rcases hr : peepBin bop a b with _ | e'
-      · exact expr_ctLeak_regArith L hq _ rfl V
-      · have hop' : ∃ bop', e'.op = .regArith bop' w := by
-          unfold peepBin at hr
-          split at hr
-          · split at hr <;> first | (cases hr; exact ⟨_, binE_op _ _ _⟩) | cases hr
-          · cases hr
-        obtain ⟨bop', hop'⟩ := hop'
-        exact expr_ctLeak_regArith L hq e' hop' V
-  all_goals rfl
-
 /-- Leakage of one pass of the saturation engine, from an environment consistent with the
     valuation. -/
 theorem rewriteCom_ctLeak (L : LeakModel jasminDialect)
@@ -985,17 +926,6 @@ theorem saturateCom_ctLeak (L : LeakModel jasminDialect)
   | fuel + 1, c, k, V, hk => by
       simp only [saturateCom]
       rw [saturateCom_ctLeak L hq fuel (rewriteCom c k) k V hk, rewriteCom_ctLeak L hq c k V hk]
-
-/-- Leakage of the peephole pass. -/
-theorem peepCom_ctLeak (L : LeakModel jasminDialect)
-    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
-    {t : JasminTy} :
-    ∀ (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ),
-      Com.ctLeak L (peepCom c) V = Com.ctLeak L c V
-  | .ret _, _ => rfl
-  | .var e body, V => by
-      simp only [peepCom, Com.ctLeak]
-      rw [peepExpr_ctLeak L hq e V, peepExpr_denote e V, peepCom_ctLeak L hq body]
 
 /-- **Leakage of the composed transform.** Under a leakage model whose `regArith`
     operations are quiet, `comAlgebraicPipeline fuel c k` has the leakage of `c` at every
@@ -1042,11 +972,6 @@ alone, through the canonical two-pass entry point. -/
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (comAlgebraicPipeline 4 demoMulZero demoK).denote V = demoMulZero.denote V :=
   comAlgebraicPipeline_denote 4 demoMulZero demoK V (demoK_consistent V)
-
-/-- The composed pipeline preserves CT on the demo. -/
-example : ctSafeComJ (comAlgebraicPipeline 4 demoMulZero demoK)
-        = ctSafeComJ demoMulZero :=
-  comAlgebraicPipeline_ctSafe 4 demoMulZero demoK
 
 /-- The composed pipeline is cost-non-increasing on the demo. -/
 example : comCost (comAlgebraicPipeline 4 demoMulZero demoK) ≤ comCost demoMulZero :=

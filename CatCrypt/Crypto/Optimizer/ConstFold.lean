@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
 
 /-!
 # Verified constant-folding / partial-evaluation for `Com` (jasminDialect)
@@ -47,9 +48,11 @@ gate. Here the "gate" is a `regArith` op and the "classical operand" is a
 * `foldCom_denote` : `(foldCom c k).denote V = c.denote V`, by induction over
   the `Com` let-chain (reusing `Egraph.extendK` / `extendK_consistent`).
   **Not `rfl`.**
-* `foldCom_ctSafe` : CT preservation — every fold produces only straight-line
-  ops (`regConst` / `regArith .or` / `regArith .and`), so the branch-free
-  invariant is maintained.
+* `foldCom_ctLeak_eq` : under a leakage model whose `regArith` operations are
+  quiet, equal leakage of `c` at two valuations consistent with `k` gives equal
+  leakage of `foldCom c k` there. A fold emits a `regArith` binding, which is
+  quiet, or a nullary `regConst` binding, whose events do not depend on the
+  valuation.
 
 All goals closed. Axiom set inherited via `Egraph`
 (`propext`, `Quot.sound`, `Classical.choice`).
@@ -295,18 +298,70 @@ theorem foldCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
       exact foldCom_denote body (extendK e k) (V.extend (e.denote V))
         (extendK_consistent e k V hk)
 
-/-! ## 5. CT preservation
+/-! ## 5. Leakage
 
-`jasminDialect` is branch-free, so every `Com` — input or output — is CT-safe
-under the structural `Egraph.ctSafeComJ` predicate. The fold produces only
-straight-line ops, so the invariant is maintained. -/
+A fold replaces a binary `regArith` binding by a `regArith` binding or by a nullary
+`regConst` binding and leaves every other binding unchanged. Under a leakage model whose
+`regArith` operations are quiet, the first emits no event and the second emits the same
+events at every valuation, so equal leakage of the input at two valuations gives equal
+leakage of the output. -/
 
-/-- **CT preservation for the fold pass.** `foldCom c k` is CT-safe iff `c` is
-(both are, since the dialect has no conditional op). -/
-theorem foldCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (foldCom c k) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (foldCom c k), ctSafeComJ_true c]
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- Leakage of one folded expression: equal leakage of `e` at two valuations gives equal
+    leakage of `foldExpr e k` there. -/
+theorem foldExpr_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) (k : KEnv Γ) (V₁ V₂ : Ctxt.Valuation Γ)
+    (hE : Expr.ctLeak L e V₁ = Expr.ctLeak L e V₂) :
+    Expr.ctLeak L (foldExpr e k) V₁ = Expr.ctLeak L (foldExpr e k) V₂ := by
+  rcases e with ⟨op, hop, args⟩
+  cases op
+  case regArith bop w =>
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [foldExpr, HVector.head, HVector.tail]
+      rcases hr : foldBin bop a b (KEnv.lookup a k) (KEnv.lookup b k) with _ | e'
+      · exact hE
+      · have hform : (∃ bop', e'.op = .regArith bop' w) ∨ ∃ n, e' = constE w n := by
+          unfold foldBin at hr
+          split at hr <;> (try split at hr) <;>
+            first
+              | (cases hr; exact Or.inl ⟨_, rfl⟩)
+              | (cases hr; exact Or.inr ⟨_, rfl⟩)
+              | cases hr
+        rcases hform with ⟨bop', hop'⟩ | ⟨n, rfl⟩
+        · show Expr.ctLeak L e' V₁ = Expr.ctLeak L e' V₂
+          rw [expr_ctLeak_regArith L hq e' hop', expr_ctLeak_regArith L hq e' hop']
+        · rfl
+  all_goals exact hE
+
+/-- **Leakage of the fold pass.** Under a leakage model whose `regArith` operations are
+    quiet, equal leakage of `c` at two valuations consistent with `k` gives equal leakage
+    of `foldCom c k` there. -/
+theorem foldCom_ctLeak_eq (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (k : KEnv Γ) (V₁ V₂ : Ctxt.Valuation Γ),
+      KEnv.Consistent k V₁ → KEnv.Consistent k V₂ →
+      Com.ctLeak L c V₁ = Com.ctLeak L c V₂ →
+      Com.ctLeak L (foldCom c k) V₁ = Com.ctLeak L (foldCom c k) V₂
+  | .ret _, _, _, _, _, _, _ => rfl
+  | .var e body, k, V₁, V₂, h₁, h₂, h => by
+    simp only [Com.ctLeak] at h
+    obtain ⟨hE, hB⟩ :=
+      List.append_inj h (Rewrite.AegraphGeneric.opLeak_length L e.op _ _)
+    simp only [foldCom, Com.ctLeak]
+    rw [foldExpr_denote e k V₁ h₁, foldExpr_denote e k V₂ h₂]
+    congr 1
+    · exact foldExpr_ctLeak L hq e k V₁ V₂ hE
+    · exact foldCom_ctLeak_eq L hq body (extendK e k) _ _ (extendK_consistent e k V₁ h₁)
+        (extendK_consistent e k V₂ h₂) hB
+
+end Leak
 
 /-! ## 6. Self-contained validation
 
@@ -359,10 +414,6 @@ example : demoFold.denote .nil = (5 : BitVec 32) := rfl
 
 example : (foldCom demoFold demoK).denote .nil = (5 : BitVec 32) := rfl
 
-/-- **CT preserved** on the demo. -/
-example : ctSafeComJ (foldCom demoFold demoK) = ctSafeComJ demoFold :=
-  foldCom_ctSafe demoFold demoK
-
 /-! ## 7. One-operand identity folds exercised
 
 A program with `x + 0` where the `0` is the *first* operand (which
@@ -389,7 +440,7 @@ theorem demoFirstK_consistent (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]
   intro w v n hv
   cases v with
   | here => simp [demoFirstK, KEnv.lookup] at hv
-  | there v' => cases v' <;> simp [demoFirstK, KEnv.lookup] at hv
+  | there v' => cases v'
 
 /-- **First-operand identity folded**: `0 + x` becomes `x ||| x` (`binE .or x x`,
 which denotes `x`), reusing the existing variable. -/

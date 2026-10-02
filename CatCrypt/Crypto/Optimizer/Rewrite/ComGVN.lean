@@ -36,7 +36,6 @@ The level machinery (`varLvl`, `getLvl`, `evalKey`, `Sound`, ...) is that of
 * `gvnCom`, `gvnCom_denote`: the pass from the empty table; it denotes the same function
   as its input.
 * `gvnCom_cost_le`: the pass does not increase `comCost`.
-* `gvnCom_ctSafe`: the pass preserves `ctSafeComJ`.
 * `gvnGo_ctLeak`, `gvnCom_ctLeak_eq`, `gvnCom_constantTime`: for every leakage model
   (`ComLevelCheck.LeakModel`), equal leakage of the input at two valuations gives equal
   leakage of the output, so the pass preserves constant time for every public-equality
@@ -51,7 +50,7 @@ namespace CatCrypt.Crypto.Optimizer.Rewrite.ComGVN
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.Optimizer.Rewrite.Egraph (opCost comCost ctSafeComJ ctSafeComJ_true)
+open CatCrypt.Crypto.Optimizer.Rewrite.Egraph (opCost comCost)
 open CatCrypt.Crypto.Optimizer.CopyProp (pullV pullV_id)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric (comCostOf)
 
@@ -162,11 +161,6 @@ theorem gvnGo_cost_le {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
 theorem gvnCom_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (gvnCom c) ≤ comCost c :=
   gvnGo_cost_le _ _ c
-
-/-- The pass preserves the structural CT predicate `ctSafeComJ`. -/
-theorem gvnCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) : ctSafeComJ (gvnCom c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (gvnCom c), ctSafeComJ_true c]
 
 /-! ## 5. Constant time under a leakage model -/
 

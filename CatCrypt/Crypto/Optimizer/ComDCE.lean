@@ -65,8 +65,11 @@ drops an observable effect: denotation is preserved exactly.
 * `dceLiveOut` — `dceLive` with the last `nOut` bindings as further live roots, which it
   always keeps. `dceLiveOut_denote`, `dceLiveOut_outputs` — it preserves the denotation
   and the last `nOut` binding values.
-* `comDCE_cost_le`, `comDCE_ctSafe` — `jasminDialect` corollaries: the pass is
-  cost-non-increasing and CT-preserving (the dialect is branch-free).
+* `comDCE_cost_le` — `jasminDialect` corollary: the pass is cost-non-increasing.
+* `Com.ctLeak_length_eq`, `comDCE_ctLeak_prefix`, `comDCE_ctLeak_eq` — for every leakage
+  model: the number of events of a program does not depend on the valuation, the events
+  of `comDCE c` are a prefix of those of `c`, and equal leakage of `c` at two valuations
+  gives equal leakage of `comDCE c` there.
 * Self-contained validation: a program with a dead trailing binder is
   shrunk by the pass while its denotation is preserved.
 
@@ -564,12 +567,65 @@ theorem comDCE_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy} :
           simp only [comCost] at ih ⊢
           omega
 
-/-- **The pass preserves constant-time safety on `jasminDialect`.** The dialect
-has no conditional op, so every `Com` — input or output — is CT-safe. -/
-theorem comDCE_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) :
-    ctSafeComJ (comDCE c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (comDCE c), ctSafeComJ_true c]
+/-! ## 5b. Leakage
+
+The number of events an operation emits does not depend on its argument values, so
+neither does the number of events of a program.
+`comDCE` deletes a trailing run of bindings, so the events of `comDCE c` are a prefix of
+those of `c`. Two prefixes of one list with the same length are equal. -/
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+variable {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+
+/-- The number of events of a program does not depend on the valuation. -/
+theorem Com.ctLeak_length_eq (L : LeakModel d) :
+    ∀ {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (V₁ V₂ : Ctxt.Valuation Γ),
+      (Com.ctLeak L c V₁).length = (Com.ctLeak L c V₂).length
+  | _, _, .ret _, _, _ => rfl
+  | _, _, .var e body, V₁, V₂ => by
+    simp only [Com.ctLeak, List.length_append]
+    have hE : (Expr.ctLeak L e V₁).length = (Expr.ctLeak L e V₂).length := by
+      unfold Expr.ctLeak opLeak
+      split <;> rfl
+    rw [hE, Com.ctLeak_length_eq L body _ (V₂.extend (e.denote V₂))]
+
+/-- The events of `comDCE c` are a prefix of the events of `c`. -/
+theorem comDCE_ctLeak_prefix (L : LeakModel d) :
+    ∀ {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (V : Ctxt.Valuation Γ),
+      Com.ctLeak L (comDCE c) V <+: Com.ctLeak L c V
+  | _, _, .ret _, _ => List.nil_prefix
+  | _, _, .var e body, V => by
+    have ih := comDCE_ctLeak_prefix L body (V.extend (e.denote V))
+    simp only [comDCE]
+    cases hb : comDCE body with
+    | ret v =>
+      rw [hb] at ih
+      simp only []
+      split
+      · exact List.nil_prefix
+      · simp only [Com.ctLeak, List.append_nil]
+        exact List.prefix_append _ _
+    | var e2 body2 =>
+      rw [hb] at ih
+      simp only [Com.ctLeak] at ih ⊢
+      exact (List.prefix_append_right_inj _).mpr ih
+
+/-- **Leakage of dead-let elimination.** For every leakage model, equal leakage of `c` at
+    two valuations gives equal leakage of `comDCE c` there. -/
+theorem comDCE_ctLeak_eq (L : LeakModel d) {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t)
+    (V₁ V₂ : Ctxt.Valuation Γ) (h : Com.ctLeak L c V₁ = Com.ctLeak L c V₂) :
+    Com.ctLeak L (comDCE c) V₁ = Com.ctLeak L (comDCE c) V₂ := by
+  have h₁ := comDCE_ctLeak_prefix L c V₁
+  have h₂ := comDCE_ctLeak_prefix L c V₂
+  rw [h] at h₁
+  exact (List.prefix_of_prefix_length_le h₁ h₂
+    (Com.ctLeak_length_eq L (comDCE c) V₁ V₂).le).eq_of_length
+    (Com.ctLeak_length_eq L (comDCE c) V₁ V₂)
+
+end Leak
 
 /-! ## 6. Self-contained validation
 
@@ -582,8 +638,7 @@ binding**:
 
 The pass deletes `v1` and re-points the return at the strengthened `v0`. We
 check that (a) the pass actually shrinks the program (one binder removed),
-(b) the denotation is preserved, and (c) cost is non-increasing and CT is
-preserved. -/
+(b) the denotation is preserved, and (c) cost is non-increasing. -/
 
 /-- A `reg 32` binary `regArith` helper for the demo. -/
 def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
@@ -625,10 +680,6 @@ example :
 /-- **Cost non-increasing** on the demo. -/
 example : comCost (comDCE demoDeadTrailing) ≤ comCost demoDeadTrailing :=
   comDCE_cost_le demoDeadTrailing
-
-/-- **CT preserved** on the demo. -/
-example : ctSafeComJ (comDCE demoDeadTrailing) = ctSafeComJ demoDeadTrailing :=
-  comDCE_ctSafe demoDeadTrailing
 
 /-- A program with **no** dead trailing binder is left unchanged: the binder *is*
 the returned value, so it is kept. -/

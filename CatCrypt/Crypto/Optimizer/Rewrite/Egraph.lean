@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
 
 /-!
 # Verified bounded equality-saturation rewrite engine for `Com`
@@ -51,10 +52,10 @@ rewrites `x &&& allOnes`.
 * `rewriteExpr_denote` : per-Expr denotation equality (real BitVec algebra).
 * `saturateCom_denote`  : `(saturateCom k c).denote V = c.denote V`, by
   induction over the `Com` let-chain. **Not `rfl`.**
-* `saturateCom_ctSafe` : CT preservation. Every `jasminDialect` op is
-  straight-line (no `ite`), so the rewrite never introduces data-dependent
-  control; `ctSafeComJ (saturateCom k c) = ctSafeComJ c`.
 * `saturate_cost_le`   : the rewrite is cost-non-increasing.
+
+The leakage of the engine is `ComPipeline.rewriteCom_ctLeak` and
+`ComPipeline.saturateCom_ctLeak`.
 
 All goals closed. Axiom set: `propext`, `Quot.sound`.
 -/
@@ -70,14 +71,13 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-! ## 0. CT predicate for `jasminDialect` `Com`
 
-`jasminDialect` has no conditional op — every op (`regArith`, `stackLoad`,
-`stackStore`, `castW`, `extCall`, `regConst`) is straight-line and
-data-oblivious. So every `Expr` is CT-safe and a `Com` is CT-safe iff... it is
-a `Com`. We still define the predicate structurally (mirroring
-`VIR/CTPredicate.lean`'s `ctSafeCom`) so the preservation theorem has real
-content: it is preserved because the rewrite produces only CT-safe ops. -/
+`opCtSafe` is `true` on every op, so `ctSafeComJ` is `true` on every program
+(`ctSafeComJ_true`) and a statement `ctSafeComJ (pass c) = ctSafeComJ c` carries no
+information about leakage. The leakage of a program is `ComLevelCheck.Com.ctLeak` under a
+leakage model; a `stackLoad` or `stackStore` emits the address it reads or writes under
+such a model. -/
 
-/-- Per-op CT predicate for the Jasmin dialect. All ops are straight-line. -/
+/-- The per-op predicate under `ctSafeComJ`: `true` on every op. -/
 def opCtSafe : JasminOp → Bool := fun _ => true
 
 /-- A Jasmin `Expr` is CT-safe iff its op is (always, here). -/
@@ -97,6 +97,21 @@ theorem ctSafeComJ_true {Γ : Ctxt jasminDialect} {t : JasminTy} :
   | .var _ body => by
       simp only [ctSafeComJ, ctSafeExprJ, opCtSafe, Bool.true_and]
       exact ctSafeComJ_true body
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- An expression whose operation is a `regArith` emits no event under a leakage model whose
+    `regArith` operations are quiet. -/
+theorem expr_ctLeak_regArith (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) {bop : JasminBinOp} {w : Nat}
+    (h : e.op = .regArith bop w) (V : Ctxt.Valuation Γ) : Expr.ctLeak L e V = [] := by
+  unfold Expr.ctLeak opLeak
+  split <;> rename_i heq <;> rw [h, hq] at heq <;> first | rfl | cases heq
+
+end Leak
 
 /-! ## 1. A simple cost model
 
@@ -492,25 +507,6 @@ theorem saturateCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
       rw [saturateCom_denote fuel (rewriteCom c k) k V hk]
       exact rewriteCom_denote c k V hk
 
-/-! ## 10. CT preservation
-
-`jasminDialect` has no conditional op, so every `Com` is CT-safe and the rewrite
-trivially preserves CT-safety. We state it via the structural `ctSafeComJ`
-predicate (real content: the rewrite produces only straight-line ops). -/
-
-/-- **CT preservation for one pass.** `rewriteCom c k` is CT-safe iff `c` is
-(both are, since the dialect is branch-free). -/
-theorem rewriteCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (rewriteCom c k) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (rewriteCom c k), ctSafeComJ_true c]
-
-/-- **CT preservation for the bounded engine.** -/
-theorem saturateCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (saturateCom fuel c k) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (saturateCom fuel c k), ctSafeComJ_true c]
-
 /-! ## 11. Cost non-increase
 
 One pass never increases the total cost; the bounded engine therefore never
@@ -571,7 +567,7 @@ theorem demoK_consistent (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
   intro w v n hv
   cases v with
   | here => simp [demoK, KEnv.lookup] at hv
-  | there v' => cases v' <;> simp [demoK, KEnv.lookup] at hv
+  | there v' => cases v'
 
 /-- **Cost strictly drops.** Input cost 5 (`regConst` 1 + `mul` 4), rewritten
 cost 2 (`regConst` 1 + `and` 1). -/
@@ -597,10 +593,6 @@ example :
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (saturateCom 4 demoMulZero demoK).denote V = demoMulZero.denote V :=
   saturateCom_denote 4 demoMulZero demoK V (demoK_consistent V)
-
-/-- And the engine is CT-preserving on the demo. -/
-example : ctSafeComJ (saturateCom 4 demoMulZero demoK) = ctSafeComJ demoMulZero :=
-  saturateCom_ctSafe 4 demoMulZero demoK
 
 /-! ## 13. Strength-reduction lemma exercised on a concrete width
 

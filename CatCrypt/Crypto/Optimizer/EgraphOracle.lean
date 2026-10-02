@@ -56,8 +56,9 @@ for an *arbitrary* proposed `Com` in place of a fixed rule set.
   (the gate never accepts a non-equivalent proposal).
 * `oracleOpt_denote` : `(oracleOpt o c).denote V = c.denote V` for every oracle
   `o` and valuation `V` — the headline preservation theorem.
-* `oracleOpt_ctSafe` : CT-safety preserved (the dialect is branch-free, so any
-  `Com` the oracle could produce is straight-line).
+* `oracleOpt_ctSafe` : both sides are `true` by `ctSafeComJ_true`, so the
+  statement carries no information about leakage. The gate checks denotation
+  only, so the leakage of an accepted proposal is not constrained.
 * Re-derivation: the `Egraph` saturation engine, used *as an untrusted oracle*,
   produces the fused `x * 0 ↦ 0` rewrite, the gate accepts it (same denotation),
   and the accepted result is strictly cheaper (`comCost 5 → 2`). This shows
@@ -237,9 +238,9 @@ theorem oracleOpt_denote_funext {Γ : Ctxt jasminDialect} {w' : Nat}
     (oracleOpt hΓ o c).denote = c.denote := by
   funext V; exact oracleOpt_denote hΓ o c V
 
-/-- **CT preservation.** `jasminDialect` is branch-free, so whatever `Com` the
-oracle proposes is straight-line; the gated pass preserves the structural CT
-predicate `ctSafeComJ`. -/
+/-- The structural predicate `ctSafeComJ` agrees on the output of the gated pass and
+its input. `ctSafeComJ` is `true` on every program (`ctSafeComJ_true`), so the
+statement carries no information about leakage. -/
 theorem oracleOpt_ctSafe {Γ : Ctxt jasminDialect} {w' : Nat} (hΓ : RegCtxt Γ)
     (o : RewriteOracle) (c : Com jasminDialect Γ (.reg w')) :
     ctSafeComJ (oracleOpt hΓ o c) = ctSafeComJ c := by
@@ -363,8 +364,7 @@ theorem demo_oracleOpt_value :
       = (0 : BitVec 32) := by
   rw [demo_oracleOpt_denote]; rfl
 
-/-- The oracle-gated pass is CT-preserving on the demo (instance of
-`oracleOpt_ctSafe`). -/
+/-- The instance of `oracleOpt_ctSafe` at the demo. -/
 theorem demo_oracleOpt_ctSafe :
     ctSafeComJ (oracleOpt demoRegCtxt demoOracle demoMulZero)
       = ctSafeComJ demoMulZero :=

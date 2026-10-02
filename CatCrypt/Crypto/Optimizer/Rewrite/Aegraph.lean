@@ -49,7 +49,6 @@ apply to no node, are
 * `aegraphOpt`, `aegraphOpt_denote`: the pass from the empty state; it denotes the same
   function as its input.
 * `aegraphOpt_cost_le`: the pass does not increase `comCost`.
-* `aegraphOpt_ctSafe`: the pass preserves `ctSafeComJ`.
 * `aegraphOpt_ctLeak_eq`, `aegraphOpt_constantTime`: under a leakage model whose
   `regArith` operations are quiet, equal leakage of the input at two valuations gives
   equal leakage of the output, so the pass preserves constant time for every relation.
@@ -66,7 +65,7 @@ namespace CatCrypt.Crypto.Optimizer.Rewrite.Aegraph
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
-  (opCost comCost ctSafeComJ ctSafeComJ_true binE binE_denote asPow2 mul_pow2_eq_shl)
+  (opCost comCost binE binE_denote asPow2 mul_pow2_eq_shl)
 open CatCrypt.Crypto.Optimizer.Rewrite.ComGVN (Tbl comCost_eq_comCostOf pullV_eq_comap)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
   (varLvl getLvl_var varOfLvl? varOfLvl?_lookup castTo?_mk gatherArgs evalKey DSound Alt
@@ -600,11 +599,6 @@ theorem agGo_cost_le {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
 theorem aegraphOpt_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (aegraphOpt c) ≤ comCost c :=
   agGo_cost_le _ _ c
-
-/-- The pass preserves the structural CT predicate `ctSafeComJ`. -/
-theorem aegraphOpt_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) : ctSafeComJ (aegraphOpt c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (aegraphOpt c), ctSafeComJ_true c]
 
 /-! ## 7. Constant time under a leakage model
 
