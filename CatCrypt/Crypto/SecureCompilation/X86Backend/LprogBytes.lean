@@ -1262,7 +1262,11 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   -- no effective address and carries no bytes. `LEA` reaches this arm
                   -- last: it is in none of `tagShiftExt` / `aluOpcode` /
                   -- `twoByteOpcode`, so the dispatch lemmas that enumerate those
-                  -- tables are unaffected by it.
+                  -- tables are unaffected by it. The register-indexed source
+                  -- `.arrIdx b i s` is the address `b + i*s`, printed `(%b, %i, s)`:
+                  -- the SIB tail `encMemMovSibw` builds, at opcode `0x8D`, for a stride
+                  -- x86 SIB encodes (1/2/4/8) and an index other than `%rsp`, which a
+                  -- SIB index field cannot name.
                   if base == "LEA" then
                     match d, s with
                     | .reg dn, .reg mn =>
@@ -1270,6 +1274,11 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                           match parseMemNameGp mn with
                           | some (bb, off) => encMemMovw w 0x8d (gpNumU dn) bb off
                           | none => []
+                        else []
+                    | .reg dn, .arrIdx bn idxn scale =>
+                        if isGpName dn && isGpName bn && isGpName idxn && gpNumU idxn != 4
+                            && (scale == 1 || scale == 2 || scale == 4 || scale == 8) then
+                          encMemMovSibw w 0x8d (gpNumU dn) (gpNumU bn) (gpNumU idxn) scale
                         else []
                     | _, _ => []
                   -- Register-indexed element load `LOADIDX [dst] [.arrIdx b i s]`

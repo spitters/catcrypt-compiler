@@ -143,8 +143,9 @@ theorem condCode_lt (c : Condt) : ScalarEncoder.condCode c < 16 := by
   cases c <;> decide
 
 /-- The `REX.W`-prefixed forms `decodeJ1_6` has no arm for: the sign-extended-`imm8`
-    group-1 form `83 /digit ib`, the memory-source compare `3B /r` and the
-    memory-source conditional move `0F 40+tttn /r`. The
+    group-1 form `83 /digit ib`, the memory-source compare `3B /r`, the
+    memory-source conditional move `0F 40+tttn /r` and the register-indexed address
+    computation `8D /r` against `[base + index*scale + disp]`. The
     arm for the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
     `REX.X`), so `decodeLinstr` reaches it on no stream. An index field of `100`
@@ -183,6 +184,12 @@ def decodeRexExt (r : BitVec 8) :
         match decodeMemTail (SailX86Decoder.rexX r) (modrm :: rest) with
         | some (rf, bLow, none, off, rest1) =>
             some (.cmpMem (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) off, rest1)
+        | _ => none
+      else if op.toNat = 0x8d then
+        match decodeMemTail (SailX86Decoder.rexX r) (modrm :: rest) with
+        | some (rf, bLow, some (idx, scale), off, rest1) =>
+            some (.lea (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) (regName idx)
+              scale off, rest1)
         | _ => none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
         match rest with
@@ -791,6 +798,55 @@ theorem decodeLinstr_storeIdx8 (r base idx : Nat) (rest : List (BitVec 8))
     rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _), hd,
     rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, if_true]
+
+/-- The register-indexed address computation `LEA (%base,%idx,scale), %r` (`REX.W 8D /r`
+    with a SIB byte) decodes to `lea` with no displacement, for every stride SIB encodes,
+    every base register and every index register but `%rsp`. -/
+theorem decodeLinstr_leaIdx (r base idx scale : Nat) (rest : List (BitVec 8))
+    (hr : r < 16) (hbase : base < 16) (hidx : idx < 16) (hi4 : idx ≠ 4)
+    (hs : scaleOk scale = true) :
+    decodeLinstr (encMemMovSibw 1 0x8d r base idx scale ++ rest)
+      = some (.op (.lea (regName r) (regName base) (regName idx) scale 0), rest) := by
+  have hmd : ((if base &&& 7 = 5 then 1 else 0) = 0 ∧ base &&& 7 ≠ 5)
+      ∨ (if base &&& 7 = 5 then 1 else 0) = 1 := by
+    by_cases h5 : base &&& 7 = 5 <;> simp [h5]
+  have hd := decodeMemTail_sibTail r base idx scale _ rest hidx hi4 hs hmd
+  have henc : encMemMovSibw 1 0x8d r base idx scale ++ rest
+      = BitVec.ofNat 8 (rex 1 (bit r 3) (bit idx 3) (bit base 3)) :: BitVec.ofNat 8 0x8d
+        :: (BitVec.ofNat 8 (modRMMem (if base &&& 7 = 5 then 1 else 0) r 4)
+          :: BitVec.ofNat 8 (sibByte scale idx base)
+          :: (if (if base &&& 7 = 5 then 1 else 0) = 1 then [disp8 0] else []) ++ rest) := by
+    by_cases h5 : base &&& 7 = 5 <;> simp [encMemMovSibw_w1, encMemMovSib, h5, modRMMem]
+  have hmod : modField (BitVec.ofNat 8 (modRMMem (if base &&& 7 = 5 then 1 else 0) r 4)) ≠ 3 := by
+    by_cases h5 : base &&& 7 = 5 <;> simp [h5, modField_modRMMem]
+  rw [henc]
+  generalize (if base &&& 7 = 5 then 1 else 0) = md at hd hmod ⊢
+  generalize BitVec.ofNat 8 (modRMMem md r 4) = m at hd hmod ⊢
+  rw [List.cons_append] at hd ⊢
+  generalize (BitVec.ofNat 8 (sibByte scale idx base)
+    :: (if md = 1 then [disp8 0] else [])) ++ rest = T at hd ⊢
+  have hx := rexX_rex (bit r 3) (bit idx 3) (bit base 3) (bit_le_one _ _) (bit_le_one _ _)
+    (bit_le_one _ _)
+  have hw := rexW_rex (bit r 3) (bit idx 3) (bit base 3) (bit_le_one _ _) (bit_le_one _ _)
+    (bit_le_one _ _)
+  have hR := rexR_rex (bit r 3) (bit idx 3) (bit base 3) (bit_le_one _ _) (bit_le_one _ _)
+    (bit_le_one _ _)
+  have hB := rexB_rex (bit r 3) (bit idx 3) (bit base 3) (bit_le_one _ _)
+  have hr' := bitsplit _ hr
+  have hb' := bitsplit _ hbase
+  simp only [bit, Nat.and_one_is_mod] at hx hw hR hB hr' hb' hd
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit r 3) (bit idx 3) (bit base 3)))
+      (BitVec.ofNat 8 0x8d :: m :: T) = none := by
+    simp [decodeRex, hmod, hx, hd]
+  have hs1 : decodeShift1 (BitVec.ofNat 8 (rex 1 (bit r 3) (bit idx 3) (bit base 3))
+      :: BitVec.ofNat 8 0x8d :: m :: T) = none := by
+    simp [decodeShift1]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 (bit r 3) (bit idx 3) (bit base 3))
+      :: BitVec.ofNat 8 0x8d :: m :: T) = none := by
+    simp [decodeCmp, hmod]
+  rw [decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _) _
+    hnone hs1 hc]
+  simp [decodeRexExt, hmod, hw, hx, hd, hR, hB, hr', hb']
 
 /-- The condition nibble a condition-code name encodes to. -/
 def ccNibble (cc : String) : Nat := jccOpcode cc - 0x80
