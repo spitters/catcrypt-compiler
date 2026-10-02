@@ -527,7 +527,7 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
     invariants, the one-word result array as the accumulator seed, descending
     from the top limb `n - 1`. No front-compilation hypothesis remains. -/
 theorem cmpRtProg_fold (V : Ctxt.Valuation Gouter) :
-    cmpRtProgOpt.map (fun c => ComL.denote c V)
+    (cmpRtProgOpt ()).map (fun c => ComL.denote c V)
       = some (cmpFold (apVar.lookup V) (bpVar.lookup V)
           ((cmpCount.lookup V).toNat - 1) (cmpCount.lookup V).toNat (cmpInit.lookup V)) := by
   rw [cmpRtProg_denote (update := cmpUpdate) cmpUpdate_eq V]
@@ -560,7 +560,7 @@ theorem cmpRtProg_val (V : Ctxt.Valuation Gouter)
     (hn : 0 < (cmpCount.lookup V).toNat)
     (h0 : memGetDyn (cmpInit.lookup V) 0 = 0) :
     ∃ out : Fin NR → BitVec 64,
-      cmpRtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+      (cmpRtProgOpt ()).map (fun c => ComL.denote c V) = some out ∧
         memGetDyn out 0
           = cmpSign (bignumVal (segCells (apVar.lookup V) 0 (cmpCount.lookup V).toNat))
               (bignumVal (segCells (bpVar.lookup V) 0 (cmpCount.lookup V).toNat)) := by

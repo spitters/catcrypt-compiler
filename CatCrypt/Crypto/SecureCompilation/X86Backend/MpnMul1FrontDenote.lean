@@ -449,7 +449,7 @@ abbrev upVar : Ctxt.Var Gouter AU := .there (.there .here)
     and scalar threaded as invariants, the output array as the accumulator
     seed. No front-compilation hypothesis remains. -/
 theorem mul1RtProg_fold (V : Ctxt.Valuation Gouter) :
-    mul1RtProgOpt.map (fun c => ComL.denote c V)
+    (mul1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (mul1Fold (upVar.lookup V) (vVar.lookup V)
           (mul1Count.lookup V).toNat (mul1Init.lookup V)) := by
   rw [mul1RtProg_denote (update := mul1Update) mul1Update_eq V]
@@ -477,7 +477,7 @@ theorem mul1RtProg_val (V : Ctxt.Valuation Gouter)
     (hn : (mul1Count.lookup V).toNat < NR)
     (h0 : memGetDyn (mul1Init.lookup V) 0 = 0) :
     ∃ out : Fin NR → BitVec 64,
-      mul1RtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+      (mul1RtProgOpt ()).map (fun c => ComL.denote c V) = some out ∧
         bignumVal (cells out ((mul1Count.lookup V).toNat + 1))
           = bignumVal (cells (upVar.lookup V) (mul1Count.lookup V).toNat)
               * (vVar.lookup V).toNat :=

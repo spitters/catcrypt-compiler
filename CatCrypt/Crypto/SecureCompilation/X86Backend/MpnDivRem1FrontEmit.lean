@@ -493,13 +493,13 @@ def divInvs : HVector (fun ty => Ctxt.Var Gouter ty) [r64, r64, r64, AU] :=
     back-edge, the trip counter seeded from the runtime `n` register, the output
     array threaded as the loop accumulator and `d`/`dinv`/`n`/`up` as loop
     invariants. `none` if the front declines. -/
-def divRem1RtProgOpt : Option (ComL Gouter AQ) :=
+def divRem1RtProgOpt (_ : Unit) : Option (ComL Gouter AQ) :=
   rolledForLoopNRt (Γouter := Gouter) (accCTy := .memref NR)
     (invCTys := [.sword 64, .sword 64, .sword 64, .memref NU])
     vmBody "qp" divLimbBodyLowCT divCount divInit divInvs
 
 -- The front accepts the body and wraps it in a `ComL.forLoopNRt`.
-#guard divRem1RtProgOpt.isSome
+#guard (divRem1RtProgOpt ()).isSome
 
 /-- **The emitted loop's denotation is the `JLoopBodyN` fold of the front
     body.** Whenever the front compiles `divLimbBodyLowCT` to `update`, the
@@ -516,7 +516,7 @@ theorem divRem1RtProg_denote
     (hupd : Dialects.TranslateDialectRolledLoop.frontLoopBodyJ
       (accCTy := .memref NR) vmBody "qp" divLimbBodyLowCT = some update)
     (V : Ctxt.Valuation Gouter) :
-    divRem1RtProgOpt.map (fun c => ComL.denote c V)
+    (divRem1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (JLoopBodyN.denote ⟨(divCount.lookup V).toNat, update⟩
           (Expr.lookupArgs divInvs V) (divInit.lookup V)) :=
   rolledForLoopNRt_denote vmBody "qp" divLimbBodyLowCT divCount divInit divInvs
@@ -532,7 +532,7 @@ theorem divRem1RtProg_denote
     with its paired low `MUL` into the printer's two-output `mulx` by
     `FheMontMulEmit.fuseMulHiLprog` in its `saveRdx` looped-body mode. -/
 def divRem1RtLprogOpt (fname : String) : Option Lprog :=
-  divRem1RtProgOpt.map (fun c =>
+  (divRem1RtProgOpt ()).map (fun c =>
     FheMontMulEmit.fuseMulHiLprog
       (ComL.toLprogPhysAbi c fname (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX", "R8"]
@@ -544,15 +544,15 @@ def divRem1RtAsmOpt (fname : String) : Option String :=
   (divRem1RtLprogOpt fname).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
 
 /-- The 5-argument-ABI physical body of the front-compiled runtime-count loop. -/
-def divRem1RtPhysBodyOpt : Option Lcmd :=
-  divRem1RtProgOpt.map (fun c =>
+def divRem1RtPhysBodyOpt (_ : Unit) : Option Lcmd :=
+  (divRem1RtProgOpt ()).map (fun c =>
     (ComL.toLfundefPhysAbi c (argName 0) [argName 1]
       (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX", "R8"]
       [64, 64, 64, 64, 64]).lfd_body)
 
 -- The physical body carries a real back-edge: an internal label and a
 -- conditional jump, so the emit is a counted loop and not an unrolled chain.
-#guard (divRem1RtPhysBodyOpt.map (fun body =>
+#guard ((divRem1RtPhysBodyOpt ()).map (fun body =>
   (body.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false))
     && (body.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false))))
   = some true

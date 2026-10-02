@@ -445,7 +445,7 @@ theorem withVar2_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
 theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     {f : String} {as : List NfTy} {r : NfTy} {rs : HVector (fun t => Rd Δ t) as}
     {res : OpRes Δ r} (h : scalarRes? f as r rs = some res) :
-    res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar := by
+    res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar () := by
   match as, rs, h with
   | [ta, tb], .cons ra (.cons rb .nil), h =>
       change scalarRes2 f ta tb ra rb r = some res at h
@@ -503,7 +503,7 @@ theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
   next =>
     obtain ⟨hq, hf⟩ := scalarRes_quiet hP h
     rw [resLeak_quiet W res hq]
-    have hn : ∀ g ∈ ImpToNF.hax64NFScalar, g ≠ "index" ∧ g ≠ "array_update" := by decide
+    have hn : ∀ g ∈ ImpToNF.hax64NFScalar (), g ≠ "index" ∧ g ≠ "array_update" := by decide
     obtain ⟨hi, hu⟩ := hn f hf
     unfold opLeak
     rw [show nfLeakModel.kind (.call f as r) = nfKind (.call f as r) from rfl]

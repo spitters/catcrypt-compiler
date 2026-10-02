@@ -83,14 +83,14 @@ def mpnLoopOptLprog (p : Lprog) : Lprog :=
 /-- `mpn_add_n_loop_owned_opt`: the front add loop under the `_opt` symbol,
     carry seeded `MOV acc, #0`, carry-out in `RAX`, optimized render. -/
 def addLprogOpt : Option Lprog :=
-  addRtProgOpt.map (fun c =>
+  (addRtProgOpt ()).map (fun c =>
     mpnLoopOptLprog (ComL.toLprogPhysAbiScalarAcc c "mpn_add_n_loop_owned_opt"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]))
 
 /-- `mpn_sub_n_loop_owned_opt`: the front sub loop under the `_opt` symbol,
     borrow seeded `MOV acc, #0`, borrow-out in `RAX`, optimized render. -/
 def subLprogOpt : Option Lprog :=
-  subRtProgOpt.map (fun c =>
+  (subRtProgOpt ()).map (fun c =>
     mpnLoopOptLprog (ComL.toLprogPhysAbiScalarAcc c "mpn_sub_n_loop_owned_opt"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]))
 
@@ -166,11 +166,11 @@ def iorAsmOpt : String := (iorLprogOpt.map renderLprogAtt).getD ""
 def xorAsmOpt : String := (xorLprogOpt.map renderLprogAtt).getD ""
 
 /-- The deployed unoptimized renders, for the size comparison pins. -/
-def addAsmBase : String := (MpnLoopFrontEmit.addLprogFront.map renderLprogAtt).getD ""
-def subAsmBase : String := (MpnLoopFrontEmit.subLprogFront.map renderLprogAtt).getD ""
-def andAsmBase : String := (MpnLoopFrontEmit.andLprog.map renderLprogAtt).getD ""
-def iorAsmBase : String := (MpnLoopFrontEmit.iorLprog.map renderLprogAtt).getD ""
-def xorAsmBase : String := (MpnLoopFrontEmit.xorLprog.map renderLprogAtt).getD ""
+def addAsmBase : String := ((MpnLoopFrontEmit.addLprogFront ()).map renderLprogAtt).getD ""
+def subAsmBase : String := ((MpnLoopFrontEmit.subLprogFront ()).map renderLprogAtt).getD ""
+def andAsmBase : String := ((MpnLoopFrontEmit.andLprog ()).map renderLprogAtt).getD ""
+def iorAsmBase : String := ((MpnLoopFrontEmit.iorLprog ()).map renderLprogAtt).getD ""
+def xorAsmBase : String := ((MpnLoopFrontEmit.xorLprog ()).map renderLprogAtt).getD ""
 
 /-- Rendered line count. -/
 def lineCount (s : String) : Nat := (s.splitOn "\n").length

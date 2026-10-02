@@ -753,13 +753,13 @@ theorem path_lsemL {fn : String} {body : List LinstrRM} {G : CFG} {b : Nat}
 def li (i : LinstrR) : Linstr := ⟨0, i⟩
 
 /-- A straight-line body of three instructions. -/
-def straightBody : Lcmd :=
+def straightBody (_ : Unit) : Lcmd :=
   [li (.Lopn [.reg "a"] "ADD_64" [.reg "a", .imm 1]),
    li (.Lopn [.reg "b"] "XOR_64" [.reg "b", .reg "a"]),
    li (.Lopn [.reg "a"] "MOV_64" [.reg "b"])]
 
 /-- A counted loop: seed, `Llabel top`, body, counter test, back-edge, tail. -/
-def loopBody : Lcmd :=
+def loopBody (_ : Unit) : Lcmd :=
   [li (.Lopn [.reg "c"] "MOV_64" [.imm 4]),
    li (.Llabel .internal 1),
    li (.Lopn [.reg "a"] "ADD_64" [.reg "a", .imm 1]),
@@ -770,7 +770,7 @@ def loopBody : Lcmd :=
    li .Lret]
 
 /-- A conditional: `Lcond ; else ; Lgoto end ; then: ; then ; end: ; tail`. -/
-def ifBody : Lcmd :=
+def ifBody (_ : Unit) : Lcmd :=
   [li (.Lcond (.reg "g") 2),
    li (.Lopn [.reg "a"] "MOV_64" [.imm 0]),
    li (.Lgoto ("f", 3)),
@@ -785,11 +785,12 @@ def shape (c : Lcmd) : Option (Nat × Nat) :=
 
 set_option kat.ms 500 in
 #kat shape [] == some (0, 0)
-#kat shape straightBody == some (1, 0)
-#kat shape loopBody == some (3, 3)
-#kat shape ifBody == some (4, 4)
-#kat (cfgOfLcmd ifBody).bind (fun G => (G.labelOf (ifBody.map Linstr.li_i) 3)) == some 3
-#kat (cfgOfLcmd loopBody).map (fun G => G.predsOf 1) == some [0, 1]
+#kat shape (straightBody ()) == some (1, 0)
+#kat shape (loopBody ()) == some (3, 3)
+#kat shape (ifBody ()) == some (4, 4)
+#kat (cfgOfLcmd (ifBody ())).bind (fun G => (G.labelOf ((ifBody ()).map Linstr.li_i) 3)) ==
+  some 3
+#kat (cfgOfLcmd (loopBody ())).map (fun G => G.predsOf 1) == some [0, 1]
 -- A jump to an absent label.
 #kat (cfgOfLcmd [li (.Lgoto ("f", 9)), li (.Llabel .internal 1)]).isNone
 -- A duplicated label.

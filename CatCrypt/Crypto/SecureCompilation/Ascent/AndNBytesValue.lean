@@ -853,7 +853,7 @@ theorem and_n_bytes_value (prog : List RInstr) (hdec : decodeLprog andNBytes = s
     state satisfying `AndNPost`. The statement inherits `Lean.ofReduceBool` from
     `MpnLoopFrontBodyTie.andLprog_body_eq`. -/
 theorem and_n_front_bytes_value :
-    ∃ fd, (andLprog.get andLprog_isSome).lp_funcs = [("mpn_and_n_loop_owned", fd)] ∧
+    ∃ fd, ((andLprog ()).get andLprog_isSome).lp_funcs = [("mpn_and_n_loop_owned", fd)] ∧
       ∀ (prog : List RInstr), decodeLprog (encodeLfundefBytes fd.lfd_body) = some prog →
         ∀ (sa : AState) (n : Nat), 1 ≤ n → n < 2 ^ 64 → sa.regs "%rcx" = BitVec.ofNat 64 n →
           AndNLayout (sa.regs "%rdi") (sa.regs "%rsi") (sa.regs "%rdx") (sa.regs "%rsp") n →

@@ -432,16 +432,16 @@ def logicRtAsmOpt (comb : SExpr → SExpr → SExpr) (fname : String) : Option S
   (logicRtLprogOpt comb fname).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
 
 /-- The `mpn_and_n` render. -/
-def andRtAsmOpt : Option String := logicRtAsmOpt andSE "mpn_and_n_rt"
+def andRtAsmOpt (_ : Unit) : Option String := logicRtAsmOpt andSE "mpn_and_n_rt"
 
 /-- The `mpn_ior_n` render. -/
-def iorRtAsmOpt : Option String := logicRtAsmOpt iorSE "mpn_ior_n_rt"
+def iorRtAsmOpt (_ : Unit) : Option String := logicRtAsmOpt iorSE "mpn_ior_n_rt"
 
 /-- The `mpn_xor_n` render. -/
-def xorRtAsmOpt : Option String := logicRtAsmOpt xorSE "mpn_xor_n_rt"
+def xorRtAsmOpt (_ : Unit) : Option String := logicRtAsmOpt xorSE "mpn_xor_n_rt"
 
 /-- The `mpn_nand_n` render, the family member that goes through `notE`. -/
-def nandRtAsmOpt : Option String := logicRtAsmOpt nandSE "mpn_nand_n_rt"
+def nandRtAsmOpt (_ : Unit) : Option String := logicRtAsmOpt nandSE "mpn_nand_n_rt"
 
 /-- The 4-argument-ABI physical body of the front-compiled runtime-count loop. -/
 def logicRtPhysBodyOpt (comb : SExpr → SExpr → SExpr) : Option Lcmd :=
@@ -503,10 +503,10 @@ def emitMain : IO Unit := do
   let dir := "bench/mpn_logical_front_compare/gen_com"
   IO.FS.createDirAll dir
   let kernels : List (String × Option String) :=
-    [ ("mpn_and_n_rt", andRtAsmOpt)
-    , ("mpn_ior_n_rt", iorRtAsmOpt)
-    , ("mpn_xor_n_rt", xorRtAsmOpt)
-    , ("mpn_nand_n_rt", nandRtAsmOpt) ]
+    [ ("mpn_and_n_rt", andRtAsmOpt ())
+    , ("mpn_ior_n_rt", iorRtAsmOpt ())
+    , ("mpn_xor_n_rt", xorRtAsmOpt ())
+    , ("mpn_nand_n_rt", nandRtAsmOpt ()) ]
   for (nm, asm) in kernels do
     match asm with
     | some s =>

@@ -74,25 +74,25 @@ def binKinds : List ParamKind :=
   [.limbs .write, .limbs .read, .limbs .read, .sharedLen]
 
 def addEntry : Option (Lprog × WrapperSpec) :=
-  entry addLprogFront "mpn_add_n"
+  entry (addLprogFront ()) "mpn_add_n"
     "Limbwise little-endian sum: rp = ap + bp mod 2^(64 n)."
     binNames binKinds .carry
 
 def subEntry : Option (Lprog × WrapperSpec) :=
-  entry subLprogFront "mpn_sub_n"
+  entry (subLprogFront ()) "mpn_sub_n"
     "Limbwise little-endian difference: rp = ap - bp mod 2^(64 n)."
     binNames binKinds .borrow
 
 def andEntry : Option (Lprog × WrapperSpec) :=
-  entry andLprog "mpn_and_n" "Limbwise AND: rp[i] = ap[i] & bp[i]."
+  entry (andLprog ()) "mpn_and_n" "Limbwise AND: rp[i] = ap[i] & bp[i]."
     binNames binKinds .unused
 
 def iorEntry : Option (Lprog × WrapperSpec) :=
-  entry iorLprog "mpn_ior_n" "Limbwise OR: rp[i] = ap[i] | bp[i]."
+  entry (iorLprog ()) "mpn_ior_n" "Limbwise OR: rp[i] = ap[i] | bp[i]."
     binNames binKinds .unused
 
 def xorEntry : Option (Lprog × WrapperSpec) :=
-  entry xorLprog "mpn_xor_n" "Limbwise XOR: rp[i] = ap[i] ^ bp[i]."
+  entry (xorLprog ()) "mpn_xor_n" "Limbwise XOR: rp[i] = ap[i] ^ bp[i]."
     binNames binKinds .unused
 
 /-- The five crate kernels, in extern-block order. -/

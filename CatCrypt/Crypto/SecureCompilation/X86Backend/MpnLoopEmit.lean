@@ -1043,19 +1043,19 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
 /-- The FRONT-sourced deployed `.s` text for each core kernel (rendered from the
     `MpnLoopFrontEmit` rolled-loop `Lprog`; `""` iff the front declines, which
     the `*_isSome` gates in `MpnLoopFrontEmit` rule out). -/
-def addAsmFront  : String := (MpnLoopFrontEmit.addLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def subAsmFront  : String := (MpnLoopFrontEmit.subLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def andAsmFront  : String := (MpnLoopFrontEmit.andLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def iorAsmFront  : String := (MpnLoopFrontEmit.iorLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def xorAsmFront  : String := (MpnLoopFrontEmit.xorLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def comAsmFront  : String := (MpnLoopFrontEmit.comLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def copyAsmFront : String := (MpnLoopFrontEmit.copyLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
-def zeroAsmFront : String := (MpnLoopFrontEmit.zeroLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def addAsmFront  : String := ((MpnLoopFrontEmit.addLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def subAsmFront  : String := ((MpnLoopFrontEmit.subLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def andAsmFront  : String := ((MpnLoopFrontEmit.andLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def iorAsmFront  : String := ((MpnLoopFrontEmit.iorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def xorAsmFront  : String := ((MpnLoopFrontEmit.xorLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def comAsmFront  : String := ((MpnLoopFrontEmit.comLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def copyAsmFront : String := ((MpnLoopFrontEmit.copyLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def zeroAsmFront : String := ((MpnLoopFrontEmit.zeroLprog ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
 
 /-- The FRONT-sourced normalization scan (`MpnLoopFrontEmit.normLprogFront`):
     branch-free forward scan returning the normalized u32 limb length of an
     `n`-u64-limb array in `RAX` (scalar-accumulator export, imm-`1` seed). -/
-def normAsmFront : String := (MpnLoopFrontEmit.normLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def normAsmFront : String := ((MpnLoopFrontEmit.normLprogFront ()).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
 
 -- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
 -- re-evaluate the optimizing back-end renderOwned at elaboration.

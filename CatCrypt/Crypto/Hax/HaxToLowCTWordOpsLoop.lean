@@ -812,7 +812,7 @@ theorem mul1_hax_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi)
     (hrp : env "rp" = some (.array (intCells (mul1Init.lookup V) R)))
     (hv : env "v" = some (.int (vVar.lookup V).toNat)) (hO : env "ONES" = some (.int ones))
     (hn : env "n" = some (.int (mul1Count.lookup V).toNat)) :
-    ∃ out, mul1RtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+    ∃ out, (mul1RtProgOpt ()).map (fun c => ComL.denote c V) = some out ∧
       ∀ fuel, (mul1Count.lookup V).toNat ≤ fuel →
         (denote' bi fuel mul1ProgHax env).1 =
           .val (.tuple [.array (intCells out R),
@@ -865,7 +865,7 @@ theorem mul1_hax_eq_compiled_runtime (V : Ctxt.Valuation Gouter) {R U : Nat} (hR
     (hrp : env "rp" = some (.array (intCells (mul1Init.lookup V) R)))
     (hv : env "v" = some (.int (vVar.lookup V).toNat)) (hO : env "ONES" = some (.int ones))
     (hn : env "n" = some (.int (mul1Count.lookup V).toNat)) :
-    ∃ out, mul1RtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+    ∃ out, (mul1RtProgOpt ()).map (fun c => ComL.denote c V) = some out ∧
       ∀ fuel, (mul1Count.lookup V).toNat ≤ fuel →
         (denote' _root_.Hax.hax64Builtins fuel mul1ProgHax env).1 =
           .val (.tuple [.array (intCells out R),

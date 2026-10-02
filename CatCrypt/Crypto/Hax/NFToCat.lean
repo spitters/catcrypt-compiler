@@ -805,7 +805,7 @@ theorem dec_arr_ofFn {n : Nat} (g : Fin n → Int) :
 /-- The names of the calls the fragment translates: the scalar calls `hax64NFScalar`,
     `index` and `array_update`. -/
 def CatName (f : String) : Prop :=
-  f ∈ ImpToNF.hax64NFScalar ∨ f = "index" ∨ f = "array_update"
+  f ∈ ImpToNF.hax64NFScalar () ∨ f = "index" ∨ f = "array_update"
 
 /-- The table `bi` agrees with the `u64` table at the names of the calls the fragment
     translates. -/
@@ -815,7 +815,7 @@ def SubTable (bi : _root_.Hax.Builtins) : Prop :=
 /-- A scalar call `scalarCatExpr` translates has a name of `hax64NFScalar`. -/
 theorem scalarCatExpr_name {Δ : Ctxt catCryptDialect} {f : String} {a b : Var Δ (.sword 64)}
     {e : Expr catCryptDialect Δ (.sword 64)} (h : scalarCatExpr f a b = some e) :
-    f ∈ ImpToNF.hax64NFScalar := by
+    f ∈ ImpToNF.hax64NFScalar () := by
   unfold scalarCatExpr at h
   split at h <;> (try cases h) <;> decide
 

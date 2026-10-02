@@ -379,13 +379,13 @@ def cmpInvs : HVector (fun ty => Ctxt.Var Gouter ty) [AO, AO, r64] :=
     back-edge, the trip counter seeded from the runtime `n` register, the
     one-word result array threaded as the loop accumulator and `ap`/`bp`/`n` as
     loop invariants. `none` if the front declines. -/
-def cmpRtProgOpt : Option (ComL Gouter AR) :=
+def cmpRtProgOpt (_ : Unit) : Option (ComL Gouter AR) :=
   rolledForLoopNRt (Γouter := Gouter) (accCTy := .memref NR)
     (invCTys := [.memref NU, .memref NU, .sword 64])
     vmBody "rp" cmpLimbBodyLowCT cmpCount cmpInit cmpInvs
 
 -- The front accepts the body and wraps it in a `ComL.forLoopNRt`.
-#guard cmpRtProgOpt.isSome
+#guard (cmpRtProgOpt ()).isSome
 
 /-- **The emitted loop's denotation is the `JLoopBodyN` fold of the front
     body.** Whenever the front compiles `cmpLimbBodyLowCT` to `update`, the
@@ -401,7 +401,7 @@ theorem cmpRtProg_denote
     (hupd : Dialects.TranslateDialectRolledLoop.frontLoopBodyJ
       (accCTy := .memref NR) vmBody "rp" cmpLimbBodyLowCT = some update)
     (V : Ctxt.Valuation Gouter) :
-    cmpRtProgOpt.map (fun c => ComL.denote c V)
+    (cmpRtProgOpt ()).map (fun c => ComL.denote c V)
       = some (JLoopBodyN.denote ⟨(cmpCount.lookup V).toNat, update⟩
           (Expr.lookupArgs cmpInvs V) (cmpInit.lookup V)) :=
   rolledForLoopNRt_denote vmBody "rp" cmpLimbBodyLowCT cmpCount cmpInit cmpInvs
@@ -413,7 +413,7 @@ theorem cmpRtProg_denote
     under the C symbol `fname` (`RDI = rp`, `RSI = ap`, `RDX = bp`,
     `RCX = n`). -/
 def cmpRtLprogOpt (fname : String) : Option Lprog :=
-  cmpRtProgOpt.map (fun c =>
+  (cmpRtProgOpt ()).map (fun c =>
     ComL.toLprogPhysAbi c fname (argName 0) [argName 1, argName 2]
       (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"]
       [64, 64, 64, 64])
@@ -423,22 +423,22 @@ def cmpRtAsmOpt (fname : String) : Option String :=
   (cmpRtLprogOpt fname).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
 
 /-- The 4-argument-ABI physical body of the front-compiled runtime-count loop. -/
-def cmpRtPhysBodyOpt : Option Lcmd :=
-  cmpRtProgOpt.map (fun c =>
+def cmpRtPhysBodyOpt (_ : Unit) : Option Lcmd :=
+  (cmpRtProgOpt ()).map (fun c =>
     (ComL.toLfundefPhysAbi c (argName 0) [argName 1, argName 2]
       (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"]
       [64, 64, 64, 64]).lfd_body)
 
 -- The physical body carries a real back-edge: an internal label and a
 -- conditional jump, so the emit is a counted loop and not an unrolled chain.
-#guard (cmpRtPhysBodyOpt.map (fun body =>
+#guard ((cmpRtPhysBodyOpt ()).map (fun body =>
   (body.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false))
     && (body.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false))))
   = some true
 
 -- `rp` (RDI), `ap` (RSI) and `bp` (RDX) are the three pointer arguments; `n`
 -- (RCX) is a scalar, so no access may reload its base from its qsave slot.
-#guard (cmpRtPhysBodyOpt.map (fun b =>
+#guard ((cmpRtPhysBodyOpt ()).map (fun b =>
   !(reloadSlots b).isEmpty
     && (reloadSlots b).all (fun q =>
         q == "qsave.RDI" || q == "qsave.RSI" || q == "qsave.RDX")))

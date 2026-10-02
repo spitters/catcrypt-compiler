@@ -229,7 +229,7 @@ theorem pieceDec_bt (c : Nat) (hc : c < 16) :
     PieceDec (encBtImm 1 c 0, .bt (SailX86Decoder.regName c) (.imm 0)) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_bt canonAlloc (SailX86Decoder.regName c) 0 rest (by decide)
+  have e := roundtrip_bt (canonAlloc ()) (SailX86Decoder.regName c) 0 rest (by decide)
   have he : encBtImm 1 c 0 = ScalarEncoder.encBtImm8 c 0 := by
     simp [encBtImm, ScalarEncoder.encBtImm8, rexOpt_w1]
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon c hc,
@@ -241,7 +241,7 @@ theorem pieceDec_adcx (d s : Nat) (hd : d < 16) (hs : s < 16) :
       .adcx (SailX86Decoder.regName d) (.reg (SailX86Decoder.regName s))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_adcx canonAlloc (SailX86Decoder.regName d) (SailX86Decoder.regName s)
+  have e := roundtrip_adcx (canonAlloc ()) (SailX86Decoder.regName d) (SailX86Decoder.regName s)
     rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon d hd,
     regOf_canon s hs, gpNum_regName d hd, gpNum_regName s hs] using e
@@ -657,7 +657,7 @@ theorem pieceDec_loadMem (d b : Nat) (off : Int) (hd : d < 16) (hb : b < 16)
       .loadMem (SailX86Decoder.regName d) (SailX86Decoder.regName b) off) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_loadMem32 canonAlloc (SailX86Decoder.regName d)
+  have e := roundtrip_loadMem32 (canonAlloc ()) (SailX86Decoder.regName d)
     (SailX86Decoder.regName b) off rest h
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, regOf_canon d hd, regOf_canon b hb,
     gpNum_regName d hd, gpNum_regName b hb, LprogJInstrBytesAgree.encMemMovw_one] using e
@@ -669,7 +669,7 @@ theorem pieceDec_storeMem (s b : Nat) (off : Int) (hs : s < 16) (hb : b < 16)
       .storeMem (SailX86Decoder.regName b) off (.reg (SailX86Decoder.regName s))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_storeMem32 canonAlloc (SailX86Decoder.regName b)
+  have e := roundtrip_storeMem32 (canonAlloc ()) (SailX86Decoder.regName b)
     (SailX86Decoder.regName s) off rest h
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon s hs,
     regOf_canon b hb, gpNum_regName s hs, gpNum_regName b hb,
@@ -993,11 +993,11 @@ theorem pieceDec_adcxRsp (d : Nat) (off : Int) (hd : d < 16) (h : dispOk32 off =
       .adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_adcxMem32 canonAlloc (SailX86Decoder.regName d) "%rsp" off rest h
-  have hrsp : AsmPrinter.regOf canonAlloc "%rsp" = "%rsp" := by decide
+  have e := roundtrip_adcxMem32 (canonAlloc ()) (SailX86Decoder.regName d) "%rsp" off rest h
+  have hrsp : AsmPrinter.regOf (canonAlloc ()) "%rsp" = "%rsp" := by decide
   have hg4 : ScalarEncoder.gpNum "%rsp" = 4 := by decide
   have heq : encAdxRspMem 0x66 d off
-      = ScalarEncoder.encodeJInstr canonAlloc (.adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
+      = ScalarEncoder.encodeJInstr (canonAlloc ()) (.adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
     simp only [ScalarEncoder.encodeJInstr, regOf_canon d hd, gpNum_regName d hd, hrsp, hg4,
       encAdxRspMem, ScalarEncoder.memTail]
     split_ifs <;> simp_all (config := { decide := true })
@@ -1659,8 +1659,8 @@ theorem pieceDec_storeImmRsp (off : Int) (v : Nat) (hv : v < 2 ^ 64)
     PieceDec (encMovImmRspMem 1 off v, .storeMem "%rsp" off (.imm v)) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_storeMemImm32 canonAlloc "%rsp" off v rest hv hf h
-  have h4 : ScalarEncoder.gpNum (AsmPrinter.regOf canonAlloc "%rsp") = 4 := by decide
+  have e := roundtrip_storeMemImm32 (canonAlloc ()) "%rsp" off v rest hv hf h
+  have h4 : ScalarEncoder.gpNum (AsmPrinter.regOf (canonAlloc ()) "%rsp") = 4 := by decide
   have h5 : SailX86Decoder.regName 4 = "%rsp" := by decide
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, h4, h5, encMovImmRspMem_eq]
     using e
@@ -1850,7 +1850,7 @@ theorem pieceDec_movImm64 (D : String) (v : Nat) (hv : v < 2 ^ 64)
   have h31 : ¬ v < 2147483648 := by
     simp [ScalarEncoder.fitsImm32S] at hf
     omega
-  have e := roundtrip_movImm canonAlloc (phys D) v rest hv
+  have e := roundtrip_movImm (canonAlloc ()) (phys D) v rest hv
   simpa [ScalarEncoder.encodeJInstr, h31, renameJ, nameOf, operandOf, phys,
     regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D)] using e
 
@@ -1946,7 +1946,7 @@ theorem pieceDec_test (C : String) :
     PieceDec (encAluRRw 1 0x85 (gpNumU C) (gpNumU C), .test (phys C) (.reg (phys C))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_test canonAlloc (phys C) (phys C) rest
+  have e := roundtrip_test (canonAlloc ()) (phys C) (phys C) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
     regOf_canon _ (gpNumU_lt_16 C), gpNum_regName _ (gpNumU_lt_16 C),
     LprogJInstrBytesAgree.encAluRRw_one] using e
@@ -1956,7 +1956,7 @@ theorem pieceDec_cmove (D S : String) :
     PieceDec (enc0FRRw 1 0x44 (gpNumU D) (gpNumU S), .cmove (phys D) (.reg (phys S))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_cmove canonAlloc (phys D) (phys S) rest
+  have e := roundtrip_cmove (canonAlloc ()) (phys D) (phys S) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
     regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
     regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),
@@ -1967,7 +1967,7 @@ theorem pieceDec_cmovne (D S : String) :
     PieceDec (enc0FRRw 1 0x45 (gpNumU D) (gpNumU S), .cmovne (phys D) (.reg (phys S))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_cmovne canonAlloc (phys D) (phys S) rest
+  have e := roundtrip_cmovne (canonAlloc ()) (phys D) (phys S) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
     regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
     regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),

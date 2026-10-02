@@ -138,11 +138,11 @@ def binLprog (name : String) (op : SExpr → SExpr → SExpr) : Option Lprog :=
     name (argName 0) [argName 1, argName 2]
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]
 
-def andLprog : Option Lprog := binLprog "mpn_and_n_loop_owned" .SAnd
+def andLprog (_ : Unit) : Option Lprog := binLprog "mpn_and_n_loop_owned" .SAnd
 /-- `a OR b = (a XOR b) XOR (a AND b)` — the `SExpr` alphabet has no `SOr`. -/
-def iorLprog : Option Lprog := binLprog "mpn_ior_n_loop_owned"
+def iorLprog (_ : Unit) : Option Lprog := binLprog "mpn_ior_n_loop_owned"
   (fun x y => .SXor (.SXor x y) (.SAnd x y))
-def xorLprog : Option Lprog := binLprog "mpn_xor_n_loop_owned" .SXor
+def xorLprog (_ : Unit) : Option Lprog := binLprog "mpn_xor_n_loop_owned" .SXor
 
 /-- Unary no-carry body: `out[i] = f a[i]` (`com`: `~a`, `copyi`: `a`). -/
 def unBody (f : SExpr → SExpr) : LowCT := seqAll
@@ -170,9 +170,9 @@ def unLprog (name : String) (f : SExpr → SExpr) : Option Lprog :=
     name (argName 0) [argName 1]
     ["RDI", "RSI", "RDX"] [64, 64, 64]
 
-def comLprog : Option Lprog := unLprog "mpn_com_n_loop_owned"
+def comLprog (_ : Unit) : Option Lprog := unLprog "mpn_com_n_loop_owned"
   (fun x => .SXor x (.SLit mask64))
-def copyLprog : Option Lprog := unLprog "mpn_copyi_loop_owned" (fun x => x)
+def copyLprog (_ : Unit) : Option Lprog := unLprog "mpn_copyi_loop_owned" (fun x => x)
 
 /-- Nullary body: `out[i] = 0`. -/
 def zeroBody : LowCT := seqAll
@@ -186,7 +186,7 @@ def vmZero : VarMap ΓbodyZero :=
 
 def ΓouterZero : Ctxt jasminDialect := [.reg 64, AN]
 
-def zeroLprog : Option Lprog :=
+def zeroLprog (_ : Unit) : Option Lprog :=
   rolledForLoopNRtLprog (Γouter := ΓouterZero) (accCTy := .memref N)
     (invCTys := [])
     vmZero "out" zeroBody
@@ -220,7 +220,7 @@ def gmpAbiArgs : List String := ["RDI", "RSI", "RDX", "RCX"]
     (`addBodyLowCT`, acc `cy`, two half-add stages) over the GMP-positional
     `ΓouterCarry`. `count = n`, `init = cy0seed` (imm-0), `invs = [a, b, out]`
     (the `Γbody`/`vmBody` binder order). -/
-def addRtProgOpt : Option (ComL ΓouterCarry (mapTy (.sword 64))) :=
+def addRtProgOpt (_ : Unit) : Option (ComL ΓouterCarry (mapTy (.sword 64))) :=
   rolledForLoopNRt (Γouter := ΓouterCarry) (accCTy := .sword 64)
     (invCTys := [.memref N, .memref N, .memref N])
     CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype.vmBody
@@ -262,7 +262,7 @@ def vmBodySub : VarMap Γbody :=
       (t := .sword 64) "bw")
 
 /-- `mpn_sub_n` front loop (borrow accumulator `bw`, seed `0` = no borrow-in). -/
-def subRtProgOpt : Option (ComL ΓouterCarry (mapTy (.sword 64))) :=
+def subRtProgOpt (_ : Unit) : Option (ComL ΓouterCarry (mapTy (.sword 64))) :=
   rolledForLoopNRt (Γouter := ΓouterCarry) (accCTy := .sword 64)
     (invCTys := [.memref N, .memref N, .memref N])
     vmBodySub "bw" subBodyLowCT
@@ -274,15 +274,15 @@ def subRtProgOpt : Option (ComL ΓouterCarry (mapTy (.sword 64))) :=
 
 /-- `mpn_add_n_loop_owned` through the scalar-accumulator export: carry seeded
     `MOV acc, #0` (`mpnSeedImm`), carry-out returned in `RAX`. -/
-def addLprogFront : Option Lprog :=
-  addRtProgOpt.map (fun c =>
+def addLprogFront (_ : Unit) : Option Lprog :=
+  (addRtProgOpt ()).map (fun c =>
     ComL.toLprogPhysAbiScalarAcc c "mpn_add_n_loop_owned"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64])
 
 /-- `mpn_sub_n_loop_owned` through the scalar-accumulator export: borrow seeded
     `MOV acc, #0`, borrow-out returned in `RAX`. -/
-def subLprogFront : Option Lprog :=
-  subRtProgOpt.map (fun c =>
+def subLprogFront (_ : Unit) : Option Lprog :=
+  (subRtProgOpt ()).map (fun c =>
     ComL.toLprogPhysAbiScalarAcc c "mpn_sub_n_loop_owned"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64])
 
@@ -349,7 +349,7 @@ def normSeedImm : ImmSlotMap := fun j => if j == 2 then some 1 else none
 
 /-- Normalization-scan front loop (running-length accumulator `len`,
     seed `1`). -/
-def normRtProgOpt : Option (ComL ΓouterNorm (mapTy (.sword 64))) :=
+def normRtProgOpt (_ : Unit) : Option (ComL ΓouterNorm (mapTy (.sword 64))) :=
   rolledForLoopNRt (Γouter := ΓouterNorm) (accCTy := .sword 64)
     (invCTys := [.memref N])
     vmNorm "len" normBody
@@ -360,8 +360,8 @@ def normRtProgOpt : Option (ComL ΓouterNorm (mapTy (.sword 64))) :=
 /-- `mpn_norm_u32len_loop_owned` through the scalar-accumulator export: length
     seeded `MOV acc, #1` (`normSeedImm`), normalized u32 length returned in
     `RAX`. -/
-def normLprogFront : Option Lprog :=
-  normRtProgOpt.map (fun c =>
+def normLprogFront (_ : Unit) : Option Lprog :=
+  (normRtProgOpt ()).map (fun c =>
     ComL.toLprogPhysAbiScalarAcc c "mpn_norm_u32len_loop_owned"
       (fun _ => none) normSeedImm ["RDI", "RSI"] [64, 64])
 
@@ -390,19 +390,19 @@ Each kernel's front compile returns `some` (the covered lowering accepted the
 body and the export produced an `Lprog`). Byte-level conformance is the
 external libgmp KAT (`bench/integration/Makefile.loop_owned`), NOT these. -/
 
-theorem andLprog_isSome : andLprog.isSome := by native_decide
-theorem iorLprog_isSome : iorLprog.isSome := by native_decide
-theorem xorLprog_isSome : xorLprog.isSome := by native_decide
-theorem comLprog_isSome : comLprog.isSome := by native_decide
-theorem copyLprog_isSome : copyLprog.isSome := by native_decide
-theorem zeroLprog_isSome : zeroLprog.isSome := by native_decide
-theorem addLprogFront_isSome : addLprogFront.isSome := by native_decide
-theorem subLprogFront_isSome : subLprogFront.isSome := by native_decide
+theorem andLprog_isSome : (andLprog ()).isSome := by native_decide
+theorem iorLprog_isSome : (iorLprog ()).isSome := by native_decide
+theorem xorLprog_isSome : (xorLprog ()).isSome := by native_decide
+theorem comLprog_isSome : (comLprog ()).isSome := by native_decide
+theorem copyLprog_isSome : (copyLprog ()).isSome := by native_decide
+theorem zeroLprog_isSome : (zeroLprog ()).isSome := by native_decide
+theorem addLprogFront_isSome : (addLprogFront ()).isSome := by native_decide
+theorem subLprogFront_isSome : (subLprogFront ()).isSome := by native_decide
 
 /- The normalization-scan front compile returns `some`, and so does its
 scalar-accumulator export (elaboration-time checks; no axiom). -/
-#guard normRtProgOpt.isSome
-#guard normLprogFront.isSome
+#guard (normRtProgOpt ()).isSome
+#guard (normLprogFront ()).isSome
 
 /-! ## 4. Emit driver -/
 
@@ -417,14 +417,14 @@ def emitMain : IO Unit := do
     match o with
     | some lp => IO.FS.writeFile p (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp)
     | none => throw (IO.userError s!"front-compile failed for {p}")
-  wr "bench/integration/gen_com/mpn_and_n_loop_owned.s" andLprog
-  wr "bench/integration/gen_com/mpn_ior_n_loop_owned.s" iorLprog
-  wr "bench/integration/gen_com/mpn_xor_n_loop_owned.s" xorLprog
-  wr "bench/integration/gen_com/mpn_com_n_loop_owned.s" comLprog
-  wr "bench/integration/gen_com/mpn_copyi_loop_owned.s" copyLprog
-  wr "bench/integration/gen_com/mpn_zero_loop_owned.s" zeroLprog
-  wr "bench/integration/gen_com/mpn_add_n_loop_owned.s" addLprogFront
-  wr "bench/integration/gen_com/mpn_sub_n_loop_owned.s" subLprogFront
+  wr "bench/integration/gen_com/mpn_and_n_loop_owned.s" (andLprog ())
+  wr "bench/integration/gen_com/mpn_ior_n_loop_owned.s" (iorLprog ())
+  wr "bench/integration/gen_com/mpn_xor_n_loop_owned.s" (xorLprog ())
+  wr "bench/integration/gen_com/mpn_com_n_loop_owned.s" (comLprog ())
+  wr "bench/integration/gen_com/mpn_copyi_loop_owned.s" (copyLprog ())
+  wr "bench/integration/gen_com/mpn_zero_loop_owned.s" (zeroLprog ())
+  wr "bench/integration/gen_com/mpn_add_n_loop_owned.s" (addLprogFront ())
+  wr "bench/integration/gen_com/mpn_sub_n_loop_owned.s" (subLprogFront ())
   IO.println "wrote 8 front-sourced mpn loop kernels (add/sub via scalar-acc export)"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit

@@ -318,7 +318,7 @@ def andBodyOps : List LinstrRM :=
   , (.Lopn [.reg "r8"] "STOREIDX" [.arrIdx "a3" "a2" 8, .reg "r7"], .store 64 8) ]
 
 /-- The straight-line walk of the front's `mpn_and_n` body is `andBodyOps`. -/
-theorem straightOpsMem_andUpdate : straightOpsMem 4 andUpdate 4 = andBodyOps := by
+theorem straightOpsMem_andUpdate : straightOpsMem 4 (andUpdate ()) 4 = andBodyOps := by
   rfl
 
 /-- The canonicalised `mpn_and_n` chain at loop depth `4`, accumulator `a3`,
@@ -346,7 +346,7 @@ def andChainRM : List LinstrRM :=
 
 /-- **The canonicalised chain is the literal.** -/
 theorem andChain_node_eq :
-    canonNodeRM (logicTau 4 8 "a3") 4 "a3" "a2" andUpdate false ["a0", "a1"] = andChainRM := by
+    canonNodeRM (logicTau 4 8 "a3") 4 "a3" "a2" (andUpdate ()) false ["a0", "a1"] = andChainRM := by
   have h4 : logicTau 4 8 "a3" "r4" = "L4_r4" :=
     logicTau_regName (d := 4) (sl := 8) (out := "a3") (k := 4) (by decide)
   have h5 : logicTau 4 8 "a3" "r5" = "L4_r5" :=

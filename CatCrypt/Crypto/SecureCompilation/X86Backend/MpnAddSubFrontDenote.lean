@@ -764,7 +764,7 @@ abbrev outVar : Ctxt.Var ΓouterCarry AN := .there (.there (.there (.there .here
     the trip count read from `n`, the operand arrays threaded as invariants, the
     seed slot as the carry-in. No front-compilation hypothesis remains. -/
 theorem addRtProg_fold (V : Ctxt.Valuation ΓouterCarry) :
-    addRtProgOpt.map (fun c => ComL.denote c V)
+    (addRtProgOpt ()).map (fun c => ComL.denote c V)
       = some (addCarryFold (aVar.lookup V) (bVar.lookup V) (nVar.lookup V).toNat
           (seedVar.lookup V)) := by
   refine (rolledForLoopNRt_denote (Γouter := ΓouterCarry) (accCTy := .sword 64)
@@ -789,7 +789,7 @@ theorem addRtProg_fold (V : Ctxt.Valuation ΓouterCarry) :
 /-- **The runtime-trip `mpn_sub_n` program denotes the borrow fold.** As
     `addRtProg_fold`, for the borrow accumulator. -/
 theorem subRtProg_fold (V : Ctxt.Valuation ΓouterCarry) :
-    subRtProgOpt.map (fun c => ComL.denote c V)
+    (subRtProgOpt ()).map (fun c => ComL.denote c V)
       = some (subBorrowFold (aVar.lookup V) (bVar.lookup V) (nVar.lookup V).toNat
           (seedVar.lookup V)) := by
   refine (rolledForLoopNRt_denote (Γouter := ΓouterCarry) (accCTy := .sword 64)
@@ -850,7 +850,7 @@ theorem subBorrowFold_val {NA NB : Nat} (NR : Nat) (ap : Fin NA → BitVec 64)
 theorem addRtProg_val (V : Ctxt.Valuation ΓouterCarry)
     (hn : (nVar.lookup V).toNat ≤ N) (h0 : (seedVar.lookup V).toNat ≤ 1) :
     ∃ c : BitVec 64,
-      addRtProgOpt.map (fun c => ComL.denote c V) = some c
+      (addRtProgOpt ()).map (fun c => ComL.denote c V) = some c
         ∧ c.toNat = (bignumVal (cells (aVar.lookup V) (nVar.lookup V).toNat)
               + bignumVal (cells (bVar.lookup V) (nVar.lookup V).toNat)
               + (seedVar.lookup V).toNat) / (2 ^ 64) ^ (nVar.lookup V).toNat
@@ -865,7 +865,7 @@ theorem addRtProg_val (V : Ctxt.Valuation ΓouterCarry)
 theorem subRtProg_val (V : Ctxt.Valuation ΓouterCarry)
     (hn : (nVar.lookup V).toNat ≤ N) (h0 : (seedVar.lookup V).toNat ≤ 1) :
     ∃ bw : BitVec 64,
-      subRtProgOpt.map (fun c => ComL.denote c V) = some bw
+      (subRtProgOpt ()).map (fun c => ComL.denote c V) = some bw
         ∧ bw.toNat = if bignumVal (cells (aVar.lookup V) (nVar.lookup V).toNat)
               < bignumVal (cells (bVar.lookup V) (nVar.lookup V).toNat)
                 + (seedVar.lookup V).toNat then 1 else 0 :=

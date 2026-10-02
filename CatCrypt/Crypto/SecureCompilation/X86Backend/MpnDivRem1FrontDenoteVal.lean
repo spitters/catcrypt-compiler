@@ -108,7 +108,7 @@ theorem divRtProg_val_rem (V : Ctxt.Valuation Gouter)
     (hv : (dinvVar.lookup V).toNat
       = (2 ^ 128 - 1) / (dVar.lookup V).toNat - 2 ^ 64)
     (hn : 1 ≤ (nVar.lookup V).toNat) :
-    divRem1RtProgOpt.map (fun c => ComL.denote c V)
+    (divRem1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (divFold (upVar.lookup V) (dVar.lookup V)
           ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) := by
   rw [divRtProg_fold V]
@@ -131,7 +131,7 @@ theorem divRtProg_val (V : Ctxt.Valuation Gouter)
     (hv : (dinvVar.lookup V).toNat
       = (2 ^ 128 - 1) / (dVar.lookup V).toNat - 2 ^ 64)
     (hn : 1 ≤ (nVar.lookup V).toNat) :
-    divRem1RtProgOpt.map (fun c => ComL.denote c V)
+    (divRem1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (divFold (upVar.lookup V) (dVar.lookup V)
           ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) :=
   divRtProg_val_rem V hrs htop (by rw [h0]; exact lt_of_lt_of_le (by simp) hd2)

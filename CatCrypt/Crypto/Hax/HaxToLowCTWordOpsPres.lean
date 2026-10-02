@@ -749,7 +749,7 @@ theorem mul1_src_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : Mul
     (hrp : env "rp" = some (.array (intCells (mul1Init.lookup V) R)))
     (hv : env "v" = some (.int (vVar.lookup V).toNat)) (hO : env "ONES" = some (.int ones))
     (hn : env "n" = some (.int (mul1Count.lookup V).toNat)) :
-    ∃ out, mul1RtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+    ∃ out, (mul1RtProgOpt ()).map (fun c => ComL.denote c V) = some out ∧
       ∀ fuel, (mul1Count.lookup V).toNat ≤ fuel →
         (denote' bi fuel mul1ProgSrc env).1 =
           .val (.tuple [.array (intCells out R),

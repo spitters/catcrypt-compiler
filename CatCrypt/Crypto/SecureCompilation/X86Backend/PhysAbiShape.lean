@@ -1269,7 +1269,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote (mul1Update
 
 /-- The front-compiled `mpn_mul_1` is the single-loop program over its limb body. -/
 theorem mul1RtProgOpt_eq :
-    mul1RtProgOpt = some (singleLoop mul1Update mul1Count mul1Init mul1Invs) := by
+    mul1RtProgOpt () = some (singleLoop mul1Update mul1Count mul1Init mul1Invs) := by
   unfold mul1RtProgOpt Dialects.TranslateDialectRuntimeLoop.rolledForLoopNRt
     Dialects.TranslateDialectRuntimeLoop.rolledForLoopNRtCont
   erw [mul1Update_eq]

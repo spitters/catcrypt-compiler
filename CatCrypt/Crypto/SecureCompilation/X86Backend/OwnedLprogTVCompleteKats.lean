@@ -224,30 +224,30 @@ def rotBody (n : Nat) : Lcmd :=
     (List.range n).map (fun i => ⟨0, .Lopn [.reg s!"r{i}"] "MOV:64" [.reg s!"r{i+1}"]⟩) ++
     [⟨0, .Lcond (.reg "r0") 1⟩, ⟨0, .Lret⟩]
 
-#kat twoAddrBlocksWF (firstOuts MpnLoopFrontEmit.andLprog) tagOf
-    (preTwoAddr MpnLoopFrontEmit.andLprog) &&
-  blockCount (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.andLprog)) == 3
-#kat ownedCheckM (firstOuts MpnLoopFrontEmit.andLprog)
-  (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.andLprog))
-  (typeBody tagOf (twoAddrBody (preTwoAddr MpnLoopFrontEmit.andLprog)))
-#kat twoAddrBlocksWF (firstOuts MpnLoopFrontEmit.addLprogFront) tagOf
-    (preTwoAddr MpnLoopFrontEmit.addLprogFront) &&
-  blockCount (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.addLprogFront)) == 3 &&
-  copyCount (preTwoAddr MpnLoopFrontEmit.addLprogFront) == 0
-#kat ownedCheckM (firstOuts MpnLoopFrontEmit.addLprogFront)
-  (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.addLprogFront))
-  (typeBody tagOf (twoAddrBody (preTwoAddr MpnLoopFrontEmit.addLprogFront)))
-#kat dropBlocksWF (firstOuts MpnLoopFrontEmit.addLprogFront)
-    (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))) &&
-  ((loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))).filter
+#kat twoAddrBlocksWF (firstOuts (MpnLoopFrontEmit.andLprog ())) tagOf
+    (preTwoAddr (MpnLoopFrontEmit.andLprog ())) &&
+  blockCount (typeBody tagOf (preTwoAddr (MpnLoopFrontEmit.andLprog ()))) == 3
+#kat ownedCheckM (firstOuts (MpnLoopFrontEmit.andLprog ()))
+  (typeBody tagOf (preTwoAddr (MpnLoopFrontEmit.andLprog ())))
+  (typeBody tagOf (twoAddrBody (preTwoAddr (MpnLoopFrontEmit.andLprog ()))))
+#kat twoAddrBlocksWF (firstOuts (MpnLoopFrontEmit.addLprogFront ())) tagOf
+    (preTwoAddr (MpnLoopFrontEmit.addLprogFront ())) &&
+  blockCount (typeBody tagOf (preTwoAddr (MpnLoopFrontEmit.addLprogFront ()))) == 3 &&
+  copyCount (preTwoAddr (MpnLoopFrontEmit.addLprogFront ())) == 0
+#kat ownedCheckM (firstOuts (MpnLoopFrontEmit.addLprogFront ()))
+  (typeBody tagOf (preTwoAddr (MpnLoopFrontEmit.addLprogFront ())))
+  (typeBody tagOf (twoAddrBody (preTwoAddr (MpnLoopFrontEmit.addLprogFront ()))))
+#kat dropBlocksWF (firstOuts (MpnLoopFrontEmit.addLprogFront ()))
+    (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))) &&
+  ((loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))).filter
     (·.2)).length == 6 &&
-  blockCount (srcOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
+  blockCount (srcOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
     == 3
-#kat keptOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))) ==
-  typeBody tagOf (foldIndexedBody (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront)))
-#kat ownedCheckM (firstOuts MpnLoopFrontEmit.addLprogFront)
-  (srcOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
-  (keptOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
+#kat keptOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))) ==
+  typeBody tagOf (foldIndexedBody (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ()))))
+#kat ownedCheckM (firstOuts (MpnLoopFrontEmit.addLprogFront ()))
+  (srcOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
+  (keptOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
 set_option kat.ms 1000 in
 #kat blocksFrag (typeBody tagOf (rotBody 80)) &&
   blockCount (typeBody tagOf (rotBody 80)) == 2 &&

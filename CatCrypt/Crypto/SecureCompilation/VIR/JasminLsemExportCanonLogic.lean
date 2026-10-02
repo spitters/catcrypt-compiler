@@ -356,10 +356,10 @@ theorem andUpdate_threadCertT (τ : String → String)
     (h0o : τ (argName 0) ≠ out) (h1o : τ (argName 1) ≠ out) :
     ThreadCert τ (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 8) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) andUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (andUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN andUpdate) := by
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (andUpdate ())) := by
   refine ⟨?_, ?_, Or.inl ⟨rfl, rfl, by simp [logicS], ?_⟩⟩
   · exact threadUses_args 1 2 4 (by omega)
   · exact threadArr_inv out τ 1 h1o
@@ -381,10 +381,10 @@ theorem andUpdate_threadCertT (τ : String → String)
 theorem andUpdate_threadCert (hoA : ∀ j, j < 2 → argName j ≠ out) :
     ThreadCert (logicTau d 8 out) (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 8) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) andUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (andUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN andUpdate) :=
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (andUpdate ())) :=
   andUpdate_threadCertT out _
     (by rw [logicTau_argName_lt d 8 out (by omega)]; exact hoA 0 (by omega))
     (by rw [logicTau_argName_lt d 8 out (by omega)]; exact hoA 1 (by omega))
@@ -395,10 +395,10 @@ theorem xorUpdate_threadCertT (τ : String → String)
     (h0o : τ (argName 0) ≠ out) (h1o : τ (argName 1) ≠ out) :
     ThreadCert τ (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 8) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) xorUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (xorUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN xorUpdate) := by
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (xorUpdate ())) := by
   refine ⟨?_, ?_, Or.inl ⟨rfl, rfl, by simp [logicS], ?_⟩⟩
   · exact threadUses_args 1 2 4 (by omega)
   · exact threadArr_inv out τ 1 h1o
@@ -420,10 +420,10 @@ theorem xorUpdate_threadCertT (τ : String → String)
 theorem xorUpdate_threadCert (hoA : ∀ j, j < 2 → argName j ≠ out) :
     ThreadCert (logicTau d 8 out) (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 8) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) xorUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (xorUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN xorUpdate) :=
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (xorUpdate ())) :=
   xorUpdate_threadCertT out _
     (by rw [logicTau_argName_lt d 8 out (by omega)]; exact hoA 0 (by omega))
     (by rw [logicTau_argName_lt d 8 out (by omega)]; exact hoA 1 (by omega))
@@ -435,10 +435,10 @@ theorem iorUpdate_threadCertT (τ : String → String)
     (h0o : τ (argName 0) ≠ out) (h1o : τ (argName 1) ≠ out) :
     ThreadCert τ (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 10) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) iorUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (iorUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN iorUpdate) := by
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (iorUpdate ())) := by
   refine ⟨?_, ?_, Or.inl ⟨rfl, rfl, by simp [logicS], ?_⟩⟩
   · exact threadUses_args 1 2 4 (by omega)
   · exact threadArr_inv out τ 1 h1o
@@ -466,10 +466,10 @@ theorem iorUpdate_threadCertT (τ : String → String)
 theorem iorUpdate_threadCert (hoA : ∀ j, j < 2 → argName j ≠ out) :
     ThreadCert (logicTau d 10 out) (([AL, AL] : Ctxt jasminDialect).length + 2)
       (logicS 10) out
-      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) iorUpdate
+      (straightOpsMem (([AL, AL] : Ctxt jasminDialect).length + 2) (iorUpdate ())
         (([AL, AL] : Ctxt jasminDialect).length + 2))
       (([AL, AL] : Ctxt jasminDialect).length + 2)
-      (accRegMN [AL, AL]) (loopBodyRetArrMN iorUpdate) :=
+      (accRegMN [AL, AL]) (loopBodyRetArrMN (iorUpdate ())) :=
   iorUpdate_threadCertT out _
     (by rw [logicTau_argName_lt d 10 out (by omega)]; exact hoA 0 (by omega))
     (by rw [logicTau_argName_lt d 10 out (by omega)]; exact hoA 1 (by omega))
@@ -503,18 +503,18 @@ theorem and_canon_machine_valT (τ : String → String) (V : Ctxt.Valuation Gout
       = some (BitVec.ofNat 64 (logicCount.lookup V).toNat)) :
     ∃ (k : Nat) (t : LstateMF) (o : Fin NL → BitVec 64),
       lsemFuelMemF (singletonProgM fn
-          (canonNodeRM τ d out c andUpdate absent regs)) k
+          (canonNodeRM τ d out c (andUpdate ()) absent regs)) k
           { prog := { base := b0, lfn := fn }, zf := zf } = some t
         ∧ decodeArrM t.prog.base out 64 NL = some o
         ∧ cells o (logicCount.lookup V).toNat
             = List.zipWith (fun x y => x &&& y)
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) := by
-  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful andUpdate andUpdate_arrMemN
+  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful (andUpdate ()) andUpdate_arrMemN
     hτ (andUpdate_threadCertT out τ h0o h1o)
     absent regs hregs (Expr.lookupArgs logicInvs V) fn c hc b0 zf hpc
     (logicInit.lookup V) hseed hinv (logicCount.lookup V).toNat hm64 hcnt
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (andUpdate ())⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x &&& y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=
@@ -545,7 +545,7 @@ theorem and_canon_machine_val (V : Ctxt.Valuation Gouter)
       = some (BitVec.ofNat 64 (logicCount.lookup V).toNat)) :
     ∃ (k : Nat) (t : LstateMF) (o : Fin NL → BitVec 64),
       lsemFuelMemF (singletonProgM fn
-          (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)) k
+          (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)) k
           { prog := { base := b0, lfn := fn }, zf := zf } = some t
         ∧ decodeArrM t.prog.base out 64 NL = some o
         ∧ cells o (logicCount.lookup V).toNat
@@ -579,18 +579,18 @@ theorem xor_canon_machine_val (V : Ctxt.Valuation Gouter)
       = some (BitVec.ofNat 64 (logicCount.lookup V).toNat)) :
     ∃ (k : Nat) (t : LstateMF) (o : Fin NL → BitVec 64),
       lsemFuelMemF (singletonProgM fn
-          (canonNodeRM (logicTau d 8 out) d out c xorUpdate absent regs)) k
+          (canonNodeRM (logicTau d 8 out) d out c (xorUpdate ()) absent regs)) k
           { prog := { base := b0, lfn := fn }, zf := zf } = some t
         ∧ decodeArrM t.prog.base out 64 NL = some o
         ∧ cells o (logicCount.lookup V).toNat
             = List.zipWith (fun x y => x ^^^ y)
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) := by
-  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful xorUpdate xorUpdate_arrMemN
+  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful (xorUpdate ()) xorUpdate_arrMemN
     (logicTau_canonRen d 8 out hoR hoI hoC hoA) (xorUpdate_threadCert d out hoA)
     absent regs hregs (Expr.lookupArgs logicInvs V) fn c hc b0 zf hpc
     (logicInit.lookup V) hseed hinv (logicCount.lookup V).toNat hm64 hcnt
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (xorUpdate ())⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x ^^^ y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=
@@ -623,18 +623,18 @@ theorem ior_canon_machine_val (V : Ctxt.Valuation Gouter)
       = some (BitVec.ofNat 64 (logicCount.lookup V).toNat)) :
     ∃ (k : Nat) (t : LstateMF) (o : Fin NL → BitVec 64),
       lsemFuelMemF (singletonProgM fn
-          (canonNodeRM (logicTau d 10 out) d out c iorUpdate absent regs)) k
+          (canonNodeRM (logicTau d 10 out) d out c (iorUpdate ()) absent regs)) k
           { prog := { base := b0, lfn := fn }, zf := zf } = some t
         ∧ decodeArrM t.prog.base out 64 NL = some o
         ∧ cells o (logicCount.lookup V).toNat
             = List.zipWith (fun x y => x ||| y)
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) := by
-  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful iorUpdate iorUpdate_arrMemN
+  obtain ⟨k, t, hrun, hdec⟩ := canonNodeRM_faithful (iorUpdate ()) iorUpdate_arrMemN
     (logicTau_canonRen d 10 out hoR hoI hoC hoA) (iorUpdate_threadCert d out hoA)
     absent regs hregs (Expr.lookupArgs logicInvs V) fn c hc b0 zf hpc
     (logicInit.lookup V) hseed hinv (logicCount.lookup V).toNat hm64 hcnt
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (iorUpdate ())⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x ||| y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=

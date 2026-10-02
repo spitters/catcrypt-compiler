@@ -162,7 +162,7 @@ def reloadSlots (body : Lcmd) : List String :=
 -- The carry-selected physical body is strictly shorter than the same body
 -- through the plain front: the fused window replaces the branch-free `bSltu`
 -- expansion of the reciprocal step's carry.
-#guard ((match divRem1RtPhysBodyCOpt, divRem1RtPhysBodyOpt with
+#guard ((match divRem1RtPhysBodyCOpt, divRem1RtPhysBodyOpt () with
   | some bc, some bp => decide (bc.length < bp.length)
   | _, _ => false) : Bool)
 
@@ -170,7 +170,7 @@ def reloadSlots (body : Lcmd) : List String :=
 -- re-evaluate the optimizing back-end renderOwned at elaboration.
 
 -- Physical body lengths through the plain and the carry-selecting front.
-#eval (divRem1RtPhysBodyOpt.map List.length,
+#eval ((divRem1RtPhysBodyOpt ()).map List.length,
        divRem1RtPhysBodyCOpt.map List.length)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1CarrySelectEmit

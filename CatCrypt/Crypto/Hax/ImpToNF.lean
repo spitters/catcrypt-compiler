@@ -3111,7 +3111,7 @@ def scalarCmpOf (f : String) : Option ScalarCmp :=
 
 /-- The scalar calls of `u64` code the route through `NFProg` types: the binary and unary
     integer calls and the comparisons. -/
-def hax64NFScalar : List String :=
+def hax64NFScalar (_ : Unit) : List String :=
   hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1)
 
 /-- The types whose values encode as integers: `int` and the `64`-bit word. -/
@@ -3217,9 +3217,9 @@ theorem hax64BinTable_w : ∀ e ∈ hax64BinTable, e.2.2 ≤ 64 := by decide
 theorem hax64UnTable_w : ∀ e ∈ hax64UnTable, e.2.2 ≤ 64 := by decide
 
 /-- The scalar calls are none of the array constructors and array comparisons. -/
-theorem hax64NFScalar_ne_arr {f : String} (hf : f ∈ hax64NFScalar) :
+theorem hax64NFScalar_ne_arr {f : String} (hf : f ∈ hax64NFScalar ()) :
     f ≠ "array_lit" ∧ f ≠ "repeat" ∧ f ≠ "eq#arr" ∧ f ≠ "ne#arr" := by
-  have h : ∀ g ∈ hax64NFScalar,
+  have h : ∀ g ∈ hax64NFScalar (),
       g ≠ "array_lit" ∧ g ≠ "repeat" ∧ g ≠ "eq#arr" ∧ g ≠ "ne#arr" := by decide
   exact h f hf
 
@@ -3341,7 +3341,7 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
 
 /-- The calls `hax64ScalarSig` types are the scalar calls of `hax64NFScalar`. -/
 theorem hax64ScalarSig_name {f : String} {as : List NfTy} {r : NfTy}
-    (h : hax64ScalarSig f as = some r) : f ∈ hax64NFScalar := by
+    (h : hax64ScalarSig f as = some r) : f ∈ hax64NFScalar () := by
   simp only [hax64NFScalar, List.mem_append, List.mem_map]
   unfold hax64ScalarSig at h
   split at h
@@ -3384,7 +3384,7 @@ theorem dec_slice_int : ∀ (vs : List Value), (∀ v ∈ vs, ∃ z : Int, v = .
 /-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index` and
     `array_update`. -/
 theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
-    (h : hax64SigOf f as = some r) : f ∈ hax64NFScalar ∨ f = "index" ∨ f = "array_update" := by
+    (h : hax64SigOf f as = some r) : f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" := by
   unfold hax64SigOf at h
   split at h
   · rename_i hs

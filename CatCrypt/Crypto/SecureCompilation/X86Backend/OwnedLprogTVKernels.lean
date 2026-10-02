@@ -126,11 +126,11 @@ def keccakRolledPre : Option Lprog :=
 
 /-! ## Kernels, wire typing -/
 
-#kat ownedResult tyWire MpnLoopFrontEmit.andLprog == some (true, 0, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.iorLprog == some (true, 0, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.xorLprog == some (true, 0, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
+#kat ownedResult tyWire (MpnLoopFrontEmit.andLprog ()) == some (true, 0, 3)
+#kat ownedResult tyWire (MpnLoopFrontEmit.iorLprog ()) == some (true, 0, 3)
+#kat ownedResult tyWire (MpnLoopFrontEmit.xorLprog ()) == some (true, 0, 3)
+#kat ownedResult tyWire (MpnLoopFrontEmit.addLprogFront ()) == some (true, 0, 3)
+#kat ownedResult tyWire (MpnLoopFrontEmit.subLprogFront ()) == some (true, 0, 3)
 set_option kat.ms 1500 in
 #kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (true, 0, 1)
 set_option kat.ms 1500 in

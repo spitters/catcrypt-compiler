@@ -782,7 +782,7 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
     `divFold_val` is the undischarged `PreinvStepAgrees` and is not established
     here. -/
 theorem divRtProg_fold (V : Ctxt.Valuation Gouter) :
-    divRem1RtProgOpt.map (fun c => ComL.denote c V)
+    (divRem1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (preinvFold (upVar.lookup V) (dinvVar.lookup V) (dVar.lookup V)
           ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) := by
   rw [divRem1RtProg_denote (update := divUpdate) divUpdate_eq V]

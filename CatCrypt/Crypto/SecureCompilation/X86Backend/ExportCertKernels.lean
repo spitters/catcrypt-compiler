@@ -71,7 +71,7 @@ def binCert (op : SExpr → SExpr → SExpr) : Bool :=
 #kat binCert (fun x y => .SXor (.SXor x y) (.SAnd x y))
 
 -- `mpn_add_n`: scalar carry accumulator, refused
-#kat addRtProgOpt.map (fun c => comLCertB c (argName 0) [] ["RDI", "RSI", "RDX", "RCX"])
+#kat (addRtProgOpt ()).map (fun c => comLCertB c (argName 0) [] ["RDI", "RSI", "RDX", "RCX"])
   == some false
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels

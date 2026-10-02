@@ -338,7 +338,7 @@ theorem pieceDec_imul (D S : String) (hD : gpOk D = true) (hS : gpOk S = true) :
     phys, hl] using h
 
 theorem regOf_canon (n : Nat) (h : n < 16) :
-    AsmPrinter.regOf canonAlloc (SailX86Decoder.regName n) = SailX86Decoder.regName n := by
+    AsmPrinter.regOf (canonAlloc ()) (SailX86Decoder.regName n) = SailX86Decoder.regName n := by
   interval_cases n <;> decide
 
 theorem gpNum_regName (n : Nat) (h : n < 16) :
@@ -351,9 +351,9 @@ theorem pieceDec_mulx (h l s : Nat) (hh : h < 16) (hl : l < 16) (hs : s < 16) :
       (SailX86Decoder.regName l) (.reg "%rdx") (.reg (SailX86Decoder.regName s))) := by
   intro rest
   apply decodeLinstr_of_decodeJ1
-  have hrdx : AsmPrinter.regOf canonAlloc "%rdx" = "%rdx" := by decide
+  have hrdx : AsmPrinter.regOf (canonAlloc ()) "%rdx" = "%rdx" := by decide
   have hg : SailX86Decoder.regName (ScalarEncoder.gpNum "%rdx") = "%rdx" := by decide
-  have e := roundtrip_mulx canonAlloc (SailX86Decoder.regName h) (SailX86Decoder.regName l)
+  have e := roundtrip_mulx (canonAlloc ()) (SailX86Decoder.regName h) (SailX86Decoder.regName l)
     "%rdx" (SailX86Decoder.regName s) rest (by simp only [mulxRdxOk, hrdx]; decide)
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon h hh,
     regOf_canon l hl, regOf_canon s hs, gpNum_regName h hh, gpNum_regName l hl,

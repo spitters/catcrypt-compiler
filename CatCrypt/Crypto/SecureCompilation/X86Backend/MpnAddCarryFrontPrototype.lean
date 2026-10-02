@@ -136,7 +136,7 @@ def Γouter : Ctxt jasminDialect := [r64, AN, AN, AN, r64]
 
 /-- The front-compiled runtime-trip `mpn_add_n` loop, or `none` if the front
     declines. `count = n` (`.here`), `init = cy0` (deepest), `invs = [a, b, out]`. -/
-def addRtProgOpt : Option (ComL Γouter (mapTy (.sword 64))) :=
+def addRtProgOpt (_ : Unit) : Option (ComL Γouter (mapTy (.sword 64))) :=
   rolledForLoopNRt (Γouter := Γouter) (accCTy := .sword 64)
     (invCTys := [.memref N, .memref N, .memref N])
     vmBody "cy" addBodyLowCT
@@ -150,6 +150,6 @@ def addRtProgOpt : Option (ComL Γouter (mapTy (.sword 64))) :=
     it in a `ComL.forLoopNRt` (one body copy + `jne` back-edge, counter
     seeded from the runtime `n` register). The loop-carried carry rides the
     `.sword 64` accumulator; no reg-1 carry dialect op is used. -/
-theorem addRtProg_isSome : addRtProgOpt.isSome := by native_decide
+theorem addRtProg_isSome : (addRtProgOpt ()).isSome := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype

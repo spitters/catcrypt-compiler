@@ -203,35 +203,35 @@ theorem and_chain_machine_val {d : Nat} {out : String} {σ : String → String}
     (hcnt : b0.reg.getW c 64 = some (BitVec.ofNat 64 (logicCount.lookup V).toNat))
     (k0 : Nat) (hfix : σ "" = "") (hne : ∀ n, n ≠ "" → σ n ≠ "")
     (hcond : ∀ k i, k0 ≤ k →
-      (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)[k]? = some i → CondOK i)
+      (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)[k]? = some i → CondOK i)
     (hjmp : ∀ l pc,
-      findLabelMem l (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)
+      findLabelMem l (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)
         = some pc → k0 ≤ pc + 1)
-    (hR : RangeCert σ k0 (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)
+    (hR : RangeCert σ k0 (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)
       regDefs rr InR)
-    (hA : RangeCert σ k0 (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)
+    (hA : RangeCert σ k0 (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)
       arrDefs ra InA)
     (huse : ∀ k i, k0 ≤ k →
-      (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)[k]? = some i →
+      (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)[k]? = some i →
         ∀ n ∈ useNames i.1, Live rr InR k n)
     (harr : ∀ k i, k0 ≤ k →
-      (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs)[k]? = some i →
+      (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs)[k]? = some i →
         ∀ b, arrUse? i = some b → Live ra InA k b)
-    (hjR : JumpOK (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs) k0 rr InR)
-    (hjA : JumpOK (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs) k0 ra InA)
+    (hjR : JumpOK (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs) k0 rr InR)
+    (hjA : JumpOK (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs) k0 ra InA)
     (hlow : LowerOK isB movFor (singletonProgM fn
-      ((canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs).map (renRM σ))))
+      ((canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs).map (renRM σ))))
     (s' s'' : LstateMF)
     (hrel : RelF2 σ (Live rr InR 0) (Live ra InA 0)
       { prog := { base := b0, lfn := fn }, zf := zf } s')
     (hk : k0 ≤ 0)
     (hrelX : RelX EqPc (lowerRM isB movFor) (singletonProgM fn
-      ((canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs).map (renRM σ))) s' s'')
-    (hlive : ∀ pc, pc ≤ (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs).length →
+      ((canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs).map (renRM σ))) s' s'')
+    (hlive : ∀ pc, pc ≤ (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs).length →
       Live ra InA pc out) :
     ∃ (fuel : Nat) (t : LstateMF) (o : Fin NL → BitVec 64),
       lsemFuelMemF
-          ⟨fn, ((canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs).map (renRM σ)).flatMap
+          ⟨fn, ((canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs).map (renRM σ)).flatMap
             (lowerRM isB movFor)⟩ fuel s'' = some t
         ∧ decodeArrM t.prog.base (σ out) 64 NL = some o
         ∧ cells o (logicCount.lookup V).toNat
@@ -244,11 +244,11 @@ theorem and_chain_machine_val {d : Nat} {out : String} {σ : String → String}
   have hpc0 : ({ prog := { base := b0, lfn := fn }, zf := zf } :
       LstateMF).prog.base.lpc = 0 := hpc
   have hend : t.prog.base.lpc
-      ≤ (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs).length :=
+      ≤ (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs).length :=
     lsemFuelMemF_lpc_le _ k _ t (by rw [hpc0]; exact Nat.zero_le _) hrun
   obtain ⟨fuel, t', hrunl, hdecl⟩ :=
     alloc_lower_decodeArrM (σ := σ) fn
-      (canonNodeRM (logicTau d 8 out) d out c andUpdate absent regs) k0 hfix hne hcond hjmp
+      (canonNodeRM (logicTau d 8 out) d out c (andUpdate ()) absent regs) k0 hfix hne hcond hjmp
       hR hA huse harr hjR hjA hlow k (hpc0 ▸ hrel) (hpc0 ▸ hk) hrelX hrun out 64 NL
       (hlive _ hend)
   exact ⟨fuel, t', o, hrunl, hdecl.trans hdec, hcells⟩

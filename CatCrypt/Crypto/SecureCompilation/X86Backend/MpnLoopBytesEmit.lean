@@ -54,26 +54,26 @@ def objBytes (p : Option Lprog) : Option (List (BitVec 8)) :=
     arithmetic/logical kernels and the three adapter kernels the seam calls
     for zero-extension and length normalization. -/
 def kernels : List (String × Option Lprog) :=
-  [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront)
-  , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront)
-  , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog)
-  , ("mpn_ior_n_loop_owned", MpnLoopFrontEmit.iorLprog)
-  , ("mpn_xor_n_loop_owned", MpnLoopFrontEmit.xorLprog)
-  , ("mpn_copyi_loop_owned", MpnLoopFrontEmit.copyLprog)
-  , ("mpn_zero_loop_owned", MpnLoopFrontEmit.zeroLprog)
-  , ("mpn_norm_u32len_loop_owned", MpnLoopFrontEmit.normLprogFront) ]
+  [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront ())
+  , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront ())
+  , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog ())
+  , ("mpn_ior_n_loop_owned", MpnLoopFrontEmit.iorLprog ())
+  , ("mpn_xor_n_loop_owned", MpnLoopFrontEmit.xorLprog ())
+  , ("mpn_copyi_loop_owned", MpnLoopFrontEmit.copyLprog ())
+  , ("mpn_zero_loop_owned", MpnLoopFrontEmit.zeroLprog ())
+  , ("mpn_norm_u32len_loop_owned", MpnLoopFrontEmit.normLprogFront ()) ]
 
 /- Every seam kernel is inside the byte encoder's fragment: the front
 compiled it (`isSome`) and every body instruction reaches the byte stream
 (`encodableLcmd`), so the gated object encoder returns `some`. -/
-#guard (objBytes MpnLoopFrontEmit.addLprogFront).isSome
-#guard (objBytes MpnLoopFrontEmit.subLprogFront).isSome
-#guard (objBytes MpnLoopFrontEmit.andLprog).isSome
-#guard (objBytes MpnLoopFrontEmit.iorLprog).isSome
-#guard (objBytes MpnLoopFrontEmit.xorLprog).isSome
-#guard (objBytes MpnLoopFrontEmit.copyLprog).isSome
-#guard (objBytes MpnLoopFrontEmit.zeroLprog).isSome
-#guard (objBytes MpnLoopFrontEmit.normLprogFront).isSome
+#guard (objBytes (MpnLoopFrontEmit.addLprogFront ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.subLprogFront ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.andLprog ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.iorLprog ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.xorLprog ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.copyLprog ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.zeroLprog ())).isSome
+#guard (objBytes (MpnLoopFrontEmit.normLprogFront ())).isSome
 
 /- Each object exports exactly its own deployed symbol (one function per front
 `Lprog`, named as the seam links it). -/
@@ -87,11 +87,11 @@ def toByteArray (bs : List (BitVec 8)) : ByteArray :=
 /-- The five arithmetic/logical kernels the `catcrypt-mpn` crate links, keyed
     by the object name the crate's `build.rs` archives. -/
 def crateKernels : List (String × Option Lprog) :=
-  [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront)
-  , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront)
-  , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog)
-  , ("mpn_ior_n_loop_owned", MpnLoopFrontEmit.iorLprog)
-  , ("mpn_xor_n_loop_owned", MpnLoopFrontEmit.xorLprog) ]
+  [ ("mpn_add_n_loop_owned", MpnLoopFrontEmit.addLprogFront ())
+  , ("mpn_sub_n_loop_owned", MpnLoopFrontEmit.subLprogFront ())
+  , ("mpn_and_n_loop_owned", MpnLoopFrontEmit.andLprog ())
+  , ("mpn_ior_n_loop_owned", MpnLoopFrontEmit.iorLprog ())
+  , ("mpn_xor_n_loop_owned", MpnLoopFrontEmit.xorLprog ()) ]
 
 /-- Write the eight seam kernels' verified-encoder ELF objects into
     `bench/integration_owned/gen_bytes/`, and the five the crate links into

@@ -78,7 +78,7 @@ theorem regNum?_spec {r : String} {n : Nat} (h : regNum? r = some n) :
   exact ⟨List.mem_range.mp h2, by simpa using h1⟩
 
 /-- The identity allocation on the sixteen canonical `%rN` names. -/
-def canonAlloc : GpAlloc := (List.range 16).map (fun n => (regName n, regName n))
+def canonAlloc (_ : Unit) : GpAlloc := (List.range 16).map (fun n => (regName n, regName n))
 
 /-! ## 2. Byte templates -/
 
@@ -144,8 +144,8 @@ def tmpl3 (d s c : Nat) : List (List (BitVec 8) × JInstr 64) :=
 /-- The template of `encodeJInstr` at the identity allocation, for an instruction in the
     covered set of `roundtrip_decodeJ1` over canonical names. -/
 def tmplJ (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
-  if decodableJ j && mulxRdxOk canonAlloc j && decide (renameJ canonAlloc j = j) then
-    [(encodeJInstr canonAlloc j, j)]
+  if decodableJ j && mulxRdxOk (canonAlloc ()) j && decide (renameJ (canonAlloc ()) j = j) then
+    [(encodeJInstr (canonAlloc ()) j, j)]
   else []
 
 /-- The register names of an operand. -/
@@ -309,7 +309,7 @@ theorem tmplJ_sound (j : JInstr 64) : ∀ q ∈ tmplJ j, PieceDec q := by
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
     simp only [List.mem_singleton] at hq
     subst hq
-    have h := roundtrip_decodeJ1 canonAlloc j rest hc.1.1 hc.1.2
+    have h := roundtrip_decodeJ1 (canonAlloc ()) j rest hc.1.1 hc.1.2
     rw [hc.2] at h
     exact decodeLinstr_of_decodeJ1 h
   · simp at hq

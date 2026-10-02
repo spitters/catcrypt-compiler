@@ -281,13 +281,13 @@ theorem andFrontOk :
 
 /-- The `JLoopBodyN.update`-shaped jasmin program the front emits for the
     `mpn_and_n` limb body. -/
-def andUpdate : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
+def andUpdate (_ : Unit) : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
   (frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT andSE)).get andFrontOk
 
 /-- The equation `logicRtProg_denote` takes as its hypothesis for `mpn_and_n`. -/
 theorem andUpdate_eq :
     frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT andSE)
-      = some andUpdate :=
+      = some (andUpdate ()) :=
   (Option.some_get andFrontOk).symm
 
 /-- The front accepts the `mpn_xor_n` body. -/
@@ -297,13 +297,13 @@ theorem xorFrontOk :
 
 /-- The `JLoopBodyN.update`-shaped jasmin program the front emits for the
     `mpn_xor_n` limb body. -/
-def xorUpdate : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
+def xorUpdate (_ : Unit) : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
   (frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT xorSE)).get xorFrontOk
 
 /-- The equation `logicRtProg_denote` takes as its hypothesis for `mpn_xor_n`. -/
 theorem xorUpdate_eq :
     frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT xorSE)
-      = some xorUpdate :=
+      = some (xorUpdate ()) :=
   (Option.some_get xorFrontOk).symm
 
 /-- The front accepts the `mpn_ior_n` body. -/
@@ -313,13 +313,13 @@ theorem iorFrontOk :
 
 /-- The `JLoopBodyN.update`-shaped jasmin program the front emits for the
     `mpn_ior_n` limb body. -/
-def iorUpdate : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
+def iorUpdate (_ : Unit) : Com jasminDialect (mapCtx Gbody) (mapTy (CryptoTy.memref NL)) :=
   (frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT iorSE)).get iorFrontOk
 
 /-- The equation `logicRtProg_denote` takes as its hypothesis for `mpn_ior_n`. -/
 theorem iorUpdate_eq :
     frontLoopBodyJ (accCTy := .memref NL) vmBody "rp" (logicBodyLowCT iorSE)
-      = some iorUpdate :=
+      = some (iorUpdate ()) :=
   (Option.some_get iorFrontOk).symm
 
 /-! ## 7. The machine-level fold and cell theorems

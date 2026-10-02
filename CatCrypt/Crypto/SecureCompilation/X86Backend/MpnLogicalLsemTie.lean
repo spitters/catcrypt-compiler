@@ -67,36 +67,36 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalFrontDenote
     the front node's `ComL.denote` equals `logicFold` at the conjunction
     combiner, the trip count the runtime `n`. -/
 theorem and_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter) :
-    (ComL.forLoopNRt andUpdate logicCount logicInit logicInvs (.ret .here)).denote V
+    (ComL.forLoopNRt (andUpdate ()) logicCount logicInit logicInvs (.ret .here)).denote V
       = logicFold (fun x y => x &&& y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) := by
   have hd := logicRtProg_denote andSE andUpdate_eq V
   have hf := andRtProg_fold V
-  exact (comL_forLoopNRt_ret_denote_acc andUpdate logicCount logicInit logicInvs V).trans
+  exact (comL_forLoopNRt_ret_denote_acc (andUpdate ()) logicCount logicInit logicInvs V).trans
     (Option.some.inj (hd.symm.trans hf))
 
 /-- The word-model fold reached by the emitted `mpn_ior_n` loop's denotation:
     the front node's `ComL.denote` equals `logicFold` at the disjunction
     combiner. -/
 theorem ior_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter) :
-    (ComL.forLoopNRt iorUpdate logicCount logicInit logicInvs (.ret .here)).denote V
+    (ComL.forLoopNRt (iorUpdate ()) logicCount logicInit logicInvs (.ret .here)).denote V
       = logicFold (fun x y => x ||| y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) := by
   have hd := logicRtProg_denote iorSE iorUpdate_eq V
   have hf := iorRtProg_fold V
-  exact (comL_forLoopNRt_ret_denote_acc iorUpdate logicCount logicInit logicInvs V).trans
+  exact (comL_forLoopNRt_ret_denote_acc (iorUpdate ()) logicCount logicInit logicInvs V).trans
     (Option.some.inj (hd.symm.trans hf))
 
 /-- The word-model fold reached by the emitted `mpn_xor_n` loop's denotation:
     the front node's `ComL.denote` equals `logicFold` at the exclusive-or
     combiner. -/
 theorem xor_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter) :
-    (ComL.forLoopNRt xorUpdate logicCount logicInit logicInvs (.ret .here)).denote V
+    (ComL.forLoopNRt (xorUpdate ()) logicCount logicInit logicInvs (.ret .here)).denote V
       = logicFold (fun x y => x ^^^ y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) := by
   have hd := logicRtProg_denote xorSE xorUpdate_eq V
   have hf := xorRtProg_fold V
-  exact (comL_forLoopNRt_ret_denote_acc xorUpdate logicCount logicInit logicInvs V).trans
+  exact (comL_forLoopNRt_ret_denote_acc (xorUpdate ()) logicCount logicInit logicInvs V).trans
     (Option.some.inj (hd.symm.trans hf))
 
 /-! ## 2. The machine execution computes the elementwise operation -/
@@ -119,7 +119,7 @@ theorem and_emitted_machine_val
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
           ((logicCount.lookup V).toNat * (body.length + 1)) s = some t
         ∧ decodeArrM t.base arrSlot 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate ()⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V))) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
@@ -132,7 +132,7 @@ theorem and_emitted_machine_val
   obtain ⟨t, hrun, hdec⟩ := hfaithful
   have hd := logicRtProg_denote andSE andUpdate_eq V
   have hf := andRtProg_fold V
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate ()⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x &&& y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=
@@ -154,7 +154,7 @@ theorem ior_emitted_machine_val
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
           ((logicCount.lookup V).toNat * (body.length + 1)) s = some t
         ∧ decodeArrM t.base arrSlot 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate ()⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V))) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
@@ -167,7 +167,7 @@ theorem ior_emitted_machine_val
   obtain ⟨t, hrun, hdec⟩ := hfaithful
   have hd := logicRtProg_denote iorSE iorUpdate_eq V
   have hf := iorRtProg_fold V
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate ()⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x ||| y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=
@@ -189,7 +189,7 @@ theorem xor_emitted_machine_val
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
           ((logicCount.lookup V).toNat * (body.length + 1)) s = some t
         ∧ decodeArrM t.base arrSlot 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate ()⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V))) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
@@ -202,7 +202,7 @@ theorem xor_emitted_machine_val
   obtain ⟨t, hrun, hdec⟩ := hfaithful
   have hd := logicRtProg_denote xorSE xorUpdate_eq V
   have hf := xorRtProg_fold V
-  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate⟩
+  have heq : JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate ()⟩
         (Expr.lookupArgs logicInvs V) (logicInit.lookup V)
       = logicFold (fun x y => x ^^^ y) (apVar.lookup V) (bpVar.lookup V)
           (logicCount.lookup V).toNat (logicInit.lookup V) :=

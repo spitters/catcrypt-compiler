@@ -70,17 +70,17 @@ def logicRho (k : Nat) (r : String) : String :=
 
 /-- The looped segment of the `and` node, renamed. -/
 def andLoopBody : List LinstrRM :=
-  (forLoopBodyNRtRM 4 (regName 4) andUpdate [.reg (argName 1), .reg (argName 2)]
+  (forLoopBodyNRtRM 4 (regName 4) (andUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 8))
 
 /-- The looped segment of the `xor` node, renamed. -/
 def xorLoopBody : List LinstrRM :=
-  (forLoopBodyNRtRM 4 (regName 4) xorUpdate [.reg (argName 1), .reg (argName 2)]
+  (forLoopBodyNRtRM 4 (regName 4) (xorUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 8))
 
 /-- The looped segment of the `ior` node, renamed. -/
 def iorLoopBody : List LinstrRM :=
-  (forLoopBodyNRtRM 4 (regName 4) iorUpdate [.reg (argName 1), .reg (argName 2)]
+  (forLoopBodyNRtRM 4 (regName 4) (iorUpdate ()) [.reg (argName 1), .reg (argName 2)]
     (fun _ => none)).map (renRM (logicRho 10))
 
 /-- The renamed `and` looped segment: two loads, the limb operation and its copy, the store

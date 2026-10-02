@@ -66,7 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalLsemTie
     stack-memory fragment.** The front output is a chain of register-producing
     heads (two `stackLoad`s and the conjunction) and one `stackStore` binding,
     terminated by a `.ret` at the output array — the `ArrMemN` shape. -/
-theorem andUpdate_arrMemN : ArrMemN andUpdate := by
+theorem andUpdate_arrMemN : ArrMemN (andUpdate ()) := by
   unfold andUpdate
   repeat first
     | exact ArrMemN.ret _
@@ -86,7 +86,7 @@ theorem andUpdate_arrMemN : ArrMemN andUpdate := by
 
 /-- **The front-compiled `mpn_ior_n` limb body is in the array-returning
     stack-memory fragment.** The disjunction analogue of `andUpdate_arrMemN`. -/
-theorem iorUpdate_arrMemN : ArrMemN iorUpdate := by
+theorem iorUpdate_arrMemN : ArrMemN (iorUpdate ()) := by
   unfold iorUpdate
   repeat first
     | exact ArrMemN.ret _
@@ -106,7 +106,7 @@ theorem iorUpdate_arrMemN : ArrMemN iorUpdate := by
 
 /-- **The front-compiled `mpn_xor_n` limb body is in the array-returning
     stack-memory fragment.** The exclusive-or analogue of `andUpdate_arrMemN`. -/
-theorem xorUpdate_arrMemN : ArrMemN xorUpdate := by
+theorem xorUpdate_arrMemN : ArrMemN (xorUpdate ()) := by
   unfold xorUpdate
   repeat first
     | exact ArrMemN.ret _
@@ -128,7 +128,7 @@ theorem xorUpdate_arrMemN : ArrMemN xorUpdate := by
 
 /-- **The array-accumulator export faithfulness at `andUpdate`.** The emitted
     `mpn_and_n` loop's machine run decodes at the accumulator's array slot to the
-    source fold `JLoopBodyN.denote ⟨n, andUpdate⟩`, with only the counter
+    source fold `JLoopBodyN.denote ⟨n, (andUpdate ())⟩`, with only the counter
     schedule, the seed and the counter-name hygiene as hypotheses — the shape
     `and_emitted_machine_val` takes as `hfaithful`. The instantiation of
     `loopMemArr_export_faithful_denote_uncond` at `andUpdate` and
@@ -143,24 +143,24 @@ theorem andLoop_export_faithful_denote
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN andUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (andUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ t : LstatePM,
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN andUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN andUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (andUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (andUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, andUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (andUpdate ())⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V)) :=
-  loopMemArr_export_faithful_denote_uncond andUpdate andUpdate_arrMemN
+  loopMemArr_export_faithful_denote_uncond (andUpdate ()) andUpdate_arrMemN
     (Expr.lookupArgs logicInvs V) fn top nReg hna hnr s hfn hpc (logicInit.lookup V)
     hseed hn0 (logicCount.lookup V).toNat hm bprev blast bfin hprev hlast hbfin htaken hhalt
 
@@ -176,24 +176,24 @@ theorem iorLoop_export_faithful_denote
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN iorUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (iorUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ t : LstatePM,
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN iorUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN iorUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (iorUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (iorUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, iorUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (iorUpdate ())⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V)) :=
-  loopMemArr_export_faithful_denote_uncond iorUpdate iorUpdate_arrMemN
+  loopMemArr_export_faithful_denote_uncond (iorUpdate ()) iorUpdate_arrMemN
     (Expr.lookupArgs logicInvs V) fn top nReg hna hnr s hfn hpc (logicInit.lookup V)
     hseed hn0 (logicCount.lookup V).toNat hm bprev blast bfin hprev hlast hbfin htaken hhalt
 
@@ -209,24 +209,24 @@ theorem xorLoop_export_faithful_denote
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN xorUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (xorUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ t : LstatePM,
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN xorUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN xorUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (xorUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (xorUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL
-            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, xorUpdate⟩
+            = some (JLoopBodyN.denote ⟨(logicCount.lookup V).toNat, (xorUpdate ())⟩
                 (Expr.lookupArgs logicInvs V) (logicInit.lookup V)) :=
-  loopMemArr_export_faithful_denote_uncond xorUpdate xorUpdate_arrMemN
+  loopMemArr_export_faithful_denote_uncond (xorUpdate ()) xorUpdate_arrMemN
     (Expr.lookupArgs logicInvs V) fn top nReg hna hnr s hfn hpc (logicInit.lookup V)
     hseed hn0 (logicCount.lookup V).toNat hm bprev blast bfin hprev hlast hbfin htaken hhalt
 
@@ -250,19 +250,19 @@ theorem and_emitted_machine_val_closed
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN andUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (andUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN andUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (andUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN andUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN andUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (andUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (andUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL = some out
         ∧ cells out (logicCount.lookup V).toNat
@@ -270,7 +270,7 @@ theorem and_emitted_machine_val_closed
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) :=
   and_emitted_machine_val V hn fn top nReg
-    (loopBodyArrFullMN andUpdate nReg) (accRegMN [AL, AL]) s
+    (loopBodyArrFullMN (andUpdate ()) nReg) (accRegMN [AL, AL]) s
     (andLoop_export_faithful_denote V fn top nReg hna hnr s hfn hpc hseed hn0 hm
       bprev blast bfin hprev hlast hbfin htaken hhalt)
 
@@ -288,19 +288,19 @@ theorem ior_emitted_machine_val_closed
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN iorUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (iorUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN iorUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (iorUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN iorUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN iorUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (iorUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (iorUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL = some out
         ∧ cells out (logicCount.lookup V).toNat
@@ -308,7 +308,7 @@ theorem ior_emitted_machine_val_closed
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) :=
   ior_emitted_machine_val V hn fn top nReg
-    (loopBodyArrFullMN iorUpdate nReg) (accRegMN [AL, AL]) s
+    (loopBodyArrFullMN (iorUpdate ()) nReg) (accRegMN [AL, AL]) s
     (iorLoop_export_faithful_denote V fn top nReg hna hnr s hfn hpc hseed hn0 hm
       bprev blast bfin hprev hlast hbfin htaken hhalt)
 
@@ -326,19 +326,19 @@ theorem xor_emitted_machine_val_closed
       (tripValArrMN (Expr.lookupArgs logicInvs V) 0 (logicInit.lookup V)))
     (hn0 : (s.base.reg.getW nReg 64).isSome)
     (hm : 0 < (logicCount.lookup V).toNat) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg)
+    (hprev : runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg)
       ((logicCount.lookup V).toNat - 1) s.base = some bprev)
-    (hlast : lsemStraightMem (loopBodyArrFullMN xorUpdate nReg) bprev = some blast)
-    (hbfin : runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg)
+    (hlast : lsemStraightMem (loopBodyArrFullMN (xorUpdate ()) nReg) bprev = some blast)
+    (hbfin : runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg)
       (logicCount.lookup V).toNat s.base = some bfin)
     (htaken : ∀ i, 0 < i → i < (logicCount.lookup V).toNat → ∀ bi,
-      runBoundedLoopMem (loopBodyArrFullMN xorUpdate nReg) i s.base = some bi →
+      runBoundedLoopMem (loopBodyArrFullMN (xorUpdate ()) nReg) i s.base = some bi →
       condNZ bi (.reg nReg) = true)
     (hhalt : condNZ blast (.reg nReg) = false) :
     ∃ (t : LstatePM) (out : Fin NL → BitVec 64),
       lsemFuelMemL
-          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN xorUpdate nReg)))
-          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN xorUpdate nReg).length + 1)) s
+          (singletonProgM fn (loopLinstrRM top nReg (loopBodyArrFullMN (xorUpdate ()) nReg)))
+          ((logicCount.lookup V).toNat * ((loopBodyArrFullMN (xorUpdate ()) nReg).length + 1)) s
             = some t
         ∧ decodeArrM t.base (accRegMN [AL, AL]) 64 NL = some out
         ∧ cells out (logicCount.lookup V).toNat
@@ -346,7 +346,7 @@ theorem xor_emitted_machine_val_closed
                 (cells (apVar.lookup V) (logicCount.lookup V).toNat)
                 (cells (bpVar.lookup V) (logicCount.lookup V).toNat) :=
   xor_emitted_machine_val V hn fn top nReg
-    (loopBodyArrFullMN xorUpdate nReg) (accRegMN [AL, AL]) s
+    (loopBodyArrFullMN (xorUpdate ()) nReg) (accRegMN [AL, AL]) s
     (xorLoop_export_faithful_denote V fn top nReg hna hnr s hfn hpc hseed hn0 hm
       bprev blast bfin hprev hlast hbfin htaken hhalt)
 

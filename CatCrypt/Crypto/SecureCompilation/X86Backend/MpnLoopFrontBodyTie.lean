@@ -62,21 +62,21 @@ def namedBody (p : Lprog) : List (String × Lcmd) :=
     function, linked as `mpn_and_n_loop_owned`, whose body is the decoder
     module's `binLoopBody` at the `AND:64` limb operation. -/
 theorem andLprog_body_eq :
-    namedBody (andLprog.get andLprog_isSome)
+    namedBody ((andLprog ()).get andLprog_isSome)
       = [("mpn_and_n_loop_owned", binLoopBody (andMid "AND:64" "SHL:0:64") "SHL:0:64")] := by
   native_decide
 
 /-- **`mpn_xor_n_loop_owned`.** As `andLprog_body_eq`, at the `XOR:64` limb
     operation. -/
 theorem xorLprog_body_eq :
-    namedBody (xorLprog.get xorLprog_isSome)
+    namedBody ((xorLprog ()).get xorLprog_isSome)
       = [("mpn_xor_n_loop_owned", binLoopBody (andMid "XOR:64" "SHL:0:64") "SHL:0:64")] := by
   native_decide
 
 /-- **`mpn_ior_n_loop_owned`.** As `andLprog_body_eq`, at the limb operation
     `iorMid`. -/
 theorem iorLprog_body_eq :
-    namedBody (iorLprog.get iorLprog_isSome)
+    namedBody ((iorLprog ()).get iorLprog_isSome)
       = [("mpn_ior_n_loop_owned", binLoopBody (iorMid "SHL:0:64") "SHL:0:64")] := by
   native_decide
 
@@ -101,7 +101,7 @@ theorem body_of_namedBody {p : Lprog} {s : String} {body : Lcmd}
     bytes the encoder lays down for its body decode to
     `binDecoded (andMidDecoded .and_)`. -/
 theorem and_n_front_roundtrip :
-    ∃ fd, (andLprog.get andLprog_isSome).lp_funcs = [("mpn_and_n_loop_owned", fd)]
+    ∃ fd, ((andLprog ()).get andLprog_isSome).lp_funcs = [("mpn_and_n_loop_owned", fd)]
       ∧ decodeLprog (encodeLfundefBytes fd.lfd_body)
           = some (binDecoded (andMidDecoded .and_)) := by
   obtain ⟨fd, hfd, hb⟩ := body_of_namedBody andLprog_body_eq
@@ -110,7 +110,7 @@ theorem and_n_front_roundtrip :
 /-- **The `xor` kernel's bytes decode.** As `and_n_front_roundtrip`, at the
     `XOR:64` limb operation. -/
 theorem xor_n_front_roundtrip :
-    ∃ fd, (xorLprog.get xorLprog_isSome).lp_funcs = [("mpn_xor_n_loop_owned", fd)]
+    ∃ fd, ((xorLprog ()).get xorLprog_isSome).lp_funcs = [("mpn_xor_n_loop_owned", fd)]
       ∧ decodeLprog (encodeLfundefBytes fd.lfd_body)
           = some (binDecoded (andMidDecoded .xor_)) := by
   obtain ⟨fd, hfd, hb⟩ := body_of_namedBody xorLprog_body_eq
@@ -119,7 +119,7 @@ theorem xor_n_front_roundtrip :
 /-- **The `ior` kernel's bytes decode.** As `and_n_front_roundtrip`, at the limb
     operation `iorMid`. -/
 theorem ior_n_front_roundtrip :
-    ∃ fd, (iorLprog.get iorLprog_isSome).lp_funcs = [("mpn_ior_n_loop_owned", fd)]
+    ∃ fd, ((iorLprog ()).get iorLprog_isSome).lp_funcs = [("mpn_ior_n_loop_owned", fd)]
       ∧ decodeLprog (encodeLfundefBytes fd.lfd_body) = some (binDecoded iorMidDecoded) := by
   obtain ⟨fd, hfd, hb⟩ := body_of_namedBody iorLprog_body_eq
   exact ⟨fd, hfd, hb ▸ ior_n_roundtrip_closed⟩

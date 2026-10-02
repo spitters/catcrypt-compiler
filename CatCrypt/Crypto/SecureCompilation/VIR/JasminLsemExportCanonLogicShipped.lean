@@ -114,7 +114,7 @@ theorem binAndFrontOk :
 /-- The `JLoopBodyN.update`-shaped jasmin program the front emits for the limb
     body of `MpnLoopFrontEmit.andLprog`, the `Lprog` the seam links as
     `mpn_and_n_loop_owned`. -/
-def binAndUpdate : Com jasminDialect (mapCtx ΓbodyBin) (mapTy (CryptoTy.memref N)) :=
+noncomputable def binAndUpdate : Com jasminDialect (mapCtx ΓbodyBin) (mapTy (CryptoTy.memref N)) :=
   (frontLoopBodyJ (accCTy := CryptoTy.memref N) vmBin "out" (binBody .SAnd)).get
     binAndFrontOk
 

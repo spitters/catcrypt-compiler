@@ -462,13 +462,13 @@ def mul1Invs : HVector (fun ty => Ctxt.Var Gouter ty) [r64, AU] :=
     back-edge, the trip counter seeded from the runtime `n` register, the output
     array threaded as the loop accumulator and `v`/`up` as loop invariants.
     `none` if the front declines. -/
-def mul1RtProgOpt : Option (ComL Gouter AR) :=
+def mul1RtProgOpt (_ : Unit) : Option (ComL Gouter AR) :=
   rolledForLoopNRt (Γouter := Gouter) (accCTy := .memref NR)
     (invCTys := [.sword 64, .memref NU])
     vmBody "rp" limbBodyLowCT mul1Count mul1Init mul1Invs
 
 -- The front accepts the body and wraps it in a `ComL.forLoopNRt`.
-#guard mul1RtProgOpt.isSome
+#guard (mul1RtProgOpt ()).isSome
 
 /-- **The emitted loop's denotation is the `JLoopBodyN` fold of the front body.**
     Whenever the front compiles `limbBodyLowCT` to `update`, the runtime-trip
@@ -483,7 +483,7 @@ theorem mul1RtProg_denote
     (hupd : Dialects.TranslateDialectRolledLoop.frontLoopBodyJ
       (accCTy := .memref NR) vmBody "rp" limbBodyLowCT = some update)
     (V : Ctxt.Valuation Gouter) :
-    mul1RtProgOpt.map (fun c => ComL.denote c V)
+    (mul1RtProgOpt ()).map (fun c => ComL.denote c V)
       = some (JLoopBodyN.denote ⟨(mul1Count.lookup V).toNat, update⟩
           (Expr.lookupArgs mul1Invs V) (mul1Init.lookup V)) :=
   rolledForLoopNRt_denote vmBody "rp" limbBodyLowCT mul1Count mul1Init mul1Invs
@@ -501,7 +501,7 @@ theorem mul1RtProg_denote
     kernel's multiply sits inside a back-edge, so `%rdx` is saved and restored
     around the pinned multiplicand. -/
 def mul1RtLprogOpt (fname : String) : Option Lprog :=
-  mul1RtProgOpt.map (fun c =>
+  (mul1RtProgOpt ()).map (fun c =>
     FheMontMulEmit.fuseMulHiLprog
       (ComL.toLprogPhysAbi c fname (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64])
@@ -522,15 +522,15 @@ def mul1RtAsmOpt (fname : String) : Option String :=
     (fun p => renderLprogAtt (LprogOptPipeline.optimizeLprog p) (some mul1Provenance))
 
 /-- The 4-argument-ABI physical body of the front-compiled runtime-count loop. -/
-def mul1RtPhysBodyOpt : Option Lcmd :=
-  mul1RtProgOpt.map (fun c =>
+def mul1RtPhysBodyOpt (_ : Unit) : Option Lcmd :=
+  (mul1RtProgOpt ()).map (fun c =>
     (ComL.toLfundefPhysAbi c (argName 0) [argName 1]
       (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"]
       [64, 64, 64, 64]).lfd_body)
 
 -- The physical body carries a real back-edge: an internal label and a
 -- conditional jump, so the emit is a counted loop and not an unrolled chain.
-#guard (mul1RtPhysBodyOpt.map (fun body =>
+#guard ((mul1RtPhysBodyOpt ()).map (fun body =>
   (body.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false))
     && (body.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false))))
   = some true
@@ -539,8 +539,8 @@ def mul1RtPhysBodyOpt : Option Lcmd :=
     from, in body order. Each `LOADIDX`/`STOREIDX` is preceded by the reload of
     its base into `R14`, so the slot names read off the pairs are the array
     argument each access addresses through. -/
-def mul1RtReloads : List String :=
-  match mul1RtPhysBodyOpt with
+def mul1RtReloads (_ : Unit) : List String :=
+  match mul1RtPhysBodyOpt () with
   | none => []
   | some body =>
       (body.zip (body.drop 1)).filterMap (fun (prev, cur) =>
@@ -554,8 +554,8 @@ def mul1RtReloads : List String :=
 -- `rp` (RDI) and `up` (RSI) are the two pointer arguments; `n` (RDX) and `v`
 -- (RCX) are scalars, so no access may reload its base from their qsave slots.
 -- The multiplicand load reaches `up` through the `RSI` slot.
-#guard mul1RtReloads.contains "qsave.RSI"
-#guard mul1RtReloads.all (fun q => q == "qsave.RDI" || q == "qsave.RSI")
+#guard (mul1RtReloads ()).contains "qsave.RSI"
+#guard (mul1RtReloads ()).all (fun q => q == "qsave.RDI" || q == "qsave.RSI")
 
 -- The rendered text carries the widening multiply and the streaming SIB
 -- operands, and emits no `UNHANDLED` sentinel.
