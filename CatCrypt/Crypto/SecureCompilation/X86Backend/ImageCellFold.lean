@@ -23,8 +23,8 @@ sound on the flag machine.
 
 For slot arrays `R` (name and length), `cellFold R env is` rewrites each
 `LOADIDX d, A[x]` and in-place `STOREIDX A, A[x] := v` of a slot array `A` whose index
-`x` holds a known constant `k < n` (an immediate `MOV:64 x, $k` earlier in the chain,
-tracked by `kstep`) into `LOAD:64 d, memName A (8 k)` and `STORE:64 memName A (8 k), v`,
+`x` holds a known constant `k < n` (an immediate `MOV:64 x, $k` earlier in the chain and
+no write of `x` since, tracked by `kstep`) into `LOAD:64 d, memName A (8 k)` and `STORE:64 memName A (8 k), v`,
 and keeps every other instruction when it names no slot array and no cell (`keepB`).
 `CellRel R env s s'` relates a state `s` of the chain to a state `s'` of the folded chain:
 the same registers off the cells, arrays off the slot arrays, word memory and flags,
@@ -35,7 +35,8 @@ held in `s`.
 
 * `lsemStepN_lvm`, `lsemStepSh_lvm`, `lsemStepMC_lvm`, `lsemStepCast_lvm`,
   `lsemStepMem_frame`, `stepMemF_frame`, `fstepF_frame`: a step leaves every register and
-  array its instruction does not name.
+  array its instruction does not name; the `_dst` forms (`fstepF_frame_dst`, ...): a step
+  leaves every register and array its instruction does not write (`dstNames`).
 * `fstepF_of_agree`: a step from states that agree on the instruction's names
   (`JasminLsemExportRewrites.evalInstrPMemF_ren` at the identity renaming).
 * `fstepF_movImm64`, `fstepF_load64`, `fstepF_store64`, `fstepF_loadIdx`, `fstepF_storeIdx`:
@@ -67,89 +68,176 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (stepMemF with
   withALUFlags_reg withALUFlags_larr carryStep wideStep wideArgs? WideOp)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (fstepF)
 
-theorem lsemStepN_lvm {i : LinstrR} {s t : LstateN} (h : lsemStepN i s = some t) {r : String}
-    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r := by
+/-! ## The names an instruction writes -/
+
+/-- The register names an instruction's wire writes: the operand names of the
+    destinations of an `Lopn`; no name for any other instruction. -/
+def dstNames : LinstrR → List String
+  | .Lopn d _ _ => d.flatMap opNames
+  | _ => []
+
+theorem dstNames_sub {i : LinstrR} {r : String} (h : r ∈ dstNames i) : r ∈ instrNames i := by
+  cases i <;> simp_all [dstNames, instrNames]
+
+set_option hygiene false in
+/-- Prove that the first name a recogniser returns is a destination name. -/
+local macro "recog_dst" : tactic =>
+  `(tactic| (
+      split at h
+      · split at h
+        · cases h; simp [dstNames, opNames]
+        · simp at h
+      · simp at h))
+
+theorem sarStruct?_dst {i : LinstrR} {p : String × String × Nat}
+    (h : JasminLsemShift.sarStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemShift.sarStruct? at h; recog_dst
+
+theorem mulhiStruct?_dst {i : LinstrR} {p : String × String × String}
+    (h : JasminLsemMulCarry.mulhiStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMulCarry.mulhiStruct? at h; recog_dst
+
+theorem adcxStruct?_dst {i : LinstrR} {p : String × String × String × String}
+    (h : JasminLsemMulCarry.adcxStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMulCarry.adcxStruct? at h; recog_dst
+
+theorem adcxhiStruct?_dst {i : LinstrR} {p : String × String × String × String}
+    (h : JasminLsemMulCarry.adcxhiStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMulCarry.adcxhiStruct? at h; recog_dst
+
+theorem sbbStruct?_dst {i : LinstrR} {p : String × String × String × String}
+    (h : JasminLsemMulCarry.sbbStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMulCarry.sbbStruct? at h; recog_dst
+
+theorem sbbhiStruct?_dst {i : LinstrR} {p : String × String × String × String}
+    (h : JasminLsemMulCarry.sbbhiStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMulCarry.sbbhiStruct? at h; recog_dst
+
+theorem castStruct?_dst {i : LinstrR} {p : String × String}
+    (h : JasminLsemCast.castStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemCast.castStruct? at h; recog_dst
+
+theorem movImmStruct?_dst {i : LinstrR} {p : String × Nat}
+    (h : JasminLsemCast.movImmStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemCast.movImmStruct? at h
+  split at h
+  · cases h; simp [dstNames, opNames]
+  · simp at h
+
+theorem loadStruct?_dst {i : LinstrR} {p : String × String × String}
+    (h : JasminLsemMem.loadStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMem.loadStruct? at h; recog_dst
+
+theorem storeStruct?_dst {i : LinstrR} {p : String × String × String × String}
+    (h : JasminLsemMem.storeStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMem.storeStruct? at h; recog_dst
+
+theorem loadCStruct?_dst {i : LinstrR} {p : String × String × Nat}
+    (h : JasminLsemMem.loadCStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMem.loadCStruct? at h; recog_dst
+
+theorem lsemStepN_lvm_dst {i : LinstrR} {s t : LstateN} (h : lsemStepN i s = some t)
+    {r : String} (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold lsemStepN at h
   repeat' split at h
   all_goals first
-    | (cases h; simp_all [instrNames, opNames, LstateN.setReg, LstateN.nextPc])
+    | (cases h; simp_all [dstNames, opNames, LstateN.setReg, LstateN.nextPc])
     | simp at h
 
 theorem setReg_nextPc_lvm {s : LstateN} {d r : String} {w : Nat} (v : BitVec w)
     (h : r ≠ d) : ((s.setReg d v).nextPc).lvm r = s.lvm r := by
   simp [LstateN.setReg, LstateN.nextPc, h]
 
-theorem lsemStepSh_lvm {i : LinstrR} {s t : LstateN}
+theorem lsemStepSh_lvm_dst {i : LinstrR} {s t : LstateN}
     (h : JasminLsemShift.lsemStepSh i s = some t) {r : String}
-    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r := by
+    (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold JasminLsemShift.lsemStepSh at h
   split at h
   · rename_i p hp
-    have hd := (sarStruct?_names hp).1
+    have hd := sarStruct?_dst hp
     split at h
     · cases h
       exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)
     · cases h
-  · exact lsemStepN_lvm h hr
+  · exact lsemStepN_lvm_dst h hr
 
-theorem lsemStepMC_lvm {i : LinstrR} {s t : LstateN}
+theorem lsemStepMC_lvm_dst {i : LinstrR} {s t : LstateN}
     (h : JasminLsemMulCarry.lsemStepMC i s = some t) {r : String}
-    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r := by
+    (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold JasminLsemMulCarry.lsemStepMC at h
   split at h
   · rename_i p hp
-    have hd := (mulhiStruct?_names hp).1
+    have hd := mulhiStruct?_dst hp
     repeat' split at h
     all_goals first | (cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)) | cases h
   split at h
   · rename_i p hp
-    have hd := (adcxStruct?_names hp).1
+    have hd := adcxStruct?_dst hp
     repeat' split at h
     all_goals first | (cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)) | cases h
   split at h
   · rename_i p hp
-    have hd := (adcxhiStruct?_names hp).1
+    have hd := adcxhiStruct?_dst hp
     repeat' split at h
     all_goals first | (cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)) | cases h
   split at h
   · rename_i p hp
-    have hd := (sbbStruct?_names hp).1
+    have hd := sbbStruct?_dst hp
     repeat' split at h
     all_goals first | (cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)) | cases h
   split at h
   · rename_i p hp
-    have hd := (sbbhiStruct?_names hp).1
+    have hd := sbbhiStruct?_dst hp
     repeat' split at h
     all_goals first | (cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)) | cases h
-  exact lsemStepSh_lvm h hr
+  exact lsemStepSh_lvm_dst h hr
 
-theorem lsemStepCast_lvm {i : LinstrR} {cd : Option Nat} {s t : LstateN}
+theorem lsemStepCast_lvm_dst {i : LinstrR} {cd : Option Nat} {s t : LstateN}
     (h : JasminLsemCast.lsemStepCast (i, cd) s = some t) {r : String}
-    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r := by
+    (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold JasminLsemCast.lsemStepCast at h
   split at h
   · rename_i dst a heq _
-    have hd := (castStruct?_names heq).1
+    have hd := castStruct?_dst heq
     split at h
     · cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)
     · cases h
   · split at h
     · rename_i dst n heq _
-      have hd := movImmStruct?_names heq
+      have hd := movImmStruct?_dst heq
       cases h; exact setReg_nextPc_lvm _ fun he => hr (he ▸ hd)
-    · exact lsemStepMC_lvm h hr
+    · exact lsemStepMC_lvm_dst h hr
+
+theorem lsemStepN_lvm {i : LinstrR} {s t : LstateN} (h : lsemStepN i s = some t) {r : String}
+    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r :=
+  lsemStepN_lvm_dst h fun h' => hr (dstNames_sub h')
+
+theorem lsemStepSh_lvm {i : LinstrR} {s t : LstateN}
+    (h : JasminLsemShift.lsemStepSh i s = some t) {r : String}
+    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r :=
+  lsemStepSh_lvm_dst h fun h' => hr (dstNames_sub h')
+
+theorem lsemStepMC_lvm {i : LinstrR} {s t : LstateN}
+    (h : JasminLsemMulCarry.lsemStepMC i s = some t) {r : String}
+    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r :=
+  lsemStepMC_lvm_dst h fun h' => hr (dstNames_sub h')
+
+theorem lsemStepCast_lvm {i : LinstrR} {cd : Option Nat} {s t : LstateN}
+    (h : JasminLsemCast.lsemStepCast (i, cd) s = some t) {r : String}
+    (hr : r ∉ instrNames i) : t.lvm r = s.lvm r :=
+  lsemStepCast_lvm_dst h fun h' => hr (dstNames_sub h')
 
 /-- A step of `lsemStepMem` leaves every register and every array its instruction does
-    not name. -/
-theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.LstateM}
+    not write. -/
+theorem lsemStepMem_frame_dst {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.LstateM}
     (h : JasminLsemMem.lsemStepMem i s = some t) {r : String}
-    (hr : r ∉ instrNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
+    (hr : r ∉ dstNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
   obtain ⟨wire, tag⟩ := i
   have hcast : ∀ cd, (JasminLsemCast.lsemStepCast (wire, cd) s.reg).map
       (fun r => { s with reg := r }) = some t → t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
     intro cd h
     obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
-    exact ⟨lsemStepCast_lvm hq hr, rfl⟩
+    exact ⟨lsemStepCast_lvm_dst hq hr, rfl⟩
   unfold JasminLsemMem.lsemStepMem at h
   cases tag with
   | reg cd => exact hcast cd h
@@ -157,7 +245,7 @@ theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.Lsta
       simp only at h
       split at h
       · rename_i dst base idx heq
-        have hd := (loadStruct?_names heq).1
+        have hd := loadStruct?_dst heq
         repeat' split at h
         all_goals first
           | (cases h; exact ⟨setReg_nextPc_lvm _ fun he => hr (he ▸ hd), rfl⟩)
@@ -167,7 +255,7 @@ theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.Lsta
       simp only at h
       split at h
       · rename_i dst base idx val heq
-        have hd := (storeStruct?_names heq).1
+        have hd := storeStruct?_dst heq
         repeat' split at h
         all_goals first
           | (cases h
@@ -180,7 +268,7 @@ theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.Lsta
       simp only at h
       split at h
       · rename_i dst base off heq
-        have hd := loadCStruct?_names heq
+        have hd := loadCStruct?_dst heq
         cases h
         exact ⟨setReg_nextPc_lvm _ fun he => hr (he ▸ hd), rfl⟩
       · cases h
@@ -188,6 +276,13 @@ theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.Lsta
       simp only at h
       repeat' split at h
       all_goals first | (cases h; exact ⟨rfl, rfl⟩) | cases h
+
+/-- A step of `lsemStepMem` leaves every register and every array its instruction does
+    not name. -/
+theorem lsemStepMem_frame {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.LstateM}
+    (h : JasminLsemMem.lsemStepMem i s = some t) {r : String}
+    (hr : r ∉ instrNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r :=
+  lsemStepMem_frame_dst h fun h' => hr (dstNames_sub h')
 
 theorem wideArgs?_names_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
     (h : wideArgs? i = some (.mulx lo hi b)) : lo ∈ instrNames i.1 ∧ hi ∈ instrNames i.1 := by
@@ -201,21 +296,63 @@ theorem wideArgs?_names_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
     · cases h
   · cases h
 
+theorem wideArgs?_dst_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
+    (h : wideArgs? i = some (.mulx lo hi b)) : lo ∈ dstNames i.1 ∧ hi ∈ dstNames i.1 := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · split at h <;> cases h
+  · split at h
+    · cases h; simp [dstNames, opNames]
+    · cases h
+  · cases h
+
+theorem wideArgs?_dst_mov {i : LinstrRM} {d : String} {b : LOperand}
+    (h : wideArgs? i = some (.mov d b)) : d ∈ dstNames i.1 := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h
+    cases h; simp [dstNames, opNames]
+  · split_ifs at h
+    cases h
+  · cases h
+
+theorem carryArgs?_dst {i : LinstrRM} {p : JasminLsemMemFlagGuard.CarryOp × String × LOperand × LOperand}
+    (h : JasminLsemMemFlagGuard.carryArgs? i = some p) : p.2.1 ∈ dstNames i.1 := by
+  obtain ⟨wire, tag⟩ := i
+  unfold JasminLsemMemFlagGuard.carryArgs? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h <;> cases h <;> simp [dstNames, opNames]
+  · simp at h
+
+theorem movRegArgs?_dst {i : LinstrRM} {p : String × String}
+    (h : JasminLsemMemFlagGuard.movRegArgs? i = some p) : p.1 ∈ dstNames i.1 := by
+  obtain ⟨wire, tag⟩ := i
+  unfold JasminLsemMemFlagGuard.movRegArgs? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h <;> cases h <;> simp [dstNames, opNames]
+  · simp at h
+
 theorem setReg_nextPcM_lvm {s : LstateM} {d r : String} {w : Nat} (v : BitVec w)
     (h : r ≠ d) : ((s.setReg d v).nextPc).reg.lvm r = s.reg.lvm r := by
   simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, h]
 
 /-- A step of `stepMemF` leaves every register and every array its instruction does not
-    name. -/
-theorem stepMemF_frame {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t) {r : String}
-    (hr : r ∉ instrNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
+    write. -/
+theorem stepMemF_frame_dst {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t)
+    {r : String} (hr : r ∉ dstNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
   unfold stepMemF at h
   cases hm : JasminLsemMem.lsemStepMem i s with
   | some b =>
       rw [hm] at h
       cases h
       rw [withALUFlags_reg, withALUFlags_larr]
-      exact lsemStepMem_frame hm hr
+      exact lsemStepMem_frame_dst hm hr
   | none =>
   rw [hm] at h
   simp only at h
@@ -223,7 +360,7 @@ theorem stepMemF_frame {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t
   | some p =>
       obtain ⟨op, d, a, b⟩ := p
       rw [hc] at h
-      have hne : r ≠ d := fun he => hr (he ▸ (carryArgs?_names hc).1)
+      have hne : r ≠ d := fun he => hr (he ▸ carryArgs?_dst hc)
       simp only [carryStep] at h
       cases ha : evalOperandN s.reg 64 a <;> cases hb : evalOperandN s.reg 64 b <;>
         simp only [ha, hb] at h <;> try cases h
@@ -239,12 +376,12 @@ theorem stepMemF_frame {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t
       simp only at h
       cases wo with
       | mov d b =>
-          have hne : r ≠ d := fun he => hr (he ▸ (wideArgs?_names_mov hw).1)
+          have hne : r ≠ d := fun he => hr (he ▸ wideArgs?_dst_mov hw)
           simp only [wideStep] at h
           cases hv : evalOperandN s.reg 64 b <;> simp only [hv] at h <;> try cases h
           exact ⟨setReg_nextPcM_lvm _ hne, rfl⟩
       | mulx lo hi b =>
-          have hn := wideArgs?_names_mulx hw
+          have hn := wideArgs?_dst_mulx hw
           have hlo : r ≠ lo := fun he => hr (he ▸ hn.1)
           have hhi : r ≠ hi := fun he => hr (he ▸ hn.2)
           simp only [wideStep] at h
@@ -253,10 +390,16 @@ theorem stepMemF_frame {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t
           refine ⟨?_, rfl⟩
           simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hlo, hhi]
 
+/-- A step of `stepMemF` leaves every register and every array its instruction does not
+    name. -/
+theorem stepMemF_frame {i : LinstrRM} {s t : LstateM} (h : stepMemF i s = some t) {r : String}
+    (hr : r ∉ instrNames i.1) : t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r :=
+  stepMemF_frame_dst h fun h' => hr (dstNames_sub h')
+
 /-- **A flag-machine step leaves every register and every array its instruction does not
-    name.** -/
-theorem fstepF_frame {i : LinstrRM} {s t : LstateM} {zf z : Bool}
-    (h : fstepF i s zf = some (t, z)) {r : String} (hr : r ∉ instrNames i.1) :
+    write.** -/
+theorem fstepF_frame_dst {i : LinstrRM} {s t : LstateM} {zf z : Bool}
+    (h : fstepF i s zf = some (t, z)) {r : String} (hr : r ∉ dstNames i.1) :
     t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r := by
   unfold fstepF at h
   cases hc : JasminLsemMemFlagGuard.cmpArgs? i with
@@ -275,7 +418,7 @@ theorem fstepF_frame {i : LinstrRM} {s t : LstateM} {zf z : Bool}
       obtain ⟨dst, src⟩ := p
       rw [hm] at h
       simp only at h
-      have hne : r ≠ dst := fun he => hr (he ▸ (movRegArgs?_names hm).1)
+      have hne : r ≠ dst := fun he => hr (he ▸ movRegArgs?_dst hm)
       cases hv : readReg s.reg (.reg src) with
       | none => simp only [hv] at h; cases h
       | some v =>
@@ -289,7 +432,14 @@ theorem fstepF_frame {i : LinstrRM} {s t : LstateM} {zf z : Bool}
       obtain ⟨b, hb, he⟩ := Option.map_eq_some_iff.mp h
       simp only [Prod.mk.injEq] at he
       obtain ⟨rfl, -⟩ := he
-      exact stepMemF_frame hb hr
+      exact stepMemF_frame_dst hb hr
+
+/-- **A flag-machine step leaves every register and every array its instruction does not
+    name.** -/
+theorem fstepF_frame {i : LinstrRM} {s t : LstateM} {zf z : Bool}
+    (h : fstepF i s zf = some (t, z)) {r : String} (hr : r ∉ instrNames i.1) :
+    t.reg.lvm r = s.reg.lvm r ∧ t.larr r = s.larr r :=
+  fstepF_frame_dst h fun h' => hr (dstNames_sub h')
 
 /-- **A flag-machine step from states that agree on its names.** For an `Lopn` instruction
     that is no `MULX` and a name set `N` holding its names and the empty name, a step
@@ -417,9 +567,10 @@ def foldOne (R : Slots) (env : KEnv) (i : LinstrRM) : Option LinstrRM :=
   | _, _ => if keepB R i then some i else none
 
 /-- The known constants after an instruction: an immediate `MOV:64 d, $k` records `k` at
-    `d`; every name the instruction mentions is forgotten. -/
+    `d`; every name the instruction writes is forgotten, and the constants of the names it
+    only reads are kept. -/
 def kstep (env : KEnv) (i : LinstrRM) : KEnv :=
-  let env' := env.filter fun p => !(instrNames i.1).contains p.1
+  let env' := env.filter fun p => !(dstNames i.1).contains p.1
   match i.2, i.1 with
   | .reg none, .Lopn [.reg d] o [.imm k] => if o = "MOV:64" then (d, k) :: env' else env'
   | _, _ => env'
@@ -530,12 +681,12 @@ theorem kval_filter {env : KEnv} {P : String → Bool} {x : String} {k : Nat}
 
 theorem kstep_env {env : KEnv} {i : LinstrRM} {x : String} {k : Nat}
     (h : kval (kstep env i) x = some k) :
-    (kval env x = some k ∧ x ∉ instrNames i.1)
+    (kval env x = some k ∧ x ∉ dstNames i.1)
       ∨ (∃ d, i = (.Lopn [.reg d] "MOV:64" [.imm k], .reg none) ∧ x = d) := by
   obtain ⟨w, tg⟩ := i
-  have hf : ∀ {k'}, kval (env.filter fun p => !(instrNames w).contains p.1) x = some k' →
-      kval env x = some k' ∧ x ∉ instrNames w := fun hk => by
-    obtain ⟨h1, h2⟩ := kval_filter (P := fun y => !(instrNames w).contains y) hk
+  have hf : ∀ {k'}, kval (env.filter fun p => !(dstNames w).contains p.1) x = some k' →
+      kval env x = some k' ∧ x ∉ dstNames w := fun hk => by
+    obtain ⟨h1, h2⟩ := kval_filter (P := fun y => !(dstNames w).contains y) hk
     exact ⟨h1, by simpa using h2⟩
   unfold kstep at h
   dsimp only at h
@@ -559,7 +710,7 @@ theorem stepEnv {env : KEnv} {i : LinstrRM} {s t : LstateM} {zf z : Bool}
     ∀ x k, kval (kstep env i) x = some k → t.reg.getW x 64 = some (BitVec.ofNat 64 k) := by
   intro x k hk
   rcases kstep_env hk with ⟨h1, h2⟩ | ⟨d, rfl, rfl⟩
-  · have hfr := (fstepF_frame h h2).1
+  · have hfr := (fstepF_frame_dst h h2).1
     unfold JasminLsemWidthN.LstateN.getW
     rw [hfr]
     exact hE x k h1
