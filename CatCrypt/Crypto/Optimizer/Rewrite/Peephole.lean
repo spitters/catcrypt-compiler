@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
 
 /-!
 # Verified local peephole rewrite pass for `Com`
@@ -63,24 +64,21 @@ open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-! ## 1. Syntactic variable equality
 
-`Ctxt.Var` has no `DecidableEq` instance; we provide a Boolean equality test and
-its soundness so the peephole patterns can detect "both operands are the same
-variable". -/
+`Ctxt.Var` has no `DecidableEq` instance. The Boolean equality test and its soundness,
+by which the peephole patterns detect that both operands are the same variable, are the
+dialect-generic `AegraphGeneric.varEq` and `AegraphGeneric.varEq_sound` at
+`jasminDialect`. -/
 
-/-- Boolean equality of two De Bruijn variables of the same type. -/
+/-- Boolean equality of two De Bruijn variables of the same type: `AegraphGeneric.varEq`
+    at `jasminDialect`. -/
 def varEq {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    Ctxt.Var Γ t → Ctxt.Var Γ t → Bool
-  | .here, .here => true
-  | .there a, .there b => varEq a b
-  | _, _ => false
+    Ctxt.Var Γ t → Ctxt.Var Γ t → Bool :=
+  AegraphGeneric.varEq
 
 /-- `varEq a b = true` implies `a = b`. -/
 theorem varEq_sound {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    ∀ (a b : Ctxt.Var Γ t), varEq a b = true → a = b
-  | .here, .here, _ => rfl
-  | .there a, .there b, h => by rw [varEq] at h; rw [varEq_sound a b h]
-  | .here, .there b, h => by simp [varEq] at h
-  | .there a, .here, h => by simp [varEq] at h
+    ∀ (a b : Ctxt.Var Γ t), varEq a b = true → a = b :=
+  AegraphGeneric.varEq_sound
 
 /-! ## 2. Soundness of the BitVec identities -/
 

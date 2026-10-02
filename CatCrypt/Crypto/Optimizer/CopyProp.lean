@@ -349,11 +349,11 @@ other binding is renamed by `ρ` and kept. A variable is re-indexed in time prop
 to its de Bruijn index in the input plus that of its image, so the pass is linear in the
 size of the input and output programs. -/
 
-/-- The renaming of `t :: Γ` that sends the head to `x` and the rest through `ρ`. -/
+/-- The renaming of `t :: Γ` that sends the head to `x` and the rest through `ρ`:
+    `AegraphGeneric.consHom` at `jasminDialect`. -/
 def consHom {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (x : Ctxt.Var Δ t)
-    (ρ : Ctxt.Hom Γ Δ) : Ctxt.Hom (t :: Γ) Δ := fun
-  | .here => x
-  | .there v => ρ v
+    (ρ : Ctxt.Hom Γ Δ) : Ctxt.Hom (t :: Γ) Δ :=
+  Rewrite.AegraphGeneric.consHom x ρ
 
 theorem pullV_consHom {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (x : Ctxt.Var Δ t)
     (ρ : Ctxt.Hom Γ Δ) (V : Ctxt.Valuation Δ) :
