@@ -765,7 +765,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarryKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat
-CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
@@ -792,7 +791,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel

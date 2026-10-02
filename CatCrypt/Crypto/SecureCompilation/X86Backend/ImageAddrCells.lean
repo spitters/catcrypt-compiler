@@ -1,0 +1,643 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
+
+@[expose] public section
+
+set_option autoImplicit false
+
+/-!
+# Cell accesses on the image route
+
+A printed straight body accesses a word array at a constant index through a cell name
+`mem.B.off` of a pointer register `B` reloaded from the slot of an array `A`
+(`JasminLsemAddrMem.cellA?`). This module simulates such a body with the image machinery
+of `ImageAddrSim`, unchanged, run on the cell body `cellBody`: the body with each cell
+access rewritten to the frame-word move `MOVQ D, memName A off` or `MOVQ memName A off, S`,
+under a frame map that gives the cell name `memName A off` the address of the word. On the
+address machine the cell access and the frame-word move address the same word when `B`
+holds the pointer of `A` (`stepA_cellBody`).
+
+## Main definitions
+
+* `cellMove`, `cellBody`: the frame-word move of a cell access, and the cell body.
+
+## Main results
+
+* `cellBody_getElem?`, `accArr_cellBody`: the cell body position by position.
+* `stepA_cellBody`: at a cell access whose base holds the pointer of its array, the address
+  machine steps the body as the cell body.
+-/
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg accArr imgInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (LoadSafeAt)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64 write64)
+
+/-! ## 1. The cell body -/
+
+/-- The frame-word move of the cell access `i` at position `k` of `body`: the load
+    `MOVQ D, memName A off` or the store `MOVQ memName A off, S`, with `A` the array whose
+    pointer the base register holds there (`accArr`); every other instruction itself. -/
+def cellMove (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (i : Linstr) :
+    Linstr :=
+  match cellA? i.li_i with
+  | some (.ld D B off) =>
+      match accArr slotArr body k B with
+      | some (A, _) => ⟨i.li_ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩
+      | none => i
+  | some (.st B off S) =>
+      match accArr slotArr body k B with
+      | some (A, _) => ⟨i.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩
+      | none => i
+  | none => i
+
+/-- **The cell body**: every cell access replaced by its frame-word move. -/
+def cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd) : Lcmd :=
+  body.mapIdx (cellMove slotArr body)
+
+theorem cellBody_getElem? (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
+    (cellBody slotArr body)[k]? = (body[k]?).map (cellMove slotArr body k) := by
+  simp [cellBody, List.getElem?_mapIdx]
+
+theorem cellBody_length (slotArr : String → Option (String × Nat)) (body : Lcmd) :
+    (cellBody slotArr body).length = body.length := by
+  simp [cellBody]
+
+theorem cellMove_of_none {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {i : Linstr} (h : cellA? i.li_i = none) : cellMove slotArr body k i = i := by
+  simp [cellMove, h]
+
+theorem cellA_some {x : LinstrR} {c : CellOp} (h : cellA? x = some c) :
+    ∃ d o n, x = .Lopn [.reg d] o [.reg n] ∧ (o = "LOAD:64" ∨ o = "STORE:64") := by
+  unfold cellA? at h
+  split at h
+  · rename_i d o n
+    split at h
+    · exact ⟨d, o, n, rfl, Or.inl (by assumption)⟩
+    · split at h
+      · exact ⟨d, o, n, rfl, Or.inr (by assumption)⟩
+      · cases h
+  · cases h
+
+theorem slotMov_cell {x : LinstrR} {c : CellOp} (h : cellA? x = some c) : slotMov? x = none := by
+  obtain ⟨d, o, n, rfl, ho⟩ := cellA_some h
+  rcases ho with rfl | rfl <;> simp [slotMov?]
+
+/-- The slot moves of the cell body name no array slot: each frame-word move of a cell has
+    no array-slot operand. -/
+def CellNoSlot (slotArr : String → Option (String × Nat)) (body : Lcmd) : Prop :=
+  ∀ k i d q, body[k]? = some i → slotMov? (cellMove slotArr body k i).li_i = some (d, q) →
+    cellA? i.li_i ≠ none → slotArr d = none ∧ slotArr q = none
+
+theorem accArr_cellBody {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hN : CellNoSlot slotArr body) (k : Nat) (b : String) :
+    accArr slotArr (cellBody slotArr body) k b = accArr slotArr body k b := by
+  cases k with
+  | zero => rfl
+  | succ k =>
+      simp only [accArr, cellBody_getElem?]
+      cases hb : body[k]? with
+      | none => rfl
+      | some j =>
+          simp only [Option.map_some]
+          cases hc : cellA? j.li_i with
+          | none => rw [cellMove_of_none hc]
+          | some c =>
+              rw [slotMov_cell hc]
+              cases hm : slotMov? (cellMove slotArr body (k + 1 - 1) j).li_i with
+              | none =>
+                  simp only [Nat.add_sub_cancel] at hm
+                  simp [hm]
+              | some p =>
+                  obtain ⟨d, q⟩ := p
+                  simp only [Nat.add_sub_cancel] at hm
+                  have := hN k j d q hb hm (by rw [hc]; simp)
+                  simp only [hm]
+                  split <;> simp [this.2]
+
+theorem cellA_ld {x : LinstrR} {D B : String} {off : Nat} (h : cellA? x = some (.ld D B off)) :
+    ∃ n, x = .Lopn [.reg D] "LOAD:64" [.reg n] ∧ cellParts? n = some (B, off) := by
+  unfold cellA? at h
+  split at h
+  · rename_i d o n
+    split at h
+    · rename_i ho
+      subst ho
+      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+      exact ⟨n, rfl, hp⟩
+    · split at h
+      · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+        cases he
+      · cases h
+  · cases h
+
+theorem cellA_st {x : LinstrR} {B S : String} {off : Nat} (h : cellA? x = some (.st B off S)) :
+    ∃ n, x = .Lopn [.reg n] "STORE:64" [.reg S] ∧ cellParts? n = some (B, off) := by
+  unfold cellA? at h
+  split at h
+  · rename_i d o n
+    split at h
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · split at h
+      · rename_i _ ho
+        subst ho
+        obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+        cases he
+        exact ⟨d, rfl, hp⟩
+      · cases h
+  · cases h
+
+/-- **A cell load on the address machine is its frame-word move** when its base holds the
+    pointer `p` of its array and the cell name has the address `p + off`. -/
+theorem stepA_cellBody_ld {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa : LstateA} {zf : Bool}
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) {D B : String} {off : Nat}
+    (hc : cellA? bi.li_i = some (.ld D B off)) {A : String} {n : Nat}
+    (hacc : accArr slotArr body sa.reg.lpc B = some (A, n)) {p : BitVec 64}
+    (hp : sa.reg.getW B 64 = some p)
+    (hfr : frame (memName A off) = some (p + BitVec.ofNat 64 off)) :
+    stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
+  obtain ⟨nm, hx, hn⟩ := cellA_ld hc
+  have hb2 : (cellBody slotArr body)[sa.reg.lpc]?
+      = some ⟨bi.li_ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
+    rw [cellBody_getElem?, hb]
+    simp [cellMove, hc, hacc]
+  rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
+  have h1 : normA (.Lopn [.reg D] "LOAD:64" [.reg nm]) = .Lopn [.reg D] "LOAD:64" [.reg nm] := by
+    simp [normA]
+  have h2 : tagA (.Lopn [.reg D] "LOAD:64" [.reg nm]) = .reg none := by simp [tagA]
+  have h3 : normA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)])
+      = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] := by simp [normA]
+  have h4 : tagA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) = .reg none := by simp [tagA]
+  rw [h1, h2, h3, h4, fstepA_ldm frame hn hp,
+    fstepA_slotLoad frame (d := D) (q := memName A off) (by simp [slotMov?]) hfr]
+
+/-- **A cell store on the address machine is its frame-word move** when its base holds the
+    pointer `p` of its array, the cell name has the address `p + off`, and the stored
+    register has no frame word. -/
+theorem stepA_cellBody_st {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa : LstateA} {zf : Bool}
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) {B S : String} {off : Nat}
+    (hc : cellA? bi.li_i = some (.st B off S)) {A : String} {n : Nat}
+    (hacc : accArr slotArr body sa.reg.lpc B = some (A, n)) {p : BitVec 64}
+    (hp : sa.reg.getW B 64 = some p)
+    (hfr : frame (memName A off) = some (p + BitVec.ofNat 64 off)) (hS : frame S = none) :
+    stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
+  obtain ⟨nm, hx, hn⟩ := cellA_st hc
+  have hb2 : (cellBody slotArr body)[sa.reg.lpc]?
+      = some ⟨bi.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
+    rw [cellBody_getElem?, hb]
+    simp [cellMove, hc, hacc]
+  rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
+  have h1 : normA (.Lopn [.reg nm] "STORE:64" [.reg S]) = .Lopn [.reg nm] "STORE:64" [.reg S] := by
+    simp [normA]
+  have h2 : tagA (.Lopn [.reg nm] "STORE:64" [.reg S]) = .reg none := by simp [tagA]
+  have h3 : normA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S])
+      = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by simp [normA]
+  have h4 : tagA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) = .reg none := by simp [tagA]
+  rw [h1, h2, h3, h4]
+  cases hv : sa.reg.getW S 64 with
+  | some v =>
+      rw [fstepA_stm frame hn hp hv, fstepA_slotStore frame (by simp [slotMov?]) hS hfr sa zf hv]
+  | none =>
+      simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hp, hv, hfr, hS]
+
+theorem cellMove_lret {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {i : Linstr} : (cellMove slotArr body k i).li_i = .Lret ↔ i.li_i = .Lret := by
+  unfold cellMove
+  cases hc : cellA? i.li_i with
+  | none => rfl
+  | some c =>
+      obtain ⟨d, o, n, hx, -⟩ := cellA_some hc
+      cases c with
+      | ld D B off =>
+          simp only
+          split <;> simp [hx]
+      | st B off S =>
+          simp only
+          split <;> simp [hx]
+
+theorem haltedA_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd)
+    (sa : LstateA) : haltedA (cellBody slotArr body) sa = haltedA body sa := by
+  unfold haltedA
+  rw [cellBody_getElem?]
+  cases hb : body[sa.reg.lpc]? with
+  | none => rfl
+  | some bi =>
+      simp only [Option.map_some]
+      have h := cellMove_lret (slotArr := slotArr) (body := body) (k := sa.reg.lpc) (i := bi)
+      generalize cellMove slotArr body sa.reg.lpc bi = bj at h
+      obtain ⟨ii, li⟩ := bi
+      obtain ⟨jj, lj⟩ := bj
+      simp only at h
+      by_cases hr : li = .Lret
+      · subst hr
+        rw [h.mpr rfl]
+      · have hr' : lj ≠ .Lret := fun e => hr (h.mp e)
+        cases li <;> cases lj <;> simp_all
+
+theorem loadSafeAt_cellBody (slotArr : String → Option (String × Nat)) (rsp : BitVec 64)
+    (body : Lcmd) (sa : LstateA) :
+    LoadSafeAt rsp (cellBody slotArr body) sa ↔ LoadSafeAt rsp body sa := by
+  unfold LoadSafeAt
+  rw [cellBody_getElem?]
+  cases hb : body[sa.reg.lpc]? with
+  | none => simp
+  | some bi =>
+      simp only [Option.map_some]
+      cases hc : cellA? bi.li_i with
+      | none => rw [cellMove_of_none hc]
+      | some c =>
+          obtain ⟨d, o, n, hx, ho⟩ := cellA_some hc
+          have hn1 : ∀ ii D B I, bi ≠ ⟨ii, .Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]⟩ := by
+            intro ii D B I he
+            subst he
+            simp at hx
+          have hn2 : ∀ ii D B I, cellMove slotArr body sa.reg.lpc bi
+              ≠ ⟨ii, .Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]⟩ := by
+            intro ii D B I he
+            unfold cellMove at he
+            rw [hc] at he
+            cases c with
+            | ld D' B' off =>
+                simp only at he
+                split at he
+                · simp at he
+                · exact hn1 ii D B I he
+            | st B' off S =>
+                simp only at he
+                split at he
+                · simp at he
+                · exact hn1 ii D B I he
+          constructor
+          · intro _ ii D B I h
+            exact absurd (Option.some.inj h) (hn1 ii D B I)
+          · intro _ ii D B I h
+            exact absurd (Option.some.inj h) (hn2 ii D B I)
+
+/-! ## 2. One step of a straight body -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (LprogM singletonProgM)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (LstateMF)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked (evalInstrPMemFk)
+
+/-- **One step of the image of a straight body.** At a position that is no conditional
+    branch, a checked step of the image instruction of a body that passes the gate is matched
+    by one step of the address machine. The cases of `ImageAddrSim.img_step` without the
+    branch. -/
+theorem img_stepStraight {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : JasminLsemAddrImage.physImgB slotArr c = true)
+    (hgate : imgGateB frame slotArr c = true)
+    (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    (hrel : ImgRel frame slotArr base c s sa s.zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1)
+    (hnc : ∀ cc l, bi.li_i ≠ .Lcond cc l)
+    (hstep : evalInstrPMemFk true P (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
+    haltedA c sa = false ∧ LoadSafeAt rsp c sa
+      ∧ ∃ sa1, stepA frame c sa s.zf = some (sa1, t.zf)
+        ∧ ImgRel frame slotArr base c t sa1 t.zf := by
+  have hg : instrGateB frame slotArr c sa.reg.lpc bi.li_i = true := by
+    simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
+    have := hgate.1.1 sa.reg.lpc hlt
+    rw [hb] at this
+    simpa using this
+  unfold instrGateB at hg
+  cases hc : icase frame bi.li_i with
+  | other => rw [hc] at hg; cases hg
+  | cond cc l => exact absurd (icase_cond hc) (hnc _ _)
+  | label =>
+      obtain ⟨ii, l, hx⟩ := icase_label hc
+      have hi : imgInstr slotArr c sa.reg.lpc bi.li_i = (bi.li_i, .reg none) := by
+        rw [hx]; rfl
+      rw [hi, evalInstrPMemFk_reg, hx, eval_label] at hstep
+      cases hstep
+      refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp),
+        sa.setLpc (sa.reg.lpc + 1), ?_, rel_label hphys hrel hb (by rw [hx]; rfl)⟩
+      obtain ⟨ii0, li⟩ := bi
+      simp only at hx
+      subst hx
+      simp [stepA, hb]
+  | ldx d b idx =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
+      obtain ⟨⟨⟨⟨⟨An, hacc⟩, hgd⟩, hd⟩, hidx⟩, hbf⟩ := hg
+      obtain ⟨A, n⟩ := An
+      have hx := icase_ldx hc
+      rw [hx, imgInstr_ldx slotArr _ _ hacc] at hstep
+      obtain ⟨hsafe, sa', hst, hr⟩ :=
+        rel_ldx hsep hphys hgate P hrel hb hx hacc hgd hd hidx hbf hstep
+      refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
+      rw [stepA_lopn frame hb hx, ← hst, hx]
+      rfl
+  | stx d b idx v =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
+      obtain ⟨⟨⟨⟨An, hacc⟩, hidx⟩, hbf⟩, hv⟩ := hg
+      obtain ⟨A, n⟩ := An
+      have hx := icase_stx hc
+      rw [hx, imgInstr_stx slotArr _ _ hacc] at hstep
+      obtain ⟨sa', hst, hr⟩ := rel_stx hsep hphys hgate P hrel hb hx hacc hidx hbf hv hstep
+      refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), sa', ?_, hr⟩
+      rw [stepA_lopn frame hb hx, ← hst, hx]
+      rfl
+  | sload d q =>
+      rw [hc] at hg
+      have hm := (icase_sload hc).1
+      have hsafe := loadSafe_of (rsp := rsp) hb
+        (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      rcases slotMov?_cases hm with hx | hx <;>
+      · rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide), evalInstrPMemFk_reg,
+          ← hx] at hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sload hphys P hrel hb hc hg hstep
+        refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+  | sstore q S =>
+      rw [hc] at hg
+      have hm := (icase_sstore hc).1
+      have hsafe := loadSafe_of (rsp := rsp) hb
+        (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      rcases slotMov?_cases hm with hx | hx <;>
+      · rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide), evalInstrPMemFk_reg,
+          ← hx] at hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
+        refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+  | scmp d y q =>
+      rw [hc] at hg
+      have hx := slotCmp?_eq (icase_scmp hc).1
+      have hsafe := loadSafe_of (rsp := rsp) hb
+        (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide), evalInstrPMemFk_reg,
+        ← hx] at hstep
+      obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
+      refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg (by decide) (by decide)]
+  | reg =>
+      rw [hc] at hg
+      obtain ⟨ds, o, ss, hx, ho1, ho2⟩ := icase_reg hc
+      have hsafe := loadSafe_of (rsp := rsp) hb
+        (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
+      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2, evalInstrPMemFk_reg, ← hx] at hstep
+      obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys hgate P hrel hb hc hg hstep
+      refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagA_reg ho1 ho2]
+
+/-! ## 3. The run of a straight body with cells -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (RunSafe)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (redW)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (SafeW WideSafeAt
+  CellSafeAt)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (Disjoint8)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked (lsemFuelMemFk)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (findInstrMem_single)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
+
+/-- **The cell accesses of a body have their arrays and frame words**: the base register of
+    each cell access is reloaded from the slot of an array `A` (`accArr`) and has no frame
+    word, the cell name `memName A off` has the frame word `base A + off`, a loaded word is
+    disjoint from the red-zone word, and a stored register has no frame word. -/
+structure CellFrames (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (rsp : BitVec 64)
+    (body : Lcmd) : Prop where
+  ld : ∀ k bi D B off, body[k]? = some bi → cellA? bi.li_i = some (.ld D B off) →
+    ∃ A n, accArr slotArr body k B = some (A, n) ∧ frame B = none
+      ∧ frame (memName A off) = some (base A + BitVec.ofNat 64 off)
+      ∧ Disjoint8 (redW rsp) (base A + BitVec.ofNat 64 off)
+  st : ∀ k bi B off S, body[k]? = some bi → cellA? bi.li_i = some (.st B off S) →
+    ∃ A n, accArr slotArr body k B = some (A, n) ∧ frame B = none ∧ frame S = none
+      ∧ frame (memName A off) = some (base A + BitVec.ofNat 64 off)
+
+/-- **One step of a straight body with cells through its cell body.** -/
+theorem cell_step {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : JasminLsemAddrImage.physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateB frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (hnc : ∀ (k : Nat) (bi : Linstr), body[k]? = some bi → ∀ cc l, bi.li_i ≠ .Lcond cc l)
+    (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    (hrel : ImgRel frame slotArr base (cellBody slotArr body) s sa s.zf) {bi : Linstr}
+    (hb : (cellBody slotArr body)[sa.reg.lpc]? = some bi)
+    (hlt : sa.reg.lpc < (cellBody slotArr body).length - 1)
+    (hstep : evalInstrPMemFk true P
+      (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i) s = some t) :
+    haltedA body sa = false ∧ SafeW rsp body sa
+      ∧ ∃ sa1, stepA frame body sa s.zf = some (sa1, t.zf)
+        ∧ ImgRel frame slotArr base (cellBody slotArr body) t sa1 t.zf := by
+  rw [cellBody_getElem?] at hb
+  obtain ⟨b0, hb0, rfl⟩ := Option.map_eq_some_iff.mp hb
+  have hnc' : ∀ cc l, (cellMove slotArr body sa.reg.lpc b0).li_i ≠ .Lcond cc l := by
+    intro cc l he
+    unfold cellMove at he
+    split at he
+    · split at he
+      · cases he
+      · exact hnc _ _ hb0 cc l he
+    · split at he
+      · cases he
+      · exact hnc _ _ hb0 cc l he
+    · exact hnc _ _ hb0 cc l he
+  have hbC : (cellBody slotArr body)[sa.reg.lpc]? = some (cellMove slotArr body sa.reg.lpc b0) := by
+    rw [cellBody_getElem?, hb0]; rfl
+  obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
+    img_stepStraight hsep hphys hgate P hrel hbC hlt hnc' hstep
+  have hwide : WideSafeAt body sa := by
+    intro ii ds o ss _ r _ hr _ h1
+    rw [hrel.wid r hr] at h1
+    cases h1
+  refine ⟨by rw [← haltedA_cellBody slotArr]; exact hh, ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
+    hwide, ?_⟩, sa1, ?_, hr⟩
+  · intro ii D n B off p hbi hn hp
+    rw [hb0] at hbi
+    cases hbi
+    have hc : cellA? (.Lopn [.reg D] "LOAD:64" [.reg n]) = some (.ld D B off) := by
+      simp [cellA?, hn]
+    obtain ⟨A, m, hacc, hBf, -, hred⟩ := hF.ld _ _ D B off hb0 hc
+    obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+      (by rw [accArr_cellBody hN]; exact hacc) hBf
+    rw [hp] at hpA
+    cases hpA
+    exact hred
+  · cases hc : cellA? b0.li_i with
+    | none =>
+        have he : stepA frame body sa s.zf = stepA frame (cellBody slotArr body) sa s.zf := by
+          unfold stepA
+          rw [hbC, hb0, cellMove_of_none hc]
+          obtain ⟨ii, li⟩ := b0
+          cases li with
+          | Lcond c l =>
+              exact absurd rfl (hnc _ _ hb0 c l)
+          | _ => rfl
+        rw [he]
+        exact hst
+    | some op =>
+        cases op with
+        | ld D B off =>
+            obtain ⟨A, m, hacc, hBf, hfr, -⟩ := hF.ld _ _ D B off hb0 hc
+            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+              (by rw [accArr_cellBody hN]; exact hacc) hBf
+            rw [stepA_cellBody_ld hb0 hc hacc hpA hfr]
+            exact hst
+        | st B off S =>
+            obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
+            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+              (by rw [accArr_cellBody hN]; exact hacc) hBf
+            rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
+            exact hst
+
+/-- **The image of the cell body simulated on the body.** For a straight body (no
+    conditional branch) whose cell body passes the gate `imgGateB` and the class `physImgB`,
+    whose cell moves name no array slot and whose cell accesses have their frame words, at a
+    separation `ImgSep`: every halting checked run of the image of the cell body from a state
+    related to an address state is matched by a halting run of the address machine on the
+    body itself, whose final state is related to the final state of the image, and which is
+    safe in the sense of `DecodePrintedAddrW.SafeW`. -/
+theorem image_addr_simB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : JasminLsemAddrImage.physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateB frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (hnc : ∀ (k : Nat) (bi : Linstr), body[k]? = some bi → ∀ cc l, bi.li_i ≠ .Lcond cc l)
+    (fn : String) :
+    ∀ (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool), s.prog.lfn = fn →
+      ImgRel frame slotArr base (cellBody slotArr body) s sa zf →
+      lsemFuelMemFk true (singletonProgM fn (JasminLsemAddrImage.virtImg slotArr
+        (cellBody slotArr body))) fuel s = some t →
+      ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
+        ∧ ImgRel frame slotArr base (cellBody slotArr body) t sa' zf'
+        ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro s t sa zf hfn hrel hrun
+      cases hf : JasminLsemMemLoop.findInstrMem (singletonProgM fn
+          (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))) s.prog with
+      | some _ => simp [lsemFuelMemFk, hf] at hrun
+      | none =>
+          simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
+          subst hrun
+          have hh := haltedA_of_img hgate fn hfn hrel.pc hf
+          rw [haltedA_cellBody] at hh
+          exact ⟨0, sa, zf, runA_halt frame body 0 sa zf hh, hrel, trivial⟩
+  | succ f ih =>
+      intro s t sa zf hfn hrel hrun
+      cases hf : JasminLsemMemLoop.findInstrMem (singletonProgM fn
+          (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))) s.prog with
+      | none =>
+          simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
+          subst hrun
+          have hh := haltedA_of_img hgate fn hfn hrel.pc hf
+          rw [haltedA_cellBody] at hh
+          exact ⟨0, sa, zf, runA_halt frame body 0 sa zf hh, hrel, trivial⟩
+      | some i =>
+          simp only [lsemFuelMemFk, hf] at hrun
+          cases he : evalInstrPMemFk true (singletonProgM fn
+              (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))) i s with
+          | none => rw [he] at hrun; cases hrun
+          | some s1 =>
+              rw [he] at hrun
+              have hlfn : s1.prog.lfn = fn :=
+                (evalInstrPMemF_next _ i s s1 (JasminLsemMemChecked.evalInstrPMemF_of_k he)).1.trans
+                  hfn
+              have hz := hrel.zf
+              subst hz
+              rw [findInstrMem_single hfn, JasminLsemAddrImage.virtImg_getElem?, ← hrel.pc,
+                List.getElem?_dropLast] at hf
+              split at hf
+              case isFalse => cases hf
+              rename_i hlt
+              obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hf
+              obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
+                cell_step hsep hphys hgate hN hF hnc _ hrel hb hlt he
+              obtain ⟨f', sa', zf', hr', hrel', hsafe'⟩ := ih s1 t sa1 s1.zf hlfn hr hrun
+              refine ⟨f' + 1, sa', zf', ?_, hrel', hsafe, fun s' zf'' hs' => ?_⟩
+              · rw [runA_step frame body f' sa s.zf hh, hst]
+                exact hr'
+              · rw [hst] at hs'
+                cases hs'
+                exact hsafe'
+
+/-! ## 4. A virtual body on the decoded bytes of a body with cells -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
+  (RunIdxOk lsemFuelMemFk_of_runIdxOk)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
+  (ownedCheckMC ownedCheckMC_sound)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB
+  printedAddr_simW)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (frameP read64_eq_of_agree)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (frameRsp)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (Params decodeLprog)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts)
+open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (runA_congr runSafe_congr)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (lsemFuelMemF)
+
+/-- **A virtual body on the decoded bytes of a straight body with cells.** Let the register
+    allocation checker accept a virtual body `B` against the image of the cell body, with the
+    observed names `outs`, and let the body pass the W class of printed bodies and the gates
+    of its cell body, at a frame map that agrees with the stack frame on the names of the
+    body. A halting run of `B` from a state related to an address state corresponding to the
+    machine state `sa` is matched by a halting run of the decoded bytes of the body from
+    `sa`, at the end of which every observed name with a frame word outside the red-zone
+    word holds the machine word at that frame word. -/
+theorem virt_bytesC {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    {sa : AState} {outs : List String} {B : List LinstrRM}
+    (hck : ownedCheckMC outs B (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))
+      = true)
+    (hpr : printedAddrWB body = true)
+    (hphys : JasminLsemAddrImage.physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateB frame slotArr (cellBody slotArr body) = true)
+    (hsep : ImgSep frame slotArr base (frameRsp body sa))
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base (frameRsp body sa) body)
+    (hnc : ∀ (k : Nat) (bi : Linstr), body[k]? = some bi → ∀ cc l, bi.li_i ≠ .Lcond cc l)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = frameP (Params.ofBody body) (frameRsp body sa) q)
+    (fn : String) (b t : LstateMF) (hfn : b.prog.lfn = fn) (hbpc : b.prog.base.reg.lpc = 0)
+    (s : LstateA) (zf : Bool)
+    (hrel : ImgRel frame slotArr base (cellBody slotArr body) b s zf)
+    (hpc : s.reg.lpc = 0)
+    (hent : ∀ R, DecodePrinted.gpOk R = true → s.reg.getW R 64 = some (sa.regs (DecodePrinted.phys R)))
+    (hmem : s.mem = sa.mem) (fuel : Nat)
+    (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
+    (hok : RunIdxOk (singletonProgM fn B) fuel b) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
+        t.prog.base.reg.lvm r = ⟨64, read64 sa'.mem a⟩ := by
+  have hck' := lsemFuelMemFk_of_runIdxOk true _ fuel b t hrun hok
+  obtain ⟨f', t', hr', hobs⟩ := ownedCheckMC_sound hck fn b t hfn hbpc fuel hck'
+  obtain ⟨fA, sA, zA, hrA, hrelA, hsafe⟩ :=
+    image_addr_simB hsep hphys hgate hN hF hnc fn f' b t' s zf hfn hrel hr'
+  rw [runA_congr hfr] at hrA
+  rw [runSafe_congr hfr] at hsafe
+  obtain ⟨prog, sa', hdec, hh, -, -, hm'⟩ :=
+    printedAddr_simW body hpr sa s zf hpc (fun R hR => Or.inl (hent R hR)) hmem fA (sA, zA) hrA
+      hsafe
+  refine ⟨prog, sa', hdec, hh, fun r a hr ha hd => ?_⟩
+  rw [← hobs.1 r hr, hrelA.slots r a ha, read64_eq_of_agree hm' hd]
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells

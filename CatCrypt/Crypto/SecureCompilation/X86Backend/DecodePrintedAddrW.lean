@@ -794,7 +794,773 @@ theorem sim_stm (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : S
     rw [hmem, hofs]
     exact agree_write64 hc.mem _ _ x hx
 
-/-! ## 8. The covered bodies with carry chains -/
+/-! ## 8. The carry arms with frame-slot operands -/
+
+/-- A slot name is no cell name and no general-purpose name. -/
+theorem slot_facts {x : String} {F W qB : Nat} {off : Int}
+    (h : spillQsaveOff F W x qB = some off) :
+    isSpillOrQsave x = true ∧ parseMemName x = none ∧ gpOk x = false := by
+  unfold spillQsaveOff at h
+  have hpre : hasPrefix x "k." = true ∨ hasPrefix x "qsave." = true := by
+    split at h
+    · exact Or.inl ‹_›
+    · split at h
+      · exact Or.inr ‹_›
+      · cases h
+  refine ⟨by simp [isSpillOrQsave, hpre], ?_, ?_⟩
+  · unfold parseMemName
+    rcases hpre with hp | hp <;>
+    · unfold hasPrefix at hp ⊢
+      rw [List.isPrefixOf_iff_prefix] at hp
+      obtain ⟨t, ht⟩ := hp
+      rw [← ht]
+      simp [List.isPrefixOf]
+  · cases hg : gpOk x
+    · rfl
+    · have hm := mem_gpList hg
+      simp only [gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
+      rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+        rfl | rfl | rfl <;> simp [hasPrefix] at hpre
+
+/-- The four scratch candidates of a spilled-destination add are not all among three names. -/
+theorem scratch_exists (A S C : String) :
+    (["RAX", "RBX", "RCX", "RDX"].filter fun r => !([A, S, C].contains r)) ≠ [] := by
+  intro h
+  rw [List.filter_eq_nil_iff] at h
+  have h1 := h "RAX" (by simp)
+  have h2 := h "RBX" (by simp)
+  have h3 := h "RCX" (by simp)
+  have h4 := h "RDX" (by simp)
+  simp only [List.contains_cons, List.contains_nil, Bool.or_false, Bool.not_eq_true',
+    Bool.not_eq_false, Bool.or_eq_true, beq_iff_eq] at h1 h2 h3 h4
+  rcases h1 with h1 | h1 | h1 <;> rcases h2 with h2 | h2 | h2 <;>
+    rcases h3 with h3 | h3 | h3 <;> rcases h4 with h4 | h4 | h4 <;>
+    (subst_vars; simp_all (config := { decide := true }))
+
+/-- The scratch register of a spilled-destination add: the first of `RAX`, `RBX`, `RCX`,
+    `RDX` none of `A`, `S`, `C` names, as the encoder and the printer pick it. -/
+def scratchS (A S C : String) : String :=
+  match ["RAX", "RBX", "RCX", "RDX"].filter fun r => !([A, S, C].contains r) with
+  | r :: _ => r
+  | [] => "RDX"
+
+/-- An operand of a carry arm: a general-purpose name, or a frame slot whose offset has a
+    signed 32-bit displacement and whose eight bytes are disjoint from the red-zone word. -/
+def kOk (P : Params) (x : String) : Bool :=
+  gpOk x || (isSpillOrQsave x && match spillQsaveOff P.frame P.spillW x P.qsaveB with
+    | some off => dispOk32 off && sepB cmovRedZone off
+    | none => false)
+
+/-- A carry instruction with a frame-slot operand. -/
+inductive SArm where
+  /-- `ADCX:64 D, A, S, C` with a frame slot among `D`, `A`, `S`. -/
+  | adcx (D A S C : String)
+  /-- `ADCXHI:64 O, A, S, C` with a frame slot among `A`, `S`. -/
+  | adcxhi (O A S C : String)
+
+/-- The instruction of a slot carry arm. -/
+def SArm.instr : SArm → LinstrR
+  | .adcx D A S C => .Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C]
+  | .adcxhi O A S C => .Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C]
+
+/-- The copy of `A` into the accumulator `acc` of the add into `D`: a reload from the slot
+    of `A`, nothing when `A` is the accumulator `D`, a register copy otherwise. -/
+def sMv (P : Params) (D A : String) (acc : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  if isSpillOrQsave A then
+    [(encRspMem 1 0x8b acc (slotOff P A),
+      .loadMem (SailX86Decoder.regName acc) "%rsp" (slotOff P A))]
+  else if A = D ∧ acc = gpNumU D then []
+  else [(encAluRRw 1 0x89 acc (gpNumU A), .mov (SailX86Decoder.regName acc) (.reg (phys A)))]
+
+/-- The add of `S` into the accumulator `acc`: `adcx` from the slot of `S` or from `S`. -/
+def sAd (P : Params) (S : String) (acc : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  if isSpillOrQsave S then
+    [(encAdxRspMem 0x66 acc (slotOff P S),
+      .adcxMem (SailX86Decoder.regName acc) "%rsp" (slotOff P S))]
+  else [(ScalarEncoder.encAdxCarry 0x66 acc (gpNumU S),
+      .adcx (SailX86Decoder.regName acc) (.reg (phys S)))]
+
+/-- The byte pieces of a slot carry arm. -/
+def SArm.pieces (P : Params) : SArm → List (List (BitVec 8) × JInstr 64)
+  | .adcx D A S C =>
+      let bt := (encBtImm 1 (gpNumU C) 0, JInstr.bt (phys C) (.imm 0))
+      if isSpillOrQsave D then
+        let acc := gpNumU (scratchS A S C)
+        bt :: (encRspMem 1 0x89 acc cmovRedZone,
+            .storeMem "%rsp" cmovRedZone (.reg (SailX86Decoder.regName acc)))
+          :: (sMv P D A acc ++ sAd P S acc
+            ++ [(encRspMem 1 0x89 acc (slotOff P D),
+                  .storeMem "%rsp" (slotOff P D) (.reg (SailX86Decoder.regName acc))),
+                (encRspMem 1 0x8b acc cmovRedZone,
+                  .loadMem (SailX86Decoder.regName acc) "%rsp" cmovRedZone)])
+      else sMv P D A (gpNumU D) ++ bt :: sAd P S (gpNumU D)
+  | .adcxhi O _ _ _ => [(encSetccMovzx 0x92 (gpNumU O), .setc (phys O))]
+
+/-- The machine instructions of a slot carry arm. -/
+def SArm.js (P : Params) (c : SArm) : List (JInstr 64) := (c.pieces P).map Prod.snd
+
+/-- **The conditions of a slot carry arm**: general-purpose or well-placed slot operands with a
+    slot among them, a general-purpose carry-in other than the word sources, a general-purpose
+    carry-out destination, and, for a register destination with the copy of `A` laid down, a
+    destination other than `S` and `C`. -/
+def SArm.ok (P : Params) : SArm → Bool
+  | .adcx D A S C => gpOk C && A != C && S != C && kOk P D && kOk P A && kOk P S
+      && (isSpillOrQsave D || isSpillOrQsave A || isSpillOrQsave S)
+      && (isSpillOrQsave D || (A == D && gpOk A) || (D != S && D != C))
+  | .adcxhi O A S C => gpOk O && gpOk C && A != C && S != C && kOk P A && kOk P S
+      && (isSpillOrQsave A || isSpillOrQsave S)
+
+theorem kOk_cases {P : Params} {x : String} (h : kOk P x = true) :
+    gpOk x = true ∨ ∃ off, spillQsaveOff P.frame P.spillW x P.qsaveB = some off
+      ∧ dispOk32 off = true ∧ sepB cmovRedZone off = true := by
+  unfold kOk at h
+  simp only [Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with h | ⟨-, h⟩
+  · exact Or.inl h
+  · right
+    split at h
+    · rename_i off hoff
+      simp only [Bool.and_eq_true] at h
+      exact ⟨off, hoff, h.1, h.2⟩
+    · cases h
+
+/-- The facts of an operand the encoder reads: a general-purpose name, or a slot at its
+    offset. -/
+theorem opnd_facts {P : Params} {x : String} (h : kOk P x = true) :
+    parseMemName x = none ∧ (isSpillOrQsave x = false ∨ ∃ off,
+      spillQsaveOff P.frame P.spillW x P.qsaveB = some off ∧ isSpillOrQsave x = true
+        ∧ slotOff P x = off) := by
+  rcases kOk_cases h with hg | ⟨off, hoff, -, -⟩
+  · exact ⟨(gpFacts hg).notMem, Or.inl (gpFacts hg).notSlot⟩
+  · obtain ⟨h1, h2, -⟩ := slot_facts hoff
+    exact ⟨h2, Or.inr ⟨off, hoff, h1, by simp [slotOff, hoff]⟩⟩
+
+/-- The encoder's choice of the scratch register is `scratchS`. -/
+theorem scratch_filter (A S C : String) :
+    ["RAX", "RBX", "RCX", "RDX"].filter (fun r => !([A, S, C].contains r))
+      = scratchS A S C :: (["RAX", "RBX", "RCX", "RDX"].filter
+          (fun r => !([A, S, C].contains r))).tail := by
+  unfold scratchS
+  have hne := scratch_exists A S C
+  revert hne
+  cases ["RAX", "RBX", "RCX", "RDX"].filter (fun r => !([A, S, C].contains r)) with
+  | nil => intro h; exact absurd rfl h
+  | cons r rs => intro _; rfl
+
+/-- **The bytes of a slot carry add.** -/
+theorem encodeLopn_sadcx (P : Params) (D A S C : String) (h : (SArm.adcx D A S C).ok P = true) :
+    encodeLopn P.frame P.spillW (SArm.adcx D A S C).instr P.qsaveB
+      = ((SArm.adcx D A S C).pieces P).flatMap Prod.fst := by
+  simp only [SArm.ok, Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hC, hAC⟩, hSC⟩, hD⟩, hA⟩, hS⟩, -⟩, hal⟩ := h
+  have fC := gpFacts hC
+  obtain ⟨hDm, hDk⟩ := opnd_facts hD
+  obtain ⟨hAm, hAk⟩ := opnd_facts hA
+  obtain ⟨hSm, hSk⟩ := opnd_facts hS
+  have hst : stripWidthTag "ADCX:64" = "ADCX" := by decide +kernel
+  have hpx : adxPrefix "ADCX" = some 0x66 := rfl
+  have hw : LprogBytes.rexW (LprogAsmPrinter.mnemWidth "ADCX:64") = 1 := by decide +kernel
+  have hfC := fC.notSlot
+  have hmC := fC.notMem
+  have hsc := scratch_filter A S C
+  rcases hDk with hDs | ⟨oD, hoD, hDs, hsD⟩ <;> rcases hAk with hAs | ⟨oA, hoA, hAs, hsA⟩ <;>
+    rcases hSk with hSs | ⟨oS, hoS, hSs, hsS⟩ <;>
+    simp (config := { decide := true }) [encodeLopn, SArm.instr, SArm.pieces, sMv, sAd, *]
+  all_goals first
+    | (by_cases hAD : A = D <;> simp [hAD] <;> done)
+    | (split
+       · rename_i heq
+         exact absurd heq (by simpa using scratch_exists A S C)
+       · rename_i r tl heq
+         have hr : scratchS A S C = r := by simp [scratchS, heq]
+         rw [hr]
+         by_cases hAD : A = D
+         · subst hAD; simp_all [cmovRedZone]
+         · simp [hAD, cmovRedZone])
+
+/-- `adcx off(%rsp), %d` with a signed 32-bit displacement. -/
+theorem pieceDec_adcxRsp (d : Nat) (off : Int) (hd : d < 16) (h : dispOk32 off = true) :
+    PieceDec (encAdxRspMem 0x66 d off,
+      .adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_adcxMem32 canonAlloc (SailX86Decoder.regName d) "%rsp" off rest h
+  have hrsp : AsmPrinter.regOf canonAlloc "%rsp" = "%rsp" := by decide
+  have hg4 : ScalarEncoder.gpNum "%rsp" = 4 := by decide
+  have heq : encAdxRspMem 0x66 d off
+      = ScalarEncoder.encodeJInstr canonAlloc (.adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
+    simp only [ScalarEncoder.encodeJInstr, regOf_canon d hd, gpNum_regName d hd, hrsp, hg4,
+      encAdxRspMem, ScalarEncoder.memTail]
+    split_ifs <;> simp_all (config := { decide := true })
+  rw [heq]
+  have h4 : SailX86Decoder.regName 4 = "%rsp" := rfl
+  simpa [renameJ, nameOf, regOf_canon d hd, hrsp, gpNum_regName d hd, hg4, h4] using e
+
+/-- **The bytes of a slot carry arm.** -/
+theorem SArm.bytes (P : Params) (c : SArm) (h : c.ok P = true) :
+    encodeLopn P.frame P.spillW c.instr P.qsaveB = (c.pieces P).flatMap Prod.fst
+      ∧ ∀ q ∈ c.pieces P, PieceDec q := by
+  cases c with
+  | adcx D A S C =>
+    refine ⟨encodeLopn_sadcx P D A S C h, ?_⟩
+    simp only [SArm.ok, Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq,
+      beq_iff_eq] at h
+    obtain ⟨⟨⟨⟨⟨⟨⟨hC, -⟩, -⟩, hD⟩, hA⟩, hS⟩, -⟩, -⟩ := h
+    have hmv : ∀ acc, acc < 16 → ∀ q ∈ sMv P D A acc, PieceDec q := by
+      intro acc hacc q hq
+      simp only [sMv] at hq
+      split at hq
+      · simp only [List.mem_singleton] at hq
+        subst hq
+        rcases kOk_cases hA with hg | ⟨off, hoff, hd, -⟩
+        · simp_all [(gpFacts hg).notSlot]
+        · intro rest
+          rw [show slotOff P A = off by simp [slotOff, hoff]]
+          exact decodeLinstr_rspLoad acc off rest hacc hd
+      · split at hq
+        · cases hq
+        · simp only [List.mem_singleton] at hq
+          subst hq
+          exact fun rest => decodeLinstr_movRR _ _ rest hacc (gpNumU_lt_16 A)
+    have had : ∀ acc, acc < 16 → ∀ q ∈ sAd P S acc, PieceDec q := by
+      intro acc hacc q hq
+      simp only [sAd] at hq
+      split at hq
+      · simp only [List.mem_singleton] at hq
+        subst hq
+        rcases kOk_cases hS with hg | ⟨off, hoff, hd, -⟩
+        · simp_all [(gpFacts hg).notSlot]
+        · rw [show slotOff P S = off by simp [slotOff, hoff]]
+          exact pieceDec_adcxRsp acc off hacc hd
+      · simp only [List.mem_singleton] at hq
+        subst hq
+        exact pieceDec_adcx _ _ hacc (gpNumU_lt_16 S)
+    intro q hq
+    simp only [SArm.pieces] at hq
+    split at hq
+    · rename_i hDs
+      have hacc := gpNumU_lt_16 (scratchS A S C)
+      have hdD : dispOk32 (slotOff P D) = true := by
+        rcases kOk_cases hD with hg | ⟨off, hoff, hd, -⟩
+        · simp_all [(gpFacts hg).notSlot]
+        · simpa [slotOff, hoff] using hd
+      simp only [List.mem_cons, List.mem_append, List.not_mem_nil, or_false] at hq
+      rcases hq with rfl | rfl | ((hq | hq) | rfl | rfl)
+      · exact pieceDec_bt _ (gpNumU_lt_16 C)
+      · exact fun rest => decodeLinstr_rspStore _ cmovRedZone rest hacc (by decide)
+      · exact hmv _ hacc q hq
+      · exact had _ hacc q hq
+      · exact fun rest => decodeLinstr_rspStore _ _ rest hacc hdD
+      · exact fun rest => decodeLinstr_rspLoad _ cmovRedZone rest hacc (by decide)
+    · simp only [List.mem_append, List.mem_cons] at hq
+      rcases hq with hq | rfl | hq
+      · exact hmv _ (gpNumU_lt_16 D) q hq
+      · exact pieceDec_bt _ (gpNumU_lt_16 C)
+      · exact had _ (gpNumU_lt_16 D) q hq
+  | adcxhi O A S C =>
+    simp only [SArm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨⟨⟨⟨⟨hO, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+    refine ⟨by simp [SArm.instr, SArm.pieces, encodeLopn_adcxhi3 _ _ _ _ _ _ _ hO], ?_⟩
+    intro q hq
+    simp only [SArm.pieces, List.mem_singleton] at hq
+    subst hq
+    exact pieceDec_setc _ (gpNumU_lt_16 O)
+
+/-- The computed shape of a slot carry arm's instruction decodes to its machine
+    instructions. -/
+theorem SArm.shape_ops {P : Params} {c : SArm} (h : c.ok P = true) {sh : DShape}
+    (hs : shapeOf P c.instr = some sh) : sh.ops' = c.js P := by
+  obtain ⟨hb, hp⟩ := c.bytes P h
+  cases c <;> exact shapeOf_lopn_ops _ hb hp hs
+
+/-- The machine word of an operand: the word at its frame address for a slot, its register
+    otherwise. -/
+def valM (P : Params) (rsp : BitVec 64) (sa : AState) (x : String) : BitVec 64 :=
+  if isSpillOrQsave x then read64 sa.mem (rsp + BitVec.ofInt 64 (slotOff P x))
+  else sa.regs (phys x)
+
+theorem sepB_disj {off : Int} (h : sepB cmovRedZone off = true) (rsp : BitVec 64) :
+    Disjoint8 (redW rsp) (rsp + BitVec.ofInt 64 off) := by
+  simp only [sepB, Bool.and_eq_true, decide_eq_true_eq] at h
+  exact disjoint8_add_ofInt rsp cmovRedZone off h.1 h.2
+
+/-- An operand of a slot carry arm reads, on the address machine, its machine word. -/
+theorem wordA_valM {P : Params} {rsp : BitVec 64} {sa : AState} {s : LstateA}
+    (hc : ACorrW rsp sa s) {x : String} (hk : kOk P x = true)
+    (hw : gpOk x = true → (s.reg.lvm x).1 ≠ 1) :
+    wordA (frameP P rsp) s x = some (valM P rsp sa x) := by
+  rcases kOk_cases hk with hg | ⟨off, hoff, -, hsep⟩
+  · simp [wordA, frameP_gp hg, valM, (gpFacts hg).notSlot, hc.wide hg (hw hg)]
+  · obtain ⟨hs, -, -⟩ := slot_facts hoff
+    simp only [wordA, frameP, hoff, Option.map_some, valM, hs, if_true,
+      show slotOff P x = off by simp [slotOff, hoff]]
+    rw [read64_eq_of_agree hc.mem (sepB_disj hsep rsp)]
+
+/-- `adcx off(%b), %d` writes the word of `x86_ADCX` to `d` and its carry to the carry flag. -/
+theorem evalInstrA_adcxMem (sa : AState) (d b : String) (off : Int) :
+    (evalInstrA sa (.adcxMem d b off)).regs = (fun r => if r = d then
+        (x86_ADCX (sa.regs d) (read64 sa.mem (sa.regs b + BitVec.ofInt 64 off))
+          (sa.flags.cf.getD false)).2 else sa.regs r)
+      ∧ (evalInstrA sa (.adcxMem d b off)).mem = sa.mem
+      ∧ (evalInstrA sa (.adcxMem d b off)).flags.cf
+        = (x86_ADCX (sa.regs d) (read64 sa.mem (sa.regs b + BitVec.ofInt 64 off))
+            (sa.flags.cf.getD false)).1 := by
+  refine ⟨?_, evalInstrA_mem_of_noWriteB sa _ rfl, ?_⟩ <;>
+    simp [evalInstrA, evalInstr, AState.view, JState.flagB, JState.load]
+
+/-- The copy of `A` into the accumulator `acc`, when it is laid down, writes the machine word
+    of `A` to `acc` and keeps the memory and the flags. -/
+theorem run_sMv (P : Params) (rsp : BitVec 64) (D A : String) (acc : Nat) (sa : AState)
+    (hsp : sa.regs "%rsp" = rsp)
+    (hlay : isSpillOrQsave A = true ∨ ¬ (A = D ∧ acc = gpNumU D)) :
+    (∀ r, (aMachine.runBlock sa ((sMv P D A acc).map Prod.snd)).regs r
+        = if r = SailX86Decoder.regName acc then valM P rsp sa A else sa.regs r)
+      ∧ (aMachine.runBlock sa ((sMv P D A acc).map Prod.snd)).mem = sa.mem
+      ∧ (aMachine.runBlock sa ((sMv P D A acc).map Prod.snd)).flags = sa.flags := by
+  unfold sMv
+  split
+  · rename_i hs
+    obtain ⟨hregs, hmem⟩ := evalInstrA_loadMem_eq sa (SailX86Decoder.regName acc) "%rsp"
+      (slotOff P A)
+    refine ⟨fun r => ?_, hmem, rfl⟩
+    show (evalInstrA sa _).regs r = _
+    rw [hregs, hsp]
+    simp [valM, hs]
+  · rename_i hs
+    have hlay' := hlay.resolve_left (by simp [hs])
+    rw [if_neg hlay']
+    refine ⟨fun r => ?_, evalInstrA_mem_of_noWriteB sa _ rfl, rfl⟩
+    show (evalInstrA sa _).regs r = _
+    simp [valM, hs]
+    rfl
+
+/-- The add of `S` into the accumulator `acc` writes the word of `x86_ADCX` of the
+    accumulator, the machine word of `S` and the carry flag to `acc`, and its carry to the
+    carry flag. -/
+theorem run_sAd (P : Params) (rsp : BitVec 64) (S : String) (acc : Nat) (sa : AState)
+    (hsp : sa.regs "%rsp" = rsp) :
+    (∀ r, (aMachine.runBlock sa ((sAd P S acc).map Prod.snd)).regs r
+        = if r = SailX86Decoder.regName acc then
+            (x86_ADCX (sa.regs (SailX86Decoder.regName acc)) (valM P rsp sa S)
+              (sa.flags.cf.getD false)).2 else sa.regs r)
+      ∧ (aMachine.runBlock sa ((sAd P S acc).map Prod.snd)).mem = sa.mem
+      ∧ (aMachine.runBlock sa ((sAd P S acc).map Prod.snd)).flags.cf
+        = (x86_ADCX (sa.regs (SailX86Decoder.regName acc)) (valM P rsp sa S)
+            (sa.flags.cf.getD false)).1 := by
+  unfold sAd
+  split
+  · rename_i hs
+    obtain ⟨hr, hm, hf⟩ := evalInstrA_adcxMem sa (SailX86Decoder.regName acc) "%rsp" (slotOff P S)
+    refine ⟨fun r => ?_, hm, ?_⟩
+    · show (evalInstrA sa _).regs r = _
+      rw [hr, hsp]
+      simp [valM, hs]
+    · show (evalInstrA sa _).flags.cf = _
+      rw [hf, hsp]
+      simp [valM, hs]
+  · rename_i hs
+    obtain ⟨hr, hm, hf⟩ := evalInstrA_adcx sa (SailX86Decoder.regName acc) (phys S)
+    refine ⟨fun r => ?_, hm, ?_⟩
+    · show (evalInstrA sa _).regs r = _
+      rw [hr]
+      simp [valM, hs]
+    · show (evalInstrA sa _).flags.cf = _
+      rw [hf]
+      simp [valM, hs]
+
+/-- A slot operand has a frame address. -/
+theorem kOk_frame {P : Params} {x : String} (hk : kOk P x = true)
+    (hs : isSpillOrQsave x = true) (rsp : BitVec 64) : (frameP P rsp x).isSome = true := by
+  rcases kOk_cases hk with hg | ⟨off, hoff, -, -⟩
+  · simp [(gpFacts hg).notSlot] at hs
+  · simp [frameP, hoff]
+
+/-- Some operand of a slot carry arm is a slot, which the address machine sees. -/
+theorem slot_seen {P : Params} {D A S : String} (hD : kOk P D = true) (hA : kOk P A = true)
+    (hS : kOk P S = true)
+    (h : isSpillOrQsave D = true ∨ isSpillOrQsave A = true ∨ isSpillOrQsave S = true)
+    (rsp : BitVec 64) :
+    ((frameP P rsp D).isSome || (frameP P rsp A).isSome || (frameP P rsp S).isSome) = true := by
+  rcases h with h | h | h <;> simp [kOk_frame _ h rsp, *]
+
+/-- A word the address machine reads off a name other than `D` survives a write to `D` that
+    keeps the memory. -/
+theorem wordA_setReg {frame : String → Option (BitVec 64)} {s : LstateA} {D x : String}
+    (hx : x ≠ D) {w : Nat} (v : BitVec w) :
+    wordA frame { s with reg := (s.reg.setReg D v).nextPc } x = wordA frame s x := by
+  unfold wordA
+  split
+  · rfl
+  · show (s.reg.setReg D v).nextPc.getW x 64 = _
+    rw [LstateN.getW_nextPc, LstateN.getW_setReg_other _ _ _ _ _ hx]
+
+/-- **The slot carry add into a register.** From `ACorrW`, the address-machine step of
+    `ADCX:64 D, A, S, C` with `D` a register and a slot among `A`, `S` is matched by the
+    reload or copy of `A` into `D`, `bt $0, C` and `adcx` from the slot or register `S`. -/
+theorem sim_sadcx_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
+    (h : (SArm.adcx D A S C).ok P = true) (hDg : gpOk D = true) (sa : AState) (s : LstateA)
+    (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
+      ∧ (D ≠ A → D ≠ S → D ≠ C →
+          CarryAt (frameP P rsp) (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' A S C) := by
+  simp only [SArm.ok, Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hC, hAC⟩, hSC⟩, hD⟩, hA⟩, hS⟩, hsl0⟩, hal⟩ := h
+  have hDs : isSpillOrQsave D = false := (gpFacts hDg).notSlot
+  have hfD : frameP P rsp D = none := frameP_gp hDg
+  set va := valM P rsp sa A with hva
+  set vb := valM P rsp sa S with hvb
+  have hA' := wordA_valM hc hA hwA
+  have hS' := wordA_valM hc hS hwS
+  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (slot_seen hD hA hS (by simp_all) rsp) hA' hS']
+    at hst
+  cases hgc : s.reg.getW C 1 with
+  | none => rw [hgc] at hst; cases hst
+  | some vc =>
+  rw [hgc] at hst
+  simp only [Option.map_some, hfD, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  have hmC := hc.bit hC hgc
+  set bit := vc.getLsbD 0 with hbit
+  have hCD : C ≠ D := by
+    intro e; subst e
+    rcases hal with (hal | ⟨rfl, -⟩) | ⟨-, hal⟩
+    · simp [hDs] at hal
+    · exact hAC rfl
+    · exact hal rfl
+  have hsp := hc.sp
+  -- the machine run: the copy of `A`, `bt`, the add
+  have hjs : (SArm.adcx D A S C).js P
+      = (sMv P D A (gpNumU D)).map Prod.snd ++ (.bt (phys C) (.imm 0)
+        :: (sAd P S (gpNumU D)).map Prod.snd) := by
+    simp [SArm.js, SArm.pieces, hDs, List.map_append]
+  have hpD : SailX86Decoder.regName (gpNumU D) = phys D := rfl
+  set sa1 := aMachine.runBlock sa ((sMv P D A (gpNumU D)).map Prod.snd) with hsa1
+  obtain ⟨r1D, r1o, m1, f1⟩ : sa1.regs (phys D) = va ∧ (∀ r, r ≠ phys D → sa1.regs r = sa.regs r)
+      ∧ sa1.mem = sa.mem ∧ sa1.flags = sa.flags := by
+    by_cases hlay : isSpillOrQsave A = true ∨ ¬ (A = D ∧ gpNumU D = gpNumU D)
+    · obtain ⟨hr, hm, hf⟩ := run_sMv P rsp D A (gpNumU D) sa hsp hlay
+      refine ⟨by rw [hr, hpD, if_pos rfl], fun r hr' => by rw [hr, hpD, if_neg hr'], hm, hf⟩
+    · simp only [not_or, Bool.not_eq_true, not_not] at hlay
+      obtain ⟨hAs, rfl, -⟩ := hlay
+      have he : sMv P A A (gpNumU A) = [] := by simp [sMv, hAs]
+      rw [hsa1, he]
+      exact ⟨by simp [hva, valM, hAs], fun _ _ => rfl, rfl, rfl⟩
+  set sa2 := evalInstrA sa1 (.bt (phys C) (.imm 0)) with hsa2
+  obtain ⟨r2, m2, c2⟩ : sa2.regs = sa1.regs ∧ sa2.mem = sa1.mem
+      ∧ sa2.flags.cf = some ((sa1.regs (phys C)).getLsbD 0) := evalInstrA_bt0 sa1 (phys C)
+  have hC1 : sa1.regs (phys C) = vc.setWidth 64 := by
+    rw [r1o _ (fun e => hCD (phys_inj hC hDg e)), hmC]
+  have hcf2 : sa2.flags.cf.getD false = bit := by
+    rw [c2, hC1]; simp [hbit]
+  have hsp2 : sa2.regs "%rsp" = rsp := by
+    rw [r2, r1o _ (fun e => (gpFacts hDg).physNe e.symm), hsp]
+  have hvb2 : valM P rsp sa2 S = vb := by
+    by_cases hSs : isSpillOrQsave S = true
+    · simp [valM, hSs, m2, m1, hvb]
+    · have hSg : gpOk S = true := by
+        rcases kOk_cases hS with hg | ⟨off, hoff, -, -⟩
+        · exact hg
+        · exact absurd (slot_facts hoff).1 hSs
+      simp only [valM, hSs, Bool.false_eq_true, if_false, hvb, r2]
+      by_cases hSD : S = D
+      · subst hSD
+        rcases hal with (hal | ⟨rfl, -⟩) | ⟨hal, -⟩
+        · simp [hDs] at hal
+        · rw [r1D]; simp [hva, valM, (gpFacts hDg).notSlot]
+        · exact absurd rfl hal
+      · rw [r1o _ (fun e => hSD (phys_inj hSg hDg e))]
+  obtain ⟨r3, m3, c3⟩ := run_sAd P rsp S (gpNumU D) sa2 hsp2
+  rw [hpD, r2, r1D, hvb2, hcf2] at r3 c3
+  have hword : (x86_ADCX va vb bit).2 = VIR.JasminDialect.addCarryWord va vb vc := by
+    rw [addCarryWord_eq]; rfl
+  rw [hjs, RInstrSemantics.Machine.runBlock_append, RInstrSemantics.Machine.runBlock_cons]
+  change ACorrW rsp (aMachine.runBlock sa2 _) _ ∧ _
+  refine ⟨hc.write hDg (VIR.JasminDialect.addCarryWord va vb vc) (fun r => ?_) (fun x hx => ?_)
+    (fun r hr => ?_) ?_, rfl, fun hDA hDS hDC => ⟨(waddcarry va vb bit).1, ?_,
+      fun va' vb' vc' ha hb hcc => ?_⟩⟩
+  · rw [r3, ← hword]
+    split
+    · rfl
+    · rename_i hne; exact r1o _ hne
+  · rw [m3, m2, m1]; exact hc.mem x hx
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · left
+    exact getW_setReg_nextPcN s.reg D D _ |>.trans (if_pos rfl)
+  · exact c3
+  · rw [wordA_setReg (Ne.symm hDA)] at ha
+    rw [wordA_setReg (Ne.symm hDS)] at hb
+    have eC : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW C 1
+        = some vc := by
+      rw [LstateN.getW_nextPc, LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hDC)]; exact hgc
+    have e1 := ha.symm.trans hA'
+    have e2 := hb.symm.trans hS'
+    have e3 := hcc.symm.trans eC
+    simp_all
+
+/-- The scratch register is one of `RAX`, `RBX`, `RCX`, `RDX` and none of `A`, `S`, `C`. -/
+theorem scratchS_spec (A S C : String) :
+    gpOk (scratchS A S C) = true ∧ scratchS A S C ≠ A ∧ scratchS A S C ≠ S
+      ∧ scratchS A S C ≠ C := by
+  have hmem : scratchS A S C ∈ ["RAX", "RBX", "RCX", "RDX"].filter
+      (fun r => !([A, S, C].contains r)) := by
+    rw [scratch_filter A S C]; exact List.mem_cons_self
+  rw [List.mem_filter] at hmem
+  obtain ⟨h1, h2⟩ := hmem
+  simp only [List.contains_cons, List.contains_nil, Bool.or_false, Bool.not_eq_true',
+    Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at h2
+  refine ⟨?_, fun e => h2.1 e, fun e => h2.2.1 e, fun e => h2.2.2 e⟩
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at h1
+  rcases h1 with h | h | h | h <;> rw [h] <;> decide
+
+/-- A word the address machine reads off a name whose frame address is disjoint from `ad`
+    survives a store at `ad`. -/
+theorem wordA_write {frame : String → Option (BitVec 64)} {s : LstateA} {ad : BitVec 64}
+    {x : String} (hx : ∀ ax, frame x = some ax → Disjoint8 ad ax) (v : BitVec 64) :
+    wordA frame { s with reg := s.reg.nextPc, mem := write64 s.mem ad v } x = wordA frame s x := by
+  unfold wordA
+  split
+  · rename_i ax hax
+    simp only [Option.some.injEq]
+    exact read64_write64_of_disjoint _ _ _ _ (hx ax hax)
+  · exact LstateN.getW_nextPc _ _ _
+
+/-- `mov %x, off(%b)` keeps the registers and the flags. -/
+theorem evalInstrA_storeMem_flags (sa : AState) (b x : String) (off : Int) :
+    (evalInstrA sa (.storeMem b off (.reg x))).flags = sa.flags := rfl
+
+/-- `mov off(%b), %d` keeps the flags. -/
+theorem evalInstrA_loadMem_flags (sa : AState) (d b : String) (off : Int) :
+    (evalInstrA sa (.loadMem d b off)).flags = sa.flags := rfl
+
+/-- **The slot carry add into a slot.** From `ACorrW`, the address-machine step of
+    `ADCX:64 D, A, S, C` with `D` a frame slot is matched by `bt $0, C`, the save of the
+    scratch in the red-zone word, the reload or copy of `A` into the scratch, `adcx` from the
+    slot or register `S`, the store into the slot of `D` and the restore of the scratch. -/
+theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
+    (h : (SArm.adcx D A S C).ok P = true) (hDs : isSpillOrQsave D = true) (sa : AState)
+    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
+      ∧ (D ≠ A → D ≠ S → D ≠ C →
+          (isSpillOrQsave A = true → sepB (slotOff P D) (slotOff P A) = true) →
+          (isSpillOrQsave S = true → sepB (slotOff P D) (slotOff P S) = true) →
+          CarryAt (frameP P rsp) (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' A S C) := by
+  simp only [SArm.ok, Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hC, hAC⟩, hSC⟩, hD⟩, hA⟩, hS⟩, -⟩, -⟩ := h
+  obtain ⟨offD, hoD, -, hsepD⟩ : ∃ off, spillQsaveOff P.frame P.spillW D P.qsaveB = some off
+      ∧ dispOk32 off = true ∧ sepB cmovRedZone off = true := by
+    rcases kOk_cases hD with hg | h
+    · simp [(gpFacts hg).notSlot] at hDs
+    · exact h
+  have hsD : slotOff P D = offD := by simp [slotOff, hoD]
+  set aD := rsp + BitVec.ofInt 64 offD with haD
+  have hfD : frameP P rsp D = some aD := by simp [frameP, hoD, haD]
+  set va := valM P rsp sa A with hva
+  set vb := valM P rsp sa S with hvb
+  have hA' := wordA_valM hc hA hwA
+  have hS' := wordA_valM hc hS hwS
+  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (by simp [hfD]) hA' hS'] at hst
+  cases hgc : s.reg.getW C 1 with
+  | none => rw [hgc] at hst; cases hst
+  | some vc =>
+  rw [hgc] at hst
+  simp only [Option.map_some, hfD, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  have hmC := hc.bit hC hgc
+  set bit := vc.getLsbD 0 with hbit
+  have hsp := hc.sp
+  obtain ⟨hRg, hRA, hRS, hRC⟩ := scratchS_spec A S C
+  set R := SailX86Decoder.regName (gpNumU (scratchS A S C)) with hR
+  have hRp : R = phys (scratchS A S C) := rfl
+  have hRne : ∀ x, gpOk x = true → x ≠ scratchS A S C → phys x ≠ R := fun x hx hne e =>
+    hne (phys_inj hx hRg (e.trans hRp))
+  have hRsp : R ≠ "%rsp" := by rw [hRp]; exact (gpFacts hRg).physNe
+  have hsepRA : isSpillOrQsave A = true → Disjoint8 (redW rsp)
+      (rsp + BitVec.ofInt 64 (slotOff P A)) := fun hs => by
+    rcases kOk_cases hA with hg | ⟨off, hoff, -, hsep⟩
+    · simp [(gpFacts hg).notSlot] at hs
+    · rw [show slotOff P A = off by simp [slotOff, hoff]]; exact sepB_disj hsep rsp
+  have hsepRS : isSpillOrQsave S = true → Disjoint8 (redW rsp)
+      (rsp + BitVec.ofInt 64 (slotOff P S)) := fun hs => by
+    rcases kOk_cases hS with hg | ⟨off, hoff, -, hsep⟩
+    · simp [(gpFacts hg).notSlot] at hs
+    · rw [show slotOff P S = off by simp [slotOff, hoff]]; exact sepB_disj hsep rsp
+  -- the run
+  have hjs : (SArm.adcx D A S C).js P
+      = .bt (phys C) (.imm 0) :: .storeMem "%rsp" cmovRedZone (.reg R)
+        :: ((sMv P D A (gpNumU (scratchS A S C))).map Prod.snd
+          ++ (sAd P S (gpNumU (scratchS A S C))).map Prod.snd
+          ++ [.storeMem "%rsp" (slotOff P D) (.reg R), .loadMem R "%rsp" cmovRedZone]) := by
+    simp [SArm.js, SArm.pieces, hDs, List.map_append, hR]
+  set sa1 := evalInstrA sa (.bt (phys C) (.imm 0)) with hsa1
+  obtain ⟨r1, m1, c1⟩ : sa1.regs = sa.regs ∧ sa1.mem = sa.mem
+      ∧ sa1.flags.cf = some ((sa.regs (phys C)).getLsbD 0) := evalInstrA_bt0 sa (phys C)
+  set sa2 := evalInstrA sa1 (.storeMem "%rsp" cmovRedZone (.reg R)) with hsa2
+  obtain ⟨r2, m2⟩ := evalInstrA_storeMem_eq sa1 "%rsp" R cmovRedZone
+  rw [← hsa2] at r2 m2
+  have f2 : sa2.flags = sa1.flags := evalInstrA_storeMem_flags _ _ _ _
+  rw [r1, m1, hsp] at m2
+  set old := sa.regs R with hold
+  have hsp2 : sa2.regs "%rsp" = rsp := by rw [r2, r1, hsp]
+  set sa3 := aMachine.runBlock sa2 ((sMv P D A (gpNumU (scratchS A S C))).map Prod.snd)
+    with hsa3
+  have hlay : isSpillOrQsave A = true ∨ ¬ (A = D ∧ gpNumU (scratchS A S C) = gpNumU D) := by
+    by_cases hAs : isSpillOrQsave A = true
+    · exact Or.inl hAs
+    · right; rintro ⟨rfl, -⟩; exact hAs hDs
+  obtain ⟨r3, m3, f3⟩ := run_sMv P rsp D A (gpNumU (scratchS A S C)) sa2 hsp2 hlay
+  rw [← hsa3] at r3 m3 f3
+  have hva3 : valM P rsp sa2 A = va := by
+    by_cases hAs : isSpillOrQsave A = true
+    · simp only [valM, hAs, if_true, hva, m2]
+      exact read64_write64_of_disjoint _ _ _ _ (hsepRA hAs)
+    · have hAg : gpOk A = true := by
+        rcases kOk_cases hA with hg | ⟨off, hoff, -, -⟩
+        · exact hg
+        · exact absurd (slot_facts hoff).1 hAs
+      simp only [valM, hAs, Bool.false_eq_true, if_false, hva, r2, r1]
+  set sa4 := aMachine.runBlock sa3 ((sAd P S (gpNumU (scratchS A S C))).map Prod.snd) with hsa4
+  have hsp3 : sa3.regs "%rsp" = rsp := by rw [r3, if_neg (Ne.symm hRsp), hsp2]
+  obtain ⟨r4, m4, c4⟩ := run_sAd P rsp S (gpNumU (scratchS A S C)) sa3 hsp3
+  rw [← hsa4] at r4 m4 c4
+  have hvb3 : valM P rsp sa3 S = vb := by
+    by_cases hSs : isSpillOrQsave S = true
+    · simp only [valM, hSs, if_true, hvb, m3, m2]
+      exact read64_write64_of_disjoint _ _ _ _ (hsepRS hSs)
+    · have hSg : gpOk S = true := by
+        rcases kOk_cases hS with hg | ⟨off, hoff, -, -⟩
+        · exact hg
+        · exact absurd (slot_facts hoff).1 hSs
+      simp only [valM, hSs, Bool.false_eq_true, if_false, hvb]
+      rw [r3, if_neg (hRne S hSg (Ne.symm hRS)), r2, r1]
+  have hcf3 : sa3.flags.cf.getD false = bit := by
+    rw [f3, f2, c1, hmC]; simp [hbit]
+  rw [show sa3.regs R = va by rw [r3, if_pos rfl, hva3], hvb3, hcf3] at r4 c4
+  set res := (x86_ADCX va vb bit).2 with hres
+  set sa5 := evalInstrA sa4 (.storeMem "%rsp" (slotOff P D) (.reg R)) with hsa5
+  obtain ⟨r5, m5⟩ := evalInstrA_storeMem_eq sa4 "%rsp" R (slotOff P D)
+  rw [← hsa5] at r5 m5
+  have hsp4 : sa4.regs "%rsp" = rsp := by rw [r4, if_neg (Ne.symm hRsp), hsp3]
+  rw [hsp4, hsD, r4, if_pos rfl] at m5
+  set sa6 := evalInstrA sa5 (.loadMem R "%rsp" cmovRedZone) with hsa6
+  obtain ⟨r6, m6⟩ := evalInstrA_loadMem_eq sa5 R "%rsp" cmovRedZone
+  rw [← hsa6] at r6 m6
+  have hsp5 : sa5.regs "%rsp" = rsp := by rw [r5, hsp4]
+  have hDisD : Disjoint8 aD (redW rsp) := by
+    have := sepB_disj hsepD rsp
+    exact ⟨this.2, this.1⟩
+  have hrest : read64 sa5.mem (sa5.regs "%rsp" + BitVec.ofInt 64 cmovRedZone) = old := by
+    rw [hsp5, m5, m4, m3, m2]
+    show read64 (write64 (write64 sa.mem (redW rsp) old) aD res) (redW rsp) = old
+    rw [read64_write64_of_disjoint _ _ _ _ hDisD, read64_write64_same]
+  have hrun : aMachine.runBlock sa ((SArm.adcx D A S C).js P) = sa6 := by
+    rw [hjs, RInstrSemantics.Machine.runBlock_cons, RInstrSemantics.Machine.runBlock_cons,
+      RInstrSemantics.Machine.runBlock_append, RInstrSemantics.Machine.runBlock_append]
+    rfl
+  have hword : res = VIR.JasminDialect.addCarryWord va vb vc := by
+    rw [hres, addCarryWord_eq]; rfl
+  rw [hrun]
+  have hregs6 : sa6.regs = sa.regs := by
+    funext r
+    rw [r6, hrest, r5, r4]
+    by_cases hr : r = R
+    · subst hr; rw [if_pos rfl]
+    · rw [if_neg hr, if_neg hr, r3, if_neg hr, r2, r1]
+  have hmem6 : sa6.mem = write64 (write64 sa.mem (redW rsp) old) aD res := by
+    rw [m6, m5, m4, m3, m2]; rfl
+  refine ⟨⟨fun r hr => ?_, by rw [hregs6]; exact hsp, fun x hx => ?_⟩, rfl,
+    fun hDA hDS hDC hsA hsS => ⟨(waddcarry va vb bit).1, ?_, fun va' vb' vc' ha hb hcc => ?_⟩⟩
+  · rw [hregs6]
+    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    rw [LstateN.getW_nextPc]
+    exact hc.regs r hr
+  · show write64 s.mem aD _ x = _
+    rw [hmem6, ← hword]
+    refine agree_write64 (fun y hy => ?_) _ _ x hx
+    rw [write64_of_not_inRange _ _ _ _ hy]
+    exact hc.mem y hy
+  · show sa6.flags.cf = _
+    rw [evalInstrA_loadMem_flags, evalInstrA_storeMem_flags, c4]
+    rfl
+  · have hdisA : ∀ ax, frameP P rsp A = some ax → Disjoint8 aD ax := by
+      intro ax hax
+      simp only [frameP, Option.map_eq_some_iff] at hax
+      obtain ⟨off, hoff, rfl⟩ := hax
+      have hAs := (slot_facts hoff).1
+      have hsep := hsA hAs
+      rw [hsD, show slotOff P A = off by simp [slotOff, hoff]] at hsep
+      simp only [sepB, Bool.and_eq_true, decide_eq_true_eq] at hsep
+      exact disjoint8_add_ofInt rsp offD off hsep.1 hsep.2
+    have hdisS : ∀ ax, frameP P rsp S = some ax → Disjoint8 aD ax := by
+      intro ax hax
+      simp only [frameP, Option.map_eq_some_iff] at hax
+      obtain ⟨off, hoff, rfl⟩ := hax
+      have hSs := (slot_facts hoff).1
+      have hsep := hsS hSs
+      rw [hsD, show slotOff P S = off by simp [slotOff, hoff]] at hsep
+      simp only [sepB, Bool.and_eq_true, decide_eq_true_eq] at hsep
+      exact disjoint8_add_ofInt rsp offD off hsep.1 hsep.2
+    rw [wordA_write hdisA] at ha
+    rw [wordA_write hdisS] at hb
+    have eC : s.reg.nextPc.getW C 1 = some vc := by rw [LstateN.getW_nextPc]; exact hgc
+    have e1 := ha.symm.trans hA'
+    have e2 := hb.symm.trans hS'
+    have e3 := hcc.symm.trans eC
+    simp_all
+
+/-- **The slot carry-out binding.** From `ACorrW`, with the machine carry flag holding the
+    carry-out of `A + S + C` on the address-machine words, the step of `ADCXHI:64 O, A, S, C`
+    with a slot among `A`, `S` is matched by `setc O`: the registers end related by `ACorrW`,
+    and the zero flag and the machine flags are kept. -/
+theorem sim_sadcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
+    (h : (SArm.adcxhi O A S C).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (hcy : CarryAt (frameP P rsp) sa s A S C)
+    (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) ((SArm.adcxhi O A S C).instr, .reg none) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((SArm.adcxhi O A S C).js P)) s' ∧ zf' = zf
+      ∧ (aMachine.runBlock sa ((SArm.adcxhi O A S C).js P)).flags = sa.flags := by
+  simp only [SArm.ok, Bool.and_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨hO, hC⟩, -⟩, -⟩, hA⟩, hS⟩, hsl0⟩ := h
+  have hA' := wordA_valM hc hA hwA
+  have hS' := wordA_valM hc hS hwS
+  have hsl : ((frameP P rsp O).isSome || (frameP P rsp A).isSome
+      || (frameP P rsp S).isSome) = true := by
+    rcases hsl0 with h | h
+    · simp [kOk_frame hA h rsp]
+    · simp [kOk_frame hS h rsp]
+  rw [SArm.instr, fstepA_adcxhiSlot _ O A S C s zf hsl hA' hS'] at hst
+  cases hgc : s.reg.getW C 1 with
+  | none => rw [hgc] at hst; cases hst
+  | some vc =>
+  rw [hgc] at hst
+  simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  obtain ⟨co, hcf, hco⟩ := hcy
+  have hco' := hco _ _ _ hA' hS' hgc
+  obtain ⟨r1, m1, f1⟩ := evalInstrA_setc sa (phys O)
+  have hrun : aMachine.runBlock sa ((SArm.adcxhi O A S C).js P)
+      = evalInstrA sa (.setc (phys O)) := rfl
+  rw [hrun]
+  refine ⟨hc.write hO (if co then 1 else 0) (fun r => ?_) (fun x hx => ?_) (fun r hr => ?_) ?_,
+    rfl, f1⟩
+  · rw [r1, hcf]; rfl
+  · rw [m1]; exact hc.mem x hx
+  · show (s.reg.setReg O _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · right
+    refine ⟨VIR.JasminDialect.carryOutBit (valM P rsp sa A) (valM P rsp sa S) vc, ?_, ?_⟩
+    · show (if O = O then _ else _) = _
+      rw [if_pos rfl]
+    · rw [carryOutBit_eq, hco']
+      cases co <;> decide
+
+/-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLayout
