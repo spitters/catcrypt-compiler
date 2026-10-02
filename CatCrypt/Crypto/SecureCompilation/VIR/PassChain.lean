@@ -38,6 +38,8 @@ correctness certificate, which carries the semantics.
 * `StepCert.ofRefines`, `StepCert.ofDenoteEq`, `StepCert.id`: certificates of an
   endo-pass that keeps successful runs, of one that preserves the denotation, and
   of the identity step.
+* `StepCert.ofTransport`: the certificate of a step between program types whose
+  output denotes the transport of the source denotation at the transported input.
 * `LeakSem`, `LeakSem.twoRun`, `ctRel`, `CTCert`, `CTCert.toCert`: the two-run
   semantics and the constant-time certificate.
 
@@ -179,6 +181,20 @@ def ofDenoteEq {P : Type} {f : P → Option P} (S : Sem P)
 /-- The certificate of the identity step. -/
 def id {P : Type} (S : Sem P) : StepCert (Step.id P).run S S :=
   ofDenoteEq S fun p q hf => by cases hf; rfl
+
+/-- The certificate of a step whose output denotes, at the transported input, the
+    transport of the denotation of its input. The input relation is the graph of
+    `mapIn` and the output relation the graph of `mapOut`. -/
+def ofTransport {P Q : Type} {f : P → Option Q} (S : Sem P) (T : Sem Q)
+    (mapIn : S.In → T.In) (mapOut : S.Out → T.Out)
+    (h : ∀ p q V, f p = some q → T.den q (mapIn V) = (S.den p V).map mapOut) :
+    StepCert f S T where
+  relIn V W := W = mapIn V
+  relOut o o' := o' = mapOut o
+  sound := by
+    intro p q V W o hf hVW hd
+    subst hVW
+    exact ⟨mapOut o, by rw [h p q V hf, hd]; rfl, rfl⟩
 
 end StepCert
 

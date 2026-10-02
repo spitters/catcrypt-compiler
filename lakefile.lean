@@ -1847,15 +1847,16 @@ def pkgModules9 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgMap,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgToComL,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttBasemul,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttInverse,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWord,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned,
   ]
 def pkgModules10 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701MulEmit,
@@ -2055,9 +2056,9 @@ def pkgModules10 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ZmmRenderValidated,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextLeakage,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate,
   ]
 def pkgModules11 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VarShiftEmitGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector,
@@ -2257,9 +2258,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrMemMachine,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrMemMachine,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachineSim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BmiShift,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CFDecoder,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86LeanUniversal,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdCurve25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdDivstep62Emit,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdDivstepEmit,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP256,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP256,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP384,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP521,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdSecp256k1,

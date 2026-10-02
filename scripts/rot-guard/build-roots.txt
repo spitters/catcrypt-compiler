@@ -157,7 +157,6 @@ CatCrypt.Crypto.Optimizer.LoopInvariantMotion
 CatCrypt.Crypto.Optimizer.PackedRotateVsimd
 CatCrypt.Crypto.Optimizer.PipelineSmokeKat
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat
-CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.BatchInverseGeneric
@@ -665,6 +664,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
+CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
@@ -674,7 +674,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
-CatCrypt.Crypto.SecureCompilation.VIR.PassChain
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
@@ -734,7 +733,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
-CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelect
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
 CatCrypt.Crypto.SecureCompilation.VIR.WeilReciprocity
 CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
