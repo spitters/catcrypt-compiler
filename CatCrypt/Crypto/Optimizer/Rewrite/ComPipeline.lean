@@ -58,10 +58,12 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   the equality-saturation contract, composed with the peephole's own
   cost-non-increase).
 * `comRangeOpt`, `comRangeOpt_denote`, `comRangeOpt_cost_le` — the range stage: the
-  bindings that the range analysis `ComRange` bounds to one point become constants, except
-  the low halves of the instruction pairs of the x86 lowering (`ComGVN.pairLowOp`), masks
-  of operands already in range are dropped, and selects on a decided condition are
-  narrowed; its denotation equality holds at every valuation.
+  bindings that the range analysis `ComRange` bounds to one point become constants, masks
+  of operands already in range are dropped, selects on a decided condition are narrowed,
+  a multiply by `1` becomes a copy and a carry-chain add at carry-in `0` becomes an add; the
+  low half of an instruction pair of the x86 lowering (`ComGVN.pairLowOp`) is rewritten
+  only when the high half of its pair is a constant of the stage (`pairHighFolds`); its
+  denotation equality holds at every valuation.
 * `optCom`, `optCom_denote` — the `Com` optimisation stage, the range stage followed by the
   acyclic e-graph pass `Aegraph.aegraphOpt` (rules at node creation, hash-consing,
   extraction), whose denotation equality holds at every valuation; `optCom_ctSafe`,
@@ -145,18 +147,26 @@ the operations for all operands within their intervals:
 
 * a register binding whose interval is one point `n` becomes `regConst w n`
   (`ComRangeFold.pointExpr`). This folds a comparison that the intervals of its operands
-  decide, a carry-out bit that they exclude or force, and every operation whose interval is
-  one point other than a multiply and a carry-chain add (`ComGVN.pairLowOp`);
+  decide, a carry-out bit that they exclude or force, a high multiply whose operands bound
+  it to one point, and every other operation whose interval is one point;
 * `a &&& b` with `b` the constant `2^k - 1` and `a < 2^k` becomes the copy `a ||| a`, and
   symmetrically in the operands;
-* `select c a b` with `c` one point becomes the copy of `a` or of `b`.
+* `select c a b` with `c` one point becomes the copy of `a` or of `b`;
+* `a * b` with `b` the constant `1` becomes the copy `a ||| a`, and symmetrically in the
+  operands (`mulPair_of_one`: the high word of the pair is then `0`);
+* `addCarryLo w a b c` with `c` the constant `0` becomes `a + b` (`carryPair_of_zero`: the
+  carry-out of the pair is then the bit the intervals decide).
 
-A multiply and a carry-chain add are kept: the x86 lowering pairs the `MUL` of a multiply
-with the `MULXHI` of the high multiply on the same sources, and reads the carry-out of
-`addCarryHi` by `setc` from the flags of the `ADCX` of the `addCarryLo` before it. The input
-intervals hold at every valuation, so the stage needs no hypothesis on it. Each
-rewritten binding is a `regConst` binding, of cost 1 and without arguments, or a `regArith`
-binding of cost 1 that is not a multiply. -/
+The x86 lowering pairs the `MUL` of a multiply with the `MULXHI` of the high multiply on the
+same sources, and reads the carry-out of `addCarryHi` by `setc` from the flags of the `ADCX`
+of the `addCarryLo` before it. A multiply or a carry-chain add (`ComGVN.pairLowOp`) is
+therefore rewritten only when the intervals of its operands make the high half of its pair a
+point (`pairHighFolds`): the high multiply of the same operands, and the carry-out of the same
+operands at every carry-in, are then constants of the stage (`pairHighFolds_mulhi`,
+`pairHighFolds_addCarryHi`), and no pair is separated. The input intervals hold at every
+valuation, so the stage needs no hypothesis on it. Each rewritten binding is a `regConst`
+binding, of cost 1 and without arguments, or a `regArith` binding of cost 1 that is not a
+multiply. -/
 
 section Range
 
@@ -295,6 +305,26 @@ theorem and_eq_of_maskDrops {ia ib : Iv} {x y : BitVec w} (hx : ia.Mem w x) (hy 
     rw [BitVec.toNat_and, hyn, show n = 2 ^ Nat.log2 (n + 1) - 1 by omega,
       Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt hxk]
   · cases h
+
+/-- The multiply pair at an operand equal to `1`: the low word `x * y` is `x` and the high
+    word `mulHiW x y` is `0`. -/
+theorem mulPair_of_one {x y : BitVec w} (hy : y.toNat = 1) : x * y = x ∧ mulHiW x y = 0 := by
+  constructor
+  · apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_mul, hy, Nat.mul_one, Nat.mod_eq_of_lt x.isLt]
+  · unfold mulHiW
+    rw [hy, Nat.mul_one, Nat.div_eq_of_lt x.isLt]
+    rfl
+
+/-- The carry-chain add pair at carry-in `0`, for `x.toNat` in `a` and `y.toNat` in `b` when
+    the intervals decide the carry-out: the data word is `x + y` and the carry-out bit is the
+    bit of the decision. -/
+theorem carryPair_of_zero {a b : Iv} {x y : BitVec w} {ci : BitVec 1} (hci : ci.toNat = 0)
+    (ha : a.1 ≤ (x.toNat : Int) ∧ (x.toNat : Int) ≤ a.2)
+    (hb : b.1 ≤ (y.toNat : Int) ∧ (y.toNat : Int) ≤ b.2) {r : Bool}
+    (h : carryDecide? w a b = some r) :
+    addCarryWord x y ci = x + y ∧ carryOutBit x y ci = bitOf r :=
+  ⟨by unfold addCarryWord; rw [hci]; simp, carryDecide?_sound ci ha hb h⟩
 
 end Facts
 
@@ -440,8 +470,9 @@ theorem stageAbs_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) {l
   rcases e with ⟨op, rfl, args⟩
   exact stageOpAbs_sound hA op args hlen
 
-/-- The rewrites of the range stage other than the point rule: the dropped mask and the
-    select on a one-point condition. -/
+/-- The rewrites of the range stage other than the point rule: the dropped mask, the
+    multiply by `1`, the carry-chain add at carry-in `0` and the select on a one-point
+    condition. -/
 def ruleOp (A : AEnv Γ) (op : JasminOp)
     (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op)) :
     Option (Expr jasminDialect Γ (DialectSignature.ret (d := jasminDialect) op)) :=
@@ -452,6 +483,19 @@ def ruleOp (A : AEnv Γ) (op : JasminOp)
     if maskDrops w (hget A a).1 (hget A b).1 then some (binE .or a a)
     else if maskDrops w (hget A b).1 (hget A a).1 then some (binE .or b b)
     else none
+  | .regArith .mul w, args =>
+    let a : Ctxt.Var Γ (.reg w) := args.head
+    let b : Ctxt.Var Γ (.reg w) := args.tail.head
+    if ivSingle? (ivLane w (hget A b).1) = some 1 then some (binE .or a a)
+    else if ivSingle? (ivLane w (hget A a).1) = some 1 then some (binE .or b b)
+    else none
+  | .addCarryLo w, args =>
+    let a : Ctxt.Var Γ (.reg w) := args.head
+    let b : Ctxt.Var Γ (.reg w) := args.tail.head
+    let ci : Ctxt.Var Γ (.reg 1) := args.tail.tail.head
+    match ivSingle? (ivLane 1 (hget A ci).1) with
+    | some 0 => some (binE .add a b)
+    | _ => none
   | .select w, args =>
     let ci : Ctxt.Var Γ (.reg 1) := args.head
     let a : Ctxt.Var Γ (.reg w) := args.tail.head
@@ -473,7 +517,14 @@ theorem ruleOp_op (A : AEnv Γ) (op : JasminOp)
     case and =>
       simp only [ruleOp] at h
       split_ifs at h <;> cases h <;> exact ⟨_, _, rfl, by decide⟩
+    case mul =>
+      simp only [ruleOp] at h
+      split_ifs at h <;> cases h <;> exact ⟨_, _, rfl, by decide⟩
     all_goals simp [ruleOp] at h
+  case addCarryLo w =>
+    simp only [ruleOp] at h
+    split at h <;> cases h
+    exact ⟨_, _, rfl, by decide⟩
   case select w =>
     simp only [ruleOp] at h
     split at h <;> cases h <;> exact ⟨_, _, rfl, by decide⟩
@@ -499,7 +550,31 @@ theorem ruleOp_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) (op 
       · cases h
         show regVal V b ||| regVal V b = regVal V a &&& regVal V b
         rw [BitVec.and_comm, and_eq_of_maskDrops (hA.reg b).1 (hA.reg a).1 h2, BitVec.or_self]
+    case mul =>
+      match args with
+      | .cons a (.cons b .nil) =>
+      simp only [ruleOp, HVector.head, HVector.tail] at h
+      split_ifs at h with h1 h2
+      · cases h
+        show regVal V a ||| regVal V a = regVal V a * regVal V b
+        rw [BitVec.or_self, (mulPair_of_one (Iv.toNat_eq_of_single (hA.reg b).1 h1)).1]
+      · cases h
+        show regVal V b ||| regVal V b = regVal V a * regVal V b
+        rw [BitVec.or_self, BitVec.mul_comm,
+          (mulPair_of_one (Iv.toNat_eq_of_single (hA.reg a).1 h2)).1]
     all_goals simp [ruleOp] at h
+  case addCarryLo w =>
+    match args with
+    | .cons a (.cons b (.cons ci .nil)) =>
+    simp only [ruleOp, HVector.head, HVector.tail] at h
+    split at h
+    · rename_i hc
+      cases h
+      show regVal V a + regVal V b = addCarryWord (regVal V a) (regVal V b) (regVal V ci)
+      unfold addCarryWord
+      rw [Iv.toNat_eq_of_single (hA.reg ci).1 hc]
+      simp
+    · cases h
   case select w =>
     match args with
     | .cons ci (.cons a (.cons b .nil)) =>
@@ -518,19 +593,71 @@ theorem ruleOp_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) (op 
     · cases h
   all_goals simp [ruleOp] at h
 
-/-- The rewrites of the range stage other than the point rule (`ruleOp`): the dropped mask
-    and the select on a one-point condition. -/
+/-- The rewrites of the range stage other than the point rule (`ruleOp`). -/
 def rangeRule (A : AEnv Γ) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     Expr jasminDialect Γ t :=
   match ruleOp A e.op e.args with
   | some e' => e.retTy_eq ▸ e'
   | none => e
 
+/-- The high half of the instruction pair whose low half is `op args` is one point of the
+    range stage: `mulhi w a b` for the multiply `a * b`, and `addCarryHi w a b c` for the
+    carry-chain add `addCarryLo w a b ci`, at every carry-in `c`. The stage replaces such a
+    high half by a constant (`pairHighFolds_mulhi`, `pairHighFolds_addCarryHi`). The value
+    is `true` at every other operation. -/
+def pairHighFolds (A : AEnv Γ) (op : JasminOp)
+    (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op)) :
+    Bool :=
+  match op, args with
+  | .regArith .mul w, args =>
+    let a : Ctxt.Var Γ (.reg w) := args.head
+    let b : Ctxt.Var Γ (.reg w) := args.tail.head
+    (ivSingle? (ivLane w (ivMulhi w (hget A a).1 (hget A b).1))).isSome
+  | .addCarryLo w, args =>
+    let a : Ctxt.Var Γ (.reg w) := args.head
+    let b : Ctxt.Var Γ (.reg w) := args.tail.head
+    (carryDecide? w (ivLane w (hget A a).1) (ivLane w (hget A b).1)).isSome
+  | _, _ => true
+
+/-- When `pairHighFolds` holds of the multiply `a * b`, the range stage binds the high
+    multiply of `a` and `b`, in either order, to a constant. -/
+theorem pairHighFolds_mulhi (A : AEnv Γ) {w : Nat} (a b : Ctxt.Var Γ (.reg w)) (len : Nat)
+    (h : pairHighFolds A (.regArith .mul w) (.cons a (.cons b .nil)) = true) :
+    (pointExpr (Γ := Γ) (.reg w)
+        (stageOpAbs A (.mulhi w) (.cons a (.cons b .nil)) len).1).isSome = true ∧
+      (pointExpr (Γ := Γ) (.reg w)
+        (stageOpAbs A (.mulhi w) (.cons b (.cons a .nil)) len).1).isSome = true := by
+  have hc : ivMulhi w (hget A b).1 (hget A a).1 = ivMulhi w (hget A a).1 (hget A b).1 := by
+    simp only [ivMulhi, Int.mul_comm]
+  simp only [pairHighFolds, HVector.head, HVector.tail] at h
+  have e1 : stageOpAbs A (.mulhi w) (.cons a (.cons b .nil)) len =
+      (ivMulhi w (hget A a).1 (hget A b).1, .none) := rfl
+  have e2 : stageOpAbs A (.mulhi w) (.cons b (.cons a .nil)) len =
+      (ivMulhi w (hget A b).1 (hget A a).1, .none) := rfl
+  rw [e1, e2, hc]
+  simp only [pointExpr, Option.isSome_map]
+  exact ⟨h, h⟩
+
+/-- When `pairHighFolds` holds of the carry-chain add `addCarryLo w a b ci`, the range stage
+    binds the carry-out `addCarryHi w a b c` to a constant at every carry-in `c`. -/
+theorem pairHighFolds_addCarryHi (A : AEnv Γ) {w : Nat} (a b : Ctxt.Var Γ (.reg w))
+    (ci c : Ctxt.Var Γ (.reg 1)) (len : Nat)
+    (h : pairHighFolds A (.addCarryLo w) (.cons a (.cons b (.cons ci .nil))) = true) :
+    (pointExpr (Γ := Γ) (.reg 1)
+        (stageOpAbs A (.addCarryHi w) (.cons a (.cons b (.cons c .nil))) len).1).isSome
+      = true := by
+  simp only [pairHighFolds, HVector.head, HVector.tail, Option.isSome_iff_exists] at h
+  obtain ⟨r, hr⟩ := h
+  simp only [stageOpAbs, HVector.head, HVector.tail, hr, pointExpr, Option.isSome_map]
+  cases r <;> rfl
+
 /-- The rewrite of one binding by the range stage, in a context of length `len`. A low half
-    of an instruction pair of the x86 lowering (`ComGVN.pairLowOp`) is kept. -/
+    of an instruction pair of the x86 lowering (`ComGVN.pairLowOp`) is kept unless the stage
+    binds the high half of the pair to a constant (`pairHighFolds`), so that no pair is
+    separated. -/
 def rangeExpr (A : AEnv Γ) (len : Nat) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     Expr jasminDialect Γ t :=
-  if ComGVN.pairLowOp e.op then e else
+  if ComGVN.pairLowOp e.op && !pairHighFolds A e.op e.args then e else
   match pointExpr t (stageAbs A e len).1 with
   | some e' => e'
   | none => rangeRule A e
