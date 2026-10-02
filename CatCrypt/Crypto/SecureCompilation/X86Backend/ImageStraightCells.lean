@@ -592,6 +592,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (physImgB virtImg
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (slotArrOf slotRen slotRen_some
   imgSep_slotRen imgRel_entryV boundFacts_entryV entryB entryB_spec frameE)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (imgGateB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (imgGateBW imgGateBW_congr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMC)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (idxInvCheckB idxAnnot boundFacts
   runIdxOk_of_idxInvCheckB)
@@ -627,8 +628,8 @@ theorem frameC_isSome (base : String → BitVec 64) (R : Slots) (body : Lcmd) (s
     with the observed names `outs`: with the virtual body `argBind σ nm ++ C2`, the slot map
     `slotArrC` of the cell arrays of `σ` and the cell body of `body`, the register allocation
     check of the virtual body against the image of the cell body, the bounds invariant of
-    the virtual body, the W class of printed bodies, the image class and the gate of the
-    image simulation at the frame marks with the cells, the frame and entry checks, the cell
+    the virtual body, the W class of printed bodies, the image class and the gate `imgGateB`
+    or the gate with carry chains `imgGateBW` at the frame marks with the cells, the frame and entry checks, the cell
     frames, no conditional branch, no slot name in a cell move, and `C2` a list of `Lopn`s. -/
 def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : List String)
     (C2 : List LinstrRM) : Bool :=
@@ -639,7 +640,7 @@ def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : L
   ownedCheckMC outs B (virtImg sl body')
     && idxInvCheckB (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
     && printedAddrWB body && physImgB sl body'
-    && imgGateB (frameMarkC R body) sl body'
+    && (imgGateB (frameMarkC R body) sl body' || imgGateBW (frameMarkC R body) sl body')
     && frameOkB σ body && entryB σ nm body
     && cellAccB sl R body && noCondB body && cellNoSlotB sl body && C2.all isLopnB
 
@@ -748,10 +749,14 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     exact frameSep_of_regions E.rs hreg A j hk _ h2.1 h2.2
   have hF := cellFrames_of (base := abiBase (abiReg σ) sa) (rsp := frameRsp body sa) hacc N.gp
     (fun r hr => hS0.gp r hr) hred
-  have hgate' : imgGateB (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
+  have hgate' : (imgGateB (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
       (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x))
-      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body) = true := by
+      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
+      || imgGateBW (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
+      (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x))
+      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)) = true := by
     rw [ImageAddrFrame.imgGateB_congr (frame' := frameMarkC (cellArrs σ) body)
+      (frameC_isSome _ _ body sa), imgGateBW_congr (frame' := frameMarkC (cellArrs σ) body)
       (frameC_isSome _ _ body sa)]
     exact hgate
   have hfr' : ∀ q ∈ bodyNamesI body,
