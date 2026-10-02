@@ -659,13 +659,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (ImgRelW imgGate
   ptr_of_reloadW haltedA_of_imgW wideSafe_of_gateW)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (readsI srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (carryIns)
-
-theorem width_of_getW {sa : LstateA} {r : String} {v : BitVec 64}
-    (h : sa.reg.getW r 64 = some v) : (sa.reg.lvm r).1 = 64 := by
-  unfold JasminLsemWidthN.LstateN.getW at h
-  split at h
-  · assumption
-  · cases h
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi (width_of_getW)
 
 /-- **The width safety of a body from that of its cell body.** At a relation of the image
     simulation with carry chains on the cell body that passes `imgGateBW`, the body is width
