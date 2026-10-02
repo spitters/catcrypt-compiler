@@ -102,7 +102,7 @@ def tmplRR (d s : Nat) : List (List (BitVec 8) × JInstr 64) :=
 def tmplImm (d v : Nat) : List (List (BitVec 8) × JInstr 64) :=
   (if decide (v < 2 ^ 64) && fitsImm32S v then [(encMovImmw 1 d v, .mov (regName d) (.imm v))]
     else [])
-  ++ (if decide (d < 8) && decide (v < 2 ^ 32) then
+  ++ (if decide (v < 2 ^ 32) then
       [(encMovImmw 0 d v, .mov (regName d) (.imm v))] else [])
   ++ (if fitsImm8S 1 v then
       (List.range 8).filterMap (fun dig => (aluImm8Mnemonic dig).map
@@ -194,6 +194,33 @@ theorem tmplRR_sound (d s : Nat) (hd : d < 16) (hs : s < 16) :
       rcases hop with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact decodeLinstr_aluRR op mk d s rest hd hs htab hmk
 
+/-- The 32-bit `MOV $imm32, %r32` with the `REX.B` prefix `41` (`41 B8+rd id`), for a
+    destination among `r8`–`r15` and a value below `2 ^ 32`, decodes to the 64-bit `MOV` of
+    the value: the 32-bit write zero-extends into the 64-bit register. -/
+theorem decodeLinstr_movImm32_rex (d v : Nat) (rest : List (BitVec 8)) (hd8 : 8 ≤ d)
+    (hd : d < 16) (hv : v < 2 ^ 32) :
+    decodeLinstr (encMovImmw 0 d v ++ rest) = some (.op (.mov (regName d) (.imm v)), rest) := by
+  have hb : bit d 3 = 1 := by
+    simp only [bit]
+    interval_cases d <;> rfl
+  have hrex : rexOpt 0 0 0 1 = [BitVec.ofNat 8 0x41] := by decide
+  have hop : (BitVec.ofNat 8 (0xb8 + d % 8)).toNat = 0xb8 + (d - 8) := by
+    rw [BitVec.toNat_ofNat]; omega
+  apply decodeLinstr_of_decodeJ1
+  simp only [encMovImmw, if_true, hb, hrex, imm32LE, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append]
+  have hr : isRex (BitVec.ofNat 8 0x41) = true := by decide
+  have hw : rexW (BitVec.ofNat 8 0x41) = 0 := by decide
+  have hB : rexB (BitVec.ofNat 8 0x41) = 1 := by decide
+  have e1 : ¬ (BitVec.ofNat 8 0x41 : BitVec 8).toNat = 0x66 := by decide
+  have e2 : ¬ (BitVec.ofNat 8 0x41 : BitVec 8).toNat = 0xf3 := by decide
+  have e3 : ¬ (BitVec.ofNat 8 0x41 : BitVec 8).toNat = 0xc4 := by decide
+  have g1 : ¬ 0xb8 + (d - 8) = 0x0f := by omega
+  have g2 : 0xb8 ≤ 0xb8 + (d - 8) ∧ 0xb8 + (d - 8) ≤ 0xbf := by omega
+  have hd' : 1 * 8 + (0xb8 + (d - 8) - 0xb8) = d := by omega
+  simp only [decodeJ1, e1, e2, e3, hr, hw, decodeRexW0, hop, g1, g2, hB, hd',
+    imm32LE_recompose v hv, if_false, if_true, zero_ne_one, and_self]
+
 theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDec q := by
   intro q hq rest
   simp only [tmplImm, List.mem_append] at hq
@@ -207,10 +234,12 @@ theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDe
     · simp at hq
   · split at hq
     · rename_i hc
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      simp only [decide_eq_true_eq] at hc
       simp only [List.mem_singleton] at hq
       subst hq
-      exact decodeLinstr_movImm32 d v rest hc.1 hc.2
+      by_cases h8 : d < 8
+      · exact decodeLinstr_movImm32 d v rest h8 hc
+      · exact decodeLinstr_movImm32_rex d v rest (by omega) hd hc
     · simp at hq
   · split at hq
     · rename_i hc
