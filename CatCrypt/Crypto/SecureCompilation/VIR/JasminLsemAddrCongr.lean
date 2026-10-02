@@ -598,7 +598,14 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
         | none =>
           simp only
           cases hsc : slotCarry? frame w with
-          | none => exact regStepA_congr _ h zf
+          | none =>
+            simp only
+            cases hsi : slotImm? frame w with
+            | none => exact regStepA_congr _ h zf
+            | some p =>
+              obtain ⟨a, v⟩ := p
+              simp only [hM]
+              exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
           | some q =>
             obtain ⟨lo, d, a, s', c'⟩ := q
             unfold slotCarry? at hsc

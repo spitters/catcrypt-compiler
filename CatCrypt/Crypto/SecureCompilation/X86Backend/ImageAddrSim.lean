@@ -82,6 +82,7 @@ def termArrFree : STerm → Bool
   | .carryF _ _ x y c => termArrFree x && termArrFree y && termArrFree c
   | .mulx _ x y => termArrFree x && termArrFree y
   | .cout _ x y c => termArrFree x && termArrFree y && termArrFree c
+  | .sel x y c => termArrFree x && termArrFree y && termArrFree c
   | .ref _ => true
 
 /-- A term reading no array has one value for all arrays. -/
@@ -116,6 +117,10 @@ theorem termArrFree_ev (V : String → Σ w, BitVec w) (A A' : String → ArrCel
       simp only [termArrFree, Bool.and_eq_true] at h
       rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1, termArrFree_ev V A A' C O y h.2]
   | .cout _ x y c, h => by
+      simp only [termArrFree, Bool.and_eq_true] at h
+      rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1.1,
+        termArrFree_ev V A A' C O y h.1.2, termArrFree_ev V A A' C O c h.2]
+  | .sel x y c, h => by
       simp only [termArrFree, Bool.and_eq_true] at h
       rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1.1,
         termArrFree_ev V A A' C O y h.1.2, termArrFree_ev V A A' C O c h.2]
@@ -263,6 +268,32 @@ def regOkB (frame : String → Option (BitVec 64)) (x : LinstrR) : Bool :=
           && ss.wr.all (fun r => (frame r).isNone)
       | _ => false
 
+/-- An instruction passing `regOkB` is no immediate move into a frame slot: the symbolic step
+    of `MOV:64 q, #v` writes `q`, which `regOkB` requires to have no frame word. -/
+theorem slotImm?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : LinstrR}
+    (h : regOkB frame x = true) : slotImm? frame x = none := by
+  cases hsi : slotImm? frame x with
+  | none => rfl
+  | some p =>
+    exfalso
+    obtain ⟨a, v⟩ := p
+    obtain ⟨q, hx, hq⟩ : ∃ q, x = .Lopn [.reg q] "MOV:64" [.imm v] ∧ frame q = some a := by
+      unfold slotImm? at hsi
+      split at hsi
+      · rename_i q o v'
+        split_ifs at hsi with ho
+        obtain ⟨a', ha, he⟩ := Option.map_eq_some_iff.1 hsi
+        simp only [Prod.mk.injEq] at he
+        obtain ⟨rfl, rfl⟩ := he
+        exact ⟨q, by rw [ho], ha⟩
+      · cases hsi
+    subst hx
+    obtain ⟨ss, gs, hs, hw⟩ : ∃ ss gs, symStep (.Lopn [.reg q] "MOV:64" [.imm v], .reg none)
+        SSt.start = .ok ss gs ∧ q ∈ ss.wr := ⟨_, _, rfl, by simp [SSt.setR]⟩
+    simp only [regOkB, hs, Bool.and_eq_true, List.all_eq_true] at h
+    have := h.2.2 q hw
+    simp [hq] at this
+
 /-- The symbolic word has width `64` when every general-purpose name has width `64`: its
     width base (`STerm.wbase`) is a general-purpose name or has the known width `64`. -/
 def wid64B (t : STerm) : Bool :=
@@ -311,6 +342,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
       ∧ (∀ r, gpOk r = true → (sa'.reg.lvm r).1 = 64) := by
   simp only [regGateB, Bool.and_eq_true] at hgate
   obtain ⟨hok, hwg⟩ := hgate
+  have hsi' : slotImm? frame (x, MemTag.reg none).fst = none := slotImm?_none_of_regOkB hok
   simp only [regOkB, Bool.and_eq_true] at hok
   obtain ⟨⟨⟨⟨hcell, hsc⟩, hmov⟩, hcmp⟩, hsym⟩ := hok
   have hcell' : cellA? (x, MemTag.reg none).fst = none := Option.isNone_iff_eq_none.1 hcell
@@ -342,7 +374,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
       fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr => ?_⟩
-    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc']
+    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi']
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
       simp only [Option.map_some]

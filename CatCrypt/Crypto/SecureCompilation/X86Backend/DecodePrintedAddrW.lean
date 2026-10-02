@@ -270,7 +270,7 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
-      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, hfD, hfA, hfS]
+      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, hfD, hfA, hfS]
 
 /-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
     `carryOutBit` of the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
@@ -285,7 +285,8 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
-      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, hfO, hfA, hfS]
+      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, hfO, hfA,
+      hfS]
 
 /-! ## 5. The machine steps of the carry chain -/
 

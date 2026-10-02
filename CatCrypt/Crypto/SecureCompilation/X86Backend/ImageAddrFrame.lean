@@ -78,6 +78,14 @@ theorem slotCarry?_congr {frame frame' : String → Option (BitVec 64)} {x : Lin
       h _ (by simp [instrNames, JasminLsemExportRewrites.opNames])]
   · rfl
 
+/-- The slot-immediate recognizer reads the frame only at the names of the instruction. -/
+theorem slotImm?_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
+    (h : ∀ q ∈ instrNames x, frame q = frame' q) : slotImm? frame x = slotImm? frame' x := by
+  unfold slotImm?
+  split
+  · rw [h _ (by simp [instrNames, JasminLsemExportRewrites.opNames])]
+  · rfl
+
 /-- The address machine reads the frame only at the names of the instruction it steps. -/
 theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
     (h : ∀ q ∈ instrNames x, frame q = frame' q) (tag : MemTag) (sa : LstateA) (zf : Bool) :
@@ -105,7 +113,7 @@ theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR
               rw [h q hq]
           | none =>
               simp only
-              rw [← slotCarry?_congr h]
+              rw [← slotCarry?_congr h, ← slotImm?_congr h]
               rcases hsc : slotCarry? frame x with _ | ⟨lo, d, a, s, c⟩
               · rfl
               · unfold slotCarry? at hsc

@@ -624,17 +624,30 @@ theorem frameC_isSome (base : String → BitVec 64) (R : Slots) (body : Lcmd) (s
   | some _ => rfl
   | none => exact (ImageAddrFrame.frameMark_isSome body (frameRsp body sa) q).symm
 
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi (fuseMulHiRM fuseOKL fuseLoPre
+  fuseMulHi_lsemFuelMemF_pre)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (fuseRegs)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi (e64_of_abiEntryM)
+
+/-- The virtual body of the cell route: the copies of the parameter registers followed by
+    the folded chain `C2`, with its high products fused (`fuseMulHiRM`) when `fuse` holds. -/
+def cellVirt (σ : AbiLayout) (nm : String → String) (C2 : List LinstrRM) (fuse : Bool) :
+    List LinstrRM :=
+  argBind σ nm ++ if fuse then fuseMulHiRM C2 else C2
+
 /-- **The check of the cell route** of the folded chain `C2` against the printed body `body`,
-    with the observed names `outs`: with the virtual body `argBind σ nm ++ C2`, the slot map
-    `slotArrC` of the cell arrays of `σ` and the cell body of `body`, the register allocation
-    check of the virtual body against the image of the cell body, the bounds invariant of
-    the virtual body, the W class of printed bodies, the image class and the gate `imgGateB`
-    or the gate with carry chains `imgGateBW` at the frame marks with the cells, the frame and entry checks, the cell
-    frames, no conditional branch, no slot name in a cell move, and `C2` a list of `Lopn`s. -/
+    with the observed names `outs` and the fusion flag `fuse`: with the virtual body
+    `cellVirt σ nm C2 fuse`, the slot map `slotArrC` of the cell arrays of `σ` and the cell
+    body of `body`, the register allocation check of the virtual body against the image of
+    the cell body, the bounds invariant of the virtual body, the W class of printed bodies,
+    the image class and the gate `imgGateB` or the gate with carry chains `imgGateBW` at the
+    frame marks with the cells, the frame and entry checks, the cell frames, no conditional
+    branch, no slot name in a cell move, `C2` a list of `Lopn`s, and, when `fuse` holds, the
+    fusion check of `argBind σ nm ++ C2` and no observed name `R15`. -/
 def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : List String)
-    (C2 : List LinstrRM) : Bool :=
+    (C2 : List LinstrRM) (fuse : Bool) : Bool :=
   let R := cellArrs σ
-  let B := argBind σ nm ++ C2
+  let B := cellVirt σ nm C2 fuse
   let sl := slotArrC R (slotRen (slotArrOf σ nm) fun x => x)
   let body' := cellBody sl body
   ownedCheckMC outs B (virtImg sl body')
@@ -643,12 +656,14 @@ def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : L
     && (imgGateB (frameMarkC R body) sl body' || imgGateBW (frameMarkC R body) sl body')
     && frameOkB σ body && entryB σ nm body
     && cellAccB sl R body && noCondB body && cellNoSlotB sl body && C2.all isLopnB
+    && (!fuse || (fuseOKL (fuseRegs σ nm) (fuseLoPre (argBind σ nm) C2) (argBind σ nm ++ C2)
+      && outs.all (· != "R15")))
 
 theorem cellRouteB_entryB {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {outs : List String} {C2 : List LinstrRM} (h : cellRouteB σ nm body outs C2 = true) :
-    entryB σ nm body = true := by
+    {outs : List String} {C2 : List LinstrRM} {fuse : Bool}
+    (h : cellRouteB σ nm body outs C2 fuse = true) : entryB σ nm body = true := by
   simp only [cellRouteB, Bool.and_eq_true] at h
-  exact h.1.1.1.1.2
+  exact h.1.1.1.1.1.2
 
 /-- **The cell route on the decoded bytes.** Let the folded chain `C2` pass `cellRouteB`
     against the printed body `body` with the observed names `outs`, and the cell names of
@@ -657,7 +672,8 @@ theorem cellRouteB_entryB {σ : AbiLayout} {nm : String → String} {body : Lcmd
     decoded bytes of `body` from `sa`, at the end of which every observed cell name
     `memName A (8 j)` holds the machine word at the cell `j` of the array `A`. -/
 theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {outs : List String} {C2 : List LinstrRM} (hg : cellRouteB σ nm body outs C2 = true)
+    {outs : List String} {C2 : List LinstrRM} {fuse : Bool}
+    (hg : cellRouteB σ nm body outs C2 fuse = true)
     (hN : cellNamesOkB σ body = true) (sa : AState) (hreg : σ.Regions sa) (b : LstateM)
     (z : Bool) (hrun : runStraightF C2 (afterArgsC σ body sa (cellArrs σ)) false = some (b, z)) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
@@ -665,7 +681,8 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         b.reg.lvm (memName A (8 * j))
           = ⟨64, read64 sa'.mem (cellAt (abiBase (abiReg σ) sa A) j)⟩ := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩,
+    hfuse⟩ := hg
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrs σ) r = none := by
@@ -701,6 +718,30 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     · exact JasminLsemRenameLoop.movesOf_isLopn _ i hi
     · exact isLopnB_isLopn (List.all_eq_true.mp hlop i hi)
   have hrun' := lsemFuelMemF_of_runStraightF "" _ hl _ b false z rfl hB
+  obtain ⟨fuelB, tB, hrunB, hagB⟩ : ∃ fuelB tB, JasminLsemMemFlagGuard.lsemFuelMemF
+      (JasminLsemMemLoop.singletonProgM ""
+      (cellVirt σ nm C2 fuse)) fuelB
+      { prog := { base := emptyArrs (cellArrs σ) (entryV σ (frameC (abiBase (abiReg σ) sa)
+        (cellArrs σ) (frameE body sa)) sa fun x => x), lfn := "" }, zf := false } = some tB
+      ∧ ∀ r ∈ outs, tB.prog.base.reg.lvm r = b.reg.lvm r := by
+    cases fuse with
+    | false => exact ⟨_, _, hrun', fun _ _ => rfl⟩
+    | true =>
+        simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, List.all_eq_true,
+          bne_iff_ne, ne_eq] at hfuse
+        have habiC := ImageAddrRoute.entryV_abiEntry (un := fun x => x) (sa := sa) hfrA E.argG fun _ _ => rfl
+        have hE : JasminLsemFuseMulHi.E64 (fuseRegs σ nm) (emptyArrs (cellArrs σ)
+            (entryV σ (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa
+              fun x => x)) := by
+          intro x hx
+          rcases List.mem_append.mp hx with hx | hx
+          · exact e64_of_abiEntryM habiC x hx
+          · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
+            obtain ⟨h1, -, h3⟩ := hfrR a ha
+            simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+        obtain ⟨f2, t2, -, ht2, hag, -, -⟩ :=
+          fuseMulHi_lsemFuelMemF_pre hfuse.1 "" _ _ rfl hE _ hrun'
+        exact ⟨f2, t2, ht2, fun r hr => hag.reg r (hfuse.2 r hr)⟩
   have hents := boundFacts_entryV (nm := nm)
     (fr := frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) (un := fun x => x) hreg
     fun b hb => by
@@ -708,7 +749,7 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
       refine ⟨h1, h2, ?_⟩
       simp only [frameC, hgpN _ h1]
       exact h3
-  have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl hents _ hrun'
+  have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl hents _ hrunB
   have hS0 := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
     (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
   have hword : ∀ q a, frameE body sa q = some a →
@@ -782,8 +823,9 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         simp only [ImageAddrRoute.entryA, hR, if_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
-      simp) rfl _ hrun' hok
+      simp) rfl _ hrunB hok
   refine ⟨prog, sa', hdec, hh, fun A j hA hc => ?_⟩
+  rw [← hagB _ hA]
   exact hobs _ _ hA (by simp only [frameC, hc]) (hred A j hc)
 
 /-! ## 10. An array-returning program through the cell route -/
@@ -807,8 +849,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold (cellFold runStr
     `σ` the `m` words at the register `RA` of the parameter `ρ ret`, a cell array of `σ` of
     length `m`; the cell names of `σ` checked against `body`; and the cell fold of `C` from the
     empty constant environment some chain `C2` that passes the cell route against `body` with
-    the cells of `ρ ret` observed. -/
-def straightCellB (σ : AbiLayout) (nm : String → String) (body : Lcmd) :
+    the cells of `ρ ret` observed, at the fusion flag `fuse`. -/
+def straightCellB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (fuse : Bool) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
   | Γ, .stackArr 64 m, com =>
       let ch := straightOpsMem Γ.length com Γ.length
@@ -825,13 +867,14 @@ def straightCellB (σ : AbiLayout) (nm : String → String) (body : Lcmd) :
         && (match cellFold (cellArrs σ) [] C with
           | some C2 =>
               cellRouteB σ nm body ((List.range m).map fun j => memName (ρ ret) (8 * j)) C2
+                fuse
           | none => false)
   | _, _, _ => false
 
 /-- A program accepted by `straightCellB` returns a word array. -/
-theorem straightCellB_ty {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+theorem straightCellB_ty {σ : AbiLayout} {nm : String → String} {body : Lcmd} {fuse : Bool}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {c : Com jasminDialect Γ t}
-    (h : straightCellB σ nm body c = true) : ∃ m, t = .stackArr 64 m := by
+    (h : straightCellB σ nm body fuse c = true) : ∃ m, t = .stackArr 64 m := by
   unfold straightCellB at h
   split at h
   · exact ⟨_, rfl⟩
@@ -842,9 +885,9 @@ theorem straightCellB_ty {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     printed body `body`: from every entry state `sa` satisfying `σ.Regions`, at every
     valuation `V` the layout reads off `sa` (`AbiValOf`), the decoded bytes of `body` halt in
     a state from which `σ` reads back the words of the program's denotation. -/
-theorem straight_cell_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+theorem straight_cell_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd} {fuse : Bool}
     {Γ : Ctxt jasminDialect} {m : Nat} (com : Com jasminDialect Γ (.stackArr 64 m))
-    (hg : straightCellB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
+    (hg : straightCellB σ nm body fuse com = true) (sa : AState) (V : Ctxt.Valuation Γ)
     (hV : AbiValOf σ sa V) (hreg : σ.Regions sa) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ σ.ResultOf sa sa' (.array ((List.range m).map fun j =>
