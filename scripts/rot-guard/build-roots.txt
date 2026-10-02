@@ -530,6 +530,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Blake2bCompressCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoopValidate
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPSDerivedToField
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringDataComp
+CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringExtend
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377CubicIrreducible
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377FinalExpCorrect
 CatCrypt.Crypto.SecureCompilation.VIR.BranchLowering
