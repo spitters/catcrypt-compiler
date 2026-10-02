@@ -729,6 +729,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
+CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelect
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
 CatCrypt.Crypto.SecureCompilation.VIR.WeilReciprocity
 CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
