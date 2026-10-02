@@ -58,10 +58,10 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   the equality-saturation contract, composed with the peephole's own
   cost-non-increase).
 * `comRangeOpt`, `comRangeOpt_denote`, `comRangeOpt_cost_le` — the range stage: the
-  bindings that the range analysis `ComRange` bounds to one point become constants, masks
-  of operands already in range are dropped, and selects on a decided condition and
-  carry-chain adds with carry-in `0` are narrowed; its denotation equality holds at every
-  valuation.
+  bindings that the range analysis `ComRange` bounds to one point become constants, except
+  the low halves of the instruction pairs of the x86 lowering (`ComGVN.pairLowOp`), masks
+  of operands already in range are dropped, and selects on a decided condition are
+  narrowed; its denotation equality holds at every valuation.
 * `optCom`, `optCom_denote` — the `Com` optimisation stage, the range stage followed by the
   acyclic e-graph pass `Aegraph.aegraphOpt` (rules at node creation, hash-consing,
   extraction), whose denotation equality holds at every valuation; `optCom_ctSafe`,
@@ -146,13 +146,15 @@ the operations for all operands within their intervals:
 * a register binding whose interval is one point `n` becomes `regConst w n`
   (`ComRangeFold.pointExpr`). This folds a comparison that the intervals of its operands
   decide, a carry-out bit that they exclude or force, and every operation whose interval is
-  one point;
+  one point other than a multiply and a carry-chain add (`ComGVN.pairLowOp`);
 * `a &&& b` with `b` the constant `2^k - 1` and `a < 2^k` becomes the copy `a ||| a`, and
   symmetrically in the operands;
-* `select c a b` with `c` one point becomes the copy of `a` or of `b`;
-* `addCarryLo a b c` with the carry-in `c` the point `0` becomes `a + b`.
+* `select c a b` with `c` one point becomes the copy of `a` or of `b`.
 
-The input intervals hold at every valuation, so the stage needs no hypothesis on it. Each
+A multiply and a carry-chain add are kept: the x86 lowering pairs the `MUL` of a multiply
+with the `MULXHI` of the high multiply on the same sources, and reads the carry-out of
+`addCarryHi` by `setc` from the flags of the `ADCX` of the `addCarryLo` before it. The input
+intervals hold at every valuation, so the stage needs no hypothesis on it. Each
 rewritten binding is a `regConst` binding, of cost 1 and without arguments, or a `regArith`
 binding of cost 1 that is not a multiply. -/
 
@@ -438,8 +440,8 @@ theorem stageAbs_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) {l
   rcases e with ⟨op, rfl, args⟩
   exact stageOpAbs_sound hA op args hlen
 
-/-- The rewrites of the range stage other than the point rule: the dropped mask, the select
-    on a one-point condition and the carry-chain add with carry-in `0`. -/
+/-- The rewrites of the range stage other than the point rule: the dropped mask and the
+    select on a one-point condition. -/
 def ruleOp (A : AEnv Γ) (op : JasminOp)
     (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op)) :
     Option (Expr jasminDialect Γ (DialectSignature.ret (d := jasminDialect) op)) :=
@@ -458,13 +460,6 @@ def ruleOp (A : AEnv Γ) (op : JasminOp)
     | some 1 => some (binE .or a a)
     | some 0 => some (binE .or b b)
     | _ => none
-  | .addCarryLo w, args =>
-    let a : Ctxt.Var Γ (.reg w) := args.head
-    let b : Ctxt.Var Γ (.reg w) := args.tail.head
-    let ci : Ctxt.Var Γ (.reg 1) := args.tail.tail.head
-    match ivSingle? (ivLane 1 (hget A ci).1) with
-    | some 0 => some (binE .add a b)
-    | _ => none
   | _, _ => none
 
 /-- A rewrite of `ruleOp` is a `regArith` operation other than a multiply. -/
@@ -482,10 +477,6 @@ theorem ruleOp_op (A : AEnv Γ) (op : JasminOp)
   case select w =>
     simp only [ruleOp] at h
     split at h <;> cases h <;> exact ⟨_, _, rfl, by decide⟩
-  case addCarryLo w =>
-    simp only [ruleOp] at h
-    split at h <;> cases h
-    exact ⟨_, _, rfl, by decide⟩
   all_goals simp [ruleOp] at h
 
 /-- A rewrite of `ruleOp` denotes the value of the operation. -/
@@ -525,30 +516,21 @@ theorem ruleOp_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) (op 
       show regVal V b ||| regVal V b = selectW (regVal V ci) (regVal V a) (regVal V b)
       rw [BitVec.or_self]; unfold selectW; rw [if_neg (by rw [h0]; decide)]
     · cases h
-  case addCarryLo w =>
-    match args with
-    | .cons a (.cons b (.cons ci .nil)) =>
-    simp only [ruleOp, HVector.head, HVector.tail] at h
-    split at h
-    · rename_i hc
-      cases h
-      have h0 := (bit_eq_of_toNat (Iv.toNat_eq_of_single (hA.reg ci).1 hc)).1 rfl
-      show regVal V a + regVal V b = addCarryWord (regVal V a) (regVal V b) (regVal V ci)
-      unfold addCarryWord; rw [h0]; simp
-    · cases h
   all_goals simp [ruleOp] at h
 
-/-- The rewrites of the range stage other than the point rule (`ruleOp`): the dropped mask,
-    the select on a one-point condition and the carry-chain add with carry-in `0`. -/
+/-- The rewrites of the range stage other than the point rule (`ruleOp`): the dropped mask
+    and the select on a one-point condition. -/
 def rangeRule (A : AEnv Γ) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     Expr jasminDialect Γ t :=
   match ruleOp A e.op e.args with
   | some e' => e.retTy_eq ▸ e'
   | none => e
 
-/-- The rewrite of one binding by the range stage, in a context of length `len`. -/
+/-- The rewrite of one binding by the range stage, in a context of length `len`. A low half
+    of an instruction pair of the x86 lowering (`ComGVN.pairLowOp`) is kept. -/
 def rangeExpr (A : AEnv Γ) (len : Nat) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     Expr jasminDialect Γ t :=
+  if ComGVN.pairLowOp e.op then e else
   match pointExpr t (stageAbs A e len).1 with
   | some e' => e'
   | none => rangeRule A e
@@ -566,6 +548,8 @@ theorem rangeExpr_denote {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) 
     (hlen : len = Γ.length) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     (rangeExpr A len e).denote V = e.denote V := by
   unfold rangeExpr
+  split
+  · rfl
   split
   · rename_i e' he
     exact pointExpr_denote (stageAbs_sound hA hlen e) he
@@ -590,6 +574,8 @@ theorem rangeRule_cost_le (A : AEnv Γ) {t : JasminTy} (e : Expr jasminDialect �
 theorem rangeExpr_cost_le (A : AEnv Γ) (len : Nat) {t : JasminTy}
     (e : Expr jasminDialect Γ t) : opCost (rangeExpr A len e).op ≤ opCost e.op := by
   unfold rangeExpr
+  split
+  · exact Nat.le_refl _
   split
   · rename_i e' he
     cases t with
@@ -697,6 +683,8 @@ theorem rangeExpr_leak (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (A : 
     rangeExpr A len e = e ∨
       ∀ V₁ V₂, Expr.ctLeak L (rangeExpr A len e) V₁ = Expr.ctLeak L (rangeExpr A len e) V₂ := by
   unfold rangeExpr
+  split
+  · exact Or.inl rfl
   split
   · rename_i e' he
     cases t with

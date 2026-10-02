@@ -26,7 +26,9 @@ At a binding `let x = op(args)` whose operation is pure (`gvnPure`), the renamed
 expression is looked up in the table by its key (operation, argument levels). On a hit
 the binding is dropped and `x` is mapped to the output variable of the earlier node; on a
 miss the binding is kept and its key is entered. Purity is decided from the operation
-alone: stack loads and stores and external and multi-result calls are never merged.
+alone: stack loads and stores, external and multi-result calls, and the operations of the
+instruction pairs of the x86 lowering (`pairedOp`: the multiply and the high multiply, the
+carry-chain add and its carry-out) are never merged.
 
 ## Main results
 
@@ -56,11 +58,26 @@ open CatCrypt.Crypto.Optimizer.CopyProp
 
 /-! ## 1. Purity -/
 
+/-- The low halves of the instruction pairs of the x86 lowering: the multiply
+    `regArith .mul w`, whose `MUL` the `MULX` fusion pairs with the `MULXHI` of `mulhi w`
+    on the same sources, and the carry-chain add `addCarryLo w`, whose `ADCX` sets the
+    carry flag that the `setc` of the paired `addCarryHi w` reads. -/
+def pairLowOp : JasminOp → Bool
+  | .regArith .mul _ | .addCarryLo _ => true
+  | _ => false
+
+/-- The operations of the instruction pairs of the x86 lowering: the low halves
+    (`pairLowOp`) and the high halves `mulhi w` and `addCarryHi w`. -/
+def pairedOp : JasminOp → Bool
+  | .mulhi _ | .addCarryHi _ => true
+  | op => pairLowOp op
+
 /-- The operations whose bindings the pass may merge: every operation other than a stack
-    load or store, an external call and a multi-result call. -/
+    load or store, an external call, a multi-result call and an operation of an
+    instruction pair of the x86 lowering (`pairedOp`). -/
 def gvnPure : JasminOp → Bool
   | .stackLoad _ _ | .stackStore _ _ | .extCall _ _ _ | .callN _ _ _ => false
-  | _ => true
+  | op => !pairedOp op
 
 /-! ## 2. Levels and their reading in a valuation -/
 

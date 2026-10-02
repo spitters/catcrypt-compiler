@@ -32,9 +32,13 @@ of the class is merged with it.
 
 ## The rule set
 
-The rules act on a binary `regArith` node `bop a b` over `reg w`, for every width `w`
-(`binRules`). Each produces a `Term`: an existing variable, a constant, one binary node,
-or two bindings. The rules are
+The rules act on a binary `regArith` node `bop a b` over `reg w` other than a multiply,
+for every width `w` (`binRules`). The operations of the instruction pairs of the x86
+lowering (`ComGVN.pairedOp`: the multiply and the high multiply, the carry-chain add and its
+carry-out) are kept: they have no alternative and the node table never merges them, so
+every such binding is emitted unchanged. Each rule produces a `Term`: an existing variable, a
+constant, one binary node, or two bindings. The rules, of which those naming a multiply
+apply to no node, are
 
 * constant folding of two constant operands;
 * identities and annihilators with a constant operand: `x + 0`, `x - 0`, `x ^^^ 0`,
@@ -427,8 +431,11 @@ def nodeRules (D : Defs) (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg w)) : List
   assocRules D bop a b
 
 /-- The rule set on the node `bop a b`: the rules on the node and, for a commutative
-    operation, the swapped node and the rules on it. -/
+    operation, the swapped node and the rules on it. A multiply has no rule: the x86
+    lowering pairs its `MUL` with the high multiply on the same sources
+    (`ComGVN.pairLowOp`). -/
 def binRules (D : Defs) (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg w)) : List (Term Δ w) :=
+  if bop = .mul then [] else
   nodeRules D bop a b ++
     (if acOp bop then .bin bop b a :: nodeRules D bop b a else [])
 
@@ -581,7 +588,10 @@ theorem nodeRules_sound {D : Defs} {V : Ctxt.Valuation Δ} (hD : DSound V D)
 theorem rule_sound {D : Defs} {V : Ctxt.Valuation Δ} (hD : DSound V D)
     (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg w)) (t : Term Δ w)
     (ht : t ∈ binRules D bop a b) : t.denote V = bop.apply (a.lookup V) (b.lookup V) := by
-  simp only [binRules, List.mem_append] at ht
+  unfold binRules at ht
+  split at ht
+  · simp at ht
+  simp only [List.mem_append] at ht
   rcases ht with ht | ht
   · exact nodeRules_sound hD bop a b t ht
   · split at ht
