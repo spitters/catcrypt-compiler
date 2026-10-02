@@ -131,6 +131,7 @@ def chainElem (op : JasminOp) (cd : Nat) (src : List LOperand) : LinstrRM :=
   | .stackLoad w n => (opToLinstrR op (regName cd) src, .load w n)
   | .stackStore w n => (opToLinstrR op (regName cd) src, .store w n)
   | .castW _ w' => (opToLinstrR op (regName cd) src, .reg (some w'))
+  | .regConst w _ => (opToLinstrR op (regName cd) src, .reg (VIR.JasminLsemCast.regConstDescr w))
   | _ =>
     let wire : LinstrR :=
       match op, src with
