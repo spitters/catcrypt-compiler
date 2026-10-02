@@ -9,6 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 public import CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComGVN
+public import CatCrypt.Crypto.Optimizer.Rewrite.Aegraph
 
 /-!
 # `Com jasminDialect` rewrite pipeline: peephole then equality-saturation
@@ -55,13 +56,14 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   cost-non-increasing (the "extraction is no worse than the input" half of
   the equality-saturation contract, composed with the peephole's own
   cost-non-increase).
-* `optCom`, `optCom_denote` — the composed transform under `KEnv.unknown`, followed by
-  global value numbering (`ComGVN.gvnCom`), a `Com → Com` stage whose denotation
-  equality holds at every valuation; `optCom_ctSafe`, `optCom_cost_le` carry the CT
-  predicate and the cost bound through both parts.
-* `comAlgebraicPipeline_ctLeak`, `optCom_constantTime` — under a leakage model whose
-  `regArith` operations are quiet, the composed transform keeps the leakage of a program
-  at every valuation, and the stage keeps constant time for every relation.
+* `optCom`, `optCom_denote` — the `Com` optimisation stage, the acyclic e-graph pass
+  `Aegraph.aegraphOpt` (rules at node creation, hash-consing, extraction), whose
+  denotation equality holds at every valuation; `optCom_ctSafe`, `optCom_cost_le` carry
+  the CT predicate and the cost bound.
+* `comAlgebraicPipeline_ctLeak` — under a leakage model whose `regArith` operations are
+  quiet, the composed transform keeps the leakage of a program at every valuation;
+  `optCom_constantTime` — under the same hypothesis the stage keeps constant time for
+  every relation.
 -/
 
 @[expose] public section
@@ -127,40 +129,34 @@ theorem comAlgebraicPipeline_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   unfold comAlgebraicPipeline
   exact Nat.le_trans (saturate_cost_le fuel (peepCom c) k) (peepCom_cost_le c)
 
-/-! ## §5  The unconditional stage
+/-! ## §5  The `Com` optimisation stage
 
-With the environment `KEnv.unknown`, which claims no constant for any input, the
-composed transform needs no hypothesis on the valuation: the constants it uses are
-those the program binds itself with `regConst`, which `extendK` records as the
-engine descends. One saturation pass reaches the fixed point of the rule set
-(`saturateCom`), so the fuel is `1`. Global value numbering (`ComGVN.gvnCom`) runs last,
-so it also merges the bindings the rewrites make equal. -/
+The stage is the acyclic e-graph pass `Aegraph.aegraphOpt`. Its rule set contains the
+identities of the saturation engine (with the constant tested as a value, at every
+width) and of the peephole, and its node table performs global value numbering over every
+form of each e-class. It needs no hypothesis on the valuation: the constants it uses are
+those the program binds with `regConst` or that its constant folding produces. -/
 
-/-- **The `Com` optimisation stage**: the peephole, then one pass of the saturation
-    engine under `KEnv.unknown`, then global value numbering. -/
+/-- **The `Com` optimisation stage**: the acyclic e-graph pass. -/
 def optCom {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
     Com jasminDialect Γ t :=
-  ComGVN.gvnCom
-    (comAlgebraicPipeline 1 c (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown Γ))
+  Aegraph.aegraphOpt c
 
 /-- **Denotation of the stage.** `optCom c` denotes the same function as `c`, at every
     valuation. -/
 theorem optCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) : (optCom c).denote = c.denote := by
-  rw [optCom, ComGVN.gvnCom_denote]
-  exact funext fun V => comAlgebraicPipeline_denote 1 c _ V
-    (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V)
+    (c : Com jasminDialect Γ t) : (optCom c).denote = c.denote :=
+  Aegraph.aegraphOpt_denote c
 
 /-- The stage preserves the structural CT predicate `ctSafeComJ`. -/
 theorem optCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) : ctSafeComJ (optCom c) = ctSafeComJ c := by
-  rw [optCom, ComGVN.gvnCom_ctSafe]
-  exact comAlgebraicPipeline_ctSafe 1 c _
+    (c : Com jasminDialect Γ t) : ctSafeComJ (optCom c) = ctSafeComJ c :=
+  Aegraph.aegraphOpt_ctSafe c
 
 /-- The stage does not increase `comCost`. -/
 theorem optCom_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (optCom c) ≤ comCost c :=
-  Nat.le_trans (ComGVN.gvnCom_cost_le _) (comAlgebraicPipeline_cost_le 1 c _)
+  Aegraph.aegraphOpt_cost_le c
 
 /-! ## §5a  Leakage of the stage
 
@@ -288,14 +284,8 @@ theorem optCom_constantTime (L : LeakModel jasminDialect)
     (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (c : Com jasminDialect Γ t)
     (R : Ctxt.Valuation Γ → Ctxt.Valuation Γ → Prop)
-    (h : ConstantTime R (Com.ctLeak L c)) : ConstantTime R (Com.ctLeak L (optCom c)) := by
-  unfold optCom
-  refine ComGVN.gvnCom_constantTime L _ R fun V₁ V₂ hR => ?_
-  rw [comAlgebraicPipeline_ctLeak L hq 1 c _ V₁
-      (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V₁),
-    comAlgebraicPipeline_ctLeak L hq 1 c _ V₂
-      (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V₂)]
-  exact h V₁ V₂ hR
+    (h : ConstantTime R (Com.ctLeak L c)) : ConstantTime R (Com.ctLeak L (optCom c)) :=
+  Aegraph.aegraphOpt_constantTime hq c R h
 
 end Leak
 
