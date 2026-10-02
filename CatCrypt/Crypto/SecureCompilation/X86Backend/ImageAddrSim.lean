@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame
 
 @[expose] public section
 
@@ -841,6 +842,13 @@ structure ImgSep (frame : String → Option (BitVec 64)) (slotArr : String → O
   gp : ∀ r, gpOk r = true → frame r = none
   slotFrame : ∀ q A n, slotArr q = some (A, n) → ∃ a, frame q = some a
 
+theorem ImgSep.slotFrameB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    (h : ImgSep frame slotArr base rsp) (q : String) (A : String) (n : Nat)
+    (hq : slotArr q = some (A, n)) : (frame q).isSome = true := by
+  obtain ⟨a, ha⟩ := h.slotFrame q A n hq
+  rw [ha]; rfl
+
 /-- The save of the register `R` into its frame word `qsave.R` is instruction `k`. -/
 def SaveAt (body : Lcmd) (k : Nat) (R : String) : Prop :=
   ∃ i, body[k]? = some i ∧ slotMov? i.li_i = some (slotOfReg R, R)
@@ -872,33 +880,85 @@ structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → O
     slotArr q = some (A, n) → frame q = some a → frame b = none →
       sa.reg.lvm b = ⟨64, read64 sa.mem a⟩
 
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (opNames)
+
+/-- A name that no destination of an `Lopn` hits (`dstHitB`) is none of its destination
+    names. -/
+theorem not_mem_dstNames_of_dstHit {slotArr : String → Option (String × Nat)} {b : String}
+    {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : ds.any (dstHitB slotArr b) = false) : b ∉ dstNames (.Lopn ds o ss) := by
+  simp only [dstNames, List.mem_flatMap, not_exists, not_and]
+  intro x hx hb
+  have hx' := List.any_eq_false.mp h x hx
+  cases x <;> simp_all [opNames, dstHitB]
+  all_goals rcases hb with rfl | rfl <;> simp_all
+
+/-- The slot of an array is none of the destination names of an `Lopn` that no
+    destination hits (`dstHitB`). -/
+theorem arrSlot_not_mem_dstNames {slotArr : String → Option (String × Nat)} {b : String}
+    {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : ds.any (dstHitB slotArr b) = false) {q : String} {A : String} {n : Nat}
+    (hq : slotArr q = some (A, n)) : q ∉ dstNames (.Lopn ds o ss) := by
+  simp only [dstNames, List.mem_flatMap, not_exists, not_and]
+  intro x hx hb
+  have hx' := List.any_eq_false.mp h x hx
+  cases x <;> simp_all [opNames, dstHitB]
+  all_goals rcases hb with rfl | rfl <;> simp_all
+
 /-- **The reload component across a step** from `sa` at instruction `bi` to `sa'` at the next
-    counter: a reload of `b` from the slot of an array at `bi` leaves the slot's frame word
-    in `b`; a move at `bi` into a name `d` that is not the slot of an array keeps every other
-    name without a frame word and the frame words of the array slots. -/
+    counter. A move at `bi` from the slot of an array leaves the slot's frame word in its
+    destination (`hhit`); a copy between general-purpose names carries the source's value to
+    the destination (`hcopy`); a move into a name `d` that is not the slot of an array keeps
+    every other name without a frame word and the frame words of the array slots (`hreg`,
+    `hmem`); an instruction that is no move keeps every name without a frame word outside its
+    destinations and the frame words of the array slots outside its destinations (`hregL`,
+    `hmemL`). The general-purpose names have no frame word (`hgp`) and the array slots have
+    one (`hsf`). -/
 theorem reload_succ {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa sa' : LstateA} {bi : Linstr}
     (hrl : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
         sa.reg.lvm b = ⟨64, read64 sa.mem a⟩)
     (hb : body[sa.reg.lpc]? = some bi) (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
+    (hgp : ∀ r, gpNameB r = true → frame r = none)
+    (hsf : ∀ q A n, slotArr q = some (A, n) → (frame q).isSome = true)
     (hhit : ∀ b q a A n, slotMov? bi.li_i = some (b, q) → slotArr q = some (A, n) →
       frame q = some a → frame b = none → sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩)
+    (hcopy : ∀ b q, slotMov? bi.li_i = some (b, q) → gpNameB q = true → frame b = none →
+      sa'.reg.lvm b = sa.reg.lvm q)
     (hreg : ∀ d q0 b, slotMov? bi.li_i = some (d, q0) → slotArr d = none → b ≠ d →
       frame b = none → sa'.reg.lvm b = sa.reg.lvm b)
     (hmem : ∀ d q0 q a A n, slotMov? bi.li_i = some (d, q0) → slotArr d = none →
-      slotArr q = some (A, n) → frame q = some a → read64 sa'.mem a = read64 sa.mem a) :
+      slotArr q = some (A, n) → frame q = some a → read64 sa'.mem a = read64 sa.mem a)
+    (hregL : slotMov? bi.li_i = none → ∀ b, frame b = none → b ∉ dstNames bi.li_i →
+      sa'.reg.lvm b = sa.reg.lvm b)
+    (hmemL : slotMov? bi.li_i = none → ∀ q a A n, slotArr q = some (A, n) → frame q = some a →
+      q ∉ dstNames bi.li_i → read64 sa'.mem a = read64 sa.mem a) :
     ∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
         sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩ := by
   intro b q a A n h hq ha hbf
   rw [hpc] at h
   cases hm : slotMov? bi.li_i with
-  | none => rw [reloadOf_succ_none hb hm] at h; cases h
+  | none =>
+      obtain ⟨ds, o, ss, hx, hnd, h'⟩ := reloadOf_succ_none_eq hb hm b h
+      have hbd : b ∉ dstNames bi.li_i := by rw [hx]; exact not_mem_dstNames_of_dstHit hnd
+      have hqd : q ∉ dstNames bi.li_i := by rw [hx]; exact arrSlot_not_mem_dstNames hnd hq
+      rw [hregL hm b hbf hbd, hmemL hm q a A n hq ha hqd]
+      exact hrl b q a A n h' hq ha hbf
   | some p =>
       obtain ⟨d, q0⟩ := p
       rw [reloadOf_succ_some hb hm] at h
-      split_ifs at h with h1 h2
+      split_ifs at h with h1 h3 h2
+      · subst h1
+        simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at h3
+        have hdA : slotArr d = none := by
+          cases hd : slotArr d with
+          | none => rfl
+          | some p => have := hsf d p.1 p.2 (by rw [hd]); rw [hbf] at this; cases this
+        rw [hcopy d q0 hm h3.2 hbf, hmem d q0 q a A n hm hdA hq ha]
+        exact hrl q0 q a A n h hq ha (hgp q0 h3.2)
       · cases h
         subst h1
         exact hhit d q a A n hm hq ha hbf
@@ -954,7 +1014,7 @@ theorem physImgB_slotStore {slotArr : String → Option (String × Nat)} {body :
 theorem accArr_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {b A : String} {n : Nat} (h : accArr slotArr body k b = some (A, n)) :
     ∃ q, reloadOf slotArr body k b = some q ∧ slotArr q = some (A, n)
-      ∧ ∃ j i, j < k ∧ body[j]? = some i ∧ slotMov? i.li_i = some (b, q) := by
+      ∧ ∃ j i b', j < k ∧ body[j]? = some i ∧ slotMov? i.li_i = some (b', q) := by
   unfold accArr at h
   obtain ⟨q, hr, hq⟩ := Option.bind_eq_some_iff.mp h
   exact ⟨q, hr, hq, reloadOf_spec hr⟩
@@ -1076,6 +1136,18 @@ theorem getW_congr {r r' : LstateN} {R : String} (h : r.lvm R = r'.lvm R) (w : N
     r.getW R w = r'.getW R w := by
   unfold LstateN.getW; rw [h]
 
+theorem dstNames_normA (x : LinstrR) : dstNames (normA x) = dstNames x := by
+  cases x <;> rfl
+
+/-- A step of the name-keyed machine at an `Lopn` leaves every name outside the
+    instruction's destinations. -/
+theorem evalInstrPMemF_lvm_of_not_dst (P : LprogM) {i : LinstrRM} (hi : IsLopn i)
+    {s t : LstateMF} (h : evalInstrPMemF P i s = some t) {r : String}
+    (hr : r ∉ dstNames i.1) : t.prog.base.reg.lvm r = s.prog.base.reg.lvm r := by
+  rw [JasminLsemMemFlagNestJoin.evalInstrPMemF_isLopn P i s hi] at h
+  obtain ⟨bz, hb, rfl⟩ := Option.map_eq_some_iff.mp h
+  exact (JasminLsemStepFrame.fstepF_frame_dst (t := bz.1) (z := bz.2) hb hr).1
+
 /-! ## 9. One step of the image on the address machine -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
@@ -1132,15 +1204,24 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
         simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, Ne.symm hdR]
       rw [getW_congr e]
       exact (hrel.saved k R A n a ⟨i', hi', hm'⟩ hA ha).2 (by omega)
-  · refine reload_succ hrel.reload hb hlpcA (fun b q a A n hm _ hq _ => ?_)
+  · refine reload_succ hrel.reload hb hlpcA (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q a A n hm _ hq _ => ?_) (fun b q hm _ hbf => ?_)
       (fun d q0 b hm _ hbd hbf => ?_) (fun _ _ q a _ _ _ _ _ _ => by rw [hmem])
+      (fun _ b hbf hbd => ?_) (fun _ _ _ _ _ _ _ _ => by rw [hmem])
     · rw [(hmovF _ _ hm).2] at hq
       cases hq
     · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
       rw [hs] at ht
       cases ht
+      rw [← hregs' b hbf, ← hrel.regs q (hmovF _ _ hm).2]
+      simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc]
+    · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+      rw [hs] at ht
+      cases ht
       rw [← hregs' b hbf, ← hrel.regs b hbf]
       simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hbd]
+    · rw [← hregs' b hbf, ← hrel.regs b hbf]
+      exact evalInstrPMemF_lvm_of_not_dst P hl hs (by rw [dstNames_normA]; exact hbd)
 
 theorem normA_of_slotMov {x : LinstrR} {d q : String} (h : slotMov? x = some (d, q)) :
     normA x = x := by
@@ -1151,7 +1232,8 @@ theorem slotOfReg_inj {R S : String} (h : slotOfReg R = slotOfReg S) : R = S := 
 
 /-- **A load of a frame word keeps the relation.** -/
 theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
-    {base : String → BitVec 64} {body : Lcmd}
+    {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
+    (hsep : ImgSep frame slotArr base rsp)
     (hphys : physImgB slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d q : String} (hc : icase frame bi.li_i = .sload d q)
@@ -1205,8 +1287,14 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
       obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hm2)
       rw [getW_congr (r' := sa.reg) (by simp [Ne.symm hdR])]
       exact (hrel.saved k R A n a' ⟨i', hi', hm'⟩ hA ha').2 (by omega)
-  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ hq' _ => ?_)
+  · refine reload_succ hrel.reload hb (by simp) (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q' a' A n hm' _ hq' _ => ?_)
+      (fun b q' hm' hg _ => by
+        rw [hm] at hm'
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+        rw [hsep.gp _ hg] at ha; cases ha)
       (fun d' q0 b hm' _ hbd _ => ?_) (fun _ _ _ _ _ _ _ _ _ _ => rfl)
+      (fun h' => by rw [hm] at h'; cases h') (fun h' => by rw [hm] at h'; cases h')
     · rw [hm] at hm'
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       rw [ha] at hq'
@@ -1288,8 +1376,14 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
           exact hqR (Prod.mk.inj (Option.some.inj hm')).1.symm
     · rw [getW_congr (r := sa.reg.nextPc) (r' := sa.reg) rfl]
       exact (hrel.saved k R A n a' hS' hA ha').2 (by omega)
-  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ _ hbf => ?_)
+  · refine reload_succ hrel.reload hb (by simp) (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q' a' A n hm' _ _ hbf => ?_)
+      (fun b q' hm' _ hbf => by
+        rw [hm] at hm'
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+        rw [ha] at hbf; cases hbf)
       (fun _ _ _ _ _ _ _ => by simp) (fun d q0 q' a' A n hm' hd hq' ha' => ?_)
+      (fun h' => by rw [hm] at h'; cases h') (fun h' => by rw [hm] at h'; cases h')
     · rw [hm] at hm'
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       rw [ha] at hbf
@@ -1299,15 +1393,17 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
       have hne : q ≠ q' := fun e => by rw [e, hq'] at hd; cases hd
       exact read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' hne)
 
-/-- A step that only advances the program counter, at an instruction that is no move,
-    keeps the save and reload components of the relation. -/
+/-- A step at an instruction that is no move, keeping every frame word and every name without
+    a frame word outside the instruction's destinations, keeps the save and reload components
+    of the relation. -/
 theorem saved_reload_next {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
     (hphys : physImgB slotArr body = true) {s : LstateMF} {sa sa' : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) (hnm : slotMov? bi.li_i = none)
     (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
-    (hmem : ∀ q a, frame q = some a → read64 sa'.mem a = read64 sa.mem a) :
+    (hmem : ∀ q a, frame q = some a → read64 sa'.mem a = read64 sa.mem a)
+    (hreg : ∀ b, frame b = none → b ∉ dstNames bi.li_i → sa'.reg.lvm b = sa.reg.lvm b) :
     (∀ k R A n a, SaveAt body k R → slotArr (slotOfReg R) = some (A, n) →
       frame (slotOfReg R) = some a →
         (k < sa'.reg.lpc → read64 sa'.mem a = base A)
@@ -1332,8 +1428,12 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
     obtain ⟨d, src, hm2, -⟩ := entryRegB_spec hent (show sa.reg.lpc < k by omega) hb
     rw [hnm] at hm2
     cases hm2
-  · rw [hpc, reloadOf_succ_none hb hnm] at hbi
-    cases hbi
+  · rename_i hq ha hbf
+    rw [hpc] at hbi
+    obtain ⟨ds, o, ss, hx, hnd, h'⟩ := reloadOf_succ_none_eq hb hnm b hbi
+    have hbd : b ∉ dstNames bi.li_i := by rw [hx]; exact not_mem_dstNames_of_dstHit hnd
+    rw [hreg b hbf hbd, hmem q a ha]
+    exact hrel.reload b q a A n h' hq ha hbf
 
 /-- **A compare against a frame word keeps the relation.** -/
 theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
@@ -1362,7 +1462,7 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
     rw [hva] at hs
     cases hs
     obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with reg := sa.reg.nextPc }) hphys hrel
-      hb hnm rfl (fun _ _ _ => rfl)
+      hb hnm rfl (fun _ _ _ => rfl) (fun _ _ _ => rfl)
     exact ⟨_, rfl, ⟨by simp [LstateM.nextPc, hrel.pc],
       fun r hr => by simpa [LstateM.nextPc] using hrel.regs r hr,
       fun q' a' ha' => by simpa [LstateM.nextPc] using hrel.slots q' a' ha', rfl, hrel.cf,
@@ -1378,7 +1478,7 @@ theorem ptr_of_reload {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) {b A : String} {n : Nat}
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hbf : frame b = none) :
     ∃ q, slotArr q = some (A, n) ∧ sa.reg.getW b 64 = some (base A) := by
-  obtain ⟨q, hr, hq, k', i, hk', hi, hm⟩ := accArr_spec hacc
+  obtain ⟨q, hr, hq, k', i, b', hk', hi, hm⟩ := accArr_spec hacc
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := by
@@ -1453,6 +1553,10 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
   obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with reg := (sa.reg.setReg d
       (read64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc })
     hphys hrel hb (by rw [hx]; rfl) (by simp) (fun _ _ _ => rfl)
+    (fun r _ hr => by
+      rw [hx] at hr
+      have hrd : r ≠ d := fun e => hr (by simp [e, dstNames, opNames])
+      simp [LstateN.setReg, LstateN.nextPc, hrd])
   refine ⟨_, rfl, ⟨by simp [LstateM.setReg, LstateM.nextPc, hrel.pc], ?_, ?_, rfl, hrel.cf,
     hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl⟩⟩
   · intro r hr
@@ -1511,7 +1615,7 @@ theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Op
       mem := write64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)) vv })
     hphys hrel hb (by rw [hx]; rfl) rfl
     (fun q' a ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha))
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
     hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl⟩⟩
@@ -1574,7 +1678,7 @@ theorem rel_label {frame : String → Option (BitVec 64)}
       { s with prog := { s.prog with base := s.prog.base.nextPc } }
       (sa.setLpc (sa.reg.lpc + 1)) zf := by
   obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := sa.setLpc (sa.reg.lpc + 1)) hphys hrel hb
-    hnm rfl (fun _ _ _ => rfl)
+    hnm rfl (fun _ _ _ => rfl) (fun _ _ _ => rfl)
   exact rel_pc hrel rfl rfl rfl rfl rfl rfl rfl rfl rfl
     (by simp [LstateA.setLpc, LstateM.nextPc, hrel.pc]) hsv hrl
 
@@ -1585,7 +1689,8 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
     (hphys : physImgB slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) (hnm : slotMov? bi.li_i = none) {p : Nat}
-    {bp : Linstr} (hbp : body[p]? = some bp) (hpl : slotMov? bp.li_i = none) :
+    {bp : Linstr} (hbp : body[p]? = some bp) (hpl : slotMov? bp.li_i = none)
+    (hpx : ∀ ds o ss, bp.li_i ≠ .Lopn ds o ss) :
     ImgRel frame slotArr base body
       { s with prog := { s.prog with base := s.prog.base.setLpc (p + 1) } }
       (sa.setLpc (p + 1)) zf := by
@@ -1614,7 +1719,7 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
       obtain ⟨d, src, hm2, -⟩ := entryRegB_spec hent hpk hbp
       rw [hpl] at hm2; cases hm2
   · simp only [LstateA.setLpc] at hbi
-    rw [reloadOf_succ_none hbp hpl] at hbi
+    rw [reloadOf_succ_other hbp hpl hpx] at hbi
     cases hbi
 
 /-! ## 10. The dispatch over the kinds of instruction -/
@@ -1768,7 +1873,8 @@ theorem img_step {frame : String → Option (BitVec 64)}
         refine ⟨_, _, hstepA, Or.inr ⟨haltedA_of (bi := body[p]) (by simp [LstateA.setLpc])
           (by rw [hli]; simp), loadSafe_of (bi := body[p]) (by simp [LstateA.setLpc])
           (by rw [hli]; simp), sa.setLpc (p + 1), s.zf,
-          ?_, rel_jump hphys hrel hb hnm hbp (by rw [hli]; rfl)⟩⟩
+          ?_, rel_jump hphys hrel hb hnm hbp (by rw [hli]; rfl)
+            (fun ds o ss h => by rw [hli] at h; cases h)⟩⟩
         have hb' : body[p]? = some body[p] := hbp
         generalize body[p] = bp at hli hb'
         obtain ⟨ii1, li1⟩ := bp
@@ -1812,7 +1918,7 @@ theorem img_step {frame : String → Option (BitVec 64)}
       · rw [hx] at h3
         rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) h3, evalInstrPMemFk_reg,
           ← hx] at hstep
-        obtain ⟨sa', hst, hr⟩ := rel_sload hphys P hrel hb hc hg hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
   | sstore q S =>

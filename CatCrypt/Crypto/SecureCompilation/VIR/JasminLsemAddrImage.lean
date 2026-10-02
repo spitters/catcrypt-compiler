@@ -25,8 +25,9 @@ The image of a physical body is the body with every indexed access rewritten to 
 name-keyed access of the array whose pointer its base register holds, at the length of that
 array. The array of an access is read off the last reload `MOVQ b, q` (or `MOV:64 b, q`) of
 the base register `b` from the frame slot `q` in front of it (`reloadOf`), past moves into
-names other than `b` and the array slots, with `slotArr q` the array whose pointer `q`
-holds. Every other instruction is kept, at the
+names other than `b` and the array slots and past instructions writing neither `b` nor an
+array slot, following copies between general-purpose names back to their reload, with
+`slotArr q` the array whose pointer `q` holds. Every other instruction is kept, at the
 tag of the address machine (`tagAt`: the one-bit tag for a carry constant, the register tag
 otherwise), with the widening multiply read at its width (`normA`). The image has the
 length and the program counters of the body without its final return.
@@ -57,10 +58,27 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 /-- The frame slot `qsave.R` of the register `R`. -/
 def slotOfReg (R : String) : String := "qsave." ++ R
 
-/-- The frame slot from which the register `b` was last reloaded before instruction `k` of
-    `body`: scanning back from instruction `k - 1` over moves (`slotMov?`) whose destination
-    is neither `b` nor the slot of an array, the source `q` of the first move into `b`;
-    `none` when the scan meets any other instruction or the start of the body. -/
+/-- A general-purpose name of a printed body other than the stack register: the names of
+    `X86Backend.DecodePrinted.gpOk`. A copy between two such names carries a pointer from
+    register to register. -/
+def gpNameB (r : String) : Bool :=
+  ["RAX", "RCX", "RDX", "RBX", "RBP", "RSI", "RDI", "R8", "R9", "R10", "R11", "R12", "R13",
+    "R14", "R15"].contains r
+
+/-- The destination operand `x` names `b` or the slot of an array. -/
+def dstHitB (slotArr : String → Option (String × Nat)) (b : String) (x : LOperand) : Bool :=
+  match x with
+  | .reg q => q == b || (slotArr q).isSome
+  | .arrIdx q i _ => q == b || i == b || (slotArr q).isSome || (slotArr i).isSome
+  | _ => false
+
+/-- The frame slot whose word the register `b` holds before instruction `k` of `body`,
+    scanning back from instruction `k - 1`: past a move (`slotMov?`) into a name other than
+    `b` and the array slots, and past any other `Lopn` none of whose destinations is `b` or
+    an array slot; at a move of `q` into `b`, the slot `q`, or, for a general-purpose `q`
+    that is not an array slot, the frame slot whose word `q` holds before that move. The
+    result is `none` when the scan meets an `Lopn` writing `b` or an array slot, a move into
+    an array slot, an instruction other than an `Lopn`, or the start of the body. -/
 def reloadOf (slotArr : String → Option (String × Nat)) (body : Lcmd) : Nat → String →
     Option String
   | 0, _ => none
@@ -69,47 +87,83 @@ def reloadOf (slotArr : String → Option (String × Nat)) (body : Lcmd) : Nat �
       | some j =>
           match slotMov? j.li_i with
           | some (d, q) =>
-              if d = b then some q
+              if d = b then
+                (if (slotArr q).isNone && gpNameB q then reloadOf slotArr body k q else some q)
               else if (slotArr d).isNone then reloadOf slotArr body k b else none
-          | none => none
+          | none =>
+              match j.li_i with
+              | .Lopn ds _ _ =>
+                  if ds.any (dstHitB slotArr b) then none else reloadOf slotArr body k b
+              | _ => none
       | none => none
 
 theorem reloadOf_zero (slotArr : String → Option (String × Nat)) (body : Lcmd) (b : String) :
     reloadOf slotArr body 0 b = none := rfl
 
-theorem reloadOf_succ_none {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
-    {j : Linstr} (hb : body[k]? = some j) (hm : slotMov? j.li_i = none) (b : String) :
-    reloadOf slotArr body (k + 1) b = none := by
-  simp [reloadOf, hb, hm]
-
 theorem reloadOf_succ_some {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {j : Linstr} {d q : String} (hb : body[k]? = some j) (hm : slotMov? j.li_i = some (d, q))
     (b : String) :
     reloadOf slotArr body (k + 1) b =
-      if d = b then some q
+      if d = b then
+        (if (slotArr q).isNone && gpNameB q then reloadOf slotArr body k q else some q)
       else if (slotArr d).isNone then reloadOf slotArr body k b else none := by
   simp [reloadOf, hb, hm]
 
-/-- The instruction that `reloadOf` finds: a move of `q` into `b` before instruction `k`. -/
+theorem reloadOf_succ_lopn {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {j : Linstr} (hb : body[k]? = some j) (hm : slotMov? j.li_i = none)
+    {ds : List LOperand} {o : String} {ss : List LOperand} (hx : j.li_i = .Lopn ds o ss)
+    (b : String) :
+    reloadOf slotArr body (k + 1) b =
+      if ds.any (dstHitB slotArr b) then none else reloadOf slotArr body k b := by
+  rw [hx] at hm
+  simp only [reloadOf, hb, hx, hm]
+
+theorem reloadOf_succ_other {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {j : Linstr} (hb : body[k]? = some j) (hm : slotMov? j.li_i = none)
+    (hx : ∀ ds o ss, j.li_i ≠ .Lopn ds o ss) (b : String) :
+    reloadOf slotArr body (k + 1) b = none := by
+  cases hj : j.li_i with
+  | Lopn ds o ss => exact absurd hj (hx ds o ss)
+  | _ => rw [hj] at hm; simp only [reloadOf, hb, hj, hm]
+
+/-- The scan of `reloadOf` past a non-move `Lopn` writing neither `b` nor an array slot. -/
+theorem reloadOf_succ_none_eq {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {j : Linstr} (hb : body[k]? = some j) (hm : slotMov? j.li_i = none) (b : String)
+    {q : String} (h : reloadOf slotArr body (k + 1) b = some q) :
+    ∃ ds o ss, j.li_i = .Lopn ds o ss ∧ ds.any (dstHitB slotArr b) = false
+      ∧ reloadOf slotArr body k b = some q := by
+  cases hx : j.li_i with
+  | Lopn ds o ss =>
+      rw [reloadOf_succ_lopn hb hm hx] at h
+      split_ifs at h with hd
+      exact ⟨ds, o, ss, rfl, Bool.eq_false_iff.mpr hd, h⟩
+  | _ => rw [reloadOf_succ_other hb hm (by intro ds o ss he; rw [hx] at he; cases he)] at h; cases h
+
+/-- The instruction that `reloadOf` finds: a move of `q` into a name before instruction
+    `k`. -/
 theorem reloadOf_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} :
     ∀ {k : Nat} {b q : String}, reloadOf slotArr body k b = some q →
-      ∃ j i, j < k ∧ body[j]? = some i ∧ slotMov? i.li_i = some (b, q)
+      ∃ j i b', j < k ∧ body[j]? = some i ∧ slotMov? i.li_i = some (b', q)
   | 0, _, _, h => by cases h
   | k + 1, b, q, h => by
       cases hb : body[k]? with
       | none => simp [reloadOf, hb] at h
       | some i =>
           cases hm : slotMov? i.li_i with
-          | none => rw [reloadOf_succ_none hb hm] at h; cases h
+          | none =>
+              obtain ⟨-, -, -, -, -, h'⟩ := reloadOf_succ_none_eq hb hm b h
+              obtain ⟨j, i', b', hj, hi', hm'⟩ := reloadOf_spec h'
+              exact ⟨j, i', b', Nat.lt_succ_of_lt hj, hi', hm'⟩
           | some p =>
               obtain ⟨d, q'⟩ := p
               rw [reloadOf_succ_some hb hm] at h
-              split_ifs at h with h1 h2
+              split_ifs at h with h1 h2 h3
+              · obtain ⟨j, i', b', hj, hi', hm'⟩ := reloadOf_spec h
+                exact ⟨j, i', b', Nat.lt_succ_of_lt hj, hi', hm'⟩
               · cases h
-                subst h1
-                exact ⟨k, i, Nat.lt_succ_self k, hb, hm⟩
-              · obtain ⟨j, i', hj, hi', hm'⟩ := reloadOf_spec h
-                exact ⟨j, i', Nat.lt_succ_of_lt hj, hi', hm'⟩
+                exact ⟨k, i, d, Nat.lt_succ_self k, hb, hm⟩
+              · obtain ⟨j, i', b', hj, hi', hm'⟩ := reloadOf_spec h
+                exact ⟨j, i', b', Nat.lt_succ_of_lt hj, hi', hm'⟩
 
 /-- The array, with its length, whose pointer the register `b` holds at instruction `k` of
     `body`: the array of the slot `q` from which `b` was last reloaded (`reloadOf`). -/

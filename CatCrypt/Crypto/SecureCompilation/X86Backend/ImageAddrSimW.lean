@@ -80,6 +80,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase readsI)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
   (carryIns WideSafeAt fstepA_adcx3 fstepA_adcxhi)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
 
 /-! ## 1. The carry-chain instructions on both machines -/
 
@@ -454,7 +455,7 @@ theorem ptr_of_reloadW {frame : String → Option (BitVec 64)}
     (hrel : ImgRelW frame slotArr base body s sa zf) {b A : String} {n : Nat}
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hbf : frame b = none) :
     ∃ q, slotArr q = some (A, n) ∧ sa.reg.getW b 64 = some (base A) := by
-  obtain ⟨q, hr, hq, k', i, hk', hi, hm⟩ := accArr_spec hacc
+  obtain ⟨q, hr, hq, k', i, b', hk', hi, hm⟩ := accArr_spec hacc
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := by
@@ -476,7 +477,8 @@ theorem saved_reload_nextW {frame : String → Option (BitVec 64)}
     (hb : body[sa.reg.lpc]? = some bi) (hnm : slotMov? bi.li_i = none)
     (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
     (hmem : ∀ q a, (slotArr q).isSome = true → frame q = some a →
-      read64 sa'.mem a = read64 sa.mem a) :
+      read64 sa'.mem a = read64 sa.mem a)
+    (hreg : ∀ b, frame b = none → b ∉ dstNames bi.li_i → sa'.reg.lvm b = sa.reg.lvm b) :
     (∀ k R A n a, SaveAt body k R → slotArr (slotOfReg R) = some (A, n) →
       frame (slotOfReg R) = some a →
         (k < sa'.reg.lpc → read64 sa'.mem a = base A)
@@ -501,8 +503,12 @@ theorem saved_reload_nextW {frame : String → Option (BitVec 64)}
     obtain ⟨d, src, hm2, -⟩ := entryRegB_spec hent (show sa.reg.lpc < k by omega) hb
     rw [hnm] at hm2
     cases hm2
-  · rw [hpc, reloadOf_succ_none hb hnm] at hbi
-    cases hbi
+  · rename_i hq ha hbf
+    rw [hpc] at hbi
+    obtain ⟨ds, o, ss, hx, hnd, h'⟩ := reloadOf_succ_none_eq hb hnm b hbi
+    have hbd : b ∉ dstNames bi.li_i := by rw [hx]; exact not_mem_dstNames_of_dstHit hnd
+    rw [hreg b hbf hbd, hmem q a (by rw [hq]; rfl) ha]
+    exact hrel.reload b q a A n h' hq ha hbf
 
 theorem regGateBW_slotMov {frame : String → Option (BitVec 64)} {W : List String}
     {x : LinstrR} (h : regGateBW frame W x = true) {d src : String}
@@ -658,15 +664,24 @@ theorem rel_regW {frame : String → Option (BitVec 64)}
         simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, Ne.symm hdR]
       rw [getW_congr e]
       exact (hrel.saved k R A n a ⟨i', hi', hm'⟩ hA ha).2 (by omega)
-  · refine reload_succ hrel.reload hb hlpcA (fun b q a A n hm _ hq _ => ?_)
+  · refine reload_succ hrel.reload hb hlpcA (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q a A n hm _ hq _ => ?_) (fun b q hm _ hbf => ?_)
       (fun d q0 b hm _ hbd hbf => ?_) (fun _ _ q a _ _ _ _ _ _ => by rw [hmem])
+      (fun _ b hbf hbd => ?_) (fun _ _ _ _ _ _ _ _ => by rw [hmem])
     · rw [(hmovF _ _ hm).2] at hq
       cases hq
     · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
       rw [hs] at ht
       cases ht
+      rw [← hregs' b hbf, ← hrel.regs q (hmovF _ _ hm).2]
+      simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc]
+    · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+      rw [hs] at ht
+      cases ht
       rw [← hregs' b hbf, ← hrel.regs b hbf]
       simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hbd]
+    · rw [← hregs' b hbf, ← hrel.regs b hbf]
+      exact evalInstrPMemF_lvm_of_not_dst P hl hs (by rw [dstNames_normA]; exact hbd)
 
 /-- The flag machine steps the untagged `MOV D, #n` at the one-bit tag by writing the bit `n`
     to `D`. -/
@@ -746,17 +761,22 @@ theorem rel_bmovW {frame : String → Option (BitVec 64)}
       obtain ⟨d, src, hm, -⟩ := entryRegB_spec hent (show sa.reg.lpc < k by omega) hb
       rw [hnm] at hm
       cases hm
-  · intro b q a A m hbi _ _ _
+  · intro b q a A m hbi hq ha hbf
     have hpc' : (sa.reg.setReg D (BitVec.ofNat 1 n)).nextPc.lpc = sa.reg.lpc + 1 := by
       simp [LstateN.setReg, LstateN.nextPc]
-    rw [hpc', reloadOf_succ_none hb hnm] at hbi
-    cases hbi
+    rw [hpc'] at hbi
+    obtain ⟨ds, o, ss, hx', hnd, h'⟩ := reloadOf_succ_none_eq hb hnm b hbi
+    have hbd : b ∉ dstNames bi.li_i := by rw [hx']; exact not_mem_dstNames_of_dstHit hnd
+    have hbD : b ≠ D := fun e => hbd (by rw [hx]; simp [e, dstNames, JasminLsemExportRewrites.opNames])
+    have := hrel.reload b q a A m h' hq ha hbf
+    simpa [LstateN.setReg, LstateN.nextPc, hbD] using this
 
 /-! ## 5. Frame-word moves and compares, indexed accesses, labels -/
 
 /-- **A load of a frame word keeps `ImgRelW`.** -/
 theorem rel_sloadW {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
     (hphys : physImgB slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d q : String} (hc : icase frame bi.li_i = .sload d q)
@@ -813,8 +833,14 @@ theorem rel_sloadW {frame : String → Option (BitVec 64)}
       obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hm2)
       rw [getW_congr (r' := sa.reg) (by simp [Ne.symm hdR])]
       exact (hrel.saved k R A n a' ⟨i', hi', hm'⟩ hA ha').2 (by omega)
-  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ hq' _ => ?_)
+  · refine reload_succ hrel.reload hb (by simp) (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q' a' A n hm' _ hq' _ => ?_)
+      (fun b q' hm' hg _ => by
+        rw [hm] at hm'
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+        rw [hsep.gp _ hg] at ha; cases ha)
       (fun d' q0 b hm' _ hbd _ => ?_) (fun _ _ _ _ _ _ _ _ _ _ => rfl)
+      (fun h' => by rw [hm] at h'; cases h') (fun h' => by rw [hm] at h'; cases h')
     · rw [hm] at hm'
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       rw [ha] at hq'
@@ -901,8 +927,14 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
           exact hqR (Prod.mk.inj (Option.some.inj hm')).1.symm
     · rw [getW_congr (r := sa.reg.nextPc) (r' := sa.reg) rfl]
       exact (hrel.saved k R A n a' hS' hA ha').2 (by omega)
-  · refine reload_succ hrel.reload hb (by simp) (fun b q' a' A n hm' _ _ hbf => ?_)
+  · refine reload_succ hrel.reload hb (by simp) (fun r h => hsep.gp r h) (hsep.slotFrameB)
+      (fun b q' a' A n hm' _ _ hbf => ?_)
+      (fun b q' hm' _ hbf => by
+        rw [hm] at hm'
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
+        rw [ha] at hbf; cases hbf)
       (fun _ _ _ _ _ _ _ => by simp) (fun d q0 q' a' A n hm' hd hq' ha' => ?_)
+      (fun h' => by rw [hm] at h'; cases h') (fun h' => by rw [hm] at h'; cases h')
     · rw [hm] at hm'
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       rw [ha] at hbf
@@ -987,10 +1019,12 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
         cases hm'
     · rw [getW_congr (r := sa.reg.nextPc) (r' := sa.reg) rfl]
       exact (hrel.saved k R A n a' hS' hA' ha').2 (by omega)
-  · intro b q' a' A' n' hbi _ _ _
+  · intro b q' a' A' n' hbi hq' ha' hbf
     simp only [LstateN.lpc_nextPc] at hbi
-    rw [reloadOf_succ_none hb hnm] at hbi
-    cases hbi
+    obtain ⟨ds, o, ss, hx', hnd, h'⟩ := reloadOf_succ_none_eq hb hnm b hbi
+    have hqq : q ≠ q' := fun e => by rw [e, hq'] at hA; cases hA
+    rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' hq ha' hqq)]
+    simpa using hrel.reload b q' a' A' n' h' hq' ha' hbf
 
 /-- The flag machine steps `CMOV:64 D, [C, A, B]`, with `A` at width `64`, by writing the
     select of the one-bit value of `C` between the 64-bit values of `A` and `B` to `D`. -/
@@ -1126,6 +1160,10 @@ theorem rel_scmovW {frame : String → Option (BitVec 64)}
     have hsr := saved_reload_nextW
       (sa' := { sa with reg := (sa.reg.setReg D (JasminDialect.selectW vc va vb)).nextPc })
       hphys hrel hb hnm rfl (fun _ _ _ _ => rfl)
+      (fun r _ hr => by
+        rw [hx] at hr
+        have hrD : r ≠ D := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
+        simp [LstateN.setReg, LstateN.nextPc, hrD])
   · exact hsr.1
   · exact hsr.2
 
@@ -1158,7 +1196,7 @@ theorem rel_scmpW {frame : String → Option (BitVec 64)}
     rw [hva] at hs
     cases hs
     obtain ⟨hsv, hrl⟩ := saved_reload_nextW (sa' := { sa with reg := sa.reg.nextPc }) hphys hrel
-      hb hnm rfl (fun _ _ _ _ => rfl)
+      hb hnm rfl (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     refine ⟨{ sa with reg := sa.reg.nextPc }, rfl, ⟨by simp [LstateM.nextPc, hrel.pc],
       fun r hr => by simpa [LstateM.nextPc] using hrel.regs r hr,
       fun q' a' ha' => by simpa [LstateM.nextPc] using hrel.slots q' a' ha', rfl, hrel.cf,
@@ -1220,6 +1258,10 @@ theorem rel_ldxW {frame : String → Option (BitVec 64)}
   obtain ⟨hsv, hrl⟩ := saved_reload_nextW (sa' := { sa with reg := (sa.reg.setReg d
       (read64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc })
     hphys hrel hb (by rw [hx]; rfl) (by simp) (fun _ _ _ _ => rfl)
+    (fun r _ hr => by
+      rw [hx] at hr
+      have hrd : r ≠ d := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
+      simp [LstateN.setReg, LstateN.nextPc, hrd])
   refine ⟨_, rfl, ⟨by simp [LstateM.setReg, LstateM.nextPc, hrel.pc], ?_, ?_, rfl, hrel.cf,
     hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl⟩⟩
   · intro r hr
@@ -1281,7 +1323,7 @@ theorem rel_stxW {frame : String → Option (BitVec 64)}
       mem := write64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)) vv })
     hphys hrel hb (by rw [hx]; rfl) rfl
     (fun q' a _ ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha))
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
     hrel.cf, hrel.of, fun r hr hW => ?_, ?_, hsv, hrl⟩⟩
@@ -1323,7 +1365,7 @@ theorem rel_labelW {frame : String → Option (BitVec 64)}
   have hW1 := oneBitAt_succ (frame := frame) hb
   rw [oneBitStep_noCarry (by rw [hx]; rfl), hx] at hW1
   obtain ⟨hsv, hrl⟩ := saved_reload_nextW (sa' := sa.setLpc (sa.reg.lpc + 1)) hphys hrel hb
-    hnm rfl (fun _ _ _ _ => rfl)
+    hnm rfl (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
   refine ⟨by simp [LstateA.setLpc, LstateM.nextPc, hrel.pc], fun r hr => hrel.regs r hr,
     fun q a ha => hrel.slots q a ha, hrel.zf, hrel.cf, hrel.of, fun r hr hW => ?_,
     fun q A n hq => hrel.cells q A n hq, hsv, hrl⟩
@@ -1416,6 +1458,7 @@ theorem rel_adcxW {frame : String → Option (BitVec 64)}
         mem := write64 sa.mem aD (VIR.JasminDialect.addCarryWord va vb vc) })
       hphys hrel hb hnm rfl (fun q a hq ha => read64_write64_of_disjoint _ _ _ _
         (hsep.frames D q aD a hfD ha (fun e => by rw [← e, hDs] at hq; cases hq)))
+      (fun _ _ _ => rfl)
     refine ⟨by simp [hrel.pc], fun r hr => ?_,
       fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv,
       hrl⟩
@@ -1456,6 +1499,10 @@ theorem rel_adcxW {frame : String → Option (BitVec 64)}
     obtain ⟨hsv, hrl⟩ := saved_reload_nextW (sa' := { sa with
         reg := (sa.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc })
       hphys hrel hb hnm (by simp) (fun _ _ _ _ => rfl)
+      (fun r _ hr => by
+        rw [hx] at hr
+        have hrD : r ≠ D := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
+        simp [LstateN.setReg, LstateN.nextPc, hrD])
     refine ⟨by simp [hrel.pc], fun r hr => ?_,
       fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl⟩
     · by_cases e : r = D
@@ -1519,6 +1566,10 @@ theorem rel_adcxhiW {frame : String → Option (BitVec 64)}
   obtain ⟨hsv, hrl⟩ := saved_reload_nextW (sa' := { sa with
       reg := (sa.reg.setReg O (VIR.JasminDialect.carryOutBit va vb vc)).nextPc })
     hphys hrel hb hnm (by simp) (fun _ _ _ _ => rfl)
+    (fun r _ hr => by
+      rw [hx] at hr
+      have hrO : r ≠ O := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
+      simp [LstateN.setReg, LstateN.nextPc, hrO])
   refine ⟨by simp [hrel.pc], fun r hr => ?_,
     fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl⟩
   · by_cases e : r = O
@@ -1640,7 +1691,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         · rw [hx] at h3
           rw [hx, imgInstr_reg slotArr c _ (by decide) (by decide) h3, evalInstrPMemFk_reg,
             ← hx] at hstep
-          obtain ⟨sa', hst, hr⟩ := rel_sloadW hphys P hrel hb hc hci hg hstep
+          obtain ⟨sa', hst, hr⟩ := rel_sloadW hsep hphys P hrel hb hc hci hg hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
           rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
     | sstore q S =>

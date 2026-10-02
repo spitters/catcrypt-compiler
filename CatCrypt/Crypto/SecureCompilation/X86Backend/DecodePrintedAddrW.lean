@@ -33,7 +33,8 @@ cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off`, prin
 `mov off(%B)`. The carry constant, an untagged `MOV D, #n` with `n < 2` that the address
 machine steps at the one-bit tag (`JasminLsemAddrRun.tagAt`), is printed `mov $n, %r32`, which
 leaves the zero-extension of the bit in the register. The wide immediate, `MOV:64 D, #v` with
-`v` outside the sign-extended `imm32` range, is printed `movabs $v, %r64`. The register select
+`v` outside the sign-extended `imm32` range, is printed `movabs $v, %r64`; into a frame slot it
+is printed through `%rax`, saved to and restored from the red-zone word. The register select
 `CMOV:64 D, [C, A, B]` reads its condition `C` at width `1`, like a carry-in (`carryIns`), and
 is printed `test C, C` followed by a conditional move. The class `printedAddrWB` adds these
 arms to the bodies of `DecodePrintedCFG`.
@@ -1619,14 +1620,27 @@ theorem classifyI_instr {i : LinstrR} {q : String} {v : Nat} (h : classifyI i = 
   · cases h
 
 /-- **The conditions of an immediate store into a frame slot**: `q` is a frame-slot name with a
-    frame offset in `rel32` range, and `v` is a 64-bit value that sign-extends from 32 bits. -/
+    frame offset in `rel32` range, and `v` is a 64-bit value that sign-extends from 32 bits or
+    whose slot word is disjoint from the red-zone word. -/
 def iOk (P : Params) (q : String) (v : Nat) : Bool :=
   isSpillOrQsave q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
-    && dispOk32 (slotOff P q) && decide (v < 2 ^ 64) && ScalarEncoder.fitsImm32S v
+    && dispOk32 (slotOff P q) && decide (v < 2 ^ 64)
+    && (ScalarEncoder.fitsImm32S v || sepB cmovRedZone (slotOff P q))
 
-/-- The byte piece of an immediate store into a frame slot: `movq $v, off(%rsp)`. -/
+/-- The byte pieces of an immediate store into a frame slot: `movq $v, off(%rsp)` for a value
+    that sign-extends from 32 bits; otherwise `%rax` saved to the red-zone word,
+    `movabs $v, %rax`, `movq %rax, off(%rsp)` and `%rax` restored from the red-zone word. -/
 def iPieces (P : Params) (q : String) (v : Nat) : List (List (BitVec 8) × JInstr 64) :=
-  [(encMovImmRspMem 1 (slotOff P q) v, .storeMem "%rsp" (slotOff P q) (.imm v))]
+  if ScalarEncoder.fitsImm32S v then
+    [(encMovImmRspMem 1 (slotOff P q) v, .storeMem "%rsp" (slotOff P q) (.imm v))]
+  else
+    [(encRspMem 1 0x89 (gpNumU "RAX") cmovRedZone,
+        .storeMem "%rsp" cmovRedZone (.reg (phys "RAX"))),
+      (ScalarEncoder.encMovImm64 (gpNumU "RAX") v, .mov (phys "RAX") (.imm v)),
+      (encRspMem 1 0x89 (gpNumU "RAX") (slotOff P q),
+        .storeMem "%rsp" (slotOff P q) (.reg (phys "RAX"))),
+      (encRspMem 1 0x8b (gpNumU "RAX") cmovRedZone,
+        .loadMem (phys "RAX") "%rsp" cmovRedZone)]
 
 /-- `MOV:64 q, #v` into a frame slot `q` at offset `off`, with `v` sign-extending from
     32 bits, encodes to `movq $v, off(%rsp)`. -/
@@ -1634,6 +1648,27 @@ theorem encodeLopn_sti (F W : Nat) (q : String) (v : Nat) (qB : Nat) {off : Int}
     (hq : isSpillOrQsave q = true) (ho : spillQsaveOff F W q qB = some off)
     (hv : ScalarEncoder.fitsImm32S v = true) :
     encodeLopn F W (.Lopn [.reg q] "MOV:64" [.imm v]) qB = encMovImmRspMem 1 off v := by
+  simp only [ScalarEncoder.fitsImm32S] at hv
+  have h3 : LprogAsmPrinter.mnemWidth "MOV:64" = 64 := by decide +kernel
+  simp only [encodeLopn,
+    show (LprogAsmPrinter.isCarryOutBinding "MOV:64" || LprogAsmPrinter.isMulHiBinding "MOV:64")
+      = false from by decide +kernel,
+    show stripWidthTag "MOV:64" = "MOV" from by decide +kernel,
+    show ("MOV" == "MULX") = false from by decide +kernel,
+    show ("MOV" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "MOV" = none from by decide +kernel,
+    LprogBytes.rexW, Bool.false_eq_true, if_false]
+  simp [hq, ho, hv, h3]
+
+/-- `MOV:64 q, #v` into a frame slot `q` at offset `off`, with `v` outside the sign-extended
+    `imm32` range, encodes to the save of `%rax` in the red-zone word, `movabs $v, %rax`, the
+    store of `%rax` to the slot and the restore of `%rax`. -/
+theorem encodeLopn_stiWide (F W : Nat) (q : String) (v : Nat) (qB : Nat) {off : Int}
+    (hq : isSpillOrQsave q = true) (ho : spillQsaveOff F W q qB = some off)
+    (hv : ScalarEncoder.fitsImm32S v = false) :
+    encodeLopn F W (.Lopn [.reg q] "MOV:64" [.imm v]) qB
+      = encRspMem 1 0x89 (gpNumU "RAX") (-128) ++ ScalarEncoder.encMovImm64 (gpNumU "RAX") v
+        ++ encRspMem 1 0x89 (gpNumU "RAX") off ++ encRspMem 1 0x8b (gpNumU "RAX") (-128) := by
   simp only [ScalarEncoder.fitsImm32S] at hv
   have h3 : LprogAsmPrinter.mnemWidth "MOV:64" = 64 := by decide +kernel
   simp only [encodeLopn,
@@ -1665,20 +1700,46 @@ theorem pieceDec_storeImmRsp (off : Int) (v : Nat) (hv : v < 2 ^ 64)
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, h4, h5, encMovImmRspMem_eq]
     using e
 
+/-- `movabs $v, %r64` decodes to the 64-bit move of `v` into the register. -/
+theorem pieceDec_movImm64 (D : String) (v : Nat) (hv : v < 2 ^ 64)
+    (hf : ScalarEncoder.fitsImm32S v = false) :
+    PieceDec (ScalarEncoder.encMovImm64 (gpNumU D) v, .mov (phys D) (.imm v)) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have h31 : ¬ v < 2147483648 := by
+    simp [ScalarEncoder.fitsImm32S] at hf
+    omega
+  have e := roundtrip_movImm (canonAlloc ()) (phys D) v rest hv
+  simpa [ScalarEncoder.encodeJInstr, h31, renameJ, nameOf, operandOf, phys,
+    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D)] using e
+
 /-- **The bytes of an immediate store into a frame slot.** -/
 theorem iBytes (P : Params) (q : String) (v : Nat) (h : iOk P q v = true) :
     encodeLopn P.frame P.spillW (.Lopn [.reg q] "MOV:64" [.imm v]) P.qsaveB
         = (iPieces P q v).flatMap Prod.fst
       ∧ ∀ p ∈ iPieces P q v, PieceDec p := by
   simp only [iOk, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨⟨⟨hq, hs⟩, hd⟩, hv⟩, hf⟩ := h
+  obtain ⟨⟨⟨⟨hq, hs⟩, hd⟩, hv⟩, -⟩ := h
   obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
   have hso : slotOff P q = off := by simp [slotOff, ho]
-  refine ⟨by simp [iPieces, encodeLopn_sti _ _ _ _ _ hq ho hf, hso], ?_⟩
-  intro p hp
-  simp only [iPieces, List.mem_singleton] at hp
-  subst hp
-  exact pieceDec_storeImmRsp _ _ hv hf hd
+  have hl := gpNumU_lt_16 "RAX"
+  cases hf : ScalarEncoder.fitsImm32S v with
+  | true =>
+    refine ⟨by simp [iPieces, hf, encodeLopn_sti _ _ _ _ _ hq ho hf, hso], ?_⟩
+    intro p hp
+    simp only [iPieces, hf, if_true, List.mem_singleton] at hp
+    subst hp
+    exact pieceDec_storeImmRsp _ _ hv hf hd
+  | false =>
+    refine ⟨by simp [iPieces, hf, encodeLopn_stiWide _ _ _ _ _ hq ho hf, hso, cmovRedZone], ?_⟩
+    intro p hp
+    simp only [iPieces, hf, Bool.false_eq_true, if_false, List.mem_cons, List.not_mem_nil,
+      or_false] at hp
+    rcases hp with rfl | rfl | rfl | rfl
+    · exact fun rest => decodeLinstr_rspStore _ cmovRedZone rest hl (by decide)
+    · exact pieceDec_movImm64 "RAX" v hv hf
+    · exact fun rest => decodeLinstr_rspStore _ _ rest hl hd
+    · exact fun rest => decodeLinstr_rspLoad _ cmovRedZone rest hl (by decide)
 
 /-- The machine store of an immediate keeps the registers and writes the 64-bit word of the
     immediate. -/
@@ -1689,24 +1750,89 @@ theorem evalInstrA_storeImm_eq (sa : AState) (B : String) (off : Int) (v : Nat) 
   refine ⟨?_, ?_⟩ <;>
     simp [evalInstrA, evalInstr, JState.store, AState.view, writeAddr, writeVal, JOperand.eval]
 
+/-- The machine move of an immediate into a register writes its 64-bit word and keeps the
+    memory. -/
+theorem evalInstrA_movImm_eq (sa : AState) (R : String) (v : Nat) :
+    (∀ r, (evalInstrA sa (.mov R (.imm v))).regs r
+        = if r = R then BitVec.ofNat 64 v else sa.regs r)
+      ∧ (evalInstrA sa (.mov R (.imm v))).mem = sa.mem := by
+  refine ⟨fun r => ?_, evalInstrA_mem_of_noWriteB sa _ rfl⟩
+  by_cases hr : r = R <;>
+    simp [evalInstrA, evalInstr, JState.setReg, AState.view, hr, x86_MOV, JOperand.eval]
+
+/-- **The wide immediate store into a frame slot.** From `ACorrW`, the address-machine step of
+    `MOV:64 q, #v`, which writes `v` to the slot word, is matched by the save of `%rax` in the
+    red-zone word, `movabs $v, %rax`, the store of `%rax` to the slot and the restore of `%rax`,
+    for a slot word disjoint from the red-zone word. -/
+theorem sim_stiWide (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (off : Int)
+    (hso : slotOff P q = off) (hf : ScalarEncoder.fitsImm32S v = false)
+    (hsep : sepB cmovRedZone off = true) (sa : AState) (s : LstateA) (hc : ACorrW rsp sa s) :
+    ACorrW rsp (aMachine.runBlock sa ((iPieces P q v).map Prod.snd))
+      { s with reg := s.reg.nextPc,
+               mem := write64 s.mem (rsp + BitVec.ofInt 64 off) (BitVec.ofNat 64 v) } := by
+  set R := phys "RAX" with hR
+  have hRsp : ("%rsp" = R) = False := by simp [hR, phys]; decide
+  have hrun : aMachine.runBlock sa ((iPieces P q v).map Prod.snd)
+      = evalInstrA (evalInstrA (evalInstrA (evalInstrA sa
+          (.storeMem "%rsp" cmovRedZone (.reg R))) (.mov R (.imm v)))
+          (.storeMem "%rsp" off (.reg R))) (.loadMem R "%rsp" cmovRedZone) := by
+    simp only [iPieces, hf, Bool.false_eq_true, if_false, hso]; rfl
+  rw [hrun]
+  obtain ⟨r1, m1⟩ := evalInstrA_storeMem_eq sa "%rsp" R cmovRedZone
+  set sa1 := evalInstrA sa (.storeMem "%rsp" cmovRedZone (.reg R))
+  obtain ⟨r2, m2⟩ := evalInstrA_movImm_eq sa1 R v
+  set sa2 := evalInstrA sa1 (.mov R (.imm v))
+  obtain ⟨r3, m3⟩ := evalInstrA_storeMem_eq sa2 "%rsp" R off
+  set sa3 := evalInstrA sa2 (.storeMem "%rsp" off (.reg R))
+  obtain ⟨r4, m4⟩ := evalInstrA_loadMem_eq sa3 R "%rsp" cmovRedZone
+  have hsp2 : sa2.regs "%rsp" = rsp := by
+    rw [r2, if_neg (by simp [hRsp]), r1, hc.sp]
+  have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, hc.sp]
+  have hdisj : Disjoint8 (rsp + BitVec.ofInt 64 cmovRedZone) (rsp + BitVec.ofInt 64 off) :=
+    sepB_disj hsep rsp
+  have hregs : ∀ r, (evalInstrA sa3 (.loadMem R "%rsp" cmovRedZone)).regs r = sa.regs r := by
+    intro r
+    rw [r4]
+    by_cases hr : r = R
+    · rw [if_pos hr, r3, hsp2, m3, hsp2, read64_write64_of_disjoint _ _ _ _ hdisj.symm, m2,
+        m1, hc.sp, read64_write64_same, hr]
+    · rw [if_neg hr, r3, r2, if_neg hr, r1]
+  refine ⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩
+  · rw [hregs]
+    have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
+    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    rw [hg]
+    exact hc.regs r hr
+  · show write64 s.mem _ _ x = _
+    rw [m4, m3, hsp2, r2, if_pos rfl, m2, m1, hc.sp]
+    refine agree_write64 (fun y hy => ?_) _ _ x hx
+    rw [hc.mem y hy, write64_of_not_inRange _ _ _ _ (by simpa [redW] using hy)]
+
 /-- **The immediate store into a frame slot.** From `ACorrW`, the address-machine step of
-    `MOV:64 q, #v` is matched by `movq $v, off(%rsp)`. -/
+    `MOV:64 q, #v` is matched by `movq $v, off(%rsp)`, or by the wide sequence of
+    `sim_stiWide` for a value outside the sign-extended `imm32` range. -/
 theorem sim_sti (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (h : iOk P q v = true)
     (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) (.Lopn [.reg q] "MOV:64" [.imm v], .reg none) s zf
       = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((iPieces P q v).map Prod.snd)) s' ∧ zf' = zf := by
-  simp only [iOk, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨⟨⟨-, hs⟩, -⟩, -⟩, -⟩ := h
+  simp only [iOk, Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true] at h
+  obtain ⟨⟨⟨⟨-, hs⟩, -⟩, -⟩, hfs⟩ := h
   obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
   have hso : slotOff P q = off := by simp [slotOff, ho]
   have hfr : frameP P rsp q = some (rsp + BitVec.ofInt 64 off) := by simp [frameP, ho]
   rw [fstepA_slotImm _ hfr] at hst
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  cases hf : ScalarEncoder.fitsImm32S v with
+  | false =>
+    have hsep : sepB cmovRedZone off = true := by
+      rw [← hso]; simpa [hf] using hfs
+    exact ⟨sim_stiWide P rsp q v off hso hf hsep sa s hc, rfl⟩
+  | true =>
   obtain ⟨hregs, hmem⟩ := evalInstrA_storeImm_eq sa "%rsp" off v
   have hrun : aMachine.runBlock sa ((iPieces P q v).map Prod.snd)
       = evalInstrA sa (.storeMem "%rsp" off (.imm v)) := by
-    simp only [iPieces, hso]; rfl
+    simp only [iPieces, hf, if_true, hso]; rfl
   rw [hrun]
   refine ⟨⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩, rfl⟩
   · rw [hregs]
@@ -1840,19 +1966,6 @@ theorem encodeLopn_movImm64 (F W : Nat) (D : String) (v qB : Nat) (hD : gpOk D =
     show adxPrefix "MOV" = none from by decide +kernel,
     LprogBytes.rexW, Bool.false_eq_true, if_false, if_true, fD.notSlot, Bool.false_and]
   simp [encImmOp, fD.notSlot, hv]
-
-/-- `movabs $v, %r64` decodes to the 64-bit move of `v` into the register. -/
-theorem pieceDec_movImm64 (D : String) (v : Nat) (hv : v < 2 ^ 64)
-    (hf : ScalarEncoder.fitsImm32S v = false) :
-    PieceDec (ScalarEncoder.encMovImm64 (gpNumU D) v, .mov (phys D) (.imm v)) := by
-  intro rest
-  apply decodeLinstr_of_decodeJ1
-  have h31 : ¬ v < 2147483648 := by
-    simp [ScalarEncoder.fitsImm32S] at hf
-    omega
-  have e := roundtrip_movImm (canonAlloc ()) (phys D) v rest hv
-  simpa [ScalarEncoder.encodeJInstr, h31, renameJ, nameOf, operandOf, phys,
-    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D)] using e
 
 /-- **The bytes of a wide immediate.** -/
 theorem lBytes (P : Params) (D : String) (v : Nat) (h : lOk D v = true) :

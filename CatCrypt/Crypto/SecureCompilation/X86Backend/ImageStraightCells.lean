@@ -335,15 +335,33 @@ theorem reloadOf_slotArrC (R : Slots) (sl : String → Option (String × Nat)) (
       cases hb : body[k]? with
       | none => simp [JasminLsemAddrImage.reloadOf, hb]
       | some j =>
+          have hs : ∀ q, (slotArrC R sl q).isSome = (sl q).isSome := fun q => by
+            simp [slotArrC]
+          have hn : ∀ q, (slotArrC R sl q).isNone = (sl q).isNone := fun q => by
+            simp [slotArrC]
           cases hm : JasminLsemAddrMem.slotMov? j.li_i with
           | none =>
-              rw [JasminLsemAddrImage.reloadOf_succ_none hb hm,
-                JasminLsemAddrImage.reloadOf_succ_none hb hm]
+              cases hx : j.li_i with
+              | Lopn ds o ss =>
+                  rw [JasminLsemAddrImage.reloadOf_succ_lopn hb hm hx,
+                    JasminLsemAddrImage.reloadOf_succ_lopn hb hm hx,
+                    reloadOf_slotArrC R sl body k b]
+                  have e : ds.any (JasminLsemAddrImage.dstHitB (slotArrC R sl) b)
+                      = ds.any (JasminLsemAddrImage.dstHitB sl b) := by
+                    congr 1
+                    funext x
+                    cases x <;> simp only [JasminLsemAddrImage.dstHitB, hs]
+                  rw [e]
+              | _ =>
+                  rw [JasminLsemAddrImage.reloadOf_succ_other hb hm
+                      (by intro ds o ss he; rw [hx] at he; cases he),
+                    JasminLsemAddrImage.reloadOf_succ_other hb hm
+                      (by intro ds o ss he; rw [hx] at he; cases he)]
           | some p =>
               obtain ⟨d, q⟩ := p
               rw [JasminLsemAddrImage.reloadOf_succ_some hb hm,
-                JasminLsemAddrImage.reloadOf_succ_some hb hm, reloadOf_slotArrC R sl body k b]
-              simp [slotArrC]
+                JasminLsemAddrImage.reloadOf_succ_some hb hm, reloadOf_slotArrC R sl body k b,
+                reloadOf_slotArrC R sl body k q, hn, hn]
 
 /-- **The relation with the cell arrays at length `0`.** A relation of the image
     simulation at a slot map is one at `slotArrC` from the state with the cell arrays
@@ -538,7 +556,8 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
     have := List.all_eq_true.mp h k (List.mem_range.mpr hk)
     rw [hb] at this
     exact this
-  refine ⟨fun k bi D B off hb hc => ?_, fun k bi B off S hb hc => ?_⟩
+  refine ⟨fun k bi D B off hb hc => ?_, fun k bi B off S hb hc => ?_,
+    fun k bi D B off hb hc => ?_, fun k bi B off S hb hc => ?_⟩
   · have := hat k bi hb
     rw [hc] at this
     simp only [Bool.and_eq_true] at this
@@ -563,6 +582,14 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
         simp only [Bool.and_eq_true, beq_iff_eq] at ha
         obtain ⟨h1, -⟩ := hcell A off (by simpa using ha.1) ha.2
         exact ⟨A, n, rfl, hgpN B hB, hgpN S hS, h1⟩
+  · have := hat k bi hb
+    rw [hc] at this
+    simp only [Bool.and_eq_true] at this
+    exact this.1
+  · have := hat k bi hb
+    rw [hc] at this
+    simp only [Bool.and_eq_true] at this
+    exact this.1.1
 
 /-! ## 8. The names of the cells -/
 
