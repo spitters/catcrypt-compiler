@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
+public import CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttInverse
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
@@ -36,6 +36,12 @@ The butterfly is word for word the Montgomery multiply
 * `semW`, `lazyLaneProgW`, `nttProgW` — one lazy layer on word lanes, its lane
   schedules, and the transform program.
 * `WordOk` — the decidable side condition of the word lowering.
+* `montTail`, `gsLaneProgW`, `scaleLaneProgW` — the Montgomery multiply of a
+  word variable by a constant, the Gentleman–Sande lane and the scaling lane.
+* `zrc`, `zrInv`, `invSemW`, `invLaneProgW`, `invStagesW`, `inttProgW` — a
+  constant and an inverse twiddle in Montgomery form, one inverse stage on word
+  lanes, its lane schedules, the stage list, and the inverse transform program.
+* `InvWordOk` — the decidable side condition of the inverse word lowering.
 
 ## Main results
 
@@ -48,6 +54,12 @@ The butterfly is word for word the Montgomery multiply
   read as words.
 * `nttProgW_denote` — every output word of `nttProgW` is below `bnd L`, and cast
   to `ZMod q` it is `nttSpec`.
+* `montW_zrc` — the Montgomery word multiply by `c · R mod q` of an operand at
+  most `R` is below `2 q` and congruent to `c` times the operand.
+* `inttProgW_denote` — every output word of `inttProgW` is below `2 q`, and cast
+  to `ZMod q` it is `inttSpec`.
+* `inttProgW_nttProgW` — `inttProgW` after `nttProgW` returns its input modulo
+  `q`, with every word below `2 q`.
 -/
 
 @[expose] public section
@@ -64,7 +76,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
   (hvToHom homToHV pullV_hvToHom lookupVars_homToHV)
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral (Com.foldVarN Com.foldVarN_denote
   Com.denoteN)
-open CatCrypt.Crypto.Number (montgomeryReduce)
+open CatCrypt.Crypto.Number (montgomeryReduce montgomeryReduce_correct)
+open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrev)
 
 /-! ## 1. Lanes in any dialect -/
 
@@ -110,6 +123,12 @@ theorem hvGetG_lanesVal (dflt : ⟦τ⟧) (f : ℕ → ⟦τ⟧) :
       rw [hvGetG_lanesVal dflt f n (off + 1) i (by omega)]
       congr 1
       omega
+
+theorem hvGetG_of_le (dflt : ⟦τ⟧) :
+    ∀ {m : ℕ} (hv : ListDenote (List.replicate m τ)) (i : ℕ), m ≤ i → hvGetG τ dflt hv i = dflt
+  | 0, _, _, _ => rfl
+  | _ + 1, .cons _ _, 0, h => absurd h (by omega)
+  | _ + 1, .cons _ r, i + 1, h => hvGetG_of_le dflt r i (by omega)
 
 theorem eq_lanesVal (dflt : ⟦τ⟧) (f : ℕ → ⟦τ⟧) :
     ∀ (n off : ℕ) (hv : Valuation (List.replicate n τ)),
@@ -433,5 +452,325 @@ theorem mlkemWord_ok : WordOk mlkemNtt mlkemLazy 16 := by decide
 
 /-- The ML-DSA word schedule: radix `2 ^ 32`. -/
 theorem mldsaWord_ok : WordOk mldsaNtt mldsaLazy 32 := by decide
+
+/-! ## 6. The inverse transform on words -/
+
+/-- The Montgomery multiply of the word variable `v` by the constant `z`, as the
+`jasminDialect` schedule of `montW`. -/
+def montTail (q R qinv logR z : ℕ) {Γ : Ctxt jasminDialect} (v : Var Γ R64) :
+    Com jasminDialect Γ R64 :=
+  .var (constW z)
+  (.var (binW .mul v.there .here)
+  (.var (constW qinv)
+  (.var (binW .mul (.there .here) .here)
+  (.var (constW (R - 1))
+  (.var (binW .and (.there .here) .here)
+  (.var (constW q)
+  (.var (binW .mul (.there .here) .here)
+  (.var (binW .add (.there (.there (.there (.there (.there (.there .here)))))) .here)
+  (.var (constW logR)
+  (.var (binW .shr (.there .here) .here) (.ret .here)))))))))))
+
+theorem montTail_denote (q R qinv logR z : ℕ) {Γ : Ctxt jasminDialect} (v : Var Γ R64)
+    (V : Valuation Γ) :
+    (montTail q R qinv logR z v).denote V
+      = montW q R qinv logR z (show BitVec 64 from v.lookup V) := rfl
+
+/-- One Gentleman–Sande lane on 64-bit words: the Montgomery product by the
+constant `z` of `a[ia] + a[ib]` when `up`, and of `a[ia] + offq − a[ib]`
+otherwise. -/
+def gsLaneProgW (q R qinv logR offq z : ℕ) :
+    (n : ℕ) → ℕ → ℕ → Bool → Com jasminDialect (Ctxw n) (.reg 64)
+  | 0, _, _, _ => .var (constW 0) (.ret .here)
+  | n + 1, ia, ib, up =>
+      if up then
+        .var (binW .add (laneVarG R64 n ia) (laneVarG R64 n ib))
+          (montTail q R qinv logR z .here)
+      else
+        .var (constW offq)
+        (.var (binW .add (laneVarG R64 n ia).there .here)
+        (.var (binW .sub .here (thereN (List.replicate 2 R64) (laneVarG R64 n ib)))
+        (montTail q R qinv logR z .here)))
+
+theorem gsLaneProgW_denote (q R qinv logR offq z n ia ib : ℕ) (up : Bool)
+    (V : Valuation (Ctxw (n + 1))) :
+    (gsLaneProgW q R qinv logR offq z (n + 1) ia ib up).denote V
+      = montW q R qinv logR z
+          (if up then (show BitVec 64 from (laneVarG R64 n ia).lookup V)
+            + (laneVarG R64 n ib).lookup V
+          else (show BitVec 64 from (laneVarG R64 n ia).lookup V) + BitVec.ofNat 64 offq
+            - (laneVarG R64 n ib).lookup V) := by
+  cases up <;> rfl
+
+/-- One scaling lane on 64-bit words: the Montgomery product of `a[i]` by the
+constant `z`. -/
+def scaleLaneProgW (q R qinv logR z : ℕ) : (n : ℕ) → ℕ → Com jasminDialect (Ctxw n) (.reg 64)
+  | 0, _ => .var (constW 0) (.ret .here)
+  | n + 1, i => montTail q R qinv logR z (laneVarG R64 n i)
+
+/-- The constant `c` in Montgomery form: `c · R mod q`. -/
+def zrc (c : ℕ) : ℕ := c * S.R % P.q
+
+/-- The inverse twiddle of block `k` in Montgomery form:
+`ψ ^ (2 ^ (L + 1) − BitRev_L k) · R mod q`. -/
+def zrInv (k : ℕ) : ℕ := zrc P S (P.psi ^ (2 ^ (P.layers + 1) - bitrev P.layers k))
+
+/-- Stage `st` of the inverse transform on word lanes: the scaling by `s` for
+`none`; for `some ℓ`, inverse layer `ℓ`, whose lower lane is the Montgomery
+product of `u + v` by `1` and whose upper lane is the Montgomery product of
+`u + 2 q − v` by the inverse twiddle. -/
+def invSemW (s : ℕ) : Option ℕ → (ℕ → BitVec 64) → ℕ → BitVec 64
+  | none, g, i => montW P.q S.R S.qinv logR (zrc P S s) (g i)
+  | some ℓ, g, i =>
+      if i % (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) < 2 ^ (P.logN - 1 - ℓ) then
+        montW P.q S.R S.qinv logR (zrc P S 1) (g i + g (i + 2 ^ (P.logN - 1 - ℓ)))
+      else
+        montW P.q S.R S.qinv logR
+          (zrInv P S (2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ))))
+          (g (i - 2 ^ (P.logN - 1 - ℓ)) + BitVec.ofNat 64 (2 * P.q) - g i)
+
+/-- The lane schedules of inverse word stage `st` on `2 ^ logN` lanes. -/
+def invLaneProgW (s : ℕ) : Option ℕ → ℕ → Com jasminDialect (Ctxw (2 ^ P.logN)) (.reg 64)
+  | none, i => scaleLaneProgW P.q S.R S.qinv logR (zrc P S s) (2 ^ P.logN) i
+  | some ℓ, i =>
+      if i % (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) < 2 ^ (P.logN - 1 - ℓ) then
+        gsLaneProgW P.q S.R S.qinv logR (2 * P.q) (zrc P S 1) (2 ^ P.logN)
+          i (i + 2 ^ (P.logN - 1 - ℓ)) true
+      else
+        gsLaneProgW P.q S.R S.qinv logR (2 * P.q)
+          (zrInv P S (2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ))))
+          (2 ^ P.logN) (i - 2 ^ (P.logN - 1 - ℓ)) i false
+
+/-- The inverse word stages: the scaling, then layers `L - 1, …, 0`. -/
+def invStagesW (L : ℕ) : List (Option ℕ) := none :: (List.range L).reverse.map some
+
+theorem invLaneProgW_denote (s : ℕ) (st : Option ℕ) (hst : ∀ ℓ, st = some ℓ → ℓ < P.logN)
+    (g : ℕ → BitVec 64) (i : ℕ) (hi : i < 2 ^ P.logN) :
+    (invLaneProgW P S logR s st i).denote (lanesVal R64 g (2 ^ P.logN) 0)
+      = invSemW P S logR s st g i := by
+  obtain ⟨m, hm⟩ : ∃ m, 2 ^ P.logN = m + 1 := ⟨2 ^ P.logN - 1, by
+    have := Nat.two_pow_pos P.logN; omega⟩
+  cases st with
+  | none =>
+    simp only [invLaneProgW, invSemW]
+    revert hi
+    rw [hm]
+    intro hi
+    rw [scaleLaneProgW.eq_2, montTail_denote, laneVarG_lookup R64 g m i 0 (by omega), Nat.zero_add]
+  | some ℓ =>
+    have hpart := layer_partner_lt P.logN ℓ i (hst ℓ rfl) hi
+    simp only [invLaneProgW, invSemW]
+    generalize 2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) = k
+    revert hpart hi
+    rw [hm]
+    intro hi hpart
+    generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
+    split
+    · next hlt =>
+      rw [gsLaneProgW_denote, if_pos rfl, laneVarG_lookup R64 g m i 0 (by omega),
+        laneVarG_lookup R64 g m (i + len) 0 (by have := hpart hlt; omega)]
+      simp only [Nat.zero_add]
+    · next hlt =>
+      rw [gsLaneProgW_denote, if_neg (by simp), laneVarG_lookup R64 g m (i - len) 0 (by omega),
+        laneVarG_lookup R64 g m i 0 (by omega)]
+      simp only [Nat.zero_add]
+
+/-- The inverse transform program of scaling constant `s` on `2 ^ logN` lanes
+of 64-bit words: every lane multiplied by `s`, then inverse layers
+`L - 1, …, 0`, each lane reduced below `2 q` by a Montgomery multiply. -/
+def inttProgW (s : ℕ) : MultiReturnCom jasminDialect (Ctxw (2 ^ P.logN)) (Ctxw (2 ^ P.logN)) :=
+  chainD R64 (2 ^ P.logN) (invLaneProgW P S logR s) (invStagesW P.layers) (Ctxt.Hom.id _)
+
+/-- The side condition of the inverse word lowering, decidable on `ℕ`: a sum of
+two lanes below `2 q` is at most `R`. -/
+def InvWordOk : Prop := 4 * P.q ≤ S.R
+
+instance : Decidable (InvWordOk P S) := inferInstanceAs (Decidable (_ ≤ _))
+
+/-- Under `SchedOk` and `WordOk` the radix is below `2 ^ 64`. -/
+theorem R_lt_word (hS : SchedOk P S) (hW : WordOk P S logR) (hq : 0 < P.q) :
+    S.R < 2 ^ 64 := by
+  have h2w : (2 : ℕ) ^ (2 * S.w) ≤ 2 ^ 64 :=
+    Nat.pow_le_pow_right (by norm_num) (by have := hW.2.2.1; omega)
+  have hRw := hS.2.2.2.2.1
+  have hRpos := hS.2.1
+  have : 2 * S.R ≤ 2 * P.q * S.R := by nlinarith
+  omega
+
+/-- The Montgomery word multiply by a constant `c` in Montgomery form, on an
+operand at most `R`, is below `2 q` and congruent to `c` times the operand. -/
+theorem montW_zrc (hS : SchedOk P S) (hW : WordOk P S logR) (hq : 0 < P.q) (c : ℕ)
+    (y : BitVec 64) (hy : y.toNat ≤ S.R) :
+    (montW P.q S.R S.qinv logR (zrc P S c) y).toNat < 2 * P.q ∧
+    (((montW P.q S.R S.qinv logR (zrc P S c) y).toNat : ℕ) : ZMod P.q)
+      = (c : ZMod P.q) * (y.toNat : ZMod P.q) := by
+  obtain ⟨hR, hlog, hw, hqi, _⟩ := hW
+  obtain ⟨_, hRpos, hcop, hN, hRw, _⟩ := hS
+  have h2w : (2 : ℕ) ^ (2 * S.w) ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) (by omega)
+  have hzq : zrc P S c < P.q := Nat.mod_lt _ hq
+  rw [montW_toNat _ _ _ _ _ _ hR hlog hzq hy (by omega) hqi]
+  have hT : zrc P S c * y.toNat < S.R * P.q := by
+    have h1 : zrc P S c * y.toNat ≤ zrc P S c * S.R := Nat.mul_le_mul_left _ hy
+    have h2 : zrc P S c * S.R < P.q * S.R := Nat.mul_lt_mul_of_pos_right hzq hRpos
+    rw [Nat.mul_comm S.R]
+    omega
+  obtain ⟨hlt, hmod⟩ := montgomeryReduce_correct P.q S.R S.qinv _ hq hRpos hN hT
+  refine ⟨hlt, ?_⟩
+  have hcast := (ZMod.natCast_eq_natCast_iff _ _ _).mpr hmod
+  rw [Nat.cast_mul, Nat.cast_mul, zrc, ZMod.natCast_mod, Nat.cast_mul] at hcast
+  have hu : IsUnit ((S.R : ℕ) : ZMod P.q) := ⟨ZMod.unitOfCoprime S.R hcop, rfl⟩
+  apply hu.mul_left_inj.mp
+  rw [zrc, hcast]
+  ring
+
+/-- On lanes below `2 q`, one inverse word layer stays below `2 q` and casts to
+`invLayerFn`. -/
+theorem invSemW_layer (hS : SchedOk P S) (hW : WordOk P S logR) (hI : InvWordOk P S)
+    (hq : 0 < P.q) (s ℓ : ℕ) (g : ℕ → BitVec 64) (hg : ∀ j, (g j).toNat < 2 * P.q) (i : ℕ) :
+    (invSemW P S logR s (some ℓ) g i).toNat < 2 * P.q ∧
+    (((invSemW P S logR s (some ℓ) g i).toNat : ℕ) : ZMod P.q)
+      = invLayerFn (P.psi : ZMod P.q) P.layers P.logN ℓ (fun j => ((g j).toNat : ZMod P.q)) i := by
+  have hR64 := R_lt_word P S logR hS hW hq
+  unfold InvWordOk at hI
+  simp only [invSemW, invLayerFn, zrInv]
+  generalize 2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) = k
+  generalize 2 ^ (P.logN - 1 - ℓ) = len
+  split
+  · have hsum : (g i + g (i + len)).toNat = (g i).toNat + (g (i + len)).toNat := by
+      rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by have := hg i; have := hg (i + len); omega)]
+    obtain ⟨h1, h2⟩ := montW_zrc P S logR hS hW hq 1 _
+      (by rw [hsum]; have := hg i; have := hg (i + len); omega)
+    refine ⟨h1, ?_⟩
+    rw [h2, hsum]
+    push_cast
+    ring
+  · have hoq : (BitVec.ofNat 64 (2 * P.q)).toNat = 2 * P.q := by
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+    have hadd : (g (i - len) + BitVec.ofNat 64 (2 * P.q)).toNat = (g (i - len)).toNat + 2 * P.q := by
+      rw [BitVec.toNat_add, hoq, Nat.mod_eq_of_lt (by have := hg (i - len); omega)]
+    have hsub : (g (i - len) + BitVec.ofNat 64 (2 * P.q) - g i).toNat
+        = (g (i - len)).toNat + 2 * P.q - (g i).toNat := by
+      rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def, hadd]; have := hg i; omega), hadd]
+    obtain ⟨h1, h2⟩ := montW_zrc P S logR hS hW hq
+      (P.psi ^ (2 ^ (P.layers + 1) - bitrev P.layers k)) _
+      (by rw [hsub]; have := hg i; have := hg (i - len); omega)
+    refine ⟨h1, ?_⟩
+    rw [h2, hsub, Nat.cast_sub (by have := hg i; omega), Nat.cast_add, Nat.cast_mul,
+      ZMod.natCast_self, Nat.cast_pow, ztInv]
+    ring
+
+theorem foldl_invSemW_layers (hS : SchedOk P S) (hW : WordOk P S logR) (hI : InvWordOk P S)
+    (hq : 0 < P.q) (s : ℕ) :
+    ∀ (k : ℕ) (g : ℕ → BitVec 64), (∀ j, (g j).toNat < 2 * P.q) →
+      (∀ j, ((((List.range k).reverse.map some).foldl
+          (fun g st => invSemW P S logR s st g) g) j).toNat < 2 * P.q) ∧
+      (fun j => (((((List.range k).reverse.map some).foldl
+          (fun g st => invSemW P S logR s st g) g) j).toNat : ZMod P.q))
+        = invRun (P.psi : ZMod P.q) P.layers P.logN k (fun j => ((g j).toNat : ZMod P.q))
+  | 0, _, hg => ⟨hg, rfl⟩
+  | k + 1, g, hg => by
+      rw [List.range_succ, List.reverse_append, List.reverse_singleton, List.singleton_append,
+        List.map_cons, List.foldl_cons]
+      have hl := fun j => invSemW_layer P S logR hS hW hI hq s k g hg j
+      obtain ⟨h1, h2⟩ := foldl_invSemW_layers hS hW hI hq s k _ (fun j => (hl j).1)
+      refine ⟨h1, ?_⟩
+      rw [h2, invRun]
+      congr 1
+      funext j
+      exact (hl j).2
+
+/-- **The inverse word lowering, on words.** For a parameter record satisfying
+`NttParams.Ok`, a schedule satisfying `SchedOk`, `WordOk` and `InvWordOk`, and
+input words at most `R`, every output word of `inttProgW` is below `2 q`, and
+cast to `ZMod q` it is `inttSpec` of the input words. -/
+theorem inttProgW_denote_words (hP : P.Ok) (hS : SchedOk P S) (hW : WordOk P S logR)
+    (hI : InvWordOk P S) (s : ℕ) (g : ℕ → BitVec 64) (hg : ∀ j, (g j).toNat ≤ S.R) (i : ℕ)
+    (hi : i < 2 ^ P.logN) :
+    (hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote
+        (lanesVal R64 g (2 ^ P.logN) 0)) i).toNat < 2 * P.q ∧
+    (((hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote
+        (lanesVal R64 g (2 ^ P.logN) 0)) i).toNat : ℕ) : ZMod P.q)
+      = inttSpec (P.psi : ZMod P.q) P.layers P.logN (s : ZMod P.q)
+          (fun j => ((g j).toNat : ZMod P.q)) i := by
+  have hq : 0 < P.q := by have := hP.2.2.1; omega
+  rw [inttProgW, chainD_denote R64 (2 ^ P.logN) (0 : BitVec 64) _ (invSemW P S logR s)
+    (invStagesW P.layers)
+    (fun st hst h j hj => invLaneProgW_denote P S logR s st (fun ℓ hℓ => by
+        subst hℓ
+        simp only [invStagesW, List.mem_cons, List.mem_map, List.mem_reverse,
+          List.mem_range] at hst
+        rcases hst with h0 | ⟨ℓ', h1, h2⟩
+        · cases h0
+        · cases h2; have := hP.2.1; omega) h j hj)
+    (Ctxt.Hom.id _) _ _ (pullV_id _)]
+  rw [hvGetG_lanesVal _ _ _ _ _ _ hi, Nat.zero_add, invStagesW, List.foldl_cons]
+  have hsc := fun j => montW_zrc P S logR hS hW hq s (g j) (hg j)
+  obtain ⟨h1, h2⟩ := foldl_invSemW_layers P S logR hS hW hI hq s P.layers
+    (invSemW P S logR s none g) (fun j => (hsc j).1)
+  refine ⟨h1 i, (congrFun h2 i).trans ?_⟩
+  rw [inttSpec,
+    show (fun j => (((invSemW P S logR s none g j).toNat : ℕ) : ZMod P.q))
+      = fun j => (s : ZMod P.q) * ((g j).toNat : ZMod P.q) from funext fun j => (hsc j).2,
+    invRun_smul]
+
+/-- **The inverse word lowering.** For a parameter record satisfying
+`NttParams.Ok`, a schedule satisfying `SchedOk`, `WordOk` and `InvWordOk`, and
+inputs at most `R`, every output word of `inttProgW` is below `2 q`, and cast to
+`ZMod q` it is `inttSpec`. -/
+theorem inttProgW_denote (hP : P.Ok) (hS : SchedOk P S) (hW : WordOk P S logR)
+    (hI : InvWordOk P S) (s : ℕ) (f : ℕ → ℕ) (hf : ∀ j, f j ≤ S.R) (i : ℕ)
+    (hi : i < 2 ^ P.logN) :
+    (hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote
+        (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0)) i).toNat < 2 * P.q ∧
+    (((hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote
+        (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0)) i).toNat : ℕ) : ZMod P.q)
+      = inttSpec (P.psi : ZMod P.q) P.layers P.logN (s : ZMod P.q)
+          (fun j => (f j : ZMod P.q)) i := by
+  have hq : 0 < P.q := by have := hP.2.2.1; omega
+  have hR64 := R_lt_word P S logR hS hW hq
+  have hfw : ∀ j, (BitVec.ofNat 64 (f j)).toNat = f j := fun j => by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by have := hf j; omega)]
+  have := inttProgW_denote_words P S logR hP hS hW hI s _
+    (fun j => by rw [hfw]; exact hf j) i hi
+  simpa only [hfw] using this
+
+/-- **The word round trip.** For a scaling constant with `ScaleOk` and inputs
+below `q`, lane `i` of `inttProgW` applied to the output words of `nttProgW` is
+below `2 q` and casts to input `i` in `ZMod q`. -/
+theorem inttProgW_nttProgW (hP : P.Ok) (hS : SchedOk P S) (hW : WordOk P S logR)
+    (hI : InvWordOk P S) (s : ℕ) (hs : ScaleOk P s) (f : ℕ → ℕ) (hf : ∀ j, f j < P.q) (i : ℕ)
+    (hi : i < 2 ^ P.logN) :
+    (hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote ((nttProgW P S logR).denote
+        (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0))) i).toNat < 2 * P.q ∧
+    (((hvGetG R64 (0 : BitVec 64) ((inttProgW P S logR s).denote ((nttProgW P S logR).denote
+        (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0))) i).toNat : ℕ)
+        : ZMod P.q) = (f i : ZMod P.q) := by
+  have heq : (nttProgW P S logR).denote
+        (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0)
+      = lanesVal R64 (fun j => hvGetG R64 (0 : BitVec 64) ((nttProgW P S logR).denote
+          (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0)) j) (2 ^ P.logN) 0 :=
+    eq_lanesVal R64 (0 : BitVec 64) _ (2 ^ P.logN) 0 _ (fun j _ => by rw [Nat.zero_add])
+  have hb : ∀ j, (hvGetG R64 (0 : BitVec 64) ((nttProgW P S logR).denote
+      (lanesVal R64 (fun j => BitVec.ofNat 64 (f j)) (2 ^ P.logN) 0)) j).toNat ≤ S.R := by
+    intro j
+    by_cases hj : j < 2 ^ P.logN
+    · have := (nttProgW_denote P S logR hP hS hW f hf j hj).1
+      have := bnd_le_R P S hS P.layers le_rfl
+      omega
+    · rw [hvGetG_of_le R64 _ _ j (by omega)]
+      simp
+  rw [heq]
+  obtain ⟨h1, h2⟩ := inttProgW_denote_words P S logR hP hS hW hI s _ hb i hi
+  refine ⟨h1, ?_⟩
+  rw [h2, inttSpec, invRun_congr _ P.layers P.logN P.layers hP.2.1 _
+    (nttSpec (P.psi : ZMod P.q) P.layers P.logN (fun j => (f j : ZMod P.q)))
+    (fun j hj => (nttProgW_denote P S logR hP hS hW f hf j hj).2) i hi]
+  exact inttSpec_nttSpec _ P.layers P.logN (P.psi_pow hP) hP.1 hP.2.1 _ (hs.cast P s) _ i hi
+
+/-- The ML-KEM inverse word schedule: `4 q ≤ 2 ^ 16`. -/
+theorem mlkemInvWord_ok : InvWordOk mlkemNtt mlkemLazy := by decide
+
+/-- The ML-DSA inverse word schedule: `4 q ≤ 2 ^ 32`. -/
+theorem mldsaInvWord_ok : InvWordOk mldsaNtt mldsaLazy := by decide
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
