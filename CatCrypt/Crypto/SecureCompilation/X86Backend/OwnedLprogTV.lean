@@ -656,14 +656,15 @@ theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, Bit
   obtain ⟨g, e⟩ := h1 r' hr'
   exact ⟨hg.mp g, by rw [e, he g]⟩
 
-/-- The symbolic description of `lsemStepN`. A shift `SHL`/`SHR` by an immediate operand is
-    described by the immediate-shift term `shImm`, the term of the count-in-name form
-    `SHL:k`/`SHR:k`, so both spellings of one shift have one term. Another two-source
-    operation with an immediate `n` below `2 ^ w`, for the width `w` of its mnemonic's tag, is
-    described with the second source `immW w n`, the term of a move of `n` into a register, so
-    an operation on a register that holds a moved constant and the operation on the immediate
-    have one term. A shift by the count `0` in either form is described as the copy of its
-    source, the term of a register `MOV`. A commutative operation `opn d, [a, d]` with `a ≠ d`
+/-- The symbolic description of `lsemStepN`. A two-source operation with an immediate `n`
+    below `2 ^ w`, for the width `w` of its mnemonic's tag, is described with the second
+    source `immW w n`, the term of a move of `n` into a register, so an operation on a
+    register that holds a moved constant and the operation on the immediate have one term.
+    A count-in-name shift `SHL:k`/`SHR:k` with `k` below `2 ^ w` has the term of the shift by
+    the immediate `k`, so the three spellings of one shift (count in the name, immediate
+    count, count in a register holding a moved constant) have one term; a count-in-name
+    `SAR:k` is the immediate-shift term `shImm`. A shift by the count `0` in the name or as
+    an immediate is described as the copy of its source, the term of a register `MOV`. A commutative operation `opn d, [a, d]` with `a ≠ d`
     is described with its sources exchanged (`commSwap`), so it has the term of
     `opn d, [d, a]`. A select `CMOV d, [c, a, b]` with register condition `c` and register
     first value `a` is the term `sel a b c`, under the guards that `c` has width `1` and, for
@@ -688,9 +689,8 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
                   .set dst (.bin (stripWidthTag opn) (R rb) (R ra)) [.eqW (R rb) (R ra)]
                 else .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]
             | .imm n =>
-                if stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR" then
-                  if n = 0 then .set dst (R ra) []
-                  else .set dst (.shImm (stripWidthTag opn) n (R ra)) []
+                if (stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR") ∧ n = 0 then
+                  .set dst (R ra) []
                 else if n < 2 ^ widthFromTag opn then
                   .set dst (.bin (stripWidthTag opn) (R ra) (.immW (widthFromTag opn) n)) []
                 else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
@@ -706,7 +706,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
         match immShiftMnem? opn with
         | some (m, k) =>
             if shOk m then
-              if k = 0 then .set dst (R a) [] else .set dst (.shImm m k (R a)) []
+              if k = 0 then .set dst (R a) []
+              else if (m = "SHL" ∨ m = "SHR") ∧ k < 2 ^ widthFromTag opn then
+                .set dst (.bin m (R a) (.immW (widthFromTag opn) k)) []
+              else .set dst (.shImm m k (R a)) []
             else .fail
         | none => .fail
   | .Lopn _ _ _ => .fail
@@ -801,19 +804,14 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           rw [stepN_bin_imm, hr ra]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
             ((R ra).ev V A C O).2 (BitVec.ofNat ((R ra).ev V A C O).1 n))
-          split_ifs with hs hz
-          · subst hz
+          split_ifs with hs
+          · obtain ⟨hs, hz⟩ := hs
+            subst hz
             have h0 : ∀ {w : Nat} (x : BitVec w),
                 applyOpnN w (stripWidthTag opn) [x, BitVec.ofNat w 0] = some x := by
               intro w x
               rcases hs with hs | hs <;> simp [hs, applyOpnN]
             simp [AllG, h0]
-          · have he : ∀ {w : Nat} (x : BitVec w), applyImmShiftN w (stripWidthTag opn) n x =
-                applyOpnN w (stripWidthTag opn) [x, BitVec.ofNat w n] := by
-              intro w x
-              unfold applyImmShiftN
-              rcases hs with hs | hs <;> simp [hs]
-            simp [AllG, STerm.ev, he, hv]
           · rename_i hlt
             simp [AllG, STerm.ev, binW_of_binOk hb, extW_ofNat hlt, hv]
           · simp [AllG, STerm.ev, binW_of_binOk hb, extW_of_eq, hv]
@@ -844,9 +842,20 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · simp [ROut.Desc, lsemStepN, h2, readReg, hr a, AllG, applyOpnN]
     · split
       · rename_i m k hm
-        split_ifs with hs hz
+        split_ifs with hs hz hsl
         · subst hz
           simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, applyImmShiftN_zero hs, AllG]
+        · obtain ⟨hsl, hlt⟩ := hsl
+          have hb : binOk m = true := by rcases hsl with rfl | rfl <;> rfl
+          have he : ∀ {w : Nat} (x : BitVec w), applyImmShiftN w m k x =
+              applyOpnN w m [x, BitVec.ofNat w k] := by
+            intro w x
+            unfold applyImmShiftN
+            rcases hsl with rfl | rfl <;> simp
+          obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp
+            (applyImmShiftN_some hs k ((R a).ev V A C O).2)
+          simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, hv, AllG, STerm.ev,
+            binW_of_binOk hb, extW_ofNat hlt, ← he]
         · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp
             (applyImmShiftN_some hs k ((R a).ev V A C O).2)
           simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, hv, AllG, STerm.ev]

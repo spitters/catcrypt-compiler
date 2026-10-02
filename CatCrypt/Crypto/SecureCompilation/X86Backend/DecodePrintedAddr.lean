@@ -661,6 +661,11 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
       split at hs
       · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨hD, hS⟩
       · cases hs
+  | shI m D k =>
+    refine ⟨?_, fun d s hs => by simp [Arm.instr, slotMov?] at hs, rfl⟩
+    simp only [Arm.js, Arm.pieces, shIMk, List.map_cons, List.map_nil, List.all_cons,
+      List.all_nil, Bool.and_true]
+    split_ifs <;> rfl
 
 /-- A register arm whose conditions hold compares against a general-purpose name only. -/
 theorem regArm_slotCmp {P : Params} {a : Arm} (h : a.ok P [] = true) {d x q : String}

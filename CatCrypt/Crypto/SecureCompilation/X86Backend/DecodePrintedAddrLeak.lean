@@ -253,6 +253,10 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       by_cases hDS : D = S <;>
         simp [AArm.js, AArm.pieces, Arm.pieces, hDS, blockLeakA, opLeak, instrLeak,
           JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
+    | shI m D k =>
+      by_cases hm : m = "SHL:64" <;>
+        simp [AArm.js, AArm.pieces, Arm.pieces, shIMk, *, blockLeakA, opLeak, instrLeak,
+          JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
     | store => simp [regArmB] at hr
     | load => simp [regArmB] at hr
     | _ =>

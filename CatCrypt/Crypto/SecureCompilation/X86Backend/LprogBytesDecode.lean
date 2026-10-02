@@ -419,6 +419,57 @@ theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))
     if_false, if_true, show (0 : Nat) &&& 7 = 0 by decide,
     imm32S_imm32LE v hv hf]
 
+/-- The `imm32` group-1 form `op $imm32, %d` (`REX.W 81 /digit id`) decodes to the mnemonic
+    its digit names in `aluImmMnemonic`, for a 64-bit immediate that sign-extends from
+    32 bits. -/
+theorem decodeLinstr_aluImm32 (digit : Nat) (mk : String → JOperand → JInstr 64) (d v : Nat)
+    (rest : List (BitVec 8)) (hdig : digit < 8) (hd : d < 16) (hv : v < 2 ^ 64)
+    (hf : fitsImm32S v = true) (halu : aluImmMnemonic digit = some mk) :
+    decodeLinstr (encAluImmw 1 digit d v ++ rest)
+      = some (.op (mk (regName d) (.imm v)), rest) := by
+  have hd7 : digit &&& 7 = digit := by
+    rw [Nat.and_two_pow_sub_one_eq_mod digit 3]; omega
+  apply decodeLinstr_of_decodeJ1
+  simp only [encAluImmw, rexOpt_w1, imm32LE, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    if_neg (show ¬(0xb8 ≤ (0x81 : Nat) % 2 ^ 8 ∧ (0x81 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x89) by decide),
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, hd7,
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, ne_eq, not_true_eq_false,
+    if_false, if_true, halu, imm32S_imm32LE v hv hf]
+
+/-- The shift-by-`imm8` form `op $k, %d` (`REX.W C1 /ext ib`) at `ext = 4`, `5` or `7`
+    decodes to `shl`, `shr` or `sar` by the immediate `k`, for `k` below `256`. -/
+theorem decodeLinstr_shiftImm8 (ext d k : Nat) (rest : List (BitVec 8))
+    (hext : ext = 4 ∨ ext = 5 ∨ ext = 7) (hd : d < 16) (hk : k < 256) :
+    decodeLinstr (encShiftImmw 1 ext d k ++ rest)
+      = some (.op ((if ext = 4 then JInstr.shl else if ext = 5 then JInstr.shr
+          else JInstr.sar) (regName d) (.imm k)), rest) := by
+  have he7 : ext &&& 7 = ext := by
+    rw [Nat.and_two_pow_sub_one_eq_mod ext 3]; omega
+  have hk8 : (k &&& 0xff) % 2 ^ 8 = k := by
+    simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod]
+    omega
+  apply decodeLinstr_of_decodeJ1
+  simp only [encShiftImmw, rexOpt_w1, List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    if_neg (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, he7,
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, ne_eq, not_true_eq_false,
+    if_false, if_true, hk8]
+  rcases hext with rfl | rfl | rfl <;> simp
+
 /-! ## 3. Round trips of the shapes outside `decodeJ1` -/
 
 /-- On a stream whose first byte is not a `REX` prefix, `decodeJ1_6` is `decodeJ1`:

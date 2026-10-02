@@ -327,6 +327,86 @@ theorem aluArm_imm {m : String} {op : Nat} {mk : String → JOperand → JInstr 
          evalOperandN, stripWidthTag, applyOpnN]
        rfl)
 
+/-- The `imm32` form of an arithmetic or logic mnemonic of `aluArm`: for an immediate outside
+    the sign-extended `imm8` range that sign-extends from 32 bits, the encoder lays down the
+    group-1 form `81 /dig id` under the opcode extension `dig`, which the decoder reads as the
+    machine instruction `mk`. -/
+theorem aluArm_imm32 {m : String} {op : Nat} {mk : String → JOperand → JInstr 64}
+    (h : aluArm m = some (op, mk)) :
+    ∃ dig : Nat, aluImmDigit (stripWidthTag m) = some dig ∧ dig < 8
+      ∧ aluImmMnemonic dig = some mk
+      ∧ ∀ (F W : Nat) (D : String) (v qB : Nat), gpOk D = true → fitsImm8S 1 v = false →
+        ScalarEncoder.fitsImm32S v = true →
+        encodeLopn F W (.Lopn [.reg D] m [.reg D, .imm v]) qB = encAluImmw 1 dig (gpNumU D) v := by
+  unfold aluArm at h
+  split at h <;> simp only [Option.some.injEq, Prod.mk.injEq, reduceCtorEq] at h <;>
+    obtain ⟨rfl, rfl⟩ := h
+  all_goals first
+    | refine ⟨0, by decide +kernel, by decide, rfl, ?_⟩
+    | refine ⟨5, by decide +kernel, by decide, rfl, ?_⟩
+    | refine ⟨4, by decide +kernel, by decide, rfl, ?_⟩
+    | refine ⟨1, by decide +kernel, by decide, rfl, ?_⟩
+    | refine ⟨6, by decide +kernel, by decide, rfl, ?_⟩
+  all_goals
+    intro F W D v qB hD h8 h32
+    have fD := gpFacts hD
+    have hi : imm32Fits 1 v = true := by
+      simpa [imm32Fits, ScalarEncoder.fitsImm32S] using h32
+    simp only [encodeLopn, isCarryOutBinding, isMulHiBinding, stripWidthTag, mnemWidth,
+      adxPrefix, hasSuffix, LprogBytes.rexW]
+    simp (config := { decide := true }) [encImmOp, fD.notSlot, h8, hi, shiftImmExt,
+      aluImmDigit]
+
+/-- The shift mnemonics of the immediate-count arm: `SHL:64` and `SHR:64`. -/
+def isShI (m : String) : Bool := m == "SHL:64" || m == "SHR:64"
+
+/-- The group-2 opcode extension of an immediate-count shift: `4` for `SHL:64`, `5` for
+    `SHR:64`. -/
+def shIExt (m : String) : Nat := if m = "SHL:64" then 4 else 5
+
+/-- The machine shift of an immediate-count shift: `shl` for `SHL:64`, `shr` for `SHR:64`. -/
+def shIMk (m : String) : String → JOperand → JInstr 64 :=
+  if m = "SHL:64" then JInstr.shl else JInstr.shr
+
+/-- The bytes of the immediate-count shift by `k` of the register numbered `n`: the
+    shift-by-one form `D1 /ext` for `k = 1`, the shift-by-`imm8` form `C1 /ext ib`
+    otherwise. -/
+def shIBytes (m : String) (n k : Nat) : List (BitVec 8) :=
+  if k = 1 then encShift1 1 (shIExt m) n else encShiftImmw 1 (shIExt m) n k
+
+/-- An immediate-count shift `SHL:64`/`SHR:64` of a general-purpose name in place
+    dispatches to `shIBytes`. -/
+theorem encodeLopn_shI (F W : Nat) (m D : String) (k qB : Nat) (hm : isShI m = true)
+    (hD : gpOk D = true) :
+    encodeLopn F W (.Lopn [.reg D] m [.reg D, .imm k]) qB = shIBytes m (gpNumU D) k := by
+  have fD := gpFacts hD
+  simp only [isShI, Bool.or_eq_true, beq_iff_eq] at hm
+  rcases hm with rfl | rfl <;>
+  · simp only [encodeLopn, isCarryOutBinding, isMulHiBinding, stripWidthTag, mnemWidth,
+      adxPrefix, hasSuffix, LprogBytes.rexW]
+    simp (config := { decide := true }) [encImmOp, fD.notSlot, shiftImmExt, shIBytes, shIExt]
+
+/-- The immediate-count shift of a general-purpose name by `0 < k < 64` decodes to the
+    machine shift of its register. -/
+theorem pieceDec_shI (m D : String) (k : Nat) (hm : isShI m = true) (hk : k < 64) :
+    PieceDec (shIBytes m (gpNumU D) k, shIMk m (phys D) (.imm k)) := by
+  intro rest
+  simp only [isShI, Bool.or_eq_true, beq_iff_eq] at hm
+  rcases hm with rfl | rfl
+  · by_cases h1 : k = 1
+    · subst h1
+      simpa [phys, shIBytes, shIExt, shIMk] using
+        decodeLinstr_shift1 4 (gpNumU D) rest (Or.inl rfl) (gpNumU_lt_16 D)
+    · simpa [phys, shIBytes, shIExt, shIMk, h1] using
+        decodeLinstr_shiftImm8 4 (gpNumU D) k rest (Or.inl rfl) (gpNumU_lt_16 D) (by omega)
+  · by_cases h1 : k = 1
+    · subst h1
+      simpa [phys, shIBytes, shIExt, shIMk] using
+        decodeLinstr_shift1 5 (gpNumU D) rest (Or.inr (Or.inl rfl)) (gpNumU_lt_16 D)
+    · simpa [phys, shIBytes, shIExt, shIMk, h1] using
+        decodeLinstr_shiftImm8 5 (gpNumU D) k rest (Or.inr (Or.inl rfl)) (gpNumU_lt_16 D)
+          (by omega)
+
 /-- A count-`0` count-in-mnemonic shift between general-purpose names: no bytes when `D` is
     `S`, the register copy otherwise. -/
 theorem encodeLopn_shift0 (F W : Nat) (m D S : String) (qB ext : Nat)
@@ -391,12 +471,16 @@ inductive Arm where
   | load (m D q : String)
   /-- The two-address operation `m D, D, S`. -/
   | alu (m D S : String)
-  /-- The two-address operation `m D, D, #v` with a sign-extended `imm8` immediate. -/
+  /-- The two-address operation `m D, D, #v` with a sign-extended `imm8` or `imm32`
+      immediate. -/
   | aluI (m D : String) (v : Nat)
   /-- The count-in-mnemonic right shift `m D, S`. -/
   | shr (m D S : String)
   /-- The count-`0` shift `m D, S` with `m` the mnemonic `SHL:0:64`, a copy. -/
   | shl0 (m D S : String)
+  /-- The two-address shift `m D, D, #k` by an immediate count, `m` the mnemonic `SHL:64` or
+      `SHR:64`. -/
+  | shI (m D : String) (k : Nat)
 
 /-- The instruction of an arm. -/
 def Arm.instr : Arm → LinstrR
@@ -408,6 +492,7 @@ def Arm.instr : Arm → LinstrR
   | .aluI m D v => .Lopn [.reg D] m [.reg D, .imm v]
   | .shr m D S => .Lopn [.reg D] m [.reg S]
   | .shl0 m D S => .Lopn [.reg D] m [.reg S]
+  | .shI m D k => .Lopn [.reg D] m [.reg D, .imm k]
 
 /-- The arm of an instruction, read off its operand shape and mnemonic; `none` outside the
     covered shapes. -/
@@ -421,7 +506,8 @@ def classify : LinstrR → Option Arm
       else some (.shr m d s)
   | .Lopn [.reg d] m [.imm v] => if m == "MOV:64" then some (.movRI d v) else none
   | .Lopn [.reg d] m [.reg a, .reg s] => if d == a then some (.alu m d s) else none
-  | .Lopn [.reg d] m [.reg a, .imm v] => if d == a then some (.aluI m d v) else none
+  | .Lopn [.reg d] m [.reg a, .imm v] =>
+      if d == a then (if isShI m then some (.shI m d v) else some (.aluI m d v)) else none
   | _ => none
 
 theorem classify_instr {i : LinstrR} {a : Arm} (h : classify i = some a) : a.instr = i := by
@@ -438,11 +524,8 @@ theorem classify_instr {i : LinstrR} {a : Arm} (h : classify i = some a) : a.ins
     simp only [beq_iff_eq] at hm
     subst hm
     rfl
-  · split_ifs at h with hm
-    obtain rfl := Option.some.inj h
-    simp only [beq_iff_eq] at hm
-    subst hm
-    rfl
+  · split_ifs at h with hm <;> obtain rfl := Option.some.inj h <;>
+      simp only [beq_iff_eq] at hm <;> subst hm <;> rfl
   · exact absurd h (by simp)
 
 /-- The frame offset of the frame-word name `q` under the body parameters `P`. -/
@@ -472,7 +555,8 @@ def Arm.pieces (P : Params) : Arm → List (List (BitVec 8) × JInstr 64)
   | .aluI m D v =>
       match aluArm m with
       | some (_, mk) =>
-          [(encAluImm8 1 ((aluImmDigit (stripWidthTag m)).getD 0) (gpNumU D) v,
+          [(if fitsImm8S 1 v then encAluImm8 1 ((aluImmDigit (stripWidthTag m)).getD 0) (gpNumU D) v
+            else encAluImmw 1 ((aluImmDigit (stripWidthTag m)).getD 0) (gpNumU D) v,
             mk (phys D) (.imm v))]
       | none => []
   | .shr m D S =>
@@ -482,6 +566,7 @@ def Arm.pieces (P : Params) : Arm → List (List (BitVec 8) × JInstr 64)
   | .shl0 _ D S =>
       if D = S then [] else
         [(encAluRRw 1 0x89 (gpNumU D) (gpNumU S), .mov (phys D) (.reg (phys S)))]
+  | .shI m D k => [(shIBytes m (gpNumU D) k, shIMk m (phys D) (.imm k))]
 
 /-- The machine instructions of an arm. -/
 def Arm.js (P : Params) (a : Arm) : List (JInstr 64) := (a.pieces P).map Prod.snd
@@ -503,7 +588,9 @@ def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
       isMovM m && gpOk D && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
         && dispOk32 (slotOff P q) && Q.any (fun p => p.1 == q && p.2 == slotOff P q)
   | .alu m D S => (aluArm m).isSome && gpOk D && gpOk S
-  | .aluI m D v => (aluArm m).isSome && gpOk D && fitsImm8S 1 v
+  | .aluI m D v =>
+      (aluArm m).isSome && gpOk D
+        && (fitsImm8S 1 v || (decide (v < 2 ^ 64) && ScalarEncoder.fitsImm32S v))
   | .shr m D S =>
       gpOk D && gpOk S && !(isCarryOutBinding m || isMulHiBinding m)
         && !(stripWidthTag m == "MULX") && !(stripWidthTag m == "MULXMEM")
@@ -516,6 +603,7 @@ def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
         && (adxPrefix (stripWidthTag m)).isNone && tagShiftExt (stripWidthTag m) == some 4
         && LprogBytes.rexW (mnemWidth m) == 1 && tagShiftCount (stripWidthTag m) == 0
         && m == withWidthTag 64 ("SHL" ++ ":" ++ toString 0)
+  | .shI m D k => isShI m && gpOk D && decide (0 < k) && decide (k < 64)
 
 /-- The frame words written after an arm. -/
 def Arm.post (P : Params) (Q : List (String × Int)) : Arm → List (String × Int)
@@ -580,11 +668,32 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     obtain ⟨⟨hm, hD⟩, hv⟩ := h
     obtain ⟨⟨op, mk⟩, hop⟩ := Option.isSome_iff_exists.mp hm
     obtain ⟨dig, f, henc, hdig, hmk, hdg, -, -, -⟩ := aluArm_imm hop
+    by_cases h8 : fitsImm8S 1 v = true
+    · refine ⟨?_, ?_⟩
+      · simp [Arm.instr, Arm.pieces, hop, hdg, h8, henc P.frame P.spillW D v P.qsaveB hD h8]
+      · simp only [Arm.pieces, hop, hdg, h8, if_true, Option.getD_some, List.mem_singleton]
+        rintro p rfl rest
+        exact decodeLinstr_aluImm8 dig mk _ _ rest hdig (gpNumU_lt_16 D) h8 hmk
+    · have h8f : fitsImm8S 1 v = false := Bool.eq_false_iff.mpr h8
+      simp only [h8f, Bool.false_or, Bool.and_eq_true, decide_eq_true_eq] at hv
+      obtain ⟨hlt, h32⟩ := hv
+      obtain ⟨dig', hdg', hdig', hmk', henc'⟩ := aluArm_imm32 hop
+      rw [hdg] at hdg'
+      obtain rfl := Option.some.inj hdg'
+      refine ⟨?_, ?_⟩
+      · simp [Arm.instr, Arm.pieces, hop, hdg, h8f, henc' P.frame P.spillW D v P.qsaveB hD h8f h32]
+      · simp only [Arm.pieces, hop, hdg, h8f, Bool.false_eq_true, if_false, Option.getD_some,
+          List.mem_singleton]
+        rintro p rfl rest
+        exact decodeLinstr_aluImm32 dig mk _ _ rest hdig (gpNumU_lt_16 D) hlt h32 hmk'
+  | shI m D k =>
+    simp only [Arm.ok, Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨hm, hD⟩, -⟩, hk⟩ := h
     refine ⟨?_, ?_⟩
-    · simp [Arm.instr, Arm.pieces, hop, hdg, henc P.frame P.spillW D v P.qsaveB hD hv]
-    · simp only [Arm.pieces, hop, hdg, Option.getD_some, List.mem_singleton]
-      rintro p rfl rest
-      exact decodeLinstr_aluImm8 dig mk _ _ rest hdig (gpNumU_lt_16 D) hv hmk
+    · simp [Arm.instr, Arm.pieces, encodeLopn_shI P.frame P.spillW m D k P.qsaveB hm hD]
+    · simp only [Arm.pieces, List.mem_singleton]
+      rintro p rfl
+      exact pieceDec_shI m D k hm hk
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, Bool.or_eq_false_iff] at h
@@ -813,6 +922,40 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
         (by rw [withALUFlags_reg, getW_setReg_nextPc, if_pos rfl])⟩
     have hl := hstep b D _ v (hc.regs D hD)
     simp [fstepF, cmpArgs?, movRegArgs?, Arm.instr, hcmp, stepMemF_of_lsemStepMem hl]
+  | shI m D k =>
+    simp only [Arm.ok, Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨hm, hD⟩, hk0⟩, hk⟩ := h
+    have hjs : Arm.js P (.shI m D k) = [shIMk m (phys D) (.imm k)] := by
+      simp [Arm.js, Arm.pieces]
+    rw [hjs]
+    simp only [isShI, Bool.or_eq_true, beq_iff_eq] at hm
+    rcases hm with rfl | rfl
+    · have hi : ((Arm.shI "SHL:64" D k).instr, MemTag.reg none)
+          = DecodeGenSim.shiftImmS "SHL" D D k := by
+        simp [Arm.instr, DecodeGenSim.shiftImmS, withWidthTag]
+      rw [hi]
+      exact DecSim.single fun sa b zf hc =>
+        ⟨_, zf, (DecodeGenSim.fstepF_shiftImmS (Or.inr rfl) D D k b zf).trans
+          (DecodeGenSim.fstepF_shlImmI D D k hk b zf _ (hc.regs D hD)),
+          hc.write hD _ (fun r => by
+              show (if r = phys D then (x86_SHL (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
+                else sa.regs r) = _
+              rw [DecodeGenSim.x86_SHL_word_imm _ k (by omega) hk]) rfl
+            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
+            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+    · have hi : ((Arm.shI "SHR:64" D k).instr, MemTag.reg none)
+          = DecodeGenSim.shiftImmS "SHR" D D k := by
+        simp [Arm.instr, DecodeGenSim.shiftImmS, withWidthTag]
+      rw [hi]
+      exact DecSim.single fun sa b zf hc =>
+        ⟨_, zf, (DecodeGenSim.fstepF_shiftImmS (Or.inl rfl) D D k b zf).trans
+          (fstepF_shrImmI D D k hk b zf _ (hc.regs D hD)),
+          hc.write hD _ (fun r => by
+              show (if r = phys D then (x86_SHR (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
+                else sa.regs r) = _
+              rw [x86_SHR_word_imm _ k (by omega) hk]) rfl
+            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
+            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hm⟩ := h
