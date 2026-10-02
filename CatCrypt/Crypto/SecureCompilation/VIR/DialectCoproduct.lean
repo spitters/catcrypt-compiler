@@ -19,11 +19,11 @@ includes into it by a structural lowering
 
 The two type alphabets remain disjoint: a value produced by a `d` operation has
 a type in the `.inl` half and is consumed only by another `d` operation. Two
-dialects whose operations exchange values need a common type alphabet;
-`VIR/MlirArithScfSum.lean` is that case — `mlirArith` and `mlirScf` both have
-`Ty = CryptoTy`, so their combination tags `Op` alone and leaves `Ty` untouched,
-which is what lets an `arith.cmpi` result feed an `scf.if`. The construction
-here covers the complementary case, where the two `Ty` alphabets differ.
+dialects whose operations exchange values need a common type alphabet; that
+case is the operation sum `Dialect.opSum` (`VIR/DialectOpSum.lean`), which tags
+`Op` alone and leaves `Ty` untouched, with instances `VIR/MlirArithScfSum.lean`
+and `VIR/FieldCmpSum.lean`. The construction here covers the case where the two
+`Ty` alphabets stay disjoint.
 
 `LoweringData` composes (`VIR/LoweringDataComp.lean`: `L1.comp L2`,
 `comp_fundamental`), so an inclusion followed by a lowering out of the coproduct

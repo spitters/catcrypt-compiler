@@ -11,39 +11,43 @@ module
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-Reimplementation of lean-mlir's core `Dialect`/`Com`/`Ctxt`/`Expr` framework,
-stripped to what CatCrypt needs: single-return-type, no monadic effect kinds,
-no regions, no `Qq`/reflection. 171 lines against upstream's ~3400.
+A reimplementation of lean-mlir's core `Dialect`/`Com`/`Ctxt`/`Expr` framework,
+restricted to what CatCrypt needs: a single return type, no effect kinds, no
+regions, no `Qq` or reflection.
 
-## Loops live outside `Com`
+## Straight-line programs and the structured layer
 
-`Dialect` carries `Op : Type`, and `Com d` is defined afterwards over `d`. An op
-therefore cannot mention `Com d`, so a dialect cannot declare a loop op whose body
-is a program.
+`Dialect` carries `Op : Type`, and `Com d` is defined afterwards over `d`, so an
+op cannot mention `Com d` and no op can hold a program as its body. `Com d` is
+therefore straight-line: `ret` and `var` only.
 
-Loops live in `ComL` (`VIR/JasminLprogExport.lean`) instead, a separate inductive
-monomorphic in `jasminDialect`. The two `scf` dialects encode a body as op data:
-`X86Backend/ScfDialect` carries a `List (JInstr w)`, already lowered and opaque to
-any `Com` pass; `VIR/MlirScfDialect` carries a denotation, which runs but does not
-compile.
+Loops and branches live one level up, in `NFProg d` (`VIR/NFProg.lean`): a
+counted loop with a carried tuple (`scf.for` with `iter_args`), a two-armed
+branch with results (`scf.if`) and an exit-flag loop (`scf.while`), whose region
+bodies are `NFProg d` again and whose straight-line pieces are `Com d`
+(`NFProg.ofCom`, `NFProg.toCom?`). `NFProg` is defined for every dialect with a
+trip-counter word (`HasWord64`) and a branch bit (`HasBoolBit`), so a dialect
+gains structured control flow by those two instances, not by a loop op.
 
-This costs a proof, not a capability. A loop lowering cannot be a `LoweringData`,
-so it does not inherit `fundamental`, and each rolled `_denote` lemma is instead
-conditioned on the front's own output. A closed instruction set avoids the problem
-— Jasmin's `Cfor` and `Cwhile` carry `seq instr` by mutual induction. An
-extensible IR needs regions instead.
+`NFProg` is the structured layer above `jasminDialect`. The pipeline lowers
+`NFProg nfDialect` to `NFProg catCryptDialect` (`nfToCat`) and then, in one
+combined step, to `Com jasminDialect` or to `ComL` (`nfToRouteProg`). `ComL`
+(`VIR/JasminLprogExport/ExportLoops.lean`) is the loop form of the jasmin
+export. The machine level has its own loop forms (`X86Backend/ScfDialect`,
+`LoopUnroll`, `LprogControlFlow`), below this framework.
 
-Keep this encoding while `jasminDialect` is the only dialect with loops. A second
-dialect needing a first-class loop would mean duplicating `ComL` per dialect, and
-regions become the cheaper option at that point.
+A lowering between dialects is a `LoweringData`, `BlockLoweringData` or
+`MultiBlockLoweringData` on `Com`, with its fundamental lemma. Two dialects
+over a shared type universe are combined by `Dialect.opSum`
+(`VIR/DialectOpSum.lean`).
 
 ## References
 
 * opencompl/lean-mlir (`LeanMLIR/Framework/Basic.lean`, `ErasedContext.lean`,
-  `HVector.lean`): the structural ancestor.
+  `HVector.lean`): the structural ancestor; lean-mlir puts regions inside `Expr`,
+  CatCrypt puts them in the separate inductive `NFProg`.
 * `CatCrypt/Crypto/SecureCompilation/CryptoSSA.lean`: the crypto type
-  substrate (`CryptoTy`, `CHVector`), which mirrors this framework informally;
-  VIR makes the mirror structural.
+  substrate (`CryptoTy`, `CHVector`), which this framework makes structural.
 -/
 
 @[expose] public section

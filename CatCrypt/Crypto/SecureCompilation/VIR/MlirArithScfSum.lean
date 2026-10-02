@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectOpSum
 
 /-!
 # Sum of MLIR `arith` and `scf` dialects — `Cif` lowering
@@ -31,20 +32,17 @@ can interleave both arith and scf ops is therefore required.
 
 ## Design
 
-We use a plain `inductive` rather than a generic `Sum`-like construction
-because:
+The dialect is the operation sum `Dialect.opSum` (`VIR/DialectOpSum.lean`):
 
 1. The two dialects share `Ty = CryptoTy` exactly, so the sum dialect
-   reuses the same `Ty` (no extra `Sum`-of-types machinery needed).
-2. The `DialectSignature` and `DialectDenote` instances are a clean
-   case-split: `arith op ↦ delegate to MlirArithDialect`,
-   `scf op ↦ delegate to MlirScfDialect`.
+   reuses the same `Ty`.
+2. The `DialectSignature` and `DialectDenote` instances are the generic
+   operation-sum instances, a case split: `arith op ↦ delegate to
+   MlirArithDialect`, `scf op ↦ delegate to MlirScfDialect`.
 3. Embedding theorems (`arith_embed_denote_eq`, `scf_embed_denote_eq`)
-   close by `rfl` because the denotation is a literal case-split.
-
-This is the same pattern the in-tree `VIR/Core.lean` framework supports
-naturally — `Dialect` is just an `Op × Ty` pair, so any inductive over
-`Op` with a matching signature/denotation instance is a valid dialect.
+   close by `rfl` because the denotation is a literal case split. The
+   whole-program inclusions are `DialectOpSum.inl` / `DialectOpSum.inr`
+   with `DialectOpSum.inl_fundamental` / `DialectOpSum.inr_fundamental`.
 
 ## Usage
 
@@ -61,17 +59,11 @@ return result
 The denotation reduces — by case-split on the bit's value — to the
 source `ScfProg.eval`'s `if/then/else`.
 
-## Status: the canonical op-union pattern (not a duplicate dialect)
+## Status
 
-`mlirArithScfDialect` is the **canonical tagged-union pattern** for combining
-two dialects that share a `Ty`, not a redundant third dialect. It is a principled
-`inductive` union of `mlirArith` + `mlirScf` ops (`arith MlirArithOp ∣ scf
-MlirScfOp`) whose signature/denotation simply delegate per-tag to the two
-component dialects. The union is *required* for the `Cif` lowering — the
-`arith.cmpi 1 != 0` bridge (arith) feeding `scf.if` (scf) must live in a single
-`Com` whose `Com.var` chain can interleave both. When a future lowering needs ops
-from two `Ty`-compatible dialects in one `Com`, reuse this tagged-union shape
-rather than introducing a new combined dialect.
+`mlirArithScfDialect` is an instance of `Dialect.opSum`. The union is required
+for the `Cif` lowering: the `arith.cmpi 1 != 0` bridge (arith) feeding `scf.if`
+(scf) must live in a single `Com` whose `Com.var` chain can interleave both.
 -/
 
 @[expose] public section
@@ -88,36 +80,45 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
 /-! ## 1. Op tags -/
 
 /-- Operations of the sum dialect: either an arith op or an scf op. -/
-inductive MlirArithScfOp where
-  | arith (op : MlirArithOp)
-  | scf   (op : MlirScfOp)
+abbrev MlirArithScfOp : Type := MlirArithOp ⊕ MlirScfOp
+
+/-- An arith op as an op of the sum dialect. -/
+@[match_pattern] abbrev MlirArithScfOp.arith (op : MlirArithOp) : MlirArithScfOp :=
+  Sum.inl op
+
+/-- An scf op as an op of the sum dialect. -/
+@[match_pattern] abbrev MlirArithScfOp.scf (op : MlirScfOp) : MlirArithScfOp :=
+  Sum.inr op
 
 /-! ## 2. The dialect, signature, denotation -/
 
-/-- The sum dialect: `Op` is the tagged sum, `Ty` is the shared
-    `CryptoTy`. -/
+/-- The sum dialect: `Op` is the tagged sum, `Ty` is the shared `CryptoTy`. It is
+    the operation sum `Dialect.opSum mlirArithDialect mlirScfDialect`
+    (`mlirArithScfDialect_eq_opSum`); the `Op` field is spelled `MlirArithScfOp`
+    so that `.arith` and `.scf` resolve against it. -/
 @[reducible] def mlirArithScfDialect : Dialect :=
   { Op := MlirArithScfOp, Ty := CryptoTy }
 
-/-- Operation signatures: case-split, delegate to the summand. Marked
-    `@[reducible]` so the scf-side embedding's `sig`/`ret` reduces under
-    a literal constructor match (needed for the `Expr.mk` shape lemmas
-    in `compileCif`). -/
-@[reducible] instance instMlirArithScfSignature :
-    DialectSignature mlirArithScfDialect where
-  sig op := match op with
-    | .arith a => DialectSignature.sig (d := mlirArithDialect) a
-    | .scf   s => DialectSignature.sig (d := mlirScfDialect)   s
-  ret op := match op with
-    | .arith a => DialectSignature.ret (d := mlirArithDialect) a
-    | .scf   s => DialectSignature.ret (d := mlirScfDialect)   s
+/-- `mlirArithScfDialect` is the operation sum of `mlirArithDialect` and
+    `mlirScfDialect`. -/
+theorem mlirArithScfDialect_eq_opSum :
+    mlirArithScfDialect = Dialect.opSum mlirArithDialect mlirScfDialect := rfl
 
-/-- Operation denotation: case-split, delegate to the summand. -/
+/-- Operation signatures: the operation-sum signature, a case split delegating to
+    the summand. Marked `@[reducible]` so the scf-side embedding's `sig`/`ret`
+    reduces under a literal constructor match (needed for the `Expr.mk` shape
+    lemmas in `compileCif`). -/
+@[reducible] instance instMlirArithScfSignature :
+    DialectSignature mlirArithScfDialect :=
+  DialectOpSum.instDialectSignatureOpSum (O₁ := MlirArithOp) (O₂ := MlirScfOp)
+    (T := CryptoTy)
+
+/-- Operation denotation: the operation-sum denotation, a case split delegating to
+    the summand. -/
 instance instMlirArithScfDenote :
-    DialectDenote mlirArithScfDialect where
-  denote op := match op with
-    | .arith a => fun args => DialectDenote.denote (d := mlirArithDialect) a args
-    | .scf   s => fun args => DialectDenote.denote (d := mlirScfDialect)   s args
+    DialectDenote mlirArithScfDialect :=
+  DialectOpSum.instDialectDenoteOpSum (O₁ := MlirArithOp) (O₂ := MlirScfOp)
+    (T := CryptoTy)
 
 /-! ## 3. Embedding agreement
 

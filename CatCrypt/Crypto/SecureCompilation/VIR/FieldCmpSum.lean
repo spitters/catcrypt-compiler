@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldEcCmpOps
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectOpSum
 
 /-!
 # Shared-`Ty` combination of `fieldDialect` and `cmpDialect`
@@ -19,7 +20,8 @@ coproduct `Dialect.sum` (`VIR/DialectCoproduct.lean`) cannot host the exchange: 
 `fMul` result would carry the type `.inl (FieldTy.fp p)` while `fieldEq` demands
 `.inr (CmpTy.fp p)`.
 
-This file follows `VIR/MlirArithScfSum.lean`: the combined dialect tags `Op`
+The combined dialect is an operation sum `Dialect.opSum`
+(`VIR/DialectOpSum.lean`), as `VIR/MlirArithScfSum.lean` is: it tags `Op`
 alone, over a type alphabet the two summands share. `mlirArith` and `mlirScf`
 already share `CryptoTy`; `fieldDialect` and `cmpDialect` do not, so the shared
 alphabet is built here as `FieldCmpTy` — the `FieldTy` alphabet, the curve-point
@@ -35,12 +37,14 @@ does not serve as the shared alphabet here.
 * `FieldCmpTy`, `instFieldCmpTyDenote`: the shared type alphabet and its
   denotation.
 * `embedCmpTy`, `transCmpVal`, `untransCmpVal`: the `CmpTy` type embedding and
-  the value transports along it.
+  the value transports along it; `fldEmbedding`, `cmpEmbedding`: the two
+  embeddings as `TyEmbedding`s.
 * `fieldCmpDialect`, `instFieldCmpSignature`, `fieldCmpDenote`: the combined
   dialect, with `Op = FieldOp ⊕ CmpOp` and `Ty = FieldCmpTy`, its signature and
-  its denotation, each a case-split delegating to the summand.
+  its denotation, the operation-sum instances of the re-typed summands.
 * `fieldLowering` / `cmpLowering`: the two inclusions as
-  `ComParametricityTransport.LoweringData`.
+  `ComParametricityTransport.LoweringData`, the generic `DialectOpSum.inlVia` /
+  `DialectOpSum.inrVia`.
 * `opCtSafe`, `ctSafeExprSum`, `ctSafeComSum`: the constant-time predicate of the
   combined dialect, reading each summand's per-op flag.
 
@@ -120,45 +124,85 @@ theorem untransCmpVal_transCmpVal : ∀ {t : CmpTy} (x : ⟦t⟧),
   | .point _, _ => rfl
   | .bool, _ => rfl
 
+/-- The `FieldTy` alphabet embedded in the shared one by `FieldCmpTy.fld`; both
+    value transports are the identity. -/
+def fldEmbedding : TyEmbedding FieldTy FieldCmpTy where
+  map := FieldCmpTy.fld
+  trans := fun x => x
+  untrans := fun x => x
+  untrans_trans := fun _ => rfl
+
+/-- The `CmpTy` alphabet embedded in the shared one by `embedCmpTy`. -/
+def cmpEmbedding : TyEmbedding CmpTy FieldCmpTy where
+  map := embedCmpTy
+  trans := fun x => transCmpVal x
+  untrans := fun x => untransCmpVal x
+  untrans_trans := fun x => untransCmpVal_transCmpVal x
+
 /-! ## 2. The combined dialect -/
 
 /-- The combined dialect: `Op` is the tagged sum of the field and comparison
-    operation alphabets, `Ty` is the shared alphabet. -/
+    operation alphabets, `Ty` is the shared alphabet. It is the operation sum of
+    the two dialects re-typed into `FieldCmpTy` (`fieldCmpDialect_eq_opSum`). -/
 @[reducible] def fieldCmpDialect : Dialect :=
   { Op := Sum FieldOp CmpOp, Ty := FieldCmpTy }
+
+/-- `fieldCmpDialect` is the operation sum of `fieldDialect` and `cmpDialect`
+    re-typed into `FieldCmpTy`. -/
+theorem fieldCmpDialect_eq_opSum :
+    fieldCmpDialect
+      = Dialect.opSum (fieldDialect.retype FieldCmpTy) (cmpDialect.retype FieldCmpTy) :=
+  rfl
+
+/-- Signatures of `fieldDialect` re-typed into the shared alphabet. -/
+@[reducible] instance instFieldRetypeSignature :
+    DialectSignature (fieldDialect.retype FieldCmpTy) :=
+  DialectOpSum.retypeSignature (d := fieldDialect) FieldCmpTy.fld
+
+/-- Signatures of `cmpDialect` re-typed into the shared alphabet. -/
+@[reducible] instance instCmpRetypeSignature :
+    DialectSignature (cmpDialect.retype FieldCmpTy) :=
+  DialectOpSum.retypeSignature (d := cmpDialect) embedCmpTy
+
+/-- Denotation of `fieldDialect` re-typed into the shared alphabet. -/
+instance instFieldRetypeDenote : DialectDenote (fieldDialect.retype FieldCmpTy) :=
+  DialectOpSum.retypeDenote (d := fieldDialect) fldEmbedding
+
+/-- Denotation of `cmpDialect` re-typed into the shared alphabet. -/
+instance instCmpRetypeDenote : DialectDenote (cmpDialect.retype FieldCmpTy) :=
+  DialectOpSum.retypeDenote (d := cmpDialect) cmpEmbedding
 
 /-- Argument vectors of a field operation, re-indexed out of the shared
     alphabet: `⟦.fld t⟧` and `⟦t⟧` are the same type. -/
 def unmapFld : {ts : List FieldTy} →
     HVector (fun t => ⟦t⟧) (ts.map FieldCmpTy.fld) →
-    HVector (fun t => ⟦t⟧) ts
-  | [], _ => .nil
-  | _ :: _, .cons x xs => .cons x (unmapFld xs)
+    HVector (fun t => ⟦t⟧) ts :=
+  fun xs => DialectOpSum.unmapArgs (d := fieldDialect) fldEmbedding xs
 
 /-- Argument vectors of a comparison operation, re-indexed out of the shared
     alphabet by `untransCmpVal`. -/
 def unmapCmp : {ts : List CmpTy} →
     HVector (fun t => ⟦t⟧) (ts.map embedCmpTy) →
-    HVector (fun t => ⟦t⟧) ts
-  | [], _ => .nil
-  | t :: _, .cons x xs => .cons (untransCmpVal (t := t) x) (unmapCmp xs)
+    HVector (fun t => ⟦t⟧) ts :=
+  fun xs => DialectOpSum.unmapArgs (d := cmpDialect) cmpEmbedding xs
 
-/-- Signatures in the combined dialect: the summand's argument list and return
-    type, carried into the shared alphabet. -/
-@[reducible] instance instFieldCmpSignature : DialectSignature fieldCmpDialect where
-  sig
-    | .inl o => (DialectSignature.sig (d := fieldDialect) o).map FieldCmpTy.fld
-    | .inr o => (DialectSignature.sig (d := cmpDialect) o).map embedCmpTy
-  ret
-    | .inl o => .fld (DialectSignature.ret (d := fieldDialect) o)
-    | .inr o => embedCmpTy (DialectSignature.ret (d := cmpDialect) o)
+/-- Signatures in the combined dialect: the operation-sum signature of the two
+    re-typed dialects, the summand's argument list and return type carried into
+    the shared alphabet. -/
+@[reducible] instance instFieldCmpSignature : DialectSignature fieldCmpDialect :=
+  @DialectOpSum.instDialectSignatureOpSum FieldOp CmpOp FieldCmpTy
+    (DialectOpSum.retypeSignature (d := fieldDialect) FieldCmpTy.fld)
+    (DialectOpSum.retypeSignature (d := cmpDialect) embedCmpTy)
 
-/-- Operation denotation in the combined dialect: re-index the arguments into the
-    summand's alphabet and apply the summand's denotation. -/
-instance fieldCmpDenote : DialectDenote fieldCmpDialect where
-  denote
-    | .inl o => fun args => DialectDenote.denote (d := fieldDialect) o (unmapFld args)
-    | .inr o => fun args => transCmpVal (DialectDenote.denote (d := cmpDialect) o (unmapCmp args))
+/-- Operation denotation in the combined dialect: the operation-sum denotation of
+    the two re-typed dialects, which re-indexes the arguments into the summand's
+    alphabet and applies the summand's denotation. -/
+instance fieldCmpDenote : DialectDenote fieldCmpDialect :=
+  @DialectOpSum.instDialectDenoteOpSum FieldOp CmpOp FieldCmpTy _
+    (DialectOpSum.retypeSignature (d := fieldDialect) FieldCmpTy.fld)
+    (DialectOpSum.retypeDenote (d := fieldDialect) fldEmbedding)
+    (DialectOpSum.retypeSignature (d := cmpDialect) embedCmpTy)
+    (DialectOpSum.retypeDenote (d := cmpDialect) cmpEmbedding)
 
 /-! ## 3. Per-summand denotation
 
@@ -200,109 +244,87 @@ theorem fMul_denote {p : Nat} (a b : ZMod p) :
 
 /-- Transport a `fieldDialect` variable into the shared context. -/
 def mapVarFld : {Γ : Ctxt fieldDialect} → {t : FieldTy} →
-    Var Γ t → Var (d := fieldCmpDialect) (Γ.map FieldCmpTy.fld) (FieldCmpTy.fld t)
-  | _, _, .here => .here
-  | _, _, .there v => .there (mapVarFld v)
+    Var Γ t → Var (d := fieldCmpDialect) (Γ.map FieldCmpTy.fld) (FieldCmpTy.fld t) :=
+  fun v => DialectOpSum.mapVarVia (d := fieldDialect) FieldCmpTy.fld v
 
 /-- Transport a `fieldDialect` argument vector into the shared context. -/
 def mapArgsFld {Γ : Ctxt fieldDialect} : {ts : List FieldTy} →
     HVector (fun t => Var Γ t) ts →
     HVector (fun t => Var (d := fieldCmpDialect) (Γ.map FieldCmpTy.fld) t)
-      (ts.map FieldCmpTy.fld)
-  | [], .nil => .nil
-  | _ :: _, .cons v vs => .cons (mapVarFld v) (mapArgsFld vs)
+      (ts.map FieldCmpTy.fld) :=
+  fun vs => DialectOpSum.mapArgsVia (d := fieldDialect) FieldCmpTy.fld vs
 
 /-- Transport a `cmpDialect` variable into the shared context. -/
 def mapVarCmp : {Γ : Ctxt cmpDialect} → {t : CmpTy} →
-    Var Γ t → Var (d := fieldCmpDialect) (Γ.map embedCmpTy) (embedCmpTy t)
-  | _, _, .here => .here
-  | _, _, .there v => .there (mapVarCmp v)
+    Var Γ t → Var (d := fieldCmpDialect) (Γ.map embedCmpTy) (embedCmpTy t) :=
+  fun v => DialectOpSum.mapVarVia (d := cmpDialect) embedCmpTy v
 
 /-- Transport a `cmpDialect` argument vector into the shared context. -/
 def mapArgsCmp {Γ : Ctxt cmpDialect} : {ts : List CmpTy} →
     HVector (fun t => Var Γ t) ts →
     HVector (fun t => Var (d := fieldCmpDialect) (Γ.map embedCmpTy) t)
-      (ts.map embedCmpTy)
-  | [], .nil => .nil
-  | _ :: _, .cons v vs => .cons (mapVarCmp v) (mapArgsCmp vs)
+      (ts.map embedCmpTy) :=
+  fun vs => DialectOpSum.mapArgsVia (d := cmpDialect) embedCmpTy vs
 
 /-! ## 5. The two inclusions as structural lowerings -/
 
 /-- The inclusion of `fieldDialect` into the combined dialect: types and contexts
-    are wrapped by `FieldCmpTy.fld`, each operation is tagged `.inl`. -/
-def fieldLowering : LoweringData fieldDialect fieldCmpDialect where
-  mapTy := FieldCmpTy.fld
-  mapCtx := List.map FieldCmpTy.fld
-  mapCtx_cons := fun _ _ => rfl
-  mapVar := mapVarFld
-  lowerExpr := fun ex =>
-    { op := .inl ex.op
-      retTy_eq := congrArg FieldCmpTy.fld ex.retTy_eq
-      args := mapArgsFld ex.args }
+    are wrapped by `FieldCmpTy.fld`, each operation is tagged `.inl`. It is the
+    generic `DialectOpSum.inlVia` along `fldEmbedding`. -/
+def fieldLowering : LoweringData fieldDialect fieldCmpDialect :=
+  DialectOpSum.inlVia (d := fieldDialect) (O₂ := CmpOp) fldEmbedding
 
 /-- The inclusion of `cmpDialect` into the combined dialect: types and contexts
-    are carried by `embedCmpTy`, each operation is tagged `.inr`. -/
-def cmpLowering : LoweringData cmpDialect fieldCmpDialect where
-  mapTy := embedCmpTy
-  mapCtx := List.map embedCmpTy
-  mapCtx_cons := fun _ _ => rfl
-  mapVar := mapVarCmp
-  lowerExpr := fun ex =>
-    { op := .inr ex.op
-      retTy_eq := congrArg embedCmpTy ex.retTy_eq
-      args := mapArgsCmp ex.args }
+    are carried by `embedCmpTy`, each operation is tagged `.inr`. It is the
+    generic `DialectOpSum.inrVia` along `cmpEmbedding`. -/
+def cmpLowering : LoweringData cmpDialect fieldCmpDialect :=
+  DialectOpSum.inrVia (e := cmpDialect) (O₁ := FieldOp) cmpEmbedding
 
 /-! ## 6. The leaf coherences -/
 
 /-- Re-index a `fieldDialect` valuation into the shared context. -/
 def mapValFld : {Γ : Ctxt fieldDialect} →
-    Valuation Γ → Valuation (d := fieldCmpDialect) (Γ.map FieldCmpTy.fld)
-  | [], _ => .nil
-  | _ :: _, .cons x xs => .cons x (mapValFld xs)
+    Valuation Γ → Valuation (d := fieldCmpDialect) (Γ.map FieldCmpTy.fld) :=
+  fun V => DialectOpSum.mapValVia (d := fieldDialect) fldEmbedding V
 
 /-- Re-index a `cmpDialect` valuation into the shared context. -/
 def mapValCmp : {Γ : Ctxt cmpDialect} →
-    Valuation Γ → Valuation (d := fieldCmpDialect) (Γ.map embedCmpTy)
-  | [], _ => .nil
-  | _ :: _, .cons x xs => .cons (transCmpVal x) (mapValCmp xs)
+    Valuation Γ → Valuation (d := fieldCmpDialect) (Γ.map embedCmpTy) :=
+  fun V => DialectOpSum.mapValVia (d := cmpDialect) cmpEmbedding V
 
 /-- Looking up a transported field variable in a transported valuation gives the
     source lookup. -/
 theorem lookup_mapVarFld :
     ∀ {Γ : Ctxt fieldDialect} {t : FieldTy} (v : Var Γ t) (V : Valuation Γ),
-      (mapVarFld v).lookup (mapValFld V) = v.lookup V
-  | _, _, .here, .cons _ _ => rfl
-  | _, _, .there v, .cons _ xs => lookup_mapVarFld v xs
+      (mapVarFld v).lookup (mapValFld V) = v.lookup V :=
+  fun v V => DialectOpSum.lookup_mapVarVia (d := fieldDialect) (O := FieldOp ⊕ CmpOp)
+    fldEmbedding v V
 
 /-- Looking up a transported comparison variable in a transported valuation gives
     the transport of the source lookup. -/
 theorem lookup_mapVarCmp :
     ∀ {Γ : Ctxt cmpDialect} {t : CmpTy} (v : Var Γ t) (V : Valuation Γ),
-      (mapVarCmp v).lookup (mapValCmp V) = transCmpVal (v.lookup V)
-  | _, _, .here, .cons _ _ => rfl
-  | _, _, .there v, .cons _ xs => lookup_mapVarCmp v xs
+      (mapVarCmp v).lookup (mapValCmp V) = transCmpVal (v.lookup V) :=
+  fun v V => DialectOpSum.lookup_mapVarVia (d := cmpDialect) (O := FieldOp ⊕ CmpOp)
+    cmpEmbedding v V
 
 /-- Resolving transported field arguments against a transported valuation and
     re-indexing gives the source argument values. -/
 theorem lookupArgs_mapArgsFld {Γ : Ctxt fieldDialect} :
     ∀ {ts : List FieldTy} (args : HVector (fun t => Var Γ t) ts) (V : Valuation Γ),
       unmapFld (Expr.lookupArgs (mapArgsFld args) (mapValFld V))
-        = Expr.lookupArgs args V
-  | [], .nil, _ => rfl
-  | _ :: _, .cons v vs, V => by
-      show HVector.cons _ _ = HVector.cons _ _
-      rw [lookup_mapVarFld v V, lookupArgs_mapArgsFld vs V]
+        = Expr.lookupArgs args V :=
+  fun args V => DialectOpSum.lookupArgs_mapArgsVia (d := fieldDialect)
+    (O := FieldOp ⊕ CmpOp) fldEmbedding args V
 
 /-- Resolving transported comparison arguments against a transported valuation
     and re-indexing gives the source argument values. -/
 theorem lookupArgs_mapArgsCmp {Γ : Ctxt cmpDialect} :
     ∀ {ts : List CmpTy} (args : HVector (fun t => Var Γ t) ts) (V : Valuation Γ),
       unmapCmp (Expr.lookupArgs (mapArgsCmp args) (mapValCmp V))
-        = Expr.lookupArgs args V
-  | [], .nil, _ => rfl
-  | _ :: _, .cons v vs, V => by
-      show HVector.cons _ _ = HVector.cons _ _
-      rw [lookup_mapVarCmp v V, untransCmpVal_transCmpVal, lookupArgs_mapArgsCmp vs V]
+        = Expr.lookupArgs args V :=
+  fun args V => DialectOpSum.lookupArgs_mapArgsVia (d := cmpDialect)
+    (O := FieldOp ⊕ CmpOp) cmpEmbedding args V
 
 /-- The field inclusion's value transport. -/
 def fieldTransTy : TransTy fieldLowering := fun x => x
@@ -361,14 +383,12 @@ theorem cmp_opTransports :
     transported valuation to the value it denotes over `fieldDialect`. -/
 theorem field_denote {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
     ComLowerTransports fieldLowering fieldTransTy fieldMapVal c :=
-  fundamental fieldLowering fieldTransTy fieldMapVal
-    field_varTransports field_opTransports field_mapValExtends c
+  DialectOpSum.inlVia_fundamental (d := fieldDialect) (O₂ := CmpOp) fldEmbedding c
 
 /-- Whole-program denotation preservation for the comparison inclusion. -/
 theorem cmp_denote {Γ : Ctxt cmpDialect} {t : CmpTy} (c : Com cmpDialect Γ t) :
     ComLowerTransports cmpLowering cmpTransTy cmpMapVal c :=
-  fundamental cmpLowering cmpTransTy cmpMapVal
-    cmp_varTransports cmp_opTransports cmp_mapValExtends c
+  DialectOpSum.inrVia_fundamental (e := cmpDialect) (O₁ := FieldOp) cmpEmbedding c
 
 /-! ## 8. The constant-time flag
 
