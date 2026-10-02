@@ -20,8 +20,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVBloc
 /-!
 # The hypotheses of the two-address completeness theorem on shipped bodies
 
-`OwnedLprogTV.twoAddr_ownedCheckM_complete` states that `ownedCheckM` accepts a non-empty
-straight-line body against its legalisation `TwoAddrLegalize.twoAddrBody` when every
+`OwnedLprogTV.twoAddr_ownedCheckM_complete_of_twoAddrWF` states that `ownedCheckM` accepts a
+non-empty straight-line body against its legalisation `TwoAddrLegalize.twoAddrBody` when every
 instruction satisfies `OwnedLprogTV.twoAddrWF` and the symbolic run of the body lies inside
 the described fragment. This module evaluates the hypotheses on two bodies, with the wire
 typing `OwnedLprogTVKernels.tagOf`:
@@ -91,8 +91,8 @@ theorem tagOf_firstSrc : TagFirstSrc tagOf := by
   unfold tagOf
   split <;> split <;> simp_all
 
-/-- The hypotheses of `twoAddr_ownedCheckM_complete` on a body at the typing `tg`, with a
-    symbolic run that succeeds. -/
+/-- The hypotheses of `twoAddr_ownedCheckM_complete_of_twoAddrWF` on a body at the typing
+    `tg`, with a symbolic run that succeeds. -/
 def straightWF (tg : LinstrR → MemTag) (body : Lcmd) : Bool :=
   !body.isEmpty && body.all (fun i => straightR i.li_i) &&
     body.all (fun i => twoAddrWF i.li_i) &&

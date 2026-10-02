@@ -10,8 +10,9 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 /-!
 # Completeness of the value checker for two-address legalisation
 
-`OwnedLprogTV.ownedCheckM` is sound (`ownedCheckM_sound`). This module proves that it accepts
-the legalisation `TwoAddrLegalize.twoAddrBody` of every straight-line body in its
+`OwnedLprogTV.ownedCheckM` is sound (`ownedCheckM_sound`). This module gives the shared runs,
+the lockstep simulation and the copy chunk from which `OwnedLprogTVTwoAddr` proves that it
+accepts the legalisation `TwoAddrLegalize.twoAddrBody` of every straight-line body in its
 well-formed fragment: the validator is complete for that pass, in the sense of Tristan and
 Leroy.
 
@@ -47,8 +48,6 @@ copy `mov d, x` followed by `opn d, [d, b]` simulates `opn d, [x, b]` when `b` d
 * `tRun_lock`: runs in lockstep.
 * `cfgOf_straight`: the graph of a straight-line body.
 * `ownedCheckM_of_res`: agreeing runs of two straight-line bodies pass `ownedCheckM`.
-* `twoAddr_ownedCheckM_complete`, `twoAddr_ownedCheckM_complete_const`: completeness of
-  `ownedCheckM` for `TwoAddrLegalize.twoAddrBody`.
 -/
 
 @[expose] public section
@@ -2068,51 +2067,5 @@ theorem tRun_unk_iff (is : List LinstrRM) :
   rw [SSt.subst_start] at e
   rw [← e]
   cases (tRun is SSt.start Tbl.empty).2 <;> simp [SOut.subst]
-
-/-- **Completeness of the value checker for two-address legalisation.** For a non-empty
-    straight-line body whose instructions satisfy the printer's two-address precondition or
-    are legalised by the copy route (`twoAddrWF`), and whose symbolic run lies inside the
-    described fragment, `ownedCheckM` accepts the body against its legalisation
-    `TwoAddrLegalize.twoAddrBody`, for every observed list `outs` and every typing `tg` that
-    gives a two-source operation one tag whatever its first source. -/
-theorem twoAddr_ownedCheckM_complete (outs : List String) {tg : LinstrR → MemTag}
-    (htg : TagFirstSrc tg) (body : Lcmd)
-    (hne : body ≠ []) (hs : ∀ i ∈ body, straightR i.li_i = true)
-    (hwf : ∀ i ∈ body, twoAddrWF i.li_i = true)
-    (hfrag : symRun (typeBody tg body) SSt.start ≠ .unk) :
-    ownedCheckM outs (typeBody tg body) (typeBody tg (TwoAddrLegalize.twoAddrBody body)) =
-      true := by
-  rw [twoAddrBody_typed tg body hwf]
-  have hB : ∀ p ∈ typeBody tg body, straightR p.1 = true ∧ twoAddrWF p.1 = true ∧
-      p.2 = tg p.1 := by
-    intro p hp
-    obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hp
-    exact ⟨hs i hi, hwf i hi, rfl⟩
-  have hne1 : typeBody tg body ≠ [] := by simpa [typeBody] using hne
-  refine ownedCheckM_of_res outs hne1 ?_ (fun p hp => (hB p hp).1) ?_ ?_ ?_
-  · obtain ⟨p, hp⟩ := List.exists_mem_of_ne_nil _ hne1
-    intro h
-    have := List.flatMap_eq_nil_iff.mp h p hp
-    exact twoAddrChunk_ne_nil tg p this
-  · intro q hq
-    obtain ⟨p, hp, hq⟩ := List.mem_flatMap.mp hq
-    exact twoAddrChunk_straight tg (hB p hp).1 q hq
-  · refine tRun_lock (twoAddrChunk tg) _ (fun p hp => ?_) SSt.start SSt.start Tbl.empty _
-      (SSt.Eqv.refl _) SSt.inv_start (Tbl.Sub.refl _)
-    obtain ⟨-, hw, hτ⟩ := hB p hp
-    obtain ⟨x, τ'⟩ := p
-    simp only at hτ
-    subst hτ
-    exact chunk_twoAddr htg hw
-  · rwa [ne_eq, tRun_unk_iff]
-
-/-- **Completeness at a constant typing.** -/
-theorem twoAddr_ownedCheckM_complete_const (outs : List String) (τ : MemTag) (body : Lcmd)
-    (hne : body ≠ []) (hs : ∀ i ∈ body, straightR i.li_i = true)
-    (hwf : ∀ i ∈ body, twoAddrWF i.li_i = true)
-    (hfrag : symRun (typeBody (fun _ => τ) body) SSt.start ≠ .unk) :
-    ownedCheckM outs (typeBody (fun _ => τ) body)
-      (typeBody (fun _ => τ) (TwoAddrLegalize.twoAddrBody body)) = true :=
-  twoAddr_ownedCheckM_complete outs (tagFirstSrc_const τ) body hne hs hwf hfrag
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
