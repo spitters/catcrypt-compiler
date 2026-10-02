@@ -59,9 +59,9 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   global value numbering (`ComGVN.gvnCom`), a `Com → Com` stage whose denotation
   equality holds at every valuation; `optCom_ctSafe`, `optCom_cost_le` carry the CT
   predicate and the cost bound through both parts.
-
-All goals closed. Axiom set: `propext`, `Quot.sound` (inherited from the
-two passes' preservation theorems).
+* `comAlgebraicPipeline_ctLeak`, `optCom_constantTime` — under a leakage model whose
+  `regArith` operations are quiet, the composed transform keeps the leakage of a program
+  at every valuation, and the stage keeps constant time for every relation.
 -/
 
 @[expose] public section
@@ -161,6 +161,143 @@ theorem optCom_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
 theorem optCom_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (optCom c) ≤ comCost c :=
   Nat.le_trans (ComGVN.gvnCom_cost_le _) (comAlgebraicPipeline_cost_le 1 c _)
+
+/-! ## §5a  Leakage of the stage
+
+The peephole and the saturation engine replace a binary `regArith` binding by another binary
+`regArith` binding over the same width and leave every other binding unchanged. Under a
+leakage model whose `regArith` operations emit no event, both passes keep the leakage of a
+program at every valuation. Without that hypothesis the statement fails: a model for which
+`add` is quiet and `or` is not distinguishes `x + 0` from its rewrite `x ||| x`. -/
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+open CatCrypt.Crypto.SecureCompilation.CT (ConstantTime)
+
+/-- An expression whose operation is a `regArith` emits no event under a leakage model whose
+    `regArith` operations are quiet. -/
+theorem expr_ctLeak_regArith (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) {bop : JasminBinOp} {w : Nat}
+    (h : e.op = .regArith bop w) (V : Ctxt.Valuation Γ) : Expr.ctLeak L e V = [] := by
+  unfold Expr.ctLeak opLeak
+  split <;> rename_i heq <;> rw [h, hq] at heq <;> first | rfl | cases heq
+
+/-- A result of `binE` is a `regArith` expression. -/
+theorem binE_op {Γ : Ctxt jasminDialect} {w : Nat} (op : JasminBinOp)
+    (a b : Ctxt.Var Γ (.reg w)) : (binE op a b).op = .regArith op w := rfl
+
+/-- Leakage of one rewritten expression of the saturation engine. -/
+theorem rewriteExpr_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) (k : KEnv Γ) (V : Ctxt.Valuation Γ) :
+    Expr.ctLeak L (rewriteExpr e k) V = Expr.ctLeak L e V := by
+  rcases e with ⟨op, hop, args⟩
+  cases op
+  case regArith bop w =>
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [rewriteExpr, HVector.head, HVector.tail]
+      rw [expr_ctLeak_regArith L hq ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ rfl V]
+      rcases hr : rewriteBin bop a b (KEnv.lookup b k) with _ | e'
+      · exact expr_ctLeak_regArith L hq _ rfl V
+      · have hop' : ∃ bop', e'.op = .regArith bop' w := by
+          unfold rewriteBin at hr
+          split at hr <;> first | (cases hr; exact ⟨_, binE_op _ _ _⟩) | cases hr
+        obtain ⟨bop', hop'⟩ := hop'
+        exact expr_ctLeak_regArith L hq e' hop' V
+  all_goals rfl
+
+/-- Leakage of one rewritten expression of the peephole. -/
+theorem peepExpr_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (e : Expr jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
+    Expr.ctLeak L (peepExpr e) V = Expr.ctLeak L e V := by
+  rcases e with ⟨op, hop, args⟩
+  cases op
+  case regArith bop w =>
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [peepExpr, HVector.head, HVector.tail]
+      rw [expr_ctLeak_regArith L hq ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ rfl V]
+      rcases hr : peepBin bop a b with _ | e'
+      · exact expr_ctLeak_regArith L hq _ rfl V
+      · have hop' : ∃ bop', e'.op = .regArith bop' w := by
+          unfold peepBin at hr
+          split at hr
+          · split at hr <;> first | (cases hr; exact ⟨_, binE_op _ _ _⟩) | cases hr
+          · cases hr
+        obtain ⟨bop', hop'⟩ := hop'
+        exact expr_ctLeak_regArith L hq e' hop' V
+  all_goals rfl
+
+/-- Leakage of one pass of the saturation engine, from an environment consistent with the
+    valuation. -/
+theorem rewriteCom_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (k : KEnv Γ) (V : Ctxt.Valuation Γ),
+      KEnv.Consistent k V → Com.ctLeak L (rewriteCom c k) V = Com.ctLeak L c V
+  | .ret _, _, _, _ => rfl
+  | .var e body, k, V, hk => by
+      simp only [rewriteCom, Com.ctLeak]
+      rw [rewriteExpr_ctLeak L hq e k V, rewriteExpr_denote e k V hk,
+        rewriteCom_ctLeak L hq body (extendK e k) (V.extend (e.denote V))
+          (extendK_consistent e k V hk)]
+
+/-- Leakage of the bounded saturation engine, from an environment consistent with the
+    valuation. -/
+theorem saturateCom_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ) (V : Ctxt.Valuation Γ),
+      KEnv.Consistent k V → Com.ctLeak L (saturateCom fuel c k) V = Com.ctLeak L c V
+  | 0, _, _, _, _ => rfl
+  | fuel + 1, c, k, V, hk => by
+      simp only [saturateCom]
+      rw [saturateCom_ctLeak L hq fuel (rewriteCom c k) k V hk, rewriteCom_ctLeak L hq c k V hk]
+
+/-- Leakage of the peephole pass. -/
+theorem peepCom_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ),
+      Com.ctLeak L (peepCom c) V = Com.ctLeak L c V
+  | .ret _, _ => rfl
+  | .var e body, V => by
+      simp only [peepCom, Com.ctLeak]
+      rw [peepExpr_ctLeak L hq e V, peepExpr_denote e V, peepCom_ctLeak L hq body]
+
+/-- **Leakage of the composed transform.** Under a leakage model whose `regArith`
+    operations are quiet, `comAlgebraicPipeline fuel c k` has the leakage of `c` at every
+    valuation consistent with `k`. -/
+theorem comAlgebraicPipeline_ctLeak (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ)
+    (V : Ctxt.Valuation Γ) (hk : KEnv.Consistent k V) :
+    Com.ctLeak L (comAlgebraicPipeline fuel c k) V = Com.ctLeak L c V := by
+  unfold comAlgebraicPipeline
+  rw [saturateCom_ctLeak L hq fuel (peepCom c) k V hk, peepCom_ctLeak L hq c V]
+
+/-- **Constant time of the stage.** Under a leakage model whose `regArith` operations are
+    quiet, if `c` is constant time for the relation `R`, so is `optCom c`. -/
+theorem optCom_constantTime (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t)
+    (R : Ctxt.Valuation Γ → Ctxt.Valuation Γ → Prop)
+    (h : ConstantTime R (Com.ctLeak L c)) : ConstantTime R (Com.ctLeak L (optCom c)) := by
+  unfold optCom
+  refine ComGVN.gvnCom_constantTime L _ R fun V₁ V₂ hR => ?_
+  rw [comAlgebraicPipeline_ctLeak L hq 1 c _ V₁
+      (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V₁),
+    comAlgebraicPipeline_ctLeak L hq 1 c _ V₂
+      (CatCrypt.Crypto.SecureCompilation.Ascent.KEnv.unknown_consistent V₂)]
+  exact h V₁ V₂ hR
+
+end Leak
 
 /-! ## §6  Self-contained validation
 
