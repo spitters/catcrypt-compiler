@@ -43,7 +43,10 @@ input) and prints:
   the two is identical;
 * after global value numbering (`ComGVN.gvnCom`) of the rewritten `Com`: its number of
   bindings, and the instruction count of the exported `Lprog` and of
-  `optimizeLprogBasicBlocks` of it.
+  `optimizeLprogBasicBlocks` of it;
+* after `ComPipeline.optCom` (the acyclic e-graph stage `Aegraph.aegraphOpt`) of the
+  input `Com`: its number of bindings, and the instruction count of the exported `Lprog`
+  and of `optimizeLprogBasicBlocks` of it.
 
 Each kernel is exported with the arguments and `Lprog` post-passes of its emit module.
 -/
@@ -302,6 +305,8 @@ def row (k : Kernel) : String :=
   let s := censusShapes k.com kU (Array.replicate k.Γ.length none) {}
   let kG := Rewrite.ComGVN.gvnCom k'
   let afterG := k.emit kG
+  let kO := Rewrite.ComPipeline.optCom k.com
+  let afterO := k.emit kO
   s!"{k.name}\t{c.bindings}\t{c.constSecond}\t{c.addZero}\t{c.xorZero}\t{c.orZero}\t" ++
   s!"{c.mulOne}\t{c.mulZero}\t{c.andZero}\t{c.peepSubSelf}\t{c.peepAndSelf}\t" ++
   s!"{c.mulPow2}\t{c.constFirst}\t{s.gvnDup}\t{s.bothConst}\t{s.addImmChain}\t" ++
@@ -309,13 +314,16 @@ def row (k : Kernel) : String :=
   s!"{instrCount (optimizeLprogBasicBlocks before)}\t" ++
   s!"{instrCount (optimizeLprogBasicBlocks after)}\t{same}\t" ++
   s!"{UncomputePass.comLen kG}\t{instrCount afterG}\t" ++
-  s!"{instrCount (optimizeLprogBasicBlocks afterG)}"
+  s!"{instrCount (optimizeLprogBasicBlocks afterG)}\t" ++
+  s!"{UncomputePass.comLen kO}\t{instrCount afterO}\t" ++
+  s!"{instrCount (optimizeLprogBasicBlocks afterO)}"
 
 /-- The column header of the census table. -/
 def header : String :=
   "kernel\tbindings\tconst2nd\tx+0\tx^0\tx|0\tx*1\tx*0\tx&0\ta-a\ta&a\t" ++
   "x*2^k\tconst1st\tgvnDup\tbothConst\taddImmChain\tshiftMask\t" ++
-  "instr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame\tbindingsGvn\tinstrGvn\tinstrOptGvn"
+  "instr\tinstr'\tinstrOpt\tinstrOpt'\ttextSame\tbindingsGvn\tinstrGvn\tinstrOptGvn\t" ++
+  "bindingsOptCom\tinstrOptCom\tinstrOptOptCom"
 
 end CatCrypt.Crypto.Optimizer.AlgebraicCensus
 
