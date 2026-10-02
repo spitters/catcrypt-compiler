@@ -603,7 +603,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
@@ -791,6 +790,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeak
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
