@@ -30,8 +30,10 @@ the names outside `oneBitAt` at the program counter. `imgGateBW` is the gate of
 `ImageAddrSim.imgGateB` over the analysis: a carry-chain instruction `ADCX:64`/`ADCXHI:64` on
 three sources is accepted with register or frame-slot word sources and a register carry-in, a
 register instruction writes width-`64` words from names outside the analysis, a store into a
-frame word stores a name outside it, a branch is taken only where the analysis is empty, and
-every name an instruction reads, other than a carry-in, lies outside the analysis.
+frame word stores a name outside it, an immediate move into a frame word writes a word that
+holds no array pointer, a branch is taken only where the analysis is empty, and every name an
+instruction reads, other than a carry-in or the condition of a `CMOV:64` select
+(`DecodePrintedAddrW.carryIns`), lies outside the analysis.
 
 ## Main results
 
@@ -42,6 +44,7 @@ every name an instruction reads, other than a carry-in, lies outside the analysi
 * `rel_scarry`: a carry-chain instruction with register or frame-slot operands keeps
   `ImgRelW`.
 * `rel_bmovW`: a carry constant keeps `ImgRelW`.
+* `rel_stiW`: an immediate move into a frame word without an array pointer keeps `ImgRelW`.
 * `img_stepW`: one step of the image at a position without a branch is one step of the
   address machine.
 * `haltedA_of_imgW`, `ptr_of_reloadW`, `wideSafe_of_gateW`, `imgGateBW_congr`.
@@ -174,6 +177,33 @@ theorem oneBitAt_succ {frame : String → Option (BitVec 64)} {body : Lcmd} {k :
   rw [List.take_add_one, hb]
   simp [List.foldl_append]
 
+theorem regOut_slotImm (W : List String) (q : String) (v : Nat) {r : String} (hr : r ≠ q)
+    (h : r ∉ regOut W (.Lopn [.reg q] "MOV:64" [.imm v])) : r ∉ W := by
+  intro hW
+  apply h
+  have hm : stripWidthTag "MOV:64" = "MOV" := by decide +kernel
+  have hn : ∀ R, symN (.Lopn [.reg q] "MOV:64" [.imm v]) R
+      = .set q (.immW (widthFromTag "MOV:64") v) [] := fun R => by
+    unfold symN
+    simp only [hm, if_true]
+  have hd : ∀ R, symMC (.Lopn [.reg q] "MOV:64" [.imm v]) R
+      = .set q (.immW (widthFromTag "MOV:64") v) [] := fun R => by
+    simp only [symMC, symSh, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
+      VIR.JasminLsemShift.sarStruct?, hn]
+  have hmi : movImmStruct? (.Lopn [.reg q] "MOV:64" [.imm v]) = none := by
+    unfold movImmStruct?
+    split
+    · rename_i heq
+      injection heq with _ h2 _
+      exact absurd h2 (by decide +kernel)
+    · rfl
+  have hs : symStep (.Lopn [.reg q] "MOV:64" [.imm v], .reg none) SSt.start
+      = .ok (SSt.start.setR q (.immW (widthFromTag "MOV:64") v)) [] := by
+    simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, symMem, symCast,
+      castStruct?, hmi, hd, liftR, aluFl, aluFlT, aluFlagOp?, SSt.setR]
+  simp only [regOut, hs]
+  simp [SSt.setR, SSt.start, hW, hr]
+
 theorem not_mem_filter_ne {W : List String} {d r : String} (h : r ∉ W.filter (· != d))
     (hr : r ≠ d) : r ∉ W := fun hm =>
   h (List.mem_filter.2 ⟨hm, by simpa using hr⟩)
@@ -230,12 +260,31 @@ theorem readOkB_spec {W : List String} {x : LinstrR} (h : readOkB W x = true) {r
   · exact absurd (by simpa using h1) hc
   · simpa using h1
 
+/-- An immediate move `MOV:64 q, #v` into a frame word `q` that holds no array pointer. -/
+def sImmB (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat)) :
+    LinstrR → Bool
+  | .Lopn [.reg q] o [.imm _] => o == "MOV:64" && (frame q).isSome && (slotArr q).isNone
+  | _ => false
+
+theorem sImmB_spec {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {x : LinstrR}
+    (h : sImmB frame slotArr x = true) :
+    ∃ q v a, x = .Lopn [.reg q] "MOV:64" [.imm v] ∧ frame q = some a ∧ slotArr q = none := by
+  unfold sImmB at h
+  split at h
+  · rename_i q o v
+    simp only [Bool.and_eq_true, beq_iff_eq, Option.isSome_iff_exists,
+      Option.isNone_iff_eq_none] at h
+    obtain ⟨⟨rfl, a, ha⟩, hs⟩ := h
+    exact ⟨q, v, a, rfl, ha, hs⟩
+  · cases h
+
 /-- **The gate of instruction `k` at the analysis `W`**: the names read lie outside `W`
     (`readOkB`), and the instruction is a carry-chain instruction passing `carryOkB`, a label,
     a branch where `W` is empty, an indexed access, a frame-word move or compare as in
     `instrGateB`, a carry constant (`bitMovB`) into a general-purpose name without a frame
-    word, or a register instruction other than an untagged immediate move passing
-    `regGateBW`. -/
+    word, an immediate move into a frame word without an array pointer (`sImmB`), or a
+    register instruction other than an untagged immediate move passing `regGateBW`. -/
 def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) (k : Nat) (W : List String) (x : LinstrR) : Bool :=
   readOkB W x &&
@@ -255,7 +304,7 @@ def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option
         | .reg =>
             match movImmStruct? x with
             | some (d, _) => bitMovB body k x && gpOk d && (frame d).isNone
-            | none => regGateBW frame W (normA x)
+            | none => sImmB frame slotArr x || regGateBW frame W (normA x)
         | .other => false
 
 /-- The gate of instruction `k` of a body at its width analysis. -/
@@ -830,6 +879,87 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
     rw [ha] at hbf
     cases hbf
+
+/-- **An immediate move into a frame word keeps `ImgRelW`.** The image writes the 64-bit value
+    of `v` to the frame-word name `q`, and the address machine stores it at the frame word of
+    `q`, which holds no array pointer. -/
+theorem rel_stiW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi) {q : String} {v : Nat} {a : BitVec 64}
+    (hx : bi.li_i = .Lopn [.reg q] "MOV:64" [.imm v]) (hq : frame q = some a)
+    (hA : slotArr q = none)
+    (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
+    ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
+      ∧ ImgRelW frame slotArr base body t sa' t.zf := by
+  have hnA : normA bi.li_i = .Lopn [.reg q] "MOV:64" [.imm v] := by
+    rw [hx]; simp (config := { decide := true }) [normA]
+  rw [hnA] at hs ⊢
+  have hl : IsLopn (LinstrR.Lopn [.reg q] "MOV:64" [.imm v], MemTag.reg none) := ⟨_, _, _, rfl⟩
+  rw [evalInstrPMemF_isLopn P _ s hl,
+    show fstepF (LinstrR.Lopn [.reg q] "MOV:64" [.imm v], MemTag.reg none) s.prog.base s.zf
+      = some ((s.prog.base.setReg q (BitVec.ofNat 64 v)).nextPc, s.zf) from
+      X86Backend.DecodedLsemStep.fstepF_movII q v s.prog.base s.zf] at hs
+  obtain rfl := Option.some.inj hs
+  have hz := hrel.zf
+  subst hz
+  have hW1 := oneBitAt_succ (frame := frame) hb
+  have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
+  refine ⟨{ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (BitVec.ofNat 64 v) },
+    fstepA_slotImm frame hq v none sa s.zf, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_⟩⟩
+  · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
+  · intro r hr
+    have e : r ≠ q := fun e => by rw [e, hq] at hr; cases hr
+    simp [LstateM.setReg, LstateM.nextPc, e, hrel.regs r hr]
+  · intro q' a' ha'
+    by_cases e : q' = q
+    · subst e
+      rw [hq] at ha'
+      cases ha'
+      simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, if_true,
+        read64_write64_same]
+    · simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, e,
+        if_false]
+      rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' hq ha' (Ne.symm e))]
+      exact hrel.slots q' a' ha'
+  · intro r hr hW
+    have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
+    have hic : icase frame bi.li_i = .reg := by
+      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+    have hmi : movImmStruct? bi.li_i = none := by rw [hx]; simp [movImmStruct?]
+    simp only [LstateN.lpc_nextPc, hW1, oneBitStep_noCarry hci, hic, hmi, hnA] at hW
+    have hrq : r ≠ q := fun e => by
+      have h0 := hsep.gp r hr
+      rw [e, hq] at h0
+      cases h0
+    simpa using hrel.wid r hr (regOut_slotImm _ q v hrq hW)
+  · intro q' A n hq'
+    obtain ⟨arr, h1, h2⟩ := hrel.cells q' A n hq'
+    refine ⟨arr, by simpa using h1, fun j hj => ?_⟩
+    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q' A n j hq' hj q a hq).symm]
+    exact h2 j hj
+  · intro k R A n a' hS' hA' ha'
+    simp only [LstateN.lpc_nextPc]
+    have hqR : slotOfReg R ≠ q := fun e => by rw [e, hA] at hA'; cases hA'
+    refine ⟨fun hk => ?_, fun hk => ?_⟩
+    · rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' hq ha' (Ne.symm hqR))]
+      rcases Nat.lt_succ_iff_lt_or_eq.mp hk with hk | rfl
+      · exact (hrel.saved k R A n a' hS' hA' ha').1 hk
+      · exfalso
+        obtain ⟨i', hi', hm'⟩ := hS'
+        rw [hb] at hi'
+        cases hi'
+        rw [hnm] at hm'
+        cases hm'
+    · rw [getW_congr (r := sa.reg.nextPc) (r' := sa.reg) rfl]
+      exact (hrel.saved k R A n a' hS' hA' ha').2 (by omega)
+  · intro b q' a' i hpc hbi hm' hq' hbf
+    simp only [LstateN.lpc_nextPc, Nat.add_sub_cancel, hb] at hbi
+    cases hbi
+    rw [hnm] at hm'
+    cases hm'
 
 /-- **A compare against a frame word keeps `ImgRelW`.** -/
 theorem rel_scmpW {frame : String → Option (BitVec 64)}
@@ -1407,7 +1537,17 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
           have h3 : bitMovB c sa.reg.lpc bi.li_i = false := bitMovB_of_ne hmi
           rw [hx] at h3
           rw [hx, imgInstr_reg slotArr c _ ho1 ho2 h3, evalInstrPMemFk_reg, ← hx] at hstep
-          obtain ⟨sa', hst, hr⟩ := rel_regW hsep hphys hgate P hrel hb hc hci hmi hg hstep
+          obtain ⟨sa', hst, hr⟩ : ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa s.zf
+              = some (sa', t.zf) ∧ ImgRelW frame slotArr base c t sa' t.zf := by
+            cases hsi : sImmB frame slotArr bi.li_i with
+            | true =>
+              -- an immediate move into a frame word
+              obtain ⟨q, v, a, hx', hq, hA⟩ := sImmB_spec hsi
+              exact rel_stiW hsep P hrel hb hx' hq hA hstep
+            | false =>
+              have hg' : regGateBW frame (oneBitAt frame c sa.reg.lpc) (normA bi.li_i) = true := by
+                simpa [hsi] using hg
+              exact rel_regW hsep hphys hgate P hrel hb hc hci hmi hg' hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
           rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 h3]
 
@@ -1477,6 +1617,12 @@ theorem regGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (W : L
     (x : LinstrR) : regGateBW frame W x = regGateBW frame' W x := by
   simp only [regGateBW, regOkB_congr h]
 
+theorem sImmB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
+    (slotArr : String → Option (String × Nat)) (x : LinstrR) :
+    sImmB frame slotArr x = sImmB frame' slotArr x := by
+  unfold sImmB
+  split <;> simp only [h]
+
 /-- `imgGateBW` reads only which names have a frame word. -/
 theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
     (slotArr : String → Option (String × Nat)) (body : Lcmd) :
@@ -1486,7 +1632,7 @@ theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
   have hi : ∀ k x, instrGateBW frame slotArr body k x = instrGateBW frame' slotArr body k x := by
     intro k x
     simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h, icase_congr h,
-      regGateBW_congr h, hn, h]
+      regGateBW_congr h, sImmB_congr h, hn, h]
   simp only [imgGateBW, hi]
 
 end Congr

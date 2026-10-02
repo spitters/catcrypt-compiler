@@ -32,8 +32,11 @@ the binding reads the carry flag the add leaves, which the run threads to it (`C
 cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off`, printed
 `mov off(%B)`. The carry constant, an untagged `MOV D, #n` with `n < 2` that the address
 machine steps at the one-bit tag (`JasminLsemAddrRun.tagAt`), is printed `mov $n, %r32`, which
-leaves the zero-extension of the bit in the register. The class `printedAddrWB` adds the three
-to the bodies of `DecodePrintedCFG`.
+leaves the zero-extension of the bit in the register. The wide immediate, `MOV:64 D, #v` with
+`v` outside the sign-extended `imm32` range, is printed `movabs $v, %r64`. The register select
+`CMOV:64 D, [C, A, B]` reads its condition `C` at width `1`, like a carry-in (`carryIns`), and
+is printed `test C, C` followed by a conditional move. The class `printedAddrWB` adds these
+arms to the bodies of `DecodePrintedCFG`.
 
 ## Main definitions
 
@@ -49,7 +52,8 @@ to the bodies of `DecodePrintedCFG`.
   `ACorrW` state widens to an `ACorr` state.
 * `AArm.simW`: an arm of `DecodePrintedAddr` steps from `ACorrW` to `ACorrW`.
 * `CArm.bytes`, `sim_adcx`, `sim_adcxhi`, `MArm.bytes`, `sim_ldm`, `sim_stm`, `zBytes`,
-  `sim_bmov`: the bytes and the simulations of the carry, cell and carry-constant arms.
+  `sim_bmov`, `lBytes`, `sim_lmov`, `vBytes`, `sim_cmov`: the bytes and the simulations of
+  the carry, cell, carry-constant, wide-immediate and register-select arms.
 * `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB` simulate its
   run on the address machine.
 -/
@@ -1789,6 +1793,321 @@ theorem sim_bmov (P : Params) (rsp : BitVec 64) (D : String) (n : Nat) (h : zOk 
       rw [if_pos rfl]
     · interval_cases n <;> decide
 
+/-! ## 8d. The wide immediate -/
+
+/-- The immediate move `MOV:64 D, #v` of a value outside the sign-extended `imm32` range, as
+    `(D, v)`. -/
+def classifyL : LinstrR → Option (String × Nat)
+  | .Lopn [.reg d] m [.imm v] =>
+      if m = "MOV:64" ∧ ScalarEncoder.fitsImm32S v = false then some (d, v) else none
+  | _ => none
+
+theorem classifyL_instr {i : LinstrR} {D : String} {v : Nat} (h : classifyL i = some (D, v)) :
+    i = .Lopn [.reg D] "MOV:64" [.imm v] ∧ ScalarEncoder.fitsImm32S v = false := by
+  unfold classifyL at h
+  split at h
+  · split_ifs at h with hm
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    rw [hm.1]
+    exact ⟨rfl, hm.2⟩
+  · cases h
+
+/-- **The conditions of a wide immediate** `MOV:64 D, #v`: `D` is a general-purpose name and
+    `v` is a 64-bit value outside the sign-extended `imm32` range. -/
+def lOk (D : String) (v : Nat) : Bool :=
+  gpOk D && decide (v < 2 ^ 64) && !ScalarEncoder.fitsImm32S v
+
+/-- The byte piece of a wide immediate: `movabs $v, %r64`. -/
+def lPieces (D : String) (v : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(ScalarEncoder.encMovImm64 (gpNumU D) v, .mov (phys D) (.imm v))]
+
+/-- `MOV:64 D, #v` into a general-purpose name, with `v` outside the sign-extended `imm32`
+    range, encodes to `movabs $v, %r64`. -/
+theorem encodeLopn_movImm64 (F W : Nat) (D : String) (v qB : Nat) (hD : gpOk D = true)
+    (hv : ScalarEncoder.fitsImm32S v = false) :
+    encodeLopn F W (.Lopn [.reg D] "MOV:64" [.imm v]) qB
+      = ScalarEncoder.encMovImm64 (gpNumU D) v := by
+  have fD := gpFacts hD
+  simp only [ScalarEncoder.fitsImm32S] at hv
+  simp only [encodeLopn,
+    show (LprogAsmPrinter.isCarryOutBinding "MOV:64" || LprogAsmPrinter.isMulHiBinding "MOV:64")
+      = false from by decide +kernel,
+    show stripWidthTag "MOV:64" = "MOV" from by decide +kernel,
+    show LprogAsmPrinter.mnemWidth "MOV:64" = 64 from by decide +kernel,
+    show ("MOV" == "MULX") = false from by decide +kernel,
+    show ("MOV" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "MOV" = none from by decide +kernel,
+    LprogBytes.rexW, Bool.false_eq_true, if_false, if_true, fD.notSlot, Bool.false_and]
+  simp [encImmOp, fD.notSlot, hv]
+
+/-- `movabs $v, %r64` decodes to the 64-bit move of `v` into the register. -/
+theorem pieceDec_movImm64 (D : String) (v : Nat) (hv : v < 2 ^ 64)
+    (hf : ScalarEncoder.fitsImm32S v = false) :
+    PieceDec (ScalarEncoder.encMovImm64 (gpNumU D) v, .mov (phys D) (.imm v)) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have h31 : ¬ v < 2147483648 := by
+    simp [ScalarEncoder.fitsImm32S] at hf
+    omega
+  have e := roundtrip_movImm canonAlloc (phys D) v rest hv
+  simpa [ScalarEncoder.encodeJInstr, h31, renameJ, nameOf, operandOf, phys,
+    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D)] using e
+
+/-- **The bytes of a wide immediate.** -/
+theorem lBytes (P : Params) (D : String) (v : Nat) (h : lOk D v = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] "MOV:64" [.imm v]) P.qsaveB
+        = (lPieces D v).flatMap Prod.fst
+      ∧ ∀ p ∈ lPieces D v, PieceDec p := by
+  simp only [lOk, Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at h
+  obtain ⟨⟨hD, hv⟩, hf⟩ := h
+  refine ⟨by simp [lPieces, encodeLopn_movImm64 _ _ _ _ _ hD hf], ?_⟩
+  intro p hp
+  simp only [lPieces, List.mem_singleton] at hp
+  subst hp
+  exact pieceDec_movImm64 _ _ hv hf
+
+/-- The address-machine step of `MOV:64 D, #v` into a general-purpose name writes the 64-bit
+    value of `v` to `D`. -/
+theorem fstepA_movImm64 (P : Params) (rsp : BitVec 64) (D : String) (v : Nat)
+    (hD : gpOk D = true) (s : LstateA) (zf : Bool) :
+    fstepA (frameP P rsp) (.Lopn [.reg D] "MOV:64" [.imm v], .reg none) s zf
+      = some ({ s with reg := (s.reg.setReg D (BitVec.ofNat 64 v)).nextPc }, zf) := by
+  rw [fstepA_of_reg (frameP P rsp) (i := (.Lopn [.reg D] "MOV:64" [.imm v], .reg none)) rfl
+    (fun d x hs => by simp [slotMov?] at hs) (fun d x q hk => by simp [slotCmp?] at hk)
+    (by simp [cellA?]) (by simp [slotCarry?]) (by simp [slotImm?, frameP_gp hD])]
+  have e := CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.fstepF_movII D v
+    { reg := s.reg, cf := s.cf, of := s.of } zf
+  rw [show CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.movII D v
+    = (.Lopn [.reg D] "MOV:64" [.imm v], .reg none) from rfl] at e
+  simp only [regStepA, e, Option.map_some]
+  rfl
+
+/-- **The wide immediate.** From `ACorrW`, the address-machine step of `MOV:64 D, #v` is
+    matched by `movabs $v, %r64`. -/
+theorem sim_lmov (P : Params) (rsp : BitVec 64) (D : String) (v : Nat) (h : lOk D v = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "MOV:64" [.imm v], .reg none) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((lPieces D v).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [lOk, Bool.and_eq_true] at h
+  obtain ⟨⟨hD, -⟩, -⟩ := h
+  rw [fstepA_movImm64 P rsp D v hD] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  have hrun : aMachine.runBlock sa ((lPieces D v).map Prod.snd)
+      = evalInstrA sa (.mov (phys D) (.imm v)) := rfl
+  rw [hrun]
+  refine ⟨hc.write hD (BitVec.ofNat 64 v) (fun r => rfl) (fun x hx => hc.mem x hx)
+    (fun r hr => ?_) (Or.inl ?_), rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · rw [LstateN.getW_nextPc]
+    exact LstateN.getW_setReg_same _ _ _
+
+/-! ## 8e. The register select -/
+
+/-- The register select `CMOV:64 D, [C, A, B]` on register names, as `(D, C, A, B)`. -/
+def classifyV : LinstrR → Option (String × String × String × String)
+  | .Lopn [.reg d] m [.reg c, .reg a, .reg b] =>
+      if m = "CMOV:64" then some (d, c, a, b) else none
+  | _ => none
+
+theorem classifyV_instr {i : LinstrR} {D C A B : String}
+    (h : classifyV i = some (D, C, A, B)) :
+    i = .Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B] := by
+  unfold classifyV at h
+  split at h
+  · split_ifs at h with hm
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+    rw [hm]
+  · cases h
+
+/-- **The conditions of a register select** `CMOV:64 D, [C, A, B]`: general-purpose operands
+    and a condition `C` that is none of `D`, `A`, `B`. -/
+def vOk (D C A B : String) : Bool :=
+  gpOk D && gpOk C && gpOk A && gpOk B && D != C && A != C && B != C
+
+/-- The byte pieces of a register select: `test C, C` and `cmove B, D` when `D` is `A`;
+    otherwise the copy of `B` into `D` unless they coincide, `test C, C` and `cmovne A, D`. -/
+def vPieces (D C A B : String) : List (List (BitVec 8) × JInstr 64) :=
+  if A = D then
+    [(encAluRRw 1 0x85 (gpNumU C) (gpNumU C), .test (phys C) (.reg (phys C))),
+      (enc0FRRw 1 0x44 (gpNumU D) (gpNumU B), .cmove (phys D) (.reg (phys B)))]
+  else
+    (if B = D then [] else
+      [(encAluRRw 1 0x89 (gpNumU D) (gpNumU B), .mov (phys D) (.reg (phys B)))])
+      ++ [(encAluRRw 1 0x85 (gpNumU C) (gpNumU C), .test (phys C) (.reg (phys C))),
+        (enc0FRRw 1 0x45 (gpNumU D) (gpNumU A), .cmovne (phys D) (.reg (phys A)))]
+
+/-- `test %c, %c` decodes to the self-test of the register. -/
+theorem pieceDec_test (C : String) :
+    PieceDec (encAluRRw 1 0x85 (gpNumU C) (gpNumU C), .test (phys C) (.reg (phys C))) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_test canonAlloc (phys C) (phys C) rest
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
+    regOf_canon _ (gpNumU_lt_16 C), gpNum_regName _ (gpNumU_lt_16 C),
+    LprogJInstrBytesAgree.encAluRRw_one] using e
+
+/-- `cmove %s, %d` decodes to the conditional move on the zero flag. -/
+theorem pieceDec_cmove (D S : String) :
+    PieceDec (enc0FRRw 1 0x44 (gpNumU D) (gpNumU S), .cmove (phys D) (.reg (phys S))) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_cmove canonAlloc (phys D) (phys S) rest
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
+    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
+    regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),
+    LprogJInstrBytesAgree.enc0FRRw_one] using e
+
+/-- `cmovne %s, %d` decodes to the conditional move on the clear zero flag. -/
+theorem pieceDec_cmovne (D S : String) :
+    PieceDec (enc0FRRw 1 0x45 (gpNumU D) (gpNumU S), .cmovne (phys D) (.reg (phys S))) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_cmovne canonAlloc (phys D) (phys S) rest
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
+    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
+    regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),
+    LprogJInstrBytesAgree.enc0FRRw_one] using e
+
+/-- **The bytes of a register select.** -/
+theorem vBytes (P : Params) (D C A B : String) (h : vOk D C A B = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B]) P.qsaveB
+        = (vPieces D C A B).flatMap Prod.fst
+      ∧ ∀ p ∈ vPieces D C A B, PieceDec p := by
+  simp only [vOk, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨⟨hD, hC⟩, hA⟩, hB⟩, -⟩, -⟩, -⟩ := h
+  have fD := gpFacts hD
+  have fA := gpFacts hA
+  have fB := gpFacts hB
+  have fC := gpFacts hC
+  refine ⟨?_, ?_⟩
+  · rw [GatherFullBody.encodeLopn_cmov64_emits _ _ _ _ _ _ _
+      (by simp [fD.isGp, fC.isGp, fA.isGp, fB.isGp])]
+    simp only [encCmovSelect, GatherFullBody.gpNumU_beq_of_isGpName fD.isGp fA.isGp,
+      GatherFullBody.gpNumU_beq_of_isGpName fD.isGp fB.isGp]
+    by_cases hAD : A = D <;> by_cases hBD : B = D <;> simp [vPieces, hAD, hBD]
+  · intro p hp
+    simp only [vPieces] at hp
+    split at hp
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+      rcases hp with rfl | rfl
+      · exact pieceDec_test C
+      · exact pieceDec_cmove D B
+    · simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hp
+      rcases hp with hp | rfl | rfl
+      · split at hp
+        · simp at hp
+        · simp only [List.mem_singleton] at hp
+          subst hp
+          exact pieceDec_movRR D B
+      · exact pieceDec_test C
+      · exact pieceDec_cmovne D A
+
+/-- The address machine steps `CMOV:64 D, [C, A, B]` on registers by writing the select of the
+    one-bit value of `C` between the 64-bit values of `A` and `B` to `D`. -/
+theorem fstepA_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (hD : gpOk D = true)
+    (hC : gpOk C = true) (hA : gpOk A = true) (s : LstateA) (zf : Bool)
+    {va vb : BitVec 64} (ha : s.reg.getW A 64 = some va) (hb : s.reg.getW B 64 = some vb) :
+    fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s zf
+      = (s.reg.getW C 1).map fun vc =>
+          ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.selectW vc va vb)).nextPc },
+            zf) := by
+  cases hc : s.reg.getW C 1 <;>
+    simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
+      cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
+      lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
+      VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
+      readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
+      slotCarry?, slotImm?, frameP_gp hD, frameP_gp hC, frameP_gp hA, evalOperandN,
+      operandName]
+
+/-- **The machine run of a register select.** With the condition register other than the
+    destination, the run writes to `D` the value of `B` on a zero condition and the value of `A`
+    otherwise, keeps every other register, and keeps the memory. -/
+theorem runBlock_vPieces (sa : AState) (D C A B : String) (hD : gpOk D = true)
+    (hA : gpOk A = true) (hCD : phys C ≠ phys D) :
+    (∀ r, (aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)).regs r
+      = if r = phys D then (if sa.regs (phys C) = 0 then sa.regs (phys B) else sa.regs (phys A))
+        else sa.regs r)
+      ∧ (aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)).mem = sa.mem := by
+  refine ⟨fun r => ?_, runBlock_mem_of_noWriteB _ sa (by
+    by_cases hAD : A = D <;> by_cases hBD : B = D <;> simp [vPieces, hAD, hBD, noWriteB])⟩
+  by_cases hAD : A = D
+  · subst hAD
+    have hrun : aMachine.runBlock sa ((vPieces A C A B).map Prod.snd)
+        = evalInstrA (evalInstrA sa (.test (phys C) (.reg (phys C))))
+            (.cmove (phys A) (.reg (phys B))) := by
+      simp [vPieces]; rfl
+    rw [hrun]
+    by_cases hr : r = phys A
+    · subst hr
+      simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.flagB, JState.writeB5,
+        JState.get, JOperand.eval, x86_CMOVcc, x86_TEST, rflags_of_bwop, ZF_of_word,
+        BitVec.toNat_eq]
+    · simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.writeB5, hr]
+  · by_cases hBD : B = D
+    · subst hBD
+      have hrun : aMachine.runBlock sa ((vPieces B C A B).map Prod.snd)
+          = evalInstrA (evalInstrA sa (.test (phys C) (.reg (phys C))))
+              (.cmovne (phys B) (.reg (phys A))) := by
+        simp [vPieces, hAD]; rfl
+      rw [hrun]
+      by_cases hr : r = phys B
+      · subst hr
+        simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.flagB, JState.writeB5,
+          JState.get, JOperand.eval, x86_CMOVcc, x86_TEST, rflags_of_bwop, ZF_of_word,
+          BitVec.toNat_eq]
+      · simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.writeB5, hr]
+    · have hrun : aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)
+          = evalInstrA (evalInstrA (evalInstrA sa (.mov (phys D) (.reg (phys B))))
+              (.test (phys C) (.reg (phys C)))) (.cmovne (phys D) (.reg (phys A))) := by
+        simp [vPieces, hAD, hBD]; rfl
+      rw [hrun]
+      have hAD' : phys A ≠ phys D := fun e => hAD (phys_inj hA hD e)
+      by_cases hr : r = phys D
+      · subst hr
+        simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.flagB, JState.writeB5,
+          JState.get, JOperand.eval, x86_CMOVcc, x86_TEST, x86_MOV, rflags_of_bwop, ZF_of_word,
+          BitVec.toNat_eq, hCD, hAD']
+      · simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.writeB5, x86_MOV, hr]
+
+/-- **The register select.** From `ACorrW`, with `A` and `B` at width `64`, the address-machine
+    step of `CMOV:64 D, [C, A, B]`, which reads the condition `C` at width `1`, is matched by the
+    `test` and conditional-move pieces: the condition register holds the zero-extension of the
+    bit, so its zero test is the complement of the bit. -/
+theorem sim_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (h : vOk D C A B = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hwA : (s.reg.lvm A).1 ≠ 1) (hwB : (s.reg.lvm B).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none)
+      s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [vOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨hD, hC⟩, hA⟩, hB⟩, hDC⟩, -⟩, -⟩ := h
+  have hgA := hc.wide hA hwA
+  have hgB := hc.wide hB hwB
+  rw [fstepA_cmov P rsp D C A B hD hC hA s zf hgA hgB] at hst
+  cases hgc : s.reg.getW C 1 with
+  | none => rw [hgc] at hst; cases hst
+  | some vc =>
+  rw [hgc] at hst
+  simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  have hmC := hc.bit hC hgc
+  obtain ⟨hr, hm⟩ := runBlock_vPieces sa D C A B hD hA (fun e => hDC (phys_inj hD hC e.symm))
+  refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (sa.regs (phys A)) (sa.regs (phys B)))
+    (fun r => ?_) (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_) (Or.inl ?_), rfl⟩
+  · rw [hr, hmC]
+    split
+    · rcases (by decide : ∀ v : BitVec 1, v = 0 ∨ v = 1) vc with rfl | rfl <;>
+        simp [VIR.JasminDialect.selectW]
+    · rfl
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr']
+  · rw [LstateN.getW_nextPc]
+    exact LstateN.getW_setReg_same _ _ _
+
 /-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
@@ -1813,19 +2132,21 @@ theorem classifyC_instr {i : LinstrR} {c : CArm} (h : classifyC i = some c) : c.
     · obtain rfl := Option.some.inj h; subst h2; rfl
   · cases h
 
-/-- The one-bit carry-in names an instruction reads: the carry-in of `ADCX:64` and
-    `ADCXHI:64`, none for any other instruction. -/
+/-- The one-bit names an instruction reads: the carry-in of `ADCX:64` and `ADCXHI:64` and the
+    condition of `CMOV:64`, none for any other instruction. -/
 def carryIns : LinstrR → List String
-  | .Lopn [.reg _] m [.reg _, .reg _, .reg c] =>
-      if m = "ADCX:64" ∨ m = "ADCXHI:64" then [c] else []
+  | .Lopn [.reg _] m [.reg x, .reg _, .reg c] =>
+      if m = "ADCX:64" ∨ m = "ADCXHI:64" then [c] else if m = "CMOV:64" then [x] else []
   | _ => []
 
-theorem carryIns_of_classifyC {i : LinstrR} (h : classifyC i = none) : carryIns i = [] := by
+theorem carryIns_of_classifyC {i : LinstrR} (h : classifyC i = none) (hv : classifyV i = none) :
+    carryIns i = [] := by
   unfold carryIns
   split
   · simp only [classifyC] at h
-    split_ifs at h with h1 h2
-    simp [h1, h2]
+    simp only [classifyV] at hv
+    split_ifs at h hv with h1 h2 h3
+    simp [h1, h2, h3]
   · rfl
 
 /-- The slot carry arm of an instruction: `ADCX:64` with a frame slot among the destination
@@ -1849,8 +2170,8 @@ theorem classifyS_instr {i : LinstrR} {c : SArm} (h : classifyS i = some c) : c.
 
 /-- An instruction other than the closing return of a printed body with carry chains: an
     `Lopn` read into a carry constant, a slot carry arm, a carry arm, a cell arm, an immediate
-    store into a frame slot or an arm of `DecodePrintedAddr` whose conditions hold, a label,
-    or a conditional branch on the zero
+    store into a frame slot, a wide immediate, a register select or an arm of
+    `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
   | .Lopn ds o ss =>
@@ -1868,6 +2189,12 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
           | none =>
               match classifyI (.Lopn ds o ss) with
               | some (q, v) => iOk P q v
+              | none =>
+              match classifyL (.Lopn ds o ss) with
+              | some (d, v) => lOk d v
+              | none =>
+              match classifyV (.Lopn ds o ss) with
+              | some (d, c, a, b) => vOk d c a b
               | none =>
                   match classifyA (.Lopn ds o ss) with
                   | some a => a.ok P
@@ -2335,7 +2662,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             obtain ⟨⟨⟨hn, -⟩, hB⟩, -⟩ := hok'
             simp only [MArm.instr] at hia
             have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
-              hB (by rw [carryIns_of_classifyC hclC]; simp)
+              hB (by rw [← hia]; simp [carryIns])
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
               hsafe.1.2.2 ii D n B off p (by rw [hget, ← hia]) hn hp
@@ -2351,9 +2678,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             obtain ⟨⟨⟨hn, hS⟩, hB⟩, -⟩ := hok'
             simp only [MArm.instr] at hia
             have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
-              hB (by rw [carryIns_of_classifyC hclC]; simp)
+              hB (by rw [← hia]; simp [carryIns])
             have hwS : (s.reg.lvm S).1 ≠ 1 := hws S (by rw [← hia]; exact reg_reads (by simp))
-              hS (by rw [carryIns_of_classifyC hclC]; simp)
+              hS (by rw [← hia]; simp [carryIns])
             obtain ⟨hc', -⟩ := sim_stm P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
               (hnoadd hnotadd _ _) hrun hsafe'
@@ -2384,6 +2711,63 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             have hops : shs[k].ops' = (iPieces P q v).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
             exact reaches_block a b hks hshk hops hR
+          split at hok
+          · -- a wide immediate
+            rename_i D v hclL
+            obtain ⟨hia, -⟩ := classifyL_instr hclL
+            have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+                = (.Lopn [.reg D] "MOV:64" [.imm v], MemTag.reg none) := by
+              rw [hia]; simp (config := { decide := true }) [normA, tagA]
+            rw [hli] at hst
+            obtain ⟨hc', -⟩ := sim_lmov P rsp D v hok sa s zf hc s' zf' hst
+            have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+            have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+                (aMachine.runBlock sa ((lPieces D v).map Prod.snd)).flags.zf.getD false
+                  = zf' := by
+              intro hcnd
+              have hcm := hcondNext hcnd
+              rw [hia] at hcm
+              simp [classifyA, classify, cmpArmB] at hcm
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            obtain ⟨hb, hp⟩ := lBytes P D v hok
+            have hops : shs[k].ops' = (lPieces D v).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          split at hok
+          · -- a register select
+            rename_i D C A B hclV
+            have hia := classifyV_instr hclV
+            have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+                = (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], MemTag.reg none) := by
+              rw [hia]; simp (config := { decide := true }) [normA, tagA]
+            rw [hli] at hst
+            have hok' := hok
+            simp only [vOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
+            obtain ⟨⟨⟨⟨⟨⟨-, -⟩, hA⟩, hB⟩, -⟩, hAC⟩, hBC⟩ := hok'
+            rw [hia] at hws
+            have hwA : (s.reg.lvm A).1 ≠ 1 := hws A (reg_reads (by simp)) hA
+              (by simp [carryIns, hAC])
+            have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (reg_reads (by simp)) hB
+              (by simp [carryIns, hBC])
+            obtain ⟨hc', -⟩ := sim_cmov P rsp D C A B hok sa s zf hc hwA hwB s' zf' hst
+            have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+            have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+                (aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)).flags.zf.getD false
+                  = zf' := by
+              intro hcnd
+              have hcm := hcondNext hcnd
+              rw [hia, classifyA_three_not_cmp] at hcm
+              cases hcm
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            obtain ⟨hb, hp⟩ := vBytes P D C A B hok
+            have hops : shs[k].ops' = (vPieces D C A B).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          rename_i hclV
           -- an arm of `DecodePrintedAddr`
           split at hok
           · rename_i ar hcl
@@ -2400,7 +2784,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               intro r hr hg
               have hfst : ar.li.fst = normA ar.instr := by rw [← hli]
               rw [hfst, readsI_normA, hia] at hr
-              exact hws r hr hg (by rw [carryIns_of_classifyC hclC]; simp)
+              exact hws r hr hg (by rw [carryIns_of_classifyC hclC hclV]; simp)
             obtain ⟨hc', hzf'⟩ := AArm.simW P rsp ar hok sa s zf hc hw hsafeA s' zf' hst
             have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
             have hz' : isCondB (body[k + 1]'hkn).li_i = true →
