@@ -665,6 +665,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
 CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
+CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
 CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
