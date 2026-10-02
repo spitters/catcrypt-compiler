@@ -55,18 +55,21 @@ modulus.
 
 ## The program over word arrays
 
-`fieldCom P c` is a straight-line `jasminDialect` program over a word array of `n` limbs
-for each source variable followed by an output array: it loads the limbs of every input
-array (`loadLimbs`, `loadArgs`: `regConst` indices and `stackLoad`), runs the lowering
-`(loweringL P).lowerR` on the loaded limbs, stores the result limbs into the output array
-(`storeLimbs`: `regConst` indices and `stackStore`) and returns the last stored array.
+For per-operation blocks `lo : LimbBlocks n`, `fieldComOf lo c` is a straight-line
+`jasminDialect` program over a word array of `n` limbs for each source variable followed by
+an output array: it loads the limbs of every input array (`loadLimbs`, `loadArgs`:
+`regConst` indices and `stackLoad`), runs the lowering `(loweringOf lo).lowerR` on the
+loaded limbs, stores the result limbs into the output array (`storeLimbs`: `regConst`
+indices and `stackStore`) and returns the last stored array. `fieldCom P c` is
+`fieldComOf (lowerOpL P) c`.
 
 * `loadLimbs_denote`, `loadArgs_denote`, `storeLimbs_denote`: the loads read the limbs
   `arrLimbs` of the arrays, and the stores write them (`storeVal`).
 * `arrLimbs_storeVal`: the limbs read back from the stored array are the stored limbs.
-* `fieldCom_denote`: for a `GoodV`-covered `c` and input arrays whose limbs (`arrFlat`)
-  are the encodings of the values of `V`, the limbs of the output array of `fieldCom P c`
-  are the encoding of `c.denote V`.
+* `fieldComOf_denote`: for blocks with a block square at an encoding, a covered `c` and
+  input arrays whose limbs (`arrFlat`) are the encodings of the values of `V`, the limbs of
+  the output array of `fieldComOf lo c` are the encoding of `c.denote V`; `fieldCom_denote`
+  is its instance at the Montgomery blocks.
 -/
 
 @[expose] public section
@@ -491,41 +494,93 @@ end Arrays
 
 /-! ## 6. The field program over word arrays -/
 
-/-- **The lowered field program over word arrays, as a multi-result program.** Over the
-    context `arrCtx n Γ ++ [arrTy n]` (a word array for each source variable, then the
-    output array): the loads of the `n` limbs of every input array, the lowering
-    `(loweringL P).lowerR` of `c` on the loaded limbs, and the stores of the result limbs
-    into the output array; the program returns the last stored array. -/
-def fieldBody {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
-    MC (arrCtx n Γ ++ [arrTy n]) [arrTy n] :=
+section Generic
+
+/-- The per-operation blocks of a lowering of `fieldDialect` over `n` limbs. -/
+abbrev LimbBlocks (n : Nat) : Type :=
+  (op : fieldDialect.Op) →
+    MultiReturnCom jasminDialect (ctxFlat (mapTysL n) (DialectSignature.sig op))
+      (mapTysL n (DialectSignature.ret op))
+
+/-- The lowering of `fieldDialect` over `n` limbs with the blocks `lo`. -/
+abbrev loweringOf (lo : LimbBlocks n) : MultiBlockLoweringData fieldDialect jasminDialect where
+  mapTys := mapTysL n
+  lowerOp := lo
+
+/-- **The lowered field program over word arrays, as a multi-result program**, for the
+    blocks `lo`. Over the context `arrCtx n Γ ++ [arrTy n]` (a word array for each source
+    variable, then the output array): the loads of the `n` limbs of every input array, the
+    lowering `(loweringOf lo).lowerR` of `c` on the loaded limbs, and the stores of the
+    result limbs into the output array; the program returns the last stored array. -/
+def fieldBodyOf (lo : LimbBlocks n) {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) : MC (arrCtx n Γ ++ [arrTy n]) [arrTy n] :=
   loadArgs Γ (fun v => inlHom [arrTy n] v) fun r h =>
-    (loweringL P).lowerR h c fun r₂ vs =>
+    (loweringOf lo).lowerR h c fun r₂ vs =>
       storeLimbs n 0 (r₂ (r (inrHom (arrCtx n Γ) .here))) (hvToHom vs)
 
-/-- **The lowered field program over word arrays.** -/
-def fieldCom {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
-    Com jasminDialect (arrCtx n Γ ++ [arrTy n]) (arrTy n) :=
-  (fieldBody P c).toComHead
+/-- **The lowered field program over word arrays** for the blocks `lo`. -/
+def fieldComOf (lo : LimbBlocks n) {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) : Com jasminDialect (arrCtx n Γ ++ [arrTy n]) (arrTy n) :=
+  (fieldBodyOf lo c).toComHead
 
-theorem fieldBody_denote (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect} {t : FieldTy}
-    (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodV P) c) (V : Valuation Γ)
-    (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64)
-    (hA : arrFlat A = flatVal (fun {t} x => encL P (t := t) x) V) :
-    (fieldBody P c).denote (hvAppend A (.cons o .nil))
-      = .cons (storeVal o 0 (encL P (c.denote V))) .nil := by
+theorem fieldBodyOf_denote (lo : LimbBlocks n) (enc : (loweringOf lo).Enc)
+    (Good : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}, Expr fieldDialect Γ t → Prop)
+    (hsq : (loweringOf lo).BlockSquare enc Good) (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect}
+    {t : FieldTy} (c : Com fieldDialect Γ t) (hc : CoveredCom Good c) (V : Valuation Γ)
+    (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64) (hA : arrFlat A = flatVal enc V) :
+    (fieldBodyOf lo c).denote (hvAppend A (.cons o .nil))
+      = .cons (storeVal o 0 (enc (c.denote V))) .nil := by
   refine loadArgs_denote hn Γ _ _ _ _ fun r h W' hr hh => ?_
-  refine (loweringL P).lowerR_denote_on (fun {t} x => encL P (t := t) x) (GoodV P)
-    (blockSquareV P) h c _ W' V _ hc ?_ fun r₂ vs W'' h₂ hvs => ?_
+  refine (loweringOf lo).lowerR_denote_on enc Good hsq h c _ W' V _ hc ?_
+    fun r₂ vs W'' h₂ hvs => ?_
   · refine hh.trans ?_
     rw [pullV_inlHom]
     exact hA
-  · have e₁ : pullV (Γ := Rn n) (fun w => hvToHom vs w) W'' = encL P (c.denote V) :=
+  · have e₁ : pullV (Γ := Rn n) (fun w => hvToHom vs w) W'' = enc (c.denote V) :=
       (pullV_hvToHom W'' vs).trans hvs
     have e₂ : (r₂ (r (inrHom (arrCtx n Γ) .here))).lookup W'' = o := by
       rw [h₂, hr, lookup_inrHom]
       rfl
     refine (storeLimbs_denote hn n 0 _ (fun w => hvToHom vs w) W'' (by omega)).trans ?_
     rw [e₂, e₁]
+
+/-- **Denotation of the lowered field program over word arrays** for the blocks `lo` with
+    the block square `hsq` at the encoding `enc`. For a `Good`-covered field program `c` and
+    input arrays whose limbs are the encodings of the values of `V`, the output array of
+    `fieldComOf lo c` holds the limbs of the encoding of `c.denote V`, whatever the output
+    array held on entry. -/
+theorem fieldComOf_denote (lo : LimbBlocks n) (enc : (loweringOf lo).Enc)
+    (Good : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}, Expr fieldDialect Γ t → Prop)
+    (hsq : (loweringOf lo).BlockSquare enc Good) (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect}
+    {t : FieldTy} (c : Com fieldDialect Γ t) (hc : CoveredCom Good c) (V : Valuation Γ)
+    (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64) (hA : arrFlat A = flatVal enc V) :
+    arrLimbs ((fieldComOf lo c).denote (hvAppend A (.cons o .nil))) n 0
+      = enc (c.denote V) := by
+  rw [fieldComOf, MultiReturnCom.toComHead_denote,
+    fieldBodyOf_denote lo enc Good hsq hn c hc V A o hA]
+  exact arrLimbs_storeVal o 0 _ (by omega)
+
+end Generic
+
+/-- **The lowered field program over word arrays, as a multi-result program**, for the
+    Montgomery blocks `lowerOpL P`. -/
+def fieldBody {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
+    MC (arrCtx n Γ ++ [arrTy n]) [arrTy n] :=
+  fieldBodyOf (lowerOpL P) c
+
+/-- **The lowered field program over word arrays** for the Montgomery blocks. -/
+def fieldCom {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
+    Com jasminDialect (arrCtx n Γ ++ [arrTy n]) (arrTy n) :=
+  fieldComOf (lowerOpL P) c
+
+theorem fieldBody_denote (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodV P) c) (V : Valuation Γ)
+    (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64)
+    (hA : arrFlat A = flatVal (fun {t} x => encL P (t := t) x) V) :
+    (fieldBody P c).denote (hvAppend A (.cons o .nil))
+      = .cons (storeVal o 0 (encL P (c.denote V))) .nil :=
+  fieldBodyOf_denote (lowerOpL P) (fun {t} x => encL P (t := t) x) (GoodV P) (blockSquareV P)
+    hn c hc V A o hA
 
 /-- **Denotation of the lowered field program over word arrays.** For a `GoodV`-covered
     field program `c` and input arrays whose limbs are the encodings of the values of `V`,
@@ -536,8 +591,8 @@ theorem fieldCom_denote (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64)
     (hA : arrFlat A = flatVal (fun {t} x => encL P (t := t) x) V) :
     arrLimbs ((fieldCom P c).denote (hvAppend A (.cons o .nil))) n 0
-      = encL P (c.denote V) := by
-  rw [fieldCom, MultiReturnCom.toComHead_denote, fieldBody_denote P hn c hc V A o hA]
-  exact arrLimbs_storeVal o 0 _ (by omega)
+      = encL P (c.denote V) :=
+  fieldComOf_denote (lowerOpL P) (fun {t} x => encL P (t := t) x) (GoodV P) (blockSquareV P)
+    hn c hc V A o hA
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs

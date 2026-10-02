@@ -34,12 +34,14 @@ zero limbs; the coverage predicate `GoodL` excludes them.
 * `mapTysL`, `encL`: the type map and the encoding.
 * `lowerOpL`, `loweringL`: the per-operation blocks and the `MultiBlockLoweringData`.
 * `GoodL`: the operations covered at `p`.
+* `opGoodLB`, `GoodLB`: the decision of coverage.
 
 ## Main results
 
 * `nv_opVars`, `nv_encX`, `nv_encY`: the operand limb variables of a flattened
   valuation carry the canonical representatives.
 * `blockSquareL`: the block square of `loweringL` for `GoodL` expressions.
+* `GoodLB_sound`: a program accepted by `GoodLB` is `GoodL`-covered.
 * `fieldToJasminLimbs_denote`: for every `GoodL`-covered program `c`,
   `(loweringL S).lowerMulti c` denotes `encL S (c.denote V)` on `flatVal (encL S) V`.
 -/
@@ -230,5 +232,32 @@ theorem fieldToJasminLimbs_denote {Γ : Ctxt fieldDialect} {t : FieldTy}
       = encL S (c.denote V) :=
   (loweringL S).multiFundamental_on (fun {t} x => encL S (t := t) x) (GoodL S)
     (blockSquareL S) c hc V
+
+/-! ## 4. The decision of coverage -/
+
+/-- The operations `GoodLB` accepts: those of `GoodL`. -/
+def opGoodLB : fieldDialect.Op → Bool
+  | .fAdd q | .fSub q | .fNeg q | .fMul q | .fieldDouble q | .fieldSquare q => q == p S
+  | .fConst q _ => q == p S
+  | _ => false
+
+/-- The coverage decision: every let-bound operation passes `opGoodLB`. -/
+def GoodLB : {Γ : Ctxt fieldDialect} → {t : FieldTy} → Com fieldDialect Γ t → Bool
+  | _, _, .ret _ => true
+  | _, _, .var e body => opGoodLB S e.op && GoodLB body
+
+theorem opGoodLB_sound {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t)
+    (h : opGoodLB S e.op = true) : GoodL S e := by
+  obtain ⟨op, _, _⟩ := e
+  cases op <;> simp only [opGoodLB, beq_iff_eq, Bool.false_eq_true] at h <;> subst h <;>
+    simp [GoodL]
+
+/-- A program accepted by `GoodLB` is `GoodL`-covered. -/
+theorem GoodLB_sound : {Γ : Ctxt fieldDialect} → {t : FieldTy} →
+    (c : Com fieldDialect Γ t) → GoodLB S c = true → CoveredCom (GoodL S) c
+  | _, _, .ret _, _ => trivial
+  | _, _, .var e body, h => by
+      simp only [GoodLB, Bool.and_eq_true] at h
+      exact ⟨opGoodLB_sound S e h.1, GoodLB_sound body h.2⟩
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsSolinas
