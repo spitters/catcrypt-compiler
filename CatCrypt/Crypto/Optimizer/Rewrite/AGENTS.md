@@ -56,8 +56,10 @@ Each module proves algebraic identities as equations, usable as rewrite rules:
   (quadratic-residue test), `FrobeniusGeneric` (the Frobenius endomorphism).
 - Evaluation and sums: `LagrangeInterpGeneric` (Lagrange interpolation),
   `LinearCombGeneric` (linear-combination and inner-product evaluation).
-- Field peephole: `FieldConstFoldPass`, `FieldCsePass`, `FieldHornerPass`,
-  `FieldStrengthReducePass`, `FieldLetDcePass`, `NegElimPass`, `Peephole`.
+- Field peephole: `FieldHornerPass`, `FieldStrengthReducePass`, `NegElimPass`,
+  `Peephole`. Constant folding, common subexpressions and dead bindings of field code
+  are rules and stages of the generic e-graph (`AegraphField`, `TraitRules`) and
+  `NFProg.dce`.
 - Canonicalization: `AbsentRewrites` (`neg (neg x) = x` on `BitVec`,
   `fromMont ∘ toMont = id` over `ZMod p`, `reverse ∘ reverse = id` for bit
   reversal).

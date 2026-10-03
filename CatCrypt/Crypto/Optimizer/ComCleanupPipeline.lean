@@ -48,7 +48,7 @@ consumes the `KEnv.Consistent k V` hypothesis exactly as `foldCom_denote`
 requires.  **Not `rfl`** — it inherits the inductive preservation proofs
 of the components.
 
-This complements `ComFullOpt.lean` (algebraic-saturation · copy-prop · DCE) with
+This complements the algebraic saturation, copy propagation and dead-code passes with
 the fold/CSE/uncompute/DCE clean-up stack.
 -/
 

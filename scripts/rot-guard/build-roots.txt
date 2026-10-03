@@ -135,8 +135,6 @@ CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.Jasmin.VectorOps
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.Batch8EmitProof
-CatCrypt.Crypto.Optimizer.ComFullOpt
-CatCrypt.Crypto.Optimizer.ComOptPipeline
 CatCrypt.Crypto.Optimizer.ComSStmtBridge
 CatCrypt.Crypto.Optimizer.EgraphSelectDemo
 CatCrypt.Crypto.Optimizer.FootprintSpill
@@ -164,10 +162,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.BatchInverseGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.CrtGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.EgraphGlobalMin
 CatCrypt.Crypto.Optimizer.Rewrite.EgraphGrindIntegration
-CatCrypt.Crypto.Optimizer.Rewrite.FieldConstFoldPass
-CatCrypt.Crypto.Optimizer.Rewrite.FieldCsePass
 CatCrypt.Crypto.Optimizer.Rewrite.FieldHornerPass
-CatCrypt.Crypto.Optimizer.Rewrite.FieldLetDcePass
 CatCrypt.Crypto.Optimizer.Rewrite.FieldSqrtGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.FieldStrengthReducePass
 CatCrypt.Crypto.Optimizer.Rewrite.FrobeniusGeneric

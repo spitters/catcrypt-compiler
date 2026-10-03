@@ -33,9 +33,8 @@ each proved against the denotation `catCryptDenote`:
 * `constFoldRule catReify`: a pure operation on constant arguments is replaced by the
   constant `bvConst`, `constBit` or `constUnit` holding its value.
 
-A constant operand is read from the definition table (`constOf`, a binding of `bvConst`),
-and the operand of a complement likewise (`notOf`). The node table merges every operation
-other than the sampling leaves `sampleBit`, `sampleBv` and the external call `extCall`.
+A constant operand is read from the definition table (`constOf`, a binding of `bvConst`).
+The node table merges every operation other than the sampling leaves `sampleBit`, `sampleBv` and the external call `extCall`.
 
 ## Main results
 
@@ -92,41 +91,6 @@ theorem constOf_sound {Δ : Ctxt catCryptDialect} {w : Nat} {D : Defs catCryptDi
       obtain ⟨x, h1, h2⟩ := hD _ _ hl
       rw [getLvl_var] at h2
       have h1' : evalKey V (CatCryptOp.bvConst w' c') [] = some ⟨.sword w', c'⟩ := rfl
-      rw [h1'] at h1
-      rw [← h1] at h2
-      exact eq_of_heq (Sigma.mk.inj_iff.mp (Option.some.inj h2)).2
-    · cases h
-  · cases h
-
-/-- The operand of the complement defining a variable of type `sword w`, read from the
-    definition table. -/
-def notOf {Δ : Ctxt catCryptDialect} {w : Nat} (D : Defs catCryptDialect)
-    (a : Ctxt.Var Δ (.sword w)) : Option (Ctxt.Var Δ (.sword w)) :=
-  match D[varLvl a]? with
-  | some (.bvNot w', [l]) => if w' = w then varOfLvl? Δ (.sword w) l else none
-  | _ => none
-
-theorem notOf_sound {Δ : Ctxt catCryptDialect} {w : Nat} {D : Defs catCryptDialect}
-    {V : Ctxt.Valuation Δ} (hD : DSound V D) {a x : Ctxt.Var Δ (.sword w)}
-    (h : notOf D a = some x) : val V a = ~~~val V x := by
-  unfold notOf at h
-  split at h
-  · rename_i w' l hl
-    split at h
-    · rename_i hw
-      subst hw
-      obtain ⟨y, h1, h2⟩ := hD _ _ hl
-      rw [getLvl_var] at h2
-      have e1 := varOfLvl?_lookup h V
-      have h1' : evalKey V (CatCryptOp.bvNot w') [l] =
-          some ⟨.sword w', (~~~val V x : BitVec w')⟩ := by
-        have hg : gatherArgs V [.sword w'] [l] = some (.cons (x.lookup V) .nil) := by
-          simp [gatherArgs, e1, castTo?_mk (d := catCryptDialect)]
-        unfold evalKey
-        rw [show gatherArgs V
-            (DialectSignature.sig (d := catCryptDialect) (CatCryptOp.bvNot w')) [l] =
-          some (.cons (x.lookup V) .nil) from hg]
-        rfl
       rw [h1'] at h1
       rw [← h1] at h2
       exact eq_of_heq (Sigma.mk.inj_iff.mp (Option.some.inj h2)).2
@@ -307,25 +271,6 @@ theorem zeroAmtAlts_sound (f : BitVec w → Nat → BitVec w) (hf : ∀ x, f x 0
     exact (hf _).symm
   · simp at h
 
-/-- `~~x = x`. -/
-def notAlts (D : Defs catCryptDialect) (a : Ctxt.Var Δ (.sword w)) :
-    List (Alt Δ (.sword w)) :=
-  match notOf D a with
-  | some x => [.var x]
-  | none => []
-
-theorem notAlts_sound {D : Defs catCryptDialect} {V : Ctxt.Valuation Δ} (hD : DSound V D)
-    (a : Ctxt.Var Δ (.sword w)) :
-    ∀ alt ∈ notAlts D a, alt.denote V = ~~~val V a := by
-  intro alt h
-  unfold notAlts at h
-  split at h
-  · rename_i x hx
-    simp only [List.mem_singleton] at h
-    subst h
-    simp [Alt.denote, notOf_sound hD hx]
-  · simp at h
-
 end Identities
 
 /-! ## 3. The rules -/
@@ -409,15 +354,6 @@ def shiftZeroApply {Δ : Ctxt catCryptDialect} {s : CryptoTy}
   | ⟨.bvRor w k, hop, args⟩ =>
       let a : Ctxt.Var Δ (.sword w) := args.head
       hop ▸ zeroAmtAlts k a
-  | _ => []
-
-/-- The alternatives of `notAlts` on a bit-vector complement. -/
-def notApply (D : Defs catCryptDialect) {Δ : Ctxt catCryptDialect} {s : CryptoTy}
-    (e : Expr catCryptDialect Δ s) : List (Alt Δ s) :=
-  match e with
-  | ⟨.bvNot w, hop, args⟩ =>
-      let a : Ctxt.Var Δ (.sword w) := args.head
-      hop ▸ notAlts D a
   | _ => []
 
 theorem xorApply_sound (D : Defs catCryptDialect) {Δ : Ctxt catCryptDialect}
@@ -550,20 +486,6 @@ theorem shiftZeroApply_sound {Δ : Ctxt catCryptDialect} (V : Ctxt.Valuation Δ)
       exact zeroAmtAlts_sound (fun x n => x.rotateRight n) rotateRight_zero'
         V k a alt halt
   all_goals intro alt h; simp [shiftZeroApply] at h
-
-theorem notApply_sound (D : Defs catCryptDialect) {Δ : Ctxt catCryptDialect}
-    (V : Ctxt.Valuation Δ) (hD : DSound V D) {s : CryptoTy} (e : Expr catCryptDialect Δ s) :
-    ∀ alt ∈ notApply D e, alt.denote V = e.denote V := by
-  rcases e with ⟨op, hop, args⟩
-  cases op
-  case bvNot w =>
-    subst hop
-    match args, (rfl : args = args) with
-    | .cons a .nil, _ =>
-      intro alt halt
-      simp only [notApply, HVector.head] at halt
-      exact notAlts_sound hD a alt halt
-  all_goals intro alt h; simp [notApply] at h
 
 /-- Exclusive or: `x ^ 0 = x`, `0 ^ x = x`, `x ^ x = 0`. -/
 def xorRule : Rule catCryptDialect where
@@ -795,15 +717,6 @@ theorem zeroAmtAlts_indep (k : Nat) (a : Ctxt.Var Δ (.sword w)) :
     ∀ alt ∈ zeroAmtAlts k a, alt.Indep L := by
   intro alt h
   unfold zeroAmtAlts at h
-  split at h
-  · simp only [List.mem_singleton] at h
-    subst h
-    trivial
-  · simp at h
-
-theorem notAlts_indep (a : Ctxt.Var Δ (.sword w)) : ∀ alt ∈ notAlts D a, alt.Indep L := by
-  intro alt h
-  unfold notAlts at h
   split at h
   · simp only [List.mem_singleton] at h
     subst h

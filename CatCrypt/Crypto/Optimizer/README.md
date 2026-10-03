@@ -9,9 +9,8 @@ below differ in what their theorems state, and each entry names the theorem.
 
 - `Com` rewrites over `jasminDialect`: `ComCSE` (`comCSE_denote`), `ComDCE`
   (`comDCE_denote`, generic over the dialect), `CopyProp` (`copyProp_denote`),
-  `ConstFold` (`foldCom_denote`), `UncomputePass`, composed in `ComOptPipeline`
-  (`comOptPipeline_denote`), `ComCleanupPipeline` (`comCleanup_denote`),
-  `ComFullOpt` (`comFullOpt_denote`) and `ComCanonical` (`comCanonical_denote`).
+  `ConstFold` (`foldCom_denote`), `UncomputePass`, composed in `ComCleanupPipeline`
+  (`comCleanup_denote`) and `ComCanonical` (`comCanonical_denote`).
   Each theorem states denotation equality for every valuation; the constant-folding
   and saturation stages assume a known-constant environment consistent with the
   valuation (`KEnv.Consistent`).

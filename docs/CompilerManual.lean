@@ -127,8 +127,7 @@ toolchain's correctness as the opaque proposition `MlirBackendSemanticsAgrees`.
 The optimizer passes over the `Com` intermediate representation carry
 denotation-preservation theorems: common-subexpression elimination, dead-code
 elimination, copy propagation and constant folding (`comCSE_denote`,
-`comDCE_denote`, `copyProp_denote`, `foldCom_denote`), composed in
-`comOptPipeline_denote` and `comFullOpt_denote`. The constant-folding and saturation
+`comDCE_denote`, `copyProp_denote`, `foldCom_denote`). The constant-folding and saturation
 stages assume a known-constant environment consistent with the valuation.
 `Pipeline.optPipelineJ` composes four stages that each return their input program,
 so its theorems hold for every program. `CatCrypt/Crypto/Optimizer/README.md`
@@ -171,7 +170,7 @@ denotation equality to a representative, and `extractMin` returns a cheapest mem
 (`extractMin_cost_min`, `extractMin_denote_eq`); its instances choose among two- and
 three-limb multiplication formulas over a commutative ring.
 
-The saturation engine reaches `comAlgebraicPipeline`, `comFullOpt` and
+The saturation engine reaches `comAlgebraicPipeline` and
 `ComToMLIR.emitFuncCanon`, which are referenced only in the modules that define
 them, and no assembly the owned backend emits passes through any module of this
 section. In the ascent, `EgraphBlockEquality` takes equal saturations of two

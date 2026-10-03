@@ -25,9 +25,8 @@ of `fieldDialect` in `ZMod p`:
 * `constFoldRule fieldReify`: a pure operation on constant arguments is replaced by the
   constant `fConst` holding its value.
 
-A constant operand is read from the definition table (`constOf`, a binding of `fConst`),
-and the operand of a negation likewise (`negOf`). The node table merges every operation
-other than the designated-output copy `fCopy`.
+A constant operand is read from the definition table (`constOf`, a binding of `fConst`).
+The node table merges every operation other than the designated-output copy `fCopy`.
 
 ## Main results
 
@@ -82,40 +81,6 @@ theorem constOf_sound {Δ : Ctxt fieldDialect} {p : Nat} {D : Defs fieldDialect}
       obtain ⟨x, h1, h2⟩ := hD _ _ hl
       rw [getLvl_var] at h2
       have h1' : evalKey V (FieldOp.fConst p' c') [] = some ⟨.fp p', c'⟩ := rfl
-      rw [h1'] at h1
-      rw [← h1] at h2
-      exact eq_of_heq (Sigma.mk.inj_iff.mp (Option.some.inj h2)).2
-    · cases h
-  · cases h
-
-/-- The operand of the negation defining a variable of type `fp p`, read from the
-    definition table. -/
-def negOf {Δ : Ctxt fieldDialect} {p : Nat} (D : Defs fieldDialect)
-    (a : Ctxt.Var Δ (.fp p)) : Option (Ctxt.Var Δ (.fp p)) :=
-  match D[varLvl a]? with
-  | some (.fNeg p', [l]) => if p' = p then varOfLvl? Δ (.fp p) l else none
-  | _ => none
-
-theorem negOf_sound {Δ : Ctxt fieldDialect} {p : Nat} {D : Defs fieldDialect}
-    {V : Ctxt.Valuation Δ} (hD : DSound V D) {a x : Ctxt.Var Δ (.fp p)}
-    (h : negOf D a = some x) : val V a = -val V x := by
-  unfold negOf at h
-  split at h
-  · rename_i p' l hl
-    split at h
-    · rename_i hp
-      subst hp
-      obtain ⟨y, h1, h2⟩ := hD _ _ hl
-      rw [getLvl_var] at h2
-      have e1 := varOfLvl?_lookup h V
-      have h1' : evalKey V (FieldOp.fNeg p') [l] =
-          some ⟨.fp p', -val V x⟩ := by
-        have hg : gatherArgs V [.fp p'] [l] = some (.cons (x.lookup V) .nil) := by
-          simp [gatherArgs, e1, castTo?_mk (d := fieldDialect)]
-        unfold evalKey
-        rw [show gatherArgs V (DialectSignature.sig (d := fieldDialect) (FieldOp.fNeg p')) [l] =
-          some (.cons (x.lookup V) .nil) from hg]
-        rfl
       rw [h1'] at h1
       rw [← h1] at h2
       exact eq_of_heq (Sigma.mk.inj_iff.mp (Option.some.inj h2)).2
@@ -193,24 +158,6 @@ theorem subAlts_sound {D : Defs fieldDialect} {V : Ctxt.Valuation Δ} (hD : DSou
     subst h
     simp [Alt.denote, constOf_sound hD hb]
 
-/-- `-(-x) = x`. -/
-def negAlts (D : Defs fieldDialect) (a : Ctxt.Var Δ (.fp p)) : List (Alt Δ (.fp p)) :=
-  match negOf D a with
-  | some x => [.var x]
-  | none => []
-
-theorem negAlts_sound {D : Defs fieldDialect} {V : Ctxt.Valuation Δ} (hD : DSound V D)
-    (a : Ctxt.Var Δ (.fp p)) :
-    ∀ alt ∈ negAlts D a, alt.denote V = -val V a := by
-  intro alt h
-  unfold negAlts at h
-  split at h
-  · rename_i x hx
-    simp only [List.mem_singleton] at h
-    subst h
-    simp [Alt.denote, negOf_sound hD hx]
-  · simp at h
-
 end Identities
 
 /-! ## 3. The rules -/
@@ -243,15 +190,6 @@ def subApply (D : Defs fieldDialect) {Δ : Ctxt fieldDialect} {s : FieldTy}
       let a : Ctxt.Var Δ (.fp p) := args.head
       let b : Ctxt.Var Δ (.fp p) := args.tail.head
       hop ▸ subAlts D a b
-  | _ => []
-
-/-- The alternatives of `negAlts` on a prime-field negation. -/
-def negApply (D : Defs fieldDialect) {Δ : Ctxt fieldDialect} {s : FieldTy}
-    (e : Expr fieldDialect Δ s) : List (Alt Δ s) :=
-  match e with
-  | ⟨.fNeg p, hop, args⟩ =>
-      let a : Ctxt.Var Δ (.fp p) := args.head
-      hop ▸ negAlts D a
   | _ => []
 
 theorem addApply_sound (D : Defs fieldDialect) {Δ : Ctxt fieldDialect}
@@ -295,20 +233,6 @@ theorem subApply_sound (D : Defs fieldDialect) {Δ : Ctxt fieldDialect}
       simp only [subApply, HVector.head, HVector.tail] at halt
       exact subAlts_sound hD a b alt halt
   all_goals intro alt h; simp [subApply] at h
-
-theorem negApply_sound (D : Defs fieldDialect) {Δ : Ctxt fieldDialect}
-    (V : Ctxt.Valuation Δ) (hD : DSound V D) {s : FieldTy} (e : Expr fieldDialect Δ s) :
-    ∀ alt ∈ negApply D e, alt.denote V = e.denote V := by
-  rcases e with ⟨op, hop, args⟩
-  cases op
-  case fNeg p =>
-    subst hop
-    match args, (rfl : args = args) with
-    | .cons a .nil, _ =>
-      intro alt halt
-      simp only [negApply, HVector.head] at halt
-      exact negAlts_sound hD a alt halt
-  all_goals intro alt h; simp [negApply] at h
 
 /-- The additive identity: `x + 0 = x`, `0 + x = x`. -/
 def addRule : Rule fieldDialect where
@@ -446,15 +370,6 @@ theorem subAlts_indep (a b : Ctxt.Var Δ (.fp p)) : ∀ alt ∈ subAlts D a b, a
     simp only [List.mem_singleton, List.not_mem_nil] at h <;> subst h
   · exact fun _ _ => rfl
   · trivial
-
-theorem negAlts_indep (a : Ctxt.Var Δ (.fp p)) : ∀ alt ∈ negAlts D a, alt.Indep L := by
-  intro alt h
-  unfold negAlts at h
-  split at h
-  · simp only [List.mem_singleton] at h
-    subst h
-    trivial
-  · simp at h
 
 end Alts
 
