@@ -203,6 +203,7 @@ explains the run.
 | [ASCENT.md](ASCENT.md) | the ascent from code to Lean specifications |
 | [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) | certifying existing machine code: the hax reference, the differential oracle and the ascent |
 | [HAX_RUST.md](HAX_RUST.md) | Lean to Rust and back through hax |
+| [FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md) | field arithmetic: what the Rust ecosystem does and what the templates add |
 | [bench.md](bench.md) | performance ratios against production implementations |
 | [BUILDING.md](BUILDING.md) | dependencies, builds, checks, axiom audit, documentation generation |
 | [docs/CompilerManual.lean](docs/CompilerManual.lean) | the [Verso](https://github.com/leanprover/verso) manual |
