@@ -528,6 +528,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.AesniRoundVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.AsconEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BabyBearBarrettBlock
 CatCrypt.Crypto.SecureCompilation.VIR.BarrettRaEmit
+CatCrypt.Crypto.SecureCompilation.VIR.BasemulWord
 CatCrypt.Crypto.SecureCompilation.VIR.BignumMulCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Blake2bCompressCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoopValidate
@@ -705,7 +706,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.RcongrLeafAutomation
 CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe
 CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocationReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.RejUniformCovered
-CatCrypt.Crypto.SecureCompilation.VIR.RingDialect
 CatCrypt.Crypto.SecureCompilation.VIR.RustExecSimulatesUnified
 CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered
 CatCrypt.Crypto.SecureCompilation.VIR.SailX86SimdDecoderVsimd
