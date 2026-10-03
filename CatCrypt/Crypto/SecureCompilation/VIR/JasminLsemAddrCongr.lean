@@ -623,11 +623,15 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
                     · exact getW_congr hN (reg_reads (by simp)) 64
                   simp only
                   rw [getW_congr hN (reg_reads (by simp)) 1, hwa, hwb]
+                  try simp only [hM]
                   repeat' split
                   all_goals first
                     | exact ORel.none
                     | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1,
                         h.2.2.2, rfl⟩
+                    | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, rfl, h.2.2.1,
+                        h.2.2.2, rfl⟩
+                    | exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
                 · cases hsv
             | some p =>
               obtain ⟨a, v⟩ := p
@@ -649,8 +653,13 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
                 split
                 · rw [hM]
                 · exact getW_congr hN (reg_reads (by simp)) 64
+              have hbc : bitA frame s c' = bitA frame t c' := by
+                unfold bitA
+                split
+                · rw [hM]
+                · exact getW_congr hN (reg_reads (by simp)) 1
               simp only
-              rw [hwa, hws, getW_congr hN (reg_reads (by simp)) 1, hM]
+              rw [hwa, hws, hbc, hM]
               repeat' split
               all_goals first
                 | exact ORel.none

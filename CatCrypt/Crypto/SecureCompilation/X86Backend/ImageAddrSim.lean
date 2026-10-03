@@ -270,7 +270,8 @@ def regOkB (frame : String → Option (BitVec 64)) (x : LinstrR) : Bool :=
       | _ => false
 
 /-- An instruction passing `regOkB` is no immediate move into a frame slot: the symbolic step
-    of `MOV:64 q, #v` writes `q`, which `regOkB` requires to have no frame word. -/
+    of `MOV:64 q, #v` and of `MOV q, #v` writes `q`, which `regOkB` requires to have no frame
+    word. -/
 theorem slotImm?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : LinstrR}
     (h : regOkB frame x = true) : slotImm? frame x = none := by
   cases hsi : slotImm? frame x with
@@ -278,7 +279,8 @@ theorem slotImm?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Lin
   | some p =>
     exfalso
     obtain ⟨a, v⟩ := p
-    obtain ⟨q, hx, hq⟩ : ∃ q, x = .Lopn [.reg q] "MOV:64" [.imm v] ∧ frame q = some a := by
+    obtain ⟨q, o, hx, ho, hq⟩ : ∃ q o, x = .Lopn [.reg q] o [.imm v]
+        ∧ (o = "MOV:64" ∨ o = "MOV") ∧ frame q = some a := by
       unfold slotImm? at hsi
       split at hsi
       · rename_i q o v'
@@ -286,17 +288,21 @@ theorem slotImm?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Lin
         obtain ⟨a', ha, he⟩ := Option.map_eq_some_iff.1 hsi
         simp only [Prod.mk.injEq] at he
         obtain ⟨rfl, rfl⟩ := he
-        exact ⟨q, by rw [ho], ha⟩
+        exact ⟨q, o, rfl, ho, ha⟩
       · cases hsi
     subst hx
-    obtain ⟨ss, gs, hs, hw⟩ : ∃ ss gs, symStep (.Lopn [.reg q] "MOV:64" [.imm v], .reg none)
-        SSt.start = .ok ss gs ∧ q ∈ ss.wr := ⟨_, _, rfl, by simp [SSt.setR]⟩
+    obtain ⟨ss, gs, hs, hw⟩ : ∃ ss gs, symStep (.Lopn [.reg q] o [.imm v], .reg none)
+        SSt.start = .ok ss gs ∧ q ∈ ss.wr := by
+      rcases ho with rfl | rfl
+      · exact ⟨_, _, rfl, by simp [SSt.setR]⟩
+      · exact ⟨_, _, rfl, by simp [SSt.setR]⟩
     simp only [regOkB, hs, Bool.and_eq_true, List.all_eq_true] at h
     have := h.2.2 q hw
     simp [hq] at this
 
-/-- An instruction passing `regOkB` is no select with a frame-slot value: the symbolic step of
-    `CMOV:64 d, [c, a, b]` reads `a` and `b`, which `regOkB` requires to have no frame word. -/
+/-- An instruction passing `regOkB` is no select with a frame-slot value or destination: the
+    symbolic step of `CMOV:64 d, [c, a, b]` reads `a` and `b` and writes `d`, which `regOkB`
+    requires to have no frame word. -/
 theorem slotCmov?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : LinstrR}
     (h : regOkB frame x = true) : slotCmov? frame x = none := by
   cases hsv : slotCmov? frame x with
@@ -305,14 +311,14 @@ theorem slotCmov?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Li
     exfalso
     obtain ⟨d, c, a, b⟩ := p
     obtain ⟨hx, hsl⟩ : x = .Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]
-        ∧ ((frame a).isSome || (frame b).isSome) = true := by
+        ∧ ((frame d).isSome || (frame a).isSome || (frame b).isSome) = true := by
       unfold slotCmov? at hsv
       split at hsv
       · split_ifs at hsv with ho
         simp only [Bool.and_eq_true, beq_iff_eq] at ho
         simp only [Option.some.injEq, Prod.mk.injEq] at hsv
         obtain ⟨rfl, rfl, rfl, rfl⟩ := hsv
-        exact ⟨by rw [ho.1.1], ho.2⟩
+        exact ⟨by rw [ho.1], ho.2⟩
       · cases hsv
     subst hx
     have hm : stripWidthTag "CMOV:64" = "CMOV" := by decide +kernel
@@ -335,7 +341,8 @@ theorem slotCmov?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Li
       h.2.1.2 r (by simp only [descReads, List.flatMap_cons, List.flatMap_nil, SG.vars,
         STerm.vars, List.mem_append]; simp_all)
     simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq] at hr
-    cases ha : frame a <;> cases hb : frame b <;> simp_all
+    have hd : (frame d).isNone = true := h.2.2 d (by simp [SSt.setR])
+    cases hdd : frame d <;> cases ha : frame a <;> cases hb : frame b <;> simp_all
 
 /-- The symbolic word has width `64` when every general-purpose name has width `64`: its
     width base (`STerm.wbase`) is a general-purpose name or has the known width `64`. -/

@@ -27,8 +27,12 @@ pattern of the export.
 * `MOVQ dst, q` or `MOV:64 dst, q` with `frame q = some a` loads the word at `a` into `dst`;
 * `MOVQ q, src` or `MOV:64 q, src` with `frame q = some a` stores `src` at `a`;
 * `CMP:64 d, x, q` with `frame q = some a` compares `x` with the word at `a`;
-* `CMOV:64 d, [c, x, y]` with a frame slot among `x`, `y` and `d`
-  a register selects between the words of `x` and `y`;
+* `CMOV:64 d, [c, x, y]` with a frame slot among `x`, `y`, `d` selects between the words of
+  `x` and `y` into the register `d` or the frame word of `d`;
+* `ADCX:64`/`ADCXHI:64` with a frame slot among its operands reads a slot word source as the
+  word at its address and a slot carry-in as the low bit of that word;
+* `MOV:64 q, #v` writes the word of `v` at the address of `q`, and `MOV q, #v` its low
+  32 bits;
 * `LOADIDX dst, (base, idx, sc)` loads the word at `reg base + sc · reg idx`;
 * `STOREIDX _, (base, idx, sc), val` stores `val` at `reg base + sc · reg idx`;
 * every other register-tagged instruction is `fstepF` on the register file.
@@ -169,27 +173,38 @@ def cellA? : LinstrR → Option CellOp
   | _ => none
 
 /-- The carry-chain add `ADCX:64 d, a, s, c` or its carry-out binding `ADCXHI:64 d, a, s, c`
-    with a frame slot among `d`, `a`, `s`, as `(is the add, d, a, s, c)`. -/
+    with a frame slot among `d`, `a`, `s`, `c`, as `(is the add, d, a, s, c)`. -/
 def slotCarry? (frame : String → Option (BitVec 64)) :
     LinstrR → Option (Bool × String × String × String × String)
   | .Lopn [.reg d] o [.reg a, .reg s, .reg c] =>
       if (o == "ADCX:64" || o == "ADCXHI:64")
-          && ((frame d).isSome || (frame a).isSome || (frame s).isSome) then
+          && ((frame d).isSome || (frame a).isSome || (frame s).isSome || (frame c).isSome) then
         some (o == "ADCX:64", d, a, s, c)
       else none
   | _ => none
 
-/-- The immediate move `MOV:64 q, #v` into a frame slot `q`, as the slot's address and `v`. -/
+/-- The immediate move `MOV:64 q, #v` or `MOV q, #v` into a frame slot `q`, as the slot's
+    address and `v`. -/
 def slotImm? (frame : String → Option (BitVec 64)) : LinstrR → Option (BitVec 64 × Nat)
-  | .Lopn [.reg q] o [.imm v] => if o = "MOV:64" then (frame q).map fun a => (a, v) else none
+  | .Lopn [.reg q] o [.imm v] =>
+      if o = "MOV:64" ∨ o = "MOV" then (frame q).map fun a => (a, v) else none
   | _ => none
 
-/-- The select `CMOV:64 d, [c, a, b]` with a register destination and a frame slot among the
+/-- The frame word after an immediate move of `v` into a frame word holding `old`: the 64-bit
+    word of `v` for `MOV:64`; for the 32-bit `MOV` (`movl $v, off(%rsp)`), the low 32 bits of
+    `v` below the high 32 bits of `old`. -/
+def immWordA : LinstrR → BitVec 64 → Nat → BitVec 64
+  | .Lopn _ o _, old, v =>
+      if o = "MOV" then (old &&& 0xFFFFFFFF00000000#64) ||| BitVec.ofNat 64 (v % 2 ^ 32)
+      else BitVec.ofNat 64 v
+  | _, _, v => BitVec.ofNat 64 v
+
+/-- The select `CMOV:64 d, [c, a, b]` with a frame slot among the destination `d` and the
     values `a`, `b`, as `(d, c, a, b)`. -/
 def slotCmov? (frame : String → Option (BitVec 64)) :
     LinstrR → Option (String × String × String × String)
   | .Lopn [.reg d] o [.reg c, .reg a, .reg b] =>
-      if o == "CMOV:64" && (frame d).isNone && ((frame a).isSome || (frame b).isSome) then
+      if o == "CMOV:64" && ((frame d).isSome || (frame a).isSome || (frame b).isSome) then
         some (d, c, a, b)
       else none
   | _ => none
@@ -202,6 +217,33 @@ def wordA (frame : String → Option (BitVec 64)) (sa : LstateA) (x : String) :
   | some ad => some (read64 sa.mem ad)
   | none => sa.reg.getW x 64
 
+/-- The bit a carry-in holds on the address machine: the low bit of the memory word at its
+    frame address for a frame slot (`bt $0` of the reloaded word), its one-bit register value
+    otherwise. -/
+def bitA (frame : String → Option (BitVec 64)) (sa : LstateA) (x : String) :
+    Option (BitVec 1) :=
+  match frame x with
+  | some ad => some ((read64 sa.mem ad).setWidth 1)
+  | none => sa.reg.getW x 1
+
+theorem bitA_of_none {frame : String → Option (BitVec 64)} {x : String} (h : frame x = none)
+    (sa : LstateA) : bitA frame sa x = sa.reg.getW x 1 := by
+  simp [bitA, h]
+
+/-- The low bit of the frame word after the 32-bit immediate move `MOV q, #v` is the low bit
+    of `v`. -/
+theorem immWordA_mov_setWidth (ds ss : List LOperand) (old : BitVec 64) (v : Nat) :
+    (immWordA (.Lopn ds "MOV" ss) old v).setWidth 1 = BitVec.ofNat 1 v := by
+  simp only [immWordA, if_true]
+  apply BitVec.eq_of_getElem_eq
+  intro i hi
+  obtain rfl : i = 0 := by omega
+  have e : BitVec.ofNat 1 (v % 4294967296) = BitVec.ofNat 1 v := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_ofNat]
+    omega
+  simp [e]
+
 /-- The register-file step: `fstepF` on a state with the given registers and flags. -/
 def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool) :=
   (fstepF i { reg := sa.reg, cf := sa.cf, of := sa.of } zf).map fun bz =>
@@ -211,9 +253,11 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
     from or to a frame slot and a compare against one read or write the memory at the
     slot's address; a whole-word access of a cell `mem.B.off` reads or writes the memory at
     the address in `B` plus `off`; a carry-chain add or carry-out binding with a frame-slot
-    operand reads its slot sources and writes a slot destination at the slot's address; an
-    immediate move into a frame slot writes the immediate at the slot's address; a select
-    with a frame-slot value reads that value at the slot's address. -/
+    operand reads its slot word sources and a slot carry-in (the low bit of the word) at the
+    slot's address and writes a slot destination at the slot's address; an immediate move
+    into a frame slot writes the immediate at the slot's address, all 64 bits for `MOV:64`
+    and the low 32 bits for `MOV`; a select with a frame-slot value or destination reads that
+    value and writes that destination at the slot's address. -/
 def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) (zf : Bool) :
     Option (LstateA × Bool) :=
   match i.snd with
@@ -271,7 +315,7 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
               | none =>
                   match slotCarry? frame i.fst with
                   | some (lo, d, a, s, c) =>
-                      match wordA frame sa a, wordA frame sa s, sa.reg.getW c 1 with
+                      match wordA frame sa a, wordA frame sa s, bitA frame sa c with
                       | some va, some vb, some vc =>
                           if lo then
                             match frame d with
@@ -291,25 +335,51 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                       | some (a, v) =>
                           some ({ sa with
                             reg := sa.reg.nextPc
-                            mem := write64 sa.mem a (BitVec.ofNat 64 v) }, zf)
+                            mem := write64 sa.mem a (immWordA i.fst (read64 sa.mem a) v) }, zf)
                       | none =>
                           match slotCmov? frame i.fst with
                           | some (d, c, a, b) =>
                               match sa.reg.getW c 1, wordA frame sa a, wordA frame sa b with
                               | some vc, some va, some vb =>
-                                  some ({ sa with
-                                    reg := (sa.reg.setReg d (selectW vc va vb)).nextPc }, zf)
+                                  match frame d with
+                                  | some ad =>
+                                      some ({ sa with
+                                        reg := sa.reg.nextPc
+                                        mem := write64 sa.mem ad (selectW vc va vb) }, zf)
+                                  | none =>
+                                      some ({ sa with
+                                        reg := (sa.reg.setReg d (selectW vc va vb)).nextPc }, zf)
                               | _, _, _ => none
                           | none => regStepA i sa zf
   | _ => none
 
 /-- **The carry-chain add with a frame-slot operand.** `ADCX:64 D, A, S, C`, one of `D`,
-    `A`, `S` a frame slot, writes `addCarryWord` of the words of `A`, `S` and the one-bit
-    `C` to the slot of `D` or to the register `D`. -/
+    `A`, `S`, `C` a frame slot, writes `addCarryWord` of the words of `A`, `S` and the carry-in
+    bit of `C` (`bitA`) to the slot of `D` or to the register `D`. -/
+theorem fstepA_adcxSlotBit (frame : String → Option (BitVec 64)) (D A S C : String)
+    (sa : LstateA) (zf : Bool)
+    (hsl : ((frame D).isSome || (frame A).isSome || (frame S).isSome || (frame C).isSome)
+      = true)
+    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb) :
+    fstepA frame (.Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C], .reg none) sa zf
+      = (bitA frame sa C).map fun vc =>
+          ((match frame D with
+            | some ad => { sa with
+                reg := sa.reg.nextPc
+                mem := write64 sa.mem ad (addCarryWord va vb vc) }
+            | none => { sa with reg := (sa.reg.setReg D (addCarryWord va vb vc)).nextPc }), zf) := by
+  cases hc : bitA frame sa C <;> cases hD : frame D <;>
+    simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?]
+
+/-- **The carry-chain add with a frame-slot word operand and a register carry-in.**
+    `ADCX:64 D, A, S, C`, one of `D`, `A`, `S` a frame slot and `C` a register, writes
+    `addCarryWord` of the words of `A`, `S` and the one-bit `C` to the slot of `D` or to the
+    register `D`. -/
 theorem fstepA_adcxSlot (frame : String → Option (BitVec 64)) (D A S C : String)
     (sa : LstateA) (zf : Bool)
     (hsl : ((frame D).isSome || (frame A).isSome || (frame S).isSome) = true)
-    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb) :
+    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb)
+    (hC : frame C = none) :
     fstepA frame (.Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C], .reg none) sa zf
       = (sa.reg.getW C 1).map fun vc =>
           ((match frame D with
@@ -317,21 +387,34 @@ theorem fstepA_adcxSlot (frame : String → Option (BitVec 64)) (D A S C : Strin
                 reg := sa.reg.nextPc
                 mem := write64 sa.mem ad (addCarryWord va vb vc) }
             | none => { sa with reg := (sa.reg.setReg D (addCarryWord va vb vc)).nextPc }), zf) := by
-  cases hc : sa.reg.getW C 1 <;> cases hD : frame D <;>
+  rw [fstepA_adcxSlotBit frame D A S C sa zf (by simp [hsl]) hA hS, bitA_of_none hC]
+
+/-- **The carry-out binding with a frame-slot operand.** `ADCXHI:64 O, A, S, C`, one of `O`,
+    `A`, `S`, `C` a frame slot, writes the one-bit `carryOutBit` of the words of `A`, `S` and
+    the carry-in bit of `C` (`bitA`) to `O`. -/
+theorem fstepA_adcxhiSlotBit (frame : String → Option (BitVec 64)) (O A S C : String)
+    (sa : LstateA) (zf : Bool)
+    (hsl : ((frame O).isSome || (frame A).isSome || (frame S).isSome || (frame C).isSome)
+      = true)
+    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb) :
+    fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) sa zf
+      = (bitA frame sa C).map fun vc =>
+          ({ sa with reg := (sa.reg.setReg O (carryOutBit va vb vc)).nextPc }, zf) := by
+  cases hc : bitA frame sa C <;>
     simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?]
 
-/-- **The carry-out binding with a frame-slot source.** `ADCXHI:64 O, A, S, C`, one of `O`,
-    `A`, `S` a frame slot, writes the one-bit `carryOutBit` of the words of `A`, `S` and the
-    one-bit `C` to `O`. -/
+/-- **The carry-out binding with a frame-slot word source and a register carry-in.**
+    `ADCXHI:64 O, A, S, C`, one of `O`, `A`, `S` a frame slot and `C` a register, writes the
+    one-bit `carryOutBit` of the words of `A`, `S` and the one-bit `C` to `O`. -/
 theorem fstepA_adcxhiSlot (frame : String → Option (BitVec 64)) (O A S C : String)
     (sa : LstateA) (zf : Bool)
     (hsl : ((frame O).isSome || (frame A).isSome || (frame S).isSome) = true)
-    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb) :
+    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb)
+    (hC : frame C = none) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) sa zf
       = (sa.reg.getW C 1).map fun vc =>
           ({ sa with reg := (sa.reg.setReg O (carryOutBit va vb vc)).nextPc }, zf) := by
-  cases hc : sa.reg.getW C 1 <;>
-    simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?]
+  rw [fstepA_adcxhiSlotBit frame O A S C sa zf (by simp [hsl]) hA hS, bitA_of_none hC]
 
 /-- **The cell load.** `LOAD:64 D, n`, `n` the cell `[B + off]`, writes the word at the
     address in `B` plus `off` to `D`. -/
@@ -361,7 +444,20 @@ theorem fstepA_slotImm (frame : String → Option (BitVec 64)) {q : String} {a :
     fstepA frame (.Lopn [.reg q] "MOV:64" [.imm v], .reg tag) sa zf
       = some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (BitVec.ofNat 64 v) },
           zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, hq]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, immWordA, hq]
+
+/-- **The 32-bit immediate store into a frame slot.** `MOV q, #v` with `q` a frame slot at
+    `a` (`movl $v, off(%rsp)`) writes the low 32 bits of `v` at `a` and keeps the high 32 bits
+    of the word at `a`. -/
+theorem fstepA_slotBit (frame : String → Option (BitVec 64)) {q : String} {a : BitVec 64}
+    (hq : frame q = some a) (v : Nat) (tag : Option Nat) (sa : LstateA) (zf : Bool) :
+    fstepA frame (.Lopn [.reg q] "MOV" [.imm v], .reg tag) sa zf
+      = some ({ sa with
+          reg := sa.reg.nextPc
+          mem := write64 sa.mem a
+            ((read64 sa.mem a &&& 0xFFFFFFFF00000000#64) ||| BitVec.ofNat 64 (v % 2 ^ 32)) },
+          zf) := by
+  simp [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, immWordA, hq]
 
 /-- **The select with a frame-slot value.** `CMOV:64 D, [C, A, B]`, `D` a register and one
     of `A`, `B` a frame slot, writes to `D` the select of the one-bit `C` between the words
@@ -373,6 +469,17 @@ theorem fstepA_slotCmov (frame : String → Option (BitVec 64)) {D C A B : Strin
     fstepA frame (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg tag) sa zf
       = (sa.reg.getW C 1).map fun vc =>
           ({ sa with reg := (sa.reg.setReg D (selectW vc va vb)).nextPc }, zf) := by
+  cases hc : sa.reg.getW C 1 <;>
+    simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?]
+
+/-- **The select into a frame slot.** `CMOV:64 D, [C, A, B]` with `D` a frame slot at `ad`
+    writes at `ad` the select of the one-bit `C` between the words of `A` and `B`. -/
+theorem fstepA_slotCmovDst (frame : String → Option (BitVec 64)) {D C A B : String}
+    {ad : BitVec 64} (hD : frame D = some ad) (tag : Option Nat) (sa : LstateA) (zf : Bool)
+    {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hB : wordA frame sa B = some vb) :
+    fstepA frame (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg tag) sa zf
+      = (sa.reg.getW C 1).map fun vc =>
+          ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem ad (selectW vc va vb) }, zf) := by
   cases hc : sa.reg.getW C 1 <;>
     simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?]
 
@@ -1478,8 +1585,8 @@ theorem isRegInstr_carryRegI (frame : String → Option (BitVec 64)) (opn dst a 
     IsRegInstr frame (carryRegI opn dst a b c) :=
   ⟨⟨none, rfl⟩, fun d src h => by simp [carryRegI, slotMov?] at h,
     fun d x q h => by simp [carryRegI, slotCmp?] at h, by simp [carryRegI, cellA?],
-    by simp [carryRegI, slotCarry?, hd, ha, hb], by simp [carryRegI, slotImm?],
-    by simp [carryRegI, slotCmov?, hb, hc]⟩
+    by simp [carryRegI, slotCarry?, hd, ha, hb, hc], by simp [carryRegI, slotImm?],
+    by simp [carryRegI, slotCmov?, hd, hb, hc]⟩
 
 /-- A two-source `applyOpnN` step leaves every register other than `dst` unchanged. -/
 theorem fstepF_binRegI_getW {opn base dst a b : String} (hstrip : stripWidthTag opn = base)

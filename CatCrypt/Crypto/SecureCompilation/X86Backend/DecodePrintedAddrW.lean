@@ -269,6 +269,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
     the 64-bit values of `A`, `S` and the one-bit value of `C` to `D`. -/
 theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) (s : LstateA)
     (zf : Bool) (hfD : frame D = none) (hfA : frame A = none) (hfS : frame S = none)
+    (hfC : frame C = none)
     {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C], .reg none) s zf
       = (s.reg.getW C 1).map fun vc =>
@@ -279,13 +280,13 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
       aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
-      hfS]
+      hfS, hfC]
 
 /-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
     `carryOutBit` of the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
 theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String) (s : LstateA)
     (zf : Bool) (hfO : frame O = none) (hfA : frame A = none) (hfS : frame S = none)
-    {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
+    (hfC : frame C = none) {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) s zf
       = (s.reg.getW C 1).map fun vc =>
           ({ s with reg := (s.reg.setReg O (VIR.JasminDialect.carryOutBit va vb vc)).nextPc },
@@ -295,7 +296,7 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
       withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
-      hfO, hfA, hfS]
+      hfO, hfA, hfS, hfC]
 
 /-! ## 5. The machine steps of the carry chain -/
 
@@ -480,7 +481,7 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
   have hgA := hc.wide hA hwA
   have hgS := hc.wide hS hwS
   rw [CArm.instr, fstepA_adcx3 _ D A S C s zf (frameP_gp hD) (frameP_gp hA) (frameP_gp hS)
-    hgA hgS] at hst
+    (frameP_gp hC) hgA hgS] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -561,7 +562,7 @@ theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
   have hgA := hc.wide hA hwA
   have hgS := hc.wide hS hwS
   rw [CArm.instr, fstepA_adcxhi _ O A S C s zf (frameP_gp hO) (frameP_gp hA) (frameP_gp hS)
-    hgA hgS] at hst
+    (frameP_gp hC) hgA hgS] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -1223,8 +1224,8 @@ theorem sim_sadcx_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
   set vb := valM P rsp sa S with hvb
   have hA' := wordA_valM hc hA hwA
   have hS' := wordA_valM hc hS hwS
-  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (slot_seen hD hA hS (by simp_all) rsp) hA' hS']
-    at hst
+  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (slot_seen hD hA hS (by simp_all) rsp) hA' hS'
+    (frameP_gp hC)] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -1373,7 +1374,7 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
   set vb := valM P rsp sa S with hvb
   have hA' := wordA_valM hc hA hwA
   have hS' := wordA_valM hc hS hwS
-  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (by simp [hfD]) hA' hS'] at hst
+  rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (by simp [hfD]) hA' hS' (frameP_gp hC)] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -1544,7 +1545,7 @@ theorem sim_sadcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     rcases hsl0 with h | h
     · simp [kOk_frame hA h rsp]
     · simp [kOk_frame hS h rsp]
-  rw [SArm.instr, fstepA_adcxhiSlot _ O A S C s zf hsl hA' hS'] at hst
+  rw [SArm.instr, fstepA_adcxhiSlot _ O A S C s zf hsl hA' hS' (frameP_gp hC)] at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
@@ -1905,7 +1906,8 @@ theorem sim_bmov (P : Params) (rsp : BitVec 64) (D : String) (n : Nat) (h : zOk 
     ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' ∧ zf' = zf := by
   simp only [zOk, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨hD, hn⟩ := h
-  rw [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun.fstepA_bitMov] at hst
+  rw [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun.fstepA_bitMov _ D n s zf
+    (frameP_gp hD)] at hst
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
   have hrun : aMachine.runBlock sa ((zPieces D n).map Prod.snd)
       = evalInstrA sa (.mov (phys D) (.imm n)) := rfl
