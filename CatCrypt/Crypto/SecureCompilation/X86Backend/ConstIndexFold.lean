@@ -33,11 +33,16 @@ scalar binding, and the constant index reaches the load register through one.
 
 `KEnv` maps register names to known 64-bit values. `stepK` updates it across one
 gathered instruction: an immediate `mov` records its constant, a `mov` from one of
-the sixteen general-purpose registers copies a known value (a `mov` from a
-`mem.<base>.<off>` name forgets its destination), a memory load forgets its destination, a memory store keeps
-everything, and every other instruction forgets the registers it writes
-(`MachineConstantTime.dstRegs`). `foldCore` threads the
-environment through the body, reading the gathered block of each instruction.
+the sixteen general-purpose registers or from a spill or ABI-save slot (`k.N`,
+`qsave.X`) copies a known value (a `mov` from a `mem.<base>.<off>` name forgets its
+destination), a memory load forgets its destination, a memory store keeps every
+register entry, and every other instruction forgets the registers it writes
+(`MachineConstantTime.dstRegs`). A write to memory based at `RSP` (`writesFrame`)
+also forgets every slot name, since a `MOVQ` to a slot gathers to such a store.
+`foldCore` threads the environment through the body, reading the gathered block of
+each instruction. Besides the indexed accesses, the fold rewrites a `MOV:64` copy of a
+known slot value into a general-purpose register as the immediate move of that value,
+which the dead-move elimination can then remove.
 
 ## Main results
 
@@ -148,7 +153,22 @@ theorem lowerPrinted_store (frame spillW qsaveB : Nat) (d B : String) (off : Nat
     lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "STORE" [.arr B off, v])
       = some [.storeMem B off (LoweringExtended.lowerJOperand v)] := rfl
 
+theorem lowerPrinted_movReg (frame spillW qsaveB : Nat) (d x : String) :
+    lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "MOV:64" [.reg x])
+      = some [.mov d (.reg x)] := rfl
+
+theorem lowerPrinted_movImm (frame spillW qsaveB : Nat) (d : String) (k : Nat) :
+    lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "MOV:64" [.imm k])
+      = some [.mov d (.imm k)] := rfl
+
 /-! ## 3. One access at a known index -/
+
+/-- A register move from a name holding `v` is the immediate move of `v`. -/
+theorem evalInstr_movImm_const (s : JState 64) (d x : String) {v : BitVec 64}
+    (h : s.get x = v) :
+    evalInstr s (.mov d (.imm v.toNat)) = evalInstr s (.mov d (.reg x)) := by
+  have h' : s.regs x = v := h
+  simp [evalInstr, JOperand.eval, h']
 
 /-- An indexed load whose index register holds `v` is the direct load at
     displacement `sc · v`. -/
@@ -271,20 +291,62 @@ theorem KEnv.Holds.evalInstr_killAll {s : JState 64} {env : KEnv} (h : KEnv.Hold
   rw [MachineConstantTime.evalInstr_get_of_not_dst _ _ _ h2]
   exact h r v h1
 
-/-- The analysis step across one gathered instruction. -/
+/-- Forget every spill (`k.N`) and ABI-save (`qsave.X`) name when `b` holds. -/
+def KEnv.killFrame (b : Bool) (env : KEnv) : KEnv :=
+  if b then env.filter (fun p => !isSpillOrQsave p.1) else env
+
+theorem KEnv.find_filter_name (f : String → Bool) (env : KEnv) (r : String) :
+    KEnv.find (env.filter (fun p => f p.1)) r = if f r then env.find r else none := by
+  induction env with
+  | nil => simp [KEnv.find]
+  | cons p t ih =>
+      obtain ⟨a, w⟩ := p
+      by_cases har : a = r
+      · subst har
+        by_cases ha : f a = true <;> simp [KEnv.find, ha, ih]
+      · by_cases ha : f a = true <;> simp [KEnv.find, ha, har, ih]
+
+/-- Forgetting the frame slots keeps the environment true. -/
+theorem KEnv.Holds.killFrame {s : JState 64} {env : KEnv} (h : KEnv.Holds s env) (b : Bool) :
+    KEnv.Holds s (env.killFrame b) := by
+  intro r v hr
+  cases b with
+  | false => exact h r v hr
+  | true =>
+      simp only [KEnv.killFrame, if_true] at hr
+      rw [KEnv.find_filter_name (fun n => !isSpillOrQsave n)] at hr
+      split at hr
+      · exact h r v hr
+      · simp at hr
+
+/-- The instruction writes memory addressed from `RSP`, the base of the spill and
+    ABI-save slots: a store, an indexed store or a memory add at base `RSP`, or a
+    symbol load that rebinds the `RSP` memory bank. -/
+def writesFrame : JInstr 64 → Bool
+  | .storeMem B _ _ => B == "RSP"
+  | .storeMemIdx B _ _ _ => B == "RSP"
+  | .addToMem B _ _ => B == "RSP"
+  | .loadSym d _ => d == "RSP"
+  | _ => false
+
+/-- The analysis step across one gathered instruction. A spill or ABI-save name is
+    a register name of the gather's state when an instruction names it directly and
+    the memory word `off(%rsp)` when a `MOVQ` moves it; the step copies a known value
+    from either kind of name and forgets every slot name at a write to memory based
+    at `RSP`. -/
 def stepK (env : KEnv) : JInstr 64 → KEnv
   | .mov d (.imm k) => (d, BitVec.ofNat 64 k) :: env.kill d
   | .mov d (.reg x) =>
-      if isGpName x then
+      if isGpName x || isSpillOrQsave x then
         match env.find x with
         | some v => (d, v) :: env.kill d
         | none => env.kill d
       else env.kill d
   | .loadMem d _ _ => env.kill d
   | .loadMemIdx d _ _ _ => env.kill d
-  | .storeMem _ _ _ => env
-  | .storeMemIdx _ _ _ _ => env
-  | i => env.killAll (MachineConstantTime.dstRegs i)
+  | .storeMem B _ _ => env.killFrame (B == "RSP")
+  | .storeMemIdx B _ _ _ => env.killFrame (B == "RSP")
+  | i => (env.killAll (MachineConstantTime.dstRegs i)).killFrame (writesFrame i)
 
 /-- The analysis step across a gathered block. -/
 def stepKs (env : KEnv) (js : List (JInstr 64)) : KEnv := js.foldl stepK env
@@ -308,12 +370,13 @@ theorem KEnv.Holds.stepK {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
   | loadMem d _ _ => exact h.setReg_kill d _
   | loadMemIdx d _ _ _ => exact h.setReg_kill d _
   | storeMem B off src =>
-      intro r v hr
-      exact h r v hr
+      have h' : KEnv.Holds (evalInstr s (.storeMem B off src)) env := fun r v hr => h r v hr
+      exact h'.killFrame _
   | storeMemIdx B x sc src =>
-      intro r v hr
-      exact h r v hr
-  | _ => exact h.evalInstr_killAll _
+      have h' : KEnv.Holds (evalInstr s (.storeMemIdx B x sc src)) env :=
+        fun r v hr => h r v hr
+      exact h'.killFrame _
+  | _ => exact (h.evalInstr_killAll _).killFrame _
 
 theorem runBlock_append' (s : JState 64) (l₁ l₂ : List (JInstr 64)) :
     runBlock s (l₁ ++ l₂) = runBlock (runBlock s l₁) l₂ := by
@@ -335,7 +398,9 @@ def foldOK (B : String) (sc : Nat) (v : BitVec 64) : Bool :=
   sc == 8 && isGpName B && decide (sc * v.toNat < 2 ^ 31)
 
 /-- The direct form of an indexed load or store whose index register is known
-    in `env`; `none` for every other instruction. -/
+    in `env`, and the immediate move of a known value below `2 ^ 31` copied by
+    `MOV:64` from a slot into a general-purpose register; `none` for every other
+    instruction. -/
 def foldTarget? (env : KEnv) : LinstrR → Option LinstrR
   | .Lopn [.reg d] "LOADIDX" [.arrIdx B x sc] =>
       match env.find x with
@@ -348,6 +413,13 @@ def foldTarget? (env : KEnv) : LinstrR → Option LinstrR
       | some v =>
           if foldOK B sc v then
             some (.Lopn [.reg d] "STORE" [.arr B (sc * v.toNat), .reg vn])
+          else none
+      | none => none
+  | .Lopn [.reg d] "MOV:64" [.reg x] =>
+      match env.find x with
+      | some v =>
+          if isGpName d && isSpillOrQsave x && decide (v.toNat < 2 ^ 31) then
+            some (.Lopn [.reg d] "MOV:64" [.imm v.toNat])
           else none
       | none => none
   | _ => none
@@ -427,7 +499,9 @@ theorem foldTarget?_spec {env : KEnv} {i i' : LinstrR} (h : foldTarget? env i = 
         ∧ i' = .Lopn [.reg d] "LOAD" [.arr B (sc * v.toNat)] ∧ env.find x = some v)
     ∨ (∃ d B x sc vn v, i = .Lopn [.reg d] "STOREIDX" [.arrIdx B x sc, .reg vn]
         ∧ i' = .Lopn [.reg d] "STORE" [.arr B (sc * v.toNat), .reg vn]
-        ∧ env.find x = some v) := by
+        ∧ env.find x = some v)
+    ∨ (∃ d x v, i = .Lopn [.reg d] "MOV:64" [.reg x]
+        ∧ i' = .Lopn [.reg d] "MOV:64" [.imm v.toNat] ∧ env.find x = some v) := by
   unfold foldTarget? at h
   split at h
   · left
@@ -437,18 +511,26 @@ theorem foldTarget?_spec {env : KEnv} {i i' : LinstrR} (h : foldTarget? env i = 
         exact ⟨_, _, _, _, _, rfl, h.symm, by assumption⟩
       · simp at h
     · simp at h
-  · right
+  · right; left
     split at h
     · split at h
       · simp only [Option.some.injEq] at h
         exact ⟨_, _, _, _, _, _, rfl, h.symm, by assumption⟩
       · simp at h
     · simp at h
+  · right; right
+    split at h
+    · split at h
+      · simp only [Option.some.injEq] at h
+        exact ⟨_, _, _, rfl, h.symm, by assumption⟩
+      · simp at h
+    · simp at h
   · simp at h
 
 theorem foldTarget?_direct {env : KEnv} {i i' : LinstrR} (h : foldTarget? env i = some i') :
     linstrRDirect i' = true := by
-  rcases foldTarget?_spec h with ⟨_, _, _, _, _, -, rfl, -⟩ | ⟨_, _, _, _, _, _, -, rfl, -⟩ <;>
+  rcases foldTarget?_spec h with ⟨_, _, _, _, _, -, rfl, -⟩ | ⟨_, _, _, _, _, _, -, rfl, -⟩ |
+      ⟨_, _, _, -, rfl, -⟩ <;>
     simp [linstrRDirect, AllocCTPreservation.isIndexed]
 
 theorem isLret_foldInstr (env : KEnv) (i : Linstr) :
@@ -457,7 +539,8 @@ theorem isLret_foldInstr (env : KEnv) (i : Linstr) :
   cases h : foldTarget? env i.li_i with
   | none => rfl
   | some i' =>
-      rcases foldTarget?_spec h with ⟨_, _, _, _, _, hi, rfl, -⟩ | ⟨_, _, _, _, _, _, hi, rfl, -⟩ <;>
+      rcases foldTarget?_spec h with ⟨_, _, _, _, _, hi, rfl, -⟩ | ⟨_, _, _, _, _, _, hi, rfl, -⟩ |
+          ⟨_, _, _, hi, rfl, -⟩ <;>
         simp [isLret, hi]
 
 /-- A folded instruction lowers to a block that runs like the original block from
@@ -471,7 +554,8 @@ theorem foldInstr_lower (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
   | none => exact ⟨js, h, fun _ _ => rfl⟩
   | some i' =>
       rcases foldTarget?_spec hf with
-        ⟨d, B, x, sc, v, rfl, rfl, hx⟩ | ⟨d, B, x, sc, vn, v, rfl, rfl, hx⟩
+        ⟨d, B, x, sc, v, rfl, rfl, hx⟩ | ⟨d, B, x, sc, vn, v, rfl, rfl, hx⟩ |
+          ⟨d, x, v, rfl, rfl, hx⟩
       · rw [lowerPrinted_loadIdx] at h
         cases h
         refine ⟨_, lowerPrinted_load _ _ _ d B _, fun s hs => ?_⟩
@@ -482,6 +566,11 @@ theorem foldInstr_lower (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
         refine ⟨_, lowerPrinted_store _ _ _ d B _ _, fun s hs => ?_⟩
         simp only [runBlock_cons, runBlock_nil]
         exact (evalInstr_storeMemIdx_const s B x sc _ (hs x v hx)).symm
+      · rw [lowerPrinted_movReg] at h
+        cases h
+        refine ⟨_, lowerPrinted_movImm _ _ _ d _, fun s hs => ?_⟩
+        simp only [runBlock_cons, runBlock_nil]
+        exact evalInstr_movImm_const s d x (hs x v hx)
 
 /-- The lowering applied to the non-return instructions of a body. -/
 abbrev gatherList (p : Nat × Nat × Nat) (body : Lcmd) : Option (List (List (JInstr 64))) :=

@@ -76,7 +76,8 @@ theorem foldInstr_lower_leak (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
   | some i' =>
       rw [hf, Option.getD_some] at h'
       rcases foldTarget?_spec hf with
-        ⟨d, B, x, sc, v, rfl, rfl, hx⟩ | ⟨d, B, x, sc, vn, v, rfl, rfl, hx⟩
+        ⟨d, B, x, sc, v, rfl, rfl, hx⟩ | ⟨d, B, x, sc, vn, v, rfl, rfl, hx⟩ |
+          ⟨d, x, v, rfl, rfl, hx⟩
       · rw [lowerPrinted_loadIdx] at h
         rw [lowerPrinted_load] at h'
         cases h
@@ -93,6 +94,13 @@ theorem foldInstr_lower_leak (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
           JInstr.dataArgs]
         rw [hv]
         rfl
+      · rw [lowerPrinted_movReg] at h
+        rw [lowerPrinted_movImm] at h'
+        cases h
+        cases h'
+        have hv : s.regs x = v := hs x v hx
+        simp [blockLeakCT, instrLeakCT, instrLeak, JInstr.mnem, JInstr.dataArgs,
+          JOperand.eval, JState.get, hv]
 
 /-- **Leakage of the fold at fixed frame parameters.** From every state the
     environment describes, the gathered block of the folded body has the leakage
