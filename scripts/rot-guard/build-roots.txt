@@ -376,7 +376,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteFrame
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
-CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLJLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.LawfulArrByteOffset
 CatCrypt.Crypto.SecureCompilation.Dialects.LeafCall128Emit
 CatCrypt.Crypto.SecureCompilation.Dialects.MemrefArrayFrontValidate
@@ -556,6 +555,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrBlock
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrWord
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeSelfContained
 CatCrypt.Crypto.SecureCompilation.VIR.ComParamDerive
+CatCrypt.Crypto.SecureCompilation.VIR.ComRangeExact
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirWf
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_EcPoly
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_PrinterProbe
@@ -668,7 +668,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
-CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance

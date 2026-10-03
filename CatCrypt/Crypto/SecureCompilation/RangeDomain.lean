@@ -27,6 +27,10 @@ operations, so an analysis over any word-level IR instantiates it.
 * `condAdd`, `umin`, `ivCondAdd?`: the conditional add `d + ((0 - (d >>> (w-1))) &&& C)`
   and its range.
 * `barrettBound`, `ivBarrett?`: the range of the Barrett remainder.
+* `ivSTop`, `ivSFits`, `ivSar`, `ivCenter`, `ivCorner`, `ivMulS`, `ivNarrow`, `ivHull`,
+  `ivShlExt`: the signed transfer functions (arithmetic shift as floor division, the
+  corner product, the narrower of two intervals, the hull, and the left shift of a zero
+  extension).
 
 ## Main results
 
@@ -44,6 +48,10 @@ operations, so an analysis over any word-level IR instantiates it.
   their zero-extended low halves.
 * `extractLsb'_sub_of_setWidth_eq`: the high half of a 64-bit difference of words with
   equal low halves is the difference of their high halves.
+* `Iv.mem_sar`, `Iv.mem_mulS`, `Iv.mem_narrow`, `Iv.mem_hull_left`, `Iv.mem_hull_right`,
+  `Iv.mem_trunc`, `Iv.mem_shlExt`: soundness of the signed transfer functions;
+  `Iv.toInt_of_mem_sFits`: a member of an interval in the signed lane has its signed value
+  in the interval.
 -/
 
 @[expose] public section
@@ -620,5 +628,176 @@ theorem extractLsb'_sub_of_setWidth_eq (x y : BitVec 64) (h : x.setWidth 32 = y.
   have hy := y.isLt
   simp only [BitVec.extractLsb'_toNat, BitVec.toNat_sub, Nat.shiftRight_eq_div_pow] at *
   omega
+
+/-! ## 6. Signed transfer functions -/
+
+/-- The signed lane `[-2^(w-1), 2^(w-1) - 1]`, written without `w - 1`. -/
+def ivSTop (w : Nat) : Iv := (-(2 ^ w / 2), (2 ^ w - 1) / 2)
+
+/-- `i` lies in the signed lane: `-2^w ≤ 2·i.1` and `2·i.2 < 2^w`. -/
+def ivSFits (w : Nat) (i : Iv) : Bool :=
+  decide (-2 ^ w ≤ 2 * i.1) && decide (2 * i.2 < 2 ^ w)
+
+/-- The interval of an arithmetic right shift by `k`: floor division by `2^k` of `a` when
+    `a` lies in the signed lane, else of the signed lane. -/
+def ivSar (w : Nat) (a : Iv) (k : Nat) : Iv :=
+  let j := if ivSFits w a then a else ivSTop w
+  (j.1 / 2 ^ k, j.2 / 2 ^ k)
+
+/-- `i` moved down by `2^w` when it lies in the upper half `[2^(w-1), 2^w)` of the lane, so
+    that a constant above `2^(w-1)` is read as a negative integer. -/
+def ivCenter (w : Nat) (i : Iv) : Iv :=
+  if 2 ^ w ≤ 2 * i.1 ∧ i.2 < 2 ^ w then (i.1 - 2 ^ w, i.2 - 2 ^ w) else i
+
+/-- The interval of all products of an integer of `a` and an integer of `b`: the hull of
+    the four corner products. -/
+def ivCorner (a b : Iv) : Iv :=
+  (min (min (a.1 * b.1) (a.1 * b.2)) (min (a.2 * b.1) (a.2 * b.2)),
+   max (max (a.1 * b.1) (a.1 * b.2)) (max (a.2 * b.1) (a.2 * b.2)))
+
+/-- The interval of a low product from the corner products of the centred operand
+    intervals. -/
+def ivMulS (w : Nat) (a b : Iv) : Iv :=
+  ivNorm w (ivCorner (ivCenter w a) (ivCenter w b))
+
+/-- The narrower of two intervals, `a` on a tie. -/
+def ivNarrow (a b : Iv) : Iv :=
+  if b.2 - b.1 < a.2 - a.1 then b else a
+
+/-- The hull of two intervals. -/
+def ivHull (a b : Iv) : Iv := (min a.1 b.1, max a.2 b.2)
+
+/-- The interval of `(z.setWidth w) <<< k` for a `w0`-bit word `z` in `i`, when
+    `w ≤ w0 + k`. -/
+def ivShlExt (w : Nat) (i : Iv) (k : Nat) : Iv :=
+  ivNorm w (i.1 * 2 ^ k, i.2 * 2 ^ k)
+
+namespace Iv
+
+variable {w : Nat} {a b : Iv} {x y : BitVec w}
+
+/-- A word whose signed value lies in `i` is a member of `i`. -/
+theorem mem_of_toInt {i : Iv} (h1 : i.1 ≤ x.toInt) (h2 : x.toInt ≤ i.2) : i.Mem w x := by
+  refine ⟨x.toInt, h1, h2, ?_⟩
+  have h := BitVec.toNat_ofInt (n := w) x.toInt
+  rw [BitVec.ofInt_toInt] at h
+  have hnn : 0 ≤ x.toInt % 2 ^ w := Int.emod_nonneg _ (by positivity)
+  push_cast at h
+  rw [h, Int.toNat_of_nonneg hnn]
+
+theorem toInt_mem_sTop (x : BitVec w) : (ivSTop w).1 ≤ x.toInt ∧ x.toInt ≤ (ivSTop w).2 := by
+  have h1 := BitVec.le_two_mul_toInt (x := x)
+  have h2 := BitVec.two_mul_toInt_lt (x := x)
+  simp only [ivSTop]
+  constructor <;> omega
+
+/-- A member of an interval in the signed lane has its signed value in the interval. -/
+theorem toInt_of_mem_sFits {i : Iv} (h : i.Mem w x) (hf : ivSFits w i = true) :
+    i.1 ≤ x.toInt ∧ x.toInt ≤ i.2 := by
+  obtain ⟨v, h1, h2, hv⟩ := h
+  simp only [ivSFits, Bool.and_eq_true, decide_eq_true_eq] at hf
+  have hM : (0 : ℤ) < 2 ^ w := by positivity
+  have hxv : x.toInt = v := by
+    have e : (2 : ℤ) ^ w = ((2 ^ w : ℕ) : ℤ) := by push_cast; rfl
+    rw [BitVec.toInt_eq_toNat_bmod, ← hv, e, Int.emod_bmod]
+    rw [e] at hf
+    exact Int.bmod_eq_of_le_mul_two (by omega) (by omega)
+  rw [hxv]
+  exact ⟨h1, h2⟩
+
+theorem mem_sar (ha : a.Mem w x) (k : Nat) : (ivSar w a k).Mem w (x.sshiftRight k) := by
+  have hj : (if ivSFits w a then a else ivSTop w).1 ≤ x.toInt ∧
+      x.toInt ≤ (if ivSFits w a then a else ivSTop w).2 := by
+    split
+    · rename_i hf; exact toInt_of_mem_sFits ha hf
+    · exact toInt_mem_sTop x
+  have hk : (0 : ℤ) < 2 ^ k := by positivity
+  have e : (x.sshiftRight k).toInt = x.toInt / 2 ^ k := by
+    rw [BitVec.toInt_sshiftRight, Int.shiftRight_eq_div_pow]; norm_cast
+  exact mem_of_toInt (by rw [e]; exact Int.ediv_le_ediv hk hj.1)
+    (by rw [e]; exact Int.ediv_le_ediv hk hj.2)
+
+theorem Mem.center {i : Iv} (h : i.Mem w x) : (ivCenter w i).Mem w x := by
+  unfold ivCenter
+  split
+  · obtain ⟨v, h1, h2, hv⟩ := h
+    refine ⟨v - 2 ^ w, by simp only; omega, by simp only; omega, ?_⟩
+    rw [Int.sub_emod, Int.emod_self, Int.sub_zero, Int.emod_emod, hv]
+  · exact h
+
+theorem mem_corner {x' y' : ℤ} (hx1 : a.1 ≤ x') (hx2 : x' ≤ a.2) (hy1 : b.1 ≤ y')
+    (hy2 : y' ≤ b.2) : (ivCorner a b).1 ≤ x' * y' ∧ x' * y' ≤ (ivCorner a b).2 := by
+  have seg : ∀ {a1 a2 u : ℤ} (z : ℤ), a1 ≤ u → u ≤ a2 →
+      min (a1 * z) (a2 * z) ≤ u * z ∧ u * z ≤ max (a1 * z) (a2 * z) := by
+    intro a1 a2 u z h1 h2
+    rcases le_total 0 z with hz | hz
+    · exact ⟨le_trans (min_le_left _ _) (mul_le_mul_of_nonneg_right h1 hz),
+        le_trans (mul_le_mul_of_nonneg_right h2 hz) (le_max_right _ _)⟩
+    · exact ⟨le_trans (min_le_right _ _) (mul_le_mul_of_nonpos_right h2 hz),
+        le_trans (mul_le_mul_of_nonpos_right h1 hz) (le_max_left _ _)⟩
+  obtain ⟨l, u⟩ := seg y' hx1 hx2
+  have e1 := seg a.1 hy1 hy2
+  have e2 := seg a.2 hy1 hy2
+  rw [mul_comm b.1, mul_comm b.2, mul_comm y'] at e1 e2
+  exact ⟨le_trans (min_le_min e1.1 e2.1) l, le_trans u (max_le_max e1.2 e2.2)⟩
+
+theorem mem_mulS (ha : a.Mem w x) (hb : b.Mem w y) : (ivMulS w a b).Mem w (x * y) := by
+  apply Mem.norm
+  have ha' := ha.center
+  have hb' := hb.center
+  rw [mem_iff_ofInt] at ha' hb' ⊢
+  obtain ⟨u, hu1, hu2, rfl⟩ := ha'
+  obtain ⟨v, hv1, hv2, rfl⟩ := hb'
+  obtain ⟨l, r⟩ := mem_corner hu1 hu2 hv1 hv2
+  exact ⟨u * v, l, r, BitVec.ofInt_mul u v⟩
+
+theorem mem_narrow (ha : a.Mem w x) (hb : b.Mem w x) : (ivNarrow a b).Mem w x := by
+  unfold ivNarrow
+  split
+  · exact hb
+  · exact ha
+
+theorem mem_hull_left (ha : a.Mem w x) : (ivHull a b).Mem w x := by
+  obtain ⟨v, h1, h2, hv⟩ := ha
+  exact ⟨v, le_trans (min_le_left _ _) h1, le_trans h2 (le_max_left _ _), hv⟩
+
+theorem mem_hull_right (hb : b.Mem w x) : (ivHull a b).Mem w x := by
+  obtain ⟨v, h1, h2, hv⟩ := hb
+  exact ⟨v, le_trans (min_le_right _ _) h1, le_trans h2 (le_max_right _ _), hv⟩
+
+/-- A truncation keeps the interval: `x.setWidth w'` is a member of `ivNorm w' a` for a
+    member `x` of `a` when `w' ≤ w`. -/
+theorem mem_trunc {w' : Nat} (ha : a.Mem w x) (hw : w' ≤ w) :
+    (ivNorm w' a).Mem w' (x.setWidth w') := by
+  apply Mem.norm
+  obtain ⟨v, h1, h2, hv⟩ := ha
+  refine ⟨v, h1, h2, ?_⟩
+  have hd : (2 : ℤ) ^ w' ∣ 2 ^ w := pow_dvd_pow 2 hw
+  rw [BitVec.toNat_setWidth, ← Int.emod_emod_of_dvd v hd, hv]
+  push_cast
+  rfl
+
+/-- The left shift by `k` of a zero extension to `w` bits of a `w0`-bit member `z` of `i`
+    is a member of `ivShlExt w i k` when `w ≤ w0 + k`. -/
+theorem mem_shlExt {w0 : Nat} {i : Iv} {z : BitVec w0} (hz : i.Mem w0 z) (k : Nat)
+    (hw : w ≤ w0 + k) : (ivShlExt w i k).Mem w ((z.setWidth w) <<< k) := by
+  apply Mem.norm
+  obtain ⟨v, h1, h2, hv⟩ := hz
+  have hk : (0 : ℤ) ≤ 2 ^ k := by positivity
+  refine ⟨v * 2 ^ k, Int.mul_le_mul_of_nonneg_right h1 hk,
+    Int.mul_le_mul_of_nonneg_right h2 hk, ?_⟩
+  have hd : (2 : ℤ) ^ w ∣ 2 ^ w0 * 2 ^ k := by
+    rw [← pow_add]; exact pow_dvd_pow 2 hw
+  have hv' : v = (z.toNat : ℤ) + 2 ^ w0 * (v / 2 ^ w0) := by
+    have := Int.emod_def v (2 ^ w0)
+    rw [← hv]; linarith
+  rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq, BitVec.toNat_setWidth]
+  push_cast
+  obtain ⟨c, hc⟩ := hd
+  conv_rhs => rw [Int.mul_emod, Int.emod_emod, ← Int.mul_emod]
+  rw [hv', add_mul, Int.mul_right_comm (2 ^ w0) (v / 2 ^ w0) (2 ^ k), hc, mul_assoc,
+    Int.add_mul_emod_self_left]
+
+end Iv
 
 end CatCrypt.Crypto.SecureCompilation.RangeDomain

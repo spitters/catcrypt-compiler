@@ -26,15 +26,21 @@ Each variable carries, beside its interval, a symbolic fact `Sym` about its valu
 terms of an earlier variable, named by its de Bruijn level (its position counted from
 the bottom of the context, stable as the context grows): a shift `x >>> s`, the sign
 mask `0 - (x >>> (w-1))` and its `and` with a constant, and the three stages of the
-Barrett quotient. Two operations take their range from these facts:
+Barrett quotient; and the zero extension of a narrower word, which carries the interval
+of that word. Three operations take their range from these facts:
 
 * `d + t` where `t` is `(0 - (d >>> (w-1))) &&& C` is the conditional add
   (`RangeDomain.condAdd`), bounded by `ivCondAdd?`;
 * `x - y` where `y.toNat = ⌊⌊x/2^s⌋·m/2^t⌋·p` is the Barrett remainder, bounded by
-  `ivBarrett?`.
+  `ivBarrett?`;
+* `shlImm (2w) w` of the zero extension `castW w (2w)` of a word in `(lo, hi)` lies in
+  `(lo·2^w, hi·2^w)` (`ivShlExt`), so the following `sarImm (2w) w` gives back
+  `(lo, hi)` (`ivSar`): the sign extension `castW; shlImm; sarImm`.
 
-Operations other than `regArith`, `regConst`, `mulhi`, `shrImm`, `shlImm` and `castW`
-get the full lane range of their result type.
+Signed intervals pass through a truncating `castW` unchanged, a low product takes the
+narrower of `ivMul` and the corner product `ivMulS`, and `select` takes the hull of its
+arms. Operations other than `regArith`, `regConst`, `mulhi`, `shrImm`, `shlImm`,
+`sarImm`, `castW` and `select` get the full lane range of their result type.
 
 ## Main definitions
 
@@ -142,6 +148,8 @@ inductive Sym where
   | barQ (ℓ s m t : Nat)
   /-- `y.toNat = ⌊⌊x/2^s⌋·m/2^t⌋·p`. -/
   | barY (ℓ s m t p : Nat)
+  /-- `y` is the zero extension of a `w0`-bit word in `i`, the word at level `ℓ`. -/
+  | zext (ℓ : Nat) (i : Iv) (w0 : Nat)
 
 /-- The level a fact refers to. -/
 def Sym.level : Sym → Nat
@@ -152,6 +160,7 @@ def Sym.level : Sym → Nat
   | .barG ℓ _ _ => ℓ
   | .barQ ℓ _ _ _ => ℓ
   | .barY ℓ _ _ _ _ => ℓ
+  | .zext ℓ _ _ => ℓ
 
 /-- The fact `s` of `y` with the referred word `x`. -/
 def Sym.Holds {w : Nat} (y x : BitVec w) : Sym → Prop
@@ -163,10 +172,18 @@ def Sym.Holds {w : Nat} (y x : BitVec w) : Sym → Prop
   | .barG _ s m => y.toNat = x.toNat / 2 ^ s * m
   | .barQ _ s m t => y.toNat = x.toNat / 2 ^ s * m / 2 ^ t
   | .barY _ s m t p => y.toNat = x.toNat / 2 ^ s * m / 2 ^ t * p
+  | .zext _ _ _ => True
+
+/-- The meaning of the fact `s` of `y` under `V`: for a zero extension, `y` is the zero
+    extension of a `w0`-bit word in `i`; otherwise `s.Holds y x` for the `w`-bit word `x`
+    at the level of `s`. -/
+def Sym.Sem {Γ : JCtxt} (V : Ctxt.Valuation Γ) (w : Nat) (y : BitVec w) : Sym → Prop
+  | .zext _ i w0 => ∃ z : BitVec w0, i.Mem w0 z ∧ y = z.setWidth w
+  | s => ∀ x, atLevel V w s.level = some x → s.Holds y x
 
 /-- The fact `s` holds of `y` under `V`, and it refers to a variable of the context. -/
 def SymOK {Γ : JCtxt} (V : Ctxt.Valuation Γ) (w : Nat) (y : BitVec w) (s : Sym) : Prop :=
-  (s = .none ∨ s.level < Γ.length) ∧ ∀ x, atLevel V w s.level = some x → s.Holds y x
+  (s = .none ∨ s.level < Γ.length) ∧ s.Sem V w y
 
 theorem SymOK.none {Γ : JCtxt} (V : Ctxt.Valuation Γ) (w : Nat) (y : BitVec w) :
     SymOK V w y .none :=
@@ -177,14 +194,18 @@ theorem SymOK.extend {Γ : JCtxt} {t : JasminTy} {V : Ctxt.Valuation Γ} {w : Na
   obtain ⟨h1, h2⟩ := h
   rcases h1 with rfl | h1
   · exact SymOK.none _ _ _
-  · refine ⟨Or.inr (by simp; omega), fun x hx => h2 x ?_⟩
-    rwa [atLevel_extend V z w _ h1] at hx
+  · refine ⟨Or.inr (by simp; omega), ?_⟩
+    cases s with
+    | zext ℓ i w0 => exact h2
+    | _ => exact fun x hx => h2 x (by rwa [atLevel_extend V z w _ h1] at hx)
 
 /-- The fact of a variable at level `ℓ` that `SymOK` gives. -/
 theorem SymOK.holds {Γ : JCtxt} {V : Ctxt.Valuation Γ} {w : Nat} {y : BitVec w} {s : Sym}
     (h : SymOK V w y s) (a : Ctxt.Var Γ (.reg w)) (ha : s.level = varLevel a) :
-    s.Holds y (regVal V a) :=
-  h.2 _ (by rw [ha]; exact atLevel_var a V)
+    s.Holds y (regVal V a) := by
+  cases s with
+  | zext ℓ i w0 => trivial
+  | _ => exact h.2 _ (by rw [ha]; exact atLevel_var a V)
 
 /-- The abstract value of a variable: an interval and a fact. -/
 abbrev AVal := Iv × Sym
@@ -286,7 +307,7 @@ def binIv (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
     match barrettRule? A a b len with
     | some r => r
     | none => ivSub w (hget A a).1 (hget A b).1
-  | .mul => ivMul w (hget A a).1 (hget A b).1
+  | .mul => ivNarrow (ivMul w (hget A a).1 (hget A b).1) (ivMulS w (hget A a).1 (hget A b).1)
   | .and => ivAnd w (hget A a).1 (hget A b).1
   | .shr =>
     match ivSingle? (ivLane w (hget A b).1) with
@@ -339,6 +360,24 @@ def binSym (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
     | none => .none
   | _ => .none
 
+/-- The interval of `a <<< n`; when `a` is the zero extension of a word in `i` and the
+    shift reaches past the extended bits, also `ivShlExt`. -/
+def shlIv {w : Nat} (a : Ctxt.Var Γ (.reg w)) (n : Nat) : Iv :=
+  match (hget A a).2 with
+  | .zext _ i w0 =>
+    if w ≤ w0 + n then ivNarrow (ivShl w (hget A a).1 n) (ivShlExt w i n)
+    else ivShl w (hget A a).1 n
+  | _ => ivShl w (hget A a).1 n
+
+/-- The interval of the cast of a member of `a` from `w` to `w'` bits: `ivCast`, and for
+    a truncation also `a` itself. -/
+def castIv (w w' : Nat) (a : Iv) : Iv :=
+  if w' ≤ w then ivNarrow (ivCast w w' a) (ivNorm w' a) else ivCast w w' a
+
+/-- The fact of the cast of `a` to `w'` bits: a zero extension when `w < w'`. -/
+def castSym {w : Nat} (w' : Nat) (a : Ctxt.Var Γ (.reg w)) (len : Nat := Γ.length) : Sym :=
+  if w < w' then .zext (levelIn len a) (hget A a).1 w else .none
+
 /-- The abstract value of an operation on the variables `args`. -/
 def opAbs (op : JasminOp)
     (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op))
@@ -348,8 +387,10 @@ def opAbs (op : JasminOp)
   | .regConst w n, _ => (ivConst w n, .none)
   | .mulhi w, .cons a (.cons b .nil) => (ivMulhi w (hget A a).1 (hget A b).1, .none)
   | .shrImm w n, .cons a .nil => (ivShr w (hget A a).1 n, shrSym A a n len)
-  | .shlImm w n, .cons a .nil => (ivShl w (hget A a).1 n, .none)
-  | .castW w w', .cons a .nil => (ivCast w w' (hget A a).1, .none)
+  | .shlImm _ n, .cons a .nil => (shlIv A a n, .none)
+  | .sarImm w n, .cons a .nil => (ivSar w (hget A a).1 n, .none)
+  | .castW w w', .cons a .nil => (castIv w w' (hget A a).1, castSym A w' a len)
+  | .select _, .cons _ (.cons a (.cons b .nil)) => (ivHull (hget A a).1 (hget A b).1, .none)
   | op, _ => (tyTop (DialectSignature.ret (d := jasminDialect) op), .none)
 
 /-- The abstract value of an expression. -/
@@ -410,7 +451,7 @@ theorem binIv_sound (hA : EnvOK A V) {w : Nat} (bop : JasminBinOp) (a b : Ctxt.V
     split
     · rename_i r h; exact barrettRule_sound hA h
     · exact Iv.mem_sub ha hb
-  | mul => exact Iv.mem_mul ha hb
+  | mul => exact Iv.mem_narrow (Iv.mem_mul ha hb) (Iv.mem_mulS ha hb)
   | and => exact Iv.mem_and ha hb
   | shr =>
     simp only [binIv, JasminBinOp.apply]
@@ -547,6 +588,44 @@ theorem binSym_sound (hA : EnvOK A V) {w : Nat} (bop : JasminBinOp) (a b : Ctxt.
   | shl => exact SymOK.none _ _ _
   | andn => exact SymOK.none _ _ _
 
+theorem shlIv_sound (hA : EnvOK A V) {w : Nat} (a : Ctxt.Var Γ (.reg w)) (n : Nat) :
+    (shlIv A a n).Mem w (regVal V a <<< n) := by
+  have ha := Iv.mem_shl (hA.reg a).1 n
+  unfold shlIv
+  split
+  · rename_i ℓ i w0 hs
+    split
+    · rename_i hw
+      have hsa := (hA.reg a).2
+      rw [hs] at hsa
+      obtain ⟨z, hz, he⟩ := hsa.2
+      refine Iv.mem_narrow ha ?_
+      rw [he]
+      exact Iv.mem_shlExt hz n hw
+    · exact ha
+  · exact ha
+
+theorem castIv_sound {w w' : Nat} {a : Iv} {x : BitVec w} (ha : a.Mem w x) :
+    (castIv w w' a).Mem w' (x.setWidth w') := by
+  unfold castIv
+  split
+  · rename_i hw; exact Iv.mem_narrow (Iv.mem_cast ha) (Iv.mem_trunc ha hw)
+  · exact Iv.mem_cast ha
+
+theorem castSym_sound (hA : EnvOK A V) {w : Nat} (w' : Nat) (a : Ctxt.Var Γ (.reg w)) :
+    SymOK V w' ((regVal V a).setWidth w') (castSym A w' a) := by
+  unfold castSym
+  split
+  · exact ⟨Or.inr (varLevel_lt a), regVal V a, (hA.reg a).1, rfl⟩
+  · exact SymOK.none _ _ _
+
+theorem selectHull_sound {w : Nat} {a b : Iv} {c : BitVec 1} {x y : BitVec w}
+    (ha : a.Mem w x) (hb : b.Mem w y) : (ivHull a b).Mem w (selectW c x y) := by
+  unfold selectW
+  split
+  · exact Iv.mem_hull_left ha
+  · exact Iv.mem_hull_right hb
+
 theorem opAbs_sound (hA : EnvOK A V) (op : JasminOp)
     (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op)) :
     ValOK V (DialectSignature.ret (d := jasminDialect) op) (opAbs A op args)
@@ -565,10 +644,17 @@ theorem opAbs_sound (hA : EnvOK A V) (op : JasminOp)
     | .cons a .nil => exact ⟨Iv.mem_shr (hA.reg a).1 n, shrSym_sound hA a n⟩
   | shlImm w n =>
     match args with
-    | .cons a .nil => exact ⟨Iv.mem_shl (hA.reg a).1 n, SymOK.none _ _ _⟩
+    | .cons a .nil => exact ⟨shlIv_sound hA a n, SymOK.none _ _ _⟩
+  | sarImm w n =>
+    match args with
+    | .cons a .nil => exact ⟨Iv.mem_sar (hA.reg a).1 n, SymOK.none _ _ _⟩
   | castW w w' =>
     match args with
-    | .cons a .nil => exact ⟨Iv.mem_cast (hA.reg a).1, SymOK.none _ _ _⟩
+    | .cons a .nil => exact ⟨castIv_sound (hA.reg a).1, castSym_sound hA w' a⟩
+  | select w =>
+    match args with
+    | .cons c (.cons a (.cons b .nil)) =>
+      exact ⟨selectHull_sound (hA.reg a).1 (hA.reg b).1, SymOK.none _ _ _⟩
   | _ => exact valOK_top V _ _
 
 /-- The abstract value of an expression holds of its value. -/
