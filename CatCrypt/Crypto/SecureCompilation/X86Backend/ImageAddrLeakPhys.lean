@@ -500,6 +500,7 @@ theorem step_leak {frame : String → Option (BitVec 64)}
         first
           | exact hg.1
           | exact hg.1.1
+          | exact hg.1.1.1
       have ht : tagA (.Lopn ds o ss) = .reg none := by simp [tagA, ho1, ho2]
       simp only [stepLeakA, hb, posT, hc, ht]
       exact instrLeakA_regOk hok none sa

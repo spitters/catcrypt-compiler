@@ -171,10 +171,55 @@ def accArr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     Option (String × Nat) :=
   (reloadOf slotArr body k b).bind slotArr
 
+/-- The instruction at position `k` of `body` is a stored carry constant: a 64-bit immediate
+    move `MOV:64 d, #n` with `n < 2` into a name `d` that is neither a cell name nor a
+    general-purpose name, whose next use is a carry-in (`carryInNext`); as `(d, n)`. The
+    machine stores the word `n`, whose low bit, the bit a carry-in reads of a frame word
+    (`JasminLsemAddrMem.bitA`), is `n`. -/
+def bitStore? (body : Lcmd) (k : Nat) : LinstrR → Option (String × Nat)
+  | .Lopn [.reg d] o [.imm n] =>
+      if o = "MOV:64" ∧ n < 2 ∧ hasPrefix d "mem." = false ∧ gpNameB d = false
+          ∧ carryInNext body k d = true then some (d, n)
+      else none
+  | _ => none
+
+/-- The instruction at position `k` of `body` is a stored carry constant (`bitStore?`). -/
+def bitStoreB (body : Lcmd) (k : Nat) (i : LinstrR) : Bool := (bitStore? body k i).isSome
+
+/-- A stored carry constant is the move `MOV:64 d, #n` of `0` or `1` into a name that is
+    neither a cell name nor a general-purpose name, whose next use is a carry-in. -/
+theorem bitStore?_spec {body : Lcmd} {k : Nat} {i : LinstrR} {d : String} {n : Nat}
+    (h : bitStore? body k i = some (d, n)) :
+    i = .Lopn [.reg d] "MOV:64" [.imm n] ∧ n < 2 ∧ hasPrefix d "mem." = false
+      ∧ gpNameB d = false ∧ carryInNext body k d = true := by
+  unfold bitStore? at h
+  split at h
+  · split_ifs at h with hc
+    cases h
+    obtain ⟨rfl, h1, h2, h3, h4⟩ := hc
+    exact ⟨rfl, h1, h2, h3, h4⟩
+  · cases h
+
+/-- An instruction other than a 64-bit immediate move is no stored carry constant. -/
+theorem bitStore?_of_ne {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : ∀ d n, i ≠ .Lopn [.reg d] "MOV:64" [.imm n]) : bitStore? body k i = none := by
+  cases hb : bitStore? body k i with
+  | none => rfl
+  | some p => exact absurd (bitStore?_spec hb).1 (h p.1 p.2)
+
+theorem bitStoreB_eq_false {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : bitStore? body k i = none) : bitStoreB body k i = false := by
+  simp [bitStoreB, h]
+
+theorem bitStore?_of_bitStoreB {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : bitStoreB body k i = false) : bitStore? body k i = none := by
+  simpa [bitStoreB] using h
+
 /-- The image of instruction `k` of `body`: an indexed load or store at scale `8` through a
     register that holds the pointer of the array `A` of length `n` is the name-keyed load or
-    store on `A` at the shape `(64, n)`; every other instruction is `normA` of it at the
-    tag `tagAt` of its position. -/
+    store on `A` at the shape `(64, n)`; a stored carry constant `MOV:64 d, #n` (`bitStore?`)
+    is the untagged move `MOV d, #n` at the one-bit tag `.reg (some 1)`, the write of the bit
+    `n`; every other instruction is `normA` of it at the tag `tagAt` of its position. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
   match i with
@@ -190,7 +235,17 @@ def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
         | some (A, n) => (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n)
         | none => (normA i, .reg none)
       else (normA i, .reg none)
-  | _ => (normA i, tagAt body k i)
+  | _ =>
+      match bitStore? body k i with
+      | some (d, n) => (.Lopn [.reg d] "MOV" [.imm n], .reg (some 1))
+      | none => (normA i, tagAt body k i)
+
+/-- The image of a stored carry constant `MOV:64 d, #n` is the one-bit move `MOV d, #n`. -/
+theorem imgInstr_bitStore (slotArr : String → Option (String × Nat)) {body : Lcmd} {k : Nat}
+    {i : LinstrR} {d : String} {n : Nat} (h : bitStore? body k i = some (d, n)) :
+    imgInstr slotArr body k i = (.Lopn [.reg d] "MOV" [.imm n], .reg (some 1)) := by
+  obtain ⟨rfl, -⟩ := bitStore?_spec h
+  simp only [imgInstr, h]
 
 /-- **The image of a physical body**: `imgInstr` at each instruction of the body without its
     final instruction (the return of a printed body). -/
