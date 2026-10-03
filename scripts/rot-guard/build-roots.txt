@@ -159,6 +159,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.AegraphNFLeak
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.BatchInverseGeneric
+CatCrypt.Crypto.Optimizer.Rewrite.BoundsRules
 CatCrypt.Crypto.Optimizer.Rewrite.CrtGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.EgraphGlobalMin
 CatCrypt.Crypto.Optimizer.Rewrite.EgraphGrindIntegration
