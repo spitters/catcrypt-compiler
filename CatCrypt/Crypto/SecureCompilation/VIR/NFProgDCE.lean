@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
+public import CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 
 /-!
 # Partial renaming and dead-binding elimination on `NFProg`
@@ -43,6 +44,8 @@ the front.
 * `NFProg.foldlM_some_mono`, `NFProg.whileIter_some_mono` — an `Option` fold and an
   exit-flag iteration keep a `some` result under a step that refines.
 * `NFProg.denote_dce` — dead-binding elimination refines the denotation.
+* `NFProg.denote_dce_eq` — when every removed binding is speculatable under a record
+  satisfying `SpecLaw`, dead-binding elimination preserves the denotation.
 -/
 
 @[expose] public section
@@ -325,6 +328,65 @@ theorem denote_dce {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
       simp only [dce, denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
       obtain ⟨acc, hacc, hk⟩ := h
       exact ⟨acc, whileIter_some_mono (fun _ _ hb => ihb hb) _ _ _ hacc, ihk hk⟩
+
+omit [DialectDenoteM d Option] in
+/-- Every let-binding that `dce` removes from `p` has an operation satisfying `P`. -/
+def dceDrops (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var e k =>
+      dceDrops P k &&
+        match rename? PRen.drop (dce k) with
+        | some _ => P e.op
+        | none => true
+  | _, _, .forLoop _ _ body k => dceDrops P body && dceDrops P k
+  | _, _, .ifThenElse _ thn els k => dceDrops P thn && dceDrops P els && dceDrops P k
+  | _, _, .whileLoop _ body k => dceDrops P body && dceDrops P k
+
+omit [HasWord64 d] [HasBoolBit d] in
+/-- Under the speculation law, an expression whose operation is speculatable denotes
+    `some` value. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.Expr.isSome_denoteM_of_spec
+    (T : OpTraits d) (hT : SpecLaw T) {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t)
+    (h : T.speculatable e.op = true) (V : Valuation Γ) :
+    (e.denoteM (M := Option) V).isSome = true := by
+  obtain ⟨op, rfl, args⟩ := e
+  exact hT op h _
+
+/-- **Dead-binding elimination preserves the denotation.** When every binding `dce`
+    removes from `p` is speculatable for operation traits `T` satisfying the
+    speculation law, `dce p` denotes the same `Option` as `p` at every fuel. -/
+theorem denote_dce_eq (T : OpTraits d) (hT : SpecLaw T) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (hp : dceDrops T.speculatable p = true) :
+    ∀ (fuel : Nat) (V : Valuation Γ), (dce p).denote fuel V = p.denote fuel V := by
+  induction p with
+  | ret vs => intro fuel V; rfl
+  | var e k ih =>
+      intro fuel V
+      simp only [dceDrops, Bool.and_eq_true] at hp
+      obtain ⟨hk, hd⟩ := hp
+      simp only [dce]
+      split
+      · rename_i k' hr
+        rw [hr] at hd
+        obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (Expr.isSome_denoteM_of_spec T hT e hd V)
+        rw [denote_rename? (dce k) hr (PRen.agrees_drop V x) fuel, ih hk fuel, denote, hx,
+          Option.bind_eq_bind, Option.bind_some]
+      · simp only [denote]
+        congr 1
+        funext x
+        exact ih hk fuel _
+  | forLoop count inits body k ihb ihk =>
+      intro fuel V
+      simp only [dceDrops, Bool.and_eq_true] at hp
+      simp only [dce, denote, ihb hp.1, ihk hp.2]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro fuel V
+      simp only [dceDrops, Bool.and_eq_true] at hp
+      simp only [dce, denote, iht hp.1.1, ihe hp.1.2, ihk hp.2]
+  | whileLoop inits body k ihb ihk =>
+      intro fuel V
+      simp only [dceDrops, Bool.and_eq_true] at hp
+      simp only [dce, denote, ihb hp.1, ihk hp.2]
 
 end NFProg
 
