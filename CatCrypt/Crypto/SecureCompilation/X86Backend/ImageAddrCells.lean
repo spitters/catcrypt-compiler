@@ -750,7 +750,8 @@ theorem image_addr_simB {frame : String → Option (BitVec 64)}
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (ImgRelW imgGateBW img_stepW
   ptr_of_reloadW haltedA_of_imgW wideSafe_of_gateW)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (readsI srcNames cellBase)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (readsI srcNames cellBase
+  readsRdx rdxShape)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (carryIns)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi (width_of_getW)
 
@@ -789,7 +790,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
           simp only [hx] at hr
           rcases hr with h | h | h | h
           · exact hW' (Or.inl h) hg hcar
-          · exact hW' (Or.inr (Or.inl h)) hg hcar
+          · simp [readsRdx, rdxShape] at h
           · simp only [List.flatMap_cons, List.flatMap_nil, srcNames, List.append_nil,
               List.mem_singleton] at h
             subst h
@@ -820,7 +821,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
           simp only [hx] at hr
           rcases hr with h | h | h | h
           · exact hW' (Or.inl h) hg hcar
-          · exact hW' (Or.inr (Or.inl h)) hg hcar
+          · simp [readsRdx, rdxShape] at h
           · exact hW' (Or.inr (Or.inr (Or.inl h))) hg hcar
           · obtain ⟨a, ha, hab⟩ := List.mem_filterMap.mp h
             simp only [List.cons_append, List.nil_append, List.mem_cons, List.not_mem_nil,

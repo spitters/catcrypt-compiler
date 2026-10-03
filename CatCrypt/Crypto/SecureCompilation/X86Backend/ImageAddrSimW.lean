@@ -91,7 +91,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
   (LoadSafeAt RunSafe labelAt_spec)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase readsI)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase readsI
+  readsRdx)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
   (carryIns WideSafeAt fstepA_adcx3 fstepA_adcxhi)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
@@ -145,11 +146,13 @@ theorem fstepF_adcxhi (O A S C : String) (m : LstateM) (zf : Bool) {va vb : BitV
 
 /-! ## 2. The width analysis and the gate -/
 
-/-- The names an `Lopn` reads as words: the implicit multiplicand `RDX`, the names of its
-    source operands and the base registers of its cell operands (the names of `readsI` other
-    than the empty name). -/
+/-- The names an `Lopn` reads as words: the implicit multiplicand `RDX` of a widening multiply
+    (`readsRdx`), the names of its source operands and the base registers of its cell operands
+    (the names of `readsI` other than the empty name). -/
 def readNames : LinstrR → List String
-  | .Lopn ds _ ss => "RDX" :: (ss.flatMap srcNames ++ (ds ++ ss).filterMap cellBase)
+  | .Lopn ds o ss =>
+      (if readsRdx (.Lopn ds o ss) then ["RDX"] else []) ++
+        (ss.flatMap srcNames ++ (ds ++ ss).filterMap cellBase)
   | _ => []
 
 /-- The names possibly holding a one-bit value after a register instruction: those of `W`
@@ -2525,11 +2528,11 @@ theorem wideSafe_of_gateW {frame : String → Option (BitVec 64)}
   obtain ⟨-, hgk⟩ := imgGateBW_at hgate hb (by simp)
   simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hgk
   have hmem : r ∈ readNames (.Lopn ds o ss) := by
-    rcases hr with rfl | rfl | hr' | hr'
+    rcases hr with rfl | ⟨rfl, hx⟩ | hr' | hr'
     · exact absurd hg (by decide)
-    · simp [readNames]
-    · exact List.mem_cons_of_mem _ (List.mem_append_left _ hr')
-    · exact List.mem_cons_of_mem _ (List.mem_append_right _ hr')
+    · simp [readNames, hx]
+    · exact List.mem_append_right _ (List.mem_append_left _ hr')
+    · exact List.mem_append_right _ (List.mem_append_right _ hr')
   have := hrel.wid r hg (readOkB_spec hgk.1 hmem hc)
   omega
 

@@ -30,7 +30,8 @@ machine state; `regStepA` and `fstepA` on the address state.
 
 ## Main definitions
 
-* `srcNames`, `readsI` — the names an instruction reads.
+* `srcNames`, `readsI` — the names an instruction reads; `readsRdx` — the instruction reads
+  `RDX` implicitly.
 * `ORel` — two optional results, both absent or both present and related.
 * `NAgree`, `NStep` — agreement before a step and the relation of the two results.
 
@@ -66,10 +67,32 @@ def cellBase : LOperand → Option String
   | .reg n => (cellParts? n).map Prod.fst
   | _ => none
 
+/-- The mnemonics of the widening multiply, whose step reads `RDX` implicitly: `MULX:64`,
+    `MULXMEM:64`, and the untagged `MULX` that `JasminLsemAddrRun.normA` tags as `MULX:64`. -/
+def rdxOp (o : String) : Bool :=
+  o == "MULX" || o == withWidthTag 64 "MULX" || o == withWidthTag 64 "MULXMEM"
+
+/-- The operand shape of the widening multiply: two register destinations, one source. -/
+def rdxShape : List LOperand → List LOperand → Bool
+  | [.reg _, .reg _], [_] => true
+  | _, _ => false
+
+/-- The instruction reads `RDX` implicitly: it is a widening multiply `MULX` (the `.mulx` arm
+    of `wideArgs?`, whose step `wideStep` reads `mulxSrc`). -/
+def readsRdx : LinstrR → Bool
+  | .Lopn ds o ss => rdxOp o && rdxShape ds ss
+  | _ => false
+
+theorem readsRdx_mulx {lo hi o : String} {b : LOperand}
+    (h : o = withWidthTag 64 "MULX" ∨ o = withWidthTag 64 "MULXMEM") :
+    readsRdx (.Lopn [.reg lo, .reg hi] o [b]) = true := by
+  rcases h with rfl | rfl <;> simp [readsRdx, rdxOp, rdxShape]
+
 /-- The names one step of `i` may read: the names of its source operands, the base
-    registers of its cell operands, the implicit multiplicand `RDX` and the empty name. -/
+    registers of its cell operands, the implicit multiplicand `RDX` of a widening multiply
+    (`readsRdx`) and the empty name. -/
 def readsI (i : LinstrR) (r : String) : Prop :=
-  r = "" ∨ r = "RDX" ∨
+  r = "" ∨ (r = "RDX" ∧ readsRdx i = true) ∨
     match i with
     | .Lopn ds _ ss => r ∈ ss.flatMap srcNames ∨ r ∈ (ds ++ ss).filterMap cellBase
     | _ => False
@@ -84,7 +107,8 @@ theorem cell_reads {ds : List LOperand} {o : String} {ss : List LOperand} {n b :
     readsI (.Lopn ds o ss) b :=
   Or.inr (Or.inr (Or.inr (List.mem_filterMap.2 ⟨.reg n, hx, by simp [cellBase, hc]⟩)))
 
-theorem readsI_rdx (i : LinstrR) : readsI i "RDX" := Or.inr (Or.inl rfl)
+theorem readsI_rdx {i : LinstrR} (h : readsRdx i = true) : readsI i "RDX" :=
+  Or.inr (Or.inl ⟨rfl, h⟩)
 
 theorem readsI_empty (i : LinstrR) : readsI i "" := Or.inl rfl
 
@@ -183,11 +207,12 @@ theorem operandName_reads {ds : List LOperand} {o : String} {ss : List LOperand}
   | _ => exact readsI_empty _
 
 /-- The implicit multiplicand of `MULX` is read. -/
-theorem mulxSrc_reads (i : LinstrR) : ∀ r ∈ srcNames (.reg mulxSrc), readsI i r := by
+theorem mulxSrc_reads {i : LinstrR} (h : readsRdx i = true) :
+    ∀ r ∈ srcNames (.reg mulxSrc), readsI i r := by
   intro r hr
   simp only [srcNames, mulxSrc, List.mem_singleton] at hr
   subst hr
-  exact readsI_rdx i
+  exact readsI_rdx h
 
 /-- Prove a list membership by choosing a position, assigning metavariables. -/
 macro "mem_tac" : tactic =>
@@ -196,7 +221,7 @@ macro "mem_tac" : tactic =>
 /-- Discharge a read-name side condition of a congruence rewrite. -/
 macro "reads_tac" : tactic =>
   `(tactic| first
-    | exact readsI_rdx _ | exact readsI_empty _ | exact mulxSrc_reads _
+    | exact readsI_empty _ | exact mulxSrc_reads (readsRdx_mulx (by assumption))
     | (apply reg_reads; simp; done) | (apply idx_reads; mem_tac; done)
     | (apply base_reads; mem_tac; done) | (apply operandName_reads; simp; done)
     | (apply src_reads; simp; done))
@@ -701,7 +726,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
           · refine regStepA_congr _ (h.mono fun r hr => ?_) zf
             rcases hr with hr | hr | hr | hr
             · exact Or.inl hr
-            · exact Or.inr (Or.inl hr)
+            · simp [readsRdx, rdxShape] at hr
             · simp [srcNames] at hr
               subst hr
               exact reg_reads (by simp)

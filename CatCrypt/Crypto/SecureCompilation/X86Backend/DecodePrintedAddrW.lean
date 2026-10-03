@@ -3325,9 +3325,19 @@ theorem carryReq_label {body : Lcmd} {k : Nat} {ii : Nat} {kd : LabelKind} {l : 
   rw [hb] at h
   simp at h
 
+/-- `normA` keeps the implicit read of `RDX`. -/
+theorem readsRdx_normA (i : LinstrR) : readsRdx (normA i) = readsRdx i := by
+  cases i with
+  | Lopn ds o ss =>
+    by_cases h : o = "MULX"
+    · subst h
+      simp [normA, readsRdx, rdxOp]
+    · simp [normA, h]
+  | _ => rfl
+
 /-- The readsI of `normA i` are those of `i`. -/
 theorem readsI_normA (i : LinstrR) (r : String) : readsI (normA i) r ↔ readsI i r := by
-  cases i <;> simp [normA, readsI]
+  cases i <;> simp only [readsI, readsRdx_normA] <;> simp [normA]
 
 /-- An instruction on three register sources is no compare arm. -/
 theorem classifyA_three_not_cmp (d m : String) (a s c : String) :
