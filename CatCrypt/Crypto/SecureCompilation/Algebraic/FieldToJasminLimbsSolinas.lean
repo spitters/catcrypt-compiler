@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Solinas
-public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 
 /-!
 # `fieldDialect → jasminDialect` over `n` 64-bit limbs at a Solinas modulus
@@ -31,8 +31,9 @@ zero limbs; the coverage predicate `GoodL` excludes them.
 ## Main definitions
 
 * `CN`, `opVars`, `pastN`: the operand contexts and variables.
-* `mapTysL`, `encL`: the type map and the encoding.
-* `lowerOpL`, `loweringL`: the per-operation blocks and the `MultiBlockLoweringData`.
+* `encL`: the encoding, over the type map `FieldToJasminLimbs.mapTysL n`.
+* `lowerOpL`: the per-operation blocks; `loweringL`: the lowering
+  `FieldToJasminLimbs.loweringOf (lowerOpL S)`.
 * `GoodL`: the operations covered at `p`.
 * `opGoodLB`, `GoodLB`: the decision of coverage.
 
@@ -62,6 +63,7 @@ open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
   (w64 nv nv_nil nv_cons nv_map)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont (Rn limbsN two_pow_succ)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Solinas
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs (mapTysL loweringOf)
 
 /-! ## 1. Operand variables -/
 
@@ -119,9 +121,6 @@ theorem nv_encY {Γ : Ctxt jasminDialect} (A : ListDenote (Rn n)) (y : ZMod (p S
 
 /-! ## 2. The lowering -/
 
-/-- Every field type is carried by `n` 64-bit registers. -/
-@[reducible] def mapTysL (n : Nat) : fieldDialect.Ty → List jasminDialect.Ty := fun _ => Rn n
-
 /-- The encoding: `enc` on `fp p`, and zero limbs on every other type. -/
 def encL : ∀ {t : fieldDialect.Ty}, ⟦t⟧ → Valuation (mapTysL n t)
   | .fp q, x => if h : q = p S then enc S (cast (congrArg ZMod h) x) else limbsN n 0
@@ -164,10 +163,10 @@ def lowerOpL : (op : fieldDialect.Op) →
   | .ext12Add _ => zeroBlk
   | .ext12Sub _ => zeroBlk
 
-/-- The multi-value lowering `fieldDialect → jasminDialect` over `n` limbs. -/
-def loweringL : MultiBlockLoweringData fieldDialect jasminDialect where
-  mapTys := mapTysL n
-  lowerOp := lowerOpL S
+/-- The multi-value lowering `fieldDialect → jasminDialect` over `n` limbs: the generic
+    limb lowering with the blocks `lowerOpL S`. -/
+def loweringL : MultiBlockLoweringData fieldDialect jasminDialect :=
+  loweringOf (lowerOpL S)
 
 /-- The operations covered at `p`: add, sub, neg, mul, constants, doubling and
     squaring. -/

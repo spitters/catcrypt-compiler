@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
-public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 
 /-!
 # `fieldDialect → jasminDialect` over four 64-bit limbs in Montgomery form
@@ -36,7 +36,8 @@ modulus.
 ## Main definitions
 
 * `mapTysL`, `encL`: the type map and the encoding.
-* `lowerOpL`, `loweringL`: the per-operation blocks and the `MultiBlockLoweringData`.
+* `lowerOpL`: the per-operation blocks; `loweringL`: the lowering
+  `FieldToJasminLimbs.loweringOf (lowerOpL P)` at four limbs.
 * `GoodM`: addition, multiplication, constants and copies at `P.p`.
 * `GoodV`: `GoodM`, subtraction, negation, doubling, squaring, and inversion at a
   prime `P.p`.
@@ -67,6 +68,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
   (w64 MC nv nv_cons nv_nil R4 limbsOf copyBlk)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs (loweringOf)
 
 variable (P : Mont4Prime)
 
@@ -151,10 +153,9 @@ def lowerOpL : (op : fieldDialect.Op) →
   | .ext6Sub _ | .ext12Mul _ _ | .ext12Add _ | .ext12Sub _ => constBlk 0
 
 /-- The multi-value lowering `fieldDialect → jasminDialect` over four limbs in
-    Montgomery form. -/
-def loweringL : MultiBlockLoweringData fieldDialect jasminDialect where
-  mapTys := mapTysL
-  lowerOp := lowerOpL P
+    Montgomery form: the generic limb lowering with the blocks `lowerOpL P`. -/
+def loweringL : MultiBlockLoweringData fieldDialect jasminDialect :=
+  loweringOf (n := 4) (lowerOpL P)
 
 /-- The operations covered at `P.p`: addition, multiplication, constants and copies. -/
 def GoodM {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t) : Prop :=
