@@ -590,6 +590,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.FoldedOpAgreement
 CatCrypt.Crypto.SecureCompilation.VIR.Fp12Val377TowerBridge
 CatCrypt.Crypto.SecureCompilation.VIR.FrodoMatmulEmit
 CatCrypt.Crypto.SecureCompilation.VIR.FsTranscriptHashEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Gf2Dialect
 CatCrypt.Crypto.SecureCompilation.VIR.GgmDblLoopEmit
 CatCrypt.Crypto.SecureCompilation.VIR.GgmNodeLoopEmit
 CatCrypt.Crypto.SecureCompilation.VIR.GhashClmulVsimdCovered
