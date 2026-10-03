@@ -21,7 +21,10 @@ Descent generates code from a source and proves each lowering a simulation. The
 source is therefore the specification: correctness is equivalence to the source (the
 Rust reference for extracted code), and known-answer tests are regressions. The chain
 runs from the front through `LowCT`, the SSA dialects, `Com jasminDialect` and
-`Lprog` to the owned x86, AArch64 and RISC-V encoders.
+`Lprog` to the owned x86, AArch64 and RISC-V encoders. The intended source is
+orchestration: Rust above the field interface, with field operations as primeIR calls
+and limb-level or bit-level kernels as calls to optimised implementations whose
+correctness is a template theorem or an ascent theorem ([ASCENT.md](ASCENT.md)).
 
 - The hax front in `CatCrypt/Crypto/Hax/` lowers hax-lean's `ImpExpr` to `LowCT`
   (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
