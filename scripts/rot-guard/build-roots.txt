@@ -220,7 +220,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
-CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontCIOS
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mpn
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.UnsatField
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
@@ -667,6 +667,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
+CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
