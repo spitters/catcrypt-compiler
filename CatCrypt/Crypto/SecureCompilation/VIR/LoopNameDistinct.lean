@@ -22,6 +22,17 @@ The index and the counter differ in their second character. A temporary differs
 from both by the same character position: after the shared `'L'` a temporary
 continues with the first digit of `toString d`, and `Nat.toDigits 10` produces a
 `Nat.digitChar` of a value below ten, which is neither `'i'` nor `'c'`.
+
+The chain registers `regName k = "r" ++ toString k`, which also name the carried
+registers of the carried-register loops (`ComLJ`), start with `'r'` and so differ from
+all three loop families in their first character.
+
+## Main results
+
+* `loopIdx_ne_loopCtr`, `loopIdx_ne_loopReg`, `loopCtr_ne_loopReg` — the loop families
+  are pairwise distinct.
+* `regName_ne_loopIdx`, `regName_ne_loopCtr`, `regName_ne_loopReg` — a chain register is
+  none of them.
 -/
 
 public section
@@ -82,5 +93,24 @@ theorem loopCtr_ne_loopReg (d d' k : Nat) : loopCtr d ≠ loopReg d' k := by
   simp only [loopCtr, loopReg, String.toList_append, hcs, List.cons_append,
     List.append_assoc] at hd
   interval_cases m <;> simp [Nat.digitChar] at hd
+
+/-- A chain register is not a loop index: the first is `'r'`, the second `'L'`. -/
+theorem regName_ne_loopIdx (k d : Nat) : regName k ≠ loopIdx d := by
+  intro h
+  have hd := congrArg String.toList h
+  simp [regName, loopIdx, String.toList_append] at hd
+
+/-- A chain register is not a trip counter: the first is `'r'`, the second `'L'`. -/
+theorem regName_ne_loopCtr (k d : Nat) : regName k ≠ loopCtr d := by
+  intro h
+  have hd := congrArg String.toList h
+  simp [regName, loopCtr, String.toList_append] at hd
+
+/-- A chain register is not a loop body temporary: the first is `'r'`, the second
+    `'L'`. -/
+theorem regName_ne_loopReg (k d j : Nat) : regName k ≠ loopReg d j := by
+  intro h
+  have hd := congrArg String.toList h
+  simp [regName, loopReg, String.toList_append] at hd
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LoopNameDistinct

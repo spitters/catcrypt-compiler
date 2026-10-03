@@ -2045,63 +2045,29 @@ def ComL.loopAccRegs {Γ : Ctxt jasminDialect} {t : JasminTy}
   | ComL.whileNz _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
   | ComL.forLoopBlock _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
 
-/-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel
-    (`out[i] := f(in[i])`, the `mayo_encode` / `*_sign_rwhile` shape) — the
-    loop-aware mirror of `comToLfundefPhysAbi` (§7f).
+/-- The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` `virt0`: the
+    part of `ComL.toLfundefPhysAbi` after the virtual export.
 
-    `nArgs` is `Γ.length` (the accumulator name is `regName nArgs`). The output
-    and input array base names are derived from the `ComL`'s own loop `init`/`invs`
-    via `ComL.loopArgBaseNames` (the canonical `resolveVar`-convention names the
-    body uses), so the role→name mapping is always correct regardless of the
-    `Γ`-vs-root ordering of the caller's `outArg`/`inArgs` hints (the qruov/sdith
-    2nd-input base-mis-resolution fix). The caller's `outArg`/`inArgs` are used
-    only as a fallback when the program has no loop node. `abiArgs` is the SysV
-    pointer-register signature (default `[RDI, RSI]` = `out, inp`).
+    `outArg'` is the canonical out-array base name, `inArgs'` the array-typed input
+    base names in ABI order, and `accRegs` the register names of the loop
+    accumulators that carry the output array. Each accumulator is aliased onto
+    `outArg'` and the in-place `STOREIDX`-result thread is collapsed onto its SIB
+    base, so every `STOREIDX` base is `outArg'` and every `LOADIDX` base is an
+    `inArgs'` name, all covered by the qsave-reload map. Every loop on the
+    continuation spine carries the same output array, so every accumulator is
+    aliased: a later loop of a chain left unaliased would hold the root-counted seed
+    `resolveVar` gives it (the invariant pointer), and an 8-layer NTT rendered that
+    way stores into its read-only zeta table.
 
-    The fix vs `ComL.toLfundefPhys`: the accumulator is aliased onto `outArg`, the
-    `STOREIDX`-result thread is canonicalized, the pointer arguments are saved to
-    red-zone qsave slots in the prologue, and `physBodyWithStores` reloads each
-    `LOADIDX`/`STOREIDX` SIB base from its qsave slot into `R14` immediately
-    before every access (`memrefBaseReload`). So the IN/OUT array roles follow the
-    *argument → qsave-slot* mapping (no swap), and neither base is ever a
-    body-clobberable register (no clobber → no segfault). One body copy, real
-    `jne .L<d>` back-edge, real x86 registers throughout. -/
-def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
-    (outArg : String) (inArgs : List String)
+    `ComL.toLfundefPhysAbi_eq_ofVirt` states that `ComL.toLfundefPhysAbi` is this
+    function at `ComL.toLfundef`; the carried-register loop language `ComLJ` uses it
+    at its own virtual export. -/
+def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List String)
+    (accRegs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
-    (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64]) :
     Lfundef :=
-  let nArgs := Γ.length
-  let virt0 := ComL.toLfundef c immSlotMap
-  -- Derive the canonical out-/in-array base names from the program's own loop
-  -- node (`init`/`invs`) under the body's `resolveVar` convention. This is the
-  -- name each role's `LOADIDX`/`STOREIDX` SIB base ACTUALLY uses in `virt0`, so
-  -- the alias and the qsave-reload map below key on the right names regardless of
-  -- how the caller ordered `outArg`/`inArgs` (the qruov/sdith fix — see
-  -- `ComL.loopArgBaseNames`). Only the ARRAY-typed invariants appear in `inArgs'`,
-  -- so the positional pairing with `abiArgs.drop 1` below counts array bases and
-  -- is unaffected by where the kernel lists its scalar invariants. Falls back to
-  -- the caller's hints for a loop-free `ComL` (no loop node).
-  let derived : String × List String :=
-    match ComL.loopArgBaseNames nArgs immSlotMap c nArgs with
-    | some (o, ins) => (o, ins)
-    | none => (outArg, inArgs)
-  let outArg' : String := derived.1
-  let inArgs' : List String := derived.2
-  -- Alias the accumulator (the loop's output-array base, `regName nArgs`) onto the
-  -- out-argument name, then collapse the in-place `STOREIDX`-result thread onto
-  -- its SIB base. After this, every `STOREIDX` base is `outArg'` and every `LOADIDX`
-  -- base is an `inArgs'` name — all argument names the qsave-reload map covers.
-  -- Every loop on the continuation spine carries the SAME output array, so each
-  -- node's accumulator is aliased onto the out-argument name. Aliasing one
-  -- register leaves the later loops of a chain outside the qsave-reload map,
-  -- holding the root-counted seed `resolveVar` gives them — the invariant
-  -- pointer — and an 8-layer NTT rendered that way stores into its read-only
-  -- zeta table. A single-loop program has a one-element `loopAccRegs`, so its
-  -- bytes are unchanged.
-  let accRegs := (ComL.loopAccRegs c nArgs).map regName
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
   -- head). Without the pin the linear-scan RA sees each scalar bound as "born
@@ -2218,6 +2184,71 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
     lfd_tyin := abiTyin
     lfd_res := []
     lfd_tyout := [] }
+
+/-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel
+    (`out[i] := f(in[i])`, the `mayo_encode` / `*_sign_rwhile` shape) — the
+    loop-aware mirror of `comToLfundefPhysAbi` (§7f).
+
+    `nArgs` is `Γ.length` (the accumulator name is `regName nArgs`). The output
+    and input array base names are derived from the `ComL`'s own loop `init`/`invs`
+    via `ComL.loopArgBaseNames` (the canonical `resolveVar`-convention names the
+    body uses), so the role→name mapping is always correct regardless of the
+    `Γ`-vs-root ordering of the caller's `outArg`/`inArgs` hints (the qruov/sdith
+    2nd-input base-mis-resolution fix). The caller's `outArg`/`inArgs` are used
+    only as a fallback when the program has no loop node. `abiArgs` is the SysV
+    pointer-register signature (default `[RDI, RSI]` = `out, inp`).
+
+    The fix vs `ComL.toLfundefPhys`: the accumulator is aliased onto `outArg`, the
+    `STOREIDX`-result thread is canonicalized, the pointer arguments are saved to
+    red-zone qsave slots in the prologue, and `physBodyWithStores` reloads each
+    `LOADIDX`/`STOREIDX` SIB base from its qsave slot into `R14` immediately
+    before every access (`memrefBaseReload`). So the IN/OUT array roles follow the
+    *argument → qsave-slot* mapping (no swap), and neither base is ever a
+    body-clobberable register (no clobber → no segfault). One body copy, real
+    `jne .L<d>` back-edge, real x86 registers throughout. The part after the virtual
+    export is `lfundefPhysAbiOfVirt`. -/
+def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
+    (outArg : String) (inArgs : List String)
+    (shiftImm : ShiftImmOracle := fun _ => none)
+    (immSlotMap : ImmSlotMap := fun _ => none)
+    (abiArgs : List String := ["RDI", "RSI"])
+    (abiTyin : List Nat := [64, 64]) :
+    Lfundef :=
+  let nArgs := Γ.length
+  let virt0 := ComL.toLfundef c immSlotMap
+  -- Derive the canonical out-/in-array base names from the program's own loop
+  -- node (`init`/`invs`) under the body's `resolveVar` convention. This is the
+  -- name each role's `LOADIDX`/`STOREIDX` SIB base ACTUALLY uses in `virt0`, so
+  -- the alias and the qsave-reload map key on the right names regardless of
+  -- how the caller ordered `outArg`/`inArgs` (the qruov/sdith fix — see
+  -- `ComL.loopArgBaseNames`). Only the ARRAY-typed invariants appear in `inArgs'`,
+  -- so the positional pairing with `abiArgs.drop 1` counts array bases and
+  -- is unaffected by where the kernel lists its scalar invariants. Falls back to
+  -- the caller's hints for a loop-free `ComL` (no loop node).
+  let derived : String × List String :=
+    match ComL.loopArgBaseNames nArgs immSlotMap c nArgs with
+    | some (o, ins) => (o, ins)
+    | none => (outArg, inArgs)
+  -- The accumulator of every loop on the continuation spine; a single-loop program
+  -- has a one-element `loopAccRegs`.
+  let accRegs := (ComL.loopAccRegs c nArgs).map regName
+  lfundefPhysAbiOfVirt virt0 derived.1 derived.2 accRegs shiftImm abiArgs abiTyin
+
+/-- `ComL.toLfundefPhysAbi` is `lfundefPhysAbiOfVirt` at the virtual export
+    `ComL.toLfundef`, the derived base names and the loop accumulators. -/
+theorem ComL.toLfundefPhysAbi_eq_ofVirt {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : ComL Γ t) (outArg : String) (inArgs : List String) (shiftImm : ShiftImmOracle)
+    (immSlotMap : ImmSlotMap) (abiArgs : List String) (abiTyin : List Nat) :
+    ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin =
+      lfundefPhysAbiOfVirt (ComL.toLfundef c immSlotMap)
+        (match ComL.loopArgBaseNames Γ.length immSlotMap c Γ.length with
+          | some (o, ins) => (o, ins)
+          | none => (outArg, inArgs)).1
+        (match ComL.loopArgBaseNames Γ.length immSlotMap c Γ.length with
+          | some (o, ins) => (o, ins)
+          | none => (outArg, inArgs)).2
+        ((ComL.loopAccRegs c Γ.length).map regName) shiftImm abiArgs abiTyin :=
+  rfl
 
 /-- Export a looped array-map `ComL` to a 2-pointer-ABI physical `Lprog` (the
     `mayo_encode` shape). See `ComL.toLfundefPhysAbi` for the IN/OUT-base reload
