@@ -83,6 +83,14 @@ unconditionally, with a left identity under `HeadVar` and associatively under
 `SpliceNatural` (the lowering commutes with splicing), so they form a category only
 on the natural lowerings; `opSum` has a copairing and `extendId` is the copairing of
 `L ∘ inl` with `inr`; `Dialect.sum` has no copairing for block lowerings.
+`VIR/DialectCategoryTemplate.lean` removes the side conditions on template
+lowerings: a lowering given by an op template (`BlockLoweringData.ofTemplate`, a
+block per op over the op's arguments, instantiated by renaming) is natural under
+renaming (`spliceNatural_ofTemplate`, `headVar_ofTemplate`), so template lowerings
+form a category (`Category TemplateDialect`) closed under composition, `extendId`,
+`copair` and the sum injections; `catToJasmin` and the MOD-2 witness are templates.
+This naturality under injective renamings is the de Bruijn form of nominal
+equivariance.
 
 | edge | pass | denotation preservation | reaches bytes |
 |---|---|---|---|
