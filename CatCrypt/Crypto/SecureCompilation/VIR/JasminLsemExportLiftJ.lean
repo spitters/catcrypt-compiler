@@ -258,17 +258,23 @@ def whileStage (d : Nat) (initOps : List LOperand) {cs invTys : Ctxt jasminDiale
     ((whileAccs d initOps update invOps).map (·.1))
     ((whileAccs d initOps update invOps).map (·.2.2) ++ [whileFlagOp d update invOps]) 0
 
-/-- The register holding the continue bit at the bottom test, and its materialisation. -/
+/-- The register holding the continue bit as a 64-bit word at the bottom test, and its
+    materialisation: a bit in a register `f` is selected by `MOV r, #1 ; MOV z, #0 ;
+    CMOV r, [f, r, z]`, any other bit operand is moved. -/
 def whileFlagMat (d : Nat) (initOps : List LOperand) {cs invTys : Ctxt jasminDialect}
     (update : MultiReturnCom jasminDialect (cs ++ invTys) (JasminTy.reg 1 :: cs))
     (invOps : List LOperand) : String × Lcmd :=
+  let r := loopReg d ((whileWalk d update invOps).2.2
+    + (whileAccs d initOps update invOps).length + 1)
   match (whileStage d initOps update invOps).2.getD
       (whileAccs d initOps update invOps).length (whileFlagOp d update invOps) with
-  | .reg r => (r, [])
-  | op =>
-      let r := loopReg d ((whileWalk d update invOps).2.2
-        + (whileAccs d initOps update invOps).length + 1)
-      (r, [⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [op]⟩])
+  | .reg f =>
+      let z := loopReg d ((whileWalk d update invOps).2.2
+        + (whileAccs d initOps update invOps).length + 2)
+      (r, [ ⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [.imm 1]⟩
+          , ⟨0, .Lopn [.reg z] (withWidthTag 64 "MOV") [.imm 0]⟩
+          , ⟨0, .Lopn [.reg r] (withWidthTag 64 "CMOV") [.reg f, .reg r, .reg z]⟩ ])
+  | op => (r, [⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [op]⟩])
 
 /-- The looped segment of a do-while node: the typed walk, the feedback, the bit
     materialisation and the invariant touches. -/
@@ -331,7 +337,8 @@ theorem whileRegsBodyRM_isLopn (d : Nat) (initOps : List LOperand)
     obtain ⟨l, hl, rfl⟩ := hi
     unfold whileFlagMat at hl
     split at hl
-    · simp at hl
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
+      rcases hl with rfl | rfl | rfl <;> exact ⟨_, _, _, rfl⟩
     · simp only [List.mem_singleton] at hl
       subst hl
       exact ⟨_, _, _, rfl⟩

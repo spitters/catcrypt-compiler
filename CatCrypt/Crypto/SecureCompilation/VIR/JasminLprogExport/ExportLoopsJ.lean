@@ -328,10 +328,12 @@ theorem regsLoopFrame_single (d : Nat) (accReg idxReg ctr : String)
     pre-walked body copy `bodyW` whose continue bit is the operand `flagOp`. Seeds every
     carried register, then the label, body copy, the parallel feedback (the bit is staged
     with the returned operands, so a feedback move never overwrites it), the
-    invariant-base touches and the bottom test `CMP flag, #0 ; Lcond NZ top`. A bit that
-    is not a register is first copied to the body temporary
-    `loopReg d (tmp0 + accs.length + 1)`. No counter and no zero-trip guard: the body
-    runs at least once. -/
+    invariant-base touches and the bottom test `CMP r, #0 ; Lcond NZ top` on the body
+    temporary `r := loopReg d (tmp0 + accs.length + 1)`, which holds the bit as a 64-bit
+    word: a bit in a register `f` is selected into it by `MOV r, #1 ; MOV z, #0 ;
+    CMOV r, [f, r, z]` (`z := loopReg d (tmp0 + accs.length + 2)`), and a bit that is not
+    a register is moved into it. No counter and no zero-trip guard: the body runs at
+    least once. -/
 def whileRegsFrame (d : Nat) (accs : List (String × LOperand × LOperand))
     (flagOp : LOperand) (invRegs : List String) (bodyW : Lcmd) (tmp0 : Nat) : Lcmd :=
   let targets := accs.map (·.1)
@@ -339,11 +341,14 @@ def whileRegsFrame (d : Nat) (accs : List (String × LOperand × LOperand))
   let flagSrc := stage.2.getD accs.length flagOp
   let feedback : Lcmd := stage.1 ++ feedbackMoves targets stage.2
   let flagMat : String × Lcmd :=
+    let r := loopReg d (tmp0 + accs.length + 1)
     match flagSrc with
-    | .reg r => (r, [])
-    | op =>
-        let r := loopReg d (tmp0 + accs.length + 1)
-        (r, [⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [op]⟩])
+    | .reg f =>
+        let z := loopReg d (tmp0 + accs.length + 2)
+        (r, [ ⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [.imm 1]⟩
+            , ⟨0, .Lopn [.reg z] (withWidthTag 64 "MOV") [.imm 0]⟩
+            , ⟨0, .Lopn [.reg r] (withWidthTag 64 "CMOV") [.reg f, .reg r, .reg z]⟩ ])
+    | op => (r, [⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [op]⟩])
   let flagReg := flagMat.1
   let seeds : Lcmd := accs.map fun a => ⟨0, .Lopn [.reg a.1] (withWidthTag 64 "MOV") [a.2.1]⟩
   let top : LLabel := d
