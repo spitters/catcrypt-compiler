@@ -60,6 +60,9 @@ morphisms, `NFPre.nil` the identity and `NFPre.append` the composition
 (`plug_append`), and the denotation at a fuel is a functor into the Kleisli category of
 `Option` (`regionDenote`), which restates `NFPre.denote_append`.
 
+This module is a presentation: no pass of the compilation pipeline uses its laws. The
+pipeline composes lowerings as chains of passes (`VIR/PassChain.lean`).
+
 ## Main definitions
 
 * `BlockLoweringData.id` — the identity block lowering.

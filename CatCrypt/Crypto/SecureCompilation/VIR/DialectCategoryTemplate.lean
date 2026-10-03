@@ -36,6 +36,10 @@ lowerings, and so are the block forms of the inclusions `DialectOpSum.inl` and
 partial block lowering (`PartialBlockLowering.ofTemplate?`). `DerivedToField.lowering` and
 its extension `BlockLoweringExtend.Witness.lowering` are template lowerings.
 
+The category of template lowerings is a presentation: no pass of the compilation
+pipeline uses its laws. The construction used to define a pipeline lowering is
+`BlockLoweringData.ofTemplate`, which defines `gf2ToJasmin` (`VIR/Gf2Dialect.lean`).
+
 ## Main definitions
 
 * `DialectCategory.LoweringFrame` — the type, context and variable maps with their laws.

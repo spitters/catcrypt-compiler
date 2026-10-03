@@ -23,7 +23,7 @@ dialect is the operation sum of `fieldDialect` with `fpDialect` over `FieldTy`.
 
 ## Main definitions
 
-* `Witness.lowering`, `Witness.chain`: the extended lowering and its one-step driver.
+* `Witness.lowering`, `Witness.chain`: the extended lowering and its driver step.
 * `Witness.prog`: a three-binding program over both operation families.
 
 ## Main results
@@ -107,11 +107,11 @@ theorem opsCommute :
 def lowering : BlockLoweringData srcDialect tgtDialect :=
   DerivedToField.lowering.extendId sigMaps
 
-/-- The one-step driver applying `lowering`. -/
-def chain : LowerChain ⟨srcDialect⟩ ⟨tgtDialect⟩ :=
-  .cons (LowerStep.extendId DerivedToField.lowering sigMaps DerivedToField.transTy
+/-- The driver step applying `lowering`. -/
+def chain : LowerStep ⟨srcDialect⟩ ⟨tgtDialect⟩ :=
+  LowerStep.extendId DerivedToField.lowering sigMaps DerivedToField.transTy
     DerivedToField.mapVal DerivedToField.varTransports DerivedToField.blockOpTransports
-    DerivedToField.mapValExtends opsCommute) (.nil _)
+    DerivedToField.mapValExtends opsCommute
 
 /-- A three-binding program with one input `x : fp p`:
 

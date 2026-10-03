@@ -25,6 +25,10 @@ case is the operation sum `Dialect.opSum` (`VIR/DialectOpSum.lean`), which tags
 and `VIR/FieldCmpSum.lean`. The construction here covers the case where the two
 `Ty` alphabets stay disjoint.
 
+`Dialect.sum` is a presentation: no module outside this one uses it, and no pass of the
+compilation pipeline depends on it. `VIR/DialectCategory.lean` describes its place among
+the constructions on dialects.
+
 `LoweringData` composes (`VIR/LoweringDataComp.lean`: `L1.comp L2`,
 `comp_fundamental`), so an inclusion followed by a lowering out of the coproduct
 is a single `LoweringData` whose whole-program transport square is
@@ -72,7 +76,8 @@ open Ctxt (Var Valuation)
 /-! ## 1. The coproduct dialect -/
 
 /-- The coproduct of two dialects: the operations are the tagged sum of the two
-    operation alphabets, the types the tagged sum of the two type alphabets. -/
+    operation alphabets, the types the tagged sum of the two type alphabets. It is a
+    presentation with no consumer in the compilation pipeline. -/
 @[reducible] def Dialect.sum (d e : Dialect.{u, v}) : Dialect.{u, v} where
   Op := d.Op ⊕ e.Op
   Ty := d.Ty ⊕ e.Ty

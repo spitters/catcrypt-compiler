@@ -32,22 +32,23 @@ operation is again a well-typed operation with the same denotation:
   transport of `L`, for the operations satisfying a predicate `GoodE`. When the
   transport is the identity this is the agreement of the two denotations.
 
-A conversion driver `LowerChain D D'` is a list of block-lowering steps between
-bundled dialects (`SemDialect`); `LowerChain.run` applies them in order with the
-continuation-passing lowering `blockLowerComK`. At a context `Γ` and a type `t`,
-`LowerChain.toChain` is the driver as a chain of passes (`VIR/PassChain.lean`) between
-straight-line program types and `LowerChain.toCert` its certificate, one per step, at
-the semantics `comSem`; `LowerChain.run_denote` is `PassChain.Cert.sound` at that
-certificate.
+A driver step `LowerStep D D'` is a block lowering between bundled dialects
+(`SemDialect`) with its transports and leaf obligations; `LowerStep.run` applies it
+with the continuation-passing lowering `blockLowerComK`. At a context `Γ` and a type
+`t`, `LowerStep.toStep` is the step as a pass (`VIR/PassChain.lean`) between
+straight-line program types and `LowerStep.toCert` its certificate at the semantics
+`comSem`. A conversion driver of several steps is a `PassChain.Chain` of
+`LowerStep.toStep` passes, certified by a `PassChain.Cert` of `LowerStep.toCert`
+certificates; `PassChain.Cert.sound` is its preservation statement.
+`LowerStep.run_denote` is `PassChain.StepCert.sound` at `LowerStep.toCert`.
 
 ## Main definitions
 
 * `SigMaps`, `OpsCommute`: the two conditions on the identity part.
 * `BlockLoweringData.extendId`: the extended block lowering.
 * `liftGood`: the coverage predicate of the extended lowering.
-* `SemDialect`, `LowerStep`, `LowerChain`, `LowerChain.run`: the conversion driver.
-* `comSem`, `LowerStep.toStep`, `LowerStep.toCert`, `LowerChain.toChain`,
-  `LowerChain.toCert`: the driver as a certified chain of passes.
+* `SemDialect`, `LowerStep`, `LowerStep.run`: a step of the conversion driver.
+* `comSem`, `LowerStep.toStep`, `LowerStep.toCert`: the step as a certified pass.
 
 ## Main results
 
@@ -58,10 +59,7 @@ certificate.
   from `blockFundamental_on`.
 * `extendId_fundamental`: whole-program preservation for every program, from
   `blockFundamental`.
-* `LowerChain.toChain_run`, `LowerChain.toCert_relIn`, `LowerChain.toCert_relOut`: the
-  chain runs to `LowerChain.run`, and the composed relations of its certificate are
-  the graphs of the composite transports.
-* `LowerChain.run_denote`: the driver preserves denotation.
+* `LowerStep.run_denote`: a driver step preserves denotation.
 
 An instance over the derived field operations and the prime-field arithmetic
 dialect is in `VIR/BlockLoweringExtendWitness.lean`.
@@ -409,97 +407,21 @@ def LowerStep.toCert {D D' : SemDialect} (s : LowerStep D D') (Γ : Ctxt D.dia)
     rw [s.L.blockLowerComK_denote_on s.transTy s.mapVal (fun _ => True) s.hVar
       (fun e _ V => s.hOp e V) s.hExt c (coveredCom_of_forall _ (fun _ => trivial) c) V]
 
-/-- **The conversion driver**: a list of block-lowering steps, each from the
-    target dialect of the previous one. -/
-inductive LowerChain : SemDialect → SemDialect → Type 1 where
-  /-- The empty list. -/
-  | nil (D : SemDialect) : LowerChain D D
-  /-- A step followed by a list. -/
-  | cons {D D' D'' : SemDialect} (s : LowerStep D D') (rest : LowerChain D' D'') :
-      LowerChain D D''
+/-- Run a driver step: the continuation-passing lowering `blockLowerComK`. -/
+def LowerStep.run {D D' : SemDialect} (s : LowerStep D D') {Γ : Ctxt D.dia}
+    {t : D.dia.Ty} (c : Com D.dia Γ t) : Com D'.dia (s.L.mapCtx Γ) (s.L.mapTy t) :=
+  s.L.blockLowerComK c
 
-namespace LowerChain
-
-/-- The composite type map. -/
-def mapTy : {D D' : SemDialect} → LowerChain D D' → D.dia.Ty → D'.dia.Ty
-  | _, _, .nil _ => fun t => t
-  | _, _, .cons s rest => fun t => rest.mapTy (s.L.mapTy t)
-
-/-- The composite context map. -/
-def mapCtx : {D D' : SemDialect} → LowerChain D D' → Ctxt D.dia → Ctxt D'.dia
-  | _, _, .nil _ => fun Γ => Γ
-  | _, _, .cons s rest => fun Γ => rest.mapCtx (s.L.mapCtx Γ)
-
-/-- The composite value transport. -/
-def transTy : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {t : D.dia.Ty}, ⟦t⟧ → ⟦P.mapTy t⟧
-  | _, _, .nil _ => fun x => x
-  | _, _, .cons s rest => fun x => rest.transTy (s.transTy x)
-
-/-- The composite valuation transport. -/
-def mapVal : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {Γ : Ctxt D.dia}, Valuation Γ → Valuation (P.mapCtx Γ)
-  | _, _, .nil _ => fun V => V
-  | _, _, .cons s rest => fun V => rest.mapVal (s.mapVal V)
-
-/-- **Run the driver**: apply the steps in order, each by the
-    continuation-passing lowering `blockLowerComK`. -/
-def run : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {Γ : Ctxt D.dia} {t : D.dia.Ty}, Com D.dia Γ t → Com D'.dia (P.mapCtx Γ) (P.mapTy t)
-  | _, _, .nil _ => fun c => c
-  | _, _, .cons s rest => fun c => rest.run (s.L.blockLowerComK c)
-
-/-- The chain of the driver at the context `Γ` and the type `t`: one step per
-    block-lowering step, each between the program types the composite maps give. -/
-def toChain : {D D' : SemDialect} → (P : LowerChain D D') → (Γ : Ctxt D.dia) →
-    (t : D.dia.Ty) → PassChain.Chain (Com D.dia Γ t) (Com D'.dia (P.mapCtx Γ) (P.mapTy t))
-  | _, _, .nil _, _, _ => .nil _
-  | _, _, .cons s rest, Γ, t => .cons (s.toStep Γ t) (rest.toChain (s.L.mapCtx Γ) (s.L.mapTy t))
-
-/-- The certificate of the chain of the driver, one `LowerStep.toCert` per step. -/
-def toCert : {D D' : SemDialect} → (P : LowerChain D D') → (Γ : Ctxt D.dia) →
-    (t : D.dia.Ty) →
-    PassChain.Cert (P.toChain Γ t) (comSem D Γ t) (comSem D' (P.mapCtx Γ) (P.mapTy t))
-  | _, _, .nil _, _, _ => .nil _
-  | _, _, .cons s rest, Γ, t => .cons (s.toCert Γ t) (rest.toCert (s.L.mapCtx Γ) (s.L.mapTy t))
-
-/-- The chain of the driver runs to the program `run` produces. -/
-theorem toChain_run : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {Γ : Ctxt D.dia} {t : D.dia.Ty} (c : Com D.dia Γ t),
-      (P.toChain Γ t).run c = some (P.run c)
-  | _, _, .nil _, _, _, _ => rfl
-  | _, _, .cons _ rest, _, _, _ => toChain_run rest _
-
-/-- A valuation and its composite transport are related by the composed input
-    relation of the certificate. -/
-theorem toCert_relIn : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {Γ : Ctxt D.dia} {t : D.dia.Ty} (V : Valuation Γ), (P.toCert Γ t).relIn V (P.mapVal V)
-  | _, _, .nil _, _, _, _ => rfl
-  | _, _, .cons s rest, _, _, V => ⟨s.mapVal V, rfl, toCert_relIn rest (s.mapVal V)⟩
-
-/-- The composed output relation of the certificate is the graph of the composite
-    value transport. -/
-theorem toCert_relOut : {D D' : SemDialect} → (P : LowerChain D D') →
-    ∀ {Γ : Ctxt D.dia} {t : D.dia.Ty} (x : ⟦t⟧) (y : ⟦P.mapTy t⟧),
-      (P.toCert Γ t).relOut x y → y = P.transTy x
-  | _, _, .nil _, _, _, _, _, h => h.symm
-  | _, _, .cons s rest, _, _, x, y, h => by
-      obtain ⟨z, hz, h⟩ := h
-      subst hz
-      exact toCert_relOut rest _ y h
-
-/-- **The driver preserves denotation**: the program the steps produce denotes,
-    under the composite valuation transport, the composite transport of the
-    source denotation. An instance of `PassChain.Cert.sound` at `toCert`. -/
-theorem run_denote {D D' : SemDialect} (P : LowerChain D D') {Γ : Ctxt D.dia}
+/-- **A driver step preserves denotation**: the lowered program denotes, under the
+    valuation transport, the value transport of the source denotation. An instance
+    of `PassChain.StepCert.sound` at `toCert`. -/
+theorem LowerStep.run_denote {D D' : SemDialect} (s : LowerStep D D') {Γ : Ctxt D.dia}
     {t : D.dia.Ty} (c : Com D.dia Γ t) (V : Valuation Γ) :
-    (P.run c).denote (P.mapVal V) = P.transTy (c.denote V) := by
-  obtain ⟨o', ho', hrel⟩ := (P.toCert Γ t).sound (toChain_run P c) (toCert_relIn P V)
-    (o := c.denote V) rfl
+    (s.run c).denote (s.mapVal V) = s.transTy (c.denote V) := by
+  obtain ⟨o', ho', hrel⟩ := (s.toCert Γ t).sound (q := s.run c) (W := s.mapVal V)
+    (o := c.denote V) rfl rfl rfl
   cases ho'
-  exact toCert_relOut P _ _ hrel
-
-end LowerChain
+  exact hrel
 
 /-- The driver step of the extended lowering `L.extendId hS`. -/
 def LowerStep.extendId {O₁ O₁' O₂ : Type} {T T' : Type} [TyDenote T] [TyDenote T']

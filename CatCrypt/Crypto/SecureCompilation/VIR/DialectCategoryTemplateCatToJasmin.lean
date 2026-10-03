@@ -18,6 +18,9 @@ translation commutes with renaming (`toJExprD_rename`), so `catToJasmin` is the 
 template lowering of `catTemplate`, the translation of each operation applied to the
 variables of its signature (`catToJasmin_eq_ofTemplate?`).
 
+This module is a presentation: the pipeline uses `catToJasmin` directly, and no pass uses
+the equalities here.
+
 ## Main definitions
 
 * `DialectCategory.catFrame`, `DialectCategory.catTemplate` — the frame and the partial op
