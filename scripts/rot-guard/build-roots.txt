@@ -224,9 +224,7 @@ CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontCIOS
-CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.UnsatBlocks
-CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
@@ -734,7 +732,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduceReal
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
-CatCrypt.Crypto.SecureCompilation.VIR.TowerDialect
+CatCrypt.Crypto.SecureCompilation.VIR.TowerToLimbs
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
