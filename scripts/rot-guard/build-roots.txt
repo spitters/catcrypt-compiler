@@ -985,7 +985,7 @@ CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
 CatCrypt.Hax.Ascent.SquareDouble
 CatCrypt.Hax.ClassBuiltinsTest
-CatCrypt.Hax.PrimeirBuiltins
+CatCrypt.Hax.PrimeirNames
 CatCrypt.Hax.ReifyImpDecodeEndToEnd
 CatCrypt.Hax.ReifyImpEmit
 CatCrypt.Hax.ReifyImpEndToEnd
