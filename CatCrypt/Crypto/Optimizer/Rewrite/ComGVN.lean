@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
 public import CatCrypt.Crypto.Optimizer.CopyProp
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOpInfo
 
 /-!
 # Global value numbering of `Com jasminDialect` by hash-consing
@@ -54,28 +55,10 @@ open CatCrypt.Crypto.Optimizer.Rewrite.Egraph (opCost comCost)
 open CatCrypt.Crypto.Optimizer.CopyProp (pullV pullV_id)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric (comCostOf)
 
-/-! ## 1. Purity -/
+/-! ## 1. Purity
 
-/-- The low halves of the instruction pairs of the x86 lowering: the multiply
-    `regArith .mul w`, whose `MUL` the `MULX` fusion pairs with the `MULXHI` of `mulhi w`
-    on the same sources, and the carry-chain add `addCarryLo w`, whose `ADCX` sets the
-    carry flag that the `setc` of the paired `addCarryHi w` reads. -/
-def pairLowOp : JasminOp → Bool
-  | .regArith .mul _ | .addCarryLo _ => true
-  | _ => false
-
-/-- The operations of the instruction pairs of the x86 lowering: the low halves
-    (`pairLowOp`) and the high halves `mulhi w` and `addCarryHi w`. -/
-def pairedOp : JasminOp → Bool
-  | .mulhi _ | .addCarryHi _ => true
-  | op => pairLowOp op
-
-/-- The operations whose bindings the pass may merge: every operation other than a stack
-    load or store, an external call, a multi-result call and an operation of an
-    instruction pair of the x86 lowering (`pairedOp`). -/
-def gvnPure : JasminOp → Bool
-  | .stackLoad _ _ | .stackStore _ _ | .extCall _ _ _ | .callN _ _ _ => false
-  | op => !pairedOp op
+The merge predicate `gvnPure` and the pair predicates `pairLowOp`, `pairedOp` are defined
+in `VIR/JasminOpInfo.lean`; `gvnPure` is the purity field of `jasminTraits`. -/
 
 /-! ## 2. Levels and the node table -/
 

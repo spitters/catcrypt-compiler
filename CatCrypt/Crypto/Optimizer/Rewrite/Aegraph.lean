@@ -167,6 +167,12 @@ theorem defOf_sound {Δ : Ctxt jasminDialect} {w : Nat} {D : Defs} {V : Ctxt.Val
 def opKey (op : JasminOp) : Nat :=
   2 * opCost op + (match op with | .regConst _ _ => 0 | _ => 1)
 
+/-- The extraction weight `opKey` is the weight `OpTraits.key` derived from
+    `jasminTraits`. -/
+theorem opKey_eq : opKey = jasminTraits.key := by
+  funext op
+  cases op <;> rfl
+
 /-! ## 3. Rule terms and the BitVec identities -/
 
 /-- The result of a rule on a node over `reg w`. -/
@@ -537,14 +543,13 @@ def binRule : Rule jasminDialect where
   apply D _ _ e := ruleAlts D e
   sound _ _ _ hD _ e := ruleAlts_sound e hD
 
-/-- The jasmin rule set: the rule `binRule`, the cost `opCost`, the extraction weight
-    `opKey`, and the purity `ComGVN.gvnPure`, which keeps the operations of the instruction
-    pairs of the x86 lowering out of the node table. -/
+/-- The jasmin rule set: the rule `binRule` over the operation traits `jasminTraits`, whose
+    cost is `opCost`, whose extraction weight is `opKey` (`opKey_eq`), and whose purity
+    `ComGVN.gvnPure` keeps the operations of the instruction pairs of the x86 lowering out
+    of the node table. -/
 def jasminRules : RuleSet jasminDialect where
+  toOpTraits := jasminTraits
   rules := [binRule]
-  cost := opCost
-  key := opKey
-  pure := ComGVN.gvnPure
 
 /-- **Extraction** at the jasmin rule set. -/
 def choose (S : Tbl × Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}

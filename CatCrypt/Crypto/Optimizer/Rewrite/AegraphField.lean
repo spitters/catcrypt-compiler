@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
-public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldOpInfo
 
 /-!
 # The acyclic e-graph over `Com fieldDialect`
@@ -327,37 +327,27 @@ def negRule : Rule fieldDialect where
   apply D _ _ e := negApply D e
   sound D _ V hD _ e := negApply_sound D V hD e
 
-/-! ## 4. The field rule set and the pass -/
+/-! ## 4. The field rule set and the pass
 
-/-- The cost of a field operation in units of a base-field addition: a multiplication or
-    squaring costs four, an inversion sixty-four, an extension-field multiplication four
-    per base-field multiplication of its schoolbook form; every other operation costs
-    one. -/
-def fieldCost : FieldOp → Nat
-  | .fMul _ | .fieldSquare _ => 4
-  | .fInv _ => 64
-  | .ext2Mul _ => 16
-  | .ext6Mul _ _ => 144
-  | .ext12Mul _ _ => 576
-  | _ => 1
+The cost `fieldCost` and the merge predicate `fieldPure` are defined in
+`VIR/FieldOpInfo.lean`, as fields of `fieldTraits`. -/
 
 /-- The extraction weight of a field operation: twice its cost, plus one unless it is a
     constant. -/
 def fieldKey (op : FieldOp) : Nat :=
   2 * fieldCost op + (match op with | .fConst _ _ => 0 | _ => 1)
 
-/-- The field operations whose bindings the node table may merge: every operation other
-    than the designated-output copy `fCopy`, whose bindings stage distinct output lanes. -/
-def fieldPure : FieldOp → Bool
-  | .fCopy _ => false
-  | _ => true
+/-- The extraction weight `fieldKey` is the weight `OpTraits.key` derived from
+    `fieldTraits`. -/
+theorem fieldKey_eq : fieldKey = fieldTraits.key := by
+  funext op
+  cases op <;> rfl
 
-/-- The field rule set: the four rule families above, for every modulus. -/
+/-- The field rule set: the four rule families above, for every modulus, over the
+    operation traits `fieldTraits`. -/
 def fieldRules : RuleSet fieldDialect where
+  toOpTraits := fieldTraits
   rules := [addRule, mulRule, subRule, negRule]
-  cost := fieldCost
-  key := fieldKey
-  pure := fieldPure
 
 /-- **The aegraph pass on field programs**: the instance of `aegraphOptOf` at
     `fieldRules`. -/

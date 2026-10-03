@@ -7,6 +7,8 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOpInfo
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
 
 /-!
 # Branches of `NFProg` lowered to selects
@@ -94,24 +96,31 @@ class HasSelect (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasBo
   isSome_denoteM : ∀ (op : d.Op), speculatable op = true →
     ∀ args, (DialectDenoteM.denoteM (M := Option) op args).isSome
 
+/-- Under the `Option` denotation of a dialect with a pure denotation
+    (`instDialectDenoteMOptionOfPure`), every operation record satisfies the speculation
+    law. -/
+theorem SpecLaw.ofPure {d : Dialect} [TyDenote d.Ty] [DialectSignature d]
+    [DialectDenote d] (T : OpTraits d) : SpecLaw T :=
+  fun _ _ _ => rfl
+
+/-- A speculatable jasmin operation denotes `some` value at every argument. -/
+theorem jasminTraits_specLaw : SpecLaw jasminTraits := SpecLaw.ofPure jasminTraits
+
+/-- A speculatable catCrypt operation denotes `some` value at every argument. -/
+theorem catTraits_specLaw : SpecLaw catTraits := SpecLaw.ofPure catTraits
+
 /-- `catCryptDialect` selects at every type with `ite t`, and every op is speculatable. -/
 instance : HasSelect catCryptDialect where
   selects _ := true
   sel {_ t} _ c a b := ⟨CatCryptOp.ite t, rfl, .cons c (.cons a (.cons b .nil))⟩
   denoteM_sel _ _ _ _ _ := rfl
-  speculatable _ := true
-  isSome_denoteM _ _ _ := rfl
+  speculatable := catTraits.speculatable
+  isSome_denoteM := catTraits_specLaw
 
 /-- The register types of `jasminDialect`, at which it has the select `select w`. -/
 def jasminSelects : JasminTy → Bool
   | .reg _ => true
   | _ => false
-
-/-- The ops of `jasminDialect` other than the calls `extCall` and `callN`. -/
-def jasminSpeculatable : JasminOp → Bool
-  | .extCall .. => false
-  | .callN .. => false
-  | _ => true
 
 /-- The select of `jasminDialect` at a register type: `select w`. -/
 def jasminSel {Γ : Ctxt jasminDialect} :
@@ -143,8 +152,8 @@ instance : HasSelect jasminDialect where
         show some (if _ then _ else _) = some (if decide _ = true then _ else _)
         simp only [decide_eq_true_eq]
     | _ => exact absurd h Bool.false_ne_true
-  speculatable := jasminSpeculatable
-  isSome_denoteM _ _ _ := rfl
+  speculatable := jasminTraits.speculatable
+  isSome_denoteM := jasminTraits_specLaw
 
 namespace NFProg
 

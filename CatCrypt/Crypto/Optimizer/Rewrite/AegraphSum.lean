@@ -350,24 +350,20 @@ def ruleInr (r : Rule ⟨O₂, T⟩) : Rule (Dialect.opSum ⟨O₁, T⟩ ⟨O₂
     obtain ⟨e', he, a', ha', rfl⟩ := mem_applyInr ha
     rw [altInr_denote, r.sound _ V (dsound_restrictR hD) e' a' ha', projR_denote he]
 
-/-- **The combined rule set** of the sum: the rules of both summands, each lifted, with the
-    cost, the extraction weight and the merge predicate taken from the summand of the
-    operation. -/
+/-- **The combined rule set** of the sum: the rules of both summands, each lifted, over the
+    operation traits of the sum (`OpTraits.opSum`), which take every trait of an operation
+    from its summand. -/
 def sumRules (R₁ : RuleSet ⟨O₁, T⟩) (R₂ : RuleSet ⟨O₂, T⟩) :
     RuleSet (Dialect.opSum ⟨O₁, T⟩ ⟨O₂, T⟩) where
+  toOpTraits := R₁.toOpTraits.opSum R₂.toOpTraits
   rules := R₁.rules.map ruleInl ++ R₂.rules.map ruleInr
-  cost := Sum.elim R₁.cost R₂.cost
-  key := Sum.elim R₁.key R₂.key
-  pure := Sum.elim R₁.pure R₂.pure
 
-/-- The rule set with no rules that merges no binding, each operation of cost and weight
-    one. -/
+/-- The rule set with no rules over the operation traits `OpTraits.idle`: it merges no
+    binding, and each operation has cost one and extraction weight three. -/
 def idleRules (O : Type) [DialectSignature (⟨O, T⟩ : Dialect)]
     [DialectDenote (⟨O, T⟩ : Dialect)] : RuleSet ⟨O, T⟩ where
+  toOpTraits := OpTraits.idle _
   rules := []
-  cost := fun _ => 1
-  key := fun _ => 1
-  pure := fun _ => false
 
 /-- **A rule set of the left summand as a rule set of the sum**: the operations of the
     right summand are neither rewritten nor merged. -/

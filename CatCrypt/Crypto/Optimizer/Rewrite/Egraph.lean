@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOpInfo
 
 /-!
 # Verified bounded equality-saturation rewrite engine for `Com`
@@ -117,13 +118,8 @@ end Leak
 
 Cost sums one weight per let-binding: a multiply weighs 4 and every other op 1,
 so the rules that replace a multiply lower the cost and the others keep it. This lets
-`saturate_cost_le` state the rewrite is non-increasing. -/
-
-/-- Cost of one op: `mul` is the expensive arm; everything else is cheap. -/
-def opCost : JasminOp → Nat
-  | .regArith .mul _ => 4
-  | .regArith _ _    => 1
-  | _                => 1
+`saturate_cost_le` state the rewrite is non-increasing. The weight of one op is `opCost`
+(`VIR/JasminOpInfo.lean`), the cost field of `jasminTraits`. -/
 
 /-- Cost of a Jasmin `Com`: sum of op costs along the let-chain. -/
 def comCost {Γ : Ctxt jasminDialect} {t : JasminTy} :

@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.Peephole
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 
 /-!
 # Global value numbering and the acyclic e-graph over an arbitrary dialect
@@ -37,9 +38,10 @@ The dialect `d : Dialect.{0, 0}` (operations and types in `Type`) carries
 `TyDenote d.Ty`, `DialectSignature d`, `DialectDenote d`, and decidable equality on its
 types and its operations (`DecidableEq d.Ty`, `DecidableEq d.Op`). The tables are keyed by
 levels, so no hash or order on operations is needed: operations are compared by decidable
-equality within a bucket. A rule set (`RuleSet d`) provides the rules, each with its
-soundness against the denotation of `d` (`Rule`), the cost of an operation, the extraction
-weight of an operation, and the operations the node table may merge (`RuleSet.pure`).
+equality within a bucket. A rule set (`RuleSet d`) extends the operation traits of `d`
+(`OpTraits d`: the cost of an operation, the extraction weight `OpTraits.key` derived
+from it, and the operations the node table may merge) by the rules, each with its
+soundness against the denotation of `d` (`Rule`).
 
 ## Main results
 
@@ -546,18 +548,13 @@ structure Rule (d : Dialect.{0, 0}) [TyDenote d.Ty] [DecidableEq d.Ty] [DialectS
   sound : ∀ (D : Defs d) {Δ : Ctxt d} (V : Ctxt.Valuation Δ), DSound V D →
     ∀ {s : d.Ty} (e : Expr d Δ s), ∀ a ∈ apply D e, a.denote V = e.denote V
 
-/-- A rule set over a dialect: the rules, the cost of an operation, the extraction weight
-    of an operation, and the operations the node table may merge. -/
+/-- A rule set over a dialect: the operation traits of the dialect (`OpTraits`) and the
+    rules. Extraction never increases the cost `R.cost`, minimises the extraction weight
+    `R.key` (`OpTraits.key`), and the node table merges only the operations `R.pure`. -/
 structure RuleSet (d : Dialect.{0, 0}) [TyDenote d.Ty] [DecidableEq d.Ty]
-    [DialectSignature d] [DialectDenote d] where
+    [DialectSignature d] [DialectDenote d] extends OpTraits d where
   /-- The rules, each with its soundness. -/
   rules : List (Rule d)
-  /-- The cost of an operation; extraction never increases it. -/
-  cost : d.Op → Nat
-  /-- The extraction weight of an operation; extraction minimises it. -/
-  key : d.Op → Nat
-  /-- The operations whose bindings the node table may merge. -/
-  pure : d.Op → Bool
 
 namespace RuleSet
 

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
-public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
 
 /-!
 # The acyclic e-graph over `Com catCryptDialect`
@@ -600,31 +600,27 @@ def notRule : Rule catCryptDialect where
   apply D _ _ e := notApply D e
   sound D _ V hD _ e := notApply_sound D V hD e
 
-/-! ## 4. The catCrypt rule set and the pass -/
+/-! ## 4. The catCrypt rule set and the pass
 
-/-- The cost of a catCrypt operation in units of a bit-vector addition: a full or high
-    multiplication costs four, every other operation one. -/
-def catCost : CatCryptOp → Nat
-  | .bvMul _ | .bvMulHi _ => 4
-  | _ => 1
+The cost `catCost` and the merge predicate `catPure` are defined in
+`VIR/CatCryptOpInfo.lean`, as fields of `catTraits`. -/
 
 /-- The extraction weight of a catCrypt operation: twice its cost, plus one unless it is a
     constant. -/
 def catKey (op : CatCryptOp) : Nat :=
   2 * catCost op + (match op with | .bvConst _ _ | .constBit _ | .constUnit => 0 | _ => 1)
 
-/-- The catCrypt operations whose bindings the node table may merge: every operation other
-    than the sampling leaves `sampleBit`, `sampleBv` and the external call `extCall`. -/
-def catPure : CatCryptOp → Bool
-  | .sampleBit | .sampleBv _ | .extCall _ _ _ => false
-  | _ => true
+/-- The extraction weight `catKey` is the weight `OpTraits.key` derived from
+    `catTraits`. -/
+theorem catKey_eq : catKey = catTraits.key := by
+  funext op
+  cases op <;> rfl
 
-/-- The catCrypt rule set: the eight rule families above, for every width. -/
+/-- The catCrypt rule set: the eight rule families above, for every width, over the
+    operation traits `catTraits`. -/
 def catRules : RuleSet catCryptDialect where
+  toOpTraits := catTraits
   rules := [xorRule, andRule, orRule, addRule, subRule, mulRule, shiftZeroRule, notRule]
-  cost := catCost
-  key := catKey
-  pure := catPure
 
 /-- **The aegraph pass on catCrypt programs**: the instance of `aegraphOptOf` at
     `catRules`. -/

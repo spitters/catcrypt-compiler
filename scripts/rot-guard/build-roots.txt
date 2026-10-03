@@ -540,6 +540,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Bls377CubicIrreducible
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377FinalExpCorrect
 CatCrypt.Crypto.SecureCompilation.VIR.BranchLowering
 CatCrypt.Crypto.SecureCompilation.VIR.CarrierTransferDom
+CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrintCorrect
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20AbstractCom
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefTextKat
@@ -667,7 +668,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttWordSigned
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
-CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
 CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
