@@ -512,58 +512,15 @@ theorem wideRep_final (S : AccSched) (k : ℕ) (hS : S.Ok k) (ζ : ZMod S.q) (z 
         (smontAccW S.w S.q S.qinv
           (s00 + sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z)) ∧
       SRep S.q S.w ((2 ^ S.w : ℕ) : ZMod S.q) S.outB c.2 (smontAccW S.w S.q S.qinv s01) := by
-  obtain ⟨hN, hq, h3, h4, h5, h6, h7⟩ := hS
   obtain ⟨b00, b11, b01, e1, e2⟩ := h
   push_cast at b00 b11 b01
-  have k3 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
-      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.midB := by exact_mod_cast h3
-  have k4 : (2 * (S.midB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h4
-  have k5 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q
-      + ((2 ^ S.w : ℕ) : ℤ) * S.q ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h5
-  have k6 : 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
-      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h6
-  have k7 : (2 * (S.outB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h7
-  have hRR := pow_two_mul_cast S.w
-  have hR : (0 : ℤ) < (2 ^ S.w : ℕ) := by positivity
-  have hRq : (0 : ℤ) ≤ ((2 ^ S.w : ℕ) : ℤ) * S.q := by positivity
-  have hm0 : (0 : ℤ) ≤ S.midB := Int.natCast_nonneg _
-  have hMq : (0 : ℤ) ≤ (S.midB : ℤ) * S.q := by positivity
-  have hfit : 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
-    rw [hRR]; have := mul_lt_mul_of_pos_left k7 hR; linarith only [this]
-  -- the cross output
-  obtain ⟨eo1, bo1⟩ := smontAccW_spec S.w S.q S.qinv hN hq s01
-    (A2 := 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.outB)
-    (by linarith only [b01]) k6 k7
-  refine ⟨?_, ⟨by rw [eo1]; exact bo1, by rw [eo1, smont_mul_radix _ _ _ hN, e2]⟩⟩
-  -- the inner reduction of the odd sum
-  obtain ⟨er, hr⟩ := smontAccW_spec S.w S.q S.qinv hN hq s11
-    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.midB) (by linarith only [b11]) k3 k4
-  set r := smont S.w S.q S.qinv s11.toInt with hrdef
-  have hrz : 2 * |r * ζM| ≤ (S.midB : ℤ) * S.q := by
-    rw [abs_mul]
-    have := mul_le_mul hr hζ (by linarith only [abs_nonneg ζM]) hm0
-    linarith only [this]
-  have et : (sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z).toInt
-      = r * ζM := by
-    rw [toInt_mul_exact _ _ (by
-      rw [sextW_toInt, er, hz]
-      have hkP : (0 : ℤ) ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB) := by positivity
-      linarith only [hrz, k5, hkP, hRq, hfit]), sextW_toInt, er, hz]
-  have eu : (s00 + sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z).toInt
-      = s00.toInt + r * ζM := by
-    rw [toInt_add_exact _ _ (by
-      rw [et]; have := abs_add_le s00.toInt (r * ζM)
-      linarith only [this, hrz, b00, k5, hRq, hfit]), et]
-  obtain ⟨eo0, bo0⟩ := smontAccW_spec S.w S.q S.qinv hN hq _
-    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q) (M := S.outB)
-    (by rw [eu]; have := abs_add_le s00.toInt (r * ζM); linarith only [this, hrz, b00])
-    (by linarith only [k5]) k7
-  refine ⟨by rw [eo0]; exact bo0, ?_⟩
-  have hr2 := smont_mul_radix S.w S.q S.qinv hN s11.toInt
-  rw [← hrdef] at hr2
-  rw [eo0, smont_mul_radix _ _ _ hN, eu, ← e1]
+  obtain ⟨⟨eo0, bo0⟩, eo1, bo1⟩ := accTail_spec S k hS z ζM hz hζ s00 s11 s01 b00 b11 b01
+  have hr2 := smont_mul_radix S.w S.q S.qinv hS.1 s11.toInt
+  refine ⟨⟨by rw [eo0]; exact bo0, ?_⟩, ⟨by rw [eo1]; exact bo1,
+    by rw [eo1, smont_mul_radix _ _ _ hS.1, e2]⟩⟩
+  rw [eo0, smont_mul_radix _ _ _ hS.1, ← e1]
   push_cast
-  linear_combination (r : ZMod S.q) * hζc + ζ * hr2
+  linear_combination (smont S.w S.q S.qinv s11.toInt : ZMod S.q) * hζc + ζ * hr2
 
 /-! ## 6. The two loops related -/
 
@@ -584,16 +541,6 @@ def RowOut (S : AccSched) (p : Valuation ([RowTy.pair S.q] : Ctxt rowDialect))
       (show BitVec S.w from W.head) ∧
     SRep S.q S.w ((2 ^ S.w : ℕ) : ZMod S.q) S.outB (show ZMod S.q × ZMod S.q from p.head).2
       (show BitVec S.w from W.tail.head)
-
-/-- Under `AccSched.Ok k`, `k` accumulated products fit twice over in the `2 w`-bit
-accumulator. -/
-theorem accSched_ok_fit {S : AccSched} {k : ℕ} (hS : S.Ok k) :
-    2 * (2 * (k * (S.inA * S.inB))) < 2 ^ (2 * S.w) := by
-  obtain ⟨-, -, -, -, -, h6, h7⟩ := hS
-  have e : 2 ^ (2 * S.w) = 2 ^ S.w * 2 ^ S.w := by rw [two_mul, pow_add]
-  have hp : 0 < 2 ^ S.w := by positivity
-  rw [e]
-  nlinarith
 
 /-- **The row product, ring level against word level.** Under `AccSched.Ok k`, at a trip
 count `k`, on input arrays related to the rows by `RowIn` and a twiddle constant `z`

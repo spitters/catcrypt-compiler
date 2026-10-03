@@ -43,6 +43,7 @@ on `ℕ`, decided by `decide +kernel` per instance: every partial sum lies insid
 * `macK_denote`, `acc0K_denote`, `acc1K_denote`: the schedules denote their word
   semantics.
 * `macW_toInt`: inside the accumulator the word sum is the integer sum.
+* `accTail_spec`: the final reduction pass on accumulator words with integer bounds.
 * `acc0W_spec`, `acc1W_spec`: each output is the reduction of its integer sum and is at
   most `outB` in absolute value.
 * `accProgW_denote`: every output word of `accProgW` is at most `outB` in absolute value
@@ -233,6 +234,15 @@ theorem macW_toInt (w : ℕ) (A B : ℤ) : ∀ (n : ℕ) (u v : ℕ → BitVec w
       (by rw [e]; linarith), e, Finset.sum_range_succ']
     ring
 
+/-- The accumulator start value adds to the accumulation from zero. -/
+theorem macW_add (w : ℕ) : ∀ (n : ℕ) (u v : ℕ → BitVec w) (acc : BitVec (2 * w)),
+    macW w n u v acc = acc + macW w n u v 0
+  | 0, _, _, acc => by simp [macW]
+  | n + 1, u, v, acc => by
+    simp only [macW]
+    rw [macW_add w n _ _ (acc + _), macW_add w n _ _ (0 + _)]
+    simp [BitVec.add_assoc]
+
 /-! ## 4. The bounds certificate -/
 
 /-- The parameters of the row accumulation modulo `q` in signed `w`-bit words: the
@@ -271,11 +281,79 @@ def AccSched.Ok (S : AccSched) (k : ℕ) : Prop :=
 instance (S : AccSched) (k : ℕ) : Decidable (S.Ok k) := by
   unfold AccSched.Ok; infer_instance
 
+/-- Under `AccSched.Ok k`, `k` accumulated products fit twice over in the `2 w`-bit
+accumulator. -/
+theorem accSched_ok_fit {S : AccSched} {k : ℕ} (hS : S.Ok k) :
+    2 * (2 * (k * (S.inA * S.inB))) < 2 ^ (2 * S.w) := by
+  obtain ⟨-, -, -, -, -, h6, h7⟩ := hS
+  have e : 2 ^ (2 * S.w) = 2 ^ S.w * 2 ^ S.w := by rw [two_mul, pow_add]
+  have hp : 0 < 2 ^ S.w := by positivity
+  rw [e]
+  nlinarith
+
 /-! ## 5. The word theorems -/
 
 section Spec
 
 variable (S : AccSched) (k : ℕ)
+
+/-- **The final reduction pass.** Under `AccSched.Ok k`, on accumulators `s₀₀`, `s₁₁` at
+most `k · inA · inB` and `s₀₁` at most `2 k · inA · inB` in absolute value, and a twiddle
+constant `z` reading `ζ` with `2 |ζ| ≤ q`: the first output `R(s₀₀ + sext R(s₁₁) · z)` reads
+`R(R(s₁₁) · ζ + s₀₀)` and the second output `R(s₀₁)` reads `R(s₀₁)`, both at most `outB`. -/
+theorem accTail_spec (hS : S.Ok k) (z : ℕ) (ζ : ℤ) (hz : (BitVec.ofNat (2 * S.w) z).toInt = ζ)
+    (hζ : 2 * |ζ| ≤ S.q) (s00 s11 s01 : BitVec (2 * S.w))
+    (b00 : |s00.toInt| ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB))
+    (b11 : |s11.toInt| ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB))
+    (b01 : |s01.toInt| ≤ 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) :
+    ((smontAccW S.w S.q S.qinv
+          (s00 + sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z)).toInt
+        = smont S.w S.q S.qinv (smont S.w S.q S.qinv s11.toInt * ζ + s00.toInt) ∧
+      |smont S.w S.q S.qinv (smont S.w S.q S.qinv s11.toInt * ζ + s00.toInt)| ≤ S.outB) ∧
+    ((smontAccW S.w S.q S.qinv s01).toInt = smont S.w S.q S.qinv s01.toInt ∧
+      |smont S.w S.q S.qinv s01.toInt| ≤ S.outB) := by
+  obtain ⟨hN, hq, h3, h4, h5, h6, h7⟩ := hS
+  have k3 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
+      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.midB := by exact_mod_cast h3
+  have k4 : (2 * (S.midB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h4
+  have k5 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q
+      + ((2 ^ S.w : ℕ) : ℤ) * S.q ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h5
+  have k6 : 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
+      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h6
+  have k7 : (2 * (S.outB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h7
+  have hRR := pow_two_mul_cast S.w
+  have hR : (0 : ℤ) < (2 ^ S.w : ℕ) := by positivity
+  have hRq : (0 : ℤ) ≤ ((2 ^ S.w : ℕ) : ℤ) * S.q := by positivity
+  have hm0 : (0 : ℤ) ≤ S.midB := Int.natCast_nonneg _
+  have hMq : (0 : ℤ) ≤ (S.midB : ℤ) * S.q := by positivity
+  have hkP : (0 : ℤ) ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB) := by positivity
+  have hfit : 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
+    rw [hRR]; have := mul_lt_mul_of_pos_left k7 hR; linarith only [this]
+  refine ⟨?_, smontAccW_spec S.w S.q S.qinv hN hq s01
+    (A2 := 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.outB)
+    (by linarith only [b01]) k6 k7⟩
+  obtain ⟨er, hr⟩ := smontAccW_spec S.w S.q S.qinv hN hq s11
+    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.midB) (by linarith only [b11]) k3 k4
+  set r := smont S.w S.q S.qinv s11.toInt with hrdef
+  have hrz : 2 * |r * ζ| ≤ (S.midB : ℤ) * S.q := by
+    rw [abs_mul]
+    have := mul_le_mul hr hζ (by linarith only [abs_nonneg ζ]) hm0
+    linarith only [this]
+  have et : (sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z).toInt
+      = r * ζ := by
+    rw [toInt_mul_exact _ _ (by
+      rw [sextW_toInt, er, hz]; linarith only [hrz, k5, hkP, hRq, hfit]), sextW_toInt, er, hz]
+  have eu : (s00 + sextW (smontAccW S.w S.q S.qinv s11) * BitVec.ofNat (2 * S.w) z).toInt
+      = r * ζ + s00.toInt := by
+    rw [toInt_add_exact _ _ (by
+      rw [et]; have := abs_add_le s00.toInt (r * ζ)
+      linarith only [this, hrz, b00, k5, hRq, hfit]), et, add_comm]
+  have := smontAccW_spec S.w S.q S.qinv hN hq _
+    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q) (M := S.outB)
+    (by rw [eu]; have := abs_add_le (r * ζ) s00.toInt; linarith only [this, hrz, b00])
+    (by linarith only [k5]) k7
+  rw [eu] at this
+  exact this
 
 /-- **The second output.** On first operands at most `inA` and second operands at most
 `inB`, `acc1W` is the reduction of `∑_j a₀ⱼ b₁ⱼ + ∑_j a₁ⱼ b₀ⱼ`, at most `outB`. -/
@@ -287,30 +365,20 @@ theorem acc1W_spec (hS : S.Ok k) (a0 a1 b0 b1 : ℕ → BitVec S.w)
             + ∑ j ∈ range k, (a1 j).toInt * (b0 j).toInt) ∧
       |smont S.w S.q S.qinv (∑ j ∈ range k, (a0 j).toInt * (b1 j).toInt
             + ∑ j ∈ range k, (a1 j).toInt * (b0 j).toInt)| ≤ S.outB := by
-  obtain ⟨hN, hq, -, -, -, h6, h7⟩ := hS
-  have k6 : 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
-      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h6
-  have k7 : (2 * (S.outB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h7
-  have hRR := pow_two_mul_cast S.w
-  have hR : (0 : ℤ) < (2 ^ S.w : ℕ) := by positivity
-  have hRq : (0 : ℤ) ≤ ((2 ^ S.w : ℕ) : ℤ) * S.q := by positivity
-  have hkP : (0 : ℤ) ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB) := by positivity
-  have hfit : 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
-    rw [hRR]; have := mul_lt_mul_of_pos_left k7 hR; linarith only [this]
+  have hf : 2 * (2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
+    exact_mod_cast accSched_ok_fit hS
   have s1 := abs_sum_mul_le S.inA S.inB k (fun j => (a0 j).toInt) (fun j => (b1 j).toInt)
     ha0 hb1
   have s2 := abs_sum_mul_le S.inA S.inB k (fun j => (a1 j).toInt) (fun j => (b0 j).toInt)
     ha1 hb0
   have e1 := macW_toInt S.w S.inA S.inB k a0 b1 0 ha0 hb1
-    (by rw [toInt_zero_lit, abs_zero, zero_add]; linarith only [k6, hkP, hRq, hfit])
+    (by rw [toInt_zero_lit, abs_zero, zero_add]; linarith only [hf, s1])
   rw [toInt_zero_lit, zero_add] at e1
-  have e2 := macW_toInt S.w S.inA S.inB k a1 b0 _ ha1 hb0
-    (by rw [e1]; linarith only [s1, k6, hkP, hRq, hfit])
+  have e2 := macW_toInt S.w S.inA S.inB k a1 b0 _ ha1 hb0 (by rw [e1]; linarith only [s1, hf])
   rw [e1] at e2
-  have := smontAccW_spec S.w S.q S.qinv hN hq (macW S.w k a1 b0 (macW S.w k a0 b1 0))
-    (A2 := 2 * (2 * (k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.outB)
+  have := (accTail_spec S k hS 0 _ rfl (by simp) 0 0 _ (by simp; positivity) (by simp; positivity)
     (by rw [e2]; have := abs_add_le (∑ j ∈ range k, (a0 j).toInt * (b1 j).toInt)
-          (∑ j ∈ range k, (a1 j).toInt * (b0 j).toInt); linarith only [this, s1, s2]) k6 k7
+          (∑ j ∈ range k, (a1 j).toInt * (b0 j).toInt); linarith only [this, s1, s2])).2
   rw [e2] at this
   exact this
 
@@ -328,50 +396,20 @@ theorem acc0W_spec (hS : S.Ok k) (z : ℕ) (ζ : ℤ) (hz : (BitVec.ofNat (2 * S
       |smont S.w S.q S.qinv (smont S.w S.q S.qinv
             (∑ j ∈ range k, (a1 j).toInt * (b1 j).toInt) * ζ
             + ∑ j ∈ range k, (a0 j).toInt * (b0 j).toInt)| ≤ S.outB := by
-  obtain ⟨hN, hq, h3, h4, h5, -, h7⟩ := hS
-  have k3 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + ((2 ^ S.w : ℕ) : ℤ) * S.q
-      ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.midB := by exact_mod_cast h3
-  have k4 : (2 * (S.midB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h4
-  have k5 : 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q
-      + ((2 ^ S.w : ℕ) : ℤ) * S.q ≤ 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB := by exact_mod_cast h5
-  have k7 : (2 * (S.outB : ℤ) < ((2 ^ S.w : ℕ) : ℤ)) := by exact_mod_cast h7
-  have hRR := pow_two_mul_cast S.w
-  have hR : (0 : ℤ) < (2 ^ S.w : ℕ) := by positivity
-  have hRq : (0 : ℤ) ≤ ((2 ^ S.w : ℕ) : ℤ) * S.q := by positivity
-  have hq0 : (0 : ℤ) ≤ S.q := Int.natCast_nonneg _
-  have hm0 : (0 : ℤ) ≤ S.midB := Int.natCast_nonneg _
-  have hMq : (0 : ℤ) ≤ (S.midB : ℤ) * S.q := by positivity
-  have hkP : (0 : ℤ) ≤ (k : ℤ) * ((S.inA : ℤ) * S.inB) := by positivity
-  have hfit : 2 * ((2 ^ S.w : ℕ) : ℤ) * S.outB < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
-    rw [hRR]; have := mul_lt_mul_of_pos_left k7 hR; linarith only [this]
+  have hf : 2 * (2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) < ((2 ^ (2 * S.w) : ℕ) : ℤ) := by
+    exact_mod_cast accSched_ok_fit hS
   have s0 := abs_sum_mul_le S.inA S.inB k (fun j => (a0 j).toInt) (fun j => (b0 j).toInt)
     ha0 hb0
   have s1 := abs_sum_mul_le S.inA S.inB k (fun j => (a1 j).toInt) (fun j => (b1 j).toInt)
     ha1 hb1
+  have e0 := macW_toInt S.w S.inA S.inB k a0 b0 0 ha0 hb0
+    (by rw [toInt_zero_lit, abs_zero, zero_add]; linarith only [hf, s0])
   have e1 := macW_toInt S.w S.inA S.inB k a1 b1 0 ha1 hb1
-    (by rw [toInt_zero_lit, abs_zero, zero_add]; linarith only [k5, hfit, hMq, hRq])
-  rw [toInt_zero_lit, zero_add] at e1
-  obtain ⟨er, hr⟩ := smontAccW_spec S.w S.q S.qinv hN hq (macW S.w k a1 b1 0)
-    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB))) (M := S.midB)
-    (by rw [e1]; linarith only [s1]) k3 k4
-  rw [e1] at er hr
-  set r := smont S.w S.q S.qinv (∑ j ∈ range k, (a1 j).toInt * (b1 j).toInt) with hrdef
-  have hrz : 2 * |r * ζ| ≤ (S.midB : ℤ) * S.q := by
-    rw [abs_mul]
-    have := mul_le_mul hr hζ (by linarith only [abs_nonneg ζ]) hm0
-    linarith only [this]
-  have e2 : (sextW (smontAccW S.w S.q S.qinv (macW S.w k a1 b1 0))
-      * BitVec.ofNat (2 * S.w) z).toInt = r * ζ := by
-    rw [toInt_mul_exact _ _ (by
-      rw [sextW_toInt, er, hz]; linarith only [hrz, k5, hkP, hRq, hfit]), sextW_toInt, er, hz]
-  have e3 := macW_toInt S.w S.inA S.inB k a0 b0 _ ha0 hb0
-    (by rw [e2]; linarith only [hrz, k5, hRq, hfit])
-  rw [e2] at e3
-  have := smontAccW_spec S.w S.q S.qinv hN hq _
-    (A2 := 2 * ((k : ℤ) * ((S.inA : ℤ) * S.inB)) + (S.midB : ℤ) * S.q) (M := S.outB)
-    (by rw [e3]; have := abs_add_le (r * ζ) (∑ j ∈ range k, (a0 j).toInt * (b0 j).toInt)
-        linarith only [this, hrz, s0]) (by linarith only [k5]) k7
-  rw [e3] at this
+    (by rw [toInt_zero_lit, abs_zero, zero_add]; linarith only [hf, s1])
+  rw [toInt_zero_lit, zero_add] at e0 e1
+  have := (accTail_spec S k hS z ζ hz hζ (macW S.w k a0 b0 0) (macW S.w k a1 b1 0) 0
+    (by rw [e0]; exact s0) (by rw [e1]; exact s1) (by simp; positivity)).1
+  rw [e0, e1, BitVec.add_comm, ← macW_add] at this
   exact this
 
 end Spec
