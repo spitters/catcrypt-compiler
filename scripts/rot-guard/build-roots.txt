@@ -172,6 +172,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.FieldSqrtGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.FieldStrengthReducePass
 CatCrypt.Crypto.Optimizer.Rewrite.FrobeniusGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.GvnMonadic
+CatCrypt.Crypto.Optimizer.Rewrite.GvnMulti
 CatCrypt.Crypto.Optimizer.Rewrite.LagrangeInterpGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.LegendreSymbolGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.LinearCombGeneric
