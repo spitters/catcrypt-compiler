@@ -246,7 +246,6 @@
 5	CatCrypt/Crypto/SecureCompilation/VIR/GgmDblLoopEmit.lean
 4	CatCrypt/Crypto/SecureCompilation/VIR/GgmNodeLoopEmit.lean
 14	CatCrypt/Crypto/SecureCompilation/VIR/GhashClmulVsimdCovered.lean
-2	CatCrypt/Crypto/SecureCompilation/VIR/GhashGf128CatCryptEmit.lean
 4	CatCrypt/Crypto/SecureCompilation/VIR/HawkMulEmit.lean
 2	CatCrypt/Crypto/SecureCompilation/VIR/HmacHkdfEmit.lean
 5	CatCrypt/Crypto/SecureCompilation/VIR/InstructionScheduleReal.lean

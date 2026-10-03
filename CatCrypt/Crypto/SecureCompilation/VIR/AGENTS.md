@@ -161,7 +161,6 @@ literal limb stores, selections within one tower type and admitted calls; it exc
   (`mpnAddN_loop_iterate`), and the other `*Covered.lean` modules, each on one kernel.
 - `KeccakF1600FrontComposeShape.lean`: `shapeTranslate_sim` (front success and
   agreement from a shape run), `cryptoDialectToJasminCom_isSome_of_pureLower`.
-- `GhashGf128CatCryptEmit.lean`: `accStepCom_not_lowered`, a rejected program.
 
 ## Kernel emitters and algebra
 

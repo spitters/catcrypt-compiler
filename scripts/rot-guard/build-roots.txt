@@ -591,7 +591,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.Gf2Aggregate
 CatCrypt.Crypto.SecureCompilation.VIR.GgmDblLoopEmit
 CatCrypt.Crypto.SecureCompilation.VIR.GgmNodeLoopEmit
 CatCrypt.Crypto.SecureCompilation.VIR.GhashClmulVsimdCovered
-CatCrypt.Crypto.SecureCompilation.VIR.GhashGf128CatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.HawkMulComDenoteTie
 CatCrypt.Crypto.SecureCompilation.VIR.HetPhaseBody
 CatCrypt.Crypto.SecureCompilation.VIR.HgcongrDialectLeaves
