@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
+public import CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
 
 /-!
@@ -25,7 +26,12 @@ each proved against the denotation `catCryptDenote`:
 * `mulRule`: `x * 1 = x`, `1 * x = x`, `x * 0 = 0`, `0 * x = 0` (`mulAlts_sound`);
 * `shiftZeroRule`: a shift or rotation by the constant amount zero is the identity
   (`bvShiftL`, `bvShiftR`, `bvShiftRA`, `bvRol`, `bvRor`; `zeroAmtAlts_sound`);
-* `notRule`: `~~x = x` (`notAlts_sound`).
+* `notRule`: `~~x = x` and `!!b = b`, the involution rule `TraitRules.involutionRule` at
+  `catInvolution`;
+* `idempotentRule catIdempotent`: `b && b = b`, `b || b = b` on bits;
+* `selfCancelRule catSelfCancel`: `b ^^ b = false`, `eqBit b b = true`, `bvEq x x = true`;
+* `constFoldRule catReify`: a pure operation on constant arguments is replaced by the
+  constant `bvConst`, `constBit` or `constUnit` holding its value.
 
 A constant operand is read from the definition table (`constOf`, a binding of `bvConst`),
 and the operand of a complement likewise (`notOf`). The node table merges every operation
@@ -595,10 +601,88 @@ def shiftZeroRule : Rule catCryptDialect where
   apply _ _ _ e := shiftZeroApply e
   sound _ _ V _ _ e := shiftZeroApply_sound V e
 
-/-- Double complement: `~~x = x`. -/
-def notRule : Rule catCryptDialect where
-  apply D _ _ e := notApply D e
-  sound D _ V hD _ e := notApply_sound D V hD e
+/-! ## 3a. Instances of the trait rules -/
+
+open CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
+
+/-- The involutions of catCrypt: the bit-vector complement `bvNot w` and the bit negation
+    `not`. -/
+def catInvolution : Involution catCryptDialect where
+  isInv
+    | .bvNot _ | .not => true
+    | _ => false
+  ty
+    | .bvNot w => .sword w
+    | _ => .bit
+  sig_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  ret_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  law op h x := by
+    cases op <;> first
+      | exact absurd h Bool.false_ne_true
+      | exact Bool.not_not x
+      | exact BitVec.not_not (b := (x : BitVec _))
+
+/-- The idempotent catCrypt operations not covered by `andRule` and `orRule`: the bit
+    conjunction `and` and disjunction `or`. -/
+def catIdempotent : Idempotent catCryptDialect where
+  isIdem
+    | .and | .or => true
+    | _ => false
+  ty _ := .bit
+  sig_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  ret_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  law op h x := by
+    cases op <;> first
+      | exact Bool.and_self x
+      | exact Bool.or_self x
+      | exact absurd h Bool.false_ne_true
+
+/-- The self-cancelling catCrypt operations not covered by `xorRule` and `subRule`: the bit
+    exclusive or (`b ^^ b = false`), the bit equality and the bit-vector equality
+    (`x = x` is `true`). -/
+def catSelfCancel : SelfCancel catCryptDialect where
+  isCancel
+    | .xor | .eqBit | .bvEq _ => true
+    | _ => false
+  ty
+    | .bvEq w => .sword w
+    | _ => .bit
+  sig_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  zero
+    | .xor => .constBit false
+    | _ => .constBit true
+  zero_sig op _ := by cases op <;> rfl
+  zero_ret op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  law op h x := by
+    cases op <;> first
+      | exact absurd h Bool.false_ne_true
+      | exact Sigma.ext rfl (heq_of_eq (by simp [app2, app0, DialectDenote.denote,
+          HVector.head, HVector.tail]))
+
+/-- The constant operation holding a catCrypt value: `bvConst` for a word, `constBit` for a
+    bit, `constUnit` for the unit. -/
+def catReifyOp : (t : CryptoTy) → ⟦t⟧ → Option CatCryptOp
+  | .sword w, x => some (.bvConst w x)
+  | .bit, b => some (.constBit b)
+  | .unit, _ => some .constUnit
+  | _, _ => none
+
+/-- The reification of catCrypt values as constants, under `catTraits`. -/
+def catReify : ConstReify catCryptDialect catTraits where
+  reify := catReifyOp
+  law := catTraits_constLaw
+  const t x op h := by
+    cases t <;> simp only [catReifyOp, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
+      rfl
+  ret_eq t x op h := by
+    cases t <;> simp only [catReifyOp, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
+      rfl
+  denote_eq t x op h := by
+    cases t <;> simp only [catReifyOp, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
+      rfl
+
+/-- Double complement: `~~x = x` and `!!b = b`, the involution rule at `catInvolution`. -/
+def notRule : Rule catCryptDialect := involutionRule catInvolution
 
 /-! ## 4. The catCrypt rule set and the pass
 
@@ -616,11 +700,14 @@ theorem catKey_eq : catKey = catTraits.key := by
   funext op
   cases op <;> rfl
 
-/-- The catCrypt rule set: the eight rule families above, for every width, over the
-    operation traits `catTraits`. -/
+/-- The catCrypt rule set: the eight rule families above, for every width, and the trait
+    rules at `catIdempotent`, `catSelfCancel` and `catReify`, over the operation traits
+    `catTraits`. -/
 def catRules : RuleSet catCryptDialect where
   toOpTraits := catTraits
-  rules := [xorRule, andRule, orRule, addRule, subRule, mulRule, shiftZeroRule, notRule]
+  rules := [xorRule, andRule, orRule, addRule, subRule, mulRule, shiftZeroRule, notRule,
+    idempotentRule catIdempotent, selfCancelRule catSelfCancel,
+    constFoldRule catReify (fun _ => true)]
 
 /-- **The aegraph pass on catCrypt programs**: the instance of `aegraphOptOf` at
     `catRules`. -/
@@ -728,13 +815,19 @@ end Alts
 /-- The events of every alternative of the catCrypt rule set do not depend on the
     valuation, for every leakage model. -/
 theorem catRules_indep : RulesIndep L catRules := by
-  intro D Δ s e alt h
-  obtain ⟨r, hr, ha⟩ := List.mem_flatMap.mp h
+  refine rulesIndep_of_forall fun r hr => ?_
   simp only [catRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases e with ⟨op, hop, args⟩
-  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases op <;>
-    simp only [xorRule, andRule, orRule, addRule, subRule, mulRule, shiftZeroRule, notRule,
-      xorApply, andApply, orApply, addApply, subApply, mulApply, shiftZeroApply, notApply,
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rotate_left 7
+  · exact involutionRule_indep L catInvolution
+  · exact idempotentRule_indep L catIdempotent
+  · exact selfCancelRule_indep L catSelfCancel
+  · exact constFoldRule_indep L catReify _
+  all_goals intro D Δ s e alt ha
+  all_goals rcases e with ⟨op, hop, args⟩
+  all_goals cases op <;>
+    simp only [xorRule, andRule, orRule, addRule, subRule, mulRule, shiftZeroRule,
+      xorApply, andApply, orApply, addApply, subApply, mulApply, shiftZeroApply,
       List.not_mem_nil] at ha <;> subst hop
   · match args, (rfl : args = args) with
     | .cons a (.cons b .nil), _ =>
@@ -760,15 +853,11 @@ theorem catRules_indep : RulesIndep L catRules := by
     | .cons a (.cons b .nil), _ =>
       simp only [HVector.head, HVector.tail] at ha
       exact mulAlts_indep D a b alt ha
-  all_goals first
-    | (match args, (rfl : args = args) with
-        | .cons a .nil, _ =>
-          simp only [HVector.head] at ha
-          exact zeroAmtAlts_indep _ a alt ha)
-    | (match args, (rfl : args = args) with
-        | .cons a .nil, _ =>
-          simp only [HVector.head] at ha
-          exact notAlts_indep D a alt ha)
+  all_goals
+    match args, (rfl : args = args) with
+    | .cons a .nil, _ =>
+      simp only [HVector.head] at ha
+      exact zeroAmtAlts_indep _ a alt ha
 
 /-- **Constant time of the catCrypt pass.** For every leakage model, if `c` is constant
     time for the relation `R`, so is `aegraphOptCat c`. -/

@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
+public import CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldOpInfo
 
 /-!
@@ -19,7 +20,10 @@ of `fieldDialect` in `ZMod p`:
 * `addRule`: `x + 0 = x`, `0 + x = x` (`addAlts_sound`);
 * `mulRule`: `x * 1 = x`, `1 * x = x`, `x * 0 = 0`, `0 * x = 0` (`mulAlts_sound`);
 * `subRule`: `x - x = 0`, `x - 0 = x` (`subAlts_sound`);
-* `negRule`: `-(-x) = x` (`negAlts_sound`).
+* `negRule`: `-(-x) = x`, the involution rule `TraitRules.involutionRule` at
+  `fieldInvolution`;
+* `constFoldRule fieldReify`: a pure operation on constant arguments is replaced by the
+  constant `fConst` holding its value.
 
 A constant operand is read from the definition table (`constOf`, a binding of `fConst`),
 and the operand of a negation likewise (`negOf`). The node table merges every operation
@@ -322,10 +326,49 @@ def subRule : Rule fieldDialect where
   apply D _ _ e := subApply D e
   sound D _ V hD _ e := subApply_sound D V hD e
 
-/-- Double negation: `-(-x) = x`. -/
-def negRule : Rule fieldDialect where
-  apply D _ _ e := negApply D e
-  sound D _ V hD _ e := negApply_sound D V hD e
+/-! ## 3a. Instances of the trait rules -/
+
+open CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
+
+/-- The involutions of the field dialect: the negation `fNeg p`. -/
+def fieldInvolution : Involution fieldDialect where
+  isInv
+    | .fNeg _ => true
+    | _ => false
+  ty
+    | .fNeg p => .fp p
+    | _ => .fp 0
+  sig_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  ret_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  law op h x := by
+    cases op <;> first
+      | exact absurd h Bool.false_ne_true
+      | exact neg_neg (G := ZMod _) x
+
+/-- The constant operation holding a field value: `fConst` for a prime-field element. -/
+def fieldReifyOp : (t : FieldTy) → ⟦t⟧ → Option FieldOp
+  | .fp p, c => some (.fConst p c)
+  | _, _ => none
+
+/-- The reification of prime-field values as constants, under `fieldTraits`. -/
+def fieldReify : ConstReify fieldDialect fieldTraits where
+  reify := fieldReifyOp
+  law := fieldTraits_constLaw
+  const t x op h := by
+    cases t <;> simp only [fieldReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    rfl
+  ret_eq t x op h := by
+    cases t <;> simp only [fieldReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    rfl
+  denote_eq t x op h := by
+    cases t <;> simp only [fieldReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    rfl
+
+/-- Double negation: `-(-x) = x`, the involution rule at `fieldInvolution`. -/
+def negRule : Rule fieldDialect := involutionRule fieldInvolution
 
 /-! ## 4. The field rule set and the pass
 
@@ -343,11 +386,11 @@ theorem fieldKey_eq : fieldKey = fieldTraits.key := by
   funext op
   cases op <;> rfl
 
-/-- The field rule set: the four rule families above, for every modulus, over the
-    operation traits `fieldTraits`. -/
+/-- The field rule set: the four rule families above and constant folding at
+    `fieldReify`, for every modulus, over the operation traits `fieldTraits`. -/
 def fieldRules : RuleSet fieldDialect where
   toOpTraits := fieldTraits
-  rules := [addRule, mulRule, subRule, negRule]
+  rules := [addRule, mulRule, subRule, negRule, constFoldRule fieldReify (fun _ => true)]
 
 /-- **The aegraph pass on field programs**: the instance of `aegraphOptOf` at
     `fieldRules`. -/
@@ -418,12 +461,16 @@ end Alts
 /-- The events of every alternative of the field rule set do not depend on the
     valuation, for every leakage model. -/
 theorem fieldRules_indep : RulesIndep L fieldRules := by
-  intro D Δ s e alt h
-  obtain ⟨r, hr, ha⟩ := List.mem_flatMap.mp h
+  refine rulesIndep_of_forall fun r hr => ?_
   simp only [fieldRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases e with ⟨op, hop, args⟩
-  rcases hr with rfl | rfl | rfl | rfl <;> cases op <;>
-    simp only [addRule, mulRule, subRule, negRule, addApply, mulApply, subApply, negApply,
+  rcases hr with rfl | rfl | rfl | rfl | rfl
+  rotate_left 3
+  · exact involutionRule_indep L fieldInvolution
+  · exact constFoldRule_indep L fieldReify _
+  all_goals intro D Δ s e alt ha
+  all_goals rcases e with ⟨op, hop, args⟩
+  all_goals cases op <;>
+    simp only [addRule, mulRule, subRule, addApply, mulApply, subApply,
       List.not_mem_nil] at ha <;> subst hop
   · match args, (rfl : args = args) with
     | .cons a (.cons b .nil), _ =>
@@ -437,10 +484,6 @@ theorem fieldRules_indep : RulesIndep L fieldRules := by
     | .cons a (.cons b .nil), _ =>
       simp only [HVector.head, HVector.tail] at ha
       exact subAlts_indep D a b alt ha
-  · match args, (rfl : args = args) with
-    | .cons a .nil, _ =>
-      simp only [HVector.head] at ha
-      exact negAlts_indep D a alt ha
 
 /-- **Constant time of the field pass.** For every leakage model, if `c` is constant time
     for the relation `R`, so is `aegraphOptField c`. -/

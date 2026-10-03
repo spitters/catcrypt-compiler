@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
+public import CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComGVN
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 
@@ -15,7 +16,10 @@ public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 The instance at `jasminDialect` of the acyclic e-graph `AegraphGeneric.aegraphOptOf`, which
 is stated for every dialect: `aegraphOpt` is `aegraphOptOf jasminRules`. This module gives
 the jasmin rule set `jasminRules`: its rule (`binRule`), its cost `opCost`, its extraction
-weight `opKey`, and its purity `ComGVN.gvnPure`.
+weight `opKey`, and its purity `ComGVN.gvnPure`. Two trait rules of `TraitRules` complete
+the set at the operations `binRule` does not read: constant folding of a width cast of a
+constant (`constFoldRule jasminReify jasminFoldSel`), and the width cast `castW w w` as a
+copy (`copyRule jasminCastCopy`).
 
 ## The rule set
 
@@ -543,13 +547,64 @@ def binRule : Rule jasminDialect where
   apply D _ _ e := ruleAlts D e
   sound _ _ _ hD _ e := ruleAlts_sound e hD
 
-/-- The jasmin rule set: the rule `binRule` over the operation traits `jasminTraits`, whose
-    cost is `opCost`, whose extraction weight is `opKey` (`opKey_eq`), and whose purity
-    `ComGVN.gvnPure` keeps the operations of the instruction pairs of the x86 lowering out
-    of the node table. -/
+open CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
+  (ConstReify CopyOp un app0 constFoldRule copyRule constFoldRule_indep copyRule_indep
+    rulesIndep_of_forall)
+
+/-- The constant operation holding a jasmin value: `regConst` for a register. -/
+def jasminReifyOp : (t : JasminTy) → ⟦t⟧ → Option JasminOp
+  | .reg w, x => some (.regConst w (x : BitVec w).toNat)
+  | _, _ => none
+
+/-- The reification of register values as constants, under `jasminTraits`. -/
+def jasminReify : ConstReify jasminDialect jasminTraits where
+  reify := jasminReifyOp
+  law := jasminTraits_constLaw
+  const t x op h := by
+    cases t <;> simp only [jasminReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    rfl
+  ret_eq t x op h := by
+    cases t <;> simp only [jasminReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    rfl
+  denote_eq t x op h := by
+    cases t <;> simp only [jasminReifyOp, Option.some.injEq, reduceCtorEq] at h
+    subst h
+    exact Sigma.ext rfl (heq_of_eq (by simp [app0, DialectDenote.denote]))
+
+/-- The jasmin operations constant folding reads: the width cast `castW`, which `binRule`
+    does not read. -/
+def jasminFoldSel : JasminOp → Bool
+  | .castW _ _ => true
+  | _ => false
+
+/-- The width cast `castW w w` to its own width, a copy. -/
+def jasminCastCopy : CopyOp jasminDialect where
+  isCopy
+    | .castW w w' => w == w'
+    | _ => false
+  ty
+    | .castW w _ => .reg w
+    | _ => .bool
+  sig_eq op h := by cases op <;> first | rfl | exact absurd h Bool.false_ne_true
+  ret_eq op h := by
+    cases op <;> first
+      | exact absurd h Bool.false_ne_true
+      | (rename_i w w'; obtain rfl : w = w' := (by simpa using h); rfl)
+  law op h x := by
+    cases op <;> first
+      | exact absurd h Bool.false_ne_true
+      | (rename_i w w'; obtain rfl : w = w' := (by simpa using h)
+         simp [un, DialectDenote.denote, HVector.head])
+
+/-- The jasmin rule set: the rule `binRule`, constant folding of width casts and the copy
+    `castW w w`, over the operation traits `jasminTraits`, whose cost is `opCost`, whose
+    extraction weight is `opKey` (`opKey_eq`), and whose purity `ComGVN.gvnPure` keeps the
+    operations of the instruction pairs of the x86 lowering out of the node table. -/
 def jasminRules : RuleSet jasminDialect where
   toOpTraits := jasminTraits
-  rules := [binRule]
+  rules := [binRule, constFoldRule jasminReify jasminFoldSel, copyRule jasminCastCopy]
 
 /-- **Extraction** at the jasmin rule set. -/
 def choose (S : Tbl × Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
@@ -657,11 +712,12 @@ theorem ruleAlts_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (D : 
     alternative of the jasmin rule set do not depend on the valuation. -/
 theorem jasminRules_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) :
     AegraphGeneric.RulesIndep L jasminRules := by
-  intro D Δ s e alt h
-  obtain ⟨r, hr, ha⟩ := List.mem_flatMap.mp h
-  simp only [jasminRules, List.mem_singleton] at hr
-  subst hr
-  exact ruleAlts_indep hq D e alt ha
+  refine rulesIndep_of_forall fun r hr => ?_
+  simp only [jasminRules, List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl | rfl | rfl
+  · exact fun D _ _ e alt ha => ruleAlts_indep hq D e alt ha
+  · exact constFoldRule_indep L jasminReify jasminFoldSel
+  · exact copyRule_indep L jasminCastCopy
 
 /-- **Leakage of the traversal.** Under states sound for `V₁` and `V₂`, equal leakage of
     the input at the pulled-back valuations gives equal leakage of the output. -/
