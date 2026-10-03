@@ -6,11 +6,13 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 
 /-!
 # Straight-line `Com jasminDialect` to Rust source
 
-A printer from a straight-line program `Com jasminDialect Γ t` to the text of a Rust
+A printer from a straight-line program `Com jasminDialect Γ t` (or a multi-result
+`MultiReturnCom jasminDialect Γ ts`) to the text of a Rust
 function in the style of fiat-crypto's Rust output: one `let xN: T = …;` per word binding,
 the full product through `u128`, carries as `u64` values `0`/`1`, array cells kept as
 locals and written to the output array at the end.
@@ -50,6 +52,11 @@ No theorem relates the printed text to the `Com` or to its denotation.
 * `RVal`: what a context position holds in the printed function.
 * `emitCom`: the bindings of a `Com` as Rust lines.
 * `emitFn`: a whole `#[inline] pub fn` from a `Com` and the names of its context.
+* `emitMRCom`: the bindings of a `MultiReturnCom` as Rust lines.
+* `emitFnInPlace`: a `pub fn` over one `&mut` array from a `MultiReturnCom` whose context
+  and results are registers of one width.
+* `emitFnParts`: one `pub fn` computing several array-result `Com`s over one context, each
+  written to its slice of the output array.
 * `fileHead`: the generated-file comment and module attributes.
 -/
 
@@ -328,6 +335,67 @@ def emitFn {Γ : Ctxt jasminDialect} {t : JasminTy} (fname : String) (names : Li
         (s!"pub fn {fname}({", ".intercalate inDecls})",
           [s!"    {compileError "result type outside the table"};"])
   "#[inline]\n" ++ sig ++ " {\n" ++ "\n".intercalate (body ++ tail) ++ "\n}\n"
+
+/-! ## 5. Multi-result programs and programs in parts -/
+
+/-- The lines of the bindings of the multi-result program `c` and the values it returns. -/
+def emitMRCom : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
+    MultiReturnCom jasminDialect Γ ts → PState → PState × List RVal
+  | _, _, .ret vs, s => (s, (argIdxs vs).map s.look)
+  | _, _, .var e body, s =>
+      let (s', val) := emitExpr e.op (argIdxs e.args) s
+      emitMRCom body { s' with env := val :: s'.env }
+
+/-- Whether a type is the register type of width `w`. -/
+def isRegW (w : Nat) : JasminTy → Bool
+  | .reg w' => w' == w
+  | _ => false
+
+/-- An `#[inline] pub fn fname(arr: &mut [T; n])` computing `c` in place: the context entry at
+    de Bruijn position `j` is the cell `arr[j]`, and the `j`-th returned word is written to
+    `arr[j]` after every binding. The context and the results are `n` registers of width
+    `w`; any other shape prints a `compile_error!` line. -/
+def emitFnInPlace {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : String) (w : Nat)
+    (c : MultiReturnCom jasminDialect Γ ts) : String :=
+  let n := Γ.length
+  let env := (List.range n).map fun j => RVal.word s!"{arr}[{j}]" w none
+  let (s, rs) := emitMRCom c { env := env, lines := #[], next := 0 }
+  let tail :=
+    if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
+      [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
+        s!"    *{arr} = r;"]
+    else
+      [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
+  "#[inline]\n" ++ s!"pub fn {fname}({arr}: &mut [{contTy w}; {n}])" ++ " {\n" ++
+    "\n".intercalate (s.lines.toList ++ tail) ++ "\n}\n"
+
+/-- The `m` cell expressions of an array value; a word value fills every cell. -/
+def RVal.cellsN (r : RVal) (m : Nat) : List String :=
+  match r with
+  | .arr _ cs => cs
+  | _ => (List.range m).map fun _ => r.expr
+
+/-- An `#[inline] pub fn fname(out: &mut [T; m * k], params)` computing the `k` programs `cs`
+    over one context, each with result `stackArr w m`, one after the other in one body; the
+    result of part `i` is written to `out[m * i]`, …, `out[m * i + m - 1]` after every
+    binding. `env i` gives the values of the context for part `i` (de Bruijn position `0`
+    first); word bindings are numbered across the parts. -/
+def emitFnParts {Γ : Ctxt jasminDialect} (fname out : String) (params : List String)
+    (env : Nat → List RVal) (w m : Nat) (cs : List (Com jasminDialect Γ (.stackArr w m))) :
+    String :=
+  let (s, cells) := cs.zipIdx.foldl
+    (fun (acc : PState × List String) (ci : Com jasminDialect Γ (.stackArr w m) × Nat) =>
+      let (s', r) := emitCom ci.1 { acc.1 with env := env ci.2 }
+      (s', acc.2 ++ r.cellsN m))
+    ({ env := [], lines := #[], next := 0 }, [])
+  let k := m * cs.length
+  let writes :=
+    if cells.any fun cell => cell.startsWith (out ++ "[") then
+      [s!"    let r: [{contTy w}; {k}] = [{", ".intercalate cells}];", s!"    *{out} = r;"]
+    else (List.range k).map fun j => s!"    {out}[{j}] = {cells.getD j "0"};"
+  "#[inline]\n" ++
+    s!"pub fn {fname}({", ".intercalate (s!"{out}: &mut [{contTy w}; {k}]" :: params)})" ++
+    " {\n" ++ "\n".intercalate (s.lines.toList ++ writes) ++ "\n}\n"
 
 /-- The head of a generated Rust module file: the comment lines `comment` (each prefixed by
     `// `) and the inner attributes that silence the lints straight-line code trips. -/
