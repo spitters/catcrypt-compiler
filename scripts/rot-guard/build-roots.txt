@@ -528,7 +528,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.AesniRoundVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.AsconEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BabyBearBarrettBlock
 CatCrypt.Crypto.SecureCompilation.VIR.BarrettRaEmit
-CatCrypt.Crypto.SecureCompilation.VIR.BasemulWord
 CatCrypt.Crypto.SecureCompilation.VIR.BignumMulCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Blake2bCompressCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoopValidate
@@ -691,6 +690,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3QuerySampleEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3SerializeEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3WholeProverEmit
+CatCrypt.Crypto.SecureCompilation.VIR.PointwiseAcc
 CatCrypt.Crypto.SecureCompilation.VIR.Poly1305RtLoopCom
 CatCrypt.Crypto.SecureCompilation.VIR.PolyDialectMlkemMigration
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2AbstractCom
