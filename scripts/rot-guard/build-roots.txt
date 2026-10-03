@@ -700,12 +700,12 @@ CatCrypt.Crypto.SecureCompilation.VIR.PolyDialectMlkemMigration
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2AbstractCom
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Avx512
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Avx512Jasmin
+CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BabyBearTie
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2EmitterReadoutHalf
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2HalfKernelsZmm
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2LinearMain
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2MdsPermUnified
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2RaEmit
-CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Word
 CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleCovered
 CatCrypt.Crypto.SecureCompilation.VIR.RcongrLeafAutomation
 CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe
