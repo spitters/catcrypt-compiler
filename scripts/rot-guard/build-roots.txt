@@ -661,7 +661,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccLoopValidate
 CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
-CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapMulti
+CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
@@ -728,7 +728,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduceReal
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
-CatCrypt.Crypto.SecureCompilation.VIR.TowerToLimbs
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
