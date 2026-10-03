@@ -76,6 +76,13 @@ region operators satisfy and every lowering proof uses is relational congruence,
 stated once in `VIR/NFProgRel.lean` (`foldlM_rel`, `whileIter_rel`, `ite_rel`,
 `denote_forLoop_rel`, `denote_ifThenElse_rel`, `denote_whileLoop_rel`, with forward
 and leak-writer forms).
+`VIR/DialectCategory.lean` checks the presentation: regions form a category
+(`RegionCtx d`, morphisms `NFPre`, composition `append`) with a functor to the
+Kleisli category of `Option`; block lowerings compose with a right identity
+unconditionally, with a left identity under `HeadVar` and associatively under
+`SpliceNatural` (the lowering commutes with splicing), so they form a category only
+on the natural lowerings; `opSum` has a copairing and `extendId` is the copairing of
+`L ∘ inl` with `inr`; `Dialect.sum` has no copairing for block lowerings.
 
 | edge | pass | denotation preservation | reaches bytes |
 |---|---|---|---|

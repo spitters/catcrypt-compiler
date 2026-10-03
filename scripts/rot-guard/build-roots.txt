@@ -537,7 +537,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.BignumMulCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Blake2bCompressCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoopValidate
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPSDerivedToField
-CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringDataComp
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringExtendWitness
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377CubicIrreducible
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377FinalExpCorrect
@@ -566,7 +565,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.CoordinateRingNormal
 CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
-CatCrypt.Crypto.SecureCompilation.VIR.DialectCoproduct
+CatCrypt.Crypto.SecureCompilation.VIR.DialectCategory
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelLoop
