@@ -225,6 +225,7 @@ CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontCIOS
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.UnsatBlocks
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
@@ -555,7 +556,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrBlock
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrWord
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeSelfContained
 CatCrypt.Crypto.SecureCompilation.VIR.ComParamDerive
-CatCrypt.Crypto.SecureCompilation.VIR.ComRangeExact
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirWf
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_EcPoly
 CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_PrinterProbe
