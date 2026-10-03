@@ -572,6 +572,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.EndToEndTransport
 CatCrypt.Crypto.SecureCompilation.VIR.ExampleTest
 CatCrypt.Crypto.SecureCompilation.VIR.ExtCallVeirSmoke
 CatCrypt.Crypto.SecureCompilation.VIR.FaestByteCombineVsimdCovered
+CatCrypt.Crypto.SecureCompilation.VIR.FalconNttWord
 CatCrypt.Crypto.SecureCompilation.VIR.FibProverSkeleton
 CatCrypt.Crypto.SecureCompilation.VIR.FibTraceGenEmit
 CatCrypt.Crypto.SecureCompilation.VIR.FieldCmpSum
