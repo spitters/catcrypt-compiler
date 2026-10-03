@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin
 
 /-!
 # Straight-line `Com jasminDialect` to Rust source
@@ -50,6 +51,26 @@ sign-extension rule prints the sequence `castW w w'; shlImm w' (w' - w); sarImm 
 as the one cast `((a as iw) as iw') as uw'`, and the hoisting rule prints each constant as a
 `const` item declared once at the top of the function.
 
+A third printing rule, `EmitOpts.v128`, holds each `reg 128` word in the Rust type `V` and
+prints the 128-bit vector ops. Under the backend `simd`, `V` is `__m128i` and the ops are the
+`core::arch::x86_64` intrinsics; under `portable`, `V` is `u128` and the ops are `u128`
+arithmetic and the helper functions of `v128Prelude .portable`:
+
+| op | `simd` | `portable` |
+|---|---|---|
+| `vsimd (.clmul imm)` | `_mm_clmulepi64_si128(a, b, imm)` | `clmul_u128(a, b, imm)`, bit-serial over 64 bits |
+| `vsimd (.bitwise .xor/.and/.or/.andn)` | `_mm_xor_si128`, `_mm_and_si128`, `_mm_or_si128`, `_mm_andnot_si128` | `a ^ b`, `a & b`, `a \| b`, `!a & b` |
+| `vpslldq k`, `vpsrldq k` | `_mm_slli_si128(a, k)`, `_mm_srli_si128(a, k)` | `a << 8k`, `a >> 8k` |
+| `vsimd (.affineqb imm)` | `_mm_gf2p8affine_epi64_epi8(a, m, imm)` | `gf2p8affine_u128(a, m, imm)` |
+| `vsimd .vpshufb` | `_mm_shuffle_epi8(a, idx)` | `shuffle_epi8_u128(a, idx)` |
+| `regConst 128 n` | `v_const(n)`, a `u128` literal through `_mm_set_epi64x` | `v_const(n)`, the literal |
+| `stackLoad 128 n` | the cell, or `arr[(i % n) as usize]` for an array parameter | the same |
+
+Any other op on a 128-bit word prints a `compile_error!` line under this rule.
+
+`emitNF` prints a structured program `NFProg jasminDialect`: bindings as `emitCom`, a counted
+loop as a Rust `for` over its trip index with its carried values in `let mut` locals.
+
 No theorem relates the printed text to the `Com` or to its denotation.
 
 ## Main definitions
@@ -65,6 +86,10 @@ No theorem relates the printed text to the `Com` or to its denotation.
 * `emitFnParts`: one `pub fn` computing several array-result `Com`s over one context, each
   written to its slice of the output array.
 * `fileHead`: the generated-file comment and module attributes.
+* `V128Backend`, `emitV128`: the two printings of the 128-bit vector ops.
+* `emitNF`: the lines of an `NFProg jasminDialect`, a counted loop as a Rust `for`.
+* `emitFnV128`: a Rust function over 128-bit values under one backend.
+* `v128Prelude`: the type `V` and the helper functions of a backend's module.
 -/
 
 @[expose] public section
@@ -190,6 +215,14 @@ def cmpSym : JasminCmp → String
   | .ugt => ">"
   | .uge => ">="
 
+/-- The two printings of a `reg 128` word: `simd` holds it in an `__m128i` and prints the
+    vector ops as `core::arch::x86_64` intrinsics; `portable` holds it in a `u128` and prints
+    them as `u128` arithmetic and the helper functions of `v128Prelude .portable`. -/
+inductive V128Backend where
+  | simd
+  | portable
+  deriving DecidableEq, Repr
+
 /-- Printing rules that change the text of a binding but not the value it computes.
 
     * `sx`: the sign-extension rule. A widening `castW w w'` and a following
@@ -199,10 +232,13 @@ def cmpSym : JasminCmp → String
       of the `w`-bit word `a` to `w'` bits, which is what the three ops compute together.
       `w` and `w'` are widths of Rust integer types.
     * `hoist`: a `regConst w n` prints no line; its value is a `const` item `Kw_HEX` declared
-      once per width and value at the top of the function. -/
+      once per width and value at the top of the function.
+    * `v128`: under `some b`, a `reg 128` word has the Rust type `V` and the 128-bit vector
+      ops print as `emitV128 b`. -/
 structure EmitOpts where
   sx : Bool := false
   hoist : Bool := false
+  v128 : Option V128Backend := none
 
 /-- A value printed as an expression by the sign-extension rule: the expression `expr`, the
     source word `src` of width `w0` widened to `w`, and whether it is shifted left by
@@ -240,11 +276,16 @@ def sxWidth (w : Nat) : Bool := contBits w == w && w ≤ 64
 def PState.look (s : PState) (i : Nat) : RVal :=
   s.env.getD i (.other (compileError s!"unbound variable at position {i}"))
 
+/-- The Rust type of a `w`-bit word: `V` for `w = 128` under the rule `v128`, `contTy w`
+    otherwise. -/
+def PState.tyOf (s : PState) (w : Nat) : String :=
+  if s.opts.v128.isSome && w == 128 then "V" else contTy w
+
 /-- Print `let xN: T = rhs;` for a `w`-bit word with known value `k`. -/
 def PState.bindWord (s : PState) (w : Nat) (rhs : String) (k : Option Nat := none) :
     PState × RVal :=
   let name := s!"x{s.next}"
-  ({ s with lines := s.lines.push s!"    let {name}: {contTy w} = {rhs};", next := s.next + 1 },
+  ({ s with lines := s.lines.push s!"    let {name}: {s.tyOf w} = {rhs};", next := s.next + 1 },
    .word name w k)
 
 /-- Print the `compile_error!` line of an op outside the table. -/
@@ -252,8 +293,9 @@ def PState.unsupported (s : PState) (what : String) : PState × RVal :=
   let e := compileError s!"op outside the table: {what}"
   ({ s with lines := s.lines.push s!"    {e};" }, .other e)
 
-/-- Print the binding of `op` applied to the context positions `args`. -/
-def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
+/-- Print the binding of `op` applied to the context positions `args` by the table of words
+    of at most 128 bits. -/
+def emitExprScalar (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
   let v (i : Nat) : RVal := s.look (args.getD i 0)
   let e (i : Nat) : String := (v i).expr
   if !(match op with
@@ -345,6 +387,80 @@ def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
                  .arr w ((List.range n).map fun j => s!"{name}[{j}]"))
       | _ => s.unsupported (opName op)
   | _ => s.unsupported (opName op)
+
+/-- Whether `op` reads or writes a 128-bit word. -/
+def touches128 : JasminOp → Bool
+  | .regArith _ w | .regConst w _ | .mulhi w | .addCarryLo w | .addCarryHi w | .rorImm w _
+  | .shrImm w _ | .sarImm w _ | .shlImm w _ | .select w | .cmp _ w | .cmpImm _ w _
+  | .stackLoad w _ | .stackStore w _ => w == 128
+  | .castW w w' => w == 128 || w' == 128
+  | .vpslldq _ | .vpsrldq _ | .vsimd _ => true
+  | _ => false
+
+/-- The array name `a` when `cells` are exactly `a[0]`, …, `a[n-1]`. -/
+def arrBase (cells : List String) : Option String :=
+  match cells.head? with
+  | some c0 =>
+      let a := String.ofList (c0.toList.take (c0.length - 3))
+      if cells == (List.range cells.length).map (fun j => s!"{a}[{j}]") then some a else none
+  | none => none
+
+/-- The binding of `op` applied to the context positions `args` under the backend `b` of the
+    rule `v128`, or `none` when `op` touches no 128-bit word. An op on a 128-bit word outside
+    the vector table prints a `compile_error!` line. -/
+def emitV128 (b : V128Backend) (op : JasminOp) (args : List Nat) (s : PState) :
+    Option (PState × RVal) :=
+  let v (i : Nat) : RVal := s.look (args.getD i 0)
+  let e (i : Nat) : String := (v i).expr
+  let simd := b == .simd
+  let bind (rhs : String) : Option (PState × RVal) := some (s.bindWord 128 rhs)
+  let bin (intr sym : String) : Option (PState × RVal) :=
+    bind (if simd then s!"{intr}({e 0}, {e 1})" else s!"{e 0} {sym} {e 1}")
+  if !touches128 op then none else
+  match op with
+  | .vsimd (.clmul imm) =>
+      bind (if simd then s!"_mm_clmulepi64_si128({e 0}, {e 1}, {hexLit (imm % 256)})"
+        else s!"clmul_u128({e 0}, {e 1}, {hexLit (imm % 256)})")
+  | .vsimd (.bitwise .xor) => bin "_mm_xor_si128" "^"
+  | .vsimd (.bitwise .and) => bin "_mm_and_si128" "&"
+  | .vsimd (.bitwise .or) => bin "_mm_or_si128" "|"
+  | .vsimd (.bitwise .andn) =>
+      bind (if simd then s!"_mm_andnot_si128({e 0}, {e 1})" else s!"!{e 0} & {e 1}")
+  | .vsimd (.affineqb imm) =>
+      bind (if simd then s!"_mm_gf2p8affine_epi64_epi8({e 0}, {e 1}, {imm.toNat})"
+        else s!"gf2p8affine_u128({e 0}, {e 1}, {imm.toNat})")
+  | .vsimd .vpshufb =>
+      bind (if simd then s!"_mm_shuffle_epi8({e 0}, {e 1})"
+        else s!"shuffle_epi8_u128({e 0}, {e 1})")
+  | .vpslldq n =>
+      bind (if n < 16 then (if simd then s!"_mm_slli_si128({e 0}, {n})" else s!"{e 0} << {8 * n}")
+        else (if simd then "_mm_setzero_si128()" else "0"))
+  | .vpsrldq n =>
+      bind (if n < 16 then (if simd then s!"_mm_srli_si128({e 0}, {n})" else s!"{e 0} >> {8 * n}")
+        else (if simd then "_mm_setzero_si128()" else "0"))
+  | .regConst 128 n =>
+      let k := n % 2 ^ 128
+      some (s.bindWord 128 s!"v_const({hexLit k})" (some k))
+  | .stackLoad 128 n =>
+      match v 0 with
+      | .arr _ cells =>
+          if n = 0 then some (s.bindWord 128 "v_const(0x0)" (some 0))
+          else match (v 1).const? with
+            | some k => bind (cells.getD (k % n) (compileError "cell out of range"))
+            | none =>
+                let idx := s!"({e 1} % {n}) as usize"
+                match arrBase cells with
+                | some a => bind s!"{a}[{idx}]"
+                | none => bind s!"[{", ".intercalate cells}][{idx}]"
+      | _ => some (s.unsupported (opName op))
+  | _ => some (s.unsupported (opName op))
+
+/-- Print the binding of `op` applied to the context positions `args`: by `emitV128` under
+    the rule `v128` when `op` touches a 128-bit word, by `emitExprScalar` otherwise. -/
+def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
+  match s.opts.v128.bind (fun b => emitV128 b op args s) with
+  | some r => r
+  | none => emitExprScalar op args s
 
 /-! ## 4. Programs and functions -/
 
@@ -496,5 +612,114 @@ def fileHead (comment : List String) : String :=
   "\n".intercalate (comment.map fun l => "// " ++ l) ++ "\n\n" ++
   "#![allow(unused)]\n#![allow(unused_parens)]\n#![allow(non_snake_case)]\n" ++
   "#![allow(clippy::all)]\n\n"
+
+/-! ## 6. Structured programs and 128-bit vector functions -/
+
+/-- The Rust type of a carried value of type `t`. -/
+def PState.tyOfTy (s : PState) : JasminTy → String
+  | .reg w => s.tyOf w
+  | _ => compileError "a carried value that is not a register"
+
+/-- The lines of the structured program `c` and the values it returns. A binding prints as
+    in `emitCom`. A counted loop `forLoop count inits body k` prints its carried values as
+    `let mut` locals initialised from `inits`, then `for i in 0u64..count` with a block
+    holding the lines of `body` and the assignments of its results to the carried locals,
+    then the lines of `k`, which sees the carried locals. A branch or an exit-flag loop
+    prints a `compile_error!` line. -/
+def emitNF : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts →
+    PState → PState × List RVal
+  | _, _, .ret vs, s => (s, (argIdxs vs).map s.look)
+  | _, _, .var e k, s =>
+      let (s', val) := emitExpr e.op (argIdxs e.args) s
+      emitNF k { s' with env := val :: s'.env }
+  | _, _, .forLoop (cs := cs) count inits body k, s =>
+      let base := s.next
+      let names := (List.range cs.length).map fun j => s!"x{base + j}"
+      let idx := s!"x{base + cs.length}"
+      let decls := (names.zip (cs.zip (argIdxs inits))).map fun (nm, t, i) =>
+        s!"    let mut {nm}: {s.tyOfTy t} = {(s.look i).expr};"
+      let carried := (names.zip cs).map fun (nm, t) => paramVal nm t
+      let env0 : List RVal := carried ++ RVal.word idx 64 none :: s.env
+      let s0 : PState :=
+        { s with lines := #[], next := base + cs.length + 1, env := env0, sxLast := none }
+      let (sb, rs) := emitNF body s0
+      let assigns := (names.zip rs).map fun (nm, r) => s!"    {nm} = {r.expr};"
+      let block := (sb.lines.toList ++ assigns).map ("    " ++ ·)
+      let head := s!"    for {idx} in 0u64..{(s.look (varIdx count)).expr} \{"
+      let lines := (s.lines ++ decls.toArray).push head ++ block.toArray |>.push "    }"
+      emitNF k { sb with lines := lines, env := carried ++ s.env, sxLast := none }
+  | _, _, .ifThenElse .., s => ((s.unsupported "ifThenElse").1, [])
+  | _, _, .whileLoop .., s => ((s.unsupported "whileLoop").1, [])
+
+/-- A Rust function `fname(params)` under the backend `b` of the rule `v128`: the lines `pre`,
+    then the lines of `body` run from the context values `env` (de Bruijn position `0`
+    first), then the lines `post rs` of its results `rs`. Under `simd` it is a
+    `pub unsafe fn` behind `#[target_feature(enable = "features")]`; under `portable` an
+    `#[inline] pub fn`. -/
+def emitFnV128 (b : V128Backend) (features fname : String) (params pre : List String)
+    (env : List RVal) (post : List RVal → List String)
+    (body : PState → PState × List RVal) : String :=
+  let (s, rs) := body { env := env, lines := #[], next := 0, opts := { v128 := some b } }
+  let head := match b with
+    | .simd => s!"#[target_feature(enable = \"{features}\")]\npub unsafe fn "
+    | .portable => "#[inline]\npub fn "
+  head ++ s!"{fname}({", ".intercalate params})" ++ " {\n" ++
+    "\n".intercalate (pre ++ s.lines.toList ++ post rs) ++ "\n}\n"
+
+/-- The items a module printed under the backend `b` relies on: the type `V` of a 128-bit
+    word, `v_const` (a `u128` literal as a `V`), `load_v` and `store_v` (a `V` from and to
+    `[u64; 2]`, word `0` the low 64 bits), and under `portable` the helper functions
+    `clmul_u128` (the carry-less product of the `imm`-selected 64-bit halves, bit-serial over
+    64 bits), `gf2p8affine_u128` and `shuffle_epi8_u128` (the byte-wise affine transform and
+    the byte shuffle of `JasminDialect.gf2p8affineqbW` and `vpshufbW`). -/
+def v128Prelude : V128Backend → String
+  | .simd =>
+    "use core::arch::x86_64::*;\n\n" ++
+    "pub type V = __m128i;\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn v_const(k: u128) -> V {\n" ++
+    "    unsafe { _mm_set_epi64x((k >> 64) as u64 as i64, k as u64 as i64) }\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn load_v(a: &[u64; 2]) -> V {\n" ++
+    "    unsafe { _mm_set_epi64x(a[1] as i64, a[0] as i64) }\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn store_v(out: &mut [u64; 2], x: V) {\n" ++
+    "    *out = unsafe { core::mem::transmute::<V, [u64; 2]>(x) };\n}\n\n"
+  | .portable =>
+    "pub type V = u128;\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn v_const(k: u128) -> V {\n    k\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn load_v(a: &[u64; 2]) -> V {\n    (a[0] as u128) | ((a[1] as u128) << 64)\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn store_v(out: &mut [u64; 2], x: V) {\n" ++
+    "    out[0] = x as u64;\n    out[1] = (x >> 64) as u64;\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn clmul_u128(a: u128, b: u128, imm: u32) -> u128 {\n" ++
+    "    let x: u64 = if imm & 0x01 != 0 { (a >> 64) as u64 } else { a as u64 };\n" ++
+    "    let y: u128 = if imm & 0x10 != 0 { b >> 64 } else { (b as u64) as u128 };\n" ++
+    "    let mut r: u128 = 0;\n" ++
+    "    for i in 0..64u32 {\n" ++
+    "        let m: u128 = 0u128.wrapping_sub(((x >> i) & 1) as u128);\n" ++
+    "        r ^= (y << i) & m;\n    }\n    r\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn gf2p8affine_u128(x: u128, a: u128, imm: u8) -> u128 {\n" ++
+    "    let mut r: u128 = 0;\n" ++
+    "    for k in 0..16u32 {\n" ++
+    "        let xb: u8 = (x >> (8 * k)) as u8;\n" ++
+    "        let q: u64 = (a >> (64 * (k / 8))) as u64;\n" ++
+    "        let mut ob: u8 = 0;\n" ++
+    "        for j in 0..8u32 {\n" ++
+    "            let row: u8 = (q >> (8 * (7 - j))) as u8;\n" ++
+    "            let bit: u8 = ((row & xb).count_ones() as u8 & 1) ^ ((imm >> j) & 1);\n" ++
+    "            ob |= bit << j;\n        }\n" ++
+    "        r |= (ob as u128) << (8 * k);\n    }\n    r\n}\n\n" ++
+    "#[inline(always)]\n" ++
+    "fn shuffle_epi8_u128(a: u128, idx: u128) -> u128 {\n" ++
+    "    let mut r: u128 = 0;\n" ++
+    "    for i in 0..16u32 {\n" ++
+    "        let c: u8 = (idx >> (8 * i)) as u8;\n" ++
+    "        let byte: u8 = if c & 0x80 != 0 { 0 } else { (a >> (8 * ((c & 0x0f) as u32))) as u8 };\n" ++
+    "        r |= (byte as u128) << (8 * i);\n    }\n    r\n}\n\n"
 
 end CatCrypt.Crypto.Jasmin.ComToRustEmit
