@@ -788,6 +788,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopBody
+CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopJ
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
