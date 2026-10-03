@@ -94,30 +94,67 @@ development repository.
 
 ### Proofs, checks and translation validation in `haxc`
 
-The legs of `haxc` fall into three classes.
+The proved legs are the typed hax front (`haxFrontT_simulates_hax64W`), the route
+from `LowCT` to the Jasmin dialect (`straightCompile_denote`, `loopCompile_denote`),
+the export of a straight chain (`straight_export_faithful_abi`) and the decode
+equation of the encoder (`DecodeLayout.decodeLprog_encodeLfundefBytes`). The other
+legs are checks that run inside the compiler, in two classes.
 
-| Class | Legs |
-|---|---|
-| Proof | typed hax front (`haxFrontT_simulates_hax64W`); route from `LowCT` to the Jasmin dialect (`straightCompile_denote`, `loopCompile_denote`); export of a straight chain (`straight_export_faithful_abi`); decode equation of the encoder (`DecodeLayout.decodeLprog_encodeLfundefBytes`) |
-| Decided check with a soundness lemma | `haxFrontTOk`, `frontScalOk`/`frontArrOk`, `coveredGuardedB`, `loopTripOK`, the printer precondition `twoAddrOK` (`bodyTiedOk`), the name checks of the export certificate, `decodesToB` |
-| Translation validation | body equality of the loop export certificate (`comLCertB`); the post-pass `fuseMulHiLprog`; the owned back end (`optimizeLprogBasicBlocks`, `foldIndexedLprog`, `reallocLprog`, `twoAddrBody`), validated by `ownedCheckM` on the straight route; the printed body against the decoded bytes (`lineCheck`) on the straight route; on the loop route, the register allocation check inside the image route (`ImageAddrRoute.routeB`), with the printed body run on the address machine by theorem (`image_route_bytes`) |
+- Class D: a decidable predicate on one program, with a soundness theorem. It is the
+  side condition of a proved pass.
+- Class V: a check of the output of an unproved transformation against its input.
+  The design permits class V only for register allocation.
 
-The theorems of the owned back-end passes are stated for `lsemStraight`, the labeled
-`lsem` or `runBlock`, not for the flag machine `lsemFuelMemF` that the export
-targets, and `haxc_correct_auto` uses none of them. The straight-line simulation of a
-printed body by `aMachine` on its decoded bytes (`DecodePrinted.printedLine_sim`) is
-proved and not used by the gate. Constant time in the `_ct_regions` theorems is a
-verified static analysis of the decoded bytes (`ctGateR_sound`), not a preservation
-result. Every check runs inside the compiler: a failed check makes the compiler
+| Leg | Class | Proved | Missing |
+|---|---|---|---|
+| Front checks `haxFrontTOk`, `frontScalOk`/`frontArrOk`, `coveredGuardedB`, `loopTripOK`, the printer precondition `twoAddrOK` (`bodyTiedOk`) | D | a soundness lemma beside each check | — |
+| Block optimiser `optimizeLprogBasicBlocks` | V, under `ownedCheckMC` | `optimizeBasicBlocks_straight_stateStore` (straight-line, `lsemStraight`, store image) | a statement at `lsemFuelMemF` with memory, flags and labels |
+| Constant-index fold `foldIndexedLprog` | V, under `ownedCheckMC` | `foldInstr_lower`, `KEnv.Holds.stepK`, `foldCore_gather`, `gatherPrinted_constIndexFoldBody` (on `runBlock` over `JInstr`); checker completeness `foldIndexed_ownedCheckM_complete` | transport to `lsemFuelMemF` on `LinstrRM`; bodies of more than one block |
+| Two-address form `twoAddrBody` | V, under `ownedCheckMC`; D once its theorem is at `lsemFuelMemF` | `twoAddrBody_lsemStraight`; checker completeness `twoAddr_ownedCheckM_complete` under `twoAddrRouteWF` | the three patterns `twoAddrRouteWF` excludes (an R15 output, a commutative operation with `b = d`, an immediate first source); the statement at `lsemFuelMemF` |
+| Register allocation `reallocLprog` | V, the permitted validation | `ownedCheckM_sound`, `ownedCheckMC_sound` | — |
+| Decode leg of the scalar straight route: `lineCheck` / `lineTVCheck` in `straightGateB` (development repository, `Haxc.BackHalf`) | V: the chain against the decoded line of the printed body | for array results, the image gate `v1StraightB` with `v1Straight_bytes` over `printedAddr_sim`; `DecodePrinted.printedLine_sim`, not used by the gate | evidence that `v1StraightB` accepts every program the line checks accept, after which the line checks leave the gate |
+| Loop export certificate `comLCertNB` (`routeCertB`) and `exportCertJB` | V: a certificate, per program, of a fixed export function | `exportCertJB_sound`, `singleLoopJ_export_faithful_gate`, `ExportCertGate.singleLoop_export_faithful_gate` | completeness on a fragment predicate, which makes the leg class D; the do-while arm `ComLJ.whileRegs` has an export and no certificate, and `compileLoopJ` refuses it |
+| Image gates `imgGateBW`, `printedAddrWB`, `physImgB` (the physical half of the register-allocation pair) | D | `image_addr_simBW`, `printedAddr_simW`, `printedAddr_sim` | completeness; a refusal does not name its cause |
+| `decodableLcmd`, `decodesToB` on the printed body | D | `decodeLprog_of_decodesToB` | completeness on the encoder's image |
+| Index bounds `idxInvCheckB` (abstract interpretation of one body) | D | `runIdxOk_of_idxInvCheckB` | — |
+| Constant-time byte gate `ctGateR` in `compileACTR` (development repository, `Haxc.ComposeCT`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`, and their composition into the source-to-bytes statement |
+
+On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
+call of `ownedCheckMC` compares the reference chain with the image of the printed body;
+on the scalar straight route `lineTVCheck` calls `ownedCheckM` on the same pair. The
+printed body is the output of the export, the post-pass `fuseMulHiLprog` and the owned
+back end `ownedLprog`, so this one check accepts or refuses the combined output of the
+block optimiser, the constant-index fold, the two-address form, the post-pass and
+register allocation. The reference side applies the fusion as `fuseMulHiRM`, whose run is proved
+(`fuseMulHi_lsemFuelMemF_pre`).
+
+Translation validation outside register allocation, as the compiler stands: the three
+owned back-end passes and the post-pass `fuseMulHiLprog`, which reach the theorems only
+through the register-allocation check; the decode leg of the scalar straight route; and
+the loop export certificate, until its completeness is proved. The constant-time
+conjunct of the `_ct_regions` theorems is a verified static analysis of the decoded
+bytes (`ctGateR_sound`), not a preservation result. A failed check makes the compiler
 return `none`, so the theorems cover exactly the programs it accepts.
 
-The target in the project plan keeps one translation validation, `ownedCheckM` at the
-pair before and after register allocation, with the completeness lemmas
-(`twoAddr_ownedCheckM_complete`, `foldIndexed_ownedCheckM_complete`) as the
-preservation theorems of the passes it covers. The general decode simulation replaces
-`lineCheck` on the straight route; the loop export certificate and
-`fuseMulHiLprog` receive proofs; constant time is derived from the source through
+The design keeps one translation validation, the check of the pair before and after
+register allocation. The block optimiser, the fold and the two-address form are to
+carry preservation theorems at `lsemFuelMemF`; the general decode simulation is to
+replace `lineCheck` and `lineTVCheck`; the loop export certificate is to carry a
+completeness theorem; and constant time is to be derived from the source through
 per-pass leakage transformers.
+
+### Reference semantics of prime-ir calls
+
+The hax interpreter reads a prime-ir field call under the builtin table
+`primeirBuiltins p` (`CatCrypt/Hax/PrimeirBuiltins.lean`), which interprets the heads
+`mul`, `add`, `sub`, `neg`, `square`, `double` and `inv` on integer arguments modulo
+`p`. The extraction emits bare method names, so an integer `mul`, `add` or `sub` and
+the field operation of the same name share a head. The field route's theorem
+`field_correct_auto` (development repository, `Haxc.FieldCorrect`) is stated against
+`primeirBuiltins p`; it is a theorem about the intended semantics only for functions
+whose integer-typed calls with these names are field calls. The name table
+`defaultFieldTable` (`CatCrypt/Hax/PrimeirNames.lean`) lists the qualified names
+beside the bare ones.
 
 ## Ascent: correspondence from given code to a specification
 

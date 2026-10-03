@@ -2,8 +2,9 @@
 
 This note states how finite-field arithmetic is produced in the Rust ecosystem
 today and where the compiler's field templates differ. It accompanies the
-benchmark in `bench/fiat_rust_compare/` (dev tree), which measures the Rust the
-templates print against the `fiat-crypto` crate on the same inputs.
+benchmark `fiat_rust_compare` in the `bench` directory of the development
+repository, which measures the Rust the templates print against the `fiat-crypto`
+crate on the same inputs.
 
 ## What Rust programmers do
 
@@ -47,17 +48,46 @@ generics.
   reduction is a choice of template, made once per prime, as fiat makes it.
 - One proof for every instance. `FieldTemplate.route_abi_denote` and
   `field_correct_bytes` are stated at every `LimbParams n`; an instantiation
-  inherits the theorem and proves nothing new. fiat-crypto proves each generated
+  inherits the denotation theorem and proves nothing new, and it inherits the
+  byte-level theorem for a program the back end accepts. fiat-crypto proves each generated
   file by running its certified pipeline; the template proves the generator.
-- Two outputs from one program. The same `Com jasminDialect` program goes to the
-  owned x86 back end (verified bytes, `.o` without an assembler) and to the Rust
-  printer (`Jasmin/ComToRustEmit.lean`, fiat's straight-line style with `u128`
-  products and `u64` carries). The Rust text is for reading and for `rustc`'s
-  scheduling; the bytes are for shipping with the proof.
-- Constant time at the bytes. The owned back end's leak theorems hold of the
-  shipped object; the printed Rust has the same caveat as fiat's output.
+- Two consumers of one program. The same `Com jasminDialect` program is the input
+  of the owned x86 back end and of the Rust printer (`Jasmin/ComToRustEmit.lean`,
+  fiat's straight-line style with `u128` products and `u64` carries).
 
-What the templates do not yet have: a theorem relating the printed Rust to the
-`Com` (row RUST-PRINT-VERIFY), and the performance comparison itself. The
-benchmark decides whether the template's printed code matches fiat's on P-256,
-secp256k1 and P-384; adoption follows fiat's precedent only if it does.
+The two consumers carry different evidence.
+
+- The owned x86 back end. `field_correct_bytes` relates the decoded bytes to the
+  template's denotation for every program the back end accepts. Measured on
+  2026-10-03, the back end accepts template programs of up to two limbs, and at
+  four limbs the modular addition and subtraction at P-256 and the addition at
+  secp256k1, each with and without the fusion post-pass: 6 of the 24 probed cases
+  (multiply, square, add and sub at P-256, secp256k1 and P-384). The other 18
+  cases, among them every four-limb and six-limb multiply and square, are refused,
+  so no verified bytes and no constant-time statement at the bytes exist for them.
+  No instance of the theorem at a curve prime is stated.
+- The printed Rust. No theorem relates it to the `Com` program; its evidence is the
+  differential tests of the benchmark against the peer on shared inputs. Its
+  constant-time behaviour after `rustc` has the same caveat as fiat's output.
+
+## Measured performance of the printed Rust
+
+The benchmark README records the figures with their peers (2026-10-03, AMD Ryzen 7
+PRO 7840U, one pinned core, turbo on, `rdtsc` ticks per operation in a dependent
+chain; an A/A run of fiat-crypto against itself gave ratios between 0.97 and 1.06,
+so a ratio inside that band is not a difference). Against fiat-crypto 0.3.0, the
+peer of the same artifact kind (generated straight-line Rust in the same
+representation), the ratios ours/fiat are:
+
+| Field | mul | sqr | add | sub |
+|---|---|---|---|---|
+| P-256 (4 limbs) | 0.68 | 0.87 | 0.64 | 0.62 |
+| secp256k1 (4 limbs) | 1.07 | 0.91 | 0.50 | 0.60 |
+| P-384 (6 limbs) | 1.18 | 1.01 | 0.55 | 0.60 |
+
+The remaining rows of the README compare against peers of another artifact kind
+and are context, not a like-for-like comparison: curve25519 in a saturated 4×64
+representation against fiat's unsaturated 5×51 (mul 1.50, sqr 1.58), the 2048-bit
+Montgomery multiply against s2n-bignum's generic assembly `bignum_montmul`
+(1.27 median under load, 1.70 on a quiet core), and the record moduli against the
+software library crypto-bigint.
