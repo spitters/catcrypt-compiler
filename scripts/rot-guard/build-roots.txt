@@ -222,6 +222,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontCIOS
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
