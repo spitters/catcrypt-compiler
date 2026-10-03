@@ -28,7 +28,7 @@ every output word, read as a signed integer, is below the table's last bound in
 absolute value and congruent modulo `q` to `nttSpec`.  `mlkemSigned` is the
 ML-KEM reference schedule, with bound `(ℓ + 1) · q` after `ℓ` layers.
 
-The signed lowering and the unsigned lowering `nttProgW` are the two instances of
+The signed lowering and the unsigned lowering `nttProgUW` are the two instances of
 `WordSched`; `nttProgG_denote` states their common correctness theorem.
 
 The signed inverse transform runs the Gentleman–Sande layers `L − 1, …, 0` on
@@ -54,7 +54,8 @@ unsigned and the signed inverse lowerings, with `inttProgG_denote`.
   and two shifts, and the signed Montgomery multiply on words.
 * `sLaneProg`, `semSW`, `sLayerLaneProgW`, `nttProgSW` — the butterfly lane
   schedule, one layer on word lanes, its lane schedules, and the transform program.
-* `mlkemSigned` — the ML-KEM reference schedule.
+* `mlkemSigned`, `mldsaSigned` — the ML-KEM reference schedule and the ML-DSA
+  signed 32-bit schedule.
 * `WordSched`, `nttProgG` — the word schedules, unsigned and signed, and their
   transform program.
 * `sbarrett`, `sbarrettW` — the signed Barrett reduction on integers and on words.
@@ -400,20 +401,6 @@ theorem smontW_toInt (w q qinv z : ℕ) (x : BitVec w) (zv : ℤ)
 
 /-! ## 4. The butterfly lane schedule on `w`-bit words -/
 
-/-- A `regConst w n` expression. -/
-def constE {Γ : Ctxt jasminDialect} (w n : ℕ) : Expr jasminDialect Γ (.reg w) :=
-  { op := .regConst w n, retTy_eq := rfl, args := .nil }
-
-/-- A `regArith op w` expression. -/
-def binE {Γ : Ctxt jasminDialect} (op : JasminBinOp) (w : ℕ) (a b : Var Γ (.reg w)) :
-    Expr jasminDialect Γ (.reg w) :=
-  { op := .regArith op w, retTy_eq := rfl, args := .cons a (.cons b .nil) }
-
-/-- A `castW a b` expression. -/
-def castE {Γ : Ctxt jasminDialect} (a b : ℕ) (v : Var Γ (.reg a)) :
-    Expr jasminDialect Γ (.reg b) :=
-  { op := .castW a b, retTy_eq := rfl, args := .cons v .nil }
-
 /-- A `shlImm w n` expression. -/
 def shlE {Γ : Ctxt jasminDialect} (w n : ℕ) (v : Var Γ (.reg w)) :
     Expr jasminDialect Γ (.reg w) :=
@@ -423,12 +410,6 @@ def shlE {Γ : Ctxt jasminDialect} (w n : ℕ) (v : Var Γ (.reg w)) :
 def sarE {Γ : Ctxt jasminDialect} (w n : ℕ) (v : Var Γ (.reg w)) :
     Expr jasminDialect Γ (.reg w) :=
   { op := .sarImm w n, retTy_eq := rfl, args := .cons v .nil }
-
-/-- The `w`-bit register type. -/
-abbrev Rw (w : ℕ) : jasminDialect.Ty := JasminTy.reg w
-
-/-- The `w`-bit lane context. -/
-abbrev Ctxs (w n : ℕ) : Ctxt jasminDialect := List.replicate n (Rw w)
 
 /-- One signed butterfly lane on `w`-bit words: the signed Montgomery product `u`
 of `a[ib]` by the constant `z`, then `a[ia] + u` when `up`, and `a[ia] − u`
@@ -672,17 +653,17 @@ theorem mlkemSigned_denote (f : ℕ → ℤ) (hf : ∀ j, |f j| < 3329) (i : ℕ
 /-! ## 7. Word schedules -/
 
 /-- A word schedule of the lazy Montgomery NTT: unsigned representatives in
-64-bit words with offset subtraction (`nttProgW`), or signed representatives in
+`S.w`-bit words with offset subtraction (`nttProgUW`), or signed representatives in
 `w`-bit words (`nttProgSW`). -/
 inductive WordSched where
-  /-- The unsigned schedule `S` with radix `2 ^ logR` on 64-bit lanes. -/
+  /-- The unsigned schedule `S` with radix `2 ^ logR` on `S.w`-bit lanes. -/
   | unsignedMont (S : LazySched) (logR : ℕ)
   /-- The signed schedule `T` on `T.w`-bit lanes. -/
   | signedMont (T : SignedSched)
 
 /-- The lane word width of a word schedule. -/
 def WordSched.width : WordSched → ℕ
-  | .unsignedMont _ _ => 64
+  | .unsignedMont S _ => S.w
   | .signedMont T => T.w
 
 /-- The integer a lane word stands for: its unsigned value, or its signed value. -/
@@ -697,17 +678,17 @@ def WordSched.bound : WordSched → ℕ
 
 /-- The side condition of a word schedule, decidable on `ℕ`. -/
 def WordSched.Ok : WordSched → Prop
-  | .unsignedMont S logR => SchedOk P S ∧ WordOk P S logR
+  | .unsignedMont S logR => SchedOk P S ∧ UWordOk P S logR
   | .signedMont T => SSchedOk P T ∧ P.q ≤ T.bnd 0
 
 instance : (s : WordSched) → Decidable (s.Ok P)
-  | .unsignedMont S logR => inferInstanceAs (Decidable (SchedOk P S ∧ WordOk P S logR))
+  | .unsignedMont S logR => inferInstanceAs (Decidable (SchedOk P S ∧ UWordOk P S logR))
   | .signedMont T => inferInstanceAs (Decidable (SSchedOk P T ∧ P.q ≤ T.bnd 0))
 
 /-- The transform program of a word schedule on `2 ^ logN` lanes. -/
 def nttProgG : (s : WordSched) →
     MultiReturnCom jasminDialect (Ctxs s.width (2 ^ P.logN)) (Ctxs s.width (2 ^ P.logN))
-  | .unsignedMont S logR => nttProgW P S logR
+  | .unsignedMont S logR => nttProgUW P S logR
   | .signedMont T => nttProgSW P T
 
 /-- **Both word lowerings compute the transform.** For a word schedule satisfying
@@ -726,7 +707,7 @@ theorem nttProgG_denote (hP : P.Ok) (s : WordSched) (hs : s.Ok P) (f : ℕ → �
   cases s with
   | unsignedMont S logR =>
     obtain ⟨hS, hW⟩ := hs
-    obtain ⟨h1, h2⟩ := nttProgW_denote P S logR hP hS hW f hf i hi
+    obtain ⟨h1, h2⟩ := nttProgUW_denote P S logR hP hS hW f hf i hi
     refine ⟨?_, ?_⟩
     · show |((_ : ℕ) : ℤ)| < (bnd P S P.layers : ℤ)
       rw [abs_of_nonneg (Int.natCast_nonneg _)]
@@ -744,13 +725,24 @@ theorem nttProgG_denote (hP : P.Ok) (s : WordSched) (hs : s.Ok P) (f : ℕ → �
     rw [← hofn] at h
     exact h
 
-/-- The ML-KEM unsigned 64-bit word schedule satisfies its side condition. -/
+/-- The ML-KEM unsigned 16-bit word schedule satisfies its side condition. -/
 theorem mlkemUnsignedWord_ok : (WordSched.unsignedMont mlkemLazy 16).Ok mlkemNtt :=
-  ⟨mlkemLazy_ok, mlkemWord_ok⟩
+  ⟨mlkemLazy_ok, mlkemUWord_ok⟩
 
 /-- The ML-KEM reference signed 16-bit word schedule satisfies its side condition. -/
 theorem mlkemSignedWord_ok : (WordSched.signedMont mlkemSigned).Ok mlkemNtt :=
   ⟨mlkemSigned_ok, by decide⟩
+
+/-- The ML-DSA unsigned 32-bit word schedule satisfies its side condition. -/
+theorem mldsaUnsignedWord_ok : (WordSched.unsignedMont mldsaLazy 32).Ok mldsaNtt :=
+  ⟨mldsaLazy_ok, mldsaUWord_ok⟩
+
+/-- The ML-DSA signed schedule: signed 32-bit lanes, radix `2 ^ 32`, Montgomery
+constant `58728449 = q⁻¹ mod 2 ^ 32`, and bound `(ℓ + 1) · q` after `ℓ` layers. -/
+def mldsaSigned : SignedSched := ⟨32, 58728449, fun ℓ => (ℓ + 1) * 8380417⟩
+
+/-- The ML-DSA signed 32-bit word schedule satisfies its side condition. -/
+theorem mldsaSignedWord_ok : (WordSched.signedMont mldsaSigned).Ok mldsaNtt := by decide
 
 /-! ## 8. The signed Barrett reduction -/
 
@@ -1409,18 +1401,18 @@ theorem mlkemSignedInv_denote (f : ℕ → ℤ) (hf : ∀ j, |f j| < 3329) (i : 
 
 /-! ## 12. Inverse word schedules -/
 
-/-- A word schedule of the inverse transform: unsigned representatives in 64-bit
-words (`inttProgW`), or signed representatives in `w`-bit words with Barrett
+/-- A word schedule of the inverse transform: unsigned representatives in `S.w`-bit
+words (`inttProgUW`), or signed representatives in `w`-bit words with Barrett
 reductions (`inttProgSW`). -/
 inductive InvWordSched where
-  /-- The unsigned schedule `S` with radix `2 ^ logR` on 64-bit lanes. -/
+  /-- The unsigned schedule `S` with radix `2 ^ logR` on `S.w`-bit lanes. -/
   | unsignedMont (S : LazySched) (logR : ℕ)
   /-- The signed inverse schedule `U` on `U.w`-bit lanes. -/
   | signedMont (U : SignedInvSched)
 
 /-- The lane word width of an inverse word schedule. -/
 def InvWordSched.width : InvWordSched → ℕ
-  | .unsignedMont _ _ => 64
+  | .unsignedMont S _ => S.w
   | .signedMont U => U.w
 
 /-- The integer a lane word stands for: its unsigned value, or its signed value. -/
@@ -1435,19 +1427,19 @@ def InvWordSched.bound : InvWordSched → ℕ
 
 /-- The side condition of an inverse word schedule, decidable on `ℕ`. -/
 def InvWordSched.Ok : InvWordSched → Prop
-  | .unsignedMont S logR => SchedOk P S ∧ WordOk P S logR ∧ InvWordOk P S
+  | .unsignedMont S logR => SchedOk P S ∧ UWordOk P S logR ∧ UInvWordOk P S
   | .signedMont U => SInvOk P U ∧ P.q ≤ U.bnd P.layers
 
 instance : (s : InvWordSched) → Decidable (s.Ok P)
   | .unsignedMont S logR =>
-    inferInstanceAs (Decidable (SchedOk P S ∧ WordOk P S logR ∧ InvWordOk P S))
+    inferInstanceAs (Decidable (SchedOk P S ∧ UWordOk P S logR ∧ UInvWordOk P S))
   | .signedMont U => inferInstanceAs (Decidable (SInvOk P U ∧ P.q ≤ U.bnd P.layers))
 
 /-- The inverse transform program of scaling constant `c` of an inverse word
 schedule on `2 ^ logN` lanes. -/
 def inttProgG : (s : InvWordSched) → ℕ →
     MultiReturnCom jasminDialect (Ctxs s.width (2 ^ P.logN)) (Ctxs s.width (2 ^ P.logN))
-  | .unsignedMont S logR, c => inttProgW P S logR c
+  | .unsignedMont S logR, c => inttProgUW P S logR c
   | .signedMont U, c => inttProgSW P U c
 
 /-- **Both inverse word lowerings compute the inverse transform.** For an inverse
@@ -1467,8 +1459,9 @@ theorem inttProgG_denote (hP : P.Ok) (s : InvWordSched) (hs : s.Ok P) (c : ℕ) 
   cases s with
   | unsignedMont S logR =>
     obtain ⟨hS, hW, hI⟩ := hs
-    obtain ⟨h1, h2⟩ := inttProgW_denote P S logR hP hS hW hI c f
-      (fun j => by have := hf j; unfold InvWordOk at hI; omega) i hi
+    obtain ⟨h1, h2⟩ := inttProgUW_denote P S logR hP hS hW hI c f
+      (fun j => by have := hf j; have := hI.1; omega)
+      (fun j => by have := hf j; have := hI.2; omega) i hi
     refine ⟨?_, ?_⟩
     · show |((_ : ℕ) : ℤ)| < ((2 * P.q : ℕ) : ℤ)
       rw [abs_of_nonneg (Int.natCast_nonneg _)]
@@ -1486,9 +1479,13 @@ theorem inttProgG_denote (hP : P.Ok) (s : InvWordSched) (hs : s.Ok P) (c : ℕ) 
     rw [← hofn] at h
     exact h
 
-/-- The ML-KEM unsigned 64-bit inverse word schedule satisfies its side condition. -/
+/-- The ML-KEM unsigned 16-bit inverse word schedule satisfies its side condition. -/
 theorem mlkemUnsignedInvWord_ok : (InvWordSched.unsignedMont mlkemLazy 16).Ok mlkemNtt :=
-  ⟨mlkemLazy_ok, mlkemWord_ok, mlkemInvWord_ok⟩
+  ⟨mlkemLazy_ok, mlkemUWord_ok, mlkemUInvWord_ok⟩
+
+/-- The ML-DSA unsigned 32-bit inverse word schedule satisfies its side condition. -/
+theorem mldsaUnsignedInvWord_ok : (InvWordSched.unsignedMont mldsaLazy 32).Ok mldsaNtt :=
+  ⟨mldsaLazy_ok, mldsaUWord_ok, mldsaUInvWord_ok⟩
 
 /-- The ML-KEM reference signed 16-bit inverse word schedule satisfies its side
 condition. -/
