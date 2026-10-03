@@ -49,7 +49,9 @@ is a Rust parameter `&[T; n]`; the output array is a parameter `&mut [T; n]`.
 Two optional printing rules (`EmitOpts`) change the text and not the value: the
 sign-extension rule prints the sequence `castW w w'; shlImm w' (w' - w); sarImm w' (w' - w)`
 as the one cast `((a as iw) as iw') as uw'`, and the hoisting rule prints each constant as a
-`const` item declared once at the top of the function.
+`const` item declared once at the top of the function. Under the rule `EmitOpts.inPlace` an
+in-place function writes each output cell as soon as no later line reads its old value
+(`inPlaceWrites`).
 
 A third printing rule, `EmitOpts.v128`, holds each `reg 128` word in the Rust type `V` and
 prints the 128-bit vector ops. Under the backend `simd`, `V` is `__m128i` and the ops are the
@@ -257,11 +259,15 @@ inductive V128Backend where
     * `hoist`: a `regConst w n` prints no line; its value is a `const` item `Kw_HEX` declared
       once per width and value at the top of the function.
     * `v128`: under `some b`, a `reg 128` word has the Rust type `V` and the 128-bit vector
-      ops print as `emitV128 b`. -/
+      ops print as `emitV128 b`.
+    * `inPlace`: `emitFnInPlace`, `emitFnInPlaceSeq` and `emitFnParts` write each output cell
+      `a[j]` by the schedule `inPlaceWrites`: right after the first line from which its value
+      is bound and no later line reads the old `a[j]`, instead of after the last line. -/
 structure EmitOpts where
   sx : Bool := false
   hoist : Bool := false
   v128 : Option V128Backend := none
+  inPlace : Bool := false
 
 /-- A value printed as an expression by the sign-extension rule: the expression `expr`, the
     source word `src` of width `w0` widened to `w`, and whether it is shifted left by
@@ -599,31 +605,168 @@ def isRegW (w : Nat) : JasminTy → Bool
   | .reg w' => w' == w
   | _ => false
 
+/-! ### In-place writes -/
+
+/-- Whether `c` can occur in a Rust identifier. -/
+def isIdentChar (c : Char) : Bool := c.isAlphanum || c == '_'
+
+/-- The index `k` when the text `t` starts with `[k]`, `k` a decimal literal. -/
+def litIndex? (t : String) : Option Nat :=
+  match t.toList with
+  | '[' :: cs =>
+      let ds := cs.takeWhile Char.isDigit
+      if !ds.isEmpty && (cs.drop ds.length).head? == some ']' then (String.ofList ds).toNat?
+      else none
+  | _ => none
+
+/-- The reads of the array `arr` in the text `t`: whether `t` names `arr` other than as a
+    cell `arr[k]` at a literal index `k` (a cell at a computed index, or the whole array),
+    and the literal indices `k` of the cells `arr[k]` it names. An occurrence of `arr`
+    counts when neither neighbouring character can extend an identifier. -/
+def cellReads (arr t : String) : Bool × List Nat :=
+  let ps := (t.splitOn arr).toArray
+  let isId (o : Option Char) : Bool := o.any isIdentChar
+  (List.range (ps.size - 1)).foldl (fun (acc : Bool × List Nat) k =>
+    let prev := ps[k]!
+    let next := ps[k + 1]!
+    let pc : Option Char :=
+      if prev.isEmpty then (if k = 0 then none else arr.toList.getLast?) else prev.toList.getLast?
+    let nc : Option Char :=
+      if next.isEmpty then (if k + 2 = ps.size then none else arr.toList.head?)
+      else next.toList.head?
+    if isId pc || isId nc then acc
+    else match litIndex? next with
+      | some j => (acc.1, j :: acc.2)
+      | none => (true, acc.2))
+    (false, [])
+
+/-- The indices `N` of the binding names `xN` occurring in the text `t`, each delimited by
+    characters that cannot extend an identifier. -/
+def bindingRefs (t : String) : List Nat :=
+  let digit (c : Char) : Nat := c.toNat - '0'.toNat
+  let st := t.toList.foldl (fun (st : Char × Nat × Nat × List Nat) c =>
+    let (p, mode, v, acc) := st
+    match mode with
+    | 2 => if c.isDigit then (c, 2, 10 * v + digit c, acc)
+           else if isIdentChar c then (c, 0, 0, acc) else (c, 0, 0, v :: acc)
+    | 1 => if c.isDigit then (c, 2, digit c, acc) else (c, 0, 0, acc)
+    | _ => if c == 'x' && !isIdentChar p then (c, 1, 0, acc) else (c, 0, 0, acc))
+    (' ', 0, 0, [])
+  if st.2.1 = 2 then st.2.2.1 :: st.2.2.2 else st.2.2.2
+
+/-- The index `N` of the binding a printed line assigns: a line `let xN: …`,
+    `let mut xN: …` or `xN[…] = …`. -/
+def assignedBinding? (line : String) : Option Nat :=
+  let cs := line.toList.dropWhile (· == ' ')
+  let cs := if cs.take 4 == "let ".toList then cs.drop 4 else cs
+  let cs := if cs.take 4 == "mut ".toList then cs.drop 4 else cs
+  match cs with
+  | 'x' :: ds =>
+      let dg := ds.takeWhile Char.isDigit
+      match ds.drop dg.length with
+      | c :: _ => if !dg.isEmpty && (c == ':' || c == '[') then (String.ofList dg).toNat? else none
+      | [] => none
+  | _ => none
+
+/-- The writes of the outputs `outs` (cell index `j`, Rust expression `e`) to the array `arr`
+    of `n` cells of type `ty`, placed among the printed lines `lines`: the writes to print
+    after the `p`-th line (`p = 0`: before the first line), and the lines to print after the
+    last one.
+
+    An output `e = arr[j]` prints nothing. An output whose expression reads a cell of `arr`
+    is deferred, and so is every output to a cell some deferred expression reads (to every
+    cell when one reads `arr` at a computed index). Each other output `j` prints
+    `arr[j] = e;` after line `p`, the least position at or after the last line reading
+    `arr[j]` (or reading `arr` at a computed index) and the last line assigning a binding
+    `xN` that `e` names. The deferred outputs are bound together in the array `r` after the
+    last line and then written.
+
+    The schedule keeps every value: a line after position `p` reads no cell `arr[j]` written
+    at `p`, the expression `e` names cells of no array and only bindings assigned by then,
+    and the deferred expressions read only cells written after them or not at all. The
+    reads are found in the text: an occurrence of `arr` delimited as an identifier, followed
+    by `[k]` for a literal `k` or by anything else, which counts as a read of every cell. -/
+def inPlaceWrites (arr ty : String) (n : Nat) (lines : Array String)
+    (outs : List (Nat × String)) : Array (List String) × List String :=
+  let (rd, dyn, defs) := lines.toList.zipIdx.foldl
+    (fun (acc : Array Nat × Nat × Array Nat) (li : String × Nat) =>
+      let (rd, dyn, defs) := acc
+      let pos := li.2 + 1
+      let (d, ks) := cellReads arr li.1
+      let rd := ks.foldl (fun r k => if k < r.size then r.set! k pos else r) rd
+      let defs := match assignedBinding? li.1 with
+        | some m =>
+            (if m < defs.size then defs else defs ++ Array.replicate (m + 1 - defs.size) 0).set!
+              m pos
+        | none => defs
+      (rd, if d then pos else dyn, defs))
+    (Array.replicate n 0, 0, #[])
+  let outs := outs.filter fun (j, e) => e != s!"{arr}[{j}]"
+  let readsArr (e : String) : Bool := let (d, ks) := cellReads arr e; d || !ks.isEmpty
+  let (dAll, dKs) := (outs.filter fun (_, e) => readsArr e).foldl
+    (fun (acc : Bool × List Nat) (o : Nat × String) =>
+      let (d, ks) := cellReads arr o.2
+      (acc.1 || d, ks ++ acc.2))
+    (false, [])
+  let deferred (o : Nat × String) : Bool := readsArr o.2 || dAll || dKs.contains o.1
+  let slots := (outs.filter fun o => !deferred o).foldl
+    (fun (sl : Array (List String)) (o : Nat × String) =>
+      let p := max (max (rd.getD o.1 0) dyn)
+        ((bindingRefs o.2).foldl (fun m b => max m (defs.getD b 0)) 0)
+      sl.modify p (· ++ [s!"    {arr}[{o.1}] = {o.2};"]))
+    (Array.replicate (lines.size + 1) [])
+  let late := outs.filter deferred
+  let tail :=
+    if late.isEmpty then []
+    else s!"    let r: [{ty}; {late.length}] = [{", ".intercalate (late.map (·.2))}];" ::
+      late.zipIdx.map fun (o, i) => s!"    {arr}[{o.1}] = r[{i}];"
+  (slots, tail)
+
+/-- The lines `lines` with the writes `slots[p]` after the `p`-th line (`slots[0]` before the
+    first line). -/
+def interleaveWrites (lines : Array String) (slots : Array (List String)) : List String :=
+  slots.getD 0 [] ++ lines.toList.zipIdx.flatMap fun (l, i) => l :: slots.getD (i + 1) []
+
+/-- The body of an in-place function over `arr : &mut [T; n]`, `T` the container of width `w`,
+    after the printed lines `lines` with results `rs`: under the rule `inPlace` the writes of
+    `inPlaceWrites` placed among the lines, otherwise the lines followed by `*arr = r` for the
+    array `r` of the results. `ok` is the shape check; when it fails the body ends in a
+    `compile_error!` line. -/
+def inPlaceBody (arr : String) (w n : Nat) (ok : Bool) (opts : EmitOpts) (lines : Array String)
+    (rs : List RVal) : List String :=
+  if !ok then
+    lines.toList ++
+      [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
+  else if opts.inPlace then
+    let (slots, tail) :=
+      inPlaceWrites arr (contTy w) n lines (rs.zipIdx.map fun (r, j) => (j, r.expr))
+    interleaveWrites lines slots ++ tail
+  else
+    lines.toList ++
+      [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
+        s!"    *{arr} = r;"]
+
 /-- An `#[inline] pub fn fname(arr: &mut [T; n])` computing `c` in place: the context entry at
     de Bruijn position `j` is the cell `arr[j]`, and the `j`-th returned word is written to
-    `arr[j]` after every binding. The context and the results are `n` registers of width
-    `w`; any other shape prints a `compile_error!` line. `opts` selects the printing rules. -/
+    `arr[j]`, after every binding or by the rule `inPlace`. The context and the results are
+    `n` registers of width `w`; any other shape prints a `compile_error!` line. `opts`
+    selects the printing rules. -/
 def emitFnInPlace {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : String) (w : Nat)
     (c : MultiReturnCom jasminDialect Γ ts) (opts : EmitOpts := {}) : String :=
   let n := Γ.length
   let env := (List.range n).map fun j => RVal.word s!"{arr}[{j}]" w none
   let (s, rs) := emitMRCom c { env := env, lines := #[], next := 0, opts := opts }
-  let tail :=
-    if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
-      [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
-        s!"    *{arr} = r;"]
-    else
-      [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
+  let ok := Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n
   "#[inline]\n" ++ s!"pub fn {fname}({arr}: &mut [{contTy w}; {n}])" ++ " {\n" ++
-    "\n".intercalate (s.constLines ++ s.lines.toList ++ tail) ++ "\n}\n"
+    "\n".intercalate (s.constLines ++ inPlaceBody arr w n ok opts s.lines rs) ++ "\n}\n"
 
 /-- An `#[inline] pub fn fname(arr: &mut [T; n])` computing the programs `cs` one after the
     other in one body: the context entry at de Bruijn position `j` of the first program is
     the cell `arr[j]`, that of each later program is the `j`-th result of the program before
-    it, and the `j`-th result of the last program is written to `arr[j]` after every binding.
-    Word bindings are numbered across the programs. The context and the results are `n`
-    registers of width `w`; any other shape prints a `compile_error!` line. `opts` selects
-    the printing rules. -/
+    it, and the `j`-th result of the last program is written to `arr[j]`, after every binding
+    or by the rule `inPlace`. Word bindings are numbered across the programs. The context and
+    the results are `n` registers of width `w`; any other shape prints a `compile_error!`
+    line. `opts` selects the printing rules. -/
 def emitFnInPlaceSeq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : String)
     (w : Nat) (cs : List (MultiReturnCom jasminDialect Γ ts)) (opts : EmitOpts := {}) :
     String :=
@@ -633,14 +776,9 @@ def emitFnInPlaceSeq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr :
     (fun (acc : PState × List RVal) (c : MultiReturnCom jasminDialect Γ ts) =>
       emitMRCom c { acc.1 with env := acc.2 })
     ({ env := {}, lines := #[], next := 0, opts := opts }, env)
-  let tail :=
-    if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
-      [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
-        s!"    *{arr} = r;"]
-    else
-      [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
+  let ok := Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n
   "#[inline]\n" ++ s!"pub fn {fname}({arr}: &mut [{contTy w}; {n}])" ++ " {\n" ++
-    "\n".intercalate (s.constLines ++ s.lines.toList ++ tail) ++ "\n}\n"
+    "\n".intercalate (s.constLines ++ inPlaceBody arr w n ok opts s.lines rs) ++ "\n}\n"
 
 /-- The `m` cell expressions of an array value; a word value fills every cell. -/
 def RVal.cellsN (r : RVal) (m : Nat) : List String :=
@@ -650,25 +788,32 @@ def RVal.cellsN (r : RVal) (m : Nat) : List String :=
 
 /-- An `#[inline] pub fn fname(out: &mut [T; m * k], params)` computing the `k` programs `cs`
     over one context, each with result `stackArr w m`, one after the other in one body; the
-    result of part `i` is written to `out[m * i]`, …, `out[m * i + m - 1]` after every
-    binding. `env i` gives the values of the context for part `i` (de Bruijn position `0`
-    first); word bindings are numbered across the parts. -/
+    result of part `i` is written to `out[m * i]`, …, `out[m * i + m - 1]`, after every
+    binding or, under the rule `inPlace`, cell by cell as `inPlaceWrites` places it among
+    the lines of all parts. `env i` gives the values of the context for part `i` (de Bruijn
+    position `0` first); word bindings are numbered across the parts. `opts` selects the
+    printing rules. -/
 def emitFnParts {Γ : Ctxt jasminDialect} (fname out : String) (params : List String)
-    (env : Nat → List RVal) (w m : Nat) (cs : List (Com jasminDialect Γ (.stackArr w m))) :
-    String :=
+    (env : Nat → List RVal) (w m : Nat) (cs : List (Com jasminDialect Γ (.stackArr w m)))
+    (opts : EmitOpts := {}) : String :=
   let (s, cells) := cs.zipIdx.foldl
     (fun (acc : PState × List String) (ci : Com jasminDialect Γ (.stackArr w m) × Nat) =>
       let (s', r) := emitCom ci.1 { acc.1 with env := env ci.2 }
       (s', acc.2 ++ r.cellsN m))
-    ({ env := {}, lines := #[], next := 0 }, [])
+    ({ env := {}, lines := #[], next := 0, opts := opts }, [])
   let k := m * cs.length
-  let writes :=
-    if cells.any fun cell => cell.startsWith (out ++ "[") then
-      [s!"    let r: [{contTy w}; {k}] = [{", ".intercalate cells}];", s!"    *{out} = r;"]
-    else (List.range k).map fun j => s!"    {out}[{j}] = {cells.getD j "0"};"
+  let body :=
+    if opts.inPlace then
+      let (slots, tail) :=
+        inPlaceWrites out (contTy w) k s.lines (cells.zipIdx.map fun (e, j) => (j, e))
+      interleaveWrites s.lines slots ++ tail
+    else if cells.any fun cell => cell.startsWith (out ++ "[") then
+      s.lines.toList ++
+        [s!"    let r: [{contTy w}; {k}] = [{", ".intercalate cells}];", s!"    *{out} = r;"]
+    else s.lines.toList ++ (List.range k).map fun j => s!"    {out}[{j}] = {cells.getD j "0"};"
   "#[inline]\n" ++
     s!"pub fn {fname}({", ".intercalate (s!"{out}: &mut [{contTy w}; {k}]" :: params)})" ++
-    " {\n" ++ "\n".intercalate (s.lines.toList ++ writes) ++ "\n}\n"
+    " {\n" ++ "\n".intercalate (s.constLines ++ body) ++ "\n}\n"
 
 /-- The head of a generated Rust module file: the comment lines `comment` (each prefixed by
     `// `) and the inner attributes that silence the lints straight-line code trips. -/
