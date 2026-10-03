@@ -26,7 +26,7 @@ theorem hold for every limb count, among them `n = 4` (P-256) and `n = 6` (P-384
 | `fMul` | `Mont.mulBlk xs ys` |
 | `fInv` | `Mont.invBlk xs`, the Montgomery power `x^(p-2)` |
 | `fieldDouble` | `Mont.addBlk xs xs` |
-| `fieldSquare` | `Mont.mulBlk xs xs` |
+| `fieldSquare` | `Mont.sqrBlk xs` |
 | `fConst c` | `Mont.constBlk n (c · 2^(64n)).val` |
 | `fCopy` | `Mont.retN n xs`, the return of the operand limbs |
 
@@ -184,7 +184,7 @@ def lowerOpL : (op : fieldDialect.Op) →
     else constBlk n 0
   | .fCopy q => if q = P.p then retN n (opX n []) else constBlk n 0
   | .fieldDouble q => if q = P.p then addBlk P (opX n []) (opX n []) else constBlk n 0
-  | .fieldSquare q => if q = P.p then mulBlk P (opX n []) (opX n []) else constBlk n 0
+  | .fieldSquare q => if q = P.p then sqrBlk P (opX n []) else constBlk n 0
   | .ext2Mul _ | .ext2Add _ | .ext2Sub _ | .frobenius2 _ | .ext6Mul _ _ | .ext6Add _
   | .ext6Sub _ | .ext12Mul _ _ | .ext12Add _ | .ext12Sub _ => constBlk n 0
 
@@ -252,8 +252,7 @@ theorem blockSquareV :
     show (lowerOpL P (.fieldSquare P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fSquareF a)
     rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
-    exact mulBlk_denote P _ _ _ (opX_length _ _) (opX_length _ _) a a (nv_encX P a _)
-      (nv_encX P a _)
+    exact sqrBlk_denote P _ _ (opX_length _ _) a (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fInv P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fInvF a)

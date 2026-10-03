@@ -30,19 +30,23 @@ the number of steps, in the manner of fiat's `redc_loop_bound` and
 
 * `LimbParams n`: the modulus record; `Rn n`: the register types of an element.
 * `digits`, `limbsN`, `retN`: radix-`2^64` digits, limb values and the limb return.
-* `csubPCK`, `addMK`, `subMK`, `prodNK`, `redcStepK`, `redcChainK`, `mulMK`, `powK`:
-  the list-level operations.
+* `csubPCK`, `addMK`, `subMK`, `prodNK`, `sqrNK`, `redcStepK`, `redcChainK`, `redcFinK`,
+  `mulMK`, `sqrMK`, `powK`: the list-level operations.
+* `crossV`, `diagV`: the cross and diagonal sums of a square.
 * `R`, `enc`: the Montgomery factor `2^(64n)` and the encoding.
-* `addBlk`, `subBlk`, `negBlk`, `mulBlk`, `constBlk`, `invBlk`: the blocks.
+* `addBlk`, `subBlk`, `negBlk`, `mulBlk`, `sqrBlk`, `constBlk`, `invBlk`: the blocks.
 
 ## Main results
 
 * `csubPCK_denote`: the conditional subtraction on `n + 1` limbs.
 * `prodNK_denote`: the schoolbook product of two limb lists.
+* `sqrNK_denote`: the square of a limb list, with each cross product formed once and
+  doubled (`nv_mul_self`: the square is the diagonal sum plus twice the cross sum).
 * `redcChainK_denote`: `s` words of Montgomery reduction give `A · 2^(64s) = T + M p`
   with `M < 2^(64s)`; `redc_bound`: after `n` words from `T < p²`, `A < 2p`.
-* `mulMK_denote`, `mulMK_denote_enc`: the Montgomery product.
-* `addBlk_denote`, `mulBlk_denote`, `constBlk_denote`, `subBlk_denote_enc`,
+* `mulMK_denote`, `mulMK_denote_enc`: the Montgomery product; `sqrMK_denote`,
+  `sqrMK_denote_enc`: the Montgomery square.
+* `addBlk_denote`, `mulBlk_denote`, `sqrBlk_denote`, `constBlk_denote`, `subBlk_denote_enc`,
   `negBlk_denote_enc`: the value theorems of the blocks.
 * `invBlk_denote_pow`, `invBlk_denote_inv`: the inversion block gives `enc (x^(p-2))`,
   and `enc x⁻¹` at a prime modulus.
@@ -62,7 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
   (w64 w1 MC lk lk1 eBin eConst eBit eConst_denote eBit_denote eBin_denote Pres Pres.id
     Pres.comp bindK bindK_denote nv nv_nil nv_cons nv_map nv_append nv_lt selR selR_denote
     constsK constsK_denote limbsNat addK addK_denote mulRowK mulRowK_denote accK
-    xorR xorR_denote adcR adcR_denote)
+    xorR xorR_denote adcR adcR_denote eMulhi eMulhi_denote mulx_toNat)
 
 /-! ## 1. The modulus, digits and limb values -/
 
@@ -497,6 +501,247 @@ theorem prodNK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : Li
   refine hk _ out W₂ (Pres.comp h₁ h₂) (by rw [hout]; simp; ring) ?_
   rw [hval, nv_map h₁, nv_cons]
 
+/-! ## 4a. The squaring product -/
+
+/-- The cross sum `∑_{i<j} x_i x_j 2^(64(i+j))` of the limbs `xs` under `W`. -/
+def crossV {Δ : Ctxt jasminDialect} (W : Valuation Δ) : List (Var Δ w64) → Nat
+  | [] => 0
+  | x :: xs => 2 ^ 64 * ((lk x W).toNat * nv W xs) + 2 ^ 128 * crossV W xs
+
+/-- The diagonal sum `∑_i x_i² 2^(128 i)` of the limbs `xs` under `W`. -/
+def diagV {Δ : Ctxt jasminDialect} (W : Valuation Δ) : List (Var Δ w64) → Nat
+  | [] => 0
+  | x :: xs => (lk x W).toNat * (lk x W).toNat + 2 ^ 128 * diagV W xs
+
+/-- The square of a limb value is the diagonal sum plus twice the cross sum. -/
+theorem nv_mul_self {Δ : Ctxt jasminDialect} (W : Valuation Δ) :
+    ∀ xs : List (Var Δ w64), nv W xs * nv W xs = diagV W xs + 2 * crossV W xs
+  | [] => rfl
+  | x :: xs => by
+      have ih := nv_mul_self W xs
+      simp only [nv_cons, diagV, crossV]
+      linear_combination 2 ^ 128 * ih
+
+/-- The diagonal squares of the limbs `xs` (renamed by `ren`): for each limb `x`, the low
+    and high words of `x · x`, as the `2 · xs.length` limbs `lo₀, hi₀, lo₁, hi₁, …`. -/
+def diagK : {Γ Δ : Ctxt jasminDialect} → {ts : List JasminTy} → Ctxt.Hom Γ Δ →
+    List (Var Γ w64) →
+    (∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts) → MC Δ ts
+  | _, _, _, _, [], k => k (fun v => v) []
+  | _, _, _, ren, x :: xs, k =>
+      bindK (eBin .mul (ren x) (ren x)) fun r₁ lo =>
+      bindK (eMulhi (r₁ (ren x)) (r₁ (ren x))) fun r₂ hi =>
+      diagK (fun v => r₂ (r₁ (ren v))) xs fun r₃ out =>
+        k (fun v => r₃ (r₂ (r₁ v))) (r₃ (r₂ lo) :: r₃ hi :: out)
+
+theorem diagK_denote : ∀ {Γ Δ : Ctxt jasminDialect} {ts : List JasminTy} (ren : Ctxt.Hom Γ Δ)
+    (xs : List (Var Γ w64))
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts)
+    (W : Valuation Γ) (W₀ : Valuation Δ) (G : ListDenote ts),
+    Pres ren W W₀ →
+    (∀ {Δ' : Ctxt jasminDialect} (r : Ctxt.Hom Δ Δ') (out : List (Var Δ' w64))
+        (W' : Valuation Δ'), Pres r W₀ W' → out.length = 2 * xs.length →
+        nv W' out = diagV W xs → (k r out).denote W' = G) →
+    (diagK ren xs k).denote W₀ = G
+  | _, _, _, _, [], k, W, W₀, G, _, hk => by
+      rw [diagK]
+      exact hk _ [] W₀ (Pres.id W₀) rfl rfl
+  | _, _, _, ren, x :: xs, k, W, W₀, G, hren, hk => by
+      rw [diagK]
+      refine bindK_denote _ _ _ _ fun r₁ lo W₁ h₁ hlo => ?_
+      refine bindK_denote _ _ _ _ fun r₂ hi W₂ h₂ hhi => ?_
+      have ex : lk (ren x) W₀ = lk x W := hren x
+      have elo : lk lo W₁ = lk x W * lk x W := by
+        rw [show lk lo W₁ = _ from hlo, eBin_denote, ex]; rfl
+      have ehi : lk hi W₂ = mulHiW (lk x W) (lk x W) := by
+        rw [show lk hi W₂ = _ from hhi, eMulhi_denote,
+          show lk (r₁ (ren x)) W₁ = lk x W from (h₁ (ren x)).trans ex]
+      have hmx := mulx_toNat (lk x W) (lk x W)
+      rw [← elo, ← ehi] at hmx
+      refine diagK_denote _ xs _ W W₂ G (Pres.comp (Pres.comp hren h₁) h₂)
+        fun r₃ out W₃ h₃ hout hval => ?_
+      refine hk _ _ W₃ (Pres.comp (Pres.comp h₁ h₂) h₃) (by simp [hout]; ring) ?_
+      rw [nv_cons, nv_cons, show lk (r₃ (r₂ lo)) W₃ = lk lo W₁ from (h₃ _).trans (h₂ lo),
+        show lk (r₃ hi) W₃ = lk hi W₂ from h₃ hi, hval, diagV]
+      linear_combination hmx
+
+/-- The cross rows of a square: for the limbs `xs` (renamed by `ren`) from position `i`
+    of the operand on, the row `x · rest` of each limb `x` and its successors `rest` is
+    accumulated into `acc` from position `2i + 1` on. -/
+def crossAccK : {Γ Δ : Ctxt jasminDialect} → {ts : List JasminTy} → Ctxt.Hom Γ Δ → Nat →
+    List (Var Γ w64) → List (Var Δ w64) →
+    (∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts) → MC Δ ts
+  | _, _, _, _, _, [], acc, k => k (fun v => v) acc
+  | _, _, _, _, _, [_], acc, k => k (fun v => v) acc
+  | _, _, _, ren, i, x :: y :: ys, acc, k =>
+      accK (2 * i + 1) ((y :: ys).map (fun v => ren v)) (ren x) acc fun r₁ a =>
+      crossAccK (fun v => r₁ (ren v)) (i + 1) (y :: ys) a fun r₂ out =>
+        k (fun v => r₂ (r₁ v)) out
+
+/-- The cross rows add `2^(128 i)` times the cross sum of `xs` to `acc`. The bound
+    `acc ≤ L · (L + 2^(64 i) · xs)` with `L < 2^(64 i)` holds for the cross rows of the
+    `i` limbs of value `L` before `xs`, and keeps every carry chain from overflowing. -/
+theorem crossAccK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (W : Valuation Γ)
+    (xs : List (Var Γ w64)) : ∀ {Δ : Ctxt jasminDialect}
+    (ren : Ctxt.Hom Γ Δ) (i : Nat) (acc : List (Var Δ w64))
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts)
+    (W₀ : Valuation Δ) (G : ListDenote ts) (L : Nat),
+    Pres ren W W₀ → acc.length = 2 * i + xs.length → 0 < xs.length → L < 2 ^ (64 * i) →
+    nv W₀ acc ≤ L * (L + 2 ^ (64 * i) * nv W xs) →
+    (∀ {Δ' : Ctxt jasminDialect} (r : Ctxt.Hom Δ Δ') (out : List (Var Δ' w64))
+      (W' : Valuation Δ'), Pres r W₀ W' → out.length = acc.length + xs.length - 1 →
+      nv W' out = nv W₀ acc + 2 ^ (64 * i) * 2 ^ (64 * i) * crossV W xs →
+      (k r out).denote W' = G) →
+    (crossAccK ren i xs acc k).denote W₀ = G := by
+  induction xs with
+  | nil =>
+    intro Δ ren i acc k W₀ G L _ _ h0
+    simp at h0
+  | cons x xs ih =>
+    intro Δ ren i acc k W₀ G L hren hacc _ hL hv hk
+    cases xs with
+    | nil =>
+      rw [crossAccK]
+      exact hk _ acc W₀ (Pres.id W₀) (by simp) (by simp [crossV, nv_nil])
+    | cons y ys =>
+      rw [crossAccK]
+      have hX : (lk x W).toNat < 2 ^ 64 := (lk x W).isLt
+      have hRl : nv W (y :: ys) < 2 ^ (64 * (ys.length + 1)) := by
+        simpa using nv_lt W (y :: ys)
+      have ex : (lk (ren x) W₀).toNat = (lk x W).toNat := by
+        rw [show lk (ren x) W₀ = lk x W from hren x]
+      have e1 : 2 ^ (64 * (2 * i + 1)) = 2 ^ (64 * i) * 2 ^ (64 * i) * 2 ^ 64 := by
+        rw [← Nat.pow_add, ← Nat.pow_add]
+        ring_nf
+      have e2 : 2 ^ (64 * (ys.length + 1 + 1)) = 2 ^ (64 * (ys.length + 1)) * 2 ^ 64 :=
+        two_pow_succ _
+      have e3 : 2 ^ (64 * (i + 1)) = 2 ^ (64 * i) * 2 ^ 64 := two_pow_succ _
+      have hcx : crossV W (x :: y :: ys)
+          = 2 ^ 64 * ((lk x W).toNat * nv W (y :: ys)) + 2 ^ 128 * crossV W (y :: ys) := rfl
+      rw [nv_cons] at hv
+      generalize 2 ^ (64 * i) = B at hL hv e1 e3 hk
+      generalize hR : nv W (y :: ys) = R at hRl hv hcx
+      generalize (lk x W).toNat = xv at hX ex hv hcx
+      have key : nv W₀ acc + B * B * 2 ^ 64 * (R * xv)
+          ≤ (L + B * xv) * (L + B * xv + B * 2 ^ 64 * R) := by
+        nlinarith [Nat.zero_le (B * xv * L), Nat.zero_le (B * B * xv * xv)]
+      have hL' : L + B * xv < B * 2 ^ 64 := by
+        have : B * xv ≤ B * (2 ^ 64 - 1) := Nat.mul_le_mul_left _ (by omega)
+        omega
+      refine accK_denote_n (n := ys.length + 1) (2 * i + 1) ((y :: ys).map (fun v => ren v))
+        (ren x) acc _ W₀ G (by simp) (by simp at hacc ⊢; omega) ?_
+        fun r₁ a W₁ h₁ ha hav => ?_
+      · rw [nv_map hren, ex, e1, e2, hR]
+        have hX' : L + B * xv + B * 2 ^ 64 * R < B * 2 ^ 64 * 2 ^ (64 * (ys.length + 1)) := by
+          have : B * 2 ^ 64 * (R + 1) ≤ B * 2 ^ 64 * 2 ^ (64 * (ys.length + 1)) :=
+            Nat.mul_le_mul_left _ hRl
+          rw [Nat.mul_add, Nat.mul_one] at this
+          omega
+        have hlt := Nat.mul_lt_mul'' hL' hX'
+        calc nv W₀ acc + B * B * 2 ^ 64 * (R * xv)
+            ≤ (L + B * xv) * (L + B * xv + B * 2 ^ 64 * R) := key
+          _ < B * 2 ^ 64 * (B * 2 ^ 64 * 2 ^ (64 * (ys.length + 1))) := hlt
+          _ = B * B * 2 ^ 64 * (2 ^ (64 * (ys.length + 1)) * 2 ^ 64) := by ring
+      · rw [nv_map hren, ex, e1, hR] at hav
+        refine ih (fun v => r₁ (ren v)) (i + 1) a _ W₁ G (L + B * xv) (Pres.comp hren h₁)
+          (by simp at ha hacc ⊢; omega) (by simp) (by rw [e3]; exact hL') ?_
+          fun r₂ out W₂ h₂ hout hval => ?_
+        · rw [hav, e3, hR]
+          linarith [key]
+        · refine hk _ out W₂ (Pres.comp h₁ h₂) ?_ ?_
+          · rw [hout, ha, hacc]
+            simp
+            omega
+          · rw [hval, hav, e3, hcx]
+            ring
+
+/-- The square of the limb list `xs`, as `2 · xs.length` limbs: each cross product
+    `x_i · x_j` (`i < j`) is formed once by the cross rows, their sum is doubled by one
+    carry chain, and the diagonal squares `x_i · x_i` are added by a second. -/
+def sqrNK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  match xs with
+  | [] => k (fun v => v) []
+  | [x] => diagK (fun v => v) [x] fun r out => k r out
+  | x :: y :: ys =>
+    mulRowK (y :: ys) x fun r₁ row =>
+    bindK (eConst 0) fun r₂ z =>
+    crossAccK (fun v => r₂ (r₁ v)) 1 (y :: ys) (z :: row.map (fun v => r₂ v)) fun r₃ C =>
+    addK (C ++ [r₃ z]) (C ++ [r₃ z]) fun r₄ D _ =>
+    diagK (fun v => r₄ (r₃ (r₂ (r₁ v)))) (x :: y :: ys) fun r₅ S =>
+    addK (D.map (fun v => r₅ v)) S fun r₆ T _ =>
+    k (fun v => r₆ (r₅ (r₄ (r₃ (r₂ (r₁ v)))))) T
+
+theorem sqrNK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = n)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = n + n →
+      nv W' out = nv W xs * nv W xs → (k r out).denote W' = G) :
+    (sqrNK xs k).denote W = G := by
+  subst hxs
+  rcases xs with _ | ⟨x, _ | ⟨y, ys⟩⟩
+  · exact hk _ [] W (Pres.id W) rfl (by simp [nv_nil])
+  · refine diagK_denote (fun v => v) [x] _ W W G (Pres.id W)
+      fun r out W' hr hout hv => hk r out W' hr (by simpa using hout) ?_
+    rw [hv, nv_mul_self]
+    simp [crossV, nv_nil]
+  · rw [sqrNK]
+    refine mulRowK_denote (y :: ys) x _ W G fun r₁ row W₁ h₁ hrow hrowv => ?_
+    refine bindK_denote _ _ _ _ fun r₂ z W₂ h₂ hz => ?_
+    have ez : (lk z W₂).toNat = 0 := by rw [show lk z W₂ = _ from hz, eConst_denote]; rfl
+    have hX := (lk x W).isLt
+    refine crossAccK_denote W (y :: ys) (fun v => r₂ (r₁ v)) 1 _ _ W₂ G (lk x W).toNat
+      (Pres.comp h₁ h₂) (by simp [hrow]; omega) (by simp) (by simpa using hX) ?_
+      fun r₃ C W₃ h₃ hC hCv => ?_
+    · rw [nv_cons, ez, nv_map h₂, hrowv, Nat.mul_one]
+      nlinarith [Nat.zero_le ((lk x W).toNat * (lk x W).toNat)]
+    have hcross : nv W₃ C = crossV W (x :: y :: ys) := by
+      rw [hCv, nv_cons, ez, nv_map h₂, hrowv]
+      simp only [crossV]
+      ring
+    have hCl : C.length + 1 = 2 * (ys.length + 2) := by simp [hrow] at hC; omega
+    have hsq := nv_mul_self W (x :: y :: ys)
+    have hXl := nv_lt W (x :: y :: ys)
+    have hsqlt := Nat.mul_lt_mul'' hXl hXl
+    have hBB : 2 ^ (64 * (x :: y :: ys).length) * 2 ^ (64 * (x :: y :: ys).length)
+        = 2 ^ (64 * (C.length + 1)) := by
+      rw [← Nat.pow_add, hCl]
+      simp only [List.length_cons]
+      ring_nf
+    rw [hBB] at hsqlt
+    have ez3 : (lk (r₃ z) W₃).toNat = 0 := by rw [show lk (r₃ z) W₃ = lk z W₂ from h₃ z, ez]
+    refine addK_denote (C ++ [r₃ z]) (C ++ [r₃ z]) _ W₃ G rfl
+      fun r₄ D c W₄ h₄ hD hDv => ?_
+    rw [nv_append, nv_cons, nv_nil, ez3, hcross] at hDv
+    simp only [List.length_append, List.length_singleton, Nat.mul_zero, Nat.add_zero] at hDv hD
+    have hc := (lk1 c W₄).isLt
+    have hD2 : nv W₄ D = 2 * crossV W (x :: y :: ys) := by
+      have : (lk1 c W₄).toNat = 0 := by
+        by_contra hne
+        have : 2 ^ (64 * (C.length + 1)) * 1 ≤ 2 ^ (64 * (C.length + 1)) * (lk1 c W₄).toNat :=
+          Nat.mul_le_mul_left _ (by omega)
+        omega
+      rw [this] at hDv
+      omega
+    refine diagK_denote _ (x :: y :: ys) _ W W₄ G
+      (Pres.comp (Pres.comp (Pres.comp h₁ h₂) h₃) h₄)
+      fun r₅ S W₅ h₅ hS hSv => ?_
+    refine addK_denote (D.map (fun v => r₅ v)) S _ W₅ G (by simp [hD, hS]; omega)
+      fun r₆ T c' W₆ h₆ hT hTv => ?_
+    refine hk _ T W₆ (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp h₁ h₂) h₃) h₄) h₅) h₆)
+      (by simp [hT, hD]; omega) ?_
+    rw [nv_map h₅, hSv, hD2] at hTv
+    simp only [List.length_map, hD] at hTv
+    have hc' := (lk1 c' W₆).isLt
+    have : (lk1 c' W₆).toNat = 0 := by
+      by_contra hne
+      have : 2 ^ (64 * (C.length + 1)) * 1 ≤ 2 ^ (64 * (C.length + 1)) * (lk1 c' W₆).toNat :=
+        Nat.mul_le_mul_left _ (by omega)
+      omega
+    rw [this] at hTv
+    omega
+
 /-! ## 5. Montgomery reduction -/
 
 /-- One word of Montgomery reduction on `2n + 1` limbs `acc` of value `A`: the digit
@@ -650,6 +895,53 @@ theorem redc_bound (B p T A M : Nat) (hT : T < p * p) (hp : p < B) (hM : M < B)
   have h4 : A * B < 2 * p * B := by omega
   exact Nat.lt_of_mul_lt_mul_right h4
 
+/-- `n` words of Montgomery reduction of the `2n` limbs `T` extended by a zero limb, and
+    one conditional subtraction on the low `n + 1` limbs. -/
+def redcFinK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (T : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  bindK (eConst 0) fun r₂ z =>
+  redcChainK P n (T.map (fun v => r₂ v) ++ [z]) fun r₃ A =>
+  csubPCK P (A.take (n + 1)) fun r₄ out =>
+  k (fun v => r₄ (r₃ (r₂ v))) out
+
+theorem redcFinK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (T : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hT : T.length = 2 * n)
+    (hTv : nv W T < P.p * P.p)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = n → nv W' out < P.p →
+      nv W' out * 2 ^ (64 * n) ≡ nv W T [MOD P.p] →
+      (k r out).denote W' = G) :
+    (redcFinK P T k).denote W = G := by
+  have hp := P.p_lt
+  have hB := two_pow_le P
+  have hB1 := two_pow_succ n
+  have hn := n_pos P
+  have hTB : nv W T < 2 ^ (64 * n) * 2 ^ (64 * n) :=
+    lt_of_lt_of_le hTv (Nat.mul_le_mul hp.le hp.le)
+  refine bindK_denote _ _ _ _ fun r₂ z W₂ h₂ hz => ?_
+  have ez : (lk z W₂).toNat = 0 := by rw [show lk z W₂ = _ from hz, eConst_denote]; rfl
+  have hA0 : nv W₂ (T.map (fun v => r₂ v) ++ [z]) = nv W T := by
+    rw [nv_append, nv_map h₂, nv_cons, nv_nil, ez]
+    simp
+  refine redcChainK_denote P n _ _ W₂ G (by simp [hT]) (by rw [hA0]; exact hTB)
+    fun r₃ A W₃ h₃ hA _ ⟨M, hM, e⟩ => ?_
+  rw [hA0] at e
+  have hlt : nv W₃ A < 2 * P.p := redc_bound _ _ _ _ _ hTv hp hM e
+  have htake : nv W₃ (A.take (n + 1)) = nv W₃ A :=
+    nv_take W₃ A (n + 1) (by omega) (by omega)
+  have hlt' : nv W₃ (A.take (n + 1)) < P.p + 2 ^ (64 * n) := by
+    rw [htake]
+    omega
+  refine csubPCK_denote P (A.take (n + 1)) _ W₃ G (by simp [hA]; omega) hlt'
+    fun r₄ out W₄ h₄ hout hv => ?_
+  refine hk _ out W₄ (Pres.comp (Pres.comp h₂ h₃) h₄) hout ?_ ?_
+  · rw [hv, htake, csub_eq_mod P _ hlt]
+    exact Nat.mod_lt _ (Nat.lt_trans Nat.zero_lt_one P.one_lt)
+  · rw [hv, htake, csub_eq_mod P _ hlt]
+    unfold Nat.ModEq
+    rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, e, Nat.add_mul_mod_self_right]
+
 /-- Montgomery multiplication on `n` limbs: the schoolbook product, `n` words of
     Montgomery reduction, and one conditional subtraction on the low `n + 1` limbs. -/
 def mulMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
@@ -669,36 +961,30 @@ theorem mulMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : Lis
       nv W' out * 2 ^ (64 * n) ≡ nv W xs * nv W ys [MOD P.p] →
       (k r out).denote W' = G) :
     (mulMK P xs ys k).denote W = G := by
-  have hp := P.p_lt
-  have hB := two_pow_le P
-  have hB1 := two_pow_succ n
   have hn := n_pos P
   refine prodNK_denote xs ys _ W G hxs (by omega) fun r₁ T W₁ h₁ hT hTv => ?_
-  have hXY : nv W xs * nv W ys < P.p * P.p := Nat.mul_lt_mul'' hx hy
-  have hXYB : nv W xs * nv W ys < 2 ^ (64 * n) * 2 ^ (64 * n) :=
-    lt_of_lt_of_le hXY (Nat.mul_le_mul hp.le hp.le)
-  refine bindK_denote _ _ _ _ fun r₂ z W₂ h₂ hz => ?_
-  have ez : (lk z W₂).toNat = 0 := by rw [show lk z W₂ = _ from hz, eConst_denote]; rfl
-  have hA0 : nv W₂ (T.map (fun v => r₂ v) ++ [z]) = nv W xs * nv W ys := by
-    rw [nv_append, nv_map h₂, nv_cons, nv_nil, ez, hTv]
-    simp
-  refine redcChainK_denote P n _ _ W₂ G (by simp [hT, hys]; omega) (by rw [hA0]; exact hXYB)
-    fun r₃ A W₃ h₃ hA _ ⟨M, hM, e⟩ => ?_
-  rw [hA0] at e
-  have hlt : nv W₃ A < 2 * P.p := redc_bound _ _ _ _ _ hXY hp hM e
-  have htake : nv W₃ (A.take (n + 1)) = nv W₃ A :=
-    nv_take W₃ A (n + 1) (by omega) (by omega)
-  have hlt' : nv W₃ (A.take (n + 1)) < P.p + 2 ^ (64 * n) := by
-    rw [htake]
-    omega
-  refine csubPCK_denote P (A.take (n + 1)) _ W₃ G (by simp [hA]; omega) hlt'
-    fun r₄ out W₄ h₄ hout hv => ?_
-  refine hk _ out W₄ (Pres.comp (Pres.comp (Pres.comp h₁ h₂) h₃) h₄) hout ?_ ?_
-  · rw [hv, htake, csub_eq_mod P _ hlt]
-    exact Nat.mod_lt _ (Nat.lt_trans Nat.zero_lt_one P.one_lt)
-  · rw [hv, htake, csub_eq_mod P _ hlt]
-    unfold Nat.ModEq
-    rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, e, Nat.add_mul_mod_self_right]
+  exact redcFinK_denote P T (fun r out => k (fun v => r (r₁ v)) out) W₁ G
+    (by rw [hT, hys]; ring) (by rw [hTv]; exact Nat.mul_lt_mul'' hx hy)
+    fun r out W' hr hout hlt hmod => hk _ out W' (Pres.comp h₁ hr) hout hlt (by rwa [hTv] at hmod)
+
+/-- Montgomery squaring on `n` limbs: the squaring product, `n` words of Montgomery
+    reduction, and one conditional subtraction on the low `n + 1` limbs. -/
+def sqrMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  sqrNK xs fun r₁ T => redcFinK P T fun r₂ out => k (fun v => r₂ (r₁ v)) out
+
+theorem sqrMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = n) (hx : nv W xs < P.p)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = n → nv W' out < P.p →
+      nv W' out * 2 ^ (64 * n) ≡ nv W xs * nv W xs [MOD P.p] →
+      (k r out).denote W' = G) :
+    (sqrMK P xs k).denote W = G :=
+  sqrNK_denote xs _ W G hxs fun r₁ T W₁ h₁ hT hTv =>
+    redcFinK_denote P T _ W₁ G (by rw [hT]; ring) (by rw [hTv]; exact Nat.mul_lt_mul'' hx hx)
+      fun r₂ out W₂ h₂ hout hlt hmod =>
+        hk _ out W₂ (Pres.comp h₁ h₂) hout hlt (by rwa [hTv] at hmod)
 
 /-! ## 6. The Montgomery encoding -/
 
@@ -727,6 +1013,21 @@ theorem enc_injective : Function.Injective (enc P) := fun x y h => by
   have := ZMod.val_injective _ hv
   exact (isUnit_R P).mul_right_cancel this
 
+/-- A value `V < p` with `V · 2^(64n) ≡ (x R).val · (y R).val (mod p)` is the canonical
+    representative of the Montgomery form of `x * y`. -/
+theorem mont_val_eq (x y : ZMod P.p) (V : Nat) (hlt : V < P.p)
+    (hmod : V * 2 ^ (64 * n) ≡ (x * R P).val * (y * R P).val [MOD P.p]) :
+    V = (x * y * R P).val := by
+  have hc := (ZMod.natCast_eq_natCast_iff _ _ _).mpr hmod
+  simp only [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat, ZMod.natCast_val, ZMod.cast_id',
+    id] at hc
+  have hR : ((V : Nat) : ZMod P.p) = x * y * R P := by
+    refine (isUnit_R P).mul_right_cancel ?_
+    rw [show R P = 2 ^ (64 * n) from rfl] at hc ⊢
+    rw [hc]
+    ring
+  rw [← hR, ZMod.val_natCast_of_lt hlt]
+
 /-- On the Montgomery forms of `x` and `y`, `mulMK` gives the Montgomery form of
     `x * y`. -/
 theorem mulMK_denote_enc {Γ : Ctxt jasminDialect} {ts : List JasminTy}
@@ -741,15 +1042,22 @@ theorem mulMK_denote_enc {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   refine mulMK_denote P xs ys k W G hxs hys (by rw [hx]; exact val_lt P _)
     (by rw [hy]; exact val_lt P _) fun r out W' hr hout hlt hmod => hk r out W' hr hout ?_
   rw [hx, hy] at hmod
-  have hc := (ZMod.natCast_eq_natCast_iff _ _ _).mpr hmod
-  simp only [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat, ZMod.natCast_val, ZMod.cast_id',
-    id] at hc
-  have hR : ((nv W' out : Nat) : ZMod P.p) = x * y * R P := by
-    refine (isUnit_R P).mul_right_cancel ?_
-    rw [show R P = 2 ^ (64 * n) from rfl] at hc ⊢
-    rw [hc]
-    ring
-  rw [← hR, ZMod.val_natCast_of_lt hlt]
+  exact mont_val_eq P x y _ hlt hmod
+
+/-- On the Montgomery form of `x`, `sqrMK` gives the Montgomery form of `x * x`. -/
+theorem sqrMK_denote_enc {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (xs : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = n)
+    (x : ZMod P.p) (hx : nv W xs = (x * R P).val)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = n → nv W' out = (x * x * R P).val →
+      (k r out).denote W' = G) :
+    (sqrMK P xs k).denote W = G := by
+  refine sqrMK_denote P xs k W G hxs (by rw [hx]; exact val_lt P _)
+    fun r out W' hr hout hlt hmod => hk r out W' hr hout ?_
+  rw [hx] at hmod
+  exact mont_val_eq P x x _ hlt hmod
 
 /-! ## 7. The blocks -/
 
@@ -764,6 +1072,10 @@ def addBlk (xs ys : List (Var Γ w64)) : MC Γ (Rn n) :=
 /-- The Montgomery multiplication block. -/
 def mulBlk (xs ys : List (Var Γ w64)) : MC Γ (Rn n) :=
   mulMK P xs ys fun _ out => retN n out
+
+/-- The Montgomery squaring block. -/
+def sqrBlk (xs : List (Var Γ w64)) : MC Γ (Rn n) :=
+  sqrMK P xs fun _ out => retN n out
 
 /-- The constant block: the `k` 64-bit digits of `v` as `regConst` bindings. -/
 def constBlk (k v : Nat) : MC Γ (Rn k) :=
@@ -782,6 +1094,12 @@ theorem mulBlk_denote (xs ys : List (Var Γ w64)) (hxs : xs.length = n) (hys : y
     (x y : ZMod P.p) (hx : nv W xs = (x * R P).val) (hy : nv W ys = (y * R P).val) :
     (mulBlk P xs ys).denote W = enc P (x * y) := by
   refine mulMK_denote_enc P _ _ _ W _ hxs hys x y hx hy fun r out W' _ hout hv => ?_
+  rw [retN_denote _ out W' hout, hv, enc]
+
+theorem sqrBlk_denote (xs : List (Var Γ w64)) (hxs : xs.length = n) (x : ZMod P.p)
+    (hx : nv W xs = (x * R P).val) :
+    (sqrBlk P xs).denote W = enc P (x * x) := by
+  refine sqrMK_denote_enc P _ _ W _ hxs x hx fun r out W' _ hout hv => ?_
   rw [retN_denote _ out W' hout, hv, enc]
 
 theorem constBlk_denote (k v : Nat) : (constBlk (Γ := Γ) k v).denote W = limbsN k v := by
