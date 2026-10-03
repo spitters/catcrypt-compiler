@@ -36,7 +36,10 @@ spill cells, where `k.0` is at offset `56` and `k.1` at offset `48`:
   accumulator of the spilled-destination sequence;
 * `CMOV:64` with its true value in a slot and register destination, condition and false
   value is the copy of the false value, `test` of the condition and `cmovne` from the
-  slot (`REX.W 0F 45 /r` with the `%rsp` base).
+  slot (`REX.W 0F 45 /r` with the `%rsp` base);
+* `CMOV:64` with its false value in a slot and register destination and condition is the
+  load of the slot into the destination, `test` of the condition and `cmovne` from a
+  register true value other than the destination or from a slot true value.
 
 The `ADCX` pins also check that `DecodeGen.shapeOf` splits the bytes into pieces that
 decode to the printed instructions.
@@ -50,6 +53,8 @@ decode to the printed instructions.
   lines for a register and a slot destination, and the refused 32-bit form.
 * `#kat` pins of the slot-source `CMOV:64` select: the printed lines, the bytes against the
   component encoders, and the bytes the assembler writes.
+* `#kat` pins of the slot-false-value and both-slot `CMOV:64` selects: the printed lines, the
+  bytes, the `shapeOf` decode, and the refused form whose destination is the true value.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
@@ -209,5 +214,43 @@ def cmovSlotT : LinstrR := .Lopn [.reg "RBX"] "CMOV:64" [.reg "R10", .reg "k.1",
 #kat enc cmovSlotT
   == ([0x48, 0x89, 0xc3, 0x4d, 0x85, 0xd2, 0x48, 0x0f, 0x45, 0x5c, 0x24, 0x30] : List Nat).map
       (BitVec.ofNat 8)
+
+/-- `CMOV:64 RBX := R10 ? RAX : k.1`: the select with its false value in a slot. -/
+def cmovSlotF : LinstrR := .Lopn [.reg "RBX"] "CMOV:64" [.reg "R10", .reg "RAX", .reg "k.1"]
+
+/-- `CMOV:64 RBX := R10 ? k.0 : k.1`: the select with both values in slots. -/
+def cmovSlotTF : LinstrR := .Lopn [.reg "RBX"] "CMOV:64" [.reg "R10", .reg "k.0", .reg "k.1"]
+
+-- the printer: `mov 48(%rsp), %rbx`, `test %r10, %r10`, `cmovne %rax, %rbx`
+#kat LprogAsmPrinter.renderLopn pinP.frame pinP.spillW false [.reg "RBX"] "CMOV:64"
+    [.reg "R10", .reg "RAX", .reg "k.1"] pinP.qsaveB
+  == ["\tmovq 48(%rsp), %rbx", "\ttestq %r10, %r10", "\tcmovneq %rax, %rbx"]
+
+-- the bytes of those three lines, against their component encoders
+#kat enc cmovSlotF
+  == encRspMem 1 0x8b 3 48 ++ encAluRRw 1 0x85 10 10 ++ enc0FRRw 1 0x45 3 0
+
+-- the same bytes as the assembler writes them: `48 8b 5c 24 30`, `4d 85 d2`, `48 0f 45 d8`
+#kat enc cmovSlotF
+  == ([0x48, 0x8b, 0x5c, 0x24, 0x30, 0x4d, 0x85, 0xd2, 0x48, 0x0f, 0x45, 0xd8] : List Nat).map
+      (BitVec.ofNat 8)
+
+#kat shapeJs cmovSlotF == reprStr ([.loadMem "%rbx" "%rsp" 48, .test "%r10" (.reg "%r10"),
+    .cmovne "%rbx" (.reg "%rax")] : List (JInstr 64))
+
+-- the printer: `mov 48(%rsp), %rbx`, `test %r10, %r10`, `cmovne 56(%rsp), %rbx`
+#kat LprogAsmPrinter.renderLopn pinP.frame pinP.spillW false [.reg "RBX"] "CMOV:64"
+    [.reg "R10", .reg "k.0", .reg "k.1"] pinP.qsaveB
+  == ["\tmovq 48(%rsp), %rbx", "\ttestq %r10, %r10", "\tcmovneq 56(%rsp), %rbx"]
+
+#kat enc cmovSlotTF
+  == encRspMem 1 0x8b 3 48 ++ encAluRRw 1 0x85 10 10 ++ encCmovRspMem 1 0x45 3 56
+
+#kat shapeJs cmovSlotTF == reprStr ([.loadMem "%rbx" "%rsp" 48, .test "%r10" (.reg "%r10"),
+    .cmovccMem .ne "%rbx" "%rsp" 56] : List (JInstr 64))
+
+-- a slot false value with the destination equal to the true value is printed as `cmove` from
+-- the slot, which has no encoding
+#kat enc (.Lopn [.reg "RAX"] "CMOV:64" [.reg "R10", .reg "RAX", .reg "k.1"]) == []
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats

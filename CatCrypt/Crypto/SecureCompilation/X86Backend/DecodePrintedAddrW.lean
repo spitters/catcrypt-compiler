@@ -36,7 +36,9 @@ leaves the zero-extension of the bit in the register. The wide immediate, `MOV:6
 `v` outside the sign-extended `imm32` range, is printed `movabs $v, %r64`; into a frame slot it
 is printed through `%rax`, saved to and restored from the red-zone word. The register select
 `CMOV:64 D, [C, A, B]` reads its condition `C` at width `1`, like a carry-in (`carryIns`), and
-is printed `test C, C` followed by a conditional move. The class `printedAddrWB` adds these
+is printed `test C, C` followed by a conditional move; a false value in a frame slot is loaded
+into `D` before the test, and a true value in a frame slot is read by `cmovne` from its frame
+word. The class `printedAddrWB` adds these
 arms to the bodies of `DecodePrintedCFG`.
 
 ## Main definitions
@@ -60,6 +62,8 @@ arms to the bodies of `DecodePrintedCFG`.
 * `CArm.bytes`, `sim_adcx`, `sim_adcxhi`, `MArm.bytes`, `sim_ldm`, `sim_stm`, `zBytes`,
   `sim_bmov`, `lBytes`, `sim_lmov`, `vBytes`, `sim_cmov`: the bytes and the simulations of
   the carry, cell, carry-constant, wide-immediate and register-select arms.
+* `vtBytes`, `sim_cmovSlot`, `vfBytes`, `sim_cmovSlotF`: the bytes and the simulations of the
+  selects with a slot true value and with a slot false value.
 * `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB` simulate its
   run on the address machine.
 -/
@@ -2841,7 +2845,7 @@ theorem vtBytes (P : Params) (D C A B : String) (h : vtOk P D C A B = true) :
       show ("CMOV" == "MULXMEM") = false from by decide +kernel,
       show adxPrefix "CMOV" = none from by decide +kernel,
       show ("CMOV" == "CMOV") = true from by decide +kernel,
-      fD.isGp, fC.isGp, fB.isGp, hAg, fD.off, hoff, Bool.and_false, Bool.and_true,
+      fD.isGp, fC.isGp, fB.isGp, hAg, fD.off, fB.off, hoff, Bool.and_false, Bool.and_true,
       Bool.false_eq_true, if_false, if_true]
     simp only [encCmovSelectSlotT, GatherFullBody.gpNumU_beq_of_isGpName fD.isGp fB.isGp]
     by_cases hBD : B = D <;> simp [vtPieces, hBD, hso]
@@ -2935,6 +2939,176 @@ theorem sim_cmovSlot (P : Params) (rsp : BitVec 64) (D C A B : String)
   · rw [LstateN.getW_nextPc]
     exact LstateN.getW_setReg_same _ _ _
 
+/-! ## 8g. The select with a false value in a frame slot -/
+
+/-- **The conditions of a select with a slot false value** `CMOV:64 D, [C, A, B]`:
+    general-purpose `D` and `C`, a frame slot `B` passing `kOk`, a true value `A` passing `kOk`
+    and other than `D`, and a condition `C` that is neither `D` nor `A`. -/
+def vfOk (P : Params) (D C A B : String) : Bool :=
+  gpOk D && gpOk C && isSpillOrQsave B && kOk P B && kOk P A && D != C && A != C && A != D
+
+/-- The conditional move of a select with a slot false value: `cmovne off(%rsp), D` from the
+    frame slot of a slot true value `A`, and `cmovne A, D` from a register `A`. -/
+def vfCm (P : Params) (D A : String) : List (BitVec 8) × JInstr 64 :=
+  if isSpillOrQsave A then
+    (encCmovRspMem 1 0x45 (gpNumU D) (slotOff P A), .cmovccMem .ne (phys D) "%rsp" (slotOff P A))
+  else (enc0FRRw 1 0x45 (gpNumU D) (gpNumU A), .cmovne (phys D) (.reg (phys A)))
+
+/-- The byte pieces of a select with a slot false value: the load of the frame word of `B` into
+    `D`, `test C, C` and the conditional move `vfCm`. -/
+def vfPieces (P : Params) (D C A B : String) : List (List (BitVec 8) × JInstr 64) :=
+  [(encRspMem 1 0x8b (gpNumU D) (slotOff P B), .loadMem (phys D) "%rsp" (slotOff P B)),
+    (encAluRRw 1 0x85 (gpNumU C) (gpNumU C), .test (phys C) (.reg (phys C))), vfCm P D A]
+
+/-- A name passing `kOk` that is no frame slot is a general-purpose name. -/
+theorem kOk_gp {P : Params} {x : String} (hk : kOk P x = true) (hs : isSpillOrQsave x = false) :
+    gpOk x = true := by
+  rcases kOk_cases hk with hg | ⟨off, hoff, -, -⟩
+  · exact hg
+  · simp [(slot_facts hoff).1] at hs
+
+/-- **The bytes of a select with a slot false value.** -/
+theorem vfBytes (P : Params) (D C A B : String) (h : vfOk P D C A B = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B]) P.qsaveB
+        = (vfPieces P D C A B).flatMap Prod.fst
+      ∧ ∀ p ∈ vfPieces P D C A B, PieceDec p := by
+  simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hD, hC⟩, hBs⟩, hBk⟩, hAk⟩, -⟩, -⟩, hAD⟩ := h
+  have fD := gpFacts hD
+  have fC := gpFacts hC
+  obtain ⟨offB, hoffB, hdispB, -⟩ := (kOk_cases hBk).resolve_left (by
+    intro hg; simp [(gpFacts hg).notSlot] at hBs)
+  have hsoB : slotOff P B = offB := by simp [slotOff, hoffB]
+  have hBg : isGpName B = false := by
+    cases hg : isGpName B
+    · rfl
+    · simp [(notSlotMem_of_isGpName hg).1] at hBs
+  refine ⟨?_, ?_⟩
+  · simp only [encodeLopn,
+      show (LprogAsmPrinter.isCarryOutBinding "CMOV:64" || LprogAsmPrinter.isMulHiBinding "CMOV:64")
+        = false from by decide +kernel,
+      show stripWidthTag "CMOV:64" = "CMOV" from by decide +kernel,
+      show LprogBytes.rexW (LprogAsmPrinter.mnemWidth "CMOV:64") = 1 from by decide +kernel,
+      show ("CMOV" == "MULX") = false from by decide +kernel,
+      show ("CMOV" == "MULXMEM") = false from by decide +kernel,
+      show adxPrefix "CMOV" = none from by decide +kernel,
+      show ("CMOV" == "CMOV") = true from by decide +kernel,
+      fD.isGp, fC.isGp, hBg, fD.off, hoffB, Bool.and_false, Bool.and_true,
+      Bool.false_eq_true, if_false, if_true]
+    cases hAs : isSpillOrQsave A with
+    | false =>
+      have fA := gpFacts (kOk_gp hAk hAs)
+      simp only [fA.isGp, if_true, GatherFullBody.gpNumU_beq_of_isGpName fD.isGp fA.isGp,
+        beq_iff_eq, hAD, if_false]
+      simp [vfPieces, vfCm, encCmovSelectSlotF, hAs, hsoB]
+    | true =>
+      obtain ⟨offA, hoffA, -, -⟩ := (kOk_cases hAk).resolve_left (by
+        intro hg; simp [(gpFacts hg).notSlot] at hAs)
+      have hAg : isGpName A = false := by
+        cases hg : isGpName A
+        · rfl
+        · simp [(notSlotMem_of_isGpName hg).1] at hAs
+      simp [hAg, hoffA, hoffB, vfPieces, vfCm, encCmovSelectSlotTF, hAs, slotOff]
+  · intro p hp
+    simp only [vfPieces, List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl | rfl | rfl
+    · rw [hsoB]
+      exact fun rest => decodeLinstr_rspLoad _ _ rest (gpNumU_lt_16 D) hdispB
+    · exact pieceDec_test C
+    · unfold vfCm
+      split
+      · rename_i hAs
+        obtain ⟨offA, hoffA, hdispA, -⟩ := (kOk_cases hAk).resolve_left (by
+          intro hg; simp [(gpFacts hg).notSlot] at hAs)
+        rw [show slotOff P A = offA by simp [slotOff, hoffA]]
+        exact pieceDec_cmovneRsp D offA hdispA
+      · exact pieceDec_cmovne D A
+
+/-- **The machine run of a select with a slot false value.** With the condition register and a
+    register true value other than the destination, the run writes to `D` the frame word of `B`
+    on a zero condition and the word of `A` otherwise, keeps every other register, and keeps the
+    memory. -/
+theorem runBlock_vfPieces (P : Params) (sa : AState) (D C A B : String) (hD : gpOk D = true)
+    (hCD : phys C ≠ phys D) (hAD : isSpillOrQsave A = false → phys A ≠ phys D) :
+    (∀ r, (aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)).regs r
+      = if r = phys D then (if sa.regs (phys C) = 0
+            then read64 sa.mem (sa.regs "%rsp" + BitVec.ofInt 64 (slotOff P B))
+          else if isSpillOrQsave A
+            then read64 sa.mem (sa.regs "%rsp" + BitVec.ofInt 64 (slotOff P A))
+          else sa.regs (phys A))
+        else sa.regs r)
+      ∧ (aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)).mem = sa.mem := by
+  refine ⟨fun r => ?_, runBlock_mem_of_noWriteB _ sa (by
+    cases hAs : isSpillOrQsave A <;> simp [vfPieces, vfCm, hAs, noWriteB])⟩
+  have hsp : "%rsp" ≠ phys D := fun e => (gpFacts hD).physNe e.symm
+  cases hAs : isSpillOrQsave A with
+  | true =>
+    have hrun : aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)
+        = evalInstrA (evalInstrA (evalInstrA sa (.loadMem (phys D) "%rsp" (slotOff P B)))
+            (.test (phys C) (.reg (phys C)))) (.cmovccMem .ne (phys D) "%rsp" (slotOff P A)) := by
+      simp [vfPieces, vfCm, hAs]; rfl
+    rw [hrun]
+    by_cases hr : r = phys D
+    · subst hr
+      simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.condB, JState.flagB,
+        JState.writeB5, JState.get, JState.load, JOperand.eval, x86_CMOVcc, x86_TEST, x86_MOV,
+        rflags_of_bwop, ZF_of_word, x86_eval_cond, writeAddr, BitVec.toNat_eq, hCD, hsp]
+    · simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.writeB5, JState.load, hr]
+  | false =>
+    have hAD' := hAD hAs
+    have hrun : aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)
+        = evalInstrA (evalInstrA (evalInstrA sa (.loadMem (phys D) "%rsp" (slotOff P B)))
+            (.test (phys C) (.reg (phys C)))) (.cmovne (phys D) (.reg (phys A))) := by
+      simp [vfPieces, vfCm, hAs]; rfl
+    rw [hrun]
+    by_cases hr : r = phys D
+    · subst hr
+      simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.flagB,
+        JState.writeB5, JState.get, JState.load, JOperand.eval, x86_CMOVcc, x86_TEST, x86_MOV,
+        rflags_of_bwop, ZF_of_word, writeAddr, BitVec.toNat_eq, hCD, hAD']
+    · simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.writeB5, JState.load, hr]
+
+/-- **The select with a slot false value.** From `ACorrW`, with a register true value at width
+    `64`, the address-machine step of `CMOV:64 D, [C, A, B]`, which reads the false value at the
+    frame word of `B`, is matched by the load, `test` and `cmovne` pieces. -/
+theorem sim_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
+    (h : vfOk P D C A B = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none)
+      s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hD, hC⟩, hBs⟩, hBk⟩, hAk⟩, hDC⟩, -⟩, hAD⟩ := h
+  have hBg : gpOk B = false := by
+    cases hg : gpOk B
+    · rfl
+    · simp [(gpFacts hg).notSlot] at hBs
+  have hwa := wordA_valM hc hAk hwA
+  have hwb := wordA_valM hc hBk (fun hg => by rw [hBg] at hg; cases hg)
+  rw [fstepA_slotCmov (frameP P rsp) (frameP_gp hD) (by simp [kOk_frame hBk hBs rsp]) none s zf
+    hwa hwb] at hst
+  cases hgc : s.reg.getW C 1 with
+  | none => rw [hgc] at hst; cases hst
+  | some vc =>
+  rw [hgc] at hst
+  simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  have hmC := hc.bit hC hgc
+  obtain ⟨hr, hm⟩ := runBlock_vfPieces P sa D C A B hD (fun e => hDC (phys_inj hD hC e.symm))
+    (fun hAs e => hAD (phys_inj (kOk_gp hAk hAs) hD e))
+  refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (valM P rsp sa A) (valM P rsp sa B))
+    (fun r => ?_) (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_) (Or.inl ?_), rfl⟩
+  · rw [hr, hmC, hc.sp]
+    simp only [valM, hBs, if_true]
+    split
+    · rcases (by decide : ∀ v : BitVec 1, v = 0 ∨ v = 1) vc with rfl | rfl <;>
+        simp_all [VIR.JasminDialect.selectW]
+    · rfl
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr']
+  · rw [LstateN.getW_nextPc]
+    exact LstateN.getW_setReg_same _ _ _
+
 /-! ## 9. The covered bodies with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
@@ -3002,7 +3176,7 @@ theorem classifyS_instr {i : LinstrR} {c : SArm} (h : classifyS i = some c) : c.
 /-- An instruction other than the closing return of a printed body with carry chains: an
     `Lopn` read into a carry constant, a slot carry arm, a carry arm, a cell arm, an immediate
     store into a frame slot, a wide immediate, a register select, a select with a slot true
-    value or an arm of
+    value, a select with a slot false value or an arm of
     `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
@@ -3026,7 +3200,7 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
               | some (d, v) => lOk d v
               | none =>
               match classifyV (.Lopn ds o ss) with
-              | some (d, c, a, b) => vOk d c a b || vtOk P d c a b
+              | some (d, c, a, b) => vOk d c a b || (vtOk P d c a b || vfOk P d c a b)
               | none =>
                   match classifyA (.Lopn ds o ss) with
                   | some a => a.ok P
@@ -3622,6 +3796,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               have hops : shs[k].ops' = (vPieces D C A B).map Prod.snd :=
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
               exact reaches_block a b hks hshk hops hR
+            rcases Bool.or_eq_true_iff.mp hok with hok | hok
             · -- a select with a slot true value
               have hok' := hok
               simp only [vtOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
@@ -3634,6 +3809,20 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               refine ⟨sa', ?_, hC⟩
               obtain ⟨hb, hp⟩ := vtBytes P D C A B hok
               have hops : shs[k].ops' = (vtPieces P D C A B).map Prod.snd :=
+                shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+              exact reaches_block a b hks hshk hops hR
+            · -- a select with a slot false value
+              have hok' := hok
+              simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
+              obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hAC⟩, -⟩ := hok'
+              have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+                hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
+              obtain ⟨hc', -⟩ := sim_cmovSlotF P rsp D C A B hok sa s zf hc hwA s' zf' hst
+              obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
+                (hnoadd hnotadd _ _) hrun hsafe'
+              refine ⟨sa', ?_, hC⟩
+              obtain ⟨hb, hp⟩ := vfBytes P D C A B hok
+              have hops : shs[k].ops' = (vfPieces P D C A B).map Prod.snd :=
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
               exact reaches_block a b hks hshk hops hR
           rename_i hclV

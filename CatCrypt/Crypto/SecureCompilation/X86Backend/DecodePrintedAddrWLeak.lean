@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak
 set_option autoImplicit false
 
 /-!
-# The leakage of the carry add with a slot carry-in
+# The leakage of the carry add with a slot carry-in and of the select with a slot false value
 
 The carry add `ADCX:64 D, A, S, C` whose carry-in `C` is a frame slot is printed
 (`DecodePrintedAddrW.SArm.adcxc`) as the save of a scratch register in the red-zone word, the
@@ -27,6 +27,11 @@ the order the machine instructions access them, with the red-zone word `redW rsp
 the save and the restore. Every address is a frame address below the stack register, so the
 events are a function of the stack register, the frame and the operand names.
 
+The select `CMOV:64 D, [C, A, B]` whose false value `B` is a frame slot
+(`DecodePrintedAddrW.vfPieces`) is printed as the load of the frame word of `B` into `D`,
+`test C, C` and `cmovne` from a register or from the frame word of a slot `A`; its events are
+the frame addresses of `B` and of a slot `A`.
+
 ## Main results
 
 * `blockLeakA_append`: the leakage of a block splits along an append.
@@ -34,6 +39,9 @@ events are a function of the stack register, the frame and the operand names.
   slot carry-in, the slot word sources and the slot destination.
 * `SArm.leak_adcxc`: the events of the decoded instructions: the red-zone word, the carry-in,
   then the word sources and the destination with the second red-zone access, in machine order.
+* `instrLeakA_cmovSlotF`, `leak_cmovSlotF`: the events of the select with a slot false value on
+  the address machine (true value, then false value) and of its decoded instructions (false
+  value, then true value).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak
@@ -225,5 +233,45 @@ theorem SArm.leak_adcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
       ← hsa5, leak_sAd P rsp S (gpNumU D) sa5 hsp5 hS, if_neg hDs]
     simp only [blockLeakA, opLeak_loadRsp, hsp3]
     simp [redW]
+
+/-- **The events of the select with a slot false value on the address machine**: the frame
+    addresses of a slot true value and of the false value. -/
+theorem instrLeakA_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
+    (h : vfOk P D C A B = true) (s : LstateA) :
+    instrLeakA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s
+      = fEv P rsp A ++ fEv P rsp B := by
+  simp only [vfOk, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hD, -⟩, hBs⟩, hBk⟩, -⟩, -⟩, -⟩, -⟩ := h
+  obtain ⟨aB, haB⟩ := Option.isSome_iff_exists.mp (kOk_frame hBk hBs rsp)
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?, haB, fEv,
+    frameP_gp hD]
+
+/-- **The events of the decoded instructions of the select with a slot false value.** Under
+    `doitm`, from a machine state whose stack register holds `rsp`: the load of the frame word of
+    the false value, then the frame word of a slot true value. -/
+theorem leak_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
+    (h : vfOk P D C A B = true) (sa : AState) (hsp : sa.regs "%rsp" = rsp) :
+    blockLeakA .doitm sa ((vfPieces P D C A B).map Prod.snd) = fEv P rsp B ++ fEv P rsp A := by
+  simp only [vfOk, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hD, -⟩, hBs⟩, hBk⟩, hAk⟩, -⟩, -⟩, -⟩ := h
+  have hRsp : phys D ≠ "%rsp" := (gpFacts hD).physNe
+  obtain ⟨r1, -⟩ := evalInstrA_loadMem_eq sa (phys D) "%rsp" (slotOff P B)
+  set sa1 := evalInstrA sa (.loadMem (phys D) "%rsp" (slotOff P B))
+  have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, if_neg (Ne.symm hRsp), hsp]
+  have hsp2 : (evalInstrA sa1 (.test (phys C) (.reg (phys C)))).regs "%rsp" = rsp := by
+    simpa [evalInstrA, evalInstr, AState.view, JState.writeB5] using hsp1
+  rw [fEv_slot hBk hBs]
+  cases hAs : isSpillOrQsave A with
+  | true =>
+    rw [fEv_slot hAk hAs]
+    simp only [vfPieces, vfCm, hAs, if_true, List.map_cons, List.map_nil, blockLeakA,
+      opLeak_loadRsp, hsp]
+    simp [opLeak, instrLeak, resolveEv, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing,
+      evA, hsp2, sa1]
+  | false =>
+    rw [fEv_of_not_slot hAk hAs]
+    simp only [vfPieces, vfCm, hAs, Bool.false_eq_true, if_false, List.map_cons, List.map_nil,
+      blockLeakA, opLeak_loadRsp, hsp]
+    simp [opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak

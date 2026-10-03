@@ -921,6 +921,21 @@ def encCmovSelectSlotT (w dn cn fn : Nat) (off : Int) : List (BitVec 8) :=
   (if dn == fn then [] else encAluRRw w 0x89 dn fn)
     ++ encAluRRw w 0x85 cn cn ++ encCmovRspMem w 0x45 dn off
 
+/-- The bytes of a branchless select whose false value is a `%rsp`-relative slot at `offF`
+    and whose destination, condition and true value are registers, the destination other
+    than the true value: `mov offF(%rsp), d`, `test c, c`, `cmovne t, d`. This is
+    `LprogAsmPrinter.renderLopn`'s CMOV arm on these operands: the destination text equals
+    neither the true-value text nor the slot text, so the printer takes its defaulting
+    `mov` and `cmovne` branch. -/
+def encCmovSelectSlotF (w dn cn tn : Nat) (offF : Int) : List (BitVec 8) :=
+  encRspMem w 0x8b dn offF ++ encAluRRw w 0x85 cn cn ++ enc0FRRw w 0x45 dn tn
+
+/-- The bytes of a branchless select whose true and false values are `%rsp`-relative slots at
+    `offT` and `offF`, with register destination and condition: `mov offF(%rsp), d`,
+    `test c, c`, `cmovne offT(%rsp), d`, the printer's CMOV arm on these operands. -/
+def encCmovSelectSlotTF (w dn cn : Nat) (offT offF : Int) : List (BitVec 8) :=
+  encRspMem w 0x8b dn offF ++ encAluRRw w 0x85 cn cn ++ encCmovRspMem w 0x45 dn offT
+
 /-! ## 3d. Register-indexed (SIB) element access — the `LOADIDX`/`STOREIDX` arms
 
 `Com.toLprogPhysAbi` exports a runtime-index array access as an `.arrIdx base idx
@@ -1448,10 +1463,13 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
       -- of which source defaults into `d` and which condition the `CMOVcc`
       -- carries. The forms built are register operands, a slot destination with
-      -- register sources, and a slot true value with register destination,
-      -- condition and false value; any other spill/qsave/`mem.*` operand denotes a
+      -- register sources, and, with register destination and condition, a slot true
+      -- value, a slot false value (the destination other than a register true value)
+      -- or both values in slots; any other spill/qsave/`mem.*` operand denotes a
       -- memory form this arm does not build, and is left as the visible empty byte
-      -- list rather than addressed as `%rax`.
+      -- list rather than addressed as `%rax`. A slot false value with the destination
+      -- equal to the true value is printed as `cmove` from the slot, which is left
+      -- unencoded.
       | [d], [a, s, cin] =>
           if base == "CMOV" then
             match d, a, s, cin with
@@ -1467,14 +1485,30 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                         encCmovSelectMem w off (gpNumU cn) (gpNumU tn) (gpNumU fn)
                       else []
                   | none =>
-                      -- A true value in a `%rsp`-relative slot, with register
-                      -- destination, condition and false value: the conditional
-                      -- move reads the slot.
-                      if isGpName dn && isGpName cn && isGpName fn then
-                        match spillQsaveOff frame spillW tn qsaveB with
-                        | some off =>
-                            encCmovSelectSlotT w (gpNumU dn) (gpNumU cn) (gpNumU fn) off
-                        | none => []
+                      if isGpName dn && isGpName cn then
+                        match spillQsaveOff frame spillW fn qsaveB with
+                        | some offF =>
+                            -- A false value in a `%rsp`-relative slot: the defaulting
+                            -- `mov` loads it, and the conditional move reads a register
+                            -- true value other than the destination, or a slot true
+                            -- value.
+                            if isGpName tn then
+                              if gpNumU dn == gpNumU tn then []
+                              else encCmovSelectSlotF w (gpNumU dn) (gpNumU cn) (gpNumU tn) offF
+                            else
+                              match spillQsaveOff frame spillW tn qsaveB with
+                              | some offT =>
+                                  encCmovSelectSlotTF w (gpNumU dn) (gpNumU cn) offT offF
+                              | none => []
+                        | none =>
+                            -- A true value in a `%rsp`-relative slot, with a register
+                            -- false value: the conditional move reads the slot.
+                            if isGpName fn then
+                              match spillQsaveOff frame spillW tn qsaveB with
+                              | some off =>
+                                  encCmovSelectSlotT w (gpNumU dn) (gpNumU cn) (gpNumU fn) off
+                              | none => []
+                            else []
                       else []
             | _, _, _, _ => []
           else []
