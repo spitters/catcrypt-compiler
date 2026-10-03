@@ -30,8 +30,10 @@ trip-counter word (`HasWord64`) and a branch bit (`HasBoolBit`), so a dialect
 gains structured control flow by those two instances, not by a loop op.
 
 `NFProg` is the structured layer above `jasminDialect`. The pipeline lowers
-`NFProg nfDialect` to `NFProg catCryptDialect` (`nfToCat`) and then, in one
-combined step, to `Com jasminDialect` or to `ComL` (`nfToRouteProg`). `ComL`
+`NFProg nfDialect` to `NFProg catCryptDialect` (`nfToCat`), maps it to
+`NFProg jasminDialect` (`NFProg.map?` at `catToJasmin`), lowers branches to
+selects and exports to `Com jasminDialect` or to `ComL` (`exportNF`; the dev
+pass chain `nfChain` sequences these steps). `ComL`
 (`VIR/JasminLprogExport/ExportLoops.lean`) is the loop form of the jasmin
 export. The machine level has its own loop forms (`X86Backend/ScfDialect`,
 `LoopUnroll`, `LprogControlFlow`), below this framework.

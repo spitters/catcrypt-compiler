@@ -66,7 +66,7 @@ generic in their dialects and contribute no edge between named dialects.
 | `NFProg nfDialect` → `NFProg catCryptDialect` | `nfToCat` (`CatCrypt/Crypto/Hax/NFToCat.lean`); refuses `ifThenElse`, `whileLoop` and literal trip counts | `nfToCat_sound` | yes, through the next rows |
 | `NFProg catCryptDialect` → `NFProg jasminDialect` → `ComL` | `catToJasmin : PartialBlockLowering catCryptDialect jasminDialect` under `NFProg.map?`, then `nfToComLVia` (`VIR/NFProgCatToJasmin.lean`) | `catToJasmin_map?_denote`, `nfToComLVia_denote`; `nfToComLVia_agrees` relates it to `nfToComL` | yes, through `ComL.toLprogPhysAbi` |
 | `NFProg catCryptDialect` → `ComL` | `nfToComL` (`VIR/NFProgToComL.lean`; one carried value, straight-line body) | `nfToComL_denote` | yes, through `ComL.toLprogPhysAbi` |
-| `NFProg nfDialect` → `Com jasminDialect` or `ComL` | `nfToRouteProg` (dev `Haxc/NFToRoute.lean`): `nfToCat`, then `toCom?` and `cryptoDialectToJasminCom`, else `nfToComL` | `nfToRouteProg_denote` | yes: `backend_correct` (dev `Haxc/BackHalf.lean`) on the programs `compileJ` accepts; `haxc_correct_auto` (dev `Haxc/ComposeV1.lean`) end to end |
+| `NFProg nfDialect` → `Com jasminDialect` or `ComL` | `nfChain` (dev `Haxc/NFChain.lean`): `nfToCat`, `NFProg.map?` at `catToJasmin`, `lowerSelects`, `exportNF` | `nfChain_denote` | yes: `backend_correct` (dev `Haxc/BackHalf.lean`) on the programs `compileJ` accepts; `haxc_correct_auto` (dev `Haxc/ComposeV1.lean`) end to end |
 
 ## One dialect per program
 
@@ -260,7 +260,7 @@ mathematical Tate or Weil pairing.
 ## Front-end landing (hax → IR)
 
 - Structured route (the hax compiler): `hax ImpExpr → impToNF → NFProg nfDialect →
-  nfToCat → NFProg catCryptDialect → nfToRouteProg → RouteProg → compileJ → bytes`
+  nfToCat → NFProg catCryptDialect → nfChain → RouteProg → compileJ → bytes`
   (dev `Haxc/NFFront.lean`, `Haxc/ComposeV1.lean`: `haxc_correct_auto`).
 - ANF scalar: `hax ImpExpr → impExprToThir → Thir → thirToJasmin → Com jasminDialect`
   (`ThirToComFront.lean`; `compileFromHax` in `CompileFromHax.lean`, with
@@ -295,7 +295,7 @@ below gives the edges this table rests on.
 |---|---|---|
 | `jasminDialect` | sink | `Com.toLprogPhysAbi`, `ComL.toLprogPhysAbi` |
 | `x86Dialect` | sink | machine level |
-| `nfDialect` | yes, through `NFProg` | `nfToCat`, then `nfToComL`, `nfToComLVia` or (dev) `nfToRouteProg` and `compileJ` (fragment: counted loops whose trip count is a variable, no branch or exit-flag loop; `nfToComL` takes one carried value) |
+| `nfDialect` | yes, through `NFProg` | `nfToCat`, then `nfToComL`, `nfToComLVia` or (dev) `nfChain` and `compileJ` (fragment: counted loops whose trip count is a variable, no branch or exit-flag loop; `nfToComL` takes one carried value) |
 | `catCryptDialect` | yes | `cryptoDialectToJasminCom` (partial); `nfToComL`, `nfToComLVia` for `NFProg catCryptDialect` |
 | `thirDialect` | yes | `lowerThir`, `thirToJasminViaCatCrypt` |
 | `latticeDialect` | yes | `lowerLatticeToJasmin`, `latticeLoweringData` |
@@ -400,7 +400,7 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `modArithDialect` | `modArithDialectAt` | `annotateCom` | signature | `VIR/ModArithDialect.lean` |
 | `nfDialect` | `catCryptDialect` | `nfToCat` | signature | `CatCrypt/Crypto/Hax/NFToCat.lean` |
 | `nfDialect` | `fieldDialect` | `nfToField` | signature | `Haxc/FieldCorrect.lean (SSProve-lean)` |
-| `nfDialect` | `jasminDialect` | `nfToRouteProg` | signature | `Haxc/NFToRoute.lean (SSProve-lean)` |
+| `nfDialect` | `jasminDialect` | `nfChain` | signature | `Haxc/NFChain.lean (SSProve-lean)` |
 | `scfDialect` | `x86Dialect` | `lowerScfFor` | op level | `X86Backend/ScfDialect.lean` |
 | `srcDialect` | `tgtDialect` | `lowering` | record | `VIR/BlockLoweringExtendWitness.lean` |
 | `thirDialect` | `catCryptDialect` | `lowerThirToCatCrypt` | signature | `VIR/ThirToCatCryptDialect.lean` |
