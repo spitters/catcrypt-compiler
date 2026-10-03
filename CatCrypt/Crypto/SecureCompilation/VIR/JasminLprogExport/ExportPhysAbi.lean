@@ -459,6 +459,28 @@ def buildEpilogue (virt : Lfundef) (tbl : Array Nat)
 def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   body.dropLast ++ epi ++ [⟨0, .Lret⟩]
 
+/-- The mnemonic of a register-allocated one-source instruction `d := opn s`: the
+    64-bit move `MOV:64` when `opn` is the untagged `MOV`, the destination `d` is a
+    spill slot, the source `s` is an immediate below `2^31` and the body's spill
+    slots are 8 bytes wide (`u64`); `opn` otherwise. The 64-bit store writes the
+    whole slot, and a `movq` of an immediate below `2^31` sign-extends it to the
+    same value. -/
+def spillImmMovMnem (u64 : Bool) (opn : String) (d s : LOperand) : String :=
+  match s with
+  | .imm v =>
+      if u64 && opn == "MOV" && d.isSpill && decide (v < 2 ^ 31) then withWidthTag 64 "MOV"
+      else opn
+  | _ => opn
+
+/-- `spillImmMovMnem` leaves every mnemonic other than `MOV` unchanged. -/
+theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
+    (h : opn ≠ "MOV") : spillImmMovMnem u64 opn d s = opn := by
+  unfold spillImmMovMnem
+  split
+  · simp [h]
+  · rfl
+
+
 /-- A `physBody` variant that:
 
     1. Inserts ABI-prologue loads INLINE — for each argument slot covered by
@@ -660,7 +682,8 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
               (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
                 (fun r => ⟨i.li_ii, r⟩)
             else
-              [⟨i.li_ii, .Lopn [rmap d] opn [rmap s]⟩]
+              [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
+                [rmap s]⟩]
         | .Lopn dsts opn srcs =>
             [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
         | other => [⟨i.li_ii, other⟩]
@@ -854,7 +877,8 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
             (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
               (fun r => ⟨i.li_ii, r⟩)
           else
-            [⟨i.li_ii, .Lopn [rmap d] opn [rmap s]⟩]
+            [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
+              [rmap s]⟩]
       | .Lopn dsts opn srcs =>
           [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
       | other => [⟨i.li_ii, other⟩]
@@ -1015,7 +1039,8 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
             (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
               (fun r => ⟨i.li_ii, r⟩)
           else
-            [⟨i.li_ii, .Lopn [rmap d] opn [rmap s]⟩]
+            [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
+              [rmap s]⟩]
       | .Lopn dsts opn srcs =>
           [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
       | other => [⟨i.li_ii, other⟩]

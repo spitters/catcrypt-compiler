@@ -96,8 +96,10 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
 
 /-- The register-allocated expansion of one virtual instruction: the two-address
     lowering of a binop, the base reload and legalization of a memory access, the
-    lowering of a native shift, and the operand renaming of every other `Lopn`. -/
-def physExpand (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
+    lowering of a native shift, and the operand renaming of every other `Lopn`,
+    with the 64-bit move `spillImmMovMnem` selects for a small immediate stored to a
+    spill slot of a body with 8-byte slots (`u64`). -/
+def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
   let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
@@ -142,7 +144,7 @@ def physExpand (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
         (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
           (fun r => ⟨i.li_ii, r⟩)
       else
-        [⟨i.li_ii, .Lopn [rmap d] opn [rmap s]⟩]
+        [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem u64 opn (rmap d) (rmap s)) [rmap s]⟩]
   | .Lopn dsts opn srcs =>
       [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
   | other => [⟨i.li_ii, other⟩]
@@ -157,7 +159,8 @@ theorem physPositionEmit_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcmd)
     (hi : ∀ a b, i.li_i ≠ .Lcall a b) :
     physPositionEmit shiftImm body (fun _ => none) loadBase [] storeBase abiW
         memrefBaseReload callArgBaseReload rv (i, k)
-      = physExpand shiftImm (physRmap body rv) memrefBaseReload i := by
+      = physExpand shiftImm (LprogAsmPrinter.bodyIsU64 body) (physRmap body rv)
+          memrefBaseReload i := by
   unfold physPositionEmit
   dsimp only
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
@@ -179,11 +182,13 @@ theorem physBodyWithStores_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcm
     (hcall : ∀ i ∈ body, ∀ a b, i.li_i ≠ .Lcall a b) :
     physBodyWithStores shiftImm body (fun _ => none) loadBase [] storeBase abiW
         memrefBaseReload callArgBaseReload rv
-      = body.flatMap (physExpand shiftImm (physRmap body rv) memrefBaseReload) := by
+      = body.flatMap (physExpand shiftImm (LprogAsmPrinter.bodyIsU64 body) (physRmap body rv)
+          memrefBaseReload) := by
   rw [physBodyWithStores_eq_flatMap]
   have h : ∀ p ∈ body.zipIdx, physPositionEmit shiftImm body (fun _ => none) loadBase []
       storeBase abiW memrefBaseReload callArgBaseReload rv p
-        = physExpand shiftImm (physRmap body rv) memrefBaseReload p.1 := by
+        = physExpand shiftImm (LprogAsmPrinter.bodyIsU64 body) (physRmap body rv)
+            memrefBaseReload p.1 := by
     rintro ⟨i, k⟩ hp
     exact physPositionEmit_eq_physExpand _ _ _ _ _ _ _ _ i k
       (hcall i (List.fst_mem_of_mem_zipIdx hp))
@@ -302,23 +307,27 @@ theorem isNativeShiftRotate_livepin : isNativeShiftRotate "LIVEPIN" = false := b
   simp only [isNativeShiftRotate, h, isPrefixOf_eq_list]
   decide +kernel
 
-theorem physExpand_livepin (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
+theorem physExpand_livepin (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand)
     (rl : String → Option String) (ii : Nat) (ds ss : List LOperand) :
-    (physExpand shiftImm rmap rl ⟨ii, .Lopn ds "LIVEPIN" ss⟩).filter notLivePin = [] := by
+    (physExpand shiftImm u64 rmap rl ⟨ii, .Lopn ds "LIVEPIN" ss⟩).filter notLivePin = [] := by
   have hw : stripWidthTag "LIVEPIN" = "LIVEPIN" := by decide +kernel
   have hs : isMemStore "LIVEPIN" = false := by decide +kernel
   have hl : isMemLoad "LIVEPIN" = false := by decide +kernel
   have hb : isTwoAddrBinop "LIVEPIN" = false := by decide +kernel
+  have hm : ∀ d s, spillImmMovMnem u64 "LIVEPIN" d s = "LIVEPIN" := fun d s =>
+    spillImmMovMnem_of_ne d s (by decide +kernel)
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
-    simp [physExpand, hw, hs, hl, hb, isNativeShiftRotate_livepin, notLivePin]
+    simp [physExpand, hw, hs, hl, hb, hm, isNativeShiftRotate_livepin, notLivePin]
 
 /-- The expansions of the argument-liveness pin are all dropped by the pin filter. -/
-theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
+theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand)
     (rl : String → Option String) (abiArgs : List String) :
-    ((abiLivePin abiArgs).flatMap (physExpand shiftImm rmap rl)).filter notLivePin = [] := by
+    ((abiLivePin abiArgs).flatMap (physExpand shiftImm u64 rmap rl)).filter notLivePin = [] := by
   unfold abiLivePin
   split
-  · rw [List.flatMap_singleton]; exact physExpand_livepin _ _ _ _ _ _
+  · rw [List.flatMap_singleton]; exact physExpand_livepin _ _ _ _ _ _ _
   · rfl
 
 /-- A return appended to a body adds no entry to the store-thread alias map. -/
@@ -595,6 +604,8 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
             (fun i => (physExpand
               (abiShiftImm (singleLoop update count init invs) outArg inArgs immSlotMap
                 abiArgs shiftImm)
+              (LprogAsmPrinter.bodyIsU64 (abiBody1 (singleLoop update count init invs) outArg
+                inArgs immSlotMap abiArgs))
               (physRmap (abiBody1 (singleLoop update count init invs) outArg inArgs
                 immSlotMap abiArgs) [])
               (abiReload (singleLoop update count init invs) outArg inArgs immSlotMap
@@ -620,8 +631,8 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
   rw [toLfundefPhysAbi_body, physBodyWithStores_eq_physExpand _ _ _ _ _ _ _ _ hc1]
   rw [hb1, List.flatMap_append, List.filter_append, abiLivePin_flatMap_filter,
     List.nil_append, List.flatMap_append, List.filter_append, List.flatMap_singleton]
-  have hret : ∀ sh rm rl, (physExpand sh rm rl ⟨0, .Lret⟩).filter notLivePin
-      = [⟨0, .Lret⟩] := fun _ _ _ => rfl
+  have hret : ∀ sh u rm rl, (physExpand sh u rm rl ⟨0, .Lret⟩).filter notLivePin
+      = [⟨0, .Lret⟩] := fun _ _ _ _ => rfl
   rw [hret, insertEpilogue, List.dropLast_concat, List.filter_flatMap]
   simp only [List.append_assoc]
 
