@@ -155,6 +155,7 @@ CatCrypt.Crypto.Optimizer.Lattice.NttMultiplyGeneric
 CatCrypt.Crypto.Optimizer.LoopInvariantMotion
 CatCrypt.Crypto.Optimizer.PackedRotateVsimd
 CatCrypt.Crypto.Optimizer.PipelineSmokeKat
+CatCrypt.Crypto.Optimizer.Rewrite.AegraphFieldGood
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphNFLeak
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
