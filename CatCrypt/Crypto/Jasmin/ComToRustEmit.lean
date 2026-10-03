@@ -1,0 +1,339 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+
+/-!
+# Straight-line `Com jasminDialect` to Rust source
+
+A printer from a straight-line program `Com jasminDialect Γ t` to the text of a Rust
+function in the style of fiat-crypto's Rust output: one `let xN: T = …;` per word binding,
+the full product through `u128`, carries as `u64` values `0`/`1`, array cells kept as
+locals and written to the output array at the end.
+
+Each binding prints what its denotation in `JasminDialect.jasminDenote` computes:
+
+| op | Rust right-hand side (`T` the container type of the width) |
+|---|---|
+| `regArith add/sub/mul w` | `a.wrapping_add(b)`, `a.wrapping_sub(b)`, `a.wrapping_mul(b)` |
+| `regArith and/or/xor/andn w` | `a & b`, `a \| b`, `a ^ b`, `!a & b` |
+| `regArith shl/shr w` | `a << k` / `a >> k` for a known `k < w`, `0` for `k ≥ w`, guarded otherwise |
+| `mulhi w` (`w ≤ 64`) | `(((a as u128) * (b as u128)) >> w) as T` |
+| `addCarryLo w` | `a.wrapping_add(b).wrapping_add(c as T)` |
+| `addCarryHi w` (`w ≤ 64`) | `(((a as u128) + (b as u128) + (c as u128)) >> w) as u64` |
+| `castW w w'` | `a as T'` |
+| `regConst w n` | the literal `n mod 2^w` |
+| `select w` | `(0T.wrapping_sub(c as T) & a) \| (!0T.wrapping_sub(c as T) & b)` |
+| `cmp c w`, `cmpImm c w n` | `((a op b) as u64)` |
+| `shrImm`, `shlImm`, `sarImm`, `rorImm` | the immediate shift or rotate |
+| `stackLoad w n` | the cell `k mod n` for a known index `k`, an indexed array literal otherwise |
+| `stackStore w n` | for a known index no line, the cell replaced; otherwise a `let mut` array |
+
+A width `w` is carried in `u8`, `u16`, `u32`, `u64` or `u128` when it is one of those, in
+`u64` when `w < 64` (so a `reg 1` carry is a `u64` holding `0` or `1`) and in `u128` when
+`64 < w < 128`; a result whose width is narrower than its container is masked. Any other op,
+and any width outside `1 ≤ w ≤ 128`, prints a `compile_error!` line naming it, so the printer
+is total on the op table and on `Com`.
+
+Variables are resolved by de Bruijn position to the name of their binding (`xN` for the
+`N`-th word binding, the parameter name for a context entry). A stack array of the context
+is a Rust parameter `&[T; n]`; the output array is a parameter `&mut [T; n]`.
+
+No theorem relates the printed text to the `Com` or to its denotation.
+
+## Main definitions
+
+* `RVal`: what a context position holds in the printed function.
+* `emitCom`: the bindings of a `Com` as Rust lines.
+* `emitFn`: a whole `#[inline] pub fn` from a `Com` and the names of its context.
+* `fileHead`: the generated-file comment and module attributes.
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.Jasmin.ComToRustEmit
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+
+/-! ## 1. Widths and literals -/
+
+/-- The width of the Rust unsigned type that carries a `w`-bit register. -/
+def contBits (w : Nat) : Nat :=
+  if w = 8 ∨ w = 16 ∨ w = 32 then w else if w ≤ 64 then 64 else 128
+
+/-- The Rust unsigned type that carries a `w`-bit register. -/
+def contTy (w : Nat) : String := s!"u{contBits w}"
+
+/-- Whether the printer carries the width `w`. -/
+def widthOk (w : Nat) : Bool := 0 < w && w ≤ 128
+
+/-- Lowercase hexadecimal literal `0x…` of `n`. -/
+def hexLit (n : Nat) : String := "0x" ++ String.ofList (Nat.toDigits 16 n)
+
+/-- The expression `e` reduced to `w` bits when `w` is narrower than its container. -/
+def masked (w : Nat) (e : String) : String :=
+  if w < contBits w then s!"({e}) & {hexLit (2 ^ w - 1)}" else e
+
+/-- A `compile_error!` invocation with the message `msg`. -/
+def compileError (msg : String) : String :=
+  s!"compile_error!(\"ComToRustEmit: {msg}\")"
+
+/-! ## 2. Values of the context -/
+
+/-- What a context position holds in the printed function: a word (its Rust expression,
+    its width and its value when it is a known constant), a stack array (the Rust
+    expression of each cell), or an expression that is neither. -/
+inductive RVal where
+  | word (e : String) (w : Nat) (k : Option Nat)
+  | arr (w : Nat) (cells : List String)
+  | other (e : String)
+
+/-- The Rust expression of a word value. -/
+def RVal.expr : RVal → String
+  | .word e _ _ => e
+  | .arr _ _ => compileError "a stack array used as a word"
+  | .other e => e
+
+/-- The known constant value of a word, if any. -/
+def RVal.const? : RVal → Option Nat
+  | .word _ _ k => k
+  | _ => none
+
+/-- The de Bruijn position of a variable. -/
+def varIdx {Γ : Ctxt jasminDialect} {t : JasminTy} : Ctxt.Var Γ t → Nat
+  | .here => 0
+  | .there v => varIdx v + 1
+
+/-- The de Bruijn positions of an argument vector. -/
+def argIdxs {Γ : Ctxt jasminDialect} :
+    {ts : List JasminTy} → HVector (fun t => Ctxt.Var Γ t) ts → List Nat
+  | [], .nil => []
+  | _ :: _, .cons v vs => varIdx v :: argIdxs vs
+
+/-- The name of an op outside the table, for its `compile_error!` line. -/
+def opName : JasminOp → String
+  | .regArith _ w => s!"regArith at width {w}"
+  | .stackLoad w n => s!"stackLoad {w} {n}"
+  | .stackStore w n => s!"stackStore {w} {n}"
+  | .castW w w' => s!"castW {w} {w'}"
+  | .extCall name _ _ => s!"extCall {name}"
+  | .regConst w n => s!"regConst {w} {n}"
+  | .vpackZMM _ => "vpackZMM"
+  | .vpackZMMd _ => "vpackZMMd"
+  | .vprordZMM n => s!"vprordZMM {n}"
+  | .vpslldq n => s!"vpslldq {n}"
+  | .vpsrldq n => s!"vpsrldq {n}"
+  | .vsimd op => s!"vsimd {op.mnemonic}"
+  | .mulhi w => s!"mulhi {w}"
+  | .addCarryLo w => s!"addCarryLo {w}"
+  | .addCarryHi w => s!"addCarryHi {w}"
+  | .rorImm w n => s!"rorImm {w} {n}"
+  | .shrImm w n => s!"shrImm {w} {n}"
+  | .sarImm w n => s!"sarImm {w} {n}"
+  | .shlImm w n => s!"shlImm {w} {n}"
+  | .select w => s!"select {w}"
+  | .callN name _ _ => s!"callN {name}"
+  | .vymm _ => "vymm"
+  | .cmp _ w => s!"cmp {w}"
+  | .cmpImm _ w n => s!"cmpImm {w} {n}"
+
+/-! ## 3. One binding -/
+
+/-- The Rust right-hand side of `regArith bop w` on `a`, `b`, where `kb` is the value of
+    `b` when it is a known constant. -/
+def binRhs (bop : JasminBinOp) (w : Nat) (a b : String) (kb : Option Nat) : String :=
+  let shift (sym : String) (mask : Bool) : String :=
+    match kb with
+    | some k => if k < w then (if mask then masked w s!"{a} {sym} {k}" else s!"{a} {sym} {k}")
+                else "0"
+    | none =>
+      let body := if mask then masked w s!"{a} {sym} {b}" else s!"{a} {sym} {b}"
+      s!"if {b} < {w} \{ {body} } else \{ 0 }"
+  match bop with
+  | .add => masked w s!"{a}.wrapping_add({b})"
+  | .sub => masked w s!"{a}.wrapping_sub({b})"
+  | .mul => masked w s!"{a}.wrapping_mul({b})"
+  | .and => s!"{a} & {b}"
+  | .or => s!"{a} | {b}"
+  | .xor => s!"{a} ^ {b}"
+  | .andn => s!"!{a} & {b}"
+  | .shl => shift "<<" true
+  | .shr => shift ">>" false
+
+/-- The Rust comparison operator of a condition code. -/
+def cmpSym : JasminCmp → String
+  | .eq => "=="
+  | .ne => "!="
+  | .ult => "<"
+  | .ule => "<="
+  | .ugt => ">"
+  | .uge => ">="
+
+/-- The printer's state: the values of the context (head at de Bruijn position `0`), the
+    lines printed so far, and the index of the next word binding. -/
+structure PState where
+  env : List RVal
+  lines : Array String
+  next : Nat
+
+/-- The value at de Bruijn position `i`. -/
+def PState.look (s : PState) (i : Nat) : RVal :=
+  s.env.getD i (.other (compileError s!"unbound variable at position {i}"))
+
+/-- Print `let xN: T = rhs;` for a `w`-bit word with known value `k`. -/
+def PState.bindWord (s : PState) (w : Nat) (rhs : String) (k : Option Nat := none) :
+    PState × RVal :=
+  let name := s!"x{s.next}"
+  ({ s with lines := s.lines.push s!"    let {name}: {contTy w} = {rhs};", next := s.next + 1 },
+   .word name w k)
+
+/-- Print the `compile_error!` line of an op outside the table. -/
+def PState.unsupported (s : PState) (what : String) : PState × RVal :=
+  let e := compileError s!"op outside the table: {what}"
+  ({ s with lines := s.lines.push s!"    {e};" }, .other e)
+
+/-- Print the binding of `op` applied to the context positions `args`. -/
+def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
+  let v (i : Nat) : RVal := s.look (args.getD i 0)
+  let e (i : Nat) : String := (v i).expr
+  if !(match op with
+      | .regArith _ w | .stackLoad w _ | .stackStore w _ | .regConst w _ | .mulhi w
+      | .addCarryLo w | .addCarryHi w | .rorImm w _ | .shrImm w _ | .sarImm w _
+      | .shlImm w _ | .select w | .cmp _ w | .cmpImm _ w _ => widthOk w
+      | .castW w w' => widthOk w && widthOk w'
+      | _ => true) then
+    s.unsupported (opName op)
+  else
+  match op with
+  | .regArith bop w => s.bindWord w (binRhs bop w (e 0) (e 1) (v 1).const?)
+  | .regConst w n =>
+      let k := n % 2 ^ w
+      s.bindWord w (hexLit k) (some k)
+  | .mulhi w =>
+      if w ≤ 64 then
+        s.bindWord w s!"((({e 0} as u128) * ({e 1} as u128)) >> {w}) as {contTy w}"
+      else s.unsupported (opName op)
+  | .addCarryLo w =>
+      let c := if contTy w = "u64" then e 2 else s!"({e 2} as {contTy w})"
+      s.bindWord w (masked w s!"{e 0}.wrapping_add({e 1}).wrapping_add({c})")
+  | .addCarryHi w =>
+      if w ≤ 64 then
+        s.bindWord 1 s!"((({e 0} as u128) + ({e 1} as u128) + ({e 2} as u128)) >> {w}) as u64"
+      else s.unsupported (opName op)
+  | .castW w w' =>
+      let k := (v 0).const?.map (· % 2 ^ w')
+      if contBits w = contBits w' then s.bindWord w' (masked w' (e 0)) k
+      else s.bindWord w' (masked w' s!"{e 0} as {contTy w'}") k
+  | .select w =>
+      let c := if contTy w = "u64" then e 0 else s!"{e 0} as {contTy w}"
+      let m := s!"0{contTy w}.wrapping_sub({c})"
+      s.bindWord w s!"({m} & {e 1}) | (!{m} & {e 2})"
+  | .cmp c _ => s.bindWord 1 s!"({e 0} {cmpSym c} {e 1}) as u64"
+  | .cmpImm c w n => s.bindWord 1 s!"({e 0} {cmpSym c} {hexLit (n % 2 ^ w)}) as u64"
+  | .shrImm w n => s.bindWord w (if n < w then s!"{e 0} >> {n}" else "0")
+  | .shlImm w n => s.bindWord w (if n < w then masked w s!"{e 0} << {n}" else "0")
+  | .sarImm w n =>
+      if contBits w = w then
+        s.bindWord w s!"(({e 0} as i{w}) >> {min n (w - 1)}) as {contTy w}"
+      else s.unsupported (opName op)
+  | .rorImm w n =>
+      if contBits w = w then s.bindWord w s!"{e 0}.rotate_right({n % w})"
+      else s.unsupported (opName op)
+  | .stackLoad w n =>
+      match v 0 with
+      | .arr _ cells =>
+          if n = 0 then s.bindWord w "0" (some 0)
+          else match (v 1).const? with
+            | some k => s.bindWord w (cells.getD (k % n) (compileError "cell out of range"))
+            | none =>
+                s.bindWord w
+                  s!"[{", ".intercalate cells}][({e 1} % {n}) as usize]"
+      | _ => s.unsupported (opName op)
+  | .stackStore w n =>
+      match v 0 with
+      | .arr _ cells =>
+          if n = 0 then (s, .arr w [])
+          else match (v 1).const? with
+            | some k => (s, .arr w (cells.set (k % n) (e 2)))
+            | none =>
+                let name := s!"x{s.next}"
+                let l1 := s!"    let mut {name}: [{contTy w}; {n}] = [{", ".intercalate cells}];"
+                let l2 := s!"    {name}[({e 1} % {n}) as usize] = {e 2};"
+                ({ s with lines := (s.lines.push l1).push l2, next := s.next + 1 },
+                 .arr w ((List.range n).map fun j => s!"{name}[{j}]"))
+      | _ => s.unsupported (opName op)
+  | _ => s.unsupported (opName op)
+
+/-! ## 4. Programs and functions -/
+
+/-- The lines of the bindings of `c` and the value it returns. -/
+def emitCom : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t →
+    PState → PState × RVal
+  | _, _, .ret v, s => (s, s.look (varIdx v))
+  | _, _, .var e body, s =>
+      let (s', val) := emitExpr e.op (argIdxs e.args) s
+      emitCom body { s' with env := val :: s'.env }
+
+/-- The Rust parameter declaration of a context entry named `name`. -/
+def paramDecl (name : String) (isMut : Bool) : JasminTy → String
+  | .reg w => s!"{name}: {contTy w}"
+  | .stackArr w n =>
+      let ref := if isMut then "&mut " else "&"
+      s!"{name}: {ref}[{contTy w}; {n}]"
+  | .inlineInt => s!"{name}: u64"
+  | .bool => s!"{name}: bool"
+
+/-- The value of a context entry named `name`. -/
+def paramVal (name : String) : JasminTy → RVal
+  | .reg w => .word name w none
+  | .stackArr w n => .arr w ((List.range n).map fun j => s!"{name}[{j}]")
+  | _ => .other name
+
+/-- An `#[inline] pub fn fname` computing `c`. The context entries are named by `names`
+    (de Bruijn position `0` first). A result of type `stackArr w n` is written to the
+    parameter `out : &mut [T; n]`, the first parameter; it is the context entry named `out`
+    when there is one, and an added parameter otherwise. A result of type `reg w` is
+    returned. -/
+def emitFn {Γ : Ctxt jasminDialect} {t : JasminTy} (fname : String) (names : List String)
+    (out : String) (c : Com jasminDialect Γ t) : String :=
+  let params := names.zip Γ
+  let env := params.map fun (nm, ty) => paramVal nm ty
+  let (s, r) := emitCom c { env := env, lines := #[], next := 0 }
+  let ins := params.filter (fun p => p.1 != out)
+  let inDecls := ins.map fun (nm, ty) => paramDecl nm false ty
+  let body := s.lines.toList
+  let (sig, tail) : String × List String :=
+    match t with
+    | .stackArr w n =>
+        let outDecl := paramDecl out true (.stackArr w n)
+        let cells : List String := match r with
+          | .arr _ cs => cs
+          | _ => (List.range n).map fun _ => r.expr
+        let readsOut := cells.any fun cell => cell.startsWith (out ++ "[")
+        let writes :=
+          if readsOut then
+            [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate cells}];", s!"    *{out} = r;"]
+          else (List.range n).map fun j => s!"    {out}[{j}] = {cells.getD j "0"};"
+        (s!"pub fn {fname}({", ".intercalate (outDecl :: inDecls)})", writes)
+    | .reg w =>
+        (s!"pub fn {fname}({", ".intercalate inDecls}) -> {contTy w}", [s!"    {r.expr}"])
+    | _ =>
+        (s!"pub fn {fname}({", ".intercalate inDecls})",
+          [s!"    {compileError "result type outside the table"};"])
+  "#[inline]\n" ++ sig ++ " {\n" ++ "\n".intercalate (body ++ tail) ++ "\n}\n"
+
+/-- The head of a generated Rust module file: the comment lines `comment` (each prefixed by
+    `// `) and the inner attributes that silence the lints straight-line code trips. -/
+def fileHead (comment : List String) : String :=
+  "\n".intercalate (comment.map fun l => "// " ++ l) ++ "\n\n" ++
+  "#![allow(unused)]\n#![allow(unused_parens)]\n#![allow(non_snake_case)]\n" ++
+  "#![allow(clippy::all)]\n\n"
+
+end CatCrypt.Crypto.Jasmin.ComToRustEmit
