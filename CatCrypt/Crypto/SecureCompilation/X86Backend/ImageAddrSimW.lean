@@ -42,6 +42,8 @@ name lies in it.
 ## Main results
 
 * `oneBitAt_succ`: the analysis at the next instruction.
+* `imgGateBW_eq_impl` (`@[csimp]`): the gate is evaluated with the frame map tabulated over
+  the names of the body and the instruction gates decided in one pass of the analysis.
 * `imgRelW_of`: `ImgRel` gives `ImgRelW` where the analysis is empty.
 * `not_mem_oneBitAt_of_halted`: under `imgGateBW`, at a halt no frame-slot name is in the
   analysis.
@@ -363,6 +365,89 @@ def imgGateBW (frame : String → Option (BitVec 64)) (slotArr : String → Opti
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
     && (oneBitAt frame body (body.length - 1)).all fun q => (frame q).isNone
+
+/-- The instruction gates of `imgGateBW` in one pass: from position `k` with the width
+    analysis `W` at `k` and the remaining instructions, the gate `gateAtW` of at most `n`
+    instructions, the analysis advanced by `oneBitStep` after each. -/
+def gateLoop (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) : Nat → Nat → List String → Lcmd → Bool
+  | 0, _, _, _ => true
+  | _ + 1, _, _, [] => true
+  | n + 1, k, W, i :: rest =>
+      gateAtW frame slotArr body k W i.li_i && gateLoop frame slotArr body n (k + 1)
+        (oneBitStep frame W i.li_i) rest
+
+/-- From position `k` at the width analysis `oneBitAt frame body k`, the one-pass loop
+    decides the instruction gates `instrGateBW` at positions `k` to `k + n - 1`. -/
+theorem gateLoop_eq (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) :
+    ∀ n k, gateLoop frame slotArr body n k (oneBitAt frame body k) (body.drop k)
+      = (List.range' k n).all (fun j =>
+          (body[j]?).all fun i => instrGateBW frame slotArr body j i.li_i) := by
+  intro n
+  induction n with
+  | zero => intro k; simp [gateLoop]
+  | succ n ih =>
+      intro k
+      cases hd : body.drop k with
+      | nil =>
+          have hk : body.length ≤ k := by simpa using hd
+          rw [gateLoop]
+          symm
+          rw [List.all_eq_true]
+          intro j hj
+          rw [List.mem_range'_1] at hj
+          rw [List.getElem?_eq_none (by omega)]
+          rfl
+      | cons i rest =>
+          have hi : body[k]? = some i := by
+            rw [← List.head?_drop, hd]; rfl
+          have hr : body.drop (k + 1) = rest := by
+            rw [← List.drop_drop, hd]; rfl
+          rw [List.range'_succ, List.all_cons, hi, Option.all_some, gateLoop, ← ih (k + 1),
+            hr, oneBitAt_succ hi]
+          rfl
+
+/-- The frame map read through the table `T`: the entry of `T` at `q` when there is one,
+    and `frame q` otherwise. -/
+def tabFrame (frame : String → Option (BitVec 64)) (T : List (String × Option (BitVec 64)))
+    (q : String) : Option (BitVec 64) :=
+  match T.lookup q with
+  | some v => v
+  | none => frame q
+
+/-- A table of the values of `frame` at a list of names reads back `frame`. -/
+theorem tabFrame_eq (frame : String → Option (BitVec 64)) (N : List String) :
+    tabFrame frame (N.map fun q => (q, frame q)) = frame := by
+  funext q
+  induction N with
+  | nil => rfl
+  | cons a N ih =>
+      unfold tabFrame at ih ⊢
+      by_cases h : q = a
+      · subst h
+        simp
+      · have hb : (q == a) = false := by simpa using h
+        simp only [List.map_cons, List.lookup, hb]
+        exact ih
+
+/-- `imgGateBW` evaluated with the frame map tabulated over the names of the body and the
+    instruction gates decided in one pass (`gateLoop`). -/
+def imgGateBWImpl (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
+  let fr := tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
+  gateLoop fr slotArr body (body.length - 1) 0 [] body
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+    && (oneBitAt fr body (body.length - 1)).all fun q => (fr q).isNone
+
+/-- The gate `imgGateBW` is evaluated as `imgGateBWImpl`. -/
+@[csimp] theorem imgGateBW_eq_impl : @imgGateBW = @imgGateBWImpl := by
+  funext frame slotArr body
+  have h := gateLoop_eq frame slotArr body (body.length - 1) 0
+  simp only [oneBitAt_zero, List.drop_zero] at h
+  simp only [imgGateBWImpl, tabFrame_eq]
+  rw [imgGateBW, h, List.range_eq_range']
 
 /-- The value `v` of a frame-slot name `q` on the image against the word `m` at its frame
     address: the whole word, or, for a name of the width analysis `W`, the low bit of the
