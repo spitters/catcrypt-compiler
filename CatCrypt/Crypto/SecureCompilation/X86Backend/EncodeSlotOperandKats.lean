@@ -30,6 +30,10 @@ spill cells, where `k.0` is at offset `56` and `k.1` at offset `48`:
   borrowed scratch saved at `-128(%rsp)`: `bt $0, cin`, the save, the reload of the slot
   source or the register copy, `adcx` with a register or `%rsp`-relative source, the
   store into the destination slot and the restore;
+* `ADCX` with its carry-in in a slot saves a scratch at `-128(%rsp)`, reloads the carry-in
+  word into it and tests it with `bt $0`; for a register destination the scratch is
+  restored before the register `mov`/`adcx`, and for a slot destination it is the
+  accumulator of the spilled-destination sequence;
 * `CMOV:64` with its true value in a slot and register destination, condition and false
   value is the copy of the false value, `test` of the condition and `cmovne` from the
   slot (`REX.W 0F 45 /r` with the `%rsp` base).
@@ -42,6 +46,8 @@ decode to the printed instructions.
 * `#kat` pins of the slot-operand encodings of `ADC`/`ADD`/`MOV`, `MULX` and `ADCX`, of the
   refused slot `MULX` destination, the refused three-source `ADOX`, the refused carry-out
   `ADCXHI` into a slot, and of the `shapeOf` decode of both spilled `ADCX` forms.
+* `#kat` pins of `ADCX` with a slot carry-in: the bytes, the `shapeOf` decode and the printed
+  lines for a register and a slot destination, and the refused 32-bit form.
 * `#kat` pins of the slot-source `CMOV:64` select: the printed lines, the bytes against the
   component encoders, and the bytes the assembler writes.
 -/
@@ -114,6 +120,61 @@ def adcxSlotS : LinstrR := .Lopn [.reg "k.0"] "ADCX:64" [.reg "R10", .reg "k.1",
     .storeMem "%rsp" (-128) (.reg "%rbx"), .mov "%rbx" (.reg "%r10"),
     .adcxMem "%rbx" "%rsp" 48, .storeMem "%rsp" 56 (.reg "%rbx"),
     .loadMem "%rbx" "%rsp" (-128)] : List (JInstr 64))
+
+/-- `ADCX:64 RBX := R10 + R11 + k.1`: a register destination with its carry-in in a slot;
+    the scratch is `%rax`. -/
+def adcxSlotCR : LinstrR := .Lopn [.reg "RBX"] "ADCX:64" [.reg "R10", .reg "R11", .reg "k.1"]
+
+/-- `ADCX:64 k.0 := R10 + R11 + k.1`: a slot destination with its carry-in in a slot. -/
+def adcxSlotCD : LinstrR := .Lopn [.reg "k.0"] "ADCX:64" [.reg "R10", .reg "R11", .reg "k.1"]
+
+/-- `ADCX:64 RCX := RAX + R11 + k.1`: the scratch is `%rbx`, the first candidate no source
+    names. -/
+def adcxSlotCX : LinstrR := .Lopn [.reg "RCX"] "ADCX:64" [.reg "RAX", .reg "R11", .reg "k.1"]
+
+-- save, reload of the carry-in word, `bt $0`, restore, then `mov %r10, %rbx; adcx %r11, %rbx`
+#kat enc adcxSlotCR
+  == encRspMem 1 0x89 0 (-128) ++ encRspMem 1 0x8b 0 48 ++ encBtImm 1 0 0
+    ++ encRspMem 1 0x8b 0 (-128) ++ encAluRRw 1 0x89 3 10 ++ encAdxCarry 0x66 3 11
+
+-- save, reload, `bt $0`, then the spilled-destination sequence in the scratch
+#kat enc adcxSlotCD
+  == encRspMem 1 0x89 0 (-128) ++ encRspMem 1 0x8b 0 48 ++ encBtImm 1 0 0
+    ++ encAluRRw 1 0x89 0 10 ++ encAdxCarry 0x66 0 11 ++ encRspMem 1 0x89 0 56
+    ++ encRspMem 1 0x8b 0 (-128)
+
+#kat enc adcxSlotCX
+  == encRspMem 1 0x89 3 (-128) ++ encRspMem 1 0x8b 3 48 ++ encBtImm 1 3 0
+    ++ encRspMem 1 0x8b 3 (-128) ++ encAluRRw 1 0x89 1 0 ++ encAdxCarry 0x66 1 11
+
+#kat shapeJs adcxSlotCR == reprStr ([.storeMem "%rsp" (-128) (.reg "%rax"),
+    .loadMem "%rax" "%rsp" 48, .bt "%rax" (.imm 0), .loadMem "%rax" "%rsp" (-128),
+    .mov "%rbx" (.reg "%r10"), .adcx "%rbx" (.reg "%r11")] : List (JInstr 64))
+
+#kat shapeJs adcxSlotCD == reprStr ([.storeMem "%rsp" (-128) (.reg "%rax"),
+    .loadMem "%rax" "%rsp" 48, .bt "%rax" (.imm 0), .mov "%rax" (.reg "%r10"),
+    .adcx "%rax" (.reg "%r11"), .storeMem "%rsp" 56 (.reg "%rax"),
+    .loadMem "%rax" "%rsp" (-128)] : List (JInstr 64))
+
+-- the printer prints the same instructions
+#kat LprogAsmPrinter.renderLopn pinP.frame pinP.spillW false [.reg "RBX"] "ADCX:64"
+    [.reg "R10", .reg "R11", .reg "k.1"] pinP.qsaveB
+  == ["\tmovq %rax, -128(%rsp)", "\tmovq 48(%rsp), %rax", "\tbtq $0, %rax",
+      "\tmovq -128(%rsp), %rax", "\tmovq %r10, %rbx", "\tadcxq %r11, %rbx"]
+
+#kat LprogAsmPrinter.renderLopn pinP.frame pinP.spillW false [.reg "k.0"] "ADCX:64"
+    [.reg "R10", .reg "R11", .reg "k.1"] pinP.qsaveB
+  == ["\tmovq %rax, -128(%rsp)", "\tmovq 48(%rsp), %rax", "\tbtq $0, %rax",
+      "\tmovq %r10, %rax", "\tadcxq %r11, %rax", "\tmovq %rax, 56(%rsp)",
+      "\tmovq -128(%rsp), %rax"]
+
+#kat LprogAsmPrinter.renderLopn pinP.frame pinP.spillW false [.reg "RCX"] "ADCX:64"
+    [.reg "RAX", .reg "R11", .reg "k.1"] pinP.qsaveB
+  == ["\tmovq %rbx, -128(%rsp)", "\tmovq 48(%rsp), %rbx", "\tbtq $0, %rbx",
+      "\tmovq -128(%rsp), %rbx", "\tmovq %rax, %rcx", "\tadcxq %r11, %rcx"]
+
+-- a slot carry-in at the 32-bit width has no encoding
+#kat enc (.Lopn [.reg "RBX"] "ADCX" [.reg "R10", .reg "R11", .reg "k.1"]) == []
 
 -- `ADOX` with a value carry-in has no encoding: `bt` leaves `OF` undefined
 #kat enc (.Lopn [.reg "RAX"] "ADOX:64" [.reg "RAX", .reg "RBX", .reg "RCX"]) == []

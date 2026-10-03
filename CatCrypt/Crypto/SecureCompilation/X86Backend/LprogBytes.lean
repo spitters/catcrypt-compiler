@@ -1106,20 +1106,69 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
           -- real x86 adcx/adox is two-address), `bt $0, cin` (materialise the
           -- carry-in into CF/OF; `mov` preserves flags, so the `bt → adcx`
           -- dependency is intact), then the two-address `adcx`/`adox src, d`.
-          -- A `mem.*` operand and a spill/qsave carry-in are left as the visible
-          -- empty byte list, never mis-encoded as `%rax`.
+          -- A `mem.*` operand is left as the visible empty byte list, never
+          -- mis-encoded as `%rax`.
           | [.reg dn], [.reg an, .reg sn, .reg cn] =>
-              -- The carry-in is always a plain register here (`bt $0, cin` has only
-              -- that form in this arm), and a `mem.*` operand in any position is
-              -- left to the residual. A spill/qsave `a`, `s` or destination IS
-              -- covered: those are the shapes the carry-chain kernels take under
-              -- register pressure, and the printer resolves each to `off(%rsp)`.
+              -- A `mem.*` operand in any position is left to the residual. A
+              -- spill/qsave `a`, `s`, destination or carry-in IS covered: those are the
+              -- shapes the carry-chain kernels take under register pressure, and the
+              -- printer resolves each to `off(%rsp)`; a slot carry-in is reloaded into
+              -- a borrowed scratch before its `bt $0`.
               -- `ADOX` (prefix `F3`) reads `OF`, which `bt` leaves undefined, so a
               -- value carry-in has no `bt`-materialised form and is refused.
               if pfx == 0xf3 then []
-              else if isSpillOrQsave cn || (parseMemName dn).isSome
+              else if (parseMemName dn).isSome
                   || (parseMemName an).isSome || (parseMemName sn).isSome
                   || (parseMemName cn).isSome then []
+              else if isSpillOrQsave cn then
+                -- SLOT CARRY-IN. The carry-in bit is the low bit of the frame word of
+                -- `cin`. A borrowed scratch is saved at `-128(%rsp)`, loaded with the frame
+                -- word and tested by `bt $0, scratch`; `mov` leaves the flags alone, so the
+                -- carry flag reaches the `adcx` that follows. For a register destination
+                -- the scratch is restored before the register `adcx` sequence (the copy of
+                -- `a` into the destination and `adcx`); for a slot destination the
+                -- scratch is the accumulator of the spilled-destination sequence, whose
+                -- save is this one and whose `bt $0, cin` is this test. The scratch is the
+                -- first of `RAX`, `RBX`, `RCX`, `RDX` that `a`, `s` and `cin` do not name,
+                -- as for a spilled destination, and the instruction is accepted only at
+                -- `REX.W = 1`.
+                if w != 1 then []
+                else
+                  match spillQsaveOff frame spillW cn qsaveB with
+                  | none => []
+                  | some offC =>
+                    let used := [an, sn, cn]
+                    match (["RAX", "RBX", "RCX", "RDX"].filter
+                            (fun r => !used.contains r)) with
+                    | [] => []
+                    | scratchName :: _ =>
+                      let acc := gpNumU scratchName
+                      let pre := encRspMem 1 0x89 acc (-128) ++ encRspMem 1 0x8b acc offC
+                        ++ encBtImm 1 acc 0
+                      let accIntoC : Nat → Option (List (BitVec 8)) := fun a =>
+                        if isSpillOrQsave an then
+                          (spillQsaveOff frame spillW an qsaveB).map
+                            (fun offA => encRspMem 1 0x8b a offA)
+                        else if an == dn && a == gpNumU dn then some []
+                        else some (encAluRRw 1 0x89 a (gpNumU an))
+                      let adxIntoC : Nat → Option (List (BitVec 8)) := fun a =>
+                        if isSpillOrQsave sn then
+                          (spillQsaveOff frame spillW sn qsaveB).map
+                            (fun offS => encAdxRspMem pfx a offS)
+                        else some (encAdxCarry pfx a (gpNumU sn))
+                      if isSpillOrQsave dn then
+                        match spillQsaveOff frame spillW dn qsaveB with
+                        | none => []
+                        | some offD =>
+                          match accIntoC acc, adxIntoC acc with
+                          | some mv, some ad =>
+                              pre ++ mv ++ ad ++ encRspMem 1 0x89 acc offD
+                                ++ encRspMem 1 0x8b acc (-128)
+                          | _, _ => []
+                      else
+                        match accIntoC (gpNumU dn), adxIntoC (gpNumU dn) with
+                        | some mv, some ad => pre ++ encRspMem 1 0x8b acc (-128) ++ mv ++ ad
+                        | _, _ => []
               else
                 let btPart := encBtImm w (gpNumU cn) 0
                 -- `a` into the accumulator: the register copy (dropped when `a` is

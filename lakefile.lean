@@ -2188,6 +2188,7 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT,
@@ -2257,9 +2258,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ReduceZModTie,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ReduceZModTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod1024,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod127,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod251,
-    Lake.Glob.one `CatCrypt.Crypto.Util.ZMod3329,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.ZMod3329,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod4591,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod65536,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod8192,

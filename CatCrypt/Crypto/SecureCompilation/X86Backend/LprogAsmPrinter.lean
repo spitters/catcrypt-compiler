@@ -1364,7 +1364,50 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         let mn := if base == "ADOX" then "adox" else "adcx"
         let dOp := resolveOperand frame spillW w d qsaveB
         let aOp := resolveOperand frame spillW w a qsaveB
-        if !(isMemOperand d) then
+        -- **Slot carry-in** at the 64-bit width: the carry-in bit is the low bit of a
+        -- frame word. A scratch, saved at `-128(%rsp)`, is loaded with the word and
+        -- tested by `bt $0`; the `mov`s that follow leave the carry flag alone.
+        --
+        --   mov  scratch, -128(%rsp)
+        --   mov  [cin], scratch
+        --   bt   $0, scratch
+        --
+        -- For a register destination the scratch is restored and the register
+        -- sequence follows (`mov a, d` unless `a` is `d`, then `adcx s, d`); for a slot
+        -- destination the scratch is the accumulator of the spilled-destination
+        -- sequence (`mov a, scratch; adcx s, scratch; mov scratch, [d]`), and the
+        -- restore closes it. The scratch is the first of `%rax`, `%rbx`, `%rcx`,
+        -- `%rdx` whose text is in none of `a`, `s`, `cin`.
+        let slotCin : Bool := w == 64 && (match cin with
+          | .reg n => "k.".isPrefixOf n || "qsave.".isPrefixOf n
+          | _ => false)
+        if slotCin then
+          let sOp := resolveOperand frame spillW w s qsaveB
+          let cOp := resolveOperand frame spillW w cin qsaveB
+          let usedTexts := [aOp, sOp, cOp]
+          let freeOf : String → Bool := fun cand =>
+            usedTexts.all (fun t => (t.splitOn cand).length == 1)
+          let scratch :=
+            if freeOf "%rax" then "%rax"
+            else if freeOf "%rbx" then "%rbx"
+            else if freeOf "%rcx" then "%rcx"
+            else "%rdx"
+          let sz := sizeSuffix w
+          let pre := [ "\tmovq " ++ scratch ++ ", -128(%rsp)",
+                       "\tmovq " ++ cOp ++ ", " ++ scratch,
+                       "\tbtq $0, " ++ scratch ]
+          if !(isMemOperand d) then
+            let movLine := if aOp == dOp then []
+                           else [ "\tmov" ++ sz ++ " " ++ aOp ++ ", " ++ dOp ]
+            pre ++ [ "\tmovq -128(%rsp), " ++ scratch ] ++ movLine
+              ++ [ "\t" ++ mn ++ sz ++ " " ++ sOp ++ ", " ++ dOp ]
+          else
+            pre ++
+            [ "\tmov" ++ sz ++ " " ++ aOp ++ ", " ++ scratch,
+              "\t" ++ mn ++ sz ++ " " ++ sOp ++ ", " ++ scratch,
+              "\tmov" ++ sz ++ " " ++ scratch ++ ", " ++ dOp,
+              "\tmovq -128(%rsp), " ++ scratch ]
+        else if !(isMemOperand d) then
           let movLine := if aOp == dOp then []
                          else [ "\tmov" ++ sizeSuffix w ++ " " ++ aOp ++ ", " ++ dOp ]
           -- FUSED carry-in (`AdxChainFuse`): the `cfCarrySentinel` carry-in means
