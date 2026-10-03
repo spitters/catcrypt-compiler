@@ -145,10 +145,33 @@ def RVal.const? : RVal → Option Nat
   | .word _ _ k => k
   | _ => none
 
+/-- `acc` plus the de Bruijn position of a variable, by tail recursion. -/
+def varIdxAux {Γ : Ctxt jasminDialect} {t : JasminTy} (acc : Nat) : Ctxt.Var Γ t → Nat
+  | .here => acc
+  | .there v => varIdxAux (acc + 1) v
+
 /-- The de Bruijn position of a variable. -/
-def varIdx {Γ : Ctxt jasminDialect} {t : JasminTy} : Ctxt.Var Γ t → Nat
-  | .here => 0
-  | .there v => varIdx v + 1
+def varIdx {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Ctxt.Var Γ t) : Nat :=
+  varIdxAux 0 v
+
+/-- `varIdxAux acc v` is `acc` plus the position of `v`. -/
+theorem varIdxAux_eq {Γ : Ctxt jasminDialect} {t : JasminTy} (acc : Nat)
+    (v : Ctxt.Var Γ t) : varIdxAux acc v = acc + varIdx v := by
+  induction v generalizing acc with
+  | here => rfl
+  | there v ih =>
+    rw [varIdx, varIdxAux, varIdxAux, ih, ih 1]
+    omega
+
+/-- The position of `.here` is `0`. -/
+theorem varIdx_here {Γ : Ctxt jasminDialect} {t : JasminTy} :
+    varIdx (Ctxt.Var.here : Ctxt.Var (t :: Γ) t) = 0 := rfl
+
+/-- The position of `.there v` is one more than that of `v`. -/
+theorem varIdx_there {Γ : Ctxt jasminDialect} {t s : JasminTy} (v : Ctxt.Var Γ t) :
+    varIdx (Ctxt.Var.there v : Ctxt.Var (s :: Γ) t) = varIdx v + 1 := by
+  rw [varIdx, varIdxAux, varIdxAux_eq]
+  omega
 
 /-- The de Bruijn positions of an argument vector. -/
 def argIdxs {Γ : Ctxt jasminDialect} :
@@ -250,11 +273,50 @@ structure SxPending where
   w : Nat
   shifted : Bool
 
-/-- The printer's state: the values of the context (head at de Bruijn position `0`), the
-    lines printed so far, the index of the next word binding, the printing rules, the
-    hoisted constants (width, value) and the last value of the sign-extension rule. -/
+/-- The values of a context, indexed by level: `vals[0]` is the oldest entry and the last
+    entry is at de Bruijn position `0`. -/
+structure REnv where
+  vals : Array RVal := #[]
+
+/-- The context whose entries are `l`, head at de Bruijn position `0`. -/
+def REnv.ofList (l : List RVal) : REnv := ⟨l.reverse.toArray⟩
+
+/-- A list of values, head at de Bruijn position `0`, is a context. -/
+instance : Coe (List RVal) REnv := ⟨REnv.ofList⟩
+
+/-- The context extended by `v` at de Bruijn position `0`. -/
+def REnv.push (e : REnv) (v : RVal) : REnv := ⟨e.vals.push v⟩
+
+/-- The context extended by the values `l`, head at de Bruijn position `0`: the context of
+    `l ++ es`, where `es` lists `e` head first. -/
+def REnv.pushList (e : REnv) (l : List RVal) : REnv := ⟨e.vals ++ l.reverse.toArray⟩
+
+/-- The value at de Bruijn position `i`. -/
+def REnv.get? (e : REnv) (i : Nat) : Option RVal :=
+  if i < e.vals.size then e.vals[e.vals.size - 1 - i]? else none
+
+/-- Extending the context of `m` by `v` gives the context of `v :: m`. -/
+theorem REnv.push_ofList (m : List RVal) (v : RVal) :
+    (REnv.ofList m).push v = REnv.ofList (v :: m) := by
+  simp [REnv.push, REnv.ofList]
+
+/-- Extending the context of `m` by `l` gives the context of `l ++ m`. -/
+theorem REnv.pushList_ofList (m l : List RVal) :
+    (REnv.ofList m).pushList l = REnv.ofList (l ++ m) := by
+  simp [REnv.pushList, REnv.ofList]
+
+/-- The value at de Bruijn position `i` of the context of `l` is `l[i]?`. -/
+theorem REnv.get?_ofList (l : List RVal) (i : Nat) : (REnv.ofList l).get? i = l[i]? := by
+  unfold REnv.get? REnv.ofList
+  split
+  · grind
+  · simp_all
+
+/-- The printer's state: the values of the context, the lines printed so far, the index of
+    the next word binding, the printing rules, the hoisted constants (width, value) and the
+    last value of the sign-extension rule. -/
 structure PState where
-  env : List RVal
+  env : REnv
   lines : Array String
   next : Nat
   opts : EmitOpts := {}
@@ -274,7 +336,9 @@ def sxWidth (w : Nat) : Bool := contBits w == w && w ≤ 64
 
 /-- The value at de Bruijn position `i`. -/
 def PState.look (s : PState) (i : Nat) : RVal :=
-  s.env.getD i (.other (compileError s!"unbound variable at position {i}"))
+  match s.env.get? i with
+  | some v => v
+  | none => .other (compileError s!"unbound variable at position {i}")
 
 /-- The Rust type of a `w`-bit word: `V` for `w = 128` under the rule `v128`, `contTy w`
     otherwise. -/
@@ -470,7 +534,7 @@ def emitCom : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect
   | _, _, .ret v, s => (s, s.look (varIdx v))
   | _, _, .var e body, s =>
       let (s', val) := emitExpr e.op (argIdxs e.args) s
-      emitCom body { s' with env := val :: s'.env }
+      emitCom body { s' with env := s'.env.push val }
 
 /-- The Rust parameter declaration of a context entry named `name`. -/
 def paramDecl (name : String) (isMut : Bool) : JasminTy → String
@@ -528,7 +592,7 @@ def emitMRCom : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
   | _, _, .ret vs, s => (s, (argIdxs vs).map s.look)
   | _, _, .var e body, s =>
       let (s', val) := emitExpr e.op (argIdxs e.args) s
-      emitMRCom body { s' with env := val :: s'.env }
+      emitMRCom body { s' with env := s'.env.push val }
 
 /-- Whether a type is the register type of width `w`. -/
 def isRegW (w : Nat) : JasminTy → Bool
@@ -568,7 +632,7 @@ def emitFnInPlaceSeq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr :
   let (s, rs) := cs.foldl
     (fun (acc : PState × List RVal) (c : MultiReturnCom jasminDialect Γ ts) =>
       emitMRCom c { acc.1 with env := acc.2 })
-    ({ env := [], lines := #[], next := 0, opts := opts }, env)
+    ({ env := {}, lines := #[], next := 0, opts := opts }, env)
   let tail :=
     if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
       [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
@@ -596,7 +660,7 @@ def emitFnParts {Γ : Ctxt jasminDialect} (fname out : String) (params : List St
     (fun (acc : PState × List String) (ci : Com jasminDialect Γ (.stackArr w m) × Nat) =>
       let (s', r) := emitCom ci.1 { acc.1 with env := env ci.2 }
       (s', acc.2 ++ r.cellsN m))
-    ({ env := [], lines := #[], next := 0 }, [])
+    ({ env := {}, lines := #[], next := 0 }, [])
   let k := m * cs.length
   let writes :=
     if cells.any fun cell => cell.startsWith (out ++ "[") then
@@ -631,7 +695,7 @@ def emitNF : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasmi
   | _, _, .ret vs, s => (s, (argIdxs vs).map s.look)
   | _, _, .var e k, s =>
       let (s', val) := emitExpr e.op (argIdxs e.args) s
-      emitNF k { s' with env := val :: s'.env }
+      emitNF k { s' with env := s'.env.push val }
   | _, _, .forLoop (cs := cs) count inits body k, s =>
       let base := s.next
       let names := (List.range cs.length).map fun j => s!"x{base + j}"
@@ -639,7 +703,7 @@ def emitNF : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasmi
       let decls := (names.zip (cs.zip (argIdxs inits))).map fun (nm, t, i) =>
         s!"    let mut {nm}: {s.tyOfTy t} = {(s.look i).expr};"
       let carried := (names.zip cs).map fun (nm, t) => paramVal nm t
-      let env0 : List RVal := carried ++ RVal.word idx 64 none :: s.env
+      let env0 : REnv := (s.env.push (RVal.word idx 64 none)).pushList carried
       let s0 : PState :=
         { s with lines := #[], next := base + cs.length + 1, env := env0, sxLast := none }
       let (sb, rs) := emitNF body s0
@@ -647,7 +711,7 @@ def emitNF : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasmi
       let block := (sb.lines.toList ++ assigns).map ("    " ++ ·)
       let head := s!"    for {idx} in 0u64..{(s.look (varIdx count)).expr} \{"
       let lines := (s.lines ++ decls.toArray).push head ++ block.toArray |>.push "    }"
-      emitNF k { sb with lines := lines, env := carried ++ s.env, sxLast := none }
+      emitNF k { sb with lines := lines, env := s.env.pushList carried, sxLast := none }
   | _, _, .ifThenElse .., s => ((s.unsupported "ifThenElse").1, [])
   | _, _, .whileLoop .., s => ((s.unsupported "whileLoop").1, [])
 
