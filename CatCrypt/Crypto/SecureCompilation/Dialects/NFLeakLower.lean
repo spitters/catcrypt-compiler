@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgToComL
 
 /-!
@@ -148,11 +149,9 @@ theorem forIterLeak_single {t : CryptoTy}
     (hf : ∀ i a, step i (.cons a .nil) = some (.cons (g i a) .nil, lk i a)) :
     ∀ (l : List Nat) (a : CryptoTy.denote t),
       forIterLeak step l (.cons a .nil) =
-        some (.cons (l.foldl (fun x i => g i x) a) .nil, iterLeak lk g l a)
-  | [], _ => rfl
-  | i :: l, a => by
-      simp only [forIterLeak, hf, Option.bind_some, forIterLeak_single step g lk hf l (g i a),
-        Option.map_some, List.foldl_cons, iterLeak]
+        some (.cons (l.foldl (fun x i => g i x) a) .nil, iterLeak lk g l a) :=
+  NFProg.forIterLeak_pure (fun a => .cons a .nil) step g lk (iterLeak lk g) (fun _ => rfl)
+    (fun _ _ _ => rfl) hf
 
 /-- **The leakage transformer of the looped lowering.** When `nfToComLAt p t h = some jcom`,
     the source program runs from `V` to some results and events, and the lowered program on

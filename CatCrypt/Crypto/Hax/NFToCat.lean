@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.ImpToNF
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgToComL
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 
 /-!
@@ -1921,28 +1922,10 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
             (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 j) W))) acc' =
             some accF' ∧ VRelL cs accF accF' := by
         intro l
-        induction l with
-        | nil =>
-            intro acc acc' accF hr h
-            simp only [List.foldlM_nil, Option.pure_def, Option.some.injEq] at h
-            subst h
-            exact ⟨acc', rfl, hr⟩
-        | cons j l ih =>
-            intro acc acc' accF hr h
-            rw [List.foldlM_cons] at h
-            obtain ⟨a1, ha1, h⟩ := Option.bind_eq_some_iff.mp h
-            have hag1 := TRd.agree_liftApp
-              (TRd.agree_lift (s := NfTy.word 64) hag (x := BitVec.ofNat 64 j)
-                (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr
-            obtain ⟨a1', ha1', hr1⟩ := ihb (TRd.liftApp cs (TRd.lift σ)) body' hb' _ _ a1
-              hag1 ha1 fuel
-            obtain ⟨accF', hf', hrF⟩ := ih a1 a1' accF hr1 h
-            refine ⟨accF', ?_, hrF⟩
-            have ha1'' : NFProg.denote fuel body'
-                (hvAppend acc' (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 j) W)) =
-                some a1' := ha1'
-            rw [List.foldlM_cons, ha1'']
-            exact hf'
+        exact NFProg.foldlM_rel_fwd l fun j _ acc acc' a1 hr ha1 =>
+          ihb (TRd.liftApp cs (TRd.lift σ)) body' hb' _ _ a1
+            (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag (x := BitVec.ofNat 64 j)
+              (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
       rw [List.range_eq_range'] at hfold
       obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF
         (pinVars_rel _ _ is his (TRd.rdRelL_rds hag inits)) hfold

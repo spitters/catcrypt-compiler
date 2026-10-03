@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 
 /-!
@@ -268,12 +269,11 @@ omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option]
 /-- An `Option` fold keeps a `some` result when each step `g` refines the step `f`. -/
 theorem foldlM_some_mono {α β : Type} {f g : β → α → Option β}
     (hfg : ∀ b i b', f b i = some b' → g b i = some b') :
-    ∀ (l : List α) (b r : β), l.foldlM f b = some r → l.foldlM g b = some r
-  | [], _, _, h => h
-  | i :: l, b, r, h => by
-      simp only [List.foldlM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
-      obtain ⟨b', hb', hr⟩ := h
-      exact ⟨b', hfg b i b' hb', foldlM_some_mono hfg l b' r hr⟩
+    ∀ (l : List α) (b r : β), l.foldlM f b = some r → l.foldlM g b = some r :=
+  fun l b r h => by
+    obtain ⟨_, h', rfl⟩ := foldlM_rel_fwd (R := Eq) (f := f) (g := g) l
+      (fun i _ a _ b' e h => e ▸ ⟨b', hfg a i b' h, rfl⟩) b b r rfl h
+    exact h'
 
 omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
 /-- An exit-flag iteration keeps a `some` result when the step `g` refines the step
@@ -281,15 +281,11 @@ omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
 theorem whileIter_some_mono {cs : List d.Ty}
     {f g : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs))}
     (hfg : ∀ a r, f a = some r → g a = some r) :
-    ∀ (n : Nat) (a r : Valuation cs), whileIter f n a = some r → whileIter g n a = some r
-  | 0, _, _, h => by simp [whileIter] at h
-  | n + 1, a, r, h => by
-      simp only [whileIter, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
-      obtain ⟨s, hs, hr⟩ := h
-      refine ⟨s, hfg a s hs, ?_⟩
-      split at hr
-      · rw [if_pos ‹_›]; exact whileIter_some_mono hfg n _ _ hr
-      · rw [if_neg ‹_›]; exact hr
+    ∀ (n : Nat) (a r : Valuation cs), whileIter f n a = some r → whileIter g n a = some r :=
+  fun n a r h => by
+    obtain ⟨_, h', rfl⟩ := whileIter_rel_fwd (R := Eq) (step := f) (step' := g)
+      (fun a _ r e h => e ▸ ⟨r, hfg a r h, rfl, rfl⟩) n a a r rfl h
+    exact h'
 
 /-- **Dead-binding elimination refines the denotation.** A run of `p` to `some out` at
     any fuel is a run of `dce p` to `some out` at that fuel. -/

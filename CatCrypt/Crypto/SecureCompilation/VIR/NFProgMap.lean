@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProg
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringExtend
 
 /-!
@@ -484,13 +485,9 @@ omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d]
 /-- A fold in `Option` whose step commutes with `T` commutes with `T`. -/
 theorem foldlM_option_map {α α' β : Type} (f : α → β → Option α) (g : α' → β → Option α')
     (T : α → α') (h : ∀ a i, g (T a) i = (f a i).map T) :
-    ∀ (l : List β) (a : α), l.foldlM g (T a) = (l.foldlM f a).map T
-  | [], _ => rfl
-  | i :: l, a => by
-      rw [List.foldlM_cons, List.foldlM_cons, h]
-      cases f a i with
-      | none => rfl
-      | some b => exact foldlM_option_map f g T h l b
+    ∀ (l : List β) (a : α), l.foldlM g (T a) = (l.foldlM f a).map T :=
+  fun l a => (rel_graph_iff.1 (foldlM_rel l (fun i _ a _ e => by
+    subst e; rw [h]; exact rel_map_of (fun _ => rfl) _) a _ rfl)).symm
 
 omit [DialectSignature d] [HasWord64 d] [DialectSignature d'] [HasWord64 d']
   [DialectDenote d] [DialectDenote d'] in
@@ -503,20 +500,9 @@ theorem whileIter_map {cs : List d.Ty} {cs' : List d'.Ty}
     (Tb : ⟦HasBitType.bit (d := d)⟧ → ⟦HasBitType.bit (d := d')⟧)
     (hb : ∀ b, HasBoolBit.toBool (d := d') (Tb b) = HasBoolBit.toBool (d := d) b)
     (hs : ∀ a, step' (T a) = (step a).map (fun r => .cons (Tb r.head) (T r.tail))) :
-    ∀ (n : Nat) (a : Valuation cs), whileIter step' n (T a) = (whileIter step n a).map T
-  | 0, _ => rfl
-  | n + 1, a => by
-      simp only [whileIter, hs]
-      cases step a with
-      | none => rfl
-      | some r =>
-          cases r with
-          | cons b r => ?_
-          simp only [Option.map_some, Option.bind_eq_bind, Option.bind_some, HVector.head,
-            HVector.tail, hb]
-          cases HasBoolBit.toBool (d := d) b with
-          | true => exact whileIter_map step step' T Tb hb hs n _
-          | false => rfl
+    ∀ (n : Nat) (a : Valuation cs), whileIter step' n (T a) = (whileIter step n a).map T :=
+  fun n a => (rel_graph_iff.1 (whileIter_rel (fun a _ e => by
+    subst e; rw [hs]; exact rel_map_of (fun _ => ⟨rfl, (hb _).symm⟩) _) n a _ rfl)).symm
 
 omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d]
   [DialectSignature d'] [TyDenote d'.Ty] [HasWord64 d'] [HasBoolBit d']

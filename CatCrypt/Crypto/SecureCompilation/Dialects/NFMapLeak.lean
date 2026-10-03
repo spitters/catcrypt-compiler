@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
 public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelect
@@ -159,16 +160,10 @@ theorem forIterLeak_transport {cs : List d.Ty} {cs' : List d'.Ty}
     (T : Valuation cs → Valuation cs')
     (hs : ∀ i a, step' i (T a) = (step i a).map fun r => (T r.1, r.2)) :
     ∀ (l : List Nat) (a : Valuation cs),
-      forIterLeak step' l (T a) = (forIterLeak step l a).map fun r => (T r.1, r.2)
-  | [], _ => rfl
-  | i :: l, a => by
-      simp only [forIterLeak, hs]
-      cases step i a with
-      | none => rfl
-      | some r =>
-          simp only [Option.map_some, Option.bind_some, forIterLeak_transport step step' T hs l,
-            Option.map_map]
-          rfl
+      forIterLeak step' l (T a) = (forIterLeak step l a).map fun r => (T r.1, r.2) :=
+  fun l a => (rel_graph_prod_iff.1 (forIterLeak_rel_bisim (R := fun a a' => T a = a') l
+    (fun i _ a _ e => by
+      subst e; rw [hs]; exact rel_map_of (fun _ => ⟨rfl, rfl⟩) _) a _ rfl)).symm
 
 omit [DialectSignature d] [HasWord64 d] [DialectSignature d'] [HasWord64 d'] in
 /-- The iterations of an exit-flag loop whose body commutes with the transport `T` of
@@ -184,23 +179,10 @@ theorem whileIterLeak_transport {cs : List d.Ty} {cs' : List d'.Ty}
     (hs : ∀ a, step' (T a) =
       (step a).map fun r => (.cons (Tb r.1.head) (T r.1.tail), r.2)) :
     ∀ (n : Nat) (a : Valuation cs),
-      whileIterLeak step' n (T a) = (whileIterLeak step n a).map fun r => (T r.1, r.2)
-  | 0, _ => rfl
-  | n + 1, a => by
-      simp only [whileIterLeak, hs]
-      cases step a with
-      | none => rfl
-      | some r =>
-          obtain ⟨r1, ev⟩ := r
-          cases r1 with
-          | cons b r1 =>
-              simp only [Option.map_some, Option.bind_some, HVector.head, HVector.tail, hb]
-              cases HasBoolBit.toBool (d := d) b with
-              | true =>
-                  simp only [if_true, whileIterLeak_transport step step' T Tb hb hs n,
-                    Option.map_map]
-                  rfl
-              | false => rfl
+      whileIterLeak step' n (T a) = (whileIterLeak step n a).map fun r => (T r.1, r.2) :=
+  fun n a => (rel_graph_prod_iff.1 (whileIterLeak_rel_bisim (R := fun a a' => T a = a')
+    (fun a _ e => by
+      subst e; rw [hs]; exact rel_map_of (fun _ => ⟨rfl, (hb _).symm, rfl⟩) _) n a _ rfl)).symm
 
 end Loops
 

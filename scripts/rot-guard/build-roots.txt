@@ -58,6 +58,7 @@ CatCrypt.Crypto.Jasmin.Bulletproofs
 CatCrypt.Crypto.Jasmin.ByteOps
 CatCrypt.Crypto.Jasmin.Chacha4WayReflect
 CatCrypt.Crypto.Jasmin.CoalesceWriteHazardTest
+CatCrypt.Crypto.Jasmin.ComToRustEmit
 CatCrypt.Crypto.Jasmin.Curve25519Inline
 CatCrypt.Crypto.Jasmin.Ed25519.CompressCom
 CatCrypt.Crypto.Jasmin.Ed25519.CompressLeafSpecDischarge
