@@ -45,6 +45,11 @@ Variables are resolved by de Bruijn position to the name of their binding (`xN` 
 `N`-th word binding, the parameter name for a context entry). A stack array of the context
 is a Rust parameter `&[T; n]`; the output array is a parameter `&mut [T; n]`.
 
+Two optional printing rules (`EmitOpts`) change the text and not the value: the
+sign-extension rule prints the sequence `castW w w'; shlImm w' (w' - w); sarImm w' (w' - w)`
+as the one cast `((a as iw) as iw') as uw'`, and the hoisting rule prints each constant as a
+`const` item declared once at the top of the function.
+
 No theorem relates the printed text to the `Com` or to its denotation.
 
 ## Main definitions
@@ -53,8 +58,10 @@ No theorem relates the printed text to the `Com` or to its denotation.
 * `emitCom`: the bindings of a `Com` as Rust lines.
 * `emitFn`: a whole `#[inline] pub fn` from a `Com` and the names of its context.
 * `emitMRCom`: the bindings of a `MultiReturnCom` as Rust lines.
+* `EmitOpts`: the sign-extension and constant-hoisting printing rules.
 * `emitFnInPlace`: a `pub fn` over one `&mut` array from a `MultiReturnCom` whose context
   and results are registers of one width.
+* `emitFnInPlaceSeq`: one such `pub fn` computing a list of `MultiReturnCom`s in sequence.
 * `emitFnParts`: one `pub fn` computing several array-result `Com`s over one context, each
   written to its slice of the output array.
 * `fileHead`: the generated-file comment and module attributes.
@@ -183,12 +190,51 @@ def cmpSym : JasminCmp → String
   | .ugt => ">"
   | .uge => ">="
 
+/-- Printing rules that change the text of a binding but not the value it computes.
+
+    * `sx`: the sign-extension rule. A widening `castW w w'` and a following
+      `shlImm w' (w' - w)` of its result print no line: each is the expression
+      `(a as uw')`, resp. `((a as uw') << (w' - w))`, at its uses. A `sarImm w' (w' - w)` of
+      that shifted value prints the one cast `((a as iw) as iw') as uw'`, the sign extension
+      of the `w`-bit word `a` to `w'` bits, which is what the three ops compute together.
+      `w` and `w'` are widths of Rust integer types.
+    * `hoist`: a `regConst w n` prints no line; its value is a `const` item `Kw_HEX` declared
+      once per width and value at the top of the function. -/
+structure EmitOpts where
+  sx : Bool := false
+  hoist : Bool := false
+
+/-- A value printed as an expression by the sign-extension rule: the expression `expr`, the
+    source word `src` of width `w0` widened to `w`, and whether it is shifted left by
+    `w - w0`. -/
+structure SxPending where
+  expr : String
+  src : String
+  w0 : Nat
+  w : Nat
+  shifted : Bool
+
 /-- The printer's state: the values of the context (head at de Bruijn position `0`), the
-    lines printed so far, and the index of the next word binding. -/
+    lines printed so far, the index of the next word binding, the printing rules, the
+    hoisted constants (width, value) and the last value of the sign-extension rule. -/
 structure PState where
   env : List RVal
   lines : Array String
   next : Nat
+  opts : EmitOpts := {}
+  consts : Array (Nat × Nat) := #[]
+  sxLast : Option SxPending := none
+
+/-- The name of the hoisted constant of value `k` at width `w`. -/
+def constName (w k : Nat) : String :=
+  s!"K{w}_{(String.ofList (Nat.toDigits 16 k)).toUpper}"
+
+/-- The `const` items of the hoisted constants. -/
+def PState.constLines (s : PState) : List String :=
+  s.consts.toList.map fun (w, k) => s!"    const {constName w k}: {contTy w} = {hexLit k};"
+
+/-- Whether `w` is the width of a Rust integer type of at most 64 bits. -/
+def sxWidth (w : Nat) : Bool := contBits w == w && w ≤ 64
 
 /-- The value at de Bruijn position `i`. -/
 def PState.look (s : PState) (i : Nat) : RVal :=
@@ -222,7 +268,10 @@ def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
   | .regArith bop w => s.bindWord w (binRhs bop w (e 0) (e 1) (v 1).const?)
   | .regConst w n =>
       let k := n % 2 ^ w
-      s.bindWord w (hexLit k) (some k)
+      if s.opts.hoist then
+        let cs := if s.consts.contains (w, k) then s.consts else s.consts.push (w, k)
+        ({ s with consts := cs }, .word (constName w k) w (some k))
+      else s.bindWord w (hexLit k) (some k)
   | .mulhi w =>
       if w ≤ 64 then
         s.bindWord w s!"((({e 0} as u128) * ({e 1} as u128)) >> {w}) as {contTy w}"
@@ -236,7 +285,11 @@ def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
       else s.unsupported (opName op)
   | .castW w w' =>
       let k := (v 0).const?.map (· % 2 ^ w')
-      if contBits w = contBits w' then s.bindWord w' (masked w' (e 0)) k
+      if s.opts.sx && sxWidth w && sxWidth w' && w < w' && k.isNone then
+        let ex := s!"({e 0} as {contTy w'})"
+        ({ s with sxLast := some { expr := ex, src := e 0, w0 := w, w := w', shifted := false } },
+         .word ex w' none)
+      else if contBits w = contBits w' then s.bindWord w' (masked w' (e 0)) k
       else s.bindWord w' (masked w' s!"{e 0} as {contTy w'}") k
   | .select w =>
       let c := if contTy w = "u64" then e 0 else s!"{e 0} as {contTy w}"
@@ -245,9 +298,24 @@ def emitExpr (op : JasminOp) (args : List Nat) (s : PState) : PState × RVal :=
   | .cmp c _ => s.bindWord 1 s!"({e 0} {cmpSym c} {e 1}) as u64"
   | .cmpImm c w n => s.bindWord 1 s!"({e 0} {cmpSym c} {hexLit (n % 2 ^ w)}) as u64"
   | .shrImm w n => s.bindWord w (if n < w then s!"{e 0} >> {n}" else "0")
-  | .shlImm w n => s.bindWord w (if n < w then masked w s!"{e 0} << {n}" else "0")
+  | .shlImm w n =>
+      let plain := s.bindWord w (if n < w then masked w s!"{e 0} << {n}" else "0")
+      match s.sxLast with
+      | some p =>
+          if s.opts.sx && p.expr == e 0 && !p.shifted && p.w == w && n + p.w0 == w then
+            let ex := s!"({p.expr} << {n})"
+            ({ s with sxLast := some { p with expr := ex, shifted := true } }, .word ex w none)
+          else plain
+      | none => plain
   | .sarImm w n =>
-      if contBits w = w then
+      let sx? : Option SxPending := match s.sxLast with
+        | some p =>
+            if s.opts.sx && p.expr == e 0 && p.shifted && p.w == w && n + p.w0 == w then some p
+            else none
+        | none => none
+      if let some p := sx? then
+        s.bindWord w s!"(({p.src} as i{p.w0}) as i{w}) as {contTy w}"
+      else if contBits w = w then
         s.bindWord w s!"(({e 0} as i{w}) >> {min n (w - 1)}) as {contTy w}"
       else s.unsupported (opName op)
   | .rorImm w n =>
@@ -354,12 +422,12 @@ def isRegW (w : Nat) : JasminTy → Bool
 /-- An `#[inline] pub fn fname(arr: &mut [T; n])` computing `c` in place: the context entry at
     de Bruijn position `j` is the cell `arr[j]`, and the `j`-th returned word is written to
     `arr[j]` after every binding. The context and the results are `n` registers of width
-    `w`; any other shape prints a `compile_error!` line. -/
+    `w`; any other shape prints a `compile_error!` line. `opts` selects the printing rules. -/
 def emitFnInPlace {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : String) (w : Nat)
-    (c : MultiReturnCom jasminDialect Γ ts) : String :=
+    (c : MultiReturnCom jasminDialect Γ ts) (opts : EmitOpts := {}) : String :=
   let n := Γ.length
   let env := (List.range n).map fun j => RVal.word s!"{arr}[{j}]" w none
-  let (s, rs) := emitMRCom c { env := env, lines := #[], next := 0 }
+  let (s, rs) := emitMRCom c { env := env, lines := #[], next := 0, opts := opts }
   let tail :=
     if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
       [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
@@ -367,7 +435,32 @@ def emitFnInPlace {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : St
     else
       [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
   "#[inline]\n" ++ s!"pub fn {fname}({arr}: &mut [{contTy w}; {n}])" ++ " {\n" ++
-    "\n".intercalate (s.lines.toList ++ tail) ++ "\n}\n"
+    "\n".intercalate (s.constLines ++ s.lines.toList ++ tail) ++ "\n}\n"
+
+/-- An `#[inline] pub fn fname(arr: &mut [T; n])` computing the programs `cs` one after the
+    other in one body: the context entry at de Bruijn position `j` of the first program is
+    the cell `arr[j]`, that of each later program is the `j`-th result of the program before
+    it, and the `j`-th result of the last program is written to `arr[j]` after every binding.
+    Word bindings are numbered across the programs. The context and the results are `n`
+    registers of width `w`; any other shape prints a `compile_error!` line. `opts` selects
+    the printing rules. -/
+def emitFnInPlaceSeq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (fname arr : String)
+    (w : Nat) (cs : List (MultiReturnCom jasminDialect Γ ts)) (opts : EmitOpts := {}) :
+    String :=
+  let n := Γ.length
+  let env := (List.range n).map fun j => RVal.word s!"{arr}[{j}]" w none
+  let (s, rs) := cs.foldl
+    (fun (acc : PState × List RVal) (c : MultiReturnCom jasminDialect Γ ts) =>
+      emitMRCom c { acc.1 with env := acc.2 })
+    ({ env := [], lines := #[], next := 0, opts := opts }, env)
+  let tail :=
+    if Γ.all (isRegW w) && ts.all (isRegW w) && ts.length == n then
+      [s!"    let r: [{contTy w}; {n}] = [{", ".intercalate (rs.map RVal.expr)}];",
+        s!"    *{arr} = r;"]
+    else
+      [s!"    {compileError "an in-place program needs n registers of one width in and out"};"]
+  "#[inline]\n" ++ s!"pub fn {fname}({arr}: &mut [{contTy w}; {n}])" ++ " {\n" ++
+    "\n".intercalate (s.constLines ++ s.lines.toList ++ tail) ++ "\n}\n"
 
 /-- The `m` cell expressions of an array value; a word value fills every cell. -/
 def RVal.cellsN (r : RVal) (m : Nat) : List String :=
