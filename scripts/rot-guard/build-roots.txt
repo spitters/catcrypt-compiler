@@ -534,6 +534,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.BlockLoopValidate
 CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPSDerivedToField
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377CubicIrreducible
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377FinalExpCorrect
+CatCrypt.Crypto.SecureCompilation.VIR.BoundSchedInstances
 CatCrypt.Crypto.SecureCompilation.VIR.BranchLowering
 CatCrypt.Crypto.SecureCompilation.VIR.CarrierTransferDom
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties
@@ -629,6 +630,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
+CatCrypt.Crypto.SecureCompilation.VIR.LanesRepFamily
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
 CatCrypt.Crypto.SecureCompilation.VIR.LeafAxiomConsolidation
 CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoist
@@ -664,7 +666,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
-CatCrypt.Crypto.SecureCompilation.VIR.NarrowField
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
@@ -672,6 +673,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
+CatCrypt.Crypto.SecureCompilation.VIR.ParamWordField
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
@@ -691,7 +693,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3QuerySampleEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3SerializeEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3WholeProverEmit
-CatCrypt.Crypto.SecureCompilation.VIR.PointwiseAcc
 CatCrypt.Crypto.SecureCompilation.VIR.Poly1305RtLoopCom
 CatCrypt.Crypto.SecureCompilation.VIR.PolyDialectMlkemMigration
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2AbstractCom
@@ -702,6 +703,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2HalfKernelsZmm
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2LinearMain
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2MdsPermUnified
 CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2RaEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Word
 CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleCovered
 CatCrypt.Crypto.SecureCompilation.VIR.RcongrLeafAutomation
 CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe
