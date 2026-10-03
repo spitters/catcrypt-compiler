@@ -60,6 +60,23 @@ lowering to a sum of op sets, and `VIR/DialectOpSum.lean` gives the op-union
 `Dialect.opSum` with its injections `inl`, `inr` as `LoweringData`. These are
 generic in their dialects and contribute no edge between named dialects.
 
+Regions, read as morphisms. A region body `NFProg d (cs ++ Γ) cs'` denotes a Kleisli
+arrow of `Option` (`NFProg.denote`), and the three region operators are `List.foldlM`
+over the trip indices, the fuel-bounded `whileIter` and the branch. The dialect is the
+region's import interface and `DialectDenote d` its stateless handler; `NFProg.map?`
+inlines a block per op as a package link inlines an oracle; `Dialect.opSum` is the sum
+of interfaces and `BlockLoweringData.extendId` the whiskering of a lowering by the
+identity on the other summand. The analogy with state-separating packages stops at
+state: a region persists nothing across iterations (carried values are explicit
+arguments), the lowering side condition `OpsCommute` is naturality of a re-encoding
+rather than disjointness of state, and the leak run is a writer over the
+non-commutative monoid of event lists, so its Kleisli category is premonoidal and the
+quiet-kind hypothesis of the e-graph stages is centrality in it. The one law the
+region operators satisfy and every lowering proof uses is relational congruence,
+stated once in `VIR/NFProgRel.lean` (`foldlM_rel`, `whileIter_rel`, `ite_rel`,
+`denote_forLoop_rel`, `denote_ifThenElse_rel`, `denote_whileLoop_rel`, with forward
+and leak-writer forms).
+
 | edge | pass | denotation preservation | reaches bytes |
 |---|---|---|---|
 | hax `ImpExpr` → `NFProg nfDialect` | `impToNF` (`CatCrypt/Crypto/Hax/ImpToNF.lean`) | `impToNF_sound` | front |
