@@ -1039,8 +1039,11 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
     · obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simBW hsep hphys hg hN hF hnc fn f' b t' s zf hfn
           (ImageAddrSimW.imgRelW_of hrel) hr'
+      have hh : haltedA (cellBody slotArr body) sA = true := by
+        rw [haltedA_cellBody]
+        exact JasminLsemAddrRun.haltedA_of_runA frame body fA s zf (sA, zA) h1
       exact ⟨fA, sA, zA, h1, fun q a ha => (h2.slots q a ha).word
-        (ImageAddrSimW.not_mem_oneBitAt_of_frame hg (by rw [ha]; rfl) _), h3⟩
+        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh (by rw [ha]; rfl)), h3⟩
   obtain ⟨fA, sA, zA, hrA, hslots, hsafe⟩ := hsim
   rw [runA_congr hfr] at hrA
   rw [runSafe_congr hfr] at hsafe

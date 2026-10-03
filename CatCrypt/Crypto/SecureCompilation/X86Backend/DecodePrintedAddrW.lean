@@ -1545,7 +1545,8 @@ theorem sim_sadcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     rcases hsl0 with h | h
     · simp [kOk_frame hA h rsp]
     · simp [kOk_frame hS h rsp]
-  rw [SArm.instr, fstepA_adcxhiSlot _ O A S C s zf hsl hA' hS' (frameP_gp hC)] at hst
+  rw [SArm.instr, fstepA_adcxhiSlot _ O A S C s zf hsl hA' hS' (frameP_gp hC) (frameP_gp hO)]
+    at hst
   cases hgc : s.reg.getW C 1 with
   | none => rw [hgc] at hst; cases hst
   | some vc =>

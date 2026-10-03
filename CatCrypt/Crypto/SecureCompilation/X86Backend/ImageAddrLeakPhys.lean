@@ -97,10 +97,10 @@ def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
     destination. An indexed access reads or writes `base + sc · idx`, with the index the
     value `idxVal` of the index register (its 64-bit word when the access steps); a move
     from or to a frame slot, a compare against one and an immediate move into one access
-    the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`; a carry-chain
-    instruction accesses its frame-slot sources and, for the add, its frame-slot
-    destination; a select accesses its frame-slot values, whatever the condition. Every
-    other instruction emits nothing. -/
+    the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`; a
+    carry-chain instruction accesses its frame-slot carry-in, its frame-slot word sources and
+    its frame-slot destination; a select accesses its frame-slot values and its frame-slot
+    destination, whatever the condition. Every other instruction emits nothing. -/
 def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) :
     List CTLeak :=
   match i.snd with
@@ -143,16 +143,17 @@ def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : Lsta
                   | none => []
               | none =>
                   match slotCarry? frame i.fst with
-                  | some (lo, d, a, s, _) =>
-                      (frame a).toList.map evA ++ (frame s).toList.map evA
-                        ++ (if lo then (frame d).toList.map evA else [])
+                  | some (_, d, a, s, c) =>
+                      (frame c).toList.map evA ++ (frame a).toList.map evA
+                        ++ (frame s).toList.map evA ++ (frame d).toList.map evA
                   | none =>
                       match slotImm? frame i.fst with
                       | some (a, _) => [evA a]
                       | none =>
                           match slotCmov? frame i.fst with
-                          | some (_, _, a, b) =>
+                          | some (d, _, a, b) =>
                               (frame a).toList.map evA ++ (frame b).toList.map evA
+                                ++ (frame d).toList.map evA
                           | none => []
   | _ => []
 

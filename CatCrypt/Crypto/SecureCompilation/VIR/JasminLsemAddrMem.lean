@@ -244,6 +244,20 @@ theorem immWordA_mov_setWidth (ds ss : List LOperand) (old : BitVec 64) (v : Nat
     omega
   simp [e]
 
+/-- The frame word after `setc` of the bit `c` into the frame word holding `old`
+    (`setc off(%rsp)`): the low byte is the zero-extension of `c`, the high 56 bits are those
+    of `old`. -/
+def setcWordA (old : BitVec 64) (c : BitVec 1) : BitVec 64 :=
+  (old &&& 0xFFFFFFFFFFFFFF00#64) ||| c.setWidth 64
+
+/-- The low bit of the frame word after `setc` of `c` is `c`. -/
+theorem setcWordA_setWidth (old : BitVec 64) (c : BitVec 1) :
+    (setcWordA old c).setWidth 1 = c := by
+  apply BitVec.eq_of_getElem_eq
+  intro i hi
+  obtain rfl : i = 0 := by omega
+  simp [setcWordA]
+
 /-- The register-file step: `fstepF` on a state with the given registers and flags. -/
 def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool) :=
   (fstepF i { reg := sa.reg, cf := sa.cf, of := sa.of } zf).map fun bz =>
@@ -254,7 +268,8 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
     slot's address; a whole-word access of a cell `mem.B.off` reads or writes the memory at
     the address in `B` plus `off`; a carry-chain add or carry-out binding with a frame-slot
     operand reads its slot word sources and a slot carry-in (the low bit of the word) at the
-    slot's address and writes a slot destination at the slot's address; an immediate move
+    slot's address and writes a slot destination at the slot's address, the whole word for
+    the add and the low byte (`setcWordA`) for the carry-out binding; an immediate move
     into a frame slot writes the immediate at the slot's address, all 64 bits for `MOV:64`
     and the low 32 bits for `MOV`; a select with a frame-slot value or destination reads that
     value and writes that destination at the slot's address. -/
@@ -327,8 +342,15 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                                 some ({ sa with
                                   reg := (sa.reg.setReg d (addCarryWord va vb vc)).nextPc }, zf)
                           else
-                            some ({ sa with
-                              reg := (sa.reg.setReg d (carryOutBit va vb vc)).nextPc }, zf)
+                            match frame d with
+                            | some ad =>
+                                some ({ sa with
+                                  reg := sa.reg.nextPc
+                                  mem := write64 sa.mem ad
+                                    (setcWordA (read64 sa.mem ad) (carryOutBit va vb vc)) }, zf)
+                            | none =>
+                                some ({ sa with
+                                  reg := (sa.reg.setReg d (carryOutBit va vb vc)).nextPc }, zf)
                       | _, _, _ => none
                   | none =>
                       match slotImm? frame i.fst with
@@ -391,7 +413,8 @@ theorem fstepA_adcxSlot (frame : String → Option (BitVec 64)) (D A S C : Strin
 
 /-- **The carry-out binding with a frame-slot operand.** `ADCXHI:64 O, A, S, C`, one of `O`,
     `A`, `S`, `C` a frame slot, writes the one-bit `carryOutBit` of the words of `A`, `S` and
-    the carry-in bit of `C` (`bitA`) to `O`. -/
+    the carry-in bit of `C` (`bitA`) into the low byte of the slot of `O` (`setcWordA`) or to
+    the register `O`. -/
 theorem fstepA_adcxhiSlotBit (frame : String → Option (BitVec 64)) (O A S C : String)
     (sa : LstateA) (zf : Bool)
     (hsl : ((frame O).isSome || (frame A).isSome || (frame S).isSome || (frame C).isSome)
@@ -399,22 +422,26 @@ theorem fstepA_adcxhiSlotBit (frame : String → Option (BitVec 64)) (O A S C : 
     {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) sa zf
       = (bitA frame sa C).map fun vc =>
-          ({ sa with reg := (sa.reg.setReg O (carryOutBit va vb vc)).nextPc }, zf) := by
-  cases hc : bitA frame sa C <;>
+          ((match frame O with
+            | some ad => { sa with
+                reg := sa.reg.nextPc
+                mem := write64 sa.mem ad (setcWordA (read64 sa.mem ad) (carryOutBit va vb vc)) }
+            | none => { sa with reg := (sa.reg.setReg O (carryOutBit va vb vc)).nextPc }), zf) := by
+  cases hc : bitA frame sa C <;> cases hO : frame O <;>
     simp_all [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?]
 
-/-- **The carry-out binding with a frame-slot word source and a register carry-in.**
-    `ADCXHI:64 O, A, S, C`, one of `O`, `A`, `S` a frame slot and `C` a register, writes the
-    one-bit `carryOutBit` of the words of `A`, `S` and the one-bit `C` to `O`. -/
+/-- **The carry-out binding into a register with a frame-slot word source and a register
+    carry-in.** `ADCXHI:64 O, A, S, C`, `O` and `C` registers and one of `A`, `S` a frame slot,
+    writes the one-bit `carryOutBit` of the words of `A`, `S` and the one-bit `C` to `O`. -/
 theorem fstepA_adcxhiSlot (frame : String → Option (BitVec 64)) (O A S C : String)
     (sa : LstateA) (zf : Bool)
     (hsl : ((frame O).isSome || (frame A).isSome || (frame S).isSome) = true)
     {va vb : BitVec 64} (hA : wordA frame sa A = some va) (hS : wordA frame sa S = some vb)
-    (hC : frame C = none) :
+    (hC : frame C = none) (hO : frame O = none) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) sa zf
       = (sa.reg.getW C 1).map fun vc =>
           ({ sa with reg := (sa.reg.setReg O (carryOutBit va vb vc)).nextPc }, zf) := by
-  rw [fstepA_adcxhiSlotBit frame O A S C sa zf (by simp [hsl]) hA hS, bitA_of_none hC]
+  rw [fstepA_adcxhiSlotBit frame O A S C sa zf (by simp [hsl]) hA hS, bitA_of_none hC, hO]
 
 /-- **The cell load.** `LOAD:64 D, n`, `n` the cell `[B + off]`, writes the word at the
     address in `B` plus `off` to `D`. -/

@@ -1079,7 +1079,8 @@ theorem instrLeakA_congr {frame frame' : String → Option (BitVec 64)} {x : Lin
               obtain ⟨rfl, rfl, rfl, rfl⟩ := hsv
               have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
               have hb := h b (by simp [instrNames, JasminLsemExportRewrites.opNames])
-              simp only [ha, hb]
+              have hd := h d (by simp [instrNames, JasminLsemExportRewrites.opNames])
+              simp only [ha, hb, hd]
             · cases hsv
         · unfold slotCarry? at hsc
           split at hsc
@@ -1088,7 +1089,8 @@ theorem instrLeakA_congr {frame frame' : String → Option (BitVec 64)} {x : Lin
             have hd := h d (by simp [instrNames, JasminLsemExportRewrites.opNames])
             have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
             have hs := h s (by simp [instrNames, JasminLsemExportRewrites.opNames])
-            simp only [hd, ha, hs]
+            have hc := h c (by simp [instrNames, JasminLsemExportRewrites.opNames])
+            simp only [hd, ha, hs, hc]
           · cases hsc
   | _ => rfl
 

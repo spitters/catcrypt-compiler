@@ -219,6 +219,32 @@ theorem runA_step (frame : String → Option (BitVec 64)) (c : Lcmd) (fuel : Nat
       = (stepA frame c s zf).bind fun bz => runA frame c fuel bz.1 bz.2 := by
   simp [runA, h]
 
+/-- A terminating run of the address machine ends in a halted state. -/
+theorem haltedA_of_runA (frame : String → Option (BitVec 64)) (c : Lcmd) :
+    ∀ (fuel : Nat) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
+      runA frame c fuel s zf = some t → haltedA c t.1 = true := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro s zf t h
+    cases hh : haltedA c s
+    · simp [runA, hh] at h
+    · rw [runA_halt frame c 0 s zf hh] at h
+      cases h
+      exact hh
+  | succ f ih =>
+    intro s zf t h
+    cases hh : haltedA c s
+    · rw [runA_step frame c f s zf hh] at h
+      cases hst : stepA frame c s zf with
+      | none => rw [hst] at h; cases h
+      | some bz =>
+        rw [hst] at h
+        exact ih bz.1 bz.2 t h
+    · rw [runA_halt frame c (f + 1) s zf hh] at h
+      cases h
+      exact hh
+
 /-- Two terminating runs of the address machine from one state end in one state. -/
 theorem runA_det (frame : String → Option (BitVec 64)) (c : Lcmd) :
     ∀ (k k' : Nat) (s : LstateA) (zf : Bool) (t t' : LstateA × Bool),
