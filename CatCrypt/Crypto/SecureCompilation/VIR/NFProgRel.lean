@@ -37,8 +37,12 @@ This is the loop rule of a relational Hoare logic (pRHL's `rHoare_foldM`) at the
 
 * `NFProg.rel_graph_iff`, `NFProg.bind_rel`, `NFProg.bind_rel_fwd` — the graph of a
   function and the bind rule.
-* `NFProg.foldlM_rel`, `NFProg.foldlM_rel_fwd` — the counted loop.
-* `NFProg.whileIter_rel`, `NFProg.whileIter_rel_fwd` — the exit-flag loop.
+* `NFProg.foldlM_rel_graded_list`, `NFProg.foldlM_rel_graded` and their `_fwd` forms — the
+  counted loop under a relation family indexed by the trip index;
+  `NFProg.foldlM_add_bounded_rel` is an instance with the bound `a ≤ B * j`.
+* `NFProg.foldlM_rel`, `NFProg.foldlM_rel_fwd` — the counted loop, the constant family.
+* `NFProg.whileIter_rel`, `NFProg.whileIter_rel_fwd`, `NFProg.whileIter_rel_graded` — the
+  exit-flag loop.
 * `NFProg.ite_rel`, `NFProg.ite_rel_fwd` — the branch.
 * `NFProg.forIterLeak_rel_bisim`, `NFProg.forIterLeak_rel_fwd`,
   `NFProg.whileIterLeak_rel_bisim`, `NFProg.whileIterLeak_rel_fwd` — the two loops of the
@@ -47,7 +51,8 @@ This is the loop rule of a relational Hoare logic (pRHL's `rHoare_foldM`) at the
   of a pure step under an embedding `E` of carriers.
 * `NFProg.denote_forLoop_rel`, `NFProg.denote_ifThenElse_rel`,
   `NFProg.denote_whileLoop_rel` and their `_fwd` forms — the program-level congruence of
-  each region constructor: two programs of the same constructor, over possibly different
+  each region constructor, with the graded forms `NFProg.denote_forLoop_rel_graded` and
+  `NFProg.denote_forLoop_rel_graded_fwd`: two programs of the same constructor, over possibly different
   dialects and contexts, whose components are related, denote related results on related
   valuations.
 -/
@@ -128,21 +133,105 @@ theorem bind_rel_fwd {α α' β β' : Type u}
 
 /-! ## 2. The counted loop -/
 
+/-- **The counted loop over a list, graded bisimulation form.** The relation is a family
+    `R : ℕ → α → α' → Prop` indexed by the step count from the grade `k`: two `Option` folds
+    over the same list whose step at position `j` sends `R (k + j)`-related carriers to
+    `Option.Rel (R (k + j + 1))`-related results send `R k`-related initial carriers to
+    `Option.Rel (R (k + l.length))`-related results. -/
+theorem foldlM_rel_graded_list {α : Type u} {α' : Type v} {β : Type w}
+    {R : ℕ → α → α' → Prop} {f : α → β → Option α} {g : α' → β → Option α'} :
+    ∀ (l : List β) (k : ℕ), (∀ (j : ℕ) (hj : j < l.length), ∀ a a', R (k + j) a a' →
+        Option.Rel (R (k + j + 1)) (f a l[j]) (g a' l[j])) →
+      ∀ a a', R k a a' → Option.Rel (R (k + l.length)) (l.foldlM f a) (l.foldlM g a')
+  | [], _, _, _, _, h => .some h
+  | i :: l, k, h, a, a', hr => by
+      simp only [List.foldlM_cons]
+      have hi : Option.Rel (R (k + 1)) (f a i) (g a' i) := h 0 (by simp) a a' hr
+      revert hi
+      rcases f a i with _ | b <;> rcases g a' i with _ | b' <;> intro hb <;> cases hb
+      · exact .none
+      · have e : k + 1 + l.length = k + (i :: l).length := by simp only [List.length_cons]; omega
+        rw [← e]
+        refine foldlM_rel_graded_list l (k + 1) (fun j hj c c' hc => ?_) _ _ ‹_›
+        have e' : k + 1 + j = k + (j + 1) := by omega
+        rw [e'] at hc ⊢
+        exact h (j + 1) (by simp only [List.length_cons]; omega) c c' hc
+
+/-- **The counted loop over a list, graded forward form.** -/
+theorem foldlM_rel_graded_list_fwd {α : Type u} {α' : Type v} {β : Type w}
+    {R : ℕ → α → α' → Prop} {f : α → β → Option α} {g : α' → β → Option α'} :
+    ∀ (l : List β) (k : ℕ), (∀ (j : ℕ) (hj : j < l.length), ∀ a a' b, R (k + j) a a' →
+        f a l[j] = some b → ∃ b', g a' l[j] = some b' ∧ R (k + j + 1) b b') →
+      ∀ a a' b, R k a a' → l.foldlM f a = some b →
+        ∃ b', l.foldlM g a' = some b' ∧ R (k + l.length) b b'
+  | [], _, _, _, a', _, hr, h => by cases h; exact ⟨a', rfl, hr⟩
+  | i :: l, k, h, a, a', b, hr, hf => by
+      simp only [List.foldlM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff] at hf ⊢
+      obtain ⟨c, hc, hf⟩ := hf
+      obtain ⟨c', hc', hr'⟩ := h 0 (by simp) a a' c hr hc
+      have e : k + 1 + l.length = k + (i :: l).length := by simp only [List.length_cons]; omega
+      rw [← e]
+      obtain ⟨b', hb', hrb⟩ := foldlM_rel_graded_list_fwd l (k + 1) (fun j hj d d' e hd he => by
+        have e' : k + 1 + j = k + (j + 1) := by omega
+        rw [e'] at hd ⊢
+        exact h (j + 1) (by simp only [List.length_cons]; omega) d d' e hd he) c c' b hr' hf
+      exact ⟨b', ⟨c', hc', hb'⟩, hrb⟩
+
+/-- **The counted loop, graded bisimulation form.** Two `Option` folds over the trip
+    indices `s, …, s + n - 1` whose step at index `i` sends `R i`-related carriers to
+    `Option.Rel (R (i + 1))`-related results send `R s`-related initial carriers to
+    `Option.Rel (R (s + n))`-related results. The family `R` carries invariants whose
+    bound depends on the trip index, such as `|acc| ≤ B * i`. -/
+theorem foldlM_rel_graded {α : Type u} {α' : Type v} {R : ℕ → α → α' → Prop}
+    {f : α → ℕ → Option α} {g : α' → ℕ → Option α'} (s n : ℕ)
+    (h : ∀ i, s ≤ i → i < s + n → ∀ a a', R i a a' →
+      Option.Rel (R (i + 1)) (f a i) (g a' i)) :
+    ∀ a a', R s a a' →
+      Option.Rel (R (s + n)) ((List.range' s n).foldlM f a) ((List.range' s n).foldlM g a') := by
+  intro a a' hr
+  have := foldlM_rel_graded_list (R := R) (f := f) (g := g) (List.range' s n) s
+    (fun j hj => by
+      rw [List.length_range'] at hj
+      rw [List.getElem_range', Nat.one_mul]
+      exact h (s + j) (by omega) (by omega)) a a' hr
+  rwa [List.length_range'] at this
+
+/-- **The counted loop, graded forward form.** -/
+theorem foldlM_rel_graded_fwd {α : Type u} {α' : Type v} {R : ℕ → α → α' → Prop}
+    {f : α → ℕ → Option α} {g : α' → ℕ → Option α'} (s n : ℕ)
+    (h : ∀ i, s ≤ i → i < s + n → ∀ a a' b, R i a a' → f a i = some b →
+      ∃ b', g a' i = some b' ∧ R (i + 1) b b') :
+    ∀ a a' b, R s a a' → (List.range' s n).foldlM f a = some b →
+      ∃ b', (List.range' s n).foldlM g a' = some b' ∧ R (s + n) b b' := by
+  intro a a' b hr hb
+  have := foldlM_rel_graded_list_fwd (R := R) (f := f) (g := g) (List.range' s n) s
+    (fun j hj => by
+      rw [List.length_range'] at hj
+      rw [List.getElem_range', Nat.one_mul]
+      exact h (s + j) (by omega) (by omega)) a a' b hr hb
+  rwa [List.length_range'] at this
+
+/-- A fold that adds a term bounded by `B` at each of `n` steps is related to itself under
+    the graded relation `R j a w := w = a ∧ a ≤ B * j`; the result is bounded by `B * n`. -/
+theorem foldlM_add_bounded_rel (t : ℕ → ℕ) (B n : ℕ) (ht : ∀ i, t i ≤ B) :
+    Option.Rel (fun a w => w = a ∧ a ≤ B * n)
+      ((List.range n).foldlM (fun a i => some (a + t i)) 0)
+      ((List.range n).foldlM (fun a i => some (a + t i)) 0) := by
+  rw [List.range_eq_range']
+  have := foldlM_rel_graded (R := fun j a w => w = a ∧ a ≤ B * j)
+    (f := fun a i => some (a + t i)) (g := fun a i => some (a + t i)) 0 n
+    (fun i _ _ a a' ⟨he, hle⟩ => .some ⟨by rw [he], by
+      rw [Nat.mul_succ]; have := ht i; omega⟩) 0 0 ⟨rfl, Nat.zero_le _⟩
+  rwa [Nat.zero_add] at this
+
 /-- **The counted loop, bisimulation form.** Two `Option` folds over the same list whose
     steps send `R`-related carriers to `Option.Rel R`-related results, at every index of
     the list, send `R`-related initial carriers to `Option.Rel R`-related results. -/
 theorem foldlM_rel {α : Type u} {α' : Type v} {β : Type w} {R : α → α' → Prop}
     {f : α → β → Option α} {g : α' → β → Option α'} :
     ∀ (l : List β), (∀ i ∈ l, ∀ a a', R a a' → Option.Rel R (f a i) (g a' i)) →
-      ∀ a a', R a a' → Option.Rel R (l.foldlM f a) (l.foldlM g a')
-  | [], _, _, _, h => .some h
-  | i :: l, h, a, a', hr => by
-      simp only [List.foldlM_cons]
-      have hi := h i (List.mem_cons_self ..) a a' hr
-      revert hi
-      rcases f a i with _ | b <;> rcases g a' i with _ | b' <;> intro hb <;> cases hb
-      · exact .none
-      · exact foldlM_rel l (fun j hj => h j (List.mem_cons_of_mem _ hj)) _ _ ‹_›
+      ∀ a a', R a a' → Option.Rel R (l.foldlM f a) (l.foldlM g a') := fun l h =>
+  foldlM_rel_graded_list (R := fun _ => R) l 0 fun _ hj => h _ (List.getElem_mem hj)
 
 /-- **The counted loop, forward form.** Two `Option` folds over the same list, where each
     successful left step from an `R`-related carrier has a successful right step to an
@@ -152,15 +241,8 @@ theorem foldlM_rel_fwd {α : Type u} {α' : Type v} {β : Type w} {R : α → α
     {f : α → β → Option α} {g : α' → β → Option α'} :
     ∀ (l : List β),
       (∀ i ∈ l, ∀ a a' b, R a a' → f a i = some b → ∃ b', g a' i = some b' ∧ R b b') →
-      ∀ a a' b, R a a' → l.foldlM f a = some b → ∃ b', l.foldlM g a' = some b' ∧ R b b'
-  | [], _, _, a', _, hr, h => by cases h; exact ⟨a', rfl, hr⟩
-  | i :: l, h, a, a', b, hr, hf => by
-      simp only [List.foldlM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff] at hf ⊢
-      obtain ⟨c, hc, hf⟩ := hf
-      obtain ⟨c', hc', hr'⟩ := h i (List.mem_cons_self ..) a a' c hr hc
-      obtain ⟨b', hb', hrb⟩ :=
-        foldlM_rel_fwd l (fun j hj => h j (List.mem_cons_of_mem _ hj)) c c' b hr' hf
-      exact ⟨b', ⟨c', hc', hb'⟩, hrb⟩
+      ∀ a a' b, R a a' → l.foldlM f a = some b → ∃ b', l.foldlM g a' = some b' ∧ R b b' :=
+  fun l h => foldlM_rel_graded_list_fwd (R := fun _ => R) l 0 fun _ hj => h _ (List.getElem_mem hj)
 
 /-! ## 3. The branch -/
 
@@ -213,6 +295,38 @@ theorem whileIter_rel {cs : List d.Ty} {cs' : List d'.Ty}
       refine bind_rel (hs a a' hr) fun r r' ⟨ht, hb⟩ => ?_
       rw [hb]
       exact ite_rel rfl (whileIter_rel hs n _ _ ht) (.some ht)
+
+/-- **The exit-flag loop, graded bisimulation form.** The relation is a family
+    `R : ℕ → …` indexed by the iteration count. Two exit-flag iterations whose bodies send
+    `R j`-related carriers to results that both fail, or both succeed with flags reading as
+    the same `Bool` and `R (j + 1)`-related next carriers, send `R j`-related carriers at
+    fuel `n` to results related by `R m` for some exit grade `m` with `j < m ≤ j + n`. -/
+theorem whileIter_rel_graded {cs : List d.Ty} {cs' : List d'.Ty}
+    {R : ℕ → Valuation cs → Valuation cs' → Prop}
+    {step : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs))}
+    {step' : Valuation cs' → Option (Valuation (HasBitType.bit (d := d') :: cs'))}
+    (hs : ∀ j a a', R j a a' → Option.Rel (fun r r' => R (j + 1) r.tail r'.tail ∧
+      HasBoolBit.toBool (d := d) r.head = HasBoolBit.toBool (d := d') r'.head)
+      (step a) (step' a')) :
+    ∀ (n j : Nat) (a : Valuation cs) (a' : Valuation cs'), R j a a' →
+      Option.Rel (fun b b' => ∃ m, j < m ∧ m ≤ j + n ∧ R m b b')
+        (whileIter step n a) (whileIter step' n a')
+  | 0, _, _, _, _ => .none
+  | n + 1, j, a, a', hr => by
+      simp only [whileIter]
+      refine bind_rel (hs j a a' hr) fun r r' ⟨ht, hb⟩ => ?_
+      rw [hb]
+      refine ite_rel rfl ?_ (.some ⟨j + 1, by omega, by omega, ht⟩)
+      have hw := whileIter_rel_graded hs n (j + 1) _ _ ht
+      revert hw
+      generalize whileIter step n r.tail = o
+      generalize whileIter step' n r'.tail = o'
+      intro hw
+      cases hw with
+      | none => exact .none
+      | some h =>
+        obtain ⟨m, h1, h2, h3⟩ := h
+        exact .some ⟨m, by omega, by omega, h3⟩
 
 /-- **The exit-flag loop, forward form.** -/
 theorem whileIter_rel_fwd {cs : List d.Ty} {cs' : List d'.Ty}
@@ -379,6 +493,70 @@ variable {d d' : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64
   [HasBoolBit d] [DialectDenoteM d Option] [DialectSignature d'] [TyDenote d'.Ty]
   [HasWord64 d'] [HasBoolBit d'] [DialectDenoteM d' Option]
 
+/-- **The counted-loop constructor, graded bisimulation form.** The relation of carried
+    tuples is a family `Rc : ℕ → …` indexed by the trip index. Two counted loops over
+    related valuations, with equal trip counts `n`, `Rc 0`-related initial tuples, bodies
+    that send `Rc i`-related tuples to `Option.Rel (Rc (i + 1))`-related results at every
+    trip index `i < n`, and continuations that send `Rc n`-related tuples to `S`-related
+    results, denote `S`-related results. The fuels of the two sides may differ. -/
+theorem denote_forLoop_rel_graded {Γ : Ctxt d} {cs ts : List d.Ty} {Γ' : Ctxt d'}
+    {cs' ts' : List d'.Ty} (fuel fuel' : Nat)
+    {RΓ : Valuation Γ → Valuation Γ' → Prop} {Rc : ℕ → Valuation cs → Valuation cs' → Prop}
+    {S : Valuation ts → Valuation ts' → Prop}
+    (count : Var Γ (HasWord64.word (d := d))) (inits : HVector (fun t => Var Γ t) cs)
+    (body : NFProg d (cs ++ HasWord64.word (d := d) :: Γ) cs) (k : NFProg d (cs ++ Γ) ts)
+    (count' : Var Γ' (HasWord64.word (d := d'))) (inits' : HVector (fun t => Var Γ' t) cs')
+    (body' : NFProg d' (cs' ++ HasWord64.word (d := d') :: Γ') cs')
+    (k' : NFProg d' (cs' ++ Γ') ts')
+    (hcount : ∀ V V', RΓ V V' →
+      HasWord64.toNat (d := d) (count.lookup V) = HasWord64.toNat (d := d') (count'.lookup V'))
+    (hinits : ∀ V V', RΓ V V' → Rc 0 (Expr.lookupArgs inits V) (Expr.lookupArgs inits' V'))
+    (hbody : ∀ V V', RΓ V V' → ∀ (i : Nat), i < HasWord64.toNat (d := d) (count.lookup V) →
+      ∀ a a', Rc i a a' → Option.Rel (Rc (i + 1))
+        (body.denote fuel (hvAppend a (.cons (HasWord64.ofNat (d := d) i) V)))
+        (body'.denote fuel' (hvAppend a' (.cons (HasWord64.ofNat (d := d') i) V'))))
+    (hk : ∀ V V', RΓ V V' → ∀ a a', Rc (HasWord64.toNat (d := d) (count.lookup V)) a a' →
+      Option.Rel S (k.denote fuel (hvAppend a V)) (k'.denote fuel' (hvAppend a' V')))
+    (V : Valuation Γ) (V' : Valuation Γ') (hV : RΓ V V') :
+    Option.Rel S ((NFProg.forLoop count inits body k).denote fuel V)
+      ((NFProg.forLoop count' inits' body' k').denote fuel' V') := by
+  rw [denote_forLoop, denote_forLoop, ← hcount V V' hV, List.range_eq_range']
+  refine bind_rel (foldlM_rel_graded 0 _ (fun i _ hi => hbody V V' hV i (by omega)) _ _
+    (hinits V V' hV)) fun a a' h => hk V V' hV a a' ?_
+  rwa [Nat.zero_add] at h
+
+/-- **The counted-loop constructor, graded forward form.** -/
+theorem denote_forLoop_rel_graded_fwd {Γ : Ctxt d} {cs ts : List d.Ty} {Γ' : Ctxt d'}
+    {cs' ts' : List d'.Ty} (fuel fuel' : Nat)
+    {RΓ : Valuation Γ → Valuation Γ' → Prop} {Rc : ℕ → Valuation cs → Valuation cs' → Prop}
+    {S : Valuation ts → Valuation ts' → Prop}
+    (count : Var Γ (HasWord64.word (d := d))) (inits : HVector (fun t => Var Γ t) cs)
+    (body : NFProg d (cs ++ HasWord64.word (d := d) :: Γ) cs) (k : NFProg d (cs ++ Γ) ts)
+    (count' : Var Γ' (HasWord64.word (d := d'))) (inits' : HVector (fun t => Var Γ' t) cs')
+    (body' : NFProg d' (cs' ++ HasWord64.word (d := d') :: Γ') cs')
+    (k' : NFProg d' (cs' ++ Γ') ts')
+    (hcount : ∀ V V', RΓ V V' →
+      HasWord64.toNat (d := d) (count.lookup V) = HasWord64.toNat (d := d') (count'.lookup V'))
+    (hinits : ∀ V V', RΓ V V' → Rc 0 (Expr.lookupArgs inits V) (Expr.lookupArgs inits' V'))
+    (hbody : ∀ V V', RΓ V V' → ∀ (i : Nat), i < HasWord64.toNat (d := d) (count.lookup V) →
+      ∀ a a' b, Rc i a a' →
+      body.denote fuel (hvAppend a (.cons (HasWord64.ofNat (d := d) i) V)) = some b →
+      ∃ b', body'.denote fuel' (hvAppend a' (.cons (HasWord64.ofNat (d := d') i) V')) =
+        some b' ∧ Rc (i + 1) b b')
+    (hk : ∀ V V', RΓ V V' → ∀ a a' b, Rc (HasWord64.toNat (d := d) (count.lookup V)) a a' →
+      k.denote fuel (hvAppend a V) = some b →
+      ∃ b', k'.denote fuel' (hvAppend a' V') = some b' ∧ S b b')
+    (V : Valuation Γ) (V' : Valuation Γ') (hV : RΓ V V') (out : Valuation ts)
+    (h : (NFProg.forLoop count inits body k).denote fuel V = some out) :
+    ∃ out', (NFProg.forLoop count' inits' body' k').denote fuel' V' = some out' ∧
+      S out out' := by
+  rw [denote_forLoop, List.range_eq_range'] at h
+  rw [denote_forLoop, ← hcount V V' hV, List.range_eq_range']
+  refine bind_rel_fwd (fun a ha => foldlM_rel_graded_fwd 0 _
+    (fun i _ hi => hbody V V' hV i (by omega)) _ _ a (hinits V V' hV) ha)
+    (fun a a' b hr => hk V V' hV a a' b ?_) out h
+  rwa [Nat.zero_add] at hr
+
 /-- **The counted-loop constructor, bisimulation form.** Two counted loops over related
     valuations, with equal trip counts, related initial tuples, bodies that preserve the
     relation `Rc` of carried tuples at every trip index, and continuations that send
@@ -403,9 +581,9 @@ theorem denote_forLoop_rel {Γ : Ctxt d} {cs ts : List d.Ty} {Γ' : Ctxt d'}
       Option.Rel S (k.denote fuel (hvAppend a V)) (k'.denote fuel' (hvAppend a' V')))
     (V : Valuation Γ) (V' : Valuation Γ') (hV : RΓ V V') :
     Option.Rel S ((NFProg.forLoop count inits body k).denote fuel V)
-      ((NFProg.forLoop count' inits' body' k').denote fuel' V') := by
-  rw [denote_forLoop, denote_forLoop, hcount V V' hV]
-  exact bind_rel (foldlM_rel _ (fun i _ => hbody V V' hV i) _ _ (hinits V V' hV)) (hk V V' hV)
+      ((NFProg.forLoop count' inits' body' k').denote fuel' V') :=
+  denote_forLoop_rel_graded (Rc := fun _ => Rc) fuel fuel' count inits body k count' inits'
+    body' k' hcount hinits (fun V V' hV i _ => hbody V V' hV i) hk V V' hV
 
 /-- **The counted-loop constructor, forward form.** -/
 theorem denote_forLoop_rel_fwd {Γ : Ctxt d} {cs ts : List d.Ty} {Γ' : Ctxt d'}
@@ -430,11 +608,9 @@ theorem denote_forLoop_rel_fwd {Γ : Ctxt d} {cs ts : List d.Ty} {Γ' : Ctxt d'}
     (V : Valuation Γ) (V' : Valuation Γ') (hV : RΓ V V') (out : Valuation ts)
     (h : (NFProg.forLoop count inits body k).denote fuel V = some out) :
     ∃ out', (NFProg.forLoop count' inits' body' k').denote fuel' V' = some out' ∧
-      S out out' := by
-  rw [denote_forLoop] at h
-  rw [denote_forLoop, ← hcount V V' hV]
-  exact bind_rel_fwd (fun a ha => foldlM_rel_fwd _ (fun i _ => hbody V V' hV i) _ _ a
-    (hinits V V' hV) ha) (hk V V' hV) out h
+      S out out' :=
+  denote_forLoop_rel_graded_fwd (Rc := fun _ => Rc) fuel fuel' count inits body k count'
+    inits' body' k' hcount hinits (fun V V' hV i _ => hbody V V' hV i) hk V V' hV out h
 
 /-- **The branch constructor, bisimulation form.** Two branches over related valuations,
     with conditions reading as the same `Bool`, arms with `Rr`-related results and
