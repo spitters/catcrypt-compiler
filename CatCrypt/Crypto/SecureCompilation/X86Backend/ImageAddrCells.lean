@@ -1001,8 +1001,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (lsemFuelMemF)
     allocation checker accept a virtual body `B` against the image of the cell body, with the
     observed names `outs`, and let the body pass the W class of printed bodies and the cell
     body the class `physImgB` and the gate `imgGateB` or the gate with carry chains
-    `imgGateBW`, at a frame map that agrees with the stack frame on the names of the
-    body. A halting run of `B` from a state related to an address state corresponding to the
+    `imgGateBW` with no observed name in the width analysis at the return (`retOutsB`), at a
+    frame map that agrees with the stack frame on the names of the body. A halting run of `B` from a state related to an address state corresponding to the
     machine state `sa` is matched by a halting run of the decoded bytes of the body from
     `sa`, at the end of which every observed name with a frame word outside the red-zone
     word holds the machine word at that frame word. -/
@@ -1014,7 +1014,8 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
     (hpr : printedAddrWB body = true)
     (hphys : JasminLsemAddrImage.physImgB slotArr (cellBody slotArr body) = true)
     (hgate : (imgGateB frame slotArr (cellBody slotArr body)
-      || imgGateBW frame slotArr (cellBody slotArr body)) = true)
+      || (imgGateBW frame slotArr (cellBody slotArr body)
+        && ImageAddrSimW.retOutsB frame (cellBody slotArr body) outs)) = true)
     (hsep : ImgSep frame slotArr base (frameRsp body sa))
     (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base (frameRsp body sa) body)
     (hnc : ∀ (k : Nat) (bi : Linstr), body[k]? = some bi → ∀ cc l, bi.li_i ≠ .Lcond cc l)
@@ -1034,20 +1035,22 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
   have hck' := lsemFuelMemFk_of_runIdxOk true _ fuel b t hrun hok
   obtain ⟨f', t', hr', hobs⟩ := ownedCheckMC_sound hck fn b t hfn hbpc fuel hck'
   have hsim : ∃ fA sA zA, runA frame body fA s zf = some (sA, zA)
-      ∧ (∀ q a, frame q = some a → t'.prog.base.reg.lvm q = ⟨64, read64 sA.mem a⟩)
+      ∧ (∀ q a, q ∈ outs → frame q = some a → t'.prog.base.reg.lvm q = ⟨64, read64 sA.mem a⟩)
       ∧ RunSafe frame body (SafeW (frameRsp body sa) body) fA s zf := by
     rcases Bool.or_eq_true_iff.mp hgate with hg | hg
     · obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simB hsep hphys hg hN hF hnc fn f' b t' s zf hfn hrel hr'
-      exact ⟨fA, sA, zA, h1, h2.slots, h3⟩
-    · obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
+      exact ⟨fA, sA, zA, h1, fun q a _ ha => h2.slots q a ha, h3⟩
+    · obtain ⟨hg, hro⟩ := Bool.and_eq_true_iff.mp hg
+      obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simBW hsep hphys hg hN hF hnc fn f' b t' s zf hfn
           (ImageAddrSimW.imgRelW_of hrel) hr'
       have hh : haltedA (cellBody slotArr body) sA = true := by
         rw [haltedA_cellBody]
         exact JasminLsemAddrRun.haltedA_of_runA frame body fA s zf (sA, zA) h1
-      exact ⟨fA, sA, zA, h1, fun q a ha => (h2.slots q a ha).word
-        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh (by rw [ha]; rfl)), h3⟩
+      exact ⟨fA, sA, zA, h1, fun q a hq ha => (h2.slots q a ha).word
+        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
+          (ImageAddrSimW.not_mem_of_retOutsB hro hq)), h3⟩
   obtain ⟨fA, sA, zA, hrA, hslots, hsafe⟩ := hsim
   rw [runA_congr hfr] at hrA
   rw [runSafe_congr hfr] at hsafe
@@ -1055,6 +1058,6 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
     printedAddr_simW body hpr sa s zf hpc (fun R hR => Or.inl (hent R hR)) hmem fA (sA, zA) hrA
       hsafe
   refine ⟨prog, sa', hdec, hh, fun r a hr ha hd => ?_⟩
-  rw [← hobs.1 r hr, hslots r a ha, read64_eq_of_agree hm' hd]
+  rw [← hobs.1 r hr, hslots r a hr ha, read64_eq_of_agree hm' hd]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells

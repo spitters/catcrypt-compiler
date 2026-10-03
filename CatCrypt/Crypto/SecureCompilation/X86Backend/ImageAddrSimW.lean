@@ -37,8 +37,8 @@ stores a name outside it, an immediate move into a frame word writes a word that
 array pointer, a select `CMOV:64` reads a frame-word value or writes a frame-word destination
 at its frame word, a branch is taken only where the analysis is empty, every name an
 instruction reads, other than a carry-in or the condition of a `CMOV:64` select
-(`DecodePrintedAddrW.carryIns`), lies outside the analysis, and at the return no frame-slot
-name lies in it.
+(`DecodePrintedAddrW.carryIns`), lies outside the analysis. `retOutsB` is the check that no
+name of a list of observed names lies in the analysis at the return.
 
 ## Main results
 
@@ -46,8 +46,11 @@ name lies in it.
 * `imgGateBW_eq_impl` (`@[csimp]`): the gate is evaluated with the frame map tabulated over
   the names of the body and the instruction gates decided in one pass of the analysis.
 * `imgRelW_of`: `ImgRel` gives `ImgRelW` where the analysis is empty.
-* `not_mem_oneBitAt_of_halted`: under `imgGateBW`, at a halt no frame-slot name is in the
-  analysis.
+* `retOutsB_eq_impl` (`@[csimp]`): `retOutsB` is evaluated with the frame map tabulated.
+* `not_mem_oneBitAt_of_halted`: under `imgGateBW`, at a halt a name outside the analysis at
+  the return is outside the analysis.
+* `not_mem_of_retOutsB`: under `retOutsB`, an observed name is outside the analysis at the
+  return.
 * `reg_stepW`, `rel_regW`, `rel_sloadW`, `rel_sstoreW`, `rel_scmpW`, `rel_ldxW`, `rel_stxW`,
   `rel_labelW`: each kind of instruction keeps `ImgRelW`.
 * `bit_virt`, `rel_adcxW`, `rel_adcxhiW`: a carry-chain instruction with register or
@@ -395,15 +398,28 @@ def instrGateBW (frame : String → Option (BitVec 64)) (slotArr : String → Op
   gateAtW frame slotArr body k (oneBitAt frame body k) x
 
 /-- **The gate of the image simulation with carry chains**: every instruction but the last
-    passes `instrGateBW`, the last is the return, every array-pointer reload follows a save,
-    and at the return no name with a frame word is in the width analysis. -/
+    passes `instrGateBW`, the last is the return, and every array-pointer reload follows a
+    save. -/
 def imgGateBW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) : Bool :=
   (List.range (body.length - 1)).all (fun k =>
       (body[k]?).all fun i => instrGateBW frame slotArr body k i.li_i)
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
-    && (oneBitAt frame body (body.length - 1)).all fun q => (frame q).isNone
+
+/-- The check that no name of the observed names `outs` is in the width analysis at the last
+    instruction of the body. -/
+def retOutsB (frame : String → Option (BitVec 64)) (body : Lcmd) (outs : List String) : Bool :=
+  let W := oneBitAt frame body (body.length - 1)
+  outs.all fun r => !W.contains r
+
+/-- Under `retOutsB`, an observed name is not in the width analysis at the last instruction. -/
+theorem not_mem_of_retOutsB {frame : String → Option (BitVec 64)} {body : Lcmd}
+    {outs : List String} (h : retOutsB frame body outs = true) {r : String} (hr : r ∈ outs) :
+    r ∉ oneBitAt frame body (body.length - 1) := by
+  intro hm
+  have := List.all_eq_true.mp h r hr
+  simp [hm] at this
 
 /-- The instruction gates of `imgGateBW` in one pass: from position `k` with the width
     analysis `W` at `k` and the remaining instructions, the gate `gateAtW` of at most `n`
@@ -478,7 +494,6 @@ def imgGateBWImpl (frame : String → Option (BitVec 64))
   gateLoop fr slotArr body (body.length - 1) 0 [] body
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
-    && (oneBitAt fr body (body.length - 1)).all fun q => (fr q).isNone
 
 /-- The gate `imgGateBW` is evaluated as `imgGateBWImpl`. -/
 @[csimp] theorem imgGateBW_eq_impl : @imgGateBW = @imgGateBWImpl := by
@@ -487,6 +502,17 @@ def imgGateBWImpl (frame : String → Option (BitVec 64))
   simp only [oneBitAt_zero, List.drop_zero] at h
   simp only [imgGateBWImpl, tabFrame_eq]
   rw [imgGateBW, h, List.range_eq_range']
+
+/-- `retOutsB` evaluated with the frame map tabulated over the names of the body. -/
+def retOutsBImpl (frame : String → Option (BitVec 64)) (body : Lcmd) (outs : List String) :
+    Bool :=
+  retOutsB (tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q)))
+    body outs
+
+/-- The check `retOutsB` is evaluated as `retOutsBImpl`. -/
+@[csimp] theorem retOutsB_eq_impl : @retOutsB = @retOutsBImpl := by
+  funext frame body outs
+  simp only [retOutsBImpl, tabFrame_eq]
 
 /-- The value `v` of a frame-slot name `q` on the image against the word `m` at its frame
     address: the whole word, or, for a name of the width analysis `W`, the low bit of the
@@ -560,7 +586,7 @@ theorem imgGateBW_last {frame : String → Option (BitVec 64)}
     (h : imgGateBW frame slotArr body = true) :
     ∃ r, body.getLast? = some r ∧ r.li_i = .Lret := by
   simp only [imgGateBW, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨-, h2⟩, -⟩, -⟩ := h
+  obtain ⟨⟨-, h2⟩, -⟩ := h
   cases hl : body.getLast? with
   | none => rw [hl] at h2; cases h2
   | some r =>
@@ -587,7 +613,7 @@ theorem imgGateBW_at {frame : String → Option (BitVec 64)}
     exact hr hret
   refine ⟨hk1, ?_⟩
   simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
-  have := h.1.1.1 k (by omega)
+  have := h.1.1 k (by omega)
   rw [hi] at this
   simpa using this
 
@@ -616,12 +642,14 @@ theorem mem_regOut_of_frame {frame : String → Option (BitVec 64)} {W : List St
       cases hq
   · exact h
 
-/-- **At a halt no name with a frame word is in the width analysis**, for a body passing
-    `imgGateBW`: the program counter is at the final return or past the end of the body. -/
+/-- **At a halt the width analysis is the analysis at the return**, for a body passing
+    `imgGateBW`: the program counter is at the final return or past the end of the body, so a
+    name outside the analysis at the last instruction is outside the analysis at the halt. -/
 theorem not_mem_oneBitAt_of_halted {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (hgate : imgGateBW frame slotArr body = true) {sa : LstateA}
-    (hh : haltedA body sa = true) {q : String} (hq : (frame q).isSome = true) :
+    (hh : haltedA body sa = true) {q : String}
+    (hW : q ∉ oneBitAt frame body (body.length - 1)) :
     q ∉ oneBitAt frame body sa.reg.lpc := by
   obtain ⟨r, hr, hret⟩ := imgGateBW_last hgate
   have hlen : 0 < body.length := by
@@ -630,13 +658,6 @@ theorem not_mem_oneBitAt_of_halted {frame : String → Option (BitVec 64)}
     | cons _ _ => simp
   have hlast : body[body.length - 1]? = some r := by
     rw [← List.getLast?_eq_getElem?]; exact hr
-  have hW : q ∉ oneBitAt frame body (body.length - 1) := by
-    intro hm
-    simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true] at hgate
-    have := hgate.2 q hm
-    rw [Option.isNone_iff_eq_none] at this
-    rw [this] at hq
-    cases hq
   have hge : body.length - 1 ≤ sa.reg.lpc := by
     by_contra hlt
     have hk : sa.reg.lpc < body.length := by omega
@@ -648,7 +669,7 @@ theorem not_mem_oneBitAt_of_halted {frame : String → Option (BitVec 64)}
       obtain ⟨ii, li⟩ := bi
       cases li <;> simp_all
     simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-    have := hgate.1.1.1 sa.reg.lpc (by omega)
+    have := hgate.1.1 sa.reg.lpc (by omega)
     rw [hb] at this
     simp [instrGateBW, gateAtW, hbr, carryI?, icase] at this
   rcases Nat.lt_or_ge sa.reg.lpc body.length with hk | hk
@@ -699,7 +720,7 @@ theorem ptr_of_reloadW {frame : String → Option (BitVec 64)}
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := by
-    simp only [imgGateBW, Bool.and_eq_true] at hgate; exact hgate.1.2
+    simp only [imgGateBW, Bool.and_eq_true] at hgate; exact hgate.2
   obtain ⟨j, R, hj, hS, hqR⟩ := reloadSavedB_spec hrs hi hm (by rw [hq]; rfl)
   subst hqR
   have hp := (hrel.saved j R A n a hS hq ha).1 (by omega)
@@ -2248,7 +2269,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         ∧ ImgRelW frame slotArr base c t sa1 t.zf := by
   have hg : instrGateBW frame slotArr c sa.reg.lpc bi.li_i = true := by
     simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-    have := hgate.1.1.1 sa.reg.lpc hlt
+    have := hgate.1.1 sa.reg.lpc hlt
     rw [hb] at this
     simpa using this
   simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hg
@@ -2554,7 +2575,12 @@ theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
     intro k x
     simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h, icase_congr h,
       regGateBW_congr h, sImmB_congr h, sCmovB_congr h, hn, h]
-  simp only [imgGateBW, hi, oneBitAt_congr h, hn]
+  simp only [imgGateBW, hi]
+
+/-- `retOutsB` reads only which names have a frame word. -/
+theorem retOutsB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
+    (outs : List String) : retOutsB frame body outs = retOutsB frame' body outs := by
+  simp only [retOutsB, oneBitAt_congr h]
 
 end Congr
 

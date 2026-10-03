@@ -642,7 +642,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (physImgB virtImg
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (slotArrOf slotRen slotRen_some
   imgSep_slotRen imgRel_entryV boundFacts_entryV entryB entryB_spec frameE)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (imgGateB)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (imgGateBW imgGateBW_congr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (imgGateBW imgGateBW_congr
+  retOutsB retOutsB_congr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMC)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (idxInvCheckB idxAnnot boundFacts
   runIdxOk_of_idxInvCheckB)
@@ -690,8 +691,9 @@ def cellVirt (σ : AbiLayout) (nm : String → String) (C2 : List LinstrRM) (fus
     `cellVirt σ nm C2 fuse`, the slot map `slotArrC` of the cell arrays of `σ` and the cell
     body of `body`, the register allocation check of the virtual body against the image of
     the cell body, the bounds invariant of the virtual body, the W class of printed bodies,
-    the image class and the gate `imgGateB` or the gate with carry chains `imgGateBW` at the
-    frame marks with the cells, the frame and entry checks, the cell frames, no conditional
+    the image class and the gate `imgGateB` or the gate with carry chains `imgGateBW` with no
+    observed name in its width analysis at the return (`retOutsB`) at the frame marks with
+    the cells, the frame and entry checks, the cell frames, no conditional
     branch, no slot name in a cell move, `C2` a list of `Lopn`s, and, when `fuse` holds, the
     fusion check of `argBind σ nm ++ C2`, whose width-`64` start registers are those of
     `fuseRegs` and the cell names, and no observed name `R15`. -/
@@ -704,7 +706,8 @@ def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : L
   ownedCheckMC outs B (virtImg sl body')
     && idxInvCheckB (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
     && printedAddrWB body && physImgB sl body'
-    && (imgGateB (frameMarkC R body) sl body' || imgGateBW (frameMarkC R body) sl body')
+    && (imgGateB (frameMarkC R body) sl body'
+      || (imgGateBW (frameMarkC R body) sl body' && retOutsB (frameMarkC R body) body' outs))
     && frameOkB σ body && entryB σ nm body
     && cellAccB sl R body && noCondB body && cellNoSlotB sl body && C2.all isLopnB
     && (!fuse || (fuseOKL (fuseRegs σ nm ++ cellNames R) (fuseLoPre (argBind σ nm) C2)
@@ -848,11 +851,15 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   have hgate' : (imgGateB (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
       (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x))
       (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
-      || imgGateBW (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
+      || (imgGateBW (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
       (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x))
-      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)) = true := by
+      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
+      && retOutsB (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa))
+      (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body) outs))
+      = true := by
     rw [ImageAddrFrame.imgGateB_congr (frame' := frameMarkC (cellArrs σ) body)
       (frameC_isSome _ _ body sa), imgGateBW_congr (frame' := frameMarkC (cellArrs σ) body)
+      (frameC_isSome _ _ body sa), retOutsB_congr (frame' := frameMarkC (cellArrs σ) body)
       (frameC_isSome _ _ body sa)]
     exact hgate
   have hfr' : ∀ q ∈ bodyNamesI body,
