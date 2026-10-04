@@ -50,7 +50,8 @@ dialect prefixes differ.
   expansion over `RSkip`, `RAssert`, `RBlock`, `RSeq`, `RScalarSet`,
   `RLetU64Zero`, `RCall`, `RSelect`, `RArrLoad` and `RScalarSetExpr`, and the
   theorem that the front's prefix prepends exactly `expand`'s list; `expand` is
-  `none` on the other constructors.
+  `none` on the other constructors and on an `RCall` of an `inlineArithRecipe`
+  name into a `.TFp` destination, which the front may lower inline.
 -/
 
 @[expose] public section
@@ -305,7 +306,8 @@ theorem arrLoadCont_leakFactorsTrace_eq {Γ : Ctx} (dty : TowerType)
 
 /-- The dialect events the front prepends for a source command, with the
     typing after it, as a function of the command and the entry typing `τ`.
-    `none` on the constructors this expansion does not cover. -/
+    `none` on the constructors this expansion does not cover, and on an `RCall`
+    of an `inlineArithRecipe` name into a `.TFp` destination. -/
 def expand (τ : Typing) : LowCT → Option (LeakTrace × Typing)
   | .RSkip => some ([], τ)
   | .RAssert _ => some ([], τ)
@@ -323,7 +325,8 @@ def expand (τ : Typing) : LowCT → Option (LeakTrace × Typing)
       | some (p, τ') => some (.pureOp "bvConst" :: p, τ')
       | none => none
   | .RCall f dest _ =>
-      some ([.pureOp ("extCall:" ++ f)], τ.upd dest.locVar (encodeTy dest.locDst))
+      if dest.locDst = .TFp ∧ (inlineArithRecipe f).isSome then none
+      else some ([.pureOp ("extCall:" ++ f)], τ.upd dest.locVar (encodeTy dest.locDst))
   | .RSelect dst sel src0 src1 =>
       if dst.locDst = .TU64 ∧ τ sel = some (.sword 64) ∧ τ src0.locVar = some (.sword 64)
           ∧ τ src1.locVar = some (.sword 64) then
@@ -421,15 +424,21 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
           · exact absurd h (by simp)
       · exact absurd he (by simp)
   | RCall f dest args =>
-      simp only [expand, Option.some.injEq, Prod.mk.injEq] at he
-      obtain ⟨rfl, rfl⟩ := he
-      simp only [translateDialectFull] at h
-      split at h
-      · exact absurd h (by simp)
-      · next resolvedArgs _ =>
-          simp only [Option.some.injEq] at h
-          subst h
-          exact ⟨ComCont.varBind_leakFactorsTrace _, VarMap.tyOf_bind _ _⟩
+      simp only [expand] at he
+      split at he
+      · exact absurd he (by simp)
+      · next hn =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at he
+          obtain ⟨rfl, rfl⟩ := he
+          simp only [translateDialectFull] at h
+          split at h
+          · exact absurd h (by simp)
+          · next resolvedArgs _ =>
+              split at h
+              · next hd hr _ => exact absurd ⟨hd, by simp [hr]⟩ hn
+              · simp only [Option.some.injEq] at h
+                subst h
+                exact ⟨ComCont.varBind_leakFactorsTrace _, VarMap.tyOf_bind _ _⟩
   | RSelect dst sel src0 src1 =>
       simp only [translateDialectFull] at h
       split at h
