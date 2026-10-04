@@ -23,7 +23,7 @@ exposed.
    (`pp_copyN_in` / `pp_copyN_back`): the callee reads/writes the same words as
    the direct sub-slice call would.
 
-   (A whole-array-skip optimization — stage only genuine partial sub-slices,
+   (A whole-array-skip optimization — stage only proper partial sub-slices,
    pass whole arrays directly — was tried and *reverted*: it reintroduced the
    partial-region error in the deep Fp12 graph, because a whole `stack u64[8]`
    that has been sliced at offset 4 anywhere — the second Fp of an Fp2 — is

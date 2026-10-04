@@ -32,6 +32,21 @@ lowers vectorDialect
 lowers memrefDialect
 lowers scfDialect
 lowers tileDialect
+# Representation-annotated variants reach bytes as their base dialect
+# (unannotate…Com; DIALECTS.md "Representation-annotated variants").
+lowers fieldDialectAt
+lowers fieldDialectTower
+lowers modArithDialectAt
+lowers ecDialectAt
+# NFProg dialect of the hax normal form: nfToCat, then nfChain / nfToComL.
+lowers nfDialect
+# Template dialects with a lowering to jasminDialect: towerToField.comp loweringL
+# (TowerToLimbs), gf2Frame (Gf2Dialect), the graded loop lowering of RowLazy, and
+# bmLowering / accLowering (LanesRepFamily).
+lowers towerDialect
+lowers gf2Dialect
+lowers rowDialect
+lowers laneDialect
 
 # ---- theory (correspondence / MLIR-mirror / optimizer-playground; no lowering out) ----
 theory mlirArithDialect
@@ -53,12 +68,22 @@ theory latticeDialectG
 theory numDialect
 theory flagDialect
 theory mixedDialect
+# RNS ring ops; DIALECTS.md: lowering "no | none".
+theory ringDialect
 
 # ---- test / example ----
 test toyDialect
 test smokeDialect
 test pilot
 test D
+# Scaffolding (DIALECTS.md): BlockLoweringExtendWitness, DialectOpSum examples.
+test srcDialect
+test tgtDialect
+test testDialect
+# Worked example of the graded relational lowering (MultiBlockLoweringRel).
+test zpDialect
+# Test dialect of the aegraph sum (Optimizer/Rewrite/AegraphSum).
+test dblDialect
 
 # ---- review (per-file lowering check pending; tracked, NOT silently unmarked) ----
 # natKernelDialect targets the Lean kernel rather than x86, so none of lowers/

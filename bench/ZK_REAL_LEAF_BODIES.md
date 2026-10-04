@@ -64,7 +64,7 @@ dlog tables). `bench/msm_compare/msm_real_curve_kat.c` replaces it with a
 prime-order Edwards curve). KAT (all PASS): `2G+3G==5G`, `msm({G,G},{2,3})==5G`,
 `0·G==∞`, `G+∞==G` via the verified `point_equal`.
 
-Self-bench: **~851,800 cyc / 8-term MSM (~106,500 cyc/term)** — a genuine
+Self-bench: **~851,800 cyc / 8-term MSM (~106,500 cyc/term)** — a full
 255-bit scalar-mul + point-add, not the toy group.
 
 Build:

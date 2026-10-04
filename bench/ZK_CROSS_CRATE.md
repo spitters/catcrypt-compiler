@@ -100,7 +100,7 @@ The standalone real-curve MSM row gives the honest curve-MSM cost; it is the sam
 8-term MSM that the Bulletproofs/Halo2 **full-prover** rows now include inline.
 
 ‡ Nova is a **folding** scheme with **no analogue** in our emitted set. The
-2,354 ns/step is a genuine same-host figure but the workload is a *trivial* step
+2,354 ns/step is a same-host figure but the workload is a *trivial* step
 circuit (the ~10k constraints are recursion-verification overhead; the per-step
 fold is over near-zero witnesses), so it is a **lower bound** on Nova folding
 cost, not a representative MinRoot/real-circuit step. Reported as a reference

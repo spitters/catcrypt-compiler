@@ -22,7 +22,7 @@ pairing verify (formally-verified pairing); the BLS12-381 curve phase (Groth16 v
 owned `pp_map`) **1.22×** vs blst hand-asm. The Halo2 **Pasta commitment MSM** is
 own-compiler-emitted and protocol-exact (Pallas group over an own-emitted base field,
 KAT'd vs the #377 Rocq oracle, ~245k cyc/8-term) — NOT a stand-in. The remaining
-placeholders (extension-field FRI, single-binary ZMM emit) are genuinely unbuilt /
+placeholders (extension-field FRI, single-binary ZMM emit) are unbuilt /
 blocked-on-integration and are not folded into any whole-prover ratio.*
 
 **Whole-prover composition (this pass).** Only the **Spartan/Jolt BabyBear
@@ -41,10 +41,10 @@ reference). See "Whole-prover composition, per prover" below.*
 stand-in" placeholders. Investigation showed these were **stale-doc / wiring gaps, not
 unbuilt**: the Pasta-exact group is fully own-emitted (#427/#430/#436/#480, KAT-passing),
 and the curve25519 arithmetic Ristretto255 is built on is emitted as a verified SIMD
-Straus MSM (#461, KAT vs libsodium/RFC 8032). The genuinely-placeholder phases are the
+Straus MSM (#461, KAT vs libsodium/RFC 8032). The placeholder phases are the
 **extension-field FRI** (UNBUILT — no quartic-ext kernels) and the **single-binary
 orchestration** (BLOCKED-on-integration — pieces emitted, no composing module). See
-"What is NOT claimed" for the per-phase corrected verdict.
+"What is NOT claimed" for the per-phase corrected assessment.
 
 Host: AMD Ryzen 7 PRO 7840U (Zen 4), `taskset -c 3`, `rdtsc`, min-of-N. Numbers are
 measured this session or transcribed from the cited bench docs (no fabricated ratios).
@@ -89,7 +89,7 @@ provers: can their real-emitted phase leaves be composed the same way into a
 single-binary whole-prover that yields a real apples-to-apples number — and where
 not, what is the precise orchestration gap.
 
-The honest answer per prover. Two distinct single-binary paths exist in this tree:
+The answer per prover. Two distinct single-binary paths exist in this tree:
 the **owned x86 backend** (Plonky3-style, no jasminc, `loopLcmd` loops — only the
 BabyBear-regArith leaves are emittable this way) and the **jasminc-composed
 `*_prover_link.jazz` → `.s`** (the curve/pairing/Poseidon2-sponge work, with the
@@ -102,7 +102,7 @@ curve MSM run in GMP/HACL\* C alongside).
 | **Halo2** | YES (jasminc) | jasminc `halo2_prover_link.s` + the protocol-exact Pasta MSM (`pasta_msm.c`, GMP); `halo2_prover_pasta_kat` runs (**~204k cyc/prove**, live) | **NOT a whole-prover ratio** — OURS proves an 8-term-commit + gate + 3-round field-IPA statement; `halo2_proofs` proves a full **k=4 StandardPlonk** circuit (full permutation argument, degree-2⁴ commits, blinding, full-domain IPA) at **350.7M cyc/prove** (min-of-100, live). The statement sizes differ by orders of magnitude → the cyc ratio is **not** a speedup and is **withheld** | the full **k=4 PLONK orchestration** (large-domain Pasta MSMs, the permutation argument, blinding) is not emitted as one prover; the per-phase Pasta commit MSM IS protocol-exact own-emitted (#427/#430/#436/#480) but runs in GMP C, not the owned x86 backend (curve-backend block again). The BabyBear field-IPA core is owned-composable but is a *smaller statement* than k=4 |
 | **Marlin** | **NO** | only the orchestration `.jazz` (opaque-leaf, `marlin_prover_from_rustcmd.jazz`) is emitted; **no `*_prover_link.jazz`/`.s` composes it to a single binary**, and the full-prover KAT (`marlin_prover_kat.rs`) is a Rust driver, not a composed binary | the **pairing-verify PHASE** is real apples-to-apples (**1.12×** vs ark-marlin, in the phase table); ark-marlin full prove is **177.3M cyc/prove** (min-of-100, live) but OURS has **no composed whole-prover binary** to compare → **no whole-prover ratio** | TWO gaps: (1) **no single-binary composition** of the Marlin orchestration leaves exists at all (the `_link.jazz` was never built); (2) Marlin's sum-check is over **BN254 Fp**, not BabyBear, so it cannot reuse the owned BabyBear sum-check leaves (`ZkSumCheckWholeProverEmit`) — owned-composing it needs BN254-Fp regArith leaves, which are not emitted |
 
-**Verdict.** Of the four, only the **Spartan/Jolt BabyBear sum-check field core**
+**Result.** Of the four, only the **Spartan/Jolt BabyBear sum-check field core**
 composes into a Plonky3-style **owned** single-`.s` whole-prover (this pass —
 `ZkSumCheckWholeProverEmit`, KAT-runnable). The **full** whole-prover
 numbers that include the PCS curve MSM remain (a) jasminc+C binaries (Spartan,
@@ -168,7 +168,7 @@ an emit/runnability result, not a new perf ratio.
     HACL\* `point_mul`.
   - **Marlin/Groth16** use real verified BN254 / BLS12-381 (not stand-ins).
 - **Extension-field FRI, full PCS opening, single-binary ZMM orchestration** remain
-  PLACEHOLDER and are **genuinely unbuilt or blocked-on-integration**, not stale-doc:
+  PLACEHOLDER and are **unbuilt or blocked-on-integration**, not stale-doc:
   - **Extension-field FRI (Plonky3 deg-4 `BinomialExtensionField`)** — UNBUILT.
     No quartic-extension arithmetic kernels are emitted; the emitted FRI fold is
     over the **base** field BabyBear only (`FULL_PROVER_VS_P3.md:238-267`). Emitting

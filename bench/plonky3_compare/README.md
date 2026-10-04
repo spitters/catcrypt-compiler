@@ -20,7 +20,7 @@ theorem and a KAT against the `plonky3-hax` reference (`../../../hax-specs/plonk
 Modules live under
 `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3*Emit.lean`.
 
-### The lane-map keystone, reused twice
+### The lane-map theorem, reused twice
 
 `LaneMap.laneMap_eq_scalarMap` / `laneMapIdx_eq_scalar` (the verified
 vectorizer heart) instantiates directly at:
@@ -31,7 +31,7 @@ vectorizer heart) instantiates directly at:
   cosets, one `fri_fold` per coset.
 
 The LDE butterfly and the AIR per-step constraint sweep are the same shape. The
-denotation theorems are compositions of the keystone, not new theory.
+denotation theorems are compositions of the lane-map theorem, not new theory.
 
 ### No opaque leaf
 
@@ -87,7 +87,7 @@ Plonky3-tutorial Fibonacci AIR. What this chain does **not** yet emit as a
 single fused `prove()` entry point: the cross-layer wiring (transcript /
 Fiat-Shamir, the OOD / DEEP quotient, the proof-of-work grinding) that
 `plonky3-hax/src/plonky3.rs::plonky3_prove` orchestrates. Those compose the
-four emitted kernels; the per-kernel emits here are the load-bearing
+four emitted kernels; the per-kernel emits here carry the
 arithmetic. The whole-prover regression oracle is
 `plonky3-hax/tests/kat_vectors.rs::kat_plonky3_fib_height{8,16}_*`.
 

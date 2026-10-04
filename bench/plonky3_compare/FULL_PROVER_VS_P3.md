@@ -1,6 +1,6 @@
 # Plonky3 full-prover: emitted honest prover vs the real `p3-*` crate
 
-Head-to-head between a CatCrypt-emitted Fibonacci-STARK prover and a genuine
+Head-to-head between a CatCrypt-emitted Fibonacci-STARK prover and an
 upstream Plonky3 prover built from the `p3-*` 0.5.3 crates.io release. All
 numbers are real, same-host, `taskset -c 3`, `rdtsc`, min-of-3.
 
@@ -85,7 +85,7 @@ KAT: verify REJECT on tampered public input     [PASS]
 The verifier accepts the honest proof and rejects a flipped public input
 (claimed 8th-row Fibonacci value `c_last` → `c_last+1`): the tampered public
 value changes the Fiat-Shamir transcript (it is absorbed before beta and the
-query indices are squeezed), so beta and the query set no longer match the
+query indices are squeezed), so beta and the query set do not match the
 proof's recorded values and the Merkle/FRI checks fail.
 
 **Real `p3-*` reference (`p3_ref/`):**
@@ -99,7 +99,7 @@ KAT: verify REJECT on tampered public input     [PASS]
 digest[0..8] == Plonky3 PaddingFreeSponge<16,8,8>   [PASS]
 ```
 
-## What fraction is genuinely verified-Poseidon2
+## What fraction is verified-Poseidon2
 
 - **Hashing (Merkle commit, FRI fold-layer commit, Fiat-Shamir, PoW): 100%
   through the verified Poseidon2 permutation.** No splitmix surrogate anywhere
@@ -224,7 +224,7 @@ make plonky3-p3-accept-prove
   REAL p3 verifier on candidate proof: ACCEPT
 ```
 
-The proof is **byte-identical** to the proof the genuine `p3-*` 0.5.3 prover
+The proof is **byte-identical** to the proof the upstream `p3-*` 0.5.3 prover
 emits for the same trace/config (`cmp p3_our_proof.bin p3_ref/p3_default_proof.bin`),
 and a 1-byte tamper is REJECTed by the real verifier
 (`InvalidOpeningArgument(InputError(CapMismatch))`).
@@ -281,7 +281,7 @@ as the A4/A7 leaves), owned-rendered to `gen_com/ext4_from_rustcmd_owned.s`:
   Frobenius coefficient multiply `efrob`).
 
 Each leaf is `allRegArith` (`ext_field_all_regarith_only`, via the `RegTail`
-keystone), so its denotation IS the Barrett word arithmetic — by-construction
+main theorem), so its denotation IS the Barrett word arithmetic — by-construction
 `leaf.denote = spec`, no `sorry`, axioms `[propext, Quot.sound]` only.
 
 The **Frobenius/norm inverse** `einv` is composed from these emitted leaves plus
@@ -426,7 +426,7 @@ contains no `# UNHANDLED-OP`, and is exactly the five leaves' functions in order
 
 **What this closes**: the field-arithmetic kernel set of the whole prover is now
 ONE verified-emitted object, one driver / one link line (no per-leaf `.s` list).
-This is the load-bearing half of Gap 2 item 3 ("a single `toLprogPhysAbi` emit
+This is the substantive half of Gap 2 item 3 ("a single `toLprogPhysAbi` emit
 of that composed `Com` to one `.s`, KAT-gated").
 
 ### Gap 2 items 1–2 — orchestration loops as owned control flow: LANDED
@@ -520,7 +520,7 @@ emitted Barrett leaf, composed before each `p3_ser_u32_le`.
 ### Gap 2 item 1 — Fiat-Shamir DuplexChallenger transcript bookkeeping as owned `Lcmd`: LANDED
 
 `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3FiatShamirEmit.lean`
-(`lake exe plonky3fiatshamir`) emits the load-bearing Fiat-Shamir bookkeeping —
+(`lake exe plonky3fiatshamir`) emits the Fiat-Shamir bookkeeping —
 the DuplexChallenger<16,8> **duplexing** step (`ch_duplex` of `p3_accept_prove.c`)
 — as owned-backend `Lcmd`. The round arithmetic is the Poseidon2 permute (already
 an emitted leaf); what was hand-written C is the absorb/squeeze buffer marshalling
@@ -555,7 +555,7 @@ counter increments and the `if (inlen==8) duplex` / `if (inlen>0||outlen==0) dup
 *trigger tests* that decide WHEN to duplex — stays in the driver as straight-line
 public-counter logic (no field op; the duplex it triggers is this owned leaf). The
 per-value `observe` append (`inbuf[inlen++] = v`) is one indexed store; the
-load-bearing bookkeeping is the duplex buffer marshalling owned here.
+substantive bookkeeping is the duplex buffer marshalling owned here.
 
 ### Gap 2 item 1 — owned ZMM Poseidon2 permute wired into the prover: LANDED
 
@@ -635,7 +635,7 @@ RC-add+S-box, internal diagonal) is all in the owned ZMM half-kernels.
 
 **(a) the cross-lane MDS mixing is now CLOSED** — the verified backend owns it:
 `Avx512Model`/`Lowering`/`Encoder` gained the variable `vpermq` (`vpermxvarq`,
-the full 8-lane cross-lane permute, lowering-correctness keystone axiom-clean,
+the full 8-lane cross-lane permute, lowering-correctness theorem axiom-clean,
 encoder byte-checked vs gas AND `decode(encode)=i` SAIL-cross-validated), and
 `VIR/Poseidon2Avx512MdsPerm.lean` wires the whole width-16 external MDS through it:
 the `M4` block-mix (`circ(2,3,1,1) = 2I+3P+P²+P³`) and the column-sum

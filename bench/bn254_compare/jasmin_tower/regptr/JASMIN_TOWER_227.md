@@ -90,7 +90,7 @@ real leaves use the reg-u64 mem-pointer convention and cannot take a reg-ptr
 argument without a #219 reg-ptr leaf re-emit). The one leaf whose stub realises
 its true semantics is `bn254_felem_copy` (copy a→o), so `Fp2_felem_copy` is the
 byte-exact assertion. A byte-identical Fp2_mul/add/sub KAT against the Rust tower
-requires reg-ptr verified leaves; that is NOT fabricated here. The full-pairing
+requires reg-ptr verified leaves; this file does not provide them. The full-pairing
 KAT on EIP-196/197 vectors (non-degeneracy, e(P,Q)·e(-P,Q)=1, e(2G)·e(3G)=e(5G))
 remains blocked on the residual codegen gap above.
 
