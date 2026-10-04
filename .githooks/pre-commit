@@ -68,4 +68,20 @@ if git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -q '\.md$'
   bash scripts/check-doc-links.sh || exit 1
 fi
 
+# Importers of the staged Lean files that Lake reports as not up to date, over every
+# repository of the workspace (the dev tree imports this one). The query is the dev
+# tree's scripts/agent-closure.py; without that sibling the step is skipped. It warns;
+# RDEPS_STRICT=1 refuses the commit, RDEPS_SKIP=1 skips the query.
+rdeps_tool="../SSProve-lean/scripts/agent-closure.py"
+rdeps_staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.lean$' || true)
+if [ -n "$rdeps_staged" ] && [ -f "$rdeps_tool" ] && [ "${RDEPS_SKIP:-0}" != "1" ]; then
+  # shellcheck disable=SC2086
+  if ! rdeps_out=$(python3 "$rdeps_tool" rdeps --unbuilt $(printf "$PWD/%s " $rdeps_staged) 2>&1); then
+    echo "pre-commit: importers of the staged Lean files are not up to date:" >&2
+    printf '%s\n' "$rdeps_out" | head -40 >&2
+    echo "Build them from the dev tree: scripts/heavy-run.sh lake build <modules>" >&2
+    [ "${RDEPS_STRICT:-0}" = "1" ] && exit 1
+  fi
+fi
+
 exit 0
