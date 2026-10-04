@@ -5,8 +5,10 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
 
@@ -35,19 +37,19 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop (rolledForLoopNRt)
+open CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan (compileLoop)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype (N)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop (comLCertB)
 open CatCrypt.Crypto.Jasmin.LowCT (SExpr)
 
 /-- The front-compiled runtime-count loop of the binary limb operation `op`, with the
-    arguments `binLprog` passes. -/
+    arguments `binLprog` passes: the dispatcher `FrontRoutePlan.compileLoop` at the plain body
+    front and the runtime trip count read from the counter register. -/
 def binProg (op : SExpr → SExpr → SExpr) :=
-  rolledForLoopNRt (Γouter := ΓouterBin) (accCTy := .memref N)
+  compileLoop (Γouter := ΓouterBin) (accCTy := .memref N)
     (invCTys := [.memref N, .memref N])
-    vmBin "out" (binBody op)
-    (count := .here)
+    .plain (.runtime .here) vmBin "out" (binBody op)
     (init := .there (.there (.there .here)))
     (invs := .cons (.there (.there .here)) (.cons (.there .here) .nil))
 
