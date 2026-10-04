@@ -287,6 +287,9 @@ instance : HasWord64 towerDialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- `towerDialect` denotes calls in the empty environment. -/
+instance : CallDenote towerDialect := ⟨.empty⟩
+
 /-- The bit type of `towerDialect`. -/
 instance : HasBitType towerDialect where
   bit := TowerTy.bit

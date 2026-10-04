@@ -109,6 +109,7 @@ theorem leakRun_lowerSel (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : List
           NFProg.leakRun M fuel k (hvAppend acc V) :=
         fun acc => ihk hbk.2 _ _ _ (agrees_appLift h _ acc)
       simp only [lowerSel, NFProg.leakRun, lookupArgs_renameVars h, hb, hk']
+  | call => intro Δ ren V W h; rfl
 
 /-- **The lowering keeps the leakage run of a branch-free program.** `lowerSelects p` runs
     to the results and the events of `p`, at every fuel and valuation, when `p` has no
@@ -151,8 +152,8 @@ theorem ifFree_emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
       simpa only [NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk, Bool.true_and] using
         ifFree_emitRes cont hc h rest σ.wk k' hk'
 
-/-- **The output of `nfToCat` is branch-free.** `nfToCat` refuses branches and exit-flag
-    loops, so a program it returns has no `ifThenElse`. -/
+/-- **The output of `nfToCat` is branch-free.** `nfToCat` refuses branches, exit-flag
+    loops and calls, so a program it returns has no `ifThenElse`. -/
 theorem ifFree_nfToCat : ∀ {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (σ : TRd Γ Δ) (p' : NFProg catCryptDialect Δ (ts.map catTy)),
     nfToCat p σ = some p' → NFProg.ifFree p' = true
@@ -173,5 +174,6 @@ theorem ifFree_nfToCat : ∀ {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} {
       · cases he
   | _, _, _, .ifThenElse .., _, _, he => by simp [nfToCat] at he
   | _, _, _, .whileLoop .., _, _, he => by simp [nfToCat] at he
+  | _, _, _, .call .., _, _, he => by simp [nfToCat] at he
 
 end CatCrypt.Crypto.Hax.NFToCat

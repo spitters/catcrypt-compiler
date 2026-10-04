@@ -64,7 +64,7 @@ namespace NFProgPasses
     types `ts`, at the fuel `fuel`: inputs are valuations of `Γ`, outputs are result
     tuples, and the denotation is `NFProg.denote fuel`. -/
 def nfSem (fuel : Nat) (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty]
-    [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] (Γ : Ctxt d)
+    [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] [CallDenote d] (Γ : Ctxt d)
     (ts : List d.Ty) : PassChain.Sem (NFProg d Γ ts) where
   In := Valuation Γ
   Out := Valuation ts
@@ -81,7 +81,7 @@ def dceStep (Γ : Ctxt d) (ts : List d.Ty) : PassChain.Step (NFProg d Γ ts) (NF
 
 /-- The certificate of dead-code elimination: the eliminated program keeps every
     successful run, from `NFProg.denote_dce`. -/
-def dceCert [DialectDenoteM d Option] (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
+def dceCert [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
     PassChain.StepCert (dceStep Γ ts).run (nfSem fuel d Γ ts) (nfSem fuel d Γ ts) :=
   PassChain.StepCert.ofRefines _ fun p q _ _ hf hd => by
     cases hf
@@ -94,7 +94,7 @@ def lowerSelectsStep [DialectDenoteM d Option] [HasSelect d] (Γ : Ctxt d) (ts :
 
 /-- The certificate of the select lowering: the lowered program has the denotation of
     its input, from `NFProg.denote_lowerSelects`. -/
-def lowerSelectsCert [DialectDenoteM d Option] [HasSelect d] (fuel : Nat) (Γ : Ctxt d)
+def lowerSelectsCert [DialectDenoteM d Option] [HasSelect d] [CallDenote d] (fuel : Nat) (Γ : Ctxt d)
     (ts : List d.Ty) :
     PassChain.StepCert (lowerSelectsStep Γ ts).run (nfSem fuel d Γ ts) (nfSem fuel d Γ ts) :=
   PassChain.StepCert.ofDenoteEq _ fun p q hf => by
@@ -111,7 +111,7 @@ def aegraphStep (R : RuleSet d) (Γ : Ctxt d) (ts : List d.Ty) :
 
 /-- The certificate of the e-graph stage: the optimised program has the denotation of
     its input, from `aegraphOptNF_denote`. -/
-def aegraphCert (R : RuleSet d) (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
+def aegraphCert [CallDenote d] (R : RuleSet d) (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
     PassChain.StepCert (aegraphStep R Γ ts).run (nfSem fuel d Γ ts) (nfSem fuel d Γ ts) :=
   PassChain.StepCert.ofDenoteEq _ fun p q hf => by
     cases hf
@@ -142,7 +142,7 @@ section MapCert
 
 variable {d d' : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d] [DialectSignature d'] [TyDenote d'.Ty] [HasWord64 d'] [HasBoolBit d']
-  [DialectDenote d] [DialectDenote d']
+  [DialectDenote d] [DialectDenote d'] [CallDenote d] [CallDenote d']
 
 open NFProgPasses in
 /-- **The certificate of the lowering along a partial block lowering.** Under the

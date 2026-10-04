@@ -297,21 +297,23 @@ theorem regionTransportsM_withRegionTypes (L : MultiBlockLoweringData d d')
 variable [DialectDenote d] [DialectDenote d']
 
 /-- **Preservation along `L.withRegionTypes hw`.** Under the `Good`-gated block square of `L`,
-    a `Good`-covered program lowered by `mapM` along `L.withRegionTypes hw`, at a renaming
-    relating `W` to the flattened `regionEnc` encoding of `V`, denotes at every fuel the
-    flattened encoding of the source denotation. -/
-theorem withRegionTypes_mapM_denote (L : MultiBlockLoweringData d d')
+    a `Good`-covered program without `call` lowered by `mapM` along `L.withRegionTypes hw`,
+    at a renaming relating `W` to the flattened `regionEnc` encoding of `V`, denotes at every
+    fuel the flattened encoding of the source denotation. -/
+theorem withRegionTypes_mapM_denote [CallDenote d] [CallDenote d']
+    (L : MultiBlockLoweringData d d')
     (hw : OpTypesAvoid d IsRegionTy) (hwb : HasBitType.bit (d := d) ≠ HasWord64.word (d := d))
     (C : RegionValCodec d d') (enc : L.Enc)
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop) (hBlk : L.BlockSquare enc Good)
-    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good)
+    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true)
+    (hp : p.Covered Good)
     {Δ : Ctxt d'} (ren : Ctxt.Hom ((L.withRegionTypes hw).mapCtx Γ) Δ) (V : Valuation Γ)
     (W : Valuation Δ) (hren : pullV ren W = flatVal (regionEnc C enc) V) :
     (NFProg.mapM (L.withRegionTypes hw) (regionTypesM_withRegionTypes L hw hwb) p ren).denote
         fuel W = (p.denote fuel V).map (flatVal (regionEnc C enc)) :=
   NFProg.mapM_denote (L.withRegionTypes hw) _ (regionEnc C enc) Good
     (withRegionTypes_blockSquare L hw C enc Good hBlk)
-    (regionTransportsM_withRegionTypes L hw hwb C enc) fuel p hp ren V W hren
+    (regionTransportsM_withRegionTypes L hw hwb C enc) fuel p hc hp ren V W hren
 
 end Regions
 
@@ -423,7 +425,7 @@ theorem towerSqLoop_denote {n : Nat} (P : LimbParams n) (β : Int) (fuel : Nat) 
       some (flatVal (towerLimbsREnc P) (.cons (sqIter P.p β w.toNat x) .nil)) := by
   refine (withRegionTypes_mapM_denote (towerToLimbs P) towerAvoid tower_bit_ne_word
     towerJasminCodec (towerLimbEnc P) (TowerAt P.p) (towerToLimbs_blockSquare P) fuel
-    (towerSqLoop P.p β) (towerSqLoop_covered P.p β) _ _ _
+    (towerSqLoop P.p β) rfl (towerSqLoop_covered P.p β) _ _ _
     (FieldDialectBlockDescent.pullV_id _)).trans ?_
   rw [towerSqLoop_denote_src]
   rfl

@@ -500,17 +500,17 @@ theorem regionTypes_id : NFProg.RegionTypes (BlockLoweringData.id d) := ⟨rfl, 
 
 variable [DialectDenote d]
 
-/-- **The identity lowering preserves denotation.** A structured program lowered by the
-    identity block lowering denotes, at every fuel, its own results, read along
-    `List.map (fun t => t)`. -/
-theorem map_id_denote (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
-    (V : Valuation Γ) :
-    (NFProg.map (BlockLoweringData.id d) regionTypes_id p (fun v => v)).denote fuel V =
+/-- **The identity lowering preserves denotation.** A structured program without `call`
+    lowered by the identity block lowering denotes, at every fuel, its own results, read
+    along `List.map (fun t => t)`. -/
+theorem map_id_denote [CallDenote d] (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (hc : p.callFree = true) (V : Valuation Γ) :
+    (NFProg.map (BlockLoweringData.id d) regionTypes_id p hc (fun v => v)).denote fuel V =
       (p.denote fuel V).map
         (BlockLoweringExtend.transArgs (fun t => t) (fun x => x)) :=
   NFProg.map_denote_of_blockOpTransports (BlockLoweringData.id d) (fun x => x)
     (fun V => V) regionTypes_id (fun _ _ => rfl) (fun _ _ => rfl) (fun _ _ => rfl)
-    ⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩ fuel p V
+    ⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩ fuel p hc V
 
 end MapId
 
@@ -560,7 +560,7 @@ theorem plug_append {Γ Δ Θ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ) (q 
   | ifThenElse cond thn els p ih => exact congrArg (NFProg.ifThenElse cond thn els) (ih q)
 
 /-- The empty prefix denotes the unit of `Option`. -/
-theorem denote_nil [DialectDenoteM d Option] (fuel : Nat) {Γ : Ctxt d} (V : Valuation Γ) :
+theorem denote_nil [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) {Γ : Ctxt d} (V : Valuation Γ) :
     (NFPre.nil : NFPre d Γ Γ).denote fuel V = some V := rfl
 
 end NFPre
@@ -588,7 +588,7 @@ instance RegionCtx.instCategory : Category (RegionCtx d) where
 /-- **The denotation of regions as a functor into the Kleisli category of `Option`.** A
     context goes to its valuations and a prefix to its denotation at the fuel `fuel`;
     preservation of composition is `NFPre.denote_append`. -/
-def regionDenote [DialectDenoteM d Option] (fuel : Nat) : RegionCtx d ⥤ KleisliCat Option where
+def regionDenote [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) : RegionCtx d ⥤ KleisliCat Option where
   obj Γ := KleisliCat.mk Option (Valuation (Γ : Ctxt d))
   map p := NFPre.denote fuel p
   map_id _ := rfl

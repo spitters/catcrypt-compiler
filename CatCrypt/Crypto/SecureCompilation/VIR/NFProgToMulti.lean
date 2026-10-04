@@ -68,7 +68,7 @@ variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d]
 
 /-- The straight-line multi-result program of an `NFProg` made of let-bindings and a
-    return; `none` on a region constructor. -/
+    return; `none` on a region constructor or a call. -/
 def toMultiAt : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts →
     Option (MultiReturnCom d Γ ts)
   | _, _, .ret vs => some (.ret vs)
@@ -76,9 +76,10 @@ def toMultiAt : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts →
   | _, _, .forLoop .. => none
   | _, _, .ifThenElse .. => none
   | _, _, .whileLoop .. => none
+  | _, _, .call .. => none
 
 /-- The straight-line multi-result program of an `NFProg` made of let-bindings and a
-    return (`toMultiAt`); `none` on a region constructor. -/
+    return (`toMultiAt`); `none` on a region constructor or a call. -/
 def toMulti? {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
     Option (MultiReturnCom d Γ ts) :=
   toMultiAt p
@@ -115,7 +116,7 @@ variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
 
 /-- **A straight-line reading preserves the denotation**: a program `toMulti?` reads as
     the multi-result program `m` denotes `some (m.denote V)`, at every fuel. -/
-theorem denote_of_toMulti? {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
+theorem denote_of_toMulti? [CallDenote d] {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
     {m : MultiReturnCom d Γ ts} (hm : p.toMulti? = some m) (fuel : Nat) (V : Valuation Γ) :
     p.denote fuel V = some (m.denote V) := by
   induction p with
@@ -131,6 +132,7 @@ theorem denote_of_toMulti? {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
   | forLoop => simp [toMulti?, toMultiAt] at hm
   | ifThenElse => simp [toMulti?, toMultiAt] at hm
   | whileLoop => simp [toMulti?, toMultiAt] at hm
+  | call => simp [toMulti?, toMultiAt] at hm
 
 /-- **A straight-line reading preserves the leakage run**: a program `toMulti?` reads as
     the multi-result program `m` runs to `m.denote V` with the events `m.ctLeak M V`, at
@@ -153,6 +155,7 @@ theorem leakRun_of_toMulti? (M : LeakModel d) {Γ : Ctxt d} {ts : List d.Ty}
   | forLoop => simp [toMulti?, toMultiAt] at hm
   | ifThenElse => simp [toMulti?, toMultiAt] at hm
   | whileLoop => simp [toMulti?, toMultiAt] at hm
+  | call => simp [toMulti?, toMultiAt] at hm
 
 end NFProg
 

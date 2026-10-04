@@ -248,6 +248,9 @@ instance : HasWord64 nfDialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- `nfDialect` denotes calls in the empty environment. -/
+instance : CallDenote nfDialect := ⟨.empty⟩
+
 /-- The bit of `nfDialect` is `bit`, denoting `Bool`. -/
 instance : HasBoolBit nfDialect where
   bit := NfTy.bit

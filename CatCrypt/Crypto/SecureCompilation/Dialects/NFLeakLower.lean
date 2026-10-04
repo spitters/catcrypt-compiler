@@ -94,6 +94,7 @@ theorem NFProg.leakRun_of_toComAt (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d}
   | forLoop => simp [NFProg.toComAt] at hc
   | ifThenElse => simp [NFProg.toComAt] at hc
   | whileLoop => simp [NFProg.toComAt] at hc
+  | call => simp [NFProg.toComAt] at hc
 
 /-- A program `toCom?` reads as the straight-line program `c` runs to the denotation of `c`
     and to the events of `c`. -/
@@ -282,6 +283,7 @@ theorem nfToComLAt_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompa
       · simp [forNode] at hj
   | ifThenElse => simp [nfToComLAt] at hj
   | whileLoop => simp [nfToComLAt] at hj
+  | call => simp [nfToComLAt] at hj
 
 /-- **The leakage transformer of the looped lowering** for a program with one result. -/
 theorem nfToComL_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat P Pj)

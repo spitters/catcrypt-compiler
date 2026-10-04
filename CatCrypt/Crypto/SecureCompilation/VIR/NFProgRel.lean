@@ -490,8 +490,8 @@ end Leak
 section Program
 
 variable {d d' : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
-  [HasBoolBit d] [DialectDenoteM d Option] [DialectSignature d'] [TyDenote d'.Ty]
-  [HasWord64 d'] [HasBoolBit d'] [DialectDenoteM d' Option]
+  [HasBoolBit d] [DialectDenoteM d Option] [CallDenote d] [DialectSignature d']
+  [TyDenote d'.Ty] [HasWord64 d'] [HasBoolBit d'] [DialectDenoteM d' Option] [CallDenote d']
 
 /-- **The counted-loop constructor, graded bisimulation form.** The relation of carried
     tuples is a family `Rc : ℕ → …` indexed by the trip index. Two counted loops over

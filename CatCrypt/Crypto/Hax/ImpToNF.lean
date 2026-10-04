@@ -611,7 +611,7 @@ theorem EnvRel.cons {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {env : Env} {V : Valua
 /-- The denotation of a prefix over `nfDialect` with the leaves of `tableOf bi`. -/
 abbrev PDen (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ)
     (V : Valuation Γ) : Option (Valuation Δ) :=
-  @NFPre.denote nfDialect _ _ _ _ (nfDenote (tableOf bi)) fuel Γ Δ p V
+  @NFPre.denote nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ fuel Γ Δ p V
 
 /-- The prefix of one binding denotes the valuation extended with the value of the
     operation. -/
@@ -639,7 +639,7 @@ theorem PDen_bind1N (bi : Builtins) (fuel : Nat) (tgt : Option String) {Γ : Ctx
 theorem PDen_append (bi : Builtins) (fuel : Nat) {Γ Δ Θ : Ctxt nfDialect}
     (p : NFPre nfDialect Γ Δ) (q : NFPre nfDialect Δ Θ) (V : Valuation Γ) :
     PDen bi fuel (p.append q) V = (PDen bi fuel p V).bind (PDen bi fuel q) :=
-  @NFPre.denote_append nfDialect _ _ _ _ (nfDenote (tableOf bi)) fuel Γ Δ Θ p q V
+  @NFPre.denote_append nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ fuel Γ Δ Θ p q V
 
 /-- **The simulation statement** for the expression `e` and the output `o` of the front
     from `σ`: a run of `denote' bi fuel e` from an environment related to `V` to a value
@@ -876,7 +876,7 @@ theorem argsOut_sound (bi : Builtins) (fuel : Nat) (es : List ImpExpr) :
               refine ⟨W2, ?_, hrel2, ?_⟩
               · rw [PDen_append, hW1]; exact hW2
               · show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
-                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) tf _ _ _ os.pre
+                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ os.pre
                   o.res _ _ hW2]
       | _ =>
           rw [args_cons_run, h1] at hr
@@ -908,7 +908,7 @@ theorem tupleOut_sound (bi : Builtins) (tf : Nat) :
         cases tgt <;>
         · show (some ((p.wk v).lookup W1, rv.lookup W1)).bind
             (fun x => some (W1.extend (t := NfTy.tcons a (tupTy as)) x)) = _
-          rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) tf _ _ _ p v _ _ hW1]
+          rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ p v _ _ hW1]
           rfl
       · show Value.tuple (enc a (v.lookup V) :: tailVals (enc (tupTy as) (rv.lookup W1))) = _
         rw [henc]
@@ -1020,7 +1020,7 @@ theorem tuple_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfT
       obtain ⟨Δ, p, rv⟩ := T
       obtain ⟨W2, hW2, henc⟩ := ht
       refine ⟨W2, ?_, hrel1.mapV _ fun t u =>
-        @NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) tf _ _ _ p u _ _ hW2,
+        @NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ p u _ _ hW2,
         henc.symm⟩
       show PDen bi tf (oa.pre.append p) V = _
       rw [PDen_append, hW, Option.bind_some]
@@ -1204,7 +1204,7 @@ theorem EnvRel.loopEnv {Γ₃ Δ : Ctxt nfDialect} (σ : NfEnv Γ₃) (i : Strin
 /-- The denotation of a program over `nfDialect` with the leaves of `tableOf bi`. -/
 abbrev PDenP (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (V : Valuation Γ) : Option (Valuation (d := nfDialect) ts) :=
-  @NFProg.denote nfDialect _ _ _ _ (nfDenote (tableOf bi)) fuel Γ ts p V
+  @NFProg.denote nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ fuel Γ ts p V
 
 /-- A composed prefix denotes the valuation the second prefix reaches from the hole of the
     first. -/
@@ -1220,7 +1220,7 @@ theorem PDenP_plug_ret (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect} {cs
     {W : Valuation Δ} (h : PDen bi fuel p V = some W) :
     PDenP bi fuel (p.plug (.ret rets)) V = some (Expr.lookupArgs rets W) := by
   unfold PDenP
-  rw [@NFPre.denote_plug nfDialect _ _ _ _ (nfDenote (tableOf bi)) fuel _ _ _ p (.ret rets) V]
+  rw [@NFPre.denote_plug nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ fuel _ _ _ p (.ret rets) V]
   unfold PDen at h
   rw [h]
   rfl
@@ -1517,7 +1517,7 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
   obtain ⟨W2, hW2, hrel2, rfl⟩ := hHiS tf
   obtain ⟨hInt, htoInt, hloop⟩ := forFold_enc_run bi fuel i lo hi body hh hrun
   have hloW : (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res).lookup W2 = lo :=
-    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) tf _ _ _ oHi.pre _ _ _ hW2).trans
+    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ oHi.pre _ _ _ hW2).trans
       rfl
   have hargsT : Expr.lookupArgs (HVector.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res)
       (HVector.cons oHi.res .nil)) W2 =
@@ -1828,6 +1828,7 @@ def rbProg : {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect Γ 
       | _ => none
   | _, _, .ifThenElse .., _, _, _ => none
   | _, _, .whileLoop .., _, _, _ => none
+  | _, _, .call .., _, _, _ => none
 
 /-- **The readback** of a program with one result: `rbProg` with the result read as an
     expression. -/
@@ -2766,6 +2767,9 @@ theorem rbProg_sound_aux (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : 
   | whileLoop inits body k _ _ =>
       refine ⟨fun ρ c rk ie c' h => ?_, trivial⟩
       simp [rbProg] at h
+  | call f args k _ =>
+      refine ⟨fun ρ c rk ie c' h => ?_, trivial⟩
+      simp [rbProg] at h
 
 /-- The expression of a reading runs to the value the reading reads, leaving the environment
     unchanged, when the components of a tuple value are no control-flow values. -/
@@ -2844,7 +2848,7 @@ theorem nfRoute_run (bi : Builtins) (sigOf : String → List NfTy → Option NfT
   have hp : PDenP bi 0 o.prog V = some (.cons (o.res.lookup W) .nil) :=
     PDenP_plug_ret bi 0 o.pre (.cons o.res .nil) V hpre
   have hd : PDenP bi 0 (NFProg.dce o.prog) V = some (.cons (o.res.lookup W) .nil) :=
-    @NFProg.denote_dce nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ o.prog 0 V _ hp
+    @NFProg.denote_dce nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ _ o.prog 0 V _ hp
   exact nfToImp_denote bi 0 _ ρ hnf hρ hd
 
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in

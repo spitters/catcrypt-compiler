@@ -115,6 +115,7 @@ def NFProg.dceErase (M : LeakModel d) (fuel : Nat) :
       ((whileErase (NFProg.dceErase M fuel body) fuel tr).1 ++
           (NFProg.dceErase M fuel k (whileErase (NFProg.dceErase M fuel body) fuel tr).2).1,
         (NFProg.dceErase M fuel k (whileErase (NFProg.dceErase M fuel body) fuel tr).2).2)
+  | _, _, .call .., tr => ([], tr)
 
 /-! ## Renaming keeps the events -/
 
@@ -188,6 +189,11 @@ theorem NFProg.leakRunM_rename? (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts
       congr 1
       funext acc
       rw [ihk hk (PRen.agrees_liftApp h _ acc.1)]
+  | call fn args k ih =>
+      intro Δ f p' V W hp h
+      simp only [NFProg.rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨a', ha, k', hk, rfl⟩ := hp
+      rfl
 
 /-! ## The leakage transformer of `dce` -/
 
@@ -338,6 +344,7 @@ theorem NFProg.leakRunM_dce (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : L
       refine ⟨E₁ ++ E₂, ?_, fun rest => ?_⟩
       · simp only [NFProg.dce, NFProg.leakRunM, h₁, Option.bind_some, h₂, Option.map_some]
       · simp only [NFProg.dceErase, List.append_assoc, e₁, e₂]
+  | call => intro V r h; simp [NFProg.leakRunM] at h
 
 /-- **Constant time through `dce`, relative to source runs.** Two runs of `p` that succeed
     with equal events give two runs of `dce p` that succeed with equal events. -/

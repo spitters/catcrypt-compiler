@@ -157,7 +157,7 @@ def jforNode {Γ : Ctxt jasminDialect} {t : JasminTy} : {cs : List JasminTy} →
   | _ :: _ :: _, _, .cons _ (.cons _ _), _, _ => none
 
 /-- Lower an `NFProg jasminDialect` program with the one result `t` (`ts = [t]`) to
-    `ComL`. `none` on a branch, an exit-flag loop, and a counted loop carrying other
+    `ComL`. `none` on a branch, an exit-flag loop, a call, and a counted loop carrying other
     than one value or with a body that is not straight-line. -/
 def jasminNFToComLAt : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
     NFProg jasminDialect Γ ts → (t : JasminTy) → ts = [t] → Option (ComL Γ t)
@@ -170,6 +170,7 @@ def jasminNFToComLAt : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
       (jasminNFToComLAt k t h).bind (jforNode count inits body)
   | _, _, .ifThenElse .., _, _ => none
   | _, _, .whileLoop .., _, _ => none
+  | _, _, .call .., _, _ => none
 
 /-- Lower an `NFProg jasminDialect` program with one result to `ComL`
     (`jasminNFToComLAt` at `ts = [t]`). -/
@@ -230,6 +231,7 @@ theorem jasminNFToComLAt_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       · simp [jforNode] at hc
   | ifThenElse => simp [jasminNFToComLAt] at hc
   | whileLoop => simp [jasminNFToComLAt] at hc
+  | call => simp [jasminNFToComLAt] at hc
 
 /-! ## 3. The carried-register fragment of `NFProg jasminDialect` to `ComLJ` -/
 
@@ -309,7 +311,7 @@ def jwhileNodeJ {Γ : Ctxt jasminDialect} {t : JasminTy} {cs : List JasminTy}
     `ComLJ`: let-bindings to `ComLJ.var`, the return to a lifted `ComL.ret`, a counted
     loop with a straight-line body to `ComLJ.forLoopRegs` (`jforNodeJ`), and a do-while
     with a straight-line body to `ComLJ.whileRegs` (`jwhileNodeJ`), for every carried
-    tuple. `none` on a branch and on a loop whose body is not straight-line. -/
+    tuple. `none` on a branch, on a call and on a loop whose body is not straight-line. -/
 def jasminNFToComLJAt : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
     NFProg jasminDialect Γ ts → (t : JasminTy) → ts = [t] → Option (ComLJ Γ t)
   | _, _, .ret vs, _, h => by
@@ -322,6 +324,7 @@ def jasminNFToComLJAt : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
   | _, _, .ifThenElse .., _, _ => none
   | _, _, .whileLoop inits body k, t, h =>
       (jasminNFToComLJAt k t h).bind (jwhileNodeJ inits body)
+  | _, _, .call .., _, _ => none
 
 /-- **Preservation, bisimulation form.** When `jasminNFToComLJAt p t h = some c`, the
     program `p` and the `ComLJ` program `c` at the same fuel both fail or both succeed,
@@ -377,6 +380,7 @@ theorem jasminNFToComLJAt_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       · rfl
       · exact ihk h k' hk _
   | ifThenElse => simp [jasminNFToComLJAt] at hc
+  | call => simp [jasminNFToComLJAt] at hc
 
 /-- **Preservation of the leakage run, bisimulation form.** When
     `jasminNFToComLJAt p t h = some c`, the leakage runs of `p` and of `c` at the same fuel
@@ -443,6 +447,7 @@ theorem jasminNFToComLJAt_leakRun (M : LeakModel jasminDialect) {Γ : Ctxt jasmi
       · simp only [Option.bind_some, ihk h k' hk, Option.map_map]
         rfl
   | ifThenElse => simp [jasminNFToComLJAt] at hc
+  | call => simp [jasminNFToComLJAt] at hc
 
 /-- **Preservation of the events.** When `jasminNFToComLJAt p t h = some c`, the events of
     `p` at a fuel are the events of `c` at the same fuel (both `none` when a do-while runs

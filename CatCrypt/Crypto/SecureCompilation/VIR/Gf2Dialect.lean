@@ -237,6 +237,9 @@ instance : HasWord64 gf2Dialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- `gf2Dialect` denotes calls in the empty environment. -/
+instance : CallDenote gf2Dialect := ⟨.empty⟩
+
 /-- The branch bit of `gf2Dialect` is `bit`, read as `true` exactly at `1#1`. -/
 instance : HasBoolBit gf2Dialect where
   bit := Gf2Ty.bit
@@ -660,16 +663,19 @@ theorem gf2RegionTypes : NFProg.RegionTypes gf2ToJasmin := ⟨rfl, rfl⟩
 theorem gf2RegionTransports : NFProg.RegionTransports gf2ToJasmin gf2RegionTypes transId :=
   ⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩
 
+/-- The GHASH loop has no `call`. -/
+theorem ghashNF_callFree (n : Nat) : (ghashNF n).callFree = true := rfl
+
 /-- **The lowered GHASH loop**: `ghashNF n` lowered by `NFProg.map gf2ToJasmin`, the value
     of `NFProg.map? gf2ToJasmin.toPartial`. -/
 def ghashJ (n : Nat) : NFProg jasminDialect ((ghashCtx n).map Gf2Ty.toJ) [r128] :=
-  NFProg.map gf2ToJasmin gf2RegionTypes (ghashNF n) (fun v => v)
+  NFProg.map gf2ToJasmin gf2RegionTypes (ghashNF n) (ghashNF_callFree n) (fun v => v)
 
 /-- The lowered GHASH loop is the value of the partial lowering `NFProg.map?`. -/
 theorem map?_ghashNF (n : Nat) :
     NFProg.map? gf2ToJasmin.toPartial gf2RegionTypes (ghashNF n) (fun v => v) =
       some (ghashJ n) :=
-  NFProg.map?_toPartial _ _ _ _
+  NFProg.map?_toPartial _ _ _ (ghashNF_callFree n) _
 
 /-- **The lowered GHASH loop computes the GHASH fold**, at every fuel. -/
 theorem ghashJ_denote (n : Nat) (h : BitVec 128) (cnt : BitVec 64) (y : BitVec 128)
@@ -678,7 +684,7 @@ theorem ghashJ_denote (n : Nat) (h : BitVec 128) (cnt : BitVec 64) (y : BitVec 1
       some (.cons (ghashFold h y ((List.range cnt.toNat).map (stackGet msg))) .nil) := by
   have key := NFProg.map_denote_of_blockOpTransports gf2ToJasmin transId mapValJ
     gf2RegionTypes gf2ToJasmin_varTransports gf2ToJasmin_blockOpTransports
-    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashNF n)
+    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashNF n) (ghashNF_callFree n)
     (.cons h (.cons cnt (.cons y (.cons msg .nil))))
   rw [ghashNF_denote] at key
   exact key

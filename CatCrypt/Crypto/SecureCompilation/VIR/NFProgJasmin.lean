@@ -49,6 +49,9 @@ instance : HasWord64 jasminDialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- `jasminDialect` denotes calls in the empty environment. -/
+instance : CallDenote jasminDialect := ⟨.empty⟩
+
 /-- The branch bit of `jasminDialect` is the 1-bit register `reg 1`, read as `true`
     exactly at `1#1`. -/
 instance : HasBoolBit jasminDialect where

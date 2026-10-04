@@ -254,6 +254,7 @@ def straightSpec : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Boo
   | _, _, .forLoop .. => false
   | _, _, .ifThenElse .. => false
   | _, _, .whileLoop .. => false
+  | _, _, .call .. => false
 
 /-- **The test on the arms of a branch.** Every result type has a select and both arms
     are straight-line with speculatable ops. -/
@@ -271,6 +272,7 @@ def nodesOk (opOk : d.Op → Bool)
   | _, _, .ifThenElse _ thn els k =>
       ifOk thn els && nodesOk opOk ifOk thn && nodesOk opOk ifOk els && nodesOk opOk ifOk k
   | _, _, .whileLoop _ body k => nodesOk opOk ifOk body && nodesOk opOk ifOk k
+  | _, _, .call _ _ k => nodesOk opOk ifOk k
 
 /-- **The constant-time predicate on `NFProg`.** Every let-bound op satisfies `opCT` and
     no `ifThenElse` remains: the counterpart of `ctSafeComR` with every branch guarded
@@ -295,7 +297,7 @@ def residual {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) : Bool :=
 
 /-- The bindings of a straight-line program renamed by `ren`, then the continuation
     `kont` at the renaming into the extended context and at the returned variables;
-    `none` on a region constructor. -/
+    `none` on a region constructor or a call. -/
 def emitArm? {ts : List d.Ty} : {Γ Δ : Ctxt d} → {rs : List d.Ty} → NFProg d Γ rs →
     Ctxt.Hom Γ Δ →
     ({Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → HVector (fun t => Var Δ' t) rs →
@@ -308,6 +310,7 @@ def emitArm? {ts : List d.Ty} : {Γ Δ : Ctxt d} → {rs : List d.Ty} → NFProg
   | _, _, _, .forLoop .., _, _ => none
   | _, _, _, .ifThenElse .., _, _ => none
   | _, _, _, .whileLoop .., _, _ => none
+  | _, _, _, .call .., _, _ => none
 
 omit [DialectSignature d] [TyDenote d.Ty] in
 /-- A test that holds of every entry of a list holds of its head. -/
@@ -371,12 +374,18 @@ def lowerSel : {Γ Δ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Ctxt
   | _, _, _, .whileLoop (cs := cs) inits body k, ren =>
       .whileLoop (HVector.renameVars ren inits) (lowerSel body (appLift cs ren))
         (lowerSel k (appLift cs ren))
+  | _, _, _, .call (rs := rs) f args k, ren =>
+      .call f (HVector.renameVars ren args) (lowerSel k (appLift rs ren))
 
 /-- The lowering of branches to selects. -/
 def lowerSelects {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) : NFProg d Γ ts :=
   lowerSel p (fun v => v)
 
 /-! ## 5. Preservation of the denotation -/
+
+section Denote
+
+variable [CallDenote d]
 
 /-- A straight-line program with speculatable ops denotes `some` tuple. -/
 theorem isSome_denote_of_straightSpec (fuel : Nat) {Γ : Ctxt d} {rs : List d.Ty}
@@ -397,6 +406,7 @@ theorem isSome_denote_of_straightSpec (fuel : Nat) {Γ : Ctxt d} {rs : List d.Ty
   | forLoop => simp [straightSpec] at hp
   | ifThenElse => simp [straightSpec] at hp
   | whileLoop => simp [straightSpec] at hp
+  | call => simp [straightSpec] at hp
 
 omit [HasSelect d] in
 /-- **Denotation of `emitArm?`.** If every program the continuation returns at a
@@ -429,6 +439,7 @@ theorem emitArm?_denote (fuel : Nat) {ts : List d.Ty} {Γ : Ctxt d} {rs : List d
   | forLoop => intro _ _ _ _ _ _ _ _ q hq; simp [emitArm?] at hq
   | ifThenElse => intro _ _ _ _ _ _ _ _ q hq; simp [emitArm?] at hq
   | whileLoop => intro _ _ _ _ _ _ _ _ q hq; simp [emitArm?] at hq
+  | call => intro _ _ _ _ _ _ _ _ q hq; simp [emitArm?] at hq
 
 /-- **Denotation of `emitSels`.** If every program the continuation returns at a
     renaming relating `W` to `W'` denotes `G` at the values of its variables, the
@@ -556,12 +567,20 @@ theorem denote_lowerSel (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg 
           k.denote fuel (hvAppend acc V) :=
         fun acc => ihk _ _ _ (agrees_appLift h _ acc)
       simp only [lowerSel, denote, lookupArgs_renameVars h, hb, hk]
+  | call f args k ih =>
+      intro Δ ren V W h
+      have hk : ∀ r, (lowerSel k (appLift _ ren)).denote fuel (hvAppend r W) =
+          k.denote fuel (hvAppend r V) :=
+        fun r => ih _ _ _ (agrees_appLift h _ r)
+      simp only [lowerSel, denote, lookupArgs_renameVars h, hk]
 
 /-- **Preservation.** `lowerSelects p` denotes what `p` denotes, at every fuel and
     valuation. -/
 theorem denote_lowerSelects (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
     (V : Valuation Γ) : (lowerSelects p).denote fuel V = p.denote fuel V :=
   denote_lowerSel fuel p _ V V (agrees_id V)
+
+end Denote
 
 /-! ## 6. What the lowering leaves -/
 
@@ -593,6 +612,7 @@ theorem nodesOk_emitArm? {ts : List d.Ty} {Γ : Ctxt d} {rs : List d.Ty}
   | forLoop => intro _ _ _ _ q hq; simp [emitArm?] at hq
   | ifThenElse => intro _ _ _ _ q hq; simp [emitArm?] at hq
   | whileLoop => intro _ _ _ _ q hq; simp [emitArm?] at hq
+  | call => intro _ _ _ _ q hq; simp [emitArm?] at hq
 
 variable {opOk} in
 /-- The selects satisfy `nodesOk` when the select ops satisfy `opOk` and every program
@@ -661,6 +681,7 @@ theorem isSome_emitArm? {ts : List d.Ty} {Γ : Ctxt d} {rs : List d.Ty} (p : NFP
   | forLoop => simp [straightSpec] at hp
   | ifThenElse => simp [straightSpec] at hp
   | whileLoop => simp [straightSpec] at hp
+  | call => simp [straightSpec] at hp
 
 /-- `lowerIte?` is `some` exactly on arms that pass `Lowerable`. -/
 theorem isSome_lowerIte?_iff {ts : List d.Ty} {Δ : Ctxt d} {rs : List d.Ty}
@@ -693,6 +714,7 @@ theorem straightSpec_lowerSel {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts
   | forLoop => simp [straightSpec] at hp
   | ifThenElse => simp [straightSpec] at hp
   | whileLoop => simp [straightSpec] at hp
+  | call => simp [straightSpec] at hp
 
 /-- Lowering keeps arms that pass `Lowerable` passing it. -/
 theorem lowerable_lowerSel {Γ Δ : Ctxt d} {rs : List d.Ty} (thn els : NFProg d Γ rs)
@@ -742,6 +764,11 @@ theorem ctSafeNF_lowerSel (opCT : d.Op → Bool)
       simp only [nodesOk, Bool.and_eq_true] at hL hops
       simp only [lowerSel, nodesOk, Bool.and_eq_true]
       exact ⟨ihb hL.1 hops.1 _, ihk hL.2 hops.2 _⟩
+  | call _ _ k ih =>
+      intro _ ren
+      simp only [nodesOk] at hL hops
+      simp only [lowerSel, nodesOk]
+      exact ih hL hops _
 
 /-- **No branch remains.** `lowerSelects p` has no `ifThenElse` when every branch of `p`
     passes `Lowerable`. -/
@@ -755,7 +782,8 @@ theorem ifFree_lowerSelects {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
       | var _ _ ih => simp only [nodesOk, ih, Bool.and_self]
       | forLoop _ _ _ _ ihb ihk => simp only [nodesOk, ihb, ihk, Bool.and_self]
       | ifThenElse _ _ _ _ iht ihe ihk => simp only [nodesOk, iht, ihe, ihk, Bool.and_self]
-      | whileLoop _ _ _ ihb ihk => simp only [nodesOk, ihb, ihk, Bool.and_self])
+      | whileLoop _ _ _ ihb ihk => simp only [nodesOk, ihb, ihk, Bool.and_self]
+      | call _ _ _ ih => simp only [nodesOk, ih])
     _
 
 /-- **What remains.** Every `ifThenElse` of a lowered program has arms that fail
@@ -786,6 +814,9 @@ theorem residual_lowerSel {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
   | whileLoop _ body k ihb ihk =>
       intro _ ren
       simp only [lowerSel, nodesOk, ihb, ihk, Bool.and_self]
+  | call _ _ k ih =>
+      intro _ ren
+      simp only [lowerSel, nodesOk, ih]
 
 /-- **What remains.** Every `ifThenElse` of `lowerSelects p` has arms that fail
     `Lowerable`. -/

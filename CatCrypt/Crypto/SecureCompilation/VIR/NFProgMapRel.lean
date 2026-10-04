@@ -87,7 +87,7 @@ attribute [local instance] gradesDecEq
 /-- **The grade interpreter over `NFProg`.** A return reads the grades of its variables; a
 let-binding takes the grade `xfer` returns; the trip index of a counted loop has the grade
 `gw`; the body of a counted or exit-flag loop must return the grade of the carried tuple at
-entry, and the two arms of a branch must return equal grades. -/
+entry, and the two arms of a branch must return equal grades. A call is not graded. -/
 def gradeNF (xfer : XferE d G) (gw : G (HasWord64.word (d := d))) :
     {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → HVector G Γ → Option (HVector G ts)
   | _, _, .ret vs, gΓ => some (gradeArgs gΓ vs)
@@ -106,6 +106,7 @@ def gradeNF (xfer : XferE d G) (gw : G (HasWord64.word (d := d))) :
         if gb.tail = gradeArgs gΓ inits then
           gradeNF xfer gw k (hvAppend (gradeArgs gΓ inits) gΓ)
         else none
+  | _, _, .call .., _ => none
 
 end Grade
 
@@ -114,7 +115,7 @@ end Grade
 section Splice
 
 variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
-  [HasBoolBit d] [DialectDenote d]
+  [HasBoolBit d] [DialectDenote d] [CallDenote d]
 
 /-- **Predicate form of `spliceM_denote`.** If `k ren res` denotes a result satisfying `P`
 whenever `ren` preserves lookups back to `W` and `res` holds the values of the block, the
@@ -282,7 +283,8 @@ square of an expression-level transfer `xfer` and `RegionRel`, if the grade inte
 grades `p` at `gs` from `gΓ` and the pullback of `W` along `ren` is related to `V` at `gΓ`,
 then at every fuel the source denotation and the denotation of `mapM L hT p ren` both fail
 or both succeed with results related at `gs`. -/
-theorem mapM_rel (L : MultiBlockLoweringData d d') (hT : RegionTypesM L) (F : RepFamily L)
+theorem mapM_rel [CallDenote d] [CallDenote d'] (L : MultiBlockLoweringData d d')
+    (hT : RegionTypesM L) (F : RepFamily L)
     [∀ t, DecidableEq (F.G t)] (xfer : XferE d F.G) (hBlk : L.BlockSquareRelE F xfer)
     (gw : F.G (HasWord64.word (d := d))) (hReg : RegionRel L hT F gw) (fuel : Nat)
     {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
@@ -376,13 +378,17 @@ theorem mapM_rel (L : MultiBlockLoweringData d d') (hT : RegionTypesM L) (F : Re
         exact hB
       · intro V W hW a a' ha
         exact ihk _ _ hk _ _ _ (flatRel_appHomM F ren W hW ha)
+  | call =>
+      intro gΓ gs hg
+      simp [gradeNF] at hg
 
 /-- **Graded relational lowering, forward form.** Under the relational block square of an
 op-level transfer `xfer` and `RegionRel`, if the grade interpreter grades `p` at `gs` from
 `gΓ`, the pullback of `W` along `ren` is related to `V` at `gΓ`, and the source run at fuel
 `fuel` returns `y`, then `mapM L hT p ren` at the same fuel returns a valuation related to
 `y` at `gs`. -/
-theorem mapM_rel_fwd (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
+theorem mapM_rel_fwd [CallDenote d] [CallDenote d'] (L : MultiBlockLoweringData d d')
+    (hT : RegionTypesM L)
     (F : RepFamily L) [∀ t, DecidableEq (F.G t)] (xfer : XferOp d F.G)
     (hBlk : L.BlockSquareRel F xfer) (gw : F.G (HasWord64.word (d := d)))
     (hReg : RegionRel L hT F gw) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
@@ -421,10 +427,10 @@ theorem regionRel_graph (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
     exact hR.toBool_enc b
 
 omit [HasWord64 d'] [HasBoolBit d'] [DialectDenote d] [DialectDenote d'] in
-/-- A `Good`-covered program is graded by `goodXfer` at the unit grades. -/
+/-- A `Good`-covered program without `call` is graded by `goodXfer` at the unit grades. -/
 theorem gradeNF_goodXfer (L : MultiBlockLoweringData d d') (enc : L.Enc)
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop) {Γ : Ctxt d} {ts : List d.Ty}
-    (p : NFProg d Γ ts) (hp : p.Covered Good) :
+    (p : NFProg d Γ ts) (hc : p.callFree = true) (hp : p.Covered Good) :
     ∀ gΓ : HVector (L.graphFamily enc).G Γ,
       gradeNF (L.goodXfer enc Good) () p gΓ = some (unitGrades ts) := by
   induction p with
@@ -435,34 +441,40 @@ theorem gradeNF_goodXfer (L : MultiBlockLoweringData d d') (enc : L.Enc)
       intro gΓ
       have h1 : L.goodXfer enc Good e (gradeArgs gΓ e.args) = some () := if_pos hp.1
       simp only [gradeNF, h1]
-      exact ih hp.2 _
+      exact ih hc hp.2 _
   | forLoop count inits body k ihb ihk =>
       intro gΓ
-      simp only [gradeNF, ihb hp.1]
-      exact (if_pos (unitGrades_eq _ _)).trans (ihk hp.2 _)
+      simp only [callFree, Bool.and_eq_true] at hc
+      simp only [gradeNF, ihb hc.1 hp.1]
+      exact (if_pos (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
   | ifThenElse cond thn els k iht ihe ihk =>
       intro gΓ
-      simp only [gradeNF, iht hp.1, ihe hp.2.1]
-      exact (if_pos rfl).trans (ihk hp.2.2 _)
+      simp only [callFree, Bool.and_eq_true] at hc
+      simp only [gradeNF, iht hc.1.1 hp.1, ihe hc.1.2 hp.2.1]
+      exact (if_pos rfl).trans (ihk hc.2 hp.2.2 _)
   | whileLoop inits body k ihb ihk =>
       intro gΓ
-      simp only [gradeNF, ihb hp.1]
-      exact (if_pos (unitGrades_eq _ _)).trans (ihk hp.2 _)
+      simp only [callFree, Bool.and_eq_true] at hc
+      simp only [gradeNF, ihb hc.1 hp.1]
+      exact (if_pos (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
+  | call => simp [callFree] at hc
 
 /-- **`mapM_denote` as the unit-grade case of `mapM_rel`.** Under the `Good`-gated block
-square and `RegionTransportsM`, a `Good`-covered program lowered by `mapM` at a renaming
-`ren` relating `W` to the flattened encoding of `V` denotes, at every fuel, the flattened
-encoding of the source denotation. -/
-theorem mapM_denote_of_rel (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
+square and `RegionTransportsM`, a `Good`-covered program without `call` lowered by `mapM` at
+a renaming `ren` relating `W` to the flattened encoding of `V` denotes, at every fuel, the
+flattened encoding of the source denotation. -/
+theorem mapM_denote_of_rel [CallDenote d] [CallDenote d'] (L : MultiBlockLoweringData d d')
+    (hT : RegionTypesM L)
     (enc : L.Enc) (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
     (hBlk : L.BlockSquare enc Good) (hR : RegionTransportsM L hT enc) (fuel : Nat)
-    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good)
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true)
+    (hp : p.Covered Good)
     {Δ : Ctxt d'} (ren : Ctxt.Hom (L.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ)
     (hren : pullV ren W = flatVal enc V) :
     (mapM L hT p ren).denote fuel W = (p.denote fuel V).map (flatVal enc) := by
   have h := mapM_rel L hT (L.graphFamily enc) (L.goodXfer enc Good)
     (L.blockSquareRelE_graph enc Good hBlk) () (regionRel_graph L hT enc hR) fuel p
-    (unitGrades Γ) (unitGrades ts) (gradeNF_goodXfer L enc Good p hp _) ren V W
+    (unitGrades Γ) (unitGrades ts) (gradeNF_goodXfer L enc Good p hc hp _) ren V W
     ((L.flatRel_graph_iff enc _ V _).mpr hren)
   revert h
   generalize p.denote fuel V = o

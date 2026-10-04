@@ -185,6 +185,7 @@ def nfLow (A : ExitTowers) :
       | _ => none
   | _, _, .ifThenElse .., _, _, _ => none
   | _, _, .whileLoop .., _, _, _ => none
+  | _, _, .call .., _, _, _ => none
 
 /-- The store of the result of a program: a non-reserved variable `x` whose placement is the
     result placement `R`, stored by `resultStoreT A`. -/
@@ -869,6 +870,9 @@ theorem nfLow_sound_aux
       refine ⟨fun ρ c lk C c' Wr h => ?_, trivial⟩
       simp [nfLow] at h
   | whileLoop inits body k _ _ =>
+      refine ⟨fun ρ c lk C c' Wr h => ?_, trivial⟩
+      simp [nfLow] at h
+  | call f args k _ =>
       refine ⟨fun ρ c lk C c' Wr h => ?_, trivial⟩
       simp [nfLow] at h
 

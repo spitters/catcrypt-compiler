@@ -146,6 +146,9 @@ instance : HasWord64 rowDialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- `rowDialect` denotes calls in the empty environment. -/
+instance : CallDenote rowDialect := ⟨.empty⟩
+
 /-- The bit type of `rowDialect`. -/
 instance : HasBitType rowDialect where
   bit := RowTy.bit

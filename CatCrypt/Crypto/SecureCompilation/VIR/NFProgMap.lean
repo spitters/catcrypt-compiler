@@ -49,7 +49,7 @@ lowering.
   conditions on the lowering at the trip counter and the branch bit.
 * `NFProg.Covered` — every let-bound expression of a program satisfies a predicate.
 * `NFProg.map?` — the partial lowering of a structured program.
-* `NFProg.map` — the lowering along a total block lowering.
+* `NFProg.map` — the lowering along a total block lowering, of a program without `call`.
 
 ## Main results
 
@@ -137,7 +137,7 @@ theorem isSome_spliceNF? {ts : List d.Ty} : {Δ : Ctxt d} → {a : d.Ty} →
 /-- **Denotation of `spliceNF?`.** If every program `k ren res` returns denotes `G`
     whenever `ren` preserves lookups back to `W` and `res` holds the value of the block,
     every program the splice returns denotes `G`. -/
-theorem spliceNF?_denote [DialectDenote d] (fuel : Nat) {ts : List d.Ty} :
+theorem spliceNF?_denote [DialectDenote d] [CallDenote d] (fuel : Nat) {ts : List d.Ty} :
     {Δ : Ctxt d} → {a : d.Ty} → (blk : Com d Δ a) →
     (k : {Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → Var Δ' a → Option (NFProg d Δ' ts)) →
     (W : Valuation Δ) → (G : Option (Valuation ts)) →
@@ -162,7 +162,7 @@ def castRetHead {Δ : Ctxt d} {a b : d.Ty} {ts : List d.Ty} (h : a = b)
 
 /-- A program with its first result type carried denotes its results with the first
     one carried. -/
-theorem denote_castRetHead [DialectDenoteM d Option] {Δ : Ctxt d} {a b : d.Ty}
+theorem denote_castRetHead [DialectDenoteM d Option] [CallDenote d] {Δ : Ctxt d} {a b : d.Ty}
     {ts : List d.Ty} (h : a = b) (p : NFProg d Δ (a :: ts)) (fuel : Nat)
     (W : Valuation Δ) :
     (castRetHead h p).denote fuel W =
@@ -183,6 +183,7 @@ def Covered (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop) :
   | _, _, .forLoop _ _ body k => Covered Good body ∧ Covered Good k
   | _, _, .ifThenElse _ thn els k => Covered Good thn ∧ Covered Good els ∧ Covered Good k
   | _, _, .whileLoop _ body k => Covered Good body ∧ Covered Good k
+  | _, _, .call _ _ k => Covered Good k
 
 /-- Under a predicate that holds of every expression, every program is covered. -/
 theorem covered_of_forall (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
@@ -194,6 +195,7 @@ theorem covered_of_forall (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → 
   | forLoop _ _ _ _ ihb ihk => exact ⟨ihb, ihk⟩
   | ifThenElse _ _ _ _ iht ihe ihk => exact ⟨iht, ihe, ihk⟩
   | whileLoop _ _ _ ihb ihk => exact ⟨ihb, ihk⟩
+  | call _ _ _ ih => exact ih
 
 end Splice
 
@@ -344,7 +346,7 @@ def mapArgs (P : PartialBlockLowering d d') {Γ : Ctxt d} {Δ : Ctxt d'}
     exit-flag loop become the same constructor of `NFProg d'`, with their variables
     mapped and renamed and their regions lowered. The counter, the condition and the
     continue bit are retyped along `RegionTypes`. The result is `none` when `P` refuses
-    a let-bound expression of the program or of one of its regions. -/
+    a let-bound expression of the program or of one of its regions, and on a `call`. -/
 def map? (P : PartialBlockLowering d d') (hT : P.RegionTypes) :
     {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → {Δ : Ctxt d'} →
     Ctxt.Hom (P.mapCtx Γ) Δ → Option (NFProg d' Δ (ts.map P.mapTy))
@@ -367,46 +369,52 @@ def map? (P : PartialBlockLowering d d') (hT : P.RegionTypes) :
       (map? P hT body (appHom P cs ren)).bind fun body' =>
         (map? P hT k (appHom P cs ren)).map fun k' =>
           .whileLoop (mapArgs P ren inits) (castRetHead hT.bit_eq body') k'
+  | _, _, .call .., _, _ => none
 
-/-- Along a total block lowering, `map?` is `some` on every program. -/
+/-- Along a total block lowering, `map?` is `some` on every program without `call`. -/
 theorem isSome_map?_toPartial (L : BlockLoweringData d d') (hT : RegionTypes L)
-    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true) :
     ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (L.toPartial.mapCtx Γ) Δ),
       (map? L.toPartial hT p ren).isSome := by
   induction p with
   | ret => intro _ _; rfl
   | var e k ih =>
       intro _ ren
-      exact isSome_spliceNF? _ _ (fun _ _ => ih _)
+      exact isSome_spliceNF? _ _ (fun _ _ => ih hc _)
   | forLoop _ _ _ _ ihb ihk =>
+      simp only [callFree, Bool.and_eq_true] at hc
       intro _ ren
-      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ihb (appHom _ _ (liftTo _ hT.word_eq ren)))
-      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk (appHom _ _ ren))
+      obtain ⟨b, hb⟩ :=
+        Option.isSome_iff_exists.mp (ihb hc.1 (appHom _ _ (liftTo _ hT.word_eq ren)))
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk hc.2 (appHom _ _ ren))
       simp only [map?, hb, hk, Option.bind_some, Option.map_some, Option.isSome_some]
   | ifThenElse _ _ _ _ iht ihe ihk =>
+      simp only [callFree, Bool.and_eq_true] at hc
       intro _ ren
-      obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp (iht ren)
-      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ihe ren)
-      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk (appHom _ _ ren))
+      obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp (iht hc.1.1 ren)
+      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ihe hc.1.2 ren)
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk hc.2 (appHom _ _ ren))
       simp only [map?, ha, hb, hk, Option.bind_some, Option.map_some, Option.isSome_some]
   | whileLoop _ _ _ ihb ihk =>
+      simp only [callFree, Bool.and_eq_true] at hc
       intro _ ren
-      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ihb (appHom _ _ ren))
-      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk (appHom _ _ ren))
+      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ihb hc.1 (appHom _ _ ren))
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp (ihk hc.2 (appHom _ _ ren))
       simp only [map?, hb, hk, Option.bind_some, Option.map_some, Option.isSome_some]
+  | call => simp [callFree] at hc
 
-/-- **The lowering of a structured program along a total block lowering**: the value of
-    `map?` at `L.toPartial`. -/
+/-- **The lowering of a structured program without `call` along a total block
+    lowering**: the value of `map?` at `L.toPartial`. -/
 def map (L : BlockLoweringData d d') (hT : RegionTypes L) {Γ : Ctxt d} {ts : List d.Ty}
-    (p : NFProg d Γ ts) {Δ : Ctxt d'} (ren : Ctxt.Hom (L.mapCtx Γ) Δ) :
-    NFProg d' Δ (ts.map L.mapTy) :=
-  (map? L.toPartial hT p ren).get (isSome_map?_toPartial L hT p ren)
+    (p : NFProg d Γ ts) (hc : p.callFree = true) {Δ : Ctxt d'}
+    (ren : Ctxt.Hom (L.mapCtx Γ) Δ) : NFProg d' Δ (ts.map L.mapTy) :=
+  (map? L.toPartial hT p ren).get (isSome_map?_toPartial L hT p hc ren)
 
 /-- `map?` along a total block lowering returns `map`. -/
 theorem map?_toPartial (L : BlockLoweringData d d') (hT : RegionTypes L) {Γ : Ctxt d}
-    {ts : List d.Ty} (p : NFProg d Γ ts) {Δ : Ctxt d'}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true) {Δ : Ctxt d'}
     (ren : Ctxt.Hom (L.mapCtx Γ) Δ) :
-    map? L.toPartial hT p ren = some (map L hT p ren) :=
+    map? L.toPartial hT p ren = some (map L hT p hc ren) :=
   (Option.some_get _).symm
 
 /-! ## 5. Preservation -/
@@ -516,6 +524,8 @@ theorem bind_map_comm {α α' β β' : Type} (o : Option α) (T : α → α') (T
   | none => rfl
   | some a => exact h a
 
+variable [CallDenote d] [CallDenote d']
+
 /-- **Preservation.** Under the variable leaf, the block leaf on the `Good` expressions
     `P` accepts, the binding-threading leaf of `P` and `RegionTransports`, a program that
     `map?` returns for a `Good`-covered program at a renaming `ren` relating `W` to the
@@ -601,12 +611,15 @@ theorem map?_denote (hT : P.RegionTypes)
       exact bind_map_comm _ _ _ _ _
         (fun r => ihk hk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r)
           k' hkq)
+  | call =>
+      intro Δ ren V W hren q hq
+      simp [map?] at hq
 
 variable (L : BlockLoweringData d d') (transTy : TransTy L) (mapVal : MapVal L)
 
 /-- **Preservation along a total lowering.** Under the variable leaf, the block leaf on
     `Good` expressions and the binding-threading leaf of `L`, and `RegionTransports`, a
-    `Good`-covered program lowered by `map` at a renaming `ren` relating `W` to the
+    `Good`-covered program without `call` lowered by `map` at a renaming `ren` relating `W` to the
     transported `V` denotes, at every fuel, the transport of the source denotation. -/
 theorem map_denote (hT : RegionTypes L)
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
@@ -614,20 +627,21 @@ theorem map_denote (hT : RegionTypes L)
     (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
       ∀ V : Valuation Γ, (L.lowerExprBlock e).denote (mapVal V) = transTy (e.denote V))
     (hExt : MapValExtends L transTy mapVal) (hR : RegionTransports L hT transTy)
-    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good) :
+    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true)
+    (hp : p.Covered Good) :
     ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (L.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
       pullV ren W = mapVal V →
-      (map L hT p ren).denote fuel W =
+      (map L hT p hc ren).denote fuel W =
         (p.denote fuel V).map (transArgs L.mapTy transTy) :=
   fun ren V W hren =>
     map?_denote L.toPartial transTy mapVal hT Good hVar
       (fun e hg blk hblk V => by
         cases hblk
         exact hBlk e hg V)
-      hExt hR fuel p hp ren V W hren _ (map?_toPartial L hT p ren)
+      hExt hR fuel p hp ren V W hren _ (map?_toPartial L hT p hc ren)
 
-/-- **Preservation at the identity renaming.** A `Good`-covered program lowered by
-    `map` into `L.mapCtx Γ` denotes, on the transported valuation and at every fuel, the
+/-- **Preservation at the identity renaming.** A `Good`-covered program without
+    `call` lowered by `map` into `L.mapCtx Γ` denotes, on the transported valuation and at every fuel, the
     transport of the source denotation. -/
 theorem map_denote_id (hT : RegionTypes L)
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
@@ -635,25 +649,26 @@ theorem map_denote_id (hT : RegionTypes L)
     (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
       ∀ V : Valuation Γ, (L.lowerExprBlock e).denote (mapVal V) = transTy (e.denote V))
     (hExt : MapValExtends L transTy mapVal) (hR : RegionTransports L hT transTy)
-    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good)
-    (V : Valuation Γ) :
-    (map L hT p (fun v => v)).denote fuel (mapVal V) =
+    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true)
+    (hp : p.Covered Good) (V : Valuation Γ) :
+    (map L hT p hc (fun v => v)).denote fuel (mapVal V) =
       (p.denote fuel V).map (transArgs L.mapTy transTy) :=
-  map_denote L transTy mapVal hT Good hVar hBlk hExt hR fuel p hp _ V (mapVal V)
+  map_denote L transTy mapVal hT Good hVar hBlk hExt hR fuel p hc hp _ V (mapVal V)
     (FieldDialectBlockDescent.pullV_id _)
 
 /-- **Preservation for a lowering whose block leaf holds of every expression.** Every
-    program lowered by `map` into `L.mapCtx Γ` denotes, on the transported valuation and
+    program without `call` lowered by `map` into `L.mapCtx Γ` denotes, on the transported valuation and
     at every fuel, the transport of the source denotation. -/
 theorem map_denote_of_blockOpTransports (hT : RegionTypes L)
     (hVar : VarTransports L transTy mapVal)
     (hOp : FieldDialectBlockDescent.BlockOpTransports L transTy mapVal)
     (hExt : MapValExtends L transTy mapVal) (hR : RegionTransports L hT transTy)
-    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (V : Valuation Γ) :
-    (map L hT p (fun v => v)).denote fuel (mapVal V) =
+    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hc : p.callFree = true)
+    (V : Valuation Γ) :
+    (map L hT p hc (fun v => v)).denote fuel (mapVal V) =
       (p.denote fuel V).map (transArgs L.mapTy transTy) :=
   map_denote_id L transTy mapVal hT (fun _ => True) hVar (fun e _ V => hOp e V) hExt hR
-    fuel p (covered_of_forall _ (fun _ => trivial) p) V
+    fuel p hc (covered_of_forall _ (fun _ => trivial) p) V
 
 end Map
 

@@ -22,7 +22,9 @@ events:
   order, then the events of its continuation;
 * a branch emits `branch b` for the bit `b` it reads, then the events of the arm it runs;
 * a loop in exit-flag form emits the events of each run of its body followed by
-  `branch b` for the flag `b` it tests.
+  `branch b` for the flag `b` it tests;
+* a call fails: the leakage of a callee is not modelled, so `leakRun` refuses a `call`
+  node, and its results are the denotation in the empty call environment.
 
 `NFCT M L fuel p` is constant time for the entry labels `L`: valuations that agree on the
 positions `L` marks public give the same events (and both runs succeed or both fail).
@@ -30,7 +32,7 @@ positions `L` marks public give the same events (and both runs succeed or both f
 `NFProg.levelCheck M p L` is a level checker for the fragment of bindings and counted
 loops. It returns the levels of the results. A counted loop requires a public trip count;
 its carried values take the levels of their initial values when the body keeps them,
-and the secret level otherwise. The checker refuses branches and exit-flag loops.
+and the secret level otherwise. The checker refuses branches, exit-flag loops and calls.
 
 ## Main definitions
 
@@ -39,7 +41,8 @@ and the secret level otherwise. The checker refuses branches and exit-flag loops
 
 ## Main results
 
-* `NFProg.leakRun_fst` — the results of `leakRun` are the denotation of the program.
+* `NFProg.leakRun_fst` — the results of `leakRun` are the denotation of the program in
+  the empty call environment.
 * `NFProg.levelCheck_sound` — on valuations that agree on the public positions, a program
   the checker accepts runs to equal events and to results that agree on the levels the
   checker returns.
@@ -113,6 +116,7 @@ def NFProg.leakRun (M : LeakModel d) (fuel : Nat) :
       (whileIterLeak (fun acc => NFProg.leakRun M fuel body (hvAppend acc V)) fuel
           (Expr.lookupArgs inits V)).bind fun r =>
         (NFProg.leakRun M fuel k (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)
+  | _, _, .call .., _ => none
 
 /-- Constant time of a program for the entry labels `L`: valuations that agree on the
     positions `L` marks public give the same events. -/
@@ -160,10 +164,13 @@ theorem whileIterLeak_fst {cs : List d.Ty}
           exact whileIterLeak_fst step f hf n a.tail
         · rfl
 
-/-- **The results of the leakage run** are the denotation of the program. -/
+/-- **The results of the leakage run** are the denotation of the program in the empty call
+    environment. -/
 theorem NFProg.leakRun_fst (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (V : Valuation Γ) :
-    (NFProg.leakRun M fuel p V).map Prod.fst = p.denote fuel V := by
+    (NFProg.leakRun M fuel p V).map Prod.fst = p.denoteAt CallEnv.empty fuel V := by
+  let _ : CallDenote d := ⟨CallEnv.empty⟩
+  show (NFProg.leakRun M fuel p V).map Prod.fst = p.denote fuel V
   induction p with
   | ret vs => rfl
   | var e k ih =>
@@ -198,6 +205,7 @@ theorem NFProg.leakRun_fst (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : Li
       · rfl
       · simp only [Option.bind_some, Option.map_some, Option.map_map]
         exact ihk _
+  | call => rfl
 
 /-! ## The level checker -/
 
@@ -245,6 +253,7 @@ def NFProg.levelCheck (M : LeakModel d) :
       else none
   | _, _, .ifThenElse .., _ => none
   | _, _, .whileLoop .., _ => none
+  | _, _, .call .., _ => none
 
 /-! ## Soundness of the level checker -/
 
@@ -436,6 +445,7 @@ theorem NFProg.levelCheck_sound (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d}
       · cases h
   | ifThenElse => intro L R h; simp [NFProg.levelCheck] at h
   | whileLoop => intro L R h; simp [NFProg.levelCheck] at h
+  | call => intro L R h; simp [NFProg.levelCheck] at h
 
 /-- A program the level checker accepts for the entry labels `L` is constant time for `L`,
     at every fuel. -/

@@ -1784,7 +1784,7 @@ def emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     return of the variables it reads; a binding to the bindings `emitRes` gives for the
     translation `catOp` of its operation; and a counted loop whose count and seeds are
     variables to the counted loop of the translated body and continuation. `none` on a
-    branch and an exit-flag loop. -/
+    branch, an exit-flag loop and a call. -/
 def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : List NfTy} →
     NFProg nfDialect Γ ts → TRd Γ Δ → Option (NFProg catCryptDialect Δ (ts.map catTy))
   | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
@@ -1800,6 +1800,7 @@ def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : Li
       | .lit _ _ => none
   | _, _, _, .ifThenElse .., _ => none
   | _, _, _, .whileLoop .., _ => none
+  | _, _, _, .call .., _ => none
 
 /-- **The simulation statement of the translation** of the program `p`: a denotation of `p`
     to `out` from a valuation related to `W` by the readings is matched, at every fuel, by a
@@ -1943,6 +1944,9 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
       intro Δ σ p' h
       cases h
   | whileLoop inits body k _ _ =>
+      intro Δ σ p' h
+      cases h
+  | call f args k _ =>
       intro Δ σ p' h
       cases h
 

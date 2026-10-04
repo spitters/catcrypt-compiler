@@ -752,6 +752,9 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
   | whileLoop inits body k _ _ =>
       intro Δ σ p' h
       cases h
+  | call f args k _ =>
+      intro Δ σ p' h
+      cases h
 
 /-- **The leakage transformer of `nfToCat` at the entry.** A leakage run of `p` that succeeds
     from a valuation `V` in range is matched by the leakage run of the translation from the

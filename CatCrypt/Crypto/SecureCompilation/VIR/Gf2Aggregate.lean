@@ -542,16 +542,19 @@ theorem ghashAggNF_denote_ghashFold (L : GF2Laws) (n : Nat) (h : BitVec 128)
   simp only [agg4_eq L, aggGroup]
   rfl
 
+/-- The aggregated loop has no `call`. -/
+theorem ghashAggNF_callFree (n : Nat) : (ghashAggNF n).callFree = true := rfl
+
 /-- **The lowered aggregated loop**: `ghashAggNF n` lowered by `NFProg.map gf2ToJasmin`, the
     value of `NFProg.map? gf2ToJasmin.toPartial`. -/
 def ghashAggJ (n : Nat) : NFProg jasminDialect ((ghashAggCtx n).map Gf2Ty.toJ) [r128] :=
-  NFProg.map gf2ToJasmin gf2RegionTypes (ghashAggNF n) (fun v => v)
+  NFProg.map gf2ToJasmin gf2RegionTypes (ghashAggNF n) (ghashAggNF_callFree n) (fun v => v)
 
 /-- The lowered aggregated loop is the value of the partial lowering `NFProg.map?`. -/
 theorem map?_ghashAggNF (n : Nat) :
     NFProg.map? gf2ToJasmin.toPartial gf2RegionTypes (ghashAggNF n) (fun v => v) =
       some (ghashAggJ n) :=
-  NFProg.map?_toPartial _ _ _ _
+  NFProg.map?_toPartial _ _ _ (ghashAggNF_callFree n) _
 
 /-- **The lowered aggregated loop folds the aggregated step**, at every fuel. -/
 theorem ghashAggJ_denote (n : Nat) (h1 h2 h3 h4 : BitVec 128) (cnt : BitVec 64)
@@ -563,7 +566,7 @@ theorem ghashAggJ_denote (n : Nat) (h1 h2 h3 h4 : BitVec 128) (cnt : BitVec 64)
           (stackGet q3 i)) y) .nil) := by
   have key := NFProg.map_denote_of_blockOpTransports gf2ToJasmin transId mapValJ
     gf2RegionTypes gf2ToJasmin_varTransports gf2ToJasmin_blockOpTransports
-    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashAggNF n)
+    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashAggNF n) (ghashAggNF_callFree n)
     (.cons h1 (.cons h2 (.cons h3 (.cons h4 (.cons cnt
       (.cons y (.cons q0 (.cons q1 (.cons q2 (.cons q3 .nil))))))))))
   rw [ghashAggNF_denote] at key
@@ -580,7 +583,7 @@ theorem ghashAggJ_denote_ghashFold (L : GF2Laws) (n : Nat) (h : BitVec 128)
         .nil) := by
   have key := NFProg.map_denote_of_blockOpTransports gf2ToJasmin transId mapValJ
     gf2RegionTypes gf2ToJasmin_varTransports gf2ToJasmin_blockOpTransports
-    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashAggNF n)
+    gf2ToJasmin_mapValExtends gf2RegionTransports fuel (ghashAggNF n) (ghashAggNF_callFree n)
     (.cons h (.cons (mulRed h h) (.cons (mulRed (mulRed h h) h)
       (.cons (mulRed (mulRed (mulRed h h) h) h) (.cons cnt
       (.cons y (.cons q0 (.cons q1 (.cons q2 (.cons q3 .nil))))))))))

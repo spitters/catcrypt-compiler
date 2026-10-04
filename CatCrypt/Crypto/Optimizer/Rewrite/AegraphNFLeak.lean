@@ -235,7 +235,9 @@ theorem nfGo_leakRun_fst (R : RuleSet d) (M : LeakModel d) (fuel : Nat) {Γ Δ :
     (V : Ctxt.Valuation Δ) (hS : StSound V S) :
     (NFProg.leakRun M fuel (nfGo R ρ S p) V).map Prod.fst =
       (NFProg.leakRun M fuel p (V.comap ρ)).map Prod.fst := by
-  rw [NFProg.leakRun_fst, NFProg.leakRun_fst, nfGo_denote R fuel ρ S p V hS]
+  rw [NFProg.leakRun_fst, NFProg.leakRun_fst]
+  let _ : CallDenote d := ⟨CallEnv.empty⟩
+  exact nfGo_denote R fuel ρ S p V hS
 
 /-- A run of the traversal and a run of the source at the pulled-back valuation have the
     same results. -/
@@ -460,6 +462,8 @@ theorem nfGo_ctRel (R : RuleSet d) (hI : RulesIndep L R) (fuel : Nat) :
         (by rw [comap_homLiftApp, hji₂]; exact hq₂) ht₁ ht₂ hq
       show j₁.2 ++ t₁.2 = j₂.2 ++ t₂.2
       rw [hj, hk]
+  | _, _, _, _, _, .call .., _, _, _, _, _, _, _, _, h₁, _, _, _, _ => by
+      simp [NFProg.leakRun] at h₁
 
 /-- **Leakage of the pass, two-run.** For a rule set whose alternatives have events
     independent of the valuation, two runs of `p` that succeed with equal events give two
@@ -566,6 +570,11 @@ theorem ifFree_nfGo (R : RuleSet d) : ∀ {Γ Δ : Ctxt d} {ts : List d.Ty}
         simpa only [NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk, Bool.and_eq_true] using hp
       simp only [nfGo, NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk, Bool.and_eq_true]
       exact ⟨ifFree_nfGo R _ _ body hbk.1, ifFree_nfGo R _ _ k hbk.2⟩
+  | _, _, _, ρ, S, .call _ _ k, hp => by
+      have hk : NFProg.ifFree k = true := by
+        simpa only [NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk] using hp
+      simpa only [nfGo, NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk] using
+        ifFree_nfGo R _ _ k hk
 
 /-- **The pass keeps a program branch-free.** -/
 theorem ifFree_aegraphOptNF (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty}

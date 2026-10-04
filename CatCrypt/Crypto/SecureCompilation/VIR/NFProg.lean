@@ -15,7 +15,8 @@ Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `NFProg d Γ ts` is the structured layer above the straight-line programs `Com d` of a
 dialect `d`: let-bindings, a multi-result return, a counted loop with a carried
-tuple, a two-armed branch with results, and a loop in exit-flag form. It is a
+tuple, a two-armed branch with results, a loop in exit-flag form, and a call of a
+named symbol binding a result tuple. It is a
 sibling inductive above `Com`; the region bodies are `NFProg`s again, so the
 constructors nest.
 
@@ -26,6 +27,10 @@ constructors nest.
 * `whileLoop inits body k`: the body runs over `cs ++ Γ` and returns a continue bit
   followed by the next tuple; the loop stops at the first `false` bit. The body runs
   at least once.
+* `call f args k`: the symbol `f` is called at the signature `as → rs` stated by the
+  node; `k` runs over `rs ++ Γ`. The callee is looked up in the environment
+  `CallDenote.env` of the dialect, and a missing symbol or a signature mismatch
+  denotes `none`.
 
 The denotation is monadic in `Option` through `DialectDenoteM d Option`, so that an
 op may fail, and takes a fuel bound for `whileLoop`; `forLoop` and `ifThenElse` do
@@ -38,11 +43,17 @@ a counter value as a `Nat` and embeds a trip index into the word type, following
 ## Main definitions
 
 * `HasWord64` — the dialect's trip-counter type and its `Nat` readings.
+* `CallEnv`, `CallEnv.empty` — the partial callees of a dialect, and the environment
+  in which every call refuses.
+* `CallDenote` — the call environment a dialect's denotation consults.
 * `allVars` — every variable of a context, as an argument vector.
 * `NFProg` — the structured programs.
 * `NFProg.whileIter` — the fuel-bounded iteration of an exit-flag loop body.
-* `NFProg.denote` — the denotation.
+* `NFProg.denote` — the denotation; `NFProg.denoteAt` — the denotation at an explicit
+  call environment.
 * `NFProg.whileFree` — the programs without `whileLoop`.
+* `NFProg.callFree`, `NFProg.Calls` — the programs without `call`, and the symbols and
+  signatures a program calls.
 * `NFProg.ofCom`, `NFProg.ofComR` — the embeddings of `Com` and `ComR`.
 * `NFProg.toCom?` — the straight-line program of a one-result `NFProg` made of
   bindings and a return.
@@ -54,10 +65,13 @@ a counter value as a `Nat` and embeds a trip index into the word type, following
 
 * `lookupArgs_allVars` — `allVars Γ` reads back the whole valuation.
 * `NFProg.denote_ret`, `NFProg.denote_var`, `NFProg.denote_forLoop`,
-  `NFProg.denote_ifThenElse`, `NFProg.denote_whileLoop` — the equations of `denote`.
+  `NFProg.denote_ifThenElse`, `NFProg.denote_whileLoop`, `NFProg.denote_call` — the
+  equations of `denote`.
 * `NFProg.whileIter_zero` — a `whileLoop` at fuel `0` fails.
 * `NFProg.denote_fuel_of_whileFree` — a program without `whileLoop` denotes
   independently of the fuel.
+* `NFProg.denoteAt_of_callFree` — a program without `call` denotes independently of
+  the call environment.
 * `NFProg.foldlM_single` — a counted loop over one carried value whose body always
   succeeds is `some` of the `List.foldl`.
 * `NFProg.denote_ofCom`, `NFProg.denote_ofComR` — the embeddings preserve the
@@ -129,6 +143,25 @@ instance : HasWord64 catCryptDialect where
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
+/-- The callees of a dialect: for a symbol name, argument types and result types, a
+    partial function from argument valuations to result valuations. `none` is a
+    refusal: a missing symbol, a signature mismatch or a failing callee. -/
+structure CallEnv (d : Dialect.{0, 0}) [TyDenote d.Ty] where
+  /-- The callee of the symbol `f` at the signature `as → rs`. -/
+  call : (f : String) → (as rs : List d.Ty) → Valuation as → Option (Valuation rs)
+
+/-- The environment in which every call refuses. -/
+def CallEnv.empty {d : Dialect.{0, 0}} [TyDenote d.Ty] : CallEnv d :=
+  ⟨fun _ _ _ _ => none⟩
+
+/-- The call environment `NFProg.denote` consults for the `call` node of a dialect. -/
+class CallDenote (d : Dialect.{0, 0}) [TyDenote d.Ty] where
+  /-- The environment of the dialect. -/
+  env : CallEnv d
+
+/-- `catCryptDialect` denotes calls in the empty environment. -/
+instance : CallDenote catCryptDialect := ⟨.empty⟩
+
 /-! ## 1. `NFProg` -/
 
 /-- Structured programs of a dialect `d` returning the list of types `ts`.
@@ -143,7 +176,9 @@ instance : HasWord64 catCryptDialect where
       their results and the enclosing context.
     * `whileLoop inits body k` — run `body` from the carried tuple `inits` while the
       bit it returns in front of the next tuple is `true`; `k` sees the final tuple
-      and the enclosing context. -/
+      and the enclosing context.
+    * `call f args k` — call the symbol `f` at the signature `as → rs` on `args`; `k`
+      sees the results and the enclosing context. -/
 inductive NFProg (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
     [HasBoolBit d] : Ctxt d → List d.Ty → Type where
   /-- Return a list of variables. -/
@@ -162,6 +197,9 @@ inductive NFProg (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasW
   | whileLoop {Γ cs ts} (inits : HVector (fun t => Var Γ t) cs)
       (body : NFProg d (cs ++ Γ) (HasBitType.bit (d := d) :: cs))
       (k : NFProg d (cs ++ Γ) ts) : NFProg d Γ ts
+  /-- A call of the symbol `f` at the signature `as → rs`, binding the results `rs`. -/
+  | call {Γ as rs ts} (f : String) (args : HVector (fun t => Var Γ t) as)
+      (k : NFProg d (rs ++ Γ) ts) : NFProg d Γ ts
 
 namespace NFProg
 
@@ -180,10 +218,10 @@ def whileIter {cs : List d.Ty}
   | n + 1, acc => step acc >>= fun r =>
       if HasBoolBit.toBool (d := d) r.head then whileIter step n r.tail else some r.tail
 
-variable [DialectDenoteM d Option]
+variable [DialectDenoteM d Option] [CallDenote d]
 
 /-- Denotation of an `NFProg` at the fuel `fuel`, which bounds the runs of each
-    `whileLoop` body. -/
+    `whileLoop` body; a `call` node consults the environment `CallDenote.env`. -/
 def denote (fuel : Nat) :
     {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Valuation Γ → Option (Valuation ts)
   | _, _, .ret vs, V => some (Expr.lookupArgs vs V)
@@ -200,6 +238,9 @@ def denote (fuel : Nat) :
   | _, _, .whileLoop inits body k, V =>
       whileIter (fun acc => body.denote fuel (hvAppend acc V)) fuel (Expr.lookupArgs inits V)
         >>= fun acc => k.denote fuel (hvAppend acc V)
+  | _, _, .call (as := as) (rs := rs) f args k, V =>
+      (CallDenote.env (d := d)).call f as rs (Expr.lookupArgs args V) >>= fun r =>
+        k.denote fuel (hvAppend r V)
 
 /-- A return denotes its looked-up variables. -/
 theorem denote_ret {Γ : Ctxt d} {ts : List d.Ty} (vs : HVector (fun t => Var Γ t) ts)
@@ -242,7 +283,22 @@ theorem denote_whileLoop {Γ : Ctxt d} {cs ts : List d.Ty}
       whileIter (fun acc => body.denote fuel (hvAppend acc V)) fuel (Expr.lookupArgs inits V)
         >>= fun acc => k.denote fuel (hvAppend acc V) := rfl
 
-omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
+/-- A call denotes its callee in `CallDenote.env` at the looked-up arguments, then its
+    continuation at the results. -/
+theorem denote_call {Γ : Ctxt d} {as rs ts : List d.Ty} (f : String)
+    (args : HVector (fun t => Var Γ t) as) (k : NFProg d (rs ++ Γ) ts) (fuel : Nat)
+    (V : Valuation Γ) :
+    (NFProg.call f args k).denote fuel V =
+      (CallDenote.env (d := d)).call f as rs (Expr.lookupArgs args V) >>= fun r =>
+        k.denote fuel (hvAppend r V) := rfl
+
+omit [CallDenote d] in
+/-- The denotation at the explicit call environment `E`. -/
+def denoteAt (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
+    (V : Valuation Γ) : Option (Valuation ts) :=
+  @denote d _ _ _ _ _ ⟨E⟩ fuel Γ ts p V
+
+omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] [CallDenote d] in
 /-- The iteration of an exit-flag loop at fuel `0` fails. -/
 theorem whileIter_zero {cs : List d.Ty}
     (step : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs)))
@@ -250,7 +306,7 @@ theorem whileIter_zero {cs : List d.Ty}
 
 /-! ## 3. Fuel independence without `whileLoop` -/
 
-omit [DialectDenoteM d Option] in
+omit [DialectDenoteM d Option] [CallDenote d] in
 /-- The programs without `whileLoop`. -/
 def whileFree : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
   | _, _, .ret _ => true
@@ -258,6 +314,7 @@ def whileFree : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
   | _, _, .forLoop _ _ body k => body.whileFree && k.whileFree
   | _, _, .ifThenElse _ thn els k => thn.whileFree && els.whileFree && k.whileFree
   | _, _, .whileLoop _ _ _ => false
+  | _, _, .call _ _ k => k.whileFree
 
 /-- A program without `whileLoop` denotes independently of the fuel. -/
 theorem denote_fuel_of_whileFree {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
@@ -274,6 +331,55 @@ theorem denote_fuel_of_whileFree {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ
       simp only [whileFree, Bool.and_eq_true] at hp
       simp only [denote, iht hp.1.1, ihe hp.1.2, ihk hp.2]
   | whileLoop inits body k _ _ => simp [whileFree] at hp
+  | call f args k ih =>
+      simp only [denote, ih hp]
+
+/-! ## 3a. Call-free programs -/
+
+omit [DialectDenoteM d Option] [CallDenote d] in
+/-- The programs without `call`. -/
+def callFree : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var _ k => k.callFree
+  | _, _, .forLoop _ _ body k => body.callFree && k.callFree
+  | _, _, .ifThenElse _ thn els k => thn.callFree && els.callFree && k.callFree
+  | _, _, .whileLoop _ body k => body.callFree && k.callFree
+  | _, _, .call _ _ _ => false
+
+omit [DialectDenoteM d Option] [CallDenote d] in
+/-- `p.Calls f as rs`: the program `p` contains a call of the symbol `f` at the
+    signature `as → rs`. -/
+def Calls : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → String → List d.Ty →
+    List d.Ty → Prop
+  | _, _, .ret _, _, _, _ => False
+  | _, _, .var _ k, f, as, rs => k.Calls f as rs
+  | _, _, .forLoop _ _ body k, f, as, rs => body.Calls f as rs ∨ k.Calls f as rs
+  | _, _, .ifThenElse _ thn els k, f, as, rs =>
+      thn.Calls f as rs ∨ els.Calls f as rs ∨ k.Calls f as rs
+  | _, _, .whileLoop _ body k, f, as, rs => body.Calls f as rs ∨ k.Calls f as rs
+  | _, _, .call (as := as') (rs := rs') f' _ k, f, as, rs =>
+      (f = f' ∧ as = as' ∧ rs = rs') ∨ k.Calls f as rs
+
+omit [CallDenote d] in
+/-- A program without `call` denotes the same at every call environment. -/
+theorem denoteAt_of_callFree {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
+    (hp : p.callFree = true) (E E' : CallEnv d) (fuel : Nat) (V : Valuation Γ) :
+    p.denoteAt E fuel V = p.denoteAt E' fuel V := by
+  unfold denoteAt
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [denote, ih hp]
+  | forLoop count inits body k ihb ihk =>
+      simp only [callFree, Bool.and_eq_true] at hp
+      simp only [denote, ihb hp.1, ihk hp.2]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [callFree, Bool.and_eq_true] at hp
+      simp only [denote, iht hp.1.1, ihe hp.1.2, ihk hp.2]
+  | whileLoop inits body k ihb ihk =>
+      simp only [callFree, Bool.and_eq_true] at hp
+      simp only [denote, ihb hp.1, ihk hp.2]
+  | call f args k _ => simp [callFree] at hp
 
 end NFProg
 
@@ -304,7 +410,7 @@ def ofCom : {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → NFProg d Γ [t]
   | _, _, .var e k => .var e (ofCom k)
 
 /-- The straight-line program of an `NFProg` with the one result `t` (`ts = [t]`) made of
-    let-bindings and a return; `none` on a region constructor. -/
+    let-bindings and a return; `none` on a region constructor or a call. -/
 def toComAt : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → (t : d.Ty) → ts = [t] →
     Option (Com d Γ t)
   | _, _, .ret vs, _, h => by
@@ -315,9 +421,10 @@ def toComAt : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → (t : d.T
   | _, _, .forLoop .., _, _ => none
   | _, _, .ifThenElse .., _, _ => none
   | _, _, .whileLoop .., _, _ => none
+  | _, _, .call .., _, _ => none
 
 /-- The straight-line program of a one-result `NFProg` made of let-bindings and a
-    return; `none` on a region constructor. -/
+    return; `none` on a region constructor or a call. -/
 def toCom? {Γ : Ctxt d} {t : d.Ty} (p : NFProg d Γ [t]) : Option (Com d Γ t) :=
   toComAt p t rfl
 
@@ -331,7 +438,7 @@ def ofComR : {Γ : Ctxt d} → {t : d.Ty} → ComR d Γ t → NFProg d Γ [t]
 
 section Pure
 
-variable [DialectDenote d]
+variable [DialectDenote d] [CallDenote d]
 
 /-- The embedding of a straight-line program returns its denotation. -/
 theorem denote_ofCom {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (fuel : Nat)
@@ -340,7 +447,7 @@ theorem denote_ofCom {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (fuel : Nat)
   | ret v => rfl
   | var e k ih => simp only [ofCom, denote, Expr.denoteM_option_eq_some]; exact ih _
 
-omit [HasWord64 d] [HasBoolBit d] [DialectSignature d] [DialectDenote d] in
+omit [HasWord64 d] [HasBoolBit d] [DialectSignature d] [DialectDenote d] [CallDenote d] in
 /-- A fold in `Option` over one carried value whose step always succeeds is `some` of
     the pure fold. -/
 theorem foldlM_single {α : Type} {t : d.Ty}
@@ -372,6 +479,7 @@ theorem denote_of_toComAt {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (t
   | forLoop => simp [toComAt] at hc
   | ifThenElse => simp [toComAt] at hc
   | whileLoop => simp [toComAt] at hc
+  | call => simp [toComAt] at hc
 
 /-- A program `toCom?` reads as the straight-line program `c` returns the denotation of
     `c`. -/
@@ -383,7 +491,7 @@ theorem denote_of_toCom? {Γ : Ctxt d} {t : d.Ty} (p : NFProg d Γ [t]) {c : Com
 end Pure
 
 /-- The embedding of a `ComR` returns its `Option`-valued denotation. -/
-theorem denote_ofComR [DialectDenoteM d Option] {Γ : Ctxt d} {t : d.Ty} (c : ComR d Γ t)
+theorem denote_ofComR [DialectDenoteM d Option] [CallDenote d] {Γ : Ctxt d} {t : d.Ty} (c : ComR d Γ t)
     (fuel : Nat) (V : Valuation Γ) :
     (ofComR c).denote fuel V = (c.denoteM (M := Option) V).map (fun x => .cons x .nil) := by
   induction c with
@@ -457,7 +565,7 @@ def wk : {Γ Δ : Ctxt d} → {t : d.Ty} → NFPre d Γ Δ → Var Γ t → Var 
   | _, _, _, .forLoop (cs := cs) _ _ _ p, v => p.wk (Var.shiftApp cs v)
   | _, _, _, .ifThenElse (rs := rs) _ _ _ p, v => p.wk (Var.shiftApp rs v)
 
-variable [DialectDenoteM d Option]
+variable [DialectDenoteM d Option] [CallDenote d]
 
 /-- The valuation of the hole of a prefix, as `NFProg.denote` computes it. -/
 def denote (fuel : Nat) : {Γ Δ : Ctxt d} → NFPre d Γ Δ → Valuation Γ → Option (Valuation Δ)

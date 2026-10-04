@@ -176,7 +176,7 @@ def castRet {Δ : Ctxt d} {ts ts' : List d.Ty} (h : ts = ts') (p : NFProg d Δ t
   h ▸ p
 
 /-- A program with its result types carried denotes the carried results. -/
-theorem denote_castRet [DialectDenote d] {Δ : Ctxt d} {ts ts' : List d.Ty} (h : ts = ts')
+theorem denote_castRet [DialectDenote d] [CallDenote d] {Δ : Ctxt d} {ts ts' : List d.Ty} (h : ts = ts')
     (p : NFProg d Δ ts) (fuel : Nat) (W : Valuation Δ) :
     (castRet h p).denote fuel W = (p.denote fuel W).map (castVal h) := by
   subst h
@@ -203,7 +203,7 @@ def spliceM {ts : List d.Ty} : {Δ : Ctxt d} → {as : List d.Ty} → MultiRetur
 
 /-- **Denotation of `spliceM`.** If `k ren res` denotes `G` whenever `ren` preserves lookups
     back to `W` and `res` holds the values of the block, the splice denotes `G`. -/
-theorem spliceM_denote [DialectDenote d] (fuel : Nat) {ts : List d.Ty} :
+theorem spliceM_denote [DialectDenote d] [CallDenote d] (fuel : Nat) {ts : List d.Ty} :
     {Δ : Ctxt d} → {as : List d.Ty} → (blk : MultiReturnCom d Δ as) →
     (k : {Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → HVector (fun u => Var Δ' u) as → NFProg d Δ' ts) →
     (W : Valuation Δ) → (G : Option (Valuation ts)) →
@@ -265,7 +265,8 @@ def appHomM (m : d.Ty → List d'.Ty) {Γ : Ctxt d} {Δ : Ctxt d'} (cs : Ctxt d)
     in front of the lowered continuation; a return, a counted loop, a branch and an
     exit-flag loop become the same constructor of `NFProg d'`, with their variables and
     carried tuples flattened by `L.mapTys` and their regions lowered. The counter, the
-    condition and the continue bit are read through `RegionTypesM`. -/
+    condition and the continue bit are read through `RegionTypesM`. A call keeps its
+    symbol, with its arguments and its signature flattened by `L.mapTys`. -/
 def mapM (L : MultiBlockLoweringData d d') (hT : RegionTypesM L) :
     {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → {Δ : Ctxt d'} →
     Ctxt.Hom (L.mapCtx Γ) Δ → NFProg d' Δ (L.mapCtx ts)
@@ -287,6 +288,8 @@ def mapM (L : MultiBlockLoweringData d d') (hT : RegionTypesM L) :
         (castRet (congrArg (· ++ L.mapCtx cs) hT.bit_eq)
           (mapM L hT body (appHomM L.mapTys cs ren)))
         (mapM L hT k (appHomM L.mapTys cs ren))
+  | _, _, .call (rs := rs) f args k, _, ren =>
+      .call f (homToHV _ (argsHom L.mapTys ren args)) (mapM L hT k (appHomM L.mapTys rs ren))
 
 /-! ## 4. Preservation -/
 
@@ -329,15 +332,17 @@ theorem lookup_counter (L : MultiBlockLoweringData d d')
     (ren (varHom L.mapTys v (singleVar h))).lookup W = (castVal h (enc (v.lookup V))).head := by
   rw [← lookup_pullV, hren, ← lookup_pullV, pullV_varHom_flatVal, lookup_singleVar]
 
+variable [CallDenote d] [CallDenote d']
+
 /-- **Preservation.** Under the `Good`-gated block square of `L` and `RegionTransportsM`, a
-    `Good`-covered program lowered by `mapM` at a renaming `ren` relating `W` to the
-    flattened encoding of `V` denotes, at every fuel, the flattened encoding of the source
-    denotation. -/
+    `Good`-covered program without `call` lowered by `mapM` at a renaming `ren` relating `W`
+    to the flattened encoding of `V` denotes, at every fuel, the flattened encoding of the
+    source denotation. -/
 theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
     (enc : ∀ {t : d.Ty}, ⟦t⟧ → Valuation (L.mapTys t))
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop) (hBlk : L.BlockSquare enc Good)
     (hR : RegionTransportsM L hT enc) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
-    (p : NFProg d Γ ts) (hp : p.Covered Good) :
+    (p : NFProg d Γ ts) (hc : p.callFree = true) (hp : p.Covered Good) :
     ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (L.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
       pullV ren W = flatVal enc V →
       (mapM L hT p ren).denote fuel W = (p.denote fuel V).map (flatVal enc) := by
@@ -351,7 +356,7 @@ theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
       obtain ⟨hg, hk⟩ := hp
       rw [denote_var, Expr.denoteM_option_eq_some, Option.bind_eq_bind, Option.bind_some]
       refine spliceM_denote fuel _ _ W _ (fun ren' res W' h1 h2 => ?_)
-      refine ih hk _ (V.extend (e.denote V)) W' ?_
+      refine ih hc hk _ (V.extend (e.denote V)) W' ?_
       have hW' : pullV ren' W' = W :=
         valuation_ext _ _ fun v => by rw [lookup_pullV]; exact h1 v
       have hRn : pullV (fun w => ren' (ren w)) W' = flatVal enc V := by
@@ -365,6 +370,7 @@ theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
         (congrArg₂ hvAppend hL hRn)
   | forLoop count inits body k ihb ihk =>
       intro Δ ren V W hren
+      simp only [callFree, Bool.and_eq_true] at hc
       obtain ⟨hb, hk⟩ := hp
       simp only [mapM, denote]
       rw [lookup_counter L enc ren V W hren, hR.toNat_enc,
@@ -372,14 +378,15 @@ theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
       rw [foldlM_option_map
         (fun acc i => body.denote fuel (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
         _ (flatVal enc) (fun acc i => by
-        refine ihb hb _ _ _ (pullV_appHomM enc _ (HVector.cons (HasWord64.ofNat (d := d) i) V)
-          _ ?_ _ acc)
+        refine ihb hc.1 hb _ _ _
+          (pullV_appHomM enc _ (HVector.cons (HasWord64.ofNat (d := d) i) V) _ ?_ _ acc)
         rw [pullV_liftOne, hren, ← hR.ofNat_enc]
         rfl)]
       exact bind_map_comm _ _ _ _ _
-        (fun acc => ihk hk _ _ _ (pullV_appHomM enc ren V W hren _ acc))
+        (fun acc => ihk hc.2 hk _ _ _ (pullV_appHomM enc ren V W hren _ acc))
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ ren V W hren
+      simp only [callFree, Bool.and_eq_true] at hc
       obtain ⟨ht, he, hk⟩ := hp
       simp only [mapM, denote]
       rw [lookup_counter L enc ren V W hren, hR.toBool_enc]
@@ -388,13 +395,14 @@ theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
           (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
             else els.denote fuel V).map (flatVal enc) := by
         split
-        · exact iht ht ren V W hren
-        · exact ihe he ren V W hren
+        · exact iht hc.1.1 ht ren V W hren
+        · exact ihe hc.1.2 he ren V W hren
       rw [harm]
       exact bind_map_comm _ _ _ _ _
-        (fun r => ihk hk _ _ _ (pullV_appHomM enc ren V W hren _ r))
+        (fun r => ihk hc.2 hk _ _ _ (pullV_appHomM enc ren V W hren _ r))
   | whileLoop inits body k ihb ihk =>
       intro Δ ren V W hren
+      simp only [callFree, Bool.and_eq_true] at hc
       obtain ⟨hb, hk⟩ := hp
       simp only [mapM, denote]
       rw [lookupArgs_homToHV_argsHom enc ren V W hren,
@@ -402,25 +410,26 @@ theorem mapM_denote (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
           (flatVal enc) (fun b => (castVal hT.bit_eq (enc b)).head)
           hR.toBool_enc (fun a => by
             rw [denote_castRet,
-              ihb hb _ _ _ (pullV_appHomM enc ren V W hren _ a), Option.map_map]
+              ihb hc.1 hb _ _ _ (pullV_appHomM enc ren V W hren _ a), Option.map_map]
             congr 1
             funext r
             cases r with
             | cons b r => exact castVal_append hT.bit_eq (enc b) (flatVal enc r))]
       exact bind_map_comm _ _ _ _ _
-        (fun r => ihk hk _ _ _ (pullV_appHomM enc ren V W hren _ r))
+        (fun r => ihk hc.2 hk _ _ _ (pullV_appHomM enc ren V W hren _ r))
+  | call => simp [callFree] at hc
 
-/-- **Preservation at the identity renaming.** A `Good`-covered program lowered by `mapM`
-    into the flattened context denotes, on the flattened encoding of a valuation and at
-    every fuel, the flattened encoding of the source denotation. -/
+/-- **Preservation at the identity renaming.** A `Good`-covered program without `call`
+    lowered by `mapM` into the flattened context denotes, on the flattened encoding of a
+    valuation and at every fuel, the flattened encoding of the source denotation. -/
 theorem mapM_denote_id (L : MultiBlockLoweringData d d') (hT : RegionTypesM L)
     (enc : ∀ {t : d.Ty}, ⟦t⟧ → Valuation (L.mapTys t))
     (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop) (hBlk : L.BlockSquare enc Good)
     (hR : RegionTransportsM L hT enc) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
-    (p : NFProg d Γ ts) (hp : p.Covered Good) (V : Valuation Γ) :
+    (p : NFProg d Γ ts) (hc : p.callFree = true) (hp : p.Covered Good) (V : Valuation Γ) :
     (mapM L hT p (fun v => v)).denote fuel (flatVal enc V) =
       (p.denote fuel V).map (flatVal enc) :=
-  mapM_denote L hT enc Good hBlk hR fuel p hp _ V _ (FieldDialectBlockDescent.pullV_id _)
+  mapM_denote L hT enc Good hBlk hR fuel p hc hp _ V _ (FieldDialectBlockDescent.pullV_id _)
 
 end Map
 
@@ -581,28 +590,30 @@ theorem regionTransportsM_toMulti [DialectDenote d] [DialectDenote d']
 /-- **`mapM` at `toMulti L` against `map` at `L`.** Under the three leaves of
     `blockFundamental` and `RegionTransports`, for a renaming `ren` relating `W` to the
     transported `V`, the program `mapM` produces at `toMulti L` (with `ren` read through
-    `mapCtx_eq_ctxFlat`) denotes, at every fuel, the results of `map L hT p ren` carried
-    along `map_eq_ctxFlat`. -/
-theorem mapM_toMulti_denote [DialectDenote d] [DialectDenote d']
-    (L : BlockLoweringData d d') (hNil : L.mapCtx [] = []) (hT : RegionTypes L)
-    (transTy : TransTy L) (mapVal : MapVal L) (hVar : VarTransports L transTy mapVal)
+    `mapCtx_eq_ctxFlat`) denotes, at every fuel, the results of `map L hT p hc ren` carried
+    along `map_eq_ctxFlat`, for a program `p` without `call`. -/
+theorem mapM_toMulti_denote [DialectDenote d] [DialectDenote d'] [CallDenote d]
+    [CallDenote d'] (L : BlockLoweringData d d') (hNil : L.mapCtx [] = [])
+    (hT : RegionTypes L) (transTy : TransTy L) (mapVal : MapVal L)
+    (hVar : VarTransports L transTy mapVal)
     (hOp : BlockOpTransports L transTy mapVal) (hExt : MapValExtends L transTy mapVal)
     (hR : RegionTransports L hT transTy) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
-    (p : NFProg d Γ ts) {Δ : Ctxt d'} (ren : Ctxt.Hom (L.mapCtx Γ) Δ) (V : Valuation Γ)
+    (p : NFProg d Γ ts) (hc : p.callFree = true) {Δ : Ctxt d'}
+    (ren : Ctxt.Hom (L.mapCtx Γ) Δ) (V : Valuation Γ)
     (W : Valuation Δ) (hren : pullV ren W = mapVal V) :
     (mapM (L.toMulti hNil) (regionTypesM_toMulti L hNil hT) p
         (fun v => ren (castHom (L.mapCtx_eq_ctxFlat hNil Γ).symm v))).denote fuel W =
-      ((map L hT p ren).denote fuel W).map (castVal (map_eq_ctxFlat L.mapTy ts)) := by
+      ((map L hT p hc ren).denote fuel W).map (castVal (map_eq_ctxFlat L.mapTy ts)) := by
   have hrenM : pullV (fun v => ren (castHom (L.mapCtx_eq_ctxFlat hNil Γ).symm v)) W =
       flatVal (m := fun t => [L.mapTy t]) (fun x => L.encMulti transTy x) V := by
     rw [pullV_comp (fun v => castHom (L.mapCtx_eq_ctxFlat hNil Γ).symm v) (fun v => ren v),
       hren, pullV_castHom_symm, flatVal_encMulti L hNil transTy mapVal hExt]
   refine (mapM_denote (L.toMulti hNil) _ (fun x => L.encMulti transTy x) (fun _ => True)
       (L.toMulti_blockSquare hNil transTy mapVal hOp hExt (fun _ => True))
-      (regionTransportsM_toMulti L hNil hT transTy hR) fuel p
+      (regionTransportsM_toMulti L hNil hT transTy hR) fuel p hc
       (covered_of_forall _ (fun _ => trivial) p) _ V W hrenM).trans ?_
   rw [map_denote L transTy mapVal hT (fun _ => True) hVar (fun e _ V => hOp e V) hExt hR fuel p
-      (covered_of_forall _ (fun _ => trivial) p) ren V W hren, Option.map_map]
+      hc (covered_of_forall _ (fun _ => trivial) p) ren V W hren, Option.map_map]
   congr 1
   funext R
   exact flatVal_encMulti_results L transTy R

@@ -123,10 +123,13 @@ def nfGo (R : RuleSet d) : {Γ Δ : Ctxt d} → {ts : List d.Ty} → Ctxt.Hom Γ
   | _, _, _, ρ, S, .whileLoop (cs := cs) inits body k =>
       .whileLoop (HVector.renameVars ρ inits) (nfGo R (homLiftApp cs ρ) S body)
         (nfGo R (homLiftApp cs ρ) S k)
+  | _, _, _, ρ, S, .call (rs := rs) f args k =>
+      .call f (HVector.renameVars ρ args) (nfGo R (homLiftApp rs ρ) S k)
 
 /-- **Denotation of the traversal.** Under a state sound for `V`, the output denotes the
     input at the valuation pulled back along `ρ`, at every fuel. -/
-theorem nfGo_denote (R : RuleSet d) (fuel : Nat) : ∀ {Γ Δ : Ctxt d} {ts : List d.Ty}
+theorem nfGo_denote [CallDenote d] (R : RuleSet d) (fuel : Nat) :
+    ∀ {Γ Δ : Ctxt d} {ts : List d.Ty}
     (ρ : Ctxt.Hom Γ Δ) (S : Tbl d × Defs d) (p : NFProg d Γ ts) (V : Ctxt.Valuation Δ),
     StSound V S → (nfGo R ρ S p).denote fuel V = p.denote fuel (V.comap ρ)
   | _, _, _, ρ, _, .ret vs, V, _ => by
@@ -192,6 +195,13 @@ theorem nfGo_denote (R : RuleSet d) (fuel : Nat) : ∀ {Γ Δ : Ctxt d} {ts : Li
         intro acc
         rw [nfGo_denote R fuel _ S k _ (stSound_append acc hS), comap_homLiftApp]
       simp only [nfGo, NFProg.denote, hb, hk, Expr.lookupArgs_renameVars]
+  | _, _, _, ρ, S, .call (rs := rs) f args k, V, hS => by
+      have hk : ∀ r : Ctxt.Valuation rs,
+          (nfGo R (homLiftApp rs ρ) S k).denote fuel (hvAppend r V) =
+            k.denote fuel (hvAppend r (V.comap ρ)) := by
+        intro r
+        rw [nfGo_denote R fuel _ S k _ (stSound_append r hS), comap_homLiftApp]
+      simp only [nfGo, NFProg.denote, hk, Expr.lookupArgs_renameVars]
 
 /-- **The aegraph pass on structured programs** at a rule set: the traversal from the
     identity renaming and the empty state. -/
@@ -201,7 +211,7 @@ def aegraphOptNF (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ
 
 /-- **Denotation of the pass.** `aegraphOptNF R p` denotes the same function as `p` at every
     fuel, for every rule set `R`. -/
-theorem aegraphOptNF_denote (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty}
+theorem aegraphOptNF_denote [CallDenote d] (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (fuel : Nat) :
     (aegraphOptNF R p).denote fuel = p.denote fuel :=
   funext fun V => by

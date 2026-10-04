@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
 `NFProg.leakRunM M fuel p V` is the leakage run of `NFLeak.NFProg.leakRun` for a dialect whose
 operations denote in `Option` (`DialectDenoteM d Option`): an operation may fail, and the run
 is then `none`. Its events are those of `leakRun`; under a pure denotation the two runs
-coincide (`leakRunM_eq_leakRun`).
+coincide (`leakRunM_eq_leakRun`). Like `leakRun`, it refuses a `call` node.
 
 `NFCTRel M L fuel p` is constant time relative to the runs that succeed: two valuations that
 agree on the positions `L` marks public, from which the program runs to results, give equal
@@ -23,7 +23,7 @@ events.
 exit-flag loops. A branch requires a public condition, and its results take the join of the
 levels of the two arms. An exit-flag loop requires its flag to be public; its carried values
 take the levels of their initial values when the body keeps them, and the secret level
-otherwise.
+otherwise. The checker refuses calls.
 
 ## Main definitions
 
@@ -32,7 +32,8 @@ otherwise.
 
 ## Main results
 
-* `NFProg.leakRunM_fst` — the results of `leakRunM` are the denotation of the program.
+* `NFProg.leakRunM_fst` — the results of `leakRunM` are the denotation of the program in
+  the empty call environment.
 * `NFProg.leakRunM_eq_leakRun` — under a pure denotation the two leakage runs coincide.
 * `NFProg.levelCheck'_sound`, `NFProg.nfCTRel_of_levelCheck'` — on valuations that agree on
   the public positions and from which the program runs, a program the checker accepts emits
@@ -87,6 +88,7 @@ def NFProg.leakRunM (M : LeakModel d) (fuel : Nat) :
       (whileIterLeak (fun acc => NFProg.leakRunM M fuel body (hvAppend acc V)) fuel
           (Expr.lookupArgs inits V)).bind fun r =>
         (NFProg.leakRunM M fuel k (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)
+  | _, _, .call .., _ => none
 
 /-- Constant time of a program for the entry labels `L`, relative to the runs that succeed:
     two valuations that agree on the positions `L` marks public, from which the program runs
@@ -96,10 +98,13 @@ def NFCTRel (M : LeakModel d) {Γ : Ctxt d} {ts : List d.Ty} (L : Labels Γ) (fu
   ∀ (V₁ V₂ : Valuation Γ) (r₁ r₂ : Valuation ts × List CTLeak), PubEqV L V₁ V₂ →
     NFProg.leakRunM M fuel p V₁ = some r₁ → NFProg.leakRunM M fuel p V₂ = some r₂ → r₁.2 = r₂.2
 
-/-- **The results of the leakage run** are the denotation of the program. -/
+/-- **The results of the leakage run** are the denotation of the program in the empty call
+    environment. -/
 theorem NFProg.leakRunM_fst (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (V : Valuation Γ) :
-    (NFProg.leakRunM M fuel p V).map Prod.fst = p.denote fuel V := by
+    (NFProg.leakRunM M fuel p V).map Prod.fst = p.denoteAt CallEnv.empty fuel V := by
+  let _ : CallDenote d := ⟨CallEnv.empty⟩
+  show (NFProg.leakRunM M fuel p V).map Prod.fst = p.denote fuel V
   induction p with
   | ret vs => rfl
   | var e k ih =>
@@ -136,6 +141,7 @@ theorem NFProg.leakRunM_fst (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : L
       · rfl
       · simp only [Option.bind_some, Option.map_some, Option.map_map]
         exact ihk _
+  | call => rfl
 
 end Partial
 
@@ -154,6 +160,7 @@ theorem NFProg.leakRunM_eq_leakRun [DialectDenote d] (M : LeakModel d) (fuel : N
       simp only [NFProg.leakRunM, NFProg.leakRun, iht, ihe, ihk]
   | whileLoop inits body k ihb ihk =>
       simp only [NFProg.leakRunM, NFProg.leakRun, ihb, ihk]
+  | call => rfl
 
 /-! ## The level checker with branches and exit-flag loops -/
 
@@ -203,6 +210,7 @@ def NFProg.levelCheck' (M : LeakModel d) :
           (fun FB => flagOk FB (allSecret cs')) then
         NFProg.levelCheck' M k (hvAppend (allSecret cs') L)
       else none
+  | _, _, .call .., _ => none
 
 omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] in
 /-- A tuple of levels is below its join with another. -/
@@ -419,6 +427,7 @@ theorem NFProg.levelCheck'_sound (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d}
       · split at h
         · exact hloop _ (by assumption) h (pubEqV_allSecret _ _)
         · cases h
+  | call => intro L R h; simp [NFProg.levelCheck'] at h
 
 /-- A program the checker `levelCheck'` accepts for the entry labels `L` is constant time for
     `L` relative to the runs that succeed, at every fuel. -/

@@ -190,8 +190,11 @@ def rename? : {Γ Δ : Ctxt d} → {ts : List d.Ty} → PRen Γ Δ → NFProg d 
   | _, _, _, f, .whileLoop (cs := cs) inits body k =>
       (PRen.vars? f inits).bind fun i' => (rename? (PRen.liftApp cs f) body).bind fun b' =>
         (rename? (PRen.liftApp cs f) k).map fun k' => .whileLoop i' b' k'
+  | _, _, _, f, .call (rs := rs) fn args k =>
+      (PRen.vars? f args).bind fun a' =>
+        (rename? (PRen.liftApp rs f) k).map fun k' => .call fn a' k'
 
-variable [DialectDenoteM d Option]
+variable [DialectDenoteM d Option] [CallDenote d]
 
 /-- **A renamed program denotes as the source.** When `rename? f p = some p'` and `f`
     relates `V` to `W`, `p'` denotes at `W` what `p` denotes at `V`. -/
@@ -249,6 +252,14 @@ theorem denote_rename? {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
       congr 1
       funext acc
       exact ihk hk (PRen.agrees_liftApp h _ acc) fuel
+  | call fn args k ih =>
+      intro Δ f p' V W hp h fuel
+      simp only [rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨a', ha, k', hk, rfl⟩ := hp
+      simp only [denote, PRen.lookupArgs_vars? h args ha]
+      congr 1
+      funext r
+      exact ih hk (PRen.agrees_liftApp h _ r) fuel
 
 /-! ## 3. Dead-binding elimination -/
 
@@ -264,8 +275,10 @@ def dce : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → NFProg d Γ 
   | _, _, .forLoop count inits body k => .forLoop count inits (dce body) (dce k)
   | _, _, .ifThenElse cond thn els k => .ifThenElse cond (dce thn) (dce els) (dce k)
   | _, _, .whileLoop inits body k => .whileLoop inits (dce body) (dce k)
+  | _, _, .call f args k => .call f args (dce k)
 
-omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] in
+omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option]
+  [CallDenote d] in
 /-- An `Option` fold keeps a `some` result when each step `g` refines the step `f`. -/
 theorem foldlM_some_mono {α β : Type} {f g : β → α → Option β}
     (hfg : ∀ b i b', f b i = some b' → g b i = some b') :
@@ -275,7 +288,7 @@ theorem foldlM_some_mono {α β : Type} {f g : β → α → Option β}
       (fun i _ a _ b' e h => e ▸ ⟨b', hfg a i b' h, rfl⟩) b b r rfl h
     exact h'
 
-omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
+omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] [CallDenote d] in
 /-- An exit-flag iteration keeps a `some` result when the step `g` refines the step
     `f`. -/
 theorem whileIter_some_mono {cs : List d.Ty}
@@ -324,8 +337,13 @@ theorem denote_dce {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
       simp only [dce, denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
       obtain ⟨acc, hacc, hk⟩ := h
       exact ⟨acc, whileIter_some_mono (fun _ _ hb => ihb hb) _ _ _ hacc, ihk hk⟩
+  | call fn args k ih =>
+      intro fuel V out h
+      simp only [dce, denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨r, hr, hk⟩ := h
+      exact ⟨r, hr, ih hk⟩
 
-omit [DialectDenoteM d Option] in
+omit [DialectDenoteM d Option] [CallDenote d] in
 /-- Every let-binding that `dce` removes from `p` has an operation satisfying `P`. -/
 def dceDrops (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
   | _, _, .ret _ => true
@@ -337,8 +355,9 @@ def dceDrops (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg
   | _, _, .forLoop _ _ body k => dceDrops P body && dceDrops P k
   | _, _, .ifThenElse _ thn els k => dceDrops P thn && dceDrops P els && dceDrops P k
   | _, _, .whileLoop _ body k => dceDrops P body && dceDrops P k
+  | _, _, .call _ _ k => dceDrops P k
 
-omit [HasWord64 d] [HasBoolBit d] in
+omit [HasWord64 d] [HasBoolBit d] [CallDenote d] in
 /-- Under the speculation law, an expression whose operation is speculatable denotes
     `some` value. -/
 theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.Expr.isSome_denoteM_of_spec
@@ -383,6 +402,10 @@ theorem denote_dce_eq (T : OpTraits d) (hT : SpecLaw T) {Γ : Ctxt d} {ts : List
       intro fuel V
       simp only [dceDrops, Bool.and_eq_true] at hp
       simp only [dce, denote, ihb hp.1, ihk hp.2]
+  | call fn args k ih =>
+      intro fuel V
+      simp only [dceDrops] at hp
+      simp only [dce, denote, ih hp]
 
 end NFProg
 

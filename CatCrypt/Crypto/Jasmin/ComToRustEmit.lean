@@ -859,6 +859,7 @@ def emitNF : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasmi
       emitNF k { sb with lines := lines, env := s.env.pushList carried, sxLast := none }
   | _, _, .ifThenElse .., s => ((s.unsupported "ifThenElse").1, [])
   | _, _, .whileLoop .., s => ((s.unsupported "whileLoop").1, [])
+  | _, _, .call .., s => ((s.unsupported "call").1, [])
 
 /-- A Rust function `fname(params)` under the backend `b` of the rule `v128`: the lines `pre`,
     then the lines of `body` run from the context values `env` (de Bruijn position `0`

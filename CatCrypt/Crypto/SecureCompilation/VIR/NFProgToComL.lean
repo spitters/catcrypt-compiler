@@ -264,7 +264,7 @@ def forNode {Γ : Ctx} {t : CryptoTy} : {cs : List CryptoTy} →
   | _ :: _ :: _, _, .cons _ (.cons _ _), _, _ => none
 
 /-- Lower an `NFProg catCryptDialect` program with the one result `t` (`ts = [t]`) to
-    `ComL`. `none` on a branch, an exit-flag loop, a counted loop carrying other than
+    `ComL`. `none` on a branch, an exit-flag loop, a call, a counted loop carrying other than
     one value or with a body that is not straight-line, and when a bound expression or
     a loop body falls outside the fragment `cryptoDialectToJasminCom` lowers. -/
 def nfToComLAt : {Γ : Ctx} → {ts : List CryptoTy} → NFProg catCryptDialect Γ ts →
@@ -279,6 +279,7 @@ def nfToComLAt : {Γ : Ctx} → {ts : List CryptoTy} → NFProg catCryptDialect 
       (nfToComLAt k t h).bind (forNode count inits body)
   | _, _, .ifThenElse .., _, _ => none
   | _, _, .whileLoop .., _, _ => none
+  | _, _, .call .., _, _ => none
 
 /-- Lower an `NFProg catCryptDialect` program with one result to `ComL`
     (`nfToComLAt` at `ts = [t]`). -/
@@ -407,6 +408,7 @@ theorem nfToComLAt_denote {Γ : Ctxt catCryptDialect} {ts : List CryptoTy}
       · simp [forNode] at hj
   | ifThenElse => simp [nfToComLAt] at hj
   | whileLoop => simp [nfToComLAt] at hj
+  | call => simp [nfToComLAt] at hj
 
 /-- **Preservation** for a program with one result: when `nfToComL p = some jcom`, the
     source program denotes `some` of one value `x`, at every fuel, and the lowered
