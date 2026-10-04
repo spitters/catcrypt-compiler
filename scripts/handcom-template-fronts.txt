@@ -1,0 +1,19 @@
+# Template fronts read by scripts/handcom-provenance-ratchet.sh.
+#
+# A template is a generator: a Lean function from parameters (a prime, a limb count, a
+# schedule) to a `Com` block, with a bounds certificate and a correctness theorem for
+# every instance. It is the generated side of the handwritten/generated line (DESIGN.md,
+# "Where handwritten code ends and generated code begins"). A module listed here builds
+# `Com` terms because it is the generator; the ratchet treats it as a front, both as a
+# candidate and when another module's emitted object is traced to it.
+#
+# One path per line, followed by `# <reason>`. A listed path that no longer exists fails
+# the ratchet. A module that is not listed here, not exempt and not routed through a front
+# still counts.
+CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/Mpn.lean  # fixed-size mpn programs (add_n, sub_n, mul_1, addmul_1, mul, sqr) generated for every limb count n from the Curve25519/Mont blocks, with value theorems over limbsVal
+CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/UnsatBlocks.lean  # unsaturated Solinas carry-multiply and carry-square blocks generated from the limb layout and wrap terms by the bindK/MC combinators, each with an integer specification
+CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/UnsatField.lean  # unsaturated Solinas field template (add, sub, carry, freeze, toBytes, fromBytes) per prime, with a word-level statement under the boundsOkMR certificate of each instance
+CatCrypt/Crypto/SecureCompilation/VIR/NegacyclicNttWord.lean  # lazy Montgomery NTT layers generated for every parameter record and schedule satisfying the decidable side conditions, with the per-lane representative theorem
+CatCrypt/Crypto/SecureCompilation/VIR/NegacyclicNttWordSigned.lean  # signed Montgomery NTT generated from a SignedSched (word width, Montgomery constant, bound table) under its decidable condition SSchedOk
+CatCrypt/Crypto/SecureCompilation/VIR/RoundCodec.lean  # ML-KEM Compress/Decompress and ML-DSA rounding and hint functions as BoundedBlock templates over the exact integer semantics, side condition boundsOkMR decided per instance
+CatCrypt/Crypto/SecureCompilation/VIR/RowLazy.lean  # row product with an unreduced wide accumulator generated as a counted loop over jasminDialect from the rowDialect parameters, related to the ring-level loop

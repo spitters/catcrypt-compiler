@@ -34,10 +34,18 @@
 #     rolled-loop dispatcher, which selects one of the rolled-loop combinators
 #     (a site that reaches the family through it names no combinator; see
 #     scripts/front-callsite-ratchet.sh)
+#   TEMPLATE FRONT (the module is a generator, listed in scripts/handcom-template-fronts.txt):
+#     a template is a Lean function from parameters (a prime, a limb count, a schedule)
+#     to a `Com` block, with a bounds certificate and a correctness theorem for every
+#     instance — the generated side of the handwritten/generated line (DESIGN.md). It
+#     builds `Com` terms because it is the generator, so construction markers in it do
+#     not condemn it. A listed module is cleared as a candidate and clears a trace that
+#     reaches it, as a front marker does. Each line names one module and its reason; a
+#     stale line fails the check; a module that is not listed still counts.
 #
 # A candidate (construction or render marker present) counts unless `front_sourced`
-# clears it: a front marker in the file clears it; a construction marker in the file
-# condemns it; otherwise the `Com`/`Lfundef` it renders is followed to the module
+# clears it: a front marker in the file, or a listing as a template front, clears
+# it; a construction marker in the file condemns it; otherwise the `Com`/`Lfundef` it renders is followed to the module
 # that defines it and that module is judged the same way. So a render-only module
 # whose Com is lowered one import up — `VIR/MontRedcEmit.lean` printing
 # `montRedcWordJasmin`, lowered by `cryptoDialectToJasminCom` in
@@ -225,6 +233,7 @@ front_sourced() {
   [ "$depth" -le 0 ] && return 1
   case "$seen" in *" $f "*) return 0 ;; esac
   has_front "$f" && return 0
+  is_template_front "$f" && return 0
   # An exempt infrastructure module reached through a source is not a kernel, so a
   # module drawing a type or a block from it is judged by its other sources;
   # detector B skips such modules in the same way.
@@ -286,13 +295,24 @@ is_infra() {
   esac
 }
 
+# Template fronts (see the header): generator modules listed by path, each with
+# its reason, in scripts/handcom-template-fronts.txt.
+TEMPLATE_FRONTS=scripts/handcom-template-fronts.txt
+is_template_front() {
+  [ -f "$TEMPLATE_FRONTS" ] &&
+    grep -qxF "$1" <(sed 's/[[:space:]]*#.*$//' "$TEMPLATE_FRONTS" | grep .)
+}
+
 # The exemption list is keyed by path, so a rename silently voids an exemption
 # and turns the renamed module into a phantom "new hand-Com module". Every listed
 # path must resolve to a file; a stale line is a check failure, not a warning.
-STALE_EXEMPT="$(sed 's/[[:space:]]*#.*$//' scripts/handcom-infra-exempt.txt | grep . \
+# The template-front list is checked the same way.
+PATH_LISTS="scripts/handcom-infra-exempt.txt"
+[ -f "$TEMPLATE_FRONTS" ] && PATH_LISTS="$PATH_LISTS $TEMPLATE_FRONTS"
+STALE_EXEMPT="$(sed 's/[[:space:]]*#.*$//' $PATH_LISTS | grep . \
                  | while IFS= read -r p; do [ -f "$p" ] || echo "$p"; done)"
 if [ -n "$STALE_EXEMPT" ]; then
-  echo "FAIL: scripts/handcom-infra-exempt.txt names path(s) that no longer exist."
+  echo "FAIL: $PATH_LISTS names path(s) that no longer exist."
   echo "      A renamed or deleted module keeps its exemption line pointing at the old"
   echo "      path, so the module loses its exemption AND the list stops covering it."
   echo "      Point each line at the current path, or drop it if the module is gone:"
@@ -354,6 +374,7 @@ authored_from() {
       # Never follow into a front or into exempt compiler infrastructure: those
       # modules legitimately build IR nodes, and they are judged by detector A.
       printf '%s' "$tgt" | grep -E "$FRONT_RE" >/dev/null && continue
+      is_template_front "$tgt" && continue
       is_infra "$tgt" && continue
       ct "$tgt" | grep -E "$AUTHORED_IR_RE" >/dev/null || continue
       authored_from "$tgt" "$x" $((depth - 1)) && return 0
@@ -390,6 +411,7 @@ TMP="$(mktemp)"
   for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' CatCrypt/ bench/); do
     ct "$f" | grep -E "$AUTHORED_IR_RE" >/dev/null || continue
     is_infra "$f" && continue
+    is_template_front "$f" && continue
     writes_hand_authored_artifact "$f" && echo "$f"
   done
 } | sort -u > "$TMP"
@@ -421,6 +443,9 @@ if [ "$CURRENT" -gt "$BASELINE" ]; then
   echo "      Re-source the kernel through a front (TranslateDialectRolledLoop.rolledForLoopN"
   echo "      / translateDialectControl / cryptoDialectToJasminCom / reifyLowCT /"
   echo "      FieldEmitGoldenPath). CAPABILITIES.md lists the provenance classes."
+  echo "      A template generator (parameters -> Com block, with a bounds certificate"
+  echo "      and a correctness theorem per instance) is listed, with its reason, in"
+  echo "      scripts/handcom-template-fronts.txt."
   echo "      NEW hand-Com module(s) (not in the baseline):"
   comm -13 <(baseline_paths) "$TMP" | sed 's/^/        /'
   exit 1
