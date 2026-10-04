@@ -164,10 +164,48 @@ Three further statements connect the levels.
 - A function-level correspondence for extracted Rust is a triple over the partial
   program that guards the abstract function by its precondition.
 
+**Correspondences as specification lemmas.** For every postcondition Q,
+
+    c corresponds to f under R, P   ⇔
+      ∀ Q.  { m | ∃ a. R(m, a) ∧ P(a) ∧ ∀ m'. R(m', f(a)) ⇒ Q(m') }  c  { Q }.
+
+The statement holds for the generic step-function judgement and so for the scalar
+language, x86 and RV64, and in a state-indexed form for the monadic Rust square. For a
+verification-condition generator the useful form is the state-indexed family
+{ R(−, a) } c { R(−, f(a)) }: used as the specification of a callee, it composes in any
+position of the caller. The form with arbitrary Q composes only when the callee comes
+last, because the generator does not continue under the existential.
+
+**Extracted Rust.** For a function-level correspondence of an extracted function e with
+abstract function f, the monadic reading of e satisfies the partial-correctness triple
+"every returned value encodes f(a)". The total triple is equivalent to termination of
+the reading, which the correspondence does not imply: the correspondence constrains
+the operation table only where it returns, and checked word operations fail on
+overflow. On a kind-checked fragment the reading terminates, and the total triple
+follows from the correspondence together with a typing of the operation table. The
+fragment has literals, variables, let-binding, sequencing, applications of typed
+operations, conditionals on Boolean conditions, and counted loops with literal bounds in
+[0, 2³²]. Kinds include index ranges, so array indexing in a loop is total, and bounded
+word kinds, so a checked addition is total when the sum of the operand bounds fits the
+width. Of the checked operations only addition is covered. The example is an equality
+test on 32-byte arrays: a 32-step loop whose body is a conditional.
+
+**Loops.** The block-replication rule of section 6 is an instance of the invariant rule
+of the program logic, at the invariant "the machine state is related to the i-fold
+step". The same holds at the monadic Rust level: for a loop whose body carries a counter
+i and continues while i < N, the square for the N-fold abstract step follows from the
+body squares through the invariant rule with measure N − i, and a square for a loop is
+equivalent to the corresponding total specification. The loop form is the one the
+monadic Rust library uses for general loops; the equality with the iteration that
+extracted `for` loops use is not proved.
+
 **The two automations produce different objects.** The ascent takes a program and
 computes its abstract function, together with the correspondence. A
 verification-condition generator takes a program and a postcondition and returns proof
-obligations. The equivalences above are the only relation proved between them.
+obligations. Given the abstract function as an unknown, the generator does not
+synthesise it: it reduces the goal to one condition per instruction with the unknown
+unassigned, and that condition is solved, and the unknown determined, by the ascent's
+leaf correspondences.
 
 ## 5. Abstraction phases
 

@@ -114,6 +114,15 @@ theorem corresJ_iff_triple {AState : Type} (SR : JState 64 → AState → Prop)
 | transport along `θ : StateM S → StateT S Option` | `theta_pure`, `theta_bind`, `wp_theta_eq` (`rfl`), `Spec.wp_theta` |
 | monadic Rust correspondence as a total triple | `corresM_iff_triple` |
 | `FnCorres` as a triple over `optGuard G f a` | `fnCorres_iff_triple`, `triple_option_iff` |
+| arbitrary postcondition, generic judgement | `StepTriple`, `corresM_post`, `corresM_iff_post` (`Ascent/CorresGenericSpec`) |
+| arbitrary postcondition, per level | `corres_iff_post` (LowCT), `corresJ_iff_post_generic` (x86), `corresR_iff_post` (RV64) (`Ascent/CorresInstanceSpec`); x86 over `RunBlockTriple`: `corresJ_triple_post`, `corresJ_iff_triple_post` (`Ascent/CorresHoareSpec`) |
+| specification lemmas for `mvcgen` | x86 `corresJ_spec_at` (state-indexed), `corresJ_spec` (arbitrary `Q`, tail position only) (`Ascent/CorresHoareSpec`); `RustM` `corresM_spec_at`, `corresM_iff_spec_at`, `corresM_spec_post` (`Ascent/RustMSquareSpec`) |
+| demo: a caller proved by `mvcgen` with an ascent result as callee specification | `sbb_then_sbb_triple`, `sbb_then_step_triple`, `step_then_sbb_triple` (`Ascent/Demos/CorresAsSpecDemo`) |
+| `FnCorres` and the `RustM` reading `toRustMS` | partial: `fnCorres_toRustMS_partialSpec`, `fnCorres_toRustMS_triple_partial`; total under termination: `fnCorres_toRustMS_spec`, `fnCorres_toRustMS_triple`, `fnCorres_toRustMS_triple_iff` (dev `Hax/RustSemantics/ToRustMSSpec`) |
+| termination on the straight-line fragment | `straightOk`, `AppTotalOn`, `EnvOk`, `toRustMS_total`, `fnCorres_toRustMS_triple_of_straightOk` (dev `Hax/RustSemantics/ToRustMSTotal`); `line_failApp` shows `AppOk` alone does not give termination (`ToRustMSSpecDemo`) |
+| termination with conditionals, loops and checked addition | `kindOf`, `Kd`, `EnvTy`, `AppTyped`, `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`, `appTyped_add`; instance `keyEqLit_triple` (dev `Hax/RustSemantics/ToRustMSTotalCtl`) |
+| loop rule from the invariant rule | x86: `runBlockM_loop_triple`, `corresJ_loop_of_triple` (`Ascent/RunBlockLoopTriple`); `RustM`, over hax-lean's `loop` with a `ControlFlow` body: `corresM_loop`, `corresM_loop_iff_spec`, `countedBody_spec`, `corresM_loopK` (`Ascent/RustMSquareLoop`, from `loop.spec_decr_nat`) |
+| `mvcgen` with the abstract function as a metavariable | `sbb1Synth_val`, `sbb2Synth_val`, `sbb2Synth_eq_sym`; failures recorded by `fail_if_success` (`Ascent/Demos/SchematicMvcgenProbe`) |
 
 The abstract function that the ascent outputs is `asemWExpr c` for the scalar engines and
 `Ns.HaxGen.f.gen` for the hax generator. No module under `Hax/Ascent/` uses `mvcgen`. The
