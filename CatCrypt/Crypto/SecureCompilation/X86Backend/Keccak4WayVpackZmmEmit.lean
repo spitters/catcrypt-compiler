@@ -305,11 +305,12 @@ def thetaColCom : Com jasminDialect thetaCtx r512 :=
                   (.cons (.there (.there (.there (.there (.there (.there (.there .here))))))) .nil)))
           (.ret .here))))
 
-set_option maxHeartbeats 1000000 in
+-- `zmmPackQ` is held irreducible so the defeq check unfolds only `Com.denote` and
+-- matches the four `zmmPackQ` applications syntactically.
+attribute [local irreducible] zmmPackQ in
 /-- **θ column-parity denotation pin.** `thetaColCom` denotes to the
     left-associated XOR fold `((((a0 ⊕ a1) ⊕ a2) ⊕ a3) ⊕ a4)` over `zmmPackQ .xor`
-    — the bespoke `thetaBlk`'s per-column `C[x]`. The proof is `rfl` (the
-    five-input fold needs a raised heartbeat budget for the `whnf` reduction). -/
+    — the bespoke `thetaBlk`'s per-column `C[x]`. The proof is `rfl`. -/
 theorem thetaColCom_denote (a0 a1 a2 a3 a4 : BitVec 512) :
     thetaColCom.denote (.cons a0 (.cons a1 (.cons a2 (.cons a3 (.cons a4 .nil)))))
       = zmmPackQ .xor (zmmPackQ .xor (zmmPackQ .xor (zmmPackQ .xor a0 a1) a2) a3) a4 :=

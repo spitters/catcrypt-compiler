@@ -216,11 +216,9 @@ arm to the nine `zmmPackQ` calls. With the shift-count registers `c1…c7` bound
 the broadcast constants `1,63,8,56,7`, this is the lane-uniform
 `rotr(x,1) ^ rotr(x,8) ^ (x >>> 7)`. -/
 
--- The denote pin is a kernel `rfl` over the 9-binding `Com` (cf. the 2-binding
--- `ButterflyBlockCom` pins); the `Com.denote` substrate's `Var.lookup` /
--- `zmmPackQ` BitVec expansion makes the defeq check costly at this depth, hence
--- the raised heartbeat budget (the value content is a single `rfl`, not search).
-set_option maxHeartbeats 4000000 in
+-- `zmmPackQ` is held irreducible so the defeq check unfolds only `Com.denote` and
+-- matches the nine `zmmPackQ` applications syntactically.
+attribute [local irreducible] zmmPackQ in
 /-- **σ0 denotation pin.** On input valuation `⟨x, c1, c63, c8, c56, c7⟩`,
     `sigma0Com` denotes to the verified-dialect packed
     `(rotr-by-c1 ⊕ rotr-by-c8) ⊕ shr-by-c7`, written out via `zmmPackQ`. Binding

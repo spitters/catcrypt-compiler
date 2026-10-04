@@ -640,7 +640,7 @@ def cntBodyLowCT : LowCT :=
     two refinement rounds), the submul and add-back word steps, and the five
     mask-selected stores. -/
 def kdBodyLowCT : LowCT := seqAll (
-  [ .RScalarSetExpr "j" (.SSub (.SSub (sv "qn") (.SLit 1)) (sv "jd"))
+  [ LowCT.RScalarSetExpr "j" (.SSub (.SSub (sv "qn") (.SLit 1)) (sv "jd"))
   , .RScalarSetExpr "un1" (.SAdd (sv "qn") (sv "vn"))
   , .RScalarSetExpr "sqx" (.SAdd (sv "un1") (sv "qn"))
   , .RScalarSetExpr "sbx" (.SAdd (sv "sqx") (.SLit 1))
@@ -648,9 +648,9 @@ def kdBodyLowCT : LowCT := seqAll (
   , .RScalarSetExpr "dux" (.SAdd (sv "sqx") (.SLit 3))
   , .RScalarSetExpr "du2x" (.SAdd (sv "sqx") (.SLit 4)) ]
   ++ ltuCmds "pQ" (sv "t") (.SLit 1)
-  ++ [ .RScalarSetExpr "vn2" (.SAdd (sv "vn") (.SLit 2)) ]
+  ++ [ LowCT.RScalarSetExpr "vn2" (.SAdd (sv "vn") (.SLit 2)) ]
   ++ ltuCmds "pSr" (sv "t") (sv "vn2")
-  ++ [ .RScalarSetExpr "pQn" (.SXor (sv "pQ") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "pQn" (.SXor (sv "pQ") (.SLit 1))
   , .RScalarSetExpr "pS" (.SAnd (sv "pSr") (sv "pQn"))
   , .RScalarSetExpr "pA" (.SXor (sv "pSr") (.SLit 1))
   , .RScalarSetExpr "mQ" (.SSub (.SLit 0) (sv "pQ"))
@@ -672,26 +672,26 @@ def kdBodyLowCT : LowCT := seqAll (
   , .RScalarSetExpr "qh" (.SMulHiU (sv "dinv") (sv "u2"))
   , .RScalarSetExpr "qla" (.SAdd (sv "ql") (sv "u1")) ]
   ++ ltuCmds "c0" (sv "qla") (sv "ql")
-  ++ [ .RScalarSetExpr "u2p" (.SAdd (sv "u2") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "u2p" (.SAdd (sv "u2") (.SLit 1))
   , .RScalarSetExpr "qhb" (.SAdd (.SAdd (sv "qh") (sv "u2p")) (sv "c0"))
   , .RScalarSetExpr "pp" (.SMul (sv "qhb") (sv "d1"))
   , .RScalarSetExpr "rr" (.SSub (sv "u1") (sv "pp")) ]
   ++ ltuCmds "c1" (sv "qla") (sv "rr")
-  ++ [ .RScalarSetExpr "m1" (.SAdd (notE (sv "c1")) (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "m1" (.SAdd (notE (sv "c1")) (.SLit 1))
   , .RScalarSetExpr "qhc" (.SAdd (sv "qhb") (sv "m1"))
   , .RScalarSetExpr "ra" (.SAdd (sv "rr") (.SAnd (sv "m1") (sv "d1"))) ]
   ++ ltuCmds "c2" (sv "ra") (sv "d1")
-  ++ [ .RScalarSetExpr "c3" (.SXor (sv "c2") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "c3" (.SXor (sv "c2") (.SLit 1))
   , .RScalarSetExpr "m3" (.SAdd (notE (sv "c3")) (.SLit 1))
   , .RScalarSetExpr "q0" (.SAdd (sv "qhc") (sv "c3"))
   , .RScalarSetExpr "r0" (.SSub (sv "ra") (.SAnd (sv "m3") (sv "d1"))) ]
   -- the u2 = d1 special case: q̂ = 2^64 - 1, r̂ = u1 + d1 with 65th bit rc0
   ++ ltuCmds "pe" (sv "u2") (sv "d1")
-  ++ [ .RScalarSetExpr "peN" (.SXor (sv "pe") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "peN" (.SXor (sv "pe") (.SLit 1))
   , .RScalarSetExpr "meq" (.SSub (.SLit 0) (sv "peN"))
   , .RScalarSetExpr "rsp" (.SAdd (sv "u1") (sv "d1")) ]
   ++ ltuCmds "rcs" (sv "rsp") (sv "u1")
-  ++ [ .RScalarSetExpr "rc0" (.SAnd (sv "rcs") (sv "peN"))
+  ++ [ LowCT.RScalarSetExpr "rc0" (.SAnd (sv "rcs") (sv "peN"))
   , .RScalarSetExpr "qh0"
       (.SXor (sv "q0") (.SAnd (.SXor (.SLit ones) (sv "q0")) (sv "meq")))
   , .RScalarSetExpr "rh0"
@@ -699,27 +699,27 @@ def kdBodyLowCT : LowCT := seqAll (
   -- refinement round 1
   , .RScalarSetExpr "lo1" (.SMul (sv "qh0") (sv "d2")) ]
   ++ ltuCmds "b11" (sv "u0") (sv "lo1")
-  ++ [ .RScalarSetExpr "hi1" (.SMulHiU (sv "qh0") (sv "d2"))
+  ++ [ LowCT.RScalarSetExpr "hi1" (.SMulHiU (sv "qh0") (sv "d2"))
   , .RScalarSetExpr "tt1" (.SSub (sv "rh0") (sv "hi1")) ]
   ++ ltuCmds "b21" (sv "rh0") (sv "hi1")
   ++ ltuCmds "b31" (sv "tt1") (sv "b11")
-  ++ [ .RScalarSetExpr "gt1" (.SXor (sv "b21") (sv "b31"))
+  ++ [ LowCT.RScalarSetExpr "gt1" (.SXor (sv "b21") (sv "b31"))
   , .RScalarSetExpr "rcn1" (.SXor (sv "rc0") (.SLit 1))
   , .RScalarSetExpr "do1" (.SAnd (sv "gt1") (sv "rcn1"))
   , .RScalarSetExpr "md1" (.SSub (.SLit 0) (sv "do1"))
   , .RScalarSetExpr "qh1" (.SSub (sv "qh0") (sv "do1"))
   , .RScalarSetExpr "rh1" (.SAdd (sv "rh0") (.SAnd (sv "d1") (sv "md1"))) ]
   ++ ltuCmds "cch1" (sv "rh1") (sv "rh0")
-  ++ [ .RScalarSetExpr "cc1" (.SAnd (sv "cch1") (sv "do1"))
+  ++ [ LowCT.RScalarSetExpr "cc1" (.SAnd (sv "cch1") (sv "do1"))
   , .RScalarSetExpr "rc1" (.SXor (sv "rc0") (sv "cc1"))
   -- refinement round 2 (only its q̂ output is live)
   , .RScalarSetExpr "lo2" (.SMul (sv "qh1") (sv "d2")) ]
   ++ ltuCmds "b12" (sv "u0") (sv "lo2")
-  ++ [ .RScalarSetExpr "hi2" (.SMulHiU (sv "qh1") (sv "d2"))
+  ++ [ LowCT.RScalarSetExpr "hi2" (.SMulHiU (sv "qh1") (sv "d2"))
   , .RScalarSetExpr "tt2" (.SSub (sv "rh1") (sv "hi2")) ]
   ++ ltuCmds "b22" (sv "rh1") (sv "hi2")
   ++ ltuCmds "b32" (sv "tt2") (sv "b12")
-  ++ [ .RScalarSetExpr "gt2" (.SXor (sv "b22") (sv "b32"))
+  ++ [ LowCT.RScalarSetExpr "gt2" (.SXor (sv "b22") (sv "b32"))
   , .RScalarSetExpr "rcn2" (.SXor (sv "rc1") (.SLit 1))
   , .RScalarSetExpr "do2" (.SAnd (sv "gt2") (sv "rcn2"))
   , .RScalarSetExpr "qh2" (.SSub (sv "qh1") (sv "do2"))
@@ -727,10 +727,10 @@ def kdBodyLowCT : LowCT := seqAll (
   , .RScalarSetExpr "iS" (.SSub (sv "t") (.SLit 1))
   , .RScalarSetExpr "vn1" (.SAdd (sv "vn") (.SLit 1)) ]
   ++ ltuCmds "csx" (sv "iS") (sv "vn1")
-  ++ [ .RScalarSetExpr "mcs" (.SSub (.SLit 0) (sv "csx"))
+  ++ [ LowCT.RScalarSetExpr "mcs" (.SSub (.SLit 0) (sv "csx"))
   , .RScalarSetExpr "iScl" (.SAnd (sv "iS") (sv "mcs")) ]
   ++ ltuCmds "inS" (sv "iS") (sv "vn")
-  ++ [ .RScalarSetExpr "mv" (.SSub (.SLit 0) (sv "inS"))
+  ++ [ LowCT.RScalarSetExpr "mv" (.SSub (.SLit 0) (sv "inS"))
   , .RScalarSetExpr "ivx" (.SAnd (sv "iS") (sv "mv"))
   , .RArrLoad ⟨"vld", .TU64⟩ vpLoc "ivx"
   , .RScalarSetExpr "vi" (.SAnd (sv "vld") (sv "mv"))
@@ -742,30 +742,30 @@ def kdBodyLowCT : LowCT := seqAll (
   , .RScalarSetExpr "phi" (.SMulHiU (sv "qhS") (sv "vi"))
   , .RScalarSetExpr "t1" (.SSub (sv "wcell") (sv "bin")) ]
   ++ ltuCmds "b1s" (sv "wcell") (sv "bin")
-  ++ [ .RScalarSetExpr "t2" (.SSub (sv "t1") (sv "plo")) ]
+  ++ [ LowCT.RScalarSetExpr "t2" (.SSub (sv "t1") (sv "plo")) ]
   ++ ltuCmds "b2s" (sv "t1") (sv "plo")
-  ++ [ .RScalarSetExpr "bout" (.SAdd (.SAdd (sv "phi") (sv "b1s")) (sv "b2s"))
+  ++ [ LowCT.RScalarSetExpr "bout" (.SAdd (.SAdd (sv "phi") (sv "b1s")) (sv "b2s"))
   -- add-back phase
   , .RScalarSetExpr "iA" (.SSub (sv "t") (sv "vn2")) ]
   ++ ltuCmds "cax" (sv "iA") (sv "vn1")
-  ++ [ .RScalarSetExpr "mca" (.SSub (.SLit 0) (sv "cax"))
+  ++ [ LowCT.RScalarSetExpr "mca" (.SSub (.SLit 0) (sv "cax"))
   , .RScalarSetExpr "iAcl" (.SAnd (sv "iA") (sv "mca")) ]
   ++ ltuCmds "inA" (sv "iA") (sv "vn")
-  ++ [ .RScalarSetExpr "mva" (.SSub (.SLit 0) (sv "inA"))
+  ++ [ LowCT.RScalarSetExpr "mva" (.SSub (.SLit 0) (sv "inA"))
   , .RScalarSetExpr "iax" (.SAnd (sv "iA") (sv "mva"))
   , .RArrLoad ⟨"ald", .TU64⟩ vpLoc "iax"
   , .RScalarSetExpr "va" (.SAnd (sv "ald") (sv "mva")) ]
   ++ ltuCmds "bnz" (.SLit 0) (sv "bin")
-  ++ [ .RScalarSetExpr "mB" (.SSub (.SLit 0) (sv "bnz"))
+  ++ [ LowCT.RScalarSetExpr "mB" (.SSub (.SLit 0) (sv "bnz"))
   , .RScalarSetExpr "av" (.SAnd (sv "va") (sv "mB"))
   , .RArrLoad ⟨"cin", .TU64⟩ wpLoc "scx"
   , .RScalarSetExpr "aix" (.SAdd (sv "j") (sv "iAcl"))
   , .RArrLoad ⟨"acell", .TU64⟩ wpLoc "aix"
   , .RScalarSetExpr "sm1" (.SAdd (sv "acell") (sv "av")) ]
   ++ ltuCmds "c1a" (sv "sm1") (sv "acell")
-  ++ [ .RScalarSetExpr "sm2" (.SAdd (sv "sm1") (sv "cin")) ]
+  ++ [ LowCT.RScalarSetExpr "sm2" (.SAdd (sv "sm1") (sv "cin")) ]
   ++ ltuCmds "c2a" (sv "sm2") (sv "sm1")
-  ++ [ .RScalarSetExpr "cout" (.SAdd (sv "c1a") (sv "c2a"))
+  ++ [ LowCT.RScalarSetExpr "cout" (.SAdd (sv "c1a") (sv "c2a"))
   , .RScalarSetExpr "qv" (.SSub (sv "qhS") (sv "bnz"))
   , .RScalarSetExpr "qix" (.SAdd (sv "un1") (sv "j"))
   -- mask-selected stores (window, q̂, borrow, carry, quotient)

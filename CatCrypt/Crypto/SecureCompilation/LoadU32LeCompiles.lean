@@ -70,9 +70,6 @@ outside the front's scope.
 @[expose] public section
 
 set_option autoImplicit false
--- The LE-combine denote reduces through the suffix-tolerant recognisers (each op
--- head a 5-7-way string-eq disjunction); the 10-binder chain is defeq-heavy.
-set_option maxHeartbeats 800000
 
 namespace CatCrypt.Crypto.SecureCompilation.LoadU32LeCompiles
 
@@ -149,18 +146,14 @@ def loadU32LeModel : Hax.TExpr :=
 
 /-- The model denotes (under the typed source semantics) to the little-endian
     u32-load formula `b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)` (the `cast#32`s
-    are `BitVec.setWidth 32`, the identity at the working width). The proof goes
-    purely through the new suffix-tolerant/`cast` recogniser reductions. -/
+    are `BitVec.setWidth 32`, the identity at the working width). The proof is
+    definitional unfolding through the suffix-tolerant/`cast` recognisers. -/
 theorem loadU32LeModel_denote (I : Fin 4 → BitVec 32) :
     TExpr.denoteScalarT ["b0", "b1", "b2", "b3"] I loadU32LeModel (fun _ => none)
       = some (BitVec.setWidth 32 (inpGet I 0) |||
               (BitVec.setWidth 32 (inpGet I 1) <<< (8 : Nat)) |||
               (BitVec.setWidth 32 (inpGet I 2) <<< (16 : Nat)) |||
               (BitVec.setWidth 32 (inpGet I 3) <<< (24 : Nat))) := by
-  simp (config := { maxSteps := 4000000 }) only [loadU32LeModel, castU32, shlU32, orU32, appU32, vU32, litS32,
-    TExpr.denoteScalarT, TExpr.denoteAtomT, recogBinTy, recogShiftTy, recogCastTy,
-    litNatT?, ShiftKind.apply, List.idxOf?, List.findIdx?,
-    reduceIte, String.reduceEq, beq_iff_eq, Bool.or_eq_true]
   rfl
 
 /-- The model lowers via the typed front — the real `cast#32`/`Shl#32`/`BitOr#32`
