@@ -53,10 +53,9 @@ The first three are instances of one definition over a step function C → M →
 
 ## 2. Provenance
 
-The calculus follows AutoCorres (Greenaway, Andronick, Klein, ITP 2012; Greenaway, Lim,
-Andronick, Klein, PLDI 2014) as ported to Lean by Sebastian Graf. From the port come the
-idea of a correspondence relation, the organisation of abstraction into phases and the
-vocabulary.
+The calculus follows AutoCorres [GAK12, GLAK14] as ported to Lean by Sebastian Graf.
+From the port come the idea of a correspondence relation, the organisation of
+abstraction into phases and the vocabulary.
 
 The judgements are defined differently and are connected through the monadic program
 logic. The port's is a triple over a relational weakest precondition, relating two
@@ -287,12 +286,12 @@ assumed.
 | Kernel | Origin | Statement | Limit |
 |---|---|---|---|
 | Montgomery multiplication mod p384, 264 instructions | s2n-bignum, third-party, hand-written | the statement above, over the instruction block and over its encoding | the source's precondition |
-| field multiplication (167 instructions) and squaring (99) | CryptOpt, third-party | functional correctness over the instruction block | regions disjoint from the stack frame; multiplication limbs below 2⁵⁴; no byte statement |
-| Ed25519 point addition, 4,909 instructions | this project's backend, verified again | the block computes its specification, which agrees with the group-law specification; stated at the bytes | separated memory cells; eleven compiled-evaluation checks; no frame conclusion |
-| Ed25519 scalar reduction and multiply-add | this project's backend | functional correctness over the instruction block | eight and nine compiled-evaluation footprint checks |
-| Ed25519 mixed addition, inversion, compression | this project's backend | functional correctness | mixed addition relative to assumed callees |
-| field multiplication mod 2²⁵⁵ − 19; comb-table selection | hand-written in this project | correctness modulo p; selection correct at the bytes and constant time | constant time for tables of at most 2²⁶ entries |
-| RV64 addition mod p256 | hand transcription | functional correctness | registers only; no memory, no bytes |
+| field multiplication (167 instructions) and squaring (99) | CryptOpt, third-party | the output limbs are congruent to x·y, respectively x², modulo 2²⁵⁵ − 19 (no z < p) | inputs disjoint from each other and from the stack frame; for squaring, input and output disjoint; multiplication limbs below 2⁵⁴; no byte statement |
+| Ed25519 point addition, 4,909 instructions | this project's backend, verified again | for the eight input coordinates below p, the decoded bytes compute the four output coordinates of the specification, which agrees in ℤ/p with the extended twisted-Edwards addition formulas | separated memory cells; inputs below p; eleven compiled-evaluation checks; no frame conclusion |
+| Ed25519 scalar reduction and multiply-add | this project's backend | the output is x mod L, respectively (a·b + c) mod L, below L, with L the group order | separated memory cells; eight and nine compiled-evaluation footprint checks |
+| Ed25519 mixed addition, inversion, compression | this project's backend | mixed addition computes its specification; inversion computes z^(p−2) mod p, the inverse for z ≠ 0; compression outputs y + 2²⁵⁵·(x mod 2) for the affine coordinates x, y | inputs below p; buffer disjointness; the callees are discharged over the shipped blocks |
+| field multiplication mod 2²⁵⁵ − 19; comb-table selection | hand-written in this project | the product is (x·y) mod p; for an index D < 16, the selected words equal table entry D, with the table, the stack pointer and the callee-saved registers unchanged, at the bytes; the leakage trace is independent of the index | constant time for tables of at most 2²⁶ entries |
+| RV64 addition mod p256 | hand transcription | for x, y < p256, the result is (x + y) mod p256 | registers only; no memory, no bytes |
 
 **Scope.** A statement at the bytes says that this project's encoding of the block
 decodes, under this project's decoder, to instructions with the stated behaviour. No
@@ -318,31 +317,64 @@ trusted base need the literature and are not made here.
 ## Appendix: terminology and related constructions
 
 **Thin and flat.** A double category in which a square is determined by its boundary is
-called *flat* by Grandis and Paré (Limits in double categories, 1999). This document
-says *thin*, by analogy with thin categories (preorders). In the double-category
-literature "thin" has another use: a *thin structure* in the sense of Brown and Mosa is
-a double category with connections, which is not meant here.
+called *flat* by Grandis and Paré [GP99, §1.1]. This document says *thin*, by analogy
+with thin categories (preorders). In the double-category literature *thin* has another
+use: a *thin structure* on an edge-symmetric double category (Spencer; Brown and Mosa
+[BM99]) is a double functor from the double category of commutative squares that
+selects the thin squares, and Brown and Mosa prove it equivalent to a connection pair.
+That notion is not meant here.
 
 **Quintets in Rel.** The relational instance of section 3 has relations in both
-directions, since programs are interpreted as relations. It is an instance of
-Ehresmann's quintet construction, which turns a 2-category K into a double category
-whose arrows in both directions are the 1-cells of K and whose squares are the 2-cells
-between the two composites round the boundary. For K the 2-category Rel of sets,
-relations and inclusions, a quintet is a lax square f ; ⟦w⟧ ⊆ ⟦u⟧ ; g. Rel is locally a
-preorder, so its quintets are flat. The instance of section 3 is this double category
-pulled back along the semantics functor from programs to relations. The double category
-Rel of the reminder is the part of it whose horizontal arrows are graphs of functions.
+directions, since programs are interpreted as relations. Ehresmann's quintet
+construction [Eh63] turns a 2-category K into a double category Q K whose arrows in both
+directions are the 1-cells of K; a square with top u, left f, right g and bottom w is a
+2-cell u ; g ⇒ f ; w of K [GP99, §1.3]. For K the 2-category Rel of sets, relations and
+inclusions, the squares of this document, f ; ⟦w⟧ ⊆ ⟦u⟧ ; g, carry the opposite 2-cell:
+they are the quintets of Rel^co, equivalently the squares of the transpose of Q Rel. Rel
+is locally a preorder, so these quintets are flat. The instance of section 3 is this
+double category pulled back along the semantics functor from programs to relations. The
+double category Rel of the reminder is the part of it whose horizontal arrows are graphs
+of functions.
 
 **Related uses.**
 
-- Data refinement. Lax commuting squares of relations are the forward (downward)
-  simulations of Hoare and He and of de Roever and Engelhardt. Horizontal pasting is
-  sequential composition of programs; vertical pasting is composition of refinement
-  steps.
-- Tile logic (Gadducci and Montanari). Operational semantics is presented as a double
-  category whose squares are rewrite tiles; it is not flat in general.
-- Categorical systems theory (Myers). Double categories whose squares are simulations
-  between open systems.
+- Data refinement. Take an abstraction relation R from abstract to concrete states as
+  both vertical sides, the abstract operation A on top and the concrete operation C at
+  the bottom. A lax square is then the forward (downward) simulation condition
+  R ; C ⊆ A ; R of He, Hoare and Sanders [HHS86, HHS87], which de Roever and Engelhardt
+  call L-simulation [dRE98]. Horizontal pasting is sequential composition of programs;
+  vertical pasting is composition of refinement steps. The squares of this document
+  ask more than the inclusion when the program is partial: the run must exist, so a
+  correspondence also excludes failure.
+- Tile logic [GM00]. Operational semantics is presented as a double category whose
+  squares are rewrite tiles; distinct tiles may share a boundary, so it is not flat in
+  general.
+- Categorical systems theory [My21]. Open dynamical systems form a double category whose
+  arrows in one direction are behaviours (trajectories, steady states, periodic orbits)
+  and in the other wirings; its squares are commuting conditions.
 
-The references are cited from memory and have not been checked against the sources; the
-direction of the inclusion has not been compared with the conventions for quintets.
+**References.**
+
+- [BM99] R. Brown, G. H. Mosa. Double categories, 2-categories, thin structures and
+  connections. Theory Appl. Categ. 5(7):163–175, 1999.
+- [dRE98] W.-P. de Roever, K. Engelhardt. Data Refinement: Model-Oriented Proof Methods
+  and their Comparison. Cambridge Tracts in Theoretical Computer Science 47, CUP, 1998.
+  doi:10.1017/CBO9780511663079.
+- [Eh63] C. Ehresmann. Catégorie double des quintettes; applications covariantes. C. R.
+  Acad. Sci. Paris 256:1891–1894, 1963.
+- [GM00] F. Gadducci, U. Montanari. The tile model. In G. Plotkin, C. Stirling, M. Tofte
+  (eds.), Proof, Language, and Interaction: Essays in Honour of Robin Milner, MIT Press,
+  2000, 133–166.
+- [GP99] M. Grandis, R. Paré. Limits in double categories. Cahiers Topologie Géom.
+  Différentielle Catég. 40(3):162–220, 1999.
+- [GAK12] D. Greenaway, J. Andronick, G. Klein. Bridging the gap: automatic verified
+  abstraction of C. ITP 2012, LNCS 7406, 99–115. doi:10.1007/978-3-642-32347-8_8.
+- [GLAK14] D. Greenaway, J. Lim, J. Andronick, G. Klein. Don't sweat the small stuff:
+  formal verification of C code without the pain. PLDI 2014, 429–439.
+  doi:10.1145/2594291.2594296.
+- [HHS86] He Jifeng, C. A. R. Hoare, J. W. Sanders. Data refinement refined. ESOP 86,
+  LNCS 213, 187–196. doi:10.1007/3-540-16442-1_14.
+- [HHS87] C. A. R. Hoare, He Jifeng, J. W. Sanders. Prespecification in data refinement.
+  Inf. Process. Lett. 25(2):71–76, 1987. doi:10.1016/0020-0190(87)90224-9.
+- [My21] D. J. Myers. Double categories of open dynamical systems (extended abstract).
+  ACT 2020, EPTCS 333:154–167, 2021. doi:10.4204/EPTCS.333.11.

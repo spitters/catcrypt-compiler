@@ -188,10 +188,10 @@ framed forms use `runBlock`. [ASCENT.md](ASCENT.md) has the full result tables.
 | Kernel | Theorems | Lean-specific limit |
 |---|---|---|
 | `bignum_montmul_p384` | `s2nMontmulP384_correct_addr`; bytes: `s2nMontmulP384Bytes_correct` | |
-| `carry_mul`, `solinas_square` | `carryMul_correct_addr`, `solinasSquare_correct_addr` | `RegionsApart` |
-| `ed25519_point_add` | `paShippedBytes_correct`, `paSpec_addSpec`; `ed25519PointAdd_constant_time` over the block | `Separated`; eleven `native_decide` checks |
-| `ed25519_sc_reduce`, `sc_muladd` | `scReduceShipped_correct_addr`, `scMuladdShipped_correct_addr` | eight and nine `native_decide` footprint checks |
-| `ed25519_madd`, `invert`, `compress` | `maddShipped_correct_cross`, `invertShipped_correct`, `compressShipped_correct_addr` | `madd` relative to `MaddCallees` |
+| `carry_mul`, `solinas_square` | `carryMul_correct_addr`, `solinasSquare_correct_addr` | `RegionsApart` between the inputs and against the frame; for `solinas_square` also input against output |
+| `ed25519_point_add` | `paShippedBytes_correct`, `paSpec_addSpec` (agreement with the extended-coordinate formulas); `ed25519PointAdd_constant_time` over the block | `Separated`; inputs below p; eleven `native_decide` checks (ten in `Ed25519PointAddFootprint`, one in `Ed25519PointAddDecode`) |
+| `ed25519_sc_reduce`, `sc_muladd` | `scReduceShipped_correct_addr`, `scMuladdShipped_correct_addr` | `Separated` (`scrCells`, `scmCells`); eight and nine `native_decide` footprint checks |
+| `ed25519_madd`, `invert`, `compress` | `maddShipped_correct` (callees discharged through `maddCallees_maddCallModel`; `maddShipped_correct_cross` is the form relative to `MaddCallees`), `invertShipped_correct`, `invertShipped_inv`, `compressShipped_correct` (`compressShipped_correct_addr` is the form relative to `CompressCallees`) | inputs below p; `ChainSep`, `RangeDisj`, `CompressSep` buffer disjointness |
 | `fe25519_mul`, comb select | `feMulBlock_mod`, `combSelectBytes_correct`, `selBytes_constant_time` | |
 | RV64 `(x + y) mod p256` | `addp256_correct` | |
 
