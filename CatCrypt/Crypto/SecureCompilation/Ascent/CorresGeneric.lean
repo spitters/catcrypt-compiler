@@ -6,16 +6,17 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMCore
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
 
 /-!
 # The dialect-generic correspondence `CorresM`
 
 `Corres` (over `semScalar`) and `CorresJ` (over `runBlock`) are two instances of
 one forward simulation parameterised by the machine's step function
-`step : C → M → Option M`. This module states that relation once, shows both are
-instances, and proves the structural core (`weaken`, `seq`) generically — so the
-two relations share one proof rather than two.
+`step : C → M → Option M`, the relation `CorresM` of `CorresMCore`. This module
+shows both are instances and proves the structural core (`weaken`, `seq`)
+generically, so the two relations share one proof.
 
 The step abstracts the machine: `semScalar : LowCT → SEnvScalar → Option SEnvScalar`
 is already `Option`-valued, and `runBlock : JState 64 → List (JInstr 64) → JState 64`
@@ -38,37 +39,15 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 
-/-- The dialect-generic forward simulation: from a machine state `m` related by `SR`
-    to an abstract state satisfying `P`, the step `step c` makes progress
-    (`= some m'`) to a state related to the abstract result `fa a`. Generic in the
-    machine state `M`, the program `C`, the step function, the state relation `SR`,
-    and the abstract state `AState`. -/
-def CorresM {M : Type} {C : Type} {AState : Type} (step : C → M → Option M)
-    (SR : M → AState → Prop) (P : AState → Prop) (fa : AState → AState) (c : C) : Prop :=
-  ∀ m a, SR m a → P a → ∃ m', step c m = some m' ∧ SR m' (fa a)
+/-! ## The two machines as instances
 
-/-! ## The two machines as instances -/
+`CorresM` is defined in `CorresMCore`; `runBlockStep` and `corresJ_eq_corresM` (the
+`runBlock` instance) are in `CorresGenericX86`. -/
 
 /-- `Corres` is `CorresM` at the scalar machine `semScalar` — definitionally. -/
 theorem corres_eq_corresM {AState : Type} (SR : SEnvScalar → AState → Prop)
     (P : AState → Prop) (fa : AState → AState) (c : LowCT) :
     Corres SR P fa c = CorresM semScalar SR P fa c := rfl
-
-/-- The total `runBlock` as a never-failing step. -/
-def runBlockStep (c : List (JInstr 64)) (st : JState 64) : Option (JState 64) :=
-  some (runBlock st c)
-
-/-- `CorresJ` is `CorresM` at the total `runBlock` step. -/
-theorem corresJ_eq_corresM {AState : Type} (SR : JState 64 → AState → Prop)
-    (P : AState → Prop) (fa : AState → AState) (c : List (JInstr 64)) :
-    CorresJ SR P fa c ↔ CorresM runBlockStep SR P fa c := by
-  constructor
-  · intro h m a hSR hP
-    exact ⟨runBlock m c, rfl, h m a hSR hP⟩
-  · intro h st a hSR hP
-    obtain ⟨m', hstep, hSR'⟩ := h st a hSR hP
-    rw [runBlockStep, Option.some.injEq] at hstep
-    exact hstep ▸ hSR'
 
 /-! ## The structural core, proved once -/
 

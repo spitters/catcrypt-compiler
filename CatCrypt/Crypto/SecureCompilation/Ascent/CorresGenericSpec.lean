@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMCore
 
 /-!
 # The generic correspondence as a specification for an arbitrary postcondition

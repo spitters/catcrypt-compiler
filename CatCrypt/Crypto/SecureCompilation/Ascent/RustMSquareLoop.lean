@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquare
 public import HaxLean.HaxBackendPrelude
+public import CatCrypt.Crypto.SecureCompilation.Ascent.IFold
 
 /-!
 # Counted loops in the `RustM` correspondence square
@@ -25,10 +26,8 @@ runs `body i c` and continues with `(i + 1, c')` while `i < N`, and stops with `
 once `i = N`. This is the shape of the loop hax emits for a `while` loop over a counter.
 
 The abstract side is `ifold fa N σ`, the `N`-fold application of an index-dependent step
-`fa : Nat → S → S`, peeling the last trip. It is the recursion of `ifold` in
-`Ascent/MlkemPolyFoldCorres.lean`, restated here because that module imports the LowCT
-`Corres` closure (through `MlkemPolyAddCapstone` and `KeystoneControl`), while this one
-imports `RustMSquare` and hax-lean's `HaxBackendPrelude` only.
+`fa : Nat → S → S`, peeling the last trip, from `Ascent/IFold.lean`. The `semScalar`
+counted-loop rule of `Ascent/MlkemPolyFoldCorres.lean` uses the same definition.
 
 ## The extracted range loop
 
@@ -60,7 +59,6 @@ for every `e : UScalar ty` (`foldRange_index_val`).
 
 ## Main definitions
 
-* `ifold` — the index-dependent iterate of the abstract step
 * `countedBody`, `loopK` — one trip of the counted loop and the loop itself
 * `corresM_loop` — the square of a `loop` from the invariant rule
 * `corresM_loopK` — the counted-loop rule
@@ -78,16 +76,11 @@ set_option autoImplicit false
 namespace Hax.Ascent.RustM
 
 open Aeneas.Std
+open CatCrypt.Crypto.SecureCompilation.Ascent (ifold)
 
 variable {C S A : Type}
 
 /-! ## The counted loop -/
-
-/-- `N`-fold application of the index-dependent step `fa`, peeling the last trip
-    (`n + 1 ↦ fa n ∘ ifold fa n`). -/
-def ifold (fa : Nat → S → S) : Nat → S → S
-  | 0, a => a
-  | n + 1, a => fa n (ifold fa n a)
 
 /-- One trip of the counted loop of `N` trips: below the bound run `body i` and continue
     with the next counter, at the bound stop with the current concrete state. -/

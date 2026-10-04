@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericSpec
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
 
 @[expose] public section
 set_option autoImplicit false
@@ -28,12 +30,11 @@ abstract result to `Q`.
 
 ## Main results
 
-* `corresJ_triple_post` — the `RunBlockTriple` form.
 * `corresJ_iff_triple_post` — `CorresJ` is equivalent to this family over all `Q`.
-  With `RunBlockTriple` unfolded it is the statement of `corresJ_iff_post_generic`
-  (`CorresInstanceSpec`), the `CorresJ` instance of the generic `corresM_iff_post`. The
-  proof here is direct, since the closure of `CorresInstanceSpec` includes the `Transfer`
-  umbrella, which the closure of this module does not.
+  It is the generic `corresM_iff_post` (`CorresGenericSpec`) at `runBlockStep`, through
+  `corresJ_eq_corresM` (`CorresGenericX86`); a step triple over the never-failing
+  `runBlockStep` is a `RunBlockTriple`.
+* `corresJ_triple_post` — the forward direction, in the `RunBlockTriple` form.
 * `corresJ_spec` — the `Std.Do` form over `runBlockM c`, with the postcondition a
   `PostCond` variable.
 * `corresJ_spec_at` — the `Std.Do` triple at a fixed abstract state, the image of
@@ -66,27 +67,33 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 variable {AState : Type} {SR : JState 64 → AState → Prop} {P : AState → Prop}
   {fa : AState → AState} {c : List (JInstr 64)}
 
+/-- `CorresJ SR P fa c` is equivalent to the family of `runBlock` triples
+    `{∃ a, SR · a ∧ P a ∧ ∀ st', SR st' (fa a) → Q st'} c {Q}` over all
+    postconditions `Q`. It is `corresM_iff_post` at `runBlockStep`, through
+    `corresJ_eq_corresM`. -/
+theorem corresJ_iff_triple_post :
+    CorresJ SR P fa c ↔ ∀ Q : JState 64 → Prop,
+      RunBlockTriple (fun st => ∃ a, SR st a ∧ P a ∧ ∀ st', SR st' (fa a) → Q st') c Q := by
+  rw [corresJ_eq_corresM, corresM_iff_post]
+  refine forall_congr' fun Q => ⟨fun h st hpre => ?_, fun h st hpre => ⟨_, rfl, h st hpre⟩⟩
+  obtain ⟨st', hstep, hQ⟩ := h st hpre
+  rw [runBlockStep, Option.some.injEq] at hstep
+  exact hstep ▸ hQ
+
 /-- A `CorresJ` correspondence gives a `runBlock` triple for every postcondition `Q`:
     the precondition holds at `st` when some abstract state `a` is related to `st`,
     satisfies `P`, and every machine state related to `fa a` satisfies `Q`. -/
 theorem corresJ_triple_post (h : CorresJ SR P fa c) (Q : JState 64 → Prop) :
     RunBlockTriple (fun st => ∃ a, SR st a ∧ P a ∧ ∀ st', SR st' (fa a) → Q st') c Q :=
-  fun st ⟨a, hSR, hP, hQ⟩ => hQ _ (h st a hSR hP)
+  corresJ_iff_triple_post.mp h Q
 
 /-- The family of triples of `corresJ_triple_post` over all postconditions gives
-    back the correspondence, by instantiating `Q` with `SR · (fa a)`. -/
+    back the correspondence. -/
 theorem corresJ_of_triple_post
     (h : ∀ Q : JState 64 → Prop,
       RunBlockTriple (fun st => ∃ a, SR st a ∧ P a ∧ ∀ st', SR st' (fa a) → Q st') c Q) :
     CorresJ SR P fa c :=
-  fun st a hSR hP => h (fun st' => SR st' (fa a)) st ⟨a, hSR, hP, fun _ h' => h'⟩
-
-/-- `CorresJ SR P fa c` is equivalent to the family of `runBlock` triples of
-    `corresJ_triple_post` over all postconditions. -/
-theorem corresJ_iff_triple_post :
-    CorresJ SR P fa c ↔ ∀ Q : JState 64 → Prop,
-      RunBlockTriple (fun st => ∃ a, SR st a ∧ P a ∧ ∀ st', SR st' (fa a) → Q st') c Q :=
-  ⟨corresJ_triple_post, corresJ_of_triple_post⟩
+  corresJ_iff_triple_post.mpr h
 
 /-- The `Std.Do` form of `corresJ_triple_post` over `runBlockM c`. The postcondition
     is an arbitrary `PostCond`; the precondition evaluates it at every machine

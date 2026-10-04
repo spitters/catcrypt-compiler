@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.IFold
 
 /-!
 # The ML-KEM ascent fold-lift: per-coefficient tie ↦ whole-polynomial op
@@ -87,21 +88,8 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 mirror of `semRForD`'s structural recursion (`n+1 ↦ bind counter, run body`), but
 with a **per-index** step `fa : Nat → AState → AState`.  Generalizes `nfold`
 (`Ascent.Control`, the index-independent iterate) and matches `loopStep`
-(`Ascent.RunBlockCorres`). -/
-
-/-- `N`-fold application of the **index-dependent** step `fa`, peeling the last
-    trip (`n+1 ↦ fa n ∘ ifold fa n`) to match `semRForD`. -/
-def ifold {A : Type} (fa : Nat → A → A) : Nat → A → A
-  | 0, a => a
-  | n + 1, a => fa n (ifold fa n a)
-
-/-- The index-folded iterate preserves any predicate preserved by every step. -/
-theorem ifold_invariant {A : Type} {fa : Nat → A → A} {P : A → Prop}
-    (hinv : ∀ n a, P a → P (fa n a)) : ∀ (N : Nat) (a : A), P a → P (ifold fa N a) := by
-  intro N
-  induction N with
-  | zero => intro a ha; exact ha
-  | succ n ih => intro a ha; exact hinv n _ (ih a ha)
+(`Ascent.RunBlockCorres`). `ifold` and `ifold_invariant` are defined in
+`Ascent.IFold`. -/
 
 /-- When the step does not use the index, `ifold` collapses to `nfold`
     (`Ascent.Control`) — witnessing that `corres_for_indexed` strictly generalizes
