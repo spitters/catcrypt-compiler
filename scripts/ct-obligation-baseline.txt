@@ -16,6 +16,9 @@ CatCrypt/Crypto/Jasmin/Examples/X25519BenchEmit.lean
 CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSLEmit.lean
 CatCrypt/Crypto/Jasmin/JasminEmit.lean
 CatCrypt/Crypto/Jasmin/JasminToRustEmit.lean
+# KeccakJincEmit (2026-10-04): the rolled-loop CT checker rejects the round-constant load, because
+# LOADSYM has no case in JasminLsem.lsemStep; the theorem waits for LOADSYM semantics.
+CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean
 CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean
 CatCrypt/Crypto/Jasmin/P384DhkemReflect.lean
 CatCrypt/Crypto/Jasmin/P384EcdsaReflect.lean
