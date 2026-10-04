@@ -2751,10 +2751,12 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.EmitArtifacts.P384Rust,
     Lake.Glob.one `CatCrypt.Hax.Ascent.ArrStructs,
     Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHax,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHaxDemo,
     Lake.Glob.one `CatCrypt.Hax.Ascent.AscentOption,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Builtins,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Corres,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Coverage,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Demo,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Deps,
     Lake.Glob.one `CatCrypt.Hax.Ascent.EarlyExit,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Encode,
@@ -2793,6 +2795,20 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.ReprBridge,
     Lake.Glob.one `CatCrypt.Hax.Runtime,
     Lake.Glob.one `CatCrypt.Hax.RustM,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.Arith,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.Arrays,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.AscendRustM,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.BackendLoops,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.Bitwise,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.Casts,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.Encode,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustM,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMS,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMSSpec,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMSSpecDemo,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMSTotal,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMSTotalCtl,
     Lake.Glob.one `CatCrypt.Hax.TExprTypingCore,
     Lake.Glob.one `CatCrypt.Hax.TExprTypingSpine,
     Lake.Glob.one `CatCrypt.Hax.ToRawCode,
@@ -2848,6 +2864,8 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Restore,
     Lake.Glob.one `CatCrypt.Tactics.SP,
     Lake.Glob.one `CatCrypt.Tactics.SPNormalize,
+  ]
+def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Sim,
     Lake.Glob.one `CatCrypt.Tactics.SimpAttr,
     Lake.Glob.one `CatCrypt.Tactics.SumCases,
@@ -3010,18 +3028,17 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo,
     Lake.Glob.one `CatCrypt.Deep.HybridDemo,
     Lake.Glob.one `CatCrypt.Deep.ReflectOracleDemo,
-    Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHaxDemo,
-    Lake.Glob.one `CatCrypt.Hax.Ascent.Demo,
     Lake.Glob.one `CatCrypt.Hax.ClassBuiltinsTest,
     Lake.Glob.one `CatCrypt.Hax.ReifyImpDecodeEndToEnd,
     Lake.Glob.one `CatCrypt.Hax.ReifyImpEndToEnd,
+    Lake.Glob.one `CatCrypt.Hax.RustSemantics.ToRustMSContractDemo,
     Lake.Glob.one `CatCrypt.Tactics.BvToNatE2ETest,
     Lake.Glob.one `CatCrypt.Tactics.PolyZpTest,
   ]
 
 @[default_target]
 lean_lib CatCryptCompiler where
-  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14
+  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14 ++ pkgModules15
 
 -- Demos, probes, tests and benchmark drivers. Nothing in `CatCryptCompiler`
 -- imports a module of this library.

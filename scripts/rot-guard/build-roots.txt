@@ -987,8 +987,6 @@ CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
-CatCrypt.Hax.Ascent.AscendHaxDemo
-CatCrypt.Hax.Ascent.Coverage
 CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
 CatCrypt.Hax.Ascent.SquareDouble
@@ -999,6 +997,11 @@ CatCrypt.Hax.ReifyImpEmit
 CatCrypt.Hax.ReifyImpEndToEnd
 CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
+CatCrypt.Hax.RustSemantics
+CatCrypt.Hax.RustSemantics.AscendRustM
+CatCrypt.Hax.RustSemantics.BackendLoops
+CatCrypt.Hax.RustSemantics.ToRustMSContractDemo
+CatCrypt.Hax.RustSemantics.ToRustMSTotal
 CatCrypt.Hax.TExprTypingSpine
 CatCrypt.Hax.TypedToRawCode
 CatCrypt.Hax.VacuityAudit

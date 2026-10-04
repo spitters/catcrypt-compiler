@@ -1,0 +1,694 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Hax.RustSemantics.ToRustMS
+public import CatCrypt.Hax.RustSemantics.ToRustM
+public import CatCrypt.Hax.Ascent.Demo
+
+/-!
+# Termination of the state-passing `RustM` reading with conditionals and counted loops
+
+`toRustMS_total_kind` states that the reading `toRustMS app e ρ` returns a value on every
+literal to which the kind checker `kindOf sig Γ e` assigns a kind. The kinds `Kd κ` are
+the integer literals, the Booleans, the unit value, the loop indices `idx lo hi` (the
+`usize` words `ctr i` with `lo ≤ i < hi`) and the kinds `base k` of a user type `κ`, whose
+values are given by a predicate `H : κ → AVal → Prop`. The fragment is:
+
+* integer and Boolean literals, the unit value, variables bound in `Γ`;
+* `letBind x v b`, where a name already bound in `Γ` is rebound only at its kind, and
+  `seq`, `typeAscription`;
+* calls `.app f args` of arity one to three, whose name and argument kinds have the result
+  kind `k` in the signature list `sig`;
+* `ifThenElse c t e` with `c` of kind `bool` and `t`, `e` of one kind;
+* `forFold var (.lit (.int lo)) (.lit (.int hi)) body` with `0 ≤ lo`, `hi ≤ 2 ^ 32` and the
+  body in the fragment under `var` at the kind `idx lo hi`.
+
+The hypotheses are an environment binding each name of `Γ` to a value of its kind
+(`EnvTy`) and a reading of the calls that returns, on arguments of the kinds of a signature
+of `sig`, a value of its result kind (`AppTyped`). A checked word operation enters the
+fragment through its signature: `appTyped_add` states `AppTyped` for the checked `Add` of
+`appRt` on the bounded words `WB ty B`, under the no-overflow condition `B₁ + B₂ ≤ 2 ^ w`
+on each signature. On the word ranges `WI ty L U` (the words `x` of width `ty` with
+`L ≤ x < U`) the checked `Add`, `Sub`, `Mul`, `Div` and `Rem` of `appRt` are typed under
+the conditions that make each total: `U₁ + U₂ ≤ 2 ^ w` for `Add`, `U₂ ≤ L₁ + 1` (the
+subtrahend at most the minuend) for `Sub`, `U₁ * U₂ ≤ 2 ^ w` for `Mul`, and `1 ≤ L₂` (a
+non-zero divisor) for `Div` and `Rem`; `AppTyped.append` joins signature lists.
+
+`fnCorres_toRustMS_triple_of_kindOf` combines the termination theorem with
+`fnCorres_toRustMS`: a function correspondence, `AppOk`, `AppTyped` and `EnvTy` give the
+total `Std.Do` triple of the reading.
+
+## The instance on `keyEqLit`
+
+`keyEqLit` compares the first 32 entries of two arrays by a `forFold` over `[0, 32)` whose
+body is a conditional. `keyEqApp` reads `Ne` and `index` on bytes and byte arrays,
+`keyEqLit_kind` is the kind assignment of the literal, and `keyEqLit_triple` is the total
+triple of the reading from two Aeneas byte arrays of length at least 32, from the
+correspondence `keyEq_fnCorres`.
+
+## Main definitions
+
+* `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `kindOf`, `WB`, `WI`
+
+## Main results
+
+* `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`
+* `appRt_add_total`, `appTyped_add`
+* `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
+  `appRt_div_total`, `appRt_rem_total`
+* `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem`
+* `keyEqLit_kind`, `keyEqLit_triple`
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Hax.RustSemantics
+
+open Aeneas.Std Aeneas.Std.WP Std.Do
+
+/-! ## Kinds -/
+
+/-- The kinds of the fragment: integer literals, Booleans, the unit value, the loop indices
+    of a range, and the kinds of a user type `κ`. -/
+inductive Kd (κ : Type) where
+  /-- An integer literal. -/
+  | int
+  /-- A Boolean. -/
+  | bool
+  /-- The unit value. -/
+  | unit
+  /-- A loop index `ctr i` with `lo ≤ i < hi`. -/
+  | idx (lo hi : Int)
+  /-- A kind of the user type. -/
+  | base (k : κ)
+  deriving DecidableEq
+
+/-- The values of a kind, the values of `base k` given by `H k`. -/
+def Kd.Has {κ : Type} (H : κ → AVal → Prop) : Kd κ → AVal → Prop
+  | .int, v => ∃ n, v = .int n
+  | .bool, v => ∃ b, v = .bool b
+  | .unit, v => v = .unit
+  | .idx lo hi, v => ∃ i : Nat, lo ≤ i ∧ (i : Int) < hi ∧ v = RustSemantics.ctr i
+  | .base k, v => H k v
+
+/-- The environment `ρ` binds each name of `Γ` to a value of its kind. -/
+def EnvTy {κ : Type} (H : κ → AVal → Prop) (Γ : List (String × Kd κ)) (ρ : AEnv) : Prop :=
+  ∀ x k, Γ.lookup x = some k → ∃ v, ρ x = some v ∧ Kd.Has H k v
+
+/-- The reading of the calls `app` returns, at each signature `(f, ks, k)` of `sig` and on
+    arguments of the kinds `ks`, a value of the kind `k`. -/
+def AppTyped {κ : Type} (H : κ → AVal → Prop) (sig : List (String × List (Kd κ) × Kd κ))
+    (app : String → List AVal → RustM AVal) : Prop :=
+  ∀ f ks k vs, (f, ks, k) ∈ sig → List.Forall₂ (Kd.Has H) ks vs →
+    ∃ r, app f vs = .ok r ∧ Kd.Has H k r
+
+/-- The result kind of the first signature of `sig` for the name `f` and the argument
+    kinds `ks`. -/
+def sigFind {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ))
+    (f : String) (ks : List (Kd κ)) : Option (Kd κ) :=
+  (sig.find? fun s => decide (s.1 = f ∧ s.2.1 = ks)).map fun s => s.2.2
+
+/-- Binding `x` at the kind `k` keeps the kinds of `Γ`: `x` is not in `Γ` or has kind `k`. -/
+def fits {κ : Type} [DecidableEq κ] (Γ : List (String × Kd κ)) (x : String) (k : Kd κ) :
+    Bool :=
+  (Γ.lookup x).all fun k0 => decide (k0 = k)
+
+/-- **The kind checker of the fragment.** The kind of the value the reading returns, when
+    the literal is in the fragment. -/
+def kindOf {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ)) :
+    List (String × Kd κ) → Hax.ImpExpr → Option (Kd κ)
+  | _, .lit (.int _) => some .int
+  | _, .lit (.bool _) => some .bool
+  | Γ, .var x => Γ.lookup x
+  | _, .unitVal => some .unit
+  | Γ, .letBind x v b =>
+    match kindOf sig Γ v with
+    | some k => if fits Γ x k then kindOf sig ((x, k) :: Γ) b else none
+    | none => none
+  | Γ, .seq a b =>
+    match kindOf sig Γ a with
+    | some _ => kindOf sig Γ b
+    | none => none
+  | Γ, .typeAscription e _ => kindOf sig Γ e
+  | Γ, .app f [a] =>
+    match kindOf sig Γ a with
+    | some k1 => sigFind sig f [k1]
+    | none => none
+  | Γ, .app f [a, b] =>
+    match kindOf sig Γ a, kindOf sig Γ b with
+    | some k1, some k2 => sigFind sig f [k1, k2]
+    | _, _ => none
+  | Γ, .app f [a, b, c] =>
+    match kindOf sig Γ a, kindOf sig Γ b, kindOf sig Γ c with
+    | some k1, some k2, some k3 => sigFind sig f [k1, k2, k3]
+    | _, _, _ => none
+  | Γ, .ifThenElse c t e =>
+    match kindOf sig Γ c, kindOf sig Γ t, kindOf sig Γ e with
+    | some .bool, some k1, some k2 => if k1 = k2 then some k1 else none
+    | _, _, _ => none
+  | Γ, .forFold var (.lit (.int lo)) (.lit (.int hi)) body =>
+    if 0 ≤ lo ∧ hi ≤ 2 ^ 32 ∧ fits Γ var (.idx lo hi) then
+      match kindOf sig ((var, .idx lo hi) :: Γ) body with
+      | some _ => some .unit
+      | none => none
+    else none
+  | _, _ => none
+
+/-! ## Lemmas on the hypotheses -/
+
+theorem sigFind_mem {κ : Type} [DecidableEq κ] {sig : List (String × List (Kd κ) × Kd κ)}
+    {f : String} {ks : List (Kd κ)} {k : Kd κ} (h : sigFind sig f ks = some k) :
+    (f, ks, k) ∈ sig := by
+  unfold sigFind at h
+  obtain ⟨s, hs, rfl⟩ := Option.map_eq_some_iff.mp h
+  have hp := List.find?_some hs
+  simp only [decide_eq_true_eq] at hp
+  obtain ⟨h1, h2⟩ := hp
+  have hm := List.mem_of_find?_eq_some hs
+  obtain ⟨s1, s2, s3⟩ := s
+  simp only at h1 h2
+  subst h1 h2
+  exact hm
+
+theorem EnvTy.upd {κ : Type} {H : κ → AVal → Prop} {Γ : List (String × Kd κ)} {ρ : AEnv}
+    (h : EnvTy H Γ ρ) (x : String) {k : Kd κ} {v : AVal} (hv : Kd.Has H k v) :
+    EnvTy H ((x, k) :: Γ) (ρ.upd x v) := by
+  intro y k' hy
+  unfold AEnv.upd
+  by_cases hyx : y = x
+  · subst hyx
+    simp only [List.lookup_cons, beq_self_eq_true, Option.some.injEq] at hy
+    subst hy
+    exact ⟨v, by simp, hv⟩
+  · have hb : (y == x) = false := by simpa using hyx
+    simp only [List.lookup_cons, hb] at hy
+    rw [if_neg (by simpa using hyx)]
+    exact h y k' hy
+
+theorem EnvTy.of_cons {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
+    {Γ : List (String × Kd κ)} {ρ : AEnv} {x : String} {k : Kd κ}
+    (h : EnvTy H ((x, k) :: Γ) ρ) (hfit : fits Γ x k = true) : EnvTy H Γ ρ := by
+  intro y k' hy
+  by_cases hyx : y = x
+  · subst hyx
+    unfold fits at hfit
+    rw [hy] at hfit
+    simp only [Option.all_some, decide_eq_true_eq] at hfit
+    subst hfit
+    exact h y k' (by simp)
+  · have hb : (y == x) = false := by simpa using hyx
+    exact h y k' (by simp only [List.lookup_cons, hb]; exact hy)
+
+theorem two_pow_32_le_usize : (2 : Int) ^ 32 ≤ 2 ^ UScalarTy.Usize.numBits := by
+  rcases System.Platform.numBits_eq with h | h <;> simp [UScalarTy.numBits, h]
+
+/-! ## Termination -/
+
+/-- `loopS` returns a value when each step from an index in `[lo, hi)` and a state in `Q`
+    returns a state in `Q`. -/
+theorem loopS_total {Q : AEnv → Prop} {step : Nat → AEnv → RustM AEnv} {lo hi : Nat}
+    (hstep : ∀ i ρ, lo ≤ i → i < hi → Q ρ → ∃ ρ', step i ρ = .ok ρ' ∧ Q ρ') :
+    ∀ (n i : Nat) (ρ : AEnv), lo ≤ i → i + n ≤ hi → Q ρ →
+      ∃ ρ', loopS step n i ρ = .ok ρ' ∧ Q ρ'
+  | 0, _, ρ, _, _, hρ => ⟨ρ, rfl, hρ⟩
+  | n + 1, i, ρ, hi, hn, hρ => by
+    obtain ⟨ρ1, h1, hρ1⟩ := hstep i ρ hi (by omega) hρ
+    obtain ⟨ρ2, h2, hρ2⟩ := loopS_total hstep n (i + 1) ρ1 (by omega) (by omega) hρ1
+    exact ⟨ρ2, by simp [loopS, h1, h2], hρ2⟩
+
+/-- **The reading returns a value on the fragment.** From an environment binding each name
+    of `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of
+    the calls typed by `sig` returns a value of kind `k`, and its final environment again
+    binds each name of `Γ` to a value of its kind. -/
+theorem toRustMS_total_kind {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
+    {sig : List (String × List (Kd κ) × Kd κ)} {app : String → List AVal → RustM AVal}
+    (happ : AppTyped H sig app) (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) :
+    ∀ k, kindOf sig Γ e = some k → ∀ ρ, EnvTy H Γ ρ →
+      ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ Kd.Has H k v ∧ EnvTy H Γ ρ' := by
+  fun_induction kindOf sig Γ e
+  all_goals intro k hk ρ hρ
+  all_goals try (cases hk; done)
+  case case1 =>
+    cases hk
+    exact ⟨.int _, ρ, rfl, ⟨_, rfl⟩, hρ⟩
+  case case2 =>
+    cases hk
+    exact ⟨.bool _, ρ, rfl, ⟨_, rfl⟩, hρ⟩
+  case case3 Γ x =>
+    obtain ⟨v, hv, hH⟩ := hρ x k hk
+    exact ⟨v, ρ, by simp [toRustMS, hv], hH, hρ⟩
+  case case4 =>
+    cases hk
+    exact ⟨.unit, ρ, rfl, rfl, hρ⟩
+  case case5 Γ x v b kv hv hfit ihv ihb =>
+    obtain ⟨a, ρ1, h1, ha, hρ1⟩ := ihv _ hv ρ hρ
+    obtain ⟨r, ρ2, h2, hr, hρ2⟩ := ihb k hk _ (hρ1.upd x ha)
+    exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2.of_cons hfit⟩
+  case case8 Γ a b ka hka iha ihb =>
+    obtain ⟨u, ρ1, h1, -, hρ1⟩ := iha _ hka ρ hρ
+    obtain ⟨r, ρ2, h2, hr, hρ2⟩ := ihb k hk ρ1 hρ1
+    exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
+  case case10 Γ e ty ih =>
+    obtain ⟨r, ρ1, h1, hr, hρ1⟩ := ih k hk ρ hρ
+    exact ⟨r, ρ1, by simp [toRustMS, h1], hr, hρ1⟩
+  case case11 Γ f a k1 ha iha =>
+    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
+    obtain ⟨r, hr, hk'⟩ := happ f [k1] k [u] (sigFind_mem hk) (.cons hu .nil)
+    exact ⟨r, ρ1, by simp [toRustMS, h1, hr], hk', hρ1⟩
+  case case13 Γ f a b k1 k2 hb ha iha ihb =>
+    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
+    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb _ hb ρ1 hρ1
+    obtain ⟨r, hr, hk'⟩ := happ f [k1, k2] k [u, w] (sigFind_mem hk)
+      (.cons hu (.cons hw .nil))
+    exact ⟨r, ρ2, by simp [toRustMS, h1, h2, hr], hk', hρ2⟩
+  case case15 Γ f a b c k1 k2 k3 hc hb ha iha ihb ihc =>
+    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
+    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb _ hb ρ1 hρ1
+    obtain ⟨z, ρ3, h3, hz, hρ3⟩ := ihc _ hc ρ2 hρ2
+    obtain ⟨r, hr, hk'⟩ := happ f [k1, k2, k3] k [u, w, z] (sigFind_mem hk)
+      (.cons hu (.cons hw (.cons hz .nil)))
+    exact ⟨r, ρ3, by simp [toRustMS, h1, h2, h3, hr], hk', hρ3⟩
+  case case17 Γ c t e k2 he hc ht ihc iht ihe =>
+    cases hk
+    obtain ⟨cv, ρ1, h1, hcv, hρ1⟩ := ihc _ hc ρ hρ
+    obtain ⟨b, rfl⟩ := hcv
+    cases b
+    · obtain ⟨r, ρ2, h2, hr, hρ2⟩ := ihe _ he ρ1 hρ1
+      exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
+    · obtain ⟨r, ρ2, h2, hr, hρ2⟩ := iht _ ht ρ1 hρ1
+      exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
+  case case20 Γ var lo hi body hcond kb hbody ih =>
+    cases hk
+    obtain ⟨hlo, hhi, hfit⟩ := hcond
+    have hstep : ∀ i ρ0, lo.toNat ≤ i → i < lo.toNat + (hi - lo).toNat → EnvTy H Γ ρ0 →
+        ∃ ρ', (toRustMS app body (ρ0.upd var (ctr i)) >>= fun s => RustM.ok s.2) = .ok ρ' ∧
+          EnvTy H Γ ρ' := by
+      intro i ρ0 hi1 hi2 hρ0
+      obtain ⟨w, ρ', hw, -, hρ'⟩ := ih _ hbody _
+        (hρ0.upd var (k := .idx lo hi) ⟨i, by omega, by omega, rfl⟩)
+      exact ⟨ρ', by simp [hw], hρ'.of_cons hfit⟩
+    obtain ⟨ρ3, h3, hρ3⟩ := loopS_total
+      (step := fun i ρ0 => toRustMS app body (ρ0.upd var (ctr i)) >>= fun s => RustM.ok s.2)
+      hstep (hi - lo).toNat lo.toNat ρ le_rfl (by omega) hρ
+    refine ⟨.unit, ρ3, ?_, rfl, hρ3⟩
+    have hb : hi ≤ 2 ^ System.Platform.numBits := le_trans hhi two_pow_32_le_usize
+    simp [toRustMS, AVal.toInt?, hlo, hb, h3]
+
+/-! ## The total specification from a function correspondence -/
+
+/-- **The total triple of the reading on the fragment.** A function correspondence, `AppOk`,
+    a reading of the calls typed by `sig`, and an environment binding the names of `Γ` to
+    values of their kinds give the total `Std.Do` triple of the reading of a literal of the
+    fragment; the postcondition is fixed by `a`. -/
+theorem fnCorres_toRustMS_triple_of_kindOf {bi : Hax.Builtins} {A β : Type}
+    [Hax.Ascent.HaxEnc β] {e : Hax.ImpExpr} {entry : A → Hax.Env} {G : A → Prop} {f : A → β}
+    {app : String → List AVal → RustM AVal} {κ : Type} [DecidableEq κ]
+    {H : κ → AVal → Prop} {sig : List (String × List (Kd κ) × Kd κ)}
+    {Γ : List (String × Kd κ)} {k : Kd κ}
+    (hF : Hax.Ascent.FnCorres bi e entry G f) (happ : AppOk bi app)
+    (htot : AppTyped H sig app) (he : kindOf sig Γ e = some k) (a : A) (hG : G a)
+    (ρ : AEnv) (hρ : entry a = encEnv ρ) (hΓ : EnvTy H Γ ρ) :
+    ⦃⌜True⌝⦄ toRustMS app e ρ ⦃⇓ r => ⌜r.1.toValue = Hax.Ascent.HaxEnc.enc (f a)⌝⦄ := by
+  obtain ⟨v, ρ', h, -⟩ := toRustMS_total_kind htot Γ e k he ρ hΓ
+  apply spec_to_mvcgen
+  rw [h]
+  exact (spec_ok _).2 (fnCorres_toRustMS hF happ a hG ρ hρ v ρ' h)
+
+/-! ## Checked addition under a no-overflow condition -/
+
+/-- The words of width `ty` below `B`. -/
+def WB (ty : UScalarTy) (B : Nat) (v : AVal) : Prop :=
+  ∃ x : UScalar ty, v = .w ty x ∧ x.val < B
+
+theorem appRt_Add (a b : AVal) : appRt "Add" [a, b] = appArith .add a b := by
+  rfl
+
+/-- The checked `Add` of `appRt` returns a word below `B₁ + B₂` on words below `B₁` and
+    `B₂` when `B₁ + B₂ ≤ 2 ^ w`. -/
+theorem appRt_add_total {ty : UScalarTy} {B1 B2 : Nat} (hB : B1 + B2 ≤ 2 ^ ty.numBits)
+    {u w : AVal} (hu : WB ty B1 u) (hw : WB ty B2 w) :
+    ∃ r, appRt "Add" [u, w] = .ok r ∧ WB ty (B1 + B2) r := by
+  obtain ⟨x, rfl, hx⟩ := hu
+  obtain ⟨y, rfl, hy⟩ := hw
+  have h := UScalar.add_equiv x y
+  rw [appRt_Add]
+  rcases hxy : x + y with z | e | _ <;> rw [hxy] at h
+  · obtain ⟨-, hz, -⟩ := h
+    refine ⟨.w ty z, ?_, z, rfl, by omega⟩
+    simp [appArith, AVal.asW, AOp.aen, hxy]
+  · simp [UScalar.inBounds] at h
+    omega
+  · exact h.elim
+
+/-- **Checked addition in the fragment.** `appRt` is typed by every signature list of
+    checked additions `Add : WB ty B₁ → WB ty B₂ → WB ty (B₁ + B₂)` whose bounds satisfy the
+    no-overflow condition `B₁ + B₂ ≤ 2 ^ w`. -/
+theorem appTyped_add {sig : List (String × List (Kd (UScalarTy × Nat)) × Kd (UScalarTy × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty B1 B2, s = ("Add", [.base (ty, B1), .base (ty, B2)],
+      .base (ty, B1 + B2)) ∧ B1 + B2 ≤ 2 ^ ty.numBits) :
+    AppTyped (fun p => WB p.1 p.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, B1, B2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_add_total hB hu hw
+
+/-! ## Checked arithmetic on word ranges -/
+
+/-- The words of width `ty` in the range `[L, U)`. -/
+def WI (ty : UScalarTy) (L U : Nat) (v : AVal) : Prop :=
+  ∃ x : UScalar ty, v = .w ty x ∧ L ≤ x.val ∧ x.val < U
+
+/-- The signature lists of two typed readings of the calls type the reading on their
+    concatenation. -/
+theorem AppTyped.append {κ : Type} {H : κ → AVal → Prop}
+    {s1 s2 : List (String × List (Kd κ) × Kd κ)} {app : String → List AVal → RustM AVal}
+    (h1 : AppTyped H s1 app) (h2 : AppTyped H s2 app) : AppTyped H (s1 ++ s2) app := by
+  intro f ks k vs hs hvs
+  rcases List.mem_append.mp hs with h | h
+  exacts [h1 f ks k vs h hvs, h2 f ks k vs h hvs]
+
+theorem appRt_Sub (a b : AVal) : appRt "Sub" [a, b] = appArith .sub a b := by
+  rfl
+
+theorem appRt_Mul (a b : AVal) : appRt "Mul" [a, b] = appArith .mul a b := by
+  rfl
+
+theorem appRt_Div (a b : AVal) : appRt "Div" [a, b] = appArith .div a b := by
+  rfl
+
+theorem appRt_Rem (a b : AVal) : appRt "Rem" [a, b] = appArith .rem a b := by
+  rfl
+
+/-- `appArith` on two words of one width returns the word the Aeneas operation returns. -/
+theorem appArith_w_ok {o : AOp} {ty : UScalarTy} {x y z : UScalar ty} (h : o.aen x y = .ok z) :
+    appArith o (.w ty x) (.w ty y) = .ok (.w ty z) := by
+  simp [appArith, AVal.asW, h]
+
+/-- The checked `Add` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
+    `[L₁ + L₂, U₁ + U₂)` when `U₁ + U₂ ≤ 2 ^ w`. -/
+theorem appRt_addI_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat}
+    (hB : U1 + U2 ≤ 2 ^ ty.numBits) {u w : AVal} (hu : WI ty L1 U1 u) (hw : WI ty L2 U2 w) :
+    ∃ r, appRt "Add" [u, w] = .ok r ∧ WI ty (L1 + L2) (U1 + U2) r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  have h := UScalar.add_equiv x y
+  rcases hxy : x + y with z | e | _ <;> rw [hxy] at h
+  · obtain ⟨-, hz, -⟩ := h
+    exact ⟨.w ty z, by rw [appRt_Add]; exact appArith_w_ok (o := .add) hxy, z, rfl,
+      by omega, by omega⟩
+  · simp [UScalar.inBounds] at h
+    omega
+  · exact h.elim
+
+/-- The checked `Sub` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
+    `[L₁ + 1 - U₂, U₁ - L₂)` when `U₂ ≤ L₁ + 1`, which orders the operands. -/
+theorem appRt_sub_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat} (hB : U2 ≤ L1 + 1)
+    {u w : AVal} (hu : WI ty L1 U1 u) (hw : WI ty L2 U2 w) :
+    ∃ r, appRt "Sub" [u, w] = .ok r ∧ WI ty (L1 + 1 - U2) (U1 - L2) r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  have h := UScalar.sub_equiv x y
+  rcases hxy : x - y with z | e | _ <;> rw [hxy] at h
+  · obtain ⟨-, hz, -⟩ := h
+    exact ⟨.w ty z, by rw [appRt_Sub]; exact appArith_w_ok (o := .sub) hxy, z, rfl,
+      by omega, by omega⟩
+  · omega
+  · exact h.elim
+
+/-- The checked `Mul` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
+    `[L₁ * L₂, U₁ * U₂)` when `U₁ * U₂ ≤ 2 ^ w`. -/
+theorem appRt_mul_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat}
+    (hB : U1 * U2 ≤ 2 ^ ty.numBits) {u w : AVal} (hu : WI ty L1 U1 u) (hw : WI ty L2 U2 w) :
+    ∃ r, appRt "Mul" [u, w] = .ok r ∧ WI ty (L1 * L2) (U1 * U2) r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  have hlt : x.val * y.val < U1 * U2 := Nat.mul_lt_mul'' hx2 hy2
+  have h := UScalar.mul_equiv x y
+  have hm : x * y = x.mul y := rfl
+  rcases hxy : x.mul y with z | e | _ <;> rw [hxy] at h
+  · obtain ⟨-, hz, -⟩ := h
+    refine ⟨.w ty z, by rw [appRt_Mul]; exact appArith_w_ok (o := .mul) (hm.trans hxy), z, rfl,
+      ?_, ?_⟩
+    · rw [hz]
+      exact Nat.mul_le_mul hx1 hy1
+    · rw [hz]
+      exact hlt
+  · have hmax := UScalar.max.eq_1 ty
+    omega
+  · exact h.elim
+
+/-- The checked `Div` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
+    `[0, U₁)` when `1 ≤ L₂`, which excludes the divisor zero. -/
+theorem appRt_div_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat} (hB : 1 ≤ L2)
+    {u w : AVal} (hu : WI ty L1 U1 u) (hw : WI ty L2 U2 w) :
+    ∃ r, appRt "Div" [u, w] = .ok r ∧ WI ty 0 U1 r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  obtain ⟨z, hz, hzv⟩ := UScalar.div_spec x (y := y) (by omega)
+  refine ⟨.w ty z, by rw [appRt_Div]; exact appArith_w_ok (o := .div) hz, z, rfl,
+    Nat.zero_le _, ?_⟩
+  rw [hzv]
+  exact lt_of_le_of_lt (Nat.div_le_self _ _) hx2
+
+/-- The checked `Rem` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
+    `[0, U₂)` when `1 ≤ L₂`, which excludes the divisor zero. -/
+theorem appRt_rem_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat} (hB : 1 ≤ L2)
+    {u w : AVal} (hu : WI ty L1 U1 u) (hw : WI ty L2 U2 w) :
+    ∃ r, appRt "Rem" [u, w] = .ok r ∧ WI ty 0 U2 r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  obtain ⟨z, hz, hzv⟩ := spec_imp_exists (UScalar.rem_spec x (y := y) (by omega))
+  refine ⟨.w ty z, by rw [appRt_Rem]; exact appArith_w_ok (o := .rem) hz, z, rfl,
+    Nat.zero_le _, ?_⟩
+  rw [hzv]
+  exact lt_of_lt_of_le (Nat.mod_lt _ (by omega)) (by omega)
+
+/-- **Checked addition on word ranges.** `appRt` is typed by every signature list of
+    checked additions `Add : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty (L₁ + L₂) (U₁ + U₂)` with
+    `U₁ + U₂ ≤ 2 ^ w`. -/
+theorem appTyped_addI
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L1 U1 L2 U2, s = ("Add", [.base (ty, L1, U1), .base (ty, L2, U2)],
+      .base (ty, L1 + L2, U1 + U2)) ∧ U1 + U2 ≤ 2 ^ ty.numBits) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L1, U1, L2, U2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_addI_total hB hu hw
+
+/-- **Checked subtraction on word ranges.** `appRt` is typed by every signature list of
+    checked subtractions `Sub : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty (L₁ + 1 - U₂) (U₁ - L₂)`
+    with `U₂ ≤ L₁ + 1`: every subtrahend is at most every minuend. -/
+theorem appTyped_sub
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L1 U1 L2 U2, s = ("Sub", [.base (ty, L1, U1), .base (ty, L2, U2)],
+      .base (ty, L1 + 1 - U2, U1 - L2)) ∧ U2 ≤ L1 + 1) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L1, U1, L2, U2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_sub_total hB hu hw
+
+/-- **Checked multiplication on word ranges.** `appRt` is typed by every signature list of
+    checked multiplications `Mul : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty (L₁ * L₂) (U₁ * U₂)`
+    with `U₁ * U₂ ≤ 2 ^ w`. -/
+theorem appTyped_mul
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L1 U1 L2 U2, s = ("Mul", [.base (ty, L1, U1), .base (ty, L2, U2)],
+      .base (ty, L1 * L2, U1 * U2)) ∧ U1 * U2 ≤ 2 ^ ty.numBits) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L1, U1, L2, U2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_mul_total hB hu hw
+
+/-- **Checked division on word ranges.** `appRt` is typed by every signature list of
+    checked divisions `Div : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty 0 U₁` with `1 ≤ L₂`: the
+    divisor is non-zero. -/
+theorem appTyped_div
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L1 U1 L2 U2, s = ("Div", [.base (ty, L1, U1), .base (ty, L2, U2)],
+      .base (ty, 0, U1)) ∧ 1 ≤ L2) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L1, U1, L2, U2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_div_total hB hu hw
+
+/-- **Checked remainder on word ranges.** `appRt` is typed by every signature list of
+    checked remainders `Rem : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty 0 U₂` with `1 ≤ L₂`: the
+    divisor is non-zero. -/
+theorem appTyped_rem
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L1 U1 L2 U2, s = ("Rem", [.base (ty, L1, U1), .base (ty, L2, U2)],
+      .base (ty, 0, U2)) ∧ 1 ≤ L2) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L1, U1, L2, U2, hseq, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_rem_total hB hu hw
+
+/-! ## The instance on `keyEqLit` -/
+
+section KeyEq
+
+open Hax.Ascent Hax.Ascent.Demo
+
+/-- The kinds of the instance: byte arrays of length at least 32, and bytes. -/
+inductive KeyK where
+  /-- A byte array of length at least 32. -/
+  | arr
+  /-- A byte. -/
+  | byte
+  deriving DecidableEq
+
+/-- The values of the kinds of the instance. -/
+def KeyK.Has : KeyK → AVal → Prop
+  | .arr, v => ∃ (n : Usize) (x : Aeneas.Std.Array (UScalar .U8) n), 32 ≤ n.val ∧
+      v = .arr .U8 n x
+  | .byte, v => ∃ x : UScalar .U8, v = .w .U8 x
+
+/-- The signatures of `keyEqLit`: `index` of a byte array at an index below 32, and `Ne` of
+    two bytes. -/
+def keyEqSig : List (String × List (Kd KeyK) × Kd KeyK) :=
+  [("index", [.base .arr, .idx 0 32], .base .byte), ("Ne", [.base .byte, .base .byte], .bool)]
+
+/-- The kinds of the parameters of `keyEqLit`. -/
+def keyEqΓ : List (String × Kd KeyK) := [("a", .base .arr), ("b", .base .arr)]
+
+/-- `Ne` on two words. -/
+def appNe : AVal → AVal → RustM AVal
+  | .w _ x, .w _ y => .ok (.bool ((x.val : Int) != (y.val : Int)))
+  | _, _ => .fail .undef
+
+/-- The reading of the calls of `demoBuiltins`: `Ne` on words and `index` on arrays. -/
+def keyEqApp (f : String) (vs : List AVal) : RustM AVal :=
+  match f, vs with
+  | "Ne", [a, b] => appNe a b
+  | "index", [a, i] => appIndex a i
+  | _, _ => .fail .undef
+
+/-- `keyEqLit` has the kind `bool` over its two array parameters. -/
+theorem keyEqLit_kind : kindOf keyEqSig keyEqΓ keyEqLit = some .bool := by
+  decide
+
+theorem keyEqApp_ok : AppOk demoBuiltins keyEqApp := by
+  intro f vs r h
+  unfold keyEqApp at h
+  split at h
+  · unfold appNe at h
+    split at h
+    · cases h
+      rfl
+    · cases h
+  · rename_i a i
+    cases a with
+    | arr ty n arr =>
+      simp only [appIndex] at h
+      obtain ⟨j, hj, h⟩ := rustM_bind_ok h
+      obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+      cases h
+      have hi := AVal.asW_ok hj
+      unfold Aeneas.Std.Array.index_usize at hx
+      rw [Aeneas.Std.Array.getElem?_Usize_eq] at hx
+      split at hx
+      · cases hx
+      · rename_i y hy
+        cases hx
+        simp [AVal.toValues, AVal.toValue, hi, demoBuiltins, enc_uscalar, hy]
+    | _ => simp [appIndex] at h
+  · cases h
+
+theorem keyEqApp_typed : AppTyped KeyK.Has keyEqSig keyEqApp := by
+  intro f ks k vs hs hvs
+  simp only [keyEqSig, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hs
+  rcases hs with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+  · match vs, hvs with
+    | [u, w], .cons hu (.cons hw .nil) =>
+      obtain ⟨n, x, hn, rfl⟩ := hu
+      obtain ⟨i, -, hi, rfl⟩ := hw
+      have hlt : i < x.val.length := by
+        have := x.property
+        omega
+      have hv : (⟨BitVec.ofNat UScalarTy.Usize.numBits i⟩ : UScalar .Usize).val = i := by
+        simp only [UScalar.val, BitVec.toNat_ofNat]
+        apply Nat.mod_eq_of_lt
+        rcases System.Platform.numBits_eq with h | h <;> simp [UScalarTy.numBits, h] <;> omega
+      refine ⟨.w .U8 (x.val[i]'hlt), ?_, _, rfl⟩
+      simp [keyEqApp, appIndex, ctr, AVal.asW, Aeneas.Std.Array.index_usize, hv, hlt]
+  · match vs, hvs with
+    | [u, w], .cons hu (.cons hw .nil) =>
+      obtain ⟨x, rfl⟩ := hu
+      obtain ⟨y, rfl⟩ := hw
+      exact ⟨_, rfl, _, rfl⟩
+
+/-- The integer array of the entries of an Aeneas byte array. -/
+def keyArr {n : Usize} (x : Aeneas.Std.Array (UScalar .U8) n) : Array Int :=
+  (x.val.map fun w => (w.val : Int)).toArray
+
+/-- The environment binding the parameters of `keyEqLit` to two Aeneas byte arrays. -/
+def keyEqEnvA {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) : AEnv :=
+  bindA [("a", .arr .U8 n x), ("b", .arr .U8 n y)]
+
+theorem keyEqEnvA_ty {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) (hn : 32 ≤ n.val) :
+    EnvTy KeyK.Has keyEqΓ (keyEqEnvA x y) := by
+  intro z k hz
+  simp only [keyEqΓ, List.lookup] at hz
+  by_cases ha : z = "a"
+  · subst ha
+    cases hz
+    exact ⟨.arr .U8 n x, by simp [keyEqEnvA, bindA, AEnv.upd], n, x, hn, rfl⟩
+  · by_cases hb : z = "b"
+    · subst hb
+      cases hz
+      exact ⟨.arr .U8 n y, by simp [keyEqEnvA, bindA, AEnv.upd], n, y, hn, rfl⟩
+    · have h1 : (z == "a") = false := by simpa using ha
+      have h2 : (z == "b") = false := by simpa using hb
+      simp [h1, h2] at hz
+
+theorem keyEqEntry_keyArr {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
+    keyEqEntry (keyArr x, keyArr y) = encEnv (keyEqEnvA x y) := by
+  rw [keyEqEnvA, encEnv_bindA]
+  simp [keyEqEntry, keyArr, AVal.toValue, HaxEnc.enc]
+  rfl
+
+theorem keyEqGuard_keyArr {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
+    (hn : 32 ≤ n.val) : keyEqGuard (keyArr x, keyArr y) := by
+  have hx := x.property
+  have hy := y.property
+  simp only [keyEqGuard, keyArr, List.size_toArray, List.length_map]
+  omega
+
+/-- **The total triple of the reading of `keyEqLit`** on two Aeneas byte arrays of length
+    at least 32, from the correspondence `keyEq_fnCorres` and the kind assignment
+    `keyEqLit_kind`: the reading returns a value, and the value encodes the comparison
+    `keyEq` of the two arrays. -/
+theorem keyEqLit_triple {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
+    (hn : 32 ≤ n.val) :
+    ⦃⌜True⌝⦄ toRustMS keyEqApp keyEqLit (keyEqEnvA x y)
+    ⦃⇓ r => ⌜r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))⌝⦄ :=
+  fnCorres_toRustMS_triple_of_kindOf keyEq_fnCorres keyEqApp_ok keyEqApp_typed keyEqLit_kind
+    (keyArr x, keyArr y) (keyEqGuard_keyArr x y hn) (keyEqEnvA x y) (keyEqEntry_keyArr x y)
+    (keyEqEnvA_ty x y hn)
+
+end KeyEq
+
+end CatCrypt.Hax.RustSemantics
