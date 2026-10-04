@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAllocSound
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAllocFast
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
@@ -41,10 +41,17 @@ through `%rcx`.
 
 * `keccakYmm4Body`: the permutation over virtual names.
 * `keccakYmm4Program`: the body, optionally passed through `YmmSelect.selectYmm`.
-* `keccakYmm4Asm`: allocation, materialization and the AT&T text.
+* `render`: live ranges, allocation and materialization of the program, each
+  computed once.
+* `keccakYmm4Asm`: the AT&T text of the render.
 * `keccakYmm4Stats`: instruction and memory-access counts of the rendered kernel.
 * `keccakYmm4Checks`: EVEX spellability, frame-cell disjointness and the
   allocation check `YmmRegAllocSound.ymmAllocValidClosed` of the kernel.
+
+The `…Of` forms take the render as an argument, so a caller that needs the text,
+the counts and the checks computes the allocation once. The module imports
+`YmmRegAllocFast`, whose `@[csimp]` equations make the compiled allocation run
+the hash-map versions of the allocator.
 
 ## Main results
 
@@ -213,17 +220,54 @@ def rcTable : List String :=
     let c := toString (roundConst r)
     "\t.quad\t" ++ c ++ ", " ++ c ++ ", " ++ c ++ ", " ++ c)
 
-/-- The AT&T text of the kernel. The frame is allocated below `%rsp`, aligned to
+/-- The intermediate results of one render: the program, its live ranges, the
+    allocation (withheld scratch registers and decisions) and the materialized
+    program. -/
+structure Render where
+  /-- The program handed to the allocator. -/
+  program : List YmmInstr
+  /-- The live ranges of `program`. -/
+  ranges : List LiveRange
+  /-- The withheld scratch registers and the allocator's decisions. -/
+  allocation : List String × List (String × Slot)
+  /-- `program` with every name placed in a physical register. -/
+  materialized : List YmmInstr
+
+/-- The render of the program, each stage computed once. -/
+def render (select : Bool) : Render :=
+  let p := keccakYmm4Program select
+  let r := ymmLiveRanges p
+  let a := ymmAllocFewestScratch (regFile select) [] scratchRegs 0 p r
+  { program := p, ranges := r, allocation := a, materialized := ymmMaterialize a.2 a.1 p }
+
+theorem render_program (select : Bool) :
+    (render select).program = keccakYmm4Program select := rfl
+
+theorem render_ranges (select : Bool) : (render select).ranges = ranges select := rfl
+
+theorem render_allocation (select : Bool) :
+    (render select).allocation = allocation select := rfl
+
+theorem render_materialized (select : Bool) :
+    (render select).materialized = materialized select := rfl
+
+/-- Bytes of stack frame the spilled values of a render occupy. -/
+def frameBytesOf (R : Render) : Nat := frameExtent 0 R.allocation.2
+
+theorem frameBytesOf_render (select : Bool) :
+    frameBytesOf (render select) = frameBytes select := rfl
+
+/-- The AT&T text of a render. The frame is allocated below `%rsp`, aligned to
     32 bytes, and restored from `%r10`, which no vector instruction touches;
     `%rax` returns the output pointer. -/
-def keccakYmm4Asm (select : Bool) : String :=
-  let body := (materialized select).map renderYmmInstrEvex
+def keccakYmm4AsmOf (R : Render) : String :=
+  let body := R.materialized.map renderYmmInstrEvex
   let pre :=
     [ "\t.att_syntax", "\t.text", "\t.p2align\t5"
     , "\t.globl\t" ++ symbol, "\t.type\t" ++ symbol ++ ", @function"
     , symbol ++ ":"
     , "\tmovq\t%rsp, %r10"
-    , "\tsubq\t$" ++ toString (frameBytes select + 32) ++ ", %rsp"
+    , "\tsubq\t$" ++ toString (frameBytesOf R + 32) ++ ", %rsp"
     , "\tandq\t$-32, %rsp"
     , "\tleaq\t.LKRC(%rip), " ++ rcBase ]
   let post :=
@@ -232,6 +276,9 @@ def keccakYmm4Asm (select : Bool) : String :=
     , "\t.section\t.rodata", "\t.p2align\t5", ".LKRC:" ] ++ rcTable ++
     [ "\t.section\t.note.GNU-stack,\"\",@progbits" ]
   String.intercalate "\n" (pre ++ body ++ post) ++ "\n"
+
+/-- The AT&T text of the kernel. -/
+def keccakYmm4Asm (select : Bool) : String := keccakYmm4AsmOf (render select)
 
 /-! ## 4. Counts of the rendered kernel -/
 
@@ -242,23 +289,31 @@ def isStackAccess : YmmInstr → Bool
   | _ => false
 
 /-- `(instructions, stack accesses, spilled names, resident names, scratch
-    registers needed, every name physical)` of the kernel. -/
-def keccakYmm4Stats (select : Bool) : Nat × Nat × Nat × Nat × Nat × Bool :=
-  let m := materialized select
-  let d := decisions select
+    registers needed, every name physical)` of a render. -/
+def keccakYmm4StatsOf (select : Bool) (R : Render) : Nat × Nat × Nat × Nat × Nat × Bool :=
+  let m := R.materialized
+  let d := R.allocation.2
   ( m.length, (m.filter isStackAccess).length, spillCount d, residentCount d
-  , ymmScratchNeeded d (keccakYmm4Program select), ymmAllPhysicalIn (regFile select) m )
+  , ymmScratchNeeded d R.program, ymmAllPhysicalIn (regFile select) m )
+
+/-- The counts of the kernel, `keccakYmm4StatsOf` of its render. -/
+def keccakYmm4Stats (select : Bool) : Nat × Nat × Nat × Nat × Nat × Bool :=
+  keccakYmm4StatsOf select (render select)
 
 /-- `(the withheld scratch registers cover the spills, every instruction has an
     EVEX spelling, frame cells are shared only across disjoint live ranges, the
-    allocation passes `ymmAllocValidClosed`)` for the kernel. The last component
+    allocation passes `ymmAllocValidClosed`)` for a render. The last component
     is the hypothesis of `YmmRegAllocSound.ymmMaterialize_sound_closed`. -/
+def keccakYmm4ChecksOf (R : Render) : Bool × Bool × Bool × Bool :=
+  let a := R.allocation
+  ( ymmScratchNeeded a.2 R.program ≤ a.1.length
+  , R.materialized.all evexSpellable
+  , slotsReuseDisjoint R.ranges a.2
+  , ymmAllocValidClosed a.2 a.1 R.program )
+
+/-- The checks of the kernel, `keccakYmm4ChecksOf` of its render. -/
 def keccakYmm4Checks (select : Bool) : Bool × Bool × Bool × Bool :=
-  let a := allocation select
-  ( ymmScratchNeeded a.2 (keccakYmm4Program select) ≤ a.1.length
-  , (materialized select).all evexSpellable
-  , slotsReuseDisjoint (ranges select) a.2
-  , ymmAllocValidClosed a.2 a.1 (keccakYmm4Program select) )
+  keccakYmm4ChecksOf (render select)
 
 /-! ## 5. Correctness of the materialization -/
 
