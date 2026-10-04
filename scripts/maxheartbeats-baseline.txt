@@ -1,4 +1,4 @@
-75
+72
 # maxHeartbeats bumps > 200000 over CatCrypt/ (one line per occurrence, file path). Goal: 0.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 CatCrypt/Crypto/Hax/HaxToLowCT.lean
@@ -28,7 +28,6 @@ CatCrypt/Crypto/SecureCompilation/CompileFromHaxUovGf256.lean
 CatCrypt/Crypto/SecureCompilation/Dialects/ScalarSetSeqSequencer.lean
 CatCrypt/Crypto/SecureCompilation/EcEmitRealizesFromGroupLaw.lean
 CatCrypt/Crypto/SecureCompilation/GenericEcEmitValue.lean
-CatCrypt/Crypto/SecureCompilation/LoadU32LeCompiles.lean
 CatCrypt/Crypto/SecureCompilation/LoadU32LeVerbatim.lean
 CatCrypt/Crypto/SecureCompilation/RelationalFrontGf256.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Blake2bGCatCryptEmit.lean
@@ -66,7 +65,6 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519ReduceRunBlock.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519TierA.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/FieldAddSubTierA.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/FieldSubRunBlock.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayVpackZmmEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MontRedc4RunBlockProven.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MontRedcCarryFold.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MontReduceRunBlock.lean
@@ -74,5 +72,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/MpnDivRem1PreinvAgree.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/PastaBignumTierA.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/SchoolbookProductRunBlock.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/SchoolbookRunBlock.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8VpackZmmEmit.lean
 CatCrypt/Tactic/MatrixDecide.lean
