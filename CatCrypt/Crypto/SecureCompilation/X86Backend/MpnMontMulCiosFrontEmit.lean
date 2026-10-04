@@ -190,14 +190,14 @@ def cntBodyLowCT : LowCT :=
     and to `rp[idx-1]` in the reduction sweep, store the new carry, then latch the
     Montgomery digit `rp[0] · n0p` in the multiply-accumulate sweep. -/
 def tripBodyLowCT : LowCT := seqAll (
-  [ .RScalarSetExpr "kp2" (.SAdd (sv "kn") (.SLit 2)) ]
+  [ LowCT.RScalarSetExpr "kp2" (.SAdd (sv "kn") (.SLit 2)) ]
   ++ ltuCmds "pa" (sv "s") (sv "kp2")
-  ++ [ .RScalarSetExpr "mska" (.SSub (.SLit 0) (sv "pa"))
+  ++ [ LowCT.RScalarSetExpr "mska" (.SSub (.SLit 0) (sv "pa"))
      , .RScalarSetExpr "mskb" (notE (sv "mska"))
      , .RScalarSetExpr "off" (.SAnd (sv "kp2") (sv "mskb"))
      , .RScalarSetExpr "idx" (.SSub (sv "s") (sv "off")) ]
   ++ ltuCmds "lt" (sv "idx") (sv "kn")
-  ++ [ .RScalarSetExpr "mskl" (.SSub (.SLit 0) (sv "lt"))
+  ++ [ LowCT.RScalarSetExpr "mskl" (.SSub (.SLit 0) (sv "lt"))
      , .RScalarSetExpr "im" (.SAnd (sv "idx") (sv "mskl"))
      , .RArrLoad ⟨"vv", .TU64⟩ vpLoc "im"
      , .RArrLoad ⟨"nn", .TU64⟩ npLoc "im"
@@ -212,7 +212,7 @@ def tripBodyLowCT : LowCT := seqAll (
      , .RScalarSetExpr "ay" (.SAnd (sv "ax") (sv "mska"))
      , .RScalarSetExpr "aa" (.SXor (sv "mm") (sv "ay")) ]
   ++ ltuCmds "pz" (.SLit 0) (sv "idx")
-  ++ [ .RScalarSetExpr "dz" (.SAnd (sv "pz") (sv "mskb"))
+  ++ [ LowCT.RScalarSetExpr "dz" (.SAnd (sv "pz") (sv "mskb"))
      , .RScalarSetExpr "dst" (.SSub (sv "idx") (sv "dz"))
      , .RScalarSetExpr "cyi" (.SAdd (sv "kn") (.SLit 3))
      , .RArrLoad ⟨"cy", .TU64⟩ rpLoc "cyi"
@@ -221,9 +221,9 @@ def tripBodyLowCT : LowCT := seqAll (
      , .RScalarSetExpr "hi" (.SMulHiU (sv "aa") (sv "bb"))
      , .RScalarSetExpr "s1" (.SAdd (sv "lo") (sv "cy")) ]
   ++ ltuCmds "k1" (sv "s1") (sv "lo")
-  ++ [ .RScalarSetExpr "s2" (.SAdd (sv "s1") (sv "rr")) ]
+  ++ [ LowCT.RScalarSetExpr "s2" (.SAdd (sv "s1") (sv "rr")) ]
   ++ ltuCmds "k2" (sv "s2") (sv "s1")
-  ++ [ .RScalarSetExpr "hc" (.SAdd (.SAdd (sv "hi") (sv "k1")) (sv "k2"))
+  ++ [ LowCT.RScalarSetExpr "hc" (.SAdd (.SAdd (sv "hi") (sv "k1")) (sv "k2"))
      , .RArrStore rpLoc "dst" ⟨"s2", .TU64⟩
      , .RArrStore rpLoc "cyi" ⟨"hc", .TU64⟩
      , .RScalarSetExpr "z0" (.SLit 0)

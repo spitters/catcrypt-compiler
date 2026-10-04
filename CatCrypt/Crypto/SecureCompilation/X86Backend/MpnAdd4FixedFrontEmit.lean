@@ -137,18 +137,18 @@ def loadInputs : List LowCT :=
     Each `c*` carry-out bit is the branch-free `ltuCmds` of a running sum against
     its first summand. -/
 def columns : List LowCT :=
-  [ .RScalarSetExpr "s0" (.SAdd (sv "a0") (sv "b0")) ]
+  [ LowCT.RScalarSetExpr "s0" (.SAdd (sv "a0") (sv "b0")) ]
   ++ ltuCmds "c0" (sv "s0") (sv "a0")
-  ++ [ .RScalarSetExpr "t1" (.SAdd (sv "a1") (sv "b1")) ]
+  ++ [ LowCT.RScalarSetExpr "t1" (.SAdd (sv "a1") (sv "b1")) ]
   ++ ltuCmds "c1a" (sv "t1") (sv "a1")
-  ++ [ .RScalarSetExpr "s1" (.SAdd (sv "t1") (sv "c0")) ]
+  ++ [ LowCT.RScalarSetExpr "s1" (.SAdd (sv "t1") (sv "c0")) ]
   ++ ltuCmds "c1b" (sv "s1") (sv "t1")
-  ++ [ .RScalarSetExpr "cw1" (.SAdd (sv "c1a") (sv "c1b"))
+  ++ [ LowCT.RScalarSetExpr "cw1" (.SAdd (sv "c1a") (sv "c1b"))
      , .RScalarSetExpr "t2" (.SAdd (sv "a2") (sv "b2")) ]
   ++ ltuCmds "c2a" (sv "t2") (sv "a2")
-  ++ [ .RScalarSetExpr "s2" (.SAdd (sv "t2") (sv "cw1")) ]
+  ++ [ LowCT.RScalarSetExpr "s2" (.SAdd (sv "t2") (sv "cw1")) ]
   ++ ltuCmds "c2b" (sv "s2") (sv "t2")
-  ++ [ .RScalarSetExpr "cw2" (.SAdd (sv "c2a") (sv "c2b"))
+  ++ [ LowCT.RScalarSetExpr "cw2" (.SAdd (sv "c2a") (sv "c2b"))
      , .RScalarSetExpr "s3" (.SAdd (.SAdd (sv "a3") (sv "b3")) (sv "cw2")) ]
 
 /-- Store the four sum words `s0..s3` through the `rp` pointer. -/

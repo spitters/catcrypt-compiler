@@ -128,13 +128,13 @@ def mulAddCol (tag ai bj : String) (rp cy : SExpr) : List LowCT × SExpr × SExp
   let s1 := "s1" ++ tag
   let s2 := "s2" ++ tag
   let hc := "hc" ++ tag
-  ( [ .RScalarSetExpr lo (.SMul (.SVar ai) (.SVar bj))
+  ( [ LowCT.RScalarSetExpr lo (.SMul (.SVar ai) (.SVar bj))
     , .RScalarSetExpr hi (.SMulHiU (.SVar ai) (.SVar bj))
     , .RScalarSetExpr s1 (.SAdd (.SVar lo) cy) ]
     ++ ltuCmds ("k1" ++ tag) (.SVar s1) (.SVar lo)
-    ++ [ .RScalarSetExpr s2 (.SAdd (.SVar s1) rp) ]
+    ++ [ LowCT.RScalarSetExpr s2 (.SAdd (.SVar s1) rp) ]
     ++ ltuCmds ("k2" ++ tag) (.SVar s2) (.SVar s1)
-    ++ [ .RScalarSetExpr hc
+    ++ [ LowCT.RScalarSetExpr hc
           (.SAdd (.SAdd (.SVar hi) (.SVar ("k1" ++ tag))) (.SVar ("k2" ++ tag))) ]
   , .SVar s2, .SVar hc )
 
@@ -143,11 +143,11 @@ def addCol (tag : String) (x y cy : SExpr) : List LowCT × SExpr × SExpr :=
   let s1 := "u1" ++ tag
   let s2 := "u2" ++ tag
   let c := "uc" ++ tag
-  ( [ .RScalarSetExpr s1 (.SAdd x y) ]
+  ( [ LowCT.RScalarSetExpr s1 (.SAdd x y) ]
     ++ ltuCmds ("uk1" ++ tag) (.SVar s1) x
-    ++ [ .RScalarSetExpr s2 (.SAdd (.SVar s1) cy) ]
+    ++ [ LowCT.RScalarSetExpr s2 (.SAdd (.SVar s1) cy) ]
     ++ ltuCmds ("uk2" ++ tag) (.SVar s2) (.SVar s1)
-    ++ [ .RScalarSetExpr c (.SAdd (.SVar ("uk1" ++ tag)) (.SVar ("uk2" ++ tag))) ]
+    ++ [ LowCT.RScalarSetExpr c (.SAdd (.SVar ("uk1" ++ tag)) (.SVar ("uk2" ++ tag))) ]
   , .SVar s2, .SVar c )
 
 /-- One subtract-with-borrow column: `(diff, borrow) = x − y − bin`; with
@@ -157,9 +157,9 @@ def subCol (tag : String) (x y bin : SExpr) : List LowCT × SExpr × SExpr :=
   let t2 := "d2" ++ tag
   let bo := "db" ++ tag
   ( ltuCmds ("bb1" ++ tag) x y
-    ++ [ .RScalarSetExpr t1 (.SSub x y) ]
+    ++ [ LowCT.RScalarSetExpr t1 (.SSub x y) ]
     ++ ltuCmds ("bb2" ++ tag) (.SVar t1) bin
-    ++ [ .RScalarSetExpr t2 (.SSub (.SVar t1) bin)
+    ++ [ LowCT.RScalarSetExpr t2 (.SSub (.SVar t1) bin)
        , .RScalarSetExpr bo (.SAdd (.SVar ("bb1" ++ tag)) (.SVar ("bb2" ++ tag))) ]
   , .SVar t2, .SVar bo )
 
@@ -208,9 +208,9 @@ def addWithCarry (pfx : String) (xs ys : List SExpr) (outSlots : List String) : 
     (List.range L).foldl
       (fun (acc : List LowCT × SExpr) (t : Nat) =>
         let step := addCol (pfx ++ toString t) (xs.getD t (.SLit 0)) (ys.getD t (.SLit 0)) acc.2
-        (acc.1 ++ step.1 ++ [.RScalarSetExpr (outSlots.getD t "") step.2.1], step.2.2))
+        (acc.1 ++ step.1 ++ [LowCT.RScalarSetExpr (outSlots.getD t "") step.2.1], step.2.2))
       ([], .SLit 0)
-  res.1 ++ [.RScalarSetExpr (outSlots.getD L "") res.2]
+  res.1 ++ [LowCT.RScalarSetExpr (outSlots.getD L "") res.2]
 
 /-- Subtract `ys` from `xs` (both zero-extended to width `W`) into `outSlots`,
     borrow-threaded. The final borrow is dropped (`0` when `xs ≥ ys`). -/
@@ -219,7 +219,7 @@ def subWithBorrow (pfx : String) (xs ys : List SExpr) (outSlots : List String)
   ((List.range W).foldl
     (fun (acc : List LowCT × SExpr) (t : Nat) =>
       let step := subCol (pfx ++ toString t) (xs.getD t (.SLit 0)) (ys.getD t (.SLit 0)) acc.2
-      (acc.1 ++ step.1 ++ [.RScalarSetExpr (outSlots.getD t "") step.2.1], step.2.2))
+      (acc.1 ++ step.1 ++ [LowCT.RScalarSetExpr (outSlots.getD t "") step.2.1], step.2.2))
     ([], .SLit 0)).1
 
 /-- Add the word list `vals` into the word-state `st` starting at word `offset`,

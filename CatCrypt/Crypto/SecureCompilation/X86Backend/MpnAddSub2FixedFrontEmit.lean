@@ -140,13 +140,13 @@ def loadInputs : List LowCT :=
 
     At most one of `c1a`, `c1b` is set, so their sum is the `0`/`1` carry. -/
 def addColumns : List LowCT :=
-  [ .RScalarSetExpr "s0" (.SAdd (sv "a0") (sv "b0")) ]
+  [ LowCT.RScalarSetExpr "s0" (.SAdd (sv "a0") (sv "b0")) ]
   ++ ltuCmds "c0" (sv "s0") (sv "a0")
-  ++ [ .RScalarSetExpr "s1a" (.SAdd (sv "a1") (sv "b1")) ]
+  ++ [ LowCT.RScalarSetExpr "s1a" (.SAdd (sv "a1") (sv "b1")) ]
   ++ ltuCmds "c1a" (sv "s1a") (sv "a1")
-  ++ [ .RScalarSetExpr "s1" (.SAdd (sv "s1a") (sv "c0")) ]
+  ++ [ LowCT.RScalarSetExpr "s1" (.SAdd (sv "s1a") (sv "c0")) ]
   ++ ltuCmds "c1b" (sv "s1") (sv "s1a")
-  ++ [ .RScalarSetExpr "c1" (.SAdd (sv "c1a") (sv "c1b")) ]
+  ++ [ LowCT.RScalarSetExpr "c1" (.SAdd (sv "c1a") (sv "c1b")) ]
 
 /-- Store `s0, s1, c1` through the `rp` pointer. -/
 def addStore : List LowCT :=
@@ -169,13 +169,13 @@ def add2cBody : LowCT :=
 
     At most one of `wa`, `wb` is set, so their sum is the `0`/`1` borrow. -/
 def subColumns : List LowCT :=
-  [ .RScalarSetExpr "d0" (.SSub (sv "a0") (sv "b0")) ]
+  [ LowCT.RScalarSetExpr "d0" (.SSub (sv "a0") (sv "b0")) ]
   ++ ltuCmds "w0" (sv "a0") (sv "b0")
-  ++ [ .RScalarSetExpr "d1a" (.SSub (sv "a1") (sv "b1")) ]
+  ++ [ LowCT.RScalarSetExpr "d1a" (.SSub (sv "a1") (sv "b1")) ]
   ++ ltuCmds "wa" (sv "a1") (sv "b1")
-  ++ [ .RScalarSetExpr "d1" (.SSub (sv "d1a") (sv "w0")) ]
+  ++ [ LowCT.RScalarSetExpr "d1" (.SSub (sv "d1a") (sv "w0")) ]
   ++ ltuCmds "wb" (sv "d1a") (sv "w0")
-  ++ [ .RScalarSetExpr "w1" (.SAdd (sv "wa") (sv "wb")) ]
+  ++ [ LowCT.RScalarSetExpr "w1" (.SAdd (sv "wa") (sv "wb")) ]
 
 /-- Store `d0, d1, w1` through the `rp` pointer. -/
 def subStore : List LowCT :=

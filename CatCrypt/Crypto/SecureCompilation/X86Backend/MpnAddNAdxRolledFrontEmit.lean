@@ -84,26 +84,26 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit (ltuCmds v)
     shape, the one `CarryChainSelect.selectGo` fuses to
     `bvAddCarryLo`/`bvAddCarryHi`. -/
 def limbWin (sfx a b cin cout : String) : List LowCT :=
-  [ .RScalarSetExpr s!"t{sfx}" (.SAdd (v a) (v b)) ]
+  [ LowCT.RScalarSetExpr s!"t{sfx}" (.SAdd (v a) (v b)) ]
   ++ ltuCmds s!"ca{sfx}" (v s!"t{sfx}") (v a)
-  ++ [ .RScalarSetExpr s!"s{sfx}" (.SAdd (v s!"t{sfx}") (v cin)) ]
+  ++ [ LowCT.RScalarSetExpr s!"s{sfx}" (.SAdd (v s!"t{sfx}") (v cin)) ]
   ++ ltuCmds s!"cb{sfx}" (v s!"s{sfx}") (v s!"t{sfx}")
-  ++ [ .RScalarSetExpr cout (.SAdd (v s!"ca{sfx}") (v s!"cb{sfx}")) ]
+  ++ [ LowCT.RScalarSetExpr cout (.SAdd (v s!"ca{sfx}") (v s!"cb{sfx}")) ]
 
 /-- The 1-limb-per-trip `mpn_add_n` body: load `a[idx]`/`b[idx]`, one carry
     window threading the scalar accumulator `cy`, store the sum limb. -/
 def addAdxBody : LowCT := seqAll <|
-  [ .RScalarSetExpr "ix" (.SVar "idx")
+  [ LowCT.RScalarSetExpr "ix" (.SVar "idx")
   , .RArrLoad ⟨"av", .TU64⟩ ⟨"a", .TBytes (8 * N)⟩ "ix"
   , .RArrLoad ⟨"bv", .TU64⟩ ⟨"b", .TBytes (8 * N)⟩ "ix" ]
   ++ limbWin "0" "av" "bv" "cy" "cy"
-  ++ [ .RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix" ⟨"s0", .TU64⟩ ]
+  ++ [ LowCT.RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix" ⟨"s0", .TU64⟩ ]
 
 /-- The 4-limb-per-trip body: limb indices `4·idx + j`, four chained carry
     windows (`cy → k1 → k2 → k3 → cy`), four stores. The counter argument is
     the block count. -/
 def addAdx4Body : LowCT := seqAll <|
-  [ .RScalarSetExpr "ix0" (.SShl (.SVar "idx") (.SLit 2))
+  [ LowCT.RScalarSetExpr "ix0" (.SShl (.SVar "idx") (.SLit 2))
   , .RScalarSetExpr "ix1" (.SAdd (v "ix0") (.SLit 1))
   , .RScalarSetExpr "ix2" (.SAdd (v "ix0") (.SLit 2))
   , .RScalarSetExpr "ix3" (.SAdd (v "ix0") (.SLit 3))
@@ -119,7 +119,7 @@ def addAdx4Body : LowCT := seqAll <|
   ++ limbWin "1" "a1" "b1" "k1" "k2"
   ++ limbWin "2" "a2" "b2" "k2" "k3"
   ++ limbWin "3" "a3" "b3" "k3" "cy"
-  ++ [ .RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix0" ⟨"s0", .TU64⟩
+  ++ [ LowCT.RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix0" ⟨"s0", .TU64⟩
      , .RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix1" ⟨"s1", .TU64⟩
      , .RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix2" ⟨"s2", .TU64⟩
      , .RArrStore ⟨"out", .TBytes (8 * N)⟩ "ix3" ⟨"s3", .TU64⟩ ]

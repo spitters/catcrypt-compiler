@@ -99,7 +99,7 @@ def v (n : String) : SExpr := .SVar n
 /-- `dst := (x <u y)` as `0`/`1`, branch-free (the `MultiLimbKernel.add2Prog`
     `bSltu` synthesis).  Scratch slots `dst ++ "q"` / `dst ++ "r"`. -/
 def ltuCmds (dst : String) (x y : SExpr) : List LowCT :=
-  [ .RScalarSetExpr (dst ++ "q") (.SAnd (notE x) y),
+  [ LowCT.RScalarSetExpr (dst ++ "q") (.SAnd (notE x) y),
     .RScalarSetExpr (dst ++ "r") (.SAnd (notE (.SXor x y)) (.SSub x y)),
     .RScalarSetExpr dst
       (.SShr (orE (.SVar (dst ++ "q")) (.SVar (dst ++ "r"))) (.SLit 63)) ]
@@ -138,16 +138,16 @@ def storeAll (n : Nat) : List LowCT :=
     Limb 0 is the chain-start (`addStart`), limbs `1 .. n-2` are mid steps
     (`addMid`), limb `n-1` is the final step (`addFin`, carry-out dropped). -/
 def addChain (n : Nat) : List LowCT :=
-  [ .RScalarSetExpr "s0" (.SAdd (v "a0") (v "b0")) ]
+  [ LowCT.RScalarSetExpr "s0" (.SAdd (v "a0") (v "b0")) ]
   ++ ltuCmds "c0" (v "s0") (v "a0")
   ++ ((List.range (n - 2)).flatMap (fun k =>
       let j := k + 1
       [ (.RScalarSetExpr s!"t{j}" (.SAdd (v s!"a{j}") (v s!"b{j}")) : LowCT) ]
       ++ ltuCmds s!"ca{j}" (v s!"t{j}") (v s!"a{j}")
-      ++ [ .RScalarSetExpr s!"s{j}" (.SAdd (v s!"t{j}") (v s!"c{j - 1}")) ]
+      ++ [ LowCT.RScalarSetExpr s!"s{j}" (.SAdd (v s!"t{j}") (v s!"c{j - 1}")) ]
       ++ ltuCmds s!"cb{j}" (v s!"s{j}") (v s!"t{j}")
-      ++ [ .RScalarSetExpr s!"c{j}" (.SAdd (v s!"ca{j}") (v s!"cb{j}")) ]))
-  ++ [ .RScalarSetExpr s!"t{n - 1}" (.SAdd (v s!"a{n - 1}") (v s!"b{n - 1}")),
+      ++ [ LowCT.RScalarSetExpr s!"c{j}" (.SAdd (v s!"ca{j}") (v s!"cb{j}")) ]))
+  ++ [ LowCT.RScalarSetExpr s!"t{n - 1}" (.SAdd (v s!"a{n - 1}") (v s!"b{n - 1}")),
        .RScalarSetExpr s!"s{n - 1}" (.SAdd (v s!"t{n - 1}") (v s!"c{n - 2}")) ]
 
 /-- The full `mpn_add_n` body for `n` limbs: index init, load `x`/`y`, ripple
@@ -170,15 +170,15 @@ def storeAllE (n : Nat) : List LowCT :=
     limbs `1 .. n-1` are mid steps (`subMid`); the final borrow `w_{n-1}` is
     architecturally dropped (the `mpn_sub_n` result-word contract). -/
 def subChain (n : Nat) : List LowCT :=
-  [ .RScalarSetExpr "e0" (.SSub (v "a0") (v "b0")) ]
+  [ LowCT.RScalarSetExpr "e0" (.SSub (v "a0") (v "b0")) ]
   ++ ltuCmds "w0" (v "a0") (v "b0")
   ++ ((List.range (n - 1)).flatMap (fun k =>
       let j := k + 1
       [ (.RScalarSetExpr s!"g{j}" (.SSub (v s!"a{j}") (v s!"b{j}")) : LowCT) ]
       ++ ltuCmds s!"wa{j}" (v s!"a{j}") (v s!"b{j}")
-      ++ [ .RScalarSetExpr s!"e{j}" (.SSub (v s!"g{j}") (v s!"w{j - 1}")) ]
+      ++ [ LowCT.RScalarSetExpr s!"e{j}" (.SSub (v s!"g{j}") (v s!"w{j - 1}")) ]
       ++ ltuCmds s!"wb{j}" (v s!"g{j}") (v s!"w{j - 1}")
-      ++ [ .RScalarSetExpr s!"w{j}" (.SAdd (v s!"wa{j}") (v s!"wb{j}")) ]))
+      ++ [ LowCT.RScalarSetExpr s!"w{j}" (.SAdd (v s!"wa{j}") (v s!"wb{j}")) ]))
 
 /-- The full `mpn_sub_n` body for `n` limbs: index init, load `x`/`y`, ripple
     sub, store `out`. -/

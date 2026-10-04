@@ -266,26 +266,26 @@ def loadInputs : List LowCT :=
 
     `r0 = b0`, `r1 = b1` pass through. -/
 def columns : List LowCT :=
-  [ .RScalarSetExpr "s2" (.SAdd (sv "b2") (sv "a0")) ]
+  [ LowCT.RScalarSetExpr "s2" (.SAdd (sv "b2") (sv "a0")) ]
   ++ ltuCmds "c2" (sv "s2") (sv "b2")
-  ++ [ .RScalarSetExpr "t3" (.SAdd (sv "b3") (sv "a1")) ]
+  ++ [ LowCT.RScalarSetExpr "t3" (.SAdd (sv "b3") (sv "a1")) ]
   ++ ltuCmds "c3a" (sv "t3") (sv "b3")
-  ++ [ .RScalarSetExpr "s3" (.SAdd (sv "t3") (sv "c2")) ]
+  ++ [ LowCT.RScalarSetExpr "s3" (.SAdd (sv "t3") (sv "c2")) ]
   ++ ltuCmds "c3b" (sv "s3") (sv "t3")
-  ++ [ .RScalarSetExpr "c3" (.SAdd (sv "c3a") (sv "c3b"))
+  ++ [ LowCT.RScalarSetExpr "c3" (.SAdd (sv "c3a") (sv "c3b"))
      , .RScalarSetExpr "t4" (.SAdd (sv "b4") (sv "a2")) ]
   ++ ltuCmds "c4a" (sv "t4") (sv "b4")
-  ++ [ .RScalarSetExpr "s4" (.SAdd (sv "t4") (sv "c3")) ]
+  ++ [ LowCT.RScalarSetExpr "s4" (.SAdd (sv "t4") (sv "c3")) ]
   ++ ltuCmds "c4b" (sv "s4") (sv "t4")
-  ++ [ .RScalarSetExpr "c4" (.SAdd (sv "c4a") (sv "c4b"))
+  ++ [ LowCT.RScalarSetExpr "c4" (.SAdd (sv "c4a") (sv "c4b"))
      , .RScalarSetExpr "t5" (.SAdd (sv "b5") (sv "a3")) ]
   ++ ltuCmds "c5a" (sv "t5") (sv "b5")
-  ++ [ .RScalarSetExpr "s5" (.SAdd (sv "t5") (sv "c4")) ]
+  ++ [ LowCT.RScalarSetExpr "s5" (.SAdd (sv "t5") (sv "c4")) ]
   ++ ltuCmds "c5b" (sv "s5") (sv "t5")
-  ++ [ .RScalarSetExpr "c5" (.SAdd (sv "c5a") (sv "c5b"))
+  ++ [ LowCT.RScalarSetExpr "c5" (.SAdd (sv "c5a") (sv "c5b"))
      , .RScalarSetExpr "s6" (.SAdd (sv "b6") (sv "c5")) ]
   ++ ltuCmds "c6" (sv "s6") (sv "b6")
-  ++ [ .RScalarSetExpr "s7" (.SAdd (sv "b7") (sv "c6")) ]
+  ++ [ LowCT.RScalarSetExpr "s7" (.SAdd (sv "b7") (sv "c6")) ]
 
 /-- Store `r0..r7` through the `rp` pointer. -/
 def storeOutputs : List LowCT :=

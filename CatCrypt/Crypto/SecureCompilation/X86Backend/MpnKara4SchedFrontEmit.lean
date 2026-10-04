@@ -285,28 +285,28 @@ def loadInputs : List LowCT :=
 
     `r0 = b0`, `r1 = b1` pass through. -/
 def columns : List LowCT :=
-  [ .RScalarSetExpr "s2" (.SAdd (sv "b2") (sv "a0")) ]
+  [ LowCT.RScalarSetExpr "s2" (.SAdd (sv "b2") (sv "a0")) ]
   ++ ltuCmds "c2" (sv "s2") (sv "b2")
-  ++ [ .RScalarSetExpr "t3" (.SAdd (sv "b3") (sv "a1")) ]
+  ++ [ LowCT.RScalarSetExpr "t3" (.SAdd (sv "b3") (sv "a1")) ]
   ++ ltuCmds "c3a" (sv "t3") (sv "b3")
-  ++ [ .RScalarSetExpr "s3" (.SAdd (sv "t3") (sv "c2")) ]
+  ++ [ LowCT.RScalarSetExpr "s3" (.SAdd (sv "t3") (sv "c2")) ]
   ++ ltuCmds "c3b" (sv "s3") (sv "t3")
-  ++ [ .RScalarSetExpr "c3" (.SAdd (sv "c3a") (sv "c3b"))
+  ++ [ LowCT.RScalarSetExpr "c3" (.SAdd (sv "c3a") (sv "c3b"))
      , .RScalarSetExpr "t4" (.SAdd (sv "b4") (sv "a2")) ]
   ++ ltuCmds "c4a" (sv "t4") (sv "b4")
-  ++ [ .RScalarSetExpr "s4" (.SAdd (sv "t4") (sv "c3")) ]
+  ++ [ LowCT.RScalarSetExpr "s4" (.SAdd (sv "t4") (sv "c3")) ]
   ++ ltuCmds "c4b" (sv "s4") (sv "t4")
-  ++ [ .RScalarSetExpr "c4" (.SAdd (sv "c4a") (sv "c4b"))
+  ++ [ LowCT.RScalarSetExpr "c4" (.SAdd (sv "c4a") (sv "c4b"))
      , .RScalarSetExpr "t5" (.SAdd (sv "b5") (sv "a3")) ]
   ++ ltuCmds "c5a" (sv "t5") (sv "b5")
-  ++ [ .RScalarSetExpr "s5" (.SAdd (sv "t5") (sv "c4")) ]
+  ++ [ LowCT.RScalarSetExpr "s5" (.SAdd (sv "t5") (sv "c4")) ]
   ++ ltuCmds "c5b" (sv "s5") (sv "t5")
-  ++ [ .RScalarSetExpr "c5" (.SAdd (sv "c5a") (sv "c5b"))
+  ++ [ LowCT.RScalarSetExpr "c5" (.SAdd (sv "c5a") (sv "c5b"))
      , .RScalarSetExpr "t6" (.SAdd (sv "b6") (sv "a4")) ]
   ++ ltuCmds "c6a" (sv "t6") (sv "b6")
-  ++ [ .RScalarSetExpr "s6" (.SAdd (sv "t6") (sv "c5")) ]
+  ++ [ LowCT.RScalarSetExpr "s6" (.SAdd (sv "t6") (sv "c5")) ]
   ++ ltuCmds "c6b" (sv "s6") (sv "t6")
-  ++ [ .RScalarSetExpr "c6" (.SAdd (sv "c6a") (sv "c6b"))
+  ++ [ LowCT.RScalarSetExpr "c6" (.SAdd (sv "c6a") (sv "c6b"))
      , .RScalarSetExpr "s7" (.SAdd (sv "b7") (sv "c6")) ]
 
 /-- Store `r0..r7` through the `rp` pointer. -/
@@ -427,23 +427,23 @@ def loadInputs : List LowCT :=
 
     `kc2 ≤ 2`, `kc3 ≤ 3`, and `r4 ≤ 4 < 2^64` since `m < 2^258`. -/
 def columns : List LowCT :=
-  [ .RScalarSetExpr "t0" (.SMul (sv "ca") (sv "sb0"))
+  [ LowCT.RScalarSetExpr "t0" (.SMul (sv "ca") (sv "sb0"))
   , .RScalarSetExpr "t1" (.SMul (sv "ca") (sv "sb1"))
   , .RScalarSetExpr "u0" (.SMul (sv "cb") (sv "sa0"))
   , .RScalarSetExpr "u1" (.SMul (sv "cb") (sv "sa1"))
   , .RScalarSetExpr "cc" (.SMul (sv "ca") (sv "cb"))
   , .RScalarSetExpr "p2" (.SAdd (sv "m0_2") (sv "t0")) ]
   ++ ltuCmds "k2" (sv "p2") (sv "m0_2")
-  ++ [ .RScalarSetExpr "r2" (.SAdd (sv "p2") (sv "u0")) ]
+  ++ [ LowCT.RScalarSetExpr "r2" (.SAdd (sv "p2") (sv "u0")) ]
   ++ ltuCmds "k2b" (sv "r2") (sv "p2")
-  ++ [ .RScalarSetExpr "kc2" (.SAdd (sv "k2") (sv "k2b"))
+  ++ [ LowCT.RScalarSetExpr "kc2" (.SAdd (sv "k2") (sv "k2b"))
      , .RScalarSetExpr "q3a" (.SAdd (sv "m0_3") (sv "t1")) ]
   ++ ltuCmds "j3a" (sv "q3a") (sv "m0_3")
-  ++ [ .RScalarSetExpr "q3b" (.SAdd (sv "q3a") (sv "u1")) ]
+  ++ [ LowCT.RScalarSetExpr "q3b" (.SAdd (sv "q3a") (sv "u1")) ]
   ++ ltuCmds "j3b" (sv "q3b") (sv "q3a")
-  ++ [ .RScalarSetExpr "r3" (.SAdd (sv "q3b") (sv "kc2")) ]
+  ++ [ LowCT.RScalarSetExpr "r3" (.SAdd (sv "q3b") (sv "kc2")) ]
   ++ ltuCmds "j3c" (sv "r3") (sv "q3b")
-  ++ [ .RScalarSetExpr "kc3" (.SAdd (.SAdd (sv "j3a") (sv "j3b")) (sv "j3c"))
+  ++ [ LowCT.RScalarSetExpr "kc3" (.SAdd (.SAdd (sv "j3a") (sv "j3b")) (sv "j3c"))
      , .RScalarSetExpr "r4" (.SAdd (sv "cc") (sv "kc3")) ]
 
 /-- Store `m0_0, m0_1, r2, r3, r4` through the `rp` pointer. -/
@@ -550,45 +550,45 @@ def loadInputs : List LowCT :=
     Each limb `> 0` subtracts the subtrahend word then the incoming borrow, with
     the borrow-out the sum of the two `ltuCmds` under-flows (at most one fires). -/
 def pass1 : List LowCT :=
-  [ .RScalarSetExpr "d0" (.SSub (sv "m0") (sv "z0_0")) ]
+  [ LowCT.RScalarSetExpr "d0" (.SSub (sv "m0") (sv "z0_0")) ]
   ++ ltuCmds "g0" (sv "m0") (sv "z0_0")
-  ++ [ .RScalarSetExpr "e1" (.SSub (sv "m1") (sv "z0_1")) ]
+  ++ [ LowCT.RScalarSetExpr "e1" (.SSub (sv "m1") (sv "z0_1")) ]
   ++ ltuCmds "h1a" (sv "m1") (sv "z0_1")
-  ++ [ .RScalarSetExpr "d1" (.SSub (sv "e1") (sv "g0")) ]
+  ++ [ LowCT.RScalarSetExpr "d1" (.SSub (sv "e1") (sv "g0")) ]
   ++ ltuCmds "h1b" (sv "e1") (sv "g0")
-  ++ [ .RScalarSetExpr "g1" (.SAdd (sv "h1a") (sv "h1b"))
+  ++ [ LowCT.RScalarSetExpr "g1" (.SAdd (sv "h1a") (sv "h1b"))
      , .RScalarSetExpr "e2" (.SSub (sv "m2") (sv "z0_2")) ]
   ++ ltuCmds "h2a" (sv "m2") (sv "z0_2")
-  ++ [ .RScalarSetExpr "d2" (.SSub (sv "e2") (sv "g1")) ]
+  ++ [ LowCT.RScalarSetExpr "d2" (.SSub (sv "e2") (sv "g1")) ]
   ++ ltuCmds "h2b" (sv "e2") (sv "g1")
-  ++ [ .RScalarSetExpr "g2" (.SAdd (sv "h2a") (sv "h2b"))
+  ++ [ LowCT.RScalarSetExpr "g2" (.SAdd (sv "h2a") (sv "h2b"))
      , .RScalarSetExpr "e3" (.SSub (sv "m3") (sv "z0_3")) ]
   ++ ltuCmds "h3a" (sv "m3") (sv "z0_3")
-  ++ [ .RScalarSetExpr "d3" (.SSub (sv "e3") (sv "g2")) ]
+  ++ [ LowCT.RScalarSetExpr "d3" (.SSub (sv "e3") (sv "g2")) ]
   ++ ltuCmds "h3b" (sv "e3") (sv "g2")
-  ++ [ .RScalarSetExpr "g3" (.SAdd (sv "h3a") (sv "h3b"))
+  ++ [ LowCT.RScalarSetExpr "g3" (.SAdd (sv "h3a") (sv "h3b"))
      , .RScalarSetExpr "d4" (.SSub (sv "m4") (sv "g3")) ]
 
 /-- Pass 2: `r = d − z2` (5-limb difference; final borrow out of limb 4 dropped
     because `z1 ≥ 0`). -/
 def pass2 : List LowCT :=
-  [ .RScalarSetExpr "r0" (.SSub (sv "d0") (sv "z2_0")) ]
+  [ LowCT.RScalarSetExpr "r0" (.SSub (sv "d0") (sv "z2_0")) ]
   ++ ltuCmds "n0" (sv "d0") (sv "z2_0")
-  ++ [ .RScalarSetExpr "f1" (.SSub (sv "d1") (sv "z2_1")) ]
+  ++ [ LowCT.RScalarSetExpr "f1" (.SSub (sv "d1") (sv "z2_1")) ]
   ++ ltuCmds "o1a" (sv "d1") (sv "z2_1")
-  ++ [ .RScalarSetExpr "r1" (.SSub (sv "f1") (sv "n0")) ]
+  ++ [ LowCT.RScalarSetExpr "r1" (.SSub (sv "f1") (sv "n0")) ]
   ++ ltuCmds "o1b" (sv "f1") (sv "n0")
-  ++ [ .RScalarSetExpr "n1" (.SAdd (sv "o1a") (sv "o1b"))
+  ++ [ LowCT.RScalarSetExpr "n1" (.SAdd (sv "o1a") (sv "o1b"))
      , .RScalarSetExpr "f2" (.SSub (sv "d2") (sv "z2_2")) ]
   ++ ltuCmds "o2a" (sv "d2") (sv "z2_2")
-  ++ [ .RScalarSetExpr "r2" (.SSub (sv "f2") (sv "n1")) ]
+  ++ [ LowCT.RScalarSetExpr "r2" (.SSub (sv "f2") (sv "n1")) ]
   ++ ltuCmds "o2b" (sv "f2") (sv "n1")
-  ++ [ .RScalarSetExpr "n2" (.SAdd (sv "o2a") (sv "o2b"))
+  ++ [ LowCT.RScalarSetExpr "n2" (.SAdd (sv "o2a") (sv "o2b"))
      , .RScalarSetExpr "f3" (.SSub (sv "d3") (sv "z2_3")) ]
   ++ ltuCmds "o3a" (sv "d3") (sv "z2_3")
-  ++ [ .RScalarSetExpr "r3" (.SSub (sv "f3") (sv "n2")) ]
+  ++ [ LowCT.RScalarSetExpr "r3" (.SSub (sv "f3") (sv "n2")) ]
   ++ ltuCmds "o3b" (sv "f3") (sv "n2")
-  ++ [ .RScalarSetExpr "n3" (.SAdd (sv "o3a") (sv "o3b"))
+  ++ [ LowCT.RScalarSetExpr "n3" (.SAdd (sv "o3a") (sv "o3b"))
      , .RScalarSetExpr "r4" (.SSub (sv "d4") (sv "n3")) ]
 
 /-- Store `r0..r4` through the `rp` pointer. -/

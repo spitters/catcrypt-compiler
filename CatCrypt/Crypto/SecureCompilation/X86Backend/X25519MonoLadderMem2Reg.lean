@@ -496,7 +496,7 @@ def pipelinedStepAsm : String :=
 
 /- Shape check: the spilled body is one function, has MULX (the multiplies) and the
     `$121666` cmadd immediate, and reload/store traffic to working registers. -/
-#guard (BignumMontMulKernel.hasSub pipelinedStepAsm "x25519_mono_step_spilled") && (BignumMontMulKernel.hasSub pipelinedStepAsm "mulxq") && (BignumMontMulKernel.hasSub pipelinedStepAsm "$121666") && (BignumMontMulKernel.hasSub pipelinedStepAsm "%r14")
+#guard (pipelinedStepAsm.contains "x25519_mono_step_spilled") && (pipelinedStepAsm.contains "mulxq") && (pipelinedStepAsm.contains "$121666") && (pipelinedStepAsm.contains "%r14")
 
 /-- Emit driver: write the spill-materialised pipelined step `.s` for the bench. -/
 def emitMain : IO Unit := do
@@ -636,7 +636,7 @@ def pipelinedStepAsmPinned : String :=
 
 /- Shape check: the pin-aware body is one function with MULX, the `$121666` cmadd
     immediate, and reload/store traffic to working registers. -/
-#guard (BignumMontMulKernel.hasSub pipelinedStepAsmPinned "x25519_mono_step_spilled_pinned") && (BignumMontMulKernel.hasSub pipelinedStepAsmPinned "mulxq") && (BignumMontMulKernel.hasSub pipelinedStepAsmPinned "$121666") && (BignumMontMulKernel.hasSub pipelinedStepAsmPinned "%r14")
+#guard (pipelinedStepAsmPinned.contains "x25519_mono_step_spilled_pinned") && (pipelinedStepAsmPinned.contains "mulxq") && (pipelinedStepAsmPinned.contains "$121666") && (pipelinedStepAsmPinned.contains "%r14")
 
 /-- Emit driver: write the pin-aware spill-materialised pipelined step `.s` for the bench. -/
 def emitMainPinned : IO Unit := do

@@ -447,9 +447,9 @@ def limbPrefix : List LowCT :=
     `rp[nlimbs]`. -/
 def addmulBodyLowCT : LowCT := seqAll (
   limbPrefix
-  ++ [ .RScalarSetExpr "u" (.SAdd (sv "s") (sv "o")) ]
+  ++ [ LowCT.RScalarSetExpr "u" (.SAdd (sv "s") (sv "o")) ]
   ++ ltuCmds "d" (sv "u") (sv "s")
-  ++ [ .RScalarSetExpr "cyo" (.SAdd (.SAdd (sv "hi") (sv "c")) (sv "d"))
+  ++ [ LowCT.RScalarSetExpr "cyo" (.SAdd (.SAdd (sv "hi") (sv "c")) (sv "d"))
      , .RArrStore rpLoc "idx" ⟨"u", .TU64⟩
      , .RArrStore rpLoc "nlimbs" ⟨"cyo", .TU64⟩ ])
 
@@ -459,9 +459,9 @@ def addmulBodyLowCT : LowCT := seqAll (
     to `rp[nlimbs]`. -/
 def submulBodyLowCT : LowCT := seqAll (
   limbPrefix
-  ++ [ .RScalarSetExpr "u" (.SSub (sv "o") (sv "s")) ]
+  ++ [ LowCT.RScalarSetExpr "u" (.SSub (sv "o") (sv "s")) ]
   ++ ltuCmds "d" (sv "o") (sv "s")
-  ++ [ .RScalarSetExpr "cyo" (.SAdd (.SAdd (sv "hi") (sv "c")) (sv "d"))
+  ++ [ LowCT.RScalarSetExpr "cyo" (.SAdd (.SAdd (sv "hi") (sv "c")) (sv "d"))
      , .RArrStore rpLoc "idx" ⟨"u", .TU64⟩
      , .RArrStore rpLoc "nlimbs" ⟨"cyo", .TU64⟩ ])
 

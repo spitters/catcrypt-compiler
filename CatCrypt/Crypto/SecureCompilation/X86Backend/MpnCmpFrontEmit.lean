@@ -317,7 +317,7 @@ def bpLoc : Located := ⟨"bp", .TBytes (8 * NU)⟩
     of the two branch-free unsigned comparisons, and store the mask-selected
     result back to `rp[0]`. -/
 def cmpLimbBodyLowCT : LowCT := seqAll (
-  [ .RScalarSetExpr "top" (.SSub (sv "n") (.SLit 1))
+  [ LowCT.RScalarSetExpr "top" (.SSub (sv "n") (.SLit 1))
   , .RScalarSetExpr "j" (.SSub (sv "top") (sv "idx"))
   , .RScalarSetExpr "z" (.SLit 0)
   , .RArrLoad ⟨"x", .TU64⟩ apLoc "j"
@@ -325,9 +325,9 @@ def cmpLimbBodyLowCT : LowCT := seqAll (
   , .RArrLoad ⟨"prev", .TU64⟩ rpLoc "z" ]
   ++ ltuCmds "lt" (sv "x") (sv "y")
   ++ ltuCmds "gt" (sv "y") (sv "x")
-  ++ [ .RScalarSetExpr "step" (.SSub (sv "gt") (sv "lt")) ]
+  ++ [ LowCT.RScalarSetExpr "step" (.SSub (sv "gt") (sv "lt")) ]
   ++ ltuCmds "nz" (.SLit 0) (sv "prev")
-  ++ [ .RScalarSetExpr "keep" (.SSub (sv "nz") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "keep" (.SSub (sv "nz") (.SLit 1))
      , .RScalarSetExpr "dif" (.SXor (sv "step") (sv "prev"))
      , .RScalarSetExpr "out" (.SXor (sv "prev") (.SAnd (sv "keep") (sv "dif")))
      , .RArrStore rpLoc "z" ⟨"out", .TU64⟩ ])

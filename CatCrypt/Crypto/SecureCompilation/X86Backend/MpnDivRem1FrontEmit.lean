@@ -418,7 +418,7 @@ def upLoc : Located := ⟨"up", .TBytes (8 * NU)⟩
     the dividend limb from `up[j]`, run the reciprocal step, then store the
     quotient limb to `qp[j]` and the new remainder to `qp[RS]`. -/
 def divLimbBodyLowCT : LowCT := seqAll (
-  [ .RScalarSetExpr "top" (.SSub (sv "n") (.SLit 1))
+  [ LowCT.RScalarSetExpr "top" (.SSub (sv "n") (.SLit 1))
   , .RScalarSetExpr "j" (.SSub (sv "top") (sv "idx"))
   , .RScalarSetExpr "rs" (.SLit RS)
   , .RArrLoad ⟨"u1", .TU64⟩ qpLoc "rs"
@@ -427,16 +427,16 @@ def divLimbBodyLowCT : LowCT := seqAll (
   , .RScalarSetExpr "qh" (.SMulHiU (sv "dinv") (sv "u1"))
   , .RScalarSetExpr "qla" (.SAdd (sv "ql") (sv "u0")) ]
   ++ ltuCmds "c0" (sv "qla") (sv "ql")
-  ++ [ .RScalarSetExpr "u1p" (.SAdd (sv "u1") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "u1p" (.SAdd (sv "u1") (.SLit 1))
      , .RScalarSetExpr "qhb" (.SAdd (.SAdd (sv "qh") (sv "u1p")) (sv "c0"))
      , .RScalarSetExpr "p" (.SMul (sv "qhb") (sv "d"))
      , .RScalarSetExpr "r" (.SSub (sv "u0") (sv "p")) ]
   ++ ltuCmds "c1" (sv "qla") (sv "r")
-  ++ [ .RScalarSetExpr "m1" (.SAdd (notE (sv "c1")) (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "m1" (.SAdd (notE (sv "c1")) (.SLit 1))
      , .RScalarSetExpr "qhc" (.SAdd (sv "qhb") (sv "m1"))
      , .RScalarSetExpr "ra" (.SAdd (sv "r") (.SAnd (sv "m1") (sv "d"))) ]
   ++ ltuCmds "c2" (sv "ra") (sv "d")
-  ++ [ .RScalarSetExpr "c3" (.SXor (sv "c2") (.SLit 1))
+  ++ [ LowCT.RScalarSetExpr "c3" (.SXor (sv "c2") (.SLit 1))
      , .RScalarSetExpr "m3" (.SAdd (notE (sv "c3")) (.SLit 1))
      , .RScalarSetExpr "qout" (.SAdd (sv "qhc") (sv "c3"))
      , .RScalarSetExpr "rout" (.SSub (sv "ra") (.SAnd (sv "m3") (sv "d")))

@@ -130,7 +130,7 @@ def loadInputs : List LowCT :=
 /-- The four widening partial products `p_ij = u_i · v_j`, low word via `SMul`
     and high word via `SMulHiU`. -/
 def partials : List LowCT :=
-  [ .RScalarSetExpr "lo00" (.SMul (sv "u0") (sv "v0"))
+  [ LowCT.RScalarSetExpr "lo00" (.SMul (sv "u0") (sv "v0"))
   , .RScalarSetExpr "hi00" (.SMulHiU (sv "u0") (sv "v0"))
   , .RScalarSetExpr "lo01" (.SMul (sv "u0") (sv "v1"))
   , .RScalarSetExpr "hi01" (.SMulHiU (sv "u0") (sv "v1"))
@@ -149,20 +149,20 @@ def partials : List LowCT :=
     Each `c*` carry-out bit is the branch-free `ltuCmds` of a sum against its
     first summand. -/
 def columns : List LowCT :=
-  [ .RScalarSetExpr "r0" (sv "lo00")
+  [ LowCT.RScalarSetExpr "r0" (sv "lo00")
   , .RScalarSetExpr "s1a" (.SAdd (sv "hi00") (sv "lo01")) ]
   ++ ltuCmds "c1a" (sv "s1a") (sv "hi00")
-  ++ [ .RScalarSetExpr "s1b" (.SAdd (sv "s1a") (sv "lo10")) ]
+  ++ [ LowCT.RScalarSetExpr "s1b" (.SAdd (sv "s1a") (sv "lo10")) ]
   ++ ltuCmds "c1b" (sv "s1b") (sv "s1a")
-  ++ [ .RScalarSetExpr "r1" (sv "s1b")
+  ++ [ LowCT.RScalarSetExpr "r1" (sv "s1b")
      , .RScalarSetExpr "cw1" (.SAdd (sv "c1a") (sv "c1b"))
      , .RScalarSetExpr "s2a" (.SAdd (sv "hi01") (sv "hi10")) ]
   ++ ltuCmds "c2a" (sv "s2a") (sv "hi01")
-  ++ [ .RScalarSetExpr "s2b" (.SAdd (sv "s2a") (sv "lo11")) ]
+  ++ [ LowCT.RScalarSetExpr "s2b" (.SAdd (sv "s2a") (sv "lo11")) ]
   ++ ltuCmds "c2b" (sv "s2b") (sv "s2a")
-  ++ [ .RScalarSetExpr "s2c" (.SAdd (sv "s2b") (sv "cw1")) ]
+  ++ [ LowCT.RScalarSetExpr "s2c" (.SAdd (sv "s2b") (sv "cw1")) ]
   ++ ltuCmds "c2c" (sv "s2c") (sv "s2b")
-  ++ [ .RScalarSetExpr "r2" (sv "s2c")
+  ++ [ LowCT.RScalarSetExpr "r2" (sv "s2c")
      , .RScalarSetExpr "cw2" (.SAdd (.SAdd (sv "c2a") (sv "c2b")) (sv "c2c"))
      , .RScalarSetExpr "r3" (.SAdd (sv "hi11") (sv "cw2")) ]
 
