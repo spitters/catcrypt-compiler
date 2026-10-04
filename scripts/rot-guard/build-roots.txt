@@ -539,6 +539,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Bls377CubicIrreducible
 CatCrypt.Crypto.SecureCompilation.VIR.Bls377FinalExpCorrect
 CatCrypt.Crypto.SecureCompilation.VIR.BoundSchedInstances
 CatCrypt.Crypto.SecureCompilation.VIR.BranchLowering
+CatCrypt.Crypto.SecureCompilation.VIR.CallContracts
 CatCrypt.Crypto.SecureCompilation.VIR.CarrierTransferDom
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrintCorrect
