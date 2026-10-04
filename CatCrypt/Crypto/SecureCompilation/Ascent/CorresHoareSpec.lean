@@ -30,6 +30,10 @@ abstract result to `Q`.
 
 * `corresJ_triple_post` — the `RunBlockTriple` form.
 * `corresJ_iff_triple_post` — `CorresJ` is equivalent to this family over all `Q`.
+  With `RunBlockTriple` unfolded it is the statement of `corresJ_iff_post_generic`
+  (`CorresInstanceSpec`), the `CorresJ` instance of the generic `corresM_iff_post`. The
+  proof here is direct, since the closure of `CorresInstanceSpec` includes the `Transfer`
+  umbrella, which the closure of this module does not.
 * `corresJ_spec` — the `Std.Do` form over `runBlockM c`, with the postcondition a
   `PostCond` variable.
 * `corresJ_spec_at` — the `Std.Do` triple at a fixed abstract state, the image of

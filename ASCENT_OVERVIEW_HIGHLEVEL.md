@@ -185,19 +185,23 @@ overflow. On a kind-checked fragment the reading terminates, and the total tripl
 follows from the correspondence together with a typing of the operation table. The
 fragment has literals, variables, let-binding, sequencing, applications of typed
 operations, conditionals on Boolean conditions, and counted loops with literal bounds in
-[0, 2³²]. Kinds include index ranges, so array indexing in a loop is total, and bounded
-word kinds, so a checked addition is total when the sum of the operand bounds fits the
-width. Of the checked operations only addition is covered. The example is an equality
-test on 32-byte arrays: a 32-step loop whose body is a conditional.
+[0, 2³²]. Kinds include index ranges, so array indexing in a loop is total, and word
+ranges [L, U), under which each checked operation is total: addition when U₁ + U₂ fits
+the width, subtraction when the subtrahend's upper bound is at most the minuend's lower
+bound plus one, multiplication when U₁ · U₂ fits the width, division and remainder when
+the divisor's lower bound is at least one. The example is an equality test on 32-byte
+arrays, a 32-step loop whose body is a conditional; its contract, in the form the hax
+Lean printer emits (a precondition, a postcondition and the triple between them), is
+closed from the correspondence, without a verification-condition proof over the body.
 
 **Loops.** The block-replication rule of section 6 is an instance of the invariant rule
 of the program logic, at the invariant "the machine state is related to the i-fold
 step". The same holds at the monadic Rust level: for a loop whose body carries a counter
 i and continues while i < N, the square for the N-fold abstract step follows from the
 body squares through the invariant rule with measure N − i, and a square for a loop is
-equivalent to the corresponding total specification. The loop form is the one the
-monadic Rust library uses for general loops; the equality with the iteration that
-extracted `for` loops use is not proved.
+equivalent to the corresponding total specification. The iteration that extracted `for`
+loops use is equal, as a program, to such a counted loop, so the rule applies to them
+directly.
 
 **The two automations produce different objects.** The ascent takes a program and
 computes its abstract function, together with the correspondence. A
