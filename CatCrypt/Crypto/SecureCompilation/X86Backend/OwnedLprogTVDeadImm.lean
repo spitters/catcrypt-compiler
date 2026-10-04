@@ -35,6 +35,19 @@ no register is pending (`tRun_drop`). One `ownedCheckM_of_res` closes the body.
 * `srcOf`, `keptOf`, `dropOk`: a marked body, its unmarked instructions, and the condition
   that the marks are dead immediate moves.
 * `deadMarks`, `dropDeadImmMarks`, `spellMarks`: the marks of the elimination.
+* `flagQuiet`, `dropOkW`, `ResW`: steps that write no flag and no array, the condition that
+  the marks are dead flag-quiet writes, and agreement of runs up to guards.
+* `deadWriteMarks`, `dropDeadWriteBody`: the elimination of a `MUL`, `IMUL` or move into a
+  register whose next access is a write of a widening multiply `MULX`.
+
+## Dead flag-quiet writes
+
+A marked instruction may be any flag-quiet step (`flagQuiet`): in the flag machine a `MUL`,
+an `IMUL` and a move write no flag (`aluFlagOp?` records the flags of `ADD`, `SUB`, `AND`,
+`OR` and `XOR` only), so dropping one leaves the flags, and every later flag reader, as they
+are (`symStep_same`). Its step may carry width guards and intern a compound word; the run of
+the kept instructions then carries a sublist of the guards of the source run (`ResW`), which
+the guard check of `ownedCheckM` accepts (`blockOkR_fallW`).
 
 ## Main results
 
@@ -45,6 +58,11 @@ no register is pending (`tRun_drop`). One `ownedCheckM_of_res` closes the body.
 * `dropDeadImm_ownedCheckM_complete`: completeness for `ConstIndexFold.dropDeadImmBody`.
 * `foldIndexed_ownedCheckM_complete`: completeness for the elimination followed by the
   array-ABI spelling, the pair `ConstIndexFold.foldIndexedBody` produces.
+* `symStep_same`: a flag-quiet step keeps the flags and the arrays.
+* `tRun_dropW`, `ownedCheckM_of_resW`, `dropOkW_ownedCheckM_complete`: runs without dead
+  flag-quiet writes agree up to guards, and `ownedCheckM` accepts them.
+* `dropOk_dropOkW`: dead immediate moves are dead flag-quiet writes.
+* `dropDeadWrite_ownedCheckM_complete`: completeness for `dropDeadWriteBody`.
 -/
 
 @[expose] public section
@@ -952,5 +970,532 @@ theorem foldIndexed_ownedCheckM_complete (outs : List String) (tg : LinstrR → 
   spellDropDeadImm_ownedCheckM_complete outs tg _ hne hs hok hfrag
 
 end DeadImm
+
+/-! ## 7. Flag-quiet steps -/
+
+/-- The step of `i` writes no array: its tag is not an array store, or its instruction is
+    not a recognised indexed store. -/
+def arrQuiet (i : LinstrRM) : Bool :=
+  match i.2 with
+  | .store _ _ => (storeStruct? i.1).isNone
+  | _ => true
+
+/-- The step of `i` writes no flag and no array: `i` is not a compare, not a carry-family
+    operation, not an arithmetic or logical operation whose flags the machine records
+    (`aluFlagOp?`), and not an array store. A `MUL`, an `IMUL` and every `MOV` are
+    flag-quiet in this sense. -/
+def flagQuiet (i : LinstrRM) : Bool :=
+  (cmpArgs? i).isNone && (carryArgs? i).isNone && (aluFlagOp? i).isNone && arrQuiet i
+
+theorem SSt.Same.symm {s t : SSt} (h : s.Same t) : t.Same s :=
+  ⟨h.1.symm, h.2.1.symm, h.2.2.1.symm, h.2.2.2.symm⟩
+
+theorem SSt.Same.trans {s t u : SSt} (h1 : s.Same t) (h2 : t.Same u) : s.Same u :=
+  ⟨h1.1.trans h2.1, h1.2.1.trans h2.2.1, h1.2.2.1.trans h2.2.2.1, h1.2.2.2.trans h2.2.2.2⟩
+
+theorem SSt.Same.setR (ss : SSt) (d : String) (t : STerm) : (ss.setR d t).Same ss :=
+  ⟨rfl, rfl, rfl, rfl⟩
+
+theorem liftR_same {ss s : SSt} {o : ROut} {gs : List SG} (h : liftR ss o = .ok s gs) :
+    s.Same ss := by
+  cases o <;> simp only [liftR, SOut.ok.injEq, reduceCtorEq] at h
+  · rw [← h.1]; exact SSt.Same.setR _ _ _
+  · rw [← h.1]; exact SSt.Same.refl ss
+
+theorem symMem_same (i : LinstrRM) (ha : arrQuiet i = true) {ss s : SSt} {gs : List SG}
+    (h : symMem i ss = .ok s gs) : s.Same ss := by
+  obtain ⟨x, tag⟩ := i
+  unfold symMem at h
+  cases tag with
+  | load w n =>
+      dsimp only at h
+      split at h
+      · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact SSt.Same.setR _ _ _
+      · exact liftR_same h
+  | store w n =>
+      dsimp only at h
+      split at h
+      · rename_i hs
+        simp [arrQuiet, hs] at ha
+      · exact liftR_same h
+  | loadC => cases h
+  | storeC => cases h
+  | reg cd => exact liftR_same h
+
+/-- **A flag-quiet step keeps the flags and the arrays.** -/
+theorem symStep_same (i : LinstrRM) (hq : flagQuiet i = true) {ss s : SSt} {g : List SG}
+    (h : symStep i ss = .ok s g) : s.Same ss := by
+  simp only [flagQuiet, Bool.and_eq_true, Option.isNone_iff_eq_none] at hq
+  obtain ⟨⟨⟨hc, hk⟩, hm⟩, ha⟩ := hq
+  unfold symStep at h
+  simp only [hc, hk] at h
+  split at h
+  · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact SSt.Same.setR _ _ _
+  · split at h
+    · cases h
+    · split at h
+      · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact SSt.Same.refl ss
+      · cases h
+      · cases h
+      · split at h
+        · rename_i w _
+          cases w with
+          | mov d b =>
+              simp only [symWide] at h
+              split at h
+              · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact SSt.Same.setR _ _ _
+              · cases h
+          | mulx lo hi b =>
+              simp only [symWide] at h
+              split at h
+              · simp only [SOut.ok.injEq] at h; rw [← h.1]
+                exact (SSt.Same.setR _ _ _).trans (SSt.Same.setR _ _ _)
+              · cases h
+        · cases hs : symMem i ss with
+          | ok s1 g1 =>
+              rw [hs] at h
+              simp only [aluFl, SOut.ok.injEq] at h
+              rw [← h.1]
+              have e := symMem_same i ha hs
+              exact ⟨e.1, e.2.1, by simp [aluFlT, hm], by simp [aluFlT, hm]⟩
+          | fail => rw [hs] at h; cases h
+          | unk => rw [hs] at h; cases h
+
+/-- Interning a state whose flags are atoms keeps its flags and arrays. -/
+theorem Tbl.internSt_same (T : Tbl) {s : SSt} (ds : List String) (hc : s.cf.atom = true)
+    (ho : s.of.atom = true) : (T.internSt s ds).2.Same s := by
+  have e1 := Tbl.internRegs_snd T s ds
+  simp only [Tbl.internSt]
+  generalize hp : T.internRegs s ds = p at e1
+  obtain ⟨P, ps⟩ := p
+  dsimp only at e1 ⊢
+  rw [e1]
+  dsimp only
+  rw [Tbl.intern_atom P hc]
+  dsimp only
+  rw [Tbl.intern_atom P ho]
+  exact ⟨rfl, rfl, rfl, rfl⟩
+
+/-! ## 8. Runs without dead flag-quiet writes -/
+
+/-- The marks of a body are dead flag-quiet writes, with the registers `D` written by marked
+    instructions still pending: every marked instruction is flag-quiet and adds the names it
+    writes (`wrOf`) to the pending list; no unmarked instruction reads a pending register; a
+    register leaves the pending list when an unmarked instruction writes it; and no register
+    is pending at the end. -/
+def dropOkW (D : List String) : List (LinstrRM × Bool) → Bool
+  | [] => D.isEmpty
+  | (i, true) :: rest => flagQuiet i && dropOkW (wrOf i ++ D) rest
+  | (i, false) :: rest =>
+      D.all (fun q => !(symReads i.1).contains q) &&
+        dropOkW (D.filter (fun q => !(wrOf i).contains q)) rest
+
+/-- The source description `o` and the target run `r` agree up to guards: when the source
+    succeeds, the target succeeds in the table `T'`, in a state with one word for every
+    name, with guards among the source guards. -/
+def ResW (T' : Tbl) : SOut → Tbl × SOut → Prop
+  | .ok s g, r =>
+      match r.2 with
+      | .ok s' g' => r.1 = T' ∧ s.Eqv s' ∧ ∀ x ∈ g', x ∈ g
+      | _ => False
+  | .fail, _ => True
+  | .unk, _ => True
+
+theorem ResW_after {T' : Tbl} {o : SOut} {r : Tbl × SOut} (g : List SG) (h : ResW T' o r) :
+    ResW T' (o.after g) r := by
+  obtain ⟨R, o'⟩ := r
+  cases o with
+  | ok s g2 =>
+      cases o' with
+      | ok s' g' =>
+          obtain ⟨h1, h2, h3⟩ := h
+          exact ⟨h1, h2, fun x hx => List.mem_append_right _ (h3 x hx)⟩
+      | fail => exact h.elim
+      | unk => exact h.elim
+  | fail => trivial
+  | unk => trivial
+
+theorem ResW_after₂ {T' : Tbl} {o : SOut} {r : Tbl × SOut} (g : List SG) (h : ResW T' o r) :
+    ResW T' (o.after g) (runAfter g r) := by
+  obtain ⟨R, o'⟩ := r
+  cases o with
+  | ok s g2 =>
+      cases o' with
+      | ok s' g' =>
+          obtain ⟨h1, h2, h3⟩ := h
+          refine ⟨h1, h2, fun x hx => ?_⟩
+          simp only [List.mem_append] at hx ⊢
+          exact hx.imp id (h3 x)
+      | fail => exact h.elim
+      | unk => exact h.elim
+  | fail => trivial
+  | unk => trivial
+
+/-- **Runs without dead flag-quiet writes.** From states that agree off the pending
+    registers `D`, the run of a marked body and the run of its unmarked instructions, in a
+    table holding what the first run interns, agree up to guards (`ResW`), when the marks are
+    dead flag-quiet writes (`dropOkW`). -/
+theorem tRun_dropW : ∀ (B : List (LinstrRM × Bool)) (D : List String) (ss ss' : SSt)
+    (T T' : Tbl), dropOkW D B = true → ss.EqvOn D ss' → ss.Inv T.ents.size →
+    (tRun (srcOf B) ss T).1.Sub T' → ResW T' (tRun (srcOf B) ss T).2 (tRun (keptOf B) ss' T')
+  | [], D, ss, ss', T, T', hok, e, _, _ => by
+      simp only [dropOkW, List.isEmpty_iff] at hok
+      subst hok
+      simp only [srcOf, keptOf, List.map_nil, List.filter_nil, tRun]
+      exact ⟨rfl, ⟨funext fun q => e.2 q (by simp), e.1.1, e.1.2.1, e.1.2.2.1, e.1.2.2.2⟩,
+        fun _ h => h⟩
+  | (i, true) :: rest, D, ss, ss', T, T', hok, e, hI, hS => by
+      simp only [dropOkW, Bool.and_eq_true] at hok
+      obtain ⟨hq, hok⟩ := hok
+      have hsrc : srcOf ((i, true) :: rest) = i :: srcOf rest := rfl
+      have hkept : keptOf ((i, true) :: rest) = keptOf rest := by simp [keptOf]
+      rw [hsrc, tRun_cons] at hS
+      rw [hsrc, hkept, tRun_cons]
+      cases hs : symStep i ss with
+      | ok s1 g1 =>
+          rw [hs] at hS
+          dsimp only at hS ⊢
+          have hw := symStep_wr hs
+          rw [SSt.Frm.ds_eq hw] at hS ⊢
+          obtain ⟨ds0, hw0, hr0⟩ := symStep_frm i hs
+          have hd0 : wrOf i = ds0 := List.append_cancel_right (hw.symm.trans hw0)
+          have hR1 := symStep_refsLt i hI.1 hs
+          have hsm := symStep_same i hq hs
+          have hI2 : (T.internSt s1 (wrOf i)).2.Inv (T.internSt s1 (wrOf i)).1.ents.size :=
+            Tbl.internSt_inv _ hR1.1 (fun r hr => by
+              rw [hr0 r (hd0 ▸ hr)]; exact hI.2.1 r)
+          have hsm2 := Tbl.internSt_same T (wrOf i) (s := s1)
+            (by rw [hsm.2.2.1]; exact hI.2.2.1) (by rw [hsm.2.2.2]; exact hI.2.2.2)
+          have e' : (T.internSt s1 (wrOf i)).2.EqvOn (wrOf i ++ D) ss' := by
+            refine ⟨(hsm2.trans hsm).trans e.1, fun q hq => ?_⟩
+            simp only [List.mem_append, not_or] at hq
+            rw [Tbl.internSt_keep _ _ _ q hq.1, hr0 q (hd0 ▸ hq.1)]
+            exact e.2 q hq.2
+          have ih := tRun_dropW rest _ _ ss' _ T' hok e' hI2 (by simpa [runAfter] using hS)
+          exact ResW_after g1 ih
+      | fail => trivial
+      | unk => trivial
+  | (i, false) :: rest, D, ss, ss', T, T', hok, e, hI, hS => by
+      simp only [dropOkW, Bool.and_eq_true, List.all_eq_true] at hok
+      obtain ⟨hrd, hok⟩ := hok
+      have hR : ∀ q ∈ symReads i.1, ss.regs q = ss'.regs q := by
+        intro q hq
+        refine e.2 q fun hqD => ?_
+        have := hrd q hqD
+        simp_all
+      have hc := symStep_congr e.1 i hR
+      have hsrc : srcOf ((i, false) :: rest) = i :: srcOf rest := rfl
+      have hkept : keptOf ((i, false) :: rest) = i :: keptOf rest := by simp [keptOf]
+      rw [hsrc, tRun_cons] at hS
+      rw [hsrc, hkept, tRun_cons, tRun_cons]
+      cases hs : symStep i ss with
+      | ok s1 g1 =>
+          cases hs' : symStep i ss' with
+          | ok s1' g1' =>
+              rw [hs, hs'] at hc
+              obtain ⟨rfl, hSame, ds, hw, hw', hds⟩ := hc
+              rw [hs] at hS
+              dsimp only at hS ⊢
+              rw [SSt.Frm.ds_eq hw] at hS ⊢
+              rw [SSt.Frm.ds_eq hw']
+              have hR1 := symStep_refsLt i hI.1 hs
+              obtain ⟨ds0, hw0, hr0⟩ := symStep_frm i hs
+              have hd0 : ds = ds0 := List.append_cancel_right (hw.symm.trans hw0)
+              obtain ⟨ds1, hw1, hr1⟩ := symStep_frm i hs'
+              have hd1 : ds = ds1 := List.append_cancel_right (hw'.symm.trans hw1)
+              have hdw : ds = wrOf i := List.append_cancel_right (hw.symm.trans (symStep_wr hs))
+              have hI2 : (T.internSt s1 ds).2.Inv (T.internSt s1 ds).1.ents.size :=
+                Tbl.internSt_inv (T := T) ds hR1.1 (fun r hr => by
+                  rw [hr0 r (hd0 ▸ hr)]; exact hI.2.1 r)
+              have hSub : (T.internSt s1 ds).1.Sub T' :=
+                (tRun_sub _ _ _).trans (by simpa [runAfter] using hS)
+              obtain ⟨s0, h0, e0, -, -⟩ :=
+                Tbl.internSt_rerun (ss := s1) (ss' := { s1 with wr := s1'.wr, awr := s1'.awr })
+                  ⟨rfl, rfl, rfl, rfl, rfl⟩ ds hR1.1 hSub
+              obtain ⟨ht1, hSm, hag, -⟩ :=
+                Tbl.internSt_on T' (ss := { s1 with wr := s1'.wr, awr := s1'.awr }) (ss' := s1')
+                  ds hSame hds
+              rw [h0] at ht1 hSm hag
+              dsimp only at ht1 hSm hag
+              have eD : (T.internSt s1 ds).2.EqvOn (D.filter (fun q => !(wrOf i).contains q))
+                  (T'.internSt s1' ds).2 := by
+                refine ⟨⟨e0.2.1.trans hSm.1, e0.2.2.1.trans hSm.2.1, e0.2.2.2.1.trans hSm.2.2.1,
+                  e0.2.2.2.2.trans hSm.2.2.2⟩, fun q hq => ?_⟩
+                by_cases hqd : q ∈ ds
+                · rw [e0.1]; exact hag q hqd
+                · rw [Tbl.internSt_keep _ _ _ q hqd, Tbl.internSt_keep _ _ _ q hqd,
+                    hr0 q (hd0 ▸ hqd), hr1 q (hd1 ▸ hqd)]
+                  refine e.2 q fun hqD => hq ?_
+                  simp only [List.mem_filter, Bool.not_eq_true', List.contains_eq_mem,
+                    decide_eq_false_iff_not]
+                  exact ⟨hqD, hdw ▸ hqd⟩
+              have ih := tRun_dropW rest _ _ _ _ T' hok eD hI2 (by simpa [runAfter] using hS)
+              have hT : (T'.internSt s1' ds).1 = T' := ht1
+              rw [hT]
+              exact ResW_after₂ g1 ih
+          | fail => rw [hs, hs'] at hc; cases hc
+          | unk => rw [hs, hs'] at hc; cases hc
+      | fail => trivial
+      | unk => trivial
+
+/-- **The check of one falling block, up to guards.** `blockOkR_fall` with target guards
+    `g'` among the source guards `g`. -/
+theorem blockOkR_fallW {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM} {b b' : AllocCheck.LcmdCFG.Block} {T1 : Tbl} {s s' : SSt}
+    {g g' : List SG} (e : s.Eqv s') (hI : s.Inv T1.ents.size)
+    (hg : ∀ x ∈ g, x.refsLt T1.ents.size = true) (hsub : ∀ x ∈ g', x ∈ g)
+    (hE : TBnd T1.ents)
+    (hL : LiveCov (L 0) (blockNeed outs L (.fall none) (T1, .ok s g, .ok s' g') B b))
+    (hlast : ∀ p, B[b.stop - 1]? = some p → AllocCheck.LcmdCFG.isTermR p.1 = false) :
+    blockOkR outs L 0 (.fall none) (T1, .ok s g, .ok s' g') B B' b b' = true := by
+  simp only [blockNeed, AllocCheck.LcmdCFG.Term.succs, AllocCheck.LcmdCFG.Term.halts,
+    Option.toList, List.flatMap_nil, List.any_nil, ↓reduceIte, Bool.false_or,
+    Bool.or_false, Bool.true_and, Option.map_none, Option.getD_none, List.append_nil] at hL
+  simp only [blockOkR, Bool.and_eq_true]
+  refine ⟨⟨?_, ?_⟩, ?_⟩
+  · simp only [guardsT, Bool.and_eq_true, List.all_eq_true, List.mem_append]
+    refine ⟨fun x hx => hx.elim (hg x) (fun h => hg x (hsub x h)), fun x hx => ⟨?_, ?_⟩⟩
+    · obtain ⟨y, hy, hxy⟩ := List.mem_flatMap.mp hx
+      simpa [normGT] using ⟨y, hsub y hy, hxy⟩
+    · simp only [okInGT, Bool.and_eq_true]
+      obtain ⟨y, hy, hxy⟩ := List.mem_flatMap.mp hx
+      refine ⟨SG.normT_refsLt hE (hg y (hsub y hy)) x hxy,
+        okIn_of_live hL (fun v hv => ?_) (fun h => ?_)⟩
+      · simp only [List.mem_append, List.mem_flatMap]
+        exact Or.inl (Or.inl ⟨x, hx, hv⟩)
+      · simp only [Bool.or_eq_true, List.any_eq_true]
+        exact Or.inl (Or.inl ⟨x, hx, h⟩)
+  · cases hb : B[b.stop - 1]? with
+    | none => simp [termAgreeT]
+    | some p =>
+        have hp := hlast p hb
+        obtain ⟨x, τ⟩ := p
+        cases x <;> simp_all [termAgreeT, AllocCheck.LcmdCFG.isTermR]
+  · simp only [exitAgreeT, AllocCheck.LcmdCFG.Term.succs, Option.toList, List.all_nil,
+      AllocCheck.LcmdCFG.Term.halts, Bool.not_true, Bool.false_or, Bool.true_and,
+      Bool.and_eq_true, List.all_eq_true, beq_iff_eq]
+    refine ⟨fun r hr => ⟨congrFun e.1 r, ?_⟩, fun q hq => ⟨congrFun e.2.1 q, ?_⟩⟩
+    · simp only [okInT, Bool.and_eq_true]
+      refine ⟨hI.1.1 r, okIn_of_live hL (fun v hv => ?_) (fun h => ?_)⟩
+      · simp only [List.mem_append, List.mem_flatMap]
+        exact Or.inl (Or.inr ⟨r, hr, hv⟩)
+      · simp only [Bool.or_eq_true, List.any_eq_true]
+        exact Or.inl (Or.inr ⟨r, hr, h⟩)
+    · simp only [okInAT, Bool.and_eq_true]
+      refine ⟨hI.1.2.1 q, okIn_of_live hL (fun v hv => ?_) (fun h => ?_)⟩
+      · simp only [List.mem_append, List.mem_flatMap]
+        exact Or.inr ⟨q, by simpa using hq, hv⟩
+      · simp only [Bool.or_eq_true, List.any_eq_true]
+        exact Or.inr ⟨q, by simpa using hq, h⟩
+
+/-- **Completeness for straight-line bodies, up to guards.** Two non-empty straight-line
+    typed bodies whose shared runs agree up to guards (`ResW`), the source run being inside
+    the fragment, pass `ownedCheckM`. -/
+theorem ownedCheckM_of_resW (outs : List String) {B B' : List LinstrRM} (hne : B ≠ [])
+    (hne' : B' ≠ []) (hs : ∀ p ∈ B, straightR p.1 = true) (hs' : ∀ p ∈ B', straightR p.1 = true)
+    (hres : ResW (tRun B SSt.start Tbl.empty).1 (tRun B SSt.start Tbl.empty).2
+      (tRun B' SSt.start (tRun B SSt.start Tbl.empty).1))
+    (hunk : (tRun B SSt.start Tbl.empty).2 ≠ .unk) : ownedCheckM outs B B' = true := by
+  have hG := cfgOf_straight (wl := B.map Prod.fst) (by simpa using hne)
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact hs p hp)
+  have hG' := cfgOf_straight (wl := B'.map Prod.fst) (by simpa using hne')
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact hs' p hp)
+  unfold ownedCheckM
+  rw [hG, hG']
+  dsimp only
+  have hsz : ∀ n, (straightCFG n).blocks.size = 1 := fun _ => rfl
+  have hterm : ∀ n, ((straightCFG n).blk 0).term = .fall none := fun _ => rfl
+  generalize hp : tRun B SSt.start Tbl.empty = p at hres hunk
+  obtain ⟨T1, o⟩ := p
+  have hR : (runsOf B B' (straightCFG (B.map Prod.fst).length)
+      (straightCFG (B'.map Prod.fst).length))[0]? =
+      some (blockRuns B B' ((straightCFG (B.map Prod.fst).length).blk 0)
+        ((straightCFG (B'.map Prod.fst).length).blk 0) (.fall none)) := by
+    simp [runsOf, hsz, hterm]
+  have hBR : blockRuns B B' ((straightCFG (B.map Prod.fst).length).blk 0)
+      ((straightCFG (B'.map Prod.fst).length).blk 0) (.fall none) =
+      ((tRun B' SSt.start T1).1, o, (tRun B' SSt.start T1).2) := by
+    simp only [blockRuns, bodyAt_straight, hp]
+  rw [hBR] at hR
+  simp only [ownedCheckWithR, hsz, hterm, hR, Bool.and_eq_true, List.all_eq_true, List.mem_range,
+    Nat.lt_one_iff, forall_eq, beq_self_eq_true, true_and]
+  refine ⟨by simp [hne, hne'], ?_⟩
+  cases o with
+  | unk => exact absurd rfl hunk
+  | fail => simp [blockOkR]
+  | ok s g =>
+      generalize hq : tRun B' SSt.start T1 = q at hres hR
+      obtain ⟨Q, o'⟩ := q
+      cases o' with
+      | ok s' g' =>
+          obtain ⟨hQ, e, hsub⟩ := hres
+          simp only at hQ
+          simp only [hQ] at hR ⊢
+          have hinv := tRun_inv B SSt.start Tbl.empty SSt.inv_start hp
+          have hE : TBnd T1.ents := by
+            have := tRun_valid B SSt.start Tbl.empty tValid_empty
+            rw [hp] at this
+            exact this.2
+          refine blockOkR_fallW e hinv.1 hinv.2 hsub hE ?_ ?_
+          · refine liveIter_single (hsz _) _ hR (fun L => ?_)
+            simp only [blockNeed, hterm, AllocCheck.LcmdCFG.Term.succs,
+              AllocCheck.LcmdCFG.Term.halts, Option.toList, List.flatMap_nil, List.any_nil]
+          · intro p hp'
+            have hmem : p ∈ B := List.mem_of_getElem? hp'
+            have := hs p hmem
+            simp only [straightR, Bool.and_eq_true, Bool.not_eq_true'] at this
+            exact this.1.1
+      | fail => exact hres.elim
+      | unk => exact hres.elim
+
+/-- **Completeness for dropping dead flag-quiet writes.** A straight-line marked body whose
+    marks are dead flag-quiet writes (`dropOkW`), whose symbolic run lies inside the fragment
+    and which keeps an instruction, passes `ownedCheckM` against its unmarked instructions. -/
+theorem dropOkW_ownedCheckM_complete (outs : List String) (B : List (LinstrRM × Bool))
+    (hne : keptOf B ≠ []) (hs : ∀ p ∈ B, straightR p.1.1 = true) (hok : dropOkW [] B = true)
+    (hfrag : symRun (srcOf B) SSt.start ≠ .unk) :
+    ownedCheckM outs (srcOf B) (keptOf B) = true := by
+  have hsrc : srcOf B ≠ [] := by
+    intro h
+    apply hne
+    simp only [srcOf, List.map_eq_nil_iff] at h
+    simp [keptOf, h]
+  refine ownedCheckM_of_resW outs hsrc hne ?_ ?_ ?_ ?_
+  · intro q hq
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hq
+    exact hs p hp
+  · intro q hq
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hq
+    exact hs p (List.mem_filter.mp hp).1
+  · exact tRun_dropW B [] SSt.start SSt.start Tbl.empty _ hok
+      ⟨SSt.Same.refl _, fun _ _ => rfl⟩ SSt.inv_start (Tbl.Sub.refl _)
+  · rwa [ne_eq, tRun_unk_iff]
+
+/-! ### Immediate moves as dead flag-quiet writes -/
+
+theorem immMov?_flagQuiet {i : LinstrRM} {r : String} (h : immMov? i = some r) :
+    flagQuiet i = true := by
+  obtain ⟨opn, n, tag, rfl, -, -⟩ := immMov?_spec h
+  cases tag <;> simp [flagQuiet, cmpArgs?, carryArgs?, aluFlagOp?, arrQuiet, storeStruct?]
+
+theorem wrOf_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) : wrOf i = [r] := by
+  obtain ⟨w, n, hs⟩ := symStep_immMov h
+  simp [wrOf, hs, SSt.setR, SSt.start]
+
+/-- Dead immediate moves (`dropOk`) are dead flag-quiet writes (`dropOkW`). -/
+theorem dropOk_dropOkW : ∀ (B : List (LinstrRM × Bool)) (D : List String),
+    dropOk D B = true → dropOkW D B = true
+  | [], _, h => h
+  | (i, true) :: rest, D, h => by
+      simp only [dropOk] at h
+      cases hm : immMov? i with
+      | none => rw [hm] at h; cases h
+      | some r =>
+          rw [hm] at h
+          simp only [dropOkW, immMov?_flagQuiet hm, wrOf_immMov hm, List.singleton_append,
+            Bool.true_and]
+          exact dropOk_dropOkW rest _ h
+  | (i, false) :: rest, D, h => by
+      simp only [dropOk, Bool.and_eq_true] at h
+      simp only [dropOkW, Bool.and_eq_true]
+      exact ⟨h.1, dropOk_dropOkW rest _ h.2⟩
+
+/-! ## 9. The dead-write elimination before a widening multiply -/
+
+/-- The register a candidate pure register write sets: a `MUL`, `IMUL` or `MOV` (at any
+    width tag), a `MOVQ` or a `LOAD:64`, with one register destination. -/
+def pureWrDst? (x : LinstrR) : Option String :=
+  match x with
+  | .Lopn [.reg d] opn _ =>
+      if stripWidthTag opn = "MUL" ∨ stripWidthTag opn = "IMUL" ∨ stripWidthTag opn = "MOV" ∨
+          opn = "MOVQ" ∨ opn = "LOAD:64" then some d
+      else none
+  | _ => none
+
+/-- `x` is a widening multiply `MULX [lo, hi] [b]` (or `MULXMEM`, at any width tag) with `d`
+    among its destinations. -/
+def mulxWrites (d : String) (x : LinstrR) : Bool :=
+  match x with
+  | .Lopn [.reg lo, .reg hi] opn [_] =>
+      (stripWidthTag opn == "MULX" || stripWidthTag opn == "MULXMEM") && (d == lo || d == hi)
+  | _ => false
+
+/-- `x` names `d` among its register destinations. -/
+def namesDstB (d : String) (x : LinstrR) : Bool :=
+  match x with
+  | .Lopn ds _ _ => ds.any (· == .reg d)
+  | _ => false
+
+/-- The next access of `d` among the unmarked instructions of `M` is a write by a widening
+    multiply: no unmarked instruction before it is a control instruction or a label, reads
+    `d` (`symReads`) or names `d` as a destination. -/
+def killedByMulx (d : String) : List (Linstr × Bool) → Bool
+  | [] => false
+  | (_, true) :: rest => killedByMulx d rest
+  | (j, false) :: rest =>
+      straightR j.li_i && !(symReads j.li_i).contains d &&
+        (mulxWrites d j.li_i || (!namesDstB d j.li_i && killedByMulx d rest))
+
+/-- The marks of the dead-write elimination, computed from the end of the body: an
+    instruction is marked when it is a straight-line candidate pure register write
+    (`pureWrDst?`) whose register is next accessed, among the unmarked instructions after
+    it, by a write of a widening multiply (`killedByMulx`). -/
+def deadWriteMarks : Lcmd → List (Linstr × Bool)
+  | [] => []
+  | i :: is =>
+      let M := deadWriteMarks is
+      (i, match pureWrDst? i.li_i with
+          | some d => straightR i.li_i && killedByMulx d M
+          | none => false) :: M
+
+/-- **The dead-write elimination.** The body without the marked instructions of
+    `deadWriteMarks`. -/
+def dropDeadWriteBody (body : Lcmd) : Lcmd := keptL (deadWriteMarks body)
+
+theorem deadWriteMarks_fst : ∀ body : Lcmd, (deadWriteMarks body).map Prod.fst = body
+  | [] => rfl
+  | i :: is => by simp [deadWriteMarks, deadWriteMarks_fst is]
+
+theorem keptL_sublist : ∀ M : List (Linstr × Bool), (keptL M).Sublist (M.map Prod.fst)
+  | [] => List.Sublist.slnil
+  | (i, b) :: M => by
+      cases b
+      · simpa [keptL] using (keptL_sublist M).cons_cons i
+      · simpa [keptL] using (keptL_sublist M).cons i
+
+/-- The elimination removes instructions only. -/
+theorem dropDeadWriteBody_sublist (body : Lcmd) : (dropDeadWriteBody body).Sublist body := by
+  have h := keptL_sublist (deadWriteMarks body)
+  rwa [deadWriteMarks_fst] at h
+
+/-- **Completeness for a marked body, dead flag-quiet writes.** -/
+theorem marksW_ownedCheckM_complete (outs : List String) (tg : LinstrR → MemTag)
+    (M : List (Linstr × Bool)) (hne : keptL M ≠ [])
+    (hs : ∀ i ∈ M.map Prod.fst, straightR i.li_i = true)
+    (hok : dropOkW [] (typeMarks tg M) = true)
+    (hfrag : symRun (typeBody tg (M.map Prod.fst)) SSt.start ≠ .unk) :
+    ownedCheckM outs (typeBody tg (M.map Prod.fst)) (typeBody tg (keptL M)) = true := by
+  rw [← srcOf_typeMarks, ← keptOf_typeMarks]
+  refine dropOkW_ownedCheckM_complete outs _ ?_ ?_ hok (by rwa [srcOf_typeMarks])
+  · rw [keptOf_typeMarks]
+    simpa [typeBody] using hne
+  · intro q hq
+    obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hq
+    exact hs m.1 (List.mem_map_of_mem hm)
+
+/-- **Completeness of the value checker for the dead-write elimination.** For a
+    straight-line body whose eliminated instructions are dead flag-quiet writes at the level
+    of the symbolic step (`dropOkW`), whose symbolic run lies inside the fragment and whose
+    elimination keeps an instruction, `ownedCheckM` accepts the body against
+    `dropDeadWriteBody`, for every observed list `outs` and every typing. -/
+theorem dropDeadWrite_ownedCheckM_complete (outs : List String) (tg : LinstrR → MemTag)
+    (body : Lcmd) (hne : dropDeadWriteBody body ≠ [])
+    (hs : ∀ i ∈ body, straightR i.li_i = true)
+    (hok : dropOkW [] (typeMarks tg (deadWriteMarks body)) = true)
+    (hfrag : symRun (typeBody tg body) SSt.start ≠ .unk) :
+    ownedCheckM outs (typeBody tg body) (typeBody tg (dropDeadWriteBody body)) = true := by
+  have h := marksW_ownedCheckM_complete outs tg (deadWriteMarks body) hne
+    (by rwa [deadWriteMarks_fst]) hok (by rwa [deadWriteMarks_fst])
+  rwa [deadWriteMarks_fst] at h
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
