@@ -3,3 +3,4 @@
 # CatCrypt/Crypto/SecureCompilation/Ascent/GuardSatisfiable.lean) in the module
 # or a module it imports. Each line: module<TAB>theorem-name<TAB>reason.
 # Recorded by scripts/ascent-nonvacuity-ratchet.sh --record.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoareSpec	corresJ_iff_triple_post	NOT A CLOSED CORRESPONDENCE: a metatheorem quantified over SR, P, fa and c (CorresJ SR P fa c iff the family of triples over all postconditions); it asserts no correspondence for a particular block, so there is no guard to witness.
