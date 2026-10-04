@@ -66,6 +66,8 @@ arms to the bodies of `DecodePrintedCFG`.
   selects with a slot true value and with a slot false value.
 * `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB` simulate its
   run on the address machine.
+* `printedAddrWB_eq_impl` (`@[csimp]`): the gate is evaluated with the body parameters
+  computed once per body.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
@@ -3239,6 +3241,38 @@ def printedAddrWB (body : Lcmd) : Bool :=
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevB body)
     && (List.range body.length).all (bitMovPosB body)
+
+/-- `carryPrevB` with the body parameters `P` given as an argument. -/
+def carryPrevBWith (P : Params) (body : Lcmd) (k : Nat) : Bool :=
+  match body[k]? with
+  | some ⟨_, .Lopn [.reg _] o [.reg a, .reg s, .reg c]⟩ =>
+      if o = "ADCXHI:64" then
+        k != 0 && (match body[k - 1]? with
+          | some ⟨_, .Lopn [.reg d] o' [.reg a', .reg s', .reg c']⟩ =>
+              o' == "ADCX:64" && a == a' && s == s' && c == c' && d != a && d != s && d != c
+                && slotSepB P d a && slotSepB P d s && slotSepB P d c
+          | _ => false)
+      else true
+  | _ => true
+
+/-- `carryPrevB` is `carryPrevBWith` at the parameters of the body. -/
+theorem carryPrevB_eq_with (body : Lcmd) :
+    carryPrevB body = carryPrevBWith (Params.ofBody body) body := rfl
+
+/-- `printedAddrWB` evaluated with the body parameters `Params.ofBody body` computed once for
+    the instruction gates `instrOKWB` and the carry-out gates `carryPrevBWith`. -/
+def printedAddrWBImpl (body : Lcmd) : Bool :=
+  let P := Params.ofBody body
+  decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
+    && body.dropLast.all (fun i => instrOKWB body P i.li_i)
+    && (List.range body.length).all (condPrevB body)
+    && (List.range body.length).all (carryPrevBWith P body)
+    && (List.range body.length).all (bitMovPosB body)
+
+/-- The gate `printedAddrWB` is evaluated as `printedAddrWBImpl`. -/
+@[csimp] theorem printedAddrWB_eq_impl : @printedAddrWB = @printedAddrWBImpl := by
+  funext body
+  rfl
 
 /-- At the program counter of `s`, no general-purpose name the instruction reads, other than
     a carry-in, holds a one-bit value. -/
