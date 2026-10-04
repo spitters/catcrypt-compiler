@@ -543,7 +543,7 @@ theorem fuseMulHiAux_eq : ∀ (xs : Lcmd) (pend : List (String × String)),
       simp only [scratchStep_nil hi, List.map_cons]
       obtain ⟨ii, w⟩ := i
       dsimp only at hi ⊢
-      simp only [fuseLoAux, scratchResolve_nil]
+      simp only [fuseLoAux, scratchResolve_nil, lowHome_nil, ite_self]
       split
       · rename_i d opn s1 s2
         have hn : ∀ n ∈ [d, s1, s2], nameOK n = true := fun n hn =>

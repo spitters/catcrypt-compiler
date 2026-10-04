@@ -695,16 +695,17 @@ theorem fuseMulHiAux_noSite (s : Bool) (pend : List (String × String)) (xs : Lc
     fuseMulHiAux s env pend xs = xs := by
   simpa [fuseMulHiAux_nil] using fuseMulHiAux_append_noSite s pend xs [] h env
 
-/-- A low `MUL` is kept and recorded as pending, keyed on its resolved
-    multiplicand. -/
+/-- A low `MUL` whose multiplicand is no reload scratch is kept and recorded as
+    pending at its destination, keyed on its resolved multiplicand. -/
 theorem fuseMulHiAux_cons_lowMul (s : Bool) (env : ScratchEnv) (pend : List (String × String))
-    (ii : Nat) (d opn s1 s2 : String) (rest : Lcmd) (hlo : isLowMulMnem opn = true) :
+    (ii : Nat) (d opn s1 s2 : String) (rest : Lcmd) (hlo : isLowMulMnem opn = true)
+    (hs2 : fuseReloadScratches.contains s2 = false) :
     fuseMulHiAux s env pend (⟨ii, .Lopn [.reg d] opn [.reg s1, .reg s2]⟩ :: rest)
       = ⟨ii, .Lopn [.reg d] opn [.reg s1, .reg s2]⟩
         :: fuseMulHiAux s (scratchStep env ⟨ii, .Lopn [.reg d] opn [.reg s1, .reg s2]⟩)
           ((d, scratchResolve env s2) :: pend) rest := by
   rw [fuseMulHiAux]
-  simp [hlo]
+  simp [hlo, lowHome_of_not_scratch env hs2]
 
 /-- **The fused site in the looped-body mode.** A `MULXHI` whose resolved
     multiplicand matches a pending low `MUL` with register destinations, with a
@@ -815,7 +816,8 @@ theorem fuseMulHiBody_oneSite (xs ys zs : Lcmd) (ii jj : Nat) (d opn s1 s2 hd ho
                 else []) ++ zs)) := by
   have he0 : EnvScratch [] := fun _ h => absurd h (List.not_mem_nil)
   unfold fuseMulHiBody
-  rw [fuseMulHiAux_append_noSite _ _ xs _ hxs, fuseMulHiAux_cons_lowMul _ _ _ _ _ _ _ _ _ hlo,
+  rw [fuseMulHiAux_append_noSite _ _ xs _ hxs, fuseMulHiAux_cons_lowMul _ _ _ _ _ _ _ s2 _ hlo
+    (by simpa using hs2),
     fuseMulHiAux_append_noSite _ _ ys _ hys]
   have hE1 := (he0.foldl xs)
   have hE2 := (hE1.step ⟨ii, .Lopn [.reg d] opn [.reg s1, .reg s2]⟩).foldl ys

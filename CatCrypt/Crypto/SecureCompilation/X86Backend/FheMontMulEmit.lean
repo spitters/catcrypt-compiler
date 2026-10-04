@@ -357,6 +357,40 @@ def scratchStep (env : ScratchEnv) (i : Linstr) : ScratchEnv :=
         | _ => e) env
   | _ => env
 
+/-- The home of the destination `d` of a low `MUL` with second source `s2`: when both are
+    reserved reload scratches, the two-address legalizer has reloaded a spilled destination
+    into `d`, and the home is the name last moved into `d`; otherwise `d` itself. -/
+def lowHome (env : ScratchEnv) (d s2 : String) : String :=
+  if fuseReloadScratches.contains d && fuseReloadScratches.contains s2 then scratchResolve env d
+  else d
+
+/-- Under the empty scratch environment the home of a low destination is the destination. -/
+theorem lowHome_nil (d s2 : String) : lowHome [] d s2 = d := by
+  simp [lowHome, scratchResolve]
+
+/-- A low destination that is no reserved reload scratch is its own home. -/
+theorem lowHome_of_not_scratch (env : ScratchEnv) {d s2 : String}
+    (h : fuseReloadScratches.contains s2 = false) : lowHome env d s2 = d := by
+  simp only [lowHome, h, Bool.and_false, Bool.false_eq_true, if_false]
+
+/-- The fused site of a squaring `MULXHI d, [s1, s1]` with a spilled high destination `d` in
+    the looped-body mode: the save of `RDX` in `R15`, the pin of `s1` in `RDX`, the two-output
+    `MULX` with `RDX` as its explicit source and the reserved scratch `R14` as its high
+    destination, the store of the high word to `d` and the restore of `RDX`. A register low
+    destination `loDst` receives the low word from the `MULX`; a spilled one receives it
+    through `RDX`, stored before the high word. -/
+def squareSite (ii : Nat) (loDst d s1 : String) : List Linstr :=
+  let pin : List Linstr :=
+    [⟨ii, .Lopn [.reg "R15"] "MOVQ" [.reg "RDX"]⟩, ⟨ii, .Lopn [.reg "RDX"] "MOV:64" [.reg s1]⟩]
+  let fin : List Linstr :=
+    [⟨ii, .Lopn [.reg d] "MOV:64" [.reg reloadScratch2]⟩,
+     ⟨ii, .Lopn [.reg "RDX"] "MOVQ" [.reg "R15"]⟩]
+  if (LOperand.reg loDst).isSpill then
+    pin ++ ⟨ii, .Lopn [.reg "RDX", .reg reloadScratch2] "MULX" [.reg "RDX"]⟩
+      :: ⟨ii, .Lopn [.reg loDst] "MOV:64" [.reg "RDX"]⟩ :: fin
+  else
+    pin ++ ⟨ii, .Lopn [.reg loDst, .reg reloadScratch2] "MULX" [.reg "RDX"]⟩ :: fin
+
 /-- The fusion worker over a body, carrying the reload-scratch environment and
     the list of pending low-`MUL` bindings seen so far (each as
     `(loDst, multiplicand)`) head-most-recent.
@@ -388,8 +422,13 @@ def scratchStep (env : ScratchEnv) (i : Linstr) : ScratchEnv :=
     `MOV R15, RDX … MOV RDX, R15` (`R15` = `reloadScratch`, reserved — never
     RA-allocated, and dead between its transient reload uses); an `s2 = RDX`
     source reads the saved copy, and the restore is skipped when the fused op
-    itself redefines `RDX` (its old value is dead there). `false` (every
-    straight-line caller) emits the original sequence byte-identically. -/
+    itself redefines `RDX` (its old value is dead there). In this mode a pending
+    low destination is recorded at its home (`lowHome`), and a squaring pair
+    (`s1 = s2`) whose high destination is spilled becomes `squareSite`: `R15`
+    holds the saved `RDX`, the `MULX` reads its multiplicand from `RDX`, and the
+    high word goes through `R14`. Every other pair with a spilled high
+    destination is left unfused. `false` (every straight-line caller) emits the
+    original sequence byte-identically. -/
 def fuseMulHiAux (saveRdx : Bool) :
     ScratchEnv → List (String × String) → Lcmd → Lcmd
   | _, _, [] => []
@@ -400,21 +439,29 @@ def fuseMulHiAux (saveRdx : Bool) :
         if isLowMulMnem opn then
           -- Remember this low MUL (dst + resolved multiplicand) for a later
           -- MULXHI. (`s1` is the low op's own dst in two-address form.)
-          i :: fuseMulHiAux saveRdx env' ((d, scratchResolve env s2) :: pend) rest
+          i :: fuseMulHiAux saveRdx env'
+            ((if saveRdx then lowHome env d s2 else d, scratchResolve env s2) :: pend) rest
         else if isMulHiMnem opn then
           -- Match the MOST-RECENT pending low `MUL` with the same multiplicand and
           -- CONSUME it (remove from `pend`), so a later `MULXHI` with the same
           -- operand (register reuse across butterflies) pairs with a DISTINCT
           -- low `MUL`.
           let key := scratchResolve env s2
-          -- Under `saveRdx` the primary scratch carries the saved `%rdx`, so it
-          -- is not available to hold a spilled high destination; such a pair is
-          -- left unfused (the printer's sentinel) rather than rewritten with a
-          -- scratch that is already live.
+          -- Under `saveRdx` the primary scratch carries the saved `%rdx`. A
+          -- spilled high destination of a square goes through `R14`, which the
+          -- `MULX` does not read (its explicit source is `%rdx`); any other pair
+          -- with a spilled high destination is left unfused (the printer's
+          -- sentinel).
           match pend.span (fun p => p.2 != key) with
           | (before, (loDst, _) :: after) =>
             if saveRdx && (LOperand.reg d).isSpill then
-              i :: fuseMulHiAux saveRdx env' pend rest
+              if s1 == s2 && s1 != reloadScratch && loDst != "RDX"
+                  && !fuseReloadScratches.contains loDst then
+                squareSite i.li_ii loDst d s1
+                  ++ fuseMulHiAux saveRdx ([reloadScratch, reloadScratch2].foldl scratchKill env')
+                    (before ++ after) rest
+              else
+                i :: fuseMulHiAux saveRdx env' pend rest
             else
               let pend' := before ++ after          -- pend minus the matched entry
               -- `s1` is the OTHER multiplicand (pin into %rdx); `loDst` is the
@@ -475,6 +522,26 @@ def fuseMulHiAux (saveRdx : Bool) :
     looped-body mode (see `fuseMulHiAux`). -/
 def fuseMulHiBody (body : Lcmd) (saveRdx : Bool := false) : Lcmd :=
   fuseMulHiAux saveRdx [] [] body
+
+/-- **The squaring site in the looped-body mode.** A `MULXHI d, [s1, s1]` with a spilled high
+    destination whose resolved multiplicand matches a pending low `MUL` with home `loDst`, a
+    multiplicand other than `R15` and a home that is neither `RDX` nor a reload scratch,
+    becomes `squareSite`. -/
+theorem fuseMulHiAux_cons_square (env : ScratchEnv) (pend before after : List (String × String))
+    (loDst k : String) (jj : Nat) (d opn s1 : String) (rest : Lcmd)
+    (hnlo : isLowMulMnem opn = false) (hhi : isMulHiMnem opn = true)
+    (hspan : pend.span (fun p => p.2 != scratchResolve env s1)
+      = (before, (loDst, k) :: after))
+    (hd : (LOperand.reg d).isSpill = true) (hs1 : (s1 != reloadScratch) = true)
+    (hloR : (loDst != "RDX") = true) (hlo : fuseReloadScratches.contains loDst = false) :
+    fuseMulHiAux true env pend (⟨jj, .Lopn [.reg d] opn [.reg s1, .reg s1]⟩ :: rest)
+      = squareSite jj loDst d s1
+        ++ fuseMulHiAux true ([reloadScratch, reloadScratch2].foldl scratchKill
+          (scratchStep env ⟨jj, .Lopn [.reg d] opn [.reg s1, .reg s1]⟩)) (before ++ after) rest := by
+  have hlo' : loDst ∉ fuseReloadScratches := by simpa using hlo
+  rw [fuseMulHiAux]
+  simp only [hspan]
+  simp [hnlo, hhi, hd, hs1, hloR, hlo']
 
 /-- Apply the MULX fusion to every function body of an `Lprog`. `saveRdx :=
     true` is the looped-body mode (see `fuseMulHiAux`); the default keeps every
@@ -557,6 +624,33 @@ theorem fuseMulHiStep_sound (s : JState 64) (s1 s2 hiDst loDst : String)
   refine ⟨?_, ?_, ?_, ?_⟩
   · rw [hlo, ha, hb]
   · rw [hhi, ha, hb]
+  · rw [hfl, hflmov]
+  · rw [hmem, hmemmov]
+
+/-- **The squaring fragment of `squareSite` is value-sound.** `MOV RDX, s1 ; MULX hiDst loDst
+    RDX RDX` reaches the low word of `s1 · s1` in `loDst` and the high word in `hiDst`,
+    writing no flag and no memory. -/
+theorem fuseSquareStep_sound (s : JState 64) (s1 hiDst loDst : String) (hlh : loDst ≠ hiDst) :
+    (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg "RDX")]).get loDst
+        = (x86_MULX_lo_hi (s.get s1) (s.get s1)).1
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg "RDX")]).get hiDst
+        = (x86_MULX_lo_hi (s.get s1) (s.get s1)).2
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg "RDX")]).flags
+        = s.flags
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg "RDX")]).mem
+        = s.mem := by
+  have hmov : evalInstr s (.mov "RDX" (.reg s1)) = s.setReg "RDX" (s.get s1) := by
+    simp only [evalInstr, JOperand.eval, x86_MOV]
+  obtain ⟨hlo, hhi, hfl, hmem⟩ :=
+    mulx_computes (evalInstr s (.mov "RDX" (.reg s1))) hiDst loDst (.reg "RDX") (.reg "RDX") hlh
+  have ha : (JOperand.reg "RDX").eval (evalInstr s (.mov "RDX" (.reg s1))) = s.get s1 := by
+    rw [hmov]; simp [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg]
+  have hflmov : (evalInstr s (.mov "RDX" (.reg s1))).flags = s.flags := by rw [hmov]; rfl
+  have hmemmov : (evalInstr s (.mov "RDX" (.reg s1))).mem = s.mem := by rw [hmov]; rfl
+  simp only [runBlock]
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [hlo, ha]
+  · rw [hhi, ha]
   · rw [hfl, hflmov]
   · rw [hmem, hmemmov]
 
