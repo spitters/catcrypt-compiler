@@ -505,7 +505,7 @@ variable [DialectDenote d]
     along `List.map (fun t => t)`. -/
 theorem map_id_denote [CallDenote d] (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (hc : p.callFree = true) (V : Valuation Γ) :
-    (NFProg.map (BlockLoweringData.id d) regionTypes_id p hc (fun v => v)).denote fuel V =
+    (NFProg.map (BlockLoweringData.id d) regionTypes_id p (fun v => v)).denote fuel V =
       (p.denote fuel V).map
         (BlockLoweringExtend.transArgs (fun t => t) (fun x => x)) :=
   NFProg.map_denote_of_blockOpTransports (BlockLoweringData.id d) (fun x => x)

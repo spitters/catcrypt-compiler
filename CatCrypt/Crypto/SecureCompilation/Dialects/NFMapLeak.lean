@@ -302,7 +302,8 @@ theorem map?_leakRun (M : LeakModel d) (M' : LeakModel d') (hT : P.RegionTypes)
       rfl
   | call =>
       intro Δ ren V W hren q hq
-      simp [map?] at hq
+      obtain ⟨k', _, rfl⟩ := Option.map_eq_some_iff.mp hq
+      rfl
 
 end Map
 
@@ -373,9 +374,12 @@ theorem ifFree_map? (P : PartialBlockLowering d d') (hT : P.RegionTypes) {Γ : C
         exact ihb hbk.1 _ b hbq
       simp only [ifFree, ctSafeNF, nodesOk, Bool.and_eq_true]
       exact ⟨hb', ihk hbk.2 _ k' hkq⟩
-  | call =>
+  | call f args k ih =>
+      have hk : ifFree k = true := by
+        simpa only [ifFree, ctSafeNF, nodesOk] using hp
       intro Δ ren q hq
-      simp [map?] at hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simpa only [ifFree, ctSafeNF, nodesOk] using ih hk _ k' hkq
 
 end IfFree
 

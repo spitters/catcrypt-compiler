@@ -669,13 +669,13 @@ theorem ghashNF_callFree (n : Nat) : (ghashNF n).callFree = true := rfl
 /-- **The lowered GHASH loop**: `ghashNF n` lowered by `NFProg.map gf2ToJasmin`, the value
     of `NFProg.map? gf2ToJasmin.toPartial`. -/
 def ghashJ (n : Nat) : NFProg jasminDialect ((ghashCtx n).map Gf2Ty.toJ) [r128] :=
-  NFProg.map gf2ToJasmin gf2RegionTypes (ghashNF n) (ghashNF_callFree n) (fun v => v)
+  NFProg.map gf2ToJasmin gf2RegionTypes (ghashNF n) (fun v => v)
 
 /-- The lowered GHASH loop is the value of the partial lowering `NFProg.map?`. -/
 theorem map?_ghashNF (n : Nat) :
     NFProg.map? gf2ToJasmin.toPartial gf2RegionTypes (ghashNF n) (fun v => v) =
       some (ghashJ n) :=
-  NFProg.map?_toPartial _ _ _ (ghashNF_callFree n) _
+  NFProg.map?_toPartial _ _ _ _
 
 /-- **The lowered GHASH loop computes the GHASH fold**, at every fuel. -/
 theorem ghashJ_denote (n : Nat) (h : BitVec 128) (cnt : BitVec 64) (y : BitVec 128)

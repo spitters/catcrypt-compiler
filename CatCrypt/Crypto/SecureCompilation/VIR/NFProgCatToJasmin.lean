@@ -38,6 +38,8 @@ it reads (`MultiReturnCom.usedSelM`). A branch, and a loop whose body contains a
 ## Main definitions
 
 * `catToJasmin` — the partial block lowering.
+* `twoSymEnvC`, `twoSymEnvJ`, `twoSymProg` — two call environments with the symbols
+  `"add"` and `"dbl"` on 64-bit words, and a program that calls both.
 * `jasminNFToComLAt`, `jasminNFToComL` — the lowering of the one-carried fragment of
   `NFProg jasminDialect` to `ComL`.
 * `nfToComLVia` — the lowering of `NFProg catCryptDialect` to `ComL` through
@@ -48,7 +50,12 @@ it reads (`MultiReturnCom.usedSelM`). A branch, and a loop whose body contains a
 
 ## Main results
 
-* `catToJasmin_map?_denote` — `map?` along `catToJasmin` preserves denotation.
+* `catToJasmin_map?_denote` — `map?` along `catToJasmin` preserves denotation;
+  `catToJasmin_map?_denoteAt` — the same at call environments that agree along
+  `ctTransTy` at the calls of the program.
+* `twoSymProg_catToJasmin` — the program `twoSymProg`, which calls the two symbols of
+  `twoSymEnvC`, lowers along `catToJasmin` to a program that denotes at `twoSymEnvJ` the
+  transport of its denotation.
 * `jasminNFToComLAt_denote` — `jasminNFToComLAt` preserves denotation.
 * `nfToComLVia_denote` — `nfToComLVia` preserves denotation, in the statement of
   `NFProgToComL.nfToComL_denote`.
@@ -132,11 +139,92 @@ theorem catToJasmin_map?_denote (fuel : Nat) {Γ : Ctx} {ts : List CryptoTy}
     (q : NFProg jasminDialect Δ (ts.map mapTy))
     (hq : NFProg.map? catToJasmin catToJasmin_regionTypes p ren = some q) :
     q.denote fuel W = (p.denote fuel V).map (BlockLoweringExtend.transArgs mapTy (fun x => ctTransTy x)) :=
-  NFProg.map?_denote catToJasmin (fun x => ctTransTy x) ctMapValD catToJasmin_regionTypes
+  NFProg.map?_denote_call catToJasmin (fun x => ctTransTy x) ctMapValD catToJasmin_regionTypes
     (fun _ => True) catToJasmin_varTransports
     (fun e _ blk hblk V => catToJasmin_block e blk hblk V)
     catToJasmin_mapValExtends catToJasmin_regionTransports fuel p
-    (NFProg.covered_of_forall _ (fun _ => trivial) p) ren V W hren q hq
+    (NFProg.covered_of_forall _ (fun _ => trivial) p) (CallEnv.transports_empty _ _ _)
+    ren V W hren q hq
+
+/-- **Preservation along `catToJasmin` at explicit call environments.** Under the
+    agreement of `E` and `E'` along `ctTransTy` at every call of `p`, a program that `map?`
+    returns for `p` at a renaming relating `W` to `ctMapValD V` denotes at `E'` and every
+    fuel the `ctTransTy` transport of the denotation of `p` at `E`. -/
+theorem catToJasmin_map?_denoteAt (E : CallEnv catCryptDialect) (E' : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : Ctx} {ts : List CryptoTy} (p : NFProg catCryptDialect Γ ts)
+    (hCall : E.Transports E' (fun as => as.map mapTy)
+      (fun x => BlockLoweringExtend.transArgs mapTy (fun x => ctTransTy x) x) p.Calls)
+    {Δ : Ctxt jasminDialect} (ren : Ctxt.Hom (mapCtx Γ) Δ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (W : Ctxt.Valuation Δ)
+    (hren : FieldDialectBlockDescent.pullV ren W = ctMapValD V)
+    (q : NFProg jasminDialect Δ (ts.map mapTy))
+    (hq : NFProg.map? catToJasmin catToJasmin_regionTypes p ren = some q) :
+    q.denoteAt E' fuel W =
+      (p.denoteAt E fuel V).map (BlockLoweringExtend.transArgs mapTy (fun x => ctTransTy x)) :=
+  NFProg.map?_denoteAt catToJasmin (fun x => ctTransTy x) ctMapValD catToJasmin_regionTypes
+    (fun _ => True) catToJasmin_varTransports
+    (fun e _ blk hblk V => catToJasmin_block e blk hblk V)
+    catToJasmin_mapValExtends catToJasmin_regionTransports E E' fuel p
+    (NFProg.covered_of_forall _ (fun _ => trivial) p) hCall ren V W hren q hq
+
+/-! ## 1a. A program with two symbols -/
+
+/-- The call environment of `catCryptDialect` with two symbols on 64-bit words: `"add"`
+    returns the sum of its two arguments and `"dbl"` twice its argument. -/
+def twoSymEnvC : CallEnv catCryptDialect where
+  call
+    | "add", [.sword 64, .sword 64], [.sword 64], .cons a (.cons b .nil) =>
+        some (.cons (BitVec.add (n := 64) a b) .nil)
+    | "dbl", [.sword 64], [.sword 64], .cons a .nil => some (.cons (BitVec.add (n := 64) a a) .nil)
+    | _, _, _, _ => none
+
+/-- The call environment of `jasminDialect` with the symbols of `twoSymEnvC` on 64-bit
+    registers. -/
+def twoSymEnvJ : CallEnv jasminDialect where
+  call
+    | "add", [.reg 64, .reg 64], [.reg 64], .cons a (.cons b .nil) =>
+        some (.cons (BitVec.add (n := 64) a b) .nil)
+    | "dbl", [.reg 64], [.reg 64], .cons a .nil => some (.cons (BitVec.add (n := 64) a a) .nil)
+    | _, _, _, _ => none
+
+/-- The program over two 64-bit words `x, y` that calls `"add"` on `y, x` and `"dbl"` on
+    the result, and returns the result of `"dbl"`. -/
+def twoSymProg :
+    NFProg catCryptDialect [CryptoTy.sword 64, CryptoTy.sword 64] [CryptoTy.sword 64] :=
+  .call (as := [CryptoTy.sword 64, CryptoTy.sword 64]) (rs := [CryptoTy.sword 64]) "add"
+    (.cons (by exact .here) (.cons (by exact .there .here) .nil))
+    (.call (as := [CryptoTy.sword 64]) (rs := [CryptoTy.sword 64]) "dbl"
+      (.cons (by exact .here) .nil) (.ret (.cons (by exact .here) .nil)))
+
+/-- `twoSymEnvC` and `twoSymEnvJ` agree along `ctTransTy` at the two calls of
+    `twoSymProg`. -/
+theorem twoSymProg_transports :
+    twoSymEnvC.Transports twoSymEnvJ (fun as => as.map mapTy)
+      (fun x => BlockLoweringExtend.transArgs mapTy (fun x => ctTransTy x) x)
+      twoSymProg.Calls := by
+  intro f as rs x h
+  simp only [twoSymProg, NFProg.Calls, or_false] at h
+  rcases h with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+  · match x with
+    | .cons _ (.cons _ .nil) => rfl
+  · match x with
+    | .cons _ .nil => rfl
+
+/-- **The two-symbol program through `catToJasmin`.** `map?` along `catToJasmin` lowers
+    `twoSymProg` to a program that denotes at `twoSymEnvJ`, on `ctMapValD V` and at every
+    fuel, the `ctTransTy` transport of the denotation of `twoSymProg` at `twoSymEnvC`. -/
+theorem twoSymProg_catToJasmin :
+    ∃ q, NFProg.map? catToJasmin catToJasmin_regionTypes twoSymProg (fun v => v) = some q ∧
+      ∀ (fuel : Nat)
+        (V : Ctxt.Valuation (d := catCryptDialect) [CryptoTy.sword 64, CryptoTy.sword 64]),
+        q.denoteAt twoSymEnvJ fuel (ctMapValD V) =
+          (twoSymProg.denoteAt twoSymEnvC fuel V).map
+            (BlockLoweringExtend.transArgs mapTy (fun x => ctTransTy x)) := by
+  obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp
+    (show (NFProg.map? catToJasmin catToJasmin_regionTypes twoSymProg (fun v => v)).isSome
+      from rfl)
+  exact ⟨q, hq, fun fuel V => catToJasmin_map?_denoteAt twoSymEnvC twoSymEnvJ fuel twoSymProg
+    twoSymProg_transports _ V _ (FieldDialectBlockDescent.pullV_id _) q hq⟩
 
 /-! ## 2. The one-carried fragment of `NFProg jasminDialect` to `ComL` -/
 

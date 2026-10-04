@@ -548,13 +548,13 @@ theorem ghashAggNF_callFree (n : Nat) : (ghashAggNF n).callFree = true := rfl
 /-- **The lowered aggregated loop**: `ghashAggNF n` lowered by `NFProg.map gf2ToJasmin`, the
     value of `NFProg.map? gf2ToJasmin.toPartial`. -/
 def ghashAggJ (n : Nat) : NFProg jasminDialect ((ghashAggCtx n).map Gf2Ty.toJ) [r128] :=
-  NFProg.map gf2ToJasmin gf2RegionTypes (ghashAggNF n) (ghashAggNF_callFree n) (fun v => v)
+  NFProg.map gf2ToJasmin gf2RegionTypes (ghashAggNF n) (fun v => v)
 
 /-- The lowered aggregated loop is the value of the partial lowering `NFProg.map?`. -/
 theorem map?_ghashAggNF (n : Nat) :
     NFProg.map? gf2ToJasmin.toPartial gf2RegionTypes (ghashAggNF n) (fun v => v) =
       some (ghashAggJ n) :=
-  NFProg.map?_toPartial _ _ _ (ghashAggNF_callFree n) _
+  NFProg.map?_toPartial _ _ _ _
 
 /-- **The lowered aggregated loop folds the aggregated step**, at every fuel. -/
 theorem ghashAggJ_denote (n : Nat) (h1 h2 h3 h4 : BitVec 128) (cnt : BitVec 64)

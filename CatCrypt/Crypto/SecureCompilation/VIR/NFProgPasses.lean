@@ -26,19 +26,22 @@ stated at those indices and adjacency holds by unfolding.
 
 ## Main definitions
 
-* `NFProgPasses.nfSem`: the semantics of structured programs at a fuel.
+* `NFProgPasses.nfSem`: the semantics of structured programs at a fuel;
+  `NFProgPasses.nfSemE`: the same at an explicit call environment.
 * `NFProgPasses.mapStep`, `NFProgPasses.dceStep`, `NFProgPasses.aegraphStep`,
   `NFProgPasses.lowerSelectsStep`: the lowering along a partial block lowering,
   dead-code elimination, the e-graph stage and the select lowering as chain steps.
 * `PassChain.StepCert.ofMap?`: the certificate of the lowering along a partial block
   lowering, with the graph of the valuation transport as input relation and the graph
-  of the transport of result tuples as output relation.
+  of the transport of result tuples as output relation; `PassChain.StepCert.ofMapAt?`:
+  the same between the semantics at two call environments.
 * `NFProgPasses.dceCert`, `NFProgPasses.aegraphCert`, `NFProgPasses.lowerSelectsCert`:
   the certificates of the three endo-passes, at equal inputs and outputs.
 
 ## Main results
 
-The certificates are built from `NFProg.map?_denote`, `NFProg.denote_dce`,
+The certificates are built from `NFProg.map?_denote_call`, `NFProg.map?_denoteAt`,
+`NFProg.denote_dce`,
 `aegraphOptNF_denote` and `NFProg.denote_lowerSelects` with the generic constructors
 `PassChain.StepCert.ofTransport`, `PassChain.StepCert.ofRefines` and
 `PassChain.StepCert.ofDenoteEq`; their preservation statement through a chain is
@@ -69,6 +72,16 @@ def nfSem (fuel : Nat) (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty]
   In := Valuation Γ
   Out := Valuation ts
   den p V := p.denote fuel V
+
+/-- The semantics of structured programs over `d` at the context `Γ` and the result
+    types `ts`, at the call environment `E` and the fuel `fuel`: the denotation is
+    `NFProg.denoteAt E fuel`. -/
+def nfSemE {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+    [HasBoolBit d] [DialectDenoteM d Option] (E : CallEnv d) (fuel : Nat) (Γ : Ctxt d)
+    (ts : List d.Ty) : PassChain.Sem (NFProg d Γ ts) where
+  In := Valuation Γ
+  Out := Valuation ts
+  den p V := p.denoteAt E fuel V
 
 section Endo
 
@@ -142,27 +155,60 @@ section MapCert
 
 variable {d d' : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d] [DialectSignature d'] [TyDenote d'.Ty] [HasWord64 d'] [HasBoolBit d']
-  [DialectDenote d] [DialectDenote d'] [CallDenote d] [CallDenote d']
+  [DialectDenote d] [DialectDenote d']
+
+open NFProgPasses in
+/-- **The certificate of the lowering along a partial block lowering, at call
+    environments.** Under the variable leaf, the block leaf on every expression `P`
+    accepts, the binding-threading leaf, `RegionTransports`, and the agreement `hCall` of
+    the call environments `E` and `E'` along the transport at every call, the step
+    `mapStep P hT Γ ts` is certified from the semantics at `E` to the semantics at `E'`, at
+    every fuel, with the graph of `mapVal` as input relation and the graph of the transport
+    of result tuples as output relation, from `NFProg.map?_denoteAt`. -/
+def PassChain.StepCert.ofMapAt? (P : PartialBlockLowering d d') (hT : P.RegionTypes)
+    (transTy : P.TransTy) (mapVal : P.MapVal) (hVar : P.VarTransports transTy mapVal)
+    (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) blk, P.lowerExprBlock? e = some blk →
+      ∀ V : Valuation Γ, blk.denote (mapVal V) = transTy (e.denote V))
+    (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
+    (E : CallEnv d) (E' : CallEnv d')
+    (hCall : E.Transports E' (fun as => as.map P.mapTy) (fun x => transArgs P.mapTy transTy x)
+      (fun _ _ _ => True))
+    (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
+    PassChain.StepCert (mapStep P hT Γ ts).run (nfSemE E fuel Γ ts)
+      (nfSemE E' fuel (P.mapCtx Γ) (ts.map P.mapTy)) :=
+  PassChain.StepCert.ofTransport _ _ mapVal (transArgs P.mapTy transTy) fun p q V hf =>
+    NFProg.map?_denoteAt P transTy mapVal hT (fun _ => True) hVar
+      (fun e _ blk hb V => hBlk e blk hb V) hExt hR E E' fuel p
+      (NFProg.covered_of_forall _ (fun _ => trivial) p) (hCall.mono fun _ _ _ _ => trivial)
+      _ V (mapVal V) (FieldDialectBlockDescent.pullV_id _) q hf
+
+variable [CallDenote d] [CallDenote d']
 
 open NFProgPasses in
 /-- **The certificate of the lowering along a partial block lowering.** Under the
     variable leaf, the block leaf on every expression `P` accepts, the binding-threading
-    leaf and `RegionTransports`, the step `mapStep P hT Γ ts` is certified at every fuel
-    with the graph of `mapVal` as input relation and the graph of the transport of
-    result tuples as output relation, from `NFProg.map?_denote`. -/
+    leaf, `RegionTransports`, and the agreement `hCall` of the call environments of `d` and
+    `d'` along the transport at every call, the step `mapStep P hT Γ ts` is certified at
+    every fuel with the graph of `mapVal` as input relation and the graph of the transport
+    of result tuples as output relation, from `NFProg.map?_denote_call`. The default proof
+    of `hCall` is `CallEnv.transports_empty`, which closes it where both dialects denote
+    calls in the empty environment. -/
 def PassChain.StepCert.ofMap? (P : PartialBlockLowering d d') (hT : P.RegionTypes)
     (transTy : P.TransTy) (mapVal : P.MapVal) (hVar : P.VarTransports transTy mapVal)
     (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) blk, P.lowerExprBlock? e = some blk →
       ∀ V : Valuation Γ, blk.denote (mapVal V) = transTy (e.denote V))
     (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
-    (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty) :
+    (fuel : Nat) (Γ : Ctxt d) (ts : List d.Ty)
+    (hCall : (CallDenote.env (d := d)).Transports (CallDenote.env (d := d'))
+      (fun as => as.map P.mapTy) (fun x => transArgs P.mapTy transTy x) (fun _ _ _ => True) := by
+      exact CallEnv.transports_empty _ _ _) :
     PassChain.StepCert (mapStep P hT Γ ts).run (nfSem fuel d Γ ts)
       (nfSem fuel d' (P.mapCtx Γ) (ts.map P.mapTy)) :=
   PassChain.StepCert.ofTransport _ _ mapVal (transArgs P.mapTy transTy) fun p q V hf =>
-    NFProg.map?_denote P transTy mapVal hT (fun _ => True) hVar
+    NFProg.map?_denote_call P transTy mapVal hT (fun _ => True) hVar
       (fun e _ blk hb V => hBlk e blk hb V) hExt hR fuel p
-      (NFProg.covered_of_forall _ (fun _ => trivial) p) _ V (mapVal V)
-      (FieldDialectBlockDescent.pullV_id _) q hf
+      (NFProg.covered_of_forall _ (fun _ => trivial) p) (hCall.mono fun _ _ _ _ => trivial)
+      _ V (mapVal V) (FieldDialectBlockDescent.pullV_id _) q hf
 
 end MapCert
 
