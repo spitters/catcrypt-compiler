@@ -45,7 +45,8 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/AGENTS.md
 docs/CompilerManual.lean
 docs/ManualMain.lean
 blueprint/src/content.tex
-ASCENT_OVERVIEW.md
+ASCENT_OVERVIEW_HIGHLEVEL.md
+ASCENT_OVERVIEW_LEAN.md
 CERTIFYING_THIRD_PARTY_CODE.md
 CORRECTNESS.md
 bench/ZK_CROSS_CRATE.md

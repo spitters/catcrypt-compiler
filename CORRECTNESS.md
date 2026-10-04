@@ -184,8 +184,9 @@ style of AutoCorres.
   [ASCENT.md](ASCENT.md) is the guide, [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md) the
   reference, and [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) the
   procedure for third-party machine code.
-  [ASCENT_OVERVIEW.md](ASCENT_OVERVIEW.md) gives the design, its categorical form and
-  its relation to verification-condition generation.
+  [ASCENT_OVERVIEW_HIGHLEVEL.md](ASCENT_OVERVIEW_HIGHLEVEL.md) gives the design, its
+  categorical form and its relation to verification-condition generation;
+  [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) maps it to the declarations.
 
 ## Transfer: parametricity across representations
 
