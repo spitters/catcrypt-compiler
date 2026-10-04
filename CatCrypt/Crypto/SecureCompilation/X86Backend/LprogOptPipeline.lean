@@ -175,11 +175,12 @@ def bodyIsStraightLine (body : List Linstr) : Bool :=
 
 A body is a sequence of maximal straight-line runs separated by control-flow
 instructions (labels and jumps). `splitStraightRuns` partitions it so each
-control-flow instruction is its own singleton segment and each maximal run of
-straight-line instructions is one segment; `optimizeBasicBlocks` applies the
-verified sub-pipeline to every straight-line run and leaves the control-flow
-segments verbatim. On a straight-line body this equals `optimizeVerifiedFundef`'s
-body transform, so it extends the guarded pipeline rather than replacing it. -/
+control-flow instruction and each straight-line instruction outside the modeled
+fragment is its own singleton segment and each maximal run of modeled straight-line
+instructions is one segment; `optimizeBasicBlocks` applies the verified
+sub-pipeline to every straight-line segment, which is the identity on an unmodeled
+singleton, and leaves the control-flow segments verbatim. On a straight-line,
+all-modeled body this equals `optimizeVerifiedFundef`'s body transform. -/
 
 /-- An instruction is control flow — a label or a jump — rather than a
     straight-line word operation. `bodyIsStraightLine` is the negation of this
@@ -285,19 +286,77 @@ theorem bodyIsStraightLine_cons (i : Linstr) (rest : List Linstr) :
   unfold isCtlInstr
   cases i.li_i <;> rfl
 
+/-- The printed instruction reads a flag an earlier instruction set: a conditional
+    branch, a two-source conditional move, a two-source `ADCX`/`ADOX`/`ADCXHI`, `ADC`,
+    `SBB`, `RCL`, `RCR`, or a single-source `SET<cc>`. -/
+def readsPrevFlags (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn _ opn srcs =>
+      let b := stripWidthTag opn
+      ((b.startsWith "CMOV" || b == "ADCX" || b == "ADOX" || b == "ADCXHI") && srcs.length < 3)
+        || b == "ADC" || b == "SBB" || b == "RCL" || b == "RCR"
+        || (b.startsWith "SET" && srcs.length < 2)
+  | .Lcond _ _ => true
+  | _ => false
+
+/-- The printed instruction writes no flag: a move, load, store, address computation or
+    `MULX`. Every other `Lopn` is counted as a possible flag writer. -/
+def flagNeutral (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn _ opn _ => ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX", "LOAD", "STORE",
+      "LOADSYM", "MULX", "MULXMEM", "LEA"].contains (stripWidthTag opn)
+  | _ => true
+
+/-- The printed instruction overwrites every flag a later reader of `readsPrevFlags` can
+    consume: the two-operand ALU class, `CMP`, `TEST`, `NEG`, the multiplies, the
+    three-source `CMOV` (printed after its own `test`) and the two-source `SET<cc>` (printed
+    after its own `cmp`). -/
+def flagKill (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn _ opn srcs =>
+      let b := stripWidthTag opn
+      ["ADD", "SUB", "AND", "OR", "XOR", "CMP", "TEST", "NEG", "MUL", "IMUL"].contains b
+        || (b.startsWith "CMOV" && srcs.length == 3) || (b.startsWith "SET" && srcs.length == 2)
+  | _ => false
+
+/-- The flags are live at the start of `l`: a flag reader comes before any instruction that
+    overwrites the flags and before the return. A control-flow instruction other than the
+    return counts as a reader. -/
+def flagsLive : List Linstr → Bool
+  | [] => false
+  | i :: rest =>
+      if readsPrevFlags i then true
+      else if flagKill i then false
+      else match i.li_i with
+        | .Lopn _ _ _ => flagsLive rest
+        | .Lret => false
+        | _ => true
+
+/-- The run `cur` may write a flag that is live at the start of `l`; `cur` then stays in
+    one segment with the next instruction. -/
+def flagHold (cur l : List Linstr) : Bool := cur.any (fun i => !flagNeutral i) && flagsLive l
+
 /-- Partition a body into segments, threading a straight-line run in `cur`. A
-    control-flow instruction flushes `cur` and becomes its own singleton segment;
-    a straight-line instruction extends `cur`. -/
+    control-flow instruction flushes `cur` and becomes its own singleton segment; so
+    does a straight-line instruction outside the modeled fragment (`instrModeled`,
+    for instance a two-destination `MULX` or a three-source `CMOV`), unless `cur` may
+    write a flag still live there (`flagHold`); a modeled straight-line instruction, or
+    an unmodeled one under `flagHold`, extends `cur`. A segment that holds an unmodeled
+    instruction is left verbatim by `optRunBody`, so no pass moves or removes a flag
+    writer whose flags are read after the segment. -/
 def splitStraightRunsAux : List Linstr → List Linstr → List (List Linstr)
   | cur, [] => if cur.isEmpty then [] else [cur]
   | cur, i :: rest =>
       if isCtlInstr i then
         (if cur.isEmpty then [] else [cur]) ++ ([i] :: splitStraightRunsAux [] rest)
-      else
+      else if instrModeled i || flagHold cur (i :: rest) then
         splitStraightRunsAux (cur ++ [i]) rest
+      else
+        (if cur.isEmpty then [] else [cur]) ++ ([i] :: splitStraightRunsAux [] rest)
 
-/-- Partition a body into maximal straight-line runs with each control-flow
-    instruction as a singleton boundary segment. -/
+/-- Partition a body into maximal runs of modeled straight-line instructions, with each
+    control-flow instruction and each unmodeled straight-line instruction as a singleton
+    boundary segment. -/
 def splitStraightRuns (body : List Linstr) : List (List Linstr) :=
   splitStraightRunsAux [] body
 
@@ -315,8 +374,13 @@ theorem splitStraightRunsAux_flatten (cur body : List Linstr) :
         | nil => simp [ih]
         | cons c cs => simp [ih]
       · simp only [Bool.not_eq_true] at hci
-        simp only [hci, Bool.false_eq_true, if_false, ih (cur ++ [i]),
-          List.append_assoc, List.singleton_append]
+        by_cases hm : (instrModeled i || flagHold cur (i :: rest)) = true
+        · simp only [hci, hm, Bool.false_eq_true, if_false, if_true, ih (cur ++ [i]),
+            List.append_assoc, List.singleton_append]
+        · simp only [hci, hm, Bool.false_eq_true, if_false]
+          cases cur with
+          | nil => simp [ih]
+          | cons c cs => simp [ih]
 
 /-- The partition reconstructs the body verbatim: control-flow instructions and
     the straight-line runs together flatten back to the original. -/
@@ -330,45 +394,48 @@ def optimizeBasicBlocks (body : List Linstr) : List Linstr :=
   ((splitStraightRuns body).map
     (fun seg => if bodyIsStraightLine seg then optRunBody seg else seg)).flatten
 
-/-- On a straight-line body the partition is a single run (empty for an empty
-    body). -/
+/-- On a straight-line, all-modeled body the partition is a single run (empty for an
+    empty body). -/
 theorem splitStraightRunsAux_straight (body cur : List Linstr)
-    (h : bodyIsStraightLine body = true) :
+    (h : bodyIsStraightLine body = true) (hm : bodyAllModeled body = true) :
     splitStraightRunsAux cur body = if (cur ++ body).isEmpty then [] else [cur ++ body] := by
   induction body generalizing cur with
   | nil => simp [splitStraightRunsAux]
   | cons i rest ih =>
       rw [bodyIsStraightLine_cons, Bool.and_eq_true] at h
       obtain ⟨hi, hrest⟩ := h
+      simp only [bodyAllModeled, List.all_cons, Bool.and_eq_true] at hm
+      obtain ⟨hmi, hmrest⟩ := hm
       have hci : isCtlInstr i = false := by
         cases hh : isCtlInstr i with
         | false => rfl
         | true => rw [hh] at hi; exact absurd hi (by decide)
       unfold splitStraightRunsAux
-      simp only [hci, Bool.false_eq_true, if_false, ih (cur ++ [i]) hrest,
+      simp only [hci, hmi, Bool.true_or, Bool.false_eq_true, if_false, if_true,
+        ih (cur ++ [i]) hrest hmrest,
         List.append_assoc, List.singleton_append]
 
-/-- On a straight-line body `optimizeBasicBlocks` is exactly the verified
+/-- On a straight-line, all-modeled body `optimizeBasicBlocks` is exactly the verified
     sub-pipeline's body transform. -/
 theorem optimizeBasicBlocks_straight (body : List Linstr)
-    (h : bodyIsStraightLine body = true) :
+    (h : bodyIsStraightLine body = true) (hm : bodyAllModeled body = true) :
     optimizeBasicBlocks body = optRunBody body := by
   unfold optimizeBasicBlocks splitStraightRuns
-  rw [splitStraightRunsAux_straight body [] h, List.nil_append]
+  rw [splitStraightRunsAux_straight body [] h hm, List.nil_append]
   cases body with
   | nil => rw [optRunBody_nil]; simp
   | cons i rest =>
       simp only [Bool.false_eq_true, if_false, List.isEmpty_cons, List.map_cons,
         List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, if_pos h]
 
-/-- On a straight-line body `optimizeBasicBlocks` preserves the store image from
-    every start state — the per-run soundness lifted through the single-run
+/-- On a straight-line, all-modeled body `optimizeBasicBlocks` preserves the store
+    image from every start state: the per-run soundness lifted through the single-run
     partition. -/
 theorem optimizeBasicBlocks_straight_stateStore {w : Nat} (body : List Linstr)
-    (h : bodyIsStraightLine body = true) (s : Lstate w) :
+    (h : bodyIsStraightLine body = true) (hm : bodyAllModeled body = true) (s : Lstate w) :
     Option.map stateStore (lsemStraight ((optimizeBasicBlocks body).map Linstr.li_i) s)
       = Option.map stateStore (lsemStraight (body.map Linstr.li_i) s) := by
-  rw [optimizeBasicBlocks_straight body h]
+  rw [optimizeBasicBlocks_straight body h hm]
   exact optRunBody_stateStore body s
 
 /-- On a straight-line, all-modeled function body `optimizeBasicBlocks` equals the
@@ -377,7 +444,7 @@ theorem optimizeBasicBlocks_straight_stateStore {w : Nat} (body : List Linstr)
 theorem optimizeBasicBlocks_eq_guarded (f : Lfundef)
     (h : bodyIsStraightLine f.lfd_body = true) (hm : bodyAllModeled f.lfd_body = true) :
     optimizeBasicBlocks f.lfd_body = (optimizeVerifiedFundef f).lfd_body := by
-  rw [optimizeBasicBlocks_straight f.lfd_body h, optRunBody, if_pos hm]
+  rw [optimizeBasicBlocks_straight f.lfd_body h hm, optRunBody, if_pos hm]
   rfl
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
@@ -673,9 +740,25 @@ theorem splitAux_good (body cur : List Linstr) (hcur : bodyIsStraightLine cur = 
         | false => rfl
         | true => exact absurd hh hci
       rw [if_neg hci] at hseg
-      have hcur' : bodyIsStraightLine (cur ++ [i]) = true := by
-        simp [bodyIsStraightLine_append, hcur, straight_singleton_of_not_ctl i hcif]
-      exact ih (cur ++ [i]) hcur' seg hseg
+      by_cases hm : (instrModeled i || flagHold cur (i :: rest)) = true
+      · rw [if_pos hm] at hseg
+        have hcur' : bodyIsStraightLine (cur ++ [i]) = true := by
+          simp [bodyIsStraightLine_append, hcur, straight_singleton_of_not_ctl i hcif]
+        exact ih (cur ++ [i]) hcur' seg hseg
+      · rw [if_neg hm] at hseg
+        have hsi := straight_singleton_of_not_ctl i hcif
+        by_cases hce : cur.isEmpty = true
+        · rw [if_pos hce, List.nil_append] at hseg
+          simp only [List.mem_cons] at hseg
+          rcases hseg with h | h
+          · subst h; exact ⟨by simp, Or.inr hsi⟩
+          · exact ih [] (by simp [bodyIsStraightLine]) seg h
+        · rw [if_neg hce] at hseg
+          simp only [List.cons_append, List.nil_append, List.mem_cons] at hseg
+          rcases hseg with h | h | h
+          · subst h; exact ⟨fun he => hce (by simp [he]), Or.inr hcur⟩
+          · subst h; exact ⟨by simp, Or.inr hsi⟩
+          · exact ih [] (by simp [bodyIsStraightLine]) seg h
 
 theorem splitStraightRuns_good (body : List Linstr) :
     ∀ seg ∈ splitStraightRuns body,
@@ -1246,8 +1329,8 @@ def ownedLprog (p : Lprog) : Lprog :=
 /-- **The one optimizing compiler back-end.** Every owned emit driver renders its
     `Lprog` through this entry point: `optimizeLprogBasicBlocks` — the four
     verified passes (reload/spill elimination, instruction scheduling, load-CSE)
-    on each maximal straight-line run of every function body, with control-flow
-    instructions kept verbatim — followed by the pure printer `renderLprogAtt`.
+    on each maximal run of modeled straight-line instructions of every function body,
+    with control-flow and unmodeled instructions kept verbatim — followed by the pure printer `renderLprogAtt`.
     The full-control-flow-graph soundness is `mapBodies_entry_store_preserved`:
     over the labeled, program-counter-indexed semantics `JasminLsemLabeled.lsem`,
     running the optimized program from a function entry reaches the same register

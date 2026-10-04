@@ -48,9 +48,11 @@ The theorems for bodies with several blocks, `OwnedLprogTV.twoAddr_ownedCheckM_c
 and `OwnedLprogTV.dropOk_ownedCheckM_complete_blocks`, are evaluated on the three-block loops
 `MpnLoopFrontEmit.andLprog` and `MpnLoopFrontEmit.addLprogFront`. Two-address legalisation
 receives the loops tied (no copy-route instruction), so the first theorem applies with the
-identity chunks. On the optimised `mpn_add_n` loop the dead-move elimination removes six
+identity chunks. On the exported `mpn_add_n` loop the dead-move elimination removes six
 immediate moves; the marks are dead within every block, the live sets converge, and the
-evaluated check agrees. The loop `rotBody 80`, which moves eighty registers one place down and
+evaluated check agrees. On the optimised loop the elimination removes none: copy
+propagation in `LprogOptPipeline.optimizeBasicBlocks` substitutes those immediates into their
+readers and drops the moves first. The loop `rotBody 80`, which moves eighty registers one place down and
 branches back, is rejected against itself: its live sets need eighty rounds, more than the
 `4 · 2 + 64` rounds `ownedCheckM` iterates (`liveConvB` fails); `rotBody 60` is accepted.
 
@@ -238,16 +240,16 @@ def rotBody (n : Nat) : Lcmd :=
   (typeBody tagOf (preTwoAddr (MpnLoopFrontEmit.addLprogFront ())))
   (typeBody tagOf (twoAddrBody (preTwoAddr (MpnLoopFrontEmit.addLprogFront ()))))
 #kat dropBlocksWF (firstOuts (MpnLoopFrontEmit.addLprogFront ()))
-    (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))) &&
+    (loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ()))) &&
+  ((loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ()))).filter (·.2)).length == 6 &&
+  blockCount (srcOf (loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ())))) == 3 &&
   ((loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))).filter
-    (·.2)).length == 6 &&
-  blockCount (srcOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
-    == 3
-#kat keptOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))) ==
-  typeBody tagOf (foldIndexedBody (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ()))))
+    (·.2)).length == 0
+#kat keptOf (loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ()))) ==
+  typeBody tagOf (foldIndexedBody (firstBody (MpnLoopFrontEmit.addLprogFront ())))
 #kat ownedCheckM (firstOuts (MpnLoopFrontEmit.addLprogFront ()))
-  (srcOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
-  (keptOf (loopMarks (optimizeBasicBlocks (firstBody (MpnLoopFrontEmit.addLprogFront ())))))
+  (srcOf (loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ()))))
+  (keptOf (loopMarks (firstBody (MpnLoopFrontEmit.addLprogFront ()))))
 set_option kat.ms 1000 in
 #kat blocksFrag (typeBody tagOf (rotBody 80)) &&
   blockCount (typeBody tagOf (rotBody 80)) == 2 &&

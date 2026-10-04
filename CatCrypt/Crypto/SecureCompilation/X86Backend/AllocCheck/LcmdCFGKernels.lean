@@ -61,13 +61,13 @@ def keccakRolledLprog : Option Lprog :=
       JincElab.ymmIndexFoldLprog (JincElab.rorxLprog (LprogOptPipeline.ownedLprog p))
   | .error _ => none
 
-#kat ownedShape (MpnLoopFrontEmit.addLprogFront ()) == some (75, 3, 4)
-#kat ownedShape (MpnLoopFrontEmit.subLprogFront ()) == some (88, 3, 4)
+#kat ownedShape (MpnLoopFrontEmit.addLprogFront ()) == some (73, 3, 4)
+#kat ownedShape (MpnLoopFrontEmit.subLprogFront ()) == some (85, 3, 4)
 #kat ownedShape (MpnLoopFrontEmit.andLprog ()) == some (43, 3, 4)
 #kat ownedShape (MpnLoopFrontEmit.iorLprog ()) == some (47, 3, 4)
 #kat ownedShape (MpnLoopFrontEmit.xorLprog ()) == some (43, 3, 4)
 #kat shapeOf Fe25519LfundefBridge.monoStepLprog == some (1059, 1, 0)
 set_option kat.ms 2000 in
-#kat keccakRolledLprog.bind shapeOf == some (501, 3, 3)
+#kat keccakRolledLprog.bind shapeOf == some (498, 3, 3)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels

@@ -148,7 +148,9 @@ inductive BodyFront where
 inductive PostPass where
   /-- `FheMontMulEmit.fuseMulHiLprog (saveRdx := true)`: coalesce the front's
       `MULXHI` high-word binding with its paired low `MUL` into the printer's
-      two-output `mulx`. -/
+      two-output `mulx`; the back half (`Haxc.BackHalf.applyPostPass`) follows it
+      with the dead-write elimination of the low multiply on bodies that are
+      straight-line up to their return. -/
   | fuseMulHiSaveRdx
   deriving Repr, DecidableEq, Inhabited
 

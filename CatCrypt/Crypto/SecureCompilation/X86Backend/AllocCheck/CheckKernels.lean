@@ -31,7 +31,7 @@ and by `allocCheck gpSig` over the run's one-block graph. The kernels are the fi
 Whole bodies. `bodyCheckE` checks the decisions the pass selects over the control-flow
 graph of the whole body. On the rolled Keccak-f1600 the decisions selected with the
 live-out computation of `reallocBody` pass; with the live-out computation before compiler
-commit `81d1d97` (no `labelLiveFrames`) they fail at instruction 58, the reload
+commit `81d1d97` (no `labelLiveFrames`) they fail at instruction 57, the reload
 `R15 := k.2` after the loop label: the spill store of `k.2` above the back-edge is
 dropped as dead, and the merge at the label removes `k.2` from its cell.
 
@@ -129,12 +129,13 @@ set_option kat.ms 3000 in
   some (.ok ())
 set_option kat.ms 3000 in
 #kat ((bodyOf keccakRolledPre).bind fun (res, b) => bodyCheckE false true res b) ==
-  some (.error (.use 58 "k.2" ⟨.frame, "k.2"⟩))
+  some (.error (.use 57 "k.2" ⟨.frame, "k.2"⟩))
 
 /-! ## Vector registers
 
-The x4 Keccak YMM verdicts (old and new checker agree: both accept the allocation and
-both reject it with resident names moved to `%ymm0`) are measured outside Lean: computing
+The x4 Keccak YMM checks are evaluated outside Lean: `ymmAllocValidClosed` and
+`allocCheck ymmSig` accept the allocation and reject it with resident names moved to
+`%ymm0`. Computing
 `KeccakYmm4Alloc.allocation` takes about 11 s, above the `#kat` budget. -/
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
