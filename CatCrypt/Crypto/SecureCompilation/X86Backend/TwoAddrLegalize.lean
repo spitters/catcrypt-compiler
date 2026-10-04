@@ -24,7 +24,9 @@ choice of names, so the printed instruction and the model agree exactly when
   memory operands;
 * `op d, [d, a]` when `b = d` and the base of `op` is one of `commBases`;
 * `mov R15, a; op R15, [R15, b]; mov d, R15` through the exporter's reserved
-  scratch register `reloadScratch` when no operand of the body names it;
+  scratch register `reloadScratch` when no operand of the body names it, and
+  `mov R15, d; op R15, [R15, a]; mov d, R15` when moreover `b = d` and the base of
+  `op` is one of `commBases` (both `d` and `a` are then memory operands);
 * for the flag-only `CMP` and `TEST`, which write no register on the machine,
   the destination becomes the first source.
 
@@ -149,9 +151,14 @@ def legalizeInstr (ok : Bool) (i : Linstr) : List Linstr :=
               && !(isMemOperand (.reg d) && isMemOperand a) then
             [⟨i.li_ii, .Lopn [.reg d] opn [.reg d, a]⟩]
           else if ok then
-            [⟨i.li_ii, .Lopn [.reg reloadScratch] m [a]⟩,
-             ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]⟩,
-             ⟨i.li_ii, .Lopn [.reg d] m [.reg reloadScratch]⟩]
+            if commBases.contains (tieBase opn) && b == .reg d then
+              [⟨i.li_ii, .Lopn [.reg reloadScratch] m [.reg d]⟩,
+               ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, a]⟩,
+               ⟨i.li_ii, .Lopn [.reg d] m [.reg reloadScratch]⟩]
+            else
+              [⟨i.li_ii, .Lopn [.reg reloadScratch] m [a]⟩,
+               ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]⟩,
+               ⟨i.li_ii, .Lopn [.reg d] m [.reg reloadScratch]⟩]
           else [i]
       else [i]
   | _ => [i]
@@ -206,7 +213,8 @@ theorem legalizeInstr_tiedOk (ok : Bool) (i : Linstr) :
             · split at hj
               · simp at hj; subst hj; left; simp [tiedOk]
               · split at hj
-                · simp at hj; rcases hj with rfl | rfl | rfl <;> left <;> simp [tiedOk]
+                · split at hj <;>
+                    (simp at hj; rcases hj with rfl | rfl | rfl <;> left <;> simp [tiedOk])
                 · simp at hj; exact Or.inr hj
     · simp at hj; exact Or.inr hj
   · simp at hj; exact Or.inr hj
@@ -286,6 +294,30 @@ theorem movFor_some {opn m : String} (h : movFor opn = some m) :
     · rename_i _ h2
       exact Or.inr ⟨by simpa using h2, (Option.some.inj h).symm⟩
     · cases h
+
+/-- A mnemonic with a copy at its width is its base with the `:64` tag stripped. -/
+theorem stripWidthTag_of_movFor {opn m : String} (h : movFor opn = some m) :
+    stripWidthTag opn = tieBase opn := by
+  have hc : ':' ∉ (tieBase opn).toList := by
+    simp only [tieBase, String.toList_ofList]
+    intro hm
+    have h2 := List.all_eq_true.mp (List.all_takeWhile (p := (· != ':')) (l := opn.toList)) _ hm
+    simp at h2
+  have hs := movFor_some h
+  generalize tieBase opn = t at hc hs ⊢
+  rcases hs with ⟨rfl, -⟩ | ⟨rfl, -⟩
+  · unfold stripWidthTag hasSuffix
+    rw [if_neg]
+    intro hs
+    obtain ⟨l, hl⟩ := List.isSuffixOf_iff_suffix.mp hs
+    exact hc (hl ▸ List.mem_append_right l (by decide))
+  · unfold stripWidthTag hasSuffix
+    have e : (t ++ ":64").toList = t.toList ++ [':', '6', '4'] := by
+      rw [String.toList_append]; rfl
+    have hsuf : (":64".toList).isSuffixOf (t.toList ++ [':', '6', '4']) = true :=
+      List.isSuffixOf_iff_suffix.mpr (List.suffix_append _ _)
+    rw [e, if_pos hsuf]
+    simp
 
 theorem stripWidthTag_movFor {opn m : String} (h : movFor opn = some m) :
     stripWidthTag m = "MOV" := by
@@ -440,6 +472,32 @@ theorem legalizeInstr_lsem_local (ok : Bool) (i : Linstr)
                   have hdR : d ≠ reloadScratch := ne_of_opAvoids hd d (by simp [opNames])
                   have hbR : reloadScratch ∉ opNames b := fun hm' =>
                     ne_of_opAvoids hb' _ hm' rfl
+                  split
+                  · -- commuted, through the scratch register
+                    rename_i hcm
+                    simp only [Bool.and_eq_true, beq_iff_eq] at hcm
+                    obtain ⟨hcm, rfl⟩ := hcm
+                    have haR : reloadScratch ∉ opNames a := fun hm' =>
+                      ne_of_opAvoids ha' _ hm' rfl
+                    let s1 := (s.setReg reloadScratch (evalOperand s (.reg d))).nextPc
+                    let s2 := (s1.setReg reloadScratch v).nextPc
+                    have e1 : lsemStep (.Lopn [.reg reloadScratch] m [.reg d]) s = some s1 :=
+                      step_reg hmne (by simpa using applyOpn_movFor hm (evalOperand s (.reg d)))
+                    have e2 : lsemStep (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, a]) s1
+                        = some s2 := by
+                      refine step_reg hne ?_
+                      simp only [s1, List.map_cons, List.map_nil, evalOperand_setReg_nextPc haR]
+                      rw [applyOpn_comm hm hcm]
+                      simpa [evalOperand, Lstate.setReg, Lstate.nextPc] using hv
+                    have e3 : lsemStep (.Lopn [.reg d] m [.reg reloadScratch]) s2
+                        = some ((s2.setReg d v).nextPc) :=
+                      step_reg hmne (by
+                        simpa [s2, evalOperand, Lstate.setReg, Lstate.nextPc] using
+                          applyOpn_movFor hm v)
+                    refine ⟨(s2.setReg d v).nextPc, by simp only [List.map_cons, List.map_nil,
+                      lsemStraight_cons, e1, e2, e3, lsemStraight_nil], rfl, fun x hx => ?_⟩
+                    have hxR := hx hok
+                    simp only [s2, s1, Lstate.nextPc, Lstate.lvm_setReg, if_neg hxR]
                   let s1 := (s.setReg reloadScratch (evalOperand s a)).nextPc
                   let s2 := (s1.setReg reloadScratch v).nextPc
                   have e1 : lsemStep (.Lopn [.reg reloadScratch] m [a]) s = some s1 :=

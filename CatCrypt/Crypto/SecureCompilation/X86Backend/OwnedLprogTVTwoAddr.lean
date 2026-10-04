@@ -13,7 +13,9 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
 `TwoAddrLegalize.legalizeInstr` rewrites an untied instruction `opn d, [a, b]` by one of four
 routes: the flag route (`CMP`, `TEST`: the destination becomes the first source), the copy
 route (`mov d, a; opn d, [d, b]`), the commutative route (`opn d, [d, a]` when `b = d`), and
-the scratch route (`mov R15, a; opn R15, [R15, b]; mov d, R15`). This module proves that
+the scratch route (`mov R15, a; opn R15, [R15, b]; mov d, R15`, and
+`mov R15, d; opn R15, [R15, a]; mov d, R15` for a commutative `opn` with `b = d`). This module
+proves that
 `ownedCheckM` accepts a straight-line body against its legalisation `twoAddrBody` whenever each
 instruction is accepted by its route (`twoAddrRouteWF`).
 
@@ -27,7 +29,9 @@ register, which the source does not: when the body does not name the scratch reg
 runs proceed from states that agree off it (`SSt.EqvOn [reloadScratch]`). A chunk whose
 instructions do not read the scratch register lifts to that relation (`chunkOn_of_chunk`,
 through `tRun_on`); the scratch chunk is the copy chunk at the scratch register followed by a
-move into the destination (`chunkOn_scratch`). The final check needs agreement on the observed
+move into the destination (`chunkOn_scratch`), after the exchange of the sources of a
+commutative operation that reads its destination as second source (`chunkOn_of_symStep_eq`,
+`symStep_comm`). The final check needs agreement on the observed
 registers only (`ownedCheckM_of_resOn`), and the scratch register is not observed.
 
 ## Main definitions
@@ -115,9 +119,14 @@ def legalR (ok : Bool) (x : LinstrR) : List LinstrR :=
       | .comm => [.Lopn [.reg d] opn [.reg d, a]]
       | .scratch m =>
           if ok then
-            [.Lopn [.reg reloadScratch] m [a],
-             .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b],
-             .Lopn [.reg d] m [.reg reloadScratch]]
+            if commBases.contains (tieBase opn) && b == .reg d then
+              [.Lopn [.reg reloadScratch] m [.reg d],
+               .Lopn [.reg reloadScratch] opn [.reg reloadScratch, a],
+               .Lopn [.reg d] m [.reg reloadScratch]]
+            else
+              [.Lopn [.reg reloadScratch] m [a],
+               .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b],
+               .Lopn [.reg d] m [.reg reloadScratch]]
           else [x]
   | _ => [x]
 
@@ -152,8 +161,7 @@ theorem twoAddrBody_typedR (tg : LinstrR → MemTag) (body : Lcmd) :
     the typing `tg`: a kept instruction; the flag route, its target typed as the source; the
     copy route from a register; the commutative route from a register, its target typed as
     the source; the scratch route from a register, when the scratch register is not
-    observed, the source is not a commutative operation reading its destination as second
-    source, and the operation on the scratch register is typed as the source. -/
+    observed and the operation on the scratch register is typed as the source. -/
 def twoAddrRouteWF (outs : List String) (tg : LinstrR → MemTag) (x : LinstrR) : Bool :=
   match x with
   | .Lopn [.reg d] opn [a, b] =>
@@ -173,10 +181,11 @@ def twoAddrRouteWF (outs : List String) (tg : LinstrR → MemTag) (x : LinstrR) 
           | _ => false
       | .scratch _ =>
           match a with
-          | .reg _ =>
+          | .reg y =>
               !outs.contains reloadScratch &&
-                !(commBases.contains (stripWidthTag opn) && b == .reg d)
-                && tg (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]) == tg x
+                if commBases.contains (tieBase opn) && b == .reg d then
+                  tg (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg y]) == tg x
+                else tg (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]) == tg x
           | _ => false
   | _ => true
 
@@ -955,6 +964,15 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
           cases qo <;> simp_all [Res, ResD, runThen]
       | _ => cases hren
 
+/-- A chunk of a source instruction is a chunk of every source instruction with the same
+    symbolic step. -/
+theorem chunkOn_of_symStep_eq {D : List String} {i i' : LinstrRM} {js : List LinstrRM}
+    (h : ∀ ss, symStep i ss = symStep i' ss) (hc : ChunkOn D i' js) : ChunkOn D i js := by
+  intro ss ss' T T' e hI hS
+  have hj : tRun [i] ss T = tRun [i'] ss T := by simp only [tRun, h]
+  rw [hj] at hS ⊢
+  exact hc ss ss' T T' e hI hS
+
 /-! ## 8. Chunks off the scratch register -/
 
 theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
@@ -1002,7 +1020,7 @@ theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
 theorem legalR_ne_nil (ok : Bool) (x : LinstrR) : legalR ok x ≠ [] := by
   unfold legalR
   split
-  · split <;> (try split) <;> simp
+  · split <;> (try split) <;> (try split) <;> simp
   · simp
 
 theorem legalR_straight (ok : Bool) {x : LinstrR} (h : straightR x = true) :
@@ -1010,7 +1028,7 @@ theorem legalR_straight (ok : Bool) {x : LinstrR} (h : straightR x = true) :
   intro y hy
   unfold legalR at hy
   split at hy
-  · split at hy <;> (try split at hy) <;>
+  · split at hy <;> (try split at hy) <;> (try split at hy) <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hy <;>
       rcases hy with rfl | rfl | rfl <;> exact h
   · simp only [List.mem_singleton] at hy
@@ -1056,7 +1074,7 @@ theorem twoAddrRouteWF_scratch_outs {outs : List String} {tg : LinstrR → MemTa
       intro h
       have : outs.contains reloadScratch = true := List.contains_iff_mem.mpr h
       rw [this] at hw
-      cases hw.1.1
+      cases hw.1
     · cases hw
   · rename_i hx
     unfold twoAddrRoute at hr
@@ -1083,11 +1101,45 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
       obtain ⟨hd, ha, hb⟩ := hav
       cases a with
       | reg y =>
-          simp only [twoAddrRouteWF, hm, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hw
-          obtain ⟨⟨-, hsw⟩, htag⟩ := hw
-          simp only [legalR, hm, ↓reduceIte, List.map_cons, List.map_nil, htag]
+          simp only [twoAddrRouteWF, hm, Bool.and_eq_true, Bool.not_eq_true'] at hw
+          obtain ⟨-, htag⟩ := hw
           have hyr : y ≠ reloadScratch :=
             TwoAddrLegalize.ne_of_opAvoids ha y (by simp [LprogLeak.opNames])
+          have hmne : opn ≠ withWidthTag 64 "MOV" := by
+            rintro rfl; rw [needsTie_mov64] at hn; cases hn
+          have hsne : opn ≠ "STOREIDX" := by
+            rintro rfl; rw [needsTie_storeIdx] at hn; cases hn
+          by_cases hcb : commBases.contains (tieBase opn) = true ∧ (b == .reg d) = true
+          · rw [if_pos hcb, beq_iff_eq] at htag
+            obtain ⟨hcm, hbd⟩ := hcb
+            rw [beq_iff_eq] at hbd
+            subst hbd
+            obtain ⟨-, hyd, -⟩ := twoAddrRoute_untied hm (by simp)
+            have hyd' : y ≠ d := fun h => hyd (by rw [h])
+            have hdr : d ≠ reloadScratch :=
+              TwoAddrLegalize.ne_of_opAvoids hd d (by simp [LprogLeak.opNames])
+            simp only [legalR, hm, ↓reduceIte, hcm, Bool.true_and, beq_self_eq_true,
+              List.map_cons, List.map_nil, htag]
+            refine chunkOn_of_symStep_eq (fun ss => symStep_comm (opn_comm hmv hcm) hyd' _ ss) ?_
+            refine chunkOn_scratch reloadScratch d d opn m (.reg y) _ _ _
+              (TwoAddrLegalize.stripWidthTag_movFor hmv) hdr
+              (fun h => TwoAddrLegalize.ne_of_opAvoids ha _ h rfl)
+              (opn_ne_cmp64 hc) hmne hsne ?_ ?_
+            · rintro ra rb hra hrb
+              cases hra; cases hrb
+              simp [commSwap]
+            · rintro ra rb hra hrb
+              cases hra; cases hrb
+              simp [commSwap, hyr]
+          rw [if_neg hcb, beq_iff_eq] at htag
+          have hcb' : (commBases.contains (tieBase opn) && b == .reg d) = false := by
+            simpa using hcb
+          simp only [legalR, hm, ↓reduceIte, hcb', Bool.false_eq_true, List.map_cons,
+            List.map_nil, htag]
+          have hsw : ¬(commBases.contains (stripWidthTag opn) = true ∧ b = .reg d) := by
+            rintro ⟨h1, rfl⟩
+            rw [TwoAddrLegalize.stripWidthTag_of_movFor hmv] at h1
+            exact hcb ⟨h1, by simp⟩
           have hbr : avoidsReg reloadScratch b :=
             fun h => TwoAddrLegalize.ne_of_opAvoids hb _ h rfl
           refine chunkOn_scratch reloadScratch d y opn m b _ _ _
