@@ -42,6 +42,12 @@ non-zero divisor) for `Div` and `Rem`; `AppTyped.append` joins signature lists.
 `fnCorres_toRustMS`: a function correspondence, `AppOk`, `AppTyped` and `EnvTy` give the
 total `Std.Do` triple of the reading.
 
+`kindOfL sig ki` is the checker with integer literals at a kind `ki`, and `kindOf` is its
+instance at `int`. `toRustMS_total_kindL` and `fnCorres_toRustMS_triple_of_kindOfL` hold
+under the hypothesis that every integer literal is a value of the kind `ki`; with `ki` a
+base kind, a name of that kind can be rebound to an integer literal. The straight-line
+termination theorem `toRustMS_total` of `ToRustMSTotal` is the instance at one base kind.
+
 ## The instance on `keyEqLit`
 
 `keyEqLit` compares the first 32 entries of two arrays by a `forFold` over `[0, 32)` whose
@@ -52,11 +58,12 @@ correspondence `keyEq_fnCorres`.
 
 ## Main definitions
 
-* `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `kindOf`, `WB`, `WI`
+* `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `kindOfL`, `kindOf`, `WB`, `WI`
 
 ## Main results
 
-* `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`
+* `loopS_total`, `toRustMS_total_kindL`, `toRustMS_total_kind`
+* `fnCorres_toRustMS_triple_of_kindOfL`, `fnCorres_toRustMS_triple_of_kindOf`
 * `appRt_add_total`, `appTyped_add`
 * `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
   `appRt_div_total`, `appRt_rem_total`
@@ -119,46 +126,51 @@ def fits {κ : Type} [DecidableEq κ] (Γ : List (String × Kd κ)) (x : String)
     Bool :=
   (Γ.lookup x).all fun k0 => decide (k0 = k)
 
-/-- **The kind checker of the fragment.** The kind of the value the reading returns, when
-    the literal is in the fragment. -/
-def kindOf {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ)) :
-    List (String × Kd κ) → Hax.ImpExpr → Option (Kd κ)
-  | _, .lit (.int _) => some .int
+/-- **The kind checker of the fragment with integer literals at the kind `ki`.** The kind
+    of the value the reading returns, when the literal is in the fragment. -/
+def kindOfL {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ))
+    (ki : Kd κ) : List (String × Kd κ) → Hax.ImpExpr → Option (Kd κ)
+  | _, .lit (.int _) => some ki
   | _, .lit (.bool _) => some .bool
   | Γ, .var x => Γ.lookup x
   | _, .unitVal => some .unit
   | Γ, .letBind x v b =>
-    match kindOf sig Γ v with
-    | some k => if fits Γ x k then kindOf sig ((x, k) :: Γ) b else none
+    match kindOfL sig ki Γ v with
+    | some k => if fits Γ x k then kindOfL sig ki ((x, k) :: Γ) b else none
     | none => none
   | Γ, .seq a b =>
-    match kindOf sig Γ a with
-    | some _ => kindOf sig Γ b
+    match kindOfL sig ki Γ a with
+    | some _ => kindOfL sig ki Γ b
     | none => none
-  | Γ, .typeAscription e _ => kindOf sig Γ e
+  | Γ, .typeAscription e _ => kindOfL sig ki Γ e
   | Γ, .app f [a] =>
-    match kindOf sig Γ a with
+    match kindOfL sig ki Γ a with
     | some k1 => sigFind sig f [k1]
     | none => none
   | Γ, .app f [a, b] =>
-    match kindOf sig Γ a, kindOf sig Γ b with
+    match kindOfL sig ki Γ a, kindOfL sig ki Γ b with
     | some k1, some k2 => sigFind sig f [k1, k2]
     | _, _ => none
   | Γ, .app f [a, b, c] =>
-    match kindOf sig Γ a, kindOf sig Γ b, kindOf sig Γ c with
+    match kindOfL sig ki Γ a, kindOfL sig ki Γ b, kindOfL sig ki Γ c with
     | some k1, some k2, some k3 => sigFind sig f [k1, k2, k3]
     | _, _, _ => none
   | Γ, .ifThenElse c t e =>
-    match kindOf sig Γ c, kindOf sig Γ t, kindOf sig Γ e with
+    match kindOfL sig ki Γ c, kindOfL sig ki Γ t, kindOfL sig ki Γ e with
     | some .bool, some k1, some k2 => if k1 = k2 then some k1 else none
     | _, _, _ => none
   | Γ, .forFold var (.lit (.int lo)) (.lit (.int hi)) body =>
     if 0 ≤ lo ∧ hi ≤ 2 ^ 32 ∧ fits Γ var (.idx lo hi) then
-      match kindOf sig ((var, .idx lo hi) :: Γ) body with
+      match kindOfL sig ki ((var, .idx lo hi) :: Γ) body with
       | some _ => some .unit
       | none => none
     else none
   | _, _ => none
+
+/-- **The kind checker of the fragment**, with integer literals at the kind `int`. -/
+def kindOf {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ))
+    (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) : Option (Kd κ) :=
+  kindOfL sig .int Γ e
 
 /-! ## Lemmas on the hypotheses -/
 
@@ -222,21 +234,23 @@ theorem loopS_total {Q : AEnv → Prop} {step : Nat → AEnv → RustM AEnv} {lo
     obtain ⟨ρ2, h2, hρ2⟩ := loopS_total hstep n (i + 1) ρ1 (by omega) (by omega) hρ1
     exact ⟨ρ2, by simp [loopS, h1, h2], hρ2⟩
 
-/-- **The reading returns a value on the fragment.** From an environment binding each name
-    of `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of
-    the calls typed by `sig` returns a value of kind `k`, and its final environment again
-    binds each name of `Γ` to a value of its kind. -/
-theorem toRustMS_total_kind {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
-    {sig : List (String × List (Kd κ) × Kd κ)} {app : String → List AVal → RustM AVal}
+/-- **The reading returns a value on the fragment with integer literals at the kind `ki`.**
+    When every integer literal has the kind `ki`, from an environment binding each name of
+    `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of the
+    calls typed by `sig` returns a value of kind `k`, and its final environment again binds
+    each name of `Γ` to a value of its kind. -/
+theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
+    {sig : List (String × List (Kd κ) × Kd κ)} {ki : Kd κ} (hlit : ∀ n, Kd.Has H ki (.int n))
+    {app : String → List AVal → RustM AVal}
     (happ : AppTyped H sig app) (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) :
-    ∀ k, kindOf sig Γ e = some k → ∀ ρ, EnvTy H Γ ρ →
+    ∀ k, kindOfL sig ki Γ e = some k → ∀ ρ, EnvTy H Γ ρ →
       ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ Kd.Has H k v ∧ EnvTy H Γ ρ' := by
-  fun_induction kindOf sig Γ e
+  fun_induction kindOfL sig ki Γ e
   all_goals intro k hk ρ hρ
   all_goals try (cases hk; done)
   case case1 =>
     cases hk
-    exact ⟨.int _, ρ, rfl, ⟨_, rfl⟩, hρ⟩
+    exact ⟨.int _, ρ, rfl, hlit _, hρ⟩
   case case2 =>
     cases hk
     exact ⟨.bool _, ρ, rfl, ⟨_, rfl⟩, hρ⟩
@@ -300,7 +314,38 @@ theorem toRustMS_total_kind {κ : Type} [DecidableEq κ] {H : κ → AVal → Pr
     have hb : hi ≤ 2 ^ System.Platform.numBits := le_trans hhi two_pow_32_le_usize
     simp [toRustMS, AVal.toInt?, hlo, hb, h3]
 
+/-- **The reading returns a value on the fragment.** From an environment binding each name
+    of `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of
+    the calls typed by `sig` returns a value of kind `k`, and its final environment again
+    binds each name of `Γ` to a value of its kind. -/
+theorem toRustMS_total_kind {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
+    {sig : List (String × List (Kd κ) × Kd κ)} {app : String → List AVal → RustM AVal}
+    (happ : AppTyped H sig app) (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) :
+    ∀ k, kindOf sig Γ e = some k → ∀ ρ, EnvTy H Γ ρ →
+      ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ Kd.Has H k v ∧ EnvTy H Γ ρ' :=
+  toRustMS_total_kindL (ki := .int) (fun n => ⟨n, rfl⟩) happ Γ e
+
 /-! ## The total specification from a function correspondence -/
+
+/-- **The total triple of the reading on the fragment with integer literals at the kind
+    `ki`.** A function correspondence, `AppOk`, a kind `ki` of every integer literal, a
+    reading of the calls typed by `sig`, and an environment binding the names of `Γ` to
+    values of their kinds give the total `Std.Do` triple of the reading of a literal of the
+    fragment; the postcondition is fixed by `a`. -/
+theorem fnCorres_toRustMS_triple_of_kindOfL {bi : Hax.Builtins} {A β : Type}
+    [Hax.Ascent.HaxEnc β] {e : Hax.ImpExpr} {entry : A → Hax.Env} {G : A → Prop} {f : A → β}
+    {app : String → List AVal → RustM AVal} {κ : Type} [DecidableEq κ]
+    {H : κ → AVal → Prop} {sig : List (String × List (Kd κ) × Kd κ)} {ki : Kd κ}
+    {Γ : List (String × Kd κ)} {k : Kd κ}
+    (hF : Hax.Ascent.FnCorres bi e entry G f) (happ : AppOk bi app)
+    (hlit : ∀ n, Kd.Has H ki (.int n))
+    (htot : AppTyped H sig app) (he : kindOfL sig ki Γ e = some k) (a : A) (hG : G a)
+    (ρ : AEnv) (hρ : entry a = encEnv ρ) (hΓ : EnvTy H Γ ρ) :
+    ⦃⌜True⌝⦄ toRustMS app e ρ ⦃⇓ r => ⌜r.1.toValue = Hax.Ascent.HaxEnc.enc (f a)⌝⦄ := by
+  obtain ⟨v, ρ', h, -⟩ := toRustMS_total_kindL hlit htot Γ e k he ρ hΓ
+  apply spec_to_mvcgen
+  rw [h]
+  exact (spec_ok _).2 (fnCorres_toRustMS hF happ a hG ρ hρ v ρ' h)
 
 /-- **The total triple of the reading on the fragment.** A function correspondence, `AppOk`,
     a reading of the calls typed by `sig`, and an environment binding the names of `Γ` to
@@ -314,11 +359,9 @@ theorem fnCorres_toRustMS_triple_of_kindOf {bi : Hax.Builtins} {A β : Type}
     (hF : Hax.Ascent.FnCorres bi e entry G f) (happ : AppOk bi app)
     (htot : AppTyped H sig app) (he : kindOf sig Γ e = some k) (a : A) (hG : G a)
     (ρ : AEnv) (hρ : entry a = encEnv ρ) (hΓ : EnvTy H Γ ρ) :
-    ⦃⌜True⌝⦄ toRustMS app e ρ ⦃⇓ r => ⌜r.1.toValue = Hax.Ascent.HaxEnc.enc (f a)⌝⦄ := by
-  obtain ⟨v, ρ', h, -⟩ := toRustMS_total_kind htot Γ e k he ρ hΓ
-  apply spec_to_mvcgen
-  rw [h]
-  exact (spec_ok _).2 (fnCorres_toRustMS hF happ a hG ρ hρ v ρ' h)
+    ⦃⌜True⌝⦄ toRustMS app e ρ ⦃⇓ r => ⌜r.1.toValue = Hax.Ascent.HaxEnc.enc (f a)⌝⦄ :=
+  fnCorres_toRustMS_triple_of_kindOfL (ki := .int) hF happ (fun n => ⟨n, rfl⟩) htot he a hG
+    ρ hρ hΓ
 
 /-! ## Checked addition under a no-overflow condition -/
 

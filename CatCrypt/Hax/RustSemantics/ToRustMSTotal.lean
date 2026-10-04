@@ -8,6 +8,7 @@ module
 public import CatCrypt.Hax.RustSemantics.ToRustMS
 public import CatCrypt.Hax.RustSemantics.ToRustM
 public import CatCrypt.Hax.RustSemantics.ToRustMSSpecDemo
+public import CatCrypt.Hax.RustSemantics.ToRustMSTotalCtl
 
 /-!
 # Termination of the state-passing `RustM` reading on straight-line literals
@@ -37,19 +38,21 @@ the reading of `lineLit` from an environment binding the parameter to an integer
 
 ## Relation to the kinded fragment
 
-The kind checker `kindOf` of `ToRustMSTotalCtl` does not contain this fragment. It gives
-integer literals the kind `int`, and it rebinds a name already bound only at the kind of
-that binding (`fits`), since the reading of `letBind` keeps the new binding in the final
-environment. `.letBind "a" (.lit (.int 0)) (.var "a")` passes `straightOk [] ["a"]`, while
-`kindOf` returns `none` on it under every kind of `"a"` other than `int`. `toRustMS_total`
-is therefore proved by its own induction.
+The straight-line fragment is the instance of the kinded fragment of `ToRustMSTotalCtl` at
+one base kind, whose values are `P`, with integer literals at that base kind
+(`kindOfL sig (.base ())`). `kindOfL_of_straightOk` states that a literal passing
+`straightOk names bound` has the base kind under the signatures `straightSig names` and the
+names `straightΓ bound`; `AppTotalOn.appTyped` and `envTy_straightΓ_iff` translate the
+hypotheses. `toRustMS_total` and `fnCorres_toRustMS_triple_of_straightOk` are the
+instances of `toRustMS_total_kindL` and `fnCorres_toRustMS_triple_of_kindOfL`.
 
 ## Main definitions
 
-* `AppTotalOn`, `EnvOk`, `straightOk`
+* `AppTotalOn`, `EnvOk`, `straightOk`, `straightSig`, `straightΓ`
 
 ## Main results
 
+* `kindOfL_of_straightOk`, `AppTotalOn.appTyped`, `envTy_straightΓ_iff`
 * `toRustMS_total`, `toRustMS_isOk_of_straightOk`
 * `fnCorres_toRustMS_spec_of_straightOk`, `fnCorres_toRustMS_triple_of_straightOk`
 * `addApp_total`, `lineLitI_ok`, `lineLitI_triple`
@@ -92,19 +95,128 @@ def straightOk (names : List (String × Nat)) : List String → Hax.ImpExpr → 
       straightOk names bound c
   | _, _ => false
 
-theorem EnvOk.upd {P : AVal → Prop} {bound : List String} {ρ : AEnv} (h : EnvOk P bound ρ)
-    (x : String) {v : AVal} (hv : P v) : EnvOk P (x :: bound) (ρ.upd x v) := by
-  intro y hy
-  unfold AEnv.upd
-  by_cases hyx : y = x
-  · subst hyx
-    exact ⟨v, by simp, hv⟩
-  · rw [if_neg (by simpa using hyx)]
-    exact h y (by simpa [hyx] using hy)
+/-! ## The fragment as an instance of the kinded fragment -/
 
-theorem EnvOk.of_cons {P : AVal → Prop} {bound : List String} {ρ : AEnv} {x : String}
-    (h : EnvOk P (x :: bound) ρ) : EnvOk P bound ρ :=
-  fun y hy => h y (List.mem_cons_of_mem x hy)
+/-- The signatures of the straight-line fragment over one base kind: a name of arity `n` of
+    `names` takes `n` arguments of the base kind to the base kind. -/
+def straightSig (names : List (String × Nat)) : List (String × List (Kd Unit) × Kd Unit) :=
+  names.map fun p => (p.1, List.replicate p.2 (.base ()), .base ())
+
+/-- The names of `bound`, each at the base kind. -/
+def straightΓ (bound : List String) : List (String × Kd Unit) :=
+  bound.map fun x => (x, .base ())
+
+theorem lookup_straightΓ (bound : List String) (x : String) :
+    (straightΓ bound).lookup x = if x ∈ bound then some (.base ()) else none := by
+  induction bound with
+  | nil => simp [straightΓ]
+  | cons y bound ih =>
+    by_cases h : x = y
+    · subst h
+      simp [straightΓ]
+    · have hb : (x == y) = false := by simpa using h
+      simp only [straightΓ, List.map_cons, List.lookup_cons, hb] at ih ⊢
+      simp [ih, h]
+
+theorem sigFind_straightSig {names : List (String × Nat)} {f : String} {n : Nat}
+    (h : (f, n) ∈ names) :
+    sigFind (straightSig names) f (List.replicate n (.base ())) = some (.base ()) := by
+  unfold sigFind
+  cases hs : (straightSig names).find?
+      (fun s => decide (s.1 = f ∧ s.2.1 = List.replicate n (.base ()))) with
+  | none =>
+    rw [List.find?_eq_none] at hs
+    exact absurd (by simp) (hs _ (List.mem_map.mpr ⟨_, h, rfl⟩))
+  | some s =>
+    have hm := List.mem_of_find?_eq_some hs
+    simp only [straightSig, List.mem_map] at hm
+    obtain ⟨p, -, rfl⟩ := hm
+    rfl
+
+/-- A reading of the calls total on `P` at the names of `names` is typed by the signatures
+    `straightSig names` at the one base kind of values `P`. -/
+theorem AppTotalOn.appTyped {P : AVal → Prop} {names : List (String × Nat)}
+    {app : String → List AVal → RustM AVal} (h : AppTotalOn P names app) :
+    AppTyped (fun _ => P) (straightSig names) app := by
+  have hall : ∀ {ks : List (Kd Unit)} {vs : List AVal}, (∀ k ∈ ks, k = .base ()) →
+      List.Forall₂ (Kd.Has fun _ => P) ks vs → ∀ v ∈ vs, P v := by
+    intro ks vs hks hf
+    induction hf with
+    | nil => simp
+    | cons hkv _ ih =>
+      intro v hv
+      rcases List.mem_cons.mp hv with rfl | hv
+      · rw [hks _ List.mem_cons_self] at hkv
+        exact hkv
+      · exact ih (fun k hk => hks k (List.mem_cons_of_mem _ hk)) v hv
+  intro f ks k vs hs hvs
+  simp only [straightSig, List.mem_map, Prod.mk.injEq] at hs
+  obtain ⟨⟨g, n⟩, hgn, rfl, rfl, rfl⟩ := hs
+  have hlen := hvs.length_eq
+  simp only [List.length_replicate] at hlen
+  exact h g vs (hlen ▸ hgn) (hall (fun k hk => (List.eq_of_mem_replicate hk)) hvs)
+
+theorem envTy_straightΓ_iff {P : AVal → Prop} {bound : List String} {ρ : AEnv} :
+    EnvTy (fun _ => P) (straightΓ bound) ρ ↔ EnvOk P bound ρ := by
+  constructor
+  · intro h x hx
+    exact h x (.base ()) (by simp [lookup_straightΓ, hx])
+  · intro h x k hk
+    rw [lookup_straightΓ] at hk
+    split_ifs at hk with hx
+    cases hk
+    exact h x hx
+
+/-- A literal of the straight-line fragment has the base kind under the kind checker with
+    integer literals at the base kind, the signatures `straightSig names` and the names of
+    `bound` at the base kind. -/
+theorem kindOfL_of_straightOk {names : List (String × Nat)} (bound : List String)
+    (e : Hax.ImpExpr) : straightOk names bound e = true →
+      kindOfL (straightSig names) (.base ()) (straightΓ bound) e = some (.base ()) := by
+  fun_induction straightOk names bound e with
+  | case1 =>
+    intro _
+    rfl
+  | case2 bound x =>
+    intro h
+    simp only [List.contains_iff_mem] at h
+    simp [kindOfL, lookup_straightΓ, h]
+  | case3 bound x v b ihv ihb =>
+    intro h
+    simp only [Bool.and_eq_true] at h
+    have hfit : fits (straightΓ bound) x (.base ()) = true := by
+      unfold fits
+      rw [lookup_straightΓ]
+      split_ifs <;> simp
+    simp only [kindOfL, ihv h.1, hfit, if_true]
+    exact ihb h.2
+  | case4 bound a b iha ihb =>
+    intro h
+    simp only [Bool.and_eq_true] at h
+    simp only [kindOfL, iha h.1]
+    exact ihb h.2
+  | case5 bound e ty ih =>
+    intro h
+    simp only [kindOfL]
+    exact ih h
+  | case6 bound f a iha =>
+    intro h
+    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+    simp only [kindOfL, iha h.2]
+    exact sigFind_straightSig (n := 1) h.1
+  | case7 bound f a b iha ihb =>
+    intro h
+    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+    simp only [kindOfL, iha h.1.2, ihb h.2]
+    exact sigFind_straightSig (n := 2) h.1.1
+  | case8 bound f a b c iha ihb ihc =>
+    intro h
+    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+    simp only [kindOfL, iha h.1.1.2, ihb h.1.2, ihc h.2]
+    exact sigFind_straightSig (n := 3) h.1.1.1
+  | case9 =>
+    intro h
+    simp at h
 
 /-! ## Termination -/
 
@@ -117,54 +229,11 @@ theorem toRustMS_total {P : AVal → Prop} (hint : ∀ n, P (.int n))
     (happ : AppTotalOn P names app) (bound : List String) (e : Hax.ImpExpr) :
     straightOk names bound e = true → ∀ ρ, EnvOk P bound ρ →
       ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ P v ∧ EnvOk P bound ρ' := by
-  fun_induction straightOk names bound e with
-  | case1 bound n =>
-    intro _ ρ hρ
-    exact ⟨_, ρ, rfl, hint n, hρ⟩
-  | case2 bound x =>
-    intro h ρ hρ
-    obtain ⟨v, hv, hP⟩ := hρ x (by simpa using h)
-    exact ⟨v, ρ, by simp [toRustMS, hv], hP, hρ⟩
-  | case3 bound x v b ihv ihb =>
-    intro h ρ hρ
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨a, ρ1, h1, ha, hρ1⟩ := ihv h.1 ρ hρ
-    obtain ⟨r, ρ2, h2, hr, hρ2⟩ := ihb h.2 _ (hρ1.upd x ha)
-    exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2.of_cons⟩
-  | case4 bound a b iha ihb =>
-    intro h ρ hρ
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨u, ρ1, h1, _, hρ1⟩ := iha h.1 ρ hρ
-    obtain ⟨r, ρ2, h2, hr, hρ2⟩ := ihb h.2 ρ1 hρ1
-    exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
-  | case5 bound e ty ih =>
-    intro h ρ hρ
-    obtain ⟨r, ρ1, h1, hr, hρ1⟩ := ih h ρ hρ
-    exact ⟨r, ρ1, by simp [toRustMS, h1], hr, hρ1⟩
-  | case6 bound f a iha =>
-    intro h ρ hρ
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha h.2 ρ hρ
-    obtain ⟨r, hr, hP⟩ := happ f [u] h.1 (by simpa using hu)
-    exact ⟨r, ρ1, by simp [toRustMS, h1, hr], hP, hρ1⟩
-  | case7 bound f a b iha ihb =>
-    intro h ρ hρ
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha h.1.2 ρ hρ
-    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb h.2 ρ1 hρ1
-    obtain ⟨r, hr, hP⟩ := happ f [u, w] h.1.1 (by simp [hu, hw])
-    exact ⟨r, ρ2, by simp [toRustMS, h1, h2, hr], hP, hρ2⟩
-  | case8 bound f a b c iha ihb ihc =>
-    intro h ρ hρ
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha h.1.1.2 ρ hρ
-    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb h.1.2 ρ1 hρ1
-    obtain ⟨z, ρ3, h3, hz, hρ3⟩ := ihc h.2 ρ2 hρ2
-    obtain ⟨r, hr, hP⟩ := happ f [u, w, z] h.1.1.1 (by simp [hu, hw, hz])
-    exact ⟨r, ρ3, by simp [toRustMS, h1, h2, h3, hr], hP, hρ3⟩
-  | case9 =>
-    intro h
-    simp at h
+  intro he ρ hρ
+  obtain ⟨v, ρ', h, hv, hρ'⟩ := toRustMS_total_kindL (H := fun _ : Unit => P) (ki := .base ())
+    hint happ.appTyped (straightΓ bound) e _ (kindOfL_of_straightOk bound e he) ρ
+    (envTy_straightΓ_iff.mpr hρ)
+  exact ⟨v, ρ', h, hv, envTy_straightΓ_iff.mp hρ'⟩
 
 /-- The reading returns a value on the straight-line fragment, in the form of the
     hypothesis of the total specifications of `ToRustMSSpec`. -/
@@ -207,8 +276,8 @@ theorem fnCorres_toRustMS_triple_of_straightOk
     (he : straightOk names bound e = true) (a : A) (hG : G a)
     (ρ : AEnv) (hρ : entry a = encEnv ρ) (hρP : EnvOk P bound ρ) :
     ⦃⌜True⌝⦄ toRustMS app e ρ ⦃⇓ r => ⌜r.1.toValue = Hax.Ascent.HaxEnc.enc (f a)⌝⦄ :=
-  spec_to_mvcgen
-    (fnCorres_toRustMS_spec_of_straightOk hF happ hint htot he a hG ρ hρ hρP)
+  fnCorres_toRustMS_triple_of_kindOfL (H := fun _ : Unit => P) (ki := .base ()) hF happ hint
+    htot.appTyped (kindOfL_of_straightOk bound e he) a hG ρ hρ (envTy_straightΓ_iff.mpr hρP)
 
 end Spec
 
