@@ -165,9 +165,9 @@ theorem quietCall_tables :
     (∀ e ∈ ImpToNF.hax64CmpTable, quietCall e.1 = true) := by
   refine ⟨fun e he => ?_, fun e he => ?_, fun e he => ?_⟩ <;>
     simp only [quietCall_iff, ImpToNF.hax64NFScalar, List.mem_append, List.mem_map]
-  · exact Or.inl (Or.inl ⟨e, he, rfl⟩)
+  · exact Or.inl (Or.inl (Or.inl ⟨e, he, rfl⟩))
+  · exact Or.inl (Or.inl (Or.inr ⟨e, he, rfl⟩))
   · exact Or.inl (Or.inr ⟨e, he, rfl⟩)
-  · exact Or.inr ⟨e, he, rfl⟩
 
 /-- An unsigned division is variable time. -/
 @[simp] theorem nfKind_bin_udiv (w : Nat) : nfKind (.bin .udiv w) = .vt .div := rfl
@@ -249,6 +249,32 @@ theorem scalarCatExpr_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCrypt
   unfold scalarCatExpr at h
   split at h <;> (try cases h) <;> simp only [catKind] <;> rw [hP]
 
+/-- A call `selectCat` translates is `select`, a name of `hax64NFScalar`. -/
+theorem selectCat_name {Δ : Ctxt catCryptDialect} {f : String} {tc ta tb : NfTy}
+    {args : HVector (fun t => Var Δ t) ([tc, ta, tb].map catTy)}
+    {e : Expr catCryptDialect Δ (.sword 64)} (h : selectCat f tc ta tb args = some e) :
+    f ∈ ImpToNF.hax64NFScalar () := by
+  unfold selectCat at h
+  split at h
+  · rename_i hf
+    subst hf
+    decide
+  · cases h
+
+/-- The select of `selectCat` is quiet at parameters with no variable-time operation. -/
+theorem selectCat_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {f : String} {tc ta tb : NfTy} {args : HVector (fun t => Var Δ t) ([tc, ta, tb].map catTy)}
+    {e : Expr catCryptDialect Δ (.sword 64)} (h : selectCat f tc ta tb args = some e) :
+    catKind P e.op = .quiet := by
+  unfold selectCat at h
+  split at h
+  · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.mp h
+    simp only [catKind]
+    rw [hP]
+  · cases h
+
 /-- The call `catCall?` builds has the event class of the source call, at parameters with no
     variable-time operation. -/
 theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -276,6 +302,8 @@ theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
         simp [catKind, nfKind, hf]
       · cases h
     · cases h
+  · rw [selectCat_kind hP h, nfKind_call_scalar (selectCat_name h)]
+  · rw [selectCat_kind hP h, nfKind_call_scalar (selectCat_name h)]
   · cases h
 
 /-- The reading of a value related to a variable `asWord` reads as a word is the number of
@@ -358,6 +386,20 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
         rw [asWord_valNat hi' W hx₂]
       · cases h
     · cases h
+  · rename_i tc ta tb args
+    have hq : nfKind (.call f [tc, ta, tb] (.word 64)) = .quiet :=
+      nfKind_call_scalar (selectCat_name h) _ _
+    unfold Expr.ctLeak opLeak
+    rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
+      show nfLeakModel.kind (.call f [tc, ta, tb] (.word 64)) =
+        nfKind (.call f [tc, ta, tb] (.word 64)) from rfl, hq]
+  · rename_i tc ta tb args
+    have hq : nfKind (.call f [tc, ta, tb] .int) = .quiet :=
+      nfKind_call_scalar (selectCat_name h) _ _
+    unfold Expr.ctLeak opLeak
+    rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
+      show nfLeakModel.kind (.call f [tc, ta, tb] .int) =
+        nfKind (.call f [tc, ta, tb] .int) from rfl, hq]
   · cases h
 
 /-- The events of the translation of an operation at the valuation `W` of the target: none
@@ -556,8 +598,9 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr
-          (Or.inl (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
+        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl
+          (List.mem_append.mpr (Or.inl (List.mem_map.mpr
+            ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))))⟩
         split at h
         · split at h
           · exact withVar1_quiet hP (fun a res' h' => by
@@ -565,8 +608,8 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
           · cases h
         · exact withVar2_quiet hP (fun a b res' h' => binChain_quiet hP h') h
       · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
-        refine ⟨?_, List.mem_append.mpr (Or.inr
-          (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))⟩
+        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr
+          (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
         exact withVar2_quiet hP (fun a b res' h' => by
           cases h'; exact cmpChain_quiet hP c a b) h
       · cases h
@@ -576,8 +619,9 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr
-          (Or.inr (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
+        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl
+          (List.mem_append.mpr (Or.inr (List.mem_map.mpr
+            ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))))⟩
         split at h
         · obtain ⟨rr, -, rfl⟩ := Option.map_eq_some_iff.mp h
           trivial

@@ -277,9 +277,25 @@ def asArr {Δ : Ctxt catCryptDialect} : (t : NfTy) → Var Δ (catTy t) →
   | .arr n .int, v => some ⟨n, v⟩
   | _, _ => none
 
+/-- A variable of the bit type, at `bit`. -/
+def asBit {Δ : Ctxt catCryptDialect} : (t : NfTy) → Var Δ (catTy t) → Option (Var Δ .bit)
+  | .bit, v => some v
+  | _, _ => none
+
+/-- The expression of the call `select` on a bit and two values of types whose values encode
+    as integers: the select `ite` of `catCryptDialect` on two words. -/
+def selectCat {Δ : Ctxt catCryptDialect} (f : String) (tc ta tb : NfTy)
+    (args : HVector (fun t => Var Δ t) ([tc, ta, tb].map catTy)) :
+    Option (Expr catCryptDialect Δ (.sword 64)) :=
+  if f = "select" then
+    (asBit tc args.head).bind fun c => (asWord ta args.tail.head).bind fun x =>
+      (asWord tb args.tail.tail.head).map fun y =>
+        ⟨.ite (.sword 64), rfl, .cons c (.cons x (.cons y .nil))⟩
+  else none
+
 /-- The expression of a call `f` of the `u64` table on the renamed arguments `args`: a scalar
     call of `hax64NFScalar`, `index` of an integer array, `array_update` of an integer
-    array. -/
+    array, `select` of two values of types whose values encode as integers. -/
 def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
     (as : List NfTy) → (r : NfTy) → HVector (fun t => Var Δ t) (as.map catTy) →
       Option (Expr catCryptDialect Δ (catTy r))
@@ -299,6 +315,8 @@ def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
               ⟨.memrefSetDyn n, congrArg CryptoTy.memref h, .cons m (.cons i' (.cons x' .nil))⟩
           else none
       else none
+  | [tc, ta, tb], .word 64, args => selectCat f tc ta tb args
+  | [tc, ta, tb], .int, args => selectCat f tc ta tb args
   | _, _, _ => none
 
 /-! ## 4. Readings and the translation of an operation -/
@@ -808,10 +826,51 @@ theorem dec_arr_ofFn {n : Nat} (g : Fin n → Int) :
 def CatName (f : String) : Prop :=
   f ∈ ImpToNF.hax64NFScalar () ∨ f = "index" ∨ f = "array_update"
 
-/-- The table `bi` agrees with the `u64` table at the names of the calls the fragment
-    translates. -/
+/-- The table `bi` agrees with the `u64` table with `select` at the names of the calls the
+    fragment translates. -/
 def SubTable (bi : _root_.Hax.Builtins) : Prop :=
-  ∀ f vals v, CatName f → bi f vals = some v → _root_.Hax.hax64Builtins f vals = some v
+  ∀ f vals v, CatName f → bi f vals = some v →
+    ImpToNF.withSelect _root_.Hax.hax64Builtins f vals = some v
+
+/-- Under `SubTable bi`, at a name of a translated call other than `select`, a value of `bi`
+    is a value of the `u64` table. -/
+theorem SubTable.base {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (f : String)
+    (vals : List _root_.Hax.Value) (v : _root_.Hax.Value) (hc : CatName f)
+    (hne : f ≠ "select") (h : bi f vals = some v) :
+    _root_.Hax.hax64Builtins f vals = some v := by
+  have hv := hbi f vals v hc h
+  rwa [ImpToNF.withSelect_of_ne _ hne] at hv
+
+/-- Under `SubTable bi`, a value of `select` of `bi` on a Boolean and two values is the first
+    value at `true` and the second at `false`. -/
+theorem SubTable.select {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {k : Bool}
+    {x y v : _root_.Hax.Value} (h : bi "select" [.bool k, x, y] = some v) :
+    v = if k then x else y := by
+  have hv := hbi _ _ _ (Or.inl (by decide)) h
+  rw [ImpToNF.withSelect_select_bool] at hv
+  exact (Option.some.inj hv).symm
+
+/-- The `u64` table with `select` agrees with itself at every name. -/
+theorem subTable_withSelect : SubTable (ImpToNF.withSelect _root_.Hax.hax64Builtins) :=
+  fun _ _ _ _ h => h
+
+/-- `SubTable` passes to the table with `select`. -/
+theorem subTable_withSelect_of {bi : _root_.Hax.Builtins} (hbi : SubTable bi) :
+    SubTable (ImpToNF.withSelect bi) := by
+  intro f vals v hc h
+  by_cases hf : f = "select"
+  · subst hf
+    rw [ImpToNF.withSelect_select] at h ⊢
+    exact h
+  · rw [ImpToNF.withSelect_of_ne _ hf] at h
+    exact hbi f vals v hc h
+
+/-- The names of the binary integer calls, the unary integer calls and the comparisons are
+    not `select`. -/
+theorem tables_ne_select :
+    (∀ e ∈ ImpToNF.hax64BinTable, e.1 ≠ "select") ∧
+    (∀ e ∈ ImpToNF.hax64UnTable, e.1 ≠ "select") ∧
+    (∀ e ∈ ImpToNF.hax64CmpTable, e.1 ≠ "select") := by decide
 
 /-- A scalar call `scalarCatExpr` translates has a name of `hax64NFScalar`. -/
 theorem scalarCatExpr_name {Δ : Ctxt catCryptDialect} {f : String} {a b : Var Δ (.sword 64)}
@@ -819,6 +878,55 @@ theorem scalarCatExpr_name {Δ : Ctxt catCryptDialect} {f : String} {a b : Var �
     f ∈ ImpToNF.hax64NFScalar () := by
   unfold scalarCatExpr at h
   split at h <;> (try cases h) <;> decide
+
+/-- A scalar call `scalarCatExpr` translates is not `select`. -/
+theorem scalarCatExpr_ne_select {Δ : Ctxt catCryptDialect} {f : String}
+    {a b : Var Δ (.sword 64)} {e : Expr catCryptDialect Δ (.sword 64)}
+    (h : scalarCatExpr f a b = some e) : f ≠ "select" := by
+  unfold scalarCatExpr at h
+  split at h <;> (try cases h) <;> decide
+
+/-- A value of the bit type, related to a bit, encodes as the Boolean of the bit. -/
+theorem asBit_enc {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)}
+    {c : Var Δ .bit} (h : asBit t v = some c) (W : Valuation Δ) {x : t.denote}
+    (hx : VRel t x (v.lookup W)) : ImpToNF.enc t x = .bool (c.lookup W) := by
+  unfold asBit at h
+  split at h
+  · cases h
+    change x = _ at hx
+    subst hx
+    rfl
+  · cases h
+
+/-- **A call of `select` simulates.** Under `SubTable bi`, a value of the call on a bit and
+    two values related to the variables of `selectCat` is the integer of the word the
+    expression denotes. -/
+theorem selectCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {f : String} {tc ta tb : NfTy}
+    {args : HVector (fun t => Var Δ t) ([tc, ta, tb].map catTy)}
+    {e : Expr catCryptDialect Δ (.sword 64)} (h : selectCat f tc ta tb args = some e)
+    {xs : Valuation (d := nfDialect) [tc, ta, tb]}
+    (hx : VRelL [tc, ta, tb] xs (Expr.lookupArgs args W)) {v : _root_.Hax.Value}
+    (hbv : bi f (ImpToNF.encAll [tc, ta, tb] xs) = some v) :
+    v = .int (((e.denote W : BitVec 64)).toNat : Int) := by
+  unfold selectCat at h
+  split at h
+  · rename_i hf
+    subst hf
+    rcases args with _ | ⟨c₀, _ | ⟨a₀, _ | ⟨b₀, _ | _⟩⟩⟩
+    rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | ⟨x₃, _ | _⟩⟩⟩
+    obtain ⟨hx₁, hx₂, hx₃, -⟩ := hx
+    obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, hyb, rfl⟩ := Option.map_eq_some_iff.mp h
+    change bi "select" [ImpToNF.enc tc x₁, ImpToNF.enc ta x₂, ImpToNF.enc tb x₃] = some v at hbv
+    rw [asBit_enc hc W hx₁, asWord_enc hxa W hx₂, asWord_enc hyb W hx₃] at hbv
+    rw [hbi.select hbv]
+    change _ = _root_.Hax.Value.int
+      (((if c.lookup W then x.lookup W else y.lookup W : BitVec 64)).toNat : Int)
+    generalize c.lookup W = k
+    cases k <;> rfl
+  · cases h
 
 /-- **A call of the `u64` table simulates.** Under `SubTable bi`, the expression `catCall?`
     builds on variables reading values related to the arguments denotes a value related to the
@@ -844,7 +952,7 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     split at h
     · rename_i hf
       subst hf
-      have hv := hbi _ _ _ (Or.inr (Or.inl rfl)) hbv
+      have hv := hbi.base _ _ _ (Or.inr (Or.inl rfl)) (by decide) hbv
       obtain ⟨⟨n, a'⟩, ha, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨i', hi, rfl⟩ := Option.map_eq_some_iff.mp h
       obtain ⟨g, hg, hgm⟩ := asArr_rel ha W hx₁
@@ -866,7 +974,7 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     have hyv := ImpToNF.dec_sound (.word 64) v y hdv
     obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
-    have hv := hbi _ _ _ (Or.inl (scalarCatExpr_name h)) hbv
+    have hv := hbi.base _ _ _ (Or.inl (scalarCatExpr_name h)) (scalarCatExpr_ne_select h) hbv
     rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
     have := scalarSem_sound h _ _ hv
     rw [this] at hyv
@@ -886,7 +994,7 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     split at h
     · rename_i hf
       subst hf
-      have hv := hbi _ _ _ (Or.inr (Or.inr rfl)) hbv
+      have hv := hbi.base _ _ _ (Or.inr (Or.inr rfl)) (by decide) hbv
       obtain ⟨⟨n, m⟩, ha, h⟩ := Option.bind_eq_some_iff.mp h
       dsimp only at h
       split at h
@@ -907,6 +1015,17 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         · simp [hkk, hgm]
       · cases h
     · cases h
+  · obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hyv := ImpToNF.dec_sound (.word 64) v y hdv
+    rw [selectCat_sound hbi W h hx hbv] at hyv
+    change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
+    change y = (e.denote W : BitVec 64)
+    exact (BitVec.eq_of_toNat_eq (by exact_mod_cast (_root_.Hax.Value.int.inj hyv))).symm
+  · obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hyv := ImpToNF.dec_sound .int v y hdv
+    rw [selectCat_sound hbi W h hx hbv] at hyv
+    change y = (((e.denote W : BitVec 64)).toNat : Int)
+    exact (_root_.Hax.Value.int.inj hyv).symm
   · cases h
 
 /-! ### Readings relate values -/
@@ -1096,7 +1215,7 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         · rename_i hf
           subst hf
           obtain rfl := Option.some.inj ‹some _ = some e›
-          have hv := hbi _ _ _ (Or.inl (by decide)) hbv
+          have hv := hbi.base _ _ _ (Or.inl (by decide)) (by decide) hbv
           rw [← hk'] at hv
           have := scalarSem_sound (a := x) (b := x)
             (e := ⟨.bvShiftRV 64, rfl, .cons x (.cons x .nil)⟩) rfl (x.lookup W)
@@ -1115,7 +1234,7 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
           · rename_i _ hf
             subst hf
             obtain rfl := Option.some.inj ‹some _ = some e›
-            have hv := hbi _ _ _ (Or.inl (by decide)) hbv
+            have hv := hbi.base _ _ _ (Or.inl (by decide)) (by decide) hbv
             rw [← hk'] at hv
             have := scalarSem_sound (a := x) (b := x)
               (e := ⟨.bvShiftLV 64, rfl, .cons x (.cons x .nil)⟩) rfl (x.lookup W)
@@ -1513,10 +1632,10 @@ theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     dsimp only at h
     have hmem := ImpToNF.mem_of_find?_map hp
     have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
-      (Or.inl (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
+      (Or.inl (List.mem_append.mpr (Or.inl (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))))
     obtain ⟨hw, h64⟩ := binTable_w _ hmem
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-    have hv := hbi _ _ _ hcat hbv
+    have hv := hbi.base _ _ _ hcat (tables_ne_select.1 _ hmem) hbv
     have key : ∀ (aN bN : Nat), ImpToNF.enc ta x₁ = .int (aN : Int) →
         ImpToNF.enc tb x₂ = .int (bN : Int) →
         ∃ rn, o.nat w aN bN = some rn ∧ y = BitVec.ofNat 64 rn := by
@@ -1549,10 +1668,10 @@ theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         a b hres' hrn
   · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
     have hmem := ImpToNF.mem_of_find?_map hp
-    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inr
-      (List.mem_map.mpr ⟨_, hmem, rfl⟩)))
+    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr
+      (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-    have hv := hbi _ _ _ hcat hbv
+    have hv := hbi.base _ _ _ hcat (tables_ne_select.2.2 _ hmem) hbv
     refine withVar2_sound W h1 h2 _ y h ?_
     intro Δ' W' a b res' hres' he1 he2
     cases hres'
@@ -1576,10 +1695,10 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     dsimp only at h
     have hmem := ImpToNF.mem_of_find?_map hp
     have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
-      (Or.inr (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
+      (Or.inl (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))))
     obtain ⟨hw, hneg⟩ := unTable_w _ hmem
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-    have hv := hbi _ _ _ hcat hbv
+    have hv := hbi.base _ _ _ hcat (tables_ne_select.2.1 _ hmem) hbv
     split at h
     · rename_i hc
       obtain ⟨rfl, rfl⟩ := hc

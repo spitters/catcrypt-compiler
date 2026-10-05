@@ -75,7 +75,9 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `ScalarBin`, `ScalarUn`, `ScalarCmp`, `hax64BinTable`, `hax64UnTable`, `hax64CmpTable` —
   the scalar calls of `u64` code at the widths `8`, `16`, `32`, `64`, with their operation.
 * `hax64ScalarSig`, `hax64SigOf` — the call typing of `u64` code: a `64`-bit word result for
-  an integer call, a bit for a comparison.
+  an integer call, a bit for a comparison, the type `selTy` of its two values for `select`.
+* `hax64TerTable`, `selectOp`, `withSelect` — the call `select`, its value on a Boolean and
+  two values, and a builtin table with it.
 * `CrateFn`, `crateSigOf`, `paramsEnv`, `crateBi` — the functions of a crate as callees: the
   call typing at their parameter and result types, and the builtins that run their bodies to
   a call depth.
@@ -99,6 +101,8 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
   their operation.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
   `Hax.hax64Builtins`.
+* `withSelect_typedCalls` — the call typing `hax64SigOf` is sound for builtins with `select`
+  when it is sound for the builtins.
 * `crateBi_typedCalls` — the call typing with a crate is sound for the builtins with the
   crate, at every call depth.
 -/
@@ -3178,6 +3182,9 @@ def hax64CmpTable : List (String × ScalarCmp) :=
   [("Eq", .eq), ("eq", .eq), ("Ne", .ne), ("ne", .ne), ("Lt", .lt), ("lt", .lt),
     ("Le", .le), ("le", .le), ("Gt", .gt), ("gt", .gt), ("Ge", .ge), ("ge", .ge)]
 
+/-- The ternary calls of `u64` code: `select`, the choice of one of two values by a bit. -/
+def hax64TerTable : List String := ["select"]
+
 /-- The operation and the width of a binary integer call. -/
 def scalarBinOf (f : String) : Option (ScalarBin × Nat) :=
   (hax64BinTable.find? (·.1 == f)).map (·.2)
@@ -3191,9 +3198,9 @@ def scalarCmpOf (f : String) : Option ScalarCmp :=
   (hax64CmpTable.find? (·.1 == f)).map (·.2)
 
 /-- The scalar calls of `u64` code the route through `NFProg` types: the binary and unary
-    integer calls and the comparisons. -/
+    integer calls, the comparisons and `select`. -/
 def hax64NFScalar (_ : Unit) : List String :=
-  hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1)
+  hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1) ++ hax64TerTable
 
 /-- The types whose values encode as integers: `int` and the `64`-bit word. -/
 def hax64NFWordTy : NfTy → Bool
@@ -3211,8 +3218,14 @@ def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
       if hax64NFWordTy ti && hax64NFWordTy t then some (.arr n .int) else none
   | _, _ => none
 
+/-- The result type of `select` on two values of `hax64NFWordTy` types: a `64`-bit word when
+    both are `64`-bit words, an integer otherwise. -/
+def selTy (a b : NfTy) : NfTy :=
+  if a = .word 64 ∧ b = .word 64 then .word 64 else .int
+
 /-- The call typing of the scalar calls of `u64` code on operands of `hax64NFWordTy` types: a
-    binary or unary integer call has a `64`-bit word result, a comparison a bit. -/
+    binary or unary integer call has a `64`-bit word result, a comparison a bit, and `select`
+    of a bit and two values has the type `selTy` of the two values. -/
 def hax64ScalarSig (f : String) : List NfTy → Option NfTy
   | [a, b] =>
       if hax64NFWordTy a && hax64NFWordTy b then
@@ -3221,7 +3234,50 @@ def hax64ScalarSig (f : String) : List NfTy → Option NfTy
         else none
       else none
   | [a] => if hax64NFWordTy a && (scalarUnOf f).isSome then some (.word 64) else none
+  | [c, a, b] =>
+      if f = "select" ∧ c = .bit ∧ hax64NFWordTy a = true ∧ hax64NFWordTy b = true then
+        some (selTy a b)
+      else none
   | _ => none
+
+/-- The value of `select` on a Boolean and two values: the first value at `true`, the second
+    at `false`; undefined on every other list of arguments. -/
+def selectOp : List Value → Option Value
+  | [.bool k, x, y] => some (if k then x else y)
+  | _ => none
+
+/-- **The builtins `bi` with `select`**: the call `select` is `selectOp`, and every other
+    call is a call of `bi`. -/
+def withSelect (bi : Builtins) : Builtins := fun f vals =>
+  if f = "select" then selectOp vals else bi f vals
+
+/-- At the name `select`, the builtins with `select` are `selectOp`. -/
+theorem withSelect_select (bi : Builtins) (vals : List Value) :
+    withSelect bi "select" vals = selectOp vals := rfl
+
+/-- On a Boolean and two values, `select` of the builtins with `select` is the first value at
+    `true` and the second at `false`. -/
+theorem withSelect_select_bool (bi : Builtins) (k : Bool) (x y : Value) :
+    withSelect bi "select" [.bool k, x, y] = some (if k then x else y) := rfl
+
+/-- At every other name than `select`, the builtins with `select` are `bi`. -/
+theorem withSelect_of_ne (bi : Builtins) {f : String} (hf : f ≠ "select") (vals : List Value) :
+    withSelect bi f vals = bi f vals := by
+  simp only [withSelect, hf, if_false]
+
+/-- `Hax.hax64Builtins` has no call `select`. -/
+theorem hax64Builtins_select (vals : List Value) :
+    _root_.Hax.hax64Builtins "select" vals = none := rfl
+
+/-- A value of `Hax.hax64Builtins` is a value of `Hax.hax64Builtins` with `select`. -/
+theorem withSelect_hax64Builtins_of_base {f : String} {vals : List Value} {v : Value}
+    (h : _root_.Hax.hax64Builtins f vals = some v) :
+    withSelect _root_.Hax.hax64Builtins f vals = some v := by
+  by_cases hf : f = "select"
+  · subst hf
+    rw [hax64Builtins_select] at h
+    cases h
+  · rw [withSelect_of_ne _ hf, h]
 
 /-- **The call typing of `u64` code**: a scalar call by `hax64ScalarSig`; at an index of a
     `hax64NFWordTy` type, `index` of an integer slice is an integer and `array_update` of an
@@ -3370,6 +3426,42 @@ theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :
   · simp only [dec, Int.natCast_nonneg, hr', and_self, if_true, Int.toNat_natCast]
   · simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr]
 
+/-- **The typing of `select` is sound for `selectOp`.** At a call `hax64ScalarSig` types, a
+    value of `selectOp` on the encodings of the arguments is the encoding of a value of the
+    result type. -/
+theorem selectOp_typed {f : String} {as : List NfTy} {r : NfTy}
+    (hr : hax64ScalarSig f as = some r) (xs : HVector NfTy.denote as) (v : Value)
+    (hv : selectOp (encAll as xs) = some v) : ∃ y, dec r v = some y ∧ v = enc r y := by
+  match as, xs, hr, hv with
+  | [c, a, b], .cons xc (.cons xa (.cons xb .nil)), hr, hv =>
+    simp only [hax64ScalarSig] at hr
+    split at hr
+    · rename_i h
+      obtain ⟨-, rfl, ha, hb⟩ := h
+      cases hr
+      obtain ⟨za, hza⟩ := hax64NFWordTy_enc ha xa
+      obtain ⟨zb, hzb⟩ := hax64NFWordTy_enc hb xb
+      change selectOp [.bool xc, enc a xa, enc b xb] = some v at hv
+      rw [hza, hzb] at hv
+      change some (if xc then Value.int za else Value.int zb) = some v at hv
+      cases hv
+      by_cases hw : a = .word 64 ∧ b = .word 64
+      · rw [show selTy a b = NfTy.word 64 from if_pos hw]
+        obtain ⟨rfl, rfl⟩ := hw
+        cases hza
+        cases hzb
+        cases xc
+        · exact dec_word64_nat xb.isLt
+        · exact dec_word64_nat xa.isLt
+      · rw [show selTy a b = NfTy.int from if_neg hw]
+        cases xc <;> exact ⟨_, rfl, rfl⟩
+    · cases hr
+  | [], .nil, _, hv => simp [encAll, selectOp] at hv
+  | [_], .cons _ .nil, _, hv => simp [encAll, selectOp] at hv
+  | [_, _], .cons _ (.cons _ .nil), _, hv => simp [encAll, selectOp] at hv
+  | _ :: _ :: _ :: _ :: _, .cons _ (.cons _ (.cons _ (.cons _ _))), _, hv =>
+    simp [encAll, selectOp] at hv
+
 /-- **The scalar call typing is sound for `Hax.hax64Builtins`.** -/
 theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
     (hr : hax64ScalarSig f as = some r) (xs : HVector NfTy.denote as) (v : Value)
@@ -3418,7 +3510,15 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
       exact dec_word64_nat hr'
     · cases hr
   | [], _, hr => simp [hax64ScalarSig] at hr
-  | _ :: _ :: _ :: _, _, hr => simp [hax64ScalarSig] at hr
+  | [_, _, _], _, hr =>
+    simp only [hax64ScalarSig] at hr
+    split at hr
+    · rename_i h
+      obtain ⟨rfl, -⟩ := h
+      rw [hax64Builtins_select] at hv
+      cases hv
+    · cases hr
+  | _ :: _ :: _ :: _ :: _, _, hr => simp [hax64ScalarSig] at hr
 
 /-- The calls `hax64ScalarSig` types are the scalar calls of `hax64NFScalar`. -/
 theorem hax64ScalarSig_name {f : String} {as : List NfTy} {r : NfTy}
@@ -3430,18 +3530,22 @@ theorem hax64ScalarSig_name {f : String} {as : List NfTy} {r : NfTy}
     · split at h
       · rename_i hbin
         obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hbin
-        exact Or.inl (Or.inl ⟨_, mem_of_find?_map hp, rfl⟩)
+        exact Or.inl (Or.inl (Or.inl ⟨_, mem_of_find?_map hp, rfl⟩))
       · split at h
         · rename_i hcmp
           obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hcmp
-          exact Or.inr ⟨_, mem_of_find?_map hp, rfl⟩
+          exact Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩)
         · cases h
     · cases h
   · split at h
     · rename_i hun
       simp only [Bool.and_eq_true] at hun
       obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hun.2
-      exact Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩)
+      exact Or.inl (Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩))
+    · cases h
+  · split at h
+    · rename_i hsel
+      exact Or.inr (by rw [hsel.1]; decide)
     · cases h
   · cases h
 
@@ -3626,6 +3730,35 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
           · cases hv
       · cases hr
     · exact hax64Builtins_typedCallsArr f as r hr xs v hv
+
+/-- A call of `select` that `hax64SigOf` types is typed by `hax64ScalarSig`. -/
+theorem hax64SigOf_select {f : String} {as : List NfTy} {r : NfTy} (hf : f = "select")
+    (h : hax64SigOf f as = some r) : hax64ScalarSig f as = some r := by
+  unfold hax64SigOf at h
+  split at h
+  · rename_i hs
+    rw [hs, h]
+  · split at h
+    · exact absurd hf (by decide)
+    · exact absurd hf (by decide)
+    · unfold hax64SigOfArr at h
+      split at h
+      · exact absurd hf (by decide)
+      · exact absurd hf (by decide)
+      · cases h
+
+/-- **The call typing of `u64` code is sound for builtins with `select`**, when it is sound
+    for the builtins. -/
+theorem withSelect_typedCalls {bi : Builtins} (hT : TypedCalls bi hax64SigOf) :
+    TypedCalls (withSelect bi) hax64SigOf := by
+  intro f as r hr xs v hv
+  by_cases hf : f = "select"
+  · have hs := hax64SigOf_select hf hr
+    subst hf
+    rw [withSelect_select] at hv
+    exact selectOp_typed hs xs v hv
+  · rw [withSelect_of_ne bi hf] at hv
+    exact hT f as r hr xs v hv
 
 /-! ## 17. Calls of the functions of a crate -/
 
