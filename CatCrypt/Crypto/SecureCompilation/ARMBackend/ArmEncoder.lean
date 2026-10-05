@@ -443,6 +443,69 @@ theorem encodeBInst_length (alloc : GpAlloc) (i : BInst) :
     simp [encodeBInst, encAddSubX, encAddSubCarry, encMadd, encUmulh, encCsel,
       encMovWideX, encOrrX, encAndX, encEorX, encUbfmX]
 
+/-! ### The memory-and-branch fragment `BMInst`
+
+The word layouts of the Arm ARM encoding classes "Add/subtract (immediate)", "Load/store
+register (unsigned immediate)", "Load/store register (register offset)", "Compare and
+branch (immediate)" and "Conditional branch (immediate)", all in the 64-bit form. `CMP` is
+`SUBS XZR, Xn, Xm` (`encAddSubX 1 1 31`) and `B.cond` reuses `encBcond`. -/
+
+/-- ADD/SUB (immediate), `X` form, `shift = 0`. `op=0` ADD, `op=1` SUB.
+    Word: `1(sf) op 0(S) 100010 0(sh) imm12(12) Rn(5) Rd(5)`. -/
+def encAddSubImmX (op d n imm12 : Nat) : List (BitVec 8) :=
+  let w := 0x91000000 + (op % 2) * 0x40000000 + (imm12 % 0x1000) * 0x400
+           + (n % 32) * 0x20 + (d % 32)
+  wordLE w
+
+/-- LDR/STR (unsigned immediate), 64-bit (`size = 11`). `opc=1` LDR, `opc=0` STR; the byte
+    offset is `8·imm12`. Word: `11 111 0 01 opc(2) imm12(12) Rn(5) Rt(5)`. -/
+def encLdStImmX (opc t n imm12 : Nat) : List (BitVec 8) :=
+  let w := 0xf9000000 + (opc % 2) * 0x400000 + (imm12 % 0x1000) * 0x400
+           + (n % 32) * 0x20 + (t % 32)
+  wordLE w
+
+/-- LDR/STR (register offset), 64-bit, `option = 011` (`LSL`), `S = 1` (shift by 3).
+    `opc=1` LDR, `opc=0` STR. Word: `11 111 0 00 opc(2) 1 Rm(5) 011 1 10 Rn(5) Rt(5)`. -/
+def encLdStRegX (opc t n m : Nat) : List (BitVec 8) :=
+  let w := 0xf8207800 + (opc % 2) * 0x400000 + (m % 32) * 0x10000
+           + (n % 32) * 0x20 + (t % 32)
+  wordLE w
+
+/-- `CBNZ Xt, label`, `X` form (`sf = 1`, `op = 1`), with the 19-bit word offset `imm19`.
+    Word: `1(sf) 011010 1(op) imm19(19) Rt(5)`. -/
+def encCbnzX (t imm19 : Nat) : List (BitVec 8) :=
+  let w := 0xb5000000 + (imm19 % 0x80000) * 0x20 + (t % 32)
+  wordLE w
+
+/-- The 19-bit word-offset field of a signed byte offset (`off / 4` modulo `2¹⁹`). -/
+def armImm19 (off : Int) : Nat := ((off / 4) % 0x80000).toNat
+
+/-- Encode one `BMInst` to its AArch64 machine bytes, resolving register names through
+    `alloc`. -/
+def encodeBMInst (alloc : GpAlloc) : BMInst → List (BitVec 8)
+  | .alu i => encodeBInst alloc i
+  | .addi d a imm => encAddSubImmX 0 (xNum (gpOf alloc d)) (xNum (gpOf alloc a)) imm
+  | .subi d a imm => encAddSubImmX 1 (xNum (gpOf alloc d)) (xNum (gpOf alloc a)) imm
+  | .cmp a b => encAddSubX 1 1 31 (xNum (gpOf alloc a)) (xNum (gpOf alloc b))
+  | .ldr t n pimm => encLdStImmX 1 (xNum (gpOf alloc t)) (xNum (gpOf alloc n)) pimm
+  | .str t n pimm => encLdStImmX 0 (xNum (gpOf alloc t)) (xNum (gpOf alloc n)) pimm
+  | .ldrr t n m => encLdStRegX 1 (xNum (gpOf alloc t)) (xNum (gpOf alloc n)) (xNum (gpOf alloc m))
+  | .strr t n m => encLdStRegX 0 (xNum (gpOf alloc t)) (xNum (gpOf alloc n)) (xNum (gpOf alloc m))
+  | .cbnz t off => encCbnzX (xNum (gpOf alloc t)) (armImm19 off)
+  | .bcond c off => encBcond c.num (armImm19 off)
+
+/-- Encode a block of the memory-and-branch fragment. -/
+def encodeBMBlock (alloc : GpAlloc) (block : List BMInst) : List (BitVec 8) :=
+  block.flatMap (encodeBMInst alloc)
+
+/-- Every `BMInst` encodes to exactly 4 bytes. -/
+theorem encodeBMInst_length (alloc : GpAlloc) (i : BMInst) :
+    (encodeBMInst alloc i).length = 4 := by
+  cases i with
+  | alu i => exact encodeBInst_length alloc i
+  | _ => simp [encodeBMInst, encAddSubImmX, encAddSubX, encLdStImmX, encLdStRegX, encCbnzX,
+      encBcond]
+
 /-! ### Differential pins against `aarch64-linux-gnu-as` (the bignum gas anchor)
 
 These pin the emitted 64-bit word to the exact little-endian bytes

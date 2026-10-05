@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 
 module
 
+public import CatCrypt.Crypto.SecureCompilation.MachineMem64
+
 /-!
 # A Lean RV64 64-bit bignum/field machine model
 
@@ -58,8 +60,11 @@ product (the low/high halves of the 64×64 product; the low half is signedness-
 independent, so `MUL` is the low limb and `MULHU` the unsigned high limb the bignum
 multiply needs). `LI` is the assembler `li` pseudo-op (materialises a 64-bit
 constant); modelled as a direct register write. Loads/stores at the function
-boundary are trusted ABI scaffolding rendered by the printer, exactly the
-ChaCha-model posture.
+boundary of the straight-line kernels are ABI scaffolding rendered by the printer.
+
+Section 4 adds the memory-and-branch fragment `RMInst64` (`ADDI`, `LD`, `SD`, `BNE`) over
+the state `RMState64`, which carries a byte-addressed memory (`MachineMem64`) and the
+program counter.
 -/
 
 @[expose] public section
@@ -233,7 +238,83 @@ theorem runRBlock64_append (xs ys : List RInst64) (s : RState64) :
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runRBlock64_cons]; exact ih _
 
-/-! ## 4. Differential-validation pins (the 64-bit RV64 anchor)
+/-! ## 4. Memory and branches
+
+`RMInst64` extends `RInst64` by the RV64I instructions a word-array loop needs: `ADDI` with a
+non-zero immediate (pointer and counter steps), the doubleword load `LD rd, off(rs1)` and
+store `SD rs2, off(rs1)` with base+offset addressing, and the conditional branch
+`BNE rs1, rs2, off`. `RMState64` adds to the register file the byte-addressed data memory
+`MachineMem64.Mem64` and the program counter. The offsets are the signed byte displacements
+of the instruction formats: 12-bit for `ADDI`, `LD`, `SD`, 13-bit and even for `BNE`. -/
+
+/-- An RV64 instruction of the memory-and-branch fragment: a register instruction of
+    `RInst64`, `ADDI`, `LD`, `SD` or `BNE`. -/
+inductive RMInst64 where
+  /-- A register instruction of `RInst64`. -/
+  | alu (i : RInst64)
+  /-- `ADDI rd, rs1, imm` — add a sign-extended 12-bit immediate. -/
+  | addi (d a : String) (imm : Int)
+  /-- `LD rd, off(rs1)` — load the doubleword at `rs1 + off`. -/
+  | ld (d base : String) (off : Int)
+  /-- `SD rs2, off(rs1)` — store `rs2` as the doubleword at `rs1 + off`. -/
+  | sd (src base : String) (off : Int)
+  /-- `BNE rs1, rs2, off` — branch by the byte offset `off` when `rs1 ≠ rs2`. -/
+  | bne (a b : String) (off : Int)
+  deriving Repr, DecidableEq
+
+/-- The RV64 machine state of the memory-and-branch fragment: the register file, the data
+    memory and the program counter (a byte address). -/
+structure RMState64 where
+  /-- The integer register file. -/
+  regs : RState64
+  /-- The byte-addressed data memory. -/
+  mem : MachineMem64.Mem64
+  /-- The program counter. -/
+  pc : BitVec 64
+
+/-- The effective address `rs1 + off` of a load or store. -/
+def rvAddr (s : RState64) (base : String) (off : Int) : BitVec 64 :=
+  s.get base + BitVec.ofInt 64 off
+
+/-- **The step of one instruction of the memory-and-branch fragment.** A register
+    instruction runs `evalRInst64`; `LD` reads `MachineMem64.read64` at the effective address,
+    `SD` writes `MachineMem64.write64` there; `BNE` adds its offset to the program counter when
+    its registers differ. Every other instruction advances the program counter by 4. -/
+def evalRMInst64 (s : RMState64) : RMInst64 → RMState64
+  | .alu i => { s with regs := evalRInst64 s.regs i, pc := s.pc + 4 }
+  | .addi d a imm =>
+      { s with regs := s.regs.set d (s.regs.get a + BitVec.ofInt 64 imm), pc := s.pc + 4 }
+  | .ld d base off =>
+      { s with regs := s.regs.set d (MachineMem64.read64 s.mem (rvAddr s.regs base off)),
+               pc := s.pc + 4 }
+  | .sd src base off =>
+      { s with mem := MachineMem64.write64 s.mem (rvAddr s.regs base off) (s.regs.get src),
+               pc := s.pc + 4 }
+  | .bne a b off =>
+      { s with pc := if s.regs.get a ≠ s.regs.get b then s.pc + BitVec.ofInt 64 off
+                     else s.pc + 4 }
+
+/-- A straight-line fold of `evalRMInst64`. -/
+def runRMBlock64 (s : RMState64) : List RMInst64 → RMState64
+  | [] => s
+  | i :: is => runRMBlock64 (evalRMInst64 s i) is
+
+@[simp] theorem runRMBlock64_nil (s : RMState64) : runRMBlock64 s [] = s := rfl
+
+@[simp] theorem runRMBlock64_cons (s : RMState64) (i : RMInst64) (is : List RMInst64) :
+    runRMBlock64 s (i :: is) = runRMBlock64 (evalRMInst64 s i) is := rfl
+
+theorem runRMBlock64_append (xs ys : List RMInst64) (s : RMState64) :
+    runRMBlock64 s (xs ++ ys) = runRMBlock64 (runRMBlock64 s xs) ys := by
+  induction xs generalizing s with
+  | nil => rfl
+  | cons i is ih => simp only [List.cons_append, runRMBlock64_cons]; exact ih _
+
+/-- On the registers, a register instruction of the fragment is the `RInst64` step. -/
+theorem evalRMInst64_alu_regs (s : RMState64) (i : RInst64) :
+    (evalRMInst64 s (.alu i)).regs = evalRInst64 s.regs i := rfl
+
+/-! ## 5. Differential-validation pins (the 64-bit RV64 anchor)
 
 Unit-level witnesses for the new ops; the integration witness is the
 `bignum_add_p256` KAT (`RiscvBignumKernel.addp256_kat`) and the real

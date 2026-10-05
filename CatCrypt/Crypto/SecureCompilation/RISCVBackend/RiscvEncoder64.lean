@@ -109,6 +109,47 @@ def encodeRBlock64 (block : List RInst64) : List (BitVec 8) :=
     (encodeRInst64 i).length = 4 := by
   cases i <;> simp_all [encodeRInst64, encodeWord64, wordLE]
 
+/-! ## 1a. The memory-and-branch fragment `RMInst64`
+
+The sail-riscv `encdec` clauses of the added instructions (`model/extensions/I/base_insts.sail`):
+
+```
+ITYPE(imm,rs1,rd,ADDI) <-> imm @ rs1 @ 0b000 @ rd @ 0b0010011
+LOAD(imm,rs1,rd,DOUBLE) <-> imm @ rs1 @ 0b011 @ rd @ 0b0000011
+STORE(imm,rs2,rs1,DOUBLE) <-> imm[11:5] @ rs2 @ rs1 @ 0b011 @ imm[4:0] @ 0b0100011
+BTYPE(imm,rs2,rs1,BNE) <-> imm[12] @ imm[10:5] @ rs2 @ rs1 @ 0b001 @ imm[4:1] @ imm[11] @ 0b1100011
+```
+-/
+
+/-- An S-type word (`STORE`): the sail concat
+    `imm[11:5] @ rs2 @ rs1 @ funct3 @ imm[4:0] @ opcode` (7+5+5+3+5+7 = 32). -/
+def encStype (imm : BitVec 12) (rs2 rs1 : BitVec 5) (funct3 : BitVec 3)
+    (opcode : BitVec 7) : BitVec 32 :=
+  let i11_5 : BitVec 7 := imm.extractLsb' 5 7
+  let i4_0  : BitVec 5 := imm.extractLsb' 0 5
+  (i11_5 ++ rs2 ++ rs1 ++ funct3 ++ i4_0 ++ opcode).cast rfl
+
+/-- Encode one `RMInst64` to its 32-bit RV64 word: a register instruction by
+    `encodeWord64`, `ADDI` and `LD` as I-type, `SD` as S-type, `BNE` as B-type. The
+    immediates are truncated to their fields (12 bits; 13 bits for `BNE`); the round trip
+    `SailRiscvDecoder64.roundtrip_RMInst64` is stated for immediates within the fields. -/
+def encodeMWord64 : RMInst64 → Option (BitVec 32)
+  | .alu i => encodeWord64 i
+  | .addi d a imm => some (encI (BitVec.ofInt 12 imm) (reg5 a) 0b000 (reg5 d) 0x13)
+  | .ld d base off => some (encI (BitVec.ofInt 12 off) (reg5 base) 0b011 (reg5 d) 0x03)
+  | .sd src base off => some (encStype (BitVec.ofInt 12 off) (reg5 src) (reg5 base) 0b011 0x23)
+  | .bne a b off => some (encB (BitVec.ofInt 13 off) (reg5 b) (reg5 a) 0b001 0x63)
+
+/-- Encode one `RMInst64` to its little-endian bytes (`[]` for `LI`). -/
+def encodeRMInst64 (i : RMInst64) : List (BitVec 8) :=
+  match encodeMWord64 i with
+  | some w => wordLE w
+  | none => []
+
+/-- Encode a block of `RMInst64`: the concatenation of the instruction bytes. -/
+def encodeRMBlock64 (block : List RMInst64) : List (BitVec 8) :=
+  block.flatMap encodeRMInst64
+
 /-! ## 2. Differential-validation pins against `riscv64-linux-gnu-as`
 
 The encoder's words pinned to the exact 32-bit words `riscv64-linux-gnu-as`

@@ -1450,4 +1450,375 @@ theorem roundtrip_abranch_bne (alloc : GpAlloc) (l : String) (resolve : ALabel �
   simp only [encodeABranch, BCond.num]
   rw [roundtrip_bcond 1 _ (by decide) hres]; simp [rebuildBranch]
 
+/-! ## The memory-and-branch fragment `BMInst`
+
+`decodeMemWord` reads the 64-bit forms of the Arm ARM classes "Add/subtract (immediate)"
+(`[31:23] = 1 op 0 100010`, `sh = 0`), the compare `SUBS XZR, Xn, Xm` ("Add/subtract
+(shifted register)" with `[31:21] = 11101011000`, `imm6 = 0`, `Rd = 31`), "Load/store
+register (unsigned immediate)" (`[31:22] = 1111100101` LDR, `1111100100` STR), "Load/store
+register (register offset)" (`[31:21] = 11111000011` LDR, `11111000001` STR, with
+`option:S:[11:10] = 011 1 10`), "Compare and branch (immediate)" (`[31:24] = 10110101`,
+`CBNZ` 64-bit) and "Conditional branch (immediate)" (`[31:24] = 01010100`, `o0 = 0`). The
+block decoder `decodeBM64` tries these classes first and falls back to the `BInst` decoder
+`decodeB64` with `rebuildB`. -/
+
+/-- The decoded class of a memory-and-branch word. -/
+inductive M64Class where
+  /-- ADD (`op = 0`) or SUB (`op = 1`) immediate. -/
+  | addsubImm (op : Nat)
+  /-- `CMP Xn, Xm`. -/
+  | cmp
+  /-- LDR (`opc = 1`) or STR (`opc = 0`), unsigned scaled immediate. -/
+  | ldstImm (opc : Nat)
+  /-- LDR (`opc = 1`) or STR (`opc = 0`), scaled register offset. -/
+  | ldstReg (opc : Nat)
+  /-- `CBNZ Xt`. -/
+  | cbnz
+  /-- `B.cond` with the 4-bit condition. -/
+  | bcond (cond : Nat)
+  deriving DecidableEq, Repr
+
+/-- A decoded memory-and-branch word: the class and the register and immediate fields. -/
+structure DecM64 where
+  cls : M64Class
+  rt : Nat := 0
+  rn : Nat := 0
+  rm : Nat := 0
+  imm : Nat := 0
+deriving DecidableEq, Repr
+
+/-- `op_code[21:10]` — the 12-bit immediate of the immediate forms. -/
+def fldImm12 (w : Nat) : Nat := (w / 0x400) % 0x1000
+
+/-- Decode a 32-bit word of the memory-and-branch classes. -/
+def decodeMemWord (w : Nat) : Option DecM64 :=
+  if w / 0x800000 = 0x122 then
+    some { cls := .addsubImm 0, rt := fldRd w, rn := fldRn w, imm := fldImm12 w }
+  else if w / 0x800000 = 0x1a2 then
+    some { cls := .addsubImm 1, rt := fldRd w, rn := fldRn w, imm := fldImm12 w }
+  else if w / 0x200000 = 0x758 ∧ fldImms w = 0 ∧ fldRd w = 31 then
+    some { cls := .cmp, rn := fldRn w, rm := fldRm w }
+  else if w / 0x400000 = 0x3e5 then
+    some { cls := .ldstImm 1, rt := fldRd w, rn := fldRn w, imm := fldImm12 w }
+  else if w / 0x400000 = 0x3e4 then
+    some { cls := .ldstImm 0, rt := fldRd w, rn := fldRn w, imm := fldImm12 w }
+  else if w / 0x200000 = 0x7c3 ∧ fldImms w = 0x1e then
+    some { cls := .ldstReg 1, rt := fldRd w, rn := fldRn w, rm := fldRm w }
+  else if w / 0x200000 = 0x7c1 ∧ fldImms w = 0x1e then
+    some { cls := .ldstReg 0, rt := fldRd w, rn := fldRn w, rm := fldRm w }
+  else if w / 0x1000000 = 0xb5 then
+    some { cls := .cbnz, rt := fldRd w, imm := fldImm19 w }
+  else if w / 0x1000000 = 0x54 ∧ (w / 0x10) % 2 = 0 then
+    some { cls := .bcond (fldCond4 w), imm := fldImm19 w }
+  else none
+
+/-- The signed byte offset of a 19-bit word-offset field. -/
+def sImm19 (imm : Nat) : Int :=
+  if imm < 0x40000 then (imm : Int) * 4 else ((imm : Int) - 0x80000) * 4
+
+/-- The A64 condition of a 4-bit condition number among `EQ`, `NE`, `CS`, `CC`. -/
+def bcondOfNum : Nat → Option BCond
+  | 0 => some .eq
+  | 1 => some .ne
+  | 2 => some .cs
+  | 3 => some .cc
+  | _ => none
+
+/-- Rebuild a `BMInst` from a decoded memory-and-branch word. -/
+def rebuildM (dr : DecM64) : Option BMInst :=
+  match dr.cls with
+  | .addsubImm 0 => some (.addi (xRegName dr.rt) (xRegName dr.rn) dr.imm)
+  | .addsubImm 1 => some (.subi (xRegName dr.rt) (xRegName dr.rn) dr.imm)
+  | .addsubImm _ => none
+  | .cmp => some (.cmp (xRegName dr.rn) (xRegName dr.rm))
+  | .ldstImm 1 => some (.ldr (xRegName dr.rt) (xRegName dr.rn) dr.imm)
+  | .ldstImm 0 => some (.str (xRegName dr.rt) (xRegName dr.rn) dr.imm)
+  | .ldstImm _ => none
+  | .ldstReg 1 => some (.ldrr (xRegName dr.rt) (xRegName dr.rn) (xRegName dr.rm))
+  | .ldstReg 0 => some (.strr (xRegName dr.rt) (xRegName dr.rn) (xRegName dr.rm))
+  | .ldstReg _ => none
+  | .cbnz => some (.cbnz (xRegName dr.rt) (sImm19 dr.imm))
+  | .bcond c => (bcondOfNum c).map (fun c => .bcond c (sImm19 dr.imm))
+
+/-- **The decoder of the memory-and-branch fragment**: a word of the memory-and-branch
+    classes is rebuilt by `rebuildM`, any other word by `decodeB64` and `rebuildB`. -/
+def decodeBM64 (bs : List (BitVec 8)) : Option BMInst :=
+  match (leWord bs).bind decodeMemWord with
+  | some dr => rebuildM dr
+  | none => ((decodeB64 bs).bind rebuildB).map .alu
+
+/-- The signed field of `armImm19` recovers an aligned in-range byte offset. -/
+theorem sImm19_armImm19 (off : Int) (h4 : off % 4 = 0) (hlo : -0x100000 ≤ off)
+    (hhi : off < 0x100000) : sImm19 (armImm19 off) = off ∧ armImm19 off < 0x80000 := by
+  have hnn : 0 ≤ (off / 4) % 0x80000 := Int.emod_nonneg _ (by decide)
+  have hc : ((armImm19 off : Nat) : Int) = (off / 4) % 0x80000 := by
+    simp only [armImm19]; exact Int.toNat_of_nonneg hnn
+  unfold sImm19
+  constructor
+  · split <;> omega
+  · omega
+
+/-- **Word round trip of ADD/SUB (immediate).** -/
+theorem roundtrip_addsubImmX (op d n imm : Nat) (hop : op < 2) (hd : d < 32) (hn : n < 32)
+    (hi : imm < 0x1000) :
+    (leWord (encAddSubImmX op d n imm)).bind decodeMemWord
+      = some { cls := .addsubImm op, rt := d, rn := n, imm := imm } := by
+  have hw : 0x91000000 + (op % 2) * 0x40000000 + (imm % 0x1000) * 0x400
+      + (n % 32) * 0x20 + (d % 32) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hop, Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hn,
+      Nat.mod_eq_of_lt hd]; omega
+  rw [encAddSubImmX, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hop,
+    Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt hd]
+  set W := 0x91000000 + op * 0x40000000 + imm * 0x400 + n * 0x20 + d with hW
+  have hrd : fldRd W = d := by simp only [fldRd, hW]; omega
+  have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
+  have him : fldImm12 W = imm := by simp only [fldImm12, hW]; omega
+  unfold decodeMemWord
+  rw [hrd, hrn, him]
+  rcases (show op = 0 ∨ op = 1 by omega) with rfl | rfl
+  · rw [if_pos (by simp only [hW]; omega)]
+  · rw [if_neg (by simp only [hW]; omega), if_pos (by simp only [hW]; omega)]
+
+/-- **Word round trip of `CMP` (`SUBS XZR, Xn, Xm`).** -/
+theorem roundtrip_cmpX (n m : Nat) (hn : n < 32) (hm : m < 32) :
+    (leWord (encAddSubX 1 1 31 n m)).bind decodeMemWord
+      = some { cls := .cmp, rn := n, rm := m } := by
+  have hw : 0x80000000 + (1 % 2) * 0x40000000 + (1 % 2) * 0x20000000 + 0x0b000000
+      + (m % 32) * 0x10000 + (n % 32) * 0x20 + (31 % 32) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hm, Nat.mod_eq_of_lt hn]; omega
+  rw [encAddSubX, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hm,
+    Nat.mod_eq_of_lt hn]
+  set W := 0x80000000 + 1 % 2 * 0x40000000 + 1 % 2 * 0x20000000 + 0x0b000000
+    + m * 0x10000 + n * 0x20 + 31 % 32 with hW
+  have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
+  have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
+  unfold decodeMemWord
+  rw [if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
+    if_pos (by simp only [fldImms, fldRd, hW]; omega), hrn, hrm]
+
+/-- **Word round trip of LDR/STR (unsigned immediate).** -/
+theorem roundtrip_ldStImmX (opc t n imm : Nat) (hop : opc < 2) (ht : t < 32) (hn : n < 32)
+    (hi : imm < 0x1000) :
+    (leWord (encLdStImmX opc t n imm)).bind decodeMemWord
+      = some { cls := .ldstImm opc, rt := t, rn := n, imm := imm } := by
+  have hw : 0xf9000000 + (opc % 2) * 0x400000 + (imm % 0x1000) * 0x400
+      + (n % 32) * 0x20 + (t % 32) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hop, Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hn,
+      Nat.mod_eq_of_lt ht]; omega
+  rw [encLdStImmX, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hop,
+    Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt ht]
+  set W := 0xf9000000 + opc * 0x400000 + imm * 0x400 + n * 0x20 + t with hW
+  have hrd : fldRd W = t := by simp only [fldRd, hW]; omega
+  have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
+  have him : fldImm12 W = imm := by simp only [fldImm12, hW]; omega
+  unfold decodeMemWord
+  rw [hrd, hrn, him, if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
+    if_neg (by simp only [hW]; omega)]
+  rcases (show opc = 0 ∨ opc = 1 by omega) with rfl | rfl
+  · rw [if_neg (by simp only [hW]; omega), if_pos (by simp only [hW]; omega)]
+  · rw [if_pos (by simp only [hW]; omega)]
+
+/-- **Word round trip of LDR/STR (register offset, `LSL #3`).** -/
+theorem roundtrip_ldStRegX (opc t n m : Nat) (hop : opc < 2) (ht : t < 32) (hn : n < 32)
+    (hm : m < 32) :
+    (leWord (encLdStRegX opc t n m)).bind decodeMemWord
+      = some { cls := .ldstReg opc, rt := t, rn := n, rm := m } := by
+  have hw : 0xf8207800 + (opc % 2) * 0x400000 + (m % 32) * 0x10000
+      + (n % 32) * 0x20 + (t % 32) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hop, Nat.mod_eq_of_lt hm, Nat.mod_eq_of_lt hn,
+      Nat.mod_eq_of_lt ht]; omega
+  rw [encLdStRegX, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hop,
+    Nat.mod_eq_of_lt hm, Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt ht]
+  set W := 0xf8207800 + opc * 0x400000 + m * 0x10000 + n * 0x20 + t with hW
+  have hrd : fldRd W = t := by simp only [fldRd, hW]; omega
+  have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
+  have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
+  have hsx : fldImms W = 0x1e := by simp only [fldImms, hW]; omega
+  unfold decodeMemWord
+  rw [hrd, hrn, hrm, hsx, if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
+    if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
+    if_neg (by simp only [hW]; omega)]
+  have k : W / 0x200000 = 0x7c1 + 2 * opc := by simp only [hW]; omega
+  rw [k]
+  rcases (show opc = 0 ∨ opc = 1 by omega) with rfl | rfl
+  · rw [if_neg (by decide), if_pos (by decide)]
+  · rw [if_pos (by decide)]
+
+/-- **Word round trip of `CBNZ Xt` (64-bit).** -/
+theorem roundtrip_cbnzX (t imm : Nat) (ht : t < 32) (hi : imm < 0x80000) :
+    (leWord (encCbnzX t imm)).bind decodeMemWord
+      = some { cls := .cbnz, rt := t, imm := imm } := by
+  have hw : 0xb5000000 + (imm % 0x80000) * 0x20 + (t % 32) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt ht]; omega
+  rw [encCbnzX, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hi,
+    Nat.mod_eq_of_lt ht]
+  set W := 0xb5000000 + imm * 0x20 + t with hW
+  have hrd : fldRd W = t := by simp only [fldRd, hW]; omega
+  have him : fldImm19 W = imm := by simp only [fldImm19, hW]; omega
+  unfold decodeMemWord
+  rw [hrd, him]
+  repeat rw [if_neg (by simp only [hW]; omega)]
+  rw [if_pos (by simp only [hW]; omega)]
+
+/-- **Word round trip of `B.cond`.** -/
+theorem roundtrip_bcondM (cond imm : Nat) (hc : cond < 16) (hi : imm < 0x80000) :
+    (leWord (encBcond cond imm)).bind decodeMemWord
+      = some { cls := .bcond cond, imm := imm } := by
+  have hw : 0x54000000 + (imm % 0x80000) * 0x20 + (cond % 16) < 2 ^ 32 := by
+    rw [Nat.mod_eq_of_lt hc, Nat.mod_eq_of_lt hi]; omega
+  rw [encBcond, leWord_wordLE _ hw, Option.bind_some, Nat.mod_eq_of_lt hc,
+    Nat.mod_eq_of_lt hi]
+  set W := 0x54000000 + imm * 0x20 + cond with hW
+  have hcd : fldCond4 W = cond := by simp only [fldCond4, hW]; omega
+  have him : fldImm19 W = imm := by simp only [fldImm19, hW]; omega
+  unfold decodeMemWord
+  rw [hcd, him]
+  repeat rw [if_neg (by simp only [hW]; omega)]
+  rw [if_pos (by simp only [hW]; omega)]
+
+/-- A word of the 64-bit shifted-register ADD, SUB, AND, ORR or EOR groups is outside the
+    memory-and-branch classes. -/
+theorem decodeMemWord_none (w : Nat)
+    (h : w / 0x1000000 = 0x8a ∨ w / 0x1000000 = 0x8b ∨ w / 0x1000000 = 0xaa
+      ∨ w / 0x1000000 = 0xca ∨ w / 0x1000000 = 0xcb) :
+    decodeMemWord w = none := by
+  unfold decodeMemWord
+  repeat rw [if_neg (by omega)]
+
+/-- The shifted-register ADD and SUB words (`S = 0`) are outside the memory-and-branch
+    classes. -/
+theorem memNone_addsubX (op d n m : Nat) :
+    (leWord (encAddSubX op 0 d n m)).bind decodeMemWord = none := by
+  have hw : 0x80000000 + (op % 2) * 0x40000000 + (0 % 2) * 0x20000000 + 0x0b000000
+      + (m % 32) * 0x10000 + (n % 32) * 0x20 + (d % 32) < 2 ^ 32 := by omega
+  rw [encAddSubX, leWord_wordLE _ hw, Option.bind_some]
+  exact decodeMemWord_none _ (by omega)
+
+/-- The shifted-register AND words are outside the memory-and-branch classes. -/
+theorem memNone_andX (d n m : Nat) : (leWord (encAndX d n m)).bind decodeMemWord = none := by
+  have hw : 0x8a000000 + (m % 32) * 0x10000 + (n % 32) * 0x20 + (d % 32) < 2 ^ 32 := by omega
+  rw [encAndX, leWord_wordLE _ hw, Option.bind_some]
+  exact decodeMemWord_none _ (by omega)
+
+/-- The shifted-register ORR words (and the `MOV` alias) are outside the memory-and-branch
+    classes. -/
+theorem memNone_orrX (d n m : Nat) : (leWord (encOrrX d n m)).bind decodeMemWord = none := by
+  have hw : 0xaa000000 + (m % 32) * 0x10000 + (n % 32) * 0x20 + (d % 32) < 2 ^ 32 := by omega
+  rw [encOrrX, leWord_wordLE _ hw, Option.bind_some]
+  exact decodeMemWord_none _ (by omega)
+
+/-- The shifted-register EOR words are outside the memory-and-branch classes. -/
+theorem memNone_eorX (d n m : Nat) : (leWord (encEorX d n m)).bind decodeMemWord = none := by
+  have hw : 0xca000000 + (m % 32) * 0x10000 + (n % 32) * 0x20 + (d % 32) < 2 ^ 32 := by omega
+  rw [encEorX, leWord_wordLE _ hw, Option.bind_some]
+  exact decodeMemWord_none _ (by omega)
+
+/-- A word of the memory-and-branch classes decodes through `rebuildM`. -/
+theorem decodeBM64_of_mem {bs : List (BitVec 8)} {dr : DecM64}
+    (h : (leWord bs).bind decodeMemWord = some dr) : decodeBM64 bs = rebuildM dr := by
+  unfold decodeBM64; rw [h]
+
+/-- **Round trip of a register instruction**: a `BInst` whose word is outside the
+    memory-and-branch classes and round-trips through `decodeB64` and `rebuildB`
+    round-trips through `decodeBM64` as `.alu`. -/
+theorem roundtrip_bminst_alu (alloc : GpAlloc) (i i' : BInst)
+    (hm : (leWord (encodeBInst alloc i)).bind decodeMemWord = none)
+    (hi : (decodeB64 (encodeBInst alloc i)).bind rebuildB = some i') :
+    decodeBM64 (encodeBMInst alloc (.alu i)) = some (.alu i') := by
+  simp only [encodeBMInst, decodeBM64, hm, hi, Option.map_some]
+
+/-- **Round trip of `ADD Xd, Xn, #imm`.** -/
+theorem roundtrip_bminst_addi (alloc : GpAlloc) (d a : String) (imm : Nat)
+    (hd : xRegName (xNum (gpOf alloc d)) = gpOf alloc d)
+    (ha : xRegName (xNum (gpOf alloc a)) = gpOf alloc a) (hi : imm < 0x1000) :
+    decodeBM64 (encodeBMInst alloc (.addi d a imm))
+      = some (.addi (gpOf alloc d) (gpOf alloc a) imm) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.addi d a imm))
+    (roundtrip_addsubImmX 0 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) hi)]
+  simp only [rebuildM]; rw [hd, ha]
+
+/-- **Round trip of `SUB Xd, Xn, #imm`.** -/
+theorem roundtrip_bminst_subi (alloc : GpAlloc) (d a : String) (imm : Nat)
+    (hd : xRegName (xNum (gpOf alloc d)) = gpOf alloc d)
+    (ha : xRegName (xNum (gpOf alloc a)) = gpOf alloc a) (hi : imm < 0x1000) :
+    decodeBM64 (encodeBMInst alloc (.subi d a imm))
+      = some (.subi (gpOf alloc d) (gpOf alloc a) imm) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.subi d a imm))
+    (roundtrip_addsubImmX 1 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) hi)]
+  simp only [rebuildM]; rw [hd, ha]
+
+/-- **Round trip of `CMP Xn, Xm`.** -/
+theorem roundtrip_bminst_cmp (alloc : GpAlloc) (a b : String)
+    (ha : xRegName (xNum (gpOf alloc a)) = gpOf alloc a)
+    (hb : xRegName (xNum (gpOf alloc b)) = gpOf alloc b) :
+    decodeBM64 (encodeBMInst alloc (.cmp a b)) = some (.cmp (gpOf alloc a) (gpOf alloc b)) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.cmp a b))
+    (roundtrip_cmpX _ _ (xNum_lt_32 _) (xNum_lt_32 _))]
+  simp only [rebuildM]; rw [ha, hb]
+
+/-- **Round trip of `LDR Xt, [Xn, #8·pimm]`.** -/
+theorem roundtrip_bminst_ldr (alloc : GpAlloc) (t n : String) (pimm : Nat)
+    (ht : xRegName (xNum (gpOf alloc t)) = gpOf alloc t)
+    (hn : xRegName (xNum (gpOf alloc n)) = gpOf alloc n) (hi : pimm < 0x1000) :
+    decodeBM64 (encodeBMInst alloc (.ldr t n pimm))
+      = some (.ldr (gpOf alloc t) (gpOf alloc n) pimm) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.ldr t n pimm))
+    (roundtrip_ldStImmX 1 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) hi)]
+  simp only [rebuildM]; rw [ht, hn]
+
+/-- **Round trip of `STR Xt, [Xn, #8·pimm]`.** -/
+theorem roundtrip_bminst_str (alloc : GpAlloc) (t n : String) (pimm : Nat)
+    (ht : xRegName (xNum (gpOf alloc t)) = gpOf alloc t)
+    (hn : xRegName (xNum (gpOf alloc n)) = gpOf alloc n) (hi : pimm < 0x1000) :
+    decodeBM64 (encodeBMInst alloc (.str t n pimm))
+      = some (.str (gpOf alloc t) (gpOf alloc n) pimm) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.str t n pimm))
+    (roundtrip_ldStImmX 0 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) hi)]
+  simp only [rebuildM]; rw [ht, hn]
+
+/-- **Round trip of `LDR Xt, [Xn, Xm, LSL #3]`.** -/
+theorem roundtrip_bminst_ldrr (alloc : GpAlloc) (t n m : String)
+    (ht : xRegName (xNum (gpOf alloc t)) = gpOf alloc t)
+    (hn : xRegName (xNum (gpOf alloc n)) = gpOf alloc n)
+    (hm : xRegName (xNum (gpOf alloc m)) = gpOf alloc m) :
+    decodeBM64 (encodeBMInst alloc (.ldrr t n m))
+      = some (.ldrr (gpOf alloc t) (gpOf alloc n) (gpOf alloc m)) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.ldrr t n m))
+    (roundtrip_ldStRegX 1 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) (xNum_lt_32 _))]
+  simp only [rebuildM]; rw [ht, hn, hm]
+
+/-- **Round trip of `STR Xt, [Xn, Xm, LSL #3]`.** -/
+theorem roundtrip_bminst_strr (alloc : GpAlloc) (t n m : String)
+    (ht : xRegName (xNum (gpOf alloc t)) = gpOf alloc t)
+    (hn : xRegName (xNum (gpOf alloc n)) = gpOf alloc n)
+    (hm : xRegName (xNum (gpOf alloc m)) = gpOf alloc m) :
+    decodeBM64 (encodeBMInst alloc (.strr t n m))
+      = some (.strr (gpOf alloc t) (gpOf alloc n) (gpOf alloc m)) := by
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.strr t n m))
+    (roundtrip_ldStRegX 0 _ _ _ (by decide) (xNum_lt_32 _) (xNum_lt_32 _) (xNum_lt_32 _))]
+  simp only [rebuildM]; rw [ht, hn, hm]
+
+/-- **Round trip of `CBNZ Xt, off`** for a byte offset that is a multiple of 4 within
+    `±1 MiB`. -/
+theorem roundtrip_bminst_cbnz (alloc : GpAlloc) (t : String) (off : Int)
+    (ht : xRegName (xNum (gpOf alloc t)) = gpOf alloc t) (h4 : off % 4 = 0)
+    (hlo : -0x100000 ≤ off) (hhi : off < 0x100000) :
+    decodeBM64 (encodeBMInst alloc (.cbnz t off)) = some (.cbnz (gpOf alloc t) off) := by
+  obtain ⟨hs, hlt⟩ := sImm19_armImm19 off h4 hlo hhi
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.cbnz t off))
+    (roundtrip_cbnzX _ _ (xNum_lt_32 _) hlt)]
+  simp only [rebuildM]; rw [ht, hs]
+
+/-- **Round trip of `B.cond off`** for a byte offset that is a multiple of 4 within
+    `±1 MiB`. -/
+theorem roundtrip_bminst_bcond (alloc : GpAlloc) (c : BCond) (off : Int) (h4 : off % 4 = 0)
+    (hlo : -0x100000 ≤ off) (hhi : off < 0x100000) :
+    decodeBM64 (encodeBMInst alloc (.bcond c off)) = some (.bcond c off) := by
+  obtain ⟨hs, hlt⟩ := sImm19_armImm19 off h4 hlo hhi
+  have hc : c.num < 16 := by cases c <;> decide
+  rw [decodeBM64_of_mem (bs := encodeBMInst alloc (.bcond c off))
+    (roundtrip_bcondM _ _ hc hlt)]
+  simp only [rebuildM, hs]
+  cases c <;> rfl
+
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder

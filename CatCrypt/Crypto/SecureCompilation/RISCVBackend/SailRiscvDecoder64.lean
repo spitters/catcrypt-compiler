@@ -41,6 +41,10 @@ scaffolding, the RV64 analogue of the prologue). The capstone
 for `SLLI`/`SRLI`, a shift count within the RV64 6-bit `shamt` field
 (`sh < 64`).
 
+Section 4 decodes the memory-and-branch fragment `RMInst64` (`LD`, `SD`, `BNE`, `ADDI` with a
+non-zero immediate) with `riscvDecodeM64` and proves its round trip `roundtrip_RMInst64`
+for immediates within their fields.
+
 **Register ceiling:** `emittedRegs = {zero, a0..a7, t0..t6}` (16 names). The
 64-bit backend's own allocator pool, `RiscvAsmPrinter64.gpPool64`, is wider — it
 also allocates the callee-saved `s2..s11` (25 names total, since the bignum body
@@ -216,6 +220,147 @@ theorem roundtrip_RInst64 (i : RInst64)
         D.2.1, D.2.2.2.2.2.1]
       rw [regName_reg5 d hdst, regName_reg5 s hs]
       simp
+
+/-! ## 4. The memory-and-branch fragment
+
+`riscvDecodeM64` decodes the `RMInst64` words: `LD` (opcode `0x03`, funct3 `0b011`), `SD`
+(opcode `0x23`, funct3 `0b011`), `BNE` (opcode `0x63`, funct3 `0b001`), `ADDI` with a non-zero
+immediate (opcode `0x13`, funct3 `0`), and every other word through `riscvDecode64` as a
+register instruction. The immediates are read sign-extended (`BitVec.toInt`), as the sail
+clauses `sign_extend(imm)` do. -/
+
+/-- The 12-bit S-type immediate `imm[11:5] @ imm[4:0]` of a word. -/
+def sImmS (w : BitVec 32) : BitVec 12 :=
+  (w.extractLsb' 25 7 ++ w.extractLsb' 7 5).cast rfl
+
+/-- The S-type slices of `encStype` recover opcode, funct3, rs1, rs2 and the immediate. -/
+theorem encStype_slices (imm : BitVec 12) (rs2 rs1 : BitVec 5) (funct3 : BitVec 3)
+    (opcode : BitVec 7) :
+    sOpcode (encStype imm rs2 rs1 funct3 opcode) = opcode ∧
+    sFunct3 (encStype imm rs2 rs1 funct3 opcode) = funct3 ∧
+    sRs1    (encStype imm rs2 rs1 funct3 opcode) = rs1 ∧
+    sRs2    (encStype imm rs2 rs1 funct3 opcode) = rs2 ∧
+    sImmS   (encStype imm rs2 rs1 funct3 opcode) = imm := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
+    simp only [sOpcode, sFunct3, sRs1, sRs2, sImmS, encStype] <;> bv_decide
+
+/-- Decode a 32-bit RV64 word to an `RMInst64`, per the sail-riscv `encdec` clauses of
+    `LOAD`, `STORE`, `BTYPE` and `ITYPE`, and `riscvDecode64` otherwise. -/
+def riscvDecodeM64 (w : BitVec 32) : Option RMInst64 :=
+  if fOpcode w = 0x03 then
+    if fFunct3 w = 0b011 then some (.ld (regName (fRd w)) (regName (fRs1 w)) (sImm12 w).toInt)
+    else none
+  else if fOpcode w = 0x23 then
+    if fFunct3 w = 0b011 then some (.sd (regName (fRs2 w)) (regName (fRs1 w)) (sImmS w).toInt)
+    else none
+  else if fOpcode w = 0x63 then
+    if fFunct3 w = 0b001 then some (.bne (regName (fRs1 w)) (regName (fRs2 w)) (sImmB w).toInt)
+    else none
+  else if fOpcode w = 0x13 ∧ fFunct3 w = 0 ∧ fImm12 w ≠ 0 then
+    some (.addi (regName (fRd w)) (regName (fRs1 w)) (sImm12 w).toInt)
+  else (riscvDecode64 w).map .alu
+
+/-- A word `riscvDecode64` decodes is decoded by `riscvDecodeM64` as the same register
+    instruction. -/
+theorem riscvDecodeM64_of_decode64 {w : BitVec 32} {i : RInst64}
+    (h : riscvDecode64 w = some i) : riscvDecodeM64 w = some (.alu i) := by
+  unfold riscvDecodeM64
+  by_cases h3 : fOpcode w = 0x03
+  · simp [riscvDecode64, h3] at h
+  by_cases h23 : fOpcode w = 0x23
+  · simp [riscvDecode64, h23] at h
+  by_cases h63 : fOpcode w = 0x63
+  · simp [riscvDecode64, h63] at h
+  rw [if_neg h3, if_neg h23, if_neg h63]
+  by_cases hA : fOpcode w = 0x13 ∧ fFunct3 w = 0 ∧ fImm12 w ≠ 0
+  · obtain ⟨h13, hf, hi⟩ := hA
+    simp [riscvDecode64, h13, hf, hi] at h
+  · rw [if_neg hA, h]; rfl
+
+/-- The sign-extended 12-bit immediate of an in-range integer is the integer. -/
+theorem toInt_ofInt12 {i : Int} (h1 : -2048 ≤ i) (h2 : i < 2048) :
+    (BitVec.ofInt 12 i).toInt = i := by
+  rw [BitVec.toInt_ofInt]; exact Int.bmod_eq_of_le h1 h2
+
+/-- The B-type immediate field keeps an even 13-bit offset. -/
+theorem ofInt13_and_even {i : Int} (he : i % 2 = 0) :
+    (BitVec.ofInt 13 i) &&& 0x1ffe = BitVec.ofInt 13 i := by
+  have key : ∀ x : BitVec 13, x &&& 1 = 0 → x &&& 0x1ffe = x := by intro x; bv_decide
+  apply key
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_and, BitVec.toNat_ofInt, show (1 : BitVec 13).toNat = 1 from rfl,
+    Nat.and_one_is_mod, show (0 : BitVec 13).toNat = 0 from rfl]
+  omega
+
+/-- The immediate-range side condition of the round trip: 12-bit signed for `ADDI` (and
+    non-zero, `ADDI rd, rs, 0` being `MV`), `LD`, `SD`; 13-bit signed and even for `BNE`. -/
+def RMImmOK : RMInst64 → Prop
+  | .alu _ => True
+  | .addi _ _ imm => -2048 ≤ imm ∧ imm < 2048 ∧ imm ≠ 0
+  | .ld _ _ off => -2048 ≤ off ∧ off < 2048
+  | .sd _ _ off => -2048 ≤ off ∧ off < 2048
+  | .bne _ _ off => -4096 ≤ off ∧ off < 4096 ∧ off % 2 = 0
+
+/-- The registers an `RMInst64` names. -/
+def rminst64Regs : RMInst64 → List String
+  | .alu i => (rinst64DstSrcs i).1 :: (rinst64DstSrcs i).2
+  | .addi d a _ => [d, a]
+  | .ld d base _ => [d, base]
+  | .sd src base _ => [src, base]
+  | .bne a b _ => [a, b]
+
+/-- **The round trip of the memory-and-branch fragment**: for an `RMInst64` with its
+    registers in `emittedRegs`, its immediates in range, and a register instruction under
+    the side conditions of `roundtrip_RInst64`, decoding the encoder word with
+    `riscvDecodeM64` recovers the instruction. -/
+theorem roundtrip_RMInst64 (i : RMInst64)
+    (hregs : ∀ r ∈ rminst64Regs i, r ∈ emittedRegs) (himm : RMImmOK i)
+    (halu : ∀ j, i = .alu j → (∀ d imm, j ≠ .li d imm) ∧
+      (∀ d a sh, j = .srli d a sh ∨ j = .slli d a sh → sh < 64)) :
+    riscvDecodeM64 (encodeMWord64 i).get! = some i := by
+  cases i with
+  | alu j =>
+      obtain ⟨hnl, hsh⟩ := halu j rfl
+      exact riscvDecodeM64_of_decode64 (roundtrip_RInst64 j hnl
+        ⟨hregs _ (by simp [rminst64Regs]), fun r hr => hregs r (by simp [rminst64Regs, hr])⟩ hsh)
+  | addi d a imm =>
+      obtain ⟨h1, h2, h0⟩ := himm
+      have hd := hregs d (by simp [rminst64Regs]); have ha := hregs a (by simp [rminst64Regs])
+      obtain ⟨ho, hrd, hf, hrs, hi⟩ := encI_slices (BitVec.ofInt 12 imm) (reg5 a) 0b000 (reg5 d) 0x13
+      have hne : (BitVec.ofInt 12 imm).toNat ≠ 0 := by
+        intro hz
+        apply h0
+        rw [← toInt_ofInt12 h1 h2, BitVec.toInt_eq_toNat_cond, hz]; simp
+      simp only [encodeMWord64, Option.get!, riscvDecodeM64, fOpcode, fFunct3, fRd, fRs1, fImm12,
+        ho, hrd, hf, hrs, hi, regName_reg5 d hd, regName_reg5 a ha, toInt_ofInt12 h1 h2]
+      rw [if_neg (by decide), if_neg (by decide), if_neg (by decide),
+        if_pos ⟨by decide, by decide, hne⟩]
+  | ld d base off =>
+      obtain ⟨h1, h2⟩ := himm
+      have hd := hregs d (by simp [rminst64Regs]); have hb := hregs base (by simp [rminst64Regs])
+      obtain ⟨ho, hrd, hf, hrs, hi⟩ :=
+        encI_slices (BitVec.ofInt 12 off) (reg5 base) 0b011 (reg5 d) 0x03
+      simp only [encodeMWord64, Option.get!, riscvDecodeM64, fOpcode, fFunct3, fRd, fRs1,
+        ho, hrd, hf, hrs, hi, regName_reg5 d hd, regName_reg5 base hb, toInt_ofInt12 h1 h2]
+      rfl
+  | sd src base off =>
+      obtain ⟨h1, h2⟩ := himm
+      have hs := hregs src (by simp [rminst64Regs]); have hb := hregs base (by simp [rminst64Regs])
+      obtain ⟨ho, hf, hrs1, hrs2, hi⟩ :=
+        encStype_slices (BitVec.ofInt 12 off) (reg5 src) (reg5 base) 0b011 0x23
+      simp only [encodeMWord64, Option.get!, riscvDecodeM64, fOpcode, fFunct3, fRs1, fRs2,
+        ho, hf, hrs1, hrs2, hi, regName_reg5 src hs, regName_reg5 base hb, toInt_ofInt12 h1 h2]
+      rfl
+  | bne a b off =>
+      obtain ⟨h1, h2, he⟩ := himm
+      have ha := hregs a (by simp [rminst64Regs]); have hb := hregs b (by simp [rminst64Regs])
+      obtain ⟨ho, hf, hrs1, hrs2, hi⟩ :=
+        encB_slices (BitVec.ofInt 13 off) (reg5 b) (reg5 a) 0b001 0x63
+      have hti : (BitVec.ofInt 13 off).toInt = off := by
+        rw [BitVec.toInt_ofInt]; exact Int.bmod_eq_of_le h1 h2
+      simp only [encodeMWord64, Option.get!, riscvDecodeM64, fOpcode, fFunct3, fRs1, fRs2,
+        ho, hf, hrs1, hrs2, hi, ofInt13_and_even he, hti, regName_reg5 a ha, regName_reg5 b hb]
+      rfl
 
 /-- Doc-anchor pilot: the `SLTU` carry comparator round-trips (the instruction
     that makes RISC-V's flagless carry chain work). -/

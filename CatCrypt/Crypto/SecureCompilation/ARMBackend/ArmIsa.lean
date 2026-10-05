@@ -46,6 +46,12 @@ function and the counter advance of the `Lprog` run stated.
 * `armSel`, `armSel_decode`, `armSel_step`: the selection, its byte round trip and its
   one-step simulation.
 * `decodeBBlock`, `arm_asm`: the block decoder and the Asm lemma of the register fragment.
+* `armSelM`, `armSelM_decode`, `armSelM_step`: the selection of the memory fragment (array
+  loads and stores, `ADD`/`SUB` immediate), its byte round trip and its one-step simulation
+  under the memory relation `MemRel` and the array layout `ArrsSep`.
+* `decodeBMBlock`, `arm_asm_mem`: the block decoder and the Asm lemma of the memory fragment.
+* `armCond_cbnz`, `armCond_bne`: the branch conditions of `Lcond` as the `CBNZ` and `B.NE`
+  tests of a related machine state.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmIsa
@@ -415,5 +421,515 @@ theorem arm_asm (P : LprogM) :
         obtain ⟨a2, b2, c2, d2, e2, g2, k2⟩ := f2
         refine ⟨a2.trans a1, b2.trans b1, c2.trans c1, d2.trans d1, e2.trans e1, g2.trans g1, ?_⟩
         rw [k2, k1, List.length_cons]; omega
+
+/-! ## The memory fragment
+
+The selection `armSelM` adds to the register fragment the array load `LOADIDX` and store
+`STOREIDX` at width 64 (one `LDR`/`STR` with the scaled register offset each) and the 64-bit
+`ADD`/`SUB` with an immediate (`ADD`/`SUB` immediate). The arrays `arrs` of sizes `sz` are
+named by the registers holding their addresses; the selection refuses a register write to
+an array base. `MemRel` relates the `Lprog` arrays to the machine memory, `ArrsSep` states
+the array layout, and `arm_asm_mem` is the Asm lemma of the fragment. -/
+
+open CatCrypt.Crypto.SecureCompilation.MachineMem64
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
+
+/-- An array cell of shape `(64, n)` reads back at that shape. -/
+theorem getArr_of_larr {s : LstateM} {base : String} {n : Nat} {arr : Fin n → BitVec 64}
+    (h : s.larr base = ⟨64, n, arr⟩) : s.getArr base 64 n = some arr := by
+  unfold LstateM.getArr
+  rw [h]
+  simp
+
+/-- **The core step of an array load** `d := base[idx]` at width 64. -/
+theorem coreStep_loadIdx (P : LprogM) (d base idx : String) (sc n : Nat) (s : LstateMF)
+    (arr : Fin n → BitVec 64) (vi : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
+    (hvi : s.prog.base.reg.getW idx 64 = some vi) :
+    coreStep P (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], .load 64 n) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setReg d (stackGet arr vi.toNat)).nextPc } } := by
+  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], MemTag.load 64 n)
+      = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, loadStruct?, if_true, hga, hvi, Option.map_some]
+
+/-- **The core step of an array store** `base[idx] := v` at width 64. -/
+theorem coreStep_storeIdx (P : LprogM) (base idx v : String) (sc n : Nat) (s : LstateMF)
+    (arr : Fin n → BitVec 64) (vi vv : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
+    (hvi : s.prog.base.reg.getW idx 64 = some vi) (hvv : s.prog.base.reg.getW v 64 = some vv) :
+    coreStep P (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v], .store 64 n) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setArr base (stackSet arr vi.toNat vv)).nextPc } } := by
+  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
+      MemTag.store 64 n) = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, storeStruct?, if_true, hga, hvi, hvv, Option.map_some]
+
+/-- **The core step of a 64-bit register-immediate operation** `d := a ⊙ k` for `ADD`, `SUB`:
+    the destination takes `a ⊙ k`. -/
+theorem coreStep_binopImm (P : LprogM) (bop : JasminBinOp) (hbop : bop = .add ∨ bop = .sub)
+    (d a : String) (k : Nat) (s : LstateMF) (va : BitVec 64)
+    (hva : s.prog.base.reg.getW a 64 = some va) :
+    coreStep P (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc } } := by
+  have hstrip := stripWidthTag_withWidthTag_binOpName' 64 bop
+  have hs : sarStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
+      = none := by
+    simp only [sarStruct?, hstrip]; rcases hbop with rfl | rfl <;> rfl
+  have hstep : lsemStepMem
+      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s.prog.base
+      = some ((s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc) := by
+    rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
+      lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ hs]
+    simp only [lsemStepN, readReg_of_getW hva, evalOperandN, hstrip,
+      applyOpnN_binOpName, Option.map_some]
+    rfl
+  unfold coreStep
+  have hmov : movRegArgs?
+      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], MemTag.reg none)
+      = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩, hstep]
+  rfl
+
+/-- On an in-range index the update `stackSet` changes that cell only. -/
+theorem stackSet_eq_of_lt {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) (hk : k < n)
+    (v : BitVec w) : stackSet arr k v = fun j => if j.val = k then v else arr j := by
+  cases n with
+  | zero => omega
+  | succ m =>
+      funext j
+      simp only [stackSet, Fin.ext_iff, Nat.mod_eq_of_lt hk]
+
+/-- The `ADD`/`SUB` immediate of an operation, among `ADD` and `SUB`. -/
+def armImmOf? (opn : String) (d a : String) (k : Nat) : Option BMInst :=
+  if opn = withWidthTag 64 (binOpName .add) then some (.addi d a k)
+  else if opn = withWidthTag 64 (binOpName .sub) then some (.subi d a k)
+  else none
+
+/-- **The AArch64 selection of the memory fragment** over the arrays `arrs` of sizes `sz`:
+    `LOADIDX` at width 64 becomes `LDR d, [base, idx, LSL #3]`, `STOREIDX` at width 64
+    becomes `STR v, [base, idx, LSL #3]`, a 64-bit `ADD`/`SUB` of a register and an immediate
+    below `2¹²` becomes `ADD`/`SUB` immediate, and an instruction of `armSel` becomes that
+    instruction. The registers are in `armRegs`, the array bases in `arrs`, and no register
+    write has an array base as destination. -/
+def armSelM (arrs : List String) (sz : String → Nat) : LinstrRM → Option BMInst
+  | (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx _], .load 64 n) =>
+      if armRegs.contains d && armRegs.contains idx && armRegs.contains base
+          && arrs.contains base && !arrs.contains d && n == sz base then
+        some (.ldrr d base idx)
+      else none
+  | (.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx _, .reg v], .store 64 n) =>
+      if dst == base && armRegs.contains v && armRegs.contains idx
+          && armRegs.contains base && arrs.contains base && n == sz base then
+        some (.strr v base idx)
+      else none
+  | (.Lopn [.reg d] opn [.reg a, .imm k], .reg none) =>
+      if armRegs.contains d && armRegs.contains a && !arrs.contains d && decide (k < 0x1000)
+      then armImmOf? opn d a k
+      else none
+  | (.Lopn [.reg d] opn srcs, tag) =>
+      if arrs.contains d then none else (armSel (.Lopn [.reg d] opn srcs, tag)).map .alu
+  | _ => none
+
+theorem not_mem_of_contains_false {l : List String} {a : String} (h : l.contains a = false) :
+    a ∉ l := fun hm => by rw [List.contains_iff_mem.mpr hm] at h; cases h
+
+/-- The inversion of `armImmOf?`. -/
+theorem armImmOf?_inv {opn d a : String} {k : Nat} {bi : BMInst}
+    (h : armImmOf? opn d a k = some bi) :
+    (opn = withWidthTag 64 (binOpName .add) ∧ bi = .addi d a k)
+      ∨ (opn = withWidthTag 64 (binOpName .sub) ∧ bi = .subi d a k) := by
+  unfold armImmOf? at h
+  split at h
+  · cases h; exact Or.inl ⟨by assumption, rfl⟩
+  · split at h
+    · cases h; exact Or.inr ⟨by assumption, rfl⟩
+    · cases h
+
+/-- **The inversion of the memory selection.** -/
+theorem armSelM_inv {arrs : List String} {sz : String → Nat} {i : LinstrRM} {bi : BMInst}
+    (h : armSelM arrs sz i = some bi) :
+    (∃ d base idx sc, i = (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], .load 64 (sz base))
+        ∧ d ∈ armRegs ∧ idx ∈ armRegs ∧ base ∈ armRegs ∧ base ∈ arrs ∧ d ∉ arrs
+        ∧ bi = .ldrr d base idx)
+    ∨ (∃ base idx v sc, i = (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
+          .store 64 (sz base))
+        ∧ v ∈ armRegs ∧ idx ∈ armRegs ∧ base ∈ armRegs ∧ base ∈ arrs ∧ bi = .strr v base idx)
+    ∨ (∃ bop d a k, i = (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k],
+          .reg none)
+        ∧ d ∈ armRegs ∧ a ∈ armRegs ∧ d ∉ arrs ∧ k < 0x1000
+        ∧ ((bop = .add ∧ bi = .addi d a k) ∨ (bop = .sub ∧ bi = .subi d a k)))
+    ∨ (∃ d opn srcs tag bb, i = (.Lopn [.reg d] opn srcs, tag) ∧ d ∉ arrs
+        ∧ armSel i = some bb ∧ bi = .alu bb) := by
+  unfold armSelM at h
+  split at h
+  · rename_i d base idx sc n
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, List.contains_iff_mem, Bool.not_eq_true', beq_iff_eq] at hc
+      cases h
+      obtain ⟨⟨⟨⟨⟨hd, hi⟩, hb⟩, ha⟩, hda⟩, hn⟩ := hc
+      subst hn
+      exact Or.inl ⟨d, base, idx, sc, rfl, hd, hi, hb, ha, not_mem_of_contains_false hda, rfl⟩
+    · cases h
+  · rename_i dst base idx sc v n
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at hc
+      cases h
+      obtain ⟨⟨⟨⟨⟨hdb, hv⟩, hi⟩, hb⟩, ha⟩, hn⟩ := hc
+      subst hdb hn
+      exact Or.inr (Or.inl ⟨dst, idx, v, sc, rfl, hv, hi, hb, ha, rfl⟩)
+    · cases h
+  · rename_i d opn a k
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, List.contains_iff_mem, Bool.not_eq_true',
+        decide_eq_true_eq] at hc
+      obtain ⟨⟨⟨hd, ha⟩, hda⟩, hk⟩ := hc
+      rcases armImmOf?_inv h with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+      · exact Or.inr (Or.inr (Or.inl ⟨.add, d, a, k, rfl, hd, ha,
+          not_mem_of_contains_false hda, hk, Or.inl ⟨rfl, rfl⟩⟩))
+      · exact Or.inr (Or.inr (Or.inl ⟨.sub, d, a, k, rfl, hd, ha,
+          not_mem_of_contains_false hda, hk, Or.inr ⟨rfl, rfl⟩⟩))
+    · cases h
+  · rename_i d opn srcs tag _ _ _
+    split at h
+    · cases h
+    · rename_i hc
+      obtain ⟨bb, hbb, rfl⟩ := Option.map_eq_some_iff.mp h
+      exact Or.inr (Or.inr (Or.inr ⟨d, opn, srcs, tag, bb, rfl,
+        not_mem_of_contains_false (Bool.eq_false_iff.mpr hc), hbb, rfl⟩))
+  · cases h
+
+/-! ### The byte round trip of the memory fragment -/
+
+/-- The word of a register instruction of `armSel` is outside the memory-and-branch classes. -/
+theorem armSel_memNone {i : LinstrRM} {bi : BInst} (h : armSel i = some bi) :
+    (leWord (encodeBInst armAlloc bi)).bind decodeMemWord = none := by
+  rcases armSel_inv h with ⟨o, d, a, b, -, ho, -, -, -, hbi⟩ | ⟨d, a, -, -, -, -, rfl⟩
+  · simp only [armBops, List.mem_cons, List.not_mem_nil, or_false] at ho
+    rcases ho with rfl | rfl | rfl | rfl | rfl <;> simp only [armBinst, Option.some.injEq] at hbi <;>
+      subst hbi <;> simp only [encodeBInst]
+    · exact memNone_addsubX _ _ _ _
+    · exact memNone_addsubX _ _ _ _
+    · exact memNone_andX _ _ _
+    · exact memNone_orrX _ _ _
+    · exact memNone_eorX _ _ _
+  · simp only [encodeBInst]; exact memNone_orrX _ _ _
+
+/-- **The byte round trip of a selected instruction of the memory fragment.** -/
+theorem armSelM_decode {arrs : List String} {sz : String → Nat} {i : LinstrRM} {bi : BMInst}
+    (h : armSelM arrs sz i = some bi) : decodeBM64 (encodeBMInst armAlloc bi) = some bi := by
+  rcases armSelM_inv h with ⟨d, base, idx, sc, -, hd, hi, hb, -, -, rfl⟩
+    | ⟨base, idx, v, sc, -, hv, hi, hb, -, rfl⟩
+    | ⟨bop, d, a, k, -, hd, ha, -, hk, (⟨-, rfl⟩ | ⟨-, rfl⟩)⟩
+    | ⟨d, opn, srcs, tag, bb, -, -, hbb, rfl⟩
+  · rw [roundtrip_bminst_ldrr armAlloc d base idx (xRegName_xNum_armRegs hd)
+      (xRegName_xNum_armRegs hb) (xRegName_xNum_armRegs hi),
+      gpOf_armAlloc hd, gpOf_armAlloc hb, gpOf_armAlloc hi]
+  · rw [roundtrip_bminst_strr armAlloc v base idx (xRegName_xNum_armRegs hv)
+      (xRegName_xNum_armRegs hb) (xRegName_xNum_armRegs hi),
+      gpOf_armAlloc hv, gpOf_armAlloc hb, gpOf_armAlloc hi]
+  · rw [roundtrip_bminst_addi armAlloc d a k (xRegName_xNum_armRegs hd)
+      (xRegName_xNum_armRegs ha) hk, gpOf_armAlloc hd, gpOf_armAlloc ha]
+  · rw [roundtrip_bminst_subi armAlloc d a k (xRegName_xNum_armRegs hd)
+      (xRegName_xNum_armRegs ha) hk, gpOf_armAlloc hd, gpOf_armAlloc ha]
+  · exact roundtrip_bminst_alu armAlloc bb bb (armSel_memNone hbb) (armSel_decode hbb)
+
+/-- Decode a byte stream of 4-byte AArch64 words with `decodeBM64`; `none` on a word outside
+    the decoder or a trailing partial word. -/
+def decodeBMBlock : List (BitVec 8) → Option (List BMInst)
+  | [] => some []
+  | b0 :: b1 :: b2 :: b3 :: rest =>
+      (decodeBM64 [b0, b1, b2, b3]).bind (fun i => (decodeBMBlock rest).map (fun is => i :: is))
+  | _ => none
+
+/-- A four-byte word followed by a stream decodes as the word followed by the stream. -/
+theorem decodeBMBlock_append (w rest : List (BitVec 8)) (hw : w.length = 4) :
+    decodeBMBlock (w ++ rest) =
+      (decodeBM64 w).bind (fun i => (decodeBMBlock rest).map (fun is => i :: is)) := by
+  match w, hw with
+  | [b0, b1, b2, b3], _ => rfl
+
+/-- **The block round trip of the memory fragment.** -/
+theorem armSelM_decodeBlock {arrs : List String} {sz : String → Nat} :
+    ∀ (is : List LinstrRM) (bs : List BMInst), is.mapM (armSelM arrs sz) = some bs →
+      decodeBMBlock (encodeBMBlock armAlloc bs) = some bs
+  | [], bs, h => by
+      simp only [List.mapM_nil, pure, Option.some.injEq] at h
+      subst h; rfl
+  | i :: is, bs, h => by
+      simp only [List.mapM_cons, bind, pure] at h
+      obtain ⟨bi, hi, h'⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨bs', hs, h''⟩ := Option.bind_eq_some_iff.mp h'
+      cases h''
+      simp only [encodeBMBlock, List.flatMap_cons]
+      rw [decodeBMBlock_append _ _ (encodeBMInst_length armAlloc bi), armSelM_decode hi]
+      simp only [Option.bind_some]
+      have ih := armSelM_decodeBlock is bs' hs
+      simp only [encodeBMBlock] at ih
+      rw [ih]
+      rfl
+
+/-! ### The memory relation and the step simulation -/
+
+/-- **The memory relation**: each array `a` of `arrs` has shape `(64, sz a)` in the `Lprog`
+    state, and the machine memory holds it at the address in the register `a`. -/
+def MemRel (arrs : List String) (sz : String → Nat) (s : LstateMF) (b : BMState) : Prop :=
+  ∀ a ∈ arrs, ∃ arr : Fin (sz a) → BitVec 64,
+    s.prog.base.larr a = ⟨64, sz a, arr⟩ ∧ ArrAt b.mem (b.regs.get a) (sz a) arr
+
+/-- **The array layout**: the array bases are registers of `armRegs`, each array has at most
+    `2⁶¹` doublewords, and the cells of distinct arrays at the addresses `g a` are separated. -/
+def ArrsSep (arrs : List String) (sz : String → Nat) (g : String → BitVec 64) : Prop :=
+  (∀ a ∈ arrs, a ∈ armRegs) ∧ (∀ a ∈ arrs, 8 * sz a ≤ 2 ^ 64) ∧
+  ∀ a ∈ arrs, ∀ a' ∈ arrs, a ≠ a' → ∀ (j : Fin (sz a)) (k : Fin (sz a')),
+    MemSep (g a + BitVec.ofNat 64 (8 * j.val)) (g a' + BitVec.ofNat 64 (8 * k.val))
+
+/-- **The index bound** of an instruction under the register values `g`: the index of an
+    array load or store is below the size of its array. -/
+def IdxBound (sz : String → Nat) (i : LinstrRM) (g : String → BitVec 64) : Prop :=
+  (∀ d base idx, loadStruct? i.1 = some (d, base, idx) → (g idx).toNat < sz base) ∧
+  (∀ d base idx v, storeStruct? i.1 = some (d, base, idx, v) → (g idx).toNat < sz base)
+
+/-- The frame of a step of the memory fragment: the zero flag, the function, the word memory
+    and the carry and overflow flags are unchanged and the counter advances by `n`. -/
+def FrameM (n : Nat) (s s' : LstateMF) : Prop :=
+  s'.zf = s.zf ∧ s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.lmem = s.prog.base.lmem
+    ∧ s'.prog.base.cf = s.prog.base.cf ∧ s'.prog.base.of = s.prog.base.of
+    ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
+
+/-- The `armIsa` step of an instruction of the alphabet that is not a compare is the core
+    step. -/
+theorem armIsa_step_core (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (hok : mnemOk armBases i.fst = true) (hctl : isCtl i.fst = false)
+    (hcmp : armCmp i s = none) : armIsa.step P i s = coreStep P i s := by
+  rw [armIsa_step]
+  simp only [subsetStep, hctl, hok, hcmp, Bool.false_eq_true, if_false, if_true]
+
+/-- A register write outside the array bases leaves the memory relation. -/
+theorem MemRel_setReg {arrs : List String} {sz : String → Nat} {s : LstateMF} {b : BMState}
+    (hmem : MemRel arrs sz s b) (d : String) (hda : d ∉ arrs) (hd : d ∈ armRegs)
+    (v : BitVec 64) (b' : BMState) (hregs : b'.regs = b.regs.set d v) (hm : b'.mem = b.mem)
+    (w : Nat) (vw : BitVec w) :
+    MemRel arrs sz { s with prog := { s.prog with base := (s.prog.base.setReg d vw).nextPc } }
+      b' := by
+  intro a ha
+  obtain ⟨arr, harr, hat⟩ := hmem a ha
+  have had : a ≠ d := fun e => hda (e ▸ ha)
+  refine ⟨arr, by simpa using harr, ?_⟩
+  rw [hm, hregs, get_set_armRegs _ hd, if_neg had]
+  exact hat
+
+/-- **The one-step simulation of the memory selection**: from related states with in-range
+    indices, the `armIsa` step of a selected instruction succeeds, and the result is related
+    to the `BMInst` step on `armRegs` and on the arrays, with the array base registers
+    unchanged and the frame of one step. -/
+theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i : LinstrRM}
+    {bi : BMInst} (h : armSelM arrs sz i = some bi) (s : LstateMF) (b : BMState)
+    (hrel : RegRel armRegs s b.regs.get) (hmem : MemRel arrs sz s b)
+    (hsep : ArrsSep arrs sz b.regs.get) (hbd : IdxBound sz i b.regs.get) :
+    ∃ s', armIsa.step P i s = some s' ∧ RegRel armRegs s' (evalBMInst b bi).regs.get
+      ∧ MemRel arrs sz s' (evalBMInst b bi)
+      ∧ (∀ a ∈ arrs, (evalBMInst b bi).regs.get a = b.regs.get a) ∧ FrameM 1 s s' := by
+  rcases armSelM_inv h with ⟨d, base, idx, sc, rfl, hd, hi, hb, ha, hda, rfl⟩
+    | ⟨base, idx, v, sc, rfl, hv, hi, hb, ha, rfl⟩
+    | ⟨bop, d, a, k, rfl, hd, ha, hda, hk, hbop⟩
+    | ⟨d, opn, srcs, tag, bb, rfl, hda, hbb, rfl⟩
+  · -- the array load
+    have hlt : (b.regs.get idx).toNat < sz base := hbd.1 d base idx (by simp [loadStruct?])
+    obtain ⟨arr, harr, hat⟩ := hmem base ha
+    have hval : read64 b.mem (armAddrR b.regs base idx) = stackGet arr (b.regs.get idx).toNat := by
+      rw [armAddrR, shiftLeft_three_eq, hat ⟨_, hlt⟩, ← stackGet_id arr ⟨_, hlt⟩]
+    refine ⟨{ s with prog := { s.prog with
+        base := (s.prog.base.setReg d (stackGet arr (b.regs.get idx).toNat)).nextPc } },
+      ?_, ?_, ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · rw [armIsa_step_core P _ s (by simp only [mnemOk]; decide +kernel) rfl rfl]
+      exact coreStep_loadIdx P d base idx sc (sz base) s arr _ harr (hrel.getW hi)
+    · refine RegRel_setReg hrel d _ (fun r _ => ?_)
+      simp only [evalBMInst]
+      rw [get_set_armRegs _ hd, hval]
+    · exact MemRel_setReg hmem d hda hd (read64 b.mem (armAddrR b.regs base idx))
+        (evalBMInst b (.ldrr d base idx)) rfl rfl _ _
+    · intro x hx
+      simp only [evalBMInst]
+      rw [get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+  · -- the array store
+    have hlt : (b.regs.get idx).toNat < sz base :=
+      hbd.2 base base idx v (by simp [storeStruct?])
+    obtain ⟨arr, harr, hat⟩ := hmem base ha
+    have hfmem : (evalBMInst b (.strr v base idx)).mem
+        = write64 b.mem (b.regs.get base + BitVec.ofNat 64 (8 * (b.regs.get idx).toNat))
+            (b.regs.get v) := by
+      simp only [evalBMInst, armAddrR, shiftLeft_three_eq]
+    have hcmp : armCmp (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
+        .store 64 (sz base)) s = none := by
+      simp only [armCmp, cmpArgs?]; rw [if_neg (by decide +kernel)]
+    refine ⟨{ s with prog := { s.prog with
+        base := (s.prog.base.setArr base
+          (stackSet arr (b.regs.get idx).toNat (b.regs.get v))).nextPc } },
+      ?_, ?_, ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · rw [armIsa_step_core P _ s (by simp only [mnemOk]; decide +kernel) rfl hcmp]
+      exact coreStep_storeIdx P base idx v sc (sz base) s arr _ _ harr (hrel.getW hi)
+        (hrel.getW hv)
+    · intro r hr
+      simp only [LstateM.reg_nextPc, LstateM.reg_setArr, LstateN.lvm_nextPc]
+      exact hrel r hr
+    · intro x hx
+      show ∃ arr', _ ∧ ArrAt (evalBMInst b (.strr v base idx)).mem (b.regs.get x) _ arr'
+      rw [hfmem]
+      by_cases hxb : x = base
+      · subst hxb
+        refine ⟨stackSet arr (b.regs.get idx).toNat (b.regs.get v), by simp, ?_⟩
+        rw [stackSet_eq_of_lt arr _ hlt]
+        exact ArrAt_write_cell hat (hsep.2.1 x hx) _ hlt _
+      · obtain ⟨arr', harr', hat'⟩ := hmem x hx
+        refine ⟨arr', by simpa [hxb] using harr', ?_⟩
+        exact ArrAt_write_sep hat' _ _
+          (fun j => hsep.2.2 base ha x hx (Ne.symm hxb) ⟨_, hlt⟩ j)
+    · intro x _; rfl
+  · -- the register-immediate operation
+    have hbop' : bop = .add ∨ bop = .sub := by
+      rcases hbop with ⟨rfl, -⟩ | ⟨rfl, -⟩
+      · exact Or.inl rfl
+      · exact Or.inr rfl
+    have hval : (evalBMInst b bi).regs = b.regs.set d (bop.apply (b.regs.get a) (BitVec.ofNat 64 k)) := by
+      rcases hbop with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> rfl
+    have hok : mnemOk armBases
+        (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k]) = true := by
+      simp only [mnemOk, stripWidthTag_withWidthTag_binOpName' 64 bop]
+      rcases hbop' with rfl | rfl <;> decide
+    have hcmp : armCmp (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k],
+        .reg none) s = none := by
+      simp only [armCmp, cmpArgs?]
+      rcases hbop' with rfl | rfl <;> rw [if_neg (by decide +kernel)]
+    refine ⟨{ s with prog := { s.prog with
+        base := (s.prog.base.setReg d (bop.apply (b.regs.get a) (BitVec.ofNat 64 k))).nextPc } },
+      ?_, ?_, ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · rw [armIsa_step_core P _ s hok rfl hcmp]
+      exact coreStep_binopImm P bop hbop' d a k s _ (hrel.getW ha)
+    · refine RegRel_setReg hrel d _ (fun r _ => ?_)
+      rw [hval, get_set_armRegs _ hd]
+    · exact MemRel_setReg hmem d hda hd _ _ hval (by rcases hbop with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> rfl)
+        _ _
+    · intro x hx
+      rw [hval, get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+  · -- a register instruction of `armSel`
+    obtain ⟨s', hs', hrel', fr⟩ := armSel_step P hbb s b.regs hrel
+    obtain ⟨f1, f2, f3, f4, f5, f6, f7⟩ := fr
+    have hdst : ∃ w, evalBInst b.regs bb = b.regs.set d w ∧ d ∈ armRegs := by
+      rcases armSel_inv hbb with ⟨o, d', a, c, he, ho, hd', -, -, hbi⟩
+        | ⟨d', a, tag', he, hd', -, rfl⟩
+      · simp only [Prod.mk.injEq, LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq,
+          and_true] at he
+        obtain ⟨⟨rfl, -, -⟩, -⟩ := he
+        simp only [armBops, List.mem_cons, List.not_mem_nil, or_false] at ho
+        rcases ho with rfl | rfl | rfl | rfl | rfl <;>
+          simp only [armBinst, Option.some.injEq] at hbi <;> subst hbi <;>
+          exact ⟨_, rfl, hd'⟩
+      · simp only [Prod.mk.injEq, LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq,
+          and_true] at he
+        obtain ⟨⟨rfl, -, -⟩, -⟩ := he
+        exact ⟨_, rfl, hd'⟩
+    obtain ⟨w, hw, hd⟩ := hdst
+    have hbase : ∀ x ∈ arrs, (evalBMInst b (.alu bb)).regs.get x = b.regs.get x := by
+      intro x hx
+      rw [evalBMInst_alu_regs, hw, get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+    refine ⟨s', hs', hrel', ?_, hbase, f1, f2, f4, f5, f6, f7⟩
+    intro x hx
+    obtain ⟨arr, harr, hat⟩ := hmem x hx
+    refine ⟨arr, by rw [f3]; exact harr, ?_⟩
+    rw [hbase x hx]; exact hat
+
+/-- The array layout depends on the base registers only. -/
+theorem ArrsSep_congr {arrs : List String} {sz : String → Nat} {g g' : String → BitVec 64}
+    (h : ArrsSep arrs sz g) (hg : ∀ a ∈ arrs, g' a = g a) : ArrsSep arrs sz g' := by
+  refine ⟨h.1, h.2.1, fun a ha a' ha' hne j k => ?_⟩
+  rw [hg a ha, hg a' ha']
+  exact h.2.2 a ha a' ha' hne j k
+
+/-- **The index bounds of a block**: along the machine run of the selected block, each array
+    load or store has its index below the size of its array. -/
+def BoundsOK (arrs : List String) (sz : String → Nat) : List LinstrRM → BMState → Prop
+  | [], _ => True
+  | i :: is, b => IdxBound sz i b.regs.get ∧
+      ∀ bi, armSelM arrs sz i = some bi → BoundsOK arrs sz is (evalBMInst b bi)
+
+/-- **The Asm lemma of the AArch64 memory fragment.** For a block `is` that the selection
+    `armSelM arrs sz` maps to `bs`: the bytes `encodeBMBlock armAlloc bs` decode to `bs`, and
+    from an `LstateMF` related to a machine state `b` on `armRegs` and on the arrays, with the
+    array layout `ArrsSep` and in-range indices along the run, the `armIsa` run of `is`
+    succeeds and ends related to the `BMInst` run `runBMBlock b bs` on `armRegs` and on the
+    arrays, with the zero, carry and overflow flags, the function and the word memory
+    unchanged and the counter advanced by the length of the block. -/
+theorem arm_asm_mem (P : LprogM) (arrs : List String) (sz : String → Nat) :
+    ∀ (is : List LinstrRM) (bs : List BMInst), is.mapM (armSelM arrs sz) = some bs →
+      ∀ (s : LstateMF) (b : BMState), RegRel armRegs s b.regs.get → MemRel arrs sz s b →
+        ArrsSep arrs sz b.regs.get → BoundsOK arrs sz is b →
+        decodeBMBlock (encodeBMBlock armAlloc bs) = some bs ∧
+        ∃ s', armIsa.runL P is s = some s' ∧ RegRel armRegs s' (runBMBlock b bs).regs.get
+          ∧ MemRel arrs sz s' (runBMBlock b bs) ∧ FrameM is.length s s'
+  | [], bs, h, s, b, hrel, hmem, _, _ => by
+      simp only [List.mapM_nil, pure, Option.some.injEq] at h
+      subst h
+      exact ⟨rfl, s, rfl, hrel, hmem, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  | i :: is, bs, h, s, b, hrel, hmem, hsep, hbd => by
+      refine ⟨armSelM_decodeBlock _ _ h, ?_⟩
+      simp only [List.mapM_cons, bind, pure] at h
+      obtain ⟨bi, hi, h'⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨bs', hs, h''⟩ := Option.bind_eq_some_iff.mp h'
+      cases h''
+      obtain ⟨hb1, hbr⟩ := hbd
+      obtain ⟨s1, hs1, hrel1, hmem1, hbase1, f1⟩ := armSelM_step P hi s b hrel hmem hsep hb1
+      obtain ⟨-, s2, hs2, hrel2, hmem2, f2⟩ := arm_asm_mem P arrs sz is bs' hs s1
+        (evalBMInst b bi) hrel1 hmem1 (ArrsSep_congr hsep hbase1) (hbr bi hi)
+      refine ⟨s2, ?_, hrel2, hmem2, ?_⟩
+      · simp only [Isa.runL, hs1, Option.bind_some, hs2]
+      · obtain ⟨a1, b1, d1, e1, g1, k1⟩ := f1
+        obtain ⟨a2, b2, d2, e2, g2, k2⟩ := f2
+        refine ⟨a2.trans a1, b2.trans b1, d2.trans d1, e2.trans e1, g2.trans g1, ?_⟩
+        rw [k2, k1, List.length_cons]; omega
+
+/-! ### The branch conditions -/
+
+/-- **The `CBNZ` condition**: for a register of `armRegs`, the `armIsa` branch condition of
+    `Lcond (.reg r)` is the `CBNZ` test `r ≠ 0` of a related machine state, and the `CBNZ`
+    step takes the branch exactly when it holds. -/
+theorem armCond_cbnz (s : LstateMF) (b : BMState) (hrel : RegRel armRegs s b.regs.get)
+    {r : String} (hr : r ∈ armRegs) (off : Int) :
+    armCond s (.reg r) = decide (b.regs.get r ≠ 0)
+      ∧ (evalBMInst b (.cbnz r off)).pc
+          = if armCond s (.reg r) then b.pc + BitVec.ofInt 64 off else b.pc + 4 := by
+  have hz : r ≠ "Z" ∧ r ≠ "NZ" := by
+    have hall : ∀ x ∈ armRegs, x ≠ "Z" ∧ x ≠ "NZ" := by decide
+    exact hall r hr
+  have hc : armCond s (.reg r) = decide (b.regs.get r ≠ 0) := by
+    unfold armCond
+    split
+    · rename_i he; cases he; exact absurd rfl hz.1
+    · rename_i he; cases he; exact absurd rfl hz.2
+    · simp only [condNZ, evalOperandN, hrel.getW hr]; rfl
+  refine ⟨hc, ?_⟩
+  rw [hc]
+  simp only [evalBMInst, decide_eq_true_eq]
+
+/-- **The `B.NE` condition**: when the zero flags agree, the `armIsa` branch condition of
+    `Lcond (.reg "NZ")` is the `NE` condition of the machine state, and the `B.NE` step takes
+    the branch exactly when it holds. -/
+theorem armCond_bne (s : LstateMF) (b : BMState) (hz : s.zf = b.zf) (off : Int) :
+    armCond s (.reg "NZ") = BCond.ne.holds b.zf b.regs.cf
+      ∧ (evalBMInst b (.bcond .ne off)).pc
+          = if armCond s (.reg "NZ") then b.pc + BitVec.ofInt 64 off else b.pc + 4 := by
+  have hc : armCond s (.reg "NZ") = BCond.ne.holds b.zf b.regs.cf := by
+    simp only [armCond, BCond.holds, hz]
+  exact ⟨hc, by rw [hc]; rfl⟩
 
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmIsa

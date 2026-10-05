@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 
 module
 
+public import CatCrypt.Crypto.SecureCompilation.MachineMem64
+
 /-!
 # A Lean AArch64 (ARM64) machine model for the scalar GP-ALU subset
 
@@ -540,6 +542,123 @@ def runBBlock (s : BState) : List BInst → BState
 
 @[simp] theorem runBBlock_cons (s : BState) (i : BInst) (is : List BInst) :
     runBBlock s (i :: is) = runBBlock (evalBInst s i) is := rfl
+
+/-! ### Memory, the zero flag and branches
+
+`BMInst` extends `BInst` by the A64 instructions a word-array loop needs: `ADD`/`SUB` with a
+12-bit unsigned immediate (counter and index steps), the compare `CMP Xn, Xm`
+(`SUBS XZR, Xn, Xm`), the doubleword load and store `LDR`/`STR Xt` with an unsigned scaled
+immediate offset `[Xn, #8·pimm]` and with a scaled register offset `[Xn, Xm, LSL #3]`, and
+the branches `CBNZ Xt` and `B.cond`. `BMState` adds to `BState` the zero flag `Z`, the
+byte-addressed data memory `MachineMem64.Mem64` and the program counter. Branch offsets are
+signed byte displacements, multiples of 4 within the 19-bit word field. -/
+
+/-- An A64 instruction of the memory-and-branch fragment. -/
+inductive BMInst where
+  /-- A register instruction of `BInst`. -/
+  | alu (i : BInst)
+  /-- `ADD Xd, Xn, #imm` — add a 12-bit unsigned immediate. -/
+  | addi (d a : String) (imm : Nat)
+  /-- `SUB Xd, Xn, #imm` — subtract a 12-bit unsigned immediate. -/
+  | subi (d a : String) (imm : Nat)
+  /-- `CMP Xn, Xm` (`SUBS XZR, Xn, Xm`) — set `Z` to `Xn = Xm` and `C` to `Xm ≤ Xn` unsigned. -/
+  | cmp (a b : String)
+  /-- `LDR Xt, [Xn, #8·pimm]` — load the doubleword at `Xn + 8·pimm`. -/
+  | ldr (t n : String) (pimm : Nat)
+  /-- `STR Xt, [Xn, #8·pimm]` — store `Xt` as the doubleword at `Xn + 8·pimm`. -/
+  | str (t n : String) (pimm : Nat)
+  /-- `LDR Xt, [Xn, Xm, LSL #3]` — load the doubleword at `Xn + 8·Xm`. -/
+  | ldrr (t n m : String)
+  /-- `STR Xt, [Xn, Xm, LSL #3]` — store `Xt` as the doubleword at `Xn + 8·Xm`. -/
+  | strr (t n m : String)
+  /-- `CBNZ Xt, off` — branch by the byte offset `off` when `Xt ≠ 0`. -/
+  | cbnz (t : String) (off : Int)
+  /-- `B.cond off` — branch by the byte offset `off` when the condition holds. -/
+  | bcond (c : BCond) (off : Int)
+  deriving Repr, DecidableEq
+
+/-- The A64 machine state of the memory-and-branch fragment: the register file with the
+    carry flag, the zero flag, the data memory and the program counter (a byte address). -/
+structure BMState where
+  /-- The `X` register file and the carry flag `C`. -/
+  regs : BState
+  /-- The NZCV zero flag `Z`. -/
+  zf : Bool
+  /-- The byte-addressed data memory. -/
+  mem : MachineMem64.Mem64
+  /-- The program counter. -/
+  pc : BitVec 64
+
+/-- Whether an A64 condition holds for the zero flag `z` and the carry flag `c`. -/
+def BCond.holds : BCond → Bool → Bool → Bool
+  | .eq, z, _ => z
+  | .ne, z, _ => !z
+  | .cs, _, c => c
+  | .cc, _, c => !c
+
+/-- The effective address `Xn + 8·Xm` of the scaled register-offset form. -/
+def armAddrR (s : BState) (n m : String) : BitVec 64 := s.get n + (s.get m <<< 3)
+
+/-- The effective address `Xn + 8·pimm` of the unsigned scaled immediate-offset form. -/
+def armAddrI (s : BState) (n : String) (pimm : Nat) : BitVec 64 :=
+  s.get n + BitVec.ofNat 64 (8 * pimm)
+
+/-- **The step of one instruction of the memory-and-branch fragment.** A register
+    instruction runs `evalBInst`; the loads read `MachineMem64.read64` at the effective
+    address and the stores write `MachineMem64.write64` there; `CMP` writes `Z` and `C`;
+    `CBNZ` and `B.cond` add their offset to the program counter when taken. Every other
+    instruction advances the program counter by 4. -/
+def evalBMInst (s : BMState) : BMInst → BMState
+  | .alu i => { s with regs := evalBInst s.regs i, pc := s.pc + 4 }
+  | .addi d a imm =>
+      { s with regs := s.regs.set d (s.regs.get a + BitVec.ofNat 64 imm), pc := s.pc + 4 }
+  | .subi d a imm =>
+      { s with regs := s.regs.set d (s.regs.get a - BitVec.ofNat 64 imm), pc := s.pc + 4 }
+  | .cmp a b =>
+      { s with regs := { s.regs with cf := !((s.regs.get a).ult (s.regs.get b)) },
+               zf := s.regs.get a == s.regs.get b, pc := s.pc + 4 }
+  | .ldr t n pimm =>
+      { s with regs := s.regs.set t (MachineMem64.read64 s.mem (armAddrI s.regs n pimm)),
+               pc := s.pc + 4 }
+  | .str t n pimm =>
+      { s with mem := MachineMem64.write64 s.mem (armAddrI s.regs n pimm) (s.regs.get t),
+               pc := s.pc + 4 }
+  | .ldrr t n m =>
+      { s with regs := s.regs.set t (MachineMem64.read64 s.mem (armAddrR s.regs n m)),
+               pc := s.pc + 4 }
+  | .strr t n m =>
+      { s with mem := MachineMem64.write64 s.mem (armAddrR s.regs n m) (s.regs.get t),
+               pc := s.pc + 4 }
+  | .cbnz t off =>
+      { s with pc := if s.regs.get t ≠ 0 then s.pc + BitVec.ofInt 64 off else s.pc + 4 }
+  | .bcond c off =>
+      { s with pc := if c.holds s.zf s.regs.cf then s.pc + BitVec.ofInt 64 off else s.pc + 4 }
+
+/-- A straight-line fold of `evalBMInst`. -/
+def runBMBlock (s : BMState) : List BMInst → BMState
+  | [] => s
+  | i :: is => runBMBlock (evalBMInst s i) is
+
+@[simp] theorem runBMBlock_nil (s : BMState) : runBMBlock s [] = s := rfl
+
+@[simp] theorem runBMBlock_cons (s : BMState) (i : BMInst) (is : List BMInst) :
+    runBMBlock s (i :: is) = runBMBlock (evalBMInst s i) is := rfl
+
+theorem runBMBlock_append (xs ys : List BMInst) (s : BMState) :
+    runBMBlock s (xs ++ ys) = runBMBlock (runBMBlock s xs) ys := by
+  induction xs generalizing s with
+  | nil => rfl
+  | cons i is ih => simp only [List.cons_append, runBMBlock_cons]; exact ih _
+
+/-- On the registers, a register instruction of the fragment is the `BInst` step. -/
+theorem evalBMInst_alu_regs (s : BMState) (i : BInst) :
+    (evalBMInst s (.alu i)).regs = evalBInst s.regs i := rfl
+
+/-- The scaled register offset is the byte offset `8·Xm` modulo `2⁶⁴`. -/
+theorem shiftLeft_three_eq (x : BitVec 64) : x <<< 3 = BitVec.ofNat 64 (8 * x.toNat) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_shiftLeft, BitVec.toNat_ofNat, Nat.shiftLeft_eq]
+  rw [Nat.mul_comm]
 
 /-! ### Differential-validation pins for the bignum/field ops
 
