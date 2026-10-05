@@ -55,7 +55,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 /-- Checked unsigned addition returns, when it succeeds, the sum the runtime computes. -/
 theorem add_u_square {ty : UScalarTy} (x y : UScalar ty) :
@@ -217,25 +217,25 @@ theorem ge_i_square {ty : IScalarTy} (x y : IScalar ty) :
 /-- Unsigned `==` agrees with the runtime `Hax.beq`. -/
 theorem beq_u_square {ty : UScalarTy} (x y : UScalar ty) :
     RCompOk EncRel (lift (x == y)) (pure (Hax.beq (enc x) (enc y)) : Id Bool) := by
-  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.beq, beq_eq_decide, beq_eq_decide]
+  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.beq, Bool.beq_eq_decide_eq, Bool.beq_eq_decide_eq]
   exact decide_eq_decide.mpr enc_uscalar_inj.symm
 
 /-- Signed `==` agrees with the runtime `Hax.beq`. -/
 theorem beq_i_square {ty : IScalarTy} (x y : IScalar ty) :
     RCompOk EncRel (lift (x == y)) (pure (Hax.beq (enc x) (enc y)) : Id Bool) := by
-  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.beq, beq_eq_decide, beq_eq_decide]
+  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.beq, Bool.beq_eq_decide_eq, Bool.beq_eq_decide_eq]
   exact decide_eq_decide.mpr enc_iscalar_inj.symm
 
 /-- Unsigned `!=` agrees with the runtime `Hax.bne`. -/
 theorem bne_u_square {ty : UScalarTy} (x y : UScalar ty) :
     RCompOk EncRel (lift (x != y)) (pure (Hax.bne (enc x) (enc y)) : Id Bool) := by
-  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.bne, bne, beq_eq_decide, beq_eq_decide]
+  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.bne, bne, Bool.beq_eq_decide_eq, Bool.beq_eq_decide_eq]
   exact congrArg (!·) (decide_eq_decide.mpr enc_uscalar_inj.symm)
 
 /-- Signed `!=` agrees with the runtime `Hax.bne`. -/
 theorem bne_i_square {ty : IScalarTy} (x y : IScalar ty) :
     RCompOk EncRel (lift (x != y)) (pure (Hax.bne (enc x) (enc y)) : Id Bool) := by
-  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.bne, bne, beq_eq_decide, beq_eq_decide]
+  rw [rcompOk_lift, encRel_iff, enc_bool, Hax.bne, bne, Bool.beq_eq_decide_eq, Bool.beq_eq_decide_eq]
   exact congrArg (!·) (decide_eq_decide.mpr enc_iscalar_inj.symm)
 
 /-- Rust's `a && b` (the right operand evaluated only when `a` holds) agrees with

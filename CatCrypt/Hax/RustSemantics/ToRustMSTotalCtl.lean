@@ -271,8 +271,9 @@ theorem boundRange_toInt {κ : Type} {H : κ → AVal → Prop}
   · cases hb
     simp only [toRustMS] at he
     cases he
-    exact ⟨_, rfl, le_rfl, le_rfl⟩
-  · split_ifs at hb with hh
+    exact ⟨_, rfl, Int.le_refl _, Int.le_refl _⟩
+  · split at hb
+    case isFalse => cases hb
     cases hb
     obtain ⟨i, hl, hi, rfl⟩ := hv
     have hlt : i < 2 ^ UScalarTy.Usize.numBits := by
@@ -377,11 +378,11 @@ theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → P
       exact ⟨ρ', by simp [hw], hρ'.of_cons hfit⟩
     obtain ⟨ρ3, h3, hρ3⟩ := loopS_total
       (step := fun i ρ0 => toRustMS app body (ρ0.upd var (ctr i)) >>= fun s => RustM.ok s.2)
-      hstep (b' - a').toNat a'.toNat ρ2 le_rfl (by omega) hρ2
+      hstep (b' - a').toNat a'.toNat ρ2 (Nat.le_refl _) (by omega) hρ2
     refine ⟨.unit, ρ3, ?_, rfl, hρ3⟩
     have hb : b' ≤ 2 ^ System.Platform.numBits :=
-      le_trans (le_trans hub hhi) two_pow_32_le_usize
-    have ha0 : 0 ≤ a' := le_trans hlo hla
+      Int.le_trans (Int.le_trans hub hhi) two_pow_32_le_usize
+    have ha0 : 0 ≤ a' := Int.le_trans hlo hla
     simp [toRustMS, h1, h2, ha', hb', ha0, hb, h3]
 
 /-- **The reading returns a value on the fragment.** From an environment binding each name
@@ -486,7 +487,8 @@ theorem AppTyped.append {κ : Type} {H : κ → AVal → Prop}
     (h1 : AppTyped H s1 app) (h2 : AppTyped H s2 app) : AppTyped H (s1 ++ s2) app := by
   intro f ks k vs hs hvs
   rcases List.mem_append.mp hs with h | h
-  exacts [h1 f ks k vs h hvs, h2 f ks k vs h hvs]
+  · exact h1 f ks k vs h hvs
+  · exact h2 f ks k vs h hvs
 
 theorem appRt_Sub (a b : AVal) : appRt "Sub" [a, b] = appArith .sub a b := by
   rfl
@@ -569,7 +571,7 @@ theorem appRt_div_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat} (hB : 1 ≤ L2)
   refine ⟨.w ty z, by rw [appRt_Div]; exact appArith_w_ok (o := .div) hz, z, rfl,
     Nat.zero_le _, ?_⟩
   rw [hzv]
-  exact lt_of_le_of_lt (Nat.div_le_self _ _) hx2
+  exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hx2
 
 /-- The checked `Rem` of `appRt` on the ranges `[L₁, U₁)` and `[L₂, U₂)` returns a word in
     `[0, U₂)` when `1 ≤ L₂`, which excludes the divisor zero. -/
@@ -582,7 +584,7 @@ theorem appRt_rem_total {ty : UScalarTy} {L1 U1 L2 U2 : Nat} (hB : 1 ≤ L2)
   refine ⟨.w ty z, by rw [appRt_Rem]; exact appArith_w_ok (o := .rem) hz, z, rfl,
     Nat.zero_le _, ?_⟩
   rw [hzv]
-  exact lt_of_lt_of_le (Nat.mod_lt _ (by omega)) (by omega)
+  exact Nat.lt_of_lt_of_le (Nat.mod_lt _ (by omega)) (by omega)
 
 /-- **Checked addition on word ranges.** `appRt` is typed by every signature list of
     checked additions `Add : WI ty L₁ U₁ → WI ty L₂ U₂ → WI ty (L₁ + L₂) (U₁ + U₂)` with
@@ -726,13 +728,13 @@ theorem appRt_shl_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBi
   have hs : y.val < ty.numBits := by omega
   have hp : 2 ^ y.val ≤ 2 ^ (Ua - 1) := Nat.pow_le_pow_right (by omega) (by omega)
   have hlt : x.val * 2 ^ y.val < U * 2 ^ (Ua - 1) :=
-    lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_right hx2 (Nat.two_pow_pos _))
+    Nat.lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_right hx2 (Nat.two_pow_pos _))
       (Nat.mul_le_mul_left _ hp)
   let z : UScalar ty := ⟨x.bv.shiftLeft y.val⟩
   have hz : z.val = x.val * 2 ^ y.val := by
     show (x.bv <<< y.val).toNat = _
     rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
-    exact Nat.mod_eq_of_lt (lt_of_lt_of_le hlt hB)
+    exact Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le hlt hB)
   refine ⟨.w ty z, ?_, z, rfl, ?_, ?_⟩
   · rw [appRt_Shl_tag]
     have hsh : x <<< y = RustM.ok z := by
@@ -766,9 +768,9 @@ theorem appRt_shr_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBi
       rw [if_pos hs]
     simp [appWord, AVal.asW, WordOp.aen, hsh]
   · rw [hz]
-    exact Nat.div_le_div hx1 (Nat.pow_le_pow_right (by omega) (by omega)) (Nat.two_pow_pos _).ne'
+    exact Nat.div_le_div hx1 (Nat.pow_le_pow_right (by omega) (by omega)) (Nat.ne_of_gt (Nat.two_pow_pos _))
   · rw [hz]
-    exact lt_of_le_of_lt (Nat.div_le_self _ _) hx2
+    exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hx2
 
 /-- **Left shifts on word ranges.** `appRt` is typed by every signature list of tagged
     left shifts `Shl#t : WI ty L U → WI ty Lₐ Uₐ → WI ty (L * 2 ^ Lₐ) (U * 2 ^ (Uₐ - 1))`,

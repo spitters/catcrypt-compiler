@@ -67,7 +67,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 /-! ## Values and environments -/
 
@@ -331,7 +331,7 @@ theorem WordOp.leaf {ty : UScalarTy} {o : WordOp} {f : String}
     (hf : WordOp.ofName (uTag ty) f = some o) (x y : Int) :
     runtimeBuiltins base f [.int x, .int y] = some (.int (o.rt ty.numBits x y)) := by
   unfold WordOp.ofName at hf
-  split_ifs at hf <;> cases hf <;> subst f <;> cases ty <;>
+  (repeat' split at hf) <;> cases hf <;> subst f <;> cases ty <;>
     simp only [uTag, String.reduceAppend]
   all_goals first
     | exact tagged2 (op := "BitAnd") (g := Hax.bitand_w) rfl (by first | decide | rfl) rfl x y
@@ -366,7 +366,7 @@ theorem cast_leaf {ty : UScalarTy} (x : Int) :
 theorem AOp.leaf {o : AOp} {f : String} (hf : AOp.ofName f = some o) (x y : Int) :
     runtimeBuiltins base f [.int x, .int y] = some (.int (o.rt x y)) := by
   unfold AOp.ofName at hf
-  split_ifs at hf <;> cases hf <;> subst f
+  (repeat' split at hf) <;> cases hf <;> subst f
   · exact Add_int x y
   · exact Sub_int x y
   · exact Mul_int x y
@@ -523,21 +523,30 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
         rw [show AVal.toValues [a, b] = [.int x, .int y] from by
           simp only [AVal.toValues, hx, hy], hr]
         exact AOp.leaf ho _ _
-      · split_ifs at h with hi hrep
-        · subst hi
+      · by_cases hi : f = "index"
+        · rw [if_pos hi] at h
+          subst hi
           obtain ⟨vs, j, ha, hb, hr⟩ := appIndex_ok h
           rw [show AVal.toValues [a, b] = [.array vs, .int j] from by
             simp only [AVal.toValues, ha, hb], index_leaf, hr]
-        · subst hrep
-          obtain ⟨n, hb, hr⟩ := appRepeat_ok h
-          rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
-            simp only [AVal.toValues, hb], repeat_leaf, hr]
+        · rw [if_neg hi] at h
+          by_cases hrep : f = "repeat"
+          · rw [if_pos hrep] at h
+            subst hrep
+            obtain ⟨n, hb, hr⟩ := appRepeat_ok h
+            rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
+              simp only [AVal.toValues, hb], repeat_leaf, hr]
+          · rw [if_neg hrep] at h
+            cases h
   · simp only [appRt] at h
-    split_ifs at h with hu
-    · subst hu
+    by_cases hu : f = "array_update"
+    · rw [if_pos hu] at h
+      subst hu
       obtain ⟨vs, j, ha, hb, hr⟩ := appUpdate_ok h
       rw [show AVal.toValues [a, b, c] = [.array vs, .int j, c.toValue] from by
         simp only [AVal.toValues, ha, hb], array_update_leaf, hr]
+    · rw [if_neg hu] at h
+      cases h
   · simp [appRt] at h
 
 /-! ## The reading -/
@@ -782,7 +791,9 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
       | none => simp only [hl, hu] at h; cases h
       | some b =>
         simp only [hl, hu] at h
-        split_ifs at h with hab
+        by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
+        case neg => rw [if_neg hab] at h; cases h
+        rw [if_pos hab] at h
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         have hstep : ∀ (i : Nat) (ρ ρ' : AEnv), (toRustMS app body (ρ.upd var (ctr i)) >>=
@@ -867,7 +878,9 @@ theorem callS_ok {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
     (happ : AppOk bi app) {fn : Hax.Ascent.ExtFn} {vs : List AVal} {r : AVal}
     (h : callS app fn vs = .ok r) : fn.leaf bi (AVal.toValues vs) = some r.toValue := by
   unfold callS at h
-  split_ifs at h with hlen
+  by_cases hlen : vs.length = fn.params.length
+  case neg => rw [if_neg hlen] at h; cases h
+  rw [if_pos hlen] at h
   obtain ⟨gs, hgs, h⟩ := rustM_bind_ok h
   obtain ⟨p, hp, h⟩ := rustM_bind_ok h
   cases h
@@ -907,11 +920,13 @@ theorem appExt_snoc_ok {T : Hax.Ascent.Table} {pre : List Hax.Ascent.ExtFn}
   intro f vs r h
   simp only [appExt, List.foldl_append, List.foldl_cons, List.foldl_nil] at h
   unfold extStepS at h
-  split_ifs at h with hf
-  · subst hf
+  by_cases hf : f = fn.name
+  · rw [if_pos hf] at h
+    subst hf
     rw [Hax.Ascent.extBuiltins_self (post := []) hrt htag hT (by simp)]
     exact callS_ok ih h
-  · rw [Hax.Ascent.extBuiltins_append_agree (by simpa using hf)]
+  · rw [if_neg hf] at h
+    rw [Hax.Ascent.extBuiltins_append_agree (by simpa using hf)]
     exact ih f vs r h
 
 theorem appExt_append_ok (T : Hax.Ascent.Table) :

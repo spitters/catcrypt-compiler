@@ -68,7 +68,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 /-- Unsigned `^` agrees with `Hax.bitxor_w` at the operand width. -/
 theorem bitxor_w_u_square {ty : UScalarTy} (x y : UScalar ty) :

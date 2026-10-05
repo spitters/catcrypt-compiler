@@ -211,7 +211,6 @@ CatCrypt.Crypto.Primitives.SHA256Rounds
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmElfObject
-CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmIsa
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmSha256Kernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
@@ -241,6 +240,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
@@ -281,7 +281,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
 CatCrypt.Crypto.SecureCompilation.Ascent.LoweredBlockCT
 CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
-CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.PhysAbiReduction
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.PrefixToBytes
@@ -904,7 +903,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
 CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst

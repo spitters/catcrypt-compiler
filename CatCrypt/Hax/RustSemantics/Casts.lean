@@ -36,7 +36,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 /-- A cast between unsigned types agrees with the runtime `Hax.castVal_w` at the
     target width. -/

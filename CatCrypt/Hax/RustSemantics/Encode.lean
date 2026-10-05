@@ -7,7 +7,7 @@ module
 
 public import HaxLean.Rust
 public import HaxLean.Runtime
-public import Transfer.Integrations.ParamRCompOk
+public import CatCrypt.Hax.RustSemantics.RCompOk
 
 /-!
 # Encoding of Aeneas values as values of the Hax runtime
@@ -64,7 +64,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param Std.Do
+open Aeneas.Std Std.Do
 
 /-- The encoding of an Aeneas value of type `α` as a runtime value of type `β`. -/
 class Encode (α : Type) (β : outParam Type) where
@@ -121,7 +121,7 @@ instance instEncodeVec {α β : Type} [Encode α β] :
 /-- The encoding of unsigned scalars is injective. -/
 theorem enc_uscalar_inj {ty : UScalarTy} {x y : UScalar ty} : enc x = enc y ↔ x = y := by
   cases x; cases y
-  simp [UScalar.val, BitVec.toNat_inj]
+  simp [UScalar.val, BitVec.toNat_inj, Int.natCast_inj]
 
 /-- The encoding of signed scalars is injective. -/
 theorem enc_iscalar_inj {ty : IScalarTy} {x y : IScalar ty} : enc x = enc y ↔ x = y := by
@@ -147,11 +147,11 @@ theorem listRel_encRel_iff {α β : Type} [Encode α β] {l : List α} {arr : _r
     ListRel EncRel l arr ↔ (l.map enc).toArray = arr := by
   have key : ∀ m : List β, List.Forall₂ EncRel l m ↔ l.map enc = m := by
     induction l with
-    | nil => intro m; cases m <;> simp
+    | nil => intro m; cases m <;> simp [forall₂_nil_cons_iff]
     | cons a l ih =>
       intro m
       cases m with
-      | nil => simp
+      | nil => simp [forall₂_cons_nil_iff]
       | cons b m =>
         rw [List.forall₂_cons, ih, List.map_cons, List.cons.injEq, encRel_iff]
   rw [listRel_iff_forall₂, key]

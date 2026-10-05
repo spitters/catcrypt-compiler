@@ -152,7 +152,7 @@ theorem AppTotalOn.appTyped {P : AVal → Prop} {names : List (String × Nat)}
   intro f ks k vs hs hvs
   simp only [straightSig, List.mem_map, Prod.mk.injEq] at hs
   obtain ⟨⟨g, n⟩, hgn, rfl, rfl, rfl⟩ := hs
-  have hlen := hvs.length_eq
+  have hlen := forall₂_length_eq hvs
   simp only [List.length_replicate] at hlen
   exact h g vs (hlen ▸ hgn) (hall (fun k hk => (List.eq_of_mem_replicate hk)) hvs)
 
@@ -163,9 +163,11 @@ theorem envTy_straightΓ_iff {P : AVal → Prop} {bound : List String} {ρ : AEn
     exact h x (.base ()) (by simp [lookup_straightΓ, hx])
   · intro h x k hk
     rw [lookup_straightΓ] at hk
-    split_ifs at hk with hx
-    cases hk
-    exact h x hx
+    split at hk
+    · rename_i hx
+      cases hk
+      exact h x hx
+    · cases hk
 
 /-- A literal of the straight-line fragment has the base kind under the kind checker with
     integer literals at the base kind, the signatures `straightSig names` and the names of
@@ -187,7 +189,7 @@ theorem kindOfL_of_straightOk {names : List (String × Nat)} (bound : List Strin
     have hfit : fits (straightΓ bound) x (.base ()) = true := by
       unfold fits
       rw [lookup_straightΓ]
-      split_ifs <;> simp
+      split <;> simp
     simp only [kindOfL, ihv h.1, hfit, if_true]
     exact ihb h.2
   | case4 bound a b iha ihb =>

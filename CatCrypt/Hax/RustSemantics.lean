@@ -18,7 +18,7 @@ For each of the 83 runtime operations of the ascent leaf audit (section 2, with 
 census counts), the relation between the runtime operation (`HaxLean.Runtime`,
 unbounded `Int`, total) and the Aeneas operation (`HaxLean.Rust`, machine integers
 over `BitVec`, failing where Rust panics in its debug profile), stated through the
-success-restricted relation `Transfer.Param.RCompOk` and the encoding of
+success-restricted relation `CatCrypt.Hax.RustSemantics.RCompOk` and the encoding of
 `CatCrypt.Hax.RustSemantics.Encode`:
 
 * class 1: a square `RCompOk EncRel (opA args) (pure (opC (enc args)))`, proved: on

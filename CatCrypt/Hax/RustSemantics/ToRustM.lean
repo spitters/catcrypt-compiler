@@ -63,7 +63,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 /-- Unsigned `wrapping_sub` agrees with the width-aware runtime `Hax.wrapping_sub_w`. -/
 theorem wrapping_sub_w_u_square {ty : UScalarTy} (x y : UScalar ty) :

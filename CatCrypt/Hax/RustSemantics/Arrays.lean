@@ -58,7 +58,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Transfer.Param
+open Aeneas.Std
 
 section Arrays
 
@@ -205,7 +205,7 @@ theorem push_square (v : alloc.vec.Vec α) {arr : _root_.Array β} (hv : ListRel
   split at h
   · cases h
     rw [listRel_iff_forall₂] at hv ⊢
-    simpa [Hax.push] using List.rel_append hv (List.Forall₂.cons hx .nil)
+    simpa [Hax.push] using forall₂_append hv (List.Forall₂.cons hx .nil)
   · cases h
 
 /-- `Vec::with_capacity` is the empty vector, as `Hax.with_capacity`. -/
@@ -252,7 +252,7 @@ theorem slice_to_square (s : Slice α) {arr : _root_.Array β} (hv : ListRel R s
   split at h
   · cases h
     rw [listRel_iff_forall₂] at hv ⊢
-    simpa [Hax.slice_to] using List.forall₂_take r.end.val hv
+    simpa [Hax.slice_to] using forall₂_take r.end.val hv
   · cases h
 
 /-- The run of `List.clone` with a `clone` that returns its argument returns the list. -/
@@ -290,7 +290,7 @@ theorem extend_from_slice_square (cloneInst : core.clone.Clone α)
       cases hs'
       cases h
       rw [listRel_iff_forall₂] at hv hs ⊢
-      simpa [Hax.extend_from_slice] using List.rel_append hv hs
+      simpa [Hax.extend_from_slice] using forall₂_append hv hs
     · cases h
     · cases h
   · cases h
