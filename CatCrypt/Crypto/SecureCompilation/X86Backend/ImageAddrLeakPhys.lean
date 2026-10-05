@@ -494,14 +494,14 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, slotCmp?, ha]
   | reg =>
       rw [hc] at hg
-      obtain ⟨ds, o, ss, rfl, ho1, ho2⟩ := icase_reg hc
+      obtain ⟨ds, o, ss, rfl, ho1, ho2, hk⟩ := icase_reg hc
       have hok : regOkB frame (normA (.Lopn ds o ss)) = true := by
         simp only [regGateB, Bool.and_eq_true] at hg
         first
           | exact hg.1
           | exact hg.1.1
           | exact hg.1.1.1
-      have ht : tagA (.Lopn ds o ss) = .reg none := by simp [tagA, ho1, ho2]
+      have ht : tagA (.Lopn ds o ss) = .reg none := tagA_reg ho1 ho2 hk
       simp only [stepLeakA, hb, posT, hc, ht]
       exact instrLeakA_regOk hok none sa
 

@@ -519,11 +519,11 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       have h4 : bitStore? c sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
       · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
+        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
           ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
   | sstore q S =>
       rw [hc] at hg
       have hm := (icase_sstore hc).1
@@ -533,11 +533,11 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       have h4 : bitStore? c sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
       · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
+        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
           ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
   | scmp d y q =>
       rw [hc] at hg
       have hx := slotCmp?_eq (icase_scmp hc).1
@@ -545,24 +545,24 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h3 : bitMovB c sa.reg.lpc (.Lopn [.reg d] "CMP:64" [.reg y, .reg q]) = false :=
         bitMovB_of_ne (by simp [JasminLsemCast.movImmStruct?])
-      rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) h3
+      rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3
         (bitStore?_of_ne (by simp)), evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) h3]
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
   | reg =>
       rw [hc] at hg
       simp only [Bool.and_eq_true, Bool.not_eq_true'] at hg
       obtain ⟨⟨hg, h3⟩, h4⟩ := hg
-      obtain ⟨ds, o, ss, hx, ho1, ho2⟩ := icase_reg hc
+      obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       rw [hx] at h3 h4
-      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 h3 (bitStore?_of_bitStoreB h4),
+      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4),
         evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys hgate P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 h3]
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3]
 
 /-! ## 3. The run of a straight body with cells -/
 
@@ -630,7 +630,7 @@ theorem cell_step {frame : String → Option (BitVec 64)}
   obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
     img_stepStraight hsep hphys hgate P hrel hbC hlt hnc' hstep
   have hwide : WideSafeAt body sa := by
-    intro ii ds o ss _ r _ hr _
+    intro ii ds o ss _ r _ hr _ _
     exact hrel.wid r hr
   refine ⟨by rw [← haltedA_cellBody slotArr]; exact hh, ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
     hwide, ?_⟩, sa1, ?_, hr⟩
@@ -751,8 +751,59 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (ImgRelW imgGate
   ptr_of_reloadW haltedA_of_imgW wideSafe_of_gateW)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (readsI srcNames cellBase
   readsRdx rdxShape)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (carryIns)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (carryIns classifyK
+  narrowStep narrowIn narrowIn_zero narrowIn_succ narrowSrc)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi (width_of_getW)
+
+/-- A cell access and its frame-word move are no width-carrying casts. -/
+theorem classifyK_cellMove (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    (i : Linstr) : classifyK (cellMove slotArr body k i).li_i = classifyK i.li_i := by
+  cases hca : cellA? i.li_i with
+  | none => rw [cellMove_of_none hca]
+  | some op =>
+    obtain ⟨d, o, n, hx, ho⟩ := cellA_some hca
+    have h0 : classifyK i.li_i = none := by
+      rw [hx]
+      rcases ho with rfl | rfl <;>
+        simp [classifyK, show LprogBytes.castMovBits "LOAD:64" = none from by decide,
+          show LprogBytes.castMovBits "STORE:64" = none from by decide]
+    have hm : ∀ a b : String, classifyK (.Lopn [.reg a] "MOVQ" [.reg b]) = none := fun a b => by
+      simp [classifyK, show LprogBytes.castMovBits "MOVQ" = none from by decide]
+    rw [h0]
+    unfold cellMove
+    rw [hca]
+    cases op <;> simp only <;> split <;> first | exact h0 | exact hm _ _
+
+/-- The cast width analysis of the cell body is that of the body. -/
+theorem narrowIn_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd) :
+    ∀ k, narrowIn (cellBody slotArr body) k = narrowIn body k
+  | 0 => by rw [narrowIn_zero, narrowIn_zero]
+  | k + 1 => by
+    cases hb : body[k]? with
+    | none =>
+      have hl : body.length ≤ k := by simpa using hb
+      have h1 : narrowIn body (k + 1) = narrowIn body k := by
+        unfold narrowIn
+        rw [List.take_of_length_le (by omega), List.take_of_length_le hl]
+      have h2 : narrowIn (cellBody slotArr body) (k + 1) = narrowIn (cellBody slotArr body) k := by
+        unfold narrowIn
+        rw [List.take_of_length_le (by rw [cellBody_length]; omega),
+          List.take_of_length_le (by rw [cellBody_length]; exact hl)]
+      rw [h1, h2, narrowIn_cellBody slotArr body k]
+    | some bi =>
+      have hc : (cellBody slotArr body)[k]? = some (cellMove slotArr body k bi) := by
+        rw [cellBody_getElem?, hb]; rfl
+      rw [narrowIn_succ hb, narrowIn_succ hc, narrowIn_cellBody slotArr body k]
+      simp only [narrowStep, classifyK_cellMove]
+
+/-- The cast source with an entry of the cast width analysis at a position of the cell body
+    is that of the body. -/
+theorem narrowSrc_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
+    narrowSrc (cellBody slotArr body) k = narrowSrc body k := by
+  unfold narrowSrc
+  rw [cellBody_getElem?]
+  cases body[k]? <;>
+    simp only [Option.map_none, Option.map_some, classifyK_cellMove, narrowIn_cellBody]
 
 /-- **The width safety of a body from that of its cell body.** At a relation of the image
     simulation with carry chains on the cell body that passes `imgGateBW`, the body is width
@@ -767,13 +818,15 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
     (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf) :
     WideSafeAt body sa := by
   have hW := wideSafe_of_gateW hgate hrel
-  intro ii ds o ss hb r hr hg hc
+  intro ii ds o ss hb r hr hg hc hn
+  have hn' : r ∉ narrowSrc (cellBody slotArr body) sa.reg.lpc := by
+    rw [narrowSrc_cellBody]; exact hn
   have hbC := cellBody_getElem? slotArr body sa.reg.lpc
   rw [hb, Option.map_some] at hbC
   cases hca : cellA? (LinstrR.Lopn ds o ss) with
   | none =>
       rw [cellMove_of_none (i := ⟨ii, .Lopn ds o ss⟩) hca] at hbC
-      exact hW ii ds o ss hbC r hr hg hc
+      exact hW ii ds o ss hbC r hr hg hc hn'
   | some op =>
       cases op with
       | ld D B off =>
@@ -788,7 +841,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
             simp [carryIns]
           simp only [hx] at hr
           rcases hr with h | h | h | h
-          · exact hW' (Or.inl h) hg hcar
+          · exact hW' (Or.inl h) hg hcar hn'
           · simp [readsRdx, rdxShape] at h
           · simp only [List.flatMap_cons, List.flatMap_nil, srcNames, List.append_nil,
               List.mem_singleton] at h
@@ -800,7 +853,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               or_false] at ha
             rcases ha with rfl | rfl
             · exact hW' (Or.inr (Or.inr (Or.inr (List.mem_filterMap.mpr
-                ⟨.reg D, by simp, hab⟩)))) hg hcar
+                ⟨.reg D, by simp, hab⟩)))) hg hcar hn'
             · simp only [cellBase, hn, Option.map_some, Option.some.injEq] at hab
               subst hab
               obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel
@@ -818,9 +871,9 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
             simp [carryIns]
           simp only [hx] at hr
           rcases hr with h | h | h | h
-          · exact hW' (Or.inl h) hg hcar
+          · exact hW' (Or.inl h) hg hcar hn'
           · simp [readsRdx, rdxShape] at h
-          · exact hW' (Or.inr (Or.inr (Or.inl h))) hg hcar
+          · exact hW' (Or.inr (Or.inr (Or.inl h))) hg hcar hn'
           · obtain ⟨a, ha, hab⟩ := List.mem_filterMap.mp h
             simp only [List.cons_append, List.nil_append, List.mem_cons, List.not_mem_nil,
               or_false] at ha
@@ -831,7 +884,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
                 (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb hca)) hacc) hBf
               exact width_of_getW hp
             · exact hW' (Or.inr (Or.inr (Or.inr (List.mem_filterMap.mpr
-                ⟨.reg S, by simp, hab⟩)))) hg hcar
+                ⟨.reg S, by simp, hab⟩)))) hg hcar hn'
 
 /-- **One step of a straight body with cells and carry chains through its cell body.** -/
 theorem cell_stepW {frame : String → Option (BitVec 64)}

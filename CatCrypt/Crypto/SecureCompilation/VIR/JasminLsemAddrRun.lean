@@ -35,6 +35,8 @@ upper bits of the machine register, which then holds the zero-extension of the b
 ## Main results
 
 * `tagA`, `tagAt`, `normA`, `stepA`, `haltedA`, `runA`: the address machine on a body.
+* `castTagW`, `tagA_lopn`, `tagAt_castW`: a width-carrying cast is tagged with its
+  destination width.
 * `tagAt_of_ne`: off the untagged immediate move, `tagAt` is `tagA`.
 * `runA_halt`, `runA_step`: the unfolding of a run.
 * `runA_det`: two terminating runs from one state end in one state.
@@ -48,12 +50,43 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
 
+/-- The destination width of a width-carrying cast mnemonic `CASTW_<w>_<w'>` between the
+    widths `16`, `32` and `64`; `none` for every other mnemonic. -/
+def castTagW (o : String) : Option Nat :=
+  if o = "CASTW_64_16" ∨ o = "CASTW_32_16" ∨ o = "CASTW_16_16" then some 16
+  else if o = "CASTW_64_32" ∨ o = "CASTW_32_32" ∨ o = "CASTW_16_32" then some 32
+  else if o = "CASTW_64_64" ∨ o = "CASTW_32_64" ∨ o = "CASTW_16_64" then some 64
+  else none
+
 /-- The memory tag of a physical instruction: the indexed load and store at the word width,
-    the register tag otherwise. `fstepA` reads only the kind of the tag. -/
+    the register tag at the destination width for a width-carrying cast mnemonic
+    (`castTagW`), and the register tag without a descriptor otherwise. -/
 def tagA : LinstrR → MemTag
   | .Lopn _ o _ =>
-      if o = "LOADIDX" then .load 64 0 else if o = "STOREIDX" then .store 64 0 else .reg none
+      if o = "LOADIDX" then .load 64 0 else if o = "STOREIDX" then .store 64 0
+      else if o = "CASTW_64_16" ∨ o = "CASTW_32_16" ∨ o = "CASTW_16_16" then .reg (some 16)
+      else if o = "CASTW_64_32" ∨ o = "CASTW_32_32" ∨ o = "CASTW_16_32" then .reg (some 32)
+      else if o = "CASTW_64_64" ∨ o = "CASTW_32_64" ∨ o = "CASTW_16_64" then .reg (some 64)
+      else .reg none
   | _ => .reg none
+
+/-- The tag of an `Lopn` that is no indexed access is the register tag at `castTagW` of its
+    mnemonic. -/
+theorem tagA_lopn {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
+    (h2 : o ≠ "STOREIDX") : tagA (.Lopn ds o ss) = .reg (castTagW o) := by
+  simp only [tagA, castTagW, if_neg h1, if_neg h2]
+  split_ifs <;> rfl
+
+/-- A width-carrying cast mnemonic has the destination width `16`, `32` or `64`. -/
+theorem castTagW_width {o : String} {w : Nat} (h : castTagW o = some w) :
+    w = 64 ∨ w = 32 ∨ w = 16 := by
+  unfold castTagW at h
+  split_ifs at h <;> simp_all
+
+/-- A width-carrying cast mnemonic is none of `LOADIDX`, `STOREIDX`, `MULX` and `MOV`. -/
+theorem castTagW_ne {o : String} {w : Nat} (h : castTagW o = some w) :
+    o ≠ "LOADIDX" ∧ o ≠ "STOREIDX" ∧ o ≠ "MULX" ∧ o ≠ "MOV" := by
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> rintro rfl <;> simp [castTagW] at h
 
 /-- The operand names the register `d`: as a register, an array base, or the base or index
     of an indexed access. -/
@@ -130,6 +163,14 @@ theorem tagAt_of_ne {body : Lcmd} {k : Nat} {i : LinstrR} (h : movImmStruct? i =
     tagAt body k i = tagA i :=
   tagAt_of_not (bitMovB_of_ne h)
 
+/-- A width-carrying cast `o D, A` between register names is tagged at any position with the
+    register tag at its destination width. -/
+theorem tagAt_castW (body : Lcmd) (k : Nat) {D A o : String} {w : Nat}
+    (h : castTagW o = some w) :
+    tagAt body k (.Lopn [.reg D] o [.reg A]) = .reg (some w) := by
+  obtain ⟨h1, h2, -, -⟩ := castTagW_ne h
+  rw [tagAt_of_ne (by simp [movImmStruct?]), tagA_lopn h1 h2, h]
+
 /-- A carry constant is the untagged move of `0` or `1` into a name that is no cell name. -/
 theorem bitMovB_spec {body : Lcmd} {k : Nat} {i : LinstrR} (h : bitMovB body k i = true) :
     ∃ d n, i = .Lopn [.reg d] "MOV" [.imm n] ∧ n < 2 ∧ hasPrefix d "mem." = false
@@ -162,6 +203,12 @@ theorem fstepA_bitMov (frame : String → Option (BitVec 64)) (D : String) (n : 
 def normA : LinstrR → LinstrR
   | .Lopn ds o ss => .Lopn ds (if o = "MULX" then withWidthTag 64 "MULX" else o) ss
   | i => i
+
+/-- `normA` keeps an instruction with a width-carrying cast mnemonic. -/
+theorem normA_castW {ds : List LOperand} {o : String} {ss : List LOperand} {w : Nat}
+    (h : castTagW o = some w) : normA (.Lopn ds o ss) = .Lopn ds o ss := by
+  obtain ⟨-, -, h3, -⟩ := castTagW_ne h
+  simp [normA, h3]
 
 /-- The instruction defines the label `l`. -/
 def isLabelB (l : LLabel) : LinstrR → Bool

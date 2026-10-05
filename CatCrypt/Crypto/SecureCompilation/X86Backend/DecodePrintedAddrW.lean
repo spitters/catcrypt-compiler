@@ -53,6 +53,9 @@ arms to the bodies of `DecodePrintedCFG`.
 * `WideAt` — every general-purpose name an instruction reads is at width `64`.
 * `CArm`, `MArm` — the carry and cell arms.
 * `printedAddrWB`, `SafeW` — the covered bodies and the run safety they are simulated under.
+* `classifyK`, `narrowIn`, `NarrowInv`, `castPosB` — the cast arm, the widths the run of
+  consecutive casts before a position gives its destinations, and the check that a cast
+  keeps the low bits its source and destination widths give.
 
 ## Main results
 
@@ -74,8 +77,9 @@ arms to the bodies of `DecodePrintedCFG`.
   the carry, cell, carry-constant, wide-immediate and register-select arms.
 * `vtBytes`, `sim_cmovSlot`, `vfBytes`, `sim_cmovSlotF`: the bytes and the simulations of the
   selects with a slot true value and with a slot false value.
-* `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB` simulate its
-  run on the address machine.
+* `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
+* `run_simWN`, `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB`
+  simulate its run on the address machine.
 * `printedAddrWB_eq_impl` (`@[csimp]`): the gate is evaluated with the body parameters
   computed once per body.
 -/
@@ -3398,14 +3402,170 @@ theorem classifyS_instr {i : LinstrR} {c : SArm} (h : classifyS i = some c) : c.
     · obtain rfl := Option.some.inj h; obtain ⟨rfl, -⟩ := h2; rfl
   · cases h
 
+/-- The width-carrying cast `o D, A` of an instruction: the destination `D`, the source `A`,
+    the number of low source bits its zero-extending move keeps (`castMovBits`) and the
+    destination width (`castTagW`). -/
+def classifyK : LinstrR → Option (String × String × Nat × Nat)
+  | .Lopn [.reg d] o [.reg a] =>
+      match castMovBits o, castTagW o with
+      | some m, some w => some (d, a, m, w)
+      | _, _ => none
+  | _ => none
+
+theorem classifyK_spec {i : LinstrR} {d a : String} {m w : Nat}
+    (h : classifyK i = some (d, a, m, w)) :
+    ∃ o, i = .Lopn [.reg d] o [.reg a] ∧ castMovBits o = some m ∧ castTagW o = some w := by
+  unfold classifyK at h
+  split at h
+  · rename_i d' o a'
+    split at h
+    · rename_i m' w' hm hw
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+      exact ⟨o, rfl, hm, hw⟩
+    · cases h
+  · cases h
+
+/-- The conditions of a cast arm: a general-purpose destination and source. -/
+def castOk (d a : String) : Bool := gpOk d && gpOk a
+
+/-- One step of the cast width analysis: a cast enters its destination at its destination
+    width and keeps the entries of the other names; every other instruction empties the
+    analysis. -/
+def narrowStep (N : List (String × Nat)) (i : LinstrR) : List (String × Nat) :=
+  match classifyK i with
+  | some (d, _, _, w) => (d, w) :: N.filter (fun p => p.1 != d)
+  | none => []
+
+/-- **The cast width analysis** at instruction `k` of a body: the names written by the run of
+    consecutive casts that ends directly before `k`, each with the destination width of the
+    last cast that wrote it. -/
+def narrowIn (body : Lcmd) (k : Nat) : List (String × Nat) :=
+  (body.take k).foldl (fun N i => narrowStep N i.li_i) []
+
+theorem narrowIn_zero (body : Lcmd) : narrowIn body 0 = [] := by
+  simp [narrowIn]
+
+theorem narrowIn_succ {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi) :
+    narrowIn body (k + 1) = narrowStep (narrowIn body k) bi.li_i := by
+  unfold narrowIn
+  rw [List.take_add_one, hb, Option.toList_some, List.foldl_append]
+  rfl
+
+/-- The source of the cast at instruction `k`, when the cast width analysis has an entry for
+    it; no name otherwise. -/
+def narrowSrc (body : Lcmd) (k : Nat) : List String :=
+  match body[k]? with
+  | some i =>
+      match classifyK i.li_i with
+      | some (_, a, _, _) => if ((narrowIn body k).lookup a).isSome then [a] else []
+      | none => []
+  | none => []
+
+/-- At a cast, every name of the cast width analysis holds a value of the width of its
+    entry. -/
+def NarrowInv (body : Lcmd) (s : LstateA) : Prop :=
+  ∀ i, body[s.reg.lpc]? = some i → (classifyK i.li_i).isSome = true →
+    ∀ r w, (narrowIn body s.reg.lpc).lookup r = some w → (s.reg.lvm r).1 = w
+
+/-- The cast at position `k` keeps as many low bits as the smaller of the width of its
+    source, read off the cast width analysis and `64` without an entry, and its destination
+    width. -/
+def castPosB (body : Lcmd) (k : Nat) : Bool :=
+  (body[k]?).all fun j =>
+    match classifyK j.li_i with
+    | some (_, a, m, w) => m == min (((narrowIn body k).lookup a).getD 64) w
+    | none => true
+
+theorem lookup_filter_ne (N : List (String × Nat)) {d r : String} (hr : r ≠ d) :
+    (N.filter (fun p => p.1 != d)).lookup r = N.lookup r := by
+  induction N with
+  | nil => rfl
+  | cons p N ih =>
+    obtain ⟨x, w⟩ := p
+    by_cases hx : x = d
+    · subst hx
+      have hb : (r == x) = false := by simpa using hr
+      simp [List.filter, List.lookup, hb, ih]
+    · have hxd : (x != d) = true := by simpa using hx
+      simp only [List.filter, hxd, List.lookup]
+      rw [ih]
+
+/-- **The cast width analysis is an invariant of the address machine.** -/
+theorem narrowInv_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' : LstateA}
+    {zf zf' : Bool} (hI : NarrowInv body s) (hst : stepA frame body s zf = some (s', zf')) :
+    NarrowInv body s' := by
+  have hnext : ∀ bi, body[s.reg.lpc]? = some bi → classifyK bi.li_i = none →
+      ∀ t : LstateA, t.reg.lpc = s.reg.lpc + 1 → NarrowInv body t := by
+    intro bi hb hk t ht i _ _ r w hl
+    rw [ht, narrowIn_succ hb, narrowStep, hk] at hl
+    simp at hl
+  unfold stepA at hst
+  split at hst
+  · rename_i ii ds o ss hb
+    have hpc : s'.reg.lpc = s.reg.lpc + 1 := fstepA_lpc _ _ _ _ _ _ hst
+    cases hk : classifyK (.Lopn ds o ss) with
+    | none => exact hnext _ hb hk s' hpc
+    | some q =>
+      obtain ⟨d, a, m, w0⟩ := q
+      obtain ⟨o', he, hm, hw⟩ := classifyK_spec hk
+      simp only [LinstrR.Lopn.injEq] at he
+      obtain ⟨rfl, rfl, rfl⟩ := he
+      rw [normA_castW hw, tagAt_castW _ _ hw,
+        fstepA_castW _ d a o w0 (castStruct?_of_castMovBits hm d a),
+        lsemStepCast_castW d a o w0 (castStruct?_of_castMovBits hm d a)] at hst
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
+      obtain ⟨rfl, -⟩ := hst
+      intro i _ _ r w hl
+      have hpc' : ((s.reg.setReg d ((s.reg.lvm a).2.zeroExtend w0)).nextPc).lpc
+          = s.reg.lpc + 1 := by simp [LstateN.setReg, LstateN.nextPc]
+      change ((narrowIn body ((s.reg.setReg d ((s.reg.lvm a).2.zeroExtend w0)).nextPc).lpc).lookup r
+        = some w) at hl
+      rw [hpc', narrowIn_succ hb, narrowStep, hk] at hl
+      show (((s.reg.setReg d ((s.reg.lvm a).2.zeroExtend w0)).nextPc).lvm r).1 = w
+      by_cases hr : r = d
+      · subst hr
+        simp only [List.lookup, beq_self_eq_true, Option.some.injEq] at hl
+        subst hl
+        simp [LstateN.setReg, LstateN.nextPc]
+      · have hb' : (r == d) = false := by simpa using hr
+        simp only [List.lookup, hb', lookup_filter_ne _ hr] at hl
+        have := hI _ hb (by rw [hk]; rfl) r w hl
+        simpa [LstateN.setReg, LstateN.nextPc, hr] using this
+  · rename_i ii kd l hb
+    obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
+    exact hnext _ hb rfl _ rfl
+  · rename_i ii cc l hb
+    split at hst
+    · rename_i pol hpol
+      split_ifs at hst with hz
+      · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp hst
+        obtain ⟨rfl, -⟩ := Prod.mk.inj he
+        obtain ⟨hpl, hlab, -⟩ := labelAt_spec hp
+        intro i hi hci
+        change body[p]? = some i at hi
+        rw [List.getElem?_eq_getElem hpl] at hi
+        obtain rfl := Option.some.inj hi
+        revert hlab hci
+        rcases body[p] with ⟨ii', li'⟩
+        cases li' <;> simp [isLabelB, classifyK]
+      · obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
+        exact hnext _ hb rfl _ rfl
+    · cases hst
+  · cases hst
+
 /-- An instruction other than the closing return of a printed body with carry chains: an
-    `Lopn` read into a carry constant, a slot carry arm, a carry arm, a cell arm, an immediate
+    `Lopn` read into a width-carrying cast between general-purpose names, a carry constant, a
+    slot carry arm, a carry arm, a cell arm, an immediate
     store into a frame slot, a wide immediate, a register select, a select with a slot true
     value, a select with a slot false value or an arm of
     `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
   | .Lopn ds o ss =>
+      match classifyK (.Lopn ds o ss) with
+      | some (d, a, _, _) => castOk d a
+      | none =>
       match movImmStruct? (.Lopn ds o ss) with
       | some (d, n) => zOk d n
       | none =>
@@ -3457,13 +3617,15 @@ def bitMovPosB (body : Lcmd) (k : Nat) : Bool :=
 /-- **The covered printed bodies with carry chains**: decodable, ending in the return, every
     other instruction a carry arm, a carry constant or in the fragment of `DecodePrintedCFG`,
     every conditional branch directly after a compare, every carry-out binding directly after
-    its add, and every untagged immediate move a carry constant. -/
+    its add, every untagged immediate move a carry constant, and every cast keeping the low
+    bits its source and destination widths give (`castPosB`). -/
 def printedAddrWB (body : Lcmd) : Bool :=
   decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
     && body.dropLast.all (fun i => instrOKWB body (Params.ofBody body) i.li_i)
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevB body)
     && (List.range body.length).all (bitMovPosB body)
+    && (List.range body.length).all (castPosB body)
 
 /-- `carryPrevB` with the body parameters `P` given as an argument. -/
 def carryPrevBWith (P : Params) (body : Lcmd) (k : Nat) : Bool :=
@@ -3491,6 +3653,7 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevBWith P body)
     && (List.range body.length).all (bitMovPosB body)
+    && (List.range body.length).all (castPosB body)
 
 /-- The gate `printedAddrWB` is evaluated as `printedAddrWBImpl`. -/
 @[csimp] theorem printedAddrWB_eq_impl : @printedAddrWB = @printedAddrWBImpl := by
@@ -3498,11 +3661,12 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
   rfl
 
 /-- At the program counter of `s`, every general-purpose name the instruction reads, other
-    than a carry-in, holds a 64-bit value. -/
+    than a carry-in and the source of a cast with an entry in the cast width analysis
+    (`narrowSrc`), holds a 64-bit value. -/
 def WideSafeAt (body : Lcmd) (s : LstateA) : Prop :=
   ∀ ii ds o ss, body[s.reg.lpc]? = some ⟨ii, .Lopn ds o ss⟩ →
     ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true → r ∉ carryIns (.Lopn ds o ss) →
-      (s.reg.lvm r).1 = 64
+      r ∉ narrowSrc body s.reg.lpc → (s.reg.lvm r).1 = 64
 
 /-- At the program counter of `s`, a cell load reads eight bytes disjoint from the red-zone
     word at `rsp`. -/
@@ -3515,6 +3679,21 @@ def CellSafeAt (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
     general-purpose name read besides a carry-in at width `64`, and safe cell loads. -/
 def SafeW (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
   LoadSafeAt rsp body s ∧ WideSafeAt body s ∧ CellSafeAt rsp body s
+
+/-- `SafeW` with the cast width analysis (`NarrowInv`). -/
+def SafeWN (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
+  LoadSafeAt rsp body s ∧ WideSafeAt body s ∧ CellSafeAt rsp body s ∧ NarrowInv body s
+
+/-- A run that is safe in the sense of `SafeW` from a state satisfying `NarrowInv` is safe in
+    the sense of `SafeWN`. -/
+theorem runSafe_narrow {frame : String → Option (BitVec 64)} {rsp : BitVec 64} {body : Lcmd} :
+    ∀ (fuel : Nat) (s : LstateA) (zf : Bool), NarrowInv body s →
+      RunSafe frame body (SafeW rsp body) fuel s zf →
+      RunSafe frame body (SafeWN rsp body) fuel s zf
+  | 0, _, _, _, _ => trivial
+  | fuel + 1, _, _, hI, h =>
+      ⟨⟨h.1.1, h.1.2.1, h.1.2.2, hI⟩, fun s' zf' hst =>
+        runSafe_narrow fuel s' zf' (narrowInv_step hI hst) (h.2 s' zf' hst)⟩
 
 /-- At position `k` a carry-out binding finds the carry-out of its add in the machine carry
     flag. -/
@@ -3540,6 +3719,8 @@ structure BodyFactsW (body : Lcmd) (shs : List DShape) : Prop where
   carry : ∀ k, k < body.length → carryPrevB body k = true
   /-- Every untagged immediate move is a carry constant. -/
   bit : ∀ k, k < body.length → bitMovPosB body k = true
+  /-- Every cast keeps the low bits its source and destination widths give. -/
+  cast : ∀ k, k < body.length → castPosB body k = true
 
 theorem acorrW_setLpc {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
     (p : Nat) : ACorrW rsp sa (s.setLpc p) :=
@@ -3634,7 +3815,7 @@ theorem body_get {body : Lcmd} {k : Nat} (hk : k < body.length) :
     avoid the red-zone word and whose instructions read every general-purpose name besides a
     carry-in at width `64` is matched by a path of the machine on the decoded program from the index of `k` to the
     index of the closing return, ending in states related by `ACorrW`. -/
-theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
+theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
     (a b : JInstr 64) :
     ∀ (fuel k : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
       s.reg.lpc = k → (hk : k < body.length) → ACorrW rsp sa s →
@@ -3642,7 +3823,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
       CarryReq (frameP (Params.ofBody body) rsp) body k sa s →
       runA (frameP (Params.ofBody body) rsp) body fuel s zf = some t →
       RunSafe (frameP (Params.ofBody body) rsp) body
-        (SafeW rsp body) fuel s zf →
+        (SafeWN rsp body) fuel s zf →
       ∃ sa', Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
           (posOf shs k) sa (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 := by
   set P := Params.ofBody body with hP
@@ -3724,8 +3905,56 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
         simp only [stepA, hget]
         rw [hpc]
       rw [hstepEq] at hst
-      have hws := hsafe.1.2.1 ii ds o ss (by rw [hget])
       simp only [instrOKWB] at hok
+      split at hok
+      · -- a width-carrying cast
+        rename_i D A m w' hclK
+        obtain ⟨o', hia, hm, hw⟩ := classifyK_spec hclK
+        simp only [LinstrR.Lopn.injEq] at hia
+        obtain ⟨rfl, rfl, rfl⟩ := hia
+        simp only [castOk, Bool.and_eq_true] at hok
+        rw [normA_castW hw, tagAt_castW body k hw] at hst
+        have hmin : m = min (s.reg.lvm A).1 w' := by
+          have hcp := hF.cast k hk
+          simp only [castPosB, hbk?, Option.all_some, hclK, beq_iff_eq] at hcp
+          cases hl : (narrowIn body k).lookup A with
+          | none =>
+            rw [hl] at hcp
+            have h64 := hsafe.1.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
+              (by simp [carryIns]) (by rw [hpc]; simp [narrowSrc, hbk?, hclK, hl])
+            rw [h64]
+            simpa using hcp
+          | some w0 =>
+            rw [hl] at hcp
+            have hw0 := hsafe.1.2.2.2 _ hget (by rw [hclK]; rfl) A w0 (by rw [hpc]; exact hl)
+            rw [hw0]
+            simpa using hcp
+        obtain ⟨hc', -⟩ := sim_castW_bytes P rsp o D A w' m hm hok.1 hok.2 (castTagW_width hw)
+          sa s zf hc hmin s' zf' hst
+        have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+            (aMachine.runBlock sa ((castPieces m D A).map Prod.snd)).flags.zf.getD false
+              = zf' := by
+          intro hcnd
+          have hcm := hcondNext hcnd
+          simp only [classifyA] at hcm
+          split_ifs at hcm <;> simp [cmpArmB, Option.any_map] at hcm
+        have hna : ∀ ii' d a s c, body[k]? ≠
+            some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+          intro ii' d a s c h
+          rw [hbk?] at h
+          simp at h
+        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
+          hsafe'
+        refine ⟨sa', ?_, hC⟩
+        obtain ⟨hb, hp⟩ := castBytes P o D A m hm hok.1 hok.2
+        have hops : shs[k].ops' = (castPieces m D A).map Prod.snd :=
+          shapeOf_lopn_ops _ hb hp hshk
+        exact reaches_block a b hks hshk hops hR
+      rename_i hclK
+      have hws : ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true →
+          r ∉ carryIns (.Lopn ds o ss) → (s.reg.lvm r).1 = 64 := fun r h1 h2 h3 =>
+        hsafe.1.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK])
       split at hok
       · -- a carry constant
         rename_i D n hmv
@@ -3961,7 +4190,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               hB (by rw [← hia]; simp [carryIns])
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
-              hsafe.1.2.2 ii D n B off p (by rw [hget, ← hia]) hn hp
+              hsafe.1.2.2.1 ii D n B off p (by rw [hget, ← hia]) hn hp
             obtain ⟨hc', -⟩ := sim_ldm P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
               (hnoadd hnotadd _ _) hrun hsafe'
@@ -4202,6 +4431,22 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
       | _ => simp [instrOKWB] at hok
     | _ => simp [instrOKWB] at hok
 
+/-- **The run on both machines, with carry chains and casts.** `run_simWN` from a run that is
+    safe in the sense of `SafeW` and a start state satisfying the cast width analysis
+    (`NarrowInv`), which every step of the address machine keeps (`narrowInv_step`). -/
+theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
+    (a b : JInstr 64) (fuel k : Nat) (sa : AState) (s : LstateA) (zf : Bool)
+    (t : LstateA × Bool) (hpc : s.reg.lpc = k) (hk : k < body.length) (hc : ACorrW rsp sa s)
+    (hz : isCondB (body[k]'hk).li_i = true → sa.flags.zf.getD false = zf)
+    (hcy : CarryReq (frameP (Params.ofBody body) rsp) body k sa s)
+    (hrun : runA (frameP (Params.ofBody body) rsp) body fuel s zf = some t)
+    (hsafe : RunSafe (frameP (Params.ofBody body) rsp) body (SafeW rsp body) fuel s zf)
+    (hI : NarrowInv body s) :
+    ∃ sa', Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
+        (posOf shs k) sa (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 :=
+  run_simWN hF rsp a b fuel k sa s zf t hpc hk hc hz hcy hrun
+    (runSafe_narrow fuel s zf hI hsafe)
+
 /-! ## 8. A covered body with carry chains against its decoded bytes -/
 
 /-- The facts of a body in the class `printedAddrWB`. -/
@@ -4209,7 +4454,7 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     ∃ shs, BodyFactsW body shs := by
   simp only [printedAddrWB, Bool.and_eq_true, Option.any_eq_true, List.all_eq_true,
     List.mem_range] at h
-  obtain ⟨⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩, hbit⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩, hbit⟩, hcast⟩ := h
   have hdec' := hdec
   simp only [decodableLcmd, Bool.and_eq_true] at hdec'
   obtain ⟨shs, hs⟩ := Option.isSome_iff_exists.mp hdec'.1.1.1.1.1
@@ -4218,7 +4463,7 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     | nil => simp at hlast
     | cons _ _ => simp
   refine ⟨shs, ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => hcond k hk, fun k hk => hcar k hk,
-    fun k hk => hbit k hk⟩⟩
+    fun k hk => hbit k hk, fun k hk => hcast k hk⟩⟩
   · rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem (by omega)] at hlast
     obtain rfl := Option.some.inj hlast
     revert hret
@@ -4304,7 +4549,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
   obtain ⟨shs, hF⟩ := bodyFactsW_of h
   have hdec : decodableLcmd body = true := by
     simp only [printedAddrWB, Bool.and_eq_true] at h
-    exact h.1.1.1.1.1
+    exact h.1.1.1.1.1.1
   obtain ⟨hl, hsh⟩ := shapesOf_spec _ body shs hF.shapes
   set P := Params.ofBody body
   set F := P.frame
@@ -4341,6 +4586,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
     simp at hc
   obtain ⟨sa2, hR, hc2⟩ :=
     run_simW hF rsp _ _ fuel 0 sa1 s zf t hpc hF.pos hc0 hz0 hcy0 hrun hsafe
+      (fun i _ _ r w hl => by rw [hpc, narrowIn_zero] at hl; cases hl)
   -- the epilogue
   have hskip : shs[shs.length - 1]'(by have := hF.pos; omega) = .one .skip := by
     have hsk := hsh (body.length - 1) (by have := hF.pos; omega) (by have := hF.pos; omega)

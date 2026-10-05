@@ -274,4 +274,20 @@ theorem leak_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
       blockLeakA, opLeak_loadRsp, hsp]
     simp [opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
 
+/-- **A width-carrying cast between general-purpose names emits no event on the address
+    machine.** -/
+theorem instrLeakA_castW (P : Params) (rsp : BitVec 64) (o D A : String) (m w : Nat)
+    (hk : castMovBits o = some m) (hD : gpOk D = true) (hA : gpOk A = true) (s : LstateA) :
+    instrLeakA (frameP P rsp) (.Lopn [.reg D] o [.reg A], .reg (some w)) s = [] := by
+  rcases castMovBits_cases hk with ⟨-, rfl | rfl | rfl | rfl | rfl⟩ | ⟨-, rfl | rfl | rfl⟩ <;>
+    simp (config := { decide := true }) [instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?,
+      slotImm?, slotCmov?, frameP_gp hD, frameP_gp hA]
+
+/-- **The decoded instructions of a width-carrying cast emit no event** under `doitm`: the
+    zero-extending register move accesses no memory and is no operand-leaking mnemonic. -/
+theorem leak_castW (m : Nat) (D A : String) (sa : AState) :
+    blockLeakA .doitm sa ((castPieces m D A).map Prod.snd) = [] := by
+  simp [castPieces, blockLeakA, opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands,
+    X86Mnem.timing]
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak

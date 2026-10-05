@@ -433,10 +433,10 @@ def regArmB : Arm → Bool
   | .load .. => false
   | _ => true
 
-/-- An instruction whose mnemonic is none of the three the address machine reads apart:
-    `MULX`, `LOADIDX`, `STOREIDX`. -/
+/-- An instruction whose mnemonic is none of those the address machine reads apart:
+    `MULX`, `LOADIDX`, `STOREIDX` and the width-carrying casts (`castTagW`). -/
 def plainB : LinstrR → Bool
-  | .Lopn _ o _ => o != "MULX" && o != "LOADIDX" && o != "STOREIDX"
+  | .Lopn _ o _ => o != "MULX" && o != "LOADIDX" && o != "STOREIDX" && (castTagW o).isNone
   | _ => true
 
 /-- The scratch register of the widening multiply `MULX H, H, S`. -/
@@ -1304,8 +1304,11 @@ theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
     simp only [AArm.ok, Bool.and_eq_true] at h
     obtain ⟨ds, o, ss, he⟩ := a.instr_lopn
     have hp := h.2
-    simp only [AArm.instr, he, plainB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hp ⊢
-    simp [AArm.li, AArm.instr, he, normA, tagA, hp.1.1, hp.1.2, hp.2]
+    simp only [AArm.instr, he, plainB, Bool.and_eq_true, bne_iff_ne, ne_eq,
+      Option.isNone_iff_eq_none] at hp ⊢
+    have ht : tagA (.Lopn ds o ss) = .reg none :=
+      (tagA_lopn hp.1.1.2 hp.1.2).trans (congrArg MemTag.reg hp.2)
+    simp [AArm.li, AArm.instr, he, normA, ht, hp.1.1.1]
   | st m q S =>
     simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
     rcases h.2 with rfl | rfl <;>
