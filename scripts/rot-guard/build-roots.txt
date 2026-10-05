@@ -37,6 +37,7 @@ CatCrypt.Crypto.Hax.HaxToLowCTWordOpsCT
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
 CatCrypt.Crypto.Hax.HaxWideMulFuse
+CatCrypt.Crypto.Hax.ImpDesugarRem
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
@@ -213,6 +214,7 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmSim
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmElfObject
+CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMachCT
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmSha256Kernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
@@ -478,6 +480,7 @@ CatCrypt.Crypto.SecureCompilation.RISCVBackend.EncoderDiffAudit
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvSha256Kernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvX25519FieldKernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvAsmSim
+CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachCT
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
@@ -641,7 +644,8 @@ CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoistReal
 CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres
 CatCrypt.Crypto.SecureCompilation.VIR.LoweringDataComp
 CatCrypt.Crypto.SecureCompilation.VIR.LprogJasminWellFormed
-CatCrypt.Crypto.SecureCompilation.VIR.LsemBridge
+CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyProp
+CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.Scheduler
 CatCrypt.Crypto.SecureCompilation.VIR.LsemPortAll
 CatCrypt.Crypto.SecureCompilation.VIR.MLKEMFactorization
 CatCrypt.Crypto.SecureCompilation.VIR.MLKem768MatvecLoop
