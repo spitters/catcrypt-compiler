@@ -227,3 +227,7 @@ CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCall.lean  # procedure-specifi
 CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86Mov.lean  # transfer from CorresJ to CorresIsa for blocks with register moves; the Lopn terms are the lowering jToRMMov under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/KrakenCfgDemo.lean  # three hand-written control-flow programs that are the proof subjects of the cut-point rule's examples; never emitted, no artifact
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/KrakenCallDemo.lean  # a hand-written caller and procedure that are the proof subject of the call rule's example; never emitted, no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LprogIsaData.lean  # ISA record (ABI and instruction-selection data) and the KEEP marker form; the Lprog terms are the record's guard and touch templates used by the exporter, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/X86IsaData.lean  # x86 values of the ISA record (sysv constants, loop guard, zero-trip guard, invariant touch) moved above the exporter; exporter data, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridge.lean  # relation between the two Lprog semantics and the flag-carrying wrapper step; the Lprog terms are fragment shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/X86Isa.lean  # x86Isa instance, its machine and symbolic companion, with step lemmas for the record's templates; no emit artifact
