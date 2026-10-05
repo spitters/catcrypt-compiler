@@ -40,9 +40,9 @@ function and the counter advance of the `Lprog` run stated.
 The memory selection `rvSelM` adds the array load and store at width 64 (the address
 `base + 8 idx` formed in the scratch register `t5`, then `LD` or `SD` with offset 0) and the
 64-bit `ADD`/`SUB` with an immediate (`ADDI`), on the registers `rvMemRegs`. `rv_asm_mem` is
-its Asm lemma: the register relation on `rvMemRegs` and the memory relation `MemRel`, which
+its Asm lemma: the register relation on `rvMemRegs` and the memory relation `RvMemRel`, which
 places each array at the address held in its base register, are preserved under the array
-layout `ArrsSep` and the index bounds `MemBounds`. `rvCond_bne` relates the register branch
+layout `RvArrsSep` and the index bounds `MemBounds`. `rvCond_bne` relates the register branch
 condition to `BNE r, zero`. `rv_and_body` instantiates the Asm lemma at the `mpn_and_n` limb
 body.
 
@@ -188,7 +188,7 @@ theorem rvIsa_refuse_adcx (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag
 def rvBops : List JasminBinOp := [.add, .sub, .and, .or, .xor]
 
 /-- The operation whose 64-bit mnemonic is `opn`, among `rvBops`. -/
-def bopOf? (opn : String) : Option JasminBinOp :=
+def rvBopOf? (opn : String) : Option JasminBinOp :=
   rvBops.find? (fun o => withWidthTag 64 (binOpName o) == opn)
 
 /-- The `RInst64` of a register-arithmetic operation. -/
@@ -207,7 +207,7 @@ def rvRinst (bop : JasminBinOp) (d a b : String) : Option RInst64 :=
 def rvSel : LinstrRM → Option RInst64
   | (.Lopn [.reg d] opn [.reg a, .reg b], .reg none) =>
       if rvRegs.contains d && rvRegs.contains a && rvRegs.contains b then
-        (bopOf? opn).bind (fun o => rvRinst o d a b)
+        (rvBopOf? opn).bind (fun o => rvRinst o d a b)
       else none
   | (.Lopn [.reg d] opn [.reg a], _) =>
       if opn == withWidthTag 64 "MOV" && rvRegs.contains d && rvRegs.contains a then
@@ -215,8 +215,8 @@ def rvSel : LinstrRM → Option RInst64
       else none
   | _ => none
 
-/-- The inversion of `bopOf?`. -/
-theorem bopOf?_eq_some {opn : String} {o : JasminBinOp} (h : bopOf? opn = some o) :
+/-- The inversion of `rvBopOf?`. -/
+theorem rvBopOf?_eq_some {opn : String} {o : JasminBinOp} (h : rvBopOf? opn = some o) :
     opn = withWidthTag 64 (binOpName o) ∧ o ∈ rvBops := by
   have hp := List.find?_some h
   exact ⟨(beq_iff_eq.mp hp).symm, List.mem_of_find?_eq_some h⟩
@@ -235,7 +235,7 @@ theorem rvSel_inv {i : LinstrRM} {ri : RInst64} (h : rvSel i = some ri) :
     · rename_i hc
       simp only [Bool.and_eq_true, List.contains_iff_mem] at hc
       obtain ⟨o, ho, hb⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨hopn, hmem⟩ := bopOf?_eq_some ho
+      obtain ⟨hopn, hmem⟩ := rvBopOf?_eq_some ho
       exact Or.inl ⟨o, d, a, b, by rw [hopn], hmem, hc.1.1, hc.1.2, hc.2, hb⟩
     · cases h
   · rename_i d opn a tag
@@ -339,13 +339,6 @@ theorem rvSel_decodeBlock :
 
 /-! ## The step simulation -/
 
-/-- The frame of a register step: the zero flag, the function, the arrays, the word memory
-    and the carry and overflow flags are unchanged and the counter advances by `n`. -/
-def Frame (n : Nat) (s s' : LstateMF) : Prop :=
-  s'.zf = s.zf ∧ s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.larr = s.prog.base.larr
-    ∧ s'.prog.base.lmem = s.prog.base.lmem ∧ s'.prog.base.cf = s.prog.base.cf
-    ∧ s'.prog.base.of = s.prog.base.of ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
-
 /-- A machine write to a register of `rvRegs` reads back as the write on `rvRegs`. -/
 theorem get_set_rvRegs (b : RState64) {d : String} (hd : d ∈ rvRegs) (v : BitVec 64)
     {r : String} (hr : r ∈ rvRegs) : (b.set d v).get r = if r = d then v else b.get r := by
@@ -425,85 +418,6 @@ theorem rv_asm (P : LprogM) :
 
 open CatCrypt.Crypto.SecureCompilation.MachineMem64
 
-/-- An array cell of shape `(64, n)` reads back at that shape. -/
-theorem getArr_of_larr {s : LstateM} {base : String} {n : Nat} {arr : Fin n → BitVec 64}
-    (h : s.larr base = ⟨64, n, arr⟩) : s.getArr base 64 n = some arr := by
-  unfold LstateM.getArr
-  rw [h]
-  simp
-
-/-- **The core step of an array load** `d := base[idx]` at width 64: the destination takes
-    the element `stackGet arr idx` of the array. -/
-theorem coreStep_loadIdx (P : LprogM) (d base idx : String) (sc n : Nat) (s : LstateMF)
-    (arr : Fin n → BitVec 64) (vi : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
-    (hvi : s.prog.base.reg.getW idx 64 = some vi) :
-    coreStep P (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], .load 64 n) s
-      = some { s with prog := { s.prog with
-          base := (s.prog.base.setReg d (stackGet arr vi.toNat)).nextPc } } := by
-  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
-  unfold coreStep
-  have hmov : movRegArgs? (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], MemTag.load 64 n)
-      = none := rfl
-  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, loadStruct?, if_true, hga, hvi, Option.map_some]
-
-/-- **The core step of an array store** `base[idx] := v` at width 64: the array takes the
-    update `stackSet arr idx v`. -/
-theorem coreStep_storeIdx (P : LprogM) (base idx v : String) (sc n : Nat) (s : LstateMF)
-    (arr : Fin n → BitVec 64) (vi vv : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
-    (hvi : s.prog.base.reg.getW idx 64 = some vi) (hvv : s.prog.base.reg.getW v 64 = some vv) :
-    coreStep P (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v], .store 64 n) s
-      = some { s with prog := { s.prog with
-          base := (s.prog.base.setArr base (stackSet arr vi.toNat vv)).nextPc } } := by
-  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
-  unfold coreStep
-  have hmov : movRegArgs? (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
-      MemTag.store 64 n) = none := rfl
-  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, storeStruct?, if_true, hga, hvi, hvv, Option.map_some]
-
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
-  CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
-  CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift in
-/-- **The core step of a 64-bit register-immediate arithmetic instruction** `d := a ⊙ k`: the
-    destination takes the value of the operation on the immediate `k` at width 64. -/
-theorem coreStep_binopImm (P : LprogM) (bop : JasminBinOp) (d a : String) (k : Nat)
-    (s : LstateMF) (va : BitVec 64) (hsar : binOpName bop ≠ "SAR")
-    (hva : s.prog.base.reg.getW a 64 = some va) :
-    coreStep P (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s
-      = some { s with prog := { s.prog with
-          base := (s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc } } := by
-  have hstrip := stripWidthTag_withWidthTag_binOpName' 64 bop
-  have hm : mulhiStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
-      = none := by
-    simp only [mulhiStruct?]
-  have hs : sarStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
-      = none := by
-    simp only [sarStruct?, hstrip, if_neg hsar]
-  have hstep : lsemStepMem
-      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s.prog.base
-      = some ((s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc) := by
-    rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ hm rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ hs]
-    simp only [lsemStepN, readReg_of_getW hva, evalOperandN, hstrip,
-      applyOpnN_binOpName, Option.map_some]
-    rfl
-  unfold coreStep
-  have hmov : movRegArgs?
-      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], MemTag.reg none)
-      = none := rfl
-  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩, hstep]
-  rfl
-
-/-- On an in-range index the update `stackSet` changes that cell only. -/
-theorem stackSet_eq_of_lt {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) (hk : k < n)
-    (v : BitVec w) : stackSet arr k v = fun j => if j.val = k then v else arr j := by
-  cases n with
-  | zero => omega
-  | succ m =>
-      funext j
-      simp only [stackSet, Fin.ext_iff, Nat.mod_eq_of_lt hk]
-
 /-- The registers of the memory selection: `rvRegs` without the scratch registers `t5`,
     `t6`. The address of an array access is formed in `t5`. -/
 def rvMemRegs : List String :=
@@ -516,9 +430,6 @@ theorem rvRegs_of_rvMemRegs {r : String} (h : r ∈ rvMemRegs) : r ∈ rvRegs :=
 theorem ne_t5_of_rvMemRegs {r : String} (h : r ∈ rvMemRegs) : r ≠ "t5" := by
   have hall : ∀ x ∈ rvMemRegs, x ≠ "t5" := by decide
   exact hall r h
-
-theorem not_mem_of_contains_false {l : List String} {a : String} (h : l.contains a = false) :
-    a ∉ l := fun hm => by rw [List.contains_iff_mem.mpr hm] at h; cases h
 
 /-- The address of the element `base[idx]` of a doubleword array in `t5`:
     `SLLI t5, idx, 3 ; ADD t5, base, t5`. -/
@@ -624,29 +535,16 @@ theorem rvSelM_inv {arrs : List String} {sz : String → Nat} {i : LinstrRM}
 
 /-- **The memory relation**: each array `a` of `arrs` has shape `(64, sz a)` in the `Lprog`
     state, and the machine memory holds it at the address in the register `a`. -/
-def MemRel (arrs : List String) (sz : String → Nat) (s : LstateMF) (b : RMState64) : Prop :=
+def RvMemRel (arrs : List String) (sz : String → Nat) (s : LstateMF) (b : RMState64) : Prop :=
   ∀ a ∈ arrs, ∃ arr : Fin (sz a) → BitVec 64,
     s.prog.base.larr a = ⟨64, sz a, arr⟩ ∧ ArrAt b.mem (b.regs.get a) (sz a) arr
 
 /-- **The array layout**: each array of `arrs` has at most `2⁶¹` doublewords, and the cells
     of distinct arrays at the addresses `g a` are separated. -/
-def ArrsSep (arrs : List String) (sz : String → Nat) (g : String → BitVec 64) : Prop :=
+def RvArrsSep (arrs : List String) (sz : String → Nat) (g : String → BitVec 64) : Prop :=
   (∀ a ∈ arrs, a ∈ rvMemRegs) ∧ (∀ a ∈ arrs, 8 * sz a ≤ 2 ^ 64) ∧
   ∀ a ∈ arrs, ∀ a' ∈ arrs, a ≠ a' → ∀ (j : Fin (sz a)) (k : Fin (sz a')),
     MemSep (g a + BitVec.ofNat 64 (8 * j.val)) (g a' + BitVec.ofNat 64 (8 * k.val))
-
-/-- **The index bound** of an instruction under the register values `g`: the index of an
-    array load or store is below the size of its array. -/
-def IdxBound (sz : String → Nat) (i : LinstrRM) (g : String → BitVec 64) : Prop :=
-  (∀ d base idx, loadStruct? i.1 = some (d, base, idx) → (g idx).toNat < sz base) ∧
-  (∀ d base idx v, storeStruct? i.1 = some (d, base, idx, v) → (g idx).toNat < sz base)
-
-/-- The frame of a step of the memory fragment: the zero flag, the function, the word memory
-    and the carry and overflow flags are unchanged and the counter advances by `n`. -/
-def FrameM (n : Nat) (s s' : LstateMF) : Prop :=
-  s'.zf = s.zf ∧ s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.lmem = s.prog.base.lmem
-    ∧ s'.prog.base.cf = s.prog.base.cf ∧ s'.prog.base.of = s.prog.base.of
-    ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
 
 /-- A left shift by 3 is the multiplication by 8. -/
 theorem shl3_eq (x : BitVec 64) : x <<< 3 = BitVec.ofNat 64 (8 * x.toNat) := by
@@ -684,12 +582,12 @@ theorem rvSelM_step_load (P : LprogM) {arrs : List String} {sz : String → Nat}
     (d base idx : String) (sc : Nat) (hd : d ∈ rvMemRegs) (hi : idx ∈ rvMemRegs)
     (hb : base ∈ rvMemRegs) (ha : base ∈ arrs) (hda : d ∉ arrs)
     (s : LstateMF) (b : RMState64) (hrel : RegRel rvMemRegs s b.regs.get)
-    (hmem : MemRel arrs sz s b) (hsep : ArrsSep arrs sz b.regs.get)
+    (hmem : RvMemRel arrs sz s b) (hsep : RvArrsSep arrs sz b.regs.get)
     (hlt : (b.regs.get idx).toNat < sz base) :
     ∃ s', rvIsa.step P (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], .load 64 (sz base)) s
           = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b (rvIdxAddr base idx ++ [.ld d "t5" 0])).regs.get
-      ∧ MemRel arrs sz s' (runRMBlock64 b (rvIdxAddr base idx ++ [.ld d "t5" 0]))
+      ∧ RvMemRel arrs sz s' (runRMBlock64 b (rvIdxAddr base idx ++ [.ld d "t5" 0]))
       ∧ (∀ a ∈ arrs, (runRMBlock64 b (rvIdxAddr base idx ++ [.ld d "t5" 0])).regs.get a
           = b.regs.get a)
       ∧ FrameM 1 s s' := by
@@ -736,12 +634,12 @@ theorem rvSelM_step_store (P : LprogM) {arrs : List String} {sz : String → Nat
     (base idx v : String) (sc : Nat) (hv : v ∈ rvMemRegs) (hi : idx ∈ rvMemRegs)
     (hb : base ∈ rvMemRegs) (ha : base ∈ arrs)
     (s : LstateMF) (b : RMState64) (hrel : RegRel rvMemRegs s b.regs.get)
-    (hmem : MemRel arrs sz s b) (hsep : ArrsSep arrs sz b.regs.get)
+    (hmem : RvMemRel arrs sz s b) (hsep : RvArrsSep arrs sz b.regs.get)
     (hlt : (b.regs.get idx).toNat < sz base) :
     ∃ s', rvIsa.step P (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
           .store 64 (sz base)) s = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b (rvIdxAddr base idx ++ [.sd v "t5" 0])).regs.get
-      ∧ MemRel arrs sz s' (runRMBlock64 b (rvIdxAddr base idx ++ [.sd v "t5" 0]))
+      ∧ RvMemRel arrs sz s' (runRMBlock64 b (rvIdxAddr base idx ++ [.sd v "t5" 0]))
       ∧ (∀ a ∈ arrs, (runRMBlock64 b (rvIdxAddr base idx ++ [.sd v "t5" 0])).regs.get a
           = b.regs.get a)
       ∧ FrameM 1 s s' := by
@@ -796,10 +694,10 @@ theorem rvSelM_step_alu (P : LprogM) {arrs : List String} {sz : String → Nat}
     (hsrc : ∀ r ∈ (rinst64DstSrcs ri).2, r ∈ rvMemRegs) (hdst : (rinst64DstSrcs ri).1 ∈ rvMemRegs)
     (hda : (rinst64DstSrcs ri).1 ∉ arrs)
     (s : LstateMF) (b : RMState64) (hrel : RegRel rvMemRegs s b.regs.get)
-    (hmem : MemRel arrs sz s b) :
+    (hmem : RvMemRel arrs sz s b) :
     ∃ s', rvIsa.step P i s = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b [.alu ri]).regs.get
-      ∧ MemRel arrs sz s' (runRMBlock64 b [.alu ri])
+      ∧ RvMemRel arrs sz s' (runRMBlock64 b [.alu ri])
       ∧ (∀ a ∈ arrs, (runRMBlock64 b [.alu ri]).regs.get a = b.regs.get a)
       ∧ FrameM 1 s s' := by
   have hrun : (runRMBlock64 b [.alu ri]).regs = evalRInst64 b.regs ri := rfl
@@ -867,11 +765,11 @@ theorem rvSelM_step_addi (P : LprogM) {arrs : List String} {sz : String → Nat}
     (hv : ∀ x : BitVec 64, bop.apply x (BitVec.ofNat 64 k) = x + BitVec.ofInt 64 imm)
     (hd : d ∈ rvMemRegs) (ha : a ∈ rvMemRegs) (hda : d ∉ arrs)
     (s : LstateMF) (b : RMState64) (hrel : RegRel rvMemRegs s b.regs.get)
-    (hmem : MemRel arrs sz s b) :
+    (hmem : RvMemRel arrs sz s b) :
     ∃ s', rvIsa.step P (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k],
           .reg none) s = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b [.addi d a imm]).regs.get
-      ∧ MemRel arrs sz s' (runRMBlock64 b [.addi d a imm])
+      ∧ RvMemRel arrs sz s' (runRMBlock64 b [.addi d a imm])
       ∧ (∀ x ∈ arrs, (runRMBlock64 b [.addi d a imm]).regs.get x = b.regs.get x)
       ∧ FrameM 1 s s' := by
   have hget : ∀ r, (runRMBlock64 b [.addi d a imm]).regs.get r
@@ -893,17 +791,17 @@ theorem rvSelM_step_addi (P : LprogM) {arrs : List String} {sz : String → Nat}
     rw [hget, RState64.get_set_other _ _ _ _ (fun (e : x = d) => hda (e ▸ hx))]
 
 /-- **The one-step simulation of the memory selection**: from related states with the array
-    layout `ArrsSep` and the index bound of the instruction, the `rvIsa` step of a selected
+    layout `RvArrsSep` and the index bound of the instruction, the `rvIsa` step of a selected
     instruction succeeds, and the result is related to the machine run of the selected
     instructions on `rvMemRegs` and the arrays, the array base registers are unchanged, and the
     frame of one step holds. -/
 theorem rvSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i : LinstrRM}
     {rs : List RMInst64} (h : rvSelM arrs sz i = some rs) (s : LstateMF) (b : RMState64)
-    (hrel : RegRel rvMemRegs s b.regs.get) (hmem : MemRel arrs sz s b)
-    (hsep : ArrsSep arrs sz b.regs.get) (hb : IdxBound sz i b.regs.get) :
+    (hrel : RegRel rvMemRegs s b.regs.get) (hmem : RvMemRel arrs sz s b)
+    (hsep : RvArrsSep arrs sz b.regs.get) (hb : IdxBound sz i b.regs.get) :
     ∃ s', rvIsa.step P i s = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b rs).regs.get
-      ∧ MemRel arrs sz s' (runRMBlock64 b rs)
+      ∧ RvMemRel arrs sz s' (runRMBlock64 b rs)
       ∧ (∀ a ∈ arrs, (runRMBlock64 b rs).regs.get a = b.regs.get a)
       ∧ FrameM 1 s s' := by
   rcases rvSelM_inv h with
@@ -928,8 +826,8 @@ theorem rvSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i :
   · exact rvSelM_step_alu P hri hsrc hdst hda s b hrel hmem
 
 /-- The array layout depends only on the array base registers. -/
-theorem ArrsSep_congr {arrs : List String} {sz : String → Nat} {g g' : String → BitVec 64}
-    (h : ArrsSep arrs sz g) (hg : ∀ a ∈ arrs, g' a = g a) : ArrsSep arrs sz g' := by
+theorem RvArrsSep_congr {arrs : List String} {sz : String → Nat} {g g' : String → BitVec 64}
+    (h : RvArrsSep arrs sz g) (hg : ∀ a ∈ arrs, g' a = g a) : RvArrsSep arrs sz g' := by
   obtain ⟨h1, h2, h3⟩ := h
   refine ⟨h1, h2, fun a ha a' ha' hne j k => ?_⟩
   rw [hg a ha, hg a' ha']
@@ -1119,17 +1017,17 @@ theorem rvSelM_roundTrip_block {arrs : List String} {sz : String → Nat} :
 /-- **The Asm lemma of the RV64 memory fragment.** For a block `is` that the memory selection
     maps to the instruction lists `rss`: the bytes of the concatenation decode to it, and from
     an `LstateMF` related to a machine state `b` on `rvMemRegs` and on the arrays `arrs`, with
-    the array layout `ArrsSep` and the index bounds `MemBounds` of the block, the `rvIsa` run of
+    the array layout `RvArrsSep` and the index bounds `MemBounds` of the block, the `rvIsa` run of
     `is` succeeds and ends related to the machine run of the concatenation, on the registers
     and on the arrays, with the frame of the block. -/
 theorem rv_asm_mem (P : LprogM) (arrs : List String) (sz : String → Nat) :
     ∀ (is : List LinstrRM) (rss : List (List RMInst64)), is.mapM (rvSelM arrs sz) = some rss →
-      ∀ (s : LstateMF) (b : RMState64), RegRel rvMemRegs s b.regs.get → MemRel arrs sz s b →
-        ArrsSep arrs sz b.regs.get → MemBounds arrs sz is b →
+      ∀ (s : LstateMF) (b : RMState64), RegRel rvMemRegs s b.regs.get → RvMemRel arrs sz s b →
+        RvArrsSep arrs sz b.regs.get → MemBounds arrs sz is b →
         decodeRMBlock64 (encodeRMBlock64 rss.flatten) = some rss.flatten ∧
         ∃ s', rvIsa.runL P is s = some s'
           ∧ RegRel rvMemRegs s' (runRMBlock64 b rss.flatten).regs.get
-          ∧ MemRel arrs sz s' (runRMBlock64 b rss.flatten)
+          ∧ RvMemRel arrs sz s' (runRMBlock64 b rss.flatten)
           ∧ FrameM is.length s s'
   | [], rss, h, s, b, hrel, hmem, _, _ => by
       simp only [List.mapM_nil, pure, Option.some.injEq] at h
@@ -1144,7 +1042,7 @@ theorem rv_asm_mem (P : LprogM) (arrs : List String) (sz : String → Nat) :
       obtain ⟨s1, hs1, hrel1, hmem1, hbase1, f1⟩ := rvSelM_step P hi s b hrel hmem hsep hb1
       obtain ⟨hdec, s2, hs2, hrel2, hmem2, f2⟩ :=
         rv_asm_mem P arrs sz is rss' hs s1 (runRMBlock64 b rs) hrel1 hmem1
-          (ArrsSep_congr hsep hbase1) (hbr rs hi)
+          (RvArrsSep_congr hsep hbase1) (hbr rs hi)
       refine ⟨?_, s2, ?_, ?_, ?_, ?_⟩
       · refine decodeRMBlock64_encode _ (fun x hx => ?_)
         rw [List.flatten_cons] at hx
@@ -1189,13 +1087,13 @@ def rvAndCode : List (List RMInst64) :=
 /-- The memory selection maps the `mpn_and_n` body to `rvAndCode`. -/
 theorem rvAndBody_sel (n : Nat) :
     (rvAndBody n).mapM (rvSelM rvAndArrs (fun _ => n)) = some rvAndCode := by
-  simp [rvAndBody, rvSelM, rvSel, bopOf?, rvBops, rvRinst, rvMemRegs, rvAndArrs, rvRegs,
+  simp [rvAndBody, rvSelM, rvSel, rvBopOf?, rvBops, rvRinst, rvMemRegs, rvAndArrs, rvRegs,
     rinst64DstSrcs, rvAndCode, withWidthTag, binOpName]
 
 /-- The index bounds of the `mpn_and_n` body hold when the index `a4` is below `n`. -/
 theorem rvAndBody_bounds (n : Nat) (b : RMState64) (h : (b.regs.get "a4").toNat < n) :
     MemBounds rvAndArrs (fun _ => n) (rvAndBody n) b := by
-  simp [MemBounds, IdxBound, rvAndBody, loadStruct?, storeStruct?, rvSelM, rvSel, bopOf?,
+  simp [MemBounds, IdxBound, rvAndBody, loadStruct?, storeStruct?, rvSelM, rvSel, rvBopOf?,
     rvBops, rvRinst, rvMemRegs, rvAndArrs, rvRegs, rinst64DstSrcs, withWidthTag, binOpName,
     rvIdxAddr, runRMBlock64, evalRMInst64, evalRInst64, RState64.set] at h ⊢
   refine ⟨h, ?_⟩
@@ -1207,12 +1105,12 @@ theorem rvAndBody_bounds (n : Nat) (b : RMState64) (h : (b.regs.get "a4").toNat 
     `n` limbs, laid out separately, with the index `a4` below `n`, the `rvIsa` run of the body
     succeeds and ends related to the machine run of `rvAndCode`. -/
 theorem rv_and_body (P : LprogM) (n : Nat) (s : LstateMF) (b : RMState64)
-    (hrel : RegRel rvMemRegs s b.regs.get) (hmem : MemRel rvAndArrs (fun _ => n) s b)
-    (hsep : ArrsSep rvAndArrs (fun _ => n) b.regs.get) (hidx : (b.regs.get "a4").toNat < n) :
+    (hrel : RegRel rvMemRegs s b.regs.get) (hmem : RvMemRel rvAndArrs (fun _ => n) s b)
+    (hsep : RvArrsSep rvAndArrs (fun _ => n) b.regs.get) (hidx : (b.regs.get "a4").toNat < n) :
     decodeRMBlock64 (encodeRMBlock64 rvAndCode.flatten) = some rvAndCode.flatten ∧
     ∃ s', rvIsa.runL P (rvAndBody n) s = some s'
       ∧ RegRel rvMemRegs s' (runRMBlock64 b rvAndCode.flatten).regs.get
-      ∧ MemRel rvAndArrs (fun _ => n) s' (runRMBlock64 b rvAndCode.flatten)
+      ∧ RvMemRel rvAndArrs (fun _ => n) s' (runRMBlock64 b rvAndCode.flatten)
       ∧ FrameM 6 s s' :=
   rv_asm_mem P rvAndArrs (fun _ => n) (rvAndBody n) rvAndCode (rvAndBody_sel n) s b hrel hmem
     hsep (rvAndBody_bounds n b hidx)

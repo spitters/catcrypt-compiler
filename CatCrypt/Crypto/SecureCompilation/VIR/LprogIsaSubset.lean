@@ -36,6 +36,13 @@ instruction-selection simulation needs, and `RegRel_setReg` is their effect on t
 * `subsetStep_refuse`: an instruction outside the alphabet has no step.
 * `coreStep_binop`, `coreStep_mov`: the register arithmetic and the register copy.
 * `RegRel`, `RegRel_setReg`: the register relation and its update.
+* `coreStep_loadIdx`, `coreStep_storeIdx`, `coreStep_binopImm`: the array load and store and
+  the register-immediate arithmetic.
+* `coreStep_loadC`, `coreStep_storeC`: the compile-time-offset load and store of the word
+  memory `lmem`.
+* `Frame`, `FrameM`, `FrameX`, `IdxBound`: the frames of a register step, of a memory step and
+  of a step that writes the flags, and the index bound of an array access, shared by the
+  instruction-selection simulations.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -164,5 +171,137 @@ theorem RegRel_setReg {regs : List String} {s : LstateMF} {get get' : String →
   split
   · rfl
   · exact h r hr
+
+/-! ## The memory arms of the core step -/
+
+/-- An array cell of shape `(64, n)` reads back at that shape. -/
+theorem getArr_of_larr {s : LstateM} {base : String} {n : Nat} {arr : Fin n → BitVec 64}
+    (h : s.larr base = ⟨64, n, arr⟩) : s.getArr base 64 n = some arr := by
+  unfold LstateM.getArr
+  rw [h]
+  simp
+
+/-- **The core step of an array load** `d := base[idx]` at width 64: the destination takes
+    the element `stackGet arr idx` of the array. -/
+theorem coreStep_loadIdx (P : LprogM) (d base idx : String) (sc n : Nat) (s : LstateMF)
+    (arr : Fin n → BitVec 64) (vi : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
+    (hvi : s.prog.base.reg.getW idx 64 = some vi) :
+    coreStep P (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], .load 64 n) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setReg d (stackGet arr vi.toNat)).nextPc } } := by
+  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], MemTag.load 64 n)
+      = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, loadStruct?, if_true, hga, hvi, Option.map_some]
+
+/-- **The core step of an array store** `base[idx] := v` at width 64: the array takes the
+    update `stackSet arr idx v`. -/
+theorem coreStep_storeIdx (P : LprogM) (base idx v : String) (sc n : Nat) (s : LstateMF)
+    (arr : Fin n → BitVec 64) (vi vv : BitVec 64) (harr : s.prog.base.larr base = ⟨64, n, arr⟩)
+    (hvi : s.prog.base.reg.getW idx 64 = some vi) (hvv : s.prog.base.reg.getW v 64 = some vv) :
+    coreStep P (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v], .store 64 n) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setArr base (stackSet arr vi.toNat vv)).nextPc } } := by
+  have hga : s.prog.base.getArr base 64 n = some arr := getArr_of_larr harr
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
+      MemTag.store 64 n) = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, storeStruct?, if_true, hga, hvi, hvv, Option.map_some]
+
+/-- **The core step of a 64-bit register-immediate arithmetic instruction** `d := a ⊙ k`: the
+    destination takes the value of the operation on the immediate `k` at width 64. -/
+theorem coreStep_binopImm (P : LprogM) (bop : JasminBinOp) (d a : String) (k : Nat)
+    (s : LstateMF) (va : BitVec 64) (hsar : binOpName bop ≠ "SAR")
+    (hva : s.prog.base.reg.getW a 64 = some va) :
+    coreStep P (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc } } := by
+  have hstrip := stripWidthTag_withWidthTag_binOpName' 64 bop
+  have hm : mulhiStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
+      = none := by
+    simp only [mulhiStruct?]
+  have hs : sarStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
+      = none := by
+    simp only [sarStruct?, hstrip, if_neg hsar]
+  have hstep : lsemStepMem
+      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s.prog.base
+      = some ((s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc) := by
+    rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
+      lsemStepMC_of_delegate _ _ hm rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ hs]
+    simp only [lsemStepN, readReg_of_getW hva, evalOperandN, hstrip,
+      applyOpnN_binOpName, Option.map_some]
+    rfl
+  unfold coreStep
+  have hmov : movRegArgs?
+      (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], MemTag.reg none)
+      = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩, hstep]
+  rfl
+
+/-- **The core step of a compile-time-offset load** `d := lmem p off` (`MOVQ`, tag `.loadC`). -/
+theorem coreStep_loadC (P : LprogM) (d p : String) (off : Nat) (s : LstateMF) :
+    coreStep P (.Lopn [.reg d] "MOVQ" [.arr p off], .loadC) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.setReg d (s.prog.base.lmem p (Int.ofNat off))).nextPc } } := by
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.reg d] "MOVQ" [.arr p off], MemTag.loadC) = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, loadCStruct?, if_true, Option.map_some]
+
+/-- **The core step of a compile-time-offset store** `lmem p off := v` (`MOVQ`, tag
+    `.storeC`). -/
+theorem coreStep_storeC (P : LprogM) (p v : String) (off : Nat) (s : LstateMF) (vv : BitVec 64)
+    (hvv : s.prog.base.reg.getW v 64 = some vv) :
+    coreStep P (.Lopn [.arr p off] "MOVQ" [.reg v], .storeC) s
+      = some { s with prog := { s.prog with
+          base := (s.prog.base.storeMemC p (Int.ofNat off) vv).nextPc } } := by
+  unfold coreStep
+  have hmov : movRegArgs? (.Lopn [.arr p off] "MOVQ" [.reg v], MemTag.storeC) = none := rfl
+  rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
+  simp only [lsemStepMem, storeCStruct?, if_true, hvv, Option.map_some]
+
+/-- On an in-range index the update `stackSet` changes that cell only. -/
+theorem stackSet_eq_of_lt {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) (hk : k < n)
+    (v : BitVec w) : stackSet arr k v = fun j => if j.val = k then v else arr j := by
+  cases n with
+  | zero => omega
+  | succ m =>
+      funext j
+      simp only [stackSet, Fin.ext_iff, Nat.mod_eq_of_lt hk]
+
+/-- A name on which `contains` is `false` is not in the list. -/
+theorem not_mem_of_contains_false {l : List String} {a : String} (h : l.contains a = false) :
+    a ∉ l := fun hm => by rw [List.contains_iff_mem.mpr hm] at h; cases h
+
+/-! ## Frames and index bounds -/
+
+/-- The frame of a register step: the zero flag, the function, the arrays, the word memory
+    and the carry and overflow flags are unchanged and the counter advances by `n`. -/
+def Frame (n : Nat) (s s' : LstateMF) : Prop :=
+  s'.zf = s.zf ∧ s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.larr = s.prog.base.larr
+    ∧ s'.prog.base.lmem = s.prog.base.lmem ∧ s'.prog.base.cf = s.prog.base.cf
+    ∧ s'.prog.base.of = s.prog.base.of ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
+
+/-- The frame of a step of a memory fragment: the zero flag, the function, the word memory
+    and the carry and overflow flags are unchanged and the counter advances by `n`. -/
+def FrameM (n : Nat) (s s' : LstateMF) : Prop :=
+  s'.zf = s.zf ∧ s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.lmem = s.prog.base.lmem
+    ∧ s'.prog.base.cf = s.prog.base.cf ∧ s'.prog.base.of = s.prog.base.of
+    ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
+
+/-- The frame of a step that may write the flags, the arrays and the word memory: the
+    function and the overflow flag are unchanged and the counter advances by `n`. -/
+def FrameX (n : Nat) (s s' : LstateMF) : Prop :=
+  s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.of = s.prog.base.of
+    ∧ s'.prog.base.reg.lpc = s.prog.base.reg.lpc + n
+
+/-- **The index bound** of an instruction under the register values `g`: the index of an
+    array load or store is below the size of its array. -/
+def IdxBound (sz : String → Nat) (i : LinstrRM) (g : String → BitVec 64) : Prop :=
+  (∀ d base idx, loadStruct? i.1 = some (d, base, idx) → (g idx).toNat < sz base) ∧
+  (∀ d base idx v, storeStruct? i.1 = some (d, base, idx, v) → (g idx).toNat < sz base)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
