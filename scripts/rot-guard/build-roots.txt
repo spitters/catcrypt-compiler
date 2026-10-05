@@ -314,10 +314,8 @@ CatCrypt.Crypto.SecureCompilation.BignumAddEmit
 CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
-CatCrypt.Crypto.SecureCompilation.CT.ArmTiming
 CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
 CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
-CatCrypt.Crypto.SecureCompilation.CT.RiscvTiming
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2bTie
