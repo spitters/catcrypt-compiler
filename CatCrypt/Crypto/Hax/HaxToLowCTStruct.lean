@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
-public import CatCrypt.Hax.ListBlocks
+public import HaxAscent.ListBlocks
 
 /-!
 # Flat structs and `Option` of a word in the hax front

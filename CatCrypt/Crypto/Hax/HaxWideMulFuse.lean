@@ -8,7 +8,7 @@ module
 public import HaxLean.Phase.Monomorphise
 public import HaxLean.TExpr
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOps
-public import CatCrypt.Hax.Ascent.TableCongr
+public import HaxAscent.Ascent.TableCongr
 
 /-!
 # The high word of the widening multiply as one word call, in every position

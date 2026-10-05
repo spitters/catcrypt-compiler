@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquare
+public import HaxAscent.Calculus.RustMSquare
 
 /-!
 # Demo: the correspondence square over a `RustM` program

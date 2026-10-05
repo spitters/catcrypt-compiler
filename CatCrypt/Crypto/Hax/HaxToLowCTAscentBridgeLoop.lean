@@ -21,7 +21,7 @@ statement for a function body, or for one of its loops, to the rewritten form wi
 same value.
 
 A `cfContinue` in the source keeps its ascent reading `Hax.Ascent.corres_cfContinue`
-(`CatCrypt/Hax/Ascent/Corres.lean`); the statements of this module move that reading
+(`HaxAscent/Ascent/Corres.lean`); the statements of this module move that reading
 to the flag form the lowering accepts.
 
 ## Main results

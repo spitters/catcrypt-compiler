@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTExit
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
 public import HaxLean.SemanticsCF
-public import CatCrypt.Hax.Ascent.EarlyExit
+public import HaxAscent.Ascent.EarlyExit
 
 /-!
 # Simulation of the exit-flag lowering over `Hax.denote'`

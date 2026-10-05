@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.Ascent.SquareKleisli
+public import HaxAscent.Ascent.SquareKleisli
 public import CatCryptCore.ForMathlib.CategoryTheory.ThinDoubleCategory
 
 /-!

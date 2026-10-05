@@ -80,9 +80,9 @@ TERRITORY='^CatCrypt\.Crypto\.(SecureCompilation|Optimizer|Jasmin)\.'
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# Every tracked module under CatCrypt/, as a module name.
+# Every tracked module under CatCrypt/ and HaxAscent/, as a module name.
 tracked_modules() {
-  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' \
+  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' 'HaxAscent/*.lean' \
     | sed -E 's/\.lean$//; s#/#.#g' | LC_ALL=C sort -u
 }
 
@@ -93,11 +93,11 @@ tracked_modules() {
 # self-import, which drops the module out of the import-root set and then reports
 # it as an orphan — `Optimizer/SplitBytesSlice.lean` is exactly that shape.
 import_edges() {
-  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' \
+  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' 'HaxAscent/*.lean' \
     | while IFS= read -r f; do
         m="$(echo "${f%.lean}" | tr '/' '.')"
         perl -0777 -ne 's{/-.*?-/}{}gs; s{--[^\n]*}{}g; print;' "$f" 2>/dev/null \
-          | grep -hoE '^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+CatCrypt[A-Za-z0-9_.]*' \
+          | grep -hoE '^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+(CatCrypt|HaxAscent)[A-Za-z0-9_.]*' \
           | sed -E "s/^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+/${m}\t/"
       done
 }
@@ -149,7 +149,7 @@ if [ "${ROT_GUARD_WRITE_MANIFEST:-0}" = "1" ]; then
   import_edges | awk -F'\t' 'NR==FNR { o[$1] = 1; next } !($1 in o) { print $2 }' "$tmp/optin" - \
     | LC_ALL=C sort -u > "$tmp/imported"
   mkdir -p "$(dirname "$MANIFEST")"
-  { echo "-- Build roots: tracked modules under CatCrypt/ that no other tracked"
+  { echo "-- Build roots: tracked modules under CatCrypt/ and HaxAscent/ that no other tracked"
     echo "-- module imports. Their transitive closure is the whole library, so a"
     echo "-- module outside it is one no target and no import reaches."
     echo "-- Regenerate with:"
@@ -304,10 +304,10 @@ case "$mode" in
       { git diff --name-only HEAD -- '*.lean'
         git ls-files --others --exclude-standard -- '*.lean'; } > "$tmp/changedfiles"
     fi
-    grep -E '^CatCrypt/.*\.lean$' "$tmp/changedfiles" \
+    grep -E '^(CatCrypt|HaxAscent)/.*\.lean$' "$tmp/changedfiles" \
       | sed -E 's/\.lean$//; s#/#.#g' | LC_ALL=C sort -u > "$tmp/changed"
     if [ ! -s "$tmp/changed" ]; then
-      echo "rot-guard: no changed module under CatCrypt/; nothing to build."
+      echo "rot-guard: no changed module under CatCrypt/ or HaxAscent/; nothing to build."
       exit 0
     fi
 

@@ -8,7 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
-public import CatCrypt.Crypto.SecureCompilation.Ascent.IFold
+public import HaxAscent.Calculus.IFold
 
 /-!
 # The ML-KEM ascent fold-lift: per-coefficient tie ↦ whole-polynomial op

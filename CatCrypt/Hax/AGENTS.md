@@ -2,10 +2,11 @@
 
 This directory relates hax-lean's `ImpExpr` to Lean functions in both directions:
 the reifier `reifyImp%` turns a pure Lean function into an `ImpExpr`, and the ascent
-in `Ascent/` generates shallow Lean functions with correspondence theorems from a
+in `HaxAscent/Ascent/` generates shallow Lean functions with correspondence theorems from a
 haxpipeT extraction. [HAX_RUST.md](../../HAX_RUST.md) gives both procedures, and
 [CORRECTNESS.md](../../CORRECTNESS.md) relates this ascent to descent and transfer.
-Namespaces: `CatCrypt.Hax.*` for the top-level modules, `Hax.Ascent.*` for `Ascent/`.
+Namespaces: `CatCrypt.Hax.*` for the top-level modules, `Hax.Ascent.*` for
+`HaxAscent/Ascent/` (the `HaxAscent` library of this package).
 
 ## Entry points
 
@@ -22,21 +23,21 @@ Namespaces: `CatCrypt.Hax.*` for the top-level modules, `Hax.Ascent.*` for `Asce
 | [`ToRawCode`](ToRawCode.lean), [`TypedToRawCode`](TypedToRawCode.lean) | `ImpExpr` to `RawCode` |
 | [`CType`](CType.lean), [`CTypeResolve`](CTypeResolve.lean), [`CTypeValue`](CTypeValue.lean) | the closed type universe of extracted values |
 
-## `Ascent/`
+## `HaxAscent/Ascent/`
 
 | Module | Contents |
 |---|---|
-| [`Corres`](Ascent/Corres.lean) | `FnCorres`, the correspondence of `denote'` with shallow functions, and its rules |
-| [`Generate`](Ascent/Generate.lean), [`GenRules`](Ascent/GenRules.lean) | the surface generator and its rules |
-| [`Coverage`](Ascent/Coverage.lean) | the commands `hax_ascend Ns` and `#hax_coverage Ns` on a whole extraction |
-| [`Monomorphise`](Ascent/Monomorphise.lean) | trait-generic literals specialised at instances: `fnCorres_monomorphise_iff`, behind `Ns.HaxGen.f.corres_generic` |
-| [`AscendHax`](Ascent/AscendHax.lean), [`AscendHaxDemo`](Ascent/AscendHaxDemo.lean) | the tactic `hax_corres` on one literal |
-| [`Structs`](Ascent/Structs.lean), [`ArrStructs`](Ascent/ArrStructs.lean), [`Deps`](Ascent/Deps.lean), [`LocalCalls`](Ascent/LocalCalls.lean), [`RuntimeLeaves`](Ascent/RuntimeLeaves.lean) | leaves for structs, arrays of structs, dependency methods, local calls and runtime operations |
-| [`Refines`](Ascent/Refines.lean), [`Exit`](Ascent/Exit.lean), [`Fuel`](Ascent/Fuel.lean), [`TableCongr`](Ascent/TableCongr.lean) | refinement at three result monads, early exit as an exception phase, fuel monotonicity, runs under agreeing tables |
-| [`Builtins`](Ascent/Builtins.lean), [`ExtTable`](Ascent/ExtTable.lean), [`RuntimeOps`](Ascent/RuntimeOps.lean) | builtin tables from named leaves, from an extraction, and for runtime operations |
-| [`WhileFold`](Ascent/WhileFold.lean), [`EarlyExit`](Ascent/EarlyExit.lean), [`IfBreak`](Ascent/IfBreak.lean) | data-dependent loops and early exits |
-| [`Square`](Ascent/Square.lean), [`SquareKleisli`](Ascent/SquareKleisli.lean) | the correspondence squares as a double-category fragment |
-| [`Demo`](Ascent/Demo.lean) | `keyEq_fnCorres`: an array comparison worked by hand |
+| [`Corres`](../../HaxAscent/Ascent/Corres.lean) | `FnCorres`, the correspondence of `denote'` with shallow functions, and its rules |
+| [`Generate`](../../HaxAscent/Ascent/Generate.lean), [`GenRules`](../../HaxAscent/Ascent/GenRules.lean) | the surface generator and its rules |
+| [`Coverage`](../../HaxAscent/Ascent/Coverage.lean) | the commands `hax_ascend Ns` and `#hax_coverage Ns` on a whole extraction |
+| [`Monomorphise`](../../HaxAscent/Ascent/Monomorphise.lean) | trait-generic literals specialised at instances: `fnCorres_monomorphise_iff`, behind `Ns.HaxGen.f.corres_generic` |
+| [`AscendHax`](../../HaxAscent/Ascent/AscendHax.lean), [`AscendHaxDemo`](../../HaxAscent/Ascent/AscendHaxDemo.lean) | the tactic `hax_corres` on one literal |
+| [`Structs`](../../HaxAscent/Ascent/Structs.lean), [`ArrStructs`](../../HaxAscent/Ascent/ArrStructs.lean), [`Deps`](../../HaxAscent/Ascent/Deps.lean), [`LocalCalls`](../../HaxAscent/Ascent/LocalCalls.lean), [`RuntimeLeaves`](../../HaxAscent/Ascent/RuntimeLeaves.lean) | leaves for structs, arrays of structs, dependency methods, local calls and runtime operations |
+| [`Refines`](../../HaxAscent/Ascent/Refines.lean), [`Exit`](../../HaxAscent/Ascent/Exit.lean), [`Fuel`](../../HaxAscent/Ascent/Fuel.lean), [`TableCongr`](../../HaxAscent/Ascent/TableCongr.lean) | refinement at three result monads, early exit as an exception phase, fuel monotonicity, runs under agreeing tables |
+| [`Builtins`](../../HaxAscent/Ascent/Builtins.lean), [`ExtTable`](../../HaxAscent/Ascent/ExtTable.lean), [`RuntimeOps`](../../HaxAscent/Ascent/RuntimeOps.lean) | builtin tables from named leaves, from an extraction, and for runtime operations |
+| [`WhileFold`](../../HaxAscent/Ascent/WhileFold.lean), [`EarlyExit`](../../HaxAscent/Ascent/EarlyExit.lean), [`IfBreak`](../../HaxAscent/Ascent/IfBreak.lean) | data-dependent loops and early exits |
+| [`Square`](../../HaxAscent/Ascent/Square.lean), [`SquareKleisli`](../../HaxAscent/Ascent/SquareKleisli.lean) | the correspondence squares as a double-category fragment |
+| [`Demo`](../../HaxAscent/Ascent/Demo.lean) | `keyEq_fnCorres`: an array comparison worked by hand |
 
 ## Conventions
 

@@ -39,7 +39,7 @@ mode="${1:-}"
 # not in HEAD is being written right now by one of the concurrent sessions; reading it
 # gives a different verdict from one run to the next, and CI classifies a commit.
 files=$(git ls-tree -r --name-only HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent \
-                                           CatCrypt/Hax/Ascent | grep '\.lean$' | sort)
+                                           HaxAscent/Ascent HaxAscent/Calculus | grep '\.lean$' | sort)
 [ -n "$files" ] || { echo "ascent-anchor: no ascent modules found"; exit 1; }
 
 # Module name of a path, and the reverse: both are the path with / and . swapped.
@@ -75,7 +75,7 @@ want=$(printf "%s\n" "$files" | wc -l)
 ok=0
 for _ in 1 2 3; do
   rm -rf "${snap:?}"/* 2>/dev/null
-  if git archive HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent CatCrypt/Hax/Ascent \
+  if git archive HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent HaxAscent/Ascent HaxAscent/Calculus \
        > "$snap/.snapshot.tar" 2>/dev/null &&
      tar -x -C "$snap" -f "$snap/.snapshot.tar" 2>/dev/null &&
      [ "$(find "$snap" -name '*.lean' | wc -l)" -eq "$want" ]; then
@@ -131,7 +131,7 @@ for f in $files; do
   file_text "$f" | grep -oE "^ *(public |private |meta |public meta )*import (all )?[A-Za-z0-9_.]+" |
     awk '{print $NF}' | while read -r i; do
       case "$i" in
-        CatCrypt.Crypto.SecureCompilation.Ascent.*|CatCrypt.Hax.Ascent.*)
+        CatCrypt.Crypto.SecureCompilation.Ascent.*|HaxAscent.Ascent.*|HaxAscent.Calculus.*)
           printf '%s\t%s\n' "$m" "$i" >> "$tmp/imports" ;;
       esac
     done

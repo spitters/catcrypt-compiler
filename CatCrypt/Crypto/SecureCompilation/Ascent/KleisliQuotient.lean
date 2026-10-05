@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.Ascent.SquareKleisli
+public import HaxAscent.Ascent.SquareKleisli
 
 /-!
 # Environments up to agreement off a name, against the relations that read it

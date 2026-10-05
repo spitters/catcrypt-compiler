@@ -101,7 +101,7 @@ else
 fi
 rm -f "$tmp/idx" "$tmp/imp"
 
-git ls-files -z 'CatCrypt/*.lean' > "$tmp/files"
+git ls-files -z 'CatCrypt/*.lean' 'HaxAscent/*.lean' > "$tmp/files"
 
 # ---------------------------------------------------------------------------
 # Stage 1: declaration and import index.

@@ -14,7 +14,7 @@ public import HaxLean.AST
 `haxpipeT --emit-classes` extracts a Rust function generic in a trait bound as a Lean
 definition over a class instance, and its body as an `ImpExpr` literal whose class-method
 calls are builtin calls by method name. The methods of an instance, under an encoding of
-its carrier, form a builtin table `Table.toBuiltins t` (`CatCrypt.Hax.Ascent.Builtins`),
+its carrier, form a builtin table `Table.toBuiltins t` (`HaxAscent.Ascent.Builtins`),
 with `t : Table` the list of method names and their leaves.
 
 The typed literals carry a type parameter as `.typeVar n`. A type environment

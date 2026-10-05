@@ -331,7 +331,7 @@ coverage)
   # dying inside the pipeline below.
   touch "$BASELINE"
   cut -f1 "$BASELINE" 2>/dev/null | sort -u > "$measured"
-  git ls-files 'CatCrypt/**/*.lean' | sort > "$tracked"
+  git ls-files 'CatCrypt/**/*.lean' 'HaxAscent/*.lean' | sort > "$tracked"
   NOW="$(comm -23 "$tracked" "$measured" | grep -c . || true)"
   if [ ! -f "$COVER_BASE" ]; then
     echo "$NOW" > "$COVER_BASE"

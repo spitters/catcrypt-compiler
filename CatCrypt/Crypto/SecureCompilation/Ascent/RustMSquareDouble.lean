@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquare
+public import HaxAscent.Calculus.RustMSquare
 public import CatCryptCore.ForMathlib.CategoryTheory.ThinDoubleCategory
 
 /-!

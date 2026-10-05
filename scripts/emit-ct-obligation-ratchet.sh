@@ -57,7 +57,7 @@ fi
 
 # Artifact writers with neither a constant-time result nor a declaration.
 : > "$tmp/missing"
-git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | while IFS= read -r f; do
+git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' 'HaxAscent/*.lean' | while IFS= read -r f; do
   grep -qE 'IO\.FS\.writeFile' "$f" || continue
   grep -qE "$CT_MARKER" "$f" && continue
   grep -qxF "$f" "$tmp/public" && continue

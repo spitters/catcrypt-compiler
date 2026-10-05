@@ -84,14 +84,14 @@ baseline=scripts/ascent-block-provenance-baseline.txt
 mode="${1:-}"
 
 ascent_files=$(git ls-tree -r --name-only HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent \
-                                                  CatCrypt/Hax/Ascent | grep '\.lean$' | sort)
+                                                  HaxAscent/Ascent HaxAscent/Calculus | grep '\.lean$' | sort)
 [ -n "$ascent_files" ] || { echo "ascent-block-provenance: no ascent modules found"; exit 1; }
 
-all_files=$(git ls-tree -r --name-only HEAD -- CatCrypt | grep '\.lean$' | sort)
+all_files=$(git ls-tree -r --name-only HEAD -- CatCrypt HaxAscent | grep '\.lean$' | sort)
 
 mod_of() { printf '%s' "${1%.lean}" | tr '/' '.'; }
 
-# Robust HEAD snapshot of the whole CatCrypt/ tree (a block's definer is very often
+# Robust HEAD snapshot of the whole CatCrypt/ and HaxAscent/ trees (a block's definer is very often
 # outside Ascent/), retried with a count check: see ascent-anchor-ratchet.sh's header
 # for why a bare `git show`/working-tree read is unsafe under concurrent sessions.
 snap=$(mktemp -d)
@@ -100,7 +100,7 @@ want=$(printf "%s\n" "$all_files" | wc -l)
 ok=0
 for _ in 1 2 3; do
   rm -rf "${snap:?}"/* 2>/dev/null
-  if git archive HEAD -- CatCrypt > "$snap/.snapshot.tar" 2>/dev/null &&
+  if git archive HEAD -- CatCrypt HaxAscent > "$snap/.snapshot.tar" 2>/dev/null &&
      tar -x -C "$snap" -f "$snap/.snapshot.tar" 2>/dev/null &&
      [ "$(find "$snap" -name '*.lean' | wc -l)" -eq "$want" ]; then
     ok=1; break
@@ -134,11 +134,11 @@ code_of() {
 
 tmp=$(mktemp -d)
 
-# --- 1. Repo-wide import graph (CatCrypt.* edges only) ---------------------------
+# --- 1. Repo-wide import graph (CatCrypt.* and HaxAscent.* edges only) ---------------------------
 : > "$tmp/imports"
 for f in $all_files; do
   m=$(mod_of "$f")
-  file_text "$f" | grep -oE "^ *(public |private |meta |public meta )*import (all )?CatCrypt[A-Za-z0-9_.]+" |
+  file_text "$f" | grep -oE "^ *(public |private |meta |public meta )*import (all )?(CatCrypt|HaxAscent)[A-Za-z0-9_.]+" |
     awk '{print $NF}' | while read -r i; do printf '%s\t%s\n' "$m" "$i" >> "$tmp/imports"; done
 done
 sort -u -o "$tmp/imports" "$tmp/imports"
@@ -209,7 +209,7 @@ if [ "$n_pairs" -eq 0 ]; then
   exit 0
 fi
 
-# --- 4. Transitive CatCrypt.* import closure, per ascent module that has a pair ---
+# --- 4. Transitive CatCrypt.*/HaxAscent.* import closure, per ascent module that has a pair ---
 # One awk pass over the whole import graph, BFS per start module, ALL start modules
 # in one invocation (not one awk process per module: this repo's `.lean` tree has a
 # few thousand import edges, so re-parsing them once per citing module needlessly

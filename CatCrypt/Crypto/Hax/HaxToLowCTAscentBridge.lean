@@ -6,10 +6,10 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTStruct
-public import CatCrypt.Hax.Ascent.EarlyExit
-public import CatCrypt.Hax.Ascent.Structs
-public import CatCrypt.Hax.Ascent.ArrStructs
-public import CatCrypt.Hax.Ascent.AscentOption
+public import HaxAscent.Ascent.EarlyExit
+public import HaxAscent.Ascent.Structs
+public import HaxAscent.Ascent.ArrStructs
+public import HaxAscent.Ascent.AscentOption
 
 /-!
 # The descent relations over the ascent judgment

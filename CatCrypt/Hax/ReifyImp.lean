@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.Ascent.Generate
+public import HaxAscent.Ascent.Generate
 public import CatCrypt.Crypto.Hax.ImpRustPrint
 public meta import Lean
 

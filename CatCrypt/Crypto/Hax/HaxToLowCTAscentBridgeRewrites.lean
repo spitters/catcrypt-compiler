@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTAscentBridge
-public import CatCrypt.Hax.Ascent.SquareKleisli
+public import HaxAscent.Ascent.SquareKleisli
 public import HaxLean.Phase.IterStepBy
 public import HaxLean.Phase.Monomorphise
 

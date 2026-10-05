@@ -1,4 +1,4 @@
--- Build roots: tracked modules under CatCrypt/ that no other tracked
+-- Build roots: tracked modules under CatCrypt/ and HaxAscent/ that no other tracked
 -- module imports. Their transitive closure is the whole library, so a
 -- module outside it is one no target and no import reaches.
 -- Regenerate with:
@@ -290,8 +290,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockLoopTriple
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
-CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareLoop
-CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
@@ -981,9 +979,6 @@ CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
-CatCrypt.Hax.Ascent.FnCorresUnique
-CatCrypt.Hax.Ascent.IfBreak
-CatCrypt.Hax.Ascent.LocalCalls
 CatCrypt.Hax.Ascent.SquareDouble
 CatCrypt.Hax.ClassBuiltinsTest
 CatCrypt.Hax.ReifyImpDecodeEndToEnd
@@ -991,11 +986,6 @@ CatCrypt.Hax.ReifyImpEmit
 CatCrypt.Hax.ReifyImpEndToEnd
 CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
-CatCrypt.Hax.RustSemantics
-CatCrypt.Hax.RustSemantics.AscendRustM
-CatCrypt.Hax.RustSemantics.BackendLoops
-CatCrypt.Hax.RustSemantics.ToRustMSContractDemo
-CatCrypt.Hax.RustSemantics.ToRustMSTotal
 CatCrypt.Hax.TExprTypingSpine
 CatCrypt.Hax.TypedToRawCode
 CatCrypt.Hax.VacuityAudit
@@ -1052,3 +1042,13 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
+HaxAscent.Ascent.FnCorresUnique
+HaxAscent.Ascent.IfBreak
+HaxAscent.Ascent.LocalCalls
+HaxAscent.Calculus.RustMSquareLoop
+HaxAscent.Calculus.RustMSquareSpec
+HaxAscent.RustSemantics
+HaxAscent.RustSemantics.AscendRustM
+HaxAscent.RustSemantics.BackendLoops
+HaxAscent.RustSemantics.ToRustMSContractDemo
+HaxAscent.RustSemantics.ToRustMSTotal

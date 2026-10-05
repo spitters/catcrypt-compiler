@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 public import CatCrypt.Crypto.Hax.DenoteKeeps
 public import HaxLean.Phase.ContinueFlag
-public import CatCrypt.Hax.Ascent.Fuel
+public import HaxAscent.Ascent.Fuel
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTyped
 

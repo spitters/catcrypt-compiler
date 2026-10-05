@@ -15,7 +15,7 @@ The technique is applied to three kinds of code.
   compiler's correctness theorems: the x86 blocks of the Ed25519 implementation, the
   largest of 4,909 instructions
   ([The project's compiler output, re-verified](#the-projects-compiler-output-re-verified)).
-- Rust extracted by hax: `CatCrypt/Hax/Ascent/` applies the same calculus to `ImpExpr`,
+- Rust extracted by hax: `HaxAscent/Ascent/` applies the same calculus to `ImpExpr`,
   with the `FnCorres` judgement and the generator `hax_ascend`;
   [HAX_RUST.md](HAX_RUST.md#3-existing-rust--lean-the-ascent-on-impexpr) describes it.
 
@@ -210,7 +210,7 @@ Tactics on small kernels:
 | [Riscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Riscv.lean) | an RV64 add with carry-out | `addCarry_ascends` |
 | [HeapAbs](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/HeapAbs.lean) | an `n`-limb addition over the generic value abstraction | `feAddN_capstone` |
 | [RiscvAddP256Proof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/RiscvAddP256Proof.lean) | an eighteen-instruction RV64 block computing `(x + y) mod p256` on registers | `addp256_correct` |
-| [AscendHaxDemo](CatCrypt/Hax/Ascent/AscendHaxDemo.lean) | a twenty-binding hax literal proved once by the generator and once rule by rule | `line_corres_gen`, `line_corres_rules` |
+| [AscendHaxDemo](HaxAscent/Ascent/AscendHaxDemo.lean) | a twenty-binding hax literal proved once by the generator and once rule by rule | `line_corres_gen`, `line_corres_rules` |
 
 From source to machine:
 

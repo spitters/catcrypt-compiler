@@ -86,7 +86,7 @@ ranges.
 
 ### The ascent against a hax reference
 
-The reference side of the ascent lives in `CatCrypt/Hax/Ascent/`. `Corres bi P G e V Q`
+The reference side of the ascent lives in `HaxAscent/Ascent/`. `Corres bi P G e V Q`
 (`Corres.lean`) relates an `ImpExpr` program `e`, run by `denote'` under the builtin table
 `bi`, to a shallow Lean description: from an entry environment related to the abstract
 state and under the guard `G`, the run returns the value `V` from some fuel on.

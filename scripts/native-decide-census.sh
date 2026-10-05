@@ -78,7 +78,7 @@ strip_and_scan() {
   ' "$@"
 }
 
-mapfile -t files < <(git ls-files 'CatCrypt/**/*.lean' 'CatCrypt/*.lean' 2>/dev/null)
+mapfile -t files < <(git ls-files 'CatCrypt/**/*.lean' 'CatCrypt/*.lean' 'HaxAscent/*.lean' 2>/dev/null)
 [ ${#files[@]} -gt 0 ] || { echo "native-decide-census: no Lean files under CatCrypt" >&2; exit 2; }
 
 strip_and_scan "${files[@]}" |

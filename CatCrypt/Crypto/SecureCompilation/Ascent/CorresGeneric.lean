@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMCore
+public import HaxAscent.Calculus.CorresMCore
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
 
 /-!

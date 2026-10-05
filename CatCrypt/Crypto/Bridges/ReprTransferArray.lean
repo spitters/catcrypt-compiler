@@ -7,7 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Bridges.ReprTransfer
-public import CatCrypt.Hax.Runtime
+public import HaxAscent.Runtime
 
 /-!
 # Array-of-encoded-values transfer

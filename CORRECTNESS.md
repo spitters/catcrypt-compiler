@@ -215,7 +215,7 @@ its runs to a Lean function. A second, ordinary proof equates that function with
 handwritten specification. Ascent has two instances, which share one calculus in the
 style of AutoCorres.
 
-- In the ascent on extracted Rust (`CatCrypt/Hax/Ascent/`, index
+- In the ascent on extracted Rust (`HaxAscent/Ascent/`, index
   [CatCrypt/Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md)), `FnCorres bi e entry G f` relates
   the `denote'` run of an `ImpExpr` literal under the builtin table `bi` to a shallow
   function `f`. The generator `Hax.Ascent.Gen.ascendFn` produces `f` and its

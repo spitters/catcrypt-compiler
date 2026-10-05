@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
-public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericSpec
+public import HaxAscent.Calculus.CorresGenericSpec
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
 
 @[expose] public section

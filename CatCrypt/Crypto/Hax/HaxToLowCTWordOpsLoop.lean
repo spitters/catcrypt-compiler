@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
 public import CatCrypt.Crypto.Hax.HaxRuntimeWordBuiltins
-public import CatCrypt.Hax.Ascent.Corres
+public import HaxAscent.Ascent.Corres
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
 
 /-!

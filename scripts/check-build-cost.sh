@@ -62,9 +62,9 @@ else
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     case "$f" in
-      CatCrypt/*.lean) mods+=( "$(echo "${f%.lean}" | tr '/' '.')" ) ;;
+      CatCrypt/*.lean|HaxAscent/*.lean) mods+=( "$(echo "${f%.lean}" | tr '/' '.')" ) ;;
     esac
-  done < <(git diff --name-only HEAD -- 'CatCrypt/**/*.lean'; git ls-files --others --exclude-standard 'CatCrypt/**/*.lean')
+  done < <(git diff --name-only HEAD -- 'CatCrypt/**/*.lean' 'HaxAscent/*.lean'; git ls-files --others --exclude-standard 'CatCrypt/**/*.lean' 'HaxAscent/*.lean')
 fi
 
 if [ "${#mods[@]}" -eq 0 ]; then

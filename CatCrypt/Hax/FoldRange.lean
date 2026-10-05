@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.Runtime
+public import HaxAscent.Runtime
 public import Mathlib.Tactic.NormNum
 public import Mathlib.Tactic.Ring
 
