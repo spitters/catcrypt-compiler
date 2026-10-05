@@ -29,9 +29,15 @@ well-formedness-preserving builder `WfRewriter`, so that the result is a
 
 The builder is the one of `ComToVeir.lean` (`lowerComWfWith`, `createAtEnd`,
 `createRegionOp`, `createBlockIn`) at `jasminDialect`. The operations are those of
-`veirExpansionOf` for the `ToVeirOp jasminDialect` instance: per binding, the steps of `JasminOp.expandVeir?` or the one operation
+`veirExpansionOf` for the `ToVeirOp jasminDialect` instance: per binding, the steps of
+`JasminOp.bridgeExpansion? false` or the one operation
 with op-code `toMlirOpCode o`, properties `propsOfOp o`, one operand per argument
-and `max n 1` results of the binding's type (`bindingExpansion`). They are
+and `max n 1` results of the binding's type (`bindingExpansion`). The structural
+results (`lowerComWf_spec`, `bindingExpansion_inScope`, `bindingExpansion_attrs`,
+`lowerComToBlockWf_isSome`, `lowerComToFuncWf_isSome`,
+`lowerClosedComToModuleWithExterns_eq_lowerComToFuncWf`) hold for every op of the
+dialect; the `interpretBlock` and `interpretFunction` theorems are over the `arith`
+fragment. They are
 appended to one block whose arguments are the context `Γ` (argument `i` is the
 variable of De Bruijn depth `i`, as in `varMapOfBlockArgs`), followed by a
 `func.return` of the program's value. Discardable attributes are not set; the
@@ -88,18 +94,36 @@ open Ctxt (Var Valuation)
 /-! ## The builder -/
 
 /-- The operations the lowering emits for a binding with op `o` and `nargs`
-arguments: the expansion `JasminOp.expandVeir? o`, or the one operation of
+arguments: the expansion `JasminOp.bridgeExpansion? false o` of the
+`ToVeirOp jasminDialect` instance, or the one operation of
 `veirExpansionOf` without an expansion (op-code `toMlirOpCode o`, properties `propsOfOp o`, the
 arguments as operands, `max n 1` results of the binding's type) whose value is the
 result in the slot `resultSlotOfOp o` names. -/
 def bindingExpansion (o : JasminOp) (nargs : Nat) : VeirExpansion OpCode :=
-  match JasminOp.expandVeir? o with
+  match JasminOp.bridgeExpansion? false o with
   | some x => x
   | none =>
       { steps := [{ op := JasminOp.toMlirOpCode o, props := JasminOp.propsOfOp o,
                     operands := (List.range nargs).map VeirSrc.arg,
                     results := List.replicate (max (JasminOp.resultSlotOfOp o).1 1) none }],
         value := .res 0 (JasminOp.resultSlotOfOp o).2 }
+
+/-- `bindingExpansion` is `bridgeExpansionOf false`. -/
+theorem bindingExpansion_eq_bridgeExpansionOf (o : JasminOp) (nargs : Nat) :
+    bindingExpansion o nargs = bridgeExpansionOf false o nargs := rfl
+
+/-- On the `arith` fragment `bindingExpansion` is the expansion `JasminOp.expandVeir?`
+of that fragment, or the one operation of an op without an expansion. -/
+theorem bindingExpansion_of_inArith (o : JasminOp) (h : JasminOp.InArith o) (nargs : Nat) :
+    bindingExpansion o nargs =
+      match JasminOp.expandVeir? o with
+      | some x => x
+      | none =>
+          { steps := [{ op := JasminOp.toMlirOpCode o, props := JasminOp.propsOfOp o,
+                        operands := (List.range nargs).map VeirSrc.arg,
+                        results := List.replicate (max (JasminOp.resultSlotOfOp o).1 1) none }],
+            value := .res 0 (JasminOp.resultSlotOfOp o).2 } := by
+  rw [bindingExpansion, JasminOp.bridgeExpansion?_false_of_inArith o h]
 
 /-- `bindingExpansion` is the expansion the `ToVeirOp jasminDialect` instance gives. -/
 theorem veirExpansionOf_eq_bindingExpansion (o : JasminOp) (nargs : Nat) :
@@ -766,7 +790,7 @@ theorem mapM_range_arg (args : List RuntimeValue) (done : List (Array RuntimeVal
 /-- The one step of `bindingExpansion` of an op without an expansion and with one
 result, run by `veirRunStepsC`, is the operation `veirRunOp`. -/
 theorem veirRunStepsC_single (o : JasminOp) (t : JasminTy) (args : List RuntimeValue)
-    (mem : MemoryState) (r : RuntimeValue) (hx : JasminOp.expandVeir? o = none)
+    (mem : MemoryState) (r : RuntimeValue) (hx : JasminOp.bridgeExpansion? false o = none)
     (hslot : JasminOp.resultSlotOfOp o = (1, 0))
     (hop : veirRunOp o t args mem = .ok (#[r], mem, none))
     (hconf : r.Conforms (JasminTy.toVeirTy t)) :
@@ -798,10 +822,10 @@ theorem bindingExpansion_run {Γ : Ctxt jasminDialect} {t : JasminTy}
         some (encodeVal t (e.denote V)) := by
   by_cases hsh : ∃ bop w, e.op = .regArith bop w ∧ bop.IsShift
   swap
-  · have hx := JasminOp.expandVeir?_eq_none e.op hsh
+  · have hx := JasminOp.bridgeExpansion?_false_eq_none e.op hc hsh
     obtain ⟨hop, hslot⟩ := veirRunOp_expr_eq e V ρ mem hc
       (JasminOp.shiftSafe_of_not_shift e.op _ hsh) hρ
-    have hslot' : JasminOp.resultSlotOfOp e.op = (1, 0) := by
+    have hslot': JasminOp.resultSlotOfOp e.op = (1, 0) := by
       obtain ⟨op, _, _⟩ := e
       cases op <;> simp only [JasminOp.InArith] at hc <;> rfl
     exact veirRunStepsC_single e.op t _ mem _ hx hslot' hop
@@ -1488,15 +1512,28 @@ theorem bindingExpansion_inScope (o : JasminOp) :
     ExpansionInScope (bindingExpansion o (DialectSignature.sig (d := jasminDialect) o).length)
       (DialectSignature.sig (d := jasminDialect) o).length := by
   unfold bindingExpansion
-  cases h : JasminOp.expandVeir? o with
+  cases h : JasminOp.bridgeExpansion? false o with
   | some x =>
-    cases o <;> simp [JasminOp.expandVeir?] at h
-    rename_i bop w
-    have hl : (DialectSignature.sig (d := jasminDialect) (JasminOp.regArith bop w)).length = 2 :=
-      rfl
-    rw [hl]
-    cases bop <;> simp at h <;> subst h <;>
-      simp [ExpansionInScope, StepsInScope, SrcInScope, JasminOp.shiftSelectExpansion]
+    cases o with
+    | regArith bop w =>
+      have hl : (DialectSignature.sig (d := jasminDialect) (JasminOp.regArith bop w)).length = 2 :=
+        rfl
+      rw [hl]
+      cases bop <;> simp [JasminOp.bridgeExpansion?] at h <;> subst h <;>
+        simp [ExpansionInScope, StepsInScope, SrcInScope, JasminOp.shiftSelectExpansion,
+          JasminOp.andnExpansion, stConst, stOp]
+    | _ =>
+      simp [JasminOp.bridgeExpansion?] at h
+      all_goals
+        subst h
+        simp only [JasminOp.castWExpansion, JasminOp.rorImmExpansion, JasminOp.shlImmExpansion,
+          JasminOp.shrImmExpansion, JasminOp.sarImmExpansion, JasminOp.cmpImmExpansion,
+          JasminOp.addCarryLoExpansion, JasminOp.addCarryHiExpansion, stConst, stOp, stAddExt,
+          aliasExpansion]
+        first
+          | (split_ifs <;>
+              simp [ExpansionInScope, StepsInScope, SrcInScope, DialectSignature.sig, jasminDialect])
+          | simp [ExpansionInScope, StepsInScope, SrcInScope, DialectSignature.sig, jasminDialect]
   | none =>
     refine ⟨⟨?_, trivial⟩, ?_⟩
     · intro src hsrc
@@ -2154,11 +2191,23 @@ carries discardable attributes. -/
 theorem bindingExpansion_attrs (o : JasminOp) (n : Nat) :
     ∀ s ∈ (bindingExpansion o n).steps, s.attrs = #[] := by
   unfold bindingExpansion
-  cases h : JasminOp.expandVeir? o with
+  cases h : JasminOp.bridgeExpansion? false o with
   | some x =>
-    cases o <;> simp [JasminOp.expandVeir?] at h
-    rename_i bop w
-    cases bop <;> simp at h <;> subst h <;> simp [JasminOp.shiftSelectExpansion]
+    cases o with
+    | regArith bop w =>
+      cases bop <;> simp [JasminOp.bridgeExpansion?] at h <;> subst h <;>
+        simp [JasminOp.shiftSelectExpansion, JasminOp.andnExpansion, stConst, stOp]
+    | _ =>
+      simp [JasminOp.bridgeExpansion?] at h
+      all_goals
+        subst h
+        simp only [JasminOp.castWExpansion, JasminOp.rorImmExpansion, JasminOp.shlImmExpansion,
+          JasminOp.shrImmExpansion, JasminOp.sarImmExpansion, JasminOp.cmpImmExpansion,
+          JasminOp.addCarryLoExpansion, JasminOp.addCarryHiExpansion, stConst, stOp, stAddExt,
+          aliasExpansion]
+        first
+          | (split_ifs <;> simp)
+          | simp
   | none => simp
 
 /-- No operation `lowerComWf` emits for a program of `jasminDialect` carries discardable

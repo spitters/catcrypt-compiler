@@ -88,8 +88,14 @@ hypothesis on the MLIR toolchain.
 | `inlineInt`      | `index` (textual)                 |
 | `bool`           | `IntegerType.mk 1`                |
 
-An op routes to `catcrypt_unknown` when no single registered MLIR operation
-has its denotation: `stackStore`, `addCarryLo`/`addCarryHi`, `andn`, `rorImm`,
+The table gives `toMlirOpCode`, the op-code of an op lowered as one operation. The
+`ToVeirOp jasminDialect` instance lowers the ops of `JasminOp.bridgeExpansion? false`
+as a sequence of registered `arith` operations instead: the shifts, `andn`, `castW`,
+`rorImm`, the immediate shifts, `cmpImm`, `addCarryLo` and `addCarryHi`. For these
+ops `toMlirOpCode` is not emitted.
+
+`toMlirOpCode` routes an op to `catcrypt_unknown` when no single registered MLIR
+operation has its denotation: `stackStore`, `addCarryLo`/`addCarryHi`, `andn`, `rorImm`,
 the immediate shifts, `cmpImm` and the vector ops, and
 * `castW w w` (identity-width cast), since MLIR's
   `arith.extui`/`arith.trunci` reject equal-width operands. A
@@ -284,20 +290,201 @@ def JasminOp.shiftSelectExpansion (bop : JasminBinOp) (w : Nat) :
         operands := [.res 1 0, .res 3 0, .res 2 0], results := [none] } ]
   value := .res 4 0
 
-/-- The ops of `jasminDialect` that lower to more than one operation: the shifts
-    `regArith shl w` and `regArith shr w`, as `shiftSelectExpansion`. -/
+/-- The expansions of the `arith` fragment: the shifts `regArith shl w` and
+    `regArith shr w`, as `shiftSelectExpansion`. `JasminOp.bridgeExpansion? false`
+    extends this table to the scalar fragment and is the table of the
+    `ToVeirOp jasminDialect` instance. -/
 def JasminOp.expandVeir? : JasminOp → Option (VeirExpansion Veir.OpCode)
   | .regArith .shl w => some (JasminOp.shiftSelectExpansion .shl w)
   | .regArith .shr w => some (JasminOp.shiftSelectExpansion .shr w)
   | _ => none
 
+/-! ## The expansions of the scalar fragment -/
+
+section BridgeExpansions
+
+open Veir
+
+/-- The integer type of width `w`, as the result type of a step. -/
+def iTy (w : Nat) : Option TypeAttr := some ((IntegerType.mk w : IntegerType) : TypeAttr)
+
+/-- The step `arith.constant` of value `BitVec.ofNat w v` at width `w`. -/
+def stConst (w v : Nat) : VeirExpandStep OpCode :=
+  { op := .arith .constant,
+    props := ({ value := ⟨v, IntegerType.mk w⟩ } : ArithConstantProperties),
+    operands := [], results := [iTy w] }
+
+/-- A step with op-code `op`, properties `props`, the given operands and one result
+of the integer type of width `w`. -/
+def stOp (op : OpCode) (props : propertiesOf op) (operands : List VeirSrc) (w : Nat) :
+    VeirExpandStep OpCode :=
+  { op := op, props := props, operands := operands, results := [iTy w] }
+
+/-- The expansion with no operation, whose value is argument `i` of the binding. -/
+def aliasExpansion (i : Nat) : VeirExpansion OpCode := { steps := [], value := .arg i }
+
+/-- The lowering of `regArith andn w` as three operations: the all-ones constant,
+`arith.xori` of argument 0 with it, and `arith.andi` of the complement with
+argument 1. -/
+def JasminOp.andnExpansion (w : Nat) : VeirExpansion OpCode where
+  steps :=
+    [ stConst w (BitVec.allOnes w).toNat,
+      stOp (.arith .xori) default [.arg 0, .res 0 0] w,
+      stOp (.arith .andi) default [.res 1 0, .arg 1] w ]
+  value := .res 2 0
+
+/-- The lowering of `shlImm w n`: the constant `n` and `arith.shli` by it when
+`n < w`, and the constant `0` otherwise. -/
+def JasminOp.shlImmExpansion (w n : Nat) : VeirExpansion OpCode :=
+  if n < w then
+    { steps := [stConst w n, stOp (.arith .shli) default [.arg 0, .res 0 0] w],
+      value := .res 1 0 }
+  else { steps := [stConst w 0], value := .res 0 0 }
+
+/-- The lowering of `shrImm w n`: the constant `n` and `arith.shrui` by it when
+`n < w`, and the constant `0` otherwise. -/
+def JasminOp.shrImmExpansion (w n : Nat) : VeirExpansion OpCode :=
+  if n < w then
+    { steps := [stConst w n, stOp (.arith .shrui) default [.arg 0, .res 0 0] w],
+      value := .res 1 0 }
+  else { steps := [stConst w 0], value := .res 0 0 }
+
+/-- The lowering of `sarImm w n`: no operation at width `0`, and otherwise the
+constant `min n (w - 1)` and `arith.shrsi` by it. -/
+def JasminOp.sarImmExpansion (w n : Nat) : VeirExpansion OpCode :=
+  if w = 0 then aliasExpansion 0
+  else
+    { steps := [stConst w (min n (w - 1)), stOp (.arith .shrsi) default [.arg 0, .res 0 0] w],
+      value := .res 1 0 }
+
+/-- The lowering of `rorImm w n`: no operation when `w = 0` or `n % w = 0`, and
+otherwise `arith.shrui` by the constant `n % w`, `arith.shli` by the constant
+`w - n % w` and `arith.ori` of the two. -/
+def JasminOp.rorImmExpansion (w n : Nat) : VeirExpansion OpCode :=
+  if w = 0 ∨ n % w = 0 then aliasExpansion 0
+  else
+    { steps :=
+        [ stConst w (n % w),
+          stOp (.arith .shrui) default [.arg 0, .res 0 0] w,
+          stConst w (w - n % w),
+          stOp (.arith .shli) default [.arg 0, .res 2 0] w,
+          stOp (.arith .ori) default [.res 1 0, .res 3 0] w ],
+      value := .res 4 0 }
+
+/-- The lowering of `castW w w'`: `arith.extui` when `w < w'`, `arith.trunci` when
+`w' < w`, and no operation at equal widths. -/
+def JasminOp.castWExpansion (w w' : Nat) : VeirExpansion OpCode :=
+  if w < w' then
+    { steps := [stOp (.arith .extui) default [.arg 0] w'], value := .res 0 0 }
+  else if w' < w then
+    { steps := [stOp (.arith .trunci) default [.arg 0] w'], value := .res 0 0 }
+  else aliasExpansion 0
+
+/-- The lowering of `cmpImm c w n`: the constant `n` and `arith.cmpi` of argument 0
+against it, with the predicate of `c`. -/
+def JasminOp.cmpImmExpansion (c : JasminCmp) (w n : Nat) : VeirExpansion OpCode where
+  steps :=
+    [ stConst w n,
+      stOp (.arith .cmpi) ({ predicate := c.toIntPred } : IcmpProperties)
+        [.arg 0, .res 0 0] 1 ]
+  value := .res 1 0
+
+/-- The steps that produce the carry-in word of a carry-chain add at width `w` from
+argument 2, and the operand that names it: `arith.extui` for `1 < w`, argument 2
+itself otherwise. -/
+def carryInSteps (w : Nat) : List (VeirExpandStep OpCode) × VeirSrc :=
+  if 1 < w then ([stOp (.arith .extui) default [.arg 2] w], .res 0 0) else ([], .arg 2)
+
+/-- The lowering of `addCarryLo w`: `arith.addi` of arguments 0 and 1, then
+`arith.addi` of the sum and the carry-in word; at width `0` the first `arith.addi`
+alone. -/
+def JasminOp.addCarryLoExpansion (w : Nat) : VeirExpansion OpCode :=
+  if w = 0 then
+    { steps := [stOp (.arith .addi) default [.arg 0, .arg 1] w], value := .res 0 0 }
+  else if 1 < w then
+    { steps :=
+        [ stOp (.arith .extui) default [.arg 2] w,
+          stOp (.arith .addi) default [.arg 0, .arg 1] w,
+          stOp (.arith .addi) default [.res 1 0, .res 0 0] w ],
+      value := .res 2 0 }
+  else
+    { steps :=
+        [ stOp (.arith .addi) default [.arg 0, .arg 1] w,
+          stOp (.arith .addi) default [.res 0 0, .arg 2] w ],
+      value := .res 1 0 }
+
+/-- A step `arith.addui_extended` with two results, the `w`-bit sum and the `i1`
+overflow flag. -/
+def stAddExt (operands : List VeirSrc) (w : Nat) : VeirExpandStep OpCode :=
+  { op := .arith .addui_extended, props := default, operands := operands,
+    results := [iTy w, iTy 1] }
+
+/-- The lowering of `addCarryHi w`: `arith.addui_extended` of arguments 0 and 1,
+`arith.addui_extended` of their sum and the carry-in word, and `arith.ori` of the
+two overflow flags; at width `0` no operation, the value being the carry-in. -/
+def JasminOp.addCarryHiExpansion (w : Nat) : VeirExpansion OpCode :=
+  if w = 0 then aliasExpansion 2
+  else if 1 < w then
+    { steps :=
+        [ stOp (.arith .extui) default [.arg 2] w,
+          stAddExt [.arg 0, .arg 1] w,
+          stAddExt [.res 1 0, .res 0 0] w,
+          stOp (.arith .ori) default [.res 1 1, .res 2 1] 1 ],
+      value := .res 3 0 }
+  else
+    { steps :=
+        [ stAddExt [.arg 0, .arg 1] w,
+          stAddExt [.res 0 0, .arg 2] w,
+          stOp (.arith .ori) default [.res 0 1, .res 1 1] 1 ],
+      value := .res 2 0 }
+
+/-- The expansions of the scalar fragment. With `bare = false` the shifts
+`regArith shl w` and `regArith shr w` are `shiftSelectExpansion`, correct for every
+amount; with `bare = true` they have no expansion and are the one operation
+`arith.shli` or `arith.shrui`, poison for an amount at least the width. `andn`, the
+immediate shifts, the rotate, the width cast, the immediate comparison and the
+carry-chain words are the expansions above for both values of `bare`. The table at
+`bare = false` is the `expand?` of the `ToVeirOp jasminDialect` instance. -/
+def JasminOp.bridgeExpansion? (bare : Bool) : JasminOp → Option (VeirExpansion OpCode)
+  | .regArith .shl w => if bare then none else some (JasminOp.shiftSelectExpansion .shl w)
+  | .regArith .shr w => if bare then none else some (JasminOp.shiftSelectExpansion .shr w)
+  | .regArith .andn w => some (JasminOp.andnExpansion w)
+  | .castW w w' => some (JasminOp.castWExpansion w w')
+  | .rorImm w n => some (JasminOp.rorImmExpansion w n)
+  | .shlImm w n => some (JasminOp.shlImmExpansion w n)
+  | .shrImm w n => some (JasminOp.shrImmExpansion w n)
+  | .sarImm w n => some (JasminOp.sarImmExpansion w n)
+  | .cmpImm c w n => some (JasminOp.cmpImmExpansion c w n)
+  | .addCarryLo w => some (JasminOp.addCarryLoExpansion w)
+  | .addCarryHi w => some (JasminOp.addCarryHiExpansion w)
+  | _ => none
+
+/-- The operations the lowering emits for a binding with op `o` and `nargs`
+arguments under `bridgeExpansion? bare`: the expansion, or the one operation with
+op-code `toMlirOpCode o`, properties `propsOfOp o`, the arguments as operands and the
+results `resultSlotOfOp o` names. It is the argument `bx` of `lowerComWfWith`,
+`lowerComToFuncAtWf` and `lowerComToModuleWf`. -/
+def bridgeExpansionOf (bare : Bool) (o : JasminOp) (nargs : Nat) : VeirExpansion OpCode :=
+  match JasminOp.bridgeExpansion? bare o with
+  | some x => x
+  | none =>
+      { steps := [{ op := JasminOp.toMlirOpCode o, props := JasminOp.propsOfOp o,
+                    operands := (List.range nargs).map VeirSrc.arg,
+                    results := List.replicate (max (JasminOp.resultSlotOfOp o).1 1) none }],
+        value := .res 0 (JasminOp.resultSlotOfOp o).2 }
+
+end BridgeExpansions
+
+/-- The lowering of `jasminDialect` into VeIR. The expansions are those of the scalar
+    fragment with the shifts under `arith.select` (`JasminOp.bridgeExpansion? false`);
+    an op without an expansion is the one operation `toMlirOpCode` names. -/
 instance : ToVeirOp jasminDialect where
   Op := Veir.OpCode
   hasOpInfo := inferInstance
   toOp := JasminOp.toMlirOpCode
   defaultProps := JasminOp.propsOfOp
   resultSlot := JasminOp.resultSlotOfOp
-  expand? := JasminOp.expandVeir?
+  expand? := JasminOp.bridgeExpansion? false
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types (memref, index). Emitted verbatim by Veir's printer. -/

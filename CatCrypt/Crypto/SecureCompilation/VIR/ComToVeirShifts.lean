@@ -15,8 +15,9 @@ import all Veir.IR.Attribute
 
 `ComToVeirSemantics` interprets the lowering of the `arith` fragment (`JasminOp.InArith`)
 with VeIR's `Veir.interpretOp'`. The table of expansions
-`JasminOp.bridgeExpansion? bare` covers the scalar fragment `JasminOp.InBridge`, with
-the same semantic theorems.
+`JasminOp.bridgeExpansion? bare`, defined in `ComToVeir_JasminDialect`, covers the
+scalar fragment `JasminOp.InBridge`, with the same semantic theorems. At `bare = false`
+it is the table of the `ToVeirOp jasminDialect` instance.
 
 ## The table
 
@@ -50,9 +51,12 @@ does. Memory ops, calls, vector ops and the stack array types stay outside the f
   the encoded denotation; the total value refines VeIR's value, which may be poison.
 * `veirRunBindingWith_bridge_square`: the square of one binding, from which the three
   program theorems follow by induction on the program.
-* `veirRunComWith_bridge_eq_veirRunCom`, `bridgeExpansionOf_false_of_inArith`: on the
-  `arith` fragment the table with `bare = false` is the lowering of the
-  `ToVeirOp jasminDialect` instance.
+* `veirRunComWith_bridgeExpansion?_false`: the table with `bare = false` is the
+  lowering of the `ToVeirOp jasminDialect` instance, so the interpretation under it is
+  `veirRunCom`.
+* `veirRunCom_bridge_refines`, `veirRunCom_bridge_eq_denote`: the refinement and the
+  equation for `veirRunCom`, the interpretation of what the instance emits, on the
+  scalar fragment and for every shift amount.
 * `veirAndn_val`, `veirShlImm_val`, `veirShrImm_val`, `veirSarImm_val`, `veirRorImm_val`,
   `veirCastW_val`, `umulHigh_val`, `icmp_val`, `select_val`, `veirAddCarryLo_val`,
   `veirAddCarryHi_val`: on defined operands the value of each lowering is the
@@ -478,174 +482,11 @@ theorem veirAddCarryHi_refines (w : Nat) {x y : LLVM.Int w} {s : LLVM.Int 1}
     · intro x y; simp only [veirAddCarryHi, hw, ↓reduceIte, veirCarryIn_poison hw]
       cases x <;> cases y <;> rfl
 
-/-! ## The expansions -/
+/-! ## The expansions
 
-/-- The integer type of width `w`, as the result type of a step. -/
-def iTy (w : Nat) : Option TypeAttr := some ((IntegerType.mk w : IntegerType) : TypeAttr)
-
-/-- The step `arith.constant` of value `BitVec.ofNat w v` at width `w`. -/
-def stConst (w v : Nat) : VeirExpandStep OpCode :=
-  { op := .arith .constant,
-    props := ({ value := ⟨v, IntegerType.mk w⟩ } : ArithConstantProperties),
-    operands := [], results := [iTy w] }
-
-/-- A step with op-code `op`, properties `props`, the given operands and one result
-of the integer type of width `w`. -/
-def stOp (op : OpCode) (props : propertiesOf op) (operands : List VeirSrc) (w : Nat) :
-    VeirExpandStep OpCode :=
-  { op := op, props := props, operands := operands, results := [iTy w] }
-
-/-- The expansion with no operation, whose value is argument `i` of the binding. -/
-def aliasExpansion (i : Nat) : VeirExpansion OpCode := { steps := [], value := .arg i }
-
-/-- The lowering of `regArith andn w` as three operations: the all-ones constant,
-`arith.xori` of argument 0 with it, and `arith.andi` of the complement with
-argument 1. -/
-def JasminOp.andnExpansion (w : Nat) : VeirExpansion OpCode where
-  steps :=
-    [ stConst w (BitVec.allOnes w).toNat,
-      stOp (.arith .xori) default [.arg 0, .res 0 0] w,
-      stOp (.arith .andi) default [.res 1 0, .arg 1] w ]
-  value := .res 2 0
-
-/-- The lowering of `shlImm w n`: the constant `n` and `arith.shli` by it when
-`n < w`, and the constant `0` otherwise. -/
-def JasminOp.shlImmExpansion (w n : Nat) : VeirExpansion OpCode :=
-  if n < w then
-    { steps := [stConst w n, stOp (.arith .shli) default [.arg 0, .res 0 0] w],
-      value := .res 1 0 }
-  else { steps := [stConst w 0], value := .res 0 0 }
-
-/-- The lowering of `shrImm w n`: the constant `n` and `arith.shrui` by it when
-`n < w`, and the constant `0` otherwise. -/
-def JasminOp.shrImmExpansion (w n : Nat) : VeirExpansion OpCode :=
-  if n < w then
-    { steps := [stConst w n, stOp (.arith .shrui) default [.arg 0, .res 0 0] w],
-      value := .res 1 0 }
-  else { steps := [stConst w 0], value := .res 0 0 }
-
-/-- The lowering of `sarImm w n`: no operation at width `0`, and otherwise the
-constant `min n (w - 1)` and `arith.shrsi` by it. -/
-def JasminOp.sarImmExpansion (w n : Nat) : VeirExpansion OpCode :=
-  if w = 0 then aliasExpansion 0
-  else
-    { steps := [stConst w (min n (w - 1)), stOp (.arith .shrsi) default [.arg 0, .res 0 0] w],
-      value := .res 1 0 }
-
-/-- The lowering of `rorImm w n`: no operation when `w = 0` or `n % w = 0`, and
-otherwise `arith.shrui` by the constant `n % w`, `arith.shli` by the constant
-`w - n % w` and `arith.ori` of the two. -/
-def JasminOp.rorImmExpansion (w n : Nat) : VeirExpansion OpCode :=
-  if w = 0 ∨ n % w = 0 then aliasExpansion 0
-  else
-    { steps :=
-        [ stConst w (n % w),
-          stOp (.arith .shrui) default [.arg 0, .res 0 0] w,
-          stConst w (w - n % w),
-          stOp (.arith .shli) default [.arg 0, .res 2 0] w,
-          stOp (.arith .ori) default [.res 1 0, .res 3 0] w ],
-      value := .res 4 0 }
-
-/-- The lowering of `castW w w'`: `arith.extui` when `w < w'`, `arith.trunci` when
-`w' < w`, and no operation at equal widths. -/
-def JasminOp.castWExpansion (w w' : Nat) : VeirExpansion OpCode :=
-  if w < w' then
-    { steps := [stOp (.arith .extui) default [.arg 0] w'], value := .res 0 0 }
-  else if w' < w then
-    { steps := [stOp (.arith .trunci) default [.arg 0] w'], value := .res 0 0 }
-  else aliasExpansion 0
-
-/-- The lowering of `cmpImm c w n`: the constant `n` and `arith.cmpi` of argument 0
-against it, with the predicate of `c`. -/
-def JasminOp.cmpImmExpansion (c : JasminCmp) (w n : Nat) : VeirExpansion OpCode where
-  steps :=
-    [ stConst w n,
-      stOp (.arith .cmpi) ({ predicate := c.toIntPred } : IcmpProperties)
-        [.arg 0, .res 0 0] 1 ]
-  value := .res 1 0
-
-/-- The steps that produce the carry-in word of a carry-chain add at width `w` from
-argument 2, and the operand that names it: `arith.extui` for `1 < w`, argument 2
-itself otherwise. -/
-def carryInSteps (w : Nat) : List (VeirExpandStep OpCode) × VeirSrc :=
-  if 1 < w then ([stOp (.arith .extui) default [.arg 2] w], .res 0 0) else ([], .arg 2)
-
-/-- The lowering of `addCarryLo w`: `arith.addi` of arguments 0 and 1, then
-`arith.addi` of the sum and the carry-in word; at width `0` the first `arith.addi`
-alone. -/
-def JasminOp.addCarryLoExpansion (w : Nat) : VeirExpansion OpCode :=
-  if w = 0 then
-    { steps := [stOp (.arith .addi) default [.arg 0, .arg 1] w], value := .res 0 0 }
-  else if 1 < w then
-    { steps :=
-        [ stOp (.arith .extui) default [.arg 2] w,
-          stOp (.arith .addi) default [.arg 0, .arg 1] w,
-          stOp (.arith .addi) default [.res 1 0, .res 0 0] w ],
-      value := .res 2 0 }
-  else
-    { steps :=
-        [ stOp (.arith .addi) default [.arg 0, .arg 1] w,
-          stOp (.arith .addi) default [.res 0 0, .arg 2] w ],
-      value := .res 1 0 }
-
-/-- A step `arith.addui_extended` with two results, the `w`-bit sum and the `i1`
-overflow flag. -/
-def stAddExt (operands : List VeirSrc) (w : Nat) : VeirExpandStep OpCode :=
-  { op := .arith .addui_extended, props := default, operands := operands,
-    results := [iTy w, iTy 1] }
-
-/-- The lowering of `addCarryHi w`: `arith.addui_extended` of arguments 0 and 1,
-`arith.addui_extended` of their sum and the carry-in word, and `arith.ori` of the
-two overflow flags; at width `0` no operation, the value being the carry-in. -/
-def JasminOp.addCarryHiExpansion (w : Nat) : VeirExpansion OpCode :=
-  if w = 0 then aliasExpansion 2
-  else if 1 < w then
-    { steps :=
-        [ stOp (.arith .extui) default [.arg 2] w,
-          stAddExt [.arg 0, .arg 1] w,
-          stAddExt [.res 1 0, .res 0 0] w,
-          stOp (.arith .ori) default [.res 1 1, .res 2 1] 1 ],
-      value := .res 3 0 }
-  else
-    { steps :=
-        [ stAddExt [.arg 0, .arg 1] w,
-          stAddExt [.res 0 0, .arg 2] w,
-          stOp (.arith .ori) default [.res 0 1, .res 1 1] 1 ],
-      value := .res 2 0 }
-
-/-- The expansions of the scalar fragment. With `bare = false` the shifts
-`regArith shl w` and `regArith shr w` are `shiftSelectExpansion`, correct for every
-amount; with `bare = true` they have no expansion and are the one operation
-`arith.shli` or `arith.shrui`, poison for an amount at least the width. `andn`, the
-immediate shifts, the rotate, the width cast, the immediate comparison and the
-carry-chain words are the expansions above for both values of `bare`. -/
-def JasminOp.bridgeExpansion? (bare : Bool) : JasminOp → Option (VeirExpansion OpCode)
-  | .regArith .shl w => if bare then none else some (JasminOp.shiftSelectExpansion .shl w)
-  | .regArith .shr w => if bare then none else some (JasminOp.shiftSelectExpansion .shr w)
-  | .regArith .andn w => some (JasminOp.andnExpansion w)
-  | .castW w w' => some (JasminOp.castWExpansion w w')
-  | .rorImm w n => some (JasminOp.rorImmExpansion w n)
-  | .shlImm w n => some (JasminOp.shlImmExpansion w n)
-  | .shrImm w n => some (JasminOp.shrImmExpansion w n)
-  | .sarImm w n => some (JasminOp.sarImmExpansion w n)
-  | .cmpImm c w n => some (JasminOp.cmpImmExpansion c w n)
-  | .addCarryLo w => some (JasminOp.addCarryLoExpansion w)
-  | .addCarryHi w => some (JasminOp.addCarryHiExpansion w)
-  | _ => none
-
-/-- The operations the lowering emits for a binding with op `o` and `nargs`
-arguments under `bridgeExpansion? bare`: the expansion, or the one operation with
-op-code `toMlirOpCode o`, properties `propsOfOp o`, the arguments as operands and the
-results `resultSlotOfOp o` names. It is the argument `bx` of `lowerComWfWith`,
-`lowerComToFuncAtWf` and `lowerComToModuleWf`. -/
-def bridgeExpansionOf (bare : Bool) (o : JasminOp) (nargs : Nat) : VeirExpansion OpCode :=
-  match JasminOp.bridgeExpansion? bare o with
-  | some x => x
-  | none =>
-      { steps := [{ op := JasminOp.toMlirOpCode o, props := JasminOp.propsOfOp o,
-                    operands := (List.range nargs).map VeirSrc.arg,
-                    results := List.replicate (max (JasminOp.resultSlotOfOp o).1 1) none }],
-        value := .res 0 (JasminOp.resultSlotOfOp o).2 }
+The table `JasminOp.bridgeExpansion?`, its expansions and `bridgeExpansionOf` are
+defined in `ComToVeir_JasminDialect`, where `bridgeExpansion? false` is the `expand?`
+of the `ToVeirOp jasminDialect` instance. -/
 
 /-- The lowering of `jasminDialect` with the expansions `bridgeExpansionOf bare`, at
 the end of the block `blk`. -/
@@ -654,30 +495,12 @@ abbrev lowerComBridgeWf (bare : Bool) (blk : BlockPtr) {Γ : Ctxt jasminDialect}
     Option (WfIRContext OpCode × List OperationPtr × ValuePtr) :=
   lowerComWfWith (bridgeExpansionOf bare) JasminTy.toVeirTy blk vm c ctx
 
-/-- On the `arith` fragment the expansions with `bare = false` are those of the
-`ToVeirOp jasminDialect` instance. -/
-theorem JasminOp.bridgeExpansion?_false_of_inArith (o : JasminOp) (h : JasminOp.InArith o) :
-    JasminOp.bridgeExpansion? false o = JasminOp.expandVeir? o := by
-  cases o <;> first
-    | rfl
-    | exact absurd h id
-    | (rename_i bop w; cases bop <;> first | rfl | exact absurd rfl h)
-
-/-- On the `arith` fragment there is no expansion with `bare = true`. -/
-theorem JasminOp.bridgeExpansion?_true_of_inArith (o : JasminOp) (h : JasminOp.InArith o) :
-    JasminOp.bridgeExpansion? true o = none := by
-  cases o <;> try first | rfl | exact absurd h id
-  rename_i bop w
-  cases bop <;> first | rfl | exact absurd rfl h
-
-/-- On the `arith` fragment `bridgeExpansionOf false` is the expansion the
-`ToVeirOp jasminDialect` instance gives. -/
-theorem bridgeExpansionOf_false_of_inArith (o : JasminOp) (h : JasminOp.InArith o)
-    (nargs : Nat) : bridgeExpansionOf false o nargs = veirExpansionOf (d := jasminDialect) o nargs := by
-  cases o <;> first
-    | rfl
-    | exact absurd h id
-    | (rename_i bop w; cases bop <;> first | rfl | exact absurd rfl h)
+/-- `bridgeExpansionOf false` is the expansion the `ToVeirOp jasminDialect` instance
+gives; `veirExpansionOf_eq_bridgeExpansionOf` states it without the fragment
+hypothesis. -/
+theorem bridgeExpansionOf_false_of_inArith (o : JasminOp) (_h : JasminOp.InArith o)
+    (nargs : Nat) : bridgeExpansionOf false o nargs = veirExpansionOf (d := jasminDialect) o nargs :=
+  (veirExpansionOf_eq_bridgeExpansionOf o nargs).symm
 
 /-! ## Running the expansions -/
 
@@ -717,22 +540,35 @@ def veirRunComWith (ex : JasminOp → Option (VeirExpansion OpCode)) :
 `veirRunBindingWith ex` is `veirRunBinding`. -/
 theorem veirRunBindingWith_eq_veirRunBinding
     {ex : JasminOp → Option (VeirExpansion OpCode)} {o : JasminOp}
-    (h : ex o = JasminOp.expandVeir? o) (t : JasminTy) (args : List RuntimeValue)
+    (h : ex o = JasminOp.bridgeExpansion? false o) (t : JasminTy) (args : List RuntimeValue)
     (mem : MemoryState) : veirRunBindingWith ex o t args mem = veirRunBinding o t args mem := by
   unfold veirRunBindingWith veirRunBinding
   rw [h]
-  cases JasminOp.expandVeir? o <;> rfl
+  cases JasminOp.bridgeExpansion? false o <;> rfl
 
 /-- `veirRunCom` is `veirRunComWith` at the expansions of the `ToVeirOp jasminDialect`
-instance. -/
-theorem veirRunComWith_expandVeir? : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
+instance, `JasminOp.bridgeExpansion? false`. -/
+theorem veirRunComWith_bridgeExpansion?_false : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) (ρ : VEnv Γ) (mem : MemoryState),
-    veirRunComWith JasminOp.expandVeir? c ρ mem = veirRunCom c ρ mem
+    veirRunComWith (JasminOp.bridgeExpansion? false) c ρ mem = veirRunCom c ρ mem
   | _, _, .ret _, _, _ => rfl
   | _, _, .var e body, ρ, mem => by
     simp only [veirRunComWith, veirRunCom, veirRunBindingWith_eq_veirRunBinding rfl]
     cases veirRunBinding e.op _ (argVals ρ e.args) mem with
-    | ok p => exact veirRunComWith_expandVeir? body _ _
+    | ok p => exact veirRunComWith_bridgeExpansion?_false body _ _
+    | _ => rfl
+
+/-- On the `arith` fragment `veirRunCom` is `veirRunComWith` at the expansions
+`JasminOp.expandVeir?` of that fragment. -/
+theorem veirRunComWith_expandVeir? : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (ρ : VEnv Γ) (mem : MemoryState), ComInArith c →
+    veirRunComWith JasminOp.expandVeir? c ρ mem = veirRunCom c ρ mem
+  | _, _, .ret _, _, _, _ => rfl
+  | _, _, .var e body, ρ, mem, hc => by
+    simp only [veirRunComWith, veirRunCom, veirRunBindingWith_eq_veirRunBinding
+      (JasminOp.bridgeExpansion?_false_of_inArith e.op hc.1).symm]
+    cases veirRunBinding e.op _ (argVals ρ e.args) mem with
+    | ok p => exact veirRunComWith_expandVeir? body _ _ hc.2
     | _ => rfl
 
 /-- Evaluation of `veirRunExpansion` on a closed list of steps: unfolds the step
@@ -1042,7 +878,7 @@ theorem veirRunBindingWith_bridge_square {Γ : Ctxt jasminDialect} {t : JasminTy
   · cases bare
     · obtain ⟨r, hop, hr⟩ := veirRunBinding_expr_refines e V ρ mem ha hρ
       have hrun := veirRunBindingWith_eq_veirRunBinding
-        (JasminOp.bridgeExpansion?_false_of_inArith e.op ha) t (argVals ρ e.args) mem
+        (ex := JasminOp.bridgeExpansion? false) (o := e.op) rfl t (argVals ρ e.args) mem
       refine ⟨r, hrun.trans hop, hr, fun he _ => ?_⟩
       have h2 := veirRunBinding_expr_eq e V ρ mem ha he
       rw [hop] at h2
@@ -1280,17 +1116,40 @@ theorem veirRunComBridge_eq_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
       .ok (encodeVal t (c.denote V)) :=
   veirRunComWith_bridge_eq false c V ρ mem hc (fun h => absurd h (by decide)) hρ
 
-/-- On the `arith` fragment the interpretation under `bridgeExpansion? false` is
-`veirRunCom`. -/
-theorem veirRunComWith_bridge_eq_veirRunCom : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) (ρ : VEnv Γ) (mem : MemoryState), ComInArith c →
-    veirRunComWith (JasminOp.bridgeExpansion? false) c ρ mem = veirRunCom c ρ mem
-  | _, _, .ret _, _, _, _ => rfl
-  | _, _, .var e body, ρ, mem, hc => by
-    simp only [veirRunComWith, veirRunCom, veirRunBindingWith_eq_veirRunBinding
-      (JasminOp.bridgeExpansion?_false_of_inArith e.op hc.1)]
-    cases veirRunBinding e.op _ (argVals ρ e.args) mem with
-    | ok p => exact veirRunComWith_bridge_eq_veirRunCom body _ _ hc.2
-    | _ => rfl
+/-- The interpretation under `bridgeExpansion? false` is `veirRunCom`;
+`veirRunComWith_bridgeExpansion?_false` states it without the fragment hypothesis. -/
+theorem veirRunComWith_bridge_eq_veirRunCom {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (ρ : VEnv Γ) (mem : MemoryState) (_hc : ComInArith c) :
+    veirRunComWith (JasminOp.bridgeExpansion? false) c ρ mem = veirRunCom c ρ mem :=
+  veirRunComWith_bridgeExpansion?_false c ρ mem
+
+/-! ## The `ToVeirOp jasminDialect` instance on the scalar fragment
+
+`veirRunCom` runs the operations the `ToVeirOp jasminDialect` instance emits, whose
+expansions are `JasminOp.bridgeExpansion? false`. The two theorems below are
+`veirRunComWith_bridge_refines` and `veirRunComBridge_eq_denote` at that instance. -/
+
+/-- On the scalar fragment, for every shift amount, the op-by-op VeIR interpretation
+of the operations the `ToVeirOp jasminDialect` instance emits, from an environment
+refined by the encoded valuation `V`, returns a value refined by the encoded
+denotation of the program. -/
+theorem veirRunCom_bridge_refines {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState)
+    (hc : ComInBridge c)
+    (hρ : ∀ (s : JasminTy) (v : Var Γ s), ρ s v ⊒ encodeVal s (v.lookup V)) :
+    ∃ r, veirRunCom c ρ mem = .ok r ∧ r ⊒ encodeVal t (c.denote V) := by
+  rw [← veirRunComWith_bridgeExpansion?_false]
+  exact veirRunComWith_bridge_refines false c V ρ mem hc hρ
+
+/-- On the scalar fragment, for every shift amount, the op-by-op VeIR interpretation
+of the operations the `ToVeirOp jasminDialect` instance emits, from the encoded
+valuation `V`, returns the encoded denotation of the program. -/
+theorem veirRunCom_bridge_eq_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState)
+    (hc : ComInBridge c)
+    (hρ : ∀ (s : JasminTy) (v : Var Γ s), ρ s v = encodeVal s (v.lookup V)) :
+    veirRunCom c ρ mem = .ok (encodeVal t (c.denote V)) := by
+  rw [← veirRunComWith_bridgeExpansion?_false]
+  exact veirRunComBridge_eq_denote c V ρ mem hc hρ
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

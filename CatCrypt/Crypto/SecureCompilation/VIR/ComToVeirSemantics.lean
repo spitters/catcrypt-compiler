@@ -45,7 +45,12 @@ the shifts to the expansion `shiftSelectExpansion`, an `arith.shli` or
 
 `veirRunCom` reads the operations `lowerComWfWith veirExpansionOf` emits with the same
 op-codes, properties, result types, operand order and bound value; it does not read
-the pointer graph the builder produces.
+the pointer graph the builder produces. The expansions are those of the
+`ToVeirOp jasminDialect` instance, `JasminOp.bridgeExpansion? false`
+(`veirRunOp_uses_instances`, `veirExpansionOf_eq_bridgeExpansionOf`), which on the
+`arith` fragment are `JasminOp.expandVeir?` (`JasminOp.bridgeExpansion?_false_of_inArith`).
+The theorems of this file are over the `arith` fragment; `ComToVeirShifts` states
+`veirRunCom_bridge_refines` and `veirRunCom_bridge_eq_denote` over the scalar fragment.
 -/
 
 @[expose] public section
@@ -333,12 +338,13 @@ def veirRunSteps (args : List RuntimeValue) (resTy : TypeAttr) :
       veirRunSteps args resTy rest (done ++ [vals]) mem'
 
 /-- The operations the lowering emits for a binding of type `t` with op `o`, run on
-the operand values `args`: the steps of `JasminOp.expandVeir? o` followed by the
-value of the expansion, or the one operation `veirRunOp` and the result in the slot
+the operand values `args`: the steps of the expansion of the `ToVeirOp jasminDialect`
+instance, `JasminOp.bridgeExpansion? false o`, followed by the value of the
+expansion, or the one operation `veirRunOp` and the result in the slot
 `resultSlotOfOp o` names. -/
 def veirRunBinding (o : JasminOp) (t : JasminTy) (args : List RuntimeValue)
     (mem : MemoryState) : Interp (RuntimeValue × MemoryState) :=
-  match JasminOp.expandVeir? o with
+  match JasminOp.bridgeExpansion? false o with
   | some x => do
       let (done, mem') ← veirRunSteps args (JasminTy.toVeirTy t) x.steps [] mem
       let some r := VeirSrc.resolveVal args done x.value | .fail
@@ -364,8 +370,32 @@ theorem veirRunOp_uses_instances :
     (ToVeirOp.toOp (d := jasminDialect) = JasminOp.toMlirOpCode) ∧
       (ToVeirOp.resultSlot (d := jasminDialect) = JasminOp.resultSlotOfOp) ∧
       (ToVeirTy.toTy (d := jasminDialect) = JasminTy.toVeirTy) ∧
-      (ToVeirOp.expand? (d := jasminDialect) = JasminOp.expandVeir?) :=
+      (ToVeirOp.expand? (d := jasminDialect) = JasminOp.bridgeExpansion? false) :=
   ⟨rfl, rfl, rfl, rfl⟩
+
+/-- The expansion the `ToVeirOp jasminDialect` instance gives a binding is
+`bridgeExpansionOf false`. -/
+theorem veirExpansionOf_eq_bridgeExpansionOf (o : JasminOp) (nargs : Nat) :
+    veirExpansionOf (d := jasminDialect) o nargs = bridgeExpansionOf false o nargs := by
+  cases o <;> try rfl
+  rename_i b w
+  cases b <;> rfl
+
+/-- On the `arith` fragment the expansions with `bare = false`, those of the
+`ToVeirOp jasminDialect` instance, are the expansions `JasminOp.expandVeir?`. -/
+theorem JasminOp.bridgeExpansion?_false_of_inArith (o : JasminOp) (h : JasminOp.InArith o) :
+    JasminOp.bridgeExpansion? false o = JasminOp.expandVeir? o := by
+  cases o <;> first
+    | rfl
+    | exact absurd h id
+    | (rename_i bop w; cases bop <;> first | rfl | exact absurd rfl h)
+
+/-- On the `arith` fragment there is no expansion with `bare = true`. -/
+theorem JasminOp.bridgeExpansion?_true_of_inArith (o : JasminOp) (h : JasminOp.InArith o) :
+    JasminOp.bridgeExpansion? true o = none := by
+  cases o <;> try first | rfl | exact absurd h id
+  rename_i bop w
+  cases bop <;> first | rfl | exact absurd rfl h
 
 /-- The expansion of a shift `regArith bop w`, run on two `w`-bit operands, returns
 `veirShiftSel bop x y` with memory unchanged. -/
@@ -375,7 +405,8 @@ theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
       .ok (.int w (veirShiftSel bop x y), mem) := by
   cases bop <;> simp only [JasminBinOp.IsShift] at hb
   all_goals
-    simp only [veirRunBinding, JasminOp.expandVeir?, JasminOp.shiftSelectExpansion,
+    simp only [veirRunBinding, JasminOp.bridgeExpansion?, Bool.false_eq_true, ↓reduceIte,
+      JasminOp.shiftSelectExpansion,
       BitVec.toNat_ofNat, Nat.mod_two_pow_self, JasminOp.toMlirOpCode,
       JasminBinOp.toArithOpCode, veirRunSteps, List.mapM_nil, Option.pure_def, interpretOp',
       Arith.interpretOp', JasminTy.toVeirTy, List.map_cons, Option.getD_none, List.map_nil,
@@ -388,12 +419,21 @@ theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
       BitVec.ofInt_ofNat, Nat.reduceLT, veirShiftSel, BitVec.ofNat_eq_ofNat, veirBinInt]
     rfl
 
-/-- An op that is not a shift has no expansion. -/
+/-- An op that is not a shift has no expansion in the table `JasminOp.expandVeir?` of
+the `arith` fragment. -/
 theorem JasminOp.expandVeir?_eq_none (o : JasminOp)
     (h : ¬ ∃ bop w, o = .regArith bop w ∧ bop.IsShift) : JasminOp.expandVeir? o = none := by
   cases o <;> try rfl
   rename_i bop w
   cases bop <;> first | rfl | exact absurd ⟨_, _, rfl, trivial⟩ h
+
+/-- An op of the `arith` fragment that is not a shift has no expansion under the
+`ToVeirOp jasminDialect` instance. -/
+theorem JasminOp.bridgeExpansion?_false_eq_none (o : JasminOp) (hc : JasminOp.InArith o)
+    (h : ¬ ∃ bop w, o = .regArith bop w ∧ bop.IsShift) :
+    JasminOp.bridgeExpansion? false o = none := by
+  rw [JasminOp.bridgeExpansion?_false_of_inArith o hc]
+  exact JasminOp.expandVeir?_eq_none o h
 
 /-- An op that is not a shift is `ShiftSafe` on every argument. -/
 theorem JasminOp.shiftSafe_of_not_shift (o : JasminOp)
@@ -513,7 +553,7 @@ theorem veirRunBinding_expr_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
         rw [argVals_two, hρ, hρ]
         exact (veirRunBinding_shift bop hbs w _ _ mem).trans
           (by rw [veirShiftSel_val bop hbs]; rfl)
-  · have hx := JasminOp.expandVeir?_eq_none e.op hsh
+  · have hx := JasminOp.bridgeExpansion?_false_eq_none e.op hc hsh
     obtain ⟨hop, hslot⟩ := veirRunOp_expr_eq e V ρ mem hc
       (JasminOp.shiftSafe_of_not_shift e.op _ hsh) hρ
     simp only [veirRunBinding, hx, hop, hslot, Interp.bind_ok]
@@ -546,7 +586,7 @@ theorem veirRunBinding_expr_refines {Γ : Ctxt jasminDialect} {t : JasminTy}
           rw [argVals_two, hsx, hsy]
           exact veirRunBinding_shift bop hbs w _ _ mem
         · exact (int_isRefinedBy_int_iff _ _).2 (veirShiftSel_refines bop hbs hrx hry)
-  · have hx := JasminOp.expandVeir?_eq_none e.op hsh
+  · have hx := JasminOp.bridgeExpansion?_false_eq_none e.op hc hsh
     obtain ⟨⟨r, hop, hr⟩, hslot⟩ := veirRunOp_expr_refines e V ρ mem hc hρ
     refine ⟨r, ?_, hr⟩
     simp only [veirRunBinding, hx, hop, hslot, Interp.bind_ok]
