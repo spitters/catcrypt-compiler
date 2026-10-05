@@ -340,9 +340,26 @@ theorem allPub_of_allPubB (Q : String → Bool) : ∀ e : SExpr, allPubB Q e = t
 /-- The leaf names the dialect leakage reads as array accesses. -/
 def arrLeafName (f : String) : Bool := f == "arrLoadDyn" || f == "arrStoreDyn"
 
+/-- A leaf call `f(args)` has no secret-dependent event in the owned dialect leakage: `f` is
+    a quiet leaf of the owned route, or every argument is public. -/
+def leafCallOk (P : String → Bool) (f : String) (args : List Located) : Bool :=
+  ownedQuietLeaf f || args.all fun a => P a.locVar
+
+/-- A call `leafCallOk` does not refuse is a quiet leaf of the owned route or has public
+    arguments. -/
+theorem leafCallOk_of_ne_false{P : String → Bool} {f : String} {args : List Located}
+    (h : ¬ leafCallOk P f args = false) :
+    ownedQuietLeaf f = true ∨ (args.all fun a => P a.locVar) = true := by
+  unfold leafCallOk at h
+  cases hq : ownedQuietLeaf f with
+  | true => exact Or.inl rfl
+  | false => exact Or.inr (by simpa [hq] using h)
+
 /-- **The front-faithful level check.** Over one public-name predicate `P`, the
     predicate after `c`, or `none`. A write makes its destination public exactly
     when every name it reads is public; an array access requires a public index;
+    a leaf call requires `leafCallOk`: a quiet leaf of the owned route, or public
+    arguments;
     `RFor` is checked once per unrolled trip; `RIfNz` is accepted only in the φ-merge
     shape, whose result is public exactly when the guard is. Leaf calls named like the
     dialect's array leaves, calls into a `TFp` slot, and every arm the check does not
@@ -357,10 +374,10 @@ def levelCheckF (P : String → Bool) : LowCT → Option (String → Bool)
   | .RLetZero _ _ b => levelCheckF P b
   | .RScalarSetExpr x e => some (setP P x (allPubB P e))
   | .RCall f dest args =>
-      if dest.locDst = .TFp ∨ arrLeafName f = true then none
+      if dest.locDst = .TFp ∨ arrLeafName f = true ∨ leafCallOk P f args = false then none
       else some (setP P dest.locVar (args.all fun a => P a.locVar))
   | .RCallDstThreaded f dst args =>
-      if arrLeafName f = true then none
+      if arrLeafName f = true ∨ leafCallOk P f (dst :: args) = false then none
       else some (setP P dst.locVar ((dst :: args).all fun a => P a.locVar))
   | .RSelect dst sel s0 s1 =>
       some (setP P dst.locVar (P sel && P s0.locVar && P s1.locVar))
@@ -605,16 +622,29 @@ theorem labAgree_mono {Γ : Ctx} {Q Q' : String → Bool} {vm : VarMap Γ} {L : 
 
 /-! ## The straight-line arms -/
 
-theorem catKind_extCall_quiet {name : String} (hn : arrLeafName name = false)
-    (argTys : List CryptoTy) (r : CryptoTy) :
+/-- A quiet leaf of the owned route, other than the two array leaves, is quiet in the owned
+    dialect leakage. -/
+theorem catKind_owned_extCall_quiet {name : String} (hn : arrLeafName name = false)
+    (hq : ownedQuietLeaf name = true) (argTys : List CryptoTy) (r : CryptoTy) :
     catKind .owned (.extCall name argTys r) = .quiet := by
   simp only [arrLeafName, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at hn
-  simp [catKind, CatLeakParams.owned, hn.1, hn.2]
+  exact CryptoDialectCTLeak.catKind_extCall_quiet hn.1 hn.2 hq argTys r
 
-/-- One opaque leaf binding over resolved arguments. -/
+/-- A leaf that is neither an array leaf nor a quiet leaf of the owned route is a
+    variable-time leaf call in the owned dialect leakage. -/
+theorem catKind_owned_extCall_vt {name : String} (hn : arrLeafName name = false)
+    (hq : ownedQuietLeaf name = false) (argTys : List CryptoTy) (r : CryptoTy) :
+    catKind .owned (.extCall name argTys r) = .vtCall name := by
+  simp only [arrLeafName, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at hn
+  exact CryptoDialectCTLeak.catKind_extCall_vt hn.1 hn.2 hq argTys r
+
+/-- One opaque leaf binding over resolved arguments: a quiet leaf of the owned route, or a
+    leaf on public arguments. -/
 theorem extCall_step {Γ : Ctx} {vm : VarMap Γ} {L : Lb Γ} {P : String → Bool}
     (hA : LabAgree P vm L) {name : String} (hn : arrLeafName name = false)
-    {args : List Located} {ra : List ((t : CryptoTy) × CVar Γ t)}
+    {args : List Located}
+    (hq : ownedQuietLeaf name = true ∨ (args.all fun a => P a.locVar) = true)
+    {ra : List ((t : CryptoTy) × CVar Γ t)}
     (hra : resolveLocatedArgs vm args = some ra) {argTys : List CryptoTy}
     {hv : CHVector (fun t => CVar Γ t) argTys}
     (hls : listSigmaToCHVector ra = ⟨argTys, hv⟩) (retTy : CryptoTy) (dst : String) (b : Bool)
@@ -626,15 +656,24 @@ theorem extCall_step {Γ : Ctx} {vm : VarMap Γ} {L : Lb Γ} {P : String → Boo
     have := argLvls_listSigma L ra
     rw [hls] at this
     exact this
-  refine ⟨_, contChk_varBind _ L _ (accepts_quiet _ _ L (catKind_extCall_quiet hn _ _)) id,
-    labAgree_bind hA dst _ (fun h => ?_) (fun y hne hy => by rwa [setP_ne hne] at hy)⟩
-  have hall := hb (setP_self_imp h)
-  show joinAll (argLvls L (toVIRArgs hv)) = .Public
-  rw [hlv]
-  apply joinAll_eq_public_of
-  intro l hl
-  obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hl
-  exact resolve_pub hA args ra hra hall p hp
+  have hpub : (args.all fun a => P a.locVar) = true →
+      joinAll (argLvls L (toVIRArgs hv)) = .Public := by
+    intro hall
+    rw [hlv]
+    apply joinAll_eq_public_of
+    intro l hl
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hl
+    exact resolve_pub hA args ra hra hall p hp
+  have hacc : opAccepts Mo (.extCall name argTys retTy) (argLvls L (toVIRArgs hv)) = true := by
+    cases hqn : ownedQuietLeaf name with
+    | true => exact accepts_quiet _ _ L (catKind_owned_extCall_quiet hn hqn _ _)
+    | false =>
+        have hall := hq.resolve_left (by simp [hqn])
+        simp only [opAccepts, Mo, catLeakModel, catKind_owned_extCall_vt hn hqn]
+        exact decide_eq_true (hpub hall)
+  exact ⟨_, contChk_varBind _ L _ hacc id,
+    labAgree_bind hA dst _ (fun h => hpub (hb (setP_self_imp h)))
+      (fun y hne hy => by rwa [setP_ne hne] at hy)⟩
 
 theorem mem_of_joinAll_public : ∀ {ls : List SecretLevel}, joinAll ls = .Public →
     ∀ l ∈ ls, l = .Public
@@ -692,8 +731,7 @@ theorem arrLoadCont_chk {Γ : Ctx} (L : Lb Γ) (dty : TowerType)
           exact joinAll_two (hm _ (by simp)) hidx
     · refine contChk_varBind _ L _ ?_ (fun hl => ?_)
       · show opAccepts Mo (.extCall "arrLoadDyn" argTys _) (argLvls L (toVIRArgs hv)) = true
-        simp only [opAccepts, Mo, catLeakModel, catKind, CatLeakParams.owned]
-        simp only [Bool.false_eq_true, if_false, true_or, if_true, decide_eq_true_eq]
+        simp only [opAccepts, Mo, catLeakModel, catKind_extCall_arrLoadDyn, decide_eq_true_eq]
         rw [hlv, hlen, List.map_append, List.map_cons, List.map_nil]
         rw [show ra.length = (ra.map fun p => lvlOf (toVIRVar p.2) L).length by simp,
           getD_append_last]
@@ -722,8 +760,7 @@ theorem arrStoreCont_chk {Γ : Ctx} (L : Lb Γ) (dty : TowerType)
       ((∀ p ∈ ra, lvlOf (toVIRVar p.2) L = .Public) → l = .Public) := by
     refine ⟨_, contChk_varBind _ L _ ?_ id, fun hall => ?_⟩
     · show opAccepts Mo (.extCall "arrStoreDyn" argTys _) (argLvls L (toVIRArgs hv)) = true
-      simp only [opAccepts, Mo, catLeakModel, catKind, CatLeakParams.owned]
-      simp only [Bool.false_eq_true, if_false, or_true, if_true, decide_eq_true_eq]
+      simp only [opAccepts, Mo, catLeakModel, catKind_extCall_arrStoreDyn, decide_eq_true_eq]
       rw [hlv, hlen, List.map_append, List.map_cons, List.map_nil]
       rw [show ra.length = (ra.map fun p => lvlOf (toVIRVar p.2) L).length by simp,
         getD_append_last]
@@ -860,7 +897,8 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
           split at ht
           · exfalso; simp_all
           · simp only [Option.some.injEq] at ht; subst ht
-            obtain ⟨l, hcc, hAA⟩ := extCall_step hA hnc.2 hra rfl _ dest.locVar _ id
+            obtain ⟨l, hcc, hAA⟩ := extCall_step hA hnc.2.1
+              (leafCallOk_of_ne_false hnc.2.2) hra rfl _ dest.locVar _ id
             exact ⟨_, hcc, hAA⟩
   | RCallDstThreaded f dst args =>
       intro Γ vm L P P' o hc ht hn hA
@@ -869,13 +907,14 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
       · exact absurd hc (by simp)
       · next hnc =>
         simp only [Option.some.injEq] at hc; subst hc
-        simp only [Bool.not_eq_true] at hnc
+        simp only [not_or, Bool.not_eq_true] at hnc
         simp only [translateDialectFull] at ht
         cases hra : resolveLocatedArgs vm (dst :: args) with
         | none => simp [hra] at ht
         | some ra =>
           simp only [hra, Option.some.injEq] at ht; subst ht
-          obtain ⟨l, hcc, hAA⟩ := extCall_step hA hnc hra rfl _ dst.locVar _ id
+          obtain ⟨l, hcc, hAA⟩ := extCall_step hA hnc.1
+            (leafCallOk_of_ne_false hnc.2) hra rfl _ dst.locVar _ id
           exact ⟨_, hcc, hAA⟩
   | RTupleLoad dst src idx =>
       intro Γ vm L P P' o hc ht hn hA
@@ -886,7 +925,8 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
       | some ra =>
         simp only [hra, Option.some.injEq] at ht; subst ht
         obtain ⟨l, hcc, hAA⟩ := extCall_step hA
-          (arrLeafName_append (p := "tupleLoad:") _ (by decide) (by decide)) hra rfl _
+          (arrLeafName_append (p := "tupleLoad:") _ (by decide) (by decide))
+          (Or.inl (ownedQuietLeaf_tupleLoad _)) hra rfl _
           dst.locVar (P src.locVar) (fun h => by simp [h])
         exact ⟨_, hcc, hAA⟩
   | RArrLoad dst src i =>
@@ -949,7 +989,8 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
         | some ra =>
           simp only [hra, Option.some.injEq] at ht; subst ht
           obtain ⟨l, hcc, hAA⟩ := extCall_step hA
-            (arrLeafName_append (p := "arrLoad:") _ (by decide) (by decide)) hra rfl _
+            (arrLeafName_append (p := "arrLoad:") _ (by decide) (by decide))
+            (Or.inl (ownedQuietLeaf_arrLoad _)) hra rfl _
             dst.locVar (P src.locVar) (fun h => by simp [h])
           exact ⟨_, hcc, hAA⟩
   | RArrStoreLit arr idx src =>
@@ -971,7 +1012,8 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
         | some ra =>
           simp only [hra, Option.some.injEq] at ht; subst ht
           obtain ⟨l, hcc, hAA⟩ := extCall_step hA
-            (arrLeafName_append (p := "arrStore:") _ (by decide) (by decide)) hra rfl _
+            (arrLeafName_append (p := "arrStore:") _ (by decide) (by decide))
+            (Or.inl (ownedQuietLeaf_arrStore _)) hra rfl _
             arr.locVar (P arr.locVar && P src.locVar) (fun h => by simpa using h)
           exact ⟨_, hcc, hAA⟩
   | RSelect dst sel s0 s1 =>
@@ -1007,7 +1049,8 @@ theorem levelCheckF_full : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb �
         | none => simp [hra] at ht
         | some ra =>
           simp only [hra, Option.some.injEq] at ht; subst ht
-          obtain ⟨l, hcc, hAA⟩ := extCall_step hA (name := "select") rfl hra rfl _
+          obtain ⟨l, hcc, hAA⟩ := extCall_step hA (name := "select") rfl
+            (Or.inl ownedQuietLeaf_select) hra rfl _
             dst.locVar (P sel && P s0.locVar && P s1.locVar)
             (fun h => by simpa [Bool.and_assoc] using h)
           exact ⟨_, hcc, hAA⟩

@@ -18,8 +18,9 @@ programs `ComL`, and the leakage transformer of the lowering `cryptoDialectToJas
 The model `jLeakModel Pj`:
 
 * `stackLoad` and `stackStore` leak their index argument (position `1`) as a memory offset;
-* an `extCall` of a leaf the parameters mark (`leafVT`) leaks its argument values; the
-  opaque array leaves `arrLoadDyn` and `arrStoreDyn` leak their last argument, the index;
+* the opaque array leaves `arrLoadDyn` and `arrStoreDyn` leak their last argument, the
+  index; an `extCall` of any other leaf is quiet when the parameters list its name
+  (`leafQuiet`) and leaks its argument values otherwise;
 * an operation the parameters map to a variable-time instruction (`opVT`) leaks its
   argument values as that instruction's operands;
 * every other operation is quiet.
@@ -73,27 +74,29 @@ open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTime X86Mnem)
 
 /-! ## The leakage model of `jasminDialect` -/
 
-/-- The parameters of the leakage of `jasminDialect`: the leaf calls classed variable time
-    and the operations that are variable-time instructions. -/
+/-- The parameters of the leakage of `jasminDialect`: the leaf calls classed quiet (every
+    leaf call of another name is variable time) and the operations that are variable-time
+    instructions. -/
 structure JLeakParams where
-  leafVT : String → Bool := fun _ => false
+  leafQuiet : String → Bool := fun _ => false
   opVT : JasminOp → Option X86Mnem := fun _ => none
 
-/-- The parameters of the owned x86 route: no variable-time leaf and no variable-time
-    operation. -/
-def JLeakParams.owned : JLeakParams := {}
+/-- The parameters of the owned x86 route: the quiet leaves `ownedQuietLeaf` and no
+    variable-time operation. -/
+def JLeakParams.owned : JLeakParams := { leafQuiet := ownedQuietLeaf }
 
 /-- The event class of an operation of `jasminDialect`. The match lists every constructor of
-    `JasminOp`: a stack access leaks its index, a leaf call is classed by its name, and each
-    remaining operation is classed by `Pj.opVT`. The dialect has no division and no
-    arithmetic shift right by a register count; `sarImm` shifts by an immediate. -/
+    `JasminOp`: a stack access leaks its index, a leaf call is quiet when `Pj.leafQuiet`
+    lists its name and variable time otherwise, and each remaining operation is classed by
+    `Pj.opVT`. The dialect has no division and no arithmetic shift right by a register
+    count; `sarImm` shifts by an immediate. -/
 def jKind (Pj : JLeakParams) (op : JasminOp) : LeakKind :=
   match op with
   | .stackLoad _ _ | .stackStore _ _ => .addrAt 1
   | .extCall name argTys _ =>
-      if Pj.leafVT name then .vtCall name
-      else if name = "arrLoadDyn" ∨ name = "arrStoreDyn" then .addrAt (argTys.length - 1)
-      else .quiet
+      if name = "arrLoadDyn" ∨ name = "arrStoreDyn" then .addrAt (argTys.length - 1)
+      else if Pj.leafQuiet name then .quiet
+      else .vtCall name
   | .regArith _ _ | .castW _ _ | .regConst _ _ | .vpackZMM _ | .vpackZMMd _ | .vprordZMM _
   | .vpslldq _ | .vpsrldq _ | .vsimd _ | .mulhi _ | .addCarryLo _ | .addCarryHi _
   | .rorImm _ _ | .shrImm _ _ | .sarImm _ _ | .shlImm _ _ | .select _ | .callN _ _ _
@@ -101,6 +104,34 @@ def jKind (Pj : JLeakParams) (op : JasminOp) : LeakKind :=
       match Pj.opVT op with
       | some m => .vt m
       | none => .quiet
+
+/-- The array leaf `arrLoadDyn` leaks its last argument. -/
+@[simp] theorem jKind_extCall_arrLoadDyn (Pj : JLeakParams) (argTys : List JasminTy)
+    (r : JasminTy) :
+    jKind Pj (.extCall "arrLoadDyn" argTys r) = .addrAt (argTys.length - 1) := by
+  simp [jKind]
+
+/-- The array leaf `arrStoreDyn` leaks its last argument. -/
+@[simp] theorem jKind_extCall_arrStoreDyn (Pj : JLeakParams) (argTys : List JasminTy)
+    (r : JasminTy) :
+    jKind Pj (.extCall "arrStoreDyn" argTys r) = .addrAt (argTys.length - 1) := by
+  simp [jKind]
+
+/-- A leaf call of a name `Pj.leafQuiet` lists, other than the two array leaves, is
+    quiet. -/
+theorem jKind_extCall_quiet {Pj : JLeakParams} {name : String}
+    (hl : name ≠ "arrLoadDyn") (hs : name ≠ "arrStoreDyn") (hq : Pj.leafQuiet name = true)
+    (argTys : List JasminTy) (r : JasminTy) :
+    jKind Pj (.extCall name argTys r) = .quiet := by
+  simp [jKind, hl, hs, hq]
+
+/-- A leaf call of a name `Pj.leafQuiet` does not list, other than the two array leaves,
+    is a variable-time leaf call. -/
+theorem jKind_extCall_vt {Pj : JLeakParams} {name : String}
+    (hl : name ≠ "arrLoadDyn") (hs : name ≠ "arrStoreDyn") (hq : Pj.leafQuiet name = false)
+    (argTys : List JasminTy) (r : JasminTy) :
+    jKind Pj (.extCall name argTys r) = .vtCall name := by
+  simp [jKind, hl, hs, hq]
 
 /-- The natural-number reading of a value of `jasminDialect`: a register by its bits, every
     other value as `0`. -/
@@ -209,10 +240,10 @@ def ComLCT (M : LeakModel jasminDialect) {Γ : Ctxt jasminDialect} {t : JasminTy
 /-! ## The leakage transformer of the lowering -/
 
 /-- The parameters of the two dialects agree on the lowered operations: the same leaf calls
-    are variable time, and an operation and its lowering are the same variable-time
+    are quiet, and an operation and its lowering are the same variable-time
     instruction. -/
 def LeakCompat (P : CatLeakParams) (Pj : JLeakParams) : Prop :=
-  Pj.leafVT = P.leafVT ∧
+  Pj.leafQuiet = P.leafQuiet ∧
     ∀ {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
       (e' : Expr jasminDialect (mapCtx Γ) (mapTy t)),
       toJExprD e = some e' → Pj.opVT e'.op = P.opVT e.op
