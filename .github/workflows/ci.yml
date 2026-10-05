@@ -70,6 +70,9 @@ jobs:
       - name: Every Dialect classified (lowers, theory, test)
         run: bash scripts/dialect-lowering-ratchet.sh
 
+      - name: No catch-all arm in a leak-kind function
+        run: bash scripts/leak-kind-wildcard-lint.sh
+
       - name: No new native_decide or maxHeartbeats bump (proof cost)
         run: bash scripts/proof-cost-ratchet.sh
 

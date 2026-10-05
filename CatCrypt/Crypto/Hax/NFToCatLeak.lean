@@ -14,10 +14,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 
 The leakage model `nfLeakModel` of `nfDialect`: the calls `index` and `array_update`, and the
 operations `index` and `update`, leak their index argument (position `1`) as a memory offset;
-every other operation is quiet. A word, an integer and a bit read as natural numbers; every
-other value reads as `0`. The model has no variable-time scalar operation: it is compared with
-`catLeakModel P` at parameters `P` with no variable-time operation (`NoVT P`), which the owned
-parameters satisfy.
+the binary word operations `udiv`, `urem`, `sdiv`, `srem` and `ashr` leak their operands as
+those of a variable-time instruction (`nfBinKind`); every other operation is quiet. A word, an
+integer and a bit read as natural numbers; every other value reads as `0`. `nfToCat`
+translates no binary word operation, so the model is compared with `catLeakModel P` at
+parameters `P` with no variable-time operation (`NoVT P`), which the owned parameters satisfy.
 
 `nfToCat` translates each operation to no binding (a literal, a loop counter or a trip count,
 all quiet), to one binding, to a quiet `bvConst` binding followed by one binding, or, for a
@@ -30,7 +31,7 @@ translated program from every valuation the readings relate to `V`, with the sam
 
 ## Main definitions
 
-* `nfKind`, `nfValNat`, `nfLeakModel` — the leakage model of `nfDialect`.
+* `nfBinKind`, `nfKind`, `nfValNat`, `nfLeakModel` — the leakage model of `nfDialect`.
 * `nfLeakRun` — the leakage run of a program of `nfDialect` over the leaf table of a builtin
   table.
 * `NoVT` — parameters of `catCryptDialect` with no variable-time operation.
@@ -64,13 +65,42 @@ open Ctxt (Var Valuation)
 
 /-! ## The leakage model of `nfDialect` -/
 
+/-- The event class of a binary word operation: unsigned division and remainder are the
+    variable-time instruction `div`, signed division and remainder `idiv`, and the arithmetic
+    shift right, whose count is an operand, `sarx`; the other operations are quiet. -/
+def nfBinKind : NfBinOp → LeakKind
+  | .udiv | .urem => .vt .div
+  | .sdiv | .srem => .vt .idiv
+  | .ashr => .vt .sarx
+  | .add | .sub | .mul | .and | .or | .xor | .shl | .lshr | .rotl | .rotr | .mulhi => .quiet
+
 /-- The event class of an operation of `nfDialect`: the index argument of an array access is
-    a memory offset; every other operation is quiet. -/
+    a memory offset, a binary word operation has the class `nfBinKind`, and every other
+    operation is quiet. The match lists every constructor of `NfOp`. -/
 def nfKind : NfOp → LeakKind
   | .named _ op => nfKind op
   | .call f _ _ => if f = "index" ∨ f = "array_update" then .addrAt 1 else .quiet
   | .index _ _ | .update _ _ => .addrAt 1
-  | _ => .quiet
+  | .bin o _ => nfBinKind o
+  | .const _ _ | .constBit _ | .constUnit | .un _ _ | .cast _ _ | .scast _ _ | .cmp _ _
+  | .andB | .orB | .xorB | .eqB | .notB | .arrLit _ _ | .arrRepeat _ _
+  | .mkPair _ _ | .fst _ _ | .snd _ _ | .ilit _ _ | .ctr | .trip _
+  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ => .quiet
+
+/-- An unsigned division is variable time. -/
+@[simp] theorem nfKind_bin_udiv (w : Nat) : nfKind (.bin .udiv w) = .vt .div := rfl
+
+/-- An unsigned remainder is variable time. -/
+@[simp] theorem nfKind_bin_urem (w : Nat) : nfKind (.bin .urem w) = .vt .div := rfl
+
+/-- A signed division is variable time. -/
+@[simp] theorem nfKind_bin_sdiv (w : Nat) : nfKind (.bin .sdiv w) = .vt .idiv := rfl
+
+/-- A signed remainder is variable time. -/
+@[simp] theorem nfKind_bin_srem (w : Nat) : nfKind (.bin .srem w) = .vt .idiv := rfl
+
+/-- An arithmetic shift right is variable time. -/
+@[simp] theorem nfKind_bin_ashr (w : Nat) : nfKind (.bin .ashr w) = .vt .sarx := rfl
 
 /-- The natural-number reading of a value of `nfDialect`: a word and a bit by their bits, an
     integer by its natural number, every other value as `0`. -/

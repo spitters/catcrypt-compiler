@@ -54,7 +54,10 @@ structure CatLeakParams where
     lowered to a variable-time instruction. -/
 def CatLeakParams.owned : CatLeakParams := {}
 
-/-- The event class of an operation. -/
+/-- The event class of an operation. The match lists every constructor of `CatCryptOp`: the
+    dynamic-index accesses leak their index, a leaf call is classed by its name, and each
+    remaining operation is classed by `P.opVT`. The dialect has no division and no arithmetic
+    shift right by a register count; `bvShiftRA` shifts by an immediate. -/
 def catKind (P : CatLeakParams) (op : CatCryptOp) : LeakKind :=
   match op with
   | .memrefGetDyn _ | .memrefSetDyn _ | .memrefGetDyn128 _
@@ -63,7 +66,15 @@ def catKind (P : CatLeakParams) (op : CatCryptOp) : LeakKind :=
       if P.leafVT name then .vtCall name
       else if name = "arrLoadDyn" ∨ name = "arrStoreDyn" then .addrAt (argTys.length - 1)
       else .quiet
-  | op =>
+  | .constBit _ | .constUnit | .xor | .and | .or | .not | .eqBit
+  | .mkPair _ _ | .fst _ _ | .snd _ _ | .inl _ _ | .inr _ _
+  | .bvConst _ _ | .bvXor _ | .bvAnd _ | .bvOr _ | .bvNot _ | .bvAdd _ | .bvSub _ | .bvMul _
+  | .bvEq _ | .bvShiftL _ _ | .bvShiftR _ _ | .bvRor _ _ | .bvRol _ _ | .bvShiftRA _ _
+  | .andn _ | .bvShiftLV _ | .bvShiftRV _ | .bvAdd64 _ | .bvAdc _ | .bvMulHi _
+  | .bvAddCarryLo _ | .bvAddCarryHi _ | .ite _ | .bitToSword _
+  | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
+  | .sampleBit | .sampleBv _ | .vsimd _ | .vpshufdC _ | .vaeskeygenC _ | .vpsrldqC _
+  | .vpslldqC _ | .vconst128 _ | .vsha256rnds2 | .vsha256msg1 | .vsha256msg2 =>
       match P.opVT op with
       | some m => .vt m
       | none => .quiet

@@ -1,0 +1,5 @@
+# Allow-list of scripts/leak-kind-wildcard-lint.sh.
+#
+# One `path:declaration` per line: a leak-kind function that keeps a wildcard
+# arm returning the quiet class. Each entry has a comment above it stating why
+# every constructor the wildcard covers is quiet and stays quiet.
