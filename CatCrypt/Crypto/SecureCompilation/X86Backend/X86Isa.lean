@@ -31,8 +31,9 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
 
 ## Main results
 
-* `x86Isa_allocPool`, `x86Isa_calleeSaved`, `x86Isa_tied`, `x86Isa_copyMnemonic` and the
-  other data equations: the data fields at x86 are the existing constants, by `rfl`.
+* `x86Isa_allocPool`, `x86Isa_calleeSaved`, `x86Isa_tied`, `x86Isa_copyMnemonic`,
+  `x86Isa_implicitReads`, `x86Isa_loopGuard` and the other data equations: the data fields at
+  x86 are the existing constants, by `rfl`.
 * `x86LeaksOperands`, `x86Isa_leaksOperands`, `x86Isa_leaksOperands_of`: the leakage regime
   at x86 is `CT.DoitRegime.leaksOperands .doitm` at the mnemonic the printer emits, by `rfl`.
 * `x86Isa`, `x86Isa_step`, `x86Isa_lsemFuelMemF`, `x86Isa_lsemFuelMemFk`,
@@ -43,7 +44,7 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
 * `x86Sym`, `x86Sym_symRun`, `symRun_sound_x86`: the x86 symbolic instance, the definitional
   recovery of `OwnedLprogTV.symRun`, and `OwnedLprogTV.symRun_sound` as the specialisation.
 * `x86Mach`, `x86Mach_exec`, `x86Mach_opLeak`, `x86Mach_runBlock`, `x86Mach_blockLeak`,
-  `x86Mach_BlockOk`, `x86Mach_mstep`: the machine level `IsaMachine x86Isa` under a timing
+  `x86Mach_BlockOk`, `x86Mach_mstep`: the x86 machine level `IsaMachine` under a timing
   regime, whose operations, state, step and leakage are those of the address machine
   `aMachine` and of `DecodedCT`.
 * `x86Mach_runL_iff`, `x86Mach_haltsC_iff`, `x86Mach_halts_iff`: the generic leakage
@@ -146,6 +147,27 @@ theorem x86Isa_commutes (base : String) :
 theorem x86Isa_tieScratch : x86Isa.tieScratch = reloadScratch := rfl
 
 theorem x86Isa_copyMnemonic : x86Isa.copyMnemonic = TwoAddrLegalize.movFor := rfl
+
+theorem x86Isa_sp : x86Isa.sp = "RSP" := rfl
+
+theorem x86Isa_retRegs_head : x86Isa.retRegs.head? = some sysvRetReg := rfl
+
+theorem x86Isa_callerSaved : x86Isa.callerSaved = sysvCallerSaved := rfl
+
+theorem x86Isa_redZone : x86Isa.redZone = 128 := rfl
+
+theorem x86Isa_supports (base : String) : x86Isa.supports base = true := rfl
+
+/-- The implicit reads of `x86Isa` at an `Lopn` are those of the scheduler,
+    `LprogScheduler.implicitReads`. -/
+theorem x86Isa_implicitReads (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    LprogScheduler.implicitReads (.Lopn dsts opn srcs) = x86Isa.implicitReads opn := rfl
+
+/-- The x86 loop guard is the flag guard `CMP ctr, 0; jne top` of the loop export. -/
+theorem x86Isa_loopGuard (ctr : String) (top : LLabel) :
+    x86Isa.loopGuard ctr top =
+      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top] :=
+  rfl
 
 theorem x86Isa_leaksOperands (base : String) :
     x86Isa.leaksOperands base =
@@ -321,7 +343,7 @@ def x86Act (prog : List RInstr) (pc : Nat) (sa : AState) : Option (MAct (JInstr 
     decoder `decodeLprog`, the call blocks `callOps` and `retOps`, and the leakage
     `DecodedCT.opLeak r` (the memory events of `instrLeak` at their effective addresses and
     the operands the regime makes observable). -/
-@[reducible] def x86Mach (r : CT.DoitRegime) : IsaMachine x86Isa where
+@[reducible] def x86Mach (r : CT.DoitRegime) : IsaMachine where
   Instr := RInstr
   Op := JInstr 64
   MState := AState

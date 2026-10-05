@@ -24,8 +24,9 @@ regime of the Zkt table `CT.RvMnem` (`rvLeaksOperands`). RV64 has no
 flags register: the step is `LprogIsa.subsetStep` over the alphabet `rvBases` with no
 instruction-set arm, so it writes none of `zf`, `cf`, `of`, and the branch condition is the
 register test `condNZ` (`BNEZ`). The alphabet has no compare and none of the x86 carry,
-wide-multiply and flag mnemonics; `rvIsa_refuse_x86` states that the step of each of them
-is `none`.
+wide-multiply and flag mnemonics, so `rvIsa.supports` is false on each of them
+(`rvIsa_supports_x86Only`); `rvIsa_refuse_x86` states that the step of an unsupported
+mnemonic is `none`.
 
 The instruction selection `rvSel` maps the register fragment of the alphabet (64-bit `ADD`,
 `SUB`, `AND`, `OR`, `XOR` with three register operands, and the register `MOV`) on the
@@ -51,7 +52,8 @@ body.
 * `rvIsa`: the RV64 instruction set.
 * `rvLeaksOperands`, `rvIsa_leaksOperands_bases`: the leakage regime of Zkt and its
   operand-leaking bases, the loads and stores.
-* `rvIsa_refuse_x86`: the x86-only mnemonics have no step.
+* `rvIsa_supports_x86Only`, `rvIsa_refuse_x86`: the x86-only mnemonics are unsupported, and
+  an unsupported mnemonic has no step.
 * `rvSel`, `rvSel_decode`, `rvSel_step`: the selection, its byte round trip and its one-step
   simulation.
 * `decodeRBlock64`, `rv_asm`: the block decoder and the Asm lemma of the register fragment.
@@ -111,29 +113,44 @@ def rvMnemOfBase : String → Option CT.RvMnem
 def rvLeaksOperands (base : String) : Bool :=
   ((rvMnemOfBase base).map CT.RvMnem.leaksOperands).getD true
 
+/-- The mnemonic bases of the RV64 alphabet: no compare, no flag-reading or flag-writing
+    mnemonic. -/
+def rvBases : List String :=
+  ["ADD", "SUB", "AND", "OR", "XOR", "MUL", "MOV", "LOADIDX", "STOREIDX", "LOAD", "STORE",
+   "MOVQ"]
+
+/-- The RV64 psABI caller-saved integer registers: `ra`, the temporaries `t0`–`t6` and the
+    argument registers `a0`–`a7`. -/
+def rvCallerSaved : List String :=
+  ["ra", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "a0", "a1", "a2", "a3", "a4", "a5", "a6",
+   "a7"]
+
 /-- **The RV64 data**: the psABI register file with `t5`, `t6` as scratch, the save slot of a
-    callee-saved register at its index, the three-address legaliser data (no tied form, the
-    commutative bases, the copy `MOV` at the width of the operation), and the leakage regime
-    `rvLeaksOperands`. -/
+    callee-saved register at its index, the stack pointer `sp`, the return registers `a0`,
+    `a1`, the caller-saved registers and no red zone, the three-address legaliser data (no
+    tied form, the commutative bases, the copy `MOV` at the width of the operation), the
+    leakage regime `rvLeaksOperands`, the alphabet `rvBases`, no implicit reads, and the
+    register loop guard `bnez ctr, top`. -/
 def rvData : IsaData where
   allocPool := ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4"]
   scratch := ["t5", "t6"]
   argRegs := ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]
   calleeSaved := rvCalleeSaved
   saveSlot := fun r => rvCalleeSaved.findIdx? (· == r)
+  sp := "sp"
+  retRegs := ["a0", "a1"]
+  callerSaved := rvCallerSaved
+  redZone := 0
   tied := fun _ _ => false
   commutes := fun base => ["ADD", "MUL", "AND", "OR", "XOR"].contains base
   tieScratch := "t5"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
   leaksOperands := rvLeaksOperands
+  supports := fun base => rvBases.contains base
+  implicitReads := fun _ => []
+  loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
 
 /-! ## The step -/
-
-/-- The mnemonic bases of the RV64 alphabet: no compare, no flag-reading or flag-writing
-    mnemonic. -/
-def rvBases : List String :=
-  ["ADD", "SUB", "AND", "OR", "XOR", "MUL", "MOV", "LOADIDX", "STOREIDX", "LOAD", "STORE",
-   "MOVQ"]
 
 /-- The RV64 branch condition: the register is non-zero (`BNEZ`). -/
 def rvCond (s : LstateMF) (c : LOperand) : Bool := condNZ s.prog.base c
@@ -162,25 +179,31 @@ theorem rvIsa_leaksOperands_bases :
     (`ADC`, `SBB`, `ADCX`, `ADOX`) and the flag-quiet wide multiply (`MULX`, `MULXHI`). -/
 def x86OnlyBases : List String := ["CMP", "ADC", "SBB", "ADCX", "ADOX", "MULX", "MULXHI"]
 
-/-- **The x86-only mnemonics are refused on RV64**: an `Lopn` whose mnemonic base is one of
-    `x86OnlyBases`, at any width tag and on any operands, has no `rvIsa` step. -/
+theorem rvIsa_supports : rvIsa.supports = fun base => rvBases.contains base := rfl
+
+/-- The x86-only mnemonic bases are not supported on RV64. -/
+theorem rvIsa_supports_x86Only : ∀ b ∈ x86OnlyBases, rvIsa.supports b = false := by
+  have hall : ∀ b ∈ x86OnlyBases, rvBases.contains b = false := by decide
+  exact hall
+
+/-- **A mnemonic base RV64 does not support is refused**: an `Lopn` whose mnemonic base,
+    at any width tag and on any operands, has `rvIsa.supports` false has no `rvIsa` step. -/
 theorem rvIsa_refuse_x86 (P : LprogM) (dsts : List LOperand) (opn : String)
     (srcs : List LOperand) (tag : MemTag) (s : LstateMF)
-    (h : stripWidthTag opn ∈ x86OnlyBases) :
+    (h : rvIsa.supports (stripWidthTag opn) = false) :
     rvIsa.step P (.Lopn dsts opn srcs, tag) s = none := by
-  have hall : ∀ b ∈ x86OnlyBases, rvBases.contains b = false := by decide
   rw [rvIsa_step]
-  exact subsetStep_refuse _ _ _ P dsts opn srcs tag s (hall _ h)
+  exact subsetStep_refuse _ _ _ P dsts opn srcs tag s h
 
 /-- `MULX` at width 64 is refused on RV64. -/
 theorem rvIsa_refuse_mulx (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
     (s : LstateMF) : rvIsa.step P (.Lopn dsts "MULX:64" srcs, tag) s = none :=
-  rvIsa_refuse_x86 P dsts _ srcs tag s (by decide +kernel)
+  rvIsa_refuse_x86 P dsts _ srcs tag s (rvIsa_supports_x86Only _ (by decide +kernel))
 
 /-- `ADCX` at width 64 is refused on RV64. -/
 theorem rvIsa_refuse_adcx (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
     (s : LstateMF) : rvIsa.step P (.Lopn dsts "ADCX:64" srcs, tag) s = none :=
-  rvIsa_refuse_x86 P dsts _ srcs tag s (by decide +kernel)
+  rvIsa_refuse_x86 P dsts _ srcs tag s (rvIsa_supports_x86Only _ (by decide +kernel))
 
 /-! ## Instruction selection -/
 

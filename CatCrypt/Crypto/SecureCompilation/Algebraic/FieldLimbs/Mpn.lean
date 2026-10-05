@@ -22,7 +22,7 @@ value `nv` of its registers.
 | GMP function | program | block |
 |---|---|---|
 | `mpn_add_n` | `mpnAddN n` | `addK` |
-| `mpn_sub_n` | `mpnSubN n` | `xorR` with an all-ones mask, `adcR` with carry-in `1` |
+| `mpn_sub_n` | `mpnSubN n` | `xorR` with an all-ones mask, `adcR` with carry-in `1`, a 64-bit borrow mask |
 | `mpn_mul_1` | `mpnMul1 n` | `mulRowK` |
 | `mpn_addmul_1` | `mpnAddmul1 n` | `accK` at position `0` |
 | `mpn_mul` | `mpnMul n m` | `prodNK` |
@@ -61,7 +61,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Ctxt
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
-  (w64 w1 MC lk lk1 eConst eBit eConst_denote eBit_denote Pres Pres.id Pres.comp bindK
+  (w64 w1 MC lk lk1 eConst eBit eAdc eCarry eConst_denote eBit_denote eAdc_denote
+    eCarry_denote Pres Pres.id Pres.comp bindK
     bindK_denote nv nv_nil nv_cons nv_map nv_append nv_lt addK addK_denote mulRowK
     mulRowK_denote accK xorR xorR_denote adcR adcR_denote)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont
@@ -207,28 +208,34 @@ theorem mpnAddN_denote (n : Nat) (A B : ListDenote (Rn n)) :
 
 /-! ## 3. `mpn_sub_n` -/
 
-/-- The exclusive or of two 1-bit registers. -/
-def eXor1 {Γ : Ctxt jasminDialect} (a b : Var Γ w1) : Expr jasminDialect Γ w1 :=
-  { op := .regArith .xor 1, retTy_eq := rfl, args := .cons a (.cons b .nil) }
-
-theorem eXor1_denote {Γ : Ctxt jasminDialect} (a b : Var Γ w1) (W : Valuation Γ) :
-    (eXor1 a b).denote W = lk1 a W ^^^ lk1 b W := rfl
-
 theorem xor_one_toNat (c : BitVec 1) : (c ^^^ 1#1).toNat = 1 - c.toNat := by
   revert c
   decide
 
+/-- The borrow mask word `2^64 - 1 + c` (all ones when `c = 0`, zero when `c = 1`) has
+    carry-out `1 - c` when added to itself with carry-in `1`. -/
+theorem carryOut_borrowMask (c : BitVec 1) :
+    carryOutBit (addCarryWord (BitVec.ofNat 64 (2 ^ 64 - 1)) (BitVec.ofNat 64 0) c)
+      (addCarryWord (BitVec.ofNat 64 (2 ^ 64 - 1)) (BitVec.ofNat 64 0) c) (BitVec.ofNat 1 1)
+      = c ^^^ 1#1 := by
+  revert c
+  decide
+
 /-- `mpn_sub_n`: the `n` difference limbs and the borrow of two `n`-limb operands, as
-    `a + ¬b + 1` by the carry chain `adcR` over the limbs `xorR` complements; the borrow
-    is the complement of the carry. -/
+    `a + ¬b + 1` by the carry chain `adcR` over the limbs `xorR` complements. The borrow
+    is the complement of the carry `c`, computed at width 64: the word
+    `2^64 - 1 + 0 + c` is the borrow mask, and its carry-out when added to itself with
+    carry-in `1` is the borrow bit. -/
 def mpnSubN (n : Nat) : MC (Rn n ++ (Rn n ++ [])) (Rn n ++ [w1]) :=
   bindK (eConst (2 ^ 64 - 1)) fun r₁ m =>
   xorR r₁ m (opY n []) fun r₂ ny =>
   bindK (eBit 1) fun r₃ one =>
   adcR (fun v => v) ((opX n _).map (fun v => r₃ (r₂ (r₁ v)))) (ny.map (fun v => r₃ v)) one
     fun r₄ D c =>
-  bindK (eXor1 c (r₄ one)) fun r₅ bw =>
-  retNW n (D.map (fun v => r₅ v)) bw
+  bindK (eConst 0) fun r₅ z =>
+  bindK (eAdc (r₅ (r₄ (r₃ (r₂ m)))) z (r₅ c)) fun r₆ bm =>
+  bindK (eCarry bm bm (r₆ (r₅ (r₄ one)))) fun r₇ bw =>
+  retNW n (D.map (fun v => r₇ (r₆ (r₅ v)))) bw
 
 theorem mpnSubN_eq (n : Nat) (A B : ListDenote (Rn n)) :
     (mpnSubN n).denote (hvAppend A (hvAppend B .nil)) =
@@ -249,14 +256,23 @@ theorem mpnSubN_eq (n : Nat) (A B : ListDenote (Rn n)) :
   rw [opX_length] at hDv hD
   rw [opY_length, opY, nv_map (r := fun {_} w => inrHom (Rn n) w) (W := hvAppend B .nil)
     (fun w => lookup_inrHom _ A w), nv_opX_val] at hnyv
-  refine bindK_denote _ _ _ _ fun r₅ bw W₅ h₅ hbw => ?_
-  rw [retNW_denote n _ bw W₅ (by simp [hD]), nv_map h₅]
+  refine bindK_denote _ _ _ _ fun r₅ z W₅ h₅ hz => ?_
+  refine bindK_denote _ _ _ _ fun r₆ bm W₆ h₆ hbm => ?_
+  refine bindK_denote _ _ _ _ fun r₇ bw W₇ h₇ hbw => ?_
+  rw [retNW_denote n _ bw W₇ (by simp [hD]), nv_map (Pres.comp (Pres.comp h₅ h₆) h₇)]
   have hv : nv W₄ D + 2 ^ (64 * n) * (lk1 c W₄).toNat
       = limbsVal A + (2 ^ (64 * n) - limbsVal B) := by omega
   obtain ⟨hs, hc⟩ := split_val (by simpa [hD] using nv_lt W₄ D) hv
-  have ebw : bw.lookup W₅ = lk1 c W₄ ^^^ 1#1 := by
-    rw [hbw, eXor1_denote, show lk1 (r₄ one) W₄ = lk1 one W₃ from h₄ one,
-      show lk1 one W₃ = _ from hone, eBit_denote]
+  have ebm : bm.lookup W₆ = addCarryWord (BitVec.ofNat 64 (2 ^ 64 - 1)) (BitVec.ofNat 64 0)
+      (lk1 c W₄) := by
+    rw [hbm, eAdc_denote]
+    simp only [lk, lk1]
+    rw [hz, eConst_denote, h₅, h₅, h₄, h₃, h₂, hm, eConst_denote]
+  have ebw : bw.lookup W₇ = lk1 c W₄ ^^^ 1#1 := by
+    rw [hbw, eCarry_denote]
+    simp only [lk, lk1]
+    rw [h₆, ebm, h₅, h₄, hone, eBit_denote]
+    exact carryOut_borrowMask _
   rw [← hs, ← hc, ebw]
   congr 2
   apply BitVec.eq_of_toNat_eq

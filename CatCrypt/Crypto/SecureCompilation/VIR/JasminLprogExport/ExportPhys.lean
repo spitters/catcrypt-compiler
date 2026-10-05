@@ -140,14 +140,19 @@ def calleeSavedRegs : List String := ["RBX", "RBP", "R12", "R13", "R14", "R15"]
 
 /-- **The x86 register file and calling convention**: the allocation pool `gpRegNames`, the
     reload scratches `R15`, `R14`, the SysV argument registers, the callee-saved registers and
-    their save slots. The export reads the allocation pool and the argument registers from it,
-    the printer the save slots and the callee-saved set. -/
+    their save slots, the stack pointer `RSP`, the return registers `RAX`, `RDX`, the SysV
+    caller-saved registers and the 128-byte red zone. The export reads the allocation pool and
+    the argument registers from it, the printer the save slots and the callee-saved set. -/
 @[reducible] def x86Abi : VIR.LprogIsa.IsaAbi where
   allocPool := gpRegNames
   scratch := [reloadScratch, reloadScratch2]
   argRegs := sysvArgRegs
   calleeSaved := calleeSavedRegs
   saveSlot := qsaveSlot
+  sp := "RSP"
+  retRegs := [sysvRetReg, "RDX"]
+  callerSaved := sysvCallerSaved
+  redZone := 128
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 

@@ -884,16 +884,20 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- yields exactly `x & 0xff` (`castDemoCom_denote`). Both registers are 32-bit
       -- GP allocations, so the 8-bit subregister `%<reg>b` (`gpReg8`) sources the
       -- `movzbl` and the 32-bit `%<reg>d` (`gpReg32`) is its destination.
-      -- **`CASTW_<w>_<w'>`** — a cast between 32- and 64-bit registers, both
-      -- widths carried in the mnemonic. Writing a 32-bit register clears the
-      -- upper half, so `movl` is both the 32 → 64 zero-extend and the 64 → 32
-      -- truncation; a 64 → 64 cast is a register copy at full width. The widths
-      -- are read off the **raw** `opn`: the `_` separator cannot be mistaken for
-      -- a `:64` width tag, which `base` (`stripAbiTag opn`) would have peeled.
+      -- **`CASTW_<w>_<w'>`** — a cast between 16-, 32- and 64-bit registers,
+      -- both widths carried in the mnemonic. A cast with a 16-bit side keeps the
+      -- low 16 bits and clears the rest, `movzwl %src16, %dst32` (a 32-bit write
+      -- clears the upper half). Writing a 32-bit register clears the upper half,
+      -- so `movl` is both the 32 → 64 zero-extend and the 64 → 32 truncation; a
+      -- 64 → 64 cast is a register copy at full width. The widths are read off
+      -- the **raw** `opn`: the `_` separator cannot be mistaken for a `:64` width
+      -- tag, which `base` (`stripAbiTag opn`) would have peeled.
       else if let some (sw, dw) := parseCastWMnem opn then
         match s, d with
         | .reg sn, .reg dn =>
-            if sw == 64 && dw == 64 then
+            if sw == 16 || dw == 16 then
+              [ "\tmovzwl " ++ gpReg16 sn ++ ", " ++ gpReg32 dn ]
+            else if sw == 64 && dw == 64 then
               [ "\tmovq " ++ gpReg64 sn ++ ", " ++ gpReg64 dn ]
             else
               [ "\tmovl " ++ gpReg32 sn ++ ", " ++ gpReg32 dn ]

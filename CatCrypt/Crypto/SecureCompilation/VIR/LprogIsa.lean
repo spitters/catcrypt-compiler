@@ -33,6 +33,8 @@ generic interpreter is the existing one by `rfl`.
 
 * `ctlStep`, `isCtl`, `Isa`: the shared control step and the record.
 * `Isa.lsemFuelMemF_halt`, `Isa.lsemFuelMemF_step`: the run equations.
+* `Isa.lsemFuelMemF_add`, `Isa.lsemFuelMemF_of_runL`: a successful run is stable under more
+  fuel, and a straight stretch at the end of the body runs as `Isa.runL`.
 * `Isa.lsemFuelMemFk_false`, `Isa.lsemFuelMemF_of_checked`, `Isa.lsemFuelMemFk_of_runIdxOk`,
   `Isa.runIdxOk_of_checked`: the checked run against the unchecked one.
 * `Isa.step_label`, `Isa.step_cond`, `Isa.step_goto`: the control step of every instance.
@@ -143,6 +145,61 @@ theorem lsemFuelMemF_step (P : LprogM) (fuel : Nat) (i : LinstrRM) (s s' : Lstat
     (hfetch : findInstrMem P s.prog = some i) (heval : I.step P i s = some s') :
     I.lsemFuelMemF P (fuel + 1) s = I.lsemFuelMemF P fuel s' := by
   simp only [lsemFuelMemF, hfetch, heval]
+
+/-- A successful run returns the same state at every larger fuel. -/
+theorem lsemFuelMemF_add (P : LprogM) :
+    ∀ (n k : Nat) (s t : LstateMF), I.lsemFuelMemF P n s = some t →
+      I.lsemFuelMemF P (n + k) s = some t := by
+  intro n
+  induction n with
+  | zero =>
+      intro k s t h
+      simp only [lsemFuelMemF] at h
+      split at h
+      · next hf => cases h; rw [Nat.zero_add]; exact I.lsemFuelMemF_halt P k s hf
+      · cases h
+  | succ n ih =>
+      intro k s t h
+      rw [Nat.add_right_comm]
+      simp only [lsemFuelMemF] at h ⊢
+      cases hf : findInstrMem P s.prog with
+      | none => simp only [hf] at h ⊢; exact h
+      | some i =>
+          simp only [hf] at h ⊢
+          cases hs : I.step P i s with
+          | none => simp only [hs, reduceCtorEq] at h
+          | some s' => simp only [hs] at h ⊢; exact ih k s' t h
+
+/-- **A straight stretch at the end of the body.** When the body of `P` is `pre ++ rest`, the
+    state is in the function of `P` at counter `pre.length`, and every step of an instruction
+    of `rest` stays in the function and advances the counter by one, the run of `P` with fuel
+    `rest.length` is the run `Isa.runL` of the instructions of `rest`. -/
+theorem lsemFuelMemF_of_runL (P : LprogM) :
+    ∀ (rest pre : List LinstrRM) (s t : LstateMF), P.body = pre ++ rest →
+      s.prog.lfn = P.lfn → s.prog.base.lpc = pre.length →
+      (∀ i ∈ rest, ∀ u u', I.step P i u = some u' →
+        u'.prog.lfn = u.prog.lfn ∧ u'.prog.base.lpc = u.prog.base.lpc + 1) →
+      I.runL P rest s = some t → I.lsemFuelMemF P rest.length s = some t := by
+  intro rest
+  induction rest with
+  | nil =>
+      intro pre s t hbody hfn hpc _ hrun
+      cases hrun
+      refine I.lsemFuelMemF_halt P 0 s ?_
+      simp only [findInstrMem, hfn, if_true, hbody, List.append_nil, hpc,
+        List.getElem?_eq_none (le_refl _)]
+  | cons i rest ih =>
+      intro pre s t hbody hfn hpc hstep hrun
+      simp only [runL, Option.bind_eq_some_iff] at hrun
+      obtain ⟨u, hu, hrun⟩ := hrun
+      have hfetch : findInstrMem P s.prog = some i := by
+        simp only [findInstrMem, hfn, if_true, hbody, hpc, List.getElem?_append_right
+          (le_refl _), Nat.sub_self, List.getElem?_cons_zero]
+      rw [List.length_cons, I.lsemFuelMemF_step P _ i s u hfetch hu]
+      obtain ⟨hufn, hupc⟩ := hstep i (List.mem_cons_self ..) s u hu
+      exact ih (pre ++ [i]) u t (by rw [hbody, List.append_assoc]; rfl) (hufn.trans hfn)
+        (by rw [hupc, hpc, List.length_append, List.length_singleton])
+        (fun j hj => hstep j (List.mem_cons_of_mem i hj)) hrun
 
 /-- The checked step: with `ck`, the step when the instruction is in bounds (`idxOkB`) and
     none otherwise; without `ck`, the step. -/

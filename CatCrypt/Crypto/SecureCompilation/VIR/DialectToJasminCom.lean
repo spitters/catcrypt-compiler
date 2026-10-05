@@ -70,6 +70,17 @@ returns `none`:
 ops/`sampleBit`/`sampleBv`, plus `bvRol` (jasmin has no scalar left-rotate op,
 so the dialect carries it as a faithful denotation but declines to lower it).
 
+## Relation to `catToJasmin`
+
+`NFProgCatToJasmin.catToJasmin` is the partial block lowering of the same op-level map
+`toJExprD`, applied by `NFProg.map?` to programs in the linear normal form.
+`cryptoDialectToJasminCom` is the structural recursion over `Com`: it is the second
+step of the `LowCT → Com jasminDialect` descent, and the `Com`-level theorems
+`cryptoDialectToJasminCom_denote_eqWith` (`DialectToJasminComLeaf`) and
+`cryptoDialectToJasminCom_ctLeak` (`JasminComLLeak`) are stated about it. The two
+definitions share `toJExprD`, `toJVarD`, `mapTy` and `mapCtx` and differ in the
+program representation they recurse over, so neither is a restatement of the other.
+
 ## Status
 
 Front and smoke test. The `fp_add` leaf kernel lowers to a single `regArith add`

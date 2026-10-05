@@ -630,9 +630,8 @@ theorem cell_step {frame : String → Option (BitVec 64)}
   obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
     img_stepStraight hsep hphys hgate P hrel hbC hlt hnc' hstep
   have hwide : WideSafeAt body sa := by
-    intro ii ds o ss _ r _ hr _ h1
-    rw [hrel.wid r hr] at h1
-    cases h1
+    intro ii ds o ss _ r _ hr _
+    exact hrel.wid r hr
   refine ⟨by rw [← haltedA_cellBody slotArr]; exact hh, ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
     hwide, ?_⟩, sa1, ?_, hr⟩
   · intro ii D n B off p hbi hn hp
@@ -806,8 +805,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               subst hab
               obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel
                 (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb hca)) hacc) hBf
-              rw [width_of_getW hp]
-              decide
+              exact width_of_getW hp
       | st B off S =>
           obtain ⟨n, hx, hn⟩ := cellA_st hca
           obtain ⟨A, m, hacc, hBf, -, -⟩ := hF.st _ _ B off S hb hca
@@ -831,8 +829,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               subst hab
               obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel
                 (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb hca)) hacc) hBf
-              rw [width_of_getW hp]
-              decide
+              exact width_of_getW hp
             · exact hW' (Or.inr (Or.inr (Or.inr (List.mem_filterMap.mpr
                 ⟨.reg S, by simp, hab⟩)))) hg hcar
 

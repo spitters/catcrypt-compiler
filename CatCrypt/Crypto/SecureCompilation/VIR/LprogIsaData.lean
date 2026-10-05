@@ -18,12 +18,16 @@ The data an instruction set supplies to the back half of the `Lprog` pipeline, i
 records.
 
 * `IsaAbi`, the register file and calling convention: the allocatable registers and the
-  reserved scratch registers the exporter reads, the argument registers of the entry, and the
-  callee-saved registers with their save slots the printer reads.
+  reserved scratch registers the exporter reads, the argument registers of the entry, the
+  callee-saved registers with their save slots the printer reads, the stack pointer `sp`, the
+  return registers `retRegs`, the caller-saved registers `callerSaved` and the red-zone size
+  `redZone`.
 * `IsaData`, which extends `IsaAbi` by the mnemonic data of the two-address legaliser: which
   instructions the printer emits in tied form, which operations commute, the scratch register
-  of the legaliser, the copy mnemonic at the width of an operation, and the leakage regime
-  `leaksOperands`, which mnemonic bases make their data operands observable.
+  of the legaliser, the copy mnemonic at the width of an operation, the leakage regime
+  `leaksOperands` (which mnemonic bases make their data operands observable), the accepted
+  mnemonic bases `supports`, the implicit register reads `implicitReads`, and the loop back
+  edge `loopGuard`.
 
 `LprogIsa.Isa` extends `IsaData` by the step semantics. The x86 values are
 `X86Backend.LprogAsmPrinter.x86Abi` and `X86Backend.TwoAddrLegalize.x86Data`, built from the
@@ -53,9 +57,18 @@ structure IsaAbi : Type where
   calleeSaved : List String
   /-- The index of the frame save slot of a register, `none` for a register without one. -/
   saveSlot : String → Option Nat
+  /-- The stack pointer. -/
+  sp : String
+  /-- The integer return registers, in order; the head holds a scalar result. -/
+  retRegs : List String
+  /-- The caller-saved registers, which a call may clobber. -/
+  callerSaved : List String
+  /-- The size in bytes of the red zone below the stack pointer that a leaf function may use
+      without adjusting it. -/
+  redZone : Nat := 0
 
 /-- **The data of an instruction set**: `IsaAbi` with the mnemonic data of the two-address
-    legaliser. -/
+    legaliser, the accepted mnemonic bases, the implicit register reads and the loop guard. -/
 structure IsaData extends IsaAbi where
   /-- Whether `Lopn [d] opn [a, b]` is printed in tied form, which requires `a = d`. -/
   tied : String → LOperand → Bool
@@ -70,5 +83,14 @@ structure IsaData extends IsaAbi where
       operands observable through its execution time. The default `true` for every base is
       the regime without a vendor timing guarantee. -/
   leaksOperands : String → Bool := fun _ => true
+  /-- Whether the instruction set accepts the mnemonic base. The default `true` for every
+      base imposes no restriction. -/
+  supports : String → Bool := fun _ => true
+  /-- The registers an instruction with this mnemonic reads without naming them as
+      operands. -/
+  implicitReads : String → List String := fun _ => []
+  /-- The instructions of the loop back edge on counter register `ctr` to label `top`: branch
+      to `top` when `ctr` is non-zero, fall through otherwise. -/
+  loopGuard : String → LLabel → List LinstrR
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa

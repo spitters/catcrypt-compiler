@@ -19,11 +19,14 @@ set_option autoImplicit false
 machine register at width `64`. The carry chain of the address machine keeps a carry in a
 name at width `1` (`ADCXHI` writes `carryOutBit`, `ADCX` reads its carry-in at width `1`),
 while the machine keeps it in a 64-bit register as `0` or `1`. `ACorrW` relates such a name
-to the zero-extension of its bit.
+to the zero-extension of its bit. A width cast leaves a name at width `32` or `16`
+(`NarrowCell`): a 32-bit value is related to the register that zero-extends it, as an x86
+32-bit write leaves it, and a 16-bit value to a register whose low 16 bits hold it, as an x86
+16-bit write keeps the upper 48 bits.
 
-An arm of `DecodePrintedAddr` reads no one-bit name (`WideAt`). Its step from a state related
-by `ACorrW` is the step from the state with every one-bit general-purpose name widened
-(`widenS`), which `ACorr` relates, up to the congruence `JasminLsemAddrCongr.fstepA_congr`
+An arm of `DecodePrintedAddr` reads every general-purpose name at width `64` (`WideAt`). Its
+step from a state related by `ACorrW` is the step from the state with every general-purpose
+name at a narrow width replaced by its machine register (`widenS`), which `ACorr` relates, up to the congruence `JasminLsemAddrCongr.fstepA_congr`
 in the names the instruction reads (`AArm.simW`).
 
 The carry arms (`CArm`) are the add `ADCX:64 D, A, S, C`, printed `bt $0, C; adcx S, D` after
@@ -43,16 +46,21 @@ arms to the bodies of `DecodePrintedCFG`.
 
 ## Main definitions
 
-* `widenS` — the address state with each one-bit general-purpose name zero-extended to `64`.
-* `ACorrW` — the correspondence with one-bit names.
-* `WideAt` — no general-purpose name an instruction reads is a one-bit name.
+* `NarrowCell` — the 32- and 16-bit cells of a machine register.
+* `widenS` — the address state with each general-purpose name at width `1`, `16` or `32`
+  replaced by its machine register at width `64`.
+* `ACorrW` — the correspondence with one-bit, 16-bit and 32-bit names.
+* `WideAt` — every general-purpose name an instruction reads is at width `64`.
 * `CArm`, `MArm` — the carry and cell arms.
 * `printedAddrWB`, `SafeW` — the covered bodies and the run safety they are simulated under.
 
 ## Main results
 
-* `ACorr.toW`, `ACorrW.widen`: `ACorr` is the case of `ACorrW` without one-bit names, and an
+* `ACorr.toW`, `ACorrW.widen`: `ACorr` is the case of `ACorrW` without narrow names, and an
   `ACorrW` state widens to an `ACorr` state.
+* `fstepA_castW`, `sim_castW`: a width cast at the descriptor tag is the typed cast step
+  `lsemStepCast`, and `movzx` of the low 8, 16 or 32 bits simulates it into a 64-, 32- or
+  16-bit cell.
 * `AArm.simW`: an arm of `DecodePrintedAddr` steps from `ACorrW` to `ACorrW`.
 * `SArm.bytes`, `sim_sadcx`, `sim_sadcxhi`, `sim_sadcxc`: the bytes and the simulations of the
   carry arms with frame-slot operands; an add whose carry-in is a frame slot is printed as the
@@ -86,22 +94,44 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr
 
 /-! ## 1. The correspondence -/
 
-/-- The cell of name `r` widened: a one-bit value of a general-purpose name zero-extended to
-    width `64`, any other cell unchanged. -/
-def widenCell (r : String) (c : Σ w, BitVec w) : Σ w, BitVec w :=
-  if (gpOk r && c.1 == 1) = true then ⟨64, c.2.setWidth 64⟩ else c
+/-- The widths of the narrow cells of a general-purpose name: `1`, `16` and `32`. -/
+def narrowW (w : Nat) : Bool := w == 1 || w == 16 || w == 32
 
-/-- The address state with every one-bit general-purpose name zero-extended to width `64`. -/
-def widenS (s : LstateA) : LstateA :=
-  { s with reg := { s.reg with lvm := fun r => widenCell r (s.reg.lvm r) } }
+/-- **The 16- and 32-bit cells.** The cell `c` of a general-purpose name whose machine register
+    holds `v` is a 32-bit value whose zero-extension `v` is (an x86 32-bit write zero-extends
+    into the 64-bit register), or a 16-bit value that the low 16 bits of `v` hold (an x86
+    16-bit write keeps the upper 48 bits). -/
+def NarrowCell (c : Σ w, BitVec w) (v : BitVec 64) : Prop :=
+  (∃ b : BitVec 32, c = ⟨32, b⟩ ∧ v = b.setWidth 64)
+    ∨ (∃ b : BitVec 16, c = ⟨16, b⟩ ∧ v.setWidth 16 = b)
 
-/-- **The correspondence with one-bit names.** Each general-purpose name holds the value of
-    its machine register at width `64`, or a bit whose zero-extension the machine register
-    holds; the stack register holds `rsp`; the memories agree outside the red-zone word. -/
+theorem NarrowCell.width {c : Σ w, BitVec w} {v : BitVec 64} (h : NarrowCell c v) :
+    c.1 = 32 ∨ c.1 = 16 := by
+  rcases h with ⟨b, rfl, -⟩ | ⟨b, rfl, -⟩
+  · exact Or.inl rfl
+  · exact Or.inr rfl
+
+/-- The cell of name `r` widened against the machine register value `v`: a cell of a
+    general-purpose name at a narrow width (`narrowW`) replaced by `v` at width `64`, any other
+    cell unchanged. -/
+def widenCell (r : String) (v : BitVec 64) (c : Σ w, BitVec w) : Σ w, BitVec w :=
+  if (gpOk r && narrowW c.1) = true then ⟨64, v⟩ else c
+
+/-- The address state with every general-purpose name at a narrow width replaced by its
+    machine register in `sa` at width `64`. -/
+def widenS (sa : AState) (s : LstateA) : LstateA :=
+  { s with reg := { s.reg with lvm := fun r => widenCell r (sa.regs (phys r)) (s.reg.lvm r) } }
+
+/-- **The correspondence with narrow names.** Each general-purpose name holds the value of
+    its machine register at width `64`, a bit whose zero-extension the machine register
+    holds, or a 32- or 16-bit cell (`NarrowCell`); the stack register holds `rsp`; the
+    memories agree outside the red-zone word. -/
 structure ACorrW (rsp : BitVec 64) (sa : AState) (s : LstateA) : Prop where
-  /-- A general-purpose name holds its machine register, or a bit it zero-extends. -/
+  /-- A general-purpose name holds its machine register, a bit it zero-extends, or a 32- or
+      16-bit cell of it. -/
   regs : ∀ r, gpOk r = true → s.reg.getW r 64 = some (sa.regs (phys r))
-    ∨ ∃ b : BitVec 1, s.reg.lvm r = ⟨1, b⟩ ∧ sa.regs (phys r) = b.setWidth 64
+    ∨ (∃ b : BitVec 1, s.reg.lvm r = ⟨1, b⟩ ∧ sa.regs (phys r) = b.setWidth 64)
+    ∨ NarrowCell (s.reg.lvm r) (sa.regs (phys r))
   /-- The stack register holds `rsp`. -/
   sp : sa.regs "%rsp" = rsp
   /-- The memories agree outside the red-zone word. -/
@@ -115,42 +145,49 @@ theorem lvm_of_getW {s : LstateN} {r : String} {v : BitVec 64} (h : s.getW r 64 
     s.lvm r = ⟨64, v⟩ :=
   getW_eq_some_iff.1 h
 
+/-- A cell related to its machine register by `ACorrW` at a narrow width widens to that
+    register. -/
+theorem widenCell_of_regs {r : String} (hr : gpOk r = true) {v : BitVec 64}
+    {c : Σ w, BitVec w} (h : (c = ⟨64, v⟩) ∨ (∃ b : BitVec 1, c = ⟨1, b⟩ ∧ v = b.setWidth 64)
+      ∨ NarrowCell c v) :
+    widenCell r v c = ⟨64, v⟩ := by
+  rcases h with rfl | ⟨b, rfl, -⟩ | ⟨b, rfl, -⟩ | ⟨b, rfl, -⟩ <;> simp [widenCell, narrowW, hr]
+
 theorem ACorrW.widen {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s) :
-    ACorr rsp sa (widenS s) where
+    ACorr rsp sa (widenS sa s) where
   regs r hr := by
-    rcases h.regs r hr with hg | ⟨b, hb, hm⟩
-    · have hl := lvm_of_getW hg
-      rw [getW_eq_some_iff]
-      simp [widenS, widenCell, hl]
-    · rw [getW_eq_some_iff]
-      show widenCell r (s.reg.lvm r) = _
-      rw [hb]
-      simp [widenCell, hr, hm]
+    rw [getW_eq_some_iff]
+    show widenCell r (sa.regs (phys r)) (s.reg.lvm r) = _
+    apply widenCell_of_regs hr
+    rcases h.regs r hr with hg | hb | hn
+    · exact Or.inl (lvm_of_getW hg)
+    · exact Or.inr (Or.inl hb)
+    · exact Or.inr (Or.inr hn)
   sp := h.sp
   mem := h.mem
 
-/-- No general-purpose name the instruction reads holds a one-bit value. -/
+/-- Every general-purpose name the instruction reads holds a 64-bit value. -/
 def WideAt (s : LstateA) (i : LinstrR) : Prop :=
-  ∀ r, readsI i r → gpOk r = true → (s.reg.lvm r).1 ≠ 1
+  ∀ r, readsI i r → gpOk r = true → (s.reg.lvm r).1 = 64
 
-theorem aagree_widen {s : LstateA} {i : LinstrR} (hw : WideAt s i) :
-    AAgree (readsI i) s (widenS s) := by
+theorem aagree_widen {sa : AState} {s : LstateA} {i : LinstrR} (hw : WideAt s i) :
+    AAgree (readsI i) s (widenS sa s) := by
   refine ⟨⟨rfl, fun r hr => ?_⟩, rfl, rfl, rfl⟩
-  show s.reg.lvm r = widenCell r (s.reg.lvm r)
+  show s.reg.lvm r = widenCell r (sa.regs (phys r)) (s.reg.lvm r)
   by_cases hg : gpOk r = true
   · have h1 := hw r hr hg
-    simp [widenCell, h1]
+    simp [widenCell, narrowW, h1]
   · simp [widenCell, hg]
 
 /-! ## 2. The arms of `DecodePrintedAddr` -/
 
 /-- A read name keeps its 64-bit value under widening. -/
-theorem getW_widen {s : LstateA} {i : LinstrR} (hw : WideAt s i) {r : String}
-    (hr : readsI i r) (w : Nat) : (widenS s).reg.getW r w = s.reg.getW r w :=
+theorem getW_widen {sa : AState} {s : LstateA} {i : LinstrR} (hw : WideAt s i) {r : String}
+    (hr : readsI i r) (w : Nat) : (widenS sa s).reg.getW r w = s.reg.getW r w :=
   ((getW_congr (aagree_widen hw).1 hr w)).symm
 
-/-- **An arm of `DecodePrintedAddr` on the correspondence with one-bit names.** From
-    `ACorrW`, an arm that reads no one-bit name and whose indexed load is safe steps, if the
+/-- **An arm of `DecodePrintedAddr` on the correspondence with narrow names.** From
+    `ACorrW`, an arm that reads its names at width `64` and whose indexed load is safe steps, if the
     address machine steps, to a state that `ACorrW` relates to the machine run of the arm's
     decoded instructions; after a compare the machine zero flag is the flag of the address
     machine. -/
@@ -160,7 +197,7 @@ theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
     (hst : fstepA (frameP P rsp) a.li s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa (a.js P)) s'
       ∧ (cmpArmB a = true → (aMachine.runBlock sa (a.js P)).flags.zf.getD false = zf') := by
-  have hsafe' : a.LoadSafe rsp (widenS s) := by
+  have hsafe' : a.LoadSafe rsp (widenS sa s) := by
     cases a with
     | ldx D B I =>
       intro p vi hp hvi
@@ -174,8 +211,8 @@ theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
       rw [getW_widen hw hI] at hvi
       exact hsafe p vi hp hvi
     | _ => trivial
-  obtain ⟨t', zt, h1, h2, h3⟩ := AArm.sim P rsp a h sa (widenS s) zf hc.widen hsafe'
-  have hcg := fstepA_congr (frameP P rsp) a.li (aagree_widen hw) zf
+  obtain ⟨t', zt, h1, h2, h3⟩ := AArm.sim P rsp a h sa (widenS sa s) zf hc.widen hsafe'
+  have hcg := fstepA_congr (frameP P rsp) a.li (aagree_widen (sa := sa) hw) zf
   rw [hst, h1] at hcg
   cases hcg with
   | some hs =>
@@ -191,18 +228,16 @@ theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
     · have hreg := h2.regs r hr
       rw [getW_eq_some_iff] at hreg
       rw [he2] at hreg
-      change widenCell r (s.reg.lvm r) = _ at hreg
-      rcases hcell : s.reg.lvm r with ⟨wr, vr⟩
-      rw [hcell] at hreg he1
-      by_cases h1w : wr = 1
-      · subst h1w
-        right
-        refine ⟨vr, he1, ?_⟩
-        simp [widenCell, hr] at hreg
-        exact hreg.symm
+      change widenCell r (sa.regs (phys r)) (s.reg.lvm r) = _ at hreg
+      have hg' : s'.reg.getW r 64 = s.reg.getW r 64 := by unfold LstateN.getW; rw [he1]
+      by_cases hnw : narrowW (s.reg.lvm r).1 = true
+      · simp only [widenCell, hr, hnw, Bool.and_self, if_true, Sigma.mk.inj_iff, heq_eq_eq,
+          true_and] at hreg
+        rw [hg', he1, ← hreg]
+        exact hc.regs r hr
       · left
         rw [getW_eq_some_iff, he1]
-        simpa [widenCell, h1w] using hreg
+        simpa [widenCell, hnw] using hreg
 
 /-! ## 3. The bytes of the carry chain -/
 
@@ -424,12 +459,14 @@ theorem CArm.shape_ops {P : Params} {c : CArm} (h : c.ok = true) {sh : DShape}
 /-- A write of `v` to the machine register of `D`, against a write to `D` that `ACorrW`
     relates to `v`, preserves `ACorrW` when the memories still agree outside the red-zone
     word. -/
-theorem ACorrW.write {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
+theorem ACorrW.writeN {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
     (h : ACorrW rsp sa s) {D : String} (hD : gpOk D = true) (v : BitVec 64)
     (hregs : ∀ r, sa'.regs r = if r = phys D then v else sa.regs r)
     (hmem : ∀ x, ¬ InRange8 (redW rsp) x → s'.mem x = sa'.mem x)
     (hlvm : ∀ r, r ≠ D → s'.reg.lvm r = s.reg.lvm r)
-    (hcell : s'.reg.getW D 64 = some v ∨ ∃ b : BitVec 1, s'.reg.lvm D = ⟨1, b⟩ ∧ v = b.setWidth 64) :
+    (hcell : s'.reg.getW D 64 = some v
+      ∨ (∃ b : BitVec 1, s'.reg.lvm D = ⟨1, b⟩ ∧ v = b.setWidth 64)
+      ∨ NarrowCell (s'.reg.lvm D) v) :
     ACorrW rsp sa' s' where
   regs r hr := by
     by_cases hrD : r = D
@@ -444,6 +481,16 @@ theorem ACorrW.write {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
   sp := by rw [hregs, if_neg (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
   mem := hmem
 
+/-- `ACorrW.writeN` with the written cell at width `64` or `1`. -/
+theorem ACorrW.write {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
+    (h : ACorrW rsp sa s) {D : String} (hD : gpOk D = true) (v : BitVec 64)
+    (hregs : ∀ r, sa'.regs r = if r = phys D then v else sa.regs r)
+    (hmem : ∀ x, ¬ InRange8 (redW rsp) x → s'.mem x = sa'.mem x)
+    (hlvm : ∀ r, r ≠ D → s'.reg.lvm r = s.reg.lvm r)
+    (hcell : s'.reg.getW D 64 = some v ∨ ∃ b : BitVec 1, s'.reg.lvm D = ⟨1, b⟩ ∧ v = b.setWidth 64) :
+    ACorrW rsp sa' s' :=
+  h.writeN hD v hregs hmem hlvm (hcell.elim Or.inl fun hb => Or.inr (Or.inl hb))
+
 /-- The carry flag of the machine holds the carry-out of `A + S + C` on the words and the
     carry-in bit (`bitA`) of the address state at the frame `frame`. -/
 def CarryAt (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA)
@@ -453,24 +500,29 @@ def CarryAt (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA)
 
 /-- A 64-bit general-purpose name under `ACorrW` reads its machine register. -/
 theorem ACorrW.wide {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
-    {r : String} (hr : gpOk r = true) (hw : (s.reg.lvm r).1 ≠ 1) :
+    {r : String} (hr : gpOk r = true) (hw : (s.reg.lvm r).1 = 64) :
     s.reg.getW r 64 = some (sa.regs (phys r)) := by
-  rcases h.regs r hr with hg | ⟨b, hb, -⟩
+  rcases h.regs r hr with hg | ⟨b, hb, -⟩ | hn
   · exact hg
-  · exact absurd (by rw [hb]) hw
+  · rw [hb] at hw
+    simp at hw
+  · rcases hn.width with h' | h' <;> omega
 
 /-- A name read at width `1` under `ACorrW` holds a bit its machine register zero-extends. -/
 theorem ACorrW.bit {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
     {r : String} (hr : gpOk r = true) {vc : BitVec 1} (hc : s.reg.getW r 1 = some vc) :
     sa.regs (phys r) = vc.setWidth 64 := by
   have hl := getW_eq_some_iff.1 hc
-  rcases h.regs r hr with hg | ⟨b, hb, hm⟩
+  rcases h.regs r hr with hg | ⟨b, hb, hm⟩ | hn
   · have := getW_eq_some_iff.1 hg
     rw [hl] at this
     simp at this
   · rw [hl] at hb
     obtain rfl := eq_of_heq (Sigma.mk.inj hb).2
     exact hm
+  · have hw := hn.width
+    rw [hl] at hw
+    simp at hw
 
 /-- **The carry-chain add.** From `ACorrW`, with `A` and `S` at width `64`, the address-machine
     step of `ADCX:64 D, A, S, C` is matched by `bt $0, C; adcx S, D` (after the copy of `A`
@@ -479,7 +531,7 @@ theorem ACorrW.bit {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp
     values of the result state. -/
 theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (CArm.adcx D A S C).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwA : (s.reg.lvm A).1 ≠ 1) (hwS : (s.reg.lvm S).1 ≠ 1)
+    (hc : ACorrW rsp sa s) (hwA : (s.reg.lvm A).1 = 64) (hwS : (s.reg.lvm S).1 = 64)
     (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((CArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa (CArm.adcx D A S C).js) s' ∧ zf' = zf
@@ -563,7 +615,7 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
     are kept. -/
 theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     (h : (CArm.adcxhi O A S C).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwA : (s.reg.lvm A).1 ≠ 1) (hwS : (s.reg.lvm S).1 ≠ 1)
+    (hc : ACorrW rsp sa s) (hwA : (s.reg.lvm A).1 = 64) (hwS : (s.reg.lvm S).1 = 64)
     (hcy : CarryAt (frameP P rsp) sa s A S C) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((CArm.adcxhi O A S C).instr, .reg none) s zf
       = some (s', zf')) :
@@ -762,7 +814,7 @@ theorem MArm.shape_ops {P : Params} {m : MArm} (h : m.ok = true) {sh : DShape}
     `LOAD:64 D, n` is matched by `mov off(%B), %D`. -/
 theorem sim_ldm (P : Params) (rsp : BitVec 64) (D n B : String) (off : Nat)
     (h : (MArm.ldm D n B off).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 ≠ 1)
+    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 = 64)
     (hsafe : ∀ p, s.reg.getW B 64 = some p → Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off))
     (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((MArm.ldm D n B off).instr, .reg none) s zf
@@ -791,7 +843,7 @@ theorem sim_ldm (P : Params) (rsp : BitVec 64) (D n B : String) (off : Nat)
     the address-machine step of `STORE:64 n, S` is matched by `mov %S, off(%B)`. -/
 theorem sim_stm (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : String)
     (h : (MArm.stm n B off S).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 ≠ 1) (hwS : (s.reg.lvm S).1 ≠ 1)
+    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 = 64) (hwS : (s.reg.lvm S).1 = 64)
     (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((MArm.stm n B off S).instr, .reg none) s zf
       = some (s', zf')) :
@@ -810,7 +862,7 @@ theorem sim_stm (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : S
   refine ⟨⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩, rfl⟩
   · rw [hregs]
     have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
-    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
     rw [hg]
     exact hc.regs r hr
   · show write64 s.mem _ _ x = _
@@ -1242,7 +1294,7 @@ theorem sepB_disj {off : Int} (h : sepB cmovRedZone off = true) (rsp : BitVec 64
 /-- An operand of a slot carry arm reads, on the address machine, its machine word. -/
 theorem wordA_valM {P : Params} {rsp : BitVec 64} {sa : AState} {s : LstateA}
     (hc : ACorrW rsp sa s) {x : String} (hk : kOk P x = true)
-    (hw : gpOk x = true → (s.reg.lvm x).1 ≠ 1) :
+    (hw : gpOk x = true → (s.reg.lvm x).1 = 64) :
     wordA (frameP P rsp) s x = some (valM P rsp sa x) := by
   rcases kOk_cases hk with hg | ⟨off, hoff, -, hsep⟩
   · simp [wordA, frameP_gp hg, valM, (gpFacts hg).notSlot, hc.wide hg (hw hg)]
@@ -1354,8 +1406,8 @@ theorem wordA_setReg {frame : String → Option (BitVec 64)} {s : LstateA} {D x 
     reload or copy of `A` into `D`, `bt $0, C` and `adcx` from the slot or register `S`. -/
 theorem sim_sadcx_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcx D A S C).ok P = true) (hDg : gpOk D = true) (sa : AState) (s : LstateA)
-    (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S → D ≠ C →
@@ -1497,8 +1549,8 @@ theorem evalInstrA_loadMem_flags (sa : AState) (d b : String) (off : Int) :
     slot or register `S`, the store into the slot of `D` and the restore of the scratch. -/
 theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcx D A S C).ok P = true) (hDs : isSpillOrQsave D = true) (sa : AState)
-    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S → D ≠ C →
@@ -1631,7 +1683,7 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
   refine ⟨⟨fun r hr => ?_, by rw [hregs6]; exact hsp, fun x hx => ?_⟩, rfl,
     fun hDA hDS hDC hsA hsS => ⟨(waddcarry va vb bit).1, ?_, fun va' vb' vc' ha hb hcc => ?_⟩⟩
   · rw [hregs6]
-    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
     rw [LstateN.getW_nextPc]
     exact hc.regs r hr
   · show write64 s.mem aD _ x = _
@@ -1675,8 +1727,8 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     and the zero flag and the machine flags are kept. -/
 theorem sim_sadcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
     (h : (SArm.adcxhi O A S C).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (hcy : CarryAt (frameP P rsp) sa s A S C)
+    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (hcy : CarryAt (frameP P rsp) sa s A S C)
     (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcxhi O A S C).instr, .reg none) s zf
       = some (s', zf')) :
@@ -1729,8 +1781,8 @@ def slotSepB (P : Params) (d x : String) : Bool :=
     carry flag holds the carry-out of the add on the words of the result state. -/
 theorem sim_sadcx (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcx D A S C).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcx D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcx D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S → D ≠ C → slotSepB P D A = true → slotSepB P D S = true →
@@ -1870,8 +1922,8 @@ theorem adcxc_facts {P : Params} {D A S C : String} (h : (SArm.adcxc D A S C).ok
     `A` into `D` and `adcx` from the slot or register `S`. -/
 theorem sim_sadcxc_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcxc D A S C).ok P = true) (hDg : gpOk D = true) (sa : AState) (s : LstateA)
-    (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcxc D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcxc D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S →
@@ -1994,8 +2046,8 @@ theorem frame_disj {P : Params} {rsp : BitVec 64} {D x : String} {offD : Int}
     register `S`, the store into the slot of `D` and the restore of the scratch. -/
 theorem sim_sadcxc_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcxc D A S C).ok P = true) (hDs : isSpillOrQsave D = true) (sa : AState)
-    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcxc D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcxc D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S →
@@ -2113,7 +2165,7 @@ theorem sim_sadcxc_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
   refine ⟨⟨fun r hr => ?_, by rw [hregs7]; exact hsp, fun x hx => ?_⟩, rfl,
     fun hDA hDS hsA hsS hsC => ⟨(waddcarry va vb bit).1, ?_, fun va' vb' vc' ha hb hcc => ?_⟩⟩
   · rw [hregs7]
-    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
     rw [LstateN.getW_nextPc]
     exact hc.regs r hr
   · show write64 s.mem aD _ x = _
@@ -2151,8 +2203,8 @@ theorem sim_sadcxc_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     machine carry flag holds the carry-out of the add on the words of the result state. -/
 theorem sim_sadcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
     (h : (SArm.adcxc D A S C).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
-    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1)
-    (hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hc : ACorrW rsp sa s) (hwA : gpOk A = true → (s.reg.lvm A).1 = 64)
+    (hwS : gpOk S = true → (s.reg.lvm S).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) ((SArm.adcxc D A S C).instr, .reg none) s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((SArm.adcxc D A S C).js P)) s' ∧ zf' = zf
       ∧ (D ≠ A → D ≠ S → slotSepB P D A = true → slotSepB P D S = true →
@@ -2370,7 +2422,7 @@ theorem sim_stiWide (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (off :
   refine ⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩
   · rw [hregs]
     have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
-    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
     rw [hg]
     exact hc.regs r hr
   · show write64 s.mem _ _ x = _
@@ -2407,7 +2459,7 @@ theorem sim_sti (P : Params) (rsp : BitVec 64) (q : String) (v : Nat) (h : iOk P
   refine ⟨⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun x hx => ?_⟩, rfl⟩
   · rw [hregs]
     have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
-    show s.reg.nextPc.getW r 64 = _ ∨ ∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
     rw [hg]
     exact hc.regs r hr
   · show write64 s.mem _ _ x = _
@@ -2765,7 +2817,7 @@ theorem runBlock_vPieces (sa : AState) (D C A B : String) (hD : gpOk D = true)
     bit, so its zero test is the complement of the bit. -/
 theorem sim_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (h : vOk D C A B = true)
     (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
-    (hwA : (s.reg.lvm A).1 ≠ 1) (hwB : (s.reg.lvm B).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hwA : (s.reg.lvm A).1 = 64) (hwB : (s.reg.lvm B).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none)
       s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((vPieces D C A B).map Prod.snd)) s' ∧ zf' = zf := by
@@ -2906,7 +2958,7 @@ theorem runBlock_vtPieces (P : Params) (sa : AState) (D C A B : String) (hD : gp
     word of `A`, is matched by the copy, `test` and `cmovne` pieces. -/
 theorem sim_cmovSlot (P : Params) (rsp : BitVec 64) (D C A B : String)
     (h : vtOk P D C A B = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
-    (hwB : (s.reg.lvm B).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hwB : (s.reg.lvm B).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none)
       s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((vtPieces P D C A B).map Prod.snd)) s' ∧ zf' = zf := by
@@ -3075,7 +3127,7 @@ theorem runBlock_vfPieces (P : Params) (sa : AState) (D C A B : String) (hD : gp
     frame word of `B`, is matched by the load, `test` and `cmovne` pieces. -/
 theorem sim_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
     (h : vfOk P D C A B = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
-    (hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1) (s' : LstateA) (zf' : Bool)
+    (hwA : gpOk A = true → (s.reg.lvm A).1 = 64) (s' : LstateA) (zf' : Bool)
     (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none)
       s zf = some (s', zf')) :
     ACorrW rsp (aMachine.runBlock sa ((vfPieces P D C A B).map Prod.snd)) s' ∧ zf' = zf := by
@@ -3110,6 +3162,132 @@ theorem sim_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
     simp [LstateN.nextPc, LstateN.setReg, hr']
   · rw [LstateN.getW_nextPc]
     exact LstateN.getW_setReg_same _ _ _
+
+/-! ## 8h. The register width casts -/
+
+/-- **The cast on the address machine.** A cast `opn D, A` that `castStruct?` recognises,
+    stepped at the descriptor tag `.reg (some w')`, is the typed cast step `lsemStepCast`: it
+    writes the value of `A` zero-extended or truncated to width `w'` to `D`. -/
+theorem fstepA_castW (frame : String → Option (BitVec 64)) (D A opn : String) (w' : Nat)
+    (hcs : castStruct? (.Lopn [.reg D] opn [.reg A]) = some (D, A)) (s : LstateA) (zf : Bool) :
+    fstepA frame (.Lopn [.reg D] opn [.reg A], .reg (some w')) s zf
+      = (lsemStepCast (.Lopn [.reg D] opn [.reg A], some w') s.reg).map
+          fun r => ({ s with reg := r }, zf) := by
+  have hop : opn = "ZEROEXT" ∨ opn = "TRUNC" ∨ opn = "CASTW_32_32" ∨ opn = "CASTW_32_64"
+      ∨ opn = "CASTW_64_32" ∨ opn = "CASTW_64_64" ∨ opn = "CASTW_64_16"
+      ∨ opn = "CASTW_16_64" ∨ opn = "CASTW_16_16" ∨ opn = "CASTW_16_32"
+      ∨ opn = "CASTW_32_16" := by
+    simp only [castStruct?] at hcs
+    split at hcs
+    · assumption
+    · cases hcs
+  rcases hop with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+  simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?,
+    slotImm?, slotCmov?, regStepA, VIR.JasminLsemMemFlagNestJoin.fstepF,
+    VIR.JasminLsemMemFlagGuard.cmpArgs?, VIR.JasminLsemMemFlagGuard.movRegArgs?,
+    VIR.JasminLsemMemFlagGuard.stepMemF, VIR.JasminLsemMem.lsemStepMem, lsemStepCast,
+    castStruct?, VIR.JasminLsemMemFlagGuard.withALUFlags,
+    VIR.JasminLsemMemFlagGuard.aluFlagOp?, readReg]
+
+/-- The typed cast step writes the value of the source at the descriptor width. -/
+theorem lsemStepCast_castW (D A opn : String) (w' : Nat)
+    (hcs : castStruct? (.Lopn [.reg D] opn [.reg A]) = some (D, A)) (s : LstateN) :
+    lsemStepCast (.Lopn [.reg D] opn [.reg A], some w') s
+      = some ((s.setReg D ((s.lvm A).2.zeroExtend w')).nextPc) := by
+  simp [lsemStepCast, hcs, readReg]
+
+/-- Bit `i` of `x86_MOVZX m v` is bit `i` of `v` below `m`. -/
+theorem x86_MOVZX_getLsbD (m : Nat) (v : BitVec 64) (i : Nat) :
+    (x86_MOVZX m v).getLsbD i = (decide (i < m) && v.getLsbD i) := by
+  simp only [x86_MOVZX, BitVec.getLsbD_and, BitVec.getLsbD_ushiftRight, BitVec.getLsbD_allOnes]
+  by_cases h64 : i < 64
+  · by_cases h : i < m <;> simp [h] <;> omega
+  · simp [BitVec.getLsbD_of_ge v i (by omega)]
+
+/-- Closes an equation between zero-extensions, truncations and `x86_MOVZX` words at the
+    widths `1`, `8`, `16`, `32` and `64`, bit by bit. -/
+local macro "movzx_cell" : tactic => `(tactic|
+  (apply BitVec.eq_of_getLsbD_eq; intro i hi
+   simp only [x86_MOVZX_getLsbD, BitVec.getLsbD_setWidth, BitVec.zeroExtend]
+   all_goals
+     have hge : ∀ {w : Nat} (x : BitVec w), w ≤ i → x.getLsbD i = false :=
+       fun x h => BitVec.getLsbD_of_ge x i h
+     by_cases hb : i = 0 <;> by_cases h8 : i < 8 <;> by_cases h16 : i < 16 <;>
+       by_cases h32 : i < 32 <;> by_cases h64 : i < 64 <;>
+       simp [hb, h8, h16, h32, h64] <;>
+       first | omega | (exact hge _ (by omega)) | (exact (hge _ (by omega)).symm)))
+
+/-- `movzx %s, %d` writes the low `m` bits of `s` zero-extended to `d` and keeps the
+    memory. -/
+theorem evalInstrA_movzx_eq (sa : AState) (d : String) (m : Nat) (src : String) :
+    (∀ r, (evalInstrA sa (.movzx d m src)).regs r
+        = if r = d then x86_MOVZX m (sa.regs src) else sa.regs r)
+      ∧ (evalInstrA sa (.movzx d m src)).mem = sa.mem := by
+  refine ⟨fun r => ?_, evalInstrA_mem_of_noWriteB sa _ rfl⟩
+  by_cases hr : r = d <;>
+    simp [evalInstrA, evalInstr, JState.setReg, AState.view, hr]
+
+/-- **The register width cast.** From `ACorrW`, the address-machine step of a cast
+    `opn D, A` (`castStruct?`) at the descriptor width `w'` of `64`, `32` or `16`, which is
+    `lsemStepCast` (`fstepA_castW`), is matched by `movzx %A, %D` of the low `m` bits, where
+    `m` is the smaller of the width of `A` and `w'`, or `8` for a one-bit `A`: `movzwl` for a
+    cast with a 16-bit side, `movl` (which the decoder reads as `movzx` of `32` bits) for a
+    cast between 32 and 64 bits, `movzbl` for the zero-extension of a bit. The destination
+    ends as a 64-bit, 32-bit or 16-bit cell of its register. -/
+theorem sim_castW (P : Params) (rsp : BitVec 64) (D A opn : String) (w' m : Nat)
+    (hD : gpOk D = true) (hA : gpOk A = true)
+    (hcs : castStruct? (.Lopn [.reg D] opn [.reg A]) = some (D, A))
+    (hw' : w' = 64 ∨ w' = 32 ∨ w' = 16)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hm : m = min (s.reg.lvm A).1 w' ∨ ((s.reg.lvm A).1 = 1 ∧ m = 8))
+    (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] opn [.reg A], .reg (some w')) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa [.movzx (phys D) m (phys A)]) s' ∧ zf' = zf := by
+  rw [fstepA_castW _ D A opn w' hcs, lsemStepCast_castW D A opn w' hcs] at hst
+  simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
+  obtain ⟨rfl, rfl⟩ := hst
+  obtain ⟨hregs, hmem⟩ := evalInstrA_movzx_eq sa (phys D) m (phys A)
+  have hrun : aMachine.runBlock sa [.movzx (phys D) m (phys A)]
+      = evalInstrA sa (.movzx (phys D) m (phys A)) := rfl
+  rw [hrun]
+  refine ⟨hc.writeN hD _ hregs (fun x hx => by rw [hmem]; exact hc.mem x hx)
+    (fun r hr => ?_) ?_, rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · have hl : ((s.reg.setReg D ((s.reg.lvm A).2.zeroExtend w')).nextPc).lvm D
+        = ⟨w', (s.reg.lvm A).2.zeroExtend w'⟩ := by
+      simp [LstateN.nextPc, LstateN.setReg]
+    show LstateN.getW _ D 64 = _ ∨ _
+    rw [getW_eq_some_iff, hl]
+    have hrA := hc.regs A hA
+    rcases hcA : s.reg.lvm A with ⟨w0, va⟩
+    rw [hcA] at hm hrA
+    simp only at hm ⊢
+    rcases hrA with hg | ⟨b, hb, hrb⟩ | ⟨b, hb, hrb⟩ | ⟨b, hb, hrb⟩
+    on_goal 1 =>
+      rw [lvm_of_getW hg] at hcA
+      obtain ⟨rfl, hv⟩ := Sigma.mk.inj hcA.symm
+      obtain rfl := eq_of_heq hv
+    on_goal 2 =>
+      obtain ⟨rfl, hv⟩ := Sigma.mk.inj hb
+      obtain rfl := eq_of_heq hv
+      rw [hrb]
+    on_goal 3 =>
+      obtain ⟨rfl, hv⟩ := Sigma.mk.inj hb
+      obtain rfl := eq_of_heq hv
+      rw [hrb]
+    on_goal 4 =>
+      obtain ⟨rfl, hv⟩ := Sigma.mk.inj hb
+      obtain rfl := eq_of_heq hv
+      subst hrb
+    all_goals
+      rcases hw' with rfl | rfl | rfl <;> simp at hm <;> (try subst hm) <;>
+        (try rcases hm with rfl | rfl)
+    all_goals first
+      | exact Or.inl (Sigma.ext rfl (heq_of_eq (by movzx_cell)))
+      | exact Or.inr (Or.inr (Or.inl ⟨_, rfl, by movzx_cell⟩))
+      | exact Or.inr (Or.inr (Or.inr ⟨_, rfl, by movzx_cell⟩))
 
 /-! ## 9. The covered bodies with carry chains -/
 
@@ -3274,12 +3452,12 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
   funext body
   rfl
 
-/-- At the program counter of `s`, no general-purpose name the instruction reads, other than
-    a carry-in, holds a one-bit value. -/
+/-- At the program counter of `s`, every general-purpose name the instruction reads, other
+    than a carry-in, holds a 64-bit value. -/
 def WideSafeAt (body : Lcmd) (s : LstateA) : Prop :=
   ∀ ii ds o ss, body[s.reg.lpc]? = some ⟨ii, .Lopn ds o ss⟩ →
     ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true → r ∉ carryIns (.Lopn ds o ss) →
-      (s.reg.lvm r).1 ≠ 1
+      (s.reg.lvm r).1 = 64
 
 /-- At the program counter of `s`, a cell load reads eight bytes disjoint from the red-zone
     word at `rsp`. -/
@@ -3288,8 +3466,8 @@ def CellSafeAt (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
     cellParts? n = some (B, off) → s.reg.getW B 64 = some p →
     Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off)
 
-/-- The run safety of a body with carry chains and cells: safe indexed loads, no one-bit
-    name read besides a carry-in, and safe cell loads. -/
+/-- The run safety of a body with carry chains and cells: safe indexed loads, every
+    general-purpose name read besides a carry-in at width `64`, and safe cell loads. -/
 def SafeW (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
   LoadSafeAt rsp body s ∧ WideSafeAt body s ∧ CellSafeAt rsp body s
 
@@ -3408,8 +3586,8 @@ theorem body_get {body : Lcmd} {k : Nat} (hk : k < body.length) :
     instruction `k` of a body in `printedAddrWB`, with the machine zero flag equal to the
     flag at a conditional branch and the machine carry flag holding the carry-out at a
     carry-out binding, every terminating run of the address machine whose indexed loads
-    avoid the red-zone word and whose instructions read no one-bit name besides a carry-in
-    is matched by a path of the machine on the decoded program from the index of `k` to the
+    avoid the red-zone word and whose instructions read every general-purpose name besides a
+    carry-in at width `64` is matched by a path of the machine on the decoded program from the index of `k` to the
     index of the closing return, ending in states related by `ACorrW`. -/
 theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
     (a b : JInstr 64) :
@@ -3564,9 +3742,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
           obtain ⟨⟨⟨⟨⟨⟨⟨-, hAC⟩, hSC⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hok'
           simp only [SArm.instr] at hia
           simp only [← hia] at hws hbk?
-          have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+          have hwA : gpOk A = true → (s.reg.lvm A).1 = 64 := fun hA =>
             hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
-          have hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1 := fun hS =>
+          have hwS : gpOk S = true → (s.reg.lvm S).1 = 64 := fun hS =>
             hws S (reg_reads (by simp)) hS (by simp [carryIns, hSC])
           obtain ⟨hc', hzz, hcyo⟩ := sim_sadcx P rsp D A S C hok sa s zf hc hwA hwS s' zf' hst
           have hcy' : CarryReq frame body (k + 1)
@@ -3588,9 +3766,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
           obtain ⟨⟨⟨⟨⟨⟨-, -⟩, hAC⟩, hSC⟩, -⟩, -⟩, -⟩ := hok'
           simp only [SArm.instr] at hia
           simp only [← hia] at hws hbk?
-          have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+          have hwA : gpOk A = true → (s.reg.lvm A).1 = 64 := fun hA =>
             hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
-          have hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1 := fun hS =>
+          have hwS : gpOk S = true → (s.reg.lvm S).1 = 64 := fun hS =>
             hws S (reg_reads (by simp)) hS (by simp [carryIns, hSC])
           have hcyk := hcy ii O A S C hbk?
           obtain ⟨hc', -, -⟩ :=
@@ -3604,9 +3782,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
           obtain ⟨hCs, -, -, -, -, -⟩ := adcxc_facts hok
           simp only [SArm.instr] at hia
           simp only [← hia] at hws hbk?
-          have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+          have hwA : gpOk A = true → (s.reg.lvm A).1 = 64 := fun hA =>
             hws A (reg_reads (by simp)) hA (by simp [carryIns, ne_of_gp_slot hA hCs])
-          have hwS : gpOk S = true → (s.reg.lvm S).1 ≠ 1 := fun hS =>
+          have hwS : gpOk S = true → (s.reg.lvm S).1 = 64 := fun hS =>
             hws S (reg_reads (by simp)) hS (by simp [carryIns, ne_of_gp_slot hS hCs])
           obtain ⟨hc', hzz, hcyo⟩ := sim_sadcxc P rsp D A S C hok sa s zf hc hwA hwS s' zf' hst
           have hcy' : CarryReq frame body (k + 1)
@@ -3639,9 +3817,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
           have hok' := hok
           simp only [CArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
           obtain ⟨⟨⟨⟨⟨⟨-, hA⟩, hS⟩, -⟩, hAC⟩, hSC⟩, -⟩ := hok'
-          have hwA : (s.reg.lvm A).1 ≠ 1 := hws A (reg_reads (by simp)) hA
+          have hwA : (s.reg.lvm A).1 = 64 := hws A (reg_reads (by simp)) hA
             (by simp [carryIns, hAC])
-          have hwS : (s.reg.lvm S).1 ≠ 1 := hws S (reg_reads (by simp)) hS
+          have hwS : (s.reg.lvm S).1 = 64 := hws S (reg_reads (by simp)) hS
             (by simp [carryIns, hSC])
           obtain ⟨hc', hzz, hcyo⟩ := sim_adcx P rsp D A S C hok sa s zf hc hwA hwS s' zf' hst
           subst zf'
@@ -3680,9 +3858,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
           have hok' := hok
           simp only [CArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
           obtain ⟨⟨⟨⟨⟨-, hA⟩, hS⟩, -⟩, hAC⟩, hSC⟩ := hok'
-          have hwA : (s.reg.lvm A).1 ≠ 1 := hws A (reg_reads (by simp)) hA
+          have hwA : (s.reg.lvm A).1 = 64 := hws A (reg_reads (by simp)) hA
             (by simp [carryIns, hAC])
-          have hwS : (s.reg.lvm S).1 ≠ 1 := hws S (reg_reads (by simp)) hS
+          have hwS : (s.reg.lvm S).1 = 64 := hws S (reg_reads (by simp)) hS
             (by simp [carryIns, hSC])
           have hcyk := hcy ii O A S C hbk?
           obtain ⟨hc', hzz, hfl⟩ :=
@@ -3734,7 +3912,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
             obtain ⟨⟨⟨hn, -⟩, hB⟩, -⟩ := hok'
             simp only [MArm.instr] at hia
-            have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
+            have hwB : (s.reg.lvm B).1 = 64 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
               hB (by rw [← hia]; simp [carryIns])
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
@@ -3750,9 +3928,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
             obtain ⟨⟨⟨hn, hS⟩, hB⟩, -⟩ := hok'
             simp only [MArm.instr] at hia
-            have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
+            have hwB : (s.reg.lvm B).1 = 64 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
               hB (by rw [← hia]; simp [carryIns])
-            have hwS : (s.reg.lvm S).1 ≠ 1 := hws S (by rw [← hia]; exact reg_reads (by simp))
+            have hwS : (s.reg.lvm S).1 = 64 := hws S (by rw [← hia]; exact reg_reads (by simp))
               hS (by rw [← hia]; simp [carryIns])
             obtain ⟨hc', -⟩ := sim_stm P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
@@ -3828,9 +4006,9 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
             · have hok' := hok
               simp only [vOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
               obtain ⟨⟨⟨⟨⟨⟨-, -⟩, hA⟩, hB⟩, -⟩, hAC⟩, hBC⟩ := hok'
-              have hwA : (s.reg.lvm A).1 ≠ 1 := hws A (reg_reads (by simp)) hA
+              have hwA : (s.reg.lvm A).1 = 64 := hws A (reg_reads (by simp)) hA
                 (by simp [carryIns, hAC])
-              have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (reg_reads (by simp)) hB
+              have hwB : (s.reg.lvm B).1 = 64 := hws B (reg_reads (by simp)) hB
                 (by simp [carryIns, hBC])
               obtain ⟨hc', -⟩ := sim_cmov P rsp D C A B hok sa s zf hc hwA hwB s' zf' hst
               obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
@@ -3845,7 +4023,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               have hok' := hok
               simp only [vtOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
               obtain ⟨⟨⟨⟨⟨⟨-, -⟩, hB⟩, -⟩, -⟩, -⟩, hBC⟩ := hok'
-              have hwB : (s.reg.lvm B).1 ≠ 1 := hws B (reg_reads (by simp)) hB
+              have hwB : (s.reg.lvm B).1 = 64 := hws B (reg_reads (by simp)) hB
                 (by simp [carryIns, hBC])
               obtain ⟨hc', -⟩ := sim_cmovSlot P rsp D C A B hok sa s zf hc hwB s' zf' hst
               obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
@@ -3859,7 +4037,7 @@ theorem run_simW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (r
               have hok' := hok
               simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
               obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hAC⟩, -⟩ := hok'
-              have hwA : gpOk A = true → (s.reg.lvm A).1 ≠ 1 := fun hA =>
+              have hwA : gpOk A = true → (s.reg.lvm A).1 = 64 := fun hA =>
                 hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
               obtain ⟨hc', -⟩ := sim_cmovSlotF P rsp D C A B hok sa s zf hc hwA s' zf' hst
               obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
@@ -4058,10 +4236,11 @@ theorem targetsOK_ofW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body sh
     and an address state `s` at program counter `0` that `ACorrW` relates at the entry stack
     register with equal memories, every terminating run of the address machine on the body,
     with frame words at their addresses below the entry stack register, whose indexed loads
-    read outside the red-zone word and whose instructions read no one-bit name besides a
-    carry-in, is matched by a halting run of the machine on the decoded function bytes. At the
-    end the stack register is restored, every general-purpose name holds the value of its
-    machine register or a bit the machine register zero-extends, and the memories agree outside
+    read outside the red-zone word and whose instructions read every general-purpose name
+    besides a carry-in at width `64`, is matched by a halting run of the machine on the decoded
+    function bytes. At the end the stack register is restored, every general-purpose name holds
+    the value of its machine register, a bit the machine register zero-extends or a 32- or
+    16-bit cell of it (`NarrowCell`), and the memories agree outside
     the red-zone word. -/
 theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : AState)
     (s : LstateA) (zf : Bool) (hpc : s.reg.lpc = 0)
@@ -4074,7 +4253,8 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
       ∧ Halts aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
       ∧ (∀ R, gpOk R = true → t.1.reg.getW R 64 = some (sa'.regs (phys R))
-          ∨ ∃ b : BitVec 1, t.1.reg.lvm R = ⟨1, b⟩ ∧ sa'.regs (phys R) = b.setWidth 64)
+          ∨ (∃ b : BitVec 1, t.1.reg.lvm R = ⟨1, b⟩ ∧ sa'.regs (phys R) = b.setWidth 64)
+          ∨ NarrowCell (t.1.reg.lvm R) (sa'.regs (phys R)))
       ∧ (∀ x, ¬ InRange8 (redW (frameRsp body sa)) x → t.1.mem x = sa'.mem x) := by
   obtain ⟨shs, hF⟩ := bodyFactsW_of h
   have hdec : decodableLcmd body = true := by
@@ -4097,7 +4277,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
   have hc0 : ACorrW rsp sa1 s :=
     { regs := fun R hR => by
         rw [hl1, if_neg (fun e => (gpFacts hR).physNe e)]
-        exact hent R hR
+        exact (hent R hR).elim Or.inl fun hb => Or.inr (Or.inl hb)
       sp := by rw [hl1, if_pos rfl, hrsp]; rfl
       mem := fun x _ => by rw [hmem, hm1] }
   have hz0 : isCondB (body[0]'hF.pos).li_i = true → sa1.flags.zf.getD false = zf := by

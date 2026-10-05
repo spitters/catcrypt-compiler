@@ -138,13 +138,15 @@ abbrev LinstrRT : Type := LinstrR × Option Nat
 /-- Recognise a structured cast instruction `Lopn [.reg dst] opn [.reg a]` (the
     real `castW` wire form) and return `(dst, a)`; `none` otherwise. The mnemonic
     is the BARE `"ZEROEXT"`/`"TRUNC"` of a byte-boundary cast, or the
-    width-carrying `castWMnem w w'` of a cast between 32- and 64-bit registers
+    width-carrying `castWMnem w w'` of a cast between 16-, 32- and 64-bit registers
     (`opToLinstrR` applies no `withWidthTag` to either), so we match them
     directly — no tag to strip. -/
 def castStruct? : LinstrR → Option (String × String)
   | .Lopn [.reg dst] opn [.reg a] =>
       if opn = "ZEROEXT" ∨ opn = "TRUNC" ∨ opn = "CASTW_32_32" ∨ opn = "CASTW_32_64"
-          ∨ opn = "CASTW_64_32" ∨ opn = "CASTW_64_64" then
+          ∨ opn = "CASTW_64_32" ∨ opn = "CASTW_64_64" ∨ opn = "CASTW_64_16"
+          ∨ opn = "CASTW_16_64" ∨ opn = "CASTW_16_16" ∨ opn = "CASTW_16_32"
+          ∨ opn = "CASTW_32_16" then
         some (dst, a)
       else none
   | _ => none
@@ -251,27 +253,15 @@ def lsemLeakCast : List LinstrRT → LstateN → List JasminLsemRobust.LLeak
 operand shapes). With the descriptor threaded as `none` on those, `lsemStepCast`
 delegates them to `lsemStepMC`. -/
 
-/-- `castStruct?` recognises the real `castW` wire form `Lopn [.reg dst]
-    ("ZEROEXT"/"TRUNC") [.reg a]`. -/
+/-- `castStruct?` recognises the real `castW` wire form `Lopn [.reg dst] opn [.reg a]`,
+    with `opn` the bare `"ZEROEXT"`/`"TRUNC"` or a `castWMnem w w'`. -/
 theorem castStruct?_castW {w w' : Nat} (dst a : String) :
     castStruct? (opToLinstrR (JasminOp.castW w w') dst [.reg a]) = some (dst, a) := by
   simp only [opToLinstrR]
-  by_cases h : castWCarriesWidths w w' = true
-  · rw [if_pos h]
-    simp only [castWMnem]
-    by_cases h1 : (w == 64) = true
-    · rw [if_pos h1]
-      by_cases h2 : (w' == 64) = true
-      · rw [if_pos h2]; simp [castStruct?]
-      · rw [if_neg h2]; simp [castStruct?]
-    · rw [if_neg h1]
-      by_cases h2 : (w' == 64) = true
-      · rw [if_pos h2]; simp [castStruct?]
-      · rw [if_neg h2]; simp [castStruct?]
-  · rw [if_neg h]
-    by_cases hle : w' ≥ w
-    · rw [if_pos hle]; simp [castStruct?]
-    · rw [if_neg hle]; simp [castStruct?]
+  split
+  · simp only [castWMnem]
+    split_ifs <;> simp [castStruct?]
+  · split <;> simp [castStruct?]
 
 /-! ## 4. The typed emission `straightOpsCast` and the wire/byte tie
 

@@ -16,7 +16,7 @@ set_option autoImplicit false
 /-!
 # The machine level of the instruction-set record, and constant time of decoded programs
 
-`IsaMachine I` extends an instruction set `I` by the machine its bytes run on: the decoded
+`IsaMachine` is the machine the bytes of an instruction set run on: the decoded
 instruction type `Instr`, the straight-line operation type `Op` with its effect `exec` on the
 machine state `MState`, the decoder `decode`, the action `act` of the instruction at an
 index (an operation, a block of operations, a branch with its outcome, a call, or `ret`),
@@ -66,7 +66,7 @@ inductive MAct (Op : Type) : Type where
     straight-line operations and their effect on the machine state, the decoder, the action
     of the instruction at an index, the operation blocks around a callee, and the leakage of
     one operation. -/
-structure IsaMachine (I : Isa) : Type 1 where
+structure IsaMachine : Type 1 where
   /-- The decoded instruction type. -/
   Instr : Type
   /-- The straight-line operation type. -/
@@ -88,7 +88,7 @@ structure IsaMachine (I : Isa) : Type 1 where
 
 namespace IsaMachine
 
-variable {I : Isa} (M : IsaMachine I)
+variable (M : IsaMachine)
 
 /-- The straight-line fold of `exec`. -/
 def runBlock (s : M.MState) : List M.Op → M.MState

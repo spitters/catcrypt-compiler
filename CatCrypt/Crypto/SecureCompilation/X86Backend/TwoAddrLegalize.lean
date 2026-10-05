@@ -105,14 +105,20 @@ def movFor (opn : String) : Option String :=
 
 /-- **The x86 instruction-set data**: the register file and calling convention
     `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
-    `commBases`, the scratch register `reloadScratch` and the copies `movFor`. The legaliser
+    `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the implicit read
+    of `RDX` by the `MULX` family, and the flag loop guard `CMP ctr, 0; jne top`. The legaliser
     reads its mnemonic data and scratch register from it. -/
 @[reducible] def x86Data : VIR.LprogIsa.IsaData :=
   { LprogAsmPrinter.x86Abi with
     tied := needsTie
     commutes := fun base => commBases.contains base
     tieScratch := reloadScratch
-    copyMnemonic := movFor }
+    copyMnemonic := movFor
+    implicitReads := fun opn =>
+      if "MULX".toList.isPrefixOf ((stripWidthTag opn).toList.map Char.toUpper) then ["RDX"]
+      else []
+    loopGuard := fun ctr top =>
+      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top] }
 
 /-- A register or an immediate operand. -/
 def isRegOrImm : LOperand → Bool

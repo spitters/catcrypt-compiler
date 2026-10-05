@@ -116,28 +116,41 @@ def armMnemOfBase : String → Option CT.ArmMnem
 def armLeaksOperands (base : String) : Bool :=
   ((armMnemOfBase base).map CT.ArmMnem.leaksOperands).getD true
 
+/-- The mnemonic bases of the AArch64 alphabet. -/
+def armBases : List String :=
+  ["ADD", "SUB", "AND", "OR", "XOR", "MUL", "MOV", "CMP", "LOADIDX", "STOREIDX", "LOAD",
+   "STORE", "MOVQ"]
+
+/-- The AAPCS64 caller-saved (corruptible) integer registers: `x0`–`x17` and the link
+    register `x30`. The platform register `x18` is excluded. -/
+def armCallerSaved : List String := armRegs ++ ["x30"]
+
 /-- **The AArch64 data**: the AAPCS64 register file with the intra-procedure-call registers
-    `x16`, `x17` as scratch, the save slot of a callee-saved register at its index, the
-    three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at the
-    width of the operation), and the leakage regime `armLeaksOperands`. -/
+    `x16`, `x17` as scratch, the save slot of a callee-saved register at its index, the stack
+    pointer `sp`, the return registers `x0`, `x1`, the caller-saved registers and no red zone,
+    the three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at
+    the width of the operation), the leakage regime `armLeaksOperands`, the alphabet
+    `armBases`, no implicit reads, and the register loop guard `cbnz ctr, top`. -/
 def armData : IsaData where
   allocPool := armAllocPool
   scratch := ["x16", "x17"]
   argRegs := armArgRegs
   calleeSaved := armCalleeSaved
   saveSlot := fun r => armCalleeSaved.findIdx? (· == r)
+  sp := "sp"
+  retRegs := ["x0", "x1"]
+  callerSaved := armCallerSaved
+  redZone := 0
   tied := fun _ _ => false
   commutes := fun base => ["ADD", "MUL", "AND", "OR", "XOR"].contains base
   tieScratch := "x16"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
   leaksOperands := armLeaksOperands
+  supports := fun base => armBases.contains base
+  implicitReads := fun _ => []
+  loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
 
 /-! ## The step -/
-
-/-- The mnemonic bases of the AArch64 alphabet. -/
-def armBases : List String :=
-  ["ADD", "SUB", "AND", "OR", "XOR", "MUL", "MOV", "CMP", "LOADIDX", "STOREIDX", "LOAD",
-   "STORE", "MOVQ"]
 
 /-- The AArch64 branch condition: `Z` holds when `zf` is set (`B.EQ`), `NZ` when it is clear
     (`B.NE`), and a register condition when the register is non-zero (`CBNZ`). -/
@@ -172,6 +185,8 @@ theorem armIsa_step : armIsa.step = subsetStep armBases armCond armCmp := rfl
 theorem armIsa_condEval : armIsa.condEval = armCond := rfl
 
 theorem armIsa_leaksOperands : armIsa.leaksOperands = armLeaksOperands := rfl
+
+theorem armIsa_supports : armIsa.supports = fun base => armBases.contains base := rfl
 
 /-- No base of the AArch64 alphabet leaks its data operands under `PSTATE.DIT = 1`. -/
 theorem armIsa_leaksOperands_bases : ∀ b ∈ armBases, armIsa.leaksOperands b = false := by
