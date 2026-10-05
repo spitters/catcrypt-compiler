@@ -141,6 +141,12 @@ def tmpl3 (d s c : Nat) : List (List (BitVec 8) × JInstr 64) :=
     (if ext = 4 then JInstr.shlx else if ext = 5 then JInstr.shrx else JInstr.sarx)
       (regName d) (regName s) (regName c)))
 
+/-- The width-cast templates on registers `d` (the destination) and `s`: the zero-extending
+    moves of the low 16 and the low 32 bits behind a `REX` prefix at `REX.W = 0`. -/
+def tmplCast (d s : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(encMovzx16RR d s, .movzx (regName d) 16 (regName s)),
+   (encMov32RR d s, .movzx (regName d) 32 (regName s))]
+
 /-- The template of `encodeJInstr` at the identity allocation, for an instruction in the
     covered set of `roundtrip_decodeJ1` over canonical names. -/
 def tmplJ (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
@@ -172,6 +178,7 @@ def guess : JInstr 64 → List String × List Nat × List Int
   | .loadMemIdx d b i _ => ([d, b, i], [], [])
   | .storeMemIdx b i _ s => (b :: i :: opNames s, [], [])
   | .shlx d s c | .shrx d s c | .sarx d s c => ([d, s, c], [], [])
+  | .movzx d _ s => ([d, s], [], [])
   | _ => ([], [], [])
 
 /-- The byte templates an instruction is checked against. -/
@@ -179,7 +186,8 @@ def pieceTemplates (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
   let g := guess j
   let ns := g.1.filterMap regNum?
   tmplJ j ++ ns.flatMap (fun d =>
-    ns.flatMap (fun s => tmplRR d s ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c))
+    ns.flatMap (fun s => tmplRR d s ++ tmplCast d s
+        ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c))
       ++ g.2.1.flatMap (tmplImm d) ++ tmpl1 d ++ g.2.2.flatMap (tmplRsp d))
 
 /-! ## 3. Soundness of the templates -/
@@ -301,6 +309,14 @@ theorem tmpl3_sound (d s c : Nat) (hd : d < 16) (hs : s < 16) (hc : c < 16) :
   obtain ⟨ext, hext, rfl⟩ := hq
   exact decodeLinstr_shiftX ext d s c rest hext hd hs hc
 
+theorem tmplCast_sound (d s : Nat) (hd : d < 16) (hs : s < 16) :
+    ∀ q ∈ tmplCast d s, PieceDec q := by
+  intro q hq rest
+  simp only [tmplCast, List.mem_cons, List.not_mem_nil, or_false] at hq
+  rcases hq with rfl | rfl
+  · exact decodeLinstr_movzx16RR d s rest hd hs
+  · exact decodeLinstr_mov32RR d s rest hd hs
+
 theorem tmplJ_sound (j : JInstr 64) : ∀ q ∈ tmplJ j, PieceDec q := by
   intro q hq rest
   simp only [tmplJ] at hq
@@ -324,8 +340,9 @@ theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, Piece
   rcases hq with hq | ⟨d, hd, hq⟩
   · exact tmplJ_sound j q hq
   · rcases hq with (((⟨s, hs, hq⟩ | ⟨v, _, hq⟩) | hq) | ⟨off, _, hq⟩)
-    · rcases hq with hq | ⟨c, hc, hq⟩
+    · rcases hq with (hq | hq) | ⟨c, hc, hq⟩
       · exact tmplRR_sound d s (hn d hd) (hn s hs) q hq
+      · exact tmplCast_sound d s (hn d hd) (hn s hs) q hq
       · rcases hq with hq | hq
         · exact tmplIdx_sound d s c (hn d hd) (hn s hs) (hn c hc) q hq
         · exact tmpl3_sound d s c (hn d hd) (hn s hs) (hn c hc) q hq

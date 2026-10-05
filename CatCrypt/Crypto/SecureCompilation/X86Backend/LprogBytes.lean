@@ -936,6 +936,41 @@ def encCmovSelectSlotF (w dn cn tn : Nat) (offF : Int) : List (BitVec 8) :=
 def encCmovSelectSlotTF (w dn cn : Nat) (offT offF : Int) : List (BitVec 8) :=
   encRspMem w 0x8b dn offF ++ encAluRRw w 0x85 cn cn ++ encCmovRspMem w 0x45 dn offT
 
+/-! ### 3c'. Register width casts — the `CASTW_<w>_<w'>` arms
+
+A width-carrying cast between 16-, 32- and 64-bit registers is printed as
+`movzwl %s16, %d32` when either width is `16` and as `movl %s32, %d32` between `32` and
+`64` bits. Each byte image carries a `REX` prefix at `REX.W = 0`, also where both
+registers are below `8`: the prefixed `0F B7` and `89` forms are the ones
+`LprogBytesDecode.decodeLinstr` reads. `CASTW_64_64` and the byte-boundary `ZEROEXT` /
+`TRUNC` have no arm. -/
+
+/-- `MOVZX %s16, %d32` (`REX 0F B7 /r`): `reg` = destination, `rm` = source, the `REX`
+    prefix at `REX.W = 0` always present. -/
+def encMovzx16RR (d s : Nat) : List (BitVec 8) :=
+  [BitVec.ofNat 8 (rex 0 (bit d 3) 0 (bit s 3)), BitVec.ofNat 8 0x0f, BitVec.ofNat 8 0xb7,
+    BitVec.ofNat 8 (modRMReg d s)]
+
+/-- `MOV %s32, %d32` (`REX 89 /r`): `reg` = source, `rm` = destination, the `REX` prefix
+    at `REX.W = 0` always present. The 32-bit write clears bits `32..63` of `d`. -/
+def encMov32RR (d s : Nat) : List (BitVec 8) :=
+  [BitVec.ofNat 8 (rex 0 (bit s 3) 0 (bit d 3)), BitVec.ofNat 8 0x89,
+    BitVec.ofNat 8 (modRMReg s d)]
+
+/-- The number of low source bits the zero-extending move of a width-carrying cast keeps:
+    `16` for a cast with a 16-bit side, `32` for a cast between 32 and 64 bits and for
+    `CASTW_32_32`; `none` for every other mnemonic. -/
+def castMovBits (base : String) : Option Nat :=
+  if base == "CASTW_64_16" || base == "CASTW_16_64" || base == "CASTW_16_16"
+      || base == "CASTW_16_32" || base == "CASTW_32_16" then some 16
+  else if base == "CASTW_64_32" || base == "CASTW_32_64" || base == "CASTW_32_32" then some 32
+  else none
+
+/-- The bytes of the zero-extending move of the low `m` bits of register `s` into
+    register `d`: `movzwl` at `m = 16`, `movl` otherwise. -/
+def encCastW (m d s : Nat) : List (BitVec 8) :=
+  if m = 16 then encMovzx16RR d s else encMov32RR d s
+
 /-! ## 3d. Register-indexed (SIB) element access — the `LOADIDX`/`STOREIDX` arms
 
 `Com.toLprogPhysAbi` exports a runtime-index array access as an `.arrIdx base idx
@@ -1371,7 +1406,17 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                             ++ ScalarEncoder.encUnaryF7 3 (gpNumU dn)
                         else []
                     | _, _ => []
-                  else []
+                  -- Register width casts `CASTW_<w>_<w'> [d] [s]` (§3c'): the
+                  -- zero-extending move `encCastW` of the low `castMovBits` bits.
+                  -- Register operands only, as the printer's arm. Reached last, as
+                  -- `NEG`.
+                  else
+                    match castMovBits base, d, s with
+                    | some m, .reg dn, .reg sn =>
+                        if isGpName dn && isGpName sn then
+                          encCastW m (gpNumU dn) (gpNumU sn)
+                        else []
+                    | _, _, _ => []
       | [d], [a, s] =>
           match s with
           | .imm v => encImmOp w base d v
@@ -2979,5 +3024,55 @@ theorem jccOpcode_range (cc : String) : 0x80 ≤ jccOpcode cc ∧ jccOpcode cc �
 theorem trust_edge_cf_jmp (o : Int) (hlo : -(2^31) ≤ o) (hhi : o < 2^31) :
     decodeJmp32 (encJmp32 o) = some { opcode := 0xe9, disp := o } :=
   roundtrip_jmp32 o hlo hhi
+
+/-! ## The register width casts -/
+
+/-- A mnemonic `castMovBits` reads is one of the eight width-carrying casts, with the
+    kept width `16` for a cast with a 16-bit side and `32` otherwise. -/
+theorem castMovBits_cases {o : String} {m : Nat} (h : castMovBits o = some m) :
+    (m = 16 ∧ (o = "CASTW_64_16" ∨ o = "CASTW_16_64" ∨ o = "CASTW_16_16"
+        ∨ o = "CASTW_16_32" ∨ o = "CASTW_32_16"))
+      ∨ (m = 32 ∧ (o = "CASTW_64_32" ∨ o = "CASTW_32_64" ∨ o = "CASTW_32_32")) := by
+  unfold castMovBits at h
+  split at h
+  · rename_i h1
+    exact Or.inl ⟨(Option.some.inj h).symm, by
+      simpa only [Bool.or_eq_true, beq_iff_eq, or_assoc] using h1⟩
+  · split at h
+    · rename_i h2
+      exact Or.inr ⟨(Option.some.inj h).symm, by
+        simpa only [Bool.or_eq_true, beq_iff_eq, or_assoc] using h2⟩
+    · cases h
+
+/-- At `m = 16` the cast move is `movzwl`. -/
+theorem encCastW_16 (d s : Nat) : encCastW 16 d s = encMovzx16RR d s := by
+  unfold encCastW; rw [if_pos rfl]
+
+/-- At `m = 32` the cast move is `movl`. -/
+theorem encCastW_32 (d s : Nat) : encCastW 32 d s = encMov32RR d s := by
+  unfold encCastW; rw [if_neg (by decide)]
+
+/-- The dispatch of `encodeLopn` on a mnemonic `castMovBits` reads: it is no carry-out or
+    high-word binding, carries no width tag, and is in none of the mnemonic tables ahead of
+    the cast arm. -/
+theorem castMovBits_dispatch {o : String} {m : Nat} (h : castMovBits o = some m) :
+    (LprogAsmPrinter.isCarryOutBinding o || LprogAsmPrinter.isMulHiBinding o) = false
+      ∧ VIR.JasminLprogExport.stripWidthTag o = o
+      ∧ (o == "MULX") = false ∧ (o == "MULXMEM") = false ∧ adxPrefix o = none
+      ∧ tagShiftExt o = none ∧ aluOpcode o = none ∧ twoByteOpcode o = none
+      ∧ (o == "LEA") = false ∧ (o == "LOADIDX") = false ∧ (o == "NEG") = false := by
+  rcases castMovBits_cases h with ⟨-, rfl | rfl | rfl | rfl | rfl⟩ | ⟨-, rfl | rfl | rfl⟩ <;>
+    decide +kernel
+
+/-- **The bytes of a width-carrying cast.** `CASTW_<w>_<w'> D, A` between general-purpose
+    registers encodes to the zero-extending move `encCastW` of the low `castMovBits` bits of
+    `A` into `D`. -/
+theorem encodeLopn_castW (frame spillW : Nat) (o D A : String) (qsaveB m : Nat)
+    (hk : castMovBits o = some m) (hD : isGpName D = true) (hA : isGpName A = true) :
+    encodeLopn frame spillW (.Lopn [.reg D] o [.reg A]) qsaveB
+      = encCastW m (gpNumU D) (gpNumU A) := by
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11⟩ := castMovBits_dispatch hk
+  simp only [encodeLopn, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, hk, hD, hA,
+    Bool.false_eq_true, if_false, Bool.and_self, if_true]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes

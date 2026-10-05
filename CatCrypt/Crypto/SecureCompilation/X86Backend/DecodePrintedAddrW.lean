@@ -61,6 +61,8 @@ arms to the bodies of `DecodePrintedCFG`.
 * `fstepA_castW`, `sim_castW`: a width cast at the descriptor tag is the typed cast step
   `lsemStepCast`, and `movzx` of the low 8, 16 or 32 bits simulates it into a 64-, 32- or
   16-bit cell.
+* `castBytes`, `sim_castW_bytes`: the bytes of a width-carrying cast `CASTW_<w>_<w'>` are
+  one piece that decodes to `movzx`, and its decoded instruction simulates the cast step.
 * `AArm.simW`: an arm of `DecodePrintedAddr` steps from `ACorrW` to `ACorrW`.
 * `SArm.bytes`, `sim_sadcx`, `sim_sadcxhi`, `sim_sadcxc`: the bytes and the simulations of the
   carry arms with frame-slot operands; an add whose carry-in is a frame slot is printed as the
@@ -3288,6 +3290,49 @@ theorem sim_castW (P : Params) (rsp : BitVec 64) (D A opn : String) (w' m : Nat)
       | exact Or.inl (Sigma.ext rfl (heq_of_eq (by movzx_cell)))
       | exact Or.inr (Or.inr (Or.inl ⟨_, rfl, by movzx_cell⟩))
       | exact Or.inr (Or.inr (Or.inr ⟨_, rfl, by movzx_cell⟩))
+
+/-- The byte piece of a width-carrying cast of `A` into `D` that keeps the low `m` bits:
+    the zero-extending move `encCastW`, decoded as `movzx`. -/
+def castPieces (m : Nat) (D A : String) : List (List (BitVec 8) × JInstr 64) :=
+  [(encCastW m (gpNumU D) (gpNumU A), .movzx (phys D) m (phys A))]
+
+/-- A mnemonic `castMovBits` reads is a cast `castStruct?` recognises. -/
+theorem castStruct?_of_castMovBits {o : String} {m : Nat} (h : castMovBits o = some m)
+    (D A : String) : castStruct? (.Lopn [.reg D] o [.reg A]) = some (D, A) := by
+  rcases castMovBits_cases h with ⟨-, rfl | rfl | rfl | rfl | rfl⟩ | ⟨-, rfl | rfl | rfl⟩ <;>
+    simp [castStruct?]
+
+/-- **The bytes of a width-carrying cast.** A cast `o D, A` between general-purpose names,
+    with `castMovBits o = some m`, encodes to the piece `castPieces m D A`, which decodes
+    to `movzx` of the low `m` bits. -/
+theorem castBytes (P : Params) (o D A : String) (m : Nat) (hk : castMovBits o = some m)
+    (hD : gpOk D = true) (hA : gpOk A = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] o [.reg A]) P.qsaveB
+        = (castPieces m D A).flatMap Prod.fst
+      ∧ ∀ p ∈ castPieces m D A, PieceDec p := by
+  have hm : m = 16 ∨ m = 32 := by
+    rcases castMovBits_cases hk with ⟨rfl, -⟩ | ⟨rfl, -⟩ <;> simp
+  refine ⟨by simp [castPieces,
+    encodeLopn_castW _ _ _ _ _ _ _ hk (gpFacts hD).isGp (gpFacts hA).isGp], ?_⟩
+  intro p hp rest
+  simp only [castPieces, List.mem_singleton] at hp
+  subst hp
+  exact decodeLinstr_castW m _ _ rest hm (gpNumU_lt_16 D) (gpNumU_lt_16 A)
+
+/-- **The decoded bytes of a width-carrying cast.** From `ACorrW`, the address-machine step
+    of a cast `o D, A` at the descriptor width `w'` of `64`, `32` or `16`, with
+    `castMovBits o = some m` and `m` the smaller of the width of `A` and `w'`, is matched by
+    the decoded instructions of the piece `castPieces m D A` (`castBytes`). -/
+theorem sim_castW_bytes (P : Params) (rsp : BitVec 64) (o D A : String) (w' m : Nat)
+    (hk : castMovBits o = some m) (hD : gpOk D = true) (hA : gpOk A = true)
+    (hw' : w' = 64 ∨ w' = 32 ∨ w' = 16)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hm : m = min (s.reg.lvm A).1 w') (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] o [.reg A], .reg (some w')) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((castPieces m D A).map Prod.snd)) s' ∧ zf' = zf :=
+  sim_castW P rsp D A o w' m hD hA (castStruct?_of_castMovBits hk D A) hw' sa s zf hc
+    (Or.inl hm) s' zf' hst
 
 /-! ## 9. The covered bodies with carry chains -/
 

@@ -207,13 +207,24 @@ def decodeRexExt (r : BitVec 8) :
       else none
   | _ => none
 
+/-- The register-direct `MOV %r32, %rm32` (`89 /r`) behind a `REX` prefix at
+    `REX.W = 0`, read as `movzx rm 32 reg`: the 32-bit write zero-extends the low half
+    of the source into the destination. Every other stream is rejected. -/
+def decodeRexMov32 (r : BitVec 8) : List (BitVec 8) → Option (DInstr × List (BitVec 8))
+  | op :: modrm :: rest =>
+      if SailX86Decoder.rexW r = 0 ∧ op.toNat = 0x89 ∧ modField modrm = 3 then
+        some (.op (.movzx (regName (rexB r * 8 + rmField modrm)) 32
+          (regName (rexR r * 8 + regField modrm))), rest)
+      else none
+  | _ => none
+
 /-- Decode one instruction off the front of a byte stream. `decodeJ1_6` (`decodeJ1`,
     the shift-by-one forms and the register-direct compares) is tried first, so the
     decoders agree wherever `decodeJ1_6` succeeds; the remaining arms are `ret`
     (`C3`), `jcc rel8` (`70+cc cb`), `jcc rel32` (`0F 80+cc cd`), the `REX`-prefixed
-    forms of `decodeRexExt`, and the 32-bit `MOV $imm32, %r32` without a prefix
-    (`B8+rd id`), which zero-extends into the 64-bit register and is read as the
-    64-bit `MOV` of the immediate. -/
+    forms of `decodeRexExt`, `decodeRexPushPop` and `decodeRexMov32`, and the 32-bit
+    `MOV $imm32, %r32` without a prefix (`B8+rd id`), which zero-extends into the
+    64-bit register and is read as the 64-bit `MOV` of the immediate. -/
 def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
   | [] => none
   | b0 :: rest =>
@@ -235,7 +246,8 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
         else if b0.toNat = 0xc4 then
           (decodeShiftX rest).map fun p => (.op p.1, p.2)
         else if isRex b0 then
-          ((decodeRexExt b0 rest).map fun p => (.op p.1, p.2)).or (decodeRexPushPop b0 rest)
+          (((decodeRexExt b0 rest).map fun p => (.op p.1, p.2)).or
+            (decodeRexPushPop b0 rest)).or (decodeRexMov32 b0 rest)
         else if 0x50 ≤ b0.toNat ∧ b0.toNat ≤ 0x5f then
           decodePushPop (b0.toNat % 8) b0.toNat rest
         else if 0xb8 ≤ b0.toNat ∧ b0.toNat ≤ 0xbf then
@@ -515,8 +527,11 @@ theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb
     | cons o t => simp only [decodeRexPushPop, if_neg h41]
   have hc4 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0xc4) := by
     rw [BitVec.toNat_ofNat]; unfold rex; omega
+  have hm : decodeRexMov32 (BitVec.ofNat 8 (rex 1 r x b)) rest = none := by
+    rcases rest with _ | ⟨o, _ | ⟨m, t⟩⟩ <;>
+      simp [decodeRexMov32, rexW_rex _ _ _ hr hx hb]
   simp only [decodeLinstr, h6, if_neg hc3, if_neg h7,
-    if_neg h0f, if_neg hc4, isRex_rex _ _ _ hr hx hb, if_true, hpp, Option.or_none]
+    if_neg h0f, if_neg hc4, isRex_rex _ _ _ hr hx hb, if_true, hpp, hm, Option.or_none]
 
 /-- `CMP off(%rsp), %r` (`REX.W 3B /r` with a memory operand) decodes to a `cmpMem`
     off `%rsp`. -/
@@ -987,7 +1002,11 @@ theorem decodeLinstr_pushPop_rex41 (o : BitVec 8) (rest : List (BitVec 8))
     rcases rest with _ | ⟨m, t⟩ <;> simp [decodeShift1, decodeCmp, hw]
   have hx : decodeRexExt (BitVec.ofNat 8 0x41) (o :: rest) = none := by
     rcases rest with _ | ⟨m, t⟩ <;> simp [decodeRexExt, hw]
-  simp only [decodeLinstr, h6, hx, hr, Option.map_none, Option.none_or, decodeRexPushPop]
+  have hm : decodeRexMov32 (BitVec.ofNat 8 0x41) (o :: rest) = none := by
+    have e : ¬ o.toNat = 0x89 := by omega
+    rcases rest with _ | ⟨m, t⟩ <;> simp [decodeRexMov32, e]
+  simp only [decodeLinstr, h6, hx, hr, hm, Option.map_none, Option.none_or, Option.or_none,
+    decodeRexPushPop]
   rfl
 
 /-- `pushq r` (`50+r`, or `41 50+r` for `r8`–`r15`) decodes to `push r`, for every
@@ -1083,6 +1102,119 @@ theorem decodeLinstr_pop (r : String) (rest : List (BitVec 8)) (hr : r ∈ gpNam
        first
        | (rw [decodeLinstr_pushPop_rex41 _ _ (by decide)]; rfl)
        | (rw [decodeLinstr_pushPop_bare _ _ (by decide)]; rfl))
+
+/-! ### The register width casts
+
+The byte images of the width-carrying casts carry a `REX` prefix at `REX.W = 0`. -/
+
+/-- The fields of a `REX` prefix at `REX.W = 0` without `REX.X`: it is a `REX` byte with
+    `W = 0` whose `R` and `B` bits are the encoded ones, and it is none of the prefix bytes
+    `66`, `F3`, `C4`, `C3`, `0F` nor a `jcc rel8` opcode. -/
+theorem rex0_fields (r b : Nat) (hr : r ≤ 1) (hb : b ≤ 1) :
+    isRex (BitVec.ofNat 8 (rex 0 r 0 b)) = true
+      ∧ SailX86Decoder.rexW (BitVec.ofNat 8 (rex 0 r 0 b)) = 0
+      ∧ rexR (BitVec.ofNat 8 (rex 0 r 0 b)) = r
+      ∧ rexB (BitVec.ofNat 8 (rex 0 r 0 b)) = b
+      ∧ 0x40 ≤ (BitVec.ofNat 8 (rex 0 r 0 b)).toNat
+      ∧ (BitVec.ofNat 8 (rex 0 r 0 b)).toNat ≤ 0x4f := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  · simp only [isRex, BitVec.toNat_ofNat, rex, decide_eq_true_eq]; omega
+  · rw [SailX86Decoder.rexW, Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow,
+      BitVec.toNat_ofNat]
+    unfold rex; omega
+  · rw [rexR, Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow,
+      BitVec.toNat_ofNat]
+    unfold rex; omega
+  · rw [rexB, Nat.and_two_pow_sub_one_eq_mod _ 1, BitVec.toNat_ofNat]
+    unfold rex; omega
+  · rw [BitVec.toNat_ofNat]; unfold rex; omega
+  · rw [BitVec.toNat_ofNat]; unfold rex; omega
+
+/-- `MOVZX %s16, %d32` behind a `REX` prefix at `REX.W = 0` (`REX 0F B7 /r`) decodes to
+    `movzx d 16 s`. -/
+theorem decodeLinstr_movzx16_bytes (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hs : s < 16) :
+    decodeLinstr ([BitVec.ofNat 8 (rex 0 (bit d 3) 0 (bit s 3)), BitVec.ofNat 8 0x0f,
+        BitVec.ofNat 8 0xb7, BitVec.ofNat 8 (modRMReg d s)] ++ rest)
+      = some (.op (.movzx (regName d) 16 (regName s)), rest) := by
+  apply decodeLinstr_of_decodeJ1
+  obtain ⟨hrex, hw, hR, hB, hlo, hhi⟩ :=
+    rex0_fields (bit d 3) (bit s 3) (bit_le_one _ _) (bit_le_one _ _)
+  have eD : rexR (BitVec.ofNat 8 (rex 0 (bit d 3) 0 (bit s 3))) * 8
+      + regField (BitVec.ofNat 8 (modRMReg d s)) = d := by
+    rw [hR, regField_modRMReg]; exact bitsplit _ hd
+  have eS : rexB (BitVec.ofNat 8 (rex 0 (bit d 3) 0 (bit s 3))) * 8
+      + rmField (BitVec.ofNat 8 (modRMReg d s)) = s := by
+    rw [hB, rmField_modRMReg]; exact bitsplit _ hs
+  have hm := modField_modRMReg d s
+  generalize BitVec.ofNat 8 (rex 0 (bit d 3) 0 (bit s 3)) = r at *
+  generalize BitVec.ofNat 8 (modRMReg d s) = mb at *
+  have h66 : ¬ r.toNat = 0x66 := by omega
+  have hf3 : ¬ r.toNat = 0xf3 := by omega
+  have hc4 : ¬ r.toNat = 0xc4 := by omega
+  simp [decodeJ1, h66, hf3, hc4, hrex, hw, decodeRexW0, hm, eD, eS]
+
+/-- `MOV %s32, %d32` behind a `REX` prefix at `REX.W = 0` (`REX 89 /r`) decodes to
+    `movzx d 32 s`. -/
+theorem decodeLinstr_mov32_bytes (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hs : s < 16) :
+    decodeLinstr ([BitVec.ofNat 8 (rex 0 (bit s 3) 0 (bit d 3)), BitVec.ofNat 8 0x89,
+        BitVec.ofNat 8 (modRMReg s d)] ++ rest)
+      = some (.op (.movzx (regName d) 32 (regName s)), rest) := by
+  obtain ⟨hrex, hw, hR, hB, hlo, hhi⟩ :=
+    rex0_fields (bit s 3) (bit d 3) (bit_le_one _ _) (bit_le_one _ _)
+  have eD : rexB (BitVec.ofNat 8 (rex 0 (bit s 3) 0 (bit d 3))) * 8
+      + rmField (BitVec.ofNat 8 (modRMReg s d)) = d := by
+    rw [hB, rmField_modRMReg]; exact bitsplit _ hd
+  have eS : rexR (BitVec.ofNat 8 (rex 0 (bit s 3) 0 (bit d 3))) * 8
+      + regField (BitVec.ofNat 8 (modRMReg s d)) = s := by
+    rw [hR, regField_modRMReg]; exact bitsplit _ hs
+  have hm := modField_modRMReg s d
+  generalize BitVec.ofNat 8 (rex 0 (bit s 3) 0 (bit d 3)) = r at *
+  generalize BitVec.ofNat 8 (modRMReg s d) = mb at *
+  have h66 : ¬ r.toNat = 0x66 := by omega
+  have hf3 : ¬ r.toNat = 0xf3 := by omega
+  have hc4 : ¬ r.toNat = 0xc4 := by omega
+  have hc3 : ¬ r.toNat = 0xc3 := by omega
+  have h7 : ¬ (0x70 ≤ r.toNat ∧ r.toNat ≤ 0x7f) := by omega
+  have h0f : ¬ r.toNat = 0x0f := by omega
+  have h41 : decodePushPop (8 + 0x89 % 8) 0x89 (mb :: rest) = none := by
+    simp [decodePushPop]
+  have hj : decodeJ1 (r :: BitVec.ofNat 8 0x89 :: mb :: rest) = none := by
+    simp [decodeJ1, h66, hf3, hc4, hrex, hw, decodeRexW0]
+  have h6 : decodeJ1_6 (r :: BitVec.ofNat 8 0x89 :: mb :: rest) = none := by
+    rw [decodeJ1_6_of_none _ hj]
+    simp [decodeShift1, decodeCmp, hw]
+  have hx : decodeRexExt r (BitVec.ofNat 8 0x89 :: mb :: rest) = none := by
+    simp [decodeRexExt, hw]
+  have hpp : decodeRexPushPop r (BitVec.ofNat 8 0x89 :: mb :: rest) = none := by
+    simp [decodeRexPushPop, h41]
+  simp [decodeLinstr, h6, hc3, h7, h0f, hc4, hrex, hx, hpp, decodeRexMov32, hw, hm, eD, eS]
+
+/-- `MOVZX %s16, %d32` (`encMovzx16RR`) decodes to `movzx d 16 s`. -/
+theorem decodeLinstr_movzx16RR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hs : s < 16) :
+    decodeLinstr (encMovzx16RR d s ++ rest)
+      = some (.op (.movzx (regName d) 16 (regName s)), rest) :=
+  decodeLinstr_movzx16_bytes d s rest hd hs
+
+/-- `MOV %s32, %d32` (`encMov32RR`) decodes to `movzx d 32 s`: the 32-bit write
+    zero-extends the low half of `s` into `d`. -/
+theorem decodeLinstr_mov32RR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hs : s < 16) :
+    decodeLinstr (encMov32RR d s ++ rest)
+      = some (.op (.movzx (regName d) 32 (regName s)), rest) :=
+  decodeLinstr_mov32_bytes d s rest hd hs
+
+/-- **The decoded width cast.** The zero-extending move `encCastW m d s` of the low `m`
+    bits, `m` being `16` or `32`, decodes to `movzx d m s`. -/
+theorem decodeLinstr_castW (m d s : Nat) (rest : List (BitVec 8)) (hm : m = 16 ∨ m = 32)
+    (hd : d < 16) (hs : s < 16) :
+    decodeLinstr (encCastW m d s ++ rest)
+      = some (.op (.movzx (regName d) m (regName s)), rest) := by
+  rcases hm with rfl | rfl
+  · rw [encCastW_16]; exact decodeLinstr_movzx16RR d s rest hd hs
+  · rw [encCastW_32]; exact decodeLinstr_mov32RR d s rest hd hs
 
 /-! ## 4. The body encoder as a recursion -/
 
