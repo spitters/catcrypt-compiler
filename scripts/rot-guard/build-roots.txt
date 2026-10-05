@@ -315,7 +315,6 @@ CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
 CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
-CatCrypt.Crypto.SecureCompilation.CT.IsaRegime
 CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie
@@ -791,7 +790,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddAffine
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519BytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519PointKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.EffAddr
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertComplete

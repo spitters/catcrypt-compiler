@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Footprint
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FootprintEA
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
 
 /-!
@@ -30,6 +30,8 @@ discipline and the cells, evaluated by the kernel.
   no byte outside their word ranges.
 * `scReduceShipped_local`: the registers, the flags and the bytes of those ranges after
   the block depend only on the registers, the flags and the bytes of those ranges.
+* `scReduceShipped_read_frame_ea`: a read through an effective-address operand whose word
+  is disjoint from the word ranges of `scrCells` is unchanged by the block.
 -/
 
 @[expose] public section
@@ -42,6 +44,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
 open CatCrypt.Crypto.SecureCompilation.Ascent.Footprint
+open CatCrypt.Crypto.SecureCompilation.Ascent.FootprintEA
+open CatCrypt.Crypto.SecureCompilation.X86Backend.EffAddr
 open CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
 
@@ -178,5 +182,18 @@ theorem scReduceShipped_local (sa sb : AState)
     (fun k hk k' hk' hne => hsep k (hmemW k hk) k' (hmemW k' hk') hne) hr hf
     (fun k hk => hm k (hmemR k hk))
   exact ⟨h1, h2, fun k hk x hx => h3 x (hm k hk x hx)⟩
+
+/-- **Frame of the shipped `ed25519_sc_reduce` on an operand.** When the cells of
+    `scrCells` are separated, the word at the address an effective-address operand `e`
+    denotes at entry, disjoint from the word range of every cell of `scrCells`, is
+    unchanged by the block. -/
+theorem scReduceShipped_read_frame_ea (sa : AState)
+    (hsep : Separated shippedBank sa.regs scrCells) (e : EA)
+    (hd : ∀ k ∈ scrCells, (cellRng shippedBank sa.regs k).Disj (eaRng sa 8 e)) :
+    read64 (runBlockA sa ed25519ScReduceShippedBlock).mem (eaVal sa e) =
+      read64 sa.mem (eaVal sa e) :=
+  footCheckFrom_frame_ea scr_footCheck sa
+    (fun k k' hk hk' hne => hsep k (scrCellB_mem k hk) k' (scrCellB_mem k' hk') hne) e
+    (fun k hk => hd k (scrCellB_mem k hk))
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FootprintDemo
