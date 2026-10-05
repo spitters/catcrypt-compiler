@@ -216,3 +216,9 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVDeadImm.lean  # Complet
 CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTV.lean  # Value translation validation of a body rewrite under `lsemFuelMemF`: proof module; hand-built Lcmd/Linstr terms are proof subjects, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVTwoAddr.lean  # Completeness of the value checker for every route of two-address legalisation: proof module; hand-built Lcmd/Linstr terms are proof subjects, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/TwoAddrLegalize.lean  # Two-address legalisation of the owned `Lprog` before printing: compiler pass; example programs are proof subjects, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LprogIsa.lean  # Isa record and generic Lprog interpreter (semantics), no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LprogIsaSubset.lean  # shared Lprog step lemmas for the Isa instances (semantics), no emit artifact
+CatCrypt/Crypto/SecureCompilation/ARMBackend/ArmIsa.lean  # armIsa instance, selection and Asm lemma; armAndBody is the Asm-lemma fixture (mpn_and_n loop body stated by hand as the instance of arm_asm_mem), no emit artifact; the shipped route goes through the export over Isa
+CatCrypt/Crypto/SecureCompilation/RISCVBackend/RvIsa.lean  # rvIsa instance, selection and Asm lemma; rvAndBody is the Asm-lemma fixture (instance of rv_asm_mem), no emit artifact; the shipped route goes through the export over Isa
+CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertComplete.lean  # completeness of the export certificate checkers; the Lprog terms are fragment witnesses, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/OptBlocksMemF.lean  # correctness of the Lprog scheduler at stepMemF (pass proof), no emit artifact
