@@ -482,6 +482,100 @@ theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
   · simp [h]
   · rfl
 
+/-- The constant the oracle `shiftImm` gives for the index name of a
+    register-indexed address of the virtual body; `none` on every other operand. -/
+def idxConst (shiftImm : ShiftImmOracle) : LOperand → Option Nat
+  | .arrIdx _ idx _ => shiftImm idx
+  | _ => none
+
+/-- The displacement store of a spilled value at a spilled index of known value.
+
+    For a register-allocated address `arrIdx b i 8` whose index `i` is a spill
+    slot, a spilled value `val` and an index constant `c < 2^28`, the store is
+    `MOV:64 R15, val; STORE:64 mem.<b'>.<8c>, R15`, where `b'` is `b`, or `R14`
+    after the reload `MOV:64 R14, b` when `b` is a spill slot. `none` in every
+    other case. The index is not loaded and the base register is not written
+    after its reload. -/
+def constIdxStore? (k : Option Nat) (addr val : LOperand) : Option (List LinstrR) :=
+  match addr with
+  | .arrIdx b i scale =>
+      -- The spill tests come before the constant, so a store that fails them
+      -- reduces without evaluating the oracle.
+      if sibNameSpill i && val.isSpill && scale == 8 then
+        match k with
+        | some c =>
+            if c < 2 ^ 28 then
+              let basePre : List LinstrR :=
+                if sibNameSpill b then [.Lopn [.reg reloadScratch2] "MOV:64" [.reg b]] else []
+              let b' : String := if sibNameSpill b then reloadScratch2 else b
+              some (basePre ++
+                [.Lopn [.reg reloadScratch] "MOV:64" [val],
+                 .Lopn [.reg (memName b' (8 * c))] "STORE:64" [.reg reloadScratch]])
+            else none
+        | none => none
+      else none
+  | _ => none
+
+/-- `legalizeMemStore` with an optional index constant `k`: the displacement
+    store `constIdxStore? k addr val` when it is defined, and
+    `legalizeMemStore dArr addr val opn mov` otherwise. -/
+def legalizeMemStoreK (k : Option Nat) (dArr addr val : LOperand) (opn : String)
+    (mov : String := "MOV") : List LinstrR :=
+  match constIdxStore? k addr val with
+  | some l => l
+  | none => legalizeMemStore dArr addr val opn mov
+
+/-- Without an index constant there is no displacement store. -/
+@[simp] theorem constIdxStore?_none (addr val : LOperand) :
+    constIdxStore? none addr val = none := by
+  unfold constIdxStore?
+  split
+  · split <;> rfl
+  · rfl
+
+/-- A register value has no displacement store. -/
+theorem constIdxStore?_of_not_spill (k : Option Nat) (addr : LOperand) {val : LOperand}
+    (h : val.isSpill = false) : constIdxStore? k addr val = none := by
+  unfold constIdxStore?
+  split
+  · simp [h]
+  · rfl
+
+/-- An address whose index is not a spill slot has no displacement store. -/
+theorem constIdxStore?_of_idx (k : Option Nat) (b i : String) (scale : Nat) (val : LOperand)
+    (h : sibNameSpill i = false) : constIdxStore? k (.arrIdx b i scale) val = none := by
+  simp [constIdxStore?, h]
+
+/-- An address that is not register-indexed has no displacement store. -/
+theorem constIdxStore?_of_not_arrIdx (k : Option Nat) {addr : LOperand} (val : LOperand)
+    (h : ∀ b i scale, addr ≠ .arrIdx b i scale) : constIdxStore? k addr val = none := by
+  unfold constIdxStore?
+  split
+  · exact absurd rfl (h _ _ _)
+  · rfl
+
+/-- Where there is no displacement store, `legalizeMemStoreK` is `legalizeMemStore`. -/
+theorem legalizeMemStoreK_of_none {k : Option Nat} {addr val : LOperand} (dArr : LOperand)
+    (opn mov : String) (h : constIdxStore? k addr val = none) :
+    legalizeMemStoreK k dArr addr val opn mov = legalizeMemStore dArr addr val opn mov := by
+  simp [legalizeMemStoreK, h]
+
+/-- Without an index constant, `legalizeMemStoreK` is `legalizeMemStore`. -/
+@[simp] theorem legalizeMemStoreK_none (dArr addr val : LOperand) (opn mov : String) :
+    legalizeMemStoreK none dArr addr val opn mov = legalizeMemStore dArr addr val opn mov :=
+  legalizeMemStoreK_of_none dArr opn mov (constIdxStore?_none addr val)
+
+/-- **The displacement store.** A spilled value stored at a spilled index of
+    constant `c < 2^28` under an 8-byte stride through a register base `b` is
+    `MOV:64 R15, val; STORE:64 mem.<b>.<8c>, R15`. -/
+theorem legalizeMemStoreK_const {c : Nat} {b i : String} {val : LOperand} (dArr : LOperand)
+    (opn mov : String) (hb : sibNameSpill b = false) (hi : sibNameSpill i = true)
+    (hv : val.isSpill = true) (hc : c < 2 ^ 28) :
+    legalizeMemStoreK (some c) dArr (.arrIdx b i 8) val opn mov
+      = [.Lopn [.reg reloadScratch] "MOV:64" [val],
+         .Lopn [.reg (memName b (8 * c))] "STORE:64" [.reg reloadScratch]] := by
+  simp [legalizeMemStoreK, constIdxStore?, hb, hi, hv, hc]
+
 
 /-- A `physBody` variant that:
 
@@ -662,7 +756,7 @@ theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
                     -- ABI register holding it has been clobbered by the body.
                     let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
                     (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
-                    (legalizeMemStore (rmap d') addr' (rmap val) opn'
+                    (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                        (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                   else
                     [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
@@ -857,7 +951,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
                   -- register holding it has been clobbered by the body.
                   let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
                   (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
-                  (legalizeMemStore (rmap d') addr' (rmap val) opn'
+                  (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                      (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                 else
                   [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
@@ -1024,7 +1118,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
                 if isMemStore opn' then
                   let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
                   (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
-                  (legalizeMemStore (rmap d') addr' (rmap val) opn'
+                  (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                      (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                 else
                   [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]

@@ -127,7 +127,7 @@ def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOp
             if isMemStore opn' then
               let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
               (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
-              (legalizeMemStore (rmap d') addr' (rmap val) opn'
+              (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                  (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
             else
               [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]

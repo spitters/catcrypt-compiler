@@ -507,6 +507,21 @@ theorem legalizeMemStore_direct {dArr addr val : LOperand} {opn mov : String}
          | (exfalso; simp_all; done)
          | simp [lcmdRDirect, linstrRDirect, hA, hv])
 
+/-- On a non-indexed address `legalizeMemStoreK` is `legalizeMemStore`, whatever
+    the index constant. -/
+theorem legalizeMemStoreK_of_direct (k : Option Nat) (dArr : LOperand) {addr : LOperand}
+    (val : LOperand) (opn mov : String) (ha : isIndexed addr = false) :
+    legalizeMemStoreK k dArr addr val opn mov = legalizeMemStore dArr addr val opn mov :=
+  legalizeMemStoreK_of_none dArr opn mov
+    (constIdxStore?_of_not_arrIdx k val (by rintro b i s rfl; simp [isIndexed] at ha))
+
+theorem legalizeMemStoreK_direct {k : Option Nat} {dArr addr val : LOperand} {opn mov : String}
+    (hA : isIndexed dArr = false) (ha : isIndexed addr = false)
+    (hv : isIndexed val = false) :
+    lcmdRDirect (legalizeMemStoreK k dArr addr val opn mov) = true := by
+  rw [legalizeMemStoreK_of_direct k dArr val opn mov ha]
+  exact legalizeMemStore_direct hA ha hv
+
 theorem lowerTwoAddr_direct {dst s0 s1 : LOperand} {opn mov : String}
     (hd : isIndexed dst = false) (h0 : isIndexed s0 = false)
     (h1 : isIndexed s1 = false) :
@@ -640,7 +655,7 @@ theorem physBodyWithStores_lcmdDirect
           · rw [reloadMemrefBase_of_direct _ ((hr _).trans (hS2 _ (by simp)))]
             simp only [List.map_nil, List.nil_append]
             exact lcmdDirect_map (fun _ => rfl)
-              (legalizeMemStore_direct ((hr _).trans (hD2 _ (by simp)))
+              (legalizeMemStoreK_direct ((hr _).trans (hD2 _ (by simp)))
                 ((hr _).trans (hS2 _ (by simp))) ((hr _).trans (hS2 _ (by simp))))
           · simp only [lcmdDirect, List.all_cons, List.all_nil, Bool.and_true]
             exact linstrRDirect_Lopn_mk
