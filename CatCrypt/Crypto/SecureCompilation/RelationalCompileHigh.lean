@@ -16,9 +16,9 @@ that engine assembles "the emitted `Com jasminDialect` program denotes its spec"
 proofs over the *low* register-file substrate (`Sha2Emit.emitOp`, the
 slot/input `View`, `JasminBinOp`), this engine assembles "the emitted
 `Com fieldDialect` program denotes its spec" proofs over the **high algebraic
-substrate** — the prime-field / extension-tower op set
-(`FieldDialect.FieldOp`: `fAdd`/`fMul`/`fInv`/`ext2Mul`/…), whose denotation is
-the abstract field value (`ZMod p`, `Fp2Val p`, …).
+substrate** — the prime-field op set
+(`FieldDialect.FieldOp`: `fAdd`/`fMul`/`fInv`/…), whose denotation is
+the abstract field value (`ZMod p`).
 
 The motivation (the architecture goal): rather than hand-authoring a kernel as a
 `Com jasminDialect` register schedule, an author writes the kernel as an

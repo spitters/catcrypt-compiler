@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontCIOS
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-!
@@ -17,13 +17,15 @@ registers. A value of `fp P.p` is carried by the limbs of its Montgomery form
 (`FieldLimbs.Mont.enc`); values of other types are carried by `n` zero limbs. The blocks
 are the generic-`n` blocks of `FieldLimbs.Mont`, so the lowering and its denotation
 theorem hold for every limb count, among them `n = 4` (P-256) and `n = 6` (P-384).
+The product block is `Mont.mulBlkRoute`: the interleaved block `Mont.mulBlkI` at six or
+more limbs and `Mont.mulBlk` below; both satisfy the statement of `Mont.mulBlk_denote`.
 
 | source op at `P.p` | target block |
 |---|---|
 | `fAdd` | `Mont.addBlk xs ys` |
 | `fSub` | `Mont.subBlk xs ys` |
 | `fNeg` | `Mont.negBlk xs` |
-| `fMul` | `Mont.mulBlk xs ys` |
+| `fMul` | `Mont.mulBlkRoute xs ys` |
 | `fInv` | `Mont.invBlk xs`, the Montgomery power `x^(p-2)` |
 | `fieldDouble` | `Mont.addBlk xs xs` |
 | `fieldSquare` | `Mont.sqrBlk xs` |
@@ -178,15 +180,13 @@ def lowerOpL : (op : fieldDialect.Op) →
   | .fAdd q => if q = P.p then addBlk P (opX n _) (opY n []) else constBlk n 0
   | .fSub q => if q = P.p then subBlk P (opX n _) (opY n []) else constBlk n 0
   | .fNeg q => if q = P.p then negBlk P (opX n []) else constBlk n 0
-  | .fMul q => if q = P.p then mulBlk P (opX n _) (opY n []) else constBlk n 0
+  | .fMul q => if q = P.p then mulBlkRoute P (opX n _) (opY n []) else constBlk n 0
   | .fInv q => if q = P.p then invBlk P (opX n []) else constBlk n 0
   | .fConst q c => if h : q = P.p then constBlk n ((cast (congrArg ZMod h) c * R P).val)
     else constBlk n 0
   | .fCopy q => if q = P.p then retN n (opX n []) else constBlk n 0
   | .fieldDouble q => if q = P.p then addBlk P (opX n []) (opX n []) else constBlk n 0
   | .fieldSquare q => if q = P.p then sqrBlk P (opX n []) else constBlk n 0
-  | .ext2Mul _ | .ext2Add _ | .ext2Sub _ | .frobenius2 _ | .ext6Mul _ _ | .ext6Add _
-  | .ext6Sub _ | .ext12Mul _ _ | .ext12Add _ | .ext12Sub _ => constBlk n 0
 
 /-- The multi-value lowering `fieldDialect → jasminDialect` over `n` limbs in
     Montgomery form. -/
@@ -220,7 +220,7 @@ theorem blockSquareV :
     show (lowerOpL P (.fMul P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fMulF a b)
     rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
-    exact mulBlk_denote P _ _ _ (opX_length _ _) (opY_length _ _) a b (nv_encX P a _)
+    exact mulBlkRoute_denote P _ _ _ (opX_length _ _) (opY_length _ _) a b (nv_encX P a _)
       (nv_encY P _ b _)
   · obtain ⟨⟩ := vals
     show (lowerOpL P (.fConst P.p c)).denote .nil = encL P (t := .fp P.p) (fConstF c)

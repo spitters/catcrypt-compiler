@@ -376,6 +376,110 @@ theorem uncompute_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
       try rw [comLen_strengthenCom_nil]
       omega
 
+/-! ## 4b. Leakage
+
+`uncompute` deletes bindings and renames the survivors, so the events of `uncompute c`
+are a sublist of the events of `c`: the events of the deleted bindings are dropped and
+those of the kept bindings are unchanged. The deleted bindings are chosen from the
+syntax of `c` alone and the number of events of an operation does not depend on its
+argument values, so equal events of `c` at two valuations give equal events of
+`uncompute c` there. -/
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+variable {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+
+omit [DialectDenote d] in
+/-- The number of events of an expression does not depend on the valuation. -/
+theorem Expr.ctLeak_length_eq (L : LeakModel d) {Γ : Ctxt d} {t : d.Ty}
+    (e : Expr d Γ t) (V₁ V₂ : Ctxt.Valuation Γ) :
+    (Expr.ctLeak L e V₁).length = (Expr.ctLeak L e V₂).length := by
+  unfold Expr.ctLeak opLeak
+  split <;> rfl
+
+omit [DialectDenote d] in
+/-- A strengthened expression emits the events of the original at the slot-inserted
+    valuation. -/
+theorem strengthenExpr_ctLeak (L : LeakModel d) {Γ : Ctxt d} {t u : d.Ty} (x : ⟦t⟧)
+    (Δ : Ctxt d) (e : Expr d (Δ ++ t :: Γ) u) (h : argsReadSlot Δ e.args = false)
+    (V : Ctxt.Valuation (Δ ++ Γ)) :
+    Expr.ctLeak L (strengthenExpr Δ e h) V = Expr.ctLeak L e (valInsert x Δ V) := by
+  simp only [Expr.ctLeak, strengthenExpr]
+  rw [strengthenArgs_lookup x Δ e.args h V]
+
+/-- A strengthened program emits the events of the original at the slot-inserted
+    valuation, for every value `x` of the removed slot. -/
+theorem strengthenCom_ctLeak (L : LeakModel d) {Γ : Ctxt d} {t : d.Ty} (x : ⟦t⟧) :
+    ∀ (Δ : Ctxt d) {u : d.Ty} (c : Com d (Δ ++ t :: Γ) u)
+      (h : comReadsSlot Δ c = false) (V : Ctxt.Valuation (Δ ++ Γ)),
+      Com.ctLeak L (strengthenCom Δ c h) V = Com.ctLeak L c (valInsert x Δ V)
+  | Δ, _, .ret v, h, V => by
+      simp only [strengthenCom, Com.ctLeak]
+  | Δ, _, .var e body, h, V => by
+      simp only [comReadsSlot, Bool.or_eq_false_iff] at h
+      simp only [strengthenCom, Com.ctLeak]
+      rw [strengthenExpr_ctLeak L x Δ e h.1 V,
+        strengthenCom_ctLeak L x (_ :: Δ) body h.2
+          (V.extend ((strengthenExpr Δ e h.1).denote V)),
+        strengthenExpr_denote x Δ e h.1 V]
+      rfl
+  termination_by Δ u c => comLen c
+  decreasing_by simp_wf
+
+/-- **Leakage of uncompute.** For every leakage model, the events of `uncompute c` are a
+    sublist of the events of `c` at every valuation. -/
+theorem uncompute_ctLeak_sublist (L : LeakModel d) {Γ : Ctxt d} {t : d.Ty} :
+    ∀ (c : Com d Γ t) (V : Ctxt.Valuation Γ),
+      (Com.ctLeak L (uncompute c) V).Sublist (Com.ctLeak L c V)
+  | .ret v, V => by rw [uncompute]
+  | .var e body, V => by
+      rw [uncompute]
+      split
+      · next h =>
+          refine (uncompute_ctLeak_sublist L (strengthenCom [] body h) V).trans ?_
+          rw [strengthenCom_ctLeak L (e.denote V) [] body h V, valInsert_nil, Com.ctLeak]
+          exact List.sublist_append_right _ _
+      · next h =>
+          simp only [Com.ctLeak]
+          exact (uncompute_ctLeak_sublist L body (V.extend (e.denote V))).append_left _
+  termination_by c => comLen c
+  decreasing_by
+    all_goals
+      simp only [comLen]
+      try rw [comLen_strengthenCom_nil]
+      omega
+
+/-- **Leakage of uncompute.** For every leakage model, equal events of `c` at two
+    valuations give equal events of `uncompute c` there. -/
+theorem uncompute_ctLeak_eq (L : LeakModel d) {Γ : Ctxt d} {t : d.Ty} :
+    ∀ (c : Com d Γ t) (V₁ V₂ : Ctxt.Valuation Γ),
+      Com.ctLeak L c V₁ = Com.ctLeak L c V₂ →
+      Com.ctLeak L (uncompute c) V₁ = Com.ctLeak L (uncompute c) V₂
+  | .ret v, V₁, V₂, _ => by rw [uncompute]; rfl
+  | .var e body, V₁, V₂, hc => by
+      simp only [Com.ctLeak] at hc
+      obtain ⟨hE, hB⟩ := List.append_inj hc (Expr.ctLeak_length_eq L e V₁ V₂)
+      rw [uncompute]
+      split
+      · next h =>
+          refine uncompute_ctLeak_eq L (strengthenCom [] body h) V₁ V₂ ?_
+          rw [strengthenCom_ctLeak L (e.denote V₁) [] body h V₁,
+            strengthenCom_ctLeak L (e.denote V₂) [] body h V₂, valInsert_nil, valInsert_nil]
+          exact hB
+      · next h =>
+          simp only [Com.ctLeak]
+          rw [uncompute_ctLeak_eq L body _ _ hB, hE]
+  termination_by c => comLen c
+  decreasing_by
+    all_goals
+      simp only [comLen]
+      try rw [comLen_strengthenCom_nil]
+      omega
+
+end Leak
+
 /-! ## 5. The pass is binder-non-increasing
 
 `uncompute` only ever deletes binders (and reindexes survivors, which preserves

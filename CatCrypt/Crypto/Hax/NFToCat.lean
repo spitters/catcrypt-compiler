@@ -14,8 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 # The `u64` fragment of `NFProg nfDialect` in `catCryptDialect`
 
 `nfToCat` translates a program of `NFProg nfDialect` over the `u64` table into a program of
-`NFProg catCryptDialect`, which `NFProgToComL.nfToComL` lowers to `ComL`. The types map by
-`catTy`: a `64`-bit word and an integer to `sword 64`, an integer array of `n` elements to
+`NFProg catCryptDialect`, which `NFProgCatToJasmin.nfToComLVia` lowers to `ComL`. The types
+map by `catTy`: a `64`-bit word and an integer to `sword 64`, an integer array of `n` elements to
 `memref n`. A value of the source and a value of the target are related by `VRel`: an integer
 is the natural number of the word, an array element by element. Each variable of the source
 has a reading `Rd`: a variable of the target, or a literal in `[0, 2^64)`. A literal has no

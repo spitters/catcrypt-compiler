@@ -94,13 +94,28 @@ theorem permComAt_params3_denote (i : Fin 3) (x : Fin 3 → ZMod r) :
     (permComAt params3 i).denote (inVal x) = permute3 x i := by
   rw [permComAt_denote params3 rfl i, inputs_inVal]
 
+/-- `GoodAMC r` coverage implies `GoodV` coverage at `bn254r`. -/
+private theorem covered_goodV : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t), BlockLoweringCPS.CoveredCom (GoodAMC r) c →
+      BlockLoweringCPS.CoveredCom (GoodV bn254r) c
+  | _, _, .ret _, _ => trivial
+  | _, _, .var _ body, hc =>
+    ⟨by rcases hc.1 with h | h | h | h | h | h
+        · exact Or.inl (Or.inl h)
+        · exact Or.inl (Or.inr (Or.inl h))
+        · exact Or.inl (Or.inr (Or.inr (Or.inl h)))
+        · exact Or.inl (Or.inr (Or.inr (Or.inr h)))
+        · exact Or.inr (Or.inl h)
+        · exact Or.inr (Or.inr (Or.inl h)),
+      covered_goodV body hc.2⟩
+
 /-- **Correctness of the lowered permutation for all inputs.** The lowered program,
     run on the limbs of the Montgomery forms of `x 0`, `x 1`, `x 2`, returns the limbs
     of the Montgomery form of lane `i` of `permute3 x`. -/
 theorem permJasminAt_denote (i : Fin 3) (x : Fin 3 → ZMod r) :
     (permJasminAt i).denote (limbVal x) = enc bn254r (permute3 x i) := by
-  have h := fieldToJasminLimbsMont4_denote bn254r (permComAt params3 i)
-    (permComAt_covered params3 i) (inVal x)
+  have h := fieldToJasminLimbsMont4_denoteV bn254r (permComAt params3 i)
+    (covered_goodV _ (permComAt_covered params3 i)) (inVal x)
   rw [flatVal_inVal, permComAt_params3_denote] at h
   exact h.trans (encL_fp bn254r _)
 

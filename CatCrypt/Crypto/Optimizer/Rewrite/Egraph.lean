@@ -70,34 +70,10 @@ namespace CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
-/-! ## 0. CT predicate for `jasminDialect` `Com`
+/-! ## 0. Leakage of `jasminDialect` expressions
 
-`opCtSafe` is `true` on every op, so `ctSafeComJ` is `true` on every program
-(`ctSafeComJ_true`) and a statement `ctSafeComJ (pass c) = ctSafeComJ c` carries no
-information about leakage. The leakage of a program is `ComLevelCheck.Com.ctLeak` under a
-leakage model; a `stackLoad` or `stackStore` emits the address it reads or writes under
-such a model. -/
-
-/-- The per-op predicate under `ctSafeComJ`: `true` on every op. -/
-def opCtSafe : JasminOp → Bool := fun _ => true
-
-/-- A Jasmin `Expr` is CT-safe iff its op is (always, here). -/
-def ctSafeExprJ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (e : Expr jasminDialect Γ t) : Bool := opCtSafe e.op
-
-/-- A Jasmin `Com` is CT-safe iff every let-bound expression is. -/
-def ctSafeComJ {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    Com jasminDialect Γ t → Bool
-  | .ret _ => true
-  | .var e body => ctSafeExprJ e && ctSafeComJ body
-
-/-- Every Jasmin `Com` is CT-safe (no conditional op exists). -/
-theorem ctSafeComJ_true {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    ∀ c : Com jasminDialect Γ t, ctSafeComJ c = true
-  | .ret _ => rfl
-  | .var _ body => by
-      simp only [ctSafeComJ, ctSafeExprJ, opCtSafe, Bool.true_and]
-      exact ctSafeComJ_true body
+The leakage of a program is `ComLevelCheck.Com.ctLeak` under a leakage model; a
+`stackLoad` or `stackStore` emits the address it reads or writes under such a model. -/
 
 section Leak
 

@@ -32,8 +32,7 @@ context's, and the reductions from a word, which have no VeIR operation.
 Ops that are not one operation lower through `ToVeirOp.expand?`: copies and
 tensor reinterprets are aliases, `montReduce` is `mod_arith.mont_reduce` of the
 stored word and a zero high word, `mulHi` and the carry-chain adds are the
-`arith` sequences of the `catCryptDialect` lowering, and `frobenius2 p` is
-`field.powui` by `p`.
+`arith` sequences of the `catCryptDialect` lowering.
 
 ## Main definitions
 
@@ -364,15 +363,15 @@ def FieldTy.checkIn (pc : AlgebraicPrintCtx) : FieldTy → Except String Unit
 /-- The VeIR op-code of a `FieldOp` printed as one operation; the ops that lower
     through an expansion map to `catcrypt.unknown`. -/
 def FieldOp.toVeirOpCode : FieldOp → Veir.OpCode
-  | .fAdd _ | .ext2Add _ | .ext6Add _ | .ext12Add _ => .field .add
-  | .fSub _ | .ext2Sub _ | .ext6Sub _ | .ext12Sub _ => .field .sub
-  | .fMul _ | .ext2Mul _ | .ext6Mul _ _ | .ext12Mul _ _ => .field .mul
+  | .fAdd _ => .field .add
+  | .fSub _ => .field .sub
+  | .fMul _ => .field .mul
   | .fNeg _ => .field .negate
   | .fInv _ => .field .inverse
   | .fConst _ _ => .field .constant
   | .fieldDouble _ => .field .double
   | .fieldSquare _ => .field .square
-  | .fCopy _ | .frobenius2 _ => .catcrypt .unknown
+  | .fCopy _ => .catcrypt .unknown
 
 /-- The properties of the operation of a `FieldOp`: the value `c.val : iW` of
     `field.constant`, and the default properties otherwise. -/
@@ -383,37 +382,16 @@ def FieldOp.propsIn (pc : AlgebraicPrintCtx) (o : FieldOp) :
       ({ value := .integerAttr (intAttr c.val (pc.width p)) } : Veir.FieldConstantProperties)
   | _ => default
 
-/-- The expansions of `fieldDialect`: `fCopy` is an alias, and `frobenius2 p` is
-    `field.powui` by the exponent `p`, an `arith.constant` of the storage width
-    (`powui` reads the exponent as unsigned). -/
-def FieldOp.expandIn (pc : AlgebraicPrintCtx) : FieldOp → Option (VeirExpansion Veir.OpCode)
+/-- The expansions of `fieldDialect`: `fCopy` is an alias. -/
+def FieldOp.expandIn (_pc : AlgebraicPrintCtx) : FieldOp → Option (VeirExpansion Veir.OpCode)
   | .fCopy _ => some { steps := [], value := .arg 0 }
-  | .frobenius2 p =>
-      let w := pc.width p
-      some
-        { steps :=
-            [ { op := .arith .constant,
-                props := ({ value := intAttr p w } : Veir.ArithConstantProperties),
-                operands := [], results := [some (intTy w)] },
-              { op := .field .powui, props := ({ unroll := none } : Veir.FieldPowUIProperties),
-                operands := [.arg 0, .res 0 0], results := [none] } ]
-          value := .res 1 0 }
   | _ => none
 
-/-- The side conditions of a `FieldOp` under the print context: the modulus fits the
-    width, a tower op has a tower over its modulus, and an `Fp6`/`Fp12` multiply
-    carries the context's `ξ₀`. -/
+/-- The side condition of a `FieldOp` under the print context: the modulus fits the
+    width. -/
 def FieldOp.checkIn (pc : AlgebraicPrintCtx) : FieldOp → Except String Unit
   | .fAdd p | .fSub p | .fNeg p | .fMul p | .fInv p | .fConst p _ | .fCopy p
-  | .fieldDouble p | .fieldSquare p | .ext2Mul p | .ext2Add p | .ext2Sub p
-  | .frobenius2 p => pc.checkModulus p
-  | .ext6Add p | .ext6Sub p | .ext12Add p | .ext12Sub p => do
-      pc.checkModulus p
-      pc.checkTower p
-  | .ext6Mul p ξ0 | .ext12Mul p ξ0 => do
-      pc.checkModulus p
-      require (pc.towerXi0 p == some ξ0.val)
-        s!"the multiply carries ξ₀ = {ξ0.val}, the print context {pc.towerXi0 p}"
+  | .fieldDouble p | .fieldSquare p => pc.checkModulus p
 
 /-- The lowering of `fieldDialect` under a print context. -/
 @[reducible] def fieldToVeirOp (pc : AlgebraicPrintCtx) : ToVeirOp fieldDialect where

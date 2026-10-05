@@ -417,8 +417,9 @@ theorem lsemStepN_setLpc (i : LinstrR) (s : LstateN) (p : Nat) :
   have he : ∀ w o, evalOperandN (setLpcN s p) w o = evalOperandN s w o :=
     fun w o => by cases o <;> rfl
   have hg : ∀ r w, (setLpcN s p).getW r w = s.getW r w := fun _ _ => rfl
-  unfold lsemStepN
-  split <;> (try simp only [hr, he, hg]) <;> (repeat' split) <;> rfl
+  unfold lsemStepN immFirstN
+  split <;> (try simp only [hr, he, hg]) <;> (repeat' split) <;>
+    first | rfl | (rw [Option.map_map]; rfl)
 
 theorem lsemStepSh_setLpc (i : LinstrR) (s : LstateN) (p : Nat) :
     lsemStepSh i (setLpcN s p) = (lsemStepSh i s).map (fun t => setLpcN t (p + 1)) := by

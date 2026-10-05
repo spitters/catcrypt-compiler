@@ -368,12 +368,25 @@ theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
     JasminLprogExport.stripWidthTag (JasminLprogExport.withWidthTag w "NEG") = "NEG" := by
   unfold JasminLprogExport.withWidthTag; split <;> decide +kernel
 
+/-- The two-source operation `opn d, [imm n, b]` with an immediate first source: the data
+    width is the width of the mnemonic's tag (`widthFromTag`), as for the immediate `MOV`;
+    `b` is evaluated at that width, the operation is applied to the literal `n` at that
+    width and `b`, and the result is written to `dst`, advancing the pc. -/
+def immFirstN (s : LstateN) (dst opn : String) (n : Nat) (b : LOperand) : Option LstateN :=
+  match evalOperandN s (widthFromTag opn) b with
+  | some vb =>
+      (applyOpnN (widthFromTag opn) (stripWidthTag opn) [BitVec.ofNat _ n, vb]).map
+        (fun v => (s.setReg dst v).nextPc)
+  | none => none
+
 /-- Width-aware single-step linear semantics, faithful to Coq `eval_instr` on the
     in-scope straight-line cases:
 
     * `Lopn [.reg dst] opn [a, b]` with `stripWidthTag opn ∈ {ADD,…,ANDN}` —
       read the data width `wₐ` from `a`'s store tag, evaluate `b` at `wₐ`, apply
-      the binop, write `dst` at width `wₐ`, advance pc. (`regArith`.)
+      the binop, write `dst` at width `wₐ`, advance pc. (`regArith`.) With an
+      immediate first source `a = .imm n` the width is that of the mnemonic's tag
+      (`immFirstN`).
     * `Lopn [.reg dst] opn [c, a, b]` with `stripWidthTag opn = "CMOV"` —
       read the cond at width 1 from `c`, the data width `wₐ` from `a`'s store
       tag, evaluate `b` at `wₐ`, write `selectW cond a b` to `dst` at width `wₐ`,
@@ -429,7 +442,10 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
               | some v => some ((s.setReg dst v).nextPc)
               | none => none
           | none => none
-      | none => none
+      | none =>
+          match a with
+          | .imm n => immFirstN s dst opn n b
+          | _ => none
   | .Lopn [.reg dst] opn [.imm n] =>
       -- `regConst` image: the immediate-MOV. The data width is recovered from the
       -- width tag (`widthFromTag`), the only width information the nullary const
@@ -483,6 +499,10 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
   | .Lret => none
   | .LstoreLabel _ _ => none
   | .Lsyscall _ => none
+
+/-- The two-source operation with an immediate first source steps by `immFirstN`. -/
+theorem lsemStepN_immFirst (s : LstateN) (dst opn : String) (n : Nat) (b : LOperand) :
+    lsemStepN (.Lopn [.reg dst] opn [.imm n, b]) s = immFirstN s dst opn n b := rfl
 
 /-- `getW r w = some v` exactly pins the store tag at `r` to `⟨w, v⟩`. The bridge
     between the expected-width read `getW` and the raw width-tagged cell, used to

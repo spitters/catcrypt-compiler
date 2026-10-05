@@ -43,9 +43,8 @@ agree exactly when the count is below the word width, which is the side conditio
   second source to be an `.imm`.
 * `.neg dst` has no lsem image: `applyOpnN` carries no `NEG` (nor `NOT`) arm and
   no layer of the `lsemStepMem → lsemStepCast → lsemStepMC → lsemStepSh →
-  lsemStepN` chain has a structured unary-negate recognizer. `applyOpnN`'s binop
-  arm reads source 0 through `readReg`, so `SUB [.imm 0, .reg dst]` is not
-  steppable either.
+  lsemStepN` chain has a structured unary-negate recognizer. `SUB [.imm 0, .reg dst]`
+  steps at `lsemStepN` (`lsemStepN_immFirst`, at width `widthFromTag`).
 * `.storeMem base off (.imm n)` has no lsem image: `storeCStruct?` matches only
   `Lopn [.arr base off] "MOVQ" [.reg src]` and the `.storeC` arm reads the source
   through `LstateN.getW`.

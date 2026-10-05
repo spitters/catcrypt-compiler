@@ -19,17 +19,16 @@ proven **denotation-preserving** and **CT-preserving**, mirroring
 `ModArithLowering`'s `lower_denote_preserved` / `lower_ctSafe_preserved`.
 
 A Field op lowers to a **schedule of ModArith ops** on the underlying `ZMod p`
-coefficients:
+coefficients: a prime-field `fMul`/`fAdd`/… lowers 1:1 to the corresponding ModArith
+`modMul`/`modAdd`/… (the prime-field leaves *are* the ModArith leaves).
 
-* a prime-field `fMul`/`fAdd`/… lowers 1:1 to the corresponding ModArith
-  `modMul`/`modAdd`/… (the prime-field leaves *are* the ModArith leaves);
-* an `ext2Mul` (`Fp2` Karatsuba) lowers to **three** ModArith multiplies plus
-  adds/subs: `(a+bu)(c+du) = (ac − bd) + (ad + bc)·u`.  (The three-mul Karatsuba
-  variant `v0 = ac`, `v1 = bd`, `v2 = (a+b)(c+d)`, `c1 = v2 − v0 − v1` is the
-  optimization pass attached at this level; the denotation is the same product.)
-* `ext6Mul`/`ext12Mul` compose: each `Fp2`-mul inside them lowers as above, so
-  the whole `Fp6`/`Fp12` multiply is a schedule of ModArith multiplies and
-  adds (`Fp6` = 6 `Fp2`-muls + the `mul_xi` twist; `Fp12` = 3 `Fp6`-muls + the
+The tower products (the `towerDialect` ops `mul .two`, `mul .six`, `mul .twelve` at
+`u² = −1`, denoting `ext2MulF`, `ext6MulF`, `ext12MulF`) have ModArith-leaf schedules:
+
+* the `Fp2` product is `(a+bu)(c+du) = (ac − bd) + (ad + bc)·u` over ModArith
+  multiplies and adds/subs;
+* the `Fp6` and `Fp12` products compose: each `Fp2`-mul inside them is the `Fp2`
+  schedule (`Fp6` = 6 `Fp2`-muls + the `mul_xi` twist; `Fp12` = 3 `Fp6`-muls + the
   `mul_by_v` twist).
 
 ## What is proven here
@@ -40,9 +39,10 @@ coefficients:
   the schedule's two coefficients equal the abstract `Fp2Val` product's
   coefficients.  Both sides denote through the *same* `ZMod p` ops, so it is a
   ring identity.
+* `fp6MulSchedule_denote`, `fp12MulSchedule_denote` — the same for the `Fp6` and
+  `Fp12` schedules.
 * `lower_denote_preserved` — the op-level identity-realisation statement
-  (mirrors `ModArithLowering`), plus the `Fp2`-mul Karatsuba realisation theorem
-  end-to-end.
+  (mirrors `ModArithLowering`).
 * `lower_ctSafe_preserved` — **CT preservation**: every Field op is CT
   (`FieldOp.ctSafe = true`) and its ModArith schedule is CT (every ModArith op
   is CT), so the lowering preserves CT unconditionally.
@@ -104,20 +104,13 @@ theorem fp2MulSchedule_denote_c1 {p : Nat} (x y : Fp2Val p) :
     (Fp2MulSchedule x y).c1 = (ext2MulF x y).c1 := rfl
 
 /-- **Denotation preservation, `Fp2` multiply (whole value).** The ModArith
-    Karatsuba schedule equals the abstract `Fp2Val` product — the end-to-end
-    Field→ModArith lowering correctness statement for `ext2Mul`. -/
+    schedule equals the abstract `Fp2Val` product, the denotation of the tower op
+    `mul .two` at `u² = −1` (`TowerDialect.mul_two_denote`). -/
 theorem fp2MulSchedule_denote {p : Nat} (x y : Fp2Val p) :
     Fp2MulSchedule x y = ext2MulF x y := by
   ext
   · exact fp2MulSchedule_denote_c0 x y
   · exact fp2MulSchedule_denote_c1 x y
-
-/-- **`ext2Mul` denotes to its ModArith schedule.** Bridges the Field op's
-    denotation to the lowered ModArith Karatsuba schedule — the op-level lowering
-    tie consumed by the whole-program fold. -/
-theorem ext2Mul_lowers_to_schedule {p : Nat} (x y : Fp2Val p) :
-    fieldDenote.denote (.ext2Mul p) (.cons x (.cons y .nil)) = Fp2MulSchedule x y :=
-  (fp2MulSchedule_denote x y).symm
 
 /-! ### `Fp6` / `Fp12` compose through the `Fp2` schedule
 
@@ -137,7 +130,7 @@ theorem fp6_compose_denote {p : Nat} (ξ0 : ZMod p) (x y : Fp6Val p) :
 /-- The **explicit `Fp6` schoolbook schedule** built from the lowered `Fp2`
     schedule (`Fp2MulSchedule`), `Fp2`-add/sub, and the `mul_xi` twist —
     the `Fp6` Karatsuba/Toom optimization pass *expressed over the lowered
-    `Fp2` ops*.  This is the realisation the lowering emits for `ext6Mul`:
+    `Fp2` ops*, a realisation of `ext6MulF`:
     `c0 = a0 b0 + ξ(a1 b2 + a2 b1)`, `c1 = a0 b1 + a1 b0 + ξ(a2 b2)`,
     `c2 = a0 b2 + a1 b1 + a2 b0`, every product an `Fp2MulSchedule`. -/
 def Fp6MulSchedule {p : Nat} (ξ0 : ZMod p) (x y : Fp6Val p) : Fp6Val p :=
@@ -161,8 +154,7 @@ theorem fp6MulSchedule_denote {p : Nat} (ξ0 : ZMod p) (x y : Fp6Val p) :
 /-- The **explicit `Fp12` Karatsuba schedule** built from the lowered `Fp6`
     schedule (`Fp6MulSchedule`), `Fp6`-add, and the `mul_by_v` twist:
     `(a+bw)(c+dw) = (ac + v·bd) + (ad+bc)w`, every `Fp6`-product an
-    `Fp6MulSchedule`.  This is the realisation the lowering emits for `ext12Mul`
-    (the `GT` op). -/
+    `Fp6MulSchedule`, a realisation of `ext12MulF` (the `GT` product). -/
 def Fp12MulSchedule {p : Nat} (ξ0 : ZMod p) (x y : Fp12Val p) : Fp12Val p :=
   let ac := Fp6MulSchedule ξ0 x.c0 y.c0
   let bd := Fp6MulSchedule ξ0 x.c1 y.c1
@@ -184,9 +176,8 @@ theorem fp12_compose_denote {p : Nat} (ξ0 : ZMod p) (x y : Fp12Val p) :
 
 /-! ## 3. Op-level identity realisation (mirrors `ModArithLowering`)
 
-For the prime-field ops and the extension add/sub/frobenius the lowering is 1:1
-(the leaf is the same `ZMod p` op at ModArith), so the realised value is the op's
-own denotation. -/
+For the prime-field ops the lowering is 1:1 (the leaf is the same `ZMod p` op at
+ModArith), so the realised value is the op's own denotation. -/
 
 /-- The realised denotation of a Field op (identity realisation). -/
 @[reducible] def realise (op : FieldOp)
@@ -202,27 +193,14 @@ theorem lower_denote_preserved (op : FieldOp)
               (DialectSignature.sig (d := fieldDialect) op)) :
     realise op args = fieldDenote.denote op args := rfl
 
-/-- **Denotation preservation, specialised to `ext2Mul`.** The Field `ext2Mul`
-    realises (via its ModArith Karatsuba schedule) exactly the abstract `Fp2`
-    product. -/
-theorem lower_denote_ext2Mul {p : Nat} (x y : Fp2Val p)
-    (args : HVector (fun (t : FieldTy) => ⟦t⟧)
-              (DialectSignature.sig (d := fieldDialect) (.ext2Mul p)))
-    (hx : args.head = x) (hy : args.tail.head = y) :
-    realise (.ext2Mul p) args = Fp2MulSchedule x y := by
-  subst hx hy
-  exact (fp2MulSchedule_denote _ _)
-
 /-! ## 4. CT preservation
 
 Every Field op is CT (`FieldOp.ctSafe = true`), and its ModArith schedule is CT
-(every ModArith op is CT, `ModArithOp.ctSafe = true`): the Karatsuba schedule is
-a fixed sequence of `modMul`/`modAdd`/`modSub`, no data-dependent branch or
+(every ModArith op is CT, `ModArithOp.ctSafe = true`): no data-dependent branch or
 index.  So the lowering preserves CT unconditionally. -/
 
-/-- Is the lowered ModArith schedule of a Field op CT-safe?  Both the prime-field
-    1:1 lowering and the extension Karatsuba schedule are sequences of CT ModArith
-    ops, hence CT by construction. -/
+/-- Is the lowered ModArith schedule of a Field op CT-safe?  The prime-field 1:1
+    lowering is a sequence of CT ModArith ops, hence CT by construction. -/
 def scheduleCtSafe (_ : FieldOp) : Bool := true
 
 @[simp] theorem scheduleCtSafe_all (op : FieldOp) : scheduleCtSafe op = true := rfl
@@ -241,16 +219,10 @@ theorem lower_ctSafeCom_preserved {Γ : Ctxt fieldDialect} {t : FieldTy}
     ctSafeCom c = true ∧ (∀ op : FieldOp, scheduleCtSafe op = true) :=
   ⟨ctSafeCom_all c, fun op => scheduleCtSafe_all op⟩
 
-/-! ## 5. Smoke test: the `Fp2` schedule matches the dialect denotation
+/-! ## 5. Smoke test: the `Fp2` schedule on a value
 
 On `a = 2 + 3u, b = 1 + u : Fp2Val 7` the schedule gives `(2·1 − 3·1, 2·1 + 3·1)
-= (−1, 5) = (6, 5) (mod 7)`, equal to the `ext2Mul` denotation. -/
-
-example :
-    Fp2MulSchedule (⟨2, 3⟩ : Fp2Val 7) ⟨1, 1⟩
-      = fieldDenote.denote (.ext2Mul 7)
-          (.cons (⟨2, 3⟩ : Fp2Val 7) (.cons (⟨1, 1⟩ : Fp2Val 7) .nil)) := by
-  rfl
+= (−1, 5) = (6, 5) (mod 7)`. -/
 
 example : Fp2MulSchedule (⟨2, 3⟩ : Fp2Val 7) ⟨1, 1⟩ = (⟨6, 5⟩ : Fp2Val 7) := by rfl
 

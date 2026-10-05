@@ -16,6 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 public import CatCrypt.Crypto.Optimizer.ComRangeFold
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -51,6 +52,9 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
   (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
   `Com`; `ownedComStage_denote`, `ownedComStage_outputs` — the stage's soundness for the
   returned value and for the last `nOut` binding values the ABI stores.
+* `flushRun`, `flushRun_pinned` — the segments of a straight-line run before a control
+  instruction; when the flags at its end may be read, its last full flag writer and
+  the instructions after it are singleton segments.
 * `optimizeLprogVerified` — the five passes with a semantic soundness theorem,
   and `optimizeVerifiedBody_stateStore` — the composed store-image preservation
   across those five passes.
@@ -179,8 +183,12 @@ control-flow instruction and each straight-line instruction outside the modeled
 fragment is its own singleton segment and each maximal run of modeled straight-line
 instructions is one segment; `optimizeBasicBlocks` applies the verified
 sub-pipeline to every straight-line segment, which is the identity on an unmodeled
-singleton, and leaves the control-flow segments verbatim. On a straight-line,
-all-modeled body this equals `optimizeVerifiedFundef`'s body transform. -/
+singleton, and leaves the control-flow segments verbatim. The store theorem of the
+passes does not cover the flags, so where a flag value at the end of a run may be
+read after it (a conditional branch, `LcmdFlags.flagsLive`), the run's last full flag
+writer and every instruction after it are singleton segments (`flushRun`). On a
+straight-line, all-modeled body this equals `optimizeVerifiedFundef`'s body
+transform. -/
 
 /-- An instruction is control flow — a label or a jump — rather than a
     straight-line word operation. `bodyIsStraightLine` is the negation of this
@@ -286,69 +294,112 @@ theorem bodyIsStraightLine_cons (i : Linstr) (rest : List Linstr) :
   unfold isCtlInstr
   cases i.li_i <;> rfl
 
-/-- The printed instruction reads a flag an earlier instruction set: a conditional
-    branch, a two-source conditional move, a two-source `ADCX`/`ADOX`/`ADCXHI`, `ADC`,
-    `SBB`, `RCL`, `RCR`, or a single-source `SET<cc>`. -/
-def readsPrevFlags (i : Linstr) : Bool :=
-  match i.li_i with
-  | .Lopn _ opn srcs =>
-      let b := stripWidthTag opn
-      ((b.startsWith "CMOV" || b == "ADCX" || b == "ADOX" || b == "ADCXHI") && srcs.length < 3)
-        || b == "ADC" || b == "SBB" || b == "RCL" || b == "RCR"
-        || (b.startsWith "SET" && srcs.length < 2)
-  | .Lcond _ _ => true
-  | _ => false
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags
+  (flagNeutral flagKill flagsLive flagHold)
 
-/-- The printed instruction writes no flag: a move, load, store, address computation or
-    `MULX`. Every other `Lopn` is counted as a possible flag writer. -/
-def flagNeutral (i : Linstr) : Bool :=
-  match i.li_i with
-  | .Lopn _ opn _ => ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX", "LOAD", "STORE",
-      "LOADSYM", "MULX", "MULXMEM", "LEA"].contains (stripWidthTag opn)
-  | _ => true
-
-/-- The printed instruction overwrites every flag a later reader of `readsPrevFlags` can
-    consume: the two-operand ALU class, `CMP`, `TEST`, `NEG`, the multiplies, the
-    three-source `CMOV` (printed after its own `test`) and the two-source `SET<cc>` (printed
-    after its own `cmp`). -/
-def flagKill (i : Linstr) : Bool :=
-  match i.li_i with
-  | .Lopn _ opn srcs =>
-      let b := stripWidthTag opn
-      ["ADD", "SUB", "AND", "OR", "XOR", "CMP", "TEST", "NEG", "MUL", "IMUL"].contains b
-        || (b.startsWith "CMOV" && srcs.length == 3) || (b.startsWith "SET" && srcs.length == 2)
-  | _ => false
-
-/-- The flags are live at the start of `l`: a flag reader comes before any instruction that
-    overwrites the flags and before the return. A control-flow instruction other than the
-    return counts as a reader. -/
-def flagsLive : List Linstr → Bool
-  | [] => false
+/-- The start of the suffix of a run that `flushRun` pins when the flags at its end are
+    live: the last instruction of `cur` that overwrites every flag (`flagKill`), or,
+    when `cur` has none, its first instruction that is not flag-neutral (the length of
+    `cur` when every instruction is flag-neutral). The instructions before it write no
+    flag the end of the run can observe. -/
+def pinStart : List Linstr → Nat
+  | [] => 0
   | i :: rest =>
-      if readsPrevFlags i then true
-      else if flagKill i then false
-      else match i.li_i with
-        | .Lopn _ _ _ => flagsLive rest
-        | .Lret => false
-        | _ => true
+      if rest.any flagKill then pinStart rest + 1
+      else if flagKill i then 0
+      else if flagNeutral i then pinStart rest + 1
+      else 0
 
-/-- The run `cur` may write a flag that is live at the start of `l`; `cur` then stays in
-    one segment with the next instruction. -/
-def flagHold (cur l : List Linstr) : Bool := cur.any (fun i => !flagNeutral i) && flagsLive l
+/-- The segments a straight-line run `cur` contributes when it is followed by `l`. When
+    a flag value at the start of `l` may be read (`flagsLive`, for instance by a
+    conditional branch), the suffix from `pinStart cur` on is split into singleton
+    segments, so no pass reorders it or moves an instruction across it, and the prefix
+    is one segment; otherwise `cur` is one segment. -/
+def flushRun (cur l : List Linstr) : List (List Linstr) :=
+  if flagsLive l then
+    (if (cur.take (pinStart cur)).isEmpty then [] else [cur.take (pinStart cur)])
+      ++ (cur.drop (pinStart cur)).map (fun i => [i])
+  else if cur.isEmpty then [] else [cur]
+
+/-- `flushRun` partitions the run: its segments flatten back to `cur`. -/
+theorem flushRun_flatten (cur l : List Linstr) : (flushRun cur l).flatten = cur := by
+  unfold flushRun
+  split
+  · have hs : ∀ t : List Linstr, (t.map (fun i => [i])).flatten = t := by
+      intro t
+      induction t with
+      | nil => rfl
+      | cons a t ih => simp [ih]
+    have hp : ((if (cur.take (pinStart cur)).isEmpty then [] else [cur.take (pinStart cur)] :
+        List (List Linstr))).flatten = cur.take (pinStart cur) := by
+      split
+      · rename_i h
+        simp [List.isEmpty_iff.mp h]
+      · simp
+    rw [List.flatten_append, hs, hp, List.take_append_drop]
+  · split
+    · rename_i h
+      simp [List.isEmpty_iff.mp h]
+    · simp
+
+/-- When a flag value at the start of `l` may be read, every instruction of `cur` from
+    `pinStart cur` on, among them the last instruction that overwrites every flag, is a
+    segment of its own. -/
+theorem flushRun_pinned (cur l : List Linstr) (h : flagsLive l = true) :
+    ∀ i ∈ cur.drop (pinStart cur), [i] ∈ flushRun cur l := by
+  intro i hi
+  unfold flushRun
+  rw [if_pos h, List.mem_append, List.mem_map]
+  exact Or.inr ⟨i, hi, rfl⟩
+
+/-- Every segment of `flushRun` over a straight-line run is non-empty and straight-line. -/
+theorem flushRun_good (cur l : List Linstr) (hcur : bodyIsStraightLine cur = true) :
+    ∀ seg ∈ flushRun cur l, seg ≠ [] ∧ bodyIsStraightLine seg = true := by
+  have hall : ∀ i ∈ cur, bodyIsStraightLine [i] = true := by
+    intro i hi
+    simp only [bodyIsStraightLine, List.all_eq_true] at hcur ⊢
+    intro x hx
+    rw [List.mem_singleton] at hx
+    rw [hx]
+    exact hcur i hi
+  intro seg hseg
+  unfold flushRun at hseg
+  split at hseg
+  · rw [List.mem_append] at hseg
+    rcases hseg with h | h
+    · split at h
+      · simp at h
+      · rename_i hne
+        rw [List.mem_singleton] at h
+        subst h
+        refine ⟨fun he => hne (by simp [he]), ?_⟩
+        simp only [bodyIsStraightLine, List.all_eq_true] at hcur ⊢
+        exact fun x hx => hcur x (List.mem_of_mem_take hx)
+    · rw [List.mem_map] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      exact ⟨by simp, hall i (List.mem_of_mem_drop hi)⟩
+  · split at hseg
+    · simp at hseg
+    · rename_i hne
+      rw [List.mem_singleton] at hseg
+      subst hseg
+      exact ⟨fun he => hne (by simp [he]), hcur⟩
 
 /-- Partition a body into segments, threading a straight-line run in `cur`. A
-    control-flow instruction flushes `cur` and becomes its own singleton segment; so
-    does a straight-line instruction outside the modeled fragment (`instrModeled`,
-    for instance a two-destination `MULX` or a three-source `CMOV`), unless `cur` may
-    write a flag still live there (`flagHold`); a modeled straight-line instruction, or
-    an unmodeled one under `flagHold`, extends `cur`. A segment that holds an unmodeled
-    instruction is left verbatim by `optRunBody`, so no pass moves or removes a flag
-    writer whose flags are read after the segment. -/
+    control-flow instruction flushes `cur` through `flushRun` and becomes its own
+    singleton segment; a straight-line instruction outside the modeled fragment
+    (`instrModeled`, for instance a two-destination `MULX` or a three-source `CMOV`)
+    flushes `cur` and becomes its own singleton segment, unless `cur` may write a flag
+    still live there (`flagHold`); a modeled straight-line instruction, or an unmodeled
+    one under `flagHold`, extends `cur`. A segment that holds an unmodeled instruction is
+    left verbatim by `optRunBody`, and the flag writer whose flags a conditional branch
+    after the run reads is a singleton segment, so no pass moves or removes a flag writer
+    whose flags are read after its segment. -/
 def splitStraightRunsAux : List Linstr → List Linstr → List (List Linstr)
   | cur, [] => if cur.isEmpty then [] else [cur]
   | cur, i :: rest =>
       if isCtlInstr i then
-        (if cur.isEmpty then [] else [cur]) ++ ([i] :: splitStraightRunsAux [] rest)
+        flushRun cur (i :: rest) ++ ([i] :: splitStraightRunsAux [] rest)
       else if instrModeled i || flagHold cur (i :: rest) then
         splitStraightRunsAux (cur ++ [i]) rest
       else
@@ -369,10 +420,8 @@ theorem splitStraightRunsAux_flatten (cur body : List Linstr) :
   | cons i rest ih =>
       unfold splitStraightRunsAux
       by_cases hci : isCtlInstr i = true
-      · simp only [hci, if_true]
-        cases cur with
-        | nil => simp [ih]
-        | cons c cs => simp [ih]
+      · simp only [hci, if_true, List.flatten_append, flushRun_flatten, List.flatten_cons, ih,
+          List.nil_append, List.singleton_append]
       · simp only [Bool.not_eq_true] at hci
         by_cases hm : (instrModeled i || flagHold cur (i :: rest)) = true
         · simp only [hci, hm, Bool.false_eq_true, if_false, if_true, ih (cur ++ [i]),
@@ -722,19 +771,12 @@ theorem splitAux_good (body cur : List Linstr) (hcur : bodyIsStraightLine cur = 
     intro seg hseg
     unfold splitStraightRunsAux at hseg
     by_cases hci : isCtlInstr i = true
-    · rw [if_pos hci] at hseg
-      by_cases hce : cur.isEmpty = true
-      · rw [if_pos hce, List.nil_append] at hseg
-        simp only [List.mem_cons] at hseg
-        rcases hseg with h | h
-        · subst h; exact ⟨by simp, Or.inl ⟨i, rfl, hci⟩⟩
-        · exact ih [] (by simp [bodyIsStraightLine]) seg h
-      · rw [if_neg hce] at hseg
-        simp only [List.cons_append, List.nil_append, List.mem_cons] at hseg
-        rcases hseg with h | h | h
-        · subst h; exact ⟨fun he => hce (by simp [he]), Or.inr hcur⟩
-        · subst h; exact ⟨by simp, Or.inl ⟨i, rfl, hci⟩⟩
-        · exact ih [] (by simp [bodyIsStraightLine]) seg h
+    · rw [if_pos hci, List.mem_append, List.mem_cons] at hseg
+      rcases hseg with h | h | h
+      · obtain ⟨hne, hsl⟩ := flushRun_good cur (i :: rest) hcur seg h
+        exact ⟨hne, Or.inr hsl⟩
+      · subst h; exact ⟨by simp, Or.inl ⟨i, rfl, hci⟩⟩
+      · exact ih [] (by simp [bodyIsStraightLine]) seg h
     · have hcif : isCtlInstr i = false := by
         cases hh : isCtlInstr i with
         | false => rfl

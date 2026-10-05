@@ -22,10 +22,9 @@ multiplication and squaring are `montMul` and inversion is `montInverse` where t
 Montgomery flag is set, a constant `c` becomes the constant `toRep c`, and addition,
 subtraction, negation, doubling and copies keep their `mod_arith` twin.
 
-The lowering is a `FieldDialectBlockDescent.BlockLoweringData`, so an operation the
-lowering does not cover (the extension-field operations) has a block, the constant
-zero, and `CoveredCom Good` excludes it. The extension types map to `fp q` and are
-transported to zero.
+The lowering is a `FieldDialectBlockDescent.BlockLoweringData`; `CoveredCom Good`
+excludes an inversion at a Montgomery modulus that is not prime. The extension types,
+which carry no `fieldDialect` operation, map to `fp q` and are transported to zero.
 
 ## Main definitions
 
@@ -160,16 +159,6 @@ def lowerOpBlock (M : MontParams) {Δ : Ctxt modArithDialect} : (op : FieldOp) �
   | .fieldSquare q, args =>
       if M.isMont q then opCom (.montMul q (M.rInv q)) (.cons args.head (.cons args.head .nil))
       else opCom (.modMul q) (.cons args.head (.cons args.head .nil))
-  | .ext2Mul q, _ => zeroCom (.fp2 q)
-  | .ext2Add q, _ => zeroCom (.fp2 q)
-  | .ext2Sub q, _ => zeroCom (.fp2 q)
-  | .frobenius2 q, _ => zeroCom (.fp2 q)
-  | .ext6Mul q _, _ => zeroCom (.fp6 q)
-  | .ext6Add q, _ => zeroCom (.fp6 q)
-  | .ext6Sub q, _ => zeroCom (.fp6 q)
-  | .ext12Mul q _, _ => zeroCom (.fp12 q)
-  | .ext12Add q, _ => zeroCom (.fp12 q)
-  | .ext12Sub q, _ => zeroCom (.fp12 q)
 
 /-- The block of an expression. -/
 def lowerExprBlock (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy} :
@@ -228,7 +217,6 @@ def GoodOp (M : MontParams) : FieldOp → Prop
   | .fCopy _ => True
   | .fieldDouble _ => True
   | .fieldSquare _ => True
-  | _ => False
 
 /-- An expression is covered when its operation is. -/
 def Good (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
@@ -374,16 +362,6 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
               = M.toRep (fInvF (a.lookup V))
             rw [mapVar_lookup]
             exact toRep_montInverse M hm (hg hm) _
-  | ext2Mul q => exact (hg : False).elim
-  | ext2Add q => exact (hg : False).elim
-  | ext2Sub q => exact (hg : False).elim
-  | frobenius2 q => exact (hg : False).elim
-  | ext6Mul q ξ => exact (hg : False).elim
-  | ext6Add q => exact (hg : False).elim
-  | ext6Sub q => exact (hg : False).elim
-  | ext12Mul q ξ => exact (hg : False).elim
-  | ext12Add q => exact (hg : False).elim
-  | ext12Sub q => exact (hg : False).elim
 
 /-! ## 4. The whole-program transport -/
 

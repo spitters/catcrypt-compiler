@@ -72,6 +72,11 @@ CI_WORKFLOW=".github/workflows/ci.yml"
 # `Jasmin` is in scope because that is where the leaf kernels are.
 TERRITORY='^CatCrypt\.Crypto\.(SecureCompilation|Optimizer|Jasmin)\.'
 
+# The opt-in VeIR bridge library (`lake build CatCryptCompilerVeir`): its modules
+# are outside the default build by design, so they are outside this manifest's
+# territory. scripts/gen-module-globs.sh computes the set; the manifest must not
+# list any of them.
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -134,17 +139,22 @@ build_mods() {
 }
 
 tracked_modules > "$tmp/tracked"
+bash scripts/gen-module-globs.sh --veir > "$tmp/optin" || {
+  echo "rot-guard: scripts/gen-module-globs.sh --veir failed" >&2; exit 2; }
 
-# Regenerate the manifest: the tracked modules that nothing imports.
+# Regenerate the manifest: the tracked modules outside the opt-in library that no
+# module outside it imports. An import from an opt-in module does not count: the
+# default sweep does not build the importer.
 if [ "${ROT_GUARD_WRITE_MANIFEST:-0}" = "1" ]; then
-  import_edges | cut -f2 | LC_ALL=C sort -u > "$tmp/imported"
+  import_edges | awk -F'\t' 'NR==FNR { o[$1] = 1; next } !($1 in o) { print $2 }' "$tmp/optin" - \
+    | LC_ALL=C sort -u > "$tmp/imported"
   mkdir -p "$(dirname "$MANIFEST")"
   { echo "-- Build roots: tracked modules under CatCrypt/ that no other tracked"
     echo "-- module imports. Their transitive closure is the whole library, so a"
     echo "-- module outside it is one no target and no import reaches."
     echo "-- Regenerate with:"
     echo "--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check"
-    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/imported"; } > "$MANIFEST"
+    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/imported" | LC_ALL=C comm -23 - "$tmp/optin"; } > "$MANIFEST"
   echo "rot-guard: wrote $MANIFEST"
 fi
 
@@ -191,6 +201,15 @@ case "$mode" in
       fail=1
     fi
 
+    # 2b. No entry belongs to the opt-in VeIR bridge library. Listing one would
+    #     put the bridge back in the full sweep, which the opt-in target exists
+    #     to avoid.
+    if inopt=$(LC_ALL=C sort -u "$tmp/mods" | LC_ALL=C comm -12 - "$tmp/optin") && [ -n "$inopt" ]; then
+      echo "  FAIL: manifest lists modules of the opt-in VeIR bridge library:"
+      printf '    %s\n' $inopt
+      fail=1
+    fi
+
     # 3. Coverage. Compute the transitive import closure of every manifest entry
     #    plus every CatCrypt.* target named in the workflow, and report the
     #    modules in this manifest's territory that fall outside it.
@@ -227,7 +246,8 @@ case "$mode" in
         for (m in seen) print m
       }' "$tmp/edges" "$tmp/roots" | LC_ALL=C sort -u > "$tmp/reachable"
 
-    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/reachable" | grep -E "$TERRITORY" > "$tmp/orphans"
+    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/reachable" | LC_ALL=C comm -23 - "$tmp/optin" \
+      | grep -E "$TERRITORY" > "$tmp/orphans"
     orphans=$(wc -l < "$tmp/orphans")
 
     base=0

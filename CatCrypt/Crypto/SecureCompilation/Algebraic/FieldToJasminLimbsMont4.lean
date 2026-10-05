@@ -149,8 +149,6 @@ def lowerOpL : (op : fieldDialect.Op) →
     else constBlk 0
   | .fieldSquare q => if q = P.p then mulBlk P xv₀ xv₁ xv₂ xv₃ xv₀ xv₁ xv₂ xv₃
     else constBlk 0
-  | .ext2Mul _ | .ext2Add _ | .ext2Sub _ | .frobenius2 _ | .ext6Mul _ _ | .ext6Add _
-  | .ext6Sub _ | .ext12Mul _ _ | .ext12Add _ | .ext12Sub _ => constBlk 0
 
 /-- The multi-value lowering `fieldDialect → jasminDialect` over four limbs in
     Montgomery form: the generic limb lowering with the blocks `lowerOpL P`. -/

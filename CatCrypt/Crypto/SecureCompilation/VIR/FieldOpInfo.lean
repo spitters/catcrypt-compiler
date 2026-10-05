@@ -36,15 +36,10 @@ namespace CatCrypt.Crypto.Optimizer.Rewrite.AegraphField
 open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-- The cost of a field operation in units of a base-field addition: a multiplication or
-    squaring costs four, an inversion sixty-four, an extension-field multiplication four
-    per base-field multiplication of its schoolbook form; every other operation costs
-    one. -/
+    squaring costs four, an inversion sixty-four; every other operation costs one. -/
 def fieldCost : FieldOp → Nat
   | .fMul _ | .fieldSquare _ => 4
   | .fInv _ => 64
-  | .ext2Mul _ => 16
-  | .ext6Mul _ _ => 144
-  | .ext12Mul _ _ => 576
   | _ => 1
 
 /-- The field operations whose bindings the node table may merge: every operation other

@@ -1252,7 +1252,17 @@ def stepEff (i : LinstrR) (s : LstateN) : Option (Option Cell) :=
               | some v => some (some (dst, ⟨wa, v⟩))
               | none => none
           | none => none
-      | none => none
+      | none =>
+          match a with
+          | .imm n =>
+              match evalOperandN s (widthFromTag opn) b with
+              | some vb =>
+                  match applyOpnN (widthFromTag opn) (stripWidthTag opn)
+                      [BitVec.ofNat _ n, vb] with
+                  | some v => some (some (dst, ⟨widthFromTag opn, v⟩))
+                  | none => none
+              | none => none
+          | _ => none
   | .Lopn [.reg dst] opn [.imm n] =>
       if stripWidthTag opn = "MOV" then
         some (some (dst, ⟨widthFromTag opn, BitVec.ofNat (widthFromTag opn) n⟩))
@@ -1315,14 +1325,14 @@ theorem stepEff_eq_none (i : LinstrR) (s : LstateN) (h : stepEff i s = none) :
     lsemStepN i s = none := by
   unfold stepEff at h
   repeat' split at h
-  all_goals simp_all [lsemStepN]
+  all_goals simp_all [lsemStepN, immFirstN]
 
 /-- A modeled width-tagged step is its write applied to the incoming state. -/
 theorem stepEff_eq_some (i : LinstrR) (s : LstateN) (e : Option Cell)
     (h : stepEff i s = some e) : lsemStepN i s = some (applyEff s e) := by
   unfold stepEff at h
   repeat' split at h
-  all_goals simp_all [lsemStepN, applyEff]
+  all_goals simp_all [lsemStepN, applyEff, immFirstN]
   all_goals (subst h; rfl)
 
 /-- `lsemStepN` is its write applied to the incoming state. -/

@@ -111,9 +111,12 @@ theorem loadCStruct?_dst {i : LinstrR} {p : String × String × Nat}
 theorem lsemStepN_lvm_dst {i : LinstrR} {s t : LstateN} (h : lsemStepN i s = some t)
     {r : String} (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold lsemStepN at h
+  simp only [immFirstN] at h
   repeat' split at h
   all_goals first
     | (cases h; simp_all [dstNames, opNames, LstateN.setReg, LstateN.nextPc])
+    | (obtain ⟨v, -, rfl⟩ := Option.map_eq_some_iff.1 h
+       simp_all [dstNames, opNames, LstateN.setReg, LstateN.nextPc])
     | simp at h
 
 theorem setReg_nextPc_lvm {s : LstateN} {d r : String} {w : Nat} (v : BitVec w)

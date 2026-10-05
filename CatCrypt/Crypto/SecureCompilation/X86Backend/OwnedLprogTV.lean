@@ -666,7 +666,9 @@ theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, Bit
     `SAR:k` is the immediate-shift term `shImm`. A shift by the count `0` in the name or as
     an immediate is described as the copy of its source, the term of a register `MOV`. A commutative operation `opn d, [a, d]` with `a ≠ d`
     is described with its sources exchanged (`commSwap`), so it has the term of
-    `opn d, [d, a]`. A select `CMOV d, [c, a, b]` with register condition `c` and register
+    `opn d, [d, a]`. A two-source operation `opn d, [imm n, b]` with an immediate first
+    source and a register `b` is the term `bin opn (immW w n) b` at the width `w` of the
+    mnemonic's tag, under the guard that `b` has width `w`. A select `CMOV d, [c, a, b]` with register condition `c` and register
     first value `a` is the term `sel a b c`, under the guards that `c` has width `1` and, for
     a register `b`, that `a` and `b` have one width; an immediate `b` is `immAt n a`. A
     load-effective-address `LEA d, [b + x · sc]` is the term `b + x · sc` at width `64`,
@@ -697,6 +699,14 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
                   .set dst (.bin (stripWidthTag opn) (R ra) (.immW (widthFromTag opn) n)) []
                 else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
             | _ => .fail
+          else .fail
+      | .imm n =>
+          if binOk (stripWidthTag opn) then
+            match b with
+            | .reg rb =>
+                .set dst (.bin (stripWidthTag opn) (.immW (widthFromTag opn) n) (R rb))
+                  [.wid (R rb) (widthFromTag opn)]
+            | _ => .unk
           else .fail
       | _ => .fail
   | .Lopn [.reg dst] opn [.imm n] =>
@@ -852,9 +862,28 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
         | reg rb => rw [stepN_bin_reg, hn]; simp
         | imm n => rw [stepN_bin_imm, hn]; simp
         | _ => simp [lsemStepN, evalOperandN, readReg]
-    · rename_i ha
+    · rename_i n
+      by_cases hb : binOk (stripWidthTag opn) = true
+      · rw [if_pos hb]
+        split
+        · rename_i rb
+          simp only [ROut.Desc, lsemStepN_immFirst, immFirstN, evalOperandN, getW_eq, hr rb]
+          obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
+            (BitVec.ofNat (widthFromTag opn) n) (castW ((R rb).ev V A C O) (widthFromTag opn)))
+          simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW_of_binOk hb]
+          split_ifs with hw
+          · simp [extW_of_eq hw, hv, hw]
+          · simp [hw]
+        · trivial
+      · rw [if_neg hb]
+        simp only [ROut.Desc, lsemStepN_immFirst, immFirstN]
+        split
+        · rw [applyOpnN_bin_none (Bool.eq_false_iff.mpr hb)]; rfl
+        · rfl
+    · rename_i ha hi
       cases a with
       | reg ra => exact absurd rfl (ha ra)
+      | imm n => exact absurd rfl (hi n)
       | _ => simp [ROut.Desc, lsemStepN, readReg]
   · split_ifs with h
     · simp [ROut.Desc, lsemStepN, h, AllG, STerm.ev]

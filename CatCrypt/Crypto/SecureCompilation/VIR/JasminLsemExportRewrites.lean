@@ -234,7 +234,24 @@ theorem lsemStepN_ren (hσ : RenOn σ N) (i : LinstrR) (hi : ∀ n ∈ instrName
     simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, lsemStepN,
       hR.readReg a (ho a (Or.inr (by simp))),
       fun w => hR.evalOperandN w b (ho b (Or.inr (by simp)))]
-    ren_close hd
+    cases hra : readReg s a with
+    | some wv =>
+      obtain ⟨w, va⟩ := wv
+      simp only [hra] at h ⊢
+      ren_close hd
+    | none =>
+      simp only [hra] at h ⊢
+      cases a with
+      | imm n =>
+        simp only [renOperand_imm, immFirstN,
+          fun w => hR.evalOperandN w b (ho b (Or.inr (by simp)))] at h ⊢
+        cases hb : evalOperandN s (widthFromTag opn) b with
+        | none => simp [hb] at h
+        | some vb =>
+          simp only [hb] at h ⊢
+          obtain ⟨v, hv, rfl⟩ := Option.map_eq_some_iff.1 h
+          exact ⟨_, by rw [hv]; rfl, RelN.setReg hσ hR hd _⟩
+      | _ => simp at h
   · rename_i dst opn n
     have ho := names_of_lopn hi
     have hd : N dst := ho (.reg dst) (Or.inl (by simp)) dst (by simp [opNames])
@@ -759,7 +776,11 @@ theorem lsemStepCast_carry (d opn : String) (a b : LOperand)
     lsemStepSh_of_not_sar _ _ hsar]
   simp only [lsemStepN]
   cases readReg r a with
-  | none => rfl
+  | none =>
+      cases a <;> simp only [immFirstN]
+      cases evalOperandN r (widthFromTag opn) b with
+      | none => rfl
+      | some vb => rcases hm with h | h | h | h <;> simp [h, applyOpnN]
   | some wv =>
       obtain ⟨w, va⟩ := wv
       simp only []
@@ -840,7 +861,11 @@ theorem lsemStepCast_mov2 (d opn : String) (a b : LOperand) (hm : stripWidthTag 
     lsemStepSh_of_not_sar _ _ hsar]
   simp only [lsemStepN]
   cases readReg r a with
-  | none => rfl
+  | none =>
+      cases a <;> simp only [immFirstN]
+      cases evalOperandN r (widthFromTag opn) b with
+      | none => rfl
+      | some vb => simp [hm, applyOpnN]
   | some wv =>
       obtain ⟨w, va⟩ := wv
       simp only []

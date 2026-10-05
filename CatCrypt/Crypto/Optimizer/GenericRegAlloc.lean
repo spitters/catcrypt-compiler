@@ -24,7 +24,7 @@ typeclass over `(I S : Type)` (the instruction and register-state types) abstrac
 exactly the differences, and the ~6 core register-allocation lemmas stated **once**
 over `[MachineModel I S]`. The allocator is untrusted (a pure linear scan, totally
 reusable); the **checker** — the renaming/spill soundness — is the verified artifact,
-in the translation-validation discipline of the e-graph validator `EgraphOracle.gate`.
+in the translation-validation discipline of `TranslationValidationEgraph`.
 
 ## The abstraction (what x86/ARM/RISC-V have in common)
 
@@ -92,7 +92,9 @@ abstracted types. -/
     and the spill / reload instruction constructors. This is over the instruction type
     `I` alone (the register-state type `S` enters only with the semantics, in
     `RegMachine`/`MemMachine`). The common shape of `SpillingRegAlloc` (x86),
-    `ArmRegAlloc` (A64), and `RiscvRegAlloc` (RV64). -/
+    `ArmRegAlloc` (A64), and `RiscvRegAlloc` (RV64). The `Lprog` back half does not
+    allocate through this class: it allocates in the `Lprog` export
+    (`ExportPhys.physScanSpill`). -/
 class MachineModel (I : Type) where
   /-- The register names an instruction writes (its destinations). Usually a singleton,
       but multi-output ops (x86 `mulx` writes hi+lo, `adcx`/`adox` write data+flag) give

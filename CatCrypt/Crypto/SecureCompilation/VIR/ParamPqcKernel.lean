@@ -84,8 +84,8 @@ We:
   - **Op-splitting / schedule.** A whole-NTT-layer (a butterfly *network* across
     `n/2` index pairs with a fixed twiddle schedule, and the de-Bruijn–indexed
     `Com` program that lays it out) is *one logical op → a block of indexed ops*
-    — the same op-splitting / no-single-target-op boundary that put `ext2Mul →
-    Fp2MulSchedule` out of scope for `LoweringData` and `param_solve` alike.
+    — the same op-splitting / no-single-target-op boundary that put the tower `Fp2`
+    product `→ Fp2MulSchedule` out of scope for `LoweringData` and `param_solve` alike.
 
 So the result: **yes, the Param engine applies to PQC kernels at the
 same-carrier modular-arithmetic fragment (the NTT butterfly's

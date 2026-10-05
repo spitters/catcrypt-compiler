@@ -10,16 +10,15 @@ public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminWord
 /-!
 # Field expressions compiled to `fieldDialect` programs
 
-`FExpr p n` is the type of expressions over `ZMod p` in `n` inputs, built from
-inputs, constants, sums and products. `emit` compiles an expression to a
-`Com fieldDialect` program in continuation-passing style: every constant, sum and
-product becomes one `fConst`, `fAdd` or `fMul` binding, and an input is the input
-variable itself. `compile e` is the program over the `n` input variables that
-returns the value of `e`.
+`FieldDialect.FExpr p n` is the type of expressions over `ZMod p` in `n` inputs, built
+from inputs, constants, sums, differences, negations and products. `emit` compiles an
+expression to a `Com fieldDialect` program in continuation-passing style: every
+constant, sum, difference, negation and product becomes one `fConst`, `fAdd`, `fSub`,
+`fNeg` or `fMul` binding, and an input is the input variable itself. `compile e` is
+the program over the `n` input variables that returns the value of `e`.
 
 ## Main definitions
 
-* `FExpr`, `FExpr.eval`: expressions and their value.
 * `emit`, `compile`: the compiler.
 * `compileJasmin F e`: `compile e` lowered through a single-word field `F`.
 
@@ -43,35 +42,15 @@ open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminWord
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord (SingleWordField)
 
-variable (p : Nat)
-
-/-- An expression over `ZMod p` in `n` inputs. -/
-inductive FExpr (n : Nat) where
-  /-- Input `i`. -/
-  | inp (i : Fin n)
-  /-- The constant `c`. -/
-  | const (c : ZMod p)
-  /-- A sum. -/
-  | add (a b : FExpr n)
-  /-- A product. -/
-  | mul (a b : FExpr n)
-
-variable {p}
-
-/-- The value of an expression at the inputs `x`. -/
-def FExpr.eval {n : Nat} (x : Fin n → ZMod p) : FExpr p n → ZMod p
-  | .inp i => x i
-  | .const c => c
-  | .add a b => a.eval x + b.eval x
-  | .mul a b => a.eval x * b.eval x
+variable {p : Nat}
 
 /-- A renaming of variables from `Γ` to `Γ'`. -/
 abbrev Ren (Γ Γ' : Ctxt fieldDialect) : Type :=
   ∀ {t : FieldTy}, Ctxt.Var Γ t → Ctxt.Var Γ' t
 
-/-- The program of an expression: one binding per constant, sum and product, then
-    the continuation, given the renaming into its context and the variable holding
-    the value. -/
+/-- The program of an expression: one binding per constant, sum, difference, negation
+    and product, then the continuation, given the renaming into its context and the
+    variable holding the value. -/
 def emit {n : Nat} : FExpr p n → {Γ : Ctxt fieldDialect} → (Fin n → Ctxt.Var Γ (.fp p)) →
     ({Γ' : Ctxt fieldDialect} → Ren Γ Γ' → Ctxt.Var Γ' (.fp p) → Com fieldDialect Γ' (.fp p)) →
     Com fieldDialect Γ (.fp p)
@@ -80,6 +59,12 @@ def emit {n : Nat} : FExpr p n → {Γ : Ctxt fieldDialect} → (Fin n → Ctxt.
   | .add a b, _, env, k =>
     emit a env fun r₁ va => emit b (fun i => r₁ (env i)) fun r₂ vb =>
       .var ⟨.fAdd p, rfl, .cons (r₂ va) (.cons vb .nil)⟩ (k (fun v => (r₂ (r₁ v)).there) .here)
+  | .sub a b, _, env, k =>
+    emit a env fun r₁ va => emit b (fun i => r₁ (env i)) fun r₂ vb =>
+      .var ⟨.fSub p, rfl, .cons (r₂ va) (.cons vb .nil)⟩ (k (fun v => (r₂ (r₁ v)).there) .here)
+  | .neg a, _, env, k =>
+    emit a env fun r₁ va =>
+      .var ⟨.fNeg p, rfl, .cons va .nil⟩ (k (fun v => (r₁ v).there) .here)
   | .mul a b, _, env, k =>
     emit a env fun r₁ va => emit b (fun i => r₁ (env i)) fun r₂ vb =>
       .var ⟨.fMul p, rfl, .cons (r₂ va) (.cons vb .nil)⟩ (k (fun v => (r₂ (r₁ v)).there) .here)
@@ -105,6 +90,17 @@ theorem emit_denote {n : Nat} (x : Fin n → ZMod p) (e : FExpr p n) {Γ : Ctxt 
     refine hk _ _ .here (fun v => ?_) ?_
     · exact (h₂ (r₁ v)).trans (h₁ v)
     · exact congrArg₂ (fun u w : ZMod p => u + w) ((h₂ va).trans hva) hvb
+  | sub a b iha ihb =>
+    refine iha env _ V R hx fun r₁ V₁ va h₁ hva => ?_
+    refine ihb (fun i => r₁ (env i)) _ V₁ R (fun i => (h₁ (env i)).trans (hx i))
+      fun r₂ V₂ vb h₂ hvb => ?_
+    refine hk _ _ .here (fun v => ?_) ?_
+    · exact (h₂ (r₁ v)).trans (h₁ v)
+    · exact congrArg₂ (fun u w : ZMod p => u - w) ((h₂ va).trans hva) hvb
+  | neg a iha =>
+    refine iha env _ V R hx fun r₁ V₁ va h₁ hva => ?_
+    refine hk _ _ .here (fun v => h₁ v) ?_
+    exact congrArg (fun u : ZMod p => -u) hva
   | mul a b iha ihb =>
     refine iha env _ V R hx fun r₁ V₁ va h₁ hva => ?_
     refine ihb (fun i => r₁ (env i)) _ V₁ R (fun i => (h₁ (env i)).trans (hx i))
@@ -125,6 +121,10 @@ theorem emit_covered {n : Nat} (e : FExpr p n) {Γ : Ctxt fieldDialect}
   | const c => exact ⟨Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨c, rfl⟩)))), hk _ _⟩
   | add a b iha ihb =>
     exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb => ⟨Or.inl rfl, hk _ _⟩
+  | sub a b iha ihb =>
+    exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb => ⟨Or.inr (Or.inl rfl), hk _ _⟩
+  | neg a iha =>
+    exact iha env _ fun r₁ va => ⟨Or.inr (Or.inr (Or.inl rfl)), hk _ _⟩
   | mul a b iha ihb =>
     exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb =>
       ⟨Or.inr (Or.inr (Or.inr (Or.inl rfl))), hk _ _⟩

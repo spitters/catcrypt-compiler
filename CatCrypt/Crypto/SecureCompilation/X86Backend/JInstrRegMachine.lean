@@ -534,7 +534,11 @@ simulation relation — which is precisely what the x86 scoped simulation alread
 
 /-- **`MachineModel (JInstr 64)`**: the syntactic interface `SpillingRegAlloc.jinstrMachineModel`
     — the write-order `writtenNamesJ`, `SpillingRegAlloc.readNames`, the GP pool, and
-    `storeMem`/`loadMem` against the `%rsp` frame base as the spill/reload constructors. -/
+    `storeMem`/`loadMem` against the `%rsp` frame base as the spill/reload constructors.
+    Legacy: no route of the `Lprog` back half uses this instance; its consumers are
+    `JInstrMemMachine`, `JInstrRegMachineSim`, `RescheduleEquivalence` and
+    `RescheduleScratch`. The `Lprog` back half allocates registers in the `Lprog` export
+    (`ExportPhys.physScanSpill`). -/
 instance instMachineModelJInstr : MachineModel (JInstr 64) :=
   CatCrypt.Crypto.Optimizer.SpillingRegAlloc.jinstrMachineModel
 

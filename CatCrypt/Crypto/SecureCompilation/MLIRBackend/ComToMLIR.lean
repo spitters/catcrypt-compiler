@@ -707,12 +707,17 @@ theorem emitFuncCanon_denote_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
     (comCanonical fuel k com).denote V = com.denote V :=
   comCanonical_denote fuel k com V hk
 
-/-- The instance of `ComCanonical.comCanonical_ctSafe` at the emit entry. Both sides
-    are `true` by `ctSafeComJ_true`, so the statement carries no information about
-    leakage. -/
-theorem emitFuncCanon_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (fuel : Nat) (com : Com jasminDialect Γ t) (k : KEnv Γ) :
-    ctSafeComJ (comCanonical fuel k com) = ctSafeComJ com :=
-  comCanonical_ctSafe fuel k com
+/-- **The general optimizer keeps constant-time leakage before emit.** Under a leakage
+    model whose `regArith` operations are quiet, equal leakage of `com` at two valuations
+    consistent with `k` gives equal leakage of the `Com` that `emitFuncCanon` lowers.
+    This is `comCanonical_ctLeak_eq` at the emit entry. -/
+theorem emitFuncCanon_ctLeak_eq (L : VIR.ComLevelCheck.LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (fuel : Nat) (com : Com jasminDialect Γ t) (k : KEnv Γ)
+    (V₁ V₂ : Ctxt.Valuation Γ) (h₁ : KEnv.Consistent k V₁) (h₂ : KEnv.Consistent k V₂)
+    (h : VIR.ComLevelCheck.Com.ctLeak L com V₁ = VIR.ComLevelCheck.Com.ctLeak L com V₂) :
+    VIR.ComLevelCheck.Com.ctLeak L (comCanonical fuel k com) V₁ =
+      VIR.ComLevelCheck.Com.ctLeak L (comCanonical fuel k com) V₂ :=
+  comCanonical_ctLeak_eq L hq fuel k com V₁ V₂ h₁ h₂ h
 
 end CatCrypt.Crypto.SecureCompilation.MLIRBackend

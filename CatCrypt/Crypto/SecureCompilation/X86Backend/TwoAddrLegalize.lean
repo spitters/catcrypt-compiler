@@ -23,10 +23,12 @@ choice of names, so the printed instruction and the model agree exactly when
 * `mov d, a; op d, [d, b]` when `b` does not read `d` and `d`, `a` are not both
   memory operands;
 * `op d, [d, a]` when `b = d` and the base of `op` is one of `commBases`;
-* `mov R15, a; op R15, [R15, b]; mov d, R15` through the exporter's reserved
-  scratch register `reloadScratch` when no operand of the body names it, and
-  `mov R15, d; op R15, [R15, a]; mov d, R15` when moreover `b = d` and the base of
-  `op` is one of `commBases` (both `d` and `a` are then memory operands);
+* `mov qsave.R15, R15; mov R15, a; op R15, [R15, b]; mov d, R15; mov R15, qsave.R15`
+  (`scratchRoute`) through the exporter's reserved scratch register `reloadScratch`,
+  saved in and restored from the frame slot `scratchSave`, when no operand of the body
+  names the register or the slot, with `mov R15, d; op R15, [R15, a]` in the middle when
+  moreover `b = d` and the base of `op` is one of `commBases` (both `d` and `a` are then
+  memory operands);
 * for the flag-only `CMP` and `TEST`, which write no register on the machine,
   the destination becomes the first source.
 
@@ -41,12 +43,14 @@ is kept, `bodyTiedOk` reports it, and the printer refuses it.
   identity on an instruction and on a body that satisfy the precondition.
 * `legalizeInstr_tiedOk`: every instruction `legalizeInstr` emits satisfies the
   precondition or is the input instruction.
+* `scratchRoute_lsem`: the scratch route computes the operation and restores the
+  scratch register.
 * `legalizeInstr_lsem`: one instruction and its legalisation, run from states that
-  agree on memory and on every name other than the scratch register (on every
+  agree on memory and on every name other than the save slot `scratchSave` (on every
   name when the scratch route is off), end in states that agree in the same way.
 * `twoAddrBody_lsemStraight`: a straight-line body and its legalisation, run from
   one state, end with equal memory and equal values at every name other than
-  `reloadScratch`, and at every name when the body names `reloadScratch`.
+  `scratchSave`, and at every name when the body names the scratch register.
 -/
 
 @[expose] public section
@@ -99,16 +103,29 @@ def movFor (opn : String) : Option String :=
   else if opn == tieBase opn ++ ":64" then some "MOV:64"
   else none
 
+/-- **The x86 instruction-set data**: the register file and calling convention
+    `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
+    `commBases`, the scratch register `reloadScratch` and the copies `movFor`. The legaliser
+    reads its mnemonic data and scratch register from it. -/
+@[reducible] def x86Data : VIR.LprogIsa.IsaData :=
+  { LprogAsmPrinter.x86Abi with
+    tied := needsTie
+    commutes := fun base => commBases.contains base
+    tieScratch := reloadScratch
+    copyMnemonic := movFor }
+
 /-- A register or an immediate operand. -/
 def isRegOrImm : LOperand → Bool
   | .reg _ => true
   | .imm _ => true
   | _ => false
 
-/-- Whether a name mentions the scratch register: it is `reloadScratch`, or holds
-    it as a substring (a `mem.<base>.<off>` name with base `R15`). -/
+/-- Whether a name mentions the scratch register `x86Data.tieScratch` (`R15`): it is the
+    register or its save slot `qsave.R15`, or holds it as a substring (a `mem.<base>.<off>`
+    name with base `R15`). -/
 def mentionsScratch (n : String) : Bool :=
-  n == reloadScratch || (n.splitOn reloadScratch).length != 1
+  n == x86Data.tieScratch || n == "qsave." ++ x86Data.tieScratch ||
+    (n.splitOn x86Data.tieScratch).length != 1
 
 /-- An operand none of whose names mentions the scratch register. -/
 def opAvoids : LOperand → Bool
@@ -132,12 +149,26 @@ def bodyAvoids (body : Lcmd) : Bool := body.all (fun i => instrAvoids i.li_i)
 /-- The body satisfies the printer's two-address precondition. -/
 def bodyTiedOk (body : Lcmd) : Bool := body.all (fun i => tiedOk i.li_i)
 
+/-- The save slot of the scratch register: the frame cell `qsave.R15`. A body that does not
+    name the scratch register does not name this slot (`mentionsScratch_scratchSave`). -/
+def scratchSave : String := "qsave." ++ x86Data.tieScratch
+
+/-- The scratch route of `opn d, [a, b]`: save the scratch register, compute
+    `opn R15, [a, b]` on it by a copy and the tied operation, move the result into `d`, and
+    restore the scratch register. -/
+def scratchRoute (ii : Nat) (opn m d : String) (a b : LOperand) : List Linstr :=
+  [⟨ii, .Lopn [.reg scratchSave] "MOV:64" [.reg x86Data.tieScratch]⟩,
+   ⟨ii, .Lopn [.reg x86Data.tieScratch] m [a]⟩,
+   ⟨ii, .Lopn [.reg x86Data.tieScratch] opn [.reg x86Data.tieScratch, b]⟩,
+   ⟨ii, .Lopn [.reg d] m [.reg x86Data.tieScratch]⟩,
+   ⟨ii, .Lopn [.reg x86Data.tieScratch] "MOV:64" [.reg scratchSave]⟩]
+
 /-- Legalise one instruction; `ok` enables the route through `reloadScratch`. -/
 def legalizeInstr (ok : Bool) (i : Linstr) : List Linstr :=
   match i.li_i with
   | .Lopn [.reg d] opn [a, b] =>
-      if needsTie opn b && a != .reg d then
-        match movFor opn with
+      if x86Data.tied opn b && a != .reg d then
+        match x86Data.copyMnemonic opn with
         | none => [i]
         | some m =>
           if tieBase opn == "CMP" || tieBase opn == "TEST" then
@@ -147,18 +178,14 @@ def legalizeInstr (ok : Bool) (i : Linstr) : List Linstr :=
           else if !isRegOrImm a then [i]
           else if !(opNames b).contains d && !(isMemOperand (.reg d) && isMemOperand a) then
             [⟨i.li_ii, .Lopn [.reg d] m [a]⟩, ⟨i.li_ii, .Lopn [.reg d] opn [.reg d, b]⟩]
-          else if commBases.contains (tieBase opn) && b == .reg d
+          else if x86Data.commutes (tieBase opn) && b == .reg d
               && !(isMemOperand (.reg d) && isMemOperand a) then
             [⟨i.li_ii, .Lopn [.reg d] opn [.reg d, a]⟩]
           else if ok then
-            if commBases.contains (tieBase opn) && b == .reg d then
-              [⟨i.li_ii, .Lopn [.reg reloadScratch] m [.reg d]⟩,
-               ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, a]⟩,
-               ⟨i.li_ii, .Lopn [.reg d] m [.reg reloadScratch]⟩]
+            if x86Data.commutes (tieBase opn) && b == .reg d then
+              scratchRoute i.li_ii opn m d (.reg d) a
             else
-              [⟨i.li_ii, .Lopn [.reg reloadScratch] m [a]⟩,
-               ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]⟩,
-               ⟨i.li_ii, .Lopn [.reg d] m [.reg reloadScratch]⟩]
+              scratchRoute i.li_ii opn m d a b
           else [i]
       else [i]
   | _ => [i]
@@ -214,7 +241,8 @@ theorem legalizeInstr_tiedOk (ok : Bool) (i : Linstr) :
               · simp at hj; subst hj; left; simp [tiedOk]
               · split at hj
                 · split at hj <;>
-                    (simp at hj; rcases hj with rfl | rfl | rfl <;> left <;> simp [tiedOk])
+                    (simp only [scratchRoute, List.mem_cons, List.not_mem_nil, or_false] at hj
+                     rcases hj with rfl | rfl | rfl | rfl | rfl <;> left <;> simp [tiedOk])
                 · simp at hj; exact Or.inr hj
     · simp at hj; exact Or.inr hj
   · simp at hj; exact Or.inr hj
@@ -234,7 +262,7 @@ theorem legalizeInstr_direct (ok : Bool) (i : Linstr) (h : linstrRDirect i.li_i 
       Bool.and_eq_true] at h
     repeat' split at hj
     all_goals
-      simp only [List.mem_cons, List.mem_nil_iff, or_false] at hj
+      simp only [scratchRoute, List.mem_cons, List.mem_nil_iff, or_false] at hj
       repeat' (rcases hj with rfl | hj)
     all_goals first
       | exact h0
@@ -259,14 +287,37 @@ theorem twoAddrBody_lcmdDirect {body : Lcmd} (h : lcmdDirect body = true) :
 variable {w : Nat}
 
 /-- The names at which a legalised run agrees with its source: every name other than
-    `reloadScratch` when the scratch route is on, every name otherwise. -/
-def Kept (ok : Bool) (x : String) : Prop := ok = true → x ≠ reloadScratch
+    `scratchSave` when the scratch route is on, every name otherwise. -/
+def Kept (ok : Bool) (x : String) : Prop := ok = true → x ≠ scratchSave
+
+/-- The names of an operand that avoids the scratch register do not mention it. -/
+theorem not_mentionsScratch_of_opAvoids {o : LOperand} (h : opAvoids o = true) :
+    ∀ x ∈ opNames o, mentionsScratch x = false := by
+  intro x hx
+  cases o <;> simp_all [opNames, opAvoids]
+
+theorem mentionsScratch_reloadScratch : mentionsScratch reloadScratch = true := by
+  simp [mentionsScratch]
+
+theorem mentionsScratch_scratchSave : mentionsScratch scratchSave = true := by
+  simp [mentionsScratch, scratchSave]
 
 theorem ne_of_opAvoids {o : LOperand} (h : opAvoids o = true) :
     ∀ x ∈ opNames o, x ≠ reloadScratch := by
   intro x hx hxe
-  subst hxe
-  cases o <;> simp_all [opNames, opAvoids, mentionsScratch]
+  have := not_mentionsScratch_of_opAvoids h x hx
+  rw [hxe, mentionsScratch_reloadScratch] at this
+  cases this
+
+theorem ne_scratchSave_of_opAvoids {o : LOperand} (h : opAvoids o = true) :
+    ∀ x ∈ opNames o, x ≠ scratchSave := by
+  intro x hx hxe
+  have := not_mentionsScratch_of_opAvoids h x hx
+  rw [hxe, mentionsScratch_scratchSave] at this
+  cases this
+
+theorem scratchSave_ne_reloadScratch : scratchSave ≠ reloadScratch := by
+  decide +kernel
 
 /-- The names an instruction reads are kept when it avoids the scratch register. -/
 theorem readNames_kept (ok : Bool) (i : LinstrR) (hav : ok = true → instrAvoids i = true) :
@@ -279,9 +330,9 @@ theorem readNames_kept (ok : Bool) (i : LinstrR) (hav : ok = true → instrAvoid
       obtain ⟨o, ho, hxo⟩ := hx
       simp only [instrAvoids, Bool.and_eq_true, List.all_eq_true] at ha
       rcases ho with ho | ho
-      · exact ne_of_opAvoids (ha.1 o ho) x hxo
-      · exact ne_of_opAvoids (ha.2 o ho) x hxo
-  | Lcond c _ => exact ne_of_opAvoids ha x hx
+      · exact ne_scratchSave_of_opAvoids (ha.1 o ho) x hxo
+      · exact ne_scratchSave_of_opAvoids (ha.2 o ho) x hxo
+  | Lcond c _ => exact ne_scratchSave_of_opAvoids ha x hx
   | _ => simp [readNames] at hx
 
 theorem movFor_some {opn m : String} (h : movFor opn = some m) :
@@ -396,6 +447,54 @@ theorem evalOperand_setReg_nextPc {s : Lstate w} {d : String} {v : BitVec w} {o 
     have hxd : x ≠ d := fun hxd => h (hxd ▸ hx)
     simp [Lstate.setReg, Lstate.nextPc, hxd])
 
+theorem applyOpn_mov64 (v : BitVec w) : applyOpn (stripWidthTag "MOV:64") [v] = some v := by
+  rw [show stripWidthTag "MOV:64" = "MOV" by decide +kernel]
+  rfl
+
+/-- **The scratch route against the operation.** When `opn d, [a, b]` steps to the value `v`
+    at `d`, its scratch route runs to a state with the same memory and the same value at every
+    name other than `scratchSave`; the scratch register is restored. -/
+theorem scratchRoute_lsem {opn m d : String} {a b : LOperand} (ii : Nat)
+    (hm : movFor opn = some m) (hne : opn ≠ "LOADIDX" ∧ opn ≠ "STOREIDX")
+    (hdR : d ≠ reloadScratch) (hdS : d ≠ scratchSave)
+    (haS : scratchSave ∉ opNames a) (hbR : reloadScratch ∉ opNames b)
+    (hbS : scratchSave ∉ opNames b) (s : Lstate w) {v : BitVec w}
+    (hv : applyOpn (stripWidthTag opn) [evalOperand s a, evalOperand s b] = some v) :
+    ∃ t', lsemStraight ((scratchRoute ii opn m d a b).map Linstr.li_i) s = some t' ∧
+      ((s.setReg d v).nextPc).lmem = t'.lmem ∧
+      ∀ x, x ≠ scratchSave → ((s.setReg d v).nextPc).lvm x = t'.lvm x := by
+  have hmne := movFor_ne hm
+  have h64 : "MOV:64" ≠ "LOADIDX" ∧ "MOV:64" ≠ "STOREIDX" := by decide
+  have hSR := scratchSave_ne_reloadScratch
+  let s1 := (s.setReg scratchSave (evalOperand s (.reg reloadScratch))).nextPc
+  let s2 := (s1.setReg reloadScratch (evalOperand s a)).nextPc
+  let s3 := (s2.setReg reloadScratch v).nextPc
+  let s4 := (s3.setReg d v).nextPc
+  let s5 := (s4.setReg reloadScratch (evalOperand s (.reg reloadScratch))).nextPc
+  have e1 : lsemStep (.Lopn [.reg scratchSave] "MOV:64" [.reg reloadScratch]) s = some s1 :=
+    step_reg h64 (by simpa using applyOpn_mov64 (evalOperand s (.reg reloadScratch)))
+  have e2 : lsemStep (.Lopn [.reg reloadScratch] m [a]) s1 = some s2 :=
+    step_reg hmne (by
+      simpa [s1, evalOperand_setReg_nextPc haS] using applyOpn_movFor hm (evalOperand s a))
+  have e3 : lsemStep (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]) s2 = some s3 := by
+    refine step_reg hne ?_
+    simp only [s2, s1, List.map_cons, List.map_nil, evalOperand_setReg_nextPc hbR,
+      evalOperand_setReg_nextPc hbS]
+    simpa [evalOperand, Lstate.setReg, Lstate.nextPc] using hv
+  have e4 : lsemStep (.Lopn [.reg d] m [.reg reloadScratch]) s3 = some s4 :=
+    step_reg hmne (by
+      simpa [s3, evalOperand, Lstate.setReg, Lstate.nextPc] using applyOpn_movFor hm v)
+  have e5 : lsemStep (.Lopn [.reg reloadScratch] "MOV:64" [.reg scratchSave]) s4 = some s5 :=
+    step_reg h64 (by
+      simpa [s4, s3, s2, s1, evalOperand, Lstate.setReg, Lstate.nextPc, hdS.symm, hSR] using
+        applyOpn_mov64 (evalOperand s (.reg reloadScratch)))
+  refine ⟨s5, by simp only [scratchRoute, List.map_cons, List.map_nil, lsemStraight_cons, e1,
+    e2, e3, e4, e5, lsemStraight_nil], rfl, fun x hx => ?_⟩
+  simp only [s5, s4, s3, s2, s1, Lstate.nextPc, Lstate.lvm_setReg, evalOperand, if_neg hx]
+  by_cases hxR : x = reloadScratch
+  · subst hxR; simp [hdR.symm]
+  · simp [hxR]
+
 /-- **One instruction against its legalisation, from one state.** When the source
     instruction steps, its legalisation runs to a state with the same memory and the
     same value at every kept name. -/
@@ -470,53 +569,29 @@ theorem legalizeInstr_lsem_local (ok : Bool) (i : Linstr)
                     Bool.and_eq_true] at ha
                   obtain ⟨hd, ha', hb'⟩ := ha
                   have hdR : d ≠ reloadScratch := ne_of_opAvoids hd d (by simp [opNames])
+                  have hdS : d ≠ scratchSave :=
+                    ne_scratchSave_of_opAvoids hd d (by simp [opNames])
                   have hbR : reloadScratch ∉ opNames b := fun hm' =>
                     ne_of_opAvoids hb' _ hm' rfl
+                  have hbS : scratchSave ∉ opNames b := fun hm' =>
+                    ne_scratchSave_of_opAvoids hb' _ hm' rfl
+                  have haR : reloadScratch ∉ opNames a := fun hm' =>
+                    ne_of_opAvoids ha' _ hm' rfl
+                  have haS : scratchSave ∉ opNames a := fun hm' =>
+                    ne_scratchSave_of_opAvoids ha' _ hm' rfl
                   split
                   · -- commuted, through the scratch register
                     rename_i hcm
                     simp only [Bool.and_eq_true, beq_iff_eq] at hcm
                     obtain ⟨hcm, rfl⟩ := hcm
-                    have haR : reloadScratch ∉ opNames a := fun hm' =>
-                      ne_of_opAvoids ha' _ hm' rfl
-                    let s1 := (s.setReg reloadScratch (evalOperand s (.reg d))).nextPc
-                    let s2 := (s1.setReg reloadScratch v).nextPc
-                    have e1 : lsemStep (.Lopn [.reg reloadScratch] m [.reg d]) s = some s1 :=
-                      step_reg hmne (by simpa using applyOpn_movFor hm (evalOperand s (.reg d)))
-                    have e2 : lsemStep (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, a]) s1
-                        = some s2 := by
-                      refine step_reg hne ?_
-                      simp only [s1, List.map_cons, List.map_nil, evalOperand_setReg_nextPc haR]
-                      rw [applyOpn_comm hm hcm]
-                      simpa [evalOperand, Lstate.setReg, Lstate.nextPc] using hv
-                    have e3 : lsemStep (.Lopn [.reg d] m [.reg reloadScratch]) s2
-                        = some ((s2.setReg d v).nextPc) :=
-                      step_reg hmne (by
-                        simpa [s2, evalOperand, Lstate.setReg, Lstate.nextPc] using
-                          applyOpn_movFor hm v)
-                    refine ⟨(s2.setReg d v).nextPc, by simp only [List.map_cons, List.map_nil,
-                      lsemStraight_cons, e1, e2, e3, lsemStraight_nil], rfl, fun x hx => ?_⟩
-                    have hxR := hx hok
-                    simp only [s2, s1, Lstate.nextPc, Lstate.lvm_setReg, if_neg hxR]
-                  let s1 := (s.setReg reloadScratch (evalOperand s a)).nextPc
-                  let s2 := (s1.setReg reloadScratch v).nextPc
-                  have e1 : lsemStep (.Lopn [.reg reloadScratch] m [a]) s = some s1 :=
-                    step_reg hmne (by simpa using applyOpn_movFor hm (evalOperand s a))
-                  have e2 : lsemStep (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]) s1
-                      = some s2 := by
-                    refine step_reg hne ?_
-                    simp only [s1, List.map_cons, List.map_nil,
-                      evalOperand_setReg_nextPc hbR]
-                    simpa [evalOperand, Lstate.setReg, Lstate.nextPc] using hv
-                  have e3 : lsemStep (.Lopn [.reg d] m [.reg reloadScratch]) s2
-                      = some ((s2.setReg d v).nextPc) :=
-                    step_reg hmne (by
-                      simpa [s2, evalOperand, Lstate.setReg, Lstate.nextPc] using
-                        applyOpn_movFor hm v)
-                  refine ⟨(s2.setReg d v).nextPc, by simp only [List.map_cons, List.map_nil,
-                    lsemStraight_cons, e1, e2, e3, lsemStraight_nil], rfl, fun x hx => ?_⟩
-                  have hxR := hx hok
-                  simp only [s2, s1, Lstate.nextPc, Lstate.lvm_setReg, if_neg hxR]
+                    obtain ⟨t', ht', hm', hv'⟩ :=
+                      scratchRoute_lsem (a := .reg d) (b := a) i.li_ii hm hne hdR hdS
+                      (by simpa [opNames] using hdS.symm) haR haS s
+                      (by rw [applyOpn_comm hm hcm]; exact hv)
+                    exact ⟨t', ht', hm', fun x hx => hv' x (hx hok)⟩
+                  obtain ⟨t', ht', hm', hv'⟩ :=
+                    scratchRoute_lsem i.li_ii hm hne hdR hdS haS hbR hbS s hv
+                  exact ⟨t', ht', hm', fun x hx => hv' x (hx hok)⟩
                 · exact refl
     · exact refl
   · exact refl
@@ -567,8 +642,8 @@ theorem legalizeList_lsem (ok : Bool) (body : Lcmd)
 
 /-- **Two-address legalisation preserves the straight-line semantics.** A body and
     `twoAddrBody` of it, run from one state, end with equal memory and equal values
-    at every name other than `reloadScratch`, and at every name when the body names
-    `reloadScratch`. -/
+    at every name other than the save slot `scratchSave`, and at every name when the body
+    names the scratch register. -/
 theorem twoAddrBody_lsemStraight (body : Lcmd) (s t : Lstate w)
     (h : lsemStraight (body.map Linstr.li_i) s = some t) :
     ∃ t', lsemStraight ((twoAddrBody body).map Linstr.li_i) s = some t' ∧
@@ -579,11 +654,11 @@ theorem twoAddrBody_lsemStraight (body : Lcmd) (s t : Lstate w)
       exact hok i hi)
     rfl (fun _ _ => rfl) h
 
-/-- `twoAddrBody_lsemStraight` at every name other than the scratch register. -/
+/-- `twoAddrBody_lsemStraight` at every name other than the save slot `scratchSave`. -/
 theorem twoAddrBody_lsemStraight_ne (body : Lcmd) (s t : Lstate w)
     (h : lsemStraight (body.map Linstr.li_i) s = some t) :
     ∃ t', lsemStraight ((twoAddrBody body).map Linstr.li_i) s = some t' ∧
-      t.lmem = t'.lmem ∧ ∀ x, x ≠ reloadScratch → t.lvm x = t'.lvm x := by
+      t.lmem = t'.lmem ∧ ∀ x, x ≠ scratchSave → t.lvm x = t'.lvm x := by
   obtain ⟨t', ht', hm, hv⟩ := twoAddrBody_lsemStraight body s t h
   exact ⟨t', ht', hm, fun x hx => hv x (fun _ => hx)⟩
 

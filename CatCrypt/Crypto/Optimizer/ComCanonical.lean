@@ -31,10 +31,11 @@ is the general-purpose optimizer `comCanonical`, wired into the MLIR emit entry
 
 * `comCanonical_denote` — denotation preservation (every valuation consistent
   with `k`).  Chains `comAlgebraicPipeline_denote` and `comCleanup_denote`.
-* `comCanonical_ctSafe` — both sides are `true` by `ctSafeComJ_true`, so the
-  statement carries no information about leakage. The leakage of the
-  algebraic stage is `comAlgebraicPipeline_ctLeak`; the clean-up stack has no
-  leakage theorem for its CSE and uncompute passes.
+* `comCleanup_ctLeak_eq`, `comCanonical_ctLeak_eq` — under a leakage model
+  whose `regArith` operations are quiet, equal leakage of the source at two
+  valuations consistent with `k` gives equal leakage of the optimized kernel.
+  Chains `comAlgebraicPipeline_ctLeak`, `foldCom_ctLeak_eq`, `comCSE_ctLeak`,
+  `uncompute_ctLeak_eq` and `comDCE_ctLeak_eq`.
 -/
 
 @[expose] public section
@@ -66,12 +67,39 @@ theorem comCanonical_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   rw [comCleanup_denote k (comAlgebraicPipeline fuel c k) V hk,
     comAlgebraicPipeline_denote fuel c k V hk]
 
-/-- The structural predicate `ctSafeComJ` agrees on the optimized kernel and the
-    source. `ctSafeComJ` is `true` on every program (`ctSafeComJ_true`), so the
-    statement carries no information about leakage. -/
-theorem comCanonical_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (fuel : Nat) (k : KEnv Γ) (c : Com jasminDialect Γ t) :
-    ctSafeComJ (comCanonical fuel k c) = ctSafeComJ c := by
-  rw [ctSafeComJ_true (comCanonical fuel k c), ctSafeComJ_true c]
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- **Leakage of the clean-up stack.** Under a leakage model whose `regArith` operations
+    are quiet, equal leakage of `c` at two valuations consistent with `k` gives equal
+    leakage of `comCleanup k c` there. -/
+theorem comCleanup_ctLeak_eq (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (k : KEnv Γ) (c : Com jasminDialect Γ t) (V₁ V₂ : Ctxt.Valuation Γ)
+    (h₁ : KEnv.Consistent k V₁) (h₂ : KEnv.Consistent k V₂)
+    (h : Com.ctLeak L c V₁ = Com.ctLeak L c V₂) :
+    Com.ctLeak L (comCleanup k c) V₁ = Com.ctLeak L (comCleanup k c) V₂ := by
+  unfold comCleanup
+  refine ComDCE.comDCE_ctLeak_eq L _ V₁ V₂ (UncomputePass.uncompute_ctLeak_eq L _ V₁ V₂ ?_)
+  rw [ComCSE.comCSE_ctLeak, ComCSE.comCSE_ctLeak]
+  exact ConstFold.foldCom_ctLeak_eq L hq c k V₁ V₂ h₁ h₂ h
+
+/-- **Leakage of the canonical optimizer.** Under a leakage model whose `regArith`
+    operations are quiet, equal leakage of `c` at two valuations consistent with `k`
+    gives equal leakage of `comCanonical fuel k c` there. -/
+theorem comCanonical_ctLeak_eq (L : LeakModel jasminDialect)
+    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (fuel : Nat) (k : KEnv Γ) (c : Com jasminDialect Γ t)
+    (V₁ V₂ : Ctxt.Valuation Γ) (h₁ : KEnv.Consistent k V₁) (h₂ : KEnv.Consistent k V₂)
+    (h : Com.ctLeak L c V₁ = Com.ctLeak L c V₂) :
+    Com.ctLeak L (comCanonical fuel k c) V₁ = Com.ctLeak L (comCanonical fuel k c) V₂ := by
+  unfold comCanonical
+  refine comCleanup_ctLeak_eq L hq k _ V₁ V₂ h₁ h₂ ?_
+  rw [comAlgebraicPipeline_ctLeak L hq fuel c k V₁ h₁,
+    comAlgebraicPipeline_ctLeak L hq fuel c k V₂ h₂]
+  exact h
+
+end Leak
 
 end CatCrypt.Crypto.Optimizer.ComCanonical

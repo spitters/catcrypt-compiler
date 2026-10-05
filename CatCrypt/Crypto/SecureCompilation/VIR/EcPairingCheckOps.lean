@@ -37,8 +37,8 @@ decision**: `FieldDialect.Fp12Val` carries no `One`/`DecidableEq` and no
 alone.  `Fp12Gt.lean` adds the GT identity, decidable equality, and `gtIsOneF`;
 this file folds the per-pairing GT values with `Fp12Val.mul ξ₀` and tests the
 product against `1`.  The GT inputs are the per-pairing `pairingEmit` outputs; the
-**GT product lowers onto the proven `FieldOp.ext12Mul` chain**
-(`EcPairingCheckLowering.lean`, `DialectLoweringChain.extChainDenote_fp12`).
+GT product lowers onto the `towerDialect` `Fp12` product
+(`EcPairingCheckLowering.lean`).
 
 ## The ops (`PairingCheckOp`)
 
@@ -63,8 +63,8 @@ never silently accepted.
 
 ## Classification (see `VIR/DIALECTS.md`)
 
-The GT **product** uses the `ext12Mul` lowering chain (→ `Fp6` schedule
-→ `ModArith` → bytes), tied in `EcPairingCheckLowering.lean`.  The **equality
+The GT **product** is the `towerDialect` `Fp12` product, lowered by `towerToField`
+to prime-field coordinates, tied in `EcPairingCheckLowering.lean`.  The **equality
 tail** (`gtIsOne`) is a `cmp`-style predicate (bit/sword layer), not a new field
 emit.  The Miller-loop + final-exp that *produce* the GT inputs are the proven
 tower-level `pairingEmit`.  This op factors the multi-pairing equality decision

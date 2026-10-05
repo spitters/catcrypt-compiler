@@ -26,6 +26,16 @@ orchestration: Rust above the field interface, with field operations as primeIR 
 and limb-level or bit-level kernels as calls to optimised implementations whose
 correctness is a template theorem or an ascent theorem ([ASCENT.md](ASCENT.md)).
 
+A template theorem covers straight-line word arithmetic generated from an algebraic
+template: one denotation theorem over every parameter record, a bounds certificate decided
+per instance (`boundsOk` with `denote_eq_denoteZ_of_boundsOk`, `SchedOk`), and one bytes
+theorem per family (`field_correct_bytes`, `ntt_correct_bytes`, `ec_correct_bytes`) whose
+only per-instance hypothesis is acceptance by the decided gate of `backend_correct`. The
+method reaches fields, lattices, GHASH, towers, RSA and isogeny moduli, and not control
+flow or bit-logic permutations. [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance
+table with gate verdicts, the measured ratios against fiat-crypto, the size of the
+template layer and the dated deferrals.
+
 - The hax front in `CatCrypt/Crypto/Hax/` lowers hax-lean's `ImpExpr` to `LowCT`
   (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
   typed entry point `haxFrontT` (development repository,
@@ -91,6 +101,48 @@ correctness is a template theorem or an ascent theorem ([ASCENT.md](ASCENT.md)).
 [HEADLINES.md](HEADLINES.md) and [NAVIGATION.md](NAVIGATION.md) record the status and
 open work, as do `COMPILER_ROADMAP.md` ("Where we are") and `JINC_IMPORT.md` in the
 development repository.
+
+### Routes as runs of certified pass chains
+
+`VIR/PassChain.lean` defines a chain `Chain P Q` of named steps, its run (the
+composite of the steps in `Option`), a certificate `Cert c S T` with one step
+certificate per step against semantics `S` and `T`, and `PassChain.Cert.sound`: when
+the run of `c` on `p` returns `q`, inputs related by the certificate give outputs
+related by it. `PassChain.Cert.ct` is the leakage form. Each high-tier route of `haxc`
+is defined as the run of a chain, and the denotation theorem of the route is
+`Cert.sound` of the chain's certificate. The modules are in the development repository
+(`Haxc.*`); the shared pieces `comSemOf`, `routeSem`, `straightStep` and
+`straightCert` are in `Haxc.RouteChain`. As of 2026-10-05 every row except `nfChain`
+is source that no build has checked.
+
+| Route (module) | Chain and its steps | Certificate and `Cert.sound` consumer | Route theorem |
+|---|---|---|---|
+| `nfChain` (`Haxc.NFChain`) | `nfChain`: output-type check, `dceStep`, `nfToCatStep`, `aegraphStep catRules`, `mapStep catToJasmin`, `lowerSelectsStep`, `aegraphStep jasminRules`, `exportStep` | `nfChainCert`, `nfChain_denote` | `haxc_correct_auto` |
+| `compileField P` (`Haxc.FieldRoute`) | `fieldChainId P` = `limbChainVia (Step.id _) (GoodVB P) (fieldCom P)`: optimisation slot, limb step, identity, `straightStep` | `limbChainViaCert`, `limbChainVia_denote` | `compileField_denote` |
+| `compileFieldS S` (`Haxc.FieldRoute`) | `fieldChainSId S` = `limbChainVia (Step.id _) (GoodLB S) (fieldComOf (lowerOpL S))` | `limbChainViaCert`, `limbChainVia_denote` | `compileFieldS_denote` |
+| `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `p256_jacAdd_correct_bytes`, `p256_jacDbl_correct_bytes` and the `C` variants (`Haxc.EcInstances`), with the compile hypothesis |
+| `nttRoute`, `inttRoute` (`Haxc.NttRoute`) | `.get` of the run of `lanesChainId N` = `lanesChainVia (Step.id _)`: optimisation slot, `lanesStep`, `straightStep` | `lanesChainViaCert`, `lanesChainVia_denote` | `nttRoute_denote`, `inttRoute_denote` |
+| `nttRouteOf A` (`Haxc.NttRouteSel`) | `.get` of the run of `lanesChain N pure`: value numbering `gvnMR pure`, lane lowering, `straightStep` | `lanesChainCert`, `lanesChain_denote` | `nttRouteOf_denote` |
+| `bbPermRoute` (`Haxc.Poseidon2Bytes`) | `.get` of the run of `lanesChainId 16` on `widenProg 32 16` of the BabyBear permutation | `lanesChainViaCert`, `lanesChainVia_denote` | `bb_poseidon2_correct_bytes`, whose statement does not yet elaborate |
+| `latticeRoute`, `basemulRoute`, `pointwiseRoute`, `accRoute` (`Haxc.LatticeRoute`) | `.get` of the run of `lanesChain M pure`; a non-square program is zero-padded to square | `lanesChainCert`, `lanesChain_denote` | `basemulRoute_denote`, `pointwiseRoute_denote`, `accRoute_denote`; `mlkem_basemul_correct_bytes` with the compile hypothesis |
+| `towerRoute P N` (`Haxc.TowerRoute`) | `towerChain P N`: identity, `towerStep` (`towerCom` under `towerGoodB`), identity, `straightStep` | `towerChainCert`, `towerChain_denote` | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`; instances at BN254 and BLS12-381 with the compile hypothesis |
+
+The optimisation slot of the field chains is the identity step. The e-graph stage
+`aegraphOptField` leaves every tested program unchanged, but its equality with the
+input at a symbolic modulus is not proved, so it stays out of the field route.
+
+A route theorem that keeps the compile hypothesis is a theorem about the programs the
+back half accepts; for these routes `compileJ` refuses the following.
+
+- Jacobian doubling at P-256 (`jacDblRouteC`): refused at the image gate
+  `printedAddrWB` inside the cell route; the sub-check that fails is not yet isolated.
+- `Fp2` multiplication and squaring at BN254: refused at `decodableLcmd` inside
+  `printedAddrWB`, because spill slots appear as destinations of `ADCX` and `CMOV`;
+  at BLS12-381 the refusal is earlier, at `encodeLfundefBytesChecked`.
+- The ML-KEM base multiplication (and the ML-DSA pointwise product): refused at
+  `encodeLfundefBytesChecked`, whose encoder has no case for the `TRUNC` and
+  `ZEROEXT` lane casts that `widenProg` introduces. The same refusal is expected, not
+  measured, for the signed 16-bit NTT arm and for `bbPermRoute`.
 
 ### Proofs, checks and translation validation in `haxc`
 

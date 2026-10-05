@@ -152,16 +152,6 @@ def lowerOpL : (op : fieldDialect.Op) →
   | .fieldDouble q => if q = p S then addBlk S (opVars n) (opVars n) else zeroBlk
   | .fieldSquare q => if q = p S then sqrBlk S (opVars n) else zeroBlk
   | .fInv _ => zeroBlk
-  | .ext2Mul _ => zeroBlk
-  | .ext2Add _ => zeroBlk
-  | .ext2Sub _ => zeroBlk
-  | .frobenius2 _ => zeroBlk
-  | .ext6Mul _ _ => zeroBlk
-  | .ext6Add _ => zeroBlk
-  | .ext6Sub _ => zeroBlk
-  | .ext12Mul _ _ => zeroBlk
-  | .ext12Add _ => zeroBlk
-  | .ext12Sub _ => zeroBlk
 
 /-- The multi-value lowering `fieldDialect → jasminDialect` over `n` limbs: the generic
     limb lowering with the blocks `lowerOpL S`. -/

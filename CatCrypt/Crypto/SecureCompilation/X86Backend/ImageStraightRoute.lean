@@ -57,6 +57,14 @@ every array name `r ≠ d` read later (`liveArr`) has `σ r ≠ σ d`.
   program, and its correctness at the bytes: from every separated entry state, the decoded
   bytes of the printed body halt in a state from which the layout reads back the words of
   the program's denotation.
+* `straightRouteOutB`, `straight_image_reg_bytes`: the checks of `straightRouteB` with
+  observed registers, and the value of an observed general-purpose register at the end of
+  the decoded bytes.
+* `straightRegB`, `straight_reg_bytes`: the gate of a straight-line program returning a
+  `64`-bit register (its chain followed by the copy of its return name into the export
+  register of the result) and its correctness at the bytes: from every separated entry
+  state, the decoded bytes of the printed body halt in a state from which the layout reads
+  back the program's denotation in the result register.
 
 The coalesced chain is `chain.map (renRM ρ)` with `ρ = chainAlias chain`; the physical-ABI
 export applies the same alias map (`canonicalizeMemrefThread`) to its virtual body, so the
@@ -560,6 +568,183 @@ theorem straight_arr_bytes {σ : AbiLayout} {nm : String → String} {body : Lcm
     have hR' := resultOf_words (σ := σ) (sa' := sa') hσ h2
     rw [he] at hR'
     exact hR'
+  · cases hres
+
+/-! ## 7. A register-returning program at the bytes -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (scalarMemNB scalarMemNB_sound)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk phys)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (frameE_none)
+
+/-- **The check of the straight image route with observed registers** `outs`: the conjuncts
+    of `straightRouteB` with the register allocation check `ownedCheckMC outs`, which
+    relates the values of the registers `outs` at the end of the virtual body and of the
+    image. -/
+def straightRouteOutB (σ : AbiLayout) (nm : String → String) (body : Lcmd)
+    (outs : List String) (C : List LinstrRM) : Bool :=
+  let B := argBind σ nm ++ C
+  let sl := slotRen (slotArrOf σ nm) fun x => x
+  ownedCheckMC outs B (virtImg sl body)
+    && idxInvCheckB (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
+    && printedAddrB body && physImgB sl body
+    && imgGateB (frameMark (frameNames body)) sl body
+    && frameOkB σ body && entryB σ nm body
+
+theorem getW_congr {s s' : JasminLsemWidthN.LstateN} {r : String} (w : Nat)
+    (h : s.lvm r = s'.lvm r) : s.getW r w = s'.getW r w := by
+  unfold JasminLsemWidthN.LstateN.getW
+  rw [h]
+
+/-- The copy of `x` into `y` leaves at `y` the tagged value of `x`. -/
+theorem movesState_single_lvm (s : LstateM) (x y : String) :
+    (JasminLsemRenameLoop.movesState [(x, y)] s).reg.lvm y = s.reg.lvm x := by
+  simp [JasminLsemRenameLoop.movesState, LstateM.setReg, LstateM.nextPc,
+    JasminLsemWidthN.LstateN.nextPc, JasminLsemWidthN.LstateN.setReg]
+
+/-- **A straight chain on the decoded bytes through the image route, at a register.** Let
+    the printed body `body` and the chain `C` of `Lopn`s pass `straightRouteOutB` with the
+    observed register `R`, a general-purpose register with no frame slot. From every machine
+    state `sa` satisfying `σ.Regions`, a run of `C` from the state `afterArgs` to `b` is
+    matched by a halting run of the decoded bytes of the printed body from `sa`, at the end
+    of which the machine register of `R` holds the value of `R` in `b`. -/
+theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {C : List LinstrRM} {R : String} (hg : straightRouteOutB σ nm body [R] C = true)
+    (hC : ∀ i ∈ C, IsLopn i) (hR : gpOk R = true)
+    (hfR : (frameMark (frameNames body) R).isNone = true) (sa : AState)
+    (hreg : σ.Regions sa) (fn : String) (b : LstateM) (z : Bool)
+    (hrun : runStraightF C (afterArgs σ body sa) false = some (b, z)) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ b.reg.getW R 64 = some (sa'.regs (phys R)) := by
+  simp only [straightRouteOutB, Bool.and_eq_true] at hg
+  obtain ⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩ := hg
+  have E := entryB_spec hent sa
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
+    (un := fun x => x) E.argF E.argG E.regs false
+  have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
+      = some (b, z) := by
+    rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
+    exact hrun
+  have hl : ∀ i ∈ argBind σ nm ++ C, IsLopn i := by
+    intro i hi
+    rcases List.mem_append.mp hi with hi | hi
+    · exact JasminLsemRenameLoop.movesOf_isLopn _ i hi
+    · exact hC i hi
+  have hrun' := lsemFuelMemF_of_runStraightF fn _ hl _ b false z rfl hB
+  have hents := boundFacts_entryV (nm := nm) (fr := frameE body sa) (un := fun x => x)
+    hreg E.bnds
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrun'
+  have hgate' : imgGateB (frameE body sa) (slotRen (slotArrOf σ nm) fun x => x) body
+      = true := by
+    rw [ImageAddrFrame.imgGateB_frameMark]
+    exact hgate
+  have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+  have hck' := JasminLsemMemChecked.lsemFuelMemFk_of_runIdxOk true _ _ _ _ hrun' hok
+  obtain ⟨f', t', hr', hobs⟩ := OwnedLprogTVChecked.ownedCheckMC_sound hck fn _ _ rfl rfl _ hck'
+  obtain ⟨fuel', s', zf', hrA, hrel', hsafe⟩ :=
+    ImageAddrSim.image_addr_sim hsep hphys hgate' fn f' _ t' (entryA σ sa) false rfl
+      (imgRel_entryV (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl) hr'
+  rw [ImageAddrFrame.runA_frameIn] at hrA
+  rw [ImageAddrFrame.runSafe_frameIn] at hsafe
+  obtain ⟨prog, sa', hdec, hh, -, hregs, -⟩ :=
+    DecodePrintedCFG.printedAddr_sim body hpr sa (entryA σ sa) false rfl (fun R hR => by
+        have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
+          simp only [entryA, hR, if_true]
+        unfold JasminLsemWidthN.LstateN.getW
+        rw [hl]
+        simp) rfl fuel' (s', zf') hrA hsafe
+  refine ⟨prog, sa', hdec, hh, ?_⟩
+  have h1 : t'.prog.base.reg.lvm R = b.reg.lvm R := hobs.1 R (List.mem_singleton_self _)
+  have h2 : t'.prog.base.reg.lvm R = s'.reg.lvm R := hrel'.regs R (frameE_none sa hfR)
+  rw [← hregs R hR]
+  exact getW_congr 64 (h1.symm.trans h2)
+
+/-- **The gate of a register-returning straight-line program.** For a program returning a
+    `64`-bit register: the stack-memory fragment `scalarMemNB`; the result of `σ` the
+    register `RA`, whose export name `nm RA` is a general-purpose register with machine
+    register `RA` and no frame slot; and the straight image route `straightRouteOutB`,
+    observing `nm RA`, of the chain `straightOpsMem` followed by the copy of its return name
+    into `nm RA`, against the printed body `body`. -/
+def straightRegB (σ : AbiLayout) (nm : String → String) (body : Lcmd) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
+  | Γ, .reg w, com =>
+      let ch := straightOpsMem Γ.length com Γ.length
+      let ret := comRetReg Γ.length argName com Γ.length
+      scalarMemNB com && w == 64
+        && (match σ.result with
+          | .reg RA => gpOk (nm RA) && phys (nm RA) == RA
+              && (frameMark (frameNames body) (nm RA)).isNone
+              && straightRouteOutB σ nm body [nm RA]
+                (ch ++ JasminLsemRenameLoop.movesOf [(ret, nm RA)])
+          | _ => false)
+  | _, _, _ => false
+
+/-- A program accepted by `straightRegB` returns a `64`-bit register. -/
+theorem straightRegB_ty {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {Γ : Ctxt jasminDialect} {t : JasminTy} {c : Com jasminDialect Γ t}
+    (h : straightRegB σ nm body c = true) : t = .reg 64 := by
+  unfold straightRegB at h
+  split at h
+  · simp only [Bool.and_eq_true, beq_iff_eq] at h
+    rw [h.1.2]
+  · cases h
+
+/-- **A register-returning straight-line program at the bytes.** For a program returning a
+    `64`-bit register that passes `straightRegB` against the printed body `body`: from every
+    entry state `sa` satisfying `σ.Regions`, at every valuation `V` the layout reads off `sa`
+    (`AbiValOf`), the decoded bytes of `body` halt in a state from which `σ` reads back the
+    program's denotation. -/
+theorem straight_reg_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {Γ : Ctxt jasminDialect} (com : Com jasminDialect Γ (.reg 64))
+    (hg : straightRegB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
+    (hV : AbiValOf σ sa V) (hreg : σ.Regions sa) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (.int (com.denote V).toNat) := by
+  simp only [straightRegB, Bool.and_eq_true] at hg
+  obtain ⟨⟨hmem, -⟩, hres⟩ := hg
+  split at hres
+  · rename_i RA hσ
+    simp only [Bool.and_eq_true, beq_iff_eq] at hres
+    obtain ⟨⟨⟨hgp, hph⟩, hfr⟩, hroute⟩ := hres
+    have hroute' := hroute
+    simp only [straightRouteOutB, Bool.and_eq_true] at hroute'
+    have E := entryB_spec hroute'.2 sa
+    have habi := entryV_abiEntry (un := fun x => x) (sa := sa) E.argF E.argG fun _ _ => rfl
+    have hagr := storeAgreesM_lpc σ.args.length (storeAgreesM_of_abi hV habi)
+    have hm := scalarMemNB_sound com hmem
+    obtain ⟨b, hrun, -, -, hval⟩ := lsemStraightMem_straightOps_full hm rfl rfl le_rfl hagr
+    have hpl := JasminLsemMemFlagArrLoop.straightOpsMem_plain Γ.length com
+      (JasminLsemMemFlagArrLoop.scalarMemN_comOpsPlain hm) Γ.length
+    obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem _ hpl _ b false hrun
+    set ret := comRetReg Γ.length argName com Γ.length with hret
+    have hF2 : runStraightF (straightOpsMem Γ.length com Γ.length
+          ++ JasminLsemRenameLoop.movesOf [(ret, nm RA)]) (afterArgs σ body sa) false
+        = some (JasminLsemRenameLoop.movesState [(ret, nm RA)] { b with cf := c, of := o },
+          false) := by
+      have hF' : runStraightF (straightOpsMem Γ.length com Γ.length) (afterArgs σ body sa) false
+          = some ({ b with cf := c, of := o }, false) := hF
+      rw [JasminLsemAddrMem.runStraightF_append, hF', Option.bind_some]
+      exact JasminLsemRenameLoop.runStraightF_movesOf _ _ _
+    have hC : ∀ i ∈ straightOpsMem Γ.length com Γ.length
+        ++ JasminLsemRenameLoop.movesOf [(ret, nm RA)], IsLopn i := by
+      intro i hi
+      rcases List.mem_append.mp hi with hi | hi
+      · exact (hpl i hi).1
+      · exact JasminLsemRenameLoop.movesOf_isLopn _ i hi
+    obtain ⟨prog, sa', hdec, hh, hR⟩ := straight_image_reg_bytes hroute hC hgp hfr sa hreg "" _ _ hF2
+    refine ⟨prog, sa', hdec, hh, ?_⟩
+    have h0 : b.reg.getW ret 64 = some (com.denote V) := by
+      simpa only [JasminLsemWidthN.evalOperandN] using hval
+    have hv : (JasminLsemRenameLoop.movesState [(ret, nm RA)]
+        { b with cf := c, of := o }).reg.getW (nm RA) 64 = some (com.denote V) := by
+      rw [← h0]
+      unfold JasminLsemWidthN.LstateN.getW
+      rw [movesState_single_lvm]
+    rw [hv, hph] at hR
+    have hx := Option.some.inj hR
+    unfold AbiLayout.ResultOf
+    rw [hσ]
+    simp only [Haxc.ResultKind.read, hx]
   · cases hres
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute

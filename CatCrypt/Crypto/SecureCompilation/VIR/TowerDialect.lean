@@ -26,8 +26,8 @@ represented by its two base coordinates, an `Fp6` value by six and an `Fp12` val
 twelve. Every block is a closed `MultiReturnCom fieldDialect` over the flattened
 argument registers, generated from a straight-line program:
 
-* `TExpr`, `emitT`, `emitVecT`: expressions over `ZMod p` with sums, differences,
-  negations and products, compiled to `fAdd`, `fSub`, `fNeg`, `fMul` and `fConst`
+* `emitT`, `emitVecT`: expressions over `ZMod p` (`FieldDialect.FExpr`) with sums,
+  differences, negations and products, compiled to `fAdd`, `fSub`, `fNeg`, `fMul` and `fConst`
   bindings; an input binds nothing.
 * `I2`, `I2.emit`: the `Fp2` instructions, each two stages of expressions over the
   coordinates of its operands. The product is Karatsuba (three `fMul`), the square is
@@ -279,6 +279,62 @@ instance : DialectDenote towerDialect where
         | 1 => a.head.c1
     | .constFp _ c => fun _ => c
 
+/-! ### The ops at `u² = −1`
+
+At `β = −1` the level products denote the products `ext2MulF`, `ext6MulF`, `ext12MulF`
+of `FieldDialect`, and the sums, differences and the Frobenius denote `ext2AddF`, …,
+`frobenius2F`. -/
+
+theorem mul_two_denote (p : Nat) (ξ : Int) (a b : Fp2Val p) :
+    DialectDenote.denote (d := towerDialect) (.mul .two p (-1) ξ) (.cons a (.cons b .nil))
+      = ext2MulF a b := by
+  change Fp2Val.mulBeta ((-1 : Int) : ZMod p) a b = a * b
+  rw [Int.cast_neg, Int.cast_one]
+  exact Fp2Val.mulBeta_neg_one a b
+
+theorem mul_six_denote (p : Nat) (ξ : Int) (a b : Fp6Val p) :
+    DialectDenote.denote (d := towerDialect) (.mul .six p (-1) ξ) (.cons a (.cons b .nil))
+      = ext6MulF (ξ : ZMod p) a b := by
+  change Fp6Val.mulBeta ((-1 : Int) : ZMod p) (ξ : ZMod p) a b = Fp6Val.mul (ξ : ZMod p) a b
+  rw [Int.cast_neg, Int.cast_one]
+  exact Fp6Val.mulBeta_neg_one _ a b
+
+theorem mul_twelve_denote (p : Nat) (ξ : Int) (a b : Fp12Val p) :
+    DialectDenote.denote (d := towerDialect) (.mul .twelve p (-1) ξ) (.cons a (.cons b .nil))
+      = ext12MulF (ξ : ZMod p) a b := by
+  change Fp12Val.mulBeta ((-1 : Int) : ZMod p) (ξ : ZMod p) a b
+    = Fp12Val.mul (ξ : ZMod p) a b
+  rw [Int.cast_neg, Int.cast_one]
+  exact Fp12Val.mulBeta_neg_one _ a b
+
+theorem add_two_denote (p : Nat) (β ξ : Int) (a b : Fp2Val p) :
+    DialectDenote.denote (d := towerDialect) (.add .two p β ξ) (.cons a (.cons b .nil))
+      = ext2AddF a b := rfl
+
+theorem sub_two_denote (p : Nat) (β ξ : Int) (a b : Fp2Val p) :
+    DialectDenote.denote (d := towerDialect) (.sub .two p β ξ) (.cons a (.cons b .nil))
+      = ext2SubF a b := rfl
+
+theorem add_six_denote (p : Nat) (β ξ : Int) (a b : Fp6Val p) :
+    DialectDenote.denote (d := towerDialect) (.add .six p β ξ) (.cons a (.cons b .nil))
+      = ext6AddF a b := rfl
+
+theorem sub_six_denote (p : Nat) (β ξ : Int) (a b : Fp6Val p) :
+    DialectDenote.denote (d := towerDialect) (.sub .six p β ξ) (.cons a (.cons b .nil))
+      = ext6SubF a b := rfl
+
+theorem add_twelve_denote (p : Nat) (β ξ : Int) (a b : Fp12Val p) :
+    DialectDenote.denote (d := towerDialect) (.add .twelve p β ξ) (.cons a (.cons b .nil))
+      = ext12AddF a b := rfl
+
+theorem sub_twelve_denote (p : Nat) (β ξ : Int) (a b : Fp12Val p) :
+    DialectDenote.denote (d := towerDialect) (.sub .twelve p β ξ) (.cons a (.cons b .nil))
+      = ext12SubF a b := rfl
+
+theorem frobenius2_denote (p : Nat) (β : Int) (a : Fp2Val p) :
+    DialectDenote.denote (d := towerDialect) (.frobenius2 p β) (.cons a .nil)
+      = frobenius2F a := rfl
+
 end Denote
 
 /-- The trip counter of `towerDialect` is its `word` type. -/
@@ -323,63 +379,10 @@ theorem Preserves.comp {Γ₁ Γ₂ Γ₃ : Ctxt fieldDialect} {r₁ : Ren Γ₁
     Preserves (fun v => r₂ (r₁ v)) V₁ V₃ :=
   fun v => (h₂ (r₁ v)).trans (h₁ v)
 
-variable (p) in
-/-- An expression over `ZMod p` in `n` inputs. -/
-inductive TExpr (n : Nat) where
-  /-- Input `i`. -/
-  | inp (i : Fin n)
-  /-- The constant `c`. -/
-  | const (c : ZMod p)
-  /-- A sum. -/
-  | add (a b : TExpr n)
-  /-- A difference. -/
-  | sub (a b : TExpr n)
-  /-- A negation. -/
-  | neg (a : TExpr n)
-  /-- A product. -/
-  | mul (a b : TExpr n)
-
-/-- The value of an expression at the inputs `x`. -/
-def TExpr.eval {n : Nat} (x : Fin n → ZMod p) : TExpr p n → ZMod p
-  | .inp i => x i
-  | .const c => c
-  | .add a b => a.eval x + b.eval x
-  | .sub a b => a.eval x - b.eval x
-  | .neg a => -a.eval x
-  | .mul a b => a.eval x * b.eval x
-
-/-- `c · e`, with no binding for `c = 1` and a negation for `c = −1`. -/
-def TExpr.mulSc {n : Nat} (c : Int) (e : TExpr p n) : TExpr p n :=
-  if c = 1 then e else if c = -1 then .neg e else .mul (.const (c : ZMod p)) e
-
-/-- `x + c · y`, with no binding for `c = 0`, a sum for `c = 1` and a difference for
-    `c = −1`. -/
-def TExpr.addSc {n : Nat} (c : Int) (x y : TExpr p n) : TExpr p n :=
-  if c = 0 then x else if c = 1 then .add x y else if c = -1 then .sub x y
-  else .add x (.mul (.const (c : ZMod p)) y)
-
-@[simp] theorem TExpr.mulSc_eval {n : Nat} (c : Int) (e : TExpr p n) (x : Fin n → ZMod p) :
-    (TExpr.mulSc c e).eval x = (c : ZMod p) * e.eval x := by
-  unfold TExpr.mulSc
-  split_ifs with h1 h2
-  · subst h1; simp
-  · subst h2; simp [TExpr.eval]
-  · rfl
-
-@[simp] theorem TExpr.addSc_eval {n : Nat} (c : Int) (a b : TExpr p n)
-    (x : Fin n → ZMod p) :
-    (TExpr.addSc c a b).eval x = a.eval x + (c : ZMod p) * b.eval x := by
-  unfold TExpr.addSc
-  split_ifs with h0 h1 h2
-  · subst h0; simp
-  · subst h1; simp [TExpr.eval]
-  · subst h2; simp [TExpr.eval, sub_eq_add_neg]
-  · rfl
-
 /-- The program of an expression: one binding per constant, sum, difference, negation
     and product, then the continuation on the renaming into its context and the
     variable holding the value. -/
-def emitT {ts : List FieldTy} {n : Nat} : TExpr p n → {Γ : Ctxt fieldDialect} →
+def emitT {ts : List FieldTy} {n : Nat} : FExpr p n → {Γ : Ctxt fieldDialect} →
     (Fin n → Ctxt.Var Γ (.fp p)) →
     ({Γ' : Ctxt fieldDialect} → Ren Γ Γ' → Ctxt.Var Γ' (.fp p) → MRC Γ' ts) → MRC Γ ts
   | .inp i, _, env, k => k (fun v => v) (env i)
@@ -400,7 +403,7 @@ def emitT {ts : List FieldTy} {n : Nat} : TExpr p n → {Γ : Ctxt fieldDialect}
 /-- **Denotation of `emitT`.** If `env` holds `x` under `V` and the continuation
     denotes `R` whenever its renaming preserves values and its variable holds the value
     of `e`, then `emitT e env k` denotes `R`. -/
-theorem emitT_denote {ts : List FieldTy} {n : Nat} (x : Fin n → ZMod p) (e : TExpr p n)
+theorem emitT_denote {ts : List FieldTy} {n : Nat} (x : Fin n → ZMod p) (e : FExpr p n)
     {Γ : Ctxt fieldDialect} (env : Fin n → Ctxt.Var Γ (.fp p))
     (k : {Γ' : Ctxt fieldDialect} → Ren Γ Γ' → Ctxt.Var Γ' (.fp p) → MRC Γ' ts)
     (V : Ctxt.Valuation Γ) (R : ListDenote ts) (hx : ∀ i, (env i).lookup V = x i)
@@ -437,7 +440,7 @@ theorem emitT_denote {ts : List FieldTy} {n : Nat} (x : Fin n → ZMod p) (e : T
 /-- The program of `m` expressions over `n` inputs, emitted in order, then the
     continuation on the renaming into its context and the `m` variables holding the
     values. -/
-def emitVecT {ts : List FieldTy} {n : Nat} : (m : Nat) → (Fin m → TExpr p n) →
+def emitVecT {ts : List FieldTy} {n : Nat} : (m : Nat) → (Fin m → FExpr p n) →
     {Γ : Ctxt fieldDialect} → (Fin n → Ctxt.Var Γ (.fp p)) →
     ({Γ' : Ctxt fieldDialect} → Ren Γ Γ' → (Fin m → Ctxt.Var Γ' (.fp p)) → MRC Γ' ts) →
     MRC Γ ts
@@ -449,7 +452,7 @@ def emitVecT {ts : List FieldTy} {n : Nat} : (m : Nat) → (Fin m → TExpr p n)
 
 /-- **Denotation of `emitVecT`.** -/
 theorem emitVecT_denote {ts : List FieldTy} {n : Nat} (x : Fin n → ZMod p) :
-    ∀ (m : Nat) (es : Fin m → TExpr p n) {Γ : Ctxt fieldDialect}
+    ∀ (m : Nat) (es : Fin m → FExpr p n) {Γ : Ctxt fieldDialect}
       (env : Fin n → Ctxt.Var Γ (.fp p))
       (k : {Γ' : Ctxt fieldDialect} → Ren Γ Γ' → (Fin m → Ctxt.Var Γ' (.fp p)) → MRC Γ' ts)
       (V : Ctxt.Valuation Γ) (R : ListDenote ts), (∀ i, (env i).lookup V = x i) →
@@ -608,18 +611,18 @@ variable {p : Nat}
 
 /-- Two stages of expressions over the `n` coordinate variables `env`: the first stage
     binds `m₁` values, the second the two coordinates of the result. -/
-def stepN {ts : List FieldTy} {n m₁ : Nat} (es₁ : Fin m₁ → TExpr p n) (es₂ : Fin 2 → TExpr p m₁)
+def stepN {ts : List FieldTy} {n m₁ : Nat} (es₁ : Fin m₁ → FExpr p n) (es₂ : Fin 2 → FExpr p m₁)
     {Γ : Ctxt fieldDialect} (env : Fin n → Ctxt.Var Γ (.fp p))
     (k : {Γ' : Ctxt fieldDialect} → Ren Γ Γ' → F2 p Γ' → MRC Γ' ts) : MRC Γ ts :=
   emitVecT m₁ es₁ env fun r₁ w => emitVecT 2 es₂ w fun r₂ c => k (fun v => r₂ (r₁ v)) ⟨c 0, c 1⟩
 
 /-- The value of `stepN es₁ es₂` at the coordinate values `x`. -/
-def stepVal {n m₁ : Nat} (es₁ : Fin m₁ → TExpr p n) (es₂ : Fin 2 → TExpr p m₁)
+def stepVal {n m₁ : Nat} (es₁ : Fin m₁ → FExpr p n) (es₂ : Fin 2 → FExpr p m₁)
     (x : Fin n → ZMod p) : Fp2Val p :=
   ⟨(es₂ 0).eval (fun i => (es₁ i).eval x), (es₂ 1).eval (fun i => (es₁ i).eval x)⟩
 
-theorem stepN_denote {ts : List FieldTy} {n m₁ : Nat} (es₁ : Fin m₁ → TExpr p n)
-    (es₂ : Fin 2 → TExpr p m₁) {Γ : Ctxt fieldDialect} (env : Fin n → Ctxt.Var Γ (.fp p))
+theorem stepN_denote {ts : List FieldTy} {n m₁ : Nat} (es₁ : Fin m₁ → FExpr p n)
+    (es₂ : Fin 2 → FExpr p m₁) {Γ : Ctxt fieldDialect} (env : Fin n → Ctxt.Var Γ (.fp p))
     (k : {Γ' : Ctxt fieldDialect} → Ren Γ Γ' → F2 p Γ' → MRC Γ' ts)
     (V : Ctxt.Valuation Γ) (R : ListDenote ts)
     (hk : ∀ {Γ' : Ctxt fieldDialect} (r : Ren Γ Γ') (V' : Ctxt.Valuation Γ') (z : F2 p Γ'),
@@ -672,43 +675,43 @@ def I2.eval (β ξ : Int) {k : Nat} : I2 k → (Fin k → Fp2Val p) → Fp2Val p
   | .zero, _ => 0
 
 /-- The pass-through stage. -/
-def idE {n : Nat} : Fin n → TExpr p n := TExpr.inp
+def idE {n : Nat} : Fin n → FExpr p n := FExpr.inp
 
 /-- Second stage of the sum, over `x0, x1, y0, y1`. -/
-def addE₂ : Fin 2 → TExpr p 4 := ![.add (.inp 0) (.inp 2), .add (.inp 1) (.inp 3)]
+def addE₂ : Fin 2 → FExpr p 4 := ![.add (.inp 0) (.inp 2), .add (.inp 1) (.inp 3)]
 
 /-- Second stage of the difference. -/
-def subE₂ : Fin 2 → TExpr p 4 := ![.sub (.inp 0) (.inp 2), .sub (.inp 1) (.inp 3)]
+def subE₂ : Fin 2 → FExpr p 4 := ![.sub (.inp 0) (.inp 2), .sub (.inp 1) (.inp 3)]
 
 /-- Second stage of the negation, over `x0, x1`. -/
-def negE₂ : Fin 2 → TExpr p 2 := ![.neg (.inp 0), .neg (.inp 1)]
+def negE₂ : Fin 2 → FExpr p 2 := ![.neg (.inp 0), .neg (.inp 1)]
 
 /-- First stage of the Karatsuba product: `x0·y0`, `x1·y1`, `(x0 + x1)·(y0 + y1)`. -/
-def mulE₁ : Fin 3 → TExpr p 4 :=
+def mulE₁ : Fin 3 → FExpr p 4 :=
   ![.mul (.inp 0) (.inp 2), .mul (.inp 1) (.inp 3),
     .mul (.add (.inp 0) (.inp 1)) (.add (.inp 2) (.inp 3))]
 
 /-- Second stage of the Karatsuba product: `v0 + β·v1` and `s − v0 − v1`. -/
-def mulE₂ (β : Int) : Fin 2 → TExpr p 3 :=
-  ![TExpr.addSc β (.inp 0) (.inp 1), .sub (.sub (.inp 2) (.inp 0)) (.inp 1)]
+def mulE₂ (β : Int) : Fin 2 → FExpr p 3 :=
+  ![FExpr.addSc β (.inp 0) (.inp 1), .sub (.sub (.inp 2) (.inp 0)) (.inp 1)]
 
 /-- First stage of the complex-method square: `x0·x1` and `(x0 + x1)·(x0 + β·x1)`. -/
-def sqE₁ (β : Int) : Fin 2 → TExpr p 2 :=
-  ![.mul (.inp 0) (.inp 1), .mul (.add (.inp 0) (.inp 1)) (TExpr.addSc β (.inp 0) (.inp 1))]
+def sqE₁ (β : Int) : Fin 2 → FExpr p 2 :=
+  ![.mul (.inp 0) (.inp 1), .mul (.add (.inp 0) (.inp 1)) (FExpr.addSc β (.inp 0) (.inp 1))]
 
 /-- Second stage of the complex-method square: `m − (1 + β)·v` and `v + v`. -/
-def sqE₂ (β : Int) : Fin 2 → TExpr p 2 :=
-  ![TExpr.addSc (-(1 + β)) (.inp 1) (.inp 0), .add (.inp 0) (.inp 0)]
+def sqE₂ (β : Int) : Fin 2 → FExpr p 2 :=
+  ![FExpr.addSc (-(1 + β)) (.inp 1) (.inp 0), .add (.inp 0) (.inp 0)]
 
 /-- Second stage of the product with `ξ + u`: `ξ·x0 + β·x1` and `x0 + ξ·x1`. -/
-def mulXiE₂ (β ξ : Int) : Fin 2 → TExpr p 2 :=
-  ![TExpr.addSc β (TExpr.mulSc ξ (.inp 0)) (.inp 1), TExpr.addSc ξ (.inp 0) (.inp 1)]
+def mulXiE₂ (β ξ : Int) : Fin 2 → FExpr p 2 :=
+  ![FExpr.addSc β (FExpr.mulSc ξ (.inp 0)) (.inp 1), FExpr.addSc ξ (.inp 0) (.inp 1)]
 
 /-- Second stage of the conjugation. -/
-def conjE₂ : Fin 2 → TExpr p 2 := ![.inp 0, .neg (.inp 1)]
+def conjE₂ : Fin 2 → FExpr p 2 := ![.inp 0, .neg (.inp 1)]
 
 /-- The zero value. -/
-def zeroE₂ : Fin 2 → TExpr p 0 := ![.const 0, .const 0]
+def zeroE₂ : Fin 2 → FExpr p 0 := ![.const 0, .const 0]
 
 /-- The emission of an `Fp2` instruction. -/
 def I2.emit (p : Nat) (β ξ : Int) {k : Nat} {Γ : Ctxt fieldDialect} {ts : List FieldTy} :
@@ -732,26 +735,26 @@ theorem I2.emit_sound (β ξ : Int) :
   cases ins with
   | add i j =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, addE₂, idE, env4, TExpr.eval, I2.eval, F2.val]
+    ext <;> simp [stepVal, addE₂, idE, env4, FExpr.eval, I2.eval, F2.val]
   | sub i j =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, subE₂, idE, env4, TExpr.eval, I2.eval, F2.val]
+    ext <;> simp [stepVal, subE₂, idE, env4, FExpr.eval, I2.eval, F2.val]
   | neg i =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, negE₂, idE, env2, TExpr.eval, I2.eval, F2.val]
+    ext <;> simp [stepVal, negE₂, idE, env2, FExpr.eval, I2.eval, F2.val]
   | mul i j =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, mulE₁, mulE₂, env4, TExpr.eval, I2.eval, F2.val]; ring
+    ext <;> simp [stepVal, mulE₁, mulE₂, env4, FExpr.eval, I2.eval, F2.val]; ring
   | sq i =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, sqE₁, sqE₂, env2, TExpr.eval, I2.eval, F2.val] <;> ring
+    ext <;> simp [stepVal, sqE₁, sqE₂, env2, FExpr.eval, I2.eval, F2.val] <;> ring
   | mulXi i =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, mulXiE₂, idE, env2, TExpr.eval, I2.eval, F2.val,
+    ext <;> simp [stepVal, mulXiE₂, idE, env2, FExpr.eval, I2.eval, F2.val,
       Fp6Val.mulXiBeta] <;> ring
   | conj i =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
-    ext <;> simp [stepVal, conjE₂, idE, env2, TExpr.eval, I2.eval, F2.val]
+    ext <;> simp [stepVal, conjE₂, idE, env2, FExpr.eval, I2.eval, F2.val]
   | zero =>
     refine stepN_denote _ _ _ kk V R fun r V' z hr hz => hk r V' z hr (hz.trans ?_)
     rfl

@@ -6,6 +6,10 @@ benchmark `fiat_rust_compare` in the `bench` directory of the development
 repository, which measures the Rust the templates print against the `fiat-crypto`
 crate on the same inputs.
 
+[FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) states the scope of the template method and gives
+the per-instance status at the bytes as of 2026-10-05; for acceptance, read that table
+in place of the figures of 2026-10-03 below.
+
 ## What Rust programmers do
 
 Three generic field implementations are in wide use:

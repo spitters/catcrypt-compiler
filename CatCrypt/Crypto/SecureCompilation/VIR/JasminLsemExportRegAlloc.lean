@@ -178,7 +178,24 @@ theorem lsemStepN_live (hemp : N "") (hfix : σ "" = "") (i : LinstrR)
     simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, lsemStepN,
       hR.readReg a (ho a (by simp)),
       fun w => hR.evalOperandN w b (ho b (by simp))]
-    live_close
+    cases hra : readReg s a with
+    | some wv =>
+      obtain ⟨w, va⟩ := wv
+      simp only [hra] at h ⊢
+      live_close
+    | none =>
+      simp only [hra] at h ⊢
+      cases a with
+      | imm n =>
+        simp only [renOperand_imm, immFirstN,
+          fun w => hR.evalOperandN w b (ho b (by simp))] at h ⊢
+        cases hb : evalOperandN s (widthFromTag opn) b with
+        | none => simp [hb] at h
+        | some vb =>
+          simp only [hb] at h ⊢
+          obtain ⟨v, hv, rfl⟩ := Option.map_eq_some_iff.1 h
+          exact ⟨_, by rw [hv]; rfl, relN_setReg_keeps hR hK _⟩
+      | _ => simp at h
   · rename_i dst opn n
     simp only [renLinstrR, List.map_cons, List.map_nil, renOperand_reg, renOperand_imm,
       lsemStepN]

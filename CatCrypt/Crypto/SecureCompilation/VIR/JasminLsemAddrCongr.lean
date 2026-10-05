@@ -247,9 +247,11 @@ macro "orel_loop" h:ident : tactic =>
 
 theorem lsemStepN_congr (i : LinstrR) {s t : LstateN} (h : NAgree (readsI i) s t) :
     ORel (NStep s t) (lsemStepN i s) (lsemStepN i t) := by
-  unfold lsemStepN
+  unfold lsemStepN immFirstN
   split
   all_goals (try reads_rw h)
+  all_goals (repeat' split)
+  all_goals (try rw [Option.map.eq_def, Option.map.eq_def])
   all_goals (repeat' split)
   all_goals orel_close h
 

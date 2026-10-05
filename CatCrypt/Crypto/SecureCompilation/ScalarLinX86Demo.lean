@@ -24,6 +24,11 @@ shift amounts satisfy `ShiftAmtOK`, run from a state whose registers are
 `Com.denote com V` for every valuation. The x86 semantics is the `step` function
 of `X86Backend.Model`.
 
+`com_x86_e2e` and `com_x86_e2e_of` are legacy: they hold on the register-only state
+`XState` through `ScalarTarget`, outside the `Lprog` back half, whose x86 instance is
+`x86Isa`. The reason they are kept is stated in `ScalarLinNeutralDemo`, section
+"Status: legacy route".
+
 ## Why the selection is two-address (and the freshness side condition)
 
 The AArch64/RISC-V instruction selections are 1:1 (three-address `add d a b`).
@@ -319,7 +324,7 @@ theorem comToRegProg_X86Faithful {Γ : Ctxt jasminDialect} {t : JasminTy}
     x86 faithfully realises (`hf` — automatic in practice), the compiled-and-run
     x86 block, read at the result register, computes the source `Com.denote`.
     Composes the restricted lift `compile_denote_pure_on` with the shared
-    axiom-clean `comToReg_faithful`. -/
+    axiom-clean `comToReg_faithful`. Legacy, as `com_x86_e2e`. -/
 theorem com_x86_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : XState)
     (hs : s.regs = envOf Γ.length V)
@@ -338,7 +343,9 @@ theorem com_x86_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.r
 /-- **General end-to-end x86** (full mirror of `com_arm_e2e`). The register-freshness
     faithfulness is discharged automatically by `comToRegProg_X86Faithful`; the only
     remaining side condition is the shift-count range `ShiftAmtOK`, which holds
-    trivially for shift-free kernels such as `FieldEmitGoldenPath.fieldAddCom`. -/
+    trivially for shift-free kernels such as `FieldEmitGoldenPath.fieldAddCom`.
+    Legacy: a register-only `ScalarTarget` theorem outside the `Lprog` back half
+    (`ScalarLinNeutralDemo`, section "Status: legacy route"). -/
 theorem com_x86_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : XState)
     (hs : s.regs = envOf Γ.length V)

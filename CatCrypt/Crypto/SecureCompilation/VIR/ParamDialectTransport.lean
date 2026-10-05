@@ -64,7 +64,7 @@ same-carrier mode. The README's
 "`TransferDom` domains are diagonal" boundary and `FieldToModArithLowering`'s
 "the extension fragment is **not** a program transport (no `mapTy` target,
 one-op-to-many)" result are the **same** boundary. The extension ops
-(`ext2Mul → Fp2MulSchedule`, one op → a schedule of several) are **out of scope
+(the tower `Fp2` product `→ Fp2MulSchedule`, one op → a schedule of several) are **out of scope
 for `param_solve`'s op-tree descent** for the identical reason they are out of
 scope for `LoweringData`: there is no single target op / single carrier to
 descend to. The module therefore covers the prime-field arm (which

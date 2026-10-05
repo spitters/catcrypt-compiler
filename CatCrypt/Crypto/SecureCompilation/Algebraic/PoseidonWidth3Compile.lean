@@ -30,7 +30,8 @@ three `fCopy` bindings copy lanes `0, 1, 2`, so the last three bindings of every
 ## Main definitions
 
 * `emitVec`: a vector of expressions compiled in order.
-* `GoodAMC p`: the operations `fAdd`, `fMul`, `fConst`, `fCopy` at `p`.
+* `GoodAMC p`: the operations `fAdd`, `fMul`, `fConst`, `fCopy`, `fSub`, `fNeg` at `p`
+  (`emit` over a general `FExpr`; the Poseidon rounds use the first four).
 * `roundK`, `roundsK`: one round and a list of rounds.
 * `permComAt P i`: the permutation program returning lane `i`.
 
@@ -103,9 +104,10 @@ theorem emitVec_denote {n : Nat} (x : Fin n → ZMod p) :
 variable (p) in
 /-- The operations `fAdd`, `fMul`, `fConst` and `fCopy` at `p`. -/
 def GoodAMC {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t) : Prop :=
-  e.op = .fAdd p ∨ e.op = .fMul p ∨ (∃ c : ZMod p, e.op = .fConst p c) ∨ e.op = .fCopy p
+  e.op = .fAdd p ∨ e.op = .fMul p ∨ (∃ c : ZMod p, e.op = .fConst p c) ∨ e.op = .fCopy p ∨
+    e.op = .fSub p ∨ e.op = .fNeg p
 
-/-- **Coverage of `emit`**: every binding is an `fConst`, `fAdd` or `fMul` at `p`. -/
+/-- **Coverage of `emit`**: every binding is a `GoodAMC p` operation. -/
 theorem emit_goodAMC {n : Nat} (e : FExpr p n) {Γ : Ctxt fieldDialect}
     (env : Fin n → Ctxt.Var Γ (.fp p))
     (k : {Γ' : Ctxt fieldDialect} → Ren Γ Γ' → Ctxt.Var Γ' (.fp p) → Com fieldDialect Γ' (.fp p))
@@ -116,6 +118,11 @@ theorem emit_goodAMC {n : Nat} (e : FExpr p n) {Γ : Ctxt fieldDialect}
   | inp i => exact hk _ _
   | const c => exact ⟨Or.inr (Or.inr (Or.inl ⟨c, rfl⟩)), hk _ _⟩
   | add a b iha ihb => exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb => ⟨Or.inl rfl, hk _ _⟩
+  | sub a b iha ihb =>
+    exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb =>
+      ⟨Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl)))), hk _ _⟩
+  | neg a iha =>
+    exact iha env _ fun r₁ va => ⟨Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl)))), hk _ _⟩
   | mul a b iha ihb =>
     exact iha env _ fun r₁ va => ihb _ _ fun r₂ vb => ⟨Or.inr (Or.inl rfl), hk _ _⟩
 
@@ -278,8 +285,8 @@ theorem copyRet_denote {Γ : Ctxt fieldDialect} (st : Fin 3 → Ctxt.Var Γ (FP 
 
 theorem copyRet_covered {Γ : Ctxt fieldDialect} (st : Fin 3 → Ctxt.Var Γ (FP p)) (i : Fin 3) :
     CoveredCom (GoodAMC p) (copyRet st i) :=
-  ⟨Or.inr (Or.inr (Or.inr rfl)), Or.inr (Or.inr (Or.inr rfl)), Or.inr (Or.inr (Or.inr rfl)),
-    trivial⟩
+  ⟨Or.inr (Or.inr (Or.inr (Or.inl rfl))), Or.inr (Or.inr (Or.inr (Or.inl rfl))),
+    Or.inr (Or.inr (Or.inr (Or.inl rfl))), trivial⟩
 
 /-- **The width-3 Poseidon permutation program over the three input lanes, returning
     lane `i`.** The three programs `i = 0, 1, 2` share their bindings. -/

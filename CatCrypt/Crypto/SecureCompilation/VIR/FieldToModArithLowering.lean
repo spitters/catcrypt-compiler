@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.TowerDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
 
@@ -43,9 +44,10 @@ which part is irreducibly op-level — and builds the transport part as a real
   fragment.
 
 * **Extension fragment — irreducibly op-level (NOT a program transport).** A
-  single Field `ext2Mul` decomposes into a **schedule of several ModArith ops**
+  single tower product (`towerDialect`'s `mul .two` at `u² = −1`) decomposes into a
+  **schedule of several ModArith ops**
   (`(a+bu)(c+du) = (ac−bd) + (ad+bc)u` — four `modMul` plus an `modAdd`/`modSub`),
-  and `ext6Mul`/`ext12Mul` are larger schedules still. That is **one op → a
+  and the `Fp6`/`Fp12` products are larger schedules still. That is **one op → a
   block of ops**, which is exactly the binder-reshaping ("splits one op into
   several") case `ComParametricityTransport` *explicitly excludes* from the
   canonical structural shape (its `LoweringData.lowerExpr : Expr → Expr` produces
@@ -78,7 +80,7 @@ no-`mapTy`-target / op-splitting obstruction stated).
 * `regFieldToModArith : TransportSquare …` — the registry value: the prime-field
   Field→ModArith lowering as a real **program** `TransportSquare`.
 * `extOpRealisation` — the extension fragment as an **op-level** realisation
-  (`ext2Mul` denotes to `Fp2MulSchedule`), with `no_total_lowering_*` notes
+  (the tower `Fp2` product denotes to `Fp2MulSchedule`), with `no_total_lowering_*` notes
   documenting why it is *not* a `LoweringData`.
 
 **All goals closed**; target axiom set `{propext, Classical.choice, Quot.sound}`.
@@ -367,13 +369,13 @@ theorem regFieldToModArith_related {Γ : Ctxt fpDialect} {t : FpTy}
 /-! ## 6. The extension fragment is irreducibly op-level (NOT a program transport)
 
 The prime-field arm above is a `Com fpDialect → Com modArithDialect`
-transport. The **extension** arm (`fp2`/`fp6`/`fp12`, `ext2Mul`/`ext6Mul`/…) is
+transport. The **extension** arm (`fp2`/`fp6`/`fp12`, the `towerDialect` products) is
 **not**, for two independent reasons — both formalised here:
 
 1. **No `mapTy` target.** ModArith has no `fp2`/`fp6`/`fp12` type, so there is no
    type-map `FieldTy → ModArithTy` carrying the extension types — a *total*
    `LoweringData fieldDialect modArithDialect` cannot even be stated.
-2. **One op → a block of ops.** A single `ext2Mul` lowers to a *schedule* of
+2. **One op → a block of ops.** A single `Fp2` product lowers to a *schedule* of
    several ModArith ops (`(a+bu)(c+du) = (ac−bd) + (ad+bc)u`), which is the
    binder-reshaping / op-splitting case `LoweringData.lowerExpr : Expr → Expr`
    (single op) cannot express, and that `ComParametricityTransport` explicitly
@@ -385,17 +387,18 @@ equals the abstract `Fp2` product), a value-level equality composed by
 transitivity in `DialectLoweringChain.extChainDenote` — *not* a `Com`-program
 transport. We record it as exactly that. -/
 
-/-- **The extension fragment, as an op-level realisation.** `ext2Mul` denotes to
-    its ModArith-leaf Karatsuba schedule `Fp2MulSchedule` (the L3→L2 extension
-    step). This is the shape of the extension lowering: a *value-level*
+/-- **The extension fragment, as an op-level realisation.** The `towerDialect`
+    product `mul .two` at `u² = −1` denotes its ModArith-leaf schedule
+    `Fp2MulSchedule`. This is the shape of the extension lowering: a *value-level*
     realisation equality (`= ` between the op's denotation and a ModArith-leaf
     schedule), **not** a `TransportSquare`/`LoweringData` program transport —
-    there is no single ModArith op, nor a ModArith type, to send `ext2Mul`/`fp2`
+    there is no single ModArith op, nor a ModArith type, to send the `Fp2` product
     to. -/
-theorem extOpRealisation {p : Nat} (x y : Fp2Val p) :
-    fieldDenote.denote (.ext2Mul p) (.cons x (.cons y .nil))
+theorem extOpRealisation {p : Nat} (ξ : Int) (x y : Fp2Val p) :
+    DialectDenote.denote (d := TowerDialect.towerDialect) (.mul .two p (-1) ξ)
+        (.cons x (.cons y .nil))
       = FieldDialect.Fp2MulSchedule x y :=
-  FieldDialect.ext2Mul_lowers_to_schedule x y
+  (TowerDialect.mul_two_denote p ξ x y).trans (FieldDialect.fp2MulSchedule_denote x y).symm
 
 /-- **The extension realisation has the op-level realisation shape, not the
     `TransportSquare` shape.** A `DialectLoweringTransport.TransportSquare` is a
@@ -409,12 +412,13 @@ theorem extOpRealisation {p : Nat} (x y : Fp2Val p) :
     level (`Fp2Val p → Fp2Val p`), not at the program level
     (`Valuation Γ → ⟦t⟧`). This is precisely the op-level realisation the L2/L3
     chain composes by transitivity, formalised as such. -/
-theorem extOpRealisation_is_value_level {p : Nat} :
+theorem extOpRealisation_is_value_level {p : Nat} (ξ : Int) :
     TransportSquare
       (g := fun xy : Fp2Val p × Fp2Val p =>
-              fieldDenote.denote (.ext2Mul p) (.cons xy.1 (.cons xy.2 .nil)))
+              DialectDenote.denote (d := TowerDialect.towerDialect) (.mul .two p (-1) ξ)
+                (.cons xy.1 (.cons xy.2 .nil)))
       (φin := id) (φout := id)
       (f := fun xy : Fp2Val p × Fp2Val p => FieldDialect.Fp2MulSchedule xy.1 xy.2) :=
-  ⟨fun xy => (extOpRealisation xy.1 xy.2).symm⟩
+  ⟨fun xy => (extOpRealisation ξ xy.1 xy.2).symm⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering

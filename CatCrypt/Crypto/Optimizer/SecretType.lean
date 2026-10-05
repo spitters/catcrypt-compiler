@@ -37,12 +37,11 @@ all its argument variables (`exprTaint`) — the data-flow output level.
 `WellTainted (T : Taint Γ) c` holds when, along every let-binding of `c`, the
 newly-bound variable carries exactly the join of its inputs' taints (so the
 recorded level of a binder equals `exprTaint` of its expression), and the body
-is well-tainted under the extended assignment. Because the whole `jasminDialect`
-is branch-free (`ctSafeComJ_true`), there is no control-flow site at which a
-secret could leak: every op is constant-time, so a *declassify* (a `secret →
-public` demotion) is admissible exactly at the CT-safe ops — which here is all
-of them. The invariant therefore tracks where secrecy flows without ever being
-forced to over-approximate at a branch.
+is well-tainted under the extended assignment. A `Com jasminDialect` is a
+let-chain without branches, so the invariant tracks where secrecy flows without
+over-approximating at a branch. The invariant does not constrain leakage: under a
+leakage model a `stackLoad` or `stackStore` emits the address it reads or writes
+(`ComLevelCheck.Com.ctLeak`).
 
 ## Two passes, two flavours of taint preservation
 
@@ -160,9 +159,7 @@ end Taint
 
 The output secrecy level of an operation is the join of the secrecy levels of
 all its argument variables (data-flow taint propagation). We fold the lattice
-join over the `HVector` of argument variables. Because the whole dialect is
-constant-time (`ctSafeComJ_true`), no op needs to be treated as a leak/branch
-site: the join rule is sound for every op. -/
+join over the `HVector` of argument variables; the same rule applies to every op. -/
 
 /-- Fold the secrecy join over an `HVector` of argument variables, starting from
     `pub` (the join identity). -/
@@ -314,12 +311,10 @@ collapses *change* the argument set of a binder — `x + 0` (args `x`, `zero`)
 becomes `or x x` (args `x`, `x`); `x * 0` (args `x`, `zero`) becomes
 `and zero zero`. So `exprTaint` is **not** preserved exactly.
 
-What it *does* satisfy is the declassification discipline the module
-header describes: every rewrite only ever drops one of the two input variables,
-so a binder's output taint can only **stay the same or move down** the lattice
-(`⊑ₛ`) — never up. The engine never turns a public binder secret. Because the
-whole dialect is constant-time (`ctSafeComJ_true`), this monotone declassify is
-admissible at every op. We capture this as `rewriteCom_taint_mono`: the rewritten
+What it satisfies is monotonicity: every rewrite only ever drops one of the two
+input variables, so a binder's output taint can only **stay the same or move down**
+the lattice (`⊑ₛ`) — never up. The engine never turns a public binder secret. We
+capture this as `rewriteCom_taint_mono`: the rewritten
 program's binder taints are pointwise `⊑ₛ` the originals, lifted along the
 let-chain and through the fuel iteration to `saturateCom_taint_mono`.
 

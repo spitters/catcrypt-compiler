@@ -26,7 +26,10 @@ The production witness is the AUCurves verified-bedrock2 BLS12-381 tower
 
 * the fiat-crypto machine-checked **`Fp` field leaves** (6×`u64` Montgomery
   limbs): `fp_add/sub/mul/square/opp`, to/from-bytes, to/from-Montgomery;
-* the extracted **`Fp2` / `Fp6` / `Fp12` tower** built over those leaves;
+* the **`Fp2` / `Fp6` / `Fp12` tower** built over those leaves; in the shipped Rust
+  `Fp2_mul`, `Fp2_square` and `Fp2_inv` are hand-edited away from the extraction, so
+  these entries rest on reviewed rather than extracted code, and pairing bilinearity
+  is axiomatised upstream (`Theory/BLS12Pairing/Bilinearity.v`);
 * **`miller_loop`** and **`final_exp`** — hence `pairing = final_exp ∘
   miller_loop`, the verified `bls12_pairing` leaf;
 * the **`fp12_mul`** GT product, the verified `fp12_mul` leaf.

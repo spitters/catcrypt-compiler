@@ -38,8 +38,9 @@ lowers fieldDialectAt
 lowers fieldDialectTower
 lowers modArithDialectAt
 lowers ecDialectAt
-# NFProg dialect of the hax normal form: nfToCat, then nfChain / nfToComL.
+# NFProg dialect of the hax normal form: nfToCat, then nfChain / nfToComLVia.
 lowers nfDialect
+lowers nfFieldDialect
 # Template dialects with a lowering to jasminDialect: towerToField.comp loweringL
 # (TowerToLimbs), gf2Frame (Gf2Dialect), the graded loop lowering of RowLazy, and
 # bmLowering / accLowering (LanesRepFamily).

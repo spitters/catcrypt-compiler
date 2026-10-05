@@ -28,11 +28,9 @@ several equivalent implementations.
   at most that of every member, and `extractMin_denote_eq` that it denotes the
   representative. On the multiply-method families, `mul2Selected` and `mul3Selected`
   recover the choices of `selectMul2` and `selectMul3`.
-- `RegistryEgraphBridge.lean`, `EgraphGrindIntegration.lean`: bridges to the
-  `Related` registry (`Transfer.Base.Related`, from ParamTransfer) and to `grind`.
-- `../EgraphOracle.lean`: a proposal from an untrusted `Com → Com` oracle enters the
-  output only through a decidable denotation check (`oracleOpt_denote`).
-  `../TranslationValidationEgraph.lean` accepts a candidate structurally equal to the
+- `RegistryEgraphBridge.lean`: bridge to the `Related` registry
+  (`Transfer.Base.Related`, from ParamTransfer).
+- `../TranslationValidationEgraph.lean` accepts a candidate structurally equal to the
   output of `comAlgebraicPipeline` (`tvCheckCanon_sound`).
 
 ## Cost models

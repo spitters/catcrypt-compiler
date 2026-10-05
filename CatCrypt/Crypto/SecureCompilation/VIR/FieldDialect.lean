@@ -19,11 +19,9 @@ the elliptic-curve group law and the residue-ring ModArith dialect:
 
     EllipticCurve(L4) → **Field(L3)** → ModArith(L2) → {Vector | LowCT} → {jasmin | x86}
 
-Today the extension-field tower (`Fp2`/`Fp6`/`Fp12`) lives in the bespoke
-pairing-tower files (`Pairing/Fp2Tower.lean`, …), re-derived per curve.  This
-dialect gives the **abstract field layer** — the prime field `F_p` *and* the
-pairing extension tower — one verified home, mirroring the way `ModArithDialect`
-gives the residue-ring layer one home.
+The dialect's ops are the prime-field operations. Its types are the prime field
+and the carriers of the pairing extension tower, whose operations are the ops of
+`towerDialect`.
 
 ## Types (`FieldTy`)
 
@@ -51,29 +49,24 @@ the once-per-dialect tie of the layered plan.
 * prime-field `fAdd`/`fSub`/`fNeg`/`fMul`/`fInv` — denote into `ZMod p`'s native
   ops (delegating to the ModArith leaves);
 * prime-field `fieldDouble`/`fieldSquare` — the prime-ir `field.double` /
-  `field.square` derived ops, denoting to `a + a` and `a * a`;
-* extension `ext2Mul`/`ext6Mul`/`ext12Mul` — the Karatsuba/Toom extension
-  multiplies, denoting into the abstract `Fp2`/`Fp6`/`Fp12` product;
-* `ext2Add`/`ext2Sub` … — componentwise extension add/sub;
-* `frobenius2 p` — the `Fp2` Frobenius `x ↦ x^p` (here the conjugation
-  `a + b·u ↦ a − b·u`, the `p`-power map for the `u²=−1` extension), denoting to
-  the abstract Frobenius.
+  `field.square` derived ops, denoting to `a + a` and `a * a`.
 
-## Lowering (`FieldLowering.lean`)
+The extension-tower operations (products, sums, differences and the `Fp2`
+Frobenius at `Fp2`/`Fp6`/`Fp12`) are the ops of `towerDialect`
+(`TowerDialect.lean`), which lowers to this dialect by flattening each tower value
+into its prime-field coordinates. The leaf functions `ext2MulF`, …, `ext12SubF` name
+the abstract tower operations that the ModArith schedules of `FieldLowering.lean`
+realise.
 
-A Field op lowers to a **schedule of ModArith ops**: an `ext2Mul` lowers to three
-ModArith `montMul` plus adds/subs (Karatsuba `(a+bu)(c+du) = (ac−bd) + (ad+bc)u`);
-`ext6Mul`/`ext12Mul` compose.  That lowering is proven denotation- and
-CT-preserving in `FieldLowering.lean`, mirroring `ModArithLowering`'s
-`lower_denote_preserved` / `lower_ctSafe_preserved`.
+`FExpr` is the expression language over `ZMod p` compiled to `fieldDialect`
+programs by `FieldExprCompile.emit` and `TowerDialect.emitT`.
 
 ## Pure-only + constant-time
 
 Like `ModArithDialect`, every Field-op denotation is a total pure function (no
-memory/sampling effect), and **every** Field op is data-oblivious — extension-
-field arithmetic is a fixed schedule of base-field ops, index-independent — so
-`ctSafe` is `true` for all ops.  This is the L3 instance of the VIR `ctSafe`
-story (`CTPredicate.lean`): the field layer is CT by construction.
+memory/sampling effect), and every Field op is data-oblivious, so `ctSafe` is
+`true` for all ops.  This is the L3 instance of the VIR `ctSafe` story
+(`CTPredicate.lean`).
 -/
 
 @[expose] public section
@@ -306,7 +299,8 @@ inductive FieldTy where
 
 Prime-field leaves delegate to the ModArith leaves (so a Field `fMul` *is* a
 ModArith `modMul`, the lowering tie is a direct equality).  The extension leaves
-are the abstract `Fp2Val`/`Fp6Val`/`Fp12Val` operations. -/
+are the abstract `Fp2Val`/`Fp6Val`/`Fp12Val` operations at `u² = −1`, the values
+that the schedules of `FieldLowering.lean` compute. -/
 
 /-- Prime-field add: delegates to `ModArith`'s `modAddF`. -/
 @[reducible] def fAddF {p : Nat} (a b : ZMod p) : ZMod p := modAddF a b
@@ -368,9 +362,7 @@ are the abstract `Fp2Val`/`Fp6Val`/`Fp12Val` operations. -/
 
 /-! ## 4. Op tags -/
 
-/-- Operation tags for the Field dialect: the prime-field ops at `fp` and the
-    extension-tower ops at `fp2`/`fp6`/`fp12`. The extension-multiply ops carry
-    the curve's non-residue scalar `ξ₀`. -/
+/-- Operation tags for the Field dialect: the prime-field ops at `fp`. -/
 inductive FieldOp where
   /-- Prime-field add `a + b : fp p`. -/
   | fAdd (p : Nat)
@@ -401,26 +393,6 @@ inductive FieldOp where
       for the same reason: one-dialect indexing of `Com`, and a shared `ZMod p`
       carrier that makes the coproduct injection unnecessary. -/
   | fieldSquare (p : Nat)
-  /-- `Fp2` Karatsuba multiply `a * b : fp2 p`. -/
-  | ext2Mul (p : Nat)
-  /-- `Fp2` add. -/
-  | ext2Add (p : Nat)
-  /-- `Fp2` sub. -/
-  | ext2Sub (p : Nat)
-  /-- `Fp2` Frobenius (conjugation) `a^p : fp2 p`. -/
-  | frobenius2 (p : Nat)
-  /-- `Fp6` multiply (non-residue `ξ₀`) `a * b : fp6 p`. -/
-  | ext6Mul (p : Nat) (ξ0 : ZMod p)
-  /-- `Fp6` add. -/
-  | ext6Add (p : Nat)
-  /-- `Fp6` sub. -/
-  | ext6Sub (p : Nat)
-  /-- `Fp12` Karatsuba multiply (non-residue `ξ₀`) `a * b : fp12 p`. -/
-  | ext12Mul (p : Nat) (ξ0 : ZMod p)
-  /-- `Fp12` add. -/
-  | ext12Add (p : Nat)
-  /-- `Fp12` sub. -/
-  | ext12Sub (p : Nat)
   deriving DecidableEq
 
 /-! ## 5. The dialect -/
@@ -442,16 +414,6 @@ instance : DialectSignature fieldDialect where
     | .fCopy p => [.fp p]
     | .fieldDouble p => [.fp p]
     | .fieldSquare p => [.fp p]
-    | .ext2Mul p => [.fp2 p, .fp2 p]
-    | .ext2Add p => [.fp2 p, .fp2 p]
-    | .ext2Sub p => [.fp2 p, .fp2 p]
-    | .frobenius2 p => [.fp2 p]
-    | .ext6Mul p _ => [.fp6 p, .fp6 p]
-    | .ext6Add p => [.fp6 p, .fp6 p]
-    | .ext6Sub p => [.fp6 p, .fp6 p]
-    | .ext12Mul p _ => [.fp12 p, .fp12 p]
-    | .ext12Add p => [.fp12 p, .fp12 p]
-    | .ext12Sub p => [.fp12 p, .fp12 p]
   ret op := match op with
     | .fAdd p => .fp p
     | .fSub p => .fp p
@@ -462,16 +424,6 @@ instance : DialectSignature fieldDialect where
     | .fCopy p => .fp p
     | .fieldDouble p => .fp p
     | .fieldSquare p => .fp p
-    | .ext2Mul p => .fp2 p
-    | .ext2Add p => .fp2 p
-    | .ext2Sub p => .fp2 p
-    | .frobenius2 p => .fp2 p
-    | .ext6Mul p _ => .fp6 p
-    | .ext6Add p => .fp6 p
-    | .ext6Sub p => .fp6 p
-    | .ext12Mul p _ => .fp12 p
-    | .ext12Add p => .fp12 p
-    | .ext12Sub p => .fp12 p
 
 /-! ## 7. Op denotation -/
 
@@ -486,22 +438,11 @@ instance fieldDenote : DialectDenote fieldDialect where
     | .fCopy _ => fun args => fCopyF args.head
     | .fieldDouble _ => fun args => fDoubleF args.head
     | .fieldSquare _ => fun args => fSquareF args.head
-    | .ext2Mul _ => fun args => ext2MulF args.head args.tail.head
-    | .ext2Add _ => fun args => ext2AddF args.head args.tail.head
-    | .ext2Sub _ => fun args => ext2SubF args.head args.tail.head
-    | .frobenius2 _ => fun args => frobenius2F args.head
-    | .ext6Mul _ ξ0 => fun args => ext6MulF ξ0 args.head args.tail.head
-    | .ext6Add _ => fun args => ext6AddF args.head args.tail.head
-    | .ext6Sub _ => fun args => ext6SubF args.head args.tail.head
-    | .ext12Mul _ ξ0 => fun args => ext12MulF ξ0 args.head args.tail.head
-    | .ext12Add _ => fun args => ext12AddF args.head args.tail.head
-    | .ext12Sub _ => fun args => ext12SubF args.head args.tail.head
 
 /-! ## 8. Constant-time predicate (L3 instance of `CTPredicate.lean`)
 
-Every Field op is data-oblivious: extension-field arithmetic is a fixed schedule
-of base-field ops (no `ite` on data, no data-dependent index). So `ctSafe` is
-`true` for all ops, mirroring `ModArithOp.ctSafe`. -/
+Every Field op is data-oblivious (no `ite` on data, no data-dependent index). So
+`ctSafe` is `true` for all ops, mirroring `ModArithOp.ctSafe`. -/
 
 /-- Per-op CT predicate: every Field op is constant-time. -/
 def FieldOp.ctSafe : FieldOp → Bool
@@ -543,9 +484,8 @@ instance {Γ : Ctxt fieldDialect} {t : FieldTy}
 
 /-! ## 9. Algebraic denotation facts (the once-per-dialect ties)
 
-These hold **definitionally** because the op denotations are the abstract
-extension-field operations. Stated once at the dialect, not re-proved per
-migrated curve. -/
+These hold definitionally because the op denotations are the `ZMod p`
+operations. -/
 
 /-- `fMul` denotes to `ZMod p` multiplication (= ModArith `modMul`). -/
 theorem fMul_denote {p : Nat} (a b : ZMod p) :
@@ -560,51 +500,71 @@ theorem fInv_denote {p : Nat} (a : ZMod p) :
 theorem fConst_denote {p : Nat} (c : ZMod p) :
     fieldDenote.denote (.fConst p c) .nil = c := rfl
 
-/-- `ext2Mul` denotes to the abstract `Fp2` product (the Karatsuba result). -/
-theorem ext2Mul_denote {p : Nat} (a b : Fp2Val p) :
-    fieldDenote.denote (.ext2Mul p) (.cons a (.cons b .nil)) = a * b := rfl
+/-! ## 10. Expressions over the prime field
 
-/-- The `Fp2` multiply denotes coefficient-wise to the Karatsuba formula
-    `(ac−bd) + (ad+bc)u`. -/
-theorem ext2Mul_denote_c0 {p : Nat} (a b : Fp2Val p) :
-    (fieldDenote.denote (.ext2Mul p) (.cons a (.cons b .nil))).c0
-      = a.c0 * b.c0 - a.c1 * b.c1 := rfl
+`FExpr p n` is the type of expressions over `ZMod p` in `n` inputs, built from inputs,
+constants, sums, differences, negations and products: the source language of the
+straight-line emitters into `fieldDialect` (`FieldExprCompile.emit`,
+`TowerDialect.emitT`). -/
 
-theorem ext2Mul_denote_c1 {p : Nat} (a b : Fp2Val p) :
-    (fieldDenote.denote (.ext2Mul p) (.cons a (.cons b .nil))).c1
-      = a.c0 * b.c1 + a.c1 * b.c0 := rfl
+section FExpr
 
-/-- `frobenius2` denotes to the abstract `Fp2` Frobenius (conjugation). -/
-theorem frobenius2_denote {p : Nat} (a : Fp2Val p) :
-    fieldDenote.denote (.frobenius2 p) (.cons a .nil) = Fp2Val.frobenius a := rfl
+variable (p : Nat) in
+/-- An expression over `ZMod p` in `n` inputs. -/
+inductive FExpr (n : Nat) where
+  /-- Input `i`. -/
+  | inp (i : Fin n)
+  /-- The constant `c`. -/
+  | const (c : ZMod p)
+  /-- A sum. -/
+  | add (a b : FExpr n)
+  /-- A difference. -/
+  | sub (a b : FExpr n)
+  /-- A negation. -/
+  | neg (a : FExpr n)
+  /-- A product. -/
+  | mul (a b : FExpr n)
 
-/-- `ext6Mul` denotes to the abstract `Fp6` product. -/
-theorem ext6Mul_denote {p : Nat} (ξ0 : ZMod p) (a b : Fp6Val p) :
-    fieldDenote.denote (.ext6Mul p ξ0) (.cons a (.cons b .nil)) = Fp6Val.mul ξ0 a b := rfl
+variable {p : Nat}
 
-/-- `ext12Mul` denotes to the abstract `Fp12` product (the `GT` op). -/
-theorem ext12Mul_denote {p : Nat} (ξ0 : ZMod p) (a b : Fp12Val p) :
-    fieldDenote.denote (.ext12Mul p ξ0) (.cons a (.cons b .nil)) = Fp12Val.mul ξ0 a b := rfl
+/-- The value of an expression at the inputs `x`. -/
+def FExpr.eval {n : Nat} (x : Fin n → ZMod p) : FExpr p n → ZMod p
+  | .inp i => x i
+  | .const c => c
+  | .add a b => a.eval x + b.eval x
+  | .sub a b => a.eval x - b.eval x
+  | .neg a => -a.eval x
+  | .mul a b => a.eval x * b.eval x
 
-/-! ## 10. Smoke test
+/-- `c · e`, with no binding for `c = 1` and a negation for `c = −1`. -/
+def FExpr.mulSc {n : Nat} (c : Int) (e : FExpr p n) : FExpr p n :=
+  if c = 1 then e else if c = -1 then .neg e else .mul (.const (c : ZMod p)) e
 
-A tiny two-op `Com fieldDialect` over `ZMod 7`: `let c = ext2Mul a b; ret c`.
-On `a = 2 + 3u, b = 1 + 1u`, the product is `(2·1 − 3·1) + (2·1 + 3·1)u =
-−1 + 5u = 6 + 5u (mod 7)`. -/
+/-- `x + c · y`, with no binding for `c = 0`, a sum for `c = 1` and a difference for
+    `c = −1`. -/
+def FExpr.addSc {n : Nat} (c : Int) (x y : FExpr p n) : FExpr p n :=
+  if c = 0 then x else if c = 1 then .add x y else if c = -1 then .sub x y
+  else .add x (.mul (.const (c : ZMod p)) y)
 
-/-- Two-op smoke program: one `ext2Mul` over `[fp2 7, fp2 7]`. -/
-def smokeProg : Com fieldDialect [.fp2 7, .fp2 7] (.fp2 7) :=
-  .var (.mk (.ext2Mul 7) rfl
-          (.cons .here (.cons (.there .here) .nil)))
-    (.ret .here)
+@[simp] theorem FExpr.mulSc_eval {n : Nat} (c : Int) (e : FExpr p n) (x : Fin n → ZMod p) :
+    (FExpr.mulSc c e).eval x = (c : ZMod p) * e.eval x := by
+  unfold FExpr.mulSc
+  split_ifs with h1 h2
+  · subst h1; simp
+  · subst h2; simp [FExpr.eval]
+  · rfl
 
-/-- The smoke program denotes to the `Fp2` product; on `a = 2 + 3u, b = 1 + u`
-    that is `6 + 5u (mod 7)`. -/
-example :
-    smokeProg.denote
-        (.cons (⟨2, 3⟩ : Fp2Val 7) (.cons (⟨1, 1⟩ : Fp2Val 7) .nil))
-      = (⟨6, 5⟩ : Fp2Val 7) := by
-  rfl
+@[simp] theorem FExpr.addSc_eval {n : Nat} (c : Int) (a b : FExpr p n)
+    (x : Fin n → ZMod p) :
+    (FExpr.addSc c a b).eval x = a.eval x + (c : ZMod p) * b.eval x := by
+  unfold FExpr.addSc
+  split_ifs with h0 h1 h2
+  · subst h0; simp
+  · subst h1; simp [FExpr.eval]
+  · subst h2; simp [FExpr.eval, sub_eq_add_neg]
+  · rfl
+
+end FExpr
 
 /-! ## 11. Representation annotations
 

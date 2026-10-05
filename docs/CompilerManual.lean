@@ -156,12 +156,8 @@ the valuation, `saturateCom_denote` proves that the output denotes the input's
 function, and `saturate_cost_le` that its cost under `comCost` does not increase.
 The engine reaches a local fixpoint and does not find a global cost minimum.
 
-Three modules separate untrusted search from verified acceptance.
-`EgraphOracle.oracleOpt` takes any function `Com → Com` as an oracle and keeps its
-proposal only when `gate` decides, over the finite valuation space of a
-register-only context, that proposal and input have the same denotation; otherwise
-it returns the input (`oracleOpt_denote`). `gate` is `noncomputable`, so no emit
-driver can run `oracleOpt`. `ProofCarryingExtraction.RewriteWitness` is an ordered
+Two modules separate untrusted search from verified acceptance.
+`ProofCarryingExtraction.RewriteWitness` is an ordered
 list of rewrite steps, each carrying a denotation equality, validated by folding
 the steps with transitivity; `optimizeChecked` emits a candidate only when its
 witness applies, and the input otherwise (`optimizeChecked_denote`).

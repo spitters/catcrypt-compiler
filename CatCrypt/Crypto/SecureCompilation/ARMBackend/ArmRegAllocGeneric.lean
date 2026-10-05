@@ -29,6 +29,10 @@ is faithful on these two backends. (x86 `SpillingRegAlloc` is not instantiated: 
 two-destination `mulx` needs a multi-written-name generalization of the single-`writtenName`
 shape; the monomorphic x86 soundness is proved in `SpillingRegAlloc`.)
 
+Legacy: no module imports this one, and no route of the `Lprog` back half calls
+`ArmRegAlloc`. The `Lprog` back half allocates registers in the `Lprog` export
+(`ExportPhys.physScanSpill`).
+
 No open goals; the per-read-name `instVal_rename` is by `cases` over `AInst`, the rest is the
 existing ArmRegAlloc/ArmModel laws.
 -/

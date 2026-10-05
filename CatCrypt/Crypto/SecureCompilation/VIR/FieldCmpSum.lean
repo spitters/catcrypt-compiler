@@ -567,11 +567,12 @@ theorem cmp_smokeProg_denote :
   rw [cmp_smokeProg_transports (.cons (0 : ZMod 7) .nil)]
   exact smokeProg_denote_zero
 
-/-- The field inclusion's transport square at `FieldDialect.smokeProg`. -/
+/-- The field inclusion's transport square at a one-multiplication program over `ZMod 7`. -/
 theorem field_smokeProg_transports :
     ComLowerTransports fieldLowering fieldTransTy fieldMapVal
-      FieldDialect.smokeProg :=
-  field_denote FieldDialect.smokeProg
+      (.var (.mk (.fMul 7) rfl (.cons .here (.cons (.there .here) .nil))) (.ret .here) :
+        Com fieldDialect [.fp 7, .fp 7] (.fp 7)) :=
+  field_denote _
 
 end Witness
 

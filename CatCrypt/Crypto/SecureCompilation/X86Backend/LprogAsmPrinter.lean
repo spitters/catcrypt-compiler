@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 import all Init.Data.String.TakeDrop
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaData
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
@@ -195,6 +196,21 @@ def qsaveSlot : String → Option Nat
   | "R8"  => some 10 | "R9" => some 11
   | _ => none
 
+/-- The SysV x86-64 ABI callee-saved GP registers (the caller relies on these
+    surviving a call). `RSP` is the stack pointer (handled by the frame), not in
+    this set. -/
+def calleeSavedRegs : List String := ["RBX", "RBP", "R12", "R13", "R14", "R15"]
+
+/-- **The x86 register file and calling convention**: the allocation pool `gpRegNames`, the
+    reload scratches `R15`, `R14`, the SysV argument registers, the callee-saved registers and
+    their save slots. The printer reads the save slots and the callee-saved set from it. -/
+@[reducible] def x86Abi : VIR.LprogIsa.IsaAbi where
+  allocPool := gpRegNames
+  scratch := [reloadScratch, reloadScratch2]
+  argRegs := sysvArgRegs
+  calleeSaved := calleeSavedRegs
+  saveSlot := qsaveSlot
+
 /-- The frame offset (from the post-`leaq` `%rsp`) of qsave slot `X` in a frame of
     size `frame` whose qsave block is `qsaveB` bytes: the top of the frame holds
     the 8-byte save cells, slot `i` at `frame - 8·(i+1)`, for as many slots as
@@ -208,7 +224,7 @@ def qsaveSlot : String → Option Nat
     8-11 are red-zone, which is the call-free layout. -/
 def qsaveFrameOff (frame : Nat) (reg : String) (qsaveB : Nat := qsaveBytes) :
     Option Int :=
-  (qsaveSlot reg).map (fun i =>
+  (x86Abi.saveSlot reg).map (fun i =>
     if 8 * (i + 1) ≤ qsaveB then
       Int.ofNat frame - 8 * (Int.ofNat i + 1)
     else
@@ -1883,11 +1899,6 @@ saves all six unconditionally), so `calleeSavedToSave` returns `[]` and no
 push/pop is emitted. It is likewise inert for any body that touches no
 callee-saved register as scratch. -/
 
-/-- The SysV x86-64 ABI callee-saved GP registers (the caller relies on these
-    surviving a call). `RSP` is the stack pointer (handled by the frame), not in
-    this set. -/
-def calleeSavedRegs : List String := ["RBX", "RBP", "R12", "R13", "R14", "R15"]
-
 /-- True iff some body `Lopn` writes the bare physical register `reg` as a
     destination. Only an exact `.reg reg` destination counts: the `qsave.<reg>`,
     `k.N`, and `mem.<base>.<off>` names are distinct strings, so a spill/save/mem
@@ -1919,7 +1930,7 @@ def bodyParksQsave (body : VIR.JasminLprogExport.Lcmd) (reg : String) : Bool :=
     any body using no callee-saved scratch — so the push/pop wrapping is inert
     except for hand-built bodies that clobber callee-saved registers. -/
 def calleeSavedToSave (body : VIR.JasminLprogExport.Lcmd) : List String :=
-  calleeSavedRegs.filter (fun r => bodyWritesBareReg body r && !bodyParksQsave body r)
+  x86Abi.calleeSaved.filter (fun r => bodyWritesBareReg body r && !bodyParksQsave body r)
 
 /-- The allocated frame size `F` (bytes: a 16-aligned layout plus the call-site
     alignment correction) for a body: an explicit `FRAME` directive if present

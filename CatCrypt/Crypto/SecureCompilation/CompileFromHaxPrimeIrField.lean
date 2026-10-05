@@ -136,8 +136,7 @@ theorem recognize_unknown (p : Nat) :
 
 Each recognized op emits a one-`var` `Com fieldDialect`: the op applied to the
 context variables, returning the result. The opaque arithmetic leaf — no body is
-inlined (there is none). Binary ops take `[fp p, fp p]`, unary ops `[fp p]`,
-mirroring `smokeProg` in `FieldDialect.lean`. -/
+inlined (there is none). Binary ops take `[fp p, fp p]`, unary ops `[fp p]`. -/
 
 /-- The `mul` emit leaf: `let c = fMul a b; ret c` over `[fp p, fp p]`. -/
 def fMulLeaf (p : Nat) : Com fieldDialect [FieldTy.fp p, FieldTy.fp p] (FieldTy.fp p) :=

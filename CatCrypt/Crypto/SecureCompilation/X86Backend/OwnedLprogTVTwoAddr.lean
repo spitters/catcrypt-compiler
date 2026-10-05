@@ -13,26 +13,27 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
 `TwoAddrLegalize.legalizeInstr` rewrites an untied instruction `opn d, [a, b]` by one of four
 routes: the flag route (`CMP`, `TEST`: the destination becomes the first source), the copy
 route (`mov d, a; opn d, [d, b]`), the commutative route (`opn d, [d, a]` when `b = d`), and
-the scratch route (`mov R15, a; opn R15, [R15, b]; mov d, R15`, and
-`mov R15, d; opn R15, [R15, a]; mov d, R15` for a commutative `opn` with `b = d`). This module
-proves that
-`ownedCheckM` accepts a straight-line body against its legalisation `twoAddrBody` whenever each
-instruction is accepted by its route (`twoAddrRouteWF`).
+the scratch route (`mov qsave.R15, R15; mov R15, a; opn R15, [R15, b]; mov d, R15;
+mov R15, qsave.R15`, with `mov R15, d; opn R15, [R15, a]` in the middle for a commutative `opn`
+with `b = d`). This module proves that `ownedCheckM` accepts a straight-line body against its
+legalisation `twoAddrBody` whenever each instruction is accepted by its route
+(`twoAddrRouteWF`).
 
 ## Method
 
 `twoAddrRoute` classifies an instruction by the branch `legalizeInstr` takes, and `legalR`
 is the legalisation on the instruction alone (`legalizeInstr_eq_legalR`). The flag and the
 commutative routes give one target instruction whose symbolic step equals the source step
-(`chunk_of_symStep_eq`); the copy route is `chunk_copy`. The scratch route writes the scratch
-register, which the source does not: when the body does not name the scratch register, the
-runs proceed from states that agree off it (`SSt.EqvOn [reloadScratch]`). A chunk whose
-instructions do not read the scratch register lifts to that relation (`chunkOn_of_chunk`,
-through `tRun_on`); the scratch chunk is the copy chunk at the scratch register followed by a
-move into the destination (`chunkOn_scratch`), after the exchange of the sources of a
-commutative operation that reads its destination as second source (`chunkOn_of_symStep_eq`,
-`symStep_comm`). The final check needs agreement on the observed
-registers only (`ownedCheckM_of_resOn`), and the scratch register is not observed.
+(`chunk_of_symStep_eq`); the copy route is `chunk_copy`. The scratch route writes the save
+slot `scratchSave`, which the source does not: when the body does not name the scratch
+register, the runs proceed from states that agree off the slot (`SSt.EqvOn [scratchSave]`).
+A chunk whose instructions do not read the slot lifts to that relation (`chunkOn_of_chunk`,
+through `tRun_on`). The middle of the scratch chunk is the copy chunk at the scratch register
+followed by a move into the destination, a chunk off the scratch register (`chunkOn_scratch`),
+after the exchange of the sources of a commutative operation that reads its destination as
+second source (`chunkOn_of_symStep_eq`, `symStep_comm`); the save and the restore around it
+give a chunk off the slot (`chunkOn_saved`). The final check needs agreement on the observed
+registers only (`ownedCheckM_of_resOn`), and the slot is not observed.
 
 ## Main definitions
 
@@ -44,7 +45,7 @@ registers only (`ownedCheckM_of_resOn`), and the scratch register is not observe
 
 * `legalizeInstr_eq_legalR`, `twoAddrBody_typedR`: legalisation through `legalR`.
 * `twoAddrRouteWF_of_twoAddrWF`: the copy-route condition implies the route condition.
-* `chunk_route`, `chunkOn_route`, `chunkOn_scratch`: the chunks of the routes.
+* `chunk_route`, `chunkOn_route`, `chunkOn_scratch`, `chunkOn_saved`: the chunks of the routes.
 * `tRun_on`: runs of a list that does not read `D` from states that agree off `D`.
 * `tRun_lockOn`: runs in lockstep off `D`.
 * `ownedCheckM_of_resOn`: runs agreeing on the observed registers pass `ownedCheckM`.
@@ -66,7 +67,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM (operandReads instrReadRegs)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
   (needsTie movFor tieBase commBases isRegOrImm legalizeInstr twoAddrBody bodyAvoids
-   instrAvoids opAvoids mentionsScratch tiedOk)
+   instrAvoids opAvoids mentionsScratch tiedOk scratchSave scratchRoute)
 
 /-! ## 1. Routes -/
 
@@ -120,13 +121,17 @@ def legalR (ok : Bool) (x : LinstrR) : List LinstrR :=
       | .scratch m =>
           if ok then
             if commBases.contains (tieBase opn) && b == .reg d then
-              [.Lopn [.reg reloadScratch] m [.reg d],
+              [.Lopn [.reg scratchSave] "MOV:64" [.reg reloadScratch],
+               .Lopn [.reg reloadScratch] m [.reg d],
                .Lopn [.reg reloadScratch] opn [.reg reloadScratch, a],
-               .Lopn [.reg d] m [.reg reloadScratch]]
+               .Lopn [.reg d] m [.reg reloadScratch],
+               .Lopn [.reg reloadScratch] "MOV:64" [.reg scratchSave]]
             else
-              [.Lopn [.reg reloadScratch] m [a],
+              [.Lopn [.reg scratchSave] "MOV:64" [.reg reloadScratch],
+               .Lopn [.reg reloadScratch] m [a],
                .Lopn [.reg reloadScratch] opn [.reg reloadScratch, b],
-               .Lopn [.reg d] m [.reg reloadScratch]]
+               .Lopn [.reg d] m [.reg reloadScratch],
+               .Lopn [.reg reloadScratch] "MOV:64" [.reg scratchSave]]
           else [x]
   | _ => [x]
 
@@ -160,7 +165,7 @@ theorem twoAddrBody_typedR (tg : LinstrR → MemTag) (body : Lcmd) :
 /-- The checker accepts the route of the instruction, for the observed registers `outs` and
     the typing `tg`: a kept instruction; the flag route, its target typed as the source; the
     copy route from a register; the commutative route from a register, its target typed as
-    the source; the scratch route from a register, when the scratch register is not
+    the source; the scratch route from a register, when the save slot `scratchSave` is not
     observed and the operation on the scratch register is typed as the source. -/
 def twoAddrRouteWF (outs : List String) (tg : LinstrR → MemTag) (x : LinstrR) : Bool :=
   match x with
@@ -182,7 +187,7 @@ def twoAddrRouteWF (outs : List String) (tg : LinstrR → MemTag) (x : LinstrR) 
       | .scratch _ =>
           match a with
           | .reg y =>
-              !outs.contains reloadScratch &&
+              !outs.contains scratchSave &&
                 if commBases.contains (tieBase opn) && b == .reg d then
                   tg (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg y]) == tg x
                 else tg (.Lopn [.reg reloadScratch] opn [.reg reloadScratch, b]) == tg x
@@ -964,6 +969,163 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
           cases qo <;> simp_all [Res, ResD, runThen]
       | _ => cases hren
 
+/-- **The saved chunk.** A chunk off the register `r` of a source instruction that neither
+    reads the save slot `S` nor writes `r` or `S`, preceded by the move of `r` into `S` and
+    followed by the move of `S` back into `r`, is a chunk off `S`. -/
+theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs τr : MemTag)
+    (hmv : stripWidthTag mv = "MOV") (hrS : r ≠ S) (hc : ChunkOn [r] i js)
+    (hiS : S ∉ symReads i.1) (hwr : r ∉ wrOf i) (hwS : S ∉ wrOf i) :
+    ChunkOn [S] i ((.Lopn [.reg S] mv [.reg r], τs) ::
+      (js ++ [(.Lopn [.reg r] mv [.reg S], τr)])) := by
+  intro ss ss' T T' e hI hS
+  have hrS' : r ∉ [S] := by simpa using hrS
+  have hat : (ss'.regs r).atom = true := by rw [← e.2 r hrS']; exact hI.2.1 r
+  have hcf : ss'.cf.atom = true := by rw [← e.1.2.2.1]; exact hI.2.2.1
+  have hof : ss'.of.atom = true := by rw [← e.1.2.2.2]; exact hI.2.2.2
+  rw [show ((.Lopn [.reg S] mv [.reg r], τs) :: (js ++ [(.Lopn [.reg r] mv [.reg S], τr)]) :
+      List LinstrRM) = [(.Lopn [.reg S] mv [.reg r], τs)] ++
+        (js ++ [(.Lopn [.reg r] mv [.reg S], τr)]) from rfl, tRun_append,
+    tRun_movReg hmv τs T' hat hcf hof]
+  simp only [runThen]
+  rw [tRun_append]
+  let ssA := ss.setR S (ss.regs r)
+  have eA : ss.EqvOn [S] ssA := ⟨⟨rfl, rfl, rfl, rfl⟩, fun q hq => by
+    have hqS : q ≠ S := by simpa using hq
+    simp [ssA, SSt.setR, hqS]⟩
+  have hIA : ssA.Inv T.ents.size := by
+    refine ⟨⟨fun q => ?_, hI.1.2.1, hI.1.2.2.1, hI.1.2.2.2.1, hI.1.2.2.2.2⟩, fun q => ?_,
+      hI.2.2.1, hI.2.2.2⟩
+    · by_cases hq : q = S
+      · simp only [ssA, SSt.setR, hq, if_true]; exact hI.1.1 r
+      · simp only [ssA, SSt.setR, hq, if_false]; exact hI.1.1 q
+    · by_cases hq : q = S
+      · simp only [ssA, SSt.setR, hq, if_true]; exact hI.2.1 r
+      · simp only [ssA, SSt.setR, hq, if_false]; exact hI.2.1 q
+  have eA' : ssA.EqvOn [r] (ss'.setR S (ss'.regs r)) := by
+    refine ⟨⟨e.1.1, e.1.2.1, e.1.2.2.1, e.1.2.2.2⟩, fun q hq => ?_⟩
+    by_cases hqS : q = S
+    · simp only [ssA, SSt.setR, hqS, if_true]; exact e.2 r hrS'
+    · simp only [ssA, SSt.setR, hqS, if_false]; exact e.2 q (by simpa using hqS)
+  have hsrc := tRun_on [S] [i] ss ssA T (fun j hj q hq hqS => by
+    simp only [List.mem_singleton] at hj hqS
+    subst hj hqS
+    exact hiS hq) eA
+  cases hsi : symStep i ss with
+  | ok s1 g1 =>
+      have h1 := tRun_single_ok T hsi (symStep_wr hsi)
+      cases hsa : symStep i ssA with
+      | ok sA gA =>
+          have hA := tRun_single_ok T hsa (symStep_wr hsa)
+          rw [h1, hA] at hsrc
+          simp only [ResOn] at hsrc
+          obtain ⟨hTT, eS, rfl⟩ := hsrc
+          rw [h1] at hS
+          have hcc := hc ssA _ T T' eA' hIA (by rw [hA]; exact hTT ▸ hS)
+          rw [hA] at hcc
+          obtain ⟨ds, hds, hkeep⟩ := symStep_frm i hsa
+          have hdsw : ds = wrOf i := List.append_cancel_right (hds.symm.trans (symStep_wr hsa))
+          have hAr : (T.internSt sA (wrOf i)).2.regs r = ss.regs r := by
+            rw [Tbl.internSt_keep _ _ _ r hwr, hkeep r (hdsw ▸ hwr)]
+            simp [ssA, SSt.setR, hrS]
+          have hAS : (T.internSt sA (wrOf i)).2.regs S = ss.regs r := by
+            rw [Tbl.internSt_keep _ _ _ S hwS, hkeep S (hdsw ▸ hwS)]
+            simp [ssA, SSt.setR]
+          have hInvA := (tRun_inv [i] ssA T hIA hA).1
+          rw [h1]
+          generalize tRun js (ss'.setR S (ss'.regs r)) T' = q at hcc ⊢
+          obtain ⟨Q, qo⟩ := q
+          cases qo with
+          | ok s2 g2 =>
+              simp only [ResD] at hcc
+              obtain ⟨rfl, e2, rfl⟩ := hcc
+              have hs2S : s2.regs S = ss.regs r := by
+                rw [← e2.2 S (by simpa using hrS.symm), hAS]
+              have hx : (s2.regs S).atom = true := by rw [hs2S]; exact hI.2.1 r
+              have hc2 : s2.cf.atom = true := by rw [← e2.1.2.2.1]; exact hInvA.2.2.1
+              have ho2 : s2.of.atom = true := by rw [← e2.1.2.2.2]; exact hInvA.2.2.2
+              simp only [runThen, runAfter, tRun_movReg hmv τr _ hx hc2 ho2, SOut.after,
+                List.append_nil]
+              refine ⟨rfl, ⟨⟨?_, ?_, ?_, ?_⟩, fun q hq => ?_⟩, rfl⟩
+              · exact eS.1.1.trans e2.1.1
+              · exact eS.1.2.1.trans e2.1.2.1
+              · exact eS.1.2.2.1.trans e2.1.2.2.1
+              · exact eS.1.2.2.2.trans e2.1.2.2.2
+              · simp only [SSt.setR]
+                by_cases hqr : q = r
+                · subst hqr
+                  rw [if_pos rfl, hs2S, eS.2 q hq, hAr]
+                · rw [if_neg hqr, ← e2.2 q (by simpa using hqr)]
+                  exact eS.2 q hq
+          | fail => simp [ResD] at hcc
+          | unk => simp [ResD] at hcc
+      | fail =>
+          have hA : tRun [i] ssA T = (T, .fail) := by rw [tRun_cons, hsa]
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+      | unk =>
+          have hA : tRun [i] ssA T = (T, .unk) := by rw [tRun_cons, hsa]
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+  | fail =>
+      have h1 : tRun [i] ss T = (T, .fail) := by rw [tRun_cons, hsi]
+      cases hsa : symStep i ssA with
+      | fail =>
+          have hA : tRun [i] ssA T = (T, .fail) := by rw [tRun_cons, hsa]
+          rw [h1] at hS ⊢
+          have hcc := hc ssA _ T T' eA' hIA (by rw [hA]; exact hS)
+          rw [hA] at hcc
+          generalize tRun js (ss'.setR S (ss'.regs r)) T' = q at hcc ⊢
+          obtain ⟨Q, qo⟩ := q
+          cases qo <;> simp_all [ResD, runThen, runAfter, SOut.after]
+      | ok sA gA =>
+          have hA := tRun_single_ok T hsa (symStep_wr hsa)
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+      | unk =>
+          have hA : tRun [i] ssA T = (T, .unk) := by rw [tRun_cons, hsa]
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+  | unk =>
+      have h1 : tRun [i] ss T = (T, .unk) := by rw [tRun_cons, hsi]
+      cases hsa : symStep i ssA with
+      | unk =>
+          have hA : tRun [i] ssA T = (T, .unk) := by rw [tRun_cons, hsa]
+          rw [h1] at hS ⊢
+          have hcc := hc ssA _ T T' eA' hIA (by rw [hA]; exact hS)
+          rw [hA] at hcc
+          generalize tRun js (ss'.setR S (ss'.regs r)) T' = q at hcc ⊢
+          obtain ⟨Q, qo⟩ := q
+          cases qo <;> simp_all [ResD, runThen, runAfter, SOut.after]
+      | ok sA gA =>
+          have hA := tRun_single_ok T hsa (symStep_wr hsa)
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+      | fail =>
+          have hA : tRun [i] ssA T = (T, .fail) := by rw [tRun_cons, hsa]
+          rw [h1, hA] at hsrc
+          simp [ResOn] at hsrc
+
+/-- A two-source operation of the fragment of `symStep_ren` writes only its destination. -/
+theorem wrOf_opn {d r opn : String} {a b : LOperand} (τ : MemTag)
+    (hcmp : opn ≠ withWidthTag 64 "CMP") (hmov : opn ≠ withWidthTag 64 "MOV")
+    (hst : opn ≠ "STOREIDX") (h1 : NoSwap opn d a b) (h2 : NoSwap opn r a b) :
+    ∀ q ∈ wrOf (.Lopn [.reg d] opn [a, b], τ), q = d := by
+  intro q hq
+  have hren := symStep_ren SSt.start d r opn a b τ hcmp hmov hst h1 h2
+  unfold wrOf at hq
+  cases h : symStep (.Lopn [.reg d] opn [a, b], τ) SSt.start with
+  | ok s g =>
+      rw [h] at hq hren
+      cases h' : symStep (.Lopn [.reg r] opn [a, b], τ) SSt.start with
+      | ok s' g' =>
+          rw [h'] at hren
+          obtain ⟨-, t, c, o, rfl, -⟩ := hren
+          simpa [SSt.wrF, SSt.setR, SSt.start] using hq
+      | fail => rw [h'] at hren; cases hren
+      | unk => rw [h'] at hren; cases hren
+  | fail => rw [h] at hq; cases hq
+  | unk => rw [h] at hq; cases hq
+
 /-- A chunk of a source instruction is a chunk of every source instruction with the same
     symbolic step. -/
 theorem chunkOn_of_symStep_eq {D : List String} {i i' : LinstrRM} {js : List LinstrRM}
@@ -975,8 +1137,10 @@ theorem chunkOn_of_symStep_eq {D : List String} {i i' : LinstrRM} {js : List Lin
 
 /-! ## 8. Chunks off the scratch register -/
 
-theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
-    reloadScratch ∉ symReads x := by
+/-- A name that mentions the scratch register and is not the implicit source `mulxSrc` is
+    read by no instruction that avoids the scratch register. -/
+theorem not_symReads_of_mentions {n : String} (hn : mentionsScratch n = true)
+    (hmx : mulxSrc ≠ n) {x : LinstrR} (h : instrAvoids x = true) : n ∉ symReads x := by
   intro hq
   unfold symReads at hq
   rw [List.mem_append] at hq
@@ -986,9 +1150,11 @@ theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
         simp only [instrReadRegs, List.mem_flatMap] at hq
         obtain ⟨o, ho, hqo⟩ := hq
         simp only [instrAvoids, Bool.and_eq_true, List.all_eq_true] at h
-        have hn : reloadScratch ∈ LprogLeak.opNames o := by
+        have hn' : n ∈ LprogLeak.opNames o := by
           cases o <;> simp_all [operandReads, LprogLeak.opNames]
-        exact TwoAddrLegalize.ne_of_opAvoids (h.2 o ho) _ hn rfl
+        have := TwoAddrLegalize.not_mentionsScratch_of_opAvoids (h.2 o ho) _ hn'
+        rw [hn] at this
+        cases this
     | _ => simp [instrReadRegs] at hq
   · rw [List.mem_append] at hq
     rcases hq with hq | hq
@@ -1004,7 +1170,8 @@ theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
             · simp only [List.mem_singleton] at hq
               have ha := h.2 _ (List.mem_singleton_self _)
               subst hq
-              simp [TwoAddrLegalize.opAvoids, TwoAddrLegalize.mentionsScratch] at ha
+              simp only [TwoAddrLegalize.opAvoids, hn, Bool.not_true] at ha
+              cases ha
             · cases hq
           · cases hq
       | _ => simp [leaReads] at hq
@@ -1013,9 +1180,17 @@ theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
           dsimp only at hq
           split_ifs at hq
           · simp only [List.mem_singleton] at hq
-            exact absurd hq (by decide)
+            exact absurd hq.symm hmx
           · cases hq
       | _ => cases hq
+
+theorem reloadScratch_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
+    reloadScratch ∉ symReads x :=
+  not_symReads_of_mentions TwoAddrLegalize.mentionsScratch_reloadScratch (by decide) h
+
+theorem scratchSave_not_symReads {x : LinstrR} (h : instrAvoids x = true) :
+    scratchSave ∉ symReads x :=
+  not_symReads_of_mentions TwoAddrLegalize.mentionsScratch_scratchSave (by decide +kernel) h
 
 theorem legalR_ne_nil (ok : Bool) (x : LinstrR) : legalR ok x ≠ [] := by
   unfold legalR
@@ -1030,7 +1205,7 @@ theorem legalR_straight (ok : Bool) {x : LinstrR} (h : straightR x = true) :
   split at hy
   · split at hy <;> (try split at hy) <;> (try split at hy) <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hy <;>
-      rcases hy with rfl | rfl | rfl <;> exact h
+      rcases hy with rfl | rfl | rfl | rfl | rfl <;> exact h
   · simp only [List.mem_singleton] at hy
     subst hy
     exact h
@@ -1064,7 +1239,7 @@ theorem needsTie_storeIdx (b : LOperand) : needsTie "STOREIDX" b = false := by
 
 theorem twoAddrRouteWF_scratch_outs {outs : List String} {tg : LinstrR → MemTag} {x : LinstrR}
     {m : String} (hw : twoAddrRouteWF outs tg x = true) (hr : twoAddrRoute x = .scratch m) :
-    reloadScratch ∉ outs := by
+    scratchSave ∉ outs := by
   unfold twoAddrRouteWF at hw
   split at hw
   · rw [hr] at hw
@@ -1072,7 +1247,7 @@ theorem twoAddrRouteWF_scratch_outs {outs : List String} {tg : LinstrR → MemTa
     split at hw
     · simp only [Bool.and_eq_true, Bool.not_eq_true'] at hw
       intro h
-      have : outs.contains reloadScratch = true := List.contains_iff_mem.mpr h
+      have : outs.contains scratchSave = true := List.contains_iff_mem.mpr h
       rw [this] at hw
       cases hw.1
     · cases hw
@@ -1083,12 +1258,14 @@ theorem twoAddrRouteWF_scratch_outs {outs : List String} {tg : LinstrR → MemTa
       exact absurd rfl (hx d opn a b)
     · cases hr
 
-/-- **The chunk of a route off the scratch register.** In a body that does not name the scratch
-    register, an instruction whose route the checker accepts is simulated off the scratch
-    register by its legalisation with the scratch route on. -/
+/-- **The chunk of a route off the save slot.** In a body that does not name the scratch
+    register, an instruction whose route the checker accepts is simulated off the save slot
+    `scratchSave` by its legalisation with the scratch route on. -/
 theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : List String}
     {x : LinstrR} (hw : twoAddrRouteWF outs tg x = true) (hav : instrAvoids x = true) :
-    ChunkOn [reloadScratch] (x, tg x) ((legalR true x).map fun y => (y, tg y)) := by
+    ChunkOn [scratchSave] (x, tg x) ((legalR true x).map fun y => (y, tg y)) := by
+  have hRS : reloadScratch ≠ scratchSave := Ne.symm TwoAddrLegalize.scratchSave_ne_reloadScratch
+  have h64 : stripWidthTag "MOV:64" = "MOV" := by decide +kernel
   by_cases hsc : ∃ m, twoAddrRoute x = .scratch m
   · obtain ⟨m, hm⟩ := hsc
     have hm' := hm
@@ -1097,8 +1274,13 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
     · rename_i d opn a b
       obtain ⟨hmv, hc, -⟩ := twoAddrRoute_scratch hm
       obtain ⟨hn, -, -⟩ := twoAddrRoute_untied hm (by simp)
+      have havx := hav
       simp only [instrAvoids, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true] at hav
       obtain ⟨hd, ha, hb⟩ := hav
+      have hdr : d ≠ reloadScratch :=
+        TwoAddrLegalize.ne_of_opAvoids hd d (by simp [LprogLeak.opNames])
+      have hdS : d ≠ scratchSave :=
+        TwoAddrLegalize.ne_scratchSave_of_opAvoids hd d (by simp [LprogLeak.opNames])
       cases a with
       | reg y =>
           simp only [twoAddrRouteWF, hm, Bool.and_eq_true, Bool.not_eq_true'] at hw
@@ -1116,21 +1298,25 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
             subst hbd
             obtain ⟨-, hyd, -⟩ := twoAddrRoute_untied hm (by simp)
             have hyd' : y ≠ d := fun h => hyd (by rw [h])
-            have hdr : d ≠ reloadScratch :=
-              TwoAddrLegalize.ne_of_opAvoids hd d (by simp [LprogLeak.opNames])
             simp only [legalR, hm, ↓reduceIte, hcm, Bool.true_and, beq_self_eq_true,
               List.map_cons, List.map_nil, htag]
             refine chunkOn_of_symStep_eq (fun ss => symStep_comm (opn_comm hmv hcm) hyd' _ ss) ?_
-            refine chunkOn_scratch reloadScratch d d opn m (.reg y) _ _ _
-              (TwoAddrLegalize.stripWidthTag_movFor hmv) hdr
-              (fun h => TwoAddrLegalize.ne_of_opAvoids ha _ h rfl)
-              (opn_ne_cmp64 hc) hmne hsne ?_ ?_
-            · rintro ra rb hra hrb
+            have hns1 : NoSwap opn d (.reg d) (.reg y) := by
+              rintro ra rb hra hrb
               cases hra; cases hrb
               simp [commSwap]
-            · rintro ra rb hra hrb
+            have hns2 : NoSwap opn reloadScratch (.reg d) (.reg y) := by
+              rintro ra rb hra hrb
               cases hra; cases hrb
               simp [commSwap, hyr]
+            refine chunkOn_saved reloadScratch scratchSave "MOV:64" _ [_, _, _] _ _ h64 hRS
+              (chunkOn_scratch reloadScratch d d opn m (.reg y) _ _ _
+                (TwoAddrLegalize.stripWidthTag_movFor hmv) hdr
+                (fun h => TwoAddrLegalize.ne_of_opAvoids ha _ h rfl)
+                (opn_ne_cmp64 hc) hmne hsne hns1 hns2) ?_
+              (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
+              (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
+            exact scratchSave_not_symReads (by simp [instrAvoids, hd, ha])
           rw [if_neg hcb, beq_iff_eq] at htag
           have hcb' : (commBases.contains (tieBase opn) && b == .reg d) = false := by
             simpa using hcb
@@ -1142,21 +1328,26 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
             exact hcb ⟨h1, by simp⟩
           have hbr : avoidsReg reloadScratch b :=
             fun h => TwoAddrLegalize.ne_of_opAvoids hb _ h rfl
-          refine chunkOn_scratch reloadScratch d y opn m b _ _ _
-            (TwoAddrLegalize.stripWidthTag_movFor hmv) hyr hbr (opn_ne_cmp64 hc) ?_ ?_ ?_ ?_
-          · rintro rfl; rw [needsTie_mov64] at hn; cases hn
-          · rintro rfl; rw [needsTie_storeIdx] at hn; cases hn
-          · rintro ra rb hra rfl
+          have hns1 : NoSwap opn d (.reg y) b := by
+            rintro ra rb hra rfl
             simp only [commSwap, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
               Bool.eq_false_iff]
             rintro ⟨⟨h1, rfl⟩, -⟩
             rw [h1] at hsw
             simp at hsw
-          · rintro ra rb hra rfl
+          have hns2 : NoSwap opn reloadScratch (.reg y) b := by
+            rintro ra rb hra rfl
             simp only [commSwap, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
               Bool.eq_false_iff]
             rintro ⟨⟨-, rfl⟩, -⟩
             exact hbr (by simp [LprogLeak.opNames])
+          exact chunkOn_saved reloadScratch scratchSave "MOV:64" _ [_, _, _] _ _ h64 hRS
+            (chunkOn_scratch reloadScratch d y opn m b _ _ _
+              (TwoAddrLegalize.stripWidthTag_movFor hmv) hyr hbr (opn_ne_cmp64 hc) hmne hsne
+              hns1 hns2)
+            (scratchSave_not_symReads havx)
+            (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
+            (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
       | _ => simp [twoAddrRouteWF, hm] at hw
     · cases hm'
   · have hns : ∀ m, twoAddrRoute x ≠ .scratch m := fun m h => hsc ⟨m, h⟩
@@ -1165,7 +1356,7 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hj
     simp only [List.mem_singleton] at hqD
     subst hqD
-    exact reloadScratch_not_symReads (legalR_avoids true hav hns y hy) hq
+    exact scratchSave_not_symReads (legalR_avoids true hav hns y hy) hq
 
 /-! ## 9. Completeness -/
 
@@ -1206,10 +1397,10 @@ theorem twoAddr_ownedCheckM_complete (outs : List String) {tg : LinstrR → MemT
     exact legalR_straight _ (hB p hp).1 y hy
   have hunk : (tRun (typeBody tg body) SSt.start Tbl.empty).2 ≠ .unk := by
     rwa [ne_eq, tRun_unk_iff]
-  by_cases hA : bodyAvoids body = true ∧ reloadScratch ∉ outs
-  · refine ownedCheckM_of_resOn outs [reloadScratch] (by simpa using hA.2) hne1 hne' hsB hs' ?_
+  by_cases hA : bodyAvoids body = true ∧ scratchSave ∉ outs
+  · refine ownedCheckM_of_resOn outs [scratchSave] (by simpa using hA.2) hne1 hne' hsB hs' ?_
       hunk
-    refine tRun_lockOn [reloadScratch] _ _ (fun p hp => ?_) SSt.start SSt.start Tbl.empty _
+    refine tRun_lockOn [scratchSave] _ _ (fun p hp => ?_) SSt.start SSt.start Tbl.empty _
       ⟨SSt.Same.refl _, fun _ _ => rfl⟩ SSt.inv_start (Tbl.Sub.refl _)
     obtain ⟨-, hw, hτ, hav⟩ := hB p hp
     obtain ⟨x, τ'⟩ := p

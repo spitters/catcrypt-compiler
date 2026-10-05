@@ -50,6 +50,11 @@ theorem lsemStepN_lpc_succ (i : LinstrR) (s s' : LstateN) (h : lsemStepN i s = s
     first
       | (obtain rfl := Option.some.inj h; simp [LstateN.lpc_nextPc, LstateN.lpc_setReg])
       | exact absurd h (by simp)
+      | (unfold immFirstN at h
+         split at h
+         · obtain ⟨v, -, rfl⟩ := Option.map_eq_some_iff.mp h
+           simp [LstateN.lpc_nextPc, LstateN.lpc_setReg]
+         · exact absurd h (by simp))
 
 /-- Every successful shift-aware step advances the pc by one. -/
 theorem lsemStepSh_lpc_succ (i : LinstrR) (s s' : LstateN) (h : lsemStepSh i s = some s') :

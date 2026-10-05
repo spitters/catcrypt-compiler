@@ -369,16 +369,6 @@ theorem scalar_lowerBlockW (F : SingleWordField p) (hs : ScalarBlocks F)
   | ⟨.fieldDouble _, _, .cons _ .nil⟩ => hs.add _ _
   | ⟨.fieldSquare _, _, .cons _ .nil⟩ => hs.mul _ _
   | ⟨.fInv _, _, .cons _ .nil⟩ => scalar_litBlk _
-  | ⟨.ext2Mul _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext2Add _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext2Sub _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.frobenius2 _, _, .cons _ .nil⟩ => scalar_litBlk _
-  | ⟨.ext6Mul _ _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext6Add _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext6Sub _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext12Mul _ _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext12Add _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
-  | ⟨.ext12Sub _, _, .cons _ (.cons _ .nil)⟩ => scalar_litBlk _
 
 theorem uniformCtxt_mapCtxW : ∀ (Γ : Ctxt fieldDialect), UniformCtxt 64 (mapCtxW Γ)
   | [] => by intro v; cases v

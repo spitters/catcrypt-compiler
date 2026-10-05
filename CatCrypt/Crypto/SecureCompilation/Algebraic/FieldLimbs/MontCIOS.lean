@@ -38,14 +38,16 @@ over `x_0, …, x_{s-1}` it satisfies `acc · 2^(64s) = acc₀ + X Y + M p` with
 * `ciosRedK`: one word of Montgomery reduction on `n + 2` limbs.
 * `ciosRowsK`: the rows and reduction words over a list of operand limbs.
 * `ciosMK`, `mulBlkI`: the interleaved Montgomery product and its block.
+* `mulBlkRoute`: the multiplication block of the field route, `mulBlkI` at six or more
+  limbs and `Mont.mulBlk` below.
 
 ## Main results
 
 * `fmaR_denote`: the fused row adds `Y · x` into the accumulator.
 * `ciosRowsK_denote`: the loop invariant of the rows.
 * `ciosMK_denote`, `ciosMK_denote_enc`: the Montgomery product.
-* `mulBlkI_denote`: the block denotes `enc P (x * y)`, the statement of
-  `Mont.mulBlk_denote`.
+* `mulBlkI_denote`, `mulBlkRoute_denote`: each block denotes `enc P (x * y)`, the
+  statement of `Mont.mulBlk_denote`.
 -/
 
 @[expose] public section
@@ -587,6 +589,23 @@ theorem mulBlkI_denote (xs ys : List (Var Γ w64)) (hxs : xs.length = n) (hys : 
     (mulBlkI P xs ys).denote W = enc P (x * y) := by
   refine ciosMK_denote_enc P _ _ _ W _ hxs hys x y hx hy fun r out W' _ hout hv => ?_
   rw [retN_denote _ out W' hout, hv, enc]
+
+/-- The multiplication block of the field route, selected by the limb count: the
+    interleaved block `mulBlkI` at six or more limbs, the block `mulBlk` (the product, then
+    the reduction) below six. -/
+def mulBlkRoute (xs ys : List (Var Γ w64)) : MC Γ (Rn n) :=
+  if 6 ≤ n then mulBlkI P xs ys else mulBlk P xs ys
+
+/-- The route's multiplication block denotes the Montgomery form of `x * y` at every limb
+    count, the statement of `mulBlk_denote`. -/
+theorem mulBlkRoute_denote (xs ys : List (Var Γ w64)) (hxs : xs.length = n)
+    (hys : ys.length = n) (x y : ZMod P.p) (hx : nv W xs = (x * R P).val)
+    (hy : nv W ys = (y * R P).val) :
+    (mulBlkRoute P xs ys).denote W = enc P (x * y) := by
+  unfold mulBlkRoute
+  split
+  · exact mulBlkI_denote P W xs ys hxs hys x y hx hy
+  · exact mulBlk_denote P W xs ys hxs hys x y hx hy
 
 end Blocks
 

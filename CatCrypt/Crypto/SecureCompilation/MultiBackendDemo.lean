@@ -58,6 +58,12 @@ to RV64 through `regToROp`, each with a denotation theorem. This file proves:
 
 The AArch64 end-to-end theorem from `Com.denote` is
 `ScalarLinNeutralDemo.com_arm_e2e`.
+
+The `ScalarTarget` end-to-end theorems of this module are legacy: they hold on the
+register-only states `BState` and `RState64`, outside the `Lprog` back half, whose
+RISC-V and AArch64 instances are `rvIsa` and `armIsa` with the assembly theorems
+`rv_asm` and `arm_asm`. The reason they are kept is stated in
+`ScalarLinNeutralDemo`, section "Status: legacy route".
 -/
 
 @[expose] public section
@@ -235,7 +241,8 @@ theorem allReg64_two : AllReg64 ([.reg 64, .reg 64] : Ctxt jasminDialect) := by
     (`hf` — automatic in practice, the front emits no `movk` and only `v_k` names),
     the compiled-and-run RV64 block computes the source `Com.denote`. Composes the
     restricted lift `compile_denote_pure_on` with the shared axiom-clean
-    `comToReg_faithful` — no RISC-V-specific de-Bruijn reasoning. -/
+    `comToReg_faithful` — no RISC-V-specific de-Bruijn reasoning. Legacy, as
+    `com_riscv_e2e`. -/
 theorem com_riscv_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : RState64)
     (hs : s.regs = envOf Γ.length V)
@@ -256,7 +263,9 @@ theorem com_riscv_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (
     `ComOK com` over a context with `AllReg64 Γ`, run from a state with
     `s.regs = envOf Γ.length V`, the compiled-and-run RV64 block read at the result
     register equals `Com.denote com V`. The hypothesis `hf` of `com_riscv_e2e_of` is
-    discharged by `comToRegProg_RvFaithful`. -/
+    discharged by `comToRegProg_RvFaithful`. Legacy: a register-only `ScalarTarget`
+    theorem outside the `Lprog` back half (`ScalarLinNeutralDemo`, section
+    "Status: legacy route"). -/
 theorem com_riscv_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : RState64)
     (hs : s.regs = envOf Γ.length V) :

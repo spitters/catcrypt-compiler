@@ -17,9 +17,8 @@ them on a flat 4- and 8-input dot product. This module closes its three
 gaps to authoring a **full** kernel:
 
 1. **Missing op combinators.** `RupicolaField` only exposes the four prime-field
-   binops/unop. A real kernel needs `inv` (prime-field inverse) and the
-   extension-tower ops (`ext2mul`/`ext2add`/`ext2sub`/`frob2`/`ext6mul`/
-   `ext12mul`/…). Each is a one-line `FBuilder.bindStep` wrapper — added in §1.
+   binops/unop. A real kernel needs `inv` (prime-field inverse), a one-line
+   `FBuilder.bindStep` wrapper — added in §1.
 
 2. **Deep back-references still cost manual `FRef.shift`s.** In `Demo4`, the
    accumulation loop reads inputs and the running accumulator through a
@@ -60,7 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 open CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
 
 /- The extension combinators are added to the **`RupicolaField` namespace** (the
-home of `FBuilder`), so they are reachable by dot notation (`b.inv`, `b.ext2mul`,
+home of `FBuilder`), so they are reachable by dot notation (`b.inv`,
 `b.letBind`, …) exactly like the core `mul`/`add`. The file is a new, additive
 module that only imports `RupicolaField`. -/
 namespace CatCrypt.Crypto.SecureCompilation.RupicolaField
@@ -75,56 +74,6 @@ them with `FRef.now`, and appends one `bindStep`. No author ever writes `.there`
 def FBuilder.inv {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
     (x : FRef b.Δ (FieldTy.fp p)) : FBuilder Γ :=
   b.bindStep (.fInv p) (.cons x.now .nil)
-
-/-- `b.ext2mul x y`: bind the `Fp2` Karatsuba product `x * y : fp2 p`. -/
-def FBuilder.ext2mul {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp2 p)) : FBuilder Γ :=
-  b.bindStep (.ext2Mul p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext2add x y`: bind the `Fp2` componentwise sum `x + y : fp2 p`. -/
-def FBuilder.ext2add {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp2 p)) : FBuilder Γ :=
-  b.bindStep (.ext2Add p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext2sub x y`: bind the `Fp2` componentwise difference `x - y : fp2 p`. -/
-def FBuilder.ext2sub {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp2 p)) : FBuilder Γ :=
-  b.bindStep (.ext2Sub p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.frob2 x`: bind the `Fp2` Frobenius (conjugation) `x^p : fp2 p`. -/
-def FBuilder.frob2 {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x : FRef b.Δ (FieldTy.fp2 p)) : FBuilder Γ :=
-  b.bindStep (.frobenius2 p) (.cons x.now .nil)
-
-/-- `b.ext6mul ξ₀ x y`: bind the `Fp6` product `x * y : fp6 p` (non-residue `ξ₀`). -/
-def FBuilder.ext6mul {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (ξ0 : ZMod p) (x y : FRef b.Δ (FieldTy.fp6 p)) : FBuilder Γ :=
-  b.bindStep (.ext6Mul p ξ0) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext6add x y`: bind the `Fp6` componentwise sum `x + y : fp6 p`. -/
-def FBuilder.ext6add {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp6 p)) : FBuilder Γ :=
-  b.bindStep (.ext6Add p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext6sub x y`: bind the `Fp6` componentwise difference `x - y : fp6 p`. -/
-def FBuilder.ext6sub {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp6 p)) : FBuilder Γ :=
-  b.bindStep (.ext6Sub p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext12mul ξ₀ x y`: bind the `Fp12` (`GT`) product `x * y : fp12 p`. -/
-def FBuilder.ext12mul {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (ξ0 : ZMod p) (x y : FRef b.Δ (FieldTy.fp12 p)) : FBuilder Γ :=
-  b.bindStep (.ext12Mul p ξ0) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext12add x y`: bind the `Fp12` componentwise sum `x + y : fp12 p`. -/
-def FBuilder.ext12add {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp12 p)) : FBuilder Γ :=
-  b.bindStep (.ext12Add p) (.cons x.now (.cons y.now .nil))
-
-/-- `b.ext12sub x y`: bind the `Fp12` componentwise difference `x - y : fp12 p`. -/
-def FBuilder.ext12sub {Γ : Ctxt fieldDialect} {p : Nat} (b : FBuilder Γ)
-    (x y : FRef b.Δ (FieldTy.fp12 p)) : FBuilder Γ :=
-  b.bindStep (.ext12Sub p) (.cons x.now (.cons y.now .nil))
 
 /-! ## 2. The do-style binder (`letBind`) and the `retHead` closer
 
@@ -151,7 +100,7 @@ continuation just writes the handle's name. -/
 /-- Close a builder whose last binding has type `s` by returning that value.
     The `b.Δ = s :: b.Δ.tail` witness `toProg` needs is discharged internally
     (`rfl`), so the author writes neither it nor `Com.ret`. Apply after any
-    combinator (`mul`, `ext2mul`, …) whose result type is `s`. -/
+    combinator (`mul`, `inv`, …) whose result type is `s`. -/
 def FBuilder.retHead {Γ : Ctxt fieldDialect} {s : FieldTy}
     (b : FBuilder Γ) (h : b.Δ = s :: b.Δ.tail := by rfl) :
     Com fieldDialect Γ s :=

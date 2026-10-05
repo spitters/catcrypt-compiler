@@ -10,6 +10,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagat
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags
 
 /-!
 # `LEA` formation on the owned-RA `Lcmd`
@@ -44,9 +46,11 @@ and is not recognised.
 `add` writes CF/OF/ZF/SF; `lea` writes no flag. The fold is therefore performed
 only where the flags the `add` sets are dead: the pass carries a backward
 flags-live bit (all-live at the end of a body, at every barrier, at every
-mnemonic that reads a flag, and at every mnemonic outside the classified
-alphabet; cleared by a mnemonic that rewrites all of CF/OF/ZF/SF) and fuses only
-when that bit is `false` immediately after the `add`. `Lstate` carries no flags,
+instruction that reads a flag, and at every mnemonic outside the classified
+alphabet; cleared by an instruction that rewrites every flag a reader consumes)
+and fuses only when that bit is `false` immediately after the `add`. The step is
+`LcmdFlags.flagsLiveStep`, over the classification `LcmdFlags.flagEffect` that
+the segmenting of `LprogOptPipeline.optimizeBasicBlocks` also uses. `Lstate` carries no flags,
 so the machine model below cannot express this condition and the value theorems
 do not depend on it; the condition rests on the mnemonic classification alone.
 
@@ -97,6 +101,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (mnemWidth)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
   (isPhysGP instrMnem lsemStep_congr_full)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags (flagsLiveStep)
 
 /-! ## 1. The recognised chain -/
 
@@ -129,39 +134,10 @@ def addImm (i : Linstr) : Option (String × Nat) :=
 def leaInstr (ii : Nat) (d s : String) (k : Nat) : Linstr :=
   ⟨ii, .Lopn [LOperand.reg d] "LEA:64" [LOperand.reg (memName s k)]⟩
 
-/-! ## 2. The flag-liveness bit -/
+/-! ## 2. The flag-liveness bit
 
-/-- Mnemonics that read a flag a preceding instruction set. -/
-def readsFlags (opn : String) : Bool :=
-  match stripWidthTag opn with
-  | "ADC" | "SBB" | "ADCX" | "ADOX" | "ADCXHI" | "ADOXHI" | "SETC"
-  | "CMOVE" | "CMOVNE" | "CMOVB" | "CMOVAE" | "CMOVL" | "CMOVGE" | "CMOV" => true
-  | _ => false
-
-/-- Mnemonics that rewrite every flag an x86 `add` writes, so the flags a
-    preceding `add` set are not observable past them. -/
-def writesAllFlags (opn : String) : Bool :=
-  match stripWidthTag opn with
-  | "ADD" | "SUB" | "AND" | "OR" | "XOR" | "CMP" | "TEST" => true
-  | _ => false
-
-/-- Mnemonics that touch no flag, so a flags-live bit passes through them. -/
-def flagNeutral (opn : String) : Bool :=
-  match stripWidthTag opn with
-  | "MOV" | "MOVQ" | "LOAD" | "STORE" | "LOADIDX" | "STOREIDX" | "LEA" => true
-  | _ => false
-
-/-- One backward step of the flags-live bit: `live` is the bit after `i`, the
-    result is the bit before it. A barrier, a flag reader, and every mnemonic
-    outside the three classes leave the flags live. -/
-def flagsLiveStep (i : Linstr) (live : Bool) : Bool :=
-  match i.li_i with
-  | .Lopn _ opn _ =>
-      if readsFlags opn then true
-      else if writesAllFlags opn then false
-      else if flagNeutral opn then live
-      else true
-  | _ => true
+The bit steps backward by `LcmdFlags.flagsLiveStep`, over the classification
+`LcmdFlags.flagEffect`. -/
 
 /-! ## 3. The pass -/
 

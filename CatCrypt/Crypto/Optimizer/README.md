@@ -17,9 +17,7 @@ below differ in what their theorems state, and each entry names the theorem.
 - Reduction selection on `LowCT`: `BarrettReduce` (`barrettReduce_denote_eq`, under
   the leaf hypothesis `barrettAgreesModQ`), `MontgomeryReduce`, `ModReduceSelect`,
   `SolinasFoldChain`.
-- Rewrite saturation (no union-find e-graph): `EgraphOracle` (`oracleOpt_denote`: a proposal
-  from an untrusted `Com → Com` oracle enters the output only through a decidable
-  denotation check), `EgraphSelectDemo`, and the `Rewrite/` subtree, indexed in
+- Rewrite saturation (no union-find e-graph): the `Rewrite/` subtree, indexed in
   [Rewrite/AGENTS.md](Rewrite/AGENTS.md).
 - Translation validation: `TranslationValidation`, `TranslationValidationEgraph`
   (`tvCheckCanon_sound`: a candidate structurally equal to the output of

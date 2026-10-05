@@ -31,14 +31,16 @@ source environment and a valuation is `EnvRel`: every name of `NfEnv` reads in t
 environment the encoding of its variable's value.
 
 Calls. Every call `app f args` is the leaf call `NfOp.call f as r`, at the types `as` of
-its atoms and the result type `r = sigOf f as`; the leaf table is `tableOf bi`, which
+its arguments and the result type `r = sigOf f as`. The arguments are in A-normal form
+(`impArgsNF`): an argument that is not a variable or a literal is translated before the
+call, left to right, and the call reads the variable of its value. The leaf table is `tableOf bi`, which
 encodes the arguments, calls the builtin and decodes the result. The hypothesis
 `TypedCalls bi sigOf` states that every builtin, called on encoded arguments of the types
 `as`, returns the encoding of a value of type `sigOf f as`; it is the only assumption on
 the builtins.
 
 Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, `assign`,
-a call on atoms, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
+a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
 literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
 the fragment. Every other constructor is `none`.
@@ -59,7 +61,7 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
   source environment.
 * `Out`, `ArgsOut` — the output of the front on an expression and on a list of atoms.
 * `loopOut` — the counted loop of the front.
-* `impToNF` — the front.
+* `impToNF`, `impArgsNF` — the front, and its translation of the arguments of a call.
 * `PDen`, `PDenP` — the denotation of a prefix and of a program with the leaves of
   `tableOf bi`.
 * `Sound` — the simulation statement for one expression.
@@ -74,11 +76,15 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
   the scalar calls of `u64` code at the widths `8`, `16`, `32`, `64`, with their operation.
 * `hax64ScalarSig`, `hax64SigOf` — the call typing of `u64` code: a `64`-bit word result for
   an integer call, a bit for a comparison.
+* `CrateFn`, `crateSigOf`, `paramsEnv`, `crateBi` — the functions of a crate as callees: the
+  call typing at their parameter and result types, and the builtins that run their bodies to
+  a call depth.
 
 ## Main results
 
 * `atomOut_sound`, `argsOut_sound`, `tupleOut_sound`, `seq_sound`, `letBind_sound`,
-  `assign_sound`, `app_sound`, `tuple_sound` — the constructs other than the loop.
+  `assign_sound`, `impArgsNF_sound`, `app_sound`, `tuple_sound` — the constructs other
+  than the loop.
 * `loop_sound`, `loopOut_sound`, `forFold_sound` — the counted loop: the trips of
   `denoteForLoop'` against the fold of `NFProg.forLoop`.
 * `impToNF_sound` — the front simulates `denote'`.
@@ -93,6 +99,8 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
   their operation.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
   `Hax.hax64Builtins`.
+* `crateBi_typedCalls` — the call typing with a crate is sound for the builtins with the
+  crate, at every call depth.
 -/
 
 @[expose] public section
@@ -380,10 +388,13 @@ def loopOut {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nf
         (pre₀.append (.forLoop tripV inits ((oC.pre.append ob.pre).plug (.ret rets)) oU.pre))
         oU.σ oU.res
 
+mutual
 /-- The front: the `NFProg` prefix computing the value of an expression of the fragment,
     from the environment of names `σ`. The binding of the value has the source name `tgt`
     (the name a `letBind` or an `assign` gives it), and the counter binding of a loop the
-    name of the counter. -/
+    name of the counter. The arguments of a call are translated by `impArgsNF`: each
+    argument that is not a variable or a literal is bound to a fresh variable before the
+    call, left to right. -/
 def impToNF (sigOf : String → List NfTy → Option NfTy) :
     Option String → {Γ : Ctxt nfDialect} → NfEnv Γ → ImpExpr → Option (Out Γ)
   | _, _, σ, .var x => atomOut σ (.var x)
@@ -396,7 +407,8 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
       (impToNF sigOf tgt ((x, ⟨ov.t, ov.res⟩) :: ov.σ) b).map ov.comp
   | tgt, _, σ, .assign x r => (impToNF sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
-  | tgt, _, σ, .app f args => (argsOut σ args).bind fun oa => (sigOf f oa.as).map fun r =>
+  | tgt, _, σ, .app f args => (impArgsNF sigOf σ args).bind fun oa =>
+      (sigOf f oa.as).map fun r =>
       ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
         oa.σ.mapV .there, .here⟩
   | tgt, _, σ, .tuple es => (argsOut σ es).map fun oa =>
@@ -414,6 +426,17 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
             (fun σB => impToNF sigOf none σB body)
         else none
   | _, _, _, _ => none
+
+/-- The arguments of a call, left to right: each argument translated by `impToNF` without a
+    source name, from the environment of names after the arguments before it. On a variable
+    or a literal this is `atomOut`; any other argument contributes the bindings of its value,
+    whose last variable is the argument. -/
+def impArgsNF (sigOf : String → List NfTy → Option NfTy) :
+    {Γ : Ctxt nfDialect} → NfEnv Γ → List ImpExpr → Option (ArgsOut Γ)
+  | Γ, σ, [] => some ⟨Γ, [], .nil, σ, .nil⟩
+  | _, σ, e :: es => (impToNF sigOf none σ e).bind fun o => (impArgsNF sigOf o.σ es).map fun os =>
+      ⟨os.Δ, o.t :: os.as, o.pre.append os.pre, os.σ, .cons (os.pre.wk o.res) os.vs⟩
+end
 
 /-! ## 4. Values and environments of names -/
 
@@ -971,10 +994,61 @@ theorem assign_sound (bi : Builtins) (fuel : Nat) (x : String) (tgt : Option Str
       rw [h1] at hrun
       cases hrun
 
-/-- A call of a builtin on atoms is sound under `TypedCalls`. -/
+/-- **The arguments of a call are sound** when the front is sound for each argument: the
+    run of the arguments leaves the values encoded by the variables of the output, at a
+    valuation of the hole related to the final environment. -/
+theorem impArgsNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (es : List ImpExpr)
+    (H : ∀ e ∈ es, ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
+      impToNF sigOf none σ e = some o → Sound bi fuel e σ o) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, impArgsNF sigOf σ es = some oa →
+    ∀ (env : Env) (V : Valuation Γ) (vals : List Value) (env' : Env), EnvRel σ env V →
+    (denoteArgs' bi fuel es).run env = (some vals, env') →
+    ∀ tf, ∃ W, PDen bi tf oa.pre V = some W ∧ EnvRel oa.σ env' W ∧
+      vals = encAll oa.as (Expr.lookupArgs oa.vs W) := by
+  induction es with
+  | nil =>
+      intro Γ σ oa h env V vals env' hrel hr tf
+      simp only [impArgsNF, Option.some.injEq] at h
+      subst h
+      rw [args_nil_run] at hr
+      cases hr
+      exact ⟨V, rfl, hrel, rfl⟩
+  | cons e es ih =>
+      intro Γ σ oa h env V vals env' hrel hr tf
+      simp only [impArgsNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel e) env
+      cases a with
+      | val v =>
+          obtain ⟨W1, hW1, hrel1, rfl⟩ :=
+            H e List.mem_cons_self σ ho env V v e1 hrel h1 tf
+          rw [args_cons_run_val bi fuel es h1 (enc_ne_controlFlow _ _)] at hr
+          obtain ⟨m, e2, h2⟩ := run_val_split (denoteArgs' bi fuel es) e1
+          rw [h2] at hr
+          cases m with
+          | none => cases hr
+          | some vals' =>
+              cases hr
+              obtain ⟨W2, hW2, hrel2, rfl⟩ :=
+                ih (fun e' he' => H e' (List.mem_cons_of_mem _ he')) o.σ hos e1 W1 vals' e2
+                  hrel1 h2 tf
+              refine ⟨W2, ?_, hrel2, ?_⟩
+              · rw [PDen_append, hW1]; exact hW2
+              · show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
+                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ os.pre
+                  o.res _ _ hW2]
+      | _ =>
+          rw [args_cons_run, h1] at hr
+          cases hr
+
+/-- A call of a builtin is sound under `TypedCalls`, when the front is sound for each
+    argument. -/
 theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (fuel : Nat) (tgt : Option String) (f : String)
     (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' e = some o' → Sound bi fuel e σ' o')
     (h : impToNF sigOf tgt σ (.app f args) = some o) : Sound bi fuel (.app f args) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h
@@ -984,7 +1058,8 @@ theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
   cases m with
   | none => cases hrun
   | some vals =>
-      obtain ⟨W, hW, hrel1, rfl⟩ := argsOut_sound bi fuel args σ hoa env V vals e1 hrel h1 tf
+      obtain ⟨W, hW, hrel1, rfl⟩ :=
+        impArgsNF_sound bi sigOf fuel args HA σ hoa env V vals e1 hrel h1 tf
       dsimp only at hrun
       cases hb : bi f (encAll oa.as (Expr.lookupArgs oa.vs W)) with
       | none => rw [hb] at hrun; cases hrun
@@ -1585,8 +1660,10 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     simp only [impToNF, Option.map_eq_some_iff] at h
     obtain ⟨o', ho', rfl⟩ := h
     exact assign_sound bi fuel x tgt (ih _ σ ho' fuel)
-  case app f args _ =>
-    intro tgt Γ σ o h fuel; exact app_sound bi sigOf hT fuel tgt f args σ h
+  case app f args iha =>
+    intro tgt Γ σ o h fuel
+    exact app_sound bi sigOf hT fuel tgt f args σ
+      (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
   case tuple es _ => intro tgt Γ σ o h fuel; exact tuple_sound bi sigOf fuel tgt es σ h
   case unitVal =>
     intro tgt Γ σ o h fuel
@@ -3549,5 +3626,96 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
           · cases hv
       · cases hr
     · exact hax64Builtins_typedCallsArr f as r hr xs v hv
+
+/-! ## 17. Calls of the functions of a crate -/
+
+/-- A function of a crate as a callee: its name, its parameters with their types, its result
+    type and its body. -/
+structure CrateFn where
+  /-- The name the callers call it by. -/
+  name : String
+  /-- The parameters, each a name with its type. -/
+  params : List (String × NfTy)
+  /-- The result type. -/
+  res : NfTy
+  /-- The body, read with the parameters bound. -/
+  body : ImpExpr
+
+/-- The argument types `as` fit the parameter types `ps`: as many, and each argument type the
+    parameter type or, with it, a `hax64NFWordTy` type (an integer and a `64`-bit word both
+    encode as integers). -/
+def argTysFit : List NfTy → List NfTy → Bool
+  | [], [] => true
+  | p :: ps, a :: as => (decide (p = a) || (hax64NFWordTy p && hax64NFWordTy a)) && argTysFit ps as
+  | _, _ => false
+
+/-- **The call typing with the functions `fs` of a crate**: a call of a function of `fs` on
+    arguments whose types fit its parameter types (`argTysFit`) has its result type, a call of
+    a function of `fs` on other arguments has none, and every other call is typed by `base`.
+    The first function of `fs` with the name is the one called. -/
+def crateSigOf (fs : List CrateFn) (base : String → List NfTy → Option NfTy) (f : String)
+    (as : List NfTy) : Option NfTy :=
+  match fs.find? (·.name == f) with
+  | some c => if argTysFit (c.params.map (·.2)) as then some c.res else none
+  | none => base f as
+
+/-- The environment binding the names `xs` to the values `vs`, position by position; the first
+    position of a name gives its value, and every other name is unbound. -/
+def paramsEnv : List String → List Value → Env
+  | x :: xs, v :: vs => fun z => if z = x then some v else paramsEnv xs vs z
+  | _, _ => fun _ => none
+
+/-- **The builtins with the functions `fs` of a crate**, to the call depth `n`. A call of a
+    function of `fs` runs its body at the fuel `fuel` with the builtins of depth `n - 1`, from
+    the environment binding its parameters to the argument values (`paramsEnv`), and returns
+    the value of the run when `dec` decodes it at the result type; at depth `0`, and on a run
+    that ends otherwise, the call fails. Every other call is a call of `bi`. -/
+def crateBi (fs : List CrateFn) (bi : Builtins) (fuel : Nat) : Nat → Builtins
+  | 0, f, vals =>
+      match fs.find? (·.name == f) with
+      | some _ => none
+      | none => bi f vals
+  | n + 1, f, vals =>
+      match fs.find? (·.name == f) with
+      | some c =>
+          match ((denote' (crateBi fs bi fuel n) fuel c.body).run
+              (paramsEnv (c.params.map (·.1)) vals)).1 with
+          | .val v => if (dec c.res v).isSome then some v else none
+          | _ => none
+      | none => bi f vals
+
+/-- At a name no function of `fs` has, the builtins with the crate are `bi`. -/
+theorem crateBi_of_find_none (fs : List CrateFn) (bi : Builtins) (fuel n : Nat) {f : String}
+    (hf : fs.find? (·.name == f) = none) (vals : List Value) :
+    crateBi fs bi fuel n f vals = bi f vals := by
+  cases n <;> simp only [crateBi, hf]
+
+/-- **The call typing with a crate is sound for the builtins with the crate**, at every depth
+    and fuel, when `base` is sound for `bi`. -/
+theorem crateBi_typedCalls (fs : List CrateFn) (bi : Builtins)
+    (base : String → List NfTy → Option NfTy) (hT : TypedCalls bi base) (fuel : Nat) :
+    ∀ n, TypedCalls (crateBi fs bi fuel n) (crateSigOf fs base) := by
+  intro n f as r hsig xs v hb
+  unfold crateSigOf at hsig
+  split at hsig
+  · rename_i c hf
+    split at hsig
+    · cases hsig
+      cases n with
+      | zero => simp [crateBi, hf] at hb
+      | succ n =>
+          simp only [crateBi, hf] at hb
+          split at hb
+          · split at hb
+            · rename_i hd
+              cases hb
+              obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp hd
+              exact ⟨y, hy, dec_sound _ _ _ hy⟩
+            · cases hb
+          · cases hb
+    · cases hsig
+  · rename_i hf
+    rw [crateBi_of_find_none fs bi fuel n hf] at hb
+    exact hT f as r hsig xs v hb
 
 end CatCrypt.Crypto.Hax.ImpToNF

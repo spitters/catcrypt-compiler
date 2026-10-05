@@ -134,7 +134,11 @@ def gpFile : List String :=
 Instantiating the generic pass for RV64. -/
 
 /-- **`MachineModel RInst`**: the syntactic interface — written/read names from
-    `rinstDstSrcs`, the GP file, and `sw`/`lw` as the spill/reload constructors. -/
+    `rinstDstSrcs`, the GP file, and `sw`/`lw` as the spill/reload constructors.
+    Legacy: no route of the `Lprog` back half calls this allocator; its consumers are
+    the generic-pass instantiations `GraphColoringGeneric` and `SpillSlotReuseGeneric`.
+    The `Lprog` back half allocates registers in the `Lprog` export
+    (`ExportPhys.physScanSpill`). -/
 instance instMachineModelRInst : MachineModel RInst where
   writtenNames i := [(rinstDstSrcs i).1]
   readNames i := (rinstDstSrcs i).2

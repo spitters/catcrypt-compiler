@@ -24,6 +24,20 @@ step agreement holds only on a restricted set of statements (RISC-V: no
 from the sources, shift amounts below `2^64`),
 so they use the restricted lift `ScalarTarget.compile_denote_pure_on` instead
 (`MultiBackendDemo.com_riscv_e2e`, `ScalarLinX86Demo.com_x86_e2e`).
+
+## Status: legacy route
+
+`com_arm_e2e`, `MultiBackendDemo.com_riscv_e2e`, `ScalarLinX86Demo.com_x86_e2e` and
+their per-kernel corollaries are legacy. They hold on a register-only machine state
+(`BState`, `RState64`, `XState`) through `ScalarTarget`, not through the `Lprog` back
+half. The current back end is the `Lprog` route over the `Isa` record (`LprogIsa`), with
+the instances `x86Isa`, `armIsa`, `rvIsa` and the assembly theorems `arm_asm`, `rv_asm`.
+Every theorem of that route is conditional on its gates, while the theorems here are
+unconditional on the `ComOK`/`AllReg64` fragment. They are kept because no
+gate-completeness theorem exists for `printedAddrB`, `imgGateB` or `routeB`, so they
+cannot be restated as corollaries of the `Lprog` route; the completeness results in the
+tree are `twoAddr_ownedCheckM_complete` (the two-address check) and
+`exportCertJB_complete`.
 -/
 
 @[expose] public section
@@ -128,7 +142,8 @@ theorem, `com_arm_e2e`, without a kernel-specific de-Bruijn proof. -/
     context with `AllReg64 Γ`, started from a machine state with
     `s.regs = envOf Γ.length V`, the compiled-and-run AArch64 block read at the
     result register equals `Com.denote com V`. No kernel-specific de-Bruijn proof
-    is needed. -/
+    is needed. Legacy: a register-only `ScalarTarget` theorem outside the `Lprog`
+    back half (module docstring, section "Status: legacy route"). -/
 theorem com_arm_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : BState)
     (hs : s.regs = envOf Γ.length V) :

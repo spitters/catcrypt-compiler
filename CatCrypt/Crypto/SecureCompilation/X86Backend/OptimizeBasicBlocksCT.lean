@@ -140,11 +140,12 @@ theorem cpSubBody_bodyTiedOk :
       bodyTiedOk (twoAddrBody (optimizeBasicBlocks cpSubBody)) = true := by
   native_decide
 
-/-- The gathered block of the legalised optimized `cpSubBody`. -/
+/-- The gathered block of the legalised optimized `cpSubBody`: the scratch route saves
+    `R15` in `qsave.R15` around the `sub`. -/
 def cpSubLegalBlock : List (JInstr 64) :=
-  [ .mov "RCX" (.reg "RAX"), .mov "R15" (.reg "RBX"), .sub "R15" (.reg "RAX"),
-    .mov "RAX" (.reg "R15"), .mov "RDX" (.reg "RAX"), .add "RDX" (.reg "RCX"),
-    .loadMemIdx "R8" "T" "RDX" 8 ]
+  [ .mov "RCX" (.reg "RAX"), .mov "qsave.R15" (.reg "R15"), .mov "R15" (.reg "RBX"),
+    .sub "R15" (.reg "RAX"), .mov "RAX" (.reg "R15"), .mov "R15" (.reg "qsave.R15"),
+    .mov "RDX" (.reg "RAX"), .add "RDX" (.reg "RCX"), .loadMemIdx "R8" "T" "RDX" 8 ]
 
 theorem gatherPrinted_twoAddrBody_optimizeBasicBlocks_cpSubBody :
     gatherPrinted (twoAddrBody (optimizeBasicBlocks cpSubBody)) = some cpSubLegalBlock := by

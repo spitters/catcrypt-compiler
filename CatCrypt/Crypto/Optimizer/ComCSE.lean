@@ -284,6 +284,68 @@ theorem comCSE_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
       rw [cseHead_denote e (comCSE body) V, comCSE_denote body (V.extend (e.denote V))]
       rfl
 
+/-! ## 4b. Leakage
+
+`comCSE` keeps every binding and its operation and only renames variables in the
+continuation of a redundant binder, so the events of `comCSE c` are the events of `c`
+at every valuation and under every leakage model. -/
+
+section Leak
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+
+/-- The events of a renamed program are those of the program at the pulled-back
+    valuation. -/
+theorem Com.ctLeak_rename (L : LeakModel jasminDialect) :
+    ∀ {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (ρ : Ctxt.Hom Γ Δ)
+      (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Δ),
+      Com.ctLeak L (c.rename ρ) V = Com.ctLeak L c (V.comap ρ)
+  | _, _, _, _, .ret _, _ => rfl
+  | _, _, _, ρ, .var e body, V => by
+      simp only [Com.rename, Com.ctLeak]
+      rw [Rewrite.AegraphGeneric.Expr.ctLeak_rename, Com.ctLeak_rename L ρ.lift body,
+        Ctxt.Valuation.extend_comap_lift, SecureCompilation.VIR.Expr.denote_rename]
+
+/-- **One CSE step keeps the events.** `cseHead e c` emits the events of the `.var e c`
+    it replaces. -/
+theorem cseHead_ctLeak (L : LeakModel jasminDialect) {Γ : Ctxt jasminDialect}
+    {r t : JasminTy} (e : Expr jasminDialect Γ r) (c : Com jasminDialect (r :: Γ) t)
+    (V : Ctxt.Valuation Γ) :
+    Com.ctLeak L (cseHead e c) V =
+      Expr.ctLeak L e V ++ Com.ctLeak L c (V.extend (e.denote V)) := by
+  cases c with
+  | ret v => rfl
+  | var e' body2 =>
+      rename_i r'
+      by_cases h : r' = r
+      · subst h
+        by_cases hd : (decEqExpr e' (shiftExpr (s := r') e)).decide
+        · have heq : e' = shiftExpr (s := r') e := of_decide_eq_true hd
+          have hx : e'.denote (V.extend (e.denote V)) = e.denote V := by
+            rw [heq]; exact shiftExpr_denote e V (e.denote V)
+          simp only [cseHead, dif_pos, hd, if_true, Com.ctLeak]
+          rw [Com.ctLeak_rename L (copyHom Ctxt.Var.here) body2, ← pullV_eq_comap, hx]
+          congr 3
+          exact pullV_copyHom Ctxt.Var.here (V.extend (e.denote V))
+        · have hd' : (decEqExpr e' (shiftExpr (s := r') e)).decide = false := by
+            simp only [Bool.not_eq_true] at hd; exact hd
+          simp only [cseHead, dif_pos, hd', Bool.false_eq_true, if_false, Com.ctLeak]
+      · simp only [cseHead, dif_neg h, Com.ctLeak]
+
+/-- **Leakage of CSE.** For every leakage model, `comCSE c` emits the events of `c` at
+    every valuation. -/
+theorem comCSE_ctLeak (L : LeakModel jasminDialect) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} :
+    ∀ (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ),
+      Com.ctLeak L (comCSE c) V = Com.ctLeak L c V
+  | .ret _, _ => rfl
+  | .var e body, V => by
+      show Com.ctLeak L (cseHead e (comCSE body)) V = _
+      rw [cseHead_ctLeak L e (comCSE body) V, comCSE_ctLeak L body (V.extend (e.denote V))]
+      rfl
+
+end Leak
+
 /-! ## 5. Self-contained validation
 
 A `Com jasminDialect [reg 32] (reg 32)` with an **adjacent redundant binder**:

@@ -57,10 +57,9 @@ it reads (`MultiReturnCom.usedSelM`). A branch, and a loop whose body contains a
   `twoSymEnvC`, lowers along `catToJasmin` to a program that denotes at `twoSymEnvJ` the
   transport of its denotation.
 * `jasminNFToComLAt_denote` — `jasminNFToComLAt` preserves denotation.
-* `nfToComLVia_denote` — `nfToComLVia` preserves denotation, in the statement of
-  `NFProgToComL.nfToComL_denote`.
-* `nfToComLVia_agrees` — where `nfToComLVia` and `nfToComL` both return a program, the
-  two programs denote the same value on every transported valuation.
+* `nfToComLVia_denote` — `nfToComLVia` preserves denotation: the source program denotes
+  `some` of one value, and the lowered program on the transported valuation denotes its
+  `ctTransTy` transport.
 * `multiRestrict_ctLeak` — the restriction of a multi-result program keeps its events.
 * `jasminNFToComLJAt_denote`, `jasminNFToComLJAt_leakRun`, `jasminNFToComLJAt_ctLeak` —
   `jasminNFToComLJAt` preserves the denotation, the leakage run and the events at equal
@@ -579,18 +578,6 @@ theorem nfToComLVia_denote {Γ : Ctx} {t : CryptoTy} (p : NFProg catCryptDialect
     rw [hp] at h3
     refine ⟨x, rfl, ?_⟩
     exact (HVector.cons.inj (Option.some.inj h3)).1
-
-/-- Where `nfToComLVia` and `nfToComL` both return a program, the two programs denote
-    the same value on every transported valuation. -/
-theorem nfToComLVia_agrees {Γ : Ctx} {t : CryptoTy} (p : NFProg catCryptDialect Γ [t])
-    (j' j : ComL (mapCtx Γ) (mapTy t)) (h' : nfToComLVia p = some j')
-    (h : nfToComL p = some j) (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
-    j'.denote (ctMapValD V) = j.denote (ctMapValD V) := by
-  obtain ⟨x', hx', hj'⟩ := nfToComLVia_denote p j' h' 0 V
-  obtain ⟨x, hx, hj⟩ := nfToComL_denote p j h 0 V
-  rw [hx] at hx'
-  have hxx := (HVector.cons.inj (Option.some.inj hx')).1
-  rw [hj', hj, hxx]
 
 /-- Lower an `NFProg catCryptDialect` program with one result to `ComLJ`: the lifted
     `nfToComLVia` program where `nfToComLVia` returns one, and otherwise `NFProg.map?` along
