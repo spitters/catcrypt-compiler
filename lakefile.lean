@@ -2760,6 +2760,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.Encode,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Exit,
     Lake.Glob.one `CatCrypt.Hax.Ascent.ExtTable,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.FnCorresUnique,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Fuel,
     Lake.Glob.one `CatCrypt.Hax.Ascent.GenRules,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Generate,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Restore,
     Lake.Glob.one `CatCrypt.Tactics.SP,
     Lake.Glob.one `CatCrypt.Tactics.SPNormalize,
-    Lake.Glob.one `CatCrypt.Tactics.Sim,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Tactics.Sim,
     Lake.Glob.one `CatCrypt.Tactics.SimpAttr,
     Lake.Glob.one `CatCrypt.Tactics.SumCases,
     Lake.Glob.one `CatCrypt.Tactics.Sync,

@@ -981,6 +981,7 @@ CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
+CatCrypt.Hax.Ascent.FnCorresUnique
 CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
 CatCrypt.Hax.Ascent.SquareDouble
