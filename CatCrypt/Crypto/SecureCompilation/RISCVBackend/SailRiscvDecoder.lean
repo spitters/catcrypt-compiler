@@ -74,10 +74,9 @@ round-trip-proved by the capstone `roundtrip_RInst`:
 
 The capstone `roundtrip_RInst` quantifies over **all** `RInst` (with the
 register-name well-formedness side-condition the backend's register pool
-satisfies). The only ceiling vs the x86 line is structural: the
-`*W`-shift `shamt` is 5-bit, so the round-trip is stated for shift counts
-`< 32` (`as` rejects `slliw rd,rs,32` likewise); the ChaCha rotate emits only
-counts in `{7, 8, 12, 16, 20, 24, 25}`, all `< 32`.
+satisfies). The `*W`-shift `shamt` is 5-bit, and the shift count of
+`slliw`/`srliw`/`roriw` is a `Fin 32`, so the round-trip carries no range
+condition on it (`as` rejects `slliw rd,rs,32` likewise).
 
 **This is a proper subset of what the owned RISC-V backend emits, not "every
 instruction the backend emits."** `RiscvElfObject.lean` — the ELF-object
@@ -160,7 +159,7 @@ def regName : Nat → String
 
 `riscvDecode` dispatches on the `(opcode, funct3, funct7)` triple per the sail
 `encdec` clauses, recovers the register numbers, and rebuilds the `RInst` with
-the ABI names. The `*W`-shift arms read the 5-bit `shamt`; `MV` decodes the
+the ABI names. The `*W`-shift arms read the 5-bit `shamt` as a `Fin 32`; `MV` decodes the
 `ADDI rd, rs, 0` pseudo-op (`opcode 0x13`, `funct3 0`, `imm 0`). -/
 
 /-- Decode a 32-bit RV64 instruction word back to an `RInst`, per the sail-riscv
@@ -178,11 +177,11 @@ def riscvDecode (w : BitVec 32) : Option RInst :=
   | 0x33, 0b110, 0x00 => some (.or  (regName rd) (regName rs1) (regName rs2))
   | 0x33, 0b100, 0x00 => some (.xor (regName rd) (regName rs1) (regName rs2))
   -- SHIFTIWOP (opcode 0x1b): SLLIW (f3=1), SRLIW (f3=5); f7=0, shamt in rs2 slot
-  | 0x1b, 0b001, 0x00 => some (.slliw (regName rd) (regName rs1) rs2)
-  | 0x1b, 0b101, 0x00 => some (.srliw (regName rd) (regName rs1) rs2)
+  | 0x1b, 0b001, 0x00 => some (.slliw (regName rd) (regName rs1) (Fin.ofNat 32 rs2))
+  | 0x1b, 0b101, 0x00 => some (.srliw (regName rd) (regName rs1) (Fin.ofNat 32 rs2))
   -- RORIW (Zbb, opcode 0x1b): f3=5, f7=0x30, shamt in rs2 slot (distinguished from
   -- SRLIW by funct7; sail ZBB encdec)
-  | 0x1b, 0b101, 0x30 => some (.roriw (regName rd) (regName rs1) rs2)
+  | 0x1b, 0b101, 0x30 => some (.roriw (regName rd) (regName rs1) (Fin.ofNat 32 rs2))
   -- ITYPE ADDI (opcode 0x13, f3=0): MV pseudo when the 12-bit imm field is 0
   | 0x13, 0b000, _ =>
       if fImm12 w = 0 then some (.mv (regName rd) (regName rs1)) else none
@@ -270,15 +269,14 @@ theorem roundtrip_addw (d a b : String)
 
 /-- **The capstone round-trip `decode (encode i) = i` for the full emitted RV64I
     subset.** For every `RInst` whose register names are in the backend's emitted
-    pool (and, for the shift arms, a shift count `< 32`), decoding its encoder
-    word recovers the original instruction — proved against the transcribed
-    sail-riscv `encdec` discipline (`encR_slices`/`encI_slices` are the sail
-    `@`⁻¹), with no instruction outside the ratified RV64I base ISA. -/
+    pool, decoding its encoder word recovers the original instruction — proved
+    against the transcribed sail-riscv `encdec` discipline
+    (`encR_slices`/`encI_slices` are the sail `@`⁻¹). The shift count of the shift
+    and rotate arms is a `Fin 32`, the 5-bit `shamt`, so the statement carries no
+    range condition on it. -/
 theorem roundtrip_RInst (i : RInst)
     (hregs : (rinstDstSrcs i).1 ∈ emittedRegs ∧
-             ∀ r ∈ (rinstDstSrcs i).2, r ∈ emittedRegs)
-    (hsh : ∀ d a m, i = .slliw d a m ∨ i = .srliw d a m → m < 32)
-    (hror : ∀ d a m, i = .roriw d a m → m < 32) :
+             ∀ r ∈ (rinstDstSrcs i).2, r ∈ emittedRegs) :
     riscvDecode (encodeWord i) = some i := by
   obtain ⟨hdst, hsrc⟩ := hregs
   have D := decConsts
@@ -325,31 +323,31 @@ theorem roundtrip_RInst (i : RInst)
       rw [regName_reg5 d hdst, regName_reg5 a ha, regName_reg5 b hb]
   | slliw d a m =>
       have ha := hsrc a (by simp [rinstDstSrcs]); simp only [rinstDstSrcs] at hdst
-      have hm : m < 32 := hsh d a m (Or.inl rfl)
+      have hm : m.val < 32 := m.isLt
       simp only [encodeWord, riscvDecode, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         encShiftiw, (encR_slices ..).1, (encR_slices ..).2.1, (encR_slices ..).2.2.1,
         (encR_slices ..).2.2.2.1, (encR_slices ..).2.2.2.2.1, (encR_slices ..).2.2.2.2.2,
         D.2.2.1, D.2.2.2.2.2.2.2.2.1, D.2.2.2.2.2.2.2.2.2.2.1]
       rw [regName_reg5 d hdst, regName_reg5 a ha]
-      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm]
+      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm, Fin.ofNat_val_eq_self]
   | srliw d a m =>
       have ha := hsrc a (by simp [rinstDstSrcs]); simp only [rinstDstSrcs] at hdst
-      have hm : m < 32 := hsh d a m (Or.inr rfl)
+      have hm : m.val < 32 := m.isLt
       simp only [encodeWord, riscvDecode, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         encShiftiw, (encR_slices ..).1, (encR_slices ..).2.1, (encR_slices ..).2.2.1,
         (encR_slices ..).2.2.2.1, (encR_slices ..).2.2.2.2.1, (encR_slices ..).2.2.2.2.2,
         D.2.2.1, D.2.2.2.2.2.2.2.2.2.1, D.2.2.2.2.2.2.2.2.2.2.1]
       rw [regName_reg5 d hdst, regName_reg5 a ha]
-      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm]
+      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm, Fin.ofNat_val_eq_self]
   | roriw d a m =>
       have ha := hsrc a (by simp [rinstDstSrcs]); simp only [rinstDstSrcs] at hdst
-      have hm : m < 32 := hror d a m rfl
+      have hm : m.val < 32 := m.isLt
       simp only [encodeWord, riscvDecode, fOpcode, fRd, fRs1, fRs2, fFunct3, fFunct7,
         (encR_slices ..).1, (encR_slices ..).2.1, (encR_slices ..).2.2.1,
         (encR_slices ..).2.2.2.1, (encR_slices ..).2.2.2.2.1, (encR_slices ..).2.2.2.2.2,
         D.2.2.1, D.2.2.2.2.2.2.2.2.2.1, D.2.2.2.2.2.2.2.2.2.2.2.2]
       rw [regName_reg5 d hdst, regName_reg5 a ha]
-      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm]
+      simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hm, Fin.ofNat_val_eq_self]
   | mv d s =>
       have hs := hsrc s (by simp [rinstDstSrcs]); simp only [rinstDstSrcs] at hdst
       simp only [encodeWord, riscvDecode, fOpcode, fRd, fRs1, fFunct3, fImm12,
@@ -362,18 +360,16 @@ theorem roundtrip_RInst (i : RInst)
 /-- **Round-trip for the `Zbb` `RORIW` rotate (`decode (encode) = i`).** The
     single-instruction rotate `roriw rd, rs1, m` decodes back to itself: the
     funct7 `0x30` distinguishes it from the base `SRLIW` (`f7=0`) at the same
-    `(opcode 0x1b, funct3 5)`, and the 5-bit shamt round-trips for `m < 32` (the
-    SHA-256 rotates `{2,6,7,11,13,17,18,19,22,25}` are all `< 32`). The
-    single-instruction Zbb rotate is thus proved against the sail-riscv encdec
-    discipline, exactly like the base subset — no gas-pinned remainder. -/
-theorem roundtrip_roriw (d a : String) (m : Nat)
-    (hd : d ∈ emittedRegs) (ha : a ∈ emittedRegs) (hm : m < 32) :
+    `(opcode 0x1b, funct3 5)`, and the 5-bit shamt round-trips for every
+    `m : Fin 32`. The single-instruction Zbb rotate is thus proved against the
+    sail-riscv encdec discipline, exactly like the base subset — no gas-pinned
+    remainder. -/
+theorem roundtrip_roriw (d a : String) (m : Fin 32)
+    (hd : d ∈ emittedRegs) (ha : a ∈ emittedRegs) :
     riscvDecode (encodeWord (.roriw d a m)) = some (.roriw d a m) :=
   roundtrip_RInst (.roriw d a m)
     ⟨by simpa [rinstDstSrcs] using hd, by
       intro r hr; simp only [rinstDstSrcs, List.mem_singleton] at hr; subst hr; exact ha⟩
-    (by intro d' a' m' h; rcases h with h | h <;> cases h)
-    (by intro d' a' m' h; cases h; exact hm)
 
 /-! ## 6b. B-type branch round-trip: the scrambled immediate (`decode (encode) = i`)
 
@@ -475,8 +471,7 @@ fixed-32-bit ISA, so **every arm `riscvDecode` targets** — the scalar
 
 For these the encoder's word is *proved* to decode back to the same instruction
 under the sail-riscv `encdec` discipline, so `as` is out of the trusted path. The
-ChaCha rotate emits only counts `{7,8,12,16,20,24,25} < 32`, within the 5-bit
-`shamt` the `*IW` shift round-trip is stated for. **No arm `riscvDecode`
+`*IW` shift count is a `Fin 32`, the 5-bit `shamt`. **No arm `riscvDecode`
 dispatches on lacks a sail-riscv `encdec` clause.** The single-instruction
 `Zbb RORIW` rotate (opcode `0x1b`, funct3 `5`, funct7 `0x30`) — emitted by the
 Zbb SHA-256 lowering to kill the no-rotate instruction-count tax — is *also*

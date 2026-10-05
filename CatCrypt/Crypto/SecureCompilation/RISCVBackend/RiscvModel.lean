@@ -205,14 +205,16 @@ inductive RInst where
   | or   (d a b : String)
   /-- `XOR rd, rs1, rs2` — bitwise xor. -/
   | xor  (d a b : String)
-  /-- `SLLIW rd, rs1, imm` — logical shift-left by immediate. -/
-  | slliw (d a : String) (imm : Nat)
-  /-- `SRLIW rd, rs1, imm` — logical shift-right by immediate. -/
-  | srliw (d a : String) (imm : Nat)
-  /-- `RORIW rd, rs1, imm` — `Zbb` 32-bit rotate-right by immediate (one
-      instruction; opcode OP-IMM-32 `0x1b`, funct3 `0x5`, funct7 `0x30`). The
+  /-- `SLLIW rd, rs1, imm` — logical shift-left by an immediate below 32 (the
+      5-bit `shamt`). -/
+  | slliw (d a : String) (imm : Fin 32)
+  /-- `SRLIW rd, rs1, imm` — logical shift-right by an immediate below 32 (the
+      5-bit `shamt`). -/
+  | srliw (d a : String) (imm : Fin 32)
+  /-- `RORIW rd, rs1, imm` — `Zbb` 32-bit rotate-right by an immediate below 32
+      (one instruction; opcode OP-IMM-32 `0x1b`, funct3 `0x5`, funct7 `0x30`). The
       single-instruction production rotate (RVA22/RVA23 mandate `Zbb`). -/
-  | roriw (d a : String) (imm : Nat)
+  | roriw (d a : String) (imm : Fin 32)
   /-- `MV rd, rs` — register move (pseudo-op for `ADDI rd, rs, 0`). -/
   | mv   (d s : String)
   deriving Repr, DecidableEq
@@ -225,10 +227,69 @@ def evalRInst (s : RState) : RInst → RState
   | .and  d a b => s.set d (opAnd (s.get a) (s.get b))
   | .or   d a b => s.set d (opOr  (s.get a) (s.get b))
   | .xor  d a b => s.set d (opXor (s.get a) (s.get b))
-  | .slliw d a m => s.set d (opSlliw (s.get a) m)
-  | .srliw d a m => s.set d (opSrliw (s.get a) m)
-  | .roriw d a m => s.set d (opRoriw (s.get a) m)
+  | .slliw d a m => s.set d (opSlliw (s.get a) m.val)
+  | .srliw d a m => s.set d (opSrliw (s.get a) m.val)
+  | .roriw d a m => s.set d (opRoriw (s.get a) m.val)
   | .mv   d a   => s.set d (s.get a)
+
+/-- `d := a <<< m` for an arbitrary amount `m`: `slliw` when `m < 32`, and
+    `xor d a a` otherwise, which writes 0, the value of a 32-bit logical shift by
+    32 or more. -/
+def RInst.shlImm (d a : String) (m : Nat) : RInst :=
+  if h : m < 32 then .slliw d a ⟨m, h⟩ else .xor d a a
+
+/-- `d := a >>> m` for an arbitrary amount `m`: `srliw` when `m < 32`, and
+    `xor d a a` otherwise, which writes 0. -/
+def RInst.shrImm (d a : String) (m : Nat) : RInst :=
+  if h : m < 32 then .srliw d a ⟨m, h⟩ else .xor d a a
+
+/-- `d := opRoriw a m` for an arbitrary amount `m`: `roriw` when `m < 32`, and
+    `mv d a` otherwise, since `opRoriw a m = a` for `m ≥ 32`. -/
+def RInst.rorImm (d a : String) (m : Nat) : RInst :=
+  if h : m < 32 then .roriw d a ⟨m, h⟩ else .mv d a
+
+/-- Below 32, `RInst.shlImm` is the `slliw` instruction with the same amount. -/
+theorem RInst.shlImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
+    RInst.shlImm d a m = .slliw d a ⟨m, h⟩ := dif_pos h
+
+/-- Below 32, `RInst.shrImm` is the `srliw` instruction with the same amount. -/
+theorem RInst.shrImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
+    RInst.shrImm d a m = .srliw d a ⟨m, h⟩ := dif_pos h
+
+/-- Below 32, `RInst.rorImm` is the `roriw` instruction with the same amount. -/
+theorem RInst.rorImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
+    RInst.rorImm d a m = .roriw d a ⟨m, h⟩ := dif_pos h
+
+/-- `RInst.shlImm d a m` writes `opSlliw a m` to `d`, for every `m`. -/
+theorem evalRInst_shlImm (s : RState) (d a : String) (m : Nat) :
+    evalRInst s (RInst.shlImm d a m) = s.set d (opSlliw (s.get a) m) := by
+  unfold RInst.shlImm
+  split
+  · rfl
+  · next h =>
+    simp only [evalRInst, opXor, opSlliw, BitVec.xor_self]
+    rw [BitVec.shiftLeft_eq_zero (by omega)]
+
+/-- `RInst.shrImm d a m` writes `opSrliw a m` to `d`, for every `m`. -/
+theorem evalRInst_shrImm (s : RState) (d a : String) (m : Nat) :
+    evalRInst s (RInst.shrImm d a m) = s.set d (opSrliw (s.get a) m) := by
+  unfold RInst.shrImm
+  split
+  · rfl
+  · next h =>
+    simp only [evalRInst, opXor, opSrliw, BitVec.xor_self]
+    rw [BitVec.ushiftRight_eq_zero (by omega)]
+
+/-- `RInst.rorImm d a m` writes `opRoriw a m` to `d`, for every `m`. -/
+theorem evalRInst_rorImm (s : RState) (d a : String) (m : Nat) :
+    evalRInst s (RInst.rorImm d a m) = s.set d (opRoriw (s.get a) m) := by
+  unfold RInst.rorImm
+  split
+  · rfl
+  · next h =>
+    simp only [evalRInst, opRoriw]
+    rw [BitVec.ushiftRight_eq_zero (by omega), show 32 - m = 0 by omega,
+      BitVec.shiftLeft_zero, BitVec.zero_or]
 
 /-- `runRBlock`: a straight-line fold of `evalRInst`, the RV64 analogue of
     `ARMBackend.runABlock`. -/

@@ -78,18 +78,23 @@ inductive ROp where
   deriving Repr, DecidableEq
 
 /-- Lower a register-named scalar op to a *list* of machine `RInst`s. All ops are
-    one-to-one except `rotl`, which expands to the three-instruction RV64I rotate
-    idiom `slliw tmp a imm ; srliw dst a (32-imm) ; or dst tmp dst`. -/
+    one-to-one except `rotl` and `rotr`, which expand to the three-instruction
+    RV64I rotate idiom `slliw tmp a imm ; srliw dst a (32-imm) ; or dst tmp dst`.
+    The shifts are selected by `RInst.shlImm`/`RInst.shrImm`: an amount below 32 is
+    the `slliw`/`srliw` instruction, and an amount of 32 or more (the second shift
+    of a rotate by 0) is the instruction writing 0. -/
 def toRInst : ROp → List RInst
   | .add dst a b => [.addw dst a b]
   | .sub dst a b => [.subw dst a b]
   | .and dst a b => [.and  dst a b]
   | .or  dst a b => [.or   dst a b]
   | .xor dst a b => [.xor  dst a b]
-  | .shl dst a m => [.slliw dst a m]
-  | .shr dst a m => [.srliw dst a m]
-  | .rotl dst a m tmp => [.slliw tmp a m, .srliw dst a (32 - m), .or dst tmp dst]
-  | .rotr dst a m tmp => [.srliw tmp a m, .slliw dst a (32 - m), .or dst tmp dst]
+  | .shl dst a m => [RInst.shlImm dst a m]
+  | .shr dst a m => [RInst.shrImm dst a m]
+  | .rotl dst a m tmp =>
+      [RInst.shlImm tmp a m, RInst.shrImm dst a (32 - m), .or dst tmp dst]
+  | .rotr dst a m tmp =>
+      [RInst.shrImm tmp a m, RInst.shlImm dst a (32 - m), .or dst tmp dst]
   | .mov dst src => [.mv dst src]
 
 /-- Lower a straight-line `ROp` block to a machine `RInst` block. Since the
@@ -109,21 +114,23 @@ The base path (`toRInst`/`lowerRBlock`) is kept for the instruction-count
 comparison. -/
 
 /-- The `Zbb` lowering of a register-named scalar op. Identical to `toRInst`
-    except the rotate ops become a single `RInst.roriw` (no scratch temp, no
-    macro): `rotr dst a m` → `[roriw dst a m]`, and `rotl dst a m` →
-    `[roriw dst a (32 - m)]` (a left-rotate by `m` is a right-rotate by `32-m`).
-    For the SHA-256 rotates `m ∈ {2,6,7,11,13,17,18,19,22,25}`, all `< 32`, the
-    `5`-bit `RORIW` `shamt` represents them exactly. -/
+    except the rotate ops become a single instruction (no scratch temp, no
+    macro): `rotr dst a m` → `[RInst.rorImm dst a m]`, and `rotl dst a m` →
+    `[RInst.rorImm dst a (32 - m)]` (a left-rotate by `m` is a right-rotate by
+    `32-m`). `RInst.rorImm` is `roriw` for an amount below 32 and `mv` otherwise
+    (the rotate-left by 0). For the SHA-256 rotates
+    `m ∈ {2,6,7,11,13,17,18,19,22,25}`, all `< 32`, the `5`-bit `RORIW` `shamt`
+    represents them exactly. -/
 def toRInstZbb : ROp → List RInst
   | .add dst a b => [.addw dst a b]
   | .sub dst a b => [.subw dst a b]
   | .and dst a b => [.and  dst a b]
   | .or  dst a b => [.or   dst a b]
   | .xor dst a b => [.xor  dst a b]
-  | .shl dst a m => [.slliw dst a m]
-  | .shr dst a m => [.srliw dst a m]
-  | .rotl dst a m _tmp => [.roriw dst a (32 - m)]
-  | .rotr dst a m _tmp => [.roriw dst a m]
+  | .shl dst a m => [RInst.shlImm dst a m]
+  | .shr dst a m => [RInst.shrImm dst a m]
+  | .rotl dst a m _tmp => [RInst.rorImm dst a (32 - m)]
+  | .rotr dst a m _tmp => [RInst.rorImm dst a m]
   | .mov dst src => [.mv dst src]
 
 /-- The `Zbb` lowering of a block: a `flatMap` of `toRInstZbb`. Because every op
@@ -171,13 +178,15 @@ theorem xor_run_denote (s : RState) (dst a b : String)
 /-- **The rotate macro preserves the rotate-left denotation.** Running
     `slliw tmp a m ; srliw dst a (32-m) ; or dst tmp dst` writes `opRol (a) m`
     into `dst`, when `tmp ≠ dst`, `tmp ≠ a` (the temp is fresh) and neither is
-    the zero register. -/
+    the zero register. The amount `m` is arbitrary: the shifts are selected by
+    `RInst.shlImm`/`RInst.shrImm`, so no shift by 32 or more is emitted. -/
 theorem rotl_run_denote (s : RState) (dst a tmp : String) (m : Nat)
     (hdst : ¬ (dst = "zero" ∨ dst = "x0"))
     (htmp : ¬ (tmp = "zero" ∨ tmp = "x0"))
     (htd : tmp ≠ dst) (hta : tmp ≠ a) :
     (runRBlock s (toRInst (.rotl dst a m tmp))).get dst = opRol (s.get a) m := by
-  simp only [toRInst, runRBlock, evalRInst, opSlliw, opSrliw, opOr, opRol]
+  simp only [toRInst, runRBlock, evalRInst_shlImm, evalRInst_shrImm]
+  simp only [evalRInst, opSlliw, opSrliw, opOr, opRol]
   -- the final `or dst tmp dst` reads tmp and the just-written dst (the srliw result)
   rw [RState.get_set_same _ _ _ hdst, RState.get_set_same _ _ _ hdst]
   -- the tmp read: set tmp, then set dst (tmp ≠ dst), then read tmp
@@ -194,7 +203,8 @@ theorem rotr_run_denote (s : RState) (dst a tmp : String) (m : Nat)
     (htmp : ¬ (tmp = "zero" ∨ tmp = "x0"))
     (htd : tmp ≠ dst) (hta : tmp ≠ a) :
     (runRBlock s (toRInst (.rotr dst a m tmp))).get dst = opRor (s.get a) m := by
-  simp only [toRInst, runRBlock, evalRInst, opSrliw, opSlliw, opOr, opRor]
+  simp only [toRInst, runRBlock, evalRInst_shlImm, evalRInst_shrImm]
+  simp only [evalRInst, opSrliw, opSlliw, opOr, opRor]
   rw [RState.get_set_same _ _ _ hdst, RState.get_set_same _ _ _ hdst]
   rw [RState.get_set_other _ _ _ _ htd, RState.get_set_same _ _ _ htmp]
   rw [RState.get_set_other _ _ _ _ (Ne.symm hta)]
@@ -207,8 +217,22 @@ theorem rotr_run_denote (s : RState) (dst a tmp : String) (m : Nat)
 theorem roriw_run_denote (s : RState) (dst a tmp : String) (m : Nat)
     (hdst : ¬ (dst = "zero" ∨ dst = "x0")) :
     (runRBlock s (toRInstZbb (.rotr dst a m tmp))).get dst = opRor (s.get a) m := by
-  simp only [toRInstZbb, runRBlock, evalRInst, opRoriw_eq_opRor]
+  simp only [toRInstZbb, runRBlock, evalRInst_rorImm, opRoriw_eq_opRor]
   rw [RState.get_set_same _ _ _ hdst]
+
+/-- **The `Zbb` lowering of the rotate-left preserves its denotation.** Running
+    the single instruction `RInst.rorImm dst a (32 - m)` writes `opRol (a) m` into
+    `dst`, for every amount `m`, when `dst` is not the zero register. -/
+theorem rotl_zbb_run_denote (s : RState) (dst a tmp : String) (m : Nat)
+    (hdst : ¬ (dst = "zero" ∨ dst = "x0")) :
+    (runRBlock s (toRInstZbb (.rotl dst a m tmp))).get dst = opRol (s.get a) m := by
+  simp only [toRInstZbb, runRBlock, evalRInst_rorImm, opRoriw, opRol]
+  rw [RState.get_set_same _ _ _ hdst]
+  by_cases h : m ≤ 32
+  · rw [show 32 - (32 - m) = m by omega, BitVec.or_comm]
+  · have hm : s.get a <<< m = 0 := BitVec.shiftLeft_eq_zero (by omega)
+    rw [show 32 - m = 0 by omega, hm]
+    simp
 
 /-! ## 3. The block-lowering denotation theorem (RV64)
 

@@ -25,7 +25,7 @@ modules declare into `RISCVBackend.<ModuleName>`. Exceptions: `RiscvModel.lean`,
 
 | Module | Contents |
 |---|---|
-| `RiscvModel.lean` | `RState`, `evalRInst`, `runRBlock`; `runBoundedLoopR` with `runBoundedLoopR_eq_runRBlock_unroll` |
+| `RiscvModel.lean` | `RState`, `evalRInst`, `runRBlock`; the shift and rotate selections `RInst.shlImm`, `RInst.shrImm`, `RInst.rorImm` for an arbitrary amount, with `evalRInst_shlImm`, `evalRInst_shrImm`, `evalRInst_rorImm`; `runBoundedLoopR` with `runBoundedLoopR_eq_runRBlock_unroll` |
 | `RiscvLowering.lean` | `ROp → List RInst` (rotates as three-instruction macros, or `RORIW` under `lowerRBlockZbb`); `riscvBlock_lowering_denote`, `riscvBlockZbb_lowering_denote`; `rotl_run_denote`, `rotr_run_denote`, `roriw_run_denote` under freshness hypotheses on the temporary; `qr_rfc_kat` |
 | `RiscvModel64.lean`, `RiscvLowering64.lean` | `RState64`, `evalRInst64`, `runRBlock64`; `sltu_add_carry`, `sltu_sub_borrow`; carry, borrow and mask-select macros with `riscvBlock64_lowering_denote` and `native_decide` KATs (`addcc_carry_kat`, `csub_cond1_kat`, ...) |
 | `RvvModel.lean`, `RvvLowering.lean`, `RvvAsmPrinter.lean` | `VState`, `evalVInst`, `runVBlock`; the 8×i16 view `VState8x16` with `evalVInst8x16`; `rvvBlock_lowering_denote`; GAS RVV text |
@@ -39,7 +39,7 @@ modules declare into `RISCVBackend.<ModuleName>`. Exceptions: `RiscvModel.lean`,
   `RvvEncoder.lean` (`encodeWord`, `encodeWord8x16`). Operand names are encoded
   directly; there is no allocation argument.
 - `SailRiscvDecoder.lean`: `roundtrip_RInst` (`riscvDecode (encodeWord i) = some i`
-  when every register name of `i` is in `emittedRegs` and shift counts are below 32),
+  when every register name of `i` is in `emittedRegs`; the shift amount is a `Fin 32`),
   `roundtrip_roriw`, and `roundtrip_bcc` for branches (the offset is recovered with
   bit 0 cleared).
 - `SailRiscvDecoder64.lean`: `roundtrip_RInst64` for every `RInst64` other than `li`,

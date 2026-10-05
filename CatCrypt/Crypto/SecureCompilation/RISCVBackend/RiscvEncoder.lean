@@ -190,25 +190,21 @@ The `funct7`/`funct3`/`opcode` constants are exactly the sail clauses:
 /-- Encode one `RInst` to its 32-bit RV64 instruction word (the value objdump
     prints). `MV rd, rs` is the canonical pseudo-op `ADDI rd, rs, 0`.
 
-    **Precondition:** the `.slliw`/`.srliw`/`.roriw` shift-amount `m` is packed
-    with `BitVec.ofNat 5 m`, which reduces `m` mod 32 with **no range check**.
-    The round-trip theorems (`SailRiscvDecoder.roundtrip_RInst`) are stated only
-    for `m < 32` (the 5-bit `shamt` field); calling `encodeWord` with `m ≥ 32`
-    still returns a word — silently the encoding of `m % 32`, a different
-    instruction — rather than failing. The backend only ever emits shift counts
-    `{7, 8, 12, 16, 20, 24, 25}`, all `< 32`. -/
+    The `.slliw`/`.srliw`/`.roriw` shift amount `m : Fin 32` is the 5-bit `shamt`
+    field; it is packed with `BitVec.ofNat 5 m.val`, which is exact because
+    `m < 32`. -/
 def encodeWord : RInst → BitVec 32
   | .addw d a b  => encR 0x00 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x3b
   | .subw d a b  => encR 0x20 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x3b
   | .and  d a b  => encR 0x00 (reg5 b) (reg5 a) 0b111 (reg5 d) 0x33
   | .or   d a b  => encR 0x00 (reg5 b) (reg5 a) 0b110 (reg5 d) 0x33
   | .xor  d a b  => encR 0x00 (reg5 b) (reg5 a) 0b100 (reg5 d) 0x33
-  | .slliw d a m => encShiftiw (BitVec.ofNat 5 m) (reg5 a) 0b001 (reg5 d) 0x1b
-  | .srliw d a m => encShiftiw (BitVec.ofNat 5 m) (reg5 a) 0b101 (reg5 d) 0x1b
+  | .slliw d a m => encShiftiw (BitVec.ofNat 5 m.val) (reg5 a) 0b001 (reg5 d) 0x1b
+  | .srliw d a m => encShiftiw (BitVec.ofNat 5 m.val) (reg5 a) 0b101 (reg5 d) 0x1b
   -- RORIW (Zbb): opcode OP-IMM-32 0x1b, funct3 0b101, funct7 0b0110000 = 0x30
   -- (the high imm[11:5] field selects rotate-right-immediate-word); 5-bit shamt
   -- in the rs2 slot. Sail `ZBB_RTYPEW`/`RORIW` encdec (model/extensions/Zbb).
-  | .roriw d a m => encR 0x30 (BitVec.ofNat 5 m) (reg5 a) 0b101 (reg5 d) 0x1b
+  | .roriw d a m => encR 0x30 (BitVec.ofNat 5 m.val) (reg5 a) 0b101 (reg5 d) 0x1b
   | .mv   d s    => encI 0 (reg5 s) 0b000 (reg5 d) 0x13
 
 /-- The little-endian 4 bytes of a 32-bit instruction word (low byte first) — the

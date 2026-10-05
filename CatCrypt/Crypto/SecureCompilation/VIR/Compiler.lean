@@ -221,9 +221,7 @@ def X86Validated : Prop :=
 def RiscvValidated : Prop :=
   ∀ (i : RISCVBackend.RInst)
     (_hregs : (RISCVBackend.rinstDstSrcs i).1 ∈ RISCVBackend.SailRiscvDecoder.emittedRegs ∧
-             ∀ r ∈ (RISCVBackend.rinstDstSrcs i).2, r ∈ RISCVBackend.SailRiscvDecoder.emittedRegs)
-    (_hsh : ∀ d a m, i = .slliw d a m ∨ i = .srliw d a m → m < 32)
-    (_hror : ∀ d a m, i = .roriw d a m → m < 32),
+             ∀ r ∈ (RISCVBackend.rinstDstSrcs i).2, r ∈ RISCVBackend.SailRiscvDecoder.emittedRegs),
     RISCVBackend.SailRiscvDecoder.riscvDecode (RISCVBackend.RiscvEncoder.encodeWord i) = some i
 
 /-- **ARM (AArch64).** The GP-ALU `ADD` `decode∘encode` round-trip against the

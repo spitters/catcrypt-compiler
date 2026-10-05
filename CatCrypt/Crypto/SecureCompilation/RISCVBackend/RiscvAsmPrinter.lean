@@ -111,9 +111,9 @@ def renderRInst (alloc : GpAlloc) : RInst → String
   | .and  d a b => "\tand "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
   | .or   d a b => "\tor "   ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
   | .xor  d a b => "\txor "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
-  | .slliw d a imm => "\tslliw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm
-  | .srliw d a imm => "\tsrliw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm
-  | .roriw d a imm => "\troriw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm
+  | .slliw d a imm => "\tslliw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm.val
+  | .srliw d a imm => "\tsrliw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm.val
+  | .roriw d a imm => "\troriw " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ toString imm.val
   | .mv   d s     => "\tmv "   ++ gpOf alloc d ++ ", " ++ gpOf alloc s
 
 /-- Print a whole block's instruction lines (one per `RInst`). -/

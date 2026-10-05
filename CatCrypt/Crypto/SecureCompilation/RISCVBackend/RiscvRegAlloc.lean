@@ -81,9 +81,9 @@ def instValR (s : RState) : RInst → R32
   | .and  _ a b => opAnd (s.get a) (s.get b)
   | .or   _ a b => opOr  (s.get a) (s.get b)
   | .xor  _ a b => opXor (s.get a) (s.get b)
-  | .slliw _ a m => opSlliw (s.get a) m
-  | .srliw _ a m => opSrliw (s.get a) m
-  | .roriw _ a m => opRoriw (s.get a) m
+  | .slliw _ a m => opSlliw (s.get a) m.val
+  | .srliw _ a m => opSrliw (s.get a) m.val
+  | .roriw _ a m => opRoriw (s.get a) m.val
   | .mv   _ a   => s.get a
 
 /-- `evalRInst s i = s.set (writtenName i) (instValR s i)`: every op is a single write
