@@ -31,6 +31,8 @@ It supplies the limb arithmetic the EC field-sub kernels need:
 * `sbbChain`/`corresJ_sbbChain`, an arbitrary-length chain of `sbb` instructions
   refining the composed abstract borrow fold through `corresJ_append` — the
   emit-block leg.
+* `adcBlock`/`corresJ_adcChain`, the add-with-carry twin: an arbitrary-length
+  chain of `adc` instructions refining the abstract carry fold `adcAbs`.
 * `feSub4_capstone`, a concrete four-limb (`2^256`) field-subtract value capstone
   routed through `SRcarryLimbs`: from a machine state whose designated limb window
   recomposes to an abstract multi-precision value, the four-limb `sbbLimbs`
@@ -159,6 +161,33 @@ theorem corresJ_sbbChain (pairs : List (String × String)) :
     show CorresJ SRcarry (fun _ => True) (fun a => sbbAbs ps (sbbStep d s a))
       ([.sbb d (.reg s)] ++ sbbBlock ps)
     exact corresJ_append SRcarry (corresJ_sbb d s) ih (fun _ _ => trivial)
+
+/-- The concrete emit block for an add-with-carry limb chain: one `adc dst src` per
+    `(dst, src)` register pair, in order (limb 0 first). -/
+def adcBlock : List (String × String) → List (JInstr 64)
+  | [] => []
+  | (d, s) :: ps => .adc d (.reg s) :: adcBlock ps
+
+/-- The abstract carry fold matching `adcBlock`'s execution order: `adcStep` per
+    pair, limb 0 applied innermost. -/
+def adcAbs : List (String × String) → ACarry → ACarry
+  | [], a => a
+  | (d, s) :: ps, a => adcAbs ps (adcStep d s a)
+
+/-- **The `adc`-chain refinement.** An arbitrary-length chain of `adc` instructions
+    refines the composed abstract carry fold `adcAbs` through `SRcarry`: the
+    concrete `CF` written by each limb is exactly the `CF` the next limb reads.
+    Assembled from `corresJ_adc` through `corresJ_append` by induction on the pair
+    list; the add-with-carry twin of `corresJ_sbbChain`. -/
+theorem corresJ_adcChain (pairs : List (String × String)) :
+    CorresJ SRcarry (fun _ => True) (adcAbs pairs) (adcBlock pairs) := by
+  induction pairs with
+  | nil => exact corresJ_weaken SRcarry (corresJ_nil SRcarry) (fun _ _ => trivial)
+  | cons p ps ih =>
+    obtain ⟨d, s⟩ := p
+    show CorresJ SRcarry (fun _ => True) (fun a => adcAbs ps (adcStep d s a))
+      ([.adc d (.reg s)] ++ adcBlock ps)
+    exact corresJ_append SRcarry (corresJ_adc d s) ih (fun _ _ => trivial)
 
 /-! ## The concrete four-limb field-subtract value capstone
 

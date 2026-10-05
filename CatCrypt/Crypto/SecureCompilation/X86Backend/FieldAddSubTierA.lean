@@ -13,6 +13,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSub
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
 
 /-!
 # Modular field add/sub: limb/`runBlock` value = `(a ± b) mod p`
@@ -307,12 +308,90 @@ theorem emitAdcChain_preserves :
           rw [ih ss r _ (fun q hq => hr q (List.mem_cons_of_mem _ hq))]
           exact emit_adc_other s d sh r (hr d List.mem_cons_self)
 
+/-- **A carry chain over parallel register lists reads back as the value fold.**
+    For any block family `blk` refining an abstract fold `abs` that equals the
+    shared carry fold `Ascent.carryAbs f g` (through `Ascent.SRcarry`), running
+    `blk (ds.zip ss)` under the `ChainFresh` layout leaves the destination window
+    holding `Ascent.carryLimbs f g` of the initial destination and source windows
+    entered with the initial `CF`, and `CF` holding its carry-out. Composes the
+    chain correspondence with `Ascent.carryAbs_window`. -/
+theorem carryChain_runBlock_window (f : BitVec 64 → BitVec 64 → Bool → BitVec 64)
+    (g : BitVec 64 → BitVec 64 → Bool → Bool) (blk : List (String × String) → List (JInstr 64))
+    (abs : List (String × String) → Ascent.ACarry → Ascent.ACarry)
+    (hcorr : ∀ ps, Ascent.CorresJ Ascent.SRcarry (fun _ => True) (abs ps) (blk ps))
+    (habs : ∀ ps a, abs ps a = Ascent.carryAbs f g ps a)
+    (ds ss : List String) (s : JState 64) (hlen : ds.length = ss.length)
+    (hfresh : ChainFresh ds ss) :
+    ds.map (runBlock s (blk (ds.zip ss))).get
+        = (Ascent.carryLimbs f g (ds.map s.get) (ss.map s.get) (s.flagB (·.cf))).1
+      ∧ (runBlock s (blk (ds.zip ss))).flagB (·.cf)
+        = (Ascent.carryLimbs f g (ds.map s.get) (ss.map s.get) (s.flagB (·.cf))).2 := by
+  have hfst : (ds.zip ss).map Prod.fst = ds := List.map_fst_zip (by omega)
+  have hsnd : (ds.zip ss).map Prod.snd = ss := List.map_snd_zip (by omega)
+  have hu : (ds.zip ss).map (fun p => s.regs p.1) = ds.map s.get := by
+    conv_rhs => rw [← hfst]
+    rw [List.map_map]; rfl
+  have hv : (ds.zip ss).map (fun p => s.regs p.2) = ss.map s.get := by
+    conv_rhs => rw [← hsnd]
+    rw [List.map_map]; rfl
+  obtain ⟨hreg, hflag⟩ := hcorr (ds.zip ss) s ⟨s.regs, s.flagB (·.cf)⟩ ⟨fun _ => rfl, rfl⟩ trivial
+  obtain ⟨hw, hc⟩ := Ascent.carryAbs_window f g (ds.zip ss) ⟨s.regs, s.flagB (·.cf)⟩
+    (by rw [hfst]; exact hfresh.ds_nodup)
+    (fun p hp q hq => hfresh.ds_ss _ (List.of_mem_zip hp).1 _ (List.of_mem_zip hq).2)
+  dsimp only at hw hc
+  rw [hu, hv, ← habs] at hw hc
+  refine ⟨?_, hflag.trans hc⟩
+  calc ds.map (runBlock s (blk (ds.zip ss))).get
+      = ((ds.zip ss).map Prod.fst).map (runBlock s (blk (ds.zip ss))).get := by rw [hfst]
+    _ = _ := by rw [List.map_map, ← hw]; exact List.map_congr_left (fun p _ => hreg p.1)
+
+/-- The emitted ADC chain over parallel register lists is the ascent `adcBlock` of
+    the zipped register pairs. -/
+theorem emitAdcChain_eq_adcBlock : ∀ (ds ss : List String),
+    emitAdcChain ds ss = Ascent.adcBlock (ds.zip ss)
+  | [], _ => rfl
+  | _ :: _, [] => rfl
+  | d :: ds, s :: ss => by
+      rw [emitAdcChain, List.zip_cons_cons, Ascent.adcBlock, emitAdcChain_eq_adcBlock ds ss]
+
+/-- The `adc`-chain abstract fold is the shared carry fold at the add-with-carry
+    word/carry pair. -/
+theorem adcAbs_eq_carryAbs : ∀ (ps : List (String × String)) (a : Ascent.ACarry),
+    Ascent.adcAbs ps a = Ascent.carryAbs Ascent.addWord Ascent.addCarryOut ps a
+  | [], _ => rfl
+  | (d, s) :: ps, a => adcAbs_eq_carryAbs ps (Ascent.adcStep d s a)
+
+/-- The ascent add-with-carry value fold, entered with the carry bit `cin = 1`, is
+    `addLimbs` with its `BitVec 1` carry-out read as a `Bool`. -/
+theorem carryLimbs_eq_addLimbs : ∀ (u v : List (BitVec 64)) (cin : BitVec 1),
+    u.length = v.length →
+    Ascent.carryLimbs Ascent.addWord Ascent.addCarryOut u v (decide (cin = 1))
+      = ((addLimbs u v cin).1, decide ((addLimbs u v cin).2 = 1)) := by
+  intro u
+  induction u with
+  | nil => intro v cin _; rfl
+  | cons x xs ih =>
+    intro v cin h
+    cases v with
+    | nil => simp at h
+    | cons y ys =>
+      have hw : Ascent.addWord x y (decide (cin = 1)) = addCarryWord x y cin := by
+        rcases BitVec.eq_zero_or_eq_one cin with rfl | rfl <;> apply BitVec.eq_of_toNat_eq <;>
+          simp [Ascent.addWord, add_carry, addCarryWord, BitVec.toNat_add]
+      have hc : Ascent.addCarryOut x y (decide (cin = 1)) = decide (carryOutBit x y cin = 1) := by
+        have := cf_carryOut x y cin
+        simp only [Ascent.addCarryOut, decide_eq_true_eq]
+        rcases BitVec.eq_zero_or_eq_one cin with rfl | rfl <;> simp_all
+      rw [Ascent.carryLimbs, hc, ih ys _ (by simpa using h), hw]
+      rfl
+
 /-- **The emitted ADC chain over `runBlock` = the abstract `addLimbs` ripple-add.**
     With destination registers `ds` holding the limbs `u`, source registers `ss`
     holding `v` (equal lengths), the `ChainFresh` register layout, and `CF` the
     carry-in bit `cin`, running `emitAdcChain` leaves each `dᵢ` holding the
     `addLimbs u v cin` sum limb and `CF` the final carry — register-by-register the
-    proven abstract ripple-add. -/
+    proven abstract ripple-add. Proved through the ascent chain correspondence
+    `Ascent.corresJ_adcChain` and `carryChain_runBlock_window`. -/
 theorem emitAdcChain_runBlock :
     ∀ (ds ss : List String) (u v : List (BitVec 64)) (cin : BitVec 1) (s : JState 64),
       ds.length = u.length → ss.length = v.length → u.length = v.length →
@@ -321,70 +400,13 @@ theorem emitAdcChain_runBlock :
       s.flagB (·.cf) = (cin = 1) →
       ds.map (runBlock s (emitAdcChain ds ss)).get = (addLimbs u v cin).1
         ∧ (runBlock s (emitAdcChain ds ss)).flagB (·.cf) = ((addLimbs u v cin).2 = 1) := by
-  intro ds ss
-  induction ds generalizing ss with
-  | nil =>
-      intro u v cin s hdu _ _ _ hdmap _ hcf
-      have hu : u = [] := by cases u with | nil => rfl | cons => simp at hdu
-      subst hu
-      simp only [emitAdcChain, runBlock_nil, List.map_nil, addLimbs, hcf, and_self]
-  | cons d ds ih =>
-      intro u v cin s hdu hsv huv hfresh hdmap hsmap hcf
-      cases ss with
-      | nil => simp at hsv; cases v with | nil => simp at huv; cases u <;> simp_all | cons => simp at hsv
-      | cons sh ss =>
-        cases u with
-        | nil => simp at hdu
-        | cons u0 us =>
-          cases v with
-          | nil => simp at hsv
-          | cons v0 vs =>
-            simp only [List.map_cons, List.cons.injEq] at hdmap hsmap
-            obtain ⟨hdhd, hdtl⟩ := hdmap
-            obtain ⟨hshd, hstl⟩ := hsmap
-            rw [emitAdcChain, runBlock_cons]
-            set s1 := evalInstr s (.adc d (.reg sh)) with hs1
-            -- head value: d := addCarryWord u0 v0 cin
-            have hs1d : s1.get d = addCarryWord u0 v0 cin := by
-              rw [hs1, emit_adc_word, hdhd, hshd]
-              congr 1
-              exact cin_bridge cin _ hcf
-            -- head carry-out flag = carryOutBit u0 v0 cin
-            have hs1cf : (s1.flagB (·.cf) = true) = (carryOutBit u0 v0 cin = 1) := by
-              rw [hs1, emit_adc_cf, hdhd, hshd]
-              rw [show (if (s.flagB fun x ↦ x.cf) then (1 : Nat) else 0)
-                    = (if cin = 1 then 1 else 0) by
-                rcases hb : (s.flagB fun x ↦ x.cf) with _ | _ <;> simp_all]
-              have := cf_carryOut u0 v0 cin
-              simp only [decide_eq_true_eq] at this ⊢
-              rw [this]
-            -- ds-registers preserved (distinct from d by Nodup): hold us
-            have hnd := hfresh.ds_nodup
-            have hdsmap : ds.map s1.get = us := by
-              rw [← hdtl]; apply List.map_congr_left; intro r hr
-              rw [hs1]; exact emit_adc_other s d sh r
-                (fun he => by subst he; exact (List.nodup_cons.mp hnd).1 hr)
-            -- ss-registers preserved (disjoint from d): hold vs
-            have hssmap : ss.map s1.get = vs := by
-              rw [← hstl]; apply List.map_congr_left; intro r hr
-              rw [hs1]; exact emit_adc_other s d sh r
-                (Ne.symm (hfresh.ds_ss d List.mem_cons_self r (List.mem_cons_of_mem _ hr)))
-            -- the tail ChainFresh
-            have hfresh' : ChainFresh ds ss :=
-              { ds_nodup := (List.nodup_cons.mp hnd).2
-                ds_ss := fun r hr q hq => hfresh.ds_ss r (List.mem_cons_of_mem _ hr) q
-                  (List.mem_cons_of_mem _ hq) }
-            -- apply IH with cin := carryOutBit u0 v0 cin
-            obtain ⟨ihmap, ihcf⟩ := ih ss us vs (carryOutBit u0 v0 cin) s1
-              (by simpa using hdu) (by simpa using hsv) (by simpa using huv) hfresh'
-              hdsmap hssmap hs1cf
-            simp only [addLimbs, List.map_cons, List.headD_cons, List.tail_cons]
-            -- head limb d preserved through the tail block
-            have hdfinal : (runBlock s1 (emitAdcChain ds ss)).get d = addCarryWord u0 v0 cin := by
-              rw [emitAdcChain_preserves ds ss d s1
-                (fun q hq => fun he => by subst he; exact (List.nodup_cons.mp hnd).1 hq), hs1d]
-            refine ⟨?_, ihcf⟩
-            rw [hdfinal, ihmap]
+  intro ds ss u v cin s hdu hsv huv hfresh hdmap hsmap hcf
+  have hcin : s.flagB (·.cf) = decide (cin = 1) := by rcases hb : s.flagB (·.cf) <;> simp_all
+  obtain ⟨hw, hc⟩ := carryChain_runBlock_window _ _ _ _ Ascent.corresJ_adcChain
+    adcAbs_eq_carryAbs ds ss s (by omega) hfresh
+  rw [hdmap, hsmap, hcin, carryLimbs_eq_addLimbs u v cin huv] at hw hc
+  rw [emitAdcChain_eq_adcBlock]
+  exact ⟨hw, by simp [hc]⟩
 
 /-- The little-endian value the emitted ADC chain leaves in its output: the sum
     limbs in the destination registers `ds` plus the final carry (read from `CF`)

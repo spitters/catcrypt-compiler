@@ -376,13 +376,50 @@ theorem emitSbbChain_preserves :
           rw [ih ss r _ (fun q hq => hr q (List.mem_cons_of_mem _ hq))]
           exact emit_sbb_other s d sh r (hr d List.mem_cons_self)
 
+/-- The emitted SBB chain over parallel register lists is the ascent `sbbBlock` of
+    the zipped register pairs. -/
+theorem emitSbbChain_eq_sbbBlock : ∀ (ds ss : List String),
+    emitSbbChain ds ss = Ascent.sbbBlock (ds.zip ss)
+  | [], _ => rfl
+  | _ :: _, [] => rfl
+  | d :: ds, s :: ss => by
+      rw [emitSbbChain, List.zip_cons_cons, Ascent.sbbBlock, emitSbbChain_eq_sbbBlock ds ss]
+
+/-- The ascent subtract-with-borrow value fold, entered with the borrow bit
+    `bin = 1`, is `subLimbs` with its `BitVec 1` borrow-out read as a `Bool`. -/
+theorem carryLimbs_eq_subLimbs : ∀ (u v : List (BitVec 64)) (bin : BitVec 1),
+    u.length = v.length →
+    Ascent.carryLimbs Ascent.subWord Ascent.sbbBorrow u v (decide (bin = 1))
+      = ((subLimbs u v bin).1, decide ((subLimbs u v bin).2 = 1)) := by
+  intro u
+  induction u with
+  | nil => intro v bin _; rfl
+  | cons x xs ih =>
+    intro v bin h
+    cases v with
+    | nil => simp at h
+    | cons y ys =>
+      have hw : Ascent.subWord x y (decide (bin = 1)) = subBorrowWord x y bin := by
+        rcases BitVec.eq_zero_or_eq_one bin with rfl | rfl
+        · exact (subBorrowWord_eq_sub_borrow x y 0).symm
+        · exact (subBorrowWord_eq_sub_borrow x y 1).symm
+      have hc : Ascent.sbbBorrow x y (decide (bin = 1)) = decide (borrowOutBit x y bin = 1) := by
+        have := cf_borrowOut x y bin
+        simp only [Ascent.sbbBorrow, decide_eq_true_eq]
+        rcases BitVec.eq_zero_or_eq_one bin with rfl | rfl <;> simp_all
+        rw [← this]; omega
+      rw [Ascent.carryLimbs, hc, ih ys _ (by simpa using h), hw]
+      rfl
+
 /-- **The emitted SBB chain over `runBlock` = the abstract `subLimbs`
     ripple-subtract.** With destination registers `ds` holding `u`, source
     registers `ss` holding `v` (equal lengths), the `ChainFresh` register layout,
     and `CF` the borrow-in bit `bin`, running `emitSbbChain` leaves each `dᵢ`
     holding the `subLimbs u v bin` difference limb and `CF` the final borrow —
     register-by-register the proven abstract ripple-subtract. The SBB mirror of
-    `FieldAddSubTierA.emitAdcChain_runBlock`. -/
+    `FieldAddSubTierA.emitAdcChain_runBlock`, proved through the ascent chain
+    correspondence `Ascent.corresJ_sbbChain` and
+    `FieldAddSubTierA.carryChain_runBlock_window`. -/
 theorem emitSbbChain_runBlock :
     ∀ (ds ss : List String) (u v : List (BitVec 64)) (bin : BitVec 1) (s : JState 64),
       ds.length = u.length → ss.length = v.length → u.length = v.length →
@@ -391,65 +428,13 @@ theorem emitSbbChain_runBlock :
       s.flagB (·.cf) = (bin = 1) →
       ds.map (runBlock s (emitSbbChain ds ss)).get = (subLimbs u v bin).1
         ∧ (runBlock s (emitSbbChain ds ss)).flagB (·.cf) = ((subLimbs u v bin).2 = 1) := by
-  intro ds ss
-  induction ds generalizing ss with
-  | nil =>
-      intro u v bin s hdu _ _ _ hdmap _ hcf
-      have hu : u = [] := by cases u with | nil => rfl | cons => simp at hdu
-      subst hu
-      simp only [emitSbbChain, runBlock_nil, List.map_nil, subLimbs, hcf, and_self]
-  | cons d ds ih =>
-      intro u v bin s hdu hsv huv hfresh hdmap hsmap hcf
-      cases ss with
-      | nil => simp at hsv; cases v with | nil => simp at huv; cases u <;> simp_all | cons => simp at hsv
-      | cons sh ss =>
-        cases u with
-        | nil => simp at hdu
-        | cons u0 us =>
-          cases v with
-          | nil => simp at hsv
-          | cons v0 vs =>
-            simp only [List.map_cons, List.cons.injEq] at hdmap hsmap
-            obtain ⟨hdhd, hdtl⟩ := hdmap
-            obtain ⟨hshd, hstl⟩ := hsmap
-            rw [emitSbbChain, runBlock_cons]
-            set s1 := evalInstr s (.sbb d (.reg sh)) with hs1
-            -- head value: d := subBorrowWord u0 v0 bin
-            have hs1d : s1.get d = subBorrowWord u0 v0 bin := by
-              rw [hs1, emit_sbb_word, hdhd, hshd]
-              congr 1
-              exact cin_bridge bin _ hcf
-            -- head borrow-out flag = borrowOutBit u0 v0 bin
-            have hs1cf : (s1.flagB (·.cf) = true) = (borrowOutBit u0 v0 bin = 1) := by
-              rw [hs1, emit_sbb_cf, hdhd, hshd]
-              rw [show (if (s.flagB fun x ↦ x.cf) then (1 : Nat) else 0)
-                    = (if bin = 1 then 1 else 0) by
-                rcases hb : (s.flagB fun x ↦ x.cf) with _ | _ <;> simp_all]
-              have := cf_borrowOut u0 v0 bin
-              simp only [decide_eq_true_eq] at this ⊢
-              rw [this]
-            have hnd := hfresh.ds_nodup
-            have hdsmap : ds.map s1.get = us := by
-              rw [← hdtl]; apply List.map_congr_left; intro r hr
-              rw [hs1]; exact emit_sbb_other s d sh r
-                (fun he => by subst he; exact (List.nodup_cons.mp hnd).1 hr)
-            have hssmap : ss.map s1.get = vs := by
-              rw [← hstl]; apply List.map_congr_left; intro r hr
-              rw [hs1]; exact emit_sbb_other s d sh r
-                (Ne.symm (hfresh.ds_ss d List.mem_cons_self r (List.mem_cons_of_mem _ hr)))
-            have hfresh' : ChainFresh ds ss :=
-              { ds_nodup := (List.nodup_cons.mp hnd).2
-                ds_ss := fun r hr q hq => hfresh.ds_ss r (List.mem_cons_of_mem _ hr) q
-                  (List.mem_cons_of_mem _ hq) }
-            obtain ⟨ihmap, ihcf⟩ := ih ss us vs (borrowOutBit u0 v0 bin) s1
-              (by simpa using hdu) (by simpa using hsv) (by simpa using huv) hfresh'
-              hdsmap hssmap hs1cf
-            simp only [subLimbs, List.map_cons, List.headD_cons, List.tail_cons]
-            have hdfinal : (runBlock s1 (emitSbbChain ds ss)).get d = subBorrowWord u0 v0 bin := by
-              rw [emitSbbChain_preserves ds ss d s1
-                (fun q hq => fun he => by subst he; exact (List.nodup_cons.mp hnd).1 hq), hs1d]
-            refine ⟨?_, ihcf⟩
-            rw [hdfinal, ihmap]
+  intro ds ss u v bin s hdu hsv huv hfresh hdmap hsmap hcf
+  have hbin : s.flagB (·.cf) = decide (bin = 1) := by rcases hb : s.flagB (·.cf) <;> simp_all
+  obtain ⟨hw, hc⟩ := carryChain_runBlock_window _ _ _ _ Ascent.corresJ_sbbChain
+    Ascent.sbbAbs_eq ds ss s (by omega) hfresh
+  rw [hdmap, hsmap, hbin, carryLimbs_eq_subLimbs u v bin huv] at hw hc
+  rw [emitSbbChain_eq_sbbBlock]
+  exact ⟨hw, by simp [hc]⟩
 
 /-! ## 5. The full modular-sub value over `runBlock` = `(a − b) mod p`
 
