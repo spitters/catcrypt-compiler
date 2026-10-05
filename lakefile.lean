@@ -3074,7 +3074,7 @@ lean_lib CatCryptCompilerVeir where
 -- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
 -- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "d6e532844d5cd1a02506727a45cbaf05ac612932"
+  "https://github.com/spitters/CatCrypt-core.git" @ "e393d1c04d9bb499b01e12d5338596606efff089"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
