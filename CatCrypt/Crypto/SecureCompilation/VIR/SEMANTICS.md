@@ -77,7 +77,6 @@ operation (`UScalar.*`, `IScalar.*`), either by a proved square or by a refuted 
 | `Div#iw`, `Rem#iw`, nonzero divisor, no overflow | truncating (`Hax.div_iw`, `Hax.rem_iw`) | truncating | truncating | follows LLVM | by definition (`Int.tdiv`, `Int.tmod`) |
 | `Shl#w`, `Shr#w`, amount ≥ `w` | unbounded shift, then reduction: 0 (`Hax.shl_w`, `Hax.shr_w`) | poison | panic | deviates, principled | P2. `shl_w_u_square`, `shr_w_u_square`, `shl_iw_square`, `shr_iw_square` relate the value to the checked operation wherever that operation returns |
 | Untagged `Shl`; untagged signed `Shr` | no truncation (`Hax.shl`); a negative operand shifts as 0 (`Hax.shr`) | `shl`, `ashr` | `<<`, `>>` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.shl` and `Hax.shr` at `Int` (`shl_u_counterexample`, `shl_i_counterexample`, `shr_i_counterexample`). Fix: as for untagged `wrapping_add` |
-| Shift at `UInt64`, amount ≥ 64 | Lean's `UInt64` shift, which reduces the amount modulo 64 (`Hax.shl_u64`, `Hax.shr_u64`) | poison | `wrapping_shl` | deviates, to be fixed | Defect: the value at an amount ≥ 64 differs from `Hax.shl_w 64` (0), so one Rust operator has two runtime values. Fix: one definition, or an agreement lemma under amount < 64 |
 | `rotate_right#w` | amount modulo `w` (`Hax.rotate_right_w`) | `llvm.fshr` | `rotate_right` | follows LLVM | `rotate_right_w_u_square` |
 | Untagged `rotate_right` | correct at `u64` only (`Hax.rotate_right`) | `llvm.fshr` | `rotate_right` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.rotate_right` at widths other than 64 (`rotate_right_u32_counterexample`, `rotate_right_i_counterexample`). Fix: as for untagged `wrapping_add` |
 | Casts | residue modulo `2^w` (`Hax.cast_uw`); checked scalars `UScalar.cast`, `IScalar.cast` | `trunc`, `zext`, `sext` | `as` | follows LLVM | `cast_u_square`, `cast_iu_square`, `cast_ii_square`, `cast_ui_square` |
@@ -193,12 +192,10 @@ The rows with status "deviates, to be fixed", in the order of the layers:
    at `Int`: untagged names that do not respect the width.
 2. `Hax.div`, `Hax.rem` at `Int`: rounding; every runtime division: no panic on a
    zero divisor or on `MIN` divided by −1.
-3. `Hax.shl_u64`, `Hax.shr_u64` against `Hax.shl_w 64`, `Hax.shr_w 64`: two values
-   at an amount ≥ 64.
-4. `bvAdc`: carry-in wider than one bit.
-5. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
-6. Memory alignment: no predicate and no theorem.
-7. Bridge: `andn` interpreted as poison.
+3. `bvAdc`: carry-in wider than one bit.
+4. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
+5. Memory alignment: no predicate and no theorem.
+6. Bridge: `andn` interpreted as poison.
 
 A change that adds an operation to a dialect, a machine model or the bridge adds its
 row here in the same change.
