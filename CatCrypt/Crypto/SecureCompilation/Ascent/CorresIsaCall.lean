@@ -40,6 +40,18 @@ restored. The segment is in the form the verification conditions of
 * `steps_one_of_not_call`: a step of the underlying instruction set as a segment of the
   instruction set with calls.
 * `procSpec_mono`: a specification holds at every larger step bound.
+* `isCall_of_isLopn`, `corresIsa_withCalls_iff`, `corresIsaRun_withCalls_iff`: an `Lopn` is
+  no call, and on a program without calls the correspondence at `isa.withCalls` is the
+  correspondence at `isa`.
+* `steps_of_lsemFuelMemF`: a run of the interpreter with fuel `k` is a segment of at most
+  `k` steps to a halted state.
+* `steps_append_withCalls`: a segment of a body without calls is a segment of
+  `isa.withCalls` on every extension of the body on which the steps agree.
+* `findLabelMem_snoc_ret`, `step_snoc_ret_of_isCtl`: a return appended to a body changes no
+  label search and no step of a control instruction.
+* `steps_snoc_ret_prefix`, `steps_snoc_ret`: a run of a body without calls that ends at the
+  counter after its last instruction is, on the body followed by a return, a segment to the
+  return and, with the return step, a segment to the return address.
 -/
 
 @[expose] public section
@@ -59,6 +71,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (LprogM findInstrMe
   findLabelMem evalJumpMem)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (LstateMF)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa isCall retAddr pushRet popRet)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (isCtl ctlStep)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (IsLopn singletonProgM)
 
 /-! ## States at the two ends of a call -/
 
@@ -225,6 +239,174 @@ theorem steps_call {AState : Type} (isa : Isa) {P : LprogM} {k q kret : Nat} {l 
     rw [hmem2, callEntry_lmem_sp, retAddr, hat.2]
   obtain ⟨h3, hat3⟩ := steps_ret isa hat2 hret hsp2 hra hk
   refine ⟨1 + n + 1, m₂, by omega, (h1.trans h2).trans h3, hat3, hSR2, hF⟩
+
+/-! ## Programs without calls -/
+
+/-- An `Lopn` is neither a call nor a return. -/
+theorem isCall_of_isLopn {i : LinstrRM} (h : IsLopn i) : isCall i.fst = false := by
+  obtain ⟨d, o, s, hi⟩ := h
+  rw [hi]
+  rfl
+
+section Generic
+
+variable {A : Type}
+
+/-- **The correspondence at the instruction set with calls.** On a program `P` in which no
+    instruction is a call or a return, `CorresIsa` at `isa.withCalls` is `CorresIsa` at
+    `isa`. -/
+theorem corresIsa_withCalls_iff (isa : Isa) (P : LprogM)
+    (hP : ∀ i ∈ P.body, isCall i.fst = false) (SR : LstateMF → A → Prop) (Pre : A → Prop)
+    (fa : A → A) (fuel : Nat) :
+    CorresIsa isa.withCalls P SR Pre fa fuel ↔ CorresIsa isa P SR Pre fa fuel := by
+  simp only [CorresIsa, CorresM, isa.withCalls_lsemFuelMemF P hP]
+
+/-- **The per-state-fuel correspondence at the instruction set with calls.** On a program
+    `P` in which no instruction is a call or a return, `CorresIsaRun` at `isa.withCalls` is
+    `CorresIsaRun` at `isa`. -/
+theorem corresIsaRun_withCalls_iff (isa : Isa) (P : LprogM)
+    (hP : ∀ i ∈ P.body, isCall i.fst = false) (SR : LstateMF → A → Prop) (Pre : A → Prop)
+    (fa : A → A) :
+    CorresIsaRun isa.withCalls P SR Pre fa ↔ CorresIsaRun isa P SR Pre fa := by
+  simp only [CorresIsaRun, isa.withCalls_lsemFuelMemF P hP]
+
+end Generic
+
+/-! ## A return appended to a body -/
+
+/-- **A run of the interpreter as a segment.** A run with fuel `k` from `m` that returns
+    `m'` is a segment of `n ≤ k` steps from `m` to `m'`, and `m'` is halted: the interpreter
+    spends one unit of fuel on each step and none on finding the state halted. -/
+theorem steps_of_lsemFuelMemF (isa : Isa) (P : LprogM) :
+    ∀ (k : Nat) (m m' : LstateMF), isa.lsemFuelMemF P k m = some m' →
+      ∃ n, n ≤ k ∧ Steps isa P n m m' ∧ Halted P m'
+  | 0, m, m', h => by
+      cases hf : findInstrMem P m.prog with
+      | none =>
+          rw [isa.lsemFuelMemF_halt P 0 m hf] at h
+          cases h
+          exact ⟨0, Nat.le_refl _, Steps.refl isa P m, hf⟩
+      | some i => simp [Isa.lsemFuelMemF, hf] at h
+  | k + 1, m, m', h => by
+      cases hf : findInstrMem P m.prog with
+      | none =>
+          rw [isa.lsemFuelMemF_halt P _ m hf] at h
+          cases h
+          exact ⟨0, Nat.zero_le _, Steps.refl isa P m, hf⟩
+      | some i =>
+          cases hs : isa.step P i m with
+          | none => simp [Isa.lsemFuelMemF, hf, hs] at h
+          | some u =>
+              rw [isa.lsemFuelMemF_step P k i m u hf hs] at h
+              obtain ⟨n, hn, hsteps, hhalt⟩ := steps_of_lsemFuelMemF isa P k u m' h
+              have h1 : Steps isa P 1 m u :=
+                Steps.one (by simp only [Isa.lsemStepPMemF, hf, hs])
+              exact ⟨1 + n, by omega, h1.trans hsteps, hhalt⟩
+
+/-- A segment of `isa` on `P` is a segment of `isa'` on `P'` when every step of the first
+    is a step of the second. -/
+theorem steps_of_step_imp (isa isa' : Isa) {P P' : LprogM}
+    (hstep : ∀ s u, isa.lsemStepPMemF P s = some u → isa'.lsemStepPMemF P' s = some u) :
+    ∀ (n : Nat) (s t : LstateMF), Steps isa P n s t → Steps isa' P' n s t
+  | 0, _, _, h => h
+  | n + 1, s, t, h => by
+      simp only [Steps, CutPoint.iter, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨u, hu, h⟩ := h
+      exact ⟨u, hstep s u hu, steps_of_step_imp isa isa' hstep n u t h⟩
+
+/-- **A segment of a body without calls under an extension of the body.** Let the body of
+    `P'` be the body of `P`, in which no instruction is a call or a return, followed by
+    `X`, and let the step of `isa` on every instruction of `P` be the same at `P'` and at
+    `P`. A segment of `isa` on `P` is a segment of `isa.withCalls` on `P'` with the same
+    number of steps. -/
+theorem steps_append_withCalls (isa : Isa) {P P' : LprogM} {X : List LinstrRM}
+    (hfn : P'.lfn = P.lfn) (hbody : P'.body = P.body ++ X)
+    (hP : ∀ i ∈ P.body, isCall i.fst = false)
+    (hstep : ∀ i ∈ P.body, ∀ s, isa.step P' i s = isa.step P i s)
+    {n : Nat} {s t : LstateMF} (h : Steps isa P n s t) : Steps isa.withCalls P' n s t := by
+  refine steps_of_step_imp isa isa.withCalls ?_ n s t h
+  intro s u hu
+  unfold Isa.lsemStepPMemF at hu ⊢
+  cases hf : findInstrMem P s.prog with
+  | none => rw [hf] at hu; cases hu
+  | some i =>
+      rw [hf] at hu
+      unfold findInstrMem at hf
+      split at hf
+      · next hl =>
+          obtain ⟨hlt, _⟩ := List.getElem?_eq_some_iff.mp hf
+          have hi : i ∈ P.body := List.mem_of_getElem? hf
+          have hf' : findInstrMem P' s.prog = some i := by
+            unfold findInstrMem
+            rw [if_pos (hl.trans hfn.symm), hbody, List.getElem?_append_left hlt]
+            exact hf
+          rw [hf']
+          show isa.withCalls.step P' i s = some u
+          rw [isa.withCalls_step_of_not_call P' i s (hP i hi), hstep i hi s]
+          exact hu
+      · cases hf
+
+/-- A label search in a body followed by a return is the search in the body. -/
+theorem findLabelMem_snoc_ret (l : LLabel) (B : List LinstrRM) (tag : MemTag) :
+    findLabelMem l (B ++ [(.Lret, tag)]) = findLabelMem l B := by
+  unfold findLabelMem VIR.JasminLsemLabeled.findLabel
+  rw [List.map_append, List.findIdx?_append]
+  simp [VIR.JasminLsemLabeled.isLabel]
+
+/-- The step of a control instruction is the same on a body and on the body followed by a
+    return. -/
+theorem step_snoc_ret_of_isCtl (isa : Isa) (fn : String) (B : List LinstrRM) (tag : MemTag)
+    (i : LinstrRM) (s : LstateMF) (h : isCtl i.fst = true) :
+    isa.step (singletonProgM fn (B ++ [(.Lret, tag)])) i s =
+      isa.step (singletonProgM fn B) i s := by
+  rw [isa.step_ctl _ i s h, isa.step_ctl _ i s h]
+  obtain ⟨w, t⟩ := i
+  cases w <;> simp only [ctlStep, evalJumpMem, singletonProgM, findLabelMem_snoc_ret]
+  rfl
+
+/-- **The body of a procedure followed by its return, up to the return.** Let `B` contain
+    no call and no return, let the step of `isa` on every instruction of `B` be the same on
+    `B ++ [Lret]` and on `B`, and let the run of `isa` on `B` with fuel `k` from `m` return
+    `m'` at the counter `B.length`. On `B ++ [Lret]` the instruction set with calls makes a
+    segment of `n ≤ k` steps from `m` to `m'`, which is at the counter `B.length` of the
+    return; `n` is the number of steps of the run on `B`. -/
+theorem steps_snoc_ret_prefix (isa : Isa) {fn : String} {B : List LinstrRM} {tag : MemTag}
+    {k : Nat} {m m' : LstateMF} (hB : ∀ i ∈ B, isCall i.fst = false)
+    (hstep : ∀ i ∈ B, ∀ s, isa.step (singletonProgM fn (B ++ [(.Lret, tag)])) i s =
+      isa.step (singletonProgM fn B) i s)
+    (hrun : isa.lsemFuelMemF (singletonProgM fn B) k m = some m')
+    (hend : atPc (singletonProgM fn B) B.length m') :
+    ∃ n, n ≤ k ∧ Steps isa.withCalls (singletonProgM fn (B ++ [(.Lret, tag)])) n m m' ∧
+      atPc (singletonProgM fn (B ++ [(.Lret, tag)])) B.length m' := by
+  obtain ⟨n, hn, hsteps, _⟩ := steps_of_lsemFuelMemF isa _ k m m' hrun
+  exact ⟨n, hn, steps_append_withCalls isa (P := singletonProgM fn B)
+    (P' := singletonProgM fn (B ++ [(LinstrR.Lret, tag)])) (X := [(LinstrR.Lret, tag)]) rfl rfl
+    hB hstep
+    hsteps, hend⟩
+
+/-- **The body of a procedure followed by its return.** Under the hypotheses of
+    `steps_snoc_ret_prefix`, when the stack pointer of `m'` holds `v - 8` and the memory
+    cell it addresses holds the word of a counter `r` below `2 ^ 64`, the instruction set
+    with calls makes on `B ++ [Lret]` a segment of `n + 1` steps with `n ≤ k` (the steps of
+    the run on `B` and the return step) from `m` to `retState isa.sp v r m'`, at the counter
+    `r` with the stack pointer holding `v`. -/
+theorem steps_snoc_ret (isa : Isa) {fn : String} {B : List LinstrRM} {tag : MemTag}
+    {k r : Nat} {v : BitVec 64} {m m' : LstateMF} (hB : ∀ i ∈ B, isCall i.fst = false)
+    (hstep : ∀ i ∈ B, ∀ s, isa.step (singletonProgM fn (B ++ [(.Lret, tag)])) i s =
+      isa.step (singletonProgM fn B) i s)
+    (hrun : isa.lsemFuelMemF (singletonProgM fn B) k m = some m')
+    (hend : atPc (singletonProgM fn B) B.length m')
+    (hsp : m'.prog.base.reg.getW isa.sp 64 = some (v - 8))
+    (hra : m'.prog.base.lmem isa.sp (v - 8).toInt = BitVec.ofNat 64 r) (hr : r < 2 ^ 64) :
+    ∃ n, n ≤ k ∧
+      Steps isa.withCalls (singletonProgM fn (B ++ [(.Lret, tag)])) (n + 1) m
+        (retState isa.sp v r m') ∧
+      atPc (singletonProgM fn (B ++ [(.Lret, tag)])) r (retState isa.sp v r m') := by
+  obtain ⟨n, hn, hsteps, hat⟩ := steps_snoc_ret_prefix isa (tag := tag) hB hstep hrun hend
+  have hi : (singletonProgM fn (B ++ [(.Lret, tag)])).body[B.length]? = some (.Lret, tag) := by
+    simp [singletonProgM]
+  obtain ⟨h1, hat'⟩ := steps_ret isa hat hi hsp hra hr
+  exact ⟨n, hn, hsteps.trans h1, hat'⟩
 
 end IsaCall
 
