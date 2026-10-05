@@ -6,7 +6,9 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import Transfer
+public import Transfer.Base.Related
+public import Transfer.Integrations.ParamRelatedBridge
+public import Transfer.Translate.ParamDB
 public import Mathlib.Data.BitVec
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 

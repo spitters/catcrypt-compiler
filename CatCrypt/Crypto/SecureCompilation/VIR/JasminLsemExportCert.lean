@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
 public import CatCrypt.Crypto.SecureCompilation.VIR.LoopNameDistinct
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLift
+public import Mathlib.Data.List.GetD
 
 @[expose] public section
 

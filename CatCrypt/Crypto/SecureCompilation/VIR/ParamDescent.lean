@@ -7,7 +7,8 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-public import Transfer
+public import Transfer.Base.Related
+public import Transfer.Congruence.ParamSolve
 
 /-!
 # Certifying dialect-lowering descent squares with ParamTransfer

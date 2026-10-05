@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd
+public import Mathlib.Data.List.GetD
 
 @[expose] public section
 

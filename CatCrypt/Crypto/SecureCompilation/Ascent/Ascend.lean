@@ -9,6 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Control
 public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+import Transfer.Congruence.ParamAuto
 
 /-!
 # The `ascend` tactic — the integrator

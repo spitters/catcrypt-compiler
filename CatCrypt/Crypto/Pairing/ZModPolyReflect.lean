@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import Transfer
 public import ReprTransfer
+public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Tactic.Ring
 
 @[expose] public section
@@ -19,8 +19,8 @@ set_option autoImplicit false
 
 **Exploratory prototype.** Motivation: `HashToCurveBLS12381.isogenyPolyIdentity`
 is a degree-≈63 polynomial identity over `FpBLS = ZMod p` (381-bit `p`) with
-fixed RFC-9380 coefficients, true only *mod p*. `ring` over `ZMod p` OOMs and
-`native_decide` on `ZMod p` `npow` OOMs, because both perform the coefficient
+fixed RFC-9380 coefficients, true only *mod p*. `ring` over `ZMod p` and
+`native_decide` on `ZMod p` `npow` exhaust memory, because both perform the coefficient
 arithmetic *inside* `ZMod p` (repeated modular reduction / `Fin p` npow).
 
 The Rocq proof reduces it to an **integer** polynomial identity mod `p` verified
