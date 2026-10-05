@@ -281,7 +281,7 @@ theorem lsemFuelF_straight_block (fn : String) {w : Nat}
       obtain ⟨⟨sbase, slfn⟩, szf⟩ := s
       simp only at hfn hpc
       subst hfn
-      obtain ⟨lvm, lmem, lpc⟩ := sbase
+      obtain ⟨lvm, lmem, lpc, cf, of⟩ := sbase
       simp only at hpc
       subst hpc
       rfl
@@ -413,12 +413,12 @@ theorem backedge_fallthroughF (w : Nat) (fn : String) (top : LLabel) (body : Lis
     (hpc : s.prog.base.lpc = 2 + body.length) (hzf : s.zf = true) :
     lsemFuelF (loopProgF w fn top body) (fuel + 1) s
       = some (LstateF.mk (LstateP.mk (Lstate.mk s.prog.base.lvm s.prog.base.lmem
-          (3 + body.length)) fn) s.zf) := by
+          (3 + body.length) s.prog.base.cf s.prog.base.of) fn) s.zf) := by
   rw [lsemFuelF, findInstr_backedgeF w fn top body s hfn hpc]
   simp only [evalInstrF, isCmpZero_lcond, hzf, not_true, if_false]
   have hnext : (s.nextPc : LstateF w)
       = LstateF.mk (LstateP.mk (Lstate.mk s.prog.base.lvm s.prog.base.lmem
-          (3 + body.length)) fn) s.zf := by
+          (3 + body.length) s.prog.base.cf s.prog.base.of) fn) s.zf := by
     cases s with
     | mk sprog szf =>
         cases sprog with
@@ -430,7 +430,7 @@ theorem backedge_fallthroughF (w : Nat) (fn : String) (top : LLabel) (body : Lis
   rw [hnext, hzf]
   apply lsemFuelF_halt
   apply findInstr_loopEndF (s := LstateF.mk (LstateP.mk (Lstate.mk s.prog.base.lvm
-    s.prog.base.lmem (3 + body.length)) fn) true) <;> rfl
+    s.prog.base.lmem (3 + body.length) s.prog.base.cf s.prog.base.of) fn) true) <;> rfl
 
 /-! ## 6. The `n`-fold loop simulation over the LITERAL loop (flag machine)
 
@@ -494,17 +494,17 @@ theorem loop_one_iterF (w : Nat) (fn : String) (top : LLabel) {body : List Linst
   rw [show restFuel + 2 = (restFuel + 1) + 1 by omega]
   simp only [reentryF]
   rw [cmp_step w fn top body
-    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (1 + body.length)) fn) zf)
+    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (1 + body.length) dStep.cf dStep.of) fn) zf)
     (restFuel + 1) rfl rfl]
   -- (3) the back-edge, taken (counter ≠ 0 ⇒ zf = false).
   have hnz : dStep.lvm "NZ" ≠ 0 := by rw [hdStep]; simpa [loopData] using hne
   have hzffalse :
-      ((LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length)) fn)
+      ((LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length) dStep.cf dStep.of) fn)
           (dStep.lvm "NZ" == 0)).prog.base.lvm "NZ" == 0) = false := by
     simp only [beq_eq_false_iff_ne]
     simpa using hnz
   rw [backedge_takenF w fn top body
-    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length)) fn)
+    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length) dStep.cf dStep.of) fn)
       (dStep.lvm "NZ" == 0)) restFuel rfl rfl hzffalse]
   -- the result reentry (k+1): base = bodyStep(reentry k).base @ pc 1, zf = (NZ == 0).
   congr 1
@@ -521,7 +521,9 @@ theorem loop_last_iterF (w : Nat) (fn : String) (top : LLabel) {body : List Lins
         (reentryF spec sb fn zf c)
       = some (LstateF.mk (LstateP.mk (Lstate.mk
           (spec.bodyStep (reentry spec sb c).base).lvm
-          (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)) fn) true) := by
+          (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)
+          (spec.bodyStep (reentry spec sb c).base).cf
+          (spec.bodyStep (reentry spec sb c).base).of) fn) true) := by
   have hrun := spec.run (reentry spec sb c).base
   set dStep : Lstate w := spec.bodyStep (reentry spec sb c).base with hdStep
   have hprog : loopProgF w fn top body
@@ -539,11 +541,11 @@ theorem loop_last_iterF (w : Nat) (fn : String) (top : LLabel) {body : List Lins
   -- (2) the flag-`CMP`: zf := (NZ == 0) = true.
   rw [show (2 : Nat) = 1 + 1 by rfl]
   rw [cmp_step w fn top body
-    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (1 + body.length)) fn) zf) 1 rfl rfl]
+    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (1 + body.length) dStep.cf dStep.of) fn) zf) 1 rfl rfl]
   -- (3) the back-edge falls through (zf = true).
   have hztrue : (dStep.lvm "NZ" == 0) = true := by rw [hdStep]; simpa [loopData] using hz
   rw [backedge_fallthroughF w fn top body
-    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length)) fn)
+    (LstateF.mk (LstateP.mk (Lstate.mk dStep.lvm dStep.lmem (2 + body.length) dStep.cf dStep.of) fn)
       (dStep.lvm "NZ" == 0)) 0 rfl rfl hztrue]
   rw [hztrue]
 
@@ -566,7 +568,9 @@ theorem loop_lsem_iterateF (w : Nat) (fn : String) (top : LLabel) {body : List L
           (reentryF spec sb fn zf k₀)
         = some (LstateF.mk (LstateP.mk (Lstate.mk
             (spec.bodyStep (reentry spec sb c).base).lvm
-            (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)) fn) true) := by
+            (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)
+          (spec.bodyStep (reentry spec sb c).base).cf
+          (spec.bodyStep (reentry spec sb c).base).of) fn) true) := by
   obtain ⟨hpos, hzero⟩ := hterm
   intro m
   induction m with
@@ -590,11 +594,11 @@ theorem loop_lsem_iterateF (w : Nat) (fn : String) (top : LLabel) {body : List L
 theorem loop_entry_stepF (w : Nat) (fn : String) (top : LLabel) {body : List LinstrR}
     (spec : LoopBodySpec w body) (sb : Lstate w) (zf : Bool) (fuel : Nat) :
     lsemFuelF (loopProgF w fn top body) (fuel + 1)
-        (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf)
+        (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf)
       = lsemFuelF (loopProgF w fn top body) fuel (reentryF spec sb fn zf 0) := by
   rw [lsemFuelF]
   have hfetch : findInstr (loopProgF w fn top body)
-      (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf).prog
+      (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf).prog
       = some (.Llabel .internal top) := by
     rw [loopProgF, findInstr_singleton fn (loopLcmdLR w "NZ" top body) _ rfl]
     rw [loopLcmdLR_expand]; rfl
@@ -603,7 +607,7 @@ theorem loop_entry_stepF (w : Nat) (fn : String) (top : LLabel) {body : List Lin
   -- the `Llabel` arm: delegate to `lsemStep .Llabel` (a pc bump), carrying `zf`.
   have hicmp : isCmpZero (LinstrR.Llabel .internal top) = none := rfl
   have hev : evalInstrF (loopProgF w fn top body) (.Llabel .internal top)
-      (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf)
+      (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf)
       = some (reentryF spec sb fn zf 0) := by
     rw [evalInstrF_straightLine _ _ _ rfl hicmp]
     simp only [evalInstrP, lsemStep, Option.map_some]
@@ -624,10 +628,12 @@ theorem loop_lsem_correctF (w : Nat) (fn : String) (top : LLabel) {body : List L
     (spec : LoopBodySpec w body) (hnocmp : BodyNoCmp body) (sb : Lstate w) (zf : Bool)
     (c : Nat) (hterm : LoopTerminatesIn spec sb c) :
     lsemFuelF (loopProgF w fn top body) ((c + 1) * (body.length + 2) + 1)
-        (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf)
+        (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf)
       = some (LstateF.mk (LstateP.mk (Lstate.mk
           (spec.bodyStep (reentry spec sb c).base).lvm
-          (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)) fn) true) := by
+          (spec.bodyStep (reentry spec sb c).base).lmem (3 + body.length)
+          (spec.bodyStep (reentry spec sb c).base).cf
+          (spec.bodyStep (reentry spec sb c).base).of) fn) true) := by
   rw [loop_entry_stepF w fn top spec sb zf]
   exact loop_lsem_iterateF w fn top spec hnocmp sb c hterm c zf 0 (by omega)
 
@@ -741,7 +747,7 @@ theorem jforprog_loop_lsem_correct_and_robust {w : Nat} (fn : String) (top : LLa
     -- (1) functional: the lsem halt state's `"acc"` decodes to `JForProg.denote`.
     (∃ t : LstateF w,
       lsemFuelF (loopProgF w fn top body) ((c + 1) * (body.length + 2) + 1)
-          (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf) = some t
+          (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf) = some t
       ∧ decodeAcc t.prog.base = p.denote (decodeAcc sb)) := by
   refine ⟨_, loop_lsem_correctF w fn top spec hnocmp sb zf c hterm, ?_⟩
   -- the halt state's `"acc"`: bodyStep (reentry sb c).base, decoded.
@@ -903,7 +909,7 @@ theorem jforprog_literal_loop_correct_and_robust {w : Nat} (fn : String) (top : 
     -- (1) functional + value tie
     (∃ t : LstateF w,
       lsemFuelF (loopProgF w fn top body) ((c + 1) * (body.length + 2) + 1)
-          (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0) fn) zf) = some t
+          (LstateF.mk (LstateP.mk (Lstate.mk sb.lvm sb.lmem 0 sb.cf sb.of) fn) zf) = some t
       ∧ decodeAcc t.prog.base = p.denote (decodeAcc sb))
     ∧
     -- (2) robust / constant-time over the literal CMP-carrying loop

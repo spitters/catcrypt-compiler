@@ -109,6 +109,12 @@ structure Lstate (w : Nat) where
   lmem : String → Int → BitVec w := fun _ _ => 0
   /-- `lpc : nat` — the program counter. -/
   lpc : Nat := 0
+  /-- The carry flag `CF`, the counterpart of `JasminLsemMem.LstateM.cf`. `lsemStep`
+      neither reads nor writes it. -/
+  cf : Bool := false
+  /-- The overflow flag `OF`, the counterpart of `JasminLsemMem.LstateM.of`. `lsemStep`
+      neither reads nor writes it. -/
+  of : Bool := false
 
 /-- `setpc`/`lnext_pc` analogue: read a register from `lvm`. Absent ⇒ `0`. -/
 @[simp] def Lstate.get {w : Nat} (s : Lstate w) (r : String) : BitVec w := s.lvm r
@@ -140,6 +146,16 @@ def Lstate.nextPc {w : Nat} (s : Lstate w) : Lstate w := { s with lpc := s.lpc +
 @[simp] theorem Lstate.lvm_nextPc {w : Nat} (s : Lstate w) : s.nextPc.lvm = s.lvm := rfl
 
 @[simp] theorem Lstate.lmem_nextPc {w : Nat} (s : Lstate w) : s.nextPc.lmem = s.lmem := rfl
+
+@[simp] theorem Lstate.cf_setReg {w : Nat} (s : Lstate w) (r : String) (v : BitVec w) :
+    (s.setReg r v).cf = s.cf := rfl
+
+@[simp] theorem Lstate.of_setReg {w : Nat} (s : Lstate w) (r : String) (v : BitVec w) :
+    (s.setReg r v).of = s.of := rfl
+
+@[simp] theorem Lstate.cf_nextPc {w : Nat} (s : Lstate w) : s.nextPc.cf = s.cf := rfl
+
+@[simp] theorem Lstate.of_nextPc {w : Nat} (s : Lstate w) : s.nextPc.of = s.of := rfl
 
 /-! ## 2. Operand evaluation and the word-op fragment of `exec_sopn`
 
@@ -630,6 +646,40 @@ theorem lsemStep_storeidx_lvm {w : Nat} (dst base idx : String) (scale : Nat)
   rw [lsemStep_storeidx] at h
   simp only [Option.some.injEq] at h
   subst h; rfl
+
+/-! ### 3c. The flags
+
+`lsemStep` neither reads nor writes the carry and overflow flags. -/
+
+/-- A step keeps the carry and overflow flags. -/
+theorem lsemStep_flags {w : Nat} (i : LinstrR) (s t : Lstate w)
+    (h : lsemStep i s = some t) : t.cf = s.cf ∧ t.of = s.of := by
+  unfold lsemStep at h
+  split at h
+  · split_ifs at h
+    · obtain rfl := Option.some.inj h; exact ⟨rfl, rfl⟩
+    · split at h
+      · obtain rfl := Option.some.inj h; exact ⟨rfl, rfl⟩
+      · cases h
+    · split at h
+      · obtain rfl := Option.some.inj h; exact ⟨rfl, rfl⟩
+      · cases h
+  · split at h
+    · obtain rfl := Option.some.inj h; exact ⟨rfl, rfl⟩
+    · cases h
+  all_goals first | (obtain rfl := Option.some.inj h; exact ⟨rfl, rfl⟩) | cases h
+
+/-- The result of a step does not depend on the flags of the state it starts from: a
+    step from a state with other flags is the same step with those flags. -/
+theorem lsemStep_setFlags {w : Nat} (i : LinstrR) (s : Lstate w) (c o : Bool) :
+    lsemStep i { s with cf := c, of := o }
+      = (lsemStep i s).map fun t => { t with cf := c, of := o } := by
+  have hev : evalOperand ({ s with cf := c, of := o } : Lstate w) = evalOperand s := by
+    funext x; cases x <;> rfl
+  unfold lsemStep
+  simp only [hev]
+  repeat' split
+  all_goals rfl
 
 /-! ## 4. `lsemStraight`: the straight-line multi-step execution
 

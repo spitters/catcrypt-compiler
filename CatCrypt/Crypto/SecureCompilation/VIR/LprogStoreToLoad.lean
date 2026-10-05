@@ -550,9 +550,10 @@ equal stores step to states with equal stores. -/
 /-- The step's store image does not depend on the program counter. -/
 theorem lsemStep_stateStore_pc {w : Nat} (i : LinstrR) (m : String → BitVec w)
     (mem : String → Int → BitVec w) (p q : Nat) :
-    Option.map stateStore (lsemStep i ⟨m, mem, p⟩) =
-      Option.map stateStore (lsemStep i ⟨m, mem, q⟩) := by
-  have hev : evalOperand (⟨m, mem, p⟩ : Lstate w) = evalOperand (⟨m, mem, q⟩ : Lstate w) := by
+    Option.map stateStore (lsemStep i { lvm := m, lmem := mem, lpc := p }) =
+      Option.map stateStore (lsemStep i { lvm := m, lmem := mem, lpc := q }) := by
+  have hev : evalOperand ({ lvm := m, lmem := mem, lpc := p } : Lstate w)
+      = evalOperand ({ lvm := m, lmem := mem, lpc := q } : Lstate w) := by
     funext o; cases o <;> rfl
   unfold lsemStep
   simp only [hev]
