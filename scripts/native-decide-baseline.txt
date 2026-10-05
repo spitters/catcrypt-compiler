@@ -1,7 +1,8 @@
-2135
+2138
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 # Raised 2129 -> 2135 on 2026-10-04 (native_decide is accepted under the project rule): UnsatField.lean:1571,1576,1592,1596 (p448_fromBytes_ok, p448_fromBytes2_ok, p448_mul_ok, p448_sq_ok bounds certificates); MpnMul1DecodedNode.lean:262 (mul1PhysBody_eq); OptimizeBasicBlocksCT.lean:82,141,151 (gatherPrinted_optimizeBasicBlocks_cpSubBody, cpSubBody_bodyTiedOk, gatherPrinted_twoAddrBody_optimizeBasicBlocks_cpSubBody). The previous file list summed to 2127, two below its header, so the list grows by 8.
+# Raised 2135 -> 2138 on 2026-10-05 (native_decide is accepted under the project rule): KeccakJincEmit.lean (the rolled constant-time check of keccak_f1600, one occurrence), ExportCertComplete.lean (two completeness checks of the export certificate checkers).
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
 1	CatCrypt/Crypto/Bridges/ReprTransferInstancesCircleSTARK.lean
 7	CatCrypt/Crypto/Hash/KangarooTwelve.lean
@@ -23,6 +24,7 @@
 16	CatCrypt/Crypto/Jasmin/JasminOps.lean
 12	CatCrypt/Crypto/Jasmin/JincElab.lean
 5	CatCrypt/Crypto/Jasmin/JincToCom.lean
+1	CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean
 5	CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean
 2	CatCrypt/Crypto/Jasmin/LowCTDSL.lean
 2	CatCrypt/Crypto/Jasmin/LowCTReflect.lean
@@ -404,6 +406,7 @@
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/Curve6LimbTierA.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/EcFeMulReduceComplete.lean
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/Ed25519PointKernel.lean
+2	CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertComplete.lean
 7	CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519LazyOpsKernel.lean
 21	CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519LfundefBridge.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519MulKernel.lean
