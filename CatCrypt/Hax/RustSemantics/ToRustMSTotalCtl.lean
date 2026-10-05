@@ -24,8 +24,10 @@ values are given by a predicate `H : κ → AVal → Prop`. The fragment is:
 * calls `.app f args` of arity one to three, whose name and argument kinds have the result
   kind `k` in the signature list `sig`;
 * `ifThenElse c t e` with `c` of kind `bool` and `t`, `e` of one kind;
-* `forFold var (.lit (.int lo)) (.lit (.int hi)) body` with `0 ≤ lo`, `hi ≤ 2 ^ 32` and the
-  body in the fragment under `var` at the kind `idx lo hi`.
+* `forFold var lo hi body` whose bounds are integer literals or expressions of an index kind
+  `idx l h` with `h ≤ 2 ^ 32`; with `[a, _]` the static range of `lo` and `[_, b]` that of
+  `hi` (`boundRange`), `0 ≤ a`, `b ≤ 2 ^ 32` and the body in the fragment under `var` at
+  the static kind `idx a b`. With literal bounds `lo`, `hi` the index kind is `idx lo hi`.
 
 The hypotheses are an environment binding each name of `Γ` to a value of its kind
 (`EnvTy`) and a reading of the calls that returns, on arguments of the kinds of a signature
@@ -56,19 +58,26 @@ body is a conditional. `keyEqApp` reads `Ne` and `index` on bytes and byte array
 triple of the reading from two Aeneas byte arrays of length at least 32, from the
 correspondence `keyEq_fnCorres`.
 
+## The instance with a variable bound
+
+`varLoopLit` is the loop `for i in 0..n { step(i) }` with `n` of the kind `idx 0 (2 ^ 32)`;
+`varLoopLit_kind` is its kind assignment and `varLoopLit_total` the termination of its
+reading.
+
 ## Main definitions
 
-* `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `kindOfL`, `kindOf`, `WB`, `WI`
+* `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `boundRange`, `kindOfL`, `kindOf`,
+  `WB`, `WI`
 
 ## Main results
 
-* `loopS_total`, `toRustMS_total_kindL`, `toRustMS_total_kind`
+* `boundRange_toInt`, `loopS_total`, `toRustMS_total_kindL`, `toRustMS_total_kind`
 * `fnCorres_toRustMS_triple_of_kindOfL`, `fnCorres_toRustMS_triple_of_kindOf`
 * `appRt_add_total`, `appTyped_add`
 * `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
   `appRt_div_total`, `appRt_rem_total`
 * `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem`
-* `keyEqLit_kind`, `keyEqLit_triple`
+* `keyEqLit_kind`, `keyEqLit_triple`, `varLoopLit_kind`, `varLoopLit_total`
 -/
 
 @[expose] public section
@@ -126,8 +135,21 @@ def fits {κ : Type} [DecidableEq κ] (Γ : List (String × Kd κ)) (x : String)
     Bool :=
   (Γ.lookup x).all fun k0 => decide (k0 = k)
 
+/-- The static range `[L, U]` of the integer `AVal.toInt?` gives on the value of a loop bound
+    `e` of kind `k`: `[n, n]` for an integer literal `n`, and `[l, h - 1]` for a bound of an
+    index kind `idx l h` with `h ≤ 2 ^ 32`. -/
+def boundRange {κ : Type} : Hax.ImpExpr → Kd κ → Option (Int × Int)
+  | .lit (.int n), _ => some (n, n)
+  | _, .idx l h => if h ≤ 2 ^ 32 then some (l, h - 1) else none
+  | _, _ => none
+
 /-- **The kind checker of the fragment with integer literals at the kind `ki`.** The kind
-    of the value the reading returns, when the literal is in the fragment. -/
+    of the value the reading returns, when the literal is in the fragment. A counted loop
+    `forFold var lo hi body` is accepted when each bound is an integer literal or an
+    expression of an index kind `idx l h` with `h ≤ 2 ^ 32`; with `[a, _]` the range of `lo`
+    and `[_, b]` the range of `hi` (`boundRange`), the check is `0 ≤ a` and `b ≤ 2 ^ 32`, and
+    the body is checked with `var` at the static kind `idx a b`, which contains every index
+    `[a', b')` of a run with `a ≤ a'` and `b' ≤ b`. -/
 def kindOfL {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ))
     (ki : Kd κ) : List (String × Kd κ) → Hax.ImpExpr → Option (Kd κ)
   | _, .lit (.int _) => some ki
@@ -159,12 +181,18 @@ def kindOfL {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × 
     match kindOfL sig ki Γ c, kindOfL sig ki Γ t, kindOfL sig ki Γ e with
     | some .bool, some k1, some k2 => if k1 = k2 then some k1 else none
     | _, _, _ => none
-  | Γ, .forFold var (.lit (.int lo)) (.lit (.int hi)) body =>
-    if 0 ≤ lo ∧ hi ≤ 2 ^ 32 ∧ fits Γ var (.idx lo hi) then
-      match kindOfL sig ki ((var, .idx lo hi) :: Γ) body with
-      | some _ => some .unit
-      | none => none
-    else none
+  | Γ, .forFold var lo hi body =>
+    match kindOfL sig ki Γ lo, kindOfL sig ki Γ hi with
+    | some k1, some k2 =>
+      match boundRange lo k1, boundRange hi k2 with
+      | some (a, _), some (_, b) =>
+        if 0 ≤ a ∧ b ≤ 2 ^ 32 ∧ fits Γ var (.idx a b) then
+          match kindOfL sig ki ((var, .idx a b) :: Γ) body with
+          | some _ => some .unit
+          | none => none
+        else none
+      | _, _ => none
+    | _, _ => none
   | _, _ => none
 
 /-- **The kind checker of the fragment**, with integer literals at the kind `int`. -/
@@ -219,6 +247,31 @@ theorem EnvTy.of_cons {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
 
 theorem two_pow_32_le_usize : (2 : Int) ^ 32 ≤ 2 ^ UScalarTy.Usize.numBits := by
   rcases System.Platform.numBits_eq with h | h <;> simp [UScalarTy.numBits, h]
+
+/-- A value of kind `k` that the reading returns on a loop bound `e` with range `[L, U]`
+    (`boundRange`) is an integer in `[L, U]` under `AVal.toInt?`. -/
+theorem boundRange_toInt {κ : Type} {H : κ → AVal → Prop}
+    {app : String → List AVal → RustM AVal} {e : Hax.ImpExpr} {k : Kd κ} {L U : Int}
+    (hb : boundRange e k = some (L, U)) {ρ ρ' : AEnv} {v : AVal}
+    (he : toRustMS app e ρ = .ok (v, ρ')) (hv : Kd.Has H k v) :
+    ∃ a, v.toInt? = some a ∧ L ≤ a ∧ a ≤ U := by
+  unfold boundRange at hb
+  split at hb
+  · cases hb
+    simp only [toRustMS] at he
+    cases he
+    exact ⟨_, rfl, le_rfl, le_rfl⟩
+  · split_ifs at hb with hh
+    cases hb
+    obtain ⟨i, hl, hi, rfl⟩ := hv
+    have hlt : i < 2 ^ UScalarTy.Usize.numBits := by
+      have := two_pow_32_le_usize
+      have h2 : ((2 ^ UScalarTy.Usize.numBits : Nat) : Int) = 2 ^ UScalarTy.Usize.numBits := by
+        push_cast; rfl
+      omega
+    refine ⟨i, ?_, hl, by omega⟩
+    simp only [AVal.toInt?, ctr, UScalar.val, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt]
+  · cases hb
 
 /-! ## Termination -/
 
@@ -297,22 +350,28 @@ theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → P
       exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
     · obtain ⟨r, ρ2, h2, hr, hρ2⟩ := iht _ ht ρ1 hρ1
       exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
-  case case20 Γ var lo hi body hcond kb hbody ih =>
+  case case20 Γ var lo hi body k1 k2 hk2 hk1 a _ _ b hb2 hb1 hcond kb hbody ihlo ihhi ih =>
     cases hk
     obtain ⟨hlo, hhi, hfit⟩ := hcond
-    have hstep : ∀ i ρ0, lo.toNat ≤ i → i < lo.toNat + (hi - lo).toNat → EnvTy H Γ ρ0 →
+    obtain ⟨p, ρ1, h1, hp, hρ1⟩ := ihlo _ hk1 ρ hρ
+    obtain ⟨q, ρ2, h2, hq, hρ2⟩ := ihhi _ hk2 ρ1 hρ1
+    obtain ⟨a', ha', hla, -⟩ := boundRange_toInt hb1 h1 hp
+    obtain ⟨b', hb', -, hub⟩ := boundRange_toInt hb2 h2 hq
+    have hstep : ∀ i ρ0, a'.toNat ≤ i → i < a'.toNat + (b' - a').toNat → EnvTy H Γ ρ0 →
         ∃ ρ', (toRustMS app body (ρ0.upd var (ctr i)) >>= fun s => RustM.ok s.2) = .ok ρ' ∧
           EnvTy H Γ ρ' := by
       intro i ρ0 hi1 hi2 hρ0
       obtain ⟨w, ρ', hw, -, hρ'⟩ := ih _ hbody _
-        (hρ0.upd var (k := .idx lo hi) ⟨i, by omega, by omega, rfl⟩)
+        (hρ0.upd var (k := .idx a b) ⟨i, by omega, by omega, rfl⟩)
       exact ⟨ρ', by simp [hw], hρ'.of_cons hfit⟩
     obtain ⟨ρ3, h3, hρ3⟩ := loopS_total
       (step := fun i ρ0 => toRustMS app body (ρ0.upd var (ctr i)) >>= fun s => RustM.ok s.2)
-      hstep (hi - lo).toNat lo.toNat ρ le_rfl (by omega) hρ
+      hstep (b' - a').toNat a'.toNat ρ2 le_rfl (by omega) hρ2
     refine ⟨.unit, ρ3, ?_, rfl, hρ3⟩
-    have hb : hi ≤ 2 ^ System.Platform.numBits := le_trans hhi two_pow_32_le_usize
-    simp [toRustMS, AVal.toInt?, hlo, hb, h3]
+    have hb : b' ≤ 2 ^ System.Platform.numBits :=
+      le_trans (le_trans hub hhi) two_pow_32_le_usize
+    have ha0 : 0 ≤ a' := le_trans hlo hla
+    simp [toRustMS, h1, h2, ha', hb', ha0, hb, h3]
 
 /-- **The reading returns a value on the fragment.** From an environment binding each name
     of `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of
@@ -733,5 +792,43 @@ theorem keyEqLit_triple {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
     (keyEqEnvA_ty x y hn)
 
 end KeyEq
+
+/-! ## An instance with a variable loop bound -/
+
+section VarLoop
+
+/-- The loop `for i in 0..n { step(i) }` with the upper bound a parameter `n`. -/
+def varLoopLit : Hax.ImpExpr :=
+  .forFold "i" (.lit (.int 0)) (.var "n") (.seq (.app "step" [.var "i"]) .unitVal)
+
+/-- The signature of `varLoopLit`: `step` on an index below `2 ^ 32 - 1`. -/
+def varLoopSig : List (String × List (Kd Unit) × Kd Unit) :=
+  [("step", [.idx 0 (2 ^ 32 - 1)], .unit)]
+
+/-- The kind of the parameter of `varLoopLit`: an index below `2 ^ 32`. -/
+def varLoopΓ : List (String × Kd Unit) := [("n", .idx 0 (2 ^ 32))]
+
+/-- `varLoopLit` has the kind `unit`; its index has the static kind `idx 0 (2 ^ 32 - 1)`. -/
+theorem varLoopLit_kind : kindOf varLoopSig varLoopΓ varLoopLit = some .unit := by
+  decide
+
+/-- **The reading of `varLoopLit` returns a value** from every environment binding `n` to a
+    `usize` index below `2 ^ 32`, under every reading of `step` typed by `varLoopSig`. -/
+theorem varLoopLit_total {H : Unit → AVal → Prop} {app : String → List AVal → RustM AVal}
+    (happ : AppTyped H varLoopSig app) {ρ : AEnv} {i : Nat} (hi : i < 2 ^ 32)
+    (hn : ρ "n" = some (ctr i)) :
+    ∃ v ρ', toRustMS app varLoopLit ρ = .ok (v, ρ') := by
+  have hρ : EnvTy H varLoopΓ ρ := by
+    intro x k hx
+    by_cases hxn : x = "n"
+    · subst hxn
+      cases hx
+      exact ⟨ctr i, hn, i, by omega, by omega, rfl⟩
+    · have hb : (x == "n") = false := by simpa using hxn
+      simp [varLoopΓ, List.lookup_cons, hb] at hx
+  obtain ⟨v, ρ', h, -⟩ := toRustMS_total_kind happ varLoopΓ varLoopLit _ varLoopLit_kind ρ hρ
+  exact ⟨v, ρ', h⟩
+
+end VarLoop
 
 end CatCrypt.Hax.RustSemantics
