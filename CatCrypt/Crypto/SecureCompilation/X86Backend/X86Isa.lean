@@ -8,6 +8,8 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 public import CatCrypt.Crypto.SecureCompilation.CT.Leakage
+public import CatCrypt.Crypto.SecureCompilation.VIR.IsaMachine
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
 
 @[expose] public section
 
@@ -40,6 +42,16 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
   description of a straight-line run by the symbolic run.
 * `x86Sym`, `x86Sym_symRun`, `symRun_sound_x86`: the x86 symbolic instance, the definitional
   recovery of `OwnedLprogTV.symRun`, and `OwnedLprogTV.symRun_sound` as the specialisation.
+* `x86Mach`, `x86Mach_exec`, `x86Mach_opLeak`, `x86Mach_runBlock`, `x86Mach_blockLeak`,
+  `x86Mach_BlockOk`, `x86Mach_mstep`: the machine level `IsaMachine x86Isa` under a timing
+  regime, whose operations, state, step and leakage are those of the address machine
+  `aMachine` and of `DecodedCT`.
+* `x86Mach_runL_iff`, `x86Mach_haltsC_iff`, `x86Mach_halts_iff`: the generic leakage
+  semantics and halting runs at `x86Mach` are `DecodedCT.RunL`, `RInstrSemantics.HaltsC` and
+  `RInstrSemantics.Halts`.
+* `runL_halts_x86`, `haltsC_runL_x86`, `halts_runL_x86`: `DecodedCT.RunL.halts`,
+  `DecodedCT.haltsC_runL` and `DecodedCT.halts_runL` as specialisations of the generic
+  theorems.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
@@ -280,5 +292,228 @@ theorem symRun_sound_x86 (P : LprogM) (is : List LinstrRM) (ss : SSt)
     (OwnedLprogTV.symRun is ss).DescN is.length (OwnedLprogTV.runL P is s) V A C O Z s := by
   rw [← x86Sym_symRun, ← x86Isa_runL]
   exact x86Sym.symRun_sound P is ss V A C O Z s hs
+
+/-! ## The machine level at x86 -/
+
+section Machine
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (RInstr)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState evalInstrA runBlockA)
+open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
+
+/-- The action of the decoded x86 instruction at `pc` on the address machine: an `op` is an
+    operation, a `jcc` a branch whose outcome is the condition of its nibble on the flags,
+    `push` and `pop` the blocks `pushOps` and `popOps`, `call` and `ret` themselves. -/
+def x86Act (prog : List RInstr) (pc : Nat) (sa : AState) : Option (MAct (JInstr 64)) :=
+  match prog[pc]? with
+  | none => none
+  | some (.op i) => some (.op i)
+  | some (.jcc cc t) =>
+      (RInstrSemantics.condtOfNibble cc).map fun c => .branch (sa.view.condB c) t
+  | some .ret => some .ret
+  | some (.push r) => some (.block (LprogBytesDecode.pushOps r))
+  | some (.pop r) => some (.block (LprogBytesDecode.popOps r))
+  | some (.call t) => some (.call t)
+
+/-- **The x86 machine** under the timing regime `r`: decoded programs `List RInstr` of
+    `JInstr 64` operations on the address machine `aMachine` (`AState`, `evalInstrA`), the
+    decoder `decodeLprog`, the call blocks `callOps` and `retOps`, and the leakage
+    `DecodedCT.opLeak r` (the memory events of `instrLeak` at their effective addresses and
+    the operands the regime makes observable). -/
+@[reducible] def x86Mach (r : CT.DoitRegime) : IsaMachine x86Isa where
+  Instr := RInstr
+  Op := JInstr 64
+  MState := AState
+  exec := evalInstrA
+  decode := LprogBytesDecode.decodeLprog
+  act := x86Act
+  callOps := LprogBytesDecode.callOps
+  retOps := LprogBytesDecode.retOps
+  opLeak := DecodedCT.opLeak r
+
+variable (r : CT.DoitRegime)
+
+theorem x86Mach_Instr : (x86Mach r).Instr = RInstr := rfl
+
+theorem x86Mach_Op : (x86Mach r).Op = JInstr 64 := rfl
+
+theorem x86Mach_MState : (x86Mach r).MState = AState := rfl
+
+theorem x86Mach_exec : (x86Mach r).exec = aMachine.exec := rfl
+
+theorem x86Mach_decode : (x86Mach r).decode = LprogBytesDecode.decodeLprog := rfl
+
+theorem x86Mach_opLeak : (x86Mach r).opLeak = DecodedCT.opLeak r := rfl
+
+/-- The block fold at `x86Mach` is `runBlockA`, by unfolding both definitions. -/
+theorem x86Mach_runBlock : (x86Mach r).runBlock = runBlockA := by
+  delta IsaMachine.runBlock runBlockA; rfl
+
+/-- The block leakage at `x86Mach` is `DecodedCT.blockLeakA`, by unfolding both
+    definitions. -/
+theorem x86Mach_blockLeak : (x86Mach r).blockLeak = DecodedCT.blockLeakA r := by
+  delta IsaMachine.blockLeak DecodedCT.blockLeakA; rfl
+
+/-- The block side condition at `x86Mach` is `DecodedCT.BlockOk`, by unfolding both
+    definitions. -/
+theorem x86Mach_BlockOk (ok : AState → JInstr 64 → Prop) :
+    (x86Mach r).BlockOk ok = DecodedCT.BlockOk ok := by
+  delta IsaMachine.BlockOk DecodedCT.BlockOk; rfl
+
+/-- The step at `x86Mach` is `RInstrSemantics.step aMachine`. -/
+theorem x86Mach_mstep : (x86Mach r).mstep = RInstrSemantics.step aMachine := by
+  funext prog pc s
+  simp only [IsaMachine.mstep, RInstrSemantics.step, x86Act]
+  rcases h : prog[pc]? with _ | ri
+  · rfl
+  · cases ri <;> try rfl
+    rename_i cc t
+    rcases hc : RInstrSemantics.condtOfNibble cc with _ | c
+    · simp [hc]
+    · simp only [hc, Option.map_some]
+      cases hb : (AState.view s).condB c <;> simp [hb, Ascent.RInstrAddrMem.aMachine_view]
+
+/-! The actions of `x86Act` against the decoded instruction. -/
+
+theorem x86Act_ret {prog : List RInstr} {pc : Nat} {sa : AState} :
+    x86Act prog pc sa = some .ret ↔ prog[pc]? = some .ret := by
+  unfold x86Act
+  rcases prog[pc]? with _ | ri
+  · simp
+  · cases ri <;> simp
+
+theorem x86Act_op {prog : List RInstr} {pc : Nat} {sa : AState} {i : JInstr 64} :
+    x86Act prog pc sa = some (.op i) ↔ prog[pc]? = some (.op i) := by
+  unfold x86Act
+  rcases prog[pc]? with _ | ri
+  · simp
+  · cases ri <;> simp
+
+theorem x86Act_call {prog : List RInstr} {pc : Nat} {sa : AState} {tgt : Nat} :
+    x86Act prog pc sa = some (.call tgt) ↔ prog[pc]? = some (.call tgt) := by
+  unfold x86Act
+  rcases prog[pc]? with _ | ri
+  · simp
+  · cases ri <;> simp
+
+theorem x86Act_block {prog : List RInstr} {pc : Nat} {sa : AState} {ops : List (JInstr 64)} :
+    x86Act prog pc sa = some (.block ops) ↔
+      ∃ ri, prog[pc]? = some ri ∧ ri.stackOps? = some ops := by
+  unfold x86Act
+  rcases prog[pc]? with _ | ri
+  · simp
+  · cases ri <;> simp [RInstr.stackOps?]
+
+theorem x86Act_branch {prog : List RInstr} {pc : Nat} {sa : AState} {b : Bool} {tgt : Nat} :
+    x86Act prog pc sa = some (.branch b tgt) ↔
+      ∃ cc c, prog[pc]? = some (.jcc cc tgt) ∧ RInstrSemantics.condtOfNibble cc = some c ∧
+        sa.view.condB c = b := by
+  unfold x86Act
+  rcases prog[pc]? with _ | ri
+  · simp
+  · cases ri <;> simp
+    rename_i cc t
+    cases RInstrSemantics.condtOfNibble cc <;> simp [eq_comm, and_comm]
+
+/-- **The leakage semantics at `x86Mach` is `DecodedCT.RunL`.** -/
+theorem x86Mach_runL_iff {ok : AState → JInstr 64 → Prop} {prog : List RInstr} {pc : Nat}
+    {sa : AState} {t : List CT.CTLeak} {sa' : AState} :
+    (x86Mach r).RunL ok prog pc sa t sa' ↔ DecodedCT.RunL r ok prog pc sa t sa' := by
+  constructor
+  · intro h
+    refine IsaMachine.RunL.rec
+      (motive := fun pc sa t sa' _ => DecodedCT.RunL r ok prog pc sa t sa')
+      (fun h => .ret (x86Act_ret.mp h)) (fun h hok _ ih => .op (x86Act_op.mp h) hok ih)
+      (fun h hok _ ih => ?_) (fun h _ ih => ?_) (fun h hok _ hokr _ ihc ihr => ?_) h
+    · obtain ⟨ri, h1, h2⟩ := x86Act_block.mp h
+      rw [x86Mach_BlockOk] at hok
+      rw [x86Mach_runBlock] at ih
+      rw [x86Mach_blockLeak]
+      exact .stack h1 h2 hok ih
+    · obtain ⟨cc, c, h1, h2, rfl⟩ := x86Act_branch.mp h
+      exact .jcc h1 h2 ih
+    · rw [x86Mach_BlockOk] at hok hokr
+      rw [x86Mach_runBlock] at ihc ihr
+      rw [x86Mach_blockLeak]
+      exact .call (x86Act_call.mp h) hok ihc hokr ihr
+  · intro h
+    induction h with
+    | ret h => exact .ret (x86Act_ret.mpr h)
+    | op h hok _ ih => exact .op (x86Act_op.mpr h) hok ih
+    | stack h hops hok _ ih =>
+      rw [← x86Mach_BlockOk r] at hok
+      rw [← x86Mach_runBlock r] at ih
+      rw [← x86Mach_blockLeak r]
+      exact .block (x86Act_block.mpr ⟨_, h, hops⟩) hok ih
+    | jcc h hc _ ih => exact .branch (x86Act_branch.mpr ⟨_, _, h, hc, rfl⟩) ih
+    | call h hok _ hokr _ ihc ihr =>
+      rw [← x86Mach_BlockOk r] at hok hokr
+      rw [← x86Mach_runBlock r] at ihc ihr
+      rw [← x86Mach_blockLeak r]
+      exact .call (x86Act_call.mpr h) hok ihc hokr ihr
+
+/-- The halting runs through calls at `x86Mach` are those of `aMachine`. -/
+theorem x86Mach_haltsC_iff {prog : List RInstr} {pc : Nat} {sa sa' : AState} :
+    (x86Mach r).HaltsC prog pc sa sa' ↔ RInstrSemantics.HaltsC aMachine prog pc sa sa' := by
+  constructor
+  · intro h
+    refine IsaMachine.HaltsC.rec
+      (motive := fun pc sa sa' _ => RInstrSemantics.HaltsC aMachine prog pc sa sa')
+      (fun h => .ret (x86Act_ret.mp h))
+      (fun h _ ih => .go (by rw [← x86Mach_mstep r]; exact h) ih)
+      (fun h _ _ ihc ihr => ?_) h
+    rw [x86Mach_runBlock, ← DecodedCT.foldl_aMachine_exec] at ihc ihr
+    exact .call (x86Act_call.mp h) ihc ihr
+  · intro h
+    induction h with
+    | ret h => exact .ret (x86Act_ret.mpr h)
+    | go h _ ih => exact .go (by rw [x86Mach_mstep r]; exact h) ih
+    | call h _ _ ihc ihr =>
+      rw [DecodedCT.foldl_aMachine_exec, ← x86Mach_runBlock r] at ihc ihr
+      exact .call (x86Act_call.mpr h) ihc ihr
+
+/-- The call-free halting runs at `x86Mach` are those of `aMachine`. -/
+theorem x86Mach_halts_iff {prog : List RInstr} {pc : Nat} {sa sa' : AState} :
+    (x86Mach r).Halts prog pc sa sa' ↔ RInstrSemantics.Halts aMachine prog pc sa sa' := by
+  have hr : ∀ {pc pc' : Nat} {s s' : AState}, (x86Mach r).Reaches prog pc s pc' s' ↔
+      RInstrSemantics.Reaches aMachine prog pc s pc' s' := by
+    intro pc pc' s s'
+    constructor
+    · intro h
+      exact IsaMachine.Reaches.rec
+        (motive := fun pc s pc' s' _ => RInstrSemantics.Reaches aMachine prog pc s pc' s')
+        (fun pc s => .refl pc s)
+        (fun h _ ih => .next (by rw [← x86Mach_mstep r]; exact h) ih) h
+    · intro h
+      induction h with
+      | refl => exact .refl _ _
+      | next h _ ih => exact .next (by rw [x86Mach_mstep r]; exact h) ih
+  unfold IsaMachine.Halts RInstrSemantics.Halts
+  simp only [hr, x86Act_ret]
+
+/-- `DecodedCT.RunL.halts` is the specialisation of `IsaMachine.RunL.haltsC` at
+    `x86Mach`. -/
+theorem runL_halts_x86 {ok : AState → JInstr 64 → Prop} {prog : List RInstr} {pc : Nat}
+    {sa : AState} {t : List CT.CTLeak} {sa' : AState} (h : DecodedCT.RunL r ok prog pc sa t sa') :
+    RInstrSemantics.HaltsC aMachine prog pc sa sa' :=
+  (x86Mach_haltsC_iff r).mp ((x86Mach_runL_iff r).mpr h).haltsC
+
+/-- `DecodedCT.haltsC_runL` is the specialisation of `IsaMachine.haltsC_runL` at
+    `x86Mach`. -/
+theorem haltsC_runL_x86 {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : RInstrSemantics.HaltsC aMachine prog pc sa sa') :
+    ∃ t, DecodedCT.RunL r (fun _ _ => True) prog pc sa t sa' := by
+  obtain ⟨t, ht⟩ := IsaMachine.haltsC_runL ((x86Mach_haltsC_iff r).mpr h)
+  exact ⟨t, (x86Mach_runL_iff r).mp ht⟩
+
+/-- `DecodedCT.halts_runL` is the specialisation of `IsaMachine.halts_runL` at `x86Mach`. -/
+theorem halts_runL_x86 {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : RInstrSemantics.Halts aMachine prog pc sa sa') :
+    ∃ t, DecodedCT.RunL r (fun _ _ => True) prog pc sa t sa' := by
+  obtain ⟨t, ht⟩ := IsaMachine.halts_runL ((x86Mach_halts_iff r).mpr h)
+  exact ⟨t, (x86Mach_runL_iff r).mp ht⟩
+
+end Machine
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
