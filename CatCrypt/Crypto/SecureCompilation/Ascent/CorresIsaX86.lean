@@ -28,10 +28,14 @@ related to `a` by `SR` agrees with the base of `t` on the registers and the memo
 program counter is part of the abstract state because `CorresM` uses one relation before
 and after the run, which start at counter `0` and end at the length of the body.
 
-The proof composes `runBlock_lsem_agreeM` (`runBlock` against `lsemStraightMem`),
-`runStraightF_of_lsemStraightMem` (`lsemStraightMem` against the flag machine's straight
-fold, equal up to the carry and overflow flags), the segment run `lsemFuelMemF_segF` and
-`x86Isa_lsemFuelMemF` (the generic run at `x86Isa` is the flag machine's run).
+The transport is stated once for an arbitrary instruction set, over a run of the program
+that agrees with `runBlock` (`corresIsa_of_lsemFuelMemF`), and at `x86Isa` over the extended
+straight fold `runStraightF` of the flag machine (`corresIsa_x86_of_runStraightF`). For
+`InSubsetM` the fold agreement composes `runBlock_lsem_agreeM` (`runBlock` against
+`lsemStraightMem`) and `runStraightF_of_lsemStraightMem` (`lsemStraightMem` against the flag
+machine's straight fold, equal up to the carry and overflow flags); the run of the fold is
+the segment run `lsemFuelMemF_segF` with `x86Isa_lsemFuelMemF` (the generic run at `x86Isa`
+is the flag machine's run).
 
 The same lowered program runs on the AArch64 instance `armIsa` when the block is in
 `InFieldArithSubset` (no `mulx`, whose high half `MULXHI` is outside the AArch64 alphabet):
@@ -46,6 +50,10 @@ turns it into the run of the program.
   body.
 * `x86Isa_lsemFuelMemF_straight`: a plain `Lopn` body runs from counter `0` with fuel its
   length to the state of its straight fold.
+* `corresIsa_of_lsemFuelMemF`: `CorresJ` gives `CorresIsa isa`, for any instruction set
+  `isa`, for a program whose run from counter `0` agrees with `runBlock`.
+* `corresIsa_x86_of_runStraightF`: `CorresJ` gives `CorresIsa x86Isa` for a body of `Lopn`s
+  whose extended straight fold agrees with `runBlock`.
 * `corresIsa_x86_of_corresJ`: `CorresJ` over an `InSubsetM` block gives `CorresIsa x86Isa`
   for its lowering.
 * `corresIsa_x86_add2`: the two-instruction example `x += 1; x += 2`.
@@ -128,6 +136,48 @@ theorem x86Isa_lsemFuelMemF_straight (fn : String) (seg : List LinstrRM)
   simp only [findInstrMem, singletonProgM, if_true]
   rw [hlpc, List.getElem?_eq_none (le_refl _)]
 
+/-- **`CorresJ` over a run of an instruction set.** Let the run of `prog` at the instruction
+    set `isa` with fuel `n`, from every state of the function `fn` at counter `0` whose base
+    agrees with a `JState` `s` on the registers and the memory, end in the function `fn` at
+    counter `len` in a base agreeing with `runBlock s c`. Then a `runBlock` correspondence
+    `CorresJ SR P fa c` gives the `CorresIsa isa` correspondence of `prog` with fuel `n`,
+    under the lifted relation `liftSR fn SR`, from counter `0` to counter `len`. -/
+theorem corresIsa_of_lsemFuelMemF {AState : Type} (isa : VIR.LprogIsa.Isa)
+    (SR : JState 64 → AState → Prop) (P : AState → Prop) (fa : AState → AState)
+    (c : List (JInstr 64)) (fn : String) (prog : VIR.JasminLsemMemLoop.LprogM) (n len : Nat)
+    (hrun : ∀ (s : JState 64) (b0 : LstateM) (zf : Bool), JLstateCorr s b0 → b0.lpc = 0 →
+      ∃ b z, isa.lsemFuelMemF prog n { prog := { base := b0, lfn := fn }, zf := zf }
+          = some { prog := { base := b, lfn := fn }, zf := z } ∧
+        b.lpc = len ∧ JLstateCorr (runBlock s c) b)
+    (h : CorresJ SR P fa c) :
+    CorresIsa isa prog (liftSR fn SR) (fun a => P a.1 ∧ a.2 = 0) (fun a => (fa a.1, len)) n := by
+  rintro ⟨⟨b0, lfn⟩, zf⟩ ⟨a, k⟩ ⟨hfn, hpc, s, hSR, hcorr⟩ ⟨hP, hk⟩
+  simp only at hfn hpc hcorr hP hk
+  subst hfn hk
+  obtain ⟨b, z, hF, hlpc, hcorr'⟩ := hrun s b0 zf hcorr hpc
+  exact ⟨_, hF, rfl, hlpc, runBlock s c, h s a hSR hP, hcorr'⟩
+
+/-- **`CorresJ` at the x86 instruction set, over the extended straight fold.** Let `seg` be a
+    body of `Lopn`s whose fold `runStraightF`, from every state agreeing with a `JState` `s`
+    on the registers and the memory, reaches a state agreeing with `runBlock s c`. Then a
+    `runBlock` correspondence `CorresJ SR P fa c` gives the `CorresIsa x86Isa`
+    correspondence of `singletonProgM fn seg` with fuel its length, under the lifted
+    relation `liftSR fn SR`, from counter `0` to the end of the body. -/
+theorem corresIsa_x86_of_runStraightF {AState : Type} (SR : JState 64 → AState → Prop)
+    (P : AState → Prop) (fa : AState → AState) (c : List (JInstr 64)) (fn : String)
+    (seg : List LinstrRM) (hl : ∀ i ∈ seg, IsLopn i)
+    (hagree : ∀ (s : JState 64) (b0 : LstateM) (zf : Bool), JLstateCorr s b0 →
+      ∃ b z, runStraightF seg b0 zf = some (b, z) ∧ JLstateCorr (runBlock s c) b)
+    (h : CorresJ SR P fa c) :
+    CorresIsa x86Isa (singletonProgM fn seg) (liftSR fn SR)
+      (fun a => P a.1 ∧ a.2 = 0) (fun a => (fa a.1, seg.length)) seg.length :=
+  corresIsa_of_lsemFuelMemF x86Isa SR P fa c fn (singletonProgM fn seg) seg.length seg.length
+    (fun s b0 zf hcorr hpc => by
+      obtain ⟨b, z, hF, hcorr'⟩ := hagree s b0 zf hcorr
+      refine ⟨b, z, x86Isa_lsemFuelMemF_straight fn seg hl b0 b zf z hpc hF, ?_, hcorr'⟩
+      rw [runStraightF_lpc seg b0 zf b z hF, hpc, Nat.zero_add])
+    h
+
 /-- **`CorresJ` at the x86 instruction set.** For a block `c` of `InSubsetM` instructions, a
     `runBlock` correspondence `CorresJ SR P fa c` gives the `CorresIsa x86Isa` correspondence
     of the lowered program `singletonProgM fn (c.flatMap jToRMs)` with fuel its length,
@@ -137,18 +187,15 @@ theorem corresIsa_x86_of_corresJ {AState : Type} (SR : JState 64 → AState → 
     (hc : ∀ i ∈ c, InSubsetM i) (h : CorresJ SR P fa c) :
     CorresIsa x86Isa (singletonProgM fn (c.flatMap jToRMs)) (liftSR fn SR)
       (fun a => P a.1 ∧ a.2 = 0) (fun a => (fa a.1, (c.flatMap jToRMs).length))
-      (c.flatMap jToRMs).length := by
-  rintro ⟨⟨b0, lfn⟩, zf⟩ ⟨a, k⟩ ⟨hfn, hpc, s, hSR, hcorr⟩ ⟨hP, hk⟩
-  simp only at hfn hpc hcorr hP hk
-  subst hfn hk
-  obtain ⟨ls', hrun, hcorr'⟩ := runBlock_lsem_agreeM c hc s b0 hcorr
-  have hplain := plainLopnBody_flatMap_jToRMs c hc
-  obtain ⟨cf, of, hF⟩ := runStraightF_of_lsemStraightMem _ hplain b0 ls' zf hrun
-  refine ⟨_, x86Isa_lsemFuelMemF_straight lfn _ (fun i hi => (hplain i hi).1) b0 _ zf zf hpc hF,
-    rfl, ?_, runBlock s c, h s a hSR hP, JLstateCorr_withFlags hcorr' cf of⟩
-  have := runStraightF_lpc _ b0 zf _ zf hF
-  rw [hpc, Nat.zero_add] at this
-  exact this
+      (c.flatMap jToRMs).length :=
+  corresIsa_x86_of_runStraightF SR P fa c fn (c.flatMap jToRMs)
+    (fun i hi => (plainLopnBody_flatMap_jToRMs c hc i hi).1)
+    (fun s b0 zf hcorr => by
+      obtain ⟨ls', hrun, hcorr'⟩ := runBlock_lsem_agreeM c hc s b0 hcorr
+      obtain ⟨cf, of, hF⟩ := runStraightF_of_lsemStraightMem _
+        (plainLopnBody_flatMap_jToRMs c hc) b0 ls' zf hrun
+      exact ⟨_, zf, hF, JLstateCorr_withFlags hcorr' cf of⟩)
+    h
 
 /-! ## Example: two additions -/
 
@@ -253,21 +300,18 @@ theorem corresIsa_arm_of_corresJ {AState : Type} (SR : JState 64 → AState → 
       (fun a => P a.1 ∧ a.2 = 0) (fun a => (fa a.1, (c.flatMap jToRMs).length))
       (c.flatMap jToRMs).length := by
   rw [flatMap_jToRMs_of_inFieldArithSubset c hc]
-  rintro ⟨⟨b0, lfn⟩, zf⟩ ⟨a, k⟩ ⟨hfn, hpc, s, hSR, hcorr⟩ ⟨hP, hk⟩
-  simp only at hfn hpc hcorr hP hk
-  subst hfn hk
+  refine corresIsa_of_lsemFuelMemF armIsa SR P fa c fn _ _ _ (fun s b0 zf hcorr hpc => ?_) h
   obtain ⟨ls', hrun, hcorr'⟩ := runBlock_lsem_agree c hc s b0 hcorr
-  have hrunL := armIsa_runL_map_jToRM (singletonProgM lfn (c.map jToRM)) c hc b0 lfn zf
+  have hrunL := armIsa_runL_map_jToRM (singletonProgM fn (c.map jToRM)) c hc b0 fn zf
   rw [hrun, Option.map_some] at hrunL
-  refine ⟨_, armIsa.lsemFuelMemF_of_runL _ (c.map jToRM) [] _ _ rfl rfl hpc ?_ hrunL, rfl,
-    ?_, runBlock s c, h s a hSR hP, hcorr'⟩
+  refine ⟨ls', zf, armIsa.lsemFuelMemF_of_runL _ (c.map jToRM) [] _ _ rfl rfl hpc ?_ hrunL, ?_,
+    hcorr'⟩
   · intro j hj u u' hu
     obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hj
     rw [armIsa_step_jToRM _ i (hc i hi)] at hu
     obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp hu
     exact ⟨rfl, VIR.JasminLsemMemLoop.lsemStepMem_lpc_succ _ _ _ hb⟩
-  · show ls'.lpc = _
-    rw [VIR.JasminLsemMemLoop.lsemStraightMem_lpc _ b0 ls' hrun, hpc, Nat.zero_add]
+  · rw [VIR.JasminLsemMemLoop.lsemStraightMem_lpc _ b0 ls' hrun, hpc, Nat.zero_add]
 
 /-- **The two-instruction example at AArch64**: the program of `corresIsa_x86_add2` adds `3`
     to the register `x` in two steps of the `armIsa` run. -/

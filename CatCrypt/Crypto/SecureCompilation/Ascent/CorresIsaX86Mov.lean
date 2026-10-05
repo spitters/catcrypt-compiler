@@ -20,10 +20,10 @@ one is not a plain `Lopn` body. This module transports `CorresJ` for the subset
 loads and stores, the immediate shifts, the negate and the register-to-register `mov`) and
 its lowering `List.map jToRMMov`.
 
-The transport is stated once over the extended straight fold `runStraightF` of the flag
-machine (`corresIsa_x86_of_runStraightF`): a body of `Lopn`s whose fold from every state
-agreeing with a `JState` on the registers and the memory reaches a state agreeing with the
-`runBlock` result. For the move-extended subset the fold agreement is proved per
+The transport is `corresIsa_x86_of_runStraightF` of `CorresIsaX86`, stated over the extended
+straight fold `runStraightF` of the flag machine: a body of `Lopn`s whose fold from every
+state agreeing with a `JState` on the registers and the memory reaches a state agreeing with
+the `runBlock` result. For the move-extended subset the fold agreement is proved per
 instruction (`fstepF_jToRMMov`): on a register-to-register `mov` the register-copy arm
 writes the word `lsemStepMem` writes (`lsemStepMem_movReg`), and on every other instruction
 the step is the plain one, covered by `jToRMNeg_agrees` and
@@ -31,8 +31,6 @@ the step is the plain one, covered by `jToRMNeg_agrees` and
 
 ## Main results
 
-* `corresIsa_x86_of_runStraightF`: `CorresJ` gives `CorresIsa x86Isa` for a body of `Lopn`s
-  whose extended straight fold agrees with `runBlock`.
 * `plainLopnBody_jToRMNeg`: the lowering of an `InNegSubset` instruction is a plain `Lopn`.
 * `fstepF_jToRMMov`, `runStraightF_map_jToRMMov`: the extended straight step and fold of
   the lowering of the move-extended subset agree with `runBlock`.
@@ -61,32 +59,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (PlainLopnBody
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (fstepF runStraightF
   runStraightF_cons runStraightF_nil runStraightF_lpc runStraightF_of_lsemStraightMem)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
-
-/-! ## The transport over the extended straight fold -/
-
-/-- **`CorresJ` at the x86 instruction set, over the extended straight fold.** Let `seg` be a
-    body of `Lopn`s whose fold `runStraightF`, from every state agreeing with a `JState` `s`
-    on the registers and the memory, reaches a state agreeing with `runBlock s c`. Then a
-    `runBlock` correspondence `CorresJ SR P fa c` gives the `CorresIsa x86Isa`
-    correspondence of `singletonProgM fn seg` with fuel its length, under the lifted
-    relation `liftSR fn SR`, from counter `0` to the end of the body. -/
-theorem corresIsa_x86_of_runStraightF {AState : Type} (SR : JState 64 → AState → Prop)
-    (P : AState → Prop) (fa : AState → AState) (c : List (JInstr 64)) (fn : String)
-    (seg : List LinstrRM) (hl : ∀ i ∈ seg, IsLopn i)
-    (hagree : ∀ (s : JState 64) (b0 : LstateM) (zf : Bool), JLstateCorr s b0 →
-      ∃ b z, runStraightF seg b0 zf = some (b, z) ∧ JLstateCorr (runBlock s c) b)
-    (h : CorresJ SR P fa c) :
-    CorresIsa x86Isa (singletonProgM fn seg) (liftSR fn SR)
-      (fun a => P a.1 ∧ a.2 = 0) (fun a => (fa a.1, seg.length)) seg.length := by
-  rintro ⟨⟨b0, lfn⟩, zf⟩ ⟨a, k⟩ ⟨hfn, hpc, s, hSR, hcorr⟩ ⟨hP, hk⟩
-  simp only at hfn hpc hcorr hP hk
-  subst hfn hk
-  obtain ⟨b, z, hF, hcorr'⟩ := hagree s b0 zf hcorr
-  refine ⟨_, x86Isa_lsemFuelMemF_straight lfn seg hl b0 b zf z hpc hF, rfl, ?_, runBlock s c,
-    h s a hSR hP, hcorr'⟩
-  have := runStraightF_lpc seg b0 zf b z hF
-  rw [hpc, Nat.zero_add] at this
-  exact this
 
 /-! ## The extended straight fold on the move-extended subset -/
 
