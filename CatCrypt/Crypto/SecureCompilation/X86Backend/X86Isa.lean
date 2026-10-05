@@ -39,6 +39,9 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
 * `x86Isa`, `x86Isa_step`, `x86Isa_lsemFuelMemF`, `x86Isa_lsemFuelMemFk`,
   `x86Isa_evalInstrPMemFk`, `x86Isa_RunIdxOk`, `x86Isa_runL`: the x86 instance and the
   definitional recovery of the x86 interpreters.
+* `x86Isa_invTouch`, `x86Isa_withKeep_step_keep`, `x86Isa_withKeep_step_of_not_keep`: the
+  x86 invariant touch is the compare, and `x86Isa.withKeep` steps the keep marker as a no-op
+  and every other instruction as `evalInstrPMemF`.
 * `IsaSym`, `IsaSym.symRun`, `IsaSym.symRun_sound`: the symbolic step record and the exact
   description of a straight-line run by the symbolic run.
 * `x86Sym`, `x86Sym_symRun`, `symRun_sound_x86`: the x86 symbolic instance, the definitional
@@ -174,6 +177,24 @@ theorem x86Isa_zeroTripGuard (ctr : String) (top endL : LLabel) :
     x86Isa.zeroTripGuard ctr top endL =
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL] :=
   rfl
+
+/-- The x86 invariant touch is the compare `CMP ctr, r` of the loop export. -/
+theorem x86Isa_invTouch (ctr r : String) :
+    x86Isa.invTouch ctr r = .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r] :=
+  rfl
+
+/-- **The keep marker is a no-op of `x86Isa.withKeep`**: the step advances the program
+    counter and changes nothing else. -/
+theorem x86Isa_withKeep_step_keep (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
+    (s : LstateMF) :
+    x86Isa.withKeep.step P (.Lopn dsts "KEEP" srcs, tag) s = some (keepStep s) :=
+  x86Isa.withKeep_step_keep P _ s rfl
+
+/-- On an instruction other than a keep marker the step of `x86Isa.withKeep` is the flag
+    machine `evalInstrPMemF`. -/
+theorem x86Isa_withKeep_step_of_not_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : isKeep i.fst = false) : x86Isa.withKeep.step P i s = evalInstrPMemF P i s :=
+  x86Isa.withKeep_step_of_not_keep P i s h
 
 theorem x86Isa_leaksOperands (base : String) :
     x86Isa.leaksOperands base =

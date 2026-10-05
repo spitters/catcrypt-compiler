@@ -18,7 +18,8 @@ An instruction set other than x86 runs the `Lprog` instructions of its alphabet 
 reference semantics of the memref machine and refuses every other instruction. `subsetStep`
 is that step: the control step `ctlStep` under the instruction set's branch condition on a
 control instruction, an instruction-set arm `ext` (for example a compare that writes the
-zero flag), and otherwise, on an instruction of the alphabet, the core step `coreStep`. The
+zero flag), and otherwise, on an instruction of the alphabet, the core step `coreStep`; the
+keep marker `isKeep` of `VIR.LprogIsaData` is stepped by the no-op `keepStep`. The
 core step is the register copy of `movRegArgs?` and the memref step `evalInstrPMemL` of
 `JasminLsemMemLoop`; it writes none of the flags `zf`, `cf`, `of`.
 
@@ -33,7 +34,9 @@ instruction-selection simulation needs, and `RegRel_setReg` is their effect on t
 ## Main results
 
 * `coreStep`, `mnemOk`, `subsetStep`, `subsetStep_ctl`: the step and its control obligation.
-* `subsetStep_refuse`: an instruction outside the alphabet has no step.
+* `subsetStep_refuse`: an instruction outside the alphabet, other than a keep marker, has no
+  step.
+* `subsetStep_keep`: the keep marker is a no-op.
 * `coreStep_binop`, `coreStep_mov`: the register arithmetic and the register copy.
 * `RegRel`, `RegRel_setReg`: the register relation and its update.
 * `coreStep_loadIdx`, `coreStep_storeIdx`, `coreStep_binopImm`: the array load and store and
@@ -78,7 +81,8 @@ def mnemOk (bases : List String) : LinstrR → Bool
 
 /-- **The step of an instruction-set subset**: the control step under `cond` on a control
     instruction; on an instruction of the alphabet `bases`, the arm `ext` when it claims the
-    instruction (`some r`) and the core step otherwise; no step on any other instruction. -/
+    instruction (`some r`) and the core step otherwise; on a keep marker `isKeep` outside the
+    alphabet, the no-op `keepStep`; no step on any other instruction. -/
 def subsetStep (bases : List String) (cond : LstateMF → LOperand → Bool)
     (ext : LinstrRM → LstateMF → Option (Option LstateMF))
     (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF :=
@@ -87,6 +91,7 @@ def subsetStep (bases : List String) (cond : LstateMF → LOperand → Bool)
     match ext i s with
     | some r => r
     | none => coreStep P i s
+  else if isKeep i.fst then some (keepStep s)
   else none
 
 /-- The step of a subset on a control instruction is the shared control step. -/
@@ -96,13 +101,25 @@ theorem subsetStep_ctl (bases : List String) (cond : LstateMF → LOperand → B
     subsetStep bases cond ext P i s = ctlStep cond P i s := by
   simp [subsetStep, h]
 
-/-- **An `Lopn` outside the alphabet has no step.** -/
+/-- **An `Lopn` outside the alphabet, other than a keep marker, has no step.** -/
 theorem subsetStep_refuse (bases : List String) (cond : LstateMF → LOperand → Bool)
     (ext : LinstrRM → LstateMF → Option (Option LstateMF))
     (P : LprogM) (dsts : List LOperand) (opn : String) (srcs : List LOperand) (tag : MemTag)
-    (s : LstateMF) (h : bases.contains (stripWidthTag opn) = false) :
+    (s : LstateMF) (h : bases.contains (stripWidthTag opn) = false)
+    (hk : (opn == "KEEP") = false) :
     subsetStep bases cond ext P (.Lopn dsts opn srcs, tag) s = none := by
-  simp only [subsetStep, isCtl, mnemOk, h, Bool.false_eq_true, if_false]
+  simp only [subsetStep, isCtl, mnemOk, isKeep, h, hk, Bool.false_eq_true, if_false]
+
+/-- **The keep marker is a no-op** of a subset whose alphabet does not hold the base
+    `KEEP`: the step advances the program counter and changes nothing else. -/
+theorem subsetStep_keep (bases : List String) (cond : LstateMF → LOperand → Bool)
+    (ext : LinstrRM → LstateMF → Option (Option LstateMF))
+    (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag) (s : LstateMF)
+    (h : bases.contains "KEEP" = false) :
+    subsetStep bases cond ext P (.Lopn dsts "KEEP" srcs, tag) s = some (keepStep s) := by
+  have hs : stripWidthTag "KEEP" = "KEEP" := by decide +kernel
+  simp only [subsetStep, isCtl, mnemOk, isKeep, hs, h, Bool.false_eq_true, if_false,
+    beq_self_eq_true, if_true]
 
 /-- **The core step of a 64-bit register arithmetic instruction** `d := a ⊙ b` with a
     register first source: the destination takes the value of the operation. -/

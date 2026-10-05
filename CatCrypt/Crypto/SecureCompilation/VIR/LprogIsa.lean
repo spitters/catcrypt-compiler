@@ -41,6 +41,11 @@ instance on `Lcall` and `Lret` is unconstrained, and `I.withCalls` is the instru
 in which they have the shared meaning. On a program without `Lcall` and `Lret` the runs of
 `I.withCalls` and `I` are equal (`Isa.withCalls_lsemFuelMemF`).
 
+The keep marker `isKeep` of `VIR.LprogIsaData` has a third shared step, `keepStep`, which
+advances the program counter and changes nothing else. `Isa.withKeep I` is the record `I`
+whose step on a keep marker is `keepStep`; the steps of the control instructions and of
+every other instruction are those of `I`.
+
 ## Main results
 
 * `ctlStep`, `isCtl`, `Isa`: the shared control step and the record.
@@ -55,6 +60,8 @@ in which they have the shared meaning. On a program without `Lcall` and `Lret` t
 * `Isa.step_call`, `Isa.step_call_link`, `Isa.step_ret`, `Isa.withCalls_step_of_not_call`:
   the step of `I.withCalls` on a call, on a return and on every other instruction.
 * `Isa.withCalls_lsemFuelMemF`: the run of `I.withCalls` on a program without calls.
+* `keepStep`, `Isa.withKeep`, `Isa.withKeep_step_keep`, `Isa.withKeep_step_of_not_keep`: the
+  step of the keep marker and the instruction set that carries it.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -89,6 +96,15 @@ def ctlStep (condEval : LstateMF → LOperand → Bool) (P : LprogM) (i : Linstr
       if fn = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
       else none
   | _ => none
+
+/-- **The step of the keep marker**, shared by every instruction set: the program counter
+    advances; the registers, the memory and the flags are unchanged. -/
+def keepStep (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base := s.prog.base.nextPc } }
+
+/-- A keep marker is not a control instruction. -/
+theorem isKeep_of_isCtl {i : LinstrR} (h : isCtl i = true) : isKeep i = false := by
+  cases i <;> simp_all [isCtl, isKeep]
 
 /-- The call and return instructions. -/
 def isCall : LinstrR → Bool
@@ -470,6 +486,38 @@ theorem withCalls_lsemFuelMemF (P : LprogM) (hP : ∀ i ∈ P.body, isCall i.fst
           cases I.step P i s with
           | none => rfl
           | some s' => exact withCalls_lsemFuelMemF P hP fuel s'
+
+/-! ## The keep marker -/
+
+/-- **The instruction set with the keep marker.** The record `I` with its step replaced, on
+    a keep marker `isKeep`, by `keepStep`; the step of every other instruction, the data and
+    the branch condition are those of `I`. -/
+def withKeep : Isa :=
+  { I with
+    step := fun P i s => if isKeep i.fst = true then some (keepStep s) else I.step P i s
+    step_ctl := fun P i s h => by
+      simp only [isKeep_of_isCtl h, Bool.false_eq_true, if_false]
+      exact I.step_ctl P i s h }
+
+@[simp] theorem withKeep_toIsaData : I.withKeep.toIsaData = I.toIsaData := rfl
+
+@[simp] theorem withKeep_condEval : I.withKeep.condEval = I.condEval := rfl
+
+/-- **The keep marker is a no-op** of `I.withKeep`: the step advances the program counter
+    and changes nothing else. -/
+theorem withKeep_step_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : isKeep i.fst = true) : I.withKeep.step P i s = some (keepStep s) := by
+  simp only [withKeep, h, if_true]
+
+/-- The step of an instruction other than a keep marker is the step of `I`. -/
+theorem withKeep_step_of_not_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : isKeep i.fst = false) : I.withKeep.step P i s = I.step P i s := by
+  simp only [withKeep, h, Bool.false_eq_true, if_false]
+
+/-- The step of `I.withKeep` on the keep marker `keepTouch ctr r`. -/
+theorem withKeep_step_keepTouch (P : LprogM) (ctr r : String) (tag : MemTag) (s : LstateMF) :
+    I.withKeep.step P (keepTouch ctr r, tag) s = some (keepStep s) :=
+  I.withKeep_step_keep P _ s rfl
 
 end Isa
 

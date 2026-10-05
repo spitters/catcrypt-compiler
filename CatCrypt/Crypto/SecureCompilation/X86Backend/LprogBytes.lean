@@ -1759,7 +1759,9 @@ def isIdentityTagShift (opn : String) : Bool :=
     `FRAME` frame directives are two: `LprogAsmPrinter.frameSize` reads them and the
     printer drops them, so they reach neither the text nor the byte stream. A
     count-in-tag shift by `0` of a general-purpose register onto itself is another:
-    the printer and the encoder both drop it. -/
+    the printer and the encoder both drop it. The keep marker `LprogIsa.keepTouch`
+    (mnemonic `KEEP`, one destination and two sources) is a third: it reads a register
+    for liveness only. -/
 def carriesNoBytes : LinstrR → Bool
   | .Lret => true
   | .Lalign => true
@@ -1768,7 +1770,7 @@ def carriesNoBytes : LinstrR → Bool
   | .Lopn [] "FRAME" _ => true
   | .Lopn [.reg dn] opn [.reg sn] =>
       isMulHiBinding opn || (dn == sn && isGpName dn && isIdentityTagShift opn)
-  | .Lopn _ opn _ => isMulHiBinding opn
+  | .Lopn _ opn _ => isMulHiBinding opn || opn == "KEEP"
   | _ => false
 
 /-- Does this instruction reach the byte stream? Either it carries no bytes by

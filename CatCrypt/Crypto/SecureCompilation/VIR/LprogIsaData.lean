@@ -27,8 +27,12 @@ records.
   of the legaliser, the copy mnemonic at the width of an operation, the leakage regime
   `leaksOperands` (which mnemonic bases make their data operands observable), the accepted
   mnemonic bases `supports`, the implicit register reads `implicitReads`, the loop back
-  edge `loopGuard`, and the guard `zeroTripGuard` that skips a loop whose runtime count is
-  zero.
+  edge `loopGuard`, the guard `zeroTripGuard` that skips a loop whose runtime count is
+  zero, and the instruction `invTouch` that reads a loop-invariant register at the foot of a
+  loop.
+* `keepTouch`, the keep marker: an `Lopn` with the reserved mnemonic `KEEP` and the operand
+  footprint of a compare, which an instruction set steps as a no-op; `isKeep` recognises
+  it.
 
 `LprogIsa.Isa` extends `IsaData` by the step semantics. The x86 values are
 `X86Backend.LprogAsmPrinter.x86Abi` and `X86Backend.TwoAddrLegalize.x86Data`, defined in
@@ -38,6 +42,7 @@ records.
 
 * `IsaAbi`: register file and calling convention.
 * `IsaData`: `IsaAbi` with the legaliser's mnemonic data.
+* `keepTouch`, `isKeep`: the keep marker and its recogniser.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -68,9 +73,28 @@ structure IsaAbi : Type where
       without adjusting it. -/
   redZone : Nat := 0
 
+/-- **The keep marker** on the registers `ctr` and `r`: the instruction
+    `Lopn [ctr] "KEEP" [ctr, r]`. It has the operand footprint of the compare `CMP ctr, r`
+    (destination `ctr`, reads `ctr` and `r`), so the liveness analysis of the allocator
+    records the same write and the same reads for both. An instruction set steps it as a
+    no-op that advances the program counter, and it is printed and encoded to nothing. -/
+def keepTouch (ctr r : String) : LinstrR := .Lopn [.reg ctr] "KEEP" [.reg ctr, .reg r]
+
+/-- Whether an instruction is a keep marker: an `Lopn` with the mnemonic `KEEP`, on any
+    operands. -/
+def isKeep : LinstrR → Bool
+  | .Lopn _ opn _ => opn == "KEEP"
+  | _ => false
+
+@[simp] theorem isKeep_keepTouch (ctr r : String) : isKeep (keepTouch ctr r) = true := rfl
+
+/-- An `Lopn` is a keep marker exactly when its mnemonic is `KEEP`. -/
+theorem isKeep_Lopn (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    isKeep (.Lopn dsts opn srcs) = (opn == "KEEP") := rfl
+
 /-- **The data of an instruction set**: `IsaAbi` with the mnemonic data of the two-address
-    legaliser, the accepted mnemonic bases, the implicit register reads, the loop guard and
-    the zero-trip guard. -/
+    legaliser, the accepted mnemonic bases, the implicit register reads, the loop guard,
+    the zero-trip guard and the invariant touch. -/
 structure IsaData extends IsaAbi where
   /-- Whether `Lopn [d] opn [a, b]` is printed in tied form, which requires `a = d`. -/
   tied : String → LOperand → Bool
@@ -98,5 +122,11 @@ structure IsaData extends IsaAbi where
       before the loop label `top`, with exit label `endL`: branch to `endL` when `ctr` is
       zero, reach `top` otherwise, by falling through or by a branch to it. -/
   zeroTripGuard : String → LLabel → LLabel → List LinstrR
+  /-- The invariant touch on counter register `ctr` and loop-invariant register `r`: one
+      instruction at the foot of a loop that reads `r`, so the allocator keeps `r` in its
+      register across the back edge. It names `ctr` as destination and first source and does
+      not change a register. An instruction set with a compare uses `CMP ctr, r`; one
+      without uses the keep marker `keepTouch ctr r`. -/
+  invTouch : String → String → LinstrR
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa

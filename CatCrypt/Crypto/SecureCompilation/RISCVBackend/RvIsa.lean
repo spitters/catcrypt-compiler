@@ -26,7 +26,10 @@ instruction-set arm, so it writes none of `zf`, `cf`, `of`, and the branch condi
 register test `condNZ` (`BNEZ`). The alphabet has no compare and none of the x86 carry,
 wide-multiply and flag mnemonics, so `rvIsa.supports` is false on each of them
 (`rvIsa_supports_x86Only`); `rvIsa_refuse_x86` states that the step of an unsupported
-mnemonic is `none`.
+mnemonic is `none`. The invariant touch of a loop is the keep marker `LprogIsa.keepTouch`,
+which `rvIsa` supports and steps as a no-op (`rvIsa_step_keep`), so the runtime-count loop
+frame at `rvData` holds no compare for any list of invariant registers
+(`rv_blockLoopFrame_no_cmp`).
 
 The instruction selection `rvSel` maps the register fragment of the alphabet (64-bit `ADD`,
 `SUB`, `AND`, `OR`, `XOR` with three register operands, and the register `MOV`) on the
@@ -54,6 +57,9 @@ body.
   operand-leaking bases, the loads and stores.
 * `rvIsa_supports_x86Only`, `rvIsa_refuse_x86`: the x86-only mnemonics are unsupported, and
   an unsupported mnemonic has no step.
+* `rvIsa_invTouch`, `rvIsa_step_keep`: the invariant touch is the keep marker, a no-op.
+* `rv_blockLoopFrame_alphabet`, `rv_blockLoopFrame_no_cmp`: the runtime-count loop frame
+  stays in the alphabet extended by the keep marker and holds no compare.
 * `rvSel`, `rvSel_decode`, `rvSel_step`: the selection, its byte round trip and its one-step
   simulation.
 * `decodeRBlock64`, `rv_asm`: the block decoder and the Asm lemma of the register fragment.
@@ -109,9 +115,11 @@ def rvMnemOfBase : String → Option CT.RvMnem
   | _ => none
 
 /-- The RV64 leakage regime of an implementation of Zkt: the table `CT.RvMnem` at the
-    mnemonic of the base, every operand observable for a base outside the alphabet. -/
+    mnemonic of the base, no operand observable for the keep marker `KEEP`, which is no
+    machine instruction, and every operand observable for any other base outside the
+    alphabet. -/
 def rvLeaksOperands (base : String) : Bool :=
-  ((rvMnemOfBase base).map CT.RvMnem.leaksOperands).getD true
+  base != "KEEP" && ((rvMnemOfBase base).map CT.RvMnem.leaksOperands).getD true
 
 /-- The mnemonic bases of the RV64 alphabet: no compare, no flag-reading or flag-writing
     mnemonic. -/
@@ -129,9 +137,10 @@ def rvCallerSaved : List String :=
     callee-saved register at its index, the stack pointer `sp`, the return registers `a0`,
     `a1`, the caller-saved registers and no red zone, the three-address legaliser data (no
     tied form, the commutative bases, the copy `MOV` at the width of the operation), the
-    leakage regime `rvLeaksOperands`, the alphabet `rvBases`, no implicit reads, the
-    register loop guard `bnez ctr, top`, and the flagless zero-trip guard `bnez ctr, top`
-    followed by the branch on the non-zero immediate `1` to `endL`, which is always taken. -/
+    leakage regime `rvLeaksOperands`, the alphabet `rvBases` with the keep marker `KEEP`, no
+    implicit reads, the register loop guard `bnez ctr, top`, the flagless zero-trip guard
+    `bnez ctr, top` followed by the branch on the non-zero immediate `1` to `endL`, which is
+    always taken, and the keep marker `keepTouch ctr r` as invariant touch. -/
 def rvData : IsaData where
   allocPool := ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4"]
   scratch := ["t5", "t6"]
@@ -147,10 +156,11 @@ def rvData : IsaData where
   tieScratch := "t5"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
   leaksOperands := rvLeaksOperands
-  supports := fun base => rvBases.contains base
+  supports := fun base => rvBases.contains base || base == "KEEP"
   implicitReads := fun _ => []
   loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
   zeroTripGuard := fun ctr top endL => [.Lcond (.reg ctr) top, .Lcond (.imm 1) endL]
+  invTouch := keepTouch
 
 /-! ## The step -/
 
@@ -181,12 +191,26 @@ theorem rvIsa_leaksOperands_bases :
     (`ADC`, `SBB`, `ADCX`, `ADOX`) and the flag-quiet wide multiply (`MULX`, `MULXHI`). -/
 def x86OnlyBases : List String := ["CMP", "ADC", "SBB", "ADCX", "ADOX", "MULX", "MULXHI"]
 
-theorem rvIsa_supports : rvIsa.supports = fun base => rvBases.contains base := rfl
+theorem rvIsa_supports :
+    rvIsa.supports = fun base => rvBases.contains base || base == "KEEP" := rfl
 
 /-- The x86-only mnemonic bases are not supported on RV64. -/
 theorem rvIsa_supports_x86Only : ∀ b ∈ x86OnlyBases, rvIsa.supports b = false := by
-  have hall : ∀ b ∈ x86OnlyBases, rvBases.contains b = false := by decide
+  have hall : ∀ b ∈ x86OnlyBases, (rvBases.contains b || b == "KEEP") = false := by decide
   exact hall
+
+/-- The RV64 invariant touch is the keep marker. -/
+theorem rvIsa_invTouch (ctr r : String) : rvIsa.invTouch ctr r = keepTouch ctr r := rfl
+
+/-- The keep marker does not make its operands observable on RV64. -/
+theorem rvIsa_leaksOperands_keep : rvIsa.leaksOperands "KEEP" = false := by decide
+
+/-- **The keep marker is a no-op on RV64**: the step advances the program counter and
+    changes nothing else. -/
+theorem rvIsa_step_keep (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
+    (s : LstateMF) : rvIsa.step P (.Lopn dsts "KEEP" srcs, tag) s = some (keepStep s) := by
+  rw [rvIsa_step]
+  exact subsetStep_keep _ _ _ P dsts srcs tag s (by decide)
 
 /-- **A mnemonic base RV64 does not support is refused**: an `Lopn` whose mnemonic base,
     at any width tag and on any operands, has `rvIsa.supports` false has no `rvIsa` step. -/
@@ -194,8 +218,13 @@ theorem rvIsa_refuse_x86 (P : LprogM) (dsts : List LOperand) (opn : String)
     (srcs : List LOperand) (tag : MemTag) (s : LstateMF)
     (h : rvIsa.supports (stripWidthTag opn) = false) :
     rvIsa.step P (.Lopn dsts opn srcs, tag) s = none := by
+  rw [rvIsa_supports, Bool.or_eq_false_iff] at h
+  have hk : (opn == "KEEP") = false := by
+    rw [beq_eq_false_iff_ne]
+    rintro rfl
+    exact absurd h.2 (by decide +kernel)
   rw [rvIsa_step]
-  exact subsetStep_refuse _ _ _ P dsts opn srcs tag s h
+  exact subsetStep_refuse _ _ _ P dsts opn srcs tag s h.1 hk
 
 /-- `MULX` at width 64 is refused on RV64. -/
 theorem rvIsa_refuse_mulx (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
@@ -1143,15 +1172,15 @@ theorem rv_and_body (P : LprogM) (n : Nat) (s : LstateMF) (b : RMState64)
 theorem rvCond_imm_one (s : LstateMF) : rvCond s (.imm 1) = true := by
   simp [rvCond, condNZ, evalOperandN]
 
-/-- **The RV64 runtime-count loop frame stays in the RV64 alphabet**: around a body of
-    control instructions and instructions of `rvBases`, and with no invariant register to
-    touch, every instruction of `blockLoopFrame` at `rvData` is a control instruction or an
-    instruction of `rvBases`. -/
+/-- **The RV64 runtime-count loop frame stays in the RV64 alphabet with the keep marker**:
+    around a body of control instructions, instructions of `rvBases` and keep markers, and
+    for every list of invariant registers, every instruction of `blockLoopFrame` at `rvData`
+    is a control instruction, an instruction of `rvBases` or a keep marker. -/
 theorem rv_blockLoopFrame_alphabet (d : Nat) (accReg idxReg ctr : String)
-    (initOp countOp : LOperand) (bodyW : Lcmd) (retReg : String)
-    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i) = true) :
-    ∀ i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp [] bodyW retReg rvData,
-      (isCtl i.li_i || mnemOk rvBases i.li_i) = true := by
+    (initOp countOp : LOperand) (invRegs : List String) (bodyW : Lcmd) (retReg : String)
+    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i || isKeep i.li_i) = true) :
+    ∀ i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp invRegs bodyW retReg rvData,
+      (isCtl i.li_i || mnemOk rvBases i.li_i || isKeep i.li_i) = true := by
   have hop : ∀ m ∈ ["MOV", "ADD", "SUB"], stripWidthTag (withWidthTag 64 m) ∈ rvBases := by
     decide +kernel
   have hmov := hop "MOV" (by decide)
@@ -1159,26 +1188,32 @@ theorem rv_blockLoopFrame_alphabet (d : Nat) (accReg idxReg ctr : String)
   have hsub := hop "SUB" (by decide)
   intro i hi
   simp only [blockLoopFrame, rvData, List.mem_append, List.mem_cons, List.map_cons,
-    List.map_nil, List.not_mem_nil, or_false, or_assoc] at hi
-  rcases hi with h | h | h | h | h | h | h | h | h | h | h | h <;>
+    List.map_nil, List.not_mem_nil, List.mem_map, or_false, or_assoc] at hi
+  rcases hi with h | h | h | h | h | h | h | h | h | h | ⟨r, -, h⟩ | h | rfl <;>
     first
+    | rfl
     | exact hb i h
-    | (subst h; simp_all [isCtl, mnemOk])
+    | (subst h; simp_all [isCtl, mnemOk, isKeep, keepTouch])
     | (split at h <;> simp_all [isCtl, mnemOk])
 
 /-- **The RV64 runtime-count loop frame holds no compare**: under the hypotheses of
-    `rv_blockLoopFrame_alphabet`, no instruction of the frame has the mnemonic base `CMP`. -/
+    `rv_blockLoopFrame_alphabet`, for every list of invariant registers, no instruction of
+    the frame has the mnemonic base `CMP`. -/
 theorem rv_blockLoopFrame_no_cmp (d : Nat) (accReg idxReg ctr : String)
-    (initOp countOp : LOperand) (bodyW : Lcmd) (retReg : String)
-    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i) = true)
-    (i : Linstr) (hi : i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp [] bodyW retReg
-      rvData) (dsts : List LOperand) (opn : String) (srcs : List LOperand)
+    (initOp countOp : LOperand) (invRegs : List String) (bodyW : Lcmd) (retReg : String)
+    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i || isKeep i.li_i) = true)
+    (i : Linstr) (hi : i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp invRegs bodyW
+      retReg rvData) (dsts : List LOperand) (opn : String) (srcs : List LOperand)
     (h : i.li_i = .Lopn dsts opn srcs) : stripWidthTag opn ≠ "CMP" := by
-  have hok := rv_blockLoopFrame_alphabet d accReg idxReg ctr initOp countOp bodyW retReg hb i hi
+  have hok :=
+    rv_blockLoopFrame_alphabet d accReg idxReg ctr initOp countOp invRegs bodyW retReg hb i hi
   rw [h] at hok
-  simp only [isCtl, mnemOk, Bool.false_or] at hok
+  simp only [isCtl, mnemOk, isKeep, Bool.false_or, Bool.or_eq_true, beq_iff_eq] at hok
   intro hc
-  rw [hc] at hok
-  exact absurd hok (by decide)
+  rcases hok with hok | hok
+  · rw [hc] at hok
+    exact absurd hok (by decide)
+  · rw [hok] at hc
+    exact absurd hc (by decide +kernel)
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa

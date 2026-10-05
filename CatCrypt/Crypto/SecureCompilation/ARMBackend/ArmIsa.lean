@@ -130,8 +130,8 @@ def armCallerSaved : List String := armRegs ++ ["x30"]
     pointer `sp`, the return registers `x0`, `x1`, the caller-saved registers and no red zone,
     the three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at
     the width of the operation), the leakage regime `armLeaksOperands`, the alphabet
-    `armBases`, no implicit reads, the register loop guard `cbnz ctr, top`, and the flag
-    zero-trip guard `cmp ctr, 0; b.eq endL`. -/
+    `armBases`, no implicit reads, the register loop guard `cbnz ctr, top`, the flag
+    zero-trip guard `cmp ctr, 0; b.eq endL`, and the invariant touch `cmp ctr, r`. -/
 def armData : IsaData where
   allocPool := armAllocPool
   scratch := ["x16", "x17"]
@@ -152,6 +152,7 @@ def armData : IsaData where
   loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
   zeroTripGuard := fun ctr _ endL =>
     [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL]
+  invTouch := fun ctr r => .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]
 
 /-! ## The step -/
 
@@ -190,6 +191,17 @@ theorem armIsa_condEval : armIsa.condEval = armCond := rfl
 theorem armIsa_leaksOperands : armIsa.leaksOperands = armLeaksOperands := rfl
 
 theorem armIsa_supports : armIsa.supports = fun base => armBases.contains base := rfl
+
+/-- The AArch64 invariant touch is the compare `CMP ctr, r`. -/
+theorem armIsa_invTouch (ctr r : String) :
+    armIsa.invTouch ctr r = .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r] := rfl
+
+/-- **The keep marker is a no-op on AArch64**: the step advances the program counter and
+    changes nothing else. -/
+theorem armIsa_step_keep (P : LprogM) (dsts srcs : List LOperand) (tag : MemTag)
+    (s : LstateMF) : armIsa.step P (.Lopn dsts "KEEP" srcs, tag) s = some (keepStep s) := by
+  rw [armIsa_step]
+  exact subsetStep_keep _ _ _ P dsts srcs tag s (by decide)
 
 /-- No base of the AArch64 alphabet leaks its data operands under `PSTATE.DIT = 1`. -/
 theorem armIsa_leaksOperands_bases : ∀ b ∈ armBases, armIsa.leaksOperands b = false := by

@@ -34,9 +34,9 @@ guards from `x86Data`. Each constant keeps the namespace of the module that uses
   callee-saved registers and the x86 register file and calling convention.
 * `X86Backend.TwoAddrLegalize.tieBase`, `tiedBases`, `needsTie`, `commBases`, `movFor`,
   `x86Data`: the mnemonic data of the two-address legaliser and the x86 instruction-set
-  data, with the flag loop guard and the flag zero-trip guard.
-* `X86Backend.TwoAddrLegalize.x86Data_loopGuard`, `x86Data_zeroTripGuard`: the two guards
-  as instruction lists.
+  data, with the flag loop guard, the flag zero-trip guard and the compare invariant touch.
+* `X86Backend.TwoAddrLegalize.x86Data_loopGuard`, `x86Data_zeroTripGuard`,
+  `x86Data_invTouch`: the two guards as instruction lists and the invariant touch.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -193,9 +193,10 @@ def movFor (opn : String) : Option String :=
 /-- **The x86 instruction-set data**: the register file and calling convention
     `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
     `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the implicit read
-    of `RDX` by the `MULX` family, the flag loop guard `CMP ctr, 0; jne top` and the flag
-    zero-trip guard `CMP ctr, 0; je endL`. The legaliser reads its mnemonic data and scratch
-    register from it, the loop exporter its two guards. -/
+    of `RDX` by the `MULX` family, the flag loop guard `CMP ctr, 0; jne top`, the flag
+    zero-trip guard `CMP ctr, 0; je endL` and the invariant touch `CMP ctr, r`. The legaliser
+    reads its mnemonic data and scratch register from it, the loop exporter its two guards
+    and its invariant touch. -/
 @[reducible] def x86Data : VIR.LprogIsa.IsaData :=
   { LprogAsmPrinter.x86Abi with
     tied := needsTie
@@ -208,7 +209,8 @@ def movFor (opn : String) : Option String :=
     loopGuard := fun ctr top =>
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top]
     zeroTripGuard := fun ctr _ endL =>
-      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL] }
+      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL]
+    invTouch := fun ctr r => .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r] }
 
 /-- The x86 loop guard is the flag guard `CMP ctr, 0; jne top`. -/
 theorem x86Data_loopGuard (ctr : String) (top : LLabel) :
@@ -220,6 +222,11 @@ theorem x86Data_loopGuard (ctr : String) (top : LLabel) :
 theorem x86Data_zeroTripGuard (ctr : String) (top endL : LLabel) :
     x86Data.zeroTripGuard ctr top endL =
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL] :=
+  rfl
+
+/-- The x86 invariant touch is the compare `CMP ctr, r`. -/
+theorem x86Data_invTouch (ctr r : String) :
+    x86Data.invTouch ctr r = .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r] :=
   rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize

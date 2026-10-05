@@ -26,8 +26,8 @@ level (`ComL`), their denotations, and their lowering to linear bodies with a
 back-edge, including leaf calls (`Lcall`) inside a loop body. Every loop lowering takes
 the instruction-set data `I : IsaData`, with default the x86 data `x86Data`, and emits its
 back edge as `I.loopGuard` and the skip of a zero runtime count as `I.zeroTripGuard`; at
-`x86Data` these are `CMP ctr, 0; jne top` and `CMP ctr, 0; je endL`. The instructions that
-touch the invariant registers are `CMP` at every `I`.
+`x86Data` these are `CMP ctr, 0; jne top` and `CMP ctr, 0; je endL`. The instruction that
+touches an invariant register `r` is `I.invTouch ctr r`; at `x86Data` it is `CMP ctr, r`.
 
 ## Main definitions
 
@@ -594,11 +594,11 @@ def forLoopLcmdN (d : Nat) (accReg : String) (initOp : LOperand)
     else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg retReg]⟩]
   let ctr := loopCtr d
   let top : LLabel := d
-  -- One `CMP Lctr, invBase` per invariant base register: a read of the base that
+  -- One touch `I.invTouch Lctr invBase` per invariant base register: a read of the base that
   -- extends its live range across the back-edge (it is otherwise dead after its
   -- last in-body use, and the linear scan would reclaim its register mid-loop).
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [.imm p.n]⟩
@@ -1201,7 +1201,7 @@ def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
   let ctr := loopCtr d
   let top : LLabel := d
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   frameAdd ++
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
@@ -1244,7 +1244,7 @@ def forLoopLcmdNRt (d : Nat) (accReg : String) (initOp countOp : LOperand)
   -- denotation. High offset so it never collides with any loop-depth `top`.
   let endL : LLabel := d + 0x40000000
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩ ]
@@ -1348,7 +1348,7 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
   let innerTop : LLabel := innerD
   let innerEnd : LLabel := innerD + 0x40000000
   let outerInvTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "CMP") [.reg outerCtr, .reg r]⟩)
+    ⟨0, I.invTouch outerCtr r⟩)
   -- Seed accumulator + outer index/counter, guard the runtime outer count.
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg outerIdxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
@@ -1400,7 +1400,7 @@ def whileLcmdNz (d : Nat) (accReg : String) (initOp guardOp : LOperand)
   let ctr := loopCtr d
   let top : LLabel := d
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [guardOp]⟩
@@ -1472,7 +1472,7 @@ def blockLoopFrame (d : Nat) (accReg idxReg ctr : String)
   let top : LLabel := d
   let endL : LLabel := d + 0x40000000
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩ ]

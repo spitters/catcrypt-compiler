@@ -1611,6 +1611,9 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
       -- annotation consumed by `frameSize`; it issues no x86 line (drop before the
       -- arity arms so the empty-dst form doesn't surface as UNHANDLED-LOPN).
       if opn == "FRAME" || opn == "FRAMEADD" then [] else
+      -- The keep marker (`LprogIsa.keepTouch`) reads a register for liveness only; it
+      -- issues no line.
+      if opn == "KEEP" then [] else
       -- MULX high-word binding. A FUSED body has no standalone `MULXHI` left
       -- (`fuseMulHiLprog` consumed the pair into one two-output `mulx`), so a
       -- `MULXHI` surviving to the text renderer means its high-word WRITE is
