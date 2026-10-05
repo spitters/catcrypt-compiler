@@ -17,20 +17,33 @@ set_option autoImplicit false
 
 `toJ` translates one instruction of the straight-line fragment that `bignumExec`
 interprets into a list of `JInstr 64`, and `toJBlock` translates a body. The covered
-shapes are the ones of `bignum_mod_p25519_4`:
+shapes are:
 
 * `Cassgn (Lvar x)` of `Pconst`, `Pvar`, `Pload U64 b (Pconst k)` and of `Papp2` with
-  `Oland`/`Olor`/`Olxor` over two variables;
+  `Oland`/`Olor`/`Olxor`/`Oadd`/`Osub` over two variables;
 * `Cassgn (Lmem U64 b (Pconst k))` of a variable;
-* `Copn` of `SUB_64` and `SBB_64` over variables, with the six-place output bundle
-  `[_, cf, _, _, _, r]`.
+* `Copn` with the output bundle `[_, cf, _, _, _, r]`: `SUB_64`, `ADD_64`, `SBB_64`,
+  `ADC_64`, and, with `cf := 0`, `XOR_64`, `SHL_64`, `SHR_64`, `SHLD_64`, `SHRD_64`;
+* `Copn` of `XOR_64` with the output bundle `[of, cf, _, _, _, r]`;
+* `Copn` of the four shifts with the output bundle `[_, _, _, _, _, r]` or `[r]`;
+* `Copn` of `MULX` with the output bundle `[hi, lo]`, and of `ADCX`/`ADOX` with the output
+  bundle `[c, r]`.
+
+An operand read before the destination is written (`opndJ`) is a constant or a variable; an
+operand read after it (`opndAfterJ`) is a constant or a variable other than the destination;
+a carry in is a variable; the second source of `MULX` may also be a load
+`Pload U64 b (Pconst k)`, translated to `mulxMem`. A shape outside these, a carry output
+naming the data output, or equal `MULX` outputs, translates to `none`.
 
 `bignumExec` keeps a carry in a register holding `0` or `1`; the address-memory machine
-`runBlockA` keeps it in `CF`. The translation moves the carry between the two: `SUB_64`
-becomes `mov r, a; sub r, b; setc cf`, and `SBB_64` becomes
-`bt c, 0; mov r, a; sbb r, b; setc cf`, so no flag is live across translated
-instructions. A shape whose destination register is also its second source, or whose
-carry output names its data output, translates to `none`.
+`runBlockA` keeps it in `CF`. The translation moves the carry between the two: an operator
+with a carry out becomes `mov r, a; op r, b; setc cf`, and one with a carry in becomes
+`bt c, 0; mov r, a; op r, b; setc cf`, so no flag is live across translated instructions.
+`ADOX` translates as `ADCX`.
+
+Not translated: the `U32` and `U8` loads and stores and the 32-bit operators (`AMem` has
+`read64`/`write64` only and `JInstr` has 64-bit `loadMem`/`storeMem` only), `DIV_64`
+(`JInstr` has no division), and `Papp1`, `Olsl`/`Olsr`, `Oeq`/`Oneq` expressions.
 
 `BJCorr s sa` relates a `BignumState` to an `AState`: equal register files, and every
 defined byte of `s.mem` equal to the byte at the same address of `sa.mem`.
@@ -46,6 +59,10 @@ defined byte of `s.mem` equal to the byte at the same address of `sa.mem`.
 ## Main results
 
 * `load64Mem_read64`, `bjMem_store64`: loads and stores agree across `BJMem`.
+* `subBorrow_eq`, `subBorrowIn_eq`, `addCarry_eq`, `addCarryIn_adc`, `addCarryIn_adcx`,
+  `mulx_eq`, `shl64_eq`, `shr64_eq`, `shld64_eq`, `shrd64_eq`: each `bignumExec` operator is
+  the word (and carry) of the `x86_*` function of its `JInstr`.
+* `execInstr_SUB` and its eleven siblings: `execInstr` on each translated operator.
 * `toJ_sim`: one translated instruction preserves `BJCorr`.
 * `bignumExec_runBlockA_sim`: a translated body preserves `BJCorr`.
 * `bignumExec_progress`: on a total memory a translatable body runs to a total memory.
@@ -75,6 +92,101 @@ def assignJ (x : String) : PExpr → Option (List (JInstr 64))
   | .Papp2 (.Oland _) (.Pvar a) (.Pvar b) => logicJ x a.gv.var.vname b.gv.var.vname .and_
   | .Papp2 (.Olor _) (.Pvar a) (.Pvar b) => logicJ x a.gv.var.vname b.gv.var.vname .or_
   | .Papp2 (.Olxor _) (.Pvar a) (.Pvar b) => logicJ x a.gv.var.vname b.gv.var.vname .xor_
+  | .Papp2 (.Oadd _) (.Pvar a) (.Pvar b) => logicJ x a.gv.var.vname b.gv.var.vname .add
+  | .Papp2 (.Osub _) (.Pvar a) (.Pvar b) => logicJ x a.gv.var.vname b.gv.var.vname .sub
+  | _ => none
+
+/-- A source operand read before any register is written: a constant as an immediate, a
+    variable as its register. -/
+def opndJ : PExpr → Option JOperand
+  | .Pconst z => some (.imm (BitVec.ofInt 64 z).toNat)
+  | .Pvar g => some (.reg g.gv.var.vname)
+  | _ => none
+
+/-- A source operand read after `r` is written: as `opndJ`, and `none` on the variable `r`. -/
+def opndAfterJ (r : String) : PExpr → Option JOperand
+  | .Pconst z => some (.imm (BitVec.ofInt 64 z).toNat)
+  | .Pvar g => if g.gv.var.vname = r then none else some (.reg g.gv.var.vname)
+  | _ => none
+
+/-- `cf, r := a op b` with a carry out: `mov r, a; op r, b; setc cf`. -/
+def carryJ (op : String → JOperand → JInstr 64) (cf r : String) (a b : PExpr) :
+    Option (List (JInstr 64)) :=
+  match opndJ a, opndAfterJ r b with
+  | some oa, some ob => if cf = r then none else some [.mov r oa, op r ob, .setc cf]
+  | _, _ => none
+
+/-- `cf, r := a op b` with the carry in held in the register `c`:
+    `bt c, 0; mov r, a; op r, b; setc cf`. -/
+def carryInJ (op : String → JOperand → JInstr 64) (cf r : String) (a b c : PExpr) :
+    Option (List (JInstr 64)) :=
+  match opndJ a, opndAfterJ r b, c with
+  | some oa, some ob, .Pvar g =>
+    if cf = r then none else some [.bt g.gv.var.vname (.imm 0), .mov r oa, op r ob, .setc cf]
+  | _, _, _ => none
+
+/-- `r := a op b`: `mov r, a; op r, b`. -/
+def wordJ (op : String → JOperand → JInstr 64) (r : String) (a b : PExpr) :
+    Option (List (JInstr 64)) :=
+  match opndJ a, opndAfterJ r b with
+  | some oa, some ob => some [.mov r oa, op r ob]
+  | _, _ => none
+
+/-- `r := dshift a b k` for a double-precision shift: `mov r, a; op r, b, k`. -/
+def dshiftJ (op : String → String → JOperand → JInstr 64) (r : String) (a b k : PExpr) :
+    Option (List (JInstr 64)) :=
+  match opndJ a, b, opndAfterJ r k with
+  | some oa, .Pvar g, some ok =>
+    if g.gv.var.vname = r then none else some [.mov r oa, op r g.gv.var.vname ok]
+  | _, _, _ => none
+
+/-- The code `js` followed by `mov cf, 0`; `none` when `cf` is `r`. -/
+def zeroCfJ (cf r : String) (js : Option (List (JInstr 64))) : Option (List (JInstr 64)) :=
+  if cf = r then none else js.map (· ++ [.mov cf (.imm 0)])
+
+/-- `hi, lo := MULX a b`: `mulx hi, lo, a, b`, with a memory second source for a load. -/
+def mulxJ (hi lo : String) (a b : PExpr) : Option (List (JInstr 64)) :=
+  if hi = lo then none else
+  match opndJ a, opndJ b, b with
+  | some oa, some ob, _ => some [.mulx hi lo oa ob]
+  | some oa, none, .Pload .U64 base (.Pconst k) => some [.mulxMem hi lo oa base.var.vname k]
+  | _, _, _ => none
+
+/-- The operators with output bundle `[_, cf, _, _, _, r]`. -/
+def subBundleJ (name cf r : String) : List PExpr → Option (List (JInstr 64))
+  | [a, b] =>
+    if name = "SUB_64" then carryJ .sub cf r a b
+    else if name = "ADD_64" then carryJ .add cf r a b
+    else if name = "XOR_64" then zeroCfJ cf r (wordJ .xor_ r a b)
+    else if name = "SHL_64" then zeroCfJ cf r (wordJ .shl r a b)
+    else if name = "SHR_64" then zeroCfJ cf r (wordJ .shr r a b)
+    else none
+  | [a, b, c] =>
+    if name = "SBB_64" then carryInJ .sbb cf r a b c
+    else if name = "ADC_64" then carryInJ .adc cf r a b c
+    else if name = "SHLD_64" then zeroCfJ cf r (dshiftJ .shld r a b c)
+    else if name = "SHRD_64" then zeroCfJ cf r (dshiftJ .shrd r a b c)
+    else none
+  | _ => none
+
+/-- The shifts with output bundle `[_, _, _, _, _, r]` or `[r]`. -/
+def shiftJ (name r : String) : List PExpr → Option (List (JInstr 64))
+  | [a, b] =>
+    if name = "SHL_64" then wordJ .shl r a b
+    else if name = "SHR_64" then wordJ .shr r a b
+    else none
+  | [a, b, c] =>
+    if name = "SHLD_64" then dshiftJ .shld r a b c
+    else if name = "SHRD_64" then dshiftJ .shrd r a b c
+    else none
+  | _ => none
+
+/-- The operators with output bundle `[x, y]`: `MULX` (`x` the high word) and `ADCX`/`ADOX`
+    (`x` the carry out). `ADOX` translates as `ADCX`: the carry lives in a register on both
+    sides, so the flag that carries it inside the translated block is immaterial. -/
+def pairJ (name x y : String) : List PExpr → Option (List (JInstr 64))
+  | [a, b] => if name = "MULX" then mulxJ x y a b else none
+  | [a, b, c] => if name = "ADCX" ∨ name = "ADOX" then carryInJ .adcx x y a b c else none
   | _ => none
 
 /-- `cf, r := SUB_64 a b` as `mov r, a; sub r, b; setc cf`. -/
@@ -91,15 +203,19 @@ def sbbJ (cf r a b c : String) : Option (List (JInstr 64)) :=
 def opnJ (name : String) (lvs : List LVal) (args : List PExpr) : Option (List (JInstr 64)) :=
   match lvs with
   | [.Lnone _ _, .Lvar cfV, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rV] =>
+    subBundleJ name cfV.var.vname rV.var.vname args
+  | [.Lvar ofV, .Lvar cfV, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rV] =>
     match args with
-    | [.Pvar a, .Pvar b] =>
-      if name = "SUB_64" then subJ cfV.var.vname rV.var.vname a.gv.var.vname b.gv.var.vname
-      else none
-    | [.Pvar a, .Pvar b, .Pvar c] =>
-      if name = "SBB_64" then
-        sbbJ cfV.var.vname rV.var.vname a.gv.var.vname b.gv.var.vname c.gv.var.vname
+    | [a, b] =>
+      if name = "XOR_64" ∧ ¬ ofV.var.vname = rV.var.vname then
+        (zeroCfJ cfV.var.vname rV.var.vname (wordJ .xor_ rV.var.vname a b)).map
+          (· ++ [.mov ofV.var.vname (.imm 0)])
       else none
     | _ => none
+  | [.Lnone _ _, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rV] =>
+    shiftJ name rV.var.vname args
+  | [.Lvar xV, .Lvar yV] => pairJ name xV.var.vname yV.var.vname args
+  | [.Lvar rV] => shiftJ name rV.var.vname args
   | _ => none
 
 /-- The translation of one instruction. -/
@@ -349,7 +465,294 @@ theorem subBorrowIn_eq (a b c : BitVec 64) :
       · simp [h']
       · simp [h, h', show ¬ a.toNat < b.toNat + 1 by omega]
 
+theorem addCarry_eq (a b : BitVec 64) :
+    addCarry a b = (if (x86_ADD a b).cf.getD false then 1 else 0, (x86_ADD a b).word) := by
+  have hc : ((a + b).toNat ≠ a.toNat + b.toNat) ↔ (a + b).toNat < a.toNat := by
+    rw [BitVec.toNat_add]
+    have := a.isLt
+    have := b.isLt
+    constructor <;> intro h <;> omega
+  simp only [addCarry, x86_ADD, rflags_of_aluop, wunsigned, Option.getD_some, BitVec.ult,
+    decide_eq_true_eq, hc]
+
+theorem addCarryIn_nat (a b c : BitVec 64) :
+    addCarryIn a b c =
+      (if 2 ^ 64 ≤ a.toNat + b.toNat + (if c.getLsbD 0 then 1 else 0) then 1 else 0,
+       BitVec.ofNat 64 (a.toNat + b.toNat + (if c.getLsbD 0 then 1 else 0))) := by
+  have hm : (c &&& 1).toNat = c.toNat % 2 := by simp [BitVec.toNat_and]
+  have hb : c.getLsbD 0 = decide (c.toNat % 2 = 1) := by
+    simp [BitVec.getLsbD, Nat.testBit_zero]
+  have ha := a.isLt
+  have hb' := b.isLt
+  have hcin : (c &&& 1).toNat = if c.getLsbD 0 then 1 else 0 := by
+    rw [hm, hb]
+    split <;> simp_all
+  simp only [addCarryIn, BitVec.ult]
+  refine Prod.ext ?_ ?_
+  · simp only
+    generalize hC : (if c.getLsbD 0 then 1 else 0) = C at hcin
+    have hC1 : C ≤ 1 := by
+      rw [← hC]
+      split <;> omega
+    have e1 : (a + b).toNat = (a.toNat + b.toNat) % 2 ^ 64 := BitVec.toNat_add a b
+    have e2 : (a + b + (c &&& 1)).toNat = ((a.toNat + b.toNat) % 2 ^ 64 + C) % 2 ^ 64 := by
+      rw [BitVec.toNat_add, e1, hcin]
+    by_cases h1 : (a + b).toNat < a.toNat
+    · have h3 : 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
+      by_cases h2 : (a + b + (c &&& 1)).toNat < (a + b).toNat
+      · simp only [decide_eq_true h1, decide_eq_true h2, if_pos h3, if_true]
+        rfl
+      · simp only [decide_eq_true h1, decide_eq_false h2, if_pos h3, if_true]
+        rfl
+    · by_cases h2 : (a + b + (c &&& 1)).toNat < (a + b).toNat
+      · have h3 : 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
+        simp only [decide_eq_false h1, decide_eq_true h2, if_pos h3]
+        rfl
+      · have h3 : ¬ 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
+        simp only [decide_eq_false h1, decide_eq_false h2, if_neg h3]
+        rfl
+  · apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_add, hcin, BitVec.toNat_ofNat]
+    omega
+
+theorem addCarryIn_adc (a b c : BitVec 64) :
+    addCarryIn a b c = (if (x86_ADC a b (c.getLsbD 0)).cf.getD false then 1 else 0,
+      (x86_ADC a b (c.getLsbD 0)).word) := by
+  rw [addCarryIn_nat]
+  have ha := a.isLt
+  have hb' := b.isLt
+  simp only [x86_ADC, rflags_of_aluop, add_carry, wunsigned, Option.getD_some,
+    BitVec.toNat_ofNat]
+  congr 1
+  generalize (if c.getLsbD 0 then 1 else 0) = C
+  by_cases h : 2 ^ 64 ≤ a.toNat + b.toNat + C
+  · rw [if_pos h, if_pos (by simp; omega)]
+  · rw [if_neg h, if_neg (by simp; omega)]
+
+theorem addCarryIn_adcx (a b c : BitVec 64) :
+    addCarryIn a b c = (if (x86_ADCX a b (c.getLsbD 0)).1.getD false then 1 else 0,
+      (x86_ADCX a b (c.getLsbD 0)).2) := by
+  rw [addCarryIn_nat]
+  simp only [x86_ADCX, waddcarry, Option.getD_some, decide_eq_true_eq]
+
+theorem mulx_eq (a b : BitVec 64) :
+    mulx a b = ((x86_MULX_lo_hi a b).2, (x86_MULX_lo_hi a b).1) := by
+  simp only [mulx, x86_MULX_lo_hi, wumul, high_bits, Nat.shiftRight_eq_div_pow]
+
+theorem shl64_eq (a k : BitVec 64) : shl64 a k = (x86_SHL a k).word := by
+  simp only [x86_SHL]
+  by_cases h : shiftCount k = 0
+  · rw [if_pos h]
+    simp only [shiftCount] at h
+    simp [rflags_None, shl64, h]
+  · rw [if_neg h]
+    simp only [shiftCount] at h
+    simp only [rflags_OF, shl64, wshl, shiftCount]
+    congr 1
+    omega
+
+theorem shr64_eq (a k : BitVec 64) : shr64 a k = (x86_SHR a k).word := by
+  simp only [x86_SHR]
+  by_cases h : shiftCount k = 0
+  · rw [if_pos h]
+    simp only [shiftCount] at h
+    simp [rflags_None, shr64, h]
+  · rw [if_neg h]
+    simp only [shiftCount] at h
+    simp only [rflags_OF, shr64, wshr, shiftCount]
+    congr 1
+    omega
+
+theorem shld64_eq (a b k : BitVec 64) : shld64 a b k = (x86_SHLD a b k).word := by
+  simp only [x86_SHLD]
+  by_cases h : shiftCount k = 0
+  · rw [if_pos h]
+    simp only [shiftCount] at h
+    simp only [rflags_None, shld64, h, Nat.sub_zero, BitVec.shiftLeft_zero]
+    rw [BitVec.ushiftRight_eq_zero (by omega), BitVec.or_zero]
+  · rw [if_neg h]
+    simp only [shiftCount] at h
+    simp only [rflags_OF, shld64, wshl, wshr, shiftCount]
+    rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
+
+theorem shrd64_eq (a b k : BitVec 64) : shrd64 a b k = (x86_SHRD a b k).word := by
+  simp only [x86_SHRD]
+  by_cases h : shiftCount k = 0
+  · rw [if_pos h]
+    simp only [shiftCount] at h
+    simp only [rflags_None, shrd64, h, Nat.sub_zero, BitVec.ushiftRight_zero]
+    rw [BitVec.shiftLeft_eq_zero (by omega), BitVec.or_zero]
+  · rw [if_neg h]
+    simp only [shiftCount] at h
+    simp only [rflags_OF, shrd64, wshl, wshr, shiftCount]
+    rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
+
+/-! ## Operands -/
+
+theorem opndJ_spec {e : PExpr} {o : JOperand} (h : opndJ e = some o) (s : BignumState) :
+    ∃ v, evalPExpr s e = some v ∧ ∀ t : JState 64, (∀ y, t.regs y = s.regs y) → o.eval t = v := by
+  cases e <;> simp only [opndJ, reduceCtorEq, Option.some.injEq] at h <;> subst h
+  · exact ⟨_, rfl, fun _ _ => by simp only [JOperand.eval, BitVec.ofNat_toNat,
+      BitVec.setWidth_eq]⟩
+  · exact ⟨_, rfl, fun t ht => by simp [ht]⟩
+
+theorem opndAfterJ_spec {r : String} {e : PExpr} {o : JOperand} (h : opndAfterJ r e = some o)
+    (s : BignumState) :
+    ∃ v, evalPExpr s e = some v ∧
+      ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = s.regs y) → o.eval t = v := by
+  cases e <;> simp only [opndAfterJ, reduceCtorEq, Option.some.injEq] at h
+  · subst h
+    exact ⟨_, rfl, fun _ _ => by simp only [JOperand.eval, BitVec.ofNat_toNat,
+      BitVec.setWidth_eq]⟩
+  · split at h
+    · cases h
+    · rename_i hne
+      cases h
+      exact ⟨_, rfl, fun t ht => by simp [ht _ hne]⟩
+
+/-! ## Blocks of the address machine -/
+
+theorem run_mov_op (sa : AState) (r : String) (oa : JOperand) (i : JInstr 64)
+    (G : BitVec 64 → Bool → JFlag × BitVec 64)
+    (hregs : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).regs = fun y => if y = r then (G (t.regs r) (t.flagB (·.cf))).2
+        else t.regs y)
+    (hw : ∀ t : AState, writeAddr t i = none) :
+    (runBlockA sa [.mov r oa, i]).regs =
+        (fun y => if y = r then (G (oa.eval sa.view) (sa.view.flagB (·.cf))).2 else sa.regs y) ∧
+      (runBlockA sa [.mov r oa, i]).mem = sa.mem := by
+  have hv : ∀ y, y ≠ r → (evalInstrA sa (.mov r oa)).view.regs y = sa.regs y := by
+    intro y hy
+    show (if y = r then _ else _) = _
+    rw [if_neg hy]
+    rfl
+  have hr : (evalInstrA sa (.mov r oa)).view.regs r = oa.eval sa.view := by
+    show (if r = r then _ else _) = _
+    rw [if_pos rfl]
+    rfl
+  refine ⟨?_, ?_⟩
+  · show (evalInstr (evalInstrA sa (.mov r oa)).view i).regs = _
+    rw [hregs _ hv, hr]
+    funext y
+    by_cases hy : y = r
+    · simp only [hy, if_true]
+      rfl
+    · simp only [hy, if_false]
+      exact hv y hy
+  · show (match writeAddr (evalInstrA sa (.mov r oa)) i with
+      | some a => _ | none => (evalInstrA sa (.mov r oa)).mem) = sa.mem
+    rw [hw]
+    rfl
+
+theorem run_mov_op_cf (sa : AState) (r : String) (oa : JOperand) (i : JInstr 64)
+    (G : BitVec 64 → Bool → JFlag × BitVec 64)
+    (hcf : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).flags.cf = (G (t.regs r) (t.flagB (·.cf))).1) :
+    (runBlockA sa [.mov r oa, i]).flags.cf = (G (oa.eval sa.view) (sa.view.flagB (·.cf))).1 := by
+  have hv : ∀ y, y ≠ r → (evalInstrA sa (.mov r oa)).view.regs y = sa.regs y := by
+    intro y hy
+    show (if y = r then _ else _) = _
+    rw [if_neg hy]
+    rfl
+  have hr : (evalInstrA sa (.mov r oa)).view.regs r = oa.eval sa.view := by
+    show (if r = r then _ else _) = _
+    rw [if_pos rfl]
+    rfl
+  show (evalInstr (evalInstrA sa (.mov r oa)).view i).flags.cf = _
+  rw [hcf _ hv, hr]
+  rfl
+
+theorem run_mov_op_setc (sa : AState) (cf r : String) (hcr : cf ≠ r) (oa : JOperand)
+    (i : JInstr 64) (G : BitVec 64 → Bool → JFlag × BitVec 64)
+    (hregs : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).regs = fun y => if y = r then (G (t.regs r) (t.flagB (·.cf))).2
+        else t.regs y)
+    (hcf : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).flags.cf = (G (t.regs r) (t.flagB (·.cf))).1)
+    (hw : ∀ t : AState, writeAddr t i = none) :
+    (runBlockA sa [.mov r oa, i, .setc cf]).regs =
+        (fun y => if y = r then (G (oa.eval sa.view) (sa.view.flagB (·.cf))).2
+          else if y = cf then
+            (if ((G (oa.eval sa.view) (sa.view.flagB (·.cf))).1).getD false then 1 else 0)
+          else sa.regs y) ∧
+      (runBlockA sa [.mov r oa, i, .setc cf]).mem = sa.mem := by
+  obtain ⟨h1, h3⟩ := run_mov_op sa r oa i G hregs hw
+  have h2 := run_mov_op_cf sa r oa i G hcf
+  have he : runBlockA sa [.mov r oa, i, .setc cf] =
+      evalInstrA (runBlockA sa [.mov r oa, i]) (.setc cf) := rfl
+  rw [he]
+  refine ⟨?_, h3⟩
+  funext y
+  show (if y = cf then (if ((runBlockA sa [.mov r oa, i]).flags.cf).getD false then 1 else 0)
+    else (runBlockA sa [.mov r oa, i]).regs y) = _
+  rw [h2, h1]
+  by_cases hy : y = r
+  · subst hy
+    simp only [if_true, if_neg hcr.symm]
+  · simp only [hy, if_false]
+
 /-! ## One instruction -/
+
+theorem setReg_comm (s : BignumState) (x y : String) (v w : BitVec 64) (h : x ≠ y) :
+    setReg (setReg s x v) y w = setReg (setReg s y w) x v := by
+  simp only [setReg, BignumState.mk.injEq, and_true]
+  funext z
+  by_cases hx : z = x
+  · subst hx
+    simp [h]
+  · simp [hx]
+
+/-- The view of a `BJCorr`-related state evaluates an operand as the register file does. -/
+theorem eval_view {s : BignumState} {sa : AState} (hc : BJCorr s sa) :
+    ∀ y, sa.view.regs y = s.regs y := fun y => by rw [hc.1]; rfl
+
+theorem sim_carryBlock {s : BignumState} {sa : AState} (hc : BJCorr s sa) (cf r : String)
+    (hcr : cf ≠ r) (oa : JOperand) (va : BitVec 64) (hva : oa.eval sa.view = va)
+    (i : JInstr 64) (G : BitVec 64 → Bool → JFlag × BitVec 64)
+    (hregs : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).regs = fun y => if y = r then (G (t.regs r) (t.flagB (·.cf))).2
+        else t.regs y)
+    (hcf : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).flags.cf = (G (t.regs r) (t.flagB (·.cf))).1)
+    (hw : ∀ t : AState, writeAddr t i = none) :
+    BJCorr (setReg (setReg s cf
+        (if ((G va (sa.view.flagB (·.cf))).1).getD false then 1 else 0)) r
+        (G va (sa.view.flagB (·.cf))).2)
+      (runBlockA sa [.mov r oa, i, .setc cf]) := by
+  obtain ⟨h1, h2⟩ := run_mov_op_setc sa cf r hcr oa i G hregs hcf hw
+  subst hva
+  refine ⟨?_, ?_⟩
+  · rw [h1, ← hc.1]
+    rfl
+  · rw [h2]
+    exact hc.2
+
+theorem sim_wordBlock {s : BignumState} {sa : AState} (hc : BJCorr s sa) (r : String)
+    (oa : JOperand) (va : BitVec 64) (hva : oa.eval sa.view = va) (i : JInstr 64)
+    (G : BitVec 64 → Bool → JFlag × BitVec 64)
+    (hregs : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) →
+      (evalInstr t i).regs = fun y => if y = r then (G (t.regs r) (t.flagB (·.cf))).2
+        else t.regs y)
+    (hw : ∀ t : AState, writeAddr t i = none) :
+    BJCorr (setReg s r (G va (sa.view.flagB (·.cf))).2) (runBlockA sa [.mov r oa, i]) := by
+  obtain ⟨h1, h3⟩ := run_mov_op sa r oa i G hregs hw
+  subst hva
+  refine ⟨?_, ?_⟩
+  · rw [h1, ← hc.1]
+    rfl
+  · rw [h3]
+    exact hc.2
+
+/-- The state after `bt c, 0`: registers and memory unchanged, `CF` bit `0` of `c`. -/
+theorem bt_view (sa : AState) (c : String) :
+    (evalInstrA sa (.bt c (.imm 0))).regs = sa.regs ∧
+      (evalInstrA sa (.bt c (.imm 0))).mem = sa.mem ∧
+      (evalInstrA sa (.bt c (.imm 0))).view.flagB (·.cf) = (sa.regs c).getLsbD 0 :=
+  ⟨rfl, rfl, by simp [evalInstrA, evalInstr, AState.view, JState.flagB, x86_BT, wbit]⟩
+
+theorem bjCorr_bt {s : BignumState} {sa : AState} (hc : BJCorr s sa) (c : String) :
+    BJCorr s (evalInstrA sa (.bt c (.imm 0))) :=
+  ⟨by rw [(bt_view sa c).1]; exact hc.1, by rw [(bt_view sa c).2.1]; exact hc.2⟩
 
 theorem sim_mov {s : BignumState} {sa : AState} (hc : BJCorr s sa) (x : String) (w : BitVec 64)
     (o : JOperand) (ho : o.eval sa.view = w) :
@@ -440,6 +843,498 @@ theorem sim_sbb {s : BignumState} {sa : AState} (hc : BJCorr s sa) (cf r a b c :
       (simp_all; try congr)
   · simpa [setReg, evalInstrA, writeAddr] using hm
 
+/-! ### `execInstr` on the translated operators -/
+
+section ExecEqs
+
+variable (s : BignumState) (lvs : List LVal) (tg : AssgnTag) (op : AsmOp) (a b c : PExpr)
+
+theorem execInstr_SUB (hn : op.name = "SUB_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeSubBundle s lvs (subBorrow x y).1 (subBorrow x y).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_ADD (hn : op.name = "ADD_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeSubBundle s lvs (addCarry x y).1 (addCarry x y).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_XOR (hn : op.name = "XOR_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeXorBundle s lvs 0 0 (x ^^^ y)) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_SHL (hn : op.name = "SHL_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeShiftBundle s lvs (shl64 x y)) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_SHR (hn : op.name = "SHR_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeShiftBundle s lvs (shr64 x y)) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_MULX (hn : op.name = "MULX") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b
+      writeMulxBundle s lvs (mulx x y).1 (mulx x y).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_SBB (hn : op.name = "SBB_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeSubBundle s lvs (subBorrowIn x y z).1 (subBorrowIn x y z).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_ADC (hn : op.name = "ADC_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeSubBundle s lvs (addCarryIn x y z).1 (addCarryIn x y z).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_ADCX (hn : op.name = "ADCX") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeAdxBundle s lvs (addCarryIn x y z).1 (addCarryIn x y z).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_ADOX (hn : op.name = "ADOX") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeAdxBundle s lvs (addCarryIn x y z).1 (addCarryIn x y z).2) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_SHLD (hn : op.name = "SHLD_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeShiftBundle s lvs (shld64 x y z)) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+theorem execInstr_SHRD (hn : op.name = "SHRD_64") :
+    execInstr s (.Copn lvs tg (.Oasm op) [a, b, c]) = (do
+      let x ← evalPExpr s a; let y ← evalPExpr s b; let z ← evalPExpr s c
+      writeShiftBundle s lvs (shrd64 x y z)) := by
+  obtain ⟨nm⟩ := op
+  cases hn
+  rfl
+
+end ExecEqs
+
+theorem sim_movImm0 {s : BignumState} {sa : AState} (cf r : String)
+    (hcr : cf ≠ r) (w : BitVec 64) (js : List (JInstr 64))
+    (h : BJCorr (setReg s r w) (runBlockA sa js)) :
+    BJCorr (setReg (setReg s cf 0) r w) (runBlockA sa (js ++ [.mov cf (.imm 0)])) := by
+  rw [runBlockA_append, setReg_comm _ _ _ _ _ hcr]
+  exact sim_mov h cf 0 _ rfl
+
+theorem sim_zeroCf {s : BignumState} {sa : AState} {cf r : String}
+    {o : Option (List (JInstr 64))} {js : List (JInstr 64)} (w : BitVec 64)
+    (h : zeroCfJ cf r o = some js)
+    (ho : ∀ js', o = some js' → BJCorr (setReg s r w) (runBlockA sa js')) :
+    BJCorr (setReg (setReg s cf 0) r w) (runBlockA sa js) := by
+  unfold zeroCfJ at h
+  split at h
+  · cases h
+  · rename_i hcr
+    obtain ⟨js', hjs', rfl⟩ := Option.map_eq_some_iff.1 h
+    exact sim_movImm0 cf r hcr w js' (ho js' hjs')
+
+theorem sim_carry2 {s : BignumState} {sa : AState} (hc : BJCorr s sa)
+    (op : String → JOperand → JInstr 64) (G : BitVec 64 → BitVec 64 → JFlag × BitVec 64)
+    (hregs : ∀ (t : JState 64) x o, (evalInstr t (op x o)).regs =
+      fun y => if y = x then (G (t.regs x) (o.eval t)).2 else t.regs y)
+    (hcf : ∀ (t : JState 64) x o, (evalInstr t (op x o)).flags.cf = (G (t.regs x) (o.eval t)).1)
+    (hw : ∀ (t : AState) x o, writeAddr t (op x o) = none)
+    {cf r : String} {a b : PExpr} {js : List (JInstr 64)} (hj : carryJ op cf r a b = some js)
+    {va vb : BitVec 64} (ha : evalPExpr s a = some va) (hb : evalPExpr s b = some vb) :
+    BJCorr (setReg (setReg s cf (if ((G va vb).1).getD false then 1 else 0)) r (G va vb).2)
+      (runBlockA sa js) := by
+  unfold carryJ at hj
+  split at hj
+  · next oa ob h1 h2 =>
+    split at hj
+    · cases hj
+    · next hcr =>
+      cases hj
+      obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+      obtain ⟨vb', hb', hob⟩ := opndAfterJ_spec h2 s
+      rw [ha] at ha'
+      rw [hb] at hb'
+      cases ha'
+      cases hb'
+      have hob' : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) → ob.eval t = vb :=
+        fun t ht => hob t fun y hy => by rw [ht y hy, ← hc.1]
+      exact sim_carryBlock hc cf r hcr oa va (hoa _ (eval_view hc)) (op r ob)
+        (fun x _ => G x vb) (fun t ht => by rw [hregs, hob' t ht])
+        (fun t ht => by rw [hcf, hob' t ht]) (fun t => hw t r ob)
+  · cases hj
+
+theorem sim_carry3 {s : BignumState} {sa : AState} (hc : BJCorr s sa)
+    (op : String → JOperand → JInstr 64)
+    (G : BitVec 64 → BitVec 64 → Bool → JFlag × BitVec 64)
+    (hregs : ∀ (t : JState 64) x o, (evalInstr t (op x o)).regs =
+      fun y => if y = x then (G (t.regs x) (o.eval t) (t.flagB (·.cf))).2 else t.regs y)
+    (hcf : ∀ (t : JState 64) x o,
+      (evalInstr t (op x o)).flags.cf = (G (t.regs x) (o.eval t) (t.flagB (·.cf))).1)
+    (hw : ∀ (t : AState) x o, writeAddr t (op x o) = none)
+    {cf r : String} {a b c : PExpr} {js : List (JInstr 64)}
+    (hj : carryInJ op cf r a b c = some js)
+    {va vb vc : BitVec 64} (ha : evalPExpr s a = some va) (hb : evalPExpr s b = some vb)
+    (hcv : evalPExpr s c = some vc) :
+    BJCorr (setReg (setReg s cf
+        (if ((G va vb (vc.getLsbD 0)).1).getD false then 1 else 0)) r (G va vb (vc.getLsbD 0)).2)
+      (runBlockA sa js) := by
+  unfold carryInJ at hj
+  split at hj
+  · next oa ob g h1 h2 =>
+    split at hj
+    · cases hj
+    · next hcr =>
+      cases hj
+      obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+      obtain ⟨vb', hb', hob⟩ := opndAfterJ_spec h2 s
+      rw [ha] at ha'
+      rw [hb] at hb'
+      cases ha'
+      cases hb'
+      simp only [evalPExpr, Option.some.injEq] at hcv
+      subst hcv
+      have hc' := bjCorr_bt hc g.gv.var.vname
+      obtain ⟨hbr, -, hbf⟩ := bt_view sa g.gv.var.vname
+      have hob' : ∀ t : JState 64, (∀ y, y ≠ r →
+          t.regs y = (evalInstrA sa (.bt g.gv.var.vname (.imm 0))).regs y) → ob.eval t = vb :=
+        fun t ht => hob t fun y hy => by rw [ht y hy, hbr, ← hc.1]
+      have := sim_carryBlock hc' cf r hcr oa va (hoa _ (eval_view hc')) (op r ob)
+        (fun x fl => G x vb fl) (fun t ht => by rw [hregs, hob' t ht])
+        (fun t ht => by rw [hcf, hob' t ht]) (fun t => hw t r ob)
+      rw [hbf, ← hc.1] at this
+      exact this
+  · cases hj
+
+theorem sim_word2 {s : BignumState} {sa : AState} (hc : BJCorr s sa)
+    (op : String → JOperand → JInstr 64) (F : BitVec 64 → BitVec 64 → BitVec 64)
+    (hregs : ∀ (t : JState 64) x o, (evalInstr t (op x o)).regs =
+      fun y => if y = x then F (t.regs x) (o.eval t) else t.regs y)
+    (hw : ∀ (t : AState) x o, writeAddr t (op x o) = none)
+    {r : String} {a b : PExpr} {js : List (JInstr 64)} (hj : wordJ op r a b = some js)
+    {va vb : BitVec 64} (ha : evalPExpr s a = some va) (hb : evalPExpr s b = some vb) :
+    BJCorr (setReg s r (F va vb)) (runBlockA sa js) := by
+  unfold wordJ at hj
+  split at hj
+  · next oa ob h1 h2 =>
+    cases hj
+    obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+    obtain ⟨vb', hb', hob⟩ := opndAfterJ_spec h2 s
+    rw [ha] at ha'
+    rw [hb] at hb'
+    cases ha'
+    cases hb'
+    have hob' : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) → ob.eval t = vb :=
+      fun t ht => hob t fun y hy => by rw [ht y hy, ← hc.1]
+    exact sim_wordBlock hc r oa va (hoa _ (eval_view hc)) (op r ob) (fun x _ => (none, F x vb))
+      (fun t ht => by rw [hregs, hob' t ht]) (fun t => hw t r ob)
+  · cases hj
+
+theorem sim_dshift {s : BignumState} {sa : AState} (hc : BJCorr s sa)
+    (op : String → String → JOperand → JInstr 64)
+    (F : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64)
+    (hregs : ∀ (t : JState 64) x src o, (evalInstr t (op x src o)).regs =
+      fun y => if y = x then F (t.regs x) (t.regs src) (o.eval t) else t.regs y)
+    (hw : ∀ (t : AState) x src o, writeAddr t (op x src o) = none)
+    {r : String} {a b k : PExpr} {js : List (JInstr 64)} (hj : dshiftJ op r a b k = some js)
+    {va vb vk : BitVec 64} (ha : evalPExpr s a = some va) (hb : evalPExpr s b = some vb)
+    (hk : evalPExpr s k = some vk) :
+    BJCorr (setReg s r (F va vb vk)) (runBlockA sa js) := by
+  unfold dshiftJ at hj
+  split at hj
+  · next oa g ok h1 h2 =>
+    split at hj
+    · cases hj
+    · next hgr =>
+      cases hj
+      obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+      obtain ⟨vk', hk', hok⟩ := opndAfterJ_spec h2 s
+      rw [ha] at ha'
+      rw [hk] at hk'
+      cases ha'
+      cases hk'
+      simp only [evalPExpr, Option.some.injEq] at hb
+      subst hb
+      have hok' : ∀ t : JState 64, (∀ y, y ≠ r → t.regs y = sa.regs y) → ok.eval t = vk :=
+        fun t ht => hok t fun y hy => by rw [ht y hy, ← hc.1]
+      exact sim_wordBlock hc r oa va (hoa _ (eval_view hc)) (op r g.gv.var.vname ok)
+        (fun x _ => (none, F x (s.regs g.gv.var.vname) vk))
+        (fun t ht => by rw [hregs, hok' t ht, ht _ hgr, ← hc.1]) (fun t => hw t r _ ok)
+  · cases hj
+
+theorem sim_mulx {s : BignumState} {sa : AState} (hc : BJCorr s sa) {hi lo : String}
+    {a b : PExpr} {js : List (JInstr 64)} (hj : mulxJ hi lo a b = some js) {va vb : BitVec 64}
+    (ha : evalPExpr s a = some va) (hb : evalPExpr s b = some vb) :
+    BJCorr (setReg (setReg s hi (mulx va vb).1) lo (mulx va vb).2) (runBlockA sa js) := by
+  unfold mulxJ at hj
+  split at hj
+  · cases hj
+  · next hne =>
+    obtain ⟨hr, hm⟩ := hc
+    have key : ∀ (w : BitVec 64), mulx va vb = ((x86_MULX_lo_hi va w).2,
+        (x86_MULX_lo_hi va w).1) → (i : JInstr 64) →
+        (evalInstrA sa i).regs = (fun y => if y = hi then (x86_MULX_lo_hi va w).2
+          else if y = lo then (x86_MULX_lo_hi va w).1 else sa.regs y) →
+        (evalInstrA sa i).mem = sa.mem →
+        BJCorr (setReg (setReg s hi (mulx va vb).1) lo (mulx va vb).2) (runBlockA sa [i]) := by
+      intro w hw i hregs hmem
+      refine ⟨?_, ?_⟩
+      · show _ = (evalInstrA sa i).regs
+        rw [hregs, hw]
+        funext y
+        simp only [setReg, hr]
+        by_cases h1 : y = lo
+        · subst h1
+          simp [Ne.symm hne]
+        · simp [h1]
+      · show BJMem s.mem (evalInstrA sa i).mem
+        rw [hmem]
+        exact hm
+    split at hj
+    · next oa ob h1 h2 =>
+      cases hj
+      obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+      obtain ⟨vb', hb', hob⟩ := opndJ_spec h2 s
+      rw [ha] at ha'
+      rw [hb] at hb'
+      cases ha'
+      cases hb'
+      have e1 := hoa sa.view (fun y => by rw [hr]; rfl)
+      have e2 := hob sa.view (fun y => by rw [hr]; rfl)
+      refine key vb (mulx_eq va vb) _ ?_ rfl
+      funext y
+      simp only [evalInstrA, evalInstr, JState.setReg, e1, e2]
+      by_cases h1 : y = hi
+      · simp [h1]
+      · simp [h1, AState.view]
+    · next oa base k h1 h2 =>
+      cases hj
+      obtain ⟨va', ha', hoa⟩ := opndJ_spec h1 s
+      rw [ha] at ha'
+      cases ha'
+      have e1 := hoa sa.view (fun y => by rw [hr]; rfl)
+      simp only [evalPExpr, resolveAddr, Option.bind_eq_bind, Option.bind_some,
+        Option.bind_eq_some_iff, Option.some.injEq] at hb
+      obtain ⟨v, hv, rfl⟩ := hb
+      have hv' := load64Mem_read64 hm _ _ hv
+      rw [toBitVec_ofNat_toNat, hr] at hv'
+      have e3 : sa.view.load base.var.vname k = BitVec.ofNat 64 v.toNat := by
+        rw [show sa.view.load base.var.vname k =
+          read64 sa.mem (sa.regs base.var.vname + BitVec.ofInt 64 k) from rfl, hv']
+        simp
+      refine key _ (mulx_eq va _) _ ?_ rfl
+      funext y
+      simp only [evalInstrA, evalInstr, JState.setReg, e1, e3]
+      by_cases h1 : y = hi
+      · simp [h1]
+      · simp [h1, AState.view]
+    · cases hj
+
+theorem sim_subBundle {s s' : BignumState} {sa : AState} (hc : BJCorr s sa) {op : AsmOp}
+    {tg : AssgnTag} {i1 i2 i3 i4 : VarInfo} {t1 t2 t3 t4 : SType} {cfV rV : VarI}
+    {args : List PExpr} {js : List (JInstr 64)}
+    (h : subBundleJ op.name cfV.var.vname rV.var.vname args = some js)
+    (he : execInstr s (.Copn [.Lnone i1 t1, .Lvar cfV, .Lnone i2 t2, .Lnone i3 t3, .Lnone i4 t4,
+      .Lvar rV] tg (.Oasm op) args) = some s') :
+    BJCorr s' (runBlockA sa js) := by
+  unfold subBundleJ at h
+  split at h
+  · split_ifs at h with h1 h2 h3 h4 h5
+    · simp only [execInstr_SUB (hn := h1), writeSubBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      have := sim_carry2 hc .sub (fun x y => ((x86_SUB x y).cf, (x86_SUB x y).word))
+        (fun _ _ _ => rfl) (fun _ _ _ => rfl) (fun _ _ _ => rfl) h ha hb
+      rwa [subBorrow_eq]
+    · simp only [execInstr_ADD (hn := h2), writeSubBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      have := sim_carry2 hc .add (fun x y => ((x86_ADD x y).cf, (x86_ADD x y).word))
+        (fun _ _ _ => rfl) (fun _ _ _ => rfl) (fun _ _ _ => rfl) h ha hb
+      rwa [addCarry_eq]
+    · simp only [execInstr_XOR (hn := h3), writeXorBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      exact sim_zeroCf _ h fun js' hj =>
+        sim_word2 hc .xor_ (fun x y => x ^^^ y) (fun _ _ _ => rfl) (fun _ _ _ => rfl) hj ha hb
+    · simp only [execInstr_SHL (hn := h4), writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      exact sim_zeroCf _ h fun js' hj => by
+        rw [shl64_eq]
+        exact sim_word2 hc .shl (fun x y => (x86_SHL x y).word) (fun _ _ _ => rfl)
+          (fun _ _ _ => rfl) hj ha hb
+    · simp only [execInstr_SHR (hn := h5), writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      exact sim_zeroCf _ h fun js' hj => by
+        rw [shr64_eq]
+        exact sim_word2 hc .shr (fun x y => (x86_SHR x y).word) (fun _ _ _ => rfl)
+          (fun _ _ _ => rfl) hj ha hb
+  · split_ifs at h with h1 h2 h3 h4
+    · simp only [execInstr_SBB (hn := h1), writeSubBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      have := sim_carry3 hc .sbb (fun x y c => ((x86_SBB x y c).cf, (x86_SBB x y c).word))
+        (fun _ _ _ => rfl) (fun _ _ _ => rfl) (fun _ _ _ => rfl) h ha hb hcv
+      rwa [subBorrowIn_eq]
+    · simp only [execInstr_ADC (hn := h2), writeSubBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      have := sim_carry3 hc .adc (fun x y c => ((x86_ADC x y c).cf, (x86_ADC x y c).word))
+        (fun _ _ _ => rfl) (fun _ _ _ => rfl) (fun _ _ _ => rfl) h ha hb hcv
+      rwa [addCarryIn_adc]
+    · simp only [execInstr_SHLD (hn := h3), writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      exact sim_zeroCf _ h fun js' hj => by
+        rw [shld64_eq]
+        exact sim_dshift hc .shld (fun x y k => (x86_SHLD x y k).word) (fun _ _ _ _ => rfl)
+          (fun _ _ _ _ => rfl) hj ha hb hcv
+    · simp only [execInstr_SHRD (hn := h4), writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      exact sim_zeroCf _ h fun js' hj => by
+        rw [shrd64_eq]
+        exact sim_dshift hc .shrd (fun x y k => (x86_SHRD x y k).word) (fun _ _ _ _ => rfl)
+          (fun _ _ _ _ => rfl) hj ha hb hcv
+  · cases h
+
+theorem sim_shiftJ {s s' : BignumState} {sa : AState} (hc : BJCorr s sa) {op : AsmOp}
+    {tg : AssgnTag} {lvs : List LVal} {r : String} {args : List PExpr} {js : List (JInstr 64)}
+    (h : shiftJ op.name r args = some js)
+    (he : execInstr s (.Copn lvs tg (.Oasm op) args) = some s')
+    (hlv : ∀ (t : BignumState) v, writeShiftBundle t lvs v = some (setReg t r v)) :
+    BJCorr s' (runBlockA sa js) := by
+  unfold shiftJ at h
+  split at h
+  · split_ifs at h with h1 h2
+    · simp only [execInstr_SHL (hn := h1), hlv, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      rw [shl64_eq]
+      exact sim_word2 hc .shl (fun x y => (x86_SHL x y).word) (fun _ _ _ => rfl)
+        (fun _ _ _ => rfl) h ha hb
+    · simp only [execInstr_SHR (hn := h2), hlv, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, rfl⟩ := he
+      rw [shr64_eq]
+      exact sim_word2 hc .shr (fun x y => (x86_SHR x y).word) (fun _ _ _ => rfl)
+        (fun _ _ _ => rfl) h ha hb
+  · split_ifs at h with h1 h2
+    · simp only [execInstr_SHLD (hn := h1), hlv, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      rw [shld64_eq]
+      exact sim_dshift hc .shld (fun x y k => (x86_SHLD x y k).word) (fun _ _ _ _ => rfl)
+        (fun _ _ _ _ => rfl) h ha hb hcv
+    · simp only [execInstr_SHRD (hn := h2), hlv, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      rw [shrd64_eq]
+      exact sim_dshift hc .shrd (fun x y k => (x86_SHRD x y k).word) (fun _ _ _ _ => rfl)
+        (fun _ _ _ _ => rfl) h ha hb hcv
+  · cases h
+
+theorem sim_xor2 {s s' : BignumState} {sa : AState} (hc : BJCorr s sa) {op : AsmOp}
+    {tg : AssgnTag} {i2 i3 i4 : VarInfo} {t2 t3 t4 : SType} {ofV cfV rV : VarI}
+    {args : List PExpr} {js : List (JInstr 64)}
+    (h : (match args with
+      | [a, b] =>
+        if op.name = "XOR_64" ∧ ¬ ofV.var.vname = rV.var.vname then
+          (zeroCfJ cfV.var.vname rV.var.vname (wordJ .xor_ rV.var.vname a b)).map
+            (· ++ [.mov ofV.var.vname (.imm 0)])
+        else none
+      | _ => none) = some js)
+    (he : execInstr s (.Copn [.Lvar ofV, .Lvar cfV, .Lnone i2 t2, .Lnone i3 t3, .Lnone i4 t4,
+      .Lvar rV] tg (.Oasm op) args) = some s') :
+    BJCorr s' (runBlockA sa js) := by
+  split at h
+  · split_ifs at h with h1
+    obtain ⟨hn, hor⟩ := h1
+    simp only [execInstr_XOR (hn := hn), writeXorBundle, Option.bind_eq_bind,
+      Option.bind_eq_some_iff, Option.some.injEq] at he
+    obtain ⟨va, ha, vb, hb, rfl⟩ := he
+    obtain ⟨js', hj, rfl⟩ := Option.map_eq_some_iff.1 h
+    have h2 := sim_zeroCf _ hj fun js'' hj' =>
+      sim_word2 hc .xor_ (fun x y => x ^^^ y) (fun _ _ _ => rfl) (fun _ _ _ => rfl) hj' ha hb
+    rw [runBlockA_append]
+    have h3 := sim_mov h2 ofV.var.vname 0 (.imm 0) rfl
+    have e : setReg (setReg (setReg s cfV.var.vname 0) rV.var.vname (va ^^^ vb))
+        ofV.var.vname 0 =
+        setReg (setReg (setReg s ofV.var.vname 0) cfV.var.vname 0) rV.var.vname (va ^^^ vb) := by
+      rw [setReg_comm _ _ _ _ _ (Ne.symm hor)]
+      by_cases hoc : ofV.var.vname = cfV.var.vname
+      · rw [hoc]
+      · rw [setReg_comm _ _ _ _ _ hoc]
+    exact e ▸ h3
+  · cases h
+
+theorem sim_pairJ {s s' : BignumState} {sa : AState} (hc : BJCorr s sa) {op : AsmOp}
+    {tg : AssgnTag} {xV yV : VarI} {args : List PExpr} {js : List (JInstr 64)}
+    (h : pairJ op.name xV.var.vname yV.var.vname args = some js)
+    (he : execInstr s (.Copn [.Lvar xV, .Lvar yV] tg (.Oasm op) args) = some s') :
+    BJCorr s' (runBlockA sa js) := by
+  unfold pairJ at h
+  split at h
+  · split_ifs at h with h1
+    simp only [execInstr_MULX (hn := h1), writeMulxBundle, Option.bind_eq_bind,
+      Option.bind_eq_some_iff, Option.some.injEq] at he
+    obtain ⟨va, ha, vb, hb, rfl⟩ := he
+    exact sim_mulx hc h ha hb
+  · split_ifs at h with h1
+    have hregs : ∀ (t : JState 64) x o, (evalInstr t (.adcx x o)).regs =
+        fun y => if y = x then (x86_ADCX (t.regs x) (o.eval t) (t.flagB (·.cf))).2
+          else t.regs y := fun _ _ _ => rfl
+    have hcf : ∀ (t : JState 64) x o, (evalInstr t (.adcx x o)).flags.cf =
+        (x86_ADCX (t.regs x) (o.eval t) (t.flagB (·.cf))).1 := fun _ _ _ => rfl
+    rcases h1 with h1 | h1
+    · simp only [execInstr_ADCX (hn := h1), writeAdxBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      have := sim_carry3 hc .adcx (fun x y c => x86_ADCX x y c) hregs hcf (fun _ _ _ => rfl)
+        h ha hb hcv
+      rwa [addCarryIn_adcx]
+    · simp only [execInstr_ADOX (hn := h1), writeAdxBundle, Option.bind_eq_bind,
+        Option.bind_eq_some_iff, Option.some.injEq] at he
+      obtain ⟨va, ha, vb, hb, vc, hcv, rfl⟩ := he
+      have := sim_carry3 hc .adcx (fun x y c => x86_ADCX x y c) hregs hcf (fun _ _ _ => rfl)
+        h ha hb hcv
+      rwa [addCarryIn_adcx]
+  · cases h
+
 theorem toJ_sim {i : InstrR} {js : List (JInstr 64)} {s s' : BignumState} {sa : AState}
     (h : toJ i = some js) (hc : BJCorr s sa) (he : execInstr s i = some s') :
     BJCorr s' (runBlockA sa js) := by
@@ -485,6 +1380,22 @@ theorem toJ_sim {i : InstrR} {js : List (JInstr 64)} {s s' : BignumState} {sa : 
         simp [execInstr, evalPExpr] at he
         subst he
         exact sim_logic hc _ _ _ hb _ (· ^^^ ·) (fun _ => rfl) (fun _ => rfl)
+    · unfold logicJ at h
+      split at h
+      · cases h
+      · rename_i hb
+        cases h
+        simp [execInstr, evalPExpr] at he
+        subst he
+        exact sim_logic hc _ _ _ hb _ (· + ·) (fun _ => rfl) (fun _ => rfl)
+    · unfold logicJ at h
+      split at h
+      · cases h
+      · rename_i hb
+        cases h
+        simp [execInstr, evalPExpr] at he
+        subst he
+        exact sim_logic hc _ _ _ hb _ (· - ·) (fun _ => rfl) (fun _ => rfl)
     · cases h
   · cases h
     simp only [execInstr, evalPExpr, resolveAddr, Option.bind_eq_bind, Option.bind_some,
@@ -493,30 +1404,11 @@ theorem toJ_sim {i : InstrR} {js : List (JInstr 64)} {s s' : BignumState} {sa : 
     exact sim_storeMem hc _ _ _
   · unfold opnJ at h
     split at h
-    · split at h
-      · split at h
-        · rename_i hn
-          unfold subJ at h
-          split at h
-          · cases h
-          · rename_i hne
-            cases h
-            simp [execInstr, hn, evalPExpr, writeSubBundle] at he
-            subst he
-            exact sim_sub hc _ _ _ _ (fun e => hne (Or.inl e)) (fun e => hne (Or.inr e))
-        · cases h
-      · split at h
-        · rename_i hn
-          unfold sbbJ at h
-          split at h
-          · cases h
-          · rename_i hne
-            cases h
-            simp [execInstr, hn, evalPExpr, writeSubBundle] at he
-            subst he
-            exact sim_sbb hc _ _ _ _ _ (fun e => hne (Or.inl e)) (fun e => hne (Or.inr e))
-        · cases h
-      · cases h
+    · exact sim_subBundle hc h he
+    · exact sim_xor2 hc h he
+    · exact sim_shiftJ hc h he fun _ _ => rfl
+    · exact sim_pairJ hc h he
+    · exact sim_shiftJ hc h he fun _ _ => rfl
     · cases h
   · cases h
 
@@ -562,6 +1454,196 @@ theorem memTotal_store64 {m : Mem} (ht : MemTotal m) (a v : UInt64) :
   simp only [Mem.store64, Mem.storeByte]
   split_ifs <;> simp [ht x]
 
+theorem opndJ_some {e : PExpr} {o : JOperand} (h : opndJ e = some o) (s : BignumState) :
+    ∃ v, evalPExpr s e = some v :=
+  let ⟨v, hv, _⟩ := opndJ_spec h s
+  ⟨v, hv⟩
+
+theorem opndAfterJ_some {r : String} {e : PExpr} {o : JOperand} (h : opndAfterJ r e = some o)
+    (s : BignumState) : ∃ v, evalPExpr s e = some v :=
+  let ⟨v, hv, _⟩ := opndAfterJ_spec h s
+  ⟨v, hv⟩
+
+theorem carryJ_args {op : String → JOperand → JInstr 64} {cf r : String} {a b : PExpr}
+    {js : List (JInstr 64)} (h : carryJ op cf r a b = some js) (s : BignumState) :
+    (∃ v, evalPExpr s a = some v) ∧ (∃ v, evalPExpr s b = some v) := by
+  unfold carryJ at h
+  split at h
+  · next h1 h2 => exact ⟨opndJ_some h1 s, opndAfterJ_some h2 s⟩
+  · cases h
+
+theorem carryInJ_args {op : String → JOperand → JInstr 64} {cf r : String} {a b c : PExpr}
+    {js : List (JInstr 64)} (h : carryInJ op cf r a b c = some js) (s : BignumState) :
+    (∃ v, evalPExpr s a = some v) ∧ (∃ v, evalPExpr s b = some v) ∧
+      (∃ v, evalPExpr s c = some v) := by
+  unfold carryInJ at h
+  split at h
+  · next h1 h2 => exact ⟨opndJ_some h1 s, opndAfterJ_some h2 s, _, rfl⟩
+  · cases h
+
+theorem wordJ_args {op : String → JOperand → JInstr 64} {r : String} {a b : PExpr}
+    {js : List (JInstr 64)} (h : wordJ op r a b = some js) (s : BignumState) :
+    (∃ v, evalPExpr s a = some v) ∧ (∃ v, evalPExpr s b = some v) := by
+  unfold wordJ at h
+  split at h
+  · next h1 h2 => exact ⟨opndJ_some h1 s, opndAfterJ_some h2 s⟩
+  · cases h
+
+theorem dshiftJ_args {op : String → String → JOperand → JInstr 64} {r : String} {a b k : PExpr}
+    {js : List (JInstr 64)} (h : dshiftJ op r a b k = some js) (s : BignumState) :
+    (∃ v, evalPExpr s a = some v) ∧ (∃ v, evalPExpr s b = some v) ∧
+      (∃ v, evalPExpr s k = some v) := by
+  unfold dshiftJ at h
+  split at h
+  · next h1 h2 => exact ⟨opndJ_some h1 s, ⟨_, rfl⟩, opndAfterJ_some h2 s⟩
+  · cases h
+
+theorem zeroCfJ_some {cf r : String} {o : Option (List (JInstr 64))} {js : List (JInstr 64)}
+    (h : zeroCfJ cf r o = some js) : ∃ js', o = some js' := by
+  unfold zeroCfJ at h
+  split at h
+  · cases h
+  · obtain ⟨js', hjs', -⟩ := Option.map_eq_some_iff.1 h
+    exact ⟨js', hjs'⟩
+
+theorem mulxJ_args {hi lo : String} {a b : PExpr} {js : List (JInstr 64)}
+    (h : mulxJ hi lo a b = some js) {s : BignumState} (ht : MemTotal s.mem) :
+    (∃ v, evalPExpr s a = some v) ∧ (∃ v, evalPExpr s b = some v) := by
+  unfold mulxJ at h
+  split at h
+  · cases h
+  · split at h
+    · next h1 h2 => exact ⟨opndJ_some h1 s, opndJ_some h2 s⟩
+    · next base k h1 _ =>
+      obtain ⟨v, hv⟩ := load64Mem_of_memTotal ht
+        (UInt64.ofNat (s.regs base.var.vname + BitVec.ofInt 64 k).toNat)
+      refine ⟨opndJ_some h1 s, BitVec.ofNat 64 v.toNat, ?_⟩
+      simp only [evalPExpr, resolveAddr, Option.bind_eq_bind, hv, Option.bind_some]
+    · cases h
+
+theorem progress_subBundle {s : BignumState} (ht : MemTotal s.mem) {op : AsmOp}
+    {tg : AssgnTag} {i1 i2 i3 i4 : VarInfo} {t1 t2 t3 t4 : SType} {cfV rV : VarI}
+    {args : List PExpr} {js : List (JInstr 64)}
+    (h : subBundleJ op.name cfV.var.vname rV.var.vname args = some js) :
+    ∃ s', execInstr s (.Copn [.Lnone i1 t1, .Lvar cfV, .Lnone i2 t2, .Lnone i3 t3,
+      .Lnone i4 t4, .Lvar rV] tg (.Oasm op) args) = some s' ∧ MemTotal s'.mem := by
+  unfold subBundleJ at h
+  split at h
+  · split_ifs at h with h1 h2 h3 h4 h5
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := carryJ_args h s
+      simp only [execInstr_SUB (hn := h1), ha, hb, writeSubBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := carryJ_args h s
+      simp only [execInstr_ADD (hn := h2), ha, hb, writeSubBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨js', hj⟩ := zeroCfJ_some h
+      obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args hj s
+      simp only [execInstr_XOR (hn := h3), ha, hb, writeXorBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨js', hj⟩ := zeroCfJ_some h
+      obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args hj s
+      simp only [execInstr_SHL (hn := h4), ha, hb, writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨js', hj⟩ := zeroCfJ_some h
+      obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args hj s
+      simp only [execInstr_SHR (hn := h5), ha, hb, writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+  · split_ifs at h with h1 h2 h3 h4
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := carryInJ_args h s
+      simp only [execInstr_SBB (hn := h1), ha, hb, hc, writeSubBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := carryInJ_args h s
+      simp only [execInstr_ADC (hn := h2), ha, hb, hc, writeSubBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨js', hj⟩ := zeroCfJ_some h
+      obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := dshiftJ_args hj s
+      simp only [execInstr_SHLD (hn := h3), ha, hb, hc, writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨js', hj⟩ := zeroCfJ_some h
+      obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := dshiftJ_args hj s
+      simp only [execInstr_SHRD (hn := h4), ha, hb, hc, writeShiftBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+  · cases h
+
+theorem progress_shiftJ {s : BignumState} (ht : MemTotal s.mem) {op : AsmOp} {tg : AssgnTag}
+    {lvs : List LVal} {r : String} {args : List PExpr} {js : List (JInstr 64)}
+    (h : shiftJ op.name r args = some js)
+    (hlv : ∀ (t : BignumState) v, writeShiftBundle t lvs v = some (setReg t r v)) :
+    ∃ s', execInstr s (.Copn lvs tg (.Oasm op) args) = some s' ∧ MemTotal s'.mem := by
+  unfold shiftJ at h
+  split at h
+  · split_ifs at h with h1 h2
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args h s
+      simp only [execInstr_SHL (hn := h1), ha, hb, hlv, Option.bind_eq_bind, Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args h s
+      simp only [execInstr_SHR (hn := h2), ha, hb, hlv, Option.bind_eq_bind, Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+  · split_ifs at h with h1 h2
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := dshiftJ_args h s
+      simp only [execInstr_SHLD (hn := h1), ha, hb, hc, hlv, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := dshiftJ_args h s
+      simp only [execInstr_SHRD (hn := h2), ha, hb, hc, hlv, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+  · cases h
+
+theorem progress_xor2 {s : BignumState} (ht : MemTotal s.mem) {op : AsmOp} {tg : AssgnTag}
+    {i2 i3 i4 : VarInfo} {t2 t3 t4 : SType} {ofV cfV rV : VarI} {args : List PExpr}
+    {js : List (JInstr 64)}
+    (h : (match args with
+      | [a, b] =>
+        if op.name = "XOR_64" ∧ ¬ ofV.var.vname = rV.var.vname then
+          (zeroCfJ cfV.var.vname rV.var.vname (wordJ .xor_ rV.var.vname a b)).map
+            (· ++ [.mov ofV.var.vname (.imm 0)])
+        else none
+      | _ => none) = some js) :
+    ∃ s', execInstr s (.Copn [.Lvar ofV, .Lvar cfV, .Lnone i2 t2, .Lnone i3 t3, .Lnone i4 t4,
+      .Lvar rV] tg (.Oasm op) args) = some s' ∧ MemTotal s'.mem := by
+  split at h
+  · split_ifs at h with h1
+    obtain ⟨js', hj, -⟩ := Option.map_eq_some_iff.1 h
+    obtain ⟨js'', hj'⟩ := zeroCfJ_some hj
+    obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := wordJ_args hj' s
+    simp only [execInstr_XOR (hn := h1.1), ha, hb, writeXorBundle, Option.bind_eq_bind,
+      Option.bind_some]
+    exact ⟨_, rfl, ht⟩
+  · cases h
+
+theorem progress_pairJ {s : BignumState} (ht : MemTotal s.mem) {op : AsmOp} {tg : AssgnTag}
+    {xV yV : VarI} {args : List PExpr} {js : List (JInstr 64)}
+    (h : pairJ op.name xV.var.vname yV.var.vname args = some js) :
+    ∃ s', execInstr s (.Copn [.Lvar xV, .Lvar yV] tg (.Oasm op) args) = some s' ∧
+      MemTotal s'.mem := by
+  unfold pairJ at h
+  split at h
+  · split_ifs at h with h1
+    obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩⟩ := mulxJ_args h ht
+    simp only [execInstr_MULX (hn := h1), ha, hb, writeMulxBundle, Option.bind_eq_bind,
+      Option.bind_some]
+    exact ⟨_, rfl, ht⟩
+  · split_ifs at h with h1
+    obtain ⟨⟨va, ha⟩, ⟨vb, hb⟩, ⟨vc, hc⟩⟩ := carryInJ_args h s
+    rcases h1 with h1 | h1
+    · simp only [execInstr_ADCX (hn := h1), ha, hb, hc, writeAdxBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+    · simp only [execInstr_ADOX (hn := h1), ha, hb, hc, writeAdxBundle, Option.bind_eq_bind,
+        Option.bind_some]
+      exact ⟨_, rfl, ht⟩
+  · cases h
+
 /-- On a total memory, a translatable instruction runs, to a total memory. -/
 theorem toJ_progress {i : InstrR} {js : List (JInstr 64)} {s : BignumState}
     (h : toJ i = some js) (ht : MemTotal s.mem) :
@@ -580,20 +1662,17 @@ theorem toJ_progress {i : InstrR} {js : List (JInstr 64)} {s : BignumState}
     · simpa [execInstr, evalPExpr, setReg] using ht
     · simpa [execInstr, evalPExpr, setReg] using ht
     · simpa [execInstr, evalPExpr, setReg] using ht
+    · simpa [execInstr, evalPExpr, setReg] using ht
+    · simpa [execInstr, evalPExpr, setReg] using ht
     · cases h
   · simpa [execInstr, evalPExpr, resolveAddr, storeMem] using memTotal_store64 ht _ _
   · unfold opnJ at h
     split at h
-    · split at h
-      · split at h
-        · rename_i hn
-          simpa [execInstr, hn, evalPExpr, writeSubBundle, setReg] using ht
-        · cases h
-      · split at h
-        · rename_i hn
-          simpa [execInstr, hn, evalPExpr, writeSubBundle, setReg] using ht
-        · cases h
-      · cases h
+    · exact progress_subBundle ht h
+    · exact progress_xor2 ht h
+    · exact progress_shiftJ ht h fun _ _ => rfl
+    · exact progress_pairJ ht h
+    · exact progress_shiftJ ht h fun _ _ => rfl
     · cases h
   · cases h
 

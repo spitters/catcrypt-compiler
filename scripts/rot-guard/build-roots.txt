@@ -1,8 +1,8 @@
+--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 -- Build roots: tracked modules under CatCrypt/ and HaxAscent/ that no other tracked
+-- Regenerate with:
 -- module imports. Their transitive closure is the whole library, so a
 -- module outside it is one no target and no import reaches.
--- Regenerate with:
---   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 CatCrypt.Core.Basic
 CatCrypt.Core.GenHeap
 CatCrypt.Core.GenHeapRandomOracle
@@ -53,7 +53,7 @@ CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainEd25519Chains
 CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainTestVectors
 CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom
 CatCrypt.Crypto.Jasmin.BignumHoare.ReflectiveCurveProperties
-CatCrypt.Crypto.Jasmin.BignumToJ
+CatCrypt.Crypto.Jasmin.BignumToJCalls
 CatCrypt.Crypto.Jasmin.Bls12381Reflect
 CatCrypt.Crypto.Jasmin.BoundsTransformer
 CatCrypt.Crypto.Jasmin.Bulletproofs
@@ -103,7 +103,6 @@ CatCrypt.Crypto.Jasmin.InfoFlow
 CatCrypt.Crypto.Jasmin.JasminEmitBridge
 CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
 CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
-CatCrypt.Crypto.Jasmin.JazzToInstrR
 CatCrypt.Crypto.Jasmin.JoltProverReflect
 CatCrypt.Crypto.Jasmin.KeccakJincEmit
 CatCrypt.Crypto.Jasmin.LeafOps

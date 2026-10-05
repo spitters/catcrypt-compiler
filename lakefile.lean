@@ -182,6 +182,7 @@ def pkgModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.BignumHoare.ReflectiveCurveProperties,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.BignumToJ,
+    Lake.Glob.one `CatCrypt.Crypto.Jasmin.BignumToJCalls,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Bls12381Reflect,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Bn254Reflect,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.BoundsTransformer,
