@@ -550,6 +550,156 @@ theorem runFRegionF_succ (wf : Nat) (nReg : String) (body : List FBlock) (q : Na
               else runFRegionF wf nReg body q (bz.1.setLpc q) false) := by
   rw [runFRegionF]
 
+/-! ### The step count of the spec fold
+
+`stepsFB`/`stepsFBsL`/`stepsFRegionF` count the flag-machine steps of a terminating spec
+fold, by the recursion of `runFB`/`runFBsL`/`runFRegionF`: a straight segment takes its
+length, a region label one step, each back-edge two (`CMP`, `Lcond NZ`), a guard two
+(`CMP`, `Lcond Z`) and a skip label one.  On a fold that does not terminate the count is
+that of the prefix that ran. -/
+
+mutual
+/-- The flag-machine steps of one block run by `runFB`. -/
+def stepsFB : Nat → FBlock → LstateM → Bool → Nat
+  | _, .straight seg, _, _ => seg.length
+  | wf, .region _ nReg body, s, zf =>
+      1 + stepsFRegionF wf nReg body (s.lpc + 1) (s.setLpc (s.lpc + 1)) zf
+  | wf, .guarded _ _ nReg body, s, _ =>
+      match s.reg.getW nReg 64 with
+      | none => 0
+      | some v =>
+          if v == 0#64 then 2
+          else
+            2 + 1 + stepsFRegionF wf nReg body (s.lpc + 3) (s.setLpc (s.lpc + 3)) false + 1
+  termination_by wf blk _ _ => (wf, sizeOf blk, 1)
+/-- The flag-machine steps of a block list run by `runFBsL`. -/
+def stepsFBsL : Nat → List FBlock → LstateM → Bool → Nat
+  | _, [], _, _ => 0
+  | wf, b :: rest, s, zf =>
+      stepsFB wf b s zf +
+        match runFB wf b s zf with
+        | none => 0
+        | some bz => stepsFBsL wf rest bz.1 bz.2
+  termination_by wf blks _ _ => (wf, sizeOf blks, 2)
+/-- The flag-machine steps of the region do-while run by `runFRegionF`. -/
+def stepsFRegionF : Nat → String → List FBlock → Nat → LstateM → Bool → Nat
+  | 0, _, _, _, _, _ => 0
+  | wf + 1, nReg, body, q, s, zf =>
+      stepsFBsL wf body s zf +
+        match runFBsL wf body s zf with
+        | none => 0
+        | some bz =>
+            match bz.1.reg.getW nReg 64 with
+            | none => 0
+            | some v =>
+                if v == 0#64 then 2
+                else 2 + stepsFRegionF wf nReg body q (bz.1.setLpc q) false
+  termination_by wf _ body _ _ _ => (wf, sizeOf body, 0)
+end
+
+theorem stepsFB_straight (wf : Nat) (seg : List LinstrRM) (s : LstateM) (zf : Bool) :
+    stepsFB wf (.straight seg) s zf = seg.length := by rw [stepsFB]
+
+theorem stepsFB_region (wf : Nat) (top : LLabel) (nReg : String) (body : List FBlock)
+    (s : LstateM) (zf : Bool) :
+    stepsFB wf (.region top nReg body) s zf
+      = 1 + stepsFRegionF wf nReg body (s.lpc + 1) (s.setLpc (s.lpc + 1)) zf := by
+  rw [stepsFB]
+
+theorem stepsFB_guarded (wf : Nat) (top endL : LLabel) (nReg : String)
+    (body : List FBlock) (s : LstateM) (zf : Bool) :
+    stepsFB wf (.guarded top endL nReg body) s zf
+      = match s.reg.getW nReg 64 with
+        | none => 0
+        | some v =>
+            if v == 0#64 then 2
+            else
+              2 + 1 + stepsFRegionF wf nReg body (s.lpc + 3) (s.setLpc (s.lpc + 3)) false
+                + 1 := by
+  rw [stepsFB]
+
+@[simp] theorem stepsFBsL_nil (wf : Nat) (s : LstateM) (zf : Bool) :
+    stepsFBsL wf [] s zf = 0 := by rw [stepsFBsL]
+
+theorem stepsFBsL_cons (wf : Nat) (b : FBlock) (rest : List FBlock) (s : LstateM)
+    (zf : Bool) :
+    stepsFBsL wf (b :: rest) s zf
+      = stepsFB wf b s zf +
+          match runFB wf b s zf with
+          | none => 0
+          | some bz => stepsFBsL wf rest bz.1 bz.2 := by rw [stepsFBsL]
+
+@[simp] theorem stepsFRegionF_zero (nReg : String) (body : List FBlock) (q : Nat)
+    (s : LstateM) (zf : Bool) : stepsFRegionF 0 nReg body q s zf = 0 := by
+  rw [stepsFRegionF]
+
+theorem stepsFRegionF_succ (wf : Nat) (nReg : String) (body : List FBlock) (q : Nat)
+    (s : LstateM) (zf : Bool) :
+    stepsFRegionF (wf + 1) nReg body q s zf
+      = stepsFBsL wf body s zf +
+          match runFBsL wf body s zf with
+          | none => 0
+          | some bz =>
+              match bz.1.reg.getW nReg 64 with
+              | none => 0
+              | some v =>
+                  if v == 0#64 then 2
+                  else 2 + stepsFRegionF wf nReg body q (bz.1.setLpc q) false := by
+  rw [stepsFRegionF]
+
+/-- The steps of a single straight block are its length. -/
+theorem stepsFBsL_straight (wf : Nat) (seg : List LinstrRM) (s : LstateM) (zf : Bool) :
+    stepsFBsL wf [.straight seg] s zf = seg.length := by
+  rw [stepsFBsL_cons, stepsFB_straight]
+  cases runFB wf (.straight seg) s zf <;> simp
+
+/-- The fuel bound of a zero-trip-guarded loop of a straight body of `len` instructions at
+    back-edge budget `m`: `len + 2` steps for each pass, and four for the guard, the loop
+    label and the skip label. -/
+def guardedLoopFuel (len m : Nat) : Nat := m * (len + 2) + 4
+
+@[simp] theorem guardedLoopFuel_eq (len m : Nat) :
+    guardedLoopFuel len m = m * (len + 2) + 4 := rfl
+
+theorem guardedLoopFuel_mono (len : Nat) {m m' : Nat} (h : m ≤ m') :
+    guardedLoopFuel len m ≤ guardedLoopFuel len m' :=
+  Nat.add_le_add_right (Nat.mul_le_mul_right _ h) 4
+
+/-- A region do-while of a straight body takes at most `|body| + 2` steps for each unit of
+    back-edge budget. -/
+theorem stepsFRegionF_straight_le (nReg : String) (body : List LinstrRM) (q : Nat) :
+    ∀ (wf : Nat) (s : LstateM) (zf : Bool),
+      stepsFRegionF wf nReg [.straight body] q s zf ≤ wf * (body.length + 2) := by
+  intro wf
+  induction wf with
+  | zero => intro s zf; rw [stepsFRegionF_zero]; exact Nat.zero_le _
+  | succ w ih =>
+      intro s zf
+      rw [stepsFRegionF_succ, stepsFBsL_straight, Nat.succ_mul]
+      cases runFBsL w [.straight body] s zf with
+      | none => simp only []; omega
+      | some bz =>
+          simp only []
+          cases bz.1.reg.getW nReg 64 with
+          | none => simp only []; omega
+          | some v =>
+              simp only []
+              have := ih (bz.1.setLpc q) false
+              split <;> omega
+
+/-- A zero-trip-guarded loop of a straight body takes at most `guardedLoopFuel` steps. -/
+theorem stepsFB_guarded_straight_le (wf : Nat) (top endL : LLabel) (nReg : String)
+    (body : List LinstrRM) (s : LstateM) (zf : Bool) :
+    stepsFB wf (.guarded top endL nReg [.straight body]) s zf
+      ≤ guardedLoopFuel body.length wf := by
+  rw [stepsFB_guarded, guardedLoopFuel_eq]
+  cases s.reg.getW nReg 64 with
+  | none => simp only []; omega
+  | some v =>
+      simp only []
+      have := stepsFRegionF_straight_le nReg body (s.lpc + 3) wf (s.setLpc (s.lpc + 3)) false
+      split <;> omega
+
 /-! ### pc-faithfulness of the spec fold -/
 
 /-- A region do-while exits past its back-edge (`q + |flat| + 2`). -/
@@ -747,8 +897,9 @@ def SegFBlocksAt (P : LprogM) (wf : Nat) : Prop :=
     (∀ k, k < (flatFL blks).length → P.body[b0.lpc + k]? = (flatFL blks)[k]?) →
     FBlocksResolve P blks b0.lpc →
     runFBsL wf blks b0 zf = some (b, zb) →
-    ∃ n, ∀ f,
-      lsemFuelMemF P (n + f) { prog := { base := b0, lfn := P.lfn }, zf := zf }
+    ∀ f,
+      lsemFuelMemF P (stepsFBsL wf blks b0 zf + f)
+          { prog := { base := b0, lfn := P.lfn }, zf := zf }
         = lsemFuelMemF P f { prog := { base := b, lfn := P.lfn }, zf := zb }
 
 /-- The region-run lemma at budget `wf` (the induction carrier): from the top
@@ -771,13 +922,15 @@ def SegFRegionAt (P : LprogM) (wf : Nat) : Prop :=
     FBlocksResolve P body (tp + 1) →
     b0.lpc = tp + 1 →
     runFRegionF wf nReg body (tp + 1) b0 zf = some (b, zb) →
-    ∃ n, ∀ f,
-      lsemFuelMemF P (n + f) { prog := { base := b0, lfn := P.lfn }, zf := zf }
+    ∀ f,
+      lsemFuelMemF P (stepsFRegionF wf nReg body (tp + 1) b0 zf + f)
+          { prog := { base := b0, lfn := P.lfn }, zf := zf }
         = lsemFuelMemF P f { prog := { base := b, lfn := P.lfn }, zf := zb }
 
 /-- **The control-flow-aware segment lemma over the flag machine** (joint form).
     Strong induction on the back-edge budget; regions recurse through the
-    budget, blocks through the list. -/
+    budget, blocks through the list.  The fuel consumed is the step count of the
+    spec fold (`stepsFRegionF`, `stepsFBsL`). -/
 theorem segFCore (P : LprogM) :
     ∀ wf : Nat, SegFRegionAt P wf ∧ SegFBlocksAt P wf := by
   intro wf
@@ -803,8 +956,9 @@ theorem segFCore (P : LprogM) :
                 intro k hk
                 rw [hpc]
                 exact hpos k hk
-              obtain ⟨n1, hn1⟩ := (ih w (Nat.lt_succ_self w)).2 body b0 zf bz.1 bz.2
+              have hn1 := (ih w (Nat.lt_succ_self w)).2 body b0 zf bz.1 bz.2
                 hok hposB (by rw [hpc]; exact hres) (by rw [hb1])
+              generalize hn1e : stepsFBsL w body b0 zf = n1 at hn1
               -- the state after the body sits at the back-edge `CMP`
               have hbz_lpc : bz.1.lpc = tp + 1 + (flatFL body).length := by
                 have := runFBsL_lpc body w b0 zf bz.1 bz.2 (by rw [hb1])
@@ -858,8 +1012,11 @@ theorem segFCore (P : LprogM) :
                       show (some (⟨⟨bz.1.nextPc.nextPc, P.lfn⟩,
                         v == 0#64⟩ : LstateMF) = _)
                       rw [hbase2, hz]
-                    refine ⟨n1 + 2, fun f => ?_⟩
-                    rw [show n1 + 2 + f = n1 + (2 + f) from by omega, hn1 (2 + f),
+                    have hsteps : stepsFRegionF (w + 1) nReg body (tp + 1) b0 zf = n1 + 2 := by
+                      rw [stepsFRegionF_succ, hn1e, hb1]
+                      simp only [hv, hz, if_true]
+                    intro f
+                    rw [hsteps, show n1 + 2 + f = n1 + (2 + f) from by omega, hn1 (2 + f),
                       show 2 + f = (1 + f) + 1 from by omega,
                       lsemFuelMemF_step P (1 + f) _ _ _ hfetchCmp hevalCmp,
                       show 1 + f = f + 1 from by omega,
@@ -883,11 +1040,18 @@ theorem segFCore (P : LprogM) :
                         v == 0#64⟩ : LstateMF) = _)
                       rw [LstateM.nextPc_setLpc', hz']
                     -- recurse through the budget at the region's own label
-                    obtain ⟨n2, hn2⟩ := (ih w (Nat.lt_succ_self w)).1 top nReg body tp
+                    have hn2 := (ih w (Nat.lt_succ_self w)).1 top nReg body tp
                       (bz.1.setLpc (tp + 1)) false b zb hok hpos hcmpP hcondP hlbl hres
                       (by simp) hrun
-                    refine ⟨n1 + 2 + n2, fun f => ?_⟩
-                    rw [show n1 + 2 + n2 + f = n1 + (2 + (n2 + f)) from by omega,
+                    generalize hn2e : stepsFRegionF w nReg body (tp + 1)
+                      (bz.1.setLpc (tp + 1)) false = n2 at hn2
+                    have hsteps : stepsFRegionF (w + 1) nReg body (tp + 1) b0 zf
+                        = n1 + 2 + n2 := by
+                      rw [stepsFRegionF_succ, hn1e, hb1]
+                      simp only [hv, hz', Bool.false_eq_true, if_false, hn2e]
+                      omega
+                    intro f
+                    rw [hsteps, show n1 + 2 + n2 + f = n1 + (2 + (n2 + f)) from by omega,
                       hn1 (2 + (n2 + f)),
                       show 2 + (n2 + f) = (1 + (n2 + f)) + 1 from by omega,
                       lsemFuelMemF_step P (1 + (n2 + f)) _ _ _ hfetchCmp hevalCmp,
@@ -900,8 +1064,9 @@ theorem segFCore (P : LprogM) :
         (∀ k, k < blk.flat.length → P.body[b0.lpc + k]? = blk.flat[k]?) →
         FBlockResolves P blk b0.lpc →
         runFB wf blk b0 zf = some (b, zb) →
-        ∃ n, ∀ f,
-          lsemFuelMemF P (n + f) { prog := { base := b0, lfn := P.lfn }, zf := zf }
+        ∀ f,
+          lsemFuelMemF P (stepsFB wf blk b0 zf + f)
+              { prog := { base := b0, lfn := P.lfn }, zf := zf }
             = lsemFuelMemF P f { prog := { base := b, lfn := P.lfn }, zf := zb } := by
       intro blk b0 zf b zb hok hpos hres hrun
       cases blk with
@@ -910,8 +1075,8 @@ theorem segFCore (P : LprogM) :
           rw [runFB_straight] at hrun
           simp only [fflat_straight] at hpos
           rw [FBlockOK_straight] at hok
-          refine ⟨seg.length, fun f => ?_⟩
-          rw [lsemFuelMemF_segF P P.lfn rfl seg b0 zf f hok hpos, hrun,
+          intro f
+          rw [stepsFB_straight, lsemFuelMemF_segF P P.lfn rfl seg b0 zf f hok hpos, hrun,
             Option.bind_some]
       | region top nReg body =>
           -- bare region: label step, then the region do-while at `tp := b0.lpc`
@@ -929,7 +1094,7 @@ theorem segFCore (P : LprogM) :
             rw [Nat.add_zero] at h0
             rw [h0]
             rfl
-          obtain ⟨n2, hn2⟩ := hreg top nReg body b0.lpc (b0.setLpc (b0.lpc + 1)) zf b zb
+          have hn2 := hreg top nReg body b0.lpc (b0.setLpc (b0.lpc + 1)) zf b zb
             hok
             (by intro k hk
                 have h1 := hpos (1 + k) (by rw [flagLoop_length]; omega)
@@ -946,8 +1111,10 @@ theorem segFCore (P : LprogM) :
                     = b0.lpc + (2 + (flatFL body).length) from by omega, h1]
                 exact flagLoop_cond_pos top nReg (flatFL body))
             hlbl hresB (by simp) hrun
-          refine ⟨1 + n2, fun f => ?_⟩
-          rw [show 1 + n2 + f = (n2 + f) + 1 from by omega,
+          generalize hn2e : stepsFRegionF wf nReg body (b0.lpc + 1)
+            (b0.setLpc (b0.lpc + 1)) zf = n2 at hn2
+          intro f
+          rw [stepsFB_region, hn2e, show 1 + n2 + f = (n2 + f) + 1 from by omega,
             lsemFuelMemF_step P (n2 + f) _ _ _ hfetchL
               (evalInstrPMemF_label P .internal top (MemTag.reg none) _)]
           have hb1 : ({ prog := { base := b0, lfn := P.lfn }, zf := zf }
@@ -1013,8 +1180,11 @@ theorem segFCore (P : LprogM) :
                       = b0.setLpc (b0.lpc + (flatFL body).length + 6) := by
                     rw [LstateM.nextPc_setLpc']
                   rw [hb6, hz]
-                refine ⟨2, fun f => ?_⟩
-                rw [show 2 + f = (1 + f) + 1 from by omega,
+                have hsteps : stepsFB wf (.guarded top endL nReg body) b0 zf = 2 := by
+                  rw [stepsFB_guarded]
+                  simp only [hv, hz, if_true]
+                intro f
+                rw [hsteps, show 2 + f = (1 + f) + 1 from by omega,
                   lsemFuelMemF_step P (1 + f) _ _ _ hfetchCmp hevalCmp,
                   show 1 + f = f + 1 from by omega,
                   lsemFuelMemF_step P f _ _ _ hfetchCond hevalCond]
@@ -1046,7 +1216,7 @@ theorem segFCore (P : LprogM) :
                   rw [h2, guarded_get_shift top endL nReg (flatFL body) 0 (by omega)]
                   rfl
                 -- the do-while from the loop top (`tp := b0.lpc + 2`)
-                obtain ⟨n2, hn2⟩ := hreg top nReg body (b0.lpc + 2)
+                have hn2 := hreg top nReg body (b0.lpc + 2)
                   (b0.setLpc (b0.lpc + 3)) false bz.1 bz.2 hok
                   (by intro k hk
                       have h1 := hpos (3 + k) (by rw [guardedFlagLoop_length]; omega)
@@ -1079,6 +1249,13 @@ theorem segFCore (P : LprogM) :
                   (by simp)
                   (by rw [show b0.lpc + 2 + 1 = b0.lpc + 3 from by omega]
                       exact hbz)
+                rw [show b0.lpc + 2 + 1 = b0.lpc + 3 from by omega] at hn2
+                generalize hn2e : stepsFRegionF wf nReg body (b0.lpc + 3)
+                  (b0.setLpc (b0.lpc + 3)) false = n2 at hn2
+                have hsteps : stepsFB wf (.guarded top endL nReg body) b0 zf
+                    = 2 + 1 + n2 + 1 := by
+                  rw [stepsFB_guarded]
+                  simp only [hv, hz', Bool.false_eq_true, if_false, hn2e]
                 -- the do-while exits at the `Llabel endL`; step it
                 have hbz_lpc : bz.1.lpc = b0.lpc + (flatFL body).length + 5 := by
                   have := runFRegionF_lpc nReg body (b0.lpc + 3) wf _ _ bz.1 bz.2 hbz
@@ -1095,8 +1272,8 @@ theorem segFCore (P : LprogM) :
                   rw [show b0.lpc + (flatFL body).length + 5
                       = b0.lpc + ((flatFL body).length + 5) from by omega, h1]
                   exact guarded_get_endL top endL nReg (flatFL body)
-                refine ⟨2 + 1 + n2 + 1, fun f => ?_⟩
-                rw [show 2 + 1 + n2 + 1 + f = ((1 + (1 + (n2 + (f + 1)))) + 1)
+                intro f
+                rw [hsteps, show 2 + 1 + n2 + 1 + f = ((1 + (1 + (n2 + (f + 1)))) + 1)
                     from by omega,
                   lsemFuelMemF_step P _ _ _ _ hfetchCmp hevalCmp,
                   show 1 + (1 + (n2 + (f + 1))) = (1 + (n2 + (f + 1))) + 1
@@ -1126,7 +1303,8 @@ theorem segFCore (P : LprogM) :
         intro b0 zf b zb _ _ _ hrun
         rw [runFBsL_nil] at hrun
         obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj hrun
-        exact ⟨0, fun f => by rw [Nat.zero_add]⟩
+        intro f
+        rw [stepsFBsL_nil, Nat.zero_add]
     | cons blk rest ihrest =>
         intro b0 zf b zb hok hpos hres hrun
         rw [runFBsL_cons] at hrun
@@ -1143,7 +1321,7 @@ theorem segFCore (P : LprogM) :
               intro k hk
               have h1 := hpos k (by rw [fflatFL_cons, List.length_append]; omega)
               rw [h1, fflatFL_cons, List.getElem?_append_left hk]
-            obtain ⟨n1, hn1⟩ := hblk blk b0 zf bz.1 bz.2 hokB hposHead hresB
+            have hn1 := hblk blk b0 zf bz.1 bz.2 hokB hposHead hresB
               (by rw [hb1])
             have hbz_lpc := runFB_lpc wf blk b0 zf bz.1 bz.2 (by rw [hb1])
             have hposRest : ∀ k, k < (flatFL rest).length →
@@ -1159,18 +1337,34 @@ theorem segFCore (P : LprogM) :
             have hresRest : FBlocksResolve P rest bz.1.lpc := by
               rw [hbz_lpc]
               exact hresR
-            obtain ⟨n2, hn2⟩ := ihrest bz.1 bz.2 b zb hokR hposRest hresRest hrun
-            refine ⟨n1 + n2, fun f => ?_⟩
-            rw [show n1 + n2 + f = n1 + (n2 + f) from by omega, hn1 (n2 + f)]
+            have hn2 := ihrest bz.1 bz.2 b zb hokR hposRest hresRest hrun
+            intro f
+            rw [stepsFBsL_cons, hb1]
+            simp only []
+            rw [Nat.add_assoc, hn1 (stepsFBsL wf rest bz.1 bz.2 + f)]
             exact hn2 f
 
-/-- **The segment lemma over the flag machine** (`segFBlocks`).  If the
-    flattened flag-block segment occupies its positions in the program body,
+/-- **The segment lemma over the flag machine, with its fuel** (`segFBlocks_fuel`).  If
+    the flattened flag-block segment occupies its positions in the program body,
     every region label (and skip label) resolves to its own position, and the
     spec fold terminates within back-edge budget `wf`, then `lsemFuelMemF`
-    consumes some fuel `n` and continues from the fold's out-state — each
-    complete region (bare or zero-trip-guarded) acts as one composite step
-    whose effect is the region do-while. -/
+    consumes the fuel `stepsFBsL wf blks b0 zf` and continues from the fold's
+    out-state — each complete region (bare or zero-trip-guarded) acts as one
+    composite step whose effect is the region do-while. -/
+theorem segFBlocks_fuel (P : LprogM) (wf : Nat) (blks : List FBlock)
+    (b0 : LstateM) (zf : Bool) (b : LstateM) (zb : Bool)
+    (hok : FBlocksOK blks)
+    (hpos : ∀ k, k < (flatFL blks).length → P.body[b0.lpc + k]? = (flatFL blks)[k]?)
+    (hres : FBlocksResolve P blks b0.lpc)
+    (hrun : runFBsL wf blks b0 zf = some (b, zb)) :
+    ∀ f,
+      lsemFuelMemF P (stepsFBsL wf blks b0 zf + f)
+          { prog := { base := b0, lfn := P.lfn }, zf := zf }
+        = lsemFuelMemF P f { prog := { base := b, lfn := P.lfn }, zf := zb } :=
+  (segFCore P wf).2 blks b0 zf b zb hok hpos hres hrun
+
+/-- **The segment lemma over the flag machine** (`segFBlocks`): `segFBlocks_fuel` with
+    the fuel existentially quantified. -/
 theorem segFBlocks (P : LprogM) (wf : Nat) (blks : List FBlock)
     (b0 : LstateM) (zf : Bool) (b : LstateM) (zb : Bool)
     (hok : FBlocksOK blks)
@@ -1180,7 +1374,7 @@ theorem segFBlocks (P : LprogM) (wf : Nat) (blks : List FBlock)
     ∃ n, ∀ f,
       lsemFuelMemF P (n + f) { prog := { base := b0, lfn := P.lfn }, zf := zf }
         = lsemFuelMemF P f { prog := { base := b, lfn := P.lfn }, zf := zb } :=
-  (segFCore P wf).2 blks b0 zf b zb hok hpos hres hrun
+  ⟨_, segFBlocks_fuel P wf blks b0 zf b zb hok hpos hres hrun⟩
 
 /-! ## 7. The closed inline-nest theorem on the flag machine -/
 
@@ -1188,16 +1382,19 @@ theorem segFBlocks (P : LprogM) (wf : Nat) (blks : List FBlock)
     whose body IS the flattened flag-block list (the emitted nest — regions in
     regions to any depth, with data-dependent per-level trip counts and the
     emitted `CMP`/`Jcc` guards), the machine run from pc `0` halts on exactly
-    the spec fold's out-state (flag included). -/
-theorem flagNest_closed (fn : String) (blks : List FBlock) (wf : Nat)
+    the spec fold's out-state (flag included), at every fuel from the fold's
+    step count `stepsFBsL wf blks b0 zf` on. -/
+theorem flagNest_closed_fuel (fn : String) (blks : List FBlock) (wf : Nat)
     (b0 : LstateM) (zf : Bool) (b : LstateM) (zb : Bool)
     (hpc : b0.lpc = 0)
     (hok : FBlocksOK blks)
     (hres : FBlocksResolve (singletonProgM fn (flatFL blks)) blks 0)
     (hrun : runFBsL wf blks b0 zf = some (b, zb)) :
-    ∃ n, lsemFuelMemF (singletonProgM fn (flatFL blks)) n
-        { prog := { base := b0, lfn := fn }, zf := zf }
-      = some { prog := { base := b, lfn := fn }, zf := zb } := by
+    ∀ k, stepsFBsL wf blks b0 zf ≤ k →
+      lsemFuelMemF (singletonProgM fn (flatFL blks)) k
+          { prog := { base := b0, lfn := fn }, zf := zf }
+        = some { prog := { base := b, lfn := fn }, zf := zb } := by
+  intro k hk
   set P := singletonProgM fn (flatFL blks) with hP
   have hfn : fn = P.lfn := rfl
   have hpos : ∀ k, k < (flatFL blks).length →
@@ -1205,11 +1402,10 @@ theorem flagNest_closed (fn : String) (blks : List FBlock) (wf : Nat)
     intro k hk
     rw [hpc, Nat.zero_add]
     rfl
-  obtain ⟨n, hn⟩ := segFBlocks P wf blks b0 zf b zb hok hpos
+  have hn := segFBlocks_fuel P wf blks b0 zf b zb hok hpos
     (by rw [hpc]; exact hres) hrun
-  refine ⟨n, ?_⟩
-  have h0 := hn 0
-  rw [Nat.add_zero] at h0
+  obtain ⟨f, rfl⟩ := Nat.exists_eq_add_of_le hk
+  have h0 := hn f
   rw [show ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF)
     = { prog := { base := b0, lfn := P.lfn }, zf := zf } from rfl, h0]
   apply lsemFuelMemF_halt
@@ -1219,6 +1415,18 @@ theorem flagNest_closed (fn : String) (blks : List FBlock) (wf : Nat)
   rw [hpc, Nat.zero_add] at hb
   rw [hb]
   exact List.getElem?_eq_none (le_refl _)
+
+/-- `flagNest_closed_fuel` with the fuel existentially quantified. -/
+theorem flagNest_closed (fn : String) (blks : List FBlock) (wf : Nat)
+    (b0 : LstateM) (zf : Bool) (b : LstateM) (zb : Bool)
+    (hpc : b0.lpc = 0)
+    (hok : FBlocksOK blks)
+    (hres : FBlocksResolve (singletonProgM fn (flatFL blks)) blks 0)
+    (hrun : runFBsL wf blks b0 zf = some (b, zb)) :
+    ∃ n, lsemFuelMemF (singletonProgM fn (flatFL blks)) n
+        { prog := { base := b0, lfn := fn }, zf := zf }
+      = some { prog := { base := b, lfn := fn }, zf := zb } :=
+  ⟨_, flagNest_closed_fuel fn blks wf b0 zf b zb hpc hok hres hrun _ (Nat.le_refl _)⟩
 
 /-! ## 8. The zero-trip region arm (the `Lcond Z endL` forward skip) -/
 

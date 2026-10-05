@@ -744,12 +744,75 @@ theorem mul1_post (m : Nat) :
 
 /-! ## 6. The node -/
 
-/-- **The `mpn_mul_1` node on both machines.** Given the prologue simulation `hpre` of the
-    renamed seeds against `mul1DecPre`, from an entry relation `E₀` to the loop-head
-    relation with the index at `0` and the counter at `m ≤ 8`, and an exit relation `Q`
-    that the epilogue `mul1DecPost` reaches from the loop-exit relation: the machine halts
-    on `nodeLayout mul1DecPre mul1DecLoop mul1DecPost` from index `0`, the flag machine
-    halts on the renamed node, and the end states satisfy `Q`. -/
+/-- The fuel of the flag-machine run of the `mpn_mul_1` node at count `n`: three seeds,
+    `38` steps for each pass (the `36` instructions of the looped segment and the
+    back-edge), and four for the guard, the loop label and the skip label. -/
+def mul1Fuel (n : Nat) : Nat := 38 * n + 7
+
+@[simp] theorem mul1Fuel_eq (n : Nat) : mul1Fuel n = 38 * n + 7 := rfl
+
+theorem mul1Fuel_mono {n n' : Nat} (h : n ≤ n') : mul1Fuel n ≤ mul1Fuel n' :=
+  Nat.add_le_add_right (Nat.mul_le_mul_left 38 h) 7
+
+/-- At a count `n ≤ 8` the fuel is at most `mul1Fuel 8`, which is `311`. -/
+theorem mul1Fuel_le_eight {n : Nat} (h : n ≤ 8) : mul1Fuel n ≤ mul1Fuel 8 :=
+  mul1Fuel_mono h
+
+theorem mul1LoopBodyLit_length : mul1LoopBodyLit.length = 36 := rfl
+
+/-- `mul1Fuel` is the node fuel `nodeFuel` at the renamed seeds and looped segment. -/
+theorem nodeFuel_mul1 (n : Nat) :
+    nodeFuel (mul1Seeds mul1Rho).length (mul1LoopBody mul1Rho).length n = mul1Fuel n := by
+  rw [mul1LoopBody_rho, mul1Seeds_length, mul1LoopBodyLit_length, nodeFuel_eq, mul1Fuel_eq]
+  omega
+
+/-- **The `mpn_mul_1` node on both machines, with its fuel.** Given the prologue
+    simulation `hpre` of the renamed seeds against `mul1DecPre`, from an entry relation
+    `E₀` to the loop-head relation with the index at `0` and the counter at `m ≤ 8`, and
+    an exit relation `Q` that the epilogue `mul1DecPost` reaches from the loop-exit
+    relation: the machine halts on `nodeLayout mul1DecPre mul1DecLoop mul1DecPost` from
+    index `0`, the flag machine halts on the renamed node at every fuel from `mul1Fuel m`
+    on, and the end states satisfy `Q`. -/
+theorem mul1_node_halts_fuel (m : Nat) (hm : m ≤ 8) (hsave : mul1Save rp up rsp)
+    (hsep : (mul1Lay rp up).Sep (mul1Frame rsp))
+    (hdis : ∀ j j', j < 9 → j' < 8 →
+      Disjoint8 ((mul1Lay rp up).addr "a0" j) ((mul1Lay rp up).addr "a1" j'))
+    (E₀ : AState → LstateM → Bool → Prop) (Q : AState → LstateM → Prop)
+    (hpre : DecSim E₀ (mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp 0 m))
+      (mul1Seeds mul1Rho) mul1DecPre)
+    (hpost : ∀ sa b, mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp m (m - m)) sa b true →
+      Q (aMachine.runBlock sa mul1DecPost) b)
+    (fn : String) (sa : AState) (b : LstateM) (zf : Bool) (hpc : b.lpc = 0)
+    (hE : E₀ sa b zf) :
+    ∃ sa' t, Halts aMachine (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) 0 sa sa'
+      ∧ (∀ k, mul1Fuel m ≤ k →
+          lsemFuelMemF (singletonProgM fn (mul1Seeds mul1Rho ++ guardedFlagLoopLinstrRM 4
+            (4 + 0x40000000) (loopCtr 4) (mul1LoopBody mul1Rho))) k
+            { prog := { base := b, lfn := fn }, zf := zf } = some t)
+      ∧ Q sa' t.prog.base := by
+  have hsim : ∀ t, t < m →
+      DecSim (mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp t (m - t)))
+        (mul1Rel rp up rsp mul1Live mul1K True (mul1Q rsp m t))
+        (mul1LoopBody mul1Rho ++ [cmpRI (loopCtr 4) (.imm 0)])
+        (mul1DecLoop.body ++ [mul1DecLoop.cmpInstr]) := by
+    intro t ht
+    rw [mul1LoopBody_rho, loopCtr_four]
+    exact mul1_trip rp up rsp m hm hsave hsep hdis t ht
+  have hg : DecSim (mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp 0 m)) (mul1G rp up rsp m)
+      [cmpRI (loopCtr 4) (.imm 0)] [mul1DecLoop.cmpInstr] := by
+    rw [loopCtr_four]; exact mul1_guard rp up rsp m False
+  have h := decNode_halts_fuel fn (mul1Seeds mul1Rho) (mul1LoopBody mul1Rho) 4
+    (4 + 0x40000000) (loopCtr 4) mul1DecLoop m E₀ _ (mul1G rp up rsp m)
+    (fun t => mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp t (m - t)))
+    (fun t => mul1Rel rp up rsp mul1Live mul1K True (mul1Q rsp m t)) Q
+    mul1DecPre mul1DecPost (mul1Seeds_isLopn _) (mul1LoopBody_isLopn _) (mul1Node_top _)
+    (mul1Node_end _) hpre hg (mul1_guard_flag rp up rsp m hm) (mul1_guard_inv rp up rsp m)
+    hsim (mul1_trip_flag rp up rsp m hm) (mul1_trip_next rp up rsp m) hpost sa b zf hpc hE
+  rw [nodeFuel_mul1] at h
+  exact h
+
+/-- **The `mpn_mul_1` node on both machines.** `mul1_node_halts_fuel` with the fuel of the
+    flag-machine run existentially quantified. -/
 theorem mul1_node_halts (m : Nat) (hm : m ≤ 8) (hsave : mul1Save rp up rsp)
     (hsep : (mul1Lay rp up).Sep (mul1Frame rsp))
     (hdis : ∀ j j', j < 9 → j' < 8 →
@@ -766,24 +829,9 @@ theorem mul1_node_halts (m : Nat) (hm : m ≤ 8) (hsave : mul1Save rp up rsp)
           (4 + 0x40000000) (loopCtr 4) (mul1LoopBody mul1Rho))) k
           { prog := { base := b, lfn := fn }, zf := zf } = some t
       ∧ Q sa' t.prog.base := by
-  have hsim : ∀ t, t < m →
-      DecSim (mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp t (m - t)))
-        (mul1Rel rp up rsp mul1Live mul1K True (mul1Q rsp m t))
-        (mul1LoopBody mul1Rho ++ [cmpRI (loopCtr 4) (.imm 0)])
-        (mul1DecLoop.body ++ [mul1DecLoop.cmpInstr]) := by
-    intro t ht
-    rw [mul1LoopBody_rho, loopCtr_four]
-    exact mul1_trip rp up rsp m hm hsave hsep hdis t ht
-  have hg : DecSim (mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp 0 m)) (mul1G rp up rsp m)
-      [cmpRI (loopCtr 4) (.imm 0)] [mul1DecLoop.cmpInstr] := by
-    rw [loopCtr_four]; exact mul1_guard rp up rsp m False
-  exact decNode_halts fn (mul1Seeds mul1Rho) (mul1LoopBody mul1Rho) 4 (4 + 0x40000000)
-    (loopCtr 4) mul1DecLoop m E₀ _ (mul1G rp up rsp m)
-    (fun t => mul1Rel rp up rsp mul1Live mul1K False (mul1P rsp t (m - t)))
-    (fun t => mul1Rel rp up rsp mul1Live mul1K True (mul1Q rsp m t)) Q
-    mul1DecPre mul1DecPost (mul1Seeds_isLopn _) (mul1LoopBody_isLopn _) (mul1Node_top _)
-    (mul1Node_end _) hpre hg (mul1_guard_flag rp up rsp m hm) (mul1_guard_inv rp up rsp m)
-    hsim (mul1_trip_flag rp up rsp m hm) (mul1_trip_next rp up rsp m) hpost sa b zf hpc hE
+  obtain ⟨sa', t, hh, hrun, hQ⟩ := mul1_node_halts_fuel rp up rsp m hm hsave hsep hdis E₀ Q
+    hpre hpost fn sa b zf hpc hE
+  exact ⟨sa', t, _, hh, hrun _ (Nat.le_refl _), hQ⟩
 
 end Trip
 

@@ -258,9 +258,51 @@ theorem decLoop_guarded_run (ctr : String) (body : List LinstrRM) (l : XLoop 64)
 /-- **The guarded loop on both machines.** Under the hypotheses of `decLoop_guarded_run`,
     with the flag machine's guarded loop `guardedFlagLoopLinstrRM top endL ctr body` of an
     all-`Lopn` body at the program counter of `b` in `P` and its two labels resolving to
-    their positions: the flag machine runs from `b` to `b'` in some fuel `n`, the machine
-    runs the decoded layout from the guard to the exit index, and the two end states are
-    related by `Inv m`. -/
+    their positions: the flag machine runs from `b` to `b'` in a fuel
+    `n ≤ guardedLoopFuel body.length m`, the machine runs the decoded layout from the guard
+    to the exit index, and the two end states are related by `Inv m`. -/
+theorem decLoop_guarded_fuel (ctr : String) (body : List LinstrRM) (l : XLoop 64)
+    (top endL : LLabel) (m : Nat) (E G : AState → LstateM → Bool → Prop)
+    (Inv Inv' : Nat → AState → LstateM → Bool → Prop)
+    (hg : DecSim E G [cmpRI ctr (.imm 0)] [l.cmpInstr])
+    (hgflag : ∀ sa b zf, G sa b zf → sa.flags.zf.getD false = zf ∧ (zf = true ↔ m = 0))
+    (hg0 : ∀ sa b zf pc, G sa b zf → Inv 0 sa (b.setLpc pc) zf)
+    (hsim : ∀ t, t < m →
+      DecSim (Inv t) (Inv' t) (body ++ [cmpRI ctr (.imm 0)]) (l.body ++ [l.cmpInstr]))
+    (hflag : ∀ t, t < m → ∀ sa b zf, Inv' t sa b zf →
+      sa.flags.zf.getD false = zf ∧ (zf = true ↔ t + 1 = m))
+    (hnext : ∀ t, t < m → ∀ sa b zf pc, Inv' t sa b zf → Inv (t + 1) sa (b.setLpc pc) zf)
+    (P : LprogM) (hbody : ∀ i ∈ body, IsLopn i) (b : LstateM)
+    (hpos : ∀ k, k < (guardedFlagLoopLinstrRM top endL ctr body).length →
+      P.body[b.lpc + k]? = (guardedFlagLoopLinstrRM top endL ctr body)[k]?)
+    (htop : findLabelMem top P.body = some (b.lpc + 2))
+    (hend : findLabelMem endL P.body = some (b.lpc + body.length + 5))
+    (pre rest : List RInstr) (sa : AState) (zf : Bool) (hE : E sa b zf) :
+    ∃ sa' b' n, n ≤ guardedLoopFuel body.length m
+      ∧ (∀ f, lsemFuelMemF P (n + f) { prog := { base := b, lfn := P.lfn }, zf := zf }
+        = lsemFuelMemF P f { prog := { base := b', lfn := P.lfn }, zf := true })
+      ∧ Reaches aMachine (guardedLayout pre l rest) pre.length sa
+          (pre.length + l.body.length + 4) sa'
+      ∧ Inv m sa' b' true ∧ b'.lpc = b.lpc + body.length + 6 := by
+  obtain ⟨sa', b', hrun, hreach, hInv⟩ := decLoop_guarded_run ctr body l top endL m E G Inv Inv'
+    hg hgflag hg0 hsim hflag hnext pre rest sa b zf hE
+  have hflat : flatFL [FBlock.guarded top endL ctr [.straight body]]
+      = guardedFlagLoopLinstrRM top endL ctr body := by simp
+  have hn := segFBlocks_fuel P m [.guarded top endL ctr [.straight body]] b zf b' true
+    (by simpa using hbody) (by rw [hflat]; exact hpos) (by simpa using ⟨htop, hend⟩)
+    (by rw [runFBsL_cons, hrun, Option.bind_some, runFBsL_nil])
+  have hsteps : stepsFBsL m [.guarded top endL ctr [.straight body]] b zf
+      = stepsFB m (.guarded top endL ctr [.straight body]) b zf := by
+    rw [stepsFBsL_cons, hrun]
+    simp only [stepsFBsL_nil, Nat.add_zero]
+  refine ⟨sa', b', _, ?_, hn, hreach, hInv, ?_⟩
+  · rw [hsteps]
+    exact stepsFB_guarded_straight_le m top endL ctr body b zf
+  · rw [runFB_lpc _ _ _ _ _ _ hrun, fflat_guarded, guardedFlagLoop_length]
+    simp only [fflatFL_cons, fflat_straight, fflatFL_nil, List.append_nil]
+    omega
+
+/-- `decLoop_guarded_fuel` without the bound on the fuel. -/
 theorem decLoop_guarded (ctr : String) (body : List LinstrRM) (l : XLoop 64)
     (top endL : LLabel) (m : Nat) (E G : AState → LstateM → Bool → Prop)
     (Inv Inv' : Nat → AState → LstateM → Bool → Prop)
@@ -284,17 +326,9 @@ theorem decLoop_guarded (ctr : String) (body : List LinstrRM) (l : XLoop 64)
       ∧ Reaches aMachine (guardedLayout pre l rest) pre.length sa
           (pre.length + l.body.length + 4) sa'
       ∧ Inv m sa' b' true ∧ b'.lpc = b.lpc + body.length + 6 := by
-  obtain ⟨sa', b', hrun, hreach, hInv⟩ := decLoop_guarded_run ctr body l top endL m E G Inv Inv'
-    hg hgflag hg0 hsim hflag hnext pre rest sa b zf hE
-  have hflat : flatFL [FBlock.guarded top endL ctr [.straight body]]
-      = guardedFlagLoopLinstrRM top endL ctr body := by simp
-  obtain ⟨n, hn⟩ := segFBlocks P m [.guarded top endL ctr [.straight body]] b zf b' true
-    (by simpa using hbody) (by rw [hflat]; exact hpos) (by simpa using ⟨htop, hend⟩)
-    (by rw [runFBsL_cons, hrun, Option.bind_some, runFBsL_nil])
-  refine ⟨sa', b', n, hn, hreach, hInv, ?_⟩
-  rw [runFB_lpc _ _ _ _ _ _ hrun, fflat_guarded, guardedFlagLoop_length]
-  simp only [fflatFL_cons, fflat_straight, fflatFL_nil, List.append_nil]
-  omega
+  obtain ⟨sa', b', n, _, h⟩ := decLoop_guarded_fuel ctr body l top endL m E G Inv Inv' hg hgflag
+    hg0 hsim hflag hnext P hbody b hpos htop hend pre rest sa zf hE
+  exact ⟨sa', b', n, h⟩
 
 /-! ## 4. The flag machine is deterministic -/
 
@@ -336,13 +370,108 @@ def nodeLayout (pre : List (JInstr 64)) (l : XLoop 64) (post : List (JInstr 64))
     List RInstr :=
   guardedLayout (pre.map .op) l (post.map .op ++ [.ret])
 
-/-- **A node on both machines.** The flag-machine node `seeds ++ guardedFlagLoopLinstrRM top
-    endL ctr body` (all-`Lopn` seeds and body, the two labels at their positions) and the
-    decoded `nodeLayout pre l post`: `seeds` simulates `pre` from `E₀` to `E`, the guard
-    and the trips are as in `decLoop_guarded_run`, and `post` takes `Inv m` to `Q`. From
-    states related by `E₀`, with the flag machine at program counter `0`, the machine halts
-    from index `0` in a state `sa'`, the flag machine halts in `t`, and `Q sa' t.prog.base`
-    holds. -/
+/-- The fuel bound of a node of `seedsLen` seed instructions followed by a zero-trip-guarded
+    loop of `bodyLen` body instructions run for `m` trips. -/
+def nodeFuel (seedsLen bodyLen m : Nat) : Nat := seedsLen + guardedLoopFuel bodyLen m
+
+@[simp] theorem nodeFuel_eq (seedsLen bodyLen m : Nat) :
+    nodeFuel seedsLen bodyLen m = seedsLen + (m * (bodyLen + 2) + 4) := rfl
+
+theorem nodeFuel_mono (seedsLen bodyLen : Nat) {m m' : Nat} (h : m ≤ m') :
+    nodeFuel seedsLen bodyLen m ≤ nodeFuel seedsLen bodyLen m' :=
+  Nat.add_le_add_left (guardedLoopFuel_mono bodyLen h) seedsLen
+
+/-- **A node on both machines, with its fuel.** The flag-machine node
+    `seeds ++ guardedFlagLoopLinstrRM top endL ctr body` (all-`Lopn` seeds and body, the two
+    labels at their positions) and the decoded `nodeLayout pre l post`: `seeds` simulates
+    `pre` from `E₀` to `E`, the guard and the trips are as in `decLoop_guarded_run`, and
+    `post` takes `Inv m` to `Q`. From states related by `E₀`, with the flag machine at
+    program counter `0`, the machine halts from index `0` in a state `sa'`, the flag machine
+    halts in `t` at every fuel from `nodeFuel seeds.length body.length m` on, and
+    `Q sa' t.prog.base` holds. -/
+theorem decNode_halts_fuel (fn : String) (seeds body : List LinstrRM) (top endL : LLabel)
+    (ctr : String) (l : XLoop 64) (m : Nat) (E₀ E G : AState → LstateM → Bool → Prop)
+    (Inv Inv' : Nat → AState → LstateM → Bool → Prop) (Q : AState → LstateM → Prop)
+    (pre post : List (JInstr 64))
+    (hseeds : ∀ i ∈ seeds, IsLopn i) (hbody : ∀ i ∈ body, IsLopn i)
+    (htop : findLabelMem top (seeds ++ guardedFlagLoopLinstrRM top endL ctr body)
+      = some (seeds.length + 2))
+    (hend : findLabelMem endL (seeds ++ guardedFlagLoopLinstrRM top endL ctr body)
+      = some (seeds.length + body.length + 5))
+    (hpre : DecSim E₀ E seeds pre)
+    (hg : DecSim E G [cmpRI ctr (.imm 0)] [l.cmpInstr])
+    (hgflag : ∀ sa b zf, G sa b zf → sa.flags.zf.getD false = zf ∧ (zf = true ↔ m = 0))
+    (hg0 : ∀ sa b zf pc, G sa b zf → Inv 0 sa (b.setLpc pc) zf)
+    (hsim : ∀ t, t < m →
+      DecSim (Inv t) (Inv' t) (body ++ [cmpRI ctr (.imm 0)]) (l.body ++ [l.cmpInstr]))
+    (hflag : ∀ t, t < m → ∀ sa b zf, Inv' t sa b zf →
+      sa.flags.zf.getD false = zf ∧ (zf = true ↔ t + 1 = m))
+    (hnext : ∀ t, t < m → ∀ sa b zf pc, Inv' t sa b zf → Inv (t + 1) sa (b.setLpc pc) zf)
+    (hpost : ∀ sa b, Inv m sa b true → Q (aMachine.runBlock sa post) b)
+    (sa : AState) (b : LstateM) (zf : Bool) (hpc : b.lpc = 0) (hE : E₀ sa b zf) :
+    ∃ sa' t, Halts aMachine (nodeLayout pre l post) 0 sa sa'
+      ∧ (∀ k, nodeFuel seeds.length body.length m ≤ k →
+          lsemFuelMemF (singletonProgM fn (seeds ++ guardedFlagLoopLinstrRM top endL ctr body))
+            k { prog := { base := b, lfn := fn }, zf := zf } = some t)
+      ∧ Q sa' t.prog.base := by
+  set node := seeds ++ guardedFlagLoopLinstrRM top endL ctr body with hnode
+  set P := singletonProgM fn node with hP
+  have hfn : fn = P.lfn := rfl
+  have hbodyP : P.body = node := rfl
+  obtain ⟨b₁, z₁, hr₁, hE₁⟩ := hpre sa b zf hE
+  have hlpc₁ : b₁.lpc = seeds.length := by
+    rw [runStraightF_lpc seeds b zf b₁ z₁ hr₁, hpc, Nat.zero_add]
+  have hseg := lsemFuelMemF_segF P fn hfn seeds b zf
+  obtain ⟨sa', b', n, hnle, hn, hreach, hInv, hlpc'⟩ := decLoop_guarded_fuel ctr body l top
+    endL m E G
+    Inv Inv' hg hgflag hg0 hsim hflag hnext P hbody b₁
+    (fun k hk => by
+      rw [hbodyP, hlpc₁, hnode, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left])
+    (by rw [hbodyP, hlpc₁]; exact htop) (by rw [hbodyP, hlpc₁]; exact hend)
+    (pre.map .op) (post.map .op ++ [.ret]) (aMachine.runBlock sa pre) z₁ hE₁
+  set pre₃ : List RInstr := pre.map .op ++ [.op l.cmpInstr,
+      .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
+    ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)] with hpre₃
+  have e₃ : pre₃ ++ post.map .op ++ [.ret] = nodeLayout pre l post := by
+    simp [hpre₃, nodeLayout, guardedLayout, List.append_assoc]
+  have hlen₃ : pre₃.length = pre.length + l.body.length + 4 := by
+    simp only [hpre₃, List.length_append, List.length_map, List.length_cons, List.length_nil]
+    omega
+  refine ⟨aMachine.runBlock sa' post, { prog := { base := b', lfn := fn }, zf := true },
+    ⟨pre.length + l.body.length + 4 + post.length, ?_, ?_⟩, fun k hk => ?_,
+    hpost _ _ hInv⟩
+  · have h₁ := reaches_ops aMachine [] pre
+      ([.op l.cmpInstr, .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
+        ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)]
+        ++ (post.map .op ++ [.ret])) sa
+    have e₁ : [] ++ pre.map RInstr.op
+        ++ ([.op l.cmpInstr, .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
+          ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)]
+          ++ (post.map .op ++ [.ret])) = nodeLayout pre l post := by
+      simp [nodeLayout, guardedLayout, List.append_assoc]
+    rw [e₁, List.length_nil, Nat.zero_add] at h₁
+    have h₃ := reaches_ops aMachine pre₃ post [.ret] sa'
+    rw [e₃, hlen₃] at h₃
+    rw [List.length_map] at hreach
+    exact (h₁.trans hreach).trans h₃
+  · rw [← e₃, ← hlen₃, List.getElem?_append_right (by simp)]
+    simp
+  · obtain ⟨f, rfl⟩ : ∃ f, k = seeds.length + (n + f) :=
+      ⟨k - (seeds.length + n), by unfold nodeFuel at hk; omega⟩
+    show lsemFuelMemF P (seeds.length + (n + f)) { prog := { base := b, lfn := fn }, zf := zf }
+      = some { prog := { base := b', lfn := fn }, zf := true }
+    rw [hseg (n + f) hseeds (fun k hk => by
+      rw [hbodyP, hpc, Nat.zero_add, hnode, List.getElem?_append_left hk]), hr₁,
+      Option.bind_some]
+    refine (hn f).trans (lsemFuelMemF_halt P f _ ?_)
+    show findInstrMem P ({ base := b', lfn := P.lfn } : LstatePM) = none
+    rw [findInstrMemF_self, hbodyP, hlpc', hlpc₁]
+    apply List.getElem?_eq_none
+    simp only [hnode, List.length_append, guardedFlagLoop_length]
+    omega
+
+/-- **A node on both machines.** `decNode_halts_fuel` with the fuel of the flag-machine run
+    existentially quantified. -/
 theorem decNode_halts (fn : String) (seeds body : List LinstrRM) (top endL : LLabel)
     (ctr : String) (l : XLoop 64) (m : Nat) (E₀ E G : AState → LstateM → Bool → Prop)
     (Inv Inv' : Nat → AState → LstateM → Bool → Prop) (Q : AState → LstateM → Prop)
@@ -367,58 +496,10 @@ theorem decNode_halts (fn : String) (seeds body : List LinstrRM) (top endL : LLa
       ∧ lsemFuelMemF (singletonProgM fn (seeds ++ guardedFlagLoopLinstrRM top endL ctr body)) k
           { prog := { base := b, lfn := fn }, zf := zf } = some t
       ∧ Q sa' t.prog.base := by
-  set node := seeds ++ guardedFlagLoopLinstrRM top endL ctr body with hnode
-  set P := singletonProgM fn node with hP
-  have hfn : fn = P.lfn := rfl
-  have hbodyP : P.body = node := rfl
-  obtain ⟨b₁, z₁, hr₁, hE₁⟩ := hpre sa b zf hE
-  have hlpc₁ : b₁.lpc = seeds.length := by
-    rw [runStraightF_lpc seeds b zf b₁ z₁ hr₁, hpc, Nat.zero_add]
-  have hseg := lsemFuelMemF_segF P fn hfn seeds b zf
-  obtain ⟨sa', b', n, hn, hreach, hInv, hlpc'⟩ := decLoop_guarded ctr body l top endL m E G
-    Inv Inv' hg hgflag hg0 hsim hflag hnext P hbody b₁
-    (fun k hk => by
-      rw [hbodyP, hlpc₁, hnode, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left])
-    (by rw [hbodyP, hlpc₁]; exact htop) (by rw [hbodyP, hlpc₁]; exact hend)
-    (pre.map .op) (post.map .op ++ [.ret]) (aMachine.runBlock sa pre) z₁ hE₁
-  set pre₃ : List RInstr := pre.map .op ++ [.op l.cmpInstr,
-      .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
-    ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)] with hpre₃
-  have e₃ : pre₃ ++ post.map .op ++ [.ret] = nodeLayout pre l post := by
-    simp [hpre₃, nodeLayout, guardedLayout, List.append_assoc]
-  have hlen₃ : pre₃.length = pre.length + l.body.length + 4 := by
-    simp only [hpre₃, List.length_append, List.length_map, List.length_cons, List.length_nil]
-    omega
-  refine ⟨aMachine.runBlock sa' post, { prog := { base := b', lfn := fn }, zf := true },
-    seeds.length + (n + 0), ⟨pre.length + l.body.length + 4 + post.length, ?_, ?_⟩, ?_,
-    hpost _ _ hInv⟩
-  · have h₁ := reaches_ops aMachine [] pre
-      ([.op l.cmpInstr, .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
-        ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)]
-        ++ (post.map .op ++ [.ret])) sa
-    have e₁ : [] ++ pre.map RInstr.op
-        ++ ([.op l.cmpInstr, .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]
-          ++ (l.body ++ [l.cmpInstr]).map .op ++ [.jcc 5 ((pre.map RInstr.op).length + 2)]
-          ++ (post.map .op ++ [.ret])) = nodeLayout pre l post := by
-      simp [nodeLayout, guardedLayout, List.append_assoc]
-    rw [e₁, List.length_nil, Nat.zero_add] at h₁
-    have h₃ := reaches_ops aMachine pre₃ post [.ret] sa'
-    rw [e₃, hlen₃] at h₃
-    rw [List.length_map] at hreach
-    exact (h₁.trans hreach).trans h₃
-  · rw [← e₃, ← hlen₃, List.getElem?_append_right (by simp)]
-    simp
-  · show lsemFuelMemF P (seeds.length + (n + 0)) { prog := { base := b, lfn := fn }, zf := zf }
-      = some { prog := { base := b', lfn := fn }, zf := true }
-    rw [hseg (n + 0) hseeds (fun k hk => by
-      rw [hbodyP, hpc, Nat.zero_add, hnode, List.getElem?_append_left hk]), hr₁,
-      Option.bind_some]
-    refine (hn 0).trans (lsemFuelMemF_halt P 0 _ ?_)
-    show findInstrMem P ({ base := b', lfn := P.lfn } : LstatePM) = none
-    rw [findInstrMemF_self, hbodyP, hlpc', hlpc₁]
-    apply List.getElem?_eq_none
-    simp only [hnode, List.length_append, guardedFlagLoop_length]
-    omega
+  obtain ⟨sa', t, hh, hrun, hQ⟩ := decNode_halts_fuel fn seeds body top endL ctr l m E₀ E G
+    Inv Inv' Q pre post hseeds hbody htop hend hpre hg hgflag hg0 hsim hflag hnext hpost sa b
+    zf hpc hE
+  exact ⟨sa', t, _, hh, hrun _ (Nat.le_refl _), hQ⟩
 
 /-! ## 6. The high half of the widening multiply, alone
 
