@@ -225,7 +225,8 @@ theorem carryOut_borrowMask (c : BitVec 1) :
     `a + ¬b + 1` by the carry chain `adcR` over the limbs `xorR` complements. The borrow
     is the complement of the carry `c`, computed at width 64: the word
     `2^64 - 1 + 0 + c` is the borrow mask, and its carry-out when added to itself with
-    carry-in `1` is the borrow bit. -/
+    carry-in `1` is the borrow bit. The carry-out `eCarry` directly follows the sum `eAdc`
+    of the same three operands, the pair of `adcR`; the sum is not used. -/
 def mpnSubN (n : Nat) : MC (Rn n ++ (Rn n ++ [])) (Rn n ++ [w1]) :=
   bindK (eConst (2 ^ 64 - 1)) fun r₁ m =>
   xorR r₁ m (opY n []) fun r₂ ny =>
@@ -234,8 +235,9 @@ def mpnSubN (n : Nat) : MC (Rn n ++ (Rn n ++ [])) (Rn n ++ [w1]) :=
     fun r₄ D c =>
   bindK (eConst 0) fun r₅ z =>
   bindK (eAdc (r₅ (r₄ (r₃ (r₂ m)))) z (r₅ c)) fun r₆ bm =>
-  bindK (eCarry bm bm (r₆ (r₅ (r₄ one)))) fun r₇ bw =>
-  retNW n (D.map (fun v => r₇ (r₆ (r₅ v)))) bw
+  bindK (eAdc bm bm (r₆ (r₅ (r₄ one)))) fun r₇ _ =>
+  bindK (eCarry (r₇ bm) (r₇ bm) (r₇ (r₆ (r₅ (r₄ one))))) fun r₈ bw =>
+  retNW n (D.map (fun v => r₈ (r₇ (r₆ (r₅ v))))) bw
 
 theorem mpnSubN_eq (n : Nat) (A B : ListDenote (Rn n)) :
     (mpnSubN n).denote (hvAppend A (hvAppend B .nil)) =
@@ -258,8 +260,10 @@ theorem mpnSubN_eq (n : Nat) (A B : ListDenote (Rn n)) :
     (fun w => lookup_inrHom _ A w), nv_opX_val] at hnyv
   refine bindK_denote _ _ _ _ fun r₅ z W₅ h₅ hz => ?_
   refine bindK_denote _ _ _ _ fun r₆ bm W₆ h₆ hbm => ?_
-  refine bindK_denote _ _ _ _ fun r₇ bw W₇ h₇ hbw => ?_
-  rw [retNW_denote n _ bw W₇ (by simp [hD]), nv_map (Pres.comp (Pres.comp h₅ h₆) h₇)]
+  refine bindK_denote _ _ _ _ fun r₇ _ W₇ h₇ _ => ?_
+  refine bindK_denote _ _ _ _ fun r₈ bw W₈ h₈ hbw => ?_
+  rw [retNW_denote n _ bw W₈ (by simp [hD]),
+    nv_map (Pres.comp (Pres.comp (Pres.comp h₅ h₆) h₇) h₈)]
   have hv : nv W₄ D + 2 ^ (64 * n) * (lk1 c W₄).toNat
       = limbsVal A + (2 ^ (64 * n) - limbsVal B) := by omega
   obtain ⟨hs, hc⟩ := split_val (by simpa [hD] using nv_lt W₄ D) hv
@@ -268,10 +272,10 @@ theorem mpnSubN_eq (n : Nat) (A B : ListDenote (Rn n)) :
     rw [hbm, eAdc_denote]
     simp only [lk, lk1]
     rw [hz, eConst_denote, h₅, h₅, h₄, h₃, h₂, hm, eConst_denote]
-  have ebw : bw.lookup W₇ = lk1 c W₄ ^^^ 1#1 := by
+  have ebw : bw.lookup W₈ = lk1 c W₄ ^^^ 1#1 := by
     rw [hbw, eCarry_denote]
     simp only [lk, lk1]
-    rw [h₆, ebm, h₅, h₄, hone, eBit_denote]
+    rw [h₇, h₇, ebm, h₆, h₅, h₄, hone, eBit_denote]
     exact carryOut_borrowMask _
   rw [← hs, ← hc, ebw]
   congr 2
