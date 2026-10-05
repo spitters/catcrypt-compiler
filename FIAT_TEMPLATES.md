@@ -28,7 +28,7 @@ At the bytes, each family has one theorem over its records (`field_correct_bytes
 `Haxc/FieldBytes.lean`; `ntt_correct_bytes`, `Haxc/NttBytes.lean`; `ec_correct_bytes`,
 `Haxc/EcBytes.lean`) whose only per-instance hypothesis is acceptance by `compileJ`
 (`Haxc/BackHalf.lean`), the decided gate of `backend_correct`. An instance cell below is
-therefore a theorem plus an acceptance verdict of the gate.
+therefore a theorem together with the result of running the gate.
 
 ## Completeness against the fiat acceptance
 
@@ -62,7 +62,7 @@ row candidate NC-FUSE).
 
 ### Lattice, symmetric, EC, mpn, towers (F3) and the prime-ir front (F4)
 
-| kernel | op | theorem | gate verdict |
+| kernel | op | theorem | gate result |
 |---|---|---|---|
 | ML-KEM NTT | forward | `mlkem_ntt_correct_bytes` (signed 16-bit arm), `mlkem_ntt_correct_bytes_wide` (64-bit arm), `Haxc/NttInstances.lean`; built | not run; the signed 16-bit arm is expected to be refused like basemul (`widenProg` lane casts), unmeasured |
 | ML-KEM | basemul | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`); (unbuilt, 2026-10-05) | refused at `encodeLfundefBytesChecked`: 20 of 104 instructions are `TRUNC`/`ZEROEXT`; ML-DSA pointwise refused at the same gate |
