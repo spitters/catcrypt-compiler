@@ -293,6 +293,112 @@ theorem toLfundefPhysAbi_body (shiftImm : ShiftImmOracle) (abiTyin : List Nat) :
 
 end Components
 
+/-! ## 2a. The two pairings of array bases with argument registers -/
+
+/-- The entry of `l.zipIdx k` whose index names the argument `k + j` is the `j`-th. -/
+theorem zipIdx_find_argName : ∀ (l : List String) (k j : Nat) (hj : j < l.length),
+    (l.zipIdx k).find? (fun q => argName q.2 == argName (k + j)) = some (l[j], k + j)
+  | [], _, _, hj => by simp at hj
+  | a :: l, k, 0, _ => by simp [List.zipIdx_cons]
+  | a :: l, k, j + 1, hj => by
+    have hne : (argName k == argName (k + (j + 1))) = false := by
+      rw [beq_eq_false_iff_ne]
+      intro h
+      have := JasminLsemSimulation.argName_injective h
+      omega
+    rw [List.zipIdx_cons, List.find?_cons, hne]
+    have := zipIdx_find_argName l (k + 1) j (by simpa using hj)
+    rw [show k + 1 + j = k + (j + 1) by omega] at this
+    simpa using this
+
+/-- The pairs by slot of argument names below the length of `abiArgs`: each name
+    `argName j` with the register `abiArgs[j]`. -/
+theorem argBasePairsPos_map_argName (abiArgs : List String) :
+    ∀ js : List Nat, (∀ j ∈ js, j < abiArgs.length) →
+      argBasePairsPos (js.map argName) abiArgs
+        = js.map fun j => (argName j, abiArgs[j]?.getD "")
+  | [], _ => rfl
+  | j :: js, h => by
+    have hj : j < abiArgs.length := h j (by simp)
+    have hf := zipIdx_find_argName abiArgs 0 j hj
+    rw [Nat.zero_add] at hf
+    have ih := argBasePairsPos_map_argName abiArgs js fun i hi => h i (by simp [hi])
+    unfold argBasePairsPos at ih ⊢
+    rw [List.map_cons, List.filterMap_cons, hf, ih]
+    simp [List.getElem?_eq_getElem hj]
+
+/-- **Each array base takes the register of its own argument slot** at
+    `posBind = true`: for the out base `argName o` and the in bases `argName j`,
+    `j ∈ ins`, all below the length of `abiArgs`, the pairs are `(argName j, abiArgs[j])`
+    for `j` in `o :: ins`. -/
+theorem argBasePairs_true_argName (abiArgs : List String) (o : Nat) (ins : List Nat)
+    (h : ∀ j ∈ o :: ins, j < abiArgs.length) :
+    argBasePairs true (argName o) (ins.map argName) abiArgs
+      = (o :: ins).map fun j => (argName j, abiArgs[j]?.getD "") :=
+  argBasePairsPos_map_argName abiArgs (o :: ins) h
+
+/-- A loop with the output array at argument `2`, an input array at argument `1` and
+    the registers `RDI`, `RSI`, `RDX`: the output base takes `RDX` and the input base
+    `RSI`, so the scalar at argument `0` is alone on `RDI`. -/
+theorem argBasePairs_true_out2 :
+    argBasePairs true (argName 2) [argName 1] ["RDI", "RSI", "RDX"]
+      = [(argName 2, "RDX"), (argName 1, "RSI")] :=
+  argBasePairs_true_argName ["RDI", "RSI", "RDX"] 2 [1] (by simp)
+
+/-- The pairs by slot of the argument names `s, …, s + n - 1` below the length of
+    `abiArgs` are the names zipped with the registers from slot `s`. -/
+theorem argBasePairsPos_range' (abiArgs : List String) :
+    ∀ (n s : Nat), s + n ≤ abiArgs.length →
+      argBasePairsPos ((List.range' s n).map argName) abiArgs
+        = ((List.range' s n).map argName).zip (abiArgs.drop s)
+  | 0, _, _ => by simp [argBasePairsPos]
+  | n + 1, s, h => by
+    have hs : s < abiArgs.length := by omega
+    have hf := zipIdx_find_argName abiArgs 0 s hs
+    rw [Nat.zero_add] at hf
+    have ih := argBasePairsPos_range' abiArgs n (s + 1) (by omega)
+    unfold argBasePairsPos at ih ⊢
+    rw [List.range'_succ, List.map_cons, List.filterMap_cons, hf, List.drop_eq_getElem_cons hs]
+    simp only [Option.map_some, List.zip_cons_cons]
+    rw [ih]
+
+/-- **The two pairings agree when the output array is argument `0`.** With the out
+    base `argName 0` and the in bases `argName 1, …, argName m`, all below the length
+    of `abiArgs`, the pairs by slot are the pairs by role. -/
+theorem argBasePairs_true_eq_false (m : Nat) (abiArgs : List String)
+    (hm : m < abiArgs.length) :
+    argBasePairs true (argName 0) ((List.range m).map fun i => argName (i + 1)) abiArgs
+      = argBasePairs false (argName 0) ((List.range m).map fun i => argName (i + 1))
+          abiArgs := by
+  have h := argBasePairsPos_range' abiArgs (m + 1) 0 (by omega)
+  have hr : (List.range m).map (fun i => argName (i + 1)) = (List.range' 1 m).map argName := by
+    rw [List.range'_eq_map_range, List.map_map]
+    apply List.map_congr_left
+    intro i _
+    simp [Nat.add_comm]
+  rw [List.range'_succ, List.map_cons] at h
+  show argBasePairsPos _ _ = _ :: _
+  rw [hr, h]
+  cases abiArgs with
+  | nil => simp at hm
+  | cons a l => simp
+
+/-- **The export by slot of a program with the output array at argument `0`** is its
+    export by role: for a loop node with the out base `argName 0` and the in bases
+    `argName 1, …, argName m` below the length of `abiArgs`, `ComL.toLfundefPhysAbi`
+    at `posBind = true` is `ComL.toLfundefPhysAbi` at `posBind = false`. -/
+theorem toLfundefPhysAbi_posBind_of_out0 {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : ComL Γ t) (outArg : String) (inArgs : List String) (shiftImm : ShiftImmOracle)
+    (immSlotMap : ImmSlotMap) (abiArgs : List String) (abiTyin : List Nat) (m : Nat)
+    (hd : ComL.loopArgBaseNames Γ.length immSlotMap c Γ.length
+      = some (argName 0, (List.range m).map fun i => argName (i + 1)))
+    (hm : m < abiArgs.length) :
+    ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin
+        LprogAsmPrinter.x86Abi true
+      = ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin :=
+  ComL.toLfundefPhysAbi_posBind_congr c outArg inArgs shiftImm immSlotMap abiArgs abiTyin _ _ _
+    hd (argBasePairs_true_eq_false m abiArgs hm)
+
 /-- `String.startsWith` is the list prefix test on the characters, which the kernel
     evaluates on literals. -/
 theorem startsWith_eq_isPrefixOf (s p : String) :

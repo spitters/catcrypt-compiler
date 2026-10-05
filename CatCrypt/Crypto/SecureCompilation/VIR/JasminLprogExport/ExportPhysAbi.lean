@@ -2265,6 +2265,36 @@ def ComL.loopAccRegs {Γ : Ctxt jasminDialect} {t : JasminTy}
   | ComL.whileNz _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
   | ComL.forLoopBlock _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
 
+/-- The pairs of array names with the argument register of their own slot: a name
+    `argName j` with `j < abiArgs.length` is paired with `abiArgs[j]`, and a name that
+    is no argument name below `abiArgs.length` has no pair. -/
+def argBasePairsPos (names abiArgs : List String) : List (String × String) :=
+  names.filterMap fun nm =>
+    (abiArgs.zipIdx.find? fun q => argName q.2 == nm).map fun q => (nm, q.1)
+
+/-- **The pairs of array base names with argument registers** of the looped
+    physical-ABI export.
+
+    At `posBind = false` the pairing is by role: the out base `outArg'` with the first
+    register of `abiArgs` and the `i`-th in base with the register `i + 1`, whatever
+    argument slots the names denote. A kernel whose C signature lists the output
+    pointer first and whose context lists it elsewhere uses this pairing.
+
+    At `posBind = true` the pairing is by slot (`argBasePairsPos`): each base
+    `argName j` with the register `abiArgs[j]`, the register
+    `buildArgPtrMaterialize` reads the same name from. A program whose arguments
+    follow `abiArgs` slot by slot uses this pairing; under it a scalar argument and
+    an array base never share a register. -/
+def argBasePairs : Bool → String → List String → List String → List (String × String)
+  | false, outArg', inArgs', abiArgs =>
+      (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1))
+  | true, outArg', inArgs', abiArgs => argBasePairsPos (outArg' :: inArgs') abiArgs
+
+/-- The pairing by role is `argBasePairs` at `posBind = false`. -/
+theorem argBasePairs_false (outArg' : String) (inArgs' abiArgs : List String) :
+    argBasePairs false outArg' inArgs' abiArgs
+      = (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1)) := rfl
+
 /-- The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` `virt0`: the
     part of `ComL.toLfundefPhysAbi` after the virtual export.
 
@@ -2281,12 +2311,14 @@ def ComL.loopAccRegs {Γ : Ctxt jasminDialect} {t : JasminTy}
 
     `ComL.toLfundefPhysAbi_eq_ofVirt` states that `ComL.toLfundefPhysAbi` is this
     function at `ComL.toLfundef`; the carried-register loop language `ComLJ` uses it
-    at its own virtual export. -/
+    at its own virtual export. `posBind` selects the pairing of array bases with
+    argument registers (`argBasePairs`): by role at `false`, by slot at `true`. -/
 def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List String)
     (accRegs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) :
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
+    (posBind : Bool := false) :
     Lfundef :=
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
@@ -2339,13 +2371,13 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
   -- RA-assigned physical register to its red-zone qsave slot, so every SIB base
   -- is reloaded from memory into `R14` immediately before the access — never a
   -- body-clobberable register.
-  -- The out base takes `abiArgs[0]` and the i-th ARRAY invariant `abiArgs[i+1]`:
-  -- the memref ABI places the output pointer first and the input pointers next,
-  -- ahead of any scalar argument. `inArgs'` holds only the array invariants
-  -- (`arrArgNamesHV`), so a scalar listed among the invariants does not shift the
-  -- array bases to the right of it onto the following ABI register.
-  let argAbi : List (String × String) :=
-    (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1))
+  -- By role (`posBind = false`) the out base takes `abiArgs[0]` and the i-th ARRAY
+  -- invariant `abiArgs[i+1]`: the memref ABI places the output pointer first and
+  -- the input pointers next, ahead of any scalar argument. `inArgs'` holds only the
+  -- array invariants (`arrArgNamesHV`), so a scalar listed among the invariants does
+  -- not shift the array bases to the right of it onto the following ABI register.
+  -- By slot (`posBind = true`) each base `argName j` takes `abiArgs[j]`.
+  let argAbi : List (String × String) := argBasePairs posBind outArg' inArgs' abiArgs
   -- `abiSaveOfExt` (not `abiSaveOf`): each input base — including the 3rd+ ABI
   -- register (`RDX`/`RCX`/…) — maps to its OWN qsave slot. With plain `abiSaveOf`
   -- the 2nd input (`RDX`) returned `none`, dropping its pair, so its `LOADIDX`
@@ -2405,6 +2437,18 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     lfd_res := []
     lfd_tyout := [] }
 
+/-- `lfundefPhysAbiOfVirt` depends on `posBind` only through the pairs
+    `argBasePairs` of its base names: two settings with the same pairs give the same
+    function. -/
+theorem lfundefPhysAbiOfVirt_congr_pairs (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs : List String) (shiftImm : ShiftImmOracle) (abiArgs : List String)
+    (abiTyin : List Nat) (abi : IsaAbi) (b₁ b₂ : Bool)
+    (h : argBasePairs b₁ outArg' inArgs' abiArgs = argBasePairs b₂ outArg' inArgs' abiArgs) :
+    lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi b₁
+      = lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi b₂ := by
+  unfold lfundefPhysAbiOfVirt
+  rw [h]
+
 /-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel
     (`out[i] := f(in[i])`, the `mayo_encode` / `*_sign_rwhile` shape) — the
     loop-aware mirror of `comToLfundefPhysAbi` (§7f).
@@ -2426,13 +2470,19 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     *argument → qsave-slot* mapping (no swap), and neither base is ever a
     body-clobberable register (no clobber → no segfault). One body copy, real
     `jne .L<d>` back-edge, real x86 registers throughout. The part after the virtual
-    export is `lfundefPhysAbiOfVirt`. -/
+    export is `lfundefPhysAbiOfVirt`.
+
+    `posBind` selects the pairing of array bases with argument registers
+    (`argBasePairs`). At `false` the out base reloads from the slot of `abiArgs[0]`
+    whatever argument slot it denotes; a program whose arguments follow `abiArgs`
+    slot by slot, with the output array at a slot other than `0`, takes `true`. -/
 def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
     (outArg : String) (inArgs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) :
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
+    (posBind : Bool := false) :
     Lfundef :=
   let nArgs := Γ.length
   let virt0 := ComL.toLfundef c immSlotMap
@@ -2452,7 +2502,7 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
   -- The accumulator of every loop on the continuation spine; a single-loop program
   -- has a one-element `loopAccRegs`.
   let accRegs := (ComL.loopAccRegs c nArgs).map regName
-  lfundefPhysAbiOfVirt virt0 derived.1 derived.2 accRegs shiftImm abiArgs abiTyin abi
+  lfundefPhysAbiOfVirt virt0 derived.1 derived.2 accRegs shiftImm abiArgs abiTyin abi posBind
 
 /-- `ComL.toLfundefPhysAbi` is `lfundefPhysAbiOfVirt` at the virtual export
     `ComL.toLfundef`, the derived base names and the loop accumulators. -/
@@ -2470,6 +2520,22 @@ theorem ComL.toLfundefPhysAbi_eq_ofVirt {Γ : Ctxt jasminDialect} {t : JasminTy}
         ((ComL.loopAccRegs c Γ.length).map regName) shiftImm abiArgs abiTyin :=
   rfl
 
+/-- **The export by slot is the export by role when the two pairings agree.** For a
+    program whose loop node has the base names `(o, ins)`, with the same pairs
+    `argBasePairs` at both settings, `ComL.toLfundefPhysAbi` at `posBind = true` is
+    `ComL.toLfundefPhysAbi` at `posBind = false`. -/
+theorem ComL.toLfundefPhysAbi_posBind_congr {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : ComL Γ t) (outArg : String) (inArgs : List String) (shiftImm : ShiftImmOracle)
+    (immSlotMap : ImmSlotMap) (abiArgs : List String) (abiTyin : List Nat) (abi : IsaAbi)
+    (o : String) (ins : List String)
+    (hd : ComL.loopArgBaseNames Γ.length immSlotMap c Γ.length = some (o, ins))
+    (h : argBasePairs true o ins abiArgs = argBasePairs false o ins abiArgs) :
+    ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin abi true
+      = ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin abi false := by
+  unfold ComL.toLfundefPhysAbi
+  simp only [hd]
+  exact lfundefPhysAbiOfVirt_congr_pairs _ _ _ _ _ _ _ _ _ _ h
+
 /-- Export a looped array-map `ComL` to a 2-pointer-ABI physical `Lprog` (the
     `mayo_encode` shape). See `ComL.toLfundefPhysAbi` for the IN/OUT-base reload
     fix (no swap, no clobber). -/
@@ -2478,14 +2544,15 @@ def ComL.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) : Lprog :=
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
+    (posBind : Bool := false) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap
-                 abiArgs abiTyin abi)] }
+                 abiArgs abiTyin abi posBind)] }
 
 /-- Serialize the looped 2-pointer-ABI physical export to the textual lprog blob. -/
 def ComL.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)

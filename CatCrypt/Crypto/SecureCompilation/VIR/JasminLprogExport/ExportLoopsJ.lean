@@ -503,27 +503,32 @@ def ComLJ.loopAccRegs {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-- The 2-pointer-ABI physical `lfundef` of a `ComLJ` program: `lfundefPhysAbiOfVirt` at
     the virtual export `ComLJ.toLfundef`, the derived base names (the caller's
-    `outArg`/`inArgs` when the program has no loop node) and the loop accumulators. -/
+    `outArg`/`inArgs` when the program has no loop node) and the loop accumulators.
+    `posBind` selects the pairing of array bases with argument registers
+    (`argBasePairs`). -/
 def ComLJ.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ Γ t)
     (outArg : String) (inArgs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) : Lfundef :=
+    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false) : Lfundef :=
   let nArgs := Γ.length
   let derived : String × List String :=
     match ComLJ.loopArgBaseNames nArgs immSlotMap c nArgs with
     | some (o, ins) => (o, ins)
     | none => (outArg, inArgs)
   lfundefPhysAbiOfVirt (ComLJ.toLfundef c immSlotMap) derived.1 derived.2
-    ((ComLJ.loopAccRegs c nArgs).map regName) shiftImm abiArgs abiTyin
+    ((ComLJ.loopAccRegs c nArgs).map regName) shiftImm abiArgs abiTyin (posBind := posBind)
 
-/-- A lifted `ComL` program has the physical `lfundef` of the `ComL` program. -/
+/-- A lifted `ComL` program has the physical `lfundef` of the `ComL` program, at either
+    pairing of array bases with argument registers. -/
 theorem ComLJ.toLfundefPhysAbi_lift {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
     (outArg : String) (inArgs : List String) (shiftImm : ShiftImmOracle)
-    (immSlotMap : ImmSlotMap) (abiArgs : List String) (abiTyin : List Nat) :
-    (ComLJ.lift c).toLfundefPhysAbi outArg inArgs shiftImm immSlotMap abiArgs abiTyin =
-      c.toLfundefPhysAbi outArg inArgs shiftImm immSlotMap abiArgs abiTyin := rfl
+    (immSlotMap : ImmSlotMap) (abiArgs : List String) (abiTyin : List Nat)
+    (posBind : Bool := false) :
+    (ComLJ.lift c).toLfundefPhysAbi outArg inArgs shiftImm immSlotMap abiArgs abiTyin posBind =
+      c.toLfundefPhysAbi outArg inArgs shiftImm immSlotMap abiArgs abiTyin (posBind := posBind) :=
+  rfl
 
 /-- Export a `ComLJ` program to a 2-pointer-ABI physical `Lprog` with one function. -/
 def ComLJ.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ Γ t)
@@ -531,12 +536,13 @@ def ComLJ.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ Γ 
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) : Lprog :=
+    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
-      [(fname, ComLJ.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin)] }
+      [(fname, ComLJ.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin
+                 posBind)] }
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
