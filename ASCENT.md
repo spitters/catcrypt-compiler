@@ -15,9 +15,20 @@ The technique is applied to three kinds of code.
   compiler's correctness theorems: the x86 blocks of the Ed25519 implementation, the
   largest of 4,909 instructions
   ([The project's compiler output, re-verified](#the-projects-compiler-output-re-verified)).
-- Rust extracted by hax: `HaxAscent/Ascent/` applies the same calculus to `ImpExpr`,
+- Rust extracted by hax: the library `HaxAscent` (module root `HaxAscent/`, depending
+  only on Lean, Std, Batteries and hax-lean) applies the same calculus to `ImpExpr`,
   with the `FnCorres` judgement and the generator `hax_ascend`;
   [HAX_RUST.md](HAX_RUST.md#3-existing-rust--lean-the-ascent-on-impexpr) describes it.
+
+The judgement also has an instance `CorresIsa`
+([CorresIsa](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsa.lean)) at the fuelled
+interpreter shared by the x86-64, AArch64 and RV64 instruction sets, with a transport
+from `CorresJ` at x86-64 and AArch64 for blocks whose registers and memory do not depend
+on the flags ([CorresIsaX86](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86.lean)).
+[ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
+lists it with the Jasmin-source bridge
+([BignumToJ](CatCrypt/Crypto/Jasmin/BignumToJ.lean),
+[JazzToInstrR](CatCrypt/Crypto/Jasmin/JazzToInstrR.lean)).
 
 [CORRECTNESS.md](CORRECTNESS.md) places the ascent beside the other two correctness
 techniques, descent and transfer, and lists the theorems that join them.
@@ -183,8 +194,10 @@ imported files:
   ten for memory footprints), `scReduceShipped_correct_addr` on eight and
   `scMuladdShipped_correct_addr` on nine footprint checks. The s2n-bignum and CryptOpt
   modules use none.
-- No theorem yet composes the hax-level ascent of a Rust function with the x86 ascent of
-  its machine code ([CORRECTNESS.md](CORRECTNESS.md) states this).
+- The hax-level ascent of a Rust function is composed with a machine-level
+  correspondence of its compiled code for one function, `maj` of the Hash_DRBG
+  extraction, in the development tree; its `CorresIsa` form is over the program before
+  register allocation ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
 - The RV64 results are over hand-transcribed blocks on registers; no third-party RV64
   code is imported.
 

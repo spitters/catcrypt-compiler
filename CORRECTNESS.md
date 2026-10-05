@@ -215,7 +215,8 @@ its runs to a Lean function. A second, ordinary proof equates that function with
 handwritten specification. Ascent has two instances, which share one calculus in the
 style of AutoCorres.
 
-- In the ascent on extracted Rust (`HaxAscent/Ascent/`, index
+- In the ascent on extracted Rust (the library `HaxAscent`, which depends only on Lean,
+  Std, Batteries and hax-lean; judgement and generator in `HaxAscent/Ascent/`, index
   [CatCrypt/Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md)), `FnCorres bi e entry G f` relates
   the `denote'` run of an `ImpExpr` literal under the builtin table `bi` to a shallow
   function `f`. The generator `Hax.Ascent.Gen.ascendFn` produces `f` and its
@@ -231,7 +232,10 @@ style of AutoCorres.
 - In the ascent on `LowCT`, x86 and RV64
   (`CatCrypt/Crypto/SecureCompilation/Ascent/`), the judgements `Corres`, `CorresJ` and
   `CorresR` relate a `LowCT` command, an x86 block or an RV64 block to a function on words,
-  integers or field elements. Its tactics are `ascend!`, `ascend_expr!`,
+  integers or field elements. `CorresIsa` is the same judgement at the instruction-set
+  interpreter `Isa.lsemFuelMemF` (x86-64, AArch64, RV64); `corresIsa_x86_of_corresJ` and
+  `corresIsa_arm_of_corresJ` transport a `CorresJ` result to it for blocks whose
+  registers and memory do not depend on the flags. Its tactics are `ascend!`, `ascend_expr!`,
   `corres_solve_scalar`, `corres_sym`, `corres_sym_rv` and `mont_bound`.
   [ASCENT.md](ASCENT.md) is the guide, [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md) the
   reference, and [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) the
@@ -299,12 +303,19 @@ The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
   `CorresDescentRiscv.corres_of_refines_riscv` is the RV64 form.
 - `PipelineWeld.feSub_raw_source_to_bytes` composes hax-lean's `pipeline_correct` with
   the `feSub` source tower, from the raw extracted `ImpExpr` to bytes.
+- The ascent on `ImpExpr` and the compiler's theorems for the machine code meet at a
+  common Lean function for one extracted function, `maj` of the Hash_DRBG extraction (in
+  the development tree): `maj_corresJ_of_fnCorres` gives, for every `f` with
+  `FnCorres` for the extracted body, a `CorresJ` result at the block decoded from the
+  shipped bytes, and `maj_corresIsa_of_fnCorres` a `CorresIsa x86Isa` result for the
+  export's straight-line chain over virtual registers. Both use
+  `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). No other extracted
+  function, and no loop, has such a composition
+  ([CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference)).
 
 Transfer enters both other techniques as a proof step: descent certifies dialect
 lowerings by `param_solve`, and an ascent result over words reaches a specification
-over `ZMod p` through a registered relation. No theorem yet composes the ascent on `ImpExpr` and
-the ascent on x86 at a common Lean function
-([CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference)).
+over `ZMod p` through a registered relation.
 
 ## Trust ledger
 

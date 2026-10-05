@@ -12,7 +12,8 @@ correctness techniques.
 |---|---|---|---|
 | LowCT, the source command language | `CatCrypt/Crypto/Jasmin/LowCT.lean` | `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` (constant-time analysis) | [Jasmin/AGENTS.md](CatCrypt/Crypto/Jasmin/AGENTS.md) |
 | hax-lean AST to LowCT and back | `CatCrypt/Crypto/Hax/` | `CatCrypt.Crypto.Hax.haxToLowCT_simulates_program` | [Crypto/Hax/AGENTS.md](CatCrypt/Crypto/Hax/AGENTS.md) |
-| Reification and the ascent over `ImpExpr` | `CatCrypt/Hax/` | `CatCrypt.Hax.ReifyImp.edwardsAdd_endToEnd` | [Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md) |
+| Reification of `ImpExpr` | `CatCrypt/Hax/` | `CatCrypt.Hax.ReifyImp.edwardsAdd_endToEnd` | [Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md) |
+| The ascent over `ImpExpr` (library `HaxAscent`: Lean, Std, Batteries, hax-lean only) | `HaxAscent/Ascent/`, `HaxAscent/RustSemantics/`, `HaxAscent/Calculus/` | `CatCrypt.Hax.RustSemantics.fnCorres_toRustMS_triple_of_kindOf`, `Hax.Ascent.fnCorres_enc_unique` | [Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md), [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) |
 | `thir` front from hax | `SC/CompileFromHax.lean`, `SC/ThirToComFront.lean` | `ThirToComFront.thirToJasmin_denote` | [SC/AGENTS.md](CatCrypt/Crypto/SecureCompilation/AGENTS.md) |
 | LowCT front to the SSA IR | `SC/Dialects/` | `Dialects.TranslateDialectScalar.transU_denote` | [Dialects/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Dialects/AGENTS.md) |
 | `Com` framework, dialects, lowerings, end-to-end theorems | `SC/VIR/` | `VIR.DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'`, `VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional` | [VIR/AGENTS.md](CatCrypt/Crypto/SecureCompilation/VIR/AGENTS.md), [DIALECTS.md](CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md) |
@@ -22,7 +23,7 @@ correctness techniques.
 | AArch64 backend | `SC/ARMBackend/` | `ScalarLinNeutralDemo.com_arm_e2e`, `ARMBackend.ComToArmLsem.comToArmLsem_correct` | [ARMBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/ARMBackend/AGENTS.md) |
 | RISC-V backend | `SC/RISCVBackend/` | `MultiBackendDemo.com_riscv_e2e`, `RISCVBackend.ComToRiscvLsem.riscvStep64_sail_grounded` | [RISCVBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/RISCVBackend/AGENTS.md) |
 | Relational front | `SC/RelationalFrontMachine.lean` | `RelationalFront.addMod251_source_eq_arm` | [DEMO.md](DEMO.md) |
-| Ascent | `SC/Ascent/` | `Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct` | [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md), [ASCENT.md](ASCENT.md) |
+| Ascent | `SC/Ascent/` | `Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct`, `Ascent.corresIsa_x86_of_corresJ` | [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md), [ASCENT.md](ASCENT.md) |
 | Certifying third-party machine code | `SC/Ascent/Demos/`, `HaxAscent/Ascent/` | `Ascent.Demos.CertifyThirdPartyDemo.s2nMontmulP384_correct_reduced` | [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) |
 | Vector dialect and auto-vectorizer | `SC/MLIR/VectorDialect/` | `Dialects.TranslateDialectVsimd.translateDialectControlV_denote` (SIMD front) | [VectorDialect/AGENTS.md](CatCrypt/Crypto/SecureCompilation/MLIR/VectorDialect/AGENTS.md) |
 | Tile backend | `SC/TileBackend/` | — | [TileBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/TileBackend/AGENTS.md) |

@@ -5,8 +5,25 @@ Lean code. Section *n* here lists the declarations that realise section *n* ther
 adds what is specific to the code: names, modules, counts and build cost. The
 mathematical statements are not repeated.
 
-`Ascent/` stands for `CatCrypt/Crypto/SecureCompilation/Ascent/`; the hax ascent is in
-`HaxAscent/` (`HaxAscent/Ascent/`, `HaxAscent/RustSemantics/`, `HaxAscent/Calculus/`).
+`Ascent/` stands for `CatCrypt/Crypto/SecureCompilation/Ascent/`. The ascent over
+extracted Rust is the library `HaxAscent` (lakefile `lean_lib HaxAscent`, module root
+`HaxAscent/`), which imports only Lean, Std, Batteries and hax-lean:
+
+- `HaxAscent/Ascent/`: `FnCorres`, the hax generator, coverage, monomorphisation and
+  `FnCorresUnique`;
+- `HaxAscent/RustSemantics/`: the `RustM` reading `toRustMS` of `ImpExpr`, the Aeneas
+  operation squares, termination on the kinded fragment (`ToRustMSTotalCtl`), the hax
+  contract demo and the local `RCompOk` and `ArrayRel` (`RustSemantics/RCompOk`), which
+  replace the ParamTransfer import;
+- `HaxAscent/Calculus/`: the generic judgement `CorresM` (`CorresMCore`), its
+  postcondition form (`CorresGenericSpec`), `IFold`, and the `RustM` square calculus
+  (`RustMSquare`, `RustMSquareSpec`, `RustMSquareLoop`);
+- `HaxAscent/Runtime`, `HaxAscent/ListBlocks`.
+
+Module paths moved; declaration namespaces did not (`Hax.Ascent`, `CatCrypt.Hax.RustSemantics`,
+`CatCrypt.Crypto.SecureCompilation.Ascent`). The two double-category leaves `SquareDouble`
+and `RustMSquareDouble` import CatCrypt-core and stay in the compiler library, as do the
+machine-level judgements, the engines and the kernel proofs, which import `HaxAscent`.
 
 ## 1. The problem and the relation to descent
 
@@ -28,15 +45,38 @@ def CorresM {M : Type} {C : Type} {AState : Type} (step : C → M → Option M)
 | x86-64 | `CorresJ` | `List (JInstr 64)` | `runBlock` | `Ascent/RunBlockCorres` |
 | RV64 | `CorresR` | RV64 block | `runRBlock64` | `Ascent/CorresRiscv` |
 | hax expressions | `Corres`, `FnCorres` | `ImpExpr` | `denote'` with fuel | `HaxAscent/Ascent/Corres` |
+| instruction set (x86-64, AArch64, RV64) | `CorresIsa isa P SR Pre fa fuel` | `LprogM` | `Isa.lsemFuelMemF` (instances `x86Isa`, `armIsa`, `rvIsa`) | `Ascent/CorresIsa` |
 
-The generic definition is `CorresGeneric.CorresM`. The identifications are
-`corres_eq_corresM` (by `rfl`), `corresJ_eq_corresM` and `corresR_eq_corresM`.
+The generic definition is `CorresM` (`HaxAscent/Calculus/CorresMCore`). The
+identifications are `corres_eq_corresM` (by `rfl`), `corresJ_eq_corresM`,
+`corresR_eq_corresM` and `corresIsa_eq_corresM`. Fuel: `lsemFuelMemF_halted`,
+`lsemFuelMemF_add`, `corresIsa_fuel_mono`; the per-state fuel form is `CorresIsaRun`
+(`corresIsaRun_of_corresIsa`).
+
+Transport from `CorresJ` (`Ascent/CorresIsaX86`): `corresIsa_x86_of_corresJ` for blocks
+in `InSubsetM`, `corresIsa_arm_of_corresJ` for blocks in `InFieldArithSubset`, both over
+the side relation `liftSR`, which leaves the flags unrelated; examples `corresIsa_x86_add2`,
+`corresIsa_arm_add2`. No transport targets `rvIsa`.
+
+Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
+`fnCorres_haxEval`, `fnCorres_enc_unique`.
 
 | Weld | Declaration |
 |---|---|
 | refinement, correspondence and emission | `legWeld`: `RRefines spec c`, `Corres SRwordNT P fa c` and the emit leg |
 | descent result to compiled x86 block | `corres_of_refines_x86` |
 | hax pipeline and source tower | `feSub_raw_source_to_bytes`, over hax-lean's `pipeline_correct` |
+| extracted `maj` with its machine code (development tree) | `maj_fnCorres`; `maj_corresJ_of_fnCorres` at the decoded shipped block; `maj_corresIsa_of_fnCorres` under `x86Isa` over the virtual-register chain |
+| emitted carry chains from correspondences | `emitSbbChain_runBlock`, `emitAdcChain_runBlock`, from `corresJ_sbbChain`, `corresJ_adcChain` (`Ascent/EcMultiLimbCapstone`) |
+
+Jasmin source (`CatCrypt/Crypto/Jasmin/`): `JazzToInstrR` parses `.jazz` text
+(`parseJazz`, `parseJazzProg`) into the `InstrR` syntax that `bignumExec` interprets, with
+two `#kat` round trips against the printer. `BignumToJ` translates the straight-line
+fragment (`toJ`, `toJBlock`), relates the states by `BJCorr`, and proves
+`toJ_sim`, `bignumExec_runBlockA_sim` (simulation into `runBlockA`) and
+`bignumExec_progress`. The development tree instantiates it with
+`bignumTriple_to_runBlockA` and `runBlockA_modP25519_4_correct` for
+`bignum_mod_p25519_4`.
 
 [CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques) states the welds in full.
 
@@ -91,7 +131,9 @@ def RelSemantics.LaxSq (S : RelSemantics X) {a b c d : C} (u : Hor.of a ⟶ Hor.
   unit: `corres_letBind_var_right_not_iff`, over `.letBind x e (.var x)`; no exit relation
   repairs it: `not_exit_of_read_of_lower`; the law up to the bound name:
   `letBind_var_right_unit_offName`.
-- The levels without an instance are `runBlockA`, `CorresR` and `LowCT`.
+- The levels without an instance are `runBlockA`, `CorresR`, `CorresIsa` and `LowCT`.
+- `SquareDouble` and `RustMSquareDouble` are the only modules of this section outside
+  `HaxAscent`: they instantiate core's class and so stay in the compiler library.
 
 ## 4. Verification-condition generation
 
@@ -115,12 +157,12 @@ theorem corresJ_iff_triple {AState : Type} (SR : JState 64 → AState → Prop)
 | monadic Rust correspondence as a total triple | `corresM_iff_triple` |
 | `FnCorres` as a triple over `optGuard G f a` | `fnCorres_iff_triple`, `triple_option_iff` |
 | arbitrary postcondition, generic judgement | `StepTriple`, `corresM_post`, `corresM_iff_post` (`HaxAscent/Calculus/CorresGenericSpec`) |
-| arbitrary postcondition, per level | `corres_iff_post` (LowCT), `corresJ_iff_post_generic` (x86), `corresR_iff_post` (RV64) (`Ascent/CorresInstanceSpec`); x86 over `RunBlockTriple`: `corresJ_triple_post`, `corresJ_iff_triple_post` (`Ascent/CorresHoareSpec`) |
+| arbitrary postcondition, per level | `corres_iff_post` (LowCT), `corresJ_iff_post_generic` (x86), `corresR_iff_post` (RV64) (`Ascent/CorresInstanceSpec`); `corresIsa_post`, `corresIsa_of_post`, `corresIsa_iff_post` (`Ascent/CorresIsa`); x86 over `RunBlockTriple`: `corresJ_triple_post`, `corresJ_iff_triple_post` (`Ascent/CorresHoareSpec`) |
 | specification lemmas for `mvcgen` | x86 `corresJ_spec_at` (state-indexed), `corresJ_spec` (arbitrary `Q`, tail position only) (`Ascent/CorresHoareSpec`); `RustM` `corresM_spec_at`, `corresM_iff_spec_at`, `corresM_spec_post` (`HaxAscent/Calculus/RustMSquareSpec`) |
 | demo: a caller proved by `mvcgen` with an ascent result as callee specification | `sbb_then_sbb_triple`, `sbb_then_step_triple`, `step_then_sbb_triple` (`Ascent/Demos/CorresAsSpecDemo`) |
 | `FnCorres` and the `RustM` reading `toRustMS` | partial: `fnCorres_toRustMS_partialSpec`, `fnCorres_toRustMS_triple_partial`; total under termination: `fnCorres_toRustMS_spec`, `fnCorres_toRustMS_triple`, `fnCorres_toRustMS_triple_iff` (`HaxAscent/RustSemantics/ToRustMSSpec`) |
 | termination on the straight-line fragment | `straightOk`, `AppTotalOn`, `EnvOk`, `toRustMS_total`, `fnCorres_toRustMS_triple_of_straightOk` (`HaxAscent/RustSemantics/ToRustMSTotal`); `line_failApp` shows `AppOk` alone does not give termination (`ToRustMSSpecDemo`) |
-| termination with conditionals, loops and checked arithmetic | `kindOf`, `Kd`, `EnvTy`, `AppTyped`, `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`; checked operations `appTyped_add` (kinds `WB`), `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem` (range kinds `WI`); instance `keyEqLit_triple` (`HaxAscent/RustSemantics/ToRustMSTotalCtl`). The straight-line theorems of `ToRustMSTotal` are instances of `toRustMS_total_kindL` through `kindOfL_of_straightOk` |
+| termination with conditionals, loops and checked arithmetic | `kindOf`, `Kd`, `EnvTy`, `AppTyped`, `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`; checked operations `appTyped_add` (kinds `WB`), `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem` (range kinds `WI`); instance `keyEqLit_triple` (`HaxAscent/RustSemantics/ToRustMSTotalCtl`). Loop bounds of index-range kind: `kindOfL`, `boundRange`, `toRustMS_total_kindL`, instance `varLoopLit` (`varLoopLit_kind`, `varLoopLit_total`). Tagged shifts: `appTyped_shl`, `appTyped_shr`; untagged shifts fail (`appRt_Shl_undef`, `appRt_Shr_undef`). Signed checked arithmetic has no total kind; `appTyped_intArith` types the unbounded integer operations. The straight-line theorems of `ToRustMSTotal` are instances of `toRustMS_total_kindL` through `kindOfL_of_straightOk` |
 | a printed hax contract closed by an ascent result | `Spec` (the printer's structure restated over `Aeneas.Std.RustM`), `keyEqRun_contract`, `keyEqRun.spec` (`HaxAscent/RustSemantics/ToRustMSContractDemo`) |
 | loop rule from the invariant rule | x86: `runBlockM_loop_triple`, `corresJ_loop_of_triple` (`Ascent/RunBlockLoopTriple`); `RustM`, over hax-lean's `loop` with a `ControlFlow` body: `corresM_loop`, `corresM_loop_iff_spec`, `countedBody_spec`, `corresM_loopK` (`HaxAscent/Calculus/RustMSquareLoop`, from `loop.spec_decr_nat`); extracted `for` loops: `foldRangeK_eq_loopK` (hax-lean's `fold_range` equals the counted loop), `corresM_foldRange` |
 | `mvcgen` with the abstract function as a metavariable | `sbb1Synth_val`, `sbb2Synth_val`, `sbb2Synth_eq_sym`; failures recorded by `fail_if_success` (`Ascent/Demos/SchematicMvcgenProbe`) |
@@ -194,6 +236,8 @@ framed forms use `runBlock`. [ASCENT.md](ASCENT.md) has the full result tables.
 | `ed25519_madd`, `invert`, `compress` | `maddShipped_correct` (callees discharged through `maddCallees_maddCallModel`; `maddShipped_correct_cross` is the form relative to `MaddCallees`), `invertShipped_correct`, `invertShipped_inv`, `compressShipped_correct` (`compressShipped_correct_addr` is the form relative to `CompressCallees`) | inputs below p; `ChainSep`, `RangeDisj`, `CompressSep` buffer disjointness |
 | `fe25519_mul`, comb select | `feMulBlock_mod`, `combSelectBytes_correct`, `selBytes_constant_time` | |
 | RV64 `(x + y) mod p256` | `addp256_correct` | |
+| extracted `maj` (development tree) | `maj_fnCorres`, `maj_corresJ_of_fnCorres`, `maj_corresIsa_of_fnCorres` | result type `Int` (`arithBuiltins` computes on `.int`); the `CorresIsa` form is over the virtual-register chain, before allocation |
+| `bignum_mod_p25519_4` from Jasmin source (development tree) | `runBlockA_modP25519_4_correct`, through `bignumTriple_to_runBlockA` and `bignumExec_runBlockA_sim` | `runBlockA` only; no byte statement |
 
 The example statement, in
 [S2nMontmulP384Addr](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Addr.lean):
@@ -209,8 +253,9 @@ theorem s2nMontmulP384_correct_addr (sa : AState) (px py pz : BitVec 64)
 ```
 
 The encoder and decoder of the byte statements are `encodeJBlock` and `decodeJStream`
-([ASCENT.md](ASCENT.md#scope-of-the-statements)). The missing composition of `FnCorres`
-with a machine square is discussed in
+([ASCENT.md](ASCENT.md#scope-of-the-statements)). The composition of `FnCorres` with a
+machine square exists for `maj` only, through `fnCorres_enc_unique`; the general case is
+discussed in
 [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference).
 In the comparison table, the Aeneas row refers to `CorresM` over `Aeneas.Std.RustM`
 (`MLevel`) and the Jasmin row to `runBlock` and `legWeld`.

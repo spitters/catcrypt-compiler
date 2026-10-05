@@ -32,17 +32,34 @@ a partial semantics ⟦c⟧ : M ⇀ M. The program c *corresponds to* f when
 This is a forward simulation of f by c along R: related states with the precondition run
 to related states, and the machine run does not fail.
 
-The judgement is parametric in the semantics. It is instantiated at four:
+The judgement is parametric in the semantics. It is instantiated at five:
 
 1. a structured scalar language, first without and then with `while`;
 2. blocks of x86-64 instructions, under a semantics transcribed from Jasmin's;
 3. blocks of RV64 instructions;
 4. the imperative expression language that hax extracts Rust to, under a fuelled
-   denotation, with a companion judgement for whole functions.
+   denotation, with a companion judgement for whole functions;
+5. programs with labels and jumps under the fuelled interpreter of an instruction set,
+   one definition for x86-64, AArch64 and RV64, over states that carry the flags.
 
-The first three are instances of one definition over a step function C → M → Option M.
+All but the fourth are instances of one definition over a step function
+C → M → Option M. In the fifth the program coordinate C is the fuel; a run that succeeds
+ends in a halted state and returns the same state at every larger fuel, so the
+judgement is monotone in the fuel.
 
-**Welds.** Ascent and descent compose at three points.
+A correspondence over x86 blocks transports to the fifth instance, at x86-64 for blocks
+of register arithmetic, loads and stores at compile-time offsets and the widening
+multiplication, and at AArch64 for the same blocks without that multiplication. The
+flags of the two machines are left unrelated, so blocks whose results depend on the carry
+flag are not covered. No transport is given at RV64.
+
+**Function-level uniqueness.** A function-level correspondence for an extracted function
+fixes the value of every run that returns: from an entry satisfying the guard, a run that
+returns a value at some fuel returns the encoding of the abstract function at the
+argument. Two correspondences of one program, entry and guard therefore have equal
+encoded results.
+
+**Welds.** Ascent and descent compose at the following points.
 
 - A descent refinement of a specification by a scalar command, an ascent correspondence
   for the same command and the emission step compose to a statement about the denotation
@@ -50,6 +67,28 @@ The first three are instances of one definition over a step function C → M →
 - A descent result yields a correspondence for the compiled x86 block.
 - The correctness theorem of the hax front-end pipeline composes with a tower of
   correspondences over the source, from Rust source to bytes.
+- For one extracted function, the SHA-256 bitwise majority of the Hash_DRBG extraction
+  (on the low 32 bits of three arguments below 2⁶⁴), the function-level correspondence composes with the compiler's theorems for its machine
+  code: every function that corresponds to the extracted body is computed by the block
+  decoded from the shipped bytes, and by the straight-line program of the export under
+  the instruction-set interpreter at x86-64. The second statement is over the program
+  before register allocation, on virtual registers; the allocated program contains
+  register-to-register moves outside the subset that the transport covers. The
+  composition is in the development tree.
+- In the other direction, the value lemmas of the backend's emitted subtract-with-borrow
+  and add-with-carry chains are proved from correspondences of those chains.
+
+**Jasmin source.** Jasmin programs are imported as text: a parser reads the subset of
+Jasmin source used by the imported big-number kernels into the abstract syntax that the
+Jasmin interpreter of this project runs. A translation of straight-line kernels from that
+syntax to x86 instructions is proved to be a forward simulation into the x86 machine with
+byte-addressed memory, and runs succeed when the memory is total. For one kernel, the
+reduction of a four-limb number modulo 2²⁵⁵ − 19, the triple proved over the Jasmin
+interpreter transports to the translated block: with the pointer registers set, the
+input below 2p and the buffers disjoint, the output buffer holds the input modulo p. This
+instance is in the development tree; it has no statement at the bytes. The parser is
+checked by round trips against the printer and is not proved to agree with Jasmin's own
+parser.
 
 ## 2. Provenance
 
@@ -139,8 +178,8 @@ right unit law of let-binding fails for squares: there is a square over
 `let x = e in x` whose counterpart over `e` does not hold, and no exit relation of the
 required shape repairs the converse. The law holds up to the bound name.
 
-No instance is given for the address-level x86 machine, for RV64 or for the scalar
-language.
+No instance is given for the address-level x86 machine, for RV64, for the instruction-set
+interpreter or for the scalar language.
 
 ## 4. Verification-condition generation
 
@@ -169,7 +208,8 @@ Three further statements connect the levels.
       ∀ Q.  { m | ∃ a. R(m, a) ∧ P(a) ∧ ∀ m'. R(m', f(a)) ⇒ Q(m') }  c  { Q }.
 
 The statement holds for the generic step-function judgement and so for the scalar
-language, x86 and RV64, and in a state-indexed form for the monadic Rust square. For a
+language, x86, RV64 and the instruction-set interpreter, and in a state-indexed form for
+the monadic Rust square. For a
 verification-condition generator the useful form is the state-indexed family
 { R(−, a) } c { R(−, f(a)) }: used as the specification of a callee, it composes in any
 position of the caller. The form with arbitrary Q composes only when the callee comes
@@ -183,12 +223,19 @@ the operation table only where it returns, and checked word operations fail on
 overflow. On a kind-checked fragment the reading terminates, and the total triple
 follows from the correspondence together with a typing of the operation table. The
 fragment has literals, variables, let-binding, sequencing, applications of typed
-operations, conditionals on Boolean conditions, and counted loops with literal bounds in
-[0, 2³²]. Kinds include index ranges, so array indexing in a loop is total, and word
-ranges [L, U), under which each checked operation is total: addition when U₁ + U₂ fits
-the width, subtraction when the subtrahend's upper bound is at most the minuend's lower
-bound plus one, multiplication when U₁ · U₂ fits the width, division and remainder when
-the divisor's lower bound is at least one. The example is an equality test on 32-byte
+operations, conditionals on Boolean conditions, and counted loops whose bounds are
+literals in [0, 2³²] or expressions of an index-range kind with upper end at most 2³²;
+the loop index receives a static kind spanning both bounds, so no kind mentions a runtime
+value, and a loop up to a length parameter is an instance. Kinds include index ranges, so
+array indexing in a loop is total, and unsigned word ranges [L, U), under which each
+checked operation is total: addition when U₁ + U₂ fits the width, subtraction when the
+subtrahend's upper bound is at most the minuend's lower bound plus one, multiplication
+when U₁ · U₂ fits the width, division and remainder when the divisor's lower bound is at
+least one. Shifts tagged with their width are total when the shift amount has a range
+kind bounded by the width, with the result range stated; untagged shifts are outside the
+fragment. Signed checked arithmetic has no total kind: the value domain of the reading
+has no signed word, so signed addition, subtraction and multiplication compute the
+unbounded integer result where Rust fails on overflow. The example is an equality test on 32-byte
 arrays, a 32-step loop whose body is a conditional; its contract, in the form the hax
 Lean printer emits (a precondition, a postcondition and the triple between them), is
 closed from the correspondence, without a verification-condition proof over the body.
@@ -292,20 +339,27 @@ assumed.
 | Ed25519 mixed addition, inversion, compression | this project's backend | mixed addition computes its specification; inversion computes z^(p−2) mod p, the inverse for z ≠ 0; compression outputs y + 2²⁵⁵·(x mod 2) for the affine coordinates x, y | inputs below p; buffer disjointness; the callees are discharged over the shipped blocks |
 | field multiplication mod 2²⁵⁵ − 19; comb-table selection | hand-written in this project | the product is (x·y) mod p; for an index D < 16, the selected words equal table entry D, with the table, the stack pointer and the callee-saved registers unchanged, at the bytes; the leakage trace is independent of the index | constant time for tables of at most 2²⁶ entries |
 | RV64 addition mod p256 | hand transcription | for x, y < p256, the result is (x + y) mod p256 | registers only; no memory, no bytes |
+| SHA-256 bitwise majority | Rust extracted by hax, compiled by this project's backend | every function corresponding to the extracted body is computed by the decoded shipped block, and by the export's straight-line program under the x86-64 instruction-set interpreter | the interpreter statement is over virtual registers; development tree |
+| reduction of four limbs mod 2²⁵⁵ − 19 | Jasmin source, translated by this project | for input below 2p, the output buffer holds the input mod p | address-level machine; pointer registers set; buffers disjoint; no bytes; development tree |
 
 **Scope.** A statement at the bytes says that this project's encoding of the block
 decodes, under this project's decoder, to instructions with the stated behaviour. No
 theorem concerns an object file; the assembler, the loader and the import of third-party
 text are covered by tests. The constant-time statement for point addition is over the
-block. No theorem composes a function-level correspondence for extracted Rust with a
-machine-level square.
+block. One function-level correspondence for extracted Rust, that of the majority
+function of section 1, is composed with machine-level squares: at the block decoded from
+the shipped bytes, and under the instruction-set interpreter over virtual registers. No
+other extracted function has such a composition, and none has one for a loop. The
+reduction modulo 2²⁵⁵ − 19 of section 1 is the one kernel imported from Jasmin source with
+a correctness statement on the x86 machine; that statement is over the translated block
+on the address-level machine.
 
 | Approach | Relation established |
 |---|---|
 | AutoCorres | design source; word abstraction, type strengthening and guards have counterparts |
 | Graf's Lean port | design and vocabulary |
 | monadic verification-condition generation | x86 squares are families of triples of the standard logic; one leaf proved by the generator |
-| Jasmin | the x86 semantics transcribes Jasmin's; one weld ends at an emitted Jasmin program |
+| Jasmin | the x86 semantics transcribes Jasmin's; one weld ends at an emitted Jasmin program; straight-line Jasmin source is simulated by the x86 address-level machine, one kernel carried through |
 | CryptOpt | two kernels proved correct over the imported text |
 | s2n-bignum | one kernel proved correct under its source precondition |
 | translation validation | the Ed25519 blocks are single backend outputs checked without the compiler's theorems |
