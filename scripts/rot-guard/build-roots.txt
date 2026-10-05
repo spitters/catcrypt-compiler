@@ -212,6 +212,7 @@ CatCrypt.Crypto.Primitives.SHA256Rounds
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmElfObject
+CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMach
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmSha256Kernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
@@ -473,10 +474,9 @@ CatCrypt.Crypto.SecureCompilation.ProtocolKernelsDemo
 CatCrypt.Crypto.SecureCompilation.QuadExtNormTowerGeneric
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvMulLsem
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.EncoderDiffAudit
-CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvElfObject
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvSha256Kernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvX25519FieldKernel
-CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa
+CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
@@ -746,7 +746,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
-CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmByteEncoder
@@ -830,6 +829,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused

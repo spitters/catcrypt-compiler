@@ -16,10 +16,16 @@ An `Lprog → Lprog` pass over the physical-register body the exporter produces.
 Each maximal run of instructions in the fragment `fragOf?` accepts is re-allocated
 as a whole: every definition of a general-purpose register or of a frame cell
 `k.N` starts a web, a two-address instruction ties its destination web to the
-web of its first source, and the webs are coloured with the thirteen pool
-registers (`R14`/`R15` stay the printer's scratch registers) or kept at their own
-name. The colouring prefers, for a 64-bit copy whose source dies at the copy, the
-source's colour, so the copy becomes a self-move and is dropped; a frame cell
+web of its first source, and the webs are coloured with the pool registers or kept at
+their own name. The register file is a trailing parameter `abi : IsaAbi` with default
+`x86Abi`: the pool is `abi.allocPool` (at `x86Abi` the thirteen registers of
+`gpRegNames`; `R14`/`R15` stay the printer's scratch registers), the general-purpose
+registers are `gpRegs abi`, and the registers live at a return are `abi.calleeSaved` and
+`abi.retRegs`. The fragment alphabet is a trailing parameter `recog` with default the x86
+alphabet `isRecognizedOpn`; `isaRecognized I` is the alphabet of an instruction set `I`,
+which excludes every mnemonic with an implicit register read in `I.implicitReads`. The
+shape tests `movClass`, `freeUnary`, `tiedOpn` and `isCopy64` are x86 mnemonic tests.
+The colouring prefers, for a 64-bit copy whose source dies at the copy, the source's colour, so the copy becomes a self-move and is dropped; a frame cell
 whose web fits in a free register is promoted to that register. A move whose
 destination is dead is dropped.
 
@@ -75,29 +81,81 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (stripAbiTag)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi IsaData)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (stripAbiTag x86Abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
   (isPhysGP physGPs nameReads isRecognizedOpn lsemStep_reg_nonmem)
 
-/-! ## 1. Names -/
+/-! ## 1. Names
+
+Every definition that names a register takes the register file and calling convention
+`abi : IsaAbi` as a trailing parameter with default `x86Abi`. -/
+
+/-- The general-purpose registers of a register file: the allocation pool followed by the
+    scratch registers, the primary scratch last. At `x86Abi` this is
+    `LcmdCopyPropagate.physGPs` (`gpRegs_x86`). -/
+def gpRegs (abi : IsaAbi := x86Abi) : List String := abi.allocPool ++ abi.scratch.reverse
+
+/-- A general-purpose register of the register file. -/
+def isGP (n : String) (abi : IsaAbi := x86Abi) : Bool := (gpRegs abi).contains n
 
 /-- A location: a general-purpose register or a frame cell `k.N`. -/
-def isLoc (n : String) : Bool := isPhysGP n || "k.".isPrefixOf n
+def isLoc (n : String) (abi : IsaAbi := x86Abi) : Bool := isGP n abi || "k.".isPrefixOf n
 
 /-- A frame cell `k.N`. -/
 def isFrame (n : String) : Bool := "k.".isPrefixOf n
 
-/-- A pool register: a general-purpose register other than the scratch registers
-    `R14` and `R15`. -/
-def isPool (n : String) : Bool := isPhysGP n && n != "R14" && n != "R15"
+/-- A pool register: a register of the allocation pool `abi.allocPool`, which excludes the
+    scratch registers. -/
+def isPool (n : String) (abi : IsaAbi := x86Abi) : Bool := abi.allocPool.contains n
 
-theorem isLoc_of_isPool {n : String} (h : isPool n = true) : isLoc n = true := by
-  simp only [isPool, Bool.and_eq_true] at h
-  simp [isLoc, h.1.1]
+/-- The x86 general-purpose registers are the fifteen of `LcmdCopyPropagate.physGPs`, in
+    the same order. -/
+theorem gpRegs_x86 : gpRegs = physGPs := rfl
+
+/-- At `x86Abi` a general-purpose register is one of `LcmdCopyPropagate.physGPs`. -/
+theorem isGP_x86 (n : String) : isGP n = isPhysGP n := rfl
+
+/-- At `x86Abi` a location is one of the fifteen general-purpose registers or a frame
+    cell. -/
+theorem isLoc_x86 (n : String) : isLoc n = (isPhysGP n || "k.".isPrefixOf n) := rfl
+
+/-- At `x86Abi` a pool register is a general-purpose register other than the scratch
+    registers `R14` and `R15`. -/
+theorem isPool_x86 (n : String) : isPool n = (isPhysGP n && n != "R14" && n != "R15") := by
+  by_cases h14 : n = "R14"
+  · subst h14; decide
+  · by_cases h15 : n = "R15"
+    · subst h15; decide
+    · have e14 : (n != "R14") = true := by simpa using h14
+      have e15 : (n != "R15") = true := by simpa using h15
+      simp [isPool, isPhysGP, physGPs, gpRegNames, h14, h15, e14, e15]
+
+theorem isLoc_of_isPool {n : String} {abi : IsaAbi} (h : isPool n abi = true) :
+    isLoc n abi = true := by
+  have hm : n ∈ abi.allocPool := by simpa [isPool] using h
+  simp [isLoc, isGP, gpRegs, hm]
+
+/-- The general-purpose registers a register-name string reads as an address:
+    `LcmdCopyPropagate.nameReads` over the register file `abi`. -/
+def nameReadsAt (n : String) (abi : IsaAbi := x86Abi) : List String :=
+  if isGP n abi then [n]
+  else if "mem.".isPrefixOf n then
+    match ((n.drop 4).toString).splitOn "." with
+    | [base, _] => if isGP base abi then [base] else []
+    | _ => []
+  else []
+
+/-- At `x86Abi`, `nameReadsAt` is `LcmdCopyPropagate.nameReads`. -/
+theorem nameReadsAt_x86 (n : String) : nameReadsAt n = nameReads n := rfl
 
 /-- The address registers of a memory-cell name `mem.<B>.<off>`. -/
-def baseRegs (n : String) : List String :=
-  if "mem.".isPrefixOf n then nameReads n else []
+def baseRegs (n : String) (abi : IsaAbi := x86Abi) : List String :=
+  if "mem.".isPrefixOf n then nameReadsAt n abi else []
+
+/-- At `x86Abi` the address registers are those `LcmdCopyPropagate.nameReads` gives. -/
+theorem baseRegs_x86 (n : String) :
+    baseRegs n = if "mem.".isPrefixOf n then nameReads n else [] := rfl
 
 /-! ## 2. The fragment -/
 
@@ -129,30 +187,60 @@ def regOrImm : LOperand → Bool
 def FI.wf (i : FI) : Bool :=
   i.srcs.all regOrImm && i.opn != "LOADIDX" && i.opn != "STOREIDX"
 
-/-- The fragment view of an instruction: a recognised single-destination `Lopn`
-    with register and immediate sources. -/
-def fragOf? (li : Linstr) : Option FI :=
+/-- The fragment view of an instruction: a single-destination `Lopn` with register and
+    immediate sources whose mnemonic the alphabet `recog` accepts. The default alphabet is
+    `LcmdCopyPropagate.isRecognizedOpn`, the x86 alphabet, which excludes the mnemonics
+    with an implicit register read. -/
+def fragOf? (li : Linstr) (recog : String → Bool := isRecognizedOpn) : Option FI :=
   match li.li_i with
   | .Lopn [.reg d] opn srcs =>
       let i : FI := ⟨li.li_ii, d, opn, srcs⟩
-      if isRecognizedOpn opn && i.wf then some i else none
+      if recog opn && i.wf then some i else none
   | _ => none
 
+/-- The fragment alphabet of an instruction set `I`: a recognised mnemonic that reads no
+    register implicitly according to `I.implicitReads`. -/
+def isaRecognized (I : IsaData) (opn : String) : Bool :=
+  (I.implicitReads opn).isEmpty && isRecognizedOpn opn
+
+/-- A mnemonic of the alphabet of `I` has no implicit register read in `I`. -/
+theorem implicitReads_of_isaRecognized {I : IsaData} {opn : String}
+    (h : isaRecognized I opn = true) : I.implicitReads opn = [] := by
+  simp only [isaRecognized, Bool.and_eq_true, List.isEmpty_iff] at h
+  exact h.1
+
+/-- An instruction of the fragment over the alphabet of `I` has no implicit register read
+    in `I`: every register it reads is among its operands. -/
+theorem fragOf?_implicitReads {I : IsaData} {li : Linstr} {i : FI}
+    (h : fragOf? li (isaRecognized I) = some i) : I.implicitReads i.opn = [] := by
+  unfold fragOf? at h
+  split at h
+  · dsimp only at h
+    split at h
+    · rename_i hc
+      cases h
+      simp only [Bool.and_eq_true] at hc
+      exact implicitReads_of_isaRecognized hc.1
+    · cases h
+  · cases h
+
 /-- The locations an operand reads: itself, or the address register of a memory cell. -/
-def opReads : LOperand → List String
-  | .reg n => if isLoc n then [n] else baseRegs n
-  | _ => []
+def opReads : LOperand → (abi : IsaAbi := x86Abi) → List String
+  | .reg n, abi => if isLoc n abi then [n] else baseRegs n abi
+  | _, _ => []
 
 /-- The address registers an operand names. -/
-def opBases : LOperand → List String
-  | .reg n => baseRegs n
-  | _ => []
+def opBases : LOperand → (abi : IsaAbi := x86Abi) → List String
+  | .reg n, abi => baseRegs n abi
+  | _, _ => []
 
 /-- The locations an instruction reads, address registers included. -/
-def FI.reads (i : FI) : List String := i.srcs.flatMap opReads ++ baseRegs i.d
+def FI.reads (i : FI) (abi : IsaAbi := x86Abi) : List String :=
+  i.srcs.flatMap (fun o => opReads o abi) ++ baseRegs i.d abi
 
 /-- The address registers an instruction names. -/
-def FI.bases (i : FI) : List String := i.srcs.flatMap opBases ++ baseRegs i.d
+def FI.bases (i : FI) (abi : IsaAbi := x86Abi) : List String :=
+  i.srcs.flatMap (fun o => opBases o abi) ++ baseRegs i.d abi
 
 /-! ## 3. Liveness -/
 
@@ -179,25 +267,27 @@ theorem mem_addNew (xs : List String) :
       tauto
 
 /-- The names live before an instruction, from those live after it. -/
-def liveBefore (i : FI) (la : List String) : List String :=
-  addNew i.reads (la.filter (fun n => n != i.d))
+def liveBefore (i : FI) (la : List String) (abi : IsaAbi := x86Abi) : List String :=
+  addNew (i.reads abi) (la.filter (fun n => n != i.d))
 
-theorem reads_mem_liveBefore {i : FI} {la : List String} {n : String} (h : n ∈ i.reads) :
-    n ∈ liveBefore i la :=
+theorem reads_mem_liveBefore {abi : IsaAbi} {i : FI} {la : List String} {n : String}
+    (h : n ∈ i.reads abi) : n ∈ liveBefore i la abi :=
   (mem_addNew _ _ _).2 (Or.inl h)
 
-theorem mem_liveBefore {i : FI} {la : List String} {n : String} (h : n ∈ la) (hd : n ≠ i.d) :
-    n ∈ liveBefore i la :=
+theorem mem_liveBefore {abi : IsaAbi} {i : FI} {la : List String} {n : String} (h : n ∈ la)
+    (hd : n ≠ i.d) : n ∈ liveBefore i la abi :=
   (mem_addNew _ _ _).2 (Or.inr (List.mem_filter.2 ⟨h, by simpa using hd⟩))
 
 /-- Each instruction paired with the names live after it, and the names live at the
     start, for the live-out set `lend`. -/
-def annotate (lend : List String) (is : List FI) : List (FI × List String) × List String :=
-  is.foldr (fun i p => ((i, p.2) :: p.1, liveBefore i p.2)) ([], lend)
+def annotate (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) :
+    List (FI × List String) × List String :=
+  is.foldr (fun i p => ((i, p.2) :: p.1, liveBefore i p.2 abi)) ([], lend)
 
-theorem annotate_cons (lend : List String) (i : FI) (is : List FI) :
-    annotate lend (i :: is) =
-      ((i, (annotate lend is).2) :: (annotate lend is).1, liveBefore i (annotate lend is).2) :=
+theorem annotate_cons {abi : IsaAbi} (lend : List String) (i : FI) (is : List FI) :
+    annotate lend (i :: is) abi =
+      ((i, (annotate lend is abi).2) :: (annotate lend is abi).1,
+        liveBefore i (annotate lend is abi).2 abi) :=
   rfl
 
 /-! ## 4. The check and the materialization -/
@@ -216,9 +306,9 @@ theorem look_empty (n : String) : look ({} : Cur) n = n := by
   simp [look]
 
 /-- Rename a location operand to its current location. -/
-def renOp (m : Cur) : LOperand → LOperand
-  | .reg n => if isLoc n then .reg (look m n) else .reg n
-  | o => o
+def renOp (m : Cur) : LOperand → (abi : IsaAbi := x86Abi) → LOperand
+  | .reg n, abi => if isLoc n abi then .reg (look m n) else .reg n
+  | o, _ => o
 
 /-- The 64-bit register copy mnemonics. -/
 def isCopy64 (opn : String) : Bool := opn == "MOV:64" || opn == "MOVQ"
@@ -258,44 +348,47 @@ def shapeOf (i : FI) : Shape :=
   else .fixed
 
 /-- The allowed locations of a web of `d`: a pool register or `d`. -/
-def okLoc (d c : String) : Bool := isPool c || c == d
+def okLoc (d c : String) (abi : IsaAbi := x86Abi) : Bool := isPool c abi || c == d
 
 /-- No name live after the write, other than `d`, is at `c`. -/
 def noClobber (m : Cur) (la : List String) (d c : String) : Bool :=
   la.all (fun n => n == d || look m n != c)
 
 /-- Every address register is at its own location. -/
-def basesOk (m : Cur) (i : FI) : Bool := i.bases.all (fun b => look m b == b)
+def basesOk (m : Cur) (i : FI) (abi : IsaAbi := x86Abi) : Bool :=
+  (i.bases abi).all (fun b => look m b == b)
 
 /-- The printer shape is respected by the destination location `c`. -/
-def shapeOk (m : Cur) (i : FI) (c : String) : Bool :=
+def shapeOk (m : Cur) (i : FI) (c : String) (abi : IsaAbi := x86Abi) : Bool :=
   match shapeOf i with
   | .free => true
   | .tied => c == look m i.d
-  | .fixed => c == i.d && i.reads.all (fun x => look m x == x)
+  | .fixed => c == i.d && (i.reads abi).all (fun x => look m x == x)
 
 /-- Check the decisions `cs` against the annotated run and materialize it, the
     output accumulated in reverse in `acc`. `none` when a check fails. -/
 def goAcc (lend : List String) : Cur → List (FI × List String) → List String → List FI →
-    Option (List FI)
-  | m, [], [], acc => if lend.all (fun n => look m n == n) then some acc.reverse else none
-  | m, (i, la) :: rest, c :: cs, acc =>
-      if basesOk m i then
-        if isLoc i.d then
-          if okLoc i.d c && shapeOk m i c then
-            if isCopy64 i.opn && i.srcs.map (renOp m) == [.reg c] then
-              goAcc lend (m.insert i.d c) rest cs acc
+    (abi : IsaAbi := x86Abi) → Option (List FI)
+  | m, [], [], acc, _ => if lend.all (fun n => look m n == n) then some acc.reverse else none
+  | m, (i, la) :: rest, c :: cs, acc, abi =>
+      if basesOk m i abi then
+        if isLoc i.d abi then
+          if okLoc i.d c abi && shapeOk m i c abi then
+            if isCopy64 i.opn && i.srcs.map (fun o => renOp m o abi) == [.reg c] then
+              goAcc lend (m.insert i.d c) rest cs acc abi
             else if movClass i.opn && !la.contains i.d then
-              goAcc lend m rest cs acc
+              goAcc lend m rest cs acc abi
             else if noClobber m la i.d c then
-              goAcc lend (m.insert i.d c) rest cs (⟨i.ii, c, i.opn, i.srcs.map (renOp m)⟩ :: acc)
+              goAcc lend (m.insert i.d c) rest cs
+                (⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩ :: acc) abi
             else none
           else none
-        else if shapeOk m i i.d then
-          goAcc lend m rest cs (⟨i.ii, i.d, i.opn, i.srcs.map (renOp m)⟩ :: acc)
+        else if shapeOk m i i.d abi then
+          goAcc lend m rest cs
+            (⟨i.ii, i.d, i.opn, i.srcs.map (fun o => renOp m o abi)⟩ :: acc) abi
         else none
       else none
-  | _, _, _, _ => none
+  | _, _, _, _, _ => none
 
 /-! ## 5. Semantics -/
 
@@ -359,34 +452,37 @@ theorem lsemStraight_map_toR {w : Nat} (is : List FI) (hwf : ∀ i ∈ is, i.wf 
 /-- The relation between a source state `σ` and a renamed state `τ`: equal memory,
     equal non-location names, and every live location name `n` holding its source
     value at its location `look m n`. -/
-def Rel {w : Nat} (m : Cur) (L : List String) (σ τ : Lstate w) : Prop :=
-  τ.lmem = σ.lmem ∧ (∀ x, isLoc x = false → τ.lvm x = σ.lvm x) ∧
-    ∀ n ∈ L, isLoc n = true → isLoc (look m n) = true ∧ τ.lvm (look m n) = σ.lvm n
+def Rel {w : Nat} (m : Cur) (L : List String) (σ τ : Lstate w) (abi : IsaAbi := x86Abi) :
+    Prop :=
+  τ.lmem = σ.lmem ∧ (∀ x, isLoc x abi = false → τ.lvm x = σ.lvm x) ∧
+    ∀ n ∈ L, isLoc n abi = true → isLoc (look m n) abi = true ∧ τ.lvm (look m n) = σ.lvm n
 
 /-- Agreement at the end of a run: equal memory and equal values on every name that
     is not a location or is live out. -/
-def Final {w : Nat} (lend : List String) (σ τ : Lstate w) : Prop :=
-  τ.lmem = σ.lmem ∧ ∀ x, (isLoc x = false ∨ x ∈ lend) → τ.lvm x = σ.lvm x
+def Final {w : Nat} (lend : List String) (σ τ : Lstate w) (abi : IsaAbi := x86Abi) : Prop :=
+  τ.lmem = σ.lmem ∧ ∀ x, (isLoc x abi = false ∨ x ∈ lend) → τ.lvm x = σ.lvm x
 
-theorem Rel.empty {w : Nat} (L : List String) (σ : Lstate w) : Rel {} L σ σ :=
+theorem Rel.empty {w : Nat} {abi : IsaAbi} (L : List String) (σ : Lstate w) :
+    Rel {} L σ σ abi :=
   ⟨rfl, fun _ _ => rfl, fun n _ hn => by simp [look_empty, hn]⟩
 
-theorem renOp_regOrImm (m : Cur) (o : LOperand) (h : regOrImm o = true) :
-    regOrImm (renOp m o) = true := by
+theorem renOp_regOrImm {abi : IsaAbi} (m : Cur) (o : LOperand) (h : regOrImm o = true) :
+    regOrImm (renOp m o abi) = true := by
   cases o with
-  | reg n => by_cases hn : isLoc n = true <;> simp [renOp, hn, regOrImm]
+  | reg n => by_cases hn : isLoc n abi = true <;> simp [renOp, hn, regOrImm]
   | imm _ => rfl
   | _ => simp [regOrImm] at h
 
 /-- The renamed sources evaluate in `τ` to the source values in `σ`. -/
-theorem eval_renOp {w : Nat} {m : Cur} {L : List String} {σ τ : Lstate w} {i : FI}
-    (hR : Rel m L σ τ) (hL : ∀ n ∈ i.reads, n ∈ L) (hwf : i.srcs.all regOrImm = true)
-    {o : LOperand} (ho : o ∈ i.srcs) : evalOperand τ (renOp m o) = evalOperand σ o := by
+theorem eval_renOp {w : Nat} {abi : IsaAbi} {m : Cur} {L : List String} {σ τ : Lstate w}
+    {i : FI} (hR : Rel m L σ τ abi) (hL : ∀ n ∈ i.reads abi, n ∈ L)
+    (hwf : i.srcs.all regOrImm = true) {o : LOperand} (ho : o ∈ i.srcs) :
+    evalOperand τ (renOp m o abi) = evalOperand σ o := by
   have hro : regOrImm o = true := List.all_eq_true.1 hwf o ho
   cases o with
   | reg n =>
-    by_cases hn : isLoc n = true
-    · have hr : n ∈ i.reads := by
+    by_cases hn : isLoc n abi = true
+    · have hr : n ∈ i.reads abi := by
         simp only [FI.reads, List.mem_append, List.mem_flatMap]
         exact Or.inl ⟨.reg n, ho, by simp [opReads, hn]⟩
       simp only [renOp, hn, if_true, evalOperand]
@@ -397,9 +493,11 @@ theorem eval_renOp {w : Nat} {m : Cur} {L : List String} {σ τ : Lstate w} {i :
   | imm _ => rfl
   | _ => simp [regOrImm] at hro
 
-theorem map_eval_renOp {w : Nat} {m : Cur} {L : List String} {σ τ : Lstate w} {i : FI}
-    (hR : Rel m L σ τ) (hL : ∀ n ∈ i.reads, n ∈ L) (hwf : i.srcs.all regOrImm = true) :
-    (i.srcs.map (renOp m)).map (evalOperand τ) = i.srcs.map (evalOperand σ) := by
+theorem map_eval_renOp {w : Nat} {abi : IsaAbi} {m : Cur} {L : List String}
+    {σ τ : Lstate w} {i : FI} (hR : Rel m L σ τ abi) (hL : ∀ n ∈ i.reads abi, n ∈ L)
+    (hwf : i.srcs.all regOrImm = true) :
+    (i.srcs.map (fun o => renOp m o abi)).map (evalOperand τ) =
+      i.srcs.map (evalOperand σ) := by
   rw [List.map_map]
   exact List.map_congr_left (fun o ho => eval_renOp hR hL hwf ho)
 
@@ -407,8 +505,8 @@ theorem wf_of_srcs {i : FI} (hwf : i.wf = true) : i.srcs.all regOrImm = true := 
   simp only [FI.wf, Bool.and_eq_true] at hwf
   exact hwf.1.1
 
-theorem wf_rename (m : Cur) (i : FI) (c : String) (hwf : i.wf = true) :
-    FI.wf ⟨i.ii, c, i.opn, i.srcs.map (renOp m)⟩ = true := by
+theorem wf_rename {abi : IsaAbi} (m : Cur) (i : FI) (c : String) (hwf : i.wf = true) :
+    FI.wf ⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩ = true := by
   simp only [FI.wf, Bool.and_eq_true] at hwf ⊢
   refine ⟨⟨?_, hwf.1.2⟩, hwf.2⟩
   simp only [List.all_map, List.all_eq_true, Function.comp_apply]
@@ -419,16 +517,17 @@ theorem wf_rename (m : Cur) (i : FI) (c : String) (hwf : i.wf = true) :
     any `τ` related to `σ` on the names live at the start ends in a state that agrees
     with `σ'` on memory, on every non-location name and on every live-out name. Every
     materialized instruction is in the fragment. -/
-theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitVec w))
+theorem goAcc_sound {w : Nat} {abi : IsaAbi}
+    (sem : String → List (BitVec w) → Option (BitVec w))
     (hcopy : ∀ (opn : String) (a : BitVec w), isCopy64 opn = true → sem opn [a] = some a)
     (lend : List String) :
     ∀ (is : List FI) (m : Cur) (cs : List String) (acc out : List FI) (σ σ' τ : Lstate w),
       (∀ i ∈ is, i.wf = true) →
-      goAcc lend m (annotate lend is).1 cs acc = some out →
-      Rel m (annotate lend is).2 σ τ →
+      goAcc lend m (annotate lend is abi).1 cs acc abi = some out →
+      Rel m (annotate lend is abi).2 σ τ abi →
       runWith sem is σ = some σ' →
       ∃ rest τ', out = acc.reverse ++ rest ∧ (∀ j ∈ rest, j.wf = true) ∧
-        runWith sem rest τ = some τ' ∧ Final lend σ' τ' := by
+        runWith sem rest τ = some τ' ∧ Final lend σ' τ' abi := by
   intro is
   induction is with
   | nil =>
@@ -443,7 +542,7 @@ theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitV
         simp only [runWith, Option.some.injEq] at hrun
         subst hgo hrun
         refine ⟨[], τ, by simp, by simp, rfl, hR.1, fun x hx => ?_⟩
-        by_cases hl : isLoc x = true
+        by_cases hl : isLoc x abi = true
         · have hxl : x ∈ lend := by
             rcases hx with h | h
             · simp [hl] at h
@@ -460,7 +559,7 @@ theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitV
     have hwfs : ∀ j ∈ is, j.wf = true := fun j hj => hwf j (by simp [hj])
     have hsrc := wf_of_srcs hwfi
     rw [annotate_cons] at hgo hR
-    set la := (annotate lend is).2 with hla
+    set la := (annotate lend is abi).2 with hla
     simp only [runWith] at hrun
     cases hstep : stepWith sem i σ with
     | none => rw [hstep] at hrun; exact absurd hrun (by simp)
@@ -474,29 +573,31 @@ theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitV
     simp only [Option.some.injEq] at hstep
     subst hstep
     simp only at hrun
-    have hreads : ∀ n ∈ i.reads, n ∈ liveBefore i la := fun n hn => reads_mem_liveBefore hn
+    have hreads : ∀ n ∈ i.reads abi, n ∈ liveBefore i la abi :=
+      fun n hn => reads_mem_liveBefore hn
     have hev := map_eval_renOp hR hreads hsrc
     cases cs with
     | nil => simp [goAcc] at hgo
     | cons c cs =>
     simp only [goAcc] at hgo
-    by_cases hb : basesOk m i = true
+    by_cases hb : basesOk m i abi = true
     · rw [if_pos hb] at hgo
-      by_cases hd : isLoc i.d = true
+      by_cases hd : isLoc i.d abi = true
       · rw [if_pos hd] at hgo
-        by_cases hok : (okLoc i.d c && shapeOk m i c) = true
+        by_cases hok : (okLoc i.d c abi && shapeOk m i c abi) = true
         · rw [if_pos hok] at hgo
-          have hc : isLoc c = true := by
+          have hc : isLoc c abi = true := by
             simp only [Bool.and_eq_true, okLoc, Bool.or_eq_true, beq_iff_eq] at hok
             rcases hok.1 with h | h
             · exact isLoc_of_isPool h
             · rw [h]; exact hd
-          by_cases hcp : (isCopy64 i.opn && i.srcs.map (renOp m) == [.reg c]) = true
+          by_cases hcp :
+              (isCopy64 i.opn && i.srcs.map (fun o => renOp m o abi) == [.reg c]) = true
           · -- a self-copy: dropped
             rw [if_pos hcp] at hgo
             simp only [Bool.and_eq_true, beq_iff_eq] at hcp
             obtain ⟨hcopyi, hmap⟩ := hcp
-            obtain ⟨o, hso, hro⟩ : ∃ o, i.srcs = [o] ∧ renOp m o = .reg c := by
+            obtain ⟨o, hso, hro⟩ : ∃ o, i.srcs = [o] ∧ renOp m o abi = .reg c := by
               rcases hs : i.srcs with _ | ⟨o, _ | ⟨o2, t⟩⟩ <;> rw [hs] at hmap <;> simp at hmap
               exact ⟨o, rfl, hmap⟩
             have hτc : τ.lvm c = evalOperand σ o := by
@@ -543,11 +644,11 @@ theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitV
               by_cases hnc : noClobber m la i.d c = true
               · -- a kept write at `c`
                 rw [if_pos hnc] at hgo
-                let i' : FI := ⟨i.ii, c, i.opn, i.srcs.map (renOp m)⟩
+                let i' : FI := ⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
                 have hstep' : stepWith sem i' τ = some ((τ.setReg c v).nextPc) := by
                   simp only [stepWith, i', hev, hv]
                 have hR' : Rel (m.insert i.d c) la ((σ.setReg i.d v).nextPc)
-                    ((τ.setReg c v).nextPc) := by
+                    ((τ.setReg c v).nextPc) abi := by
                   refine ⟨hR.1, ?_, ?_⟩
                   · intro x hx
                     have hxd : x ≠ i.d := fun h => by rw [h, hd] at hx; exact absurd hx (by simp)
@@ -582,12 +683,12 @@ theorem goAcc_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitV
       · -- a write to a non-location name
         rw [if_neg hd] at hgo
         simp only [Bool.not_eq_true] at hd
-        by_cases hsh : shapeOk m i i.d = true
+        by_cases hsh : shapeOk m i i.d abi = true
         · rw [if_pos hsh] at hgo
-          let i' : FI := ⟨i.ii, i.d, i.opn, i.srcs.map (renOp m)⟩
+          let i' : FI := ⟨i.ii, i.d, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
           have hstep' : stepWith sem i' τ = some ((τ.setReg i.d v).nextPc) := by
             simp only [stepWith, i', hev, hv]
-          have hR' : Rel m la ((σ.setReg i.d v).nextPc) ((τ.setReg i.d v).nextPc) := by
+          have hR' : Rel m la ((σ.setReg i.d v).nextPc) ((τ.setReg i.d v).nextPc) abi := by
             refine ⟨hR.1, ?_, ?_⟩
             · intro x hx
               by_cases hxd : x = i.d
@@ -665,23 +766,24 @@ def AllocSt.touch (st : AllocSt) (x : String) (p : Nat) (fix : Bool) : AllocSt :
         nCls := st.nCls + 1 }
 
 /-- The webs of an annotated run (positions from `1`). -/
-def buildWebs (lend : List String) (ann : Array (FI × List String)) : AllocSt := Id.run do
+def buildWebs (lend : List String) (ann : Array (FI × List String))
+    (abi : IsaAbi := x86Abi) : AllocSt := Id.run do
   let mut st : AllocSt := {}
   for h : k in [0:ann.size] do
     let (i, la) := ann[k]
     let p := k + 1
     let sh := shapeOf i
     let fixAll := sh == .fixed
-    let bs := i.bases
-    for x in i.reads do
+    let bs := i.bases abi
+    for x in i.reads abi do
       st := st.touch x p (fixAll || bs.contains x)
-    if isLoc i.d && !(movClass i.opn && !la.contains i.d) then
+    if isLoc i.d abi && !(movClass i.opn && !la.contains i.d) then
       let tied : Option Nat :=
         if sh == .tied then (st.curWeb.get? i.d).map (fun wi => st.webs[wi]!.cls) else none
       let hint : Option Nat :=
         if isCopy64 i.opn then
           match i.srcs with
-          | [.reg s] => if isLoc s then st.curWeb.get? s else none
+          | [.reg s] => if isLoc s abi then st.curWeb.get? s else none
           | _ => none
         else none
       let cls := tied.getD st.nCls
@@ -708,9 +810,14 @@ def advance (iv : Array (Nat × Nat)) (st : Nat) (j : Nat) : Nat :=
   else j
 termination_by iv.size - j
 
-/-- The pool registers in allocation order. -/
-def poolOrder : List String :=
-  ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP", "R8", "R9", "R10", "R11", "R12", "R13"]
+/-- The pool registers in allocation order: `abi.allocPool`. -/
+def poolOrder (abi : IsaAbi := x86Abi) : List String := abi.allocPool
+
+/-- The x86 pool in allocation order: the thirteen registers of `gpRegNames`. -/
+theorem poolOrder_x86 :
+    poolOrder =
+      ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP", "R8", "R9", "R10", "R11", "R12",
+        "R13"] := rfl
 
 /-- Colour the tie classes: a fixed class keeps its name; the other classes, in order
     of their start, take the first free colour among the colour of the source of the
@@ -718,7 +825,8 @@ def poolOrder : List String :=
     their own name and the pool registers (the pool first for a frame cell when
     `promote`).
     `none` when a class finds no free colour. -/
-def colorClasses (st : AllocSt) (promote : Bool) : Option (Array String) := Id.run do
+def colorClasses (st : AllocSt) (promote : Bool) (abi : IsaAbi := x86Abi) :
+    Option (Array String) := Id.run do
   let n := st.nCls
   let mut cName : Array String := Array.replicate n ""
   let mut cStart : Array Nat := Array.replicate n 0
@@ -767,11 +875,11 @@ def colorClasses (st : AllocSt) (promote : Bool) : Option (Array String) := Id.r
             if cFixed[sc]! && cStart[sc]! ≥ en then [cName[sc]!] else []
         | none => []
       let rest : List String :=
-        if isFrame nm then (if promote then poolOrder ++ [nm] else [nm])
-        else nm :: poolOrder
+        if isFrame nm then (if promote then poolOrder abi ++ [nm] else [nm])
+        else nm :: poolOrder abi
       let mut chosen : Option String := none
       for col in hintCol ++ sinkCol ++ rest do
-        if chosen.isNone && okLoc nm col && (promote || !isFrame nm || col == nm) then
+        if chosen.isNone && okLoc nm col abi && (promote || !isFrame nm || col == nm) then
           let iv := fixedIv.getD col #[]
           let j := advance iv s0 (ptr.getD col 0)
           ptr := ptr.insert col j
@@ -797,17 +905,20 @@ def decisionsOf (st : AllocSt) (color : Array String) (ann : Array (FI × List S
 
 /-- The first decision list that passes the check, materialized; the run itself when
     none does. -/
-def reallocWith (lend : List String) (is : List FI) (cands : List (List String)) : List FI :=
-  match cands.findSome? (fun cs => goAcc lend {} (annotate lend is).1 cs []) with
+def reallocWith (lend : List String) (is : List FI) (cands : List (List String))
+    (abi : IsaAbi := x86Abi) : List FI :=
+  match cands.findSome? (fun cs => goAcc lend {} (annotate lend is abi).1 cs [] abi) with
   | some out => out
   | none => is
 
-theorem reallocWith_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitVec w))
+theorem reallocWith_sound {w : Nat} {abi : IsaAbi}
+    (sem : String → List (BitVec w) → Option (BitVec w))
     (hcopy : ∀ (opn : String) (a : BitVec w), isCopy64 opn = true → sem opn [a] = some a)
     (lend : List String) (is : List FI) (cands : List (List String))
     (hwf : ∀ i ∈ is, i.wf = true) (σ σ' : Lstate w) (h : runWith sem is σ = some σ') :
-    (∀ j ∈ reallocWith lend is cands, j.wf = true) ∧
-      ∃ τ', runWith sem (reallocWith lend is cands) σ = some τ' ∧ Final lend σ' τ' := by
+    (∀ j ∈ reallocWith lend is cands abi, j.wf = true) ∧
+      ∃ τ', runWith sem (reallocWith lend is cands abi) σ = some τ' ∧
+        Final lend σ' τ' abi := by
   unfold reallocWith
   split
   · rename_i out hf
@@ -821,37 +932,40 @@ theorem reallocWith_sound {w : Nat} (sem : String → List (BitVec w) → Option
 
 /-- The candidate decisions for one run with live-out set `lend`: the colourings with
     and without frame-cell promotion, then the identity decisions. -/
-def runCands (lend : List String) (is : List FI) : List (List String) :=
-  let ann := (annotate lend is).1.toArray
-  let st := buildWebs lend ann
+def runCands (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) :
+    List (List String) :=
+  let ann := (annotate lend is abi).1.toArray
+  let st := buildWebs lend ann abi
   let dec (promote : Bool) : List String :=
-    match colorClasses st promote with
+    match colorClasses st promote abi with
     | some col => decisionsOf st col ann
     | none => []
   [dec true, dec false, is.map FI.d]
 
 /-- The pass on one run with live-out set `lend`. -/
-def reallocRun (lend : List String) (is : List FI) : List FI :=
-  reallocWith lend is (runCands lend is)
+def reallocRun (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) : List FI :=
+  reallocWith lend is (runCands lend is abi) abi
 
 /-- **The pass on one run is sound for every interpretation** that reads the 64-bit
-    copies as the identity. -/
-theorem reallocRun_sound {w : Nat} (sem : String → List (BitVec w) → Option (BitVec w))
+    copies as the identity, at every register file `abi`. -/
+theorem reallocRun_sound {w : Nat} {abi : IsaAbi}
+    (sem : String → List (BitVec w) → Option (BitVec w))
     (hcopy : ∀ (opn : String) (a : BitVec w), isCopy64 opn = true → sem opn [a] = some a)
     (lend : List String) (is : List FI) (hwf : ∀ i ∈ is, i.wf = true) (σ σ' : Lstate w)
     (h : runWith sem is σ = some σ') :
-    ∃ τ', runWith sem (reallocRun lend is) σ = some τ' ∧ Final lend σ' τ' :=
+    ∃ τ', runWith sem (reallocRun lend is abi) σ = some τ' ∧ Final lend σ' τ' abi :=
   (reallocWith_sound sem hcopy lend is _ hwf σ σ' h).2
 
-/-- **The pass on one run under `lsemStraight`.** -/
-theorem reallocRun_lsemStraight {w : Nat} (lend : List String) (is : List FI)
+/-- **The pass on one run under `lsemStraight`**, at every register file `abi`. -/
+theorem reallocRun_lsemStraight {w : Nat} {abi : IsaAbi} (lend : List String) (is : List FI)
     (hwf : ∀ i ∈ is, i.wf = true) (σ σ' : Lstate w)
     (h : lsemStraight (is.map FI.toR) σ = some σ') :
-    ∃ τ', lsemStraight ((reallocRun lend is).map FI.toR) σ = some τ' ∧ Final lend σ' τ' := by
+    ∃ τ', lsemStraight ((reallocRun lend is abi).map FI.toR) σ = some τ' ∧
+      Final lend σ' τ' abi := by
   rw [lsemStraight_map_toR is hwf] at h
   obtain ⟨hwr, τ', hr, hfin⟩ :=
-    reallocWith_sound semL (fun opn a hc => semL_copy opn a hc) lend is (runCands lend is)
-      hwf σ σ' h
+    reallocWith_sound (abi := abi) semL (fun opn a hc => semL_copy opn a hc) lend is
+      (runCands lend is abi) hwf σ σ' h
   exact ⟨τ', by rw [reallocRun, lsemStraight_map_toR _ hwr]; exact hr, hfin⟩
 
 /-- A body split into runs of fragment instructions and the instructions between. -/
@@ -861,10 +975,10 @@ inductive Piece where
   /-- An instruction outside the fragment. -/
   | bar (li : Linstr)
 
-/-- Split a body into pieces. -/
-def pieces (body : Lcmd) : List Piece :=
+/-- Split a body into pieces, the fragment taken over the alphabet `recog`. -/
+def pieces (body : Lcmd) (recog : String → Bool := isRecognizedOpn) : List Piece :=
   body.foldr (fun li acc =>
-    match fragOf? li with
+    match fragOf? li recog with
     | some i =>
         match acc with
         | Piece.run is :: rest => Piece.run (i :: is) :: rest
@@ -890,10 +1004,17 @@ def Piece.frames : Piece → List String
   | .run is => is.flatMap (fun i => instrFrames i.toR)
   | .bar li => instrFrames li.li_i
 
-/-- The registers live at a return: the SysV callee-saved registers, the return
-    registers `RAX` and `RDX`, and the function's result registers `res`. -/
-def retLive (res : List String) : List String :=
-  ["RBX", "RBP", "R12", "R13", "R14", "R15", "RAX", "RDX"] ++ res.filter isLoc
+/-- The registers live at a return: the callee-saved registers `abi.calleeSaved`, the
+    return registers `abi.retRegs`, and the function's result registers `res`. -/
+def retLive (res : List String) (abi : IsaAbi := x86Abi) : List String :=
+  abi.calleeSaved ++ abi.retRegs ++ res.filter (fun x => isLoc x abi)
+
+/-- At `x86Abi` the registers live at a return are the SysV callee-saved registers, the
+    return registers `RAX` and `RDX`, and the result registers. -/
+theorem retLive_x86 (res : List String) :
+    retLive res =
+      ["RBX", "RBP", "R12", "R13", "R14", "R15", "RAX", "RDX"] ++ res.filter (isLoc ·) :=
+  rfl
 
 /-- The frame cells live out of every run of a body with a label: every frame
     cell the body names. A jump to a label can reach a run that precedes the jump,
@@ -906,25 +1027,36 @@ def labelLiveFrames (body : Lcmd) : Std.HashSet String :=
 
 /-- The pass on one body with result registers `res`: every run is re-allocated
     with live-out set the frame cells named after it (every frame cell of the body
-    when it has a label, `labelLiveFrames`) together with `retLive res` when a
-    return follows the run and the fifteen general-purpose registers otherwise;
-    every other instruction is kept. -/
-def reallocBody (res : List String) (body : Lcmd) : Lcmd :=
-  let r := (pieces body).foldr (fun p (acc : Lcmd × Std.HashSet String) =>
+    when it has a label, `labelLiveFrames`) together with `retLive res abi` when a
+    return follows the run and the general-purpose registers `gpRegs abi` otherwise
+    (at `x86Abi`, the fifteen of `physGPs`); every other instruction is kept. The fragment
+    is taken over the alphabet `recog`. -/
+def reallocBody (res : List String) (body : Lcmd) (abi : IsaAbi := x86Abi)
+    (recog : String → Bool := isRecognizedOpn) : Lcmd :=
+  let r := (pieces body recog).foldr (fun p (acc : Lcmd × Std.HashSet String) =>
     let out : Lcmd :=
       match p with
       | .run is =>
           let regs := match acc.1 with
-            | ⟨_, .Lret⟩ :: _ => retLive res
-            | _ => physGPs
-          (reallocRun (regs ++ acc.2.toList) is).map FI.toL ++ acc.1
+            | ⟨_, .Lret⟩ :: _ => retLive res abi
+            | _ => gpRegs abi
+          (reallocRun (regs ++ acc.2.toList) is abi).map FI.toL ++ acc.1
       | .bar li => li :: acc.1
     (out, acc.2.insertMany p.frames)) ([], labelLiveFrames body)
   r.1
 
-/-- The pass on every function body of a program. -/
-def reallocLprog (p : Lprog) : Lprog :=
+/-- The pass on every function body of a program, at the register file `abi` and the
+    fragment alphabet `recog`. The defaults are the x86 register file `x86Abi` and the x86
+    alphabet `isRecognizedOpn`; an instruction set `I : IsaData` is passed as `I.toIsaAbi`
+    and `isaRecognized I`. -/
+def reallocLprog (p : Lprog) (abi : IsaAbi := x86Abi)
+    (recog : String → Bool := isRecognizedOpn) : Lprog :=
   { p with lp_funcs := p.lp_funcs.map (fun f =>
-      (f.1, { f.2 with lfd_body := reallocBody f.2.lfd_res f.2.lfd_body })) }
+      (f.1, { f.2 with lfd_body := reallocBody f.2.lfd_res f.2.lfd_body abi recog })) }
+
+/-- The pass at an instruction set `I`: the register file of `I` and the alphabet
+    `isaRecognized I`, which excludes every mnemonic `I.implicitReads` gives a register. -/
+def reallocLprogIsa (I : IsaData) (p : Lprog) : Lprog :=
+  reallocLprog p I.toIsaAbi (isaRecognized I)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc

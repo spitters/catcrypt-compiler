@@ -439,7 +439,7 @@ theorem runWith_rel_id {w : Nat} (sem : String → List (BitVec w) → Option (B
       have hwi := hwf i (List.mem_cons_self ..)
       have hev := map_eval_renOp (m := {}) hR (fun n hn => reads_mem_liveBefore hn)
         (wf_of_srcs hwi)
-      have hid : i.srcs.map (renOp ({} : Cur)) = i.srcs := by
+      have hid : i.srcs.map (fun o => renOp ({} : Cur) o) = i.srcs := by
         conv_rhs => rw [← List.map_id i.srcs]
         exact List.map_congr_left (fun o _ => renOp_empty o)
       rw [hid] at hev
@@ -490,13 +490,14 @@ theorem reallocRun_rel {w : Nat} (lend : List String) (is : List FI)
 
 theorem isPhysGP_of_loc {x : String} (hl : isLoc x = true) (hf : isFrame x = false) :
     isPhysGP x = true := by
-  simp only [isLoc, isFrame, Bool.or_eq_true] at hl hf
+  simp only [isLoc_x86, isFrame, Bool.or_eq_true] at hl hf
   rcases hl with hl | hl
   · exact hl
   · rw [hl] at hf; cases hf
 
 theorem baseRegs_gp {n x : String} (h : x ∈ baseRegs n) : isPhysGP x = true := by
-  unfold baseRegs nameReads at h
+  rw [baseRegs_x86] at h
+  unfold nameReads at h
   split_ifs at h with h1 h2
   · simp only [List.mem_singleton] at h; subst h; exact h2
   · split at h
@@ -547,7 +548,7 @@ theorem isPhysGP_mem_physGPs {x : String} (h : isPhysGP x = true) : x ∈ physGP
 
 theorem retLive_gp (res : List String) (hres : ∀ x ∈ res, isFrame x = false) {x : String}
     (hx : x ∈ retLive res) (hl : isLoc x = true) : isPhysGP x = true := by
-  simp only [retLive, List.mem_append, List.mem_filter] at hx
+  simp only [retLive_x86, List.mem_append, List.mem_filter] at hx
   rcases hx with hx | ⟨hx, _⟩
   · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
     rcases hx with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>

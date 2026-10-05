@@ -39,18 +39,20 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
   (isIndexed linstrRDirect lcmdDirect lcmdDirect_iff)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi)
 
 /-- No source of the fragment instruction is register-indexed. -/
 def fiDirect (i : FI) : Bool := i.srcs.all (fun o => !isIndexed o)
 
-theorem renOp_not_indexed (m : Cur) {o : LOperand} (h : isIndexed o = false) :
-    isIndexed (renOp m o) = false := by
+theorem renOp_not_indexed {abi : IsaAbi} (m : Cur) {o : LOperand} (h : isIndexed o = false) :
+    isIndexed (renOp m o abi) = false := by
   cases o with
   | reg n => simp only [renOp]; split <;> rfl
   | _ => simp_all [renOp]
 
-theorem fiDirect_rename (m : Cur) (i : FI) (c : String) (h : fiDirect i = true) :
-    fiDirect ⟨i.ii, c, i.opn, i.srcs.map (renOp m)⟩ = true := by
+theorem fiDirect_rename {abi : IsaAbi} (m : Cur) (i : FI) (c : String)
+    (h : fiDirect i = true) :
+    fiDirect ⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩ = true := by
   simp only [fiDirect, List.all_map, List.all_eq_true, Function.comp_apply,
     Bool.not_eq_true'] at h ⊢
   exact fun o ho => renOp_not_indexed m (h o ho)
@@ -68,10 +70,10 @@ theorem linstrRDirect_toR {i : FI} (h : fiDirect i = true) :
   simpa [FI.toR, linstrRDirect] using h
 
 /-- Every instruction the check materializes has no register-indexed source. -/
-theorem goAcc_direct (lend : List String) :
+theorem goAcc_direct {abi : IsaAbi} (lend : List String) :
     ∀ (ann : List (FI × List String)) (m : Cur) (cs : List String) (acc out : List FI),
       (∀ p ∈ ann, fiDirect p.1 = true) → (∀ j ∈ acc, fiDirect j = true) →
-      goAcc lend m ann cs acc = some out → ∀ j ∈ out, fiDirect j = true := by
+      goAcc lend m ann cs acc abi = some out → ∀ j ∈ out, fiDirect j = true := by
   intro ann
   induction ann with
   | nil =>
@@ -96,7 +98,8 @@ theorem goAcc_direct (lend : List String) :
       | cons c cs =>
           simp only [goAcc] at h
           have push : ∀ (d : String), ∀ j ∈
-              ({ ii := i.ii, d := d, opn := i.opn, srcs := i.srcs.map (renOp m) } : FI) :: acc,
+              ({ ii := i.ii, d := d, opn := i.opn,
+                 srcs := i.srcs.map (fun o => renOp m o abi) } : FI) :: acc,
               fiDirect j = true := by
             intro d j hj
             rcases List.mem_cons.1 hj with rfl | hj
@@ -108,15 +111,15 @@ theorem goAcc_direct (lend : List String) :
             | exact ih _ _ _ _ hrest (push _) h
 
 /-- Every instruction of a re-allocated run with direct sources has direct sources. -/
-theorem reallocRun_direct (lend : List String) (is : List FI)
-    (h : ∀ i ∈ is, fiDirect i = true) : ∀ j ∈ reallocRun lend is, fiDirect j = true := by
+theorem reallocRun_direct {abi : IsaAbi} (lend : List String) (is : List FI)
+    (h : ∀ i ∈ is, fiDirect i = true) : ∀ j ∈ reallocRun lend is abi, fiDirect j = true := by
   unfold reallocRun reallocWith
   split
   · rename_i out hf
     obtain ⟨cs, _, hcs⟩ := List.exists_of_findSome?_eq_some hf
-    have hann : ∀ p ∈ (annotate lend is).1, fiDirect p.1 = true := by
+    have hann : ∀ p ∈ (annotate lend is abi).1, fiDirect p.1 = true := by
       suffices hs : ∀ (l : List FI), (∀ i ∈ l, fiDirect i = true) →
-          ∀ p ∈ (annotate lend l).1, fiDirect p.1 = true from hs is h
+          ∀ p ∈ (annotate lend l abi).1, fiDirect p.1 = true from hs is h
       intro l
       induction l with
       | nil => intro _ p hp; simp [annotate] at hp
@@ -129,7 +132,8 @@ theorem reallocRun_direct (lend : List String) (is : List FI)
     exact goAcc_direct lend _ {} cs [] out hann (by simp) hcs
   · exact h
 
-theorem fragOf?_wf {li : Linstr} {i : FI} (h : fragOf? li = some i) : i.wf = true := by
+theorem fragOf?_wf {recog : String → Bool} {li : Linstr} {i : FI}
+    (h : fragOf? li recog = some i) : i.wf = true := by
   unfold fragOf? at h
   split at h
   · dsimp only at h
@@ -143,28 +147,28 @@ theorem fragOf?_wf {li : Linstr} {i : FI} (h : fragOf? li = some i) : i.wf = tru
 
 /-- A piece of `pieces body` is an instruction of `body` or a run of fragment
     instructions. -/
-theorem pieces_spec (body : Lcmd) :
-    ∀ p ∈ pieces body, (∃ li ∈ body, p = .bar li) ∨
+theorem pieces_spec {recog : String → Bool} (body : Lcmd) :
+    ∀ p ∈ pieces body recog, (∃ li ∈ body, p = .bar li) ∨
       (∃ is, p = .run is ∧ ∀ i ∈ is, i.wf = true) := by
   induction body with
   | nil => intro p hp; simp [pieces] at hp
   | cons li rest ih =>
       intro p hp
-      have ih' : ∀ p ∈ pieces rest, (∃ li' ∈ li :: rest, p = .bar li') ∨
+      have ih' : ∀ p ∈ pieces rest recog, (∃ li' ∈ li :: rest, p = .bar li') ∨
           (∃ is, p = .run is ∧ ∀ i ∈ is, i.wf = true) := by
         intro q hq
         rcases ih q hq with ⟨li', hli', rfl⟩ | hr
         · exact Or.inl ⟨li', List.mem_cons_of_mem _ hli', rfl⟩
         · exact Or.inr hr
-      have hfr : pieces (li :: rest) =
-          (match fragOf? li with
+      have hfr : pieces (li :: rest) recog =
+          (match fragOf? li recog with
             | some i =>
-                match pieces rest with
+                match pieces rest recog with
                 | Piece.run is :: tl => Piece.run (i :: is) :: tl
-                | _ => Piece.run [i] :: pieces rest
-            | none => Piece.bar li :: pieces rest) := rfl
+                | _ => Piece.run [i] :: pieces rest recog
+            | none => Piece.bar li :: pieces rest recog) := rfl
       rw [hfr] at hp
-      cases hf : fragOf? li with
+      cases hf : fragOf? li recog with
       | none =>
           rw [hf] at hp
           rcases List.mem_cons.1 hp with rfl | hp
@@ -179,7 +183,7 @@ theorem pieces_spec (body : Lcmd) :
             subst hj
             exact hwf
           revert hp ih'
-          cases pieces rest with
+          cases pieces rest recog with
           | nil =>
               intro _ hp
               rw [List.mem_singleton] at hp
@@ -207,13 +211,14 @@ theorem pieces_spec (body : Lcmd) :
 
 /-- **Every instruction of the re-allocated body is an instruction of the body or
     has no register-indexed operand.** -/
-theorem reallocBody_mem (res : List String) (body : Lcmd) :
-    ∀ li ∈ reallocBody res body, li ∈ body ∨ linstrRDirect li.li_i = true := by
+theorem reallocBody_mem {abi : IsaAbi} {recog : String → Bool} (res : List String)
+    (body : Lcmd) :
+    ∀ li ∈ reallocBody res body abi recog, li ∈ body ∨ linstrRDirect li.li_i = true := by
   unfold reallocBody
   dsimp only
-  generalize hps : pieces body = ps
+  generalize hps : pieces body recog = ps
   have hspec : ∀ p ∈ ps, (∃ li ∈ body, p = .bar li) ∨
-      (∃ is, p = .run is ∧ ∀ i ∈ is, i.wf = true) := hps ▸ pieces_spec body
+      (∃ is, p = .run is ∧ ∀ i ∈ is, i.wf = true) := hps ▸ pieces_spec (recog := recog) body
   clear hps
   induction ps with
   | nil => intro li hli; simp at hli
@@ -241,21 +246,30 @@ theorem reallocBody_mem (res : List String) (body : Lcmd) :
         · exact ih' li hli
 
 /-- **The re-allocation preserves direct addressing.** -/
-theorem reallocBody_lcmdDirect (res : List String) {body : Lcmd}
-    (h : lcmdDirect body = true) : lcmdDirect (reallocBody res body) = true := by
+theorem reallocBody_lcmdDirect {abi : IsaAbi} {recog : String → Bool} (res : List String)
+    {body : Lcmd} (h : lcmdDirect body = true) :
+    lcmdDirect (reallocBody res body abi recog) = true := by
   rw [lcmdDirect_iff] at h ⊢
   intro li hli
   rcases reallocBody_mem res body li hli with hli | hd
   · exact h li hli
   · exact hd
 
-/-- **The pass on a program preserves direct addressing** in every function body. -/
-theorem reallocLprog_lcmdDirect {p : Lprog}
+/-- **The pass on a program preserves direct addressing** in every function body, at
+    every register file `abi` and fragment alphabet `recog`. -/
+theorem reallocLprog_lcmdDirect_at {abi : IsaAbi} {recog : String → Bool} {p : Lprog}
     (h : ∀ f ∈ p.lp_funcs, lcmdDirect f.2.lfd_body = true) :
-    ∀ f ∈ (reallocLprog p).lp_funcs, lcmdDirect f.2.lfd_body = true := by
+    ∀ f ∈ (reallocLprog p abi recog).lp_funcs, lcmdDirect f.2.lfd_body = true := by
   intro f hf
   simp only [reallocLprog, List.mem_map] at hf
   obtain ⟨g, hg, rfl⟩ := hf
   exact reallocBody_lcmdDirect _ (h g hg)
+
+/-- **The pass on a program preserves direct addressing** in every function body, at the
+    x86 register file and alphabet. -/
+theorem reallocLprog_lcmdDirect {p : Lprog}
+    (h : ∀ f ∈ p.lp_funcs, lcmdDirect f.2.lfd_body = true) :
+    ∀ f ∈ (reallocLprog p).lp_funcs, lcmdDirect f.2.lfd_body = true :=
+  reallocLprog_lcmdDirect_at h
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCT

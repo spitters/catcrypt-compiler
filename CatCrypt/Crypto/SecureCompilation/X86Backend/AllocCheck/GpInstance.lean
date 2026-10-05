@@ -82,7 +82,7 @@ def atSelf (n : String) : Check.Operand := ⟨n, .at (gpLoc n)⟩
 def opLocs : LOperand → List String
   | .reg n => if isLoc n then [n] else baseRegs n
   | .arr b _ => if isLoc b then [b] else []
-  | .arrIdx b x _ => [b, x].filter isLoc
+  | .arrIdx b x _ => [b, x].filter (isLoc ·)
   | .imm _ => []
 
 /-- The fragment view of an instruction. -/
@@ -189,7 +189,7 @@ def replayRun (lend : List String) (is : List FI) (cs : List String) : Option (A
     for ((i, la), c) in (annotate lend is).1.zip cs do
       let us := ((fiUses i).map (fun o => gpLoc (look m o.name))).toArray
       if isLoc i.d then
-        if isCopy64 i.opn && i.srcs.map (renOp m) == [.reg c] then
+        if isCopy64 i.opn && i.srcs.map (fun o => renOp m o) == [.reg c] then
           out := out.push (us, #[gpLoc c], false)
           m := m.insert i.d c
         else if movClass i.opn && !la.contains i.d then
@@ -213,7 +213,7 @@ def allocOfDecs (ds : Array Dec) : Alloc where
 /-- Every location name of a body and the general-purpose registers, each at its home. -/
 def homeEntry (body : List LinstrR) (extra : List String) : List (Loc × String) :=
   let ns := (physGPs ++ extra ++ body.flatMap (fun i =>
-    ((gpUses i).map (·.name)) ++ ((gpDefs i).map (·.name)))).filter isLoc
+    ((gpUses i).map (·.name)) ++ ((gpDefs i).map (·.name)))).filter (isLoc ·)
   (({} : Std.HashSet String).insertMany ns).toList.map (fun n => (gpLoc n, n))
 
 /-- The results of `goAcc` and of `allocCheck gpSig` on run `is` with live-out set `lend`
