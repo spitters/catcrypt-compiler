@@ -63,7 +63,11 @@ an output array: it loads the limbs of every input array (`loadLimbs`, `loadArgs
 `regConst` indices and `stackLoad`), runs the lowering `(loweringOf lo).lowerR` on the
 loaded limbs, stores the result limbs into the output array (`storeLimbs`: `regConst`
 indices and `stackStore`) and returns the last stored array. `fieldCom P c` is
-`fieldComOf (lowerOpL P) c`.
+`fieldComOf (lowerOpL P) c`, except on a program that is one product at `P.p` below six
+limbs (`mulShapeLU?`), where it is `mulLoadBody`: the limbs of the first factor are loaded up
+front, and the row word of each row of the schoolbook product (`prodLoadK`, `loadRowsK`)
+is loaded from the array of the second factor immediately before its row, so that a row
+word occupies a register only during its row.
 
 * `loadLimbs_denote`, `loadArgs_denote`, `storeLimbs_denote`: the loads read the limbs
   `arrLimbs` of the arrays, and the stores write them (`storeVal`).
@@ -71,7 +75,10 @@ indices and `stackStore`) and returns the last stored array. `fieldCom P c` is
 * `fieldComOf_denote`: for blocks with a block square at an encoding, a covered `c` and
   input arrays whose limbs (`arrFlat`) are the encodings of the values of `V`, the limbs of
   the output array of `fieldComOf lo c` are the encoding of `c.denote V`; `fieldCom_denote`
-  is its instance at the Montgomery blocks.
+  is its statement for `fieldCom P`.
+* `prodLoadK_denote`, `mulLoadBody_denote`: the product with the row words loaded at their
+  row has the value of the schoolbook product, and `mulLoadBody` writes the Montgomery
+  form of the product of the factors.
 -/
 
 @[expose] public section
@@ -87,7 +94,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS
 open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519 (w64 MC nv nv_cons nv_map
-  bindK bindK_denote eConst Pres Pres.id Pres.comp)
+  bindK bindK_denote eConst Pres Pres.id Pres.comp lk nv_lt mulRowK mulRowK_denote accK)
 open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent (pullV)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont
 
@@ -561,25 +568,269 @@ theorem fieldComOf_denote (lo : LimbBlocks n) (enc : (loweringOf lo).Enc)
 
 end Generic
 
+/-! ## 7. The product with the row words loaded at their row -/
+
+section LoadAtUse
+
+/-- The value of the `m` words of the array `A` from index `j`, least significant first. -/
+def arrVal (A : Fin n → BitVec 64) : Nat → Nat → Nat
+  | 0, _ => 0
+  | m + 1, j => (stackGet A j).toNat + 2 ^ 64 * arrVal A m (j + 1)
+
+theorem arrVal_eq (A : Fin n → BitVec 64) :
+    ∀ m j, arrVal A m j = nv (arrLimbs A m j) (limbVars m)
+  | 0, _ => rfl
+  | m + 1, j => by
+      rw [arrVal, arrVal_eq A m (j + 1)]
+      show _ = nv (Δ := w64 :: Rn m) (.cons _ (arrLimbs A m (j + 1)))
+        (.here :: (limbVars m).map fun v => .there v)
+      rw [nv_cons, nv_map_there]
+      rfl
+
+theorem eLoad_denote_of {Γ : Ctxt jasminDialect} (a : Var Γ (arrTy n)) (i : Var Γ w64)
+    (W : Valuation Γ) (j : Nat) (hi : i.lookup W = BitVec.ofNat 64 j) (hj : j < 2 ^ 64) :
+    (eLoad a i).denote W = stackGet (a.lookup W) j := by
+  have e : (eLoad a i).denote W = stackGet (a.lookup W) (i.lookup W).toNat := rfl
+  rw [e, hi, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hj]
+
+/-- The rows `i, …, i + m - 1` of the schoolbook product of the limbs `xs` and the words
+    of the array `a`, accumulated into `acc`: the row word of row `j` is loaded from index
+    `j` of `a` immediately before the row. -/
+def loadRowsK {ts : List JasminTy} : {Δ : Ctxt jasminDialect} → Nat → Nat →
+    Var Δ (arrTy n) → List (Var Δ w64) → List (Var Δ w64) →
+    (∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts) → MC Δ ts
+  | _, _, 0, _, _, acc, k => k (fun v => v) acc
+  | _, i, m + 1, a, xs, acc, k =>
+      bindK (eConst i) fun r₁ idx =>
+      bindK (eLoad (r₁ a) idx) fun r₂ y =>
+      accK i (xs.map fun v => r₂ (r₁ v)) y (acc.map fun v => r₂ (r₁ v)) fun r₃ acc' =>
+      loadRowsK (i + 1) m (r₃ (r₂ (r₁ a))) (xs.map fun v => r₃ (r₂ (r₁ v))) acc'
+        fun r₄ out => k (fun v => r₄ (r₃ (r₂ (r₁ v)))) out
+
+theorem loadRowsK_denote {ts : List JasminTy} (A : Fin n → BitVec 64) : ∀ (m : Nat)
+    {Δ : Ctxt jasminDialect} (i : Nat) (a : Var Δ (arrTy n)) (xs acc : List (Var Δ w64))
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts)
+    (W₀ : Valuation Δ) (G : ListDenote ts) (Y₀ : Nat),
+    a.lookup W₀ = A → xs.length = n → acc.length = i + n → Y₀ < 2 ^ (64 * i) →
+    i + m ≤ 2 ^ 64 → nv W₀ acc = nv W₀ xs * Y₀ →
+    (∀ {Δ' : Ctxt jasminDialect} (r : Ctxt.Hom Δ Δ') (out : List (Var Δ' w64))
+      (W' : Valuation Δ'), Pres r W₀ W' → out.length = i + m + n →
+      nv W' out = nv W₀ xs * (Y₀ + 2 ^ (64 * i) * arrVal A m i) → (k r out).denote W' = G) →
+    (loadRowsK i m a xs acc k).denote W₀ = G := by
+  intro m
+  induction m with
+  | zero =>
+    intro Δ i a xs acc k W₀ G Y₀ _ _ hacc _ _ hv hk
+    rw [loadRowsK]
+    exact hk _ acc W₀ (Pres.id W₀) (by simp [hacc]) (by simp [hv, arrVal])
+  | succ m ih =>
+    intro Δ i a xs acc k W₀ G Y₀ ha hxs hacc hY hm hv hk
+    rw [loadRowsK]
+    refine bindK_denote _ _ _ _ fun r₁ idx W₁ h₁ hidx => ?_
+    refine bindK_denote _ _ _ _ fun r₂ y W₂ h₂ hy => ?_
+    have h12 : Pres (fun v => r₂ (r₁ v)) W₀ W₂ := Pres.comp h₁ h₂
+    have ey : (lk y W₂).toNat = (stackGet A i).toNat := by
+      rw [show lk y W₂ = _ from hy, eLoad_denote_of _ _ _ i hidx (by omega), h₁ a, ha]
+    have hX := nv_lt W₀ xs
+    rw [hxs] at hX
+    have hy' := (stackGet A i).isLt
+    have hBi := two_pow_succ i
+    have hstep : Y₀ + 2 ^ (64 * i) * (stackGet A i).toNat < 2 ^ (64 * (i + 1)) := by
+      have : 2 ^ (64 * i) * (stackGet A i).toNat ≤ 2 ^ (64 * i) * (2 ^ 64 - 1) :=
+        Nat.mul_le_mul_left _ (by omega)
+      omega
+    have hpow : 2 ^ (64 * n) * 2 ^ (64 * (i + 1)) = 2 ^ (64 * i) * 2 ^ (64 * (n + 1)) := by
+      rw [← Nat.pow_add, ← Nat.pow_add]
+      ring_nf
+    refine accK_denote_n (n := n) i _ y _ _ W₂ G (by simp [hxs]) (by simp [hacc]) ?_
+      fun r₃ a' W₃ h₃ ha' hav => ?_
+    · rw [nv_map h12, nv_map h12, hv, ey, ← hpow]
+      calc nv W₀ xs * Y₀ + 2 ^ (64 * i) * (nv W₀ xs * (stackGet A i).toNat)
+          = nv W₀ xs * (Y₀ + 2 ^ (64 * i) * (stackGet A i).toNat) := by ring
+        _ < 2 ^ (64 * n) * 2 ^ (64 * (i + 1)) := Nat.mul_lt_mul'' hX hstep
+    · have h123 : Pres (fun v => r₃ (r₂ (r₁ v))) W₀ W₃ := Pres.comp h12 h₃
+      refine ih (i + 1) _ _ a' _ W₃ G (Y₀ + 2 ^ (64 * i) * (stackGet A i).toNat)
+        (by rw [h123 a, ha]) (by simp [hxs]) (by rw [ha']; ring) hstep (by omega) ?_
+        fun r₄ out W₄ h₄ hout hval => ?_
+      · rw [hav, nv_map h123, nv_map h12, nv_map h12, hv, ey]
+        ring
+      · refine hk _ out W₄ (Pres.comp h123 h₄) (by rw [hout]; ring) ?_
+        rw [hval, nv_map h123, arrVal, hBi]
+        ring
+
+/-- The schoolbook product of the limbs `xs` and the `n` words of the array `a`, as `2n`
+    limbs: the row word of each row is loaded from `a` immediately before the row, so a
+    row word is live only during its own row. -/
+def prodLoadK {ts : List JasminTy} {Δ : Ctxt jasminDialect} (xs : List (Var Δ w64))
+    (a : Var Δ (arrTy n))
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts) :
+    MC Δ ts :=
+  bindK (eConst 0) fun r₁ idx =>
+  bindK (eLoad (r₁ a) idx) fun r₂ y =>
+  mulRowK (xs.map fun v => r₂ (r₁ v)) y fun r₃ acc =>
+  loadRowsK 1 (n - 1) (r₃ (r₂ (r₁ a))) (xs.map fun v => r₃ (r₂ (r₁ v))) acc fun r₄ out =>
+    k (fun v => r₄ (r₃ (r₂ (r₁ v)))) out
+
+theorem prodLoadK_denote {ts : List JasminTy} {Δ : Ctxt jasminDialect}
+    (xs : List (Var Δ w64)) (a : Var Δ (arrTy n))
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts)
+    (W : Valuation Δ) (G : ListDenote ts) (hn0 : 0 < n) (hn : n ≤ 2 ^ 64)
+    (hxs : xs.length = n)
+    (hk : ∀ {Δ' : Ctxt jasminDialect} (r : Ctxt.Hom Δ Δ') (out : List (Var Δ' w64))
+      (W' : Valuation Δ'), Pres r W W' → out.length = n + n →
+      nv W' out = nv W xs * arrVal (a.lookup W) n 0 → (k r out).denote W' = G) :
+    (prodLoadK xs a k).denote W = G := by
+  refine bindK_denote _ _ _ _ fun r₁ idx W₁ h₁ hidx => ?_
+  refine bindK_denote _ _ _ _ fun r₂ y W₂ h₂ hy => ?_
+  have h12 : Pres (fun v => r₂ (r₁ v)) W W₂ := Pres.comp h₁ h₂
+  have ey : (lk y W₂).toNat = (stackGet (a.lookup W) 0).toNat := by
+    rw [show lk y W₂ = _ from hy, eLoad_denote_of _ _ _ 0 hidx (by omega), h₁ a]
+  refine mulRowK_denote _ y _ W₂ G fun r₃ acc W₃ h₃ hacc hav => ?_
+  have h123 : Pres (fun v => r₃ (r₂ (r₁ v))) W W₃ := Pres.comp h12 h₃
+  have hy0 := (stackGet (a.lookup W) 0).isLt
+  obtain ⟨n', rfl⟩ : ∃ n', n = n' + 1 := ⟨n - 1, by omega⟩
+  refine loadRowsK_denote (a.lookup W) n' 1 _ _ acc _ W₃ G (stackGet (a.lookup W) 0).toNat
+    (h123 a) (by simp [hxs]) (by simp [hacc, hxs]; omega) (by simpa using hy0) (by omega) ?_
+    fun r₄ out W₄ h₄ hout hval => ?_
+  · rw [hav, nv_map h123, nv_map h12, ey]
+  · refine hk _ out W₄ (Pres.comp h123 h₄) (by rw [hout]; omega) ?_
+    rw [hval, nv_map h123, arrVal, Nat.mul_one, Nat.zero_add]
+
+/-- The stores of the limbs `out` into the array `o` from index `0`, returning the last
+    array; the array `o` itself when `out` is empty. -/
+def storeOut {Δ : Ctxt jasminDialect} (o : Var Δ (arrTy n)) :
+    List (Var Δ w64) → MC Δ [arrTy n]
+  | [] => .ret (.cons o .nil)
+  | a :: as => storeLimbs n 0 o (hvToHom (varsPad a n (a :: as)))
+
+theorem storeOut_denote (hn : n < 2 ^ 64) {Δ : Ctxt jasminDialect} (o : Var Δ (arrTy n))
+    (out : List (Var Δ w64)) (W : Valuation Δ) (hout : out.length = n) (hn0 : 0 < n) :
+    (storeOut o out).denote W = .cons (storeVal (o.lookup W) 0 (limbsN n (nv W out))) .nil := by
+  cases out with
+  | nil => simp at hout; omega
+  | cons a as =>
+    subst hout
+    rw [storeOut, storeLimbs_denote hn _ 0 _ _ W (by omega), pullV_hvToHom,
+      lookupVars_varsPad]
+
+/-- **The Montgomery product over word arrays with the row words loaded at their row.**
+    The loads of the `n` limbs of the array `ia`, the schoolbook product `prodLoadK` with
+    the words of the array `ib`, `n` words of Montgomery reduction with one conditional
+    subtraction (`redcFinK`), and the stores of the result limbs into the array `o`. -/
+def mulLoadBody {Δ : Ctxt jasminDialect} (ia ib o : Var Δ (arrTy n)) : MC Δ [arrTy n] :=
+  loadLimbs n 0 ia fun r h =>
+  prodLoadK ((limbVars n).map fun v => h v) (r ib) fun r₂ T =>
+  redcFinK P T fun r₃ out =>
+  storeOut (r₃ (r₂ (r o))) out
+
+/-- On arrays `ia`, `ib` holding the limbs of the Montgomery forms of `x` and `y`,
+    `mulLoadBody` writes the limbs of the Montgomery form of `x * y` into `o`. -/
+theorem mulLoadBody_denote (hn : n < 2 ^ 64) {Δ : Ctxt jasminDialect}
+    (ia ib o : Var Δ (arrTy n)) (W : Valuation Δ) (x y : ZMod P.p)
+    (ha : arrLimbs (ia.lookup W) n 0 = enc P x) (hb : arrLimbs (ib.lookup W) n 0 = enc P y) :
+    (mulLoadBody P ia ib o).denote W = .cons (storeVal (o.lookup W) 0 (enc P (x * y))) .nil := by
+  have hn0 := n_pos P
+  refine loadLimbs_denote n 0 ia _ W _ (by omega) fun r h W₁ hr hh => ?_
+  have hX : nv W₁ ((limbVars n).map fun v => h v) = (x * R P).val := by
+    rw [nv_map (W := pullV h W₁) (fun w => (lookup_pullV h w W₁).symm), hh, ha,
+      enc, nv_limbVars, Nat.mod_eq_of_lt (val_lt_two_pow P _)]
+  refine prodLoadK_denote _ (r ib) _ W₁ _ hn0 (by omega) (by simp [limbVars_length])
+    fun r₂ T W₂ h₂ hT hTv => ?_
+  have hY : arrVal ((r ib).lookup W₁) n 0 = (y * R P).val := by
+    rw [hr ib, arrVal_eq, hb, enc, nv_limbVars, Nat.mod_eq_of_lt (val_lt_two_pow P _)]
+  refine redcFinK_denote P T _ W₂ _ (by rw [hT]; ring)
+    (by rw [hTv, hX, hY]; exact Nat.mul_lt_mul'' (val_lt P _) (val_lt P _))
+    fun r₃ out W₃ h₃ hout hlt hmod => ?_
+  have hv : nv W₃ out = (x * y * R P).val :=
+    mont_val_eq P x y _ hlt (by rwa [hTv, hX, hY] at hmod)
+  rw [storeOut_denote hn _ out W₃ hout hn0, hv, h₃, h₂, hr]
+  rfl
+
+/-- A field program that is one product at `P.p` of two variables of its context, returned
+    at once: the two variables, the return type and the denotation. -/
+structure MulShape {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) where
+  /-- The first factor. -/
+  a : Var Γ (.fp P.p)
+  /-- The second factor. -/
+  b : Var Γ (.fp P.p)
+  /-- The return type is `fp P.p`. -/
+  ht : t = .fp P.p
+  /-- The program denotes the product of the two factors. -/
+  hden : ∀ V : Valuation Γ, HEq (c.denote V) (fMulF (a.lookup V) (b.lookup V))
+
+/-- The shape `MulShape` of `c`, when `c` binds one product at `P.p` and returns it. -/
+def mulShape? : {Γ : Ctxt fieldDialect} → {t : FieldTy} → (c : Com fieldDialect Γ t) →
+    Option (MulShape P c)
+  | _, _, .var ⟨.fMul q, hr, .cons a (.cons b .nil)⟩ (.ret .here) =>
+      if hq : q = P.p then
+        some ⟨hq ▸ a, hq ▸ b, by subst hq hr; rfl, by intro V; subst hq hr; rfl⟩
+      else none
+  | _, _, _ => none
+
+/-- The word array of a source variable in `arrCtx n Γ`. -/
+def arrVar : {Γ : Ctxt fieldDialect} → {t : FieldTy} → Var Γ t → Var (arrCtx n Γ) (arrTy n)
+  | _ :: _, _, .here => .here
+  | _ :: _, _, .there v => .there (arrVar v)
+
+theorem arrLimbs_arrVar (enc : ∀ {t : FieldTy}, ⟦t⟧ → Valuation (mapTysL n t)) :
+    ∀ {Γ : Ctxt fieldDialect} {t : FieldTy} (v : Var Γ t) (A : Valuation (arrCtx n Γ))
+      (V : Valuation Γ), arrFlat A = flatVal enc V →
+      arrLimbs ((arrVar v).lookup A) n 0 = enc (v.lookup V)
+  | _ :: _, _, .here, .cons a A, .cons x V, h => by
+      have e := congrArg (pullV (inlHom _)) h
+      rw [arrFlat, flatVal, pullV_inlHom, pullV_inlHom] at e
+      exact e
+  | _ :: _, _, .there v, .cons a A, .cons x V, h => by
+      have e := congrArg (pullV (inrHom _)) h
+      rw [arrFlat, flatVal, pullV_inrHom, pullV_inrHom] at e
+      exact arrLimbs_arrVar enc v A V e
+
+end LoadAtUse
+
+/-- The shape `mulShape?` of `c` when the load-at-use product applies: below six limbs.
+    From six limbs the interleaved CIOS block of `fieldBodyOf` measures faster
+    (P-384 multiply 1.18 of fiat C through CIOS against 1.37 through `mulLoadBody`,
+    `bench/field_bytes`, 2026-10-05). -/
+def mulShapeLU? {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
+    Option (MulShape P c) :=
+  if n < 6 then mulShape? P c else none
+
 /-- **The lowered field program over word arrays, as a multi-result program**, for the
-    Montgomery blocks `lowerOpL P`. -/
+    Montgomery blocks: `mulLoadBody` on the arrays of the two factors when `c` is one
+    product at `P.p` below six limbs (`mulShapeLU?`), and `fieldBodyOf (lowerOpL P) c`
+    otherwise. -/
 def fieldBody {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
     MC (arrCtx n Γ ++ [arrTy n]) [arrTy n] :=
-  fieldBodyOf (lowerOpL P) c
+  match mulShapeLU? P c with
+  | some s => mulLoadBody P (inlHom [arrTy n] (arrVar s.a)) (inlHom [arrTy n] (arrVar s.b))
+      (inrHom (arrCtx n Γ) .here)
+  | none => fieldBodyOf (lowerOpL P) c
 
 /-- **The lowered field program over word arrays** for the Montgomery blocks. -/
 def fieldCom {Γ : Ctxt fieldDialect} {t : FieldTy} (c : Com fieldDialect Γ t) :
     Com jasminDialect (arrCtx n Γ ++ [arrTy n]) (arrTy n) :=
-  fieldComOf (lowerOpL P) c
+  (fieldBody P c).toComHead
 
 theorem fieldBody_denote (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodV P) c) (V : Valuation Γ)
     (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64)
     (hA : arrFlat A = flatVal (fun {t} x => encL P (t := t) x) V) :
     (fieldBody P c).denote (hvAppend A (.cons o .nil))
-      = .cons (storeVal o 0 (encL P (c.denote V))) .nil :=
-  fieldBodyOf_denote (lowerOpL P) (fun {t} x => encL P (t := t) x) (GoodV P) (blockSquareV P)
-    hn c hc V A o hA
+      = .cons (storeVal o 0 (encL P (c.denote V))) .nil := by
+  unfold fieldBody
+  split
+  · rename_i s _
+    obtain ⟨a, b, ht, hden⟩ := s
+    subst ht
+    rw [mulLoadBody_denote P hn _ _ _ _ (a.lookup V) (b.lookup V)
+      (by rw [lookup_inlHom, arrLimbs_arrVar (fun {t} x => encL P (t := t) x) a A V hA,
+        encL_fp])
+      (by rw [lookup_inlHom, arrLimbs_arrVar (fun {t} x => encL P (t := t) x) b A V hA,
+        encL_fp]),
+      lookup_inrHom, eq_of_heq (hden V), encL_fp]
+    rfl
+  · exact fieldBodyOf_denote (lowerOpL P) (fun {t} x => encL P (t := t) x) (GoodV P)
+      (blockSquareV P) hn c hc V A o hA
 
 /-- **Denotation of the lowered field program over word arrays.** For a `GoodV`-covered
     field program `c` and input arrays whose limbs are the encodings of the values of `V`,
@@ -590,8 +841,8 @@ theorem fieldCom_denote (hn : n < 2 ^ 64) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (A : Valuation (arrCtx n Γ)) (o : Fin n → BitVec 64)
     (hA : arrFlat A = flatVal (fun {t} x => encL P (t := t) x) V) :
     arrLimbs ((fieldCom P c).denote (hvAppend A (.cons o .nil))) n 0
-      = encL P (c.denote V) :=
-  fieldComOf_denote (lowerOpL P) (fun {t} x => encL P (t := t) x) (GoodV P) (blockSquareV P)
-    hn c hc V A o hA
+      = encL P (c.denote V) := by
+  rw [fieldCom, MultiReturnCom.toComHead_denote, fieldBody_denote P hn c hc V A o hA]
+  exact arrLimbs_storeVal o 0 _ (by omega)
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
