@@ -28,6 +28,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoareSpec	INFRA: a CorresJ result
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec	INFRA: the LowCT, x86 and RV64 instances of corresM_iff_post; metatheory, no kernel.
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsa	INFRA: CorresIsa, the generic correspondence at the Isa interpreter lsemFuelMemF for every instruction set, with fuel monotonicity and the arbitrary-postcondition family; metatheory, no kernel.
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCall	rule: the procedure-specification rule over Isa.withCalls, no kernel of its own
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCallX86	rule: step agreement and return snoc for x86 and AArch64, generic in the body; no kernel of its own
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCfg	rule: the cut-point rule over an arbitrary Isa, no kernel of its own
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaNode	rule: CorresIsa from a halting loop node, generic; welded to the gate and the decoded bytes in the development tree (v1Loop_corresIsa)
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86	INFRA: transports CorresJ results to CorresIsa at x86Isa and armIsa; its only block is the two-instruction demonstration add2Block, no shipped kernel.
