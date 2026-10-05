@@ -262,6 +262,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519GuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FieldWordAddCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FootprintDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.JasminJumpDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.KrakenCallDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
@@ -278,7 +279,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminJumpLevel
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LivenessTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
