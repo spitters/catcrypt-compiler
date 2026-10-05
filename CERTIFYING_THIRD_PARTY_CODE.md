@@ -120,7 +120,12 @@ correspondence over to the generated table.
 
 These results relate a hax reference to a Lean function. The x86 ascent below relates
 machine code to a Lean function. A certificate that ties third-party bytes to a hax
-reference composes the two at a common Lean function; no such composition exists yet.
+reference composes the two at a common Lean function. One such composition exists, for
+code this project's backend emits rather than third-party bytes: for the HashDRBG `maj`
+function, the hax ascent result is composed with the compiler's theorems into a
+correspondence over the x86 instruction-set interpreter, on the virtual-register program
+(the shipped, register-allocated body is not yet covered). For third-party bytes none
+exists.
 
 ### Machine code as input
 
