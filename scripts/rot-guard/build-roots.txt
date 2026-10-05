@@ -1,8 +1,8 @@
---   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 -- Build roots: tracked modules under CatCrypt/ and HaxAscent/ that no other tracked
--- Regenerate with:
 -- module imports. Their transitive closure is the whole library, so a
 -- module outside it is one no target and no import reaches.
+-- Regenerate with:
+--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 CatCrypt.Core.Basic
 CatCrypt.Core.GenHeap
 CatCrypt.Core.GenHeapRandomOracle
@@ -242,7 +242,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86Mov
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
@@ -261,6 +261,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519GuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FieldWordAddCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FootprintDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.KrakenCfgDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
