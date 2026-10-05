@@ -37,7 +37,7 @@ CatCrypt.Crypto.Hax.HaxToLowCTWordOpsCT
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
 CatCrypt.Crypto.Hax.HaxWideMulFuse
-CatCrypt.Crypto.Hax.ImpDesugarTable
+CatCrypt.Crypto.Hax.ImpDesugarRun
 CatCrypt.Crypto.Hax.ImpDesugarWide
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
@@ -243,6 +243,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCallX86
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaNode
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
@@ -809,13 +810,13 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttLoopEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheShoupEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
+CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightArrLeak
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel
