@@ -88,7 +88,25 @@ Target (decision D1, 2026-10-04): ours/fiat-C ≤ 1.25 for mul and sqr at the fi
 a slow proven hand kernel retires when the template bytes measure within 1.1 of it. F2 is
 recorded, not gated.
 
-Current objects (with `mulBlkRoute`): pending FIAT-MEASURE-1, on `bench/field_bytes/`.
+Current objects (with `mulBlkRoute`; run of 2026-10-05, `bench/field_bytes/results/summary.md`,
+conformance all arms pass), latency / throughput:
+
+| prime | op | ours/peer | peer |
+|---|---|---|---|
+| P-256 | mul | 1.58 / 1.54 | fiat C |
+| P-256 | sqr | 1.72 / 1.65 | fiat C |
+| secp256k1 | mul | 1.62 / 1.62 | fiat C |
+| secp256k1 | sqr | 1.66 / 1.71 | fiat C |
+| P-384 | mul | 1.18 / 1.14 | fiat C |
+| P-384 | sqr | 1.18 / 1.15 | fiat C |
+| BN254 | mul | 1.58 / 1.62 | fiat/bedrock2 C |
+| BN254 | sqr | 1.58 / 1.67 | fiat/bedrock2 C |
+| BLS12-381 | mul | 2.92 / 2.94 | blst (no fiat C arm) |
+
+The D1 target holds at P-384 only; the six-limb CIOS block (`mulBlkRoute`) moved P-384
+from 1.33 to 1.18. The P-256 multiply has 791 instructions and nine stack reloads of
+`%r14`, the operand pointer; LOAD-AT-USE (operand limbs read at use) is the next row.
+No proven hand kernel is within 1.1, so no retirement applies.
 
 Earlier rounds, `bench/field_bytes/README.md`, TSC ticks, ours/peer (above 1: ours slower),
 latency / throughput:
