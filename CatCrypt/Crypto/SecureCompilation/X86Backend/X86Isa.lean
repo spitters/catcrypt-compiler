@@ -44,8 +44,12 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
   and every other instruction as `evalInstrPMemF`.
 * `IsaSym`, `IsaSym.symRun`, `IsaSym.symRun_sound`: the symbolic step record and the exact
   description of a straight-line run by the symbolic run.
-* `x86Sym`, `x86Sym_symRun`, `symRun_sound_x86`: the x86 symbolic instance, the definitional
-  recovery of `OwnedLprogTV.symRun`, and `OwnedLprogTV.symRun_sound` as the specialisation.
+* `x86Sym`, `x86Sym_symRun`, `symRun_sound_x86`: the x86 symbolic instance, the recovery of
+  `OwnedLprogTV.symRun`, and `OwnedLprogTV.symRun_sound` as the specialisation.
+* `IsaSym.Lawful`, `IsaSym.symLaws`, `IsaSym.symSubst`, `IsaSym.ownedCheckM`,
+  `IsaSym.ownedCheckM_sound`, `x86Sym_lawful`, `x86Sym_ownedCheckM`: the laws of a symbolic
+  companion from which the checker soundness follows, the checker of an instruction set with
+  its soundness, and the x86 instance.
 * `x86Mach`, `x86Mach_exec`, `x86Mach_opLeak`, `x86Mach_runBlock`, `x86Mach_blockLeak`,
   `x86Mach_BlockOk`, `x86Mach_mstep`: the x86 machine level `IsaMachine` under a timing
   regime, whose operations, state, step and leakage are those of the address machine
@@ -70,60 +74,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 
-/-- The x86 step of a control instruction is the shared control step under `decC`. -/
-theorem evalInstrPMemF_ctl (P : LprogM) (i : LinstrRM) (s : LstateMF)
-    (h : isCtl i.fst = true) : evalInstrPMemF P i s = ctlStep decC P i s := by
-  obtain ⟨x, tag⟩ := i
-  cases x with
-  | Llabel k l =>
-      rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
-      rfl
-  | Lcond c l => rw [evalInstrPMemF_cond]; rfl
-  | Lgoto t =>
-      obtain ⟨x, l⟩ := t
-      rw [evalInstrPMemF_goto]; rfl
-  | _ => simp [isCtl] at h
-
-/-- The table mnemonic of an AT&T base mnemonic of `LprogAsmPrinter.attBase`, `none` for one
-    outside that table. -/
-def attMnem? : String → Option CT.X86Mnem
-  | "add" => some .add
-  | "sub" => some .sub
-  | "adc" => some .adc
-  | "sbb" => some .sbb
-  | "and" => some .and
-  | "or" => some .or
-  | "xor" => some .xor
-  | "andn" => some .andn
-  | "shl" => some .shl
-  | "shr" => some .shr
-  | "imul" => some .imul
-  | "mov" => some .mov
-  | "cmp" => some .cmp
-  | "test" => some .test
-  | "adcx" => some .adcx
-  | "adox" => some .adox
-  | "cmove" | "cmovne" | "cmovb" | "cmovae" | "cmovl" | "cmovge" => some .cmovcc
-  | "lea" => some .lea
-  | _ => none
-
-/-- The table mnemonic of an `Lprog` mnemonic base: the AT&T mnemonic the printer emits for
-    it (`LprogAsmPrinter.attBase`), read in the table. -/
-def x86MnemOfBase (base : String) : Option CT.X86Mnem :=
-  (LprogAsmPrinter.attBase base).bind attMnem?
-
-/-- The x86 leakage regime under DOITM: `CT.DoitRegime.leaksOperands .doitm` at the table
-    mnemonic of the base, every operand observable for a base the printer does not name. -/
-def x86LeaksOperands (base : String) : Bool :=
-  ((x86MnemOfBase base).map (CT.DoitRegime.leaksOperands .doitm)).getD true
-
-/-- **The x86 instruction set**: the data `TwoAddrLegalize.x86Data` with the leakage regime
-    `x86LeaksOperands`, the flag machine `evalInstrPMemF` with the branch condition `decC`. -/
-def x86Isa : Isa where
-  toIsaData := { TwoAddrLegalize.x86Data with leaksOperands := x86LeaksOperands }
-  step := evalInstrPMemF
-  condEval := decC
-  step_ctl := evalInstrPMemF_ctl
+/-! The definitions `evalInstrPMemF_ctl`, `attMnem?`, `x86MnemOfBase`, `x86LeaksOperands` and
+`x86Isa` of this namespace, with `x86Isa_lsemFuelMemF` and `x86Isa_runL`, are stated in
+`X86Backend.OwnedLprogTV`, whose checker soundness is instantiated at `x86Isa`. -/
 
 theorem x86Isa_step : x86Isa.step = evalInstrPMemF := rfl
 
@@ -207,30 +160,8 @@ theorem x86Isa_leaksOperands_of {base : String} {m : CT.X86Mnem}
     x86Isa.leaksOperands base = CT.DoitRegime.doitm.leaksOperands m := by
   rw [x86Isa_leaksOperands, h]; rfl
 
-/-- The generic run at `x86Isa` is `lsemFuelMemF`, by unfolding both definitions. -/
-theorem x86Isa_lsemFuelMemF : x86Isa.lsemFuelMemF = lsemFuelMemF := by
-  delta Isa.lsemFuelMemF lsemFuelMemF; rfl
-
 /-- The generic fetch-and-step at `x86Isa` is `lsemStepPMemF`. -/
 theorem x86Isa_lsemStepPMemF : x86Isa.lsemStepPMemF = lsemStepPMemF := rfl
-
-/-- The generic checked step at `x86Isa` is `evalInstrPMemFk`. -/
-theorem x86Isa_evalInstrPMemFk : x86Isa.evalInstrPMemFk = evalInstrPMemFk := rfl
-
-/-- The generic checked run at `x86Isa` is `lsemFuelMemFk`, by unfolding both
-    definitions. -/
-theorem x86Isa_lsemFuelMemFk : x86Isa.lsemFuelMemFk = lsemFuelMemFk := by
-  delta Isa.lsemFuelMemFk lsemFuelMemFk; rfl
-
-/-- The generic in-bounds run predicate at `x86Isa` is `RunIdxOk`, by unfolding both
-    definitions. -/
-theorem x86Isa_RunIdxOk : x86Isa.RunIdxOk = JasminLsemMemChecked.RunIdxOk := by
-  delta Isa.RunIdxOk JasminLsemMemChecked.RunIdxOk; rfl
-
-/-- The generic straight-line run at `x86Isa` is `OwnedLprogTV.runL`, by unfolding both
-    definitions. -/
-theorem x86Isa_runL : x86Isa.runL = OwnedLprogTV.runL := by
-  delta Isa.runL OwnedLprogTV.runL; rfl
 
 /-- **The symbolic step of an instruction set** over the fixed term language: a symbolic
     step that describes `I.step` exactly from every state a symbolic state describes, and a
@@ -328,10 +259,14 @@ def x86Sym : IsaSym x86Isa where
   symStep_sound := symStep_sound
   symDec_sound := fun hs c => decC_eq hs c
 
-/-- The generic symbolic run at `x86Sym` is `OwnedLprogTV.symRun`, by unfolding both
-    definitions. -/
-theorem x86Sym_symRun : x86Sym.symRun = OwnedLprogTV.symRun := by
-  delta IsaSym.symRun OwnedLprogTV.symRun; rfl
+/-- The generic symbolic run at `x86Sym` is `OwnedLprogTV.symRun`. -/
+theorem x86Sym_symRun : x86Sym.symRun = fun is ss => OwnedLprogTV.symRun is ss := by
+  funext is ss
+  induction is generalizing ss with
+  | nil => rfl
+  | cons i is ih =>
+      simp only [IsaSym.symRun, OwnedLprogTV.symRun, ih]
+      rfl
 
 /-- `OwnedLprogTV.symRun_sound` is the specialisation of `IsaSym.symRun_sound` at
     `x86Sym`. -/
@@ -339,8 +274,96 @@ theorem symRun_sound_x86 (P : LprogM) (is : List LinstrRM) (ss : SSt)
     (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O Z : Bool) (s : LstateMF)
     (hs : Holds V A C O Z ss s) :
     (OwnedLprogTV.symRun is ss).DescN is.length (OwnedLprogTV.runL P is s) V A C O Z s := by
-  rw [← x86Sym_symRun, ← x86Isa_runL]
-  exact x86Sym.symRun_sound P is ss V A C O Z s hs
+  have h := x86Sym.symRun_sound P is ss V A C O Z s hs
+  rwa [x86Sym_symRun, x86Isa_runL] at h
+
+/-! ## The checker of an instruction set
+
+The checkers `OwnedLprogTV.ownedCheckM`, `OwnedLprogTVChecked.ownedCheckMC` and
+`OwnedTVLeak.ownedCheckML` take a symbolic step and a symbolic branch condition; their
+soundness is proved from `OwnedLprogTV.SymLaws` and `OwnedLprogTV.SymSubst`. A symbolic
+companion `T : IsaSym I` supplies both when it is `T.Lawful`. -/
+
+/-- **The laws of a symbolic companion beyond its two soundness fields**: the symbolic step
+    keeps `SSt.Good`, describes a label as the identity and commutes with substitution, the
+    symbolic branch condition commutes with substitution, a step of the instruction set at an
+    instruction that is no terminator stays in the function and advances the pc by one, and
+    the instruction set takes no step at `Lret`. -/
+structure IsaSym.Lawful {I : Isa} (T : IsaSym I) : Prop where
+  /-- The symbolic step keeps `SSt.Good`. -/
+  good : ∀ (i : LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
+    T.symStep i ss = .ok ss' gs → ss'.Good
+  /-- The symbolic step of a label is the identity, with no guard. -/
+  label : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, T.symStep i ss = .ok ss []
+  /-- A step at an instruction that is no terminator stays in the function and advances the
+      pc by one. -/
+  plain : StepPlain I
+  /-- The instruction set takes no step at `Lret`. -/
+  ret : ∀ (P : LprogM) (tag : MemTag) (s : LstateMF), I.step P (.Lret, tag) s = none
+  /-- The symbolic step commutes with substitution. -/
+  step_subst : ∀ (σ : Nat → STerm) (i : LinstrRM) (ss : SSt),
+    T.symStep i (ss.subst σ) = (T.symStep i ss).subst σ
+  /-- The symbolic branch condition commutes with substitution. -/
+  dec_subst : ∀ (σ : Nat → STerm) (ss : SSt) (c : LOperand),
+    T.symDec (ss.subst σ) c = (T.symDec ss c).subst σ
+
+namespace IsaSym
+
+variable {I : Isa} (T : IsaSym I)
+
+/-- A lawful symbolic companion satisfies the laws the checker soundness is proved from. -/
+theorem symLaws (h : T.Lawful) : SymLaws I T.symStep T.symDec where
+  step_sound := T.symStep_sound
+  dec_sound := fun hs c => T.symDec_sound hs c
+  good := fun i _ hg _ _ e => h.good i hg e
+  label := fun hl ss => h.label hl ss
+  plain := h.plain
+  ret := h.ret
+
+/-- A lawful symbolic companion commutes with substitution. -/
+theorem symSubst (h : T.Lawful) : SymSubst T.symStep T.symDec :=
+  ⟨h.step_subst, h.dec_subst⟩
+
+/-- The symbolic run of the record is `OwnedLprogTV.symRun` at its symbolic step. -/
+theorem symRun_eq (is : List LinstrRM) (ss : SSt) :
+    T.symRun is ss = OwnedLprogTV.symRun is ss T.symStep := by
+  induction is generalizing ss with
+  | nil => rfl
+  | cons i is ih =>
+      simp only [symRun, OwnedLprogTV.symRun, ih]
+      rfl
+
+/-- **The checker of an instruction set**: `OwnedLprogTV.ownedCheckM` at the symbolic step
+    and the symbolic branch condition of the companion. -/
+def ownedCheckM (outs : List String) (B B' : List LinstrRM) : Bool :=
+  OwnedLprogTV.ownedCheckM outs B B' T.symStep T.symDec
+
+/-- **Soundness of the checker of an instruction set.** If `T.ownedCheckM outs B B'` accepts
+    for a lawful symbolic companion `T` of `I`, every halting run of `I` on the singleton
+    program over `B` from a state at pc `0` of that function is matched by a halting run on
+    the singleton program over `B'` from the same state, and the end states agree on the
+    registers `outs`, on the arrays and on the word memory. -/
+theorem ownedCheckM_sound (h : T.Lawful) {outs : List String} {B B' : List LinstrRM}
+    (hc : T.ownedCheckM outs B B' = true) (fn : String) (s t : LstateMF)
+    (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' :=
+  ownedCheckM_sound_at (T.symLaws h) (T.symSubst h) hc fn s t hfn hpc fuel hrun
+
+end IsaSym
+
+/-- The x86 symbolic companion is lawful. -/
+theorem x86Sym_lawful : x86Sym.Lawful where
+  good := fun i _ hg _ _ e => symStep_good i hg e
+  label := fun hl ss => symStep_label hl ss
+  plain := stepPlain_x86
+  ret := evalInstrPMemF_ret
+  step_subst := symStep_subst
+  dec_subst := symDec_subst
+
+/-- The checker of `x86Sym` is `OwnedLprogTV.ownedCheckM`. -/
+theorem x86Sym_ownedCheckM (outs : List String) (B B' : List LinstrRM) :
+    x86Sym.ownedCheckM outs B B' = OwnedLprogTV.ownedCheckM outs B B' := rfl
 
 /-! ## The machine level at x86 -/
 

@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
 public import Std.Data.HashMap.Basic
 
 /-!
@@ -69,8 +70,21 @@ index. A word over the table stands for its instance under a substitution of its
 over the table is the symbolic run up to that substitution (`tRun_subst`), and the check
 over the table (`blockOkR`) implies `blockOk` (`blockOkR_spec`).
 
+## Instruction sets
+
+The checker (`symRun`, `blockOk`, `ownedCheckWith`, `tRun`, `blockOkR`, `ownedCheckM`) takes
+the symbolic step and the symbolic branch condition as trailing arguments that default to
+the x86 ones, `symStep` and `symDec`. Its soundness is proved for every instruction set
+`I : LprogIsa.Isa` whose step the two describe (`SymLaws I sym dec`) and that commute with
+substitution (`SymSubst sym dec`), in the theorems with the suffix `_at`. The x86 instruction
+set `X86Isa.x86Isa` (the flag machine `evalInstrPMemF` with the branch condition `decC`) is
+defined in this module, and the theorems about `evalInstrPMemF` and `lsemFuelMemF` are the
+instances at it (`symLaws_x86`, `symSubst_x86`).
+
 ## Main definitions
 
+* `X86Isa.x86Isa`, `StepPlain`, `SymLaws`, `SymSubst`: the x86 instruction set and the laws
+  of a symbolic step against an instruction set.
 * `STerm`, `SArr`, `SFlag`, `SG`, `SSt`, `Holds`: symbolic values, states and the states
   they describe.
 * `symN`, `symSh`, `symMC`, `symCast`, `symMem`, `aluFl`, `symCarry`, `symWide`, `symStep`,
@@ -101,6 +115,8 @@ over the table (`blockOkR`) implies `blockOk` (`blockOkR_spec`).
 * `decC_eq`: the symbolic branch condition describes the branch taken.
 * `symStep_subst`, `symRun_subst`, `tRun_subst`, `blockOkR_spec`: the run and the check
   over the table.
+* `ownedCheckWith_sound_at`, `ownedCheckM_sound_at`: soundness of the checker over an
+  instruction set.
 * `ownedCheckWith_sound`, `ownedCheckM_sound`, `ownedCheckTy_sound`,
   `ownedCheckTy_sound_mem`: soundness of the checker.
 -/
@@ -128,6 +144,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem (immShiftMnem?)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (x86_ADC x86_SBB x86_ADCX x86_MULX_lo_hi)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
   (lsemStepMem_of_carryArgs lsemStepMem_of_wideArgs lsemStepMem_flags)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa isCtl ctlStep)
 
 /-! ## 1. Width casts -/
 
@@ -1853,6 +1870,147 @@ theorem symStep_comm {opn d x : String} (hopn : opn ∈ commOpns) (hxd : x ≠ d
     hsbb, hadcx, hadox, hmov, if_false, hM]
   cases symMem (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss <;> simp only [aluFl, hA]
 
+/-! ## The x86 instruction set
+
+The x86 instance `X86Isa.x86Isa` of the instruction-set record `LprogIsa.Isa`: its step is
+the flag machine `evalInstrPMemF` and its branch condition is `decC`. The checker of the
+sections below takes a symbolic step and a symbolic branch condition as trailing arguments
+that default to `symStep` and `symDec`; its soundness is proved for every instruction set
+whose step they describe (`SymLaws`), and the statements about `evalInstrPMemF` and
+`lsemFuelMemF` are the instances at `x86Isa`. -/
+
+/-- The polarity of a condition-code operand: `Z` jumps on a set zero flag, `NZ` on a
+    clear one; any other operand is read as a register. -/
+def ccPol : LOperand → Option Bool
+  | .reg "Z" => some true
+  | .reg "NZ" => some false
+  | _ => none
+
+theorem flagCondCC?_cond (c : LOperand) (l : LLabel) (tag : MemTag) :
+    flagCondCC? (.Lcond c l, tag) = (ccPol c).map (fun p => (p, l)) := by
+  unfold flagCondCC? ccPol
+  split <;> simp_all
+
+/-- The branch a conditional takes from state `s`. -/
+def decC (s : LstateMF) (c : LOperand) : Bool :=
+  match ccPol c with
+  | some pol => s.zf == pol
+  | none => condNZ s.prog.base c
+
+theorem evalInstrPMemF_cond (P : LprogM) (c : LOperand) (l : LLabel) (tag : MemTag)
+    (s : LstateMF) :
+    evalInstrPMemF P (.Lcond c l, tag) s =
+      if decC s c = true then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
+      else some { s with prog := { s.prog with base := s.prog.base.nextPc } } := by
+  unfold decC
+  cases hcc : ccPol c with
+  | some pol =>
+      unfold evalInstrPMemF
+      simp only [cmpArgs?, movRegArgs?, flagCondCC?_cond, hcc]
+      simp [beq_iff_eq]
+  | none =>
+      have hf : flagCondCC? (LinstrR.Lcond c l, tag) = none := by
+        rw [flagCondCC?_cond, hcc]; rfl
+      rw [evalInstrPMemF_delegate P _ s rfl rfl hf rfl rfl rfl]
+      simp only [evalInstrPMemL]
+      split <;> simp
+
+theorem evalInstrPMemF_goto (P : LprogM) (x : String) (l : LLabel) (tag : MemTag)
+    (s : LstateMF) :
+    evalInstrPMemF P (.Lgoto (x, l), tag) s =
+      if x = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
+      else none := by
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
+  simp only [evalInstrPMemL]
+  split <;> simp
+
+theorem evalInstrPMemF_ret (P : LprogM) (tag : MemTag) (s : LstateMF) :
+    evalInstrPMemF P (.Lret, tag) s = none := by
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
+  simp [evalInstrPMemL, AllocCheck.LcmdCFG.lsemStepMem_ret]
+
+/-- The x86 step of a control instruction is the shared control step under `decC`. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.evalInstrPMemF_ctl
+    (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : isCtl i.fst = true) : evalInstrPMemF P i s = ctlStep decC P i s := by
+  obtain ⟨x, tag⟩ := i
+  cases x with
+  | Llabel k l =>
+      rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
+      rfl
+  | Lcond c l => rw [evalInstrPMemF_cond]; rfl
+  | Lgoto t =>
+      obtain ⟨x, l⟩ := t
+      rw [evalInstrPMemF_goto]; rfl
+  | _ => simp [isCtl] at h
+
+/-- The table mnemonic of an AT&T base mnemonic of `LprogAsmPrinter.attBase`, `none` for one
+    outside that table. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.attMnem? :
+    String → Option CT.X86Mnem
+  | "add" => some .add
+  | "sub" => some .sub
+  | "adc" => some .adc
+  | "sbb" => some .sbb
+  | "and" => some .and
+  | "or" => some .or
+  | "xor" => some .xor
+  | "andn" => some .andn
+  | "shl" => some .shl
+  | "shr" => some .shr
+  | "imul" => some .imul
+  | "mov" => some .mov
+  | "cmp" => some .cmp
+  | "test" => some .test
+  | "adcx" => some .adcx
+  | "adox" => some .adox
+  | "cmove" | "cmovne" | "cmovb" | "cmovae" | "cmovl" | "cmovge" => some .cmovcc
+  | "lea" => some .lea
+  | _ => none
+
+/-- The table mnemonic of an `Lprog` mnemonic base: the AT&T mnemonic the printer emits for
+    it (`LprogAsmPrinter.attBase`), read in the table. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86MnemOfBase (base : String) :
+    Option CT.X86Mnem :=
+  (LprogAsmPrinter.attBase base).bind X86Isa.attMnem?
+
+/-- The x86 leakage regime under DOITM: `CT.DoitRegime.leaksOperands .doitm` at the table
+    mnemonic of the base, every operand observable for a base the printer does not name. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86LeaksOperands
+    (base : String) : Bool :=
+  ((X86Isa.x86MnemOfBase base).map (CT.DoitRegime.leaksOperands .doitm)).getD true
+
+/-- **The x86 instruction set**: the data `TwoAddrLegalize.x86Data` with the leakage regime
+    `x86LeaksOperands`, the flag machine `evalInstrPMemF` with the branch condition `decC`. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa : Isa where
+  toIsaData := { TwoAddrLegalize.x86Data with leaksOperands := X86Isa.x86LeaksOperands }
+  step := evalInstrPMemF
+  condEval := decC
+  step_ctl := X86Isa.evalInstrPMemF_ctl
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
+
+/-- The generic run at `x86Isa` is `lsemFuelMemF`, by unfolding both definitions. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa_lsemFuelMemF :
+    x86Isa.lsemFuelMemF = lsemFuelMemF := by
+  delta Isa.lsemFuelMemF lsemFuelMemF; rfl
+
+/-- The generic checked step at `x86Isa` is `evalInstrPMemFk`. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa_evalInstrPMemFk :
+    x86Isa.evalInstrPMemFk = JasminLsemMemChecked.evalInstrPMemFk := rfl
+
+/-- The generic checked run at `x86Isa` is `lsemFuelMemFk`, by unfolding both
+    definitions. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa_lsemFuelMemFk :
+    x86Isa.lsemFuelMemFk = JasminLsemMemChecked.lsemFuelMemFk := by
+  delta Isa.lsemFuelMemFk JasminLsemMemChecked.lsemFuelMemFk; rfl
+
+/-- The generic in-bounds run predicate at `x86Isa` is `RunIdxOk`, by unfolding both
+    definitions. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa_RunIdxOk :
+    x86Isa.RunIdxOk = JasminLsemMemChecked.RunIdxOk := by
+  delta Isa.RunIdxOk JasminLsemMemChecked.RunIdxOk; rfl
+
 /-! ## 6. Straight-line runs -/
 
 /-- The flag-machine steps of a list of instructions, in order. -/
@@ -1860,15 +2018,23 @@ def runL (P : LprogM) : List LinstrRM → LstateMF → Option LstateMF
   | [], s => some s
   | i :: is, s => (evalInstrPMemF P i s).bind (runL P is)
 
-/-- The symbolic run of a list of instructions: the final symbolic state with the guards
-    of every step, `fail` when a step always fails, `unk` when a step is outside the
-    fragment. -/
-def symRun : List LinstrRM → SSt → SOut
-  | [], ss => .ok ss []
-  | i :: is, ss =>
-      match symStep i ss with
+/-- The generic straight-line run at `x86Isa` is `OwnedLprogTV.runL`, by unfolding both
+    definitions. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa.x86Isa_runL :
+    x86Isa.runL = OwnedLprogTV.runL := by
+  delta Isa.runL OwnedLprogTV.runL; rfl
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa_lsemFuelMemF x86Isa_runL)
+
+/-- The symbolic run of a list of instructions under the symbolic step `sym`: the final
+    symbolic state with the guards of every step, `fail` when a step always fails, `unk`
+    when a step is outside the fragment. The step defaults to the x86 step `symStep`. -/
+def symRun : List LinstrRM → SSt → optParam (LinstrRM → SSt → SOut) symStep → SOut
+  | [], ss, _ => .ok ss []
+  | i :: is, ss, sym =>
+      match sym i ss with
       | .ok ss1 g1 =>
-          match symRun is ss1 with
+          match symRun is ss1 sym with
           | .ok ss2 g2 => .ok ss2 (g1 ++ g2)
           | .fail => .fail
           | .unk => .unk
@@ -1890,31 +2056,34 @@ def SOut.DescN (k : Nat) (res : Option LstateMF) (V : String → Σ w, BitVec w)
   | .fail => res = none
   | .unk => True
 
-/-- **The symbolic run describes the run exactly.** From every state `ss` describes, the
-    steps of `is` succeed exactly when the guards of `symRun is ss` hold, and then end in
-    a state its final symbolic state describes; a run `symRun` reports as failing fails. -/
-theorem symRun_sound (P : LprogM) :
+/-- **The symbolic run describes the run exactly**, for every instruction set `I` and every
+    symbolic step `sym` that describes its step. From every state `ss` describes, the steps
+    of `is` succeed exactly when the guards of `symRun is ss sym` hold, and then end in a
+    state its final symbolic state describes; a run `symRun` reports as failing fails. -/
+theorem symRun_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
+    (hsym : ∀ (P : LprogM) (i : LinstrRM) (ss : SSt), StepSound (I.step P i) ss (sym i ss))
+    (P : LprogM) :
     ∀ (is : List LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w) (A : String → ArrCell)
       (C O : Bool) (Z : Bool) (s : LstateMF), Holds V A C O Z ss s →
-      (symRun is ss).DescN is.length (runL P is s) V A C O Z s
+      (symRun is ss sym).DescN is.length (I.runL P is s) V A C O Z s
   | [], ss, V, A, C, O, Z, s, hs => by
       refine ⟨fun t ht => ?_, fun _ => rfl⟩
       cases ht
       exact ⟨allG_nil V A C O, hs, rfl, rfl, rfl⟩
   | i :: is, ss, V, A, C, O, Z, s, hs => by
-      have hstep := symStep_sound P i ss V A C O Z s hs
-      simp only [symRun, runL]
-      cases h1 : symStep i ss with
+      have hstep := hsym P i ss V A C O Z s hs
+      simp only [symRun, Isa.runL]
+      cases h1 : sym i ss with
       | ok ss1 g1 =>
           rw [h1] at hstep
           obtain ⟨hs1, hs2⟩ := hstep
-          cases h2 : symRun is ss1 with
+          cases h2 : symRun is ss1 sym with
           | ok ss2 g2 =>
               simp only [h2, SOut.DescN]
               refine ⟨fun t ht => ?_, fun hg => ?_⟩
               · obtain ⟨s1, e1, e2⟩ := Option.bind_eq_some_iff.mp ht
                 obtain ⟨hg1, hH1, hF1⟩ := hs1 s1 e1
-                have ih := symRun_sound P is ss1 V A C O Z s1 hH1
+                have ih := symRun_sound_at hsym P is ss1 V A C O Z s1 hH1
                 rw [h2] at ih
                 obtain ⟨hg2, hH2, hF2⟩ := ih.1 t e2
                 refine ⟨allG_append.mpr ⟨hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
@@ -1923,16 +2092,16 @@ theorem symRun_sound (P : LprogM) :
                 · rw [hF2.2.2, hF1.2.2]
               · obtain ⟨hg1, hg2⟩ := allG_append.mp hg
                 obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 hg1)
-                have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
+                have ih := symRun_sound_at hsym P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                 rw [h2] at ih
                 rw [e1, Option.bind_some]
                 exact ih.2 hg2
           | fail =>
               simp only [h2, SOut.DescN]
-              cases e1 : evalInstrPMemF P i s with
+              cases e1 : I.step P i s with
               | none => rfl
               | some s1 =>
-                  have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
+                  have ih := symRun_sound_at hsym P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                   rw [h2] at ih
                   exact ih
           | unk => simp only [h2, SOut.DescN]
@@ -1942,6 +2111,16 @@ theorem symRun_sound (P : LprogM) :
           simp only [SOut.Desc] at hstep
           rw [hstep, Option.bind_none]
       | unk => simp only [SOut.DescN]
+
+/-- **The symbolic run describes the run exactly.** From every state `ss` describes, the
+    steps of `is` succeed exactly when the guards of `symRun is ss` hold, and then end in
+    a state its final symbolic state describes; a run `symRun` reports as failing fails. -/
+theorem symRun_sound (P : LprogM) (is : List LinstrRM) (ss : SSt)
+    (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (Z : Bool)
+    (s : LstateMF) (hs : Holds V A C O Z ss s) :
+    (symRun is ss).DescN is.length (runL P is s) V A C O Z s := by
+  have h := symRun_sound_at (I := x86Isa) symStep_sound P is ss V A C O Z s hs
+  rwa [x86Isa_runL] at h
 
 /-! ## 7. Written names, labels and the registers a value reads -/
 
@@ -2020,22 +2199,30 @@ theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : 
               | fail => rw [hm] at h; cases h
               | unk => rw [hm] at h; cases h
 
-theorem symRun_good : ∀ (is : List LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
-    symRun is ss = .ok ss' gs → ss'.Good
+/-- A symbolic run keeps `SSt.Good` when every step of `sym` keeps it. -/
+theorem symRun_good_at {sym : LinstrRM → SSt → SOut}
+    (hgood : ∀ (i : LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
+      sym i ss = .ok ss' gs → ss'.Good) :
+    ∀ (is : List LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
+    symRun is ss sym = .ok ss' gs → ss'.Good
   | [], ss, hg, ss', gs, h => by
       simp only [symRun, SOut.ok.injEq] at h; rw [← h.1]; exact hg
   | i :: is, ss, hg, ss', gs, h => by
-      cases h1 : symStep i ss with
+      cases h1 : sym i ss with
       | ok ss1 g1 =>
-          cases h2 : symRun is ss1 with
+          cases h2 : symRun is ss1 sym with
           | ok ss2 g2 =>
               simp only [symRun, h1, h2, SOut.ok.injEq] at h
               rw [← h.1]
-              exact symRun_good is (symStep_good i hg h1) h2
+              exact symRun_good_at hgood is (hgood i hg h1) h2
           | fail => simp [symRun, h1, h2] at h
           | unk => simp [symRun, h1, h2] at h
       | fail => simp [symRun, h1] at h
       | unk => simp [symRun, h1] at h
+
+theorem symRun_good (is : List LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : List SG}
+    (h : symRun is ss = .ok ss' gs) : ss'.Good :=
+  symRun_good_at (fun i _ hg _ _ h => symStep_good i hg h) is hg h
 
 /-- A label declaration. -/
 def isLbl (i : LinstrRM) : Bool :=
@@ -2048,10 +2235,18 @@ theorem symStep_label {i : LinstrRM} (h : isLbl i = true) (ss : SSt) :
   obtain ⟨x, tag⟩ := i
   cases x <;> simp_all [isLbl, symStep, cmpArgs?, movRegArgs?, flagCondCC?]
 
+/-- A label at the head of a list does not change its symbolic run, when `sym` describes a
+    label as the identity. -/
+theorem symRun_label_at {sym : LinstrRM → SSt → SOut}
+    (hlab : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss [])
+    {i : LinstrRM} (h : isLbl i = true) (is : List LinstrRM) (ss : SSt) :
+    symRun (i :: is) ss sym = symRun is ss sym := by
+  simp only [symRun, hlab h]
+  cases symRun is ss sym <;> simp
+
 theorem symRun_label {i : LinstrRM} (h : isLbl i = true) (is : List LinstrRM) (ss : SSt) :
-    symRun (i :: is) ss = symRun is ss := by
-  simp only [symRun, symStep_label h]
-  cases symRun is ss <;> simp
+    symRun (i :: is) ss = symRun is ss :=
+  symRun_label_at (fun h ss => symStep_label h ss) h is ss
 
 mutual
 /-- The start registers a symbolic word reads. -/
@@ -2268,112 +2463,99 @@ theorem step_plain {x : LinstrRM} (hx : isTermR x.1 = false) {s t : LstateMF}
   obtain ⟨h1, h2⟩ := evalInstrPMemF_next _ x s t h
   exact ⟨h1, nextPc_plain hx h2⟩
 
-/-- A halting run from the start of a stretch `xs` of non-terminators of the body runs
-    `xs` and then the rest. -/
-theorem fuel_runL :
+/-- A step of the instruction set `I` at an instruction that is no terminator stays in the
+    function and advances the pc by one. -/
+def StepPlain (I : Isa) : Prop :=
+  ∀ (P : LprogM) {x : LinstrRM}, isTermR x.1 = false → ∀ {s t : LstateMF},
+    I.step P x s = some t →
+    t.prog.lfn = s.prog.lfn ∧ t.prog.base.reg.lpc = s.prog.base.reg.lpc + 1
+
+theorem stepPlain_x86 : StepPlain x86Isa := by
+  intro P x hx s t h
+  obtain ⟨h1, h2⟩ := evalInstrPMemF_next P x s t h
+  exact ⟨h1, nextPc_plain hx h2⟩
+
+/-- A halting run of the instruction set `I` from the start of a stretch `xs` of
+    non-terminators of the body runs `xs` and then the rest, when a non-terminator step of
+    `I` stays in the function and advances the pc by one (`StepPlain`). -/
+theorem fuel_runL_at {I : Isa} (hpl : StepPlain I) :
     ∀ (xs rest : List LinstrRM) (s t : LstateMF) (fuel : Nat), s.prog.lfn = fn →
       B.drop s.prog.base.reg.lpc = xs ++ rest → (∀ x ∈ xs, isTermR x.1 = false) →
-      lsemFuelMemF (singletonProgM fn B) fuel s = some t →
-      ∃ u f, fuel = xs.length + f ∧ runL (singletonProgM fn B) xs s = some u ∧
-        lsemFuelMemF (singletonProgM fn B) f u = some t
+      I.lsemFuelMemF (singletonProgM fn B) fuel s = some t →
+      ∃ u f, fuel = xs.length + f ∧ I.runL (singletonProgM fn B) xs s = some u ∧
+        I.lsemFuelMemF (singletonProgM fn B) f u = some t
   | [], _, s, t, fuel, _, _, _, h => ⟨s, fuel, by simp, rfl, h⟩
   | x :: xs, rest, s, t, fuel, hfn, hB, hx, h => by
       have hget : B[s.prog.base.reg.lpc]? = some x := by
         rw [← List.head?_drop, hB]; rfl
       cases fuel with
       | zero =>
-          simp [lsemFuelMemF, findInstrMem_single hfn, hget] at h
+          simp [Isa.lsemFuelMemF, findInstrMem_single hfn, hget] at h
       | succ f =>
-          simp only [lsemFuelMemF, findInstrMem_single hfn, hget] at h
-          cases he : evalInstrPMemF (singletonProgM fn B) x s with
+          simp only [Isa.lsemFuelMemF, findInstrMem_single hfn, hget] at h
+          cases he : I.step (singletonProgM fn B) x s with
           | none => rw [he] at h; cases h
           | some s1 =>
               rw [he] at h
-              obtain ⟨h1, h2⟩ := step_plain (hx x (by simp)) he
+              obtain ⟨h1, h2⟩ := hpl _ (hx x (by simp)) he
               have hB1 : B.drop s1.prog.base.reg.lpc = xs ++ rest := by
                 rw [h2, ← List.drop_drop, hB]; rfl
-              obtain ⟨u, f', hf, hu, hrun⟩ := fuel_runL xs rest s1 t f (h1.trans hfn) hB1
+              obtain ⟨u, f', hf, hu, hrun⟩ := fuel_runL_at hpl xs rest s1 t f (h1.trans hfn) hB1
                 (fun y hy => hx y (by simp [hy])) h
               refine ⟨u, f', by simp [hf]; omega, ?_, hrun⟩
-              simp [runL, he, hu]
+              simp [Isa.runL, he, hu]
+
+/-- A halting run from the start of a stretch `xs` of non-terminators of the body runs
+    `xs` and then the rest. -/
+theorem fuel_runL (xs rest : List LinstrRM) (s t : LstateMF) (fuel : Nat)
+    (hfn : s.prog.lfn = fn) (hB : B.drop s.prog.base.reg.lpc = xs ++ rest)
+    (hx : ∀ x ∈ xs, isTermR x.1 = false)
+    (h : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ u f, fuel = xs.length + f ∧ runL (singletonProgM fn B) xs s = some u ∧
+      lsemFuelMemF (singletonProgM fn B) f u = some t := by
+  rw [← x86Isa_lsemFuelMemF] at h
+  simpa only [x86Isa_lsemFuelMemF, x86Isa_runL] using
+    fuel_runL_at stepPlain_x86 xs rest s t fuel hfn hB hx h
 
 /-- A run of a stretch `xs` of non-terminators of the body is the first `xs.length` steps
-    of every run from its start. -/
-theorem runL_fuel :
+    of every run of the instruction set `I` from its start. -/
+theorem runL_fuel_at {I : Isa} (hpl : StepPlain I) :
     ∀ (xs rest : List LinstrRM) (s u : LstateMF), s.prog.lfn = fn →
       B.drop s.prog.base.reg.lpc = xs ++ rest → (∀ x ∈ xs, isTermR x.1 = false) →
-      runL (singletonProgM fn B) xs s = some u → ∀ f,
-      lsemFuelMemF (singletonProgM fn B) (xs.length + f) s =
-        lsemFuelMemF (singletonProgM fn B) f u
-  | [], _, s, u, _, _, _, h, f => by simp only [runL, Option.some.injEq] at h; subst h; simp
+      I.runL (singletonProgM fn B) xs s = some u → ∀ f,
+      I.lsemFuelMemF (singletonProgM fn B) (xs.length + f) s =
+        I.lsemFuelMemF (singletonProgM fn B) f u
+  | [], _, s, u, _, _, _, h, f => by
+      simp only [Isa.runL, Option.some.injEq] at h; subst h; simp
   | x :: xs, rest, s, u, hfn, hB, hx, h, f => by
       have hget : B[s.prog.base.reg.lpc]? = some x := by
         rw [← List.head?_drop, hB]; rfl
-      simp only [runL] at h
-      cases he : evalInstrPMemF (singletonProgM fn B) x s with
+      simp only [Isa.runL] at h
+      cases he : I.step (singletonProgM fn B) x s with
       | none => rw [he] at h; cases h
       | some s1 =>
           rw [he, Option.bind_some] at h
-          obtain ⟨h1, h2⟩ := step_plain (hx x (by simp)) he
+          obtain ⟨h1, h2⟩ := hpl _ (hx x (by simp)) he
           have hB1 : B.drop s1.prog.base.reg.lpc = xs ++ rest := by
             rw [h2, ← List.drop_drop, hB]; rfl
           rw [List.length_cons, show xs.length + 1 + f = (xs.length + f) + 1 by omega]
-          simp only [lsemFuelMemF, findInstrMem_single hfn, hget, he]
-          exact runL_fuel xs rest s1 u (h1.trans hfn) hB1 (fun y hy => hx y (by simp [hy])) h f
+          simp only [Isa.lsemFuelMemF, findInstrMem_single hfn, hget, he]
+          exact runL_fuel_at hpl xs rest s1 u (h1.trans hfn) hB1
+            (fun y hy => hx y (by simp [hy])) h f
+
+/-- A run of a stretch `xs` of non-terminators of the body is the first `xs.length` steps
+    of every run from its start. -/
+theorem runL_fuel (xs rest : List LinstrRM) (s u : LstateMF) (hfn : s.prog.lfn = fn)
+    (hB : B.drop s.prog.base.reg.lpc = xs ++ rest) (hx : ∀ x ∈ xs, isTermR x.1 = false)
+    (h : runL (singletonProgM fn B) xs s = some u) (f : Nat) :
+    lsemFuelMemF (singletonProgM fn B) (xs.length + f) s =
+      lsemFuelMemF (singletonProgM fn B) f u := by
+  rw [← x86Isa_runL] at h
+  simpa only [x86Isa_lsemFuelMemF] using runL_fuel_at stepPlain_x86 xs rest s u hfn hB hx h f
 
 end Run
 
 /-! ## 9. Terminators -/
-
-/-- The polarity of a condition-code operand: `Z` jumps on a set zero flag, `NZ` on a
-    clear one; any other operand is read as a register. -/
-def ccPol : LOperand → Option Bool
-  | .reg "Z" => some true
-  | .reg "NZ" => some false
-  | _ => none
-
-theorem flagCondCC?_cond (c : LOperand) (l : LLabel) (tag : MemTag) :
-    flagCondCC? (.Lcond c l, tag) = (ccPol c).map (fun p => (p, l)) := by
-  unfold flagCondCC? ccPol
-  split <;> simp_all
-
-/-- The branch a conditional takes from state `s`. -/
-def decC (s : LstateMF) (c : LOperand) : Bool :=
-  match ccPol c with
-  | some pol => s.zf == pol
-  | none => condNZ s.prog.base c
-
-theorem evalInstrPMemF_cond (P : LprogM) (c : LOperand) (l : LLabel) (tag : MemTag)
-    (s : LstateMF) :
-    evalInstrPMemF P (.Lcond c l, tag) s =
-      if decC s c = true then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
-      else some { s with prog := { s.prog with base := s.prog.base.nextPc } } := by
-  unfold decC
-  cases hcc : ccPol c with
-  | some pol =>
-      unfold evalInstrPMemF
-      simp only [cmpArgs?, movRegArgs?, flagCondCC?_cond, hcc]
-      simp [beq_iff_eq]
-  | none =>
-      have hf : flagCondCC? (LinstrR.Lcond c l, tag) = none := by
-        rw [flagCondCC?_cond, hcc]; rfl
-      rw [evalInstrPMemF_delegate P _ s rfl rfl hf rfl rfl rfl]
-      simp only [evalInstrPMemL]
-      split <;> simp
-
-theorem evalInstrPMemF_goto (P : LprogM) (x : String) (l : LLabel) (tag : MemTag)
-    (s : LstateMF) :
-    evalInstrPMemF P (.Lgoto (x, l), tag) s =
-      if x = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
-      else none := by
-  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
-  simp only [evalInstrPMemL]
-  split <;> simp
-
-theorem evalInstrPMemF_ret (P : LprogM) (tag : MemTag) (s : LstateMF) :
-    evalInstrPMemF P (.Lret, tag) s = none := by
-  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
-  simp [evalInstrPMemL, lsemStepMem_ret]
 
 theorem evalJumpMem_single {fn : String} {B : List LinstrRM} {l : LLabel} {q : Nat}
     (hq : findLabel l (B.map Prod.fst) = some q) (p : LstatePM) :
@@ -2461,21 +2643,57 @@ def vIn (n : List String × Bool) (vs : List String) : Bool := vs.all (fun v => 
 def okIn (n : List String × Bool) (vs : List String) (rf : Bool) : Bool :=
   vIn n vs && (!rf || n.2)
 
+/-- **The laws of a symbolic step against an instruction set.** The symbolic step `sym` and
+    the symbolic branch condition `dec` describe the instruction set `I`: `sym` describes
+    `I.step` exactly (`step_sound`), `dec` evaluates to `I.condEval` (`dec_sound`), `sym`
+    keeps `SSt.Good` (`good`) and describes a label as the identity (`label`), a step of `I`
+    at an instruction that is no terminator stays in the function and advances the pc by one
+    (`plain`), and `I` takes no step at `Lret` (`ret`). The soundness of the checker is proved
+    from these laws. -/
+structure SymLaws (I : Isa) (sym : LinstrRM → SSt → SOut) (dec : SSt → LOperand → SDec) :
+    Prop where
+  /-- The symbolic step describes the step exactly. -/
+  step_sound : ∀ (P : LprogM) (i : LinstrRM) (ss : SSt), StepSound (I.step P i) ss (sym i ss)
+  /-- The symbolic branch condition evaluates to the branch condition. -/
+  dec_sound : ∀ {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
+    {ss : SSt} {s : LstateMF}, Holds V A C O Z ss s → ∀ c : LOperand,
+    I.condEval s c = (dec ss c).ev V A C O Z
+  /-- The symbolic step keeps `SSt.Good`. -/
+  good : ∀ (i : LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
+    sym i ss = .ok ss' gs → ss'.Good
+  /-- The symbolic step of a label is the identity, with no guard. -/
+  label : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss []
+  /-- A step at an instruction that is no terminator stays in the function and advances the
+      pc by one. -/
+  plain : StepPlain I
+  /-- The instruction set takes no step at `Lret`. -/
+  ret : ∀ (P : LprogM) (tag : MemTag) (s : LstateMF), I.step P (.Lret, tag) s = none
+
+/-- The x86 symbolic step `symStep` and branch condition `symDec` satisfy the laws against
+    `x86Isa`. -/
+theorem symLaws_x86 : SymLaws x86Isa symStep symDec where
+  step_sound := symStep_sound
+  dec_sound := fun hs c => decC_eq hs c
+  good := fun i _ hg _ _ h => symStep_good i hg h
+  label := fun h ss => symStep_label h ss
+  plain := stepPlain_x86
+  ret := evalInstrPMemF_ret
+
 /-- The two terminator instructions agree: two jumps name the same function, and two
-    branches have the same symbolic condition, which reads only live names. -/
+    branches have the same symbolic condition under `dec`, which reads only live names. -/
 def termAgree (T : Term) (n : List String × Bool) (ss ss' : SSt) :
-    Option LinstrRM → Option LinstrRM → Bool
-  | some (.Lgoto (a, _), _), some (.Lgoto (b, _), _) =>
+    Option LinstrRM → Option LinstrRM → optParam (SSt → LOperand → SDec) symDec → Bool
+  | some (.Lgoto (a, _), _), some (.Lgoto (b, _), _), _ =>
       match T with
       | .goto _ => a == b
       | _ => false
-  | some (.Lcond c _, _), some (.Lcond c' _, _) =>
+  | some (.Lcond c _, _), some (.Lcond c' _, _), dec =>
       match T with
       | .cond _ _ =>
-          symDec ss c == symDec ss' c' && vIn n (symDec ss c).vars &&
-            (!(symDec ss c).readsInit || n.2)
+          dec ss c == dec ss' c' && vIn n (dec ss c).vars &&
+            (!(dec ss c).readsInit || n.2)
       | _ => false
-  | _, _ =>
+  | _, _, _ =>
       match T with
       | .fall _ => true
       | _ => false
@@ -2498,20 +2716,22 @@ def exitAgree (outs : List String) (L : Nat → List String × Bool) (n : List S
       ss.arrs q == ss'.arrs q && okIn n (ss.arrs q).vars (ss.arrs q).readsF)
 
 /-- The check of block `k` of the source body `B` (block `b`) against block `k` of the
-    rewritten body `B'` (block `b'`), both with terminator `T`, for the live sets `L`. -/
+    rewritten body `B'` (block `b'`), both with terminator `T`, for the live sets `L`, under
+    the symbolic step `sym` and branch condition `dec`. -/
 def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T : Term)
-    (B B' : List LinstrRM) (b b' : Block) : Bool :=
+    (B B' : List LinstrRM) (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
+    (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .ret => true
   | _ =>
-      match symRun (bodyAt B b T) SSt.start with
+      match symRun (bodyAt B b T) SSt.start sym with
       | .fail => true
       | .unk => false
       | .ok ss gs =>
-          match symRun (bodyAt B' b' T) SSt.start with
+          match symRun (bodyAt B' b' T) SSt.start sym with
           | .ok ss' gs' =>
               (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
-                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
+                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false
 
@@ -2519,13 +2739,14 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
     same number of blocks and the same terminators, and every block pair passes
     `blockOk`. -/
 def ownedCheckWith (outs : List String) (L : Nat → List String × Bool)
-    (B B' : List LinstrRM) : Bool :=
+    (B B' : List LinstrRM) (sym : LinstrRM → SSt → SOut := symStep)
+    (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
       !B.isEmpty && !B'.isEmpty && G.blocks.size == G'.blocks.size &&
         (List.range G.blocks.size).all (fun k =>
           (G.blk k).term == (G'.blk k).term &&
-            blockOk outs L k (G.blk k).term B B' (G.blk k) (G'.blk k))
+            blockOk outs L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym dec)
   | _, _ => false
 
 /-- The agreement of a source state `s` and a rewritten state `s'` at a block entry with
@@ -2672,33 +2893,50 @@ theorem body_plain {B : List LinstrRM} {G : CFG} (hG : cfgOf (B.map Prod.fst) = 
     · exact hnt
     all_goals (simp only [bstopOf, hT] at hi; omega)
 
-theorem runL_frame {fn : String} {B : List LinstrRM} :
+/-- A run of a stretch of non-terminators of the instruction set `I` stays in the function
+    and advances the pc by the length of the stretch. -/
+theorem runL_frame_at {fn : String} {B : List LinstrRM} {I : Isa} (hpl : StepPlain I) :
     ∀ (xs : List LinstrRM) (s u : LstateMF), (∀ x ∈ xs, isTermR x.1 = false) →
-      runL (singletonProgM fn B) xs s = some u →
+      I.runL (singletonProgM fn B) xs s = some u →
       u.prog.lfn = s.prog.lfn ∧ u.prog.base.reg.lpc = s.prog.base.reg.lpc + xs.length
-  | [], s, u, _, h => by simp only [runL, Option.some.injEq] at h; subst h; simp
+  | [], s, u, _, h => by simp only [Isa.runL, Option.some.injEq] at h; subst h; simp
   | x :: xs, s, u, hx, h => by
-      simp only [runL] at h
-      cases he : evalInstrPMemF (singletonProgM fn B) x s with
+      simp only [Isa.runL] at h
+      cases he : I.step (singletonProgM fn B) x s with
       | none => rw [he] at h; cases h
       | some s1 =>
           rw [he, Option.bind_some] at h
-          obtain ⟨h1, h2⟩ := step_plain (hx x (by simp)) he
-          obtain ⟨h3, h4⟩ := runL_frame xs s1 u (fun y hy => hx y (by simp [hy])) h
+          obtain ⟨h1, h2⟩ := hpl _ (hx x (by simp)) he
+          obtain ⟨h3, h4⟩ := runL_frame_at hpl xs s1 u (fun y hy => hx y (by simp [hy])) h
           refine ⟨h3.trans h1, ?_⟩
           rw [h4, h2, List.length_cons]
           omega
 
+theorem runL_frame {fn : String} {B : List LinstrRM} (xs : List LinstrRM) (s u : LstateMF)
+    (hx : ∀ x ∈ xs, isTermR x.1 = false) (h : runL (singletonProgM fn B) xs s = some u) :
+    u.prog.lfn = s.prog.lfn ∧ u.prog.base.reg.lpc = s.prog.base.reg.lpc + xs.length := by
+  rw [← x86Isa_runL] at h
+  exact runL_frame_at stepPlain_x86 xs s u hx h
+
+/-- The first step of a halting run of the instruction set `I` from a state that fetches
+    `i`. -/
+theorem run_inv_at {I : Isa} {P : LprogM} {f : Nat} {s t : LstateMF} {i : LinstrRM}
+    (h : I.lsemFuelMemF P f s = some t) (hi : findInstrMem P s.prog = some i) :
+    ∃ f1 s1, f = f1 + 1 ∧ I.step P i s = some s1 ∧ I.lsemFuelMemF P f1 s1 = some t := by
+  cases f with
+  | zero => simp [Isa.lsemFuelMemF, hi] at h
+  | succ f1 =>
+      simp only [Isa.lsemFuelMemF, hi] at h
+      cases he : I.step P i s with
+      | none => rw [he] at h; cases h
+      | some s1 => rw [he] at h; exact ⟨f1, s1, rfl, rfl, h⟩
+
 theorem run_inv {P : LprogM} {f : Nat} {s t : LstateMF} {i : LinstrRM}
     (h : lsemFuelMemF P f s = some t) (hi : findInstrMem P s.prog = some i) :
     ∃ f1 s1, f = f1 + 1 ∧ evalInstrPMemF P i s = some s1 ∧ lsemFuelMemF P f1 s1 = some t := by
-  cases f with
-  | zero => simp [lsemFuelMemF, hi] at h
-  | succ f1 =>
-      simp only [lsemFuelMemF, hi] at h
-      cases he : evalInstrPMemF P i s with
-      | none => rw [he] at h; cases h
-      | some s1 => rw [he] at h; exact ⟨f1, s1, rfl, rfl, h⟩
+  rw [← x86Isa_lsemFuelMemF] at h
+  obtain ⟨f1, s1, e, he, hr⟩ := run_inv_at (I := x86Isa) h hi
+  exact ⟨f1, s1, e, he, by rwa [x86Isa_lsemFuelMemF] at hr⟩
 
 /-- Control enters block `b` at its start, or one past it when the block starts with a
     label. -/
@@ -2726,43 +2964,54 @@ theorem entry_le {B : List LinstrRM} {G : CFG} (hG : cfgOf (B.map Prod.fst) = so
       simp only [Option.map_some] at hterm
       cases h : (G.blk k).term <;> simp_all [termOk]
 
-theorem symRun_entry {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
+/-- The symbolic run from an entry of a block is the symbolic run of the block body, when
+    `sym` describes a label as the identity. -/
+theorem symRun_entry_at {sym : LinstrRM → SSt → SOut}
+    (hlab : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss [])
+    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
     (hp : EntryAt B b p) (hle : p ≤ bstopOf T b) :
-    symRun ((B.drop p).take (bstopOf T b - p)) SSt.start = symRun (bodyAt B b T) SSt.start := by
+    symRun ((B.drop p).take (bstopOf T b - p)) SSt.start sym =
+      symRun (bodyAt B b T) SSt.start sym := by
   rcases hp with rfl | ⟨rfl, x, hx, hl⟩
   · rfl
   · unfold bodyAt
-    rw [take_cons B (by omega) hx, symRun_label hl]
+    rw [take_cons B (by omega) hx, symRun_label_at hlab hl]
+
+theorem symRun_entry {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
+    (hp : EntryAt B b p) (hle : p ≤ bstopOf T b) :
+    symRun ((B.drop p).take (bstopOf T b - p)) SSt.start = symRun (bodyAt B b T) SSt.start :=
+  symRun_entry_at (fun h ss => symStep_label h ss) hp hle
 
 theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k : Nat} {T : Term}
-    {B B' : List LinstrRM} {b b' : Block} (h : blockOk outs L k T B B' b b' = true)
+    {B B' : List LinstrRM} {b b' : Block} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (h : blockOk outs L k T B B' b b' sym dec = true)
     (hT : T ≠ .ret) :
-    symRun (bodyAt B b T) SSt.start = .fail ∨
-      ∃ ss gs ss' gs', symRun (bodyAt B b T) SSt.start = .ok ss gs ∧
-        symRun (bodyAt B' b' T) SSt.start = .ok ss' gs' ∧
+    symRun (bodyAt B b T) SSt.start sym = .fail ∨
+      ∃ ss gs ss' gs', symRun (bodyAt B b T) SSt.start sym = .ok ss gs ∧
+        symRun (bodyAt B' b' T) SSt.start sym = .ok ss' gs' ∧
         (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
           (g.readsF = true → (L k).2 = true)) ∧
-        termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? = true ∧
+        termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec = true ∧
         exitAgree outs L (L k) T ss ss' = true := by
-  have h2 : (match symRun (bodyAt B b T) SSt.start with
+  have h2 : (match symRun (bodyAt B b T) SSt.start sym with
       | .fail => true
       | .unk => false
       | .ok ss gs =>
-          match symRun (bodyAt B' b' T) SSt.start with
+          match symRun (bodyAt B' b' T) SSt.start sym with
           | .ok ss' gs' =>
               (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
-                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
+                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false) = true := by
     cases T with
     | ret => exact absurd rfl hT
     | _ => exact h
-  cases hs : symRun (bodyAt B b T) SSt.start with
+  cases hs : symRun (bodyAt B b T) SSt.start sym with
   | fail => exact Or.inl rfl
   | unk => rw [hs] at h2; cases h2
   | ok ss gs =>
       rw [hs] at h2
-      cases ht : symRun (bodyAt B' b' T) SSt.start with
+      cases ht : symRun (bodyAt B' b' T) SSt.start sym with
       | ok ss' gs' =>
           rw [ht] at h2
           simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h2
@@ -2792,12 +3041,13 @@ theorem stop_next {B : List LinstrRM} {G : CFG} (hG : cfgOf (B.map Prod.fst) = s
 
 /-- The facts `ownedCheckWith` establishes about the two bodies and their graphs. -/
 structure Checked (outs : List String) (L : Nat → List String × Bool) (B B' : List LinstrRM)
-    (G G' : CFG) : Prop where
+    (G G' : CFG) (sym : LinstrRM → SSt → SOut := symStep)
+    (dec : SSt → LOperand → SDec := symDec) : Prop where
   hG : cfgOf (B.map Prod.fst) = some G
   hG' : cfgOf (B'.map Prod.fst) = some G'
   size : G'.blocks.size = G.blocks.size
   blk : ∀ k < G.blocks.size, (G'.blk k).term = (G.blk k).term ∧
-    blockOk outs L k (G.blk k).term B B' (G.blk k) (G'.blk k) = true
+    blockOk outs L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym dec = true
 
 /-- The two runs enter block `k` in the same way: both at the start, or both one past a
     label at the start. -/
@@ -2812,16 +3062,24 @@ theorem Pair.entry {B B' : List LinstrRM} {b b' : Block} {p p' : Nat} (h : Pair 
   · exact ⟨Or.inl h1, Or.inl h2⟩
   · exact ⟨Or.inr ⟨h1, h2⟩, Or.inr ⟨h3, h4⟩⟩
 
-/-- The simulation up to the measure `N`: a halting source run from a block entry is
-    matched by a halting run of the rewritten body. -/
-def SimAt (outs : List String) (L : Nat → List String × Bool) (B B' : List LinstrRM)
-    (G G' : CFG) (fn : String) (N : Nat) : Prop :=
+/-- The simulation up to the measure `N` on the instruction set `I`: a halting source run
+    from a block entry is matched by a halting run of the rewritten body. -/
+def SimAt (I : Isa) (outs : List String) (L : Nat → List String × Bool)
+    (B B' : List LinstrRM) (G G' : CFG) (fn : String) (N : Nat) : Prop :=
   ∀ (fuel k : Nat) (s s' t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     Pair B B' (G.blk k) (G'.blk k) s.prog.base.reg.lpc s'.prog.base.reg.lpc →
     Rel (L k) s s' → s.prog.lfn = fn →
-    lsemFuelMemF (singletonProgM fn B) fuel s = some t →
-    ∃ f' t', lsemFuelMemF (singletonProgM fn B') f' s' = some t' ∧ Obs outs t t'
+    I.lsemFuelMemF (singletonProgM fn B) fuel s = some t →
+    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' s' = some t' ∧ Obs outs t t'
+
+/-- A state of the instruction set `I` at the end of the body is halted. -/
+theorem halt_at_end_at (I : Isa) {fn : String} {B : List LinstrRM} {w : LstateMF}
+    (hfn : w.prog.lfn = fn) (hw : w.prog.base.reg.lpc = B.length) (f : Nat) :
+    I.lsemFuelMemF (singletonProgM fn B) f w = some w := by
+  apply I.lsemFuelMemF_halt
+  rw [findInstrMem_single hfn, hw]
+  simp
 
 theorem halt_at_end {fn : String} {B : List LinstrRM} {w : LstateMF} (hfn : w.prog.lfn = fn)
     (hw : w.prog.base.reg.lpc = B.length) (f : Nat) :
@@ -2832,24 +3090,25 @@ theorem halt_at_end {fn : String} {B : List LinstrRM} {w : LstateMF} (hfn : w.pr
 
 /-- Control that falls out of block `k` continues in the next block, or leaves both
     bodies. -/
-theorem fall_cont {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G') {N k : Nat}
-    (ih : SimAt outs L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
+theorem fall_cont {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) {N k : Nat}
+    (ih : SimAt I outs L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
     (hn : G.next k = nx) (hn' : G'.next k = nx) {w w' t : LstateMF} {f0 : Nat}
     (hw : w.prog.base.reg.lpc = (G.blk k).stop) (hw' : w'.prog.base.reg.lpc = (G'.blk k).stop)
     (hfn : w.prog.lfn = fn) (hfn' : w'.prog.lfn = fn)
-    (hrun : lsemFuelMemF (singletonProgM fn B) f0 w = some t)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) f0 w = some t)
     (hmeas : f0 * (G.blocks.size + 1) + (G.blocks.size - (k + 1)) < N)
     (hrel : ∀ j, nx = some j → Rel (L j) w w') (hobs : nx = none → Obs outs w w') :
-    ∃ f' t', lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' := by
+    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' := by
   have hk' : k < G'.blocks.size := hc.size ▸ hk
   cases nx with
   | none =>
       have e1 := (stop_next hc.hG hk).1 hn
       have e2 := (stop_next hc.hG' hk').1 hn'
-      rw [halt_at_end hfn (hw.trans e1)] at hrun
+      rw [halt_at_end_at I hfn (hw.trans e1)] at hrun
       cases hrun
-      exact ⟨0, w', halt_at_end hfn' (hw'.trans e2) 0, hobs rfl⟩
+      exact ⟨0, w', halt_at_end_at I hfn' (hw'.trans e2) 0, hobs rfl⟩
   | some j =>
       obtain ⟨hj, hjlt, e1⟩ := (stop_next hc.hG hk).2 j hn
       obtain ⟨-, -, e2⟩ := (stop_next hc.hG' hk').2 j hn'
@@ -2866,16 +3125,17 @@ theorem label_at {B : List LinstrRM} {l : LLabel} {q : Nat}
   cases yi <;> simp_all [isLbl, JasminLsemLabeled.isLabel]
 
 /-- A jump to block `tg` continues there, one past its label. -/
-theorem jump_cont {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAt outs L B B' G G' fn N)
+theorem jump_cont {I : Isa} {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAt I outs L B B' G G' fn N)
     (htg : tg < G.blocks.size) {l l' : LLabel}
     (hl : findLabel l (B.map Prod.fst) = some (G.blk tg).start)
     (hl' : findLabel l' (B'.map Prod.fst) = some (G'.blk tg).start) {w w' t : LstateMF}
     {f1 : Nat} (hw : w.prog.base.reg.lpc = (G.blk tg).start + 1)
     (hw' : w'.prog.base.reg.lpc = (G'.blk tg).start + 1) (hfn : w.prog.lfn = fn)
-    (hrun : lsemFuelMemF (singletonProgM fn B) f1 w = some t)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) f1 w = some t)
     (hmeas : f1 * (G.blocks.size + 1) + (G.blocks.size - tg) < N) (hrel : Rel (L tg) w w') :
-    ∃ f' t', lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' :=
+    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' :=
   ih f1 tg w w' t hmeas htg (Or.inr ⟨hw, label_at hl, hw', label_at hl'⟩) hrel hfn hrun
 
 theorem measure_lt {nb fuel f k j N : Nat} (hN : fuel * (nb + 1) + (nb - k) < N + 1)
@@ -2889,9 +3149,11 @@ theorem measure_le {nb fuel f k N : Nat} (hN : fuel * (nb + 1) + (nb - k) < N + 
   have := Nat.mul_le_mul_right (nb + 1) hf
   omega
 
-theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G') {N : Nat}
-    (ih : SimAt outs L B B' G G' fn N) : SimAt outs L B B' G G' fn (N + 1) := by
+theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) {N : Nat}
+    (ih : SimAt I outs L B B' G G' fn N) : SimAt I outs L B B' G G' fn (N + 1) := by
   intro fuel k s s' t hN hk hpair hrel hfn hrun
   obtain ⟨hTk, hok⟩ := hc.blk k hk
   have hk' : k < G'.blocks.size := hc.size ▸ hk
@@ -2904,8 +3166,8 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
   -- the source runs the block body
   have hplain := body_plain hc.hG hk hs1
   obtain ⟨u, f, hf, hu, hru⟩ :=
-    fuel_runL _ _ s t fuel hfn (drop_split B hle) hplain hrun
-  obtain ⟨hul, hup⟩ := runL_frame _ s u hplain hu
+    fuel_runL_at hL.plain _ _ s t fuel hfn (drop_split B hle) hplain hrun
+  obtain ⟨hul, hup⟩ := runL_frame_at hL.plain _ s u hplain hu
   have hbstop : bstopOf (G.blk k).term (G.blk k) ≤ B.length := by
     unfold bstopOf; split <;> have := F.le <;> simp at this <;> omega
   have hbstop' : bstopOf (G'.blk k).term (G'.blk k) ≤ B'.length := by
@@ -2933,17 +3195,18 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     have hupc2 : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by
       rw [hupc]; simp [bstopOf, hret]
     obtain ⟨_, _, _, he, _⟩ :=
-      run_inv hru (by rw [findInstrMem_single hul', hupc2, hz])
+      run_inv_at hru (by rw [findInstrMem_single hul', hupc2, hz])
     obtain ⟨zi, zt⟩ := z
     simp only at hzr
     subst hzr
-    rw [evalInstrPMemF_ret] at he
+    rw [hL.ret] at he
     cases he
   -- the symbolic runs of the two block bodies
-  have hD := symRun_sound (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
+  have hD := symRun_sound_at hL.step_sound (singletonProgM fn B)
+    ((B.drop s.prog.base.reg.lpc).take
     (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
     (holds_start s)
-  rw [symRun_entry hE hle] at hD
+  rw [symRun_entry_at hL.label hE hle] at hD
   rcases blockOk_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
   · rw [hfail] at hD
     simp only [SOut.DescN] at hD
@@ -2957,9 +3220,10 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     ⟨fun _ => rfl, fun q => by rw [hrel.2.1]; rfl, rfl, by simp [SSt.start, STerm.ev],
       by simp [SSt.start, STerm.ev]⟩
   rw [hTk] at hle'
-  have hD' := symRun_sound (singletonProgM fn B') ((B'.drop s'.prog.base.reg.lpc).take
+  have hD' := symRun_sound_at hL.step_sound (singletonProgM fn B')
+    ((B'.drop s'.prog.base.reg.lpc).take
     (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
-  rw [symRun_entry hE' hle', hS'] at hD'
+  rw [symRun_entry_at hL.label hE' hle', hS'] at hD'
   have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
@@ -2972,17 +3236,17 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
   have hplain' := body_plain hc.hG' hk' hs1'
   rw [hTk] at hplain' hbstop'
-  have hrun' := runL_fuel _ _ s' u' hfn' (drop_split B' hle') hplain' hu'
+  have hrun' := runL_fuel_at hL.plain _ _ s' u' hfn' (drop_split B' hle') hplain' hu'
   simp only [List.length_take, List.length_drop] at hrun'
   have hupc' : u'.prog.base.reg.lpc = bstopOf (G.blk k).term (G'.blk k) := by
     rw [hFr'.2.1]; simp only [List.length_take, List.length_drop]; omega
   have hul'' : u'.prog.lfn = fn := hFr'.1.trans hfn'
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
-    (symRun_good _ SSt.good_start hS) (symRun_good _ SSt.good_start hS')
+    (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hex
   have hfle : f ≤ fuel := by omega
-  obtain ⟨m', hm'⟩ : ∃ m', ∀ f0, lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
-      lsemFuelMemF (singletonProgM fn B') f0 u' := ⟨_, hrun'⟩
+  obtain ⟨m', hm'⟩ : ∃ m', ∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
+      I.lsemFuelMemF (singletonProgM fn B') f0 u' := ⟨_, hrun'⟩
   clear hrun'
   obtain ⟨zi, zt⟩ := z
   obtain ⟨zi', zt'⟩ := z'
@@ -3012,16 +3276,16 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     have hw : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by rw [hupc, hT]; rfl
     have hw' : u'.prog.base.reg.lpc = (G'.blk k).stop - 1 := by rw [hupc', hT]; rfl
     obtain ⟨f1, u1, hf1, he, hr1⟩ :=
-      run_inv hru (by rw [findInstrMem_single hul', hw, hz])
-    rw [evalInstrPMemF_goto] at he
+      run_inv_at hru (by rw [findInstrMem_single hul', hw, hz])
+    rw [I.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
     · rw [if_pos hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
-      have he' : evalInstrPMemF (singletonProgM fn B') (.Lgoto (x, l'), zt') u' =
+      have he' : I.step (singletonProgM fn B') (.Lgoto (x, l'), zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [evalInstrPMemF_goto, if_pos (by simpa [singletonProgM, hul'', hul'] using hx),
+        rw [I.step_goto, if_pos (by simpa [singletonProgM, hul'', hul'] using hx),
           evalJumpMem_single hl']
         rfl
       obtain ⟨f'', t', hr, hobs⟩ := jump_cont (w' := { u' with prog := { u'.prog with
@@ -3029,7 +3293,7 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
         (by exact hul') hr1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
       refine ⟨m' + (f'' + 1), t', ?_, hobs⟩
-      rw [hm', lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
+      rw [hm', I.lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
       exact hr
     · rw [if_neg hx] at he
       cases he
@@ -3042,8 +3306,8 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     simp only [termAgree, hT, Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true,
       Bool.not_eq_true'] at hta
     obtain ⟨⟨hdeq, hdv⟩, hdz⟩ := hta
-    have hdec : decC u' c' = decC u c := by
-      rw [decC_eq hH' c', decC_eq hH c, ← hdeq]
+    have hdec : I.condEval u' c' = I.condEval u c := by
+      rw [hL.dec_sound hH' c', hL.dec_sound hH c, ← hdeq]
       exact SDec.ev_congr _ _ (fun r hr => hV r (vIn_spec hdv r hr))
         (fun hz => hrel.2.2.2.2 (by
           rcases hdz with h | h
@@ -3052,31 +3316,31 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     have hw : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by rw [hupc, hT]; rfl
     have hw' : u'.prog.base.reg.lpc = (G'.blk k).stop - 1 := by rw [hupc', hT]; rfl
     obtain ⟨f1, u1, hf1, he, hr1⟩ :=
-      run_inv hru (by rw [findInstrMem_single hul', hw, hz])
-    rw [evalInstrPMemF_cond] at he
+      run_inv_at hru (by rw [findInstrMem_single hul', hw, hz])
+    rw [I.step_cond] at he
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     have hstop' : 0 < (G'.blk k).stop := by have := F'.lt; omega
-    by_cases hd : decC u c = true
+    by_cases hd : I.condEval u c = true
     · rw [if_pos hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
-      have he' : evalInstrPMemF (singletonProgM fn B') (.Lcond c' l', zt') u' =
+      have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [evalInstrPMemF_cond, if_pos (hdec.trans hd), evalJumpMem_single hl']
+        rw [I.step_cond, if_pos (hdec.trans hd), evalJumpMem_single hl']
         rfl
       obtain ⟨f'', t', hr, hobs⟩ := jump_cont (w' := { u' with prog := { u'.prog with
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
         (by exact hul') hr1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
       refine ⟨m' + (f'' + 1), t', ?_, hobs⟩
-      rw [hm', lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
+      rw [hm', I.lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
       exact hr
     · rw [if_neg hd] at he
       simp only [Option.some.injEq] at he
-      have he' : evalInstrPMemF (singletonProgM fn B') (.Lcond c' l', zt') u' =
+      have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with base := u'.prog.base.nextPc } } := by
-        rw [evalInstrPMemF_cond, if_neg (by rw [hdec]; exact hd)]
+        rw [I.step_cond, if_neg (by rw [hdec]; exact hd)]
       obtain ⟨f'', t', hr, hobs⟩ := fall_cont (w := u1)
         (w' := { u' with prog := { u'.prog with base := u'.prog.base.nextPc } })
         hc ih hk hnx.symm hnx'.symm
@@ -3086,15 +3350,47 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
         (fun j hj => by rw [← he]; exact hsucc j (by simp [hT, Term.succs, hj]))
         (fun hn => by rw [← he]; exact hhalt (by simp [hT, hn, Term.halts]))
       refine ⟨m' + (f'' + 1), t', ?_, hobs⟩
-      rw [hm', lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
+      rw [hm', I.lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
       exact hr
   · exact absurd hT hret
 
-theorem simAt_all {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G') :
-    ∀ N, SimAt outs L B B' G G' fn N
+theorem simAt_all {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hL : SymLaws I sym dec) {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) :
+    ∀ N, SimAt I outs L B B' G G' fn N
   | 0 => fun _ _ _ _ _ hN => absurd hN (Nat.not_lt_zero _)
-  | N + 1 => sim_step hc (simAt_all hc N)
+  | N + 1 => sim_step hL hc (simAt_all hL hc N)
+
+/-- **Soundness of the checker for given live sets, over an instruction set.** If the
+    symbolic step `sym` and branch condition `dec` satisfy the laws `SymLaws I sym dec` and
+    `ownedCheckWith outs L B B' sym dec` accepts, every halting run of `I` on the singleton
+    program over `B` from a state at pc `0` of that function is matched by a halting run on
+    the singleton program over `B'` from the same state, and the two end states agree on the
+    registers `outs`, on the arrays and on the word memory. -/
+theorem ownedCheckWith_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM} (h : ownedCheckWith outs L B B' sym dec = true) (fn : String)
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' := by
+  unfold ownedCheckWith at h
+  split at h
+  · rename_i G G' hG hG'
+    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
+      List.all_eq_true, List.mem_range] at h
+    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
+    have hc : Checked outs L B B' G G' sym dec :=
+      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
+    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
+    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
+    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
+    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
+    exact simAt_all hL hc _ fuel 0 s s t (Nat.lt_succ_self _) h0
+      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
+      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun
+  · cases h
 
 /-- **Soundness of the checker for given live sets.** If `ownedCheckWith outs L B B'`
     accepts, every halting `lsemFuelMemF` run of the singleton program over `B` from a
@@ -3106,22 +3402,9 @@ theorem ownedCheckWith_sound {outs : List String} {L : Nat → List String × Bo
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' := by
-  unfold ownedCheckWith at h
-  split at h
-  · rename_i G G' hG hG'
-    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
-      List.all_eq_true, List.mem_range] at h
-    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
-    have hc : Checked outs L B B' G G' :=
-      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
-    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
-    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
-    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
-    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
-    exact simAt_all hc _ fuel 0 s s t (Nat.lt_succ_self _) h0
-      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
-      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun
-  · cases h
+  rw [← x86Isa_lsemFuelMemF] at hrun
+  simpa only [x86Isa_lsemFuelMemF] using
+    ownedCheckWith_sound_at symLaws_x86 h fn s t hfn hpc fuel hrun
 
 /-! ## 13. Substitution
 
@@ -3345,18 +3628,26 @@ theorem symStep_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
             · exact symWide_subst σ _ ss
             · rw [symMem_subst, aluFl_subst]
 
-/-- **The symbolic run commutes with substitution.** -/
-theorem symRun_subst (σ : Nat → STerm) :
-    ∀ (is : List LinstrRM) (ss : SSt), symRun is (ss.subst σ) = (symRun is ss).subst σ
+/-- **The symbolic run commutes with substitution**, for every symbolic step that does. -/
+theorem symRun_subst_at {sym : LinstrRM → SSt → SOut}
+    (hsub : ∀ (σ : Nat → STerm) (i : LinstrRM) (ss : SSt),
+      sym i (ss.subst σ) = (sym i ss).subst σ) (σ : Nat → STerm) :
+    ∀ (is : List LinstrRM) (ss : SSt),
+      symRun is (ss.subst σ) sym = (symRun is ss sym).subst σ
   | [], _ => rfl
   | i :: is, ss => by
-      simp only [symRun, symStep_subst]
-      cases symStep i ss with
+      simp only [symRun, hsub]
+      cases sym i ss with
       | ok ss1 g1 =>
-          simp only [SOut.subst, symRun_subst σ is ss1]
-          cases symRun is ss1 <;> simp
+          simp only [SOut.subst, symRun_subst_at hsub σ is ss1]
+          cases symRun is ss1 sym <;> simp
       | fail => rfl
       | unk => rfl
+
+/-- **The symbolic run commutes with substitution.** -/
+theorem symRun_subst (σ : Nat → STerm) (is : List LinstrRM) (ss : SSt) :
+    symRun is (ss.subst σ) = (symRun is ss).subst σ :=
+  symRun_subst_at symStep_subst σ is ss
 
 /-! ## 14. The term table
 
@@ -4241,16 +4532,17 @@ theorem Tbl.internSt_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E
   rw [SSt.subst_with, Tbl.intern_subst h _ _ h2, Tbl.intern_subst h _ _ h3, ← e]
   rfl
 
-/-- The symbolic run of a list of instructions over the table `T`: after each step the
-    registers it writes and the carry and overflow flags are interned. The result is the
-    final table and the description `symRun` gives, with words over the table. -/
-def tRun : List LinstrRM → SSt → Tbl → Tbl × SOut
-  | [], ss, T => (T, .ok ss [])
-  | i :: is, ss, T =>
-      match symStep i ss with
+/-- The symbolic run of a list of instructions over the table `T` under the symbolic step
+    `sym`: after each step the registers it writes and the carry and overflow flags are
+    interned. The result is the final table and the description `symRun` gives, with words
+    over the table. -/
+def tRun : List LinstrRM → SSt → Tbl → optParam (LinstrRM → SSt → SOut) symStep → Tbl × SOut
+  | [], ss, T, _ => (T, .ok ss [])
+  | i :: is, ss, T, sym =>
+      match sym i ss with
       | .ok ss1 g1 =>
           let p := T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
-          let r := tRun is p.2 p.1
+          let r := tRun is p.2 p.1 sym
           match r.2 with
           | .ok ss2 g2 => (r.1, .ok ss2 (g1 ++ g2))
           | .fail => (r.1, .fail)
@@ -4258,58 +4550,79 @@ def tRun : List LinstrRM → SSt → Tbl → Tbl × SOut
       | .fail => (T, .fail)
       | .unk => (T, .unk)
 
-theorem tRun_ext : ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt T.ents (tRun is ss T).1.ents
+theorem tRun_ext_at (sym : LinstrRM → SSt → SOut) :
+    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt T.ents (tRun is ss T sym).1.ents
   | [], _, T => TExt.refl T.ents
   | i :: is, ss, T => by
       simp only [tRun]
       split
       · rename_i ss1 _ _
         have := (Tbl.internSt_ext T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).trans
-          (tRun_ext is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _)
+          (tRun_ext_at sym is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _)
         split <;> exact this
       · exact TExt.refl _
       · exact TExt.refl _
 
-theorem tRun_valid : ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TValid T.ents →
-    TValid (tRun is ss T).1.ents
+theorem tRun_ext (is : List LinstrRM) (ss : SSt) (T : Tbl) :
+    TExt T.ents (tRun is ss T).1.ents := tRun_ext_at symStep is ss T
+
+theorem tRun_valid_at (sym : LinstrRM → SSt → SOut) :
+    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TValid T.ents →
+    TValid (tRun is ss T sym).1.ents
   | [], _, _, hv => hv
   | i :: is, ss, T, hv => by
       simp only [tRun]
       split
       · rename_i ss1 _ _
-        have := tRun_valid is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _
+        have := tRun_valid_at sym is
+          (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _
           (Tbl.internSt_valid hv ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)))
         split <;> exact this
       · exact hv
       · exact hv
 
-/-- **The shared run describes the symbolic run.** For every substitution that agrees with a
-    table extending the final table of `tRun`, its description is the description `symRun`
-    gives from the substituted start. -/
-theorem tRun_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) :
-    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt (tRun is ss T).1.ents E →
-      (tRun is ss T).2.subst σ = symRun is (ss.subst σ)
+theorem tRun_valid (is : List LinstrRM) (ss : SSt) (T : Tbl) (hv : TValid T.ents) :
+    TValid (tRun is ss T).1.ents := tRun_valid_at symStep is ss T hv
+
+/-- **The shared run describes the symbolic run**, for every symbolic step that commutes
+    with substitution. For every substitution that agrees with a table extending the final
+    table of `tRun`, its description is the description `symRun` gives from the substituted
+    start. -/
+theorem tRun_subst_at {sym : LinstrRM → SSt → SOut}
+    (hsub : ∀ (σ : Nat → STerm) (i : LinstrRM) (ss : SSt),
+      sym i (ss.subst σ) = (sym i ss).subst σ) {σ : Nat → STerm} {E : Array TEnt}
+    (h : TblOK σ E) :
+    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TExt (tRun is ss T sym).1.ents E →
+      (tRun is ss T sym).2.subst σ = symRun is (ss.subst σ) sym
   | [], _, _, _ => rfl
   | i :: is, ss, T, hx => by
-      simp only [symRun, symStep_subst]
+      simp only [symRun, hsub]
       simp only [tRun] at hx ⊢
-      cases hs : symStep i ss with
+      cases hs : sym i ss with
       | ok ss1 g1 =>
           simp only [hs] at hx ⊢
           generalize hp : T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)) = p at hx ⊢
-          have hx' : TExt (tRun is p.2 p.1).1.ents E := by split at hx <;> exact hx
-          have ih := tRun_subst h is _ _ hx'
+          have hx' : TExt (tRun is p.2 p.1 sym).1.ents E := by split at hx <;> exact hx
+          have ih := tRun_subst_at hsub h is _ _ hx'
           have e2 := Tbl.internSt_subst h T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
-            (by rw [hp]; exact (tRun_ext is _ _).trans hx')
+            (by rw [hp]; exact (tRun_ext_at sym is _ _).trans hx')
           rw [hp] at e2
           rw [e2] at ih
           simp only [SOut.subst]
           rw [← ih]
-          generalize tRun is p.2 p.1 = r
+          generalize tRun is p.2 p.1 sym = r
           obtain ⟨T', o⟩ := r
           cases o <;> simp [SOut.subst]
       | fail => rfl
       | unk => rfl
+
+/-- **The shared run describes the symbolic run.** For every substitution that agrees with a
+    table extending the final table of `tRun`, its description is the description `symRun`
+    gives from the substituted start. -/
+theorem tRun_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (is : List LinstrRM)
+    (ss : SSt) (T : Tbl) (hx : TExt (tRun is ss T).1.ents E) :
+    (tRun is ss T).2.subst σ = symRun is (ss.subst σ) :=
+  tRun_subst_at symStep_subst h is ss T hx
 
 /-! ## 15. The shared checker
 
@@ -4533,40 +4846,63 @@ theorem guardsT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
   rintro _ ⟨g, hg, rfl⟩
   exact ⟨⟨g, (hc g hg).1, rfl⟩, okInGT_spec h (hc g hg).2⟩
 
+/-- The substitution laws of a symbolic step `sym` and a symbolic branch condition `dec`: both
+    commute with every substitution of table entries. The check over the term table implies
+    the check from these laws. -/
+structure SymSubst (sym : LinstrRM → SSt → SOut) (dec : SSt → LOperand → SDec) : Prop where
+  /-- The symbolic step commutes with substitution. -/
+  step_subst : ∀ (σ : Nat → STerm) (i : LinstrRM) (ss : SSt),
+    sym i (ss.subst σ) = (sym i ss).subst σ
+  /-- The symbolic branch condition commutes with substitution. -/
+  dec_subst : ∀ (σ : Nat → STerm) (ss : SSt) (c : LOperand),
+    dec (ss.subst σ) c = (dec ss c).subst σ
+
+/-- The x86 symbolic step and branch condition commute with substitution. -/
+theorem symSubst_x86 : SymSubst symStep symDec := ⟨symStep_subst, symDec_subst⟩
+
 /-- The terminator check of `blockOk` over the table `E` (`termAgree`). -/
 def termAgreeT (E : Array TEnt) (T : Term) (n : List String × Bool) (ss ss' : SSt) :
-    Option LinstrRM → Option LinstrRM → Bool
-  | some (.Lgoto (a, _), _), some (.Lgoto (b, _), _) =>
+    Option LinstrRM → Option LinstrRM → optParam (SSt → LOperand → SDec) symDec → Bool
+  | some (.Lgoto (a, _), _), some (.Lgoto (b, _), _), _ =>
       match T with
       | .goto _ => a == b
       | _ => false
-  | some (.Lcond c _, _), some (.Lcond c' _, _) =>
+  | some (.Lcond c _, _), some (.Lcond c' _, _), dec =>
       match T with
-      | .cond _ _ => symDec ss c == symDec ss' c' && okInDT E n (symDec ss c)
+      | .cond _ _ => dec ss c == dec ss' c' && okInDT E n (dec ss c)
       | _ => false
-  | _, _ =>
+  | _, _, _ =>
       match T with
       | .fall _ => true
       | _ => false
 
-theorem termAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {T : Term}
+theorem termAgreeT_spec_at {dec : SSt → LOperand → SDec}
+    (hd : ∀ (σ : Nat → STerm) (ss : SSt) (c : LOperand),
+      dec (ss.subst σ) c = (dec ss c).subst σ)
+    {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {T : Term}
     {n : List String × Bool} {ss ss' : SSt} {x y : Option LinstrRM}
-    (ht : termAgreeT E T n ss ss' x y = true) :
-    termAgree T n (ss.subst σ) (ss'.subst σ) x y = true := by
+    (ht : termAgreeT E T n ss ss' x y dec = true) :
+    termAgree T n (ss.subst σ) (ss'.subst σ) x y dec = true := by
   unfold termAgreeT at ht
   unfold termAgree
   split at ht
   · exact ht
-  · rename_i c _ _ c' _ _
+  · rename_i c _ _ c' _ _ dec'
     split at ht
     · simp only [Bool.and_eq_true, beq_iff_eq] at ht
-      have hd := okInDT_spec h ht.2
-      simp only [okIn, Bool.and_eq_true] at hd
-      simp only [symDec_subst, ht.1, Bool.and_eq_true, beq_self_eq_true, true_and]
+      have hd' := okInDT_spec h ht.2
+      simp only [okIn, Bool.and_eq_true] at hd'
+      simp only [hd, ht.1, Bool.and_eq_true, beq_self_eq_true, true_and]
       rw [← ht.1]
-      exact hd
+      exact hd'
     · cases ht
   · exact ht
+
+theorem termAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {T : Term}
+    {n : List String × Bool} {ss ss' : SSt} {x y : Option LinstrRM}
+    (ht : termAgreeT E T n ss ss' x y = true) :
+    termAgree T n (ss.subst σ) (ss'.subst σ) x y = true :=
+  termAgreeT_spec_at symDec_subst h ht
 
 /-- The exit check of `blockOk` over the table `E` (`exitAgree`). -/
 def exitAgreeT (E : Array TEnt) (outs : List String) (L : Nat → List String × Bool)
@@ -4604,14 +4940,16 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
 
 /-- The shared runs of block `b` of `B` and block `b'` of `B'` with terminator `T`: the
     final table and the two descriptions over it. -/
-def blockRuns (B B' : List LinstrRM) (b b' : Block) (T : Term) : Tbl × SOut × SOut :=
-  let p := tRun (bodyAt B b T) SSt.start Tbl.empty
-  let q := tRun (bodyAt B' b' T) SSt.start p.1
+def blockRuns (B B' : List LinstrRM) (b b' : Block) (T : Term)
+    (sym : LinstrRM → SSt → SOut := symStep) : Tbl × SOut × SOut :=
+  let p := tRun (bodyAt B b T) SSt.start Tbl.empty sym
+  let q := tRun (bodyAt B' b' T) SSt.start p.1 sym
   (q.1, p.2, q.2)
 
 /-- The check of block `k` from its shared runs `R` (`blockOk`). -/
 def blockOkR (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T : Term)
-    (R : Tbl × SOut × SOut) (B B' : List LinstrRM) (b b' : Block) : Bool :=
+    (R : Tbl × SOut × SOut) (B B' : List LinstrRM) (b b' : Block)
+    (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .ret => true
   | _ =>
@@ -4622,46 +4960,49 @@ def blockOkR (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T
           match R.2.2 with
           | .ok ss' gs' =>
               guardsT R.1.ents (L k) gs gs' &&
-                termAgreeT R.1.ents T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
+                termAgreeT R.1.ents T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgreeT R.1.ents outs L (L k) T ss ss'
           | _ => false
 
-/-- **The shared check implies the check.** -/
-theorem blockOkR_spec {outs : List String} {L : Nat → List String × Bool} {k : Nat}
+/-- **The shared check implies the check**, for every symbolic step and branch condition
+    that commute with substitution. -/
+theorem blockOkR_spec_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hS : SymSubst sym dec) {outs : List String} {L : Nat → List String × Bool} {k : Nat}
     {T : Term} {B B' : List LinstrRM} {b b' : Block}
-    (h : blockOkR outs L k T (blockRuns B B' b b' T) B B' b b' = true) :
-    blockOk outs L k T B B' b b' = true := by
-  have hv : TValid (blockRuns B B' b b' T).1.ents :=
-    tRun_valid _ _ _ (tRun_valid _ _ _ tValid_empty)
+    (h : blockOkR outs L k T (blockRuns B B' b b' T sym) B B' b b' dec = true) :
+    blockOk outs L k T B B' b b' sym dec = true := by
+  have hv : TValid (blockRuns B B' b b' T sym).1.ents :=
+    tRun_valid_at sym _ _ _ (tRun_valid_at sym _ _ _ tValid_empty)
   obtain ⟨⟨σ, hσ⟩, -⟩ := hv
-  have e1 : symRun (bodyAt B b T) SSt.start = (blockRuns B B' b b' T).2.1.subst σ := by
-    rw [← SSt.subst_start σ, ← tRun_subst hσ _ _ _ (tRun_ext _ _ _)]
+  have e1 : symRun (bodyAt B b T) SSt.start sym = (blockRuns B B' b b' T sym).2.1.subst σ := by
+    rw [← SSt.subst_start σ, ← tRun_subst_at hS.step_subst hσ _ _ _ (tRun_ext_at sym _ _ _)]
     rfl
-  have e2 : symRun (bodyAt B' b' T) SSt.start = (blockRuns B B' b b' T).2.2.subst σ := by
-    rw [← SSt.subst_start σ, ← tRun_subst hσ _ _ _ (TExt.refl _)]
+  have e2 : symRun (bodyAt B' b' T) SSt.start sym =
+      (blockRuns B B' b b' T sym).2.2.subst σ := by
+    rw [← SSt.subst_start σ, ← tRun_subst_at hS.step_subst hσ _ _ _ (TExt.refl _)]
     rfl
   unfold blockOkR at h
   unfold blockOk
   split
   · rfl
   · rename_i hT
-    have h' : (match (blockRuns B B' b b' T).2.1 with
+    have h' : (match (blockRuns B B' b b' T sym).2.1 with
       | .fail => true
       | .unk => false
       | .ok ss gs =>
-          match (blockRuns B B' b b' T).2.2 with
+          match (blockRuns B B' b b' T sym).2.2 with
           | .ok ss' gs' =>
-              guardsT (blockRuns B B' b b' T).1.ents (L k) gs gs' &&
-                termAgreeT (blockRuns B B' b b' T).1.ents T (L k) ss ss' B[b.stop - 1]?
-                  B'[b'.stop - 1]? &&
-                exitAgreeT (blockRuns B B' b b' T).1.ents outs L (L k) T ss ss'
+              guardsT (blockRuns B B' b b' T sym).1.ents (L k) gs gs' &&
+                termAgreeT (blockRuns B B' b b' T sym).1.ents T (L k) ss ss' B[b.stop - 1]?
+                  B'[b'.stop - 1]? dec &&
+                exitAgreeT (blockRuns B B' b b' T sym).1.ents outs L (L k) T ss ss'
           | _ => false) = true := by
       split at h
       · exact absurd rfl hT
       · exact h
     rw [e1, e2]
     revert h'
-    generalize blockRuns B B' b b' T = R at hσ
+    generalize blockRuns B B' b b' T sym = R at hσ
     obtain ⟨Tb, o, o'⟩ := R
     intro h'
     cases o with
@@ -4673,32 +5014,46 @@ theorem blockOkR_spec {outs : List String} {L : Nat → List String × Bool} {k 
             simp only [Bool.and_eq_true] at h'
             obtain ⟨⟨hg, hta⟩, hex⟩ := h'
             simp only [SOut.subst, Bool.and_eq_true]
-            exact ⟨⟨guardsT_spec hσ hg, termAgreeT_spec hσ hta⟩, exitAgreeT_spec hσ hex⟩
+            exact ⟨⟨guardsT_spec hσ hg, termAgreeT_spec_at hS.dec_subst hσ hta⟩,
+              exitAgreeT_spec hσ hex⟩
         | fail => cases h'
         | unk => cases h'
+
+/-- **The shared check implies the check.** -/
+theorem blockOkR_spec {outs : List String} {L : Nat → List String × Bool} {k : Nat}
+    {T : Term} {B B' : List LinstrRM} {b b' : Block}
+    (h : blockOkR outs L k T (blockRuns B B' b b' T) B B' b b' = true) :
+    blockOk outs L k T B B' b b' = true :=
+  blockOkR_spec_at symSubst_x86 h
 
 /-! ## 16. Live sets -/
 
 /-- The shared runs of the block pairs of `G` and `G'`. -/
-def runsOf (B B' : List LinstrRM) (G G' : CFG) : Array (Tbl × SOut × SOut) :=
-  (Array.range G.blocks.size).map fun k => blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term
+def runsOf (B B' : List LinstrRM) (G G' : CFG) (sym : LinstrRM → SSt → SOut := symStep) :
+    Array (Tbl × SOut × SOut) :=
+  (Array.range G.blocks.size).map fun k =>
+    blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term sym
 
 /-- The checker for the live sets `L` over the shared runs `R` of the block pairs of `G` and
     `G'` (`ownedCheckWith`). -/
 def ownedCheckWithR (outs : List String) (L : Nat → List String × Bool)
-    (B B' : List LinstrRM) (G G' : CFG) (R : Array (Tbl × SOut × SOut)) : Bool :=
+    (B B' : List LinstrRM) (G G' : CFG) (R : Array (Tbl × SOut × SOut))
+    (dec : SSt → LOperand → SDec := symDec) : Bool :=
   !B.isEmpty && !B'.isEmpty && G.blocks.size == G'.blocks.size &&
     (List.range G.blocks.size).all (fun k =>
       (G.blk k).term == (G'.blk k).term &&
         match R[k]? with
-        | some r => blockOkR outs L k (G.blk k).term r B B' (G.blk k) (G'.blk k)
+        | some r => blockOkR outs L k (G.blk k).term r B B' (G.blk k) (G'.blk k) dec
         | none => false)
 
-theorem ownedCheckWithR_spec {outs : List String} {L : Nat → List String × Bool}
+/-- The check over the shared runs implies the check for the live sets, for every symbolic
+    step and branch condition that commute with substitution. -/
+theorem ownedCheckWithR_spec_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hS : SymSubst sym dec) {outs : List String} {L : Nat → List String × Bool}
     {B B' : List LinstrRM} {G G' : CFG} (hG : cfgOf (B.map Prod.fst) = some G)
     (hG' : cfgOf (B'.map Prod.fst) = some G')
-    (h : ownedCheckWithR outs L B B' G G' (runsOf B B' G G') = true) :
-    ownedCheckWith outs L B B' = true := by
+    (h : ownedCheckWithR outs L B B' G G' (runsOf B B' G G' sym) dec = true) :
+    ownedCheckWith outs L B B' sym dec = true := by
   unfold ownedCheckWith
   rw [hG, hG']
   simp only [ownedCheckWithR, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h ⊢
@@ -4706,33 +5061,41 @@ theorem ownedCheckWithR_spec {outs : List String} {L : Nat → List String × Bo
   refine ⟨hne, fun k hk => ?_⟩
   obtain ⟨ht, hb⟩ := hall k hk
   refine ⟨ht, ?_⟩
-  have hR : (runsOf B B' G G')[k]? =
-      some (blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term) := by
+  have hR : (runsOf B B' G G' sym)[k]? =
+      some (blockRuns B B' (G.blk k) (G'.blk k) (G.blk k).term sym) := by
     simp [runsOf, hk]
   rw [hR] at hb
-  exact blockOkR_spec hb
+  exact blockOkR_spec_at hS hb
+
+theorem ownedCheckWithR_spec {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM} {G G' : CFG} (hG : cfgOf (B.map Prod.fst) = some G)
+    (hG' : cfgOf (B'.map Prod.fst) = some G')
+    (h : ownedCheckWithR outs L B B' G G' (runsOf B B' G G') = true) :
+    ownedCheckWith outs L B B' = true :=
+  ownedCheckWithR_spec_at symSubst_x86 hG hG' h
 
 /-- The start registers and flags block `k` needs live for the checks of `blockOkR` to pass,
     from its shared runs `R`, given the live sets `L` of its successors. The result is a
     candidate only: `ownedCheckWith` checks the live sets it is given. -/
 def blockNeed (outs : List String) (L : Nat → List String × Bool) (T : Term)
-    (R : Tbl × SOut × SOut) (B : List LinstrRM) (b : Block) : List String × Bool :=
+    (R : Tbl × SOut × SOut) (B : List LinstrRM) (b : Block)
+    (dec : SSt → LOperand → SDec := symDec) : List String × Bool :=
   match T with
   | .ret => ([], false)
   | _ =>
       let E := R.1.ents
       match R.2.1, R.2.2 with
       | .ok ss _, .ok ss' gs' =>
-          let dec : Option SDec :=
+          let d : Option SDec :=
             match T, B[b.stop - 1]? with
-            | .cond _ _, some (.Lcond c _, _) => some (symDec ss c)
+            | .cond _ _, some (.Lcond c _, _) => some (dec ss c)
             | _, _ => none
-          ((normGT E gs').flatMap (SG.varsT E) ++ (dec.map (SDec.varsT E)).getD [] ++
+          ((normGT E gs').flatMap (SG.varsT E) ++ (d.map (SDec.varsT E)).getD [] ++
               T.succs.flatMap (fun j => (L j).1.flatMap (fun r => (ss.regs r).varsT E) ++
                 (if (L j).2 then ss.zf.varsT E ++ ss.cf.varsT E ++ ss.of.varsT E else [])) ++
               (if T.halts then outs.flatMap (fun r => (ss.regs r).varsT E) else []) ++
               (ss.awr ++ ss'.awr).flatMap (fun q => (ss.arrs q).varsT E),
-            (dec.map (SDec.readsInitT E)).getD false || (normGT E gs').any (SG.readsFT E) ||
+            (d.map (SDec.readsInitT E)).getD false || (normGT E gs').any (SG.readsFT E) ||
               T.succs.any (fun j => (L j).1.any (fun r => (ss.regs r).readsFT E) ||
                 ((L j).2 && (ss.zf.readsInitT E || ss.cf.readsFT E || ss.of.readsFT E))) ||
               (T.halts && outs.any (fun r => (ss.regs r).readsFT E)) ||
@@ -4746,38 +5109,48 @@ def joinLive (n m : List String × Bool) : List String × Bool :=
 /-- One round of the live-set iteration over the blocks of `G`, from their shared runs
     `R`. -/
 def liveRound (outs : List String) (B : List LinstrRM) (G : CFG)
-    (R : Array (Tbl × SOut × SOut)) (L : Array (List String × Bool)) :
+    (R : Array (Tbl × SOut × SOut)) (L : Array (List String × Bool))
+    (dec : SSt → LOperand → SDec := symDec) :
     Array (List String × Bool) :=
   (Array.range G.blocks.size).map fun k =>
     joinLive (L.getD k ([], false))
       (match R[k]? with
-        | some r => blockNeed outs (fun j => L.getD j ([], false)) (G.blk k).term r B (G.blk k)
+        | some r =>
+            blockNeed outs (fun j => L.getD j ([], false)) (G.blk k).term r B (G.blk k) dec
         | none => ([], false))
 
 /-- The live-set iteration from the empty sets, stopped at a fixpoint or after `n`
     rounds. -/
 def liveIter (outs : List String) (B : List LinstrRM) (G : CFG)
     (R : Array (Tbl × SOut × SOut)) :
-    Nat → Array (List String × Bool) → Array (List String × Bool)
-  | 0, L => L
-  | n + 1, L =>
-      let L' := liveRound outs B G R L
+    Nat → Array (List String × Bool) → optParam (SSt → LOperand → SDec) symDec →
+      Array (List String × Bool)
+  | 0, L, _ => L
+  | n + 1, L, dec =>
+      let L' := liveRound outs B G R L dec
       if L'.map (fun p => (p.1.length, p.2)) == L.map (fun p => (p.1.length, p.2)) then L
-      else liveIter outs B G R n L'
+      else liveIter outs B G R n L' dec
 
 /-- **The checker.** Each block pair runs once over a shared term table (`runsOf`); the live
-    sets are computed by `liveIter` and the runs checked by `ownedCheckWithR`. -/
-def ownedCheckM (outs : List String) (B B' : List LinstrRM) : Bool :=
+    sets are computed by `liveIter` and the runs checked by `ownedCheckWithR`. The symbolic
+    step `sym` and the symbolic branch condition `dec` default to the x86 ones, `symStep`
+    and `symDec`. -/
+def ownedCheckM (outs : List String) (B B' : List LinstrRM)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let R := runsOf B B' G G'
+      let R := runsOf B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
-        (Array.replicate G.blocks.size ([], false))
-      ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R
+        (Array.replicate G.blocks.size ([], false)) dec
+      ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
   | _, _ => false
 
-theorem ownedCheckM_with {outs : List String} {B B' : List LinstrRM}
-    (h : ownedCheckM outs B B' = true) : ∃ L, ownedCheckWith outs L B B' = true := by
+/-- A pair `ownedCheckM` accepts under `sym` and `dec` is accepted by `ownedCheckWith` for
+    some live sets, when `sym` and `dec` commute with substitution. -/
+theorem ownedCheckM_with_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hS : SymSubst sym dec) {outs : List String} {B B' : List LinstrRM}
+    (h : ownedCheckM outs B B' sym dec = true) :
+    ∃ L, ownedCheckWith outs L B B' sym dec = true := by
   unfold ownedCheckM at h
   cases hG : cfgOf (B.map Prod.fst) with
   | none => simp [hG] at h
@@ -4786,7 +5159,28 @@ theorem ownedCheckM_with {outs : List String} {B B' : List LinstrRM}
       | none => simp [hG, hG'] at h
       | some G' =>
           rw [hG, hG'] at h
-          exact ⟨_, ownedCheckWithR_spec hG hG' h⟩
+          exact ⟨_, ownedCheckWithR_spec_at hS hG hG' h⟩
+
+theorem ownedCheckM_with {outs : List String} {B B' : List LinstrRM}
+    (h : ownedCheckM outs B B' = true) : ∃ L, ownedCheckWith outs L B B' = true :=
+  ownedCheckM_with_at symSubst_x86 h
+
+/-- **Soundness of the checker over an instruction set.** If the symbolic step `sym` and
+    the symbolic branch condition `dec` satisfy the laws `SymLaws I sym dec` against the
+    instruction set `I` and commute with substitution (`SymSubst sym dec`), and
+    `ownedCheckM outs B B' sym dec` accepts, every halting run of `I` on the singleton program
+    over `B` from a state at pc `0` of that function is matched by a halting run on the
+    singleton program over `B'` from the same state, and the end states agree on the
+    registers `outs`, on the arrays and on the word memory. -/
+theorem ownedCheckM_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec) (hS : SymSubst sym dec)
+    {outs : List String} {B B' : List LinstrRM}
+    (h : ownedCheckM outs B B' sym dec = true) (fn : String) (s t : LstateMF)
+    (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' := by
+  obtain ⟨L, hL'⟩ := ownedCheckM_with_at hS h
+  exact ownedCheckWith_sound_at hL hL' fn s t hfn hpc fuel hrun
 
 /-- **Soundness of the checker.** If `ownedCheckM outs B B'` accepts, every halting
     `lsemFuelMemF` run of the singleton program over `B` from a state at pc `0` of that
