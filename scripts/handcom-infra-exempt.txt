@@ -232,3 +232,16 @@ CatCrypt/Crypto/SecureCompilation/VIR/X86IsaData.lean  # x86 values of the ISA r
 CatCrypt/Crypto/SecureCompilation/VIR/LsemBridge.lean  # relation between the two Lprog semantics and the flag-carrying wrapper step; the Lprog terms are fragment shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/X86Isa.lean  # x86Isa instance, its machine and symbolic companion, with step lemmas for the record's templates; no emit artifact
 CatCrypt/Crypto/SecureCompilation/Ascent/JasminJumpLevel.lean  # compilation of structured imported Jasmin programs to labelled Lprog code with its simulation theorem; the Lopn/Lcond terms are the translation under proof, no hand-written kernel and no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/Blocks.lean  # value lemma of the basic-block optimiser over the flag-carrying run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/Common.lean  # shared lemmas of the pass value proofs over the flag-carrying run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/CopyProp.lean  # value lemma of copy propagation over the flag-carrying run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/Scheduler.lean  # value lemma of the scheduler over the flag-carrying run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/StoreToLoad.lean  # value lemma of store-to-load forwarding over the flag-carrying run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrCellsLoop.lean  # cell-view simulation of the image route across conditional branches; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrSimWCond.lean  # step lemma of the wide image relation at a conditional branch; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightArrLeak.lean  # leak traces of the straight array arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCellsLeak.lean  # leak traces of the straight cell arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/NarrowTyping.lean  # width typing of exported instructions across arithmetic; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/X86IsaKeep.lean  # x86 ISA record with the KEEP marker as invariant touch and its step lemmas; the Lprog terms are the record's templates, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/CellFoldLReg.lean  # cell fold arm for register-only instructions with its run lemma; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrWBack.lean  # wide image gate at a back branch with dead one-bit carries; the Lprog terms are instruction shapes under proof, no emit artifact
