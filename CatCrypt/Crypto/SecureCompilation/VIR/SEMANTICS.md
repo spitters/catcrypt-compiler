@@ -29,6 +29,8 @@ Each principled row cites one of these.
   (hax from safe Rust, Jasmin) produce only programs whose LLVM counterparts are free
   of undefined behaviour. A total value refines a poison value; `veirRunCom_refines`
   states this for the `arith` fragment.
+  At the runtime layer the same holds with the panic conditions of Rust (zero
+  divisor, `MIN` divided by −1, overflow) as obligations of the source program.
 - P2, shifts. A shift by an amount of at least `w` denotes 0, or the sign fill for an
   arithmetic right shift, as Jasmin's `wshl`, `wshr` and `wsar` do. Every lowering to
   a machine shift carries the condition that the amount is below `w`. The condition
@@ -43,6 +45,11 @@ Each principled row cites one of these.
 - P5, machine models. A machine model follows the manual of its instruction set. Where
   LLVM gives poison, the defined machine value refines it, and the lowering carries
   the condition under which machine value and IR value agree.
+- P6, untagged runtime names. An untagged runtime operation computes on unbounded
+  integers. It agrees with the Rust operation wherever the operand type makes the two
+  coincide (unsigned division, non-overflowing arithmetic); the printer emits the
+  width-tagged operation in every other case. An untagged name reaching the runtime
+  at a type where the two differ is a defect of the adapter.
 
 ## Reference semantics
 
@@ -72,8 +79,8 @@ operation (`UScalar.*`, `IScalar.*`), either by a proved square or by a refuted 
 | Untagged `+ - *` | unbounded `Int` (`Hax.add`, `Hax.sub`, `Hax.mul`) | wrap | panic or wrap | deviates, principled | P3: the unbounded result equals the checked scalar result whenever that result is not a panic. `add_u_square`, `add_i_square`, `sub_u_square`, `mul_u_square`; the panic itself is `UScalar.tryMk` |
 | `wrapping_add#w`, `wrapping_mul#w`, signed forms | residue modulo `2^w` (`Hax.wrapping_add_w`, `Hax.wrapping_mul_w`, `Hax.wrapping_add_iw`) | wrap | `wrapping_*` | follows LLVM | `wrapping_add_w_u_square`, `wrapping_mul_w_u_square`, `wrapping_add_iw_square` |
 | Untagged `wrapping_add`, `wrapping_mul` at `Int` | `a + b`, `a * b` without reduction (`Hax.wrapping_add`, `Hax.wrapping_mul`) | wrap | `wrapping_*` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.wrapping_add` and `Hax.wrapping_mul` at `Int` do not wrap (`wrapping_add_u_counterexample`, `wrapping_mul_u_counterexample`). Fix: the printer emits the width-tagged name at every scalar type; the untagged instance is restricted to fixed-width carriers |
-| Untagged signed `/`, `%` | Lean `Int` division: −7 / 2 = −4, −7 % 2 = 1 (`Hax.div`, `Hax.rem`) | truncating: −3, −1 | truncating | deviates, to be fixed | Defect: hax-lean runtime, `Hax.div` and `Hax.rem` at `Int` round away from LLVM and Rust on a negative dividend (`div_i_counterexample`, `rem_i_counterexample`). Fix: `Int.tdiv` and `Int.tmod`, as `Hax.div_iw` and `Hax.rem_iw` use |
-| Zero divisor; `MIN` divided by −1 | a total value: Lean's quotient by 0 is 0 and its remainder by 0 is the dividend (`Hax.div`, `Hax.rem`); `Hax.div_iw` gives 0 and `Hax.rem_iw` the reduced dividend; `Hax.div_iw` wraps `MIN` divided by −1 | undefined behaviour | panic | deviates, to be fixed | Defect: no runtime division returns a panic; the checked operations `UScalar.div` and `IScalar.div` do. Fix: an `Option`-valued (panic) result on a zero divisor and on `MIN` divided by −1 |
+| Untagged `/`, `%` | Lean `Int` division, which rounds toward −∞: −7 / 2 = −4, −7 % 2 = 1 (`Hax.div`, `Hax.rem`) | truncating: −3, −1 | truncating | deviates, principled | P6: the printer routes a signed, width-tagged division to `Hax.div_iw` and `Hax.rem_iw` (`PrettyPrint.widthAwareRuntime`) and emits the untagged name at unsigned operands, where the two roundings agree (`div_u_square`, `rem_u_square`). On a signed operand the untagged name disagrees with Rust (`div_i_counterexample`, `rem_i_counterexample`); it reaches the runtime only when the adapter omits the width tag, which is open repair 1 |
+| Zero divisor; `MIN` divided by −1 | a total value: Lean's quotient by 0 is 0 and its remainder by 0 is the dividend (`Hax.div`, `Hax.rem`); `Hax.div_iw` gives 0 and `Hax.rem_iw` the reduced dividend; `Hax.div_iw` wraps `MIN` divided by −1 | undefined behaviour | panic | deviates, principled | P1 at the runtime layer: Rust panics on these inputs, and the squares against the checked operations (`UScalar.div`, `IScalar.div`) are stated where those return a value. No Lean theorem states that an extracted program is free of these panics; the front does not prove it |
 | `Div#iw`, `Rem#iw`, nonzero divisor, no overflow | truncating (`Hax.div_iw`, `Hax.rem_iw`) | truncating | truncating | follows LLVM | by definition (`Int.tdiv`, `Int.tmod`) |
 | `Shl#w`, `Shr#w`, amount ≥ `w` | unbounded shift, then reduction: 0 (`Hax.shl_w`, `Hax.shr_w`) | poison | panic | deviates, principled | P2. `shl_w_u_square`, `shr_w_u_square`, `shl_iw_square`, `shr_iw_square` relate the value to the checked operation wherever that operation returns |
 | Untagged `Shl`; untagged signed `Shr` | no truncation (`Hax.shl`); a negative operand shifts as 0 (`Hax.shr`) | `shl`, `ashr` | `<<`, `>>` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.shl` and `Hax.shr` at `Int` (`shl_u_counterexample`, `shl_i_counterexample`, `shr_i_counterexample`). Fix: as for untagged `wrapping_add` |
@@ -188,14 +195,15 @@ read as covering them.
 
 The rows with status "deviates, to be fixed", in the order of the layers:
 
-1. `Hax.wrapping_add`, `Hax.wrapping_mul`, `Hax.shl`, `Hax.shr`, `Hax.rotate_right`
-   at `Int`: untagged names that do not respect the width.
-2. `Hax.div`, `Hax.rem` at `Int`: rounding; every runtime division: no panic on a
-   zero divisor or on `MIN` divided by −1.
-3. `bvAdc`: carry-in wider than one bit.
-4. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
-5. Memory alignment: no predicate and no theorem.
-6. Bridge: `andn` interpreted as poison.
+1. The adapter omits the width tag at some scalar types, so the untagged
+   `Hax.wrapping_add`, `Hax.wrapping_mul`, `Hax.shl`, `Hax.shr`, `Hax.rotate_right`,
+   and `Hax.div`, `Hax.rem` on a signed operand, reach the runtime where they do not
+   agree with Rust. The repair is in the hax front: emit the width-tagged name at
+   every scalar type.
+2. `bvAdc`: carry-in wider than one bit.
+3. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
+4. Memory alignment: no predicate and no theorem.
+5. Bridge: `andn` interpreted as poison.
 
 A change that adds an operation to a dialect, a machine model or the bridge adds its
 row here in the same change.
