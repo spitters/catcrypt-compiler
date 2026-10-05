@@ -68,6 +68,27 @@ if git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -q '\.md$'
   bash scripts/check-doc-links.sh || exit 1
 fi
 
+# The next two checks are scripts of the dev tree (the sibling SSProve-lean
+# checkout); without it they are skipped.
+dev_scripts="../SSProve-lean/scripts"
+
+# A `by decide` or `decide +kernel` on a statement naming a compiler front or the
+# back half makes the kernel run the compiler by reduction; FRONT_DECIDE_OK=1
+# overrides.
+if [ -n "$staged_lean" ] && [ -f "$dev_scripts/front-decide-lint.sh" ]; then
+  bash "$dev_scripts/front-decide-lint.sh" || exit 1
+fi
+
+# Gate-coverage registry: when a staged file is a gate module of the back half,
+# the acceptance executables run from the dev tree (through the build lock) and
+# every program its scripts/acceptance-registry.tsv records as accepted must still
+# be accepted. ACCEPTANCE_SKIP=1 skips the run.
+gate_re='^CatCrypt/Crypto/SecureCompilation/(X86Backend/(ImageStraight[^/]*|DecodePrinted[^/]*|OwnedLprogTV[^/]*|LprogBytes[^/]*|TwoAddrLegalize|LprogOptPipeline)|VIR/JasminLprogExport/ExportPhys[^/]*)\.lean$'
+if printf '%s\n' "$staged_lean" | grep -qE "$gate_re" \
+   && [ -f "$dev_scripts/acceptance-registry-check.sh" ]; then
+  bash "$dev_scripts/acceptance-registry-check.sh" || exit 1
+fi
+
 # Importers of the staged Lean files that Lake reports as not up to date, over every
 # repository of the workspace (the dev tree imports this one). The query is the dev
 # tree's scripts/agent-closure.py; without that sibling the step is skipped. It warns;
