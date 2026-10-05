@@ -1235,6 +1235,7 @@ theorem physRegName_spill_eq {a : Nat} (ha : numGPRegs ≤ a) (hv : a < vectorBa
     physRegName a = "k." ++ toString (a - numGPRegs) := by
   unfold physRegName
   rw [if_neg (by omega), List.getElem?_eq_none (by simpa [numGPRegs] using ha)]
+  rfl
 
 /-- The vector spill name `physRegName` renders for a vector index beyond the
     vector register file. -/

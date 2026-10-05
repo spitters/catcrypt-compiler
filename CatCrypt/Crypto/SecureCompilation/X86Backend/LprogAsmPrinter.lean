@@ -184,33 +184,6 @@ def qsaveBytesCall : Nat := 12 * 8
 def qsaveBytesFor (body : VIR.JasminLprogExport.Lcmd) : Nat :=
   if VIR.JasminLprogExport.bodyHasCall body then qsaveBytesCall else qsaveBytes
 
-/-- The zero-based qsave slot index of a save register (`RDI`=0 … `R15`=7, plus
-    the 2nd+ SysV input pointer regs `RDX`=8 … `R9`=11 for multi-input array
-    loops), used to place its 8-byte cell in the frame's top block. -/
-def qsaveSlot : String → Option Nat
-  | "RDI" => some 0 | "RSI" => some 1
-  | "RBX" => some 2 | "RBP" => some 3
-  | "R12" => some 4 | "R13" => some 5
-  | "R14" => some 6 | "R15" => some 7
-  | "RDX" => some 8 | "RCX" => some 9
-  | "R8"  => some 10 | "R9" => some 11
-  | _ => none
-
-/-- The SysV x86-64 ABI callee-saved GP registers (the caller relies on these
-    surviving a call). `RSP` is the stack pointer (handled by the frame), not in
-    this set. -/
-def calleeSavedRegs : List String := ["RBX", "RBP", "R12", "R13", "R14", "R15"]
-
-/-- **The x86 register file and calling convention**: the allocation pool `gpRegNames`, the
-    reload scratches `R15`, `R14`, the SysV argument registers, the callee-saved registers and
-    their save slots. The printer reads the save slots and the callee-saved set from it. -/
-@[reducible] def x86Abi : VIR.LprogIsa.IsaAbi where
-  allocPool := gpRegNames
-  scratch := [reloadScratch, reloadScratch2]
-  argRegs := sysvArgRegs
-  calleeSaved := calleeSavedRegs
-  saveSlot := qsaveSlot
-
 /-- The frame offset (from the post-`leaq` `%rsp`) of qsave slot `X` in a frame of
     size `frame` whose qsave block is `qsaveB` bytes: the top of the frame holds
     the 8-byte save cells, slot `i` at `frame - 8·(i+1)`, for as many slots as

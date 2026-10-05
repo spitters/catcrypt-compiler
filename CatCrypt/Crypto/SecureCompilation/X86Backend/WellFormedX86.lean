@@ -904,6 +904,7 @@ theorem physRegName_spill_eq {a : Nat} (ha : JasminLprogExport.numGPRegs ≤ a)
   unfold JasminLprogExport.physRegName
   rw [if_neg (show ¬ a ≥ JasminLprogExport.vectorBase from by omega),
     List.getElem?_eq_none (by simpa [JasminLprogExport.numGPRegs] using ha)]
+  rfl
 
 /-- **`physRegName` always renders a resolved operand name.** GP block: the name
     is in `x86PhysRegNames`. Spill block: it is a `spillNameResolved` slot (via

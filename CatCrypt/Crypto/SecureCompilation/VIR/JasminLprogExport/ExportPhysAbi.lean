@@ -41,6 +41,8 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 
 /-! ### 7f. ABI prologue/epilogue (2-pointer SysV calling convention)
 
@@ -167,13 +169,13 @@ def bodyTraceOut (body : Lcmd) (outStoreMap : OutStoreMap) : List PhysEvent :=
     occupy `n` distinct physical registers across the epilogue stores. Reduces to
     `physTable (bodyTrace body)` when `outStoreMap = []`. -/
 def physTableOut (body : Lcmd) (outStoreMap : OutStoreMap)
-    (reservedVec : List Nat := []) : Array Nat :=
+    (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Array Nat :=
   -- Class-aware (`bodyVecSlots`): GP outputs → GP regs, vector outputs → XMM, in
   -- one scan. For a body with no vector op this is `physTable (bodyTraceOut …)`,
   -- so the GP-only multi-output allocation is byte-identical. `reservedVec`
   -- (default `[]`) excludes vector indices; the batch8 path passes `[numVecRegs-1]`.
   physTableClassed (bodyTraceOut body outStoreMap) (bodyVecSlots body)
-    (bodyReservedGP body) reservedVec
+    (bodyReservedGP body) reservedVec abi
 
 /-- Conservative upper bound on the argument-slot count referenced by a virtual
     body: the maximum `s` such that `argName s` appears anywhere in the body,
@@ -352,7 +354,7 @@ def abiSaveOfExt (reg : String) : Option String :=
     inline first-use loads instead, so for those callers this prelude is empty
     (their `aj` names are not used as bare registers / SIB bases). -/
 def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
-    (abiArgs : List String) (inLoadMap : InLoadMap) : Lcmd :=
+    (abiArgs : List String) (inLoadMap : InLoadMap) (abi : IsaAbi := x86Abi) : Lcmd :=
   let body := virt.lfd_body
   (abiArgs.zipIdx).flatMap (fun ⟨abiReg, j⟩ =>
     -- A slot covered by `inLoadMap` is materialized by the inline first-use
@@ -374,7 +376,7 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
         else
           -- Resolve through the body's barrier (`physNameForBody`) so the
           -- pointer load targets the same register a call-containing body reads.
-          let phys := physNameForBody body tbl nm
+          let phys := physNameForBody body tbl nm abi
           let dst : LOperand := .reg phys
           -- `abiSaveOfExt`: the 3rd+ SysV argument registers (`RDX`/`RCX`/…) source
           -- from their own qsave slots (saved by the `extraInputSaves` prologue
@@ -425,7 +427,7 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
     (target 0 first). The base register inside `memName` is always `R14`,
     regardless of what the caller-side `outStoreMap` says. -/
 def buildEpilogue (virt : Lfundef) (tbl : Array Nat)
-    (outStoreMap : OutStoreMap) : Lcmd :=
+    (outStoreMap : OutStoreMap) (abi : IsaAbi := x86Abi) : Lcmd :=
   let restore : Lcmd :=
     [⟨0, .Lopn [.reg reloadScratch2] "MOV" [.reg abiSaveRdiName]⟩]
   let n := outStoreMap.length
@@ -440,7 +442,7 @@ def buildEpilogue (virt : Lfundef) (tbl : Array Nat)
         | some (.reg srcName) =>
             -- Resolve through the body's barrier (`physNameForBody`) so the
             -- store reads from the register a call-containing body wrote.
-            let phys := physNameForBody virt.lfd_body tbl srcName
+            let phys := physNameForBody virt.lfd_body tbl srcName abi
             let src : LOperand := .reg phys
             -- Always store via R14 (the restored out-pointer).
             let memDst : LOperand := .reg (memName reloadScratch2 off)
@@ -528,16 +530,16 @@ theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
     (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
     (callArgBaseReload : List (String × String) := [])
-    (reservedVec : List Nat := []) : Lcmd :=
+    (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Lcmd :=
   -- Output-liveness-extended allocation: the `n` designated output slots are kept
   -- in `n` distinct physical registers across the epilogue stores (see
   -- `bodyTraceOut`). Reduces to `physTable (bodyTrace body)` for `outStoreMap=[]`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
+  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
   -- Caller-save clobber barrier (matches the spec `physBodyWithStores`): a body
   -- carrying a real `Lcall` renames through `remapOperandCalleeSave`; a call-free
   -- body keeps `remapOperand` (byte-identical).
-  let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
-              else remapOperand body tbl
+  let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl (abi := abi)
+              else remapOperand body tbl (abi := abi)
   let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
@@ -623,7 +625,7 @@ theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
     let mut virtIdx := 0
     for i in body do
       let loads : Lcmd := (loadsByPos[virtIdx]!).flatMap (fun ⟨_s, base, off⟩ =>
-        let phys := physNameForBody body tbl (argName _s)
+        let phys := physNameForBody body tbl (argName _s) abi
         let dst : LOperand := .reg phys
         let memSrc : LOperand := .reg (memName loadBase off)
         let reloadIn : Linstr :=
@@ -736,18 +738,18 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
     (callArgBaseReload : List (String × String) := [])
-    (reservedVec : List Nat := []) : Lcmd :=
+    (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Lcmd :=
   -- Output-liveness-extended allocation (multi-output store fix): see
   -- `bodyTraceOut`. `physTableOut body []` = `physTable (bodyTrace body)`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
+  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
   -- Caller-save clobber barrier: a body carrying a real `Lcall` (an expanded
   -- `CALL:`/`CALLN:` leaf-call shadow, `expandCallShadows`) renames through
   -- `remapOperandCalleeSave` — the SysV hardware marshalling names (`RDI…`,`RAX`)
   -- are pinned to themselves and every other GP slot is routed callee-saved-first
   -- (`calleeFirstPhys`) so a value live across the call survives it. A call-free
   -- body keeps the plain `remapOperand`, so its bytes are byte-identical.
-  let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
-              else remapOperand body tbl
+  let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl (abi := abi)
+              else remapOperand body tbl (abi := abi)
   let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
@@ -814,7 +816,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     -- tracking state since the cost (one extra MOVQ per load) is negligible
     -- and the simpler code makes the reasoning local.
     let loads : Lcmd := (loadsAtPos virtIdx).flatMap (fun ⟨s, base, off⟩ =>
-      let phys := physNameForBody body tbl (argName s)
+      let phys := physNameForBody body tbl (argName s) abi
       let dst : LOperand := .reg phys
       let memSrc : LOperand := .reg (memName loadBase off)
       let reloadIn : Linstr :=
@@ -1330,7 +1332,7 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
     (forceLivePin : Bool := false)
     (forwarderBody? : Option Lcmd := none)
     (reserveVecScratch : Bool := false)
-    (retToRax : Bool := false) :
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
   -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
@@ -1400,7 +1402,7 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
   -- indices) then reads one coherent table via `physNameForBody`'s plain
   -- lookup. Identity on call-free and looped bodies.
   let tbl := straightCallComposeTable virt.lfd_body
-    (physTableOut virt.lfd_body outStoreMap reservedVec)
+    (physTableOut virt.lfd_body outStoreMap reservedVec abi)
   -- Each EXTRA SysV argument register beyond `RDI`/`RSI` (`RDX`/`RCX`/`R8`/`R9`,
   -- a 3+-argument signature) gets its own red-zone qsave slot, appended after the
   -- fixed prologue, so the argument materialize / SIB-base reloads can source it
@@ -1417,7 +1419,7 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
   -- SIB base, but the RA placed `aj` in a register/spill that the prologue never
   -- copied the SysV argument register into — see `buildArgPtrMaterialize`). For
   -- the scalar-word ABI (`inLoadMap` non-empty) this is empty.
-  let argMat := buildArgPtrMaterialize virt tbl abiArgs inLoadMap
+  let argMat := buildArgPtrMaterialize virt tbl abiArgs inLoadMap abi
   -- Use physBodyWithStores to insert inline stores after each output binding.
   -- This solves the SSA liveness problem: the source `Com` `.ret`s a single
   -- value, so under register allocation only the LAST output register is alive
@@ -1457,14 +1459,14 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
             -- from its own qsave slot instead of the `RSI` input slot.
             match abiSaveOfExt abiReg with
             | some saveName =>
-                let phys := physNameForBody virt.lfd_body tbl (argName j)
+                let phys := physNameForBody virt.lfd_body tbl (argName j) abi
                 some (phys, saveName)
             | none => none)
     fun base => (pairs.find? (fun p => p.1 == base)).map Prod.snd
   -- Drop the synthetic argument-liveness pin (it carried no value, only liveness).
   let bodyWithInlineStores := (physBodyWithStores shiftImm' virt.lfd_body
     inLoadMap reloadScratch2 outStoreMap reloadScratch2 abiW memrefBaseReload
-    (reservedVec := reservedVec)).filter
+    (reservedVec := reservedVec) (abi := abi)).filter
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   -- Straight-line-call return materialization: the liveness-computed barrier
   -- homes the final capture (`MOV dst, RAX`) in a callee-saved register or a
@@ -1481,7 +1483,7 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
       match virt.lfd_res.head? with
       | some rn =>
           if nameSlot virt.lfd_body rn < (bodyNames virt.lfd_body).length then
-            let phys := physNameForBody virt.lfd_body tbl rn
+            let phys := physNameForBody virt.lfd_body tbl rn abi
             if phys == sysvRetReg then []
             -- MOVQ (64-bit): the returned value is a full word/pointer — an
             -- untagged MOV renders `movl` and TRUNCATES a returned pointer
@@ -1535,12 +1537,12 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false)
-    (retToRax : Bool := false) :
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   comToLfundefPhysAbiFromVirt (comToLfundef com immSlotMap)
     (shiftImm := shiftImm) (inLoadMap := inLoadMap) (outStoreMap := outStoreMap)
     (abiArgs := abiArgs) (abiTyin := abiTyin) (residence := residence)
-    (abiW := abiW) (forceLivePin := forceLivePin) (retToRax := retToRax)
+    (abiW := abiW) (forceLivePin := forceLivePin) (retToRax := retToRax) (abi := abi)
     (forwarderBody? := (degenerateForwarderSym? com abiArgs).map
       (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩]))
 
@@ -1558,14 +1560,14 @@ def Com.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false)
-    (retToRax : Bool := false) : Lprog :=
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, comToLfundefPhysAbi com shiftImm immSlotMap inLoadMap
-                 outStoreMap abiArgs abiTyin residence abiW forceLivePin retToRax)] }
+                 outStoreMap abiArgs abiTyin residence abiW forceLivePin retToRax abi)] }
 
 /-- Serialize the ABI-wrapped physical export to the textual lprog blob. -/
 def Com.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -1655,29 +1657,29 @@ this is purely additive). -/
     `comToLfundefPhys` on its `Com` image (additive). -/
 def ComL.toLfundefPhys {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : ComL Γ t) (shiftImm : ShiftImmOracle := fun _ => none)
-    (immSlotMap : ImmSlotMap := fun _ => none) :
+    (immSlotMap : ImmSlotMap := fun _ => none) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   let virt := ComL.toLfundef c immSlotMap
   -- Class-aware table (matches `physBody`'s `bodyPhysTable`): GP→GP, vector→XMM.
   -- For a pure-scalar body this is `physTable (bodyTrace …)`, so unchanged.
-  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body)
-  let resPhys := virt.lfd_res.map (physNameForBody virt.lfd_body tbl)
-  -- Project `lfd_arg` to the first six SysV call-arg registers (as
+  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body abi)
+  let resPhys := virt.lfd_res.map (fun n => physNameForBody virt.lfd_body tbl n abi)
+  -- Project `lfd_arg` to the argument registers `abi.argRegs` (as
   -- `comToLfundefPhys`); the body reads its arguments by their RA-assigned
   -- physical register after `physBody` rewrites every `aN` operand.
-  let callRegArgs : List String := ["RDI", "RSI", "RDX", "RCX", "R8", "R9"]
+  let callRegArgs : List String := abi.argRegs
   let nArgsExported : Nat := min virt.lfd_arg.length callRegArgs.length
   let argSig := callRegArgs.take nArgsExported
   let tyinSig := virt.lfd_tyin.take nArgsExported
   -- Copy each SysV argument register into the physical register the RA assigned
   -- to the body's `argName j` (skipping copies already in place).
-  let argMat := buildArgMaterializePhys virt tbl callRegArgs
+  let argMat := buildArgMaterializePhys virt tbl callRegArgs abi
   -- The rolled, physically-allocated loop body. `physBody` allocates the loop
   -- body's bindings (accumulator / counter / temps) exactly like a straight-line
   -- body; the `Llabel`/`Lcond` back-edge passes through untouched.
   let pbody := if bodyHasCall virt.lfd_body
-               then physBodyCalleeSave shiftImm virt.lfd_body
-               else physBody shiftImm virt.lfd_body
+               then physBodyCalleeSave shiftImm virt.lfd_body abi
+               else physBody shiftImm virt.lfd_body abi
   -- Move the result into the SysV return register `RAX` before the trailing
   -- `Lret` (skipped when the result already lands in `RAX`).
   let retEpi : Lcmd :=
@@ -1733,7 +1735,7 @@ incoming SysV pointer arguments, so `lfd_arg`/`lfd_tyin` are empty. -/
     `LEA` reads only `%rsp`, so — unlike the SysV-argument copy chain — no base
     clobbers another. -/
 def buildFrameBaseMaterialize (virt : Lfundef) (tbl : Array Nat)
-    (localBases : List (String × Nat)) : Lcmd :=
+    (localBases : List (String × Nat)) (abi : IsaAbi := x86Abi) : Lcmd :=
   let body := virt.lfd_body
   (localBases.zipIdx).flatMap (fun ⟨(_name, off), j⟩ =>
     let nm := argName j
@@ -1747,7 +1749,7 @@ def buildFrameBaseMaterialize (virt : Lfundef) (tbl : Array Nat)
       | _ => false)
     if !used then []
     else
-      let phys := physNameForBody body tbl nm
+      let phys := physNameForBody body tbl nm abi
       let dst : LOperand := .reg phys
       if dst.isSpill then
         [⟨0, .Lopn [.reg reloadScratch] "LEA:64" [.reg (memName "RSP" off)]⟩,
@@ -1829,22 +1831,22 @@ def pinInstrSib (r : String) : LinstrR → LinstrR
 def ComL.toLfundefPhysFramed {Γ : Ctxt jasminDialect} {t : JasminTy}
     (frameBytes : Nat) (localBases : List (String × Nat))
     (c : ComL Γ t) (shiftImm : ShiftImmOracle := fun _ => none)
-    (immSlotMap : ImmSlotMap := fun _ => none) :
+    (immSlotMap : ImmSlotMap := fun _ => none) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   let virt := ComL.toLfundef c immSlotMap
   let hasCall := bodyHasCall virt.lfd_body
   -- Use `%rsp` directly as the SIB base on the single-region (offset-0),
   -- call-free path (no reserved register, no eviction).
   let pin := (match localBases with | [(_, 0)] => true | _ => false) && !hasCall
-  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body)
-  let resPhys := virt.lfd_res.map (physNameForBody virt.lfd_body tbl)
+  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body abi)
+  let resPhys := virt.lfd_res.map (fun n => physNameForBody virt.lfd_body tbl n abi)
   -- The self-owned array bases. When pinning to `%rsp`, no base LEA is needed
   -- (the frame alloc already establishes `%rsp` as the base); otherwise each
   -- base goes to its RA-assigned register.
   let frameMat : Lcmd :=
-    if pin then [] else buildFrameBaseMaterialize virt tbl localBases
-  let pbody0 := if hasCall then physBodyCalleeSave shiftImm virt.lfd_body
-                else physBody shiftImm virt.lfd_body
+    if pin then [] else buildFrameBaseMaterialize virt tbl localBases abi
+  let pbody0 := if hasCall then physBodyCalleeSave shiftImm virt.lfd_body abi
+                else physBody shiftImm virt.lfd_body abi
   -- Rewrite every packed SIB base to `%rsp`.
   let pbody : Lcmd :=
     if pin then pbody0.map (fun i => ⟨i.li_ii, pinInstrSib frameBaseSibReg i.li_i⟩) else pbody0
@@ -1870,12 +1872,12 @@ def ComL.toLfundefPhysFramed {Γ : Ctxt jasminDialect} {t : JasminTy}
 def ComL.toLprogPhys {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : ComL Γ t) (fname : String)
     (shiftImm : ShiftImmOracle := fun _ => none)
-    (immSlotMap : ImmSlotMap := fun _ => none) : Lprog :=
+    (immSlotMap : ImmSlotMap := fun _ => none) (abi : IsaAbi := x86Abi) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
-    lp_funcs := [(fname, ComL.toLfundefPhys c shiftImm immSlotMap)] }
+    lp_funcs := [(fname, ComL.toLfundefPhys c shiftImm immSlotMap abi)] }
 
 /-- Serialize the looped physical export to the textual lprog blob (magic + text). -/
 def ComL.toLprogPhysText {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -2091,7 +2093,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     (accRegs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) :
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
@@ -2114,7 +2116,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
          (accRegs.foldl (fun b r => aliasRegBody r outArg' b) virt0.lfd_body)
   let virt := { virt0 with lfd_body := body1 }
   -- Output-liveness allocation table (`outStoreMap = []` ⇒ `physTable (bodyTrace …)`).
-  let tbl := physTableOut virt.lfd_body []
+  let tbl := physTableOut virt.lfd_body [] (abi := abi)
   -- Prologue: save both SysV pointer args (and the six callee-saved GP regs) to
   -- the red zone; the per-access reload sources the array bases from there.
   -- For a MULTI-INPUT signature (`[RDI, RSI, RDX, …]` — the GF-dot kernels),
@@ -2133,7 +2135,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
   let prologue := buildPrologue virt tbl (fun _ => none) ++ extraInputSaves
   -- Materialize each SysV pointer arg into the RA-assigned register the body uses
   -- for its argument name (the 2-pointer memref ABI; `inLoadMap = none`).
-  let argMat := buildArgPtrMaterialize virt tbl abiArgs (fun _ => none)
+  let argMat := buildArgPtrMaterialize virt tbl abiArgs (fun _ => none) abi
   -- Compose the caller's shift oracle with the dataflow `regConst`→imm resolver.
   let movTbl : Array (Option Nat) := movImmTable virt.lfd_body
   let shiftImm' : ShiftImmOracle := fun nm =>
@@ -2165,7 +2167,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
           -- Key on the barrier-resolved phys base (`physNameForBody`): a
           -- call-containing body relocated the array-base register, so the
           -- reload map must match the register the body's SIB actually reads.
-          some (physNameForBody virt.lfd_body tbl argNm, saveName)
+          some (physNameForBody virt.lfd_body tbl argNm abi, saveName)
       | none => none)
   let memrefBaseReload : String → Option String :=
     fun base => (reloadPairs.find? (fun p => p.1 == base)).map Prod.snd
@@ -2191,7 +2193,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     (abiArgs.zipIdx).filterMap (fun (abiReg, j) =>
       match abiSaveOfExt abiReg with
       | some saveName =>
-          let phys := physNameForBody virt.lfd_body tbl (argName j)
+          let phys := physNameForBody virt.lfd_body tbl (argName j) abi
           if isCallerSavedAllocGPR phys then some (phys, saveName) else none
       | none => none)
   -- The rolled loop body with per-access SIB-base reloads. `outStoreMap = []`
@@ -2199,7 +2201,7 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
   -- (the body self-addresses through the array pointers, not per-word loads).
   let bodyWithReload := (physBodyWithStores shiftImm' virt.lfd_body
     (fun _ => none) reloadScratch2 [] reloadScratch2 0 memrefBaseReload
-    callArgBaseReload).filter
+    callArgBaseReload (abi := abi)).filter
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   -- Restore the callee-saved registers before the final `Lret`.
   let bodyWithRestore := insertEpilogue bodyWithReload calleeSaveRestoreEpilogue
@@ -2237,7 +2239,7 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) :
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) :
     Lfundef :=
   let nArgs := Γ.length
   let virt0 := ComL.toLfundef c immSlotMap
@@ -2257,7 +2259,7 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
   -- The accumulator of every loop on the continuation spine; a single-loop program
   -- has a one-element `loopAccRegs`.
   let accRegs := (ComL.loopAccRegs c nArgs).map regName
-  lfundefPhysAbiOfVirt virt0 derived.1 derived.2 accRegs shiftImm abiArgs abiTyin
+  lfundefPhysAbiOfVirt virt0 derived.1 derived.2 accRegs shiftImm abiArgs abiTyin abi
 
 /-- `ComL.toLfundefPhysAbi` is `lfundefPhysAbiOfVirt` at the virtual export
     `ComL.toLfundef`, the derived base names and the loop accumulators. -/
@@ -2283,14 +2285,14 @@ def ComL.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) : Lprog :=
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap
-                 abiArgs abiTyin)] }
+                 abiArgs abiTyin abi)] }
 
 /-- Serialize the looped 2-pointer-ABI physical export to the textual lprog blob. -/
 def ComL.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
