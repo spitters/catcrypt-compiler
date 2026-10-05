@@ -35,6 +35,15 @@ repetition as a chain step and `inlineCert` its certificate.
 `NfOp.call f as r` of a function of `fs` has the body `impToNF` produces from the function's
 body over its parameters, when the parameter types are `as` and the result type is `r`.
 
+The builtins with the crate, `ImpToNF.crateBi fs bi fuelC m`, answer a call of a function of
+`fs` at the call depth `m + 1` by the run of its body at the depth `m`. The library is
+therefore sound from the depth `m + 1` to the depth `m` (`InlineLib.SoundStep`,
+`crateLib_soundStep`), under the typing `TypedCalls bi hax64SigOf` of the builtins `bi`: a
+round of inlining lowers the depth by one. A round keeps the runs of a program each of whose
+calls of a function of `fs` has a body in the library; `crateInlineOk fs n` checks this at
+each of `n` rounds and checks that no call of a function of `fs` is left (`noCrateCall`), so
+that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
+
 ## Main definitions
 
 * `PRen.ofArgs`, `PRen.appendVars`, `PRen.shift`, `PRen.id` — the renamings of a body's
@@ -48,6 +57,13 @@ body over its parameters, when the parameter types are `as` and the result type 
   and its certificate.
 * `NFInline.crateBody`, `NFInline.crateOp`, `NFInline.crateLib` — the bodies of the functions
   of a crate, at a leaf call and at a named leaf call.
+* `InlineLib.SoundStep` — soundness of a library from one denotation of the operations to
+  another.
+* `NFProg.allOps`, `NFProg.HasOp`, `NFProg.inlineIterOk` — a check on every operation of a
+  program, the operations of a program, and the check of the rounds of inlining.
+* `NFInline.crateCallOp`, `NFInline.noCrateCall`, `NFInline.crateInlineOk` — the calls of the
+  functions of a crate, their absence from a program, and the check of the rounds of inlining
+  at the library of the crate.
 
 ## Main results
 
@@ -57,6 +73,15 @@ body over its parameters, when the parameter types are `as` and the result type 
 * `NFProg.denote_inline?`, `NFProg.denoteAt_inline?` — inlining under a sound library keeps
   every successful run.
 * `NFProg.denote_inlineIter` — so does the repeated inlining.
+* `NFProg.allOps_iff`, `noCrateCall_iff` — the checks on the operations of a program accept
+  the programs all of whose operations pass.
+* `NFProg.denote_inline?_step`, `NFProg.denote_inlineIter_step` — inlining between two
+  denotations of the operations, and along a family of them.
+* `enc_inj` — the encoding of the values of a type is injective.
+* `crateOp_sound`, `crateLib_soundStep` — a call of a function of the crate at the depth
+  `m + 1` is a run of its body at the depth `m`.
+* `denote_inlineIter_crate` — a run at the builtins with the crate is a run of the inlined
+  program at the builtins without it, under `crateInlineOk`.
 -/
 
 @[expose] public section
@@ -429,6 +454,238 @@ theorem denoteAt_inline? (E : CallEnv d) {L : InlineLib d} {fuel : Nat}
 
 end NFProg
 
+/-! ## 3b. Inlining between two denotations of the operations -/
+
+/-- **A library is sound from the denotation `D₁` to the denotation `D₂`** of the operations,
+    at the fuel `fuel` and for the kept operations `P`: a successful run at `D₁` of an
+    operation the library has a body for is a run of the body at `D₂` with the same result; a
+    successful run at `D₁` of an operation of `P` is a run at `D₂` with the same result; and a
+    callee of the call environment the library has a body for runs as the body at `D₂`. -/
+structure InlineLib.SoundStep [CallDenote d] (L : InlineLib d) (D₁ D₂ : DialectDenoteM d Option)
+    (P : d.Op → Bool) (fuel : Nat) : Prop where
+  /-- The body of an operation runs at `D₂` as the operation at `D₁`. -/
+  op : ∀ (o : d.Op) b, L.op o = some b → ∀ x y, D₁.denoteM o x = some y →
+    @NFProg.denote d _ _ _ _ D₂ _ fuel _ _ b x = some (.cons y .nil)
+  /-- An operation of `P` runs at `D₂` as at `D₁`. -/
+  keep : ∀ (o : d.Op), P o = true → ∀ x y, D₁.denoteM o x = some y → D₂.denoteM o x = some y
+  /-- The body of a symbol runs at `D₂` as its callee. -/
+  call : ∀ f as rs b, L.call f as rs = some b → ∀ x y,
+    (CallDenote.env (d := d)).call f as rs x = some y →
+      @NFProg.denote d _ _ _ _ D₂ _ fuel _ _ b x = some y
+
+/-- A library sound at one denotation is sound from it to itself, for every kept
+    operation. -/
+theorem InlineLib.Sound.soundStep [D : DialectDenoteM d Option] [CallDenote d]
+    {L : InlineLib d} {fuel : Nat} (hL : L.Sound fuel) (P : d.Op → Bool) :
+    L.SoundStep D D P fuel :=
+  ⟨hL.op, fun _ _ _ _ h => h, hL.call⟩
+
+namespace NFProg
+
+/-- Every operation of a let-binding of the program, in every region and continuation,
+    satisfies `P`. -/
+def allOps (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var e k => P e.op && allOps P k
+  | _, _, .forLoop _ _ body k => allOps P body && allOps P k
+  | _, _, .ifThenElse _ thn els k => allOps P thn && allOps P els && allOps P k
+  | _, _, .whileLoop _ body k => allOps P body && allOps P k
+  | _, _, .call _ _ k => allOps P k
+
+/-- `p.HasOp o`: a let-binding of the program `p`, in a region or a continuation, is of the
+    operation `o`. -/
+def HasOp : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → d.Op → Prop
+  | _, _, .ret _, _ => False
+  | _, _, .var e k, o => e.op = o ∨ k.HasOp o
+  | _, _, .forLoop _ _ body k, o => body.HasOp o ∨ k.HasOp o
+  | _, _, .ifThenElse _ thn els k, o => thn.HasOp o ∨ els.HasOp o ∨ k.HasOp o
+  | _, _, .whileLoop _ body k, o => body.HasOp o ∨ k.HasOp o
+  | _, _, .call _ _ k, o => k.HasOp o
+
+/-- `allOps P` accepts the programs all of whose operations satisfy `P`. -/
+theorem allOps_iff (P : d.Op → Bool) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+    p.allOps P = true ↔ ∀ o, p.HasOp o → P o = true := by
+  induction p with
+  | ret vs => simp [allOps, HasOp]
+  | var e k ih =>
+      simp only [allOps, HasOp, Bool.and_eq_true, ih]
+      exact ⟨fun h o ho => ho.elim (fun he => he ▸ h.1) (h.2 o),
+        fun h => ⟨h _ (Or.inl rfl), fun o ho => h o (Or.inr ho)⟩⟩
+  | forLoop count inits body k ihb ihk =>
+      simp only [allOps, HasOp, Bool.and_eq_true, ihb, ihk]
+      exact ⟨fun h o ho => ho.elim (h.1 o) (h.2 o),
+        fun h => ⟨fun o ho => h o (Or.inl ho), fun o ho => h o (Or.inr ho)⟩⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [allOps, HasOp, Bool.and_eq_true, iht, ihe, ihk]
+      exact ⟨fun h o ho => ho.elim (h.1.1 o) fun ho => ho.elim (h.1.2 o) (h.2 o),
+        fun h => ⟨⟨fun o ho => h o (Or.inl ho), fun o ho => h o (Or.inr (Or.inl ho))⟩,
+          fun o ho => h o (Or.inr (Or.inr ho))⟩⟩
+  | whileLoop inits body k ihb ihk =>
+      simp only [allOps, HasOp, Bool.and_eq_true, ihb, ihk]
+      exact ⟨fun h o ho => ho.elim (h.1 o) (h.2 o),
+        fun h => ⟨fun o ho => h o (Or.inl ho), fun o ho => h o (Or.inr ho)⟩⟩
+  | call f args k ih => simp only [allOps, HasOp, ih]
+
+/-- **A program denotes the same at two denotations that agree on its operations.** -/
+theorem denote_congr_ops [CallDenote d] (D₁ D₂ : DialectDenoteM d Option) (P : d.Op → Bool)
+    (hP : ∀ o, P o = true → ∀ x, D₁.denoteM o x = D₂.denoteM o x) (fuel : Nat) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.allOps P = true) (V : Valuation Γ) :
+    @denote d _ _ _ _ D₁ _ fuel _ _ p V = @denote d _ _ _ _ D₂ _ fuel _ _ p V := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      obtain ⟨o, rfl, args⟩ := e
+      simp only [denote]
+      rw [show @Expr.denoteM d Option _ _ D₁ _ _ ⟨o, rfl, args⟩ V =
+          @Expr.denoteM d Option _ _ D₂ _ _ ⟨o, rfl, args⟩ V from hP o hp.1 _]
+      congr 1
+      funext x
+      exact ih hp.2 _
+  | forLoop count inits body k ihb ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [denote, fun acc i => ihb hp.1 (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)),
+        fun acc => ihk hp.2 (hvAppend acc V)]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [denote, iht hp.1.1, ihe hp.1.2, fun r => ihk hp.2 (hvAppend r V)]
+  | whileLoop inits body k ihb ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [denote, fun acc => ihb hp.1 (hvAppend acc V), fun acc => ihk hp.2 (hvAppend acc V)]
+  | call f args k ih =>
+      simp only [allOps] at hp
+      simp only [denote, fun r => ih hp (hvAppend r V)]
+
+/-- **Inlining keeps every successful run, from the denotation `D₁` to the denotation `D₂`**,
+    under a library sound from `D₁` to `D₂` for the kept operations `P`, on a program each of
+    whose operations the library has a body for or is of `P`. -/
+theorem denote_inline?_step [CallDenote d] {L : InlineLib d} {D₁ D₂ : DialectDenoteM d Option}
+    {P : d.Op → Bool} {fuel : Nat} (hL : L.SoundStep D₁ D₂ P fuel) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) :
+    ∀ {p' : NFProg d Γ ts} {V : Valuation Γ} {out : Valuation ts},
+      p.allOps (fun o => (L.op o).isSome || P o) = true → inline? L p = some p' →
+      @denote d _ _ _ _ D₁ _ fuel _ _ p V = some out →
+      @denote d _ _ _ _ D₂ _ fuel _ _ p' V = some out := by
+  induction p with
+  | ret vs =>
+      intro p' V out _ hq hp
+      cases hq
+      exact hp
+  | var e k ih =>
+      intro p' V out ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hp
+      obtain ⟨x, hx, hk⟩ := hp
+      have hk'' := ih ha.2 hk' hk
+      obtain ⟨o, rfl, args⟩ := e
+      simp only [inlineVar] at hq
+      split at hq
+      · rename_i b hb
+        rw [@denote_seq? d _ _ _ _ D₂ _ _ _ b _ _ k' _ _ _ _ _ _ _ hq (PRen.agrees_ofArgs V args)
+          (PRen.agrees_id V) fuel, hL.op o b hb _ x hx]
+        exact hk''
+      · rename_i hb
+        cases hq
+        simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff]
+        have hPo : P o = true := by
+          have h := ha.1
+          simp only [hb, Option.isSome_none, Bool.false_or] at h
+          exact h
+        exact ⟨x, hL.keep o hPo _ x hx, hk''⟩
+  | forLoop count inits body k ihb ihk =>
+      intro p' V out ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hp ⊢
+      obtain ⟨acc, hacc, hk⟩ := hp
+      refine ⟨acc, ?_, ihk ha.2 hk' hk⟩
+      obtain ⟨acc', hacc', rfl⟩ := foldlM_rel_fwd (R := Eq) _
+        (fun i _ a a' c hr hc => ⟨c, by
+          subst hr
+          exact ihb ha.1 hb' hc, rfl⟩)
+        _ _ acc rfl hacc
+      exact hacc'
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro p' V out ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨t', ht', e', he', k', hk', rfl⟩ := hq
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hp ⊢
+      obtain ⟨r, hr, hk⟩ := hp
+      refine ⟨r, ?_, ihk ha.2 hk' hk⟩
+      split at hr
+      · rw [if_pos ‹_›]
+        exact iht ha.1.1 ht' hr
+      · rw [if_neg ‹_›]
+        exact ihe ha.1.2 he' hr
+  | whileLoop inits body k ihb ihk =>
+      intro p' V out ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hp ⊢
+      obtain ⟨acc, hacc, hk⟩ := hp
+      refine ⟨acc, ?_, ihk ha.2 hk' hk⟩
+      obtain ⟨acc', hacc', rfl⟩ := whileIter_rel_fwd (R := Eq)
+        (fun a a' r hr hc => ⟨r, by
+          subst hr
+          exact ihb ha.1 hb' hc, rfl, rfl⟩)
+        _ _ _ acc rfl hacc
+      exact hacc'
+  | call f args k ih =>
+      intro p' V out ha hq hp
+      simp only [allOps] at ha
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hp
+      obtain ⟨r, hr, hk⟩ := hp
+      have hk'' := ih ha hk' hk
+      split at hq
+      · rename_i b hb
+        rw [@denote_seq? d _ _ _ _ D₂ _ _ _ b _ _ k' _ _ _ _ _ _ _ hq (PRen.agrees_ofArgs V args)
+          (PRen.agrees_id V) fuel, hL.call f _ _ b hb _ r hr]
+        exact hk''
+      · cases hq
+        simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff]
+        exact ⟨r, hr, hk''⟩
+
+/-- **The check of repeated inlining**: at each of the `n` rounds, every operation of the
+    program of the round has a body in the library `L` or is of `P`, and the round does not
+    refuse. -/
+def inlineIterOk (L : InlineLib d) (P : d.Op → Bool) {Γ : Ctxt d} {ts : List d.Ty} :
+    Nat → NFProg d Γ ts → Bool
+  | 0, _ => true
+  | n + 1, p =>
+      p.allOps (fun o => (L.op o).isSome || P o) &&
+        match inline? L p with
+        | some q => inlineIterOk L P n q
+        | none => false
+
+/-- **Repeated inlining keeps every successful run, along a family of denotations.** Let the
+    library be sound from the denotation `D (m + 1)` to the denotation `D m`, for every `m`.
+    On a program accepted by `inlineIterOk L P n`, a successful run at `D n` is a run of the
+    program after `n` rounds at `D 0` with the same result. -/
+theorem denote_inlineIter_step [CallDenote d] {L : InlineLib d}
+    (D : Nat → DialectDenoteM d Option) {P : d.Op → Bool} {fuel : Nat}
+    (hL : ∀ m, L.SoundStep (D (m + 1)) (D m) P fuel) {Γ : Ctxt d} {ts : List d.Ty} :
+    ∀ (n : Nat) (p : NFProg d Γ ts) {V : Valuation Γ} {out : Valuation ts},
+      p.inlineIterOk L P n = true → @denote d _ _ _ _ (D n) _ fuel _ _ p V = some out →
+      @denote d _ _ _ _ (D 0) _ fuel _ _ (p.inlineIter L n) V = some out
+  | 0, _, _, _, _, hp => hp
+  | n + 1, p, V, out, hok, hp => by
+      simp only [inlineIterOk, Bool.and_eq_true] at hok
+      obtain ⟨ha, hok⟩ := hok
+      simp only [inlineIter]
+      split at hok
+      · rename_i q hq
+        exact denote_inlineIter_step D hL n q hok (denote_inline?_step (hL n) p ha hq hp)
+      · cases hok
+
+end NFProg
+
 /-! ## 4. The chain step -/
 
 namespace NFProgPasses
@@ -483,5 +740,223 @@ def crateOp (fs : List CrateFn) : (o : NfOp) → Option (NFProg nfDialect o.sig 
 def crateLib (fs : List CrateFn) : InlineLib nfDialect where
   op := crateOp fs
   call _ _ _ := none
+
+/-! ## 6. The library of a crate is sound along the call depth -/
+
+open CatCrypt.Crypto.Hax.ImpToNF (enc dec encAll tailVals tableOf TypedCalls crateBi
+  crateBi_of_find_none crateBi_typedCalls paramsEnv EnvRel NfEnv PDenP PDenP_plug_ret
+  impToNF_sound dec_sound Out)
+open _root_.Hax (Builtins Value Env denote')
+open Ctxt (Var Valuation)
+
+/-- The components `tailVals` reads off an encoding determine the encoding. -/
+theorem tailVals_enc_inj : ∀ (t : NfTy) (x y : t.denote),
+    tailVals (enc t x) = tailVals (enc t y) → enc t x = enc t y := by
+  intro t x y h
+  cases t <;> simp_all [enc, tailVals]
+
+/-- **The encoding of the values of a type is injective.** -/
+theorem enc_inj : ∀ (t : NfTy) (x y : t.denote), enc t x = enc t y → x = y
+  | .bit, x, y, h => by simpa [enc] using h
+  | .unit, _, _, _ => rfl
+  | .word _, x, y, h => by
+      simp only [enc, Value.int.injEq, Int.natCast_inj] at h
+      exact BitVec.eq_of_toNat_eq h
+  | .arr _ t, f, g, h => by
+      simp only [enc, Value.array.injEq] at h
+      funext i
+      exact enc_inj t _ _ (congrFun (List.ofFn_injective h) i)
+  | .pair a b, p, q, h => by
+      simp only [enc, Value.tuple.injEq, List.cons.injEq, and_true] at h
+      exact Prod.ext (enc_inj a _ _ h.1) (enc_inj b _ _ h.2)
+  | .uint _, x, y, h => by
+      simp only [enc, Value.uint.injEq, true_and] at h
+      exact BitVec.eq_of_toNat_eq h
+  | .sint _, x, y, h => by
+      simp only [enc, Value.sint.injEq, true_and] at h
+      exact BitVec.eq_of_toInt_eq h
+  | .int, x, y, h => by simpa [enc] using h
+  | .tnil, _, _, _ => rfl
+  | .tcons a t, p, q, h => by
+      simp only [enc, Value.tuple.injEq, List.cons.injEq] at h
+      exact Prod.ext (enc_inj a _ _ h.1) (enc_inj t _ _ (tailVals_enc_inj t _ _ h.2))
+  | .slice t, xs, ys, h => by
+      simp only [enc, Value.array.injEq] at h
+      exact List.map_injective_iff.mpr (fun a b => enc_inj t a b) h
+
+/-- **The names of the parameters read their argument values.** The environment of names
+    of the parameters `ps` is related to a valuation `V` of the parameters by the source
+    environment `paramsEnv` binding the names of `ps` to the encodings of `V`. -/
+theorem entryEnv_rel_paramsEnv : ∀ (ps : List (String × NfTy)) (V : Valuation (entryCtx ps)),
+    EnvRel (entryEnv ps) (paramsEnv (ps.map (·.1)) (encAll (entryCtx ps) V)) V
+  | [], .nil => by
+      intro x t v hx
+      simp [entryEnv, NfEnv.lookup] at hx
+  | (x, t) :: ps, .cons y V => by
+      intro x' t' v hx'
+      change NfEnv.lookup ((x, ⟨t, Var.here⟩) ::
+        NfEnv.mapV (fun v => Var.there v) (entryEnv ps)) x' = _ at hx'
+      rw [ImpToNF.NfEnv.lookup_cons] at hx'
+      show (if x' = x then some (enc t y) else
+        paramsEnv (ps.map (·.1)) (encAll (entryCtx ps) V) x') = _
+      split at hx'
+      · rename_i hxx
+        subst hxx
+        cases hx'
+        rw [if_pos rfl]
+        rfl
+      · rename_i hxx
+        rw [if_neg fun h => hxx h.symm]
+        exact EnvRel.mapV (entryEnv_rel_paramsEnv ps V) (fun v => Var.there v)
+          (W := .cons y V) (fun _ _ => rfl) x' t' v hx'
+
+/-- **An operation calls a function of the crate `fs`**: a leaf call `NfOp.call f as r`, under
+    any number of names, of a name a function of `fs` has. -/
+def crateCallOp (fs : List CrateFn) : NfOp → Bool
+  | .call f _ _ => (fs.find? (·.name == f)).isSome
+  | .named _ o => crateCallOp fs o
+  | _ => false
+
+/-- **No call of a function of the crate `fs` is in the program `p`**: no let-binding of `p`,
+    in a region or a continuation, is of an operation of `crateCallOp fs`. -/
+def noCrateCall (fs : List CrateFn) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Bool :=
+  p.allOps fun o => !crateCallOp fs o
+
+/-- `noCrateCall fs` accepts the programs none of whose operations calls a function of
+    `fs`. -/
+theorem noCrateCall_iff (fs : List CrateFn) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) :
+    noCrateCall fs p = true ↔ ∀ o, p.HasOp o → crateCallOp fs o = false := by
+  simp only [noCrateCall, NFProg.allOps_iff, Bool.not_eq_true']
+
+/-- A program accepted by `noCrateCall fs` has no leaf call of a name of `fs`. -/
+theorem noCrateCall_call {fs : List CrateFn} {Γ : Ctxt nfDialect} {ts : List NfTy}
+    {p : NFProg nfDialect Γ ts} (h : noCrateCall fs p = true) {f : String} {as : List NfTy}
+    {r : NfTy} (hp : p.HasOp (.call f as r)) : fs.find? (·.name == f) = none := by
+  have := (noCrateCall_iff fs p).mp h _ hp
+  simpa [crateCallOp] using this
+
+/-- **An operation that calls no function of the crate denotes at the builtins with the crate
+    as at the builtins `bi`**, at every call depth. -/
+theorem nfDenoteOp_crateBi (fs : List CrateFn) (bi : Builtins) (fuelC m : Nat) :
+    ∀ (o : NfOp), crateCallOp fs o = false → ∀ x,
+      nfDenoteOp (tableOf (crateBi fs bi fuelC m)) o x = nfDenoteOp (tableOf bi) o x := by
+  intro o
+  induction o with
+  | call f as r =>
+      intro h x
+      simp only [crateCallOp, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at h
+      simp only [nfDenoteOp, tableOf, crateBi_of_find_none fs bi fuelC m h]
+  | named _ o ih =>
+      intro h x
+      exact ih h x
+  | _ =>
+      intro _ _
+      rfl
+
+/-- **A call of a function of the crate at depth `m + 1` is a run of its body at depth `m`.**
+    Under the typing of the builtins `bi`, a successful run of an operation `crateOp fs` has a
+    body for, at the builtins with the crate to the call depth `m + 1`, is a run of the body
+    at the builtins with the crate to the call depth `m`, at every fuel `tf`, with the same
+    result. -/
+theorem crateOp_sound (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
+    (fuelC m tf : Nat) :
+    ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o = some b → ∀ x y,
+      nfDenoteOp (tableOf (crateBi fs bi fuelC (m + 1))) o x = some y →
+        PDenP (crateBi fs bi fuelC m) tf b x = some (.cons y .nil) := by
+  intro o
+  induction o with
+  | call f as r =>
+      intro b hb x y hy
+      simp only [crateOp, Option.bind_eq_some_iff] at hb
+      obtain ⟨c, hc, hb⟩ := hb
+      simp only [crateBody, Option.bind_eq_some_iff] at hb
+      obtain ⟨o', ho', hb⟩ := hb
+      split at hb
+      · rename_i hty
+        cases hb
+        obtain ⟨rfl, rfl⟩ := hty
+        simp only [nfDenoteOp, tableOf, crateBi, hc, Option.bind_eq_some_iff] at hy
+        obtain ⟨v, hv, hd⟩ := hy
+        split at hv
+        · rename_i v' hrun
+          split at hv
+          · cases hv
+            obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (crateBi fs bi fuelC m)
+              (crateSigOf fs hax64SigOf) (crateBi_typedCalls fs bi hax64SigOf hT fuelC m) c.body
+              none (entryEnv c.params) ho' fuelC _ x v _ (entryEnv_rel_paramsEnv c.params x)
+              (Prod.ext hrun rfl) tf
+            have hy' : y = o'.res.lookup W :=
+              enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvW)
+            subst hy'
+            exact PDenP_plug_ret _ tf o'.pre (.cons o'.res .nil) x hpre
+          · cases hv
+        · cases hv
+      · cases hb
+  | named _ o ih =>
+      intro b hb x y hy
+      exact ih b hb x y hy
+  | _ =>
+      intro b hb
+      cases hb
+
+/-- **The library of a crate is sound from the call depth `m + 1` to the call depth `m`**,
+    for the operations that call no function of the crate, under the typing of the builtins
+    `bi` and at every fuel `tf`. -/
+theorem crateLib_soundStep (fs : List CrateFn) (bi : Builtins)
+    (hT : TypedCalls bi hax64SigOf) (fuelC m tf : Nat) :
+    (crateLib fs).SoundStep (nfDenote (tableOf (crateBi fs bi fuelC (m + 1))))
+      (nfDenote (tableOf (crateBi fs bi fuelC m))) (fun o => !crateCallOp fs o) tf where
+  op := crateOp_sound fs bi hT fuelC m tf
+  keep o ho x y h := by
+    simp only [Bool.not_eq_true'] at ho
+    simp only [nfDenote_denoteM] at h ⊢
+    rw [nfDenoteOp_crateBi fs bi fuelC m o ho]
+    rwa [nfDenoteOp_crateBi fs bi fuelC (m + 1) o ho] at h
+  call _ _ _ _ hb := by cases hb
+
+/-- **The check of `n` rounds of inlining at the library of the crate `fs`**: at each round
+    every call of a function of `fs` in the program of the round has a body in `crateLib fs`
+    and the round does not refuse, and no call of a function of `fs` is in the program after
+    the `n` rounds. -/
+def crateInlineOk (fs : List CrateFn) (n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Bool :=
+  p.inlineIterOk (crateLib fs) (fun o => !crateCallOp fs o) n &&
+    noCrateCall fs (p.inlineIter (crateLib fs) n)
+
+/-- A program accepted by `crateInlineOk fs n` has no call of a function of `fs` after the
+    `n` rounds. -/
+theorem crateInlineOk_noCrateCall {fs : List CrateFn} {n : Nat} {Γ : Ctxt nfDialect}
+    {ts : List NfTy} {p : NFProg nfDialect Γ ts} (h : crateInlineOk fs n p = true) :
+    noCrateCall fs (p.inlineIter (crateLib fs) n) = true :=
+  (Bool.and_eq_true_iff.mp h).2
+
+/-- **A program without calls of the crate denotes at the builtins with the crate as at the
+    builtins `bi`**, at every call depth. -/
+theorem PDenP_crateBi_of_noCrateCall (fs : List CrateFn) (bi : Builtins) (fuelC m tf : Nat)
+    {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts)
+    (hp : noCrateCall fs p = true) (V : Valuation Γ) :
+    PDenP (crateBi fs bi fuelC m) tf p V = PDenP bi tf p V :=
+  NFProg.denote_congr_ops (nfDenote (tableOf (crateBi fs bi fuelC m))) (nfDenote (tableOf bi))
+    (fun o => !crateCallOp fs o)
+    (fun o ho x => nfDenoteOp_crateBi fs bi fuelC m o (by simpa using ho) x) tf p hp V
+
+/-- **Inlining at the library of a crate keeps every successful run, from the builtins with
+    the crate to the builtins without it.** Under the typing of the builtins `bi`, on a
+    program accepted by `crateInlineOk fs n`, a successful run at the builtins with the crate
+    to the call depth `n` (the functions of `fs` run their bodies at the fuel `fuelC`) is a run
+    of the program after `n` rounds of inlining at the builtins `bi`, with the same result. -/
+theorem denote_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
+    (hT : TypedCalls bi hax64SigOf) (fuelC tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (hok : crateInlineOk fs n p = true) {V : Valuation Γ}
+    {out : Valuation (d := nfDialect) ts}
+    (hp : PDenP (crateBi fs bi fuelC n) tf p V = some out) :
+    PDenP bi tf (p.inlineIter (crateLib fs) n) V = some out := by
+  obtain ⟨hit, hno⟩ := Bool.and_eq_true_iff.mp hok
+  rw [← PDenP_crateBi_of_noCrateCall fs bi fuelC 0 tf _ hno V]
+  exact NFProg.denote_inlineIter_step
+    (fun m => nfDenote (tableOf (crateBi fs bi fuelC m)))
+    (fun m => crateLib_soundStep fs bi hT fuelC m tf) n p hit hp
 
 end CatCrypt.Crypto.Hax.NFInline
