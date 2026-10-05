@@ -246,3 +246,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/X86IsaKeep.lean  # x86 ISA record w
 CatCrypt/Crypto/SecureCompilation/X86Backend/CellFoldLReg.lean  # cell fold arm for register-only instructions with its run lemma; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrWBack.lean  # wide image gate at a back branch with dead one-bit carries; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCallX86.lean  # step-agreement lemmas for a body followed by a return (x86 and subsetStep instruction sets); the Lret term is the subject of the lemmas, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCellsCT.lean  # constant time of the straight cell arm from its gate; the Lprog terms are instruction shapes under proof, no emit artifact
