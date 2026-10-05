@@ -3,3 +3,10 @@
 # One `path:declaration` per line: a leak-kind function that keeps a wildcard
 # arm returning the quiet class. Each entry has a comment above it stating why
 # every constructor the wildcard covers is quiet and stays quiet.
+
+# Open, not justified: an external call is variable-time only when the
+# parameter `leafVT` names it, and quiet otherwise (a deny-list). The entry
+# stays until the call arm is quiet on an allow-list of names, as `nfKind` is.
+CatCrypt/Crypto/SecureCompilation/Dialects/CryptoDialectCTLeak.lean:catKind
+# Open, not justified: the same deny-list on external calls as `catKind`.
+CatCrypt/Crypto/SecureCompilation/Dialects/JasminComLLeak.lean:jKind

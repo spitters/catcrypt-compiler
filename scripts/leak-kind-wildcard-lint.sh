@@ -18,7 +18,14 @@
 #   fun _ => .quiet          | _ =>          (with `.quiet` on the next line)
 #
 # and, in a function with result type `LeakKind`, an arm whose pattern is one
-# variable (`| op => ...`), which covers every constructor not named above it.
+# variable (`| op => ...`), which covers every constructor not named above it,
+# and a conditional whose last branch is the quiet class:
+#
+#   else .quiet              else            (with `.quiet` on the next line)
+#
+# which classes every name or value the conditions above it do not test as
+# leaking nothing. The quiet names are to be stated (`if quiet f then .quiet
+# else <a leaking class>`).
 #
 # Allow-list: scripts/leak-kind-wildcard-allow.txt, one `path:declaration` per
 # line, `#` comments. An entry carries its justification in a comment above it.
@@ -63,7 +70,7 @@ hits=$(awk '
     leak = (kindfn || s ~ /LeakModel/) ? 1 : 0
     insig = 0
   }
-  FNR == 1 { leak = 0; insig = 0; incomment = 0; pending = 0; name = "" }
+  FNR == 1 { leak = 0; insig = 0; incomment = 0; pending = 0; epending = 0; name = "" }
   {
     line = $0
     if (incomment) { if (line ~ /-\//) incomment = 0; next }
@@ -84,7 +91,21 @@ hits=$(awk '
         if (line ~ /:=/ || line ~ /[ \t]where[ \t]*$/) flush_sig()
       }
     }
-    if (!leak) { pending = 0; next }
+    if (!leak) { pending = 0; epending = 0; next }
+
+    if (epending) {
+      if (line ~ /^[ \t]*$/) next
+      if (line ~ /^[ \t]*(LeakKind)?\.quiet([^A-Za-z0-9_]|$)/)
+        printf "%s:%d:%s:%s\n", FILENAME, ependline, name, ependtext
+      epending = 0
+    }
+    if (kindfn) {
+      if (line ~ /(^|[^A-Za-z0-9_])else[ \t]+(LeakKind)?\.quiet([^A-Za-z0-9_]|$)/)
+        printf "%s:%d:%s:%s\n", FILENAME, FNR, name, $0
+      else if (line ~ /(^|[^A-Za-z0-9_])else[ \t]*$/) {
+        epending = 1; ependline = FNR; ependtext = $0
+      }
+    }
 
     if (pending) {
       if (line ~ /^[ \t]*$/) next
