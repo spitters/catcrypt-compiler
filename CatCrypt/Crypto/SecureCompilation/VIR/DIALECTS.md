@@ -155,9 +155,9 @@ into the `fieldDialect` summand (`nfToSum_sound` for returns, variables and coun
 loops); `sumToField` reads a program with a field result as `Com fieldDialect`
 (`sumToField_sound`); `fieldOfNF` composes the two (`fieldOfNF_sound`), and
 `primeirFieldTable_agrees` ties the prime-ir table to `primeirBuiltins p`. `impToNF`
-and `nfToCat` are unchanged, the dev front `nfToField` is still the one the field
-route uses, and no pass of the pipeline calls `nfToSum`: the field route takes
-straight-line `Com fieldDialect` only, so a loop over field operations has no route.
+and `nfToCat` are unchanged. The dev field front `fieldFront` calls `fieldOfNF`
+(`nfToField` is retired). `sumToField` refuses a counted loop, and the field route
+takes straight-line `Com fieldDialect` only, so a loop over field operations has no route.
 Outside that module, `Dialect.sum` and the `DialectCategory*` modules are
 presentation.
 `ComParametricityTransport.LoweringData` and its `fundamental` lemma reduce the
