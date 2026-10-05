@@ -53,6 +53,7 @@ CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainEd25519Chains
 CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainTestVectors
 CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom
 CatCrypt.Crypto.Jasmin.BignumHoare.ReflectiveCurveProperties
+CatCrypt.Crypto.Jasmin.BignumToJ
 CatCrypt.Crypto.Jasmin.Bls12381Reflect
 CatCrypt.Crypto.Jasmin.BoundsTransformer
 CatCrypt.Crypto.Jasmin.Bulletproofs
@@ -102,6 +103,7 @@ CatCrypt.Crypto.Jasmin.InfoFlow
 CatCrypt.Crypto.Jasmin.JasminEmitBridge
 CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
 CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
+CatCrypt.Crypto.Jasmin.JazzToInstrR
 CatCrypt.Crypto.Jasmin.JoltProverReflect
 CatCrypt.Crypto.Jasmin.KeccakJincEmit
 CatCrypt.Crypto.Jasmin.LeafOps
