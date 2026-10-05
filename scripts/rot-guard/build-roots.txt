@@ -482,6 +482,7 @@ CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvSha256Kernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvX25519FieldKernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvAsmSim
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachCT
+CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvSym
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
