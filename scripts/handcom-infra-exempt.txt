@@ -222,3 +222,8 @@ CatCrypt/Crypto/SecureCompilation/ARMBackend/ArmIsa.lean  # armIsa instance, sel
 CatCrypt/Crypto/SecureCompilation/RISCVBackend/RvIsa.lean  # rvIsa instance, selection and Asm lemma; rvAndBody is the Asm-lemma fixture (instance of rv_asm_mem), no emit artifact; the shipped route goes through the export over Isa
 CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertComplete.lean  # completeness of the export certificate checkers; the Lprog terms are fragment witnesses, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/OptBlocksMemF.lean  # correctness of the Lprog scheduler at stepMemF (pass proof), no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCfg.lean  # cut-point rule for CorresIsa over an arbitrary Isa (proof rule and step lemmas over Lprog control instructions), no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCall.lean  # procedure-specification rule over Isa.withCalls (step lemmas for Lcall/Lret), no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86Mov.lean  # transfer from CorresJ to CorresIsa for blocks with register moves; the Lopn terms are the lowering jToRMMov under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/KrakenCfgDemo.lean  # three hand-written control-flow programs that are the proof subjects of the cut-point rule's examples; never emitted, no artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/KrakenCallDemo.lean  # a hand-written caller and procedure that are the proof subject of the call rule's example; never emitted, no artifact
