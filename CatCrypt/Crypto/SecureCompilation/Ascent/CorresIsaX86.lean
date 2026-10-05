@@ -51,6 +51,8 @@ turns it into the run of the program.
 * `corresIsa_x86_add2`: the two-instruction example `x += 1; x += 2`.
 * `armIsa_step_jToRM`, `armIsa_runL_map_jToRM`, `corresIsa_arm_of_corresJ`,
   `corresIsa_arm_add2`: the same transport and the same example at `armIsa`.
+
+@ascent-fixture theorems: corresIsa_x86_add2, corresIsa_arm_add2
 -/
 
 @[expose] public section

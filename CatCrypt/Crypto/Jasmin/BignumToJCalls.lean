@@ -49,6 +49,8 @@ inlined (`callCode` is `none` on it).
 * `flatB_runBlockA_sim`, `inlB_runBlockA_sim`: the simulation by `runBlockA`.
 * `Add4.runBlockA_sim`, `Add4.caller_runBlockA_sim`: the `bignum_add_4` port, and a caller of
   it with a loop and calls.
+
+@ascent-fixture theorems: runBlockA_sim, caller_runBlockA_sim
 -/
 
 namespace CatCrypt.Crypto.Jasmin.BignumToJCalls

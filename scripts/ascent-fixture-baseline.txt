@@ -16,3 +16,5 @@ CatCrypt/Crypto/SecureCompilation/Ascent/FramedJInstrTie.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/AndNBytesValue.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/RInstrAddrMem.lean
 CatCrypt/Crypto/SecureCompilation/CT/Leakage.lean
+CatCrypt/Crypto/Jasmin/BignumToJCalls.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86.lean
