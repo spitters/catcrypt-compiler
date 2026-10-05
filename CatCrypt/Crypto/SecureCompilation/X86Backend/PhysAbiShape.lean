@@ -98,7 +98,8 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
     lowering of a binop, the base reload and legalization of a memory access, the
     lowering of a native shift, and the operand renaming of every other `Lopn`,
     with the 64-bit move `spillImmMovMnem` selects for a small immediate stored to a
-    spill slot of a body with 8-byte slots (`u64`). -/
+    spill slot of a body with 8-byte slots (`u64`), and with a `CMOV:64` into a spill
+    slot computed in the scratch `R15` and stored to the slot (`legalizeSpillDst`). -/
 def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
   let isBinop (opn : String) : Bool := isTwoAddrBinop opn
@@ -132,7 +133,8 @@ def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOp
             else
               [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
         | .Lopn dsts opn srcs =>
-            [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+            (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
+              (fun r => ⟨i.li_ii, r⟩)
         | other => [⟨i.li_ii, other⟩]
   | .Lopn [d] opn [s] =>
       if isNativeShiftRotate opn then
@@ -317,8 +319,10 @@ theorem physExpand_livepin (shiftImm : ShiftImmOracle) (u64 : Bool)
   have hb : isTwoAddrBinop "LIVEPIN" = false := by decide +kernel
   have hm : ∀ d s, spillImmMovMnem u64 "LIVEPIN" d s = "LIVEPIN" := fun d s =>
     spillImmMovMnem_of_ne d s (by decide +kernel)
+  have hc : ∀ ds ss, legalizeSpillDst ds "LIVEPIN" ss = [.Lopn ds "LIVEPIN" ss] := fun ds ss =>
+    legalizeSpillDst_of_ne ds ss (by decide +kernel)
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
-    simp [physExpand, hw, hs, hl, hb, hm, isNativeShiftRotate_livepin, notLivePin]
+    simp [physExpand, hw, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
 
 /-- The expansions of the argument-liveness pin are all dropped by the pin filter. -/
 theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (u64 : Bool)

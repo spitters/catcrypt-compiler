@@ -590,6 +590,18 @@ theorem linstrRDirect_Lopn_mk {dsts srcs : List LOperand} {opn : String}
     Bool.not_true]
   exact ⟨fun o ho => hd o ho, fun o ho => hs o ho⟩
 
+/-- `legalizeSpillDst` on operands none of which is register-indexed uses no
+    register-indexed operand: the scratch `R15` is a register. -/
+theorem legalizeSpillDst_direct {dsts srcs : List LOperand} {opn : String}
+    (hd : ∀ o ∈ dsts, isIndexed o = false) (hs : ∀ o ∈ srcs, isIndexed o = false) :
+    lcmdRDirect (legalizeSpillDst dsts opn srcs) = true := by
+  rw [lcmdRDirect, List.all_eq_true]
+  intro r hr
+  rcases legalizeSpillDst_mem hr with rfl | rfl | ⟨d, hdm, rfl⟩
+  · exact linstrRDirect_Lopn_mk hd hs
+  · exact linstrRDirect_Lopn_mk (by simp [isIndexed]) hs
+  · exact linstrRDirect_Lopn_mk (by simpa using hd d hdm) (by simp [isIndexed])
+
 theorem mem_of_mem_zipIdx {α : Type} {l : List α} {p : α × Nat} (h : p ∈ l.zipIdx) :
     p.1 ∈ l := by
   have := List.mem_map_of_mem (f := Prod.fst) h
@@ -670,8 +682,8 @@ theorem physBodyWithStores_lcmdDirect
           have h2 := hi
           rw [heq2] at h2
           obtain ⟨hD2, hS2⟩ := linstrRDirect_Lopn h2
-          simp only [lcmdDirect, List.all_cons, List.all_nil, Bool.and_true]
-          exact linstrRDirect_Lopn_mk (hmapR _ hD2) (hmapR _ hS2)
+          exact lcmdDirect_map (fun _ => rfl)
+            (legalizeSpillDst_direct (hmapR _ hD2) (hmapR _ hS2))
         · simpa [lcmdDirect] using hi
     · -- exactly one destination and one source
       rename_i heq

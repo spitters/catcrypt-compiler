@@ -576,6 +576,100 @@ theorem legalizeMemStoreK_const {c : Nat} {b i : String} {val : LOperand} (dArr 
          .Lopn [.reg (memName b (8 * c))] "STORE:64" [.reg reloadScratch]] := by
   simp [legalizeMemStoreK, constIdxStore?, hb, hi, hv, hc]
 
+/-- The select of a spilled destination through the scratch register.
+
+    For a single destination `d` that is a spill slot, the mnemonic `CMOV:64` and
+    three sources `c`, `t`, `f`, the select is
+    `CMOV:64 R15, [c, t, f]; MOV:64 d, R15`: the conditional move writes the
+    reserved scratch `reloadScratch` and a 64-bit move stores the scratch to the
+    slot. The select does not read its destination, so the slot is not loaded.
+    `none` in every other case. -/
+def cmovSpillDst? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    Option (List LinstrR) :=
+  match dsts, srcs with
+  | [d], [c, t, f] =>
+      -- The spill test comes before the mnemonic, so a register destination
+      -- reduces without comparing strings.
+      if d.isSpill && opn == "CMOV:64" then
+        some [.Lopn [.reg reloadScratch] opn [c, t, f],
+              .Lopn [d] "MOV:64" [.reg reloadScratch]]
+      else none
+  | _, _ => none
+
+/-- The instructions of a register-allocated `Lopn` with destinations `dsts`,
+    mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?` when it
+    is defined, and the single instruction `Lopn dsts opn srcs` otherwise. -/
+def legalizeSpillDst (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    List LinstrR :=
+  match cmovSpillDst? dsts opn srcs with
+  | some l => l
+  | none => [.Lopn dsts opn srcs]
+
+/-- A mnemonic other than `CMOV:64` has no scratch select. -/
+theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
+    (h : opn ≠ "CMOV:64") : cmovSpillDst? dsts opn srcs = none := by
+  unfold cmovSpillDst?
+  split
+  · simp [h]
+  · rfl
+
+/-- Destinations none of which is a spill slot have no scratch select. -/
+theorem cmovSpillDst?_of_not_spill {dsts : List LOperand} (opn : String) (srcs : List LOperand)
+    (h : ∀ d ∈ dsts, d.isSpill = false) : cmovSpillDst? dsts opn srcs = none := by
+  unfold cmovSpillDst?
+  split
+  · simp [h _ (List.mem_singleton_self _)]
+  · rfl
+
+/-- Where there is no scratch select, `legalizeSpillDst` is the single instruction. -/
+theorem legalizeSpillDst_of_none {dsts : List LOperand} {opn : String} {srcs : List LOperand}
+    (h : cmovSpillDst? dsts opn srcs = none) :
+    legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] := by
+  simp [legalizeSpillDst, h]
+
+/-- On a mnemonic other than `CMOV:64`, `legalizeSpillDst` is the single instruction. -/
+theorem legalizeSpillDst_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
+    (h : opn ≠ "CMOV:64") : legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
+  legalizeSpillDst_of_none (cmovSpillDst?_of_ne dsts srcs h)
+
+/-- On destinations none of which is a spill slot, `legalizeSpillDst` is the single
+    instruction. -/
+theorem legalizeSpillDst_of_not_spill {dsts : List LOperand} (opn : String)
+    (srcs : List LOperand) (h : ∀ d ∈ dsts, d.isSpill = false) :
+    legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
+  legalizeSpillDst_of_none (cmovSpillDst?_of_not_spill opn srcs h)
+
+/-- **The scratch select.** A `CMOV:64` whose destination `d` is a spill slot is
+    `CMOV:64 R15, [c, t, f]; MOV:64 d, R15`. -/
+theorem legalizeSpillDst_cmov {d : LOperand} (c t f : LOperand) (hd : d.isSpill = true) :
+    legalizeSpillDst [d] "CMOV:64" [c, t, f]
+      = [.Lopn [.reg reloadScratch] "CMOV:64" [c, t, f],
+         .Lopn [d] "MOV:64" [.reg reloadScratch]] := by
+  simp [legalizeSpillDst, cmovSpillDst?, hd]
+
+/-- Every instruction of `legalizeSpillDst dsts opn srcs` is the instruction
+    `Lopn dsts opn srcs`, the select `Lopn [R15] opn srcs` into the scratch, or the
+    store `MOV:64 d, R15` of the scratch to a destination `d ∈ dsts`. -/
+theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List LOperand}
+    {r : LinstrR} (h : r ∈ legalizeSpillDst dsts opn srcs) :
+    r = .Lopn dsts opn srcs ∨ r = .Lopn [.reg reloadScratch] opn srcs
+      ∨ ∃ d ∈ dsts, r = .Lopn [d] "MOV:64" [.reg reloadScratch] := by
+  unfold legalizeSpillDst at h
+  split at h
+  · rename_i l hl
+    unfold cmovSpillDst? at hl
+    split at hl
+    · rename_i d c t f
+      split at hl
+      · cases hl
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+        rcases h with rfl | rfl
+        · exact Or.inr (Or.inl rfl)
+        · exact Or.inr (Or.inr ⟨d, List.mem_singleton_self _, rfl⟩)
+      · cases hl
+    · cases hl
+  · exact Or.inl (List.mem_singleton.mp h)
+
 
 /-- A `physBody` variant that:
 
@@ -760,8 +854,11 @@ theorem legalizeMemStoreK_const {c : Nat} {b i : String} {val : LOperand} (dArr 
                        (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                   else
                     [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
+              -- A `CMOV:64` into a spill slot selects in `R15` and stores the
+              -- scratch to the slot (`legalizeSpillDst`).
               | .Lopn dsts opn srcs =>
-                  [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+                  (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
+                    (fun r => ⟨i.li_ii, r⟩)
               | other => [⟨i.li_ii, other⟩]
         -- Native immediate shift / rotate (`ROR:n` / `SHL:n` / …): one-source
         -- in-place op. Route a spilled operand through R15 (spill legalize).
@@ -956,7 +1053,8 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
                 else
                   [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
             | .Lopn dsts opn srcs =>
-                [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+                (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
+                  (fun r => ⟨i.li_ii, r⟩)
             | other => [⟨i.li_ii, other⟩]
       -- Native immediate shift / rotate (`ROR:n` / `SHL:n` / …): one-source
       -- in-place op. Route a spilled operand through R15 (spill legalize).
@@ -1123,7 +1221,8 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
                 else
                   [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
             | .Lopn dsts opn srcs =>
-                [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+                (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
+                  (fun r => ⟨i.li_ii, r⟩)
             | other => [⟨i.li_ii, other⟩]
       | .Lopn [d] opn [s] =>
           if isNativeShiftRotate opn then
