@@ -42,7 +42,10 @@ states that agree on the entry registers it was given, for any memory contents
 and any values in the other registers. Registers and memory evolve by
 `JasminLsem.lsemStep`. That model has no flags, so the back-edge's
 `CMP ctr, 0; jnz` is given its x86 meaning directly (branch while the counter is
-non-zero), and the model's memory is keyed by base register name, which the
+non-zero); a symbol-base load `LOADSYM d <- sym` writes the link-time address of
+`sym`, held in the register map under the symbol's name, so a `.rodata` table
+is public data exactly when its symbol is among the entry registers; and the
+model's memory is keyed by base register name, which the
 analysis never trusts: every loaded value is secret. The printer's rendering of
 the `qsave.*` spill registers as fixed stack slots, and the printer itself, are
 outside the statement.
@@ -1033,10 +1036,27 @@ def instrAddrLeak {w : Nat} (s : Lstate w) (i : LinstrR) : List (AddrEvent w) :=
     | .Lopn ds _ ss => (ds ++ ss).flatMap (operandAddr s)
     | _ => [])
 
-/-- One straight-line step: `lsemStep`, with an instruction `lsemStep` does not
-    model (a flag-only compare) leaving registers and memory unchanged. -/
-def stepT {w : Nat} (i : LinstrR) (s : Lstate w) : Lstate w :=
+/-- One `lsemStep` step, with an instruction `lsemStep` does not model (a
+    flag-only compare) leaving registers and memory unchanged. -/
+def stepL {w : Nat} (i : LinstrR) (s : Lstate w) : Lstate w :=
   (lsemStep i s).getD s.nextPc
+
+/-- The destination and the symbol of a `.rodata` symbol-base load
+    `LOADSYM d <- sym` (`.Lopn [.reg d] "LOADSYM" [.arr sym _]`, printed
+    `leaq sym(%rip), d`). -/
+def symLoad? : LinstrR → Option (String × String)
+  | .Lopn [.reg d] op [.arr sym _] => if op = "LOADSYM" then some (d, sym) else none
+  | _ => none
+
+/-- One straight-line step. A symbol-base load `LOADSYM d <- sym` writes the
+    link-time address of `sym` to `d`; the address is read from the register map
+    under the symbol's name, the convention by which this model holds named
+    memory cells as register entries. Every other instruction steps by
+    `stepL`. -/
+def stepT {w : Nat} (i : LinstrR) (s : Lstate w) : Lstate w :=
+  match symLoad? i with
+  | some (d, sym) => (s.setReg d (s.lvm sym)).nextPc
+  | none => stepL i s
 
 /-- The address-leak trace and final state of a straight-line instruction list. -/
 def runLeak {w : Nat} : List LinstrR → Lstate w → List (AddrEvent w) × Lstate w
@@ -1070,7 +1090,7 @@ def kill (P : List String) (d : String) : List String := P.filter (· != d)
     instruction, otherwise the registers public after it. A destination becomes
     public when every source is public and the operation writes it (or it was
     public already); a loaded value is never public. -/
-def pubInstr (P : List String) : LinstrR → Option (List String)
+def pubInstrL (P : List String) : LinstrR → Option (List String)
   | .Lopn ds op ss =>
       if (ds ++ ss).all (addrOK P) then
         match ds, ss with
@@ -1083,6 +1103,15 @@ def pubInstr (P : List String) : LinstrR → Option (List String)
   | .Lalign => some P
   | .Lret => some P
   | _ => none
+
+/-- The public-register transfer of one straight-line instruction under
+    `stepT`: a symbol-base load `LOADSYM d <- sym` makes `d` public exactly when
+    the symbol `sym` is in `P` (its address is public data); every other
+    instruction is transferred by `pubInstrL`. -/
+def pubInstr (P : List String) (i : LinstrR) : Option (List String) :=
+  match symLoad? i with
+  | some (d, sym) => some (if sym ∈ P then d :: P else kill P d)
+  | none => pubInstrL P i
 
 /-- The public-register transfer of a straight-line list. -/
 def pubRun (P : List String) : List LinstrR → Option (List String)
@@ -1144,46 +1173,47 @@ theorem instrAddrLeak_agree {w : Nat} {P : List String} {s₁ s₂ : Lstate w}
 
 /-- Over a source list not headed by a register-indexed operand, a
     single-register-destination step writes `applyOpn`'s result, or nothing. -/
-theorem stepT_reg {w : Nat} (s : Lstate w) (d op : String) (ss : List LOperand)
+theorem stepL_reg {w : Nat} (s : Lstate w) (d op : String) (ss : List LOperand)
     (hss : ∀ b ix sc rest, ss ≠ .arrIdx b ix sc :: rest) :
-    stepT (.Lopn [.reg d] op ss) s
+    stepL (.Lopn [.reg d] op ss) s
       = match applyOpn (stripWidthTag op) (ss.map (evalOperand s)) with
         | some v => (s.setReg d v).nextPc
         | none => s.nextPc := by
   rcases ss with _ | ⟨o, rest⟩
-  · simp only [stepT, lsemStep]
+  · simp only [stepL, lsemStep]
     split <;> (rename_i h; simp only [h, Option.getD_some, Option.getD_none])
   · cases o with
     | arrIdx b ix sc => exact absurd rfl (hss b ix sc rest)
     | _ =>
-        simp only [stepT, lsemStep]
+        simp only [stepL, lsemStep]
         split <;> (rename_i h; simp only [h, Option.getD_some, Option.getD_none])
 
 /-- A step headed by a register-indexed operand changes no register but `d`,
     and changes none when the opcode is `STOREIDX`. -/
-theorem stepT_arrIdx_lvm {w : Nat} (s : Lstate w) (d op b ix : String) (sc : Nat)
+theorem stepL_arrIdx_lvm {w : Nat} (s : Lstate w) (d op b ix : String) (sc : Nat)
     (rest : List LOperand) :
-    (∀ r, r ≠ d → (stepT (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm r = s.lvm r)
+    (∀ r, r ≠ d → (stepL (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm r = s.lvm r)
       ∧ (op = "STOREIDX" →
-          (stepT (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm = s.lvm) := by
+          (stepL (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm = s.lvm) := by
   refine ⟨fun r hr => ?_, fun hop => ?_⟩
-  · simp only [stepT, lsemStep]
+  · simp only [stepL, lsemStep]
     split_ifs
     · simp [Lstate.nextPc, hr]
     · split <;> rfl
     · split <;> simp [Lstate.nextPc, hr]
   · subst hop
-    simp only [stepT, lsemStep, if_neg (by decide : ("STOREIDX" : String) ≠ "LOADIDX"), if_true]
+    simp only [stepL, lsemStep, if_neg (by decide : ("STOREIDX" : String) ≠ "LOADIDX"), if_true]
     split <;> rfl
 
-/-- One accepted instruction leaks the same observations from two states that
-    agree on `P`, and leaves them agreeing on the transferred set. -/
-theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i : LinstrR)
-    (hi : pubInstr P i = some P') (h : Agree P s₁ s₂) :
-    instrAddrLeak s₁ i = instrAddrLeak s₂ i ∧ Agree P' (stepT i s₁) (stepT i s₂) := by
+/-- An instruction accepted by `pubInstrL` leaks the same observations from two
+    states that agree on `P`, and leaves them agreeing on the transferred set
+    under `stepL`. -/
+theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i : LinstrR)
+    (hi : pubInstrL P i = some P') (h : Agree P s₁ s₂) :
+    instrAddrLeak s₁ i = instrAddrLeak s₂ i ∧ Agree P' (stepL i s₁) (stepL i s₂) := by
   cases i with
   | Lopn ds op ss =>
-      simp only [pubInstr] at hi
+      simp only [pubInstrL] at hi
       by_cases hok : (ds ++ ss).all (addrOK P) = true
       · rw [if_pos hok] at hi
         refine ⟨instrAddrLeak_agree h ds op ss hok, ?_⟩
@@ -1191,8 +1221,8 @@ theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i 
         · obtain ⟨d, rfl⟩ := hd
           by_cases hss : ∃ b ix sc rest, ss = .arrIdx b ix sc :: rest
           · obtain ⟨b, ix, sc, rest, rfl⟩ := hss
-            obtain ⟨h₁a, h₁b⟩ := stepT_arrIdx_lvm s₁ d op b ix sc rest
-            obtain ⟨h₂a, h₂b⟩ := stepT_arrIdx_lvm s₂ d op b ix sc rest
+            obtain ⟨h₁a, h₁b⟩ := stepL_arrIdx_lvm s₁ d op b ix sc rest
+            obtain ⟨h₂a, h₂b⟩ := stepL_arrIdx_lvm s₂ d op b ix sc rest
             by_cases hop : op = "STOREIDX"
             · simp only [hop, if_true, Option.some.injEq] at hi; subst hi
               exact agree_of_lvm h (h₁b hop) (h₂b hop)
@@ -1207,7 +1237,7 @@ theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i 
               · cases o with
                 | arrIdx b ix sc => exact absurd rfl (hss b ix sc rest)
                 | _ => exact hi
-            rw [stepT_reg s₁ d op ss hss, stepT_reg s₂ d op ss hss]
+            rw [stepL_reg s₁ d op ss hss, stepL_reg s₂ d op ss hss]
             by_cases hpub : (ss.all (pubOperand P) &&
                 (decide (d ∈ P) || totalOp (stripWidthTag op) ss.length)) = true
             · rw [if_pos hpub, Option.some.injEq] at hi'; subst hi'
@@ -1233,7 +1263,7 @@ theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i 
               refine agree_kill d h (fun r hr => ?_) (fun r hr => ?_) <;>
                 (split <;> simp [Lstate.nextPc, hr])
         · push Not at hd
-          have hst : ∀ s : Lstate w, stepT (.Lopn ds op ss) s = s.nextPc := by
+          have hst : ∀ s : Lstate w, stepL (.Lopn ds op ss) s = s.nextPc := by
             intro s
             rcases ds with _ | ⟨o, _ | ⟨o2, rest⟩⟩
             · rfl
@@ -1252,12 +1282,48 @@ theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i 
           exact agree_of_lvm h rfl rfl
       · rw [if_neg hok] at hi; exact absurd hi (by simp)
   | Lalign =>
-      simp only [pubInstr, Option.some.injEq] at hi; subst hi
+      simp only [pubInstrL, Option.some.injEq] at hi; subst hi
       exact ⟨rfl, agree_of_lvm h rfl rfl⟩
   | Lret =>
-      simp only [pubInstr, Option.some.injEq] at hi; subst hi
+      simp only [pubInstrL, Option.some.injEq] at hi; subst hi
       exact ⟨rfl, agree_of_lvm h rfl rfl⟩
-  | _ => simp [pubInstr] at hi
+  | _ => simp [pubInstrL] at hi
+
+/-- `symLoad? i = some (d, sym)` exactly when `i` is `LOADSYM d <- sym`. -/
+theorem symLoad?_eq_some {i : LinstrR} {d sym : String} (h : symLoad? i = some (d, sym)) :
+    ∃ k, i = .Lopn [.reg d] "LOADSYM" [.arr sym k] := by
+  unfold symLoad? at h
+  split at h
+  · rename_i d' op sym' k
+    split_ifs at h with hop
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact ⟨k, by rw [hop]⟩
+  · exact absurd h (by simp)
+
+/-- One accepted instruction leaks the same observations from two states that
+    agree on `P`, and leaves them agreeing on the transferred set. -/
+theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i : LinstrR)
+    (hi : pubInstr P i = some P') (h : Agree P s₁ s₂) :
+    instrAddrLeak s₁ i = instrAddrLeak s₂ i ∧ Agree P' (stepT i s₁) (stepT i s₂) := by
+  unfold pubInstr at hi
+  unfold stepT
+  cases hs : symLoad? i with
+  | none =>
+      rw [hs] at hi
+      exact pubInstrL_sound i hi h
+  | some ds =>
+      obtain ⟨d, sym⟩ := ds
+      rw [hs, Option.some.injEq] at hi; subst hi
+      obtain ⟨k, rfl⟩ := symLoad?_eq_some hs
+      refine ⟨rfl, ?_⟩
+      dsimp only
+      by_cases hsym : sym ∈ P
+      · rw [if_pos hsym, h sym hsym]
+        exact agree_setReg d _ h
+      · rw [if_neg hsym]
+        refine agree_kill d h (fun r hr => ?_) (fun r hr => ?_) <;>
+          simp [Lstate.nextPc, hr]
 
 /-- An accepted straight-line list leaks the same observations from two states
     that agree on `P`, and leaves them agreeing on the transferred set. -/
@@ -1524,6 +1590,19 @@ theorem publicIndexLoop_accepted : rolledCheck ["RDI"] publicIndexLoop = true :=
 
 /-- The analysis rejects a load indexed by a loaded (secret) value. -/
 theorem secretIndexLoop_rejected : rolledCheck ["RDI"] secretIndexLoop = false := by decide
+
+/-- The counter-indexed loop with a second load from the table `TBL`, whose base
+    `R14` is set by the symbol-base load `LOADSYM R14 <- TBL` in the prologue. -/
+def symTableLoop : RolledShape :=
+  { publicIndexLoop with
+    pre := .Lopn [.reg "R14"] "LOADSYM" [.arr "TBL" 0] :: publicIndexLoop.pre
+    body := publicIndexLoop.body ++ [.Lopn [.reg "RDX"] "LOADIDX" [.arrIdx "R14" "RBX" 8]] }
+
+/-- The analysis accepts the table load when the symbol `TBL` is public. -/
+theorem symTableLoop_accepted : rolledCheck ["RDI", "TBL"] symTableLoop = true := by decide
+
+/-- The analysis rejects the table load when the symbol `TBL` is not public. -/
+theorem symTableLoop_rejected : rolledCheck ["RDI"] symTableLoop = false := by decide
 
 end RolledCT
 

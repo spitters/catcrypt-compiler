@@ -6,6 +6,9 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Jasmin.KeccakJincImport
+public import CatCrypt.Crypto.Jasmin.JincToLowCT
+public meta import CatCrypt.Crypto.Jasmin.KeccakJincImport
+public meta import CatCrypt.Crypto.Jasmin.JincToLowCT
 
 /-!
 # Emit the imported Keccak-f[1600]
@@ -25,6 +28,10 @@ The round loop is kept rolled (`KeccakJincImport.keccakF1600RolledAsm`);
 permutation `keccak_f1600_x4` (`keccakF1600X4RolledAsm`) to
 `bench/keccak_compare/gen_com/keccak_f1600_x4_jinc.s`; it exits non-zero when the
 round loop was not kept rolled or the text holds a printer sentinel.
+
+`keccakF1600_constant_time` states constant time of the rolled rendering over
+`JincToLowCT.RolledCT.rolledLeak`, from the pointer registers and the address of
+the round-constant table.
 
 ```
 lake exe keccak-jinc-emit [--unrolled | --sponge | --x4]
@@ -57,6 +64,61 @@ def isInstrLine (l : String) : Bool :=
     unresolved operand. -/
 def hasSentinel (asm : String) : Bool :=
   ["UNHANDLED", "<UNKNOWN", "<BAD", "<ARR:", "<NOTZMM"].any fun s => (asm.splitOn s).length > 1
+
+/-- The program the owned printer receives for the rolled `keccak_f1600`
+    (`JincElab.emitJFunRolledAsm`): `rolledLprog` with the round-constant table,
+    then `ownedLprog`, `rorxLprog` and `ymmIndexFoldLprog`. -/
+def keccakF1600Lprog : Option CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog :=
+  match KeccakJincImport.keccakF1600Rolled with
+  | .ok r => (JincElab.rolledLprog r.fn r.tables KeccakJincImport.keccakF1600Sym).map fun p =>
+      JincElab.ymmIndexFoldLprog (JincElab.rorxLprog
+        (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p))
+  | .error _ => none
+
+/-- The public-register analysis accepts the compiled rolled `keccak_f1600` from
+    the pointer arguments `RDI` (output) and `RSI` (input state) and the symbol
+    `KECCAK1600_RC`, the address of the round-constant table. -/
+theorem keccakF1600Lprog_check :
+    keccakF1600Lprog.map (JincToLowCT.RolledCT.rolledLprogCheck ["RDI", "RSI", "KECCAK1600_RC"])
+      = some true := by
+  native_decide
+
+/-- **Constant time of the rolled Keccak-f[1600].** The compiled `keccak_f1600`
+    exists, its render is the text `main` writes (`keccakF1600RolledAsm`), and
+    every function body in it is a rolled counted loop whose address-leak trace
+    (`RolledCT.rolledLeak`: the instructions executed, the effective address of
+    every register-indexed load and store, and each back-edge direction) is the
+    same from any two states that agree on `RDI`, `RSI` and `KECCAK1600_RC`. The
+    first two are the output and input pointers. `KECCAK1600_RC` holds the
+    link-time address of the `.rodata` table of the 24 round constants, which are
+    fixed by FIPS 202 and therefore public data. The state contents and every
+    other register may differ. -/
+theorem keccakF1600_constant_time :
+    ∃ p, keccakF1600Lprog = some p ∧
+      KeccakJincImport.keccakF1600RolledAsm
+        = CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+            p none true ∧
+      ∀ f ∈ p.lp_funcs, ∃ r : JincToLowCT.RolledCT.RolledShape,
+        r.toBody = f.2.lfd_body.map (·.li_i) ∧
+        ∀ (w fuel : Nat) (s₁ s₂ : CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem.Lstate w),
+          JincToLowCT.RolledCT.Agree ["RDI", "RSI", "KECCAK1600_RC"] s₁ s₂ →
+            JincToLowCT.RolledCT.rolledLeak r fuel s₁
+              = JincToLowCT.RolledCT.rolledLeak r fuel s₂ := by
+  have h := keccakF1600Lprog_check
+  cases hp : keccakF1600Lprog with
+  | none => rw [hp] at h; exact absurd h (by simp)
+  | some p =>
+      rw [hp, Option.map_some, Option.some.injEq] at h
+      refine ⟨p, rfl, ?_, JincToLowCT.RolledCT.rolledLprog_pub_determined _ p h⟩
+      unfold keccakF1600Lprog at hp
+      unfold KeccakJincImport.keccakF1600RolledAsm JincElab.emitJFunRolledAsm
+      split at hp
+      · rename_i r hr
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp hp
+        rw [hr]
+        dsimp only
+        rw [hq]
+      · exact absurd hp (by simp)
 
 end CatCrypt.Crypto.Jasmin.KeccakJincEmit
 
