@@ -2997,6 +2997,7 @@ def veirModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirCorrect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirSemantics,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirShifts,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirWf,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_EcPoly,

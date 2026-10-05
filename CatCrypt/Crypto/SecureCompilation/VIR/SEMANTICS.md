@@ -164,24 +164,44 @@ a division instruction.
 ## Layer 6: the VeIR bridge
 
 The bridge (`VIR/ComToVeir.lean`, `VIR/ComToVeir_JasminDialect.lean`,
-`VIR/ComToVeir_CatCryptDialect.lean`, `VIR/ComToVeirSemantics.lean`) translates a `Com`
-to VeIR operations. VeIR's interpreter returns `Interp` (fail, undefined behaviour or
-a value), and its integers are `LLVM.Int w` (a value or poison). The first table
-judges the bridge against LLVM; the second lists the points where VeIR's interpreter
-differs from LangRef.
+`VIR/ComToVeir_CatCryptDialect.lean`, `VIR/ComToVeirSemantics.lean`,
+`VIR/ComToVeirShifts.lean`) translates a `Com` to VeIR operations. VeIR's interpreter
+returns `Interp` (fail, undefined behaviour or a value), and its integers are
+`LLVM.Int w` (a value or poison). The first table judges the bridge against LLVM; the
+second lists the points where VeIR's interpreter differs from LangRef.
+
+`jasminDialect` has two tables of expansions. The `ToVeirOp jasminDialect` instance
+(`JasminOp.expandVeir?`) is the one the entry points of `VIR/ComToVeir.lean` use, and its
+semantic theorems cover `JasminOp.InArith`. `JasminOp.bridgeExpansion? bare`
+(`VIR/ComToVeirShifts.lean`) covers the scalar fragment `JasminOp.InBridge` and is passed
+to the builders `lowerComWfWith`, `lowerComToFuncAtWf` and `lowerComToModuleWf` as
+`bridgeExpansionOf bare`; on `JasminOp.InArith` with `bare = false` the two tables agree
+(`bridgeExpansionOf_false_of_inArith`). The rows below describe `bridgeExpansion?`
+unless they name the instance.
 
 | Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
 |---|---|---|---|---|---|
 | `add`, `sub`, `mul` | emitted without `nsw` or `nuw` (`veirBinInt`: `LLVM.Int.add`, `LLVM.Int.sub`, `LLVM.Int.mul` with default flags) | wrap | `wrapping_*` | follows LLVM | `interpretOp'_regArith` |
-| Variable shift | emitted as a compare and a select around the shift (`JasminOp.shiftSelectExpansion`), which yields 0 for an amount ≥ `w` | poison for the bare shift | panic | follows LLVM | `veirRunCom_refines` holds for every shift amount. A bare `shli` or `shrui` is correct under `ComShiftSafe` (`veirRunCom_eq`); emitting it removes two operations per shift and is planned |
-| `andn` | interpreted as poison (`veirBinInt`, arm `.andn`); `interpretOp'_regArith` excludes it | `xor a, -1` then `and` | `!a & b` | deviates, to be fixed | Defect: `VIR/ComToVeirSemantics.lean`, `veirBinInt` sends `andn` to `.poison`, so the bridge theorem says nothing about a program that uses it. Fix: emit `xori` with all ones, then `andi` |
+| Variable shift, `bare = false` and the instance | emitted as a compare and a select around the shift (`JasminOp.shiftSelectExpansion`), which yields 0 for an amount ≥ `w` | poison for the bare shift | panic | follows LLVM | `veirRunComBridge_eq_denote` and `veirRunCom_eq_denote` hold for every shift amount |
+| Variable shift, `bare = true` | emitted as one `arith.shli` or `arith.shrui` | poison for an amount ≥ `w` | panic | follows LLVM | `veirRunComBare_eq` under `ComShiftSafe` (every shift amount below the width), which the front discharges from Rust's panic freedom; `veirRunComWith_bridge_refines` for every amount, VeIR's value being poison where ours is 0 |
+| `andn` | constant all ones, `arith.xori` of the first operand with it, `arith.andi` with the second (`JasminOp.andnExpansion`); the first operand is the complemented one, as in `JasminBinOp.apply .andn` | `xor a, -1` then `and` | `!a & b` | follows LLVM | `veirAndn_val`. The instance still emits one unregistered operation for `andn` (`veirBinInt`, arm `.andn`, poison), outside `JasminOp.InArith` |
+| Immediate shifts `shlImm`, `shrImm`, `sarImm` | the constant amount and `arith.shli`, `arith.shrui` or `arith.shrsi` when `n < w`; for `n ≥ w` the constant 0 (`shlImm`, `shrImm`) or `arith.shrsi` by `w - 1` (`sarImm`), so no emitted amount reaches the width | poison for an amount ≥ `w` | panic | follows LLVM | `veirShlImm_val`, `veirShrImm_val`, `veirSarImm_val` (`sshiftRight_min`) |
+| `rorImm` | `arith.shrui` by `n % w`, `arith.shli` by `w - n % w` and `arith.ori`; no operation when `n % w = 0` (`JasminOp.rorImmExpansion`) | `llvm.fshr`, amount modulo the width | `rotate_right` | follows LLVM | `veirRorImm_val`. The `arith` dialect has no rotate; VeIR interprets the funnel shifts as `llvm.intr.fshl` and `llvm.intr.fshr` of its `llvm` dialect, which the bridge does not emit |
+| `castW` | `arith.extui`, `arith.trunci`, or no operation at equal widths | `zext`, `trunc` | `as` between unsigned types | follows LLVM | `veirCastW_val` |
+| `mulhi` | second result of `arith.mului_extended` | high half of the double-width product | `widening_mul` high word | follows LLVM | `umulHigh_val` |
+| `cmp`, `cmpImm` | `arith.cmpi`, against a constant for `cmpImm` | `icmp` | `bool` | follows LLVM | `icmp_val` |
+| `select` | `arith.select` | `select`: poison in the arm not picked does not propagate | `if` | follows LLVM | `select_val`, `select_refines` |
+| `addCarryLo`, `addCarryHi` | the carry zero-extended to the word; two `arith.addi` for the word, two `arith.addui_extended` and `arith.ori` of their flags for the carry-out | two `uadd.with.overflow` and `or` | `carrying_add` | follows LLVM | `veirAddCarryLo_val`, `veirAddCarryHi_val` (`carryOutBit_eq_or`). `arith.addui_extended` takes no carry-in, so no single operation matches |
 | `bitToSword` | emitted as `arith.extsi` | `sext` of `i1` | as layer 3 | follows LLVM | by definition of the translation |
-| `cmp`, `bvEq` | emitted as `arith.cmpi` | `icmp` | `bool` | follows LLVM | outside `JasminOp.InArith`: no semantic theorem yet |
+| `bvEq` | emitted as `arith.cmpi` | `icmp` | `bool` | follows LLVM | `catCryptDialect`: no semantic theorem yet |
 
-Rotates, immediate shifts, carry operations, casts, select, `mulhi`, memory operations
-and loops are outside `JasminOp.InArith`; `veirRunCom_refines` does not cover them.
-This is a coverage limit of the theorem and is recorded here so that no row above is
-read as covering them.
+Memory operations (`stackLoad`, `stackStore`), calls (`extCall`, `callN`), the vector
+operations and loops are outside `JasminOp.InBridge`; the theorems of
+`VIR/ComToVeirShifts.lean` do not cover them. The block-level theorems of
+`VIR/ComToVeirWf.lean` (`interpretBlock`, `interpretFunction` on the built context) are
+stated on `JasminOp.InArith` with the instance's table and do not yet cover
+`bridgeExpansionOf`. These are coverage limits of the theorems and are recorded here so
+that no row above is read as covering them.
 
 | Operation | VeIR (declaration) | LLVM | Status | Consequence for us |
 |---|---|---|---|---|
@@ -203,7 +223,10 @@ The rows with status "deviates, to be fixed", in the order of the layers:
 2. `bvAdc`: carry-in wider than one bit.
 3. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
 4. Memory alignment: no predicate and no theorem.
-5. Bridge: `andn` interpreted as poison.
+5. Bridge: the `ToVeirOp jasminDialect` instance does not use
+   `JasminOp.bridgeExpansion?`, so the entry points of `VIR/ComToVeir.lean` still emit
+   `andn`, the rotate, the immediate shifts and the carry words as unregistered
+   operations.
 
 A change that adds an operation to a dialect, a machine model or the bridge adds its
 row here in the same change.
