@@ -969,18 +969,27 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · exact (hH _ _ rfl).elim
     all_goals rfl
 
-/-- The symbolic description of `lsemStepSh`: the structured `SAR` is outside the
-    fragment. -/
+/-- The symbolic description of `lsemStepSh`: the structured `SAR d, [s, imm n]` is the
+    immediate-shift term `shImm "SAR" n` of its source, the term of the count-in-name
+    `SAR:n` with `n` positive. -/
 def symSh (x : LinstrR) (R : String → STerm) : ROut :=
   match sarStruct? x with
-  | some _ => .unk
+  | some (d, s, n) => .set d (.shImm "SAR" n (R s)) []
   | none => symN x R
 
 theorem symSh_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepSh x) R (symSh x R) := by
   intro V A C O r hr
   unfold symSh
   split
-  · trivial
+  · rename_i d s n h
+    have hstep : lsemStepSh x r
+        = some ((r.setReg d (BitVec.sshiftRight (r.lvm s).2 n)).nextPc) := by
+      simp only [lsemStepSh, h, readReg_reg]
+    refine ⟨fun r' h' => ?_, fun _ => by simp [hstep]⟩
+    rw [hstep] at h'
+    refine ⟨fun g hg => by simp at hg, ?_⟩
+    rw [← Option.some.inj h', hr s]
+    simp [STerm.ev, applyImmShiftN]
   · rename_i h
     have := symN_sound x R V A C O r hr
     simpa only [ROut.Desc, lsemStepSh_of_not_sar x r h] using this
@@ -1096,19 +1105,28 @@ theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x)
             have := symSh_sound x R V A C O r hr
             simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
 
+/-- The term of `x` zero-extended or truncated to width `w`: the `OR` at width `w` of the
+    zero word and `x`, whose second source `STerm.ev` reads at width `w` (`extW`). -/
+def castT (w : Nat) (x : STerm) : STerm := .bin "OR" (.immW w 0) x
+
+theorem castT_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (w : Nat)
+    (x : STerm) : ((castT w x).ev V A C O).2 = (x.ev V A C O).2.zeroExtend w := by
+  simp [castT, STerm.ev, binW, applyOpnN, extW]
+
 /-- The symbolic description of `lsemStepCast`: an untagged immediate move with a descriptor
-    `w'` sets its destination to the immediate at width `w'`; a cast with a descriptor is
-    outside the fragment. -/
+    `w'` sets its destination to the immediate at width `w'`; a cast `d, a` with a
+    descriptor `w'` sets its destination to `castT w' (R a)`, the source zero-extended or
+    truncated to width `w'`. -/
 def symCast (i : LinstrRT) (R : String → STerm) : ROut :=
   match castStruct? i.1 with
   | none =>
       match movImmStruct? i.1, i.2 with
       | some (d, n), some w' => .set d (.immW w' n) []
       | _, _ => symMC i.1 R
-  | some _ =>
+  | some (d, a) =>
       match i.2 with
       | none => symMC i.1 R
-      | some _ => .unk
+      | some w' => .set d (castT w' (R a)) []
 
 theorem symCast_sound (i : LinstrRT) (R : String → STerm) :
     RSound (lsemStepCast i) R (symCast i R) := by
@@ -1132,12 +1150,21 @@ theorem symCast_sound (i : LinstrRT) (R : String → STerm) :
         refine ⟨fun r' h' => ?_, fun _ => by simp [hstep]⟩
         rw [hstep] at h'
         exact ⟨fun g hg => by simp at hg, (Option.some.inj h').symm⟩
-  | some _ =>
+  | some p =>
+    obtain ⟨d, a⟩ := p
     cases hd : i.2 with
     | none =>
       have := symMC_sound i.1 R V A C O r hr
       simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inr hd)] using this
-    | some _ => trivial
+    | some w' =>
+      have hstep : lsemStepCast i r
+          = some ((r.setReg d ((r.lvm a).2.zeroExtend w')).nextPc) := by
+        simp only [lsemStepCast, hc, hd, readReg_reg]
+      refine ⟨fun r' h' => ?_, fun _ => by simp [hstep]⟩
+      rw [hstep] at h'
+      refine ⟨fun g hg => by simp at hg, ?_⟩
+      rw [← Option.some.inj h', castT_ev, ← hr a]
+      rfl
 
 /-! ## 5. The memory layer and the flag layer -/
 

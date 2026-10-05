@@ -413,6 +413,57 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
   | .cmp c w => .Lopn [.reg dst] (withWidthTag w (cmpName c)) srcs
   | .cmpImm c w n => .Lopn [.reg dst] (withWidthTag w (cmpName c)) (srcs ++ [.imm n])
 
+/-! ### The operand widths of a general-purpose operation
+
+`opToLinstrR` writes the operand width of a general-purpose operation into its mnemonic
+only at width `64` (`withWidthTag`) and, for a cast, at the widths `16`, `32` and `64`
+(`castWMnem`). The printer and the encoder read every other mnemonic at 32 bits, so the
+text of an operation wider than a general-purpose register does not compute its value.
+`opWidthOk` is the condition on an operation under which that reading is defined, and
+`comWidthsOk` is the condition on a program. -/
+
+/-- The operand widths of the general-purpose operations: the arithmetic, shift, carry,
+    multiply-high and compare operations and both widths of a cast. A constant
+    (`regConst`) and a select are not listed, because a 128- or 256-bit constant is a
+    vector constant with its own rendering. -/
+def opGpWidths : JasminOp → List Nat
+  | .regArith _ w => [w]
+  | .castW w w' => [w, w']
+  | .mulhi w => [w]
+  | .addCarryLo w => [w]
+  | .addCarryHi w => [w]
+  | .rorImm w _ => [w]
+  | .shrImm w _ => [w]
+  | .sarImm w _ => [w]
+  | .shlImm w _ => [w]
+  | .cmp _ w => [w]
+  | .cmpImm _ w _ => [w]
+  | _ => []
+
+/-- Every operand width of a general-purpose operation is at most `64`. -/
+def opWidthOk (op : JasminOp) : Bool := (opGpWidths op).all (· ≤ 64)
+
+/-- Every binding of the program satisfies `opWidthOk`. -/
+def comWidthsOk : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
+  | _, _, .ret _ => true
+  | _, _, .var e body => opWidthOk e.op && comWidthsOk body
+
+/-- An arithmetic operation at a width above `64` fails `opWidthOk`. -/
+theorem opWidthOk_regArith (bop : JasminBinOp) (w : Nat) :
+    opWidthOk (.regArith bop w) = decide (w ≤ 64) := by
+  simp [opWidthOk, opGpWidths]
+
+/-- A 128-bit arithmetic operation fails `opWidthOk`. -/
+theorem opWidthOk_regArith_128 (bop : JasminBinOp) :
+    opWidthOk (.regArith bop 128) = false := by
+  simp [opWidthOk, opGpWidths]
+
+/-- A program whose first binding fails `opWidthOk` fails `comWidthsOk`. -/
+theorem comWidthsOk_var_false {Γ : Ctxt jasminDialect} {t τ : JasminTy}
+    (e : Expr jasminDialect Γ τ) (body : Com jasminDialect (Γ.cons τ) t)
+    (h : opWidthOk e.op = false) : comWidthsOk (.var e body) = false := by
+  simp [comWidthsOk, h]
+
 /-! ## 3. Walking the `Com` term
 
 `Com jasminDialect Γ t` is an A-normal-form let-chain. We accumulate `linstr`s

@@ -118,7 +118,10 @@ theorem symSh_congr {R R' : String → STerm} {x : LinstrR}
     symSh x R = symSh x R' := by
   unfold symSh
   split
-  · rfl
+  · rename_i d s n hm
+    unfold JasminLsemShift.sarStruct? at hm
+    repeat' split at hm
+    all_goals simp_all [instrReadRegs, operandReads]
   · exact symN_congr h hl
 
 theorem symMC_congr {R R' : String → STerm} {x : LinstrR}
@@ -160,9 +163,12 @@ theorem symCast_congr {R R' : String → STerm} {i : JasminLsemCast.LinstrRT}
   · split
     · rfl
     · exact symMC_congr h hl
-  · split
+  · rename_i d a hm
+    split
     · exact symMC_congr h hl
-    · rfl
+    · unfold JasminLsemCast.castStruct? at hm
+      repeat' split at hm
+      all_goals simp_all [instrReadRegs, operandReads]
 
 /-- The words of a state other than its registers and its write lists. -/
 def SSt.Same (ss ss' : SSt) : Prop :=

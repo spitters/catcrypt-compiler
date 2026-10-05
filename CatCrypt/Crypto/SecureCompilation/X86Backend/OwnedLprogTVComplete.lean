@@ -1212,7 +1212,7 @@ theorem symCast_copy (R : String → STerm) (d x opn : String) (b : LOperand)
   | imm n =>
       simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
-      split_ifs <;> simp_all
+      split_ifs <;> simp_all [copyRegs_self]
   | arr _ _ =>
       simp only [symCast, movImmStruct?_pair]; dsimp only [castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]

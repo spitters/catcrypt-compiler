@@ -75,6 +75,8 @@ arms to the bodies of `DecodePrintedCFG`.
 * `CArm.bytes`, `sim_adcx`, `sim_adcxhi`, `MArm.bytes`, `sim_ldm`, `sim_stm`, `zBytes`,
   `sim_bmov`, `lBytes`, `sim_lmov`, `vBytes`, `sim_cmov`: the bytes and the simulations of
   the carry, cell, carry-constant, wide-immediate and register-select arms.
+* `imm32Ok`, `imm32Bytes`, `fstepA_immMov32`, `sim_imov`: an untagged immediate move that is
+  no carry constant is a 32-bit constant, held in a 32-bit cell (`NarrowCell`).
 * `vtBytes`, `sim_cmovSlot`, `vfBytes`, `sim_cmovSlotF`: the bytes and the simulations of the
   selects with a slot true value and with a slot false value.
 * `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
@@ -2549,6 +2551,74 @@ theorem sim_bmov (P : Params) (rsp : BitVec 64) (D : String) (n : Nat) (h : zOk 
       rw [if_pos rfl]
     · interval_cases n <;> decide
 
+/-- **The conditions of an untagged immediate move** `MOV D, #n`: `D` is a general-purpose
+    name and `n` is below `2 ^ 31`, the range the 32-bit `mov $n, %r32` encodes. -/
+def imm32Ok (D : String) (n : Nat) : Bool := gpOk D && decide (n < 2 ^ 31)
+
+/-- The conditions of a carry constant give those of an untagged immediate move. -/
+theorem imm32Ok_of_zOk {D : String} {n : Nat} (h : zOk D n = true) : imm32Ok D n = true := by
+  simp only [zOk, imm32Ok, Bool.and_eq_true, decide_eq_true_eq] at h ⊢
+  exact ⟨h.1, by omega⟩
+
+/-- The bytes of an untagged immediate move are those of `zPieces`, and they decode. -/
+theorem imm32Bytes (P : Params) (D : String) (n : Nat) (h : imm32Ok D n = true) :
+    encodeLopn P.frame P.spillW (.Lopn [.reg D] "MOV" [.imm n]) P.qsaveB
+        = (zPieces D n).flatMap Prod.fst
+      ∧ ∀ p ∈ zPieces D n, PieceDec p := by
+  simp only [imm32Ok, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨hD, hn⟩ := h
+  refine ⟨by simp [zPieces, encodeLopn_movImm32 _ _ _ _ _ hD hn], ?_⟩
+  intro p hp
+  simp only [zPieces, List.mem_singleton] at hp
+  subst hp
+  exact pieceDec_movImm32 _ _ (by omega)
+
+/-- At the register tag without a descriptor, the untagged move `MOV D, #n` into a register
+    `D` writes `n` at width `32` to `D`. -/
+theorem fstepA_immMov32 (frame : String → Option (BitVec 64)) (D : String) (n : Nat)
+    (s : LstateA) (zf : Bool) (hD : frame D = none) :
+    fstepA frame (.Lopn [.reg D] "MOV" [.imm n], .reg none) s zf
+      = some ({ s with reg := (s.reg.setReg D (BitVec.ofNat 32 n)).nextPc }, zf) := by
+  simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?,
+    slotImm?, slotCmov?, regStepA, hD, VIR.JasminLsemMemFlagNestJoin.fstepF,
+    VIR.JasminLsemMemFlagGuard.cmpArgs?, VIR.JasminLsemMemFlagGuard.movRegArgs?,
+    VIR.JasminLsemMemFlagGuard.stepMemF, VIR.JasminLsemMem.lsemStepMem, lsemStepCast,
+    castStruct?, movImmStruct?, VIR.JasminLsemMemFlagGuard.withALUFlags,
+    VIR.JasminLsemMemFlagGuard.aluFlagOp?, lsemStepMC, mulhiStruct?, adcxStruct?,
+    adcxhiStruct?, sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh,
+    VIR.JasminLsemShift.sarStruct?, lsemStepN]
+  rw [show widthFromTag "MOV" = 32 from by decide +kernel]
+
+/-- **The untagged immediate move as a 32-bit constant.** From `ACorrW`, the
+    address-machine step of `MOV D, #n` at the register tag without a descriptor, which
+    writes `n` at width `32` to `D`, is matched by `mov $n, %r32`, whose register holds the
+    zero-extension of the 32-bit cell (`NarrowCell`). -/
+theorem sim_imov (P : Params) (rsp : BitVec 64) (D : String) (n : Nat) (h : imm32Ok D n = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (.Lopn [.reg D] "MOV" [.imm n], .reg none) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [imm32Ok, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨hD, hn⟩ := h
+  rw [fstepA_immMov32 _ D n s zf (frameP_gp hD)] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  have hrun : aMachine.runBlock sa ((zPieces D n).map Prod.snd)
+      = evalInstrA sa (.mov (phys D) (.imm n)) := rfl
+  rw [hrun]
+  refine ⟨hc.writeN hD (BitVec.ofNat 64 n) (fun r => rfl) (fun x hx => hc.mem x hx)
+    (fun r hr => ?_) ?_, rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr]
+  · right
+    right
+    left
+    refine ⟨BitVec.ofNat 32 n, ?_, ?_⟩
+    · show (if D = D then _ else _) = _
+      rw [if_pos rfl]
+    · apply BitVec.eq_of_toNat_eq
+      simp
+      omega
+
 /-! ## 8d. The wide immediate -/
 
 /-- The immediate move `MOV:64 D, #v` of a value outside the sign-extended `imm32` range, as
@@ -3567,7 +3637,7 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
       | some (d, a, _, _) => castOk d a
       | none =>
       match movImmStruct? (.Lopn ds o ss) with
-      | some (d, n) => zOk d n
+      | some (d, n) => imm32Ok d n
       | none =>
       match classifyS (.Lopn ds o ss) with
       | some c => c.ok P
@@ -3610,21 +3680,17 @@ def carryPrevB (body : Lcmd) (k : Nat) : Bool :=
       else true
   | _ => true
 
-/-- An untagged immediate move at position `k` is a carry constant (`bitMovB`). -/
-def bitMovPosB (body : Lcmd) (k : Nat) : Bool :=
-  (body[k]?).all fun j => (movImmStruct? j.li_i).isNone || bitMovB body k j.li_i
-
 /-- **The covered printed bodies with carry chains**: decodable, ending in the return, every
-    other instruction a carry arm, a carry constant or in the fragment of `DecodePrintedCFG`,
-    every conditional branch directly after a compare, every carry-out binding directly after
-    its add, every untagged immediate move a carry constant, and every cast keeping the low
-    bits its source and destination widths give (`castPosB`). -/
+    other instruction a carry arm, an untagged immediate move or in the fragment of
+    `DecodePrintedCFG`, every conditional branch directly after a compare, every carry-out
+    binding directly after its add, and every cast keeping the low bits its source and
+    destination widths give (`castPosB`). An untagged immediate move is a carry constant where
+    `bitMovB` holds and a 32-bit constant otherwise. -/
 def printedAddrWB (body : Lcmd) : Bool :=
   decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
     && body.dropLast.all (fun i => instrOKWB body (Params.ofBody body) i.li_i)
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevB body)
-    && (List.range body.length).all (bitMovPosB body)
     && (List.range body.length).all (castPosB body)
 
 /-- `carryPrevB` with the body parameters `P` given as an argument. -/
@@ -3652,7 +3718,6 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
     && body.dropLast.all (fun i => instrOKWB body P i.li_i)
     && (List.range body.length).all (condPrevB body)
     && (List.range body.length).all (carryPrevBWith P body)
-    && (List.range body.length).all (bitMovPosB body)
     && (List.range body.length).all (castPosB body)
 
 /-- The gate `printedAddrWB` is evaluated as `printedAddrWBImpl`. -/
@@ -3717,8 +3782,6 @@ structure BodyFactsW (body : Lcmd) (shs : List DShape) : Prop where
   cond : ∀ k, k < body.length → condPrevB body k = true
   /-- Every carry-out binding follows its add. -/
   carry : ∀ k, k < body.length → carryPrevB body k = true
-  /-- Every untagged immediate move is a carry constant. -/
-  bit : ∀ k, k < body.length → bitMovPosB body k = true
   /-- Every cast keeps the low bits its source and destination widths give. -/
   cast : ∀ k, k < body.length → castPosB body k = true
 
@@ -3956,23 +4019,35 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           r ∉ carryIns (.Lopn ds o ss) → (s.reg.lvm r).1 = 64 := fun r h1 h2 h3 =>
         hsafe.1.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK])
       split at hok
-      · -- a carry constant
+      · -- an untagged immediate move: a carry constant or a 32-bit constant
         rename_i D n hmv
         have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by
           unfold movImmStruct? at hmv
           split at hmv
           · cases hmv; assumption
           · cases hmv
-        have hbit : bitMovB body k (.Lopn ds o ss) = true := by
-          have := hF.bit k hk
-          simpa [bitMovPosB, hbk?, hmv] using this
-        have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
-            = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
-          rw [tagAt, if_pos hbit, hia]
-          simp (config := { decide := true }) [normA]
-        rw [hli] at hst
-        obtain ⟨hc', -⟩ := sim_bmov P rsp D n hok sa s zf hc s' zf' hst
         have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hc' : ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' := by
+          cases hbit : bitMovB body k (.Lopn ds o ss) with
+          | true =>
+            have hz : zOk D n = true := by
+              have hb := hbit
+              simp only [bitMovB, hmv, Bool.and_eq_true, decide_eq_true_eq] at hb
+              simp only [imm32Ok, Bool.and_eq_true] at hok
+              simp [zOk, hok.1, hb.1.1]
+            have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
+                = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
+              rw [tagAt, if_pos hbit, hia]
+              simp (config := { decide := true }) [normA]
+            rw [hli] at hst
+            exact (sim_bmov P rsp D n hz sa s zf hc s' zf' hst).1
+          | false =>
+            have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
+                = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg none) := by
+              rw [tagAt_of_not hbit, hia]
+              simp (config := { decide := true }) [normA, tagA]
+            rw [hli] at hst
+            exact (sim_imov P rsp D n hok sa s zf hc s' zf' hst).1
         have hz' : isCondB (body[k + 1]'hkn).li_i = true →
             (aMachine.runBlock sa ((zPieces D n).map Prod.snd)).flags.zf.getD false = zf' := by
           intro hcnd
@@ -3987,7 +4062,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
         obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
           hsafe'
         refine ⟨sa', ?_, hC⟩
-        obtain ⟨hb, hp⟩ := zBytes P D n hok
+        obtain ⟨hb, hp⟩ := imm32Bytes P D n hok
         have hops : shs[k].ops' = (zPieces D n).map Prod.snd :=
           shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
         exact reaches_block a b hks hshk hops hR
@@ -4454,7 +4529,7 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     ∃ shs, BodyFactsW body shs := by
   simp only [printedAddrWB, Bool.and_eq_true, Option.any_eq_true, List.all_eq_true,
     List.mem_range] at h
-  obtain ⟨⟨⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩, hbit⟩, hcast⟩ := h
+  obtain ⟨⟨⟨⟨⟨hdec, r, hlast, hret⟩, hins⟩, hcond⟩, hcar⟩, hcast⟩ := h
   have hdec' := hdec
   simp only [decodableLcmd, Bool.and_eq_true] at hdec'
   obtain ⟨shs, hs⟩ := Option.isSome_iff_exists.mp hdec'.1.1.1.1.1
@@ -4463,7 +4538,7 @@ theorem bodyFactsW_of {body : Lcmd} (h : printedAddrWB body = true) :
     | nil => simp at hlast
     | cons _ _ => simp
   refine ⟨shs, ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => hcond k hk, fun k hk => hcar k hk,
-    fun k hk => hbit k hk, fun k hk => hcast k hk⟩⟩
+    fun k hk => hcast k hk⟩⟩
   · rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem (by omega)] at hlast
     obtain rfl := Option.some.inj hlast
     revert hret
@@ -4549,7 +4624,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
   obtain ⟨shs, hF⟩ := bodyFactsW_of h
   have hdec : decodableLcmd body = true := by
     simp only [printedAddrWB, Bool.and_eq_true] at h
-    exact h.1.1.1.1.1.1
+    exact h.1.1.1.1.1
   obtain ⟨hl, hsh⟩ := shapesOf_spec _ body shs hF.shapes
   set P := Params.ofBody body
   set F := P.frame

@@ -1516,7 +1516,9 @@ theorem ownedComStage_outputs (nOut : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
 /-- **The owned back end from a `Com`**: `ownedComStage` at the number of stored outputs
     `outStoreMap.length`, then `Com.toLprogPhysAbi` with the given ABI maps, then
     `renderOwned`. With `rangeIvs? = none` it is `renderOwned (Com.toLprogPhysAbi com …)`
-    (`renderOwnedCom_none`). -/
+    (`renderOwnedCom_none`). A program with a general-purpose operation wider than `64` bits
+    (`comWidthsOk`) is refused: its text is the one line `# UNHANDLED-WIDTH`, because the
+    printer reads a mnemonic without a width tag at 32 bits. -/
 def renderOwnedCom {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)
     (rangeIvs? : Option (HVector (fun _ => Iv) Γ) := none)
@@ -1529,18 +1531,38 @@ def renderOwnedCom {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false) : String :=
-  renderOwned (Com.toLprogPhysAbi (ownedComStage outStoreMap.length rangeIvs? com) fname
-    shiftImm immSlotMap inLoadMap outStoreMap abiArgs abiTyin residence abiW forceLivePin)
+  if comWidthsOk (ownedComStage outStoreMap.length rangeIvs? com) then
+    renderOwned (Com.toLprogPhysAbi (ownedComStage outStoreMap.length rangeIvs? com) fname
+      shiftImm immSlotMap inLoadMap outStoreMap abiArgs abiTyin residence abiW forceLivePin)
+  else "\t# UNHANDLED-WIDTH " ++ fname ++ "\n"
 
 theorem renderOwnedCom_none {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String) (shiftImm : ShiftImmOracle)
     (immSlotMap : ImmSlotMap) (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap)
     (abiArgs : List String) (abiTyin : List Nat) (residence : Option (Array Nat))
-    (abiW : Nat) (forceLivePin : Bool) :
+    (abiW : Nat) (forceLivePin : Bool) (hw : comWidthsOk com = true) :
     renderOwnedCom com fname none shiftImm immSlotMap inLoadMap outStoreMap abiArgs abiTyin
         residence abiW forceLivePin =
       renderOwned (Com.toLprogPhysAbi com fname shiftImm immSlotMap inLoadMap outStoreMap
-        abiArgs abiTyin residence abiW forceLivePin) := rfl
+        abiArgs abiTyin residence abiW forceLivePin) := by
+  unfold renderOwnedCom
+  rw [show ownedComStage outStoreMap.length none com = com from rfl, if_pos hw]
+
+/-- **The width gate of the owned back end.** A program handed to the exporter with a
+    general-purpose operation wider than `64` bits has the one-line text `# UNHANDLED-WIDTH`,
+    and no instruction is printed for it. -/
+theorem renderOwnedCom_refuse {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (fname : String)
+    (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (shiftImm : ShiftImmOracle)
+    (immSlotMap : ImmSlotMap) (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap)
+    (abiArgs : List String) (abiTyin : List Nat) (residence : Option (Array Nat))
+    (abiW : Nat) (forceLivePin : Bool)
+    (hw : comWidthsOk (ownedComStage outStoreMap.length rangeIvs? com) = false) :
+    renderOwnedCom com fname rangeIvs? shiftImm immSlotMap inLoadMap outStoreMap abiArgs
+        abiTyin residence abiW forceLivePin = "\t# UNHANDLED-WIDTH " ++ fname ++ "\n" := by
+  unfold renderOwnedCom
+  rw [hw]
+  rfl
 
 end ComStage
 
