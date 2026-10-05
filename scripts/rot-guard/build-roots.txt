@@ -599,7 +599,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.HgcongrDialectLeaves
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelect
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
-CatCrypt.Crypto.SecureCompilation.VIR.IsaMachine
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
@@ -853,6 +852,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
+CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
