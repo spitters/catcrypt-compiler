@@ -210,9 +210,9 @@ CatCrypt.Crypto.Primitives.HMAC_SHA512
 CatCrypt.Crypto.Primitives.RandomOracle
 CatCrypt.Crypto.Primitives.SHA256Rounds
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
+CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmSim
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmElfObject
-CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMach
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmSha256Kernel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
@@ -476,7 +476,7 @@ CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvMulLsem
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.EncoderDiffAudit
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvSha256Kernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvX25519FieldKernel
-CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
+CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvAsmSim
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
@@ -790,6 +790,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddAffine
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519BytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519PointKernel
+CatCrypt.Crypto.SecureCompilation.X86Backend.EffAddr
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertComplete
@@ -903,6 +904,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
+CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSim
+CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSimImage
 CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst
