@@ -80,7 +80,39 @@ site through call, callee and return in at most `B + 2` steps, and is one segmen
 `corresIsa_of_labels_floyd`. Example: `call_corresIsa` (`Ascent/Demos/KrakenCallDemo`),
 a caller of a doubling procedure, twice. A return through a link register has no step
 (`Ligoto`), and the three instance records are not extended: results with calls are
-stated over `isa.withCalls`.
+stated over `isa.withCalls`. For a program without a call instruction the two machines
+give the same judgement (`corresIsa_withCalls_iff`, development tree).
+
+Programs the compiler emits (development tree, `Haxc/`). The following hold for every
+program the compile gate accepts, with no hypothesis on the individual program beyond
+the gate; all are over `x86Isa`, and none has an AArch64 or RV64 counterpart.
+
+| theorem | module | program in the square | form |
+|---|---|---|---|
+| `v1Loop_corresIsa` | `LoopCorresIsa` | the certified loop node (flag-machine chain), for every loop with `v1LoopB = true` | `CorresIsa`, fuel `nodeFuel` at the trip-count bound |
+| `jGate_straight_corresIsa`, `compileJ_straight_corresIsa` | `StraightCorresIsa` | the source's typed chain, for the four straight arms of `jGateB` | `CorresIsa`, fuel the chain length |
+| `v1Loop_image_corresIsaRun`, `v1StraightR_image_corresIsaRun`, `straightArr_image_corresIsaRun`, `straightCell_image_corresIsaRun` | `ExportedBodyCorresIsa` | the image of the printed body that the encoder consumes, without its closing return | `CorresIsaRun` (fuel per state) |
+
+In each, the specification is the denotation of the source program and the exit clause
+of the state relation is a halting run of the decoded shipped bytes. In the first two
+rows the flag-machine run and the byte run are of different programs and meet at the
+denotation; in the third they are of the same program, joined by the checker's soundness
+theorem. The generic lemma behind the first row is `corresIsa_of_node_halts_fuel`
+(`Ascent/CorresIsaNode`). Not covered: the line-gate straight arm in the third row, the
+closing return (`x86Isa` has no step at `Lret`), and a fixed fuel for the third row. No
+theorem states the gate's acceptance of a concrete program, so none of these has an
+unconditional instance.
+
+Imported Jasmin with control flow (`Ascent/JasminJumpLevel`): `compileS` compiles a
+structured program to labelled code, `compileS_run` simulates a structured run on
+`x86Isa` with fuel `stepBound`, and `corresIsa_of_bignumExec` gives `CorresIsa x86Isa`
+against `bignumExecFuel` for every body in the fragment: register-only blocks and
+zero-flag guards. Memory and carries are outside it, because the flag machine's memory
+is keyed by base name and displacement; example `sum_corresIsa`
+(`Ascent/Demos/JasminJumpDemo`).
+
+Footprints over effective addresses (`Ascent/FootprintEA`, with `Ascent/Rng`):
+`footprint_eq_footprintEA`, `read_frame_ea`, `frame_rule_ea`, `footCheckFrom_frame_ea`.
 
 Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 `fnCorres_haxEval`, `fnCorres_enc_unique`.

@@ -317,7 +317,12 @@ The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
   three use `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). No other
   extracted function has such a composition; the shipped `mpn_mul_1` loop has a
   `CorresIsaRun x86Isa` result (`mul1_corresIsaRun`) against its loop specification,
-  not against a hax extraction
+  not against a hax extraction. For every program the compile gate accepts the
+  development tree has the instruction-set judgement against the source denotation
+  (`v1Loop_corresIsa`, `jGate_straight_corresIsa`, and with the printed body as the
+  program `v1Loop_image_corresIsaRun` and its straight-arm siblings);
+  [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
+  states which program each is about and what is not covered
   ([CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference)).
 
 Transfer enters both other techniques as a proof step: descent certifies dialect
