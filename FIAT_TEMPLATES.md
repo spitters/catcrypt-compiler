@@ -36,10 +36,10 @@ Verdicts are from `compileJ` as run by the executables `field-bytes-emit` and
 `mpn-bytes-emit` and recorded in `scripts/acceptance-registry.tsv` (columns `accepted`,
 `bytes`, `ct`), or from probes of the gate where a row says so. The `compileJ` and
 `compileOf` calls the executables run are the hypotheses of the theorems named in the
-cells (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the verdict of the byte-level
+cells (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the result of the byte-level
 constant-time checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`), with `%rsp` and
 the array pointers public and the limb contents and scalar words secret; `-` means that no
-verdict is recorded.
+result is recorded.
 
 ### Fields (F1): Montgomery multiply, square, add, subtract
 
@@ -75,7 +75,7 @@ row candidate NC-FUSE).
 | ML-KEM | basemul | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) | no registry row; deferred on narrow arithmetic (below), as is ML-DSA pointwise |
 | Poseidon2 BabyBear, width 16 | permutation | `bb_poseidon2_correct_bytes` (`Haxc/Poseidon2Bytes.lean`), tied to `permute_bbParams_eq`; conditional: its `compileJ` hypothesis holds for no instance, because `plantBlk` binds 128-bit values. The 64-bit block `plantBlk64` (`plantBlk64_denote`) and the chain `bbPermChain64` (`bbPermProg64_spec'`) are in `VIR/NarrowFieldPlant64.lean` | no registry row; no route and no bytes theorem over `bbPermChain64` |
 | P-256 Jacobian | add | `p256_jacAdd_correct_bytes`, `p256_jacAddC_correct_bytes` (`Haxc/EcInstances.lean`) | `ec/p256_jacAdd`: not accepted; `compileJ` refuses the route of `p256_jacAddC_correct_bytes` at all three coordinates; the refusing conjunct is not localised |
-| P-256 Jacobian | double | `p256_jacDbl_correct_bytes`, `p256_jacDblC_correct_bytes` | `ec/p256_jacDbl`: not accepted; the gate evaluation of coordinate x of the route of `p256_jacDblC_correct_bytes` does not finish within eight minutes in the executable; no verdict |
+| P-256 Jacobian | double | `p256_jacDbl_correct_bytes`, `p256_jacDblC_correct_bytes` | `ec/p256_jacDbl`: not accepted; the gate evaluation of coordinate x of the route of `p256_jacDblC_correct_bytes` does not finish within eight minutes in the executable; no result |
 | mpn, n = 4 | add_n, sub_n, mul_1, addmul_1 | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`, every n) | accepted: 301 B, 359 B, 369 B, 499 B; `ct` yes on all four |
 | mpn, n = 8 | all four | the same four theorems | accepted: 534 B, 623 B, 614 B, 992 B; `ct` yes on all four |
 | Fp2 at BN254 | mul, sqr | `bn254_fp2_mul_correct_bytes`, `bn254_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | `tower/bn254_fp2_mul`: accepted, 13 720 B, `ct` yes; `tower/bn254_fp2_sqr`: accepted, 9008 B, `ct` yes |
