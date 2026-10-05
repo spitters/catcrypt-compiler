@@ -41,6 +41,7 @@ CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/Dialects/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/VIR/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md
+CatCrypt/Crypto/SecureCompilation/VIR/SEMANTICS.md
 CatCrypt/Crypto/SecureCompilation/X86Backend/AGENTS.md
 docs/CompilerManual.lean
 docs/ManualMain.lean

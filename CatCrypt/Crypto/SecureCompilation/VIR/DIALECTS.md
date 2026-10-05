@@ -14,6 +14,9 @@ continues through a jasmin lowering to an x86/ELF backend, with a constant-time 
 leakage framework. The op-by-op correspondence is the table in the section on
 prime-ir crypto op dialects below.
 
+The value of each operation against LLVM, MLIR `arith` and Rust, layer by layer, with
+every deviation and its discharge, is in [SEMANTICS.md](SEMANTICS.md).
+
 ## Tiers
 
 ```

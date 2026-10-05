@@ -15,6 +15,10 @@ The workspace builds against two siblings of this package, the development repos
 (CatCrypt) and the ParamTransfer package. Paths below are relative to this package
 unless the text names another package.
 
+The operation semantics that these theorems are stated over, compared with LLVM, MLIR
+`arith` and Rust at every layer, are in
+[SEMANTICS.md](CatCrypt/Crypto/SecureCompilation/VIR/SEMANTICS.md).
+
 ## Descent: the verified compiler
 
 Descent generates code from a source and proves each lowering a simulation. The

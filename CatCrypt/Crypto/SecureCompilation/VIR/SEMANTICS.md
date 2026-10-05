@@ -1,0 +1,205 @@
+# Operation semantics against LLVM, MLIR and Rust
+
+The compiler's intermediate representations are expected to follow the semantics of
+LLVM IR (LangRef) and of the MLIR `arith` dialect. This document enforces one rule:
+a deviation from LLVM semantics is either removed or stated here with its principle
+and with the side condition or theorem that discharges it. A row whose status is
+"deviates, to be fixed" names a defect and its proposed repair.
+
+Paths are relative to `CatCrypt/Crypto/SecureCompilation/` unless they start with
+`Jasmin/` (under `CatCrypt/Crypto/`) or `HaxAscent/` (package root). Declarations of
+the two dependencies, hax-lean (`Hax.*`, `UScalar.*`, `IScalar.*`) and the VeIR fork
+(`Veir.*`, `LLVM.Int.*`), are cited by name only. `w` is the bit width of an operand.
+
+## Status values
+
+| Status | Meaning |
+|---|---|
+| follows LLVM | the value equals that of the LLVM operation, or of a fixed composition of LLVM operations, wherever LLVM defines one |
+| deviates, principled | the value differs from LLVM's, or is defined where LLVM gives poison or undefined behaviour; a principle justifies it and a named condition or theorem discharges the difference |
+| deviates, to be fixed | a defect; the row gives the declaration and the proposed repair |
+| VeIR deviates from LLVM | the VeIR interpreter differs from LangRef; our semantics are judged against LangRef |
+
+## Principles
+
+Each principled row cites one of these.
+
+- P1, totality. Every denotation from `semScalar` downwards is a total function on
+  `BitVec` and `Bool`; poison and undefined behaviour do not occur, because the fronts
+  (hax from safe Rust, Jasmin) produce only programs whose LLVM counterparts are free
+  of undefined behaviour. A total value refines a poison value; `veirRunCom_refines`
+  states this for the `arith` fragment.
+- P2, shifts. A shift by an amount of at least `w` denotes 0, or the sign fill for an
+  arithmetic right shift, as Jasmin's `wshl`, `wshr` and `wsar` do. Every lowering to
+  a machine shift carries the condition that the amount is below `w`. The condition
+  holds of a source program proved panic-free, since the reference semantics of the
+  Rust operators panics on such an amount.
+- P3, overflow. Addition, subtraction and multiplication wrap modulo `2^w` in the
+  IR, which is LLVM's value without `nsw` or `nuw`. The overflow panic of checked
+  Rust arithmetic is an obligation of the front.
+- P4, memory. Memory is a total map. Bounds, separation and initialisation are safety
+  properties, discharged by static checks on the emitted block and by the absence of
+  `unsafe` in the covered source language.
+- P5, machine models. A machine model follows the manual of its instruction set. Where
+  LLVM gives poison, the defined machine value refines it, and the lowering carries
+  the condition under which machine value and IR value agree.
+
+## Reference semantics
+
+| Operation class | LLVM (LangRef section) | MLIR `arith` | Rust |
+|---|---|---|---|
+| Shift, amount ≥ `w` | poison ("shl", "lshr", "ashr") | poison (`shli`, `shrui`, `shrsi`) | panic under overflow checks; `wrapping_shl` and `wrapping_shr` reduce the amount modulo `w` (Reference, "Arithmetic and Logical Binary Operators", "Overflow") |
+| Division, remainder | zero divisor: undefined behaviour; `sdiv`, `srem` of `MIN` by −1: undefined behaviour; quotient rounds toward zero; remainder has the sign of the dividend ("udiv", "sdiv", "urem", "srem") | same (`divui`, `divsi`, `remui`, `remsi`) | panic on a zero divisor and on `MIN` divided by −1, with or without overflow checks; same rounding; `checked_div` returns `None` |
+| Add, sub, mul | wrap; poison on overflow under `nsw` or `nuw` ("add", "sub", "mul") | wrap (`addi`, `subi`, `muli`) | panic under overflow checks, wrap otherwise; `wrapping_*`, `checked_*`, `saturating_*`, `overflowing_*` method documentation |
+| Comparison, select | `i1` result ("icmp"); a poison condition gives poison, the unselected arm does not propagate ("select") | `cmpi`, `select` | `bool` |
+| Casts | "trunc .. to", "zext .. to", "sext .. to" | `trunci`, `extui`, `extsi` | `as`: truncation, zero extension of an unsigned source, sign extension of a signed source (Reference, "Type cast expressions") |
+| Rotate | amount modulo `w` ("llvm.fshl", "llvm.fshr") | none | `rotate_left`, `rotate_right`: amount modulo `w` |
+| Carry, wide multiply | "llvm.uadd.with.overflow", "llvm.umul.with.overflow"; no three-input add | `addui_extended`, `mului_extended` | `overflowing_add`, `widening_mul` |
+| Memory | out-of-bounds access and access below the stated alignment: undefined behaviour ("load", "store", "Pointer Aliasing Rules"); uninitialised memory reads as undef ("Undefined Values") | `memref.load`, `memref.store` | safe Rust: bounds-checked indexing with panic, no uninitialised read |
+| Poison, undefined behaviour | "Poison Values", "Undefined Values" | inherited | none in safe Rust |
+
+## Layer 1: hax runtime and `RustExec`
+
+The hax runtime (hax-lean, namespace `Hax`) interprets extracted Rust over `Int`.
+A name tagged with a width (`op_w w`, `op_iw w`) is the operation at that width; an
+untagged name is the operation on unbounded integers. The tables in
+`HaxAscent/RustSemantics/Arith.lean`, `HaxAscent/RustSemantics/Bitwise.lean` and
+`HaxAscent/RustSemantics/Casts.lean` relate each runtime name to the checked scalar
+operation (`UScalar.*`, `IScalar.*`), either by a proved square or by a refuted one.
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| Untagged `+ - *` | unbounded `Int` (`Hax.add`, `Hax.sub`, `Hax.mul`) | wrap | panic or wrap | deviates, principled | P3: the unbounded result equals the checked scalar result whenever that result is not a panic. `add_u_square`, `add_i_square`, `sub_u_square`, `mul_u_square`; the panic itself is `UScalar.tryMk` |
+| `wrapping_add#w`, `wrapping_mul#w`, signed forms | residue modulo `2^w` (`Hax.wrapping_add_w`, `Hax.wrapping_mul_w`, `Hax.wrapping_add_iw`) | wrap | `wrapping_*` | follows LLVM | `wrapping_add_w_u_square`, `wrapping_mul_w_u_square`, `wrapping_add_iw_square` |
+| Untagged `wrapping_add`, `wrapping_mul` at `Int` | `a + b`, `a * b` without reduction (`Hax.wrapping_add`, `Hax.wrapping_mul`) | wrap | `wrapping_*` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.wrapping_add` and `Hax.wrapping_mul` at `Int` do not wrap (`wrapping_add_u_counterexample`, `wrapping_mul_u_counterexample`). Fix: the printer emits the width-tagged name at every scalar type; the untagged instance is restricted to fixed-width carriers |
+| Untagged signed `/`, `%` | Lean `Int` division: −7 / 2 = −4, −7 % 2 = 1 (`Hax.div`, `Hax.rem`) | truncating: −3, −1 | truncating | deviates, to be fixed | Defect: hax-lean runtime, `Hax.div` and `Hax.rem` at `Int` round away from LLVM and Rust on a negative dividend (`div_i_counterexample`, `rem_i_counterexample`). Fix: `Int.tdiv` and `Int.tmod`, as `Hax.div_iw` and `Hax.rem_iw` use |
+| Zero divisor; `MIN` divided by −1 | a total value: Lean's quotient by 0 is 0 (`Hax.div`, `Hax.rem`, `Hax.div_iw`, `Hax.rem_iw`); `Hax.div_iw` wraps `MIN` divided by −1 | undefined behaviour | panic | deviates, to be fixed | Defect: no runtime division returns a panic; the checked operations `UScalar.div` and `IScalar.div` do. Fix: an `Option`-valued (panic) result on a zero divisor and on `MIN` divided by −1 |
+| `Div#iw`, `Rem#iw`, nonzero divisor, no overflow | truncating (`Hax.div_iw`, `Hax.rem_iw`) | truncating | truncating | follows LLVM | by definition (`Int.tdiv`, `Int.tmod`) |
+| `Shl#w`, `Shr#w`, amount ≥ `w` | unbounded shift, then reduction: 0 (`Hax.shl_w`, `Hax.shr_w`) | poison | panic | deviates, principled | P2. `shl_w_u_square`, `shr_w_u_square`, `shl_iw_square`, `shr_iw_square` relate the value to the checked operation wherever that operation returns |
+| Untagged `Shl`; untagged signed `Shr` | no truncation (`Hax.shl`); a negative operand shifts as 0 (`Hax.shr`) | `shl`, `ashr` | `<<`, `>>` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.shl` and `Hax.shr` at `Int` (`shl_u_counterexample`, `shl_i_counterexample`, `shr_i_counterexample`). Fix: as for untagged `wrapping_add` |
+| Shift at `UInt64`, amount ≥ 64 | Lean's `UInt64` shift, which reduces the amount modulo 64 (`Hax.shl_u64`, `Hax.shr_u64`) | poison | `wrapping_shl` | deviates, to be fixed | Defect: the value at an amount ≥ 64 differs from `Hax.shl_w 64` (0), so one Rust operator has two runtime values. Fix: one definition, or an agreement lemma under amount < 64 |
+| `rotate_right#w` | amount modulo `w` (`Hax.rotate_right_w`) | `llvm.fshr` | `rotate_right` | follows LLVM | `rotate_right_w_u_square` |
+| Untagged `rotate_right` | correct at `u64` only (`Hax.rotate_right`) | `llvm.fshr` | `rotate_right` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.rotate_right` at widths other than 64 (`rotate_right_u32_counterexample`, `rotate_right_i_counterexample`). Fix: as for untagged `wrapping_add` |
+| Casts | residue modulo `2^w` (`Hax.cast_uw`); checked scalars `UScalar.cast`, `IScalar.cast` | `trunc`, `zext`, `sext` | `as` | follows LLVM | `cast_u_square`, `cast_iu_square`, `cast_ii_square`, `cast_ui_square` |
+| `RustExec` scalar expressions | unbounded `Nat`, saturating `SSub`, unbounded `SShl` (`SExpr.evalState`, `SExpr.eval`; `Jasmin/LowCTExec.lean`) | wrap | `saturating_sub` for `SSub` | deviates, principled | `RustExec` is the referent for `saturating_sub`, counters, indices and values below `2^64` only; wrapping kernels refer to `semScalar`. `SExpr.inRange`, `SExpr.evalBV_eq_ofNat_eval`, `rustExec_semScalar_agree` |
+
+## Layer 2: LowCT `semScalar`
+
+`semScalar` (`Dialects/TranslateDialectScalarDenote.lean`) evaluates scalar
+expressions by `SExpr.evalBV` (`Jasmin/LowCTSExpr.lean`) on 64-bit words. The layer
+has one scalar type, so a truth value is the word 0 or 1.
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| `SAdd`, `SSub`, `SMul` | wrap modulo `2^64` (`SExpr.evalBV`) | wrap | `wrapping_*` | follows LLVM | P3 for the checked source operators |
+| `SShl`, `SShr`, amount ≥ 64 | 0 (`a <<< b.toNat`) | poison | panic | deviates, principled | P2. The shift arms of `SExpr.inRange` require the amount below 64 |
+| `SAsr`, amount ≥ 64 | sign fill | poison | panic | deviates, principled | P2, with the same source condition |
+| `SLt` | unsigned comparison; result the word 0 or 1 | `icmp ult`, then `zext` to `i64` | `<` on `u64`, then `as u64` | follows LLVM | a composition of two LLVM operations |
+| `RSelect`, φ-merge | second source when the selector word is nonzero (`selectWord`, `phiSelect`) | `icmp ne 0`, then `select` | `if s != 0` | follows LLVM | a composition; a lowering to `arith.select` inserts `cmpi ne 0` |
+| `SMulHiU`, `SMulHiS`, `SMulS` | high half of the unsigned or signed 128-bit product; signed low product (`sexprMulHiU`, `sexprMulHiS`) | `mul` at `i128` and `lshr` or `ashr`; `mului_extended`, `mulsi_extended` | `widening_mul` | follows LLVM | by definition |
+
+## Layer 3: the crypto and Jasmin dialects (`Com`)
+
+Denotations are in `VIR/JasminDialect.lean` and `VIR/CatCryptDialect.lean`. Neither
+dialect has a division, remainder or bit-counting operation, and `JasminCmp` has the
+predicates `eq`, `ne`, `ult`, `ule`, `ugt`, `uge` only. A division added later follows
+LLVM, with the nonzero-divisor and no-overflow guards as obligations of the front.
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| `add`, `sub`, `mul`, `and`, `or`, `xor` | wrap; bitwise (`JasminBinOp.apply`) | same without flags | `wrapping_*`, `& \| ^` | follows LLVM | P3 for the checked source operators |
+| Variable `shl`, `shr`; `bvShiftLV`, `bvShiftRV`; amount ≥ `w` | 0 (`a <<< b.toNat`, `JasminBinOp.apply`) | poison | panic | deviates, principled | P2. `ComShiftSafe` (VeIR route, `veirRunCom_eq`); `IsScalarUn` (x86 route, `lowerUn_get_dst`) |
+| Immediate `shlImm`, `shrImm`, `sarImm`; `bvShiftL`, `bvShiftR`, `bvShiftRA`; `n` ≥ `w` | 0, or sign fill for the arithmetic shift | poison | compile-time error or panic | deviates, principled | P2; the amount is static. `IsScalarUn` (`k < 64`), `shiftCount_imm` |
+| `rorImm`; `bvRor`, `bvRol` | `rotateRight n`, `rotateLeft n`: amount modulo `w` | `llvm.fshr`, `llvm.fshl` | `rotate_right`, `rotate_left` | follows LLVM | by definition |
+| `cmp` | `BitVec 1`, 1 when the relation holds (`cmpBit`, `JasminCmp.holds`); `bvEq` returns `Bool` | `icmp` to `i1`; `cmpi` | `bool` | follows LLVM | by definition |
+| `select`; `ite` | first arm when the condition is `1#1` (`selectW`) or `true` | `select` | `if` | follows LLVM | P1: no operand is poison |
+| `castW` | `zeroExtend`: zero extension or truncation | `zext`, `trunc`; `extui`, `trunci` | `as` from an unsigned source | follows LLVM | no sign-extending cast exists in `jasminDialect` |
+| `bitToSword` | all ones or 0 | `sext` of `i1`; `extsi` | `(b as iN).wrapping_neg()` | follows LLVM | emitted as `arith.extsi` by the bridge |
+| `MlirArithDialect.extui` | all ones or 0 (`VIR/MlirArithDialect.lean`) | `arith.extui` of `i1` is 0 or 1 | `b as uN` is 0 or 1 | deviates, to be fixed | Defect: `VIR/MlirArithDialect.lean`, constructor `extui`, carries the denotation of `arith.extsi` under the name of `arith.extui`. Fix: rename the constructor to `extsi` |
+| `addCarryLo`, `addCarryHi` | `a + b + cin` and its carry-out, `cin : BitVec 1` (`addCarryWord`, `carryOutBit`) | two `llvm.uadd.with.overflow` and an `or`; `addui_extended` has no carry-in | two `overflowing_add` | follows LLVM | a composition; the three-input form matches x86 `ADC`, `ADCX`, `ADOX` |
+| `bvAdd64` | `(carry, sum)`, the carry as a `w`-bit word 0 or 1 | `llvm.uadd.with.overflow`, then `zext` | `overflowing_add` | follows LLVM | a composition; the result order is (carry, sum), LLVM's is (sum, carry) |
+| `bvAdc` | carry-in `cin : BitVec w`; any nonzero value counts as 1 | carry is `i1` | `bool` | deviates, to be fixed | Defect: `VIR/CatCryptDialect.lean`, op `bvAdc`, accepts a `w`-bit carry-in and tests `cin.toNat ≠ 0`. Fix: a one-bit carry-in, as `addCarryLo` has |
+| `mulhi`; `bvMulHi` | high half of the unsigned double-width product (`mulHiW`) | `mului_extended`, high result | `widening_mul` | follows LLVM | by definition |
+| `andn` | `(~~~a) &&& b`: the first operand is complemented (`JasminBinOp.apply`) | no operation; `xor a, -1` then `and` | `!a & b` | deviates, principled | The order is that of x86 BMI1 `ANDN`; RISC-V `andn` complements the second operand. No side condition: the denotation fixes the order, and a lowering to another instruction set permutes the operands |
+| Array read and write | index reduced modulo the length; an empty array reads 0 (`stackGet`, `stackSet`, `memGetDyn`, `memSetDyn`, `memWGetDyn`) | out of bounds: undefined behaviour | panic | deviates, principled | P4. `idxOkB` and the checked step `evalInstrPMemFk` reject an index at or above the length |
+
+## Layer 4: `Lprog` and the instruction-set layer
+
+`Lprog` instructions are evaluated by `applyOpn` (`VIR/JasminLsem.lean`); the `Isa`
+record (`VIR/LprogIsa.lean`) runs them over a register file, flags and name-keyed
+arrays (`LstateM`, `VIR/JasminLsemMem.lean`).
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| Two-source `SHL`, `SHR`, amount ≥ `w` | 0 (`a <<< b.toNat`, `applyOpn`) | poison | panic | deviates, principled | P2, the value of layer 3 unchanged. `IsScalarUn` at the lowering to x86 |
+| Count-tagged `SHL:k`, `SHR:k`, `SAR:k` | shift by the literal `k` | poison for `k` ≥ `w` | as layer 3 | deviates, principled | P2. `IsScalarUn`, `shiftCount_imm` |
+| Count-tagged `ROL:k`, `ROR:k` | `rotateLeft k`, `rotateRight k` | `llvm.fshl`, `llvm.fshr` | `rotate_*` | follows LLVM | by definition |
+| Indexed load and store | name-keyed arrays, index as in layer 3; with the check flag, `none` out of bounds | undefined behaviour | panic | deviates, principled | P4. `idxOkB`, `evalInstrPMemFk` (`VIR/JasminLsemMemChecked.lean`) |
+
+## Layer 5: machine models
+
+x86 has the decoded-bytes machine `x86Mach` (`X86Backend/X86Isa.lean`) over the
+address memory `AMem` (`Ascent/AddrMem.lean`). ARM and RISC-V have instruction models
+with encoder and decoder round trips (`ARMBackend/ArmModel.lean`,
+`RISCVBackend/RiscvModel64.lean`, memory `Mem64` in `MachineMem64.lean`). No model has
+a division instruction.
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| x86 shifts | count reduced modulo `w`, then Jasmin's clamped shift (`shiftCount`, `wshl`, `wshr`, `wsar`; `X86Backend/JasminModel.lean`) | poison for a count ≥ `w` | `wrapping_shl` | deviates, principled | P5; the IR value (0) and the machine value agree for a count below `w`. `IsScalarUn`, `shiftCount_imm`, `lowerUn_get_dst` |
+| x86 carry, high multiply | `addCarry`, `mulHi` (`X86Backend/Model.lean`) | as layer 3 | as layer 3 | follows LLVM | the dialect definitions `carryOutBit` and `mulHiW` are stated to coincide with them |
+| ARM immediate shifts | shift by an unreduced `Nat` (`opLsl64`, `opLsr64`); the encoder writes `sh % 64` (`ARMBackend/ArmEncoder.lean`) | poison for `sh` ≥ 64 | panic | deviates, to be fixed | Defect: for `sh` ≥ 64 the model gives 0 and the encoded instruction shifts by `sh mod 64`; the instruction type admits such an `sh`. Fix: `sh : Fin 64` (and `Fin 32` for the 32-bit forms) |
+| RISC-V immediate shifts | `slli`, `srli` with `sh : Nat`, unreduced (`evalRInst64`); `encodeWord64` packs `ofNat 12 sh` unchecked | poison for `sh` ≥ 64 | panic | deviates, to be fixed | Defect: `RISCVBackend/RiscvEncoder64.lean`, `encodeWord64`: `srli d a 1024` assembles to `srai d, a, 0`; `roundtrip_RInst64` holds for `sh < 64` only. Fix: `sh : Fin 64`, an encoder total on its domain, and the round trip without the hypothesis |
+| Memory bounds | total byte map; addresses wrap modulo `2^64` (`AMem`, `Mem64`, `read64`, `write64`) | undefined behaviour | panic | deviates, principled | P4. `disciplinedB`, `Separated`, `MemSep`; `idxOkB` one layer up |
+| Memory alignment | never checked; jasminc's `is_aligned_if` assertion is dropped (`VIR/JasmincWArrayAlignment.lean`) | access below the stated alignment: undefined behaviour | references are aligned | deviates, to be fixed | Defect: no model has an alignment predicate, and no theorem states that every emitted access is aligned or that the emitted instructions have no alignment requirement. Fix: an alignment conjunct beside `idxOkB` in the checked step, or that theorem over the emitted instruction set |
+| Uninitialised read | the total map returns the stored byte (`AMem`, `Mem64`) | undef | impossible in safe Rust | deviates, principled | P4: a total memory is a conservative extension of one in which every read is initialised. No Lean theorem discharges it; it rests on the absence of `unsafe` in the covered source language |
+| Poison, undefined behaviour | none at any layer from `semScalar` down | "Poison Values", "Undefined Values" | none in safe Rust | deviates, principled | P1. `veirRunCom_refines` on the `arith` fragment (`ComInArith`) |
+
+## Layer 6: the VeIR bridge
+
+The bridge (`VIR/ComToVeir.lean`, `VIR/ComToVeir_JasminDialect.lean`,
+`VIR/ComToVeir_CatCryptDialect.lean`, `VIR/ComToVeirSemantics.lean`) translates a `Com`
+to VeIR operations. VeIR's interpreter returns `Interp` (fail, undefined behaviour or
+a value), and its integers are `LLVM.Int w` (a value or poison). The first table
+judges the bridge against LLVM; the second lists the points where VeIR's interpreter
+differs from LangRef.
+
+| Operation | Our semantics (declaration) | LLVM / MLIR | Rust | Status | Principle and discharge |
+|---|---|---|---|---|---|
+| `add`, `sub`, `mul` | emitted without `nsw` or `nuw` (`veirBinInt`: `LLVM.Int.add`, `LLVM.Int.sub`, `LLVM.Int.mul` with default flags) | wrap | `wrapping_*` | follows LLVM | `interpretOp'_regArith` |
+| Variable shift | emitted as a compare and a select around the shift (`JasminOp.shiftSelectExpansion`), which yields 0 for an amount ≥ `w` | poison for the bare shift | panic | follows LLVM | `veirRunCom_refines` holds for every shift amount. A bare `shli` or `shrui` is correct under `ComShiftSafe` (`veirRunCom_eq`); emitting it removes two operations per shift and is planned |
+| `andn` | interpreted as poison (`veirBinInt`, arm `.andn`); `interpretOp'_regArith` excludes it | `xor a, -1` then `and` | `!a & b` | deviates, to be fixed | Defect: `VIR/ComToVeirSemantics.lean`, `veirBinInt` sends `andn` to `.poison`, so the bridge theorem says nothing about a program that uses it. Fix: emit `xori` with all ones, then `andi` |
+| `bitToSword` | emitted as `arith.extsi` | `sext` of `i1` | as layer 3 | follows LLVM | by definition of the translation |
+| `cmp`, `bvEq` | emitted as `arith.cmpi` | `icmp` | `bool` | follows LLVM | outside `JasminOp.InArith`: no semantic theorem yet |
+
+Rotates, immediate shifts, carry operations, casts, select, `mulhi`, memory operations
+and loops are outside `JasminOp.InArith`; `veirRunCom_refines` does not cover them.
+This is a coverage limit of the theorem and is recorded here so that no row above is
+read as covering them.
+
+| Operation | VeIR (declaration) | LLVM | Status | Consequence for us |
+|---|---|---|---|---|
+| RISC-V dialect load and store | memory grows to contain the access, which never raises undefined behaviour (`riscvLoad`, `MemoryState.ensureSize`) | out of bounds: undefined behaviour | VeIR deviates from LLVM | a simulation between `Mem64` and `MemoryState` on RISC-V must not use VeIR as the bounds oracle |
+| Alignment | `MemoryState.llvmLoad` and `MemoryState.llvmStore` check the address against 0 and the bounds, never the alignment | undefined behaviour below the stated alignment | VeIR deviates from LLVM | agreement with VeIR gives no alignment evidence; see the alignment row of layer 5 |
+| Cast from an integer to a RISC-V register | poison maps to 0 (`LLVM.Int.toReg`) | poison | follows LLVM | a refinement of poison; listed because the register type has no poison |
+| Shifts, division, select on `LLVM.Int` | poison for an amount ≥ `w` (`LLVM.Int.shl`, `LLVM.Int.lshr`, `LLVM.Int.ashr`); undefined behaviour on a zero divisor and on `MIN` divided by −1 (`Interp.checkUnsignedDivision`, `Interp.checkSignedDivision`); `LLVM.Int.select` | same | follows LLVM | the reference for rows of layers 2 to 4 |
+| RISC-V register shifts and division | amount reduced to 6 bits (`Veir.Data.RISCV.sll`); division by zero gives all ones (`Veir.Data.RISCV.div`, `Veir.Data.RISCV.divu`); argument order `(rs2 rs1)` | instruction-set semantics | follows the RISC-V specification | P5 applies; `Veir.Data.RISCV.andn` complements `rs2`, the opposite of our `andn` |
+
+## Open repairs
+
+The rows with status "deviates, to be fixed", in the order of the layers:
+
+1. `Hax.wrapping_add`, `Hax.wrapping_mul`, `Hax.shl`, `Hax.shr`, `Hax.rotate_right`
+   at `Int`: untagged names that do not respect the width.
+2. `Hax.div`, `Hax.rem` at `Int`: rounding; every runtime division: no panic on a
+   zero divisor or on `MIN` divided by −1.
+3. `Hax.shl_u64`, `Hax.shr_u64` against `Hax.shl_w 64`, `Hax.shr_w 64`: two values
+   at an amount ≥ 64.
+4. `MlirArithDialect.extui`: misnamed sign extension.
+5. `bvAdc`: carry-in wider than one bit.
+6. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
+7. Memory alignment: no predicate and no theorem.
+8. Bridge: `andn` interpreted as poison.
+
+A change that adds an operation to a dialect, a machine model or the bridge adds its
+row here in the same change.
