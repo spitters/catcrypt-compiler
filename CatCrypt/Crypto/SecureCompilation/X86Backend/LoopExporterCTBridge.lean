@@ -511,17 +511,15 @@ theorem blockLoopFrame_lcmdDirect (d : Nat) (accReg idxReg ctr : String)
       = true := by
   unfold blockLoopFrame
   simp only [lcmdDirect_append, Bool.and_eq_true]
-  refine ⟨⟨⟨⟨⟨?_, hbody⟩, feedback_lcmdDirect _ _⟩, rfl⟩, invTouch_lcmdDirect _ _⟩, rfl⟩
+  refine ⟨⟨⟨⟨⟨⟨⟨?_, rfl⟩, rfl⟩, hbody⟩, feedback_lcmdDirect _ _⟩, rfl⟩,
+    invTouch_lcmdDirect _ _⟩, rfl, rfl⟩
   refine lcmdDirect_of_mem ?_
   intro z hz
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
-  rcases hz with rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hz with rfl | rfl | rfl
   · exact movOperand_direct _ _ _ hinit
   · rfl
   · exact movOperand_direct _ _ _ hcount
-  · rfl
-  · rfl
-  · rfl
 
 /-- The nested runtime back-edge frame around the inner-count copy `cw.1` and the
     inner body copy `w.1`. -/

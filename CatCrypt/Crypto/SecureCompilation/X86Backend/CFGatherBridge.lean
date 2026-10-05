@@ -530,7 +530,7 @@ theorem forLoopLcmd_eq_backEdgeFrame (d : Nat) (accReg : String)
           (frame1Region accReg (loopCtr d)
             (loopBodyWalk d accReg immSlotMap p.update 1)) "NZ" := by
   simp only [forLoopLcmd, backEdgeFrame, frame1Pre, frame1Region, List.append_assoc,
-    List.cons_append, List.nil_append]
+    List.cons_append, List.nil_append, List.map_cons, List.map_nil]
 
 /-! ## 6. Branch-free blocks -/
 

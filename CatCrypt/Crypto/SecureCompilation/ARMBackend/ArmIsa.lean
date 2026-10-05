@@ -130,7 +130,8 @@ def armCallerSaved : List String := armRegs ++ ["x30"]
     pointer `sp`, the return registers `x0`, `x1`, the caller-saved registers and no red zone,
     the three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at
     the width of the operation), the leakage regime `armLeaksOperands`, the alphabet
-    `armBases`, no implicit reads, and the register loop guard `cbnz ctr, top`. -/
+    `armBases`, no implicit reads, the register loop guard `cbnz ctr, top`, and the flag
+    zero-trip guard `cmp ctr, 0; b.eq endL`. -/
 def armData : IsaData where
   allocPool := armAllocPool
   scratch := ["x16", "x17"]
@@ -149,6 +150,8 @@ def armData : IsaData where
   supports := fun base => armBases.contains base
   implicitReads := fun _ => []
   loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
+  zeroTripGuard := fun ctr _ endL =>
+    [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL]
 
 /-! ## The step -/
 

@@ -15,13 +15,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import Std.Data.HashMap
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Export
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Export
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
+public import CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
 
 /-!
 # Loop export of `ComL` to `Linear.lprog`
 
 Fixed-trip, multi-binder, runtime-trip, nested and block-body loops at the `Com`
 level (`ComL`), their denotations, and their lowering to linear bodies with a
-back-edge, including leaf calls (`Lcall`) inside a loop body.
+back-edge, including leaf calls (`Lcall`) inside a loop body. Every loop lowering takes
+the instruction-set data `I : IsaData`, with default the x86 data `x86Data`, and emits its
+back edge as `I.loopGuard` and the skip of a zero runtime count as `I.zeroTripGuard`; at
+`x86Data` these are `CMP ctr, 0; jne top` and `CMP ctr, 0; je endL`. The instructions that
+touch the invariant registers are `CMP` at every `I`.
 
 ## Main definitions
 
@@ -39,6 +45,8 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 
 /-! ## 3b. Fixed-trip loops at the `Com` level (`ComL` / `comLToBody`)
 
@@ -439,7 +447,8 @@ def loopBodyWalk (d : Nat) (accReg : String) (immSlotMap : ImmSlotMap) :
     (`= runBoundedLoop`), spelled inline (this module is upstream of
     `LprogControlFlow`). **One** body copy, independent of the trip count. -/
 def forLoopLcmd (d : Nat) (accReg : String) (initOp : LOperand)
-    {accTy : JasminTy} (p : JLoopBody accTy) (immSlotMap : ImmSlotMap) : Lcmd :=
+    {accTy : JasminTy} (p : JLoopBody accTy) (immSlotMap : ImmSlotMap)
+    (I : IsaData := x86Data) : Lcmd :=
   let (bodyW, retReg) := loopBodyWalk d accReg immSlotMap p.update 1
   let feedback : Lcmd :=
     if retReg == accReg then []
@@ -450,9 +459,8 @@ def forLoopLcmd (d : Nat) (accReg : String) (initOp : LOperand)
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [.imm p.n]⟩
   , ⟨0, .Llabel .internal top⟩ ]
   ++ bodyW ++ feedback
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩
-     , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩ ]
+  ++ (⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩
+        :: (I.loopGuard ctr top).map (⟨0, ·⟩))
 
 /-! ### 3b″. Lowering the multi-binder loop (`loopBodyWalkN` / `forLoopLcmdN`)
 
@@ -572,7 +580,7 @@ def loopBodyWalkN (d : Nat) (accReg idxReg : String) (invRegs : List String)
     independent of the trip count. -/
 def forLoopLcmdN (d : Nat) (accReg : String) (initOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect} (p : JLoopBodyN accTy invTys)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let idxReg := loopIdx d
   -- Invariant base register names (the `.reg` operands; non-register seeds — an
   -- immediate constant invariant — carry no register to pin, so contribute no
@@ -599,8 +607,7 @@ def forLoopLcmdN (d : Nat) (accReg : String) (initOp : LOperand)
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩ ]
+  ++ (I.loopGuard ctr top).map (⟨0, ·⟩)
 
 /-! ### 3b‴. A real-`Lcall` leaf call inside a (multi-binder) loop body
 
@@ -637,23 +644,10 @@ emits only the call-site marshalling; **pinning the loop-carried values into
 callee-saved registers is the register allocator's obligation** — the RA must be
 told that a `loopBodyCallLcmd` site is a clobber barrier for the caller-saved
 class. Until the RA models that barrier, a body using this helper is correct
-only when the loop-carried set already lands in callee-saved registers. -/
+only when the loop-carried set already lands in callee-saved registers.
 
-/-- The System V AMD64 integer/pointer argument registers, in order. The first
-    `min n 6` call arguments are passed here; further args would spill to the
-    stack (not needed by the leaf kernels MSM/GGM call, which are ≤ 6 args). -/
-def sysvArgRegs : List String := ["RDI", "RSI", "RDX", "RCX", "R8", "R9"]
-
-/-- The System V AMD64 integer return register (where a leaf's scalar/pointer
-    result is found after the call returns). -/
-def sysvRetReg : String := "RAX"
-
-/-- The SysV AMD64 caller-saved (volatile) registers: a real `call` may clobber
-    any of these, so a value live across the call must be callee-saved or spilled.
-    Exposed so the RA / a liveness pass can treat a `loopBodyCallLcmd` site as a
-    clobber barrier for this register class. -/
-def sysvCallerSaved : List String :=
-  ["RAX", "RCX", "RDX", "RSI", "RDI", "R8", "R9", "R10", "R11"]
+The registers `sysvArgRegs`, `sysvRetReg` and `sysvCallerSaved` are defined in
+`VIR.X86IsaData`. -/
 
 /-- Emit a real-`Lcall` SysV call to the opaque leaf `sym`, marshalling the
     resolved call-argument operands `argOps` into the SysV arg registers, then
@@ -696,19 +690,9 @@ GP case where `calleeFirstPhys` can place a loop-carried GP value in
 `RBX/RBP/R12/R13`). This helper emits only the call-site marshalling; a body that
 holds a vector value across the call needs the vector-RA to insert the spill/
 reload pair. The pinning of the literal `XMM0…XMM7` marshalling names against the
-RA is provided by `isHwRegName` (extended below to include the SSE arg regs). -/
+RA is provided by `isHwRegName` (extended below to include the SSE arg regs).
 
-/-- The System V AMD64 SSE argument registers, in order. A 128/256-bit
-    (`reg 128`) call argument is passed in the first free one of these, a
-    *separate* sequence from the GP `sysvArgRegs` (a mixed arg list draws each
-    argument from its own class). Further SSE args would spill to the stack (not
-    needed by the leaves this path targets, which are ≤ 8 SSE args). -/
-def sysvSseArgRegs : List String :=
-  ["XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", "XMM6", "XMM7"]
-
-/-- The System V AMD64 SSE return register (`xmm0`): a 128-bit leaf result is
-    found here after the call returns. -/
-def sysvSseRetReg : String := "XMM0"
+The registers `sysvSseArgRegs` and `sysvSseRetReg` are defined in `VIR.X86IsaData`. -/
 
 /-- The 128-bit unaligned vector move mnemonic (`vmovdqu`) used to marshal a
     `reg 128` argument into an xmm arg register and to capture a 128-bit result
@@ -1186,7 +1170,7 @@ def comLHasLoopCall :
     call-free loop is byte-identical. -/
 def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect} (p : JLoopBodyN accTy invTys)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
@@ -1227,8 +1211,7 @@ def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩ ]
+  ++ (I.loopGuard ctr top).map (⟨0, ·⟩)
 
 /-- `forLoopLcmdN`, but the trip counter is seeded from a **runtime operand**
     `countOp` (`MOV Lctr, countOp`) instead of the static immediate `#p.n`. The
@@ -1243,7 +1226,7 @@ def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
 def forLoopLcmdNRt (d : Nat) (accReg : String) (initOp countOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
@@ -1264,17 +1247,14 @@ def forLoopLcmdNRt (d : Nat) (accReg : String) (initOp countOp : LOperand)
     ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-  , ⟨0, .Lcond (.reg "Z") endL⟩
-  , ⟨0, .Llabel .internal top⟩ ]
+  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩ ]
+  ++ (I.zeroTripGuard ctr top endL).map (⟨0, ·⟩)
+  ++ [ ⟨0, .Llabel .internal top⟩ ]
   ++ bodyW ++ feedback
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩
-     , ⟨0, .Llabel .internal endL⟩ ]
+  ++ ((I.loopGuard ctr top).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal endL⟩ ])
 
 /-! ### 3b⁗. Lowering the nested runtime loop (`forLoopLcmdNRtNested`)
 
@@ -1345,7 +1325,7 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (innerCount : Com jasminDialect (.reg 64 :: invTys) (JasminTy.reg 64))
     (innerUpdate : Com jasminDialect (accTy :: .reg 64 :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let outerIdxReg := loopIdx d
   let outerCtr := loopCtr d
   let innerD := d + 1
@@ -1372,32 +1352,27 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
   -- Seed accumulator + outer index/counter, guard the runtime outer count.
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg outerIdxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-  , ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "MOV") [outerCountOp]⟩
-  , ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "CMP") [.reg outerCtr, .imm 0]⟩
-  , ⟨0, .Lcond (.reg "Z") outerEnd⟩
-  , ⟨0, .Llabel .internal outerTop⟩ ]
+  , ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "MOV") [outerCountOp]⟩ ]
+  ++ (I.zeroTripGuard outerCtr outerTop outerEnd).map (⟨0, ·⟩)
+  ++ [ ⟨0, .Llabel .internal outerTop⟩ ]
   -- Outer body: recompute inner count, seed inner index/counter, guard.
   ++ cntW
-  ++ [ ⟨0, .Lopn [.reg innerIdxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-     , ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "MOV") [.reg cntRet]⟩
-     , ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "CMP") [.reg innerCtr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "Z") innerEnd⟩
-     , ⟨0, .Llabel .internal innerTop⟩ ]
+  ++ (⟨0, .Lopn [.reg innerIdxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
+        :: ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "MOV") [.reg cntRet]⟩
+        :: ((I.zeroTripGuard innerCtr innerTop innerEnd).map (⟨0, ·⟩)
+              ++ [ ⟨0, .Llabel .internal innerTop⟩ ]))
   -- Inner body copy + accumulator feedback.
   ++ bodyW ++ feedback
   -- Inner index advance, counter down, inner back-edge.
-  ++ [ ⟨0, .Lopn [.reg innerIdxReg] (withWidthTag 64 "ADD") [.reg innerIdxReg, .imm 1]⟩
-     , ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "SUB") [.reg innerCtr, .imm 1]⟩
-     , ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "CMP") [.reg innerCtr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") innerTop⟩
-     , ⟨0, .Llabel .internal innerEnd⟩ ]
+  ++ (⟨0, .Lopn [.reg innerIdxReg] (withWidthTag 64 "ADD") [.reg innerIdxReg, .imm 1]⟩
+        :: ⟨0, .Lopn [.reg innerCtr] (withWidthTag 64 "SUB") [.reg innerCtr, .imm 1]⟩
+        :: ((I.loopGuard innerCtr innerTop).map (⟨0, ·⟩)
+              ++ [ ⟨0, .Llabel .internal innerEnd⟩ ]))
   -- Outer index advance, counter down, invariant touches, outer back-edge.
   ++ [ ⟨0, .Lopn [.reg outerIdxReg] (withWidthTag 64 "ADD") [.reg outerIdxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "SUB") [.reg outerCtr, .imm 1]⟩ ]
   ++ outerInvTouch
-  ++ [ ⟨0, .Lopn [.reg outerCtr] (withWidthTag 64 "CMP") [.reg outerCtr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") outerTop⟩
-     , ⟨0, .Llabel .internal outerEnd⟩ ]
+  ++ ((I.loopGuard outerCtr outerTop).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal outerEnd⟩ ])
 
 /-- The inline **do-while** `Lcmd` for one `whileNz` node at depth `d` — the
     `Lcmd` image of A3's `whileLinstrRM top gReg [] (body ++ tail)` shape
@@ -1413,7 +1388,7 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
 def whileLcmdNz (d : Nat) (accReg : String) (initOp guardOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
@@ -1434,8 +1409,7 @@ def whileLcmdNz (d : Nat) (accReg : String) (initOp guardOp : LOperand)
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩ ]
+  ++ (I.loopGuard ctr top).map (⟨0, ·⟩)
 
 /-! ### 3b⁗′. Lowering the block-body runtime loop (`forLoopBlock`)
 
@@ -1491,7 +1465,7 @@ def nestBlockLoopD (d curDepth : Nat) : Nat := (d + 1) * 0x400 + (curDepth + 1) 
     share one back-edge shape. -/
 def blockLoopFrame (d : Nat) (accReg idxReg ctr : String)
     (initOp countOp : LOperand) (invRegs : List String)
-    (bodyW : Lcmd) (retReg : String) : Lcmd :=
+    (bodyW : Lcmd) (retReg : String) (I : IsaData := x86Data) : Lcmd :=
   let feedback : Lcmd :=
     if retReg == accReg then []
     else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg retReg]⟩]
@@ -1501,17 +1475,14 @@ def blockLoopFrame (d : Nat) (accReg idxReg ctr : String)
     ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-  , ⟨0, .Lcond (.reg "Z") endL⟩
-  , ⟨0, .Llabel .internal top⟩ ]
+  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩ ]
+  ++ (I.zeroTripGuard ctr top endL).map (⟨0, ·⟩)
+  ++ [ ⟨0, .Llabel .internal top⟩ ]
   ++ bodyW ++ feedback
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩
-     , ⟨0, .Llabel .internal endL⟩ ]
+  ++ ((I.loopGuard ctr top).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal endL⟩ ])
 
 /-- Walk a `forLoopBlock`'s recursive loop **body** `ComL` at outer depth `d`
     into one single-iteration `Lcmd` plus its result register name. Mirrors
@@ -1524,57 +1495,59 @@ def blockLoopFrame (d : Nat) (accReg idxReg ctr : String)
 def comLLoopBodyWalk (immSlotMap : ImmSlotMap) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     ComL Γ t → (d : Nat) → (accReg idxReg : String) → (invRegs : List String) →
-    (curDepth : Nat) → (Lcmd × String)
-  | _, _, .ret v, d, accReg, idxReg, invRegs, curDepth =>
+    (curDepth : Nat) → (I : IsaData := x86Data) → (Lcmd × String)
+  | _, _, .ret v, d, accReg, idxReg, invRegs, curDepth, _ =>
       ([], match loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap v with
             | .reg n => n
             | .imm m => toString m
             | .arr b i => b ++ "[" ++ toString i ++ "]"
             | .arrIdx b i s => b ++ "[" ++ i ++ "*" ++ toString s ++ "]")
-  | _, _, .var e body, d, accReg, idxReg, invRegs, curDepth =>
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+  | _, _, .var e body, d, accReg, idxReg, invRegs, curDepth, I =>
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (⟨0, opToLinstrR e.op (loopReg d curDepth)
             (loopExprArgsN d accReg idxReg invRegs curDepth immSlotMap e)⟩ :: rest, ret)
-  | _, _, .forLoop loop init body, d, accReg, idxReg, invRegs, curDepth =>
+  | _, _, .forLoop loop init body, d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
-      let inner := forLoopLcmd d' (loopReg d curDepth) initOp loop immSlotMap
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+      let inner := forLoopLcmd d' (loopReg d curDepth) initOp loop immSlotMap I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
-  | _, _, .forLoopN loop init invs body, d, accReg, idxReg, invRegs, curDepth =>
+  | _, _, .forLoopN loop init invs body, d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
       let invOps := loopExprArgsHVN d accReg idxReg invRegs curDepth immSlotMap invs
-      let inner := forLoopLcmdN d' (loopReg d curDepth) initOp loop invOps immSlotMap
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+      let inner := forLoopLcmdN d' (loopReg d curDepth) initOp loop invOps immSlotMap I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
-  | _, _, .forLoopNRt update count init invs body, d, accReg, idxReg, invRegs, curDepth =>
+  | _, _, .forLoopNRt update count init invs body, d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
       let countOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap count
       let invOps := loopExprArgsHVN d accReg idxReg invRegs curDepth immSlotMap invs
-      let inner := forLoopLcmdNRt d' (loopReg d curDepth) initOp countOp update invOps immSlotMap
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+      let inner :=
+        forLoopLcmdNRt d' (loopReg d curDepth) initOp countOp update invOps immSlotMap I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
   | _, _, .forLoopNRtNested innerCount innerUpdate outerCount init invs body,
-      d, accReg, idxReg, invRegs, curDepth =>
+      d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
       let outerCountOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap outerCount
       let invOps := loopExprArgsHVN d accReg idxReg invRegs curDepth immSlotMap invs
       let inner := forLoopLcmdNRtNested d' (loopReg d curDepth) initOp outerCountOp
-                      innerCount innerUpdate invOps immSlotMap
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+                      innerCount innerUpdate invOps immSlotMap I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
-  | _, _, .whileNz update guard init invs body, d, accReg, idxReg, invRegs, curDepth =>
+  | _, _, .whileNz update guard init invs body, d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
       let guardOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap guard
       let invOps := loopExprArgsHVN d accReg idxReg invRegs curDepth immSlotMap invs
-      let inner := whileLcmdNz d' (loopReg d curDepth) initOp guardOp update invOps immSlotMap
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+      let inner :=
+        whileLcmdNz d' (loopReg d curDepth) initOp guardOp update invOps immSlotMap I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
-  | _, _, .forLoopBlock loopBody count init invs body, d, accReg, idxReg, invRegs, curDepth =>
+  | _, _, .forLoopBlock loopBody count init invs body, d, accReg, idxReg, invRegs, curDepth, I =>
       let d' := nestBlockLoopD d curDepth
       let initOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap init
       let countOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap count
@@ -1582,10 +1555,10 @@ def comLLoopBodyWalk (immSlotMap : ImmSlotMap) :
       let invRegs' : List String := invOps.filterMap (fun o =>
         match o with | .reg n => some n | _ => none)
       let (bw, br) := comLLoopBodyWalk immSlotMap loopBody d' (loopReg d curDepth) (loopIdx d')
-                        invRegs' (2 + invOps.length)
+                        invRegs' (2 + invOps.length) I
       let inner := blockLoopFrame d' (loopReg d curDepth) (loopIdx d') (loopCtr d')
-                      initOp countOp invRegs' bw br
-      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1)
+                      initOp countOp invRegs' bw br I
+      let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
 
 /-- The inline block-body runtime-loop `Lcmd` for one `forLoopBlock` node at depth
@@ -1597,13 +1570,13 @@ def comLLoopBodyWalk (immSlotMap : ImmSlotMap) :
 def forLoopBlockLcmd (d : Nat) (accReg : String) (initOp countOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (loopBody : ComL (accTy :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) : Lcmd :=
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
   let (bodyW, retReg) := comLLoopBodyWalk immSlotMap loopBody d accReg idxReg invRegs
-                            (2 + invTys.length)
-  blockLoopFrame d accReg idxReg (loopCtr d) initOp countOp invRegs bodyW retReg
+                            (2 + invTys.length) I
+  blockLoopFrame d accReg idxReg (loopCtr d) initOp countOp invRegs bodyW retReg I
 
 /-- Walk a `ComL`, producing the `Lcmd` body. The `.var`/`.ret` arms are
     identical to `comToBody` (so a loop-free `ComL` emits the same straight-line
@@ -1613,17 +1586,17 @@ def forLoopBlockLcmd (d : Nat) (accReg : String) (initOp countOp : LOperand)
 def comLToBody (nArgs : Nat) (argNames : Nat → String)
     (immSlotMap : ImmSlotMap := fun _ => none) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} →
-    ComL Γ t → (curDepth : Nat) → Lcmd
-  | _, _, .ret _, _ => [⟨0, .Lret⟩]
-  | _, _, .var e body, curDepth =>
+    ComL Γ t → (curDepth : Nat) → (I : IsaData := x86Data) → Lcmd
+  | _, _, .ret _, _, _ => [⟨0, .Lret⟩]
+  | _, _, .var e body, curDepth, I =>
       ⟨0, opToLinstrR e.op (regName curDepth)
             (exprArgs curDepth nArgs argNames immSlotMap e)⟩
-        :: comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoop loop init body, curDepth =>
+        :: comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoop loop init body, curDepth, I =>
       forLoopLcmd curDepth (regName curDepth)
-          (resolveVar curDepth nArgs argNames immSlotMap init) loop immSlotMap
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoopN loop init invs body, curDepth =>
+          (resolveVar curDepth nArgs argNames immSlotMap init) loop immSlotMap I
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoopN loop init invs body, curDepth, I =>
       -- Resolve the accumulator seed and every invariant base against the
       -- enclosing context (the loop body's index is internal: `loopIdx curDepth`).
       -- A loop body that issues a leaf call (`extCall`/`callN`) is lowered with
@@ -1632,22 +1605,22 @@ def comLToBody (nArgs : Nat) (argNames : Nat → String)
       (if comBodyHasCall loop.update then
           forLoopLcmdNCall curDepth (regName curDepth)
             (resolveVar curDepth nArgs argNames immSlotMap init) loop
-            (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap
+            (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
         else
           forLoopLcmdN curDepth (regName curDepth)
             (resolveVar curDepth nArgs argNames immSlotMap init) loop
-            (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap)
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoopNRt update count init invs body, curDepth =>
+            (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I)
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoopNRt update count init invs body, curDepth, I =>
       -- Runtime-trip loop: the counter is seeded from the resolved `count`
       -- operand (`MOV Lctr, <countReg>`); the accumulator seed and invariant
       -- bases are resolved against the enclosing context exactly as `forLoopN`.
       forLoopLcmdNRt curDepth (regName curDepth)
           (resolveVar curDepth nArgs argNames immSlotMap init)
           (resolveVar curDepth nArgs argNames immSlotMap count) update
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoopNRtNested innerCount innerUpdate outerCount init invs body, curDepth =>
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoopNRtNested innerCount innerUpdate outerCount init invs body, curDepth, I =>
       -- Nested runtime loop: an inner runtime loop (top label `curDepth+1`) inside
       -- the outer runtime loop (top label `curDepth`), with the inner trip
       -- recomputed per outer pass (`nestCountWalk innerCount`). Two nested
@@ -1656,18 +1629,18 @@ def comLToBody (nArgs : Nat) (argNames : Nat → String)
           (resolveVar curDepth nArgs argNames immSlotMap init)
           (resolveVar curDepth nArgs argNames immSlotMap outerCount)
           innerCount innerUpdate
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .whileNz update guard init invs body, curDepth =>
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .whileNz update guard init invs body, curDepth, I =>
       -- Data-dependent do-while: the countdown counter is seeded from the
       -- resolved `guard` operand and bottom-tested (`whileLcmdNz` — the
       -- `whileLinstrRM` image, no zero-trip top guard).
       whileLcmdNz curDepth (regName curDepth)
           (resolveVar curDepth nArgs argNames immSlotMap init)
           (resolveVar curDepth nArgs argNames immSlotMap guard) update
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoopBlock loopBody count init invs body, curDepth =>
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoopBlock loopBody count init invs body, curDepth, I =>
       -- Block-body runtime loop: the runtime back-edge frame around ONE copy of
       -- the recursively-lowered `loopBody` (`forLoopBlockLcmd` →
       -- `comLLoopBodyWalk`), which may itself carry inner back-edges — the general
@@ -1677,8 +1650,8 @@ def comLToBody (nArgs : Nat) (argNames : Nat → String)
           (resolveVar curDepth nArgs argNames immSlotMap init)
           (resolveVar curDepth nArgs argNames immSlotMap count)
           loopBody
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap
-        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1)
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
+        ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
 
 /-- The register name of a `ComL`'s final return value (the binder the terminal
     `.ret` points at). Skips both `.var` and `.forLoop` binders. -/
@@ -1709,13 +1682,13 @@ def comLRetReg (nArgs : Nat) (argNames : Nat → String) :
     analogue of `comToLfundef`. The body is `comLToBody`, so a loop-free `ComL`
     yields the same `lfundef` as `comToLfundef` on its `Com` image. -/
 def ComL.toLfundef {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ t)
-    (immSlotMap : ImmSlotMap := fun _ => none) : Lfundef :=
+    (immSlotMap : ImmSlotMap := fun _ => none) (I : IsaData := x86Data) : Lfundef :=
   let nArgs := Γ.length
   { lfd_info := 0
     lfd_align := 1
     lfd_tyin := Γ.reverse.map tyWidth
     lfd_arg := (List.range nArgs).map argName
-    lfd_body := comLToBody nArgs argName immSlotMap c nArgs
+    lfd_body := comLToBody nArgs argName immSlotMap c nArgs I
     lfd_tyout := [tyWidth t]
     lfd_res := [comLRetReg nArgs argName c nArgs]
     lfd_export := true

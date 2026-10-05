@@ -169,6 +169,12 @@ theorem x86Isa_loopGuard (ctr : String) (top : LLabel) :
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top] :=
   rfl
 
+/-- The x86 zero-trip guard is the flag guard `CMP ctr, 0; je endL` of the loop export. -/
+theorem x86Isa_zeroTripGuard (ctr : String) (top endL : LLabel) :
+    x86Isa.zeroTripGuard ctr top endL =
+      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL] :=
+  rfl
+
 theorem x86Isa_leaksOperands (base : String) :
     x86Isa.leaksOperands base =
       ((x86MnemOfBase base).map (CT.DoitRegime.leaksOperands .doitm)).getD true := rfl

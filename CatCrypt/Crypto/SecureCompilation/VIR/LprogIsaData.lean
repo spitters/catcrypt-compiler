@@ -26,12 +26,13 @@ records.
   instructions the printer emits in tied form, which operations commute, the scratch register
   of the legaliser, the copy mnemonic at the width of an operation, the leakage regime
   `leaksOperands` (which mnemonic bases make their data operands observable), the accepted
-  mnemonic bases `supports`, the implicit register reads `implicitReads`, and the loop back
-  edge `loopGuard`.
+  mnemonic bases `supports`, the implicit register reads `implicitReads`, the loop back
+  edge `loopGuard`, and the guard `zeroTripGuard` that skips a loop whose runtime count is
+  zero.
 
 `LprogIsa.Isa` extends `IsaData` by the step semantics. The x86 values are
-`X86Backend.LprogAsmPrinter.x86Abi` and `X86Backend.TwoAddrLegalize.x86Data`, built from the
-existing x86 constants; `X86Backend.X86Isa.x86Isa` carries them.
+`X86Backend.LprogAsmPrinter.x86Abi` and `X86Backend.TwoAddrLegalize.x86Data`, defined in
+`VIR.X86IsaData`; `X86Backend.X86Isa.x86Isa` carries them.
 
 ## Main definitions
 
@@ -68,7 +69,8 @@ structure IsaAbi : Type where
   redZone : Nat := 0
 
 /-- **The data of an instruction set**: `IsaAbi` with the mnemonic data of the two-address
-    legaliser, the accepted mnemonic bases, the implicit register reads and the loop guard. -/
+    legaliser, the accepted mnemonic bases, the implicit register reads, the loop guard and
+    the zero-trip guard. -/
 structure IsaData extends IsaAbi where
   /-- Whether `Lopn [d] opn [a, b]` is printed in tied form, which requires `a = d`. -/
   tied : String → LOperand → Bool
@@ -92,5 +94,9 @@ structure IsaData extends IsaAbi where
   /-- The instructions of the loop back edge on counter register `ctr` to label `top`: branch
       to `top` when `ctr` is non-zero, fall through otherwise. -/
   loopGuard : String → LLabel → List LinstrR
+  /-- The instructions of the zero-trip guard on counter register `ctr`, placed immediately
+      before the loop label `top`, with exit label `endL`: branch to `endL` when `ctr` is
+      zero, reach `top` otherwise, by falling through or by a branch to it. -/
+  zeroTripGuard : String → LLabel → LLabel → List LinstrR
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa

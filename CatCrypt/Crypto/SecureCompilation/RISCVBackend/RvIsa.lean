@@ -129,8 +129,9 @@ def rvCallerSaved : List String :=
     callee-saved register at its index, the stack pointer `sp`, the return registers `a0`,
     `a1`, the caller-saved registers and no red zone, the three-address legaliser data (no
     tied form, the commutative bases, the copy `MOV` at the width of the operation), the
-    leakage regime `rvLeaksOperands`, the alphabet `rvBases`, no implicit reads, and the
-    register loop guard `bnez ctr, top`. -/
+    leakage regime `rvLeaksOperands`, the alphabet `rvBases`, no implicit reads, the
+    register loop guard `bnez ctr, top`, and the flagless zero-trip guard `bnez ctr, top`
+    followed by the branch on the non-zero immediate `1` to `endL`, which is always taken. -/
 def rvData : IsaData where
   allocPool := ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4"]
   scratch := ["t5", "t6"]
@@ -149,6 +150,7 @@ def rvData : IsaData where
   supports := fun base => rvBases.contains base
   implicitReads := fun _ => []
   loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
+  zeroTripGuard := fun ctr top endL => [.Lcond (.reg ctr) top, .Lcond (.imm 1) endL]
 
 /-! ## The step -/
 
@@ -1133,5 +1135,50 @@ theorem rv_and_body (P : LprogM) (n : Nat) (s : LstateMF) (b : RMState64)
       ∧ FrameM 6 s s' :=
   rv_asm_mem P rvAndArrs (fun _ => n) (rvAndBody n) rvAndCode (rvAndBody_sel n) s b hrel hmem
     hsep (rvAndBody_bounds n b hidx)
+
+/-! ## The loop export at the RV64 data -/
+
+/-- The second instruction of the RV64 zero-trip guard is always taken: the immediate `1`
+    is non-zero. -/
+theorem rvCond_imm_one (s : LstateMF) : rvCond s (.imm 1) = true := by
+  simp [rvCond, condNZ, evalOperandN]
+
+/-- **The RV64 runtime-count loop frame stays in the RV64 alphabet**: around a body of
+    control instructions and instructions of `rvBases`, and with no invariant register to
+    touch, every instruction of `blockLoopFrame` at `rvData` is a control instruction or an
+    instruction of `rvBases`. -/
+theorem rv_blockLoopFrame_alphabet (d : Nat) (accReg idxReg ctr : String)
+    (initOp countOp : LOperand) (bodyW : Lcmd) (retReg : String)
+    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i) = true) :
+    ∀ i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp [] bodyW retReg rvData,
+      (isCtl i.li_i || mnemOk rvBases i.li_i) = true := by
+  have hop : ∀ m ∈ ["MOV", "ADD", "SUB"], stripWidthTag (withWidthTag 64 m) ∈ rvBases := by
+    decide +kernel
+  have hmov := hop "MOV" (by decide)
+  have hadd := hop "ADD" (by decide)
+  have hsub := hop "SUB" (by decide)
+  intro i hi
+  simp only [blockLoopFrame, rvData, List.mem_append, List.mem_cons, List.map_cons,
+    List.map_nil, List.not_mem_nil, or_false, or_assoc] at hi
+  rcases hi with h | h | h | h | h | h | h | h | h | h | h | h <;>
+    first
+    | exact hb i h
+    | (subst h; simp_all [isCtl, mnemOk])
+    | (split at h <;> simp_all [isCtl, mnemOk])
+
+/-- **The RV64 runtime-count loop frame holds no compare**: under the hypotheses of
+    `rv_blockLoopFrame_alphabet`, no instruction of the frame has the mnemonic base `CMP`. -/
+theorem rv_blockLoopFrame_no_cmp (d : Nat) (accReg idxReg ctr : String)
+    (initOp countOp : LOperand) (bodyW : Lcmd) (retReg : String)
+    (hb : ∀ i ∈ bodyW, (isCtl i.li_i || mnemOk rvBases i.li_i) = true)
+    (i : Linstr) (hi : i ∈ blockLoopFrame d accReg idxReg ctr initOp countOp [] bodyW retReg
+      rvData) (dsts : List LOperand) (opn : String) (srcs : List LOperand)
+    (h : i.li_i = .Lopn dsts opn srcs) : stripWidthTag opn ≠ "CMP" := by
+  have hok := rv_blockLoopFrame_alphabet d accReg idxReg ctr initOp countOp bodyW retReg hb i hi
+  rw [h] at hok
+  simp only [isCtl, mnemOk, Bool.false_or] at hok
+  intro hc
+  rw [hc] at hok
+  exact absurd hok (by decide)
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa

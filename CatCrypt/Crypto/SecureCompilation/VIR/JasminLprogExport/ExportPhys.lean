@@ -28,9 +28,9 @@ the two-address lowering of one binop, and the caller-save barriers around
 
 ## Main definitions
 
-* `X86Backend.LprogAsmPrinter.x86Abi`: the x86 register file and calling convention, the
-  default `IsaAbi` of every allocator and renaming definition below, each of which reads its
-  allocation pool from the record it is given.
+* `X86Backend.LprogAsmPrinter.x86Abi` (defined in `VIR.X86IsaData`): the x86 register file
+  and calling convention, the default `IsaAbi` of every allocator and renaming definition
+  below, each of which reads its allocation pool from the record it is given.
 * `PhysEvent`, `bodyPhysTable`: the slot trace and its allocation table.
 * `physTable`, `physTableClassed`: one-class and two-class linear scan.
 * `lowerTwoAddr`: two-address lowering of a resolved binop.
@@ -74,92 +74,12 @@ on top of the same body walk, so both share `comToBody`. -/
 
 /-! ### 7a. The 13 allocatable x86-64 GP registers + 2 reserved reload scratches
 
-`register_to_string` (jasmin `x86_decl.v`) lists the 16 GP registers
-`RAX RCX RDX RBX RSP RBP RSI RDI R8 … R15`. `RSP` is the stack pointer and is
-not a general allocation target, leaving 15 usable registers. **Two** of those
-are **reserved as reload scratches**:
+The allocatable registers `gpRegNames`, the reload scratches `reloadScratch` (`R15`) and
+`reloadScratch2` (`R14`), the save slots `LprogAsmPrinter.qsaveSlot`, the callee-saved
+registers `LprogAsmPrinter.calleeSavedRegs` and the record `LprogAsmPrinter.x86Abi` are
+defined in `VIR.X86IsaData`. The physical index `0 … 12` names an allocatable register;
+`13 …` spills to the stack array `k`. -/
 
-* `R15` (`reloadScratch`) — the primary scratch, always available;
-* `R14` (`reloadScratch2`) — the secondary scratch, used when both operands of a
-  binop are memory (spill) slots so the encoding must thread *two* values
-  through scratches simultaneously.
-
-Reserving the second scratch is what closes the link 4/7 asmgen failure
-(`asmgen: can not map variable to a register`): jasmin's asmgen pass refuses to
-admit a memory `lexpr` as the destination of a non-MOV `Lopn`. Routing through
-R15/R14 keeps every spill name (`k.N`) inside a MOV-context source/dest, never
-as a binop operand.
-
-That leaves **13** allocatable registers. The physical index `0 … 12` names an
-allocatable register; `13 …` spills to the stack array `k`. -/
-
-/-- The 13 allocatable x86-64 GP register names (`RSP` excluded as the stack
-    pointer, `R15`/`R14` reserved as reload scratches), indexed by physical slot
-    `0 … 12`. -/
-def gpRegNames : List String :=
-  ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP",
-   "R8", "R9", "R10", "R11", "R12", "R13"]
-
-/-- Number of allocatable physical GP registers. -/
-def numGPRegs : Nat := gpRegNames.length
-
-/-- The primary reserved reload scratch register (`R15`): never an allocation
-    target, so it is always free to legalize a two-memory-operand x86
-    instruction. -/
-def reloadScratch : String := "R15"
-
-/-- The secondary reserved reload scratch register (`R14`): used together with
-    `reloadScratch` when **both** operands of a binop are memory (spill) slots,
-    so the binop is routed `mov R15, dst; mov R14, src; op R15, R14;
-    mov dst, R15`. Reserving this second scratch lets the reload pass keep
-    every `k.N` spill name inside a MOV-context, never as a binop operand. -/
-def reloadScratch2 : String := "R14"
-
-end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-
-namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-
-/-- The zero-based qsave slot index of a save register (`RDI`=0 … `R15`=7, plus
-    the 2nd+ SysV input pointer regs `RDX`=8 … `R9`=11 for multi-input array
-    loops), used to place its 8-byte cell in the frame's top block. -/
-def qsaveSlot : String → Option Nat
-  | "RDI" => some 0 | "RSI" => some 1
-  | "RBX" => some 2 | "RBP" => some 3
-  | "R12" => some 4 | "R13" => some 5
-  | "R14" => some 6 | "R15" => some 7
-  | "RDX" => some 8 | "RCX" => some 9
-  | "R8"  => some 10 | "R9" => some 11
-  | _ => none
-
-/-- The SysV x86-64 ABI callee-saved GP registers (the caller relies on these
-    surviving a call). `RSP` is the stack pointer (handled by the frame), not in
-    this set. -/
-def calleeSavedRegs : List String := ["RBX", "RBP", "R12", "R13", "R14", "R15"]
-
-/-- **The x86 register file and calling convention**: the allocation pool `gpRegNames`, the
-    reload scratches `R15`, `R14`, the SysV argument registers, the callee-saved registers and
-    their save slots, the stack pointer `RSP`, the return registers `RAX`, `RDX`, the SysV
-    caller-saved registers and the 128-byte red zone. The export reads the allocation pool and
-    the argument registers from it, the printer the save slots and the callee-saved set. -/
-@[reducible] def x86Abi : VIR.LprogIsa.IsaAbi where
-  allocPool := gpRegNames
-  scratch := [reloadScratch, reloadScratch2]
-  argRegs := sysvArgRegs
-  calleeSaved := calleeSavedRegs
-  saveSlot := qsaveSlot
-  sp := "RSP"
-  retRegs := [sysvRetReg, "RDX"]
-  callerSaved := sysvCallerSaved
-  redZone := 128
-
-end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-
-namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-
-open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 

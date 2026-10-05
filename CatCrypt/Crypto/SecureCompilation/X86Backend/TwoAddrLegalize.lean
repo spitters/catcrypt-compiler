@@ -66,23 +66,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeak
   (opNames readNames lsemStep_agreeOn evalOperand_agreeOn)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate (lsemStep_reg_nonmem)
 
-/-! ## 1. The printer's precondition -/
+/-! ## 1. The printer's precondition
 
-/-- The base of a mnemonic: the characters before its first `:`. -/
-def tieBase (opn : String) : String := String.ofList (opn.toList.takeWhile (· != ':'))
-
-/-- The bases of the two-source mnemonics `LprogAsmPrinter.renderLopn` prints in the
-    x86 two-address form `op b, d`. -/
-def tiedBases : List String :=
-  ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "ADC", "SBB", "CMP", "TEST", "ADCX", "ADOX",
-   "CMOVE", "CMOVNE", "CMOVB", "CMOVAE", "CMOVL", "CMOVGE"]
-
-/-- Whether `Lopn [d] opn [a, b]` is printed in the two-address form `op b, d`: its
-    base is in `tiedBases`, or it is a shift whose count `b` is an immediate. -/
-def needsTie (opn : String) (b : LOperand) : Bool :=
-  tiedBases.contains (tieBase opn) ||
-    ((tieBase opn == "SHL" || tieBase opn == "SHR" || tieBase opn == "SAR") &&
-      match b with | .imm _ => true | _ => false)
+The mnemonic data `tieBase`, `tiedBases`, `needsTie`, `commBases`, `movFor` and the x86
+instruction-set data `x86Data` are defined in `VIR.X86IsaData`. -/
 
 /-- The precondition of the two-address arm of `renderLopn` on one instruction: an
     instruction `Lopn [d] opn [a, b]` printed as `op b, d` has `a = d`. -/
@@ -91,34 +78,6 @@ def tiedOk : LinstrR → Bool
   | _ => true
 
 /-! ## 2. The rewrite -/
-
-/-- The bases whose two-source operation is commutative in value and in the flags
-    it sets. -/
-def commBases : List String := ["ADD", "MUL", "AND", "OR", "XOR"]
-
-/-- The copy at the width of `opn`: `MOV` for an untagged mnemonic, `MOV:64` for a
-    `:64`-tagged one, `none` for any other tag. -/
-def movFor (opn : String) : Option String :=
-  if opn == tieBase opn then some "MOV"
-  else if opn == tieBase opn ++ ":64" then some "MOV:64"
-  else none
-
-/-- **The x86 instruction-set data**: the register file and calling convention
-    `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
-    `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the implicit read
-    of `RDX` by the `MULX` family, and the flag loop guard `CMP ctr, 0; jne top`. The legaliser
-    reads its mnemonic data and scratch register from it. -/
-@[reducible] def x86Data : VIR.LprogIsa.IsaData :=
-  { LprogAsmPrinter.x86Abi with
-    tied := needsTie
-    commutes := fun base => commBases.contains base
-    tieScratch := reloadScratch
-    copyMnemonic := movFor
-    implicitReads := fun opn =>
-      if "MULX".toList.isPrefixOf ((stripWidthTag opn).toList.map Char.toUpper) then ["RDX"]
-      else []
-    loopGuard := fun ctr top =>
-      [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top] }
 
 /-- A register or an immediate operand. -/
 def isRegOrImm : LOperand → Bool
