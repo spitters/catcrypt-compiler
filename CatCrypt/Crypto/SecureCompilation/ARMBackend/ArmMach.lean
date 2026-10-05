@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmIsa
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder
 public import CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineBlock
+public import CatCrypt.Crypto.SecureCompilation.CT.IsaRegime
 
 @[expose] public section
 
@@ -38,6 +39,15 @@ is the regime with `PSTATE.DIT = 1`, whose table is `CT.ArmMnem.leaksOperands`; 
 event is `CTLeak.vtCall` named by the mnemonic, the event `CTLeak.vt` being indexed by the
 x86 mnemonic table.
 
+The two channels of a load or store are separate events. The address channel is the `addr`
+event of the effective address, emitted under every regime (`armOpLeak_addrEvents`): the DIT
+register description makes no statement about the address of an access. The data channel is
+the operand event, which carries the value loaded or stored; the clause "the timing of every
+load and store instruction is insensitive to the value of the data being loaded or stored"
+of the DIT register description removes it under `ArmRegime.dit` (`armOpLeak_dit_mem`).
+`ArmRegime` is a `CT.TimingRegime` over `CT.ArmMnem`, with `dit` the regime of the
+specification.
+
 ## Main definitions
 
 * `ArmInstr`, `decodeArmWord`, `decodeArmProg`: the decoded instructions and the decoder.
@@ -51,6 +61,12 @@ x86 mnemonic table.
 * `decodeArmProg_block`, `decodeArmProg_encRet`: the decoder on a block followed by `RET`.
 * `armOpLeak_dit`: under `ArmRegime.dit` an operation leaks the address of its memory access
   and nothing else.
+* `armOpLeak_addrEvents`, `armOpLeak_mem`, `armOpLeak_dit_mem`, `armOpLeak_dataEvents_dit`: the
+  address channel of an operation is the effective address of its memory access under every
+  regime, and the data channel is empty under `ArmRegime.dit`.
+* `armIsa_leaksOperands_dit`, `armIsa_leaksOperands_none`: the field `leaksOperands` of
+  `armIsa` is the table under `ArmRegime.dit` at the mnemonic of a base of `armMnemOfBase`,
+  and `true` at any other base.
 * `armMach_halts_block`, `armMach_runL_block`: a straight-line block followed by `RET` halts
   in the state `runBMBlock`, with the leakage of the block.
 * `armAct_cbnz`, `armAct_bcond_ne`: the branch actions take the `armIsa` branch condition of a
@@ -202,15 +218,19 @@ def bmAddr? (s : BMState) : BMInst → Option (BitVec 64)
   | .strr _ n m => some (armAddrR s.regs n m)
   | _ => none
 
-/-- The values of the register operands an instruction reads. -/
+/-- The data operands of an instruction: the values of the registers it reads and, for a
+    load, the value it loads. -/
 def bmDataArgs (s : BMState) : BMInst → List Nat
   | .alu i => (binstDstSrcs i).2.map (fun r => (s.regs.get r).toNat)
   | .addi _ a _ => [(s.regs.get a).toNat]
   | .subi _ a _ => [(s.regs.get a).toNat]
   | .cmp a b => [(s.regs.get a).toNat, (s.regs.get b).toNat]
-  | .ldr _ n _ => [(s.regs.get n).toNat]
+  | .ldr _ n pimm =>
+      [(s.regs.get n).toNat, (MachineMem64.read64 s.mem (armAddrI s.regs n pimm)).toNat]
   | .str t n _ => [(s.regs.get t).toNat, (s.regs.get n).toNat]
-  | .ldrr _ n m => [(s.regs.get n).toNat, (s.regs.get m).toNat]
+  | .ldrr _ n m =>
+      [(s.regs.get n).toNat, (s.regs.get m).toNat,
+       (MachineMem64.read64 s.mem (armAddrR s.regs n m)).toNat]
   | .strr t n m => [(s.regs.get t).toNat, (s.regs.get n).toNat, (s.regs.get m).toNat]
   | .cbnz t _ => [(s.regs.get t).toNat]
   | .bcond .. => []
@@ -230,6 +250,64 @@ def armOpLeak (r : ArmRegime) (s : BMState) (i : BMInst) : List CTLeak :=
     else.** -/
 theorem armOpLeak_dit (s : BMState) (i : BMInst) : armOpLeak .dit s i = bmAddrLeak s i := by
   simp [armOpLeak, ArmRegime.leaksOperands, bmMnem_leaksOperands]
+
+/-! ## The regime interface and the two channels -/
+
+/-- **The AArch64 timing regimes**: `ArmRegime.dit` is the regime of the specification. -/
+instance : TimingRegime ArmRegime ArmMnem where
+  leaks := ArmRegime.leaksOperands
+  isControl := ArmMnem.isControl
+  guaranteed := .dit
+  unguaranteed := .unguaranteed
+  leaks_unguaranteed := fun _ => rfl
+  leaks_le_unguaranteed := fun r m => by cases r <;> cases m <;> decide
+
+/-- **The address channel of an operation** is the effective address of its memory access,
+    under every regime. -/
+theorem armOpLeak_addrEvents (r : ArmRegime) (s : BMState) (i : BMInst) :
+    addrEvents (armOpLeak r s i) = bmAddrLeak s i := by
+  unfold armOpLeak
+  rw [addrEvents_append]
+  have h1 : addrEvents (bmAddrLeak s i) = bmAddrLeak s i := by
+    unfold bmAddrLeak
+    cases bmAddr? s i <;> rfl
+  rw [h1]
+  split <;> simp [addrEvents, CTLeak.isAddr]
+
+/-- **A load or store emits its effective address as one event**, followed by its operand
+    event when the regime makes the operands of its mnemonic observable. -/
+theorem armOpLeak_mem (r : ArmRegime) (s : BMState) (i : BMInst) {a : BitVec 64}
+    (h : bmAddr? s i = some a) :
+    armOpLeak r s i = .addr "" (a.toNat : Int) ::
+      (if r.leaksOperands (bmMnem i) then [.vtCall ("a64." ++ reprStr (bmMnem i)) [bmDataArgs s i]]
+       else []) := by
+  simp [armOpLeak, bmAddrLeak, h]
+
+/-- **Under `PSTATE.DIT = 1` a load or store emits exactly its effective address.** -/
+theorem armOpLeak_dit_mem (s : BMState) (i : BMInst) {a : BitVec 64} (h : bmAddr? s i = some a) :
+    armOpLeak .dit s i = [.addr "" (a.toNat : Int)] := by
+  rw [armOpLeak_dit]
+  simp [bmAddrLeak, h]
+
+/-- **Under `PSTATE.DIT = 1` the data channel of an operation is empty.** -/
+theorem armOpLeak_dataEvents_dit (s : BMState) (i : BMInst) :
+    dataEvents (armOpLeak .dit s i) = [] := by
+  rw [armOpLeak_dit]
+  unfold bmAddrLeak
+  cases bmAddr? s i <;> rfl
+
+/-- **The record field at a base of the table**: for a base `armMnemOfBase` names, the field
+    `leaksOperands` of `armIsa` is the regime `ArmRegime.dit` at the mnemonic. -/
+theorem armIsa_leaksOperands_dit {base : String} {m : ArmMnem} (h : armMnemOfBase base = some m) :
+    armIsa.leaksOperands base = TimingRegime.leaks ArmRegime.dit m := by
+  rw [armIsa_leaksOperands, armLeaksOperands, h]
+  rfl
+
+/-- At a base outside `armMnemOfBase` the field `leaksOperands` of `armIsa` is `true`. -/
+theorem armIsa_leaksOperands_none {base : String} (h : armMnemOfBase base = none) :
+    armIsa.leaksOperands base = true := by
+  rw [armIsa_leaksOperands, armLeaksOperands, h]
+  rfl
 
 /-! ## The machine -/
 

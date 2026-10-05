@@ -315,6 +315,7 @@ CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
 CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
+CatCrypt.Crypto.SecureCompilation.CT.IsaRegime
 CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie

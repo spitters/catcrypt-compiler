@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvElfObject
 public import CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineBlock
+public import CatCrypt.Crypto.SecureCompilation.CT.IsaRegime
 
 @[expose] public section
 
@@ -31,30 +32,46 @@ that, from a state whose `pc` is the byte address of the index, the `pc` after t
 `evalRMInst64` step of `BNE` is the byte address of the index the action continues at.
 
 The leakage `rvOpLeak r` of an operation is the effective address of its memory access, as an
-`addr` event with the empty region and the address as offset, followed by its register
-operands when the regime `r` makes them observable. There are three regimes.
-`RvRegime.zkt` is an implementation of Zkt, whose table `CT.RvMnem.leaksOperands` classes
-`LD` and `SD` as variable time, so a store leaks the value it stores. `RvRegime.zktMem` is
-Zkt with the further assumption that the latency of a load or store does not depend on the
-value loaded or stored; under it an operation leaks the address of its memory access and
-nothing else. Under `RvRegime.unguaranteed` every straight-line instruction leaks its
-operands. The operand event is `CTLeak.vtCall` named by the mnemonic, the event `CTLeak.vt`
-being indexed by the x86 mnemonic table. `ADDI`, absent from `CT.RvMnem`, is classed with
-the RVI base entries of Zkt.
+`addr` event with the empty region and the address as offset, followed by its data operands
+when the regime `r` makes them observable. The two channels of a load or store are separate
+events: the address channel is the `addr` event, emitted under every regime
+(`rvOpLeak_addrEvents`), and the data channel is the operand event, which carries the value
+loaded or stored.
+
+There are three regimes. `RvRegime.zkt` is an implementation of Zkt, the regime the
+specification gives; its table `CT.RvMnem.leaksOperands` classes `LD` and `SD` as variable
+time, Zkt excluding loads and stores, so a load or store leaks the value it transfers
+(`rvOpLeak_zkt_ld`, `rvOpLeak_zkt_sd`). `RvRegime.zktMemData` is Zkt with the assumption that
+the latency of a load or store is independent of the data value transferred, which the
+ratified text does not state; under it an operation leaks the address of its memory access
+and nothing else. Under `RvRegime.unguaranteed` every straight-line instruction leaks its
+operands. `RvRegime` is a `CT.TimingRegime` over `CT.RvMnem`, with `zkt` the regime of the
+specification. The operand event is `CTLeak.vtCall` named by the mnemonic, the event
+`CTLeak.vt` being indexed by the x86 mnemonic table.
 
 ## Main definitions
 
 * `RvInstr`, `decodeRvWord`, `decodeRvProg`: the decoded instructions and the decoder.
-* `RvRegime`, `RvRegime.leaksOperands`, `rmZktLeaks`, `rvOpLeak`: the timing regime and the
-  leakage of one operation.
+* `RvRegime`, `RvRegime.leaksOperands`, `RvRegime.leaksMnem`, `rmMnem`, `rmZktLeaks`,
+  `rvOpLeak`: the timing regime and the leakage of one operation.
 * `rmStraight`, `rvAct`, `rvMach`: the straight-line instructions, the action and the
   machine.
 
 ## Main results
 
 * `decodeRvProg_block`, `decodeRvProg_encRet`: the decoder on a block followed by `ret`.
-* `rvOpLeak_zktMem`, `rvOpLeak_zkt_sd`: under `RvRegime.zktMem` an operation leaks the address
-  of its memory access and nothing else; under `RvRegime.zkt` a store also leaks its operands.
+* `rvOpLeak_zktMemData`, `rvOpLeak_zkt_sd`, `rvOpLeak_zkt_ld`, `rvOpLeak_zkt_of_not_mem`: under
+  `RvRegime.zktMemData` an operation leaks the address of its memory access and nothing else;
+  under `RvRegime.zkt` a load or store also leaks its operands, and any other instruction
+  has no event.
+* `rvOpLeak_addrEvents`, `rvOpLeak_mem`, `rvOpLeak_zktMemData_mem`,
+  `rvOpLeak_dataEvents_zktMemData`, `rvOpLeak_dataEvents_zkt_mem`: the address channel of an
+  operation is the effective address of its memory access under every regime; the data
+  channel is empty under `RvRegime.zktMemData` and is the operand event of a load or store
+  under `RvRegime.zkt`.
+* `rvIsa_leaksOperands_zkt`, `rvIsa_leaksOperands_none`: the field `leaksOperands` of `rvIsa`
+  is the table under `RvRegime.zkt` at the mnemonic of a base of `rvMnemOfBase`, and `true`
+  at any other base except the keep marker.
 * `rvMach_halts_block`, `rvMach_runL_block`: a straight-line block followed by `ret` halts in
   the state `runRMBlock64`, with the leakage of the block.
 * `rvAct_bne`: the action of `BNE r, zero` takes the `rvIsa` branch condition of a related
@@ -63,8 +80,8 @@ the RVI base entries of Zkt.
   selection `rvSelM`. The bytes of the selected block followed by `ret` decode to the
   selected program, the machine steps of the selection of one instruction simulate one
   `rvIsa` step, and the machine run halts in a state related to the `rvIsa` run.
-* `rv_and_mach`, `rvAndCode_leak_zktMem`: the `mpn_and_n` body at `rvMach`, and its leakage
-  under `RvRegime.zktMem`, the three addresses of its limb accesses.
+* `rv_and_mach`, `rvAndCode_leak_zktMemData`: the `mpn_and_n` body at `rvMach`, and its
+  leakage under `RvRegime.zktMemData`, the three addresses of its limb accesses.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
@@ -171,12 +188,19 @@ theorem decodeRvProg_encRet : decodeRvProg (wordLE RiscvElfObject.encRet) = some
 
 /-! ## The timing regime and the leakage of an operation -/
 
-/-- The hardware regime of a run. `zkt`: an implementation of Zkt, so the table
-    `CT.RvMnem.isZkt` applies. `zktMem`: Zkt, and the latency of a load or store does not
-    depend on the value loaded or stored. `unguaranteed`: no vendor timing guarantee holds. -/
+/-- The hardware regime of a run.
+
+    * `zkt`: an implementation of Zkt, so the table `CT.RvMnem.isZkt` applies. This is the
+      regime the specification gives (RISC-V Cryptography Extensions 1.0.1, Zkt).
+    * `zktMemData`: Zkt, with the assumption that the latency of a load or store is
+      independent of the data value transferred. The assumption is not part of the ratified
+      text: section "Scope and Goal" of Zkt states "Loads, stores, conditional branches are
+      excluded". A statement under `zktMemData` holds on an implementation for which the
+      assumption is established separately.
+    * `unguaranteed`: no vendor timing guarantee holds. -/
 inductive RvRegime where
   | zkt
-  | zktMem
+  | zktMemData
   | unguaranteed
   deriving DecidableEq, Repr
 
@@ -185,25 +209,63 @@ def rmStraight : RMInst64 → Bool
   | .bne .. => false
   | _ => true
 
+/-- The table mnemonic of an instruction of the memory-and-branch fragment. -/
+def rmMnem : RMInst64 → RvMnem
+  | .alu i => i.mnem
+  | .addi .. => .addi
+  | .ld .. => .ld
+  | .sd .. => .sd
+  | .bne .. => .bne
+
 /-- Whether an instruction of the memory-and-branch fragment makes its data operands
     observable on an implementation of Zkt: the table `CT.RvMnem.leaksOperands` at the
-    mnemonic, with `ADDI` an RVI base entry of Zkt. -/
+    mnemonic. -/
 def rmZktLeaks : RMInst64 → Bool
   | .alu i => i.mnem.leaksOperands
-  | .addi .. => false
+  | .addi .. => RvMnem.addi.leaksOperands
   | .ld .. => RvMnem.ld.leaksOperands
   | .sd .. => RvMnem.sd.leaksOperands
   | .bne .. => RvMnem.bne.leaksOperands
 
 /-- Whether an instruction makes its data operands observable under the regime: the Zkt
-    table under `zkt`, no instruction of the fragment under `zktMem`, and every straight-line
-    instruction under `unguaranteed`. -/
+    table under `zkt`, no instruction of the fragment under `zktMemData`, and every
+    straight-line instruction under `unguaranteed`. -/
 def RvRegime.leaksOperands : RvRegime → RMInst64 → Bool
   | .zkt, i => rmZktLeaks i
-  | .zktMem, _ => false
+  | .zktMemData, _ => false
   | .unguaranteed, i => rmStraight i
 
-/-- Outside the loads and stores, the regimes `zkt` and `zktMem` agree on the fragment: no
+/-- Whether an instruction with mnemonic `m` makes its data operands observable under the
+    regime: the Zkt table under `zkt`; the Zkt table outside the loads and stores under
+    `zktMemData`; and every instruction other than a control transfer under `unguaranteed`. -/
+def RvRegime.leaksMnem : RvRegime → RvMnem → Bool
+  | .zkt, m => m.leaksOperands
+  | .zktMemData, m => m.leaksOperands && !m.isMem
+  | .unguaranteed, m => !m.isControl
+
+/-- The regime of an instruction is the regime of its mnemonic. -/
+theorem RvRegime.leaksOperands_eq (r : RvRegime) (i : RMInst64) :
+    r.leaksOperands i = r.leaksMnem (rmMnem i) := by
+  cases r <;> cases i with
+  | alu j => first | exact (RInst64.mnem_leaksOperands j).symm | rfl | (cases j <;> rfl)
+  | _ => rfl
+
+/-- **The RV64 timing regimes**: `RvRegime.zkt` is the regime of the specification. -/
+instance : TimingRegime RvRegime RvMnem where
+  leaks := RvRegime.leaksMnem
+  isControl := RvMnem.isControl
+  guaranteed := .zkt
+  unguaranteed := .unguaranteed
+  leaks_unguaranteed := fun _ => rfl
+  leaks_le_unguaranteed := fun r m => by cases r <;> cases m <;> decide
+
+/-- **The assumption of `zktMemData` concerns the loads and stores only**: the regimes `zkt`
+    and `zktMemData` agree at every mnemonic without a memory access. -/
+theorem RvRegime.leaksMnem_zktMemData_of_not_mem {m : RvMnem} (h : m.isMem = false) :
+    RvRegime.zktMemData.leaksMnem m = RvRegime.zkt.leaksMnem m := by
+  simp [RvRegime.leaksMnem, h]
+
+/-- Outside the loads and stores, the regimes `zkt` and `zktMemData` agree on the fragment: no
     register instruction, `ADDI` or `BNE` leaks its operands on an implementation of Zkt. -/
 theorem rmZktLeaks_eq_false (i : RMInst64) (hld : ∀ d b o, i ≠ .ld d b o)
     (hsd : ∀ s b o, i ≠ .sd s b o) : rmZktLeaks i = false := by
@@ -229,11 +291,13 @@ def rmAddr? (s : RMState64) : RMInst64 → Option (BitVec 64)
   | .sd _ base off => some (rvAddr s.regs base off)
   | _ => none
 
-/-- The values of the register operands an instruction reads. -/
+/-- The data operands of an instruction: the values of the registers it reads and, for a
+    load, the value it loads. -/
 def rmDataArgs (s : RMState64) : RMInst64 → List Nat
   | .alu i => (rinst64DstSrcs i).2.map (fun r => (s.regs.get r).toNat)
   | .addi _ a _ => [(s.regs.get a).toNat]
-  | .ld _ base _ => [(s.regs.get base).toNat]
+  | .ld _ base off =>
+      [(s.regs.get base).toNat, (MachineMem64.read64 s.mem (rvAddr s.regs base off)).toNat]
   | .sd src base _ => [(s.regs.get src).toNat, (s.regs.get base).toNat]
   | .bne a b _ => [(s.regs.get a).toNat, (s.regs.get b).toNat]
 
@@ -247,9 +311,10 @@ def rvOpLeak (r : RvRegime) (s : RMState64) (i : RMInst64) : List CTLeak :=
   rmAddrLeak s i ++
     (if r.leaksOperands i then [.vtCall ("rv64." ++ rmName i) [rmDataArgs s i]] else [])
 
-/-- **Under `RvRegime.zktMem` an operation leaks the address of its memory access and
+/-- **Under `RvRegime.zktMemData` an operation leaks the address of its memory access and
     nothing else.** -/
-theorem rvOpLeak_zktMem (s : RMState64) (i : RMInst64) : rvOpLeak .zktMem s i = rmAddrLeak s i := by
+theorem rvOpLeak_zktMemData (s : RMState64) (i : RMInst64) :
+    rvOpLeak .zktMemData s i = rmAddrLeak s i := by
   simp [rvOpLeak, RvRegime.leaksOperands]
 
 /-- **Under `RvRegime.zkt` a store leaks its address and its operands**, the stored value
@@ -260,6 +325,94 @@ theorem rvOpLeak_zkt_sd (s : RMState64) (src base : String) (off : Int) :
       , .vtCall "rv64.sd" [[(s.regs.get src).toNat, (s.regs.get base).toNat]] ] := by
   simp [rvOpLeak, RvRegime.leaksOperands, rmZktLeaks, RvMnem.leaksOperands, RvMnem.isZkt,
     RvMnem.isControl, rmAddrLeak, rmAddr?, rmName, rmDataArgs]
+
+/-- **Under `RvRegime.zkt` a load leaks its address and its operands**, the loaded value
+    among them. -/
+theorem rvOpLeak_zkt_ld (s : RMState64) (d base : String) (off : Int) :
+    rvOpLeak .zkt s (.ld d base off) =
+      [ .addr "" ((rvAddr s.regs base off).toNat : Int)
+      , .vtCall "rv64.ld" [[(s.regs.get base).toNat,
+          (MachineMem64.read64 s.mem (rvAddr s.regs base off)).toNat]] ] := by
+  simp [rvOpLeak, RvRegime.leaksOperands, rmZktLeaks, RvMnem.leaksOperands, RvMnem.isZkt,
+    RvMnem.isControl, rmAddrLeak, rmAddr?, rmName, rmDataArgs]
+
+/-- **Under `RvRegime.zkt` an instruction other than a load or store has no event.** -/
+theorem rvOpLeak_zkt_of_not_mem (s : RMState64) (i : RMInst64) (hld : ∀ d b o, i ≠ .ld d b o)
+    (hsd : ∀ x b o, i ≠ .sd x b o) : rvOpLeak .zkt s i = [] := by
+  have h : rmAddr? s i = none := by
+    cases i with
+    | ld d b o => exact absurd rfl (hld d b o)
+    | sd x b o => exact absurd rfl (hsd x b o)
+    | _ => rfl
+  simp [rvOpLeak, RvRegime.leaksOperands, rmZktLeaks_eq_false i hld hsd, rmAddrLeak, h]
+
+/-! ## The address channel and the data channel -/
+
+/-- **The address channel of an operation** is the effective address of its memory access,
+    under every regime. -/
+theorem rvOpLeak_addrEvents (r : RvRegime) (s : RMState64) (i : RMInst64) :
+    addrEvents (rvOpLeak r s i) = rmAddrLeak s i := by
+  unfold rvOpLeak
+  rw [addrEvents_append]
+  have h1 : addrEvents (rmAddrLeak s i) = rmAddrLeak s i := by
+    unfold rmAddrLeak
+    cases rmAddr? s i <;> rfl
+  rw [h1]
+  split <;> simp [addrEvents, CTLeak.isAddr]
+
+/-- **A load or store emits its effective address as one event**, followed by its operand
+    event when the regime makes its operands observable. -/
+theorem rvOpLeak_mem (r : RvRegime) (s : RMState64) (i : RMInst64) {a : BitVec 64}
+    (h : rmAddr? s i = some a) :
+    rvOpLeak r s i = .addr "" (a.toNat : Int) ::
+      (if r.leaksOperands i then [.vtCall ("rv64." ++ rmName i) [rmDataArgs s i]] else []) := by
+  simp [rvOpLeak, rmAddrLeak, h]
+
+/-- **Under `RvRegime.zktMemData` a load or store emits exactly its effective address.** -/
+theorem rvOpLeak_zktMemData_mem (s : RMState64) (i : RMInst64) {a : BitVec 64}
+    (h : rmAddr? s i = some a) : rvOpLeak .zktMemData s i = [.addr "" (a.toNat : Int)] := by
+  rw [rvOpLeak_zktMemData]
+  simp [rmAddrLeak, h]
+
+/-- **Under `RvRegime.zktMemData` the data channel of an operation is empty.** -/
+theorem rvOpLeak_dataEvents_zktMemData (s : RMState64) (i : RMInst64) :
+    dataEvents (rvOpLeak .zktMemData s i) = [] := by
+  rw [rvOpLeak_zktMemData]
+  unfold rmAddrLeak
+  cases rmAddr? s i <;> rfl
+
+/-- **Under `RvRegime.zkt` the data channel of a load or store is its operand event**: the
+    specification gives no guarantee for the value transferred. -/
+theorem rvOpLeak_dataEvents_zkt_mem (s : RMState64) (i : RMInst64) {a : BitVec 64}
+    (h : rmAddr? s i = some a) :
+    dataEvents (rvOpLeak .zkt s i) = [.vtCall ("rv64." ++ rmName i) [rmDataArgs s i]] := by
+  cases i with
+  | ld d b o => simp [rvOpLeak_zkt_ld, dataEvents, CTLeak.isAddr, rmName, rmDataArgs]
+  | sd x b o => simp [rvOpLeak_zkt_sd, dataEvents, CTLeak.isAddr, rmName, rmDataArgs]
+  | _ => cases h
+
+/-! ## The record field -/
+
+/-- **The record field at a base of the table**: for a base `rvMnemOfBase` names, the field
+    `leaksOperands` of `rvIsa` is the regime `RvRegime.zkt` at the mnemonic. -/
+theorem rvIsa_leaksOperands_zkt {base : String} {m : RvMnem} (h : rvMnemOfBase base = some m) :
+    rvIsa.leaksOperands base = TimingRegime.leaks RvRegime.zkt m := by
+  have hk : (base != "KEEP") = true := by
+    cases hb : base != "KEEP" with
+    | true => rfl
+    | false =>
+        have : base = "KEEP" := by simpa using hb
+        subst this
+        simp [rvMnemOfBase] at h
+  rw [rvIsa_leaksOperands, rvLeaksOperands, h, hk]
+  rfl
+
+/-- At a base outside `rvMnemOfBase` other than the keep marker, the field `leaksOperands` of
+    `rvIsa` is `true`. -/
+theorem rvIsa_leaksOperands_none {base : String} (h : rvMnemOfBase base = none)
+    (hk : base ≠ "KEEP") : rvIsa.leaksOperands base = true := by
+  rw [rvIsa_leaksOperands, rvLeaksOperands, h]
+  simpa using hk
 
 /-! ## The machine -/
 
@@ -466,15 +619,15 @@ theorem rv_and_mach (P : LprogM) (n : Nat) (s : LstateMF) (b : RMState64)
   rv_mach_mem r P rvAndArrs (fun _ => n) (rvAndBody n) rvAndCode (rvAndBody_sel n) s b hrel hmem
     hsep (rvAndBody_bounds n b hidx)
 
-/-- **The leakage of the `mpn_and_n` body under `RvRegime.zktMem`**: the addresses of the two
-    limb loads and of the limb store, which depend on the array bases `a1`, `a0`, `a3` and
+/-- **The leakage of the `mpn_and_n` body under `RvRegime.zktMemData`**: the addresses of the
+    two limb loads and of the limb store, which depend on the array bases `a1`, `a0`, `a3` and
     the index `a4` only. -/
-theorem rvAndCode_leak_zktMem (b : RMState64) :
-    (rvMach .zktMem).blockLeak b rvAndCode.flatten =
+theorem rvAndCode_leak_zktMemData (b : RMState64) :
+    (rvMach .zktMemData).blockLeak b rvAndCode.flatten =
       [ .addr "" ((b.regs.get "a1" + (b.regs.get "a4" <<< 3)).toNat : Int)
       , .addr "" ((b.regs.get "a0" + (b.regs.get "a4" <<< 3)).toNat : Int)
       , .addr "" ((b.regs.get "a3" + (b.regs.get "a4" <<< 3)).toNat : Int) ] := by
-  simp [rvAndCode, rvIdxAddr, IsaMachine.blockLeak, rvOpLeak_zktMem, rmAddrLeak, rmAddr?, rvAddr,
-    evalRMInst64, evalRInst64, RState64.set, opAdd64]
+  simp [rvAndCode, rvIdxAddr, IsaMachine.blockLeak, rvOpLeak_zktMemData, rmAddrLeak, rmAddr?,
+    rvAddr, evalRMInst64, evalRInst64, RState64.set, opAdd64]
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach

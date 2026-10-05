@@ -21,18 +21,25 @@ version 1.0.1 (https://github.com/riscv/riscv-crypto, `doc/scalar/riscv-crypto-s
 retrieved 2026-10-05). On an implementation of Zkt, the listed instructions "do not leak
 information about processed secret data ... through differences in execution latency".
 
-The Zkt list excludes loads, stores and conditional branches, and division ("Cryptographers
-typically assume division to be variable-time"). The table therefore classes the loads and
-stores as variable time; the branches are control transfers, whose outcome is observable as
-a branch event.
+The Zkt list excludes loads, stores and conditional branches (section "Scope and Goal":
+"Loads, stores, conditional branches are excluded"), and division (section "Specific
+Instruction Rationale": "Cryptographers typically assume division to be variable-time"). The
+specification gives no latency guarantee for a load or store, for its address or for the
+value it transfers; of the address it states the programming rule "If a secret ends up in
+address calculation affecting a load or store, that is a violation" (section "Background").
+The table therefore classes the loads and stores as variable time: the address of the access
+is an address event of the leakage model, and the value loaded or stored is a data operand.
+That the latency of a load or store is independent of the value transferred is an assumption
+beyond the specification, named `RvRegime.zktMemData` in `RISCVBackend/RvMach.lean`. The
+branches are control transfers, whose outcome is observable as a branch event.
 
 ## Main definitions
 
 * `RvMnem` is one constructor per RV64 mnemonic of the owned RISC-V backends (the `RInst64`
-  alphabet, its pseudo-instructions `LI` and `MV`, the loads, stores and branches), plus
-  `div` and `divu`, which no owned path emits.
+  alphabet, its pseudo-instructions `LI` and `MV`, `ADDI`, the loads, stores and branches),
+  plus `div` and `divu`, which no owned path emits.
 * `RvMnem.isZkt`, `RvMnem.isControl` and `RvMnem.leaksOperands` are the table and the regime
-  of an implementation of Zkt.
+  of an implementation of Zkt; `RvMnem.isMem` is the mnemonics with a memory access.
 * `RInst64.mnem` projects the backend's instruction type onto the table;
   `RInst64.mnem_leaksOperands` states that no instruction of `RInst64` leaks its operands.
 -/
@@ -45,24 +52,28 @@ open CatCrypt.Crypto.SecureCompilation.RISCVBackend
     the assembler pseudo-instructions of `RInst64`. -/
 inductive RvMnem where
   | add | sub | sltu | and | or | xor | mul | mulhu
-  | li | mv | srli | slli
+  | li | mv | srli | slli | addi
   | ld | sd
   | div | divu
   | beq | bne | jal | jalr
   deriving DecidableEq, Repr
 
-/-- **The Zkt table** (RISC-V Cryptography Extensions 1.0.1, Zkt). An entry is `true` when
-    the mnemonic is in the subset:
+/-- **The Zkt table** (RISC-V Cryptography Extensions 1.0.1, Zkt, section "Zkt listings").
+    An entry is `true` when the mnemonic is in the subset:
 
-    * `ADD`, `SUB`, `SLTU`, `AND`, `OR`, `XOR`, `SRLI`, `SLLI`: RVI base;
-    * `MUL`, `MULHU`: RVM;
-    * `LI`: expands to `LUI` and `ADDI` (with `SLLI` for a 64-bit constant), all RVI base
-      entries; `MV`: expands to `ADDI rd, rs, 0`, an RVI base entry (`C.MV` in RVC).
+    * `ADD`, `SUB`, `SLTU`, `AND`, `OR`, `XOR`, `SRLI`, `SLLI`, `ADDI`: listing "RVI (Base
+      Instruction Set)";
+    * `MUL`, `MULHU`: listing "RVM (Multiply)", "Multiplication is included; division and
+      remaindering excluded";
+    * `LI`: expands to `LUI` and `ADDI` (with `SLLI` for a 64-bit constant), all entries of
+      the RVI listing; `MV`: expands to `ADDI rd, rs, 0`, an entry of the RVI listing (`C.MV`
+      in the listing "RVC (Compressed)").
 
-    The loads and stores `LD`, `SD`, the divisions `DIV`, `DIVU` and the control transfers are
-    not in the subset. -/
+    The loads and stores `LD`, `SD` (section "Scope and Goal": "Loads, stores, conditional
+    branches are excluded"), the divisions `DIV`, `DIVU` and the control transfers are not in
+    the subset. -/
 def RvMnem.isZkt : RvMnem → Bool
-  | .add | .sub | .sltu | .and | .or | .xor | .srli | .slli => true
+  | .add | .sub | .sltu | .and | .or | .xor | .srli | .slli | .addi => true
   | .mul | .mulhu => true
   | .li | .mv => true
   | .ld | .sd => false
@@ -72,6 +83,13 @@ def RvMnem.isZkt : RvMnem → Bool
 /-- The control transfers `BEQ`, `BNE`, `JAL`, `JALR`. -/
 def RvMnem.isControl : RvMnem → Bool
   | .beq | .bne | .jal | .jalr => true
+  | _ => false
+
+/-- The mnemonics with a memory access: `LD`, `SD`. Zkt gives no latency guarantee for them,
+    for the address or for the value transferred; the address of the access is an address
+    event of the leakage model, and the value transferred is a data operand. -/
+def RvMnem.isMem : RvMnem → Bool
+  | .ld | .sd => true
   | _ => false
 
 /-- **The regime of an implementation of Zkt**: an instruction makes its data operands
