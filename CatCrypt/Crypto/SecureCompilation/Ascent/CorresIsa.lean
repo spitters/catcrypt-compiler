@@ -22,7 +22,7 @@ unchanged; `corresIsa_iff_post` is the instance of `corresM_iff_post`.
 
 A run of `Isa.lsemFuelMemF` that returns `some t` ends in a halted state
 (`lsemFuelMemF_halted`), and the same result is returned at every larger fuel
-(`lsemFuelMemF_add`). The judgement is therefore monotone in the fuel
+(`Isa.lsemFuelMemF_add`). The judgement is therefore monotone in the fuel
 (`corresIsa_fuel_mono`), and the existential form `CorresIsaRun`, which quantifies the fuel
 inside the simulation, follows from it (`corresIsaRun_of_corresIsa`).
 
@@ -31,8 +31,7 @@ inside the simulation, follows from it (`corresIsaRun_of_corresIsa`).
 * `CorresIsa`, `corresIsa_eq_corresM`: the judgement and its definitional unfolding.
 * `corresIsa_post`, `corresIsa_of_post`, `corresIsa_iff_post`: the judgement as the family of
   step triples over all postconditions.
-* `lsemFuelMemF_halted`, `lsemFuelMemF_add`: a successful run halts and is stable under more
-  fuel.
+* `lsemFuelMemF_halted`: a successful run halts.
 * `corresIsa_fuel_add`, `corresIsa_fuel_mono`: monotonicity in the fuel.
 * `CorresIsaRun`, `corresIsaRun_of_corresIsa`: the correspondence with the fuel chosen per
   initial state.
@@ -114,61 +113,6 @@ theorem lsemFuelMemF_halted (isa : Isa) (P : LprogM) :
         · exact ih _ t h
         · cases h
 
-/-- A successful run returns the same state at every larger fuel. -/
-theorem lsemFuelMemF_add (isa : Isa) (P : LprogM) :
-    ∀ (n k : Nat) (s t : LstateMF), isa.lsemFuelMemF P n s = some t →
-      isa.lsemFuelMemF P (n + k) s = some t := by
-  intro n
-  induction n with
-  | zero =>
-      intro k s t h
-      simp only [Isa.lsemFuelMemF] at h
-      split at h
-      · next hf => cases h; rw [Nat.zero_add]; exact isa.lsemFuelMemF_halt P k s hf
-      · cases h
-  | succ n ih =>
-      intro k s t h
-      rw [Nat.add_right_comm]
-      simp only [Isa.lsemFuelMemF] at h ⊢
-      cases hf : findInstrMem P s.prog with
-      | none => simp only [hf] at h ⊢; exact h
-      | some i =>
-          simp only [hf] at h ⊢
-          cases hs : isa.step P i s with
-          | none => simp only [hs, reduceCtorEq] at h
-          | some s' => simp only [hs] at h ⊢; exact ih k s' t h
-
-/-- **A straight stretch at the end of the body.** When the body of `P` is `pre ++ rest`, the
-    state is in the function of `P` at counter `pre.length`, and every step of an instruction
-    of `rest` stays in the function and advances the counter by one, the run of `P` with fuel
-    `rest.length` is the run `Isa.runL` of the instructions of `rest`. -/
-theorem lsemFuelMemF_of_runL (isa : Isa) (P : LprogM) :
-    ∀ (rest pre : List LinstrRM) (s t : LstateMF), P.body = pre ++ rest →
-      s.prog.lfn = P.lfn → s.prog.base.lpc = pre.length →
-      (∀ i ∈ rest, ∀ u u', isa.step P i u = some u' →
-        u'.prog.lfn = u.prog.lfn ∧ u'.prog.base.lpc = u.prog.base.lpc + 1) →
-      isa.runL P rest s = some t → isa.lsemFuelMemF P rest.length s = some t := by
-  intro rest
-  induction rest with
-  | nil =>
-      intro pre s t hbody hfn hpc _ hrun
-      cases hrun
-      refine isa.lsemFuelMemF_halt P 0 s ?_
-      simp only [findInstrMem, hfn, if_true, hbody, List.append_nil, hpc,
-        List.getElem?_eq_none (le_refl _)]
-  | cons i rest ih =>
-      intro pre s t hbody hfn hpc hstep hrun
-      simp only [Isa.runL, Option.bind_eq_some_iff] at hrun
-      obtain ⟨u, hu, hrun⟩ := hrun
-      have hfetch : findInstrMem P s.prog = some i := by
-        simp only [findInstrMem, hfn, if_true, hbody, hpc, List.getElem?_append_right
-          (le_refl _), Nat.sub_self, List.getElem?_cons_zero]
-      rw [List.length_cons, isa.lsemFuelMemF_step P _ i s u hfetch hu]
-      obtain ⟨hufn, hupc⟩ := hstep i (List.mem_cons_self ..) s u hu
-      exact ih (pre ++ [i]) u t (by rw [hbody, List.append_assoc]; rfl) (hufn.trans hfn)
-        (by rw [hupc, hpc, List.length_append, List.length_singleton])
-        (fun j hj => hstep j (List.mem_cons_of_mem i hj)) hrun
-
 section Fuel
 
 variable {AState : Type} {isa : Isa} {P : LprogM} {SR : LstateMF → AState → Prop}
@@ -179,7 +123,7 @@ theorem corresIsa_fuel_add {n : Nat} (h : CorresIsa isa P SR Pre fa n) (k : Nat)
     CorresIsa isa P SR Pre fa (n + k) := by
   intro m a hSR hPre
   obtain ⟨m', hrun, hSR'⟩ := h m a hSR hPre
-  exact ⟨m', lsemFuelMemF_add isa P n k m m' hrun, hSR'⟩
+  exact ⟨m', isa.lsemFuelMemF_add P n k m m' hrun, hSR'⟩
 
 /-- Monotonicity of the correspondence in the fuel. -/
 theorem corresIsa_fuel_mono {n n' : Nat} (h : CorresIsa isa P SR Pre fa n) (hle : n ≤ n') :

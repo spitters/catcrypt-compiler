@@ -312,9 +312,12 @@ The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
   the development tree): `maj_corresJ_of_fnCorres` gives, for every `f` with
   `FnCorres` for the extracted body, a `CorresJ` result at the block decoded from the
   shipped bytes, and `maj_corresIsa_of_fnCorres` a `CorresIsa x86Isa` result for the
-  export's straight-line chain over virtual registers. Both use
-  `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). No other extracted
-  function, and no loop, has such a composition
+  export's straight-line chain over virtual registers;
+  `maj_corresIsa_bytes_of_fnCorres` gives `CorresIsa x86Isa` at the decoded block. All
+  three use `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). No other
+  extracted function has such a composition; the shipped `mpn_mul_1` loop has a
+  `CorresIsaRun x86Isa` result (`mul1_corresIsaRun`) against its loop specification,
+  not against a hax extraction
   ([CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference)).
 
 Transfer enters both other techniques as a proof step: descent certifies dialect

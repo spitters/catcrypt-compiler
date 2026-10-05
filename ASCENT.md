@@ -25,6 +25,10 @@ The judgement also has an instance `CorresIsa`
 interpreter shared by the x86-64, AArch64 and RV64 instruction sets, with a transport
 from `CorresJ` at x86-64 and AArch64 for blocks whose registers and memory do not depend
 on the flags ([CorresIsaX86](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86.lean)).
+Programs with labels and jumps are proved by a cut-point rule
+([CorresIsaCfg](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCfg.lean)), and
+procedure calls by a specification per procedure
+([CorresIsaCall](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCall.lean)).
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
 lists it with the Jasmin-source bridge
 ([BignumToJ](CatCrypt/Crypto/Jasmin/BignumToJ.lean),
@@ -196,8 +200,8 @@ imported files:
   modules use none.
 - The hax-level ascent of a Rust function is composed with a machine-level
   correspondence of its compiled code for one function, `maj` of the Hash_DRBG
-  extraction, in the development tree; its `CorresIsa` form is over the program before
-  register allocation ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
+  extraction, in the development tree, with a `CorresIsa` form at the block decoded from
+  the shipped bytes ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
 - The RV64 results are over hand-transcribed blocks on registers; no third-party RV64
   code is imported.
 

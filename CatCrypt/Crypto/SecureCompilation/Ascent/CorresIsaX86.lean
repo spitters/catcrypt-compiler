@@ -36,7 +36,7 @@ fold, equal up to the carry and overflow flags), the segment run `lsemFuelMemF_s
 The same lowered program runs on the AArch64 instance `armIsa` when the block is in
 `InFieldArithSubset` (no `mulx`, whose high half `MULXHI` is outside the AArch64 alphabet):
 there the step of each lowered instruction is `lsemStepMem` on the base, so the run is
-`lsemStraightMem` (`armIsa_runL_map_jToRM`), and `lsemFuelMemF_of_runL` of `CorresIsa`
+`lsemStraightMem` (`armIsa_runL_map_jToRM`), and `Isa.lsemFuelMemF_of_runL` of `LprogIsa`
 turns it into the run of the program.
 
 ## Main results
@@ -257,7 +257,7 @@ theorem corresIsa_arm_of_corresJ {AState : Type} (SR : JState 64 → AState → 
   obtain ⟨ls', hrun, hcorr'⟩ := runBlock_lsem_agree c hc s b0 hcorr
   have hrunL := armIsa_runL_map_jToRM (singletonProgM lfn (c.map jToRM)) c hc b0 lfn zf
   rw [hrun, Option.map_some] at hrunL
-  refine ⟨_, lsemFuelMemF_of_runL armIsa _ (c.map jToRM) [] _ _ rfl rfl hpc ?_ hrunL, rfl,
+  refine ⟨_, armIsa.lsemFuelMemF_of_runL _ (c.map jToRM) [] _ _ rfl rfl hpc ?_ hrunL, rfl,
     ?_, runBlock s c, h s a hSR hP, hcorr'⟩
   · intro j hj u u' hu
     obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hj

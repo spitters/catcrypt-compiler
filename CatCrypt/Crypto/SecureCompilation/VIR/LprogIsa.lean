@@ -29,6 +29,18 @@ the checked machine of `JasminLsemMemChecked`, with the step taken from the reco
 instance, whose step is `evalInstrPMemF`, is `X86Backend.X86Isa.x86Isa`; at that instance each
 generic interpreter is the existing one by `rfl`.
 
+Call and return are a second shared step, `callStep`, over the stack pointer `sp` of the
+calling convention: `Lcall none (fn, l)` pushes the return address (the counter after the
+call, as a word) to the word memory cell of `sp` at the decremented stack pointer and jumps
+to `l`; `Lcall (some r) (fn, l)` writes the return address to the register `r` and jumps;
+`Lret` sets the counter to the word of the memory cell the stack pointer addresses and
+increments the stack pointer. `Isa.withCalls I` is the record `I` whose step is `callStep`
+on `Lcall` and `Lret` and the step of `I` on every other instruction. The control
+instructions `isCtl` and the obligation `step_ctl` do not mention calls, so the step of an
+instance on `Lcall` and `Lret` is unconstrained, and `I.withCalls` is the instruction set
+in which they have the shared meaning. On a program without `Lcall` and `Lret` the runs of
+`I.withCalls` and `I` are equal (`Isa.withCalls_lsemFuelMemF`).
+
 ## Main results
 
 * `ctlStep`, `isCtl`, `Isa`: the shared control step and the record.
@@ -38,6 +50,11 @@ generic interpreter is the existing one by `rfl`.
 * `Isa.lsemFuelMemFk_false`, `Isa.lsemFuelMemF_of_checked`, `Isa.lsemFuelMemFk_of_runIdxOk`,
   `Isa.runIdxOk_of_checked`: the checked run against the unchecked one.
 * `Isa.step_label`, `Isa.step_cond`, `Isa.step_goto`: the control step of every instance.
+* `isCall`, `callStep`, `Isa.withCalls`: the call and return step and the instruction set
+  that carries it.
+* `Isa.step_call`, `Isa.step_call_link`, `Isa.step_ret`, `Isa.withCalls_step_of_not_call`:
+  the step of `I.withCalls` on a call, on a return and on every other instruction.
+* `Isa.withCalls_lsemFuelMemF`: the run of `I.withCalls` on a program without calls.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -71,6 +88,53 @@ def ctlStep (condEval : LstateMF → LOperand → Bool) (P : LprogM) (i : Linstr
   | .Lgoto (fn, l) =>
       if fn = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
       else none
+  | _ => none
+
+/-- The call and return instructions. -/
+def isCall : LinstrR → Bool
+  | .Lcall _ _ => true
+  | .Lret => true
+  | _ => false
+
+/-- The return address of a call taken at the state `s`: the counter after the call, as a
+    word. -/
+def retAddr (s : LstateMF) : BitVec 64 := BitVec.ofNat 64 (s.prog.base.lpc + 1)
+
+/-- The state `s` with the return address pushed on the stack whose pointer register `sp`
+    holds `v`: the word memory cell of `sp` at `v - 8` holds the return address, and `sp`
+    holds `v - 8`. -/
+def pushRet (sp : String) (v : BitVec 64) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base :=
+      (s.prog.base.storeMemC sp (v - 8).toInt (retAddr s)).setReg sp (v - 8) } }
+
+/-- The state `s` with the return address written to the register `r`. -/
+def linkRet (r : String) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base := s.prog.base.setReg r (retAddr s) } }
+
+/-- The state `s` after a return through the stack whose pointer register `sp` holds `v`:
+    the counter is the word of the memory cell of `sp` at `v`, and `sp` holds `v + 8`. -/
+def popRet (sp : String) (v : BitVec 64) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base :=
+      (s.prog.base.setReg sp (v + 8)).setLpc (s.prog.base.lmem sp v.toInt).toNat } }
+
+/-- **The call and return step**, shared by every instruction set, over the stack pointer
+    register `sp`. `Lcall none (fn, l)` pushes the return address (`pushRet`) and jumps to
+    `l` within the function `fn` of the program; `Lcall (some r) (fn, l)` writes the return
+    address to the register `r` (`linkRet`) and jumps to `l`; `Lret` pops the return address
+    into the counter (`popRet`). A call or a return whose stack pointer does not hold a
+    word of width `64`, and any other instruction, has no step. -/
+def callStep (sp : String) (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF :=
+  match i.fst with
+  | .Lcall none (fn, l) =>
+      if fn = P.lfn then
+        (s.prog.base.reg.getW sp 64).bind fun v =>
+          (evalJumpMem P l (pushRet sp v s).prog).map (fun p => { s with prog := p })
+      else none
+  | .Lcall (some r) (fn, l) =>
+      if fn = P.lfn then
+        (evalJumpMem P l (linkRet r s).prog).map (fun p => { s with prog := p })
+      else none
+  | .Lret => (s.prog.base.reg.getW sp 64).map fun v => popRet sp v s
   | _ => none
 
 /-- **The instruction-set record of the `Lprog` back end**: the data `IsaData` (register
@@ -335,6 +399,77 @@ theorem runIdxOk_of_checked (P : LprogM) :
           rw [I.step_of_k he] at he'
           cases he'
           exact runIdxOk_of_checked P fuel s' t h
+
+/-! ## Call and return -/
+
+/-- **The instruction set with call and return.** The record `I` with its step replaced, on
+    `Lcall` and `Lret`, by the call and return step `callStep` over the stack pointer
+    `I.sp`; the step of every other instruction, the data and the branch condition are those
+    of `I`. -/
+def withCalls : Isa :=
+  { I with
+    step := fun P i s => if isCall i.fst = true then callStep I.sp P i s else I.step P i s
+    step_ctl := fun P i s h => by
+      have hc : isCall i.fst = false := by
+        cases hi : i.fst <;> simp_all [isCtl, isCall]
+      simp only [hc, Bool.false_eq_true, if_false]
+      exact I.step_ctl P i s h }
+
+@[simp] theorem withCalls_toIsaData : I.withCalls.toIsaData = I.toIsaData := rfl
+
+@[simp] theorem withCalls_condEval : I.withCalls.condEval = I.condEval := rfl
+
+/-- The step of an instruction other than a call or a return is the step of `I`. -/
+theorem withCalls_step_of_not_call (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : isCall i.fst = false) : I.withCalls.step P i s = I.step P i s := by
+  simp only [withCalls, h, Bool.false_eq_true, if_false]
+
+/-- The step of a call through the stack: push the return address and jump within the
+    function of the program, none otherwise. -/
+theorem step_call (P : LprogM) (x : String) (l : LLabel) (tag : MemTag) (s : LstateMF) :
+    I.withCalls.step P (.Lcall none (x, l), tag) s =
+      if x = P.lfn then
+        (s.prog.base.reg.getW I.sp 64).bind fun v =>
+          (evalJumpMem P l (pushRet I.sp v s).prog).map (fun p => { s with prog := p })
+      else none :=
+  rfl
+
+/-- The step of a call through a link register: write the return address to the register
+    and jump within the function of the program, none otherwise. -/
+theorem step_call_link (P : LprogM) (r x : String) (l : LLabel) (tag : MemTag)
+    (s : LstateMF) :
+    I.withCalls.step P (.Lcall (some r) (x, l), tag) s =
+      if x = P.lfn then
+        (evalJumpMem P l (linkRet r s).prog).map (fun p => { s with prog := p })
+      else none :=
+  rfl
+
+/-- The step of a return: pop the return address into the counter. -/
+theorem step_ret (P : LprogM) (tag : MemTag) (s : LstateMF) :
+    I.withCalls.step P (.Lret, tag) s =
+      (s.prog.base.reg.getW I.sp 64).map fun v => popRet I.sp v s :=
+  rfl
+
+/-- On a program without call and return instructions the run of `I.withCalls` is the run
+    of `I`. -/
+theorem withCalls_lsemFuelMemF (P : LprogM) (hP : ∀ i ∈ P.body, isCall i.fst = false) :
+    ∀ (fuel : Nat) (s : LstateMF),
+      I.withCalls.lsemFuelMemF P fuel s = I.lsemFuelMemF P fuel s
+  | 0, s => by
+      cases hf : findInstrMem P s.prog <;> simp only [lsemFuelMemF, hf]
+  | fuel + 1, s => by
+      cases hf : findInstrMem P s.prog with
+      | none => simp only [lsemFuelMemF, hf]
+      | some i =>
+          have hi : i ∈ P.body := by
+            unfold findInstrMem at hf
+            split at hf
+            · exact List.mem_of_getElem? hf
+            · cases hf
+          simp only [lsemFuelMemF, hf, I.withCalls_step_of_not_call P i s (hP i hi)]
+          cases I.step P i s with
+          | none => rfl
+          | some s' => exact withCalls_lsemFuelMemF P hP fuel s'
 
 end Isa
 

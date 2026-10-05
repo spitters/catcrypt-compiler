@@ -56,7 +56,31 @@ identifications are `corres_eq_corresM` (by `rfl`), `corresJ_eq_corresM`,
 Transport from `CorresJ` (`Ascent/CorresIsaX86`): `corresIsa_x86_of_corresJ` for blocks
 in `InSubsetM`, `corresIsa_arm_of_corresJ` for blocks in `InFieldArithSubset`, both over
 the side relation `liftSR`, which leaves the flags unrelated; examples `corresIsa_x86_add2`,
-`corresIsa_arm_add2`. No transport targets `rvIsa`.
+`corresIsa_arm_add2`. `corresIsa_x86_of_corresJ_mov` (`Ascent/CorresIsaX86Mov`) covers
+blocks with register-to-register moves (`InMovRegSubset`); it is an instance of
+`corresIsa_x86_of_runStraightF`, which takes the agreement of the flag machine with
+`runBlock` as a hypothesis. No transport targets `rvIsa`.
+
+Control flow (`Ascent/CorresIsaCfg`, namespace `IsaCfg`): `corresIsa_of_cutPoint` is the
+cut-point rule of `HaxAscent/Calculus/CorresMCutPoint` at `Isa.lsemFuelMemF`;
+`corresIsa_of_labels_floyd` takes an invariant per cut point (program entry or the
+position after a label), a measure and a step bound `B` per segment, and gives
+`CorresIsa` with fuel `B * (N + 1)`. Segments come from `steps_of_runL`. Examples over
+`x86Isa` (`Ascent/Demos/KrakenCfgDemo`): `cond_corresIsa` (absolute value by a branch),
+`alias_corresIsa` (two indexed stores at possibly equal indices), `loop_corresIsa` (a
+counting loop).
+
+Call and return (`VIR/LprogIsa`, `Ascent/CorresIsaCall`): `Isa.withCalls` is the record
+`isa` with a step for `Lcall` and `Lret` (return address pushed at the stack pointer of
+`IsaAbi`, or written to a link register), and agrees with `isa` on every other
+instruction (`Isa.withCalls_step_of_not_call`). `IsaCall.ProcSpec` is a procedure
+specification from an entry label to a return position, with a frame condition and
+`RetFrame` (stack pointer and return cell preserved); `IsaCall.steps_call` runs a call
+site through call, callee and return in at most `B + 2` steps, and is one segment of
+`corresIsa_of_labels_floyd`. Example: `call_corresIsa` (`Ascent/Demos/KrakenCallDemo`),
+a caller of a doubling procedure, twice. A return through a link register has no step
+(`Ligoto`), and the three instance records are not extended: results with calls are
+stated over `isa.withCalls`.
 
 Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 `fnCorres_haxEval`, `fnCorres_enc_unique`.
@@ -66,7 +90,7 @@ Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 | refinement, correspondence and emission | `legWeld`: `RRefines spec c`, `Corres SRwordNT P fa c` and the emit leg |
 | descent result to compiled x86 block | `corres_of_refines_x86` |
 | hax pipeline and source tower | `feSub_raw_source_to_bytes`, over hax-lean's `pipeline_correct` |
-| extracted `maj` with its machine code (development tree) | `maj_fnCorres`; `maj_corresJ_of_fnCorres` at the decoded shipped block; `maj_corresIsa_of_fnCorres` under `x86Isa` over the virtual-register chain |
+| extracted `maj` with its machine code (development tree) | `maj_fnCorres`; `maj_corresJ_of_fnCorres` at the decoded shipped block; `maj_corresIsa_of_fnCorres` under `x86Isa` over the virtual-register chain; `maj_corresIsa_bytes_of_fnCorres` under `x86Isa` at the decoded shipped block |
 | emitted carry chains from correspondences | `emitSbbChain_runBlock`, `emitAdcChain_runBlock`, from `corresJ_sbbChain`, `corresJ_adcChain` (`Ascent/EcMultiLimbCapstone`) |
 
 Jasmin source (`CatCrypt/Crypto/Jasmin/`): `JazzToInstrR` parses `.jazz` text
@@ -236,7 +260,8 @@ framed forms use `runBlock`. [ASCENT.md](ASCENT.md) has the full result tables.
 | `ed25519_madd`, `invert`, `compress` | `maddShipped_correct` (callees discharged through `maddCallees_maddCallModel`; `maddShipped_correct_cross` is the form relative to `MaddCallees`), `invertShipped_correct`, `invertShipped_inv`, `compressShipped_correct` (`compressShipped_correct_addr` is the form relative to `CompressCallees`) | inputs below p; `ChainSep`, `RangeDisj`, `CompressSep` buffer disjointness |
 | `fe25519_mul`, comb select | `feMulBlock_mod`, `combSelectBytes_correct`, `selBytes_constant_time` | |
 | RV64 `(x + y) mod p256` | `addp256_correct` | |
-| extracted `maj` (development tree) | `maj_fnCorres`, `maj_corresJ_of_fnCorres`, `maj_corresIsa_of_fnCorres` | result type `Int` (`arithBuiltins` computes on `.int`); the `CorresIsa` form is over the virtual-register chain, before allocation |
+| extracted `maj` (development tree) | `maj_fnCorres`, `maj_corresJ_of_fnCorres`, `maj_corresIsa_of_fnCorres`, `maj_corresIsa_bytes_of_fnCorres` | result type `Int` (`arithBuiltins` computes on `.int`) |
+| shipped `mpn_mul_1` loop (development tree) | `mul1_corresIsaRun` | `CorresIsaRun x86Isa`: fuel chosen per state, because the loop simulation gives its fuel existentially; the precondition `mul1Regions` has no machine-checked witness |
 | `bignum_mod_p25519_4` from Jasmin source (development tree) | `runBlockA_modP25519_4_correct`, through `bignumTriple_to_runBlockA` and `bignumExec_runBlockA_sim` | `runBlockA` only; no byte statement |
 
 The example statement, in
