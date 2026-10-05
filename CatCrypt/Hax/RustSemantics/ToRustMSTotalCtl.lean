@@ -40,6 +40,15 @@ the conditions that make each total: `U₁ + U₂ ≤ 2 ^ w` for `Add`, `U₂ �
 subtrahend at most the minuend) for `Sub`, `U₁ * U₂ ≤ 2 ^ w` for `Mul`, and `1 ≤ L₂` (a
 non-zero divisor) for `Div` and `Rem`; `AppTyped.append` joins signature lists.
 
+The tagged shifts `Shl#t` and `Shr#t` read the shift amount as a word of the shifted width;
+on an amount in `[Lₐ, Uₐ)` with `Uₐ ≤ w` they are total, `Shl#t` under
+`U * 2 ^ (Uₐ - 1) ≤ 2 ^ w` with result in `[L * 2 ^ Lₐ, U * 2 ^ (Uₐ - 1))` and `Shr#t` with
+result in `[L / 2 ^ (Uₐ - 1), U)`. The untagged `Shl` and `Shr` are not routed by `appRt` and
+fail. `AVal` has no signed word, so checked signed arithmetic over `IScalar` has no kind; the
+untagged arithmetic on two integer literals is the unbounded integer operation and is total
+at the kind `int` (`appTyped_intArith`), without the overflow failure of Rust's signed
+operations.
+
 `fnCorres_toRustMS_triple_of_kindOf` combines the termination theorem with
 `fnCorres_toRustMS`: a function correspondence, `AppOk`, `AppTyped` and `EnvTy` give the
 total `Std.Do` triple of the reading.
@@ -77,6 +86,8 @@ reading.
 * `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
   `appRt_div_total`, `appRt_rem_total`
 * `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem`
+* `appTyped_intArith`, `appRt_Shl_undef`, `appRt_Shr_undef`, `appRt_shl_total`,
+  `appRt_shr_total`, `appTyped_shl`, `appTyped_shr`
 * `keyEqLit_kind`, `keyEqLit_triple`, `varLoopLit_kind`, `varLoopLit_total`
 -/
 
@@ -647,6 +658,149 @@ theorem appTyped_rem
   obtain ⟨rfl, rfl, rfl⟩ := hseq
   match vs, hvs with
   | [u, w], .cons hu (.cons hw .nil) => exact appRt_rem_total hB hu hw
+
+/-! ## Arithmetic on integer literals
+
+`AVal` has no signed word: the reading `appRt` routes `Add`, `Sub`, `Mul`, `Div` and `Rem`
+to `appArith`, which reads a word operand only at an unsigned width (`AVal.asW`) and computes
+on two integer literals the unbounded integer operation `AOp.rt`. Checked signed arithmetic
+over `IScalar` therefore has no kind in this fragment; the literal arithmetic below is total
+without a width condition, so it does not model the overflow failure of Rust's checked
+signed operations. -/
+
+/-- **Literal arithmetic in the fragment.** `appRt` is typed by every signature list of
+    untagged arithmetic operations `f : int → int → int` with `f` one of `Add`, `Sub`, `Mul`,
+    `Div`, `Rem`; the result is the unbounded integer operation of the runtime. -/
+theorem appTyped_intArith {κ : Type} {H : κ → AVal → Prop}
+    {sig : List (String × List (Kd κ) × Kd κ)}
+    (hsig : ∀ s ∈ sig, ∃ f, s = (f, [.int, .int], .int) ∧
+      f ∈ ["Add", "Sub", "Mul", "Div", "Rem"]) :
+    AppTyped H sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨g, hseq, hg⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons ⟨n, hn⟩ (.cons ⟨m, hm⟩ .nil) =>
+    subst hn hm
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hg
+    rcases hg with rfl | rfl | rfl | rfl | rfl
+    · exact ⟨_, by rw [appRt_Add]; rfl, _, rfl⟩
+    · exact ⟨_, by rw [appRt_Sub]; rfl, _, rfl⟩
+    · exact ⟨_, by rw [appRt_Mul]; rfl, _, rfl⟩
+    · exact ⟨_, by rw [appRt_Div]; rfl, _, rfl⟩
+    · exact ⟨_, by rw [appRt_Rem]; rfl, _, rfl⟩
+
+/-! ## Shifts on word ranges
+
+`appRt` routes a shift only by its width-tagged name `Shl#t` or `Shr#t` (`wordOpAt?`), to
+`appWord`, which reads both operands at the width of the tag: the shift amount is a word of
+the shifted width (a loop index `idx` only at `usize`). The untagged names `Shl` and `Shr`
+are not routed and fail on every argument pair (`appRt_Shl_undef`, `appRt_Shr_undef`), so
+they have no total kind. -/
+
+theorem appRt_Shl_undef (a b : AVal) : appRt "Shl" [a, b] = .fail .undef := by
+  rfl
+
+theorem appRt_Shr_undef (a b : AVal) : appRt "Shr" [a, b] = .fail .undef := by
+  rfl
+
+theorem appRt_Shl_tag (ty : UScalarTy) (a b : AVal) :
+    appRt ("Shl#" ++ uTag ty) [a, b] = appWord ty .shl a b := by
+  cases ty <;> rfl
+
+theorem appRt_Shr_tag (ty : UScalarTy) (a b : AVal) :
+    appRt ("Shr#" ++ uTag ty) [a, b] = appWord ty .shr a b := by
+  cases ty <;> rfl
+
+/-- The tagged `Shl#t` of `appRt` on a word in `[L, U)` and an amount in `[Lₐ, Uₐ)` with
+    `Uₐ ≤ w` returns a word in `[L * 2 ^ Lₐ, U * 2 ^ (Uₐ - 1))` when
+    `U * 2 ^ (Uₐ - 1) ≤ 2 ^ w`, under which the shift does not wrap. -/
+theorem appRt_shl_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBits)
+    (hB : U * 2 ^ (Ua - 1) ≤ 2 ^ ty.numBits) {u w : AVal} (hu : WI ty L U u)
+    (hw : WI ty La Ua w) :
+    ∃ r, appRt ("Shl#" ++ uTag ty) [u, w] = .ok r ∧
+      WI ty (L * 2 ^ La) (U * 2 ^ (Ua - 1)) r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  have hs : y.val < ty.numBits := by omega
+  have hp : 2 ^ y.val ≤ 2 ^ (Ua - 1) := Nat.pow_le_pow_right (by omega) (by omega)
+  have hlt : x.val * 2 ^ y.val < U * 2 ^ (Ua - 1) :=
+    lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_right hx2 (Nat.two_pow_pos _))
+      (Nat.mul_le_mul_left _ hp)
+  let z : UScalar ty := ⟨x.bv.shiftLeft y.val⟩
+  have hz : z.val = x.val * 2 ^ y.val := by
+    show (x.bv <<< y.val).toNat = _
+    rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+    exact Nat.mod_eq_of_lt (lt_of_lt_of_le hlt hB)
+  refine ⟨.w ty z, ?_, z, rfl, ?_, ?_⟩
+  · rw [appRt_Shl_tag]
+    have hsh : x <<< y = RustM.ok z := by
+      show UScalar.shiftLeft_UScalar x y = _
+      unfold UScalar.shiftLeft_UScalar UScalar.shiftLeft
+      rw [if_pos hs]
+    simp [appWord, AVal.asW, WordOp.aen, hsh]
+  · rw [hz]
+    exact Nat.mul_le_mul hx1 (Nat.pow_le_pow_right (by omega) hy1)
+  · rw [hz]
+    exact hlt
+
+/-- The tagged `Shr#t` of `appRt` on a word in `[L, U)` and an amount in `[Lₐ, Uₐ)` with
+    `Uₐ ≤ w` returns a word in `[L / 2 ^ (Uₐ - 1), U)`. -/
+theorem appRt_shr_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBits)
+    {u w : AVal} (hu : WI ty L U u) (hw : WI ty La Ua w) :
+    ∃ r, appRt ("Shr#" ++ uTag ty) [u, w] = .ok r ∧ WI ty (L / 2 ^ (Ua - 1)) U r := by
+  obtain ⟨x, rfl, hx1, hx2⟩ := hu
+  obtain ⟨y, rfl, hy1, hy2⟩ := hw
+  have hs : y.val < ty.numBits := by omega
+  let z : UScalar ty := ⟨x.bv.ushiftRight y.val⟩
+  have hz : z.val = x.val / 2 ^ y.val := by
+    show (x.bv >>> y.val).toNat = _
+    rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+    rfl
+  refine ⟨.w ty z, ?_, z, rfl, ?_, ?_⟩
+  · rw [appRt_Shr_tag]
+    have hsh : x >>> y = RustM.ok z := by
+      show UScalar.shiftRight_UScalar x y = _
+      unfold UScalar.shiftRight_UScalar UScalar.shiftRight
+      rw [if_pos hs]
+    simp [appWord, AVal.asW, WordOp.aen, hsh]
+  · rw [hz]
+    exact Nat.div_le_div hx1 (Nat.pow_le_pow_right (by omega) (by omega)) (Nat.two_pow_pos _).ne'
+  · rw [hz]
+    exact lt_of_le_of_lt (Nat.div_le_self _ _) hx2
+
+/-- **Left shifts on word ranges.** `appRt` is typed by every signature list of tagged
+    left shifts `Shl#t : WI ty L U → WI ty Lₐ Uₐ → WI ty (L * 2 ^ Lₐ) (U * 2 ^ (Uₐ - 1))`,
+    with `t` the tag of `ty`, `Uₐ ≤ w` and `U * 2 ^ (Uₐ - 1) ≤ 2 ^ w`. -/
+theorem appTyped_shl
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L U La Ua, s = ("Shl#" ++ uTag ty,
+      [.base (ty, L, U), .base (ty, La, Ua)], .base (ty, L * 2 ^ La, U * 2 ^ (Ua - 1))) ∧
+      Ua ≤ ty.numBits ∧ U * 2 ^ (Ua - 1) ≤ 2 ^ ty.numBits) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L, U, La, Ua, hseq, hA, hB⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_shl_total hA hB hu hw
+
+/-- **Right shifts on word ranges.** `appRt` is typed by every signature list of tagged
+    right shifts `Shr#t : WI ty L U → WI ty Lₐ Uₐ → WI ty (L / 2 ^ (Uₐ - 1)) U`, with `t`
+    the tag of `ty` and `Uₐ ≤ w`. -/
+theorem appTyped_shr
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L U La Ua, s = ("Shr#" ++ uTag ty,
+      [.base (ty, L, U), .base (ty, La, Ua)], .base (ty, L / 2 ^ (Ua - 1), U)) ∧
+      Ua ≤ ty.numBits) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L, U, La, Ua, hseq, hA⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) => exact appRt_shr_total hA hu hw
 
 /-! ## The instance on `keyEqLit` -/
 
