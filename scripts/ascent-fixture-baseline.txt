@@ -18,3 +18,4 @@ CatCrypt/Crypto/SecureCompilation/Ascent/RInstrAddrMem.lean
 CatCrypt/Crypto/SecureCompilation/CT/Leakage.lean
 CatCrypt/Crypto/Jasmin/BignumToJCalls.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaX86.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/JasminJumpDemo.lean

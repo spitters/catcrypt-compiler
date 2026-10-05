@@ -231,3 +231,4 @@ CatCrypt/Crypto/SecureCompilation/VIR/LprogIsaData.lean  # ISA record (ABI and i
 CatCrypt/Crypto/SecureCompilation/VIR/X86IsaData.lean  # x86 values of the ISA record (sysv constants, loop guard, zero-trip guard, invariant touch) moved above the exporter; exporter data, no emit artifact
 CatCrypt/Crypto/SecureCompilation/VIR/LsemBridge.lean  # relation between the two Lprog semantics and the flag-carrying wrapper step; the Lprog terms are fragment shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/X86Isa.lean  # x86Isa instance, its machine and symbolic companion, with step lemmas for the record's templates; no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/JasminJumpLevel.lean  # compilation of structured imported Jasmin programs to labelled Lprog code with its simulation theorem; the Lopn/Lcond terms are the translation under proof, no hand-written kernel and no emit artifact

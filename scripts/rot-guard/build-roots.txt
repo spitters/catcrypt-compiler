@@ -602,7 +602,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportLoopsJIsa
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
@@ -769,6 +768,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Miller
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254Fp2AddSubKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldL
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayQrObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayTransposeObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
@@ -812,9 +812,10 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCellsLoop
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimWCond
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightArrLeak
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel
@@ -910,7 +911,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaKeep
 CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst
