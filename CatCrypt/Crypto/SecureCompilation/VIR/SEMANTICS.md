@@ -73,7 +73,7 @@ operation (`UScalar.*`, `IScalar.*`), either by a proved square or by a refuted 
 | `wrapping_add#w`, `wrapping_mul#w`, signed forms | residue modulo `2^w` (`Hax.wrapping_add_w`, `Hax.wrapping_mul_w`, `Hax.wrapping_add_iw`) | wrap | `wrapping_*` | follows LLVM | `wrapping_add_w_u_square`, `wrapping_mul_w_u_square`, `wrapping_add_iw_square` |
 | Untagged `wrapping_add`, `wrapping_mul` at `Int` | `a + b`, `a * b` without reduction (`Hax.wrapping_add`, `Hax.wrapping_mul`) | wrap | `wrapping_*` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.wrapping_add` and `Hax.wrapping_mul` at `Int` do not wrap (`wrapping_add_u_counterexample`, `wrapping_mul_u_counterexample`). Fix: the printer emits the width-tagged name at every scalar type; the untagged instance is restricted to fixed-width carriers |
 | Untagged signed `/`, `%` | Lean `Int` division: −7 / 2 = −4, −7 % 2 = 1 (`Hax.div`, `Hax.rem`) | truncating: −3, −1 | truncating | deviates, to be fixed | Defect: hax-lean runtime, `Hax.div` and `Hax.rem` at `Int` round away from LLVM and Rust on a negative dividend (`div_i_counterexample`, `rem_i_counterexample`). Fix: `Int.tdiv` and `Int.tmod`, as `Hax.div_iw` and `Hax.rem_iw` use |
-| Zero divisor; `MIN` divided by −1 | a total value: Lean's quotient by 0 is 0 (`Hax.div`, `Hax.rem`, `Hax.div_iw`, `Hax.rem_iw`); `Hax.div_iw` wraps `MIN` divided by −1 | undefined behaviour | panic | deviates, to be fixed | Defect: no runtime division returns a panic; the checked operations `UScalar.div` and `IScalar.div` do. Fix: an `Option`-valued (panic) result on a zero divisor and on `MIN` divided by −1 |
+| Zero divisor; `MIN` divided by −1 | a total value: Lean's quotient by 0 is 0 and its remainder by 0 is the dividend (`Hax.div`, `Hax.rem`); `Hax.div_iw` gives 0 and `Hax.rem_iw` the reduced dividend; `Hax.div_iw` wraps `MIN` divided by −1 | undefined behaviour | panic | deviates, to be fixed | Defect: no runtime division returns a panic; the checked operations `UScalar.div` and `IScalar.div` do. Fix: an `Option`-valued (panic) result on a zero divisor and on `MIN` divided by −1 |
 | `Div#iw`, `Rem#iw`, nonzero divisor, no overflow | truncating (`Hax.div_iw`, `Hax.rem_iw`) | truncating | truncating | follows LLVM | by definition (`Int.tdiv`, `Int.tmod`) |
 | `Shl#w`, `Shr#w`, amount ≥ `w` | unbounded shift, then reduction: 0 (`Hax.shl_w`, `Hax.shr_w`) | poison | panic | deviates, principled | P2. `shl_w_u_square`, `shr_w_u_square`, `shl_iw_square`, `shr_iw_square` relate the value to the checked operation wherever that operation returns |
 | Untagged `Shl`; untagged signed `Shr` | no truncation (`Hax.shl`); a negative operand shifts as 0 (`Hax.shr`) | `shl`, `ashr` | `<<`, `>>` | deviates, to be fixed | Defect: hax-lean runtime, `Hax.shl` and `Hax.shr` at `Int` (`shl_u_counterexample`, `shl_i_counterexample`, `shr_i_counterexample`). Fix: as for untagged `wrapping_add` |
@@ -115,7 +115,7 @@ LLVM, with the nonzero-divisor and no-overflow guards as obligations of the fron
 | `select`; `ite` | first arm when the condition is `1#1` (`selectW`) or `true` | `select` | `if` | follows LLVM | P1: no operand is poison |
 | `castW` | `zeroExtend`: zero extension or truncation | `zext`, `trunc`; `extui`, `trunci` | `as` from an unsigned source | follows LLVM | no sign-extending cast exists in `jasminDialect` |
 | `bitToSword` | all ones or 0 | `sext` of `i1`; `extsi` | `(b as iN).wrapping_neg()` | follows LLVM | emitted as `arith.extsi` by the bridge |
-| `MlirArithDialect.extui` | all ones or 0 (`VIR/MlirArithDialect.lean`) | `arith.extui` of `i1` is 0 or 1 | `b as uN` is 0 or 1 | deviates, to be fixed | Defect: `VIR/MlirArithDialect.lean`, constructor `extui`, carries the denotation of `arith.extsi` under the name of `arith.extui`. Fix: rename the constructor to `extsi` |
+| `MlirArithDialect.extsi` | all ones or 0 (`VIR/MlirArithDialect.lean`) | `sext` of `i1`; `arith.extsi` | `(b as iN).wrapping_neg()` | follows LLVM | `agree_bitToSword`: equal to `bitToSword` by `rfl` |
 | `addCarryLo`, `addCarryHi` | `a + b + cin` and its carry-out, `cin : BitVec 1` (`addCarryWord`, `carryOutBit`) | two `llvm.uadd.with.overflow` and an `or`; `addui_extended` has no carry-in | two `overflowing_add` | follows LLVM | a composition; the three-input form matches x86 `ADC`, `ADCX`, `ADOX` |
 | `bvAdd64` | `(carry, sum)`, the carry as a `w`-bit word 0 or 1 | `llvm.uadd.with.overflow`, then `zext` | `overflowing_add` | follows LLVM | a composition; the result order is (carry, sum), LLVM's is (sum, carry) |
 | `bvAdc` | carry-in `cin : BitVec w`; any nonzero value counts as 1 | carry is `i1` | `bool` | deviates, to be fixed | Defect: `VIR/CatCryptDialect.lean`, op `bvAdc`, accepts a `w`-bit carry-in and tests `cin.toNat ≠ 0`. Fix: a one-bit carry-in, as `addCarryLo` has |
@@ -195,11 +195,10 @@ The rows with status "deviates, to be fixed", in the order of the layers:
    zero divisor or on `MIN` divided by −1.
 3. `Hax.shl_u64`, `Hax.shr_u64` against `Hax.shl_w 64`, `Hax.shr_w 64`: two values
    at an amount ≥ 64.
-4. `MlirArithDialect.extui`: misnamed sign extension.
-5. `bvAdc`: carry-in wider than one bit.
-6. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
-7. Memory alignment: no predicate and no theorem.
-8. Bridge: `andn` interpreted as poison.
+4. `bvAdc`: carry-in wider than one bit.
+5. ARM `lsl`, `lsr` and RISC-V `slli`, `srli`: shift immediates of type `Nat`.
+6. Memory alignment: no predicate and no theorem.
+7. Bridge: `andn` interpreted as poison.
 
 A change that adds an operation to a dialect, a machine model or the bridge adds its
 row here in the same change.

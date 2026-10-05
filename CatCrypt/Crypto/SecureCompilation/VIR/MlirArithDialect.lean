@@ -41,7 +41,7 @@ lives in), with the *standard MLIR `arith` integer semantics*:
 | `cmpi w`    | `decide (· = ·)` (eq pred) |
 | `select t`  | `if · then · else ·`      |
 | `constant`  | the literal               |
-| `extui n`   | `if · then allOnes else 0`|
+| `extsi n`   | `if · then allOnes else 0`|
 
 The bit-level (`i1`) ops (`xori1`/`andi1`/`ori1`/`cmpi1`/`xnori1`) are the
 `bit`-typed analogues of the catCrypt `xor`/`and`/`or`/`eqBit`/`not` ops; in
@@ -103,7 +103,7 @@ inductive MlirArithOp where
   | xnori1                                   -- `arith.xori %x, true` (= `not`)
   -- control / extension
   | select (t : CryptoTy)                    -- `arith.select`
-  | extui (n : Nat)                          -- `arith.extui i1 → iN` (allOnes-or-0 mask)
+  | extsi (n : Nat)                       -- `arith.extsi i1 → iN` (allOnes-or-0 mask)
   deriving DecidableEq
 
 /-! ## 2. The dialect, signature and denotation -/
@@ -128,7 +128,7 @@ instance : DialectSignature mlirArithDialect where
     | .xori1 | .andi1 | .ori1 | .cmpi1 => [.bit, .bit]
     | .xnori1 => [.bit]
     | .select t => [.bit, t, t]
-    | .extui _ => [.bit]
+    | .extsi _ => [.bit]
   ret op := match op with
     | .constant w _ => .sword w
     | .addi w | .subi w | .muli w | .xori w | .andi w | .ori w
@@ -138,7 +138,7 @@ instance : DialectSignature mlirArithDialect where
     | .constantBit _ => .bit
     | .xori1 | .andi1 | .ori1 | .cmpi1 | .xnori1 => .bit
     | .select t => t
-    | .extui n => .sword n
+    | .extsi n => .sword n
 
 /-- Operation denotation: the **standard MLIR `arith` integer semantics**.
     Each clause is chosen to coincide with `catCryptDenote`'s clause for the
@@ -202,7 +202,7 @@ instance mlirArithDenote : DialectDenote mlirArithDialect where
     | .xnori1 => fun args => !(args.head : Bool)
     | .select _ => fun args =>
         if (args.head : Bool) then args.tail.head else args.tail.tail.head
-    | .extui n => fun args =>
+    | .extsi n => fun args =>
         show BitVec n from
           if (args.head : Bool) then BitVec.allOnes n else 0
 
@@ -281,10 +281,10 @@ theorem agree_ite (t : CryptoTy) :
     DialectDenote.denote (d := catCryptDialect) (.ite t)
       = DialectDenote.denote (d := mlirArithDialect) (.select t) := rfl
 
-/-- `bitToSword n` agrees with `extui n` (`arith.extui`, allOnes-or-0 mask). -/
+/-- `bitToSword n` agrees with `extsi n` (`arith.extsi` of an `i1`: the allOnes-or-0 mask). -/
 theorem agree_bitToSword (n : Nat) :
     DialectDenote.denote (d := catCryptDialect) (.bitToSword n)
-      = DialectDenote.denote (d := mlirArithDialect) (.extui n) := rfl
+      = DialectDenote.denote (d := mlirArithDialect) (.extsi n) := rfl
 
 /-- bit-level `xor` agrees with `xori1` (`arith.xori` at i1). -/
 theorem agree_xor :
@@ -355,7 +355,7 @@ def catToArith : CatCryptOp → Option MlirArithOp
   | .bvShiftL w k => some (.shli w k)
   | .bvShiftR w k => some (.shrui w k)
   | .ite t => some (.select t)
-  | .bitToSword n => some (.extui n)
+  | .bitToSword n => some (.extsi n)
   | .constUnit | .mkPair _ _ | .fst _ _ | .snd _ _ | .inl _ _ | .inr _ _
   | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
   | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ | .extCall _ _ _

@@ -62,7 +62,7 @@ The constant ops carry different payloads: the back op carries a `Nat`
 
 * `mului_extended_hi w` is **back-only** (the widening-multiply high half, whose
   jasmin image is `mulhi`); the front has no such op.
-* `cmpi`/`select`/`extui` and the `i1`/`bit`-typed ops
+* `cmpi`/`select`/`extsi` and the `i1`/`bit`-typed ops
   (`xori1`/`andi1`/`ori1`/`cmpi1`/`xnori1`/`constantBit`) are **front-only**:
   they target `arith` opcodes the D0 back-end baseline does not carry.
 
@@ -245,7 +245,7 @@ front emission semantics and the back D0 lowering baseline — not two divergent
 duplicate dialects.
 
 Out of the shared fragment: `mului_extended_hi` is back-only, and
-`cmpi`/`select`/`extui`/`xori1`/`andi1`/`ori1`/`cmpi1`/`xnori1`/`constantBit` are
+`cmpi`/`select`/`extsi`/`xori1`/`andi1`/`ori1`/`cmpi1`/`xnori1`/`constantBit` are
 front-only. -/
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.MlirArithArithAgree
