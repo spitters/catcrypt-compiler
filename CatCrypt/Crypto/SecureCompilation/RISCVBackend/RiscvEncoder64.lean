@@ -67,16 +67,9 @@ builders) and the `regNum` table. `MUL` funct7 is `0b0000001 = 0x01`. -/
 /-- Encode one `RInst64` to its 32-bit RV64 instruction word, or `none` for the
     `LI` pseudo-op (which `as` expands to a variable-length sequence).
 
-    **Precondition:** `.srli`/`.slli`'s shift amount `sh` is packed directly into
-    the 12-bit `ITYPE` immediate with `BitVec.ofNat 12 sh`, with **no range
-    check**. `SailRiscvDecoder64.roundtrip_RInst64` is stated only for `sh < 64`
-    (the RV64 6-bit `shamt`); outside that range the encoding is not just
-    "wrong", it can silently name a *different instruction*: on RV64,
-    `imm[11:6]` doubles as the `SRLI`/`SRAI` selector (`0b000000` vs
-    `0b010000`), so e.g. `sh = 1024` (`0b010000000000`) packs `shamt = 0` with
-    the `SRAI` selector bits set — `encodeWord64 (.srli d a 1024)` assembles to
-    `srai d, a, 0`, not `srli`. The backend must only ever call this with
-    `sh < 64`. -/
+    The shift amount `sh : Fin 64` of `.srli`/`.slli` is the RV64 6-bit `shamt`; it
+    is packed into the 12-bit `ITYPE` immediate, whose upper six bits `imm[11:6]`
+    are the `SRLI`/`SRAI` selector and stay `0b000000` because `sh < 64`. -/
 def encodeWord64 : RInst64 → Option (BitVec 32)
   | .add  d a b => some (encR 0x00 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x33)
   | .sub  d a b => some (encR 0x20 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x33)
@@ -87,8 +80,8 @@ def encodeWord64 : RInst64 → Option (BitVec 32)
   | .mul  d a b => some (encR 0x01 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x33)
   | .mulhu d a b => some (encR 0x01 (reg5 b) (reg5 a) 0b011 (reg5 d) 0x33)
   | .mv   d s   => some (encI 0 (reg5 s) 0b000 (reg5 d) 0x13)
-  | .srli d a sh => some (encI (BitVec.ofNat 12 sh) (reg5 a) 0b101 (reg5 d) 0x13)
-  | .slli d a sh => some (encI (BitVec.ofNat 12 sh) (reg5 a) 0b001 (reg5 d) 0x13)
+  | .srli d a sh => some (encI (BitVec.ofNat 12 sh.val) (reg5 a) 0b101 (reg5 d) 0x13)
+  | .slli d a sh => some (encI (BitVec.ofNat 12 sh.val) (reg5 a) 0b001 (reg5 d) 0x13)
   | .li   _ _   => none
 
 /-- Encode one `RInst64` to its little-endian machine-code bytes (`[]` for `LI`,

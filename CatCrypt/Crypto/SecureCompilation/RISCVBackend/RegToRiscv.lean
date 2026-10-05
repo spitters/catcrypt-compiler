@@ -42,7 +42,8 @@ def RvOk : RegStmt → Bool
 
 /-- Instruction selection `RegStmt → ROp64`. ALU ops map 1:1 (`orr→or`,
     `eor→xor`, `umulh→mulhu`); `movz`/`loadImm` become a `li`, the immediate shifts
-    become `srli`/`slli`. Only the ARM-specific `movk` has no expansion (empty,
+    become `ROp64.shrImm`/`ROp64.shlImm` (`srli`/`slli` for an amount below 64, the
+    constant 0 otherwise). Only the ARM-specific `movk` has no expansion (empty,
     unreachable under `RvOk` — the front emits `loadImm`). -/
 def regStmtToROp : RegStmt → List ROp64
   | .add d a b => [.add d a b]
@@ -55,8 +56,8 @@ def regStmtToROp : RegStmt → List ROp64
   | .mov d a => [.mov d a]
   | .movz d i => [.li d (i % 0x10000)]
   | .loadImm d n => [.li d n]
-  | .shrI d a i => [.srli d a i]
-  | .shlI d a i => [.slli d a i]
+  | .shrI d a i => [ROp64.shrImm d a i]
+  | .shlI d a i => [ROp64.shlImm d a i]
   | .movk .. => []
 
 /-- The RV64 source effect of a statement (matching `evalRInst64` arm-for-arm;
@@ -76,11 +77,15 @@ def evalRegStmtRV (s : RState64) : RegStmt → RState64
   | .shlI d a i => s.set d (s.get a <<< i)
   | .movk .. => s
 
-/-- Per-statement selection correctness (all arms, by definitional unfolding). -/
+/-- Per-statement selection correctness: the shift arms by `ROp64.run_shrImm` and
+    `ROp64.run_shlImm`, the others by definitional unfolding. -/
 theorem regStmtToROp_denote (s : RState64) (stmt : RegStmt) :
     (regStmtToROp stmt).foldl (fun st op => runRBlock64 st (toRInst64 op)) s
       = evalRegStmtRV s stmt := by
-  cases stmt <;> rfl
+  cases stmt with
+  | shrI d a i => exact ROp64.run_shrImm s d a i
+  | shlI d a i => exact ROp64.run_shlImm s d a i
+  | _ => rfl
 
 /-- The RV64 backend as a `ScalarTarget`. -/
 @[implicit_reducible]

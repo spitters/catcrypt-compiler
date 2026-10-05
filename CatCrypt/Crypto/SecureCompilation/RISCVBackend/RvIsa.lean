@@ -334,11 +334,11 @@ theorem rvSel_decode {i : LinstrRM} {ri : RInst64} (h : rvSel i = some ri) :
       subst hri <;>
       exact roundtrip_RInst64 _ (fun _ _ h => by cases h)
         ⟨ed, by simp only [rinst64DstSrcs, List.mem_cons, List.not_mem_nil, or_false]
-                rintro r (rfl | rfl) <;> assumption⟩ (fun _ _ _ h => by simp at h)
+                rintro r (rfl | rfl) <;> assumption⟩
   · exact roundtrip_RInst64 _ (fun _ _ h => by cases h)
       ⟨emittedRegs_of_rvRegs hd, by
         simp only [rinst64DstSrcs, List.mem_cons, List.not_mem_nil, or_false]
-        rintro r rfl; exact emittedRegs_of_rvRegs ha⟩ (fun _ _ _ h => by simp at h)
+        rintro r rfl; exact emittedRegs_of_rvRegs ha⟩
 
 /-- **The block round trip**: the encoded bytes of a selected block decode to the block. -/
 theorem rvSel_decodeBlock :
@@ -585,7 +585,8 @@ theorem idxAddr_facts (b : RMState64) {base : String} (idx : String) (hb : base 
   have ht5 : ¬ ("t5" = "zero" ∨ "t5" = "x0") := by decide
   refine ⟨?_, ?_, rfl⟩
   · simp only [rvIdxAddr, runRMBlock64_cons, runRMBlock64_nil, evalRMInst64, evalRInst64,
-      RState64.get_set_same _ _ _ ht5, RState64.get_set_other _ _ _ _ hb, opAdd64, shl3_eq]
+      RState64.get_set_same _ _ _ ht5, RState64.get_set_other _ _ _ _ hb, opAdd64]
+    exact congrArg (b.regs.get base + ·) (shl3_eq _)
   · intro r hr
     simp only [rvIdxAddr, runRMBlock64_cons, runRMBlock64_nil, evalRMInst64, evalRInst64,
       RState64.get_set_other _ _ _ _ hr]
@@ -930,19 +931,14 @@ theorem rvIdxAddr_roundTrip {base idx : String} (hb : base ∈ rvMemRegs)
       rcases hr with rfl | rfl <;> assumption
     · intro j hj
       cases hj
-      refine ⟨fun _ _ h => ?_, fun _ _ _ h => ?_⟩
-      · cases h
-      · rcases h with h | h <;> cases h
-        decide
+      exact fun _ _ h => by cases h
   · refine ⟨rfl, roundtrip_RMInst64 _ ?_ trivial ?_⟩
     · intro r hr
       simp only [rminst64Regs, rinst64DstSrcs, List.mem_cons, List.not_mem_nil, or_false] at hr
       rcases hr with rfl | rfl | rfl <;> assumption
     · intro j hj
       cases hj
-      refine ⟨fun _ _ h => ?_, fun _ _ _ h => ?_⟩
-      · cases h
-      · rcases h with h | h <;> cases h
+      exact fun _ _ h => by cases h
 
 /-- **The byte round trip of a selected instruction**: each instruction of the selection of
     an `Lprog` instruction round trips. -/

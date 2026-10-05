@@ -163,10 +163,10 @@ inductive AInst where
   | orr (d a b : String)
   /-- `EOR Wd, Wn, Wm` — bitwise xor. -/
   | eor (d a b : String)
-  /-- `LSL Wd, Wn, #imm` — logical shift-left by immediate. -/
-  | lsl (d a : String) (imm : Nat)
-  /-- `LSR Wd, Wn, #imm` — logical shift-right by immediate. -/
-  | lsr (d a : String) (imm : Nat)
+  /-- `LSL Wd, Wn, #imm` — logical shift-left by an immediate below 32. -/
+  | lsl (d a : String) (imm : Fin 32)
+  /-- `LSR Wd, Wn, #imm` — logical shift-right by an immediate below 32. -/
+  | lsr (d a : String) (imm : Fin 32)
   /-- `ROR Wd, Wn, #imm` — rotate-right by immediate. -/
   | ror (d a : String) (imm : Nat)
   /-- `MOV Wd, Wn` — register move. -/
@@ -483,10 +483,10 @@ inductive BInst where
   | movk (d : String) (imm16 hw : Nat)
   /-- `MOV Xd, Xn` — register move (`ORR Xd, XZR, Xn`). -/
   | mov (d s : String)
-  /-- `LSR Xd, Xn, #imm` — logical shift-right by immediate (`UBFM` alias). -/
-  | lsr (d a : String) (imm : Nat)
-  /-- `LSL Xd, Xn, #imm` — logical shift-left by immediate (`UBFM` alias). -/
-  | lsl (d a : String) (imm : Nat)
+  /-- `LSR Xd, Xn, #imm` — logical shift-right by an immediate below 64 (`UBFM` alias). -/
+  | lsr (d a : String) (imm : Fin 64)
+  /-- `LSL Xd, Xn, #imm` — logical shift-left by an immediate below 64 (`UBFM` alias). -/
+  | lsl (d a : String) (imm : Fin 64)
   deriving Repr, DecidableEq
 
 /-- Insert the 16-bit immediate `imm16` into the `hw`-th 16-bit lane of `old`

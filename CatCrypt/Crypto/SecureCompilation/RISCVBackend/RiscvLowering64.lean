@@ -89,11 +89,29 @@ inductive ROp64 where
   | li (d : String) (imm : Nat)
   /-- `d := MV src`. -/
   | mov (d s : String)
-  /-- `d := a >>> sh` (logical shift right by an immediate). -/
-  | srli (d a : String) (sh : Nat)
-  /-- `d := a <<< sh` (logical shift left by an immediate). -/
-  | slli (d a : String) (sh : Nat)
+  /-- `d := a >>> sh` (logical shift right by an immediate below 64). -/
+  | srli (d a : String) (sh : Fin 64)
+  /-- `d := a <<< sh` (logical shift left by an immediate below 64). -/
+  | slli (d a : String) (sh : Fin 64)
   deriving Repr, DecidableEq
+
+/-- `d := a >>> i` for an arbitrary amount `i`: `srli` when `i < 64`, and the constant 0
+    otherwise, the value of a 64-bit logical shift by 64 or more. -/
+def ROp64.shrImm (d a : String) (i : Nat) : ROp64 :=
+  if h : i < 64 then .srli d a ⟨i, h⟩ else .li d 0
+
+/-- `d := a <<< i` for an arbitrary amount `i`: `slli` when `i < 64`, and the constant 0
+    otherwise. -/
+def ROp64.shlImm (d a : String) (i : Nat) : ROp64 :=
+  if h : i < 64 then .slli d a ⟨i, h⟩ else .li d 0
+
+/-- Below 64, `ROp64.shrImm` is the `srli` instruction with the same amount. -/
+theorem ROp64.shrImm_of_lt (d a : String) {i : Nat} (h : i < 64) :
+    ROp64.shrImm d a i = .srli d a ⟨i, h⟩ := dif_pos h
+
+/-- Below 64, `ROp64.shlImm` is the `slli` instruction with the same amount. -/
+theorem ROp64.shlImm_of_lt (d a : String) {i : Nat} (h : i < 64) :
+    ROp64.shlImm d a i = .slli d a ⟨i, h⟩ := dif_pos h
 
 /-- Lower a register-named 64-bit bignum op to a *list* of machine `RInst64`s. The
     carry-chain ops expand to the `SLTU` macros (the RISC-V analogue of ARM's
@@ -136,6 +154,26 @@ def toRInst64 : ROp64 → List RInst64
 /-- Lower a straight-line `ROp64` block to a machine `RInst64` block (a `flatMap`,
     since the carry macros expand one op to several). -/
 def lowerRBlock64 (block : List ROp64) : List RInst64 := block.flatMap toRInst64
+
+/-- The lowering of `ROp64.shrImm d a i` writes `a >>> i` to `d`, for every `i`. -/
+theorem ROp64.run_shrImm (s : RState64) (d a : String) (i : Nat) :
+    runRBlock64 s (toRInst64 (ROp64.shrImm d a i)) = s.set d (s.get a >>> i) := by
+  unfold ROp64.shrImm
+  split
+  · rfl
+  · next h =>
+    simp only [toRInst64, runRBlock64, evalRInst64]
+    rw [BitVec.ushiftRight_eq_zero (by omega)]
+
+/-- The lowering of `ROp64.shlImm d a i` writes `a <<< i` to `d`, for every `i`. -/
+theorem ROp64.run_shlImm (s : RState64) (d a : String) (i : Nat) :
+    runRBlock64 s (toRInst64 (ROp64.shlImm d a i)) = s.set d (s.get a <<< i) := by
+  unfold ROp64.shlImm
+  split
+  · rfl
+  · next h =>
+    simp only [toRInst64, runRBlock64, evalRInst64]
+    rw [BitVec.shiftLeft_eq_zero (by omega)]
 
 /-! ## 2. The block-lowering denotation theorem (RV64 bignum)
 

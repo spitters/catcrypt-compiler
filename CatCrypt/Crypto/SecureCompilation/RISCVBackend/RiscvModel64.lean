@@ -201,10 +201,10 @@ inductive RInst64 where
   | li (d : String) (imm : Nat)
   /-- `MV rd, rs` — register move (pseudo for `ADDI rd, rs, 0`). -/
   | mv (d s : String)
-  /-- `SRLI rd, rs, #sh` — logical shift right by an immediate (`sh < 64`). -/
-  | srli (d a : String) (sh : Nat)
-  /-- `SLLI rd, rs, #sh` — logical shift left by an immediate (`sh < 64`). -/
-  | slli (d a : String) (sh : Nat)
+  /-- `SRLI rd, rs, #sh` — logical shift right by an immediate below 64. -/
+  | srli (d a : String) (sh : Fin 64)
+  /-- `SLLI rd, rs, #sh` — logical shift left by an immediate below 64. -/
+  | slli (d a : String) (sh : Fin 64)
   deriving Repr, DecidableEq
 
 /-- The semantics of one 64-bit RV64 instruction. -/
@@ -219,8 +219,8 @@ def evalRInst64 (s : RState64) : RInst64 → RState64
   | .mulhu d a b => s.set d (opMulhu (s.get a) (s.get b))
   | .li   d imm => s.set d (BitVec.ofNat 64 imm)
   | .mv   d a   => s.set d (s.get a)
-  | .srli d a sh => s.set d (s.get a >>> sh)
-  | .slli d a sh => s.set d (s.get a <<< sh)
+  | .srli d a sh => s.set d (s.get a >>> sh.val)
+  | .slli d a sh => s.set d (s.get a <<< sh.val)
 
 /-- `runRBlock64`: a straight-line fold of `evalRInst64`. -/
 def runRBlock64 (s : RState64) : List RInst64 → RState64

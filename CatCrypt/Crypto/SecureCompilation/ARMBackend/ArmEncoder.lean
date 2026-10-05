@@ -163,8 +163,8 @@ def encodeAInst (alloc : GpAlloc) : AInst → List (BitVec 8)
   | .orr d a b => encLogical 1 (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) (wNum (gpOf alloc b))
   | .eor d a b => encLogical 2 (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) (wNum (gpOf alloc b))
   | .ror d a imm => encExtr (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) (wNum (gpOf alloc a)) (imm % 32)
-  | .lsr d a imm => encUbfm (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) (imm % 32) 31
-  | .lsl d a imm => encUbfm (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) ((32 - imm % 32) % 32) (31 - imm % 32)
+  | .lsr d a imm => encUbfm (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) imm.val 31
+  | .lsl d a imm => encUbfm (wNum (gpOf alloc d)) (wNum (gpOf alloc a)) ((32 - imm.val) % 32) (31 - imm.val)
   | .mov d s   => encLogical 1 (wNum (gpOf alloc d)) 31 (wNum (gpOf alloc s))  -- ORR Wd, WZR, Ws
 
 /-- Encode a whole block: concatenate the 4-byte word encodings of its instructions.
@@ -428,8 +428,8 @@ def encodeBInst (alloc : GpAlloc) : BInst → List (BitVec 8)
   | .csel d a b c => encCsel (xNum (gpOf alloc d)) (xNum (gpOf alloc a)) (xNum (gpOf alloc b)) (acondNum c)
   | .movz d imm16 => encMovWideX 2 (xNum (gpOf alloc d)) (imm16 % 0x10000) 0
   | .movk d imm16 hw => encMovWideX 3 (xNum (gpOf alloc d)) (imm16 % 0x10000) hw
-  | .lsr d a sh => encUbfmX (sh % 64) 63 (xNum (gpOf alloc a)) (xNum (gpOf alloc d))
-  | .lsl d a sh => encUbfmX ((64 - sh % 64) % 64) (63 - sh % 64) (xNum (gpOf alloc a)) (xNum (gpOf alloc d))
+  | .lsr d a sh => encUbfmX sh.val 63 (xNum (gpOf alloc a)) (xNum (gpOf alloc d))
+  | .lsl d a sh => encUbfmX ((64 - sh.val) % 64) (63 - sh.val) (xNum (gpOf alloc a)) (xNum (gpOf alloc d))
   | .mov d s => encOrrX (xNum (gpOf alloc d)) 31 (xNum (gpOf alloc s)) -- ORR Xd, XZR, Xs
 
 /-- Encode a whole 64-bit block: concatenate the 4-byte word encodings. -/

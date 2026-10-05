@@ -50,10 +50,10 @@ inductive AOp where
   | or  (dst a b : String)
   /-- `dst := EOR a, b`. -/
   | xor (dst a b : String)
-  /-- `dst := LSL a, #imm`. -/
-  | shl (dst a : String) (imm : Nat)
-  /-- `dst := LSR a, #imm`. -/
-  | shr (dst a : String) (imm : Nat)
+  /-- `dst := LSL a, #imm`, for an immediate below 32. -/
+  | shl (dst a : String) (imm : Fin 32)
+  /-- `dst := LSR a, #imm`, for an immediate below 32. -/
+  | shr (dst a : String) (imm : Fin 32)
   /-- `dst := ROR a, #imm`. -/
   | rotr (dst a : String) (imm : Nat)
   /-- `dst := MOV src`. -/
@@ -232,11 +232,29 @@ inductive BOp where
   | movk (dst : String) (imm16 hw : Nat)
   /-- `dst := MOV src`. -/
   | mov (dst src : String)
-  /-- `dst := LSR a, #imm` (logical shift-right by immediate, 64-bit). -/
-  | lsr (dst a : String) (imm : Nat)
-  /-- `dst := LSL a, #imm` (logical shift-left by immediate, 64-bit). -/
-  | lsl (dst a : String) (imm : Nat)
+  /-- `dst := LSR a, #imm` (logical shift-right by an immediate below 64, 64-bit). -/
+  | lsr (dst a : String) (imm : Fin 64)
+  /-- `dst := LSL a, #imm` (logical shift-left by an immediate below 64, 64-bit). -/
+  | lsl (dst a : String) (imm : Fin 64)
   deriving Repr, DecidableEq
+
+/-- `dst := a >>> i` for an arbitrary amount `i`: `lsr` when `i < 64`, and `movz dst 0`
+    otherwise, the value of a 64-bit logical shift by 64 or more. -/
+def BOp.shrImm (dst a : String) (i : Nat) : BOp :=
+  if h : i < 64 then .lsr dst a ⟨i, h⟩ else .movz dst 0
+
+/-- `dst := a <<< i` for an arbitrary amount `i`: `lsl` when `i < 64`, and `movz dst 0`
+    otherwise. -/
+def BOp.shlImm (dst a : String) (i : Nat) : BOp :=
+  if h : i < 64 then .lsl dst a ⟨i, h⟩ else .movz dst 0
+
+/-- Below 64, `BOp.shrImm` is the `lsr` instruction with the same amount. -/
+theorem BOp.shrImm_of_lt (dst a : String) {i : Nat} (h : i < 64) :
+    BOp.shrImm dst a i = .lsr dst a ⟨i, h⟩ := dif_pos h
+
+/-- Below 64, `BOp.shlImm` is the `lsl` instruction with the same amount. -/
+theorem BOp.shlImm_of_lt (dst a : String) {i : Nat} (h : i < 64) :
+    BOp.shlImm dst a i = .lsl dst a ⟨i, h⟩ := dif_pos h
 
 /-- Lower a register-named bignum op to the machine `BInst` — one rule per
     constructor (the A64 analogue of `toAInst`). -/
@@ -263,6 +281,26 @@ def toBInst : BOp → BInst
 
 /-- Lower a straight-line `BOp` block to a machine `BInst` block. -/
 def lowerBBlock (block : List BOp) : List BInst := block.map toBInst
+
+/-- The lowering of `BOp.shrImm dst a i` writes `opLsr64 a i` to `dst`, for every `i`. -/
+theorem BOp.eval_shrImm (s : BState) (dst a : String) (i : Nat) :
+    evalBInst s (toBInst (BOp.shrImm dst a i)) = s.set dst (opLsr64 (s.get a) i) := by
+  unfold BOp.shrImm
+  split
+  · rfl
+  · next h =>
+    simp only [toBInst, evalBInst, opLsr64]
+    rw [BitVec.ushiftRight_eq_zero (by omega)]
+
+/-- The lowering of `BOp.shlImm dst a i` writes `opLsl64 a i` to `dst`, for every `i`. -/
+theorem BOp.eval_shlImm (s : BState) (dst a : String) (i : Nat) :
+    evalBInst s (toBInst (BOp.shlImm dst a i)) = s.set dst (opLsl64 (s.get a) i) := by
+  unfold BOp.shlImm
+  split
+  · rfl
+  · next h =>
+    simp only [toBInst, evalBInst, opLsl64]
+    rw [BitVec.shiftLeft_eq_zero (by omega)]
 
 /-- **AArch64 bignum block-lowering denotation theorem.** The machine semantics
     of the lowered `BOp` block equals the fold of the per-op machine semantics

@@ -111,8 +111,8 @@ def renderAInst (alloc : GpAlloc) : AInst → String
   | .and d a b => "\tand "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
   | .orr d a b => "\torr "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
   | .eor d a b => "\teor "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", " ++ gpOf alloc b
-  | .lsl d a imm => "\tlsl "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm
-  | .lsr d a imm => "\tlsr "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm
+  | .lsl d a imm => "\tlsl "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm.val
+  | .lsr d a imm => "\tlsr "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm.val
   | .ror d a imm => "\tror "  ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm
   | .mov d s     => "\tmov "  ++ gpOf alloc d ++ ", " ++ gpOf alloc s
 
@@ -256,8 +256,8 @@ def renderBInst (alloc : GpAlloc) : BInst → String
   | .movk d imm16 hw => "\tmovk " ++ gpOf alloc d ++ ", #" ++ toString imm16
                           ++ ", lsl #" ++ toString (hw * 16)
   | .mov d s => "\tmov " ++ gpOf alloc d ++ ", " ++ gpOf alloc s
-  | .lsr d a imm => "\tlsr " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm
-  | .lsl d a imm => "\tlsl " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm
+  | .lsr d a imm => "\tlsr " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm.val
+  | .lsl d a imm => "\tlsl " ++ gpOf alloc d ++ ", " ++ gpOf alloc a ++ ", #" ++ toString imm.val
 
 /-- Print a whole 64-bit block's instruction lines. -/
 def renderBBlockBody (alloc : GpAlloc) (block : List BInst) : List String :=

@@ -104,8 +104,8 @@ def renderRInst64 (alloc : GpAlloc64) : RInst64 → String
   | .mulhu d a b => "\tmulhu " ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc a ++ ", " ++ gpOf64 alloc b
   | .li   d imm => "\tli "   ++ gpOf64 alloc d ++ ", " ++ toString imm
   | .mv   d s   => "\tmv "   ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc s
-  | .srli d a sh => "\tsrli " ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc a ++ ", " ++ toString sh
-  | .slli d a sh => "\tslli " ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc a ++ ", " ++ toString sh
+  | .srli d a sh => "\tsrli " ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc a ++ ", " ++ toString sh.val
+  | .slli d a sh => "\tslli " ++ gpOf64 alloc d ++ ", " ++ gpOf64 alloc a ++ ", " ++ toString sh.val
 
 /-- Print a whole block's instruction lines (one per `RInst64`). -/
 def renderRBlock64Body (alloc : GpAlloc64) (block : List RInst64) : List String :=

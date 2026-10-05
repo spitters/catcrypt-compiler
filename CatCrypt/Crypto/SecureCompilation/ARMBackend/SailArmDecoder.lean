@@ -409,9 +409,11 @@ def rebuild (dr : DecA64) : Option AInst :=
   | .logical _ => none
   | .extr => some (.ror (regName dr.rd) (regName dr.rn) dr.imms)
   | .ubfm =>
-      -- imms=31 ⇒ LSR #immr ; else LSL #(32-immr mod 32)
-      if dr.imms = 31 then some (.lsr (regName dr.rd) (regName dr.rn) dr.immr)
-      else some (.lsl (regName dr.rd) (regName dr.rn) ((32 - dr.immr) % 32))
+      -- imms=31 ⇒ LSR #immr (for immr < 32) ; else LSL #(32-immr mod 32)
+      if dr.imms = 31 then
+        if h : dr.immr < 32 then some (.lsr (regName dr.rd) (regName dr.rn) ⟨dr.immr, h⟩)
+        else none
+      else some (.lsl (regName dr.rd) (regName dr.rn) (Fin.ofNat 32 (32 - dr.immr)))
 
 /-- `regName` inverts `wNum` on every name the allocator assigns: the GP pool
     `gpPool` (`w0 … w17`) plus the zero register `wzr`. (`allocGp` only ever
@@ -514,36 +516,38 @@ theorem roundtrip_ainst_ror (alloc : GpAlloc) (d a : String) (imm : Nat) (himm :
   simp only [Option.bind_some, rebuild]
   rw [hd, ha]
 
-/-- Round-trip for `LSR Wd, Wa, #imm` (the `UBFM Wd, Wa, #imm, #31` alias), for a
-    shift amount `imm < 32`. -/
-theorem roundtrip_ainst_lsr (alloc : GpAlloc) (d a : String) (imm : Nat) (himm : imm < 32)
+/-- Round-trip for `LSR Wd, Wa, #imm` (the `UBFM Wd, Wa, #imm, #31` alias), for
+    every shift amount `imm : Fin 32`. -/
+theorem roundtrip_ainst_lsr (alloc : GpAlloc) (d a : String) (imm : Fin 32)
     (hd : regName (wNum (gpOf alloc d)) = gpOf alloc d)
     (ha : regName (wNum (gpOf alloc a)) = gpOf alloc a) :
     (decodeA64 (encodeAInst alloc (.lsr d a imm))).bind rebuild
       = some (.lsr (gpOf alloc d) (gpOf alloc a) imm) := by
+  have himm : imm.val < 32 := imm.isLt
   simp only [encodeAInst]
-  rw [Nat.mod_eq_of_lt himm,
-    roundtrip_ubfm _ _ _ _ (wNum_lt_32 _) (wNum_lt_32 _) (by omega) (by decide)]
-  simp only [Option.bind_some, rebuild, if_true]
+  rw [roundtrip_ubfm _ _ _ _ (wNum_lt_32 _) (wNum_lt_32 _) (by omega) (by decide)]
+  simp only [Option.bind_some, rebuild, if_true, dif_pos himm]
   rw [hd, ha]
 
 /-- Round-trip for `LSL Wd, Wa, #imm` (the `UBFM Wd, Wa, #((32−imm) mod 32),
-    #(31−imm)` alias), for `0 < imm < 32`.
+    #(31−imm)` alias), for a shift amount `imm : Fin 32` other than 0.
 
     `imm = 0` is excluded because `LSL #0` and `LSR #0` are the *same* word
     (`UBFM Wd, Wa, #0, #31`), which the A64 preferred-disassembly rule reads as
     `LSR`; `roundtrip_ainst_lsr` covers it. -/
-theorem roundtrip_ainst_lsl (alloc : GpAlloc) (d a : String) (imm : Nat)
-    (himm0 : 0 < imm) (himm : imm < 32)
+theorem roundtrip_ainst_lsl (alloc : GpAlloc) (d a : String) (imm : Fin 32)
+    (himm0 : 0 < imm.val)
     (hd : regName (wNum (gpOf alloc d)) = gpOf alloc d)
     (ha : regName (wNum (gpOf alloc a)) = gpOf alloc a) :
     (decodeA64 (encodeAInst alloc (.lsl d a imm))).bind rebuild
       = some (.lsl (gpOf alloc d) (gpOf alloc a) imm) := by
-  simp only [encodeAInst, Nat.mod_eq_of_lt himm]
-  rw [Nat.mod_eq_of_lt (show 32 - imm < 32 by omega),
+  have himm : imm.val < 32 := imm.isLt
+  simp only [encodeAInst]
+  rw [Nat.mod_eq_of_lt (show 32 - imm.val < 32 by omega),
     roundtrip_ubfm _ _ _ _ (wNum_lt_32 _) (wNum_lt_32 _) (by omega) (by omega)]
   simp only [Option.bind_some, rebuild]
-  rw [if_neg (show ¬ (31 - imm = 31) by omega), show (32 - (32 - imm)) % 32 = imm by omega,
+  rw [if_neg (show ¬ (31 - imm.val = 31) by omega),
+    show Fin.ofNat 32 (32 - (32 - imm.val)) = imm from Fin.ext (by simp [Fin.ofNat]; omega),
     hd, ha]
 
 /-! ## 7. The owned-ARM-backend byte-level trust edge
@@ -1045,8 +1049,10 @@ def rebuildB (dr : DecB64) : Option BInst :=
   | .ubfmX =>
       -- A64 alias rule: `imms=63` ⇒ `LSR #immr`; otherwise `LSL #((64−immr) mod 64)`
       -- (`LSL #sh = UBFM #((64−sh) mod 64), #(63−sh)`).
-      if dr.imms = 63 then some (.lsr (xRegName dr.rd) (xRegName dr.rn) dr.immr)
-      else some (.lsl (xRegName dr.rd) (xRegName dr.rn) ((64 - dr.immr) % 64))
+      if dr.imms = 63 then
+        if h : dr.immr < 64 then some (.lsr (xRegName dr.rd) (xRegName dr.rn) ⟨dr.immr, h⟩)
+        else none
+      else some (.lsl (xRegName dr.rd) (xRegName dr.rn) (Fin.ofNat 64 (64 - dr.immr)))
 
 /-- `xRegName` inverts `xNum` on the bignum register pool (`x0..x17` + `xzr`). -/
 theorem xRegName_xNum (r : String)
@@ -1260,19 +1266,20 @@ theorem roundtrip_binst_mov (alloc : GpAlloc) (d s : String)
   rw [roundtrip_orrX _ _ _ (xNum_lt_32 _) (by decide) (xNum_lt_32 _)]
   simp only [Option.bind_some, rebuildB, if_true]; rw [hd, hs]
 
-/-- **Capstone round-trip for `LSR`** (the `UBFM Xd, Xn, #sh, #63` alias), for a
-    shift amount `sh < 64` (the 64-bit range). -/
-theorem roundtrip_binst_lsr (alloc : GpAlloc) (d a : String) (sh : Nat) (hsh : sh < 64)
+/-- **Capstone round-trip for `LSR`** (the `UBFM Xd, Xn, #sh, #63` alias), for
+    every shift amount `sh : Fin 64`. -/
+theorem roundtrip_binst_lsr (alloc : GpAlloc) (d a : String) (sh : Fin 64)
     (hd : xRegName (xNum (gpOf alloc d)) = gpOf alloc d)
     (ha : xRegName (xNum (gpOf alloc a)) = gpOf alloc a) :
     (decodeB64 (encodeBInst alloc (.lsr d a sh))).bind rebuildB
       = some (.lsr (gpOf alloc d) (gpOf alloc a) sh) := by
-  simp only [encodeBInst, Nat.mod_eq_of_lt hsh]
+  have hsh : sh.val < 64 := sh.isLt
+  simp only [encodeBInst]
   rw [roundtrip_ubfmX _ _ _ _ hsh (by decide) (xNum_lt_32 _) (xNum_lt_32 _)]
-  simp only [Option.bind_some, rebuildB, if_true]; rw [hd, ha]
+  simp only [Option.bind_some, rebuildB, if_true, dif_pos hsh]; rw [hd, ha]
 
 /-- **Capstone round-trip for `LSL`** (the `UBFM Xd, Xn, #((64−sh) mod 64),
-    #(63−sh)` alias), for `0 < sh < 64`.
+    #(63−sh)` alias), for a shift amount `sh : Fin 64` other than 0.
 
     `sh = 0` is excluded, not an artefact: `LSL #0` and `LSR #0` encode
     to the *same* word `UBFM Xd, Xn, #0, #63`, and the A64 preferred-disassembly
@@ -1280,17 +1287,19 @@ theorem roundtrip_binst_lsr (alloc : GpAlloc) (d a : String) (sh : Nat) (hsh : s
     (a plain move of `Xn` into `Xd`), so the decoder cannot — and need not —
     recover which mnemonic the source used; `roundtrip_binst_lsr` covers that
     word. -/
-theorem roundtrip_binst_lsl (alloc : GpAlloc) (d a : String) (sh : Nat)
-    (hsh0 : 0 < sh) (hsh : sh < 64)
+theorem roundtrip_binst_lsl (alloc : GpAlloc) (d a : String) (sh : Fin 64)
+    (hsh0 : 0 < sh.val)
     (hd : xRegName (xNum (gpOf alloc d)) = gpOf alloc d)
     (ha : xRegName (xNum (gpOf alloc a)) = gpOf alloc a) :
     (decodeB64 (encodeBInst alloc (.lsl d a sh))).bind rebuildB
       = some (.lsl (gpOf alloc d) (gpOf alloc a) sh) := by
-  simp only [encodeBInst, Nat.mod_eq_of_lt hsh]
-  rw [Nat.mod_eq_of_lt (show 64 - sh < 64 by omega),
+  have hsh : sh.val < 64 := sh.isLt
+  simp only [encodeBInst]
+  rw [Nat.mod_eq_of_lt (show 64 - sh.val < 64 by omega),
     roundtrip_ubfmX _ _ _ _ (by omega) (by omega) (xNum_lt_32 _) (xNum_lt_32 _)]
   simp only [Option.bind_some, rebuildB]
-  rw [if_neg (show ¬ (63 - sh = 63) by omega), show (64 - (64 - sh)) % 64 = sh by omega,
+  rw [if_neg (show ¬ (63 - sh.val = 63) by omega),
+    show Fin.ofNat 64 (64 - (64 - sh.val)) = sh from Fin.ext (by simp [Fin.ofNat]; omega),
     hd, ha]
 
 /-! ## 9. The branch / control-flow decode round-trip (the looped-emission edge)

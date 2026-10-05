@@ -43,7 +43,7 @@ modules declare into `RISCVBackend.<ModuleName>`. Exceptions: `RiscvModel.lean`,
   `roundtrip_roriw`, and `roundtrip_bcc` for branches (the offset is recovered with
   bit 0 cleared).
 - `SailRiscvDecoder64.lean`: `roundtrip_RInst64` for every `RInst64` other than `li`,
-  under the same `emittedRegs` hypothesis and shifts below 64. `emittedRegs` has 16
+  under the same `emittedRegs` hypothesis; the shift amount is a `Fin 64`. `emittedRegs` has 16
   names; the 64-bit allocator pool `gpPool64` also allocates `s2..s11`, for which the
   hypothesis fails.
 - `SailRvvDecoder.lean`: `roundtrip_rvv` (register names in `vPool`, shifts below 32)
@@ -101,7 +101,7 @@ is the concatenation of the field-operation blocks; its value is not checked in 
 | Per-step Sail relation | `ComToRiscvLsem.riscvStep64_sail_grounded` | `IsBaseAlu i`, destination not `zero`/`x0`, `RegAlign s rf nm`, `(nm (rinstD i)).toNat ≠ 0` | `ComToRiscvLsem.lean` |
 | Scalar waist | `RegToRiscv.regToROp_denote` | every `RegProg` and `RState64` | `RegToRiscv.lean` |
 | Block lowering | `riscvBlock_lowering_denote`, `riscvBlock64_lowering_denote`, `Rvv.rvvBlock_lowering_denote` | all blocks and states | `RiscvLowering.lean`, `RiscvLowering64.lean`, `RvvLowering.lean` |
-| Decode round trip | `SailRiscvDecoder64.roundtrip_RInst64` | not `li`, register names in `emittedRegs`, shifts below 64 | `SailRiscvDecoder64.lean` |
+| Decode round trip | `SailRiscvDecoder64.roundtrip_RInst64` | not `li`, register names in `emittedRegs` | `SailRiscvDecoder64.lean` |
 
 ## Ascent over RV64
 

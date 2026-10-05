@@ -157,7 +157,7 @@ def emitRor (st : BState) (a : String) (imm : Nat) : String × BState :=
   (d, { st1 with ops := AOp.rotr d a imm :: st1.ops })
 
 /-- Emit `dst := LSR a, #imm` into a fresh name; return that name. -/
-def emitShr (st : BState) (a : String) (imm : Nat) : String × BState :=
+def emitShr (st : BState) (a : String) (imm : Fin 32) : String × BState :=
   let (d, st1) := freshName st
   (d, { st1 with ops := AOp.shr d a imm :: st1.ops })
 

@@ -37,9 +37,8 @@ sequence; it has no single 32-bit word, so `encodeWord64 (.li ..) = none` and it
 is **not** round-trip-proved (it is the trusted constant-materialisation
 scaffolding, the RV64 analogue of the prologue). The capstone
 `roundtrip_RInst64` quantifies over all non-`LI` `RInst64` with the
-`SailRiscvDecoder.emittedRegs` register-name well-formedness side-condition and,
-for `SLLI`/`SRLI`, a shift count within the RV64 6-bit `shamt` field
-(`sh < 64`).
+`SailRiscvDecoder.emittedRegs` register-name well-formedness side-condition; the
+`SLLI`/`SRLI` shift count is a `Fin 64`, the RV64 6-bit `shamt` field.
 
 Section 4 decodes the memory-and-branch fragment `RMInst64` (`LD`, `SD`, `BNE`, `ADDI` with a
 non-zero immediate) with `riscvDecodeM64` and proves its round trip `roundtrip_RMInst64`
@@ -97,9 +96,9 @@ def riscvDecode64 (w : BitVec 32) : Option RInst64 :=
   -- conditions together are `imm12 < 64`, which also separates SRLI from SRAI
   -- (`funct6 = 0b010000`, so `imm12 ≥ 1024`).
   | 0x13, 0b001, _ =>
-      if fImm12 w < 64 then some (.slli (regName rd) (regName rs1) (fImm12 w)) else none
+      if h : fImm12 w < 64 then some (.slli (regName rd) (regName rs1) ⟨fImm12 w, h⟩) else none
   | 0x13, 0b101, _ =>
-      if fImm12 w < 64 then some (.srli (regName rd) (regName rs1) (fImm12 w)) else none
+      if h : fImm12 w < 64 then some (.srli (regName rd) (regName rs1) ⟨fImm12 w, h⟩) else none
   | _, _, _ => none
 
 /-! ## 2. The dispatch-constant reductions (the funct7/funct3/opcode literals) -/
@@ -122,14 +121,14 @@ and `regName_reg5`. -/
 /-- **The capstone round-trip `decode (encode i) = i` for the full emitted 64-bit
     bignum subset** (every fixed-width arm; `LI` excluded as the variable-length
     pseudo-op). For every non-`LI` `RInst64` whose register names are in the
-    backend's emitted pool and whose `SRLI`/`SLLI` shift count fits the RV64 6-bit
-    `shamt` (`sh < 64`), decoding its encoder word recovers the original
-    instruction — against the sail-riscv `encdec` discipline. -/
+    backend's emitted pool, decoding its encoder word recovers the original
+    instruction — against the sail-riscv `encdec` discipline. The `SRLI`/`SLLI`
+    shift count is a `Fin 64`, the RV64 6-bit `shamt`, so the statement carries no
+    range condition on it. -/
 theorem roundtrip_RInst64 (i : RInst64)
     (hnotli : ∀ d imm, i ≠ .li d imm)
     (hregs : (rinst64DstSrcs i).1 ∈ emittedRegs ∧
-             ∀ r ∈ (rinst64DstSrcs i).2, r ∈ emittedRegs)
-    (hsh : ∀ d a sh, i = .srli d a sh ∨ i = .slli d a sh → sh < 64) :
+             ∀ r ∈ (rinst64DstSrcs i).2, r ∈ emittedRegs) :
     riscvDecode64 (encodeWord64 i).get! = some i := by
   obtain ⟨hdst, hsrc⟩ := hregs
   have D := decConsts64
@@ -194,24 +193,24 @@ theorem roundtrip_RInst64 (i : RInst64)
   | li d imm => exact absurd rfl (hnotli d imm)
   | srli d a sh =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
-      have hlt : sh < 64 := hsh d a sh (Or.inl rfl)
+      have hlt : sh.val < 64 := sh.isLt
       have h5 : ((5 : BitVec 3).toNat) = 5 := rfl
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fFunct3, fImm12,
         (encI_slices ..).1, (encI_slices ..).2.1, (encI_slices ..).2.2.1,
         (encI_slices ..).2.2.2.1, (encI_slices ..).2.2.2.2,
         D.2.1, h5]
       rw [regName_reg5 d hdst, regName_reg5 a ha]
-      simp [Nat.mod_eq_of_lt (show sh < 4096 by omega), hlt]
+      simp [Nat.mod_eq_of_lt (show sh.val < 4096 by omega), hlt]
   | slli d a sh =>
       have ha := hsrc a (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
-      have hlt : sh < 64 := hsh d a sh (Or.inr rfl)
+      have hlt : sh.val < 64 := sh.isLt
       have h1 : ((1 : BitVec 3).toNat) = 1 := rfl
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fFunct3, fImm12,
         (encI_slices ..).1, (encI_slices ..).2.1, (encI_slices ..).2.2.1,
         (encI_slices ..).2.2.2.1, (encI_slices ..).2.2.2.2,
         D.2.1, h1]
       rw [regName_reg5 d hdst, regName_reg5 a ha]
-      simp [Nat.mod_eq_of_lt (show sh < 4096 by omega), hlt]
+      simp [Nat.mod_eq_of_lt (show sh.val < 4096 by omega), hlt]
   | mv d s =>
       have hs := hsrc s (by simp [rinst64DstSrcs]); simp only [rinst64DstSrcs] at hdst
       simp only [encodeWord64, Option.get!, riscvDecode64, fOpcode, fRd, fRs1, fFunct3, fImm12,
@@ -315,14 +314,13 @@ def rminst64Regs : RMInst64 → List String
     `riscvDecodeM64` recovers the instruction. -/
 theorem roundtrip_RMInst64 (i : RMInst64)
     (hregs : ∀ r ∈ rminst64Regs i, r ∈ emittedRegs) (himm : RMImmOK i)
-    (halu : ∀ j, i = .alu j → (∀ d imm, j ≠ .li d imm) ∧
-      (∀ d a sh, j = .srli d a sh ∨ j = .slli d a sh → sh < 64)) :
+    (halu : ∀ j, i = .alu j → ∀ d imm, j ≠ .li d imm) :
     riscvDecodeM64 (encodeMWord64 i).get! = some i := by
   cases i with
   | alu j =>
-      obtain ⟨hnl, hsh⟩ := halu j rfl
+      have hnl := halu j rfl
       exact riscvDecodeM64_of_decode64 (roundtrip_RInst64 j hnl
-        ⟨hregs _ (by simp [rminst64Regs]), fun r hr => hregs r (by simp [rminst64Regs, hr])⟩ hsh)
+        ⟨hregs _ (by simp [rminst64Regs]), fun r hr => hregs r (by simp [rminst64Regs, hr])⟩)
   | addi d a imm =>
       obtain ⟨h1, h2, h0⟩ := himm
       have hd := hregs d (by simp [rminst64Regs]); have ha := hregs a (by simp [rminst64Regs])
@@ -367,6 +365,5 @@ theorem roundtrip_RMInst64 (i : RMInst64)
 theorem trust_edge_pilot64 :
     riscvDecode64 (encodeWord64 (.sltu "a3" "a0" "a1")).get! = some (.sltu "a3" "a0" "a1") :=
   roundtrip_RInst64 (.sltu "a3" "a0" "a1") (by simp) (by decide)
-    (by intro d a sh h; rcases h with h | h <;> cases h)
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder64

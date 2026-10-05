@@ -191,12 +191,12 @@ theorem corresR_mv (d a : String) :
   corresR_of_set _ d _ _ (fun _ => rfl) (fun _ _ h => h a)
 
 /-- `srli` refines `srliStepR`. -/
-theorem corresR_srli (d a : String) (sh : Nat) :
+theorem corresR_srli (d a : String) (sh : Fin 64) :
     CorresR SRr (fun _ => True) (srliStepR d a sh) [.srli d a sh] :=
   corresR_of_set _ d _ _ (fun _ => rfl) (fun _ _ h => by rw [h a])
 
 /-- `slli` refines `slliStepR`. -/
-theorem corresR_slli (d a : String) (sh : Nat) :
+theorem corresR_slli (d a : String) (sh : Fin 64) :
     CorresR SRr (fun _ => True) (slliStepR d a sh) [.slli d a sh] :=
   corresR_of_set _ d _ _ (fun _ => rfl) (fun _ _ h => by rw [h a])
 

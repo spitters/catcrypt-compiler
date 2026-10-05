@@ -56,8 +56,8 @@ def regStmtToBOp : RegStmt → List BOp
   | .orr d a b => [.orr d a b]
   | .eor d a b => [.eor d a b]
   | .umulh d a b => [.umulh d a b]
-  | .shrI d a i => [.lsr d a i]
-  | .shlI d a i => [.lsl d a i]
+  | .shrI d a i => [BOp.shrImm d a i]
+  | .shlI d a i => [BOp.shlImm d a i]
   | .mov d a => [.mov d a]
   | .movz d i => [.movz d i]
   | .movk d i h => [.movk d i h]
@@ -176,6 +176,8 @@ theorem regStmtToBOp_denote (s : BState) (stmt : RegStmt) :
       = evalRegStmt s stmt := by
   cases stmt
   case loadImm d n => exact loadImm_lower s d n
+  case shrI d a i => exact BOp.eval_shrImm s d a i
+  case shlI d a i => exact BOp.eval_shlImm s d a i
   all_goals rfl
 
 /-! ## 2. The AArch64 `ScalarTarget` instance

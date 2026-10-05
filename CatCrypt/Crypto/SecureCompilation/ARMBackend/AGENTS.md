@@ -38,7 +38,7 @@ modules declare into `ARMBackend.<ModuleName>`. Exceptions: `ArmModel.lean`,
   round trips `roundtrip_ainst_*`, `roundtrip_binst_*`, `roundtrip_abranch_*`. Each
   assumes that every allocated operand name is recovered from its register number;
   `roundtrip_binst_orr` also requires the first source not to be register 31,
-  `roundtrip_binst_lsl` a shift in `(0, 64)`, and the branch forms an offset in
+  `roundtrip_binst_lsl` a non-zero shift (the amount is a `Fin 64`), and the branch forms an offset in
   range. The decoders leave some A64 discriminant bits unread, so the theorems show
   that encoded words decode back, not that arbitrary words are classified correctly.
 - `SailNeonDecoder.lean`: `decodeNeon` and `roundtrip_ninst_*` for ADD, SUB, MUL,

@@ -196,7 +196,7 @@ theorem corres_solve_rv_add (d a b : String) :
   corres_sym_rv
 
 /-- A three-instruction mixed block: an add, its carry-out by `sltu`, a shift. -/
-theorem corres_solve_rv_mixed (d a b c e : String) (sh : Nat) :
+theorem corres_solve_rv_mixed (d a b c e : String) (sh : Fin 64) :
     CorresR SRr (fun _ => True)
       (fun st => srliStepR e d sh (sltuStepR c d a (addStepR d a b st)))
       [.add d a b, .sltu c d a, .srli e d sh] := by
