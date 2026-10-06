@@ -82,7 +82,6 @@ theorem denoteArgs'_cons_val {bi : Builtins} {fuel : Nat} {e : ImpExpr} {es : Li
     (hr : denoteArgs' bi fuel es x = (some vs, y)) :
     denoteArgs' bi fuel (e :: es) env = (some (u :: vs), y) := by
   have key := denoteArgs'_cons_run bi fuel e es env
-  simp only [StateT.run] at key
   rw [h] at key
   cases u
   case controlFlow k p => exact absurd rfl (hu k p)
@@ -94,7 +93,6 @@ theorem denote'_app_of {bi : Builtins} {fuel : Nat} {f : String} {args : List Im
     (h : denoteArgs' bi fuel args env = (some vals, e₁)) (hb : bi f vals = some v) :
     denote' bi fuel (.app f args) env = (.val v, e₁) := by
   have key := denote'_app_run bi fuel f args env
-  simp only [StateT.run] at key
   rw [h] at key
   simp only [hb] at key
   exact key
@@ -107,7 +105,6 @@ theorem denote'_letBind_of {bi : Builtins} {fuel : Nat} {n : String} {a b : ImpE
     (hb : denote' bi fuel b (Hax.Env.extend x n u) = r) :
     denote' bi fuel (.letBind n a b) env = r := by
   have key := Hax.denote'_letBind_run bi fuel n a b env
-  simp only [StateT.run] at key
   rw [h] at key
   cases u
   case controlFlow k p => exact absurd rfl (hu k p)
@@ -121,7 +118,6 @@ theorem denote'_seq_of {bi : Builtins} {fuel : Nat} {a b : ImpExpr}
     (hb : denote' bi fuel b x = r) :
     denote' bi fuel (.seq a b) env = r := by
   have key := Hax.denote'_seq_run bi fuel a b env
-  simp only [StateT.run] at key
   rw [h] at key
   cases u
   case controlFlow k p => exact absurd rfl (hu k p)

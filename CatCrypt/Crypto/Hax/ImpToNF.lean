@@ -10,7 +10,6 @@ public import CatCrypt.Crypto.Hax.DenoteKeeps
 public import HaxLean.Phase.ContinueFlag
 public import HaxAscent.Ascent.Fuel
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTyped
 
 /-!
 # The front from the normal form of `HaxLean` to `NFProg nfDialect`
@@ -49,8 +48,7 @@ Readback. `nfToImp` reads an `NFProg` program back to an `ImpExpr` from a readin
 of its context: a binding named by `NfOp.named` is a `letBind` of its source name, an
 unnamed call a `letBind` of a fresh temporary, and a counted loop whose body starts with a
 named counter is a `forFold` on that name. `nfRoute` is the front, `NFProg.dce`, and the
-readback; its run keeps the value of the source run (`nfRoute_run`), so the typed exit
-lowering of the route simulates the source (`nfRoute_simulates_exit`).
+readback; its run keeps the value of the source run (`nfRoute_run`).
 
 ## Main definitions
 
@@ -92,9 +90,8 @@ lowering of the route simulates the source (`nfRoute_simulates_exit`).
 * `impToNF_sound` — the front simulates `denote'`.
 * `rbLoop_run` — the trips of a counted loop against the run of its readback.
 * `rbProg_sound_aux`, `nfToImp_denote` — the readback simulates the denotation.
-* `nfRoute_run`, `nfRoute_simulates_exit` — the route through `NFProg` keeps the value,
-  and its typed exit lowering simulates the source.
-* `entryEnv_rel`, `entryRB_rel`, `nfRouteEntry_simulates_exit` — the environment of names
+* `nfRoute_run` — the route through `NFProg` keeps the value.
+* `entryEnv_rel`, `entryRB_rel` — the environment of names
   and the reading of the parameters of a function body, related to a source environment
   typed at the parameters (`EntryTyped`).
 * `hax64BinTable_sem`, `hax64UnTable_sem`, `hax64CmpTable_sem` — the scalar calls compute
@@ -2932,28 +2929,6 @@ theorem nfRoute_run (bi : Builtins) (sigOf : String → List NfTy → Option NfT
     @NFProg.denote_dce nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ _ o.prog 0 V _ hp
   exact nfToImp_denote bi 0 _ ρ hnf hρ hd
 
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in
-/-- **The typed exit lowering of the route through `NFProg` simulates the source.** Under
-    `TypedCalls bi sigOf` and the leaf conditions of `haxToLowCTFnT_simulates_exit`, for an
-    expression `e` whose route through `NFProg` is in the fragment `exitSimOkT A R` and lowers
-    to `c`, a run of `e` to a value from an environment related to a valuation by `σ` and
-    `ρ`, and to a `RustState` by the placement `A`, is matched by a run of `c` to a state
-    whose result slot agrees with the value. -/
-theorem nfRoute_simulates_exit (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-    (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
-    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {ρ : RBEnv Γ} {e e' : ImpExpr} {c : LowCT}
-    (h : nfRoute sigOf σ ρ e = some e') (hok : exitSimOkT A R true true e' = true)
-    (hK : haxToLowCTFnT A e' = some c) {env : Env} {V : Valuation Γ}
-    (hσ : EnvRel σ env V) (hρ : RBRel ρ env V) {fuel : Nat} {v : Value} {env' : Env}
-    (hrun : (denote' bi fuel e).run env = (.val v, env')) (rs : RustState)
-    (hag : envAgreesT br A env rs) :
-    ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeAgreesT br R (.val v) rs' := by
-  obtain ⟨fuel', env₂, hrun'⟩ := nfRoute_run bi sigOf hT h hσ hρ hrun
-  exact haxToLowCTFnT_simulates_exit bi N leafSpec br A R hL e' c hok hK fuel' env env₂
-    (.val v) rs hrun' ⟨v, rfl⟩ hag
-
 /-! ## 15. The entry of a function -/
 
 /-- The context of the parameters `ps`, each a name with its type; the first parameter is the
@@ -3027,24 +3002,6 @@ theorem entryRB_rel {env : Env} :
 def nfRouteEntry (sigOf : String → List NfTy → Option NfTy) (ps : List (String × NfTy))
     (e : ImpExpr) : Option ImpExpr :=
   nfRoute sigOf (entryEnv ps) (entryRB ps) e
-
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in
-/-- **The typed exit lowering of the route through `NFProg` of a function body simulates
-    the source**, from every source environment holding at the parameters `ps` the encodings
-    of values of their types (`EntryTyped`). -/
-theorem nfRouteEntry_simulates_exit (bi : Builtins)
-    (sigOf : String → List NfTy → Option NfTy) (hT : TypedCalls bi sigOf) (N : Nat)
-    (leafSpec : LeafSpec) (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
-    {ps : List (String × NfTy)} {e e' : ImpExpr} {c : LowCT}
-    (h : nfRouteEntry sigOf ps e = some e') (hok : exitSimOkT A R true true e' = true)
-    (hK : haxToLowCTFnT A e' = some c) {env : Env} (hent : EntryTyped env ps) {fuel : Nat}
-    {v : Value} {env' : Env} (hrun : (denote' bi fuel e).run env = (.val v, env'))
-    (rs : RustState) (hag : envAgreesT br A env rs) :
-    ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeAgreesT br R (.val v) rs' := by
-  obtain ⟨V, hV⟩ := entryVals_of_typed hent
-  exact nfRoute_simulates_exit bi sigOf hT N leafSpec br A R hL h hok hK (entryEnv_rel hV)
-    (entryRB_rel hV) hrun rs hag
 
 /-! ## 16. The call typing of the `u64` table -/
 
