@@ -7,7 +7,8 @@ module
 
 public import Mathlib.Algebra.Order.Monoid.Defs
 public import Mathlib.Order.Basic
-
+public import Mathlib.Logic.Equiv.Defs
+public import CatCrypt.Crypto.SecureCompilation.Ascent.XPredCore
 
 @[expose] public section
 set_option autoImplicit false
@@ -34,6 +35,25 @@ It extends Lean's `Std.Do` metatheory: `XPostShape` mirrors
 (`Ω = Prop` for the plain instance, a BI carrier for separation logic). The core
 works over abstract carriers: the four axis-laws, and the one obstacle
 (monad-morphism lawfulness, below).
+
+## Layering over the shape-free core
+
+The shape is a layer over the transformer `XCorePT Pred EPred G α` of
+`XPredCore.lean`, whose parameters are an assertion type, an exception-postcondition
+type and a grade type, as in the predicate transformers of Lean's standard library
+(`Pred`, `EPred`) with the grade as the additional parameter. A shape `ps` and a
+carrier `Ω` compute the three parameters: `Pred := XAssertion ps Ω` ordered by
+`XAssertion.le ps` (`XAssertion.preorder`), `EPred := XExceptConds ps Ω` ordered by
+`XExceptConds.le ps` (`XExceptConds.preorder`), and `G := ps.Grade`.
+`XPredTrans.equivCore` identifies `XPredTrans ps Ω α` with the core transformer at
+these parameters; both round trips hold by `rfl`. Under it `xpure`, `xbind`, `xseq`
+and `xprod` are the core's `ret`, `bind`, `seq` and `prod` (`xpure_toCore`,
+`xbind_toCore`, `xseq_toCore`, `xprod_toCore`), `XPT` is `XCorePT.Triple`
+(`xpt_iff_core`) and `XLocal` is `XCorePT.Local` (`xlocal_iff_core`). The axis laws
+`xseq_triple`, `xwp_graded_bind`, `xtriple_grade_le`, `xframe`, `xpure_local`,
+`xrel_seq` and `xwp_morphism` are instances of the core laws. The order and
+separation structures on `XAssertion ps Ω` are definitions, local instances of this
+file only.
 
 ## Design of the grade
 
@@ -191,6 +211,40 @@ theorem XPostCond.le_refl [Preorder Ω] {α : Type u} {ps : XPostShape.{u}}
     (Q : XPostCond α ps Ω) : Q ⊢ₓ Q :=
   ⟨fun a => XAssertion.le_refl ps (Q.1 a), XExceptConds.le_refl ps Q.2⟩
 
+/-- Transitivity of exception-barrel entailment. -/
+theorem XExceptConds.le_trans [Preorder Ω] :
+    (ps : XPostShape.{u}) → {x y z : XExceptConds ps Ω} →
+      XExceptConds.le ps x y → XExceptConds.le ps y z → XExceptConds.le ps x z
+  | .pure, _, _, _, _, _ => trivial
+  | .arg _ ps, _, _, _, hxy, hyz => XExceptConds.le_trans ps hxy hyz
+  | .except _ ps, _, _, _, hxy, hyz =>
+      ⟨fun e => XAssertion.le_trans ps (hxy.1 e) (hyz.1 e),
+        XExceptConds.le_trans ps hxy.2 hyz.2⟩
+  | .graded _ ps, _, _, _, hxy, hyz => XExceptConds.le_trans ps hxy hyz
+
+/-! ### The shape's assertion types as preorders
+
+The core transformer `XCorePT` takes its assertion and exception-postcondition
+types with a `≤`. For a shape these are `XAssertion ps Ω` and `XExceptConds ps Ω`
+under pointwise entailment. The two preorders are definitions, made local
+instances of this file. -/
+
+/-- The assertions of a shape, preordered by pointwise entailment. -/
+@[reducible] def XAssertion.preorder [Preorder Ω] (ps : XPostShape.{u}) :
+    Preorder (XAssertion ps Ω) where
+  le := XAssertion.le ps
+  le_refl := XAssertion.le_refl ps
+  le_trans _ _ _ := XAssertion.le_trans ps
+
+/-- The exception barrels of a shape, preordered by pointwise entailment. -/
+@[reducible] def XExceptConds.preorder [Preorder Ω] (ps : XPostShape.{u}) :
+    Preorder (XExceptConds ps Ω) where
+  le := XExceptConds.le ps
+  le_refl := XExceptConds.le_refl ps
+  le_trans _ _ _ := XExceptConds.le_trans ps
+
+attribute [local instance] XAssertion.preorder XExceptConds.preorder
+
 /-! ## 3. The extended predicate transformer
 
 `XPredTrans ps Ω α` mirrors `Std.Do.PredTrans`, plus a **grade** value field. It
@@ -293,6 +347,57 @@ def xseq {ps : XPostShape.{u}} [Add ps.Grade] {α β : Type u}
     (x : XPredTrans ps Ω α) (y : XPredTrans ps Ω β) :
     (xseq x y).grade = x.grade + y.grade := rfl
 
+/-! ### The transformer as a core transformer
+
+`XPredTrans ps Ω α` is the core transformer `XCorePT` at `Pred := XAssertion ps Ω`,
+`EPred := XExceptConds ps Ω`, `G := ps.Grade`: the conversion curries the
+postcondition pair. Return, bind and sequencing correspond definitionally. -/
+
+/-- The core transformer of an extended transformer: `apply` curried over the
+success assertion and the exception barrels. -/
+def XPredTrans.toCore {ps : XPostShape.{u}} {α : Type u} (t : XPredTrans ps Ω α) :
+    XCorePT (XAssertion ps Ω) (XExceptConds ps Ω) ps.Grade α where
+  apply post epost := t.apply (post, epost)
+  grade := t.grade
+  mono h he := t.mono ⟨h, he⟩
+
+/-- The extended transformer of a core transformer at the shape's parameters. -/
+def XPredTrans.ofCore {ps : XPostShape.{u}} {α : Type u}
+    (t : XCorePT (XAssertion ps Ω) (XExceptConds ps Ω) ps.Grade α) : XPredTrans ps Ω α where
+  apply Q := t.apply Q.1 Q.2
+  grade := t.grade
+  mono h := t.mono h.1 h.2
+
+@[simp] theorem XPredTrans.ofCore_toCore {ps : XPostShape.{u}} {α : Type u}
+    (t : XPredTrans ps Ω α) : XPredTrans.ofCore t.toCore = t := rfl
+
+@[simp] theorem XPredTrans.toCore_ofCore {ps : XPostShape.{u}} {α : Type u}
+    (t : XCorePT (XAssertion ps Ω) (XExceptConds ps Ω) ps.Grade α) :
+    (XPredTrans.ofCore t).toCore = t := rfl
+
+/-- `XPredTrans ps Ω α` is the core transformer at the parameters computed from
+the shape. -/
+def XPredTrans.equivCore (ps : XPostShape.{u}) (Ω : Type u) [Preorder Ω] (α : Type u) :
+    XPredTrans ps Ω α ≃ XCorePT (XAssertion ps Ω) (XExceptConds ps Ω) ps.Grade α where
+  toFun := XPredTrans.toCore
+  invFun := XPredTrans.ofCore
+  left_inv _ := rfl
+  right_inv _ := rfl
+
+/-- `xpure` is the core return. -/
+theorem xpure_toCore {ps : XPostShape.{u}} [Zero ps.Grade] {α : Type u} (a : α) :
+    (xpure (Ω := Ω) (ps := ps) a).toCore = XCorePT.ret a := rfl
+
+/-- `xbind` is the core bind. -/
+theorem xbind_toCore {ps : XPostShape.{u}} {α β : Type u}
+    (x : XPredTrans ps Ω α) (f : α → XPredTrans ps Ω β) :
+    (xbind x f).toCore = x.toCore.bind (fun a => (f a).toCore) := rfl
+
+/-- `xseq` is the core sequencing. -/
+theorem xseq_toCore {ps : XPostShape.{u}} [Add ps.Grade] {α β : Type u}
+    (x : XPredTrans ps Ω α) (y : XPredTrans ps Ω β) :
+    (xseq x y).toCore = x.toCore.seq y.toCore := rfl
+
 /-! ## 4. The effect observation `XWP` and Hoare triples
 
 `XWP m ps Ω` mirrors `Std.Do.WP`: it observes a program `x : m α` as an extended
@@ -316,6 +421,11 @@ def XTriple {m : Type u → Type v} {ps : XPostShape.{u}} {α : Type u}
     [XWP m ps Ω] (P : XAssertion ps Ω) (x : m α) (Q : XPostCond α ps Ω) : Prop :=
   XPT P (XWP.xwp x) Q
 
+/-- The transformer-level triple is the core triple of the core transformer. -/
+theorem xpt_iff_core {ps : XPostShape.{u}} {α : Type u} (P : XAssertion ps Ω)
+    (t : XPredTrans ps Ω α) (Q : XPostCond α ps Ω) :
+    XPT P t Q ↔ XCorePT.Triple P t.toCore Q.1 Q.2 := Iff.rfl
+
 /-! ## 5. Axis-law I — grade: sequencing accumulates the grade
 
 `xseq_triple` is Hoare composition with an intermediate assertion `R`, whose
@@ -332,19 +442,16 @@ theorem xseq_triple {ps : XPostShape.{u}} [Add ps.Grade] {α β : Type u}
     {P R : XAssertion ps Ω} {x : XPredTrans ps Ω α} {y : XPredTrans ps Ω β}
     {Q : XPostCond β ps Ω}
     (h₁ : XPT P x (fun _ => R, Q.2)) (h₂ : XPT R y Q) :
-    XPT P (xseq x y) Q := by
-  have hx : XAssertion.le ps P (x.apply (fun _ => R, Q.2)) := h₁
-  have hy : XAssertion.le ps R (y.apply Q) := h₂
-  show XAssertion.le ps P ((xseq x y).apply Q)
-  rw [xseq_apply]
-  exact XAssertion.le_trans ps hx (x.mono ⟨fun _ => hy, XExceptConds.le_refl ps Q.2⟩)
+    XPT P (xseq x y) Q :=
+  XCorePT.seq_triple (s := x.toCore) (t := y.toCore) h₁ h₂
 
 /-- **The grade accumulates to `g₁ + g₂`.** At a `.graded G ps'` shape, the head
 grade of `xseq x y` is the sum of the two head grades. -/
-theorem xwp_graded_bind {G : Type u} {ps' : XPostShape.{u}} [Add G] [Add ps'.Grade]
+@[defeq] theorem xwp_graded_bind {G : Type u} {ps' : XPostShape.{u}} [Add G] [Add ps'.Grade]
     {α β : Type u}
     (x : XPredTrans (.graded G ps') Ω α) (y : XPredTrans (.graded G ps') Ω β) :
-    (xseq x y).grade.1 = x.grade.1 + y.grade.1 := rfl
+    (xseq x y).grade.1 = x.grade.1 + y.grade.1 :=
+  XCorePT.seq_grade (x.toCore.mapGrade Prod.fst) (y.toCore.mapGrade Prod.fst)
 
 /-- **Budget residual.** If two sequenced steps each stay within a sub-budget
 (`x.grade.1 ≤ b₁`, `y.grade.1 ≤ b₂`) then their composition stays within the
@@ -355,7 +462,7 @@ theorem xtriple_grade_le {G : Type u} {ps' : XPostShape.{u}}
     (x : XPredTrans (.graded G ps') Ω α) (y : XPredTrans (.graded G ps') Ω β)
     {b₁ b₂ : G} (h₁ : x.grade.1 ≤ b₁) (h₂ : y.grade.1 ≤ b₂) :
     (xseq x y).grade.1 ≤ b₁ + b₂ :=
-  add_le_add h₁ h₂
+  XCorePT.seq_grade_le (x.toCore.mapGrade Prod.fst) (y.toCore.mapGrade Prod.fst) h₁ h₂
 
 /-! ## 6. Axis-law II — separation logic: the frame rule
 
@@ -396,6 +503,15 @@ theorem XAssertion.sep_mono [XBI Ω] :
   | .except _ ps, _, _, R, h => XAssertion.sep_mono ps R h
   | .graded _ ps, _, _, R, h => XAssertion.sep_mono ps R h
 
+/-- The assertions of a shape carry the core's separating product: the pointwise
+lift of `∗`. A definition, made a local instance of this file. -/
+@[reducible] def XAssertion.coreSep [XBI Ω] (ps : XPostShape.{u}) :
+    XCoreSep (XAssertion ps Ω) where
+  sep := XAssertion.sep ps
+  sep_mono_left R h := XAssertion.sep_mono ps R h
+
+attribute [local instance] XAssertion.coreSep
+
 /-- Frame a resource `R` across the success barrels of a postcondition. -/
 def XPostCond.frameSep [XBI Ω] {α : Type u} {ps : XPostShape.{u}}
     (Q : XPostCond α ps Ω) (R : XAssertion ps Ω) : XPostCond α ps Ω :=
@@ -408,6 +524,11 @@ def XLocal [XBI Ω] {α : Type u} {ps : XPostShape.{u}} (t : XPredTrans ps Ω α
   ∀ (Q : XPostCond α ps Ω) (R : XAssertion ps Ω),
     XAssertion.le ps (XAssertion.sep ps (t.apply Q) R) (t.apply (Q.frameSep R))
 
+/-- Locality is the core's locality of the core transformer. -/
+theorem xlocal_iff_core [XBI Ω] {α : Type u} {ps : XPostShape.{u}} (t : XPredTrans ps Ω α) :
+    XLocal t ↔ t.toCore.Local :=
+  ⟨fun h post epost R => h (post, epost) R, fun h Q R => h Q.1 Q.2 R⟩
+
 /-- **The frame rule.** For a local transformer, `⦃P⦄ t ⦃Q⦄` gives
 `⦃P ∗ R⦄ t ⦃Q ∗ R⦄`. The proof frames `R` onto the entailment `P ⊢ t.apply Q`
 (via `sep_mono`), then absorbs it into the WP (via locality). -/
@@ -415,13 +536,13 @@ theorem xframe [XBI Ω] {α : Type u} {ps : XPostShape.{u}}
     {t : XPredTrans ps Ω α} (hloc : XLocal t) {P R : XAssertion ps Ω}
     {Q : XPostCond α ps Ω} (h : XPT P t Q) :
     XPT (XAssertion.sep ps P R) t (Q.frameSep R) :=
-  XAssertion.le_trans ps (XAssertion.sep_mono ps R h) (hloc Q R)
+  XCorePT.frame ((xlocal_iff_core t).1 hloc) h
 
 /-- `xpure` is local: its WP is `Q.1 a`, and framing commutes with it definitionally.
 -/
 theorem xpure_local [XBI Ω] {ps : XPostShape.{u}} [Zero ps.Grade] {α : Type u} (a : α) :
     XLocal (xpure (Ω := Ω) (ps := ps) a) :=
-  fun Q R => XAssertion.le_refl ps (XAssertion.sep ps (Q.1 a) R)
+  (xlocal_iff_core _).2 (XCorePT.ret_local a)
 
 /-! ## 7. Axis-law III — relational: the product / self-composition
 
@@ -443,6 +564,11 @@ def xprod {ps : XPostShape.{u}} {α β : Type u}
     (xprod t₁ t₂).apply Q
       = t₁.apply (fun a => t₂.apply (fun b => Q.1 (a, b), Q.2), Q.2) := rfl
 
+/-- `xprod` is the core product. -/
+theorem xprod_toCore {ps : XPostShape.{u}} {α β : Type u}
+    (t₁ : XPredTrans ps Ω α) (t₂ : XPredTrans ps Ω β) :
+    (xprod t₁ t₂).toCore = t₁.toCore.prod t₂.toCore := rfl
+
 /-- **The relational Hoare judgment.** For related inputs (`P`), the paired
 outputs of `t₁` and `t₂` are related by `Ψ`. This is a **unary** triple over the
 product transformer — the product *is* the relation. -/
@@ -460,12 +586,8 @@ theorem xrel_seq {ps : XPostShape.{u}} {α β : Type u}
     {Rmid : α → XAssertion ps Ω} {Ψ : α × β → XAssertion ps Ω} {E : XExceptConds ps Ω}
     (h₁ : XPT P t₁ (Rmid, E))
     (h₂ : ∀ a, XPT (Rmid a) t₂ (fun b => Ψ (a, b), E)) :
-    XRelTriple P t₁ t₂ Ψ E := by
-  have hP : XAssertion.le ps P (t₁.apply (Rmid, E)) := h₁
-  show XAssertion.le ps P ((xprod t₁ t₂).apply (Ψ, E))
-  erw [xprod_apply]
-  refine XAssertion.le_trans ps hP (t₁.mono ⟨fun a => ?_, XExceptConds.le_refl ps E⟩)
-  exact h₂ a
+    XRelTriple P t₁ t₂ Ψ E :=
+  XCorePT.rel_seq (s := t₁.toCore) (t := t₂.toCore) h₁ h₂
 
 /-! ## 8. Axis-law IV — monad morphism: WP transfer along `θ`
 
@@ -501,11 +623,9 @@ theorem xwp_morphism {m n : Type u → Type v} {psm psn : XPostShape.{u}}
     [inst : XWPMorphism (Ω := Ω) (m := m) (n := n) (psm := psm) (psn := psn) θ]
     {α : Type u} (x : m α) {P₀ : XAssertion psm Ω} {Q : XPostCond α psn Ω}
     (h : XTriple (m := m) P₀ x (inst.postMap Q)) :
-    XTriple (m := n) (inst.preMap P₀) (θ x) Q := by
-  have h' : XAssertion.le psm P₀ ((XWP.xwp x).apply (inst.postMap Q)) := h
-  show XAssertion.le psn (inst.preMap P₀) ((XWP.xwp (θ x)).apply Q)
-  rw [inst.transfer]
-  exact inst.preMap_mono h'
+    XTriple (m := n) (inst.preMap P₀) (θ x) Q :=
+  XCorePT.Triple.transfer (t := (XWP.xwp x).toCore) (t' := (XWP.xwp (θ x)).toCore)
+    inst.preMap_mono (inst.transfer x Q) h
 
 /-! ## 9. The transformer as its own effect (`XWP` for `XPredTrans`)
 
