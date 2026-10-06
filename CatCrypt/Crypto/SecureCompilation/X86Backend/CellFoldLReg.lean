@@ -47,6 +47,8 @@ machine, and gives the image route `routeBW` over it.
 * `cellFoldLR_of_cellFoldL`: a fold by `cellFoldL` is the fold by `cellFoldLR`.
 * `lsemFuelMemF_cellFoldLR`: a halting run of the body is matched, with the same fuel, by a
   run of the folded body.
+* `CellFoldL.evalInstrPMemF_cellFoldL`, `CellFoldL.lsemFuelMemF_cellFoldL`: the step and the
+  run for the fold `CellFoldL.cellFoldL`.
 * `loop_image_bytesW`: under `routeBW`, a halting run of the node from the entry state is
   matched by a halting run of the decoded bytes of the printed body, with the output array
   in memory at its entry base.
@@ -921,3 +923,50 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     exact (eq_of_heq (Sigma.mk.inj h4).2).symm
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldL
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (singletonProgM)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (LstateMF evalInstrPMemF
+  lsemFuelMemF)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold (Slots KEnv slotsOkB
+  cellsDistinctB)
+
+/-! ## 6. The fold `cellFoldL` -/
+
+/-- **One step of the fold of a body.** For slot arrays `R` that pass `slotsOkB` and
+    `cellsDistinctB` and a body `is` whose cell fold from the constants `e0` is `is'`: a
+    step of the instruction of `is` at the program counter of `s` is matched, from every
+    state `s'` cell-related to `s` under the constants known at that position, by a step
+    of the instruction of `is'` at the same position, into a state cell-related under the
+    constants known at the new program counter. -/
+theorem evalInstrPMemF_cellFoldL {R : Slots} (hR : slotsOkB R = true)
+    (hD : cellsDistinctB R = true) {e0 : KEnv} {is is' : List LinstrRM}
+    (hf : cellFoldL R e0 is = some is') (fn : String) {i : LinstrRM} {s s' t : LstateMF}
+    (hi : is[s.prog.base.lpc]? = some i)
+    (hC : CellRelF R (envAt e0 is s.prog.base.lpc) s s')
+    (h : evalInstrPMemF (singletonProgM fn is) i s = some t) :
+    ∃ i' t', is'[s.prog.base.lpc]? = some i'
+      ∧ evalInstrPMemF (singletonProgM fn is') i' s' = some t'
+      ∧ CellRelF R (envAt e0 is t.prog.base.lpc) t t' :=
+  CellFoldLReg.evalInstrPMemF_cellFoldLR hR hD
+    (CellFoldLReg.cellFoldLR_of_cellFoldL _ _ _ hf) fn hi hC h
+
+/-- **The cell fold of a body realises the body.** For slot arrays `R` that pass
+    `slotsOkB` and `cellsDistinctB` and a body `is` whose cell fold from the constants `e0`
+    is `is'`: a halting run of `is` on the flag machine from `s` is matched, with the same
+    fuel, by a run of `is'` from every state `s'` cell-related to `s` under the constants
+    known at the program counter of `s`, into a state cell-related to the final state, with
+    the same zero flag. -/
+theorem lsemFuelMemF_cellFoldL {R : Slots} (hR : slotsOkB R = true)
+    (hD : cellsDistinctB R = true) {e0 : KEnv} {is is' : List LinstrRM}
+    (hf : cellFoldL R e0 is = some is') (fn : String) :
+    ∀ (fuel : Nat) {s s' t : LstateMF}, CellRelF R (envAt e0 is s.prog.base.lpc) s s' →
+      lsemFuelMemF (singletonProgM fn is) fuel s = some t →
+      ∃ t', lsemFuelMemF (singletonProgM fn is') fuel s' = some t'
+        ∧ CellRelF R (envAt e0 is t.prog.base.lpc) t t' :=
+  CellFoldLReg.lsemFuelMemF_cellFoldLR hR hD (CellFoldLReg.cellFoldLR_of_cellFoldL _ _ _ hf) fn
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldL

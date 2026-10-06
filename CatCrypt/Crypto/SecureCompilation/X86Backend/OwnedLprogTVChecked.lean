@@ -42,6 +42,9 @@ instances at `X86Isa.x86Isa`.
   hold exactly when its accesses are in bounds.
 * `runIdxOk_runL_at`, `runIdxOk_of_runL_at`, `runIdxOk_runL`, `runIdxOk_of_runL`: the
   in-bounds condition of a run splits at a stretch.
+* `OwnedCheckFuel.sim_stepCF`, `OwnedCheckFuel.simAtCF_all`,
+  `OwnedCheckFuel.ownedCheckWithC_sound_at_fuel`: the simulation of the rewritten body, with
+  its fuel at most `OwnedCheckFuel.checkFuel`.
 * `ownedCheckWithC_sound_at`, `ownedCheckMC_sound_at`: soundness on bounds-checked runs of an
   instruction set.
 * `ownedCheckWithC_sound`, `ownedCheckMC_sound`: soundness on bounds-checked runs of the
@@ -456,12 +459,51 @@ theorem oblOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B' 
   intro o ho
   exact ⟨(h2 o ho).1, okIn_spec (h2 o ho).2⟩
 
-/-! ## 4. Soundness -/
+end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
 
-/-- The simulation on runs in bounds of the instruction set `I` up to the measure `N`: a
-    halting source run in bounds from a block entry is matched by a halting run in bounds of
-    the rewritten body. -/
-def SimAtC (I : Isa) (outs : List String) (L : Nat → List String × Bool)
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
+
+/-! ## 4. The simulation with the fuel bound -/
+
+/-- The number of blocks of the control-flow graph of a body, `0` when the body has none. -/
+def blockCount (B : List LinstrRM) : Nat :=
+  match cfgOf (B.map Prod.fst) with
+  | some G => G.blocks.size
+  | none => 0
+
+/-- The fuel of the rewritten body `B'` for a run of `B` at fuel `fuel`. -/
+def checkFuel (B B' : List LinstrRM) (fuel : Nat) : Nat :=
+  (B'.length + 1) * (fuel * (blockCount B + 1) + blockCount B + 1)
+
+theorem blockCount_eq {B : List LinstrRM} {G : CFG} (hG : cfgOf (B.map Prod.fst) = some G) :
+    blockCount B = G.blocks.size := by
+  unfold blockCount
+  rw [hG]
+
+/-- One step of the simulation adds at most `L + 1` to the fuel of the rewritten run. -/
+theorem step_bound {L N m f : Nat} (hm : m ≤ L) (hf : f ≤ (L + 1) * N) :
+    m + (f + 1) ≤ (L + 1) * (N + 1) := by
+  rw [Nat.mul_add_one]
+  omega
+
+/-- The simulation on runs in bounds of the instruction set `I` up to the measure `N`, with
+    the fuel of the rewritten run bounded: a halting source run in bounds from a block entry,
+    of measure below `N`, is matched by a halting run in bounds of the rewritten body of at
+    most `(B'.length + 1) * N` steps. -/
+def SimAtCF (I : Isa) (outs : List String) (L : Nat → List String × Bool)
     (B B' : List LinstrRM) (G G' : CFG) (fn : String) (N : Nat) : Prop :=
   ∀ (fuel k : Nat) (s s' t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
@@ -469,13 +511,14 @@ def SimAtC (I : Isa) (outs : List String) (L : Nat → List String × Bool)
     Rel (L k) s s' → s.prog.lfn = fn →
     I.lsemFuelMemF (singletonProgM fn B) fuel s = some t →
     I.RunIdxOk (singletonProgM fn B) fuel s →
-    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' s' = some t' ∧ Obs outs t t' ∧
+    ∃ f' t', f' ≤ (B'.length + 1) * N ∧
+      I.lsemFuelMemF (singletonProgM fn B') f' s' = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') f' s'
 
-theorem fall_contC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+theorem fall_contCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
     {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) {N k : Nat}
-    (ih : SimAtC I outs L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
+    (ih : SimAtCF I outs L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
     (hn : G.next k = nx) (hn' : G'.next k = nx) {w w' t : LstateMF} {f0 : Nat}
     (hw : w.prog.base.reg.lpc = (G.blk k).stop) (hw' : w'.prog.base.reg.lpc = (G'.blk k).stop)
     (hfn : w.prog.lfn = fn) (hfn' : w'.prog.lfn = fn)
@@ -483,7 +526,8 @@ theorem fall_contC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     (hok : I.RunIdxOk (singletonProgM fn B) f0 w)
     (hmeas : f0 * (G.blocks.size + 1) + (G.blocks.size - (k + 1)) < N)
     (hrel : ∀ j, nx = some j → Rel (L j) w w') (hobs : nx = none → Obs outs w w') :
-    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
+    ∃ f' t', f' ≤ (B'.length + 1) * N ∧
+      I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') f' w' := by
   have hk' : k < G'.blocks.size := hc.size ▸ hk
   cases nx with
@@ -492,7 +536,7 @@ theorem fall_contC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
       have e2 := (stop_next hc.hG' hk').1 hn'
       rw [halt_at_end_at I hfn (hw.trans e1)] at hrun
       cases hrun
-      exact ⟨0, w', halt_at_end_at I hfn' (hw'.trans e2) 0, hobs rfl, trivial⟩
+      exact ⟨0, w', Nat.zero_le _, halt_at_end_at I hfn' (hw'.trans e2) 0, hobs rfl, trivial⟩
   | some j =>
       obtain ⟨hj, hjlt, e1⟩ := (stop_next hc.hG hk).2 j hn
       obtain ⟨-, -, e2⟩ := (stop_next hc.hG' hk').2 j hn'
@@ -500,9 +544,9 @@ theorem fall_contC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
       exact ih f0 (k + 1) w w' t hmeas hjlt (Or.inl ⟨hw.trans e1, hw'.trans e2⟩) (hrel _ rfl)
         hfn hrun hok
 
-theorem jump_contC {I : Isa} {outs : List String} {L : Nat → List String × Bool}
+theorem jump_contCF {I : Isa} {outs : List String} {L : Nat → List String × Bool}
     {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAtC I outs L B B' G G' fn N)
+    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAtCF I outs L B B' G G' fn N)
     (htg : tg < G.blocks.size) {l l' : LLabel}
     (hl : findLabel l (B.map Prod.fst) = some (G.blk tg).start)
     (hl' : findLabel l' (B'.map Prod.fst) = some (G'.blk tg).start) {w w' t : LstateMF}
@@ -511,17 +555,21 @@ theorem jump_contC {I : Isa} {outs : List String} {L : Nat → List String × Bo
     (hrun : I.lsemFuelMemF (singletonProgM fn B) f1 w = some t)
     (hok : I.RunIdxOk (singletonProgM fn B) f1 w)
     (hmeas : f1 * (G.blocks.size + 1) + (G.blocks.size - tg) < N) (hrel : Rel (L tg) w w') :
-    ∃ f' t', I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
+    ∃ f' t', f' ≤ (B'.length + 1) * N ∧
+      I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') f' w' :=
   ih f1 tg w w' t hmeas htg (Or.inr ⟨hw, label_at hl, hw', label_at hl'⟩) hrel hfn hrun hok
 
-theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+/-- **One step of the simulation with the fuel bound.** The rewritten run of the block costs
+    at most `B'.length + 1` steps, by the terminator of the block (fall through, jump, branch
+    taken, branch not taken). -/
+theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec)
     {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
     {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
     (hob : ∀ k < G.blocks.size, oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true)
-    {N : Nat} (ih : SimAtC I outs L B B' G G' fn N) :
-    SimAtC I outs L B B' G G' fn (N + 1) := by
+    {N : Nat} (ih : SimAtCF I outs L B B' G G' fn N) :
+    SimAtCF I outs L B B' G G' fn (N + 1) := by
   intro fuel k s s' t hN hk hpair hrel hfn hrun hokS
   obtain ⟨hTk, hok⟩ := hc.blk k hk
   have hk' : k < G'.blocks.size := hc.size ▸ hk
@@ -646,10 +694,12 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hex
   have hfle : f ≤ fuel := by omega
-  obtain ⟨m', hm', hmok⟩ : ∃ m', (∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
-      I.lsemFuelMemF (singletonProgM fn B') f0 u') ∧
-      ∀ f0, I.RunIdxOk (singletonProgM fn B') f0 u' →
-        I.RunIdxOk (singletonProgM fn B') (m' + f0) s' := ⟨_, hrun', hokJ⟩
+  obtain ⟨m', hm', hmok, hmle⟩ : ∃ m',
+      (∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
+        I.lsemFuelMemF (singletonProgM fn B') f0 u') ∧
+      (∀ f0, I.RunIdxOk (singletonProgM fn B') f0 u' →
+        I.RunIdxOk (singletonProgM fn B') (m' + f0) s') ∧ m' ≤ B'.length :=
+    ⟨_, hrun', hokJ, by omega⟩
   clear hrun' hokJ
   obtain ⟨zi, zt⟩ := z
   obtain ⟨zi', zt'⟩ := z'
@@ -664,11 +714,13 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     all_goals try cases hT'
     have hw : u.prog.base.reg.lpc = (G.blk k).stop := by rw [hupc, hT]; rfl
     have hw' : u'.prog.base.reg.lpc = (G'.blk k).stop := by rw [hupc', hT]; rfl
-    obtain ⟨f'', t', hr, hobs, hrok⟩ := fall_contC hc ih hk hnx.symm hnx'.symm hw hw' hul'
+    obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := fall_contCF hc ih hk hnx.symm hnx'.symm hw hw' hul'
       hul'' hru hokU (measure_le hN hfle hk)
       (fun j hj => hsucc j (by simp [hT, Term.succs, hj]))
       (fun hn => hhalt (by simp [hT, hn, Term.halts]))
-    exact ⟨m' + f'', t', by rw [hm']; exact hr, hobs, hmok _ hrok⟩
+    exact ⟨m' + f'', t',
+      Nat.le_trans (Nat.add_le_add_left (Nat.le_succ f'') m') (step_bound hmle hfb),
+      by rw [hm']; exact hr, hobs, hmok _ hrok⟩
   · -- jump
     obtain ⟨_, hT', _⟩ | ⟨tg', x', l', hT', hzi', htg', hl'⟩ | ⟨_, _, _, _, hT', _⟩ |
         ⟨hT', _⟩ := termOk_spec hterm'
@@ -697,11 +749,12 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
       have hfetch' : findInstrMem (singletonProgM fn B') u'.prog =
           some (.Lgoto (x, l'), zt') := by
         rw [findInstrMem_single hul'', hw', hz']
-      obtain ⟨f'', t', hr, hobs, hrok⟩ := jump_contC (w' := { u' with prog := { u'.prog with
+      obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := jump_contCF
+        (w' := { u' with prog := { u'.prog with
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
         (by exact hul') hr1 hok1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
-      refine ⟨m' + (f'' + 1), t', ?_, hobs,
+      refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_goto _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
       exact hr
@@ -743,11 +796,12 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
         rw [I.step_cond, if_pos (hdec.trans hd), evalJumpMem_single hl']
         rfl
-      obtain ⟨f'', t', hr, hobs, hrok⟩ := jump_contC (w' := { u' with prog := { u'.prog with
+      obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := jump_contCF
+        (w' := { u' with prog := { u'.prog with
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
         (by exact hul') hr1 hok1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
-      refine ⟨m' + (f'' + 1), t', ?_, hobs,
+      refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_cond _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
       exact hr
@@ -756,7 +810,7 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
       have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with base := u'.prog.base.nextPc } } := by
         rw [I.step_cond, if_neg (by rw [hdec]; exact hd)]
-      obtain ⟨f'', t', hr, hobs, hrok⟩ := fall_contC (w := u1)
+      obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := fall_contCF (w := u1)
         (w' := { u' with prog := { u'.prog with base := u'.prog.base.nextPc } })
         hc ih hk hnx.symm hnx'.symm
         (by rw [← he]; show u.prog.base.reg.lpc + 1 = _; omega)
@@ -765,21 +819,83 @@ theorem sim_stepC {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
         (measure_le hN (show f1 ≤ fuel by omega) hk)
         (fun j hj => by rw [← he]; exact hsucc j (by simp [hT, Term.succs, hj]))
         (fun hn => by rw [← he]; exact hhalt (by simp [hT, hn, Term.halts]))
-      refine ⟨m' + (f'' + 1), t', ?_, hobs,
+      refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_cond _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
       exact hr
   · exact absurd hT hret
 
-theorem simAtC_all {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+theorem simAtCF_all {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec) {outs : List String} {L : Nat → List String × Bool}
     {B B' : List LinstrRM}
     {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
     (hob : ∀ k < G.blocks.size,
       oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true) :
-    ∀ N, SimAtC I outs L B B' G G' fn N
+    ∀ N, SimAtCF I outs L B B' G G' fn N
   | 0 => fun _ _ _ _ _ hN => absurd hN (Nat.not_lt_zero _)
-  | N + 1 => sim_stepC hL hc hob (simAtC_all hL hc hob N)
+  | N + 1 => sim_stepCF hL hc hob (simAtCF_all hL hc hob N)
+
+/-- **Soundness for given live sets, with the fuel bound.** If the symbolic step `sym` and
+    branch condition `dec` satisfy `SymLaws I sym dec`, and
+    `ownedCheckWith outs L B B' sym dec` and `oblCheckWith L B B' sym` accept, every halting
+    run of `I` on `B` from pc `0` whose accesses are in bounds is matched by a halting run on
+    `B'` from the same state, of fuel at most `checkFuel B B' fuel`, whose accesses are in
+    bounds, the end states agreeing on `outs`, the arrays and the word memory. -/
+theorem ownedCheckWithC_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool}
+    {B B' : List LinstrRM} (h : ownedCheckWith outs L B B' sym dec = true)
+    (hob : oblCheckWith L B B' sym = true) (fn : String)
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
+    (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
+    ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
+      I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' ∧
+      I.RunIdxOk (singletonProgM fn B') fuel' s := by
+  unfold ownedCheckWith at h
+  unfold oblCheckWith at hob
+  split at h
+  · rename_i G G' hG hG'
+    rw [hG, hG'] at hob
+    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
+      List.all_eq_true, List.mem_range] at h hob
+    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
+    have hc : Checked outs L B B' G G' sym dec :=
+      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
+    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
+    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
+    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
+    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
+    have hsim := simAtCF_all hL hc hob
+      (fuel * (G.blocks.size + 1) + (G.blocks.size - 0) + 1) fuel 0 s s t
+      (Nat.lt_succ_self _) h0
+      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
+      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun hok
+    unfold checkFuel
+    rw [blockCount_eq hG]
+    rw [Nat.sub_zero] at hsim
+    exact hsim
+  · cases h
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
+  (x86Isa x86Isa_lsemFuelMemF x86Isa_runL x86Isa_lsemFuelMemFk x86Isa_RunIdxOk)
+
+/-! ## 5. Soundness -/
 
 /-- **Soundness on runs in bounds for given live sets, over an instruction set.** If the
     symbolic step `sym` and branch condition `dec` satisfy `SymLaws I sym dec`, and
@@ -796,25 +912,9 @@ theorem ownedCheckWithC_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
     (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
     ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' ∧
-      I.RunIdxOk (singletonProgM fn B') fuel' s := by
-  unfold ownedCheckWith at h
-  unfold oblCheckWith at hob
-  split at h
-  · rename_i G G' hG hG'
-    rw [hG, hG'] at hob
-    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
-      List.all_eq_true, List.mem_range] at h hob
-    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
-    have hc : Checked outs L B B' G G' sym dec :=
-      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
-    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
-    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
-    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
-    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
-    exact simAtC_all hL hc hob _ fuel 0 s s t (Nat.lt_succ_self _) h0
-      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
-      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun hok
-  · cases h
+      I.RunIdxOk (singletonProgM fn B') fuel' s :=
+  (OwnedCheckFuel.ownedCheckWithC_sound_at_fuel hL h hob fn s t hfn hpc fuel hrun hok).elim
+    fun f' ht => ht.elim fun t' hrest => ⟨f', t', hrest.2⟩
 
 /-- **Soundness on runs in bounds for given live sets.** If `ownedCheckWith outs L B B'` and
     `oblCheckWith L B B'` accept, every halting run of `lsemFuelMemF` on `B` from pc `0`
