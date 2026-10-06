@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMach
+public import CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineLoop
 
 @[expose] public section
 
@@ -179,6 +180,17 @@ theorem armAndCode_no_movz : ∀ bi ∈ armAndCode, bmMnem bi ≠ .movz := by
 
 /-! ## Constant time under `PSTATE.DIT = 1` -/
 
+/-- **Every step of the body with `RET` agrees on states related by `ArmAndPub`** under
+    `ArmRegime.dit`: the instruction at an index leaks the same address from both states and
+    takes them to states related by `ArmAndPub`. -/
+theorem armAndCode_stepAgree (pc : Nat) {b₁ b₂ : BMState} (h : ArmAndPub b₁ b₂) :
+    (armMach .dit).StepAgree (armAndCode.map .op ++ [.ret]) (fun _ => ArmAndPub)
+      (fun _ _ => True) pc b₁ b₂ := by
+  obtain ⟨h0, h1, h3, h4⟩ := h
+  rcases pc with _ | _ | _ | _ | _ | _ | _ | pc <;>
+    simp_all [IsaMachine.StepAgree, armAct, armAndCode, armOpLeak_dit, bmAddrLeak, bmAddr?,
+      armAddrR, evalBMInst, evalBInst, BState.set, ArmAndPub]
+
 /-- **The `mpn_and_n` bytes are constant time at the AArch64 machine under `PSTATE.DIT = 1`.**
     Two machine runs of `armAndBytes` from states that agree on the array bases `x0`, `x1`,
     `x3` and on the index `x4` have equal leakage traces.
@@ -190,10 +202,12 @@ theorem armAndCode_no_movz : ∀ bi ∈ armAndCode, bmMnem bi ≠ .movz := by
     regime, and is equal in the two runs because it is computed from the public registers. -/
 theorem mpn_and_n_armMach_ct :
     ConstantTimeRel ArmAndPub (ArmBytesRun .dit armAndBytes) := by
-  intro b₁ b₂ t₁ t₂ hp h₁ h₂
-  rw [armBytesRun_and_iff, armAndCode_leak_dit] at h₁ h₂
-  rw [h₁, h₂]
-  exact armAndTrace_congr hp
+  rintro b₁ b₂ t₁ t₂ hp ⟨_, _, hd₁, h₁⟩ ⟨_, _, hd₂, h₂⟩
+  rw [armAndBytes_decode] at hd₁ hd₂
+  cases hd₁
+  cases hd₂
+  exact IsaMachine.constantTimeRel_of_stepAgree
+    (fun pc _ _ h => armAndCode_stepAgree pc h) b₁ b₂ t₁ t₂ hp ⟨_, h₁⟩ ⟨_, h₂⟩
 
 /-- The functional form of `mpn_and_n_armMach_ct`: the trace function `armAndTrace` is
     `ConstantTime` for `ArmAndPub`, and it is the trace of the machine run. -/

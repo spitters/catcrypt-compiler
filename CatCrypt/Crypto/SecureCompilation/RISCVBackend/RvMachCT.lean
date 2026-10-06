@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
+public import CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineLoop
 
 @[expose] public section
 
@@ -184,6 +185,24 @@ theorem rvAndTrace_congr {b₁ b₂ : RMState64} (h : RvAndPub b₁ b₂) :
 
 /-! ## Constant time under `RvRegime.zktMemData` -/
 
+/-- **The agreement of two machine states at an index of the `mpn_and_n` body**: `RvAndPub`,
+    and equal address register `t5` at the indices between an address computation and the
+    load or store that uses it. -/
+def RvAndRel (pc : Nat) (b₁ b₂ : RMState64) : Prop :=
+  RvAndPub b₁ b₂ ∧ (pc ∈ [1, 2, 4, 5, 8, 9] → b₁.regs.get "t5" = b₂.regs.get "t5")
+
+/-- **Every step of the body with `ret` agrees on states related by `RvAndRel`** under
+    `RvRegime.zktMemData`: the instruction at an index leaks the same address from both
+    states and takes them to states related at the next index. -/
+theorem rvAndCode_stepAgree (pc : Nat) {b₁ b₂ : RMState64} (h : RvAndRel pc b₁ b₂) :
+    (rvMach .zktMemData).StepAgree (rvAndCode.flatten.map .op ++ [.ret]) RvAndRel
+      (fun _ _ => True) pc b₁ b₂ := by
+  obtain ⟨⟨h0, h1, h3, h4⟩, h5⟩ := h
+  rcases pc with _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | pc <;>
+    simp_all [IsaMachine.StepAgree, rvAct, rvAndCode, rvIdxAddr, rvOpLeak_zktMemData,
+      rmAddrLeak, rmAddr?, rvAddr, evalRMInst64, evalRInst64, RState64.set, opAdd64, RvAndRel,
+      RvAndPub]
+
 /-- **The `mpn_and_n` bytes are constant time at the RV64 machine under
     `RvRegime.zktMemData`.** Two machine runs of `rvAndBytes` from states that agree on the
     array bases `a0`, `a1`, `a3` and on the index `a4` have equal leakage traces.
@@ -197,10 +216,12 @@ theorem rvAndTrace_congr {b₁ b₂ : RMState64} (h : RvAndPub b₁ b₂) :
     from the public registers. -/
 theorem mpn_and_n_rvMach_ct :
     ConstantTimeRel RvAndPub (RvBytesRun .zktMemData rvAndBytes) := by
-  intro b₁ b₂ t₁ t₂ hp h₁ h₂
-  rw [rvBytesRun_and_iff, rvAndCode_leak_zktMemData] at h₁ h₂
-  rw [h₁, h₂]
-  exact rvAndTrace_congr hp
+  rintro b₁ b₂ t₁ t₂ hp ⟨_, _, hd₁, h₁⟩ ⟨_, _, hd₂, h₂⟩
+  rw [rvAndBytes_decode] at hd₁ hd₂
+  cases hd₁
+  cases hd₂
+  exact IsaMachine.constantTimeRel_of_stepAgree
+    (fun pc _ _ h => rvAndCode_stepAgree pc h) b₁ b₂ t₁ t₂ ⟨hp, by simp⟩ ⟨_, h₁⟩ ⟨_, h₂⟩
 
 /-- The functional form of `mpn_and_n_rvMach_ct`: the trace function `rvAndTrace` is
     `ConstantTime` for `RvAndPub`, and it is the trace of the machine run. -/

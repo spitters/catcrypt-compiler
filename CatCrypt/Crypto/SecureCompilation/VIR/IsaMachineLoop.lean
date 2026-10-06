@@ -48,6 +48,11 @@ output array from the cells `k` of two input arrays; `LimbInv.step` is one itera
   branch as paths.
 * `IsaMachine.reachesIn_loop`: the body and the back branch, for a trip count `k + 1`.
 * `IsaMachine.reachesIn_loopNode`: the guarded loop, the zero-trip case included.
+* `IsaMachine.StepAgree`, `IsaMachine.RunL.trace_eq_of_stepAgree`,
+  `IsaMachine.constantTimeRel_of_stepAgree`: two runs with leakage from states related at an
+  index have equal traces when every step from related states has equal leakage and leads to
+  related states; the halting runs from index 0 are then `ConstantTimeRel` for the relation
+  at index 0.
 * `MachineMem64.decide_ofNat64_ne_zero`: the zero test of a count as a 64-bit word.
 * `MachineMem64.LimbInv.step`: one iteration of a limb-wise loop.
 -/
@@ -234,6 +239,113 @@ theorem reachesIn_loopNode {prog : List M.Instr} {g top foot exit₀ ng nb : Nat
     obtain ⟨hl, hi⟩ := reachesIn_loop hbody hfoot hinv k (G s) (hpre (k + 1) s h)
     rw [if_neg (Nat.succ_ne_zero k)] at hg
     exact ⟨(hg.trans hl).congr rfl rfl (by simp) rfl, hi⟩
+
+/-! ## Constant time from the leakage of one step -/
+
+/-- **Agreement of one step** of `prog` at `pc` from the states `s₁` and `s₂`, for a relation
+    `R` on the states at an index and a relation `Q` on the states at a `ret`. The two actions
+    are of the same kind. Two operations or blocks are equal, have equal leakage and lead to
+    states related by `R` at the next index. Two branches have the same outcome and target,
+    and `R` holds at the index the branch goes to. Two calls have the same target, `callOps`
+    has equal leakage and leads to states related by `R` at the target, and from callee
+    states related by `Q` the block `retOps` has equal leakage and leads to states related by
+    `R` at the next index. At two `ret` actions `Q` holds. A state with no action has no run,
+    and the agreement holds. -/
+def StepAgree (M : IsaMachine) (prog : List M.Instr) (R : Nat → M.MState → M.MState → Prop)
+    (Q : M.MState → M.MState → Prop) (pc : Nat) (s₁ s₂ : M.MState) : Prop :=
+  match M.act prog pc s₁, M.act prog pc s₂ with
+  | none, _ => True
+  | _, none => True
+  | some (.op i), some (.op j) =>
+      i = j ∧ M.opLeak s₁ i = M.opLeak s₂ i ∧ R (pc + 1) (M.exec s₁ i) (M.exec s₂ i)
+  | some (.block a), some (.block b) =>
+      a = b ∧ M.blockLeak s₁ a = M.blockLeak s₂ a ∧
+        R (pc + 1) (M.runBlock s₁ a) (M.runBlock s₂ a)
+  | some (.branch b t), some (.branch b' t') =>
+      b = b' ∧ t = t' ∧ R (if b then t else pc + 1) s₁ s₂
+  | some (.call t), some (.call t') =>
+      t = t' ∧ M.blockLeak s₁ (M.callOps (pc + 1)) = M.blockLeak s₂ (M.callOps (pc + 1)) ∧
+        R t (M.runBlock s₁ (M.callOps (pc + 1))) (M.runBlock s₂ (M.callOps (pc + 1))) ∧
+        ∀ c₁ c₂, Q c₁ c₂ → M.blockLeak c₁ M.retOps = M.blockLeak c₂ M.retOps ∧
+          R (pc + 1) (M.runBlock c₁ M.retOps) (M.runBlock c₂ M.retOps)
+  | some .ret, some .ret => Q s₁ s₂
+  | _, _ => False
+
+/-- **Two runs with leakage from related states have equal traces.** When every step from
+    states related by `R` satisfies `StepAgree`, two halting runs of `prog` from the same
+    index and from states related by `R` there have equal leakage traces, and their final
+    states are related by `Q`. -/
+theorem RunL.trace_eq_of_stepAgree {ok ok' : M.MState → M.Op → Prop} {prog : List M.Instr}
+    {R : Nat → M.MState → M.MState → Prop} {Q : M.MState → M.MState → Prop}
+    (hstep : ∀ pc s₁ s₂, R pc s₁ s₂ → M.StepAgree prog R Q pc s₁ s₂)
+    {pc : Nat} {s₁ s₂ : M.MState} {t₁ t₂ : List CTLeak} {s₁' s₂' : M.MState}
+    (h₁ : M.RunL ok prog pc s₁ t₁ s₁') (h₂ : M.RunL ok' prog pc s₂ t₂ s₂')
+    (hR : R pc s₁ s₂) : t₁ = t₂ ∧ Q s₁' s₂' := by
+  induction h₁ generalizing s₂ t₂ s₂' with
+  | ret h =>
+    have hs := hstep _ _ _ hR
+    cases h₂ with
+    | ret h' =>
+      simp only [StepAgree, h, h'] at hs
+      exact ⟨rfl, hs⟩
+    | _ => simp_all [StepAgree]
+  | op h _ _ ih =>
+    have hs := hstep _ _ _ hR
+    cases h₂ with
+    | op h' _ hr' =>
+      simp only [StepAgree, h, h'] at hs
+      obtain ⟨rfl, hl, hR'⟩ := hs
+      obtain ⟨rfl, hq⟩ := ih hr' hR'
+      exact ⟨by rw [hl], hq⟩
+    | _ => simp_all [StepAgree]
+  | block h _ _ ih =>
+    have hs := hstep _ _ _ hR
+    cases h₂ with
+    | block h' _ hr' =>
+      simp only [StepAgree, h, h'] at hs
+      obtain ⟨rfl, hl, hR'⟩ := hs
+      obtain ⟨rfl, hq⟩ := ih hr' hR'
+      exact ⟨by rw [hl], hq⟩
+    | _ => simp_all [StepAgree]
+  | branch h _ ih =>
+    have hs := hstep _ _ _ hR
+    cases h₂ with
+    | branch h' hr' =>
+      simp only [StepAgree, h, h'] at hs
+      obtain ⟨rfl, rfl, hR'⟩ := hs
+      obtain ⟨rfl, hq⟩ := ih hr' hR'
+      exact ⟨rfl, hq⟩
+    | _ => simp_all [StepAgree]
+  | call h _ _ _ _ ihc ihr =>
+    have hs := hstep _ _ _ hR
+    cases h₂ with
+    | call h' _ hc' _ hr' =>
+      simp only [StepAgree, h, h'] at hs
+      obtain ⟨rfl, hl, hRc, hret⟩ := hs
+      obtain ⟨rfl, hqc⟩ := ihc hc' hRc
+      obtain ⟨hlr, hRr⟩ := hret _ _ hqc
+      obtain ⟨rfl, hq⟩ := ihr hr' hRr
+      exact ⟨by rw [hl, hlr], hq⟩
+    | _ => simp_all [StepAgree]
+
+/-- **Constant time of a decoded program from the leakage of its steps.** When every step
+    from states related by `R` satisfies `StepAgree`, the halting runs of `prog` from index 0
+    are `ConstantTimeRel` for the relation `R 0` on entry states. The hypothesis is a
+    condition on single steps; the side conditions `ok` of the runs are arbitrary. -/
+theorem constantTimeRel_of_stepAgree {ok : M.MState → M.Op → Prop} {prog : List M.Instr}
+    {R : Nat → M.MState → M.MState → Prop} {Q : M.MState → M.MState → Prop}
+    (hstep : ∀ pc s₁ s₂, R pc s₁ s₂ → M.StepAgree prog R Q pc s₁ s₂) :
+    ConstantTimeRel (R 0) (fun s t => ∃ s', M.RunL ok prog 0 s t s') := by
+  rintro s₁ s₂ t₁ t₂ hR ⟨_, h₁⟩ ⟨_, h₂⟩
+  exact (h₁.trace_eq_of_stepAgree hstep h₂ hR).1
+
+/-- Every step from equal states satisfies `StepAgree` for equality. -/
+theorem stepAgree_eq (prog : List M.Instr) (pc : Nat) (s : M.MState) :
+    M.StepAgree prog (fun _ => Eq) Eq pc s s := by
+  unfold StepAgree
+  cases M.act prog pc s with
+  | none => trivial
+  | some a => cases a <;> simp
 
 end IsaMachine
 

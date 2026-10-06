@@ -254,6 +254,22 @@ theorem armAndLoopLeak_dit_congr (n : Nat) {b₁ b₂ : BMState} (h : ArmAndLoop
       · simpa [armAndInit, evalBMInst, evalBInst, BState.set] using h3
       · simp [armAndInit, evalBMInst, evalBInst, BState.set, opEor64]
 
+/-- **The agreement of two machine states at an index of the `mpn_and_n` loop**: equal array
+    bases and count, and equal limb index `x4` at every index after the initialisation. -/
+def ArmAndLoopRel (pc : Nat) (b₁ b₂ : BMState) : Prop :=
+  ArmAndLoopPub b₁ b₂ ∧ (pc ≠ 0 → b₁.regs.get "x4" = b₂.regs.get "x4")
+
+/-- **Every step of the loop agrees on states related by `ArmAndLoopRel`** under
+    `ArmRegime.dit`: an operation leaks the same address from both states, a branch has the
+    same outcome, and the states after the step are related at the index it leads to. -/
+theorem armAndLoopProg_stepAgree (pc : Nat) {b₁ b₂ : BMState} (h : ArmAndLoopRel pc b₁ b₂) :
+    (armMach .dit).StepAgree armAndLoopProg ArmAndLoopRel (fun _ _ => True) pc b₁ b₂ := by
+  obtain ⟨⟨h0, h1, h2, h3⟩, h4⟩ := h
+  rcases pc with _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | pc <;>
+    simp_all [IsaMachine.StepAgree, armAct, armAndLoopProg, armAndCode, armAndInit, wordTarget,
+      armOpLeak_dit, bmAddrLeak, bmAddr?, armAddrR, evalBMInst, evalBInst, BState.set,
+      ArmAndLoopRel, ArmAndLoopPub, opEor64]
+
 /-- **The `mpn_and_n` loop is constant time at the AArch64 machine under `PSTATE.DIT = 1`.**
     Two halting runs of `armAndLoopProg` from index 0, from states that agree on the array
     bases `x0`, `x1`, `x3` and on the count `x2`, the first satisfying `ArmAndLoopEntry n`,
@@ -265,19 +281,9 @@ theorem armAndLoopLeak_dit_congr (n : Nat) {b₁ b₂ : BMState} (h : ArmAndLoop
 theorem mpn_and_n_loop_armMach_ct (n : Nat) :
     ConstantTimeRel (fun b₁ b₂ => ArmAndLoopPub b₁ b₂ ∧ ArmAndLoopEntry n b₁)
       (fun b t => ∃ b', (armMach .dit).RunL (fun _ _ => True) armAndLoopProg 0 b t b') := by
-  rintro b₁ b₂ t₁ t₂ ⟨hp, he⟩ ⟨s₁, h₁⟩ ⟨s₂, h₂⟩
-  have he₂ : ArmAndLoopEntry n b₂ := by
-    obtain ⟨h0, h1, h2, h3⟩ := hp
-    refine ⟨ArmArrsSep_congr he.1 ?_, h2 ▸ he.2⟩
-    intro a ha
-    simp only [armAndArrs, List.mem_cons, List.not_mem_nil, or_false] at ha
-    rcases ha with rfl | rfl | rfl
-    · exact h0.symm
-    · exact h1.symm
-    · exact h3.symm
-  obtain ⟨_, -, -, hl₁, -⟩ := arm_and_loop .dit n _ _ b₁ he (fun _ => rfl) (fun _ => rfl)
-  obtain ⟨_, -, -, hl₂, -⟩ := arm_and_loop .dit n _ _ b₂ he₂ (fun _ => rfl) (fun _ => rfl)
-  rw [(runL_det h₁ hl₁).1, (runL_det h₂ hl₂).1]
-  exact armAndLoopLeak_dit_congr n hp
+  rintro b₁ b₂ t₁ t₂ ⟨hp, -⟩ h₁ h₂
+  exact IsaMachine.constantTimeRel_of_stepAgree
+    (fun pc _ _ h => armAndLoopProg_stepAgree pc h) b₁ b₂ t₁ t₂
+    ⟨hp, fun h => absurd rfl h⟩ h₁ h₂
 
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMach

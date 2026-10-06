@@ -259,6 +259,27 @@ theorem rvAndLoopLeak_zktMemData_congr (n : Nat) {b₁ b₂ : RMState64}
       · simpa [rvAndInit, evalRMInst64, RState64.set] using h3
       · simp [rvAndInit, evalRMInst64, RState64.set]
 
+/-- **The agreement of two machine states at an index of the `mpn_and_n` loop**: equal array
+    bases and count, equal limb index `a4` at every index after the initialisation, and equal
+    address register `t5` at the indices between an address computation and the load or
+    store that uses it. -/
+def RvAndLoopRel (pc : Nat) (b₁ b₂ : RMState64) : Prop :=
+  RvAndLoopPub b₁ b₂ ∧ (pc ≠ 0 → b₁.regs.get "a4" = b₂.regs.get "a4") ∧
+    (pc ∈ [4, 5, 7, 8, 11, 12] → b₁.regs.get "t5" = b₂.regs.get "t5")
+
+/-- **Every step of the loop agrees on states related by `RvAndLoopRel`** under
+    `RvRegime.zktMemData`: an operation leaks the same address from both states, a branch
+    has the same outcome, and the states after the step are related at the index it leads
+    to. -/
+theorem rvAndLoopProg_stepAgree (pc : Nat) {b₁ b₂ : RMState64} (h : RvAndLoopRel pc b₁ b₂) :
+    (rvMach .zktMemData).StepAgree rvAndLoopProg RvAndLoopRel (fun _ _ => True) pc b₁ b₂ := by
+  obtain ⟨⟨h0, h1, h2, h3⟩, h4, h5⟩ := h
+  rcases pc with _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | pc <;>
+    simp_all [IsaMachine.StepAgree, rvAct, rvAndLoopProg, rvAndCode, rvIdxAddr, rvAndInit,
+      wordTarget, rvOpLeak_zktMemData, rmAddrLeak, rmAddr?, rvAddr, evalRMInst64, evalRInst64,
+      RState64.set, opAdd64, RvAndLoopRel, RvAndLoopPub]
+  all_goals split <;> simp
+
 /-- **The `mpn_and_n` loop is constant time at the RV64 machine under
     `RvRegime.zktMemData`.** Two halting runs of `rvAndLoopProg` from index 0, from states
     that agree on the array bases `a0`, `a1`, `a3` and on the count `a2`, the first
@@ -270,19 +291,9 @@ theorem rvAndLoopLeak_zktMemData_congr (n : Nat) {b₁ b₂ : RMState64}
 theorem mpn_and_n_loop_rvMach_ct (n : Nat) :
     ConstantTimeRel (fun b₁ b₂ => RvAndLoopPub b₁ b₂ ∧ RvAndLoopEntry n b₁)
       (fun b t => ∃ b', (rvMach .zktMemData).RunL (fun _ _ => True) rvAndLoopProg 0 b t b') := by
-  rintro b₁ b₂ t₁ t₂ ⟨hp, he⟩ ⟨s₁, h₁⟩ ⟨s₂, h₂⟩
-  have he₂ : RvAndLoopEntry n b₂ := by
-    obtain ⟨h0, h1, h2, h3⟩ := hp
-    refine ⟨RvArrsSep_congr he.1 ?_, h2 ▸ he.2⟩
-    intro a ha
-    simp only [rvAndArrs, List.mem_cons, List.not_mem_nil, or_false] at ha
-    rcases ha with rfl | rfl | rfl
-    · exact h0.symm
-    · exact h1.symm
-    · exact h3.symm
-  obtain ⟨_, -, -, hl₁, -⟩ := rv_and_loop .zktMemData n _ _ b₁ he (fun _ => rfl) (fun _ => rfl)
-  obtain ⟨_, -, -, hl₂, -⟩ := rv_and_loop .zktMemData n _ _ b₂ he₂ (fun _ => rfl) (fun _ => rfl)
-  rw [(runL_det h₁ hl₁).1, (runL_det h₂ hl₂).1]
-  exact rvAndLoopLeak_zktMemData_congr n hp
+  rintro b₁ b₂ t₁ t₂ ⟨hp, -⟩ h₁ h₂
+  exact IsaMachine.constantTimeRel_of_stepAgree
+    (fun pc _ _ h => rvAndLoopProg_stepAgree pc h) b₁ b₂ t₁ t₂
+    ⟨hp, fun h => absurd rfl h, by simp⟩ h₁ h₂
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
