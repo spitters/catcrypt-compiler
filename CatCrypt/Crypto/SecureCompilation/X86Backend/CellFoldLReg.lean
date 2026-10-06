@@ -47,7 +47,6 @@ machine, and gives the image route `routeBW` over it.
 * `cellFoldLR_of_cellFoldL`: a fold by `cellFoldL` is the fold by `cellFoldLR`.
 * `lsemFuelMemF_cellFoldLR`: a halting run of the body is matched, with the same fuel, by a
   run of the folded body.
-* `routeBW_of_old`: a program that passes `ImageAddrRouteW.routeBW0` passes `routeBW`.
 * `loop_image_bytesW`: under `routeBW`, a halting run of the node from the entry state is
   matched by a halting run of the decoded bytes of the printed body, with the output array
   in memory at its entry base.
@@ -691,26 +690,6 @@ theorem routeBW_abiEntry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   obtain ⟨hent, hren⟩ := routeBW_checks hg
   have E := entryB_spec hent sa
   exact entryV_abiEntry E.argF E.argG fun j hj => ((renB_spec hren).unr j hj).1
-
-/-- **A program that passes `ImageAddrRouteW.routeBW0` passes `routeBW`**: a fold by
-    `cellFoldL` is the fold by `cellFoldLR`, and a body with an empty width analysis at every
-    branch passes the gate with the same analysis. -/
-theorem routeBW_of_old {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW0 σ nm body seeds loop ps fuse out m = true) :
-    routeBW σ nm body seeds loop ps fuse out m = true := by
-  unfold routeBW0 at hg
-  split at hg
-  · rename_i L2 hfold
-    unfold routeBW
-    rw [cellFoldLR_of_cellFoldL _ _ _ hfold]
-    simp only [Bool.and_eq_true] at hg ⊢
-    have h0 := hg.1.1.1.1.1.1.1.1.1.1.1.2
-    have hk := ImageAddrSimW.imgGateBW_of_old h0.1
-    have hr := ImageAddrSimW.retOutsB_of_old h0.1 (outCells (renOf ps out) m)
-    rw [← hr] at hg
-    tauto
-  · cases hg
 
 /-- **The node on the decoded bytes through the image route over the fold `cellFoldLR`.**
     Let the printed body `body`, the node `seeds ++ loop`, the renaming `ps`, the fusion flag

@@ -242,7 +242,6 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrSimWCond.lean  # step lemm
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightArrLeak.lean  # leak traces of the straight array arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCellsLeak.lean  # leak traces of the straight cell arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/NarrowTyping.lean  # width typing of exported instructions across arithmetic; the Lprog terms are instruction shapes under proof, no emit artifact
-CatCrypt/Crypto/SecureCompilation/X86Backend/X86IsaKeep.lean  # x86 ISA record with the KEEP marker as invariant touch and its step lemmas; the Lprog terms are the record's templates, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/CellFoldLReg.lean  # cell fold arm for register-only instructions with its run lemma; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrWBack.lean  # wide image gate at a back branch with dead one-bit carries; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCallX86.lean  # step-agreement lemmas for a body followed by a return (x86 and subsetStep instruction sets); the Lret term is the subject of the lemmas, no emit artifact

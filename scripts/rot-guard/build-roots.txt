@@ -603,7 +603,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportLoopsJIsa
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
@@ -914,7 +913,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaKeep
 CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst

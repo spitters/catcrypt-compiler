@@ -36,9 +36,8 @@ route over the fold `CellFoldLReg.cellFoldLR` and its theorem on the decoded byt
 * `cellArrsR`, `baseR`, `frameR`, `slotR`, `entryC`: the cell arrays, entry bases, frame map,
   slot map and virtual entry state of the route under the renaming.
 * `cellNamesRB`: the check of the cell names of a list of cell arrays against a printed body.
-* `routeBW0`: the check of the route with the fold `cellFoldL` and an empty width analysis at
-  every branch. The check of the route, `CellFoldLReg.routeBW`, and the theorem on the
-  decoded bytes, `CellFoldLReg.loop_image_bytesW`, are over the fold
+* `virtBW`: the virtual body of the route. The check of the route, `CellFoldLReg.routeBW`,
+  and the theorem on the decoded bytes, `CellFoldLReg.loop_image_bytesW`, are over the fold
   `CellFoldLReg.cellFoldLR`.
 
 ## Main results
@@ -590,38 +589,5 @@ def outCells (A : String) (m : Nat) : List String := (List.range m).map fun j =>
 def virtBW (σ : AbiLayout) (nm : String → String) (seeds : List LinstrRM)
     (ps : List (String × String)) (L2 : List LinstrRM) (fuse : Bool) : List LinstrRM :=
   argBind σ nm ++ seeds ++ movesOf ps ++ if fuse then fuseMulHiRM L2 else L2
-
-/-- **The check of the image route with the fold `cellFoldL` and an empty width analysis at
-    every branch** of the node `seeds ++ loop` with the renaming `ps`, the fusion flag `fuse`
-    and the output array `out` of `m` words, against the printed body `body`: the conjuncts
-    of `CellFoldLReg.routeBW`, with the cell fold `L2` of the renamed loop taken by
-    `CellFoldL.cellFoldL`, the gate `ImageAddrSimW.imgGateBW0` and the check
-    `ImageAddrSimW.retOutsB0` of the observed names. A program that passes it passes
-    `CellFoldLReg.routeBW` (`CellFoldLReg.routeBW_of_old`). -/
-def routeBW0 (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop : List LinstrRM)
-    (ps : List (String × String)) (fuse : Bool) (out : String) (m : Nat) : Bool :=
-  match cellFoldL (cellArrsR σ ps) [] (loop.map (renRM (renOf ps))) with
-  | some L2 =>
-      ownedCheckMC (outCells (renOf ps out) m) (virtBW σ nm seeds ps L2 fuse)
-          (virtImg (slotR σ nm ps) (cellBody (slotR σ nm ps) body))
-        && idxInvCheckB (boundFacts σ nm)
-          (idxAnnot (boundFacts σ nm) (virtBW σ nm seeds ps L2 fuse)) (virtBW σ nm seeds ps L2 fuse)
-        && printedAddrWB body && physImgB (slotR σ nm ps) (cellBody (slotR σ nm ps) body)
-        && (ImageAddrSimW.imgGateBW0 (frameMarkC (cellArrsR σ ps) body) (slotR σ nm ps)
-            (cellBody (slotR σ nm ps) body)
-          && ImageAddrSimW.retOutsB0 (frameMarkC (cellArrsR σ ps) body)
-            (cellBody (slotR σ nm ps) body) (outCells (renOf ps out) m))
-        && frameOkB σ body && entryB σ nm body && renB σ nm seeds loop ps
-        && cellAccB (slotR σ nm ps) (cellArrsR σ ps) body && cellNoSlotB (slotR σ nm ps) body
-        && cellNamesRB (cellArrsR σ ps) σ body
-        && (cellArrsR σ ps).all (fun p => regLen (rsOf σ) (unren ps p.1) == p.2)
-        && seeds.all (keepB (cellArrsR σ ps))
-        && ps.all (fun p => !isCellB (cellArrsR σ ps) p.1 && !isCellB (cellArrsR σ ps) p.2)
-        && (!fuse || (fuseOKL (fuseRegs σ nm ++ cellNames (cellArrsR σ ps))
-            (fuseLoPre (argBind σ nm ++ seeds ++ movesOf ps) L2)
-            (argBind σ nm ++ seeds ++ movesOf ps ++ L2)
-          && (outCells (renOf ps out) m).all (· != "R15")))
-        && (loopNames loop).contains out
-  | none => false
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW
