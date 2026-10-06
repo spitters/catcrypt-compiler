@@ -475,7 +475,7 @@ abbrev RunsPersist (E₁ E₂ : CallEnv d) (n m : Nat) (Γ : Ctxt d) (ts : List 
     family. -/
 theorem regionValsRel_of_runsPersist (E₁ E₂ : CallEnv d) (n m : Nat) {Γ : Ctxt d}
     (V : Valuation Γ) : {rs : List (List (List d.Ty) × List d.Ty)} → (regs : Regions d Γ rs) →
-    RegionsAll (RunsPersist E₁ E₂ n m) regs →
+    RegionsHyps (RunsPersist E₁ E₂ n m) regs →
     RegionValsRel OptLift.fwd ValRel.eq (denoteRegionsAt E₁ n V regs)
       (denoteRegionsAt E₂ m V regs)
   | [], .nil, _ => trivial
@@ -493,7 +493,7 @@ theorem denoteAt_region_mono (E₁ E₂ : CallEnv d) {n m : Nat} (hnm : n ≤ m)
     {ts : List d.Ty} (o : (regionSig d).Op) (hc : CallRel OptLift.fwd E₁ E₂ ValRel.eq o)
     (args : HVector (fun t => Var Γ t) ((regionSig d).args o))
     (regs : Regions d Γ ((regionSig d).regs o)) (k : NFProg d ((regionSig d).outs o ++ Γ) ts)
-    (hregs : RegionsAll (RunsPersist E₁ E₂ n m) regs) (hk : RunsPersist E₁ E₂ n m _ ts k) :
+    (hregs : RegionsHyps (RunsPersist E₁ E₂ n m) regs) (hk : RunsPersist E₁ E₂ n m _ ts k) :
     RunsPersist E₁ E₂ n m Γ ts (region o args regs k) := by
   intro V out h
   obtain ⟨out', h', he⟩ := denoteAt_region_fwd (S := Eq) E₁ E₂
