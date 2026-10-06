@@ -486,9 +486,11 @@ def Rd.toWord64 {Δ : Ctxt catCryptDialect} (t : NfTy) : Rd Δ t → Option (Rd 
 Every scalar of the fragment is a `64`-bit word of the target. An operation of the scalar
 table at a width `w` below `64` computes on `64`-bit words and reduces the result modulo
 `2 ^ w` by a conjunction with the mask `maskW w`; a logical right shift and a rotation reduce
-their operand first. A rotation is by a literal amount, as two immediate shifts. A comparison
-is `bvEq` on two words, or the carry of `x + ~~~y + 1` (`bvAddCarryHi`), which is `1` exactly
-when `y ≤ x`. -/
+their operand first. A rotation is by a literal amount, as two immediate shifts. A complement
+is the exclusive or with the all-ones word or with the mask. A comparison is `bvEq` on two
+words, or the carry of `x + ~~~y + c`, which is `1` exactly when `y ≤ x` at `c = 1` and when
+`y < x` at `c = 0`: the sum (`bvAddCarryLo`) and its carry (`bvAddCarryHi`) are bound one
+after the other on the same operands, and the bit is the equality of the carry with `1`. -/
 
 /-- The mask of the low `w` bits of a `64`-bit word. -/
 def maskW (w : Nat) : BitVec 64 := BitVec.ofNat 64 (2 ^ w - 1)
@@ -566,44 +568,60 @@ def rotChain {Δ : Ctxt catCryptDialect} (right : Bool) (w k : Nat) (a : Var Δ 
         (.bind _ ⟨.bvOr 64, rfl, .cons (Var.there .here) (.cons .here .nil)⟩
           (.expr (andE .here (Var.there (Var.there (Var.there (Var.there .here))))))))))
 
+/-- The complement of a word reduced modulo `2 ^ w`: at `w = 64` the exclusive or with the
+    all-ones word; otherwise the mask, the exclusive or with it and the conjunction with it. -/
+def notChain {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword 64)) :
+    OpRes Δ (.word 64) :=
+  if w = 64 then
+    .bind _ (cstE (BitVec.allOnes 64))
+      (.expr ⟨.bvXor 64, rfl, .cons a.there (.cons .here .nil)⟩)
+  else
+    .bind _ (cstE (maskW w))
+      (.bind _ ⟨.bvXor 64, rfl, .cons a.there (.cons .here .nil)⟩
+        (.expr (andE .here (Var.there .here))))
+
 /-- The translation of a unary operation of the scalar table at the width `w` on a word: the
-    complement reduced by `maskRes`, the negation as `0 - x`, and the truncation as the
-    conjunction with the mask. -/
+    complement by `notChain`, the negation as `0 - x`, and the truncation as the conjunction
+    with the mask. -/
 def unChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
     (a : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
   match o with
-  | .not => maskRes w ⟨.bvNot 64, rfl, .cons a .nil⟩
+  | .not => notChain w a
   | .neg => .bind _ (cstE 0) (.expr ⟨.bvSub 64, rfl, .cons .here (.cons a.there .nil)⟩)
   | .cast => .bind _ (cstE (maskW w)) (.expr (andE a.there .here))
 
-/-- The bit `y ≤ x` of two words: the complement of `y`, the carry-in `1`, the carry of
-    `x + ~~~y + 1`, and its equality with `1`. -/
-def geChain {Δ : Ctxt catCryptDialect} {t : NfTy} (x y : Var Δ (.sword 64))
-    (k : ∀ {Δ' : Ctxt catCryptDialect}, OpRes (.bit :: Δ') t) : OpRes Δ t :=
-  .bind _ ⟨.bvNot 64, rfl, .cons y .nil⟩
-    (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
-      (.bind (.sword 1) ⟨.bvAddCarryHi 64, rfl,
-          .cons x.there.there (.cons (Var.there .here) (.cons .here .nil))⟩
-        (.bind .bit ⟨.bvEq 1, rfl, .cons .here (.cons (Var.there .here) .nil)⟩ k)))
+/-- The bit of an ordering of two words: the complement of `y` as the exclusive or with the
+    all-ones word, the carry-in `c`, the sum `x + ~~~y + c` and its carry as two adjacent
+    bindings on the same operands, the constant `1`, and the equality of the carry with it.
+    At the carry-in `1` the bit is `y ≤ x`, at the carry-in `0` it is `y < x`. -/
+def geChain {Δ : Ctxt catCryptDialect} (c : BitVec 1) (x y : Var Δ (.sword 64)) :
+    OpRes Δ .bit :=
+  .bind _ (cstE (BitVec.allOnes 64))
+    (.bind _ ⟨.bvXor 64, rfl, .cons y.there (.cons .here .nil)⟩
+      (.bind (.sword 1) ⟨.bvConst 1 c, rfl, .nil⟩
+        (.bind _ ⟨.bvAddCarryLo 64, rfl,
+            .cons x.there.there.there (.cons (Var.there .here) (.cons .here .nil))⟩
+          (.bind (.sword 1) ⟨.bvAddCarryHi 64, rfl,
+              .cons x.there.there.there.there
+                (.cons (Var.there (Var.there .here)) (.cons (Var.there .here) .nil))⟩
+            (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
+              (.expr ⟨.bvEq 1, rfl, .cons (Var.there .here) (.cons .here .nil)⟩))))))
 
 /-- The negation of the bit just bound, as the value of a comparison. -/
 def notRes {Δ : Ctxt catCryptDialect} : OpRes (.bit :: Δ) .bit :=
   .expr ⟨.not, rfl, .cons .here .nil⟩
 
-/-- The bit just bound, as the value of a comparison. -/
-def bitRes {Δ : Ctxt catCryptDialect} : OpRes (.bit :: Δ) .bit :=
-  .rd (.var .here)
-
-/-- The translation of a comparison of the scalar table on two words. -/
+/-- The translation of a comparison of the scalar table on two words: `bvEq` and its
+    negation, and the orderings by `geChain`. -/
 def cmpChain {Δ : Ctxt catCryptDialect} (c : ImpToNF.ScalarCmp) (x y : Var Δ (.sword 64)) :
     OpRes Δ .bit :=
   match c with
   | .eq => .expr ⟨.bvEq 64, rfl, .cons x (.cons y .nil)⟩
   | .ne => .bind .bit ⟨.bvEq 64, rfl, .cons x (.cons y .nil)⟩ notRes
-  | .ge => geChain x y bitRes
-  | .le => geChain y x bitRes
-  | .lt => geChain x y notRes
-  | .gt => geChain y x notRes
+  | .ge => geChain 1 x y
+  | .le => geChain 1 y x
+  | .lt => geChain 0 y x
+  | .gt => geChain 0 x y
 
 /-- The word variable of a reading of a type whose values encode as integers, passed to `k`;
     a literal is bound by `bvConst` first. -/
@@ -1458,8 +1476,35 @@ theorem rotChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Boo
       BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
       toNat_and_maskW _ hw64, Nat.or_mod_two_pow, Nat.or_mod_two_pow, mod64_mod _ hw64]
 
+/-- The exclusive or with a word, restricted to that word, is the complement restricted to
+    it. -/
+theorem xor_and_self_eq_not_and (x m : BitVec 64) : (x ^^^ m) &&& m = ~~~x &&& m := by
+  ext i hi
+  simp only [BitVec.getElem_xor, BitVec.getElem_and, BitVec.getElem_not]
+  cases x[i] <;> cases m[i] <;> rfl
+
+/-- A word is related at `word 64` to the result of `notChain w a` when its natural number
+    is the residue of the complement of the value of `a` modulo `2 ^ w`. -/
+theorem notChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {w : Nat} (hw : w ≤ 64)
+    (a : Var Δ (.sword 64)) (y : BitVec 64)
+    (hy : y.toNat = (~~~(show BitVec 64 from a.lookup W)).toNat % 2 ^ w) :
+    OpResRel W (.word 64) y (notChain w a) := by
+  unfold notChain
+  split
+  · rename_i h64
+    subst h64
+    change y = (show BitVec 64 from a.lookup W) ^^^ BitVec.allOnes 64
+    rw [BitVec.xor_allOnes]
+    apply BitVec.eq_of_toNat_eq
+    rw [hy]
+    exact Nat.mod_eq_of_lt (BitVec.isLt _)
+  · change y = ((show BitVec 64 from a.lookup W) ^^^ maskW w) &&& maskW w
+    rw [xor_and_self_eq_not_and]
+    apply BitVec.eq_of_toNat_eq
+    rw [hy, toNat_and_maskW _ hw]
+
 /-- **The translation of a unary operation is related to its value.** -/
-theorem unChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarUn)
+theorem unChain_rel{Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarUn)
     {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (hneg : o = .neg → w = 64)
     (a : Var Δ (.sword 64)) {v : _root_.Hax.Value}
     (hv : o.val w ((a.lookup W).toNat : Int) = some v) :
@@ -1471,9 +1516,8 @@ theorem unChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.
       Int.toNat_natCast] at hv
     split at hv
     · obtain rfl := Option.some.inj hv
-      refine ⟨_, rfl, maskRes_rel W hw64 _ _ ?_⟩
+      refine ⟨_, rfl, notChain_rel W hw64 _ _ ?_⟩
       obtain ⟨X, hX⟩ : ∃ X : BitVec 64, a.lookup W = X := ⟨_, rfl⟩
-      change _ = (~~~(show BitVec 64 from a.lookup W)).toNat % 2 ^ w
       simp only [hX] at hx ⊢
       rw [BitVec.toNat_not, BitVec.toNat_ofNat]
       rcases hw with rfl | rfl | rfl | rfl <;> omega
@@ -1514,6 +1558,19 @@ theorem carry_not_eq_one (x y : BitVec 64) :
   · rw [if_neg (by omega)]
     simp [h]
 
+/-- The carry of `x + ~~~y` is `1` exactly when `y < x`. -/
+theorem carry_not_zero_eq_one (x y : BitVec 64) :
+    decide (carryOutBitC x (~~~y) (0 : BitVec 1) = 1) = decide (y.toNat < x.toNat) := by
+  have hy := y.isLt
+  have h0 : (0 : BitVec 1).toNat = 0 := rfl
+  unfold carryOutBitC
+  rw [BitVec.toNat_not, h0]
+  by_cases h : y.toNat < x.toNat
+  · rw [if_pos (by omega)]
+    simp [h]
+  · rw [if_neg (by omega)]
+    simp [h]
+
 /-- The comparison `bvEq` of two words is the equality of their natural numbers. -/
 theorem decide_eq_toNat (x y : BitVec 64) :
     decide (x = y) = (((x.toNat : Int) == (y.toNat : Int)) : Bool) := by
@@ -1528,9 +1585,14 @@ theorem cmpChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (c : ImpToNF
     OpResRel W .bit (c.val ((a.lookup W).toNat : Int) ((b.lookup W).toNat : Int))
       (cmpChain c a b) := by
   have key : ∀ x y : BitVec 64, decide ((y.toNat : Int) ≤ (x.toNat : Int)) =
-      decide (carryOutBitC x (~~~y) (1 : BitVec 1) = 1) := by
+      decide (carryOutBitC x (y ^^^ BitVec.allOnes 64) (1 : BitVec 1) = 1) := by
     intro x y
-    rw [carry_not_eq_one]
+    rw [BitVec.xor_allOnes, carry_not_eq_one]
+    simp
+  have key0 : ∀ x y : BitVec 64, decide ((y.toNat : Int) < (x.toNat : Int)) =
+      decide (carryOutBitC x (y ^^^ BitVec.allOnes 64) (0 : BitVec 1) = 1) := by
+    intro x y
+    rw [BitVec.xor_allOnes, carry_not_zero_eq_one]
     simp
   cases c
   · change ((((a.lookup W).toNat : Int) == ((b.lookup W).toNat : Int)) : Bool) =
@@ -1540,22 +1602,20 @@ theorem cmpChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (c : ImpToNF
       !decide ((show BitVec 64 from a.lookup W) = b.lookup W)
     rw [decide_eq_toNat]
   · change decide (((a.lookup W).toNat : Int) < ((b.lookup W).toNat : Int)) =
-      !decide (carryOutBitC (show BitVec 64 from a.lookup W) (~~~(show BitVec 64 from
-        b.lookup W)) (1 : BitVec 1) = 1)
-    rw [← key, ← decide_not]
-    exact decide_eq_decide.mpr Int.not_le.symm
+      decide (carryOutBitC (show BitVec 64 from b.lookup W) ((show BitVec 64 from
+        a.lookup W) ^^^ BitVec.allOnes 64) (0 : BitVec 1) = 1)
+    rw [← key0]
   · change decide (((a.lookup W).toNat : Int) ≤ ((b.lookup W).toNat : Int)) =
-      decide (carryOutBitC (show BitVec 64 from b.lookup W) (~~~(show BitVec 64 from
-        a.lookup W)) (1 : BitVec 1) = 1)
+      decide (carryOutBitC (show BitVec 64 from b.lookup W) ((show BitVec 64 from
+        a.lookup W) ^^^ BitVec.allOnes 64) (1 : BitVec 1) = 1)
     rw [← key]
   · change decide (((b.lookup W).toNat : Int) < ((a.lookup W).toNat : Int)) =
-      !decide (carryOutBitC (show BitVec 64 from b.lookup W) (~~~(show BitVec 64 from
-        a.lookup W)) (1 : BitVec 1) = 1)
-    rw [← key, ← decide_not]
-    exact decide_eq_decide.mpr Int.not_le.symm
+      decide (carryOutBitC (show BitVec 64 from a.lookup W) ((show BitVec 64 from
+        b.lookup W) ^^^ BitVec.allOnes 64) (0 : BitVec 1) = 1)
+    rw [← key0]
   · change decide (((b.lookup W).toNat : Int) ≤ ((a.lookup W).toNat : Int)) =
-      decide (carryOutBitC (show BitVec 64 from a.lookup W) (~~~(show BitVec 64 from
-        b.lookup W)) (1 : BitVec 1) = 1)
+      decide (carryOutBitC (show BitVec 64 from a.lookup W) ((show BitVec 64 from
+        b.lookup W) ^^^ BitVec.allOnes 64) (1 : BitVec 1) = 1)
     rw [← key]
 
 /-- The word of a literal reading, bound by `bvConst`, is the literal, and the value it reads

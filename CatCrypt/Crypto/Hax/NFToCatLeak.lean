@@ -530,14 +530,16 @@ theorem rotChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
 theorem unChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     (o : ImpToNF.ScalarUn) (w : Nat) (a : Var Δ (.sword 64)) : (unChain o w a).Quiet P := by
   cases o
-  · exact maskRes_quiet hP w _ (by simp [catKind, opVT_none hP])
+  · change (notChain w a).Quiet P
+    unfold notChain
+    split <;> simp [OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
   · simp [unChain, OpRes.Quiet, cstE, catKind, opVT_none hP]
   · simp [unChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
 
 /-- The translation of a comparison is quiet. -/
 theorem cmpChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     (c : ImpToNF.ScalarCmp) (a b : Var Δ (.sword 64)) : (cmpChain c a b).Quiet P := by
-  cases c <;> simp [cmpChain, geChain, notRes, bitRes, OpRes.Quiet, catKind, opVT_none hP]
+  cases c <;> simp [cmpChain, geChain, notRes, OpRes.Quiet, cstE, catKind, opVT_none hP]
 
 /-- `withVar1` of a continuation whose results are quiet is quiet. -/
 theorem withVar1_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
