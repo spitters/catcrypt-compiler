@@ -245,7 +245,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaNode
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaRet
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaReloc
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
