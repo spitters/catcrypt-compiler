@@ -86,6 +86,37 @@ template layer and the dated deferrals.
   `ltu_correct_auto` and `ltu_correct_auto_ct` (`LtuCorrect.lean`, `LtuCorrectCT.lean`),
   and `mpn_mul_1_correct_auto` and `mpn_mul_1_correct_auto_ct_regions`
   (`Mul1Correct.lean`, `Mul1CorrectCT.lean`).
+- Routes of `haxc` beside `compileA`, as of 2026-10-06 (modules `Haxc.*` are in the
+  development repository). The wide loop gate: `compileJW` (`Haxc.BackHalfW`) accepts a
+  looped program through the loop gate of `compileJ` or through `v1LoopWB`, whose route
+  check `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`, `loop_image_bytesW`)
+  covers carry chains and cell accesses, with a width analysis that joins one-bit names
+  at labels (`seedAt`, `imgGateBW_of_old` in `X86Backend/ImageAddrSimW.lean`);
+  `backend_correctW` is the statement of `backend_correct` for it. Inside `routeBW` the
+  call of `ownedCheckMC` is the translation validation of register allocation and the
+  other conjuncts are decided side conditions, so the route has one validated step. The
+  compare reload: `cmpReload` (`X86Backend/CmpSpillReload.lean`) rewrites a compare
+  whose first operand is a spill slot into a copy to the scratch register and a compare
+  on it. The pass has no theorem of its own; `compileJWR` (`Haxc.BackHalfWR`,
+  `backend_correctWR`) runs `routeBW` on the rewritten body, so the rewrite falls under
+  the same validation and adds no step. `fieldChain_correct_autoW` and
+  `fieldChain_correct_autoWR` (`Haxc.FieldLowerChainW`, `Haxc.FieldLowerChainWR`) compose
+  the field chain front with these back halves at every limb count and modulus record;
+  their instances `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
+  take the route and compile equations as hypotheses. `compileA` calls `compileJ`, so
+  `haxc_correct_auto` does not range over the wide gate or the reload. Constant time of
+  the straight arms from the proved chain: `haxc_ct_proved_all`
+  (`Haxc.ComposeCTStraight`) derives constant time of every decoding of the bytes of
+  `compileA` from the level check `nfFrontLeakCT` of the front, with no byte checker,
+  over the gate `ctGateAllB`: the looped image route (`haxc_ct_proved`) and the straight
+  register, array and cell arms, through `straightReg_bytes_ct`
+  (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
+  (`X86Backend/ImageStraightArrLeak.lean`) and `straightCell_bytes_ct_src`
+  (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
+  traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
+  `haxc_rc_proved_all` and `haxc_uc_proved_all` add robust compilation and UC
+  preservation under the same hypotheses. The line-check arm `straightGateB`, the loops
+  with carried registers and the wide loop arm of `compileJW` are outside `ctGateAllB`.
 - On `Lprog`, `LprogGpRealloc` re-allocates general-purpose
   registers with an untrusted allocator whose decisions a checked pass validates.
   `ConstIndexFold` rewrites each register-indexed load and store with a known index
