@@ -54,11 +54,10 @@ The identity law of `NFProg.map?` is stated at the level of denotations
 (`map_id_denote`): the identity lowering returns a program of result types
 `ts.map (fun t => t)`, which is not definitionally `ts`.
 
-Regions form a category over the contexts of a dialect: the prefixes `NFPre d Γ Δ` are the
-morphisms, `NFPre.nil` the identity and `NFPre.append` the composition
-(`RegionCtx.instCategory`). `NFPre.plug` is the action of prefixes on programs
-(`plug_append`), and the denotation at a fuel is a functor into the Kleisli category of
-`Option` (`regionDenote`), which restates `NFPre.denote_append`.
+The prefixes `NFPre d Γ Δ` compose by `NFPre.append` with `NFPre.nil` as unit, and
+`NFPre.plug` is the action of prefixes on programs (`plug_append`). The category of regions
+of a dialect, with programs up to denotational equality as morphisms, is `Region d` of
+`VIR/DialectRegionCategory.lean`.
 
 This module is a presentation: no pass of the compilation pipeline uses its laws. The
 pipeline composes lowerings as chains of passes (`VIR/PassChain.lean`).
@@ -70,10 +69,6 @@ pipeline composes lowerings as chains of passes (`VIR/PassChain.lean`).
   left unit and associativity laws.
 * `DialectCategory.copair` — the copairing out of an operation sum.
 * `DialectCategory.extendIdRight` — the identity component of `extendId`.
-* `DialectCategory.RegionCtx` — the contexts of a dialect as the objects of the region
-  category.
-* `DialectCategory.regionDenote` — the denotation of prefixes as a functor into
-  `KleisliCat Option`.
 
 ## Main results
 
@@ -516,7 +511,7 @@ end MapId
 
 end DialectCategory
 
-/-! ## 6. Regions as a category -/
+/-! ## 6. Composition of prefixes -/
 
 namespace NFPre
 
@@ -564,36 +559,5 @@ theorem denote_nil [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) {Γ : C
     (NFPre.nil : NFPre d Γ Γ).denote fuel V = some V := rfl
 
 end NFPre
-
-namespace DialectCategory
-
-open CategoryTheory
-
-/-- The contexts of a dialect, as the objects of the category of regions. -/
-def RegionCtx (d : Dialect.{0, 0}) : Type := Ctxt d
-
-variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
-  [HasBoolBit d]
-
-/-- **The category of regions**: prefixes `NFPre d Γ Δ` are the morphisms, the empty
-    prefix the identity and `NFPre.append` the composition. -/
-instance RegionCtx.instCategory : Category (RegionCtx d) where
-  Hom Γ Δ := NFPre d Γ Δ
-  id _ := NFPre.nil
-  comp p q := p.append q
-  id_comp _ := rfl
-  comp_id := NFPre.append_nil
-  assoc := NFPre.append_assoc
-
-/-- **The denotation of regions as a functor into the Kleisli category of `Option`.** A
-    context goes to its valuations and a prefix to its denotation at the fuel `fuel`;
-    preservation of composition is `NFPre.denote_append`. -/
-def regionDenote [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) : RegionCtx d ⥤ KleisliCat Option where
-  obj Γ := KleisliCat.mk Option (Valuation (Γ : Ctxt d))
-  map p := NFPre.denote fuel p
-  map_id _ := rfl
-  map_comp p q := funext fun V => NFPre.denote_append fuel p q V
-
-end DialectCategory
 
 end CatCrypt.Crypto.SecureCompilation.VIR
