@@ -49,6 +49,7 @@ transported valuation leaks the trace of the source program (`cryptoDialectToJas
 * `jValNat_ctTransTy` — the transport of values preserves their natural-number reading.
 * `toJExprD_ctLeak`, `cryptoDialectToJasminCom_ctLeak` — the leakage transformer of the
   lowering is the identity.
+* `toJBlockD_ctLeak` — a block of `toJBlockD` emits the events of its source expression.
 * `leakCompat_owned` — the parameters of the owned route agree.
 -/
 
@@ -240,17 +241,26 @@ def ComLCT (M : LeakModel jasminDialect) {Γ : Ctxt jasminDialect} {t : JasminTy
 /-! ## The leakage transformer of the lowering -/
 
 /-- The parameters of the two dialects agree on the lowered operations: the same leaf calls
-    are quiet, and an operation and its lowering are the same variable-time
-    instruction. -/
+    are quiet, an operation and its one-expression lowering `toJExprD` are the same
+    variable-time instruction, and a block of several bindings `toJMultiD` emits, on the
+    transported valuation, the events of its source operation. -/
 def LeakCompat (P : CatLeakParams) (Pj : JLeakParams) : Prop :=
   Pj.leafQuiet = P.leafQuiet ∧
-    ∀ {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
+    (∀ {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
       (e' : Expr jasminDialect (mapCtx Γ) (mapTy t)),
-      toJExprD e = some e' → Pj.opVT e'.op = P.opVT e.op
+      toJExprD e = some e' → Pj.opVT e'.op = P.opVT e.op) ∧
+    ∀ {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
+      (blk : Com jasminDialect (mapCtx Γ) (mapTy t)),
+      toJMultiD e = some blk → ∀ V : Ctxt.Valuation (d := catCryptDialect) Γ,
+        Com.ctLeak (jLeakModel Pj) blk (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V
 
-/-- The parameters of the owned route agree. -/
-theorem leakCompat_owned : LeakCompat CatLeakParams.owned JLeakParams.owned :=
-  ⟨rfl, fun _ _ _ => rfl⟩
+/-- The parameters of the owned route agree: no operation is a variable-time instruction
+    on either side, so a block of constants, `xor` and `select` and its source operation
+    both emit no event. -/
+theorem leakCompat_owned : LeakCompat CatLeakParams.owned JLeakParams.owned := by
+  refine ⟨rfl, fun _ _ _ => rfl, fun e blk h V => ?_⟩
+  obtain ⟨op, hop, args⟩ := e
+  cases op <;> cases hop <;> simp only [toJMultiD, reduceCtorEq] at h <;> cases h <;> rfl
 
 /-- The transport of values preserves their natural-number reading. -/
 theorem jValNat_ctTransTy : (t : CryptoTy) → (x : CryptoTy.denote t) →
@@ -318,7 +328,7 @@ theorem toJExprD_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat 
     (e' : Expr jasminDialect (mapCtx Γ) (mapTy t)) (he : toJExprD e = some e')
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
     Expr.ctLeak (jLeakModel Pj) e' (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V := by
-  have hvt := hc.2 e e' he
+  have hvt := hc.2.1 e e' he
   obtain ⟨op, hop, args⟩ := e
   unfold Expr.ctLeak
   cases op
@@ -343,6 +353,21 @@ theorem toJExprD_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat 
          | exact valsNat_cons P Pj V a (.cons (toJVarD b) (.cons (toJVarD c) .nil))
              (.cons b (.cons c .nil)) (valsNat_cons P Pj V b (.cons (toJVarD c) .nil)
                (.cons c .nil) (valsNat_cons P Pj V c .nil .nil (valsNat_nil P Pj V))))
+
+/-- **The leakage transformer of a block.** A block `toJBlockD` gives an expression emits,
+    on the transported valuation, the events of the source expression. -/
+theorem toJBlockD_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat P Pj)
+    {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
+    (blk : Com jasminDialect (mapCtx Γ) (mapTy t)) (h : toJBlockD e = some blk)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    Com.ctLeak (jLeakModel Pj) blk (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V := by
+  unfold toJBlockD at h
+  split at h
+  · next e' he =>
+      cases h
+      show Expr.ctLeak (jLeakModel Pj) e' (ctMapValD V) ++ [] = _
+      rw [List.append_nil, toJExprD_ctLeak hc e e' he V]
+  · exact hc.2.2 e blk h V
 
 /-- **The leakage transformer of the lowering.** A program `cryptoDialectToJasminCom` lowers
     to `jc` leaks, on the transported valuation, the trace of the source program. -/

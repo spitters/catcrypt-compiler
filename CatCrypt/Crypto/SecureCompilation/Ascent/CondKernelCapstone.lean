@@ -58,19 +58,17 @@ here as two proved theorems:
   `translateDialectControl VarMap.empty` succeeds on
   `RSeq (RScalarSet c gc) (RIfNz c (RScalarSet r x) (RScalarSet r y))`, producing
   the six-op φ-merge `Com` (`bvConst; bvConst; bvConst; bvEq; not; ite`).
-* **`condBackend_declines`** — the VIR `Com`→jasmin lowering *declines* that `Com`:
-  `cryptoDialectToJasminCom` returns `none`, because the φ-merge binds the bit
-  negation `.not`, which is outside the straight-line fragment `toJExprD`
-  lowers (`.bvEq` and `.ite` at a word type are inside it). This is the precise
-  wall: the φ-merge of a conditional produces a `Com`
-  the current owned backend cannot emit (control reaches bytes only through the
-  separate `Lprog`/`Lcond` labelled-branch emitter, not this `Com` route).
+* **`condBackend_accepts`** — the VIR `Com`→jasmin lowering accepts that `Com`:
+  `cryptoDialectToJasminCom` returns a program, since `toJExprD` has an image for
+  the bit negation `.not` the φ-merge binds (a comparison with the immediate 0),
+  beside `.bvEq` and `.ite` at a word type. The capstone is not yet continued
+  through the conversion.
 
-So the byte instantiation of `keystone_if` is stated as the **emit interface**
+The byte instantiation of `keystone_if` is stated as the **emit interface**
 `condKernel_bytes_of_emit`: for *any* emitted artefact denoting the select word
 `ifClosedVal`, its clean `ZMod 2^64` spec is the branch select. The hypothesis
-`hEmit` is exactly the fact a backend cmov/select lowering would supply — the one
-edge `condBackend_declines` shows the present pipeline does not close.
+`hEmit` is the fact that continuing the capstone through the conversion and the
+back end would supply.
 
 ## Why the closed kernel, not a bare `RIfNz`
 
@@ -140,9 +138,9 @@ theorem condKernel_ascends :
     the emitted word's clean `ZMod 2^64` spec is the branch select — here `9`, the
     guard being the literal `0`. The abstraction leg (guard set + `corres_if`) and
     the env-independence adapter `ifClosed_hAgree` are discharged inside `keystone_if`;
-    the only premise is `hEmit`, precisely the edge a backend cmov/select lowering
-    would supply (the one `condBackend_declines` shows the present VIR `Com`→jasmin
-    pipeline does not close). This is the control-flow analogue of `feSub_endToEnd`,
+    the only premise is `hEmit`, the edge that the conversion and the back end
+    would supply (`condBackend_accepts` shows the conversion gives a program; the
+    capstone is not yet continued through it). This is the control-flow analogue of `feSub_endToEnd`,
     conditional on that single emit-lowering edge. -/
 theorem condKernel_bytes_of_emit (jdenote : ⟦mapTy (.sword 64)⟧)
     (hEmit : jdenote = ctTransTy (t := .sword 64) (ifClosedVal 0 7 9)) :
@@ -152,7 +150,7 @@ theorem condKernel_bytes_of_emit (jdenote : ⟦mapTy (.sword 64)⟧)
   refine ⟨h.1, ?_⟩
   rw [h.2]; simp
 
-/-! ## The frontier: front accepts, VIR `Com`→jasmin backend declines -/
+/-! ## The frontier: the front and the VIR `Com`→jasmin conversion accept -/
 
 /-- **`condFront_translates`.** The dialect front `translateDialectControl` accepts
     the closed branch kernel at the top-level empty varmap: the guard-set prefix
@@ -182,18 +180,12 @@ noncomputable def condRetVar : CVar condFrontOut.Γ' (.sword 64) :=
 noncomputable def condFrontCom : Com catCryptDialect ([] : Ctx) (.sword 64) :=
   (condFrontOut.cont (Com.ret (toVIRVar condRetVar))).get (by rfl)
 
-/-- **`condBackend_declines` — the wall, as a theorem.** The VIR `Com`→jasmin
-    lowering `cryptoDialectToJasminCom` returns `none` on the φ-merge `Com`: the
-    bit negation `.not` the φ-merge binds is outside the straight-line fragment
-    `toJExprD` lowers, so the owned backend cannot emit the branch through
-    this route. This is exactly the `hEmit` edge `condKernel_bytes_of_emit` leaves
-    open — a conditional select is the precise point at which the present
-    `Com` pipeline stops short of bytes. -/
-theorem condBackend_declines : cryptoDialectToJasminCom condFrontCom = none := by rfl
+/-- The conversion `cryptoDialectToJasminCom` gives a program for the φ-merge `Com` of
+    the conditional kernel; the capstone is not yet continued through it. -/
+theorem condBackend_accepts : (cryptoDialectToJasminCom condFrontCom).isSome = true := by rfl
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
 
 #print axioms CatCrypt.Crypto.SecureCompilation.Ascent.condKernel_ascends
 #print axioms CatCrypt.Crypto.SecureCompilation.Ascent.condKernel_bytes_of_emit
 #print axioms CatCrypt.Crypto.SecureCompilation.Ascent.condFront_translates
-#print axioms CatCrypt.Crypto.SecureCompilation.Ascent.condBackend_declines

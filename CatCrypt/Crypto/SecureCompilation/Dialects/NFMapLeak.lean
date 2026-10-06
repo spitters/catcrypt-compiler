@@ -22,7 +22,7 @@ source valuation to the transported results and to the events of the source run
 index and the branch decisions are transported by `RegionTransports`.
 
 At the lowering `catToJasmin` of `catCryptDialect` to `jasminDialect`, the block leaf is
-`toJExprD_ctLeak`, under `LeakCompat P Pj` (`catToJasmin_map?_leakRun`).
+`toJBlockD_ctLeak`, under `LeakCompat P Pj` (`catToJasmin_map?_leakRun`).
 
 `map?` creates no branch, so it maps a branch-free program to a branch-free program
 (`NFProg.ifFree_map?`).
@@ -399,17 +399,15 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
 open CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectCTLeak
 open CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 
-/-- The block leak leaf of `catToJasmin` is `toJExprD_ctLeak`: the block the lowering gives
+/-- The block leak leaf of `catToJasmin` is `toJBlockD_ctLeak`: the block the lowering gives
     an expression emits, on the transported valuation, the events of the expression. -/
 theorem catToJasmin_blockLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat P Pj)
     {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
     (blk : Com jasminDialect (mapCtx Γ) (mapTy t))
     (hblk : catToJasmin.lowerExprBlock? e = some blk)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
-    Com.ctLeak (jLeakModel Pj) blk (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V := by
-  obtain ⟨e', he, rfl⟩ := Option.map_eq_some_iff.mp hblk
-  show Expr.ctLeak (jLeakModel Pj) e' (ctMapValD V) ++ [] = _
-  rw [List.append_nil, toJExprD_ctLeak hc e e' he V]
+    Com.ctLeak (jLeakModel Pj) blk (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V :=
+  toJBlockD_ctLeak hc e blk hblk V
 
 /-- **The leakage transformer of `map?` along `catToJasmin`.** Under `LeakCompat P Pj`, a
     program that `map?` returns for an `NFProg catCryptDialect` program, at a renaming

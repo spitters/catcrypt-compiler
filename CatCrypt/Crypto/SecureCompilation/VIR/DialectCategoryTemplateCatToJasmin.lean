@@ -12,9 +12,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
 # `catToJasmin` as a partial template lowering
 
 The partial block lowering `NFProgCatToJasmin.catToJasmin` sends an expression `e` of
-`catCryptDialect` to the one-binding block of `toJExprD e`, and refuses `e` where
-`toJExprD e` is `none`. Whether `toJExprD` refuses depends on the operation alone, and the
-translation commutes with renaming (`toJExprD_rename`), so `catToJasmin` is the partial
+`catCryptDialect` to the block `toJBlockD e`: the one-binding block of `toJExprD e`, or
+the block of several bindings `toJMultiD e`, and refuses `e` where both are `none`.
+Whether `toJBlockD` refuses depends on the operation alone, and the
+translation commutes with renaming (`toJBlockD_rename`), so `catToJasmin` is the partial
 template lowering of `catTemplate`, the translation of each operation applied to the
 variables of its signature (`catToJasmin_eq_ofTemplate?`).
 
@@ -28,7 +29,9 @@ the equalities here.
 
 ## Main results
 
-* `DialectCategory.toJExprD_rename` — `toJExprD` commutes with renaming.
+* `DialectCategory.toJExprD_rename`, `DialectCategory.toJMultiD_rename`,
+  `DialectCategory.toJBlockD_rename` — `toJExprD`, `toJMultiD` and `toJBlockD` commute
+  with renaming.
 * `DialectCategory.catToJasmin_eq_ofTemplate?` — `catToJasmin` is a partial template
   lowering.
 * `DialectCategory.spliceNatural_catToJasmin` — on accepted expressions, `catToJasmin`
@@ -62,12 +65,11 @@ namespace DialectCategory
   mapVar_here := fun _ _ => rfl
   mapVar_there := fun _ _ _ _ => rfl
 
-/-- The partial op template of `catToJasmin`: the one-binding block of `toJExprD` at the
+/-- The partial op template of `catToJasmin`: the block `toJBlockD` of the
     expression applying the operation to the variables of its signature, or `none` where
-    `toJExprD` refuses the operation. -/
+    `toJBlockD` refuses the operation. -/
 def catTemplate : catFrame.Template? := fun op =>
-  (toJExprD (⟨op, rfl, idArgs (DialectSignature.sig op)⟩ : Expr catCryptDialect _ _)).map
-    fun e' => .var e' (.ret .here)
+  toJBlockD (⟨op, rfl, idArgs (DialectSignature.sig op)⟩ : Expr catCryptDialect _ _)
 
 /-- `mapHom` of the frame of `catToJasmin` on a translated variable. -/
 theorem catFrame_mapHom_toJVarD {Γ Δ : Ctxt catCryptDialect} (f : Ctxt.Hom Γ Δ)
@@ -112,22 +114,46 @@ theorem toJExprD_rename {Γ Δ : Ctxt catCryptDialect} {t : CryptoTy} (f : Ctxt.
        repeat erw [catFrame_mapHom_toJVarD]
        rfl)
 
+/-- **`toJMultiD` commutes with renaming**: the block of a renamed expression is the
+    renamed block. -/
+theorem toJMultiD_rename {Γ Δ : Ctxt catCryptDialect} {t : CryptoTy} (f : Ctxt.Hom Γ Δ)
+    (e : Expr catCryptDialect Γ t) :
+    toJMultiD (e.rename f) = (toJMultiD e).map (Com.rename (catFrame.mapHom f)) := by
+  obtain ⟨op, hop, args⟩ := e
+  subst hop
+  cases op
+  all_goals first
+    | rfl
+    | (rcases args with _ | ⟨a, _ | _⟩
+       dsimp only [toJMultiD, Expr.rename, Com.rename, Option.map]
+       erw [← catFrame_mapHom_toJVarD f a]
+       rfl)
+
+/-- **`toJBlockD` commutes with renaming**: the block of a renamed expression is the
+    renamed block. -/
+theorem toJBlockD_rename {Γ Δ : Ctxt catCryptDialect} {t : CryptoTy} (f : Ctxt.Hom Γ Δ)
+    (e : Expr catCryptDialect Γ t) :
+    toJBlockD (e.rename f) = (toJBlockD e).map (Com.rename (catFrame.mapHom f)) := by
+  unfold toJBlockD
+  rw [toJExprD_rename]
+  cases toJExprD e with
+  | some e' => rfl
+  | none => exact toJMultiD_rename f e
+
 /-- On every expression, the block of `catToJasmin` is the instance of `catTemplate`. -/
 theorem catToJasmin_lowerExprBlock? {Γ : Ctxt catCryptDialect} {t : CryptoTy}
     (e : Expr catCryptDialect Γ t) :
     NFProgCatToJasmin.catToJasmin.lowerExprBlock? e = catFrame.templateBlock? catTemplate e := by
   rcases e with ⟨op, h, args⟩
   subst h
-  show (toJExprD (⟨op, rfl, args⟩ : Expr catCryptDialect Γ _)).map
-      (fun e' => Com.var e' (.ret .here)) =
+  show toJBlockD (⟨op, rfl, args⟩ : Expr catCryptDialect Γ _) =
     (catTemplate op).map (fun c => Com.rename (catFrame.mapHom (argsHom args)) c)
   have he : (⟨op, rfl, args⟩ : Expr catCryptDialect Γ _) =
       Expr.rename (argsHom args) ⟨op, rfl, idArgs (DialectSignature.sig op)⟩ := by
     show _ = (⟨op, rfl, HVector.renameVars (argsHom args) (idArgs _)⟩ :
       Expr catCryptDialect Γ _)
     rw [renameVars_idArgs]
-  rw [he, toJExprD_rename, Option.map_map]
-  simp only [catTemplate, Option.map_map]
+  rw [he, toJBlockD_rename]
   rfl
 
 /-- **`catToJasmin` is a partial template lowering**: the partial template lowering of

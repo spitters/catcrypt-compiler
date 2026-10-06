@@ -15,10 +15,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLJLeak
 
 `catToJasmin` is the partial block lowering from `catCryptDialect` to `jasminDialect`
 whose type, context and variable maps are `mapTy`, `mapCtx` and `toJVarD`, and whose
-block of an expression `e` is the one-binding block of `toJExprD e`, or `none` where
-`toJExprD` refuses `e`. Its leaves are the existing theorems of
+block of an expression `e` is `toJBlockD e`: the one-binding block of `toJExprD e`, the
+block of several bindings `toJMultiD e` for `bvNot` and `bitToSword`, or `none` where
+both refuse `e`. Its leaves are the theorems of
 `DialectToJasminComCorrect`: `ctMapValD_lookup`, `ctMapValD_extend` and
-`dialectJasminLeafAgrees_holds`, which has no side condition. `NFProg.map?` along it
+`toJBlockD_denote`, which has no side condition. `NFProg.map?` along it
 lowers an `NFProg catCryptDialect` to an `NFProg jasminDialect`.
 
 `jasminNFToComLAt` maps an `NFProg jasminDialect` program with one result, built from
@@ -87,14 +88,15 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
 /-! ## 1. The partial block lowering -/
 
 /-- **The translation of `catCryptDialect` to `jasminDialect` as a partial block
-    lowering.** An expression lowers to the one-binding block of `toJExprD`, and is
-    refused where `toJExprD` is `none`. -/
+    lowering.** An expression lowers to its block `toJBlockD`: the one-binding block of
+    `toJExprD`, or the block of several bindings `toJMultiD`; it is refused where both
+    are `none`. -/
 def catToJasmin : PartialBlockLowering catCryptDialect jasminDialect where
   mapTy := mapTy
   mapCtx := mapCtx
   mapCtx_cons _ _ := rfl
   mapVar := toJVarD
-  lowerExprBlock? e := (toJExprD e).map fun e' => .var e' (.ret .here)
+  lowerExprBlock? := toJBlockD
 
 /-- The trip counter `sword 64` maps to `reg 64` and the bit `bit` to `reg 1`. -/
 theorem catToJasmin_regionTypes : catToJasmin.RegionTypes := ⟨rfl, rfl⟩
@@ -109,16 +111,15 @@ theorem catToJasmin_mapValExtends :
     catToJasmin.MapValExtends (fun x => ctTransTy x) ctMapValD :=
   fun V x => ctMapValD_extend V x
 
-/-- The block leaf of `catToJasmin` is `dialectJasminLeafAgrees_holds`: a block the
+/-- The block leaf of `catToJasmin` is `toJBlockD_denote`: a block the
     lowering gives an expression denotes, on the transported valuation, the transport
     of the expression's value. -/
 theorem catToJasmin_block {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
     (blk : Com jasminDialect (mapCtx Γ) (mapTy t))
     (hblk : catToJasmin.lowerExprBlock? e = some blk)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
-    blk.denote (ctMapValD V) = ctTransTy (e.denote V) := by
-  obtain ⟨e', he, rfl⟩ := Option.map_eq_some_iff.mp hblk
-  exact dialectJasminLeafAgrees_holds e V e' he
+    blk.denote (ctMapValD V) = ctTransTy (e.denote V) :=
+  toJBlockD_denote e V blk hblk
 
 /-- The value transport `ctTransTy` keeps the trip count, sends the trip index to the
     trip index, and reads a transported bit as the source bit. -/

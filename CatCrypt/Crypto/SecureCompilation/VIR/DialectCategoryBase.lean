@@ -798,7 +798,8 @@ def catToJasmin : Hom cryptoAccepted jasmin where
 
 /-- The first projection of a pair is not an accepted operation. -/
 theorem not_accepted_fst (a b : CryptoSSA.CryptoTy) : ¬ accepted (.fst a b) := by
-  simp [accepted, catTemplate, DialectToJasminCom.toJExprD]
+  simp [accepted, catTemplate, DialectToJasminCom.toJBlockD, DialectToJasminCom.toJMultiD,
+    DialectToJasminCom.toJExprD]
 
 end Dial
 

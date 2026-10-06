@@ -328,6 +328,62 @@ theorem selectW_ofBool {w : Nat} (c : Bool) (a b : BitVec w) :
   unfold selectW
   cases c <;> simp
 
+/-- The 1-bit register constant of a bit is its image. Bridges the
+    `constBit → regConst 1` lowering's denotation. -/
+theorem ofNat_toNat_eq_ofBool (b : Bool) : BitVec.ofNat 1 b.toNat = BitVec.ofBool b := by
+  cases b <;> rfl
+
+/-- Width-1 register `xor` on the images of two bits is the image of their `xor`. -/
+theorem applyXor_ofBool (a b : Bool) :
+    JasminBinOp.xor.apply (BitVec.ofBool a) (BitVec.ofBool b) = BitVec.ofBool (Bool.xor a b) := by
+  cases a <;> cases b <;> rfl
+
+/-- Width-1 register `and` on the images of two bits is the image of their conjunction. -/
+theorem applyAnd_ofBool (a b : Bool) :
+    JasminBinOp.and.apply (BitVec.ofBool a) (BitVec.ofBool b) = BitVec.ofBool (a && b) := by
+  cases a <;> cases b <;> rfl
+
+/-- Width-1 register `or` on the images of two bits is the image of their disjunction. -/
+theorem applyOr_ofBool (a b : Bool) :
+    JasminBinOp.or.apply (BitVec.ofBool a) (BitVec.ofBool b) = BitVec.ofBool (a || b) := by
+  cases a <;> cases b <;> rfl
+
+/-- The width-1 equality comparison on the images of two bits is the image of the
+    negated `xor`, the value the dialect `eqBit` denotes. -/
+theorem cmpBit_ofBool_eqBit (a b : Bool) :
+    cmpBit .eq (BitVec.ofBool a) (BitVec.ofBool b) = BitVec.ofBool (Bool.xor a b).not := by
+  cases a <;> cases b <;> rfl
+
+/-- The width-1 comparison of the image of a bit with the immediate `0` is the image
+    of the negated bit. Bridges the `not → cmpImm .eq 1 0` lowering's denotation. -/
+theorem cmpBit_ofBool_zero (a : Bool) :
+    cmpBit .eq (BitVec.ofBool a) (BitVec.ofNat 1 0) = BitVec.ofBool (!a) := by
+  cases a <;> rfl
+
+/-- `selectW` at width 1 on the images of three bits is the image of the boolean
+    conditional. Bridges the `ite .bit → select 1` lowering's denotation. -/
+theorem selectBit_ofBool (c a b : Bool) :
+    selectW (BitVec.ofBool c) (BitVec.ofBool a) (BitVec.ofBool b)
+      = BitVec.ofBool (if c then a else b) := by
+  cases c <;> cases a <;> cases b <;> rfl
+
+/-- A left rotation by `n` is the right rotation by `(w - n % w) % w`. Bridges the
+    `bvRol → rorImm` lowering's denotation. -/
+theorem rotateLeft_eq_rotateRight {w : Nat} (a : BitVec w) (n : Nat) :
+    a.rotateLeft n = a.rotateRight ((w - n % w) % w) := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · exact Subsingleton.elim _ _
+  · rw [← BitVec.rotateLeft_mod_eq_rotateLeft]
+    have hn : n % w < w := Nat.mod_lt _ hw
+    generalize n % w = k at hn
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    rw [BitVec.getLsbD_rotateLeft, BitVec.getLsbD_rotateRight]
+    rcases Nat.eq_zero_or_pos k with rfl | hp
+    · simp [hi]
+    · rw [Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt (show w - k < w by omega),
+        Nat.mod_eq_of_lt (show w - k < w by omega), show w - (w - k) = k by omega]
+
 /-- **`DialectJasminLeafAgrees` is provable (no hypothesis, no axiom).** Every
     leaf the dialect front lowers agrees: the six `regArith` ops, `regConst`,
     the dynamic-memref ops, the word-native crypto ops (`andn → regArith
@@ -335,7 +391,10 @@ theorem selectW_ofBool {w : Nat} (c : Bool) (a b : BitVec w) :
     `bvShiftRA → sarImm`), the immediate logical shifts (`bvShiftL/bvShiftR →
     shlImm/shrImm`), and the bignum-ALU word splits (`bvMulHi → mulhi`,
     `bvAddCarryLo → addCarryLo`, `bvAddCarryHi → addCarryHi`), and the word
-    select pair (`bvEq → cmp .eq`, `ite (.sword w) → select`) all agree by
+    select pair (`bvEq → cmp .eq`, `ite (.sword w) → select`), the bit ops
+    (`constBit`/`constUnit → regConst`, `xor`/`and`/`or → regArith` at width 1,
+    `eqBit → cmp .eq 1`, `not → cmpImm .eq 1 0`, `ite .bit → select 1`) and
+    `bvRol → rorImm` all agree by
     computation (the lowering preserves the `BitVec` op), and `extCall` leaves
     agree on the opaque canonical default (`leafAgrees_extCallD`). Every other
     `CatCryptOp` is outside the fragment (`toJExprD = none`), so the
@@ -687,8 +746,112 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
             ctTransTy_sword, ctTransTy_sword, ctTransTy_bit, selectW_ofBool]
           cases args with
             | cons c t => cases t with | cons a t2 => cases t2 with | cons b t3 => rfl
+      | bit =>
+          cases hop
+          simp only [toJExprD] at he; cases he
+          show selectW ((toJVarD args.head).lookup (ctMapValD V))
+            ((toJVarD args.tail.head).lookup (ctMapValD V))
+            ((toJVarD args.tail.tail.head).lookup (ctMapValD V)) = _
+          rw [ctMapValD_lookup, ctMapValD_lookup, ctMapValD_lookup, ctTransTy_bit,
+            ctTransTy_bit, ctTransTy_bit, ctTransTy_bit, selectBit_ofBool]
+          cases args with
+            | cons c t => cases t with | cons a t2 => cases t2 with | cons b t3 => rfl
       | _ => simp only [toJExprD, reduceCtorEq] at he
+  | constBit b =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      rw [ctTransTy_bit]; show BitVec.ofNat 1 b.toNat = BitVec.ofBool b
+      exact ofNat_toNat_eq_ofBool b
+  | constUnit =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      rfl
+  | xor =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminBinOp.xor.apply (w := 1) ((toJVarD args.head).lookup (ctMapValD V))
+        ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_bit, ctTransTy_bit, ctTransTy_bit,
+        applyXor_ofBool]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | and =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminBinOp.and.apply (w := 1) ((toJVarD args.head).lookup (ctMapValD V))
+        ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_bit, ctTransTy_bit, ctTransTy_bit,
+        applyAnd_ofBool]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | or =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminBinOp.or.apply (w := 1) ((toJVarD args.head).lookup (ctMapValD V))
+        ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_bit, ctTransTy_bit, ctTransTy_bit,
+        applyOr_ofBool]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | eqBit =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show cmpBit (w := 1) .eq ((toJVarD args.head).lookup (ctMapValD V))
+        ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_bit, ctTransTy_bit, ctTransTy_bit,
+        cmpBit_ofBool_eqBit]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | not =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show cmpBit (w := 1) .eq ((toJVarD args.head).lookup (ctMapValD V)) (BitVec.ofNat 1 0) = _
+      rw [ctMapValD_lookup, ctTransTy_bit, ctTransTy_bit, cmpBit_ofBool_zero]
+      cases args with | cons a t => rfl
+  | bvRol w n =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show ((toJVarD args.head).lookup (ctMapValD V) : BitVec w).rotateRight
+        ((w - n % w) % w) = _
+      rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword, ← rotateLeft_eq_rotateRight]
+      cases args with | cons a t => rfl
   | _ => simp only [toJExprD, reduceCtorEq] at he
+
+/-- A block `toJMultiD` gives an expression denotes, on the transported valuation, the
+    transport of the expression's value: `bvNot` is the `xor` with the constant of all
+    ones, and `bitToSword` is the select of the constant of all ones and `0`. -/
+theorem toJMultiD_denote {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+    (blk : Com jasminDialect (mapCtx Γ) (mapTy t)) (h : toJMultiD e = some blk) :
+    blk.denote (ctMapValD V) = ctTransTy (e.denote V) := by
+  obtain ⟨op, hop, args⟩ := e
+  cases op with
+  | bvNot w =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      show JasminBinOp.xor.apply ((toJVarD args.head).lookup (ctMapValD V))
+        (BitVec.ofNat w (BitVec.allOnes w).toNat) = _
+      rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword, BitVec.ofNat_toNat,
+        BitVec.setWidth_eq]
+      cases args with | cons a t => exact BitVec.xor_allOnes
+  | bitToSword n =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      show selectW ((toJVarD args.head).lookup (ctMapValD V))
+        (BitVec.ofNat n (BitVec.allOnes n).toNat) (BitVec.ofNat n 0) = _
+      rw [ctMapValD_lookup, ctTransTy_bit, ctTransTy_sword, selectW_ofBool, BitVec.ofNat_toNat,
+        BitVec.setWidth_eq]
+      cases args with | cons a t => rfl
+  | _ => simp only [toJMultiD, reduceCtorEq] at h
+
+/-- A block `toJBlockD` gives an expression denotes, on the transported valuation, the
+    transport of the expression's value. -/
+theorem toJBlockD_denote {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+    (blk : Com jasminDialect (mapCtx Γ) (mapTy t)) (h : toJBlockD e = some blk) :
+    blk.denote (ctMapValD V) = ctTransTy (e.denote V) := by
+  unfold toJBlockD at h
+  split at h
+  · next e' he =>
+      cases h
+      exact dialectJasminLeafAgrees_holds e V e' he
+  · exact toJMultiD_denote e V blk h
 
 /-- **Preservation, unconditional.** `cryptoDialectToJasminCom_denote_eq` with the
     leaf-agreement hypothesis discharged by `dialectJasminLeafAgrees_holds`.

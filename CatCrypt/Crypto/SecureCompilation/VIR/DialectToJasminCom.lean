@@ -58,22 +58,30 @@ structural `Com` recursion.
 | `bvAddCarryHi w`             | `addCarryHi w`         |
 | `bvEq w`                     | `cmp .eq w`            |
 | `ite (.sword w)`             | `select w`             |
+| `constBit b`                 | `regConst 1 b.toNat`   |
+| `constUnit`                  | `regConst 0 0`         |
+| `xor` / `and` / `or`         | `regArith {xor,and,or} 1` |
+| `eqBit`                      | `cmp .eq 1`            |
+| `not`                        | `cmpImm .eq 1 0`       |
+| `ite .bit`                   | `select 1`             |
+| `bvRol w n`                  | `rorImm w ((w - n % w) % w)` |
 
 The arith/const/extCall/dynamic-memref rows are the base
 fragment; the rotate/variable-shift/`andn` rows are the word-native crypto
 extension (SHA/Keccak/ChaCha/bignum); the immediate-shift and bignum-ALU
 (`mulhi`/`addCarry*`) rows complete the word-native scalar op set, lowering
 instead of surviving as opaque leaves; the `bvEq`/`ite` rows carry the word
-select as a comparison feeding a conditional move. Every other `CatCryptOp`
-returns `none`:
-`bvNot`/`bvAdd64`/`bvAdc`/`ite` at a non-word type/`bitToSword`/the pair/sum ops/the bit
-ops/`sampleBit`/`sampleBv`, plus `bvRol` (jasmin has no scalar left-rotate op,
-so the dialect carries it as a faithful denotation but declines to lower it).
+select as a comparison feeding a conditional move; the bit rows carry a bit as a
+1-bit register. Every other `CatCryptOp` returns `none`:
+`bvNot`/`bvAdd64`/`bvAdc`/`ite` at a type other than a word or a bit/`bitToSword`/the
+pair/sum ops/the static-index memref ops/`sampleBit`/`sampleBv`.
 
 ## Relation to `catToJasmin`
 
-`NFProgCatToJasmin.catToJasmin` is the partial block lowering of the same op-level map
-`toJExprD`, applied by `NFProg.map?` to programs in the linear normal form.
+`NFProgCatToJasmin.catToJasmin` is the partial block lowering whose block of an
+expression is `toJBlockD`: the one-binding block of the same op-level map `toJExprD`,
+and for `bvNot` and `bitToSword` the block of several bindings `toJMultiD`. It is
+applied by `NFProg.map?` to programs in the linear normal form.
 `cryptoDialectToJasminCom` is the structural recursion over `Com`: it is the second
 step of the `LowCT → Com jasminDialect` descent, and the `Com`-level theorems
 `cryptoDialectToJasminCom_denote_eqWith` (`DialectToJasminComLeaf`) and
@@ -495,12 +503,139 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
         { op := .select w, retTy_eq := rfl,
           args := .cons (toJVarD args.head)
             (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
+  -- **Bit and unit constants.** `constBit b` ↦ jasmin `regConst 1 b.toNat` and
+  -- `constUnit` ↦ jasmin `regConst 0 0`: `mapTy .bit = .reg 1` and
+  -- `mapTy .unit = .reg 0`.
+  | .constBit b =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      some (hr ▸ { op := .regConst 1 b.toNat, retTy_eq := rfl, args := .nil })
+  | .constUnit =>
+      have hr : mapTy t = JasminTy.reg 0 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      some (hr ▸ { op := .regConst 0 0, retTy_eq := rfl, args := .nil })
+  -- **Bit arithmetic.** `xor`/`and`/`or` ↦ jasmin `regArith` at width 1, and
+  -- `eqBit` ↦ jasmin `cmp .eq 1`; the `[.bit, .bit]` operands map to
+  -- `[.reg 1, .reg 1]`.
+  | .xor =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .regArith .xor 1, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  | .and =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .regArith .and 1, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  | .or =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .regArith .or 1, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  | .eqBit =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .cmp .eq 1, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  -- **Bit negation.** `not` ↦ jasmin `cmpImm .eq 1 0`: the comparison of a
+  -- 1-bit register with the immediate `0` holds exactly when the bit is clear.
+  | .not =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .cmpImm .eq 1 0, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) .nil })
+  -- **Bit select.** `ite .bit` ↦ jasmin `select 1`.
+  | .ite .bit =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .select 1, retTy_eq := rfl,
+          args := .cons (toJVarD args.head)
+            (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
+  -- **Rotate left by immediate.** `bvRol w n` ↦ jasmin `rorImm w ((w - n % w) % w)`:
+  -- a left rotation by `n` is the right rotation by the complement of `n % w`.
+  | .bvRol w n =>
+      have hr : mapTy t = JasminTy.reg w := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.sword w] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .rorImm w ((w - n % w) % w), retTy_eq := rfl,
+          args := .cons (toJVarD args.head) .nil })
   -- Everything else is outside the lowered straight-line fragment:
-  -- `bvNot`/`bvAdd64`/`bvAdc`/`bitToSword`, `ite` at a non-word type,
-  -- the pair/sum ops, the bit ops, the static-index memref ops, the sampling
-  -- ops, and `bvRol` (jasmin has no scalar left-rotate op; `bvRol` is faithful
-  -- in the dialect denotation but declines here).
+  -- `bvNot`/`bvAdd64`/`bvAdc`/`bitToSword`, `ite` at a type other than a word
+  -- or a bit, the pair/sum ops, the static-index memref ops and the sampling
+  -- ops.
   | _ => none
+
+/-! ## 3a. Block images
+
+An operation with no single Jasmin expression lowers to a straight-line block of
+several bindings. `toJMultiD` gives these blocks, and `toJBlockD` is the block of
+an expression: the one-binding block of `toJExprD` where that exists, and the
+block of `toJMultiD` otherwise. -/
+
+/-- The block of an operation whose image is several Jasmin bindings, `none` on
+    every other operation. `bvNot w` is the constant of all ones at width `w`
+    followed by `regArith .xor w` of the operand and the constant. `bitToSword n`
+    is the constant of all ones at width `n`, the constant `0`, and `select n` of
+    the bit and the two constants. -/
+def toJMultiD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
+    Option (Com jasminDialect (mapCtx Γ) (mapTy t)) :=
+  match h : e.op with
+  | .bvNot w =>
+      have hr : mapTy t = JasminTy.reg w := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.sword w] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        Com.var (d := jasminDialect)
+          { op := .regConst w (BitVec.allOnes w).toNat, retTy_eq := rfl, args := .nil }
+          (Com.var
+            { op := .regArith .xor w, retTy_eq := rfl,
+              args := .cons (.there (toJVarD args.head)) (.cons .here .nil) }
+            (.ret .here)))
+  | .bitToSword n =>
+      have hr : mapTy t = JasminTy.reg n := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        Com.var (d := jasminDialect)
+          { op := .regConst n (BitVec.allOnes n).toNat, retTy_eq := rfl, args := .nil }
+          (Com.var
+            { op := .regConst n 0, retTy_eq := rfl, args := .nil }
+            (Com.var
+              { op := .select n, retTy_eq := rfl,
+                args := .cons (.there (.there (toJVarD args.head)))
+                  (.cons (.there .here) (.cons .here .nil)) }
+              (.ret .here))))
+  | _ => none
+
+/-- The block of an expression: the one-binding block of `toJExprD e` where
+    `toJExprD` accepts `e`, and the block `toJMultiD e` otherwise. -/
+def toJBlockD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
+    Option (Com jasminDialect (mapCtx Γ) (mapTy t)) :=
+  match toJExprD e with
+  | some e' => some (.var e' (.ret .here))
+  | none => toJMultiD e
 
 /-! ## 4. Program translation -/
 
