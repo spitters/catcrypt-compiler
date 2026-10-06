@@ -123,15 +123,16 @@ template layer and the dated deferrals.
   the straight arms from the proved chain: `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) derives constant time of every decoding of the bytes of
   `compileA` from the level check `nfFrontLeakCT` of the front, with no byte checker,
-  over the gate `ctGateAllB`: the looped image route (`haxc_ct_proved`) and the straight
-  register, array and cell arms, through `straightReg_bytes_ct`
+  under the coverage condition `imageRouteB` (the accepting arm of the gate `jGateB` is
+  an image arm): the two loop arms and the straight
+  register, array, cell and carry-chain register arms, through `straightReg_bytes_ct`
   (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
   (`X86Backend/ImageStraightArrLeak.lean`) and `straightCell_bytes_ct_src`
   (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
   traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
   `haxc_rc_proved_all` and `haxc_uc_proved_all` add robust compilation and UC
   preservation under the same hypotheses. The line-check arm `straightGateB`, the loops
-  with carried registers and the wide loop arm of `compileJW` are outside `ctGateAllB`.
+  with carried registers are outside `imageRouteB`.
   Over `compileAW`, `haxc_ct_proved_allW` and `haxc_rc_proved_allW`
   (`Haxc.ComposeCTAllW`) are the same statements over the gate `ctGateAllWB`, which
   covers the loop image route over the narrow and the wide printed class and the
@@ -263,7 +264,7 @@ register allocation. The block optimiser, the fold and the two-address form are 
 carry preservation theorems at `lsemFuelMemF`; the general decode simulation is to
 replace `lineCheck` and `lineTVCheck`; the loop export certificate is to carry a
 completeness theorem. Constant time of the bytes is derived from the level check of the
-source, with no byte checker, by `haxc_ct_proved_all` over the gate `ctGateAllB` of
+source, with no byte checker, by `haxc_ct_proved_all` under the coverage condition `imageRouteB` of
 `compileA` and by `haxc_ct_proved_allW` and `haxc_rc_proved_allW` over the gate
 `ctGateAllWB` of `compileAW`, whose back end has the wide loop gate (development
 repository, `Haxc.ComposeCTStraight` and `Haxc.ComposeCTAllW`). The line-check arm
