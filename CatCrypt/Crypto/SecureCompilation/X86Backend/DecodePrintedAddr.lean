@@ -647,7 +647,8 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
     refine ⟨?_, fun d s hs => ?_, rfl⟩
-    · by_cases hDS : D = S <;> simp [Arm.js, Arm.pieces, hDS, noWriteB]
+    · by_cases hDS : D = S <;> by_cases hl : tagShl m = true <;>
+        simp [Arm.js, Arm.pieces, tagShMk, hDS, hl, noWriteB]
     · simp only [Arm.instr, slotMov?] at hs
       split at hs
       · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨hD, hS⟩
