@@ -41,6 +41,13 @@ machine: `mapI g i` is the instruction `i` with every register source `n` replac
   `lsemStepMem_setReg_dst`, `stepMemF_setReg_dst`.
 * `fstepF_liveStep` — the step from two states, at any two program counters, that agree on
   the names `JasminLsemAddrCongr.readsI` lists.
+* `LiveAgreeM`, `deadOKB`, `liveAgreeM_drop`, `liveAgreeM_keep`,
+  `deadElim_foldr_runStraightF`, `deadElim_runStraightF` — backward dead-move elimination
+  over the extended straight fold is a forward simulation up to the live set, on a body
+  that passes `deadOKB`.
+* `copyPropSim_of_deadOKB`, `optBlocksRegOKB`, `optBlocksRegOKB_sound` — copy propagation
+  for register facts, and the basic-block optimiser on whole bodies of the flag machine
+  for a body that passes the check.
 -/
 
 @[expose] public section
@@ -1107,5 +1114,375 @@ theorem fstepF_liveStep {i : LinstrRM} {s t s₁ : LstateM} {zf z₁ : Bool}
       exact hstep'
 
 end LiveStep
+
+/-! ## 7. Backward dead-move elimination -/
+
+section DeadElim
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad (isMovMnem elimReloads)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler (scheduleBody)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower (EqPc)
+open CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CfgLift
+open CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.BlocksCfg
+
+/-- Two states of the flag machine agree up to the live set `L`: they hold the same cell in
+    every register that is not a physical register or that `L` lists, and they have the
+    same arrays, word memory and flags. The program counters are unrelated. -/
+def LiveAgreeM (L : List String) (s t : LstateM) : Prop :=
+  (∀ r, (isPhysGP r = false ∨ L.contains r = true) → s.reg.lvm r = t.reg.lvm r)
+    ∧ s.larr = t.larr ∧ s.lmem = t.lmem ∧ s.cf = t.cf ∧ s.of = t.of
+
+/-- The names of the operands that `readsI` lists for an instruction: the names of its
+    sources and the base registers of its cell operands. -/
+def readNames : LinstrR → List String
+  | .Lopn ds _ ss => ss.flatMap srcNames ++ (ds ++ ss).filterMap cellBase
+  | _ => []
+
+theorem readsI_cases {i : LinstrR} {r : String} (h : readsI i r) :
+    r = "" ∨ (r = "RDX" ∧ readsRdx i = true) ∨ r ∈ readNames i := by
+  rcases h with h | h | h
+  · exact Or.inl h
+  · exact Or.inr (Or.inl h)
+  · cases i with
+    | Lopn ds o ss => exact Or.inr (Or.inr (List.mem_append.2 h))
+    | _ => exact absurd h (by simp)
+
+/-- An instruction that reads `RDX` implicitly is not recognised by the pass. -/
+theorem isRecognizedOpn_of_readsRdx {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : readsRdx (.Lopn ds o ss) = true) : isRecognizedOpn o = false := by
+  simp only [readsRdx, rdxOp, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
+  rcases h.1 with (rfl | rfl) | rfl <;>
+    exact isRecognizedOpn_MULX (by
+      rw [X86Backend.WellFormedX86.isPrefixOf_eq_hasPrefix]
+      decide +kernel)
+
+/-- The check of an instruction for dead-move elimination. The instruction passes
+    `cpRegOKB`. If it is an `Lopn` with a recognised mnemonic, every physical register
+    among its `readNames` is one of its `instrUses`, and if it has a killing definition it
+    has one destination and is neither an indexed store nor the flag compare. -/
+def deadOKB (i : Linstr) : Bool :=
+  cpRegOKB i &&
+    (match i.li_i with
+     | .Lopn dsts opn srcs =>
+         !isRecognizedOpn opn ||
+           ((readNames i.li_i).all (fun r => !isPhysGP r || (instrUses dsts opn srcs).contains r)
+             && ((fullDefsOf dsts opn).isEmpty
+                  || (dsts.length == 1 && opn != "STOREIDX" && opn != withWidthTag 64 "CMP")))
+     | _ => true)
+
+/-- **A dropped move keeps the agreement up to the live set.** A candidate move that passes
+    `cpRegOKB` and is a self-copy or writes a register outside the live set steps to a
+    state that agrees with the state the other run stays in, and keeps the zero flag. -/
+theorem liveAgreeM_drop {Lr : List String} {i : Linstr} (hc : cpRegOKB i = true)
+    {d : String} {src : LOperand} {ww : Nat} (hcs : moveShape i = some (d, src, ww))
+    (hdr : ((ww == 64 && src == LOperand.reg d) || !(Lr.contains d)) = true) (tg : MemTag)
+    {s t s₁ : LstateM} {zf z₁ : Bool} (h : LiveAgreeM Lr s t)
+    (hstep : fstepF (i.li_i, tg) s zf = some (s₁, z₁)) : z₁ = zf ∧ LiveAgreeM Lr s₁ t := by
+  obtain ⟨opn, hi, hpd, hfs, hstrip⟩ := moveShape_inv hcs
+  simp only [cpRegOKB, hi, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true',
+    beq_eq_false_iff_ne, ne_eq, Bool.or_eq_false_iff] at hc
+  have h2 : isMovMnem opn = true ∧ notImmB src = true := by
+    rcases hc.2 with hno | hyes
+    · rcases hstrip with e | e
+      · exact absurd e hno.1
+      · exact absurd e hno.2
+    · exact hyes
+  obtain ⟨k, rfl⟩ : ∃ k, src = LOperand.reg k := by
+    cases src with
+    | reg k => exact ⟨k, rfl⟩
+    | imm k => exact absurd h2.2 (by simp [notImmB])
+    | arr b k => simp [isFactSrc] at hfs
+    | arrIdx b x k => simp [isFactSrc] at hfs
+  rw [hi, fstepF_reload h2.1, Option.some.injEq, Prod.mk.injEq] at hstep
+  obtain ⟨rfl, rfl⟩ := hstep
+  refine ⟨rfl, fun r hr => ?_, h.2⟩
+  rw [lvm_setReg_nextPcM]
+  by_cases hrd : r = d
+  · subst hrd
+    rw [if_pos rfl]
+    rcases (Bool.or_eq_true _ _).mp hdr with hself | hdead
+    · have hk : k = r := by simpa using ((Bool.and_eq_true _ _).mp hself).2
+      subst hk
+      exact h.1 k hr
+    · exfalso
+      have hnc : Lr.contains r = false := by simpa using hdead
+      rcases hr with hp | hm
+      · rw [hp] at hpd
+        exact absurd hpd (by simp)
+      · rw [hnc] at hm
+        exact absurd hm (by simp)
+  · rw [if_neg hrd]
+    exact h.1 r hr
+
+/-- **A kept recognised instruction keeps the agreement up to the live set.** From two
+    states that agree up to the live set before an instruction that passes `deadOKB`, a
+    step from the first is matched by a step from the second with the same zero flag, to
+    states that agree up to the live set after it. -/
+theorem liveAgreeM_keep {Lr : List String} {i : Linstr} {dsts : List LOperand} {opn : String}
+    {srcs : List LOperand} (hi : i.li_i = .Lopn dsts opn srcs)
+    (hrec : isRecognizedOpn opn = true) (hc : deadOKB i = true) (tg : MemTag)
+    {s t s₁ : LstateM} {zf z₁ : Bool}
+    (h : LiveAgreeM (addRegs (Lr.filter fun r => !((fullDefsOf dsts opn).contains r))
+      (instrUses dsts opn srcs)) s t)
+    (hstep : fstepF (.Lopn dsts opn srcs, tg) s zf = some (s₁, z₁)) :
+    ∃ t₁, fstepF (.Lopn dsts opn srcs, tg) t zf = some (t₁, z₁) ∧ LiveAgreeM Lr s₁ t₁ := by
+  obtain ⟨hR, hA, hM, hC, hO⟩ := h
+  simp only [deadOKB, hi, hrec, Bool.not_true, Bool.false_or, Bool.and_eq_true,
+    List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true', bne_iff_ne, ne_eq,
+    beq_iff_eq] at hc
+  obtain ⟨-, hreads, hfull⟩ := hc
+  have hcov : ∀ r, readsI (.Lopn dsts opn srcs) r → isPhysGP r = true →
+      (instrUses dsts opn srcs).contains r = true := by
+    intro r hr hp
+    rcases readsI_cases hr with rfl | ⟨-, hx⟩ | hm
+    · exact absurd hp (by simp [isPhysGP, physGPs])
+    · rw [isRecognizedOpn_of_readsRdx hx] at hrec
+      exact absurd hrec (by simp)
+    · rcases hreads r hm with hn | hu
+      · rw [hp] at hn
+        exact absurd hn (by simp)
+      · exact hu
+  have huse : ∀ r, (instrUses dsts opn srcs).contains r = true →
+      s.reg.lvm r = t.reg.lvm r :=
+    fun r hr => hR r (Or.inr (contains_addRegs_right _ _ hr))
+  have hreg : ∀ r, readsI (.Lopn dsts opn srcs) r → s.reg.lvm r = t.reg.lvm r := by
+    intro r hr
+    by_cases hp : isPhysGP r = true
+    · exact huse r (hcov r hr hp)
+    · exact hR r (Or.inl (by simpa using hp))
+  obtain ⟨t₁, ht, hN, hA', hM', hC', hO'⟩ :=
+    fstepF_liveStep (i := (.Lopn dsts opn srcs, tg)) hreg hA hM hC hO hstep
+  refine ⟨t₁, ht, fun r hr => ?_, hA', hM', hC', hO'⟩
+  rcases hN r with e | ⟨e1, e2⟩
+  · exact e
+  by_cases hu : (instrUses dsts opn srcs).contains r = true
+  · rw [e1, e2]
+    exact huse r hu
+  by_cases hfd : (fullDefsOf dsts opn).contains r = true
+  · have hmem : r ∈ fullDefsOf dsts opn := by simpa using hfd
+    rcases hfull with he | ⟨⟨hlen, hns⟩, hnc⟩
+    · rw [List.isEmpty_iff.1 he] at hmem
+      exact absurd hmem (by simp)
+    have hrd : r ∈ regDefsOf dsts := by
+      unfold fullDefsOf at hmem
+      split at hmem
+      · exact hmem
+      · exact absurd hmem (by simp)
+    obtain ⟨x, rfl⟩ : ∃ x, dsts = [x] := List.length_eq_one_iff.1 hlen
+    have hx : x = LOperand.reg r ∧ isPhysGP r = true := by
+      cases x with
+      | reg n =>
+          by_cases hn : isPhysGP n = true
+          · simp only [regDefsOf, List.filterMap_cons, hn, if_true, List.filterMap_nil,
+              List.mem_singleton] at hrd
+            exact ⟨by rw [hrd], hrd ▸ hn⟩
+          · simp [regDefsOf, hn] at hrd
+      | _ => simp [regDefsOf] at hrd
+    obtain ⟨rfl, hp⟩ := hx
+    have hd0 : r ≠ "" := fun e => by
+      rw [e] at hp
+      exact absurd hp (by simp [isPhysGP, physGPs])
+    have hs : ∀ x ∈ srcs, r ∉ srcNames x := fun x hx hm =>
+      hu (hcov r (readsI_src (List.mem_flatMap.2 ⟨x, hx, hm⟩)) hp)
+    have hst : storeStruct? (.Lopn [.reg r] opn srcs) = none := by
+      unfold storeStruct?
+      split
+      · rename_i heq
+        injection heq with _ ho _
+        rw [if_neg (ho ▸ hns)]
+      · rfl
+    have hcmp : cmpArgs? (.Lopn [.reg r] opn srcs, tg) = none := by
+      unfold cmpArgs?
+      split
+      · rename_i heq
+        injection heq with _ ho _
+        rw [if_neg (ho ▸ hnc)]
+      · rfl
+    have hset := fstepF_setReg_dst (s := t) (s.reg.lvm r).2 hd0 opn srcs tg zf hs hst hcmp
+    have hreg' : ∀ q, readsI (.Lopn [.reg r] opn srcs) q →
+        s.reg.lvm q = (t.setReg r (s.reg.lvm r).2).reg.lvm q := by
+      intro q hq
+      have hqr : q ≠ r := fun e => hu (e ▸ hcov q hq (e ▸ hp))
+      have e : (t.setReg r (s.reg.lvm r).2).reg.lvm q = t.reg.lvm q := by
+        simp [LstateM.setReg, LstateN.setReg, hqr]
+      rw [e]
+      exact hreg q hq
+    obtain ⟨t₁', ht', hN', -⟩ :=
+      fstepF_liveStep (i := (.Lopn [.reg r] opn srcs, tg)) (t := t.setReg r (s.reg.lvm r).2)
+        hreg' hA hM hC hO hstep
+    rw [hset, ht, Option.some.injEq, Prod.mk.injEq] at ht'
+    obtain ⟨rfl, -⟩ := ht'
+    rcases hN' r with e | ⟨e1', e2'⟩
+    · exact e
+    · rw [e1', e2']
+      simp [LstateM.setReg, LstateN.setReg]
+  · rw [e1, e2]
+    rcases hr with hp | hm
+    · exact hR r (Or.inl hp)
+    · refine hR r (Or.inr (contains_addRegs_left _ _ ?_))
+      have hmem : r ∈ Lr := by simpa using hm
+      have hfil : r ∈ Lr.filter (fun x => !((fullDefsOf dsts opn).contains x)) :=
+        List.mem_filter.mpr ⟨hmem, by simpa using hfd⟩
+      simpa using hfil
+
+/-- **Dead-move elimination is a forward simulation up to the live set, over the extended
+    straight fold.** For a body that passes `deadOKB` and two states that agree up to the
+    live set the pass computes at the head of the body, a run of the body from the first
+    is matched by a run of the swept body from the second, with the same zero flag, to
+    states that agree up to the live set at the end. -/
+theorem deadElim_foldr_runStraightF (tag : LinstrR → MemTag) (body : Lcmd)
+    (hb : ∀ i ∈ body, deadOKB i = true) :
+    ∀ (Lend : List String) (s t : LstateM) (zf : Bool),
+      LiveAgreeM (body.foldr deadElimStep (Lend, [])).1 s t →
+      ∀ (s₂ : LstateM) (z₂ : Bool),
+        runStraightF (body.map fun i => (i.li_i, tag i.li_i)) s zf = some (s₂, z₂) →
+        ∃ t₂, runStraightF
+            ((body.foldr deadElimStep (Lend, [])).2.map fun i => (i.li_i, tag i.li_i)) t zf
+              = some (t₂, z₂)
+          ∧ LiveAgreeM Lend s₂ t₂ := by
+  induction body with
+  | nil =>
+    intro Lend s t zf h s₂ z₂ hrun
+    simp only [List.map_nil, runStraightF_nil, Option.some.injEq, Prod.mk.injEq] at hrun
+    obtain ⟨rfl, rfl⟩ := hrun
+    exact ⟨t, rfl, h⟩
+  | cons i rest ih =>
+    intro Lend s t zf h s₂ z₂ hrun
+    have hci := hb i List.mem_cons_self
+    have ih' := ih (fun j hj => hb j (List.mem_cons_of_mem _ hj)) Lend
+    simp only [List.map_cons, runStraightF_cons] at hrun
+    obtain ⟨Lr, outR, hP⟩ : ∃ a b, rest.foldr deadElimStep (Lend, []) = (a, b) := ⟨_, _, rfl⟩
+    rw [hP] at ih'
+    rw [List.foldr_cons, hP] at h ⊢
+    cases hst : fstepF (i.li_i, tag i.li_i) s zf with
+    | none => rw [hst] at hrun; exact absurd hrun (by simp)
+    | some bz =>
+      obtain ⟨s₁, z₁⟩ := bz
+      rw [hst, Option.bind_some] at hrun
+      have hcases :
+          (∃ dsts opn srcs, i.li_i = LinstrR.Lopn dsts opn srcs ∧ isRecognizedOpn opn = true)
+          ∨ (∀ (live : List String) (acc : Lcmd),
+              deadElimStep i (live, acc) = (physGPs, i :: acc)) := by
+        cases hLi : i.li_i with
+        | Lopn dsts opn srcs =>
+          by_cases hr : isRecognizedOpn opn = true
+          · exact Or.inl ⟨dsts, opn, srcs, rfl, hr⟩
+          · refine Or.inr (fun live acc => deadElimStep_barrier i live acc ?_)
+            intro d o sc he
+            rw [hLi] at he
+            injection he with _ h2 _
+            rw [← h2]
+            simpa using hr
+        | _ =>
+          exact Or.inr (fun live acc => deadElimStep_barrier i live acc (by
+            intro d o sc he; rw [hLi] at he; exact absurd he (by simp)))
+      rcases hcases with ⟨dsts, opn, srcs, hLi, hrec⟩ | hbar
+      · have hkeep : deadElimStep i (Lr, outR)
+              = (addRegs (Lr.filter fun r => !((fullDefsOf dsts opn).contains r))
+                  (instrUses dsts opn srcs), i :: outR) →
+            ∃ t₂, runStraightF
+                ((deadElimStep i (Lr, outR)).2.map fun i => (i.li_i, tag i.li_i)) t zf
+                  = some (t₂, z₂)
+              ∧ LiveAgreeM Lend s₂ t₂ := by
+          intro hk
+          rw [hk] at h ⊢
+          dsimp only at h ⊢
+          rw [hLi] at hst
+          obtain ⟨t₁, hts, hag⟩ := liveAgreeM_keep hLi hrec hci _ h hst
+          simp only [List.map_cons, runStraightF_cons, hLi, hts, Option.bind_some]
+          exact ih' s₁ t₁ z₁ hag s₂ z₂ hrun
+        cases hcs : moveShape i with
+        | none => exact hkeep (deadElimStep_keep_none Lr outR hLi hrec hcs)
+        | some q =>
+          obtain ⟨d, src, ww⟩ := q
+          by_cases hdr : ((ww == 64 && src == LOperand.reg d) || !(Lr.contains d)) = true
+          · rw [deadElimStep_drop Lr outR hLi hrec hcs hdr] at h ⊢
+            dsimp only at h ⊢
+            have hcp : cpRegOKB i = true := by
+              simp only [deadOKB, Bool.and_eq_true] at hci
+              exact hci.1
+            obtain ⟨rfl, hag⟩ := liveAgreeM_drop hcp hcs hdr _ h hst
+            exact ih' s₁ t z₁ hag s₂ z₂ hrun
+          · exact hkeep (deadElimStep_keep_some Lr outR hLi hrec hcs (by simpa using hdr))
+      · rw [hbar Lr outR] at h ⊢
+        dsimp only at h ⊢
+        obtain ⟨hR, hA, hM, hC, hO⟩ := h
+        have hall : ∀ r, s.reg.lvm r = t.reg.lvm r := fun r => hR r (by
+          by_cases hp : isPhysGP r = true
+          · exact Or.inr hp
+          · exact Or.inl (by simpa using hp))
+        obtain ⟨t₁, hts, hN, hA', hM', hC', hO'⟩ :=
+          fstepF_liveStep (fun r _ => hall r) hA hM hC hO hst
+        simp only [List.map_cons, runStraightF_cons, hts, Option.bind_some]
+        refine ih' s₁ t₁ z₁ ⟨fun r _ => ?_, hA', hM', hC', hO'⟩ s₂ z₂ hrun
+        rcases hN r with e | ⟨e1, e2⟩
+        · exact e
+        · rw [e1, e2]
+          exact hall r
+
+/-- **Dead-move elimination over the extended straight fold.** For a body that passes
+    `deadOKB`, a run of the body is matched by a run of the body without its dead moves
+    from the same state, with the same zero flag and final states equal up to the program
+    counter. -/
+theorem deadElim_runStraightF (tag : LinstrR → MemTag) (body : Lcmd)
+    (hb : ∀ i ∈ body, deadOKB i = true) : DeadElimSim tag body := by
+  intro s zf s₂ z₂ hrun
+  obtain ⟨t₂, ht, hR, hA, hM, hC, hO⟩ :=
+    deadElim_foldr_runStraightF tag body hb physGPs s s zf
+      ⟨fun _ _ => rfl, rfl, rfl, rfl, rfl⟩ s₂ z₂ hrun
+  refine ⟨t₂, ht, ?_⟩
+  have hl : s₂.reg.lvm = t₂.reg.lvm := funext fun r => hR r (by
+    by_cases hp : isPhysGP r = true
+    · exact Or.inr hp
+    · exact Or.inl (by simpa using hp))
+  obtain ⟨⟨lvm, lpc⟩, larr, lmem, cf, of⟩ := s₂
+  obtain ⟨⟨lvm', lpc'⟩, larr', lmem', cf', of'⟩ := t₂
+  simp only at hl hA hM hC hO
+  subst hl hA hM hC hO
+  rfl
+
+/-- **Copy propagation over the extended straight fold, for register facts.** For a
+    tagging that depends on destinations and mnemonic only, a body that passes `cpRegOKB`
+    and whose propagated body passes `deadOKB`, a run of the body is matched by a run of
+    the copy-propagated body. -/
+theorem copyPropSim_of_deadOKB (tag : LinstrR → MemTag) (hT : TagShape tag) (body : Lcmd)
+    (hb : ∀ i ∈ body, cpRegOKB i = true)
+    (hd : ∀ i ∈ propagateAux [] body, deadOKB i = true) : CopyPropSim tag body :=
+  copyPropSim_of_deadElimSim tag hT body hb (deadElim_runStraightF tag _ hd)
+
+/-- **The check of the optimiser on a body, for register facts**: every instruction passes
+    `keepOKB` and has register destinations, and on every straight segment the body after
+    the first three stages passes `cpRegOKB` and its propagated body passes `deadOKB`. -/
+def optBlocksRegOKB (tag : LinstrR → MemTag) (body : List Linstr) : Bool :=
+  (body.all fun i => keepOKB (i.li_i, tag i.li_i) && dstsRegB i.li_i) &&
+    (splitStraightRuns body).all fun seg =>
+      !bodyIsStraightLine seg ||
+        ((scheduleBody (reloadElimBody (elimReloads seg))).all cpRegOKB &&
+          (propagateAux [] (scheduleBody (reloadElimBody (elimReloads seg)))).all deadOKB)
+
+/-- **Soundness of the check: the basic-block optimiser on whole bodies of the flag
+    machine, for register facts.** For a tagging that depends on destinations and mnemonic
+    only and a body that passes `optBlocksRegOKB`, every halting run of `lsemFuelMemFk ck`
+    on the tagged body from program counter `0` is matched by a halting run of the tagged
+    optimised body from the same state with at most the same fuel, to a state with the
+    same function name and zero flag and a base equal up to the program counter. -/
+theorem optBlocksRegOKB_sound {ck : Bool} {tag : LinstrR → MemTag} (hT : TagShape tag)
+    {body : List Linstr} (h : optBlocksRegOKB tag body = true) (fn : String) :
+    WholeBodySim ck (fun _ => True) fn (body.map fun i => (i.li_i, tag i.li_i))
+      ((optimizeBasicBlocks body).map fun i => (i.li_i, tag i.li_i)) := by
+  simp only [optBlocksRegOKB, List.all_eq_true, Bool.and_eq_true, Bool.or_eq_true,
+    Bool.not_eq_true'] at h
+  refine optimizeBasicBlocks_wholeBodySim_of_copyPropSim tag body (fun i hi => (h.1 i hi).1)
+    (fun i hi => (h.1 i hi).2) (fun seg hs hsl => ?_) fn
+  rcases h.2 seg hs with hn | ⟨h1, h2⟩
+  · rw [hsl] at hn
+    exact absurd hn (by simp)
+  · exact copyPropSim_of_deadOKB tag hT _ h1 h2
+
+end DeadElim
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyPropCfg
