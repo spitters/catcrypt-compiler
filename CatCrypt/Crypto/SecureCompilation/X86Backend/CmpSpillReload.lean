@@ -52,14 +52,17 @@ instruction uses the scratch is outside the theorem.
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 
 /-- **A compare whose first operand is a spill slot**: for `Lopn [d] opn [d, s]` with
     mnemonic base `CMP`, `d` a spill slot and `s` other than the reload scratch, the
     mnemonic, the slot name and the second operand; `none` for every other instruction. -/
-def spillCmp? : LinstrR → Option (String × String × LOperand)
+def spillCmp? (w : LinstrR) (abi : IsaAbi := x86Abi) : Option (String × String × LOperand) :=
+  match w with
   | .Lopn [.reg d] opn [.reg a, s] =>
       if stripWidthTag opn == "CMP" && d == a && (LOperand.reg d).isSpill
-          && s != .reg reloadScratch then some (opn, d, s)
+          && s != .reg abi.reload then some (opn, d, s)
       else none
   | _ => none
 
@@ -69,15 +72,16 @@ def movOf (opn : String) : String := if hasSuffix opn ":64" then "MOV:64" else "
 /-- **The rewrite of an instruction**: a compare on a spilled first operand becomes the copy
     of the slot to the reload scratch and the compare on the scratch; every other
     instruction is kept. -/
-def cmpReloadI (i : Linstr) : Lcmd :=
-  match spillCmp? i.li_i with
+def cmpReloadI (i : Linstr) (abi : IsaAbi := x86Abi) : Lcmd :=
+  match spillCmp? i.li_i abi with
   | some (opn, d, s) =>
-      [⟨i.li_ii, .Lopn [.reg reloadScratch] (movOf opn) [.reg d]⟩,
-       ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s]⟩]
+      [⟨i.li_ii, .Lopn [.reg abi.reload] (movOf opn) [.reg d]⟩,
+       ⟨i.li_ii, .Lopn [.reg abi.reload] opn [.reg abi.reload, s]⟩]
   | none => [i]
 
 /-- **The reload of spilled compare operands** on a body. -/
-def cmpReload (body : Lcmd) : Lcmd := body.flatMap cmpReloadI
+def cmpReload (body : Lcmd) (abi : IsaAbi := x86Abi) : Lcmd :=
+  body.flatMap fun i => cmpReloadI i abi
 
 theorem cmpReload_nil : cmpReload [] = [] := rfl
 
@@ -149,8 +153,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (typeBody)
 
 /-- The rewrite of a typed instruction: `cmpReloadI` on its wire, typed with `tag`. -/
-def cmpReloadRM (tag : LinstrR → MemTag) (i : LinstrRM) : List LinstrRM :=
-  typeBody tag (cmpReloadI ⟨0, i.1⟩)
+def cmpReloadRM (tag : LinstrR → MemTag) (i : LinstrRM) (abi : IsaAbi := x86Abi) :
+    List LinstrRM :=
+  typeBody tag (cmpReloadI ⟨0, i.1⟩ abi)
 
 theorem typeBody_cmpReloadI (tag : LinstrR → MemTag) (i : Linstr) :
     typeBody tag (cmpReloadI i) = cmpReloadRM tag (i.li_i, tag i.li_i) := by
@@ -250,16 +255,17 @@ theorem fstepF_cmpReload (d : String) (s : LOperand) (tg t1 t2 : MemTag)
     `Lopn`, a label, a zero-flag conditional or a goto; it does not name the reload
     scratch; it is not a `MULX`; and a compare on a spilled first operand carries the
     mnemonic of the flag compare. -/
-def cmpReloadOKI (tag : LinstrR → MemTag) (w : LinstrR) : Bool :=
-  clsB (w, tag w) && (instrNames w).all (fun n => n != reloadScratch) && mulxFree (w, tag w)
-    && (match spillCmp? w with
+def cmpReloadOKI (tag : LinstrR → MemTag) (w : LinstrR) (abi : IsaAbi := x86Abi) : Bool :=
+  let r := abi.reload
+  clsB (w, tag w) && (instrNames w).all (fun n => n != r) && mulxFree (w, tag w)
+    && (match spillCmp? w abi with
         | some (opn, _, _) => opn == withWidthTag 64 "CMP"
         | none => true)
 
 /-- **The side conditions of the pass** on a body typed with `tag`: `cmpReloadOKI` at
     every instruction. -/
-def cmpReloadOK (tag : LinstrR → MemTag) (body : Lcmd) : Bool :=
-  body.all fun i => cmpReloadOKI tag i.li_i
+def cmpReloadOK (tag : LinstrR → MemTag) (body : Lcmd) (abi : IsaAbi := x86Abi) : Bool :=
+  body.all fun i => cmpReloadOKI tag i.li_i abi
 
 /-- **The per-instruction condition of the pass**, at the agreement outside `R15`. -/
 theorem instrOK_cmpReload {tag : LinstrR → MemTag} {w : LinstrR}
@@ -273,10 +279,12 @@ theorem instrOK_cmpReload {tag : LinstrR → MemTag} {w : LinstrR}
         simp [cmpReloadRM, cmpReloadI, hsp, typeBody]
       rcases clsB_spec hcls with hl | hc
       · refine Or.inl ⟨hl, fun j hj => ?_, fun s s' t zf zt hA hst => ?_⟩
-        · rw [hself] at hj
+        · replace hj : j ∈ cmpReloadRM tag (w, tag w) := hj
+          rw [hself] at hj
           obtain rfl : j = (w, tag w) := by simpa using hj
           exact hl
-        · rw [hself]
+        · show ∃ t', runStraightF (cmpReloadRM tag (w, tag w)) s' zf = some (t', zt) ∧ Agree t t'
+          rw [hself]
           obtain ⟨t', h', hA'⟩ := fstepF_agree hl hkept hm hA hst
           exact ⟨t', by rw [runStraightF_cons, h']; rfl, hA'⟩
       · exact Or.inr ⟨hself, hc⟩
@@ -293,12 +301,12 @@ theorem instrOK_cmpReload {tag : LinstrR → MemTag} {w : LinstrR}
              (.Lopn [.reg reloadScratch] (withWidthTag 64 "CMP") [.reg reloadScratch, s],
                tag (.Lopn [.reg reloadScratch] (withWidthTag 64 "CMP")
                  [.reg reloadScratch, s]))] := by
-        simp [cmpReloadRM, cmpReloadI, hsp, typeBody]
+        have hr : x86Abi.reload = reloadScratch := rfl
+        simp [cmpReloadRM, cmpReloadI, hsp, typeBody, hr]
       refine Or.inl ⟨⟨_, _, _, rfl⟩, fun j hj => ?_, fun a a' t zf zt hA hst => ?_⟩
-      · rw [hexp] at hj
-        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hj
+      · simp only [hexp, List.mem_cons, List.mem_nil_iff, or_false] at hj
         rcases hj with rfl | rfl <;> exact ⟨_, _, _, rfl⟩
-      · rw [hexp]
+      · simp only [hexp]
         exact fstepF_cmpReload d s _ _ _ (hkept d (by simp [instrNames, opNames]))
           (fun n hn' => hkept n (by simp only [instrNames, List.cons_append, List.nil_append,
             List.flatMap_cons, List.flatMap_nil, List.append_nil, List.mem_append]
