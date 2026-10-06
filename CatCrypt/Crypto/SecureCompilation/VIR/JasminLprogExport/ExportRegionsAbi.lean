@@ -31,11 +31,13 @@ entry uses.
   after its last instruction in a state that agrees with the returned operands.
 * `ResAgrees.getW_single`, `ResAgrees.decodeArrM_single`: the reading of a single register
   result and of a single array result off a state that agrees with the returned operands.
-* `exportR_ret_steps`: the run of the exported code followed by a return, on the
-  instruction set with calls, from an entry state with a return address on the stack to
-  the return address, for code that does not name the stack pointer.
 * `ResAgrees.retState_spFrame`: the agreement with the returned operands holds in the state
   after the return.
+* `exportR_spFree`, `exportR_spFreeBodyB`: neither the code nor the returned operands of
+  the export of a program of `RegionExportable` name the stack pointer `RSP`.
+* `exportR_ret_steps`: the run of the exported code followed by a return, on the
+  instruction set with calls, from an entry state with a return address on the stack to
+  the return address.
 -/
 
 @[expose] public section
@@ -191,52 +193,7 @@ theorem ResAgrees.decodeArrM_single {nArgs D : Nat} {s : LstateM} {w n : Nat}
       cases rest
       exact ⟨_, rfl, hag.arr x⟩
 
-/-! ## 4. The return -/
-
-/-- **The run of the exported code followed by a return.** Let `p` be a program of
-    `RegionExportable` with the export `r` whose code does not name `RSP` (`spFreeBodyB`),
-    and let `p` denote `v` at `V`. From an entry state at the counter `0` whose store agrees
-    with `V`, with the stack pointer `RSP` holding `sp - 8` and the memory cell it addresses
-    holding the word of a counter `ra` below `2 ^ 64`, the instruction set with calls makes
-    on the code followed by `Lret` a run to the counter `ra` with `RSP` holding `sp`. The
-    end state is that of the run without the stack pointer, `t`, with the stack pointer and
-    its cell replaced; `t` agrees with the returned operands at `v`. -/
-theorem exportR_ret_steps (fn : String) (tag : MemTag) {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p)
-    {r : Exported} (hr : exportR Γ.length fn p Γ.length 0 = some r)
-    (hsp : spFreeBodyB "RSP" r.code = true) (fuel : Nat)
-    (V : Ctxt.Valuation Γ) (v : Ctxt.Valuation (d := jasminDialect) ts)
-    (hden : p.denote fuel V = some v) (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 0)
-    (hag : StoreAgreesM Γ.length Γ.length b0 V) (sp : BitVec 64) (ra : Nat)
-    (hra : ra < 2 ^ 64) :
-    ∃ (n : Nat) (t : LstateMF),
-      Steps x86Isa.withCalls (singletonProgM fn (r.code ++ [(.Lret, tag)])) (n + 1)
-        (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra)
-          { prog := { base := b0, lfn := fn }, zf := zf })
-        (retState "RSP" sp ra (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t))
-      ∧ atPc (singletonProgM fn (r.code ++ [(.Lret, tag)])) ra
-        (retState "RSP" sp ra (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t))
-      ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
-      ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
-  obtain ⟨k, t, hrun, hat, hres, hfr⟩ := exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp)
-    hr rfl le_rfl fuel V v hden b0 zf hpc hag
-  have hrun0 := hrun 0
-  rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF] at hrun0
-  have hrun' : x86Isa.lsemFuelMemF (singletonProgM fn r.code) (k + 0)
-      (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra)
-        { prog := { base := b0, lfn := fn }, zf := zf })
-      = some (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t) := by
-    rw [x86_lsemFuelMemF_spFrame (P := singletonProgM fn r.code) (spFree_of_spFreeBodyB hsp),
-      hrun0]
-    rfl
-  obtain ⟨n, -, hsteps, hatr⟩ := x86_steps_snoc_ret (tag := tag)
-    (exportR_noCall _ _ x86Data_guardsNoCall p _ _ _ hr) hrun' ⟨hat.1, hat.2⟩
-    (LstateN.getW_setReg_same _ _ _)
-    (show (spM "RSP" (sp - 8) (BitVec.ofNat 64 ra) t.prog.base).lmem "RSP" (sp - 8).toInt
-        = BitVec.ofNat 64 ra by simp [spM, LstateM.storeMemC]) hra
-  exact ⟨n, t, hsteps, hatr, hres, hfr⟩
-
-/-! ## 5. The result after the return -/
+/-! ## 4. The result after the return -/
 
 /-- No register `regName d` is the stack pointer. -/
 theorem regName_ne_rsp (d : Nat) : regName d ≠ "RSP" := by
@@ -297,5 +254,454 @@ theorem ResAgrees.retState_spFrame {nArgs D : Nat} {t : LstateMF} {ts : List Jas
     exact hag.reg x
   · rw [getArr_retState_spFrame]
     exact hag.arr x
+
+/-! ## 5. The export does not name the stack pointer -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (cellBase)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop (OpPlain ComOpsPlain
+  scalarMemN_comOpsPlain)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (shiftLinstr)
+
+/-- A register whose name starts with a character other than `m` and `R` does not name
+    `RSP`: it is neither `RSP` nor a cell name `mem.RSP.<off>`. -/
+theorem opSpB_reg_of_head {r : String} {c : Char} (hr : r.toList.head? = some c)
+    (hm : c ≠ 'm') (hR : c ≠ 'R') : opSpB "RSP" (.reg r) = false := by
+  have h1 : r ≠ "RSP" := by
+    rintro rfl
+    exact hR (Option.some.inj hr).symm
+  have h2 : cellParts? r = none := by
+    unfold cellParts?
+    rw [if_neg]
+    cases hl : r.toList with
+    | nil => simp [hasPrefix, hl]
+    | cons a tl =>
+        rw [hl] at hr
+        obtain rfl : a = c := Option.some.inj hr
+        simp [hasPrefix, hl, Ne.symm hm]
+  simp [opSpB, cellBase, h1, h2]
+
+/-- The register `regName d` does not name `RSP`. -/
+theorem opSpB_regName (d : Nat) : opSpB "RSP" (.reg (regName d)) = false :=
+  opSpB_reg_of_head (c := 'r') (by simp [regName]) (by decide) (by decide)
+
+/-- The argument register `argName j` does not name `RSP`. -/
+theorem opSpB_argName (j : Nat) : opSpB "RSP" (.reg (argName j)) = false :=
+  opSpB_reg_of_head (c := 'a') (by simp [argName]) (by decide) (by decide)
+
+/-- The loop counter `loopCtr n` does not name `RSP`. -/
+theorem opSpB_loopCtr (n : Nat) : opSpB "RSP" (.reg (loopCtr n)) = false :=
+  opSpB_reg_of_head (c := 'L') (by simp [loopCtr]) (by decide) (by decide)
+
+/-- The operand of an in-scope variable does not name `RSP`. -/
+theorem opSpB_resolveVar {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (v : Ctxt.Var Γ τ) :
+    opSpB "RSP" (resolveVar curDepth nArgs argName (fun _ => none) v) = false := by
+  simp only [resolveVar]
+  split
+  · exact opSpB_argName _
+  · exact opSpB_regName _
+
+/-- The operands of a vector of in-scope variables do not name `RSP`. -/
+theorem opSpB_exprArgsHV {Γ : Ctxt jasminDialect} (cd nArgs : Nat) :
+    ∀ {ts : List JasminTy} (vs : HVector (fun ty => Ctxt.Var Γ ty) ts),
+      ∀ o ∈ exprArgsHV cd nArgs argName (fun _ => none) vs, opSpB "RSP" o = false
+  | [], .nil, o, h => by simp [exprArgsHV] at h
+  | _ :: _, .cons v rest, o, h => by
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact opSpB_resolveVar v
+      · exact opSpB_exprArgsHV cd nArgs rest o h'
+
+/-- The source operands of a binding do not name `RSP`. -/
+theorem opSpB_exprArgs {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (e : Expr jasminDialect Γ τ) :
+    ∀ o ∈ exprArgs curDepth nArgs argName (fun _ => none) e, opSpB "RSP" o = false := by
+  have go : ∀ {tys : List JasminTy} (hv : HVector (fun ty => Ctxt.Var Γ ty) tys)
+      (o : LOperand), o ∈ exprArgs.go curDepth nArgs argName (fun _ => none) hv →
+      opSpB "RSP" o = false := by
+    intro tys hv
+    induction hv with
+    | nil =>
+        intro o ho
+        rw [show exprArgs.go curDepth nArgs argName (fun _ => none)
+            (HVector.nil (f := fun ty => Ctxt.Var Γ ty)) = ([] : List LOperand) from rfl] at ho
+        simp at ho
+    | cons v rest ih =>
+        intro o ho
+        have hgo : exprArgs.go curDepth nArgs argName (fun _ => none) (HVector.cons v rest)
+            = resolveVar curDepth nArgs argName (fun _ => none) v
+              :: exprArgs.go curDepth nArgs argName (fun _ => none) rest := rfl
+        rw [hgo, List.mem_cons] at ho
+        rcases ho with rfl | ho
+        · exact opSpB_resolveVar v
+        · exact ih o ho
+  exact fun o ho => go e.args o ho
+
+/-- The registers of a carried block do not name `RSP`. -/
+theorem opSpB_carriedRegs {d nCar : Nat} {r : String} (hr : r ∈ carriedRegs d nCar) :
+    opSpB "RSP" (.reg r) = false := by
+  obtain ⟨j, -, rfl⟩ := mem_carriedRegs.mp hr
+  exact opSpB_regName _
+
+/-- An `Lopn` with one register destination passes `spFreeB` when neither the destination
+    nor a source names `RSP`. -/
+theorem spFreeB_lopn {dst : String} {m : String} {ss : List LOperand}
+    (hd : opSpB "RSP" (.reg dst) = false) (hs : ∀ o ∈ ss, opSpB "RSP" o = false) :
+    spFreeB "RSP" (.Lopn [.reg dst] m ss) = true := by
+  have : ss.any (opSpB "RSP") = false := List.any_eq_false.mpr fun o ho => by simp [hs o ho]
+  simp [spFreeB, hd, this]
+
+/-- The operands of a pair of a register that does not name `RSP` and an immediate do not
+    name `RSP`. -/
+theorem opSpB_pair_imm {r : String} (hr : opSpB "RSP" (.reg r) = false) (k : Nat) :
+    ∀ o ∈ [LOperand.reg r, .imm k], opSpB "RSP" o = false := by
+  intro o ho
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+  rcases ho with rfl | rfl
+  · exact hr
+  · rfl
+
+/-- A move passes `spFreeB` when neither operand names `RSP`. -/
+theorem spFreeB_movI {dst : String} {src : LOperand} (hd : opSpB "RSP" (.reg dst) = false)
+    (hs : opSpB "RSP" src = false) : spFreeB "RSP" (movI dst src).fst = true :=
+  spFreeB_lopn hd (by simpa using hs)
+
+/-- An indexed element does not name `RSP` when neither its base nor its index does. -/
+theorem opSpB_arrIdx {b i : String} (k : Nat) (hb : opSpB "RSP" (.reg b) = false)
+    (hi : opSpB "RSP" (.reg i) = false) : opSpB "RSP" (.arrIdx b i k) = false := by
+  simp only [opSpB, Bool.or_eq_false_iff] at hb hi ⊢
+  exact ⟨hb.1, hi.1⟩
+
+/-- The instruction of an op of the stack-memory fragment passes `spFreeB` when neither
+    its destination nor a source names `RSP`. Belongs beside `opToLinstrR_plain` in
+    `JasminLsemMemFlagArrLoop`. -/
+theorem spFreeB_opToLinstrR (op : JasminOp) (hop : OpPlain op) {dst : String}
+    {srcs : List LOperand} (hd : opSpB "RSP" (.reg dst) = false)
+    (hs : ∀ o ∈ srcs, opSpB "RSP" o = false) :
+    spFreeB "RSP" (opToLinstrR op dst srcs) = true := by
+  cases op <;> simp only [OpPlain] at hop
+  case regConst w k => exact spFreeB_lopn hd (by simp [opSpB])
+  case castW w w' =>
+    simp only [opToLinstrR]
+    split <;> exact spFreeB_lopn hd hs
+  case stackLoad w k =>
+    simp only [opToLinstrR]
+    split
+    · refine spFreeB_lopn hd fun o ho => ?_
+      obtain rfl := List.mem_singleton.mp ho
+      exact opSpB_arrIdx _ (hs _ (by simp)) (hs _ (by simp))
+    · exact spFreeB_lopn hd hs
+  case stackStore w k =>
+    simp only [opToLinstrR]
+    split
+    · refine spFreeB_lopn hd fun o ho => ?_
+      rcases List.mem_cons.mp ho with rfl | ho
+      · exact opSpB_arrIdx _ (hs _ (by simp)) (hs _ (by simp))
+      · obtain rfl := List.mem_singleton.mp ho
+        exact hs _ (by simp)
+    · exact spFreeB_lopn hd hs
+  all_goals exact spFreeB_lopn hd hs
+
+/-- The structured shift instruction passes `spFreeB` when neither its destination nor
+    its source names `RSP`. -/
+theorem spFreeB_shiftLinstr (mn : String) (w : Nat) {dst : String} {s : LOperand} (k : Nat)
+    (hd : opSpB "RSP" (.reg dst) = false) (hs : opSpB "RSP" s = false) :
+    spFreeB "RSP" (shiftLinstr mn w dst s k) = true :=
+  spFreeB_lopn hd fun o ho => by
+    rcases List.mem_cons.mp ho with rfl | ho
+    · exact hs
+    · obtain rfl := List.mem_singleton.mp ho
+      rfl
+
+/-- The instruction of a binding of the stack-memory fragment does not name `RSP`. -/
+theorem bindOps_spFree (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {e : Expr jasminDialect Γ t} (he : BindMemN e) (d : Nat) :
+    ∀ i ∈ bindOps nArgs e d, spFreeB "RSP" i.fst = true := by
+  obtain ⟨w, v, h⟩ := he
+  have hop : OpPlain e.op := (scalarMemN_comOpsPlain h).1
+  have hs := opSpB_exprArgs (curDepth := d) (nArgs := nArgs) e
+  intro i hi
+  simp only [bindOps, straightOpsMem, List.mem_cons, List.not_mem_nil, or_false] at hi
+  subst hi
+  generalize exprArgs d nArgs argName (fun _ => none) e = src at hs ⊢
+  split
+  · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+  · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+  · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+  · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+  · split
+    · exact spFreeB_shiftLinstr _ _ _ (opSpB_regName _) (hs _ (by simp))
+    · exact spFreeB_shiftLinstr _ _ _ (opSpB_regName _) (hs _ (by simp))
+    · exact spFreeB_shiftLinstr _ _ _ (opSpB_regName _) (hs _ (by simp))
+    · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+
+/-- The guards of an instruction set on a register that does not name `RSP` pass
+    `spFreeB`. -/
+structure GuardsSpFree (I : IsaData) : Prop where
+  /-- The zero-trip guard does not name `RSP`. -/
+  zeroTrip : ∀ (c : String) (t e : LLabel), opSpB "RSP" (.reg c) = false →
+    ∀ i ∈ I.zeroTripGuard c t e, spFreeB "RSP" i = true
+  /-- The back-edge guard does not name `RSP`. -/
+  loop : ∀ (c : String) (t : LLabel), opSpB "RSP" (.reg c) = false →
+    ∀ i ∈ I.loopGuard c t, spFreeB "RSP" i = true
+
+/-- The guards of x86 satisfy `GuardsSpFree`. -/
+theorem x86Data_guardsSpFree : GuardsSpFree x86Data where
+  zeroTrip c t e hc i hi := by
+    rw [X86Backend.TwoAddrLegalize.x86Data_zeroTripGuard] at hi
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl
+    · exact spFreeB_lopn hc (opSpB_pair_imm hc 0)
+    · simp [spFreeB, opSpB_reg_of_head (r := "Z") (c := 'Z') rfl (by decide) (by decide)]
+  loop c t hc i hi := by
+    rw [X86Backend.TwoAddrLegalize.x86Data_loopGuard] at hi
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl
+    · exact spFreeB_lopn hc (opSpB_pair_imm hc 0)
+    · simp [spFreeB, opSpB_reg_of_head (r := "NZ") (c := 'N') rfl (by decide) (by decide)]
+
+/-- The seeds of a block of registers do not name `RSP` when neither a register nor an
+    operand does. -/
+theorem seedMoves_spFree {car : List String} {ops : List LOperand}
+    (hc : ∀ r ∈ car, opSpB "RSP" (.reg r) = false) (ho : ∀ o ∈ ops, opSpB "RSP" o = false) :
+    ∀ i ∈ seedMoves car ops, spFreeB "RSP" i.fst = true := fun i hi => by
+  obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hi
+  obtain ⟨h1, h2⟩ := List.of_mem_zip hp
+  exact spFreeB_movI (hc _ h1) (ho _ h2)
+
+/-- A parallel assignment does not name `RSP` when neither a target nor an operand
+    does. -/
+theorem parMoves_spFree (D : Nat) {tgts : List String} {ops : List LOperand}
+    (ht : ∀ r ∈ tgts, opSpB "RSP" (.reg r) = false) (ho : ∀ o ∈ ops, opSpB "RSP" o = false) :
+    ∀ i ∈ parMoves D tgts ops, spFreeB "RSP" i.fst = true := by
+  intro i hi
+  simp only [parMoves, stageMoves, commitMoves, List.mem_append, List.mem_map] at hi
+  rcases hi with ⟨p, hp, rfl⟩ | ⟨p, hp, rfl⟩
+  · exact spFreeB_movI (opSpB_regName _) (ho _ (List.fst_mem_of_mem_zipIdx hp))
+  · exact spFreeB_movI (ht _ (List.fst_mem_of_mem_zipIdx hp)) (opSpB_regName _)
+
+/-- The widening of a bit does not name `RSP` when none of its registers and its operand
+    does. -/
+theorem flagWord_spFree (I : IsaData) {r z : String} {op : LOperand}
+    (hr : opSpB "RSP" (.reg r) = false) (hz : opSpB "RSP" (.reg z) = false)
+    (ho : opSpB "RSP" op = false) : ∀ i ∈ flagWord I r z op, spFreeB "RSP" i.fst = true := by
+  intro i hi
+  cases op with
+  | reg f =>
+      simp only [flagWord] at hi
+      cases hm : I.selectMnemonic with
+      | none => simp [hm] at hi
+      | some m =>
+          simp only [hm, List.mem_cons, List.not_mem_nil, or_false] at hi
+          rcases hi with rfl | rfl | rfl
+          · exact spFreeB_movI hr rfl
+          · exact spFreeB_movI hz rfl
+          · exact spFreeB_lopn hr (by simp [ho, hr, hz])
+  | arr b k => simp only [flagWord, List.mem_singleton] at hi; subst hi; exact spFreeB_movI hr ho
+  | imm v => simp only [flagWord, List.mem_singleton] at hi; subst hi; exact spFreeB_movI hr ho
+  | arrIdx b k s =>
+      simp only [flagWord, List.mem_singleton] at hi; subst hi; exact spFreeB_movI hr ho
+
+/-- The moves of a block down one register do not name `RSP`. -/
+theorem shiftMoves_spFree (d nCar : Nat) :
+    ∀ i ∈ shiftMoves d nCar, spFreeB "RSP" i.fst = true := fun i hi => by
+  obtain ⟨p, _, rfl⟩ := List.mem_map.mp hi
+  exact spFreeB_movI (opSpB_regName _) (opSpB_regName _)
+
+/-- The advance of a counted loop does not name `RSP` when neither of its registers
+    does. -/
+theorem advanceOps_spFree {idx ctr : String} (hi : opSpB "RSP" (.reg idx) = false)
+    (hc : opSpB "RSP" (.reg ctr) = false) :
+    ∀ i ∈ advanceOps idx ctr, spFreeB "RSP" i.fst = true := by
+  intro i hmem
+  simp only [advanceOps, List.mem_cons, List.not_mem_nil, or_false] at hmem
+  rcases hmem with rfl | rfl
+  · exact spFreeB_lopn hi (opSpB_pair_imm hi 1)
+  · exact spFreeB_lopn hc (opSpB_pair_imm hc 1)
+
+/-- The frame of a counted loop does not name `RSP` when its body and operands do not. -/
+theorem forFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n nCar : Nat)
+    {initOps : List LOperand} {countOp : LOperand} {bodyC : List LinstrRM}
+    {bodyOps : List LOperand} (bodyD : Nat) (hi : ∀ o ∈ initOps, opSpB "RSP" o = false)
+    (hc : opSpB "RSP" countOp = false) (hb : ∀ i ∈ bodyC, spFreeB "RSP" i.fst = true)
+    (ho : ∀ o ∈ bodyOps, opSpB "RSP" o = false) :
+    ∀ i ∈ forFrame d n nCar initOps countOp bodyC bodyOps bodyD I,
+      spFreeB "RSP" i.fst = true := by
+  intro i hmem
+  simp only [forFrame, List.mem_append, List.mem_cons, List.mem_map] at hmem
+  rcases hmem with h | h | ⟨g, hg, rfl⟩ | rfl | h | h | h | ⟨g, hg, rfl⟩ | rfl | h
+  · exact seedMoves_spFree (fun r hr => opSpB_carriedRegs hr) hi i h
+  · refine seedMoves_spFree (fun r hr => ?_) (fun o ho' => ?_) i h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl
+      · exact opSpB_regName _
+      · exact opSpB_loopCtr _
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at ho'
+      rcases ho' with rfl | rfl
+      · rfl
+      · exact hc
+  · exact hI.zeroTrip _ _ _ (opSpB_loopCtr _) g hg
+  · rfl
+  · exact hb i h
+  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) ho i h
+  · exact advanceOps_spFree (opSpB_regName _) (opSpB_loopCtr _) i h
+  · exact hI.loop _ _ (opSpB_loopCtr _) g hg
+  · rfl
+  · exact shiftMoves_spFree _ _ i h
+
+/-- The frame of a loop in exit-flag form does not name `RSP` when its body and operands
+    do not. -/
+theorem whileFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n nCar : Nat)
+    {initOps : List LOperand} {bodyC : List LinstrRM} {flagOp : LOperand}
+    {bodyOps : List LOperand} (bodyD : Nat) (hi : ∀ o ∈ initOps, opSpB "RSP" o = false)
+    (hb : ∀ i ∈ bodyC, spFreeB "RSP" i.fst = true) (hf : opSpB "RSP" flagOp = false)
+    (ho : ∀ o ∈ bodyOps, opSpB "RSP" o = false) :
+    ∀ i ∈ whileFrame d n nCar initOps bodyC flagOp bodyOps bodyD I,
+      spFreeB "RSP" i.fst = true := by
+  intro i hmem
+  simp only [whileFrame, List.mem_append, List.mem_cons, List.mem_map] at hmem
+  rcases hmem with h | rfl | h | h | h | ⟨g, hg, rfl⟩
+  · exact seedMoves_spFree (fun r hr => opSpB_carriedRegs hr) hi i h
+  · rfl
+  · exact hb i h
+  · exact flagWord_spFree I (opSpB_regName _) (opSpB_regName _) hf i h
+  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) ho i h
+  · exact hI.loop _ _ (opSpB_regName _) g hg
+
+/-- The frame of a branch does not name `RSP` when its branches and operands do not. -/
+theorem ifFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (fn : String) (d n nRes : Nat)
+    {condOp : LOperand} {thnC : List LinstrRM} {thnOps : List LOperand} (thnD : Nat)
+    {elsC : List LinstrRM} {elsOps : List LOperand} (elsD : Nat)
+    (hc : opSpB "RSP" condOp = false) (ht : ∀ i ∈ thnC, spFreeB "RSP" i.fst = true)
+    (hto : ∀ o ∈ thnOps, opSpB "RSP" o = false) (he : ∀ i ∈ elsC, spFreeB "RSP" i.fst = true)
+    (heo : ∀ o ∈ elsOps, opSpB "RSP" o = false) :
+    ∀ i ∈ ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I,
+      spFreeB "RSP" i.fst = true := by
+  intro i hmem
+  simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
+    or_false] at hmem
+  rcases hmem with h | ⟨g, hg, rfl⟩ | rfl | h | h | rfl | rfl | h | h | rfl
+  · exact flagWord_spFree I (opSpB_regName _) (opSpB_regName _) hc i h
+  · exact hI.zeroTrip _ _ _ (opSpB_regName _) g hg
+  · rfl
+  · exact ht i h
+  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) hto i h
+  · rfl
+  · rfl
+  · exact he i h
+  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) heo i h
+  · rfl
+
+/-- **Neither the code nor the returned operands of the export of a program of
+    `RegionExportable` name `RSP`**, over an instruction set whose guards do not. -/
+theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpFree I)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    (hp : RegionExportable p) :
+    ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n I = some r →
+      (∀ i ∈ r.code, spFreeB "RSP" i.fst = true) ∧ ∀ o ∈ r.res, opSpB "RSP" o = false := by
+  induction p with
+  | ret vs =>
+      intro d n r h
+      simp only [exportR, Option.some.injEq] at h
+      subst h
+      exact ⟨fun i hi => (by cases hi), opSpB_exprArgsHV d nArgs vs⟩
+  | var e k ih =>
+      intro d n r h
+      simp only [exportR, Option.map_eq_some_iff] at h
+      obtain ⟨rk, hk, rfl⟩ := h
+      obtain ⟨hc, hres⟩ := ih hp.2 _ _ _ hk
+      refine ⟨fun i hi => ?_, hres⟩
+      rcases List.mem_append.mp hi with hi | hi
+      · exact bindOps_spFree nArgs hp.1 d i hi
+      · exact hc i hi
+  | forLoop count inits body k ihb ihk =>
+      intro d n r h
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      obtain ⟨hbc, hbr⟩ := ihb hp.2.1 _ _ _ hb
+      obtain ⟨hc, hres⟩ := ihk hp.2.2 _ _ _ hk
+      refine ⟨fun i hi => ?_, hres⟩
+      rcases List.mem_append.mp hi with hi | hi
+      · exact forFrame_spFree hI _ _ _ _ (opSpB_exprArgsHV _ _ inits) (opSpB_resolveVar count)
+          hbc hbr i hi
+      · exact hc i hi
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro d n r h
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨t, ht, e, he, rk, hk, rfl⟩ := h
+      obtain ⟨htc, htr⟩ := iht hp.2.1 _ _ _ ht
+      obtain ⟨hec, her⟩ := ihe hp.2.2.1 _ _ _ he
+      obtain ⟨hc, hres⟩ := ihk hp.2.2.2 _ _ _ hk
+      refine ⟨fun i hi => ?_, hres⟩
+      rcases List.mem_append.mp hi with hi | hi
+      · exact ifFrame_spFree hI _ _ _ _ _ _ (opSpB_resolveVar cond) htc htr hec her i hi
+      · exact hc i hi
+  | whileLoop inits body k ihb ihk =>
+      intro d n r h
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      obtain ⟨hbc, hbr⟩ := ihb hp.2.1 _ _ _ hb
+      obtain ⟨hc, hres⟩ := ihk hp.2.2 _ _ _ hk
+      refine ⟨fun i hi => ?_, hres⟩
+      rcases List.mem_append.mp hi with hi | hi
+      · refine whileFrame_spFree hI _ _ _ _ (opSpB_exprArgsHV _ _ inits) hbc ?_
+          (fun o ho => hbr o (List.mem_of_mem_tail ho)) i hi
+        cases hbres : b.res with
+        | nil => rfl
+        | cons x xs => exact hbr x (by simp [hbres])
+      · exact hc i hi
+  | call f args k _ => exact hp.elim
+
+/-- **The export of a program of `RegionExportable` over x86 passes `spFreeBodyB` at
+    `RSP`.** -/
+theorem exportR_spFreeBodyB (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p)
+    {d n : Nat} {r : Exported} (hr : exportR nArgs fn p d n = some r) :
+    spFreeBodyB "RSP" r.code = true :=
+  List.all_eq_true.mpr (exportR_spFree nArgs fn x86Data_guardsSpFree hp d n r hr).1
+
+/-! ## 6. The return -/
+
+/-- **The run of the exported code followed by a return.** Let `p` be a program of
+    `RegionExportable` with the export `r`, and let `p` denote `v` at `V`. From an entry
+    state at the counter `0` whose store agrees with `V`, with the stack pointer `RSP`
+    holding `sp - 8` and the memory cell it addresses holding the word of a counter `ra`
+    below `2 ^ 64`, the instruction set with calls makes on the code followed by `Lret` a
+    run to the counter `ra` with `RSP` holding `sp`. The end state is that of the run
+    without the stack pointer, `t`, with the stack pointer and its cell replaced; `t`
+    agrees with the returned operands at `v`. -/
+theorem exportR_ret_steps (fn : String) (tag : MemTag) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p)
+    {r : Exported} (hr : exportR Γ.length fn p Γ.length 0 = some r) (fuel : Nat)
+    (V : Ctxt.Valuation Γ) (v : Ctxt.Valuation (d := jasminDialect) ts)
+    (hden : p.denote fuel V = some v) (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 0)
+    (hag : StoreAgreesM Γ.length Γ.length b0 V) (sp : BitVec 64) (ra : Nat)
+    (hra : ra < 2 ^ 64) :
+    ∃ (n : Nat) (t : LstateMF),
+      Steps x86Isa.withCalls (singletonProgM fn (r.code ++ [(.Lret, tag)])) (n + 1)
+        (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra)
+          { prog := { base := b0, lfn := fn }, zf := zf })
+        (retState "RSP" sp ra (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t))
+      ∧ atPc (singletonProgM fn (r.code ++ [(.Lret, tag)])) ra
+        (retState "RSP" sp ra (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t))
+      ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
+      ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
+  obtain ⟨k, t, hrun, hat, hres, hfr⟩ := exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp)
+    hr rfl le_rfl fuel V v hden b0 zf hpc hag
+  have hrun0 := hrun 0
+  rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF] at hrun0
+  have hrun' : x86Isa.lsemFuelMemF (singletonProgM fn r.code) (k + 0)
+      (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra)
+        { prog := { base := b0, lfn := fn }, zf := zf })
+      = some (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t) := by
+    rw [x86_lsemFuelMemF_spFrame (P := singletonProgM fn r.code)
+      (spFree_of_spFreeBodyB (exportR_spFreeBodyB _ fn hp hr)), hrun0]
+    rfl
+  obtain ⟨n, -, hsteps, hatr⟩ := x86_steps_snoc_ret (tag := tag)
+    (exportR_noCall _ _ x86Data_guardsNoCall p _ _ _ hr) hrun' ⟨hat.1, hat.2⟩
+    (LstateN.getW_setReg_same _ _ _)
+    (show (spM "RSP" (sp - 8) (BitVec.ofNat 64 ra) t.prog.base).lmem "RSP" (sp - 8).toInt
+        = BitVec.ofNat 64 ra by simp [spM, LstateM.storeMemC]) hra
+  exact ⟨n, t, hsteps, hatr, hres, hfr⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
