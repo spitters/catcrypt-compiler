@@ -148,9 +148,12 @@ program. `exportR` returns `none` exactly on a program with a `call`
 * `exportR_eq_some_iff`, `exportR_eq_none_iff` — the export succeeds exactly on the
   programs without a `call`.
 * `exportRSim_lsemFuelMemF` — the code of an export, as a whole body, halts under the
-  fuelled interpreter `lsemFuelMemF` in a state that agrees with the denotation.
+  fuelled interpreter `lsemFuelMemF` at the counter after its last instruction, in a state
+  that agrees with the denotation.
 * `exportR_lsemFuelMemF` — the same run for a whole program of `RegionExportable`, from the
   depth of its argument context and the label `0`.
+* `exportR_noCall`, `x86Data_guardsNoCall` — the export contains neither a call nor a
+  return, over an instruction set whose guards (`GuardsNoCall`) contain none.
 * `exportR_next_le` — the counter does not decrease.
 * `exportR_labels_range` — the labels of the export lie between the counter it receives
   and the counter it returns.
@@ -3087,9 +3090,9 @@ theorem RegionExportable.exportR_eq_some {Γ : Ctxt jasminDialect} {ts : List Ja
 /-- **The export as a whole body halts under `lsemFuelMemF`.** For a program satisfying the
     simulation statement, the code of its export as the body of a one-function program,
     run by the fuelled flag-machine interpreter from a state at counter `0` whose store
-    agrees with `V`, halts at every fuel from some bound on, in a state that agrees with
-    the returned operands at the denotation and differs from the entry state within the
-    frame of the region. -/
+    agrees with `V`, halts at every fuel from some bound on, in a state at the counter
+    after the last instruction that agrees with the returned operands at the denotation and
+    differs from the entry state within the frame of the region. -/
 theorem exportRSim_lsemFuelMemF {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hsim : ExportRSim nArgs fn p)
     {d n : Nat} {r : Exported} (hr : exportR nArgs fn p d n = some r) (hlen : Γ.length = d)
@@ -3099,23 +3102,24 @@ theorem exportRSim_lsemFuelMemF {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDia
     ∃ (k : Nat) (t : LstateMF),
       (∀ j, lsemFuelMemF (singletonProgM fn r.code) (k + j)
         { prog := { base := b0, lfn := fn }, zf := zf } = some t)
+      ∧ atPc (singletonProgM fn r.code) r.code.length t
       ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base := by
   obtain ⟨k, t, hs, hat, hres, hfr⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code) [] []
     rfl (by rw [List.nil_append, List.append_nil]; rfl)
     (fun l _ => (findLabelMem_eq_none_iff l []).mpr (by simp)) fuel V v
     { prog := { base := b0, lfn := fn }, zf := zf } hden ⟨rfl, hpc⟩ hag
-  refine ⟨k, t, fun j => ?_, hres, hfr⟩
+  rw [List.length_nil, Nat.zero_add] at hat
+  refine ⟨k, t, fun j => ?_, hat, hres, hfr⟩
   rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF]
-  exact lsemFuelMemF_of_steps x86Isa _ hs
-    (halted_of_atPc hat (by rw [List.length_nil, Nat.zero_add]; exact le_rfl)) j
+  exact lsemFuelMemF_of_steps x86Isa _ hs (halted_of_atPc hat le_rfl) j
 
 /-- **The run of a whole program.** A program of `RegionExportable` over the argument
     context `Γ` has an export from the depth `Γ.length` and the label `0`, the export
     `exportRBody` projects to the wire. Its code as the body of a one-function program, run
     by `lsemFuelMemF` from a state at counter `0` whose store agrees with the arguments `V`,
     halts at every fuel from some bound on whenever the program denotes `v` at `V`, in a
-    state that agrees with the returned operands at `v` and reads as the entry state at
-    every argument register. -/
+    state at the counter after the last instruction that agrees with the returned operands
+    at `v` and reads as the entry state at every argument register. -/
 theorem exportR_lsemFuelMemF (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) (fuel : Nat)
     (V : Ctxt.Valuation Γ) (v : Ctxt.Valuation (d := jasminDialect) ts)
@@ -3124,10 +3128,134 @@ theorem exportR_lsemFuelMemF (fn : String) {Γ : Ctxt jasminDialect} {ts : List 
     ∃ r, exportR Γ.length fn p Γ.length 0 = some r ∧ ∃ (k : Nat) (t : LstateMF),
       (∀ j, lsemFuelMemF (singletonProgM fn r.code) (k + j)
         { prog := { base := b0, lfn := fn }, zf := zf } = some t)
+      ∧ atPc (singletonProgM fn r.code) r.code.length t
       ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
       ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
   obtain ⟨r, hr⟩ := hp.exportR_eq_some Γ.length fn Γ.length 0
   exact ⟨r, hr, exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp) hr rfl le_rfl fuel V v hden
     b0 zf hpc hag⟩
+
+/-! ## 21. The export contains no call -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (isCall)
+open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCall (isCall_of_isLopn)
+
+/-- The guards of an instruction set contain neither a call nor a return. -/
+structure GuardsNoCall (I : IsaData) : Prop where
+  /-- The zero-trip guard contains neither a call nor a return. -/
+  zeroTrip : ∀ (c : String) (t e : LLabel), ∀ i ∈ I.zeroTripGuard c t e, isCall i = false
+  /-- The back-edge guard contains neither a call nor a return. -/
+  loop : ∀ (c : String) (t : LLabel), ∀ i ∈ I.loopGuard c t, isCall i = false
+
+/-- The guards of x86 satisfy `GuardsNoCall`. -/
+theorem x86Data_guardsNoCall : GuardsNoCall x86Data where
+  zeroTrip c t e i hi := by
+    rw [x86Data_zeroTripGuard] at hi
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl <;> rfl
+  loop c t i hi := by
+    rw [x86Data_loopGuard] at hi
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl <;> rfl
+
+/-- The frame of a counted loop around a body without a call contains no call. -/
+theorem forFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (d n nCar : Nat)
+    (initOps : List LOperand) (countOp : LOperand) (bodyC : List LinstrRM)
+    (bodyOps : List LOperand) (bodyD : Nat) (hb : ∀ i ∈ bodyC, isCall i.fst = false) :
+    ∀ i ∈ forFrame d n nCar initOps countOp bodyC bodyOps bodyD I, isCall i.fst = false := by
+  intro i hi
+  simp only [forFrame, List.mem_append, List.mem_cons, List.mem_map] at hi
+  rcases hi with hi | hi | ⟨g, hg, rfl⟩ | rfl | hi | hi | hi | ⟨g, hg, rfl⟩ | rfl | hi
+  · exact isCall_of_isLopn (isLopn_seedMoves _ _ i hi)
+  · exact isCall_of_isLopn (isLopn_seedMoves _ _ i hi)
+  · exact hI.zeroTrip _ _ _ g hg
+  · rfl
+  · exact hb i hi
+  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · exact isCall_of_isLopn (isLopn_advanceOps _ _ i hi)
+  · exact hI.loop _ _ g hg
+  · rfl
+  · exact isCall_of_isLopn (isLopn_shiftMoves _ _ i hi)
+
+/-- The frame of a loop in exit-flag form around a body without a call contains no call. -/
+theorem whileFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (d n nCar : Nat)
+    (initOps : List LOperand) (bodyC : List LinstrRM) (flagOp : LOperand)
+    (bodyOps : List LOperand) (bodyD : Nat) (hb : ∀ i ∈ bodyC, isCall i.fst = false) :
+    ∀ i ∈ whileFrame d n nCar initOps bodyC flagOp bodyOps bodyD I, isCall i.fst = false := by
+  intro i hi
+  simp only [whileFrame, List.mem_append, List.mem_cons, List.mem_map] at hi
+  rcases hi with hi | rfl | hi | hi | hi | ⟨g, hg, rfl⟩
+  · exact isCall_of_isLopn (isLopn_seedMoves _ _ i hi)
+  · rfl
+  · exact hb i hi
+  · exact isCall_of_isLopn (isLopn_flagWord _ _ _ _ i hi)
+  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · exact hI.loop _ _ g hg
+
+/-- The frame of a branch around branches without a call contains no call. -/
+theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n nRes : Nat)
+    (condOp : LOperand) (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
+    (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
+    (ht : ∀ i ∈ thnC, isCall i.fst = false) (he : ∀ i ∈ elsC, isCall i.fst = false) :
+    ∀ i ∈ ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I,
+      isCall i.fst = false := by
+  intro i hi
+  simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
+    or_false] at hi
+  rcases hi with hi | ⟨g, hg, rfl⟩ | rfl | hi | hi | rfl | rfl | hi | hi | rfl
+  · exact isCall_of_isLopn (isLopn_flagWord _ _ _ _ i hi)
+  · exact hI.zeroTrip _ _ _ g hg
+  · rfl
+  · exact ht i hi
+  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · rfl
+  · rfl
+  · exact he i hi
+  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · rfl
+
+/-- **The export contains neither a call nor a return**, over an instruction set whose
+    guards contain none. -/
+theorem exportR_noCall (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsNoCall I)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n I = some r →
+      ∀ i ∈ r.code, isCall i.fst = false := by
+  induction p with
+  | ret vs =>
+      intro d n r h i hi
+      simp only [exportR, Option.some.injEq] at h
+      subst h
+      cases hi
+  | var e k ih =>
+      intro d n r h i hi
+      simp only [exportR, Option.map_eq_some_iff] at h
+      obtain ⟨rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact isCall_of_isLopn (isLopn_bindOps nArgs e d i hi)
+      · exact ih _ _ _ hk i hi
+  | forLoop count inits body k ihb ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact forFrame_noCall hI _ _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
+      · exact ihk _ _ _ hk i hi
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨t, ht, e, he, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact ifFrame_noCall hI _ _ _ _ _ _ _ _ _ _ _ (iht _ _ _ ht) (ihe _ _ _ he) i hi
+      · exact ihk _ _ _ hk i hi
+  | whileLoop inits body k ihb ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact whileFrame_noCall hI _ _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
+      · exact ihk _ _ _ hk i hi
+  | call f args k _ =>
+      intro d n r h
+      simp [exportR] at h
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
