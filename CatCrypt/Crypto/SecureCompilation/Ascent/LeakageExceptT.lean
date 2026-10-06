@@ -5,7 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
+public import Std.Do.Triple
+public import Std.Tactic.Do
 public import Mathlib.Control.EquivFunctor
 
 
