@@ -18,8 +18,9 @@ set_option autoImplicit false
 # The x86 values of the instruction-set data record
 
 The x86-64 constants the loop exporter, the allocator, the printer and the two-address
-legaliser share, and the two records built from them: the register file and calling
-convention `x86Abi : IsaAbi` and the instruction-set data `x86Data : IsaData`. The module
+legaliser share, and the three records built from them: the register file and calling
+convention `x86Abi : IsaAbi`, the instruction-set data `x86Data : IsaData` and the export
+data `x86ExportData : IsaExportData`. The module
 imports the mnemonic helpers of `JasminLprogExport.Export` and the record types of
 `LprogIsaData` only, so the loop exporter `JasminLprogExport.ExportLoops` reads its loop
 guards from `x86Data`. Each constant keeps the namespace of the module that uses it.
@@ -37,6 +38,8 @@ guards from `x86Data`. Each constant keeps the namespace of the module that uses
   data, with the flag loop guard, the flag zero-trip guard and the compare invariant touch.
 * `X86Backend.TwoAddrLegalize.x86Data_loopGuard`, `x86Data_zeroTripGuard`,
   `x86Data_invTouch`: the two guards as instruction lists and the invariant touch.
+* `LprogIsa.x86ExportData`: the x86 export data, the instruction pointer, the vector register
+  file and the sizes of the frame layout.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -230,3 +233,30 @@ theorem x86Data_invTouch (ctr r : String) :
   rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+
+/-! ## The x86 export data -/
+
+/-- **The x86 export data**: the instruction pointer `RIP`, the vector registers
+    `XMM0`–`XMM15` with the System V vector arguments `XMM0`–`XMM7` and result `XMM0`, the
+    copy `VMOVDQU`, 8-byte words, 16-byte stack alignment at a call, the 8-byte return
+    address a call pushes, eight save cells for a leaf and twelve for a calling body, and
+    32-byte vector spill cells. -/
+@[reducible] def x86ExportData : IsaExportData where
+  ip := "RIP"
+  vecPool := ["XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", "XMM6", "XMM7",
+    "XMM8", "XMM9", "XMM10", "XMM11", "XMM12", "XMM13", "XMM14", "XMM15"]
+  vecArgRegs := sysvSseArgRegs
+  vecRetRegs := [sysvSseRetReg]
+  vecCopy := "VMOVDQU"
+  wordBytes := 8
+  stackAlign := 16
+  callPushBytes := 8
+  saveCells := 8
+  saveCellsCall := 12
+  vecCellBytes := 32
+
+end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
