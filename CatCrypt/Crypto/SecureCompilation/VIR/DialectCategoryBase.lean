@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplate
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminValTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplateCatToJasmin
 
 /-!
 # The category of dialects with certified template lowerings
@@ -40,8 +41,23 @@ they hold by reduction.
 * `Dial.Hom` — a template lowering with its transports, their proofs and surjectivity.
 * `Dial.Hom.id`, `Dial.Hom.comp` — identity and composition.
 * `Dial.instCategory` — the category of dialects.
+* `Dialect.restrict`, `Dial.restrict`, `Dial.incl` — the restriction of a dialect to a
+  set of operations, with the instances of the dialect, and its inclusion.
+* `DialectRestrict.restrictFrame`, `DialectRestrict.acceptedTemplate`,
+  `DialectRestrict.acceptedLowering` — a partial template lowering as a total lowering of
+  the dialect restricted to the operations it accepts.
+* `DialectRestrict.restrictNF?` — the restriction of a structured program, defined when
+  every let-bound operation is in the set.
+* `Dial.cryptoAccepted`, `Dial.catToJasmin` — the crypto dialect restricted to the
+  operations `NFProgCatToJasmin.catToJasmin` accepts, and its lowering to the Jasmin
+  dialect as a morphism.
 
 ## Main results
+
+* `Dial.Hom.mapTy_ne_cryptoToJasmin` — no morphism from the unrestricted crypto dialect
+  to the Jasmin dialect has the type map `CryptoToJasminCom.mapTy`.
+* `DialectRestrict.templateBlock?_ofRestrict` — a partial template at an accepted
+  expression gives the block of the accepted lowering.
 
 * `Dial.Hom.ext` — a morphism is determined by its lowering and its value transport.
 * `Dial.Hom.mapVal_surjective` — every valuation of a mapped context is a transported
@@ -391,10 +407,10 @@ theorem comp_transTy {a b c : Dial} (f : a ⟶ b) (g : b ⟶ c) {t : a.dia.Ty} (
 /-! ## 5. The crypto dialect and the Jasmin dialect -/
 
 /-- The crypto dialect as an object of `Dial`. -/
-def crypto : Dial := ⟨CatCryptDialect.catCryptDialect⟩
+@[reducible] def crypto : Dial := ⟨CatCryptDialect.catCryptDialect⟩
 
 /-- The Jasmin dialect as an object of `Dial`. -/
-def jasmin : Dial := ⟨JasminDialect.jasminDialect⟩
+@[reducible] def jasmin : Dial := ⟨JasminDialect.jasminDialect⟩
 
 open CryptoSSA (CryptoTy) in
 /-- **The value transport `ctTransTy` is surjective at every type.** It is the identity
@@ -450,6 +466,339 @@ theorem Hom.mapTy_ne_cryptoToJasmin (f : Hom crypto jasmin) :
   have hinj : Function.Injective (fun x : BitVec 1 => (tr (t := .sword 1) x : BitVec 1)) :=
     Finite.injective_iff_surjective.mpr (hs (.sword 1))
   exact absurd (hinj h01) (by decide)
+
+end Dial
+
+/-! ## 6. The restriction of a dialect to a set of operations -/
+
+/-- **The restriction of a dialect** to the operations satisfying `p`: the same types and
+    the operations of `d` at which `p` holds. -/
+@[reducible] def Dialect.restrict (d : Dialect.{0, 0}) (p : d.Op → Prop) : Dialect.{0, 0} where
+  Op := {op : d.Op // p op}
+  Ty := d.Ty
+
+namespace DialectRestrict
+
+open DialectOpSum (castVar castArgs lookup_castVar lookupArgs_castArgs)
+
+/-- Equal block lowerings give the same block at every expression. -/
+theorem lowerExprBlock_heq {d d' : Dialect} [DialectSignature d] [DialectSignature d']
+    {L M : BlockLoweringData d d'} (h : L = M) {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) :
+    L.lowerExprBlock e ≍ M.lowerExprBlock e := by
+  subst h
+  rfl
+
+variable {d : Dialect.{0, 0}} (p : d.Op → Prop)
+
+
+/-- The signature of a restricted dialect is that of the dialect. -/
+@[reducible] instance instDialectSignatureRestrict [DialectSignature d] :
+    DialectSignature (d.restrict p) where
+  sig op := DialectSignature.sig (d := d) op.1
+  ret op := DialectSignature.ret (d := d) op.1
+
+/-- The denotation of a restricted dialect is that of the dialect. -/
+@[reducible] instance instDialectDenoteRestrict [TyDenote d.Ty]
+    [DialectSignature d] [DialectDenote d] :
+    DialectDenote (d.restrict p) where
+  denote op := DialectDenote.denote (d := d) op.1
+
+/-- The trip counter of a restricted dialect is that of the dialect. -/
+@[reducible] instance instHasWord64Restrict [TyDenote d.Ty] [HasWord64 d] :
+    HasWord64 (d.restrict p) where
+  word := HasWord64.word (d := d)
+  toNat := HasWord64.toNat (d := d)
+  ofNat := HasWord64.ofNat (d := d)
+
+/-- The bit of a restricted dialect is that of the dialect. -/
+@[reducible] instance instHasBoolBitRestrict [TyDenote d.Ty] [HasBoolBit d] :
+    HasBoolBit (d.restrict p) where
+  bit := HasBitType.bit (d := d)
+  toBool := HasBoolBit.toBool (d := d)
+
+/-- The call environment of a restricted dialect is that of the dialect. -/
+@[reducible] instance instCallDenoteRestrict [TyDenote d.Ty] [CallDenote d] :
+    CallDenote (d.restrict p) :=
+  ⟨⟨(CallDenote.env (d := d)).call⟩⟩
+
+section Literal
+
+/-! The same instances at a dialect given by its operations and types, the form in which
+instance resolution meets a dialect that is a reducible definition. -/
+
+variable {O T : Type} (q : O → Prop)
+
+/-- The signature of a restricted dialect, at a dialect given by its operations and
+    types. -/
+@[reducible] instance instDialectSignatureRestrictMk [DialectSignature (⟨O, T⟩ : Dialect)] :
+    DialectSignature (Dialect.restrict ⟨O, T⟩ q) :=
+  instDialectSignatureRestrict (d := ⟨O, T⟩) q
+
+/-- The denotation of a restricted dialect, at a dialect given by its operations and
+    types. -/
+@[reducible] instance instDialectDenoteRestrictMk [TyDenote T]
+    [DialectSignature (⟨O, T⟩ : Dialect)] [DialectDenote (⟨O, T⟩ : Dialect)] :
+    DialectDenote (Dialect.restrict ⟨O, T⟩ q) :=
+  instDialectDenoteRestrict (d := ⟨O, T⟩) q
+
+/-- The trip counter of a restricted dialect, at a dialect given by its operations and
+    types. -/
+@[reducible] instance instHasWord64RestrictMk [TyDenote T] [HasWord64 (⟨O, T⟩ : Dialect)] :
+    HasWord64 (Dialect.restrict ⟨O, T⟩ q) :=
+  instHasWord64Restrict (d := ⟨O, T⟩) q
+
+/-- The bit of a restricted dialect, at a dialect given by its operations and types. -/
+@[reducible] instance instHasBoolBitRestrictMk [TyDenote T] [HasBoolBit (⟨O, T⟩ : Dialect)] :
+    HasBoolBit (Dialect.restrict ⟨O, T⟩ q) :=
+  instHasBoolBitRestrict (d := ⟨O, T⟩) q
+
+/-- The call environment of a restricted dialect, at a dialect given by its operations and
+    types. -/
+@[reducible] instance instCallDenoteRestrictMk [TyDenote T] [CallDenote (⟨O, T⟩ : Dialect)] :
+    CallDenote (Dialect.restrict ⟨O, T⟩ q) :=
+  instCallDenoteRestrict (d := ⟨O, T⟩) q
+
+end Literal
+
+variable [DialectSignature d]
+
+variable {p} in
+/-- An expression of a restricted dialect as an expression of the dialect. -/
+def ofRestrict {Γ : List d.Ty} {t : d.Ty} (e : Expr (d.restrict p) Γ t) :
+    Expr d Γ t :=
+  ⟨e.op.1, e.retTy_eq, castArgs e.args⟩
+
+variable {p} in
+/-- An expression of a restricted dialect denotes as it does in the dialect. -/
+theorem denote_ofRestrict [TyDenote d.Ty] [DialectDenote d] {Γ : List d.Ty} {t : d.Ty}
+    (e : Expr (d.restrict p) Γ t) (V : Valuation (d := d) Γ) :
+    (ofRestrict e).denote V = e.denote (d := d.restrict p) V := by
+  rcases e with ⟨op, h, args⟩
+  subst h
+  show DialectDenote.denote (d := d) op.1
+      (Expr.lookupArgs (d := d) (castArgs (O' := d.Op) args) V) =
+    DialectDenote.denote (d := d) op.1 (Expr.lookupArgs (d := d.restrict p) args V)
+  exact congrArg _ (lookupArgs_castArgs args V)
+
+variable {d' : Dialect.{0, 0}} [DialectSignature d']
+
+/-- **The restriction of a lowering frame**: the frame of `F` read on the contexts and
+    variables of the restricted dialect. -/
+@[reducible] def restrictFrame (F : LoweringFrame d d') :
+    LoweringFrame (d.restrict p) d' where
+  mapTy := F.mapTy
+  mapCtx := F.mapCtx
+  mapCtx_nil := F.mapCtx_nil
+  mapCtx_cons := F.mapCtx_cons
+  mapVar := fun v => F.mapVar (castVar (O' := d.Op) v)
+  mapVar_here := fun t Γ => F.mapVar_here t Γ
+  mapVar_there := fun s Γ _ v => F.mapVar_there s Γ (castVar (O' := d.Op) v)
+
+/-- The instance renaming of a restricted frame at an argument vector renames a program as
+    the instance renaming of the frame at the cast vector. -/
+theorem rename_restrictFrame (F : LoweringFrame d d') {Γ : List d.Ty} {ts : List d.Ty}
+    (args : HVector (fun t => Var (d := d.restrict p) Γ t) ts) {s : d'.Ty}
+    (c : Com d' (F.mapCtx ts) s) :
+    Com.rename ((restrictFrame p F).mapHom (argsHom args)) c =
+      Com.rename (F.mapHom (argsHom (castArgs (O' := d.Op) args))) c := by
+  refine F.rename_ext _ _ (fun v => ?_) c
+  obtain ⟨w, rfl⟩ : ∃ w : Var (d := d.restrict p) ts _,
+      v = castVar (O' := d.Op) w :=
+    ⟨castVar (O := d.Op) (O' := {op : d.Op // p op}) (T := d.Ty) v,
+      ((castVar_castVar (O := d.Op) (O' := {op : d.Op // p op}) (O'' := d.Op) (T := d.Ty)
+        v).trans (castVar_self (O := d.Op) (T := d.Ty) v)).symm⟩
+  refine ((restrictFrame p F).mapHom_mapVar (argsHom args) w).trans ?_
+  refine Eq.trans ?_ (F.mapHom_mapVar (argsHom (castArgs (O' := d.Op) args))
+    (castVar (O' := d.Op) w)).symm
+  exact congrArg F.mapVar (argsHom_castArgs (O' := d.Op) args w).symm
+
+/-- **A total template restricted.** The instance of the restricted template at an
+    expression of the restricted dialect is the instance of the template at the
+    expression read in the dialect. -/
+theorem templateBlock_restrict (F : LoweringFrame d d') (S : F.Template) {Γ : List d.Ty}
+    {t : d.Ty} (e : Expr (d.restrict p) Γ t) :
+    (restrictFrame p F).templateBlock (fun op => S op.1) e =
+      F.templateBlock S (ofRestrict e) := by
+  rcases e with ⟨op, h, args⟩
+  subst h
+  exact rename_restrictFrame p F args (S op.1)
+
+/-- The total template, on the operations a partial template accepts, of the programs the
+    partial template gives. -/
+def acceptedTemplate (F : LoweringFrame d d') (S : F.Template?) :
+    (restrictFrame (fun op => (S op).isSome) F).Template :=
+  fun op => (S op.1).get op.2
+
+/-- **A partial template on its accepted operations.** At an expression of the dialect
+    restricted to the accepted operations, read in the dialect, the partial template
+    gives the instance of `acceptedTemplate`. -/
+theorem templateBlock?_ofRestrict (F : LoweringFrame d d') (S : F.Template?)
+    {Γ : List d.Ty} {t : d.Ty}
+    (e : Expr (d.restrict (fun op => (S op).isSome)) Γ t) :
+    F.templateBlock? S (ofRestrict e) =
+      some ((restrictFrame _ F).templateBlock (acceptedTemplate F S) e) := by
+  rcases e with ⟨⟨op, hop⟩, h, args⟩
+  subst h
+  obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hop
+  show (S op).map (fun c => Com.rename (F.mapHom (argsHom (castArgs (O' := d.Op) args))) c) =
+    some (Com.rename ((restrictFrame _ F).mapHom (argsHom args)) ((S op).get hop))
+  rw [rename_restrictFrame]
+  simp only [hc, Option.map_some, Option.get_some]
+
+section Programs
+
+variable [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [DecidablePred p]
+
+/-- **The restriction of a structured program**: the same program over the restricted
+    dialect, defined when every let-bound operation of the program and of its regions
+    satisfies `p`. -/
+def restrictNF? : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts →
+    Option (NFProg (d.restrict p) Γ ts)
+  | _, _, .ret vs => some (.ret (castArgs (O' := {op : d.Op // p op}) vs))
+  | _, _, .var e k =>
+      if h : p e.op then
+        (restrictNF? k).map
+          (.var ⟨⟨e.op, h⟩, e.retTy_eq, castArgs (O' := {op : d.Op // p op}) e.args⟩)
+      else none
+  | _, _, .forLoop count inits body k =>
+      (restrictNF? body).bind fun body' => (restrictNF? k).map fun k' =>
+        .forLoop (castVar (O' := {op : d.Op // p op}) count)
+          (castArgs (O' := {op : d.Op // p op}) inits) body' k'
+  | _, _, .ifThenElse cond thn els k =>
+      (restrictNF? thn).bind fun thn' => (restrictNF? els).bind fun els' =>
+        (restrictNF? k).map fun k' =>
+          .ifThenElse (castVar (O' := {op : d.Op // p op}) cond) thn' els' k'
+  | _, _, .whileLoop inits body k =>
+      (restrictNF? body).bind fun body' => (restrictNF? k).map fun k' =>
+        .whileLoop (castArgs (O' := {op : d.Op // p op}) inits) body' k'
+  | _, _, .call f args k =>
+      (restrictNF? k).map (.call f (castArgs (O' := {op : d.Op // p op}) args))
+
+variable [TyDenote d'.Ty] [HasWord64 d'] [HasBoolBit d']
+
+omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [DecidablePred p] in
+/-- A block followed by the continuation that is `none` everywhere is `none`. -/
+theorem spliceNF?_none {ts : List d'.Ty} : {Δ : Ctxt d'} → {a : d'.Ty} → (c : Com d' Δ a) →
+    NFProg.spliceNF? (ts := ts) c (fun _ _ => none) = none
+  | _, _, .ret _ => rfl
+  | _, _, .var e blk => by
+      show (NFProg.spliceNF? (ts := ts) blk (fun _ _ => none)).map (NFProg.var e) = none
+      rw [spliceNF?_none blk]
+      rfl
+
+variable (F : LoweringFrame d d') (S : F.Template?)
+
+/-- The total block lowering, on the operations a partial template accepts, of the
+    partial template. -/
+@[reducible] def acceptedLowering :
+    BlockLoweringData (d.restrict fun op => (S op).isSome) d' :=
+  BlockLoweringData.ofTemplate (restrictFrame _ F) (acceptedTemplate F S)
+
+omit [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [DecidablePred p] [TyDenote d'.Ty]
+  [HasWord64 d'] [HasBoolBit d'] in
+/-- The variable map of a restricted frame at a variable read in the restricted dialect is
+    the variable map of the frame. -/
+theorem mapVar_restrictFrame {Γ : Ctxt d} {t : d.Ty} (v : Var Γ t) :
+    (restrictFrame p F).mapVar (castVar (O := d.Op) (O' := {op : d.Op // p op}) (T := d.Ty) v) =
+      F.mapVar v :=
+  congrArg F.mapVar ((castVar_castVar (O := d.Op) (O' := {op : d.Op // p op}) (O'' := d.Op)
+    (T := d.Ty) v).trans (castVar_self (O := d.Op) (T := d.Ty) v))
+
+omit [DecidablePred p] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [TyDenote d'.Ty]
+  [HasWord64 d'] [HasBoolBit d'] in
+/-- Mapping a vector of variables read in the restricted dialect along the accepted
+    lowering is mapping the vector along the partial template lowering. -/
+theorem mapArgs_acceptedLowering {Γ : Ctxt d} {Δ : Ctxt d'} (ren : Ctxt.Hom (F.mapCtx Γ) Δ) :
+    {ts : List d.Ty} → (vs : HVector (fun t => Var Γ t) ts) →
+    NFProg.mapArgs (acceptedLowering F S).toPartial ren
+        (castArgs (O := d.Op) (O' := {op : d.Op // (S op).isSome}) (T := d.Ty) vs) =
+      NFProg.mapArgs (PartialBlockLowering.ofTemplate? F S) ren vs
+  | [], .nil => rfl
+  | _ :: _, .cons v vs =>
+      congrArg₂ HVector.cons (congrArg ren (mapVar_restrictFrame _ F v))
+        (mapArgs_acceptedLowering ren vs)
+
+end Programs
+
+end DialectRestrict
+
+namespace Dial
+
+open DialectRestrict
+
+/-- The restriction of an object of `Dial` to the operations satisfying `p`, with the
+    instances of the dialect. -/
+@[reducible] def restrict (a : Dial) (p : a.dia.Op → Prop) : Dial := ⟨a.dia.restrict p⟩
+
+/-- **The inclusion of a restricted dialect**: the identity template read on the
+    operations satisfying `p`, with the identity transports. -/
+def incl (a : Dial) (p : a.dia.Op → Prop) : Hom (a.restrict p) a where
+  lower := BlockLoweringData.ofTemplate (restrictFrame p (LoweringFrame.id a.dia))
+    (fun op => idTemplate a.dia op.1)
+  isTemplate := ⟨_, _, rfl⟩
+  transTy := fun x => x
+  mapVal := fun V => V
+  regionTypes := ⟨rfl, rfl⟩
+  varTransports := fun v V => DialectOpSum.lookup_castVar v V
+  blockOpTransports := fun e V => by
+    show ((restrictFrame p (LoweringFrame.id a.dia)).templateBlock
+      (fun op => idTemplate a.dia op.1) e).denote V = e.denote V
+    rw [templateBlock_restrict, ← denote_ofRestrict e V]
+    have hb : (BlockLoweringData.ofTemplate (LoweringFrame.id a.dia)
+        (idTemplate a.dia)).lowerExprBlock (ofRestrict e) =
+        (BlockLoweringData.id a.dia).lowerExprBlock (ofRestrict e) :=
+      eq_of_heq (lowerExprBlock_heq (id_eq_ofTemplate a.dia).symm _)
+    exact congrArg (fun c : Com a.dia _ _ => c.denote V) hb
+  mapValExtends := fun _ _ => rfl
+  regionTransports := ⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩
+  callTransports := fun f as rs x _ =>
+    call_eq_map_of_heq (CallDenote.env (d := a.dia)) f (List.map_id' as) (List.map_id' rs)
+      (transArgs_id_heq x) _ _ (fun r => r) (fun r => transArgs_id_heq r)
+      Option.map_id'.symm
+  surjective := fun _ => Function.surjective_id
+
+/-! ## 7. The lowering of the crypto dialect to the Jasmin dialect -/
+
+/-- The operations of the crypto dialect that the template of
+    `NFProgCatToJasmin.catToJasmin` accepts. -/
+def accepted (op : CatCryptDialect.CatCryptOp) : Prop := (catTemplate op).isSome
+
+/-- The crypto dialect restricted to the operations `catToJasmin` accepts. -/
+@[reducible] def cryptoAccepted : Dial := crypto.restrict accepted
+
+open CryptoToJasminComCorrect (ctTransTy) in
+open DialectToJasminComCorrect (ctMapValD ctMapValD_lookup ctMapValD_extend) in
+/-- **The lowering of the accepted crypto dialect to the Jasmin dialect**: the template of
+    `catToJasmin` on the operations it accepts, with the value transport `ctTransTy` and
+    the valuation transport `ctMapValD`. -/
+def catToJasmin : Hom cryptoAccepted jasmin where
+  lower := (BlockLoweringData.ofTemplate (restrictFrame accepted catFrame)
+    (acceptedTemplate catFrame catTemplate) :
+      BlockLoweringData (CatCryptDialect.catCryptDialect.restrict accepted)
+        JasminDialect.jasminDialect)
+  isTemplate := ⟨_, _, rfl⟩
+  transTy := fun x => ctTransTy x
+  mapVal := fun V => ctMapValD V
+  regionTypes := ⟨rfl, rfl⟩
+  varTransports := fun v V =>
+    (ctMapValD_lookup _ V).trans (congrArg ctTransTy (DialectOpSum.lookup_castVar v V))
+  blockOpTransports := fun e V =>
+    (NFProgCatToJasmin.catToJasmin_block
+      (ofRestrict (d := CatCryptDialect.catCryptDialect) (p := accepted) e) _
+      ((catToJasmin_lowerExprBlock? _).trans (templateBlock?_ofRestrict catFrame catTemplate e))
+      V).trans (congrArg ctTransTy
+        (denote_ofRestrict (d := CatCryptDialect.catCryptDialect) (p := accepted) e V))
+  mapValExtends := fun V x => ctMapValD_extend V x
+  regionTransports :=
+    ⟨NFProgCatToJasmin.catToJasmin_regionTransports.toNat_trans,
+      NFProgCatToJasmin.catToJasmin_regionTransports.ofNat_trans,
+      NFProgCatToJasmin.catToJasmin_regionTransports.toBool_trans⟩
+  callTransports := CallEnv.transports_empty _ _ _
+  surjective := ctTransTy_surjective
+
+/-- The first projection of a pair is not an accepted operation. -/
+theorem not_accepted_fst (a b : CryptoSSA.CryptoTy) : ¬ accepted (.fst a b) := by
+  simp [accepted, catTemplate, DialectToJasminCom.toJExprD]
 
 end Dial
 
