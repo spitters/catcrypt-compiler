@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CfgLift
 public import CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.Blocks
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame
 
 /-!
 # The basic-block optimiser on whole bodies of the flag machine
@@ -34,10 +35,18 @@ stages of `optRunBody` on the fragment with flags `LsemBridge.fragFB`.
   statement of a transform applied to the straight segments, and of the optimiser.
 * `runIBF_of_segIdxOk` — on the fragment with flags, the in-bounds condition of the checked
   machine gives the in-bounds run of the bridge `LsemBridge.runIBF`.
-* `scheduleBody_segOK`, `elimReloads_segOK`, `copyPropagateBody_segOK`,
-  `optRunBody_segOK` — the per-segment condition of each pass on the fragment with flags.
-* `scheduleBody_lsemFuelMemF`, `elimReloads_lsemFuelMemF`,
-  `copyPropagateBody_lsemFuelMemF` — the passes on whole bodies.
+* `copyPropagateBody_segOK`, `optRunBody_segOK` — the per-segment condition of copy
+  propagation and of the five stages on the fragment with flags;
+  `copyPropagateBody_lsemFuelMemF` — copy propagation on whole bodies.
+* `optBlocksOKB`, `optBlocksOKB_sound` — the decidable check of the optimiser on a body and
+  its soundness.
+* `fstepF_transport`, `fstepF_swap`, `scheduleBody_runStraightF` — the scheduler over the
+  extended straight fold `runStraightF`, on every body, with no condition on widths.
+* `fstepF_reload`, `heldSoundM_step`, `elimAux_runStraightF` — store-to-load forwarding over
+  `runStraightF`, on bodies whose destinations are registers (`dstsRegB`).
+* `scheduleBody_segOK`, `elimReloads_segOK`, `scheduleBody_lsemFuelMemF`,
+  `elimReloads_lsemFuelMemF` — the two passes on a segment and on whole bodies, under
+  `keepOKB` (and `dstsRegB` for forwarding), with the trivial invariant.
 -/
 
 @[expose] public section
@@ -332,20 +341,6 @@ theorem blockSim_of_fragFB {A : String → Option Nat} (tag : LinstrR → MemTag
 
 /-! ## 4. The passes -/
 
-/-- **The scheduler on a segment of the fragment with flags.** -/
-theorem scheduleBody_segOK {A : String → Option Nat} (tag : LinstrR → MemTag)
-    (seg : List Linstr) (hfrag : ∀ i ∈ seg, fragFB A (i.li_i, tag i.li_i) = true) :
-    SegOK true (RelInv A) tag scheduleBody seg := by
-  have hfrag' : ∀ i ∈ scheduleBody seg, fragFB A (i.li_i, tag i.li_i) = true :=
-    fun i hi => hfrag i ((LprogScheduler.scheduleBody_perm seg).mem_iff.1 hi)
-  refine ⟨(scheduleBody_length seg).le, fun i hi => (fragFB_plain (hfrag i hi)).1,
-    fun i hi => (fragFB_plain (hfrag' i hi)).1,
-    blockSim_of_fragFB tag scheduleBody seg hfrag hfrag'
-      (fun l h => by rw [runIBF_scheduleBody]; exact h) (fun s l hr hib _ => ?_)⟩
-  obtain ⟨u, u', -, hu, hu', -, -, hreg, hA, hM, hc, ho, -, -⟩ :=
-    scheduleBody_lsemStraightMemF_F tag seg hfrag hr hib
-  exact ⟨u, u', hu, hu', by rw [hreg], hA, hM, hc, ho⟩
-
 /-- **Copy propagation on a segment of the fragment with flags**, where the output is in
     the fragment and its in-bounds run succeeds wherever that of the input does. -/
 theorem copyPropagateBody_segOK {A : String → Option Nat} (tag : LinstrR → MemTag)
@@ -359,25 +354,6 @@ theorem copyPropagateBody_segOK {A : String → Option Nat} (tag : LinstrR → M
     blockSim_of_fragFB tag copyPropagateBody seg hfrag hfrag' hib'
       (fun _ _ hr hib hib2 => copyPropagateBody_lsemStraightMemF_F tag seg hfrag hfrag' hr
         hib hib2)⟩
-
-/-- **Store-to-load forwarding on a segment of the fragment with flags**, where the pass
-    is the identity. -/
-theorem elimReloads_segOK {A : String → Option Nat} (tag : LinstrR → MemTag)
-    (seg : List Linstr) (hfrag : ∀ i ∈ seg, fragFB A (i.li_i, tag i.li_i) = true) :
-    SegOK true (RelInv A) tag elimReloads seg := by
-  have e := elimReloads_eq_of_fragFB tag seg hfrag
-  have hfrag' : ∀ i ∈ elimReloads seg, fragFB A (i.li_i, tag i.li_i) = true := by
-    rw [e]; exact hfrag
-  refine ⟨elimReloads_length_le seg, fun i hi => (fragFB_plain (hfrag i hi)).1,
-    fun i hi => (fragFB_plain (hfrag' i hi)).1,
-    blockSim_of_fragFB tag elimReloads seg hfrag hfrag' (fun l h => by rw [e]; exact h)
-      (fun s l hr hib _ => ?_)⟩
-  have hB : ∀ i ∈ seg.map (fun i => (i.li_i, tag i.li_i)), fragFB A i = true := by
-    intro i hi
-    obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hi
-    exact hfrag j hj
-  obtain ⟨s', l', hs', -, -, -, -⟩ := lsemStraightFlag_lsemStraightMemF_rel _ s l hB hr hib
-  exact ⟨s', s', by rw [e]; exact hs', hs', rfl, rfl, rfl, rfl, rfl⟩
 
 /-- **The five stages on a segment of the fragment with flags**, where the scheduled and
     copy-propagated segment is in the fragment and its in-bounds run succeeds wherever
@@ -405,32 +381,10 @@ theorem optRunBody_segOK {A : String → Option Nat} (tag : LinstrR → MemTag)
 
 /-! ## 5. The passes on whole bodies -/
 
-/-- **The scheduler on whole bodies of the flag machine**: applied to the straight segments
-    of a body that passes `keepOKB` and whose straight segments are in the fragment with
-    flags. -/
-theorem scheduleBody_lsemFuelMemF {A : String → Option Nat} (tag : LinstrR → MemTag)
-    (body : List Linstr) (hkeep : ∀ i ∈ body, keepOKB (i.li_i, tag i.li_i) = true)
-    (hfrag : ∀ seg ∈ splitStraightRuns body, bodyIsStraightLine seg = true →
-      ∀ i ∈ seg, fragFB A (i.li_i, tag i.li_i) = true) (fn : String) :
-    WholeBodySim true (RelInv A) fn (body.map fun i => (i.li_i, tag i.li_i))
-      ((mapStraightRuns scheduleBody body).map fun i => (i.li_i, tag i.li_i)) :=
-  fun h0 hInv h => mapStraightRuns_lsemFuelMemF tag scheduleBody body relInv_setLpc hkeep
-    (fun seg hs hsl => scheduleBody_segOK tag seg (hfrag seg hs hsl)) fn h0 hInv h
-
-/-- **Store-to-load forwarding on whole bodies of the flag machine**, under the hypotheses
-    of `scheduleBody_lsemFuelMemF`. -/
-theorem elimReloads_lsemFuelMemF {A : String → Option Nat} (tag : LinstrR → MemTag)
-    (body : List Linstr) (hkeep : ∀ i ∈ body, keepOKB (i.li_i, tag i.li_i) = true)
-    (hfrag : ∀ seg ∈ splitStraightRuns body, bodyIsStraightLine seg = true →
-      ∀ i ∈ seg, fragFB A (i.li_i, tag i.li_i) = true) (fn : String) :
-    WholeBodySim true (RelInv A) fn (body.map fun i => (i.li_i, tag i.li_i))
-      ((mapStraightRuns elimReloads body).map fun i => (i.li_i, tag i.li_i)) :=
-  fun h0 hInv h => mapStraightRuns_lsemFuelMemF tag elimReloads body relInv_setLpc hkeep
-    (fun seg hs hsl => elimReloads_segOK tag seg (hfrag seg hs hsl)) fn h0 hInv h
-
-/-- **Copy propagation on whole bodies of the flag machine**: under the hypotheses of
-    `scheduleBody_lsemFuelMemF`, with every copy-propagated straight segment in the
-    fragment and in bounds wherever its input is. -/
+/-- **Copy propagation on whole bodies of the flag machine**: applied to the straight
+    segments of a body that passes `keepOKB`, with every straight segment and its
+    copy-propagated form in the fragment with flags, and the copy-propagated form in
+    bounds wherever its input is. -/
 theorem copyPropagateBody_lsemFuelMemF {A : String → Option Nat} (tag : LinstrR → MemTag)
     (body : List Linstr) (hkeep : ∀ i ∈ body, keepOKB (i.li_i, tag i.li_i) = true)
     (hfrag : ∀ seg ∈ splitStraightRuns body, bodyIsStraightLine seg = true →
@@ -564,5 +518,434 @@ theorem optBlocksOKB_sound {A : String → Option Nat} {tag : LinstrR → MemTag
   · rw [hsl] at h'
     cases h'
   · exact h'
+
+/-! ## 7. The scheduler over the extended straight fold -/
+
+section StraightF
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksMemF
+
+/-- An operand read by an instruction evaluates to the same word in two states that agree
+    on the hazard tokens of the instruction. -/
+theorem evalOperandN_agree {i : LinstrR} {s t : LstateM} (h : Agree i s t) {o : LOperand}
+    (ho : srcTok o ∈ readToksSem i) (w : Nat) :
+    evalOperandN t.reg w o = evalOperandN s.reg w o := by
+  cases o with
+  | reg r =>
+      simp only [evalOperandN, LstateN.getW]
+      rw [h.reg r (mem_T_read ho)]
+  | _ => rfl
+
+/-- The flag-`CMP` touches the flags. -/
+theorem touchesFlags_of_cmpArgs {i : LinstrRM} (h : (cmpArgs? i).isSome = true) :
+    touchesFlags i.1 = true := by
+  unfold cmpArgs? at h
+  split at h
+  · next d opn a b heq =>
+      split at h
+      · next ho =>
+          rw [heq, ho]
+          show (!flagFree (withWidthTag 64 "CMP")) = true
+          decide
+      · simp at h
+  · simp at h
+
+/-- A step outside the flag-`CMP` leaves the zero flag. -/
+theorem fstepF_zf_of_not_cmp {i : LinstrRM} (hc : cmpArgs? i = none) {s b : LstateM}
+    {zf z : Bool} (h : fstepF i s zf = some (b, z)) : z = zf := by
+  unfold fstepF at h
+  rw [hc] at h
+  simp only at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.symm
+    · simp at h
+  · obtain ⟨b', -, hb⟩ := Option.map_eq_some_iff.mp h
+    exact (Prod.mk.inj hb).2.symm
+
+/-- **Transport of an extended straight step.** The step of an instruction without a
+    runtime-indexed operand, from a state that agrees with `s` on its hazard tokens and on
+    the flags when it touches them, is the step from `s` with its effect applied to that
+    state; the zero flag is the one the flag-`CMP` computes, and the incoming one at every
+    other instruction. -/
+theorem fstepF_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t : LstateM}
+    (h : Agree i.1 s t) (zf zf' : Bool) :
+    fstepF i t zf' = (fstepF i s zf).map
+      (fun bz => (mergeM i.1 t bz.1, if (cmpArgs? i).isSome then bz.2 else zf')) := by
+  obtain ⟨w, tag⟩ := i
+  unfold fstepF
+  cases hc : cmpArgs? (w, tag) with
+  | some ab =>
+      obtain ⟨a, b⟩ := ab
+      unfold cmpArgs? at hc
+      split at hc
+      · next d opn a' b' heq =>
+          split at hc
+          · simp only [Option.some.injEq, Prod.mk.injEq] at hc
+            obtain ⟨rfl, rfl⟩ := hc
+            have heq' : w = LinstrR.Lopn [d] opn [a', b'] := heq
+            subst heq'
+            have ea := evalOperandN_agree h (o := a') (by simp [readToksSem]) 64
+            have eb := evalOperandN_agree h (o := b') (by simp [readToksSem]) 64
+            simp only [ea, eb]
+            cases evalOperandN s.reg 64 a' with
+            | none => rfl
+            | some va =>
+                cases evalOperandN s.reg 64 b' with
+                | none => rfl
+                | some vb =>
+                    simp only [Option.map_some, Option.isSome_some, if_true, Option.some.injEq,
+                      Prod.mk.injEq, and_true]
+                    have := mergeM_ofReg h s.reg.nextPc
+                    rw [mergeN_nextPc h.regAgree.wr] at this
+                    exact this.symm
+          · cases hc
+      · cases hc
+  | none =>
+      simp only
+      cases hm : movRegArgs? (w, tag) with
+      | some ds =>
+          obtain ⟨dst, src⟩ := ds
+          have hshape : ∃ opn, w = LinstrR.Lopn [.reg dst] opn [.reg src] := by
+            unfold movRegArgs? at hm
+            split at hm
+            · next d' opn s' heq =>
+                refine ⟨opn, ?_⟩
+                have heq' : w = LinstrR.Lopn [.reg d'] opn [.reg s'] := heq
+                split_ifs at hm <;> simp only [Option.some.injEq, Prod.mk.injEq] at hm <;>
+                  (obtain ⟨rfl, rfl⟩ := hm; exact heq')
+            · cases hm
+          obtain ⟨opn, rfl⟩ := hshape
+          have er : t.reg.lvm src = s.reg.lvm src :=
+            (h.reg src (mem_T_read (by simp [readToksSem, srcTok]))).symm
+          simp only [readReg, er, Option.map_some, Option.isSome_none, Bool.false_eq_true,
+            if_false, Option.some.injEq, Prod.mk.injEq, and_true]
+          exact (mergeM_setReg h (by simp [writeToks, opTok]) _).symm
+      | none =>
+          simp only
+          rw [stepMemF_transport (w, tag) hai h]
+          cases stepMemF (w, tag) s <;> simp
+
+/-- A successful extended step is its own effect applied to its incoming state. -/
+theorem fstepF_mergeM {i : LinstrRM} (hai : hasArrIdx i.1 = false) {s s' : LstateM}
+    {zf z : Bool} (h : fstepF i s zf = some (s', z)) : mergeM i.1 s s' = s' := by
+  have := fstepF_transport i hai (agree_refl i.1 s) zf zf
+  rw [h, Option.map_some, Option.some.injEq, Prod.mk.injEq] at this
+  exact this.1.symm
+
+/-- **Adjacent independent instructions commute under the extended straight step.** -/
+theorem fstepF_swap (i1 i2 : LinstrRM) (s : LstateM) (zf : Bool)
+    (h : indep i1.1 i2.1 = true) :
+    (fstepF i1 s zf).bind (fun bz => fstepF i2 bz.1 bz.2)
+      = (fstepF i2 s zf).bind (fun bz => fstepF i1 bz.1 bz.2) := by
+  have h' : indep i2.1 i1.1 = true := by rw [indep_symm]; exact h
+  have ha1 := indep_arrIdx_left h
+  have ha2 := indep_arrIdx_right h
+  rcases h1 : fstepF i1 s zf with _ | ⟨s1, z1⟩ <;> rcases h2 : fstepF i2 s zf with _ | ⟨s2, z2⟩
+  · rfl
+  · simp only [Option.bind_none, Option.bind_some]
+    rw [fstepF_transport i1 ha1 (agree_after h' (fstepF_mergeM ha2 h2)) zf z2, h1]
+    rfl
+  · simp only [Option.bind_none, Option.bind_some]
+    rw [fstepF_transport i2 ha2 (agree_after h (fstepF_mergeM ha1 h1)) zf z1, h2]
+    rfl
+  · simp only [Option.bind_some]
+    rw [fstepF_transport i2 ha2 (agree_after h (fstepF_mergeM ha1 h1)) zf z1, h2,
+      fstepF_transport i1 ha1 (agree_after h' (fstepF_mergeM ha2 h2)) zf z2, h1]
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
+    refine ⟨?_, ?_⟩
+    · calc mergeM i2.1 s1 s2 = mergeM i2.1 (mergeM i1.1 s s1) s2 := by
+            rw [fstepF_mergeM ha1 h1]
+        _ = mergeM i1.1 (mergeM i2.1 s s2) s1 := mergeM_comm h s s1 s2
+        _ = mergeM i1.1 s2 s1 := by rw [fstepF_mergeM ha2 h2]
+    · cases hc1 : cmpArgs? i1 with
+      | some p1 =>
+          cases hc2 : cmpArgs? i2 with
+          | some p2 =>
+              exact absurd ⟨touchesFlags_of_cmpArgs (by rw [hc1]; rfl),
+                touchesFlags_of_cmpArgs (by rw [hc2]; rfl)⟩ (indep_flags h)
+          | none => simp
+      | none =>
+          cases hc2 : cmpArgs? i2 with
+          | some p2 => simp
+          | none =>
+              simp only [Option.isSome_none, Bool.false_eq_true, if_false]
+              rw [fstepF_zf_of_not_cmp hc1 h1, fstepF_zf_of_not_cmp hc2 h2]
+
+/-- **Adjacent-transposition commutation for `runStraightF`.** -/
+theorem runStraightF_swap (i1 i2 : LinstrRM) (rest : List LinstrRM) (s : LstateM) (zf : Bool)
+    (h : indep i1.1 i2.1 = true) :
+    runStraightF (i1 :: i2 :: rest) s zf = runStraightF (i2 :: i1 :: rest) s zf := by
+  have e : ∀ (j k : LinstrRM), runStraightF (j :: k :: rest) s zf
+      = ((fstepF j s zf).bind (fun bz => fstepF k bz.1 bz.2)).bind
+          (fun bz => runStraightF rest bz.1 bz.2) := by
+    intro j k
+    rw [runStraightF_cons, Option.bind_assoc]
+    rfl
+  rw [e, e, fstepF_swap i1 i2 s zf h]
+
+/-- **Schedule soundness over the extended straight fold.** For any tagging of the wire
+    instructions by memory tags, any body, any state and any zero flag, the scheduled body
+    run by `runStraightF` reaches the same state and zero flag as the input body. -/
+theorem scheduleBody_runStraightF (tag : LinstrR → MemTag) (b : List Linstr)
+    (s : LstateM) (zf : Bool) :
+    runStraightF ((scheduleBody b).map fun i => (i.li_i, tag i.li_i)) s zf
+      = runStraightF (b.map fun i => (i.li_i, tag i.li_i)) s zf := by
+  have := scheduleBody_run (S := LstateM × Bool)
+    (run := fun l p => (runStraightF (l.map fun i => (i, tag i)) p.1 p.2))
+    (fun l1 l2 p => by
+      simp only [List.map_append]
+      exact JasminLsemAddrMem.runStraightF_append _ _ p.1 p.2)
+    (fun i1 i2 rest p hi => runStraightF_swap (i1, tag i1) (i2, tag i2) _ p.1 p.2 hi) b (s, zf)
+  simpa [List.map_map, Function.comp_def] using this
+
+end StraightF
+
+/-! ## 8. Store-to-load forwarding over the extended straight fold -/
+
+section ReloadF
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames fstepF_frame_dst)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (opNames)
+
+/-- Every destination operand of the instruction is a register. -/
+def dstsRegB : LinstrR → Bool
+  | .Lopn d _ _ => d.all fun o => match o with
+      | .reg _ => true
+      | _ => false
+  | _ => true
+
+theorem mem_writtenNames_of_dstNames {i : LinstrR} (h : dstsRegB i = true) {r : String}
+    (hr : r ∈ dstNames i) : r ∈ writtenNames i := by
+  cases i with
+  | Lopn d o s =>
+      simp only [dstNames, List.mem_flatMap] at hr
+      obtain ⟨x, hx, hrx⟩ := hr
+      simp only [dstsRegB, List.all_eq_true] at h
+      have hxr := h x hx
+      cases x with
+      | reg n =>
+          simp only [opNames, List.mem_singleton] at hrx
+          subst hrx
+          simp only [writtenNames, List.mem_filterMap]
+          exact ⟨.reg r, hx, rfl⟩
+      | _ => simp at hxr
+  | _ => simp [dstNames] at hr
+
+/-- The environment of the scan agrees with the register file: a register recorded as
+    holding a source holds the cell of that source. -/
+def HeldSoundM (h : Held) (s : LstateM) : Prop := ∀ p ∈ h, s.reg.lvm p.1 = s.reg.lvm p.2
+
+theorem lvm_setReg_nextPcM (s : LstateM) (d : String) {w : Nat} (v : BitVec w) (r : String) :
+    ((s.setReg d v).nextPc).reg.lvm r = if r = d then ⟨w, v⟩ else s.reg.lvm r := by
+  by_cases h : r = d <;>
+    simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, h]
+
+/-- The step of a reload: the destination takes the cell of the source. -/
+theorem fstepF_reload {d k opn : String} (hm : isMovMnem opn = true) (tg : MemTag)
+    (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] opn [.reg k], tg) s zf
+      = some ((s.setReg d (s.reg.lvm k).2).nextPc, zf) := by
+  have hmr : movRegArgs? (LinstrR.Lopn [.reg d] opn [.reg k], tg) = some (d, k) := by
+    unfold movRegArgs?
+    simp only
+    by_cases h1 : stripWidthTag opn = "MOV"
+    · rw [if_pos h1]
+    · have h2 : opn = "MOVQ" := by simpa [isMovMnem, h1] using hm
+      subst h2
+      rfl
+  unfold fstepF
+  rw [show cmpArgs? (LinstrR.Lopn [.reg d] opn [.reg k], tg) = none from rfl]
+  simp only [hmr, readReg]
+
+/-- A kept step carries the agreement of the environment to the state after. -/
+theorem heldSoundM_step {h : Held} {i : LinstrR} (tg : MemTag) (hd : dstsRegB i = true)
+    {s t : LstateM} {zf z : Bool} (hs : HeldSoundM h s)
+    (hstep : fstepF (i, tg) s zf = some (t, z)) (hkeep : (stepReload h i).1 = true) :
+    HeldSoundM (stepReload h i).2 t := by
+  cases hr : asReload i with
+  | none =>
+      rw [stepReload_env_of_notReload hr]
+      intro p hp
+      obtain ⟨hp1, hn2⟩ := mem_foldl_killSlot _ _ p hp
+      obtain ⟨hp2, hn1⟩ := mem_foldl_killReg _ _ p hp1
+      rw [(fstepF_frame_dst hstep fun h' => hn1 (mem_writtenNames_of_dstNames hd h')).1,
+        (fstepF_frame_dst hstep fun h' => hn2 (mem_writtenNames_of_dstNames hd h')).1]
+      exact hs p hp2
+  | some dk =>
+      obtain ⟨d, k⟩ := dk
+      obtain ⟨opn, hm, rfl⟩ := asReload_shape hr
+      rw [fstepF_reload hm, Option.some.injEq, Prod.mk.injEq] at hstep
+      obtain ⟨rfl, -⟩ := hstep
+      have henv : (stepReload h (LinstrR.Lopn [.reg d] opn [.reg k])).2
+          = ((h.killReg d).killSlot d).set d k := by
+        cases hf : h.find d with
+        | none => simp [stepReload, hr, hf]
+        | some k' =>
+            by_cases hk : k' = k
+            · simp [stepReload, hr, hf, hk] at hkeep
+            · simp [stepReload, hr, hf, hk]
+      rw [henv]
+      intro p hp
+      rcases mem_set hp with ⟨hp1, hne⟩ | rfl
+      · obtain ⟨hp2, hn2⟩ := mem_killSlot hp1
+        obtain ⟨hp3, -⟩ := mem_killReg hp2
+        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_neg hne, if_neg hn2]
+        exact hs p hp3
+      · rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_pos rfl]
+        split
+        · rfl
+        · rfl
+
+/-- A dropped reload steps to its incoming state up to the program counter. -/
+theorem fstepF_drop {h : Held} {i : LinstrR} (tg : MemTag) {s : LstateM} (zf : Bool)
+    (hs : HeldSoundM h s) (hdrop : (stepReload h i).1 = false) :
+    ∃ b, fstepF (i, tg) s zf = some (b, zf) ∧ EqPc s b := by
+  obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i hdrop
+  have hdk : s.reg.lvm d = s.reg.lvm k := hs (d, k) (mem_of_find hf)
+  obtain ⟨opn, hm, rfl⟩ := asReload_shape hr
+  refine ⟨_, fstepF_reload hm tg s zf, ?_⟩
+  refine lstateM_ext (lstateN_ext ?_ rfl) rfl rfl rfl rfl
+  funext r
+  rw [lvm_setReg_nextPcM]
+  split
+  · next hrd =>
+      subst hrd
+      exact hdk.symm
+  · rfl
+
+/-- **The scan over the extended straight fold.** From an environment that agrees with the
+    start state, a run of a body whose destinations are registers is matched by the run of
+    the scanned body from any state equal up to the program counter, with the same zero
+    flag and final states equal up to the program counter. -/
+theorem elimAux_runStraightF (tag : LinstrR → MemTag) : ∀ (body : List Linstr) (h : Held)
+    (s t : LstateM) (zf : Bool), (∀ i ∈ body, dstsRegB i.li_i = true) →
+    HeldSoundM h s → EqPc s t →
+    ∀ s₂ z₂, runStraightF (body.map fun i => (i.li_i, tag i.li_i)) s zf = some (s₂, z₂) →
+      ∃ t₂, runStraightF ((elimAux h body).map fun i => (i.li_i, tag i.li_i)) t zf
+          = some (t₂, z₂) ∧ EqPc s₂ t₂ := by
+  intro body
+  induction body with
+  | nil =>
+      intro h s t zf _ _ hst s₂ z₂ hrun
+      simp only [List.map_nil, runStraightF_nil, Option.some.injEq, Prod.mk.injEq] at hrun
+      obtain ⟨rfl, rfl⟩ := hrun
+      exact ⟨t, rfl, hst⟩
+  | cons i is ih =>
+      intro h s t zf hd hs hst s₂ z₂ hrun
+      have hdi := hd i List.mem_cons_self
+      have hdis : ∀ j ∈ is, dstsRegB j.li_i = true := fun j hj => hd j (List.mem_cons_of_mem _ hj)
+      simp only [List.map_cons, runStraightF_cons] at hrun
+      rw [elimAux_cons]
+      cases hstep : fstepF (i.li_i, tag i.li_i) s zf with
+      | none => rw [hstep] at hrun; simp at hrun
+      | some bz =>
+          obtain ⟨s₁, z₁⟩ := bz
+          rw [hstep, Option.bind_some] at hrun
+          by_cases hk : (stepReload h i.li_i).1 = true
+          · rw [if_pos hk]
+            have ht : t = s.setLpc t.lpc := hst
+            have hstep' : fstepF (i.li_i, tag i.li_i) t zf
+                = some (s₁.setLpc (t.lpc + 1), z₁) := by
+              rw [ht, fstepF_setLpc, hstep]
+              rfl
+            simp only [List.map_cons, runStraightF_cons, hstep', Option.bind_some]
+            exact ih _ s₁ _ z₁ hdis (heldSoundM_step _ hdi hs hstep hk)
+              (EqPc.refl_setLpc s₁ _) s₂ z₂ hrun
+          · have hdrop : (stepReload h i.li_i).1 = false := by simpa using hk
+            rw [if_neg hk, stepReload_env_of_drop hdrop]
+            obtain ⟨b, hb, hsb⟩ := fstepF_drop (tag i.li_i) zf hs hdrop
+            rw [hb, Option.some.injEq, Prod.mk.injEq] at hstep
+            obtain ⟨rfl, rfl⟩ := hstep
+            have hb' : b = s.setLpc b.lpc := hsb
+            refine ih h b t zf hdis ?_ ((EqPc.symm hsb).trans hst) s₂ z₂ hrun
+            intro p hp
+            rw [hb']
+            exact hs p hp
+
+end ReloadF
+
+/-! ## 9. The scheduler and store-to-load forwarding on whole bodies -/
+
+section WholeF
+
+variable {ck : Bool} {Inv : LstateM → Prop}
+
+/-- An instruction of a straight segment that passes `keepOKB` is an `Lopn`. -/
+theorem isLopn_of_keepOKB_of_straight {seg : List Linstr}
+    (hsl : bodyIsStraightLine seg = true) {i : Linstr} (hi : i ∈ seg) (tag : LinstrR → MemTag)
+    (hk : keepOKB (i.li_i, tag i.li_i) = true) : IsLopn (i.li_i, tag i.li_i) := by
+  simp only [bodyIsStraightLine, List.all_eq_true] at hsl
+  have h1 := hsl i hi
+  obtain ⟨ii, w⟩ := i
+  cases w with
+  | Lopn d o s => exact ⟨d, o, s, rfl⟩
+  | _ => first | (simp [keepOKB] at hk; done) | simp at h1
+
+/-- **The scheduler on a straight `Lopn` segment**, for any invariant the run of the
+    segment preserves. -/
+theorem scheduleBody_segOK (tag : LinstrR → MemTag) (seg : List Linstr)
+    (hl : ∀ i ∈ seg, IsLopn (i.li_i, tag i.li_i))
+    (hInv : ∀ (s t : LstateM) (zf zt : Bool), Inv s →
+      runStraightF (seg.map fun i => (i.li_i, tag i.li_i)) s zf = some (t, zt) → Inv t) :
+    SegOK ck Inv tag scheduleBody seg :=
+  ⟨(scheduleBody_length seg).le, hl,
+    fun i hi => hl i ((LprogScheduler.scheduleBody_perm seg).mem_iff.1 hi),
+    BlockSim.of_same (fun s t zf zt hI _ hr =>
+      ⟨t, by rw [scheduleBody_runStraightF]; exact hr, rfl, hInv s t zf zt hI hr⟩)⟩
+
+/-- **Store-to-load forwarding on a straight `Lopn` segment whose destinations are
+    registers**, for any invariant the run of the segment preserves. -/
+theorem elimReloads_segOK (tag : LinstrR → MemTag) (seg : List Linstr)
+    (hl : ∀ i ∈ seg, IsLopn (i.li_i, tag i.li_i))
+    (hd : ∀ i ∈ seg, dstsRegB i.li_i = true)
+    (hInv : ∀ (s t : LstateM) (zf zt : Bool), Inv s →
+      runStraightF (seg.map fun i => (i.li_i, tag i.li_i)) s zf = some (t, zt) → Inv t) :
+    SegOK ck Inv tag elimReloads seg :=
+  ⟨elimReloads_length_le seg, hl,
+    fun i hi => hl i ((LprogStoreToLoad.elimReloads_sublist seg).subset hi),
+    BlockSim.of_same (fun s t zf zt hI _ hr => by
+      obtain ⟨t₂, h2, hE⟩ := elimAux_runStraightF tag seg [] s s zf hd
+        (fun p hp => by simp at hp) rfl t zt hr
+      exact ⟨t₂, h2, hE, hInv s t zf zt hI hr⟩)⟩
+
+/-- **The scheduler on whole bodies of the flag machine**: applied to the straight segments
+    of a body that passes `keepOKB`. -/
+theorem scheduleBody_lsemFuelMemF (tag : LinstrR → MemTag) (body : List Linstr)
+    (hkeep : ∀ i ∈ body, keepOKB (i.li_i, tag i.li_i) = true) (fn : String) :
+    WholeBodySim ck (fun _ => True) fn (body.map fun i => (i.li_i, tag i.li_i))
+      ((mapStraightRuns scheduleBody body).map fun i => (i.li_i, tag i.li_i)) :=
+  fun h0 hInv h => mapStraightRuns_lsemFuelMemF tag scheduleBody body (fun _ _ _ => trivial)
+    hkeep (fun seg hs hsl => scheduleBody_segOK tag seg
+      (fun i hi => isLopn_of_keepOKB_of_straight hsl hi tag (hkeep i (by
+        rw [← splitStraightRuns_flatten body]
+        exact List.mem_flatten.2 ⟨seg, hs, hi⟩)))
+      (fun _ _ _ _ _ _ => trivial)) fn h0 hInv h
+
+/-- **Store-to-load forwarding on whole bodies of the flag machine**: applied to the
+    straight segments of a body that passes `keepOKB` and whose destinations are
+    registers. -/
+theorem elimReloads_lsemFuelMemF (tag : LinstrR → MemTag) (body : List Linstr)
+    (hkeep : ∀ i ∈ body, keepOKB (i.li_i, tag i.li_i) = true)
+    (hd : ∀ i ∈ body, dstsRegB i.li_i = true) (fn : String) :
+    WholeBodySim ck (fun _ => True) fn (body.map fun i => (i.li_i, tag i.li_i))
+      ((mapStraightRuns elimReloads body).map fun i => (i.li_i, tag i.li_i)) := by
+  have hmem : ∀ seg ∈ splitStraightRuns body, ∀ i ∈ seg, i ∈ body := by
+    intro seg hs i hi
+    rw [← splitStraightRuns_flatten body]
+    exact List.mem_flatten.2 ⟨seg, hs, hi⟩
+  intro fuel s t h0 hInv h
+  exact mapStraightRuns_lsemFuelMemF tag elimReloads body
+    (fun _ _ _ => trivial) hkeep (fun seg hs hsl => elimReloads_segOK tag seg
+      (fun i hi => isLopn_of_keepOKB_of_straight hsl hi tag (hkeep i (hmem seg hs i hi)))
+      (fun i hi => hd i (hmem seg hs i hi))
+      (fun _ _ _ _ _ _ => trivial)) fn h0 hInv h
+
+end WholeF
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.BlocksCfg
