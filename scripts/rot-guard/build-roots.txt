@@ -281,6 +281,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
+CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT
 CatCrypt.Crypto.SecureCompilation.Ascent.LivenessTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
@@ -302,8 +303,14 @@ CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
 CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid
 CatCrypt.Crypto.SecureCompilation.Ascent.XDijkstraAll
+CatCrypt.Crypto.SecureCompilation.Ascent.XHeapSoundness
 CatCrypt.Crypto.SecureCompilation.Ascent.XMorphismInstance
+CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgen
+CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenControl
 CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg
+CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape
+CatCrypt.Crypto.SecureCompilation.Ascent.XPredCore
+CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF
 CatCrypt.Crypto.SecureCompilation.BarrettCompress10Exact
 CatCrypt.Crypto.SecureCompilation.BarrettReduceEmit
 CatCrypt.Crypto.SecureCompilation.BigIntIntRefinement
@@ -933,6 +940,7 @@ CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.TLS.ServerAuth
 CatCrypt.Crypto.Symbolic.Tactic
 CatCrypt.Crypto.Symbolic.TracefulEmbed
+CatCrypt.Crypto.UCMonad
 CatCrypt.Crypto.Util.BLS12377PPrimeCert
 CatCrypt.Crypto.Util.BN254RPrimeCert
 CatCrypt.Crypto.Util.Bls12381RPrimeCert
