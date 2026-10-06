@@ -43,7 +43,6 @@ CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.Hax.NFFieldSumLeak
-CatCrypt.Crypto.Hax.NFInline
 CatCrypt.Crypto.Hax.NFToLowCT
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
@@ -569,6 +568,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplateCatToJasmin
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
+CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionCategory
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelLoop
 CatCrypt.Crypto.SecureCompilation.VIR.EcConvertToFieldLowering
