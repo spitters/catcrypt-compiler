@@ -65,6 +65,36 @@ theorem comToComL_denote : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | _, _, .ret _, _ => rfl
   | _, _, .var e body, V => comToComL_denote body (V.extend (e.denote V))
 
+/-- The straight-line jasmin program a `ComL` program with no loop node is; `none` on a
+program with a loop node. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ComL.toCom? :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → ComL Γ t → Option (Com jasminDialect Γ t)
+  | _, _, .ret v => some (.ret v)
+  | _, _, .var e body => body.toCom?.map (.var e)
+  | _, _, _ => none
+
+/-- `ComL.toCom?` reads back the program `comToComL` embeds. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ComL.toCom?_comToComL
+    {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
+    (comToComL c).toCom? = some c := by
+  induction c with
+  | ret _ => rfl
+  | var e body ih => simp [comToComL, ComL.toCom?, ih]
+
+/-- A `ComL` program that `ComL.toCom?` reads as `c` is the embedding of `c`. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ComL.eq_comToComL_of_toCom?
+    {Γ : Ctxt jasminDialect} {t : JasminTy} {k : ComL Γ t} {c : Com jasminDialect Γ t}
+    (h : k.toCom? = some c) : k = comToComL c := by
+  induction k with
+  | ret v =>
+      cases h
+      rfl
+  | var e body ih =>
+      simp only [ComL.toCom?, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rfl⟩ := h
+      rw [ih hb, comToComL]
+  | _ => simp [ComL.toCom?] at h
+
 /-! ## 2. The restriction of a program to a selection of variables -/
 
 section Restrict
