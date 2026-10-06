@@ -1064,5 +1064,6 @@ HaxAscent.RustSemantics
 HaxAscent.RustSemantics.AscendRustM
 HaxAscent.RustSemantics.BackendLoops
 HaxAscent.RustSemantics.ToRustMSContractDemo
+HaxAscent.RustSemantics.ToRustMSLoopSpec
 HaxAscent.RustSemantics.ToRustMSTotal
 HaxAscent.RustSemantics.TripleToFnCorres
