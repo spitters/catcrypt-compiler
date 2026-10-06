@@ -366,8 +366,10 @@ mathematical Tate or Weil pairing.
   `compileFromHax_denote`).
 - Loops and arrays (older route): `hax ImpExpr → haxToLowCT → LowCT →
   catCryptDialect / ComL` (`CatCrypt/Crypto/Hax/HaxToLowCT.lean`; `PipelineMap.lean`;
-  the `Dialects/TranslateDialect*` translators); the dev table route `Haxc.compile`
-  (`Haxc/Compile.lean`, with `haxc_correct` in `Haxc/Correct.lean`) uses it.
+  the `Dialects/TranslateDialect*` translators). The dev compiler `Haxc.compileA`
+  (`Haxc/ComposeV1.lean`, with `haxc_correct_auto`) takes a different route: its front
+  `nfFront` (`Haxc/NFChain.lean`) translates the typed body to `NFProg` and lowers it by
+  the chain `nfChain` to a route program.
 - Routed THIR: `Thir → Com thirDialect → lowerThir → Com jasminDialect`
   (`CompileFromHaxDialect.lean`: `thirToThirCom_denote`,
   `thirToJasminViaThir_denote`). `compileFromHax` uses `thirToJasmin` directly.
