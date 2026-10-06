@@ -59,11 +59,17 @@ for p in "${paths[@]}"; do
   if [ -e "$p" ]; then GIT_INDEX_FILE="$idx" git update-index --add -- "$p"
   else GIT_INDEX_FILE="$idx" git update-index --force-remove -- "$p"; fi
 done
-# The dev manifest is appended to, not generated: keep the lines of tracked modules and
-# of the named paths only.
+# The dev manifest is appended to, not generated. Remove only the lines of modules that
+# exist on disk without being part of this commit's tree (another session's unfinished
+# modules); every other line, including the compiler package's modules and the comments,
+# is kept.
 if [ -f scripts/gen-dev-module-globs.sh ] && [ -f scripts/rot-guard/secure-compilation.txt ]; then
-  keep="$(GIT_INDEX_FILE="$idx" git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | sed 's#\.lean$##; s#/#.#g')"
-  awk 'NR==FNR{k[$0]=1; next} /^#/ || /^[[:space:]]*$/ || k[$1]' <(printf '%s\n' "$keep") scripts/rot-guard/secure-compilation.txt > "$work/manifest" \
+  { git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean'
+    git ls-files --others --exclude-standard 'CatCrypt/*.lean' 'CatCrypt/**/*.lean'; } \
+    | LC_ALL=C sort -u > "$work/ondisk"
+  GIT_INDEX_FILE="$idx" git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | LC_ALL=C sort -u > "$work/intree"
+  LC_ALL=C comm -23 "$work/ondisk" "$work/intree" | sed 's#\.lean$##; s#/#.#g' > "$work/foreign"
+  awk 'NR==FNR{d[$0]=1; next} !($1 in d)' "$work/foreign" scripts/rot-guard/secure-compilation.txt > "$work/manifest" \
     && cp "$work/manifest" scripts/rot-guard/secure-compilation.txt
 fi
 GIT_INDEX_FILE="$idx" generate || { echo "commit-own: a list generator failed; nothing committed." >&2; exit 1; }
