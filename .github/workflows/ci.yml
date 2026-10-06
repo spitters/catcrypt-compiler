@@ -52,7 +52,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/front-callsite-ratchet.sh
 
-      - name: No new untagged hand-JInstr block (emit provenance)
+      - name: No new untagged hand-JInstr block; ascent blocks generated, imported or recorded (emit provenance)
         if: ${{ !cancelled() }}
         run: bash scripts/audit_emit_provenance.sh
 
@@ -72,14 +72,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/ascent-nonvacuity-ratchet.sh
 
-      - name: Ascent blocks are front-generated, imported, or recorded
-        if: ${{ !cancelled() }}
-        run: bash scripts/ascent-block-provenance.sh
-
-      - name: No new plumbing-tagged security theorem
-        if: ${{ !cancelled() }}
-        run: bash scripts/uc-plumbing-ratchet.sh
-
       - name: Every Dialect classified (lowers, theory, test)
         if: ${{ !cancelled() }}
         run: bash scripts/dialect-lowering-ratchet.sh
@@ -88,7 +80,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/leak-kind-wildcard-lint.sh
 
-      - name: No new native_decide or maxHeartbeats bump (proof cost)
+      - name: No new maxHeartbeats bump
         if: ${{ !cancelled() }}
         run: bash scripts/proof-cost-ratchet.sh
 

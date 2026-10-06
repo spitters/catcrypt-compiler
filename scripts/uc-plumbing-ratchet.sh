@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Not run by CI in this repository: the copy in the development repository holds the rule.
 #
 # UC plumbing ratchet.
 #

@@ -5,7 +5,9 @@
 # the workflow: a step is run when its `run:` is one line of the form
 # `bash scripts/<name>.sh [args]` and the script does not load Lean or another build
 # tool. Steps that CI runs only against a pull-request base, or that build, are listed
-# as skipped. The pre-push hook calls this script.
+# as skipped. A step marked `continue-on-error: true` is a report: it is run, its
+# failure is shown, and it does not fail this script. The pre-push hook calls this
+# script.
 #
 #   scripts/ci-gates-local.sh            run every gate, print a summary
 #   scripts/ci-gates-local.sh --list     print the gates that would run
@@ -19,23 +21,24 @@ mode="${1:-run}"
 steps="$(python3 - "$WF" "${CI_GATES_JOBS:-}" <<'PY'
 import re, sys
 wf, only = sys.argv[1], set(sys.argv[2].split())
-job, in_jobs, name = None, False, ""
+job, in_jobs, name, report = None, False, "", False
 for line in open(wf):
     if re.match(r'^jobs:\s*$', line): in_jobs = True; continue
     if not in_jobs: continue
     m = re.match(r'^  ([A-Za-z0-9_-]+):\s*$', line)
     if m: job = m.group(1); continue
     m = re.match(r'^\s*- name:\s*(.*)$', line)
-    if m: name = m.group(1).strip().strip('"\''); continue
+    if m: name = m.group(1).strip().strip('"\''); report = False; continue
+    if re.match(r'^\s*continue-on-error:\s*true\s*$', line): report = True; continue
     m = re.match(r'^\s*run:\s*(bash scripts/[A-Za-z0-9_./-]+\.sh(?: [^|>$]*)?)\s*$', line)
     if m and job and (not only or job in only):
-        print(f"{job}\t{name}\t{m.group(1).strip()}")
+        print(f"{job}\t{name}\t{m.group(1).strip()}\t{'report' if report else 'gate'}")
 PY
 )"
 
 fails=0; ran=0; skipped=0; out="$(mktemp)"; trap 'rm -f "$out"' EXIT
 summary=""
-while IFS=$'\t' read -r job name cmd; do
+while IFS=$'\t' read -r job name cmd kind; do
   [ -n "$cmd" ] || continue
   script="$(printf '%s' "$cmd" | awk '{print $2}')"
   if [ ! -f "$script" ]; then summary+="MISSING  $cmd"$'\n'; fails=$((fails+1)); continue; fi
@@ -47,6 +50,9 @@ while IFS=$'\t' read -r job name cmd; do
   if [ "$mode" = "--list" ]; then echo "$job: $cmd"; continue; fi
   if eval "$cmd" >"$out" 2>&1; then
     summary+="ok       $cmd"$'\n'
+  elif [ "$kind" = "report" ]; then
+    summary+="report   $cmd   (non-blocking in CI)"$'\n'
+    echo "──── report [$job] $name"; echo "     $cmd"; tail -15 "$out" | sed 's/^/     /'
   else
     summary+="FAIL     $cmd"$'\n'
     fails=$((fails+1))
@@ -57,7 +63,7 @@ done <<< "$steps"
 [ "$mode" = "--list" ] && exit 0
 
 echo "──── gates: $ran run, $fails failed, $skipped skipped"
-printf '%s' "$summary" | grep -E '^(FAIL|MISSING|skip)' || true
+printf '%s' "$summary" | grep -E '^(FAIL|MISSING|skip|report)' || true
 # A ratchet that rewrote its baseline leaves a diff that CI rejects.
 if ! git diff --quiet -- scripts/ 2>/dev/null; then
   echo "note: files under scripts/ differ from the index (a baseline was rewritten or is uncommitted):"

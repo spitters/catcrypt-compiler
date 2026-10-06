@@ -43,7 +43,15 @@
 #     reaches it, as a front marker does. Each line names one module and its reason; a
 #     stale line fails the check; a module that is not listed still counts.
 #
-# A candidate (construction or render marker present) counts unless `front_sourced`
+# CANDIDATES. A module is a candidate only when it is an emit or driver module: its
+# code text calls a render marker or `IO.FS.writeFile`. A module that only mentions
+# IR constructors in definitions and theorems (a semantics, a proof rule, a pass with
+# its proof, a demonstration) writes and renders nothing, so it is not a candidate and
+# needs no exemption line. Such a module is still judged when a candidate's emitted
+# object is traced to it: hand-built IR found there condemns the candidate that
+# renders it, and the failure message names both modules.
+#
+# A candidate counts unless `front_sourced`
 # clears it: a front marker in the file, or a listing as a template front, clears
 # it; a construction marker in the file condemns it; otherwise the `Com`/`Lfundef` it renders is followed to the module
 # that defines it and that module is judged the same way. So a render-only module
@@ -58,6 +66,16 @@
 # `.var (.mk op rfl (.cons …))` carries no construction marker, so a module using it
 # is judged only by what it renders. `VIR/GgmNodeLoopEmit.lean` is such a module; it
 # is covered by an entry in the exemption list rather than by the detector.
+#
+# EXEMPTIONS. `scripts/handcom-infra-exempt.txt` lists, one path and reason per line,
+# the emit or driver modules, and the modules a trace reaches, that hold IR terms as
+# proof subjects or infrastructure and ship no kernel. `scripts/register-provenance.sh
+# <path.lean> --infra "<reason>"` appends a line. A line is needed only for a module
+# the check would otherwise report.
+#
+# SELF-TEST. `HANDCOM_SCAN_EXTRA="<file> ..."` adds files outside the tree to both
+# detectors' scan, so a detector change can be tested on a throw-away module without
+# adding a file to the repository.
 #
 # ---------------------------------------------------------------------------
 # DETECTOR B — a hand-authored `Linstr` reaching a WRITTEN artifact
@@ -106,14 +124,15 @@
 # `bench/` IS SCANNED by detector B. A hand-built `Lcmd` in a `bench/*.lean` driver
 # writes a `.s` that the bench harness measures and the scoreboard quotes, so it is
 # a shipped artifact under the same rule; leaving it out let five such drivers sit
-# outside the ratchet. Detector A stays `CatCrypt/`-only — its render-marker scan
-# over ~400 bench drivers would be judging compiler infrastructure by proxy, and
-# every bench driver that hand-authors IR is already a detector-B candidate.
+# outside the ratchet. Detector A stays `CatCrypt/`-only: every bench driver that
+# hand-authors IR is already a detector-B candidate.
 #
 # DETECTOR B GAP: it only considers modules that call `IO.FS.writeFile` themselves.
 # A kernel module whose artifact is written by a separate `*Main.lean` `lean_exe`
-# driver is judged by detector A instead (the driver modules are on the exemption
-# list as drivers that author no IR).
+# driver is judged by detector A instead: the driver is the candidate, and the object
+# it renders is traced to the kernel module. A driver that passes the object on
+# without a render marker of its own, or whose object the declaration index cannot
+# resolve, is not connected to its kernel by that trace.
 #
 # EXCLUDED (compiler infra, not owned-emit kernels): the loop-node definitions
 # (forLoopNRt / nestLoopLcmd / whileLcmd) in JasminLprogExport.lean and
@@ -182,8 +201,9 @@ code_text() {
 }
 
 has_construct() { code_text "$1" | grep -E "$CONSTRUCT_RE" >/dev/null; }
-has_render()    { code_text "$1" | grep -E "$RENDER_RE" >/dev/null; }
 has_front()     { code_text "$1" | grep -E "$FRONT_RE" >/dev/null; }
+# An emit or driver module: it renders an object or writes a file.
+is_emit_module() { code_text "$1" | grep -E "$RENDER_RE|IO\.FS\.writeFile" >/dev/null; }
 
 # Declaration index: `<name>\t<file>` for every `def`/`abbrev` under CatCrypt/.
 # Built once; `def_file` resolves an identifier to the module that defines it.
@@ -238,7 +258,7 @@ front_sourced() {
   # module drawing a type or a block from it is judged by its other sources;
   # detector B skips such modules in the same way.
   [ "$depth" -lt "$FRONT_SOURCED_DEPTH" ] && is_infra "$f" && return 0
-  has_construct "$f" && return 1
+  if has_construct "$f"; then echo "$f" > "$BCACHE/origin"; return 1; fi
   local ids id target src
   ids="$(emit_sources "$f")"
   for id in $ids; do
@@ -401,18 +421,24 @@ writes_hand_authored_artifact() {
 }
 
 TMP="$(mktemp)"
+: > "$BCACHE/origins"
 {
-  for f in $(grep -rlE "$CONSTRUCT_RE|$RENDER_RE" --include='*.lean' CatCrypt/); do
-    has_construct "$f" || has_render "$f" || continue
+  for f in $(grep -rlE "$RENDER_RE|IO\.FS\.writeFile" --include='*.lean' CatCrypt/) ${HANDCOM_SCAN_EXTRA:-}; do
+    is_emit_module "$f" || continue
     is_infra "$f" && continue
+    : > "$BCACHE/origin"
     front_sourced "$f" "$FRONT_SOURCED_DEPTH" " " && continue
     echo "$f"
+    printf '%s\t%s\n' "$f" "$(cat "$BCACHE/origin")" >> "$BCACHE/origins"
   done
-  for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' CatCrypt/ bench/); do
+  for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' CatCrypt/ bench/) ${HANDCOM_SCAN_EXTRA:-}; do
     ct "$f" | grep -E "$AUTHORED_IR_RE" >/dev/null || continue
     is_infra "$f" && continue
     is_template_front "$f" && continue
-    writes_hand_authored_artifact "$f" && echo "$f"
+    if writes_hand_authored_artifact "$f"; then
+      echo "$f"
+      printf '%s\t%s\n' "$f" "(written artifact)" >> "$BCACHE/origins"
+    fi
   done
 } | sort -u > "$TMP"
 CURRENT="$(grep -c . "$TMP" || true)"
@@ -446,8 +472,17 @@ if [ "$CURRENT" -gt "$BASELINE" ]; then
   echo "      A template generator (parameters -> Com block, with a bounds certificate"
   echo "      and a correctness theorem per instance) is listed, with its reason, in"
   echo "      scripts/handcom-template-fronts.txt."
-  echo "      NEW hand-Com module(s) (not in the baseline):"
-  comm -13 <(baseline_paths) "$TMP" | sed 's/^/        /'
+  echo "      A module whose IR terms are proof subjects or infrastructure, and which"
+  echo "      ships no kernel, is a justified exception: record it with its reason in"
+  echo "      scripts/handcom-infra-exempt.txt, by"
+  echo "        bash scripts/register-provenance.sh <path.lean> --infra \"<reason>\""
+  echo "      NEW hand-Com module(s) (not in the baseline), each with the module in which"
+  echo "      the hand-built IR was found:"
+  comm -13 <(baseline_paths) "$TMP" | while IFS= read -r m; do
+    o="$(awk -F'\t' -v m="$m" '$1==m {print $2}' "$BCACHE/origins" | sort -u | paste -sd' ' -)"
+    if [ -n "$o" ] && [ "$o" != "$m" ]; then printf '        %s   <- %s\n' "$m" "$o"
+    else printf '        %s\n' "$m"; fi
+  done
   exit 1
 fi
 

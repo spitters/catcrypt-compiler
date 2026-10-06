@@ -1,32 +1,28 @@
 #!/usr/bin/env bash
-# Proof-cost ratchet.
+# Proof-cost ratchet: raised `maxHeartbeats` budgets.
 #
-# Two costs a proof can pay to the build rather than to the reader. Each is a
-# MONOTONE NON-INCREASING dimension: the check FAILS when the count GROWS and
-# AUTO-TIGHTENS the baseline when it SHRINKS. The current numbers are large and
-# are meant to be read as a standing optimization target, not as a clean slate —
-# every entry in either baseline is a place where the package buys a proof with
-# build time, and lowering the count is a contribution the ratchet will record.
+# One MONOTONE NON-INCREASING count: the check FAILS when it GROWS and AUTO-TIGHTENS
+# the baseline when it SHRINKS. Every entry of the baseline is a place where the
+# package buys a proof with build time, and lowering the count is a contribution the
+# ratchet records.
 #
-#   (1) maxHeartbeats BUMPS — occurrences of `set_option maxHeartbeats N` with N
-#       above the 200000 default. A raised budget carries a slow proof instead of
-#       fixing it; the fix is to extract the expensive step as an isolated lemma
-#       over abstract inputs, so the cost is paid once and the caller elaborates
-#       against a signature. A lowered or removed bump shrinks the count; a new
-#       one requires a deliberate re-baseline.
+#   maxHeartbeats BUMPS — occurrences of `set_option maxHeartbeats N` with N above
+#   the 200000 default. A raised budget carries a slow proof instead of fixing it;
+#   the fix is to extract the expensive step as an isolated lemma over abstract
+#   inputs, so the cost is paid once and the caller elaborates against a signature.
+#   A lowered or removed bump shrinks the count; a new one requires a deliberate
+#   re-baseline.
 #
-#   (2) native_decide OCCURRENCES — each runs a computation inside the proof
-#       build, adds the `ofReduceBool` compiler-trust axiom to whatever depends
-#       on it, and its native compilation is a large part of what makes a
-#       full-library build exceed a 16 GB machine. A KAT (`run(input) = output`)
-#       or a `strContains … = true` text check is a test, not a theorem — it
-#       belongs in an external harness, leaving the structural
-#       `denote(emitted) = spec` theorem in the module. The construct is
-#       legitimate for a general lemma discharged by finite computation over a
-#       bounded type.
+# The count is taken over CatCrypt/ AFTER stripping `/- … -/` block and `-- …` line
+# comments, so a mention in prose does not count. Baseline:
+# scripts/maxheartbeats-baseline.txt (first line the count, then one path per
+# occurrence).
 #
-# Both counts are taken over CatCrypt/ AFTER stripping `/- … -/` block and `-- …`
-# line comments, so prose mentions (this file's own doc, a docstring) don't count.
+# `native_decide` is not counted here. The project accepts it, and a use is replaced
+# only when it is measured slow or memory-heavy. scripts/check-build-cost.sh still
+# refuses a new `native_decide` in a module that imports the reflection or emit
+# front, where it compiles the whole pipeline natively. The per-file data in
+# scripts/native-decide-baseline.txt is kept and is no longer read by this script.
 #
 # Usage: bash scripts/proof-cost-ratchet.sh
 set -euo pipefail
@@ -34,12 +30,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 MH_BASELINE_FILE="scripts/maxheartbeats-baseline.txt"
-ND_BASELINE_FILE="scripts/native-decide-baseline.txt"
 
-MH_TMP="$(mktemp)"; ND_TMP="$(mktemp)"
-trap 'rm -f "$MH_TMP" "$ND_TMP"' EXIT
+MH_TMP="$(mktemp)"
+trap 'rm -f "$MH_TMP"' EXIT
 
-# --- Dimension 1: maxHeartbeats bumps (> 200000), comment-stripped ---
+# maxHeartbeats bumps (> 200000), comment-stripped
 for f in $(grep -rlE 'maxHeartbeats' --include='*.lean' CatCrypt/ 2>/dev/null || true); do
   perl -0777 -ne '
     s{/-.*?-/}{}gs; s{--[^\n]*}{}g;
@@ -47,16 +42,6 @@ for f in $(grep -rlE 'maxHeartbeats' --include='*.lean' CatCrypt/ 2>/dev/null ||
   ' "$f"
 done | sort > "$MH_TMP"
 MH_CURRENT="$(grep -c . "$MH_TMP" || true)"
-
-# --- Dimension 2: native_decide occurrences, comment-stripped ---
-for f in $(grep -rl 'native_decide' --include='*.lean' CatCrypt/ 2>/dev/null || true); do
-  N="$(perl -0777 -ne 's{/-.*?-/}{}gs; s{--[^\n]*}{}g; my $c = () = /native_decide/g; print $c;' "$f")"
-  # `cmd && action` as the loop's last statement makes the loop exit non-zero
-  # whenever the final file has no code-level hit; under `set -e` with the loop
-  # feeding a pipe, that aborts the script before either dimension is compared.
-  if [ "${N:-0}" -gt 0 ]; then printf '%s\t%s\n' "$N" "$f"; fi
-done | sort -k2 > "$ND_TMP"
-ND_CURRENT="$(awk -F'\t' '{s+=$1} END {print s+0}' "$ND_TMP")"
 
 fail=0
 
@@ -76,8 +61,8 @@ ratchet() {  # $1=name $2=current $3=baseline_file $4=tmp(sorted files) $5=count
     echo "      New offender file(s) (not in the baseline):"
     comm -13 <(grep -E '^CatCrypt/|	CatCrypt/' "$bfile" 2>/dev/null | sed -E 's/^[0-9]+\t//' | sort) \
              <(sed -E 's/^[0-9]+\t//' "$tmp" | sort) | sed 's/^/        /'
-    echo "      Fix the proof (extract-lemma for heartbeats / move the KAT to a"
-    echo "      harness for native_decide), or re-baseline deliberately."
+    echo "      Fix the proof (extract the expensive step as a lemma over abstract"
+    echo "      inputs), or re-baseline deliberately."
     fail=1
     return 0
   fi
@@ -89,7 +74,5 @@ ratchet() {  # $1=name $2=current $3=baseline_file $4=tmp(sorted files) $5=count
 
 ratchet "maxHeartbeats bumps (>200000)" "$MH_CURRENT" "$MH_BASELINE_FILE" "$MH_TMP" \
   "maxHeartbeats bumps > 200000 over CatCrypt/ (one line per occurrence, file path). Goal: 0."
-ratchet "native_decide occurrences" "$ND_CURRENT" "$ND_BASELINE_FILE" "$ND_TMP" \
-  "native_decide occurrences over CatCrypt/ (\"<count>\t<file>\", tab-separated). Goal: burn down."
 
-[ "$fail" -eq 0 ] && echo "OK: proof-cost ratchets satisfied." || exit 1
+[ "$fail" -eq 0 ] && echo "OK: proof-cost ratchet satisfied." || exit 1

@@ -31,8 +31,6 @@ CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519MaddShippedParts.lean	125	
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519MaddShippedProof.lean	34	1740	1625
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PackSignLeaf.lean	37	1910	1828
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PackSignNameKeyed.lean	396	612	856
-CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedChecksA.lean	11	6870	3016
-CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedChecksB.lean	9	1670	3449
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedParts.lean	801	1900	2048
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedProof.lean	328	1660	3788
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean	137	1830	3563

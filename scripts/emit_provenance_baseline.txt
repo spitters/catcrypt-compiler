@@ -2,8 +2,6 @@
 # The audit FAILS when a NEW untagged one appears: tag it @kat-target/@bench-only,
 # or generate the block through the front. Removing a line by re-sourcing the
 # module through the compiler is the intended direction.
-CatCrypt/Crypto/BLAKE3/CompressEmit.lean
-CatCrypt/Crypto/BLAKE3/CompressOwnedEmit.lean
 CatCrypt/Crypto/Optimizer/GraphColoringCoalesce.lean
 CatCrypt/Crypto/Optimizer/GraphColoringRegAlloc.lean
 CatCrypt/Crypto/Optimizer/InOrderCostModel.lean

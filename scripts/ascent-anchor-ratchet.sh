@@ -15,9 +15,34 @@
 # A module also counts as anchored when a module that (transitively) imports it
 # is anchored: its lemmas feed an anchored result.
 #
-# Everything else is unanchored and must be listed in
-# scripts/ascent-anchor-baseline.txt with a reason. The unanchored count may
-# fall, never rise; the bytes count may rise, never fall.
+# SCOPE. A module needs an anchor only when it states a correspondence at concrete
+# code, by either of two textual tests over its code text:
+#
+#   block    a constant `...Block...` definition of this repository appears within a
+#            two-line window of a correspondence judgment (`Corres…`, `BytesCorres…`)
+#            or a block run (`runBlock`, `runRBlock…`): the detection of
+#            scripts/audit_emit_provenance.sh for ascent module/block pairs, over
+#            the judgments of every backend;
+#   program  the module itself defines an instruction list or a program (a `def` or
+#            `abbrev`, with or without parameters, whose result type is
+#            `List (JInstr n)`, `List ROp64`, `List BOp`, `List RInst64`,
+#            `List BBStmt`, `Lcmd`, `Lprog`, `Linstr…`, `Com …`, `ComL …`, `LowCT` or
+#            `RustSrc`) and mentions a correspondence judgment (`Corres…`,
+#            `BytesCorres…`) or a block run (`runBlock`, `runRBlock…`).
+#
+# A generic rule module (its programs are variables), a definitions-only module and
+# infrastructure that defines no code state nothing about a particular program, so
+# they need neither an anchor nor a row.
+#
+# An unanchored module in scope must be listed in
+# scripts/ascent-anchor-baseline.txt with a reason
+# (`bash scripts/register-provenance.sh <path.lean> --anchor "<reason>"`). The count
+# of such modules may fall, never rise.
+#
+# The scope test is textual. It misses a module that states its result about a
+# program defined in another module under a name without `Block`, and a statement
+# about concrete code that uses none of the judgment names above (a constant-time
+# statement, a denotation equation).
 #
 # LIMITS, so the number is not read for more than it says. This is a provenance
 # gate, not a vacuity gate: it shows a theorem talks about the shipped artifact,
@@ -111,6 +136,46 @@ code_of() {
 }
 
 tmp=$(mktemp -d)
+
+# Constant `...Block...` definitions of the repository at HEAD: the name is followed
+# by `:` or `:=` with no parameter binder, and its type has no arrow. This is the
+# index scripts/audit_emit_provenance.sh builds for ascent module/block pairs.
+git grep -hE '^[[:space:]]*(def|abbrev)[[:space:]]+[a-zA-Z_][A-Za-z0-9_]*[Bb]lock[A-Za-z0-9_]*[[:space:]]*(:|:=)' \
+    HEAD -- CatCrypt HaxAscent 2>/dev/null | awk '
+  {
+    line = $0
+    sub(/^[[:space:]]*(def|abbrev)[[:space:]]+/, "", line)
+    name = line; sub(/[[:space:]]*(:|:=).*/, "", name)
+    rest = substr(line, length(name) + 1)
+    if (index(rest, ":=") > 0) rest = substr(rest, 1, index(rest, ":=") - 1)
+    if (index(rest, "\xe2\x86\x92") == 0) print name
+  }' | sort -u > "$tmp/blocknames"
+
+# 0 iff the code text on stdin states a correspondence at concrete code (see SCOPE).
+judgment_re='(^|[^A-Za-z0-9_])(Corres[A-Za-z0-9_]*|BytesCorres[A-Za-z0-9_]*|run[A-Z]?Block[A-Za-z0-9_]*)'
+concrete_code() {
+  local code="$1" names
+  # block: a constant block name within two lines of a judgment.
+  names=$(awk 'NR>1{print prev " " $0} {prev=$0}' <<< "$code" |
+            grep -E "$judgment_re" |
+            grep -oE '[a-z][A-Za-z0-9_]*[Bb]lock[A-Za-z0-9_]*' | sort -u || true)
+  if [ -n "$names" ] && [ -n "$(comm -12 <(printf '%s\n' "$names") "$tmp/blocknames")" ]; then
+    return 0
+  fi
+  # program: the module defines code and mentions a judgment or a block run.
+  grep -qE "$judgment_re" <<< "$code" || return 1
+  perl -CSD -0777 -ne '
+    while (/^[ \t]*(?:private |protected |noncomputable )*(?:def|abbrev)[ \t]+[A-Za-z_][A-Za-z0-9_\x27.]*((?:[^\n]*\n){0,3}?[^\n]*?)(?::=|\n[ \t]*\|)/mg) {
+      my $sig = $1;
+      $sig =~ s/.*\x{2192}//s;          # result type: after the last arrow,
+      $sig =~ s/.* : //s;               # then after the last binder colon
+      $sig =~ s/^[\s:]+//;
+      if ($sig =~ /^(?:List \((?:JInstr|RInstr)\b|List (?:ROp64|BOp|RInst64|BBStmt|LowCT)\b|Lcmd\b|Lprog|Linstr|ComL? |LowCT\b|RustSrc\b)/) { $hit = 1; last }
+    }
+    END { exit($hit ? 0 : 1) }' <<< "$code"
+}
+
+: > "$tmp/concrete"    # modules that state a correspondence at concrete code
 : > "$tmp/direct"      # module<TAB>kind   (descent|bytes|both)
 : > "$tmp/imports"     # module<TAB>imported-ascent-module
 
@@ -118,6 +183,7 @@ for f in $files; do
   m=$(mod_of "$f")
   code=$(code_of "$f")
   d=0; b=0
+  concrete_code "$code" && echo "$m" >> "$tmp/concrete"
   # Here-strings, not pipes: under `pipefail`, `grep -q` closes the pipe as soon as it
   # matches, the upstream `sed` dies of SIGPIPE, and the pipeline reports failure on a
   # match — timing-dependent, and it made the verdict flap run to run (2026-09-19).
@@ -162,26 +228,33 @@ awk -F'\t' '
 ' <(cut -f1 "$tmp/direct") "$tmp/imports" | sort -u > "$tmp/anchored"
 
 for f in $files; do mod_of "$f"; echo; done | grep -v '^$' | sort -u > "$tmp/all"
-comm -23 "$tmp/all" "$tmp/anchored" > "$tmp/unanchored"
+sort -u -o "$tmp/concrete" "$tmp/concrete"
+comm -23 "$tmp/all" "$tmp/anchored" > "$tmp/unanchored-all"
+# In scope: unanchored modules that state a correspondence at concrete code.
+comm -12 "$tmp/unanchored-all" "$tmp/concrete" > "$tmp/unanchored"
 
 total=$(wc -l < "$tmp/all")
 anch=$(wc -l < "$tmp/anchored")
 unanch=$(wc -l < "$tmp/unanchored")
+unanch_all=$(wc -l < "$tmp/unanchored-all")
 bytes=$(awk -F'\t' '$2 == "bytes" || $2 == "both"' "$tmp/direct" | wc -l)
 
 if [ "$mode" = "--list" ]; then
   echo "# anchored ($anch of $total):"
   sort "$tmp/direct" | sed 's/^/  /'
-  echo "# unanchored ($unanch):"
+  echo "# unanchored, stating a correspondence at concrete code ($unanch):"
   sed 's/^/  /' "$tmp/unanchored"
+  echo "# unanchored, out of scope: rules, definitions, infrastructure ($((unanch_all - unanch))):"
+  comm -23 "$tmp/unanchored-all" "$tmp/unanchored" | sed 's/^/  /'
   exit 0
 fi
 
 if [ "$mode" = "--record" ]; then
   {
-    echo "# Ascent modules whose results are tied to neither a descent theorem nor the"
-    echo "# encoded bytes. Each line: module<TAB>reason. Recorded by"
-    echo "# scripts/ascent-anchor-ratchet.sh --record; the count may fall, never rise."
+    echo "# Ascent modules that state a correspondence at concrete code and whose results"
+    echo "# are tied to neither a descent theorem nor the encoded bytes. Each line:"
+    echo "# module<TAB>reason. Recorded by scripts/ascent-anchor-ratchet.sh --record; the"
+    echo "# count may fall, never rise."
     while read -r m; do
       old=$(grep -P "^\Q$m\E\t" "$baseline" 2>/dev/null | head -1)
       if [ -n "$old" ]; then echo "$old"; else printf '%s\tno reason recorded\n' "$m"; fi
@@ -189,6 +262,10 @@ if [ "$mode" = "--record" ]; then
   } > "$baseline.new"
   mv "$baseline.new" "$baseline"
   echo "ascent-anchor: recorded $unanch unanchored module(s) in $baseline"
+  if grep -q $'\tno reason recorded$' "$baseline"; then
+    echo "ascent-anchor: row(s) without a reason; the check fails until each has one:"
+    grep $'\tno reason recorded$' "$baseline" | cut -f1 | sed 's/^/    /'
+  fi
   exit 0
 fi
 
@@ -197,11 +274,18 @@ if [ -f "$baseline" ]; then
   base_n=$(grep -vc '^#' "$baseline")
   new=$(comm -23 "$tmp/unanchored" <(grep -v '^#' "$baseline" | cut -f1 | sort -u))
   if [ -n "$new" ]; then
-    echo "ASCENT-ANCHOR: module(s) tied to neither a descent theorem nor the encoded bytes,"
-    echo "  and not in $baseline:"
+    echo "ASCENT-ANCHOR: module(s) stating a correspondence at concrete code, tied to neither"
+    echo "  a descent theorem nor the encoded bytes, and not in $baseline:"
     printf '%s\n' "$new" | sed 's/^/    /'
     echo "  -> weld the result onto a descent theorem, state it over the encoded bytes,"
-    echo "     or record it with its reason: bash scripts/ascent-anchor-ratchet.sh --record"
+    echo "     or record it with its reason:"
+    echo "       bash scripts/register-provenance.sh <path.lean> --anchor \"<reason>\""
+    fail=1
+  fi
+  noreason=$(grep -v '^#' "$baseline" | awk -F'\t' '$2 == "" || $2 == "no reason recorded" { print $1 }')
+  if [ -n "$noreason" ]; then
+    echo "ASCENT-ANCHOR: baseline row(s) without a reason:"
+    printf '%s\n' "$noreason" | sed 's/^/    /'
     fail=1
   fi
   gone=$(comm -13 "$tmp/unanchored" <(grep -v '^#' "$baseline" | cut -f1 | sort -u))
@@ -213,6 +297,6 @@ else
   fail=1
 fi
 
-echo "ascent-anchor: $total ascent modules, $anch anchored ($bytes at the bytes), $unanch unanchored (baseline ${base_n:-0})."
+echo "ascent-anchor: $total ascent modules, $anch anchored ($bytes at the bytes), $unanch unanchored at concrete code (baseline ${base_n:-0}), $((unanch_all - unanch)) unanchored out of scope."
 [ "$fail" -eq 0 ] && echo "ascent-anchor: OK"
 exit $fail
