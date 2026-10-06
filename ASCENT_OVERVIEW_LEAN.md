@@ -65,10 +65,22 @@ Control flow (`Ascent/CorresIsaCfg`, namespace `IsaCfg`): `corresIsa_of_cutPoint
 cut-point rule of `HaxAscent/Calculus/CorresMCutPoint` at `Isa.lsemFuelMemF`;
 `corresIsa_of_labels_floyd` takes an invariant per cut point (program entry or the
 position after a label), a measure and a step bound `B` per segment, and gives
-`CorresIsa` with fuel `B * (N + 1)`. Segments come from `steps_of_runL`. Examples over
-`x86Isa` (`Ascent/Demos/KrakenCfgDemo`): `cond_corresIsa` (absolute value by a branch),
-`alias_corresIsa` (two indexed stores at possibly equal indices), `loop_corresIsa` (a
-counting loop).
+`CorresIsa` with fuel `B * (N + 1)`; `lsemFuelMemF_of_labels_floyd` is the same rule with
+the fuel `B * (μ none m a + 1)` of the initial state, and `corresIsaRun_of_labels_floyd`
+its form as `CorresIsaRun`. Segments come from `steps_of_runL`, or from the segment
+predicate `SegAt` of `Ascent/CorresIsaCfgTactic`: `corresIsa_of_cuts` states the rule with
+one `SegAt` goal per cut point, `isa_cutpoints` applies it, `isa_steps` runs a segment
+forward by the lemma of the instruction at the counter and splits at a conditional jump
+on a register, and `isa_exit` and `isa_cut` end a segment and leave the exit relation or
+the invariant and the decrease of the measure. Examples of the rule over `x86Isa`
+(`Ascent/Demos/KrakenCfgDemo`), written on `Lprog` code with virtual registers:
+`abs_corresIsa` (absolute value by a branch on a register), `idxAlias_corresIsa` (two
+indexed stores at possibly equal indices of one array), `loop_corresIsa` (a counting
+loop, with fuel linear in a bound on its input). The loop is a simpler relative of the
+example `P3` of the Kraken x64 framework. The other two are not its examples `Cond` (a
+jump on the zero flag after a decrement, with a postcondition for one branch) and `Alias`
+(two labels at one address). The machine model expresses no branch on the flags of an
+arithmetic instruction, no aliasing of pointers and no mapped stack.
 
 Call and return (`VIR/LprogIsa`, `Ascent/CorresIsaCall`): `Isa.withCalls` is the record
 `isa` with a step for `Lcall` and `Lret` (return address pushed at the stack pointer of
@@ -78,7 +90,8 @@ specification from an entry label to a return position, with a frame condition a
 `RetFrame` (stack pointer and return cell preserved); `IsaCall.steps_call` runs a call
 site through call, callee and return in at most `B + 2` steps, and is one segment of
 `corresIsa_of_labels_floyd`. Example: `call_corresIsa` (`Ascent/Demos/KrakenCallDemo`),
-a caller of a doubling procedure, twice. A return through a link register has no step
+a caller of a doubling procedure, twice, a simpler relative of the Kraken example
+`CallSwap`. A return through a link register has no step
 (`Ligoto`), and the three instance records are not extended: results with calls are
 stated over `isa.withCalls`. For a program without a call instruction the two machines
 give the same judgement (`corresIsa_withCalls_iff`, development tree).

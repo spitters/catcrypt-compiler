@@ -46,6 +46,8 @@ declaration of `l`). A cut point is `none`, the entry of the body at counter `0`
   labels of `P`, with one verification condition per cut point.
 * `corresIsa_of_labels_floyd`: the instance with the abstract state fixed at its entry
   value and the exit condition `SR m' (fa a)` at a halted state.
+* `lsemFuelMemF_of_labels_floyd`, `corresIsaRun_of_labels_floyd`: the same rule with the
+  fuel `B * (μ none m a + 1)` of the initial state, and its form as `CorresIsaRun`.
 -/
 
 @[expose] public section
@@ -361,6 +363,56 @@ theorem corresIsa_of_labels_floyd (isa : Isa) (P : LprogM) (SR : LstateMF → AS
       | inr hc => exact Or.inr hc)
     (fun _ _ _ h => h.1)
     (fun a m' a' _ _ hT h => by subst hT; exact h.2)
+
+/-- **The run from invariants, with the fuel of the initial state.** Under the segment
+    condition of `corresIsa_of_labels_floyd`, from a state `m` related by `SR` to an
+    abstract state `a` satisfying `Pre`, the run of `P` with fuel `B * (μ none m a + 1)`,
+    the step bound times the successor of the measure of `m` at the entry, halts in a state
+    related to `fa a`. The measure is not bounded over the related states. -/
+theorem lsemFuelMemF_of_labels_floyd (isa : Isa) (P : LprogM) (SR : LstateMF → AState → Prop)
+    (Pre : AState → Prop) (fa : AState → AState)
+    (Inv : Option LLabel → LstateMF → AState → Prop)
+    (μ : Option LLabel → LstateMF → AState → Nat) (B : Nat)
+    (hentry : ∀ m a, SR m a → Pre a → atCut P none m ∧ Inv none m a)
+    (hseg : ∀ c m a, atCut P c m → Inv c m a →
+      ∃ n m', n ≤ B ∧ Steps isa P n m m' ∧
+        ((Halted P m' ∧ SR m' (fa a)) ∨
+          ∃ c', atCut P c' m' ∧ Inv c' m' a ∧ μ c' m' a < μ c m a))
+    (m : LstateMF) (a : AState) (hSR : SR m a) (hPre : Pre a) :
+    ∃ t, isa.lsemFuelMemF P (B * (μ none m a + 1)) m = some t ∧ SR t (fa a) := by
+  have h : CorresIsa (AState := AState × Bool) isa P
+      (fun m' p => if p.2 = true then SR m' p.1 else (m' = m ∧ p.1 = a))
+      (fun p => p.2 = false) (fun p => (fa p.1, true)) (B * (μ none m a + 1)) :=
+    corresIsa_of_labels_floyd isa P _ _ _ (fun c m' p => Inv c m' p.1)
+      (fun c m' p => μ c m' p.1) B (μ none m a)
+      (by
+        rintro m' ⟨a', b⟩ hS hb
+        obtain rfl : b = false := hb
+        obtain ⟨rfl, rfl⟩ : m' = m ∧ a' = a := by simpa using hS
+        obtain ⟨hat, hI⟩ := hentry _ _ hSR hPre
+        exact ⟨hat, hI, Nat.le_refl _⟩)
+      (by
+        rintro c m' ⟨a', b⟩ hat hI
+        obtain ⟨n, m'', hn, hs, hd⟩ := hseg c m' a' hat hI
+        exact ⟨n, m'', hn, hs, by simpa using hd⟩)
+  obtain ⟨t, ht, hS⟩ := h m (a, false) (by simp) rfl
+  exact ⟨t, ht, by simpa using hS⟩
+
+/-- **`CorresIsaRun` from invariants over the entry abstract state**:
+    `lsemFuelMemF_of_labels_floyd` with the fuel quantified. -/
+theorem corresIsaRun_of_labels_floyd (isa : Isa) (P : LprogM)
+    (SR : LstateMF → AState → Prop) (Pre : AState → Prop) (fa : AState → AState)
+    (Inv : Option LLabel → LstateMF → AState → Prop)
+    (μ : Option LLabel → LstateMF → AState → Nat) (B : Nat)
+    (hentry : ∀ m a, SR m a → Pre a → atCut P none m ∧ Inv none m a)
+    (hseg : ∀ c m a, atCut P c m → Inv c m a →
+      ∃ n m', n ≤ B ∧ Steps isa P n m m' ∧
+        ((Halted P m' ∧ SR m' (fa a)) ∨
+          ∃ c', atCut P c' m' ∧ Inv c' m' a ∧ μ c' m' a < μ c m a)) :
+    CorresIsaRun isa P SR Pre fa := fun m a hSR hPre => by
+  obtain ⟨t, ht, hS⟩ :=
+    lsemFuelMemF_of_labels_floyd isa P SR Pre fa Inv μ B hentry hseg m a hSR hPre
+  exact ⟨_, t, ht, hS⟩
 
 end Rule
 
