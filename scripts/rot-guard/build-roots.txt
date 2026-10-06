@@ -817,6 +817,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel

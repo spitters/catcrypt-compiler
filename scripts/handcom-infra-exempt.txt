@@ -249,3 +249,4 @@ CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCallX86.lean  # step-agreement
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCellsCT.lean  # constant time of the straight cell arm from its gate; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillReload.lean  # Lprog post-pass that reloads a spilled first operand of a compare into the scratch register; the Lopn terms are the pass's rewrite template, validated by the back-end gate, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageLoopWLeak.lean  # leak traces of the wide loop arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightRegW.lean  # register-returning straight arm of the image route over the wide printed class; the Lprog terms are instruction shapes under proof, no emit artifact
