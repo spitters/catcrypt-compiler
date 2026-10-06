@@ -205,24 +205,29 @@ theorem straightArrB_spec {σ : AbiLayout} {nm : String → String} {body : Lcmd
   simp only [straightArrB, Bool.and_eq_true] at hg
   exact hg.2
 
-/-- **The chain of the array route from the state behind the copies.** For an
-    array-returning program that passes `straightArrB` against the printed body `body`, at
-    every valuation `V` the layout reads off the machine state `sa`: the chain `arrChain` is
-    a chain of `Lopn`s, runs from `afterArgs`, and emits `straightT` of the source events of
-    the program at `V` with array names renamed by the alias map. -/
-theorem arrChain_run (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {Γ : Ctxt jasminDialect} {m : Nat} (com : Com jasminDialect Γ (.stackArr 64 m))
-    (hg : straightArrB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
-    (hV : AbiValOf σ sa V) :
+/-- **The coalesced chain from the state behind the copies.** For an array-returning program
+    in the fragment `arrMemNB` whose chain passes the coalescing check under its alias map,
+    the map fixing every array name live at the entry, with the coalesced chain plain, and a
+    printed body `body` that passes the entry check `entryB`: at every valuation `V` the
+    layout reads off the machine state `sa`, the chain `arrChain` is a chain of `Lopn`s, runs
+    from `afterArgs`, and emits `straightT` of the source events of the program at `V` with
+    array names renamed by the alias map. -/
+theorem arrChain_run_of (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String}
+    {body : Lcmd} {Γ : Ctxt jasminDialect} {m : Nat}
+    (com : Com jasminDialect Γ (.stackArr 64 m)) (hmem : arrMemNB com = true)
+    (hco : coalesceB (chainAlias (straightOpsMem Γ.length com Γ.length))
+      (straightOpsMem Γ.length com Γ.length) [comRetReg Γ.length argName com Γ.length] = true)
+    (hfix : (liveArr (straightOpsMem Γ.length com Γ.length)
+      [comRetReg Γ.length argName com Γ.length]).all
+        (fun r => chainAlias (straightOpsMem Γ.length com Γ.length) r == r) = true)
+    (hpl : plainB (arrChain com) = true) (hent : ImageAddrRoute.entryB σ nm body = true)
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) :
     (∀ i ∈ arrChain com, IsLopn i)
       ∧ (∃ bz, runStraightF (arrChain com) (afterArgs σ body sa) false = some bz)
       ∧ straightLeakFF (arrChain com) (afterArgs σ body sa) false
         = (straightT Pj Γ.length com Γ.length (Com.ctLeak (jLeakModel Pj) com V)).map
           (renEv (chainAlias (straightOpsMem Γ.length com Γ.length))) := by
-  simp only [straightArrB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨hmem, hco⟩, hfix⟩, hpl⟩, -⟩, hroute⟩ := hg
-  simp only [straightRouteB, Bool.and_eq_true] at hroute
-  have E := entryB_spec hroute.2 sa
+  have E := entryB_spec hent sa
   have habi := entryV_abiEntry (un := fun x => x) (sa := sa) E.argF E.argG fun _ _ => rfl
   have hagr : StoreAgreesM Γ.length Γ.length (afterArgs σ body sa) V :=
     storeAgreesM_lpc σ.args.length (storeAgreesM_of_abi hV habi)
@@ -250,6 +255,25 @@ theorem arrChain_run (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String
   unfold arrChain
   rw [straightLeakF_coalesce _ _ hco hok hR0 hrun,
     straightLeakF_straightOps_arr Pj hm rfl le_rfl hagr]
+
+/-- **The chain of the array route from the state behind the copies.** For an
+    array-returning program that passes `straightArrB` against the printed body `body`, at
+    every valuation `V` the layout reads off the machine state `sa`: the chain `arrChain` is
+    a chain of `Lopn`s, runs from `afterArgs`, and emits `straightT` of the source events of
+    the program at `V` with array names renamed by the alias map. -/
+theorem arrChain_run (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {Γ : Ctxt jasminDialect} {m : Nat} (com : Com jasminDialect Γ (.stackArr 64 m))
+    (hg : straightArrB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
+    (hV : AbiValOf σ sa V) :
+    (∀ i ∈ arrChain com, IsLopn i)
+      ∧ (∃ bz, runStraightF (arrChain com) (afterArgs σ body sa) false = some bz)
+      ∧ straightLeakFF (arrChain com) (afterArgs σ body sa) false
+        = (straightT Pj Γ.length com Γ.length (Com.ctLeak (jLeakModel Pj) com V)).map
+          (renEv (chainAlias (straightOpsMem Γ.length com Γ.length))) := by
+  simp only [straightArrB, Bool.and_eq_true] at hg
+  obtain ⟨⟨⟨⟨⟨hmem, hco⟩, hfix⟩, hpl⟩, -⟩, hroute⟩ := hg
+  simp only [straightRouteB, Bool.and_eq_true] at hroute
+  exact arrChain_run_of Pj com hmem hco hfix hpl hroute.2 sa V hV
 
 /-- **The trace of the virtual body of the array route from the source events.** For a
     program that passes `straightArrB` against the printed body `body`: every terminating
