@@ -250,3 +250,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCellsCT.lean  # consta
 CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillReload.lean  # Lprog post-pass that reloads a spilled first operand of a compare into the scratch register; the Lopn terms are the pass's rewrite template, validated by the back-end gate, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageLoopWLeak.lean  # leak traces of the wide loop arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightRegW.lean  # register-returning straight arm of the image route over the wide printed class; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillEncodable.lean  # the checked encoder accepts no compare with a spilled first operand; the Lopn terms are instruction shapes under proof, no emit artifact
