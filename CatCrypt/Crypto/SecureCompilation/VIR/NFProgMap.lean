@@ -492,6 +492,78 @@ theorem map?_toPartial (L : BlockLoweringData d d') (hT : RegionTypes L) {Γ : C
     map? L.toPartial hT p ren = some (map L hT p ren) :=
   (Option.some_get _).symm
 
+/-- A splice that is `some` has a continuation that is `some` at some renaming and result
+    variable. -/
+theorem exists_isSome_of_spliceNF? {ts : List d.Ty} : {Δ : Ctxt d} → {a : d.Ty} →
+    (blk : Com d Δ a) →
+    (k : {Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → Var Δ' a → Option (NFProg d Δ' ts)) →
+    (spliceNF? blk k).isSome →
+    ∃ (Δ' : Ctxt d) (ren : Ctxt.Hom Δ Δ') (res : Var Δ' a), (k ren res).isSome
+  | _, _, .ret v, _, h => ⟨_, _, v, h⟩
+  | _, _, .var _ blk, k, h => by
+      rw [spliceNF?, Option.isSome_map] at h
+      obtain ⟨Δ', ren, res, h'⟩ := exists_isSome_of_spliceNF? blk _ h
+      exact ⟨Δ', _, res, h'⟩
+
+/-- Coverage is monotone in the predicate. -/
+theorem Covered.mono {Good Good' : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop}
+    (hG : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e → Good' e) {Γ : Ctxt d}
+    {ts : List d.Ty} {p : NFProg d Γ ts} (hp : p.Covered Good) : p.Covered Good' := by
+  induction p with
+  | ret => trivial
+  | var e k ih => exact ⟨hG e hp.1, ih hp.2⟩
+  | forLoop _ _ _ _ ihb ihk => exact ⟨ihb hp.1, ihk hp.2⟩
+  | ifThenElse _ _ _ _ iht ihe ihk => exact ⟨iht hp.1, ihe hp.2.1, ihk hp.2.2⟩
+  | whileLoop _ _ _ ihb ihk => exact ⟨ihb hp.1, ihk hp.2⟩
+  | call _ _ _ ih => exact ih hp
+
+/-- **`map?` returns a program exactly on the programs whose expressions `P` accepts.**
+    At every renaming, `map? P hT p ren` is `some` if and only if `P.lowerExprBlock?` is
+    `some` on every let-bound expression of `p` and of its regions. -/
+theorem isSome_map?_iff (P : PartialBlockLowering d d') (hT : P.RegionTypes)
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+    ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (P.mapCtx Γ) Δ),
+      (map? P hT p ren).isSome ↔
+        p.Covered (fun {_ _} e => (P.lowerExprBlock? e).isSome = true) := by
+  induction p with
+  | ret => intro _ _; exact ⟨fun _ => trivial, fun _ => rfl⟩
+  | var e k ih =>
+      intro _ ren
+      simp only [map?, Covered]
+      constructor
+      · intro h
+        cases hb : P.lowerExprBlock? e with
+        | none => rw [hb] at h; cases h
+        | some blk =>
+            rw [hb, Option.bind_some] at h
+            obtain ⟨_, _, _, h'⟩ := exists_isSome_of_spliceNF? _ _ h
+            exact ⟨rfl, (ih _).1 h'⟩
+      · rintro ⟨he, hk⟩
+        obtain ⟨blk, hb⟩ := Option.isSome_iff_exists.mp he
+        rw [hb, Option.bind_some]
+        exact isSome_spliceNF? _ _ (fun _ _ => (ih _).2 hk)
+  | forLoop _ _ body k ihb ihk =>
+      intro _ ren
+      simp only [map?, Covered]
+      rw [← ihb (appHom P _ (liftTo P hT.word_eq ren)), ← ihk (appHom P _ ren)]
+      cases map? P hT body (appHom P _ (liftTo P hT.word_eq ren)) <;>
+        cases map? P hT k (appHom P _ ren) <;> simp
+  | ifThenElse _ thn els k iht ihe ihk =>
+      intro _ ren
+      simp only [map?, Covered]
+      rw [← iht ren, ← ihe ren, ← ihk (appHom P _ ren)]
+      cases map? P hT thn ren <;> cases map? P hT els ren <;>
+        cases map? P hT k (appHom P _ ren) <;> simp
+  | whileLoop _ body k ihb ihk =>
+      intro _ ren
+      simp only [map?, Covered]
+      rw [← ihb (appHom P _ ren), ← ihk (appHom P _ ren)]
+      cases map? P hT body (appHom P _ ren) <;> cases map? P hT k (appHom P _ ren) <;> simp
+  | call _ _ k ih =>
+      intro _ ren
+      simp only [map?, Covered]
+      rw [← ih (appHom P _ ren), Option.isSome_map]
+
 /-! ## 5. Preservation -/
 
 variable [DialectDenote d] [DialectDenote d']

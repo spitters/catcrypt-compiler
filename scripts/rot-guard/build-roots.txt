@@ -43,6 +43,7 @@ CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.Hax.NFFieldSumLeak
+CatCrypt.Crypto.Hax.NFToCatImages
 CatCrypt.Crypto.Hax.NFToLowCT
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
@@ -156,7 +157,6 @@ CatCrypt.Crypto.Optimizer.Lattice.NttMultiplyGeneric
 CatCrypt.Crypto.Optimizer.LoopInvariantMotion
 CatCrypt.Crypto.Optimizer.PackedRotateVsimd
 CatCrypt.Crypto.Optimizer.PipelineSmokeKat
-CatCrypt.Crypto.Optimizer.Rewrite.AegraphFieldGood
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphNFLeak
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
