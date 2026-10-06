@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.BlocksCfg
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr
 
 /-!
 # Substitution of equal registers in the sources of an instruction
@@ -33,6 +34,13 @@ machine: `mapI g i` is the instruction `i` with every register source `n` replac
   move, for a tagging that depends on destinations and mnemonic only.
 * `DeadElimSim`, `copyPropSim_of_deadElimSim` — copy propagation over the extended straight
   fold, given the statement of dead-move elimination at the propagated body.
+* `fstepF_setReg_dst` — the step of an instruction with one register destination that no
+  source names, that is neither the flag compare nor an indexed store, does not depend on
+  the earlier cell of the destination; with its layers `lsemStepN_setReg_dst`,
+  `lsemStepSh_setReg_dst`, `lsemStepMC_setReg_dst`, `lsemStepCast_setReg_dst`,
+  `lsemStepMem_setReg_dst`, `stepMemF_setReg_dst`.
+* `fstepF_liveStep` — the step from two states, at any two program counters, that agree on
+  the names `JasminLsemAddrCongr.readsI` lists.
 -/
 
 @[expose] public section
@@ -669,5 +677,435 @@ theorem copyPropSim_of_deadElimSim (tag : LinstrR → MemTag) (hT : TagShape tag
   exact hde s zf s₂ z₂ hrun
 
 end Propagate
+
+/-! ## 5. A written destination does not depend on its earlier cell -/
+
+section Overwrite
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames)
+
+variable {d : String} {s : LstateN} {w : Nat} (c : BitVec w)
+
+theorem setReg_setReg_same {w' : Nat} (v : BitVec w') :
+    (s.setReg d c).setReg d v = s.setReg d v := by
+  simp only [LstateN.setReg]
+  congr 1
+  funext r
+  by_cases h : r = d <;> simp [h]
+
+theorem readReg_setReg_ne {o : LOperand} (h : d ∉ srcNames o) :
+    readReg (s.setReg d c) o = readReg s o := by
+  cases o with
+  | reg r =>
+      have hne : r ≠ d := fun e => h (by simp [srcNames, e])
+      simp [readReg, hne]
+  | _ => rfl
+
+theorem evalOperandN_setReg_ne {o : LOperand} (h : d ∉ srcNames o) (w' : Nat) :
+    evalOperandN (s.setReg d c) w' o = evalOperandN s w' o := by
+  cases o with
+  | reg r =>
+      have hne : r ≠ d := fun e => h (by simp [srcNames, e])
+      simp [evalOperandN, hne]
+  | _ => rfl
+
+theorem getW_operandName_setReg_ne (hd0 : d ≠ "") {o : LOperand} (h : d ∉ srcNames o)
+    (w' : Nat) :
+    (s.setReg d c).getW (operandName o) w' = s.getW (operandName o) w' := by
+  cases o with
+  | reg r =>
+      have hne : r ≠ d := fun e => h (by simp [srcNames, e])
+      simp [operandName, hne]
+  | _ => simp [operandName, Ne.symm hd0]
+
+theorem immFirstN_setReg (o : String) (n : Nat) {b : LOperand} (h : d ∉ srcNames b) :
+    immFirstN (s.setReg d c) d o n b = immFirstN s d o n b := by
+  unfold immFirstN
+  rw [evalOperandN_setReg_ne c h]
+  cases evalOperandN s (widthFromTag o) b with
+  | none => rfl
+  | some vb => simp only [setReg_setReg_same]
+
+/-- The width-aware step of an instruction with the one register destination `d` that no
+    source names does not depend on the cell of `d`. -/
+theorem lsemStepN_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (hs : ∀ x ∈ srcs, d ∉ srcNames x) :
+    lsemStepN (.Lopn [.reg d] o srcs) (s.setReg d c) = lsemStepN (.Lopn [.reg d] o srcs) s := by
+  rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨e, _ | ⟨f, r⟩⟩⟩⟩
+  · simp [lsemStepN]
+  · have ha := hs a (by simp)
+    cases a with
+    | reg r0 =>
+        have hr : readReg (s.setReg d c) (.reg r0) = readReg s (.reg r0) :=
+          readReg_setReg_ne c ha
+        simp only [lsemStepN, hr, setReg_setReg_same]
+    | arrIdx b x k =>
+        have hb : b ≠ d := fun e => ha (by simp [srcNames, e])
+        have hx : x ≠ d := fun e => ha (by simp [srcNames, e])
+        simp only [lsemStepN, LstateN.getW_setReg_other s d b c 64 hb,
+          LstateN.getW_setReg_other s d x c 64 hx, setReg_setReg_same]
+    | _ => simp [lsemStepN, setReg_setReg_same]
+  · have ha := hs a (by simp)
+    have hb := hs b (by simp)
+    simp only [lsemStepN, readReg_setReg_ne c ha, evalOperandN_setReg_ne c hb,
+      setReg_setReg_same]
+    cases a <;> simp [immFirstN_setReg c o _ hb]
+  · have ha := hs a (by simp)
+    have hb := hs b (by simp)
+    have he := hs e (by simp)
+    simp only [lsemStepN, getW_operandName_setReg_ne c hd0 ha, readReg_setReg_ne c hb,
+      evalOperandN_setReg_ne c he, setReg_setReg_same]
+  · simp [lsemStepN]
+
+theorem getW_setReg_ne {r : String} (h : d ∉ srcNames (.reg r)) (w' : Nat) :
+    (s.setReg d c).getW r w' = s.getW r w' := by
+  have hne : r ≠ d := fun e => h (by simp [srcNames, e])
+  simp [hne]
+
+theorem lsemStepSh_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (hs : ∀ x ∈ srcs, d ∉ srcNames x) :
+    lsemStepSh (.Lopn [.reg d] o srcs) (s.setReg d c) = lsemStepSh (.Lopn [.reg d] o srcs) s := by
+  have hN := lsemStepN_setReg_dst (s := s) c hd0 o srcs hs
+  rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨e, r⟩⟩⟩
+  · simp only [lsemStepSh, sarStruct?]
+    exact hN
+  · cases a <;> simp only [lsemStepSh, sarStruct?] <;> exact hN
+  · have ha := hs a (by simp)
+    cases a <;> cases b <;> simp only [lsemStepSh, sarStruct?] <;>
+      first
+        | exact hN
+        | (split_ifs <;>
+            first
+              | exact hN
+              | simp only [readReg_setReg_ne c ha, setReg_setReg_same])
+  · simp only [lsemStepSh, sarStruct?]
+    exact hN
+
+theorem lsemStepMC_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (hs : ∀ x ∈ srcs, d ∉ srcNames x) :
+    lsemStepMC (.Lopn [.reg d] o srcs) (s.setReg d c) = lsemStepMC (.Lopn [.reg d] o srcs) s := by
+  have hS := lsemStepSh_setReg_dst (s := s) c hd0 o srcs hs
+  rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨e, _ | ⟨f, r⟩⟩⟩⟩
+  · simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?]
+    exact hS
+  · cases a <;>
+      simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
+        sbbhiStruct?] <;> exact hS
+  · have ha := hs a (by simp)
+    have hb := hs b (by simp)
+    cases a <;> cases b <;>
+      simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
+        sbbhiStruct?] <;>
+      first
+        | exact hS
+        | (split_ifs <;>
+            first
+              | exact hS
+              | simp only [readReg_setReg_ne c ha, getW_setReg_ne c hb, setReg_setReg_same])
+  · have ha := hs a (by simp)
+    have hb := hs b (by simp)
+    have he := hs e (by simp)
+    cases a <;> cases b <;> cases e <;>
+      simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
+        sbbhiStruct?] <;>
+      first
+        | exact hS
+        | (split_ifs <;>
+            first
+              | exact hS
+              | simp only [readReg_setReg_ne c ha, getW_setReg_ne c hb, getW_setReg_ne c he,
+                  setReg_setReg_same])
+  · simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?]
+    exact hS
+
+omit s in
+theorem castStruct?_dst {o : String} {srcs : List LOperand} {dst a : String}
+    (h : castStruct? (.Lopn [.reg d] o srcs) = some (dst, a)) :
+    dst = d ∧ srcs = [.reg a] := by
+  rcases srcs with _ | ⟨x, _ | ⟨y, r⟩⟩
+  · simp [castStruct?] at h
+  · cases x <;> simp only [castStruct?] at h
+    · split_ifs at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      exact ⟨h.1.symm, by rw [h.2]⟩
+    all_goals cases h
+  · simp [castStruct?] at h
+
+omit s in
+theorem movImmStruct?_dst {o : String} {srcs : List LOperand} {dst : String} {n : Nat}
+    (h : movImmStruct? (.Lopn [.reg d] o srcs) = some (dst, n)) : dst = d := by
+  unfold movImmStruct? at h
+  split at h
+  · next d' n' heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      exact h.1.symm.trans heq.1.symm
+  · cases h
+
+theorem lsemStepCast_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (cd : Option Nat) (hs : ∀ x ∈ srcs, d ∉ srcNames x) :
+    lsemStepCast (.Lopn [.reg d] o srcs, cd) (s.setReg d c)
+      = lsemStepCast (.Lopn [.reg d] o srcs, cd) s := by
+  have hM := lsemStepMC_setReg_dst (s := s) c hd0 o srcs hs
+  cases cd with
+  | none =>
+      rw [lsemStepCast_of_delegate _ _ (Or.inr rfl), lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+      exact hM
+  | some w' =>
+      cases hcs : castStruct? (.Lopn [.reg d] o srcs) with
+      | some p =>
+          obtain ⟨dst, a⟩ := p
+          obtain ⟨rfl, rfl⟩ := castStruct?_dst hcs
+          have ha := hs (.reg a) (by simp)
+          simp only [lsemStepCast, hcs, readReg_setReg_ne c ha, setReg_setReg_same]
+      | none =>
+          cases hmi : movImmStruct? (.Lopn [.reg d] o srcs) with
+          | some p =>
+              obtain ⟨dst, n⟩ := p
+              obtain rfl := movImmStruct?_dst hmi
+              simp only [lsemStepCast, hcs, hmi, setReg_setReg_same]
+          | none =>
+              simp only [lsemStepCast, hcs, hmi]
+              exact hM
+
+end Overwrite
+
+section OverwriteM
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames)
+
+variable {d : String}
+
+theorem loadStruct?_dst {o : String} {srcs : List LOperand} {dst base idx : String}
+    (h : loadStruct? (.Lopn [.reg d] o srcs) = some (dst, base, idx)) :
+    dst = d ∧ ∃ k, srcs = [.arrIdx base idx k] := by
+  unfold loadStruct? at h
+  split at h
+  · next d' opn b' i' k heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨heq.1.symm, k, heq.2.2⟩
+  · cases h
+
+theorem loadCStruct?_dst {o : String} {srcs : List LOperand} {dst base : String} {off : Nat}
+    (h : loadCStruct? (.Lopn [.reg d] o srcs) = some (dst, base, off)) : dst = d := by
+  unfold loadCStruct? at h
+  split at h
+  · next d' opn b' k heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      exact h.1.symm.trans heq.1.symm
+  · cases h
+
+theorem storeCStruct?_reg_dst (o : String) (srcs : List LOperand) :
+    storeCStruct? (.Lopn [.reg d] o srcs) = none := by
+  unfold storeCStruct?
+  split
+  · next heq => simp at heq
+  · rfl
+
+theorem aluFlagOp?_srcs {o : String} {srcs : List LOperand} {tg : MemTag} {op : AluOp}
+    {a b : LOperand} (h : aluFlagOp? (.Lopn [.reg d] o srcs, tg) = some (op, a, b)) :
+    srcs = [a, b] := by
+  unfold aluFlagOp? at h
+  split at h
+  · next d' opn a' b' heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h <;> simp only [Option.some.injEq, Prod.mk.injEq] at h <;>
+        (obtain ⟨-, rfl, rfl⟩ := h; exact heq.2.2)
+  · cases h
+
+theorem carryArgs?_dst {o : String} {srcs : List LOperand} {tg : MemTag} {op : CarryOp}
+    {dst : String} {a b : LOperand}
+    (h : carryArgs? (.Lopn [.reg d] o srcs, tg) = some (op, dst, a, b)) :
+    dst = d ∧ srcs = [a, b] := by
+  unfold carryArgs? at h
+  split at h
+  · next d' opn a' b' heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h <;> simp only [Option.some.injEq, Prod.mk.injEq] at h <;>
+        (obtain ⟨-, rfl, rfl, rfl⟩ := h; exact ⟨heq.1.symm, heq.2.2⟩)
+  · cases h
+
+theorem wideArgs?_dst {o : String} {srcs : List LOperand} {tg : MemTag} {wo : WideOp}
+    (h : wideArgs? (.Lopn [.reg d] o srcs, tg) = some wo) :
+    ∃ x b, wo = .mov d b ∧ srcs = [x, b] := by
+  unfold wideArgs? at h
+  split at h
+  · next d' opn x' b' heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h
+      simp only [Option.some.injEq] at h
+      exact ⟨x', b', by rw [← h, heq.1], heq.2.2⟩
+  · next heq => simp at heq
+  · cases h
+
+theorem movRegArgs?_dst {o : String} {srcs : List LOperand} {tg : MemTag} {dst src : String}
+    (h : movRegArgs? (.Lopn [.reg d] o srcs, tg) = some (dst, src)) :
+    dst = d ∧ srcs = [.reg src] := by
+  unfold movRegArgs? at h
+  split at h
+  · next d' opn s' heq =>
+      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
+      split_ifs at h <;> simp only [Option.some.injEq, Prod.mk.injEq] at h <;>
+        (obtain ⟨rfl, rfl⟩ := h; exact ⟨heq.1.symm, heq.2.2⟩)
+  · cases h
+
+variable {s : LstateM} {w : Nat} (c : BitVec w)
+
+theorem setRegM_setReg_same {w' : Nat} (v : BitVec w') :
+    (s.setReg d c).setReg d v = s.setReg d v := by
+  simp only [LstateM.setReg, setReg_setReg_same]
+
+/-- The memory step of an instruction with the one register destination `d` that no source
+    names and that is not an indexed store does not depend on the cell of `d`. -/
+theorem lsemStepMem_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
+    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none) :
+    lsemStepMem (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
+      = lsemStepMem (.Lopn [.reg d] o srcs, tg) s := by
+  have hC := fun cd => lsemStepCast_setReg_dst (s := s.reg) c hd0 o srcs cd hs
+  have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
+  cases tg with
+  | load w' n =>
+      cases hl : loadStruct? (.Lopn [.reg d] o srcs) with
+      | none =>
+          simp only [lsemStepMem, hl, hreg, hC]
+          rfl
+      | some p =>
+          obtain ⟨dst, base, idx⟩ := p
+          obtain ⟨rfl, k, rfl⟩ := loadStruct?_dst hl
+          have hi : dst ∉ srcNames (.reg idx) := fun hm =>
+            hs (.arrIdx base idx k) (by simp) (by
+              simp only [srcNames, List.mem_singleton] at hm
+              simp [srcNames, hm])
+          have ha : (s.setReg dst c).getArr base w' n = s.getArr base w' n := rfl
+          simp only [lsemStepMem, hl, hreg, ha, getW_setReg_ne c hi, setRegM_setReg_same]
+  | store w' n =>
+      simp only [lsemStepMem, hst, hreg, hC]
+      rfl
+  | loadC =>
+      cases hl : loadCStruct? (.Lopn [.reg d] o srcs) with
+      | none => simp only [lsemStepMem, hl]
+      | some p =>
+          obtain ⟨dst, base, off⟩ := p
+          obtain rfl := loadCStruct?_dst hl
+          simp only [lsemStepMem, hl]
+          exact congrArg (fun x => some (LstateM.nextPc x)) (setRegM_setReg_same c _)
+  | storeC => simp only [lsemStepMem, storeCStruct?_reg_dst]
+  | reg cd =>
+      simp only [lsemStepMem, hreg, hC]
+      rfl
+
+theorem carryStep_setReg_dst (op : CarryOp) {a b : LOperand} (ha : d ∉ srcNames a)
+    (hb : d ∉ srcNames b) :
+    carryStep op d a b (s.setReg d c) = carryStep op d a b s := by
+  have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
+  unfold carryStep
+  rw [hreg, evalOperandN_setReg_ne c ha, evalOperandN_setReg_ne c hb]
+  cases evalOperandN s.reg 64 a <;> cases evalOperandN s.reg 64 b <;>
+    first | rfl | (cases op <;> simp only [setRegM_setReg_same] <;> rfl)
+
+/-- The straight-line step of the flag machine of an instruction with the one register
+    destination `d` that no source names and that is not an indexed store does not depend
+    on the cell of `d`. -/
+theorem stepMemF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
+    (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
+    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none) :
+    stepMemF (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
+      = stepMemF (.Lopn [.reg d] o srcs, tg) s := by
+  have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
+  unfold stepMemF
+  rw [lsemStepMem_setReg_dst c hd0 o srcs tg hs hst]
+  cases lsemStepMem (.Lopn [.reg d] o srcs, tg) s with
+  | some b =>
+      simp only [withALUFlags]
+      cases ha : aluFlagOp? (.Lopn [.reg d] o srcs, tg) with
+      | none => rfl
+      | some p =>
+          obtain ⟨op, x, y⟩ := p
+          obtain rfl := aluFlagOp?_srcs ha
+          simp only [hreg, evalOperandN_setReg_ne c (hs x (by simp)),
+            evalOperandN_setReg_ne c (hs y (by simp))]
+  | none =>
+      simp only
+      cases hk : carryArgs? (.Lopn [.reg d] o srcs, tg) with
+      | some p =>
+          obtain ⟨op, dst, x, y⟩ := p
+          obtain ⟨rfl, rfl⟩ := carryArgs?_dst hk
+          exact carryStep_setReg_dst c op (hs x (by simp)) (hs y (by simp))
+      | none =>
+          simp only
+          cases hw : wideArgs? (.Lopn [.reg d] o srcs, tg) with
+          | none => rfl
+          | some wo =>
+              obtain ⟨x, y, rfl, rfl⟩ := wideArgs?_dst hw
+              simp only [wideStep, hreg, evalOperandN_setReg_ne c (hs y (by simp)),
+                setRegM_setReg_same]
+
+/-- **A written destination does not depend on its earlier cell.** The extended straight
+    step of an instruction with the one register destination `d`, that no source names,
+    that is neither the flag compare nor an indexed store, is the same from a state and
+    from that state with any cell at `d`. -/
+theorem fstepF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand) (tg : MemTag)
+    (zf : Bool) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
+    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
+    (hcmp : cmpArgs? (.Lopn [.reg d] o srcs, tg) = none) :
+    fstepF (.Lopn [.reg d] o srcs, tg) (s.setReg d c) zf
+      = fstepF (.Lopn [.reg d] o srcs, tg) s zf := by
+  have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
+  unfold fstepF
+  rw [hcmp]
+  simp only
+  cases hm : movRegArgs? (.Lopn [.reg d] o srcs, tg) with
+  | some p =>
+      obtain ⟨dst, src⟩ := p
+      obtain ⟨rfl, rfl⟩ := movRegArgs?_dst hm
+      simp only [hreg, readReg_setReg_ne c (hs (.reg src) (by simp)), setRegM_setReg_same]
+  | none =>
+      simp only
+      rw [stepMemF_setReg_dst c hd0 o srcs tg hs hst]
+
+end OverwriteM
+
+/-! ## 6. The step from two states that agree on the names read -/
+
+section LiveStep
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower (fstepF_setLpc)
+
+/-- **The step from two states that agree on the names an instruction reads**, at any two
+    program counters. If the states agree on the registers `readsI` lists, on the arrays,
+    the word memory and the two flags, a step from the first is matched by a step from the
+    second with the same zero flag; every register is equal in the two results or, in
+    both, the register of the state it came from; the arrays, the word memory and the
+    flags of the results are equal. -/
+theorem fstepF_liveStep {i : LinstrRM} {s t s₁ : LstateM} {zf z₁ : Bool}
+    (hreg : ∀ r, readsI i.1 r → s.reg.lvm r = t.reg.lvm r) (hA : s.larr = t.larr)
+    (hM : s.lmem = t.lmem) (hC : s.cf = t.cf) (hO : s.of = t.of)
+    (hstep : fstepF i s zf = some (s₁, z₁)) :
+    ∃ t₁, fstepF i t zf = some (t₁, z₁)
+      ∧ (∀ r, s₁.reg.lvm r = t₁.reg.lvm r
+          ∨ (s₁.reg.lvm r = s.reg.lvm r ∧ t₁.reg.lvm r = t.reg.lvm r))
+      ∧ s₁.larr = t₁.larr ∧ s₁.lmem = t₁.lmem ∧ s₁.cf = t₁.cf ∧ s₁.of = t₁.of := by
+  have hMA : MAgree (readsI i.1) s (t.setLpc s.lpc) := ⟨⟨rfl, hreg⟩, hA, hM, hC, hO⟩
+  have h := fstepF_congr i hMA zf
+  rw [hstep] at h
+  generalize hq : fstepF i (t.setLpc s.lpc) zf = q at h
+  cases h with
+  | some hf =>
+      rename_i b
+      obtain ⟨⟨hN, hA', hM', hC', hO'⟩, hz⟩ := hf
+      have hz' : b.2 = z₁ := hz.symm
+      refine ⟨b.1.setLpc (t.lpc + 1), ?_, fun r => hN.2 r, hA', hM', hC', hO'⟩
+      have hstep' := fstepF_setLpc i (t.setLpc s.lpc) zf t.lpc
+      rw [hq, Option.map_some, hz'] at hstep'
+      exact hstep'
+
+end LiveStep
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyPropCfg
