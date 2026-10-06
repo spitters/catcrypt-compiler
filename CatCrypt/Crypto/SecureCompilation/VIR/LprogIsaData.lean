@@ -121,6 +121,9 @@ structure IsaData extends IsaAbi where
   tieScratch : String
   /-- The copy mnemonic at the width of an operation, `none` when there is none. -/
   copyMnemonic : String → Option String
+  /-- Whether the instruction with this mnemonic base sets flags and writes no destination
+      register. -/
+  flagOnly : String → Bool
   /-- The leakage regime: whether an instruction with this mnemonic base makes its data
       operands observable through its execution time. The default `true` for every base is
       the regime without a vendor timing guarantee. -/

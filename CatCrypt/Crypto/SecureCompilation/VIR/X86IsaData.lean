@@ -195,7 +195,8 @@ def movFor (opn : String) : Option String :=
 
 /-- **The x86 instruction-set data**: the register file and calling convention
     `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
-    `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the implicit read
+    `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the flag-only
+    bases `CMP` and `TEST`, the implicit read
     of `RDX` by the `MULX` family, the flag loop guard `CMP ctr, 0; jne top`, the flag
     zero-trip guard `CMP ctr, 0; je endL` and the invariant touch `CMP ctr, r`. The legaliser
     reads its mnemonic data and scratch register from it, the loop exporter its two guards
@@ -206,6 +207,7 @@ def movFor (opn : String) : Option String :=
     commutes := fun base => commBases.contains base
     tieScratch := reloadScratch
     copyMnemonic := movFor
+    flagOnly := fun base => base == "CMP" || base == "TEST"
     implicitReads := fun opn =>
       if "MULX".toList.isPrefixOf ((stripWidthTag opn).toList.map Char.toUpper) then ["RDX"]
       else []

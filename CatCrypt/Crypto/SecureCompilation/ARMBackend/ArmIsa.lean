@@ -129,7 +129,7 @@ def armCallerSaved : List String := armRegs ++ ["x30"]
     `x16`, `x17` as scratch, the save slot of a callee-saved register at its index, the stack
     pointer `sp`, the return registers `x0`, `x1`, the caller-saved registers and no red zone,
     the three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at
-    the width of the operation), the leakage regime `armLeaksOperands`, the alphabet
+    the width of the operation, the flag-only base `CMP`), the leakage regime `armLeaksOperands`, the alphabet
     `armBases`, no implicit reads, the register loop guard `cbnz ctr, top`, the flag
     zero-trip guard `cmp ctr, 0; b.eq endL`, and the invariant touch `cmp ctr, r`. -/
 def armData : IsaData where
@@ -146,6 +146,7 @@ def armData : IsaData where
   commutes := fun base => ["ADD", "MUL", "AND", "OR", "XOR"].contains base
   tieScratch := "x16"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
+  flagOnly := fun base => base == "CMP"
   leaksOperands := armLeaksOperands
   supports := fun base => armBases.contains base
   implicitReads := fun _ => []

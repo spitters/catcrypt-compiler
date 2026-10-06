@@ -61,6 +61,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (isMemOperand)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeak
   (opNames readNames lsemStep_agreeOn evalOperand_agreeOn)
@@ -69,13 +70,15 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate (lsemStep_re
 /-! ## 1. The printer's precondition
 
 The mnemonic data `tieBase`, `tiedBases`, `needsTie`, `commBases`, `movFor` and the x86
-instruction-set data `x86Data` are defined in `VIR.X86IsaData`. -/
+instruction-set data `x86Data` are defined in `VIR.X86IsaData`. Each function of the
+legaliser takes the instruction-set data as a trailing parameter `I` with default `x86Data`;
+the theorems are stated at the default. -/
 
 /-- The precondition of the two-address arm of `renderLopn` on one instruction: an
     instruction `Lopn [d] opn [a, b]` printed as `op b, d` has `a = d`. -/
-def tiedOk : LinstrR → Bool
-  | .Lopn [.reg d] opn [a, b] => !needsTie opn b || a == .reg d
-  | _ => true
+def tiedOk : LinstrR → (I : IsaData := x86Data) → Bool
+  | .Lopn [.reg d] opn [a, b], I => !I.tied opn b || a == .reg d
+  | _, _ => true
 
 /-! ## 2. The rewrite -/
 
@@ -85,80 +88,86 @@ def isRegOrImm : LOperand → Bool
   | .imm _ => true
   | _ => false
 
-/-- Whether a name mentions the scratch register `x86Data.tieScratch` (`R15`): it is the
+/-- Whether a name mentions the scratch register `I.tieScratch` (`R15` on x86): it is the
     register or its save slot `qsave.R15`, or holds it as a substring (a `mem.<base>.<off>`
     name with base `R15`). -/
-def mentionsScratch (n : String) : Bool :=
-  n == x86Data.tieScratch || n == "qsave." ++ x86Data.tieScratch ||
-    (n.splitOn x86Data.tieScratch).length != 1
+def mentionsScratch (n : String) (I : IsaData := x86Data) : Bool :=
+  n == I.tieScratch || n == "qsave." ++ I.tieScratch ||
+    (n.splitOn I.tieScratch).length != 1
 
 /-- An operand none of whose names mentions the scratch register. -/
-def opAvoids : LOperand → Bool
-  | .reg n => !mentionsScratch n
-  | .arr b _ => !mentionsScratch b
-  | .arrIdx b x _ => !mentionsScratch b && !mentionsScratch x
-  | .imm _ => true
+def opAvoids : LOperand → (I : IsaData := x86Data) → Bool
+  | .reg n, I => !mentionsScratch n I
+  | .arr b _, I => !mentionsScratch b I
+  | .arrIdx b x _, I => !mentionsScratch b I && !mentionsScratch x I
+  | .imm _, _ => true
 
 /-- An instruction none of whose operand names mentions the scratch register. -/
-def instrAvoids : LinstrR → Bool
-  | .Lopn ds _ ss => ds.all opAvoids && ss.all opAvoids
-  | .Lcond c _ => opAvoids c
-  | .Ligoto t => opAvoids t
-  | .LstoreLabel d _ => !mentionsScratch d
-  | .Lcall (some r) _ => !mentionsScratch r
-  | _ => true
+def instrAvoids : LinstrR → (I : IsaData := x86Data) → Bool
+  | .Lopn ds _ ss, I => ds.all (opAvoids · I) && ss.all (opAvoids · I)
+  | .Lcond c _, I => opAvoids c I
+  | .Ligoto t, I => opAvoids t I
+  | .LstoreLabel d _, I => !mentionsScratch d I
+  | .Lcall (some r) _, I => !mentionsScratch r I
+  | _, _ => true
 
 /-- A body none of whose instructions names the scratch register. -/
-def bodyAvoids (body : Lcmd) : Bool := body.all (fun i => instrAvoids i.li_i)
+def bodyAvoids (body : Lcmd) (I : IsaData := x86Data) : Bool :=
+  body.all (fun i => instrAvoids i.li_i I)
 
 /-- The body satisfies the printer's two-address precondition. -/
-def bodyTiedOk (body : Lcmd) : Bool := body.all (fun i => tiedOk i.li_i)
+def bodyTiedOk (body : Lcmd) (I : IsaData := x86Data) : Bool :=
+  body.all (fun i => tiedOk i.li_i I)
 
-/-- The save slot of the scratch register: the frame cell `qsave.R15`. A body that does not
-    name the scratch register does not name this slot (`mentionsScratch_scratchSave`). -/
-def scratchSave : String := "qsave." ++ x86Data.tieScratch
+/-- The save slot of the scratch register: the frame cell `qsave.R15` on x86. A body that
+    does not name the scratch register does not name this slot
+    (`mentionsScratch_scratchSave`). -/
+def scratchSave (I : IsaData := x86Data) : String := "qsave." ++ I.tieScratch
 
 /-- The scratch route of `opn d, [a, b]`: save the scratch register, compute
     `opn R15, [a, b]` on it by a copy and the tied operation, move the result into `d`, and
     restore the scratch register. -/
-def scratchRoute (ii : Nat) (opn m d : String) (a b : LOperand) : List Linstr :=
-  [⟨ii, .Lopn [.reg scratchSave] "MOV:64" [.reg x86Data.tieScratch]⟩,
-   ⟨ii, .Lopn [.reg x86Data.tieScratch] m [a]⟩,
-   ⟨ii, .Lopn [.reg x86Data.tieScratch] opn [.reg x86Data.tieScratch, b]⟩,
-   ⟨ii, .Lopn [.reg d] m [.reg x86Data.tieScratch]⟩,
-   ⟨ii, .Lopn [.reg x86Data.tieScratch] "MOV:64" [.reg scratchSave]⟩]
+def scratchRoute (ii : Nat) (opn m d : String) (a b : LOperand) (I : IsaData := x86Data) :
+    List Linstr :=
+  [⟨ii, .Lopn [.reg (scratchSave I)] "MOV:64" [.reg I.tieScratch]⟩,
+   ⟨ii, .Lopn [.reg I.tieScratch] m [a]⟩,
+   ⟨ii, .Lopn [.reg I.tieScratch] opn [.reg I.tieScratch, b]⟩,
+   ⟨ii, .Lopn [.reg d] m [.reg I.tieScratch]⟩,
+   ⟨ii, .Lopn [.reg I.tieScratch] "MOV:64" [.reg (scratchSave I)]⟩]
 
-/-- Legalise one instruction; `ok` enables the route through `reloadScratch`. -/
-def legalizeInstr (ok : Bool) (i : Linstr) : List Linstr :=
+/-- Legalise one instruction; `ok` enables the route through the scratch register
+    `I.tieScratch`. -/
+def legalizeInstr (ok : Bool) (i : Linstr) (I : IsaData := x86Data) : List Linstr :=
   match i.li_i with
   | .Lopn [.reg d] opn [a, b] =>
-      if x86Data.tied opn b && a != .reg d then
-        match x86Data.copyMnemonic opn with
+      if I.tied opn b && a != .reg d then
+        match I.copyMnemonic opn with
         | none => [i]
         | some m =>
-          if tieBase opn == "CMP" || tieBase opn == "TEST" then
+          if I.flagOnly (tieBase opn) then
             match a with
             | .reg x => [⟨i.li_ii, .Lopn [.reg x] opn [.reg x, b]⟩]
             | _ => [i]
           else if !isRegOrImm a then [i]
           else if !(opNames b).contains d && !(isMemOperand (.reg d) && isMemOperand a) then
             [⟨i.li_ii, .Lopn [.reg d] m [a]⟩, ⟨i.li_ii, .Lopn [.reg d] opn [.reg d, b]⟩]
-          else if x86Data.commutes (tieBase opn) && b == .reg d
+          else if I.commutes (tieBase opn) && b == .reg d
               && !(isMemOperand (.reg d) && isMemOperand a) then
             [⟨i.li_ii, .Lopn [.reg d] opn [.reg d, a]⟩]
           else if ok then
-            if x86Data.commutes (tieBase opn) && b == .reg d then
-              scratchRoute i.li_ii opn m d (.reg d) a
+            if I.commutes (tieBase opn) && b == .reg d then
+              scratchRoute i.li_ii opn m d (.reg d) a I
             else
-              scratchRoute i.li_ii opn m d a b
+              scratchRoute i.li_ii opn m d a b I
           else [i]
       else [i]
   | _ => [i]
 
 /-- Legalise a body, with the scratch route on when no instruction names the scratch
     register. -/
-def twoAddrBody (body : Lcmd) : Lcmd :=
-  LegalizeShiftImm.legalizeBody (legalizeInstr (bodyAvoids body)) body
+def twoAddrBody (body : Lcmd) (I : IsaData := x86Data) : Lcmd :=
+  let ok := bodyAvoids body I
+  LegalizeShiftImm.legalizeBody (fun i => legalizeInstr ok i I) body
 
 /-! ## 3. Legalised instructions satisfy the precondition -/
 
@@ -253,7 +262,8 @@ variable {w : Nat}
 
 /-- The names at which a legalised run agrees with its source: every name other than
     `scratchSave` when the scratch route is on, every name otherwise. -/
-def Kept (ok : Bool) (x : String) : Prop := ok = true → x ≠ scratchSave
+def Kept (ok : Bool) (x : String) (I : IsaData := x86Data) : Prop :=
+  ok = true → x ≠ scratchSave I
 
 /-- The names of an operand that avoids the scratch register do not mention it. -/
 theorem not_mentionsScratch_of_opAvoids {o : LOperand} (h : opAvoids o = true) :

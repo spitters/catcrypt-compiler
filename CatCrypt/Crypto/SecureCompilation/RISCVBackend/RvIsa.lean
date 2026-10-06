@@ -136,7 +136,8 @@ def rvCallerSaved : List String :=
 /-- **The RV64 data**: the psABI register file with `t5`, `t6` as scratch, the save slot of a
     callee-saved register at its index, the stack pointer `sp`, the return registers `a0`,
     `a1`, the caller-saved registers and no red zone, the three-address legaliser data (no
-    tied form, the commutative bases, the copy `MOV` at the width of the operation), the
+    tied form, the commutative bases, the copy `MOV` at the width of the operation, no
+    flag-only base), the
     leakage regime `rvLeaksOperands`, the alphabet `rvBases` with the keep marker `KEEP`, no
     implicit reads, the register loop guard `bnez ctr, top`, the flagless zero-trip guard
     `bnez ctr, top` followed by the branch on the non-zero immediate `1` to `endL`, which is
@@ -155,6 +156,7 @@ def rvData : IsaData where
   commutes := fun base => ["ADD", "MUL", "AND", "OR", "XOR"].contains base
   tieScratch := "t5"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
+  flagOnly := fun _ => false
   leaksOperands := rvLeaksOperands
   supports := fun base => rvBases.contains base || base == "KEEP"
   implicitReads := fun _ => []
