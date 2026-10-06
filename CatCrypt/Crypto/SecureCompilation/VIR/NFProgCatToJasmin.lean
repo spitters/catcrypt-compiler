@@ -57,6 +57,8 @@ it reads (`MultiReturnCom.usedSelM`). A branch, and a loop whose body contains a
 * `twoSymProg_catToJasmin` — the program `twoSymProg`, which calls the two symbols of
   `twoSymEnvC`, lowers along `catToJasmin` to a program that denotes at `twoSymEnvJ` the
   transport of its denotation.
+* `jasminNFToComLAt_of_toComAt`, `jasminNFToComL_of_toCom?` — a straight-line program
+  lowers to its embedding `comToComL`.
 * `jasminNFToComLAt_denote` — `jasminNFToComLAt` preserves denotation.
 * `nfToComLVia_denote` — `nfToComLVia` preserves denotation: the source program denotes
   `some` of one value, and the lowered program on the transported valuation denotes its
@@ -265,6 +267,35 @@ def jasminNFToComLAt : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
 def jasminNFToComL {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : Option (ComL Γ t) :=
   jasminNFToComLAt p t rfl
+
+/-- A program `NFProg.toComAt` reads as the straight-line program `c` lowers to the
+    embedding `comToComL c`. -/
+theorem jasminNFToComLAt_of_toComAt {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) (t : JasminTy) (h : ts = [t])
+    {c : Com jasminDialect Γ t} (hc : p.toComAt t h = some c) :
+    jasminNFToComLAt p t h = some (comToComL c) := by
+  induction p with
+  | ret vs =>
+      subst h
+      rcases vs with _ | ⟨v, _ | _⟩
+      simp only [NFProg.toComAt, Option.some.injEq] at hc
+      subst hc
+      rfl
+  | var e k ih =>
+      simp only [NFProg.toComAt, Option.map_eq_some_iff] at hc
+      obtain ⟨c', hk, rfl⟩ := hc
+      simp only [jasminNFToComLAt, ih h hk, Option.map_some, comToComL]
+  | forLoop => simp [NFProg.toComAt] at hc
+  | ifThenElse => simp [NFProg.toComAt] at hc
+  | whileLoop => simp [NFProg.toComAt] at hc
+  | call => simp [NFProg.toComAt] at hc
+
+/-- A program `NFProg.toCom?` reads as the straight-line program `c` lowers to the
+    embedding `comToComL c`. -/
+theorem jasminNFToComL_of_toCom? {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (p : NFProg jasminDialect Γ [t]) {c : Com jasminDialect Γ t} (hc : p.toCom? = some c) :
+    jasminNFToComL p = some (comToComL c) :=
+  jasminNFToComLAt_of_toComAt p t rfl hc
 
 /-- **Preservation.** When `jasminNFToComLAt p t h = some c`, the program `p` denotes,
     at every fuel, `some` of the one value `c` denotes. -/

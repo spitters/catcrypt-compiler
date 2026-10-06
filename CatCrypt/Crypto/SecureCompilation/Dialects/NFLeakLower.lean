@@ -35,6 +35,7 @@ transported labels `mapLabels L` whenever the source is constant time for `L`
 * `NFProg.leakRun_of_toCom?` — a straight-line program runs to its denotation and its
   `Com.ctLeak` events.
 * `comRestrict_ctLeak` — restriction to a selection of variables keeps the events.
+* `ctLeak_comToComL` — the embedding `comToComL` of a straight-line program keeps the events.
 * `NFLeakLower.jasminNFToComLAt_ctLeak` — the looped export of `NFProg jasminDialect`
   leaks the events of the program.
 * `nfToComLVia_ctLeak` — the looped lowering leaks the source events.
@@ -133,6 +134,17 @@ theorem comRestrict_ctLeak (M : LeakModel d) : {Γ Γ' : Ctxt d} → {u : d.Ty} 
       rw [hargs]
 
 end Generic
+
+/-! ## The embedding of a straight-line program -/
+
+/-- The events of the embedding `comToComL` of a straight-line program are the events of the
+    program. -/
+theorem ctLeak_comToComL (M : LeakModel jasminDialect) : {Γ : Ctxt jasminDialect} →
+    {t : JasminTy} → (c : Com jasminDialect Γ t) → (V : Ctxt.Valuation Γ) →
+    ComL.ctLeak M (comToComL c) V = Com.ctLeak M c V
+  | _, _, .ret _, _ => rfl
+  | _, _, .var e body, V =>
+      congrArg (Expr.ctLeak M e V ++ ·) (ctLeak_comToComL M body (V.extend (e.denote V)))
 
 /-! ## The looped lowering -/
 

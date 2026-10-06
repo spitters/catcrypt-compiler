@@ -1071,6 +1071,7 @@ HaxAscent.Calculus.RustMSquareSpec
 HaxAscent.RustSemantics
 HaxAscent.RustSemantics.AscendRustM
 HaxAscent.RustSemantics.BackendLoops
+HaxAscent.RustSemantics.ToRustMSCongr
 HaxAscent.RustSemantics.ToRustMSContractDemo
 HaxAscent.RustSemantics.ToRustMSLoopSpec
 HaxAscent.RustSemantics.ToRustMSTotal
