@@ -250,3 +250,5 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillReload.lean  # Lprog post-p
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageLoopWLeak.lean  # leak traces of the wide loop arm of the image route; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightRegW.lean  # register-returning straight arm of the image route over the wide printed class; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillEncodable.lean  # the checked encoder accepts no compare with a spilled first operand; the Lopn terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean  # whole-body lift of block-local pass lemmas over the owned semantics; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/CfgLift.lean  # whole-body lift of block-local pass lemmas over the owned semantics; the Lprog terms are instruction shapes under proof, no emit artifact
