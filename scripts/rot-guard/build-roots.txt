@@ -279,6 +279,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduceWide
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
+CatCrypt.Crypto.SecureCompilation.Ascent.ImageSpFreeCell
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
