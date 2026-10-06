@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMachCT
-public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachCT
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMachLoop
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachLoop
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvSym
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSim
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSimImage
@@ -63,10 +63,20 @@ module; this module proves the conjunction.
 * x86-64: the two statements of `X86Sim` are value statements and hold for every
   `CT.DoitRegime`; they assume no timing regime.
 
+## The loop
+
+The fields `loop` and `loop_ct` of `ArmAndN` and `RvAndN` state the kernel as a loop over its
+limb count `n`, on the decoded programs `ArmMach.armAndLoopProg` and `RvMach.rvAndLoopProg`:
+the run to the `RET` in `2 + 7 * n` and `2 + 13 * n` steps, the limb-wise conjunction in the
+output array of the final memory, and constant time for the array bases and the count under
+`ArmRegime.dit` and `RvRegime.zktMemData` (`ArmMach.arm_and_loop`,
+`ArmMach.mpn_and_n_loop_armMach_ct`, `RvMach.rv_and_loop`, `RvMach.mpn_and_n_loop_rvMach_ct`).
+The fields `mach` and `ct` are for the straight-line body of one iteration.
+
 ## Not covered
 
-* Loops at the AArch64 and RV64 machines: the two statements are for the straight-line body
-  of one iteration.
+* The bytes of the loop: `loop` and `loop_ct` are over the decoded programs, and no statement
+  relates them to an encoder output.
 * Constant time of the x86-64 bytes of the body (the theorem `mpn_and_n_rc_proved`), and the
   checker on traced runs (`OwnedTVLeak.memFCT_of_ownedCheckML_at`).
 * An AArch64 symbolic companion: there is no `IsaSym armIsa`, so the checker has no AArch64
@@ -129,6 +139,25 @@ structure ArmAndN : Prop where
   no_movz : ∀ bi ∈ armAndCode, bmMnem bi ≠ .movz
   /-- Without a timing guarantee the bytes are not constant time. -/
   not_ct_unguaranteed : ¬ ConstantTimeRel ArmAndPub (ArmBytesRun .unguaranteed armAndBytes)
+  /-- The loop over `n` limbs under every regime: from a state that satisfies
+      `ArmAndLoopEntry n`, with the inputs `A` at `x1` and `B` at `x0`, the decoded program
+      `armAndLoopProg` reaches its `RET` in `armAndLoopFuel n` steps and halts there with the
+      trace `armAndLoopLeak`; the output array at `x3` holds the limb-wise conjunction and
+      the inputs are in place. -/
+  loop : ∀ (r : ArmRegime) (n : Nat) (A B : Fin n → BitVec 64) (b : BMState),
+    ArmAndLoopEntry n b → MachineMem64.ArrAt b.mem (b.regs.get "x1") n A →
+    MachineMem64.ArrAt b.mem (b.regs.get "x0") n B →
+    ∃ b', (armMach r).ReachesIn armAndLoopProg (armAndLoopFuel n) 0 b (armAndLoopLeak r n b)
+        (if n = 0 then 2 else 10) b'
+      ∧ (armMach r).Halts armAndLoopProg 0 b b'
+      ∧ (armMach r).RunL (fun _ _ => True) armAndLoopProg 0 b (armAndLoopLeak r n b) b'
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "x3") n (fun k => opAnd64 (A k) (B k))
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "x1") n A
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "x0") n B
+  /-- Constant time of the loop under `PSTATE.DIT = 1`, for the array bases and the count. -/
+  loop_ct : ∀ n : Nat,
+    ConstantTimeRel (fun b₁ b₂ => ArmAndLoopPub b₁ b₂ ∧ ArmAndLoopEntry n b₁)
+      (fun b t => ∃ b', (armMach .dit).RunL (fun _ _ => True) armAndLoopProg 0 b t b')
 
 /-- The statements of `ArmAndN` hold. -/
 theorem armAndN : ArmAndN where
@@ -136,6 +165,8 @@ theorem armAndN : ArmAndN where
   ct := mpn_and_n_armMach_ct
   no_movz := armAndCode_no_movz
   not_ct_unguaranteed := mpn_and_n_armMach_not_ct_unguaranteed
+  loop := fun r n A B b he ha hb => arm_and_loop r n A B b he ha hb
+  loop_ct := mpn_and_n_loop_armMach_ct
 
 end Arm
 
@@ -173,6 +204,26 @@ structure RvAndN : Prop where
   not_ct_zkt : ¬ ConstantTimeRel RvAndPub (RvBytesRun .zkt rvAndBytes)
   /-- Without a timing guarantee the bytes are not constant time. -/
   not_ct_unguaranteed : ¬ ConstantTimeRel RvAndPub (RvBytesRun .unguaranteed rvAndBytes)
+  /-- The loop over `n` limbs under every regime: from a state that satisfies
+      `RvAndLoopEntry n`, with the inputs `A` at `a1` and `B` at `a0`, the decoded program
+      `rvAndLoopProg` reaches its `ret` in `rvAndLoopFuel n` steps and halts there with the
+      trace `rvAndLoopLeak`; the output array at `a3` holds the limb-wise conjunction and the
+      inputs are in place. -/
+  loop : ∀ (r : RvRegime) (n : Nat) (A B : Fin n → BitVec 64) (b : RMState64),
+    RvAndLoopEntry n b → MachineMem64.ArrAt b.mem (b.regs.get "a1") n A →
+    MachineMem64.ArrAt b.mem (b.regs.get "a0") n B →
+    ∃ b', (rvMach r).ReachesIn rvAndLoopProg (rvAndLoopFuel n) 0 b (rvAndLoopLeak r n b)
+        (if n = 0 then 2 else 16) b'
+      ∧ (rvMach r).Halts rvAndLoopProg 0 b b'
+      ∧ (rvMach r).RunL (fun _ _ => True) rvAndLoopProg 0 b (rvAndLoopLeak r n b) b'
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "a3") n (fun k => A k &&& B k)
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "a1") n A
+      ∧ MachineMem64.ArrAt b'.mem (b.regs.get "a0") n B
+  /-- Constant time of the loop under Zkt with value-independent loads and stores, for the
+      array bases and the count. -/
+  loop_ct : ∀ n : Nat,
+    ConstantTimeRel (fun b₁ b₂ => RvAndLoopPub b₁ b₂ ∧ RvAndLoopEntry n b₁)
+      (fun b t => ∃ b', (rvMach .zktMemData).RunL (fun _ _ => True) rvAndLoopProg 0 b t b')
 
 /-- The statements of `RvAndN` hold. -/
 theorem rvAndN : RvAndN where
@@ -180,6 +231,8 @@ theorem rvAndN : RvAndN where
   ct := mpn_and_n_rvMach_ct
   not_ct_zkt := mpn_and_n_rvMach_not_ct_zkt
   not_ct_unguaranteed := mpn_and_n_rvMach_not_ct_unguaranteed
+  loop := fun r n A B b he ha hb => rv_and_loop r n A B b he ha hb
+  loop_ct := mpn_and_n_loop_rvMach_ct
 
 end Rv
 
@@ -310,8 +363,9 @@ structure MachAndN : Prop where
     The checker: soundness for every lawful symbolic companion of an instruction set, with
     the x86-64 and RV64 instances. There is no AArch64 companion.
 
-    The statements at the AArch64 and RV64 machines are for the straight-line body of one
-    iteration. -/
+    The fields `mach` and `ct` at the AArch64 and RV64 machines are for the straight-line
+    body of one iteration; the fields `loop` and `loop_ct` are for the loop over the limb
+    count, on the decoded programs. -/
 theorem mach_and_n_three_isas : MachAndN :=
   ⟨armAndN, rvAndN, x86Sim, checkerOverIsa⟩
 

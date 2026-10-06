@@ -253,3 +253,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/CmpSpillEncodable.lean  # the check
 CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean  # whole-body lift of block-local pass lemmas over the owned semantics; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/CfgLift.lean  # whole-body lift of block-local pass lemmas over the owned semantics; the Lprog terms are instruction shapes under proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/CopyPropCfg.lean  # copy propagation over the memory machine's straight-line run; the Lprog terms are instruction shapes under proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/IsaExportData.lean  # export data of an instruction set with x86 values; record data under proof, no emit artifact
