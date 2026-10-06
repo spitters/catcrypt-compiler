@@ -147,6 +147,7 @@ def armData : IsaData where
   tieScratch := "x16"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
   flagOnly := fun base => base == "CMP"
+  selectMnemonic := none
   leaksOperands := armLeaksOperands
   supports := fun base => armBases.contains base
   implicitReads := fun _ => []

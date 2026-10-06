@@ -94,6 +94,9 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering (hvAppend)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaAbi IsaData IsaExportData x86ExportData)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 
 /-! ## 1. The language -/
 
@@ -286,10 +289,11 @@ def feedbackMoves : List String → List LOperand → Lcmd
     index above the body's own. Seeds every carried register, then the index, counter,
     zero-trip guard, label, body copy, the parallel feedback (`feedbackStage`,
     `feedbackMoves`), index advance, counter decrement, invariant-base touches and the
-    `Lctr`/`CMP`/`Lcond NZ` back-edge: `blockLoopFrame` with a tuple of accumulators. -/
+    back-edge: `blockLoopFrame` with a tuple of accumulators. The zero-trip guard, the
+    invariant touch and the back-edge guard are those of the instruction set `I`. -/
 def regsLoopFrame (d : Nat) (accs : List (String × LOperand × LOperand))
     (idxReg ctr : String) (countOp : LOperand) (invRegs : List String) (bodyW : Lcmd)
-    (tmp0 : Nat) : Lcmd :=
+    (tmp0 : Nat) (I : IsaData := x86Data) : Lcmd :=
   let targets := accs.map (·.1)
   let stage := feedbackStage d tmp0 targets (accs.map (·.2.2)) 0
   let feedback : Lcmd := stage.1 ++ feedbackMoves targets stage.2
@@ -297,20 +301,16 @@ def regsLoopFrame (d : Nat) (accs : List (String × LOperand × LOperand))
   let top : LLabel := d
   let endL : LLabel := d + 0x40000000
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+    ⟨0, I.invTouch ctr r⟩)
   seeds ++
-  [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-  , ⟨0, .Lcond (.reg "Z") endL⟩
-  , ⟨0, .Llabel .internal top⟩ ]
+  ([ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
+   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [countOp]⟩ ]
+   ++ ((I.zeroTripGuard ctr top endL).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal top⟩ ]))
   ++ bodyW ++ feedback
   ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
      , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩
-     , ⟨0, .Llabel .internal endL⟩ ]
+  ++ ((I.loopGuard ctr top).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal endL⟩ ])
 
 /-- With one carried binder, the counted frame is `blockLoopFrame`. -/
 theorem regsLoopFrame_single (d : Nat) (accReg idxReg ctr : String)
@@ -328,14 +328,17 @@ theorem regsLoopFrame_single (d : Nat) (accReg idxReg ctr : String)
     pre-walked body copy `bodyW` whose continue bit is the operand `flagOp`. Seeds every
     carried register, then the label, body copy, the parallel feedback (the bit is staged
     with the returned operands, so a feedback move never overwrites it), the
-    invariant-base touches and the bottom test `CMP r, #0 ; Lcond NZ top` on the body
-    temporary `r := loopReg d (tmp0 + accs.length + 1)`, which holds the bit as a 64-bit
-    word: a bit in a register `f` is selected into it by `MOV r, #1 ; MOV z, #0 ;
-    CMOV r, [f, r, z]` (`z := loopReg d (tmp0 + accs.length + 2)`), and a bit that is not
-    a register is moved into it. No counter and no zero-trip guard: the body runs at
-    least once. -/
+    invariant-base touches `I.invTouch r inv` and the bottom test `I.loopGuard r top` on
+    the body temporary `r := loopReg d (tmp0 + accs.length + 1)`, which holds the bit as a
+    64-bit word: a bit in a register `f` is selected into it by `MOV r, #1 ; MOV z, #0 ;
+    m r, [f, r, z]` (`z := loopReg d (tmp0 + accs.length + 2)`) with the select mnemonic
+    `I.selectMnemonic = some m`, and a bit that is not a register is moved into it. An
+    instruction set with `I.selectMnemonic = none` has no instructions for a bit in a
+    register, and its frame leaves `r` unwritten. No counter and no zero-trip guard: the
+    body runs at least once. -/
 def whileRegsFrame (d : Nat) (accs : List (String × LOperand × LOperand))
-    (flagOp : LOperand) (invRegs : List String) (bodyW : Lcmd) (tmp0 : Nat) : Lcmd :=
+    (flagOp : LOperand) (invRegs : List String) (bodyW : Lcmd) (tmp0 : Nat)
+    (I : IsaData := x86Data) : Lcmd :=
   let targets := accs.map (·.1)
   let stage := feedbackStage d tmp0 targets (accs.map (·.2.2) ++ [flagOp]) 0
   let flagSrc := stage.2.getD accs.length flagOp
@@ -345,20 +348,22 @@ def whileRegsFrame (d : Nat) (accs : List (String × LOperand × LOperand))
     match flagSrc with
     | .reg f =>
         let z := loopReg d (tmp0 + accs.length + 2)
-        (r, [ ⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [.imm 1]⟩
-            , ⟨0, .Lopn [.reg z] (withWidthTag 64 "MOV") [.imm 0]⟩
-            , ⟨0, .Lopn [.reg r] (withWidthTag 64 "CMOV") [.reg f, .reg r, .reg z]⟩ ])
+        (r, match I.selectMnemonic with
+            | some m =>
+                [ ⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [.imm 1]⟩
+                , ⟨0, .Lopn [.reg z] (withWidthTag 64 "MOV") [.imm 0]⟩
+                , ⟨0, .Lopn [.reg r] (withWidthTag 64 m) [.reg f, .reg r, .reg z]⟩ ]
+            | none => [])
     | op => (r, [⟨0, .Lopn [.reg r] (withWidthTag 64 "MOV") [op]⟩])
   let flagReg := flagMat.1
   let seeds : Lcmd := accs.map fun a => ⟨0, .Lopn [.reg a.1] (withWidthTag 64 "MOV") [a.2.1]⟩
   let top : LLabel := d
   let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, .Lopn [.reg flagReg] (withWidthTag 64 "CMP") [.reg flagReg, .reg r]⟩)
+    ⟨0, I.invTouch flagReg r⟩)
   seeds ++ [⟨0, .Llabel .internal top⟩]
   ++ bodyW ++ feedback ++ flagMat.2
   ++ invTouch
-  ++ [ ⟨0, .Lopn [.reg flagReg] (withWidthTag 64 "CMP") [.reg flagReg, .imm 0]⟩
-     , ⟨0, .Lcond (.reg "NZ") top⟩ ]
+  ++ (I.loopGuard flagReg top).map (⟨0, ·⟩)
 
 /-- The register names of the carried binders of a loop at depth `d` with `nCar`
     carried binders, in `cs` order: binder `j` is `regName (d + (nCar - 1 - j))`. -/
@@ -372,14 +377,14 @@ def carriedRegs (d nCar : Nat) : List String :=
 def forLoopRegsLcmd (d : Nat) (initOps : List LOperand) (countOp : LOperand)
     {cs invTys : Ctxt jasminDialect}
     (update : MultiReturnCom jasminDialect (cs ++ JasminTy.reg 64 :: invTys) cs)
-    (invOps : List LOperand) : Lcmd :=
+    (invOps : List LOperand) (I : IsaData := x86Data) : Lcmd :=
   let nCar := cs.length
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
   let w := loopBodyWalkR d d nCar (some idxReg) invOps update (invTys.length + 1 + nCar)
   regsLoopFrame d ((carriedRegs d nCar).zip (initOps.zip w.2.1)) idxReg (loopCtr d) countOp
-    invRegs w.1 w.2.2
+    invRegs w.1 w.2.2 I
 
 /-- The `Lcmd` of a do-while carried-register loop node at depth `d`: the seed operands
     `initOps` and the invariant operands `invOps`, resolved against the enclosing context;
@@ -387,13 +392,13 @@ def forLoopRegsLcmd (d : Nat) (initOps : List LOperand) (countOp : LOperand)
     continue bit first, then the next tuple. -/
 def whileRegsLcmd (d : Nat) (initOps : List LOperand) {cs invTys : Ctxt jasminDialect}
     (update : MultiReturnCom jasminDialect (cs ++ invTys) (JasminTy.reg 1 :: cs))
-    (invOps : List LOperand) : Lcmd :=
+    (invOps : List LOperand) (I : IsaData := x86Data) : Lcmd :=
   let nCar := cs.length
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
   let w := loopBodyWalkR d d nCar none invOps update (invTys.length + nCar)
   whileRegsFrame d ((carriedRegs d nCar).zip (initOps.zip w.2.1.tail))
-    (w.2.1.headD (.imm 0)) invRegs w.1 w.2.2
+    (w.2.1.headD (.imm 0)) invRegs w.1 w.2.2 I
 
 /-! ## 4. The virtual export -/
 
@@ -402,21 +407,22 @@ def whileRegsLcmd (d : Nat) (initOps : List LOperand) {cs invTys : Ctxt jasminDi
     and continues at the depth after its carried binders. -/
 def comLJToBody (nArgs : Nat) (argNames : Nat → String)
     (immSlotMap : ImmSlotMap := fun _ => none) :
-    {Γ : Ctxt jasminDialect} → {t : JasminTy} → ComLJ Γ t → (curDepth : Nat) → Lcmd
-  | _, _, .lift c, curDepth => comLToBody nArgs argNames immSlotMap c curDepth
-  | _, _, .var e body, curDepth =>
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → ComLJ Γ t → (curDepth : Nat) →
+    (I : IsaData := x86Data) → Lcmd
+  | _, _, .lift c, curDepth, I => comLToBody nArgs argNames immSlotMap c curDepth I
+  | _, _, .var e body, curDepth, I =>
       ⟨0, opToLinstrR e.op (regName curDepth)
             (exprArgs curDepth nArgs argNames immSlotMap e)⟩
-        :: comLJToBody nArgs argNames immSlotMap body (curDepth + 1)
-  | _, _, .forLoopRegs (cs := cs) update count inits invs body, curDepth =>
+        :: comLJToBody nArgs argNames immSlotMap body (curDepth + 1) I
+  | _, _, .forLoopRegs (cs := cs) update count inits invs body, curDepth, I =>
       forLoopRegsLcmd curDepth (exprArgsHV curDepth nArgs argNames immSlotMap inits)
           (resolveVar curDepth nArgs argNames immSlotMap count) update
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs)
-        ++ comLJToBody nArgs argNames immSlotMap body (curDepth + cs.length)
-  | _, _, .whileRegs (cs := cs) update inits invs body, curDepth =>
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) I
+        ++ comLJToBody nArgs argNames immSlotMap body (curDepth + cs.length) I
+  | _, _, .whileRegs (cs := cs) update inits invs body, curDepth, I =>
       whileRegsLcmd curDepth (exprArgsHV curDepth nArgs argNames immSlotMap inits) update
-          (exprArgsHV curDepth nArgs argNames immSlotMap invs)
-        ++ comLJToBody nArgs argNames immSlotMap body (curDepth + cs.length)
+          (exprArgsHV curDepth nArgs argNames immSlotMap invs) I
+        ++ comLJToBody nArgs argNames immSlotMap body (curDepth + cs.length) I
 
 /-- The register name of a `ComLJ` program's final return value. -/
 def comLJRetReg (nArgs : Nat) (argNames : Nat → String) :
@@ -430,13 +436,13 @@ def comLJRetReg (nArgs : Nat) (argNames : Nat → String) :
 
 /-- The virtual `lfundef` of a `ComLJ` program over the argument context `Γ`. -/
 def ComLJ.toLfundef {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ Γ t)
-    (immSlotMap : ImmSlotMap := fun _ => none) : Lfundef :=
+    (immSlotMap : ImmSlotMap := fun _ => none) (I : IsaData := x86Data) : Lfundef :=
   let nArgs := Γ.length
   { lfd_info := 0
     lfd_align := 1
     lfd_tyin := Γ.reverse.map tyWidth
     lfd_arg := (List.range nArgs).map argName
-    lfd_body := comLJToBody nArgs argName immSlotMap c nArgs
+    lfd_body := comLJToBody nArgs argName immSlotMap c nArgs I
     lfd_tyout := [tyWidth t]
     lfd_res := [comLJRetReg nArgs argName c nArgs]
     lfd_export := true
@@ -510,15 +516,17 @@ def ComLJ.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ �
     (outArg : String) (inArgs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
-    (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false) : Lfundef :=
+    (abiArgs : List String := x86Abi.argRegs.take 2)
+    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false)
+    (abi : IsaAbi := x86Abi) (I : IsaData := x86Data) : Lfundef :=
   let nArgs := Γ.length
   let derived : String × List String :=
     match ComLJ.loopArgBaseNames nArgs immSlotMap c nArgs with
     | some (o, ins) => (o, ins)
     | none => (outArg, inArgs)
-  lfundefPhysAbiOfVirt (ComLJ.toLfundef c immSlotMap) derived.1 derived.2
-    ((ComLJ.loopAccRegs c nArgs).map regName) shiftImm abiArgs abiTyin (posBind := posBind)
+  lfundefPhysAbiOfVirt (ComLJ.toLfundef c immSlotMap I) derived.1 derived.2
+    ((ComLJ.loopAccRegs c nArgs).map regName) shiftImm abiArgs abiTyin abi
+    (posBind := posBind)
 
 /-- A lifted `ComL` program has the physical `lfundef` of the `ComL` program, at either
     pairing of array bases with argument registers. -/
@@ -535,14 +543,16 @@ def ComLJ.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComLJ Γ 
     (fname outArg : String) (inArgs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (immSlotMap : ImmSlotMap := fun _ => none)
-    (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false) : Lprog :=
-  { lp_rip := "RIP"
-    lp_rsp := "RSP"
+    (abiArgs : List String := x86Abi.argRegs.take 2)
+    (abiTyin : List Nat := [64, 64]) (posBind : Bool := false)
+    (abi : IsaAbi := x86Abi) (I : IsaData := x86Data)
+    (D : IsaExportData := x86ExportData) : Lprog :=
+  { lp_rip := D.ip
+    lp_rsp := abi.sp
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, ComLJ.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs abiTyin
-                 posBind)] }
+                 posBind abi I)] }
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

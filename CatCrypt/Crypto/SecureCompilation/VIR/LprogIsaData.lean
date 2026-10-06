@@ -124,6 +124,9 @@ structure IsaData extends IsaAbi where
   /-- Whether the instruction with this mnemonic base sets flags and writes no destination
       register. -/
   flagOnly : String → Bool
+  /-- The mnemonic base of the select `Lopn [r] m [f, r, z]` that widens the one-bit flag
+      register `f` to a word in `r`, `none` when the instruction set has no such select. -/
+  selectMnemonic : Option String
   /-- The leakage regime: whether an instruction with this mnemonic base makes its data
       operands observable through its execution time. The default `true` for every base is
       the regime without a vendor timing guarantee. -/

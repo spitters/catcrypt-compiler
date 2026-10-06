@@ -157,6 +157,7 @@ def rvData : IsaData where
   tieScratch := "t5"
   copyMnemonic := fun opn => if hasSuffix opn ":64" then some "MOV:64" else some "MOV"
   flagOnly := fun _ => false
+  selectMnemonic := none
   leaksOperands := rvLeaksOperands
   supports := fun base => rvBases.contains base || base == "KEEP"
   implicitReads := fun _ => []
