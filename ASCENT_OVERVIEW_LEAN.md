@@ -91,17 +91,20 @@ the gate; all are over `x86Isa`, and none has an AArch64 or RV64 counterpart.
 |---|---|---|---|
 | `v1Loop_corresIsa` | `LoopCorresIsa` | the certified loop node (flag-machine chain), for every loop with `v1LoopB = true` | `CorresIsa`, fuel `nodeFuel` at the trip-count bound |
 | `jGate_straight_corresIsa`, `compileJ_straight_corresIsa` | `StraightCorresIsa` | the source's typed chain, for the four straight arms of `jGateB` | `CorresIsa`, fuel the chain length |
-| `v1Loop_image_corresIsaRun`, `v1StraightR_image_corresIsaRun`, `straightArr_image_corresIsaRun`, `straightCell_image_corresIsaRun` | `ExportedBodyCorresIsa` | the image of the printed body that the encoder consumes, without its closing return | `CorresIsaRun` (fuel per state) |
+| `v1Loop_image_corresIsa`, `v1StraightR_image_corresIsa`, `straightArr_image_corresIsa`, `straightCell_image_corresIsa` | `ExportedBodyCorresIsa` | the image of the printed body that the encoder consumes, without its closing return | `CorresIsa`, with fuel `loopImageFuel`, `straightRegImageFuel`, `straightImageFuel`, `cellImageFuel` (computed from the virtual and printed bodies; the loop arm at a trip-count bound) |
+| `compileA_loop_corresIsa`, `compileA_straightReg_corresIsa` and their image forms; `mpn_and_n_corresIsa`, `ltu_corresIsa` | `GatedInstances` | as in the rows above, for the program the front returns | from the compile equation `compileA te σ fname = some (P, bytes)` and a route gate that is checked by evaluation |
 
 In each, the specification is the denotation of the source program and the exit clause
 of the state relation is a halting run of the decoded shipped bytes. In the first two
 rows the flag-machine run and the byte run are of different programs and meet at the
 denotation; in the third they are of the same program, joined by the checker's soundness
 theorem. The generic lemma behind the first row is `corresIsa_of_node_halts_fuel`
-(`Ascent/CorresIsaNode`). Not covered: the line-gate straight arm in the third row, the
-closing return (`x86Isa` has no step at `Lret`), and a fixed fuel for the third row. No
-theorem states the gate's acceptance of a concrete program, so none of these has an
-unconditional instance.
+(`Ascent/CorresIsaNode`). Not covered: the line-gate straight arm in the third row and
+the closing return (`x86Isa` has no step at `Lret`; `IsaCall.steps_snoc_ret` and
+`x86_steps_snoc_ret` extend a halting run to the body followed by a return on
+`x86Isa.withCalls`, given a return address in the final state, which the gate's entry
+state does not provide). The named instances keep the compile equation as a hypothesis:
+no theorem states that the compiler accepts a concrete program.
 
 Imported Jasmin with control flow (`Ascent/JasminJumpLevel`): `compileS` compiles a
 structured program to labelled code, `compileS_run` simulates a structured run on
