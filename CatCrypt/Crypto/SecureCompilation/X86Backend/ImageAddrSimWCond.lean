@@ -16,10 +16,10 @@ set_option autoImplicit false
 
 `ImageAddrSimW.img_stepW` is the step of the image simulation with carry chains at an
 instruction other than a branch. The gate `ImageAddrSimW.gateAtW` accepts a branch on a
-condition code where the width analysis `ImageAddrSimW.oneBitAt` is empty. There `ImgRelW` is
-`ImgRel` (`imgRel_of_W`), the branch is the branch of `ImageAddrSim.img_step`, and `ImgRel` at
-the target gives `ImgRelW` there (`imgRelW_of`), whatever the width analysis of the straight
-prefix up to the target is.
+condition code where every name of the width analysis `ImageAddrSimW.oneBitAt` at the branch
+is in the analysis one past its label. `ImgRelW` is weaker for a larger analysis, so the
+branch taken keeps it (`ImageAddrSimW.rel_condJumpW`), and the branch not taken keeps it at
+the same analysis (`ImageAddrSimW.rel_condFallW`).
 
 ## Main definitions
 
@@ -31,8 +31,10 @@ prefix up to the target is.
 
 * `img_step_cond`: the step of `ImageAddrSim.ImgRel` at a branch, from the facts of the gate
   at that instruction.
-* `gateAtW_cond`: the gate of a branch gives an empty width analysis, the polarity of the
-  condition code and the position of the label.
+* `gateAtW_cond`: the gate of a branch gives the polarity of the condition code, the
+  position of the label and the inclusion of the width analysis in the analysis one past it.
+* `img_stepW_cond'`: the step of `ImgRelW` at a branch, from the facts of the gate at that
+  instruction.
 * `img_stepW_cond`: the step of `ImgRelW` at a branch.
 * `img_stepW'`: the step of `ImgRelW` at every instruction.
 -/
@@ -138,39 +140,77 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
     exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
       Or.inl (rel_label hphys hrel hb hnm)⟩
 
-/-- **The gate of a branch**: the width analysis is empty, the branch is on a condition code
-    with a polarity, and its label is a label of the body. -/
+/-- **The gate of a branch**: the branch is on a condition code with a polarity, its label is
+    a label of the body, and every name of the width analysis is in the analysis one past the
+    label. -/
 theorem gateAtW_cond {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {c : Lcmd} {k : Nat} {W : List String}
     {x : LinstrR} {cnd : _} {l : LLabel} (hx : x = .Lcond cnd l)
     (hg : gateAtW frame slotArr c k W x = true) :
-    W = [] ∧ ∃ cc pol p, cnd = .reg cc ∧ condPol cc = some pol ∧ labelAt c l = some p := by
+    ∃ cc pol p, cnd = .reg cc ∧ condPol cc = some pol ∧ labelAt c l = some p
+      ∧ ∀ r, r ∈ W → r ∈ oneBitAt frame c (p + 1) := by
   subst hx
-  simp only [gateAtW, Bool.and_eq_true] at hg
-  obtain ⟨-, hg⟩ := hg
-  have hci : carryI? (.Lcond cnd l) = none := rfl
-  rw [hci] at hg
-  cases hc : icase frame (.Lcond cnd l) with
-  | cond cc l' =>
-      rw [hc] at hg
-      have hx := icase_cond hc
-      simp only [LinstrR.Lcond.injEq] at hx
-      obtain ⟨rfl, rfl⟩ := hx
-      simp only [Bool.and_eq_true, Option.isSome_iff_exists, List.isEmpty_iff] at hg
-      obtain ⟨⟨hW, pol, hpol⟩, p, hp⟩ := hg
-      exact ⟨hW, cc, pol, p, rfl, hpol, hp⟩
-  | other =>
-      rw [hc] at hg
-      simp [castGateB, DecodePrintedAddrW.classifyK] at hg
-  | label => exact absurd (icase_label hc) (by simp)
-  | ldx d b idx => exact absurd (icase_ldx hc) (by simp)
-  | stx d b idx v => exact absurd (icase_stx hc) (by simp)
-  | sload d q => exact absurd (icase_sload hc).1 (by simp [slotMov?])
-  | sstore q S => exact absurd (icase_sstore hc).1 (by simp [slotMov?])
-  | scmp d y q => exact absurd (icase_scmp hc).1 (by simp [slotCmp?])
-  | reg =>
-      obtain ⟨ds, o, ss, hx, -⟩ := icase_reg hc
-      cases hx
+  exact gateAtW_condIncl hg
+
+/-- **One step of the image at a branch with one-bit names.** From states related by
+    `ImgRelW`, a checked step of the image at a branch on a condition code with a polarity,
+    to a label of the body one past which the width analysis includes the analysis at the
+    branch, keeps the zero flag and is matched by one step of the address machine when the
+    branch falls through, and by two when it is taken: to the label and over it. -/
+theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} (hphys : physImgB slotArr c = true)
+    (hlast : ∃ r, c.getLast? = some r ∧ r.li_i = .Lret) (fn : String) {s t : LstateMF}
+    {sa : LstateA} (hrel : ImgRelW frame slotArr base c s sa s.zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) {cc : String} {l : LLabel}
+    (hx : bi.li_i = .Lcond (.reg cc) l) {pol : Bool} (hpol : condPol cc = some pol) {p : Nat}
+    (hp : labelAt c l = some p)
+    (hW : ∀ r, r ∈ oneBitAt frame c sa.reg.lpc → r ∈ oneBitAt frame c (p + 1))
+    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
+      (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
+    t.zf = s.zf ∧ StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t := by
+  have hi : imgInstr slotArr c sa.reg.lpc bi.li_i = (bi.li_i, .reg none) := by
+    rw [hx]; rfl
+  obtain ⟨r, hr, hret⟩ := hlast
+  have hfl := findLabel_virtImg slotArr c l (fun r' hr' => by
+    rw [hr] at hr'
+    cases hr'
+    rw [hret]; rfl)
+  rw [hp] at hfl
+  rw [hi, evalInstrPMemFk_reg, hx, eval_cond fn _ cc l _ hpol hfl] at hstep
+  have hnm : slotMov? bi.li_i = none := by rw [hx]; rfl
+  obtain ⟨hpl, hlab, -⟩ := labelAt_spec hp
+  have hbp : c[p]? = some c[p] := List.getElem?_eq_getElem hpl
+  have hlabp : ∃ ii', c[p].li_i = .Llabel ii' l := by
+    revert hlab
+    cases c[p].li_i <;> simp [isLabelB]
+  obtain ⟨ii', hli⟩ := hlabp
+  have hstepA : stepA frame c sa s.zf = if s.zf = pol then some (sa.setLpc p, s.zf)
+      else some (sa.setLpc (sa.reg.lpc + 1), s.zf) := by
+    obtain ⟨ii0, li⟩ := bi
+    simp only at hx
+    subst hx
+    simp only [stepA, hb, hpol, hp, Option.map_some]
+  by_cases hzp : s.zf = pol
+  · rw [if_pos hzp] at hstep hstepA
+    cases hstep
+    refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+      Or.inr ⟨⟨c[p], ii', l, by simp [LstateA.setLpc], hli⟩,
+        haltedA_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
+        loadSafe_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
+        sa.setLpc (p + 1), ?_,
+        rel_condJumpW hphys hrel hb hnm hbp (by rw [hli]; rfl)
+          (fun ds o ss h => by rw [hli] at h; cases h) hW⟩⟩
+    have hb' : c[p]? = some c[p] := hbp
+    generalize c[p] = bp at hli hb'
+    obtain ⟨ii1, li1⟩ := bp
+    simp only at hli
+    subst hli
+    simp [stepA, LstateA.setLpc, hb']
+  · rw [if_neg hzp] at hstep hstepA
+    cases hstep
+    exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+      Or.inl (rel_condFallW hphys hrel hb hx)⟩
 
 /-- **One step of the image at a branch.** From states related by `ImgRelW`, a checked step
     of the image of a body that passes `imgGateBW` at a branch keeps the zero flag and is
@@ -191,10 +231,9 @@ theorem img_stepW_cond {frame : String → Option (BitVec 64)}
     have := hgate.1.1 sa.reg.lpc hlt
     rw [hb] at this
     simpa using this
-  obtain ⟨hW, cc, pol, p, rfl, hpol, hp⟩ := gateAtW_cond hc hg
-  obtain ⟨hz, hout⟩ := img_step_cond (rsp := rsp) hphys (imgGateBW_last hgate) fn
-    (imgRel_of_W hrel hW) hb hc hpol hp hstep
-  exact ⟨hz, hout.mono fun _ _ h => imgRelW_of h⟩
+  obtain ⟨cc, pol, p, rfl, hpol, hp, hW⟩ := gateAtW_cond hc hg
+  exact img_stepW_cond' (rsp := rsp) hphys (imgGateBW_last hgate) fn hrel hb hc hpol hp hW
+    hstep
 
 /-- **One step of the image.** From states related by `ImgRelW`, a checked step of the image
     of a body that passes `imgGateBW` is matched by one step of the address machine, or by

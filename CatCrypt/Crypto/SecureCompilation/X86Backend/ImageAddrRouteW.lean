@@ -23,18 +23,23 @@ and without cell accesses. This module gives the route for a printed body whose
 constant-index array accesses are cell accesses and whose arithmetic uses carry chains.
 
 The virtual body keeps the prefix `argBind ++ seeds ++ movesOf ps` and replaces the renamed
-loop by its cell fold `CellFoldL.cellFoldL` at the cell arrays of the layout under the
-renaming (`cellArrsR`). The register allocation check compares it with the image of the cell
-body of the printed body, and the image is simulated on the decoded bytes by
-`ImageAddrCellsLoop.virt_bytesC'`, with the step at a conditional branch from
-`ImageAddrSimWCond.img_stepW_cond`.
+loop by a cell fold at the cell arrays of the layout under the renaming (`cellArrsR`). The
+register allocation check compares it with the image of the cell body of the printed body,
+and the image is simulated on the decoded bytes by `ImageAddrCellsLoop.virt_bytesC'`, with
+the step at a conditional branch from `ImageAddrSimWCond.img_stepW_cond`. This module holds
+the definitions and lemmas of the route that do not depend on the fold; the check of the
+route over the fold `CellFoldLReg.cellFoldLR` and its theorem on the decoded bytes are in
+`CellFoldLReg`.
 
 ## Main definitions
 
 * `cellArrsR`, `baseR`, `frameR`, `slotR`, `entryC`: the cell arrays, entry bases, frame map,
   slot map and virtual entry state of the route under the renaming.
 * `cellNamesRB`: the check of the cell names of a list of cell arrays against a printed body.
-* `routeBW`: the check of the route.
+* `routeBW0`: the check of the route with the fold `cellFoldL` and an empty width analysis at
+  every branch. The check of the route, `CellFoldLReg.routeBW`, and the theorem on the
+  decoded bytes, `CellFoldLReg.loop_image_bytesW`, are over the fold
+  `CellFoldLReg.cellFoldLR`.
 
 ## Main results
 
@@ -48,9 +53,6 @@ body of the printed body, and the image is simulated on the decoded bytes by
 * `cellRel_entryR`, `cellRel_pre`: the cell relation at the entry states and behind the
   prefix of the virtual body.
 * `imgStepWCond_of_gate`: the step of the image at a conditional branch from the gate.
-* `loop_image_bytesW`: a halting run of the node from the entry state is matched by a halting
-  run of the decoded bytes of the printed body, with the output array in memory at its entry
-  base.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW
@@ -589,19 +591,14 @@ def virtBW (σ : AbiLayout) (nm : String → String) (seeds : List LinstrRM)
     (ps : List (String × String)) (L2 : List LinstrRM) (fuse : Bool) : List LinstrRM :=
   argBind σ nm ++ seeds ++ movesOf ps ++ if fuse then fuseMulHiRM L2 else L2
 
-/-- **The check of the image route with carry chains and cells** of the node `seeds ++ loop`
-    with the renaming `ps`, the fusion flag `fuse` and the output array `out` of `m` words,
-    against the printed body `body`. With the renamed cell arrays `cellArrsR σ ps`, the slot
-    map `slotR`, the cell body of `body` and the cells of the renamed output array as
-    observed names: the renamed loop has a cell fold `L2`; the register allocation check of
-    the virtual body `virtBW` against the image of the cell body; the bounds invariant of
-    the virtual body; the W class of printed bodies; the image class; the gate with carry
-    chains with no observed name in its width analysis at the return; the frame, entry and
-    renaming checks; the cell frames; no slot name in a cell move; the cell names; the cell
-    arrays regions at their lengths; the seeds kept instructions; no source or target of the
-    renaming a cell name; when `fuse` holds, the fusion check of the prefix and the folded
-    loop and no observed name `R15`; and the output array a name of the loop. -/
-def routeBW (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop : List LinstrRM)
+/-- **The check of the image route with the fold `cellFoldL` and an empty width analysis at
+    every branch** of the node `seeds ++ loop` with the renaming `ps`, the fusion flag `fuse`
+    and the output array `out` of `m` words, against the printed body `body`: the conjuncts
+    of `CellFoldLReg.routeBW`, with the cell fold `L2` of the renamed loop taken by
+    `CellFoldL.cellFoldL`, the gate `ImageAddrSimW.imgGateBW0` and the check
+    `ImageAddrSimW.retOutsB0` of the observed names. A program that passes it passes
+    `CellFoldLReg.routeBW` (`CellFoldLReg.routeBW_of_old`). -/
+def routeBW0 (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop : List LinstrRM)
     (ps : List (String × String)) (fuse : Bool) (out : String) (m : Nat) : Bool :=
   match cellFoldL (cellArrsR σ ps) [] (loop.map (renRM (renOf ps))) with
   | some L2 =>
@@ -610,10 +607,10 @@ def routeBW (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop 
         && idxInvCheckB (boundFacts σ nm)
           (idxAnnot (boundFacts σ nm) (virtBW σ nm seeds ps L2 fuse)) (virtBW σ nm seeds ps L2 fuse)
         && printedAddrWB body && physImgB (slotR σ nm ps) (cellBody (slotR σ nm ps) body)
-        && (imgGateBW (frameMarkC (cellArrsR σ ps) body) (slotR σ nm ps)
+        && (ImageAddrSimW.imgGateBW0 (frameMarkC (cellArrsR σ ps) body) (slotR σ nm ps)
             (cellBody (slotR σ nm ps) body)
-          && retOutsB (frameMarkC (cellArrsR σ ps) body) (cellBody (slotR σ nm ps) body)
-            (outCells (renOf ps out) m))
+          && ImageAddrSimW.retOutsB0 (frameMarkC (cellArrsR σ ps) body)
+            (cellBody (slotR σ nm ps) body) (outCells (renOf ps out) m))
         && frameOkB σ body && entryB σ nm body && renB σ nm seeds loop ps
         && cellAccB (slotR σ nm ps) (cellArrsR σ ps) body && cellNoSlotB (slotR σ nm ps) body
         && cellNamesRB (cellArrsR σ ps) σ body
@@ -626,263 +623,5 @@ def routeBW (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop 
           && (outCells (renOf ps out) m).all (· != "R15")))
         && (loopNames loop).contains out
   | none => false
-
-/-- The facts of the entry and renaming checks behind `routeBW`. -/
-theorem routeBW_checks {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) :
-    entryB σ nm body = true ∧ renB σ nm seeds loop ps = true := by
-  unfold routeBW at hg
-  split at hg
-  · simp only [Bool.and_eq_true] at hg
-    exact ⟨hg.1.1.1.1.1.1.1.1.1.2, hg.1.1.1.1.1.1.1.1.2⟩
-  · cases hg
-
-/-- Under the route check, `entryV` at the frame of the printed body is an ABI entry. -/
-theorem routeBW_abiEntry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) (sa : AState) :
-    AbiEntryM σ sa (entryV σ (frameE body sa) sa (unren ps)) := by
-  obtain ⟨hent, hren⟩ := routeBW_checks hg
-  have E := entryB_spec hent sa
-  exact entryV_abiEntry E.argF E.argG fun j hj => ((renB_spec hren).unr j hj).1
-
-/-! ## 8. The route on the decoded bytes -/
-
-/-- **The node on the decoded bytes through the image route with carry chains and cells.**
-    Let the printed body `body`, the node `seeds ++ loop`, the renaming `ps`, the fusion flag
-    `fuse` and the output array `out` of the slot `q` of length `m` pass `routeBW`. From every
-    machine state `sa` satisfying `σ.Regions`, every halting run of the node from the entry
-    state `entryV` is matched by a halting run of the decoded bytes of the printed body from
-    `sa`, at the end of which the words at the entry base of `out` are the array `out` at the
-    end of the run of the node. -/
-theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd}
-    {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) {q : String}
-    (hq : slotArrOf σ nm q = some (out, m)) (sa : AState) (hreg : σ.Regions sa) (fn : String)
-    (fuel : Nat) (t : LstateMF)
-    (hrun : lsemFuelMemF (singletonProgM fn (seeds ++ loop)) fuel
-      { prog := { base := entryV σ (frameE body sa) sa (unren ps), lfn := fn }, zf := false }
-        = some t) :
-    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
-      ∧ ∃ arr, t.prog.base.getArr out 64 m = some arr
-        ∧ ∀ j (hj : j < m), read64 sa'.mem (cellAt (abiBase (abiReg σ) sa out) j) = arr ⟨j, hj⟩ := by
-  unfold routeBW at hg
-  split at hg
-  case h_2 => cases hg
-  rename_i L2 hfold
-  simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
-    decide_eq_true_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, ⟨hgW, hro⟩⟩, hfr⟩, hent⟩, hren⟩, hacc⟩, hns⟩,
-    hN⟩, hlen⟩, hkeep⟩, hpsC⟩, hfuse⟩, hout⟩ := hg
-  have E := entryB_spec hent sa
-  have R := renB_spec hren
-  have N := cellNamesRB_spec hN
-  have hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j :=
-    fun j hj => (R.unr j hj).2
-  have hun : ∀ q A n, slotArrOf σ nm q = some (A, n) → unren ps (renOf ps A) = A := by
-    intro q A n h
-    obtain ⟨j, a, hj, -, rfl, -⟩ := slotArrOf_some h
-    exact hunr j (List.getElem?_eq_some_iff.mp hj).1
-  have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrsR σ ps) r = none := by
-    intro r hr
-    cases hc : cellIdx (cellArrsR σ ps) r with
-    | none => rfl
-    | some _ =>
-        have := N.gp r (by rw [hc]; rfl)
-        rw [hr] at this
-        cases this
-  have hfrA : ∀ j, j < σ.args.length → frameR σ sa ps body (argName j) = none := by
-    intro j hj
-    simp only [frameC, N.arg j hj]
-    exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ frameR σ sa ps body (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
-  -- the virtual body of the narrow route from the node
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
-  have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds)
-      (entryV σ (frameE body sa) sa (unren ps)) false = some (b2, z2) →
-      ∀ r, r ∈ loopNames loop → b2.larr (renOf ps r) = b2.larr r := by
-    intro b2 z2 hb2 r _
-    have hl := runStraightF_larr R.store hb2
-    rw [hl]
-    rcases renOf_cases ps r with he | ⟨p, hp, rfl, he⟩
-    · rw [he]
-    · rw [he]
-      show (abiEntryM σ sa).larr (unren ps p.2) = (abiEntryM σ sa).larr (unren ps p.1)
-      rw [unren_target R.nd hp, unren_of_not_target fun q hq => R.ts p hp q hq]
-  obtain ⟨fuel', t', hrun', harr⟩ := ImageAddrSrc.src_chain fn (argBind σ nm) seeds loop ps
-    (· ∈ loopNames loop) (movesOf_isLopn _) R.lopn R.ctl R.cond R.ren R.names R.nd R.ts R.tgt
-    R.fresh (entryV σ (frameE body sa) sa (unren ps)) _ false rfl hpr0 rfl hA fuel t hrun out
-    hout 64 m
-  -- the renamed loop behind the prefix
-  have hXL := ctlOK_of_cellFoldL _ _ _ hfold
-  have hpreL : ∀ i ∈ argBind σ nm ++ seeds ++ movesOf ps, IsLopn i := by
-    intro i hi
-    rcases List.mem_append.mp hi with hi | hi
-    · rcases List.mem_append.mp hi with hi | hi
-      · exact movesOf_isLopn _ i hi
-      · exact R.lopn i hi
-    · exact movesOf_isLopn _ i hi
-  obtain ⟨b1, z1, tX, hb1run, hXrun, rfl⟩ :=
-    strip_prefix fn _ _ hpreL hXL.1 _ false rfl fuel' t' hrun'
-  -- the folded loop behind the prefix, from the virtual entry state
-  obtain ⟨b1C, hb1C, hC1⟩ := cellRel_pre E N hunr hkeep (fun p hp => by
-    have := List.all_eq_true.mp hpsC p hp
-    simpa using this) hb1run
-  have hCF : CellRelF (cellArrsR σ ps) []
-      { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 }
-      { prog := { base := b1C.setLpc 0, lfn := fn }, zf := z1 } :=
-    ⟨cellRel_setLpc hC1 0, rfl, rfl⟩
-  obtain ⟨t2, ht2, hC2⟩ := lsemFuelMemF_cellFoldL N.slots N.dist hfold fn fuel'
-    (s := { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 })
-    (s' := { prog := { base := b1C.setLpc 0, lfn := fn }, zf := z1 }) hCF hXrun
-  obtain ⟨t2', ht2', hSh⟩ := lsemFuelMemF_prepend fn _ L2 hpreL hXL.2 (entryC σ sa ps body) b1C
-    false z1 rfl hb1C fuel' t2 ht2
-  have hmem : (renOf ps out, m) ∈ cellArrsR σ ps := by
-    obtain ⟨j, a, hj, hk, rfl, -⟩ := slotArrOf_some hq
-    exact List.mem_map.mpr ⟨_, mem_cellArrs hj hk, rfl⟩
-  obtain ⟨arr, ha, hcl⟩ := hC2.base.cells _ hmem
-  have hlv2 : ∀ r, t2'.prog.base.reg.lvm r = t2.prog.base.reg.lvm r := by
-    intro r
-    rw [hSh.base]
-    rfl
-  -- the fusion
-  obtain ⟨fuelB, tB, hrunB, hagB⟩ : ∃ fuelB tB, lsemFuelMemF
-      (singletonProgM fn (virtBW σ nm seeds ps L2 fuse)) fuelB
-        { prog := { base := entryC σ sa ps body, lfn := fn }, zf := false } = some tB
-      ∧ ∀ r ∈ outCells (renOf ps out) m,
-        tB.prog.base.reg.lvm r = t2'.prog.base.reg.lvm r := by
-    cases fuse with
-    | false => exact ⟨_, _, ht2', fun _ _ => rfl⟩
-    | true =>
-        simp only [Bool.true_eq_false, false_or, List.all_eq_true, bne_iff_ne, ne_eq] at hfuse
-        have habiC := entryV_abiEntry (un := unren ps) (sa := sa) hfrA E.argG
-          fun j hj => (R.unr j hj).1
-        have hE : JasminLsemFuseMulHi.E64 (fuseRegs σ nm ++ cellNames (cellArrsR σ ps))
-            (entryC σ sa ps body) := by
-          intro x hx
-          rcases List.mem_append.mp hx with hx | hx
-          · rcases List.mem_append.mp hx with hx | hx
-            · exact e64_of_abiEntryM habiC x hx
-            · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, entryA, h1, if_true]
-          · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
-            simp only [emptyArrs, entryV, frameC, hc]
-        obtain ⟨f2, t3, -, ht3, hag, -, -⟩ :=
-          JasminLsemFuseMulHi.fuseMulHi_lsemFuelMemF_pre hfuse.1 fn _ _ rfl hE _ ht2'
-        exact ⟨f2, t3, ht3, fun r hr => hag.reg r (hfuse.2 r hr)⟩
-  -- the bounds invariant
-  have hents := boundFacts_entryV (nm := nm) (fr := frameR σ sa ps body) (un := unren ps) hreg
-    fun b hb => by
-      obtain ⟨h1, h2, h3⟩ := E.bnds b hb
-      refine ⟨h1, h2, ?_⟩
-      simp only [frameC, hgpN _ h1]
-      exact h3
-  have hok := runIdxOk_of_idxInvCheckB hidx fn
-    { prog := { base := entryC σ sa ps body, lfn := fn }, zf := false } tB rfl rfl hents fuelB
-    hrunB
-  -- the separation and the cell frames
-  have hS0 := imgSep_slotRen (ren := renOf ps)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
-  have hword : ∀ q a, frameE body sa q = some a →
-      ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
-    intro q a ha
-    obtain ⟨hq, o, ho, rfl⟩ := ImageAddrFrame.frameIn_some ha
-    have := ImageAddrFrame.frameOkB_range hfr hq ho
-    exact ⟨_, this.1, this.2, rfl⟩
-  have hsl : ∀ q A n, slotRen (slotArrOf σ nm) (renOf ps) q = some (A, n) →
-      regLen (rsOf σ) (unren ps A) = n := by
-    intro q A n hq'
-    obtain ⟨A0, hq0, rfl⟩ := slotRen_some hq'
-    rw [hun q A0 n hq0]
-    exact E.len q A0 n hq0
-  have hrenS : ∀ q A n, slotRen (slotArrOf σ nm) (renOf ps) q = some (A, n) →
-      renOf ps (unren ps A) = A := by
-    intro q A n hq'
-    obtain ⟨A0, hq0, rfl⟩ := slotRen_some hq'
-    rw [hun q A0 n hq0]
-  have hrenR : ∀ p ∈ cellArrsR σ ps, renOf ps (unren ps p.1) = p.1 := by
-    intro p hp
-    obtain ⟨j, a, hj, -, he⟩ := cellArrsR_mem hp
-    rw [he, hunr j (List.getElem?_eq_some_iff.mp hj).1]
-  have hRlen : ∀ p ∈ cellArrsR σ ps, regLen (rsOf σ) (unren ps p.1) = p.2 := fun p hp => by
-    simpa using List.all_eq_true.mp hlen p hp
-  have hslC : ∀ q A n, slotRen (slotArrOf σ nm) (renOf ps) q = some (A, n) →
-      cellIdx (cellArrsR σ ps) q = none := by
-    intro q A n hq'
-    obtain ⟨A0, hq0, -⟩ := slotRen_some hq'
-    obtain ⟨a, ha⟩ := E.slot q A0 n hq0
-    exact N.body q (ImageAddrFrame.frameIn_some ha).1
-  have hsep := imgSep_cellsU (ren := renOf ps) E.rs hreg hS0 hword hsl hRlen hrenR hrenS N.gp
-    hslC
-  have hred : ∀ A j, cellIdx (cellArrsR σ ps) (memName A (8 * j)) = some (A, j) →
-      Disjoint8 (redW (frameRsp body sa)) (cellAt (baseR σ sa ps A) j) := by
-    intro A j hc
-    obtain ⟨n, hn, hj, -⟩ := cellIdx_spec hc
-    have hk : regK (rsOf σ) (unren ps A) j := by
-      unfold regK
-      rw [hRlen _ hn]
-      exact hj
-    have hr : redW (frameRsp body sa)
-        = sa.regs "%rsp" + BitVec.ofInt 64 (cmovRedZone - (Params.ofBody body).frame) := by
-      simp only [redW, frameRsp, BitVec.add_assoc, ← BitVec.ofInt_add]
-      congr 2
-      simp only [Int.ofNat_eq_natCast]
-      omega
-    rw [hr]
-    have h2 := ImageAddrFrame.frameOkB_red hfr
-    exact frameSep_of_regions E.rs hreg (unren ps A) j hk _ h2.1 h2.2
-  have hF := cellFrames_of (base := baseR σ sa ps) (rsp := frameRsp body sa) hacc N.gp
-    (fun r hr => hS0.gp r hr) hred
-  have hgate' : imgGateBW (frameR σ sa ps body) (slotR σ nm ps)
-      (cellBody (slotR σ nm ps) body) = true := by
-    rw [imgGateBW_congr (frame' := frameMarkC (cellArrsR σ ps) body) (frameC_isSome _ _ body sa)]
-    exact hgW
-  have hro' : retOutsB (frameR σ sa ps body) (cellBody (slotR σ nm ps) body)
-      (outCells (renOf ps out) m) = true := by
-    rw [retOutsB_congr (frame' := frameMarkC (cellArrsR σ ps) body) (frameC_isSome _ _ body sa)]
-    exact hro
-  have hfr' : ∀ q ∈ bodyNamesI body,
-      frameR σ sa ps body q = frameP (Params.ofBody body) (frameRsp body sa) q := by
-    intro q hq'
-    simp only [frameC, N.body q hq']
-    show ImageAddrFrame.frameIn body _ q = _
-    unfold ImageAddrFrame.frameIn
-    rw [if_pos hq']
-  have hrel0 := imgRel_entryV (nm := nm) (fr := frameR σ sa ps body) (sa := sa)
-    (body := cellBody (slotR σ nm ps) body) (fn := fn) (ren := renOf ps) (un := unren ps)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) hunr
-  have hrel := imgRel_cellArrs (R := cellArrsR σ ps) hrel0
-  -- the image on the decoded bytes
-  obtain ⟨prog, sa', hdec, hh, hobs⟩ := virt_bytesC' (base := baseR σ sa ps) hck hpr hphys
-    (by rw [hgate', hro']; simp) hsep (cellNoSlotB_spec hns) hF hfr' fn
-    (imgStepWCond_of_gate _ hphys hgate' fn) _ _ rfl rfl (entryA σ sa) false hrel rfl
-    (fun R' hR => by
-      have hl : (entryA σ sa).reg.lvm R' = ⟨64, sa.regs (phys R')⟩ := by
-        simp only [entryA, hR, if_true]
-      unfold LstateN.getW
-      rw [hl]
-      simp) rfl _ hrunB hok
-  refine ⟨prog, sa', hdec, hh, arr, ?_, fun j hj => ?_⟩
-  · rw [← harr]
-    exact ha
-  · have hc := cellIdx_memName N.dist hmem hj
-    have hjm : memName (renOf ps out) (8 * j) ∈ outCells (renOf ps out) m :=
-      List.mem_map.mpr ⟨j, List.mem_range.mpr hj, rfl⟩
-    have h4 := hobs (memName (renOf ps out) (8 * j)) _ hjm (by simp only [frameC, hc])
-      (hred _ j hc)
-    rw [hagB _ hjm, hlv2, hcl j hj] at h4
-    have hb : baseR σ sa ps (renOf ps out) = abiBase (abiReg σ) sa out := by
-      show abiBase (abiReg σ) sa (unren ps (renOf ps out)) = _
-      rw [hun q out m hq]
-    rw [hb] at h4
-    exact (eq_of_heq (Sigma.mk.inj h4).2).symm
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW

@@ -24,7 +24,7 @@ whether or not a name of a slot array occurs in it as a register.
 
 This module proves that step, gives the cell fold `cellFoldLR` that keeps such an
 instruction where `ImageCellFold.foldOne` refuses it, proves the fold sound on the flag
-machine, and gives the image route `routeBW'` over it.
+machine, and gives the image route `routeBW` over it.
 
 ## Main definitions
 
@@ -35,7 +35,8 @@ machine, and gives the image route `routeBW'` over it.
 * `keepRegB`: an `Lopn` without an array tag that reads and writes no cell name.
 * `foldOneR`, `foldOneLR`, `cellFoldLR`: the fold of one `Lopn`, of one instruction of a
   body, and of a body.
-* `routeBW'`: `ImageAddrRouteW.routeBW` with the fold `cellFoldLR`.
+* `routeBW`: the check of the image route with carry chains and cells, over the fold
+  `cellFoldLR` and the gate `ImageAddrSimW.imgGateBW`.
 
 ## Main results
 
@@ -46,8 +47,10 @@ machine, and gives the image route `routeBW'` over it.
 * `cellFoldLR_of_cellFoldL`: a fold by `cellFoldL` is the fold by `cellFoldLR`.
 * `lsemFuelMemF_cellFoldLR`: a halting run of the body is matched, with the same fuel, by a
   run of the folded body.
-* `loop_image_bytesW'`: the conclusion of `ImageAddrRouteW.loop_image_bytesW` from
-  `routeBW'`.
+* `routeBW_of_old`: a program that passes `ImageAddrRouteW.routeBW0` passes `routeBW`.
+* `loop_image_bytesW`: under `routeBW`, a halting run of the node from the entry state is
+  matched by a halting run of the decoded bytes of the printed body, with the output array
+  in memory at its entry base.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg
@@ -629,10 +632,20 @@ theorem lsemFuelMemF_cellFoldLR {R : Slots} (hR : slotsOkB R = true)
 
 /-! ## 5. The image route over the fold -/
 
-/-- **The check of the image route with carry chains and cells, over the fold
-    `cellFoldLR`**: the conjuncts of `ImageAddrRouteW.routeBW`, with the cell fold `L2` of
-    the renamed loop taken by `cellFoldLR`. -/
-def routeBW' (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop : List LinstrRM)
+/-- **The check of the image route with carry chains and cells** of the node `seeds ++ loop`
+    with the renaming `ps`, the fusion flag `fuse` and the output array `out` of `m` words,
+    against the printed body `body`. With the renamed cell arrays `cellArrsR σ ps`, the slot
+    map `slotR`, the cell body of `body` and the cells of the renamed output array as
+    observed names: the renamed loop has a cell fold `L2` by `cellFoldLR`; the register
+    allocation check of the virtual body `virtBW` against the image of the cell body; the
+    bounds invariant of the virtual body; the W class of printed bodies; the image class; the
+    gate with carry chains `ImageAddrSimW.imgGateBW` with no observed name in its width
+    analysis at the return; the frame, entry and renaming checks; the cell frames; no slot
+    name in a cell move; the cell names; the cell arrays regions at their lengths; the seeds
+    kept instructions; no source or target of the renaming a cell name; when `fuse` holds,
+    the fusion check of the prefix and the folded loop and no observed name `R15`; and the
+    output array a name of the loop. -/
+def routeBW (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop : List LinstrRM)
     (ps : List (String × String)) (fuse : Bool) (out : String) (m : Nat) : Bool :=
   match cellFoldLR (cellArrsR σ ps) [] (loop.map (renRM (renOf ps))) with
   | some L2 =>
@@ -658,50 +671,57 @@ def routeBW' (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop
         && (loopNames loop).contains out
   | none => false
 
-/-- The facts of the entry and renaming checks behind `routeBW'`. -/
-theorem routeBW'_checks {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+/-- The facts of the entry and renaming checks behind `routeBW`. -/
+theorem routeBW_checks {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW' σ nm body seeds loop ps fuse out m = true) :
+    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) :
     entryB σ nm body = true ∧ renB σ nm seeds loop ps = true := by
-  unfold routeBW' at hg
+  unfold routeBW at hg
   split at hg
   · simp only [Bool.and_eq_true] at hg
     exact ⟨hg.1.1.1.1.1.1.1.1.1.2, hg.1.1.1.1.1.1.1.1.2⟩
   · cases hg
 
-/-- Under the route check `routeBW'`, `entryV` at the frame of the printed body is an ABI
+/-- Under the route check `routeBW`, `entryV` at the frame of the printed body is an ABI
     entry. -/
-theorem routeBW'_abiEntry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+theorem routeBW_abiEntry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW' σ nm body seeds loop ps fuse out m = true) (sa : AState) :
+    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) (sa : AState) :
     ExportCertEntry.AbiEntryM σ sa (entryV σ (frameE body sa) sa (unren ps)) := by
-  obtain ⟨hent, hren⟩ := routeBW'_checks hg
+  obtain ⟨hent, hren⟩ := routeBW_checks hg
   have E := entryB_spec hent sa
   exact entryV_abiEntry E.argF E.argG fun j hj => ((renB_spec hren).unr j hj).1
 
-/-- **A program that passes `routeBW` passes `routeBW'`.** -/
-theorem routeBW'_of_routeBW {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+/-- **A program that passes `ImageAddrRouteW.routeBW0` passes `routeBW`**: a fold by
+    `cellFoldL` is the fold by `cellFoldLR`, and a body with an empty width analysis at every
+    branch passes the gate with the same analysis. -/
+theorem routeBW_of_old {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) :
-    routeBW' σ nm body seeds loop ps fuse out m = true := by
-  unfold routeBW at hg
+    {m : Nat} (hg : routeBW0 σ nm body seeds loop ps fuse out m = true) :
+    routeBW σ nm body seeds loop ps fuse out m = true := by
+  unfold routeBW0 at hg
   split at hg
   · rename_i L2 hfold
-    unfold routeBW'
+    unfold routeBW
     rw [cellFoldLR_of_cellFoldL _ _ _ hfold]
-    exact hg
+    simp only [Bool.and_eq_true] at hg ⊢
+    have h0 := hg.1.1.1.1.1.1.1.1.1.1.1.2
+    have hk := ImageAddrSimW.imgGateBW_of_old h0.1
+    have hr := ImageAddrSimW.retOutsB_of_old h0.1 (outCells (renOf ps out) m)
+    rw [← hr] at hg
+    tauto
   · cases hg
 
 /-- **The node on the decoded bytes through the image route over the fold `cellFoldLR`.**
     Let the printed body `body`, the node `seeds ++ loop`, the renaming `ps`, the fusion flag
-    `fuse` and the output array `out` of the slot `q` of length `m` pass `routeBW'`. From
+    `fuse` and the output array `out` of the slot `q` of length `m` pass `routeBW`. From
     every machine state `sa` satisfying `σ.Regions`, every halting run of the node from the
     entry state `entryV` is matched by a halting run of the decoded bytes of the printed body
     from `sa`, at the end of which the words at the entry base of `out` are the array `out`
     at the end of the run of the node. -/
-theorem loop_image_bytesW' {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
-    {m : Nat} (hg : routeBW' σ nm body seeds loop ps fuse out m = true) {q : String}
+    {m : Nat} (hg : routeBW σ nm body seeds loop ps fuse out m = true) {q : String}
     (hq : slotArrOf σ nm q = some (out, m)) (sa : AState) (hreg : σ.Regions sa) (fn : String)
     (fuel : Nat) (t : LstateMF)
     (hrun : lsemFuelMemF (singletonProgM fn (seeds ++ loop)) fuel
@@ -710,7 +730,7 @@ theorem loop_image_bytesW' {σ : AbiLayout} {nm : String → String} {body : Lcm
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ ∃ arr, t.prog.base.getArr out 64 m = some arr
         ∧ ∀ j (hj : j < m), read64 sa'.mem (cellAt (abiBase (abiReg σ) sa out) j) = arr ⟨j, hj⟩ := by
-  unfold routeBW' at hg
+  unfold routeBW at hg
   split at hg
   case h_2 => cases hg
   rename_i L2 hfold
