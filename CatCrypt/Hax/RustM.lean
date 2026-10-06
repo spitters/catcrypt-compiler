@@ -6,104 +6,68 @@ Authors: CatCrypt Contributors
 
 module
 
-/-!
-# Self-Contained RustM Monad
+public import HaxLean.Rust.WP
 
-Minimal, standalone copy of the `RustM` monad from hax-lib, providing just
-enough to support `UCMonad.RustMBridge` and `CTypeBridge` without depending
-on the `hax-lib` package.
+/-!
+# The `RustM` monad at the root namespace
+
+`RustM` is the result monad of the Aeneas `Std` model vendored by hax-lean,
+`Aeneas.Std.RustM`: a value (`.ok v`), a failure (`.fail e`) or divergence
+(`.div`). This module gives it and its error type the root-level names `RustM`
+and `Error`, as abbreviations, so that `UCMonad.RustMBridge` and `CTypeBridge`
+state their results over the type that the extraction readings use.
+
+`Error` has the two kinds `panic` and `undef` of `Aeneas.Std.Error`. The five
+further kinds of the hax-lib error type (`assertionFailure`, `integerOverflow`,
+`divisionByZero`, `arrayOutOfBounds`, `maximumSizeExceeded`) are absent: no
+module of the workspace constructs or matches on them.
 
 ## What is provided
 
-* `Error` — error cases (assertion failure, overflow, out-of-bounds, etc.)
-* `RustM` — the result monad: `.ok v | .fail e | .div`
-* `Monad RustM`, `LawfulMonad RustM`
-* `RustM.isOk`, `RustM.of_isOk` — predicates and extraction
-* `PanicFree` — predicate witnessing that a `RustM` function never errors
-
-## Design
-
-This file is intentionally minimal: it does NOT include WP instances,
-loop combinators, checked arithmetic, or array operations. Those belong
-to the old hax-lib `Rust_primitives` and are not needed for the UC bridge.
+* `Error`, `RustM`: abbreviations of `Aeneas.Std.Error` and `Aeneas.Std.RustM`,
+  with the constructors and `bind` exported under the root-level names. The
+  monad and lawful-monad instances are those of hax-lean.
+* `RustM.isOk`, `RustM.of_isOk`: the Boolean test `Aeneas.Std.ok?` and the
+  extraction `Aeneas.Std.eval_global`.
+* `RustM.IsOk`: the proposition that a computation is a value, with its
+  introduction rules and `RustM.isOk_bind`.
+* `RustM.extractPure`: the value of a computation, or `default`.
+* `RustM.failure`: the panic that hax prints for an unimplemented feature.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
 
-/-- Error cases for `RustM` computations.
-    Mirrors Rust's panic/error modes. -/
-inductive Error where
-  | assertionFailure
-  | integerOverflow
-  | divisionByZero
-  | arrayOutOfBounds
-  | maximumSizeExceeded
-  | panic
-  | undef
-  deriving Repr, BEq, DecidableEq
+/-- Error kinds of a failing Rust computation: `Aeneas.Std.Error`. -/
+abbrev Error : Type := Aeneas.Std.Error
 
-/-- The `RustM` monad, representing possible results of Rust computations.
-    * `.ok v` — successful completion with value `v`
-    * `.fail e` — runtime error (panic, overflow, out-of-bounds, etc.)
-    * `.div` — divergence (non-termination) -/
-inductive RustM.{u} (α : Type u) where
-  | ok (v : α) : RustM α
-  | fail (e : Error) : RustM α
-  | div
-  deriving Repr, BEq, DecidableEq, Inhabited
+/-- The result monad of Rust computations, `Aeneas.Std.RustM`:
+    * `.ok v`: completion with value `v`
+    * `.fail e`: a runtime error
+    * `.div`: divergence -/
+abbrev RustM.{u} (α : Type u) : Type u := Aeneas.Std.RustM α
+
+namespace Error
+
+export Aeneas.Std.Error (panic undef)
+
+end Error
 
 namespace RustM
 
-@[simp]
-instance instPure : Pure RustM where
-  pure x := .ok x
+export Aeneas.Std.RustM (ok fail div)
+export Aeneas.Std (bind)
 
-@[simp]
-def bind {α β : Type} (x : RustM α) (f : α → RustM β) : RustM β :=
-  match x with
-  | .ok v => f v
-  | .fail e => .fail e
-  | .div => .div
+/-- Is a `RustM` computation a value? This is `Aeneas.Std.ok?`. -/
+abbrev isOk {α : Type} (x : RustM α) : Bool := Aeneas.Std.ok? x
 
-@[simp]
-instance instMonad : Monad RustM where
-  pure := pure
-  bind := RustM.bind
-
-@[simp]
-instance instLawfulMonad : LawfulMonad RustM where
-  id_map x := by cases x <;> rfl
-  map_const := by intros; rfl
-  seqLeft_eq x y := by
-    simp only [SeqLeft.seqLeft, Seq.seq, Functor.map, bind]
-    cases x <;> simp <;> cases y <;> rfl
-  seqRight_eq x y := by
-    simp only [SeqRight.seqRight, Seq.seq, Functor.map, bind]
-    cases x <;> simp <;> cases y <;> rfl
-  pure_seq g x := by rfl
-  bind_pure_comp f x := by rfl
-  bind_map f x := by cases f <;> rfl
-  pure_bind x f := by rfl
-  bind_assoc x f g := by cases x <;> rfl
-
-/-- Is a `RustM` computation successful? -/
-@[reducible]
-def isOk {α : Type} (x : RustM α) : Bool :=
-  match x with
-  | .ok _ => true
-  | _ => false
-
-/-- Extract the value from a successful `RustM` computation. -/
-@[reducible]
-def of_isOk {α : Type} (x : RustM α) (_ : RustM.isOk x) : α :=
-  match x with
-  | .ok v => v
+/-- The value of a computation known to be one. This is `Aeneas.Std.eval_global`. -/
+abbrev of_isOk {α : Type} (x : RustM α) (h : RustM.isOk x) : α := Aeneas.Std.eval_global x h
 
 @[simp]
 theorem ok_of_isOk {α : Type} (v : α) (h : isOk (ok v)) :
-    (ok v).of_isOk h = v := rfl
+    of_isOk (ok v) h = v := rfl
 
 /-- `IsOk x` witnesses that `x = .ok v` for some `v`. -/
 def IsOk {α : Type} (x : RustM α) : Prop := ∃ v, x = .ok v
@@ -112,25 +76,15 @@ def IsOk {α : Type} (x : RustM α) : Prop := ∃ v, x = .ok v
 @[simp] theorem isOk_pure {α : Type} {a : α} : IsOk (pure a : RustM α) := ⟨a, rfl⟩
 
 theorem not_isOk_fail {α : Type} {e : Error} : ¬ IsOk (.fail e : RustM α) := by
-  intro ⟨_, h⟩; exact absurd h (by intro hc; cases hc)
+  intro ⟨_, h⟩; cases h
 
 theorem not_isOk_div {α : Type} : ¬ IsOk (.div : RustM α) := by
-  intro ⟨_, h⟩; exact absurd h (by intro hc; cases hc)
-
-@[simp] theorem ok_bind {α β : Type} (v : α) (f : α → RustM β) :
-    (RustM.ok v >>= f) = f v := rfl
+  intro ⟨_, h⟩; cases h
 
 theorem isOk_bind {α β : Type} {x : RustM α} {f : α → RustM β}
     (hx : IsOk x) (hf : ∀ v, IsOk (f v)) : IsOk (x >>= f) := by
-  obtain ⟨v, hv⟩ := hx
-  obtain ⟨w, hw⟩ := hf v
-  exact ⟨w, by simp only [hv, ok_bind, hw]⟩
-
-@[simp] theorem fail_bind {α β : Type} (e : Error) (f : α → RustM β) :
-    (RustM.fail e >>= f) = .fail e := rfl
-
-@[simp] theorem div_bind {α β : Type} (f : α → RustM β) :
-    (RustM.div >>= f) = .div := rfl
+  obtain ⟨v, rfl⟩ := hx
+  exact hf v
 
 /-- Extract the value from a successful computation, or return `default`. -/
 def extractPure {α : Type} [Inhabited α] (x : RustM α) : α :=
