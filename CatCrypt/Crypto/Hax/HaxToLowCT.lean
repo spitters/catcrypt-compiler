@@ -9,6 +9,8 @@ import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Hax.LowCTSubset
 public meta import CatCrypt.Crypto.Jasmin.LowCTExec
 public meta import HaxLean.AST
+public meta import CatCrypt.Crypto.Hax.ImpExprVar
+public import CatCrypt.Crypto.Hax.ImpExprVar
 public import CatCrypt.Crypto.Hax.LowCTSubset
 public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTOps
@@ -336,15 +338,6 @@ def haxArgsToLocated (parentTower : TowerType) :
       match haxArgToLocated parentTower a, haxArgsToLocated parentTower as with
       | some l, some ls => some (l :: ls)
       | _,      _        => none
-
-/-- An `ImpExpr` argument is "named" if it is a plain `var`.  This is
-    the side-condition every `app`-argument must satisfy for the H2
-    translation to succeed (since `haxArgToLocated` only lifts `var`s
-    into `Located` slots), and the condition on every component of an
-    aggregate tuple tail. -/
-def isVar : ImpExpr → Bool
-  | .var _ => true
-  | _      => false
 
 /-! ## §3  Main translation -/
 
