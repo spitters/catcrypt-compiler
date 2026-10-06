@@ -19,7 +19,8 @@ the jasmin rule set `jasminRules`: its rule (`binRule`), its cost `opCost`, its 
 weight `opKey`, and its purity `ComGVN.gvnPure`. Two trait rules of `TraitRules` complete
 the set at the operations `binRule` does not read: constant folding of a width cast of a
 constant (`constFoldRule jasminReify jasminFoldSel`), and the width cast `castW w w` as a
-copy (`copyRule jasminCastCopy`).
+copy (`copyRule jasminCastCopy`). The rule `cmpOneRule` reads a one-bit equality
+`cmp .eq 1 a b` whose operand `b` is bound to the constant `1`, and gives the variable `a`.
 
 ## The rule set
 
@@ -539,6 +540,43 @@ theorem ruleAlts_sound {D : Defs} {Δ : Ctxt jasminDialect} {s : JasminTy}
       exact rule_sound hD bop a b t ht
   all_goals intro alt h; simp [ruleAlts] at h
 
+/-- The alternatives of a one-bit equality with the constant `1`: for `cmp .eq 1 a b` with
+    `b` bound to the constant `1`, the variable `a`; for every other expression, none. -/
+def cmpOneAlts (D : Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
+    (e : Expr jasminDialect Δ s) : List (Alt Δ s) :=
+  match e with
+  | ⟨.cmp .eq 1, hop, args⟩ =>
+      let a : Ctxt.Var Δ (.reg 1) := args.head
+      let b : Ctxt.Var Δ (.reg 1) := args.tail.head
+      if constOf D b = some 1 then hop ▸ [Alt.var a] else []
+  | _ => []
+
+/-- The bit of the equality of a one-bit word with `1` is the word. -/
+theorem cmpBit_eq_one (c : BitVec 1) : cmpBit .eq c 1#1 = c := by
+  revert c
+  decide
+
+theorem cmpOneAlts_sound {D : Defs} {Δ : Ctxt jasminDialect} {s : JasminTy}
+    (e : Expr jasminDialect Δ s) {V : Ctxt.Valuation Δ} (hD : DSound V D) :
+    ∀ alt ∈ cmpOneAlts D e, alt.denote V = e.denote V := by
+  intro alt halt
+  unfold cmpOneAlts at halt
+  split at halt
+  · rename_i hop args
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [HVector.head, HVector.tail] at halt
+      split at halt
+      · rename_i hb
+        obtain rfl := List.mem_singleton.mp halt
+        have hbv := constOf_sound hD hb
+        show a.lookup V = cmpBit .eq (a.lookup V) (b.lookup V)
+        rw [hbv]
+        exact (cmpBit_eq_one _).symm
+      · cases halt
+  · cases halt
+
 /-! ## 5. The jasmin rule set and the pass -/
 
 /-- The rule of the jasmin rule set: the alternatives `ruleAlts` of a binary `regArith`
@@ -546,6 +584,12 @@ theorem ruleAlts_sound {D : Defs} {Δ : Ctxt jasminDialect} {s : JasminTy}
 def binRule : Rule jasminDialect where
   apply D _ _ e := ruleAlts D e
   sound _ _ _ hD _ e := ruleAlts_sound e hD
+
+/-- The rule of a one-bit equality with the constant `1`: the alternatives `cmpOneAlts`,
+    sound by `cmpOneAlts_sound`. -/
+def cmpOneRule : Rule jasminDialect where
+  apply D _ _ e := cmpOneAlts D e
+  sound _ _ _ hD _ e := cmpOneAlts_sound e hD
 
 open CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
   (ConstReify CopyOp un app0 constFoldRule copyRule constFoldRule_indep copyRule_indep
@@ -598,13 +642,15 @@ def jasminCastCopy : CopyOp jasminDialect where
       | (rename_i w w'; obtain rfl : w = w' := (by simpa using h)
          simp [un, DialectDenote.denote, HVector.head])
 
-/-- The jasmin rule set: the rule `binRule`, constant folding of width casts and the copy
-    `castW w w`, over the operation traits `jasminTraits`, whose cost is `opCost`, whose
-    extraction weight is `opKey` (`opKey_eq`), and whose purity `ComGVN.gvnPure` keeps the
-    operations of the instruction pairs of the x86 lowering out of the node table. -/
+/-- The jasmin rule set: the rule `binRule`, constant folding of width casts, the copy
+    `castW w w` and the rule `cmpOneRule`, over the operation traits `jasminTraits`, whose
+    cost is `opCost`, whose extraction weight is `opKey` (`opKey_eq`), and whose purity
+    `ComGVN.gvnPure` keeps the operations of the instruction pairs of the x86 lowering out
+    of the node table. -/
 def jasminRules : RuleSet jasminDialect where
   toOpTraits := jasminTraits
-  rules := [binRule, constFoldRule jasminReify jasminFoldSel, copyRule jasminCastCopy]
+  rules := [binRule, constFoldRule jasminReify jasminFoldSel, copyRule jasminCastCopy,
+    cmpOneRule]
 
 /-- **Extraction** at the jasmin rule set. -/
 def choose (S : Tbl × Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
@@ -708,16 +754,32 @@ theorem ruleAlts_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (D : 
       exact toAlt_indep hq t
   all_goals intro alt h; simp [ruleAlts] at h
 
+/-- An alternative of `cmpOneAlts` is a variable, which emits no event. -/
+theorem cmpOneAlts_indep (D : Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
+    (e : Expr jasminDialect Δ s) : ∀ alt ∈ cmpOneAlts D e, alt.Indep L := by
+  intro alt halt
+  unfold cmpOneAlts at halt
+  split at halt
+  · rename_i hop args
+    subst hop
+    simp only at halt
+    split at halt
+    · obtain rfl := List.mem_singleton.mp halt
+      trivial
+    · cases halt
+  · cases halt
+
 /-- Under a leakage model whose `regArith` operations are quiet, the events of every
     alternative of the jasmin rule set do not depend on the valuation. -/
 theorem jasminRules_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) :
     AegraphGeneric.RulesIndep L jasminRules := by
   refine rulesIndep_of_forall fun r hr => ?_
   simp only [jasminRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases hr with rfl | rfl | rfl
+  rcases hr with rfl | rfl | rfl | rfl
   · exact fun D _ _ e alt ha => ruleAlts_indep hq D e alt ha
   · exact constFoldRule_indep L jasminReify jasminFoldSel
   · exact copyRule_indep L jasminCastCopy
+  · exact fun D _ _ e alt ha => cmpOneAlts_indep D e alt ha
 
 /-- **Leakage of the traversal.** Under states sound for `V₁` and `V₂`, equal leakage of
     the input at the pulled-back valuations gives equal leakage of the output. -/

@@ -104,7 +104,22 @@ template layer and the dated deferrals.
   the field chain front with these back halves at every limb count and modulus record;
   their instances `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
   take the route and compile equations as hypotheses. `compileA` calls `compileJ`, so
-  `haxc_correct_auto` does not range over the wide gate or the reload. Constant time of
+  `haxc_correct_auto` does not range over the wide gate or the reload. The compiler
+  `compileAW` (`Haxc.ComposeV1W`) is the front of `compileA` followed by `compileJWR`;
+  it is the instance at `BackEnd.WR` of `compileAWith`, which takes a record `BackEnd`
+  of a back half with its correctness statement. `haxc_correct_autoW` is the statement
+  of `haxc_correct_auto` for `compileAW`. `compileAW_of_compileA'`
+  (`Haxc.ComposeV1WMono`) shows that `compileAW` compiles every program `compileA`
+  compiles, to the same bytes unless `compileJ` declines the choice with the fused
+  high products and `compileJWR` accepts it; its proof uses
+  `spillCmp?_of_encodableLcmd` (`X86Backend/CmpSpillEncodable.lean`): a body the checked
+  encoder accepts has no compare with a spilled first operand, so the reload leaves it
+  unchanged. The tuple entry `compileAT` calls `compileA` and has no counterpart over
+  `BackEnd`. `straightRegW_bytes` (`X86Backend/ImageStraightRegW.lean`) takes a
+  register-returning straight-line program over the printed class `printedAddrWB` to
+  the bytes, and `compileJWS` with `backend_correctWS` (`Haxc.BackHalfWS`) adds that arm
+  to `compileJWR`; `compileAW` does not call `compileJWS`, and the arm has no
+  constant-time statement. Constant time of
   the straight arms from the proved chain: `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) derives constant time of every decoding of the bytes of
   `compileA` from the level check `nfFrontLeakCT` of the front, with no byte checker,
@@ -117,6 +132,19 @@ template layer and the dated deferrals.
   `haxc_rc_proved_all` and `haxc_uc_proved_all` add robust compilation and UC
   preservation under the same hypotheses. The line-check arm `straightGateB`, the loops
   with carried registers and the wide loop arm of `compileJW` are outside `ctGateAllB`.
+  Over `compileAW`, `haxc_ct_proved_allW` and `haxc_rc_proved_allW`
+  (`Haxc.ComposeCTAllW`) are the same statements over the gate `ctGateAllWB`, which
+  covers the loop image route over the narrow and the wide printed class and the
+  straight register, array and cell arms; the wide loop arm goes through
+  `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`). The line-check arm
+  `straightGateB` and the loops with carried registers are outside `ctGateAllWB`. The
+  instances `mpn_and_n_rc_provedW` and `ltu_rc_provedW` carry `#kat` pins of the gate.
+  For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
+  the constant-time property of the route program from the level check of the lowered
+  program, and `compileJWR_loop_ct` (`Haxc.PowLoopCTP256`) carries it to the bytes of
+  `compileJWR`; the instances `powLoop1_ct'` (one limb) and `powLoop4_ct'` (P-256)
+  take the compile equation and the acceptance of the loop gate as hypotheses, with
+  the trip count public.
 - On `Lprog`, `LprogGpRealloc` re-allocates general-purpose
   registers with an untrusted allocator whose decisions a checked pass validates.
   `ConstIndexFold` rewrites each register-indexed load and store with a known index
@@ -167,17 +195,24 @@ The optimisation slot of the field chains is the identity step. The e-graph stag
 input at a symbolic modulus is not proved, so it stays out of the field route.
 
 A route theorem that keeps the compile hypothesis is a theorem about the programs the
-back half accepts; for these routes `compileJ` refuses the following.
+back half accepts. The acceptance registry of the development repository
+(`scripts/acceptance-registry.tsv`) records the following for these routes at
+2026-10-06; [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) has the table per instance.
 
-- Jacobian doubling at P-256 (`jacDblRouteC`): refused at the image gate
-  `printedAddrWB` inside the cell route; the sub-check that fails is not yet isolated.
-- `Fp2` multiplication and squaring at BN254: refused at `decodableLcmd` inside
-  `printedAddrWB`, because spill slots appear as destinations of `ADCX` and `CMOV`;
-  at BLS12-381 the refusal is earlier, at `encodeLfundefBytesChecked`.
-- The ML-KEM base multiplication (and the ML-DSA pointwise product): refused at
-  `encodeLfundefBytesChecked`, whose encoder has no case for the `TRUNC` and
-  `ZEROEXT` lane casts that `widenProg` introduces. The same refusal is expected, not
-  measured, for the signed 16-bit NTT arm and for `bbPermRoute`.
+- Jacobian addition at P-256 (row `ec/p256_jacAdd`): `compileJ` refuses the route at
+  all three coordinates, and the refusing conjunct is not localised. Jacobian doubling
+  (row `ec/p256_jacDbl`): the gate evaluation of coordinate x does not finish within
+  eight minutes in the executable, so the row records no result.
+- `Fp2` multiplication and squaring at BN254 (rows `tower/bn254_fp2_mul`,
+  `tower/bn254_fp2_sqr`): accepted, with the constant-time byte gate passing on both.
+  At BLS12-381 the executable does not run the gate, and there is no row.
+- The ML-KEM base multiplication, the ML-DSA pointwise product and the signed 16-bit
+  NTT arm have no row and no accepted program: the exporter writes only the width 64
+  into a mnemonic, and the decoder `decodeLinstr` has no 32-bit ALU or shift form for
+  a byte gate to decode narrow arithmetic to.
+- `bbPermRoute` has no row: the compile hypothesis of `bb_poseidon2_correct_bytes`
+  holds for no instance, because the reduction block binds 128-bit values, which have
+  no machine form in the checked encoder.
 
 ### Proofs, checks and translation validation in `haxc`
 
@@ -227,8 +262,14 @@ The design keeps one translation validation, the check of the pair before and af
 register allocation. The block optimiser, the fold and the two-address form are to
 carry preservation theorems at `lsemFuelMemF`; the general decode simulation is to
 replace `lineCheck` and `lineTVCheck`; the loop export certificate is to carry a
-completeness theorem; and constant time is to be derived from the source through
-per-pass leakage transformers.
+completeness theorem. Constant time of the bytes is derived from the level check of the
+source, with no byte checker, by `haxc_ct_proved_all` over the gate `ctGateAllB` of
+`compileA` and by `haxc_ct_proved_allW` and `haxc_rc_proved_allW` over the gate
+`ctGateAllWB` of `compileAW`, whose back end has the wide loop gate (development
+repository, `Haxc.ComposeCTStraight` and `Haxc.ComposeCTAllW`). The line-check arm
+`straightGateB` and the loops with carried registers are outside both gates; on those
+routes the constant-time conjunct is the byte check `ctGateR`, and the derivation from
+the source remains to be done.
 
 ### Reference semantics of prime-ir calls
 
