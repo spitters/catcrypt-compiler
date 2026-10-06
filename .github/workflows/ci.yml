@@ -26,60 +26,78 @@ jobs:
           fetch-depth: 0
 
       - name: Check Markdown file links resolve
+        if: ${{ !cancelled() }}
         run: bash scripts/check-doc-links.sh
 
       - name: The lakefile's module list is fresh
+        if: ${{ !cancelled() }}
         # The library names its modules one by one (Lake resolves imports by
         # library glob, dependencies first, with no file check; a `CatCrypt.*`
         # glob here would claim every module of a package that requires this one).
         run: bash scripts/gen-module-globs.sh --check
 
       - name: No module outside the CI-only list imports one inside it
+        if: ${{ !cancelled() }}
         run: bash scripts/ci-only-import-gate.sh
 
       - name: Build roots cover every compiler module (rot guard)
+        if: ${{ !cancelled() }}
         run: bash scripts/rot-guard-build.sh --check
 
       - name: No new hand-authored emit kernel (Com/Lcmd provenance)
+        if: ${{ !cancelled() }}
         run: bash scripts/handcom-provenance-ratchet.sh
 
       - name: No new direct rolled-loop combinator call site (FrontRoutePlan dispatch)
+        if: ${{ !cancelled() }}
         run: bash scripts/front-callsite-ratchet.sh
 
       - name: No new untagged hand-JInstr block (emit provenance)
+        if: ${{ !cancelled() }}
         run: bash scripts/audit_emit_provenance.sh
 
       - name: No new emitted kernel without a constant-time obligation
+        if: ${{ !cancelled() }}
         run: bash scripts/emit-ct-obligation-ratchet.sh
 
       - name: No new vacuous or assumption-shaped security theorem
+        if: ${{ !cancelled() }}
         run: bash scripts/vacuous-theorem-ratchet.sh
 
       - name: Ascent results tied to a descent theorem or the encoded bytes
+        if: ${{ !cancelled() }}
         run: bash scripts/ascent-anchor-ratchet.sh
 
       - name: Ascent state relations and guards have a satisfiability witness
+        if: ${{ !cancelled() }}
         run: bash scripts/ascent-nonvacuity-ratchet.sh
 
       - name: Ascent blocks are front-generated, imported, or recorded
+        if: ${{ !cancelled() }}
         run: bash scripts/ascent-block-provenance.sh
 
       - name: No new plumbing-tagged security theorem
+        if: ${{ !cancelled() }}
         run: bash scripts/uc-plumbing-ratchet.sh
 
       - name: Every Dialect classified (lowers, theory, test)
+        if: ${{ !cancelled() }}
         run: bash scripts/dialect-lowering-ratchet.sh
 
       - name: No catch-all arm in a leak-kind function
+        if: ${{ !cancelled() }}
         run: bash scripts/leak-kind-wildcard-lint.sh
 
       - name: No new native_decide or maxHeartbeats bump (proof cost)
+        if: ${{ !cancelled() }}
         run: bash scripts/proof-cost-ratchet.sh
 
       - name: No new known-answer test inside Lean
+        if: ${{ !cancelled() }}
         run: bash scripts/lean-kat-ratchet.sh
 
       - name: Authority documents are free of changelog prose
+        if: ${{ !cancelled() }}
         run: bash scripts/lint-lean-prose.sh --docs
 
       - name: Added Lean files carry clean prose and a Main results section

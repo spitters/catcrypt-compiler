@@ -567,7 +567,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryBase
-CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplateCatToJasmin
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
 CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionCategory
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering

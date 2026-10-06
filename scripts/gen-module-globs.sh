@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ci-gates-local: text-scan (the --check mode reads files only; other modes build)
 # This package's two libraries name their modules one by one instead of globbing
 # `CatCrypt.*`: Lake resolves an import to the first package in its
 # (topologically sorted, dependencies first) workspace whose library glob matches

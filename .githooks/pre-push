@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs every text-scan gate of the CI workflow before a push and reports all failures
+# at once (scripts/ci-gates-local.sh). The gates read the working tree, so push from a
+# tree whose committed files match what is pushed. `CI_GATES_SKIP=1 git push …` skips
+# the run; say why in the next commit message or the push note.
+[ "${CI_GATES_SKIP:-}" = "1" ] && exit 0
+ROOT="$(git rev-parse --show-toplevel)"
+exec bash "$ROOT/scripts/ci-gates-local.sh"

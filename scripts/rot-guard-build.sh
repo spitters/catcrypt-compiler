@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ci-gates-local: text-scan (the --check mode reads files only; other modes build)
 # Rot-guard driver for the compiler module set.
 #
 # ## What this guards
