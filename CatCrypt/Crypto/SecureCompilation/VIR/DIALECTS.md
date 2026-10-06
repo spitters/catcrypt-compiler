@@ -115,6 +115,23 @@ equivariance. `VIR/DialectCategory.lean`, `VIR/DialectCategoryTemplate.lean` and
 `VIR/DialectCategoryTemplateCatToJasmin.lean` are presentation: they state laws of
 the structured layer, and no pass of the compiler pipeline consumes them.
 
+Two further categories, as of 2026-10-06. `VIR/DialectRegionCategory.lean` gives, for a
+dialect `d`, the category `Region d` (`Region.instCategory`) whose objects are the type
+lists of `d` and whose morphisms are structured programs `NFProg d Γ ts` up to equality
+of denotation at every fuel, with the denotation at a fuel as a functor to the Kleisli
+category of `Option` (`Region.denoteFunctor`). `VIR/DialectCategoryBase.lean` gives the
+category `Dial` (`Dial.instCategory`) whose objects are dialects with the instances that
+denote their structured programs and whose morphisms are template lowerings with a
+surjective value transport, along which `NFProg.map` preserves denotation
+(`Dial.Hom.map_denote`). The statement that lowering makes the region categories an
+opfibration over `Dial` is not proved; the core package has the general fact for the
+covariant Grothendieck construction (`Grothendieck.isStronglyCocartesian_toTransport`,
+`Functor.IsCofibered`), with no instance at `Dial`. `Dial.Hom.mapTy_ne_cryptoToJasmin`
+shows that no morphism of `Dial` from the crypto dialect to the Jasmin dialect has the
+type map `CryptoToJasminCom.mapTy` of the pipeline's lowering, so that lowering is not
+a morphism of `Dial` as defined. These two modules are presentation as well: no pass
+of the pipeline consumes them.
+
 | edge | pass | denotation preservation | reaches bytes |
 |---|---|---|---|
 | hax `ImpExpr` → `NFProg nfDialect` | `impToNF` (`CatCrypt/Crypto/Hax/ImpToNF.lean`) | `impToNF_sound` | front |

@@ -28,11 +28,22 @@ At the bytes, each family has one theorem over its records (`field_correct_bytes
 `Haxc/FieldBytes.lean`; `ntt_correct_bytes`, `Haxc/NttBytes.lean`; `ec_correct_bytes`,
 `Haxc/EcBytes.lean`) whose only per-instance hypothesis is acceptance by `compileJ`
 (`Haxc/BackHalf.lean`), the decided gate of `backend_correct`. An instance cell below is
-therefore a theorem together with the result of running the gate.
+therefore a theorem together with the result of running the gate. Where the gate
+refuses, is not run or has no recorded result, the instance theorem is conditional: its
+compile hypothesis is discharged by nothing, and the cell says so.
+
+Closure, 2026-10-06. The method is closed: each family has one theorem over its parameter
+record, each instance a decided certificate, and the weld to the bytes is the gate of
+`compileJ` with `backend_correct`. Three acceptance tests are unmet, each on a general
+capability of the back half: the curve group operations at P-256 (a gate evaluation that
+terminates on the doubling, and a localised refusal on the addition), Poseidon2 at the
+bytes (lanes wider than 64 bits in the checked encoder, or a route over the 64-bit chain
+`bbPermChain64`) and the lattice kernels (32-bit ALU and shift forms in the decoder
+`decodeLinstr`).
 
 ## Completeness against the fiat acceptance
 
-Verdicts are from `compileJ` as run by the executables `field-bytes-emit` and
+Gate results are from `compileJ` as run by the executables `field-bytes-emit` and
 `mpn-bytes-emit` and recorded in `scripts/acceptance-registry.tsv` (columns `accepted`,
 `bytes`, `ct`), or from probes of the gate where a row says so. The `compileJ` and
 `compileOf` calls the executables run are the hypotheses of the theorems named in the
@@ -71,19 +82,19 @@ row candidate NC-FUSE).
 
 | kernel | op | theorem | accepted at the bytes; size; `ct` |
 |---|---|---|---|
-| ML-KEM NTT | forward | `mlkem_ntt_correct_bytes` (signed 16-bit arm), `mlkem_ntt_correct_bytes_wide` (64-bit arm), `Haxc/NttInstances.lean` | no registry row; the signed 16-bit arm is deferred on narrow arithmetic (below); the gate is not run on the 64-bit arm |
-| ML-KEM | basemul | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) | no registry row; deferred on narrow arithmetic (below), as is ML-DSA pointwise |
+| ML-KEM NTT | forward | `mlkem_ntt_correct_bytes` (signed 16-bit arm), `mlkem_ntt_correct_bytes_wide` (64-bit arm), `Haxc/NttInstances.lean` | no registry row; both theorems are conditional on a compile hypothesis that nothing discharges: the signed 16-bit arm is deferred on narrow arithmetic (below), and the gate is not run on the 64-bit arm |
+| ML-KEM | basemul | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) | no registry row; conditional on a compile hypothesis that nothing discharges; deferred on narrow arithmetic (below), as is ML-DSA pointwise |
 | Poseidon2 BabyBear, width 16 | permutation | `bb_poseidon2_correct_bytes` (`Haxc/Poseidon2Bytes.lean`), tied to `permute_bbParams_eq`; conditional: its `compileJ` hypothesis holds for no instance, because `plantBlk` binds 128-bit values. The 64-bit block `plantBlk64` (`plantBlk64_denote`) and the chain `bbPermChain64` (`bbPermProg64_spec'`) are in `VIR/NarrowFieldPlant64.lean` | no registry row; no route and no bytes theorem over `bbPermChain64` |
-| P-256 Jacobian | add | `p256_jacAdd_correct_bytes`, `p256_jacAddC_correct_bytes` (`Haxc/EcInstances.lean`) | `ec/p256_jacAdd`: not accepted; `compileJ` refuses the route of `p256_jacAddC_correct_bytes` at all three coordinates; the refusing conjunct is not localised |
-| P-256 Jacobian | double | `p256_jacDbl_correct_bytes`, `p256_jacDblC_correct_bytes` | `ec/p256_jacDbl`: not accepted; the gate evaluation of coordinate x of the route of `p256_jacDblC_correct_bytes` does not finish within eight minutes in the executable; no result |
+| P-256 Jacobian | add | `p256_jacAdd_correct_bytes`, `p256_jacAddC_correct_bytes` (`Haxc/EcInstances.lean`) | `ec/p256_jacAdd`: not accepted; `compileJ` refuses the route of `p256_jacAddC_correct_bytes` at all three coordinates, so the compile hypothesis of that theorem is false at this instance; the refusing conjunct is not localised |
+| P-256 Jacobian | double | `p256_jacDbl_correct_bytes`, `p256_jacDblC_correct_bytes` | `ec/p256_jacDbl`: not accepted; the gate evaluation of coordinate x of the route of `p256_jacDblC_correct_bytes` does not finish within eight minutes in the executable; no result, so the theorems are conditional on a compile hypothesis that nothing discharges |
 | mpn, n = 4 | add_n, sub_n, mul_1, addmul_1 | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`, every n) | accepted: 301 B, 359 B, 369 B, 499 B; `ct` yes on all four |
 | mpn, n = 8 | all four | the same four theorems | accepted: 534 B, 623 B, 614 B, 992 B; `ct` yes on all four |
 | Fp2 at BN254 | mul, sqr | `bn254_fp2_mul_correct_bytes`, `bn254_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | `tower/bn254_fp2_mul`: accepted, 13 720 B, `ct` yes; `tower/bn254_fp2_sqr`: accepted, 9008 B, `ct` yes |
-| Fp2 at BLS12-381 | mul, sqr | `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | no registry row; the executable does not run the gate on these routes |
+| Fp2 at BLS12-381 | mul, sqr | `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | no registry row; the executable does not run the gate on these routes, so the two theorems are conditional on a compile hypothesis that nothing discharges |
 | Solinas 2^255−19 | mul, sqr | none | accepted by probe: 2452 B, 2399 B; deferred (D3, below) |
 | Solinas 2^521−1 | mul, sqr | none | accepted by probe: 10 018 B, 10 189 B; outside the F1 prime list |
 | prime-ir `fe_mul_add`, P-256 | front to bytes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), `impArgsNF_sound` (`Hax/ImpToNF.lean`), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) | `primeir/fe_mul_add_p256`: accepted, 3901 B, `ct` yes; the accepted call is the `compileOf` hypothesis of `fe_mul_add_bytes_p256` |
-| counted loop of field multiplications, one limb and P-256 | front to bytes | `powLoop_front_accepts` (`Haxc/FieldLowerChain.lean`): `fieldChainFront` returns a program on `powLoopBody`; `fieldChain_correct_autoW`, `fieldChain_correct_autoWR` at every limb count and modulus record (`Haxc/FieldLowerChainW.lean`, `Haxc/FieldLowerChainWR.lean`); instances `powLoop_correct_bytes_pow_1` (one limb) and `powLoop_correct_bytes_pow_p256` (four limbs), which take the route and compile equations as hypotheses and read back the Montgomery encoding of `x * a ^ k` for a run-time trip count `k`; constant time of the bytes from the level check of the lowered program: `fieldLoop_routeCT`, instance `powLoop1_ct'` (`Haxc/FieldLoopCT.lean`), and `compileJWR_loop_ct`, instance `powLoop4_ct'` (`Haxc/PowLoopCTP256.lean`), with the trip count public and the acceptance of the loop gate a hypothesis | no registry row, so no size and no `ct` cell; a `#kat` in `Haxc/PowLoopBytes.lean` and in `Haxc/PowLoopBytesP256.lean` pins that the back end returns a program for the loop |
+| counted loop of field multiplications, one limb and P-256 | front to bytes | `powLoop_front_accepts` (`Haxc/FieldLowerChain.lean`): `fieldChainFront` returns a program on `powLoopBody`; `fieldChain_correct_auto` at every limb count and modulus record, in the same module; instances `powLoop_correct_bytes_pow_1` (one limb, `Haxc/PowLoopBytes.lean`) and `powLoop_correct_bytes_pow_p256` (four limbs, `Haxc/PowLoopBytesP256.lean`), which take the route and compile equations as hypotheses and read back the Montgomery encoding of `x * a ^ k` for a run-time trip count `k`; constant time of the bytes from the level check of the lowered program: `fieldLoop_routeCT` with the instance `powLoop1_ct'` (`Haxc/FieldLoopCT.lean`) and the instance `powLoop4_ct'` (`Haxc/PowLoopCTP256.lean`), with the trip count public and the compile equation and the condition `lineArmFreeB` as hypotheses | no registry row, so no size and no `ct` cell; a `#kat` in `Haxc/PowLoopBytes.lean` and in `Haxc/PowLoopBytesP256.lean` pins that the back end returns a program for the loop |
 
 The Solinas figures come from route definitions inlined while `FieldRoute` was stale; the
 dispatcher `fieldTemplateOf` reaches the Solinas arm only at 2^521−1, and sends 2^255−19 to
@@ -190,7 +201,7 @@ Two corrections concern the AUCurves peers.
 | P-256 Jacobian addition and doubling at the bytes | 2026-10-06 | `compileJ` refuses the addition at all three coordinates, and the refusing conjunct of `jGateB` is not localised; the gate evaluation of the doubling does not finish within the executable's time | localisation of the refusing conjunct; a gate evaluation that terminates on the doubling |
 | narrow arithmetic (ML-KEM basemul, NTT signed 16-bit arm, ML-DSA pointwise) | 2026-10-06 | the exporter writes only the width 64 into a mnemonic, and the decoder `decodeLinstr` has no 32-bit ALU or shift form for the gate to decode to; width typing across arithmetic without shifts exists (`typeStep`, `wTyped_step`, `X86Backend/NarrowTyping.lean`) | LANE-NARROW-ARITH-2: 32-bit decoder forms, width typing of shifts |
 | Poseidon2 BabyBear at the bytes | 2026-10-06 | the 128-bit bindings of `plantBlk` have no machine form in the checked encoder; the width gate `comWidthsOk` refuses them in `renderOwnedCom` (`renderOwnedCom_refuse`), and a printer call outside that gate renders an untagged 128-bit operation at 32 bits; `bbPermChain64` has no route | a route and a bytes theorem over `bbPermChain64` |
-| registry row for the counted loop of field multiplications | 2026-10-06 | the loop compiles to bytes through `compileJWR` (`Haxc/BackHalfWR.lean`): the loop gate `v1LoopWB` covers its carry chains and cell accesses, and the compare of the spilled counter with an immediate is reloaded through the scratch register (`fieldChain_correct_autoWR`, table above); the acceptance executable has no arm for the loop, so its size and `ct` cell are not measured | an arm of the executable and a registry row |
+| registry row for the counted loop of field multiplications | 2026-10-06 | the loop compiles to bytes through `compileJ` (`Haxc/BackHalf.lean`): the loop arm `v1LoopWB` of its gate covers the carry chains and cell accesses, and the compare of the spilled counter with an immediate is reloaded through the scratch register (`fieldChain_correct_auto`, table above); the acceptance executable has no arm for the loop, so its size and `ct` cell are not measured | an arm of the executable and a registry row |
 | Fp2 at BLS12-381 at the bytes | 2026-10-06 | the gate is not run: no arm of the executable, no registry row | a registry row |
 
 Of the instances with a bytes theorem, the field cells, the mpn programs at n = 4 and
