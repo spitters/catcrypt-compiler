@@ -8,6 +8,7 @@ CatCrypt.Core.GenHeap
 CatCrypt.Core.GenHeapRandomOracle
 CatCrypt.Core.SPTree
 CatCrypt.Core.StdDoBridge
+CatCrypt.Crypto.BadEvent
 CatCrypt.Crypto.Bridges.CoqEAL.BinNat
 CatCrypt.Crypto.Bridges.CoqEAL.GaussSweep
 CatCrypt.Crypto.Bridges.CoqEAL.KaratsubaBenchExe
@@ -136,6 +137,7 @@ CatCrypt.Crypto.Jasmin.SpartanSumCheckReflect
 CatCrypt.Crypto.Jasmin.TowerTupleLoad
 CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.Jasmin.VectorOps
+CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.ComCanonical
 CatCrypt.Crypto.Optimizer.ComSStmtBridge
@@ -1014,7 +1016,9 @@ CatCrypt.Relational.BadEventAlgebra
 CatCrypt.Relational.Basic
 CatCrypt.Relational.ForLoop
 CatCrypt.Relational.Frame
+CatCrypt.Relational.Judgment
 CatCrypt.Relational.Reorder
+CatCrypt.Relational.SpanLifting
 CatCrypt.Relational.Sync
 CatCrypt.Tactic.Basic
 CatCrypt.Tactic.BignumReason
