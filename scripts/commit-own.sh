@@ -69,8 +69,11 @@ if [ -f scripts/gen-dev-module-globs.sh ] && [ -f scripts/rot-guard/secure-compi
     | LC_ALL=C sort -u > "$work/ondisk"
   GIT_INDEX_FILE="$idx" git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | LC_ALL=C sort -u > "$work/intree"
   LC_ALL=C comm -23 "$work/ondisk" "$work/intree" | sed 's#\.lean$##; s#/#.#g' > "$work/foreign"
-  awk 'NR==FNR{d[$0]=1; next} !($1 in d)' "$work/foreign" scripts/rot-guard/secure-compilation.txt > "$work/manifest" \
-    && cp "$work/manifest" scripts/rot-guard/secure-compilation.txt
+  awk -v f="$work/foreign" 'BEGIN{while ((getline l < f) > 0) d[l]=1} !($1 in d)' \
+      scripts/rot-guard/secure-compilation.txt > "$work/manifest"
+  # An empty result means the filter failed, not that the manifest is empty.
+  [ -s "$work/manifest" ] || { echo "commit-own: the manifest filter produced an empty file; nothing committed." >&2; exit 1; }
+  cp "$work/manifest" scripts/rot-guard/secure-compilation.txt
 fi
 GIT_INDEX_FILE="$idx" generate || { echo "commit-own: a list generator failed; nothing committed." >&2; exit 1; }
 
