@@ -89,11 +89,16 @@ template layer and the dated deferrals.
 - The back half of `haxc`, as of 2026-10-06 (modules `Haxc.*` are in the development
   repository). There is one back half, `compileJ` (`Haxc.BackHalf`), with one gate
   `jGateB` and the theorem `backend_correct`, and one compiler entry `compileA` with
-  `haxc_correct_auto` (`Haxc.ComposeV1`). `jGateB` accepts a program through the
-  line-check arm `straightGateB` or through an image arm of `imageArmB`: six straight
+  `haxc_correct_auto` (`Haxc.ComposeV1`). `backend_correct` is stated over a back-end
+  record `ByteTarget` (machine with halting relation, printed program, legality check,
+  encoder, layout reading, gate, soundness of the gate); the x86 value `x86ByteTarget`
+  is the default of `backEnd` and `compileJ`, and there is no AArch64 or RV64 value.
+  `jGateB` consists of the image arms of `imageArmB`: six straight
   image arms (register, array, cell, fused cell, and the register arm `v1StraightRWB`
   over the printed class `printedAddrWB`, plain and fused) and two loop image arms
-  (`v1LoopB` and `v1LoopWB`), each conjoined with its check on traced runs. The route
+  (`v1LoopB` and `v1LoopWB`), each conjoined with its check on traced runs. The
+  line-check arm `straightGateB` is defined in `Haxc.BackHalf` and is not part of the
+  gate. The route
   check of `v1LoopWB`, `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
   `loop_image_bytesW`), covers carry chains and cell accesses, with a width analysis
   that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in
@@ -123,30 +128,39 @@ template layer and the dated deferrals.
   `bbAdd_correct_bytes` (`Haxc.BbAddBytes`); it is not a front of `compileA`. The
   tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`, and a loop with
   carried registers is compiled by `compileLoopJ`, outside `jGateB`. Constant time of
-  the straight arms from the proved chain: `haxc_ct_proved_all`
-  (`Haxc.ComposeCTStraight`) derives constant time of every decoding of the bytes of
-  `compileA` from the level check `nfFrontLeakCT` of the front, with no byte checker,
-  under the coverage condition `imageRouteB` (the accepting arm of the gate `jGateB` is
-  an image arm): the two loop arms and the straight
+  the bytes: `haxc_ct_proved_all` (`Haxc.ComposeCTStraight`) states constant time of
+  every decoding of the bytes of every result of `compileA`, with no gate or coverage
+  hypothesis; `haxc_correct_auto_ct_proved_all` and `haxc_gate_proved_all` are the
+  joint statement with value correctness and the gate conclusion. On a straight-line
+  or looped route program the conclusion is derived from the level check
+  `nfFrontLeakCT` of the front through the passes, with no byte checker: the two loop
+  arms and the straight
   register, array, cell and carry-chain register arms, through `straightReg_bytes_ct`
   (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
   (`X86Backend/ImageStraightArrLeak.lean`) and `straightCell_bytes_ct_src`
   (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
   traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
   `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
-  follows from its gate conclusion by `uc_of_gate`. The line-check arm `straightGateB` and the
-  loops with carried registers are outside `imageRouteB`. The loop arm `v1LoopWB` goes
+  follows from its gate conclusion by `uc_of_gate`. On a loop with carried registers,
+  `compileLoopJ` returns bytes only if the image gate `v1LoopJB` holds and the
+  byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts them; on that
+  route the constant-time conclusion comes from `ctGateR_sound`, a check of the decoded
+  bytes inside the compile gate, and the level check of the source is not used. The
+  loop arm `v1LoopWB` goes
   through `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`) and the register arm
   `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct`, `compileJ_ct` and
   `compileJ_rc` (`Haxc.ComposeCTStraight`) state the result for one accepted program of
-  `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` carry known-answer
-  pins of `imageRouteB`.
+  `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
+  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The checker-based entries
+  `compileACTR` (`Haxc.ComposeCT`) and `compileATCTR` (`Haxc.ComposeTuple`), with
+  `haxc_correct_auto_ct_regions` and the theorems `haxc_rc`, `haxc_uc` and `haxc_gate`
+  of `Haxc.RCInstance`, are present and scheduled for deletion.
   For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the route program from the level check of the lowered
   program, and `compileJ_ct` carries it to the bytes of `compileJ`; the instances
   `powLoop1_ct'` (one limb, `Haxc.FieldLoopCT`) and `powLoop4_ct'` (P-256,
-  `Haxc.PowLoopCTP256`) take the compile equation and the condition `lineArmFreeB` as
-  hypotheses, with the trip count public.
+  `Haxc.PowLoopCTP256`) take the route and compile equations as hypotheses, with the
+  trip count public.
 - On `Lprog`, `LprogGpRealloc` re-allocates general-purpose
   registers with an untrusted allocator whose decisions a checked pass validates.
   `ConstIndexFold` rewrites each register-indexed load and store with a known index
@@ -237,16 +251,14 @@ legs are checks that run inside the compiler, in two classes.
 | Constant-index fold `foldIndexedLprog` | V, under `ownedCheckMC` | `foldInstr_lower`, `KEnv.Holds.stepK`, `foldCore_gather`, `gatherPrinted_constIndexFoldBody` (on `runBlock` over `JInstr`); checker completeness `foldIndexed_ownedCheckM_complete` | transport to `lsemFuelMemF` on `LinstrRM`; bodies of more than one block |
 | Two-address form `twoAddrBody` | V, under `ownedCheckMC`; D once its theorem is at `lsemFuelMemF` | `twoAddrBody_lsemStraight`; checker completeness `twoAddr_ownedCheckM_complete` under `twoAddrRouteWF` | the three patterns `twoAddrRouteWF` excludes (an R15 output, a commutative operation with `b = d`, an immediate first source); the statement at `lsemFuelMemF` |
 | Register allocation `reallocLprog` | V, the permitted validation | `ownedCheckM_sound`, `ownedCheckMC_sound` | — |
-| Decode leg of the scalar straight route: `lineCheck` / `lineTVCheck` in `straightGateB` (development repository, `Haxc.BackHalf`) | V: the chain against the decoded line of the printed body | for array results, the image gate `v1StraightB` with `v1Straight_bytes` over `printedAddr_sim`; `DecodePrinted.printedLine_sim`, not used by the gate | evidence that `v1StraightB` accepts every program the line checks accept, after which the line checks leave the gate |
 | Loop export certificate `comLCertNB` (`routeCertB`) and `exportCertJB` | V: a certificate, per program, of a fixed export function | `exportCertJB_sound`, `singleLoopJ_export_faithful_gate`, `ExportCertGate.singleLoop_export_faithful_gate` | completeness on a fragment predicate, which makes the leg class D; the do-while arm `ComLJ.whileRegs` has an export and no certificate, and `compileLoopJ` refuses it |
 | Image gates `imgGateBW`, `printedAddrWB`, `physImgB` (the physical half of the register-allocation pair) | D | `image_addr_simBW`, `printedAddr_simW`, `printedAddr_sim` | completeness; a refusal does not name its cause |
 | `decodableLcmd`, `decodesToB` on the printed body | D | `decodeLprog_of_decodesToB` | completeness on the encoder's image |
 | Index bounds `idxInvCheckB` (abstract interpretation of one body) | D | `runIdxOk_of_idxInvCheckB` | — |
-| Constant-time byte gate `ctGateR` in `compileACTR` (development repository, `Haxc.ComposeCT`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`, and their composition into the source-to-bytes statement |
+| Constant-time byte gate `ctGateR` in `compileLoopJ`, on loops with carried registers, and in the checker-based entry `compileACTR` (development repository, `Haxc.BackHalf`, `Haxc.ComposeCT`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`; on loops with carried registers, the derivation of the constant-time conjunct from the level check of the source |
 
 On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
-call of `ownedCheckMC` compares the reference chain with the image of the printed body;
-on the scalar straight route `lineTVCheck` calls `ownedCheckM` on the same pair. The
+call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
 printed body is the output of the export, the post-pass `fuseMulHiLprog` and the owned
 back end `ownedLprog`, so this one check accepts or refuses the combined output of the
 block optimiser, the constant-index fold, the two-address form, the post-pass and
@@ -255,25 +267,25 @@ register allocation. The reference side applies the fusion as `fuseMulHiRM`, who
 
 Translation validation outside register allocation, as the compiler stands: the three
 owned back-end passes and the post-pass `fuseMulHiLprog`, which reach the theorems only
-through the register-allocation check; the decode leg of the scalar straight route; and
+through the register-allocation check; and
 the loop export certificate, until its completeness is proved. The constant-time
-conjunct of the `_ct_regions` theorems is a verified static analysis of the decoded
-bytes (`ctGateR_sound`), not a preservation result. A failed check makes the compiler
+conjunct of the `_ct_regions` theorems, and of `haxc_ct_proved_all` on a loop with
+carried registers, is a verified static analysis of the decoded bytes
+(`ctGateR_sound`); it is a check of the output and no preservation theorem. A failed check makes the compiler
 return `none`, so the theorems cover exactly the programs it accepts.
 
 The design keeps one translation validation, the check of the pair before and after
 register allocation. The block optimiser, the fold and the two-address form are to
 carry preservation theorems at `lsemFuelMemF` that the route theorems call; at
 2026-10-06 the block optimiser has them under decidable checks (table above), with no
-caller, and the fold and the two-address form have none at that machine; the general decode simulation is to
-replace `lineCheck` and `lineTVCheck`; the loop export certificate is to carry a
-completeness theorem. Constant time of the bytes is derived from the level check of the
-source, with no byte checker, by `haxc_ct_proved_all` and `haxc_rc_proved_all`
-under the coverage condition `imageRouteB` of `compileA`
-(development repository, `Haxc.ComposeCTStraight`). The line-check arm `straightGateB`
-and the loops with carried registers are outside `imageRouteB`; on those routes the
-constant-time conjunct is the byte check `ctGateR` of `compileACTR`, and the derivation
-from the source remains to be done.
+caller, and the fold and the two-address form have none at that machine; the loop export certificate is to carry a
+completeness theorem. `haxc_ct_proved_all` and `haxc_rc_proved_all` (development
+repository, `Haxc.ComposeCTStraight`) hold for every result of `compileA`, with no gate
+or coverage hypothesis. On a straight-line or looped route program constant time of the
+bytes is derived from the level check of the source, with no byte checker
+(`jGate_bytes_ct`). On a loop with carried registers the constant-time conjunct is the
+byte check `σ.ctGateR` inside `compileLoopJ` (`ctGateR_sound`), and it is not derived
+from the level check of the source.
 
 ### Reference semantics of prime-ir calls
 
