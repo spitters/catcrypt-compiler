@@ -39,6 +39,7 @@ AutoCorres.
 | Automation | [`Ascend`](Ascend.lean), [`AscendDecide`](AscendDecide.lean), [`AscendMeta`](AscendMeta.lean), [`Guards`](Guards.lean), [`GuardsLeaf`](GuardsLeaf.lean), [`Strengthen`](Strengthen.lean), [`CorresSymEngine`](CorresSymEngine.lean), [`CorresSolver`](CorresSolver.lean), [`CorresX86Solver`](CorresX86Solver.lean), [`CorresRiscvSolver`](CorresRiscvSolver.lean), [`CorresSymScalar`](CorresSymScalar.lean), [`MontBounds`](MontBounds.lean) |
 | Multi-limb and field results | [`EcMultiLimbCapstone`](EcMultiLimbCapstone.lean), [`EcMultiLimbMul`](EcMultiLimbMul.lean), [`MpnAdxCorres`](MpnAdxCorres.lean), [`FieldReduce`](FieldReduce.lean), [`CapstoneField`](CapstoneField.lean) |
 | Ties between machines | [`CorresMachineTie`](CorresMachineTie.lean), [`JasminComRunBlockTie`](JasminComRunBlockTie.lean), [`XrunRunBlockTie`](XrunRunBlockTie.lean), [`CorresHoare`](CorresHoare.lean), [`RunBlockMvcgen`](RunBlockMvcgen.lean), [`JStateSepLogic`](JStateSepLogic.lean) |
+| Instruction-set judgement and callees | [`CorresIsa`](CorresIsa.lean), [`CorresIsaCfg`](CorresIsaCfg.lean), [`CorresIsaCall`](CorresIsaCall.lean), [`CorresIsaNode`](CorresIsaNode.lean), [`CorresIsaRet`](CorresIsaRet.lean), [`CorresIsaReloc`](CorresIsaReloc.lean), [`CorresIsaRelocX86`](CorresIsaRelocX86.lean), [`CorresIsaStackFrame`](CorresIsaStackFrame.lean), [`ImageSpFree`](ImageSpFree.lean), [`ImageSpFreeCell`](ImageSpFreeCell.lean) |
 | Descent contracts | [`CorresDescentX86`](CorresDescentX86.lean), [`CorresDescentRiscv`](CorresDescentRiscv.lean) |
 | Welds and capstones | [`EmitBridge`](EmitBridge.lean), [`LegWeld`](LegWeld.lean), [`LegWeldDemo`](LegWeldDemo.lean), [`FeSubEndToEnd`](FeSubEndToEnd.lean), [`FeAddEndToEnd`](FeAddEndToEnd.lean), [`KeystoneControl`](KeystoneControl.lean), [`PipelineWeld`](PipelineWeld.lean), [`SourceBridge`](SourceBridge.lean) |
 | Loops as functions | [`WhileFun`](WhileFun.lean), [`WhileFunEmit`](WhileFunEmit.lean), [`Demos/WhileFunSum`](Demos/WhileFunSum.lean) |
@@ -46,10 +47,27 @@ AutoCorres.
 | Demonstrations | [`Demos/Decide`](Demos/Decide.lean), [`Demos/Scalar`](Demos/Scalar.lean), [`Demos/X86StraightLine`](Demos/X86StraightLine.lean), [`Demos/Riscv`](Demos/Riscv.lean), [`Demos/EarlyExit`](Demos/EarlyExit.lean) |
 
 Every module docstring lists its results under `## Main results`. The modules
-`GradedWP`, `GradedMvcgenProbe`, `WriterTMvcgen`, `LeakageExceptT`, the
-`Relational*Mvcgen` pair, `UCLeakageDecomp` and the `X*` framework (`XMvcgen`,
-`XDijkstraAll` and siblings) study program-logic variants and are outside the import
-graph of the calculus.
+`GradedMvcgenProbe`, `WriterTMvcgen` and the `Relational*Mvcgen` pair study
+program-logic variants and are outside the import graph of the calculus. `GradedWP`,
+`LeakageExceptT`, `UCLeakageDecomp` and the `X*` framework (`XMvcgen`, `XDijkstraAll`
+and siblings) are one-line re-exports of modules of the core library
+(`CatCryptCore/XDijkstra/`, `CatCryptCore/Crypto/UCMonad/`); a change to that framework
+is made there.
+
+Placement of the instruction-set results:
+
+- A statement about `CorresIsa` at an arbitrary `Isa` goes in `CorresIsa*`; its x86
+  form goes in the module with the `X86` suffix (`CorresIsaRelocX86`) or, when it
+  concerns the stack pointer and its cell, in `CorresIsaStackFrame`.
+- A fact about the image of a class of printed bodies, independent of a compile gate,
+  goes in `ImageSpFree` or `ImageSpFreeCell`.
+- A statement whose hypothesis is a compile gate of the hax compiler is in the
+  development tree, which defines the gates; this directory holds the general lemmas it
+  applies. [ASCENT_REFERENCE.md](../../../../ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)
+  lists both.
+- The congruence and inclusion lemmas for builtin tables and for readings of the calls
+  are in `HaxAscent/Ascent/TableCongr.lean` and
+  `HaxAscent/RustSemantics/ToRustMSCongr.lean`, outside this directory.
 
 ## Choosing a tactic
 

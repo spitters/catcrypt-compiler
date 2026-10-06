@@ -2,8 +2,10 @@
 
 This file collects the detailed material behind [ASCENT.md](ASCENT.md): the results at
 the source and leaf boundaries, the layers of the calculus with their declarations,
-the loop rules, two worked paths traced step by step, and the precise scope of each
-result. Paths are relative to the repository root.
+the loop rules, two worked paths traced step by step, the instruction-set judgement on
+compiled programs with their callee specifications, the join of the source readings
+with the compiled bytes, and the precise scope of each result. Paths are relative to
+the repository root.
 
 ## Results at the source and leaf boundaries
 
@@ -68,6 +70,7 @@ relative to `CatCrypt/Crypto/SecureCompilation/Ascent/`.
 | Machine-level leaves and value results | `RunBlockCorres`, `EcMultiLimbCapstone`, `EcMultiLimbMul`, `MpnAdxCorres`, `FieldReduce`, `CorresX86Solver`, `CorresRiscvLeaves`, `Capstone`, `CapstoneField`, `EcMultiLimbEmit` | `corresJ_sbb`, `corresJ_adc`, `srcarryLimbs_recompose`; `sbbLimbs_spec`, `corresJ_sbbChain`; `mulLimbs_spec`, `corresJ_adxBlock`; `mpnAdd_runBlock`, `mpnSub_runBlock`; `montRedc_spec`, `corresJ_montRedc4Block`; `corresJ_movX` … `corresJ_mulxX`; `corresR_add` … `corresR_slli`; `sbbChain_emit_realizes_abstract_CF` |
 | Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `JasminMirrorTie`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `forFold_eq_loopStep`, `mulhiLoop_mirror_runBlock`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
 | Descent contracts in the ascent's shape | `CorresDescent`, `CorresDescentX86`, `CorresDescentRiscv`, `XrunRunBlockTie` | `frefines_ret`; `CorresMPost`, `corres_of_refines_x86`; `corresR_of_refines`; `corres_of_refines_x86_runBlock` |
+| Instruction-set judgement, relocation and callees | `CorresIsa`, `CorresIsaX86`, `CorresIsaCfg`, `CorresIsaCall`, `CorresIsaNode`, `CorresIsaRet`, `CorresIsaReloc`, `CorresIsaRelocX86`, `CorresIsaStackFrame`, `ImageSpFree`, `ImageSpFreeCell` | `CorresIsa`, `CorresIsaRun`; `corresIsa_of_labels_floyd`; `IsaCall.ProcSpec`; `corresIsa_of_node_halts_fuel`; `ExitFrame`, `procSpec_snoc_ret_of_corresIsa`; `steps_relocate`, `procSpec_labelled_of_corresIsa`; `x86_stepRelocates`; `x86_step_spFrame`, `x86_procSpec_of_body_judgement`, `x86_procSpec_of_image_judgement`; `virtImg_spFreeBodyB`, `virtImg_noCall`, `cellImage_spFreeBodyB`, `cellImage_noCall` |
 | Welds to the emit leg and to sources | `EmitBridge`, `FeSubEndToEnd`, `FeAddEndToEnd`, `KeystoneControl`, `CondKernelCapstone`, `ArrStoreEmit`, `MlkemPolyAddCapstone`, `LegWeld`, `LegWeldDemo`, `FeSubSourceTower`, `LoopSourceLeaf`, `LoopSourceTower`, `PipelineWeld`, `SourceBridge`, `CorresScalar` | `keystone_emit`, `keystone_emit_NT`; `legWeld`, `legWeld_lower`; `feSub_source_to_bytes_tower`, `feAdd_source_to_bytes_tower`; `feSub_raw_source_to_bytes`, `feSubImp_raw_source_to_bytes`; `corresScalar_frontDenote_two`; `corresScalar_jasminDenote`, `feSub_symbolic_source_to_jasmin` (`FeSubSymbolic`) |
 | Demonstrations | `Demos/*` | see below |
 
@@ -273,6 +276,171 @@ A `RustSrc` source through `lowerRefines` would add the `Nat` model of `RustExec
 whose subtraction saturates, so a statement through `legWeld` would hold only for
 `b ≤ a`.
 
+## Compiled programs at the instruction set
+
+`CorresIsa isa P SR Pre fa fuel`
+([CorresIsa.lean](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsa.lean)) is the
+correspondence at the fuelled interpreter `Isa.lsemFuelMemF` of an instruction set, and
+`CorresIsaRun` is the form with the fuel chosen per initial state.
+[ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) lists the generic rules of the
+judgement. This section records its instances at the programs the hax compiler emits and
+the callee specifications derived from them. A module cited as `Haxc/…` is in the CatCrypt
+development repository, under `CatCrypt/Crypto/SecureCompilation/Haxc/`; every other path
+is in this package. Every statement of this section is over `x86Isa`; none has an AArch64
+or RV64 counterpart.
+
+### Arms of the compile gate
+
+Each theorem below holds for every program its gate accepts, with no hypothesis on the
+individual program beyond the gate.
+
+| Arm | Gate | Program in the square | Theorems | Module |
+|---|---|---|---|---|
+| runtime-count loop over an array | `v1LoopB` | the certified loop node | `v1Loop_corresIsa` | `Haxc/LoopCorresIsa.lean` |
+| the same | `v1LoopB` | the image of the printed body | `v1Loop_image_corresIsa` | `Haxc/ExportedBodyCorresIsa.lean` |
+| runtime-count loop with carry chains and cells | `v1LoopWB` | the certified loop node | `carriedLoop_corresIsa`, `carriedLoop_corresIsaRun` | `Haxc/LoopWideCorresIsa.lean` |
+| the same | `v1LoopWB` | the image of the cell body of the printed body | `carriedLoop_image_corresIsa`, `carriedLoop_image_corresIsaRun` | `Haxc/LoopWideCorresIsa.lean` |
+| straight-line programs | the four straight arms of `jGateB` | the typed chain of the source | `jGate_straight_corresIsa`, `compileJ_straight_corresIsa` | `Haxc/StraightCorresIsa.lean` |
+| straight-line programs returning a register, an array, or an array through cells | `v1StraightRB`, `straightArrB`, `straightCellB` | the image of the printed body | `v1StraightR_image_corresIsa`, `straightArr_image_corresIsa`, `straightCell_image_corresIsa` | `Haxc/ExportedBodyCorresIsa.lean` |
+
+The gate `v1LoopWB` has the conditions of `v1LoopB` with the route check
+`CellFoldLReg.routeBW` in place of `ImageAddrRoute.routeB`: the constant-index array
+accesses of the printed body are cell accesses and its arithmetic uses carry chains. The
+certified node, its entry relation, precondition, specification and fuel are those of a
+loop accepted by `v1LoopB`. `carriedRoute_image_run_fuel` is the run statement behind the
+image form: under `routeBW`, a halting run of the node at fuel `f` is matched by a run of
+the image of the cell body that halts in one state at every fuel from `carriedRouteFuel`
+of `f` on, with the output array of the node held in the cell names of its renamed name.
+The fixed-fuel forms are at `nodeFuel` and `carriedLoopImageFuel`, each at a bound `N` on
+the count.
+
+In every row the image is the printed body without its closing return, because `x86Isa`
+takes no step at `Lret`; the next subsection treats the return.
+[ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) describes the squares of the rows for
+`v1LoopB` and the straight arms, and names the straight arm whose image has no statement.
+
+### Compiled bodies as callees
+
+An image judgement of the previous subsection starts from the entry state of the image
+route, whose memory is zero and which no call step produces, at the counter `0` of a
+program that consists of the body alone. A callee is entered by a call step, which writes
+the stack pointer and the memory cell it addresses, at a label inside a larger program,
+and ends in a return. The following modules of this package derive the procedure
+specification `IsaCall.ProcSpec` at the instruction set with calls `isa.withCalls` from a
+judgement on the body.
+
+| Module | Declarations | Content |
+|---|---|---|
+| [CorresIsaRet](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaRet.lean) | `RetAddrAt`, `ExitFrame`, `procSpec_snoc_ret_of_corresIsa` | the state of a callee entered by a call; the exit contract of the run of a body (the end state is at the counter `B.length`, with a frame relation and the return address contract `IsaCall.RetFrame`); the specification of `B ++ [Lret]` from the correspondence of `B` and its exit contract |
+| [CorresIsaReloc](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaReloc.lean) | `shiftPc`, `LabelsFresh`, `StepRelocates`, `steps_relocate`, `procSpec_labelled_of_corresIsa` | a segment of `B` from `s` to `t` is a segment of `pre ++ B ++ post` with the same number of steps between the states with the counter advanced by `pre.length`, when no label declared in `B` is declared in `pre` and the non-control steps commute with the shift; the specification of a body placed after a label and followed by its return |
+| [CorresIsaRelocX86](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaRelocX86.lean) | `evalInstrPMemF_goto`, `x86_stepRelocates`, `x86_steps_relocate` | `StepRelocates x86Isa fn pre B post` for every function name, `pre`, `B` and `post`: the x86 step of a non-control instruction reads neither the counter nor the program |
+| [CorresIsaStackFrame](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean) | `spFrame`, `SpFree`, `x86_step_spFrame`, `x86_lsemFuelMemF_atPc_length`, `x86_exitFrame_of_spFree`, `x86_procSpec_of_body_judgement`, `x86_procSpec_of_image_judgement`, `spRel_callEntry` | the step of a body no instruction of which names the stack pointer commutes with a write of the stack pointer and its cell; a run from a counter within the body halts at the counter after its last instruction; the exit contract and the specification of a labelled body followed by a return, with "no call" and "does not name `RSP`" as Boolean checks on the body; the entry relation of the specification holds after a call step |
+| [ImageSpFree](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean), [ImageSpFreeCell](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFreeCell.lean) | `virtImg_spFreeBodyB`, `virtImg_noCall`, `synthRen_target_mem`; `cellImage_spFreeBodyB`, `cellImage_noCall` | the two Boolean checks hold of the image of every covered printed body in the image class, at a slot map whose array names are no stack names, and of the image of the cell body of every covered printed body with carry chains |
+
+The instances at the compile gate are in the development repository.
+
+* `Haxc/ExportedProcSpec.lean` applies `x86_procSpec_of_image_judgement` to the five
+  image judgements: `loopImage_procSpec`, `carriedLoopImage_procSpec`,
+  `straightRegImage_procSpec`, `straightArrImage_procSpec` and `cellImage_procSpec`, each
+  with the two Boolean checks on the image as hypotheses.
+* `Haxc/ExportedProcSpecGated.lean` derives the two checks from the route check that each
+  gate contains: `gatedLoop_callee_procSpec` (`v1LoopB`),
+  `gatedStraightReg_callee_procSpec` (`v1StraightRB`), `gatedStraightArr_callee_procSpec`
+  (`straightArrB`), `gatedCarriedLoop_callee_procSpec` (`v1LoopWB`) and
+  `gatedCell_callee_procSpec` (`straightCellB`). For every program one of these five
+  gates accepts, its exported image placed after a label and followed by a return
+  satisfies a procedure specification
+  over `x86Isa.withCalls`, and the hypotheses are the gate and `LabelsFresh` for the
+  prefix with the label. The entry relation is the two-phase relation of the image
+  judgement up to the stack pointer and its cell (`spRel`), at the offset of the image in
+  the program (`relocRel`).
+* `Haxc/ExportedProcSpecInstances.lean` states the specification for the results of the
+  compiler under its route gates, with the instances `mpn_and_n_image_procSpec` (a
+  runtime-count loop) and `ltu_image_procSpec` (a straight-line comparison). Each takes
+  the compile equation and the gate equation as hypotheses; the gate equations are
+  Boolean evaluations of the compiler on a closed program, checked by evaluation and not
+  proved as theorems.
+
+Limits of these statements:
+
+* A body that contains calls is not covered. A call through the stack stores the counter
+  after the call as a word in memory, so the pushed return address is absolute: the state
+  after a call step of the larger program differs from the shift of the state after the
+  call step of the body in that cell, and `shiftPc` does not relate the two segments.
+* The relocated statements are segments that reach the counter after the body; they do
+  not state that the larger program halts.
+* `LabelsFresh` depends on the program in which the image is placed and stays a
+  hypothesis.
+
+## Source readings joined to compiled bytes
+
+The hax compiler's theorem `haxc_correct_auto` (development repository) relates the bytes
+`compileA` returns to a run of the source reading of the typed extraction under the
+compiler's builtin table `hax64WExit`. An ascent result `FnCorres bi e entry G f`, or a
+total `Std.Do` triple of the reading `toRustMS appRt` of the body in `RustM`, is stated
+under another reading of the calls. The results of this section carry such a result to
+the compiled bytes.
+
+In this package:
+
+* [HaxAscent/Ascent/TableCongr.lean](HaxAscent/Ascent/TableCongr.lean). Let `bi'` return
+  the value `bi` returns wherever `bi` returns one on a name accepted by `ok`, and let
+  every call of `e` be to such a name (`callsOK ok e`). `denote'_eq_of_tableLE`: a run of
+  `e` under `bi` that does not end in an error is the run under `bi'`, outcome and
+  environment, at the same fuel. `denote'_mono`: a value run under `bi` is the same value
+  run under `bi'`. `fnCorres_val_of_sub`: a function correspondence under `bi'` fixes
+  every value a run under `bi` returns, at any fuel.
+* [HaxAscent/RustSemantics/ToRustMSCongr.lean](HaxAscent/RustSemantics/ToRustMSCongr.lean).
+  `toRustMS_congr`: two readings of the calls that are the same function at every
+  accepted name give the same reading of an expression whose calls are to accepted
+  names, from every environment.
+
+In the development repository:
+
+* `CatCrypt/Crypto/Hax/Hax64WReading.lean`. `app64` is the restriction of `appRt` to the
+  names of `hax64Reads`, and `app64_ok` states `AppOk hax64WExit app64`: at those names
+  every value the reading returns is the value of the table.
+  `fnCorres_hax64WExit_of_triple`: for a program whose calls are to names of
+  `hax64Reads`, a total triple of the reading under `appRt` gives the function
+  correspondence at `hax64WExit`.
+* `Haxc/BytesOfFnCorres.lean`. `bytes_of_fnCorres`: for a typed extraction, a layout and
+  a Lean function `f`, when the table of the ascent result is `hax64WExit` on the called
+  names and the statement spine of the body binds no closure, the bytes decode to a
+  program that halts from an entry state laid out by the layout, and the layout reads
+  back `enc (f a)` from the exit state. `bytes_of_fnCorres_of_tableLE` has the same
+  conclusion for a table that includes `hax64WExit` on the called names, and takes a
+  value run of the source reading under `hax64WExit` as a hypothesis.
+  `bytes_of_toRustMS_triple` takes the specification as a triple of the reading, for a
+  body whose calls are to names of `hax64Reads`, and has no hypothesis on a source run.
+  `bytes_ct_of_fnCorres` and `bytes_ct_of_toRustMS_triple` add constant time: one
+  decoding of the bytes halts with the encoding of `f a` and has equal leakage traces on
+  any two entry states that satisfy the regions of the layout and agree on the public
+  data, under a secrecy record that the source constant-time check accepts.
+* `Haxc/CndCopyDemo.lean`, with `CatCrypt/Crypto/Mpn/CndCopySpec.lean` and
+  `CatCrypt/Crypto/Mpn/CndCopyReading.lean`, applies the route to the conditional copy
+  `mpn_cnd_copy_n`. `cndCopy_bytes_spec_ct`: from every entry state of the layout the
+  decoded bytes compute the closed form `cndCopySpec`, with equal leakage traces on entry
+  states that agree on the public registers. Its hypotheses are the compile equation and
+  gates that are Booleans checked by evaluation; the source run at the compiler's table
+  is obtained from the triple `cndCopy_triple` by `cndCopy_run_of_triple`.
+
+The names of `hax64Reads`, as the docstring of `Hax64WReading.lean` tabulates them:
+
+| | Names |
+|---|---|
+| Covered | `index` and `array_update` at a `usize` index below the length; `BitAnd`, `BitOr`, `BitXor`, `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `Shr`, `Shl` and `rotate_right` tagged `8`, `16`, `32` or `64`; `BitAnd#size`, `BitOr#size`, `BitXor#size` and `Shr#size`, whose value on two `usize` words does not depend on the width; `Not` tagged `8`, `16`, `32` or `64` |
+| Excluded: width of `usize` | `wrapping_add#size`, `wrapping_sub#size`, `wrapping_mul#size`, `Shl#size`, `rotate_right#size`, `Not#size`, `cast#size`: the reading takes the width from the platform, `32` or `64`, and the compiler's table fixes `64`; the values differ at the width `32` |
+| Excluded: 128-bit words | the nine word operations tagged `128` and `Not#128`: the table returns no value at a `u128` word from `2 ^ 64` on |
+| Excluded: checked arithmetic | `Add`, `Sub`, `Mul`, `Div`, `Rem`: on two integer literals the reading returns the operation on unbounded integers, and the table returns a value only for operands and a result in `[0, 2 ^ 64)` |
+| Excluded: casts and `repeat` | `cast` tagged `8` to `128` and `repeat`: the reading accepts a word of any width, and the table admits an argument below `2 ^ 64` only |
+| Not routed by the reading | the comparisons, `len`, `rotate_left`, the Boolean connectives and `array_lit`: `appRt` returns no value at these names |
+
+Checked arithmetic, casts and `repeat` are excluded by arguments (two literals, or a
+`u128` word), which a condition on the name of the call cannot exclude. A program that
+calls a name outside `hax64Reads` is reached only by `bytes_of_fnCorres` or
+`bytes_of_fnCorres_of_tableLE`, from an ascent result and, for the latter, a value run of
+the source reading at the compiler's table.
+
 ## Scope
 
 This section states what the capstones prove and where they stop, with the theorem
@@ -289,8 +457,11 @@ names at which each boundary can be checked.
 `keystone_emit_arr`, `keystone_emit_fq`, `welding` and `welding_program` conclude an
 equation `jcom.denote (ctMapValD .nil) = ctTransTy val` for a program
 `jcom : Com jasminDialect …` produced by `cryptoDialectToJasminCom`. The word "bytes" in
-these names and their docstrings refers to that denotation. No ascent theorem reads
-the output of the owned x86 lowering (`toLprogPhysAbi`) or of an instruction encoder.
+these names and their docstrings refers to that denotation. No theorem of this family
+reads the output of the owned x86 lowering (`toLprogPhysAbi`) or of an instruction
+encoder; the statements at decoded bytes are those of
+[Source readings joined to compiled bytes](#source-readings-joined-to-compiled-bytes)
+and of [ASCENT.md](ASCENT.md).
 
 The machine-level ascent results are stated over instruction-list semantics: `runBlock`
 over `JInstr 64` (`CorresJ`), `xrun` / `x86Target.runOps` over the `Instr 64` lists of
@@ -720,14 +891,28 @@ The following modules explore extensions of the `Std.Do` weakest-precondition
 metatheory and of leakage reasoning. No module of the calculus, capstone or
 demonstration imports them, and the capstones do not depend on them.
 
+Four modules are defined in this package, under
+`CatCrypt/Crypto/SecureCompilation/Ascent/`:
+
 | Module | Content |
 |---|---|
 | `GradedMvcgenProbe` | whether stock `mvcgen` carries a grade: as operational state it does (`demo_cost`); as a specification-only index it does not (`forget_gradedBind`, `postShape_exhaustive`) |
-| `GradedWP` | a standalone graded predicate transformer with grade-additive sequencing (`seq`) |
 | `WriterTMvcgen` | an accumulating log as write-only state for `mvcgen` (`writerM_triple_iff`) |
-| `LeakageExceptT` | a leakage channel as the exception branch, `leakEquiv` |
 | `RelationalProductMvcgen` | relational Hoare triples as unary `Std.Do` triples over a product program (`relTriple_iff_stddo`) |
 | `RelationalExceptTMvcgen` | the same over `ExceptT`, with leakage as the exception barrel (`relExPostCond_except_leak`) |
-| `UCLeakageDecomp` | universal composability as a simulator existential over the leakage-transported relational judgment (`UCviaRel_iff_ExactUCEmulates`); imports `CatCrypt.Crypto.UCMonad` |
-| `XPostShape`, `XMvcgen`, `XMvcgenControl`, `XMvcgenReg`, `XRelatorPMF`, `XHeapSoundness`, `XMorphismInstance`, `XDijkstraAll` | an extended `PostShape` framework fusing grades, separation logic, relational reasoning and monad-morphism transfer, with the VC generators `xmvcgen`, `xmvcgen_ctl` and `xmvcgen!` |
-| `XAdvantageHybrid` | the advantage-triangle tactic `advmvcgen` over hybrid arguments; imports `CatCrypt.Crypto.MultiQueryPRF` |
+
+The graded Dijkstra kernel and the relational modules it uses are defined in the core
+library. The modules of the same names under
+`CatCrypt/Crypto/SecureCompilation/Ascent/`, and `CatCrypt/Relational/Approx.lean` and
+`CatCrypt/Relational/SpanLifting.lean`, are one-line re-exports, kept so that existing
+imports resolve; new code imports the core module.
+
+| Module of the core library | Re-exported as | Content |
+|---|---|---|
+| `CatCryptCore/XDijkstra/GradedWP.lean` | `Ascent/GradedWP` | a standalone graded predicate transformer with grade-additive sequencing (`seq`) |
+| `CatCryptCore/XDijkstra/` : `XPredCore`, `XPostShape`, `XMvcgen`, `XMvcgenControl`, `XMvcgenReg`, `XRelatorPMF`, `XHeapSoundness`, `XMorphismInstance`, `XDijkstraAll` | `Ascent/` under the same names | an extended `PostShape` framework fusing grades, separation logic, relational reasoning and monad-morphism transfer, with the VC generators `xmvcgen`, `xmvcgen_ctl` and `xmvcgen!` |
+| `CatCryptCore/XDijkstra/XAdvantageHybrid.lean` | `Ascent/XAdvantageHybrid` | the advantage-triangle tactic `advmvcgen` over hybrid arguments |
+| `CatCryptCore/XDijkstra/XCostMonad.lean`, `Demo.lean`, `README.md` | none | a cost-counting program monad observed at a graded shape; a tutorial module; the description of the kernel |
+| `CatCryptCore/Crypto/UCMonad/LeakageExceptT.lean` | `Ascent/LeakageExceptT` | a leakage channel as the exception branch, `leakEquiv` |
+| `CatCryptCore/Crypto/UCMonad/UCLeakageDecomp.lean` | `Ascent/UCLeakageDecomp` | universal composability as a simulator existential over the leakage-transported relational judgment (`UCviaRel_iff_ExactUCEmulates`) |
+| `CatCryptCore/Relational/Approx.lean`, `CatCryptCore/Relational/SpanLifting.lean` | `CatCrypt/Relational/Approx`, `CatCrypt/Relational/SpanLifting` | approximate couplings and span liftings for the relational layer of the kernel |

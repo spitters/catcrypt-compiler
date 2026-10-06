@@ -112,11 +112,14 @@ of the state relation is a halting run of the decoded shipped bytes. In the firs
 rows the flag-machine run and the byte run are of different programs and meet at the
 denotation; in the third they are of the same program, joined by the checker's soundness
 theorem. The generic lemma behind the first row is `corresIsa_of_node_halts_fuel`
-(`Ascent/CorresIsaNode`). Not covered: the line-gate straight arm in the third row and
-the closing return (`x86Isa` has no step at `Lret`; `IsaCall.steps_snoc_ret` and
-`x86_steps_snoc_ret` extend a halting run to the body followed by a return on
-`x86Isa.withCalls`, given a return address in the final state, which the gate's entry
-state does not provide). The named instances keep the compile equation as a hypothesis:
+(`Ascent/CorresIsaNode`). The carried-register loop arm has the same statements
+(`carriedLoop_corresIsa`, `carriedLoop_image_corresIsa` in `LoopWideCorresIsa`). `x86Isa` has
+no step at `Lret`; the body followed by its return is treated as a callee over
+`x86Isa.withCalls`: for every arm of the gate the exported image, placed after a label and
+followed by a return, satisfies a procedure specification from an entry state with a return
+address (`gatedLoop_callee_procSpec` and its four companions in `ExportedProcSpecGated`;
+[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-bodies-as-callees)). Not covered: a body
+that itself contains calls. The named instances keep the compile equation as a hypothesis:
 no theorem states that the compiler accepts a concrete program.
 
 Imported Jasmin with control flow (`Ascent/JasminJumpLevel`): `compileS` compiles a

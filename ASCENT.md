@@ -29,6 +29,16 @@ Programs with labels and jumps are proved by a cut-point rule
 ([CorresIsaCfg](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCfg.lean)), and
 procedure calls by a specification per procedure
 ([CorresIsaCall](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaCall.lean)).
+A judgement on a body without calls gives the procedure specification of that body
+placed after a label inside a larger program and followed by a return
+([CorresIsaRet](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaRet.lean),
+[CorresIsaReloc](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaReloc.lean),
+[CorresIsaStackFrame](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean));
+at x86-64 its conditions on the body are two Boolean checks, which hold of the image of
+every covered printed body of the hax compiler
+([ImageSpFree](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean)).
+[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)
+lists these results with the instances at the compile gate.
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
 lists it with the Jasmin-source bridge
 ([BignumToJ](CatCrypt/Crypto/Jasmin/BignumToJ.lean),
@@ -198,10 +208,27 @@ imported files:
   ten for memory footprints), `scReduceShipped_correct_addr` on eight and
   `scMuladdShipped_correct_addr` on nine footprint checks. The s2n-bignum and CryptOpt
   modules use none.
-- The hax-level ascent of a Rust function is composed with a machine-level
-  correspondence of its compiled code for one function, `maj` of the Hash_DRBG
-  extraction, in the development tree, with a `CorresIsa` form at the block decoded from
-  the shipped bytes ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
+- The hax-level ascent of a Rust function is composed with the correctness theorem of
+  the hax compiler for its compiled bytes, in the development tree, for every typed
+  extraction the compiler accepts whose calls are to names on which the reading of the
+  calls and the compiler's builtin table agree: the decoded bytes compute the function of
+  an ascent result or of a total triple of the Rust reading, with a constant-time form.
+  Checked arithmetic, casts and `repeat` are outside that set of names, and so are the
+  `usize` operations whose value depends on the width, because the reading takes the
+  width from the platform and the compiler's table fixes 64
+  ([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#source-readings-joined-to-compiled-bytes)).
+  The demonstration is a conditional copy of limbs, `mpn_cnd_copy_n`. For `maj` of the
+  Hash_DRBG extraction the composition is with a machine-level correspondence, with a
+  `CorresIsa` form at the block decoded from the shipped bytes
+  ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
+- The instruction-set judgement holds for every program the x86-64 compile gate of the
+  hax compiler accepts through its two loop arms and its straight arms. For the two loop
+  arms and three straight arms (a register result, an array result, an array result
+  through cells) it is also stated on the exported image, and that image, placed after a
+  label and followed by a return, satisfies a procedure specification
+  ([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)).
+  A body that contains calls has no such specification, and no statement of this kind
+  exists at AArch64 or RV64.
 - The RV64 results are over hand-transcribed blocks on registers; no third-party RV64
   code is imported.
 
@@ -277,8 +304,10 @@ traces the longer path from a Rust-subset source through `legWeld`.
 - [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md): module map,
   naming conventions, choice of tactic, and how to add a kernel.
 - [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md): the layers of the calculus with their
-  declarations, the loop rules, the results at the source and leaf boundaries, and the
-  precise hypotheses of each result.
+  declarations, the loop rules, the results at the source and leaf boundaries, the
+  instruction-set judgement on compiled programs and their callee specifications, the
+  join of the source readings with the compiled bytes, and the precise hypotheses of
+  each result.
 - [PROVENANCE.md](PROVENANCE.md): what the package takes from
   [sgraf812/ascent](https://github.com/sgraf812/ascent).
 - [ASCENT_OVERVIEW_HIGHLEVEL.md](ASCENT_OVERVIEW_HIGHLEVEL.md): the problem, provenance,
