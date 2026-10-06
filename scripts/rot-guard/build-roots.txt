@@ -770,12 +770,12 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Miller
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254Fp2AddSubKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit
-CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayQrObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayTransposeObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
@@ -816,7 +816,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsCT
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 CatCrypt.Crypto.SecureCompilation.X86Backend.InlinedNttKernel
