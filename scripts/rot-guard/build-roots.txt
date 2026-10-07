@@ -701,6 +701,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
 CatCrypt.Crypto.SecureCompilation.VIR.ParamWordField
+CatCrypt.Crypto.SecureCompilation.VIR.PassChainDouble
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
