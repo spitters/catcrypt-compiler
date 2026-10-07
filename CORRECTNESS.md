@@ -35,10 +35,9 @@ template: one denotation theorem over every parameter record, a bounds certifica
 per instance (`boundsOk` with `denote_eq_denoteZ_of_boundsOk`, `SchedOk`), and one bytes
 theorem per family (`field_correct_bytes`, `ntt_correct_bytes`, `ec_correct_bytes`) whose
 only per-instance hypothesis is acceptance by the decided gate of `backend_correct`. The
-method reaches fields, lattices, GHASH, towers, RSA and isogeny moduli, and not control
-flow or bit-logic permutations. [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance
-table with gate results, the measured ratios against fiat-crypto, the size of the
-template layer and the dated deferrals.
+families with a template are fields, lattices, GHASH, towers, RSA and isogeny moduli.
+[FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance tables with the accepted
+programs, the measured ratios against fiat-crypto and the size of the template layer.
 
 - The hax front in `CatCrypt/Crypto/Hax/` lowers hax-lean's `ImpExpr` to `LowCT`
   (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
@@ -55,9 +54,8 @@ template layer and the dated deferrals.
   `RFor` and `RWhileNz`. `JincInline` partially evaluates a Jasmin source unit
   (inlining, constant folding, scalar replacement of register arrays).
   `importFunRolled` keeps a loop over an affine counter rolled, as a loop over a
-  run-time trip index. `JincInline` carries no simulation theorem, so the correctness
-  theorem of an imported leaf concerns the `LowCT` or `Com` that the import produces.
-  `KeccakJincImport` takes formosa-keccak's Keccak-f[1600] through this path.
+  run-time trip index. The correctness theorem of an imported leaf is stated over the
+  `LowCT` or `Com` that the import produces. `KeccakJincImport` takes formosa-keccak's Keccak-f[1600] through this path.
 - The scalar front's denotation theorems (`transU_denote`, `frontLoopBodyJ_denote`)
   assume the coverage fragment `IsCoveredSCtl`. `coveredB` and
   `isCoveredSCtl_of_coveredB` (`CatCrypt/Crypto/SecureCompilation/Dialects/CoveredSCtlDecide.lean`)
@@ -67,8 +65,7 @@ template layer and the dated deferrals.
   (`VIR/RobustCompilationPipeline.lean`; value correctness, no constant-time
   conjunct), and the straight-line demonstrations `com_x86_e2e`, `com_arm_e2e` and
   `com_riscv_e2e`. The three demonstrations compile a straight-line, register-only
-  `Com` through the `ScalarTarget` instruction selection (`ScalarLin.lean`), which has
-  no memory, flags or loops and is not the selection the owned exporters run.
+  `Com` through the `ScalarTarget` instruction selection (`ScalarLin.lean`).
   [HEADLINES.md](HEADLINES.md) states each with its hypotheses.
 - The hax compiler `haxc` (development repository,
   `CatCrypt/Crypto/SecureCompilation/Haxc/`; its layout type `AbiLayout` is in this
@@ -83,22 +80,20 @@ template layer and the dated deferrals.
   the decoded program over runs from entry states that agree on the public data of the
   layout. The instances are `mpn_and_n_correct_auto` and
   `mpn_and_n_correct_auto_ct_regions` (`AndNCorrect.lean`, `ComposeCTStraight.lean`),
-  `ltu_correct_auto` and `ltu_correct_auto_ct` (`LtuCorrect.lean`, `LtuCorrectCT.lean`),
+  `ltu_correct_auto` and `ltu_rc_proved` (`LtuCorrect.lean`, `ComposeCTStraight.lean`),
   and `mpn_mul_1_correct_auto` and `mpn_mul_1_correct_auto_ct_regions`
   (`Mul1Correct.lean`, `Mul1CorrectCT.lean`).
-- The back half of `haxc`, as of 2026-10-06 (modules `Haxc.*` are in the development
-  repository). There is one back half, `compileJ` (`Haxc.BackHalf`), with one gate
-  `jGateB` and the theorem `backend_correct`, and one compiler entry `compileA` with
-  `haxc_correct_auto` (`Haxc.ComposeV1`). `backend_correct` is stated over a back-end
+- The back half of `haxc` (modules `Haxc.*` are in the development repository) is
+  `compileJ` (`Haxc.BackHalf`), with the gate `jGateB` and the theorem
+  `backend_correct`; the compiler entry is `compileA`, with `haxc_correct_auto`
+  (`Haxc.ComposeV1`). `backend_correct` is stated over a back-end
   record `ByteTarget` (machine with halting relation, printed program, legality check,
   encoder, layout reading, gate, soundness of the gate); the x86 value `x86ByteTarget`
-  is the default of `backEnd` and `compileJ`, and there is no AArch64 or RV64 value.
+  is the default of `backEnd` and `compileJ`.
   `jGateB` consists of the image arms of `imageArmB`: six straight
   image arms (register, array, cell, fused cell, and the register arm `v1StraightRWB`
   over the printed class `printedAddrWB`, plain and fused) and two loop image arms
-  (`v1LoopB` and `v1LoopWB`), each conjoined with its check on traced runs. The
-  line-check arm `straightGateB` is defined in `Haxc.BackHalf` and is not part of the
-  gate. The route
+  (`v1LoopB` and `v1LoopWB`), each conjoined with its check on traced runs. The route
   check of `v1LoopWB`, `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
   `loop_image_bytesW`), covers carry chains and cell accesses, with a width analysis
   that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in
@@ -111,29 +106,29 @@ template layer and the dated deferrals.
   (`X86Backend/CmpSpillReload.lean`) rewrites a compare whose first operand is a spill
   slot into a copy to the scratch register and a compare on it, and the stages
   `backEnd` of `compileJ` print every body through it (`printedLprog`). Its semantic
-  theorem `cmpReload_lsemFuelMemF` holds under the decidable check `cmpReloadOK` (no
-  instruction of the body names the scratch register, and the body has no `MULX`); no
-  route theorem calls it, because the gate checks the rewritten body against the source
-  program, so the rewrite falls under the validation of register allocation and adds no
-  step. `cmpReload_of_checked` (`X86Backend/CmpSpillEncodable.lean`) shows that the pass
+  theorem `cmpReload_lsemFuelMemF` holds for a body accepted by the decidable check
+  `cmpReloadOK` (the body is free of the scratch register and of `MULX`). The gate
+  checks the rewritten body against the source program, so the validation of register
+  allocation covers the rewrite. `cmpReload_of_checked` (`X86Backend/CmpSpillEncodable.lean`) shows that the pass
   is the identity on a body the checked encoder accepts.
   `fieldChain_correct_auto` (`Haxc.FieldLowerChain`) composes the field chain front
   with `compileJ` at every limb count and modulus record; its instances
   `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
   (`Haxc.PowLoopBytes`, `Haxc.PowLoopBytesP256`) take the route and compile equations
   as hypotheses, each pinned by a known-answer check. The front of `compileA` is
-  `nfFront`, so `haxc_correct_auto` does not range over a loop of field
-  multiplications. The desugaring-and-inlining front `nfFrontDI`
+  `nfFront`. The desugaring-and-inlining front `nfFrontDI`
   (`Haxc.NFFrontDesugarInline`) is composed with `compileJ` in the instance
-  `bbAdd_correct_bytes` (`Haxc.BbAddBytes`); it is not a front of `compileA`. The
+  `bbAdd_correct_bytes` (`Haxc.BbAddBytes`). The
   tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`, and a loop with
-  carried registers is compiled by `compileLoopJ`, outside `jGateB`. Constant time of
-  the bytes: `haxc_ct_proved_all` (`Haxc.ComposeCTStraight`) states constant time of
-  every decoding of the bytes of every result of `compileA`, with no gate or coverage
-  hypothesis; `haxc_correct_auto_ct_proved_all` and `haxc_gate_proved_all` are the
+  carried registers is compiled by `compileLoopJ` under the image gate `v1LoopJB`.
+  Constant time of the bytes: for every result of `compileA` whose intermediate program
+  the level check `nfFrontLeakCT` accepts, `haxc_ct_proved_all`
+  (`Haxc.ComposeCTStraight`) gives constant time of every decoding of the bytes, between
+  entry states that satisfy the regions of the layout and agree on its public data;
+  `haxc_correct_auto_ct_proved_all` and `haxc_gate_proved_all` are the
   joint statement with value correctness and the gate conclusion. On a straight-line
   or looped route program the conclusion is derived from the level check
-  `nfFrontLeakCT` of the front through the passes, with no byte checker: the two loop
+  `nfFrontLeakCT` of the front through the passes: the two loop
   arms and the straight
   register, array, cell and carry-chain register arms, through `straightReg_bytes_ct`
   (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
@@ -143,17 +138,16 @@ template layer and the dated deferrals.
   `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
   follows from its gate conclusion by `uc_of_gate`. On a loop with carried registers,
   `compileLoopJ` returns bytes only if the image gate `v1LoopJB` holds and the
-  byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts them; on that
-  route the constant-time conclusion comes from `ctGateR_sound`, a check of the decoded
-  bytes inside the compile gate, and the level check of the source is not used. The
+  byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts them; for bytes
+  accepted by `σ.ctGateR`, `ctGateR_sound` gives the constant-time conclusion on that
+  route. The
   loop arm `v1LoopWB` goes
   through `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`) and the register arm
   `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct`, `compileJ_ct` and
   `compileJ_rc` (`Haxc.ComposeCTStraight`) state the result for one accepted program of
   `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
-  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The entries `compileA` and
-  `compileAT` apply no byte check after compilation; the compiler calls the byte check
-  `ctGateR` only inside the compile gate, in `compileLoopJ` and in `compileRegion`.
+  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The compiler calls the byte check
+  `ctGateR` inside the compile gate, in `compileLoopJ` and in `compileRegion`.
   For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the route program from the level check of the lowered
   program, and `compileJ_ct` carries it to the bytes of `compileJ`; the instances
@@ -168,16 +162,15 @@ template layer and the dated deferrals.
   register-indexed access, and `ConstIndexFoldCT` that the fold and the dead-move
   elimination leave the `runBlock` leakage trace unchanged. `OptimizeBasicBlocksCT`
   gives a body on which copy propagation followed by the gather introduces a
-  secret-indexed load. `TwoAddrLegalize` and the post-pass `fuseMulHiLprog` have no
-  constant-time module. `X86Backend/DecodedCT.lean` checks constant time at the
+  secret-indexed load. `X86Backend/DecodedCT.lean` checks constant time at the
   shipped bytes.
 - The tactic `kernel_rfl` (`CatCrypt/Tactic/KernelRfl.lean`) proves a straight-line
   `semScalar` run lemma by one kernel evaluation of `ScalarStraightRun.runProg`.
   `word_bound` (CatCrypt-core, `CatCryptCore/Tactics/WordBound.lean`) closes
   word-bound side goals.
 
-[HEADLINES.md](HEADLINES.md) and [NAVIGATION.md](NAVIGATION.md) record the status and
-open work, as do `COMPILER_ROADMAP.md` ("Where we are") and `JINC_IMPORT.md` in the
+[HEADLINES.md](HEADLINES.md) and [NAVIGATION.md](NAVIGATION.md) record the status of
+the results, as do `COMPILER_ROADMAP.md` ("Where we are") and `JINC_IMPORT.md` in the
 development repository.
 
 ### Routes as runs of certified pass chains
@@ -190,8 +183,7 @@ related by it. `PassChain.Cert.ct` is the leakage form. Each high-tier route of 
 is defined as the run of a chain, and the denotation theorem of the route is
 `Cert.sound` of the chain's certificate. The modules are in the development repository
 (`Haxc.*`); the shared pieces `comSemOf`, `routeSem`, `straightStep` and
-`straightCert` are in `Haxc.RouteChain`. As of 2026-10-05 every row except `nfChain`
-is source that no build has checked.
+`straightCert` are in `Haxc.RouteChain`.
 
 | Route (module) | Chain and its steps | Certificate and `Cert.sound` consumer | Route theorem |
 |---|---|---|---|
@@ -201,90 +193,74 @@ is source that no build has checked.
 | `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `p256_jacAdd_correct_bytes`, `p256_jacDbl_correct_bytes` and the `C` variants (`Haxc.EcInstances`), with the compile hypothesis |
 | `nttRoute`, `inttRoute` (`Haxc.NttRoute`) | `.get` of the run of `lanesChainId N` = `lanesChainVia (Step.id _)`: optimisation slot, `lanesStep`, `straightStep` | `lanesChainViaCert`, `lanesChainVia_denote` | `nttRoute_denote`, `inttRoute_denote` |
 | `nttRouteOf A` (`Haxc.NttRouteSel`) | `.get` of the run of `lanesChain N pure`: value numbering `gvnMR pure`, lane lowering, `straightStep` | `lanesChainCert`, `lanesChain_denote` | `nttRouteOf_denote` |
-| `bbPermRoute` (`Haxc.Poseidon2Bytes`) | `.get` of the run of `lanesChainId 16` on `widenProg 32 16` of the BabyBear permutation | `lanesChainViaCert`, `lanesChainVia_denote` | `bb_poseidon2_correct_bytes`, a conditional statement whose compile hypothesis holds for no instance (below) |
+| `bbPermRoute` (`Haxc.Poseidon2Bytes`) | `.get` of the run of `lanesChainId 16` on `widenProg 32 16` of the BabyBear permutation | `lanesChainViaCert`, `lanesChainVia_denote` | `bb_poseidon2_correct_bytes`, with the compile hypothesis |
 | `latticeRoute`, `basemulRoute`, `pointwiseRoute`, `accRoute` (`Haxc.LatticeRoute`) | `.get` of the run of `lanesChain M pure`; a non-square program is zero-padded to square | `lanesChainCert`, `lanesChain_denote` | `basemulRoute_denote`, `pointwiseRoute_denote`, `accRoute_denote`; `mlkem_basemul_correct_bytes` with the compile hypothesis |
 | `towerRoute P N` (`Haxc.TowerRoute`) | `towerChain P N`: identity, `towerStep` (`towerCom` under `towerGoodB`), identity, `straightStep` | `towerChainCert`, `towerChain_denote` | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`; instances at BN254 and BLS12-381 with the compile hypothesis |
 
-The optimisation slot of the field chains is the identity step. The e-graph stage
-`aegraphOptField` leaves every tested program unchanged, but its equality with the
-input at a symbolic modulus is not proved, so it stays out of the field route.
+The optimisation slot of the field chains is the identity step.
 
-A route theorem that keeps the compile hypothesis is a theorem about the programs the
-back half accepts; where no accepted program is recorded for an instance, the instance
-theorem is conditional on a hypothesis that nothing discharges. The acceptance registry of the development repository
-(`scripts/acceptance-registry.tsv`) records the following for these routes at
-2026-10-06; [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) has the table per instance.
-
-- Jacobian addition at P-256 (row `ec/p256_jacAdd`): `compileJ` refuses the route at
-  all three coordinates, and the refusing conjunct is not localised. Jacobian doubling
-  (row `ec/p256_jacDbl`): the gate evaluation of coordinate x does not finish within
-  eight minutes in the executable, so the row records no result.
-- `Fp2` multiplication and squaring at BN254 (rows `tower/bn254_fp2_mul`,
-  `tower/bn254_fp2_sqr`): accepted, with the constant-time byte gate passing on both.
-  At BLS12-381 the executable does not run the gate, and there is no row.
-- The ML-KEM base multiplication, the ML-DSA pointwise product and the signed 16-bit
-  NTT arm have no row and no accepted program: the exporter writes only the width 64
-  into a mnemonic, and the decoder `decodeLinstr` has no 32-bit ALU or shift form for
-  a byte gate to decode narrow arithmetic to.
-- `bbPermRoute` has no row: the compile hypothesis of `bb_poseidon2_correct_bytes`
-  holds for no instance, because the reduction block binds 128-bit values, which have
-  no machine form in the checked encoder.
+A route theorem that keeps the compile hypothesis holds for every program the back half
+accepts on that route. The acceptance registry of the development repository
+(`scripts/acceptance-registry.tsv`) records the accepted programs: among these routes,
+`Fp2` multiplication and squaring at BN254 (rows `tower/bn254_fp2_mul`,
+`tower/bn254_fp2_sqr`), with the constant-time byte gate passing on both.
+[FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) has the tables per instance.
 
 ### Proofs, checks and translation validation in `haxc`
 
-The proved legs are the typed hax front (`haxFrontT_simulates_hax64W`), the route
-from `LowCT` to the Jasmin dialect (`straightCompile_denote`, `loopCompile_denote`),
-the export of a straight chain (`straight_export_faithful_abi`) and the decode
-equation of the encoder (`DecodeLayout.decodeLprog_encodeLfundefBytes`). The other
-legs are checks that run inside the compiler, in two classes.
+Each leg of `haxc` is a theorem whose hypothesis on the program is a check that the
+compiler runs: for a body accepted by the check, the theorem gives the simulation. The
+compiler returns `none` when a check fails, so the theorems range over the programs it
+accepts. The route to the Jasmin dialect is the chain `nfChain` of the previous
+subsection, with `nfChain_denote`. The checks are of two classes.
 
 - Class D: a decidable predicate on one program, with a soundness theorem. It is the
   side condition of a proved pass.
-- Class V: a check of the output of an unproved transformation against its input.
-  The design permits class V only for register allocation.
+- Class V: a check that compares the output of a transformation with its input, with a
+  soundness theorem for accepted pairs. Register allocation is the class V step of the
+  design.
 
-| Leg | Class | Proved | Missing |
+In the table, a linked name is in this package, and a name given with its module is in
+the development repository.
+
+| Statement proved | Programs | Check and class | Lean names |
 |---|---|---|---|
-| Front checks `haxFrontTOk`, `frontScalOk`/`frontArrOk`, `coveredGuardedB`, `loopTripOK`, the printer precondition `twoAddrOK` (`bodyTiedOk`) | D | a soundness lemma beside each check | — |
-| Block optimiser `optimizeLprogBasicBlocks` | V, under `ownedCheckMC` | at the memory machine `lsemFuelMemF`, on whole bodies with labels (`VIR/LsemBridgePass/CfgLift.lean`: `lsemFuelMemFk_blockRel`; `VIR/LsemBridgePass/BlocksCfg.lean`): `mapStraightRuns_lsemFuelMemF`; the scheduler, store-to-load forwarding, spill-pair removal and load CSE (`scheduleBody_lsemFuelMemF`, `elimReloads_lsemFuelMemF`, `reloadElimBody_lsemFuelMemF`, `loadCSE_lsemFuelMemF`); the optimiser under the decidable check `optBlocksMoveFreeOKB` for bodies with no candidate move (`optBlocksMoveFreeOKB_sound`), under `optBlocksOKB` for bodies of the fragment with flags from states of the bridge invariant (`optBlocksOKB_sound`), and for other bodies relative to the statement `CopyPropSim` of copy propagation (`optimizeBasicBlocks_wholeBodySim_of_copyPropSim`) | a proof of `CopyPropSim` for bodies with a candidate move; the call of these theorems from a route theorem, without which the leg stays class V |
-| Constant-index fold `foldIndexedLprog` | V, under `ownedCheckMC` | `foldInstr_lower`, `KEnv.Holds.stepK`, `foldCore_gather`, `gatherPrinted_constIndexFoldBody` (on `runBlock` over `JInstr`); checker completeness `foldIndexed_ownedCheckM_complete` | transport to `lsemFuelMemF` on `LinstrRM`; bodies of more than one block |
-| Two-address form `twoAddrBody` | V, under `ownedCheckMC`; D once its theorem is at `lsemFuelMemF` | `twoAddrBody_lsemStraight`; checker completeness `twoAddr_ownedCheckM_complete` under `twoAddrRouteWF` | the three patterns `twoAddrRouteWF` excludes (an R15 output, a commutative operation with `b = d`, an immediate first source); the statement at `lsemFuelMemF` |
-| Register allocation `reallocLprog` | V, the permitted validation | `ownedCheckM_sound`, `ownedCheckMC_sound` | — |
-| Loop export certificate `comLCertNB` (`routeCertB`) and `exportCertJB` | V: a certificate, per program, of a fixed export function | `exportCertJB_sound`, `singleLoopJ_export_faithful_gate`, `ExportCertGate.singleLoop_export_faithful_gate` | completeness on a fragment predicate, which makes the leg class D; the do-while arm `ComLJ.whileRegs` has an export and no certificate, and `compileLoopJ` refuses it |
-| Image gates `imgGateBW`, `printedAddrWB`, `physImgB` (the physical half of the register-allocation pair) | D | `image_addr_simBW`, `printedAddr_simW`, `printedAddr_sim` | completeness; a refusal does not name its cause |
-| `decodableLcmd`, `decodesToB` on the printed body | D | `decodeLprog_of_decodesToB` | completeness on the encoder's image |
-| Index bounds `idxInvCheckB` (abstract interpretation of one body) | D | `runIdxOk_of_idxInvCheckB` | — |
-| Constant-time byte gate `ctGateR` in `compileLoopJ`, on loops with carried registers (development repository, `Haxc.BackHalf`, `Haxc.CTRegions`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`; on loops with carried registers, the derivation of the constant-time conjunct from the level check of the source |
+| The `LowCT` program of the typed front runs to a state whose result slots agree with the value of every source run that reads to a value | typed bodies accepted by `haxFrontTOk` | `haxFrontTOk`, D | `haxFrontT_simulates_hax64W` (`CatCrypt.Crypto.Hax.HaxFrontHax64W`) |
+| An accepted command lies in the guarded coverage fragment `IsCoveredSCtlGuarded` | `LowCT` commands accepted by `coveredGuardedB` | `coveredGuardedB`, D | [`isCoveredSCtlGuarded_of_coveredGuardedB`](CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectGuarded.lean) |
+| The typed chain of the export, run by `lsemFuelMemF` from the ABI entry, halts with the return register holding the denotation of the program | straight-line programs returning a register, accepted by `straightCertB` | `straightCertB`, D | [`straight_export_faithful_abi`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertStraight.lean) |
+| The certified loop node halts under `lsemFuelMemF` from the ABI entry with the output array decoding to the denotation of the program | a program with one runtime-count loop accepted by `singleLoopB`; a program with one counted loop carrying the output array and registers accepted by `singleLoopJB` | the export certificates `comLCertNB` (`routeCertB`) and `exportCertJB`, V: a certificate, per program, of a fixed export function | [`singleLoop_export_faithful_gate`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertGate.lean), [`exportCertJB_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertLoopJ.lean), [`singleLoopJ_export_faithful_gate`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertLoopJ.lean) |
+| Every halting run of the checked machine on a body from program counter `0` is matched by a halting run of the optimised body from the same state, with at most the same fuel, to a state with the same function name and zero flag and a base equal up to the program counter | whole bodies with labels under the block optimiser `optimizeBasicBlocks`: bodies accepted by `optBlocksMoveFreeOKB`; bodies accepted by `optBlocksOKB`, from states of the bridge invariant `RelInv`; bodies accepted by `keepOKB` with register destinations, given `CopyPropSim` at each straight segment | `optBlocksMoveFreeOKB`, `optBlocksOKB`, D | [`optBlocksMoveFreeOKB_sound`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`optBlocksOKB_sound`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`optimizeBasicBlocks_wholeBodySim_of_copyPropSim`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean) |
+| A pass applied to the straight segments of a body gives the same simulation on the whole body; the scheduler, store-to-load forwarding, spill-pair removal and load CSE are instances | bodies with labels accepted by `keepOKB`, with register destinations for forwarding and load CSE | `keepOKB`, D | [`lsemFuelMemFk_blockRel`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/CfgLift.lean), [`mapStraightRuns_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`scheduleBody_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`elimReloads_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`reloadElimBody_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean), [`loadCSE_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/VIR/LsemBridgePass/BlocksCfg.lean) |
+| The fold of a body gathers, and the two blocks run to the same machine state and have the same leakage trace from every initial state | bodies that gather under `gatherPrinted`, under the constant-index fold, on `runBlock` over `JInstr` | `gatherPrinted` | [`foldInstr_lower`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean), [`KEnv.Holds.stepK`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean), [`foldCore_gather`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean), [`gatherPrinted_constIndexFoldBody`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean), [`foldInstr_lower_leak`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFoldCT.lean), [`gatherPrinted_constIndexFoldBody_leak`](CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFoldCT.lean) |
+| A body and its two-address form, run from one state, end with equal memory and equal values at every name other than the save slot | every body, at `lsemStraight`; `twoAddrBody` is the identity on a body accepted by the printer precondition `twoAddrOK` (`bodyTiedOk`) | `bodyTiedOk`, D | [`twoAddrBody_lsemStraight`](CatCrypt/Crypto/SecureCompilation/X86Backend/TwoAddrLegalize.lean), [`twoAddrBody_of_bodyTiedOk`](CatCrypt/Crypto/SecureCompilation/X86Backend/TwoAddrLegalize.lean) |
+| Every halting run of `B` from a state at program counter `0` is matched by a halting run of `B'` from the same state, and the end states agree on the registers `outs`, on the arrays and on the word memory; `ownedCheckML` adds equal leakage traces | pairs `B`, `B'` accepted by `ownedCheckM`, by `ownedCheckMC` (bounds-checked runs) or by `ownedCheckML` (traced runs): the output of register allocation `reallocLprog` against its input | `ownedCheckMC`, `ownedCheckML`, V | [`ownedCheckM_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTV.lean), [`ownedCheckMC_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVChecked.lean), [`ownedCheckML_sound_leak`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedTVLeak.lean) |
+| `ownedCheckM` accepts the fold of a body against the body, and a body against its two-address form | non-empty straight-line bodies whose symbolic run lies in the fragment of the checker; for the two-address form, instructions accepted by `twoAddrRouteWF` | `twoAddrRouteWF`, D | [`foldIndexed_ownedCheckM_complete`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVDeadImm.lean), [`twoAddr_ownedCheckM_complete`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVTwoAddr.lean) |
+| Every halting run of a typed body `pre ++ loop` is matched by a halting run of `pre ++ fuseMulHiRM loop` from the same state, with at most four times the fuel | typed bodies accepted by `fuseOKL`, from a base whose registers in the checked list have width 64 | `fuseOKL`, D | [`fuseMulHi_lsemFuelMemF_pre`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemFuseMulHi.lean) |
+| Every checked run of the image of the cell body is matched by a run of the address machine on the body, in the image relation with one-bit carries | bodies free of conditional branches whose cell body is accepted by `imgGateBW` and `physImgB`, the physical half of the register-allocation pair | `imgGateBW`, `physImgB`, D | [`image_addr_simBW`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrCells.lean) |
+| Every terminating run of the address machine on the body is matched by a halting run of the machine on the decoded function bytes, with the stack register restored | printed bodies in the class `printedAddrWB` (with carry chains) or `printedAddrB` | `printedAddrWB`, `printedAddrB`, D | [`printedAddr_simW`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodePrintedAddrW.lean), [`printedAddr_sim`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodePrintedCFG.lean) |
+| The function bytes of a body decode to its layout `fundefLayout`, and the bytes of the gated encoder decode to the program `p` | bodies accepted by `decodableLcmd`; bodies accepted by `decodesToB` at `p` | `decodableLcmd`, `decodesToB`, D | [`decodeLprog_encodeLfundefBytes`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean), [`decodeLprog_of_decodesToB`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean) |
+| Every halting run of `lsemFuelMemF` from a state whose registers satisfy the entry facts is in bounds | bodies accepted by the abstract interpretation `idxInvCheckB` | `idxInvCheckB`, D | [`runIdxOk_of_idxInvCheckB`](CatCrypt/Crypto/SecureCompilation/X86Backend/IdxInvCheck.lean) |
+| The decoded function bytes of the printed body are constant time when the source events of the single-loop program are | printed bodies accepted by the route check `routeB` with `ownedCheckML`, free of conditional branches | `routeB`, D, with `ownedCheckML`, V | [`route_bytes_ct`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageRouteCT.lean) |
+| The bytes decode to a program whose runs from entry states that satisfy the regions of the layout and agree on its public data have equal leakage traces | bytes accepted by the byte gate `σ.ctGateR`, which `compileLoopJ` runs on loops with carried registers | `ctGateR`, D on the output bytes | `ctGateR_sound` (`Haxc.CTRegions`) |
 
 On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
 call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
 printed body is the output of the export, the post-pass `fuseMulHiLprog` and the owned
-back end `ownedLprog`, so this one check accepts or refuses the combined output of the
-block optimiser, the constant-index fold, the two-address form, the post-pass and
-register allocation. The reference side applies the fusion as `fuseMulHiRM`, whose run is proved
-(`fuseMulHi_lsemFuelMemF_pre`).
+back end `ownedLprog`. For a pair accepted by this call, `ownedCheckMC_sound` therefore
+gives the simulation across the block optimiser, the constant-index fold, the
+two-address form, the post-pass and register allocation together. The reference side
+applies the fusion as `fuseMulHiRM`; for a typed body accepted by `fuseOKL`,
+`fuseMulHi_lsemFuelMemF_pre` gives its run.
 
-Translation validation outside register allocation, as the compiler stands: the three
-owned back-end passes and the post-pass `fuseMulHiLprog`, which reach the theorems only
-through the register-allocation check; and
-the loop export certificate, until its completeness is proved. The constant-time
-conjunct of `haxc_ct_proved_all` on a loop with
-carried registers is a verified static analysis of the decoded bytes
-(`ctGateR_sound`); it is a check of the output and no preservation theorem. A failed check makes the compiler
-return `none`, so the theorems cover exactly the programs it accepts.
-
-The design keeps one translation validation, the check of the pair before and after
-register allocation. The block optimiser, the fold and the two-address form are to
-carry preservation theorems at `lsemFuelMemF` that the route theorems call; at
-2026-10-06 the block optimiser has them under decidable checks (table above), with no
-caller, and the fold and the two-address form have none at that machine; the loop export certificate is to carry a
-completeness theorem. `haxc_ct_proved_all` and `haxc_rc_proved_all` (development
-repository, `Haxc.ComposeCTStraight`) hold for every result of `compileA`, with no gate
-or coverage hypothesis. On a straight-line or looped route program constant time of the
-bytes is derived from the level check of the source, with no byte checker
-(`jGate_bytes_ct`). On a loop with carried registers the constant-time conjunct is the
-byte check `σ.ctGateR` inside `compileLoopJ` (`ctGateR_sound`), and it is not derived
-from the level check of the source.
+For every result of `compileA` whose intermediate program the level check
+`nfFrontLeakCT` accepts, `haxc_ct_proved_all` and `haxc_rc_proved_all` (development
+repository, `Haxc.ComposeCTStraight`) give constant time and robust compilation of every
+decoding of the bytes. On a straight-line or looped route program, for a printed body
+accepted by an image arm of the gate with its check on traced runs, `jGate_bytes_ct`
+derives constant time of the bytes from constant time of the route program, which the
+level check of the source gives. On a loop with carried registers, for bytes accepted by
+the byte check `σ.ctGateR` inside `compileLoopJ`, `ctGateR_sound` gives constant time of
+the decoded program.
 
 ### Reference semantics of prime-ir calls
 
@@ -294,8 +270,8 @@ The hax interpreter reads a prime-ir field call under the builtin table
 `p`. The extraction emits bare method names, so an integer `mul`, `add` or `sub` and
 the field operation of the same name share a head. The field route's theorem
 `field_correct_auto` (development repository, `Haxc.FieldCorrect`) is stated against
-`primeirBuiltins p`; it is a theorem about the intended semantics only for functions
-whose integer-typed calls with these names are field calls. The name table
+`primeirBuiltins p`, which is the semantics of the source for a function whose
+integer-typed calls with these names are field calls. The name table
 `defaultFieldTable` (`CatCrypt/Hax/PrimeirNames.lean`) lists the qualified names
 beside the bare ones.
 
@@ -401,16 +377,15 @@ The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
   shipped bytes, and `maj_corresIsa_of_fnCorres` a `CorresIsa x86Isa` result for the
   export's straight-line chain over virtual registers;
   `maj_corresIsa_bytes_of_fnCorres` gives `CorresIsa x86Isa` at the decoded block. All
-  three use `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). No other
-  extracted function has such a composition; the shipped `mpn_mul_1` loop has a
-  `CorresIsaRun x86Isa` result (`mul1_corresIsaRun`) against its loop specification,
-  not against a hax extraction. For every program the compile gate accepts the
+  three use `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). The
+  shipped `mpn_mul_1` loop has a `CorresIsaRun x86Isa` result (`mul1_corresIsaRun`)
+  against its loop specification. For every program the compile gate accepts the
   development tree has the instruction-set judgement against the source denotation
   (`v1Loop_corresIsa`, `jGate_straight_corresIsa`, and with the printed body as the
   program `v1Loop_image_corresIsaRun` and its straight-arm siblings);
   [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
-  states which program each is about and what is not covered
-  ([CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference)).
+  states which program each is about; see also
+  [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference).
 
 Transfer enters both other techniques as a proof step: descent certifies dialect
 lowerings by `param_solve`, and an ascent result over words reaches a specification
@@ -422,14 +397,10 @@ A headline theorem rests on Lean's three foundational axioms (`propext`,
 `Classical.choice`, `Quot.sound`) and on the further entries of the declared trust
 base, `scripts/headlines_trust_base.txt` in the development repository. Every
 `native_decide` entry trusts the Lean code generator on one closed computation. The
-table lists the further entries and the row of the project plan that removes each.
+table lists the further entries with the headlines that use them.
 
-| Entries | Content | Headlines that use them | Removed by |
-|---|---|---|---|
-| `CatCrypt.Util.ed25519L_prime`, `p25519_prime`, `secp256k1N_prime` | primality of the three published constants; the sources (`CatCrypt/Crypto/Util/ScalarFieldVerified.lean`, `CatCrypt/Crypto/Util/X25519Verified.lean`) declare them as theorems from the Pratt certificates in `CatCrypt/Crypto/Util/*PrimeCert.lean`, which `PrattCertificate.pratt_prime` checks by kernel `decide` | none in the recorded baseline | the entries leave the trust base at the next regeneration of the baseline that confirms they resolve to theorems |
-| `Ed25519PointAddDecode.paShipped_instrOk` | every instruction of the shipped `ed25519_point_add` block lies in the decoder's covered set | `ed25519_point_add_bytes` | TV1a/TV1b: the decode equation and the general decode simulation for every encodable body, applied through R-ENC |
-| `pa_footP1`–`pa_footP10`, `scr_foot1`–`scr_foot8`, `scm_foot1`–`scm_foot9` | memory-footprint scans of the canonical parts of the three shipped Ed25519 blocks | `ed25519_point_add_bytes`, `ed25519_sc_reduce_shipped`, `ed25519_sc_muladd_shipped` | R-ENC: one encoder, with the shipped Ed25519 results re-derived through `Lprog` |
-
-No module of `Haxc/` uses `native_decide` except the route-selector check of each
-instance (`and_frontScalOk`, `ltu_frontScalOk`, `mul1_frontScalOk`); those three checks
-are not in the trust base, and the instances are not headlines.
+| Entries | Content | Headlines that use them |
+|---|---|---|
+| `CatCrypt.Util.ed25519L_prime`, `p25519_prime`, `secp256k1N_prime` | primality of the three published constants; the sources (`CatCrypt/Crypto/Util/ScalarFieldVerified.lean`, `CatCrypt/Crypto/Util/X25519Verified.lean`) declare them as theorems from the Pratt certificates in `CatCrypt/Crypto/Util/*PrimeCert.lean`, which `PrattCertificate.pratt_prime` checks by kernel `decide` | none in the recorded baseline |
+| `Ed25519PointAddDecode.paShipped_instrOk` | every instruction of the shipped `ed25519_point_add` block lies in the decoder's covered set | `ed25519_point_add_bytes` |
+| `pa_footP1`–`pa_footP10`, `scr_foot1`–`scr_foot8`, `scm_foot1`–`scm_foot9` | memory-footprint scans of the canonical parts of the three shipped Ed25519 blocks | `ed25519_point_add_bytes`, `ed25519_sc_reduce_shipped`, `ed25519_sc_muladd_shipped` |

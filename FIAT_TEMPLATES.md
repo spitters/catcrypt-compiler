@@ -1,61 +1,59 @@
-# Templates with bounds certificates: scope, completeness, measurements
+# Templates with bounds certificates: method, instances, measurements
 
-Status of 2026-10-06. Companion to [FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md),
-which compares the printed Rust with the Rust ecosystem. Paths under `Haxc/`, `bench/` and
-`scripts/` are in the development repository; other paths are in this package.
+Companion to [FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md), which compares the
+printed Rust with the Rust ecosystem. Paths under `Haxc/`, `bench/` and `scripts/` are in
+the development repository; other paths are in this package, and a path under `VIR/`,
+`Algebraic/` or `X86Backend/` is relative to `CatCrypt/Crypto/SecureCompilation/`.
 
 ## Principle
 
-The template method applies to any computation that is straight-line word arithmetic
-generated from an algebraic template, with a bounds certificate checked per instance. It
-therefore covers prime fields, lattice transforms and codecs, GHASH, extension towers, RSA
-moduli and isogeny primes. It does not cover control flow or bit-logic permutations
-(Keccak, ChaCha, AES rounds): those have no algebraic template whose instances differ only
-in parameters and bounds.
+The template method applies to straight-line word arithmetic generated from an algebraic
+template, with a bounds certificate checked per instance. The families with a template
+are prime fields, lattice transforms and codecs, GHASH, extension towers, RSA moduli and
+isogeny primes.
 
 A template is a Lean function from a parameter record to a `Com` program, with one
-denotation theorem over every record. An instance proves nothing new except its
-certificate, a decided statement that the word bounds hold:
+denotation theorem over every record. An instance adds its certificate, a decided
+statement that the word bounds hold:
 
-- intervals: `boundsOk` and `denote_eq_denoteZ_of_boundsOk` (`VIR/ComRangeExact.lean`),
-  which identify the word program with its integer denotation when no word overflows;
-- schedules: `SchedOk` (`VIR/NegacyclicNttTemplate.lean`), decided per NTT parameter set;
-- field records: `LimbParams` with `noCarryOk` for the no-carry block
-  (`Algebraic/FieldLimbs/MontNoCarry.lean`), and `FieldTemplate.route_abi_denote`
-  (`Haxc/FieldRoute.lean`) for the assembled route.
+- intervals:
+  [`boundsOk`](CatCrypt/Crypto/SecureCompilation/VIR/ComRangeExact.lean) and
+  [`denote_eq_denoteZ_of_boundsOk`](CatCrypt/Crypto/SecureCompilation/VIR/ComRangeExact.lean),
+  which identify the word program with its integer denotation for a program accepted by
+  `boundsOk`;
+- schedules:
+  [`SchedOk`](CatCrypt/Crypto/SecureCompilation/VIR/NegacyclicNttTemplate.lean), decided
+  per NTT parameter set;
+- field records:
+  [`LimbParams`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/Mont.lean) with
+  [`noCarryOk`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/MontNoCarry.lean)
+  for the no-carry block, and `FieldTemplate.route_abi_denote` (`Haxc/FieldRoute.lean`)
+  for the assembled route.
 
 At the bytes, each family has one theorem over its records (`field_correct_bytes`,
 `Haxc/FieldBytes.lean`; `ntt_correct_bytes`, `Haxc/NttBytes.lean`; `ec_correct_bytes`,
-`Haxc/EcBytes.lean`) whose only per-instance hypothesis is acceptance by `compileJ`
-(`Haxc/BackHalf.lean`), the decided gate of `backend_correct`. An instance cell below is
-therefore a theorem together with the result of running the gate. Where the gate
-refuses, is not run or has no recorded result, the instance theorem is conditional: its
-compile hypothesis is discharged by nothing, and the cell says so.
+`Haxc/EcBytes.lean`). Its per-instance hypothesis is acceptance by `compileJ`
+(`Haxc/BackHalf.lean`), the decided gate of `backend_correct`: for a result
+`(P', bytes)` of `compileJ` on the route program of the instance, the theorem gives a
+halting run of the decoded bytes from which the layout reads back the value of the
+template. An instance with an accepted program is therefore a theorem together with the
+result of running the gate.
 
-Closure, 2026-10-06. The method is closed: each family has one theorem over its parameter
-record, each instance a decided certificate, and the weld to the bytes is the gate of
-`compileJ` with `backend_correct`. Three acceptance tests are unmet, each on a general
-capability of the back half: the curve group operations at P-256 (a gate evaluation that
-terminates on the doubling, and a localised refusal on the addition), Poseidon2 at the
-bytes (lanes wider than 64 bits in the checked encoder, or a route over the 64-bit chain
-`bbPermChain64`) and the lattice kernels (32-bit ALU and shift forms in the decoder
-`decodeLinstr`).
+## Instances at the bytes
 
-## Completeness against the fiat acceptance
-
-Gate results are from `compileJ` as run by the executables `field-bytes-emit` and
-`mpn-bytes-emit` and recorded in `scripts/acceptance-registry.tsv` (columns `accepted`,
-`bytes`, `ct`), or from probes of the gate where a row says so. The `compileJ` and
-`compileOf` calls the executables run are the hypotheses of the theorems named in the
-cells (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the result of the byte-level
-constant-time checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`), with `%rsp` and
-the array pointers public and the limb contents and scalar words secret; `-` means that no
-result is recorded.
+The executables `field-bytes-emit` and `mpn-bytes-emit` run `compileJ` and record each
+accepted program in `scripts/acceptance-registry.tsv` (columns `accepted`, `bytes`,
+`ct`). The `compileJ` and `compileOf` calls the executables run are the hypotheses of the
+theorems named below (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the result of
+the byte-level constant-time checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`),
+with `%rsp` and the array pointers public and the limb contents and scalar words secret.
 
 ### Fields (F1): Montgomery multiply, square, add, subtract
 
-Theorem names are `<prime>_<op>_correct_bytes` in `Haxc/FieldInstances.lean`; sizes are the
-registry rows `field/<prime>_<op>`.
+Each cell is an accepted program with its size in bytes, the registry row
+`field/<prime>_<op>`. Its theorem is `<prime>_<op>_correct_bytes` in
+`Haxc/FieldInstances.lean`: the decoded bytes halt in a state from which the layout reads
+back the Montgomery limbs of the product, square, sum or difference.
 
 | prime | mul | sqr | add | sub |
 |---|---|---|---|---|
@@ -65,50 +63,66 @@ registry rows `field/<prime>_<op>`.
 | BN254 | 3813 B | 3823 B | 508 B | 472 B |
 | BLS12-381 | 7418 B | 7309 B | 767 B | 713 B |
 
-All 20 programs are accepted; the `ct` column of the 20 rows is `-`. Constant time of the
-field chain at the five primes is `nfChainF_ct_<prime>` and
-`nfChainF_ct_of_levelCheck'_<prime>` (`Haxc/FieldBlocksCT.lean`), with no hypothesis on the
-blocks of the template (`blocksCheck_<prime>`): two runs whose source leak traces agree
-have equal leak traces of the route program the chain returns. Conformance: 69 arms over
-the 20 cells, 0 mismatches against GMP and the peers (`bench/field_bytes/README.md`,
-objects of 2026-10-04 18:02). The interleaved multiply `Mont.mulBlkRoute`
-(`mulBlkRoute_denote`, `MontCIOS.lean`) selects `mulBlkI` from six limbs; the P-384 and
-BLS12-381 sizes are those of this block. The no-carry block `mulBlkNC` has the lowest
-instruction count at BN254 and
-BLS12-381 and is refused by `encodeLfundefBytesChecked` (unfused `MUL`/`MULXHI` pairs;
-row candidate NC-FUSE).
+All 20 programs are accepted. For each of the five primes, `nfChainF_ct_<prime>` and
+`nfChainF_ct_of_levelCheck'_<prime>` (`Haxc/FieldBlocksCT.lean`) state constant time of
+the field chain: two runs whose source leak traces agree have equal leak traces of the
+route program the chain returns. The decided check `blocksCheck_<prime>` discharges the
+hypothesis on the blocks of the template. In the conformance run, 69 arms over the 20
+cells agree with GMP and the peers (`bench/field_bytes/README.md`). The interleaved
+multiply `Mont.mulBlkRoute` selects `mulBlkI` from six limbs and denotes the Montgomery
+form of the product at every limb count
+([`mulBlkRoute_denote`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/MontCIOS.lean));
+the P-384 and BLS12-381 sizes are those of this block.
 
 ### Lattice, symmetric, EC, mpn, towers (F3) and the prime-ir front (F4)
 
-| kernel | op | theorem | accepted at the bytes; size; `ct` |
-|---|---|---|---|
-| ML-KEM NTT | forward | `mlkem_ntt_correct_bytes` (signed 16-bit arm), `mlkem_ntt_correct_bytes_wide` (64-bit arm), `Haxc/NttInstances.lean` | no registry row; both theorems are conditional on a compile hypothesis that nothing discharges: the signed 16-bit arm is deferred on narrow arithmetic (below), and the gate is not run on the 64-bit arm |
-| ML-KEM | basemul | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) | no registry row; conditional on a compile hypothesis that nothing discharges; deferred on narrow arithmetic (below), as is ML-DSA pointwise |
-| Poseidon2 BabyBear, width 16 | permutation | `bb_poseidon2_correct_bytes` (`Haxc/Poseidon2Bytes.lean`), tied to `permute_bbParams_eq`; conditional: its `compileJ` hypothesis holds for no instance, because `plantBlk` binds 128-bit values. The 64-bit block `plantBlk64` (`plantBlk64_denote`) and the chain `bbPermChain64` (`bbPermProg64_spec'`) are in `VIR/NarrowFieldPlant64.lean` | no registry row; no route and no bytes theorem over `bbPermChain64` |
-| P-256 Jacobian | add | `p256_jacAdd_correct_bytes`, `p256_jacAddC_correct_bytes` (`Haxc/EcInstances.lean`) | `ec/p256_jacAdd`: not accepted; `compileJ` refuses the route of `p256_jacAddC_correct_bytes` at all three coordinates, so the compile hypothesis of that theorem is false at this instance; the refusing conjunct is not localised |
-| P-256 Jacobian | double | `p256_jacDbl_correct_bytes`, `p256_jacDblC_correct_bytes` | `ec/p256_jacDbl`: not accepted; the gate evaluation of coordinate x of the route of `p256_jacDblC_correct_bytes` does not finish within eight minutes in the executable; no result, so the theorems are conditional on a compile hypothesis that nothing discharges |
-| mpn, n = 4 | add_n, sub_n, mul_1, addmul_1 | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`, every n) | accepted: 301 B, 359 B, 369 B, 499 B; `ct` yes on all four |
-| mpn, n = 8 | all four | the same four theorems | accepted: 534 B, 623 B, 614 B, 992 B; `ct` yes on all four |
-| Fp2 at BN254 | mul, sqr | `bn254_fp2_mul_correct_bytes`, `bn254_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | `tower/bn254_fp2_mul`: accepted, 13 720 B, `ct` yes; `tower/bn254_fp2_sqr`: accepted, 9008 B, `ct` yes |
-| Fp2 at BLS12-381 | mul, sqr | `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) | no registry row; the executable does not run the gate on these routes, so the two theorems are conditional on a compile hypothesis that nothing discharges |
-| Solinas 2^255−19 | mul, sqr | none | accepted by probe: 2452 B, 2399 B; deferred (D3, below) |
-| Solinas 2^521−1 | mul, sqr | none | accepted by probe: 10 018 B, 10 189 B; outside the F1 prime list |
-| prime-ir `fe_mul_add`, P-256 | front to bytes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), `impArgsNF_sound` (`Hax/ImpToNF.lean`), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) | `primeir/fe_mul_add_p256`: accepted, 3901 B, `ct` yes; the accepted call is the `compileOf` hypothesis of `fe_mul_add_bytes_p256` |
-| counted loop of field multiplications, one limb and P-256 | front to bytes | `powLoop_front_accepts` (`Haxc/FieldLowerChain.lean`): `fieldChainFront` returns a program on `powLoopBody`; `fieldChain_correct_auto` at every limb count and modulus record, in the same module; instances `powLoop_correct_bytes_pow_1` (one limb, `Haxc/PowLoopBytes.lean`) and `powLoop_correct_bytes_pow_p256` (four limbs, `Haxc/PowLoopBytesP256.lean`), which take the route and compile equations as hypotheses and read back the Montgomery encoding of `x * a ^ k` for a run-time trip count `k`; constant time of the bytes from the level check of the lowered program: `fieldLoop_routeCT` with the instance `powLoop1_ct'` (`Haxc/FieldLoopCT.lean`) and the instance `powLoop4_ct'` (`Haxc/PowLoopCTP256.lean`), with the trip count public and the route and compile equations as hypotheses | no registry row, so no size and no `ct` cell; a `#kat` in `Haxc/PowLoopBytes.lean` and in `Haxc/PowLoopBytesP256.lean` pins that the back end returns a program for the loop |
+Instances with an accepted program. Each theorem holds for the result of `compileJ`, or
+of `compileOf` for the prime-ir row, that the registry row records.
 
-The Solinas figures come from route definitions inlined while `FieldRoute` was stale; the
-dispatcher `fieldTemplateOf` reaches the Solinas arm only at 2^521−1, and sends 2^255−19 to
-the unsaturated arm (`unsatReprs`).
+| Statement proved | Programs | Registry row: size, `ct` | Lean names |
+|---|---|---|---|
+| The decoded bytes halt in a state from which the layout reads back `n + 1` words: the sum with its carry, the difference with its borrow, the product by one word with its high word, or that product added to the destination | `mpn_add_n`, `mpn_sub_n`, `mpn_mul_1`, `mpn_addmul_1` at every `n`; accepted at `n = 4` and `n = 8` | `n = 4`: 301 B, 359 B, 369 B, 499 B; `n = 8`: 534 B, 623 B, 614 B, 992 B; `ct` yes on all eight | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`) |
+| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of the two coordinates of the `Fp2` product or square | `Fp2` multiply and square at BN254 | `tower/bn254_fp2_mul`: 13 720 B, `ct` yes; `tower/bn254_fp2_sqr`: 9008 B, `ct` yes | `bn254_fp2_mul_correct_bytes`, `bn254_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) |
+| The field front accepts the surface function, and the decoded bytes halt in a state from which the layout reads back the Montgomery limbs of `fe_mul_add a b c` | prime-ir `fe_mul_add` at P-256, from the surface function to the bytes | `primeir/fe_mul_add_p256`: 3901 B, `ct` yes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), [`impArgsNF_sound`](CatCrypt/Crypto/Hax/ImpToNF.lean), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) |
+
+Theorems over every program the gate accepts. The hypothesis of each is the equation
+that `compileJ` returns `(P', bytes)` on the route program named.
+
+| Statement proved | Programs | Lean names |
+|---|---|---|
+| The decoded bytes halt in a state from which the layout reads back 256 words congruent modulo `q` to the FIPS 203 transform `nttKem` of the input, below `8 q` in absolute value as signed 16-bit words on the selected route and below the lazy bound on the 64-bit route | ML-KEM forward NTT: the selected route `nttRouteSel mlkemNtt`, the signed 16-bit transform, and the 64-bit route `nttRoute mlkemNtt` | `mlkem_ntt_correct_bytes`, `mlkem_ntt_correct_bytes_wide` (`Haxc/NttInstances.lean`) |
+| The decoded bytes halt in a state from which the layout reads back the words of the base multiplication of the two input polynomials, with the Montgomery factor `2 ^ 16` | ML-KEM base multiplication on `basemulRoute` | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) |
+| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of one coordinate of the Jacobian sum, for affine, on-curve, distinct inputs, or of the Jacobian double | Jacobian addition and doubling at every Montgomery record and curve | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc/EcBytes.lean`) |
+| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of the two coordinates of the `Fp2` product or square | `Fp2` multiply and square at every Montgomery record with `u² = β`, with instances at BLS12-381 | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`, `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) |
+| Every value of a source run of the body is read back from a halting run of the decoded bytes | a function over the field accepted by the front `fieldChainFront`, at every limb count and modulus record | `fieldChain_correct_auto` (`Haxc/FieldLowerChain.lean`) |
+| `fieldChainFront` returns a program on `powLoopBody`, and the decoded bytes halt in a state from which the layout reads back the Montgomery encoding of `x * a ^ k` for a run-time trip count `k`; the route and compile equations are hypotheses | counted loop of field multiplications at one limb and at P-256 | `powLoop_front_accepts` (`Haxc/FieldLowerChain.lean`), `powLoop_correct_bytes_pow_1` (`Haxc/PowLoopBytes.lean`), `powLoop_correct_bytes_pow_p256` (`Haxc/PowLoopBytesP256.lean`) |
+| Every decoding of the bytes is constant time between entry states that satisfy the regions of the layout and agree on its public data, the trip count among them, for a lowered program accepted by the level check `fieldFrontLeakCT`; the route and compile equations are hypotheses | the same loops | `fieldLoop_routeCT`, `powLoop1_ct'` (`Haxc/FieldLoopCT.lean`), `powLoop4_ct'` (`Haxc/PowLoopCTP256.lean`) |
+
+The loop of field multiplications compiles through the loop arm `v1LoopWB` of the gate of
+`compileJ`, which covers carry chains and cell accesses; a `#kat` in
+`Haxc/PowLoopBytes.lean` and in `Haxc/PowLoopBytesP256.lean` pins that the back end
+returns a program for the loop.
+
+Results at the template level, over `Com` programs:
+
+| Statement proved | Programs | Lean names |
+|---|---|---|
+| The 64-bit Plantard block denotes the word function `plantW`, and the permutation built on it maps input lanes at most `p + 64` that represent `x` with the factor `−2 ^ 64` to output lanes at most `p + 64` that represent the Poseidon2 permutation of `x` | Poseidon2 over BabyBear at width 16, on the chain `bbPermChain64` | [`plantBlk64_denote`](CatCrypt/Crypto/SecureCompilation/VIR/NarrowFieldPlant64.lean), [`bbPermProg64_spec'`](CatCrypt/Crypto/SecureCompilation/VIR/NarrowFieldPlant64.lean) |
+| The lowered aggregated loop at the powers of `h` computes the GHASH fold of the blocks of the groups below the count, in group order, at every fuel | GHASH, four-block aggregation | [`ghashAggJ_denote_ghashFold`](CatCrypt/Crypto/SecureCompilation/VIR/Gf2Aggregate.lean) |
+| A step of the address machine preserves the width map of a body | every body, across every instruction of the address machine | [`wTyped_step`](CatCrypt/Crypto/SecureCompilation/X86Backend/NarrowTyping.lean) |
+| For a program rejected by the width gate `comWidthsOk`, the printer `renderOwnedCom` returns the one-line text `# UNHANDLED-WIDTH` and prints no instruction | every `Com jasminDialect` program handed to the owned exporter | [`renderOwnedCom_refuse`](CatCrypt/Crypto/SecureCompilation/X86Backend/LprogOptPipeline.lean) |
+
+Probes of the gate accept the multiply and square of the Solinas arm at 2^255−19
+(2452 B, 2399 B) and at 2^521−1 (10 018 B, 10 189 B). The dispatcher `fieldTemplateOf`
+tries the unsaturated arm (`unsatReprs`) first and selects it at 2^255−19; it selects
+the Solinas arm at 2^521−1.
 
 ## Measured ratios (F2)
 
-Target (decision D1, 2026-10-04): ours/fiat-C ≤ 1.25 for mul and sqr at the five primes;
-a slow proven hand kernel retires when the template bytes measure within 1.1 of it. F2 is
-recorded, not gated.
-
-Objects with `mulBlkRoute` and `mulLoadBody` (run of 2026-10-05, `bench/field_bytes/results/summary.md`,
-conformance all arms pass; the ratios are not remeasured on the objects of 2026-10-06),
-latency / throughput:
+The target is ours/fiat-C ≤ 1.25 for mul and sqr at the five primes; a proven hand kernel
+retires when the template bytes measure within 1.1 of it. The table gives the ratio
+ours/peer as latency / throughput, measured on the objects with `mulBlkRoute` and
+`mulLoadBody` (`bench/field_bytes/results/summary.md`; every conformance arm passes).
 
 | prime | op | ours/peer | peer |
 |---|---|---|---|
@@ -120,45 +134,26 @@ latency / throughput:
 | P-384 | sqr | 1.18 / 1.15 | fiat C |
 | BN254 | mul | 1.54 / 1.59 | fiat/bedrock2 C |
 | BN254 | sqr | 1.55 / 1.64 | fiat/bedrock2 C |
-| BLS12-381 | mul | 2.93 / 2.97 | blst (no fiat C arm) |
+| BLS12-381 | mul | 2.93 / 2.97 | blst |
 
-The D1 target holds at P-384 only; the six-limb CIOS block (`mulBlkRoute`) moved P-384
-from 1.33 to 1.18. The P-256 multiply has 791 instructions and nine stack reloads of
-`%r14`. LOAD-AT-USE (`mulLoadBody`, below six limbs) loads each row word of the second
-factor at its row; it moved the four-limb ratios by 0.03–0.12 and left the nine reloads:
-four are the per-row reload of the operand pointer and three the spilled reduction word,
-and `LprogGpRealloc` cannot promote either across a `MULX`, which ends its runs. At six
-limbs the same body measured 1.37 at P-384, so the CIOS block stays there.
-No proven hand kernel is within 1.1, so no retirement applies.
+The ratio is within the target at P-384, where the route selects the six-limb CIOS block
+`mulBlkI`. Below six limbs the route uses `mulLoadBody`, which loads each row word of
+the second factor at its row; at six limbs `mulLoadBody` measures 1.37 at P-384, against
+1.16 to 1.18 for the CIOS block. The P-256 multiply has 791 instructions and nine stack
+reloads of `%r14`: four reload the operand pointer, one per row, and three reload the
+spilled reduction word.
 
-Earlier rounds, `bench/field_bytes/README.md`, TSC ticks, ours/peer (above 1: ours slower),
-latency / throughput:
+Against the fastest hand kernels the latency ratios are 3.01 (mul) and 3.09 (sqr) at
+BN254 and 3.24 (mul) and 3.27 (sqr) at BLS12-381, measured on the objects of the
+dead-write pass (`bench/field_bytes/README.md`).
 
-| prime | op | 2026-10-04 01:30 (first objects) | 2026-10-04 18:10 (dead-write pass) | peer |
-|---|---|---|---|---|
-| P-256 | mul | 1.62 / 1.59 | 1.54 / 1.54 | fiat C |
-| P-256 | sqr | 1.73 / 1.72 | 1.74 / 1.65 | fiat C |
-| secp256k1 | mul | 1.65 / – | 1.62 / 1.62 | fiat C |
-| secp256k1 | sqr | – | 1.66 / 1.71 | fiat C |
-| P-384 | mul | 1.39 / – | 1.33 / 1.33 | fiat C |
-| P-384 | sqr | – | 1.33 / 1.34 | fiat C |
-| BN254 | mul | – | 1.59 / 1.61 | fiat/bedrock2 C |
-| BN254 | sqr | – | 1.58 / 1.66 | fiat/bedrock2 C |
-| BLS12-381 | mul, sqr | – | no fiat C arm in the tree | – |
-
-Against the fastest hand kernels (round of 2026-10-04 18:10, latency): BN254 mul 3.01,
-sqr 3.09; BLS12-381 mul 3.24, sqr 3.27. The 1.1 retirement threshold is not met at any
-prime. The first round's gap analysis for P-256 mul counted 96 `bt` and 80 `setb` (carries
-leave the flags at every limb), 268 stack operands, 20 pointer reloads and 28 dead `imul`;
-the dead-write pass removed the last.
-
-The printed Rust (a different artifact, 2026-10-03, `bench/fiat_rust_compare/README.md`)
-measures 0.68–1.18 of fiat-crypto's Rust for mul and sqr at P-256, secp256k1 and P-384
+The printed Rust (`bench/fiat_rust_compare/README.md`) measures 0.68–1.18 of
+fiat-crypto's Rust for mul and sqr at P-256, secp256k1 and P-384
 ([FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md)).
 
 ## Size of the template layer
 
-Counted on 2026-10-05 with `wc -l` over the files named, from each repository root:
+Line counts are those of `wc -l` over the files named, from each repository root:
 
 | part | files | lines |
 |---|---|---|
@@ -168,44 +163,4 @@ Counted on 2026-10-05 with `wc -l` over the files named, from each repository ro
 | routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,TowerRoute,LatticeRoute}.lean` | 2 245 |
 | instances (development repository) | `Haxc/{FieldInstances,NttInstances,Poseidon2Bytes,EcInstances,MpnBytes,FieldFrontP256}.lean` | 1 488 |
 
-Templates: 20 468 lines; with lowering and routes, 24 037. This corrects the earlier
-estimate of "about 30 000 lines of per-instance code against 6 000 of template" (2026-10-03).
-The inventory of 2026-10-03 found 61 072 lines in about 275 per-instance modules, 27 136 of
-them inside a headline, `SurfaceDeps` or emit closure, and about 2 550 lines whose
-statements a template instance already proves; the template side was then about 17 900
-lines.
-
-Two corrections concern the AUCurves peers.
-
-- A1. `bench/framework/VERIFIED_PEER_CLASSIFICATION.md:41` lists AUCurves as verified. Its
-  safegcd inverse is a hand-written Rust port of libsecp256k1's `secp256k1_modinv64`, and
-  the convergence bound is an `Axiom` in Rocq; the row should read "partially verified",
-  as the libsecp256k1 row below it does. Applied 2026-10-05.
-- A2. The BN254 and BLS12-381 towers adopted from AUCurves are hand-edited away from what
-  the Rocq chain proves (BN254: 99 lines in three regions; BLS12-381: `Fp2_mul`,
-  `Fp2_square`, `Fp2_inv`). The docstrings of the adopting axioms (`Vale/BN254.lean`, the
-  BLS12-381 tower arm) state this since 2026-10-05.
-
-## Deferrals
-
-| item | date | reason or refusing gate | row candidate |
-|---|---|---|---|
-| carries in flags (CF-1 to CF-6, CARRY-FUSE) | 2026-10-04 | design D2 decided only when reopened | CARRY-IN-FLAGS |
-| poly1305 3×44 | 2026-10-04 | `UnsatParams` has one limb width, so the fold sits at bit 132 and the freeze precondition X < 2p fails; poly1305 has a Solinas route | UNSAT-TOPWIDTH (top-limb width `bTop`) |
-| Falcon, Goldilocks | 2026-10-04 | out of scope | – |
-| towers above Fp2 | 2026-10-03 | out of scope | – |
-| mpn with variable n | 2026-10-03 | out of scope | – |
-| GHASH at the bytes | 2026-10-04 | out of scope; template and theorem exist (`ghashAggJ_denote_ghashFold`) | – |
-| 2^255−19 at the bytes | 2026-10-04 (D3) | unsaturated arm has no x86 lowering of `reg 128`; Solinas arm accepted by probe | WIDE-LEGAL if wanted |
-| e-graph stage of the field chain | 2026-10-04 | identity of `aegraphOptField` at a symbolic modulus unproved | – |
-| P-256 Jacobian addition and doubling at the bytes | 2026-10-06 | `compileJ` refuses the addition at all three coordinates, and the refusing conjunct of `jGateB` is not localised; the gate evaluation of the doubling does not finish within the executable's time | localisation of the refusing conjunct; a gate evaluation that terminates on the doubling |
-| narrow arithmetic (ML-KEM basemul, NTT signed 16-bit arm, ML-DSA pointwise) | 2026-10-06 | the exporter writes only the width 64 into a mnemonic, and the decoder `decodeLinstr` has no 32-bit ALU or shift form for the gate to decode to; width typing across arithmetic without shifts exists (`typeStep`, `wTyped_step`, `X86Backend/NarrowTyping.lean`) | LANE-NARROW-ARITH-2: 32-bit decoder forms, width typing of shifts |
-| Poseidon2 BabyBear at the bytes | 2026-10-06 | the 128-bit bindings of `plantBlk` have no machine form in the checked encoder; the width gate `comWidthsOk` refuses them in `renderOwnedCom` (`renderOwnedCom_refuse`), and a printer call outside that gate renders an untagged 128-bit operation at 32 bits; `bbPermChain64` has no route | a route and a bytes theorem over `bbPermChain64` |
-| registry row for the counted loop of field multiplications | 2026-10-06 | the loop compiles to bytes through `compileJ` (`Haxc/BackHalf.lean`): the loop arm `v1LoopWB` of its gate covers the carry chains and cell accesses, and the compare of the spilled counter with an immediate is reloaded through the scratch register (`fieldChain_correct_auto`, table above); the acceptance executable has no arm for the loop, so its size and `ct` cell are not measured | an arm of the executable and a registry row |
-| Fp2 at BLS12-381 at the bytes | 2026-10-06 | the gate is not run: no arm of the executable, no registry row | a registry row |
-
-Of the instances with a bytes theorem, the field cells, the mpn programs at n = 4 and
-n = 8, the Fp2 routes at BN254 and the prime-ir `fe_mul_add` at P-256 have an accepted
-program; the P-256 Jacobian routes, the lattice routes, Poseidon2 and the Fp2 routes at
-BLS12-381 have none. The two loops of field multiplications have a compile pinned by
-`#kat` and no registry row.
+Templates: 20 468 lines; with lowering and routes, 24 037.
