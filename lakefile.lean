@@ -3132,7 +3132,7 @@ lean_lib HaxAscent where
 -- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
 -- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "e393d1c04d9bb499b01e12d5338596606efff089"
+  "https://github.com/spitters/CatCrypt-core.git" @ "6d0a962c226d3d72c90d2d4131d832e89601471c"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
