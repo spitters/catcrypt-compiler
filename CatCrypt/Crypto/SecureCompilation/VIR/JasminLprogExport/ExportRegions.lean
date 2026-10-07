@@ -404,8 +404,11 @@ def whileFrame (d n nCar : Nat) (initOps : List LOperand)
     condition bit `condOp` is widened into `regName d`; each branch assigns its results to
     the block `carriedRegs d nRes`, where the continuation reads them. The temporaries of
     the assignment of a branch start `nRes` registers above the depth at its return, which
-    is above the block: a branch may return at the depth `d` itself. -/
-def ifFrame (fn : String) (d n nRes : Nat) (condOp : LOperand)
+    is above the block: a branch may return at the depth `d` itself. The then branch reaches
+    the join label by a conditional jump that every run takes: the register
+    `regName (d + nRes)`, the first one above the block, is set to `1` and the loop guard
+    `I.loopGuard` on it jumps to `n + 2`. The name `fn` of the function is not read. -/
+def ifFrame (_fn : String) (d n nRes : Nat) (condOp : LOperand)
     (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
     (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
     (I : IsaData := x86Data) : List LinstrRM :=
@@ -415,11 +418,12 @@ def ifFrame (fn : String) (d n nRes : Nat) (condOp : LOperand)
   ++ (labelI n
   :: (thnC
   ++ (parMoves (thnD + nRes) res thnOps
-  ++ (gotoI fn (n + 2)
-  :: labelI (n + 1)
+  ++ (movImmI (regName (d + nRes)) 1
+  :: ((I.loopGuard (regName (d + nRes)) (n + 2)).map guardI
+  ++ (labelI (n + 1)
   :: (elsC
   ++ (parMoves (elsD + nRes) res elsOps
-  ++ [labelI (n + 2)])))))))
+  ++ [labelI (n + 2)])))))))))
 
 /-- A type held in a register cell: every type other than a stack array. The store
     agreement constrains the register cell of a `reg` variable and the array carrier of a
@@ -1017,9 +1021,9 @@ theorem labelsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n n
     (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat) :
     labelsOf (ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I)
       = n :: (labelsOf thnC ++ (n + 1) :: (labelsOf elsC ++ [n + 2])) := by
-  simp only [ifFrame, labelsOf_append, hI.zeroTrip_labels, labelsOf_cons_labelI,
-    labelsOf_cons_gotoI, labelsOf_parMoves, labelsOf_flagWord, labelsOf_nil,
-    List.nil_append]
+  simp only [ifFrame, labelsOf_append, hI.zeroTrip_labels, hI.loop_labels,
+    labelsOf_cons_labelI, labelsOf_cons_movImmI, labelsOf_parMoves, labelsOf_flagWord,
+    labelsOf_nil, List.nil_append]
 
 /-- The jumps of the branch frame name its three labels or are jumps of a branch. -/
 theorem targetsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n nRes : Nat)
@@ -1029,12 +1033,12 @@ theorem targetsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n 
       l = n ∨ l = n + 1 ∨ l = n + 2 ∨ l ∈ targetsOf thnC ∨ l ∈ targetsOf elsC := by
   intro l hl
   simp only [ifFrame, targetsOf_append, targetsOf_parMoves, targetsOf_flagWord,
-    targetsOf_cons_labelI, targetsOf_cons_gotoI, targetsOf_nil, List.nil_append,
-    List.append_nil, List.mem_append, List.mem_cons] at hl
+    targetsOf_cons_labelI, targetsOf_cons_movImmI, targetsOf_nil, List.nil_append,
+    List.append_nil, List.mem_append] at hl
   rcases hl with hl | hl | hl | hl
   · exact (hI.zeroTrip_targets _ _ _ l hl).elim Or.inl fun h => Or.inr (Or.inl h)
   · exact Or.inr (Or.inr (Or.inr (Or.inl hl)))
-  · exact Or.inr (Or.inr (Or.inl hl))
+  · exact Or.inr (Or.inr (Or.inl (hI.loop_targets _ _ l hl)))
   · exact Or.inr (Or.inr (Or.inr (Or.inr hl)))
 
 /-! ## 7. The labels of the export -/
@@ -3027,6 +3031,34 @@ theorem ifHead_steps {P : LprogM} {d : Nat} {f : String} (pre post : List Linstr
   · rw [hm4]
     exact ho3 r (hr _ le_rfl) (hr _ (by omega))
 
+/-- **The jump to the join label of a branch**: `MOV r, #1 ; CMP r, #0 ; jnz l`. Every run
+    takes the jump: the three steps reach the counter after the label `l`, keep the array
+    carrier and write no register cell other than `r`. -/
+theorem joinJump_steps {P : LprogM} {r : String} {l : LLabel} {q : Nat}
+    (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ (movImmI r 1
+      :: guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])
+      :: condI (.reg "NZ") l :: post))
+    (hat : atPc P pre.length s) (hl : findLabelMem l P.body = some q) :
+    ∃ t, Steps x86Isa P 3 s t ∧ atPc P (q + 1) t ∧ t.prog.base.larr = s.prog.base.larr
+      ∧ ∀ x, x ≠ r → t.prog.base.reg.lvm x = s.prog.base.reg.lvm x := by
+  obtain ⟨t1, hs1, hat1, ha1, hm1⟩ := steps_movImm (dst := r) (c := 1) hat
+    (fetch_of_body hbody rfl)
+  obtain ⟨t2, hs2, hat2, ha2, hm2, hz2⟩ := steps_cmpZero (r := r) (v := BitVec.ofNat 64 1) hat1
+    (fetch_of_body (xs := pre ++ [movImmI r 1])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+    (by rw [hm1, if_pos rfl])
+  obtain ⟨hs3, hat3⟩ := steps_cc_taken (cc := "NZ") (pol := false) rfl hat2
+    (fetch_of_body (xs := pre ++ [movImmI r 1,
+        guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+    (by rw [hz2]; decide) hl
+  refine ⟨_, (hs1.trans hs2).trans hs3, hat3, ha2.trans ha1, fun x hx => ?_⟩
+  show t2.prog.base.reg.lvm x = s.prog.base.reg.lvm x
+  rw [hm2, hm1, if_neg hx]
+
 /-- **The frame rule of a branch.** For result types held in register cells, the statement
     for the two branches and for the continuation gives the statement for the branch. -/
 theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
@@ -3082,23 +3114,27 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
     omega
   have hTMlab : labelsOf TM = [] := by rw [hTM]; exact labelsOf_parMoves _ _ _
   have hEMlab : labelsOf EM = [] := by rw [hEM]; exact labelsOf_parMoves _ _ _
+  obtain ⟨J, hJ⟩ : ∃ J : List LinstrRM, J = [movImmI (regName (d + rs.length)) 1,
+      guardI (.Lopn [.reg (regName (d + rs.length))] (withWidthTag 64 "CMP")
+        [.reg (regName (d + rs.length)), .imm 0]), condI (.reg "NZ") (n + 2)] := ⟨_, rfl⟩
+  have hJlab : labelsOf J = [] := by rw [hJ]; rfl
   have hF : ifFrame fn d n rs.length (.reg cn) t.code t.res t.depth e.code e.res e.depth
       = movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov :: cmp
-        :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-        :: labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
-    rw [hcmov, hcmp, hTM, hEM]
+        :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
+        ++ labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
+    rw [hcmov, hcmp, hTM, hEM, hJ]
     rfl
   rw [show ∀ c, (Exported.prepend c rk).code = c ++ rk.code from fun _ => rfl, hcreg, hF]
     at hbody
   have hbodyH : P.body = pre ++ (movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov
-      :: cmp :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-      :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) := by
+      :: cmp :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
+      ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) := by
     rw [hbody]
     simp only [List.append_assoc, List.cons_append, List.nil_append]
   obtain ⟨A, hAd⟩ : ∃ A, A = pre ++ [movImmI (regName d) 1, movImmI (regName (d + 1)) 0, cmov,
       cmp, condI (.reg "Z") (n + 1)] := ⟨_, rfl⟩
-  have hbodyA : P.body = A ++ labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-      :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))))) := by
+  have hbodyA : P.body = A ++ labelI n :: (t.code ++ (TM ++ (J
+      ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))))) := by
     rw [hbodyH, hAd]
     simp only [List.append_assoc, List.cons_append, List.nil_append]
   have hAlen : A.length = pre.length + 4 + 1 := by
@@ -3107,14 +3143,14 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
   have hAlabs : labelsOf A = labelsOf pre := by
     rw [hAd, hcmov, hcmp, labelsOf_append]
     exact List.append_nil _
-  obtain ⟨Y, hYd⟩ : ∃ Y, Y = A ++ labelI n :: (t.code ++ (TM ++ [gotoI fn (n + 2)])) := ⟨_, rfl⟩
+  obtain ⟨Y, hYd⟩ : ∃ Y, Y = A ++ labelI n :: (t.code ++ (TM ++ J)) := ⟨_, rfl⟩
   have hbodyY : P.body = Y ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
       :: (rk.code ++ post))) := by
     rw [hbodyA, hYd]
-    simp only [List.append_assoc, List.cons_append, List.nil_append]
+    simp only [List.append_assoc, List.cons_append]
   have hYlabs : labelsOf Y = labelsOf pre ++ n :: labelsOf t.code := by
-    simp only [hYd, labelsOf_append, hAlabs, labelsOf_cons_labelI, labelsOf_cons_gotoI, hTMlab,
-      labelsOf_nil, List.append_nil]
+    simp only [hYd, labelsOf_append, hAlabs, labelsOf_cons_labelI, hJlab, hTMlab,
+      List.append_nil]
   obtain ⟨X, hXd⟩ : ∃ X, X = Y ++ labelI (n + 1) :: (e.code ++ EM) := ⟨_, rfl⟩
   have hbodyX : P.body = X ++ labelI (n + 2) :: (rk.code ++ post) := by
     rw [hbodyY, hXd]
@@ -3179,7 +3215,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
         (hfr0 n).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
       obtain ⟨k3, m3, hs3, hat3, hres3, hfr3⟩ := htsim d (n + 3) t ht hlen harg P
-        (A ++ [labelI n]) (TM ++ (gotoI fn (n + 2) :: labelI (n + 1) :: (e.code ++ (EM
+        (A ++ [labelI n]) (TM ++ (J ++ labelI (n + 1) :: (e.code ++ (EM
           ++ labelI (n + 2) :: (rk.code ++ post))))) hfn
         (by rw [hbodyA]; simp only [List.append_assoc, List.cons_append, List.nil_append])
         (fun l hl => by
@@ -3196,21 +3232,29 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         rwa [show A.length + (t.code.length + 1) = A.length + 1 + t.code.length by omega]
       obtain ⟨m4, hs4, hat4, hfr4, hblk4⟩ := resMoves_steps (nArgs := nArgs) (d := d)
         (D := t.depth) (rs := rs) (ops := t.res) (A ++ labelI n :: t.code)
-        (gotoI fn (n + 2) :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
+        (J ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
           :: (rk.code ++ post)))) m3 (rv := rv)
         (by rw [hbodyA, hTM]; simp only [List.append_assoc, List.cons_append])
         hat3' htd hres3
-      obtain ⟨hs5, -⟩ := steps_goto I (l := n + 2) (tag := .reg none) hat4
-        (fetch_of_body (xs := A ++ labelI n :: (t.code ++ TM)) (i := gotoI P.lfn (n + 2))
-          (by rw [hbodyA, hfn]; simp only [List.append_assoc, List.cons_append]; rfl)
-          (by simp only [List.length_append, List.length_cons, hTMlen]; omega))
-        hl2
-      exact ⟨_, _, ((((steps_of_stepLe hI (hs0.trans hs1)).trans hs2).trans hs3).trans
-          (steps_of_stepLe hI hs4)).trans hs5,
-        atPc_goto (X.length + 1) hat4,
+      have hlen4 : (A ++ labelI n :: (t.code ++ TM)).length
+          = (A ++ labelI n :: t.code).length + 2 * rs.length := by
+        simp only [List.length_append, List.length_cons, hTMlen]
+        omega
+      rw [← hlen4] at hat4
+      obtain ⟨m5, hs5, hat5, ha5, hm5⟩ := joinJump_steps (r := regName (d + rs.length))
+        (l := n + 2) (A ++ labelI n :: (t.code ++ TM))
+        (labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))) m4
+        (by rw [hbodyA, hJ]; simp only [List.append_assoc, List.cons_append, List.nil_append])
+        hat4 hl2
+      exact ⟨_, m5, (((steps_of_stepLe hI (hs0.trans hs1)).trans hs2).trans hs3).trans
+          (steps_of_stepLe hI (hs4.trans hs5)), hat5,
         (((hfr2.trans hfr3 le_rfl (by omega)).trans (hfr4 n) le_rfl le_rfl).trans
-          (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl),
-        fun {w} u => hblk4 u⟩
+          (RegionFrame.of_cells ha5 fun r hr _ => hm5 r (hr _ (Nat.le_add_right _ _)))
+          le_rfl le_rfl),
+        fun {w} u => (getW_congr w (hm5 _ fun he => by
+          have := JasminLsemSimulation.regName_injective he
+          have := JasminLsemSimulation.varIndex_lt u
+          omega)).trans (hblk4 u)⟩
     · rw [if_neg hbt] at hbr
       rw [Bool.not_eq_true] at hbt
       obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
@@ -3577,13 +3621,14 @@ theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n nR
   intro i hi
   simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
     or_false] at hi
-  rcases hi with hi | ⟨g, hg, rfl⟩ | rfl | hi | hi | rfl | rfl | hi | hi | rfl
+  rcases hi with hi | ⟨g, hg, rfl⟩ | rfl | hi | hi | rfl | ⟨g, hg, rfl⟩ | rfl | hi | hi | rfl
   · exact isCall_of_isLopn (isLopn_flagWord _ _ _ _ i hi)
   · exact hI.zeroTrip _ _ _ g hg
   · rfl
   · exact ht i hi
   · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
   · rfl
+  · exact hI.loop _ _ g hg
   · rfl
   · exact he i hi
   · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)

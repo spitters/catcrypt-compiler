@@ -38,7 +38,9 @@ its results with the machine events of its export in the function `fn`:
   (`arrMoves_idx0Leak`), so the three lists are empty for carried registers and do not
   depend on the valuation;
 * a branch on the bit `b` emits `branch (!b)` for its guard, which jumps to the else arm
-  when the bit is clear, then the events of the arm `b` selects and of the continuation;
+  when the bit is clear, then the events of the arm `b` selects, then, after the then arm,
+  `branch true` for the jump to the join label, which every run takes, then the events of
+  the continuation;
 * a loop in exit-flag form emits, for each run of its body within `fuel`, the events of
   the body followed by `branch b` for the flag `b` it returns, then the events of the
   continuation;
@@ -752,7 +754,8 @@ def machRun (Pj : JLeakParams) (nArgs : Nat) (fn : String) (fuel : Nat) :
         else machRun Pj nArgs fn fuel els d t.next V).bind fun r =>
         (machRun Pj nArgs fn fuel k (d + rs.length) e.next (hvAppend r.1 V)).map fun q =>
           (q.1, .branch (!HasBoolBit.toBool (d := jasminDialect) (cond.lookup V))
-            :: (r.2 ++ q.2))
+            :: (r.2 ++ ((if HasBoolBit.toBool (d := jasminDialect) (cond.lookup V)
+              then [CTLeak.branch true] else []) ++ q.2)))
   | _, _, .whileLoop (cs := cs) inits body k, d, n, V =>
       (exportR nArgs fn body (d + cs.length) (n + 1)).bind fun b =>
       (whileIterLeak
@@ -1584,10 +1587,53 @@ theorem quietLopn_select (r opn f z : String) :
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
     rcases ho with rfl | rfl | rfl <;> exact Or.inl ⟨_, rfl⟩
 
+/-- **The jump to the join label of a branch with its events**: `MOV r, #1 ; CMP r, #0 ;
+    jnz l`. The move and the compare emit nothing and the jump emits `branch true` on every
+    run; the three steps reach the counter after the label `l`, keep the array carrier and
+    write no register cell other than `r`. -/
+theorem joinJump_stepsL {P : LprogM} {r : String} {l : LLabel} {q : Nat}
+    (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ (movImmI r 1
+      :: guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])
+      :: condI (.reg "NZ") l :: post))
+    (hat : atPc P pre.length s) (hl : findLabelMem l P.body = some q) :
+    ∃ t, StepsL P 3 s t [.branch true] ∧ atPc P (q + 1) t
+      ∧ t.prog.base.larr = s.prog.base.larr
+      ∧ ∀ x, x ≠ r → t.prog.base.reg.lvm x = s.prog.base.reg.lvm x := by
+  obtain ⟨t1, hs1, hat1, ha1, hm1⟩ := steps_movImm (dst := r) (c := 1) hat
+    (fetch_of_body hbody rfl)
+  obtain ⟨t2, hs2, hat2, ha2, hm2, hz2⟩ := steps_cmpZero (r := r) (v := BitVec.ofNat 64 1) hat1
+    (fetch_of_body (xs := pre ++ [movImmI r 1])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+    (by rw [hm1, if_pos rfl])
+  have hfJ : P.body[pre.length + 1 + 1]? = some (condI (.reg "NZ") l) :=
+    fetch_of_body (xs := pre ++ [movImmI r 1,
+        guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl)
+  obtain ⟨hs3, hat3⟩ := steps_cc_taken (cc := "NZ") (pol := false) rfl hat2 hfJ
+    (by rw [hz2]; decide) hl
+  have hL12 : StepsL P 2 s t2 [] := stepsL_of_quiet_le 2
+    [movImmI r 1, guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])] pre
+    (condI (.reg "NZ") l :: post) s t2
+    (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append])
+    (fun i hi => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with rfl | rfl
+      · exact quietLopn_movImm _ _
+      · exact quietLopn_cmp _)
+    hat (hs1.trans hs2) (le_refl _)
+  have hL3 := stepsL_cc (cc := "NZ") (pol := false) rfl hat2 hfJ hs3
+  refine ⟨_, (hL12.trans hL3).cast (by rw [hz2]; rfl), hat3, ha2.trans ha1, fun x hx => ?_⟩
+  show t2.prog.base.reg.lvm x = s.prog.base.reg.lvm x
+  rw [hm2, hm1, if_neg hx]
+
 /-- **The rule of a branch.** For result types held in register cells, the statements for
     the two arms and for the continuation give the statement for the branch: the run emits
     the branch event of the guard, which is taken when the condition bit is clear, then the
-    events of the arm the bit selects, then the events of the continuation. -/
+    events of the arm the bit selects, then, after the then arm, the event `branch true` of
+    the jump to the join label, then the events of the continuation. -/
 theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
     {Γ rs : Ctxt jasminDialect} {ts : List JasminTy} (cond : Ctxt.Var Γ (JasminTy.reg 1))
     (thn els : NFProg jasminDialect Γ rs) (k : NFProg jasminDialect (rs ++ Γ) ts)
@@ -1659,23 +1705,27 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
     · exact quietLopn_movImm _ _
     · rw [hcmov]; exact quietLopn_select _ _ _ _
     · rw [hcmp]; exact quietLopn_cmp _
+  obtain ⟨J, hJ⟩ : ∃ J : List LinstrRM, J = [movImmI (regName (d + rs.length)) 1,
+      guardI (.Lopn [.reg (regName (d + rs.length))] (withWidthTag 64 "CMP")
+        [.reg (regName (d + rs.length)), .imm 0]), condI (.reg "NZ") (n + 2)] := ⟨_, rfl⟩
+  have hJlab : labelsOf J = [] := by rw [hJ]; rfl
   have hF : ifFrame fn d n rs.length (.reg cn) t.code t.res t.depth e.code e.res e.depth
       = movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov :: cmp
-        :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-        :: labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
-    rw [hcmov, hcmp, hTM, hEM]
+        :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
+        ++ labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
+    rw [hcmov, hcmp, hTM, hEM, hJ]
     rfl
   rw [show ∀ c, (Exported.prepend c rk).code = c ++ rk.code from fun _ => rfl, hcreg, hF]
     at hbody
   have hbodyH : P.body = pre ++ (movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov
-      :: cmp :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-      :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) := by
+      :: cmp :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
+      ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) := by
     rw [hbody]
     simp only [List.append_assoc, List.cons_append, List.nil_append]
   obtain ⟨A, hAd⟩ : ∃ A, A = pre ++ [movImmI (regName d) 1, movImmI (regName (d + 1)) 0, cmov,
       cmp, condI (.reg "Z") (n + 1)] := ⟨_, rfl⟩
-  have hbodyA : P.body = A ++ labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-      :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))))) := by
+  have hbodyA : P.body = A ++ labelI n :: (t.code ++ (TM ++ (J
+      ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))))) := by
     rw [hbodyH, hAd]
     simp only [List.append_assoc, List.cons_append, List.nil_append]
   have hAlen : A.length = pre.length + 4 + 1 := by
@@ -1684,14 +1734,14 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
   have hAlabs : labelsOf A = labelsOf pre := by
     rw [hAd, hcmov, hcmp, labelsOf_append]
     exact List.append_nil _
-  obtain ⟨Y, hYd⟩ : ∃ Y, Y = A ++ labelI n :: (t.code ++ (TM ++ [gotoI fn (n + 2)])) := ⟨_, rfl⟩
+  obtain ⟨Y, hYd⟩ : ∃ Y, Y = A ++ labelI n :: (t.code ++ (TM ++ J)) := ⟨_, rfl⟩
   have hbodyY : P.body = Y ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
       :: (rk.code ++ post))) := by
     rw [hbodyA, hYd]
-    simp only [List.append_assoc, List.cons_append, List.nil_append]
+    simp only [List.append_assoc, List.cons_append]
   have hYlabs : labelsOf Y = labelsOf pre ++ n :: labelsOf t.code := by
-    simp only [hYd, labelsOf_append, hAlabs, labelsOf_cons_labelI, labelsOf_cons_gotoI, hTMlab,
-      labelsOf_nil, List.append_nil]
+    simp only [hYd, labelsOf_append, hAlabs, labelsOf_cons_labelI, hJlab, hTMlab,
+      List.append_nil]
   obtain ⟨X, hXd⟩ : ∃ X, X = Y ++ labelI (n + 1) :: (e.code ++ EM) := ⟨_, rfl⟩
   have hbodyX : P.body = X ++ labelI (n + 2) :: (rk.code ++ post) := by
     rw [hbodyY, hXd]
@@ -1737,8 +1787,8 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
     (bit := cond.lookup V) (by rw [hbodyH, hcmov, hcmp]) hat hcnk hbit
   have hs0 : StepsL P 4 m t0 [] := stepsL_of_quiet_le 4 _ pre _ m t0
     (show P.body = pre ++ [movImmI (regName d) 1, movImmI (regName (d + 1)) 0, cmov, cmp]
-        ++ (condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (gotoI fn (n + 2)
-        :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) by
+        ++ (condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
+        ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post))))))) by
       rw [hbodyH]
       simp only [List.append_assoc, List.cons_append, List.nil_append])
     hHq hat hs0v (le_refl _)
@@ -1750,7 +1800,9 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
   -- the selected branch, to the counter after the join label
   have hjoin : ∃ (kJ : Nat) (mJ : LstateMF),
       StepsL P kJ m mJ
-        (.branch (!HasBoolBit.toBool (d := jasminDialect) (cond.lookup V)) :: ℓa)
+        (.branch (!HasBoolBit.toBool (d := jasminDialect) (cond.lookup V))
+          :: (ℓa ++ if HasBoolBit.toBool (d := jasminDialect) (cond.lookup V)
+            then [CTLeak.branch true] else []))
       ∧ atPc P (X.length + 1) mJ
       ∧ RegionFrame d n m.prog.base mJ.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var rs (.reg w)),
@@ -1768,7 +1820,7 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
       have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
         (hfr0 n).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
       obtain ⟨k3, m3, hs3, hat3, hres3, hfr3⟩ := htsim d (n + 3) t ht hlen harg P
-        (A ++ [labelI n]) (TM ++ (gotoI fn (n + 2) :: labelI (n + 1) :: (e.code ++ (EM
+        (A ++ [labelI n]) (TM ++ (J ++ labelI (n + 1) :: (e.code ++ (EM
           ++ labelI (n + 2) :: (rk.code ++ post))))) hfn
         (by rw [hbodyA]; simp only [List.append_assoc, List.cons_append, List.nil_append])
         (fun l hl => by
@@ -1785,29 +1837,36 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
         rwa [show A.length + (t.code.length + 1) = A.length + 1 + t.code.length by omega]
       obtain ⟨m4, hs4, hat4, hfr4, hblk4⟩ := resMoves_steps (nArgs := nArgs) (d := d)
         (D := t.depth) (rs := rs) (ops := t.res) (A ++ labelI n :: t.code)
-        (gotoI fn (n + 2) :: labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
+        (J ++ labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2)
           :: (rk.code ++ post)))) m3 (rv := rv)
         (by rw [hbodyA, hTM]; simp only [List.append_assoc, List.cons_append])
         hat3' htd hres3
       have hL4 : StepsL P (2 * rs.length) m3 m4 [] := stepsL_of_quiet_le _ TM
-        (A ++ labelI n :: t.code) (gotoI fn (n + 2) :: labelI (n + 1) :: (e.code ++ (EM
+        (A ++ labelI n :: t.code) (J ++ labelI (n + 1) :: (e.code ++ (EM
           ++ labelI (n + 2) :: (rk.code ++ post)))) m3 m4
         (by rw [hbodyA]; simp only [List.append_assoc, List.cons_append])
         hTMq hat3' hs4 (by rw [hTMlen])
-      have hfetchG : P.body[(A ++ labelI n :: t.code).length + 2 * rs.length]?
-          = some (gotoI P.lfn (n + 2)) :=
-        fetch_of_body (xs := A ++ labelI n :: (t.code ++ TM)) (i := gotoI P.lfn (n + 2))
-          (by rw [hbodyA, hfn]; simp only [List.append_assoc, List.cons_append]; rfl)
-          (by simp only [List.length_append, List.length_cons, hTMlen]; omega)
-      obtain ⟨hs5, -⟩ := steps_goto x86Isa (l := n + 2) (tag := .reg none) hat4 hfetchG hl2
-      have hL5 : StepsL P 1 m4 (goto m4 (X.length + 1)) [] := stepsL_one hat4 hfetchG hs5
-      exact ⟨_, _, (((((hs0.trans hL1).trans hL2).trans hs3).trans hL4).trans hL5).cast (by
+      have hlen4 : (A ++ labelI n :: (t.code ++ TM)).length
+          = (A ++ labelI n :: t.code).length + 2 * rs.length := by
+        simp only [List.length_append, List.length_cons, hTMlen]
+        omega
+      rw [← hlen4] at hat4
+      obtain ⟨m5, hL5, hat5, ha5, hm5⟩ := joinJump_stepsL (r := regName (d + rs.length))
+        (l := n + 2) (A ++ labelI n :: (t.code ++ TM))
+        (labelI (n + 1) :: (e.code ++ (EM ++ labelI (n + 2) :: (rk.code ++ post)))) m4
+        (by rw [hbodyA, hJ]; simp only [List.append_assoc, List.cons_append, List.nil_append])
+        hat4 hl2
+      exact ⟨_, m5, (((((hs0.trans hL1).trans hL2).trans hs3).trans hL4).trans hL5).cast (by
           rw [hz0', hbt]
           simp),
-        atPc_goto (X.length + 1) hat4,
+        hat5,
         (((hfr2.trans hfr3 le_rfl (by omega)).trans (hfr4 n) le_rfl le_rfl).trans
-          (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl),
-        fun {w} u => hblk4 u⟩
+          (RegionFrame.of_cells ha5 fun r hr _ => hm5 r (hr _ (Nat.le_add_right _ _)))
+          le_rfl le_rfl),
+        fun {w} u => (getW_congr w (hm5 _ fun he => by
+          have := JasminLsemSimulation.regName_injective he
+          have := JasminLsemSimulation.varIndex_lt u
+          omega)).trans (hblk4 u)⟩
     · rw [if_neg hbt] at hbr
       rw [Bool.not_eq_true] at hbt
       obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
@@ -1875,7 +1934,8 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
     rw [hbodyX] at h1
     simp only [List.length_append, List.length_cons, List.length_nil] at h1 ⊢
     omega
-  refine ⟨kJ + kK, m', (hsJ.trans hsK).cast (by simp only [List.cons_append]), ?_, hresK,
+  refine ⟨kJ + kK, m', (hsJ.trans hsK).cast (by
+      simp only [List.cons_append, List.append_assoc]), ?_, hresK,
     hfrJ.trans hfrK (by omega) (by omega)⟩
   rw [hlenEq]
   exact hatK
@@ -2557,7 +2617,9 @@ theorem machRun_of_leakRun (Pj : JLeakParams) (nArgs : Nat) (fn : String) (fuel 
       obtain ⟨hu, hss, ν, hn₁, hn₂⟩ :=
         ihk hp.2.2.2 hc.2 (d + rs.length) e.next _ _ _ _ _ _ _ _ hk₁ hk₂ hs'
       refine ⟨by rw [hB, hta, hu], hss,
-        .branch (!HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁)) :: (μ ++ ν), ?_, ?_⟩
+        .branch (!HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁))
+          :: (μ ++ ((if HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁)
+            then [CTLeak.branch true] else []) ++ ν)), ?_, ?_⟩
       · simp only [machRun, ht, he, Option.bind_some]
         exact Option.bind_eq_some_iff.mpr ⟨(a₁, μ), hm₁, by rw [hn₁]; rfl⟩
       · simp only [machRun, ht, he, Option.bind_some]

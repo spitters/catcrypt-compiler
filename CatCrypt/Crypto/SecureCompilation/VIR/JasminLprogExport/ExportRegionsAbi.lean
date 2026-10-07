@@ -692,13 +692,14 @@ theorem ifFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (fn : String) (d n nR
   intro i hmem
   simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
     or_false] at hmem
-  rcases hmem with h | ⟨g, hg, rfl⟩ | rfl | h | h | rfl | rfl | h | h | rfl
+  rcases hmem with h | ⟨g, hg, rfl⟩ | rfl | h | h | rfl | ⟨g, hg, rfl⟩ | rfl | h | h | rfl
   · exact flagWord_spFree I (opSpB_regName _) (opSpB_regName _) hc i h
   · exact hI.zeroTrip _ _ _ (opSpB_regName _) g hg
   · rfl
   · exact ht i h
   · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) hto i h
-  · rfl
+  · exact spFreeB_movI (opSpB_regName _) rfl
+  · exact hI.loop _ _ (opSpB_regName _) g hg
   · rfl
   · exact he i h
   · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) heo i h
