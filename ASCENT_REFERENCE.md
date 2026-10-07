@@ -317,7 +317,7 @@ the count.
 In every row the image is the printed body without its closing return, because `x86Isa`
 takes no step at `Lret`; the next subsection treats the return.
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) describes the squares of the rows for
-`v1LoopB` and the straight arms, and names the straight arm whose image has no statement.
+`v1LoopB` and the straight arms.
 
 ### Compiled bodies as callees
 
@@ -360,17 +360,6 @@ The instances at the compile gate are in the development repository.
   the compile equation and the gate equation as hypotheses; the gate equations are
   Boolean evaluations of the compiler on a closed program, checked by evaluation and not
   proved as theorems.
-
-Limits of these statements:
-
-* A body that contains calls is not covered. A call through the stack stores the counter
-  after the call as a word in memory, so the pushed return address is absolute: the state
-  after a call step of the larger program differs from the shift of the state after the
-  call step of the body in that cell, and `shiftPc` does not relate the two segments.
-* The relocated statements are segments that reach the counter after the body; they do
-  not state that the larger program halts.
-* `LabelsFresh` depends on the program in which the image is placed and stays a
-  hypothesis.
 
 ## Source readings joined to compiled bytes
 
@@ -424,22 +413,13 @@ In the development repository:
   gates that are Booleans checked by evaluation; the source run at the compiler's table
   is obtained from the triple `cndCopy_triple` by `cndCopy_run_of_triple`.
 
-The names of `hax64Reads`, as the docstring of `Hax64WReading.lean` tabulates them:
+The reading and the compiler's table agree at these calls:
 
-| | Names |
+| Calls | Statement |
 |---|---|
-| Covered | `index` and `array_update` at a `usize` index below the length; `BitAnd`, `BitOr`, `BitXor`, `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `Shr`, `Shl` and `rotate_right` tagged `8`, `16`, `32` or `64`; `BitAnd#size`, `BitOr#size`, `BitXor#size` and `Shr#size`, whose value on two `usize` words does not depend on the width; `Not` tagged `8`, `16`, `32` or `64` |
-| Excluded: width of `usize` | `wrapping_add#size`, `wrapping_sub#size`, `wrapping_mul#size`, `Shl#size`, `rotate_right#size`, `Not#size`, `cast#size`: the reading takes the width from the platform, `32` or `64`, and the compiler's table fixes `64`; the values differ at the width `32` |
-| Excluded: 128-bit words | the nine word operations tagged `128` and `Not#128`: the table returns no value at a `u128` word from `2 ^ 64` on |
-| Covered by the value, not by the name | checked `Add`, `Sub`, `Mul`, `Div`, `Rem`: the reading fails on overflow and on two untyped integer literals; where it returns a word of at most 64 bits the table returns the same value (`hax64WExit_appArith`). A `u128` operand makes agreement depend on the arguments, so these names are not in `hax64Reads`, and a program that calls them needs its triple under `app64` or a congruence that tracks word widths (not written) |
-| Excluded: casts and `repeat` | `cast` tagged `8` to `128` and `repeat`: the reading accepts a word of any width, and the table admits an argument below `2 ^ 64` only |
-| Not routed by the reading | the comparisons, `len`, `rotate_left`, the Boolean connectives and `array_lit`: `appRt` returns no value at these names |
-
-Checked arithmetic, casts and `repeat` are excluded by arguments (two literals, or a
-`u128` word), which a condition on the name of the call cannot exclude. A program that
-calls a name outside `hax64Reads` is reached only by `bytes_of_fnCorres` or
-`bytes_of_fnCorres_of_tableLE`, from an ascent result and, for the latter, a value run of
-the source reading at the compiler's table.
+| `index` and `array_update` at a `usize` index below the length; `BitAnd`, `BitOr`, `BitXor`, `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `Shr`, `Shl`, `rotate_right` at 8, 16, 32 and 64 bits; `BitAnd`, `BitOr`, `BitXor`, `Shr` at `usize`; `Not` at 8, 16, 32 and 64 bits | `app64_ok`, by the name of the call (`hax64Reads`) |
+| checked `Add`, `Sub`, `Mul`, `Div`, `Rem` on words of at most 64 bits, `usize` included | `hax64WExit_appArith`; bodies that use them reach the bytes through `fnCorres_hax64WExit_of_triple_arith` and `bytes_of_toRustMS_triple_arith`, from an entry environment whose words and arrays have at most 64 bits |
+| the nine word operations and `Not` at `usize` | `appHost_ok`, against the table at the host platform's width (`hax64WExitAt Platform.host`) |
 
 ## Scope
 
