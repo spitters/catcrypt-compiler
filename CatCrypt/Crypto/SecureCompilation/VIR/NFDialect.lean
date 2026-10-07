@@ -173,7 +173,8 @@ inductive NfOp where
   | call (f : String) (args : List NfTy) (ret : NfTy)
   /-- The integer literal `v` at the type `t` (`NfTy.ofLit?`). -/
   | ilit (t : NfTy) (v : Int)
-  /-- The loop counter `lo + i` from the lower bound `lo` and the trip index `i`. -/
+  /-- The loop counter `lo + i` from the lower bound `lo` and the trip index `i`, as a
+      64-bit word; it fails when `lo` is negative or `lo + i` is not below `2 ^ 64`. -/
   | ctr
   /-- The trip count `hi - lo` of a counted loop from the lower bound `lo` and the
       upper bound `hi` of type `t`, as a 64-bit word. -/
@@ -226,8 +227,7 @@ inductive NfOp where
   | .snd _ b => b
   | .call _ _ r => r
   | .ilit t _ => t
-  | .ctr => .int
-  | .trip _ => .word 64
+  | .ctr | .trip _ => .word 64
   | .tnilV => .tnil
   | .tconsV h t => .tcons h t
   | .thead h _ => h
@@ -309,9 +309,10 @@ def NfPred.denote {w : Nat} : NfPred → BitVec w → BitVec w → Bool
 
 /-- The value of the integer literal `v` at the type `t`: an unsigned integer of a width
     when `0 ≤ v < 2 ^ W.bits`, a signed integer of a width when
-    `-2 ^ (W.bits - 1) ≤ v < 2 ^ (W.bits - 1)`, and an unbounded integer; `none`
-    otherwise. -/
+    `-2 ^ (W.bits - 1) ≤ v < 2 ^ (W.bits - 1)`, a word of `w` bits when `0 ≤ v < 2 ^ w`,
+    and an unbounded integer; `none` otherwise. -/
 def NfTy.ofLit? : (t : NfTy) → Int → Option t.denote
+  | .word w, v => if 0 ≤ v ∧ v < 2 ^ w then some (BitVec.ofNat w v.toNat) else none
   | .uint W, v => if 0 ≤ v ∧ v < 2 ^ W.bits then some (BitVec.ofInt W.bits v) else none
   | .sint W, v =>
       if -2 ^ (W.bits - 1) ≤ v ∧ v < 2 ^ (W.bits - 1) then some (BitVec.ofInt W.bits v)
@@ -368,7 +369,9 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) → HVector NfTy.denote op.sig �
   | .ctr, args =>
       let lo : Int := args.head
       let i : BitVec 64 := args.tail.head
-      some (lo + (i.toNat : Int))
+      if 0 ≤ lo ∧ lo + (i.toNat : Int) < 2 ^ 64 then
+        some (BitVec.ofNat 64 (lo + (i.toNat : Int)).toNat)
+      else none
   | .trip t, args =>
       let lo : Int := args.head
       (NfTy.toInt? t args.tail.head).map fun hi => BitVec.ofNat 64 (hi - lo).toNat

@@ -776,7 +776,12 @@ theorem nfLow_sound_aux
               RBRel.appNames (((hrelΓ e hfrE).dropIdx).cons (r := .idx) trivial) cs cn acc hnvE
             change (nfDenoteOp (tableOf bi) op (Expr.lookupArgs args _)).bind
               (fun x => PDenP bi tf rest (Valuation.extend _ x)) = some acc' at hpb
-            rw [hctr, Option.bind_some] at hpb
+            rw [hctr] at hpb
+            beta_reduce at hpb
+            split at hpb
+            case isFalse => cases hpb
+            rename_i hrg
+            rw [Option.bind_some] at hpb
             have ha := hrelB _ a
             beta_reduce at ha
             rw [hra] at ha
@@ -790,11 +795,14 @@ theorem nfLow_sound_aux
                   Int) = j := by
               change Value.int _ = Value.int _ at hb
               exact Value.int.inj hb
-            have henc : ∀ {T : NfTy} (h : NfTy.int = T) (z : Int), enc T (h ▸ z) = .int z := by
+            have henc : ∀ {T : NfTy} (h : NfTy.word 64 = T) (z : BitVec 64),
+                enc T (h ▸ z) = .int (z.toNat : Int) := by
               intro T h z; subst h; rfl
+            rw [ha', hb'] at hrg
             have hrel'' := ((hrelB.clobber_extend i (.int (lo' + j))).cons (s := op.ret)
               (r := .name i)
-              (x := hr ▸ ((fun (x : Int) (y : BitVec 64) => x + (y.toNat : Int))
+              (x := hr ▸ ((fun (x : Int) (y : BitVec 64) =>
+                  BitVec.ofNat 64 (x + (y.toNat : Int)).toNat)
                 (a.lookup (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))
                 (b.lookup (hvAppend acc
                   (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))))
@@ -802,7 +810,8 @@ theorem nfLow_sound_aux
                 show (e.extend i (.int (lo' + j))) i = some _
                 rw [Env.extend_same, henc hr.symm, ha']
                 beta_reduce
-                rw [hb']))
+                rw [hb', BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega),
+                  Int.toNat_of_nonneg (by omega)]))
             let PostB : Env → RustState → Prop := fun e₁ s' => ∃ e₂, envAgreesT br A e₂ s' ∧
               NamesVals e₂ cn (encAll cs acc') ∧ ∀ m, m ∉ cn → e₂ m = e₁ m
             obtain ⟨s', e₁, hrun, hret', hpost, hfr1⟩ := ihr _ (c + 1) _ bC c₁ WrB hbody _ _ _ acc'

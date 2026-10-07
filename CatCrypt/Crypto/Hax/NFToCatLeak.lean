@@ -222,8 +222,8 @@ theorem nfValNat_vrel : (t : NfTy) → (x : t.denote) → (y : (catTy t).denote)
       rw [show z = (y.toNat : Int) from h, Int.toNat_natCast]
   | .bit, b, b', h => by subst h; rfl
   | .unit, _, _, _ => rfl
-  | .arr _ .int, _, _, _ => rfl
-  | .arr _ .bit, _, _, h | .arr _ .unit, _, _, h | .arr _ (.word _), _, _, h
+  | .arr _ (.word _), _, _, _ => rfl
+  | .arr _ .bit, _, _, h | .arr _ .unit, _, _, h | .arr _ .int, _, _, h
   | .arr _ (.arr _ _), _, _, h | .arr _ (.pair _ _), _, _, h | .arr _ (.uint _), _, _, h
   | .arr _ (.sint _), _, _, h | .arr _ .tnil, _, _, h | .arr _ (.tcons _ _), _, _, h
   | .arr _ (.slice _), _, _, h | .pair _ _, _, _, h | .uint _, _, _, h | .sint _, _, _, h
@@ -288,10 +288,9 @@ theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       obtain ⟨⟨n, a⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨i, -, rfl⟩ := Option.map_eq_some_iff.mp h
       simp [catKind, nfKind, hf]
-    · cases h
-  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-    rw [scalarCatExpr_kind hP h, nfKind_call_scalar (scalarCatExpr_name h)]
+    · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+      rw [scalarCatExpr_kind hP h, nfKind_call_scalar (scalarCatExpr_name h)]
   · split at h
     · rename_i hf
       obtain ⟨⟨n, m⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
@@ -357,16 +356,14 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       change [CTLeak.addr "" (((i.lookup W).toNat : Nat) : Int)] =
         [CTLeak.addr "" ((nfValNat tb x₂ : Nat) : Int)]
       rw [asWord_valNat hi W hx₂]
-    · cases h
-  · rename_i ta tb args
-    have hq : nfKind (.call f [ta, tb] (.word 64)) = .quiet := by
-      obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-      exact nfKind_call_scalar (scalarCatExpr_name h) _ _
-    unfold Expr.ctLeak opLeak
-    rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
-      show nfLeakModel.kind (.call f [ta, tb] (.word 64)) =
-        nfKind (.call f [ta, tb] (.word 64)) from rfl, hq]
+    · have hq : nfKind (.call f [ta, tb] (.word 64)) = .quiet := by
+        obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+        exact nfKind_call_scalar (scalarCatExpr_name h) _ _
+      unfold Expr.ctLeak opLeak
+      rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
+        show nfLeakModel.kind (.call f [ta, tb] (.word 64)) =
+          nfKind (.call f [ta, tb] (.word 64)) from rfl, hq]
   · rename_i ta ti tv n' args
     rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | ⟨x₃, _ | _⟩⟩⟩
     have hx₂ : VRel ti x₂ (args.tail.head.lookup W) := by
@@ -683,7 +680,7 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       intro args res h
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => some (OpRes.rd (Rd.ofWord (σ i)))
+        | .lit 0 _ => some (OpRes.rd (σ i))
         | _ => none) = some res at h
       split at h
       · cases h; rfl

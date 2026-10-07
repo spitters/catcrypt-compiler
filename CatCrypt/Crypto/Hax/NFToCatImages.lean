@@ -134,10 +134,9 @@ theorem catCall?_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
     · obtain ⟨⟨n, a⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨i, -, rfl⟩ := Option.map_eq_some_iff.mp h
       image_op
-    · cases h
-  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-    exact scalarCatExpr_image h
+    · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+      exact scalarCatExpr_image h
   · split at h
     · obtain ⟨⟨n, m⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
       dsimp only at h

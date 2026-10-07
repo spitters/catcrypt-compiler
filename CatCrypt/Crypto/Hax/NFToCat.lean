@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 
 `nfToCat` translates a program of `NFProg nfDialect` over the `u64` table into a program of
 `NFProg catCryptDialect`, which `NFProgCatToJasmin.nfToComLVia` lowers to `ComL`. The types
-map by `catTy`: a `64`-bit word and an integer to `sword 64`, an integer array of `n` elements to
+map by `catTy`: a `64`-bit word and an integer to `sword 64`, an array of `n` elements to
 `memref n`. A value of the source and a value of the target are related by `VRel`: an integer
 is the natural number of the word, an array element by element. Each variable of the source
 has a reading `Rd`: a variable of the target, or a literal in `[0, 2^64)`. A literal has no
@@ -23,7 +23,7 @@ target binding; an operation that reads one binds it by `bvConst` immediately be
 so that a literal used in a loop body is bound inside the body.
 
 The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
-`array_update` on integer arrays, integer literals in `[0, 2^64)` and the loop operations
+`array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)` and the loop operations
 `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
@@ -43,7 +43,7 @@ the literal `hi`.
   of the bindings of a translated operation and of a program.
 * `toCatVal`, `mapVal`, `TRd.id`, `abiParamsArr` — the entry: the mapped valuation, the
   readings of a context in its mapped context, and the parameters of a System V layout with
-  integer array types.
+  the types of arrays of `64`-bit words.
 
 ## Main results
 
@@ -85,12 +85,12 @@ open Ctxt (Var Valuation)
   | _ => .unit
 
 /-- The relation of a source value and a target value at a type of the fragment: equal
-    words and bits, an integer equal to the natural number of the word, an integer array
-    element by element. -/
+    words and bits, an integer equal to the natural number of the word, an array of words
+    element by element, by the natural numbers of the elements. -/
 def VRel : (t : NfTy) → t.denote → (catTy t).denote → Prop
   | .word _, x, y => x = y
   | .int, z, y => z = (y.toNat : Int)
-  | .arr _ .int, f, g => ∀ i, f i = ((g i).toNat : Int)
+  | .arr _ (.word _), f, g => ∀ i, (f i).toNat = (g i).toNat
   | .bit, b, b' => b = b'
   | .unit, _, _ => True
   | _, _, _ => False
@@ -271,10 +271,10 @@ def asWord {Δ : Ctxt catCryptDialect} (t : NfTy) (v : Var Δ (catTy t)) :
     Option (Var Δ (.sword 64)) :=
   if h : ImpToNF.hax64NFWordTy t = true then some (catTy_of_wordTy h ▸ v) else none
 
-/-- A variable of an integer array type, at the memref of its length. -/
+/-- A variable of the type of an array of `64`-bit words, at the memref of its length. -/
 def asArr {Δ : Ctxt catCryptDialect} : (t : NfTy) → Var Δ (catTy t) →
     Option (Σ n : Nat, Var Δ (.memref n))
-  | .arr n .int, v => some ⟨n, v⟩
+  | .arr n (.word 64), v => some ⟨n, v⟩
   | _, _ => none
 
 /-- A variable of the bit type, at `bit`. -/
@@ -294,20 +294,20 @@ def selectCat {Δ : Ctxt catCryptDialect} (f : String) (tc ta tb : NfTy)
   else none
 
 /-- The expression of a call `f` of the `u64` table on the renamed arguments `args`: a scalar
-    call of `hax64NFScalar`, `index` of an integer array, `array_update` of an integer
-    array, `select` of two values of types whose values encode as integers. -/
+    call of `hax64NFScalar`, `index` of an array of `64`-bit words, `array_update` of an
+    array of `64`-bit words, `select` of two values of types whose values encode as
+    integers. -/
 def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
     (as : List NfTy) → (r : NfTy) → HVector (fun t => Var Δ t) (as.map catTy) →
       Option (Expr catCryptDialect Δ (catTy r))
-  | [ta, tb], .int, args =>
+  | [ta, tb], .word 64, args =>
       if f = "index" then
         (asArr ta args.head).bind fun ⟨n, a⟩ => (asWord tb args.tail.head).map fun i =>
           ⟨.memrefGetDyn n, rfl, .cons a (.cons i .nil)⟩
-      else none
-  | [ta, tb], .word 64, args =>
-      (asWord ta args.head).bind fun x => (asWord tb args.tail.head).bind fun y =>
-        scalarCatExpr f x y
-  | [ta, ti, tv], .arr n' .int, args =>
+      else
+        (asWord ta args.head).bind fun x => (asWord tb args.tail.head).bind fun y =>
+          scalarCatExpr f x y
+  | [ta, ti, tv], .arr n' (.word 64), args =>
       if f = "array_update" then
         (asArr ta args.head).bind fun ⟨n, m⟩ =>
           if h : n = n' then
@@ -710,12 +710,12 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
   | .named _ op, args => catOp σ op args
   | .call f as r, args => catCallRd f as r (σ.rds args)
   | .ilit t v, _ =>
-      if ht : t = .int ∧ 0 ≤ v ∧ v < 2 ^ 64 then
-        some (.rd (.lit v.toNat (by rw [ht.1]; rfl)))
+      if ht : ImpToNF.hax64NFWordTy t = true ∧ 0 ≤ v ∧ v < 2 ^ 64 then
+        some (.rd (.lit v.toNat ht.1))
       else none
   | .ctr, args =>
       match σ args.head with
-      | .lit 0 _ => some (.rd (Rd.ofWord (σ args.tail.head)))
+      | .lit 0 _ => some (.rd (σ args.tail.head))
       | _ => none
   | .trip t, args =>
       match σ args.head with
@@ -750,8 +750,8 @@ theorem asWord_enc {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)}
     | _ => simp [ImpToNF.hax64NFWordTy] at ht
   · cases h
 
-/-- A value of an integer array type, related to a memref, encodes as the integers of a
-    function related to the memref element by element. -/
+/-- A value of the type of an array of `64`-bit words, related to a memref, encodes as the
+    integers of a function related to the memref element by element. -/
 theorem asArr_rel {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)} {n : Nat}
     {m : Var Δ (.memref n)} (h : asArr t v = some ⟨n, m⟩) (W : Valuation Δ) {x : t.denote}
     (hx : VRel t x (v.lookup W)) :
@@ -760,7 +760,7 @@ theorem asArr_rel {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)} 
   unfold asArr at h
   split at h
   · cases h
-    exact ⟨x, rfl, hx⟩
+    exact ⟨fun k => ((x k).toNat : Int), rfl, fun k => congrArg Nat.cast (hx k)⟩
   · cases h
 
 /-- The dynamic read of a memref below its length is the element. -/
@@ -782,7 +782,8 @@ theorem memSetDyn_of_lt' {n : Nat} (arr : Fin n → BitVec 64) {k : Nat} (hk : k
       congr 1
       simp only [Nat.mod_eq_of_lt hk]
 
-/-- `index` of an array of integers returns the integer at an index below its length. -/
+/-- `index` of an array of integers returns the integer at an index below its length; it
+    fails at an index beyond. -/
 theorem index_ofFn {n : Nat} {g : Fin n → Int} {i : Nat} {v : _root_.Hax.Value}
     (hv : _root_.Hax.hax64Builtins "index"
       [.array (List.ofFn fun k => .int (g k)), .int (i : Int)] = some v) :
@@ -826,18 +827,16 @@ theorem update_ofFn {n : Nat} {g : Fin n → Int} {i : Nat} {z : Int} {v : _root
       · simp [hj, Ne.symm hj]
   · simp [hk] at hv
 
-/-- The integers of a function decode as that function at its array type. -/
-theorem dec_arr_ofFn {n : Nat} (g : Fin n → Int) :
-    ImpToNF.dec (.arr n .int) (.array (List.ofFn fun k => .int (g k))) = some g := by
-  obtain ⟨g', hd, he⟩ := ImpToNF.dec_arr_int (n := n) (List.ofFn fun k => .int (g k))
-    (fun w hw => by obtain ⟨k, rfl⟩ := List.mem_ofFn.mp hw; exact ⟨g k, rfl⟩) (by simp)
-  rw [hd]
-  congr 1
-  funext k
+/-- An array of `64`-bit words the integers of a function decode as has those integers as the
+    natural numbers of its elements. -/
+theorem dec_arr_ofFn {n : Nat} {g : Fin n → Int} {y : Fin n → BitVec 64}
+    (hd : ImpToNF.dec (.arr n (.word 64)) (.array (List.ofFn fun k => .int (g k))) = some y)
+    (k : Fin n) : g k = ((y k).toNat : Int) := by
+  have he := ImpToNF.dec_sound _ _ _ hd
   have := congrArg (fun w : _root_.Hax.Value => match w with
     | .array l => l[k.1]? | _ => none) he
   simp only [ImpToNF.enc, List.getElem?_ofFn, k.2, dif_pos] at this
-  simpa using this.symm
+  simpa using this
 
 /-- The names of the calls the fragment translates: the scalar calls `hax64NFScalar`,
     `index` and `array_update`. -/
@@ -964,9 +963,10 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | _⟩⟩
     obtain ⟨hx₁, hx₂, -⟩ := hx
-    change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec .int) = some y at hy
+    change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec (.word 64)) =
+      some y at hy
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-    have hyv := ImpToNF.dec_sound .int v y hdv
+    have hyv := ImpToNF.dec_sound (.word 64) v y hdv
     split at h
     · rename_i hf
       subst hf
@@ -977,37 +977,30 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       rw [hg, asWord_enc hi W hx₂] at hv
       obtain ⟨hk, hvk⟩ := index_ofFn hv
       rw [hvk] at hyv
-      change y = ((memGetDyn (a'.lookup W) (i'.lookup W).toNat).toNat : Int)
-      rw [memGetDyn_of_lt' _ hk, ← hgm]
-      change _root_.Hax.Value.int _ = _root_.Hax.Value.int y at hyv
-      exact (_root_.Hax.Value.int.inj hyv).symm
-    · cases h
-  · rename_i ta tb args
-    rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
-    rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | _⟩⟩
-    obtain ⟨hx₁, hx₂, -⟩ := hx
-    change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec (.word 64)) =
-      some y at hy
-    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-    have hyv := ImpToNF.dec_sound (.word 64) v y hdv
-    obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
-    have hv := hbi.base _ _ _ (Or.inl (scalarCatExpr_name h)) (scalarCatExpr_ne_select h) hbv
-    rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
-    have := scalarSem_sound h _ _ hv
-    rw [this] at hyv
-    have hd : (e.denote W : BitVec 64) = scalarSem f (x.lookup W) (w.lookup W) :=
-      scalarCatExpr_denote h W
-    change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
-    change y = (e.denote W : BitVec 64)
-    rw [hd]
-    exact (BitVec.eq_of_toNat_eq (by exact_mod_cast (_root_.Hax.Value.int.inj hyv))).symm
+      change y = memGetDyn (a'.lookup W) (i'.lookup W).toNat
+      rw [memGetDyn_of_lt' _ hk]
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
+      have hyg := _root_.Hax.Value.int.inj hyv
+      rw [hgm] at hyg
+      exact (BitVec.eq_of_toNat_eq (by exact_mod_cast hyg)).symm
+    · obtain ⟨x, hxa, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
+      have hv := hbi.base _ _ _ (Or.inl (scalarCatExpr_name h)) (scalarCatExpr_ne_select h) hbv
+      rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
+      have := scalarSem_sound h _ _ hv
+      rw [this] at hyv
+      have hd : (e.denote W : BitVec 64) = scalarSem f (x.lookup W) (w.lookup W) :=
+        scalarCatExpr_denote h W
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
+      change y = (e.denote W : BitVec 64)
+      rw [hd]
+      exact (BitVec.eq_of_toNat_eq (by exact_mod_cast (_root_.Hax.Value.int.inj hyv))).symm
   · rename_i ta ti tv n' args
     rcases args with _ | ⟨m₀, _ | ⟨i₀, _ | ⟨x₀, _ | _⟩⟩⟩
     rcases xs with _ | ⟨x₁, _ | ⟨x₂, _ | ⟨x₃, _ | _⟩⟩⟩
     obtain ⟨hx₁, hx₂, hx₃, -⟩ := hx
     change (bi f [ImpToNF.enc ta x₁, ImpToNF.enc ti x₂, ImpToNF.enc tv x₃]).bind
-      (ImpToNF.dec (.arr n' .int)) = some y at hy
+      (ImpToNF.dec (.arr n' (.word 64))) = some y at hy
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
     split at h
     · rename_i hf
@@ -1023,14 +1016,16 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         obtain ⟨g, hg, hgm⟩ := asArr_rel ha W hx₁
         rw [hg, asWord_enc hi W hx₂, asWord_enc hx' W hx₃] at hv
         obtain ⟨hk, hvk⟩ := update_ofFn hv
-        rw [hvk, dec_arr_ofFn] at hdv
-        cases hdv
+        rw [hvk] at hdv
         intro k
-        change _ = ((memSetDyn (m.lookup W) (i'.lookup W).toNat (x'.lookup W) k).toNat : Int)
+        have hyk := dec_arr_ofFn hdv k
+        change (y k).toNat = (memSetDyn (m.lookup W) (i'.lookup W).toNat (x'.lookup W) k).toNat
         rw [memSetDyn_of_lt' _ hk]
         by_cases hkk : k = ⟨(i'.lookup W).toNat, hk⟩
-        · simp [hkk]
-        · simp [hkk, hgm]
+        · simp only [hkk, if_true] at hyk ⊢
+          exact_mod_cast hyk.symm
+        · simp only [hkk, if_false, hgm] at hyk ⊢
+          exact_mod_cast hyk.symm
       · cases h
     · cases h
   · obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
@@ -1848,19 +1843,27 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
       unfold catOp at h
       split at h
       · rename_i ht
-        obtain ⟨rfl, h0, h1⟩ := ht
+        obtain ⟨hw, h0, h1⟩ := ht
         cases h
-        change some v = some y at hy
-        cases hy
-        refine ⟨?_, by omega⟩
-        change some v = some ((v.toNat : Nat) : Int)
-        rw [Int.toNat_of_nonneg h0]
+        rcases wordTy_cases hw with rfl | rfl
+        · change some v = some y at hy
+          cases hy
+          refine ⟨?_, by omega⟩
+          change some v = some ((v.toNat : Nat) : Int)
+          rw [Int.toNat_of_nonneg h0]
+        · change (if 0 ≤ v ∧ v < 2 ^ 64 then some (BitVec.ofNat 64 v.toNat) else none) =
+            some y at hy
+          rw [if_pos ⟨h0, h1⟩] at hy
+          cases hy
+          refine ⟨?_, by omega⟩
+          change some (((BitVec.ofNat 64 v.toNat).toNat : Nat) : Int) = some ((v.toNat : Nat) : Int)
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
       · cases h
   | ctr =>
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => some (OpRes.rd (Rd.ofWord (σ i)))
+        | .lit 0 _ => some (OpRes.rd (σ i))
         | _ => none) = some res at h
       split at h
       · rename_i hz hlo
@@ -1871,23 +1874,18 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
           have := h0.1
           change some _ = some _ at this
           exact_mod_cast Option.some.inj this
-        have hy' := Option.some.inj hy
-        subst hy'
         have hi := hag _ i
-        change RdRel W .int ((show Int from lo.lookup V) +
-          (((show BitVec 64 from i.lookup V)).toNat : Int)) (Rd.ofWord (σ i))
-        rw [h0', zero_add]
-        revert hi
-        cases σ i with
-        | var w =>
-            intro hi
-            change (((show BitVec 64 from i.lookup V)).toNat : Int) = (w.lookup W).toNat
-            change (show BitVec 64 from i.lookup V) = w.lookup W at hi
-            rw [hi]
-        | lit k hk =>
-            intro hi
-            obtain ⟨hik, hk64⟩ := hi
-            exact ⟨hik, hk64⟩
+        change (if 0 ≤ (show Int from lo.lookup V) ∧ (show Int from lo.lookup V) +
+            (((show BitVec 64 from i.lookup V)).toNat : Int) < 2 ^ 64 then
+          some (BitVec.ofNat 64 ((show Int from lo.lookup V) +
+            (((show BitVec 64 from i.lookup V)).toNat : Int)).toNat) else none) = some y at hy
+        rw [h0', zero_add] at hy
+        split at hy
+        · have hy' := Option.some.inj hy
+          rw [Int.toNat_natCast, BitVec.ofNat_toNat, BitVec.setWidth_eq] at hy'
+          subst hy'
+          exact hi
+        · cases hy
       · cases h
   | trip t =>
       intro args res y h hy
@@ -2191,11 +2189,12 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
 /-! ## 7. The entry -/
 
 /-- The value of the target type a value of the fragment maps to: a word to itself, an
-    integer to the word of its natural number, an integer array element by element. -/
+    integer to the word of its natural number, an array of words element by element, to
+    the `64`-bit words of the natural numbers of its elements. -/
 def toCatVal : (t : NfTy) → t.denote → (catTy t).denote
   | .word _, x => x
   | .int, z => BitVec.ofNat 64 z.toNat
-  | .arr _ .int, f => fun k => BitVec.ofNat 64 (f k).toNat
+  | .arr _ (.word _), f => fun k => BitVec.ofNat 64 (f k).toNat
   | .arr _ _, _ => fun _ => 0
   | .bit, b => b
   | .unit, _ => ()
@@ -2206,11 +2205,12 @@ def toCatVal : (t : NfTy) → t.denote → (catTy t).denote
   | .tcons _ _, _ => ()
   | .slice _, _ => ()
 
-/-- A value of the fragment whose integers are in `[0, 2^64)`. -/
+/-- A value of the fragment whose integers, and the natural numbers of whose array elements,
+    are in `[0, 2^64)`. -/
 def InRange : (t : NfTy) → t.denote → Prop
   | .word _, _ => True
   | .int, z => 0 ≤ z ∧ z < 2 ^ 64
-  | .arr _ .int, f => ∀ k, 0 ≤ f k ∧ f k < 2 ^ 64
+  | .arr _ (.word _), f => ∀ k, (f k).toNat < 2 ^ 64
   | .bit, _ => True
   | .unit, _ => True
   | _, _ => False
@@ -2226,10 +2226,12 @@ theorem int_eq_ofNat_toNat {z : Int} (h0 : 0 ≤ z) (h1 : z < 2 ^ 64) :
 theorem vrel_toCatVal : ∀ (t : NfTy) (x : t.denote), InRange t x → VRel t x (toCatVal t x)
   | .word _, _, _ => rfl
   | .int, _, ⟨h0, h1⟩ => int_eq_ofNat_toNat h0 h1
-  | .arr _ .int, _, h => fun k => int_eq_ofNat_toNat (h k).1 (h k).2
+  | .arr _ (.word _), f, h => fun k => by
+      change (f k).toNat = (BitVec.ofNat 64 (f k).toNat).toNat
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (h k)]
   | .bit, _, _ => rfl
   | .unit, _, _ => trivial
-  | .arr _ .bit, _, h | .arr _ .unit, _, h | .arr _ (.word _), _, h | .arr _ (.arr _ _), _, h
+  | .arr _ .bit, _, h | .arr _ .unit, _, h | .arr _ .int, _, h | .arr _ (.arr _ _), _, h
   | .arr _ (.pair _ _), _, h | .arr _ (.uint _), _, h | .arr _ (.sint _), _, h
   | .arr _ .tnil, _, h | .arr _ (.tcons _ _), _, h | .arr _ (.slice _), _, h
   | .pair _ _, _, h | .uint _, _, h | .sint _, _, h | .tnil, _, h | .tcons _ _, _, h
@@ -2267,10 +2269,10 @@ theorem TRd.agree_id {Γ : Ctxt nfDialect} (V : Valuation Γ)
   fun t v => TRen.agree_id V h t v
 
 /-- The type of a parameter of a System V layout: a scalar is a `64`-bit word, an array of
-    `n` words an integer array of `n` elements. -/
+    `n` words an array of `n` `64`-bit words. -/
 def abiKindArr : SecureCompilation.Haxc.ArgKind → NfTy
   | .scalar => .word 64
-  | .words n => .arr n .int
+  | .words n => .arr n (.word 64)
 
 /-- The parameters of a System V layout with their types. -/
 def abiParamsArr (σ : SecureCompilation.Haxc.AbiLayout) : List (String × NfTy) :=
@@ -2285,17 +2287,15 @@ theorem abiArg_read_enc (a : SecureCompilation.Haxc.AbiArg)
   cases kind with
   | scalar => exact ⟨sa.regs reg, rfl, trivial⟩
   | words n =>
-      refine ⟨fun k => ((SecureCompilation.Ascent.AddrMem.read64 sa.mem
-        (sa.regs reg + BitVec.ofNat 64 (8 * k.1))).toNat : Int), ?_, fun k => ?_⟩
-      · simp only [SecureCompilation.Haxc.AbiArg.read, SecureCompilation.Haxc.wordsAt, abiKindArr,
-          ImpToNF.enc]
-        congr 1
-        apply List.ext_getElem <;> simp
-      · dsimp only
-        exact ⟨Int.natCast_nonneg _, show ((_ : Nat) : Int) < 2 ^ 64 by exact_mod_cast BitVec.isLt _⟩
+      refine ⟨fun k => SecureCompilation.Ascent.AddrMem.read64 sa.mem
+        (sa.regs reg + BitVec.ofNat 64 (8 * k.1)), ?_, fun k => BitVec.isLt _⟩
+      simp only [SecureCompilation.Haxc.AbiArg.read, SecureCompilation.Haxc.wordsAt, abiKindArr,
+        ImpToNF.enc]
+      congr 1
+      apply List.ext_getElem <;> simp
 
-/-- An encoding is determined by the value it encodes, at an integer array type and at a word
-    type. -/
+/-- An encoding is determined by the value it encodes, at the type of an array of `64`-bit
+    words and at a word type. -/
 theorem enc_inj_abi {k : SecureCompilation.Haxc.ArgKind} {y y' : (abiKindArr k).denote}
     (h : ImpToNF.enc (abiKindArr k) y = ImpToNF.enc (abiKindArr k) y') : y = y' := by
   cases k with
@@ -2308,7 +2308,7 @@ theorem enc_inj_abi {k : SecureCompilation.Haxc.ArgKind} {y y' : (abiKindArr k).
       funext i
       have := congrArg (fun l : List _root_.Hax.Value => l[i.1]?) h'
       simp only [List.getElem?_ofFn, i.2, dif_pos, Option.some.injEq] at this
-      exact _root_.Hax.Value.int.inj this
+      exact BitVec.eq_of_toNat_eq (by exact_mod_cast _root_.Hax.Value.int.inj this)
 
 /-- **The entry valuation is in range.** A valuation whose encodings a source environment the
     layout reads off an entry state holds at the parameters of the layout has its integers in

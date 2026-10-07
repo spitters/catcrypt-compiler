@@ -42,8 +42,8 @@ Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, 
 a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
 literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
-the fragment; a name bound by `letBind` to an integer literal in `[0, 2 ^ 64)` and read as the
-upper bound of a loop (`countLit`) has the type of `64`-bit words (`letOut`); and a conditional `ifThenElse` whose condition translates to a bit and whose
+the fragment; an integer literal in `[0, 2 ^ 64)` has the type of `64`-bit words (`litInt`);
+and a conditional `ifThenElse` whose condition translates to a bit and whose
 arms are in the fragment, with one result type, as the region `NFPre.ifThenElse` (`condOut`):
 its results are the value of the conditional and the names an arm may bind (`condCarried`).
 Every other constructor is `none`.
@@ -273,9 +273,11 @@ def bind1N {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (op : NfO
 def Out.comp {Γ : Ctxt nfDialect} (o : Out Γ) (o₂ : Out o.Δ) : Out Γ :=
   ⟨o₂.Δ, o₂.t, o.pre.append o₂.pre, o₂.σ, o₂.res⟩
 
-/-- The type and the integer value of a literal at the types of `NfTy.ofLit?`. -/
+/-- The type and the integer value of a literal at the types of `NfTy.ofLit?`: an integer
+    literal in `[0, 2 ^ 64)` has the type of `64`-bit words, every other integer literal the
+    integer type, and a literal of a width its type. -/
 def litInt : ImpLit → Option (NfTy × Int)
-  | .int n => some (.int, n)
+  | .int n => some (if 0 ≤ n ∧ n < 2 ^ 64 then .word 64 else .int, n)
   | .uintLit W n => some (.uint W, ((n % W.modulus : Nat) : Int))
   | .sintLit W n => some (.sint W, n)
   | _ => none
@@ -366,45 +368,6 @@ def litBoundOk (lo : Int) : ImpExpr → Bool
   | .lit (.int n) => decide (0 ≤ lo) && decide (n < 2 ^ 64)
   | _ => false
 
-/-- The name `x` is the upper bound of a counted loop of `e` that a run of `e` reaches with
-    no binding of `x` before it: the search follows a sequence and the body of a binding
-    past a part that binds no `x` (`frameOk`), and enters the body of a loop whose counter
-    is not `x` and the arms of a conditional. -/
-def countName (x : String) : ImpExpr → Bool
-  | .typeAscription e _ => countName x e
-  | .seq a b => countName x a ||
-      (frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a && countName x b)
-  | .letBind y v b => countName x v ||
-      (y != x && frameOk (fun _ => true) (fun n => n != x) (fun _ => true) v && countName x b)
-  | .forFold i _ (.var y) body => y == x || (i != x && countName x body)
-  | .forFold i _ _ body => i != x && countName x body
-  | .ifThenElse c a b => countName x c ||
-      (frameOk (fun _ => true) (fun n => n != x) (fun _ => true) c &&
-        (countName x a || countName x b))
-  | _ => false
-
-/-- A binding `let x = v; b` binds a loop count: `v` is an integer literal in `[0, 2 ^ 64)`
-    and `x` is the upper bound of a counted loop of `b` (`countName`). -/
-def countLit (x : String) (v b : ImpExpr) : Bool :=
-  match v with
-  | .lit (.int n) => decide (0 ≤ n) && decide (n < 2 ^ 64) && countName x b
-  | _ => false
-
-/-- An output of the integer type with its value as a `64`-bit word: after the prefix, the
-    trip count `NfOp.trip` from the literal `0` to the value. An output of another type is
-    unchanged. -/
-def Out.asCount {Γ : Ctxt nfDialect} : Out Γ → Out Γ
-  | ⟨_, .int, pre, σ, res⟩ =>
-      let oZ := bind1 σ (.ilit .int 0) .nil
-      let oT := bind1 oZ.σ (.trip .int) (.cons oZ.res (.cons (Var.there res) .nil))
-      Out.mk oT.Δ (.word 64) (pre.append (oZ.pre.append oT.pre)) oT.σ oT.res
-  | o => o
-
-/-- The output of the value `v` of a binding `let x = v; b`: as a `64`-bit word
-    (`Out.asCount`) when the binding binds a loop count (`countLit`), unchanged otherwise. -/
-def letOut {Γ : Ctxt nfDialect} (x : String) (v b : ImpExpr) (o : Out Γ) : Out Γ :=
-  if countLit x v b then o.asCount else o
-
 /-- The environment of names of a loop body or of the continuation of a loop: the carried
     names `xs` bound to the first variables, in front of the names of `σ` other than the
     counter `i`, moved by `g`. -/
@@ -416,7 +379,8 @@ def loopEnv {Γ₃ Δ : Ctxt nfDialect} (σ : NfEnv Γ₃) (i : String) (xs : Li
 /-- **The counted loop of the front.** After the prefix `pre₀` to the context `Γ₃`, with
     the environment of names `σ₃`, the lower bound in `loV` and the trip count in `tripV`,
     the loop carrying the names `xs` at the types `cs` from the variables `inits`: the body
-    binds the counter `i` to `lo + k` (`ctr`, with the source name `i`), runs the translation
+    binds the counter `i` to the `64`-bit word of `lo + k` (`ctr`, with the source name
+    `i`), runs the translation
     `rec` of the source body, and returns the carried names; the continuation binds the unit
     value, with the source name `tgt`. -/
 def loopOut {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nfDialect Γ Γ₃)
@@ -429,7 +393,7 @@ def loopOut {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nf
   let oC := bind1N (some i) σB .ctr
     (.cons (Var.shiftApp cs (Var.there loV))
       (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
-  (rec ((i, ⟨NfTy.int, oC.res⟩) :: oC.σ)).bind fun ob =>
+  (rec ((i, ⟨NfTy.word 64, oC.res⟩) :: oC.σ)).bind fun ob =>
     (varsAt ob.σ xs cs).map fun rets =>
       let oU := bind1N tgt (loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp cs v)
         .constUnit .nil
@@ -483,10 +447,9 @@ mutual
     argument that is not a variable or a literal is bound to a fresh variable before the
     call, left to right.
 
-    A binding `let x = v; b` whose value is an integer literal in `[0, 2 ^ 64)` and whose
-    name is the upper bound of a counted loop of `b` (`countLit`) binds `x` at the type of
-    `64`-bit words (`letOut`), the type `boundOk` accepts for an upper bound; every other
-    binding binds the name at the type of its value.
+    A binding `let x = v; b` binds `x` at the type of its value; an integer literal in
+    `[0, 2 ^ 64)` has the type of `64`-bit words (`litInt`), the type `boundOk` accepts for
+    an upper bound.
 
     A conditional `ifThenElse c a b` is the region `NFPre.ifThenElse` (`condOut`). The
     condition `c` is translated first, to a variable of the bit type. The two arms are
@@ -507,9 +470,7 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .seq a b => (impToNF sigOf none σ a).bind fun oa =>
       (impToNF sigOf tgt oa.σ b).map oa.comp
   | tgt, _, σ, .letBind x v b => (impToNF sigOf (some x) σ v).bind fun ov =>
-      (impToNF sigOf tgt
-        ((x, ⟨(letOut x v b ov).t, (letOut x v b ov).res⟩) :: (letOut x v b ov).σ) b).map
-        (letOut x v b ov).comp
+      (impToNF sigOf tgt ((x, ⟨ov.t, ov.res⟩) :: ov.σ) b).map ov.comp
   | tgt, _, σ, .assign x r => (impToNF sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
   | tgt, _, σ, .app f args => (impArgsNF sigOf σ args).bind fun oa =>
@@ -819,9 +780,18 @@ theorem ofLit_enc {l : ImpLit} {t : NfTy} {v : Int} (hl : litInt l = some (t, v)
   cases l with
   | int n =>
       simp only [litInt, Option.some.injEq, Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      simp only [NfTy.ofLit?, Option.some.injEq] at hx
-      subst hx; rfl
+      obtain ⟨ht, rfl⟩ := hl
+      by_cases hc : 0 ≤ n ∧ n < 2 ^ 64
+      · rw [if_pos hc] at ht
+        subst ht
+        simp only [NfTy.ofLit?, if_pos hc, Option.some.injEq] at hx
+        subst hx
+        show Value.int n = Value.int ((BitVec.ofNat 64 n.toNat).toNat : Int)
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg hc.1]
+      · rw [if_neg hc] at ht
+        subst ht
+        simp only [NfTy.ofLit?, Option.some.injEq] at hx
+        subst hx; rfl
   | uintLit W n =>
       simp only [litInt, Option.some.injEq, Prod.mk.injEq] at hl
       obtain ⟨rfl, rfl⟩ := hl
@@ -1081,59 +1051,6 @@ theorem letBind_sound (bi : Builtins) (fuel : Nat) (x : String) {v b : ImpExpr}
       exact ⟨W2, by show PDen bi tf (ov.pre.append ob.pre) V = _; rw [PDen_append, hW1]; exact hW2,
         hrel2, rfl⟩
   | _ => rw [letBind_run, h1] at hrun; cases hrun
-
-/-- A sound output for an expression whose values are integers in `[0, 2 ^ 64)` is sound as
-    a `64`-bit word. -/
-theorem asCount_sound (bi : Builtins) (fuel : Nat) {e : ImpExpr} {Γ : Ctxt nfDialect}
-    {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel e σ o)
-    (hn : ∀ (env : Env) (v : Value) (env' : Env),
-      (denote' bi fuel e).run env = (.val v, env') → ∃ n : Int, v = .int n ∧ 0 ≤ n ∧ n < 2 ^ 64) :
-    Sound bi fuel e σ o.asCount := by
-  obtain ⟨Δ, t, pre, σo, res⟩ := o
-  cases t
-  case int =>
-    intro env V v env' hrel hrun tf
-    obtain ⟨W, hW, hrelW, hv⟩ := hs env V v env' hrel hrun tf
-    obtain ⟨n, rfl, h0, h64⟩ := hn env v env' hrun
-    have hres : res.lookup W = n := (Value.int.inj hv).symm
-    refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 (n - 0).toNat)
-      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) (0 : Int) W), ?_, ?_, ?_⟩
-    · have hZ : PDen bi tf (bind1 σo (.ilit .int 0) .nil).pre W =
-          some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) (0 : Int) W) :=
-        (PDen_bind1 bi tf σo (.ilit .int 0) .nil W).trans rfl
-      refine (PDen_append bi tf pre _ V).trans
-        ((congrArg (fun a => Option.bind a _) hW).trans ?_)
-      refine (PDen_append bi tf _ _ W).trans
-        ((congrArg (fun a => Option.bind a _) hZ).trans ?_)
-      refine (PDen_bind1 bi tf _ (.trip .int) _ _).trans ?_
-      show Option.map _ (some (BitVec.ofNat 64 (Int.toNat (@HSub.hSub Int Int Int _ (res.lookup W) 0)))) = _
-      rw [hres]
-      rfl
-    · exact (hrelW.mapV (fun v => Var.there v) fun _ _ => rfl).mapV (fun v => Var.there v)
-        fun _ _ => rfl
-    · show Value.int n = Value.int ((BitVec.ofNat 64 (n - 0).toNat).toNat : Int)
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-      congr 1
-      omega
-  all_goals exact hs
-
-/-- The output of the value of a binding is sound when the output of the value is. -/
-theorem letOut_sound (bi : Builtins) (fuel : Nat) (x : String) {v : ImpExpr} (b : ImpExpr)
-    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel v σ o) :
-    Sound bi fuel v σ (letOut x v b o) := by
-  unfold letOut
-  split
-  · rename_i hc
-    refine asCount_sound bi fuel hs fun env w env' hr => ?_
-    unfold countLit at hc
-    split at hc
-    · rename_i n
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
-      rw [lit_run] at hr
-      cases hr
-      exact ⟨n, rfl, hc.1.1, hc.1.2⟩
-    · cases hc
-  · exact hs
 
 /-- An assignment of a sound output is sound. -/
 theorem assign_sound(bi : Builtins) (fuel : Nat) (x : String) (tgt : Option String)
@@ -1497,16 +1414,16 @@ theorem forLoop_succ_run_val (bi : Builtins) (n : Nat) (i : String) {lo hi : Int
 
 /-- **The loop.** Let every run of the body from an environment satisfying `Inv`, extended
     with the counter `lo + k`, to a value be matched by the target body at the trip index
-    `k`, to a valuation of the carried tuple satisfying `Inv` with the final environment.
-    Then a run of `denoteForLoop'` from the counter `lo + k` to a value, with `m` trips left
-    and `k + m < 2 ^ 64`, is matched by the fold of the target body over the trip indices
-    `k, …, k + m - 1`. -/
+    `k` with `lo + k` below the upper bound, to a valuation of the carried tuple satisfying
+    `Inv` with the final environment. Then a run of `denoteForLoop'` from the counter
+    `lo + k` to a value, with `m` trips left and `k + m < 2 ^ 64`, is matched by the fold of
+    the target body over the trip indices `k, …, k + m - 1`. -/
 theorem loop_sound (bi : Builtins) (i : String)
     (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt nfDialect} (V₃ : Valuation Γ₃) {cs : List NfTy}
     (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs) (tf : Nat)
     (Inv : Env → Valuation (d := nfDialect) cs → Prop)
     (HS : ∀ (k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
-      (e₂ : Env), k < 2 ^ 64 → Inv env acc →
+      (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv env acc →
       (denote' bi fuel body).run (env.extend i (.int (lo + k))) = (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
         PDenP bi tf bodyP (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧
@@ -1537,7 +1454,7 @@ theorem loop_sound (bi : Builtins) (i : String)
           cases rb with
           | val w =>
               obtain ⟨w, acc', hw, hcf, hacc', hinv'⟩ := HS k (f + 1) env acc _ e₂
-                (by omega) hinv hb ⟨w, rfl⟩
+                (by omega) hlt hinv hb ⟨w, rfl⟩
               cases hw
               rw [forLoop_succ_run_val bi f i body hlt hb hcf] at hrun
               have hk1 : lo + k + 1 = lo + ((k + 1 : Nat) : Int) := by push_cast; ring
@@ -1572,7 +1489,7 @@ theorem forFold_enc_run (bi : Builtins) (fuel : Nat) (i : String) (lo : Int)
     by `σ₃` to `env`, with `lo` in `loV` and the trip count `(h - lo).toNat` in `tripV`;
     let the names `xs` carry the values of `inits`, every name of `σ₃` other than `i` and
     the names `xs` be one the body does not bind, and `rec` be sound for the body. A run of
-    `denoteForLoop'` from `lo` to `h`, with fewer than `2 ^ 64` trips, is then matched by the
+    `denoteForLoop'` from `lo` to `h`, with `0 ≤ lo` and `h ≤ 2 ^ 64`, is then matched by the
     output of `loopOut`. -/
 theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Option String)
     {Γ Γ₃ : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γ₃) (σ₃ : NfEnv Γ₃)
@@ -1589,7 +1506,7 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
     (tf : Nat) (hpre : PDen bi tf pre₀ V = some V₃) (hrel : EnvRel σ₃ env V₃)
     (hcar : CarriedRel env xs cs (Expr.lookupArgs inits V₃)) (lo h : Int)
     (hlo : loV.lookup V₃ = lo) (htrip : tripV.lookup V₃ = BitVec.ofNat 64 (h - lo).toNat)
-    (hM : (h - lo).toNat < 2 ^ 64) (r : Value) (env' : Env)
+    (hM : (h - lo).toNat < 2 ^ 64) (hlo0 : 0 ≤ lo) (hh64 : h ≤ 2 ^ 64) (r : Value) (env' : Env)
     (hrun : (_root_.Hax.denoteForLoop' bi fuel i lo h body).run env = (.val r, env')) :
     ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
   simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
@@ -1598,7 +1515,7 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
   let Inv : Env → Valuation (d := nfDialect) cs → Prop := fun e acc =>
     CarriedRel e xs cs acc ∧ FrameRel σ₃ i xs e V₃
   have HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
-      (e₂ : Env), k < 2 ^ 64 → Inv e acc →
+      (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv e acc →
       (denote' bi f body).run (e.extend i (.int (lo + k))) = (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
         PDenP bi tf ((NFPre.append (bind1N (some i) (loopEnv σ₃ i xs cs (headVars cs)
@@ -1607,8 +1524,13 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
               (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))).pre
             ob.pre).plug (.ret rets))
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧ Inv e₂ acc' := by
-    intro k f e acc rb e₂ hk hinv hb hval
+    intro k f e acc rb e₂ hk hkh hinv hb hval
     obtain ⟨w, rfl⟩ := hval
+    have hencC : Value.int (lo + (k : Int)) =
+        enc (NfTy.word 64) (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
+      show _ = Value.int ((BitVec.ofNat 64 (lo + (k : Int)).toNat).toNat : Int)
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg (by omega)]
+    rw [hencC] at hb
     have hB : EnvRel (loopEnv σ₃ i xs cs (headVars cs)
         fun v => Var.shiftApp (d := nfDialect) cs v.there) e
         (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) :=
@@ -1620,7 +1542,7 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
         (Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
           (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))) =
-          some (lo + (k : Int)) := by
+          some (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
       have hargs : Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
           (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
@@ -1632,23 +1554,25 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
         rw [Var.lookup_shiftApp, Var.lookup_shiftApp, ← hlo]
         rfl
       rw [hargs]
-      show some (lo + ((BitVec.ofNat 64 k).toNat : Int)) = _
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+      show (if 0 ≤ lo ∧ lo + ((BitVec.ofNat 64 k).toNat : Int) < 2 ^ 64 then
+        some (BitVec.ofNat 64 (lo + ((BitVec.ofNat 64 k).toNat : Int)).toNat) else none) = _
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk, if_pos ⟨hlo0, by omega⟩]
     have hpC : ∀ tf', PDen bi tf' (bind1N (some i) (loopEnv σ₃ i xs cs (headVars cs)
         fun v => Var.shiftApp (d := nfDialect) cs v.there) .ctr
         (.cons (Var.shiftApp cs (Var.there loV))
           (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))).pre
         (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
-        some (Ctxt.Valuation.extend (t := NfTy.int)
+        some (Ctxt.Valuation.extend (t := NfTy.word 64)
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
-          (lo + (k : Int))) := by
+          (BitVec.ofNat 64 (lo + (k : Int)).toNat)) := by
       intro tf'
       exact (PDen_bind1N bi tf' (some i) _ .ctr _ _).trans
         ((congrArg (Option.map _) hctr).trans rfl)
-    have hC := (hB.mapV (fun v => Var.there (s := NfTy.int) v) fun _ _ => rfl).cons i NfTy.int
-      (@Var.here nfDialect (cs ++ NfTy.word 64 :: Γ₃) NfTy.int)
-      (V := Ctxt.Valuation.extend (t := NfTy.int)
-        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) (lo + (k : Int)))
+    have hC := (hB.mapV (fun v => Var.there (s := NfTy.word 64) v) fun _ _ => rfl).cons i
+      (NfTy.word 64) (@Var.here nfDialect (cs ++ NfTy.word 64 :: Γ₃) (NfTy.word 64))
+      (V := Ctxt.Valuation.extend (t := NfTy.word 64)
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (BitVec.ofNat 64 (lo + (k : Int)).toNat))
     obtain ⟨W', hW', hrel', rfl⟩ := HB _ hob f _ _ w e₂ hC hb tf
     refine ⟨_, Expr.lookupArgs rets W', rfl, enc_ne_controlFlow _ _, ?_, ?_, ?_⟩
     · exact PDenP_plug_ret bi tf _ rets _ (PDen_append_some bi tf (hpC tf) hW')
@@ -1727,6 +1651,34 @@ theorem trip_lt_of_bound {lo : Int} {t : NfTy} {x : t.denote} {h : Int} {hi : Im
         obtain rfl := toInt_of_enc_int (hlit n rfl) hx
         omega
 
+/-- Under the bounds of `boundOk` or of `litBoundOk`, the lower bound is not negative and the
+    upper bound is below `2 ^ 64`. -/
+theorem bound_range {lo : Int} {t : NfTy} {x : t.denote} {h : Int} {hi : ImpExpr}
+    (hb : (boundOk lo t || litBoundOk lo hi) = true) (hx : NfTy.toInt? t x = some h)
+    (hlit : ∀ n, hi = .lit (.int n) → enc t x = .int n) : 0 ≤ lo ∧ h < 2 ^ 64 := by
+  rcases Bool.or_eq_true_iff.mp hb with hb | hb
+  · cases t with
+    | uint W =>
+        simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        simp only [NfTy.toInt?, Option.some.injEq] at hx
+        subst hx
+        have h1 : x.toNat < 2 ^ W.bits := x.isLt
+        have h2 : 2 ^ W.bits ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
+        exact ⟨hb.1, by omega⟩
+    | word w =>
+        simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        simp only [NfTy.toInt?, Option.some.injEq] at hx
+        subst hx
+        have h1 : x.toNat < 2 ^ w := x.isLt
+        have h2 : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
+        exact ⟨hb.1, by omega⟩
+    | _ => simp [boundOk] at hb
+  · match hi, hb with
+    | .lit (.int n), hb =>
+        simp only [litBoundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        obtain rfl := toInt_of_enc_int (hlit n rfl) hx
+        exact ⟨hb.1, hb.2⟩
+
 /-- **A counted loop is sound**, when the front is sound for its body. -/
 theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (fuel : Nat) (tgt : Option String) (i : String) (lo : Int) (hi body : ImpExpr)
@@ -1782,18 +1734,21 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
         (BitVec.ofNat 64 (hInt - lo).toNat) W2) :=
     hrel2.mapV (fun v => Var.there v) fun _ _ => rfl
+  have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
+    fun n hn => by
+      subst hn
+      rw [lit_run] at hh
+      have h1 := (Prod.mk.inj hh).1
+      injection h1 with h2
+      exact h2.symm
+  have hrange := bound_range hbd htoInt hlitE
   exact loopOut_sound bi fuel body tgt _ _ _ _ i _ _ _ _ hL
     (fun σ' _ h' fuel' => HB σ' h' fuel')
     (by rw [List.length_map, entriesVars_length])
     (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
     e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (hLo tf) hW2) hTrip) hrelT
     (CarriedRel.of_entries hrelT _ (carried_lookup _ i body)) lo hInt hloW rfl
-    (trip_lt_of_bound hbd htoInt fun n hn => by
-      subst hn
-      rw [lit_run] at hh
-      have h1 := (Prod.mk.inj hh).1
-      injection h1 with h2
-      exact h2.symm) r env' hloop
+    (trip_lt_of_bound hbd htoInt hlitE) hrange.1 (le_of_lt hrange.2) r env' hloop
 
 /-! ## 10b. The conditional -/
 
@@ -2011,8 +1966,7 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ov, hov, ob, hob, rfl⟩ := h
-    exact letBind_sound bi fuel x (letOut_sound bi fuel x b (ihv _ σ hov fuel))
-      (ihb _ _ hob fuel)
+    exact letBind_sound bi fuel x (ihv _ σ hov fuel) (ihb _ _ hob fuel)
   case seq a b iha ihb =>
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
@@ -2140,6 +2094,7 @@ def rbAtoms {Γ : Ctxt nfDialect} (ρ : RBEnv Γ) :
 /-- The literal of the value `v` at the type `t` of an `ilit`. -/
 def litOfIlit : NfTy → Int → Option ImpLit
   | .int, v => some (.int v)
+  | .word _, v => some (.int v)
   | .uint W, v => some (.uintLit W v.toNat)
   | .sint W, v => some (.sintLit W v)
   | _, _ => none
@@ -2479,6 +2434,22 @@ theorem litOfIlit_ofLit {t : NfTy} {v : Int} {l : ImpLit} {y : t.denote}
       simp only [litOfIlit, Option.some.injEq] at hl
       simp only [NfTy.ofLit?, Option.some.injEq] at hy
       subst hl hy; rfl
+  | word w =>
+      simp only [litOfIlit, Option.some.injEq] at hl
+      subst hl
+      simp only [NfTy.ofLit?] at hy
+      split at hy
+      · rename_i hr
+        simp only [Option.some.injEq] at hy
+        subst hy
+        have h0 : (v.toNat : Int) = v := Int.toNat_of_nonneg hr.1
+        have h1 : v.toNat < 2 ^ w := by
+          have h2 := hr.2
+          rw [← h0] at h2
+          exact_mod_cast h2
+        show Value.int v = Value.int ((BitVec.ofNat w v.toNat).toNat : Int)
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h1, h0]
+      · cases hy
   | uint W =>
       simp only [litOfIlit, Option.some.injEq] at hl
       subst hl
@@ -2914,15 +2885,18 @@ theorem rbLoop_run (bi : Builtins) (tf : Nat) (i : String) (lo h : Int) (bodyIE 
       rw [hk1]
       exact hF₁ F' (by omega)
 
-/-- A named counter operation has the result type `int` and the value `lo + i` of its
-    arguments. -/
+/-- A named counter operation has the result type of `64`-bit words and, when the lower
+    bound `lo` is not negative and `lo + i` is below `2 ^ 64`, the word of `lo + i`; it
+    fails otherwise. -/
 theorem ctrOf?_sound (bi : Builtins) {Γ : Ctxt nfDialect} {op : NfOp}
     {args : HVector (fun t => Var Γ t) op.sig} {i : String} {a : Var Γ NfTy.int}
     {b : Var Γ (NfTy.word 64)} (h : ctrOf? op args = some (i, a, b)) :
-    ∃ hr : op.ret = NfTy.int, ∀ V : Valuation Γ,
+    ∃ hr : op.ret = NfTy.word 64, ∀ V : Valuation Γ,
       nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) =
-        some (hr ▸ ((fun (x : Int) (y : BitVec 64) => x + (y.toNat : Int))
-          (a.lookup V) (b.lookup V))) := by
+        (fun (x : Int) (y : BitVec 64) =>
+          if 0 ≤ x ∧ x + (y.toNat : Int) < 2 ^ 64 then
+            some (hr ▸ BitVec.ofNat 64 (x + (y.toNat : Int)).toNat)
+          else none) (a.lookup V) (b.lookup V) := by
   cases op <;> try (simp [ctrOf?] at h; done)
   rename_i n op
   cases op <;> try (simp [ctrOf?] at h; done)
@@ -3122,7 +3096,12 @@ theorem rbProg_sound_aux (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : 
                 hinv.1
             change (nfDenoteOp (tableOf bi) op (Expr.lookupArgs args _)).bind
               (fun x => PDenP bi tf rest (Valuation.extend _ x)) = some acc' at hpb
-            rw [hctr, Option.bind_some] at hpb
+            rw [hctr] at hpb
+            beta_reduce at hpb
+            split at hpb
+            case isFalse => cases hpb
+            rename_i hrg
+            rw [Option.bind_some] at hpb
             have ha := hrelB _ a
             beta_reduce at ha
             rw [hra] at ha
@@ -3136,11 +3115,14 @@ theorem rbProg_sound_aux (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : 
                   Int) = kk := by
               change Value.int _ = Value.int _ at hb
               exact Value.int.inj hb
-            have henc : ∀ {T : NfTy} (h : NfTy.int = T) (z : Int), enc T (h ▸ z) = .int z := by
+            have henc : ∀ {T : NfTy} (h : NfTy.word 64 = T) (z : BitVec 64),
+                enc T (h ▸ z) = .int (z.toNat : Int) := by
               intro T h z; subst h; rfl
+            rw [ha', hb'] at hrg
             have hrel'' := ((hrelB.clobber_extend i (.int (lo' + kk))).cons (s := op.ret)
               (r := .name i)
-              (x := hr ▸ ((fun (x : Int) (y : BitVec 64) => x + (y.toNat : Int))
+              (x := hr ▸ ((fun (x : Int) (y : BitVec 64) =>
+                  BitVec.ofNat 64 (x + (y.toNat : Int)).toNat)
                 (a.lookup (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 kk) V)))
                 (b.lookup (hvAppend acc
                   (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 kk) V)))))
@@ -3148,7 +3130,8 @@ theorem rbProg_sound_aux (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : 
                 show (e.extend i (.int (lo' + kk))) i = some _
                 rw [Env.extend_same, henc hr.symm, ha']
                 beta_reduce
-                rw [hb']))
+                rw [hb', BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega),
+                  Int.toNat_of_nonneg (by omega)]))
             obtain ⟨f, r, e₂, hrun, herr, hQ'⟩ := ihr _ c _ bIE c₁ hbody _ _ acc' hrel'' hpb
               (fun r e₂ => r = .val .unit ∧ NamesVals e₂ cn (encAll cs acc'))
               (by
@@ -3531,14 +3514,14 @@ def hax64NFWordTy : NfTy → Bool
   | .word 64 => true
   | _ => false
 
-/-- The call typing of `u64` code on integer arrays of a fixed length `n`, at an index of a
-    `hax64NFWordTy` type: `index` of an array is an integer; `array_update` of an array with
-    a value of a `hax64NFWordTy` type is an array of the same length. -/
+/-- The call typing of `u64` code on arrays of `64`-bit words of a fixed length `n`, at an
+    index of a `hax64NFWordTy` type: `index` of an array is a `64`-bit word; `array_update` of
+    an array with a `64`-bit word is an array of the same length. -/
 def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
   match f, as with
-  | "index", [.arr _ .int, ti] => if hax64NFWordTy ti then some .int else none
-  | "array_update", [.arr n .int, ti, t] =>
-      if hax64NFWordTy ti && hax64NFWordTy t then some (.arr n .int) else none
+  | "index", [.arr _ (.word 64), ti] => if hax64NFWordTy ti then some (.word 64) else none
+  | "array_update", [.arr n (.word 64), ti, .word 64] =>
+      if hax64NFWordTy ti then some (.arr n (.word 64)) else none
   | _, _ => none
 
 /-- The result type of `select` on two values of `hax64NFWordTy` types: a `64`-bit word when
@@ -3921,7 +3904,42 @@ theorem dec_arr_int {n : Nat} (vs : List Value) (hvs : ∀ v ∈ vs, ∃ z : Int
   · simp only [enc, he, Value.array.injEq]
     apply List.ext_getElem <;> simp
 
-/-- The call typing of `u64` code on fixed-length integer arrays is sound for
+/-- A list of integers in `[0, 2 ^ 64)` decodes as a slice of `64`-bit words. -/
+theorem dec_slice_word : ∀ (vs : List Value),
+    (∀ v ∈ vs, ∃ r : Nat, v = .int r ∧ r < 2 ^ 64) →
+    ∃ ys, dec (.slice (.word 64)) (.array vs) = some ys ∧
+      Value.array vs = enc (.slice (.word 64)) ys
+  | [], _ => ⟨[], rfl, rfl⟩
+  | v :: vs, h => by
+      obtain ⟨r, rfl, hr⟩ := h v List.mem_cons_self
+      obtain ⟨ys, hd, he⟩ := dec_slice_word vs fun w hw => h w (List.mem_cons_of_mem _ hw)
+      obtain ⟨y, hy, hey⟩ := dec_word64_nat hr
+      refine ⟨y :: ys, ?_, ?_⟩
+      · change (Value.int r :: vs).mapM (dec (.word 64)) = some (y :: ys)
+        change vs.mapM (dec (.word 64)) = some ys at hd
+        simp [List.mapM_cons, hd, hy]
+      · change Value.array vs = Value.array (ys.map (enc (.word 64))) at he
+        simp only [Value.array.injEq] at he
+        change Value.array (Value.int r :: vs) = Value.array ((y :: ys).map (enc (.word 64)))
+        rw [List.map_cons, ← he, ← hey]
+
+/-- A list of `n` integers in `[0, 2 ^ 64)` decodes as an array of `n` `64`-bit words. -/
+theorem dec_arr_word {n : Nat} (vs : List Value)
+    (hvs : ∀ v ∈ vs, ∃ r : Nat, v = .int r ∧ r < 2 ^ 64) (hn : vs.length = n) :
+    ∃ f, dec (.arr n (.word 64)) (.array vs) = some f ∧
+      Value.array vs = enc (.arr n (.word 64)) f := by
+  obtain ⟨ys, hd, he⟩ := dec_slice_word vs hvs
+  change vs.mapM (dec (.word 64)) = some ys at hd
+  change Value.array vs = Value.array (ys.map (enc (.word 64))) at he
+  simp only [Value.array.injEq] at he
+  have hl : ys.length = n := by rw [← hn, he, List.length_map]
+  subst hl
+  refine ⟨fun i => ys[i.1], ?_, ?_⟩
+  · simp only [dec, hd, Option.bind_some, dite_true]
+  · simp only [enc, he, Value.array.injEq]
+    apply List.ext_getElem <;> simp
+
+/-- The call typing of `u64` code on fixed-length arrays of `64`-bit words is sound for
     `Hax.hax64Builtins`. -/
 theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
     (hr : hax64SigOfArr f as = some r) (xs : HVector NfTy.denote as) (v : Value)
@@ -3937,53 +3955,53 @@ theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
       match xs with
       | .cons g (.cons i .nil) =>
         obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc hti i
-        change (_root_.Hax.hax64WordOps "index" [enc (.arr n .int) g, enc ti i] <|>
-          _root_.Hax.widthArrayOps "index" [enc (.arr n .int) g, enc ti i]) = some v at hv
+        change (_root_.Hax.hax64WordOps "index" [enc (.arr n (.word 64)) g, enc ti i] <|>
+          _root_.Hax.widthArrayOps "index" [enc (.arr n (.word 64)) g, enc ti i]) = some v at hv
         rw [hzi] at hv
         change (_root_.Hax.hax64WordOps "index"
-            [.array (List.ofFn fun k => enc .int (g k)), .int zi] <|>
+            [.array (List.ofFn fun k => enc (.word 64) (g k)), .int zi] <|>
           _root_.Hax.widthArrayOps "index"
-            [.array (List.ofFn fun k => enc .int (g k)), .int zi]) = some v at hv
+            [.array (List.ofFn fun k => enc (.word 64) (g k)), .int zi]) = some v at hv
         rw [_root_.Hax.hax64WordOps_index] at hv
         change _root_.Hax.widthArrayOps "index"
-          [.array (List.ofFn fun k => enc .int (g k)), .int zi] = some v at hv
+          [.array (List.ofFn fun k => enc (.word 64) (g k)), .int zi] = some v at hv
         rw [_root_.Hax.widthArrayOps_index_int] at hv
         split at hv
-        · rcases hy : (List.ofFn fun k => enc .int (g k))[zi.toNat]? with _ | y
+        · rcases hy : (List.ofFn fun k => enc (.word 64) (g k))[zi.toNat]? with _ | y
           · rw [hy] at hv; cases hv
           · rw [hy] at hv
             obtain ⟨k, hk⟩ := List.mem_ofFn.mp (List.mem_of_getElem? hy)
             subst hk
-            change some (Value.int (g k)) = some v at hv
+            change some (Value.int ((g k).toNat : Nat)) = some v at hv
             cases hv
-            exact ⟨g k, rfl, rfl⟩
+            exact dec_word64_nat (g k).isLt
         · cases hv
     · cases hr
-  · rename_i n ti t
+  · rename_i n ti
     split at hr
-    · rename_i ht
-      simp only [Bool.and_eq_true] at ht
+    · rename_i hti
       simp only [Option.some.injEq] at hr
       subst hr
       match xs with
       | .cons g (.cons i (.cons x .nil)) =>
-        obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc ht.1 i
-        obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht.2 x
+        obtain ⟨zi, hzi⟩ := hax64NFWordTy_enc hti i
         change (_root_.Hax.hax64WordOps "array_update"
-            [.array (List.ofFn fun k => enc .int (g k)), enc ti i, enc t x] <|>
+            [.array (List.ofFn fun k => enc (.word 64) (g k)), enc ti i, enc (.word 64) x] <|>
           _root_.Hax.widthArrayOps "array_update"
-            [.array (List.ofFn fun k => enc .int (g k)), enc ti i, enc t x]) = some v at hv
+            [.array (List.ofFn fun k => enc (.word 64) (g k)), enc ti i, enc (.word 64) x]) =
+              some v at hv
         rw [hzi, _root_.Hax.hax64WordOps_array_update] at hv
         change _root_.Hax.widthArrayOps "array_update"
-          [.array (List.ofFn fun k => enc .int (g k)), .int zi, enc t x] = some v at hv
-        rw [_root_.Hax.widthArrayOps_array_update_int, hz] at hv
+          [.array (List.ofFn fun k => enc (.word 64) (g k)), .int zi, .int (x.toNat : Nat)] =
+            some v at hv
+        rw [_root_.Hax.widthArrayOps_array_update_int] at hv
         split at hv
         · cases hv
-          refine dec_arr_int _ (fun w hw => ?_) (by simp)
+          refine dec_arr_word _ (fun w hw => ?_) (by simp)
           rcases List.mem_or_eq_of_mem_set hw with hw | rfl
           · obtain ⟨k, rfl⟩ := List.mem_ofFn.mp hw
-            exact ⟨g k, rfl⟩
-          · exact ⟨z, rfl⟩
+            exact ⟨(g k).toNat, rfl, (g k).isLt⟩
+          · exact ⟨x.toNat, rfl, x.isLt⟩
         · cases hv
     · cases hr
   · cases hr
