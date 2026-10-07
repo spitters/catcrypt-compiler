@@ -37,7 +37,8 @@ normalising additions and subtractions of immediates (`linOf`), with the lower b
 remaining summands; a lower bound is read off a fact on the same term.
 
 `idxAnnot` computes an annotation by restricting candidate facts to a fixed point; the
-check does not depend on it. `boundFacts` reads the facts of a System V layout's register
+bounds of its candidates are those of the entry facts and the array lengths of the index
+obligations. The check does not depend on it. `boundFacts` reads the facts of a System V layout's register
 bounds, which hold at every entry state satisfying `AbiLayout.Regions`.
 
 ## Main definitions
@@ -786,13 +787,22 @@ def annPass (B : List LinstrRM) (G : CFG) (ann : List (List IdxFact)) :
         | _ => ann
     | _ => ann) ann
 
+/-- The array lengths of the index obligations of the blocks of `B`. -/
+def oblLens (B : List LinstrRM) (G : CFG) : List Nat :=
+  (List.range G.blocks.size).flatMap fun k =>
+    (symObl (bodyAt B (G.blk k) (G.blk k).term) SSt.start).map (·.2)
+
 /-- **The annotation by restriction**: block `0` holds the candidates the entry facts give,
     every other block all candidates, restricted by `annPass` to a fixed point (within a
-    bound on the number of passes). `idxInvCheckB` checks the result. -/
+    bound on the number of passes). The bounds of the candidates are the bounds of the
+    entry facts and the array lengths `oblLens` of the index obligations, so a counter
+    seeded with an immediate is bounded by the length of the array its index reads.
+    `idxInvCheckB` checks the result. -/
 def idxAnnot (entry : List IdxFact) (B : List LinstrRM) : List (List IdxFact) :=
   match cfgOf (B.map Prod.fst) with
   | some G =>
-      let bs := (entry.filterMap fun | .le _ b => some b | .ge _ _ => none).eraseDups
+      let bs := ((entry.filterMap fun | .le _ b => some b | .ge _ _ => none)
+        ++ oblLens B G).eraseDups
       let cs := annCands (annRegs entry B G) bs
       let a0 := (List.range G.blocks.size).map fun k =>
         if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg) else cs
