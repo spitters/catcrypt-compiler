@@ -145,7 +145,6 @@ theorem loopRFor_ct_preserves
     (lt : LevelTable) (leafCT : LeafCTTable)
     (leafSpec : LeafSpec) (N : Nat)
     (hCT_body : cmdCT body lt leafCT = true)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RFor x N_loop body))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -155,7 +154,7 @@ theorem loopRFor_ct_preserves
   have hCT_for : cmdCT (.RFor x N_loop body) lt leafCT = true := by
     rw [cmdCT_RFor]; exact hCT_body
   exact cmdCT_sound (.RFor x N_loop body) lt leafCT leafSpec N
-    hCT_for hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hCT_for hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-- **Closed-bound RFor is CT by construction.**
 

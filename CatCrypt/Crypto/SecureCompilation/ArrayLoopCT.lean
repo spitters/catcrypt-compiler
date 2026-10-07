@@ -63,7 +63,6 @@ theorem arrMapLoop_noninterference (src dst t : Located) (n : Nat)
     (lt : LevelTable) (leafCT : LeafCTTable) (leafSpec : LeafSpec) (N : Nat)
     (hi : lt "i" = .Public) (hsrc : lt src.locVar = .Public)
     (hdst : lt dst.locVar = .Public) (ht : lt t.locVar = .Public)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RFor "i" n (arrMapBody src dst t)))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -71,7 +70,7 @@ theorem arrMapLoop_noninterference (src dst t : Located) (n : Nat)
     (hExec2 : RustExec N leafSpec (.RFor "i" n (arrMapBody src dst t)) rs2 rs2') :
     PublicEquiv lt rs1' rs2' :=
   cmdCT_sound (.RFor "i" n (arrMapBody src dst t)) lt leafCT leafSpec N
-    (arrMapLoop_isCT src dst t n lt leafCT hi hsrc hdst ht) hLeaf hCMOV
+    (arrMapLoop_isCT src dst t n lt leafCT hi hsrc hdst ht) hCMOV
     rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 end CatCrypt.Crypto.Jasmin.LowCT

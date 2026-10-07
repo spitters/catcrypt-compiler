@@ -704,27 +704,10 @@ theorem SExpr.evalState_eq_of_isPublic {lt : LevelTable} {rs1 rs2 : RustState}
     match.  A finer-grained leakage model would expose the per-step
     trace explicitly; that's left as future work.
 
-    `RustExec` already factors per-leaf semantics through
-    `leafSpec.call`, so the leaf-level CT-ness is delegated to the
-    `leafCT` table — the soundness theorem assumes leaves classified
-    `true` in `leafCT` actually *are* CT (they produce equal outputs
-    on Public-equivalent inputs).  See `LeafCTAssumption` below. -/
-
-/-- **Per-leaf CT assumption.**  A leaf `f` that `leafCT` classifies
-    as `true` produces equal outputs whenever the dependent argument
-    list is Public-equivalent.  This is a side-condition the per-leaf
-    CT table is *witnessed by* (proven externally — by audit for
-    fiat-crypto, by Jasmin's `ct_check` for Jasmin leaves). -/
-def LeafCTAssumption (leafSpec : LeafSpec) (leafCT : LeafCTTable) : Prop :=
-  ∀ (f : String) (dt : TowerType) (argTs : List TowerType)
-    (oldDest : RustVal dt)
-    (args1 args2 : List (Σ t : TowerType, RustVal t)),
-    leafCT f = true →
-    -- Inputs are Public-equivalent (modelled as full equality at this
-    -- abstraction level — a finer model would partition arg slots).
-    args1 = args2 →
-    leafSpec.call f dt argTs oldDest args1 =
-      leafSpec.call f dt argTs oldDest args2
+    `RustExec` factors the semantics of a leaf through `leafSpec.call`,
+    a function of the argument values.  `cmdCT` requires every argument
+    and destination slot of a call to be Public, so the two runs call
+    the leaf on equal arguments and obtain equal results. -/
 
 /-! ### §4.2½  CMOV invariant — the per-RSelect well-formedness obligation
 
@@ -816,13 +799,12 @@ lemma callNUpdate_PublicEquiv
     rw [hLookEq]
     exact hEq.set_tower_same d.locVar _
 
-/-- `RCall` preserves `PublicEquiv` given the per-leaf CT assumption and
+/-- `RCall` preserves `PublicEquiv` given
     that both `dest` and every `arg` are Public-classified slots.  The
     strengthened `cmdCT` provides these per-slot obligations syntactically. -/
 lemma RCall_CT_step
     {leafSpec : LeafSpec} {leafCT : LeafCTTable} {lt : LevelTable}
     {N : Nat} {f : String} {dest : Located} {args : List Located}
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCT : leafCT f = true)
     (hCTdest : lt dest.locVar = .Public)
     (hCTargs : args.all (fun a => lt a.locVar == .Public) = true)
@@ -852,16 +834,13 @@ lemma RCall_CT_step
       have hArgListEq : argList1 = argList2 := by
         rw [hArgList1, hArgList2]
         exact args_filterMap_eq hEq hCTargs
-      -- 3. The leaf produces equal outputs on equal inputs (trivial — but
-      --    we invoke the per-leaf CT assumption to make the dependency
-      --    explicit).
+      -- 3. The leaf produces equal outputs on equal inputs.
       have hCallEq : leafSpec.call f dest.locDst (args.map (·.locDst))
                        oldV1 argList1 =
                      leafSpec.call f dest.locDst (args.map (·.locDst))
                        oldV2 argList2 := by
         subst hOldV; subst hArgListEq
-        exact hLeaf f dest.locDst (args.map (·.locDst)) oldV1
-                argList1 argList1 hCT rfl
+        rfl
       rw [hCallEq]
       exact hEq.set_tower_same dest.locVar _
 
@@ -873,7 +852,6 @@ lemma RCall_CT_step
 lemma RCallDstThreaded_CT_step
     {leafSpec : LeafSpec} {leafCT : LeafCTTable} {lt : LevelTable}
     {N : Nat} {f : String} {dst : Located} {args : List Located}
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCT : leafCT f = true)
     (hCTdst : lt dst.locVar = .Public)
     (hCTargs : args.all (fun a => lt a.locVar == .Public) = true)
@@ -913,8 +891,7 @@ lemma RCallDstThreaded_CT_step
                      leafSpec.call f dst.locDst ((dst :: args).map (·.locDst))
                        oldV2 argList2 := by
         subst hOldV; subst hArgListEq
-        exact hLeaf f dst.locDst ((dst :: args).map (·.locDst)) oldV1
-                argList1 argList1 hCT rfl
+        rfl
       rw [hCallEq]
       exact hEq.set_tower_same dst.locVar _
 
@@ -923,7 +900,6 @@ lemma RCallDstThreaded_CT_step
 lemma RCallSwap_CT_step
     {leafSpec : LeafSpec} {leafCT : LeafCTTable} {lt : LevelTable}
     {N : Nat} {f : String} {dest1 dest2 : Located} {args : List Located}
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCT : leafCT f = true)
     (hCTdest1 : lt dest1.locVar = .Public)
     (hCTdest2 : lt dest2.locVar = .Public)
@@ -938,8 +914,8 @@ lemma RCallSwap_CT_step
     cases hExec2 with
     | callSwap _ _ _ _ _ rsMid2 _ hC21 hC22 =>
       have hMid : PublicEquiv lt rsMid1 rsMid2 :=
-        RCall_CT_step (lt := lt) hLeaf hCT hCTdest1 hCTargs hEq hC11 hC21
-      exact RCall_CT_step (lt := lt) hLeaf hCT hCTdest2 hCTargs hMid hC12 hC22
+        RCall_CT_step (lt := lt) hCT hCTdest1 hCTargs hEq hC11 hC21
+      exact RCall_CT_step (lt := lt) hCT hCTdest2 hCTargs hMid hC12 hC22
 
 /-- `RCloneCall` reduces to `RCall` after cloning the old destination's
     value into a fresh `cloneVar` slot.  Requires `cloneVar`,
@@ -952,7 +928,6 @@ lemma RCloneCall_CT_step
     {N : Nat} {cloneVar : String} {cloneTy : TowerType}
     {oldDest : Located} {innerF : String} {dest : Located}
     {args : List Located}
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCT : leafCT innerF = true)
     (hCTclone : lt cloneVar = .Public)
     (hCToldDest : lt oldDest.locVar = .Public)
@@ -976,7 +951,7 @@ lemma RCloneCall_CT_step
         subst hClone1; subst hClone2
         rw [hToldDest]
         exact hEq.set_tower_same cloneVar _
-      exact RCall_CT_step (lt := lt) hLeaf hCT hCTdest hCTargs hCloneEq
+      exact RCall_CT_step (lt := lt) hCT hCTdest hCTargs hCloneEq
               hInner1 hInner2
 
 /-- `RArrLoad` preserves `PublicEquiv` if the array slot, source slot,
@@ -1410,7 +1385,6 @@ theorem cmdCT_sound
     (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable)
     (leafSpec : LeafSpec) (N : Nat)
     (hCT : cmdCT cmd lt leafCT = true)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant cmd)
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -1563,7 +1537,7 @@ theorem cmdCT_sound
         (locatedUpdate rs dest
           (leafSpec.call f dest.locDst (args.map (·.locDst)) oldDestV argList)) :=
       RustExec.call f dest args rs oldDestV argList hLookup hArgList hArgTypes
-    exact RCall_CT_step (lt := lt) hLeaf hCTf hCTdest hCTargs hEq hExec1' hExec2
+    exact RCall_CT_step (lt := lt) hCTf hCTdest hCTargs hEq hExec1' hExec2
   | cloneCall cloneVar cloneTy oldDest innerF dest args
               rs rsClone rs' hClone hInner ihInner =>
     have hCTf : leafCT innerF = true := by
@@ -1584,7 +1558,7 @@ theorem cmdCT_sound
                      rs rs' :=
       RustExec.cloneCall cloneVar cloneTy oldDest innerF dest args
                           rs rsClone rs' hClone hInner
-    exact RCloneCall_CT_step (lt := lt) hLeaf hCTf hCTclone hCToldDest hCTdest
+    exact RCloneCall_CT_step (lt := lt) hCTf hCTclone hCToldDest hCTdest
             hCTargs hEq hExec1' hExec2
   | callSwap f dest1 dest2 args rs rs1 rs' hC1 hC2 ihC1 ihC2 =>
     have hCTf : leafCT f = true := by
@@ -1599,7 +1573,7 @@ theorem cmdCT_sound
       simp only [cmdCT_RCallSwap, Bool.and_eq_true] at hCT; exact hCT.2
     have hExec1' : RustExec N leafSpec (.RCallSwap f dest1 dest2 args) rs rs' :=
       RustExec.callSwap f dest1 dest2 args rs rs1 rs' hC1 hC2
-    exact RCallSwap_CT_step (lt := lt) hLeaf hCTf hCTdest1 hCTdest2 hCTargs hEq hExec1' hExec2
+    exact RCallSwap_CT_step (lt := lt) hCTf hCTdest1 hCTdest2 hCTargs hEq hExec1' hExec2
   | limbStore loc idx v rs oldDestV hLookup =>
     have hCTloc : lt loc.locVar = .Public := by
       simp only [cmdCT_RLimbStore] at hCT
@@ -1644,7 +1618,7 @@ theorem cmdCT_sound
         (locatedUpdate rs dst
           (leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList)) :=
       RustExec.callDstThreaded f dst args rs oldDestV argList hLookup hArgList hArgTypes
-    exact RCallDstThreaded_CT_step (lt := lt) hLeaf hCTf hCTdst hCTargs hEq hExec1' hExec2
+    exact RCallDstThreaded_CT_step (lt := lt) hCTf hCTdst hCTargs hEq hExec1' hExec2
   | selectFalse dst sel src0 src1 rs h srcV hSel hLookup =>
     have hCTdst : lt dst.locVar = .Public := by
       simp only [cmdCT_RSelect, Bool.and_eq_true] at hCT

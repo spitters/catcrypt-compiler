@@ -131,7 +131,7 @@ equates the halting state with the source denotation.
   the same trace from any two states.
 - `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` (`CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean`):
   a program accepted by `cmdCT`, run from two public-equivalent states, reaches
-  public-equivalent states, under `LeafCTAssumption` and `CMOVInvariant`.
+  public-equivalent states, under `CMOVInvariant`.
   `CMOVInvariant` holds for a select only when its two sources are the same slot, and
   `cmdCT` admits no computation on secrets.
 

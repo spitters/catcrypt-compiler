@@ -151,7 +151,6 @@ theorem coeffMapLoop_isCT (leafCT : LeafCTTable) :
     `PublicEquiv` noninterference statement, not a metric swap. -/
 theorem coeffMapLoop_noninterference
     (leafCT : LeafCTTable) (leafSpec : LeafSpec) (N : Nat)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant coeffMapLoop)
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv coeffLT rs1 rs2)
@@ -159,7 +158,7 @@ theorem coeffMapLoop_noninterference
     (hExec2 : RustExec N leafSpec coeffMapLoop rs2 rs2') :
     PublicEquiv coeffLT rs1' rs2' :=
   arrMapLoop_noninterference srcLoc dstLoc tmpLoc 256 coeffLT leafCT leafSpec N
-    rfl rfl rfl rfl hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    rfl rfl rfl rfl hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-! ### 2½. The dual: a secret index is rejected by the same analyser
 

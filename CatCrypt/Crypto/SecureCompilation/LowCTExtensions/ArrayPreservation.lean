@@ -159,7 +159,6 @@ theorem RArrLoad_ct_preserves_if_idx_public
     (hIdxPub : lt idxVar = .Public)
     (hDstPub : lt dst.locVar = .Public)
     (hSrcPub : lt src.locVar = .Public)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RArrLoad dst src idxVar))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -169,7 +168,7 @@ theorem RArrLoad_ct_preserves_if_idx_public
   have hCT : cmdCT (.RArrLoad dst src idxVar) lt leafCT = true := by
     rw [cmdCT_RArrLoad, hIdxPub, hDstPub, hSrcPub]; decide
   exact cmdCT_sound (.RArrLoad dst src idxVar) lt leafCT leafSpec N
-    hCT hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hCT hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-- **`RArrStore` preserves CT when the index is Public.** Same
     conditional shape as `RArrLoad_ct_preserves_if_idx_public`. -/
@@ -180,7 +179,6 @@ theorem RArrStore_ct_preserves_if_idx_public
     (hIdxPub : lt idxVar = .Public)
     (hArrPub : lt arr.locVar = .Public)
     (hSrcPub : lt src.locVar = .Public)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RArrStore arr idxVar src))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -190,7 +188,7 @@ theorem RArrStore_ct_preserves_if_idx_public
   have hCT : cmdCT (.RArrStore arr idxVar src) lt leafCT = true := by
     rw [cmdCT_RArrStore, hIdxPub, hArrPub, hSrcPub]; decide
   exact cmdCT_sound (.RArrStore arr idxVar src) lt leafCT leafSpec N
-    hCT hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hCT hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-! ## 3. The secret-index restriction, stated formally
 

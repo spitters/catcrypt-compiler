@@ -153,7 +153,6 @@ theorem CTPreservation_RFor_extended
     (lt : LevelTable) (leafCT : LeafCTTable)
     (leafSpec : LeafSpec) (N : Nat)
     (hCT_body : cmdCT body lt leafCT = true)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RFor x N_loop body))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -161,7 +160,7 @@ theorem CTPreservation_RFor_extended
     (hExec2 : RustExec N leafSpec (.RFor x N_loop body) rs2 rs2') :
     PublicEquiv lt rs1' rs2' :=
   loopRFor_ct_preserves x N_loop body lt leafCT leafSpec N
-    hCT_body hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hCT_body hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-- **CT preservation extended — `RArrLoad` coverage (CONDITIONAL on
     Public index).**
@@ -177,7 +176,6 @@ theorem CTPreservation_RArrLoad_extended_if_idx_public
     (hIdxPub : lt idxVar = .Public)
     (hDstPub : lt dst.locVar = .Public)
     (hSrcPub : lt src.locVar = .Public)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RArrLoad dst src idxVar))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -185,7 +183,7 @@ theorem CTPreservation_RArrLoad_extended_if_idx_public
     (hExec2 : RustExec N leafSpec (.RArrLoad dst src idxVar) rs2 rs2') :
     PublicEquiv lt rs1' rs2' :=
   RArrLoad_ct_preserves_if_idx_public dst src idxVar lt leafCT leafSpec N
-    hIdxPub hDstPub hSrcPub hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hIdxPub hDstPub hSrcPub hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-- **CT preservation extended — `RArrStore` coverage (CONDITIONAL on
     Public index).** -/
@@ -196,7 +194,6 @@ theorem CTPreservation_RArrStore_extended_if_idx_public
     (hIdxPub : lt idxVar = .Public)
     (hArrPub : lt arr.locVar = .Public)
     (hSrcPub : lt src.locVar = .Public)
-    (hLeaf : LeafCTAssumption leafSpec leafCT)
     (hCMOV : CMOVInvariant (.RArrStore arr idxVar src))
     (rs1 rs2 rs1' rs2' : RustState)
     (hEq : PublicEquiv lt rs1 rs2)
@@ -204,7 +201,7 @@ theorem CTPreservation_RArrStore_extended_if_idx_public
     (hExec2 : RustExec N leafSpec (.RArrStore arr idxVar src) rs2 rs2') :
     PublicEquiv lt rs1' rs2' :=
   RArrStore_ct_preserves_if_idx_public arr idxVar src lt leafCT leafSpec N
-    hIdxPub hArrPub hSrcPub hLeaf hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
+    hIdxPub hArrPub hSrcPub hCMOV rs1 rs2 rs1' rs2' hEq hExec1 hExec2
 
 /-! ## 3. The CT-public-index restriction, formally stated
 
