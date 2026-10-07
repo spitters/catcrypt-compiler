@@ -659,6 +659,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoist
 CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoistReal
 CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres
 CatCrypt.Crypto.SecureCompilation.VIR.LoweringDataComp
+CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs
 CatCrypt.Crypto.SecureCompilation.VIR.LprogJasminWellFormed
 CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyPropCfg
 CatCrypt.Crypto.SecureCompilation.VIR.LsemPortAll
