@@ -30,6 +30,7 @@ import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf
+public import CatCrypt.Crypto.Jasmin.LowCTNotation
 
 /-!
 # Demo: `corres_solve_scalar` over straight-line `LowCT` word kernels
@@ -73,10 +74,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-- A ChaCha-style quarter-round fragment: `a := a + b; d := d ^^^ a; d := d <<< 16`. -/
-def qrFrag : LowCT :=
-  .RSeq (.RScalarSetExpr "a" (.SAdd (.SVar "a") (.SVar "b")))
-    (.RSeq (.RScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a")))
-      (.RScalarSetExpr "d" (.SShl (.SVar "d") (.SLit 16))))
+def qrFrag : LowCT := lowct% a := a + b; d := d ^ a; d := d << 16
 
 /-- The fragment refines the fold of its three `wordStep`s, in program order. -/
 theorem qrFrag_refines :
@@ -129,8 +127,7 @@ environment. The `Corres` result runs at the zero-word environment `qrEntry`;
 the agreement `qrHAgree` between the two runs is decided. -/
 
 /-- The quarter-round fragment behind three literal writes. -/
-def qrClosed : LowCT :=
-  .RSeq (.RScalarSet "a" 1) (.RSeq (.RScalarSet "b" 2) (.RSeq (.RScalarSet "d" 5) qrFrag))
+def qrClosed : LowCT := lowct% a := lit 1; b := lit 2; d := lit 5; ↑qrFrag
 
 theorem qrFrag_coveredS : IsCoveredS qrFrag :=
   .rSeq (.rScalarSetExpr _ _ ⟨notTmp_of_short "a" (by decide), notTmp_of_short "b" (by decide)⟩)

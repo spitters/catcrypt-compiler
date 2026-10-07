@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+public import CatCrypt.Crypto.Jasmin.LowCTNotation
 
 /-!
 # Demo: the deciding ascent tactics
@@ -37,14 +38,10 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent.Demos
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-- The arithmetic kernel `t := a + b; r := t * c`. -/
-def arithK : LowCT :=
-  .RSeq (.RScalarSetExpr "t" (.SAdd (.SVar "a") (.SVar "b")))
-    (.RScalarSetExpr "r" (.SMul (.SVar "t") (.SVar "c")))
+def arithK : LowCT := lowct% t := a + b; r := t * c
 
 /-- The bitwise kernel `d := d ^^^ a; b := (b &&& c) >>> 7`. -/
-def bitK : LowCT :=
-  .RSeq (.RScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a")))
-    (.RScalarSetExpr "b" (.SShr (.SAnd (.SVar "b") (.SVar "c")) (.SLit 7)))
+def bitK : LowCT := lowct% d := d ^ a; b := (b & c) >> 7
 
 /-- The arithmetic kernel over `SRwordNT`, at its `ZMod 2^64` spec. -/
 theorem arithK_expr : Corres SRwordNT (fun _ => True) (asemWExpr arithK) arithK := by

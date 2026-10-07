@@ -88,6 +88,10 @@ synthesise it and rewrite afterwards.
 
 ## Adding a kernel
 
+- Write a `LowCT` program in the `lowct%` notation of
+  [`LowCTNotation`](../../Jasmin/LowCTNotation.lean) (`lowct% t := a + b; r := t * c`);
+  it expands to the constructor term.
+
 - A closed straight-line word kernel with a source: copy
   [`LegWeldDemo`](LegWeldDemo.lean). Supply the source `src : RustSrc`, the front's
   term with `LitNorm (lower src) c`, an `AdeqRun` witness, `readsOK` and `afterB`,

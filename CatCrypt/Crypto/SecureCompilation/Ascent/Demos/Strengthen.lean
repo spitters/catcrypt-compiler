@@ -10,6 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit
+public import CatCrypt.Crypto.Jasmin.LowCTNotation
 
 /-!
 # Demo: the result monad the type-strengthening pass picks, per kernel
@@ -52,12 +53,10 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 /-! ## `LowCT` kernels -/
 
 /-- The count-down loop `while n != 0 { n := n - 1 }`. -/
-def countdownK : LowCT :=
-  .RWhileNz "n" (.RScalarSetExpr "n" (.SSub (.SVar "n") (.SLit 1)))
+def countdownK : LowCT := lowct% while n { n := n - 1 }
 
 /-- A conditional writing two different names, outside the φ-merge rule. -/
-def mergeK : LowCT :=
-  .RIfNz "c" (.RScalarSet "x" 1) (.RScalarSet "y" 2)
+def mergeK : LowCT := lowct% if c { x := lit 1 } else { y := lit 2 }
 
 theorem arithK_ts : (Kernel.lowct 0 arithK).tsLevel = some .pure := rfl
 theorem bitK_ts : (Kernel.lowct 0 bitK).tsLevel = some .pure := rfl

@@ -328,11 +328,10 @@ theorem s2nMontmulP384_correct_addr (sa : AState) (px py pz : BitVec 64)
           * ((2 ^ 384 : Nat) : ZMod p384)⁻¹
 ```
 
-The encoder and decoder of the byte statements are `encodeJBlock` and `decodeJStream`
-([ASCENT.md](ASCENT.md#scope-of-the-statements)). The composition of `FnCorres` with a
-machine square exists for `maj` only, through `fnCorres_enc_unique`; the general case is
-discussed in
-[CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference).
+The encoder and decoder of the byte statements are `encodeJBlock` and `decodeJStream`.
+An ascent result or a total triple of the Rust reading composes with the correctness
+theorem of the hax compiler: the decoded bytes compute the function
+([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#source-readings-joined-to-compiled-bytes)).
 In the comparison table, the Aeneas row refers to `CorresM` over `Aeneas.Std.RustM`
 (`MLevel`) and the Jasmin row to `runBlock` and `legWeld`.
 

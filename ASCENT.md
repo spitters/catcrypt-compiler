@@ -61,10 +61,9 @@ Lean port [sgraf812/ascent](https://github.com/sgraf812/ascent); see
 3. [Tactics](#tactics)
 4. [Third-party machine code](#third-party-machine-code)
 5. [The project's compiler output, re-verified](#the-projects-compiler-output-re-verified)
-6. [Scope of the statements](#scope-of-the-statements)
-7. [Demos](#demos)
-8. [A worked path: from a `LowCT` kernel to its Jasmin program](#a-worked-path-from-a-lowct-kernel-to-its-jasmin-program)
-9. [Further reading](#further-reading)
+6. [Demos](#demos)
+7. [A worked path: from a `LowCT` kernel to its Jasmin program](#a-worked-path-from-a-lowct-kernel-to-its-jasmin-program)
+8. [Further reading](#further-reading)
 
 ## How it works
 
@@ -92,10 +91,7 @@ The module [Demos/Decide](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Decide.
 lifts a two-line kernel to its specification over `ZMod 2^64`:
 
 ```lean
-/-- The arithmetic kernel `t := a + b; r := t * c`. -/
-def arithK : LowCT :=
-  .RSeq (.RScalarSetExpr "t" (.SAdd (.SVar "a") (.SVar "b")))
-    (.RScalarSetExpr "r" (.SMul (.SVar "t") (.SVar "c")))
+def arithK : LowCT := lowct% t := a + b; r := t * c
 
 theorem arithK_expr : Corres SRwordNT (fun _ => True) (asemWExpr arithK) arithK := by
   ascend_expr!
@@ -111,6 +107,42 @@ lake build CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide
 goal with the soundness theorem `ascend_expr_sound`. The specification `asemWExpr arithK`
 is the kernel's abstract denotation; a theorem about a particular kernel relates it to
 the intended mathematics, as the shipped-code results below do.
+
+### Notation for LowCT programs
+
+`lowct% s` is a term of type `LowCT` and `sexpr% e` a term of type `SExpr`. Both are
+macros over the constructors, defined in
+[LowCTNotation.lean](CatCrypt/Crypto/Jasmin/LowCTNotation.lean): `arithK` above is the
+term
+
+```lean
+.RSeq (.RScalarSetExpr "t" (.SAdd (.SVar "a") (.SVar "b")))
+  (.RScalarSetExpr "r" (.SMul (.SVar "t") (.SVar "c")))
+```
+
+so a theorem about a program written in the notation is a theorem about the
+constructor term, and goals and hovers print constructor terms in the notation. An
+identifier denotes the name string of a program variable (`t` is `"t"`); `↑` splices
+a Lean term in, as in `lowct% a := lit 1; ↑qrFrag` or `x := lit ↑(n % 2)`.
+
+| Notation | Meaning |
+|---|---|
+| `x := e` | assign the scalar expression `e` to `x` ([`RScalarSetExpr`](CatCrypt/Crypto/Jasmin/LowCTSyntax.lean)) |
+| `x := lit n` | assign the constant `n`, a different constructor from `x := n` (`RScalarSet`) |
+| `s₁; s₂` | run `s₁`, then `s₂`; associates to the right, `(s₁; s₂); s₃` groups to the left (`RSeq`) |
+| `skip` | do nothing (`RSkip`) |
+| `if x { s₁ } else { s₂ }` | run `s₁` when the scalar `x` is nonzero, else `s₂` (`RIfNz`) |
+| `while x { s }` | repeat `s` while `x` is nonzero (`RWhileNz`) |
+| `for x < n { s }`, `for x < dyn e { s }` | run `s` with `x` from `0` below a constant, or below the value of `e` at entry (`RFor`, `RForRuntime`) |
+| `let x; s`, `let x : τ; s` | declare a zeroed scalar, or a zeroed slot of type `τ`, for the rest of the sequence (`RLetU64Zero`, `RLetZero`) |
+| `(d : τ) := call f((a : τ), …)`, `[(d : τ), …] := call f(…)` | call the leaf `f` with one or several destinations (`RCall`, `RCallN`) |
+| `(d : τ) := (s : σ)[i]`, `(a : σ)[i] := (s : τ)` | read or write an array slot at the index held by `i`; `[lit n]` for a constant index (`RArrLoad`, `RArrStore`, `RArrLoadLit`, `RArrStoreLit`) |
+| `(d : τ) := copy (s : τ)` | copy a whole slot (`RCopy`) |
+| `a + b`, `a - b`, `a * b`, `a << b`, `a >> b`, `a & b`, `a ^ b`, `a < b` | the binary operators of [`SExpr`](CatCrypt/Crypto/Jasmin/LowCTSExpr.lean), with the precedence order of Rust |
+| `asr(a, b)`, `smul(a, b)`, `mulhi(a, b)`, `mulhis(a, b)`, `x[n]` | arithmetic shift, signed product, high words of the products, limb read |
+
+A constructor without notation is written as a `↑` splice of its constructor term and
+prints that way.
 
 ## Tactics
 
@@ -195,49 +227,6 @@ imported files:
 | `fe25519_mul`, `fe25519_sqr` | `x · y mod p25519` | `feMulBlock_mod`, `feSqrBlock_mod` | [Fe25519MulSqrProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Fe25519MulSqrProof.lean) |
 | `fe25519_add`, `fe25519_sub` | `(x ± y) mod p25519` | `feAddBlock_correct`, `feSubBlock_correct` | [Fe25519AddSubSelectProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Fe25519AddSubSelectProof.lean) |
 | comb-table select | the selected entry, at the bytes, with a leakage trace independent of the index | `combSelectBytes_correct`, `selBytes_constant_time` | [CombSelectBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/CombSelectBytes.lean) |
-
-## Scope of the statements
-
-- A statement "at the bytes" is about this package's encoding of the instruction list
-  (`encodeJBlock`) and its decoder. No theorem is about the object file a linker
-  consumes; the assembler, the loader and, for third-party code, the import of the text
-  are checked by tests.
-- `paShippedBytes_correct` concludes the values of the output coordinates. It has no
-  conclusion about callee-saved registers or the stack pointer.
-- `paShippedBytes_correct` depends on eleven `native_decide` checks (one for the decode,
-  ten for memory footprints), `scReduceShipped_correct_addr` on eight and
-  `scMuladdShipped_correct_addr` on nine footprint checks. The s2n-bignum and CryptOpt
-  modules use none.
-- The hax-level ascent of a Rust function is composed with the correctness theorem of
-  the hax compiler for its compiled bytes, in the development tree, for every typed
-  extraction the compiler accepts whose calls are to names on which the reading of the
-  calls and the compiler's builtin table agree: the decoded bytes compute the function of
-  an ascent result or of a total triple of the Rust reading, with a constant-time form.
-  Checked arithmetic, casts and `repeat` are outside that set of names, and so are the
-  `usize` operations whose value depends on the width, because the reading takes the
-  width from the platform and the compiler's table fixes 64
-  ([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#source-readings-joined-to-compiled-bytes)).
-  The demonstration is a conditional copy of limbs, `mpn_cnd_copy_n`. For `maj` of the
-  Hash_DRBG extraction the composition is with a machine-level correspondence, with a
-  `CorresIsa` form at the block decoded from the shipped bytes
-  ([CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques)).
-- The instruction-set judgement holds for every program the x86-64 compile gate of the
-  hax compiler accepts through its two loop arms and its straight arms. For the two loop
-  arms and three straight arms (a register result, an array result, an array result
-  through cells) it is also stated on the exported image, and that image, placed after a
-  label and followed by a return, satisfies a procedure specification
-  ([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)).
-  A body that contains calls has no such specification, and no statement of this kind
-  exists at AArch64 or RV64.
-- The RV64 results are over hand-transcribed blocks on registers; no third-party RV64
-  code is imported.
-
-Three scripts guard the claims. `scripts/ascent-nonvacuity-ratchet.sh` checks that every
-closed machine-level theorem has its guards discharged, so that no result holds because a
-precondition is unsatisfiable. `scripts/ascent-anchor-ratchet.sh` counts the ascent
-modules that are tied to a descent theorem or stated over bytes, and lists the others
-with a reason. `scripts/ascent-block-provenance.sh` classifies each block as generated,
-imported or written by hand.
 
 ## Demos
 

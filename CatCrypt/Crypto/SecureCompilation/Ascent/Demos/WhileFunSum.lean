@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.WhileFun
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+public import CatCrypt.Crypto.Jasmin.LowCTNotation
 public import Mathlib.Tactic.Ring
 
 /-!
@@ -48,12 +49,10 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.Ascent
 
 /-- The loop body: `acc := acc + k; k := k - 1`. -/
-def sumBody : LowCT :=
-  .RSeq (.RScalarSetExpr "acc" (.SAdd (.SVar "acc") (.SVar "k")))
-    (.RScalarSetExpr "k" (.SSub (.SVar "k") (.SLit 1)))
+def sumBody : LowCT := lowct% acc := acc + k; k := k - 1
 
 /-- The kernel: the body, repeated while `k` is nonzero. -/
-def sumLoop : LowCT := .RWhileNz "k" sumBody
+def sumLoop : LowCT := lowct% while k { ↑sumBody }
 
 /-- The abstract step of the body. -/
 def sumStep (a : String → BitVec 64) : String → BitVec 64 :=

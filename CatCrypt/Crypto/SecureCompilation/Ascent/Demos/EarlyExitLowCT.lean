@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Jasmin.LowCTNotation
 
 /-!
 # Demo: the search loop with an early return, lowered to `LowCT` and run
@@ -63,28 +64,24 @@ theorem pipeline_searchU_one : _root_.Hax.pipeline (searchU 1) = searchLoopShape
 /-- The lowered body of the search loop: `e := 1 - (i < xv)`; when `e` is nonzero
     store `i` into `exitValName` and set the exit flag; under the exit guard,
     `i := i + one` and `c := i < three`. -/
-def searchLoopBody : LowCT :=
-  .RSeq (.RScalarSetExpr "e" (.SSub (.SLit 1) (.SLt (.SVar "i") (.SVar "xv"))))
-    (.RSeq
-      (.RIfNz "e"
-        (.RSeq (.RScalarSetExpr exitValName (.SVar "i")) (.RScalarSet exitRetName 1))
-        .RSkip)
-      (exitGuard
-        (.RSeq
-          (.RSeq (.RSeq (.RScalarSetExpr "i" (.SAdd (.SVar "i") (.SVar "one"))) .RSkip) .RSkip)
-          (.RSeq (.RSeq (.RScalarSetExpr "c" (.SLt (.SVar "i") (.SVar "three"))) .RSkip)
-            .RSkip))))
+def searchLoopBody : LowCT := lowct%
+  e := 1 - (i < xv);
+  if e { ↑exitValName := i; ↑exitRetName := lit 1 } else { skip };
+  ↑(exitGuard (lowct%
+    ((i := i + one; skip); skip);
+    (c := i < three; skip);
+    skip))
 
 /-- The lowered search function at input `x`. -/
 def searchLowCT (x : Nat) : LowCT :=
-  exitFunction
-    (.RLetU64Zero "three" (.RSeq (.RScalarSet "three" 3)
-     (.RLetU64Zero "one" (.RSeq (.RScalarSet "one" 1)
-      (.RLetU64Zero "xv" (.RSeq (.RScalarSet "xv" (x % _root_.Hax.IntWidth.w64.modulus))
-       (.RLetU64Zero "i" (.RSeq (.RScalarSet "i" 0)
-        (.RSeq (.RScalarSetExpr "c" (.SLt (.SVar "i") (.SVar "three")))
-         (.RSeq (exitLoop (exitRunName none) "c" searchLoopBody)
-           (exitGuard (.RScalarSet exitResName 100))))))))))))
+  exitFunction (lowct%
+    let three; three := lit 3;
+    let one; one := lit 1;
+    let xv; xv := lit ↑(x % _root_.Hax.IntWidth.w64.modulus);
+    let i; i := lit 0;
+    c := i < three;
+    ↑(exitLoop (exitRunName none) "c" searchLoopBody);
+    ↑(exitGuard (lowct% ↑exitResName := lit 100)))
 
 /-- `haxToLowCTFn` lowers the pipeline output of `searchU x` to `searchLowCT x`. -/
 theorem searchU_lowers (x : Nat) :
