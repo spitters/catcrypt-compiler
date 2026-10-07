@@ -95,8 +95,7 @@ def regionExportableB : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
     NFProg jasminDialect Γ ts → Bool
   | _, _, .ret _ => true
   | _, _, .var e k => bindMemNB e && regionExportableB k
-  | _, _, .forLoop (cs := cs) _ _ body k =>
-      cs.all isRegTy && regionExportableB body && regionExportableB k
+  | _, _, .forLoop _ _ body k => regionExportableB body && regionExportableB k
   | _, _, .ifThenElse (rs := rs) _ thn els k =>
       rs.all isRegTy && regionExportableB thn && regionExportableB els && regionExportableB k
   | _, _, .whileLoop (cs := cs) _ body k =>
@@ -113,7 +112,7 @@ theorem regionExportableB_sound {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       exact ⟨bindMemNB_sound h.1, ih h.2⟩
   | forLoop count inits body k ihb ihk =>
       simp only [regionExportableB, Bool.and_eq_true] at h
-      exact ⟨fun t ht => List.all_eq_true.mp h.1.1 t ht, ihb h.1.2, ihk h.2⟩
+      exact ⟨ihb h.1, ihk h.2⟩
   | ifThenElse cond thn els k iht ihe ihk =>
       simp only [regionExportableB, Bool.and_eq_true] at h
       exact ⟨fun t ht => List.all_eq_true.mp h.1.1.1 t ht, iht h.1.1.2, ihe h.1.2, ihk h.2⟩
@@ -549,6 +548,118 @@ theorem forFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n nCar : Nat)
   · rfl
   · exact shiftMoves_spFree _ _ i h
 
+/-- The register of an operand in register form does not name `RSP` when the operand does
+    not. -/
+theorem opSpB_operandName {o : LOperand} (h : o = .reg (operandName o))
+    (hs : opSpB "RSP" o = false) : opSpB "RSP" (.reg (operandName o)) = false := by
+  rw [h] at hs
+  exact hs
+
+/-- Array moves do not name `RSP` when neither their registers nor their names do. -/
+theorem arrMoves_spFree {z t : String} {mv : List ArrMove}
+    (hz : opSpB "RSP" (.reg z) = false) (ht : opSpB "RSP" (.reg t) = false)
+    (hm : ∀ a ∈ mv, opSpB "RSP" (.reg a.dst) = false ∧ opSpB "RSP" (.reg a.src) = false) :
+    ∀ i ∈ arrMoves z t mv, spFreeB "RSP" i.fst = true := by
+  intro i hi
+  simp only [arrMoves, List.mem_flatMap, arrMove, List.mem_cons, List.not_mem_nil,
+    or_false] at hi
+  obtain ⟨a, ha, rfl | rfl⟩ := hi
+  · exact spFreeB_lopn ht fun o ho => by
+      rw [List.mem_singleton.mp ho]
+      exact opSpB_arrIdx _ (hm a ha).2 hz
+  · exact spFreeB_lopn (hm a ha).1 fun o ho => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+      rcases ho with rfl | rfl
+      · exact opSpB_arrIdx _ (hm a ha).2 hz
+      · exact ht
+
+/-- Typed moves do not name `RSP` when neither their registers nor the names of their
+    pairs do. -/
+theorem typedMoves_spFree {z t : String} {tp : List (JasminTy × String × String)}
+    (hz : opSpB "RSP" (.reg z) = false) (ht : opSpB "RSP" (.reg t) = false)
+    (hp : ∀ p ∈ tp, opSpB "RSP" (.reg p.2.1) = false ∧ opSpB "RSP" (.reg p.2.2) = false) :
+    ∀ i ∈ typedMoves z t tp, spFreeB "RSP" i.fst = true := by
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi
+  · exact arrMoves_spFree hz ht (fun a ha => hp _ (of_mem_arrPairs ha)) i hi
+  · obtain ⟨p, hp', rfl⟩ := List.mem_map.mp hi
+    obtain ⟨ty, hq⟩ := of_mem_regPairs hp'
+    exact spFreeB_movI (hp _ hq).1 (hp _ hq).2
+
+/-- A parallel assignment of arrays does not name `RSP` when neither its registers nor
+    the names of its moves do. -/
+theorem arrParMoves_spFree {z t : String} (D : Nat) {mv : List ArrMove}
+    (hz : opSpB "RSP" (.reg z) = false) (ht : opSpB "RSP" (.reg t) = false)
+    (hm : ∀ a ∈ mv, opSpB "RSP" (.reg a.dst) = false ∧ opSpB "RSP" (.reg a.src) = false) :
+    ∀ i ∈ arrParMoves z t D mv, spFreeB "RSP" i.fst = true := by
+  intro i hi
+  unfold arrParMoves at hi
+  split at hi
+  · exact arrMoves_spFree hz ht hm i hi
+  · rcases List.mem_append.mp hi with hi | hi
+    · exact arrMoves_spFree hz ht (fun q hq => by
+        obtain ⟨j, a, ha, rfl⟩ := mem_arrStage hq
+        exact ⟨opSpB_regName _, (hm a ha).2⟩) i hi
+    · exact arrMoves_spFree hz ht (fun q hq => by
+        obtain ⟨j, a, ha, rfl⟩ := mem_arrCommit hq
+        exact ⟨(hm a ha).1, opSpB_regName _⟩) i hi
+
+/-- The frame of a counted loop with carried arrays does not name `RSP` when its body and
+    the registers of its operands do not. -/
+theorem forArrFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n : Nat)
+    (cs : Ctxt jasminDialect) {initOps : List LOperand} {countOp : LOperand}
+    {bodyC : List LinstrRM} {bodyOps : List LOperand} (bodyD : Nat)
+    (hi : ∀ o ∈ initOps, opSpB "RSP" (.reg (operandName o)) = false)
+    (hc : opSpB "RSP" countOp = false)
+    (hcn : opSpB "RSP" (.reg (operandName countOp)) = false)
+    (hb : ∀ i ∈ bodyC, spFreeB "RSP" i.fst = true)
+    (ho : ∀ o ∈ bodyOps, opSpB "RSP" (.reg (operandName o)) = false) :
+    ∀ i ∈ forArrFrame d n cs initOps countOp bodyC bodyOps bodyD I,
+      spFreeB "RSP" i.fst = true := by
+  have hpairs : ∀ (ops : List LOperand),
+      (∀ o ∈ ops, opSpB "RSP" (.reg (operandName o)) = false) →
+      ∀ p ∈ carriedPairs cs (carriedRegs (d + 1) cs.length) ops,
+        opSpB "RSP" (.reg p.2.1) = false ∧ opSpB "RSP" (.reg p.2.2) = false :=
+    fun ops h p hp => by
+      obtain ⟨⟨j, -, h1⟩, o, ho', h2⟩ := carriedPairs_names hp
+      rw [h1, h2]
+      exact ⟨opSpB_regName _, h o ho'⟩
+  intro i hmem
+  simp only [forArrFrame, List.mem_append, List.mem_cons, List.mem_map] at hmem
+  rcases hmem with h | h | ⟨g, hg, rfl⟩ | rfl | h | h | h | h | ⟨g, hg, rfl⟩ | rfl | h
+  · exact typedMoves_spFree hcn (opSpB_regName _) (hpairs _ hi) i h
+  · refine seedMoves_spFree (fun r hr => ?_) (fun o ho' => ?_) i h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl
+      · exact opSpB_regName _
+      · exact opSpB_loopCtr _
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at ho'
+      rcases ho' with rfl | rfl
+      · rfl
+      · exact hc
+  · exact hI.zeroTrip _ _ _ (opSpB_loopCtr _) g hg
+  · rfl
+  · exact hb i h
+  · exact arrParMoves_spFree _ (opSpB_regName _) (opSpB_regName _)
+      (fun a ha => hpairs _ ho _ (of_mem_arrPairs ha)) i h
+  · exact parMoves_spFree _
+      (fun r hr => by
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hr
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact (hpairs _ ho _ hq).1)
+      (fun o ho' => by
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ho'
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact (hpairs _ ho _ hq).2) i h
+  · exact advanceOps_spFree (opSpB_regName _) (opSpB_loopCtr _) i h
+  · exact hI.loop _ _ (opSpB_loopCtr _) g hg
+  · rfl
+  · exact typedMoves_spFree (opSpB_regName _) (opSpB_regName _)
+      (fun p hp => by
+        obtain ⟨v, h1, h2⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
+        rw [h1, h2]
+        exact ⟨opSpB_regName _, opSpB_regName _⟩) i h
+
 /-- The frame of a loop in exit-flag form does not name `RSP` when its body and operands
     do not. -/
 theorem whileFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n nCar : Nat)
@@ -618,12 +729,17 @@ theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpF
       intro d n r h
       simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨b, hb, rk, hk, rfl⟩ := h
-      obtain ⟨hbc, hbr⟩ := ihb hp.2.1 _ _ _ hb
-      obtain ⟨hc, hres⟩ := ihk hp.2.2 _ _ _ hk
+      obtain ⟨hbc, hbr⟩ := ihb hp.1 _ _ _ hb
+      obtain ⟨hc, hres⟩ := ihk hp.2 _ _ _ hk
       refine ⟨fun i hi => ?_, hres⟩
       rcases List.mem_append.mp hi with hi | hi
-      · exact forFrame_spFree hI _ _ _ _ (opSpB_exprArgsHV _ _ inits) (opSpB_resolveVar count)
-          hbc hbr i hi
+      · exact forArrFrame_spFree hI _ _ _ _
+          (fun o ho => opSpB_operandName (exprArgsHV_isReg _ _ inits o ho)
+            (opSpB_exprArgsHV _ _ inits o ho))
+          (opSpB_resolveVar count)
+          (opSpB_operandName (resolveVar_isReg count) (opSpB_resolveVar count)) hbc
+          (fun o ho => opSpB_operandName (exportR_res_isReg nArgs fn body _ _ _ hb o ho)
+            (hbr o ho)) i hi
       · exact hc i hi
   | ifThenElse cond thn els k iht ihe ihk =>
       intro d n r h
