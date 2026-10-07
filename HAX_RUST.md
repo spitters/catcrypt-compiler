@@ -4,7 +4,7 @@ This guide covers three uses of the hax bridge of this package:
 
 1. print a `LowCT` program as Rust and prove that the Rust hax reads back is the
    program;
-2. print a pure Lean function as Rust with the same guarantee;
+2. compile a pure Lean function to Rust relationally, with the same guarantee;
 3. relate existing Rust, extracted by haxpipeT, to a Lean function (the ascent
    on `ImpExpr`).
 
@@ -46,8 +46,18 @@ comparison false.
 
 ## 2. Pure Lean → Rust
 
-The reifier and the driver are in `CatCrypt/Hax/`, with the driver's inputs in
-`bench/reify_roundtrip/`:
+This path is relational compilation in the sense of
+[Rupicola](https://github.com/mit-plv/rupicola): a low-level program is derived from a
+Lean function together with a proof that relates the two. The reifier `reifyImp%`
+produces the `ImpExpr` program, the tactic `ascend_reified` proves the relation
+`FnCorres` between the program and the function, and the program is printed as Rust.
+The reifier is not trusted: the theorem is about the program it returned. The package's
+other relational front, which compiles a Lean specification to `LowCT` and from there to
+machine code, is in
+[RelationalFront](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean).
+
+The reifier and the driver are in [`CatCrypt/Hax/`](CatCrypt/Hax/ReifyImp.lean), with the
+driver's inputs in `bench/reify_roundtrip/`:
 
 | Step | Entry point |
 |---|---|
