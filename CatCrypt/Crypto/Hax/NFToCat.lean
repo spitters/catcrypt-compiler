@@ -1961,9 +1961,10 @@ def emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
 
 /-- **The translation of a program** of the fragment on the readings `σ`: a return to the
     return of the variables it reads; a binding to the bindings `emitRes` gives for the
-    translation `catOp` of its operation; and a counted loop whose count and seeds are
-    variables to the counted loop of the translated body and continuation. `none` on a
-    branch, an exit-flag loop and a call. -/
+    translation `catOp` of its operation; and a counted loop whose seeds are variables to the
+    counted loop of the translated body and continuation, on the variable of the count or,
+    for a count that reads as a literal, on a `bvConst` binding of the literal in front of the
+    loop. `none` on a branch, an exit-flag loop and a call. -/
 def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : List NfTy} →
     NFProg nfDialect Γ ts → TRd Γ Δ → Option (NFProg catCryptDialect Δ (ts.map catTy))
   | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
@@ -1976,7 +1977,13 @@ def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : Li
             (nfToCat body (TRd.liftApp cs (TRd.lift σ))).bind fun body' =>
               (nfToCat k (TRd.liftApp cs σ)).map fun k' =>
                 .forLoop (cs := cs.map catTy) c is body' k'
-      | .lit _ _ => none
+      | .lit n _ =>
+          (pinVars (TRd.rds (TRd.wk (c := CryptoTy.sword 64) σ) inits)).bind fun is =>
+            (nfToCat body (TRd.liftApp cs (TRd.lift (TRd.wk (c := CryptoTy.sword 64) σ)))).bind
+              fun body' =>
+                (nfToCat k (TRd.liftApp cs (TRd.wk (c := CryptoTy.sword 64) σ))).map fun k' =>
+                  .var ⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩
+                    (.forLoop (cs := cs.map catTy) .here is body' k')
   | _, _, _, .ifThenElse .., _ => none
   | _, _, _, .whileLoop .., _ => none
   | _, _, _, .call .., _ => none
@@ -2066,59 +2073,73 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
         res σ W p' h hag hrel
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W out hag hp fuel
-      change (match σ count with
-        | .var c =>
-          (pinVars (σ.rds inits)).bind fun is =>
-            (nfToCat body (TRd.liftApp cs (TRd.lift σ))).bind fun body' =>
-              (nfToCat k (TRd.liftApp cs σ)).map fun k' =>
-                NFProg.forLoop (cs := cs.map catTy) c is body' k'
-        | .lit _ _ => none) = some p' at h
-      obtain ⟨c, hc⟩ : ∃ c, σ count = .var c := by
-        rcases hcnt' : σ count with c | ⟨_, _⟩
-        · exact ⟨c, rfl⟩
-        · rw [hcnt'] at h
-          cases h
-      rw [hc] at h
-      obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
       change ((List.range (count.lookup V : BitVec 64).toNat).foldlM
           (fun acc j => ImpToNF.PDenP bi tf body
             (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))
           (Expr.lookupArgs inits V)).bind (fun acc => ImpToNF.PDenP bi tf k (hvAppend acc V)) =
         some out at hp
       obtain ⟨accF, hfold, hkout⟩ := Option.bind_eq_some_iff.mp hp
-      have hcnt : (count.lookup V : BitVec 64) = c.lookup W := by
-        have := hag _ count
-        rw [hc] at this
-        exact this
-      have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
-          (acc' : Valuation (d := catCryptDialect) (cs.map catTy))
-          (accF : Valuation (d := nfDialect) cs), VRelL cs acc acc' →
-          l.foldlM (fun acc j => ImpToNF.PDenP bi tf body
-            (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V))) acc =
-            some accF →
-          ∃ accF', l.foldlM (fun acc j => body'.denote fuel
-            (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 j) W))) acc' =
-            some accF' ∧ VRelL cs accF accF' := by
-        intro l
-        exact NFProg.foldlM_rel_fwd l fun j _ acc acc' a1 hr ha1 =>
-          ihb (TRd.liftApp cs (TRd.lift σ)) body' hb' _ _ a1
-            (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag (x := BitVec.ofNat 64 j)
-              (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
       rw [List.range_eq_range'] at hfold
-      obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF
-        (pinVars_rel _ _ is his (TRd.rdRelL_rds hag inits)) hfold
-      obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ) k' hk' (hvAppend accF V)
-        (hvAppend accF' W) out (TRd.agree_liftApp hag cs accF accF' hrF) hkout fuel
-      refine ⟨out', ?_, hR⟩
-      rw [NFProg.denote_forLoop]
-      have hc2 : HasWord64.toNat (d := catCryptDialect) (c.lookup W) =
-          (count.lookup V : BitVec 64).toNat := by
-        rw [← hcnt]; rfl
-      rw [hc2, List.range_eq_range']
-      erw [hfold']
-      exact hden
+      have core : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ₀ Δ') (W' : Valuation Δ')
+          (c : Var Δ' (CryptoTy.sword 64)) is body' k', σ'.Agree V W' →
+          (count.lookup V : BitVec 64) = c.lookup W' →
+          pinVars (σ'.rds inits) = some is →
+          nfToCat body (TRd.liftApp cs (TRd.lift σ')) = some body' →
+          nfToCat k (TRd.liftApp cs σ') = some k' →
+          ∃ out', (NFProg.forLoop (cs := cs.map catTy) c is body' k').denote fuel W' =
+            some out' ∧ VRelL ts₀ out out' := by
+        intro Δ' σ' W' c is body' k' hag' hcnt his hb' hk'
+        have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
+            (acc' : Valuation (d := catCryptDialect) (cs.map catTy))
+            (accF : Valuation (d := nfDialect) cs), VRelL cs acc acc' →
+            l.foldlM (fun acc j => ImpToNF.PDenP bi tf body
+              (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V))) acc =
+              some accF →
+            ∃ accF', l.foldlM (fun acc j => body'.denote fuel
+              (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 j) W')))
+              acc' = some accF' ∧ VRelL cs accF accF' := by
+          intro l
+          exact NFProg.foldlM_rel_fwd l fun j _ acc acc' a1 hr ha1 =>
+            ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _ a1
+              (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag'
+                (x := BitVec.ofNat 64 j) (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
+        obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF
+          (pinVars_rel _ _ is his (TRd.rdRelL_rds hag' inits)) hfold
+        obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
+          (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel
+        refine ⟨out', ?_, hR⟩
+        rw [NFProg.denote_forLoop]
+        have hc2 : HasWord64.toNat (d := catCryptDialect) (c.lookup W') =
+            (count.lookup V : BitVec 64).toNat := by
+          rw [← hcnt]; rfl
+        rw [hc2, List.range_eq_range']
+        erw [hfold']
+        exact hden
+      have hcount := hag _ count
+      simp only [nfToCat] at h
+      split at h
+      · rename_i c hc
+        rw [hc] at hcount
+        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        exact core σ W c is body' k' hag hcount his hb' hk'
+      · rename_i n hn hc
+        rw [hc] at hcount
+        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hn' : (count.lookup V : BitVec 64).toNat = n := by
+          exact_mod_cast Option.some.inj hcount.1
+        obtain ⟨out', hden, hR⟩ := core (TRd.wk (c := CryptoTy.sword 64) σ)
+          (W.extend (BitVec.ofNat 64 n)) .here is body' k'
+          (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 n))
+          (by
+            change (count.lookup V : BitVec 64) = BitVec.ofNat 64 n
+            rw [← hn', BitVec.ofNat_toNat, BitVec.setWidth_eq]) his hb' hk'
+        refine ⟨out', ?_, hR⟩
+        rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+        exact hden
   | ifThenElse cond thn els k _ _ _ =>
       intro Δ σ p' h
       cases h

@@ -171,7 +171,12 @@ theorem ifFree_nfToCat : ∀ {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} {
         obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp he
         simp only [NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk, Bool.and_eq_true]
         exact ⟨ifFree_nfToCat body _ body' hb, ifFree_nfToCat k _ k' hk⟩
-      · cases he
+      · obtain ⟨_, _, he⟩ := Option.bind_eq_some_iff.mp he
+        obtain ⟨body', hb, he⟩ := Option.bind_eq_some_iff.mp he
+        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp he
+        simp only [NFProg.ifFree, NFProg.ctSafeNF, NFProg.nodesOk, Bool.and_eq_true,
+          Bool.true_and]
+        exact ⟨ifFree_nfToCat body _ body' hb, ifFree_nfToCat k _ k' hk⟩
   | _, _, _, .ifThenElse .., _, _, he => by simp [nfToCat] at he
   | _, _, _, .whileLoop .., _, _, he => by simp [nfToCat] at he
   | _, _, _, .call .., _, _, he => by simp [nfToCat] at he

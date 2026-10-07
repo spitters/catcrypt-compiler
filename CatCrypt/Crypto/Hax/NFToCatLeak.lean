@@ -821,26 +821,6 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
       rw [he, hlk]
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W r hag hr
-      change (match σ count with
-        | .var c =>
-          (pinVars (σ.rds inits)).bind fun is =>
-            (nfToCat body (TRd.liftApp cs (TRd.lift σ))).bind fun body' =>
-              (nfToCat k (TRd.liftApp cs σ)).map fun k' =>
-                NFProg.forLoop (cs := cs.map catTy) c is body' k'
-        | .lit _ _ => none) = some p' at h
-      obtain ⟨c, hc⟩ : ∃ c, σ count = .var c := by
-        rcases hcnt' : σ count with c | ⟨_, _⟩
-        · exact ⟨c, rfl⟩
-        · rw [hcnt'] at h
-          cases h
-      rw [hc] at h
-      obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-      have hcnt : (count.lookup V : BitVec 64) = c.lookup W := by
-        have := hag _ count
-        rw [hc] at this
-        exact this
       change (forIterLeak
           (fun i acc => nfLeakRun bi fuel body
             (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 i) V)))
@@ -849,50 +829,96 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
             (q.1, .trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2))) = some r at hr
       obtain ⟨a, ha, hr⟩ := Option.bind_eq_some_iff.mp hr
       obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp hr
-      have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
-          (acc' : Valuation (d := catCryptDialect) (cs.map catTy))
-          (a : Valuation (d := nfDialect) cs × List CTLeak), VRelL cs acc acc' →
-          forIterLeak (fun i acc => nfLeakRun bi fuel body
-            (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 i) V))) l acc =
-            some a →
-          ∃ a', forIterLeak (fun i acc => NFProg.leakRun (catLeakModel P) fuel body'
-            (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 i) W)))
-            l acc' = some a' ∧ a'.2 = a.2 ∧ VRelL cs a.1 a'.1 := by
-        intro l
-        induction l with
-        | nil =>
-            intro acc acc' a hr h
-            simp only [forIterLeak, Option.some.injEq] at h
-            subst h
-            exact ⟨(acc', []), rfl, rfl, hr⟩
-        | cons j l ih =>
-            intro acc acc' a hr h
-            simp only [forIterLeak, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
-            obtain ⟨a1, ha1, a2, ha2, rfl⟩ := h
-            have hag1 := TRd.agree_liftApp
-              (TRd.agree_lift (s := NfTy.word 64) hag (x := BitVec.ofNat 64 j)
-                (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr
-            obtain ⟨a1', ha1', he1, hr1⟩ := ihb (TRd.liftApp cs (TRd.lift σ)) body' hb' _ _ a1
-              hag1 ha1
-            obtain ⟨a2', ha2', he2, hr2⟩ := ih a1.1 a1'.1 a2 hr1 ha2
-            refine ⟨(a2'.1, a1'.2 ++ a2'.2), ?_, ?_, hr2⟩
-            · simp only [forIterLeak]
-              erw [ha1']
-              rw [Option.bind_some, ha2', Option.map_some]
-            · simp only [he1, he2]
-      obtain ⟨a', ha', he, hrA⟩ := key _ _ _ a
-        (pinVars_rel _ _ is his (TRd.rdRelL_rds hag inits)) ha
-      obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp cs σ) k' hk' (hvAppend a.1 V)
-        (hvAppend a'.1 W) q (TRd.agree_liftApp hag cs a.1 a'.1 hrA) hq
-      refine ⟨(q'.1, .trip (c.lookup W).toNat :: (a'.2 ++ q'.2)), ?_, ?_, hR⟩
-      · simp only [NFProg.leakRun]
-        have hc2 : HasWord64.toNat (d := catCryptDialect) (c.lookup W) =
-            (count.lookup V : BitVec 64).toNat := by
-          rw [← hcnt]; rfl
-        rw [hc2]
-        erw [ha']
-        rw [Option.bind_some, hq', Option.map_some, ← hcnt]
-      · simp only [he, heq, ← hcnt]
+      have core : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ₀ Δ') (W' : Valuation Δ')
+          (c : Var Δ' (CryptoTy.sword 64)) is body' k', σ'.Agree V W' →
+          (count.lookup V : BitVec 64) = c.lookup W' →
+          pinVars (σ'.rds inits) = some is →
+          nfToCat body (TRd.liftApp cs (TRd.lift σ')) = some body' →
+          nfToCat k (TRd.liftApp cs σ') = some k' →
+          ∃ r', NFProg.leakRun (catLeakModel P) fuel
+              (NFProg.forLoop (cs := cs.map catTy) c is body' k') W' = some r' ∧
+            r'.2 = .trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2) ∧
+            VRelL ts₀ q.1 r'.1 := by
+        intro Δ' σ' W' c is body' k' hag' hcnt his hb' hk'
+        have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
+            (acc' : Valuation (d := catCryptDialect) (cs.map catTy))
+            (a : Valuation (d := nfDialect) cs × List CTLeak), VRelL cs acc acc' →
+            forIterLeak (fun i acc => nfLeakRun bi fuel body
+              (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 i) V))) l acc =
+              some a →
+            ∃ a', forIterLeak (fun i acc => NFProg.leakRun (catLeakModel P) fuel body'
+              (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 i) W')))
+              l acc' = some a' ∧ a'.2 = a.2 ∧ VRelL cs a.1 a'.1 := by
+          intro l
+          induction l with
+          | nil =>
+              intro acc acc' a hr h
+              simp only [forIterLeak, Option.some.injEq] at h
+              subst h
+              exact ⟨(acc', []), rfl, rfl, hr⟩
+          | cons j l ih =>
+              intro acc acc' a hr h
+              simp only [forIterLeak, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+              obtain ⟨a1, ha1, a2, ha2, rfl⟩ := h
+              have hag1 := TRd.agree_liftApp
+                (TRd.agree_lift (s := NfTy.word 64) hag' (x := BitVec.ofNat 64 j)
+                  (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr
+              obtain ⟨a1', ha1', he1, hr1⟩ := ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _
+                a1 hag1 ha1
+              obtain ⟨a2', ha2', he2, hr2⟩ := ih a1.1 a1'.1 a2 hr1 ha2
+              refine ⟨(a2'.1, a1'.2 ++ a2'.2), ?_, ?_, hr2⟩
+              · simp only [forIterLeak]
+                erw [ha1']
+                rw [Option.bind_some, ha2', Option.map_some]
+              · simp only [he1, he2]
+        obtain ⟨a', ha', he, hrA⟩ := key _ _ _ a
+          (pinVars_rel _ _ is his (TRd.rdRelL_rds hag' inits)) ha
+        obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend a.1 V)
+          (hvAppend a'.1 W') q (TRd.agree_liftApp hag' cs a.1 a'.1 hrA) hq
+        refine ⟨(q'.1, .trip (c.lookup W').toNat :: (a'.2 ++ q'.2)), ?_, ?_, hR⟩
+        · simp only [NFProg.leakRun]
+          have hc2 : HasWord64.toNat (d := catCryptDialect) (c.lookup W') =
+              (count.lookup V : BitVec 64).toNat := by
+            rw [← hcnt]; rfl
+          rw [hc2]
+          erw [ha']
+          rw [Option.bind_some, hq', Option.map_some, ← hcnt]
+        · simp only [he, heq, ← hcnt]
+      have hcount := hag _ count
+      simp only [nfToCat] at h
+      split at h
+      · rename_i c hc
+        rw [hc] at hcount
+        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        exact core σ W c is body' k' hag hcount his hb' hk'
+      · rename_i n hn hc
+        rw [hc] at hcount
+        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hn' : (count.lookup V : BitVec 64).toNat = n := by
+          exact_mod_cast Option.some.inj hcount.1
+        obtain ⟨r', hr', he, hR⟩ := core (TRd.wk (c := CryptoTy.sword 64) σ)
+          (W.extend (BitVec.ofNat 64 n)) .here is body' k'
+          (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 n))
+          (by
+            change (count.lookup V : BitVec 64) = BitVec.ofNat 64 n
+            rw [← hn', BitVec.ofNat_toNat, BitVec.setWidth_eq]) his hb' hk'
+        have h0 : Expr.ctLeak (catLeakModel P)
+            (⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩ : Expr catCryptDialect Δ _) W =
+            [] := by
+          simp only [Expr.ctLeak, opLeak, catLeakModel, catKind]
+          rw [hP]
+        refine ⟨(r'.1, Expr.ctLeak (catLeakModel P)
+          (⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩ : Expr catCryptDialect Δ _) W ++
+            r'.2), ?_, ?_, hR⟩
+        · change (NFProg.leakRun (catLeakModel P) fuel
+            (NFProg.forLoop (cs := cs.map catTy) .here is body' k')
+            (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 n) W)).map _ = _
+          exact congrArg (Option.map _) hr'
+        · rw [h0, List.nil_append, he]
   | ifThenElse cond thn els k _ _ _ =>
       intro Δ σ p' h
       cases h
