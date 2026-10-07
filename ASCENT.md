@@ -14,7 +14,7 @@ The technique is applied to three kinds of code.
 - Machine code printed by this project's own backend, checked a second time without the
   compiler's correctness theorems: the x86 blocks of the Ed25519 implementation, the
   largest of 4,909 instructions
-  ([The project's compiler output, re-verified](#the-projects-compiler-output-re-verified)).
+  ([Verified decompilation of the project's compiler output](#verified-decompilation-of-the-projects-compiler-output)).
 - Rust extracted by hax: the library `HaxAscent` (module root `HaxAscent/`, depending
   only on Lean, Std, Batteries and hax-lean) applies the same calculus to `ImpExpr`,
   with the `FnCorres` judgement and the generator `hax_ascend`;
@@ -60,7 +60,7 @@ Lean port [sgraf812/ascent](https://github.com/sgraf812/ascent); see
 2. [Quick start](#quick-start)
 3. [Tactics](#tactics)
 4. [Third-party machine code](#third-party-machine-code)
-5. [The project's compiler output, re-verified](#the-projects-compiler-output-re-verified)
+5. [Verified decompilation of the project's compiler output](#verified-decompilation-of-the-projects-compiler-output)
 6. [Demos](#demos)
 7. [A worked path: from a `LowCT` kernel to its Jasmin program](#a-worked-path-from-a-lowct-kernel-to-its-jasmin-program)
 8. [Further reading](#further-reading)
@@ -189,13 +189,17 @@ cover every instruction form they use.
 [CertifyThirdPartyDemo](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/CertifyThirdPartyDemo.lean)
 derives the form a caller uses, `s2nMontmulP384_correct_reduced`.
 
-## The project's compiler output, re-verified
+## Verified decompilation of the project's compiler output
 
 Each block below is the body of a function in an assembly file printed by this project's
 backend; the modules under
 [`Ascent/Imported/`](CatCrypt/Crypto/SecureCompilation/Ascent/Imported/) record the source
-file, commit and checksum. The proofs treat the block as foreign code and do not use the
-compiler's correctness theorems, so they check the backend's output independently. The
+file, commit and checksum. Each result is a verified decompilation in the sense of
+Myreen's decompilation into logic: the block is lifted to a function in Lean, with a
+proved correspondence square between the machine run and that function, and the function
+is proved equal to the specification. The proofs treat the block as foreign code and do
+not use the compiler's correctness theorems, so they check the backend's output
+independently. The
 semantics is Jasmin's x86 semantics as transcribed in Lean (`runBlock`, or `runBlockA`
 with addressed memory). Each theorem states its own separation hypotheses between the
 buffers and the stack frame (`Separated`, `ChainSep`, `CrossIn` and `CrossOut`) and, where
