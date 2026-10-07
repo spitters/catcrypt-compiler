@@ -42,7 +42,10 @@ Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, 
 a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
 literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
-the fragment. Every other constructor is `none`.
+the fragment, and a conditional `ifThenElse` whose condition translates to a bit and whose
+arms are in the fragment, with one result type, as the region `NFPre.ifThenElse` (`condOut`):
+its results are the value of the conditional and the names an arm may bind (`condCarried`).
+Every other constructor is `none`.
 
 Readback. `nfToImp` reads an `NFProg` program back to an `ImpExpr` from a reading `RBEnv`
 of its context: a binding named by `NfOp.named` is a `letBind` of its source name, an
@@ -59,6 +62,8 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   source environment.
 * `Out`, `ArgsOut` — the output of the front on an expression and on a list of atoms.
 * `loopOut` — the counted loop of the front.
+* `condCarried`, `condEnv`, `condOut` — the carried names of a conditional, the environment
+  of names after it, and the conditional of the front.
 * `impToNF`, `impArgsNF` — the front, and its translation of the arguments of a call.
 * `PDen`, `PDenP` — the denotation of a prefix and of a program with the leaves of
   `tableOf bi`.
@@ -87,6 +92,9 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   than the loop.
 * `loop_sound`, `loopOut_sound`, `forFold_sound` — the counted loop: the trips of
   `denoteForLoop'` against the fold of `NFProg.forLoop`.
+* `condArm_sound`, `condOut_sound`, `cond_sound` — the conditional: the run of the arm the
+  condition selects against the region `NFPre.ifThenElse`.
+* `impToNF_cond_arms` — a translated conditional has a translated condition and arms.
 * `impToNF_sound` — the front simulates `denote'`.
 * `rbLoop_run` — the trips of a counted loop against the run of its readback.
 * `rbProg_sound_aux`, `nfToImp_denote` — the readback simulates the denotation.
@@ -389,13 +397,62 @@ def loopOut {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nf
         (pre₀.append (.forLoop tripV inits ((oC.pre.append ob.pre).plug (.ret rets)) oU.pre))
         oU.σ oU.res
 
+/-- The carried entries of a conditional: the current entry of each name of `σ` that one
+    of the arms `a`, `b` may bind. -/
+def condCarried {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a b : ImpExpr) :
+    List (String × (Σ t : NfTy, Var Γ t)) :=
+  ((σ.map (·.1)).eraseDups.filter fun x =>
+      !(frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a &&
+        frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b)).filterMap
+    fun x => (σ.lookup x).map fun p => (x, p)
+
+/-- The environment of names after a conditional with the results `t :: cs`: the carried
+    names `xs` bound to the results after the first, in front of the names of `σ` moved past
+    the results. -/
+def condEnv {Γc : Ctxt nfDialect} (σ : NfEnv Γc) (xs : List String) (t : NfTy)
+    (cs : List NfTy) : NfEnv (t :: cs ++ Γc) :=
+  NfEnv.bindAll xs cs (HVector.renameVars (fun v => v.there) (headVars cs))
+    (NfEnv.mapV (fun v => Var.shiftApp (d := nfDialect) (t :: cs) v) σ)
+
+/-- **The conditional of the front.** After the prefix `pre₀` to the context `Γc`, with the
+    environment of names `σc` and the condition in the bit variable `cV`, the region
+    `NFPre.ifThenElse` on the translations `recA` and `recB` of the two arms from `σc`. The
+    arms have one result type `t`; each returns the tuple of its value and of the current
+    variables of the carried names `xs`, at the types `cs`. The value of the conditional is
+    the first result, and the continuation reads the names `xs` from the other results
+    (`condEnv`). `none` when the result types of the arms differ, or an arm leaves a name of
+    `xs` unbound or at another type. -/
+def condOut {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc) (σc : NfEnv Γc)
+    (cV : Var Γc NfTy.bit) (xs : List String) (cs : List NfTy)
+    (recA recB : Option (Out Γc)) : Option (Out Γ) :=
+  recA.bind fun oa => recB.bind fun ob =>
+    if h : ob.t = oa.t then
+      (varsAt oa.σ xs cs).bind fun ra => (varsAt ob.σ xs cs).map fun rb =>
+        Out.mk (oa.t :: cs ++ Γc) oa.t
+          (pre₀.append (.ifThenElse (rs := oa.t :: cs) cV
+            (oa.pre.plug (.ret (.cons oa.res ra)))
+            (ob.pre.plug (.ret (.cons (h ▸ ob.res) rb))) .nil))
+          (condEnv σc xs oa.t cs) .here
+    else none
+
 mutual
 /-- The front: the `NFProg` prefix computing the value of an expression of the fragment,
     from the environment of names `σ`. The binding of the value has the source name `tgt`
     (the name a `letBind` or an `assign` gives it), and the counter binding of a loop the
     name of the counter. The arguments of a call are translated by `impArgsNF`: each
     argument that is not a variable or a literal is bound to a fresh variable before the
-    call, left to right. -/
+    call, left to right.
+
+    A conditional `ifThenElse c a b` is the region `NFPre.ifThenElse` (`condOut`). The
+    condition `c` is translated first, to a variable of the bit type. The two arms are
+    translated from the environment of names after the condition, without a source name.
+    The results of the region are the value of the conditional, at the common result type
+    of the arms, followed by the names of that environment an arm may bind
+    (`condCarried`): each arm returns its value and the current variables of these names,
+    so a name bound in one arm returns its incoming variable in the other. A name bound in
+    an arm and absent from the environment before the conditional is not a result. After
+    the region the carried names read its results (`condEnv`). The source name `tgt` is not
+    recorded on a conditional. -/
 def impToNF (sigOf : String → List NfTy → Option NfTy) :
     Option String → {Γ : Ctxt nfDialect} → NfEnv Γ → ImpExpr → Option (Out Γ)
   | _, _, σ, .var x => atomOut σ (.var x)
@@ -426,6 +483,12 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
             oT.res i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
             (fun σB => impToNF sigOf none σB body)
         else none
+  | _, _, σ, .ifThenElse c a b => (impToNF sigOf none σ c).bind fun oc =>
+      if h : oc.t = NfTy.bit then
+        let W := condCarried oc.σ a b
+        condOut oc.pre oc.σ (h ▸ oc.res) (W.map (·.1)) (entriesVars W).1
+          (impToNF sigOf none oc.σ a) (impToNF sigOf none oc.σ b)
+      else none
   | _, _, _, _ => none
 
 /-- The arguments of a call, left to right: each argument translated by `impToNF` without a
@@ -1632,6 +1695,204 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       injection h1 with h2
       exact h2.symm) r env' hloop
 
+/-! ## 10b. The conditional -/
+
+/-- Every carried entry of a conditional is current. -/
+theorem condCarried_lookup {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a b : ImpExpr) :
+    ∀ p ∈ condCarried σ a b, σ.lookup p.1 = some p.2 := by
+  intro p hp
+  simp only [condCarried, List.mem_filterMap, Option.map_eq_some_iff] at hp
+  obtain ⟨x, -, q, hq, rfl⟩ := hp
+  exact hq
+
+/-- A current name that is not carried by a conditional is bound by neither arm. -/
+theorem frameOk_of_not_condCarried {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a b : ImpExpr)
+    {x : String} {q : Σ t : NfTy, Var Γ t} (hq : σ.lookup x = some q)
+    (hx : x ∉ (condCarried σ a b).map (·.1)) :
+    frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a = true ∧
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b = true := by
+  by_contra hf
+  apply hx
+  have hmem : x ∈ σ.map (·.1) := by
+    simp only [NfEnv.lookup, Option.map_eq_some_iff, List.find?_eq_some_iff_append] at hq
+    obtain ⟨p, ⟨hp, as, bs, rfl, -⟩, -⟩ := hq
+    simp only [beq_iff_eq] at hp
+    simp [hp]
+  simp only [condCarried, List.map_filterMap, List.mem_filterMap, List.mem_filter,
+    List.mem_eraseDups, Option.map_map]
+  refine ⟨x, ⟨hmem, ?_⟩, by simp [hq]⟩
+  rw [Bool.not_eq_true', ← Bool.not_eq_true, Bool.and_eq_true]
+  exact hf
+
+/-- A conditional whose condition runs to the Boolean `k` runs the arm of `k`. -/
+theorem ifThenElse_run_bool (bi : Builtins) (fuel : Nat) {c : ImpExpr} (a b : ImpExpr)
+    {env e1 : Env} {k : Bool} (h : (denote' bi fuel c).run env = (.val (.bool k), e1)) :
+    (denote' bi fuel (.ifThenElse c a b)).run env =
+      (denote' bi fuel (if k then a else b)).run e1 := by
+  rw [_root_.Hax.ContinueFlag.ifThenElse_run, h]
+  cases k <;> rfl
+
+/-- A branch whose taken arm denotes the results `r` denotes the valuation its continuation
+    reaches from `r`. -/
+theorem PDen_ifThenElse_some (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect}
+    {rs : List NfTy} {cond : Var Γ NfTy.bit} {thn els : NFProg nfDialect Γ rs}
+    {p : NFPre nfDialect (rs ++ Γ) Δ} {V : Valuation Γ} {r : Valuation (d := nfDialect) rs}
+    {W : Valuation Δ}
+    (hr : PDenP bi fuel (if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then thn
+      else els) V = some r)
+    (hp : PDen bi fuel p (hvAppend r V) = some W) :
+    PDen bi fuel (.ifThenElse cond thn els p) V = some W := by
+  show ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then PDenP bi fuel thn V
+    else PDenP bi fuel els V).bind fun r => PDen bi fuel p (hvAppend r V)) = some W
+  cases hc : HasBoolBit.toBool (d := nfDialect) (cond.lookup V) <;>
+    simp only [hc, Bool.false_eq_true, if_false, if_true] at hr ⊢ <;>
+    rw [hr, Option.bind_some, hp]
+
+/-- The first variables of `cs ++ Γ`, moved past one more variable, read the values `acc`
+    in front of the valuation. -/
+theorem lookupArgs_headVars_there {Γ : Ctxt nfDialect} (X : Valuation Γ) {t : NfTy}
+    (a : t.denote) (cs : List NfTy) (acc : Valuation (d := nfDialect) cs) :
+    Expr.lookupArgs (HVector.renameVars (fun v => Var.there (s := t) v)
+      (headVars (Γ := Γ) cs)) (HVector.cons (f := fun t => ⟦t⟧) a (hvAppend acc X)) = acc := by
+  have h := lookupArgs_headVars X (t :: cs) (HVector.cons (f := fun t => ⟦t⟧) a acc)
+  exact (HVector.cons.inj h).2
+
+/-- **One arm of a conditional.** A sound output for the arm `e` from `σc`, closed by the
+    return of its value and of the current variables `rets` of the names `xs`, denotes
+    results from which the environment of names `condEnv` is related to the final
+    environment and the first result encodes the value, when `e` binds no name of `σc`
+    outside `xs`. -/
+theorem condArm_sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γc : Ctxt nfDialect}
+    (σc : NfEnv Γc) (xs : List String) (cs : List NfTy) (hlen : xs.length = cs.length)
+    {o : Out Γc} (rets : HVector (fun t => Var o.Δ t) cs) (hrets : varsAt o.σ xs cs = some rets)
+    (hS : Sound bi fuel e σc o)
+    (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) e = true)
+    (env : Env) (Vc : Valuation Γc) (tf : Nat) (hrel : EnvRel σc env Vc) (r : Value)
+    (env' : Env) (hrun : (denote' bi fuel e).run env = (.val r, env')) :
+    ∃ (x : o.t.denote) (acc : Valuation (d := nfDialect) cs),
+      PDenP bi tf (o.pre.plug (.ret (.cons o.res rets))) Vc =
+        some (HVector.cons (f := fun t => ⟦t⟧) x acc) ∧
+      EnvRel (condEnv σc xs o.t cs) env'
+        (HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc)) ∧
+      r = enc o.t x := by
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := hS env Vc r env' hrel hrun tf
+  refine ⟨o.res.lookup W2, Expr.lookupArgs rets W2,
+    PDenP_plug_ret bi tf _ (HVector.cons o.res rets) Vc hW2, ?_, rfl⟩
+  intro y t v hl
+  refine EnvRel.bindAll xs cs _ _ hlen ?_ y ?_ t v hl
+  · show CarriedRel env' xs cs (Expr.lookupArgs (HVector.renameVars (fun v => Var.there v)
+      (headVars cs)) (HVector.cons (f := fun t => ⟦t⟧) (o.res.lookup W2)
+        (hvAppend (Expr.lookupArgs rets W2) Vc)))
+    rw [lookupArgs_headVars_there]
+    exact CarriedRel.of_varsAt hrel2 xs cs hrets
+  · intro hy t' v' hl'
+    rw [NfEnv.lookup_mapV, Option.map_eq_some_iff] at hl'
+    obtain ⟨⟨t0, v0⟩, h0, heq⟩ := hl'
+    simp only [Sigma.mk.injEq] at heq
+    obtain ⟨rfl, hv'⟩ := heq
+    rw [denote'_keeps bi e (hfr y hy _ h0) fuel env hrun (by rintro ⟨_, h⟩; cases h),
+      hrel y t0 v0 h0, ← eq_of_heq hv']
+    exact congrArg (fun z => some (enc t0 z))
+      (Var.lookup_shiftApp (o.t :: cs) (HVector.cons (f := fun t => ⟦t⟧) (o.res.lookup W2)
+        (Expr.lookupArgs rets W2)) v0 Vc).symm
+
+/-- **The conditional of the front is sound.** Let the prefix `pre₀` denote `Vc`, related
+    by `σc` to `env`; let `recA` and `recB` be sound for the arms `a` and `b`, and every
+    name of `σc` outside `xs` be one neither arm binds. A run to a value of the arm the
+    condition variable selects is then matched by the output of `condOut`. -/
+theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctxt nfDialect}
+    (pre₀ : NFPre nfDialect Γ Γc) (σc : NfEnv Γc) (cV : Var Γc NfTy.bit) (xs : List String)
+    (cs : List NfTy) (recA recB : Option (Out Γc)) {o : Out Γ}
+    (h₀ : condOut pre₀ σc cV xs cs recA recB = some o)
+    (HA : ∀ {oa : Out Γc}, recA = some oa → Sound bi fuel a σc oa)
+    (HB : ∀ {ob : Out Γc}, recB = some ob → Sound bi fuel b σc ob)
+    (hlen : xs.length = cs.length)
+    (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a = true ∧
+        frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b = true)
+    (env : Env) (V : Valuation Γ) (Vc : Valuation Γc) (tf : Nat)
+    (hpre : PDen bi tf pre₀ V = some Vc) (hrel : EnvRel σc env Vc) (r : Value) (env' : Env)
+    (hrun : (denote' bi fuel (if HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) = true
+      then a else b)).run env = (.val r, env')) :
+    ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
+  unfold condOut at h₀
+  obtain ⟨oa, hoa, h₀⟩ := Option.bind_eq_some_iff.mp h₀
+  obtain ⟨ob, hob, h₀⟩ := Option.bind_eq_some_iff.mp h₀
+  obtain ⟨Δb, tb, preb, σb, resb⟩ := ob
+  by_cases ht : tb = oa.t
+  · subst ht
+    rw [dif_pos rfl] at h₀
+    obtain ⟨ra, hra, h₀⟩ := Option.bind_eq_some_iff.mp h₀
+    obtain ⟨rb, hrb, rfl⟩ := Option.map_eq_some_iff.mp h₀
+    cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
+    | true =>
+        rw [hc, if_pos rfl] at hrun
+        obtain ⟨x, acc, hrv, hrelv, hval⟩ := condArm_sound bi fuel a σc xs cs hlen ra hra
+          (HA hoa) (fun x hx q hq => (hfr x hx q hq).1) env Vc tf hrel r env' hrun
+        exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
+          PDen_append_some bi tf hpre
+            (PDen_ifThenElse_some bi tf (by rw [hc, if_pos rfl]; exact hrv) rfl), hrelv, hval⟩
+    | false =>
+        rw [hc, if_neg Bool.false_ne_true] at hrun
+        obtain ⟨x, acc, hrv, hrelv, hval⟩ := condArm_sound bi fuel b σc xs cs hlen rb hrb
+          (HB hob) (fun x hx q hq => (hfr x hx q hq).2) env Vc tf hrel r env' hrun
+        exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
+          PDen_append_some bi tf hpre
+            (PDen_ifThenElse_some bi tf (by rw [hc, if_neg Bool.false_ne_true]; exact hrv) rfl),
+          hrelv, hval⟩
+  · rw [dif_neg ht] at h₀
+    cases h₀
+
+/-- A conditional the front translates has a condition and two arms the front translates,
+    the arms from the environment of names after the condition. -/
+theorem impToNF_cond_arms (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
+    (c a b : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.ifThenElse c a b) = some o) :
+    ∃ (oc : Out Γ) (oa ob : Out oc.Δ), impToNF sigOf none σ c = some oc ∧
+      impToNF sigOf none oc.σ a = some oa ∧ impToNF sigOf none oc.σ b = some ob := by
+  simp only [impToNF, Option.bind_eq_some_iff] at h
+  obtain ⟨oc, hoc, h⟩ := h
+  split at h
+  · unfold condOut at h
+    obtain ⟨oa, hoa, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨ob, hob, -⟩ := Option.bind_eq_some_iff.mp h
+    exact ⟨oc, oa, ob, hoc, hoa, hob⟩
+  · cases h
+
+/-- **A conditional is sound**, when the front is sound for its condition and its arms. -/
+theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (c a b : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
+    {o : Out Γ} (h : impToNF sigOf tgt σ (.ifThenElse c a b) = some o)
+    (HC : ∀ {o' : Out Γ}, impToNF sigOf none σ c = some o' → Sound bi fuel c σ o')
+    (HA : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' a = some o' → Sound bi fuel a σ' o')
+    (HB : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' b = some o' → Sound bi fuel b σ' o') :
+    Sound bi fuel (.ifThenElse c a b) σ o := by
+  simp only [impToNF, Option.bind_eq_some_iff] at h
+  obtain ⟨oc, hoc, h⟩ := h
+  have hC := HC hoc
+  obtain ⟨Δc, tc, prec, σc, resc⟩ := oc
+  by_cases htc : tc = NfTy.bit
+  · subst htc
+    rw [dif_pos rfl] at h
+    intro env V r env' hrel hrun tf
+    obtain ⟨rc, e1, h1⟩ := run_val_split (denote' bi fuel c) env
+    cases rc with
+    | val vc =>
+        obtain ⟨W1, hW1, hrel1, rfl⟩ := hC env V vc e1 hrel h1 tf
+        rw [ifThenElse_run_bool bi fuel a b h1] at hrun
+        exact condOut_sound bi fuel a b prec σc resc _ _ _ _ h (fun h' => HA σc h')
+          (fun h' => HB σc h') (by rw [List.length_map, entriesVars_length])
+          (fun x hx _ hq => frameOk_of_not_condCarried σc a b hq hx)
+          e1 V W1 tf hW1 hrel1 r env' hrun
+    | _ =>
+        rw [_root_.Hax.ContinueFlag.ifThenElse_run, h1] at hrun
+        cases hrun
+  · rw [dif_neg htc] at h
+    cases h
+
 /-! ## 11. The front simulates `denote'` -/
 
 /-- **The front simulates `denote'`.** Under the typing hypothesis `TypedCalls bi sigOf`,
@@ -1690,6 +1951,10 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
               fun σ' _ h' fuel' => ihb none σ' h' fuel'
         | _ => simp [impToNF] at h
     | _ => simp [impToNF] at h
+  case ifThenElse c a b ihc iha ihb =>
+    intro tgt Γ σ o h fuel
+    exact cond_sound bi sigOf fuel tgt c a b σ h (fun h' => ihc none σ h' fuel)
+      (fun σ' _ h' => iha none σ' h' fuel) (fun σ' _ h' => ihb none σ' h' fuel)
   all_goals intro tgt Γ σ o h; simp [impToNF] at h
 
 /-! ## 12. The readback -/
