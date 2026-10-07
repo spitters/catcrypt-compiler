@@ -187,24 +187,15 @@ def emitOp (D : List ExtDecl) {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
 def nfToCatExt (D : List ExtDecl) : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} →
     {ts : List NfTy} → NFProg nfDialect Γ ts → TRd Γ Δ →
       Option (NFProg catCryptDialect Δ (ts.map catTy))
-  | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
+  | _, _, _, .ret vs, σ => pinAll (fun _ ws => some (.ret ws)) σ (σ.rds vs)
   | _, _, _, .var ⟨op, h, args⟩ k, σ => emitOp D (fun σ' => nfToCatExt D k σ') σ op h args
   | _, _, _, .forLoop (cs := cs) count inits body k, σ =>
-      match σ count with
-      | .var c =>
-          (pinVars (σ.rds inits)).bind fun is =>
-            (nfToCatExt D body (TRd.liftApp cs (TRd.lift σ))).bind fun body' =>
-              (nfToCatExt D k (TRd.liftApp cs σ)).map fun k' =>
-                .forLoop (cs := cs.map catTy) c is body' k'
-      | .lit n _ =>
-          (pinVars (TRd.rds (TRd.wk (c := CryptoTy.sword 64) σ) inits)).bind fun is =>
-            (nfToCatExt D body
-                (TRd.liftApp cs (TRd.lift (TRd.wk (c := CryptoTy.sword 64) σ)))).bind
-              fun body' =>
-                (nfToCatExt D k (TRd.liftApp cs (TRd.wk (c := CryptoTy.sword 64) σ))).map
-                  fun k' =>
-                    .var ⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩
-                      (.forLoop (cs := cs.map catTy) .here is body' k')
+      pinAll (ts := .word 64 :: cs)
+        (fun σ' ws =>
+          (nfToCatExt D body (TRd.liftApp cs (TRd.lift σ'))).bind fun body' =>
+            (nfToCatExt D k (TRd.liftApp cs σ')).map fun k' =>
+              .forLoop (cs := cs.map catTy) ws.head ws.tail body' k')
+        σ (.cons (σ count) (σ.rds inits))
   | _, _, _, .ifThenElse (rs := rs) cond thn els k, σ =>
       match σ cond with
       | .var c =>
@@ -251,7 +242,6 @@ theorem nfToCatExt_nil {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDial
   | forLoop count inits body k ihb ihk =>
       intro Δ σ
       simp only [nfToCatExt, nfToCat, ihb, ihk]
-      cases σ count <;> rfl
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ σ
       simp only [nfToCatExt, nfToCat, iht, ihe, ihk]
@@ -469,6 +459,37 @@ theorem emitCall_sound (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {s : 
     rw [hcall]
     exact hden
 
+/-- **The bindings of `pinAll` simulate at a call environment.** The statement
+    `pinAll_sound` with the translated programs denoted at `E`. -/
+theorem pinAll_denoteAt (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect}
+    {ts ts₀ : List NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) →
+      Option (NFProg catCryptDialect Δ' (ts₀.map catTy)))
+    (V : Valuation Γ) (xs : Valuation (d := nfDialect) ts)
+    (out : Valuation (d := nfDialect) ts₀) (fuel : Nat)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy))
+      (p' : NFProg catCryptDialect Δ' (ts₀.map catTy)) (W' : Valuation Δ'),
+      k σ' ws = some p' → σ'.Agree V W' → VRelL ts xs (Expr.lookupArgs ws W') →
+      ∃ out', p'.denoteAt E fuel W' = some out' ∧ VRelL ts₀ out out')
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (p' : NFProg catCryptDialect Δ (ts₀.map catTy)) (W : Valuation Δ)
+    (h : pinAll k σ rs = some p') (hag : σ.Agree V W) (hx : RdRelL W ts xs rs) :
+    ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts₀ out out' := by
+  refine pinAll_elim
+    (M := fun {Δ} σ rs p' => ∀ W : Valuation Δ, σ.Agree V W → RdRelL W ts xs rs →
+      ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts₀ out out') ?_ ?_ σ rs p' h W hag hx
+  · intro Δ σ rs ws p hws hk W hag hx
+    exact HK σ ws p W hk hag (pinVars_rel xs rs ws hws hx)
+  · intro Δ σ rs c p hc ih W hag hx
+    obtain ⟨out', hden, hR⟩ := ih (W.extend (BitVec.ofNat 64 c))
+      (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c))
+      (bindLit_rel (firstLit_lt xs rs hc hx) xs rs hx)
+    refine ⟨out', ?_, hR⟩
+    rw [denoteAt_var, Expr.denoteM_option_eq_some]
+    exact hden
+
 /-- **The simulation statement of the translation with declarations** of the program `p`,
     at the call environment `E`: a denotation of `p` to `out` from a valuation related to `W`
     by the readings is matched, at every fuel, by a denotation at `E` of the translated
@@ -493,10 +514,11 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
   induction p with
   | ret vs =>
       intro Δ σ p' h V W out hag hp fuel
-      obtain ⟨ws, hws, rfl⟩ := Option.map_eq_some_iff.mp h
       change some (Expr.lookupArgs vs V) = some out at hp
       cases hp
-      exact ⟨_, rfl, pinVars_rel _ _ ws hws (TRd.rdRelL_rds hag vs)⟩
+      exact pinAll_denoteAt E _ V _ _ fuel
+        (fun σ' ws p'' W' hk _ hrel => by cases hk; exact ⟨_, rfl, hrel⟩)
+        σ _ p' W h hag (TRd.rdRelL_rds hag vs)
   | var e k ih =>
       intro Δ σ p' h V W out hag hp fuel
       obtain ⟨op, rfl, args⟩ := e
@@ -528,7 +550,7 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
       have core : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ₀ Δ') (W' : Valuation Δ')
           (c : Var Δ' (CryptoTy.sword 64)) is body' k', σ'.Agree V W' →
           (count.lookup V : BitVec 64) = c.lookup W' →
-          pinVars (σ'.rds inits) = some is →
+          VRelL cs (Expr.lookupArgs inits V) (Expr.lookupArgs is W') →
           nfToCatExt D body (TRd.liftApp cs (TRd.lift σ')) = some body' →
           nfToCatExt D k (TRd.liftApp cs σ') = some k' →
           ∃ out', (NFProg.forLoop (cs := cs.map catTy) c is body' k').denoteAt E fuel W' =
@@ -548,8 +570,7 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
             ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _ a1
               (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag'
                 (x := BitVec.ofNat 64 j) (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
-        obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF
-          (pinVars_rel _ _ is his (TRd.rdRelL_rds hag' inits)) hfold
+        obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF his hfold
         obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
           (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel
         refine ⟨out', ?_, hR⟩
@@ -560,31 +581,14 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
         rw [hc2, List.range_eq_range']
         erw [hfold']
         exact hden
-      have hcount := hag _ count
-      simp only [nfToCatExt] at h
-      split at h
-      · rename_i c hc
-        rw [hc] at hcount
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-        exact core σ W c is body' k' hag hcount his hb' hk'
-      · rename_i n hn hc
-        rw [hc] at hcount
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-        have hn' : (count.lookup V : BitVec 64).toNat = n := by
-          exact_mod_cast Option.some.inj hcount.1
-        obtain ⟨out', hden, hR⟩ := core (TRd.wk (c := CryptoTy.sword 64) σ)
-          (W.extend (BitVec.ofNat 64 n)) .here is body' k'
-          (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 n))
-          (by
-            change (count.lookup V : BitVec 64) = BitVec.ofNat 64 n
-            rw [← hn', BitVec.ofNat_toNat, BitVec.setWidth_eq]) his hb' hk'
-        refine ⟨out', ?_, hR⟩
-        rw [denoteAt_var, Expr.denoteM_option_eq_some]
-        exact hden
+      refine pinAll_denoteAt E (ts := .word 64 :: cs) _ V
+        (Expr.lookupArgs (HVector.cons count inits) V) out fuel ?_ σ _ p' W h hag
+        (TRd.rdRelL_rds hag (HVector.cons count inits))
+      intro Δ' σ' ws p'' W' hk hag' hrel
+      rcases ws with _ | ⟨c, is⟩
+      obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+      exact core σ' W' c is body' k' hag' hrel.1 hrel.2 hb' hk'
   | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
       intro Δ σ p' h V W out hag hp fuel
       change ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
@@ -665,6 +669,36 @@ theorem emitCall_callFree {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     obtain ⟨k', -, rfl⟩ := Option.map_eq_some_iff.mp h
     rfl
 
+/-- The bindings of `pinAll` in front of two programs: when the second gives every program
+    without `call` the first gives, so does `pinAll` on it. -/
+theorem pinAll_callFree {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    {k₁ k₂ : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)}
+    (hc : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy)) (q : NFProg catCryptDialect Δ' us),
+      k₁ σ' ws = some q → q.callFree = true → k₂ σ' ws = some q)
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (q : NFProg catCryptDialect Δ us) (h : pinAll k₁ σ rs = some q)
+    (hf : q.callFree = true) : pinAll k₂ σ rs = some q := by
+  unfold pinAll at h ⊢
+  generalize ts.length = n at h ⊢
+  induction n generalizing Δ with
+  | zero =>
+      obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+      simp only [pinAllN, hws, Option.bind_some]
+      exact hc σ ws q hk hf
+  | succ n ih =>
+      cases hfl : firstLit rs with
+      | none =>
+          simp only [pinAllN, hfl] at h ⊢
+          obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+          simp only [hws, Option.bind_some]
+          exact hc σ ws q hk hf
+      | some c =>
+          simp only [pinAllN, hfl] at h ⊢
+          obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
+          simp only [ih _ _ p hf hp, Option.map_some]
+
 /-- **A translation without `call` is the translation `nfToCat` gives.** -/
 theorem nfToCat_of_callFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) :
@@ -688,25 +722,14 @@ theorem nfToCat_of_callFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List 
       · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
         rw [emitCall_callFree h] at hf
         cases hf
-  | forLoop count inits body k ihb ihk =>
+  | @forLoop _ cs _ count inits body k ihb ihk =>
       intro Δ σ q h hf
-      simp only [nfToCatExt] at h
-      simp only [nfToCat]
-      split at h
-      · rename_i c hc
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        simp only [NFProg.callFree, Bool.and_eq_true] at hf
-        simp only [hc, his, ihb _ b' hb hf.1, ihk _ k' hk hf.2, Option.bind_some,
-          Option.map_some]
-      · rename_i n hn hc
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        simp only [NFProg.callFree, Bool.and_eq_true] at hf
-        simp only [hc, his, ihb _ b' hb hf.1, ihk _ k' hk hf.2, Option.bind_some,
-          Option.map_some]
+      refine pinAll_callFree (ts := .word 64 :: cs) ?_ σ _ q h hf
+      intro Δ' σ' ws q' hq' hf'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      simp only [NFProg.callFree, Bool.and_eq_true] at hf'
+      simp only [ihb _ b' hb hf'.1, ihk _ k' hk hf'.2, Option.bind_some, Option.map_some]
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ σ q h hf
       simp only [nfToCatExt] at h
@@ -758,6 +781,20 @@ theorem emitRes_calls {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
       obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
       exact emitRes_calls hcont h rest σ.wk k' hk'
 
+/-- The bindings of `pinAll` make the calls of the program `k` gives. -/
+theorem pinAll_calls {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)}
+    {C : String → List CryptoTy → List CryptoTy → Prop}
+    (hk : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy)) (q : NFProg catCryptDialect Δ' us),
+      k σ' ws = some q → ∀ f as rs, q.Calls f as rs → C f as rs)
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (q : NFProg catCryptDialect Δ us) (h : pinAll k σ rs = some q) :
+    ∀ f as rs, q.Calls f as rs → C f as rs :=
+  pinAll_elim (M := fun {_} _ _ q => ∀ f as rs, q.Calls f as rs → C f as rs)
+    (fun σ _ ws q _ hq => hk σ ws q hq) (fun _ _ _ _ _ ih => ih) σ rs q h
+
 /-- **Every call of a translated program is declared.** A program `nfToCatExt D` returns
     calls only names of `D`, each at the mapped signature of its declaration, a signature
     of `64`-bit words. -/
@@ -767,8 +804,10 @@ theorem nfToCatExt_calls (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfT
       nfToCatExt D p σ = some q → CallsDeclared D q := by
   induction p with
   | ret vs =>
-      intro Δ σ q h f as rs hc
-      obtain ⟨ws, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      intro Δ σ q h
+      refine pinAll_calls ?_ σ _ q h
+      intro _ _ _ q' hq' f as rs hc
+      cases hq'
       exact hc.elim
   | var e k ih =>
       intro Δ σ q h
@@ -796,24 +835,16 @@ theorem nfToCatExt_calls (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfT
           rcases hcl with ⟨rfl, rfl, rfl⟩ | hcl
           · exact ⟨d, hd, rfl, rfl, congrArg (fun t => [catTy t]) hr, hw⟩
           · exact ih _ k' hk' f as rs hcl
-  | forLoop count inits body k ihb ihk =>
+  | @forLoop _ cs _ count inits body k ihb ihk =>
       intro Δ σ q h
-      simp only [nfToCatExt] at h
-      split at h
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        intro f as rs hcl
-        rcases hcl with hcl | hcl
-        · exact ihb _ b' hb f as rs hcl
-        · exact ihk _ k' hk f as rs hcl
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        intro f as rs hcl
-        rcases hcl with hcl | hcl
-        · exact ihb _ b' hb f as rs hcl
-        · exact ihk _ k' hk f as rs hcl
+      refine pinAll_calls (ts := .word 64 :: cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      intro f as rs hcl
+      rcases hcl with hcl | hcl
+      · exact ihb _ b' hb f as rs hcl
+      · exact ihk _ k' hk f as rs hcl
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ σ q h
       simp only [nfToCatExt] at h
@@ -871,7 +902,9 @@ theorem nfToCatExt_opsHaveImages (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : 
   induction p with
   | ret vs =>
       intro _ σ q h
-      obtain ⟨ws, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      refine pinAll_opsHaveImages ?_ σ _ q h
+      intro _ _ _ q' hq'
+      cases hq'
       trivial
   | var e k ih =>
       intro _ σ q h
@@ -884,23 +917,13 @@ theorem nfToCatExt_opsHaveImages (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : 
           (catOp_image σ op args res hres) h
       · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
         exact emitCall_opsHaveImages (fun σ' q' hq' => ih σ' q' hq') h
-  | forLoop count inits body k ihb ihk =>
+  | @forLoop _ cs _ count inits body k ihb ihk =>
       intro _ σ q h
-      simp only [nfToCatExt] at h
-      split at h
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        exact And.intro (ihb _ b' hb) (ihk _ k' hk)
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        refine And.intro ?_ (And.intro (ihb _ b' hb) (ihk _ k' hk))
-        intro _ _ e he
-        obtain ⟨op, hr, args⟩ := e
-        dsimp only at he
-        subst he
-        rfl
+      refine pinAll_opsHaveImages (ts := .word 64 :: cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      exact And.intro (ihb _ b' hb) (ihk _ k' hk)
   | ifThenElse cond thn els k iht ihe ihk =>
       intro _ σ q h
       simp only [nfToCatExt] at h

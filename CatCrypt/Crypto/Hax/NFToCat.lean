@@ -20,7 +20,9 @@ map by `catTy`: a `64`-bit word and an integer to `sword 64`, an array of `n` el
 is the natural number of the word, an array element by element. Each variable of the source
 has a reading `Rd`: a variable of the target, or a literal in `[0, 2^64)`. A literal has no
 target binding; an operation that reads one binds it by `bvConst` immediately before itself,
-so that a literal used in a loop body is bound inside the body.
+so that a literal used in a loop body is bound inside the body. A return and a counted loop
+read variables: `pinAll` binds each literal among the readings of a result, of a count and
+of the seeds by `bvConst` in front of the return or the loop.
 
 The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
 `array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)` and the loop operations
@@ -41,6 +43,8 @@ the literal `hi`.
   scalar table on `64`-bit words.
 * `catCallRd`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of an operation,
   of the bindings of a translated operation and of a program.
+* `pinAll` — the `bvConst` bindings of the literals among a vector of readings, in front of
+  a program on their variables.
 * `toCatVal`, `mapVal`, `TRd.id`, `abiParamsArr` — the entry: the mapped valuation, the
   readings of a context in its mapped context, and the parameters of a System V layout with
   the types of arrays of `64`-bit words.
@@ -50,6 +54,8 @@ the literal `hi`.
 * `scalarRes_sound` — a translated call of the scalar table is related to its value.
 * `catOp_sound` — a translated operation is related to the value of the source operation.
 * `emitRes_sound` — the bindings of a translated operation simulate.
+* `pinAll_of_pinVars`, `pinAll_elim`, `pinAll_sound` — `pinAll` binds nothing on readings
+  without a literal; the programs it returns; its bindings simulate.
 * `nfToCat_sound` — a translated program denotes values related to the values of the source
   program, under every leaf table that agrees with the `u64` table at the translated calls
   (`SubTable`).
@@ -1955,6 +1961,157 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
 
 /-! ## 6. Programs -/
 
+/-- A reading under a binding of the literal `k`: a reading of the literal `k` is the new
+    binding, and every other reading is weakened. -/
+def Rd.pin {Δ : Ctxt catCryptDialect} (k : Nat) {t : NfTy} :
+    Rd Δ t → Rd (CryptoTy.sword 64 :: Δ) t
+  | .var w => .var w.there
+  | .lit k' h => if k' = k then .var (litVar h) else .lit k' h
+
+/-- A vector of readings under a binding of the literal `k`, reading by reading. -/
+def bindLit {Δ : Ctxt catCryptDialect} (k : Nat) : {ts : List NfTy} →
+    HVector (fun t => Rd Δ t) ts → HVector (fun t => Rd (CryptoTy.sword 64 :: Δ) t) ts
+  | [], .nil => .nil
+  | _ :: _, .cons r rs => .cons (r.pin k) (bindLit k rs)
+
+/-- The program `k` gives on the variables of a vector of readings, behind a `bvConst`
+    binding of each literal among them: on readings without a literal, `k` on their
+    variables; otherwise the binding of the first literal in front of the program on the
+    readings `bindLit` gives, at most `n` times. -/
+def pinAllN {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)) :
+    Nat → {Δ : Ctxt catCryptDialect} → TRd Γ Δ → HVector (fun t => Rd Δ t) ts →
+      Option (NFProg catCryptDialect Δ us)
+  | 0, _, σ, rs => (pinVars rs).bind (k σ)
+  | n + 1, _, σ, rs =>
+      match firstLit rs with
+      | none => (pinVars rs).bind (k σ)
+      | some c =>
+          (pinAllN k n (TRd.wk (c := CryptoTy.sword 64) σ) (bindLit c rs)).map fun p =>
+            .var ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ p
+
+/-- `pinAllN` at the length of the vector, which bounds the number of its literals. -/
+def pinAll {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us))
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts) :
+    Option (NFProg catCryptDialect Δ us) :=
+  pinAllN k ts.length σ rs
+
+/-- A vector of readings with variables has no literal. -/
+theorem firstLit_of_pinVars {Δ : Ctxt catCryptDialect} :
+    ∀ {ts : List NfTy} (rs : HVector (fun t => Rd Δ t) ts)
+      (ws : HVector (fun t => Var Δ t) (ts.map catTy)), pinVars rs = some ws →
+      firstLit rs = none
+  | [], .nil, _, _ => rfl
+  | _ :: _, .cons r rs, ws, h => by
+      cases r with
+      | var w =>
+          simp only [pinVars, Option.map_eq_some_iff] at h
+          obtain ⟨ws', h', -⟩ := h
+          exact firstLit_of_pinVars rs ws' h'
+      | lit _ _ => cases h
+
+/-- **On readings without a literal `pinAll` binds nothing**: it is `k` on the variables
+    `pinVars` gives. -/
+theorem pinAll_of_pinVars {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us))
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (ws : HVector (fun t => Var Δ t) (ts.map catTy)) (h : pinVars rs = some ws) :
+    pinAll k σ rs = k σ ws := by
+  unfold pinAll
+  cases ts.length with
+  | zero => simp only [pinAllN, h, Option.bind_some]
+  | succ n => simp only [pinAllN, firstLit_of_pinVars rs ws h, h, Option.bind_some]
+
+/-- **The programs of `pinAll`.** A property that holds of `k` on the variables of readings
+    without a literal, and of a `bvConst` binding of the first literal of a vector in front
+    of a program of which it holds at the readings `bindLit` gives, holds of every program
+    `pinAll` returns. -/
+theorem pinAll_elim {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)}
+    (M : ∀ {Δ : Ctxt catCryptDialect}, TRd Γ Δ → HVector (fun t => Rd Δ t) ts →
+      NFProg catCryptDialect Δ us → Prop)
+    (base : ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+      (ws : HVector (fun t => Var Δ t) (ts.map catTy)) (p : NFProg catCryptDialect Δ us),
+      pinVars rs = some ws → k σ ws = some p → M σ rs p)
+    (step : ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+      (c : Nat) (p : NFProg catCryptDialect (CryptoTy.sword 64 :: Δ) us),
+      firstLit rs = some c → M (TRd.wk (c := CryptoTy.sword 64) σ) (bindLit c rs) p →
+      M σ rs (.var ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ p))
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (p : NFProg catCryptDialect Δ us) (h : pinAll k σ rs = some p) : M σ rs p := by
+  unfold pinAll at h
+  generalize ts.length = n at h
+  induction n generalizing Δ with
+  | zero =>
+      obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+      exact base σ rs ws p hws hk
+  | succ n ih =>
+      simp only [pinAllN] at h
+      split at h
+      · obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+        exact base σ rs ws p hws hk
+      · rename_i c hc
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
+        exact step σ rs c q hc (ih _ _ q hq)
+
+/-- A reading under a binding of a literal below `2 ^ 64` relates the value it related. -/
+theorem rdRel_pin {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {k : Nat} (hk : k < 2 ^ 64)
+    {t : NfTy} (x : t.denote) :
+    ∀ (r : Rd Δ t), RdRel W t x r →
+      RdRel (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) t x (r.pin k)
+  | .var _, h => h
+  | .lit k' hw, h => by
+      by_cases hkk : k' = k
+      · subst hkk
+        simp only [Rd.pin, if_pos]
+        exact litVar_rel W hw h.1 hk
+      · simp only [Rd.pin, if_neg hkk]
+        exact h
+
+theorem bindLit_rel {Δ : Ctxt catCryptDialect} {W : Valuation Δ} {k : Nat} (hk : k < 2 ^ 64) :
+    ∀ {ts : List NfTy} (xs : Valuation (d := nfDialect) ts) (rs : HVector (fun t => Rd Δ t) ts),
+      RdRelL W ts xs rs →
+      RdRelL (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) ts xs (bindLit k rs)
+  | [], .nil, .nil, _ => trivial
+  | _ :: _, .cons x xs, .cons r rs, hr => ⟨rdRel_pin W hk x r hr.1, bindLit_rel hk xs rs hr.2⟩
+
+/-- **The bindings of `pinAll` simulate.** When the program `k` gives simulates from every
+    reading that relates `V` and every vector of variables whose values are related to `xs`,
+    the program `pinAll` returns simulates from every valuation the readings `σ` relate to
+    `V` and at which the readings `rs` relate `xs`. -/
+theorem pinAll_sound {Γ : Ctxt nfDialect} {ts ts₀ : List NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) →
+      Option (NFProg catCryptDialect Δ' (ts₀.map catTy)))
+    (V : Valuation Γ) (xs : Valuation (d := nfDialect) ts)
+    (out : Valuation (d := nfDialect) ts₀) (fuel : Nat)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy))
+      (p' : NFProg catCryptDialect Δ' (ts₀.map catTy)) (W' : Valuation Δ'),
+      k σ' ws = some p' → σ'.Agree V W' → VRelL ts xs (Expr.lookupArgs ws W') →
+      ∃ out', p'.denote fuel W' = some out' ∧ VRelL ts₀ out out')
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (p' : NFProg catCryptDialect Δ (ts₀.map catTy)) (W : Valuation Δ)
+    (h : pinAll k σ rs = some p') (hag : σ.Agree V W) (hx : RdRelL W ts xs rs) :
+    ∃ out', p'.denote fuel W = some out' ∧ VRelL ts₀ out out' := by
+  refine pinAll_elim
+    (M := fun {Δ} σ rs p' => ∀ W : Valuation Δ, σ.Agree V W → RdRelL W ts xs rs →
+      ∃ out', p'.denote fuel W = some out' ∧ VRelL ts₀ out out') ?_ ?_ σ rs p' h W hag hx
+  · intro Δ σ rs ws p hws hk W hag hx
+    exact HK σ ws p W hk hag (pinVars_rel xs rs ws hws hx)
+  · intro Δ σ rs c p hc ih W hag hx
+    obtain ⟨out', hden, hR⟩ := ih (W.extend (BitVec.ofNat 64 c))
+      (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c))
+      (bindLit_rel (firstLit_lt xs rs hc hx) xs rs hx)
+    refine ⟨out', ?_, hR⟩
+    rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+    exact hden
+
 /-- The bindings of the translation `res` of an operation of result type `t = s`, from the
     readings `σ`, followed by the translation `cont` of the continuation: no binding for a
     reading, the binding of the expression, the binding of a literal and then of the
@@ -1973,32 +2130,25 @@ def emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
   | _, _, h, .bind _ e rest, σ => (emitRes cont h rest σ.wk).map fun k' => .var e k'
 
 /-- **The translation of a program** of the fragment on the readings `σ`: a return to the
-    return of the variables it reads; a binding to the bindings `emitRes` gives for the
-    translation `catOp` of its operation; and a counted loop whose seeds are variables to the
-    counted loop of the translated body and continuation, on the variable of the count or,
-    for a count that reads as a literal, on a `bvConst` binding of the literal in front of the
-    loop; and a branch to the branch of the translated arms and continuation on the variable
-    of its condition (a bit has no literal reading). `none` on an exit-flag loop and a
-    call. -/
+    return of the variables it reads, behind the `bvConst` bindings `pinAll` gives the
+    literals among its readings; a binding to the bindings `emitRes` gives for the
+    translation `catOp` of its operation; a counted loop to the counted loop of the
+    translated body and continuation on the variables of the count and of the seeds, behind
+    the `bvConst` bindings `pinAll` gives the literals among their readings; and a branch to
+    the branch of the translated arms and continuation on the variable of its condition (a
+    bit has no literal reading). `none` on an exit-flag loop and a call. -/
 def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : List NfTy} →
     NFProg nfDialect Γ ts → TRd Γ Δ → Option (NFProg catCryptDialect Δ (ts.map catTy))
-  | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
+  | _, _, _, .ret vs, σ => pinAll (fun _ ws => some (.ret ws)) σ (σ.rds vs)
   | _, _, _, .var ⟨op, h, args⟩ k, σ =>
       (catOp σ op args).bind fun res => emitRes (fun σ' => nfToCat k σ') h res σ
   | _, _, _, .forLoop (cs := cs) count inits body k, σ =>
-      match σ count with
-      | .var c =>
-          (pinVars (σ.rds inits)).bind fun is =>
-            (nfToCat body (TRd.liftApp cs (TRd.lift σ))).bind fun body' =>
-              (nfToCat k (TRd.liftApp cs σ)).map fun k' =>
-                .forLoop (cs := cs.map catTy) c is body' k'
-      | .lit n _ =>
-          (pinVars (TRd.rds (TRd.wk (c := CryptoTy.sword 64) σ) inits)).bind fun is =>
-            (nfToCat body (TRd.liftApp cs (TRd.lift (TRd.wk (c := CryptoTy.sword 64) σ)))).bind
-              fun body' =>
-                (nfToCat k (TRd.liftApp cs (TRd.wk (c := CryptoTy.sword 64) σ))).map fun k' =>
-                  .var ⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩
-                    (.forLoop (cs := cs.map catTy) .here is body' k')
+      pinAll (ts := .word 64 :: cs)
+        (fun σ' ws =>
+          (nfToCat body (TRd.liftApp cs (TRd.lift σ'))).bind fun body' =>
+            (nfToCat k (TRd.liftApp cs σ')).map fun k' =>
+              .forLoop (cs := cs.map catTy) ws.head ws.tail body' k')
+        σ (.cons (σ count) (σ.rds inits))
   | _, _, _, .ifThenElse (rs := rs) cond thn els k, σ =>
       match σ cond with
       | .var c =>
@@ -2078,10 +2228,11 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
   induction p with
   | ret vs =>
       intro Δ σ p' h V W out hag hp fuel
-      obtain ⟨ws, hws, rfl⟩ := Option.map_eq_some_iff.mp h
       change some (Expr.lookupArgs vs V) = some out at hp
       cases hp
-      exact ⟨_, rfl, pinVars_rel _ _ ws hws (TRd.rdRelL_rds hag vs)⟩
+      exact pinAll_sound _ V _ _ fuel
+        (fun σ' ws p'' W' hk _ hrel => by cases hk; exact ⟨_, rfl, hrel⟩)
+        σ _ p' W h hag (TRd.rdRelL_rds hag vs)
   | var e k ih =>
       intro Δ σ p' h V W out hag hp fuel
       obtain ⟨op, rfl, args⟩ := e
@@ -2105,7 +2256,7 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
       have core : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ₀ Δ') (W' : Valuation Δ')
           (c : Var Δ' (CryptoTy.sword 64)) is body' k', σ'.Agree V W' →
           (count.lookup V : BitVec 64) = c.lookup W' →
-          pinVars (σ'.rds inits) = some is →
+          VRelL cs (Expr.lookupArgs inits V) (Expr.lookupArgs is W') →
           nfToCat body (TRd.liftApp cs (TRd.lift σ')) = some body' →
           nfToCat k (TRd.liftApp cs σ') = some k' →
           ∃ out', (NFProg.forLoop (cs := cs.map catTy) c is body' k').denote fuel W' =
@@ -2125,8 +2276,7 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
             ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _ a1
               (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag'
                 (x := BitVec.ofNat 64 j) (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
-        obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF
-          (pinVars_rel _ _ is his (TRd.rdRelL_rds hag' inits)) hfold
+        obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF his hfold
         obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
           (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel
         refine ⟨out', ?_, hR⟩
@@ -2137,31 +2287,14 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
         rw [hc2, List.range_eq_range']
         erw [hfold']
         exact hden
-      have hcount := hag _ count
-      simp only [nfToCat] at h
-      split at h
-      · rename_i c hc
-        rw [hc] at hcount
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-        exact core σ W c is body' k' hag hcount his hb' hk'
-      · rename_i n hn hc
-        rw [hc] at hcount
-        obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨body', hb', h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-        have hn' : (count.lookup V : BitVec 64).toNat = n := by
-          exact_mod_cast Option.some.inj hcount.1
-        obtain ⟨out', hden, hR⟩ := core (TRd.wk (c := CryptoTy.sword 64) σ)
-          (W.extend (BitVec.ofNat 64 n)) .here is body' k'
-          (TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 n))
-          (by
-            change (count.lookup V : BitVec 64) = BitVec.ofNat 64 n
-            rw [← hn', BitVec.ofNat_toNat, BitVec.setWidth_eq]) his hb' hk'
-        refine ⟨out', ?_, hR⟩
-        rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
-        exact hden
+      refine pinAll_sound (ts := .word 64 :: cs) _ V
+        (Expr.lookupArgs (HVector.cons count inits) V) out fuel ?_ σ _ p' W h hag
+        (TRd.rdRelL_rds hag (HVector.cons count inits))
+      intro Δ' σ' ws p'' W' hk hag' hrel
+      rcases ws with _ | ⟨c, is⟩
+      obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+      exact core σ' W' c is body' k' hag' hrel.1 hrel.2 hb' hk'
   | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
       intro Δ σ p' h V W out hag hp fuel
       change ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then

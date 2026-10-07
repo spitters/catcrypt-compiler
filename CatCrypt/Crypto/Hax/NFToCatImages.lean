@@ -369,6 +369,20 @@ theorem emitRes_opsHaveImages {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
       obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
       exact And.intro hr.1 (emitRes_opsHaveImages hcont h rest σ.wk k' hr.2 hk')
 
+/-- The `bvConst` bindings of `pinAll` in front of a program `k` gives whose operations have
+    images form such a program. -/
+theorem pinAll_opsHaveImages {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)}
+    (hk : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy)) (q : NFProg catCryptDialect Δ' us),
+      k σ' ws = some q → OpsHaveImages q)
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (q : NFProg catCryptDialect Δ us) (h : pinAll k σ rs = some q) : OpsHaveImages q :=
+  pinAll_elim (M := fun {_} _ _ q => OpsHaveImages q)
+    (fun σ _ ws q _ hq => hk σ ws q hq)
+    (fun _ _ _ _ _ ih => And.intro (by image_op) ih) σ rs q h
+
 /-- **Every operation of a translated program has an image.** A program `nfToCat` returns
     has, at every let-binding of the program and of its regions, an operation on which the
     lowering `toJBlockD` to the Jasmin dialect is `some`. -/
@@ -379,7 +393,9 @@ theorem nfToCat_opsHaveImages {Γ : Ctxt nfDialect} {ts : List NfTy}
   induction p with
   | ret vs =>
       intro _ σ q h
-      obtain ⟨ws, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      refine pinAll_opsHaveImages ?_ σ _ q h
+      intro _ _ _ q' hq'
+      cases hq'
       trivial
   | var e k ih =>
       intro _ σ q h
@@ -387,18 +403,13 @@ theorem nfToCat_opsHaveImages {Γ : Ctxt nfDialect} {ts : List NfTy}
       obtain ⟨res, hres, h⟩ := Option.bind_eq_some_iff.mp h
       exact emitRes_opsHaveImages (fun σ' q' hq' => ih σ' q' hq') he res σ q
         (catOp_image σ op args res hres) h
-  | forLoop count inits body k ihb ihk =>
+  | @forLoop _ cs _ count inits body k ihb ihk =>
       intro _ σ q h
-      simp only [nfToCat] at h
-      split at h
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        exact And.intro (ihb _ b' hb) (ihk _ k' hk)
-      · obtain ⟨is, -, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
-        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
-        exact And.intro (by image_op) (And.intro (ihb _ b' hb) (ihk _ k' hk))
+      refine pinAll_opsHaveImages (ts := .word 64 :: cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      exact And.intro (ihb _ b' hb) (ihk _ k' hk)
   | ifThenElse cond thn els k iht ihe ihk =>
       intro _ σ q h
       simp only [nfToCat] at h
