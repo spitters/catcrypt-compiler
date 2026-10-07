@@ -12,19 +12,18 @@ the emitted surface change between versions.
 
 ## The guarantees
 
-Theorem names are relative to the namespace `CatCrypt.Crypto.SecureCompilation`, and
-paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`.
+Each row states one result; the Lean name links to its source file.
 
-| Theorem | Level | Fragment |
+| What is proved | For which programs | Lean |
 |---|---|---|
-| `VIR.DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'` | SSA IR → Jasmin dialect | every program the lowering accepts |
-| `Dialects.TranslateDialectScalar.transU_denote` | LowCT → SSA IR | `IsCoveredSU`: counted loops, conditionals, sequencing and data-dependent `while`, nested to any depth |
-| `VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional` | LowCT → Jasmin dialect | `IsCoveredSCtl`: straight-line word code, counted loops, conditionals |
-| `ScalarLinX86Demo.com_x86_e2e`, `ScalarLinNeutralDemo.com_arm_e2e`, `MultiBackendDemo.com_riscv_e2e` | Jasmin dialect → x86-64, AArch64, RV64 instructions | straight-line `ComOK` programs over 64-bit registers |
-| `VIR.JasminLsemMemSourceTieWhileUncond.whileMem_export_faithful_comL_uncond` | emitted loop → linear machine model with memory | data-dependent countdown loops |
-| `X86Backend.MachineConstantTime.owned_ct_control_flow` | leakage trace of the model IR `OwnedCF` (no emitted branch is covered) | public guards and literal trip counts |
-| `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` | LowCT constant-time analysis | programs `cmdCT` accepts |
-| `Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct` | x86-64 bytes → Edwards addition | the imported `ed25519_point_add` block |
+| Lowering a program of the SSA IR to the Jasmin dialect preserves the value it computes. | every program the lowering accepts | [`cryptoDialectToJasminCom_denote_eq'`](CatCrypt/Crypto/SecureCompilation/VIR/DialectToJasminComCorrect.lean) |
+| Translating imperative word-level code (LowCT, the level the Rust front produces) to the SSA IR preserves its value, at every fuel. | counted loops, conditionals, sequencing and data-dependent `while`, nested to any depth | [`transU_denote`](CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectUnifiedDenote.lean) |
+| From LowCT to the Jasmin dialect, the compiled program returns the word that the machine-word semantics of the source leaves in its output. | straight-line word code, counted loops, conditionals | [`rustToJasminCom_endToEnd_unconditional`](CatCrypt/Crypto/SecureCompilation/VIR/CompilerCorrectnessExtracted.lean) |
+| The instruction block selected for a Jasmin-dialect program, run from registers holding the inputs, leaves the program's value in the result register, on x86-64, AArch64 and RV64. | straight-line programs over 64-bit registers | [`com_x86_e2e`](CatCrypt/Crypto/SecureCompilation/ScalarLinX86Demo.lean), [`com_arm_e2e`](CatCrypt/Crypto/SecureCompilation/ScalarLinNeutralDemo.lean), [`com_riscv_e2e`](CatCrypt/Crypto/SecureCompilation/MultiBackendDemo.lean) |
+| An emitted loop, run in the linear machine model with memory, computes the value of the source loop. | data-dependent countdown loops | [`whileMem_export_faithful_comL_uncond`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemMemSourceTieWhileUncond.lean) |
+| Two runs from states that agree on the public registers leak the same trace of branch decisions and addresses. The statement is about a model of structured control flow and covers no emitted branch. | conditionals with public guards and loops with literal trip counts | [`owned_ct_control_flow`](CatCrypt/Crypto/SecureCompilation/X86Backend/MachineConstantTime.lean) |
+| A program accepted by the source constant-time analysis, run from two states that agree on public data, ends in states that agree on public data. | programs the analysis `cmdCT` accepts | [`cmdCT_sound`](CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean) |
+| The shipped x86-64 bytes of the Edwards point addition decode to a block that computes the addition formula. | the imported `ed25519_point_add` block, on inputs below `2^255 − 19` | [`paShippedBytes_correct`](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddBytes.lean) |
 
 [HEADLINES.md](HEADLINES.md) states each compiler headline with its hypotheses, and
 [NAVIGATION.md](NAVIGATION.md) locates every subsystem and its main theorem.
@@ -33,18 +32,18 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
 
 - Dialect lowering. When the lowering from the SSA IR to the Jasmin dialect
   succeeds, the lowered program denotes the transport of the source denotation
-  (`cryptoDialectToJasminCom_denote_eq'`). `VIR.LoweringDataComp.compileVia_comp_correct`
+  (`cryptoDialectToJasminCom_denote_eq'`). [`compileVia_comp_correct`](CatCrypt/Crypto/SecureCompilation/VIR/LoweringDataComp.lean)
   composes two dialect lowerings and states the result for the Jasmin-IR evaluator
   `runProg`, given per-operation transport hypotheses, leaf agreement (`LeafAgrees`)
-  and a straight-line lowered program. `Algebraic.FieldToJasminWord.fieldToJasminWord_denote`
+  and a straight-line lowered program. [`fieldToJasminWord_denote`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldToJasminWord.lean)
   lowers `fieldDialect` programs over a single-word prime field to the Jasmin
   dialect with preserved denotation.
 - Rust front. `rustToJasminCom_endToEnd_unconditional` equates the Jasmin value with
   the value that the machine-word semantics `semScalar` leaves in the tracked output,
   and asserts that a post-state related to the LowCT execution relation `RustExec`
-  exists. `Dialects.RustExecSemScalarBridge.rustToJasminCom_endToEnd_rustexec_adeq_topLevel`
+  exists. [`rustToJasminCom_endToEnd_rustexec_adeq_topLevel`](CatCrypt/Crypto/SecureCompilation/Dialects/RustExecSemScalarBridge.lean)
   equates the Jasmin value with the `RustExec` output word on `IsCoveredAdeq`, for
-  inputs in `u64` range. `VIR.RustToJasminComWhile.transU_to_jasminCom_endToEnd`
+  inputs in `u64` range. [`transU_to_jasminCom_endToEnd`](CatCrypt/Crypto/SecureCompilation/VIR/RustToJasminComWhile.lean)
   extends the statement to data-dependent `while` loops over the fuel-bounded
   semantics `semU`. The translation from hax-lean's AST to LowCT has its own
   simulation theorems (`CatCrypt.Crypto.Hax.haxToLowCT_simulates_program` and
@@ -52,10 +51,10 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
 - Machine code. For a straight-line `Com` over `ComOK` (64-bit add, sub, mul, and,
   or, xor, widening high multiply, immediate shifts, constants), the block that the
   scalar instruction selection produces, run from registers holding the inputs,
-  leaves `Com.denote` in the result register. `ARMBackend.ComToArmLsem.comToArmLsem_correct`
-  and `RISCVBackend.ComToRiscvLsem.comToRiscvLsem_correct` restate the result on the
+  leaves `Com.denote` in the result register. [`comToArmLsem_correct`](CatCrypt/Crypto/SecureCompilation/ARMBackend/ComToArmLsem.lean)
+  and [`comToRiscvLsem_correct`](CatCrypt/Crypto/SecureCompilation/RISCVBackend/ComToRiscvLsem.lean) restate the result on the
   base arithmetic-logic subset over the `runBBlock` and RV64 machine models.
-  `RISCVBackend.ComToRiscvLsem.riscvStep64_sail_grounded` equates each base RV64
+  [`riscvStep64_sail_grounded`](CatCrypt/Crypto/SecureCompilation/RISCVBackend/ComToRiscvLsem.lean) equates each base RV64
   instruction step with an `execute_RTYPE` clause copied from
   [sail-riscv-lean](https://github.com/opencompl/sail-riscv-lean) into
   `RISCVBackend/SailRiscv64Refinement.lean`. The encoders of both backends carry
@@ -73,10 +72,10 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
 
 ### Constant time
 
-- x86-64, straight-line. `X86Backend.AllocCTPreservation.toLprogPhysAbi_gather_constant_time`:
+- x86-64, straight-line. [`toLprogPhysAbi_gather_constant_time`](CatCrypt/Crypto/SecureCompilation/X86Backend/AllocCTPreservation.lean):
   an exported function body with direct addressing that gathers to an x86 instruction block leaks the same
   machine trace (branch decisions and memory addresses) from any two states.
-  `VIR.JasminLsemRobust.owned_lsem_correct_and_robust_straightline` pairs functional
+  [`owned_lsem_correct_and_robust_straightline`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemRobust.lean) pairs functional
   correctness of the linearizer with a leakage trace that reads no register value; the
   trace equality holds for every program of the fragment and is not constant-time
   evidence.
@@ -91,9 +90,9 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
   select only when its two sources are the same slot; `cmdCT` admits no computation
   on secrets). `cmdCT` accepts a
   data-dependent loop exactly when its guard is public
-  (`LowCTVartimeLeak.cmdCT_RWhileNz_iff`); for example, it accepts the
+  ([`cmdCT_RWhileNz_iff`](CatCrypt/Crypto/SecureCompilation/LowCTVartimeLeak.lean)); for example, it accepts the
   early-terminating modular inverse of RSA verification under an all-public level
-  table and rejects it under a secret guard (`VartimeBignumInverse.vartimeInvert_public_only`).
+  table and rejects it under a secret guard ([`vartimeInvert_public_only`](CatCrypt/Crypto/SecureCompilation/VartimeBignumInverse.lean)).
 
 ### Security ties
 
@@ -101,8 +100,8 @@ hax lets one Rust source serve as compiler input and as the model for computatio
 security proofs in the wider CatCrypt development, following
 [The Last Yard](https://eprint.iacr.org/2023/185). The `*SecurityTie` modules equate
 a dependency record built from the `Com` denotations of compiled kernels with the
-record the security layer reasons over (`CompileFromHaxSecurityTie.toRoundDeps_eq_spec`
-for the SHA-256 round functions), and `CompileFromHaxSecurityTie.tie_transfer`
+record the security layer reasons over ([`toRoundDeps_eq_spec`](CatCrypt/Crypto/SecureCompilation/CompileFromHaxSecurityTie.lean)
+for the SHA-256 round functions), and [`tie_transfer`](CatCrypt/Crypto/SecureCompilation/CompileFromHaxSecurityTie.lean)
 carries any property of that record to the compiled kernels at the `Com` denotation.
 
 ## Scope
