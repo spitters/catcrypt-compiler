@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.TowerDialect
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsSolinas
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontInstances
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4Instances
 
@@ -33,7 +34,14 @@ coverage of their continuations (`emitT_cov`, …, `I6.emit_cov`), and `blk2`, `
   `fConst` at `p`.
 * `towerPrime`, `TowerAt q`: the modulus of a tower op, and the tower expressions at
   modulus `q`; `towerAtB` decides `TowerAt`-coverage of a program.
-* `towerToLimbs P`, `towerLimbEnc P`: the composite lowering and its encoding.
+* `LimbBlockTemplate n`: a block-level template of the base field over `n` limbs (modulus,
+  blocks, encoding, coverage, block square); `montBlocks P` and `solinasBlocks S` are the
+  Montgomery and Solinas templates.
+* `towerToLimbsOf T`, `towerLimbEncOf T`, `towerComOf T N`, `towerGoodBOf T N`: the composite
+  lowering, its encoding, the program over word arrays and the decision of its side
+  conditions over a template `T`, with `towerToLimbsOf_fundamental` and `towerComOf_denoteB`.
+* `towerToLimbs P`, `towerLimbEnc P`: the composite lowering and its encoding at
+  `montBlocks P`.
 * `bls12381Tower`, `bn254Tower`: the composite at the BLS12-381 base prime over six limbs
   (`MontInstances.bls12381`) and at the BN254 base prime over four limbs
   (`Mont4Instances.bn254`, a `LimbParams 4`).
@@ -265,29 +273,115 @@ end Ops
 
 section Composite
 
-variable {n : Nat} (P : LimbParams n)
+/-- **A block-level template of the base field over `n` limbs**: the per-operation blocks of
+    a lowering of `fieldDialect` at the modulus `p`, an encoding of the field values into
+    limbs, a coverage predicate with the block square on it, and the coverage of the
+    arithmetic operations at `p`. -/
+structure LimbBlockTemplate (n : Nat) where
+  /-- The modulus. -/
+  p : Nat
+  /-- The per-operation blocks. -/
+  blocks : LimbBlocks n
+  /-- The encoding of the field values into limbs. -/
+  enc : (loweringOf blocks).Enc
+  /-- The covered expressions. -/
+  Good : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}, Expr fieldDialect Γ t → Prop
+  /-- The block square of the blocks on the covered expressions. -/
+  square : (loweringOf blocks).BlockSquare enc Good
+  /-- `fAdd`, `fSub`, `fNeg`, `fMul` and `fConst` at `p` are covered. -/
+  arith : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy} {e : Expr fieldDialect Γ t},
+    ArithAt p e → Good e
+
+/-- The Montgomery template of the record `P`: the blocks `lowerOpL P`, the encoding `encL P`
+    and the coverage `GoodV P`. -/
+@[reducible] def montBlocks {n : Nat} (P : LimbParams n) : LimbBlockTemplate n where
+  p := P.p
+  blocks := lowerOpL P
+  enc := fun {t} x => encL P (t := t) x
+  Good := GoodV P
+  square := blockSquareV P
+  arith := goodV_of_arithAt P
+
+@[simp] theorem montBlocks_p {n : Nat} (P : LimbParams n) : (montBlocks P).p = P.p := rfl
+
+/-- The Solinas template of the record `S`: the blocks, the canonical-representative encoding
+    and the coverage of `FieldToJasminLimbsSolinas`. -/
+@[reducible] def solinasBlocks {n : Nat} (S : Algebraic.FieldLimbs.Solinas.SolinasParams n) :
+    LimbBlockTemplate n where
+  p := Algebraic.FieldLimbs.Solinas.p S
+  blocks := Algebraic.FieldToJasminLimbsSolinas.lowerOpL S
+  enc := fun {t} x => Algebraic.FieldToJasminLimbsSolinas.encL S (t := t) x
+  Good := Algebraic.FieldToJasminLimbsSolinas.GoodL S
+  square := Algebraic.FieldToJasminLimbsSolinas.blockSquareL S
+  arith := by
+    rintro Γ t e (h | h | h | h | ⟨c, h⟩)
+    · exact Or.inl h
+    · exact Or.inr (Or.inl h)
+    · exact Or.inr (Or.inr (Or.inl h))
+    · exact Or.inr (Or.inr (Or.inr (Or.inl h)))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨c, h⟩))))
+
+variable {n : Nat}
+
+/-- **The tower dialect lowered to `n` limbs over the template `T`**: `towerToField` followed
+    by the limb lowering with the blocks of `T`. `towerToLimbs P` is its instance at
+    `montBlocks P`. -/
+@[reducible] def towerToLimbsOf (T : LimbBlockTemplate n) :
+    MultiBlockLoweringData towerDialect jasminDialect :=
+  towerToField.comp (loweringOf T.blocks)
+
+/-- The encoding of the composite over the template `T`: the limbs of the encodings of the
+    coordinates. `towerLimbEnc P` is its instance at `montBlocks P`. -/
+def towerLimbEncOf (T : LimbBlockTemplate n) : (towerToLimbsOf T).Enc :=
+  MultiBlockLoweringData.compEnc towerToField (loweringOf T.blocks) towerEnc T.enc
+
+/-- Every tower block at `T.p` is `T.Good`-covered. -/
+theorem towerLowerOp_covOf (T : LimbBlockTemplate n) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (e : Expr towerDialect Γ t) (h : TowerAt T.p e) :
+    CoveredM T.Good (towerToField.lowerOp e.op) :=
+  CoveredM.mono (fun _ he => T.arith (h ▸ he)) _ (towerLowerOp_cov e.op)
+
+/-- **Block square of the composite over the template `T`** at every tower op at `T.p`.
+    `towerToLimbs_blockSquare` is its instance at `montBlocks P`. -/
+theorem towerToLimbsOf_blockSquare (T : LimbBlockTemplate n) :
+    (towerToLimbsOf T).BlockSquare (towerLimbEncOf T) (TowerAt T.p) :=
+  MultiBlockLoweringData.comp_blockSquare towerToField (loweringOf T.blocks) towerEnc
+    T.enc (TowerAt T.p) T.Good
+    (fun e _ vals => opSquare_all e.op vals) T.square (towerLowerOp_covOf T)
+
+/-- **Fundamental theorem of the tower-to-limbs lowering over the template `T`.** Every tower
+    program whose ops are at `T.p` lowers to a `jasminDialect` program that maps the limbs of
+    the encodings of the coordinates of the inputs to those of the coordinates of the value.
+    `towerToLimbs_fundamental` is its instance at `montBlocks P`. -/
+theorem towerToLimbsOf_fundamental (T : LimbBlockTemplate n) {Γ : Ctxt towerDialect}
+    {t : TowerTy} (c : Com towerDialect Γ t) (hc : CoveredCom (TowerAt T.p) c)
+    (V : Ctxt.Valuation Γ) :
+    ((towerToLimbsOf T).lowerMulti c).denote (flatVal (towerLimbEncOf T) V)
+      = flatVal T.enc (towerEnc (c.denote V)) :=
+  MultiBlockLoweringData.comp_fundamental towerToField (loweringOf T.blocks) towerEnc
+    T.enc (TowerAt T.p) T.Good
+    (fun e _ vals => opSquare_all e.op vals) T.square (towerLowerOp_covOf T) c hc V
+
+variable (P : LimbParams n)
 
 /-- **The tower dialect lowered to `n` limbs in Montgomery form**:
     `towerToField` followed by `loweringL P`. -/
 @[reducible] def towerToLimbs : MultiBlockLoweringData towerDialect jasminDialect :=
-  towerToField.comp (loweringL P)
+  towerToLimbsOf (montBlocks P)
 
 /-- The encoding of the composite: the limbs of the Montgomery forms of the coordinates. -/
-def towerLimbEnc : (towerToLimbs P).Enc :=
-  MultiBlockLoweringData.compEnc towerToField (loweringL P) towerEnc
-    (fun {t} x => encL P (t := t) x)
+@[reducible] def towerLimbEnc : (towerToLimbs P).Enc :=
+  towerLimbEncOf (montBlocks P)
 
 /-- Every tower block at `P.p` is `GoodV P`-covered. -/
 theorem towerLowerOp_covGoodV {Γ : Ctxt towerDialect} {t : TowerTy}
     (e : Expr towerDialect Γ t) (h : TowerAt P.p e) :
     CoveredM (GoodV P) (towerToField.lowerOp e.op) :=
-  CoveredM.mono (fun _ he => goodV_of_arithAt P (h ▸ he)) _ (towerLowerOp_cov e.op)
+  towerLowerOp_covOf (montBlocks P) e h
 
 /-- **Block square of the composite** at every tower op at `P.p`. -/
 theorem towerToLimbs_blockSquare : (towerToLimbs P).BlockSquare (towerLimbEnc P) (TowerAt P.p) :=
-  MultiBlockLoweringData.comp_blockSquare towerToField (loweringL P) towerEnc
-    (fun {t} x => encL P (t := t) x) (TowerAt P.p) (GoodV P)
-    (fun e _ vals => opSquare_all e.op vals) (blockSquareV P) (towerLowerOp_covGoodV P)
+  towerToLimbsOf_blockSquare (montBlocks P)
 
 /-- **Fundamental theorem of the tower-to-limbs lowering.** Every tower program whose ops
     are at `P.p` lowers to a `jasminDialect` program that maps the limbs of the Montgomery
@@ -296,9 +390,7 @@ theorem towerToLimbs_fundamental {Γ : Ctxt towerDialect} {t : TowerTy}
     (c : Com towerDialect Γ t) (hc : CoveredCom (TowerAt P.p) c) (V : Ctxt.Valuation Γ) :
     ((towerToLimbs P).lowerMulti c).denote (flatVal (towerLimbEnc P) V)
       = flatVal (fun {t} x => encL P (t := t) x) (towerEnc (c.denote V)) :=
-  MultiBlockLoweringData.comp_fundamental towerToField (loweringL P) towerEnc
-    (fun {t} x => encL P (t := t) x) (TowerAt P.p) (GoodV P)
-    (fun e _ vals => opSquare_all e.op vals) (blockSquareV P) (towerLowerOp_covGoodV P) c hc V
+  towerToLimbsOf_fundamental (montBlocks P) c hc V
 
 end Composite
 
@@ -549,40 +641,42 @@ theorem arrCoords_storeCoordsVal (n : Nat) :
           storeCoordsVal_get_lt n i _ Δf (j + n) B (by omega) (by omega)),
         arrLimbs_storeVal o j A (by omega)]
 
-variable {n : Nat} (P : LimbParams n)
+variable {n : Nat}
 
-/-- **The lowered tower program over word arrays, as a multi-result program.** Over the
-    context `tArrCtx N Γ ++ [arrTy N]` (an array of `N` words for each source variable, then
-    the output array): the loads of the coordinates of every input array, the composite
-    lowering `(towerToLimbs P).lowerR` of `c` on the loaded limbs, and the stores of the
-    coordinate limbs of the result into the output array; the program returns the last
-    stored array. -/
-def towerBody (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy} (c : Com towerDialect Γ t) :
-    MC (tArrCtx N Γ ++ [arrTy N]) [arrTy N] :=
+/-- **The lowered tower program over word arrays, as a multi-result program, over the
+    template `T`.** Over the context `tArrCtx N Γ ++ [arrTy N]` (an array of `N` words for
+    each source variable, then the output array): the loads of the coordinates of every input
+    array, the composite lowering `(towerToLimbsOf T).lowerR` of `c` on the loaded limbs, and
+    the stores of the coordinate limbs of the result into the output array; the program
+    returns the last stored array. `towerBody P N c` is its instance at `montBlocks P`. -/
+def towerBodyOf (T : LimbBlockTemplate n) (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (c : Com towerDialect Γ t) : MC (tArrCtx N Γ ++ [arrTy N]) [arrTy N] :=
   loadT n Γ (fun v => inlHom [arrTy N] v) fun r h =>
-    (towerToLimbs P).lowerR h c fun r₂ vs =>
+    (towerToLimbsOf T).lowerR h c fun r₂ vs =>
       storeCoords n (towerMapTys t) 0 (r₂ (r (inrHom (tArrCtx N Γ) .here))) (hvToHom vs)
 
-/-- **The lowered tower program over word arrays.** -/
-def towerCom (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy} (c : Com towerDialect Γ t) :
-    Com jasminDialect (tArrCtx N Γ ++ [arrTy N]) (arrTy N) :=
-  (towerBody P N c).toComHead
+/-- **The lowered tower program over word arrays, over the template `T`.** `towerCom P N c`
+    is its instance at `montBlocks P`. -/
+def towerComOf (T : LimbBlockTemplate n) (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (c : Com towerDialect Γ t) : Com jasminDialect (tArrCtx N Γ ++ [arrTy N]) (arrTy N) :=
+  (towerBodyOf T N c).toComHead
 
-theorem towerBody_denote (N : Nat) (hN : N < 2 ^ 64) {Γ : Ctxt towerDialect} {t : TowerTy}
+theorem towerBodyOf_denote (T : LimbBlockTemplate n) (N : Nat) (hN : N < 2 ^ 64)
+    {Γ : Ctxt towerDialect} {t : TowerTy}
     (hfit : ∀ s ∈ Γ, (towerMapTys s).length * n ≤ N) (c : Com towerDialect Γ t)
-    (hc : CoveredCom (TowerAt P.p) c) (V : Ctxt.Valuation Γ)
+    (hc : CoveredCom (TowerAt T.p) c) (V : Ctxt.Valuation Γ)
     (A : Ctxt.Valuation (tArrCtx N Γ)) (o : Fin N → BitVec 64)
     (ht : (towerMapTys t).length * n ≤ N)
-    (hA : tArrFlat n A = flatVal (towerLimbEnc P) V) :
-    (towerBody P N c).denote (hvAppend A (.cons o .nil))
-      = .cons (storeCoordsVal n o (towerMapTys t) 0 (towerLimbEnc P (c.denote V))) .nil := by
+    (hA : tArrFlat n A = flatVal (towerLimbEncOf T) V) :
+    (towerBodyOf T N c).denote (hvAppend A (.cons o .nil))
+      = .cons (storeCoordsVal n o (towerMapTys t) 0 (towerLimbEncOf T (c.denote V))) .nil := by
   refine loadT_denote n hN Γ _ _ _ _ hfit fun r h W' hr hh => ?_
-  refine (towerToLimbs P).lowerR_denote_on (towerLimbEnc P) (TowerAt P.p)
-    (towerToLimbs_blockSquare P) h c _ W' V _ hc ?_ fun r₂ vs W'' h₂ hvs => ?_
+  refine (towerToLimbsOf T).lowerR_denote_on (towerLimbEncOf T) (TowerAt T.p)
+    (towerToLimbsOf_blockSquare T) h c _ W' V _ hc ?_ fun r₂ vs W'' h₂ hvs => ?_
   · refine hh.trans ?_
     rw [pullV_inlHom]
     exact hA
-  · have e₁ : pullV (fun w => hvToHom vs w) W'' = towerLimbEnc P (c.denote V) :=
+  · have e₁ : pullV (fun w => hvToHom vs w) W'' = towerLimbEncOf T (c.denote V) :=
       (pullV_hvToHom W'' vs).trans hvs
     have e₂ : (r₂ (r (inrHom (tArrCtx N Γ) .here))).lookup W'' = o := by
       rw [h₂, hr, lookup_inrHom]
@@ -591,6 +685,78 @@ theorem towerBody_denote (N : Nat) (hN : N < 2 ^ 64) {Γ : Ctxt towerDialect} {t
     rw [e₂]
     exact congrArg (fun x => (HVector.cons (storeCoordsVal n o (towerMapTys t) 0 x) HVector.nil
       : ListDenote [arrTy N])) e₁
+
+/-- **Denotation of the lowered tower program over word arrays, over the template `T`.** For
+    a tower program `c` whose ops are at `T.p`, with every coordinate block inside the arrays
+    of `N < 2 ^ 64` words, and input arrays holding the limbs of the encodings of the
+    coordinates of the values of `V`, the output array of `towerComOf T N c` holds the limbs
+    of the encodings of the coordinates of `c.denote V`, whatever it held on entry.
+    `towerCom_denote` is its instance at `montBlocks P`. -/
+theorem towerComOf_denote (T : LimbBlockTemplate n) (N : Nat) (hN : N < 2 ^ 64)
+    {Γ : Ctxt towerDialect} {t : TowerTy}
+    (hfit : ∀ s ∈ Γ, (towerMapTys s).length * n ≤ N) (ht : (towerMapTys t).length * n ≤ N)
+    (c : Com towerDialect Γ t) (hc : CoveredCom (TowerAt T.p) c) (V : Ctxt.Valuation Γ)
+    (A : Ctxt.Valuation (tArrCtx N Γ)) (o : Fin N → BitVec 64)
+    (hA : tArrFlat n A = flatVal (towerLimbEncOf T) V) :
+    arrCoords n ((towerComOf T N c).denote (hvAppend A (.cons o .nil))) (towerMapTys t) 0
+      = towerLimbEncOf T (c.denote V) := by
+  rw [towerComOf, MultiReturnCom.toComHead_denote,
+    towerBodyOf_denote T N hN hfit c hc V A o ht hA]
+  exact arrCoords_storeCoordsVal n o _ 0 _ (by omega)
+
+/-- The decision of the side conditions of `towerComOf_denote`: the ops of `c` are at `T.p`,
+    `N < 2 ^ 64`, and the coordinates of every source variable and of the result fit in
+    `N` words. `towerGoodB P N c` is its instance at `montBlocks P`. -/
+@[simp] def towerGoodBOf (T : LimbBlockTemplate n) (N : Nat) {Γ : Ctxt towerDialect}
+    {t : TowerTy} (c : Com towerDialect Γ t) : Bool :=
+  towerAtB T.p c && decide (N < 2 ^ 64)
+    && Γ.all (fun s => decide ((towerMapTys s).length * n ≤ N))
+    && decide ((towerMapTys t).length * n ≤ N)
+
+theorem towerGoodBOf_sound (T : LimbBlockTemplate n) (N : Nat) {Γ : Ctxt towerDialect}
+    {t : TowerTy} (c : Com towerDialect Γ t) (h : towerGoodBOf T N c = true) :
+    CoveredCom (TowerAt T.p) c ∧ N < 2 ^ 64 ∧ (∀ s ∈ Γ, (towerMapTys s).length * n ≤ N)
+      ∧ (towerMapTys t).length * n ≤ N := by
+  simp only [towerGoodBOf, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
+  exact ⟨towerAtB_sound T.p c h.1.1.1, h.1.1.2, h.1.2, h.2⟩
+
+/-- **Denotation of the lowered tower program over the template `T` on a program accepted by
+    `towerGoodBOf`.** `towerCom_denoteB` is its instance at `montBlocks P`. -/
+theorem towerComOf_denoteB (T : LimbBlockTemplate n) (N : Nat) {Γ : Ctxt towerDialect}
+    {t : TowerTy} (c : Com towerDialect Γ t) (hc : towerGoodBOf T N c = true)
+    (V : Ctxt.Valuation Γ) (A : Ctxt.Valuation (tArrCtx N Γ)) (o : Fin N → BitVec 64)
+    (hA : tArrFlat n A = flatVal (towerLimbEncOf T) V) :
+    arrCoords n ((towerComOf T N c).denote (hvAppend A (.cons o .nil))) (towerMapTys t) 0
+      = towerLimbEncOf T (c.denote V) :=
+  have h := towerGoodBOf_sound T N c hc
+  towerComOf_denote T N h.2.1 h.2.2.1 h.2.2.2 c h.1 V A o hA
+
+variable (P : LimbParams n)
+
+/-- **The lowered tower program over word arrays, as a multi-result program.** Over the
+    context `tArrCtx N Γ ++ [arrTy N]` (an array of `N` words for each source variable, then
+    the output array): the loads of the coordinates of every input array, the composite
+    lowering `(towerToLimbs P).lowerR` of `c` on the loaded limbs, and the stores of the
+    coordinate limbs of the result into the output array; the program returns the last
+    stored array. -/
+@[reducible] def towerBody (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (c : Com towerDialect Γ t) : MC (tArrCtx N Γ ++ [arrTy N]) [arrTy N] :=
+  towerBodyOf (montBlocks P) N c
+
+/-- **The lowered tower program over word arrays.** -/
+@[reducible] def towerCom (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (c : Com towerDialect Γ t) : Com jasminDialect (tArrCtx N Γ ++ [arrTy N]) (arrTy N) :=
+  towerComOf (montBlocks P) N c
+
+theorem towerBody_denote (N : Nat) (hN : N < 2 ^ 64) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (hfit : ∀ s ∈ Γ, (towerMapTys s).length * n ≤ N) (c : Com towerDialect Γ t)
+    (hc : CoveredCom (TowerAt P.p) c) (V : Ctxt.Valuation Γ)
+    (A : Ctxt.Valuation (tArrCtx N Γ)) (o : Fin N → BitVec 64)
+    (ht : (towerMapTys t).length * n ≤ N)
+    (hA : tArrFlat n A = flatVal (towerLimbEnc P) V) :
+    (towerBody P N c).denote (hvAppend A (.cons o .nil))
+      = .cons (storeCoordsVal n o (towerMapTys t) 0 (towerLimbEnc P (c.denote V))) .nil :=
+  towerBodyOf_denote (montBlocks P) N hN hfit c hc V A o ht hA
 
 /-- **Denotation of the lowered tower program over word arrays.** For a tower program `c`
     whose ops are at `P.p`, with every coordinate block inside the arrays of `N < 2 ^ 64`
@@ -603,25 +769,21 @@ theorem towerCom_denote (N : Nat) (hN : N < 2 ^ 64) {Γ : Ctxt towerDialect} {t 
     (A : Ctxt.Valuation (tArrCtx N Γ)) (o : Fin N → BitVec 64)
     (hA : tArrFlat n A = flatVal (towerLimbEnc P) V) :
     arrCoords n ((towerCom P N c).denote (hvAppend A (.cons o .nil))) (towerMapTys t) 0
-      = towerLimbEnc P (c.denote V) := by
-  rw [towerCom, MultiReturnCom.toComHead_denote, towerBody_denote P N hN hfit c hc V A o ht hA]
-  exact arrCoords_storeCoordsVal n o _ 0 _ (by omega)
+      = towerLimbEnc P (c.denote V) :=
+  towerComOf_denote (montBlocks P) N hN hfit ht c hc V A o hA
 
 /-- The decision of the side conditions of `towerCom_denote`: the ops of `c` are at `P.p`,
     `N < 2 ^ 64`, and the coordinates of every source variable and of the result fit in
     `N` words. -/
-def towerGoodB (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy} (c : Com towerDialect Γ t) :
-    Bool :=
-  towerAtB P.p c && decide (N < 2 ^ 64)
-    && Γ.all (fun s => decide ((towerMapTys s).length * n ≤ N))
-    && decide ((towerMapTys t).length * n ≤ N)
+@[reducible] def towerGoodB (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
+    (c : Com towerDialect Γ t) : Bool :=
+  towerGoodBOf (montBlocks P) N c
 
 theorem towerGoodB_sound (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
     (c : Com towerDialect Γ t) (h : towerGoodB P N c = true) :
     CoveredCom (TowerAt P.p) c ∧ N < 2 ^ 64 ∧ (∀ s ∈ Γ, (towerMapTys s).length * n ≤ N)
-      ∧ (towerMapTys t).length * n ≤ N := by
-  simp only [towerGoodB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
-  exact ⟨towerAtB_sound P.p c h.1.1.1, h.1.1.2, h.1.2, h.2⟩
+      ∧ (towerMapTys t).length * n ≤ N :=
+  towerGoodBOf_sound (montBlocks P) N c h
 
 /-- **Denotation of the lowered tower program on a program accepted by `towerGoodB`.** -/
 theorem towerCom_denoteB (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
@@ -630,8 +792,7 @@ theorem towerCom_denoteB (N : Nat) {Γ : Ctxt towerDialect} {t : TowerTy}
     (hA : tArrFlat n A = flatVal (towerLimbEnc P) V) :
     arrCoords n ((towerCom P N c).denote (hvAppend A (.cons o .nil))) (towerMapTys t) 0
       = towerLimbEnc P (c.denote V) :=
-  have h := towerGoodB_sound P N c hc
-  towerCom_denote P N h.2.1 h.2.2.1 h.2.2.2 c h.1 V A o hA
+  towerComOf_denoteB (montBlocks P) N c hc V A o hA
 
 end Arrays
 
