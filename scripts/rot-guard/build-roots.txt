@@ -139,6 +139,9 @@ CatCrypt.Crypto.Jasmin.SpartanSumCheckReflect
 CatCrypt.Crypto.Jasmin.TowerTupleLoad
 CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.Jasmin.VectorOps
+CatCrypt.Crypto.MLDSA.NttTemplate
+CatCrypt.Crypto.MLDSA.Spec.Rounding
+CatCrypt.Crypto.MLKEM.NttTemplate
 CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.ComCanonical
@@ -209,6 +212,7 @@ CatCrypt.Crypto.Pairing.HashToCurveBLS12381
 CatCrypt.Crypto.Pairing.LeafProvenDenote
 CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.Pairing.ZModPolyReflect
+CatCrypt.Crypto.PrimeIR.Proof.FieldModelBridge
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
 CatCrypt.Crypto.Primitives.RandomOracle
