@@ -18,6 +18,11 @@ set_option autoImplicit false
 array versions of a straight chain. This module decides the same question for a typed
 virtual body with labels and jumps, run by the flag machine `lsemFuelMemF`.
 
+A name of the body names two cells, a register and an array. The renaming `renArr σ`
+applies `σ` at the array positions of an instruction only: the base of a `LOADIDX`, the
+destination and the base of a `STOREIDX`. A name that is an array at one instruction and a
+register at another is renamed at the first and kept at the second.
+
 The check is relative to a certificate `L : Nat → List String` giving, for each position
 of the body, a list of array names containing those live before that position. The
 certificate is not trusted: `coCfgB σ body L obs` checks that `L` is closed under the
@@ -29,15 +34,19 @@ check of its kind against the names live after it.
 
 * `subB`: list inclusion as a Boolean.
 * `jumpB`: the liveness condition of a jump to a label.
+* `renArr`: the renaming of the array positions of an instruction.
+* `coArrStepB`: the check of one operation against the names read after it.
 * `coInstrB`: the check of the instruction at one position.
 * `coCfgB`: the check of a body.
 
 ## Main results
 
+* `lsemStepMem_coArr`: one step of an accepted operation is matched by a step of the
+  operation with its array positions renamed.
 * `evalInstrPMemF_coalesce`: one flag-machine step of an accepted instruction is matched by
   a step of the renamed instruction from a related state.
 * `lsemFuelMemF_coalesce`: a halting run of an accepted body is matched, with the same
-  fuel, by a halting run of the coalesced body `body.map (renRM σ)` from a related state,
+  fuel, by a halting run of the coalesced body `body.map (renArr σ)` from a related state,
   into a state related on `obs`.
 -/
 
@@ -49,12 +58,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer (renOperand renLinstrR renRM)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (cmpArgs?_ren
-  movRegArgs?_ren flagCondCC?_ren aluFlagOp?_ren carryArgs?_ren findLabelMem_map_renRM
-  lsemStepMem_of_carryArgs lsemStepMem_of_wideArgs)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (arrReads arrWrite fixB
-  coStepB CoRel fixB_spec lsemStepMem_coalesce)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (lsemStepCast)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (isLopnB isLopnB_isLopn)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix (CtlOK)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (lsemStepMem_of_carryArgs
+  lsemStepMem_of_wideArgs)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (arrReads arrWrite CoRel)
 
 /-! ## 1. The check -/
 
@@ -73,18 +82,73 @@ def jumpB (body : List LinstrRM) (L : Nat → List String) (k : Nat) (lbl : LLab
   | some p => decide (p + 1 ≤ body.length) && subB (L (p + 1)) (L k)
   | none => true
 
+/-- The wire of a `LOADIDX` with its base renamed by `σ`; every other wire unchanged. -/
+def renLoad (σ : String → String) : LinstrR → LinstrR
+  | .Lopn [.reg d] opn [.arrIdx b x sc] =>
+      if opn = "LOADIDX" then .Lopn [.reg d] opn [.arrIdx (σ b) x sc]
+      else .Lopn [.reg d] opn [.arrIdx b x sc]
+  | i => i
+
+/-- The wire of a `STOREIDX` with its destination and its base renamed by `σ`; every other
+    wire unchanged. -/
+def renStore (σ : String → String) : LinstrR → LinstrR
+  | .Lopn [.reg d] opn [.arrIdx b x sc, .reg v] =>
+      if opn = "STOREIDX" then .Lopn [.reg (σ d)] opn [.arrIdx (σ b) x sc, .reg v]
+      else .Lopn [.reg d] opn [.arrIdx b x sc, .reg v]
+  | i => i
+
+/-- **The renaming of the array positions** of a typed instruction by `σ`: the base of a
+    load-tagged `LOADIDX`, the destination and the base of a store-tagged `STOREIDX`. The
+    index, the value, the destination of a load and every name of every other instruction
+    are register positions and are kept. -/
+def renArr (σ : String → String) (i : LinstrRM) : LinstrRM :=
+  match i.2 with
+  | .load _ _ => (renLoad σ i.1, i.2)
+  | .store _ _ => (renStore σ i.1, i.2)
+  | _ => i
+
+/-- An instruction with an array position: a load-tagged `LOADIDX` or a store-tagged
+    `STOREIDX`. -/
+def arrShapeB (i : LinstrRM) : Bool :=
+  match i.2 with
+  | .load _ _ => (loadStruct? i.1).isSome
+  | .store _ _ => (storeStruct? i.1).isSome
+  | _ => false
+
+/-- An operation that none of the recognisers of the flag machine reads: no compare, no
+    register move, no carry-family operation, no flag-quiet lift instruction and no
+    flag-writing arithmetic or logical operation. -/
+def plainArrB (i : LinstrRM) : Bool :=
+  isLopnB i && (cmpArgs? i).isNone && (movRegArgs? i).isNone && (carryArgs? i).isNone
+    && (wideArgs? i).isNone && (aluFlagOp? i).isNone
+
+/-- **The check of one operation** followed by reads of the array names `after`, for a
+    renaming of array positions: the destination `d` of a store has an image under `σ` that
+    no later-read name `r ≠ d` shares; never a compile-time-offset memory access. -/
+def coArrStepB (σ : String → String) (i : LinstrRM) (after : List String) : Bool :=
+  match i.2 with
+  | .store _ _ => match storeStruct? i.1 with
+    | some (d, _, _, _) => after.all fun r => r == d || σ r != σ d
+    | none => true
+  | .loadC | .storeC => false
+  | _ => true
+
 /-- **The check of the instruction `i` at position `k`**, by the arm of `evalInstrPMemF`
-    that runs it. A compare, a register move, a carry-family operation and a flag-quiet
-    lift instruction have every name fixed by `σ`, and the names live after them are live
-    before them. A label and a conditional jump pass the names live at each successor. An
-    unconditional jump passes the names live at its target. Every other operation passes
-    `coStepB` against the names live after it, the names it reads and the later-live names
-    it does not write are live before it, and it either has every name fixed by `σ` or
-    writes no flag. Every other instruction is refused. -/
+    that runs it. An instruction with an array position is read by no recogniser of the
+    flag machine, before and after the renaming, passes `coArrStepB` against the names live
+    after it, and the names it reads and the later-live names it does not write are live
+    before it. For a compare, a register move, a carry-family operation and a flag-quiet
+    lift instruction, the names live after them are live before them. A label and a
+    conditional jump pass the names live at each successor. An unconditional jump passes
+    the names live at its target. Every other operation passes `coArrStepB` against the
+    names live after it, and the names it reads and the later-live names it does not write
+    are live before it. Every other instruction is refused. -/
 def coInstrB (σ : String → String) (body : List LinstrRM) (L : Nat → List String) (k : Nat)
     (i : LinstrRM) : Bool :=
-  if (cmpArgs? i).isSome || (movRegArgs? i).isSome then
-    fixB σ i.1 && subB (L (k + 1)) (L k)
+  if arrShapeB i then
+    plainArrB i && plainArrB (renArr σ i) && coArrStepB σ i (L (k + 1))
+      && subB (arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i) (L k)
+  else if (cmpArgs? i).isSome || (movRegArgs? i).isSome then subB (L (k + 1)) (L k)
   else match flagCondCC? i with
   | some (_, lbl) => subB (L (k + 1)) (L k) && jumpB body L k lbl
   | none =>
@@ -93,12 +157,10 @@ def coInstrB (σ : String → String) (body : List LinstrRM) (L : Nat → List S
     | .Lcond _ lbl => subB (L (k + 1)) (L k) && jumpB body L k lbl
     | .Lgoto (_, lbl) => jumpB body L k lbl
     | .Lopn _ _ _ =>
-        if (carryArgs? i).isSome || (wideArgs? i).isSome then
-          fixB σ i.1 && subB (L (k + 1)) (L k)
+        if (carryArgs? i).isSome || (wideArgs? i).isSome then subB (L (k + 1)) (L k)
         else
-          coStepB σ i (L (k + 1))
+          coArrStepB σ i (L (k + 1))
             && subB (arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i) (L k)
-            && (fixB σ i.1 || (aluFlagOp? i).isNone)
     | _ => false
 
 /-- **The coalescing check of a body** against the liveness certificate `L` and the names
@@ -198,12 +260,225 @@ theorem wideStep_coalesce {s s' u : LstateM} (h : CoRel σ A s s') {w : WideOp}
           subst hu
           exact ⟨_, rfl, coRel_nextPc (coRel_setReg (coRel_setReg h lo _) hi _)⟩
 
-theorem renRM_of_fixB {i : LinstrRM} (h : fixB σ i.1 = true) : renRM σ i = i := by
-  obtain ⟨w, tag⟩ := i
-  simp only [renRM]
-  rw [fixB_spec h]
+/-! ## 3. The renaming of array positions -/
 
-/-! ## 3. The step -/
+theorem renLoad_of_none {w : LinstrR} (h : loadStruct? w = none) : renLoad σ w = w := by
+  unfold renLoad
+  split
+  · split
+    · next ho => simp [loadStruct?, ho] at h
+    · rfl
+  · rfl
+
+theorem renStore_of_none {w : LinstrR} (h : storeStruct? w = none) : renStore σ w = w := by
+  unfold renStore
+  split
+  · split
+    · next ho => simp [storeStruct?, ho] at h
+    · rfl
+  · rfl
+
+/-- The renamed wire of a `LOADIDX` reads the renamed base. -/
+theorem loadStruct?_renLoad (w : LinstrR) :
+    loadStruct? (renLoad σ w) = (loadStruct? w).map fun p => (p.1, σ p.2.1, p.2.2) := by
+  unfold renLoad
+  split
+  · split <;> simp [loadStruct?, *]
+  · next hne =>
+    have : loadStruct? w = none := by
+      unfold loadStruct?
+      split
+      · next d o b x sc => exact absurd rfl (hne d o b x sc)
+      · rfl
+    rw [this]
+    rfl
+
+/-- The renamed wire of a `STOREIDX` writes the renamed destination through the renamed
+    base. -/
+theorem storeStruct?_renStore (w : LinstrR) :
+    storeStruct? (renStore σ w)
+      = (storeStruct? w).map fun p => (σ p.1, σ p.2.1, p.2.2.1, p.2.2.2) := by
+  unfold renStore
+  split
+  · split <;> simp [storeStruct?, *]
+  · next hne =>
+    have : storeStruct? w = none := by
+      unfold storeStruct?
+      split
+      · next d o b x sc v => exact absurd rfl (hne d o b x sc v)
+      · rfl
+    rw [this]
+    rfl
+
+/-- An instruction with no array position is its own renaming. -/
+theorem renArr_of_not_shape {i : LinstrRM} (h : arrShapeB i = false) : renArr σ i = i := by
+  obtain ⟨w, tag⟩ := i
+  cases tag with
+  | load a n =>
+      simp only [arrShapeB, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at h
+      simp only [renArr, renLoad_of_none h]
+  | store a n =>
+      simp only [arrShapeB, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at h
+      simp only [renArr, renStore_of_none h]
+  | _ => rfl
+
+theorem isLabel_renArr (l : LLabel) (i : LinstrRM) :
+    JasminLsemLabeled.isLabel l (renArr σ i).1 = JasminLsemLabeled.isLabel l i.1 := by
+  obtain ⟨w, tag⟩ := i
+  cases tag with
+  | load a n =>
+      show JasminLsemLabeled.isLabel l (renLoad σ w) = _
+      unfold renLoad
+      split
+      · split <;> rfl
+      · rfl
+  | store a n =>
+      show JasminLsemLabeled.isLabel l (renStore σ w) = _
+      unfold renStore
+      split
+      · split <;> rfl
+      · rfl
+  | _ => rfl
+
+/-- The renaming of array positions leaves every label position unchanged. -/
+theorem findLabelMem_map_renArr (l : LLabel) (body : List LinstrRM) :
+    findLabelMem l (body.map (renArr σ)) = findLabelMem l body := by
+  unfold findLabelMem JasminLsemLabeled.findLabel
+  rw [List.map_map, List.findIdx?_map, List.findIdx?_map]
+  congr 1
+  funext i
+  exact isLabel_renArr l i
+
+/-- The renaming of array positions keeps the instruction kinds of `CtlOK`. -/
+theorem ctlOK_renArr (σ : String → String) {i : LinstrRM} (h : CtlOK i) :
+    CtlOK (renArr σ i) := by
+  obtain ⟨w, tag⟩ := i
+  have hL : ∀ w : LinstrR, (∃ d o s, w = LinstrR.Lopn d o s) → ∃ d o s,
+      renLoad σ w = LinstrR.Lopn d o s := by
+    rintro w ⟨d, o, s, rfl⟩
+    unfold renLoad
+    split
+    · split <;> exact ⟨_, _, _, rfl⟩
+    · exact ⟨_, _, _, rfl⟩
+  have hS : ∀ w : LinstrR, (∃ d o s, w = LinstrR.Lopn d o s) → ∃ d o s,
+      renStore σ w = LinstrR.Lopn d o s := by
+    rintro w ⟨d, o, s, rfl⟩
+    unfold renStore
+    split
+    · split <;> exact ⟨_, _, _, rfl⟩
+    · exact ⟨_, _, _, rfl⟩
+  rcases h with ⟨d, o, s, hd⟩ | ⟨kd, l, hw⟩ | ⟨c, l, hw, hcc⟩ | ⟨tgt, hw⟩
+  · simp only at hd
+    cases tag with
+    | load a n => exact Or.inl (hL w ⟨d, o, s, hd⟩)
+    | store a n => exact Or.inl (hS w ⟨d, o, s, hd⟩)
+    | _ => exact Or.inl ⟨d, o, s, hd⟩
+  · simp only at hw
+    subst hw
+    cases tag <;> exact Or.inr (Or.inl ⟨kd, l, rfl⟩)
+  · simp only at hw
+    subst hw
+    cases tag <;> exact Or.inr (Or.inr (Or.inl ⟨c, l, rfl, hcc⟩))
+  · simp only at hw
+    subst hw
+    cases tag <;> exact Or.inr (Or.inr (Or.inr ⟨tgt, rfl⟩))
+
+/-- **One step of an operation with its array positions renamed.** For an operation
+    accepted by `coArrStepB` with the later reads `after`, a step from `s` is matched by a
+    step of `renArr σ i` from a state related on the reads of the operation and the names
+    of `after` it does not write, into a state related on `after`. -/
+theorem lsemStepMem_coArr {i : LinstrRM} {after : List String}
+    (hc : coArrStepB σ i after = true) {s s' t : LstateM}
+    (hR : CoRel σ (arrReads i ++ after.filter fun r => some r != arrWrite i) s s')
+    (h : lsemStepMem i s = some t) :
+    ∃ t', lsemStepMem (renArr σ i) s' = some t' ∧ CoRel σ after t t' := by
+  obtain ⟨wire, tag⟩ := i
+  have hnone : arrWrite (wire, tag) = none → CoRel σ after s s' := fun hw =>
+    hR.mono fun r hr => List.mem_append_right _ (List.mem_filter.mpr ⟨hr, by rw [hw]; simp⟩)
+  have hcast : arrWrite (wire, tag) = none → ∀ (cd : Option Nat),
+      (lsemStepCast (wire, cd) s.reg).map (fun r => { s with reg := r }) = some t →
+      ∃ t', (lsemStepCast (wire, cd) s'.reg).map
+          (fun r => { s' with reg := r }) = some t' ∧ CoRel σ after t t' := by
+    intro hw cd h
+    have hA := hnone hw
+    rw [hR.reg]
+    obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp h
+    exact ⟨{ s' with reg := r }, by rw [hr]; rfl, ⟨rfl, hA.mem, hA.cf, hA.of, hA.arr⟩⟩
+  cases tag with
+  | reg cd => exact hcast rfl cd h
+  | load w n =>
+      unfold lsemStepMem at h ⊢
+      simp only [renArr] at h ⊢
+      rw [loadStruct?_renLoad]
+      cases hl : loadStruct? wire with
+      | none =>
+          rw [hl] at h
+          rw [renLoad_of_none hl]
+          exact hcast rfl none h
+      | some p =>
+          obtain ⟨d, b, x⟩ := p
+          rw [hl] at h
+          have hA := hnone rfl
+          have hb : b ∈ arrReads (wire, .load w n)
+              ++ after.filter fun r => some r != arrWrite (wire, .load w n) := by
+            simp [arrReads, hl]
+          simp only [Option.map_some, hR.getArr hb, hR.reg] at h ⊢
+          cases ha : s.getArr b w n with
+          | none => simp [ha] at h
+          | some arr =>
+            cases hi : s.reg.getW x 64 with
+            | none => simp [ha, hi] at h
+            | some vi =>
+              simp only [ha, hi, Option.some.injEq] at h
+              subst h
+              refine ⟨_, rfl, ⟨?_, hA.mem, hA.cf, hA.of, hA.arr⟩⟩
+              simp only [LstateM.nextPc, LstateM.setReg, hR.reg]
+  | store w n =>
+      simp only [coArrStepB] at hc
+      unfold lsemStepMem at h ⊢
+      simp only [renArr] at h ⊢
+      rw [storeStruct?_renStore]
+      cases hl : storeStruct? wire with
+      | none =>
+          rw [hl] at h
+          rw [renStore_of_none hl]
+          exact hcast (by simp [arrWrite, hl]) none h
+      | some p =>
+          obtain ⟨d, b, x, v⟩ := p
+          rw [hl] at hc h
+          simp only [List.all_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hc
+          have hb : b ∈ arrReads (wire, .store w n)
+              ++ after.filter fun r => some r != arrWrite (wire, .store w n) := by
+            simp [arrReads, hl]
+          simp only [Option.map_some, hR.getArr hb, hR.reg] at h ⊢
+          cases ha : s.getArr b w n with
+          | none => simp [ha] at h
+          | some arr =>
+            cases hi : s.reg.getW x 64 with
+            | none => simp [ha, hi] at h
+            | some vi =>
+              cases hvv : s.reg.getW v w with
+              | none => simp [ha, hi, hvv] at h
+              | some vv =>
+                simp only [ha, hi, hvv, Option.some.injEq] at h
+                subst h
+                refine ⟨_, rfl, ⟨?_, hR.mem, hR.cf, hR.of, fun r hr => ?_⟩⟩
+                · simp only [LstateM.nextPc, LstateM.setArr, hR.reg]
+                · simp only [LstateM.nextPc, LstateM.setArr]
+                  by_cases hrd : r = d
+                  · subst hrd
+                    simp
+                  · have hne : σ r ≠ σ d := by
+                      rcases hc r hr with h' | h'
+                      · exact absurd h' hrd
+                      · exact h'
+                    simp only [hne, hrd, if_false]
+                    exact hR.arr r (List.mem_append_right _
+                      (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
+  | loadC => simp [coArrStepB] at hc
+  | storeC => simp [coArrStepB] at hc
+
+/-! ## 4. The step -/
 
 /-- A jump from related states: the target position is in the body, and the states after
     the jump are related on the names live at the target. -/
@@ -211,12 +486,12 @@ theorem evalJumpMem_coalesce {fn : String} {body : List LinstrRM} {L : Nat → L
     {k : Nat} {lbl : LLabel} (hj : jumpB body L k lbl = true) {p p' q : LstatePM}
     (hR : CoRel σ (L k) p.base p'.base) (hfn : p'.lfn = p.lfn)
     (h : evalJumpMem (singletonProgM fn body) lbl p = some q) :
-    ∃ q', evalJumpMem (singletonProgM fn (body.map (renRM σ))) lbl p' = some q'
+    ∃ q', evalJumpMem (singletonProgM fn (body.map (renArr σ))) lbl p' = some q'
       ∧ CoRel σ (L q.base.lpc) q.base q'.base ∧ q'.lfn = q.lfn ∧ q.lfn = p.lfn
       ∧ q.base.lpc ≤ body.length := by
   unfold evalJumpMem at h ⊢
   simp only [singletonProgM] at h ⊢
-  rw [findLabelMem_map_renRM]
+  rw [findLabelMem_map_renArr]
   unfold jumpB at hj
   cases hl : findLabelMem lbl body with
   | none => simp [hl] at h
@@ -225,9 +500,16 @@ theorem evalJumpMem_coalesce {fn : String} {body : List LinstrRM} {L : Nat → L
     subst h
     exact ⟨_, rfl, coRel_setLpc (hR.mono (subB_spec hj.2)) _, hfn, rfl, hj.1⟩
 
+theorem flagCondCC?_of_isLopn {j : LinstrRM} (h : IsLopn j) : flagCondCC? j = none := by
+  obtain ⟨w, tag⟩ := j
+  obtain ⟨d, o, s, e⟩ := h
+  simp only at e
+  subst e
+  rfl
+
 /-- **One step of a coalesced instruction at the flag machine.** For an instruction `i`
     accepted by `coInstrB` at position `k < body.length`, a step from a state `s` at
-    position `k` is matched by a step of `renRM σ i` in the coalesced body from a state
+    position `k` is matched by a step of `renArr σ i` in the coalesced body from a state
     related to `s` on `L k` with the same function name and zero flag. The two successor
     states are related on the names `L` gives the successor position, which is at most
     `body.length`; the function name is kept, and the zero flags are equal. -/
@@ -237,17 +519,48 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
     (hR : CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base)
     (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
     (h : evalInstrPMemF (singletonProgM fn body) i s = some t) :
-    ∃ t', evalInstrPMemF (singletonProgM fn (body.map (renRM σ))) (renRM σ i) s' = some t'
+    ∃ t', evalInstrPMemF (singletonProgM fn (body.map (renArr σ))) (renArr σ i) s' = some t'
       ∧ CoRel σ (L t.prog.base.lpc) t.prog.base t'.prog.base
       ∧ t'.prog.lfn = t.prog.lfn ∧ t.prog.lfn = s.prog.lfn ∧ t'.zf = t.zf
       ∧ t.prog.base.lpc ≤ body.length := by
   obtain ⟨w, tag⟩ := i
   unfold coInstrB at hc
+  by_cases hsh : arrShapeB (w, tag) = true
+  · simp only [hsh, if_true, Bool.and_eq_true] at hc
+    obtain ⟨⟨⟨hp, hp'⟩, hstep⟩, hsub⟩ := hc
+    simp only [plainArrB, Bool.and_eq_true, Option.isNone_iff_eq_none] at hp hp'
+    obtain ⟨⟨⟨⟨⟨hl, h1⟩, h2⟩, hk⟩, hw⟩, ha⟩ := hp
+    obtain ⟨⟨⟨⟨⟨hl', h1'⟩, h2'⟩, hk'⟩, hw'⟩, ha'⟩ := hp'
+    have hI := isLopnB_isLopn hl
+    have hI' := isLopnB_isLopn hl'
+    unfold evalInstrPMemF at h ⊢
+    simp only [h1, h2, flagCondCC?_of_isLopn hI, h1', h2', flagCondCC?_of_isLopn hI'] at h ⊢
+    rw [evalInstrPMemL_lopn _ _ _ hI] at h
+    rw [evalInstrPMemL_lopn _ _ _ hI']
+    cases hb : lsemStepMem (w, tag) s.prog.base with
+    | none => simp [hb, hk, hw] at h
+    | some b =>
+      simp only [hb, Option.map_some, Option.some.injEq] at h
+      subst h
+      obtain ⟨b', hb', hRb⟩ := lsemStepMem_coArr hstep (hR.mono (subB_spec hsub)) hb
+      have hl1 := JasminLsemMemLoop.lsemStepMem_lpc_succ _ _ _ hb
+      simp only [hb', Option.map_some]
+      refine ⟨_, rfl, ?_, hfn, trivial, hz, ?_⟩
+      · show CoRel σ (L (withALUFlags (w, tag) s.prog.base b).lpc)
+          (withALUFlags (w, tag) s.prog.base b)
+          (withALUFlags (renArr σ (w, tag)) s'.prog.base b')
+        rw [withALUFlags_lpc, withALUFlags_of_none ha, withALUFlags_of_none ha', hl1]
+        exact hRb
+      · show (withALUFlags (w, tag) s.prog.base b).lpc ≤ body.length
+        rw [withALUFlags_lpc, hl1]
+        omega
+  have hsh' : arrShapeB (w, tag) = false := by simpa using hsh
+  rw [renArr_of_not_shape hsh']
+  simp only [hsh', Bool.false_eq_true, if_false] at hc
   cases h1 : cmpArgs? (w, tag) with
   | some p =>
       obtain ⟨a, b⟩ := p
-      simp only [h1, Option.isSome_some, Bool.true_or, if_true, Bool.and_eq_true] at hc
-      rw [renRM_of_fixB hc.1]
+      simp only [h1, Option.isSome_some, Bool.true_or, if_true] at hc
       unfold evalInstrPMemF at h ⊢
       simp only [h1, hR.reg] at h ⊢
       cases ha : evalOperandN s.prog.base.reg 64 a with
@@ -258,13 +571,12 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         | some vb =>
           simp only [ha, hb, Option.some.injEq] at h ⊢
           subst h
-          exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.2)), hfn, rfl, rfl, hlt⟩
+          exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc)), hfn, rfl, rfl, hlt⟩
   | none =>
   cases h2 : movRegArgs? (w, tag) with
   | some p =>
       obtain ⟨d, r⟩ := p
-      simp only [h2, Option.isSome_some, Bool.or_true, if_true, Bool.and_eq_true] at hc
-      rw [renRM_of_fixB hc.1]
+      simp only [h2, Option.isSome_some, Bool.or_true, if_true] at hc
       unfold evalInstrPMemF at h ⊢
       simp only [h1, h2, hR.reg] at h ⊢
       cases hr : readReg s.prog.base.reg (.reg r) with
@@ -273,7 +585,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         obtain ⟨wv, v⟩ := v
         simp only [hr, Option.some.injEq] at h ⊢
         subst h
-        exact ⟨_, rfl, coRel_nextPc (coRel_setReg (hR.mono (subB_spec hc.2)) d v), hfn, rfl, hz,
+        exact ⟨_, rfl, coRel_nextPc (coRel_setReg (hR.mono (subB_spec hc)) d v), hfn, rfl, hz,
           hlt⟩
   | none =>
   simp only [h1, h2, Option.isSome_none, Bool.or_false, Bool.false_eq_true, if_false] at hc
@@ -282,8 +594,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
       obtain ⟨pol, lbl⟩ := p
       simp only [h3, Bool.and_eq_true] at hc
       unfold evalInstrPMemF at h ⊢
-      rw [cmpArgs?_ren, movRegArgs?_ren, flagCondCC?_ren]
-      simp only [h1, h2, h3, Option.map_none, hz] at h ⊢
+      simp only [h1, h2, h3, hz] at h ⊢
       by_cases hp : s.zf = pol
       · rw [if_pos hp] at h ⊢
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -295,21 +606,19 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
   | none =>
   simp only [h3] at hc
   have key : carryArgs? (w, tag) = none → wideArgs? (w, tag) = none →
-      (renRM σ (w, tag) = (w, tag) ∨ aluFlagOp? (w, tag) = none) →
       (∀ q, evalInstrPMemL (singletonProgM fn body) (w, tag) s.prog = some q →
-        ∃ q', evalInstrPMemL (singletonProgM fn (body.map (renRM σ))) (renRM σ (w, tag))
+        ∃ q', evalInstrPMemL (singletonProgM fn (body.map (renArr σ))) (w, tag)
             s'.prog = some q'
           ∧ CoRel σ (L q.base.lpc) q.base q'.base ∧ q'.lfn = q.lfn ∧ q.lfn = s.prog.lfn
           ∧ q.base.lpc ≤ body.length) →
-      ∃ t', evalInstrPMemF (singletonProgM fn (body.map (renRM σ))) (renRM σ (w, tag)) s'
+      ∃ t', evalInstrPMemF (singletonProgM fn (body.map (renArr σ))) (w, tag) s'
           = some t'
         ∧ CoRel σ (L t.prog.base.lpc) t.prog.base t'.prog.base
         ∧ t'.prog.lfn = t.prog.lfn ∧ t.prog.lfn = s.prog.lfn ∧ t'.zf = t.zf
         ∧ t.prog.base.lpc ≤ body.length := by
-    intro hk hw halu hL
+    intro hk hw hL
     unfold evalInstrPMemF at h ⊢
-    rw [cmpArgs?_ren, movRegArgs?_ren, flagCondCC?_ren]
-    simp only [h1, h2, h3, Option.map_none] at h ⊢
+    simp only [h1, h2, h3] at h ⊢
     cases hq : evalInstrPMemL (singletonProgM fn body) (w, tag) s.prog with
     | none => simp [hq, hk, hw] at h
     | some q =>
@@ -320,25 +629,21 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
       refine ⟨_, rfl, ?_, hfq, hfs, hz, ?_⟩
       · show CoRel σ (L (withALUFlags (w, tag) s.prog.base q.base).lpc)
           (withALUFlags (w, tag) s.prog.base q.base)
-          (withALUFlags (renRM σ (w, tag)) s'.prog.base q'.base)
+          (withALUFlags (w, tag) s'.prog.base q'.base)
         rw [withALUFlags_lpc]
-        rcases halu with he | he
-        · rw [he]
-          exact coRel_aluFlags hRq hR.reg _
-        · rw [withALUFlags_of_none he, withALUFlags_of_none (by rw [aluFlagOp?_ren, he]; rfl)]
-          exact hRq
+        exact coRel_aluFlags hRq hR.reg _
       · show (withALUFlags (w, tag) s.prog.base q.base).lpc ≤ body.length
         rw [withALUFlags_lpc]
         exact hle
   cases w with
   | Llabel a l =>
-      refine key rfl rfl (Or.inl rfl) fun q hq => ?_
+      refine key rfl rfl fun q hq => ?_
       simp only [evalInstrPMemL, Option.some.injEq] at hq
       subst hq
       exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc)), hfn, rfl, hlt⟩
   | Lcond c lbl =>
       simp only [Bool.and_eq_true] at hc
-      refine key rfl rfl (Or.inl rfl) fun q hq => ?_
+      refine key rfl rfl fun q hq => ?_
       have hcz : condNZ s'.prog.base c = condNZ s.prog.base c := by
         unfold condNZ
         rw [hR.reg]
@@ -352,7 +657,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.1)), hfn, rfl, hlt⟩
   | Lgoto tgt =>
       obtain ⟨f, lbl⟩ := tgt
-      refine key rfl rfl (Or.inl rfl) fun q hq => ?_
+      refine key rfl rfl fun q hq => ?_
       show ∃ q', evalInstrPMemL _ (LinstrR.Lgoto (f, lbl), tag) s'.prog = some q' ∧ _
       by_cases hff : f = fn
       · subst hff
@@ -360,13 +665,10 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         exact evalJumpMem_coalesce hc hR hfn hq
       · simp [evalInstrPMemL, singletonProgM, hff] at hq
   | Lopn d o src =>
-      have hlop : ∀ (σ' : String → String), IsLopn (renRM σ' (LinstrR.Lopn d o src, tag)) :=
-        fun _ => ⟨_, _, _, rfl⟩
       by_cases hcw : ((carryArgs? (LinstrR.Lopn d o src, tag)).isSome
           || (wideArgs? (LinstrR.Lopn d o src, tag)).isSome) = true
-      · simp only [hcw, if_true, Bool.and_eq_true] at hc
-        have hRn := hR.mono (subB_spec hc.2)
-        rw [renRM_of_fixB hc.1]
+      · simp only [hcw, if_true] at hc
+        have hRn := hR.mono (subB_spec hc)
         unfold evalInstrPMemF at h ⊢
         simp only [h1, h2, h3] at h ⊢
         have hI : IsLopn (LinstrR.Lopn d o src, tag) := ⟨_, _, _, rfl⟩
@@ -400,16 +702,16 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
                   exact hRu
                 · show u.lpc ≤ body.length
                   omega
-      · simp only [hcw, Bool.false_eq_true, if_false, Bool.and_eq_true, Bool.or_eq_true,
-          Option.isNone_iff_eq_none] at hc
-        obtain ⟨⟨hstep, hsub⟩, halu⟩ := hc
+      · simp only [hcw, Bool.false_eq_true, if_false, Bool.and_eq_true] at hc
+        obtain ⟨hstep, hsub⟩ := hc
         simp only [Bool.or_eq_true, not_or, Bool.not_eq_true, Option.isSome_eq_false_iff,
           Option.isNone_iff_eq_none] at hcw
-        refine key hcw.1 hcw.2 (halu.imp renRM_of_fixB id) fun q hq => ?_
-        rw [evalInstrPMemL_lopn _ _ _ (hlop σ)]
+        refine key hcw.1 hcw.2 fun q hq => ?_
+        rw [evalInstrPMemL_lopn _ _ _ ⟨d, o, src, rfl⟩]
         rw [evalInstrPMemL_lopn _ _ _ ⟨d, o, src, rfl⟩] at hq
         obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp hq
-        obtain ⟨b', hb', hRb⟩ := lsemStepMem_coalesce hstep (hR.mono (subB_spec hsub)) hb
+        obtain ⟨b', hb', hRb⟩ := lsemStepMem_coArr hstep (hR.mono (subB_spec hsub)) hb
+        rw [renArr_of_not_shape hsh'] at hb'
         have hl := JasminLsemMemLoop.lsemStepMem_lpc_succ _ _ _ hb
         refine ⟨⟨b', s'.prog.lfn⟩, by rw [hb']; rfl, ?_, hfn, rfl, ?_⟩
         · show CoRel σ (L b.lpc) b b'
@@ -429,7 +731,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
 /-- **The coalesced body.** For a body accepted by `coCfgB σ body L obs`, a halting run of
     the flag machine on `body`, from a state `s` of the function `fn` at a position at most
     `body.length`, is matched with the same fuel by a halting run on the coalesced body
-    `body.map (renRM σ)` from every state `s'` that has the registers, word memory, flags
+    `body.map (renArr σ)` from every state `s'` that has the registers, word memory, flags
     and function name of `s` and whose arrays agree with those of `s` through `σ` on the
     names `L` gives the position of `s`. The final states have equal registers, word memory
     and flags, and their arrays agree through `σ` on `obs`. -/
@@ -438,13 +740,13 @@ theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → 
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
       s'.zf = s.zf → lsemFuelMemF (singletonProgM fn body) fuel s = some t →
-      ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renRM σ))) fuel s' = some t'
+      ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'
         ∧ CoRel σ obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
   have hfetch : ∀ {s s' : LstateMF}, s.prog.lfn = fn →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
       findInstrMem (singletonProgM fn body) s.prog = body[s.prog.base.lpc]?
-        ∧ findInstrMem (singletonProgM fn (body.map (renRM σ))) s'.prog
-            = (body[s.prog.base.lpc]?).map (renRM σ) := by
+        ∧ findInstrMem (singletonProgM fn (body.map (renArr σ))) s'.prog
+            = (body[s.prog.base.lpc]?).map (renArr σ) := by
     intro s s' hf hR hfn
     exact ⟨findInstrMem_singleton fn body s.prog hf, by
       rw [findInstrMem_singleton fn _ s'.prog (hfn.trans hf), coRel_lpc hR, List.getElem?_map]⟩

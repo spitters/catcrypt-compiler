@@ -111,26 +111,30 @@ the register copies; `exportR` does not use `forFrame`.
   name directly when no returned name is a carried name, one move for each array, and
   through the temporary names `regName (bodyD + i)` otherwise. The register results follow
   through `parMoves`, as in `forFrame`.
-* **Index and scratch registers.** An array move reads an index register holding a word:
-  the count operand at the seeds, the trip index `regName d` at the back edge and at the
-  shift. The array moves of the shift run before its register copies, which overwrite
-  `regName d`.
+* **Index and scratch registers.** An array move reads and writes the word at index `0`:
+  each group of array moves follows a move of `0` into its index register, with no label
+  between them. The index register is the trip index `regName d` at the seeds, where it
+  starts at `0`, and at the shift, after the last trip; at the back edge it is
+  `regName (bodyD + 1)`. The array moves of the shift run before its register copies, which
+  overwrite `regName d`.
 
 ```
 forLoop with carried arrays (forArrFrame), labels n, n+1
-  <arrMove car_j, init_j>          (array positions; index: count)
-  MOV  car_j, init_j               (register positions)
   MOV  r(d), #0
+  <arrMove car_j, init_j>          (array positions; index: r(d))
+  MOV  car_j, init_j               (register positions)
   MOV  ctr, count
   <zero-trip guard ctr n (n+1)>
 .n:
   <body at depth d + 1 + |cs|>
-  <arrParMoves of the returned arrays>     (index: r(d))
+  MOV  r(bodyD+1), #0
+  <arrParMoves of the returned arrays>     (index: r(bodyD+1))
   <parMoves of the returned registers>
   ADD  r(d), r(d), #1
   SUB  ctr, ctr, #1
   <back-edge guard ctr n>
 .n+1:
+  MOV  r(d), #0
   <arrMove r(d+k), r(d+1+k)>       (array positions; index: r(d))
   MOV  r(d+k), r(d+1+k)            (register positions)
 ```
@@ -142,8 +146,9 @@ register and the array cell of a carried array as its conclusion.
 
 ## The simulation statement
 
-`ExportRSim nArgs fn p` states that the code of `p`, placed anywhere in the body of a
-program, simulates the denotation of `p` on the x86 flag machine: from a state at the first
+`ExportRSim nArgs fn p I` states that the code of `p`, placed anywhere in the body of a
+program, simulates the denotation of `p` on the instruction set `I`, which is the x86 flag
+machine `x86Isa` when omitted: from a state at the first
 instruction of the code whose store agrees with a valuation `V` (`StoreAgreesM`), if
 `p.denote fuel V = some v` then a run of steps reaches the counter after the code in a
 state whose store agrees with a valuation at the returned depth under which the returned
@@ -168,11 +173,26 @@ The frame rule of a branch runs the head (the widening of the condition bit and 
 compare), then the selected branch and the assignment of its results to the result block,
 and joins the two runs at the counter after the join label.
 
-`RegionExportable` collects the hypotheses of the rules: no `call`, every binding in
+`RegionExportable` collects the hypotheses of the rules: every `call` at a signature of
+`wordSig` (arguments of type `reg 64`, one result of type `reg 64`), every binding in
 `BindMemN`, register carried types of an exit-flag loop and register result types of a
-branch. `exportR_sim` is the induction over the
-program. `exportR` returns `none` exactly on a program with a `call`
+branch. `exportR` returns `none` exactly on a program with a `call` at another signature
 (`exportR_eq_none_iff`).
+
+## Calls
+
+A `call` at a signature of `wordSig` is exported as the shadow instruction
+`LprogIsa.callShadow`, the `Lopn` with the mnemonic `"CALL:" ++ f`, the resolved argument
+operands and the destination `regName d`. The frame rules are stated over an instruction
+set `I` that has the steps of `x86Isa` (`Isa.StepLe`); the steps of the frame instructions
+are proved on `x86Isa` and lifted by `steps_of_stepLe`. The frame rule of a call
+(`exportRSim_call`) assumes that `I` performs the calls of the call environment
+(`CallsSim`): the step of the shadow instruction writes the result word of the callee.
+`exportR_sim_calls` is the induction over the program under these two hypotheses. Its
+instance at `x86Isa` and the call environment of `jasminDialect`, in which every call
+refuses, is `exportR_sim`. Its instance at `x86Isa.withProcs T`, for a table `T` of
+procedure summaries that agrees with a call environment `E` (`ProcsAgree`) and whose
+shadow instructions `x86Isa` refuses (`Isa.RefusesProcs`), is `exportR_sim_procs`.
 
 ## Main definitions
 
@@ -194,6 +214,11 @@ program. `exportR` returns `none` exactly on a program with a `call`
   the fragment of a binding, the simulation statement, and returns under bindings.
 * `isRegTy`, `RegTys` — the types held in a register cell, and the lists of such types.
 * `RegionExportable` — the programs the export simulates.
+* `wordSig`, `wordCalls`, `callI` — the signature of a call on words, the programs whose
+  calls have such a signature, and the shadow instruction of a call.
+* `wordsOf`, `resWord`, `CallsSim`, `ProcsAgree` — the words of a valuation, the instruction
+  sets that perform the calls of a call environment, and the tables of procedure summaries
+  that agree with one.
 * `ArrMove`, `arrMove`, `arrMoves` — a move of an array between names and its instructions.
 * `regMoves`, `regPairs`, `arrPairs`, `typedMoves` — the moves of a list of typed pairs.
 * `arrStage`, `arrCommit`, `arrParMoves` — the parallel assignment of arrays.
@@ -215,12 +240,20 @@ program. `exportR` returns `none` exactly on a program with a `call`
 * `whileLoop_trips`, `whileFrame_sim` — the trips of an exit-flag loop, and its frame rule.
 * `flagWord_steps`, `resMoves_steps`, `ifFrame_sim` — the widening of a bit, the assignment
   of the results of a region, and the frame rule of a branch.
-* `exportR_sim` — the simulation statement for every program of `RegionExportable`.
+* `exportRSim_call` — the frame rule of a call.
+* `exportR_sim_calls`, `exportR_sim`, `exportR_sim_procs` — the simulation statement for
+  every program of `RegionExportable`: over an instruction set that performs the calls of
+  the call environment, on `x86Isa`, and on `x86Isa.withProcs T`.
+* `callsSim_withProcs` — the instruction set with the summaries of a table that agrees
+  with a call environment performs its calls.
 * `exportR_eq_some_iff`, `exportR_eq_none_iff` — the export succeeds exactly on the
-  programs without a `call`.
-* `exportRSim_lsemFuelMemF` — the code of an export, as a whole body, halts under the
-  fuelled interpreter `lsemFuelMemF` at the counter after its last instruction, in a state
-  that agrees with the denotation.
+  programs of `wordCalls`.
+* `exportRSim_run`, `exportRSim_lsemFuelMemF` — the code of an export, as a whole body,
+  halts under the run function of the instruction set, and under the fuelled interpreter
+  `lsemFuelMemF` of `x86Isa`, at the counter after its last instruction, in a state that
+  agrees with the denotation.
+* `exportR_run_procs` — the run of a whole program of `RegionExportable` on
+  `x86Isa.withProcs T`.
 * `exportR_lsemFuelMemF` — the same run for a whole program of `RegionExportable`, from the
   depth of its argument context and the label `0`.
 * `exportR_noCall`, `x86Data_guardsNoCall` — the export contains neither a call nor a
@@ -255,7 +288,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel isLabel)
-open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData callShadow)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN (operandName)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data x86Data_loopGuard
   x86Data_zeroTripGuard)
@@ -481,10 +514,11 @@ def shiftPairs (d : Nat) (cs : List JasminTy) : List (JasminTy × String × Stri
     a register type in the register cell of that name, a stack array in the array cell of
     that name, for every trip. The seeds, the assignment at the back edge and the shift
     after the exit label copy register cells for the register types and move arrays
-    (`arrMove`) for the array types. The index register of the array moves is the count
-    operand at the seeds and the trip index `regName d` elsewhere; the scratch register is
-    `regName (d + 1 + cs.length)` at the seeds and the shift and `regName bodyD` at the
-    back edge. -/
+    (`arrMove`) for the array types. Each group of array moves follows a move of `0` into
+    its index register, so every array move is at index `0`: the index register is the
+    trip index `regName d` at the seeds and at the shift, and `regName (bodyD + 1)` at the
+    back edge. The scratch register is `regName (d + 1 + cs.length)` at the seeds and the
+    shift and `regName bodyD` at the back edge. -/
 def forArrFrame (d n : Nat) (cs : List JasminTy) (initOps : List LOperand)
     (countOp : LOperand) (bodyC : List LinstrRM) (bodyOps : List LOperand) (bodyD : Nat)
     (I : IsaData := x86Data) : List LinstrRM :=
@@ -492,17 +526,20 @@ def forArrFrame (d n : Nat) (cs : List JasminTy) (initOps : List LOperand)
   let car := carriedRegs (d + 1) cs.length
   let t := regName (d + 1 + cs.length)
   let back := carriedPairs cs car bodyOps
-  typedMoves (operandName countOp) t (carriedPairs cs car initOps)
-  ++ (seedMoves [regName d, ctr] [.imm 0, countOp]
+  movImmI (regName d) 0
+  :: (typedMoves (regName d) t (carriedPairs cs car initOps)
+  ++ (seedMoves [ctr] [countOp]
   ++ ((I.zeroTripGuard ctr n (n + 1)).map guardI
   ++ (labelI n
   :: (bodyC
-  ++ (arrParMoves (regName d) (regName bodyD) bodyD (arrPairs back)
+  ++ (movImmI (regName (bodyD + 1)) 0
+  :: (arrParMoves (regName (bodyD + 1)) (regName bodyD) bodyD (arrPairs back)
   ++ (parMoves bodyD ((regPairs back).map Prod.fst) ((regPairs back).map fun p => .reg p.2)
   ++ (advanceOps (regName d) ctr
   ++ ((I.loopGuard ctr n).map guardI
   ++ (labelI (n + 1)
-  :: typedMoves (regName d) t (shiftPairs d cs))))))))))
+  :: movImmI (regName d) 0
+  :: typedMoves (regName d) t (shiftPairs d cs))))))))))))
 
 /-! ## 3. The export -/
 
@@ -528,9 +565,25 @@ structure Exported where
 def Exported.prepend (c : List LinstrRM) (r : Exported) : Exported :=
   { r with code := c ++ r.code }
 
+/-- The signature of a call on words with one word result: every argument type and the one
+    result type are `reg 64`. -/
+def wordSig (as rs : List JasminTy) : Bool :=
+  as.all (fun t => decide (t = JasminTy.reg 64)) && decide (rs = [JasminTy.reg 64])
+
+theorem wordSig_iff {as rs : List JasminTy} :
+    wordSig as rs = true ↔ (∀ t ∈ as, t = JasminTy.reg 64) ∧ rs = [JasminTy.reg 64] := by
+  simp [wordSig]
+
+/-- The shadow instruction of a call of `f` on the operands `srcs` with the result in
+    `dst`. -/
+def callI (dst f : String) (srcs : List LOperand) : LinstrRM :=
+  (callShadow dst f srcs, .reg none)
+
 /-- **The export of a structured program by recursion over its regions.** `d` is the
     number of bindings in scope, `n` the first unused label, `nArgs` the number of
-    arguments of the function and `fn` its name. A `call` is refused. -/
+    arguments of the function and `fn` its name. A `call` at a signature of `wordSig` is
+    the shadow instruction `callI` writing `regName d`, followed by the continuation; a
+    `call` at any other signature is refused. -/
 def exportR (nArgs : Nat) (fn : String) :
     {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts →
     (d n : Nat) → (I : IsaData := x86Data) → Option Exported
@@ -557,7 +610,58 @@ def exportR (nArgs : Nat) (fn : String) :
         (Exported.prepend
           (whileFrame d n cs.length (exprArgsHV d nArgs argName (fun _ => none) inits)
             b.code (b.res.headD (.imm 0)) b.res.tail b.depth I))
-  | _, _, .call _ _ _, _, _, _ => none
+  | _, _, .call (as := as) (rs := rs) f args k, d, n, I =>
+      if wordSig as rs = true then
+        (exportR nArgs fn k (d + rs.length) n I).map
+          (Exported.prepend
+            [callI (regName d) f (exprArgsHV d nArgs argName (fun _ => none) args)])
+      else none
+
+/-- The export of a `call`: the signature is of `wordSig`, and the export is the shadow
+    instruction in front of the export of the continuation. -/
+theorem exportR_call_eq_some {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
+    {as rs ts : List JasminTy} {f : String} {args : HVector (fun t => Ctxt.Var Γ t) as}
+    {k : NFProg jasminDialect (rs ++ Γ) ts} {d n : Nat} {I : IsaData} {r : Exported} :
+    exportR nArgs fn (NFProg.call f args k) d n I = some r ↔
+      wordSig as rs = true ∧ ∃ rk, exportR nArgs fn k (d + rs.length) n I = some rk ∧
+        r = Exported.prepend
+          [callI (regName d) f (exprArgsHV d nArgs argName (fun _ => none) args)] rk := by
+  simp only [exportR]
+  split
+  · next hw =>
+      simp only [Option.map_eq_some_iff, hw, true_and]
+      exact ⟨fun ⟨rk, hk, he⟩ => ⟨rk, hk, he.symm⟩, fun ⟨rk, hk, he⟩ => ⟨rk, hk, he.symm⟩⟩
+  · next hw => simp [hw]
+
+/-- The programs whose every `call` has a signature of `wordSig`. -/
+def wordCalls : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
+    NFProg jasminDialect Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var _ k => wordCalls k
+  | _, _, .forLoop _ _ body k => wordCalls body && wordCalls k
+  | _, _, .ifThenElse _ thn els k => wordCalls thn && wordCalls els && wordCalls k
+  | _, _, .whileLoop _ body k => wordCalls body && wordCalls k
+  | _, _, .call (as := as) (rs := rs) _ _ k => wordSig as rs && wordCalls k
+
+/-- A program without a `call` is a program of `wordCalls`. -/
+theorem wordCalls_of_callFree {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (h : p.callFree = true) : wordCalls p = true := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih => exact ih h
+  | forLoop count inits body k ihb ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at h
+      simp only [wordCalls, Bool.and_eq_true]
+      exact ⟨ihb h.1, ihk h.2⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at h
+      simp only [wordCalls, Bool.and_eq_true]
+      exact ⟨⟨iht h.1.1, ihe h.1.2⟩, ihk h.2⟩
+  | whileLoop inits body k ihb ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at h
+      simp only [wordCalls, Bool.and_eq_true]
+      exact ⟨ihb h.1, ihk h.2⟩
+  | call f args k _ => simp [NFProg.callFree] at h
 
 /-- The wire body of a program over the argument context `Γ`: the wire projection of its
     export from the depth `Γ.length` and the label `0`, followed by the return. -/
@@ -757,6 +861,12 @@ theorem isLopn_advanceOps (idx ctr : String) : ∀ i ∈ advanceOps idx ctr, IsL
 @[simp] theorem targetsOf_cons_labelI (l : LLabel) (xs : List LinstrRM) :
     targetsOf (labelI l :: xs) = targetsOf xs := rfl
 
+@[simp] theorem labelsOf_cons_movImmI (r : String) (k : Nat) (xs : List LinstrRM) :
+    labelsOf (movImmI r k :: xs) = labelsOf xs := rfl
+
+@[simp] theorem targetsOf_cons_movImmI (r : String) (k : Nat) (xs : List LinstrRM) :
+    targetsOf (movImmI r k :: xs) = targetsOf xs := rfl
+
 @[simp] theorem labelsOf_cons_gotoI (fn : String) (l : LLabel) (xs : List LinstrRM) :
     labelsOf (gotoI fn l :: xs) = labelsOf xs := rfl
 
@@ -859,8 +969,8 @@ theorem labelsOf_forArrFrame {I : IsaData} (hI : GuardsPlain I) (d n : Nat)
     labelsOf (forArrFrame d n cs initOps countOp bodyC bodyOps bodyD I)
       = n :: (labelsOf bodyC ++ [n + 1]) := by
   simp only [forArrFrame, labelsOf_append, labelsOf_seedMoves, hI.zeroTrip_labels,
-    hI.loop_labels, labelsOf_cons_labelI, labelsOf_parMoves, labelsOf_advanceOps,
-    labelsOf_typedMoves, labelsOf_arrParMoves, List.nil_append]
+    hI.loop_labels, labelsOf_cons_labelI, labelsOf_cons_movImmI, labelsOf_parMoves,
+    labelsOf_advanceOps, labelsOf_typedMoves, labelsOf_arrParMoves, List.nil_append]
 
 /-- The jumps of the counted frame with carried arrays name its two labels or are jumps of
     the body. -/
@@ -871,8 +981,8 @@ theorem targetsOf_forArrFrame {I : IsaData} (hI : GuardsPlain I) (d n : Nat)
       l = n ∨ l = n + 1 ∨ l ∈ targetsOf bodyC := by
   intro l hl
   simp only [forArrFrame, targetsOf_append, targetsOf_seedMoves, targetsOf_parMoves,
-    targetsOf_cons_labelI, targetsOf_advanceOps, targetsOf_typedMoves, targetsOf_arrParMoves,
-    List.nil_append, List.append_nil, List.mem_append] at hl
+    targetsOf_cons_labelI, targetsOf_cons_movImmI, targetsOf_advanceOps, targetsOf_typedMoves,
+    targetsOf_arrParMoves, List.nil_append, List.append_nil, List.mem_append] at hl
   rcases hl with hl | hl | hl
   · exact (hI.zeroTrip_targets _ _ _ l hl).elim Or.inl fun h => Or.inr (Or.inl h)
   · exact Or.inr (Or.inr hl)
@@ -1114,9 +1224,17 @@ theorem exportR_labelsOK (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsP
           · exact Or.inl (Or.inl rfl)
           · exact Or.inl (Or.inr (hB.closed l hl))
         · exact Or.inr (hK.closed l hl)
-  | call f args k _ =>
+  | call f args k ih =>
       intro d n r h
-      simp [exportR] at h
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      have := ih _ _ _ hk
+      have hl : ∀ xs, labelsOf (callI (regName d) f
+          (exprArgsHV d nArgs argName (fun _ => none) args) :: xs) = labelsOf xs := fun _ => rfl
+      have ht : ∀ xs, targetsOf (callI (regName d) f
+          (exprArgsHV d nArgs argName (fun _ => none) args) :: xs) = targetsOf xs := fun _ => rfl
+      exact ⟨this.le, by simpa [Exported.prepend, hl] using this.range,
+        by simpa [Exported.prepend, hl] using this.nodup,
+        by simpa [Exported.prepend, hl, ht] using this.closed⟩
 
 /-- The counter does not decrease. -/
 theorem exportR_next_le (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsPlain I)
@@ -1165,6 +1283,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer (loopCtr_ne_
   loopCtr_ne_regName)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCfg
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa ProcTable ProcSummary retWord procStep)
 
 /-! ## 8. The frame of a region -/
 
@@ -1257,34 +1376,140 @@ def BindMemN {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ
 /-- **The simulation statement of the region export.** For every export of `p` at the
     depth of its context, placed in the body of `P` after a prefix that declares no label
     from the counter on: from a state at the first instruction whose store agrees with `V`,
-    if `p` denotes `v` at `V` then a run of steps of `P` on the x86 flag machine reaches the
-    counter after the code in a state that agrees with the returned operands at `v` and
-    differs from the entry state within the frame of the region. -/
+    if `p` denotes `v` at `V` then a run of steps of `P` on the instruction set `I` reaches
+    the counter after the code in a state that agrees with the returned operands at `v` and
+    differs from the entry state within the frame of the region. The instruction set is
+    the x86 flag machine `x86Isa` unless given, and the denotation consults the call
+    environment of the instance `CallDenote jasminDialect` in scope. -/
 def ExportRSim (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) : Prop :=
+    (p : NFProg jasminDialect Γ ts) (I : Isa := x86Isa) [CallDenote jasminDialect] : Prop :=
   ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n = some r → Γ.length = d → nArgs ≤ d →
   ∀ (P : LprogM) (pre post : List LinstrRM), P.lfn = fn → P.body = pre ++ r.code ++ post →
     (∀ l, n ≤ l → findLabelMem l pre = none) →
   ∀ (fuel : Nat) (V : Ctxt.Valuation Γ) (v : Ctxt.Valuation (d := jasminDialect) ts)
     (m : LstateMF),
     p.denote fuel V = some v → atPc P pre.length m → StoreAgreesM nArgs d m.prog.base V →
-    ∃ (k : Nat) (m' : LstateMF), Steps x86Isa P k m m'
+    ∃ (k : Nat) (m' : LstateMF), Steps I P k m m'
       ∧ atPc P (pre.length + r.code.length) m'
       ∧ ResAgrees nArgs r.depth m'.prog.base r.res v
       ∧ RegionFrame d n m.prog.base m'.prog.base
+
+/-- A run of steps of an instruction set is a run of steps of every instruction set that
+    has its steps. -/
+theorem steps_of_stepLe {I J : Isa} (h : I.StepLe J) {P : LprogM} :
+    ∀ {n : Nat} {s t : LstateMF}, Steps I P n s t → Steps J P n s t := by
+  have hstep : ∀ s u, I.lsemStepPMemF P s = some u → J.lsemStepPMemF P s = some u := by
+    intro s u hu
+    unfold Isa.lsemStepPMemF at hu ⊢
+    cases hf : findInstrMem P s.prog with
+    | none => rw [hf] at hu; cases hu
+    | some i => rw [hf] at hu; exact h P i s u hu
+  intro n
+  induction n with
+  | zero => exact fun hs => hs
+  | succ n ih =>
+      intro s t hs
+      simp only [Steps, CatCrypt.Crypto.SecureCompilation.Ascent.CutPoint.iter,
+        Option.bind_eq_some_iff] at hs ⊢
+      obtain ⟨u, hu, hrest⟩ := hs
+      exact ⟨u, hstep s u hu, ih hrest⟩
+
+/-- The words of the register entries of a valuation, each at width `64`. -/
+def wordsOf : {as : List JasminTy} → Ctxt.Valuation (d := jasminDialect) as → List (BitVec 64)
+  | [], _ => []
+  | .reg _ :: _, .cons v vs => v.setWidth 64 :: wordsOf vs
+  | .stackArr _ _ :: _, .cons _ vs => wordsOf vs
+  | .inlineInt :: _, .cons _ vs => wordsOf vs
+  | .bool :: _, .cons _ vs => wordsOf vs
+
+/-- The word of a valuation of one word. -/
+def resWord (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]) : BitVec 64 :=
+  match v with
+  | .cons r _ => r
+
+/-- **The instruction set `I` performs the calls of the environment `E`.** For every
+    symbol `f` whose callee in `E` at a signature of words returns `v` on the arguments
+    `a`, the step of the shadow instruction of a call of `f`, from a state in which the
+    operands read as the words of `a`, writes the word of `v` to the destination and
+    advances the program counter. -/
+def CallsSim (I : Isa) (E : CallEnv jasminDialect) : Prop :=
+  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, t = JasminTy.reg 64) →
+  ∀ (a : Ctxt.Valuation (d := jasminDialect) as)
+    (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]),
+    E.call f as [JasminTy.reg 64] a = some v →
+  ∀ (P : LprogM) (dst : String) (srcs : List LOperand) (tag : MemTag) (s : LstateMF),
+    srcs.mapM (evalOperandN s.prog.base.reg 64) = some (wordsOf a) →
+    I.step P (callShadow dst f srcs, tag) s = some (retWord dst (resWord v) s)
+
+/-- No instruction set has a call to perform in the environment in which every call
+    refuses. -/
+theorem callsSim_empty (I : Isa) : CallsSim I CallEnv.empty :=
+  fun _ _ _ _ _ h => by cases h
+
+/-- **The agreement of a table of procedure summaries with a call environment.** For every
+    symbol `f` whose callee in `E` at a signature of words returns `v` on the arguments
+    `a`, the table has a summary of `f` whose arity is the number of arguments and whose
+    function returns the word of `v` on the words of `a`. -/
+def ProcsAgree (E : CallEnv jasminDialect) (T : ProcTable) : Prop :=
+  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, t = JasminTy.reg 64) →
+  ∀ (a : Ctxt.Valuation (d := jasminDialect) as)
+    (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]),
+    E.call f as [JasminTy.reg 64] a = some v →
+    ∃ pr, T f = some pr ∧ pr.arity = as.length ∧ pr.run (wordsOf a) = some (resWord v)
+
+/-- The read of a list of operands as words has the length of the list. -/
+theorem length_of_mapM_eq_some {α β : Type} {g : α → Option β} :
+    ∀ {l : List α} {vs : List β}, l.mapM g = some vs → vs.length = l.length
+  | [], vs, h => by
+      rw [List.mapM_nil] at h
+      cases h
+      rfl
+  | x :: l, vs, h => by
+      rw [List.mapM_cons] at h
+      cases hx : g x with
+      | none => simp [hx] at h
+      | some b =>
+          cases hl : l.mapM g with
+          | none => simp [hx, hl] at h
+          | some bs =>
+              simp only [hx, hl, Option.pure_def, Option.bind_eq_bind, Option.bind_some,
+                Option.some.injEq] at h
+              subst h
+              rw [List.length_cons, List.length_cons, length_of_mapM_eq_some hl]
+
+/-- The words of a valuation of words are as many as its types. -/
+theorem wordsOf_length : ∀ {as : List JasminTy} (_ : ∀ t ∈ as, t = JasminTy.reg 64)
+    (a : Ctxt.Valuation (d := jasminDialect) as), (wordsOf a).length = as.length
+  | [], _, .nil => rfl
+  | t :: as, h, .cons v vs => by
+      obtain rfl := h t (List.mem_cons_self ..)
+      show (BitVec.setWidth 64 v :: wordsOf vs).length = _
+      rw [List.length_cons, List.length_cons,
+        wordsOf_length (fun t ht => h t (List.mem_cons_of_mem _ ht)) vs]
+
+/-- **The instruction set with the summaries of a table that agrees with `E` performs the
+    calls of `E`.** -/
+theorem callsSim_withProcs (I : Isa) {E : CallEnv jasminDialect} {T : ProcTable}
+    (h : ProcsAgree E T) : CallsSim (I.withProcs T) E := by
+  intro f as has a v hcall P dst srcs tag s hsrcs
+  obtain ⟨pr, hf, har, hrun⟩ := h f as has a v hcall
+  rw [I.withProcs_step_callShadow T hf, procStep,
+    if_pos (by rw [har, ← wordsOf_length has a, length_of_mapM_eq_some hsrcs]), hsrcs]
+  simp only [Option.bind_some, hrun, Option.map_some]
 
 /-! ## 10. The return and the binding -/
 
 /-- **The statement for a return.** The code is empty and the returned operands are the
     returned variables at the entry valuation. -/
 theorem exportRSim_ret (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} (vs : HVector (fun t => Ctxt.Var Γ t) ts) :
-    ExportRSim nArgs fn (NFProg.ret (d := jasminDialect) vs) := by
+    {ts : List JasminTy} (vs : HVector (fun t => Ctxt.Var Γ t) ts) {I : Isa}
+    [CallDenote jasminDialect] :
+    ExportRSim nArgs fn (NFProg.ret (d := jasminDialect) vs) I := by
   intro d n r h hlen _ P pre post _ _ _ fuel V v m hden hat hag
   simp only [exportR, Option.some.injEq] at h
   subst h
   rw [NFProg.denote_ret, Option.some.injEq] at hden
-  exact ⟨0, m, Steps.refl x86Isa P m, by simpa using hat,
+  exact ⟨0, m, Steps.refl I P m, by simpa using hat,
     ⟨Γ, V, vs, hlen, hag, rfl, hden.symm⟩, RegionFrame.refl d n _⟩
 
 /-- The code of a binding is one instruction. -/
@@ -1296,8 +1521,9 @@ theorem bindOps_eq_singleton (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
     statement for a binding of the fragment in front of it. -/
 theorem exportRSim_var (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {ts : List JasminTy} (e : Expr jasminDialect Γ t)
-    (k : NFProg jasminDialect (t :: Γ) ts) (he : BindMemN e)
-    (hk : ExportRSim nArgs fn k) : ExportRSim nArgs fn (NFProg.var e k) := by
+    (k : NFProg jasminDialect (t :: Γ) ts) (he : BindMemN e) {I : Isa}
+    [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+    (hk : ExportRSim nArgs fn k I) : ExportRSim nArgs fn (NFProg.var e k) I := by
   intro d n r h hlen harg P pre post hfn hbody hpre fuel V v m hden hat hag
   simp only [exportR, Option.map_eq_some_iff] at h
   obtain ⟨rk, hrk, rfl⟩ := h
@@ -1337,11 +1563,30 @@ theorem exportRSim_var (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
     fuel _ v (setBase m (withALUFlags i m.prog.base st')) hden
     (by rw [List.length_append, List.length_singleton]; exact hat1)
     (StoreAgreesM.withALUFlags i m.prog.base hAg')
-  refine ⟨1 + k', m', hs1.trans hs2, ?_, hres, ?_⟩
+  refine ⟨1 + k', m', (steps_of_stepLe hI hs1).trans hs2, ?_, hres, ?_⟩
   · rw [hcode, List.length_cons]
     rw [List.length_append, List.length_singleton] at hat2
     rwa [show pre.length + (rk.code.length + 1) = pre.length + 1 + rk.code.length by omega]
   · exact ((RegionFrame.of_writeFrame n hFr).withALUFlags i _).trans hfr2 (by omega) le_rfl
+
+/-- The operands of a tuple of word variables read, in a store that agrees with `V`, as
+    the words of the tuple at `V`. -/
+theorem mapM_exprArgsHV_words {nArgs d : Nat} {Γ : Ctxt jasminDialect} {s : LstateM}
+    {V : Ctxt.Valuation Γ} (hag : StoreAgreesM nArgs d s V) :
+    ∀ {as : List JasminTy} (_ : ∀ t ∈ as, t = JasminTy.reg 64)
+      (args : HVector (fun t => Ctxt.Var Γ t) as),
+      (exprArgsHV d nArgs argName (fun _ => none) args).mapM (evalOperandN s.reg 64)
+        = some (wordsOf (Expr.lookupArgs args V))
+  | [], _, .nil => rfl
+  | t :: as, h, .cons u us => by
+      obtain rfl := h t (List.mem_cons_self ..)
+      have ih := mapM_exprArgsHV_words hag (fun t ht => h t (List.mem_cons_of_mem _ ht)) us
+      have hu := hag.reg u
+      show ((resolveVar d nArgs argName (fun _ => none) u
+          :: exprArgsHV d nArgs argName (fun _ => none) us).mapM (evalOperandN s.reg 64))
+        = some (BitVec.setWidth 64 (u.lookup V) :: wordsOf (Expr.lookupArgs us V))
+      rw [List.mapM_cons, hu, ih, BitVec.setWidth_eq]
+      rfl
 
 /-! ## 11. Returns under bindings -/
 
@@ -1361,7 +1606,7 @@ theorem exportR_sim_straight (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialec
     ExportRSim nArgs fn p := by
   induction hp with
   | ret vs => exact exportRSim_ret nArgs fn vs
-  | var e he _ ih => exact exportRSim_var nArgs fn e _ he ih
+  | var e he _ ih => exact exportRSim_var nArgs fn e _ he (Isa.StepLe.refl _) ih
 
 /-! ## 12. Register cells and the steps of the frame instructions -/
 
@@ -1755,9 +2000,12 @@ theorem exportR_depth_le (nArgs : Nat) (fn : String) {I : IsaData} {Γ : Ctxt ja
       have := ihk _ _ _ hk
       simp only [Exported.prepend]
       omega
-  | call f args k _ =>
+  | call f args k ih =>
       intro d n r h
-      simp [exportR] at h
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      have := ih _ _ _ hk
+      simp only [Exported.prepend]
+      omega
 
 /-! ## 14. The parallel assignment and the tail of a counted trip -/
 
@@ -1940,7 +2188,8 @@ section ForLoop
 
 variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
   (body : NFProg jasminDialect (cs ++ JasminTy.reg 64 :: Γ) cs) (hcs : RegTys cs)
-  (hsim : ExportRSim nArgs fn body) {d n : Nat} {b : Exported}
+  {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+  (hsim : ExportRSim nArgs fn body I) {d n : Nat} {b : Exported}
   (hb : exportR nArgs fn body (d + 1 + cs.length) (n + 2) = some b) (hlen : Γ.length = d)
   (harg : nArgs ≤ d) {P : LprogM} {A R Z : List LinstrRM} (hfn : P.lfn = fn)
   (hbody : P.body = A ++ labelI n :: (b.code ++ R))
@@ -1950,7 +2199,7 @@ variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
       :: condI (.reg "NZ") n :: Z))
   (hA : ∀ l, n ≤ l → findLabelMem l A = none) (fuel : Nat) (V : Ctxt.Valuation Γ)
 
-include hcs hsim hb hlen harg hfn hbody hR hA in
+include hcs hI hsim hb hlen harg hfn hbody hR hA in
 /-- **One trip of a counted loop**, from the counter after the top label to the back-edge
     jump: the body, the assignment of the returned tuple to the carried block, the advance
     and the compare. -/
@@ -1963,7 +2212,7 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
     (hblk : ∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
       m.prog.base.reg.getW (regName (d + 1 + (cs.length - 1 - varIndex u))) w
         = some (u.lookup acc)) :
-    ∃ (k : Nat) (t : LstateMF), Steps x86Isa P k m t
+    ∃ (k : Nat) (t : LstateMF), Steps I P k m t
       ∧ atPc P ((A ++ labelI n :: b.code).length + 2 * cs.length + 3) t
       ∧ RegionFrame d n m.prog.base t.prog.base ∧ t.zf = (c - 1#64 == 0#64)
       ∧ t.prog.base.reg.lvm (regName d) = ⟨64, BitVec.ofNat 64 i + 1#64⟩
@@ -2018,7 +2267,8 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
         rw [hfr1.lvm_eq _ (fun k _ => loopCtr_ne_regName n k)
           (fun l hl he => by have := loopCtr_injective he; omega)]
         exact hctr)
-  refine ⟨k1 + (2 * cs.length + 3), t, hs1.trans hs2, hat2, ?_, hz, hidx', hctr',
+  refine ⟨k1 + (2 * cs.length + 3), t, hs1.trans (steps_of_stepLe hI hs2), hat2, ?_, hz, hidx',
+    hctr',
     fun {w} u => ?_, hres_len⟩
   · exact (hfr1.mono (by omega) (by omega)).trans
       (RegionFrame.of_cells harr fun r hr hl => hoth r hr (hl n le_rfl)) le_rfl le_rfl
@@ -2027,7 +2277,7 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
       ← evalOperandN_resolveVar, hacc, lookup_lookupArgs]
     exact hagW.1 (hvToHom vs u)
 
-include hcs hsim hb hlen harg hfn hbody hR hA in
+include hcs hI hsim hb hlen harg hfn hbody hR hA in
 /-- **The trips of a counted loop.** From the counter after the top label with `rem + 1`
     trips left, the trip index `i` in its register and the carried tuple in the carried
     block, the run reaches the counter after the back-edge jump with the tuple of the fold
@@ -2043,7 +2293,7 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
     (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
       m.prog.base.reg.getW (regName (d + 1 + (cs.length - 1 - varIndex u))) w
         = some (u.lookup acc)) →
-    ∃ (k : Nat) (m' : LstateMF), Steps x86Isa P k m m'
+    ∃ (k : Nat) (m' : LstateMF), Steps I P k m m'
       ∧ atPc P ((A ++ labelI n :: b.code).length + 2 * cs.length + 3 + 1) m'
       ∧ RegionFrame d n m.prog.base m'.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
@@ -2072,18 +2322,18 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
       rw [List.range'_zero, List.foldlM_nil] at hrest
       obtain rfl : acc1 = accN := Option.some.inj hrest
       obtain ⟨k, t, hs, hat2, hfr, hz, _, _, hblk', hres⟩ :=
-        forLoop_trip nArgs fn body hcs hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
+        forLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
           hden hat hag hidx hctr hblk
       have hc1 : c - 1#64 = 0#64 := by bv_omega
       obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 (hfetch hres)
         (by rw [hz, hc1]; decide)
-      exact ⟨k + 1, next t, hs.trans hs', hat', hfr, fun {w} u => hblk' u⟩
+      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u⟩
   | succ rem ih =>
       intro i acc accN m c hfold hc hat hag hidx hctr hblk
       rw [List.range'_succ, List.foldlM_cons] at hfold
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
       obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hres⟩ :=
-        forLoop_trip nArgs fn body hcs hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
+        forLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
           hden hat hag hidx hctr hblk
       have hc1 : c - 1#64 ≠ 0#64 := by bv_omega
       have hl : findLabelMem n P.body = some A.length := by
@@ -2097,7 +2347,7 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
         (goto t (A.length + 1)) (c - 1#64) hrest (by bv_omega) hat'
         (StoreAgreesM.of_regionFrame hlen hag hfr')
         (by rw [BitVec.ofNat_add]; exact hidx') hctr' (fun {w} u => hblk' u)
-      exact ⟨k + 1 + k', m', (hs.trans hs').trans hs'', hat'',
+      exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
         hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u⟩
 
 end ForLoop
@@ -2148,9 +2398,10 @@ theorem exportR_res_length (nArgs : Nat) (fn : String) {I : IsaData} {Γ : Ctxt 
       simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨b, _, rk, hk, rfl⟩ := h
       exact ihk _ _ rk hk
-  | call f args k _ =>
+  | call f args k ih =>
       intro d n r h
-      simp [exportR] at h
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      exact ih _ _ rk hk
 
 /-- **The head of a counted loop**: the seeds of the carried block, of the trip index and
     of the counter, and the compare of the counter with zero. -/
@@ -2257,9 +2508,10 @@ theorem exportR_res_isReg (nArgs : Nat) (fn : String) {I : IsaData} {Γ : Ctxt j
       simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨b, _, rk, hk, rfl⟩ := h
       exact ihk _ _ rk hk
-  | call f args k _ =>
+  | call f args k ih =>
       intro d n r h
-      simp [exportR] at h
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      exact ih _ _ rk hk
 
 /-- The step of the select `CMOV dst, [c, a, b]` on a one-bit condition and two words. -/
 theorem lsemStepMem_select (dst c a b : String) (s : LstateM) (vc : BitVec 1)
@@ -2399,7 +2651,8 @@ section WhileLoop
 
 variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
   (body : NFProg jasminDialect (cs ++ Γ) (JasminTy.reg 1 :: cs)) (hcs : RegTys cs)
-  (hsim : ExportRSim nArgs fn body) {d n : Nat} {b : Exported}
+  {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+  (hsim : ExportRSim nArgs fn body I) {d n : Nat} {b : Exported}
   (hb : exportR nArgs fn body (d + cs.length) (n + 1) = some b) (hlen : Γ.length = d)
   (harg : nArgs ≤ d) {P : LprogM} {A R Z : List LinstrRM} {fname : String} (hfn : P.lfn = fn)
   (hbody : P.body = A ++ labelI n :: (b.code ++ R))
@@ -2414,7 +2667,7 @@ variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         [.reg (regName (b.depth + cs.length)), .imm 0]) :: condI (.reg "NZ") n :: Z))
   (hA : ∀ l, n ≤ l → findLabelMem l A = none) (fuel : Nat) (V : Ctxt.Valuation Γ)
 
-include hcs hsim hb hlen harg hfn hbody hfh hR hA in
+include hcs hI hsim hb hlen harg hfn hbody hfh hR hA in
 /-- **One trip of an exit-flag loop**, from the counter after the label to the back-edge
     jump. The zero flag is the negation of the continue bit. -/
 theorem whileLoop_trip (acc : Ctxt.Valuation cs)
@@ -2424,7 +2677,7 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
     (hblk : ∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
       m.prog.base.reg.getW (regName (d + (cs.length - 1 - varIndex u))) w
         = some (u.lookup acc)) :
-    ∃ (k : Nat) (t : LstateMF), Steps x86Isa P k m t
+    ∃ (k : Nat) (t : LstateMF), Steps I P k m t
       ∧ atPc P ((A ++ labelI n :: b.code).length + 2 * cs.length + 4) t
       ∧ RegionFrame d n m.prog.base t.prog.base
       ∧ t.zf = !(HasBoolBit.toBool (d := jasminDialect) r.head)
@@ -2477,7 +2730,7 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
         exact resolveVar_operandName_ne_regName v0
           (hΔ ▸ JasminLsemSimulation.varIndex_lt v0) k hk)
       hbit
-  refine ⟨k1 + k2, t, hs1.trans hs2, hat2, ?_, hz, fun {w} u => ?_⟩
+  refine ⟨k1 + k2, t, hs1.trans (steps_of_stepLe hI hs2), hat2, ?_, hz, fun {w} u => ?_⟩
   · exact (hfr1.mono (by omega) (by omega)).trans
       (RegionFrame.of_cells harr fun r hr _ => hoth r hr) le_rfl le_rfl
   · have hu := JasminLsemSimulation.varIndex_lt u
@@ -2485,7 +2738,7 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
       ← evalOperandN_resolveVar]
     exact (hagW.1 (hvToHom vrest u)).trans (congrArg some (lookup_lookupArgs W vrest u).symm)
 
-include hcs hsim hb hlen harg hfn hbody hfh hR hA in
+include hcs hI hsim hb hlen harg hfn hbody hfh hR hA in
 /-- **The trips of an exit-flag loop.** From the counter after the label with the carried
     tuple in the carried block, if the iteration of the body within `f` runs returns
     `accN`, the run reaches the counter after the back-edge jump with `accN` in the carried
@@ -2497,7 +2750,7 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
     (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
       m.prog.base.reg.getW (regName (d + (cs.length - 1 - varIndex u))) w
         = some (u.lookup acc)) →
-    ∃ (k : Nat) (m' : LstateMF), Steps x86Isa P k m m'
+    ∃ (k : Nat) (m' : LstateMF), Steps I P k m m'
       ∧ atPc P ((A ++ labelI n :: b.code).length + 2 * cs.length + 4 + 1) m'
       ∧ RegionFrame d n m.prog.base m'.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
@@ -2539,7 +2792,7 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
           else some r.tail) = some accN := h
       obtain ⟨r, hden, hrest⟩ := Option.bind_eq_some_iff.mp h'
       obtain ⟨k, t, hs, hat2, hfr, hz, hblk'⟩ :=
-        whileLoop_trip nArgs fn body hcs hsim hb hlen harg hfn hbody hfh hR hA fuel V acc r m
+        whileLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hfh hR hA fuel V acc r m
           hden hat hag hblk
       by_cases hbt : HasBoolBit.toBool (d := jasminDialect) r.head = true
       · rw [if_pos hbt] at hrest
@@ -2548,13 +2801,13 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
           hfr.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
         obtain ⟨k', m', hs'', hat'', hfr'', hblk''⟩ := ih r.tail accN (goto t (A.length + 1))
           hrest hat' (StoreAgreesM.of_regionFrame hlen hag hfr') (fun {w} u => hblk' u)
-        exact ⟨k + 1 + k', m', (hs.trans hs').trans hs'', hat'',
+        exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
           hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u⟩
       · rw [if_neg hbt] at hrest
         obtain rfl : r.tail = accN := Option.some.inj hrest
         obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 hfetch
           (by rw [hz, Bool.not_eq_true] at *; rw [hbt]; decide)
-        exact ⟨k + 1, next t, hs.trans hs', hat', hfr, fun {w} u => hblk' u⟩
+        exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u⟩
 
 end WhileLoop
 
@@ -2564,8 +2817,9 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     {ts : List JasminTy} (inits : HVector (fun t => Ctxt.Var Γ t) cs)
     (body : NFProg jasminDialect (cs ++ Γ) (JasminTy.reg 1 :: cs))
     (k : NFProg jasminDialect (cs ++ Γ) ts) (hcs : RegTys cs)
-    (hbsim : ExportRSim nArgs fn body) (hksim : ExportRSim nArgs fn k) :
-    ExportRSim nArgs fn (NFProg.whileLoop inits body k) := by
+    {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+    (hbsim : ExportRSim nArgs fn body I) (hksim : ExportRSim nArgs fn k I) :
+    ExportRSim nArgs fn (NFProg.whileLoop inits body k) I := by
   intro d n r h hlen harg P pre post hfn hbody hpre fuel V v m hden hat hag
   simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨b, hb, rk, hrk, rfl⟩ := h
@@ -2638,7 +2892,7 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     rw [hAd, List.length_append]
     simp only [seedMoves, List.length_map, List.length_zip, hcar, hopslen, Nat.min_self]
   rw [← hAlen] at hat0
-  obtain ⟨hs1, hat1⟩ := steps_label x86Isa (kind := .internal) (l := n) (tag := .reg none)
+  obtain ⟨hs1, hat1⟩ := steps_label I (kind := .internal) (l := n) (tag := .reg none)
     hat0 (fetch_of_body hbodyL rfl)
   have hfr1 : RegionFrame d n m.prog.base (next t0).prog.base :=
     RegionFrame.of_cells ha0 fun r hr _ => ho0 r fun j hj => by
@@ -2656,7 +2910,7 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     exact hag.1 (hvToHom inits u)
   -- the trips
   obtain ⟨k3, m3, hs3, hat3, hfr3, hblk3⟩ :=
-    whileLoop_trips nArgs fn body hcs hbsim hb hlen harg hfn hbodyL hfh
+    whileLoop_trips nArgs fn body hcs hI hbsim hb hlen harg hfn hbodyL hfh
       (Z := rk.code ++ post) (by rw [hT]; simp only [List.append_assoc, List.cons_append,
         List.nil_append]) hAlab fuel V fuel (Expr.lookupArgs inits V) accN (next t0) hiter hat1
       (StoreAgreesM.of_regionFrame hlen hag hfr1) (fun {w} u => hblkI u)
@@ -2694,7 +2948,7 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     rw [hbodyL] at h1
     simp only [List.length_append, List.length_cons] at h1 ⊢
     omega
-  refine ⟨_, m', (((hs0.trans hs1).trans hs3).trans hsK), ?_, hresK,
+  refine ⟨_, m', ((((steps_of_stepLe hI hs0).trans hs1).trans hs3).trans hsK), ?_, hresK,
     hfrS.trans hfrK (by omega) (by omega)⟩
   rw [hlenEq]
   exact hatK
@@ -2778,9 +3032,10 @@ theorem ifHead_steps {P : LprogM} {d : Nat} {f : String} (pre post : List Linstr
 theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
     {ts : List JasminTy} (cond : Ctxt.Var Γ (JasminTy.reg 1))
     (thn els : NFProg jasminDialect Γ rs) (k : NFProg jasminDialect (rs ++ Γ) ts)
-    (hrs : RegTys rs) (htsim : ExportRSim nArgs fn thn) (hesim : ExportRSim nArgs fn els)
-    (hksim : ExportRSim nArgs fn k) :
-    ExportRSim nArgs fn (NFProg.ifThenElse cond thn els k) := by
+    (hrs : RegTys rs) {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+    (htsim : ExportRSim nArgs fn thn I) (hesim : ExportRSim nArgs fn els I)
+    (hksim : ExportRSim nArgs fn k I) :
+    ExportRSim nArgs fn (NFProg.ifThenElse cond thn els k) I := by
   intro d n r h hlen harg P pre post hfn hbody hpre fuel V v m hden hat hag
   simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨t, ht, e, he, rk, hrk, rfl⟩ := h
@@ -2909,7 +3164,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       (by rw [hbodyH]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append]; rfl)
   -- the selected branch, to the counter after the join label
-  have hjoin : ∃ (kJ : Nat) (mJ : LstateMF), Steps x86Isa P kJ m mJ ∧ atPc P (X.length + 1) mJ
+  have hjoin : ∃ (kJ : Nat) (mJ : LstateMF), Steps I P kJ m mJ ∧ atPc P (X.length + 1) mJ
       ∧ RegionFrame d n m.prog.base mJ.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var rs (.reg w)),
           mJ.prog.base.reg.getW (regName (d + (rs.length - 1 - varIndex u))) w
@@ -2919,7 +3174,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       obtain ⟨hs1, hat1⟩ := steps_cc_fall (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; decide)
       rw [← hAlen] at hat1
-      obtain ⟨hs2, hat2⟩ := steps_label x86Isa (kind := .internal) (l := n) (tag := .reg none)
+      obtain ⟨hs2, hat2⟩ := steps_label I (kind := .internal) (l := n) (tag := .reg none)
         hat1 (fetch_of_body hbodyA rfl)
       have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
         (hfr0 n).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
@@ -2945,12 +3200,13 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
           :: (rk.code ++ post)))) m3 (rv := rv)
         (by rw [hbodyA, hTM]; simp only [List.append_assoc, List.cons_append])
         hat3' htd hres3
-      obtain ⟨hs5, -⟩ := steps_goto x86Isa (l := n + 2) (tag := .reg none) hat4
+      obtain ⟨hs5, -⟩ := steps_goto I (l := n + 2) (tag := .reg none) hat4
         (fetch_of_body (xs := A ++ labelI n :: (t.code ++ TM)) (i := gotoI P.lfn (n + 2))
           (by rw [hbodyA, hfn]; simp only [List.append_assoc, List.cons_append]; rfl)
           (by simp only [List.length_append, List.length_cons, hTMlen]; omega))
         hl2
-      exact ⟨_, _, ((((hs0.trans hs1).trans hs2).trans hs3).trans hs4).trans hs5,
+      exact ⟨_, _, ((((steps_of_stepLe hI (hs0.trans hs1)).trans hs2).trans hs3).trans
+          (steps_of_stepLe hI hs4)).trans hs5,
         atPc_goto (X.length + 1) hat4,
         (((hfr2.trans hfr3 le_rfl (by omega)).trans (hfr4 n) le_rfl le_rfl).trans
           (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl),
@@ -2983,9 +3239,10 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         (by rw [hbodyY, hEM]; simp only [List.append_assoc, List.cons_append])
         hat3' hed hres3
       rw [← hXlen] at hat4
-      obtain ⟨hs5, hat5⟩ := steps_label x86Isa (kind := .internal) (l := n + 2)
+      obtain ⟨hs5, hat5⟩ := steps_label I (kind := .internal) (l := n + 2)
         (tag := .reg none) hat4 (fetch_of_body hbodyX rfl)
-      exact ⟨_, _, (((hs0.trans hs1).trans hs3).trans hs4).trans hs5, hat5,
+      exact ⟨_, _, (((steps_of_stepLe hI (hs0.trans hs1)).trans hs3).trans
+          (steps_of_stepLe hI hs4)).trans hs5, hat5,
         (((hfr1.trans hfr3 le_rfl (by omega)).trans (hfr4 n) le_rfl le_rfl).trans
           (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl),
         fun {w} u => hblk4 u⟩
@@ -3017,12 +3274,77 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
   rw [hlenEq]
   exact hatK
 
+/-! ## 18a. The frame rule of a call -/
+
+/-- **The frame rule of a call.** On an instruction set that performs the calls of the
+    call environment in scope, the statement for the continuation gives the statement for
+    a call at a signature of words in front of it. -/
+theorem exportRSim_call (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
+    {as ts : List JasminTy} (f : String) (args : HVector (fun t => Ctxt.Var Γ t) as)
+    (k : NFProg jasminDialect ([JasminTy.reg 64] ++ Γ) ts)
+    (has : ∀ t ∈ as, t = JasminTy.reg 64) {I : Isa} [CallDenote jasminDialect]
+    (hc : CallsSim I (CallDenote.env (d := jasminDialect)))
+    (hk : ExportRSim nArgs fn k I) :
+    ExportRSim nArgs fn (NFProg.call (rs := [JasminTy.reg 64]) f args k) I := by
+  intro d n r h hlen harg P pre post hfn hbody hpre fuel V v m hden hat hag
+  obtain ⟨-, rk, hrk, rfl⟩ := exportR_call_eq_some.mp h
+  rw [NFProg.denote_call] at hden
+  obtain ⟨res, hcall, hden⟩ := Option.bind_eq_some_iff.mp hden
+  set i : LinstrRM := callI (regName d) f (exprArgsHV d nArgs argName (fun _ => none) args)
+    with hi
+  have hcode : (Exported.prepend [i] rk).code = i :: rk.code := rfl
+  rw [hcode] at hbody
+  have hfetch : P.body[pre.length]? = some i := by
+    rw [hbody, List.append_assoc, List.getElem?_append_right (le_refl _), Nat.sub_self]
+    rfl
+  have hstep := hc f as has _ res hcall P (regName d)
+    (exprArgsHV d nArgs argName (fun _ => none) args) (.reg none) m
+    (mapM_exprArgsHV_words hag has args)
+  have hs1 : Steps I P 1 m (retWord (regName d) (resWord res) m) :=
+    Steps.one (by rw [lsemStepPMemF_of_atPc I hat hfetch]; exact hstep)
+  have hat1 : atPc P (pre.length + 1) (retWord (regName d) (resWord res) m) :=
+    ⟨hat.1, by simp [retWord, hat.2]⟩
+  have hfr1 : RegionFrame d n m.prog.base (retWord (regName d) (resWord res) m).prog.base :=
+    RegionFrame.of_cells rfl fun r hr _ => by
+      simp [retWord, LstateN.setReg, hr d le_rfl]
+  have hag0 := StoreAgreesM.of_regionFrame hlen hag hfr1
+  have hag1 : StoreAgreesM nArgs (d + 1) (retWord (regName d) (resWord res) m).prog.base
+      (hvAppend res V) :=
+    storeAgreesM_append (cs := [JasminTy.reg 64]) (acc := res)
+      (fun t ht => by rw [List.mem_singleton.mp ht]; rfl) harg hag0
+      (fun {w} u => by
+        cases u with
+        | here =>
+            cases res with
+            | cons x xs =>
+                simp only [retWord, resWord, List.length_cons, List.length_nil]
+                exact JasminLsemMemSourceTieUncond.LstateM.getW_setReg_nextPc_same _ _ _
+        | there u => cases u)
+  have hlab : ∀ l, n ≤ l → findLabelMem l (pre ++ [i]) = none := by
+    intro l hl'
+    rw [findLabelMem_eq_none_iff, labelsOf_append,
+      labelsOf_of_isLopn (xs := [i]) (fun j hj => by
+        rw [List.mem_singleton.mp hj]; exact ⟨_, _, _, rfl⟩),
+      List.append_nil, ← findLabelMem_eq_none_iff]
+    exact hpre l hl'
+  obtain ⟨k', m', hs2, hat2, hres, hfr2⟩ := hk (d + 1) n rk hrk
+    (by simp only [List.length_append, List.length_cons, List.length_nil, hlen]; omega)
+    (by omega) P (pre ++ [i]) post hfn
+    (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]) hlab
+    fuel _ v _ hden
+    (by rw [List.length_append, List.length_singleton]; exact hat1) hag1
+  refine ⟨1 + k', m', hs1.trans hs2, ?_, hres, hfr1.trans hfr2 (by omega) le_rfl⟩
+  rw [hcode, List.length_cons]
+  rw [List.length_append, List.length_singleton] at hat2
+  rwa [show pre.length + (rk.code.length + 1) = pre.length + 1 + rk.code.length by omega]
+
 /-! ## 19. The simulation of the export -/
 
-/-- **The programs the region export simulates.** No node is a `call`, every binding is in
-    the stack-memory fragment (`BindMemN`), and the carried types of every loop in
-    exit-flag form and the result types of every branch are held in register cells
-    (`RegTys`). The carried tuple of a counted loop holds registers and stack arrays. -/
+/-- **The programs the region export simulates.** Every `call` has a signature of
+    `wordSig`, every binding is in the stack-memory fragment (`BindMemN`), and the carried
+    types of every loop in exit-flag form and the result types of every branch are held in
+    register cells (`RegTys`). The carried tuple of a counted loop holds registers and
+    stack arrays. -/
 def RegionExportable : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
     NFProg jasminDialect Γ ts → Prop
   | _, _, .ret _ => True
@@ -3032,23 +3354,23 @@ def RegionExportable : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
       RegTys rs ∧ RegionExportable thn ∧ RegionExportable els ∧ RegionExportable k
   | _, _, .whileLoop (cs := cs) _ body k =>
       RegTys cs ∧ RegionExportable body ∧ RegionExportable k
-  | _, _, .call _ _ _ => False
+  | _, _, .call (as := as) (rs := rs) _ _ k => wordSig as rs = true ∧ RegionExportable k
 
-/-- **The export succeeds exactly on the programs without a `call`**, at every depth, label
+/-- **The export succeeds exactly on the programs of `wordCalls`**, at every depth, label
     and instruction set. -/
 theorem exportR_eq_some_iff (nArgs : Nat) (fn : String) {I : IsaData}
     {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
-    ∀ (d n : Nat), (∃ r, exportR nArgs fn p d n I = some r) ↔ p.callFree = true := by
+    ∀ (d n : Nat), (∃ r, exportR nArgs fn p d n I = some r) ↔ wordCalls p = true := by
   induction p with
   | ret vs => exact fun d n => ⟨fun _ => rfl, fun _ => ⟨_, rfl⟩⟩
   | var e k ih =>
       intro d n
-      simp only [exportR, Option.map_eq_some_iff, NFProg.callFree]
+      simp only [exportR, Option.map_eq_some_iff, wordCalls]
       rw [← ih (d + 1) n]
       exact ⟨fun ⟨_, rk, hk, _⟩ => ⟨rk, hk⟩, fun ⟨rk, hk⟩ => ⟨_, rk, hk, rfl⟩⟩
   | forLoop count inits body k ihb ihk =>
       intro d n
-      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, NFProg.callFree,
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, wordCalls,
         Bool.and_eq_true]
       refine ⟨fun ⟨_, b, hb, rk, hk, _⟩ => ⟨(ihb _ _).mp ⟨b, hb⟩, (ihk _ _).mp ⟨rk, hk⟩⟩,
         fun ⟨h1, h2⟩ => ?_⟩
@@ -3057,7 +3379,7 @@ theorem exportR_eq_some_iff (nArgs : Nat) (fn : String) {I : IsaData}
       exact ⟨_, b, hb, rk, hk, rfl⟩
   | ifThenElse cond thn els k iht ihe ihk =>
       intro d n
-      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, NFProg.callFree,
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, wordCalls,
         Bool.and_eq_true]
       refine ⟨fun ⟨_, t, ht, e, he, rk, hk, _⟩ =>
           ⟨⟨(iht _ _).mp ⟨t, ht⟩, (ihe _ _).mp ⟨e, he⟩⟩, (ihk _ _).mp ⟨rk, hk⟩⟩,
@@ -3068,28 +3390,32 @@ theorem exportR_eq_some_iff (nArgs : Nat) (fn : String) {I : IsaData}
       exact ⟨_, t, ht, e, he, rk, hk, rfl⟩
   | whileLoop inits body k ihb ihk =>
       intro d n
-      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, NFProg.callFree,
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff, wordCalls,
         Bool.and_eq_true]
       refine ⟨fun ⟨_, b, hb, rk, hk, _⟩ => ⟨(ihb _ _).mp ⟨b, hb⟩, (ihk _ _).mp ⟨rk, hk⟩⟩,
         fun ⟨h1, h2⟩ => ?_⟩
       obtain ⟨b, hb⟩ := (ihb _ _).mpr h1
       obtain ⟨rk, hk⟩ := (ihk _ _).mpr h2
       exact ⟨_, b, hb, rk, hk, rfl⟩
-  | call f args k _ =>
+  | call f args k ih =>
       intro d n
-      simp [exportR, NFProg.callFree]
+      simp only [exportR_call_eq_some, wordCalls, Bool.and_eq_true]
+      rw [← ih (d + _) n]
+      exact ⟨fun ⟨_, hw, rk, hk, _⟩ => ⟨hw, rk, hk⟩, fun ⟨hw, rk, hk⟩ => ⟨_, hw, rk, hk, rfl⟩⟩
 
-/-- **The export refuses exactly the programs with a `call`.** -/
+/-- **The export refuses exactly the programs with a `call` at a signature outside
+    `wordSig`.** -/
 theorem exportR_eq_none_iff (nArgs : Nat) (fn : String) {I : IsaData}
     {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) (d n : Nat) :
-    exportR nArgs fn p d n I = none ↔ p.callFree = false := by
+    exportR nArgs fn p d n I = none ↔ wordCalls p = false := by
   rw [← Bool.not_eq_true, ← exportR_eq_some_iff nArgs fn (I := I) p d n,
     Option.eq_none_iff_forall_ne_some]
   exact ⟨fun h ⟨r, hr⟩ => h r hr, fun h r hr => h ⟨r, hr⟩⟩
 
-/-- A program of `RegionExportable` has no `call`. -/
-theorem RegionExportable.callFree {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) : p.callFree = true := by
+/-- Every `call` of a program of `RegionExportable` has a signature of `wordSig`. -/
+theorem RegionExportable.wordCalls {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) :
+    ExportRegions.wordCalls p = true := by
   induction p with
   | ret vs => rfl
   | var e k ih => exact ih hp.2
@@ -3100,22 +3426,44 @@ theorem RegionExportable.callFree {Γ : Ctxt jasminDialect} {ts : List JasminTy}
         ⟨Bool.and_eq_true_iff.mpr ⟨iht hp.2.1, ihe hp.2.2.1⟩, ihk hp.2.2.2⟩
   | whileLoop inits body k ihb ihk =>
       exact Bool.and_eq_true_iff.mpr ⟨ihb hp.2.1, ihk hp.2.2⟩
-  | call f args k _ => exact hp.elim
+  | call f args k ih => exact Bool.and_eq_true_iff.mpr ⟨hp.1, ih hp.2⟩
 
 /-- **The export of a program of `RegionExportable` succeeds.** -/
 theorem RegionExportable.exportR_eq_some {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) (nArgs : Nat) (fn : String)
     (d n : Nat) (I : IsaData := x86Data) : ∃ r, exportR nArgs fn p d n I = some r :=
-  (exportR_eq_some_iff nArgs fn p d n).mpr hp.callFree
+  (exportR_eq_some_iff nArgs fn p d n).mpr hp.wordCalls
 
 /-! ## 20. The run of an export under the fuelled semantics -/
 
-/-- **The export as a whole body halts under `lsemFuelMemF`.** For a program satisfying the
-    simulation statement, the code of its export as the body of a one-function program,
-    run by the fuelled flag-machine interpreter from a state at counter `0` whose store
-    agrees with `V`, halts at every fuel from some bound on, in a state at the counter
-    after the last instruction that agrees with the returned operands at the denotation and
-    differs from the entry state within the frame of the region. -/
+/-- **The export as a whole body halts under the run function of the instruction set.** For
+    a program satisfying the simulation statement at `I`, the code of its export as the
+    body of a one-function program, run by `I.lsemFuelMemF` from a state at counter `0`
+    whose store agrees with `V`, halts at every fuel from some bound on, in a state at the
+    counter after the last instruction that agrees with the returned operands at the
+    denotation and differs from the entry state within the frame of the region. -/
+theorem exportRSim_run {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {I : Isa} [CallDenote jasminDialect]
+    (hsim : ExportRSim nArgs fn p I)
+    {d n : Nat} {r : Exported} (hr : exportR nArgs fn p d n = some r) (hlen : Γ.length = d)
+    (harg : nArgs ≤ d) (fuel : Nat) (V : Ctxt.Valuation Γ)
+    (v : Ctxt.Valuation (d := jasminDialect) ts) (hden : p.denote fuel V = some v)
+    (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 0) (hag : StoreAgreesM nArgs d b0 V) :
+    ∃ (k : Nat) (t : LstateMF),
+      (∀ j, I.lsemFuelMemF (singletonProgM fn r.code) (k + j)
+        { prog := { base := b0, lfn := fn }, zf := zf } = some t)
+      ∧ atPc (singletonProgM fn r.code) r.code.length t
+      ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base := by
+  obtain ⟨k, t, hs, hat, hres, hfr⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code) [] []
+    rfl (by rw [List.nil_append, List.append_nil]; rfl)
+    (fun l _ => (findLabelMem_eq_none_iff l []).mpr (by simp)) fuel V v
+    { prog := { base := b0, lfn := fn }, zf := zf } hden ⟨rfl, hpc⟩ hag
+  rw [List.length_nil, Nat.zero_add] at hat
+  exact ⟨k, t, fun j => lsemFuelMemF_of_steps I _ hs (halted_of_atPc hat le_rfl) j, hat, hres,
+    hfr⟩
+
+/-- **The export as a whole body halts under `lsemFuelMemF`**: the statement
+    `exportRSim_run` at the x86 flag machine, whose run function is `lsemFuelMemF`. -/
 theorem exportRSim_lsemFuelMemF {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hsim : ExportRSim nArgs fn p)
     {d n : Nat} {r : Exported} (hr : exportR nArgs fn p d n = some r) (hlen : Γ.length = d)
@@ -3187,16 +3535,20 @@ theorem forArrFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (d n : Nat)
     ∀ i ∈ forArrFrame d n cs initOps countOp bodyC bodyOps bodyD I, isCall i.fst = false := by
   intro i hi
   simp only [forArrFrame, List.mem_append, List.mem_cons, List.mem_map] at hi
-  rcases hi with hi | hi | ⟨g, hg, rfl⟩ | rfl | hi | hi | hi | hi | ⟨g, hg, rfl⟩ | rfl | hi
+  rcases hi with rfl | hi | hi | ⟨g, hg, rfl⟩ | rfl | hi | rfl | hi | hi | hi | ⟨g, hg, rfl⟩
+    | rfl | rfl | hi
+  · rfl
   · exact isCall_of_isLopn (isLopn_typedMoves _ _ _ i hi)
   · exact isCall_of_isLopn (isLopn_seedMoves _ _ i hi)
   · exact hI.zeroTrip _ _ _ g hg
   · rfl
   · exact hb i hi
+  · rfl
   · exact isCall_of_isLopn (isLopn_arrParMoves _ _ _ _ i hi)
   · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
   · exact isCall_of_isLopn (isLopn_advanceOps _ _ i hi)
   · exact hI.loop _ _ g hg
+  · rfl
   · rfl
   · exact isCall_of_isLopn (isLopn_typedMoves _ _ _ i hi)
 
@@ -3237,8 +3589,9 @@ theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n nR
   · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
   · rfl
 
-/-- **The export contains neither a call nor a return**, over an instruction set whose
-    guards contain none. -/
+/-- **The export contains neither a call nor a return** (`Lcall`, `Lret`), over an
+    instruction set whose guards contain none. The shadow instruction of a `call` is an
+    `Lopn`. -/
 theorem exportR_noCall (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsNoCall I)
     {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
     ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n I = some r →
@@ -3277,9 +3630,12 @@ theorem exportR_noCall (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsNoC
       rcases List.mem_append.mp hi with hi | hi
       · exact whileFrame_noCall hI _ _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
       · exact ihk _ _ _ hk i hi
-  | call f args k _ =>
-      intro d n r h
-      simp [exportR] at h
+  | call f args k ih =>
+      intro d n r h i hi
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      rcases List.mem_append.mp hi with hi | hi
+      · rw [List.mem_singleton.mp hi]; rfl
+      · exact ih _ _ _ hk i hi
 
 /-! ## 22. The move of an array between names -/
 
@@ -3785,20 +4141,20 @@ theorem shiftPairs_var {cs : Ctxt jasminDialect} {t : JasminTy} {d : Nat} {dst s
   exact ⟨u, he.1, he.2⟩
 
 /-- **The shift of a carried block of registers and arrays** down one name, after the
-    exit label of a counted loop: each register type moves its register cell and each
-    array type its array cell; the registers and the array cells outside the names
-    `regName k`, `d ≤ k`, are kept. The trip index `regName d` holds a word and each
+    exit label of a counted loop: the trip index `regName d` is set to `0`, then each
+    register type moves its register cell and each array type its array cell; the
+    registers and the array cells outside the names `regName k`, `d ≤ k`, are kept. Each
     carried array is at its shape. -/
 theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
-    (pre post : List LinstrRM) (s : LstateMF) {x : BitVec 64}
-    (hbody : P.body = pre ++ typedMoves (regName d) (regName (d + 1 + cs.length))
-      (shiftPairs d cs) ++ post)
-    (hat : atPc P pre.length s) (hx : s.prog.base.reg.lvm (regName d) = ⟨64, x⟩)
+    (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ movImmI (regName d) 0
+      :: (typedMoves (regName d) (regName (d + 1 + cs.length)) (shiftPairs d cs) ++ post))
+    (hat : atPc P pre.length s)
     (hsrc : ∀ {w n : Nat} (v : Ctxt.Var cs (.stackArr w n)), ∃ arr : Fin n → BitVec w,
       s.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex v))) w n = some arr) :
-    ∃ u, Steps x86Isa P (typedMoves (regName d) (regName (d + 1 + cs.length))
-          (shiftPairs d cs)).length s u
-      ∧ atPc P (pre.length + (typedMoves (regName d) (regName (d + 1 + cs.length))
+    ∃ u, Steps x86Isa P (1 + (typedMoves (regName d) (regName (d + 1 + cs.length))
+          (shiftPairs d cs)).length) s u
+      ∧ atPc P (pre.length + 1 + (typedMoves (regName d) (regName (d + 1 + cs.length))
           (shiftPairs d cs)).length) u
       ∧ (∀ {w : Nat} (v : Ctxt.Var cs (.reg w)),
           u.prog.base.reg.lvm (regName (d + (cs.length - 1 - varIndex v)))
@@ -3811,11 +4167,17 @@ theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
   have hne : regName d ≠ regName (d + 1 + cs.length) := fun he => by
     have := JasminLsemSimulation.regName_injective he
     omega
-  obtain ⟨u, hs, hat', hmR, hmA, hoR, hoA⟩ := steps_typedMoves hne x (shiftPairs d cs) pre post s
-    hbody hat hx (shiftPairs_pairwise d cs)
+  obtain ⟨s0, hs0, hat0, ha0, hm0⟩ := steps_movImm (dst := regName d) (c := 0) hat
+    (fetch_of_body hbody rfl)
+  obtain ⟨u, hs, hat', hmR, hmA, hoR, hoA⟩ := steps_typedMoves hne (BitVec.ofNat 64 0)
+    (shiftPairs d cs) (pre ++ [movImmI (regName d) 0]) post s0
+    (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append])
+    (by rw [List.length_append, List.length_singleton]; exact hat0)
+    (by rw [hm0, if_pos rfl]) (shiftPairs_pairwise d cs)
     (fun w n dst src h => by
       obtain ⟨v, -, rfl⟩ := shiftPairs_var h
-      exact hsrc v)
+      obtain ⟨arr, ha⟩ := hsrc v
+      exact ⟨arr, (getArr_of_larr_eq w n (by rw [ha0])).trans ha⟩)
     (fun p hp he => by
       obtain ⟨v, -, hsrc'⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
       have hv := JasminLsemSimulation.varIndex_lt v
@@ -3826,10 +4188,15 @@ theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
       obtain ⟨v, hd, -⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
       rw [hd]
       exact hr _ (by omega)
-  exact ⟨u, hs, hat', fun {w} v => hmR _ _ _ (shiftPairs_mem v d) rfl,
-    fun {w n} v => hmA _ _ _ _ (shiftPairs_mem v d),
-    fun r hr => hoR r (fun p hp => hdst p hp r hr) (hr _ (by omega)),
-    fun r hr => hoA r fun p hp => hdst p hp r hr⟩
+  rw [List.length_append, List.length_singleton] at hat'
+  refine ⟨u, hs0.trans hs, hat', fun {w} v => ?_, fun {w n} v => ?_, fun r hr => ?_,
+    fun r hr => ?_⟩
+  · rw [hmR _ _ _ (shiftPairs_mem v d) rfl, hm0, if_neg fun he => by
+      have := JasminLsemSimulation.regName_injective he
+      omega]
+  · rw [hmA _ _ _ _ (shiftPairs_mem v d), ha0]
+  · rw [hoR r (fun p hp => hdst p hp r hr) (hr _ (by omega)), hm0, if_neg (hr d le_rfl)]
+  · rw [hoA r fun p hp => hdst p hp r hr, ha0]
 
 /-- A typed pair of a carried tuple has a target of the carried block and the name of an
     operand as its source. -/
@@ -3905,15 +4272,17 @@ theorem carriedPairs_var {cs : Ctxt jasminDialect} {t : JasminTy} {D : Nat}
   rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hu', Option.getD_some]
   exact he.2
 
-/-- **The tail of a counted trip with carried arrays**: the parallel assignment of the
-    returned arrays and of the returned registers to the carried block, the advance of the
-    trip index and the counter, and the compare of the counter with zero. `tp` is the list
-    of typed pairs of the carried tuple and the returned operands. -/
+/-- **The tail of a counted trip with carried arrays**: the move of `0` into the index
+    register `regName (bD + 1)`, the parallel assignment of the returned arrays and of the
+    returned registers to the carried block, the advance of the trip index and the counter,
+    and the compare of the counter with zero. `tp` is the list of typed pairs of the carried
+    tuple and the returned operands. -/
 theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     {ops : List LOperand} {tp : List (JasminTy × String × String)}
     (htp : tp = carriedPairs cs (carriedRegs (d + 1) cs.length) ops)
     (pre post : List LinstrRM) (s : LstateMF) {x c : BitVec 64}
-    (hbody : P.body = pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+    (hbody : P.body = pre ++ movImmI (regName (bD + 1)) 0
+        :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)
       ++ parMoves bD ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2)
       ++ (advanceOps (regName d) (loopCtr n)
       ++ guardI (.Lopn [.reg (loopCtr n)] (withWidthTag 64 "CMP") [.reg (loopCtr n), .imm 0])
@@ -3925,7 +4294,8 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     (hsrc : ∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)), ∃ arr : Fin m → BitVec w,
       s.prog.base.getArr (operandName (ops.getD (varIndex v) (.imm 0))) w m = some arr) :
     ∃ (k : Nat) (u : LstateMF), Steps x86Isa P k s u
-      ∧ atPc P ((pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+      ∧ atPc P ((pre ++ movImmI (regName (bD + 1)) 0
+            :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)
           ++ parMoves bD ((regPairs tp).map Prod.fst)
             ((regPairs tp).map fun p => .reg p.2)).length + 3) u
       ∧ u.zf = (c - 1#64 == 0#64)
@@ -3940,9 +4310,17 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
       ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ loopCtr n →
           u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
       ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.larr r = s.prog.base.larr r) := by
-  have hzt : regName d ≠ regName bD := fun he => by
+  have hzt : regName (bD + 1) ≠ regName bD := fun he => by
     have := JasminLsemSimulation.regName_injective he
     omega
+  have hdt : regName d ≠ regName bD := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  have hdz : regName d ≠ regName (bD + 1) := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  obtain ⟨s0, hs0, hat0, ha0, hm0⟩ := steps_movImm (dst := regName (bD + 1)) (c := 0) hat
+    (fetch_of_body (by rw [hbody]; simp only [List.append_assoc, List.cons_append]; rfl) rfl)
   have hnames : ∀ p ∈ tp, (∃ j, j < cs.length ∧ p.2.1 = regName (d + 1 + (cs.length - 1 - j)))
       ∧ ∃ o ∈ ops, p.2.2 = operandName o := fun p hp => carriedPairs_names (htp ▸ hp)
   have hpwT : tp.Pairwise (fun p q => q.2.1 ≠ p.2.1) := htp ▸ carriedPairs_pairwise cs (d + 1) ops
@@ -3969,21 +4347,36 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     rw [hd]
     exact hr _ (by omega)
   -- the arrays
-  obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrParMoves hzt x bD (arrPairs tp) pre _ s
-    (by rw [hbody]; simp only [List.append_assoc]; rfl) hat hx hndA
+  obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrParMoves hzt (BitVec.ofNat 64 0) bD
+    (arrPairs tp) (pre ++ [movImmI (regName (bD + 1)) 0]) _ s0
+    (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+    (by rw [List.length_append, List.length_singleton]; exact hat0)
+    (by rw [hm0, if_pos rfl]) hndA
     (fun a ha => hsrclow _ (of_mem_arrPairs ha)) (fun a ha => hdstlow _ (of_mem_arrPairs ha))
     (fun a ha => by
       obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ of_mem_arrPairs ha)
       rw [hsv]
-      exact hsrc v)
+      obtain ⟨arr, harr⟩ := hsrc v
+      exact ⟨arr, (getArr_of_larr_eq _ _ (by rw [ha0])).trans harr⟩)
+  rw [ha0] at hm1 ho1
+  have hr1' : ∀ r, r ≠ regName bD → r ≠ regName (bD + 1) →
+      u1.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r h1 h2 => by
+    rw [hr1 r h1, hm0, if_neg h2]
   -- the registers
   obtain ⟨u2, hs2, hat2, ha2, hm2, ho2⟩ := steps_parMoves_pairs bD (regPairs tp)
-    (pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)) _ u1 hbody
-    (by rw [List.length_append]; exact hat1) hndR
+    (pre ++ movImmI (regName (bD + 1)) 0
+      :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)) _ u1 hbody
+    (by
+      rw [List.length_append, List.length_singleton] at hat1
+      rw [List.length_append, List.length_cons]
+      rwa [show pre.length + ((arrParMoves (regName (bD + 1)) (regName bD) bD
+        (arrPairs tp)).length + 1) = pre.length + 1 + (arrParMoves (regName (bD + 1))
+          (regName bD) bD (arrPairs tp)).length by omega]) hndR
     (fun p hp k hk => by
       obtain ⟨ty, hq⟩ := of_mem_regPairs hp
       exact ⟨hdstlow _ hq k hk, hsrclow _ hq k hk⟩)
-  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ movImmI (regName (bD + 1)) 0
+        :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)
       ++ parMoves bD ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2) :=
     ⟨_, rfl⟩
   rw [← hX] at hbody ⊢
@@ -3995,7 +4388,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     rw [ho2 r (fun p hp => by
         obtain ⟨ty, hq⟩ := of_mem_regPairs hp
         exact hdstfr _ hq r hr) (fun k hk => hr k (by omega))]
-    exact hr1 r (hr bD (by omega))
+    exact hr1' r (hr bD (by omega)) (hr (bD + 1) (by omega))
   have hidx2 : u2.prog.base.reg.lvm (regName d) = ⟨64, x⟩ := by
     rw [ho2 _ (fun p hp he => by
         obtain ⟨ty, hq⟩ := of_mem_regPairs hp
@@ -4003,7 +4396,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
         have := JasminLsemSimulation.regName_injective (he.trans hd)
         omega)
       (fun k hk he => by have := JasminLsemSimulation.regName_injective he; omega),
-      hr1 _ hzt]
+      hr1' _ hdt hdz]
     exact hx
   have hctr2 : u2.prog.base.reg.lvm (loopCtr n) = ⟨64, c⟩ := by
     rw [hlvm2 _ fun k _ => loopCtr_ne_regName n k]
@@ -4027,7 +4420,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   have hlarr5 : u5.prog.base.larr = u1.prog.base.larr :=
     (((ha5.trans ha4).trans ha3).trans ha2)
-  refine ⟨_, u5, (((hs1.trans hs2).trans hs3).trans hs4).trans hs5, hat5, hz5, ?_, ?_,
+  refine ⟨_, u5, ((((hs0.trans hs1).trans hs2).trans hs3).trans hs4).trans hs5, hat5, hz5, ?_, ?_,
     fun {w} v => ?_, fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
   · rw [hm5, hm4, if_neg hri, hm3, if_pos rfl]
   · rw [hm5, hm4, if_pos rfl]
@@ -4039,7 +4432,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
       omega
     rw [hm5, hm4, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm3, if_neg hne,
       hm2 _ (mem_regPairs hmem rfl)]
-    exact hr1 _ (hsrclow _ hmem bD le_rfl)
+    exact hr1' _ (hsrclow _ hmem bD le_rfl) (hsrclow _ hmem (bD + 1) (by omega))
   · have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
     rw [hlarr5]
@@ -4049,16 +4442,18 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
   · rw [hlarr5]
     exact ho1 r (fun p hp => hdstfr _ (of_mem_arrPairs hp) r hr) (fun k hk => hr k (by omega))
 
-/-- **The head of a counted loop with carried arrays**: the seeds of the carried arrays and
-    of the carried registers, of the trip index and of the counter, and the compare of the
-    counter with zero. `tp` is the list of typed pairs of the carried tuple and the initial
-    operands, and `cn` the register of the count. -/
+/-- **The head of a counted loop with carried arrays**: the seed of the trip index, which
+    is the index register of the array moves, the seeds of the carried arrays and of the
+    carried registers and of the counter, and the compare of the counter with zero. `tp` is
+    the list of typed pairs of the carried tuple and the initial operands, and `cn` the
+    register of the count. -/
 theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
     {ops : List LOperand} {cn : String} {tp : List (JasminTy × String × String)}
     (htp : tp = carriedPairs cs (carriedRegs (d + 1) cs.length) ops)
     (pre post : List LinstrRM) (s : LstateMF) {cnt : BitVec 64}
-    (hbody : P.body = pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp
-      ++ (movImmI (regName d) 0 :: movI (loopCtr n) (.reg cn)
+    (hbody : P.body = pre ++ movImmI (regName d) 0
+        :: typedMoves (regName d) (regName (d + 1 + cs.length)) tp
+      ++ (movI (loopCtr n) (.reg cn)
         :: guardI (.Lopn [.reg (loopCtr n)] (withWidthTag 64 "CMP") [.reg (loopCtr n), .imm 0])
         :: post))
     (hat : atPc P pre.length s) (hlen : ops.length = cs.length)
@@ -4067,7 +4462,8 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
     (hsrc : ∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)), ∃ arr : Fin m → BitVec w,
       s.prog.base.getArr (operandName (ops.getD (varIndex v) (.imm 0))) w m = some arr) :
     ∃ (k : Nat) (u : LstateMF), Steps x86Isa P k s u
-      ∧ atPc P ((pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp).length + 3) u
+      ∧ atPc P ((pre ++ movImmI (regName d) 0
+          :: typedMoves (regName d) (regName (d + 1 + cs.length)) tp).length + 2) u
       ∧ u.zf = (cnt == 0#64)
       ∧ u.prog.base.reg.lvm (regName d) = ⟨64, 0#64⟩
       ∧ u.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩
@@ -4080,7 +4476,11 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
       ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ loopCtr n →
           u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
       ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.larr r = s.prog.base.larr r) := by
-  have hzt : cn ≠ regName (d + 1 + cs.length) := hcn _ (by omega)
+  have hzt : regName d ≠ regName (d + 1 + cs.length) := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  obtain ⟨s0, hs0, hat0, ha0, hm0⟩ := steps_movImm (dst := regName d) (c := 0) hat
+    (fetch_of_body (by rw [hbody]; simp only [List.append_assoc, List.cons_append]; rfl) rfl)
   have hnames : ∀ p ∈ tp, (∃ j, j < cs.length ∧ p.2.1 = regName (d + 1 + (cs.length - 1 - j)))
       ∧ ∃ o ∈ ops, p.2.2 = operandName o := fun p hp => carriedPairs_names (htp ▸ hp)
   have hsrcfr : ∀ p ∈ tp, ∀ k, d ≤ k → p.2.2 ≠ regName k := fun p hp k hk => by
@@ -4096,54 +4496,60 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
       fun {p q} hp hq h => ⟨fun he => by
         obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
         exact hsrcfr q hq _ (by omega) (he.trans hd), h⟩
-  obtain ⟨u1, hs1, hat1, hmR, hmA, hoR, hoA⟩ := steps_typedMoves hzt cnt tp pre _ s hbody hat
-    hcnt hpw
+  obtain ⟨u1, hs1, hat1, hmR, hmA, hoR, hoA⟩ := steps_typedMoves hzt (BitVec.ofNat 64 0) tp
+    (pre ++ [movImmI (regName d) 0]) _ s0
+    (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+    (by rw [List.length_append, List.length_singleton]; exact hat0)
+    (by rw [hm0, if_pos rfl]) hpw
     (fun w m dst src h => by
       obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ h)
       rw [hsv]
-      exact hsrc v)
+      obtain ⟨arr, harr⟩ := hsrc v
+      exact ⟨arr, (getArr_of_larr_eq _ _ (by rw [ha0])).trans harr⟩)
     (fun p hp => hsrcfr p hp _ (by omega))
-  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp := ⟨_, rfl⟩
+  rw [ha0] at hmA hoA
+  have hidx1 : ∀ p ∈ tp, regName d ≠ p.2.1 := fun p hp he => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    have := JasminLsemSimulation.regName_injective (he.trans hd)
+    omega
+  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ movImmI (regName d) 0
+      :: typedMoves (regName d) (regName (d + 1 + cs.length)) tp := ⟨_, rfl⟩
   rw [← hX] at hbody ⊢
   have hat1' : atPc P X.length u1 := by
-    rw [hX, List.length_append]
-    exact hat1
-  obtain ⟨u2, hs2, hat2, ha2, hm2⟩ := steps_movImm (dst := regName d) (c := 0) hat1'
+    rw [List.length_append, List.length_singleton] at hat1
+    rw [hX, List.length_append, List.length_cons]
+    rwa [show pre.length + ((typedMoves (regName d) (regName (d + 1 + cs.length)) tp).length + 1)
+      = pre.length + 1 + (typedMoves (regName d) (regName (d + 1 + cs.length)) tp).length
+      by omega]
+  obtain ⟨u3, hs3, hat3, ha3, hm3⟩ := steps_movReg (dst := loopCtr n) (src := cn) hat1'
     (fetch_of_body hbody rfl)
-  obtain ⟨u3, hs3, hat3, ha3, hm3⟩ := steps_movReg (dst := loopCtr n) (src := cn) hat2
-    (fetch_of_body (xs := X ++ [movImmI (regName d) 0])
-      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
-      (by rw [List.length_append]; rfl))
   have hc3 : u3.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩ := by
-    rw [hm3, if_pos rfl, hm2, if_neg (hcn d le_rfl),
-      hoR cn (fun p hp => hdstfr p hp cn hcn) hzt]
+    rw [hm3, if_pos rfl, hoR cn (fun p hp => hdstfr p hp cn hcn) (hcn _ (by omega)), hm0,
+      if_neg (hcn d le_rfl)]
     exact hcnt
   obtain ⟨u4, hs4, hat4, ha4, hm4, hz4⟩ := steps_cmpZero (r := loopCtr n) (v := cnt) hat3
-    (fetch_of_body (xs := X ++ [movImmI (regName d) 0, movI (loopCtr n) (.reg cn)])
+    (fetch_of_body (xs := X ++ [movI (loopCtr n) (.reg cn)])
       (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append]; rfl))
     hc3
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
-  have hlarr4 : u4.prog.base.larr = u1.prog.base.larr := (ha4.trans ha3).trans ha2
-  refine ⟨_, u4, ((hs1.trans hs2).trans hs3).trans hs4, hat4, hz4, ?_, ?_, fun {w} v => ?_,
+  have hlarr4 : u4.prog.base.larr = u1.prog.base.larr := ha4.trans ha3
+  refine ⟨_, u4, ((hs0.trans hs1).trans hs3).trans hs4, hat4, hz4, ?_, ?_, fun {w} v => ?_,
     fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
-  · rw [hm4, hm3, if_neg hri, hm2, if_pos rfl]
+  · rw [hm4, hm3, if_neg hri, hoR _ hidx1 hzt, hm0, if_pos rfl]
   · rw [hm4]
     exact hc3
   · have hv := JasminLsemSimulation.varIndex_lt v
     have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
-    have hne : regName (d + 1 + (cs.length - 1 - varIndex v)) ≠ regName d := fun he => by
-      have := JasminLsemSimulation.regName_injective he
-      omega
-    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm2, if_neg hne]
-    exact hmR _ _ _ hmem rfl
+    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hmR _ _ _ hmem rfl, hm0,
+      if_neg (hsrcfr _ hmem d le_rfl)]
   · have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
     rw [hlarr4]
     exact hmA _ _ _ _ hmem
-  · rw [hm4, hm3, if_neg hrc, hm2, if_neg (hr d le_rfl)]
-    exact hoR r (fun p hp => hdstfr p hp r hr) (hr _ (by omega))
+  · rw [hm4, hm3, if_neg hrc, hoR r (fun p hp => hdstfr p hp r hr) (hr _ (by omega)), hm0,
+      if_neg (hr d le_rfl)]
   · rw [hlarr4]
     exact hoA r fun p hp => hdstfr p hp r hr
 
@@ -4164,12 +4570,14 @@ section ForArrLoop
 
 variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
   (body : NFProg jasminDialect (cs ++ JasminTy.reg 64 :: Γ) cs)
-  (hsim : ExportRSim nArgs fn body) {d n : Nat} {b : Exported}
+  {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+  (hsim : ExportRSim nArgs fn body I) {d n : Nat} {b : Exported}
   (hb : exportR nArgs fn body (d + 1 + cs.length) (n + 2) = some b) (hlen : Γ.length = d)
   (harg : nArgs ≤ d) {P : LprogM} {A R T Z : List LinstrRM} (hfn : P.lfn = fn)
   {tp : List (JasminTy × String × String)}
   (htp : tp = carriedPairs cs (carriedRegs (d + 1) cs.length) b.res)
-  (hT : T = arrParMoves (regName d) (regName b.depth) b.depth (arrPairs tp)
+  (hT : T = movImmI (regName (b.depth + 1)) 0
+      :: arrParMoves (regName (b.depth + 1)) (regName b.depth) b.depth (arrPairs tp)
     ++ parMoves b.depth ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2))
   (hbody : P.body = A ++ labelI n :: (b.code ++ R))
   (hR : R = T ++ (advanceOps (regName d) (loopCtr n)
@@ -4177,7 +4585,7 @@ variable (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
       :: condI (.reg "NZ") n :: Z))
   (hA : ∀ l, n ≤ l → findLabelMem l A = none) (fuel : Nat) (V : Ctxt.Valuation Γ)
 
-include hsim hb hlen harg hfn htp hT hbody hR hA in
+include hI hsim hb hlen harg hfn htp hT hbody hR hA in
 /-- **One trip of a counted loop**, from the counter after the top label to the back-edge
     jump: the body, the assignment of the returned tuple to the carried block, the advance
     and the compare. A carried register is in the register cell and a carried array in the
@@ -4194,7 +4602,7 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
     (hblkA : ∀ {w q : Nat} (u : Ctxt.Var cs (.stackArr w q)),
       m.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex u))) w q
         = some (u.lookup acc)) :
-    ∃ (k : Nat) (t : LstateMF), Steps x86Isa P k m t
+    ∃ (k : Nat) (t : LstateMF), Steps I P k m t
       ∧ atPc P (A.length + 1 + b.code.length + T.length + 3) t
       ∧ RegionFrame d n m.prog.base t.prog.base ∧ t.zf = (c - 1#64 == 0#64)
       ∧ t.prog.base.reg.lvm (regName d) = ⟨64, BitVec.ofNat 64 i + 1#64⟩
@@ -4252,7 +4660,8 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
           (fun l hl he => by have := loopCtr_injective he; omega)]
         exact hctr)
       (fun {w q} u => ⟨_, by rw [hops, exprArgsHV_getD]; exact hagW.2 (hvToHom vs u)⟩)
-  refine ⟨k1 + k2, t, hs1.trans hs2, ?_, ?_, hz, hidx', hctr', fun {w} u => ?_,
+  refine ⟨k1 + k2, t, hs1.trans (steps_of_stepLe hI hs2), ?_, ?_, hz, hidx', hctr',
+    fun {w} u => ?_,
     fun {w q} u => ?_⟩
   · rw [hT]
     simp only [List.length_append, List.length_cons, Nat.add_assoc, Nat.add_comm,
@@ -4266,7 +4675,7 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
   · rw [getArr_of_larr_eq w q (hA' u), hops, exprArgsHV_getD, hacc, lookup_lookupArgs]
     exact hagW.2 (hvToHom vs u)
 
-include hsim hb hlen harg hfn htp hT hbody hR hA in
+include hI hsim hb hlen harg hfn htp hT hbody hR hA in
 /-- **The trips of a counted loop.** From the counter after the top label with `rem + 1`
     trips left, the trip index `i` in its register and the carried tuple in the carried
     block, the run reaches the counter after the back-edge jump with the tuple of the fold
@@ -4285,7 +4694,7 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
     (∀ {w q : Nat} (u : Ctxt.Var cs (.stackArr w q)),
       m.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex u))) w q
         = some (u.lookup acc)) →
-    ∃ (k : Nat) (m' : LstateMF), Steps x86Isa P k m m'
+    ∃ (k : Nat) (m' : LstateMF), Steps I P k m m'
       ∧ atPc P (A.length + 1 + b.code.length + T.length + 3 + 1) m'
       ∧ RegionFrame d n m.prog.base m'.prog.base
       ∧ (∃ x : BitVec 64, m'.prog.base.reg.lvm (regName d) = ⟨64, x⟩)
@@ -4314,18 +4723,18 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
       rw [List.range'_zero, List.foldlM_nil] at hrest
       obtain rfl : acc1 = accN := Option.some.inj hrest
       obtain ⟨k, t, hs, hat2, hfr, hz, hidx', _, hblk', hblkA'⟩ :=
-        forArrLoop_trip nArgs fn body hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
+        forArrLoop_trip nArgs fn body hI hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
           m c hden hat hag hidx hctr hblk hblkA
       have hc1 : c - 1#64 = 0#64 := by bv_omega
       obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 hfetch (by rw [hz, hc1]; decide)
-      exact ⟨k + 1, next t, hs.trans hs', hat', hfr, ⟨_, hidx'⟩, fun {w} u => hblk' u,
+      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, ⟨_, hidx'⟩, fun {w} u => hblk' u,
         fun {w q} u => hblkA' u⟩
   | succ rem ih =>
       intro i acc accN m c hfold hc hat hag hidx hctr hblk hblkA
       rw [List.range'_succ, List.foldlM_cons] at hfold
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
       obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hblkA'⟩ :=
-        forArrLoop_trip nArgs fn body hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
+        forArrLoop_trip nArgs fn body hI hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
           m c hden hat hag hidx hctr hblk hblkA
       have hc1 : c - 1#64 ≠ 0#64 := by bv_omega
       have hl : findLabelMem n P.body = some A.length := by
@@ -4339,7 +4748,7 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
         (StoreAgreesM.of_regionFrame hlen hag hfr')
         (by rw [BitVec.ofNat_add]; exact hidx') hctr' (fun {w} u => hblk' u)
         (fun {w q} u => hblkA' u)
-      exact ⟨k + 1 + k', m', (hs.trans hs').trans hs'', hat'',
+      exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
         hfr'.trans hfr'' le_rfl le_rfl, hx'', fun {w} u => hblk'' u, fun {w q} u => hblkA'' u⟩
 
 end ForArrLoop
@@ -4352,8 +4761,9 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     (inits : HVector (fun t => Ctxt.Var Γ t) cs)
     (body : NFProg jasminDialect (cs ++ JasminTy.reg 64 :: Γ) cs)
     (k : NFProg jasminDialect (cs ++ Γ) ts)
-    (hbsim : ExportRSim nArgs fn body) (hksim : ExportRSim nArgs fn k) :
-    ExportRSim nArgs fn (NFProg.forLoop count inits body k) := by
+    {I : Isa} [CallDenote jasminDialect] (hI : x86Isa.StepLe I)
+    (hbsim : ExportRSim nArgs fn body I) (hksim : ExportRSim nArgs fn k I) :
+    ExportRSim nArgs fn (NFProg.forLoop count inits body k) I := by
   intro d n r h hlen harg P pre post hfn hbody hpre fuel V v m hden hat hag
   simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨b, hb, rk, hrk, rfl⟩ := h
@@ -4388,43 +4798,47 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     ⟨_, rfl⟩
   obtain ⟨tpB, htpB⟩ : ∃ tpB, tpB = carriedPairs cs (carriedRegs (d + 1) cs.length) b.res :=
     ⟨_, rfl⟩
-  obtain ⟨S0, hS0⟩ : ∃ S0, S0 = typedMoves cn (regName (d + 1 + cs.length)) tpI := ⟨_, rfl⟩
-  obtain ⟨Sh, hSh⟩ : ∃ Sh, Sh = typedMoves (regName d) (regName (d + 1 + cs.length))
-      (shiftPairs d cs) := ⟨_, rfl⟩
-  obtain ⟨T, hT⟩ : ∃ T, T = arrParMoves (regName d) (regName b.depth) b.depth (arrPairs tpB)
+  obtain ⟨S0, hS0⟩ : ∃ S0, S0 = movImmI (regName d) 0
+      :: typedMoves (regName d) (regName (d + 1 + cs.length)) tpI := ⟨_, rfl⟩
+  obtain ⟨Sh, hSh⟩ : ∃ Sh, Sh = movImmI (regName d) 0
+      :: typedMoves (regName d) (regName (d + 1 + cs.length)) (shiftPairs d cs) := ⟨_, rfl⟩
+  obtain ⟨T, hT⟩ : ∃ T, T = movImmI (regName (b.depth + 1)) 0
+        :: arrParMoves (regName (b.depth + 1)) (regName b.depth) b.depth (arrPairs tpB)
       ++ parMoves b.depth ((regPairs tpB).map Prod.fst)
         ((regPairs tpB).map fun p => .reg p.2) := ⟨_, rfl⟩
   obtain ⟨Zs, hZs⟩ : ∃ Zs, Zs = labelI (n + 1) :: (Sh ++ (rk.code ++ post)) := ⟨_, rfl⟩
   obtain ⟨R, hR⟩ : ∃ R, R = T
       ++ (advanceOps (regName d) (loopCtr n) ++ cmp :: condI (.reg "NZ") n :: Zs) := ⟨_, rfl⟩
   have hF : forArrFrame d n cs ops (.reg cn) b.code b.res b.depth
-      = S0 ++ (movImmI (regName d) 0 :: movI (loopCtr n) (.reg cn) :: cmp
+      = S0 ++ (movI (loopCtr n) (.reg cn) :: cmp
           :: condI (.reg "Z") (n + 1) :: labelI n :: (b.code
-          ++ (arrParMoves (regName d) (regName b.depth) b.depth (arrPairs tpB)
+          ++ (movImmI (regName (b.depth + 1)) 0
+          :: (arrParMoves (regName (b.depth + 1)) (regName b.depth) b.depth (arrPairs tpB)
           ++ (parMoves b.depth ((regPairs tpB).map Prod.fst)
             ((regPairs tpB).map fun p => .reg p.2)
           ++ (advanceOps (regName d) (loopCtr n) ++ (cmp :: condI (.reg "NZ") n
-          :: labelI (n + 1) :: Sh)))))) := by
+          :: labelI (n + 1) :: Sh))))))) := by
     rw [hcmp, hS0, hSh, htpI, htpB]
     rfl
   rw [show ∀ c, (Exported.prepend c rk).code = c ++ rk.code from fun _ => rfl, hcreg, ← hops, hF]
     at hbody
   have hbodyH : P.body = pre ++ S0
-      ++ (movImmI (regName d) 0 :: movI (loopCtr n) (.reg cn) :: cmp
+      ++ (movI (loopCtr n) (.reg cn) :: cmp
         :: (condI (.reg "Z") (n + 1) :: labelI n :: (b.code ++ R))) := by
     rw [hbody, hR, hZs, hT]
     simp only [List.append_assoc, List.cons_append]
   obtain ⟨A, hAd⟩ : ∃ A, A = pre ++ S0
-      ++ [movImmI (regName d) 0, movI (loopCtr n) (.reg cn), cmp, condI (.reg "Z") (n + 1)] :=
+      ++ [movI (loopCtr n) (.reg cn), cmp, condI (.reg "Z") (n + 1)] :=
     ⟨_, rfl⟩
   have hbodyL : P.body = A ++ labelI n :: (b.code ++ R) := by
     rw [hbodyH, hAd]
     simp only [List.append_assoc, List.cons_append, List.nil_append]
-  have hAlen : A.length = (pre ++ S0).length + 3 + 1 := by
+  have hAlen : A.length = (pre ++ S0).length + 2 + 1 := by
     rw [hAd]
     simp only [List.length_append, List.length_cons, List.length_nil]
   have hAlabs : labelsOf A = labelsOf pre := by
-    rw [hAd, hcmp, hS0, labelsOf_append, labelsOf_append, labelsOf_typedMoves, List.append_nil]
+    rw [hAd, hcmp, hS0, labelsOf_append, labelsOf_append, labelsOf_cons_movImmI,
+      labelsOf_typedMoves, List.append_nil]
     exact List.append_nil _
   have hAlab : ∀ l, n ≤ l → findLabelMem l A = none := fun l hl => by
     rw [findLabelMem_eq_none_iff, hAlabs, ← findLabelMem_eq_none_iff]
@@ -4440,8 +4854,8 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     omega
   have hXlabs : labelsOf X = labelsOf pre ++ n :: labelsOf b.code := by
     rw [hX, hcmp, hT]
-    simp only [labelsOf_append, hAlabs, labelsOf_cons_labelI, labelsOf_arrParMoves,
-      labelsOf_parMoves, labelsOf_advanceOps, List.nil_append]
+    simp only [labelsOf_append, hAlabs, labelsOf_cons_labelI, labelsOf_cons_movImmI,
+      labelsOf_arrParMoves, labelsOf_parMoves, labelsOf_advanceOps, List.nil_append]
     rw [show labelsOf [guardI (.Lopn [.reg (loopCtr n)] (withWidthTag 64 "CMP")
       [.reg (loopCtr n), .imm 0]), condI (.reg "NZ") n] = [] from rfl, List.append_nil]
   have hl1 : findLabelMem (n + 1) P.body = some X.length := by
@@ -4472,9 +4886,9 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         = some (u.lookup (Expr.lookupArgs inits V)) := fun {w q} u => by
     rw [getArr_of_larr_eq w q (hA0 u), hops, exprArgsHV_getD, lookup_lookupArgs]
     exact hag.2 (hvToHom inits u)
-  have hfetchZ : P.body[(pre ++ S0).length + 3]? = some (condI (.reg "Z") (n + 1)) :=
+  have hfetchZ : P.body[(pre ++ S0).length + 2]? = some (condI (.reg "Z") (n + 1)) :=
     fetch_of_body (xs := pre ++ S0
-        ++ [movImmI (regName d) 0, movI (loopCtr n) (.reg cn), cmp])
+        ++ [movI (loopCtr n) (.reg cn), cmp])
       (by rw [hbodyH]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by simp only [List.length_append, List.length_cons, List.length_nil])
   have hfold' : (List.range cnt.toNat).foldlM (fun acc i => body.denote fuel (hvAppend acc
@@ -4483,7 +4897,7 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     rw [← hcd]
     exact hfold
   -- the trips, to the counter after the exit label
-  have hexit : ∃ (kE : Nat) (mE : LstateMF), Steps x86Isa P kE m mE ∧ atPc P (X.length + 1) mE
+  have hexit : ∃ (kE : Nat) (mE : LstateMF), Steps I P kE m mE ∧ atPc P (X.length + 1) mE
       ∧ RegionFrame d n m.prog.base mE.prog.base
       ∧ (∃ x : BitVec 64, mE.prog.base.reg.lvm (regName d) = ⟨64, x⟩)
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
@@ -4499,7 +4913,7 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         have hc0 : cnt = 0#64 := by bv_omega
         obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
           (by rw [hz0, hc0]; rfl) hl1
-        exact ⟨_, _, hs0.trans hs1, hat1,
+        exact ⟨_, _, steps_of_stepLe hI (hs0.trans hs1), hat1,
           hfr0.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl,
           ⟨_, hidx0⟩, fun {w} u => hblkI u, fun {w q} u => hblkAI u⟩
     | succ rem =>
@@ -4508,31 +4922,31 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         obtain ⟨hs1, hat1⟩ := steps_cc_fall (pol := true) rfl hat0 hfetchZ
           (by rw [hz0]; simpa using hc0)
         rw [← hAlen] at hat1
-        obtain ⟨hs2, hat2⟩ := steps_label x86Isa (kind := .internal) (l := n) (tag := .reg none)
+        obtain ⟨hs2, hat2⟩ := steps_label I (kind := .internal) (l := n) (tag := .reg none)
           hat1 (fetch_of_body hbodyL rfl)
         have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
           hfr0.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
         obtain ⟨k3, m3, hs3, hat3, hfr3, hx3, hblk3, hblkA3⟩ :=
-          forArrLoop_trips nArgs fn body hbsim hb hlen harg hfn htpB hT hbodyL
+          forArrLoop_trips nArgs fn body hI hbsim hb hlen harg hfn htpB hT hbodyL
             (by rw [hR, hcmp]) hAlab fuel V rem 0 (Expr.lookupArgs inits V) accN
             (next (next t0)) cnt hfold' hN hat2
             (StoreAgreesM.of_regionFrame hlen hag hfr2) hidx0 hctr0 (fun {w} u => hblkI u)
             (fun {w q} u => hblkAI u)
         rw [← hXlen] at hat3
-        obtain ⟨hs4, hat4⟩ := steps_label x86Isa (kind := .internal) (l := n + 1)
+        obtain ⟨hs4, hat4⟩ := steps_label I (kind := .internal) (l := n + 1)
           (tag := .reg none) hat3 (fetch_of_body hbodyX rfl)
-        exact ⟨_, _, (((hs0.trans hs1).trans hs2).trans hs3).trans hs4, hat4,
+        exact ⟨_, _, (((steps_of_stepLe hI (hs0.trans hs1)).trans hs2).trans hs3).trans hs4,
+          hat4,
           (hfr2.trans hfr3 le_rfl le_rfl).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl)
             le_rfl le_rfl,
           hx3, fun {w} u => hblk3 u, fun {w q} u => hblkA3 u⟩
-  obtain ⟨kE, mE, hsE, hatE, hfrE, ⟨xE, hxE⟩, hblkE, hblkAE⟩ := hexit
+  obtain ⟨kE, mE, hsE, hatE, hfrE, -, hblkE, hblkAE⟩ := hexit
   -- the shift of the carried block
   obtain ⟨mS, hsS, hatS, hRS, hAS, hoRS, hoAS⟩ := forArrShift_steps (d := d) (cs := cs)
-    (X ++ [labelI (n + 1)]) (rk.code ++ post) mE (x := xE)
+    (X ++ [labelI (n + 1)]) (rk.code ++ post) mE
     (by rw [hbodyX, hSh]; simp only [List.append_assoc, List.cons_append, List.nil_append])
-    (by rw [List.length_append, List.length_singleton]; exact hatE) hxE
+    (by rw [List.length_append, List.length_singleton]; exact hatE)
     (fun {w q} u => ⟨_, hblkAE u⟩)
-  rw [← hSh] at hsS hatS
   have hfrS : RegionFrame d n m.prog.base mS.prog.base :=
     hfrE.trans (RegionFrame.of_lvm_larr (fun r hr _ => hoRS r hr) hoAS) le_rfl le_rfl
   have hagS : StoreAgreesM nArgs (d + cs.length) mS.prog.base (hvAppend accN V) :=
@@ -4551,7 +4965,7 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     (by rw [hbodyX]; simp only [List.append_assoc, List.cons_append])
     (fun l hl => by
       rw [findLabelMem_eq_none_iff, labelsOf_append, hXlabs, labelsOf_cons_labelI, hSh,
-        labelsOf_typedMoves]
+        labelsOf_cons_movImmI, labelsOf_typedMoves]
       simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false, not_or]
       refine ⟨⟨(findLabelMem_eq_none_iff l pre).mp (hpre l (by omega)), fun he => ?_,
         fun hm => ?_⟩, fun he => ?_⟩
@@ -4563,8 +4977,11 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         omega)
     fuel _ v mS hkden
     (by
-      simp only [List.length_append, List.length_cons, List.length_nil, Nat.add_comm,
-        Nat.add_left_comm] at hatS ⊢
+      rw [show (X ++ labelI (n + 1) :: Sh).length = (X ++ [labelI (n + 1)]).length + 1
+          + (typedMoves (regName d) (regName (d + 1 + cs.length)) (shiftPairs d cs)).length by
+        rw [hSh]
+        simp only [List.length_append, List.length_cons, List.length_nil]
+        omega]
       exact hatS)
     hagS
   have hlenEq : pre.length + (Exported.prepend (forArrFrame d n cs
@@ -4575,28 +4992,80 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     rw [hbodyX] at h1
     simp only [List.length_append, List.length_cons] at h1 ⊢
     omega
-  refine ⟨_, m', (hsE.trans hsS).trans hsK, ?_, hresK,
+  refine ⟨_, m', (hsE.trans (steps_of_stepLe hI hsS)).trans hsK, ?_, hresK,
     hfrS.trans hfrK (by omega) (by omega)⟩
   rw [hlenEq]
   exact hatK
 
 /-! ## 27. The simulation theorem -/
 
-/-- **The simulation theorem of the region export.** Every program of `RegionExportable`
-    satisfies the simulation statement, by the rules of the return, the binding, the two
-    loops and the branch. -/
-theorem exportR_sim (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) : ExportRSim nArgs fn p := by
+/-- **The simulation theorem of the region export over an instruction set with calls.** On
+    an instruction set that has the steps of the x86 flag machine and performs the calls of
+    the call environment in scope, every program of `RegionExportable` satisfies the
+    simulation statement, by the rules of the return, the binding, the two loops, the
+    branch and the call. -/
+theorem exportR_sim_calls (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {I : Isa} [CallDenote jasminDialect]
+    (hI : x86Isa.StepLe I) (hc : CallsSim I (CallDenote.env (d := jasminDialect)))
+    (hp : RegionExportable p) : ExportRSim nArgs fn p I := by
   induction p with
   | ret vs => exact exportRSim_ret nArgs fn vs
-  | var e k ih => exact exportRSim_var nArgs fn e k hp.1 (ih hp.2)
+  | var e k ih => exact exportRSim_var nArgs fn e k hp.1 hI (ih hp.2)
   | forLoop count inits body k ihb ihk =>
-      exact forArrFrame_sim nArgs fn count inits body k (ihb hp.1) (ihk hp.2)
+      exact forArrFrame_sim nArgs fn count inits body k hI (ihb hp.1) (ihk hp.2)
   | ifThenElse cond thn els k iht ihe ihk =>
-      exact ifFrame_sim nArgs fn cond thn els k hp.1 (iht hp.2.1) (ihe hp.2.2.1) (ihk hp.2.2.2)
+      exact ifFrame_sim nArgs fn cond thn els k hp.1 hI (iht hp.2.1) (ihe hp.2.2.1)
+        (ihk hp.2.2.2)
   | whileLoop inits body k ihb ihk =>
-      exact whileFrame_sim nArgs fn inits body k hp.1 (ihb hp.2.1) (ihk hp.2.2)
-  | call f args k _ => exact hp.elim
+      exact whileFrame_sim nArgs fn inits body k hp.1 hI (ihb hp.2.1) (ihk hp.2.2)
+  | call f args k ih =>
+      obtain ⟨has, rfl⟩ := wordSig_iff.mp hp.1
+      exact exportRSim_call nArgs fn f args k has hc (ih hp.2)
+
+/-- **The simulation theorem of the region export.** Every program of `RegionExportable`
+    satisfies the simulation statement on the x86 flag machine at the call environment of
+    `jasminDialect`, in which every call refuses: the instance of `exportR_sim_calls` at
+    the instruction set `x86Isa`. -/
+theorem exportR_sim (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (hp : RegionExportable p) : ExportRSim nArgs fn p :=
+  exportR_sim_calls nArgs fn (Isa.StepLe.refl _) (callsSim_empty _) hp
+
+/-- **The simulation theorem of the region export over procedure summaries.** Let the table
+    `T` agree with the call environment `E` (`ProcsAgree`), and let the x86 flag machine
+    have no step on a shadow instruction of a call of a symbol of `T`. Every program of
+    `RegionExportable` satisfies the simulation statement on the instruction set
+    `x86Isa.withProcs T` at the call environment `E`. -/
+theorem exportR_sim_procs (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {E : CallEnv jasminDialect}
+    {T : ProcTable} (hT : ProcsAgree E T) (hx : x86Isa.RefusesProcs T)
+    (hp : RegionExportable p) : @ExportRSim nArgs fn Γ ts p (x86Isa.withProcs T) ⟨E⟩ :=
+  @exportR_sim_calls nArgs fn Γ ts p (x86Isa.withProcs T) ⟨E⟩ (x86Isa.withProcs_stepLe hx)
+    (callsSim_withProcs x86Isa hT) hp
+
+/-- **The run of a whole program over procedure summaries.** Under the hypotheses of
+    `exportR_sim_procs`, the code of the export of a program of `RegionExportable` from the
+    depth `Γ.length` and the label `0`, as the body of a one-function program run by the
+    run function of `x86Isa.withProcs T` from a state at counter `0` whose store agrees
+    with the arguments `V`, halts at every fuel from some bound on whenever the program
+    denotes `v` at `V` in the call environment `E`, in a state at the counter after the
+    last instruction that agrees with the returned operands at `v` and reads as the entry
+    state at every argument register. -/
+theorem exportR_run_procs (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} {E : CallEnv jasminDialect} {T : ProcTable}
+    (hT : ProcsAgree E T) (hx : x86Isa.RefusesProcs T) (hp : RegionExportable p) (fuel : Nat)
+    (V : Ctxt.Valuation Γ) (v : Ctxt.Valuation (d := jasminDialect) ts)
+    (hden : p.denoteAt E fuel V = some v) (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 0)
+    (hag : StoreAgreesM Γ.length Γ.length b0 V) :
+    ∃ r, exportR Γ.length fn p Γ.length 0 = some r ∧ ∃ (k : Nat) (t : LstateMF),
+      (∀ j, (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn r.code) (k + j)
+        { prog := { base := b0, lfn := fn }, zf := zf } = some t)
+      ∧ atPc (singletonProgM fn r.code) r.code.length t
+      ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
+      ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
+  obtain ⟨r, hr⟩ := hp.exportR_eq_some Γ.length fn Γ.length 0
+  exact ⟨r, hr, @exportRSim_run Γ.length fn Γ ts p (x86Isa.withProcs T) ⟨E⟩
+    (exportR_sim_procs Γ.length fn hT hx hp) Γ.length 0 r hr rfl le_rfl fuel V v hden
+    b0 zf hpc hag⟩
 
 /-- **The run of a whole program.** A program of `RegionExportable` over the argument
     context `Γ` has an export from the depth `Γ.length` and the label `0`, the export

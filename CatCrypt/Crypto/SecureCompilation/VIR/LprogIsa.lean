@@ -46,6 +46,13 @@ advances the program counter and changes nothing else. `Isa.withKeep I` is the r
 whose step on a keep marker is `keepStep`; the steps of the control instructions and of
 every other instruction are those of `I`.
 
+A call of a separately provided procedure is, at this level, one instruction: the shadow
+`callShadow dst f srcs`, an `Lopn` with the mnemonic `"CALL:" ++ f`. A table `ProcTable`
+gives a summary `ProcSummary` (arity and a partial function on words) to each procedure
+name, and `Isa.withProcs I T` is the record `I` whose step on a shadow instruction of a
+symbol of `T` is the step `procStep` of its summary. Return addresses and the stack pointer
+do not appear in this step.
+
 ## Main results
 
 * `ctlStep`, `isCtl`, `Isa`: the shared control step and the record.
@@ -62,6 +69,14 @@ every other instruction are those of `I`.
 * `Isa.withCalls_lsemFuelMemF`: the run of `I.withCalls` on a program without calls.
 * `keepStep`, `Isa.withKeep`, `Isa.withKeep_step_keep`, `Isa.withKeep_step_of_not_keep`: the
   step of the keep marker and the instruction set that carries it.
+* `ProcSummary`, `ProcTable`, `callShadow`, `procStep`, `Isa.withProcs`: procedure
+  summaries and the instruction set that carries them.
+* `Isa.withProcs_step_callShadow`, `Isa.withProcs_step_of_none`, `Isa.withProcs_empty`: the
+  step of `I.withProcs T` on a shadow instruction and on every other instruction, and the
+  instruction set at the table without procedures.
+* `Isa.StepLe`, `Isa.RefusesProcs`, `Isa.withProcs_stepLe`: every step of an instruction
+  set that refuses the shadow instructions of `T` is a step of the set with the summaries
+  of `T`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -518,6 +533,141 @@ theorem withKeep_step_of_not_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
 theorem withKeep_step_keepTouch (P : LprogM) (ctr r : String) (tag : MemTag) (s : LstateMF) :
     I.withKeep.step P (keepTouch ctr r, tag) s = some (keepStep s) :=
   I.withKeep_step_keep P _ s rfl
+
+end Isa
+
+/-! ## Procedure summaries -/
+
+/-- A procedure summary: the number of arguments and a partial function from the argument
+    words to the result word. -/
+structure ProcSummary where
+  /-- The number of arguments. -/
+  arity : Nat
+  /-- The result word at the argument words; `none` is a refusal. -/
+  run : List (BitVec 64) → Option (BitVec 64)
+
+/-- A table of procedure summaries by symbol name. -/
+abbrev ProcTable : Type := String → Option ProcSummary
+
+/-- The table without procedures. -/
+def ProcTable.empty : ProcTable := fun _ => none
+
+/-- The shadow instruction of a call of the symbol `f` on the operands `srcs` with the
+    result in the register `dst`. -/
+def callShadow (dst f : String) (srcs : List LOperand) : LinstrR :=
+  .Lopn [.reg dst] ("CALL:" ++ f) srcs
+
+/-- The destination, the symbol and the operands of a shadow instruction of a call. -/
+def shadowCall? : LinstrR → Option (String × String × List LOperand)
+  | .Lopn [.reg dst] opn srcs =>
+      if "CALL:".toList.isPrefixOf opn.toList then
+        some (dst, String.ofList (opn.toList.drop "CALL:".toList.length), srcs)
+      else none
+  | _ => none
+
+theorem shadowCall?_callShadow (dst f : String) (srcs : List LOperand) :
+    shadowCall? (callShadow dst f srcs) = some (dst, f, srcs) := by
+  simp only [callShadow, shadowCall?]
+  rw [String.toList_append]
+  simp [List.isPrefixOf, String.ofList_toList]
+
+/-- A control instruction is no shadow instruction of a call. -/
+theorem shadowCall?_of_isCtl {i : LinstrR} (h : isCtl i = true) : shadowCall? i = none := by
+  cases i <;> simp_all [isCtl, shadowCall?]
+
+/-- The summary, the destination and the operands of a shadow instruction of a call of a
+    symbol of the table `T`. -/
+def procCall? (T : ProcTable) (i : LinstrR) : Option (ProcSummary × String × List LOperand) :=
+  (shadowCall? i).bind fun q => (T q.2.1).map fun pr => (pr, q.1, q.2.2)
+
+@[simp] theorem procCall?_empty (i : LinstrR) : procCall? ProcTable.empty i = none := by
+  simp [procCall?, ProcTable.empty]
+
+theorem procCall?_callShadow (T : ProcTable) (dst f : String) (srcs : List LOperand) :
+    procCall? T (callShadow dst f srcs) = (T f).map fun pr => (pr, dst, srcs) := by
+  simp only [procCall?, shadowCall?_callShadow, Option.bind_some]
+
+/-- The state `s` with the word `r` in the register `dst` and the program counter
+    advanced. -/
+def retWord (dst : String) (r : BitVec 64) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base := (s.prog.base.setReg dst r).nextPc } }
+
+/-- **The step of a procedure summary** on the operands `srcs` with the destination `dst`:
+    read the operands as words, apply the function of the summary and write the result to
+    `dst`, advancing the program counter. A number of operands other than the arity, an
+    unreadable operand and a refusal of the function have no step. -/
+def procStep (pr : ProcSummary) (dst : String) (srcs : List LOperand) (s : LstateMF) :
+    Option LstateMF :=
+  if srcs.length = pr.arity then
+    (srcs.mapM (evalOperandN s.prog.base.reg 64)).bind fun vs =>
+      (pr.run vs).map fun r => retWord dst r s
+  else none
+
+namespace Isa
+
+variable (I : Isa)
+
+/-- **The instruction set with procedure summaries.** The record `I` with its step
+    replaced, on a shadow instruction of a call of a symbol of the table `T`, by the step
+    `procStep` of the summary of the symbol; the step of every other instruction, the data
+    and the branch condition are those of `I`. -/
+def withProcs (T : ProcTable) : Isa :=
+  { I with
+    step := fun P i s =>
+      match procCall? T i.fst with
+      | some q => procStep q.1 q.2.1 q.2.2 s
+      | none => I.step P i s
+    step_ctl := fun P i s h => by
+      simp only [procCall?, shadowCall?_of_isCtl h, Option.bind_none]
+      exact I.step_ctl P i s h }
+
+@[simp] theorem withProcs_toIsaData (T : ProcTable) : (I.withProcs T).toIsaData = I.toIsaData :=
+  rfl
+
+@[simp] theorem withProcs_condEval (T : ProcTable) : (I.withProcs T).condEval = I.condEval :=
+  rfl
+
+/-- The step of the shadow instruction of a call of a symbol of the table is the step of
+    its summary. -/
+theorem withProcs_step_callShadow (T : ProcTable) {f : String} {pr : ProcSummary}
+    (hf : T f = some pr) (P : LprogM) (dst : String) (srcs : List LOperand) (tag : MemTag)
+    (s : LstateMF) :
+    (I.withProcs T).step P (callShadow dst f srcs, tag) s = procStep pr dst srcs s := by
+  simp only [withProcs, procCall?_callShadow, hf, Option.map_some]
+
+/-- The step of an instruction that is no shadow instruction of a call of a symbol of the
+    table is the step of `I`. -/
+theorem withProcs_step_of_none (T : ProcTable) (P : LprogM) (i : LinstrRM) (s : LstateMF)
+    (h : procCall? T i.fst = none) : (I.withProcs T).step P i s = I.step P i s := by
+  simp only [withProcs, h]
+
+/-- **At the table without procedures the instruction set is `I`.** -/
+@[simp] theorem withProcs_empty : I.withProcs ProcTable.empty = I := by
+  cases I
+  simp only [withProcs, procCall?_empty]
+
+/-- Every step of `I` is a step of `J`, to the same state. -/
+def StepLe (J : Isa) : Prop :=
+  ∀ (P : LprogM) (i : LinstrRM) (s s' : LstateMF), I.step P i s = some s' →
+    J.step P i s = some s'
+
+theorem StepLe.refl : I.StepLe I := fun _ _ _ _ h => h
+
+/-- `I` has no step on a shadow instruction of a call of a symbol of the table `T`. -/
+def RefusesProcs (T : ProcTable) : Prop :=
+  ∀ (P : LprogM) (i : LinstrRM) (s : LstateMF), procCall? T i.fst ≠ none → I.step P i s = none
+
+/-- Every instruction set refuses the procedures of the table without procedures. -/
+theorem refusesProcs_empty : I.RefusesProcs ProcTable.empty :=
+  fun _ i _ h => absurd (procCall?_empty i.fst) h
+
+/-- Every step of an instruction set that refuses the procedures of `T` is a step of the
+    instruction set with the summaries of `T`. -/
+theorem withProcs_stepLe {T : ProcTable} (h : I.RefusesProcs T) : I.StepLe (I.withProcs T) := by
+  intro P i s s' hs
+  cases hq : procCall? T i.fst with
+  | none => rw [I.withProcs_step_of_none T P i s hq]; exact hs
+  | some q => rw [h P i s (by rw [hq]; exact Option.some_ne_none q)] at hs; cases hs
 
 end Isa
 

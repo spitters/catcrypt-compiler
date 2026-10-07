@@ -100,7 +100,7 @@ def regionExportableB : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
       rs.all isRegTy && regionExportableB thn && regionExportableB els && regionExportableB k
   | _, _, .whileLoop (cs := cs) _ body k =>
       cs.all isRegTy && regionExportableB body && regionExportableB k
-  | _, _, .call _ _ _ => false
+  | _, _, .call (as := as) (rs := rs) _ _ k => wordSig as rs && regionExportableB k
 
 /-- **The test `regionExportableB` is sound for `RegionExportable`.** -/
 theorem regionExportableB_sound {Γ : Ctxt jasminDialect} {ts : List JasminTy}
@@ -119,7 +119,9 @@ theorem regionExportableB_sound {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   | whileLoop inits body k ihb ihk =>
       simp only [regionExportableB, Bool.and_eq_true] at h
       exact ⟨fun t ht => List.all_eq_true.mp h.1.1 t ht, ihb h.1.2, ihk h.2⟩
-  | call f args k _ => simp [regionExportableB] at h
+  | call f args k ih =>
+      simp only [regionExportableB, Bool.and_eq_true] at h
+      exact ⟨h.1, ih h.2⟩
 
 /-! ## 2. The wire body -/
 
@@ -611,7 +613,6 @@ theorem forArrFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n : Nat)
     {bodyC : List LinstrRM} {bodyOps : List LOperand} (bodyD : Nat)
     (hi : ∀ o ∈ initOps, opSpB "RSP" (.reg (operandName o)) = false)
     (hc : opSpB "RSP" countOp = false)
-    (hcn : opSpB "RSP" (.reg (operandName countOp)) = false)
     (hb : ∀ i ∈ bodyC, spFreeB "RSP" i.fst = true)
     (ho : ∀ o ∈ bodyOps, opSpB "RSP" (.reg (operandName o)) = false) :
     ∀ i ∈ forArrFrame d n cs initOps countOp bodyC bodyOps bodyD I,
@@ -626,20 +627,19 @@ theorem forArrFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n : Nat)
       exact ⟨opSpB_regName _, h o ho'⟩
   intro i hmem
   simp only [forArrFrame, List.mem_append, List.mem_cons, List.mem_map] at hmem
-  rcases hmem with h | h | ⟨g, hg, rfl⟩ | rfl | h | h | h | h | ⟨g, hg, rfl⟩ | rfl | h
-  · exact typedMoves_spFree hcn (opSpB_regName _) (hpairs _ hi) i h
+  rcases hmem with rfl | h | h | ⟨g, hg, rfl⟩ | rfl | h | rfl | h | h | h | ⟨g, hg, rfl⟩ | rfl
+    | rfl | h
+  · exact spFreeB_movI (opSpB_regName _) rfl
+  · exact typedMoves_spFree (opSpB_regName _) (opSpB_regName _) (hpairs _ hi) i h
   · refine seedMoves_spFree (fun r hr => ?_) (fun o ho' => ?_) i h
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-      rcases hr with rfl | rfl
-      · exact opSpB_regName _
-      · exact opSpB_loopCtr _
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at ho'
-      rcases ho' with rfl | rfl
-      · rfl
-      · exact hc
+    · rw [List.mem_singleton.mp hr]
+      exact opSpB_loopCtr _
+    · rw [List.mem_singleton.mp ho']
+      exact hc
   · exact hI.zeroTrip _ _ _ (opSpB_loopCtr _) g hg
   · rfl
   · exact hb i h
+  · exact spFreeB_movI (opSpB_regName _) rfl
   · exact arrParMoves_spFree _ (opSpB_regName _) (opSpB_regName _)
       (fun a ha => hpairs _ ho _ (of_mem_arrPairs ha)) i h
   · exact parMoves_spFree _
@@ -654,6 +654,7 @@ theorem forArrFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n : Nat)
   · exact advanceOps_spFree (opSpB_regName _) (opSpB_loopCtr _) i h
   · exact hI.loop _ _ (opSpB_loopCtr _) g hg
   · rfl
+  · exact spFreeB_movI (opSpB_regName _) rfl
   · exact typedMoves_spFree (opSpB_regName _) (opSpB_regName _)
       (fun p hp => by
         obtain ⟨v, h1, h2⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
@@ -736,8 +737,7 @@ theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpF
       · exact forArrFrame_spFree hI _ _ _ _
           (fun o ho => opSpB_operandName (exprArgsHV_isReg _ _ inits o ho)
             (opSpB_exprArgsHV _ _ inits o ho))
-          (opSpB_resolveVar count)
-          (opSpB_operandName (resolveVar_isReg count) (opSpB_resolveVar count)) hbc
+          (opSpB_resolveVar count) hbc
           (fun o ho => opSpB_operandName (exportR_res_isReg nArgs fn body _ _ _ hb o ho)
             (hbr o ho)) i hi
       · exact hc i hi
@@ -766,7 +766,15 @@ theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpF
         | nil => rfl
         | cons x xs => exact hbr x (by simp [hbres])
       · exact hc i hi
-  | call f args k _ => exact hp.elim
+  | call f args k ih =>
+      intro d n r h
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      obtain ⟨hc, hres⟩ := ih hp.2 _ _ _ hk
+      refine ⟨fun i hi => ?_, hres⟩
+      rcases List.mem_append.mp hi with hi | hi
+      · rw [List.mem_singleton.mp hi]
+        exact spFreeB_lopn (opSpB_regName _) (opSpB_exprArgsHV d nArgs args)
+      · exact hc i hi
 
 /-- **The export of a program of `RegionExportable` over x86 passes `spFreeBodyB` at
     `RSP`.** -/
