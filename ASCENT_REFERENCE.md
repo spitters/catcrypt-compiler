@@ -4,13 +4,14 @@ This file collects the detailed material behind [ASCENT.md](ASCENT.md): the resu
 the source and leaf boundaries, the layers of the calculus with their declarations,
 the loop rules, two worked paths traced step by step, the instruction-set judgement on
 compiled programs with their callee specifications, the join of the source readings
-with the compiled bytes, and the precise scope of each result. Paths are relative to
-the repository root.
+with the compiled bytes, the closed capstones, the simulations from hax source, the
+total abstraction, and the results on machine states and on hand-written assembly.
+Paths are relative to the repository root.
 
 ## Results at the source and leaf boundaries
 
 The following statements concern the source and leaf boundaries of the ascent; the
-section [Scope](#scope) gives their hypotheses.
+section named in each item gives their hypotheses.
 
 - Data-dependent loops: `corresU_whileFun` relates a terminating `RWhileNz` run to the
   exit state `loopFun` of the abstract loop, and `corresU_whileFun_total` gives the run
@@ -26,7 +27,7 @@ section [Scope](#scope) gives their hypotheses.
   leaves on layout-array destinations at `semUL ls fuel`;
   `semScalarLToJasminCom_denote_eq` carries `semScalarL ls` through the front and the
   jasmin lowering for every oracle pair related by `LeafTransport`
-  ([Leaf calls](#leaf-calls-the-boundary-of-semscalar)).
+  ([Leaf calls at a leaf oracle](#leaf-calls-at-a-leaf-oracle)).
 - hax source: `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
   simulate programs whose builtins return scalars, the latter with literal call
   arguments stored in tower slots; `haxToLowCT_simulates_programA` adds the array
@@ -36,24 +37,10 @@ section [Scope](#scope) gives their hypotheses.
   runtime-bound loops (`forFold` from a literal to a variable bound, lowered to
   `RForRuntime`) and data-dependent loops (`whileFold` on a scalar guard, lowered to
   `RWhileNz`) under the checker `simScopeW` and the environment invariant `ScalarInv`;
-  all end at `RustExec`
-  ([Simulations from hax source](#simulations-from-hax-source-end-at-rustexec)).
+  each concludes a `RustExec` run of the lowered program
+  ([Simulations from hax source](#simulations-from-hax-source)).
 - Jasmin mirror: `mulhiLoop_mirror_runBlock` relates a `psem.v` mirror derivation of a
   loop calling a `MULX` function to the `runBlock` run of the unrolled `MULX` loop.
-
-Not covered by any theorem in the package:
-
-- a `RustExec` counterpart of the `"select"` leaf, whose selector `RustExec` reads from
-  the scalar store; the `RustExec` counterparts of `RCallSwap` and `RCallN` when a
-  destination is also an argument; and the ascent of `RArrLoadLit` into a layout-array
-  destination;
-- hax programs with renaming aliases or tower-bound conditions, loops whose bounds are
-  expressions other than literals and variables, and a composition of the hax
-  simulations with the front and the jasmin lowering;
-- a weld of `corresU_whileFun` to the rolled loop: the `Com jasminDialect` of
-  `corresU_whileFun_jasminDenote` is the front's unrolling of the `RWhileNz` node at
-  the entry environment's trip count (`transU`), and no theorem relates it to the
-  back-edge emitted at `Lcmd` (`TranslateDialectDataWhile.rolledWhileNz`).
 
 ## Layers
 
@@ -266,15 +253,13 @@ second), closed at `r`.
    which satisfies that condition (`vmSubAll_resolves`). The front produces the same
    `Com catCryptDialect` program at `vmSubAll` as at `vmAB` (`comSubAll_eq`, by `rfl`),
    so the conclusion is stated at `vmAB`.
-4. Lowering. No descent lemma is generalised: `cryptoDialectToJasminCom_denote_eq'` and
-   `semScalarToJasminCom_denote_eq` are stated at an arbitrary entry map and valuation,
-   and the empty valuation enters only in their `_topLevel` specialisations.
+4. Lowering. `cryptoDialectToJasminCom_denote_eq'` and
+   `semScalarToJasminCom_denote_eq` are stated at an arbitrary entry map and valuation;
+   their `_topLevel` specialisations are the instances at the empty valuation.
 
 `feSub_symbolic_frontDenote` is the same result one lowering up,
-`feSubSymCom.denote (valAB a b) = a - b`. The source of this path is the `LowCT` term.
-A `RustSrc` source through `lowerRefines` would add the `Nat` model of `RustExec`,
-whose subtraction saturates, so a statement through `legWeld` would hold only for
-`b ≤ a`.
+`feSubSymCom.denote (valAB a b) = a - b`. The source of this path is the `LowCT` term
+`feSubSymC`.
 
 ## Compiled programs at the instruction set
 
@@ -286,13 +271,12 @@ correspondence at the fuelled interpreter `Isa.lsemFuelMemF` of an instruction s
 judgement. This section records its instances at the programs the hax compiler emits and
 the callee specifications derived from them. A module cited as `Haxc/…` is in the CatCrypt
 development repository, under `CatCrypt/Crypto/SecureCompilation/Haxc/`; every other path
-is in this package. Every statement of this section is over `x86Isa`; none has an AArch64
-or RV64 counterpart.
+is in this package. Every statement of this section is over `x86Isa`.
 
 ### Arms of the compile gate
 
-Each theorem below holds for every program its gate accepts, with no hypothesis on the
-individual program beyond the gate.
+Each theorem below holds for every program its gate accepts; the gate is its hypothesis
+on the program.
 
 | Arm | Gate | Program in the square | Theorems | Module |
 |---|---|---|---|---|
@@ -314,16 +298,16 @@ of `f` on, with the output array of the node held in the cell names of its renam
 The fixed-fuel forms are at `nodeFuel` and `carriedLoopImageFuel`, each at a bound `N` on
 the count.
 
-In every row the image is the printed body without its closing return, because `x86Isa`
-takes no step at `Lret`; the next subsection treats the return.
+In every row the image is the printed body up to its closing return, where a run of
+`x86Isa` halts; the next subsection treats the return.
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) describes the squares of the rows for
 `v1LoopB` and the straight arms.
 
 ### Compiled bodies as callees
 
 An image judgement of the previous subsection starts from the entry state of the image
-route, whose memory is zero and which no call step produces, at the counter `0` of a
-program that consists of the body alone. A callee is entered by a call step, which writes
+route, whose memory is zero, at the counter `0` of a program that consists of the body
+alone. A callee is entered by a call step, which writes
 the stack pointer and the memory cell it addresses, at a label inside a larger program,
 and ends in a return. The following modules of this package derive the procedure
 specification `IsaCall.ProcSpec` at the instruction set with calls `isa.withCalls` from a
@@ -358,8 +342,7 @@ The instances at the compile gate are in the development repository.
   compiler under its route gates, with the instances `mpn_and_n_image_procSpec` (a
   runtime-count loop) and `ltu_image_procSpec` (a straight-line comparison). Each takes
   the compile equation and the gate equation as hypotheses; the gate equations are
-  Boolean evaluations of the compiler on a closed program, checked by evaluation and not
-  proved as theorems.
+  Boolean evaluations of the compiler on a closed program, checked by evaluation.
 
 ## Source readings joined to compiled bytes
 
@@ -421,27 +404,37 @@ The reading and the compiler's table agree at these calls:
 | checked `Add`, `Sub`, `Mul`, `Div`, `Rem` on words of at most 64 bits, `usize` included | `hax64WExit_appArith`; bodies that use them reach the bytes through `fnCorres_hax64WExit_of_triple_arith` and `bytes_of_toRustMS_triple_arith`, from an entry environment whose words and arrays have at most 64 bits |
 | the nine word operations and `Not` at `usize` | `appHost_ok`, against the table at the host platform's width (`hax64WExitAt Platform.host`) |
 
-## Scope
-
-This section states what the capstones prove and where they stop, with the theorem
-names at which each boundary can be checked.
+## Closed capstones at the `Com jasminDialect` denotation
 
 `bash scripts/ascent-corpus.sh` lists, from the declaration text of the tracked files, the kernels of the package (closed `LowCT` values, `reifyLowCT%` kernels, and `ImpExpr` terms with an exit-lowering theorem), which of them an ascent correspondence names (single-store correspondences in a separate column), and which a closed capstone reaches, one that takes no emit, denotation or correspondence equation as a hypothesis; its header states the method.
 
-### The source-to-bytes capstones end at a `Com jasminDialect` denotation
-
-`legWeld`, `legWeld_lower`, `feSub_endToEnd`, `feAdd_endToEnd`,
-`feSub_source_to_bytes_tower`, `feAdd_source_to_bytes_tower`, `demo_source_to_bytes`,
-`feSub_value`, `feAdd_value`, `feSub_raw_source_to_bytes`,
-`feSubImp_raw_source_to_bytes`, `keystone_emit`, `keystone_emit_NT`,
-`keystone_emit_arr`, `keystone_emit_fq`, `welding` and `welding_program` conclude an
-equation `jcom.denote (ctMapValD .nil) = ctTransTy val` for a program
-`jcom : Com jasminDialect …` produced by `cryptoDialectToJasminCom`. The word "bytes" in
-these names and their docstrings refers to that denotation. No theorem of this family
-reads the output of the owned x86 lowering (`toLprogPhysAbi`) or of an instruction
-encoder; the statements at decoded bytes are those of
+The source-to-bytes capstones conclude an equation
+`jcom.denote (ctMapValD .nil) = ctTransTy val` for the program
+`jcom : Com jasminDialect …` that `cryptoDialectToJasminCom` produces from the front's
+translation of the kernel, together with the reading of `val` in the abstract domain. The
+word "bytes" in their names and docstrings refers to that denotation. The statements at
+decoded bytes are those of
 [Source readings joined to compiled bytes](#source-readings-joined-to-compiled-bytes)
 and of [ASCENT.md](ASCENT.md).
+
+| What is proved | Programs | Lean name |
+|---|---|---|
+| The emitted program `F.jcom` denotes the transport of the output word `BitVec.ofNat 64 (spec rs.rsScalar name)` of the source step, and `wEnc` of that word is `fa (derivedAbs rs) name` | a `LowCT` term `c` with a refinement `RRefines spec c`, a run `AdeqRun c rs rs'` from an in-range entry state, every read after a write (`readsOK (fun _ => False) c`), the front's artifacts `FrontOut c name` and a correspondence `Corres SRwordNT P fa c` | [`legWeld`](CatCrypt/Crypto/SecureCompilation/Ascent/LegWeld.lean) |
+| The same, with the refinement obtained from `lowerRefines` and moved along a `LitNorm` normalisation | a `RustSrc` term in the fragment of `RustSubsetToLowCT.lower` | [`legWeld_lower`](CatCrypt/Crypto/SecureCompilation/Ascent/LegWeld.lean) |
+| `feJcom` denotes the transport of the output word (`feSubSourceWord` in the tower, `feVal` in the end-to-end form), and `wEnc` of that word is `av - bv` in `ZMod (2 ^ 64)` | `r0 := a0 - b0` at the literals `av`, `bv` | [`feSub_source_to_bytes_tower`](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubSourceTower.lean), [`feSub_endToEnd`](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubEndToEnd.lean) |
+| `feAddJcom` denotes the transport of the output word, and `wEnc` of that word is `av + bv` | `r0 := a0 + b0` at the literals `av`, `bv` | [`feAdd_source_to_bytes_tower`](CatCrypt/Crypto/SecureCompilation/Ascent/FeAddEndToEnd.lean), [`feAdd_endToEnd`](CatCrypt/Crypto/SecureCompilation/Ascent/FeAddEndToEnd.lean) |
+| The emitted program denotes the transport of the output word of `RustSrc.exec demoSrc`, whose `wEnc` is `dav + dbv - dcv` | `r0 := a0 + b0 - c0` at the literals `dav`, `dbv`, `dcv` | [`demo_source_to_bytes`](CatCrypt/Crypto/SecureCompilation/Ascent/LegWeldDemo.lean) |
+| The second conjuncts of the two towers evaluated to numerals | the same two kernels | [`feSub_value`](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean), [`feAdd_value`](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean) |
+| `jcom` denotes the transport of `val`, and `wEnc val = fa a₀ name` | a kernel in `IsCoveredSCtl` with a `RustExec` run, the front's and the lowering's success equations, a correspondence over `SRword` (`keystone_emit`) or `SRwordNT` (`keystone_emit_NT`) and the readout hypothesis `hAgree` | [`keystone_emit`](CatCrypt/Crypto/SecureCompilation/Ascent/EmitBridge.lean), [`keystone_emit_NT`](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubEndToEnd.lean) |
+| `jcom` denotes the transport of the array `val`, whose pointwise `wEnc` is the abstract array `(fa a₀).arr` | the same hypotheses with a correspondence over `SRarr`, at output type `.memref n` | [`keystone_emit_arr`](CatCrypt/Crypto/SecureCompilation/Ascent/ArrStoreEmit.lean) |
+| `jcom` denotes the transport of `val`, whose coefficient in `ZMod 3329` is `fa a₀ name` | the same hypotheses with the field encoding `fqEnc` | [`keystone_emit_fq`](CatCrypt/Crypto/SecureCompilation/Ascent/MlkemPolyAddCapstone.lean) |
+| `keystone_emit` with the `RustExec` run listed first among its hypotheses, the premise a source simulation delivers | as `keystone_emit` | [`welding`](CatCrypt/Crypto/SecureCompilation/Ascent/EmitBridge.lean) |
+| `welding` with the `RustExec` run obtained from `haxToLowCT_simulates_program` | a hax `ImpExpr` accepted by `simScope`, with an `evalImp` run and an entry state in agreement with the entry environment | [`welding_program`](CatCrypt/Crypto/SecureCompilation/Ascent/SourceBridge.lean) |
+
+`keystone_emit`, `keystone_emit_NT`, `keystone_emit_arr` and `keystone_emit_fq` obtain
+the emit equation from `rustToJasminCom_endToEnd_topLevel_unconditional`
+([CompilerCorrectnessExtracted.lean](CatCrypt/Crypto/SecureCompilation/VIR/CompilerCorrectnessExtracted.lean));
+`feSub_endToEnd` and `feAdd_endToEnd` are the instances of `keystone_emit_NT`.
 
 The machine-level ascent results are stated over instruction-list semantics: `runBlock`
 over `JInstr 64` (`CorresJ`), `xrun` / `x86Target.runOps` over the `Instr 64` lists of
@@ -449,219 +442,174 @@ the `ScalarLinX86Demo` target (`corres_of_refines_x86`), `runRBlock64` over `RIn
 (`CorresR`), and `lsemStraightMem` over `LinstrRM` for the `sbb`-chain lowering
 `sbbChainL` defined in `EcMultiLimbEmit` (`sbbChain_emit_realizes_abstract_CF`).
 
-### The emit welds apply to kernels without inputs
+### Closed kernels and kernels with inputs
 
 `legWeld` takes `hReads : readsOK (fun _ => False) c`, so every read in `c` follows a
 write in `c`, and it closes the front at `VarMap.empty` and the jasmin program at the
-empty valuation. `F.jcom.denote (ctMapValD .nil)` is therefore a constant, and the
-conclusion is a statement about one input-free kernel. `corres_emit_weld` and the `keystone_*` welds require
-the same through `hAgree`: the word at the readout name is the same for every entry
-environment. Every instance in the package fixes its inputs as literals:
-`feSub_source_to_bytes_tower` and `feAdd_source_to_bytes_tower` at `av` and `bv`,
-`demo_source_to_bytes` at `dav`, `dbv` and `dcv`, and `qrClosed_frontDenote_val`, which
-concludes `qrCom.denote .nil = 393216#64`.
+empty valuation. Its conclusion determines the constant
+`F.jcom.denote (ctMapValD .nil)` of a closed kernel. `corres_emit_weld` and the
+`keystone_*` welds state the same condition through `hAgree`: the word at the readout
+name is the same for every entry environment. The instances fix their inputs as
+literals: `feSub_source_to_bytes_tower` and `feAdd_source_to_bytes_tower` at `av` and
+`bv`, `demo_source_to_bytes` at `dav`, `dbv` and `dcv`, and `qrClosed_frontDenote_val`
+([Demos/Scalar](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Scalar.lean)), which concludes
+`qrCom.denote .nil = 393216#64`.
 
-The weld at a nonempty entry valuation is `corresScalar_frontDenote` in
-`CorresScalar.lean`, over `Com catCryptDialect Γ`, and its lowering
-`corresScalar_jasminDenote` in `FeSubSymbolic.lean`, over `Com jasminDialect`. Their one
-instance is `feSub_symbolic_source_to_jasmin`, for `r := a - b` at all `a`, `b`; its
-source is the `LowCT` term, not a `RustSrc` or hax term.
+The weld at a nonempty entry valuation is `corresScalar_frontDenote`
+([CorresScalar.lean](CatCrypt/Crypto/SecureCompilation/Ascent/CorresScalar.lean)), over `Com catCryptDialect Γ`, and its
+lowering `corresScalar_jasminDenote` ([FeSubSymbolic.lean](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubSymbolic.lean)), over
+`Com jasminDialect`. Its instance is `feSub_symbolic_source_to_jasmin`, for the `LowCT`
+term `r := a - b` at all `a`, `b`
+([A worked path with symbolic inputs](#a-worked-path-with-symbolic-inputs-fesub_symbolic_source_to_jasmin)).
 
-### The raw hax source is joined to the capstone by its output word
+### Welds parametric in the emit map
 
-`feSub_raw_source_to_bytes e hNoLoops hNoEE hBridge` is a conjunction of three facts.
-The first is hax-lean's `pipeline_correct` applied to `hBridge`, a statement about `e`.
-The second and third are `feSub_source_to_bytes_tower`, which does not mention `e`.
-`feJcom` is the front's translation of the `LowCT` term `feSubC`, not of a hax term,
-and no theorem in the package relates `feSubImp` or any other `Hax.ImpExpr` to
-`feSubC`. The hypothesis `hBridge : haxOutcomeWord (Hax.denote bi fuel e env).1 = some feSubSourceWord`
-identifies only the output word, so every `e` whose reference run ends in a `uint`
-value with the word `776999927` satisfies it.
+The following welds are stated for an arbitrary map `Emit` from the output value to a
+type `β`. Each takes the emit equation `hEmit : jdenote = Emit val` as a hypothesis,
+returns it as its first conjunct, and adds the reading of `val` in the abstract domain;
+the `keystone_emit*` theorems of the previous table instantiate `Emit` to `ctTransTy`.
 
-`feSubImp_raw_source_to_bytes` discharges `hBridge` by evaluation (`feSubImp_word`) at
-`Hax.widthAwareBuiltins`. `feSub_raw_source_to_bytes'` fixes `Hax.defaultBuiltins`,
-whose `sub` accepts only `int` arguments, while `haxOutcomeWord` reads only `uint`
-values; its `hBridge` therefore fails for a kernel whose result is computed by `sub` at
-that table.
+| What is proved, given `hEmit` | Programs | Lean name |
+|---|---|---|
+| `wEnc val = fa a₀ name` | a `LowCT` term with `Corres SRword P fa c` at a related entry `(env₀, a₀)` and the readout hypothesis `hAgree` | [`corres_emit_weld`](CatCrypt/Crypto/SecureCompilation/Ascent/EmitBridge.lean) |
+| the same with the correspondence supplied by `corres_setScalar` | a literal assignment | [`keystone_setScalar`](CatCrypt/Crypto/SecureCompilation/Ascent/EmitBridge.lean) |
+| `wEnc (ifClosedVal gv tv ev)` is `if gv = 0 then ev else tv` in `ZMod (2 ^ 64)` | the closed φ-merge kernel `ifClosedKernel g r gv tv ev`, through `corres_if` | [`keystone_if`](CatCrypt/Crypto/SecureCompilation/Ascent/KeystoneControl.lean) |
+| `wEnc (ifClosedVal 0 7 9) = 9`, at `Emit = ctTransTy` | the branch kernel at guard `0` and literals `7`, `9` | [`condKernel_bytes_of_emit`](CatCrypt/Crypto/SecureCompilation/Ascent/CondKernelCapstone.lean) |
+| `wEnc (BitVec.ofNat 64 v) = v` | the closed bounded loop `forClosedKernel` with distinct counter and output names, through `corres_for` | [`keystone_for`](CatCrypt/Crypto/SecureCompilation/Ascent/KeystoneControl.lean), [`loop_keystone_emit`](CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceTower.lean) |
+| the pointwise `wEnc` of the array `val` is `(fa a₀).arr` | a correspondence over `SRarr`; `keystone_arrStore` supplies it from `corres_arrStore` at `RArrStore arr idxVar src` | [`keystone_arr`](CatCrypt/Crypto/SecureCompilation/Ascent/ArrStoreEmit.lean), [`keystone_arrStore`](CatCrypt/Crypto/SecureCompilation/Ascent/ArrStoreEmit.lean) |
+| the coefficient of `val` in `ZMod 3329` is `fa a₀ name` | a correspondence at the field encoding `fqEnc`; `keystone_setScalar_fq` is the literal assignment | [`keystone_fq`](CatCrypt/Crypto/SecureCompilation/Ascent/MlkemPolyAddCapstone.lean), [`keystone_setScalar_fq`](CatCrypt/Crypto/SecureCompilation/Ascent/MlkemPolyAddCapstone.lean) |
 
-### Simulations from hax source end at `RustExec`
+### The raw hax source of `feSub`
+
+[PipelineWeld.lean](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) and
+[SourceBridge.lean](CatCrypt/Crypto/SecureCompilation/Ascent/SourceBridge.lean) add hax-lean's optimisation pipeline above the
+`feSub` tower. The three theorems conclude the same conjunction: the optimised program
+`Hax.pipeline e` evaluates to the word `feSubSourceWord`, `feJcom` denotes the transport
+of that word, and `wEnc feSubSourceWord = av - bv`. The first conjunct is hax-lean's
+`pipeline_correct` applied to the output word of the reference run; the second and third
+are `feSub_source_to_bytes_tower`.
+
+| What is proved | Programs | Lean name |
+|---|---|---|
+| the conjunction, at any builtin table, fuel and environment | every `Hax.ImpExpr` `e` whose form after local mutation and reference dropping satisfies `Hax.NoLoops` and `Hax.NoEarlyExit`, and whose reference run `Hax.denote bi fuel e env` returns a `uint` value with the word `feSubSourceWord` (`hBridge`, read by `haxOutcomeWord`) | [`feSub_raw_source_to_bytes`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) |
+| the conjunction with the optimised program read by `denote'` through `pipeline_correct'`, at `Hax.defaultBuiltins` | every `e` with `Hax.NoCFConstructors` whose form after local mutation and reference dropping satisfies `Hax.NoEarlyExit`, from an environment with `Hax.Env.NoControlFlow`, with `hBridge` at `Hax.defaultBuiltins` | [`feSub_raw_source_to_bytes'`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) |
+| the conjunction at `Hax.widthAwareBuiltins`, for every fuel and environment; `hBridge` is the evaluation `feSubImp_word` | the hax term `feSubImp` | [`feSubImp_raw_source_to_bytes`](CatCrypt/Crypto/SecureCompilation/Ascent/SourceBridge.lean) |
+| the conjunction, with `hBridge` derived from `haxToLowCT_simulates_program` | a program `body; r` accepted by `simScope` that returns a `uint` variable `r`, under the hypotheses of the simulation and the output condition that every `RustExec` run of its lowering leaves `feSubSourceWord` in the scalar slot `r` | [`raw_source_to_bytes_of_program`](CatCrypt/Crypto/SecureCompilation/Ascent/SourceBridge.lean) |
+
+## Simulations from hax source
 
 `haxToLowCT` lowers a builtin call to a leaf call (`RCall`, or `RCallSwap` for a
-two-component result) or, for `array_update` and `index`, to `RArrStore` and
-`RArrLoad`. It produces `RScalarSetExpr` only for the index shift of a `forFold` with
-a nonzero start, so no lowered hax program contains the `RScalarSetExpr` kernels that
-`legWeld` and the value leaves abstract; the arithmetic of a hax program is carried by
-the leaf specification of its `RCall` nodes. `raw_source_to_bytes_of_program` and
-`welding_program` are stated for arbitrary programs and have no instance in the
-package.
+two-component result), the builtins `array_update` and `index` to `RArrStore` and
+`RArrLoad`, and the index shift of a `forFold` with a nonzero start to
+`RScalarSetExpr`. The arithmetic of a hax program is carried by the leaf specification
+of its `RCall` nodes.
 
-Three program-level simulations conclude, for a program accepted by a scope checker
-and an entry state related to the entry environment, that every successful source run
+The program-level simulations conclude, for a program accepted by a scope checker and
+an entry state related to the entry environment, that every successful source run
 `evalImp` is matched by a `RustExec` run of the lowered program to a state related to
-the exit environment:
+the exit environment. The modules are under `CatCrypt/Crypto/Hax/`.
 
-* `haxToLowCT_simulates_program` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean`)
-  takes `FullSimPreconds`, whose field `leafScalar` states that no builtin result
-  decodes as a scalar; a builtin table implementing arithmetic does not satisfy it.
-  `haxToLowCT_simulates_full` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean`) is its
-  corollary for a program with `SimWellFormed Γ e`, an entry state bound on `Γ` and
-  fresh on the program's scalar names, and the preconditions `FullSimPreconds`,
-  `ProjPreconds` and `ProgramSimArms`; its conclusion adds the exit-scope invariants.
-  `simFull_runs` instantiates every hypothesis at `let y = leaf(a); y` with a builtin
-  table whose builtin `leaf` returns the constant `.array []`.
-* `haxToLowCT_simulates_programT` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean`)
-  relates environment and state by `envAgreesRustT`, which asks scalar agreement only at
-  names without a tower binding, and replaces `FullSimPreconds` by `LeafCallAgreesArgs`:
-  when the argument values are related to the tower slots the call reads, the builtin's
-  result is related to the leaf output. It requires `condsScalar` (every `if` and
-  `while` condition is a scalar-binding name) and a builtin table implementing neither
-  `array_update` nor `index`.
-* `haxToLowCT_simulates_programL` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean`)
-  is the same statement for `litTower T` of the lowering, which stores each literal
-  bound to a name of `T` into a `.TFp` slot with `RLimbStore`, so that a call can read a
-  literal argument. Its scope checker is `simScopeL`, and it adds the leaf condition
-  `LitStoreAgrees`. `litTower_nil` and `simScopeL_nil` recover the lowering and
-  `simScope` at `T = []`.
-
-The side conditions of the call arms quantified over every name, state and argument
-list are unsatisfiable: `HaxToLowCTSim_Program.lean` refutes them by
-`hScalarFresh_all_unsat`, `hDestBoundAll_unsat`, `hArgsEnvAll_unsat`,
-`hArgsBoundAll_unsat` and `hArgsFreshAll_unsat`, and `pipelineAppInvariants_unsat`
-refutes the bundle `PipelineAppInvariants`. `EmitBridge.welding` takes its `RustExec`
-premise as a hypothesis, and `welding_program` supplies that premise from
-`haxToLowCT_simulates_program`.
+| What is proved | Programs | Lean name |
+|---|---|---|
+| the simulation under `envAgreesRustFull`, given `FullSimPreconds` (whose field `leafScalar` states that no builtin result decodes as a scalar), `ProjPreconds` and the array arms `ProgramSimArms` | programs accepted by `simScope` | [`haxToLowCT_simulates_program`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) |
+| the same with the exit-scope invariants in the conclusion | programs with `SimWellFormed Γ e`, from an entry state bound on `Γ` and fresh on the scalar names of the program | [`haxToLowCT_simulates_full`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean) |
+| every hypothesis of `haxToLowCT_simulates_full` holds, and the lowered program runs | `let y = leaf(a); y` at a table whose builtin `leaf` returns `.array []` | [`simFull_runs`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean) |
+| `ProgramSimArms` holds | builtin tables that implement neither `array_update` nor `index` | [`ProgramSimArms_of_vacuity`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) |
+| the simulation under `envAgreesRustT`, which asks scalar agreement at the names without a tower binding, given `LeafCallAgreesArgs`: when the argument values are related to the tower slots the call reads, the result of the builtin is related to the leaf output | programs accepted by `simScope` whose `if` and `while` conditions are scalar-binding names (`condsScalar`), at a table implementing neither `array_update` nor `index` | [`haxToLowCT_simulates_programT`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean) |
+| the same for `litTower T` of the lowering, which stores each literal bound to a name of `T` into a `.TFp` slot with `RLimbStore` so that a call reads a literal argument, given the leaf condition `LitStoreAgrees`; `litTower_nil` and `simScopeL_nil` recover the lowering and `simScope` at `T = []` | programs accepted by `simScopeL` | [`haxToLowCT_simulates_programL`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean) |
+| the same for `arrTower A (litTower T c)`, given that the array load and store agree with the builtins `index` and `array_update` (`IndexAgrees`, `ArrUpdateAgrees`) and that tuple loads agree with `Value.projIdx` | programs with array reads and writes | [`haxToLowCT_simulates_programA`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramArr.lean) |
+| the same with counted loops, read as the `forLoop` of `forToLoop` | programs with `forFold` over literal bounds | [`haxToLowCT_simulates_programF`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramFor.lean) |
+| the same with reverse loops, runtime-bound loops (lowered to `RForRuntime`) and data-dependent loops (lowered to `RWhileNz`), given `ScalarCallsAgree` and `LimbReadAgrees`, under the environment invariant `ScalarInv` | programs accepted by `simScopeW`: `forFoldRev` over literal bounds, `forFold` from a literal to a variable bound, `whileFold` on a scalar guard | [`haxToLowCT_simulates_programW`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean) |
+| the lowered function simulates `Hax.denote'`, given `ScalarOpsSound`, which `scalarOpsSound_noOverflow64_width` proves for hax-lean's width tables with overflowing `add` and `sub` refused | the fragment `exitSimOk` of the exit-flag lowering `haxToLowCTK` ([HaxToLowCTExit.lean](CatCrypt/Crypto/Hax/HaxToLowCTExit.lean)), which lowers `let x = op(a, b)` for `add`, `sub` and the unsigned comparisons to `RScalarSetExpr` and loops to `RWhileNz` | [`haxToLowCTFn_simulates`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean) |
 
 The instances of `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
 at a builtin table with arithmetic, bitwise, shift and rotation builtins on `int`
 values below `2 ^ 64` (`arith_haxToLowCT_simulates_programT`,
 `arith_haxToLowCT_simulates_programL`), their composition with A-normalisation, and
 their application to the extracted SHA-256 functions `maj` and `big_sigma0` (`maj_runs`,
-`bigSigma0_runs`, each at one input) are in the CatCrypt development repository, not in
-this package. Those statements end at the `RustExec` run of the lowered normal form; no
-theorem composes them with the front and the jasmin lowering.
+`bigSigma0_runs`, each at one input) are in the CatCrypt development repository. They
+conclude a `RustExec` run of the lowered normal form.
 
-`simScope` and `simScopeL` reject a renaming alias `let a = b` with `a ≠ b` and the
-fold forms `forFold` and `whileFold`; `condsScalar` rejects an `if` or `while` condition
-bound in the tower, such as the result of a comparison builtin; and
-`haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL` require a builtin
-table without `index` and `array_update`. No simulation in the package covers programs
-with these constructs.
+### Array and loop source kernels
 
-The exit-flag lowering `haxToLowCTK` (`CatCrypt/Crypto/Hax/HaxToLowCTExit.lean`), with
-scalar operations enabled, lowers `let x = op(a, b)` for `add`, `sub` and the unsigned
-comparisons to `RScalarSetExpr`. `haxToLowCTFn_simulates`
-(`CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean`) proves that the lowered function
-simulates `Hax.denote'` on the fragment `exitSimOk` under `ScalarOpsSound`, which
-`scalarOpsSound_noOverflow64_width` discharges for hax-lean's width tables with
-overflowing `add` and `sub` refused. No ascent module uses this simulation. Its loops
-lower to `RWhileNz`, which `semScalar` does not denote and the emit fragment
-`IsCoveredSCtl` does not contain.
+| What is proved | Programs | Lean name |
+|---|---|---|
+| every `evalImp` run is matched by a `RustExec` run of the `RArrStore`-headed lowering, with `envAgreesRustFull` at exit, given the array-store step `hArrUpd` of the program-level simulation and a table without `index` | the array-write kernel `arrKernel` | [`arrKernel_source_to_rustexec_program`](CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceTower.lean) |
+| the lowered loop refines `RustSrc.exec (loopSrc v n)`, corresponds to `nfold (loopSrcStep v) n` over `SRwordNT`, and is the node `RFor "i" n (lower (loopBodySrc v))` | the counted source loop `loopSrc v n` (a `RustSrc.forN`), for `v < 2 ^ 64` and every `n` | [`loopSrc_source_preimage`](CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceLeaf.lean) |
 
-### The array and loop source towers
+## The total abstraction over an array layout
 
-`arrKernel_source_to_rustexec_program` (`LoopSourceTower.lean`) takes the array-store
-step of the program-level simulation, `hArrUpd`, as a hypothesis, and `arrKernel`
-exercises no other construct. `ProgramSimArms_of_vacuity` discharges that step only for
-a builtin table that does not implement `array_update`. The source preimage of a
-bounded `RFor` is `RustSrc.forN`: `loopSrc_source_preimage` (`LoopSourceLeaf.lean`)
-conjoins the descent refinement, the ascent correspondence and the `RFor` shape of the
-lowered loop, and no theorem fuses the first two into an emit conclusion. From hax
-source, `haxToLowCT` lowers only `.forFold` to `RFor`, and the evaluation of `.forFold`
-is `none` (`loop_forFold_source_vacuous`).
-
-### Welds that take the emit equation as a hypothesis
-
-`corres_emit_weld`, `keystone_setScalar`, `keystone_if`, `keystone_for`, `loop_keystone_emit`,
-`condKernel_bytes_of_emit`, `keystone_arr`, `keystone_arrStore`, `keystone_fq` and
-`keystone_setScalar_fq` are stated for an abstract map `Emit` and take
-`hEmit : jdenote = Emit val` as an argument, which they return as their first
-conjunct. The second conjunct of `keystone_for` is
-`wEnc (BitVec.ofNat 64 v) = (v : ZMod (2 ^ 64))`, which holds for every `v`, and the
-second conjunct of `keystone_if` is an identity about `ifClosedVal`. For the branch
-kernel, `condBackend_declines` proves `cryptoDialectToJasminCom condFrontCom = none`, so
-the pipeline produces no program that supplies `hEmit` for `condKernel_bytes_of_emit`.
-
-`keystone_emit`, `keystone_emit_NT`, `keystone_emit_arr` and `keystone_emit_fq`
-discharge `hEmit` from `rustToJasminCom_endToEnd_topLevel_unconditional`.
-`keystone_emit_NT` has the instances `feSub_endToEnd` and `feAdd_endToEnd`.
-`keystone_emit` is used only by the generic `welding` and `welding_program`, and
-`keystone_emit_arr`, `keystone_emit_fq`, `corres_while_exit` and `corresU_while_exit`
-have no instance in the package. The emit fragment `IsCoveredSCtl` has no `RWhileNz`
-arm, so `corres_while`, `corresU_while` and the exit rules have no weld to a
-`Com jasminDialect` program.
-
-### The total abstraction assigns an unsatisfiable guard to 11 constructors
-
-The total abstraction `ascendGL L` (`Guards.lean`) is indexed by an array layout
-`L : ArrLayout`, the `.memref` slots of the concrete store with their lengths, and is
-sound over `SRwordL L` (`ascendGL_sound`): unreserved non-temp names hold `u64` words,
-and element `j` of a layout array `arr` is encoded at the abstract name
-`elemKey arr j`. `ascendG` is `ascendGL []`, and `SRwordL []` is `SRwordNT`
+The total abstraction `ascendGL L` ([Guards.lean](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean)) is indexed by an
+array layout `L : ArrLayout`, the `.memref` slots of the concrete store with their
+lengths, and is sound over `SRwordL L` (`ascendGL_sound`): unreserved non-temp names
+hold `u64` words, and element `j` of a layout array `arr` is encoded at the abstract
+name `elemKey arr j`. `ascendG` is `ascendGL []`, and `SRwordL []` is `SRwordNT`
 (`srwordL_nil_iff`), so `ascendG_sound` is the empty-layout instance. `tsLowCTL L`
-(`Strengthen.lean`) is the type-strengthening pass over a layout, with `tsLowCTL_sound`
-and `tsLowCTL_isSome_iff`; `tsLowCT` is `tsLowCTL []`.
+([Strengthen.lean](CatCrypt/Crypto/SecureCompilation/Ascent/Strengthen.lean)) is the type-strengthening pass over a layout,
+with `tsLowCTL_sound` and `tsLowCTL_isSome_iff`; `tsLowCT` is `tsLowCTL []`.
 
 Over a layout that contains the array, five array constructors carry no guard; their
 side conditions are static and decided by the abstraction:
 
-| constructor | leaf | static condition | abstract step |
+| Constructor | Static condition | Abstract step | Leaf |
 |---|---|---|---|
-| `RArrLoad dst src i` | `corresL_arrLoad` | `src` has length `m + 1` in `L`; `dst` typed `TU64` and unreserved; `i` non-temp and unreserved | `dst := A[i mod (m + 1)]` |
-| `RArrStore arr i src` | `corresL_arrStore` | `arr` has length `m + 1` in `L` and `encodeTy` gives `.memref (m + 1)`; `i` and `src` non-temp and unreserved | `A[i mod (m + 1)] := src` |
-| `RArrLoadLit dst src idx` | `corresL_arrLoadLit` | `src` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `dst` typed `TU64` and unreserved | `dst := A[idx]` |
-| `RArrStoreLit arr idx src` | `corresL_arrStoreLit` | `arr` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `src` non-temp and unreserved | `A[idx] := src` |
-| `RLimbStore loc idx v` | `corresL_limbStore` | `loc` has length `n` in `L` and `idx < n` | `A[idx] := v` |
+| `RArrLoad dst src i` | `src` has length `m + 1` in `L`; `dst` typed `TU64` and unreserved; `i` non-temp and unreserved | `dst := A[i mod (m + 1)]` | [`corresL_arrLoad`](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean) |
+| `RArrStore arr i src` | `arr` has length `m + 1` in `L` and `encodeTy` gives `.memref (m + 1)`; `i` and `src` non-temp and unreserved | `A[i mod (m + 1)] := src` | [`corresL_arrStore`](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean) |
+| `RArrLoadLit dst src idx` | `src` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `dst` typed `TU64` and unreserved | `dst := A[idx]` | [`corresL_arrLoadLit`](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean) |
+| `RArrStoreLit arr idx src` | `arr` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `src` non-temp and unreserved | `A[idx] := src` | [`corresL_arrStoreLit`](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean) |
+| `RLimbStore loc idx v` | `loc` has length `n` in `L` and `idx < n` | `A[idx] := v` | [`corresL_limbStore`](CatCrypt/Crypto/SecureCompilation/Ascent/Guards.lean) |
 
 The index is reduced modulo the length because `semScalar` reads and writes through
-`memGetDyn` and `memSetDyn`, which do; an out-of-bounds dynamic index is not a guard.
-A literal index is taken as a 64-bit word before the reduction, as the front's
-`bvConst` temporary holds it, so the literal leaves require it below `2 ^ 64` and the
-length. The literal leaves also require the array to be typed `TArr _ .TU64`:
-`encodeTy` binds byte and `u32` arrays as `.memref` as well, but the direct route
-(`LowCTToJasmin.arrLitElemWS`) reads their element `idx` at the array's own width, so
-`semScalar` and the front give those arrays the opaque leaf. Over the empty layout
-these constructors stay unsupported, since `SRwordNT` requires every non-temp name to
-hold a word.
+`memGetDyn` and `memSetDyn`, which reduce it. A literal index is taken as a 64-bit word
+before the reduction, as the front's `bvConst` temporary holds it, so the literal leaves
+require it below `2 ^ 64` and the length. The literal leaves apply to arrays typed
+`TArr _ .TU64`, whose elements are 64-bit words; byte and `u32` arrays, which `encodeTy`
+also binds as `.memref` and whose element `idx` the direct route
+(`LowCTToJasmin.arrLitElemWS`) reads at the array's own width, go through the leaf
+oracle of the next subsection.
 
 The constant-time select `RSelect dst sel src0 src1` goes through `corresL_select`
 over any layout, with the abstract step `dst := if sel = 0 then src0 else src1`, when
 `dst` is typed `TU64` and `dst`, `sel`, `src0` and `src1` are non-temp names the layout
 does not reserve. `semScalar` gives it `selectWord`, the value of the front's eight-op
-mask chain (`selectMaskCont_denote`), which lowers to jasmin. The value leaves over a layout (`corresL_setScalar`,
-`corresL_setExprVal`, `corresL_if`) additionally require the written and read word
-names to be unreserved by the layout; `ascendGL` returns the unsupported guard when one
-is reserved. The worked instance is `arrSelK`: two array reads, the mask select
+mask chain (`selectMaskCont_denote`), which lowers to jasmin. The value leaves over a
+layout (`corresL_setScalar`, `corresL_setExprVal`, `corresL_if`) apply to written and
+read word names that the layout does not reserve. Among the control and value
+constructors, `ascendGL` abstracts `RScalarSetExpr` within `srcClean`, `RLetU64Zero`
+over a loop-free body, `RWhileNz` on a non-temporary name, and `RIfNz` on a
+non-temporary name in two shapes, a guarded then-branch and a φ-merge of two literal
+writes to one name.
+
+The worked instance is `arrSelK`: two array reads, the mask select
 `r := y ^^^ ((x ^^^ y) &&& m)` and an array write over `[("A", 4)]`.
 `arrSelK_ascendGL_prog` states its abstract program, `arrSelK_guardsHold` that its one
 guard holds on every store, `arrSelK_corres` the correspondence, `arrSelK_srwordL` a
 store and abstract store related by `SRwordL [("A", 4)]`, and `arrSelK_tsLowCTL` that
 the pass returns the pure program.
 
-The remaining 11 constructors map to `unsupportedAbs`, whose guard means `False`, and
-the obstruction is in the waist semantics `semScalar`, not in a missing leaf:
+`ascendGL` is a total function. To a node outside the cases above it assigns
+`unsupportedAbs`, whose guard means `False`, so `ascendGL_sound` holds for every
+command, with the precondition `guardsHold` carrying the guards of the program.
+`tsLowCTL` returns a program exactly when the guards of `ascendGL` contain no such
+node (`tsLowCTL_isSome_iff`). The leaf-call constructors `RCall`, `RCallSwap`,
+`RCloneCall`, `RCallN`, `RCallDstThreaded` and `RTupleLoad`, `RSelect` over slots other
+than 64-bit words, and `RArrLoadLit` / `RArrStoreLit` over slots other than a
+`TArr _ .TU64` array and a 64-bit word bind their destinations in `semScalar` to
+`CryptoTy.default`, the value of the front's `extCall`; the abstraction `ascendGLL` of
+the next subsection gives them abstract leaves at a leaf oracle. The three-name leaves
+`corres_arrStore` and `corres_arrLoad` are stated over the relations `SRarr` and
+`SRarrLoad` on one array, its index and its source or destination.
 
-* `RLetZero`, `RLimbStoreExpr`, `RFnDef`, `RFnCall` and `RForRuntime` have no arm in
-  `semScalar`, which returns `none`; `CorresU` requires a successor state, so no
-  satisfiable precondition exists at this waist.
-* `RCall`, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded` and `RTupleLoad`
-  bind their destinations to `CryptoTy.default`, the opaque `extCall` waist,
-  independent of the arguments. So do `RSelect` over slots other than 64-bit words
-  and `RArrLoadLit` / `RArrStoreLit` over slots other than a `TArr _ .TU64` array
-  bound as `.memref` and a 64-bit word, which the front lowers to the opaque `extCall "select"`,
-  `"arrLoad:i"` and `"arrStore:i"`. An arm would abstract such a node to a zero write.
-
-Six of these 11 are in the emit leg's fragment `IsCoveredS`.
-
-#### Leaf calls: the boundary of `semScalar`
+### Leaf calls at a leaf oracle
 
 `LowCT.LeafSpec` gives the leaf calls their meaning in `RustExec` (`call`,
 `tupleLoad`, and `arrLoad` / `arrStore`, of which `semScalar` fixes the word-cell
 instance `memGetDyn` / `memSetDyn`), and `CompileFromHaxLink.LeafSpec` relates
-`jasminExtSem` to a specification. Neither enters `semScalar`, so no statement over
-`semScalar` constrains the value a leaf call returns: the emit-leg preservation
-theorems `translateDialectControl_denote_ctl`, `semScalarToJasminCom_denote_eq` and
-`rustToJasminCom_endToEnd_unconditional` equate two opaque defaults at those nodes, the
-dialect `extCall` and the jasmin `extCall` both denoting `CryptoTy.default`.
+`jasminExtSem` to a specification. `semScalar` binds the destination of a leaf call to
+`CryptoTy.default`, and the emit-leg preservation theorems
+`translateDialectControl_denote_ctl`, `semScalarToJasminCom_denote_eq` and
+`rustToJasminCom_endToEnd_unconditional` are stated at that default, which the dialect
+`extCall` and the jasmin `extCall` both denote.
 
 A leaf oracle `SemLeafSpec` (`VIR/CatCryptLeafOracle.lean`) maps a leaf name, the
 destination's `CryptoTy` and the typed argument values to a value of that type;
@@ -697,8 +645,7 @@ alongside the default statement, which is unchanged:
    `rustExec_semScalarL_cloneCall` relates the two under `CloneAgrees ls`, the statement
    that the `"clone"` leaf returns its argument. `zeroLeafSpec` agrees with `defaultLeaf`
    (`callAgrees_zero`, `tupleLoadLeafAgrees_zero`, `arrStoreAgrees_zero`,
-   `rustExec_semScalar_call_zero`). `RSelect` has no such statement: `RustExec` reads the
-   selector from the scalar store, which the encoding does not relate to the environment.
+   `rustExec_semScalar_call_zero`).
 4. `ascendGLL lf lfa L fuel` (`Ascent/GuardsLeaf.lean`) is `ascendGL L fuel` with abstract
    word leaves `lf : AbsLeaves`, an optional function `List AVal → ZMod 2^64` per name,
    and abstract array leaves `lfa : AbsArrLeaves`, an optional function
@@ -748,128 +695,104 @@ instances at `defaultLeaf`. `semScalarLToJasminCom_denote_eq`
 transport of the value `semScalarL ls` leaves in the tracked output. `jleafOfAbs fs`
 is the jasmin oracle of a family of abstract leaves on `u64` destinations,
 `leafTransport_leafOfAbs` relates it to `leafOfAbs fs`, and
-`leafK_semScalarLToJasminCom` is the composed statement at `leafK`. `RustExec` reads the
-selector of `RSelect` from the scalar store, which the encoding of item 3 does not
-relate to the environment, so no `RustExec` statement covers that node.
+`leafK_semScalarLToJasminCom` is the composed statement at `leafK`.
 
-The leaf rules of the ascent write a `u64` destination through a word leaf or a
-layout-array destination through an array leaf; `RArrLoadLit` into a layout-array
-destination stays unsupported. The `RustExec` bridge covers `RCall`, `RCallDstThreaded`,
-`RTupleLoad`, `RArrLoadLit`, `RArrStoreLit`, `RCallSwap`, `RCloneCall` and `RCallN`, the
-last two under `CloneAgrees` and outside destinations that are also arguments.
+## Results parametric in the machine state
 
-`ascendGL` also returns
-the unsupported guard for `RLetU64Zero` over a body containing a loop, for `RIfNz` and
-`RWhileNz` on a temporary name, for `RIfNz` shapes other than a guarded then-branch or a
-φ-merge of two literal writes to one name, for `RScalarSetExpr` outside `srcClean`, and
-for word names the layout reserves. `ascendGL_sound` holds for every command, but at
-those nodes its precondition `guardsHold` is unsatisfiable; `tsLowCTL` returns `none`
-for them (`tsLowCTL_isSome_iff`). The three-name leaves `corres_arrStore` and
-`corres_arrLoad` over `SRarr` and `SRarrLoad` are not used by `ascendGL`, whose relation
-ties the whole store.
-
-### Worked examples with symbolic inputs
-
-The results that are parametric in the machine state and conclude an arithmetic
-specification are stated over instruction lists built by Lean definitions
-(`adcxBlock`, `kernelBlock`, `emitMontRedc4Block`), not over the output of a compiler
-front: `mpnAdd_runBlock`, `mpnSub_runBlock`, `mpnAddKernel_runBlock` and
-`mpnSubKernel_runBlock` over any number of limbs, `feAddN_capstone`,
-`feAdd4_capstone_field` and `corresJ_montRedc4Block`. `corresJ_sbbChain`,
+The following results hold for every machine state and conclude an arithmetic
+specification. They are stated over instruction lists built by Lean definitions
+(`adcxBlock`, `kernelBlock`, `emitMontRedc4Block`): `mpnAdd_runBlock`,
+`mpnSub_runBlock`, `mpnAddKernel_runBlock` and `mpnSubKernel_runBlock` over any number
+of limbs ([MpnAdxCorres.lean](CatCrypt/Crypto/SecureCompilation/Ascent/MpnAdxCorres.lean)), `feAddN_capstone` and
+`feAdd4_capstone_field` ([Demos/HeapAbs](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/HeapAbs.lean)), and
+`corresJ_montRedc4Block` ([FieldReduce.lean](CatCrypt/Crypto/SecureCompilation/Ascent/FieldReduce.lean)). `corresJ_sbbChain`,
 `corresJ_adxBlock` and `corresR_subBorrow3` refine their blocks to abstract folds
 (`sbbAbs`, `adxAbs`, `subBorrow3Step`); `feSub4_capstone` and `feMul4_capstone` are
 identities about the limb functions `sbbLimbs` and `mulxLimbs` under `SRcarryLimbs`.
 
 On compiler output, `add_descent_x86`, `add_descent_runBlock` and `add_descent_riscv`
-establish `a + b` for symbolic `a` and `b` through the descent. Their ascent
-counterparts `add_descent_solver` and `compiled_refines` refine the same blocks to the
-two-address fold, such as `addStepX ∘ movStepX`, and not to `a + b`. `Demos/Decide`
-and `Demos/Scalar` ascend a `LowCT` kernel to its syntactic specification `asemWExpr`,
-`asemWBV` or a `wordStep` fold. `keccakRoundBody_bitwise` targets
-`asemWBV keccakRoundBody`, which is not related to FIPS 202; the FIPS 202 statement for
-the emitted Keccak permutation is `keccakF1600Com_denote_spec` in
-`CatCrypt/Crypto/SecureCompilation/VIR/KeccakFipsAscent.lean`, which does not use
-`Corres`. `Demos/EarlyExit` and
-`searchU_ts_refines` are stated at hax-lean's `denote'` and `pipeline`, with no `LowCT`
-term and no emit leg.
+establish `a + b` for symbolic `a` and `b` through the descent. `add_descent_solver`
+and `compiled_refines` refine the same compiled blocks, translated to `JInstr`, to the
+fold of their two-address value steps, such as `addStepX ∘ movStepX`, over the
+register relation `SRx`. `Demos/Decide` and `Demos/Scalar` ascend a `LowCT` kernel to
+its syntactic specification `asemWExpr`, `asemWBV` or a `wordStep` fold;
+`keccakRoundBody_bitwise` is the correspondence of the Keccak round body with
+`asemWBV keccakRoundBody` over `SRwordBV`. The FIPS 202 statement for the emitted
+Keccak permutation is `keccakF1600Com_denote_spec`
+([KeccakFipsAscent.lean](CatCrypt/Crypto/SecureCompilation/VIR/KeccakFipsAscent.lean)). `Demos/EarlyExit` and
+`searchU_ts_refines` are stated at hax-lean's `denote'` and `pipeline`.
 
-### Hand-written assembly
+## Hand-written assembly
 
-`X86Backend/NasmParse.lean` reads the NASM Intel subset CryptOpt emits into `JInstr`
-blocks. `JInstr` covers Jasmin's scalar `x86_op` set except the instructions declined
-for constant time (`DIV`, `IDIV`, `CQO`, `BSR`, `BSF`, `BSWAP`, `LZCNT`, `TZCNT`,
-`POPCNT`, `PDEP`, `PEXT`); the `JInstr` docstring in `X86Backend/JasminModel.lean` lists
-them with the reason. The CryptOpt Curve25519 `solinas_square` kernel from fiat-crypto
+[NasmParse.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/NasmParse.lean) reads the NASM Intel subset CryptOpt
+emits into `JInstr` blocks. `JInstr` covers Jasmin's scalar `x86_op` set except the
+instructions declined for constant time (`DIV`, `IDIV`, `CQO`, `BSR`, `BSF`, `BSWAP`,
+`LZCNT`, `TZCNT`, `POPCNT`, `PDEP`, `PEXT`); the `JInstr` docstring in
+[JasminModel.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/JasminModel.lean) lists them with the reason. The
+CryptOpt Curve25519 `solinas_square` kernel from fiat-crypto
 (`bench/cryptopt/fiat_curve25519_solinas_square.asm`) parses in full;
 `solinasSquareBlock` is its 99 instructions, and `lake exe nasm-parse-kat` fails unless
-parsing the file yields exactly that list. The route to its specification has three
-results:
+parsing the file yields exactly that list.
 
-- `solinasSquareBlock_corres` (`Ascent/CorresX86Mem.lean`): the block refines its
-  abstract run `absRunMem` over `SRmem solinasCells`, which relates JState's name-keyed
-  memory to an address-keyed abstract memory on the fourteen cells the kernel reads and
-  writes.
-- `absRunMem_solinas_spec` (`Ascent/SolinasSquareCorrect.lean`): the abstract run
-  satisfies `SolinasSquareSpec`, fiat-crypto's `sqr_correct` for `2^255 - 19` on four
-  saturated limbs, when the spill slots and the input limbs have distinct addresses.
-- `solinasSquare_correct`: for every `JState` whose fourteen tracked cells have
-  separated addresses, the output limbs of `runBlock st solinasSquareBlock` are
-  congruent to the square of the input limbs modulo `2^255 - 19`.
+| What is proved | Programs | Lean name |
+|---|---|---|
+| the block refines its abstract run `absRunMem` over `SRmem solinasCells`, which relates the name-keyed memory of `JState` to an address-keyed abstract memory on the fourteen cells the kernel reads and writes | `solinasSquareBlock` | [`solinasSquareBlock_corres`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresX86Mem.lean) |
+| the abstract run satisfies `SolinasSquareSpec`, fiat-crypto's `sqr_correct` for `2^255 - 19` on four saturated limbs | abstract states whose spill slots and input limbs have distinct addresses | [`absRunMem_solinas_spec`](CatCrypt/Crypto/SecureCompilation/Ascent/SolinasSquareCorrect.lean) |
+| the output limbs of `runBlock st solinasSquareBlock` are congruent to the square of the input limbs modulo `2^255 - 19` | every `JState` whose fourteen tracked cells have separated addresses | [`solinasSquare_correct`](CatCrypt/Crypto/SecureCompilation/Ascent/SolinasSquareCorrect.lean) |
 
-The abstract state carries the registers, `CF` and `OF`. The leaves for `setcc` and
-`cmovcc` are stated at the conditions that read those two flags; a kernel branching on
-`ZF`, `SF` or `PF` needs further leaves. `JInstr` has memory-source forms of `add` (both
-memory kinds), `adcx`, `adox`, `imul` and three-operand `imul` (`addMem`, `addToMem`,
-`adcxMem`, `adoxMem`, `imulMem`, `imulriMem`), each equal to a load into a scratch
-register followed by the register form (`runBlock_loadMem_*_eq_*Mem`), with `CorresJ`
-leaves in `Ascent/CorresX86Mem.lean`.
+The abstract state carries the registers, `CF` and `OF`, and the leaves for `setcc` and
+`cmovcc` are stated at the conditions that read those two flags. `JInstr` has
+memory-source forms of `add` (both memory kinds), `adcx`, `adox`, `imul` and
+three-operand `imul` (`addMem`, `addToMem`, `adcxMem`, `adoxMem`, `imulMem`,
+`imulriMem`), each equal to a load into a scratch register followed by the register
+form (`runBlock_loadMem_*_eq_*Mem`), with `CorresJ` leaves in
+[CorresX86Mem.lean](CatCrypt/Crypto/SecureCompilation/Ascent/CorresX86Mem.lean).
 
-`JInstr` also has BMI2 `bzhi` (`x86_BZHI`, following the Intel SDM, since Jasmin's
-`x86_op` has no `BZHI`), in the constant-time set. With it the CryptOpt Curve25519
-`carry_mul` kernel (`bench/cryptopt/fiat_curve25519_carry_mul.asm`) parses in full:
-`carryMulBlock` (`X86Backend/CarryMulBlock.lean`) is its 167 instructions, checked by
-the same `lake exe nasm-parse-kat`. The kernel writes registers it uses as memory bases
-(`sub rsp`, `xchg rdx, rax`, `mov r10, [rsp - 0x50]`), so `SRmem` over one cell list
-does not hold across the whole block; the block splits at those instructions:
+`JInstr` also has BMI2 `bzhi` (`x86_BZHI`, following the Intel SDM), in the
+constant-time set. With it the CryptOpt Curve25519 `carry_mul` kernel
+(`bench/cryptopt/fiat_curve25519_carry_mul.asm`) parses in full: `carryMulBlock`
+([CarryMulBlock.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean)) is its 167 instructions,
+checked by the same `lake exe nasm-parse-kat`. The kernel writes registers it uses as
+memory bases (`sub rsp`, `xchg rdx, rax`, `mov r10, [rsp - 0x50]`), and the proof splits
+the block at those instructions, with `SRmem` on one cell list per part; instructions
+1–4, 147 and 167 are stepped on the machine state directly.
 
-- `carryMulMid_corres` and `carryMulTail_corres` (`Ascent/CarryMulCorres.lean`):
-  instructions 5–146 and 148–166 refine their abstract runs over `SRmem` on their own
-  cell lists (inputs and frame slots; outputs and saved-register slots).
-- `absRunMem_carryMulMid_spec` and `absRunMem_carryMulTail_spec`
-  (`Ascent/CarryMulCorrect.lean`): for inputs below `2^54` apart from the frame slots,
-  the two abstract runs compute limbs whose value is congruent to the product of the
-  inputs modulo `2^255 - 19`.
-- `carryMul_correct`: for every `JState` whose input limbs are below `2^54`, whose
-  cells are separated at the addresses the kernel uses, and whose memory bank `%rax`
-  agrees with `%rdx` on the second input, the five words `runBlock st carryMulBlock`
-  writes through `%r10` meet `CarryMulSpec`, fiat-crypto's `mul_correct` congruence.
-  Instructions 1–4, 147 and 167 are stepped on the machine state directly.
+| What is proved | Programs | Lean name |
+|---|---|---|
+| each part refines its abstract run over `SRmem` on its own cell list (inputs and frame slots; outputs and saved-register slots) | instructions 5–146 and 148–166 of `carryMulBlock` | [`carryMulMid_corres`](CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorres.lean), [`carryMulTail_corres`](CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorres.lean) |
+| the two abstract runs compute limbs whose value is congruent to the product of the inputs modulo `2^255 - 19` | inputs below `2^54`, at addresses apart from the frame slots | [`absRunMem_carryMulMid_spec`](CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean), [`absRunMem_carryMulTail_spec`](CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean) |
+| the five words `runBlock st carryMulBlock` writes through `%r10` meet `CarryMulSpec`, fiat-crypto's `mul_correct` congruence | every `JState` whose input limbs are below `2^54`, whose cells are separated at the addresses the kernel uses, and whose memory bank `%rax` agrees with `%rdx` on the second input | [`carryMul_correct`](CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean) |
 
-### The descent contracts and the ascent meet at the x86 register file
+## Descent contracts at the x86 register file
 
-`frefines_ret` (`CorresDescent.lean`) is stated over `Com fieldDialect`, and
-`corresScalar_frontDenote_two` over `Com catCryptDialect`. No program in the package is
-reached by both. At the x86 machine, `corres_of_refines_x86_runBlock` carries a descent
-`Refines` to a `CorresMPost` at `runBlockStep` whose entry and exit relations read only
-the register file. It covers every instruction that `x86Target.compile` emits for shift
-immediates below 64 (`compile_XJFaithful` at the track `XJTrack.regs`). A relation that
-tracks a flag, such as `SRcarry`, is outside this bridge: `XJFaithful` excludes `imul`,
-the bitwise instructions and the shifts whenever `CF`, `OF` or `ZF` is tracked, admits
-`adc` and `sbb` only when `CF` is tracked and `OF` and `ZF` are not, and admits `neg`
-only when neither `OF` nor `ZF` is tracked.
+`frefines_ret` ([CorresDescent.lean](CatCrypt/Crypto/SecureCompilation/Ascent/CorresDescent.lean)) is stated over
+`Com fieldDialect`, and `corresScalar_frontDenote_two` over `Com catCryptDialect`. At
+the x86 machine, `corres_of_refines_x86_runBlock`
+([XrunRunBlockTie.lean](CatCrypt/Crypto/SecureCompilation/Ascent/XrunRunBlockTie.lean)) carries a descent `Refines` to a
+`CorresMPost` at `runBlockStep` whose entry and exit relations read the register file.
+It applies to every instruction that `x86Target.compile` emits for shift immediates
+below 64 (`compile_XJFaithful` at the track `XJTrack.regs`).
 
-### Word width
+`XJFaithful t` is the set of instructions on which the relation `XJRel t` between the
+two x86 models is preserved, for a track `t` of the flags `CF`, `OF` and `ZF`. It
+contains `mov`, `mulx`, `not`, `add` and `sub` at every track; `neg` when `OF` and `ZF`
+are untracked; `adc` and `sbb` when `CF` is tracked and `OF` and `ZF` are untracked;
+`adcx` when `CF` is tracked and `adox` when `OF` is tracked; `mul`, the bitwise
+instructions and the shifts by an immediate below 64 when the three flags are
+untracked; and the conditional moves on `CF` or `ZF` when that flag is tracked.
 
-The `LowCT` value leaves are at width 64. `Width32Leaf.lean` provides the width-32 word
-isomorphism `wEnc32` and its value transfer `wEnc32_evalBV32_evalZMod32`, but no
-`Corres` leaf at width 32: `semScalar_setExpr_width64` proves that `semScalar` writes a
-64-bit slot for every `RScalarSetExpr`.
+## Word width of the value leaves
+
+The `LowCT` value leaves are at width 64: `semScalar_setExpr_width64` proves that
+`semScalar` writes a 64-bit slot for every `RScalarSetExpr`.
+[Width32Leaf.lean](CatCrypt/Crypto/SecureCompilation/Ascent/Width32Leaf.lean) provides the width-32 word isomorphism `wEnc32`
+and its value transfer `wEnc32_evalBV32_evalZMod32`.
 
 ## Research probes outside the calculus
 
 The following modules explore extensions of the `Std.Do` weakest-precondition
-metatheory and of leakage reasoning. No module of the calculus, capstone or
-demonstration imports them, and the capstones do not depend on them.
+metatheory and of leakage reasoning. They are separate from the import closure of the
+calculus, the capstones and the demonstrations.
 
 Four modules are defined in this package, under
 `CatCrypt/Crypto/SecureCompilation/Ascent/`:

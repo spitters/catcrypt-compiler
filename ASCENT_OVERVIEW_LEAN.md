@@ -118,9 +118,8 @@ no step at `Lret`; the body followed by its return is treated as a callee over
 `x86Isa.withCalls`: for every arm of the gate the exported image, placed after a label and
 followed by a return, satisfies a procedure specification from an entry state with a return
 address (`gatedLoop_callee_procSpec` and its four companions in `ExportedProcSpecGated`;
-[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-bodies-as-callees)). Not covered: a body
-that itself contains calls. The named instances keep the compile equation as a hypothesis:
-no theorem states that the compiler accepts a concrete program.
+[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-bodies-as-callees)), for call-free
+bodies. The named instances take the compile equation as a hypothesis.
 
 Imported Jasmin with control flow (`Ascent/JasminJumpLevel`): `compileS` compiles a
 structured program to labelled code, `compileS_run` simulates a structured run on
@@ -256,9 +255,9 @@ The abstract function that the ascent outputs is `asemWExpr c` for the scalar en
 | type strengthening | `tsLowCTL` | `tsLowCT_sound` (`Ascent/Strengthen`); demo `feSubC_ts_refines` |
 | guards | `ascendG fuel c` | `ascendG_sound` (`Ascent/Guards`) |
 
-The value abstraction lives in a module named `HeapAbs` although it lifts no heap. The
-total abstraction gives 11 constructors the guard `False`
-([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#the-total-abstraction-assigns-an-unsatisfiable-guard-to-11-constructors)).
+The value abstraction is in the module `HeapAbs`. The constructors the total abstraction
+handles and the guards it assigns are listed in
+[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#the-total-abstraction-over-an-array-layout).
 
 ## 6. Loops, calls and frames
 
