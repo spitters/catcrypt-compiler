@@ -13,8 +13,9 @@ public import HaxAscent.Ascent.AscendHaxDemo
 
 The literal `Hax.Ascent.Demo.lineLit` (twenty bindings `x_k := x_{k-1} + k`) has the
 correspondence `line_corres_gen` with `lineFn a = a + 210` under the table `addBuiltins`.
-`addApp` reads the calls of that table: `Add` by `appArith`, on integer literals and on
-words.
+`addApp` reads the calls of that table: `Add` on two integer literals as the addition of
+integers, which is the value of `addBuiltins` and no operation of Rust, and `Add` on a word
+by `appArith`.
 
 * On an integer argument the reading `lineI n` returns a value (`lineI_ok`), and the
   correspondence gives the total triple `lineI_triple` and the `spec` form `lineI_spec`.
@@ -44,8 +45,11 @@ namespace CatCrypt.Hax.RustSemantics.SpecDemo
 open Aeneas.Std Aeneas.Std.WP Std.Do
 open Hax.Ascent Hax.Ascent.Demo
 
-/-- The reading of the calls of `addBuiltins`: `Add` as the checked addition. -/
+/-- The reading of the calls of `addBuiltins`: `Add` on two integer literals as the addition
+    of integers, the value of the table, and on a word operand as the checked addition
+    `appArith`. -/
 def addApp : String → List AVal → RustM AVal
+  | "Add", [.int n, .int m] => .ok (.int (n + m))
   | "Add", [a, b] => appArith .add a b
   | _, _ => .fail .undef
 
@@ -53,6 +57,8 @@ theorem addApp_ok : AppOk addBuiltins addApp := by
   intro f vs r h
   unfold addApp at h
   split at h
+  · cases h
+    rfl
   · obtain ⟨x, y, ha, hb, hr⟩ := appArith_ok h
     simp only [AVal.toValues, ha, hb, hr]
     rfl
@@ -72,7 +78,7 @@ theorem step_int (x y : String) (k m : Int) (b : Hax.ImpExpr) (ρ : AEnv)
     (hy : ρ y = some (.int m)) :
     toRustMS addApp (.letBind x (.app "Add" [.var y, .lit (.int k)]) b) ρ =
       toRustMS addApp b (ρ.upd x (.int (m + k))) := by
-  simp [toRustMS, hy, addApp, appArith, AOp.rt, Hax.add]
+  simp [toRustMS, hy, addApp]
 
 /-- The environment binding the parameter to an integer literal. -/
 def lineEnvI (n : Int) : AEnv := bindA [("a", .int n)]

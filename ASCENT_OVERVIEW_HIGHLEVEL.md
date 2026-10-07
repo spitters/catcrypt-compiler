@@ -234,8 +234,8 @@ when U₁ · U₂ fits the width, division and remainder when the divisor's lowe
 least one. Shifts tagged with their width are total when the shift amount has a range
 kind bounded by the width, with the result range stated; untagged shifts are outside the
 fragment. Signed checked arithmetic has no total kind: the value domain of the reading
-has no signed word, so signed addition, subtraction and multiplication compute the
-unbounded integer result where Rust fails on overflow. The example is an equality test on 32-byte
+has no signed word, so signed addition, subtraction and multiplication on two
+integers return no value in the reading. The example is an equality test on 32-byte
 arrays, a 32-step loop whose body is a conditional; its contract, in the form the hax
 Lean printer emits (a precondition, a postcondition and the triple between them), is
 closed from the correspondence, without a verification-condition proof over the body.

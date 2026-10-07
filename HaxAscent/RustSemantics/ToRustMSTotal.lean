@@ -32,7 +32,8 @@ a value. The triple has the statement of `fnCorres_toRustMS_triple` of
 ## The instance on `lineLit`
 
 `IsInt` is the class of integer literals; the reading of the calls `SpecDemo.addApp` of
-`ToRustMSSpecDemo` reads `Add` by `appArith` and is total on `IsInt` (`addApp_total`).
+`ToRustMSSpecDemo` reads `Add` on two literals as the addition of integers and is total on
+`IsInt` (`addApp_total`).
 `lineLit_straightOk` is decided by the kernel, and `lineLitI_triple` is the total triple of
 the reading of `lineLit` from an environment binding the parameter to an integer literal.
 
@@ -301,7 +302,7 @@ theorem addApp_total : AppTotalOn IsInt [("Add", 2)] SpecDemo.addApp := by
   | [u, w], _, hvs =>
     obtain ⟨n, rfl⟩ := hvs u (by simp)
     obtain ⟨m, rfl⟩ := hvs w (by simp)
-    exact ⟨.int (AOp.rt .add n m), rfl, _, rfl⟩
+    exact ⟨.int (n + m), rfl, _, rfl⟩
 
 /-- `lineLit` is in the straight-line fragment over the parameter `a`. -/
 theorem lineLit_straightOk : straightOk [("Add", 2)] ["a"] lineLit = true := by

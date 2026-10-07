@@ -45,9 +45,8 @@ on an amount in `[Lₐ, Uₐ)` with `Uₐ ≤ w` they are total, `Shl#t` under
 `U * 2 ^ (Uₐ - 1) ≤ 2 ^ w` with result in `[L * 2 ^ Lₐ, U * 2 ^ (Uₐ - 1))` and `Shr#t` with
 result in `[L / 2 ^ (Uₐ - 1), U)`. The untagged `Shl` and `Shr` are not routed by `appRt` and
 fail. `AVal` has no signed word, so checked signed arithmetic over `IScalar` has no kind; the
-untagged arithmetic on two integer literals is the unbounded integer operation and is total
-at the kind `int` (`appTyped_intArith`), without the overflow failure of Rust's signed
-operations.
+untagged arithmetic on two integer literals has no width and fails
+(`appRt_arith_int_undef`), so the kind `int` has no arithmetic signature.
 
 `fnCorres_toRustMS_triple_of_kindOf` combines the termination theorem with
 `fnCorres_toRustMS`: a function correspondence, `AppOk`, `AppTyped` and `EnvTy` give the
@@ -86,7 +85,7 @@ reading.
 * `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
   `appRt_div_total`, `appRt_rem_total`
 * `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem`
-* `appTyped_intArith`, `appRt_Shl_undef`, `appRt_Shr_undef`, `appRt_shl_total`,
+* `appRt_arith_int_undef`, `appRt_Shl_undef`, `appRt_Shr_undef`, `appRt_shl_total`,
   `appRt_shr_total`, `appTyped_shl`, `appTyped_shr`
 * `keyEqLit_kind`, `keyEqLit_triple`, `varLoopLit_kind`, `varLoopLit_total`
 -/
@@ -664,34 +663,19 @@ theorem appTyped_rem
 /-! ## Arithmetic on integer literals
 
 `AVal` has no signed word: the reading `appRt` routes `Add`, `Sub`, `Mul`, `Div` and `Rem`
-to `appArith`, which reads a word operand only at an unsigned width (`AVal.asW`) and computes
-on two integer literals the unbounded integer operation `AOp.rt`. Checked signed arithmetic
-over `IScalar` therefore has no kind in this fragment; the literal arithmetic below is total
-without a width condition, so it does not model the overflow failure of Rust's checked
-signed operations. -/
+to `appArith`, which reads a word operand only at an unsigned width (`AVal.asW`) and an
+integer literal only at the width of a word operand. Two integer literals have no width, so
+the reading returns no value on them (`appRt_arith_int_undef`), and the kind `int` has no
+arithmetic signature. Checked signed arithmetic over `IScalar` has no kind in this fragment
+either. -/
 
-/-- **Literal arithmetic in the fragment.** `appRt` is typed by every signature list of
-    untagged arithmetic operations `f : int → int → int` with `f` one of `Add`, `Sub`, `Mul`,
-    `Div`, `Rem`; the result is the unbounded integer operation of the runtime. -/
-theorem appTyped_intArith {κ : Type} {H : κ → AVal → Prop}
-    {sig : List (String × List (Kd κ) × Kd κ)}
-    (hsig : ∀ s ∈ sig, ∃ f, s = (f, [.int, .int], .int) ∧
-      f ∈ ["Add", "Sub", "Mul", "Div", "Rem"]) :
-    AppTyped H sig appRt := by
-  intro f ks k vs hs hvs
-  obtain ⟨g, hseq, hg⟩ := hsig _ hs
-  simp only [Prod.mk.injEq] at hseq
-  obtain ⟨rfl, rfl, rfl⟩ := hseq
-  match vs, hvs with
-  | [u, w], .cons ⟨n, hn⟩ (.cons ⟨m, hm⟩ .nil) =>
-    subst hn hm
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hg
-    rcases hg with rfl | rfl | rfl | rfl | rfl
-    · exact ⟨_, by rw [appRt_Add]; rfl, _, rfl⟩
-    · exact ⟨_, by rw [appRt_Sub]; rfl, _, rfl⟩
-    · exact ⟨_, by rw [appRt_Mul]; rfl, _, rfl⟩
-    · exact ⟨_, by rw [appRt_Div]; rfl, _, rfl⟩
-    · exact ⟨_, by rw [appRt_Rem]; rfl, _, rfl⟩
+/-- **Literal arithmetic has no reading.** On two integer literals, `appRt` fails at each of
+    the untagged arithmetic names `Add`, `Sub`, `Mul`, `Div`, `Rem`: no operand gives the
+    width at which Rust checks the operation. -/
+theorem appRt_arith_int_undef {f : String} (hf : f ∈ ["Add", "Sub", "Mul", "Div", "Rem"])
+    (n m : Int) : appRt f [.int n, .int m] = .fail .undef := by
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
+  rcases hf with rfl | rfl | rfl | rfl | rfl <;> rfl
 
 /-! ## Shifts on word ranges
 

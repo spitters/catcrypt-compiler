@@ -25,7 +25,10 @@ tuples and the unit value.
 `WordOp` at each of the six unsigned widths, `Not#w`, `cast#w`, the untagged checked
 operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, and the array operations `index`,
 `array_update` and `repeat` on the Aeneas `Array` model. An untyped integer literal is
-read at the width of the operation that consumes it (`AVal.asW`). The loop index is the
+read at the width of the operation that consumes it (`AVal.asW`). An untagged checked
+operation takes its width from a word operand, fails where the Aeneas operation at that
+width fails, and returns no value on two integer literals (`appArith_int_int`), so every
+value it returns is a word (`appArith_word`). The loop index is the
 `usize` word `⟨BitVec.ofNat _ i⟩`, as in the hax backend's `fold_range`.
 
 ## Pasting
@@ -243,10 +246,11 @@ def appWord (ty : UScalarTy) (o : WordOp) (a b : AVal) : RustM AVal := do
   let r ← o.aen x y
   .ok (.w ty r)
 
-/-- An untagged checked operation: on two literals the integer operation, otherwise the
-    Aeneas operation at the width of the word operand. -/
+/-- An untagged checked operation: the Aeneas operation at the width of the word operand,
+    which fails where Rust panics. An integer literal beside a word is read at the width of
+    the word and must be in its range. Two integer literals have no width in this reading,
+    and the operation returns no value on them. -/
 def appArith (o : AOp) : AVal → AVal → RustM AVal
-  | .int n, .int m => .ok (.int (o.rt n m))
   | .w ty x, b => do
     let y ← b.asW ty
     let r ← o.aen x y
@@ -402,32 +406,39 @@ theorem appWord_ok {ty : UScalarTy} {o : WordOp} {a b r : AVal} (h : appWord ty 
   show Hax.Value.int (enc r') = _
   rw [rcompOk_iff.mp (WordOp.square o x y) r' hr']
 
-theorem appArith_ok {o : AOp} {a b r : AVal} (h : appArith o a b = .ok r) :
-    ∃ x y : Int, a.toValue = .int x ∧ b.toValue = .int y ∧ r.toValue = .int (o.rt x y) := by
+/-- An untagged checked operation returns no value on two integer literals. -/
+theorem appArith_int_int (o : AOp) (n m : Int) :
+    appArith o (.int n) (.int m) = .fail .undef := rfl
+
+/-- A value of an untagged checked operation is a word: the value of the Aeneas operation
+    at one width on two words of that width, which the operands encode. -/
+theorem appArith_word {o : AOp} {a b r : AVal} (h : appArith o a b = .ok r) :
+    ∃ (ty : UScalarTy) (x y z : UScalar ty), a.toValue = .int (enc x) ∧
+      b.toValue = .int (enc y) ∧ o.aen x y = .ok z ∧ r = .w ty z := by
   cases a with
   | int n =>
     cases b with
-    | int m =>
-      cases h
-      exact ⟨n, m, rfl, rfl, rfl⟩
     | w ty y =>
       simp only [appArith] at h
       obtain ⟨x, hx, h⟩ := rustM_bind_ok h
       obtain ⟨r', hr', h⟩ := rustM_bind_ok h
       cases h
-      refine ⟨n, enc y, rfl, rfl, ?_⟩
-      show Hax.Value.int (enc r') = _
-      rw [rcompOk_iff.mp (AOp.square o x y) r' hr', litA_ok hx]
+      exact ⟨ty, x, y, r', by rw [AVal.toValue, litA_ok hx], rfl, hr', rfl⟩
     | _ => simp [appArith] at h
   | w ty x =>
     simp only [appArith] at h
     obtain ⟨y, hy, h⟩ := rustM_bind_ok h
     obtain ⟨r', hr', h⟩ := rustM_bind_ok h
     cases h
-    refine ⟨enc x, enc y, rfl, AVal.asW_ok hy, ?_⟩
-    show Hax.Value.int (enc r') = _
-    rw [rcompOk_iff.mp (AOp.square o x y) r' hr']
+    exact ⟨ty, x, y, r', rfl, AVal.asW_ok hy, hr', rfl⟩
   | _ => simp [appArith] at h
+
+theorem appArith_ok {o : AOp} {a b r : AVal} (h : appArith o a b = .ok r) :
+    ∃ x y : Int, a.toValue = .int x ∧ b.toValue = .int y ∧ r.toValue = .int (o.rt x y) := by
+  obtain ⟨ty, x, y, z, ha, hb, hz, rfl⟩ := appArith_word h
+  refine ⟨enc x, enc y, ha, hb, ?_⟩
+  show Hax.Value.int (enc z) = _
+  rw [rcompOk_iff.mp (AOp.square o x y) z hz]
 
 theorem appIndex_ok {a i r : AVal} (h : appIndex a i = .ok r) :
     ∃ vs j, a.toValue = .array vs ∧ i.toValue = .int j ∧
