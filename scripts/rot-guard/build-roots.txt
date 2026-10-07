@@ -161,7 +161,6 @@ CatCrypt.Crypto.Optimizer.Lattice.NttMultiplyGeneric
 CatCrypt.Crypto.Optimizer.LoopInvariantMotion
 CatCrypt.Crypto.Optimizer.PackedRotateVsimd
 CatCrypt.Crypto.Optimizer.PipelineSmokeKat
-CatCrypt.Crypto.Optimizer.Rewrite.AegraphNFLeak
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.BatchInverseGeneric
@@ -182,6 +181,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.MontDomainElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryTransport
 CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.RadixDecompGeneric
+CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
 CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 CatCrypt.Crypto.Optimizer.Rewrite.WindowedScalarMulGeneric
 CatCrypt.Crypto.Optimizer.ScheduleSearchMontMulNtt
