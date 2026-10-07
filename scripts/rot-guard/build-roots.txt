@@ -791,7 +791,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Miller
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254Fp2AddSubKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit
-CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSig
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayQrObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayTransposeObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
@@ -862,6 +861,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
