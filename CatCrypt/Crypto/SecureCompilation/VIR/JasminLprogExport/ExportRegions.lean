@@ -77,6 +77,69 @@ forLoop (forFrame), labels n, n+1         whileLoop (whileFrame), label n
 
 A `call` is refused.
 
+## Carried arrays of a counted loop
+
+`forArrFrame` is the frame of a counted loop whose carried tuple holds stack arrays beside
+registers. `exportR` builds its `forLoop` arm from `forFrame`, the frame of register
+carried types; `forArrFrame` has the same layout with typed moves in the place of the
+register copies.
+
+* **Representation.** A carried array of the type `stackArr w n` at position `j` lives in
+  the array cell of the carried name `car_j`, the name whose register cell holds a carried
+  register at that position. The name is the same for every trip, so the body reads the
+  carried array through `resolveVar` as it reads any variable, and the store agreement at
+  the top label is `StoreAgreesM` over the carried block (`storeAgreesM_append_arr`).
+* **Array move.** The body is exported unchanged: its bindings are in single-assignment
+  form and its last store writes a name of its own depth. The frame moves the returned
+  array to the carried name with `arrMove`: a `LOADIDX` of one word of the source and a
+  `STOREIDX` of that word at the same index with the source as base and the carried name
+  as destination. The store writes a word the source holds, so the destination receives
+  the array of the source (`stackSet_stackGet_self`). This is the write-back of the
+  accumulator loop `loopArrWritebackMN` of `JasminLsemMemSourceTieArrUncond`; the virtual
+  instruction set has no array-to-array move, and none is added.
+* **Why a move and not a destination.** Exporting the body with the carried name as the
+  destination of its last store would make the export of a region depend on its frame,
+  and a body that returns an array it did not write (a carried or an outer array) has no
+  last store to redirect. The move keeps `exportR` compositional and covers every body.
+* **Image.** The carried name, the names of the body's stores and the temporaries of the
+  assignment form one chain of `STOREIDX dst, base` links. An allocation that maps the
+  chain to one location turns each move into a load and a store of one word of the same
+  array, which is the in-place loop; the coalescing check of the straight-line route
+  (`coalesceB`, `chainAlias` of `ImageStraightRoute`) decides such a chain for a body
+  without a back edge.
+* **Assignment at the back edge.** `arrParMoves` moves each returned array to its carried
+  name directly when no returned name is a carried name, one move for each array, and
+  through the temporary names `regName (bodyD + i)` otherwise. The register results follow
+  through `parMoves`, as in `forFrame`.
+* **Index and scratch registers.** An array move reads an index register holding a word:
+  the count operand at the seeds, the trip index `regName d` at the back edge and at the
+  shift. The array moves of the shift run before its register copies, which overwrite
+  `regName d`.
+
+```
+forLoop with carried arrays (forArrFrame), labels n, n+1
+  <arrMove car_j, init_j>          (array positions; index: count)
+  MOV  car_j, init_j               (register positions)
+  MOV  r(d), #0
+  MOV  ctr, count
+  <zero-trip guard ctr n (n+1)>
+.n:
+  <body at depth d + 1 + |cs|>
+  <arrParMoves of the returned arrays>     (index: r(d))
+  <parMoves of the returned registers>
+  ADD  r(d), r(d), #1
+  SUB  ctr, ctr, #1
+  <back-edge guard ctr n>
+.n+1:
+  <arrMove r(d+k), r(d+1+k)>       (array positions; index: r(d))
+  MOV  r(d+k), r(d+1+k)            (register positions)
+```
+
+The steps of the three segments of the frame are proved: `forArrHead_steps` (the seeds and
+the compare), `forArrTail_steps` (the assignment at the back edge, the advance and the
+compare) and `forArrShift_steps` (the shift), each with the register cell of a carried
+register and the array cell of a carried array as its conclusion.
+
 ## The simulation statement
 
 `ExportRSim nArgs fn p` states that the code of `p`, placed anywhere in the body of a
@@ -129,6 +192,11 @@ program. `exportR` returns `none` exactly on a program with a `call`
   the fragment of a binding, the simulation statement, and returns under bindings.
 * `isRegTy`, `RegTys` — the types held in a register cell, and the lists of such types.
 * `RegionExportable` — the programs the export simulates.
+* `ArrMove`, `arrMove`, `arrMoves` — a move of an array between names and its instructions.
+* `regMoves`, `regPairs`, `arrPairs`, `typedMoves` — the moves of a list of typed pairs.
+* `arrStage`, `arrCommit`, `arrParMoves` — the parallel assignment of arrays.
+* `carriedPairs`, `shiftPairs`, `forArrFrame` — the typed pairs of a carried tuple and of
+  its shift, and the frame of a counted loop with carried arrays.
 
 ## Main results
 
@@ -162,6 +230,14 @@ program. `exportR` returns `none` exactly on a program with a `call`
 * `exportR_findLabelMem_none` — the export declares no label outside its interval.
 * `findLabelMem_eq_none_iff` — `findLabelMem` fails exactly on the labels not declared.
 * `x86Data_guardsPlain` — the guards of x86 satisfy `GuardsPlain`.
+* `steps_arrMove`, `steps_arrMoves` — an array move, and array moves as an assignment.
+* `steps_regMoves`, `steps_typedMoves` — register copies and typed moves as an assignment.
+* `steps_arrParMoves`, `steps_parMoves_pairs` — the parallel assignment of arrays and of
+  register pairs.
+* `storeAgreesM_append_arr` — the store agreement under a block of binders of register and
+  array types.
+* `forArrHead_steps`, `forArrTail_steps`, `forArrShift_steps` — the steps of the three
+  segments of `forArrFrame`.
 -/
 
 @[expose] public section
@@ -3257,5 +3333,994 @@ theorem exportR_noCall (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsNoC
   | call f args k _ =>
       intro d n r h
       simp [exportR] at h
+
+/-! ## 22. The move of an array between names -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond (lsemStepMem_loadIdx
+  lsemStepMem_storeIdx)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
+  (stackSet_stackGet_self)
+
+/-- A move of an array between names: the target name, the source name, and the width and
+    the length of the array. -/
+structure ArrMove where
+  /-- The name written. -/
+  dst : String
+  /-- The name read. -/
+  src : String
+  /-- The width of a word of the array. -/
+  w : Nat
+  /-- The number of words of the array. -/
+  n : Nat
+
+/-- The instructions of the array move `a`: the word of the source at the index held by
+    the register `z` is read into the scratch register `t`, and the store of that word at
+    the same index of the source is written to the target. The store writes a word the
+    source holds, so the target receives the array of the source. -/
+def arrMove (z t : String) (a : ArrMove) : List LinstrRM :=
+  [ (.Lopn [.reg t] "LOADIDX" [.arrIdx a.src z (a.w / 8)], .load a.w a.n)
+  , (.Lopn [.reg a.dst] "STOREIDX" [.arrIdx a.src z (a.w / 8), .reg t], .store a.w a.n) ]
+
+/-- The instructions of the array moves `mv`, in order. -/
+def arrMoves (z t : String) (mv : List ArrMove) : List LinstrRM := mv.flatMap (arrMove z t)
+
+@[simp] theorem arrMoves_nil (z t : String) : arrMoves z t [] = [] := rfl
+
+theorem arrMoves_cons (z t : String) (a : ArrMove) (mv : List ArrMove) :
+    arrMoves z t (a :: mv) = arrMove z t a ++ arrMoves z t mv := rfl
+
+@[simp] theorem arrMoves_length (z t : String) (mv : List ArrMove) :
+    (arrMoves z t mv).length = 2 * mv.length := by
+  induction mv with
+  | nil => rfl
+  | cons a mv ih =>
+      rw [arrMoves_cons, List.length_append, ih, List.length_cons]
+      simp only [arrMove, List.length_cons, List.length_nil]
+      omega
+
+theorem isLopn_arrMoves (z t : String) (mv : List ArrMove) : ∀ i ∈ arrMoves z t mv, IsLopn i := by
+  intro i hi
+  simp only [arrMoves, List.mem_flatMap, arrMove, List.mem_cons, List.not_mem_nil,
+    or_false] at hi
+  obtain ⟨a, _, rfl | rfl⟩ := hi
+  · exact ⟨_, _, _, rfl⟩
+  · exact ⟨_, _, _, rfl⟩
+
+@[simp] theorem labelsOf_arrMoves (z t : String) (mv : List ArrMove) :
+    labelsOf (arrMoves z t mv) = [] := labelsOf_of_isLopn (isLopn_arrMoves z t mv)
+
+@[simp] theorem targetsOf_arrMoves (z t : String) (mv : List ArrMove) :
+    targetsOf (arrMoves z t mv) = [] := targetsOf_of_isLopn (isLopn_arrMoves z t mv)
+
+/-- An array read at a shape is the cell of the carrier at that shape. The statement of
+    `JasminLsemExportCanon.larr_of_getArr`, a module this one does not import; its home is
+    beside `LstateM.getArr` in `JasminLsemMem`. -/
+theorem larr_eq_of_getArr {s : LstateM} {r : String} {w n : Nat} {arr : Fin n → BitVec w}
+    (h : s.getArr r w n = some arr) : s.larr r = ⟨w, n, arr⟩ := by
+  unfold LstateM.getArr at h
+  generalize s.larr r = c at h
+  obtain ⟨w', n', f⟩ := c
+  by_cases hw : w' = w
+  · subst hw
+    by_cases hn : n' = n
+    · subst hn
+      simpa using h
+    · simp [hn] at h
+  · simp [hw] at h
+
+/-- Names with the same cell of the carrier read the same at every shape. -/
+theorem getArr_of_larr_eq {s s' : LstateM} {r r' : String} (w n : Nat)
+    (h : s.larr r = s'.larr r') : s.getArr r w n = s'.getArr r' w n := by
+  unfold LstateM.getArr
+  rw [h]
+
+/-- **An array move** is two steps that write the cell of the source to the target, keep
+    every other cell of the carrier, and keep every register other than the scratch
+    register. The index register holds a word and the source an array of the shape of the
+    move. -/
+theorem steps_arrMove {P : LprogM} {z t : String} (a : ArrMove) (pre post : List LinstrRM)
+    (s : LstateMF) (hbody : P.body = pre ++ arrMove z t a ++ post) (hat : atPc P pre.length s)
+    (hzt : z ≠ t) {vi : BitVec 64} (hz : s.prog.base.reg.lvm z = ⟨64, vi⟩)
+    {arr : Fin a.n → BitVec a.w} (ha : s.prog.base.getArr a.src a.w a.n = some arr) :
+    ∃ u, Steps x86Isa P 2 s u ∧ atPc P (pre.length + 2) u
+      ∧ (∀ r, u.prog.base.larr r
+          = if r = a.dst then s.prog.base.larr a.src else s.prog.base.larr r)
+      ∧ (∀ r, r ≠ t → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+  have h1 := lsemStepMem_loadIdx t a.src z (a.w / 8) arr vi s.prog.base ha
+    (getW_of_lvm _ z vi hz)
+  obtain ⟨hs1, hat1⟩ := x86_steps_mem hat
+    (fetch_of_body (xs := pre) (by rw [hbody]; simp only [arrMove, List.append_assoc,
+      List.cons_append, List.nil_append]; rfl) rfl) ⟨_, _, _, rfl⟩ rfl rfl h1
+  obtain ⟨s1, hs1d⟩ : ∃ s1, s1 = setBase s (withALUFlags
+      (.Lopn [.reg t] "LOADIDX" [.arrIdx a.src z (a.w / 8)], .load a.w a.n) s.prog.base
+      (s.prog.base.setReg t (stackGet arr vi.toNat)).nextPc) := ⟨_, rfl⟩
+  rw [← hs1d] at hs1 hat1
+  have hlarr1 : s1.prog.base.larr = s.prog.base.larr := by
+    rw [hs1d, setBase_base, withALUFlags_larr]
+    rfl
+  have hlvm1 : ∀ r, s1.prog.base.reg.lvm r
+      = if r = t then ⟨a.w, stackGet arr vi.toNat⟩ else s.prog.base.reg.lvm r := fun r => by
+    rw [hs1d, setBase_base, withALUFlags_reg]
+    simp only [LstateM.nextPc, LstateM.setReg, LstateN.lvm_nextPc, LstateN.lvm_setReg]
+  have ha1 : s1.prog.base.getArr a.src a.w a.n = some arr := by
+    rw [getArr_of_larr_eq (s' := s.prog.base) (r' := a.src) a.w a.n (by rw [hlarr1])]
+    exact ha
+  have h2 := lsemStepMem_storeIdx a.dst a.src z t (a.w / 8) arr vi (stackGet arr vi.toNat)
+    s1.prog.base ha1 (getW_of_lvm _ z vi (by rw [hlvm1, if_neg hzt]; exact hz))
+    (getW_of_lvm _ t _ (by rw [hlvm1, if_pos rfl]))
+  rw [stackSet_stackGet_self] at h2
+  obtain ⟨hs2, hat2⟩ := x86_steps_mem hat1
+    (fetch_of_body (xs := pre ++ [(.Lopn [.reg t] "LOADIDX" [.arrIdx a.src z (a.w / 8)],
+        .load a.w a.n)])
+      (by rw [hbody]; simp only [arrMove, List.append_assoc, List.cons_append,
+        List.nil_append]; rfl)
+      (by rw [List.length_append, List.length_singleton])) ⟨_, _, _, rfl⟩
+    (by unfold cmpArgs?; exact if_neg (by decide)) rfl h2
+  refine ⟨_, hs1.trans hs2, hat2, fun r => ?_, fun r hr => ?_⟩
+  · rw [setBase_base, withALUFlags_larr]
+    simp only [LstateM.nextPc, LstateM.setArr, hlarr1, larr_eq_of_getArr ha]
+  · rw [setBase_base, withALUFlags_reg]
+    simp only [LstateM.nextPc, LstateM.setArr, LstateN.lvm_nextPc]
+    rw [hlvm1, if_neg hr]
+
+/-- **Array moves as an assignment.** The moves `mv`, in which no move reads or writes the
+    target of an earlier one, write at each target the cell its source held before the
+    run, and keep every other cell of the carrier and every register other than the
+    scratch register. -/
+theorem steps_arrMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitVec 64) :
+    ∀ (mv : List ArrMove) (pre post : List LinstrRM) (s : LstateMF),
+      P.body = pre ++ arrMoves z t mv ++ post → atPc P pre.length s →
+      s.prog.base.reg.lvm z = ⟨64, vi⟩ →
+      mv.Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst) →
+      (∀ p ∈ mv, ∃ arr : Fin p.n → BitVec p.w, s.prog.base.getArr p.src p.w p.n = some arr) →
+      ∃ u, Steps x86Isa P (2 * mv.length) s u ∧ atPc P (pre.length + 2 * mv.length) u
+        ∧ (∀ p ∈ mv, u.prog.base.larr p.dst = s.prog.base.larr p.src)
+        ∧ (∀ r, (∀ p ∈ mv, r ≠ p.dst) → u.prog.base.larr r = s.prog.base.larr r)
+        ∧ (∀ r, r ≠ t → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+  intro mv
+  induction mv with
+  | nil =>
+      intro pre post s _ hat _ _ _
+      exact ⟨s, Steps.refl x86Isa P s, hat, fun p hp => absurd hp List.not_mem_nil,
+        fun _ _ => rfl, fun _ _ => rfl⟩
+  | cons a mv ih =>
+      intro pre post s hbody hat hz hpw hsrc
+      simp only [arrMoves_cons, List.append_assoc] at hbody
+      rw [← List.append_assoc] at hbody
+      obtain ⟨hpa, hpw'⟩ := List.pairwise_cons.mp hpw
+      obtain ⟨arr, harr⟩ := hsrc a List.mem_cons_self
+      obtain ⟨u1, hs1, hat1, hl1, hr1⟩ := steps_arrMove a pre _ s hbody hat hzt hz harr
+      obtain ⟨u, hs2, hat2, hm2, ho2, hr2⟩ := ih (pre ++ arrMove z t a) post u1
+        (by rw [hbody]; simp only [List.append_assoc])
+        (by rw [List.length_append]; exact hat1)
+        (by rw [hr1 z hzt]; exact hz) hpw'
+        (fun p hp => by
+          obtain ⟨arr', harr'⟩ := hsrc p (List.mem_cons_of_mem _ hp)
+          refine ⟨arr', ?_⟩
+          rw [getArr_of_larr_eq (s' := s.prog.base) (r' := p.src) p.w p.n
+            (by rw [hl1, if_neg (hpa p hp).1])]
+          exact harr')
+      refine ⟨u, ?_, ?_, fun p hp => ?_, fun r hr => ?_, fun r hr => ?_⟩
+      · have := hs1.trans hs2
+        rwa [show 2 + 2 * mv.length = 2 * (a :: mv).length by
+          rw [List.length_cons]; omega] at this
+      · rw [List.length_append] at hat2
+        rwa [show pre.length + (arrMove z t a).length + 2 * mv.length
+          = pre.length + 2 * (a :: mv).length by
+            simp only [arrMove, List.length_cons, List.length_nil]; omega] at hat2
+      · rcases List.mem_cons.mp hp with rfl | hp'
+        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hl1, if_pos rfl]
+        · rw [hm2 p hp', hl1, if_neg (hpa p hp').1]
+      · rw [ho2 r fun p hp => hr p (List.mem_cons_of_mem _ hp), hl1,
+          if_neg (hr a List.mem_cons_self)]
+      · rw [hr2 r hr, hr1 r hr]
+
+/-! ## 23. Typed moves -/
+
+/-- The register copies `MOV p.1, p.2` of a list of pairs of a target and a source. -/
+def regMoves (mv : List (String × String)) : List LinstrRM :=
+  mv.map fun p => movI p.1 (.reg p.2)
+
+/-- **Register copies as an assignment**, for a list of pairs in which no copy reads or
+    writes the target of an earlier one: each target receives the cell its source held
+    before the run, and every other cell and the array carrier are kept. -/
+theorem steps_regMoves {P : LprogM} :
+    ∀ (mv : List (String × String)) (pre post : List LinstrRM) (s : LstateMF),
+      P.body = pre ++ regMoves mv ++ post → atPc P pre.length s →
+      mv.Pairwise (fun p q => q.2 ≠ p.1 ∧ q.1 ≠ p.1) →
+      ∃ u, Steps x86Isa P mv.length s u ∧ atPc P (pre.length + mv.length) u
+        ∧ u.prog.base.larr = s.prog.base.larr
+        ∧ (∀ p ∈ mv, u.prog.base.reg.lvm p.1 = s.prog.base.reg.lvm p.2)
+        ∧ (∀ r, (∀ p ∈ mv, r ≠ p.1) → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+  intro mv
+  induction mv with
+  | nil =>
+      intro pre post s _ hat _
+      exact ⟨s, Steps.refl x86Isa P s, hat, rfl, fun p hp => absurd hp List.not_mem_nil,
+        fun _ _ => rfl⟩
+  | cons a mv ih =>
+      intro pre post s hbody hat hpw
+      obtain ⟨hpa, hpw'⟩ := List.pairwise_cons.mp hpw
+      have hbody' : P.body = pre ++ movI a.1 (.reg a.2) :: (regMoves mv ++ post) := by
+        rw [hbody]
+        simp only [regMoves, List.map_cons, List.append_assoc, List.cons_append]
+      obtain ⟨u1, hs1, hat1, hl1, hc1⟩ := steps_movReg hat (fetch_of_body hbody' rfl)
+      obtain ⟨u, hs2, hat2, hl2, hm2, ho2⟩ := ih (pre ++ [movI a.1 (.reg a.2)]) post u1
+        (by rw [hbody']; simp only [List.append_assoc, List.cons_append, List.nil_append])
+        (by rw [List.length_append, List.length_singleton]; exact hat1) hpw'
+      refine ⟨u, ?_, ?_, hl2.trans hl1, fun p hp => ?_, fun r hr => ?_⟩
+      · have := hs1.trans hs2
+        rwa [show 1 + mv.length = (a :: mv).length by rw [List.length_cons]; omega] at this
+      · rw [List.length_append, List.length_singleton] at hat2
+        rwa [show pre.length + 1 + mv.length = pre.length + (a :: mv).length by
+          rw [List.length_cons]; omega] at hat2
+      · rcases List.mem_cons.mp hp with rfl | hp'
+        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hc1, if_pos rfl]
+        · rw [hm2 p hp', hc1, if_neg (hpa p hp').1]
+      · rw [ho2 r fun p hp => hr p (List.mem_cons_of_mem _ hp), hc1,
+          if_neg (hr a List.mem_cons_self)]
+
+/-- The register copies of a list of typed pairs `(type, target, source)`: the pairs of a
+    type held in a register cell. -/
+def regPairs (tp : List (JasminTy × String × String)) : List (String × String) :=
+  (tp.filter fun p => isRegTy p.1).map Prod.snd
+
+/-- The array moves of a list of typed pairs `(type, target, source)`: the pairs of a
+    stack-array type, at the shape of the type. -/
+def arrPairs (tp : List (JasminTy × String × String)) : List ArrMove :=
+  tp.filterMap fun p =>
+    match p.1 with
+    | .stackArr w n => some ⟨p.2.1, p.2.2, w, n⟩
+    | _ => none
+
+/-- The moves of a list of typed pairs: the array moves of the array pairs, with the index
+    register `z` and the scratch register `t`, then the register copies of the register
+    pairs. -/
+def typedMoves (z t : String) (tp : List (JasminTy × String × String)) : List LinstrRM :=
+  arrMoves z t (arrPairs tp) ++ regMoves (regPairs tp)
+
+theorem mem_regPairs {tp : List (JasminTy × String × String)} {ty : JasminTy}
+    {dst src : String} (h : (ty, dst, src) ∈ tp) (hty : isRegTy ty = true) :
+    (dst, src) ∈ regPairs tp :=
+  List.mem_map.mpr ⟨_, List.mem_filter.mpr ⟨h, hty⟩, rfl⟩
+
+theorem mem_arrPairs {tp : List (JasminTy × String × String)} {w n : Nat}
+    {dst src : String} (h : (JasminTy.stackArr w n, dst, src) ∈ tp) :
+    (⟨dst, src, w, n⟩ : ArrMove) ∈ arrPairs tp :=
+  List.mem_filterMap.mpr ⟨_, h, rfl⟩
+
+theorem of_mem_regPairs {tp : List (JasminTy × String × String)} {p : String × String}
+    (h : p ∈ regPairs tp) : ∃ ty, (ty, p) ∈ tp := by
+  obtain ⟨q, hq, rfl⟩ := List.mem_map.mp h
+  exact ⟨q.1, (List.mem_filter.mp hq).1⟩
+
+theorem of_mem_arrPairs {tp : List (JasminTy × String × String)} {a : ArrMove}
+    (h : a ∈ arrPairs tp) : (JasminTy.stackArr a.w a.n, a.dst, a.src) ∈ tp := by
+  obtain ⟨⟨ty, dst, src⟩, hq, he⟩ := List.mem_filterMap.mp h
+  cases ty <;> simp only [Option.some.injEq, reduceCtorEq] at he
+  subst he
+  exact hq
+
+/-- **Typed moves as an assignment.** The moves of typed pairs in which no pair reads or
+    writes the target of an earlier one write at each register target the register cell of
+    its source and at each array target the array cell of its source, as held before the
+    run; every register that is neither a target nor the scratch register, and every
+    array cell that is not a target, is kept. -/
+theorem steps_typedMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitVec 64)
+    (tp : List (JasminTy × String × String)) (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ typedMoves z t tp ++ post) (hat : atPc P pre.length s)
+    (hz : s.prog.base.reg.lvm z = ⟨64, vi⟩)
+    (hpw : tp.Pairwise (fun p q => q.2.2 ≠ p.2.1 ∧ q.2.1 ≠ p.2.1))
+    (hsrc : ∀ (w n : Nat) (dst src : String), (JasminTy.stackArr w n, dst, src) ∈ tp →
+      ∃ arr : Fin n → BitVec w, s.prog.base.getArr src w n = some arr)
+    (ht : ∀ p ∈ tp, p.2.2 ≠ t) :
+    ∃ u, Steps x86Isa P (typedMoves z t tp).length s u
+      ∧ atPc P (pre.length + (typedMoves z t tp).length) u
+      ∧ (∀ (ty : JasminTy) (dst src : String), (ty, dst, src) ∈ tp → isRegTy ty = true →
+          u.prog.base.reg.lvm dst = s.prog.base.reg.lvm src)
+      ∧ (∀ (w n : Nat) (dst src : String), (JasminTy.stackArr w n, dst, src) ∈ tp →
+          u.prog.base.larr dst = s.prog.base.larr src)
+      ∧ (∀ r, (∀ p ∈ tp, r ≠ p.2.1) → r ≠ t →
+          u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
+      ∧ (∀ r, (∀ p ∈ tp, r ≠ p.2.1) → u.prog.base.larr r = s.prog.base.larr r) := by
+  have hpwA : (arrPairs tp).Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst) := by
+    refine List.Pairwise.filterMap _ (fun a a' h b hb b' hb' => ?_) hpw
+    obtain ⟨ty, dst, src⟩ := a
+    obtain ⟨ty', dst', src'⟩ := a'
+    cases ty <;> simp only [Option.some.injEq, reduceCtorEq] at hb
+    cases ty' <;> simp only [Option.some.injEq, reduceCtorEq] at hb'
+    subst hb hb'
+    exact h
+  have hpwR : (regPairs tp).Pairwise (fun p q => q.2 ≠ p.1 ∧ q.1 ≠ p.1) :=
+    List.Pairwise.map _ (fun _ _ h => h) (List.Pairwise.filter _ hpw)
+  rw [typedMoves, ← List.append_assoc] at hbody
+  obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrMoves hzt vi (arrPairs tp) pre
+    (regMoves (regPairs tp) ++ post) s (by rw [hbody]; simp only [List.append_assoc]) hat hz
+    hpwA (fun p hp => hsrc p.w p.n p.dst p.src (of_mem_arrPairs hp))
+  obtain ⟨u, hs2, hat2, hl2, hm2, ho2⟩ := steps_regMoves (regPairs tp)
+    (pre ++ arrMoves z t (arrPairs tp)) post u1 hbody
+    (by rw [List.length_append, arrMoves_length]; exact hat1) hpwR
+  have hlen : (typedMoves z t tp).length = 2 * (arrPairs tp).length + (regPairs tp).length := by
+    rw [typedMoves, List.length_append, arrMoves_length, regMoves, List.length_map]
+  refine ⟨u, ?_, ?_, fun ty dst src h hty => ?_, fun w n dst src h => ?_, fun r hr hrt => ?_,
+    fun r hr => ?_⟩
+  · rw [hlen]
+    exact hs1.trans hs2
+  · rw [hlen, ← Nat.add_assoc]
+    rwa [List.length_append, arrMoves_length] at hat2
+  · rw [hm2 _ (mem_regPairs h hty)]
+    exact hr1 src (ht _ h)
+  · rw [hl2]
+    exact hm1 _ (mem_arrPairs h)
+  · rw [ho2 r fun p hp => by
+      obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+      exact hr _ hq]
+    exact hr1 r hrt
+  · rw [hl2]
+    exact ho1 r fun p hp => hr _ (of_mem_arrPairs hp)
+
+/-! ## 24. The parallel assignment of arrays -/
+
+/-- The first stage of a parallel assignment of arrays: the source of move `i` is moved to
+    the temporary name `regName (D + i)`. -/
+def arrStage (D : Nat) : List ArrMove → List ArrMove
+  | [] => []
+  | a :: mv => ⟨regName D, a.src, a.w, a.n⟩ :: arrStage (D + 1) mv
+
+/-- The second stage of a parallel assignment of arrays: the target of move `i` is written
+    from the temporary name `regName (D + i)`. -/
+def arrCommit (D : Nat) : List ArrMove → List ArrMove
+  | [] => []
+  | a :: mv => ⟨a.dst, regName D, a.w, a.n⟩ :: arrCommit (D + 1) mv
+
+/-- The parallel assignment of the array moves `mv`. When no source is a target, the moves
+    run in order, one move for each array. Otherwise the sources are first moved to the
+    temporary names `regName D`, `regName (D + 1)`, … and the targets written from them. -/
+def arrParMoves (z t : String) (D : Nat) (mv : List ArrMove) : List LinstrRM :=
+  if mv.all (fun q => mv.all fun p => q.src != p.dst) then arrMoves z t mv
+  else arrMoves z t (arrStage D mv) ++ arrMoves z t (arrCommit D mv)
+
+theorem mem_arrStage {q : ArrMove} : ∀ {D : Nat} {mv : List ArrMove}, q ∈ arrStage D mv →
+    ∃ i a, a ∈ mv ∧ q = ⟨regName (D + i), a.src, a.w, a.n⟩
+  | _, [], h => absurd h List.not_mem_nil
+  | D, a :: mv, h => by
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact ⟨0, a, List.mem_cons_self, rfl⟩
+      · obtain ⟨i, b, hb, rfl⟩ := mem_arrStage h'
+        exact ⟨i + 1, b, List.mem_cons_of_mem _ hb, by rw [Nat.add_assoc, Nat.add_comm 1 i]⟩
+
+theorem mem_arrCommit {q : ArrMove} : ∀ {D : Nat} {mv : List ArrMove}, q ∈ arrCommit D mv →
+    ∃ i a, a ∈ mv ∧ q = ⟨a.dst, regName (D + i), a.w, a.n⟩
+  | _, [], h => absurd h List.not_mem_nil
+  | D, a :: mv, h => by
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact ⟨0, a, List.mem_cons_self, rfl⟩
+      · obtain ⟨i, b, hb, rfl⟩ := mem_arrCommit h'
+        exact ⟨i + 1, b, List.mem_cons_of_mem _ hb, by rw [Nat.add_assoc, Nat.add_comm 1 i]⟩
+
+/-- A move of the second stage reads the temporary name the first stage wrote for it. -/
+theorem mem_arrCommit_stage {q : ArrMove} : ∀ {D : Nat} {mv : List ArrMove},
+    q ∈ arrCommit D mv → ∃ i a, a ∈ mv ∧ q = ⟨a.dst, regName (D + i), a.w, a.n⟩
+      ∧ (⟨regName (D + i), a.src, a.w, a.n⟩ : ArrMove) ∈ arrStage D mv
+  | _, [], h => absurd h List.not_mem_nil
+  | D, a :: mv, h => by
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact ⟨0, a, List.mem_cons_self, rfl, List.mem_cons_self⟩
+      · obtain ⟨i, b, hb, rfl, hst⟩ := mem_arrCommit_stage h'
+        refine ⟨i + 1, b, List.mem_cons_of_mem _ hb, by rw [Nat.add_assoc, Nat.add_comm 1 i],
+          List.mem_cons_of_mem _ ?_⟩
+        rwa [Nat.add_assoc, Nat.add_comm 1 i] at hst
+
+/-- Each move has a temporary name through which both stages pass it. -/
+theorem arrStage_arrCommit_mem {a : ArrMove} : ∀ {D : Nat} {mv : List ArrMove}, a ∈ mv →
+    ∃ i, (⟨regName (D + i), a.src, a.w, a.n⟩ : ArrMove) ∈ arrStage D mv
+      ∧ (⟨a.dst, regName (D + i), a.w, a.n⟩ : ArrMove) ∈ arrCommit D mv
+  | _, [], h => absurd h List.not_mem_nil
+  | D, b :: mv, h => by
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact ⟨0, List.mem_cons_self, List.mem_cons_self⟩
+      · obtain ⟨i, h1, h2⟩ := arrStage_arrCommit_mem (D := D + 1) h'
+        refine ⟨i + 1, List.mem_cons_of_mem _ ?_, List.mem_cons_of_mem _ ?_⟩
+        · rwa [Nat.add_assoc, Nat.add_comm 1 i] at h1
+        · rwa [Nat.add_assoc, Nat.add_comm 1 i] at h2
+
+theorem pairwise_arrStage : ∀ (D : Nat) (mv : List ArrMove),
+    (∀ a ∈ mv, ∀ k, D ≤ k → a.src ≠ regName k) →
+    (arrStage D mv).Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst)
+  | _, [], _ => List.Pairwise.nil
+  | D, a :: mv, h => by
+      refine List.pairwise_cons.mpr ⟨fun q hq => ?_, pairwise_arrStage (D + 1) mv
+        fun b hb k hk => h b (List.mem_cons_of_mem _ hb) k (by omega)⟩
+      obtain ⟨i, b, hb, rfl⟩ := mem_arrStage hq
+      exact ⟨h b (List.mem_cons_of_mem _ hb) D le_rfl, fun he => by
+        have := JasminLsemSimulation.regName_injective he
+        omega⟩
+
+theorem pairwise_arrCommit : ∀ (D : Nat) (mv : List ArrMove),
+    mv.Pairwise (fun p q => q.dst ≠ p.dst) → (∀ a ∈ mv, ∀ k, D ≤ k → a.dst ≠ regName k) →
+    (arrCommit D mv).Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst)
+  | _, [], _, _ => List.Pairwise.nil
+  | D, a :: mv, hnd, h => by
+      obtain ⟨hna, hnd'⟩ := List.pairwise_cons.mp hnd
+      refine List.pairwise_cons.mpr ⟨fun q hq => ?_, pairwise_arrCommit (D + 1) mv hnd'
+        fun b hb k hk => h b (List.mem_cons_of_mem _ hb) k (by omega)⟩
+      obtain ⟨i, b, hb, rfl⟩ := mem_arrCommit hq
+      exact ⟨fun he => h a List.mem_cons_self _ (by omega) he.symm, hna b hb⟩
+
+/-- **The parallel assignment of arrays.** For moves with pairwise distinct targets whose
+    sources and targets are no name `regName k`, `D ≤ k`, `arrParMoves` writes at each
+    target the array cell its source held before the run; every array cell that is neither
+    a target nor a name `regName k`, `D ≤ k`, and every register other than the scratch
+    register, is kept. -/
+theorem steps_arrParMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitVec 64) (D : Nat)
+    (mv : List ArrMove) (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ arrParMoves z t D mv ++ post) (hat : atPc P pre.length s)
+    (hz : s.prog.base.reg.lvm z = ⟨64, vi⟩) (hnd : mv.Pairwise (fun p q => q.dst ≠ p.dst))
+    (hsn : ∀ a ∈ mv, ∀ k, D ≤ k → a.src ≠ regName k)
+    (hdn : ∀ a ∈ mv, ∀ k, D ≤ k → a.dst ≠ regName k)
+    (hsrc : ∀ p ∈ mv, ∃ arr : Fin p.n → BitVec p.w,
+      s.prog.base.getArr p.src p.w p.n = some arr) :
+    ∃ u, Steps x86Isa P (arrParMoves z t D mv).length s u
+      ∧ atPc P (pre.length + (arrParMoves z t D mv).length) u
+      ∧ (∀ p ∈ mv, u.prog.base.larr p.dst = s.prog.base.larr p.src)
+      ∧ (∀ r, (∀ p ∈ mv, r ≠ p.dst) → (∀ k, D ≤ k → r ≠ regName k) →
+          u.prog.base.larr r = s.prog.base.larr r)
+      ∧ (∀ r, r ≠ t → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+  by_cases hc : mv.all (fun q => mv.all fun p => q.src != p.dst) = true
+  · rw [arrParMoves, if_pos hc] at hbody ⊢
+    have hpw : mv.Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst) :=
+      hnd.imp_of_mem fun {p q} hp hq h => ⟨by
+        have := List.all_eq_true.mp (List.all_eq_true.mp hc q hq) p hp
+        simpa using this, h⟩
+    obtain ⟨u, hs, hat', hm, ho, hr⟩ := steps_arrMoves hzt vi mv pre post s hbody hat hz hpw hsrc
+    rw [arrMoves_length]
+    exact ⟨u, hs, hat', hm, fun r hr' _ => ho r hr', hr⟩
+  · rw [arrParMoves, if_neg hc] at hbody ⊢
+    rw [← List.append_assoc] at hbody
+    obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrMoves hzt vi (arrStage D mv) pre
+      (arrMoves z t (arrCommit D mv) ++ post) s (by rw [hbody]; simp only [List.append_assoc])
+      hat hz (pairwise_arrStage D mv hsn) (fun q hq => by
+        obtain ⟨i, a, ha, rfl⟩ := mem_arrStage hq
+        exact hsrc a ha)
+    obtain ⟨u, hs2, hat2, hm2, ho2, hr2⟩ := steps_arrMoves hzt vi (arrCommit D mv)
+      (pre ++ arrMoves z t (arrStage D mv)) post u1 hbody
+      (by rw [List.length_append, arrMoves_length]; exact hat1)
+      (by rw [hr1 z hzt]; exact hz) (pairwise_arrCommit D mv hnd hdn) (fun q hq => by
+        obtain ⟨i, a, ha, rfl, hst⟩ := mem_arrCommit_stage hq
+        obtain ⟨arr, harr⟩ := hsrc a ha
+        refine ⟨arr, ?_⟩
+        show u1.prog.base.getArr (regName (D + i)) a.w a.n = some arr
+        rw [getArr_of_larr_eq (s' := s.prog.base) (r' := a.src) a.w a.n
+          (hm1 ⟨regName (D + i), a.src, a.w, a.n⟩ hst)]
+        exact harr)
+    refine ⟨u, ?_, ?_, fun p hp => ?_, fun r hr hk => ?_, fun r hr => ?_⟩
+    · rw [List.length_append, arrMoves_length, arrMoves_length]
+      exact hs1.trans hs2
+    · rw [List.length_append, arrMoves_length] at hat2
+      rwa [List.length_append, arrMoves_length, arrMoves_length, ← Nat.add_assoc]
+    · obtain ⟨i, h1, h2⟩ := arrStage_arrCommit_mem (D := D) hp
+      rw [hm2 _ h2]
+      exact hm1 _ h1
+    · rw [ho2 r fun q hq => by
+          obtain ⟨i, a, ha, rfl⟩ := mem_arrCommit hq
+          exact hr a ha,
+        ho1 r fun q hq => by
+          obtain ⟨i, a, ha, rfl⟩ := mem_arrStage hq
+          exact hk _ (by omega)]
+    · rw [hr2 r hr, hr1 r hr]
+
+/-! ## 25. The frame of a counted loop with carried arrays -/
+
+/-- The typed pairs of a carried tuple: position `j` of the carried types `cs` with the
+    carried name `car_j` as the target and the name of the operand `ops_j` as the
+    source. -/
+def carriedPairs (cs : List JasminTy) (car : List String) (ops : List LOperand) :
+    List (JasminTy × String × String) :=
+  cs.zip (car.zip (ops.map operandName))
+
+/-- The typed pairs of the shift of a carried block down one name: position `j` of the
+    carried types `cs` with the name of the block from `regName d` as the target and the
+    name of the block from `regName (d + 1)` as the source, in the order in which no pair
+    reads the target of an earlier one. -/
+def shiftPairs (d : Nat) (cs : List JasminTy) : List (JasminTy × String × String) :=
+  (cs.zip ((carriedRegs d cs.length).zip (carriedRegs (d + 1) cs.length))).reverse
+
+/-- **The frame of a counted loop whose carried tuple holds registers and arrays**, at
+    depth `d` with the labels `n` (top) and `n + 1` (exit) around the exported body
+    `bodyC`, whose returned operands are `bodyOps` at the depth `bodyD`. A carried value of
+    the type `cs_j` lives at the name `car_j` of the block `carriedRegs (d + 1) cs.length`:
+    a register type in the register cell of that name, a stack array in the array cell of
+    that name, for every trip. The seeds, the assignment at the back edge and the shift
+    after the exit label copy register cells for the register types and move arrays
+    (`arrMove`) for the array types. The index register of the array moves is the count
+    operand at the seeds and the trip index `regName d` elsewhere; the scratch register is
+    `regName (d + 1 + cs.length)` at the seeds and the shift and `regName bodyD` at the
+    back edge. -/
+def forArrFrame (d n : Nat) (cs : List JasminTy) (initOps : List LOperand)
+    (countOp : LOperand) (bodyC : List LinstrRM) (bodyOps : List LOperand) (bodyD : Nat)
+    (I : IsaData := x86Data) : List LinstrRM :=
+  let ctr := loopCtr n
+  let car := carriedRegs (d + 1) cs.length
+  let t := regName (d + 1 + cs.length)
+  let back := carriedPairs cs car bodyOps
+  typedMoves (operandName countOp) t (carriedPairs cs car initOps)
+  ++ (seedMoves [regName d, ctr] [.imm 0, countOp]
+  ++ ((I.zeroTripGuard ctr n (n + 1)).map guardI
+  ++ (labelI n
+  :: (bodyC
+  ++ (arrParMoves (regName d) (regName bodyD) bodyD (arrPairs back)
+  ++ (parMoves bodyD ((regPairs back).map Prod.fst) ((regPairs back).map fun p => .reg p.2)
+  ++ (advanceOps (regName d) ctr
+  ++ ((I.loopGuard ctr n).map guardI
+  ++ (labelI (n + 1)
+  :: typedMoves (regName d) t (shiftPairs d cs))))))))))
+
+/-- A variable of a context pairs its type with the element of a list at its index. -/
+theorem mem_zip_var {α : Type} : ∀ {cs : Ctxt jasminDialect} {t : JasminTy} (u : Ctxt.Var cs t)
+    (l : List α) (h : varIndex u < l.length), (t, l[varIndex u]) ∈ List.zip cs l
+  | _, _, _, [], h => absurd h (Nat.not_lt_zero _)
+  | _, _, .here, _ :: _, _ => List.mem_cons_self
+  | _, _, .there v, _ :: ys, h =>
+      List.mem_cons_of_mem _ (mem_zip_var v ys (Nat.lt_of_succ_lt_succ h))
+
+/-- The typed pair of a carried variable: its type, its name in the block from
+    `regName D`, and the name of its operand. -/
+theorem carriedPairs_mem {cs : Ctxt jasminDialect} {t : JasminTy} (u : Ctxt.Var cs t) (D : Nat)
+    (ops : List LOperand) (hlen : ops.length = cs.length) :
+    (t, regName (D + (cs.length - 1 - varIndex u)),
+        operandName (ops.getD (varIndex u) (.imm 0)))
+      ∈ carriedPairs cs (carriedRegs D cs.length) ops := by
+  have hu := JasminLsemSimulation.varIndex_lt u
+  have h := mem_zip_var u ((carriedRegs D cs.length).zip (ops.map operandName))
+    (by simp only [List.length_zip, carriedRegs_length, List.length_map, hlen]; omega)
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range] at h
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega), Option.getD_some]
+  exact h
+
+/-- The typed pair of a carried variable in the shift: its type, its name in the block
+    from `regName d`, and its name in the block from `regName (d + 1)`. -/
+theorem shiftPairs_mem {cs : Ctxt jasminDialect} {t : JasminTy} (u : Ctxt.Var cs t) (d : Nat) :
+    (t, regName (d + (cs.length - 1 - varIndex u)),
+        regName (d + 1 + (cs.length - 1 - varIndex u))) ∈ shiftPairs d cs := by
+  have hu := JasminLsemSimulation.varIndex_lt u
+  have h := mem_zip_var u ((carriedRegs d cs.length).zip (carriedRegs (d + 1) cs.length))
+    (by simp only [List.length_zip, carriedRegs_length]; omega)
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range] at h
+  exact List.mem_reverse.mpr h
+
+/-- No pair of the shift reads or writes the target of an earlier one. -/
+theorem shiftPairs_pairwise (d : Nat) (cs : List JasminTy) :
+    (shiftPairs d cs).Pairwise (fun p q => q.2.2 ≠ p.2.1 ∧ q.2.1 ≠ p.2.1) := by
+  rw [shiftPairs, List.pairwise_reverse, List.pairwise_iff_getElem]
+  intro i j hi hj hij
+  simp only [List.length_zip, carriedRegs_length, Nat.min_self] at hi hj
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range]
+  constructor <;> intro he <;> have := JasminLsemSimulation.regName_injective he <;> omega
+
+/-- **The agreement under a block of binders of register and array types.** A state that
+    agrees with `V` at depth `D` and holds the tuple `acc` at the block of `cs.length`
+    names from `regName D`, a register type in the register cell and a stack array in the
+    array cell, agrees with `acc` appended to `V` at depth `D + cs.length`. -/
+theorem storeAgreesM_append_arr {nArgs D : Nat} {Γ cs : Ctxt jasminDialect}
+    {s : LstateM} {V : Ctxt.Valuation Γ} {acc : Ctxt.Valuation cs} (harg : nArgs ≤ D)
+    (hag : StoreAgreesM nArgs D s V)
+    (hblk : ∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
+      s.reg.getW (regName (D + (cs.length - 1 - varIndex u))) w = some (u.lookup acc))
+    (hblkA : ∀ {w n : Nat} (u : Ctxt.Var cs (.stackArr w n)),
+      s.getArr (regName (D + (cs.length - 1 - varIndex u))) w n = some (u.lookup acc)) :
+    StoreAgreesM nArgs (D + cs.length) s (hvAppend acc V) := by
+  have hres : ∀ {t : JasminTy} (u : Ctxt.Var Γ t),
+      resolveVar (D + cs.length) nArgs argName (fun _ => none) (inrHom cs u)
+        = resolveVar D nArgs argName (fun _ => none) u := by
+    intro t u
+    simp only [resolveVar, varIndex_inrHom]
+    rw [show D + cs.length - 1 - (cs.length + varIndex u) = D - 1 - varIndex u by omega]
+  refine ⟨fun {w} v => ?_, fun {w n} v => ?_⟩
+  · rcases var_append_cases v with ⟨u, rfl⟩ | ⟨u, rfl⟩
+    · rw [lookup_inlHom]
+      have hu := JasminLsemSimulation.varIndex_lt u
+      simp only [resolveVar, varIndex_inlHom]
+      rw [if_neg (by omega), evalOperandN,
+        show D + cs.length - 1 - varIndex u = D + (cs.length - 1 - varIndex u) by omega]
+      exact hblk u
+    · rw [lookup_inrHom, hres]
+      exact hag.1 u
+  · rcases var_append_cases v with ⟨u, rfl⟩ | ⟨u, rfl⟩
+    · rw [lookup_inlHom]
+      have hu := JasminLsemSimulation.varIndex_lt u
+      simp only [resolveVar, varIndex_inlHom]
+      rw [if_neg (by omega), operandName,
+        show D + cs.length - 1 - varIndex u = D + (cs.length - 1 - varIndex u) by omega]
+      exact hblkA u
+    · rw [lookup_inrHom, hres]
+      exact hag.2 u
+
+/-- An element of a list paired with a type of a context is the element at the index of a
+    variable of that type. -/
+theorem exists_var_of_mem_zip {α : Type} : ∀ {cs : Ctxt jasminDialect} {t : JasminTy} {x : α}
+    (l : List α), (t, x) ∈ List.zip cs l →
+      ∃ (u : Ctxt.Var cs t) (h : varIndex u < l.length), x = l[varIndex u]
+  | [], _, _, _, h => by simp at h
+  | _ :: _, _, _, [], h => by simp at h
+  | c :: cs, t, x, y :: ys, h => by
+      rw [List.zip_cons_cons] at h
+      rcases List.mem_cons.mp h with he | h'
+      · obtain ⟨rfl, rfl⟩ := Prod.mk.inj he
+        exact ⟨.here, Nat.succ_pos _, rfl⟩
+      · obtain ⟨u, hu, rfl⟩ := exists_var_of_mem_zip ys h'
+        exact ⟨.there u, Nat.succ_lt_succ hu, rfl⟩
+
+/-- A typed pair of the shift is the pair of a carried variable. -/
+theorem shiftPairs_var {cs : Ctxt jasminDialect} {t : JasminTy} {d : Nat} {dst src : String}
+    (h : (t, dst, src) ∈ shiftPairs d cs) :
+    ∃ u : Ctxt.Var cs t, dst = regName (d + (cs.length - 1 - varIndex u))
+      ∧ src = regName (d + 1 + (cs.length - 1 - varIndex u)) := by
+  obtain ⟨u, hu, he⟩ := exists_var_of_mem_zip _ (List.mem_reverse.mp h)
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range,
+    Prod.mk.injEq] at he
+  exact ⟨u, he.1, he.2⟩
+
+/-- **The shift of a carried block of registers and arrays** down one name, after the
+    exit label of a counted loop: each register type moves its register cell and each
+    array type its array cell; the registers and the array cells outside the names
+    `regName k`, `d ≤ k`, are kept. The trip index `regName d` holds a word and each
+    carried array is at its shape. -/
+theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
+    (pre post : List LinstrRM) (s : LstateMF) {x : BitVec 64}
+    (hbody : P.body = pre ++ typedMoves (regName d) (regName (d + 1 + cs.length))
+      (shiftPairs d cs) ++ post)
+    (hat : atPc P pre.length s) (hx : s.prog.base.reg.lvm (regName d) = ⟨64, x⟩)
+    (hsrc : ∀ {w n : Nat} (v : Ctxt.Var cs (.stackArr w n)), ∃ arr : Fin n → BitVec w,
+      s.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex v))) w n = some arr) :
+    ∃ u, Steps x86Isa P (typedMoves (regName d) (regName (d + 1 + cs.length))
+          (shiftPairs d cs)).length s u
+      ∧ atPc P (pre.length + (typedMoves (regName d) (regName (d + 1 + cs.length))
+          (shiftPairs d cs)).length) u
+      ∧ (∀ {w : Nat} (v : Ctxt.Var cs (.reg w)),
+          u.prog.base.reg.lvm (regName (d + (cs.length - 1 - varIndex v)))
+            = s.prog.base.reg.lvm (regName (d + 1 + (cs.length - 1 - varIndex v))))
+      ∧ (∀ {w n : Nat} (v : Ctxt.Var cs (.stackArr w n)),
+          u.prog.base.larr (regName (d + (cs.length - 1 - varIndex v)))
+            = s.prog.base.larr (regName (d + 1 + (cs.length - 1 - varIndex v))))
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.larr r = s.prog.base.larr r) := by
+  have hne : regName d ≠ regName (d + 1 + cs.length) := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  obtain ⟨u, hs, hat', hmR, hmA, hoR, hoA⟩ := steps_typedMoves hne x (shiftPairs d cs) pre post s
+    hbody hat hx (shiftPairs_pairwise d cs)
+    (fun w n dst src h => by
+      obtain ⟨v, -, rfl⟩ := shiftPairs_var h
+      exact hsrc v)
+    (fun p hp he => by
+      obtain ⟨v, -, hsrc'⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
+      have hv := JasminLsemSimulation.varIndex_lt v
+      have := JasminLsemSimulation.regName_injective (hsrc'.symm.trans he)
+      omega)
+  have hdst : ∀ p ∈ shiftPairs d cs, ∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ p.2.1 :=
+    fun p hp r hr => by
+      obtain ⟨v, hd, -⟩ := shiftPairs_var (t := p.1) (dst := p.2.1) (src := p.2.2) hp
+      rw [hd]
+      exact hr _ (by omega)
+  exact ⟨u, hs, hat', fun {w} v => hmR _ _ _ (shiftPairs_mem v d) rfl,
+    fun {w n} v => hmA _ _ _ _ (shiftPairs_mem v d),
+    fun r hr => hoR r (fun p hp => hdst p hp r hr) (hr _ (by omega)),
+    fun r hr => hoA r fun p hp => hdst p hp r hr⟩
+
+/-- A typed pair of a carried tuple has a target of the carried block and the name of an
+    operand as its source. -/
+theorem carriedPairs_names {cs : List JasminTy} {D : Nat} {ops : List LOperand}
+    {p : JasminTy × String × String} (h : p ∈ carriedPairs cs (carriedRegs D cs.length) ops) :
+    (∃ j, j < cs.length ∧ p.2.1 = regName (D + (cs.length - 1 - j)))
+      ∧ ∃ o ∈ ops, p.2.2 = operandName o := by
+  have h2 := (List.of_mem_zip (a := p.1) (b := p.2) h).2
+  obtain ⟨hc, ho⟩ := List.of_mem_zip (a := p.2.1) (b := p.2.2) h2
+  obtain ⟨o, ho', he⟩ := List.mem_map.mp ho
+  exact ⟨mem_carriedRegs.mp hc, o, ho', he.symm⟩
+
+/-- No typed pair of a carried tuple writes the target of an earlier one. -/
+theorem carriedPairs_pairwise (cs : List JasminTy) (D : Nat) (ops : List LOperand) :
+    (carriedPairs cs (carriedRegs D cs.length) ops).Pairwise (fun p q => q.2.1 ≠ p.2.1) := by
+  rw [carriedPairs, List.pairwise_iff_getElem]
+  intro i j hi hj hij
+  simp only [List.length_zip, carriedRegs_length, List.length_map] at hi hj
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range]
+  intro he
+  have := JasminLsemSimulation.regName_injective he
+  omega
+
+/-- **The parallel assignment of register pairs.** `parMoves` over the targets and the
+    sources of a list of pairs with pairwise distinct targets, all names below the depth
+    `D`, writes at each target the cell its source held before the run, and keeps the array
+    carrier and every cell that is neither a target nor a register `regName k`, `D ≤ k`. -/
+theorem steps_parMoves_pairs {P : LprogM} (D : Nat) (mv : List (String × String))
+    (pre post : List LinstrRM) (s : LstateMF)
+    (hbody : P.body = pre ++ parMoves D (mv.map Prod.fst) (mv.map fun p => .reg p.2) ++ post)
+    (hat : atPc P pre.length s) (hnd : mv.Pairwise (fun p q => q.1 ≠ p.1))
+    (hlow : ∀ p ∈ mv, ∀ k, D ≤ k → p.1 ≠ regName k ∧ p.2 ≠ regName k) :
+    ∃ u, Steps x86Isa P (2 * mv.length) s u ∧ atPc P (pre.length + 2 * mv.length) u
+      ∧ u.prog.base.larr = s.prog.base.larr
+      ∧ (∀ p ∈ mv, u.prog.base.reg.lvm p.1 = s.prog.base.reg.lvm p.2)
+      ∧ (∀ r, (∀ p ∈ mv, r ≠ p.1) → (∀ k, D ≤ k → r ≠ regName k) →
+          u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+  obtain ⟨u, hs, hat', ha, hm, ho⟩ := steps_parMoves D (mv.map Prod.fst)
+    (mv.map fun p => .reg p.2) pre post s hbody hat (by simp only [List.length_map])
+    (fun o ho => by
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ho
+      exact ⟨rfl, fun k hk => (hlow p hp k hk).2⟩)
+    (by
+      show List.Pairwise (· ≠ ·) (mv.map Prod.fst)
+      rw [List.pairwise_map]
+      exact hnd.imp fun h => h.symm)
+    (fun r hr k hk => by
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hr
+      exact (hlow p hp k hk).1)
+  rw [List.length_map] at hs hat' hm ho
+  refine ⟨u, hs, hat', ha, fun p hp => ?_, fun r hr hk => ?_⟩
+  · obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hp
+    have := hm j hj
+    simpa only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hj,
+      Option.map_some, Option.getD_some, operandName] using this
+  · exact ho r (fun hm' => by
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hm'
+      exact hr p hp rfl) (fun j _ => hk _ (Nat.le_add_right D j))
+
+/-- A typed pair of a carried tuple is the pair of a carried variable. -/
+theorem carriedPairs_var {cs : Ctxt jasminDialect} {t : JasminTy} {D : Nat}
+    {ops : List LOperand} {dst src : String}
+    (h : (t, dst, src) ∈ carriedPairs cs (carriedRegs D cs.length) ops) :
+    ∃ u : Ctxt.Var cs t, dst = regName (D + (cs.length - 1 - varIndex u))
+      ∧ src = operandName (ops.getD (varIndex u) (.imm 0)) := by
+  obtain ⟨u, hu, he⟩ := exists_var_of_mem_zip _ h
+  have hu' : varIndex u < ops.length := by
+    simp only [List.length_zip, List.length_map] at hu
+    omega
+  simp only [List.getElem_zip, carriedRegs, List.getElem_map, List.getElem_range,
+    Prod.mk.injEq] at he
+  refine ⟨u, he.1, ?_⟩
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hu', Option.getD_some]
+  exact he.2
+
+/-- **The tail of a counted trip with carried arrays**: the parallel assignment of the
+    returned arrays and of the returned registers to the carried block, the advance of the
+    trip index and the counter, and the compare of the counter with zero. `tp` is the list
+    of typed pairs of the carried tuple and the returned operands. -/
+theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
+    {ops : List LOperand} {tp : List (JasminTy × String × String)}
+    (htp : tp = carriedPairs cs (carriedRegs (d + 1) cs.length) ops)
+    (pre post : List LinstrRM) (s : LstateMF) {x c : BitVec 64}
+    (hbody : P.body = pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+      ++ parMoves bD ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2)
+      ++ (advanceOps (regName d) (loopCtr n)
+      ++ guardI (.Lopn [.reg (loopCtr n)] (withWidthTag 64 "CMP") [.reg (loopCtr n), .imm 0])
+        :: post))
+    (hat : atPc P pre.length s) (hlen : ops.length = cs.length) (hD : d + 1 + cs.length ≤ bD)
+    (hops : ∀ o ∈ ops, ∀ k, bD ≤ k → operandName o ≠ regName k)
+    (hx : s.prog.base.reg.lvm (regName d) = ⟨64, x⟩)
+    (hc : s.prog.base.reg.lvm (loopCtr n) = ⟨64, c⟩)
+    (hsrc : ∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)), ∃ arr : Fin m → BitVec w,
+      s.prog.base.getArr (operandName (ops.getD (varIndex v) (.imm 0))) w m = some arr) :
+    ∃ (k : Nat) (u : LstateMF), Steps x86Isa P k s u
+      ∧ atPc P ((pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+          ++ parMoves bD ((regPairs tp).map Prod.fst)
+            ((regPairs tp).map fun p => .reg p.2)).length + 3) u
+      ∧ u.zf = (c - 1#64 == 0#64)
+      ∧ u.prog.base.reg.lvm (regName d) = ⟨64, x + 1#64⟩
+      ∧ u.prog.base.reg.lvm (loopCtr n) = ⟨64, c - 1#64⟩
+      ∧ (∀ {w : Nat} (v : Ctxt.Var cs (.reg w)),
+          u.prog.base.reg.lvm (regName (d + 1 + (cs.length - 1 - varIndex v)))
+            = s.prog.base.reg.lvm (operandName (ops.getD (varIndex v) (.imm 0))))
+      ∧ (∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)),
+          u.prog.base.larr (regName (d + 1 + (cs.length - 1 - varIndex v)))
+            = s.prog.base.larr (operandName (ops.getD (varIndex v) (.imm 0))))
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ loopCtr n →
+          u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.larr r = s.prog.base.larr r) := by
+  have hzt : regName d ≠ regName bD := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  have hnames : ∀ p ∈ tp, (∃ j, j < cs.length ∧ p.2.1 = regName (d + 1 + (cs.length - 1 - j)))
+      ∧ ∃ o ∈ ops, p.2.2 = operandName o := fun p hp => carriedPairs_names (htp ▸ hp)
+  have hpwT : tp.Pairwise (fun p q => q.2.1 ≠ p.2.1) := htp ▸ carriedPairs_pairwise cs (d + 1) ops
+  have hndA : (arrPairs tp).Pairwise (fun p q => q.dst ≠ p.dst) := by
+    refine List.Pairwise.filterMap _ (fun a a' h b hb b' hb' => ?_) hpwT
+    obtain ⟨ty, dst, src⟩ := a
+    obtain ⟨ty', dst', src'⟩ := a'
+    cases ty <;> simp only [Option.some.injEq, reduceCtorEq] at hb
+    cases ty' <;> simp only [Option.some.injEq, reduceCtorEq] at hb'
+    subst hb hb'
+    exact h
+  have hndR : (regPairs tp).Pairwise (fun p q => q.1 ≠ p.1) :=
+    List.Pairwise.map _ (fun _ _ h => h) (List.Pairwise.filter _ hpwT)
+  have hdstlow : ∀ p ∈ tp, ∀ k, bD ≤ k → p.2.1 ≠ regName k := fun p hp k hk he => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    have := JasminLsemSimulation.regName_injective (hd.symm.trans he)
+    omega
+  have hsrclow : ∀ p ∈ tp, ∀ k, bD ≤ k → p.2.2 ≠ regName k := fun p hp k hk => by
+    obtain ⟨-, o, ho, hs⟩ := hnames p hp
+    rw [hs]
+    exact hops o ho k hk
+  have hdstfr : ∀ p ∈ tp, ∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ p.2.1 := fun p hp r hr => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    rw [hd]
+    exact hr _ (by omega)
+  -- the arrays
+  obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrParMoves hzt x bD (arrPairs tp) pre _ s
+    (by rw [hbody]; simp only [List.append_assoc]; rfl) hat hx hndA
+    (fun a ha => hsrclow _ (of_mem_arrPairs ha)) (fun a ha => hdstlow _ (of_mem_arrPairs ha))
+    (fun a ha => by
+      obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ of_mem_arrPairs ha)
+      rw [hsv]
+      exact hsrc v)
+  -- the registers
+  obtain ⟨u2, hs2, hat2, ha2, hm2, ho2⟩ := steps_parMoves_pairs bD (regPairs tp)
+    (pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)) _ u1 hbody
+    (by rw [List.length_append]; exact hat1) hndR
+    (fun p hp k hk => by
+      obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+      exact ⟨hdstlow _ hq k hk, hsrclow _ hq k hk⟩)
+  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ arrParMoves (regName d) (regName bD) bD (arrPairs tp)
+      ++ parMoves bD ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2) :=
+    ⟨_, rfl⟩
+  rw [← hX] at hbody ⊢
+  have hat2' : atPc P X.length u2 := by
+    rw [hX, List.length_append, parMoves_length, List.length_map, List.length_map]
+    rwa [Nat.two_mul] at hat2
+  have hlvm2 : ∀ r, (∀ k, d ≤ k → r ≠ regName k) →
+      u2.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r hr => by
+    rw [ho2 r (fun p hp => by
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact hdstfr _ hq r hr) (fun k hk => hr k (by omega))]
+    exact hr1 r (hr bD (by omega))
+  have hidx2 : u2.prog.base.reg.lvm (regName d) = ⟨64, x⟩ := by
+    rw [ho2 _ (fun p hp he => by
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames _ hq
+        have := JasminLsemSimulation.regName_injective (he.trans hd)
+        omega)
+      (fun k hk he => by have := JasminLsemSimulation.regName_injective he; omega),
+      hr1 _ hzt]
+    exact hx
+  have hctr2 : u2.prog.base.reg.lvm (loopCtr n) = ⟨64, c⟩ := by
+    rw [hlvm2 _ fun k _ => loopCtr_ne_regName n k]
+    exact hc
+  obtain ⟨u3, hs3, hat3, ha3, hm3⟩ := steps_addImm (va := x) hat2'
+    (fetch_of_body (by rw [hbody]; rfl) rfl) hidx2
+  obtain ⟨u4, hs4, hat4, ha4, hm4⟩ := steps_subImm (va := c) (dst := loopCtr n)
+    (a := loopCtr n) (c := 1) hat3
+    (fetch_of_body (xs := X
+        ++ [(.Lopn [.reg (regName d)] (withWidthTag 64 "ADD") [.reg (regName d), .imm 1],
+          .reg none)])
+      (by rw [hbody]; simp only [advanceOps, List.append_assoc, List.cons_append,
+        List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+    (by rw [hm3, if_neg (loopCtr_ne_regName n d)]; exact hctr2)
+  obtain ⟨u5, hs5, hat5, ha5, hm5, hz5⟩ := steps_cmpZero (v := c - 1#64) (r := loopCtr n) hat4
+    (fetch_of_body (xs := X ++ advanceOps (regName d) (loopCtr n))
+      (by rw [hbody]; simp only [List.append_assoc]; rfl)
+      (by rw [List.length_append]; rfl))
+    (by rw [hm4, if_pos rfl])
+  have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
+  have hlarr5 : u5.prog.base.larr = u1.prog.base.larr :=
+    (((ha5.trans ha4).trans ha3).trans ha2)
+  refine ⟨_, u5, (((hs1.trans hs2).trans hs3).trans hs4).trans hs5, hat5, hz5, ?_, ?_,
+    fun {w} v => ?_, fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  · rw [hm5, hm4, if_neg hri, hm3, if_pos rfl]
+  · rw [hm5, hm4, if_pos rfl]
+  · have hv := JasminLsemSimulation.varIndex_lt v
+    have hmem := carriedPairs_mem v (d + 1) ops hlen
+    rw [← htp] at hmem
+    have hne : regName (d + 1 + (cs.length - 1 - varIndex v)) ≠ regName d := fun he => by
+      have := JasminLsemSimulation.regName_injective he
+      omega
+    rw [hm5, hm4, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm3, if_neg hne,
+      hm2 _ (mem_regPairs hmem rfl)]
+    exact hr1 _ (hsrclow _ hmem bD le_rfl)
+  · have hmem := carriedPairs_mem v (d + 1) ops hlen
+    rw [← htp] at hmem
+    rw [hlarr5]
+    exact hm1 _ (mem_arrPairs hmem)
+  · rw [hm5, hm4, if_neg hrc, hm3, if_neg (hr d le_rfl)]
+    exact hlvm2 r hr
+  · rw [hlarr5]
+    exact ho1 r (fun p hp => hdstfr _ (of_mem_arrPairs hp) r hr) (fun k hk => hr k (by omega))
+
+/-- **The head of a counted loop with carried arrays**: the seeds of the carried arrays and
+    of the carried registers, of the trip index and of the counter, and the compare of the
+    counter with zero. `tp` is the list of typed pairs of the carried tuple and the initial
+    operands, and `cn` the register of the count. -/
+theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
+    {ops : List LOperand} {cn : String} {tp : List (JasminTy × String × String)}
+    (htp : tp = carriedPairs cs (carriedRegs (d + 1) cs.length) ops)
+    (pre post : List LinstrRM) (s : LstateMF) {cnt : BitVec 64}
+    (hbody : P.body = pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp
+      ++ (movImmI (regName d) 0 :: movI (loopCtr n) (.reg cn)
+        :: guardI (.Lopn [.reg (loopCtr n)] (withWidthTag 64 "CMP") [.reg (loopCtr n), .imm 0])
+        :: post))
+    (hat : atPc P pre.length s) (hlen : ops.length = cs.length)
+    (hops : ∀ o ∈ ops, ∀ k, d ≤ k → operandName o ≠ regName k)
+    (hcn : ∀ k, d ≤ k → cn ≠ regName k) (hcnt : s.prog.base.reg.lvm cn = ⟨64, cnt⟩)
+    (hsrc : ∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)), ∃ arr : Fin m → BitVec w,
+      s.prog.base.getArr (operandName (ops.getD (varIndex v) (.imm 0))) w m = some arr) :
+    ∃ (k : Nat) (u : LstateMF), Steps x86Isa P k s u
+      ∧ atPc P ((pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp).length + 3) u
+      ∧ u.zf = (cnt == 0#64)
+      ∧ u.prog.base.reg.lvm (regName d) = ⟨64, 0#64⟩
+      ∧ u.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩
+      ∧ (∀ {w : Nat} (v : Ctxt.Var cs (.reg w)),
+          u.prog.base.reg.lvm (regName (d + 1 + (cs.length - 1 - varIndex v)))
+            = s.prog.base.reg.lvm (operandName (ops.getD (varIndex v) (.imm 0))))
+      ∧ (∀ {w m : Nat} (v : Ctxt.Var cs (.stackArr w m)),
+          u.prog.base.larr (regName (d + 1 + (cs.length - 1 - varIndex v)))
+            = s.prog.base.larr (operandName (ops.getD (varIndex v) (.imm 0))))
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ loopCtr n →
+          u.prog.base.reg.lvm r = s.prog.base.reg.lvm r)
+      ∧ (∀ r, (∀ k, d ≤ k → r ≠ regName k) → u.prog.base.larr r = s.prog.base.larr r) := by
+  have hzt : cn ≠ regName (d + 1 + cs.length) := hcn _ (by omega)
+  have hnames : ∀ p ∈ tp, (∃ j, j < cs.length ∧ p.2.1 = regName (d + 1 + (cs.length - 1 - j)))
+      ∧ ∃ o ∈ ops, p.2.2 = operandName o := fun p hp => carriedPairs_names (htp ▸ hp)
+  have hsrcfr : ∀ p ∈ tp, ∀ k, d ≤ k → p.2.2 ≠ regName k := fun p hp k hk => by
+    obtain ⟨-, o, ho, hs⟩ := hnames p hp
+    rw [hs]
+    exact hops o ho k hk
+  have hdstfr : ∀ p ∈ tp, ∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ p.2.1 := fun p hp r hr => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    rw [hd]
+    exact hr _ (by omega)
+  have hpw : tp.Pairwise (fun p q => q.2.2 ≠ p.2.1 ∧ q.2.1 ≠ p.2.1) :=
+    (htp ▸ carriedPairs_pairwise cs (d + 1) ops : tp.Pairwise (fun p q => q.2.1 ≠ p.2.1)).imp_of_mem
+      fun {p q} hp hq h => ⟨fun he => by
+        obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+        exact hsrcfr q hq _ (by omega) (he.trans hd), h⟩
+  obtain ⟨u1, hs1, hat1, hmR, hmA, hoR, hoA⟩ := steps_typedMoves hzt cnt tp pre _ s hbody hat
+    hcnt hpw
+    (fun w m dst src h => by
+      obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ h)
+      rw [hsv]
+      exact hsrc v)
+    (fun p hp => hsrcfr p hp _ (by omega))
+  obtain ⟨X, hX⟩ : ∃ X, X = pre ++ typedMoves cn (regName (d + 1 + cs.length)) tp := ⟨_, rfl⟩
+  rw [← hX] at hbody ⊢
+  have hat1' : atPc P X.length u1 := by
+    rw [hX, List.length_append]
+    exact hat1
+  obtain ⟨u2, hs2, hat2, ha2, hm2⟩ := steps_movImm (dst := regName d) (c := 0) hat1'
+    (fetch_of_body hbody rfl)
+  obtain ⟨u3, hs3, hat3, ha3, hm3⟩ := steps_movReg (dst := loopCtr n) (src := cn) hat2
+    (fetch_of_body (xs := X ++ [movImmI (regName d) 0])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+  have hc3 : u3.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩ := by
+    rw [hm3, if_pos rfl, hm2, if_neg (hcn d le_rfl),
+      hoR cn (fun p hp => hdstfr p hp cn hcn) hzt]
+    exact hcnt
+  obtain ⟨u4, hs4, hat4, ha4, hm4, hz4⟩ := steps_cmpZero (r := loopCtr n) (v := cnt) hat3
+    (fetch_of_body (xs := X ++ [movImmI (regName d) 0, movI (loopCtr n) (.reg cn)])
+      (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
+      (by rw [List.length_append]; rfl))
+    hc3
+  have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
+  have hlarr4 : u4.prog.base.larr = u1.prog.base.larr := (ha4.trans ha3).trans ha2
+  refine ⟨_, u4, ((hs1.trans hs2).trans hs3).trans hs4, hat4, hz4, ?_, ?_, fun {w} v => ?_,
+    fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  · rw [hm4, hm3, if_neg hri, hm2, if_pos rfl]
+  · rw [hm4]
+    exact hc3
+  · have hv := JasminLsemSimulation.varIndex_lt v
+    have hmem := carriedPairs_mem v (d + 1) ops hlen
+    rw [← htp] at hmem
+    have hne : regName (d + 1 + (cs.length - 1 - varIndex v)) ≠ regName d := fun he => by
+      have := JasminLsemSimulation.regName_injective he
+      omega
+    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm2, if_neg hne]
+    exact hmR _ _ _ hmem rfl
+  · have hmem := carriedPairs_mem v (d + 1) ops hlen
+    rw [← htp] at hmem
+    rw [hlarr4]
+    exact hmA _ _ _ _ hmem
+  · rw [hm4, hm3, if_neg hrc, hm2, if_neg (hr d le_rfl)]
+    exact hoR r (fun p hp => hdstfr p hp r hr) (hr _ (by omega))
+  · rw [hlarr4]
+    exact hoA r fun p hp => hdstfr p hp r hr
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
