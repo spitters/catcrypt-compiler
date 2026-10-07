@@ -3365,7 +3365,7 @@ theorem TypedCalls.mono {bi bi' : Builtins} {sigOf : String → List NfTy → Op
 /-- The binary integer operations of `u64` code: the wrapping addition, subtraction and
     multiplication, the bitwise conjunction, disjunction and exclusive disjunction, the shifts
     and the rotations at a width, the high word of the `128`-bit product, and the checked
-    addition. -/
+    addition and subtraction. -/
 inductive ScalarBin where
   /-- Wrapping addition. -/
   | add
@@ -3391,6 +3391,8 @@ inductive ScalarBin where
   | mulhi
   /-- Checked addition. -/
   | addc
+  /-- Checked subtraction. -/
+  | subc
   deriving DecidableEq, Repr
 
 /-- The value of a binary operation at the width `w` on the natural numbers of two words, as
@@ -3408,6 +3410,7 @@ def ScalarBin.nat : ScalarBin → Nat → Nat → Nat → Option Nat
   | .rotl, w, x, y => some (_root_.Hax.rotlNat w x y)
   | .mulhi, _, x, y => some ((x * y) >>> 64)
   | .addc, _, x, y => if x + y < 2 ^ 64 then some (x + y) else none
+  | .subc, _, x, y => if y ≤ x then some (x - y) else none
 
 /-- The unary integer operations of `u64` code: the complement at a width, the wrapping
     negation of a `64`-bit word, and the truncation to a width. -/
@@ -3474,7 +3477,8 @@ def hax64BinTable : List (String × ScalarBin × Nat) :=
     ("wrapping_mul#size", .mul, 64), ("BitAnd#size", .and, 64), ("BitOr#size", .or, 64),
     ("BitXor#size", .xor, 64), ("Shl#size", .shl, 64), ("Shr#size", .shr, 64),
     ("rotate_right#size", .rotr, 64), ("rotate_left#size", .rotl, 64),
-    ("shl#64", .shl, 64), ("shr#64", .shr, 64), ("mulhi#64", .mulhi, 64), ("Add", .addc, 64)]
+    ("shl#64", .shl, 64), ("shr#64", .shr, 64), ("mulhi#64", .mulhi, 64), ("Add", .addc, 64),
+    ("Sub", .subc, 64)]
 
 /-- The unary integer calls of `u64` code with their operation and width. -/
 def hax64UnTable : List (String × ScalarUn × Nat) :=
@@ -3710,6 +3714,10 @@ theorem ScalarBin.nat_lt (o : ScalarBin) {w x y r : Nat} (hw : w ≤ 64) (hx : x
   case addc =>
     split at h
     · obtain rfl := Option.some.inj h; assumption
+    · cases h
+  case subc =>
+    split at h
+    · obtain rfl := Option.some.inj h; omega
     · cases h
 
 /-- A value of a unary integer operation at a width of at most `64` is the integer of a
