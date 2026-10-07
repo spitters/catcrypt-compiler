@@ -78,11 +78,11 @@ template layer and the dated deferrals.
   compiler accepts. `haxc_correct_auto` (`ComposeV1.lean`) and, for a result that pairs
   an array with one of its words, `haxc_correct_auto_tuple` (`ComposeTuple.lean`) state
   that every run of the source reading to a value is matched by a halting run on the
-  decoded bytes that reads the value back. `haxc_correct_auto_ct_regions`
-  (`ComposeCT.lean`) and `haxc_correct_auto_tuple_ct_regions` add constant time of the
-  decoded program over runs from entry states that agree on the public data of the
+  decoded bytes that reads the value back. `haxc_correct_auto_ct_proved_all` and
+  `haxc_correct_auto_tuple_ct_regions` (`ComposeCTStraight.lean`) add constant time of
+  the decoded program over runs from entry states that agree on the public data of the
   layout. The instances are `mpn_and_n_correct_auto` and
-  `mpn_and_n_correct_auto_ct_regions` (`AndNCorrect.lean`, `AndNCorrectCT.lean`),
+  `mpn_and_n_correct_auto_ct_regions` (`AndNCorrect.lean`, `ComposeCTStraight.lean`),
   `ltu_correct_auto` and `ltu_correct_auto_ct` (`LtuCorrect.lean`, `LtuCorrectCT.lean`),
   and `mpn_mul_1_correct_auto` and `mpn_mul_1_correct_auto_ct_regions`
   (`Mul1Correct.lean`, `Mul1CorrectCT.lean`).
@@ -151,10 +151,9 @@ template layer and the dated deferrals.
   `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct`, `compileJ_ct` and
   `compileJ_rc` (`Haxc.ComposeCTStraight`) state the result for one accepted program of
   `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
-  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The checker-based entries
-  `compileACTR` (`Haxc.ComposeCT`) and `compileATCTR` (`Haxc.ComposeTuple`), with
-  `haxc_correct_auto_ct_regions` and the theorems `haxc_rc`, `haxc_uc` and `haxc_gate`
-  of `Haxc.RCInstance`, are present and scheduled for deletion.
+  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The entries `compileA` and
+  `compileAT` apply no byte check after compilation; the compiler calls the byte check
+  `ctGateR` only inside the compile gate, in `compileLoopJ` and in `compileRegion`.
   For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the route program from the level check of the lowered
   program, and `compileJ_ct` carries it to the bytes of `compileJ`; the instances
@@ -255,7 +254,7 @@ legs are checks that run inside the compiler, in two classes.
 | Image gates `imgGateBW`, `printedAddrWB`, `physImgB` (the physical half of the register-allocation pair) | D | `image_addr_simBW`, `printedAddr_simW`, `printedAddr_sim` | completeness; a refusal does not name its cause |
 | `decodableLcmd`, `decodesToB` on the printed body | D | `decodeLprog_of_decodesToB` | completeness on the encoder's image |
 | Index bounds `idxInvCheckB` (abstract interpretation of one body) | D | `runIdxOk_of_idxInvCheckB` | — |
-| Constant-time byte gate `ctGateR` in `compileLoopJ`, on loops with carried registers, and in the checker-based entry `compileACTR` (development repository, `Haxc.BackHalf`, `Haxc.ComposeCT`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`; on loops with carried registers, the derivation of the constant-time conjunct from the level check of the source |
+| Constant-time byte gate `ctGateR` in `compileLoopJ`, on loops with carried registers (development repository, `Haxc.BackHalf`, `Haxc.CTRegions`) | D on the output bytes; the constant-time conjunct is checked, not preserved | `ctGateR_sound`; leak preservation of single passes: `foldInstr_lower_leak`, `gatherPrinted_constIndexFoldBody_leak`, `ownedCheckML_sound_leak`, `route_bytes_ct` | leak preservation of the block optimiser and the fold at `lsemFuelMemF`; on loops with carried registers, the derivation of the constant-time conjunct from the level check of the source |
 
 On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
 call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
@@ -269,8 +268,8 @@ Translation validation outside register allocation, as the compiler stands: the 
 owned back-end passes and the post-pass `fuseMulHiLprog`, which reach the theorems only
 through the register-allocation check; and
 the loop export certificate, until its completeness is proved. The constant-time
-conjunct of the `_ct_regions` theorems, and of `haxc_ct_proved_all` on a loop with
-carried registers, is a verified static analysis of the decoded bytes
+conjunct of `haxc_ct_proved_all` on a loop with
+carried registers is a verified static analysis of the decoded bytes
 (`ctGateR_sound`); it is a check of the output and no preservation theorem. A failed check makes the compiler
 return `none`, so the theorems cover exactly the programs it accepts.
 
