@@ -46,8 +46,9 @@ three pointers to the final memory.
 
 ## Scope
 
-* The lane-moving ops `permxv`, `bcast`, `hadd` have no printed form; a block with
-  one is not `Supported`, and `emitTileFunc?` rejects it.
+* The lane-moving ops `permxv`, `bcast`, `hadd`, `shuffle`, `blend`, the immediate
+  `shl`, `sar`, `rotl`, `rotr` and `mulhu` have no printed form; a block with one is
+  not `Supported`, and `emitTileFunc?` rejects it.
 * `Func.run` is the effect of one tile block. Memory is addressed in elements, and
   pointer arithmetic is on unbounded naturals: the specification's undefined
   results on pointer overflow (§9.3.13) are not modelled.
@@ -203,6 +204,13 @@ def trOp (w : Nat) (s : TSt) : TileOp → TSt
   | .permxv d _ _ => { s with map := (d, .undef) :: s.map }
   | .bcast d _ _ => { s with map := (d, .undef) :: s.map }
   | .hadd d _ => { s with map := (d, .undef) :: s.map }
+  | .shl d _ _ => { s with map := (d, .undef) :: s.map }
+  | .sar d _ _ => { s with map := (d, .undef) :: s.map }
+  | .rotl d _ _ => { s with map := (d, .undef) :: s.map }
+  | .rotr d _ _ => { s with map := (d, .undef) :: s.map }
+  | .mulhu d _ _ => { s with map := (d, .undef) :: s.map }
+  | .shuffle d _ _ _ => { s with map := (d, .undef) :: s.map }
+  | .blend d _ _ _ => { s with map := (d, .undef) :: s.map }
 
 /-- The initial translation state: registers `a`, `b` bound to the loaded tiles. -/
 def TSt.init : TSt := ⟨[("a", .a), ("b", .b)], 0, []⟩
@@ -504,7 +512,8 @@ def opOk (w : Nat) (s : TSt) : TileOp → Bool
   | .shll _ a b | .shrr _ a b => s.bound a && s.bound b
   | .andn _ a b | .mulhs _ a b => decide (1 ≤ w) && s.bound a && s.bound b
   | .shr _ a imm => decide (imm < 2 ^ w) && s.bound a
-  | .permxv .. | .bcast .. | .hadd .. => false
+  | .permxv .. | .bcast .. | .hadd .. | .shl .. | .sar .. | .rotl .. | .rotr .. | .mulhu ..
+  | .shuffle .. | .blend .. => false
 
 /-- Every op of the block satisfies `opOk` in the state the translation reaches it
     in. -/
@@ -722,6 +731,13 @@ theorem Inv.step {n w : Nat} {ρ0 : Env n w} {t : TSt} {st : TileState n w}
   | permxv => simp [opOk] at hok
   | bcast => simp [opOk] at hok
   | hadd => simp [opOk] at hok
+  | shl => simp [opOk] at hok
+  | sar => simp [opOk] at hok
+  | rotl => simp [opOk] at hok
+  | rotr => simp [opOk] at hok
+  | mulhu => simp [opOk] at hok
+  | shuffle => simp [opOk] at hok
+  | blend => simp [opOk] at hok
 
 theorem Inv.foldl {n w : Nat} {ρ0 : Env n w} :
     ∀ (body : List TileOp) (t : TSt) (st : TileState n w), Inv ρ0 t st →

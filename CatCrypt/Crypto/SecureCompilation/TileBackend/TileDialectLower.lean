@@ -52,8 +52,8 @@ set_option autoImplicit false
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp)
-open CatCrypt.Crypto.SecureCompilation.VIR.TileDialect (TileTy tileDialect)
-open CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie (toTileOp)
+open CatCrypt.Crypto.SecureCompilation.VIR.TileDialect (TileTy tileDialect TileImmOp)
+open CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie (toTileOp toImmTileOp)
 open CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
   (Tile TileState evalTileOp runTileBlock bbMulWord bbMulInit)
 open CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR (emitTileFunc)
@@ -94,6 +94,16 @@ def lowerExpr (n w : Nat) (nm : Nat → String) (d : String) {Γ : Ctxt tileDial
       if n' = n ∧ w' = w then some (.hadd d (nm (varLevel a))) else none
   | ⟨.tileConst n' w' k, _, .nil⟩ =>
       if n' = n ∧ w' = w then some (.const d k) else none
+  | ⟨.tileShiftImm op n' w' k, _, .cons a .nil⟩ =>
+      if n' = n ∧ w' = w then some (toImmTileOp op d (nm (varLevel a)) k) else none
+  | ⟨.tileMulhu n' w', _, .cons x (.cons y .nil)⟩ =>
+      if n' = n ∧ w' = w then some (.mulhu d (nm (varLevel x)) (nm (varLevel y))) else none
+  | ⟨.tileShuffle n' w' idx, _, .cons x (.cons y .nil)⟩ =>
+      if n' = n ∧ w' = w then some (.shuffle d (nm (varLevel x)) (nm (varLevel y)) idx)
+      else none
+  | ⟨.tileBlend n' w' mask, _, .cons x (.cons y .nil)⟩ =>
+      if n' = n ∧ w' = w then some (.blend d (nm (varLevel x)) (nm (varLevel y)) mask)
+      else none
 
 /-- Lower a straight-line `tileDialect` program at shape `n × w`: the binding made
     in context `Γ` writes register `nm Γ.length`, and the result is the register
@@ -136,8 +146,11 @@ theorem lowerExpr_frame {n w : Nat} {nm : Nat → String} {d : String} {Γ : Ctx
     (split_ifs at h with hc; cases h)
   all_goals first
     | (simp [evalTileOp, TileModel.TileState.set, TileModel.TileState.get, hr]; done)
+    | (rename_i iop _ _ _
+       cases (iop : TileImmOp) <;> simp [evalTileOp, toImmTileOp, TileModel.TileState.set,
+         TileModel.TileState.get, hr])
     | (rename_i bop _ _
-       cases bop <;> simp [evalTileOp, toTileOp, TileModel.TileState.set,
+       cases (bop : JasminBinOp) <;> simp [evalTileOp, toTileOp, TileModel.TileState.set,
          TileModel.TileState.get, hr])
 
 /-- **One lowered expression.** From a state holding `V`, the op a `tile n w`
@@ -157,6 +170,10 @@ theorem lowerExpr_correct {n w : Nat} {nm : Nat → String} {d : String} {Γ : C
     | (rw [← TileDialectModelTie.tileBroadcast_denote_eq_evalTileOp, hs x]; rfl)
     | (rw [← TileDialectModelTie.tileReduce_denote_eq_evalTileOp, hs x]; rfl)
     | (rw [← TileDialectModelTie.tileConst_denote_eq_evalTileOp]; rfl)
+    | (rw [← TileDialectModelTie.tileShiftImm_denote_eq_evalTileOp, hs x]; rfl)
+    | (rw [← TileDialectModelTie.tileMulhu_denote_eq_evalTileOp, hs x, hs y]; rfl)
+    | (rw [← TileDialectModelTie.tileShuffle_denote_eq_evalTileOp, hs x, hs y]; rfl)
+    | (rw [← TileDialectModelTie.tileBlend_denote_eq_evalTileOp, hs x, hs y]; rfl)
 
 /-- Extending the valuation by `x`: a state that holds `x` in register
     `nm Γ.length` and agrees with a state holding `V` elsewhere holds `V.extend x`,

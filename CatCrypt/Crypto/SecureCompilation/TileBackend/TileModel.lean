@@ -101,7 +101,11 @@ by `evalTileOp`, independently of the Tile IR spec §8 mnemonics. -/
     arithmetic: `permxv` is a data-dependent gather (lane `i` of dst reads the
     lane of `a` named by lane `i` of the index tile, mod `n`), `bcast` splats
     one lane across the tile, `hadd` reduces all lanes by `+` and broadcasts the
-    sum. -/
+    sum.
+
+    `shl`/`sar`/`rotl`/`rotr` are the shifts and rotations by an immediate beside
+    `shr`; `mulhu` is the unsigned high-half multiply; `shuffle` and `blend`
+    select lanes of two tiles by a static index list and a static mask. -/
 inductive TileOp where
   | add (dst a b : String)
   | sub (dst a b : String)
@@ -126,6 +130,29 @@ inductive TileOp where
   | permxv (dst idx a : String)
   | bcast (dst a : String) (lane : Nat)
   | hadd (dst a : String)
+  /-- Shift left by the immediate `imm`: lane `i` of `dst` is `a i <<< imm`. -/
+  | shl (dst a : String) (imm : Nat)
+  /-- Arithmetic shift right by the immediate `imm`: lane `i` of `dst` is
+      `(a i).sshiftRight imm`. -/
+  | sar (dst a : String) (imm : Nat)
+  /-- Rotate left by the immediate `imm`: lane `i` of `dst` is
+      `(a i).rotateLeft imm`. -/
+  | rotl (dst a : String) (imm : Nat)
+  /-- Rotate right by the immediate `imm`: lane `i` of `dst` is
+      `(a i).rotateRight imm`. -/
+  | rotr (dst a : String) (imm : Nat)
+  /-- Unsigned high-half multiply: lane `i` of `dst` is the high `w` bits of the
+      unsigned double-width product of `a i` and `b i`. -/
+  | mulhu (dst a b : String)
+  /-- Shuffle by the static index list `idx`: lane `i` of `dst` is lane
+      `j = idx[i] mod 2n` of the concatenation of `a` and `b`, that is `a j` for
+      `j < n` and `b (j - n)` otherwise; a lane without an entry in `idx` takes
+      the index `i`. -/
+  | shuffle (dst a b : String) (idx : List Nat)
+  /-- Blend by the static mask `mask`: lane `i` of `dst` is `b i` when `mask[i]`
+      is `true` and `a i` otherwise; a lane without an entry in `mask` takes
+      `a i`. -/
+  | blend (dst a b : String) (mask : List Bool)
   deriving Repr, DecidableEq
 
 /-- The per-element semantics of one tile op at shape `n×w` (each a per-lane
@@ -152,6 +179,19 @@ def evalTileOp {n w : Nat} (s : TileState n w) : TileOp → TileState n w
       s.set d (fun i => s.get a ⟨k % n,
         Nat.mod_lt _ (Nat.pos_of_ne_zero (by rintro rfl; exact i.elim0))⟩)
   | .hadd d a => s.set d (fun _ => (List.finRange n).foldl (fun acc j => acc + s.get a j) 0)
+  | .shl d a imm => s.set d (fun i => s.get a i <<< imm)
+  | .sar d a imm => s.set d (fun i => (s.get a i).sshiftRight imm)
+  | .rotl d a imm => s.set d (fun i => (s.get a i).rotateLeft imm)
+  | .rotr d a imm => s.set d (fun i => (s.get a i).rotateRight imm)
+  | .mulhu d a b =>
+      s.set d (fun i => BitVec.ofNat w ((s.get a i).toNat * (s.get b i).toNat / 2 ^ w))
+  | .shuffle d a b idx =>
+      s.set d (fun i =>
+        if h : idx.getD i.val i.val % (2 * n) < n then s.get a ⟨_, h⟩
+        else s.get b ⟨idx.getD i.val i.val % (2 * n) - n, by
+          have := Nat.mod_lt (idx.getD i.val i.val) (show 0 < 2 * n by have := i.isLt; omega)
+          omega⟩)
+  | .blend d a b mask => s.set d (fun i => if mask.getD i.val false then s.get b i else s.get a i)
 
 /-- Run a straight-line tile block (a fold of `evalTileOp`). -/
 def runTileBlock {n w : Nat} (s : TileState n w) (block : List TileOp) : TileState n w :=

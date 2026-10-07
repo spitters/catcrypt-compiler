@@ -232,4 +232,91 @@ theorem tileConst_denote_eq_evalTileOp {n w : Nat} (s : TileState n w) (d : Stri
     CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
     CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
 
+/-! ## 6. Immediate shifts and rotations: `tileShiftImm` ↔ model -/
+
+/-- The operational tile op for the immediate shift or rotation `op`: `lshr` is
+    the model's `shr`, and each other kind has the arm of its name. -/
+def toImmTileOp (op : TileImmOp) (d a : String) (k : Nat) :
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileOp :=
+  match op with
+  | .shl => .shl d a k
+  | .lshr => .shr d a k
+  | .ashr => .sar d a k
+  | .rotl => .rotl d a k
+  | .rotr => .rotr d a k
+
+/-- `tileShiftImm`'s dialect denotation is the lane map `tileShiftImmApply`. -/
+theorem tileShiftImm_denote_eq_apply {n w : Nat} (op : TileImmOp) (k : Nat)
+    (a : Fin n → BitVec w) :
+    (tileDenote.denote (TileOp.tileShiftImm op n w k) (.cons a .nil))
+      = tileShiftImmApply op k a :=
+  rfl
+
+/-- **`tileShiftImm` ↔ model.** The dialect shift or rotation equals the lane
+    function the operational `evalTileOp (toImmTileOp op d a k)` writes into `d`. -/
+theorem tileShiftImm_denote_eq_evalTileOp {n w : Nat} (op : TileImmOp)
+    (s : TileState n w) (d a : String) (k : Nat) :
+    (tileDenote.denote (TileOp.tileShiftImm op n w k) (.cons (s.get a) .nil))
+      = (evalTileOp s (toImmTileOp op d a k)).get d := by
+  rw [tileShiftImm_denote_eq_apply]
+  cases op <;>
+    (funext i
+     simp [tileShiftImmApply, TileImmOp.apply, toImmTileOp, evalTileOp,
+       CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
+       CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get])
+
+/-! ## 7. Unsigned high multiply: `tileMulhu` ↔ model `mulhu` -/
+
+/-- `tileMulhu`'s dialect denotation is the lane map `tileMulhuApply`. -/
+theorem tileMulhu_denote_eq_apply {n w : Nat} (a b : Fin n → BitVec w) :
+    (tileDenote.denote (TileOp.tileMulhu n w) (.cons a (.cons b .nil)))
+      = tileMulhuApply a b :=
+  rfl
+
+/-- **`tileMulhu` ↔ model `mulhu`.** -/
+theorem tileMulhu_denote_eq_evalTileOp {n w : Nat} (s : TileState n w) (d a b : String) :
+    (tileDenote.denote (TileOp.tileMulhu n w) (.cons (s.get a) (.cons (s.get b) .nil)))
+      = (evalTileOp s (.mulhu d a b)).get d := by
+  rw [tileMulhu_denote_eq_apply]
+  funext i
+  simp [tileMulhuApply, laneMulhu, evalTileOp,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
+
+/-! ## 8. Static lane selection: `tileShuffle`, `tileBlend` ↔ model -/
+
+/-- `tileShuffle`'s dialect denotation is the selection `tileShuffleApply`. -/
+theorem tileShuffle_denote_eq_apply {n w : Nat} (idx : List Nat) (a b : Fin n → BitVec w) :
+    (tileDenote.denote (TileOp.tileShuffle n w idx) (.cons a (.cons b .nil)))
+      = tileShuffleApply idx a b :=
+  rfl
+
+/-- **`tileShuffle` ↔ model `shuffle`.** -/
+theorem tileShuffle_denote_eq_evalTileOp {n w : Nat} (s : TileState n w) (d a b : String)
+    (idx : List Nat) :
+    (tileDenote.denote (TileOp.tileShuffle n w idx) (.cons (s.get a) (.cons (s.get b) .nil)))
+      = (evalTileOp s (.shuffle d a b idx)).get d := by
+  rw [tileShuffle_denote_eq_apply]
+  funext i
+  simp [tileShuffleApply, evalTileOp,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
+
+/-- `tileBlend`'s dialect denotation is the per-lane choice `tileBlendApply`. -/
+theorem tileBlend_denote_eq_apply {n w : Nat} (mask : List Bool) (a b : Fin n → BitVec w) :
+    (tileDenote.denote (TileOp.tileBlend n w mask) (.cons a (.cons b .nil)))
+      = tileBlendApply mask a b :=
+  rfl
+
+/-- **`tileBlend` ↔ model `blend`.** -/
+theorem tileBlend_denote_eq_evalTileOp {n w : Nat} (s : TileState n w) (d a b : String)
+    (mask : List Bool) :
+    (tileDenote.denote (TileOp.tileBlend n w mask) (.cons (s.get a) (.cons (s.get b) .nil)))
+      = (evalTileOp s (.blend d a b mask)).get d := by
+  rw [tileBlend_denote_eq_apply]
+  funext i
+  simp [tileBlendApply, evalTileOp,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
+
 end CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie

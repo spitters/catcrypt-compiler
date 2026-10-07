@@ -108,7 +108,8 @@ def St.fresh (s : St) : String × St := ("%v" ++ toString s.ctr, { s with ctr :=
 def St.emit (s : St) (line : String) : St := { s with lines := line :: s.lines }
 
 /-- Emit one `TileOp` at tile type `tileTyAt n w`, threading SSA state. The
-    lane-moving ops print nothing and bind their destination to `%undef`. -/
+    lane-moving ops, the immediate `shl`/`sar`/`rotl`/`rotr` and `mulhu` print
+    nothing and bind their destination to `%undef`. -/
 def emitTileOp (n w : Nat) (s : St) : TileOp → St
   | .const dst k =>
       let (v, s) := s.fresh
@@ -156,6 +157,13 @@ def emitTileOp (n w : Nat) (s : St) : TileOp → St
   | .permxv dst _ _ => s.bind dst "%undef"
   | .bcast dst _ _ => s.bind dst "%undef"
   | .hadd dst _ => s.bind dst "%undef"
+  | .shl dst _ _ => s.bind dst "%undef"
+  | .sar dst _ _ => s.bind dst "%undef"
+  | .rotl dst _ _ => s.bind dst "%undef"
+  | .rotr dst _ _ => s.bind dst "%undef"
+  | .mulhu dst _ _ => s.bind dst "%undef"
+  | .shuffle dst _ _ _ => s.bind dst "%undef"
+  | .blend dst _ _ _ => s.bind dst "%undef"
 where
   binOp (s : St) (mn dst a b : String) : St :=
     let (v, s) := s.fresh
@@ -214,7 +222,8 @@ def emitTileFunc (name : String) (body : List TileOp) (res : String) : String :=
 
 /-- The ops the emitter has no `cuda_tile` form for. -/
 def laneMoving : TileOp → Bool
-  | .permxv .. | .bcast .. | .hadd .. => true
+  | .permxv .. | .bcast .. | .hadd .. | .shl .. | .sar .. | .rotl .. | .rotr .. | .mulhu ..
+  | .shuffle .. | .blend .. => true
   | _ => false
 
 /-- The kernel text, or `none` when the block contains a lane-moving op. -/

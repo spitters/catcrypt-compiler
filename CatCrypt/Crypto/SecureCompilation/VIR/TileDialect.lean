@@ -54,8 +54,15 @@ function — no edit to the shared framework, and no packing into a flat
   holds `Σ_j a[j]` (`cuda_tile.reduce`).
 * `tileConst (n w) (k)` — no operands; every lane holds `BitVec.ofNat w k`
   (`cuda_tile.constant`).
+* `tileShiftImm (op) (n w) (k)` — elementwise shift or rotation of every lane by
+  the immediate `k`.
+* `tileMulhu (n w)` — elementwise unsigned high-half multiply.
+* `tileShuffle (n w) (idx)` — static selection of lanes from the concatenation of
+  two tiles (MLIR `vector.shuffle`).
+* `tileBlend (n w) (mask)` — static per-lane choice between two tiles; it is the
+  shuffle by `blendIdx` (`tileBlendApply_eq_shuffle`).
 
-These three are the **cross-tile (lane-moving)** ops, lifted into the dialect
+`tilePermute`, `tileBroadcast` and `tileReduce` are the **cross-tile (lane-moving)** ops, lifted into the dialect
 from the operational `TileModel`'s `permxv`/`bcast`/`hadd` arms. They are still
 pure functions of the lane carrier (no async copy / barrier, hence no
 memory-consistency model), so each ties to its `TileModel` arm by `rfl`/`funext`
@@ -97,8 +104,27 @@ inductive TileTy where
 
 /-! ## 2. Op tags -/
 
-/-- Operation tags for the tile dialect. A single elementwise binary op family;
-    the scalar op is a `JasminBinOp` reused from `JasminDialect`. -/
+/-- The shifts and rotations by an immediate: shift left, logical and arithmetic
+    shift right, rotate left and rotate right. -/
+inductive TileImmOp where
+  | shl | lshr | ashr | rotl | rotr
+  deriving DecidableEq
+
+/-- A shift or rotation of one lane by the amount `k`. It is total: a shift by at
+    least the width gives `0` (the sign fill for `ashr`), and a rotation reduces
+    `k` modulo the width. -/
+def TileImmOp.apply {w : Nat} : TileImmOp → BitVec w → Nat → BitVec w
+  | .shl, x, k => x <<< k
+  | .lshr, x, k => x >>> k
+  | .ashr, x, k => x.sshiftRight k
+  | .rotl, x, k => x.rotateLeft k
+  | .rotr, x, k => x.rotateRight k
+
+/-- Operation tags for the tile dialect: the elementwise binary family over a
+    `JasminBinOp`, the shifts and rotations by an immediate, the unsigned high
+    multiply, a constant, and the lane-moving operations (gather, splat, reduce,
+    static shuffle and static blend). Every static datum is a parameter of the
+    operation. -/
 inductive TileOp where
   /-- Elementwise (SIMT lane map) binary op on `tile n w`: applies the scalar
       `op` independently in each of the `n` lanes. The tile analogue of
@@ -116,6 +142,23 @@ inductive TileOp where
   /-- Lane-uniform constant (`cuda_tile.constant`): no operands; every result
       lane is `BitVec.ofNat w k`. -/
   | tileConst (n w : Nat) (k : Nat)
+  /-- Elementwise shift or rotation by the immediate `k`: one `tile n w` operand
+      `a`; result lane `i` is `op.apply (a i) k`. The shifts are the elementwise
+      `arith.shli`, `arith.shrui` and `arith.shrsi` of MLIR at a constant amount. -/
+  | tileShiftImm (op : TileImmOp) (n w : Nat) (k : Nat)
+  /-- Elementwise unsigned high-half multiply: two `tile n w` operands; result
+      lane `i` is the high `w` bits of the unsigned double-width product of the
+      two lanes. -/
+  | tileMulhu (n w : Nat)
+  /-- Shuffle by the static index list `idx` (MLIR `vector.shuffle` at equal
+      operand and result lengths): two `tile n w` operands `a`, `b`; result lane
+      `i` is lane `j = idx[i] mod 2n` of the concatenation of `a` and `b`. A lane
+      without an entry in `idx` takes the index `i`. -/
+  | tileShuffle (n w : Nat) (idx : List Nat)
+  /-- Blend by the static mask `mask`: two `tile n w` operands `a`, `b`; result
+      lane `i` is `b i` when `mask[i]` is `true` and `a i` otherwise. A lane
+      without an entry in `mask` takes `a i`. -/
+  | tileBlend (n w : Nat) (mask : List Bool)
   deriving DecidableEq
 
 /-! ## 3. The dialect -/
@@ -154,6 +197,66 @@ def tileReduceApply {n w : Nat} (a : Fin n → BitVec w) : Fin n → BitVec w :=
 def tileConstApply (n w k : Nat) : Fin n → BitVec w :=
   fun _ => BitVec.ofNat w k
 
+/-- The data effect of `tileShiftImm`: every lane is shifted or rotated by `k`.
+    Mirrors `TileModel.evalTileOp`'s `.shl`/`.shr`/`.sar`/`.rotl`/`.rotr` arms. -/
+def tileShiftImmApply {n w : Nat} (op : TileImmOp) (k : Nat) (a : Fin n → BitVec w) :
+    Fin n → BitVec w :=
+  fun i => op.apply (a i) k
+
+/-- The high `w` bits of the unsigned double-width product of two `w`-bit words. -/
+def laneMulhu {w : Nat} (x y : BitVec w) : BitVec w :=
+  BitVec.ofNat w (x.toNat * y.toNat / 2 ^ w)
+
+/-- The data effect of `tileMulhu`: the unsigned high-half multiply in each lane.
+    Mirrors `TileModel.evalTileOp`'s `.mulhu` arm. -/
+def tileMulhuApply {n w : Nat} (a b : Fin n → BitVec w) : Fin n → BitVec w :=
+  fun i => laneMulhu (a i) (b i)
+
+/-- The data effect of `tileShuffle`: lane `i` is lane `j = idx[i] mod 2n` of the
+    concatenation of `a` and `b`, that is `a j` for `j < n` and `b (j - n)`
+    otherwise; a lane without an entry in `idx` takes the index `i`. Mirrors
+    `TileModel.evalTileOp`'s `.shuffle` arm. -/
+def tileShuffleApply {n w : Nat} (idx : List Nat) (a b : Fin n → BitVec w) :
+    Fin n → BitVec w :=
+  fun i =>
+    if h : idx.getD i.val i.val % (2 * n) < n then a ⟨_, h⟩
+    else b ⟨idx.getD i.val i.val % (2 * n) - n, by
+      have := Nat.mod_lt (idx.getD i.val i.val) (show 0 < 2 * n by have := i.isLt; omega)
+      omega⟩
+
+/-- The data effect of `tileBlend`: lane `i` is `b i` when `mask[i]` is `true`
+    and `a i` otherwise. Mirrors `TileModel.evalTileOp`'s `.blend` arm. -/
+def tileBlendApply {n w : Nat} (mask : List Bool) (a b : Fin n → BitVec w) :
+    Fin n → BitVec w :=
+  fun i => if mask.getD i.val false then b i else a i
+
+/-- The index list of the shuffle that computes the blend by `mask` on `n` lanes:
+    lane `i` reads index `n + i` (lane `i` of the second operand) when `mask[i]`
+    is `true` and index `i` otherwise. -/
+def blendIdx (n : Nat) (mask : List Bool) : List Nat :=
+  (List.range n).map fun i => if mask.getD i false then n + i else i
+
+/-- A blend is the shuffle by `blendIdx`. -/
+theorem tileBlendApply_eq_shuffle {n w : Nat} (mask : List Bool) (a b : Fin n → BitVec w) :
+    tileBlendApply mask a b = tileShuffleApply (blendIdx n mask) a b := by
+  funext i
+  have hi := i.isLt
+  simp only [tileBlendApply, tileShuffleApply, blendIdx, List.getD_eq_getElem?_getD,
+    List.getElem?_map, List.getElem?_range hi, Option.map_some, Option.getD_some]
+  split
+  · have h1 : (n + i.val) % (2 * n) = n + i.val := Nat.mod_eq_of_lt (by omega)
+    simp [h1]
+  · have h1 : i.val % (2 * n) = i.val := Nat.mod_eq_of_lt (by omega)
+    simp [h1, hi]
+
+/-- The shuffle by the empty index list returns its first operand. -/
+theorem tileShuffleApply_nil {n w : Nat} (a b : Fin n → BitVec w) :
+    tileShuffleApply [] a b = a := by
+  funext i
+  have hi := i.isLt
+  have h1 : i.val % (2 * n) = i.val := Nat.mod_eq_of_lt (by omega)
+  simp [tileShuffleApply, h1, hi]
+
 /-! ## 4. Op signatures (arg types + return type) -/
 
 instance : DialectSignature tileDialect where
@@ -163,12 +266,20 @@ instance : DialectSignature tileDialect where
     | .tileBroadcast n w _ => [.tile n w]
     | .tileReduce n w => [.tile n w]
     | .tileConst _ _ _ => []
+    | .tileShiftImm _ n w _ => [.tile n w]
+    | .tileMulhu n w => [.tile n w, .tile n w]
+    | .tileShuffle n w _ => [.tile n w, .tile n w]
+    | .tileBlend n w _ => [.tile n w, .tile n w]
   ret op := match op with
     | .tileBin _ n w => .tile n w
     | .tilePermute n w => .tile n w
     | .tileBroadcast n w _ => .tile n w
     | .tileReduce n w => .tile n w
     | .tileConst n w _ => .tile n w
+    | .tileShiftImm _ n w _ => .tile n w
+    | .tileMulhu n w => .tile n w
+    | .tileShuffle n w _ => .tile n w
+    | .tileBlend n w _ => .tile n w
 
 /-! ## 5. Op denotation -/
 
@@ -187,6 +298,20 @@ instance tileDenote : DialectDenote tileDialect where
     | .tileReduce n w => fun args =>
         tileReduceApply (args.head : Fin n → BitVec w)
     | .tileConst n w k => fun _ => tileConstApply n w k
+    | .tileShiftImm op n w k => fun args =>
+        tileShiftImmApply op k (args.head : Fin n → BitVec w)
+    | .tileMulhu n w => fun args =>
+        let a : Fin n → BitVec w := args.head
+        let b : Fin n → BitVec w := args.tail.head
+        tileMulhuApply a b
+    | .tileShuffle n w idx => fun args =>
+        let a : Fin n → BitVec w := args.head
+        let b : Fin n → BitVec w := args.tail.head
+        tileShuffleApply idx a b
+    | .tileBlend n w mask => fun args =>
+        let a : Fin n → BitVec w := args.head
+        let b : Fin n → BitVec w := args.tail.head
+        tileBlendApply mask a b
 
 /-! ## 6. Smoke test
 
