@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Relational.Approx
+public import CatCryptCore.Prob.Support
 
 /-!
 # Identical-Until-Bad as a Graded Exception Structure
@@ -126,8 +127,9 @@ hypothesis pair consumed by `rHoareApprox_upto_bad`.
   factorization
 * `identicalUntilBad_badProg`, `prTrue_badProg` — bridge to the
   inequality-form `BadEvent.IdenticalUntilBad` vocabulary
-* `bind_none_le`, `badMass_bind_le`, `truncBad_bind_congr`,
-  `GradedUntilBad.bind` — the graded bind laws
+* `badMass_bind_le`, `truncBad_bind_congr`, `GradedUntilBad.bind` — the graded
+  bind laws; the union bound `bind_none_le` for the failure weight of a bind is
+  in `CatCryptCore.Prob.Support`
 
 ## References
 
@@ -232,37 +234,10 @@ theorem badMass_pure (a : α) :
 
 end BadMass
 
-/-! ## A `bind` application formula at `none`
+/-! ## Bind laws of the bad mass
 
-The `some` analogue is `SDistr.bind_apply_some` (SpanLifting). At `none`, the
-failure mass of the prefix passes through (`fail` has mass `1` on `none`) and
-each successful prefix outcome contributes its continuation's failure mass. -/
-
-theorem SDistr.bind_apply_none (d : SDistr α) (f : α → SDistr β) :
-    (d.bind f) none = d none + ∑' a, d (some a) * (f a) none := by
-  show (PMF.bind d _) none = _
-  rw [PMF.bind_apply, SDistr.tsum_option_eq_add]
-  congr 1
-  simp
-
-/-- **Graded exception bind law, grades add**: if the prefix throws with mass
-    at most `ε₁` and each continuation (on the support) throws with mass at
-    most `ε₂`, the composite throws with mass at most `ε₁ + ε₂`. This is the
-    `(ℝ≥0∞, +, 0)`-graded bind of the exception structure. -/
-theorem bind_none_le {d : SDistr α} {k : α → SDistr β} {ε₁ ε₂ : ℝ≥0∞}
-    (hd : d none ≤ ε₁) (hk : ∀ a, d (some a) ≠ 0 → (k a) none ≤ ε₂) :
-    (d.bind k) none ≤ ε₁ + ε₂ := by
-  rw [SDistr.bind_apply_none]
-  refine add_le_add hd ?_
-  calc ∑' a, d (some a) * (k a) none
-      ≤ ∑' a, d (some a) * ε₂ := by
-        refine ENNReal.tsum_le_tsum fun a => ?_
-        by_cases h0 : d (some a) = 0
-        · simp [h0]
-        · exact mul_le_mul_right (hk a h0) _
-    _ = (∑' a, d (some a)) * ε₂ := ENNReal.tsum_mul_right
-    _ ≤ 1 * ε₂ := mul_le_mul_left (SDistr.tsum_some_le_one d) _
-    _ = ε₂ := one_mul _
+The failure weight of a bind is `SDistr.bind_apply_none`, and its union bound
+is `bind_none_le`; both are in `CatCryptCore.Prob.Support`. -/
 
 /-- Bad mass is non-expansive under bind: a pointwise bad-mass bound on the
     continuations (on the support) bounds the bad mass of the composite.
