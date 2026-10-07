@@ -919,9 +919,44 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
             (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 n) W)).map _ = _
           exact congrArg (Option.map _) hr'
         · rw [h0, List.nil_append, he]
-  | ifThenElse cond thn els k _ _ _ =>
-      intro Δ σ p' h
-      cases h
+  | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
+      intro Δ σ p' h V W r hag hr
+      change ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
+          nfLeakRun bi fuel thn V else nfLeakRun bi fuel els V).bind fun a =>
+          (nfLeakRun bi fuel k (hvAppend a.1 V)).map fun q =>
+            (q.1, .branch (HasBoolBit.toBool (d := nfDialect) (cond.lookup V)) ::
+              (a.2 ++ q.2))) = some r at hr
+      obtain ⟨a, ha, hr⟩ := Option.bind_eq_some_iff.mp hr
+      obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp hr
+      have hcond := hag _ cond
+      simp only [nfToCat] at h
+      split at h
+      · rename_i c hc
+        rw [hc] at hcond
+        obtain ⟨thn', ht', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨els', he', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hcb : HasBoolBit.toBool (d := catCryptDialect) (c.lookup W) =
+            HasBoolBit.toBool (d := nfDialect) (cond.lookup V) := hcond.symm
+        obtain ⟨a', ha', hea, hrA⟩ : ∃ a', (if HasBoolBit.toBool (d := catCryptDialect)
+            (c.lookup W) = true then NFProg.leakRun (catLeakModel P) fuel thn' W
+            else NFProg.leakRun (catLeakModel P) fuel els' W) = some a' ∧ a'.2 = a.2 ∧
+            VRelL rs a.1 a'.1 := by
+          rw [hcb]
+          cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
+          · rw [hb] at ha
+            exact ihe σ els' he' V W a hag ha
+          · rw [hb] at ha
+            exact iht σ thn' ht' V W a hag ha
+        obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp rs σ) k' hk' (hvAppend a.1 V)
+          (hvAppend a'.1 W) q (TRd.agree_liftApp hag rs a.1 a'.1 hrA) hq
+        refine ⟨(q'.1, .branch (HasBoolBit.toBool (d := catCryptDialect) (c.lookup W)) ::
+          (a'.2 ++ q'.2)), ?_, ?_, hR⟩
+        · simp only [NFProg.leakRun]
+          erw [ha']
+          rw [Option.bind_some, hq', Option.map_some]
+        · simp only [hea, heq, hcb]
+      · cases h
   | whileLoop inits body k _ _ =>
       intro Δ σ p' h
       cases h

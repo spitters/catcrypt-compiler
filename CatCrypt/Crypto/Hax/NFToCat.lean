@@ -1964,7 +1964,9 @@ def emitRes {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     translation `catOp` of its operation; and a counted loop whose seeds are variables to the
     counted loop of the translated body and continuation, on the variable of the count or,
     for a count that reads as a literal, on a `bvConst` binding of the literal in front of the
-    loop. `none` on a branch, an exit-flag loop and a call. -/
+    loop; and a branch to the branch of the translated arms and continuation on the variable
+    of its condition (a bit has no literal reading). `none` on an exit-flag loop and a
+    call. -/
 def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : List NfTy} →
     NFProg nfDialect Γ ts → TRd Γ Δ → Option (NFProg catCryptDialect Δ (ts.map catTy))
   | _, _, _, .ret vs, σ => (pinVars (σ.rds vs)).map .ret
@@ -1984,7 +1986,14 @@ def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : Li
                 (nfToCat k (TRd.liftApp cs (TRd.wk (c := CryptoTy.sword 64) σ))).map fun k' =>
                   .var ⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩
                     (.forLoop (cs := cs.map catTy) .here is body' k')
-  | _, _, _, .ifThenElse .., _ => none
+  | _, _, _, .ifThenElse (rs := rs) cond thn els k, σ =>
+      match σ cond with
+      | .var c =>
+          (nfToCat thn σ).bind fun thn' =>
+            (nfToCat els σ).bind fun els' =>
+              (nfToCat k (TRd.liftApp rs σ)).map fun k' =>
+                .ifThenElse (rs := rs.map catTy) c thn' els' k'
+      | .lit _ _ => none
   | _, _, _, .whileLoop .., _ => none
   | _, _, _, .call .., _ => none
 
@@ -2140,9 +2149,38 @@ theorem nfToCat_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Nat)
         refine ⟨out', ?_, hR⟩
         rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
         exact hden
-  | ifThenElse cond thn els k _ _ _ =>
-      intro Δ σ p' h
-      cases h
+  | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
+      intro Δ σ p' h V W out hag hp fuel
+      change ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
+          ImpToNF.PDenP bi tf thn V else ImpToNF.PDenP bi tf els V).bind
+          fun r => ImpToNF.PDenP bi tf k (hvAppend r V)) = some out at hp
+      obtain ⟨r, hr, hkout⟩ := Option.bind_eq_some_iff.mp hp
+      have hcond := hag _ cond
+      simp only [nfToCat] at h
+      split at h
+      · rename_i c hc
+        rw [hc] at hcond
+        obtain ⟨thn', ht', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨els', he', h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hcb : HasBoolBit.toBool (d := catCryptDialect) (c.lookup W) =
+            HasBoolBit.toBool (d := nfDialect) (cond.lookup V) := hcond.symm
+        obtain ⟨r', hr', hrR⟩ : ∃ r', (if HasBoolBit.toBool (d := catCryptDialect)
+            (c.lookup W) = true then thn'.denote fuel W else els'.denote fuel W) = some r' ∧
+            VRelL rs r r' := by
+          rw [hcb]
+          cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
+          · rw [hb] at hr
+            exact ihe σ els' he' V W r hag hr fuel
+          · rw [hb] at hr
+            exact iht σ thn' ht' V W r hag hr fuel
+        obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp rs σ) k' hk' (hvAppend r V)
+          (hvAppend r' W) out (TRd.agree_liftApp hag rs r r' hrR) hkout fuel
+        refine ⟨out', ?_, hR⟩
+        rw [NFProg.denote_ifThenElse]
+        erw [hr']
+        exact hden
+      · cases h
   | whileLoop inits body k _ _ =>
       intro Δ σ p' h
       cases h

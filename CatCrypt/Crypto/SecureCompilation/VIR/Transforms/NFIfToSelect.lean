@@ -23,16 +23,21 @@ in an arm is lowered before the arm is tested.
 
 * every result type of the branch has a select (`HasSelect.selects`), and
 * each arm is straight-line (let-bindings and a return, no region constructor) and
-  binds only speculatable ops (`HasSelect.speculatable`), whose `Option` denotation is
-  `some` at every argument.
+  binds only ops that are speculatable (`HasSelect.speculatable`), whose `Option`
+  denotation is `some` at every argument, and quiet (`HasSelect.quiet`), which emit no
+  leakage event.
 
 Under these conditions running the untaken arm cannot fail, so the denotation is
-preserved exactly (`NFProg.denote_lowerSelects`).
+preserved exactly (`NFProg.denote_lowerSelects`), and it emits no event, so two runs with
+equal events are lowered to two runs with equal events
+(`NFProg.lowerSelects_ctRel` in `NFIfToSelectLeak`). A branch with an arm that loads or
+stores is not lowered.
 
-A dialect provides its select op and its speculatable ops through `HasSelect`.
-`catCryptDialect` selects at every type with `ite` and speculates every op;
-`jasminDialect` selects at the register types `reg w` with `select w` and speculates
-every op except the calls `extCall` and `callN`.
+A dialect provides its select op, its speculatable ops and its quiet ops through
+`HasSelect`. `catCryptDialect` selects at every type with `ite`, speculates every op and
+lists no op quiet; `jasminDialect` selects at the register types `reg w` with
+`select w`, speculates every op except the calls `extCall` and `callN`, and lists quiet
+the ops of `jasminQuiet`.
 
 `NFProg.ctSafeNF opCT` is the counterpart on `NFProg` of `ctSafeComR`: every let-bound
 op satisfies `opCT` and no `ifThenElse` remains. `NFProg` carries no secrecy level, so
@@ -95,6 +100,9 @@ class HasSelect (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasBo
   /-- A speculatable op denotes `some` value at every argument. -/
   isSome_denoteM : ∀ (op : d.Op), speculatable op = true →
     ∀ args, (DialectDenoteM.denoteM (M := Option) op args).isSome
+  /-- The ops that emit no leakage event: no memory access and no variable-time
+      instruction, in the leakage models the lowering is certified for. -/
+  quiet : d.Op → Bool
 
 /-- Under the `Option` denotation of a dialect with a pure denotation
     (`instDialectDenoteMOptionOfPure`), every operation record satisfies the speculation
@@ -109,13 +117,16 @@ theorem jasminTraits_specLaw : SpecLaw jasminTraits := SpecLaw.ofPure jasminTrai
 /-- A speculatable catCrypt operation denotes `some` value at every argument. -/
 theorem catTraits_specLaw : SpecLaw catTraits := SpecLaw.ofPure catTraits
 
-/-- `catCryptDialect` selects at every type with `ite t`, and every op is speculatable. -/
+/-- `catCryptDialect` selects at every type with `ite t`, and every op is speculatable. No
+    op is listed quiet: the class of an op of `catCryptDialect` depends on the parameters
+    of its leakage model, and the linear route lowers branches at `jasminDialect`. -/
 instance : HasSelect catCryptDialect where
   selects _ := true
   sel {_ t} _ c a b := ⟨CatCryptOp.ite t, rfl, .cons c (.cons a (.cons b .nil))⟩
   denoteM_sel _ _ _ _ _ := rfl
   speculatable := catTraits.speculatable
   isSome_denoteM := catTraits_specLaw
+  quiet _ := false
 
 /-- The register types of `jasminDialect`, at which it has the select `select w`. -/
 def jasminSelects : JasminTy → Bool
@@ -139,9 +150,18 @@ theorem jasminSel_denoteM {Γ : Ctxt jasminDialect} {w : Nat}
     (jasminSel h c a b).denoteM (M := Option) V =
       some (JasminDialect.selectW (c.lookup V) (a.lookup V) (b.lookup V)) := rfl
 
+/-- The ops of `jasminDialect` listed quiet: register arithmetic, the select, and a
+    register constant below `2 ^ w`. A stack access (`stackLoad`, `stackStore`) emits its
+    index and a leaf call may be variable time; neither is listed. -/
+def jasminQuiet : JasminOp → Bool
+  | .regArith .. => true
+  | .select _ => true
+  | .regConst w n => decide (n < 2 ^ w)
+  | _ => false
+
 open NFProgJasmin in
-/-- `jasminDialect` selects at the register types with `select w` (`selectW`), and
-    every op except `extCall` and `callN` is speculatable. -/
+/-- `jasminDialect` selects at the register types with `select w` (`selectW`), every op
+    except `extCall` and `callN` is speculatable, and the quiet ops are `jasminQuiet`. -/
 instance : HasSelect jasminDialect where
   selects := jasminSelects
   sel h c a b := jasminSel h c a b
@@ -154,6 +174,7 @@ instance : HasSelect jasminDialect where
     | _ => exact absurd h Bool.false_ne_true
   speculatable := jasminTraits.speculatable
   isSome_denoteM := jasminTraits_specLaw
+  quiet := jasminQuiet
 
 namespace NFProg
 
@@ -247,17 +268,20 @@ variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d] [DialectDenoteM d Option] [HasSelect d]
 
 /-- The straight-line programs (let-bindings and a return) whose let-bound ops are all
-    speculatable. -/
+    speculatable and quiet. -/
 def straightSpec : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
   | _, _, .ret _ => true
-  | _, _, .var e k => HasSelect.speculatable e.op && straightSpec k
+  | _, _, .var e k =>
+      HasSelect.speculatable e.op && HasSelect.quiet e.op && straightSpec k
   | _, _, .forLoop .. => false
   | _, _, .ifThenElse .. => false
   | _, _, .whileLoop .. => false
   | _, _, .call .. => false
 
 /-- **The test on the arms of a branch.** Every result type has a select and both arms
-    are straight-line with speculatable ops. -/
+    are straight-line with ops that are speculatable and quiet (`HasSelect.quiet`). The
+    lowering runs both arms, so an op that emits a leakage event must not be speculated:
+    a branch with an arm that loads or stores fails the test and stays a branch. -/
 def Lowerable {Γ : Ctxt d} {rs : List d.Ty} (thn els : NFProg d Γ rs) : Bool :=
   rs.all HasSelect.selects && straightSpec thn && straightSpec els
 
@@ -398,7 +422,7 @@ theorem isSome_denote_of_straightSpec (fuel : Nat) {Γ : Ctxt d} {rs : List d.Ty
       simp only [straightSpec, Bool.and_eq_true] at hp
       obtain ⟨op, rfl, args⟩ := e
       obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp
-        (HasSelect.isSome_denoteM op hp.1 (Expr.lookupArgs args V))
+        (HasSelect.isSome_denoteM op hp.1.1 (Expr.lookupArgs args V))
       show (Option.bind (DialectDenoteM.denoteM (M := Option) op (Expr.lookupArgs args V))
         _).isSome = true
       rw [hx]

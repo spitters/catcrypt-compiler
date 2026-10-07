@@ -400,7 +400,15 @@ theorem nfToCat_opsHaveImages {Γ : Ctxt nfDialect} {ts : List NfTy}
         obtain ⟨b', hb, h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
         exact And.intro (by image_op) (And.intro (ihb _ b' hb) (ihk _ k' hk))
-  | ifThenElse => intro _ σ q h; cases h
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro _ σ q h
+      simp only [nfToCat] at h
+      split at h
+      · obtain ⟨t', ht, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨e', he, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
+        exact And.intro (iht _ t' ht) (And.intro (ihe _ e' he) (ihk _ k' hk))
+      · cases h
   | whileLoop => intro _ σ q h; cases h
   | call => intro _ σ q h; cases h
 

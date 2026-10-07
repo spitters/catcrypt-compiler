@@ -19,16 +19,19 @@ coincide (`leakRunM_eq_leakRun`). Like `leakRun`, it refuses a `call` node.
 agree on the positions `L` marks public, from which the program runs to results, give equal
 events.
 
-`NFProg.levelCheck'` extends the level checker `NFLeak.NFProg.levelCheck` to branches and
-exit-flag loops. A branch requires a public condition, and its results take the join of the
+`NFProg.levelCheck'` extends the level checker `NFLeak.NFProg.levelCheck` to exit-flag
+loops, with the same rule for a branch: a public condition, and results at the join of the
 levels of the two arms. An exit-flag loop requires its flag to be public; its carried values
 take the levels of their initial values when the body keeps them, and the secret level
-otherwise. The checker refuses calls.
+otherwise. The checker refuses calls. An exit-flag loop fails when its fuel runs out and an
+operation of a partial denotation may fail, so the soundness statement of `levelCheck'` is
+relative to the runs that succeed (`NFCTRel`), where that of `levelCheck` includes the
+success of both runs (`NFCT`).
 
 ## Main definitions
 
 * `NFProg.leakRunM`, `NFCTRel`
-* `lvlJoin`, `NFProg.levelCheck'`
+* `flagOk`, `NFProg.levelCheck'`
 
 ## Main results
 
@@ -164,11 +167,6 @@ theorem NFProg.leakRunM_eq_leakRun [DialectDenote d] (M : LeakModel d) (fuel : N
 
 /-! ## The level checker with branches and exit-flag loops -/
 
-/-- The pointwise join of the levels of a tuple. -/
-def lvlJoin : {cs : List d.Ty} → Labels cs → Labels cs → Labels cs
-  | [], .nil, .nil => .nil
-  | _ :: _, .cons a A, .cons b B => .cons (a.join b) (lvlJoin A B)
-
 /-- The levels of the result of an exit-flag loop body keep the carried levels `A`: a public
     flag, and carried levels at most `A`. -/
 def flagOk {cs : List d.Ty} (FB : Labels (HasBitType.bit (d := d) :: cs)) (A : Labels cs) :
@@ -211,25 +209,6 @@ def NFProg.levelCheck' (M : LeakModel d) :
         NFProg.levelCheck' M k (hvAppend (allSecret cs') L)
       else none
   | _, _, .call .., _ => none
-
-omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] in
-/-- A tuple of levels is below its join with another. -/
-theorem lvlsLe_join_left : {cs : List d.Ty} → (A B : Labels cs) → lvlsLe A (lvlJoin A B) = true
-  | [], .nil, .nil => rfl
-  | _ :: _, .cons a A, .cons b B => by
-      simp only [lvlsLe, lvlJoin, Bool.and_eq_true]
-      refine ⟨?_, lvlsLe_join_left A B⟩
-      cases a <;> cases b <;> rfl
-
-omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] in
-/-- A tuple of levels is below the join of another with it. -/
-theorem lvlsLe_join_right : {cs : List d.Ty} → (A B : Labels cs) →
-    lvlsLe B (lvlJoin A B) = true
-  | [], .nil, .nil => rfl
-  | _ :: _, .cons a A, .cons b B => by
-      simp only [lvlsLe, lvlJoin, Bool.and_eq_true]
-      refine ⟨?_, lvlsLe_join_right A B⟩
-      cases a <;> cases b <;> rfl
 
 omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] in
 /-- The iterations of two counted-loop runs that both succeed, whose steps preserve the

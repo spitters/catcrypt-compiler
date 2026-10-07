@@ -29,15 +29,18 @@ events:
 `NFCT M L fuel p` is constant time for the entry labels `L`: valuations that agree on the
 positions `L` marks public give the same events (and both runs succeed or both fail).
 
-`NFProg.levelCheck M p L` is a level checker for the fragment of bindings and counted
-loops. It returns the levels of the results. A counted loop requires a public trip count;
-its carried values take the levels of their initial values when the body keeps them,
-and the secret level otherwise. The checker refuses branches, exit-flag loops and calls.
+`NFProg.levelCheck M p L` is a level checker for the fragment of bindings, counted loops
+and branches on a public condition. It returns the levels of the results. A counted loop
+requires a public trip count; its carried values take the levels of their initial values
+when the body keeps them, and the secret level otherwise. A branch requires a public
+condition, and its results take the join of the levels of its arms. The checker refuses
+branches on a secret condition, exit-flag loops and calls, so every run of a program it
+accepts succeeds.
 
 ## Main definitions
 
 * `forIterLeak`, `whileIterLeak`, `NFProg.leakRun`, `NFCT`
-* `retLvls`, `lvlLe`, `lvlsLe`, `allSecret`, `NFProg.levelCheck`
+* `retLvls`, `lvlLe`, `lvlsLe`, `allSecret`, `lvlJoin`, `NFProg.levelCheck`
 
 ## Main results
 
@@ -229,12 +232,20 @@ def allSecret : (cs : List d.Ty) → Labels cs
   | [] => .nil
   | _ :: cs => .cons .Secret (allSecret cs)
 
-/-- **The level checker of the fragment of bindings and counted loops.** It returns the
-    levels of the results, or `none` when it refuses the program. A binding takes the join
-    of the levels of its arguments and requires its operation's constraint (`opAccepts`). A
-    counted loop requires a public trip count; its carried values take the levels of their
-    initial values when the body, checked with a public trip index, returns values at most
-    as secret, and the secret level otherwise. A branch or an exit-flag loop is refused. -/
+/-- The pointwise join of the levels of a tuple. -/
+def lvlJoin : {cs : List d.Ty} → Labels cs → Labels cs → Labels cs
+  | [], .nil, .nil => .nil
+  | _ :: _, .cons a A, .cons b B => .cons (a.join b) (lvlJoin A B)
+
+/-- **The level checker of the fragment of bindings, counted loops and branches on a public
+    condition.** It returns the levels of the results, or `none` when it refuses the
+    program. A binding takes the join of the levels of its arguments and requires its
+    operation's constraint (`opAccepts`). A counted loop requires a public trip count; its
+    carried values take the levels of their initial values when the body, checked with a
+    public trip index, returns values at most as secret, and the secret level otherwise. A
+    branch requires a public condition and both arms accepted; its results take the join of
+    the levels of the arms. A branch on a secret condition, an exit-flag loop or a call is
+    refused. -/
 def NFProg.levelCheck (M : LeakModel d) :
     {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Labels Γ → Option (Labels ts)
   | _, _, .ret vs, L => some (retLvls L vs)
@@ -251,11 +262,35 @@ def NFProg.levelCheck (M : LeakModel d) :
         then NFProg.levelCheck M k (hvAppend (allSecret cs') L)
         else none
       else none
-  | _, _, .ifThenElse .., _ => none
+  | _, _, .ifThenElse cond thn els k, L =>
+      if lvlOf cond L = .Public then
+        match NFProg.levelCheck M thn L, NFProg.levelCheck M els L with
+        | some R₁, some R₂ => NFProg.levelCheck M k (hvAppend (lvlJoin R₁ R₂) L)
+        | _, _ => none
+      else none
   | _, _, .whileLoop .., _ => none
   | _, _, .call .., _ => none
 
 /-! ## Soundness of the level checker -/
+
+omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [DialectDenote d] in
+/-- A tuple of levels is below its join with another. -/
+theorem lvlsLe_join_left : {cs : List d.Ty} → (A B : Labels cs) → lvlsLe A (lvlJoin A B) = true
+  | [], .nil, .nil => rfl
+  | _ :: _, .cons a A, .cons b B => by
+      simp only [lvlsLe, lvlJoin, Bool.and_eq_true]
+      refine ⟨?_, lvlsLe_join_left A B⟩
+      cases a <;> cases b <;> rfl
+
+omit [DialectSignature d] [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] [DialectDenote d] in
+/-- A tuple of levels is below the join of another with it. -/
+theorem lvlsLe_join_right : {cs : List d.Ty} → (A B : Labels cs) →
+    lvlsLe B (lvlJoin A B) = true
+  | [], .nil, .nil => rfl
+  | _ :: _, .cons a A, .cons b B => by
+      simp only [lvlsLe, lvlJoin, Bool.and_eq_true]
+      refine ⟨?_, lvlsLe_join_right A B⟩
+      cases a <;> cases b <;> rfl
 
 omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenote d] in
 /-- Valuations of a tuple and of a context that agree on their public positions agree, after
@@ -443,7 +478,37 @@ theorem NFProg.levelCheck_sound (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d}
             · exact lvlsLe_allSecret B
           · cases h
       · cases h
-  | ifThenElse => intro L R h; simp [NFProg.levelCheck] at h
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro L R h V₁ V₂ hp
+      simp only [NFProg.levelCheck] at h
+      split at h
+      · rename_i hcond
+        have hc : cond.lookup V₁ = cond.lookup V₂ := hp _ cond hcond
+        split at h
+        · rename_i R₁ R₂ hR₁ hR₂
+          have harm : ∃ a₁ a₂,
+              (if HasBoolBit.toBool (d := d) (cond.lookup V₁) then NFProg.leakRun M fuel thn V₁
+                else NFProg.leakRun M fuel els V₁) = some a₁ ∧
+              (if HasBoolBit.toBool (d := d) (cond.lookup V₁) then NFProg.leakRun M fuel thn V₂
+                else NFProg.leakRun M fuel els V₂) = some a₂ ∧
+              a₁.2 = a₂.2 ∧ PubEqV (lvlJoin R₁ R₂) a₁.1 a₂.1 := by
+            split
+            · obtain ⟨a₁, a₂, h₁, h₂, e, r⟩ := iht L R₁ hR₁ V₁ V₂ hp
+              exact ⟨a₁, a₂, h₁, h₂, e, pubEqV_mono _ _ (lvlsLe_join_left R₁ R₂) _ _ r⟩
+            · obtain ⟨a₁, a₂, h₁, h₂, e, r⟩ := ihe L R₂ hR₂ V₁ V₂ hp
+              exact ⟨a₁, a₂, h₁, h₂, e, pubEqV_mono _ _ (lvlsLe_join_right R₁ R₂) _ _ r⟩
+          obtain ⟨a₁, a₂, h₁, h₂, e, r⟩ := harm
+          obtain ⟨s₁, s₂, l₁, l₂, le, lr⟩ := ihk _ R h _ _ (pubEqV_hvAppend hp _ _ _ r)
+          refine ⟨(s₁.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V₁)) ::
+              (a₁.2 ++ s₁.2)),
+            (s₂.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V₂)) :: (a₂.2 ++ s₂.2)),
+            ?_, ?_, ?_, lr⟩
+          · simp only [NFProg.leakRun, h₁, Option.bind_some, l₁, Option.map_some]
+          · rw [hc] at h₂
+            simp only [NFProg.leakRun, h₂, Option.bind_some, l₂, Option.map_some]
+          · simp only [hc, e, le]
+        · cases h
+      · cases h
   | whileLoop => intro L R h; simp [NFProg.levelCheck] at h
   | call => intro L R h; simp [NFProg.levelCheck] at h
 
