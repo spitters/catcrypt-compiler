@@ -832,6 +832,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW
