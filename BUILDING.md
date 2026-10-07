@@ -212,8 +212,14 @@ lake env lean AxiomAudit.lean     # after the modules it imports are built
 `AxiomAudit.lean` runs `#print axioms` on the theorems it lists and prints, for each,
 the axioms that theorem depends on. To check another theorem, add an import of its
 module and a `#print axioms <fully qualified name>` line, in that file or in a scratch
-file, and run it the same way. [README.md](README.md#scope) gives the command that
-lists the package's `axiom` declarations.
+file, and run it the same way. A theorem depends on an axiom only if `#print axioms`
+lists it.
+
+The package's `axiom` declarations are listed by
+
+```bash
+git grep -nE '^(/--.*-/ *)?axiom [A-Za-z_][^ ]* *(:|\(|\{|\[|$)' -- 'CatCrypt/*.lean'
+```
 
 ## Generate the documentation
 

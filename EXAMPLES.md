@@ -20,6 +20,5 @@ index.
 [DEMO.md](DEMO.md) and [README.md](README.md#the-guarantees) name the correctness
 theorems behind these modules with their fragments and hypotheses.
 `lake env lean AxiomAudit.lean` prints the axioms of the theorems that file lists;
-[BUILDING.md](BUILDING.md#check-axioms) explains how to check another theorem, and
-[README.md](README.md#scope) gives the command that lists the package's declared
-axioms.
+[BUILDING.md](BUILDING.md#check-axioms) explains how to check another theorem and gives
+the command that lists the package's declared axioms.
