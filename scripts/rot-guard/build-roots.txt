@@ -619,6 +619,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.IsaExportData
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsAbi
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsLeak
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
