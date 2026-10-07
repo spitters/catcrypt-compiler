@@ -520,6 +520,7 @@ def binE {Δ : Ctxt catCryptDialect} :
   | .mulhi, a, b => some ⟨.bvMulHi 64, rfl, .cons a (.cons b .nil)⟩
   | .addc, a, b => some ⟨.bvAdd 64, rfl, .cons a (.cons b .nil)⟩
   | .subc, a, b => some ⟨.bvSub 64, rfl, .cons a (.cons b .nil)⟩
+  | .mulc, a, b => some ⟨.bvMul 64, rfl, .cons a (.cons b .nil)⟩
   | .rotr, _, _ => none
   | .rotl, _, _ => none
 
@@ -536,6 +537,7 @@ def binBV : ImpToNF.ScalarBin → BitVec 64 → BitVec 64 → BitVec 64
   | .mulhi, x, y => mulHiC x y
   | .addc, x, y => x + y
   | .subc, x, y => x - y
+  | .mulc, x, y => x * y
   | .rotr, _, _ => 0
   | .rotl, _, _ => 0
 
@@ -1325,11 +1327,10 @@ theorem maskRes_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {w : Nat} (hw
     apply BitVec.eq_of_toNat_eq
     rw [hy, toNat_and_maskW _ hw]
 
-/-- The widths of the binary integer calls, and the width `64` of the high word and the
-    checked addition and subtraction. -/
+/-- The widths of the binary integer calls, and the width `64` of the high word. -/
 theorem binTable_w : ∀ e ∈ ImpToNF.hax64BinTable,
     (e.2.2 = 8 ∨ e.2.2 = 16 ∨ e.2.2 = 32 ∨ e.2.2 = 64) ∧
-      ((e.2.1 = .mulhi ∨ e.2.1 = .addc ∨ e.2.1 = .subc) → e.2.2 = 64) := by decide
+      (e.2.1 = .mulhi → e.2.2 = 64) := by decide
 
 /-- The widths of the unary integer calls, and the width `64` of the negation. -/
 theorem unTable_w : ∀ e ∈ ImpToNF.hax64UnTable,
@@ -1338,7 +1339,7 @@ theorem unTable_w : ∀ e ∈ ImpToNF.hax64UnTable,
 
 /-- **The words of `binE` reduced modulo `2 ^ w` are the values of the scalar table.** -/
 theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
-    (h64 : (o = .shr ∨ o = .mulhi ∨ o = .addc ∨ o = .subc) → w = 64)
+    (h64 : (o = .shr ∨ o = .mulhi) → w = 64)
     (hrot : o ≠ .rotr ∧ o ≠ .rotl)
     (x y : BitVec 64) {r : Nat} (h : o.nat w x.toNat y.toNat = some r) :
     (binBV o x y).toNat % 2 ^ w = r := by
@@ -1380,7 +1381,7 @@ theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w
       exact Nat.mod_eq_of_lt (lt_of_le_of_lt (Nat.shiftRight_le _ _) hx)
     · cases h
   case mulhi =>
-    obtain rfl := h64 (Or.inr (Or.inl rfl))
+    obtain rfl := h64 (Or.inr rfl)
     obtain rfl := Option.some.inj h
     have hlt : x.toNat * y.toNat / 2 ^ 64 < 2 ^ 64 := by
       rw [Nat.div_lt_iff_lt_mul (by positivity)]
@@ -1388,19 +1389,23 @@ theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w
     simp only [binBV, mulHiC, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt,
       Nat.shiftRight_eq_div_pow]
   case addc =>
-    obtain rfl := h64 (Or.inr (Or.inr (Or.inl rfl)))
     split at h
     · rename_i hs
       obtain rfl := Option.some.inj h
-      simp only [binBV, BitVec.toNat_add, Nat.mod_eq_of_lt hs]
+      simp only [binBV, BitVec.toNat_add, mod64_mod _ hw64, Nat.mod_eq_of_lt hs]
     · cases h
   case subc =>
-    obtain rfl := h64 (Or.inr (Or.inr (Or.inr rfl)))
     split at h
     · rename_i hs
       obtain rfl := Option.some.inj h
       simp only [binBV, BitVec.toNat_sub]
-      omega
+      rcases hw with rfl | rfl | rfl | rfl <;> omega
+    · cases h
+  case mulc =>
+    split at h
+    · rename_i hs
+      obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_mul, mod64_mod _ hw64, Nat.mod_eq_of_lt hs.2.2]
     · cases h
   case rotr => exact absurd rfl hrot.1
   case rotl => exact absurd rfl hrot.2
@@ -1424,7 +1429,7 @@ theorem dec_word64_eq {n : Nat} {y : BitVec 64}
 /-- **The translation of a binary operation of the scalar table is related to its value.** -/
 theorem binChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarBin)
     {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
-    (h64 : (o = .mulhi ∨ o = .addc ∨ o = .subc) → w = 64) (hrot : o ≠ .rotr ∧ o ≠ .rotl)
+    (h64 : o = .mulhi → w = 64) (hrot : o ≠ .rotr ∧ o ≠ .rotl)
     (a b : Var Δ (.sword 64)) {res : OpRes Δ (.word 64)} (h : binChain o w a b = some res)
     {r : Nat} (hr : o.nat w (a.lookup W).toNat (b.lookup W).toNat = some r) :
     OpResRel W (.word 64) (BitVec.ofNat 64 r) res := by
@@ -1450,12 +1455,10 @@ theorem binChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF
     refine maskRes_rel W hw64 e _ ?_
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr64, binE_denote W he]
     refine (binBV_mod o hw ?_ hrot _ _ hr).symm
-    rintro (rfl | rfl | rfl | rfl)
+    rintro (rfl | rfl)
     · by_contra hne
       exact hs ⟨rfl, hne⟩
-    · exact h64 (Or.inl rfl)
-    · exact h64 (Or.inr (Or.inl rfl))
-    · exact h64 (Or.inr (Or.inr rfl))
+    · exact h64 rfl
 
 /-- **The translation of a rotation is related to its value.** -/
 theorem rotChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Bool) {w : Nat}

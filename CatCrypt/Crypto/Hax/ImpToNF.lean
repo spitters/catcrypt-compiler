@@ -3365,7 +3365,7 @@ theorem TypedCalls.mono {bi bi' : Builtins} {sigOf : String → List NfTy → Op
 /-- The binary integer operations of `u64` code: the wrapping addition, subtraction and
     multiplication, the bitwise conjunction, disjunction and exclusive disjunction, the shifts
     and the rotations at a width, the high word of the `128`-bit product, and the checked
-    addition and subtraction. -/
+    addition, subtraction and multiplication. -/
 inductive ScalarBin where
   /-- Wrapping addition. -/
   | add
@@ -3393,6 +3393,8 @@ inductive ScalarBin where
   | addc
   /-- Checked subtraction. -/
   | subc
+  /-- Checked multiplication. -/
+  | mulc
   deriving DecidableEq, Repr
 
 /-- The value of a binary operation at the width `w` on the natural numbers of two words, as
@@ -3409,8 +3411,9 @@ def ScalarBin.nat : ScalarBin → Nat → Nat → Nat → Option Nat
   | .rotr, w, x, y => some (_root_.Hax.rotrNat w x y)
   | .rotl, w, x, y => some (_root_.Hax.rotlNat w x y)
   | .mulhi, _, x, y => some ((x * y) >>> 64)
-  | .addc, _, x, y => if x + y < 2 ^ 64 then some (x + y) else none
-  | .subc, _, x, y => if y ≤ x then some (x - y) else none
+  | .addc, w, x, y => if x + y < 2 ^ w then some (x + y) else none
+  | .subc, w, x, y => if y ≤ x ∧ x < 2 ^ w then some (x - y) else none
+  | .mulc, w, x, y => if x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w then some (x * y) else none
 
 /-- The unary integer operations of `u64` code: the complement at a width, the wrapping
     negation of a `64`-bit word, and the truncation to a width. -/
@@ -3456,7 +3459,9 @@ def ScalarCmp.val : ScalarCmp → Int → Int → Bool
   | .ge, a, b => decide (b ≤ a)
 
 /-- The binary integer calls of `u64` code with their operation and width; the width `size`
-    is `64`. -/
+    is `64`. The checked calls `Add`, `Sub`, `Mul` carry the tag of their unsigned integer
+    type and are defined where the operands and the result are below `2 ^ w`; the untagged
+    `Add` and `Sub` are the `64`-bit ones. -/
 def hax64BinTable : List (String × ScalarBin × Nat) :=
   [("wrapping_add#8", .add, 8), ("wrapping_sub#8", .sub, 8), ("wrapping_mul#8", .mul, 8),
     ("BitAnd#8", .and, 8), ("BitOr#8", .or, 8), ("BitXor#8", .xor, 8), ("Shl#8", .shl, 8),
@@ -3478,7 +3483,10 @@ def hax64BinTable : List (String × ScalarBin × Nat) :=
     ("BitXor#size", .xor, 64), ("Shl#size", .shl, 64), ("Shr#size", .shr, 64),
     ("rotate_right#size", .rotr, 64), ("rotate_left#size", .rotl, 64),
     ("shl#64", .shl, 64), ("shr#64", .shr, 64), ("mulhi#64", .mulhi, 64), ("Add", .addc, 64),
-    ("Sub", .subc, 64)]
+    ("Sub", .subc, 64),
+    ("Add#64", .addc, 64), ("Add#size", .addc, 64),
+    ("Sub#64", .subc, 64), ("Sub#size", .subc, 64),
+    ("Mul#64", .mulc, 64), ("Mul#size", .mulc, 64)]
 
 /-- The unary integer calls of `u64` code with their operation and width. -/
 def hax64UnTable : List (String × ScalarUn × Nat) :=
@@ -3633,13 +3641,80 @@ theorem mem_of_find?_map {α : Type} {L : List (String × α)} {f : String} {p :
   subst h1
   exact List.mem_of_find?_eq_some he
 
+/-- `2 ^ w` is at most `2 ^ 64` on the integers at a width of at most `64`. -/
+theorem two_pow_le_int {w : Nat} (hw : w ≤ 64) : (2 : Int) ^ w ≤ 2 ^ 64 := by
+  exact_mod_cast Nat.pow_le_pow_right (by norm_num : 0 < 2) hw
+
+/-- The checked addition at a width of at most `64` is `u64BinOp` of the sum below
+    `2 ^ w`. -/
+theorem uintAddOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
+    _root_.Hax.uintAddOp w a b =
+      _root_.Hax.u64BinOp a b fun x y => if x + y < 2 ^ w then some (x + y) else none := by
+  have hp := two_pow_le_int hw
+  by_cases h : 0 ≤ a ∧ a < 2 ^ 64 ∧ 0 ≤ b ∧ b < 2 ^ 64
+  · obtain ⟨x, rfl⟩ := Int.eq_ofNat_of_zero_le h.1
+    obtain ⟨y, rfl⟩ := Int.eq_ofNat_of_zero_le h.2.2.1
+    have hx : x < 2 ^ 64 := by exact_mod_cast h.2.1
+    have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
+    rw [_root_.Hax.uintAddOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
+    by_cases hs : x + y < 2 ^ w
+    · rw [if_pos hs, if_pos hs]; rfl
+    · rw [if_neg hs, if_neg hs]; rfl
+  · rw [_root_.Hax.uintAddOp, _root_.Hax.u64BinOp, if_neg h,
+      if_neg fun hc => h ⟨hc.1, by linarith [hc.2.1, hc.2.2], hc.2.1, by linarith [hc.1, hc.2.2]⟩]
+
+/-- The checked subtraction at a width of at most `64` is `u64BinOp` of the difference of a
+    minuend below `2 ^ w` and a subtrahend it bounds. -/
+theorem uintSubOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
+    _root_.Hax.uintSubOp w a b =
+      _root_.Hax.u64BinOp a b fun x y =>
+        if y ≤ x ∧ x < 2 ^ w then some (x - y) else none := by
+  have hp := two_pow_le_int hw
+  by_cases h : 0 ≤ a ∧ a < 2 ^ 64 ∧ 0 ≤ b ∧ b < 2 ^ 64
+  · obtain ⟨x, rfl⟩ := Int.eq_ofNat_of_zero_le h.1
+    obtain ⟨y, rfl⟩ := Int.eq_ofNat_of_zero_le h.2.2.1
+    have hx : x < 2 ^ 64 := by exact_mod_cast h.2.1
+    have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
+    rw [_root_.Hax.uintSubOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
+    by_cases hs : y ≤ x ∧ x < 2 ^ w
+    · rw [if_pos hs, if_pos hs]; rfl
+    · rw [if_neg hs, if_neg hs]; rfl
+  · rw [_root_.Hax.uintSubOp, _root_.Hax.u64BinOp, if_neg h,
+      if_neg fun hc => h ⟨by linarith [hc.1, hc.2.1], by linarith [hc.2.2], hc.1,
+        by linarith [hc.2.1, hc.2.2]⟩]
+
+/-- The checked multiplication at a width of at most `64` is `u64BinOp` of the product of two
+    operands below `2 ^ w` with a product below `2 ^ w`. -/
+theorem uintMulOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
+    _root_.Hax.uintMulOp w a b =
+      _root_.Hax.u64BinOp a b fun x y =>
+        if x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w then some (x * y) else none := by
+  have hp := two_pow_le_int hw
+  by_cases h : 0 ≤ a ∧ a < 2 ^ 64 ∧ 0 ≤ b ∧ b < 2 ^ 64
+  · obtain ⟨x, rfl⟩ := Int.eq_ofNat_of_zero_le h.1
+    obtain ⟨y, rfl⟩ := Int.eq_ofNat_of_zero_le h.2.2.1
+    have hx : x < 2 ^ 64 := by exact_mod_cast h.2.1
+    have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
+    rw [_root_.Hax.uintMulOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
+    by_cases hs : x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w
+    · rw [if_pos hs, if_pos hs]; rfl
+    · rw [if_neg hs, if_neg hs]; rfl
+  · rw [_root_.Hax.uintMulOp, _root_.Hax.u64BinOp, if_neg h,
+      if_neg fun hc => h ⟨hc.1, by linarith [hc.2.1], hc.2.2.1, by linarith [hc.2.2.2.1]⟩]
+
 /-- The binary integer calls of the table compute `ScalarBin.nat` by `u64BinOp`. -/
 theorem hax64BinTable_sem :
     ∀ e ∈ hax64BinTable, ∀ a b : Int, _root_.Hax.hax64Builtins e.1 [.int a, .int b] =
       (_root_.Hax.u64BinOp a b (e.2.1.nat e.2.2) <|> none) := by
   simp only [hax64BinTable, List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff,
     implies_true, and_true]
-  and_intros <;> intro a b <;> rfl
+  and_intros <;> intro a b <;> first
+    | rfl
+    | exact congrArg (· <|> none)
+        ((_root_.Hax.uintSubOp_64 a b).symm.trans (uintSubOp_u64 (by norm_num) a b))
+    | exact congrArg (· <|> none) (uintAddOp_u64 (by norm_num) a b)
+    | exact congrArg (· <|> none) (uintSubOp_u64 (by norm_num) a b)
+    | exact congrArg (· <|> none) (uintMulOp_u64 (by norm_num) a b)
 
 /-- The unary integer calls of the table compute `ScalarUn.val`. -/
 theorem hax64UnTable_sem :
@@ -3713,11 +3788,19 @@ theorem ScalarBin.nat_lt (o : ScalarBin) {w x y r : Nat} (hw : w ≤ 64) (hx : x
     exact Nat.mul_lt_mul'' hx hy
   case addc =>
     split at h
-    · obtain rfl := Option.some.inj h; assumption
+    · rename_i hs
+      obtain rfl := Option.some.inj h
+      exact lt_of_lt_of_le hs hp
     · cases h
   case subc =>
     split at h
     · obtain rfl := Option.some.inj h; omega
+    · cases h
+  case mulc =>
+    split at h
+    · rename_i hs
+      obtain rfl := Option.some.inj h
+      exact lt_of_lt_of_le hs.2.2 hp
     · cases h
 
 /-- A value of a unary integer operation at a width of at most `64` is the integer of a
