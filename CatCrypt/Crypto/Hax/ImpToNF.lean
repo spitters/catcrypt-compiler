@@ -42,7 +42,8 @@ Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, 
 a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
 literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
-the fragment, and a conditional `ifThenElse` whose condition translates to a bit and whose
+the fragment; a name bound by `letBind` to an integer literal in `[0, 2 ^ 64)` and read as the
+upper bound of a loop (`countLit`) has the type of `64`-bit words (`letOut`); and a conditional `ifThenElse` whose condition translates to a bit and whose
 arms are in the fragment, with one result type, as the region `NFPre.ifThenElse` (`condOut`):
 its results are the value of the conditional and the names an arm may bind (`condCarried`).
 Every other constructor is `none`.
@@ -365,6 +366,45 @@ def litBoundOk (lo : Int) : ImpExpr → Bool
   | .lit (.int n) => decide (0 ≤ lo) && decide (n < 2 ^ 64)
   | _ => false
 
+/-- The name `x` is the upper bound of a counted loop of `e` that a run of `e` reaches with
+    no binding of `x` before it: the search follows a sequence and the body of a binding
+    past a part that binds no `x` (`frameOk`), and enters the body of a loop whose counter
+    is not `x` and the arms of a conditional. -/
+def countName (x : String) : ImpExpr → Bool
+  | .typeAscription e _ => countName x e
+  | .seq a b => countName x a ||
+      (frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a && countName x b)
+  | .letBind y v b => countName x v ||
+      (y != x && frameOk (fun _ => true) (fun n => n != x) (fun _ => true) v && countName x b)
+  | .forFold i _ (.var y) body => y == x || (i != x && countName x body)
+  | .forFold i _ _ body => i != x && countName x body
+  | .ifThenElse c a b => countName x c ||
+      (frameOk (fun _ => true) (fun n => n != x) (fun _ => true) c &&
+        (countName x a || countName x b))
+  | _ => false
+
+/-- A binding `let x = v; b` binds a loop count: `v` is an integer literal in `[0, 2 ^ 64)`
+    and `x` is the upper bound of a counted loop of `b` (`countName`). -/
+def countLit (x : String) (v b : ImpExpr) : Bool :=
+  match v with
+  | .lit (.int n) => decide (0 ≤ n) && decide (n < 2 ^ 64) && countName x b
+  | _ => false
+
+/-- An output of the integer type with its value as a `64`-bit word: after the prefix, the
+    trip count `NfOp.trip` from the literal `0` to the value. An output of another type is
+    unchanged. -/
+def Out.asCount {Γ : Ctxt nfDialect} : Out Γ → Out Γ
+  | ⟨_, .int, pre, σ, res⟩ =>
+      let oZ := bind1 σ (.ilit .int 0) .nil
+      let oT := bind1 oZ.σ (.trip .int) (.cons oZ.res (.cons (Var.there res) .nil))
+      Out.mk oT.Δ (.word 64) (pre.append (oZ.pre.append oT.pre)) oT.σ oT.res
+  | o => o
+
+/-- The output of the value `v` of a binding `let x = v; b`: as a `64`-bit word
+    (`Out.asCount`) when the binding binds a loop count (`countLit`), unchanged otherwise. -/
+def letOut {Γ : Ctxt nfDialect} (x : String) (v b : ImpExpr) (o : Out Γ) : Out Γ :=
+  if countLit x v b then o.asCount else o
+
 /-- The environment of names of a loop body or of the continuation of a loop: the carried
     names `xs` bound to the first variables, in front of the names of `σ` other than the
     counter `i`, moved by `g`. -/
@@ -443,6 +483,11 @@ mutual
     argument that is not a variable or a literal is bound to a fresh variable before the
     call, left to right.
 
+    A binding `let x = v; b` whose value is an integer literal in `[0, 2 ^ 64)` and whose
+    name is the upper bound of a counted loop of `b` (`countLit`) binds `x` at the type of
+    `64`-bit words (`letOut`), the type `boundOk` accepts for an upper bound; every other
+    binding binds the name at the type of its value.
+
     A conditional `ifThenElse c a b` is the region `NFPre.ifThenElse` (`condOut`). The
     condition `c` is translated first, to a variable of the bit type. The two arms are
     translated from the environment of names after the condition, without a source name.
@@ -462,7 +507,9 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .seq a b => (impToNF sigOf none σ a).bind fun oa =>
       (impToNF sigOf tgt oa.σ b).map oa.comp
   | tgt, _, σ, .letBind x v b => (impToNF sigOf (some x) σ v).bind fun ov =>
-      (impToNF sigOf tgt ((x, ⟨ov.t, ov.res⟩) :: ov.σ) b).map ov.comp
+      (impToNF sigOf tgt
+        ((x, ⟨(letOut x v b ov).t, (letOut x v b ov).res⟩) :: (letOut x v b ov).σ) b).map
+        (letOut x v b ov).comp
   | tgt, _, σ, .assign x r => (impToNF sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
   | tgt, _, σ, .app f args => (impArgsNF sigOf σ args).bind fun oa =>
@@ -1035,8 +1082,61 @@ theorem letBind_sound (bi : Builtins) (fuel : Nat) (x : String) {v b : ImpExpr}
         hrel2, rfl⟩
   | _ => rw [letBind_run, h1] at hrun; cases hrun
 
+/-- A sound output for an expression whose values are integers in `[0, 2 ^ 64)` is sound as
+    a `64`-bit word. -/
+theorem asCount_sound (bi : Builtins) (fuel : Nat) {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel e σ o)
+    (hn : ∀ (env : Env) (v : Value) (env' : Env),
+      (denote' bi fuel e).run env = (.val v, env') → ∃ n : Int, v = .int n ∧ 0 ≤ n ∧ n < 2 ^ 64) :
+    Sound bi fuel e σ o.asCount := by
+  obtain ⟨Δ, t, pre, σo, res⟩ := o
+  cases t
+  case int =>
+    intro env V v env' hrel hrun tf
+    obtain ⟨W, hW, hrelW, hv⟩ := hs env V v env' hrel hrun tf
+    obtain ⟨n, rfl, h0, h64⟩ := hn env v env' hrun
+    have hres : res.lookup W = n := (Value.int.inj hv).symm
+    refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 (n - 0).toNat)
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) (0 : Int) W), ?_, ?_, ?_⟩
+    · have hZ : PDen bi tf (bind1 σo (.ilit .int 0) .nil).pre W =
+          some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) (0 : Int) W) :=
+        (PDen_bind1 bi tf σo (.ilit .int 0) .nil W).trans rfl
+      refine (PDen_append bi tf pre _ V).trans
+        ((congrArg (fun a => Option.bind a _) hW).trans ?_)
+      refine (PDen_append bi tf _ _ W).trans
+        ((congrArg (fun a => Option.bind a _) hZ).trans ?_)
+      refine (PDen_bind1 bi tf _ (.trip .int) _ _).trans ?_
+      show Option.map _ (some (BitVec.ofNat 64 (Int.toNat (@HSub.hSub Int Int Int _ (res.lookup W) 0)))) = _
+      rw [hres]
+      rfl
+    · exact (hrelW.mapV (fun v => Var.there v) fun _ _ => rfl).mapV (fun v => Var.there v)
+        fun _ _ => rfl
+    · show Value.int n = Value.int ((BitVec.ofNat 64 (n - 0).toNat).toNat : Int)
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+      congr 1
+      omega
+  all_goals exact hs
+
+/-- The output of the value of a binding is sound when the output of the value is. -/
+theorem letOut_sound (bi : Builtins) (fuel : Nat) (x : String) {v : ImpExpr} (b : ImpExpr)
+    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel v σ o) :
+    Sound bi fuel v σ (letOut x v b o) := by
+  unfold letOut
+  split
+  · rename_i hc
+    refine asCount_sound bi fuel hs fun env w env' hr => ?_
+    unfold countLit at hc
+    split at hc
+    · rename_i n
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      rw [lit_run] at hr
+      cases hr
+      exact ⟨n, rfl, hc.1.1, hc.1.2⟩
+    · cases hc
+  · exact hs
+
 /-- An assignment of a sound output is sound. -/
-theorem assign_sound (bi : Builtins) (fuel : Nat) (x : String) (tgt : Option String)
+theorem assign_sound(bi : Builtins) (fuel : Nat) (x : String) (tgt : Option String)
     {r : ImpExpr} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hr : Sound bi fuel r σ o) :
     Sound bi fuel (.assign x r) σ
       (o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)) := by
@@ -1911,7 +2011,8 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ov, hov, ob, hob, rfl⟩ := h
-    exact letBind_sound bi fuel x (ihv _ σ hov fuel) (ihb _ _ hob fuel)
+    exact letBind_sound bi fuel x (letOut_sound bi fuel x b (ihv _ σ hov fuel))
+      (ihb _ _ hob fuel)
   case seq a b iha ihb =>
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
