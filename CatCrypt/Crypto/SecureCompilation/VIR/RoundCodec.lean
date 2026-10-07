@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComRangeExact
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComRangeExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.RoundCodecDefs
 
 /-!
 # Rounding and codec functions of ML-KEM and ML-DSA as bounded word templates
@@ -23,8 +24,10 @@ quotient at its two end points. Each instance discharges it by `decide`. A compa
 `[x ≥ c]` is the arithmetic shift `(x + 2^j - c) >> j`, and a selection is a multiply by
 that bit, so every template is branch-free and stays in the exact fragment.
 
-The FIPS 203 and FIPS 204 functions are restated here as `compressSpec`, `decompressSpec`
-and the definitions of `Fips204`, with the formulas of the specification modules.
+The FIPS 203 functions are restated here as `compressSpec` and `decompressSpec`, with the
+formulas of the specification module. The FIPS 204 functions are the definitions of
+`Fips204` in `VIR.RoundCodecDefs`, which the specification module `MLDSA.Spec.Rounding`
+uses as well.
 
 ## Main definitions
 
@@ -441,54 +444,13 @@ theorem mlkemDecompressBlock_ok :
     ∀ d ∈ [1, 4, 5, 10, 11], (mlkemDecompressBlock d).ok = true := by
   decide +kernel
 
-/-! ## 4. ML-DSA rounding -/
+/-! ## 4. ML-DSA rounding
 
-namespace Fips204
+The FIPS 204 functions `Fips204.power2Round`, `Fips204.decompose`, `Fips204.highBits`,
+`Fips204.lowBits`, `Fips204.makeHint` and `Fips204.useHint` are defined in
+`VIR.RoundCodecDefs`.
 
-/-- The ML-DSA modulus. -/
-def q : ℤ := 8380417
-
-/-- `2^13`, the `Power2Round` scaling factor. -/
-def twoPowD : ℤ := 8192
-
-/-- The centred remainder `x mod± α` in `(-α/2, α/2]`. -/
-def modPm (x α : ℤ) : ℤ :=
-  let r := x % α
-  if r > α / 2 then r - α else r
-
-/-- FIPS 204 `Power2Round` (Algorithm 35). -/
-def power2Round (r : ℤ) : ℤ × ℤ :=
-  let rp := r % q
-  let r0 := modPm rp twoPowD
-  ((rp - r0) / twoPowD, r0)
-
-/-- FIPS 204 `Decompose` (Algorithm 36). -/
-def decompose (γ2 r : ℤ) : ℤ × ℤ :=
-  let rp := r % q
-  let r0 := modPm rp (2 * γ2)
-  if rp - r0 = q - 1 then (0, r0 - 1) else ((rp - r0) / (2 * γ2), r0)
-
-/-- FIPS 204 `HighBits` (Algorithm 37). -/
-def highBits (γ2 r : ℤ) : ℤ := (decompose γ2 r).1
-
-/-- FIPS 204 `LowBits` (Algorithm 38). -/
-def lowBits (γ2 r : ℤ) : ℤ := (decompose γ2 r).2
-
-/-- FIPS 204 `MakeHint` (Algorithm 39). -/
-def makeHint (γ2 z r : ℤ) : Bool := decide (highBits γ2 r ≠ highBits γ2 (r + z))
-
-/-- FIPS 204 `UseHint` (Algorithm 40). -/
-def useHint (γ2 : ℤ) (h : Bool) (r : ℤ) : ℤ :=
-  let m := (q - 1) / (2 * γ2)
-  let r1 := (decompose γ2 r).1
-  let r0 := (decompose γ2 r).2
-  if h = true ∧ 0 < r0 then (r1 + 1) % m
-  else if h = true then (r1 - 1) % m
-  else r1
-
-end Fips204
-
-/-! ### Power2Round -/
+### Power2Round -/
 
 /-- The `Power2Round` template on `w`-bit words: `r1 = (r + 2^(d-1) - 1) >> d` and
     `r0 = r - (r1 << d)`. -/

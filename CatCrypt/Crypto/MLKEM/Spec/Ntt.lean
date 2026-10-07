@@ -9,6 +9,7 @@ public import Mathlib.Algebra.Field.ZMod
 public import CatCrypt.Crypto.MLKEM.Spec.Coeffs
 public import CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
 public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.DFTBijectionGeneric
 public import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 public import CatCrypt.Crypto.Optimizer.Lattice.SignedNegacyclicConv
 public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
@@ -44,6 +45,8 @@ interleaving, and `nttKem_negaMulKem` transforms it into `basemulKem`.
 * `evens`, `odds`, `interleave` — the even/odd coefficient split of `Fin 256`
 * `nttHalf`, `nttKem` — the length-128 twisted transform and the ML-KEM transform
   into `Tq_kem`
+* `invNttHalf`, `invNttKem` — the inverse of the length-128 twisted transform and the
+  ML-KEM inverse transform (FIPS 203 Algorithm 10)
 * `negaShift` — multiplication by `Y` in `(ZMod 3329)[Y]/(Y^128 + 1)`
 * `negaMulKem` — the product of `Rq_kem` in the even/odd decomposition
 * `polyMulKem` — the length-256 signed negacyclic product of coefficient vectors
@@ -71,6 +74,12 @@ interleaving, and `nttKem_negaMulKem` transforms it into `basemulKem`.
   product
 * `nttKem_rqKemToCoeffs_mul` — the transform carries multiplication in `Rq_kem` to
   `basemulKem`
+* `invNttKem_nttKem`, `nttKem_invNttKem` — the inverse transform and the transform
+  are mutually inverse: `invNttKem (nttKem a) = a` and `nttKem (invNttKem t) = t`
+* `inv_cast_128`, `invNttHalf_apply` — the scaling of the inverse transform is
+  `128⁻¹ = 3303`
+* `polyMulKem_eq_invNttKem`, `rqKem_mul_eq_invNttKem` — the product of `Rq_kem` is the
+  inverse transform of the base multiplication of the transforms
 
 ## Scope
 
@@ -99,6 +108,8 @@ open CatCrypt.Crypto.MLKEM.Spec.Coeffs
 open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric (idft idft_dft)
+open CatCrypt.Crypto.Optimizer.Lattice.DFTBijectionGeneric (dft_idft)
 
 /-! ## The root of unity -/
 
@@ -199,6 +210,68 @@ transforms of the even and odd coefficient halves, read at the bit-reversed inde
 `BitRev7 j` (FIPS 203 §4.3). -/
 def nttKem (a : Fin 256 → ZMod q_kem) : Tq_kem :=
   fun j => (nttHalf (evens a) (bitRev7 j), nttHalf (odds a) (bitRev7 j))
+
+/-! ## The inverse transform -/
+
+/-- `128` is invertible in `ZMod 3329`. -/
+theorem cast_128_ne_zero : ((128 : ℕ) : ZMod q_kem) ≠ 0 := by decide
+
+/-- `128⁻¹ = 3303` in `ZMod 3329`, the scaling factor of the inverse transform
+(FIPS 203 Algorithm 10). -/
+theorem inv_cast_128 : ((128 : ℕ) : ZMod q_kem)⁻¹ = 3303 :=
+  inv_eq_of_mul_eq_one_left (by decide)
+
+/-- The inverse of the length-128 twisted transform: synthesis by `idft` at `ζ^2`,
+which carries the scaling by `128⁻¹`, followed by the untwist by `ζ`. -/
+def invNttHalf (v : Fin 128 → ZMod q_kem) : Fin 128 → ZMod q_kem :=
+  untwist zetaKem (idft 128 (zetaKem ^ 2) v)
+
+/-- The closed form of `invNttHalf`, with the scaling `128⁻¹ = 3303`:
+`invNttHalf v j = 3303 · (Σ_k v_k · ζ^(-2jk)) · ζ^(-j)`. -/
+theorem invNttHalf_apply (v : Fin 128 → ZMod q_kem) (j : Fin 128) :
+    invNttHalf v j
+      = 3303 * (∑ k : Fin 128, v k * ((zetaKem ^ 2)⁻¹) ^ (k.val * j.val))
+        * (zetaKem⁻¹) ^ j.val := by
+  simp only [invNttHalf, untwist, idft, inv_cast_128]
+
+/-- `invNttHalf` is a left inverse of `nttHalf`. -/
+theorem invNttHalf_nttHalf (x : Fin 128 → ZMod q_kem) : invNttHalf (nttHalf x) = x := by
+  have h : nttHalf x = dft 128 (zetaKem ^ 2) (twist zetaKem x) := rfl
+  rw [invNttHalf, h, idft_dft zetaKem_sq_isPrimitiveRoot cast_128_ne_zero,
+    untwist_twist zetaKem_ne_zero]
+
+/-- `invNttHalf` is a right inverse of `nttHalf`. -/
+theorem nttHalf_invNttHalf (v : Fin 128 → ZMod q_kem) : nttHalf (invNttHalf v) = v := by
+  have h : nttHalf (invNttHalf v)
+      = dft 128 (zetaKem ^ 2) (twist zetaKem (invNttHalf v)) := rfl
+  rw [h, invNttHalf, twist_untwist zetaKem_ne_zero,
+    dft_idft zetaKem_sq_isPrimitiveRoot cast_128_ne_zero]
+
+/-- **The ML-KEM inverse transform** (FIPS 203 Algorithm 10). The first and second
+components of the 128 pairs, read at the bit-reversed index, are the length-128
+transforms of the even and odd coefficient halves; each is inverted by `invNttHalf`,
+which scales by `128⁻¹ = 3303`, and the two halves are interleaved. -/
+def invNttKem (t : Tq_kem) : Fin 256 → ZMod q_kem :=
+  interleave (invNttHalf (fun k => (t (bitRev7 k)).1))
+    (invNttHalf (fun k => (t (bitRev7 k)).2))
+
+/-- **The inverse transform inverts the transform**: `invNttKem (nttKem a) = a` for
+every coefficient vector `a`. -/
+theorem invNttKem_nttKem (a : Fin 256 → ZMod q_kem) : invNttKem (nttKem a) = a := by
+  have he : (fun k => (nttKem a (bitRev7 k)).1) = nttHalf (evens a) := by
+    funext k
+    simp only [nttKem, bitRev7_bitRev7]
+  have ho : (fun k => (nttKem a (bitRev7 k)).2) = nttHalf (odds a) := by
+    funext k
+    simp only [nttKem, bitRev7_bitRev7]
+  rw [invNttKem, he, ho, invNttHalf_nttHalf, invNttHalf_nttHalf, interleave_evens_odds]
+
+/-- **The transform inverts the inverse transform**: `nttKem (invNttKem t) = t` for
+every element `t` of the NTT domain. -/
+theorem nttKem_invNttKem (t : Tq_kem) : nttKem (invNttKem t) = t := by
+  funext j
+  simp only [nttKem, invNttKem, evens_interleave, odds_interleave, nttHalf_invNttHalf,
+    bitRev7_bitRev7]
 
 /-! ## Base multiplication -/
 
@@ -587,5 +660,18 @@ theorem nttKem_rqKemToCoeffs_mul (x y : Rq_kem) :
     nttKem (rqKemToCoeffs (x * y))
       = basemulKem (nttKem (rqKemToCoeffs x)) (nttKem (rqKemToCoeffs y)) := by
   rw [rqKemToCoeffs_mul, ← negaMulKem_eq_polyMulKem, nttKem_negaMulKem]
+
+/-- The length-256 signed negacyclic product of two coefficient vectors is the inverse
+transform of the base multiplication of their transforms. -/
+theorem polyMulKem_eq_invNttKem (a b : Fin 256 → ZMod q_kem) :
+    polyMulKem a b = invNttKem (basemulKem (nttKem a) (nttKem b)) := by
+  rw [← nttKem_negaMulKem, invNttKem_nttKem, negaMulKem_eq_polyMulKem]
+
+/-- **The `Rq_kem` product through the transform** (FIPS 203 §4.3.1): multiplication in
+`Rq_kem` is the inverse transform of the base multiplication of the transforms. -/
+theorem rqKem_mul_eq_invNttKem (x y : Rq_kem) :
+    x * y = coeffsToRqKem (invNttKem
+      (basemulKem (nttKem (rqKemToCoeffs x)) (nttKem (rqKemToCoeffs y)))) := by
+  rw [← nttKem_rqKemToCoeffs_mul, invNttKem_nttKem, coeffs_roundtrip]
 
 end CatCrypt.Crypto.MLKEM.Spec.Ntt

@@ -5,16 +5,20 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import Mathlib.Data.Int.Notation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RoundCodecDefs
 public import Mathlib.Tactic.SplitIfs
 
 /-!
 # FIPS 204 rounding functions (Section 7.4)
 
-The ML-DSA rounding, decomposition and hint algorithms over the integers:
-`Power2Round` (Algorithm 35), `Decompose` (Algorithm 36), `HighBits` and
-`LowBits` (Algorithms 37 and 38), `MakeHint` (Algorithm 39) and `UseHint`
-(Algorithm 40), with their range properties and the hint round-trip identity.
+Range properties and the hint round-trip identity of the ML-DSA rounding,
+decomposition and hint algorithms over the integers: `Power2Round` (Algorithm 35),
+`Decompose` (Algorithm 36), `HighBits` and `LowBits` (Algorithms 37 and 38),
+`MakeHint` (Algorithm 39) and `UseHint` (Algorithm 40).
+
+The functions are defined in `VIR.RoundCodecDefs`, the module the word templates of
+`VIR.RoundCodec` are proved against, and are exported into this namespace, so
+`Spec.power2Round` and `RoundCodec.Fips204.power2Round` are one constant.
 
 The modulus is `q = 8380417` and the dropped-bit count is `d = 13`.
 The two parameter sets use `gamma2 = (q-1)/88` and `gamma2 = (q-1)/32`;
@@ -23,17 +27,22 @@ stated for it.
 
 ## Main definitions
 
-* `modPm`: the centred remainder `r mod± m` in `(-m/2, m/2]`
-* `power2Round`, `decompose`, `highBits`, `lowBits`, `makeHint`, `useHint`:
-  Algorithms 35 to 40
+* `q`, `twoPowD`, `modPm`, `power2Round`, `decompose`, `highBits`, `lowBits`, `makeHint`,
+  `useHint`: the names of the `VIR.RoundCodecDefs` definitions in this namespace
+* `d`, `gamma2_88`, `gamma2_32`, `IsGamma2`: the dropped-bit count and the two values of
+  `gamma2`
 
 ## Main results
 
-* `power2Round_spec`: `r = r1 * 2^13 + r0` with `-4096 < r0 ≤ 4096` and `0 ≤ r1 ≤ 1023`
-* `decompose_spec`: `r1 * 2γ2 + r0 ≡ r (mod q)`, `0 ≤ r1 < (q-1)/(2γ2)`, `-γ2 ≤ r0 ≤ γ2`
-* `decompose_eq`: `r = r1 * 2γ2 + r0`, or `r1 = 0` and `r = q + r0`
-* `decompose_snd_neg`: `r0 = -γ2` only where `r1 = 0`
-* `useHint_makeHint`: `useHint (makeHint z r) r = highBits ((r + z) mod q)` for `|z| ≤ γ2`
+* `power2Round_spec`: for `0 ≤ r < q`, `Power2Round` returns `(r1, r0)` with
+  `r = r1 * 2^13 + r0`, `-4096 < r0 ≤ 4096` and `0 ≤ r1 ≤ 1023`
+* `decompose_spec`: for `0 ≤ r < q`, `Decompose` returns `(r1, r0)` with
+  `r1 * 2γ2 + r0 ≡ r (mod q)`, `0 ≤ r1 < (q-1)/(2γ2)` and `-γ2 ≤ r0 ≤ γ2`
+* `decompose_eq`: the reconstruction is exact, `r = r1 * 2γ2 + r0`, except in the wrap
+  case, where `r1 = 0` and `r = q + r0`
+* `decompose_snd_neg`: the low part equals `-γ2` only where the high part is `0`
+* `useHint_makeHint`: for `0 ≤ r < q` and `|z| ≤ γ2`, `UseHint` applied to the hint
+  `MakeHint z r` returns `HighBits ((r + z) mod q)`
 
 ## References
 * NIST FIPS 204 (2024), Section 7.4, Algorithms 35-40
@@ -46,16 +55,20 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.MLDSA.Spec
 
-/-! ## Parameters -/
+/-! ## Definitions
 
-/-- The ML-DSA modulus. -/
-def q : ℤ := 8380417
+The modulus, the centred remainder and Algorithms 35 to 40 are the definitions of
+`VIR.RoundCodecDefs`, named here as `Spec.q`, `Spec.twoPowD`, `Spec.modPm`,
+`Spec.power2Round`, `Spec.decompose`, `Spec.highBits`, `Spec.lowBits`, `Spec.makeHint`
+and `Spec.useHint`. -/
+
+export CatCrypt.Crypto.SecureCompilation.VIR.RoundCodec.Fips204 (q twoPowD modPm power2Round
+  decompose highBits lowBits makeHint useHint)
+
+/-! ## Parameters -/
 
 /-- The number of bits dropped by `power2Round`. -/
 def d : ℤ := 13
-
-/-- `2 ^ d`, the `power2Round` scaling factor. -/
-def twoPowD : ℤ := 8192
 
 /-- `gamma2` for ML-DSA-44: `(q - 1) / 88`. -/
 def gamma2_88 : ℤ := 95232
@@ -65,51 +78,6 @@ def gamma2_32 : ℤ := 261888
 
 /-- The two `gamma2` values used by the ML-DSA parameter sets. -/
 def IsGamma2 (γ2 : ℤ) : Prop := γ2 = gamma2_88 ∨ γ2 = gamma2_32
-
-/-! ## Centred remainder -/
-
-/-- `modPm x α` is the representative of `x` modulo `α` in `(-α/2, α/2]`,
-for even `α`. -/
-def modPm (x α : ℤ) : ℤ :=
-  let r := x % α
-  if r > α / 2 then r - α else r
-
-/-! ## Rounding -/
-
-/-- `Power2Round` (FIPS 204, Algorithm 35): splits `r mod q` into a high part
-scaled by `2 ^ d` and a centred low part. -/
-def power2Round (r : ℤ) : ℤ × ℤ :=
-  let rp := r % q
-  let r0 := modPm rp twoPowD
-  ((rp - r0) / twoPowD, r0)
-
-/-- `Decompose` (FIPS 204, Algorithm 36): splits `r mod q` into a high part
-scaled by `2 * γ2` and a centred low part, with the high part wrapped to `0`
-at the top of the range. -/
-def decompose (γ2 r : ℤ) : ℤ × ℤ :=
-  let rp := r % q
-  let r0 := modPm rp (2 * γ2)
-  if rp - r0 = q - 1 then (0, r0 - 1) else ((rp - r0) / (2 * γ2), r0)
-
-/-- `HighBits` (FIPS 204, Algorithm 37). -/
-def highBits (γ2 r : ℤ) : ℤ := (decompose γ2 r).1
-
-/-- `LowBits` (FIPS 204, Algorithm 38). -/
-def lowBits (γ2 r : ℤ) : ℤ := (decompose γ2 r).2
-
-/-- `MakeHint` (FIPS 204, Algorithm 39): whether adding `z` changes the high
-bits of `r`. -/
-def makeHint (γ2 z r : ℤ) : Bool := decide (highBits γ2 r ≠ highBits γ2 (r + z))
-
-/-- `UseHint` (FIPS 204, Algorithm 40): recovers the high bits of `r + z` from
-the high bits of `r` and the hint bit. -/
-def useHint (γ2 : ℤ) (h : Bool) (r : ℤ) : ℤ :=
-  let m := (q - 1) / (2 * γ2)
-  let r1 := (decompose γ2 r).1
-  let r0 := (decompose γ2 r).2
-  if h = true ∧ 0 < r0 then (r1 + 1) % m
-  else if h = true then (r1 - 1) % m
-  else r1
 
 /-! ## Range properties -/
 

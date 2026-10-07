@@ -43,15 +43,19 @@ to coefficient vectors and relates the round trip to the FIPS 203 §4.2.1 bound 
 * `arrayIntToRqKem` / `rqKemToArrayInt` — `Array Int` marshalling
 * `Tq_kem`, `pairsOfCoeffs`, `coeffsOfPairs`, `coeffsEquivPairs` — the pair layout
 * `compressCoeffs` / `decompressCoeffs` — FIPS 203 §4.2.1 applied coefficientwise
-* `centeredAbs` — the distance of an element of `ZMod q_kem` from zero on the circle
+* `centeredAbs` — the distance of an element of `ZMod q_kem` from zero on the circle,
+  the definition of `Compress.centeredAbs` named in this namespace
 
 ## Main results
 
 * `rqKem_roundtrip` / `coeffs_roundtrip` — the two coefficient round trips
 * `coeffsToRqKem_add` / `coeffsToRqKem_sub` / `coeffsToRqKem_const_mul` — linearity
 * `pairs_roundtrip` / `coeffsOfPairs_roundtrip` — the pair layout is a bijection
-* `compress_decompress_centered` — for `1 ≤ d`, the round trip moves a coefficient by
-  at most `Compress.errorBound d` on the circle `ZMod q_kem`
+* `compress_decompress_centered` — for `1 ≤ d ≤ 12`, decompression after compression
+  moves a coefficient by at most `Compress.errorBound d` on the circle `ZMod q_kem`
+  (the statement `Compress.decompress_compress_centered`)
+* `compressCoeff_decompressCoeff` — for `d < 12`, compression after decompression is
+  the identity (the statement `Compress.compress_decompress`)
 * `compressCoeffs_decompressCoeffs_centered` — the coefficientwise form
 * `errorBound_du`, `errorBound_dv` — the bound at the ML-KEM parameters `d = 10, 4`
 
@@ -305,15 +309,12 @@ noncomputable def coeffsEquivPairs : (Fin 256 → ZMod q_kem) ≃ Tq_kem where
 
 /-! ## Compression on the circle `ZMod q_kem`
 
-`Compress.roundtrip_error_int` bounds the compression error of a natural number
-`x < q` before the reduction modulo `2^d` in `Compress.compress_d`. That reduction
-wraps exactly when `x` is within `Compress.errorBound d` of `q`, and then the
-decompressed value is `0`. Both cases are covered by measuring the error as a
-distance in `ZMod q_kem`. -/
+The distance `centeredAbs` on the circle `ZMod q_kem` and the round-trip bound
+`Compress.decompress_compress_centered` are those of `CatCrypt.Crypto.MLKEM.Compress`;
+`centeredAbs`, `centeredAbs_sub_le` and `centeredAbs_zero_sub_le` are exported into this
+namespace. -/
 
-/-- The distance of `z` from `0` on the circle `ZMod q_kem`: the smaller of its
-canonical representative and that representative's complement. -/
-def centeredAbs (z : ZMod q_kem) : ℕ := min z.val (q_kem - z.val)
+export CatCrypt.Crypto.MLKEM.Compress (centeredAbs centeredAbs_sub_le centeredAbs_zero_sub_le)
 
 /-- FIPS 203 §4.2.1 `Compress_d` at the ML-KEM modulus. -/
 def compressCoeff (d : ℕ) (x : ZMod q_kem) : ZMod (2 ^ d) := Compress.compress_d d x
@@ -329,41 +330,8 @@ def compressCoeffs (d : ℕ) (f : Fin 256 → ZMod q_kem) : Fin 256 → ZMod (2 
 def decompressCoeffs (d : ℕ) (g : Fin 256 → ZMod (2 ^ d)) : Fin 256 → ZMod q_kem :=
   fun i => decompressCoeff d (g i)
 
-/-- The canonical representatives of `a - b` and of `b` sum to that of `a` modulo
-`q_kem`. -/
-private lemma val_sub_add_val (a b : ZMod q_kem) :
-    ((a - b).val + b.val) % 3329 = a.val % 3329 := by
-  have hcast : (((a - b).val + b.val : ℕ) : ZMod q_kem) = ((a.val : ℕ) : ZMod q_kem) := by
-    push_cast
-    rw [ZMod.natCast_val, ZMod.natCast_val, ZMod.natCast_val,
-      ZMod.cast_id, ZMod.cast_id, ZMod.cast_id]
-    ring
-  exact (ZMod.natCast_eq_natCast_iff' _ _ _).mp hcast
-
-/-- A bound on the two one-sided differences of the canonical representatives bounds
-the circle distance of the difference. -/
-theorem centeredAbs_sub_le (a b : ZMod q_kem) (E : ℕ)
-    (hab : a.val ≤ b.val + E) (hba : b.val ≤ a.val + E) :
-    centeredAbs (a - b) ≤ E := by
-  have ha : a.val < 3329 := ZMod.val_lt a
-  have hb : b.val < 3329 := ZMod.val_lt b
-  have hv : (a - b).val < 3329 := ZMod.val_lt (a - b)
-  have hmod := val_sub_add_val a b
-  show min (a - b).val (3329 - (a - b).val) ≤ E
-  omega
-
-/-- When the compressed value wraps to zero, closeness of `b` to `q_kem` bounds the
-circle distance of `0 - b`. -/
-theorem centeredAbs_zero_sub_le (b : ZMod q_kem) (E : ℕ) (h : 3329 ≤ b.val + E) :
-    centeredAbs (0 - b) ≤ E := by
-  have hb : b.val < 3329 := ZMod.val_lt b
-  have hv : ((0 : ZMod q_kem) - b).val < 3329 := ZMod.val_lt _
-  have hmod := val_sub_add_val 0 b
-  have h0 : (0 : ZMod q_kem).val = 0 := ZMod.val_zero
-  show min ((0 : ZMod q_kem) - b).val (3329 - ((0 : ZMod q_kem) - b).val) ≤ E
-  omega
-
-/-- FIPS 203 §4.2.1 round-trip bound in `ZMod q_kem`.
+/-- FIPS 203 §4.2.1 round-trip bound in `ZMod q_kem`, the statement
+`Compress.decompress_compress_centered` for `compressCoeff` and `decompressCoeff`.
 
 Decompressing the compression of `x` moves `x` by at most `Compress.errorBound d`,
 measured on the circle `ZMod q_kem`. The reduction modulo `2 ^ d` inside
@@ -378,100 +346,14 @@ FIPS 203 compression parameter: `d_u ∈ {10, 11}`, `d_v ∈ {4, 5}`, `d = 1` fo
 message encoding and `d = 12` for the 12-bit byte encoding. -/
 theorem compress_decompress_centered (d : ℕ) (hd : 1 ≤ d) (hd12 : d ≤ 12)
     (x : ZMod q_kem) :
-    centeredAbs (decompressCoeff d (compressCoeff d x) - x) ≤ Compress.errorBound d := by
-  have : NeZero (2 ^ d) := ⟨by positivity⟩
-  have hn : 0 < 2 ^ d := Nat.two_pow_pos d
-  have hnle : 2 ^ d ≤ 4096 := by
-    calc 2 ^ d ≤ 2 ^ 12 := Nat.pow_le_pow_right (by norm_num) hd12
-      _ = 4096 := by norm_num
-  have hv : x.val < 3329 := ZMod.val_lt x
-  have h1664 : (3329 : ℕ) / 2 = 1664 := by norm_num
-  have hEB : Compress.errorBound d = (3329 + 2 ^ d) / (2 * 2 ^ d) := by
-    show (3329 + 2 ^ d) / 2 ^ (d + 1) = (3329 + 2 ^ d) / (2 * 2 ^ d)
-    rw [pow_succ, Nat.mul_comm]
-  have hc0_lt : (2 ^ d * x.val + 1664) / 3329 < 2 ^ d + 1 := by
-    apply Nat.div_lt_of_lt_mul
-    have h1 : 2 ^ d * x.val ≤ 2 ^ d * 3328 := Nat.mul_le_mul_left _ (by omega)
-    nlinarith
-  obtain ⟨c, hc⟩ : ∃ c : ℕ, (compressCoeff d x).val = c := ⟨_, rfl⟩
-  have hc_lt : c < 2 ^ d := hc ▸ ZMod.val_lt _
-  have hcomp : c = ((2 ^ d * x.val + 1664) / 3329) % 2 ^ d := by
-    rw [← hc]
-    show (((2 ^ d * x.val + 3329 / 2) / 3329 : ℕ) : ZMod (2 ^ d)).val = _
-    rw [h1664, ZMod.val_natCast]
-  have hdec : (decompressCoeff d (compressCoeff d x)).val
-      = (3329 * c + 2 ^ d / 2) / 2 ^ d := by
-    have hlt : (3329 * c + 2 ^ d / 2) / 2 ^ d < 3329 := by
-      apply Nat.div_lt_of_lt_mul
-      omega
-    show (((3329 * (compressCoeff d x).val + 2 ^ d / 2) / 2 ^ d : ℕ) : ZMod q_kem).val = _
-    rw [hc, ZMod.val_natCast_of_lt hlt]
-  have step : ∀ u w : ℕ,
-      ((u : ℤ) - (w : ℤ)) * (2 * ((2 ^ d : ℕ) : ℤ)) ≤ 3329 + ((2 ^ d : ℕ) : ℤ) →
-      u ≤ w + Compress.errorBound d := by
-    intro u w h
-    rcases Nat.le_total u w with hle | hle
-    · omega
-    · have hcast : ((u - w : ℕ) : ℤ) = (u : ℤ) - (w : ℤ) := by
-        push_cast [Nat.cast_sub hle]; ring
-      have h' : (((u - w) * (2 * 2 ^ d) : ℕ) : ℤ) ≤ ((3329 + 2 ^ d : ℕ) : ℤ) := by
-        push_cast
-        rw [hcast]
-        exact h
-      have hnat : (u - w) * (2 * 2 ^ d) ≤ 3329 + 2 ^ d := by exact_mod_cast h'
-      have hdivle := (Nat.le_div_iff_mul_le (by positivity : 0 < 2 * 2 ^ d)).mpr hnat
-      have h2 := Nat.sub_le_iff_le_add.mp hdivle
-      rw [hEB]
-      omega
-  rcases Nat.lt_or_ge ((2 ^ d * x.val + 1664) / 3329) (2 ^ d) with hlt | hge
-  · -- no wrap: the bound of `Compress.roundtrip_error_int` applies directly
-    have hceq : c = (2 ^ d * x.val + 1664) / 3329 := by
-      rw [hcomp, Nat.mod_eq_of_lt hlt]
-    have hmain : |((((3329 * ((2 ^ d * x.val + 1664) / 3329) + 2 ^ d / 2) / 2 ^ d : ℕ)) : ℤ)
-        - ((x.val : ℕ) : ℤ)|
-        ≤ ((3329 : ℤ) + ((2 ^ d : ℕ) : ℤ)) / (2 * ((2 ^ d : ℕ) : ℤ)) :=
-      Compress.roundtrip_error_int d hd x.val hv
-    rw [← hceq] at hmain
-    have h2n : (0 : ℤ) < 2 * ((2 ^ d : ℕ) : ℤ) := by positivity
-    rw [Int.le_ediv_iff_mul_le h2n] at hmain
-    have key : |(((3329 * c + 2 ^ d / 2) / 2 ^ d : ℕ) : ℤ) - ((x.val : ℕ) : ℤ)|
-        * (2 * ((2 ^ d : ℕ) : ℤ))
-        = |((((3329 * c + 2 ^ d / 2) / 2 ^ d : ℕ) : ℤ) - ((x.val : ℕ) : ℤ))
-            * (2 * ((2 ^ d : ℕ) : ℤ))| := by
-      rw [abs_mul, abs_of_pos h2n]
-    rw [key, abs_le] at hmain
-    obtain ⟨hlo, hhi⟩ := hmain
-    refine centeredAbs_sub_le _ _ _ ?_ ?_
-    · rw [hdec]
-      exact step _ _ hhi
-    · rw [hdec]
-      refine step _ _ ?_
-      linarith
-  · -- wrap: the compressed value is `0` and `x` lies close to `q_kem`
-    have hc0n : (2 ^ d * x.val + 1664) / 3329 = 2 ^ d := by omega
-    have hc0 : c = 0 := by rw [hcomp, hc0n, Nat.mod_self]
-    have hyz : (3329 * c + 2 ^ d / 2) / 2 ^ d = 0 := by
-      rw [hc0]
-      exact Nat.div_eq_of_lt (by omega)
-    have hzero : decompressCoeff d (compressCoeff d x) = 0 := by
-      have h := (ZMod.natCast_zmod_val (decompressCoeff d (compressCoeff d x))).symm
-      rw [hdec, hyz] at h
-      simpa using h
-    have hgapmul : 2 ^ d * 3329 ≤ 2 ^ d * x.val + 1664 :=
-      (Nat.le_div_iff_mul_le (by norm_num)).mp (le_of_eq hc0n.symm)
-    have hgap : 2 ^ d * (3329 - x.val) ≤ 1664 := by
-      rw [Nat.mul_sub]
-      omega
-    have hclose : 3329 ≤ x.val + Compress.errorBound d := by
-      have hstep : (3329 - x.val) * (2 * 2 ^ d) ≤ 3329 + 2 ^ d := by
-        have hre : (3329 - x.val) * (2 * 2 ^ d) = 2 * (2 ^ d * (3329 - x.val)) := by ring
-        rw [hre]
-        omega
-      have hdivle := (Nat.le_div_iff_mul_le (by positivity : 0 < 2 * 2 ^ d)).mpr hstep
-      rw [hEB]
-      omega
-    rw [hzero]
-    exact centeredAbs_zero_sub_le x _ hclose
+    centeredAbs (decompressCoeff d (compressCoeff d x) - x) ≤ Compress.errorBound d :=
+  Compress.decompress_compress_centered d hd hd12 x
+
+/-- FIPS 203 §4.2.1: `compressCoeff d (decompressCoeff d y) = y` for `d < 12`, the
+statement `Compress.compress_decompress` for `compressCoeff` and `decompressCoeff`. -/
+theorem compressCoeff_decompressCoeff (d : ℕ) (hd : d < 12) (y : ZMod (2 ^ d)) :
+    compressCoeff d (decompressCoeff d y) = y :=
+  Compress.compress_decompress d hd y
 
 /-- The coefficientwise form of `compress_decompress_centered`. -/
 theorem compressCoeffs_decompressCoeffs_centered (d : ℕ) (hd : 1 ≤ d) (hd12 : d ≤ 12)
