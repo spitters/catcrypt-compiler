@@ -692,7 +692,8 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
   have hul'' : u'.prog.lfn = fn := hFr'.1.trans hfn'
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
     (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
-    (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hex
+    (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
+    (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
   have hfle : f ≤ fuel := by omega
   obtain ⟨m', hm', hmok, hmle⟩ : ∃ m',
       (∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =

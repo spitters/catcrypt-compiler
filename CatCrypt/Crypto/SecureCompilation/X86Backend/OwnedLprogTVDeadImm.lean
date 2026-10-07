@@ -1280,7 +1280,8 @@ theorem blockOkR_fallW {outs : List String} {L : Nat → List String × Bool}
   · simp only [exitAgreeT, AllocCheck.LcmdCFG.Term.succs, Option.toList, List.all_nil,
       AllocCheck.LcmdCFG.Term.halts, Bool.not_true, Bool.false_or, Bool.true_and,
       Bool.and_eq_true, List.all_eq_true, beq_iff_eq]
-    refine ⟨fun r hr => ⟨congrFun e.1 r, ?_⟩, fun q hq => ⟨congrFun e.2.1 q, ?_⟩⟩
+    refine ⟨fun r hr => ⟨congrFun e.1 r, ?_⟩, fun q hq =>
+      arrAgreeT_of_eq (congrFun e.2.1 q) ?_⟩
     · simp only [okInT, Bool.and_eq_true]
       refine ⟨hI.1.1 r, okIn_of_live hL (fun v hv => ?_) (fun h => ?_)⟩
       · simp only [List.mem_append, List.mem_flatMap]

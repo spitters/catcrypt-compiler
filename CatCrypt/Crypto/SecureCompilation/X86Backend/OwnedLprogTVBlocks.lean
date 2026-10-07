@@ -477,7 +477,7 @@ theorem blockOkR_eqv {outs : List String} {L : Nat → List String × Bool} {k :
   have hblk : blockOkR outs L k T (T1, .ok s g, .ok s' g) B B' b b' =
       (guardsT T1.ents (L k) g g &&
         termAgreeT T1.ents T (L k) s s' B[b.stop - 1]? B'[b'.stop - 1]? &&
-        exitAgreeT T1.ents outs L (L k) T s s') := by
+        exitAgreeT T1.ents outs L (L k) T s s' g g) := by
     unfold blockOkR
     split
     · exact absurd rfl hT
@@ -523,7 +523,7 @@ theorem blockOkR_eqv {outs : List String} {L : Nat → List String × Bool} {k :
     simp only [exitAgreeT, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
       Bool.not_eq_true', beq_iff_eq]
     refine ⟨⟨fun j hj => ⟨fun r hr' => ⟨congrFun hr r, ?_⟩, ?_⟩, ?_⟩, fun q hq =>
-      ⟨congrFun ha q, ?_⟩⟩
+      arrAgreeT_of_eq (congrFun ha q) ?_⟩
     · simp only [okInT, Bool.and_eq_true]
       exact ⟨hI.1.1 r, hNr j hj r hr'⟩
     · cases hf : (L j).2

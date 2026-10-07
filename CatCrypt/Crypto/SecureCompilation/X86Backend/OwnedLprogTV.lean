@@ -2698,12 +2698,95 @@ def termAgree (T : Term) (n : List String × Bool) (ss ss' : SSt) :
       | .fall _ => true
       | _ => false
 
+/-! ### Arrays up to stores of the element read
+
+A store that writes to an element of an array the word read from that element at the same
+shape leaves the array as it is. `SArr.same` relates two symbolic arrays that differ by such
+stores; the guards of a run give the shape of the array read. -/
+
+/-- The store of `v` to element `i` of the array `b` at shape `(w, n)` writes the word read
+    there: `v` is element `i` of `b` read at shape `(w, n)`, and `gs` has the guard that `b`
+    has that shape. -/
+def SArr.selfSt (gs : List SG) (b : SArr) (w n : Nat) (i v : STerm) : Bool :=
+  v == .aget b w n i && gs.contains (.shp b w n)
+
+/-- The symbolic arrays `a` and `a'` are equal up to stores of the element read
+    (`SArr.selfSt`), those of `a` under the guards `gs` and those of `a'` under `gs'`. -/
+def SArr.same (gs gs' : List SG) : SArr → SArr → Bool
+  | .cell r, .cell r' => r == r'
+  | .cell r, .aset b' w' n' i' v' =>
+      SArr.selfSt gs' b' w' n' i' v' && SArr.same gs gs' (.cell r) b'
+  | .aset b w n i v, .cell r' => SArr.selfSt gs b w n i v && SArr.same gs gs' b (.cell r')
+  | .aset b w n i v, .aset b' w' n' i' v' =>
+      (SArr.selfSt gs b w n i v && SArr.same gs gs' b (.aset b' w' n' i' v')) ||
+        (SArr.selfSt gs' b' w' n' i' v' && SArr.same gs gs' (.aset b w n i v) b') ||
+        (w == w' && n == n' && i == i' && v == v' && SArr.same gs gs' b b')
+termination_by a a' => sizeOf a + sizeOf a'
+
+/-- **A store of the element read leaves the array.** Under guards that hold, the array with
+    the store has the value of the array without it. -/
+theorem SArr.selfSt_ev {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {gs : List SG} (hg : AllG V A C O gs) {b : SArr} {w n : Nat} {i v : STerm}
+    (h : SArr.selfSt gs b w n i v = true) :
+    (SArr.aset b w n i v).ev V A C O = b.ev V A C O := by
+  simp only [SArr.selfSt, Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem] at h
+  obtain ⟨rfl, hm⟩ := h
+  obtain ⟨hw, hn⟩ := hg _ hm
+  simp only [SArr.ev, STerm.ev]
+  generalize b.ev V A C O = c at hw hn
+  obtain ⟨w0, n0, f⟩ := c
+  simp only at hw hn
+  subst hw hn
+  have hc : castA ⟨w0, n0, f⟩ w0 n0 = f := by simp [castA]
+  have hs : ∀ k, stackSet f k (stackGet f k) = f := by
+    intro k
+    cases n0 with
+    | zero => funext j; exact Fin.elim0 j
+    | succ m =>
+        funext j
+        show (if j = _ then _ else f j) = f j
+        split
+        · next h => subst h; rfl
+        · rfl
+  rw [hc]
+  simp [castW, hs]
+
+/-- **Arrays equal up to stores of the element read have one value**, under guards that
+    hold. -/
+theorem SArr.same_ev {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {gs gs' : List SG} (hg : AllG V A C O gs) (hg' : AllG V A C O gs') (a a' : SArr)
+    (h : SArr.same gs gs' a a' = true) : a.ev V A C O = a'.ev V A C O := by
+  fun_induction SArr.same gs gs' a a' with
+  | case1 r r' => simp only [beq_iff_eq] at h; rw [h]
+  | case2 r b' w' n' i' v' ih =>
+      simp only [Bool.and_eq_true] at h
+      rw [SArr.selfSt_ev hg' h.1]; exact ih h.2
+  | case3 b w n i v r' ih =>
+      simp only [Bool.and_eq_true] at h
+      rw [SArr.selfSt_ev hg h.1]; exact ih h.2
+  | case4 b w n i v b' w' n' i' v' ih1 ih2 ih3 =>
+      simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at h
+      rcases h with (h | h) | h
+      · rw [SArr.selfSt_ev hg h.1]; exact ih1 h.2
+      · rw [SArr.selfSt_ev hg' h.1]; exact ih2 h.2
+      · obtain ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, hb⟩ := h
+        simp only [SArr.ev, ih3 hb]
+
+/-- The final arrays `a` and `a'` of one name agree at a block with live set `n`: they are
+    one symbolic array that passes `okIn n`, or they are equal up to stores of the element
+    read (`SArr.same`, under the guards `gs` and `gs'` of the two runs) and `a'` passes
+    `okIn n`. -/
+def arrAgree (n : List String × Bool) (gs gs' : List SG) (a a' : SArr) : Bool :=
+  (a == a' && okIn n a.vars a.readsF) ||
+    (SArr.same gs gs' a a' && okIn n a'.vars a'.readsF)
+
 /-- The two final symbolic states agree at every exit of a block with live set `n` and
     terminator `T`: on the registers live at each successor and, when the flags are live
     there, on the zero, carry and overflow flags; on `outs` when the block may leave the
-    body; and on every array written. Every value compared passes `okIn n`. -/
+    body; and on every array written, up to stores of the element read (`arrAgree`, under
+    the guards `gs` and `gs'` of the two runs). Every value compared passes `okIn n`. -/
 def exitAgree (outs : List String) (L : Nat → List String × Bool) (n : List String × Bool)
-    (T : Term) (ss ss' : SSt) : Bool :=
+    (T : Term) (ss ss' : SSt) (gs gs' : List SG) : Bool :=
   T.succs.all (fun j =>
       (L j).1.all (fun r =>
           ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF) &&
@@ -2712,8 +2795,7 @@ def exitAgree (outs : List String) (L : Nat → List String × Bool) (n : List S
           ss.of == ss'.of && okIn n ss.of.vars ss.of.readsF))) &&
     (!T.halts ||
       outs.all (fun r => ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF)) &&
-    (ss.awr ++ ss'.awr).all (fun q =>
-      ss.arrs q == ss'.arrs q && okIn n (ss.arrs q).vars (ss.arrs q).readsF)
+    (ss.awr ++ ss'.awr).all (fun q => arrAgree n gs gs' (ss.arrs q) (ss'.arrs q))
 
 /-- The check of block `k` of the source body `B` (block `b`) against block `k` of the
     rewritten body `B'` (block `b'`), both with terminator `T`, for the live sets `L`, under
@@ -2732,7 +2814,7 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
           | .ok ss' gs' =>
               (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
-                exitAgree outs L (L k) T ss ss'
+                exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false
 
 /-- The checker for the live sets `L`: the two bodies are non-empty, their graphs have the
@@ -2778,7 +2860,8 @@ theorem okIn_spec {n : List String × Bool} {vs : List String} {rf : Bool}
   · exact h2
 
 theorem exitAgree_spec {outs : List String} {L : Nat → List String × Bool}
-    {n : List String × Bool} {T : Term} {ss ss' : SSt} (h : exitAgree outs L n T ss ss' = true) :
+    {n : List String × Bool} {T : Term} {ss ss' : SSt} {gs gs' : List SG}
+    (h : exitAgree outs L n T ss ss' gs gs' = true) :
     (∀ j ∈ T.succs,
       (∀ r ∈ (L j).1, ss.regs r = ss'.regs r ∧
         okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
@@ -2787,8 +2870,7 @@ theorem exitAgree_spec {outs : List String} {L : Nat → List String × Bool}
         ss.of = ss'.of ∧ okIn n ss.of.vars ss.of.readsF = true)) ∧
     (T.halts = true → ∀ r ∈ outs, ss.regs r = ss'.regs r ∧
       okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
-    (∀ q ∈ ss.awr ++ ss'.awr, ss.arrs q = ss'.arrs q ∧
-      okIn n (ss.arrs q).vars (ss.arrs q).readsF = true) := by
+    (∀ q ∈ ss.awr ++ ss'.awr, arrAgree n gs gs' (ss.arrs q) (ss'.arrs q) = true) := by
   simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true'] at h
   obtain ⟨⟨h1, h2⟩, h3⟩ := h
@@ -2806,7 +2888,8 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
     (hH' : Holds V' A C' O' Z' ss' u') (hV : ∀ r ∈ n.1, V' r = V r)
     (hZ : n.2 = true → Z' = Z ∧ C' = C ∧ O' = O) (hg : ss.Good) (hg' : ss'.Good)
     (hlfn : u'.prog.lfn = u.prog.lfn) (hmem : u'.prog.base.lmem = u.prog.base.lmem)
-    (hex : exitAgree outs L n T ss ss' = true) :
+    {gs gs' : List SG} (hG : AllG V A C O gs) (hG' : AllG V A C O gs')
+    (hex : exitAgree outs L n T ss ss' gs gs' = true) :
     (∀ j ∈ T.succs, Rel (L j) u u') ∧ (T.halts = true → Obs outs u u') := by
   obtain ⟨hs, hh, ha⟩ := exitAgree_spec hex
   have hterm : ∀ t : STerm, okIn n t.vars t.readsF = true → t.ev V' A C' O' = t.ev V A C O :=
@@ -2816,10 +2899,15 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
     funext q
     rw [hH'.2.1 q, hH.2.1 q]
     by_cases hq : q ∈ ss.awr ++ ss'.awr
-    · obtain ⟨e, v⟩ := ha q hq
-      rw [← e]
-      exact SArr.ev_congr A _ (fun r hr => hV r ((okIn_spec v).1 r hr))
-        (fun e => (hZ ((okIn_spec v).2 e)).2)
+    · have hq' := ha q hq
+      simp only [arrAgree, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at hq'
+      rcases hq' with ⟨e, v⟩ | ⟨e, v⟩
+      · rw [← e]
+        exact SArr.ev_congr A _ (fun r hr => hV r ((okIn_spec v).1 r hr))
+          (fun e => (hZ ((okIn_spec v).2 e)).2)
+      · rw [SArr.same_ev hG hG' _ _ e]
+        exact SArr.ev_congr A _ (fun r hr => hV r ((okIn_spec v).1 r hr))
+          (fun e => (hZ ((okIn_spec v).2 e)).2)
     · simp only [List.mem_append, not_or] at hq
       rw [hg.2 q hq.1, hg'.2 q hq.2]
       rfl
@@ -2992,7 +3080,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
         (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
           (g.readsF = true → (L k).2 = true)) ∧
         termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec = true ∧
-        exitAgree outs L (L k) T ss ss' = true := by
+        exitAgree outs L (L k) T ss ss' gs gs' = true := by
   have h2 : (match symRun (bodyAt B b T) SSt.start sym with
       | .fail => true
       | .unk => false
@@ -3001,7 +3089,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
           | .ok ss' gs' =>
               (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
-                exitAgree outs L (L k) T ss ss'
+                exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false) = true := by
     cases T with
     | ret => exact absurd rfl hT
@@ -3243,7 +3331,8 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
   have hul'' : u'.prog.lfn = fn := hFr'.1.trans hfn'
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
     (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
-    (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hex
+    (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
+    (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
   have hfle : f ≤ fuel := by omega
   obtain ⟨m', hm'⟩ : ∃ m', ∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
       I.lsemFuelMemF (singletonProgM fn B') f0 u' := ⟨_, hrun'⟩
@@ -4904,21 +4993,138 @@ theorem termAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) {
     termAgree T n (ss.subst σ) (ss'.subst σ) x y = true :=
   termAgreeT_spec_at symDec_subst h ht
 
+/-- `SArr.selfSt` over the table `E`: the word stored is the element read, or an entry of `E`
+    whose node is the element read. -/
+def SArr.selfStT (E : Array TEnt) (gs : List SG) (b : SArr) (w n : Nat) (i v : STerm) :
+    Bool :=
+  (v == .aget b w n i ||
+      (match v with
+        | .ref k =>
+            match E[k]?.map TEnt.node with
+            | some (.aget b0 w0 n0 i0) => w0 == w && n0 == n && i0 == i && b0 == b
+            | _ => false
+        | _ => false)) &&
+    gs.contains (.shp b w n)
+
+/-- The symbolic array `a` over the table `E` without its stores of the element read
+    (`SArr.selfStT`, under the guards `gs`). -/
+def SArr.nfT (E : Array TEnt) (gs : List SG) : SArr → SArr
+  | .cell r => .cell r
+  | .aset b w n i v =>
+      if SArr.selfStT E gs b w n i v then SArr.nfT E gs b
+      else .aset (SArr.nfT E gs b) w n i v
+
+theorem SArr.selfStT_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
+    {gs : List SG} {b : SArr} {w n : Nat} {i v : STerm}
+    (hs : SArr.selfStT E gs b w n i v = true) :
+    SArr.selfSt (gs.map (SG.subst σ)) (b.subst σ) w n (i.subst σ) (v.subst σ) = true := by
+  simp only [SArr.selfStT, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq,
+    List.contains_iff_mem] at hs
+  obtain ⟨hv, hm⟩ := hs
+  simp only [SArr.selfSt, Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem]
+  refine ⟨?_, List.mem_map.mpr ⟨_, hm, rfl⟩⟩
+  rcases hv with rfl | hv
+  · rfl
+  · split at hv
+    · rename_i k
+      split at hv
+      · rename_i b0 w0 n0 i0 he
+        simp only [Bool.and_eq_true, beq_iff_eq] at hv
+        obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩ := hv
+        obtain ⟨e, he'⟩ := Option.map_eq_some_iff.mp he
+        have := (h.entry he'.1).1
+        rw [STerm.subst, this, he'.2, STerm.subst]
+      · cases hv
+    · cases hv
+
+/-- **Arrays with one normal form over the table are equal up to stores of the element
+    read**, under every substitution that agrees with the table. -/
+theorem SArr.nfT_same {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (gs gs' : List SG) :
+    ∀ a a' : SArr, SArr.nfT E gs a = SArr.nfT E gs' a' →
+      SArr.same (gs.map (SG.subst σ)) (gs'.map (SG.subst σ)) (a.subst σ) (a'.subst σ) = true
+  | .cell r, .cell r', e => by
+      simp only [SArr.nfT, SArr.cell.injEq] at e
+      simp [SArr.subst, SArr.same, e]
+  | .cell r, .aset b' w' n' i' v', e => by
+      rw [SArr.nfT] at e
+      rw [SArr.nfT] at e
+      split at e
+      · rename_i hs
+        have ih := SArr.nfT_same h gs gs' (.cell r) b' (by rw [SArr.nfT]; exact e)
+        rw [SArr.subst] at ih ⊢
+        rw [SArr.subst, SArr.same, SArr.selfStT_subst h hs, ih]; rfl
+      · cases e
+  | .aset b w n i v, .cell r', e => by
+      rw [SArr.nfT] at e
+      rw [SArr.nfT] at e
+      split at e
+      · rename_i hs
+        have ih := SArr.nfT_same h gs gs' b (.cell r') (by rw [SArr.nfT]; exact e)
+        rw [SArr.subst] at ih ⊢
+        rw [SArr.subst, SArr.same, SArr.selfStT_subst h hs, ih]; rfl
+      · cases e
+  | .aset b w n i v, .aset b' w' n' i' v', e => by
+      rw [SArr.subst, SArr.subst, SArr.same]
+      simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
+      by_cases hs : SArr.selfStT E gs b w n i v = true
+      · have e1 : SArr.nfT E gs b = SArr.nfT E gs' (.aset b' w' n' i' v') := by
+          rw [← e, SArr.nfT, if_pos hs]
+        have ih := SArr.nfT_same h gs gs' b _ e1
+        rw [SArr.subst] at ih
+        exact Or.inl (Or.inl ⟨SArr.selfStT_subst h hs, ih⟩)
+      · by_cases hs' : SArr.selfStT E gs' b' w' n' i' v' = true
+        · have e1 : SArr.nfT E gs (.aset b w n i v) = SArr.nfT E gs' b' := by
+            rw [e, SArr.nfT, if_pos hs']
+          have ih := SArr.nfT_same h gs gs' _ b' e1
+          rw [SArr.subst] at ih
+          exact Or.inl (Or.inr ⟨SArr.selfStT_subst h hs', ih⟩)
+        · rw [SArr.nfT, SArr.nfT, if_neg hs, if_neg hs'] at e
+          simp only [SArr.aset.injEq] at e
+          obtain ⟨eb, rfl, rfl, rfl, rfl⟩ := e
+          exact Or.inr ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, SArr.nfT_same h gs gs' b b' eb⟩
+termination_by a a' => sizeOf a + sizeOf a'
+
+/-- The array check of `exitAgree` over the table `E` (`arrAgree`): the two arrays are one
+    symbolic array, or they have one normal form `SArr.nfT`. -/
+def arrAgreeT (E : Array TEnt) (n : List String × Bool) (gs gs' : List SG) (a a' : SArr) :
+    Bool :=
+  (a == a' && okInAT E n a) ||
+    (SArr.nfT E gs a == SArr.nfT E gs' a' && okInAT E n a')
+
+theorem arrAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
+    {n : List String × Bool} {gs gs' : List SG} {a a' : SArr}
+    (ha : arrAgreeT E n gs gs' a a' = true) :
+    arrAgree n (gs.map (SG.subst σ)) (gs'.map (SG.subst σ)) (a.subst σ) (a'.subst σ) =
+      true := by
+  simp only [arrAgreeT, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at ha
+  simp only [arrAgree, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
+  rcases ha with ⟨e, o⟩ | ⟨e, o⟩
+  · exact Or.inl ⟨by rw [e], okInAT_spec h o⟩
+  · exact Or.inr ⟨SArr.nfT_same h gs gs' a a' e, okInAT_spec h o⟩
+
+/-- One symbolic array that passes `okInAT` passes the array check. -/
+theorem arrAgreeT_of_eq {E : Array TEnt} {n : List String × Bool} {gs gs' : List SG}
+    {a a' : SArr} (e : a = a') (o : okInAT E n a = true) :
+    arrAgreeT E n gs gs' a a' = true := by
+  simp only [arrAgreeT, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
+  exact Or.inl ⟨e, o⟩
+
 /-- The exit check of `blockOk` over the table `E` (`exitAgree`). -/
 def exitAgreeT (E : Array TEnt) (outs : List String) (L : Nat → List String × Bool)
-    (n : List String × Bool) (T : Term) (ss ss' : SSt) : Bool :=
+    (n : List String × Bool) (T : Term) (ss ss' : SSt) (gs gs' : List SG) : Bool :=
   T.succs.all (fun j =>
       (L j).1.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r)) &&
         (!(L j).2 || (ss.zf == ss'.zf && okInFT E n ss.zf &&
           ss.cf == ss'.cf && okInT E n ss.cf &&
           ss.of == ss'.of && okInT E n ss.of))) &&
     (!T.halts || outs.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r))) &&
-    (ss.awr ++ ss'.awr).all (fun q => ss.arrs q == ss'.arrs q && okInAT E n (ss.arrs q))
+    (ss.awr ++ ss'.awr).all (fun q => arrAgreeT E n gs gs' (ss.arrs q) (ss'.arrs q))
 
 theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     {outs : List String} {L : Nat → List String × Bool} {n : List String × Bool} {T : Term}
-    {ss ss' : SSt} (he : exitAgreeT E outs L n T ss ss' = true) :
-    exitAgree outs L n T (ss.subst σ) (ss'.subst σ) = true := by
+    {ss ss' : SSt} {gs gs' : List SG} (he : exitAgreeT E outs L n T ss ss' gs gs' = true) :
+    exitAgree outs L n T (ss.subst σ) (ss'.subst σ) (gs.map (SG.subst σ))
+      (gs'.map (SG.subst σ)) = true := by
   simp only [exitAgreeT, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true'] at he
   obtain ⟨⟨hs, hh⟩, ha⟩ := he
@@ -4936,7 +5142,7 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     · exact Or.inl h0
     · exact Or.inr fun r hr => ⟨by simp only [SSt.subst, (ho r hr).1], okInT_spec h (ho r hr).2⟩
   · have hq' : q ∈ ss.awr ++ ss'.awr := hq
-    exact ⟨by simp only [SSt.subst, (ha q hq').1], okInAT_spec h (ha q hq').2⟩
+    exact arrAgreeT_spec h (ha q hq')
 
 /-- The shared runs of block `b` of `B` and block `b'` of `B'` with terminator `T`: the
     final table and the two descriptions over it. -/
@@ -4961,7 +5167,7 @@ def blockOkR (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T
           | .ok ss' gs' =>
               guardsT R.1.ents (L k) gs gs' &&
                 termAgreeT R.1.ents T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
-                exitAgreeT R.1.ents outs L (L k) T ss ss'
+                exitAgreeT R.1.ents outs L (L k) T ss ss' gs gs'
           | _ => false
 
 /-- **The shared check implies the check**, for every symbolic step and branch condition
@@ -4995,7 +5201,7 @@ theorem blockOkR_spec_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpera
               guardsT (blockRuns B B' b b' T sym).1.ents (L k) gs gs' &&
                 termAgreeT (blockRuns B B' b b' T sym).1.ents T (L k) ss ss' B[b.stop - 1]?
                   B'[b'.stop - 1]? dec &&
-                exitAgreeT (blockRuns B B' b b' T sym).1.ents outs L (L k) T ss ss'
+                exitAgreeT (blockRuns B B' b b' T sym).1.ents outs L (L k) T ss ss' gs gs'
           | _ => false) = true := by
       split at h
       · exact absurd rfl hT
