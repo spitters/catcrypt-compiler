@@ -40,8 +40,31 @@ semantics at `bi`, with equality as input and output relation, under the typing
 At the module of a single function the call typing is `hax64SigOf`, the table is `bi`, the
 source relation is the run of the entry at `bi`, and the inlining returns its argument.
 
+A family of tables along the call depth, `NFInline.CrateTables fs bi T`, states what the
+inlining uses of a table of callees: names of no callee are answered by `bi`, depth `0` answers
+no callee, and a value of a call at depth `n + 1` decodes at the result type and is the value
+of a run of the body of the callee, at some fuel, at depth `n`. The fuel may differ from call
+to call. `crateBi fs bi fuel` is such a family, and the checked inlining keeps the runs from
+every such family to `bi` (`CrateTables.denote_crateInline?`).
+
+A module by its extractions, `RefModule`, holds for each function a `ModFn`: a name, typed
+parameters, a result type and the extraction `TExpr`. Its reference table, `refBi`, answers a
+call of a function by the run of the reference reading `denoteSpine` of the extraction of the
+callee, from the environment binding the names of its parameters to the argument values, and
+its source relation `RefModule.Runs` is the run of the entry at that table. For a preparation
+`P : TExpr → ImpExpr` of bodies that keeps the runs of each function at each depth of the
+reference table (`ModFn.PrepSim`), the reference tables are a family of tables for the
+prepared callees `ModFn.prep P`, so the inlining of the prepared module keeps the runs from
+the reference table to the base table (`RefModule.denote_inline?`).
+
 ## Main definitions
 
+* `NFInline.CrateTables` — a family of tables along the call depth for a list of callees.
+* `ModFn`, `ModFn.prep`, `ModFn.PrepSim` — a function of a module by its extraction, its
+  prepared callee, and the preparation keeping its runs at a table.
+* `refBi`, `RefModule`, `RefModule.table`, `RefModule.Runs`, `RefModule.prepared` — the
+  reference table, a module by its extractions, its table, its source relation and its
+  module of prepared callees.
 * `NFInline.crateInline?` — the rounds of inlining at the library of a list of callees, under
   their check.
 * `NFInline.crateInlineStep`, `NFInline.crateInlineCert` — the checked inlining as a chain
@@ -66,6 +89,18 @@ source relation is the run of the entry at `bi`, and the inlining returns its ar
   `HaxModule.inline?_single` — the four statements at the module of a single function.
 * `HaxModule.denote_inline?` — a run at the table of the module is a run of the inlined
   program at the base table.
+* `NFInline.crateTables_crateBi`, `NFInline.CrateTables.typedCalls`,
+  `NFInline.CrateTables.denote_crateInline?` — `crateBi` is a family of tables; every table of
+  a family is typed by the call typing of the callees; the checked inlining keeps the runs
+  from a family to the base table.
+* `refBi_nil`, `refBi_succ`, `crateTables_refBi` — the reference table with no function is
+  the base table; a call at depth `n + 1` is the run of the extraction at depth `n`; under
+  `ModFn.PrepSim` the reference tables are a family for the prepared callees.
+* `RefModule.table_single`, `RefModule.runs_single`, `RefModule.runs_single_iff`,
+  `RefModule.prepared_single` — the statements at the module of a single function.
+* `RefModule.table_typedCalls`, `RefModule.denote_inline?` — the reference table is typed by
+  the call typing of the prepared module, and a run at the reference table is a run of the
+  inlined program at the base table.
 -/
 
 @[expose] public section
@@ -270,5 +305,387 @@ def inlineCert (m : HaxModule) {bi : Builtins} (hT : TypedCalls bi hax64SigOf)
   crateInlineCert m.fns hT fuelC tf m.depth Γ ts
 
 end HaxModule
+
+end CatCrypt.Crypto.Hax
+
+/-! ## 4. Families of tables along the call depth -/
+
+namespace CatCrypt.Crypto.Hax.NFInline
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls crateBi
+  crateBi_of_find_none PDenP PDenP_plug_ret paramsEnv dec dec_sound impToNF_sound entryEnv)
+open _root_.Hax (Builtins Value Env denote')
+open Ctxt (Valuation)
+
+/-- **A family of tables along the call depth, for the callees `fs` over the builtins `bi`.**
+    At every depth a name no callee has is answered by `bi`; at depth `0` a call of a callee
+    fails; a call of the callee `c` at depth `n + 1` that returns `v` has a run of the body of
+    `c`, at some fuel and the table of depth `n`, from the environment binding its parameters
+    to the argument values, to `v`, and `dec` decodes `v` at the result type of `c`. -/
+structure CrateTables (fs : List CrateFn) (bi : Builtins) (T : Nat → Builtins) : Prop where
+  /-- A name no callee has is answered by `bi`. -/
+  base : ∀ n {f : String}, fs.find? (·.name == f) = none → ∀ vals, T n f vals = bi f vals
+  /-- At depth `0` a call of a callee fails. -/
+  zero : ∀ {f : String} {c : CrateFn}, fs.find? (·.name == f) = some c →
+    ∀ vals, T 0 f vals = none
+  /-- A value of a call at depth `n + 1` decodes at the result type and is the value of a run
+      of the body at depth `n`. -/
+  call : ∀ n {f : String} {c : CrateFn}, fs.find? (·.name == f) = some c →
+    ∀ vals v, T (n + 1) f vals = some v →
+      (dec c.res v).isSome ∧ ∃ fuel s,
+        (denote' (T n) fuel c.body).run (paramsEnv (c.params.map (·.1)) vals) = (.val v, s)
+
+/-- The builtins with a crate `crateBi fs bi fuel` are a family of tables for `fs` over `bi`,
+    with the fuel `fuel` at every call. -/
+theorem crateTables_crateBi (fs : List CrateFn) (bi : Builtins) (fuel : Nat) :
+    CrateTables fs bi (crateBi fs bi fuel) where
+  base n _ hf vals := crateBi_of_find_none fs bi fuel n hf vals
+  zero hf vals := by simp only [crateBi, hf]
+  call n f c hf vals v hv := by
+    simp only [crateBi, hf] at hv
+    split at hv
+    · rename_i w hrun
+      split at hv
+      · rename_i hd
+        cases hv
+        exact ⟨hd, fuel, _, Prod.ext hrun rfl⟩
+      · cases hv
+    · cases hv
+
+namespace CrateTables
+
+variable {fs : List CrateFn} {bi : Builtins} {T : Nat → Builtins}
+
+/-- **The call typing with the callees is sound for every table of a family**, when `base` is
+    sound for `bi`. -/
+theorem typedCalls (h : CrateTables fs bi T) {base : String → List NfTy → Option NfTy}
+    (hT : TypedCalls bi base) : ∀ n, TypedCalls (T n) (crateSigOf fs base) := by
+  intro n f as r hsig xs v hb
+  unfold crateSigOf at hsig
+  split at hsig
+  · rename_i c hf
+    split at hsig
+    · cases hsig
+      cases n with
+      | zero =>
+          rw [h.zero hf] at hb
+          cases hb
+      | succ n =>
+          obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp (h.call n hf _ v hb).1
+          exact ⟨y, hy, dec_sound _ _ _ hy⟩
+    · cases hsig
+  · rename_i hf
+    rw [h.base n hf] at hb
+    exact hT f as r hsig xs v hb
+
+/-- An operation that calls no callee denotes at every table of a family as at `bi`. -/
+theorem nfDenoteOp_eq (h : CrateTables fs bi T) (m : Nat) :
+    ∀ (o : NfOp), crateCallOp fs o = false → ∀ x,
+      nfDenoteOp (tableOf (T m)) o x = nfDenoteOp (tableOf bi) o x := by
+  intro o
+  induction o with
+  | call f as r =>
+      intro hc x
+      simp only [crateCallOp, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at hc
+      simp only [nfDenoteOp, tableOf, h.base m hc]
+  | named _ o ih =>
+      intro hc x
+      exact ih hc x
+  | _ =>
+      intro _ _
+      rfl
+
+/-- **A call of a callee at depth `m + 1` is a run of its translated body at depth `m`**, at
+    every fuel `tf`, with the same result, under the typing of `bi`. -/
+theorem crateOp_sound (h : CrateTables fs bi T) (hT : TypedCalls bi hax64SigOf) (m tf : Nat) :
+    ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o = some b → ∀ x y,
+      nfDenoteOp (tableOf (T (m + 1))) o x = some y →
+        PDenP (T m) tf b x = some (.cons y .nil) := by
+  intro o
+  induction o with
+  | call f as r =>
+      intro b hb x y hy
+      simp only [crateOp, Option.bind_eq_some_iff] at hb
+      obtain ⟨c, hc, hb⟩ := hb
+      simp only [crateBody, Option.bind_eq_some_iff] at hb
+      obtain ⟨o', ho', hb⟩ := hb
+      split at hb
+      · rename_i hty
+        cases hb
+        obtain ⟨rfl, rfl⟩ := hty
+        simp only [nfDenoteOp, tableOf, Option.bind_eq_some_iff] at hy
+        obtain ⟨v, hv, hd⟩ := hy
+        obtain ⟨-, fuel, s, hrun⟩ := h.call m hc _ v hv
+        obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (T m) (crateSigOf fs hax64SigOf)
+          (h.typedCalls hT m) c.body none (entryEnv c.params) ho' fuel _ x v s
+          (entryEnv_rel_paramsEnv c.params x) hrun tf
+        have hy' : y = o'.res.lookup W :=
+          enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvW)
+        subst hy'
+        exact PDenP_plug_ret _ tf o'.pre (.cons o'.res .nil) x hpre
+      · cases hb
+  | named _ o ih =>
+      intro b hb x y hy
+      exact ih b hb x y hy
+  | _ =>
+      intro b hb
+      cases hb
+
+/-- **The library of the callees is sound from depth `m + 1` to depth `m` of a family**, for
+    the operations that call no callee. -/
+theorem soundStep (h : CrateTables fs bi T) (hT : TypedCalls bi hax64SigOf) (m tf : Nat) :
+    (crateLib fs).SoundStep (nfDenote (tableOf (T (m + 1)))) (nfDenote (tableOf (T m)))
+      (fun o => !crateCallOp fs o) tf where
+  op := h.crateOp_sound hT m tf
+  keep o ho x y hy := by
+    simp only [Bool.not_eq_true'] at ho
+    simp only [nfDenote_denoteM] at hy ⊢
+    rw [h.nfDenoteOp_eq m o ho]
+    rwa [h.nfDenoteOp_eq (m + 1) o ho] at hy
+  call _ _ _ _ hb := by cases hb
+
+/-- A program without calls of the callees denotes at every table of a family as at `bi`. -/
+theorem PDenP_of_noCrateCall (h : CrateTables fs bi T) (m tf : Nat) {Γ : Ctxt nfDialect}
+    {ts : List NfTy} (p : NFProg nfDialect Γ ts) (hp : noCrateCall fs p = true)
+    (V : Valuation Γ) : PDenP (T m) tf p V = PDenP bi tf p V :=
+  NFProg.denote_congr_ops (nfDenote (tableOf (T m))) (nfDenote (tableOf bi))
+    (fun o => !crateCallOp fs o)
+    (fun o ho x => h.nfDenoteOp_eq m o (by simpa using ho) x) tf p hp V
+
+/-- **The checked inlining keeps every successful run, from the table of depth `n` of a family
+    to the base builtins**, under the typing of `bi`. -/
+theorem denote_crateInline? (h : CrateTables fs bi T) (hT : TypedCalls bi hax64SigOf)
+    (tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
+    (hi : crateInline? fs n p = some p') {V : Valuation Γ}
+    {out : Valuation (d := nfDialect) ts} (hp : PDenP (T n) tf p V = some out) :
+    PDenP bi tf p' V = some out := by
+  obtain ⟨hok, rfl⟩ := crateInline?_eq_some hi
+  obtain ⟨hit, hno⟩ := Bool.and_eq_true_iff.mp hok
+  rw [← h.PDenP_of_noCrateCall 0 tf _ hno V]
+  exact NFProg.denote_inlineIter_step (fun m => nfDenote (tableOf (T m)))
+    (fun m => h.soundStep hT m tf) n p hit hp
+
+end CrateTables
+
+end CatCrypt.Crypto.Hax.NFInline
+
+/-! ## 5. The reference table of a module -/
+
+namespace CatCrypt.Crypto.Hax
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
+open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls PDenP
+  paramsEnv dec)
+open CatCrypt.Crypto.Hax.NFInline
+open _root_.Hax (TExpr ImpExpr Builtins Value Env denote')
+open _root_.Hax.InlineLocalClosures (denoteSpine)
+open Ctxt (Valuation)
+
+/-- `dec` decodes a control-flow value at no type. -/
+theorem dec_controlFlow (t : NfTy) (b : Bool) (w : Value) : dec t (.controlFlow b w) = none := by
+  cases t <;> rfl
+
+/-- A value `dec` decodes at a type is not a control-flow value. -/
+theorem isControlFlow_of_dec {t : NfTy} {v : Value} (h : (dec t v).isSome) :
+    v.isControlFlow = false := by
+  cases v with
+  | controlFlow b w => simp [dec_controlFlow] at h
+  | _ => rfl
+
+/-- **A function of a module**: its name, its parameters with their types, its result type and
+    its extraction. -/
+structure ModFn where
+  /-- The name the callers call it by. -/
+  name : String
+  /-- The parameters, each the name the extraction reads it by with its type. -/
+  params : List (String × NfTy)
+  /-- The result type. -/
+  res : NfTy
+  /-- The extraction of the function. -/
+  texpr : TExpr
+
+namespace ModFn
+
+/-- The callee of a function of a module under the preparation `P` of bodies: the name, the
+    parameters and the result type of the function, with the body `P` makes of its
+    extraction. -/
+def prep (P : TExpr → ImpExpr) (f : ModFn) : CrateFn := ⟨f.name, f.params, f.res, P f.texpr⟩
+
+/-- **The preparation `P` keeps the runs of the function `f` at the table `bi`**: a run of the
+    reference reading `denoteSpine` of the extraction of `f`, from any environment, to a value
+    that is not a control-flow value is matched by a run of `denote'` of the body `P` makes,
+    at some fuel, from the same environment to the same value. -/
+def PrepSim (P : TExpr → ImpExpr) (f : ModFn) (bi : Builtins) : Prop :=
+  ∀ (fuel : Nat) (env env' : Env) (v : Value),
+    (denoteSpine bi fuel f.texpr.erase).run env = (.val v, env') → v.isControlFlow = false →
+      ∃ fuel' s, (denote' bi fuel' (P f.texpr)).run env = (.val v, s)
+
+end ModFn
+
+/-- The first callee with a name among the prepared functions is the callee of the first
+    function with the name. -/
+theorem find?_prep (P : TExpr → ImpExpr) (fs : List ModFn) (g : String) :
+    (fs.map (ModFn.prep P)).find? (·.name == g) =
+      (fs.find? (·.name == g)).map (ModFn.prep P) := by
+  rw [List.find?_map]
+  rfl
+
+/-- **The reference table of the functions `fs` of a module**, to the call depth `n`. A call
+    of a function of `fs` runs the reference reading `denoteSpine` of its extraction at the
+    fuel `fuel` with the table of depth `n - 1`, from the environment binding the names of
+    its parameters to the argument values (`paramsEnv`), and returns the value of the run when
+    `dec` decodes it at the result type; at depth `0`, and on a run that ends otherwise, the
+    call fails. Every other call is a call of `bi`. -/
+def refBi (fs : List ModFn) (bi : Builtins) (fuel : Nat) : Nat → Builtins
+  | 0, g, vals =>
+      match fs.find? (·.name == g) with
+      | some _ => none
+      | none => bi g vals
+  | n + 1, g, vals =>
+      match fs.find? (·.name == g) with
+      | some f =>
+          match ((denoteSpine (refBi fs bi fuel n) fuel f.texpr.erase).run
+              (paramsEnv (f.params.map (·.1)) vals)).1 with
+          | .val v => if (dec f.res v).isSome then some v else none
+          | _ => none
+      | none => bi g vals
+
+/-- At a name no function of `fs` has, the reference table is `bi`. -/
+theorem refBi_of_find_none (fs : List ModFn) (bi : Builtins) (fuel n : Nat) {g : String}
+    (hg : fs.find? (·.name == g) = none) (vals : List Value) :
+    refBi fs bi fuel n g vals = bi g vals := by
+  cases n <;> simp only [refBi, hg]
+
+/-- The reference table with no function is the base table, at every fuel and call depth. -/
+theorem refBi_nil (bi : Builtins) (fuel n : Nat) : refBi [] bi fuel n = bi := by
+  cases n <;> rfl
+
+/-- **A call of a function at depth `n + 1` of the reference table** is the run of the
+    reference reading of its extraction at depth `n`, from the environment binding its
+    parameters to the argument values. -/
+theorem refBi_succ (fs : List ModFn) (bi : Builtins) (fuel n : Nat) {g : String} {f : ModFn}
+    (hg : fs.find? (·.name == g) = some f) (vals : List Value) :
+    refBi fs bi fuel (n + 1) g vals =
+      match ((denoteSpine (refBi fs bi fuel n) fuel f.texpr.erase).run
+          (paramsEnv (f.params.map (·.1)) vals)).1 with
+      | .val v => if (dec f.res v).isSome then some v else none
+      | _ => none := by
+  simp only [refBi, hg]
+
+/-- **The reference tables are a family of tables for the prepared callees**, when the
+    preparation `P` keeps the runs of every function at every depth of the reference table. -/
+theorem crateTables_refBi (P : TExpr → ImpExpr) (fs : List ModFn) (bi : Builtins) (fuel : Nat)
+    (hsim : ∀ n, ∀ f ∈ fs, f.PrepSim P (refBi fs bi fuel n)) :
+    CrateTables (fs.map (ModFn.prep P)) bi (refBi fs bi fuel) where
+  base n g hg vals := by
+    rw [find?_prep, Option.map_eq_none_iff] at hg
+    exact refBi_of_find_none fs bi fuel n hg vals
+  zero {g c} hg vals := by
+    rw [find?_prep] at hg
+    obtain ⟨f, hf, -⟩ := Option.map_eq_some_iff.mp hg
+    simp only [refBi, hf]
+  call n g c hg vals v hv := by
+    rw [find?_prep] at hg
+    obtain ⟨f, hf, rfl⟩ := Option.map_eq_some_iff.mp hg
+    rw [refBi_succ fs bi fuel n hf] at hv
+    split at hv
+    · rename_i w hrun
+      split at hv
+      · rename_i hd
+        cases hv
+        obtain ⟨fuel', s, hs⟩ := hsim n f (List.mem_of_find?_eq_some hf) fuel _ _ v
+          (Prod.ext hrun rfl) (isControlFlow_of_dec hd)
+        exact ⟨hd, fuel', s, hs⟩
+      · cases hv
+    · cases hv
+
+/-- **A module by its extractions**: an entry function, the functions the entry may call, each
+    with its extraction, and the depth to which their calls are inlined. -/
+structure RefModule where
+  /-- The extraction of the entry function. -/
+  entry : TExpr
+  /-- The functions the entry may call; the first function with a name is the one called. -/
+  fns : List ModFn
+  /-- The call depth to which the functions run, and the number of rounds of inlining. -/
+  depth : Nat
+
+namespace RefModule
+
+/-- The module of the single function `te`: no callee, depth `0`. -/
+def single (te : TExpr) : RefModule := ⟨te, [], 0⟩
+
+instance : Coe TExpr RefModule := ⟨single⟩
+
+/-- The module of prepared callees of a module, under the preparation `P` of bodies. -/
+def prepared (P : TExpr → ImpExpr) (M : RefModule) : HaxModule :=
+  ⟨M.entry, M.fns.map (ModFn.prep P), M.depth⟩
+
+/-- The prepared module of a single function is the module of the function. -/
+theorem prepared_single (P : TExpr → ImpExpr) (te : TExpr) :
+    (single te).prepared P = HaxModule.single te := rfl
+
+/-- **The reference table of a module**: `refBi` at its functions and its depth, each function
+    run at the fuel `fuelC`. -/
+def table (M : RefModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
+  refBi M.fns bi fuelC M.depth
+
+/-- The reference table of the module of a single function is the base table. -/
+theorem table_single (te : TExpr) (bi : Builtins) (fuelC : Nat) :
+    (single te).table bi fuelC = bi := rfl
+
+/-- **The source relation of a module by its extractions** at the base table `bi` and the
+    layout `σ`: the reference reading `denoteSpine` of the entry, at the reference table of
+    the module for some fuel of the callees, runs from an environment `σ` reads off the entry
+    state `sa` to the value `v`, which is not a control-flow value. A call of a function of
+    the module is the run of the reference reading of the extraction of the callee, from the
+    environment binding the names of its parameters to the argument values. -/
+def Runs (bi : Builtins) (σ : AbiLayout) (M : RefModule) (sa : AState) (v : Value) : Prop :=
+  ∃ env fuel fuelC env', σ.EnvOf sa env ∧
+    (denoteSpine (M.table bi fuelC) fuel M.entry.erase).run env = (.val v, env') ∧
+      v.isControlFlow = false
+
+/-- The source relation of the module of a single function is the run of the reference
+    reading of the function at the base table. -/
+theorem runs_single (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState) (v : Value) :
+    Runs bi σ (single te) sa v ↔
+      ∃ env fuel env', σ.EnvOf sa env ∧
+        (denoteSpine bi fuel te.erase).run env = (.val v, env') ∧ v.isControlFlow = false :=
+  ⟨fun ⟨env, fuel, _, env', h⟩ => ⟨env, fuel, env', h⟩,
+    fun ⟨env, fuel, env', h⟩ => ⟨env, fuel, 0, env', h⟩⟩
+
+/-- The source relation of the module of a single function is the source relation of the
+    module `HaxModule.single` of the function. -/
+theorem runs_single_iff (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState)
+    (v : Value) : Runs bi σ (single te) sa v ↔ HaxModule.Runs bi σ (HaxModule.single te) sa v :=
+  (runs_single bi σ te sa v).trans (HaxModule.runs_single bi σ te sa v).symm
+
+/-- **The call typing of the prepared callees is sound for the reference table of a module**,
+    under the typing of the base table, when the preparation `P` keeps the runs of every
+    function at every depth of the reference table. -/
+theorem table_typedCalls (P : TExpr → ImpExpr) (M : RefModule) {bi : Builtins}
+    (hT : TypedCalls bi hax64SigOf) (fuelC : Nat)
+    (hsim : ∀ n, ∀ f ∈ M.fns, f.PrepSim P (refBi M.fns bi fuelC n)) :
+    TypedCalls (M.table bi fuelC) (M.prepared P).sigOf :=
+  (crateTables_refBi P M.fns bi fuelC hsim).typedCalls hT M.depth
+
+/-- **The inlining of the calls of the prepared module keeps every successful run, from the
+    reference table of the module to the base table**, under the typing of the base table,
+    when the preparation `P` keeps the runs of every function at every depth of the reference
+    table. -/
+theorem denote_inline? (P : TExpr → ImpExpr) (M : RefModule) {bi : Builtins}
+    (hT : TypedCalls bi hax64SigOf) (fuelC tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ M.fns, f.PrepSim P (refBi M.fns bi fuelC n))
+    {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
+    (h : (M.prepared P).inline? p = some p') {V : Valuation Γ}
+    {out : Valuation (d := nfDialect) ts}
+    (hp : PDenP (M.table bi fuelC) tf p V = some out) : PDenP bi tf p' V = some out :=
+  (crateTables_refBi P M.fns bi fuelC hsim).denote_crateInline? hT tf M.depth h hp
+
+end RefModule
 
 end CatCrypt.Crypto.Hax
