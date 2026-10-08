@@ -25,6 +25,7 @@ CatCrypt.Crypto.Hash.FullSecurity
 CatCrypt.Crypto.Hash.KangarooTwelve
 CatCrypt.Crypto.Hax.FrontDomain
 CatCrypt.Crypto.Hax.HaxBorrowAlignment
+CatCrypt.Crypto.Hax.HaxExitTypedCT
 CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeRewrites
@@ -48,7 +49,6 @@ CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.Hax.Module
 CatCrypt.Crypto.Hax.NFFieldSumLeak
 CatCrypt.Crypto.Hax.NFToCatCall
-CatCrypt.Crypto.Hax.NFToLowCT
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
 CatCrypt.Crypto.Jasmin.AesBitsliceReflect
