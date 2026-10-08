@@ -41,7 +41,9 @@ frame words, array words and the red-zone word. `imgGateB` is the decided condit
 body: each instruction is a label, a branch on a condition code, an indexed access through a
 reloaded array pointer, a frame-word move or compare, or a register instruction whose
 symbolic description reads and writes no frame word and no array (`regGateB`); and every
-reload of an array pointer follows its save (`reloadSavedB`).
+reload of an array pointer follows its save (`reloadSavedB`). `ImgGate` is the positionwise
+form the step lemmas take: `instrGateB` at each position before the last that holds no call,
+the closing return, and `reloadSavedB`; `ImgGate.of_imgGateB` gives it from `imgGateB`.
 
 ## Main results
 
@@ -1099,6 +1101,56 @@ theorem imgGateB_at {frame : String → Option (BitVec 64)}
   rw [hi] at this
   simpa using this
 
+/-- **The positionwise gate of the image simulation**: every instruction before the last
+    that is no call passes `instrGateB`, the last instruction is the return, and every
+    array-pointer reload follows a save. -/
+structure ImgGate (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) : Prop where
+  /-- An instruction before the last that is no call passes `instrGateB`. -/
+  instr : ∀ k i, body[k]? = some i → k + 1 < body.length → (∀ ra t, i.li_i ≠ .Lcall ra t) →
+    instrGateB frame slotArr body k i.li_i = true
+  /-- The last instruction is the return. -/
+  last : ∃ r, body.getLast? = some r ∧ r.li_i = .Lret
+  /-- Every array-pointer reload follows a save. -/
+  saved : reloadSavedB slotArr body = true
+
+/-- A body that passes `imgGateB` passes the positionwise gate. -/
+theorem ImgGate.of_imgGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateB frame slotArr body = true) : ImgGate frame slotArr body := by
+  refine ⟨fun k i hi hk _ => ?_, imgGateB_last h, ?_⟩
+  · simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+    have := h.1.1 k (by omega)
+    rw [hi] at this
+    simpa using this
+  · simp only [imgGateB, Bool.and_eq_true] at h
+    exact h.2
+
+/-- An instruction of a gated body that is neither the return nor a call is before the last
+    position and passes `instrGateB`. -/
+theorem ImgGate.pos {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : ImgGate frame slotArr body) {k : Nat} {i : Linstr} (hi : body[k]? = some i)
+    (hr : i.li_i ≠ .Lret) (hc : ∀ ra t, i.li_i ≠ .Lcall ra t) :
+    k + 1 < body.length ∧ instrGateB frame slotArr body k i.li_i = true := by
+  have hk : k < body.length := (List.getElem?_eq_some_iff.mp hi).1
+  have hk1 : k + 1 < body.length := by
+    by_contra hcn
+    have he : k = body.length - 1 := by omega
+    obtain ⟨r, hr', hret⟩ := h.last
+    rw [List.getLast?_eq_getElem?, ← he, hi] at hr'
+    cases hr'
+    exact hr hret
+  exact ⟨hk1, h.instr k i hi hk1 hc⟩
+
+/-- No call passes `instrGateB`. -/
+theorem not_call_of_instrGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {x : LinstrR}
+    (h : instrGateB frame slotArr body k x = true) (ra : Option String)
+    (t : String × LLabel) : x ≠ .Lcall ra t := by
+  rintro rfl
+  simp [instrGateB, icase] at h
+
 theorem slotMov?_normA (x : LinstrR) : slotMov? (normA x) = slotMov? x := by
   cases x with
   | Lopn ds o ss =>
@@ -1116,13 +1168,15 @@ theorem slotMov?_normA (x : LinstrR) : slotMov? (normA x) = slotMov? x := by
 /-- The register a save copies has no frame word. -/
 theorem save_frame {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (h : imgGateB frame slotArr body = true)
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (h : ImgGate frame slotArr body)
     {k : Nat} {R : String} (hs : SaveAt body k R) {A : String} {n : Nat}
     (hA : slotArr (slotOfReg R) = some (A, n)) : frame R = none := by
   obtain ⟨i, hi, hm⟩ := hs
   have hnr : i.li_i ≠ .Lret := by
     intro e; rw [e] at hm; cases hm
-  obtain ⟨-, hg⟩ := imgGateB_at h hi hnr
+  have hnc : ∀ ra t, i.li_i ≠ .Lcall ra t := by
+    intro ra t e; rw [e] at hm; cases hm
+  obtain ⟨-, hg⟩ := h.pos hi hnr hnc
   obtain ⟨a, ha⟩ := hsep.slotFrame _ _ _ hA
   cases hR : frame R with
   | none => rfl
@@ -1171,7 +1225,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrP
 theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
     {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
     (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateB frame slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    (hgate : ImgGate frame slotArr body) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) (hc : icase frame bi.li_i = .reg)
     (hg : regGateB frame (normA bi.li_i) = true)
@@ -1486,15 +1540,14 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
 theorem ptr_of_reload {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
-    (hgate : imgGateB frame slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hgate : ImgGate frame slotArr body) {s : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base body s sa zf) {b A : String} {n : Nat}
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hbf : frame b = none) :
     ∃ q, slotArr q = some (A, n) ∧ sa.reg.getW b 64 = some (base A) := by
   obtain ⟨q, hr, hq, k', i, b', hk', hi, hm⟩ := accArr_spec hacc
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
-  have hrs : reloadSavedB slotArr body = true := by
-    simp only [imgGateB, Bool.and_eq_true] at hgate; exact hgate.2
+  have hrs : reloadSavedB slotArr body = true := hgate.saved
   obtain ⟨j, R, hj, hS, hqR⟩ := reloadSavedB_spec hrs hi hm (by rw [hq]; rfl)
   subst hqR
   have hp := (hrel.saved j R A n a hS hq ha).1 (by omega)
@@ -1518,7 +1571,7 @@ theorem imgInstr_stx (slotArr : String → Option (String × Nat)) (body : Lcmd)
 theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
     {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
     (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateB frame slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    (hgate : ImgGate frame slotArr body) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d b idx A : String} {n : Nat}
     (hx : bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx 8])
@@ -1590,7 +1643,7 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
 theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
     {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
     (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateB frame slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    (hgate : ImgGate frame slotArr body) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d b idx v A : String} {n : Nat}
     (hx : bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v])
@@ -1816,37 +1869,35 @@ theorem notLoad_of_icase {frame : String → Option (BitVec 64)} {x : LinstrR}
   subst e
   exact h D B I icase_loadIdx
 
-/-- **One step of the image.** From related states, a checked step of the image of a body
-    that passes the gate is matched by one step of the address machine, or by two when the
-    image takes a branch (the address machine stops at the label); the address machine does
-    not halt and reads outside the red-zone word at each state it steps from. -/
-theorem img_step {frame : String → Option (BitVec 64)}
+/-- **One step of the image.** From related states at a position before the last that holds
+    no call, a checked step of the image of the instruction of a body that passes the
+    positionwise gate `ImgGate`, on a program `B` with the labels of the image, is matched
+    by one step of the address machine, or by two when the image takes a branch (the address
+    machine stops at the label); the address machine does not halt and reads outside the
+    red-zone word at each state it steps from. -/
+theorem gate_step {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateB frame slotArr body = true) (fn : String) {s t : LstateMF}
+    (hgate : ImgGate frame slotArr body) (fn : String) {B : List LinstrRM}
+    (hlab : ∀ l, findLabel l (B.map Prod.fst)
+      = findLabel l ((virtImg slotArr body).map Prod.fst)) {s t : LstateMF}
     (hfn : s.prog.lfn = fn) {sa : LstateA} {zf : Bool}
-    (hrel : ImgRel frame slotArr base body s sa zf) {i : LinstrRM}
-    (hfetch : findInstrMem (singletonProgM fn (virtImg slotArr body)) s.prog = some i)
-    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr body)) i s = some t) :
+    (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < body.length - 1)
+    (hnc : ∀ ra tg, bi.li_i ≠ .Lcall ra tg)
+    (hstep : evalInstrPMemFk true (singletonProgM fn B)
+      (imgInstr slotArr body sa.reg.lpc bi.li_i) s = some t) :
     haltedA body sa = false ∧ LoadSafeAt rsp body sa ∧ t.prog.lfn = fn ∧
       ∃ sa1 z1, stepA frame body sa zf = some (sa1, z1) ∧
         (ImgRel frame slotArr base body t sa1 z1 ∨
           (haltedA body sa1 = false ∧ LoadSafeAt rsp body sa1 ∧
             ∃ sa2 z2, stepA frame body sa1 z1 = some (sa2, z2)
               ∧ ImgRel frame slotArr base body t sa2 z2)) := by
-  set P := singletonProgM fn (virtImg slotArr body)
+  set P := singletonProgM fn B
   have hlfn : t.prog.lfn = fn :=
-    (evalInstrPMemF_next P i s t (evalInstrPMemF_of_k hstep)).1.trans hfn
-  rw [findInstrMem_single hfn, virtImg_getElem?, ← hrel.pc, List.getElem?_dropLast] at hfetch
-  split at hfetch
-  case isFalse => cases hfetch
-  rename_i hlt
-  obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hfetch
-  have hg : instrGateB frame slotArr body sa.reg.lpc bi.li_i = true := by
-    simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-    have := hgate.1.1 sa.reg.lpc hlt
-    rw [hb] at this
-    simpa using this
+    (evalInstrPMemF_next P _ s t (evalInstrPMemF_of_k hstep)).1.trans hfn
+  have hg : instrGateB frame slotArr body sa.reg.lpc bi.li_i = true :=
+    hgate.instr _ _ hb (by omega) hnc
   have hz := hrel.zf
   subst hz
   unfold instrGateB at hg
@@ -1871,12 +1922,12 @@ theorem img_step {frame : String → Option (BitVec 64)}
       have hx := icase_cond hc
       have hi : imgInstr slotArr body sa.reg.lpc bi.li_i = (bi.li_i, .reg none) := by
         rw [hx]; rfl
-      obtain ⟨r, hr, hret⟩ := imgGateB_last hgate
+      obtain ⟨r, hr, hret⟩ := hgate.last
       have hfl := findLabel_virtImg slotArr body l (fun r' hr' => by
         rw [hr] at hr'
         cases hr'
         rw [hret]; rfl)
-      rw [hp] at hfl
+      rw [hp, ← hlab l] at hfl
       rw [hi, evalInstrPMemFk_reg, hx, eval_cond fn _ cc l _ hpol hfl] at hstep
       have hnm : slotMov? bi.li_i = none := by rw [hx]; rfl
       obtain ⟨hpl, hlab, -⟩ := labelAt_spec hp
@@ -1987,11 +2038,41 @@ theorem img_step {frame : String → Option (BitVec 64)}
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hok h3]
 
+/-- **One step of the image of a body that passes `imgGateB`**: the statement of `gate_step`
+    at the image `virtImg`, with the instruction fetched from the image. -/
+theorem img_step {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateB frame slotArr body = true) (fn : String) {s t : LstateMF}
+    (hfn : s.prog.lfn = fn) {sa : LstateA} {zf : Bool}
+    (hrel : ImgRel frame slotArr base body s sa zf) {i : LinstrRM}
+    (hfetch : findInstrMem (singletonProgM fn (virtImg slotArr body)) s.prog = some i)
+    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr body)) i s = some t) :
+    haltedA body sa = false ∧ LoadSafeAt rsp body sa ∧ t.prog.lfn = fn ∧
+      ∃ sa1 z1, stepA frame body sa zf = some (sa1, z1) ∧
+        (ImgRel frame slotArr base body t sa1 z1 ∨
+          (haltedA body sa1 = false ∧ LoadSafeAt rsp body sa1 ∧
+            ∃ sa2 z2, stepA frame body sa1 z1 = some (sa2, z2)
+              ∧ ImgRel frame slotArr base body t sa2 z2)) := by
+  rw [findInstrMem_single hfn, virtImg_getElem?, ← hrel.pc, List.getElem?_dropLast] at hfetch
+  split at hfetch
+  case isFalse => cases hfetch
+  rename_i hlt
+  obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hfetch
+  have hg : instrGateB frame slotArr body sa.reg.lpc bi.li_i = true := by
+    have h := hgate
+    simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+    have := h.1.1 sa.reg.lpc hlt
+    rw [hb] at this
+    simpa using this
+  exact gate_step hsep hphys (ImgGate.of_imgGateB hgate) fn (fun _ => rfl) hfn hrel hb hlt
+    (not_call_of_instrGateB hg) hstep
+
 /-- Where the image halts, the address machine has halted: the program counter is at the
     final return of the body or past its end. -/
 theorem haltedA_of_img {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd}
-    (hgate : imgGateB frame slotArr body = true) (fn : String) {s : LstateMF}
+    (hgate : ImgGate frame slotArr body) (fn : String) {s : LstateMF}
     (hfn : s.prog.lfn = fn) {sa : LstateA} (hpc : sa.reg.lpc = s.prog.base.reg.lpc)
     (h : findInstrMem (singletonProgM fn (virtImg slotArr body)) s.prog = none) :
     haltedA body sa = true := by
@@ -2004,7 +2085,7 @@ theorem haltedA_of_img {frame : String → Option (BitVec 64)}
     cases h
   unfold haltedA
   by_cases hl : sa.reg.lpc < body.length
-  · obtain ⟨r, hr, hret⟩ := imgGateB_last hgate
+  · obtain ⟨r, hr, hret⟩ := hgate.last
     have he : sa.reg.lpc = body.length - 1 := by omega
     rw [List.getLast?_eq_getElem?, ← he] at hr
     rw [hr]
@@ -2040,7 +2121,7 @@ theorem image_addr_sim {frame : String → Option (BitVec 64)}
           simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
           subst hrun
           exact ⟨0, sa, zf, runA_halt frame body 0 sa zf
-            (haltedA_of_img hgate fn hfn hrel.pc hf), hrel, trivial⟩
+            (haltedA_of_img (ImgGate.of_imgGateB hgate) fn hfn hrel.pc hf), hrel, trivial⟩
   | succ f ih =>
       intro s t sa zf hfn hrel hrun
       cases hf : findInstrMem (singletonProgM fn (virtImg slotArr body)) s.prog with
@@ -2048,7 +2129,7 @@ theorem image_addr_sim {frame : String → Option (BitVec 64)}
           simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
           subst hrun
           exact ⟨0, sa, zf, runA_halt frame body 0 sa zf
-            (haltedA_of_img hgate fn hfn hrel.pc hf), hrel, trivial⟩
+            (haltedA_of_img (ImgGate.of_imgGateB hgate) fn hfn hrel.pc hf), hrel, trivial⟩
       | some i =>
           simp only [lsemFuelMemFk, hf] at hrun
           cases he : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr body)) i s with

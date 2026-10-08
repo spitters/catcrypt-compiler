@@ -380,7 +380,7 @@ theorem cell_step' {frame : String → Option (BitVec 64)}
     have hptr : ∀ B A m, accArr slotArr body sa.reg.lpc B = some (A, m) →
         DecodePrinted.gpOk B = true → frame B = none → sa.reg.getW B 64 = some (base A) := by
       intro B A m hacc hg hBf
-      obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+      obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
         (accArr_cellBody hN (hasPrefix_gpName hg) hacc) hBf
       exact hpA
     obtain ⟨hcell, he⟩ := stepA_cellBody hF hptr s.zf
@@ -526,7 +526,7 @@ theorem image_addr_simB' {frame : String → Option (BitVec 64)}
     (R := fun s sa zf => s.prog.lfn = fn
       ∧ ImgRel frame slotArr base (cellBody slotArr body) s sa zf)
     (fun s sa zf h hf => by
-      have hh := haltedA_of_img hgate fn h.1 h.2.pc hf
+      have hh := haltedA_of_img (.of_imgGateB hgate) fn h.1 h.2.pc hf
       rwa [haltedA_cellBody] at hh)
     (fun s s1 sa zf i h hf he => by
       obtain ⟨hfn, hrel⟩ := h

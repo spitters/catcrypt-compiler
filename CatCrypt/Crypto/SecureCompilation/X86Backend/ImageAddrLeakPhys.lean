@@ -454,7 +454,7 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
       obtain ⟨⟨⟨⟨⟨An, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
       obtain ⟨A, n⟩ := An
-      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep hgate hrel hacc hbf
+      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf
       have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
         unfold idxVal
         rw [hrel.regs idx hidx]
@@ -468,7 +468,7 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
       obtain ⟨⟨⟨⟨An, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
       obtain ⟨A, n⟩ := An
-      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep hgate hrel hacc hbf
+      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf
       have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
         unfold idxVal
         rw [hrel.regs idx hidx]
@@ -591,7 +591,7 @@ theorem image_addr_leak {frame : String → Option (BitVec 64)}
       rw [findInstrMem_single hfn, List.getElem?_eq_none_iff, virtImg_length, ← hrel.pc] at h
       exact List.drop_eq_nil_of_le (by rw [List.length_dropLast]; exact h)
     refine ⟨[], 0, sa, zf, lsemFuelMemFLeak_halt P fuel s hf, ?_, hrel⟩
-    rw [hnil, runALeak_halt frame body 0 sa zf (haltedA_of_img hgate fn hfn hrel.pc hf)]
+    rw [hnil, runALeak_halt frame body 0 sa zf (haltedA_of_img (.of_imgGateB hgate) fn hfn hrel.pc hf)]
     rfl
   intro fuel
   induction fuel with

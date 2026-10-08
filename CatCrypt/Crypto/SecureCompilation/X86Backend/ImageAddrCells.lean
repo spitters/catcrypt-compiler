@@ -495,7 +495,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       have hx := icase_ldx hc
       rw [hx, imgInstr_ldx slotArr _ _ hacc] at hstep
       obtain ⟨hsafe, sa', hst, hr⟩ :=
-        rel_ldx hsep hphys hgate P hrel hb hx hacc hgd hd hidx hbf hstep
+        rel_ldx hsep hphys (.of_imgGateB hgate) P hrel hb hx hacc hgd hd hidx hbf hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx]
       rfl
@@ -506,7 +506,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       obtain ⟨A, n⟩ := An
       have hx := icase_stx hc
       rw [hx, imgInstr_stx slotArr _ _ hacc] at hstep
-      obtain ⟨sa', hst, hr⟩ := rel_stx hsep hphys hgate P hrel hb hx hacc hidx hbf hv hstep
+      obtain ⟨sa', hst, hr⟩ := rel_stx hsep hphys (.of_imgGateB hgate) P hrel hb hx hacc hidx hbf hv hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx]
       rfl
@@ -560,7 +560,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       rw [hx] at h3 h4
       rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4),
         evalInstrPMemFk_reg, ← hx] at hstep
-      obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys hgate P hrel hb hc hg hstep
+      obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys (.of_imgGateB hgate) P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3]
 
@@ -640,7 +640,7 @@ theorem cell_step {frame : String → Option (BitVec 64)}
     have hc : cellA? (.Lopn [.reg D] "LOAD:64" [.reg n]) = some (.ld D B off) := by
       simp [cellA?, hn]
     obtain ⟨A, m, hacc, hBf, -, hred⟩ := hF.ld _ _ D B off hb0 hc
-    obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+    obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
       (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb0 hc)) hacc) hBf
     rw [hp] at hpA
     cases hpA
@@ -661,13 +661,13 @@ theorem cell_step {frame : String → Option (BitVec 64)}
         cases op with
         | ld D B off =>
             obtain ⟨A, m, hacc, hBf, hfr, -⟩ := hF.ld _ _ D B off hb0 hc
-            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
               (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb0 hc)) hacc) hBf
             rw [stepA_cellBody_ld hb0 hc hacc hpA hfr]
             exact hst
         | st B off S =>
             obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
-            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep hgate hrel
+            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
               (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc)) hacc) hBf
             rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
             exact hst
@@ -704,7 +704,7 @@ theorem image_addr_simB {frame : String → Option (BitVec 64)}
       | none =>
           simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
           subst hrun
-          have hh := haltedA_of_img hgate fn hfn hrel.pc hf
+          have hh := haltedA_of_img (.of_imgGateB hgate) fn hfn hrel.pc hf
           rw [haltedA_cellBody] at hh
           exact ⟨0, sa, zf, runA_halt frame body 0 sa zf hh, hrel, trivial⟩
   | succ f ih =>
@@ -714,7 +714,7 @@ theorem image_addr_simB {frame : String → Option (BitVec 64)}
       | none =>
           simp only [lsemFuelMemFk, hf, Option.some.injEq] at hrun
           subst hrun
-          have hh := haltedA_of_img hgate fn hfn hrel.pc hf
+          have hh := haltedA_of_img (.of_imgGateB hgate) fn hfn hrel.pc hf
           rw [haltedA_cellBody] at hh
           exact ⟨0, sa, zf, runA_halt frame body 0 sa zf hh, hrel, trivial⟩
       | some i =>

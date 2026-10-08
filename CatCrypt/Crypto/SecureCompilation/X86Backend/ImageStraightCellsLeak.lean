@@ -320,7 +320,7 @@ theorem stepLeakA_cellBody {frame : String → Option (BitVec 64)}
     (hb0 : body[sa.reg.lpc]? = some b0) :
     stepLeakA frame body sa zf = stepLeakA frame (cellBody slotArr body) sa zf :=
   stepLeakA_cellBody_of_ptr hF hb0 (fun _ _ _ hacc hBf hgp =>
-    (ptr_of_reload hsep hgate hrel (accArr_cellBody hN (hasPrefix_gpName hgp) hacc) hBf).elim
+    (ptr_of_reload hsep (.of_imgGateB hgate) hrel (accArr_cellBody hN (hasPrefix_gpName hgp) hacc) hBf).elim
       fun _ h => h.2) zf
 
 /-- **The events of a step at the relation with carry chains.** `stepLeakA_cellBody` at the
@@ -392,7 +392,7 @@ theorem cell_image_addr_leak {frame : String → Option (BitVec 64)}
       have h := hf
       rw [findInstrMem_single hfn, List.getElem?_eq_none_iff, virtImg_length, ← hrel.pc] at h
       exact List.drop_eq_nil_of_le (by rw [List.length_dropLast]; exact h)
-    have hh := haltedA_of_img hgate fn hfn hrel.pc hf
+    have hh := haltedA_of_img (.of_imgGateB hgate) fn hfn hrel.pc hf
     rw [haltedA_cellBody] at hh
     refine ⟨[], 0, sa, zf, lsemFuelMemFLeak_halt P fuel s hf, ?_, hrel⟩
     rw [hnil, runALeak_halt frame body 0 sa zf hh]

@@ -538,7 +538,7 @@ theorem relX_reg {frame : String → Option (BitVec 64)} {slotArr : String → O
   obtain ⟨t', ht', hwr, hkeep', hkeep, hzf, hcf, hof, hlarr', hlarr, hlpc', hlpc, -⟩ :=
     step_congr P P (normA bi.li_i, .reg none) hS hA s s' t
       (fun r hr => (hag.regs r (hR r hr)).symm) hag.zf.symm hag.cf.symm hag.of.symm hs
-  obtain ⟨sa', hst, hr'⟩ := rel_reg hsep hphys hgate P hrel hb hc hg ht'
+  obtain ⟨sa', hst, hr'⟩ := rel_reg hsep hphys (.of_imgGateB hgate) P hrel hb hc hg ht'
   rw [hzf] at hst hr'
   refine ⟨sa', hst, t', ⟨fun r hr => ?_, ?_, ?_, hzf.symm, hcf.symm, hof.symm⟩, hr'⟩
   · by_cases hw : r ∈ ss.wr
