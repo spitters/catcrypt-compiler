@@ -764,7 +764,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.TensorExtDialect
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
-CatCrypt.Crypto.SecureCompilation.VIR.TileLegalX86
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
@@ -837,9 +836,9 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
@@ -862,7 +861,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
-CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect

@@ -15,23 +15,31 @@ public import HaxLean.TExpr
 # Modules of the hax compiler
 
 A module `HaxModule` is an entry function, the functions the entry may call, and an inlining
-depth. The entry is an extraction `TExpr`. The functions are callees `CrateFn`: a name, typed
-parameters, a result type and a prepared body. A single function is the module with no callee
-and depth `0` (`HaxModule.single`), and a `TExpr` coerces to it.
+depth. The entry is an extraction `TExpr`. A function is a `ModFn`: a name, typed parameters,
+a result type and the extraction `TExpr`. A single function is the module with no callee and
+depth `0` (`HaxModule.single`), and a `TExpr` coerces to it.
 
-The table of a module, `HaxModule.table m bi fuelC`, is `ImpToNF.crateBi` at the functions and
-the depth of the module: the builtins `bi` extended by the functions of the module, each run
-to the call depth `m.depth` at the fuel `fuelC`.
+The reference table `refBi fs bi fuel n` answers a call of a function of `fs` by the run of
+the reference reading `denoteSpine` of the extraction of the callee, from the environment
+binding the names of its parameters to the argument values, to the call depth `n`. The table
+of a module, `HaxModule.table m bi fuelC`, is the reference table at the functions and the
+depth of the module.
 
 The source relation of a module, `HaxModule.Runs bi σ m sa v`, is a run of the reference
-reading `denoteSpine` of the entry at the table of the module, from an environment the layout
-`σ` reads off the entry state `sa`, to the value `v`. The source meaning of a call of a
-function of the module is therefore the run of the prepared body `CrateFn.body` of the callee
-under the table, from the environment binding its parameters to the argument values; the
-reference reading `denoteSpine` applies to the entry only.
+reading of the entry at the table of the module, from an environment the layout `σ` reads off
+the entry state `sa`, to the value `v`. The source meaning of a call of a function of the
+module is the run of the reference reading of the extraction of the callee.
 
-The inlining of the calls of a module is `NFInline.crateInline?`: the program after `n` rounds
-of `NFProg.inline?` at the library `crateLib fs`, on a program accepted by the check
+The bodies the compiler inlines are prepared from the extractions by a preparation
+`P : TExpr → ImpExpr`, a parameter of the definitions of this file: `ModFn.prep P f` is the
+callee `CrateFn` with the body `P f.texpr`, and `HaxModule.prepared P m` the prepared callees
+of a module. For a preparation that keeps the runs of each function at each depth of the
+reference table (`ModFn.PrepSim`), the reference tables are a family of tables for the
+prepared callees, so the inlining of the calls of a module keeps the runs from the table of
+the module to the base table (`HaxModule.denote_inline?`).
+
+The inlining of calls is `NFInline.crateInline?`: the program after `n` rounds of
+`NFProg.inline?` at the library `crateLib fs`, on a program accepted by the check
 `crateInlineOk fs n`, and a refusal otherwise. As a chain step (`crateInlineStep`) it has the
 certificate `crateInlineCert`, from the semantics at the table `crateBi fs bi fuelC n` to the
 semantics at `bi`, with equality as input and output relation, under the typing
@@ -47,30 +55,19 @@ of a run of the body of the callee, at some fuel, at depth `n`. The fuel may dif
 to call. `crateBi fs bi fuel` is such a family, and the checked inlining keeps the runs from
 every such family to `bi` (`CrateTables.denote_crateInline?`).
 
-A module by its extractions, `RefModule`, holds for each function a `ModFn`: a name, typed
-parameters, a result type and the extraction `TExpr`. Its reference table, `refBi`, answers a
-call of a function by the run of the reference reading `denoteSpine` of the extraction of the
-callee, from the environment binding the names of its parameters to the argument values, and
-its source relation `RefModule.Runs` is the run of the entry at that table. For a preparation
-`P : TExpr → ImpExpr` of bodies that keeps the runs of each function at each depth of the
-reference table (`ModFn.PrepSim`), the reference tables are a family of tables for the
-prepared callees `ModFn.prep P`, so the inlining of the prepared module keeps the runs from
-the reference table to the base table (`RefModule.denote_inline?`).
-
 ## Main definitions
 
-* `NFInline.CrateTables` — a family of tables along the call depth for a list of callees.
-* `ModFn`, `ModFn.prep`, `ModFn.PrepSim` — a function of a module by its extraction, its
-  prepared callee, and the preparation keeping its runs at a table.
-* `refBi`, `RefModule`, `RefModule.table`, `RefModule.Runs`, `RefModule.prepared` — the
-  reference table, a module by its extractions, its table, its source relation and its
-  module of prepared callees.
 * `NFInline.crateInline?` — the rounds of inlining at the library of a list of callees, under
   their check.
 * `NFInline.crateInlineStep`, `NFInline.crateInlineCert` — the checked inlining as a chain
   step, and its certificate between the two tables.
-* `HaxModule`, `HaxModule.single` — a module, and the module of one function.
-* `HaxModule.sigOf`, `HaxModule.table` — the call typing and the builtin table of a module.
+* `NFInline.CrateTables` — a family of tables along the call depth for a list of callees.
+* `ModFn`, `ModFn.prep`, `ModFn.PrepSim` — a function of a module by its extraction, its
+  prepared callee, and the preparation keeping its runs at a table.
+* `refBi` — the reference table of a list of functions.
+* `HaxModule`, `HaxModule.single`, `HaxModule.prepared` — a module, the module of one
+  function, and the prepared callees of a module.
+* `HaxModule.sigOf`, `HaxModule.table` — the call typing and the table of a module.
 * `HaxModule.Runs` — the source relation of a module at a base table and a layout.
 * `HaxModule.inline?`, `HaxModule.inlineStep`, `HaxModule.inlineCert` — the inlining of the
   calls of a module, as a function, as a chain step, and its certificate.
@@ -85,10 +82,6 @@ the reference table to the base table (`RefModule.denote_inline?`).
 * `crateInline?_eq_some`, `denote_crateInline?` — a result of the inlining is the program
   after the rounds under the check, and a run of the argument at the table with the callees is
   a run of the result at the base table.
-* `HaxModule.sigOf_single`, `HaxModule.table_single`, `HaxModule.runs_single`,
-  `HaxModule.inline?_single` — the four statements at the module of a single function.
-* `HaxModule.denote_inline?` — a run at the table of the module is a run of the inlined
-  program at the base table.
 * `NFInline.crateTables_crateBi`, `NFInline.CrateTables.typedCalls`,
   `NFInline.CrateTables.denote_crateInline?` — `crateBi` is a family of tables; every table of
   a family is typed by the call typing of the callees; the checked inlining keeps the runs
@@ -96,11 +89,12 @@ the reference table to the base table (`RefModule.denote_inline?`).
 * `refBi_nil`, `refBi_succ`, `crateTables_refBi` — the reference table with no function is
   the base table; a call at depth `n + 1` is the run of the extraction at depth `n`; under
   `ModFn.PrepSim` the reference tables are a family for the prepared callees.
-* `RefModule.table_single`, `RefModule.runs_single`, `RefModule.runs_single_iff`,
-  `RefModule.prepared_single` — the statements at the module of a single function.
-* `RefModule.table_typedCalls`, `RefModule.denote_inline?` — the reference table is typed by
-  the call typing of the prepared module, and a run at the reference table is a run of the
-  inlined program at the base table.
+* `HaxModule.prepared_single`, `HaxModule.sigOf_single`, `HaxModule.table_single`,
+  `HaxModule.runs_single`, `HaxModule.inline?_single` — the statements at the module of a
+  single function.
+* `HaxModule.table_typedCalls`, `HaxModule.denote_inline?` — the table of a module is typed by
+  the call typing of its prepared callees, and a run at the table of the module is a run of
+  the inlined program at the base table.
 -/
 
 @[expose] public section
@@ -201,114 +195,7 @@ def crateInlineCert (fs : List CrateFn) {bi : Builtins} (hT : TypedCalls bi hax6
 
 end CatCrypt.Crypto.Hax.NFInline
 
-/-! ## 3. Modules -/
-
-namespace CatCrypt.Crypto.Hax
-
-open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses (nfSem)
-open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout)
-open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
-open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls crateBi
-  PDenP)
-open CatCrypt.Crypto.Hax.NFInline
-open _root_.Hax (TExpr Builtins Value Env)
-open _root_.Hax.InlineLocalClosures (denoteSpine)
-open Ctxt (Valuation)
-
-/-- **A module**: an entry function, the functions the entry may call, and the depth to which
-    their calls are inlined. A callee is a `CrateFn`: its name, its typed parameters, its
-    result type and its prepared body. -/
-structure HaxModule where
-  /-- The extraction of the entry function. -/
-  entry : TExpr
-  /-- The functions the entry may call; the first function with a name is the one called. -/
-  fns : List CrateFn
-  /-- The call depth to which the functions run, and the number of rounds of inlining. -/
-  depth : Nat
-
-namespace HaxModule
-
-/-- The module of the single function `te`: no callee, depth `0`. -/
-def single (te : TExpr) : HaxModule := ⟨te, [], 0⟩
-
-instance : Coe TExpr HaxModule := ⟨single⟩
-
-/-- The call typing of a module: `crateSigOf` at its functions over `hax64SigOf`. -/
-def sigOf (m : HaxModule) : String → List NfTy → Option NfTy := crateSigOf m.fns hax64SigOf
-
-/-- The call typing of the module of a single function is `hax64SigOf`. -/
-theorem sigOf_single (te : TExpr) : (single te).sigOf = hax64SigOf := rfl
-
-/-- **The table of a module**: the builtins `bi` with the functions of the module, each run
-    at the fuel `fuelC` to the call depth of the module (`crateBi`). -/
-def table (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
-  crateBi m.fns bi fuelC m.depth
-
-/-- The table of the module of a single function is the base table. -/
-theorem table_single (te : TExpr) (bi : Builtins) (fuelC : Nat) :
-    (single te).table bi fuelC = bi := rfl
-
-/-- **The source relation of a module** at the base table `bi` and the layout `σ`: the
-    reference reading `denoteSpine` of the entry, at the table of the module for some fuel of
-    the callees, runs from an environment `σ` reads off the entry state `sa` to the value `v`,
-    which is not a control-flow value. A call of a function of the module in the entry is
-    answered by the table: the run of the prepared body of the callee from the environment
-    binding its parameters to the argument values. -/
-def Runs (bi : Builtins) (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
-  ∃ env fuel fuelC env', σ.EnvOf sa env ∧
-    (denoteSpine (m.table bi fuelC) fuel m.entry.erase).run env = (.val v, env') ∧
-      v.isControlFlow = false
-
-/-- The source relation of the module of a single function is the run of the reference
-    reading of the function at the base table. -/
-theorem runs_single (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState) (v : Value) :
-    Runs bi σ (single te) sa v ↔
-      ∃ env fuel env', σ.EnvOf sa env ∧
-        (denoteSpine bi fuel te.erase).run env = (.val v, env') ∧ v.isControlFlow = false :=
-  ⟨fun ⟨env, fuel, _, env', h⟩ => ⟨env, fuel, env', h⟩,
-    fun ⟨env, fuel, env', h⟩ => ⟨env, fuel, 0, env', h⟩⟩
-
-/-- **The inlining of the calls of a module** in a structured program: `crateInline?` at the
-    functions and the depth of the module. -/
-def inline? (m : HaxModule) {Γ : Ctxt nfDialect} {ts : List NfTy}
-    (p : NFProg nfDialect Γ ts) : Option (NFProg nfDialect Γ ts) :=
-  crateInline? m.fns m.depth p
-
-/-- The inlining of the module of a single function returns its argument. -/
-theorem inline?_single (te : TExpr) {Γ : Ctxt nfDialect} {ts : List NfTy}
-    (p : NFProg nfDialect Γ ts) : (single te).inline? p = some p :=
-  crateInline?_nil_zero p
-
-/-- **The inlining of the calls of a module keeps every successful run, from the table of the
-    module to the base table**, under the typing of the base table. -/
-theorem denote_inline? (m : HaxModule) {bi : Builtins} (hT : TypedCalls bi hax64SigOf)
-    (fuelC tf : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
-    (h : m.inline? p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
-    (hp : PDenP (m.table bi fuelC) tf p V = some out) : PDenP bi tf p' V = some out :=
-  denote_crateInline? m.fns bi hT fuelC tf m.depth h hp
-
-/-- The inlining of the calls of a module as a chain step. -/
-def inlineStep (m : HaxModule) (Γ : Ctxt nfDialect) (ts : List NfTy) :
-    PassChain.Step (NFProg nfDialect Γ ts) (NFProg nfDialect Γ ts) :=
-  crateInlineStep m.fns m.depth Γ ts
-
-/-- **The certificate of the inlining of the calls of a module**: from the semantics of
-    structured programs at the leaf table of the module's table to the semantics at the leaf
-    table of the base table `bi`, with equality as input and output relation. -/
-def inlineCert (m : HaxModule) {bi : Builtins} (hT : TypedCalls bi hax64SigOf)
-    (fuelC tf : Nat) (Γ : Ctxt nfDialect) (ts : List NfTy) :
-    PassChain.StepCert (m.inlineStep Γ ts).run
-      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.table bi fuelC))) _ Γ ts)
-      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ Γ ts) :=
-  crateInlineCert m.fns hT fuelC tf m.depth Γ ts
-
-end HaxModule
-
-end CatCrypt.Crypto.Hax
-
-/-! ## 4. Families of tables along the call depth -/
+/-! ## 3. Families of tables along the call depth -/
 
 namespace CatCrypt.Crypto.Hax.NFInline
 
@@ -471,12 +358,13 @@ end CrateTables
 
 end CatCrypt.Crypto.Hax.NFInline
 
-/-! ## 5. The reference table of a module -/
+/-! ## 4. The reference table of a module -/
 
 namespace CatCrypt.Crypto.Hax
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses (nfSem)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls PDenP
@@ -604,9 +492,12 @@ theorem crateTables_refBi (P : TExpr → ImpExpr) (fs : List ModFn) (bi : Builti
       · cases hv
     · cases hv
 
-/-- **A module by its extractions**: an entry function, the functions the entry may call, each
-    with its extraction, and the depth to which their calls are inlined. -/
-structure RefModule where
+/-! ## 5. Modules -/
+
+/-- **A module**: an entry function, the functions the entry may call, and the depth to which
+    their calls are inlined. A function is a `ModFn`: its name, its typed parameters, its
+    result type and its extraction. -/
+structure HaxModule where
   /-- The extraction of the entry function. -/
   entry : TExpr
   /-- The functions the entry may call; the first function with a name is the one called. -/
@@ -614,39 +505,46 @@ structure RefModule where
   /-- The call depth to which the functions run, and the number of rounds of inlining. -/
   depth : Nat
 
-namespace RefModule
+namespace HaxModule
 
 /-- The module of the single function `te`: no callee, depth `0`. -/
-def single (te : TExpr) : RefModule := ⟨te, [], 0⟩
+def single (te : TExpr) : HaxModule := ⟨te, [], 0⟩
 
-instance : Coe TExpr RefModule := ⟨single⟩
+instance : Coe TExpr HaxModule := ⟨single⟩
 
-/-- The module of prepared callees of a module, under the preparation `P` of bodies. -/
-def prepared (P : TExpr → ImpExpr) (M : RefModule) : HaxModule :=
-  ⟨M.entry, M.fns.map (ModFn.prep P), M.depth⟩
+/-- The prepared callees of a module, under the preparation `P` of bodies. -/
+def prepared (P : TExpr → ImpExpr) (m : HaxModule) : List CrateFn := m.fns.map (ModFn.prep P)
 
-/-- The prepared module of a single function is the module of the function. -/
-theorem prepared_single (P : TExpr → ImpExpr) (te : TExpr) :
-    (single te).prepared P = HaxModule.single te := rfl
+/-- The module of a single function has no prepared callee. -/
+theorem prepared_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).prepared P = [] := rfl
 
-/-- **The reference table of a module**: `refBi` at its functions and its depth, each function
-    run at the fuel `fuelC`. -/
-def table (M : RefModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
-  refBi M.fns bi fuelC M.depth
+/-- The call typing of a module under the preparation `P`: `crateSigOf` at its prepared
+    callees over `hax64SigOf`. -/
+def sigOf (P : TExpr → ImpExpr) (m : HaxModule) : String → List NfTy → Option NfTy :=
+  crateSigOf (m.prepared P) hax64SigOf
 
-/-- The reference table of the module of a single function is the base table. -/
+/-- The call typing of the module of a single function is `hax64SigOf`. -/
+theorem sigOf_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).sigOf P = hax64SigOf :=
+  rfl
+
+/-- **The table of a module**: the reference table `refBi` at its functions and its depth,
+    each function run at the fuel `fuelC`. -/
+def table (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
+  refBi m.fns bi fuelC m.depth
+
+/-- The table of the module of a single function is the base table. -/
 theorem table_single (te : TExpr) (bi : Builtins) (fuelC : Nat) :
     (single te).table bi fuelC = bi := rfl
 
-/-- **The source relation of a module by its extractions** at the base table `bi` and the
-    layout `σ`: the reference reading `denoteSpine` of the entry, at the reference table of
-    the module for some fuel of the callees, runs from an environment `σ` reads off the entry
-    state `sa` to the value `v`, which is not a control-flow value. A call of a function of
-    the module is the run of the reference reading of the extraction of the callee, from the
-    environment binding the names of its parameters to the argument values. -/
-def Runs (bi : Builtins) (σ : AbiLayout) (M : RefModule) (sa : AState) (v : Value) : Prop :=
+/-- **The source relation of a module** at the base table `bi` and the layout `σ`: the
+    reference reading `denoteSpine` of the entry, at the table of the module for some fuel of
+    the callees, runs from an environment `σ` reads off the entry state `sa` to the value `v`,
+    which is not a control-flow value. A call of a function of the module is the run of the
+    reference reading of the extraction of the callee, from the environment binding the names
+    of its parameters to the argument values. -/
+def Runs (bi : Builtins) (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
   ∃ env fuel fuelC env', σ.EnvOf sa env ∧
-    (denoteSpine (M.table bi fuelC) fuel M.entry.erase).run env = (.val v, env') ∧
+    (denoteSpine (m.table bi fuelC) fuel m.entry.erase).run env = (.val v, env') ∧
       v.isControlFlow = false
 
 /-- The source relation of the module of a single function is the run of the reference
@@ -658,34 +556,61 @@ theorem runs_single (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState) 
   ⟨fun ⟨env, fuel, _, env', h⟩ => ⟨env, fuel, env', h⟩,
     fun ⟨env, fuel, env', h⟩ => ⟨env, fuel, 0, env', h⟩⟩
 
-/-- The source relation of the module of a single function is the source relation of the
-    module `HaxModule.single` of the function. -/
-theorem runs_single_iff (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState)
-    (v : Value) : Runs bi σ (single te) sa v ↔ HaxModule.Runs bi σ (HaxModule.single te) sa v :=
-  (runs_single bi σ te sa v).trans (HaxModule.runs_single bi σ te sa v).symm
+/-- **The inlining of the calls of a module** in a structured program, under the preparation
+    `P`: `crateInline?` at the prepared callees and the depth of the module. -/
+def inline? (P : TExpr → ImpExpr) (m : HaxModule) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Option (NFProg nfDialect Γ ts) :=
+  crateInline? (m.prepared P) m.depth p
 
-/-- **The call typing of the prepared callees is sound for the reference table of a module**,
-    under the typing of the base table, when the preparation `P` keeps the runs of every
-    function at every depth of the reference table. -/
-theorem table_typedCalls (P : TExpr → ImpExpr) (M : RefModule) {bi : Builtins}
+/-- The inlining of the module of a single function returns its argument. -/
+theorem inline?_single (P : TExpr → ImpExpr) (te : TExpr) {Γ : Ctxt nfDialect}
+    {ts : List NfTy} (p : NFProg nfDialect Γ ts) : (single te).inline? P p = some p :=
+  crateInline?_nil_zero p
+
+/-- **The call typing of the prepared callees is sound for the table of a module**, under the
+    typing of the base table, when the preparation `P` keeps the runs of every function at
+    every depth of the reference table. -/
+theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     (hT : TypedCalls bi hax64SigOf) (fuelC : Nat)
-    (hsim : ∀ n, ∀ f ∈ M.fns, f.PrepSim P (refBi M.fns bi fuelC n)) :
-    TypedCalls (M.table bi fuelC) (M.prepared P).sigOf :=
-  (crateTables_refBi P M.fns bi fuelC hsim).typedCalls hT M.depth
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns bi fuelC n)) :
+    TypedCalls (m.table bi fuelC) (m.sigOf P) :=
+  (crateTables_refBi P m.fns bi fuelC hsim).typedCalls hT m.depth
 
-/-- **The inlining of the calls of the prepared module keeps every successful run, from the
-    reference table of the module to the base table**, under the typing of the base table,
-    when the preparation `P` keeps the runs of every function at every depth of the reference
-    table. -/
-theorem denote_inline? (P : TExpr → ImpExpr) (M : RefModule) {bi : Builtins}
+/-- **The inlining of the calls of a module keeps every successful run, from the table of the
+    module to the base table**, under the typing of the base table, when the preparation `P`
+    keeps the runs of every function at every depth of the reference table. -/
+theorem denote_inline? (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     (hT : TypedCalls bi hax64SigOf) (fuelC tf : Nat)
-    (hsim : ∀ n, ∀ f ∈ M.fns, f.PrepSim P (refBi M.fns bi fuelC n))
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns bi fuelC n))
     {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
-    (h : (M.prepared P).inline? p = some p') {V : Valuation Γ}
-    {out : Valuation (d := nfDialect) ts}
-    (hp : PDenP (M.table bi fuelC) tf p V = some out) : PDenP bi tf p' V = some out :=
-  (crateTables_refBi P M.fns bi fuelC hsim).denote_crateInline? hT tf M.depth h hp
+    (h : m.inline? P p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
+    (hp : PDenP (m.table bi fuelC) tf p V = some out) : PDenP bi tf p' V = some out :=
+  (crateTables_refBi P m.fns bi fuelC hsim).denote_crateInline? hT tf m.depth h hp
 
-end RefModule
+/-- The inlining of the calls of a module as a chain step. -/
+def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts : List NfTy) :
+    PassChain.Step (NFProg nfDialect Γ ts) (NFProg nfDialect Γ ts) :=
+  crateInlineStep (m.prepared P) m.depth Γ ts
+
+/-- **The certificate of the inlining of the calls of a module**: from the semantics of
+    structured programs at the leaf table of the module's table to the semantics at the leaf
+    table of the base table `bi`, with equality as input and output relation, when the
+    preparation `P` keeps the runs of every function at every depth of the reference
+    table. -/
+def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
+    (hT : TypedCalls bi hax64SigOf) (fuelC tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns bi fuelC n))
+    (Γ : Ctxt nfDialect) (ts : List NfTy) :
+    PassChain.StepCert (m.inlineStep P Γ ts).run
+      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.table bi fuelC))) _ Γ ts)
+      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ Γ ts) where
+  relIn V W := V = W
+  relOut o o' := o = o'
+  sound := by
+    intro p q V W o hf hVW hd
+    subst hVW
+    exact ⟨o, m.denote_inline? P hT fuelC tf hsim hf hd, rfl⟩
+
+end HaxModule
 
 end CatCrypt.Crypto.Hax
