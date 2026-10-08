@@ -69,6 +69,7 @@ checks it for every pair of an entry and an exit of `cutAt`.
   names, and a branch condition does not read them.
 * `FnStable`, `IsCutRev`, `isCutRevB`: the steps of an instruction set stay in the function,
   a cut program halts only at its exit, and the check of the latter.
+* `renFin`: the goto to the last label of a cut program sent to another function.
 
 ## Main results
 
@@ -102,6 +103,10 @@ checks it for every pair of an entry and an exit of `cutAt`.
   `commonFreshB`, with no further premise.
 * `segTo_of_cutRun`: a halting run of a cut program that halts only at its exit is a
   segment of the body.
+* `map_renFin_cutAt`, `IsCut.rename`, `isCut_cutAt_of_cutOkB`, `isCutRev_cutAt_rename`: for a
+  body with no jump to the label `fin`, the cut programs at one function name are those at
+  another under `renFin`, and the cut checks at one function name give `IsCut` and
+  `IsCutRev` at every function name.
 * `runChain_of_cutChainI`, `cutCheck_soundI`: `CutCheckSoundI I` for cut programs of the
   second body that halt only at their exits, on an instruction set `I` with `PcFree I`,
   `I.RefusesProcs T` and `FnStable I`.
@@ -1975,6 +1980,158 @@ theorem isCutRev_of_isCutRevB {T : ProcTable} {B : List LinstrRM} {x : Option Na
     rw [hp] at hpi
     simp only [Bool.and_eq_true, hl] at hpi
     exact hpi.2
+
+/-! ## 12a. The cut programs under a change of the function name -/
+
+/-- **The goto to the label `fin` sent to the function `fn'`**: a goto to `fin` jumps
+    within `fn'`, and every other instruction is unchanged. -/
+def renFin (fn' : String) (fin : LLabel) (i : LinstrRM) : LinstrRM :=
+  match i with
+  | (.Lgoto (f, l), tag) => (.Lgoto (if l = fin then fn' else f, l), tag)
+  | _ => i
+
+/-- An instruction that jumps to no label `fin` is unchanged by `renFin`. -/
+theorem renFin_of_jumpLabel {fn' : String} {fin : LLabel} {i : LinstrRM}
+    (h : jumpLabel? i.fst ≠ some fin) : renFin fn' fin i = i := by
+  obtain ⟨ir, tag⟩ := i
+  cases ir <;> try rfl
+  rename_i d
+  obtain ⟨f, l⟩ := d
+  have hl : l ≠ fin := fun e => h (by rw [e]; rfl)
+  simp [renFin, hl]
+
+/-- The exit jump of `fn` is sent to the exit jump of `fn'`. -/
+@[simp] theorem renFin_exitI (fn fn' : String) (fin : LLabel) :
+    renFin fn' fin (exitI fn fin) = exitI fn' fin := by
+  simp [renFin, exitI]
+
+/-- The declaration of `fin` is unchanged by `renFin`. -/
+@[simp] theorem renFin_finI (fn' : String) (fin : LLabel) : renFin fn' fin (finI fin) = finI fin :=
+  rfl
+
+/-- `renFin` keeps the label an instruction declares. -/
+theorem isLabel_renFin (fn' : String) (fin l : LLabel) (i : LinstrRM) :
+    isLabel l (renFin fn' fin i).fst = isLabel l i.fst := by
+  obtain ⟨ir, tag⟩ := i
+  cases ir <;> rfl
+
+/-- `renFin` keeps the shadow instructions of calls of symbols of `T`. -/
+theorem procCall?_renFin (T : ProcTable) (fn' : String) (fin : LLabel) (i : LinstrRM) :
+    procCall? T (renFin fn' fin i).fst = procCall? T i.fst := by
+  obtain ⟨ir, tag⟩ := i
+  cases ir <;> rfl
+
+/-- `renFin` keeps the position of the first declaration of every label. -/
+theorem findLabelMem_map_renFin (fn' : String) (fin l : LLabel) (C : List LinstrRM) :
+    findLabelMem l (C.map (renFin fn' fin)) = findLabelMem l C := by
+  simp only [findLabelMem, JasminLsemLabeled.findLabel, List.map_map, List.findIdx?_map]
+  congr 1
+  funext i
+  exact isLabel_renFin fn' fin l i
+
+/-- **The cut programs of the function `fn'` are those of `fn` under `renFin`**, for a body
+    with no jump to the label `fin`. -/
+theorem map_renFin_cutAt {fn fn' : String} {fin : LLabel} {B : List LinstrRM}
+    (hB : ∀ i ∈ B, jumpLabel? i.fst ≠ some fin) (e x : Option Nat) :
+    (cutAt fn fin B e x).map (renFin fn' fin) = cutAt fn' fin B e x := by
+  have hBm : B.map (renFin fn' fin) = B := by
+    have h := List.map_congr_left (f := renFin fn' fin) (g := id) (l := B)
+      fun i hi => renFin_of_jumpLabel (hB i hi)
+    simpa using h
+  have hget : ∀ (L : List LinstrRM) (q : Nat) (d : LinstrRM),
+      renFin fn' fin ((L[q]?).getD d) = ((L.map (renFin fn' fin))[q]?).getD (renFin fn' fin d) := by
+    intro L q d
+    cases h : L[q]? <;> simp [List.getElem?_map, h]
+  cases x <;> cases e <;>
+    simp only [cutAt, List.map_append, List.map_cons, List.map_nil, List.map_drop,
+      List.map_take, List.map_set, hget, hBm, renFin_exitI, renFin_finI]
+
+/-- The cut program ends with the declaration of `fin`. -/
+theorem cutAt_last (fn : String) (fin : LLabel) (B : List LinstrRM) (e x : Option Nat) :
+    (cutAt fn fin B e x)[(cutAt fn fin B e x).length - 1]? = some (finI fin) := by
+  rw [← List.getLast?_eq_getElem?]
+  cases x <;> cases e <;> simp [cutAt, List.getLast?_append, List.getLast?_cons]
+
+/-- **A cut of `B` at the function `fn` is a cut at every function `fn'`**, for the cut
+    programs `cutAt` and a body with no jump to the label `fin`. -/
+theorem IsCut.rename {T : ProcTable} {fn fn' : String} {fin : LLabel} {B : List LinstrRM}
+    {e x : Option Nat} {φ : Nat → Nat} (hB : ∀ i ∈ B, jumpLabel? i.fst ≠ some fin)
+    (h : IsCut T fn B e x (cutAt fn fin B e x) φ) :
+    IsCut T fn' B e x (cutAt fn' fin B e x) φ := by
+  rw [← map_renFin_cutAt (fn := fn) hB]
+  refine ⟨h.entry, fun p i hp hq => ?_, fun l q hl => ?_, ?_⟩
+  · obtain ⟨hC, hs⟩ := h.instr p i hp hq
+    refine ⟨?_, hs⟩
+    rw [List.getElem?_map, hC, Option.map_some,
+      renFin_of_jumpLabel (hB i (List.mem_of_getElem? hp))]
+  · rw [findLabelMem_map_renFin]
+    exact h.label l q hl
+  · obtain ⟨tag, fin0, k, hC, hk, hk'⟩ := h.exit
+    have hfin : fin0 = fin := by
+      have hk1 := hk
+      unfold findLabelMem at hk1
+      obtain ⟨j, hj, hlab⟩ := JasminLsemLabeled.findLabel_sound fin0 _ k hk1
+      have hlast := cutAt_last fn fin B e x
+      rw [show (cutAt fn fin B e x).length - 1 = k by omega] at hlast
+      rw [List.getElem?_map, hlast, Option.map_some] at hj
+      cases hj
+      simpa [finI, JasminLsemLabeled.isLabel] using hlab
+    subst hfin
+    refine ⟨tag, fin0, k, ?_, by rw [findLabelMem_map_renFin]; exact hk, by
+      rw [List.length_map]; exact hk'⟩
+    rw [List.getElem?_map, hC, Option.map_some]
+    simp [renFin]
+
+/-- **A cut that halts only at its exit stays so under `renFin`.** -/
+theorem IsCutRev.map_renFin {T : ProcTable} {B : List LinstrRM} {x : Option Nat}
+    {C : List LinstrRM} {φ : Nat → Nat} (fn' : String) (fin : LLabel)
+    (h : IsCutRev T B x C φ) : IsCutRev T B x (C.map (renFin fn' fin)) φ := by
+  refine ⟨fun p i hp hq hx => ?_, fun p hx => ?_, h.target⟩
+  · obtain ⟨j, hj, hjq⟩ := h.shadow p i hp hq hx
+    exact ⟨renFin fn' fin j, by rw [List.getElem?_map, hj]; rfl,
+      by rw [procCall?_renFin]; exact hjq⟩
+  · obtain ⟨j, hj, hjq⟩ := h.stop p hx
+    exact ⟨renFin fn' fin j, by rw [List.getElem?_map, hj]; rfl,
+      by rw [procCall?_renFin]; exact hjq⟩
+
+/-- A body that `IsCutRev` accepts and that declares no label `fin` has no jump to
+    `fin`. -/
+theorem jumpLabel_ne_of_isCutRev {T : ProcTable} {B : List LinstrRM} {x : Option Nat}
+    {C : List LinstrRM} {φ : Nat → Nat} {fin : LLabel} (h : IsCutRev T B x C φ)
+    (hfin : findLabelMem fin B = none) : ∀ i ∈ B, jumpLabel? i.fst ≠ some fin := by
+  intro i hi hj
+  obtain ⟨p, hp⟩ := List.getElem?_of_mem hi
+  have := h.target p i fin hp hj
+  rw [hfin] at this
+  cases this
+
+section CutOkRename
+
+variable [DecidableEq LinstrR]
+
+/-- **The cut checks at one function name give the cut relations at every function
+    name.** If `cutOkB T fn fin B` accepts and `B` has no jump to the label `fin`, then for
+    every function name `fn'` and every entry and exit of `B` the cut program
+    `cutAt fn' fin B e x` is a cut of `B` at `fn'` along `cutPos B e`. -/
+theorem isCut_cutAt_of_cutOkB {T : ProcTable} {fn : String} {fin : LLabel}
+    {B : List LinstrRM} (hok : cutOkB T fn fin B = true)
+    (hB : ∀ i ∈ B, jumpLabel? i.fst ≠ some fin) (fn' : String) {e x : Option Nat}
+    (he : IsSite T B e) (hx : IsSite T B x) :
+    IsCut T fn' B e x (cutAt fn' fin B e x) (cutPos B e) := by
+  simp only [cutOkB, List.all_eq_true] at hok
+  exact (isCut_of_isCutB (hok e (mem_of_isSite he) x (mem_of_isSite hx))).rename hB
+
+end CutOkRename
+
+/-- **The reverse cut check at one function name gives the reverse cut relation at every
+    function name**, for a body with no jump to the label `fin`. -/
+theorem isCutRev_cutAt_rename {T : ProcTable} {fn fn' : String} {fin : LLabel}
+    {B : List LinstrRM} {e x : Option Nat} {φ : Nat → Nat}
+    (hB : ∀ i ∈ B, jumpLabel? i.fst ≠ some fin)
+    (h : isCutRevB T B x (cutAt fn fin B e x) φ = true) :
+    IsCutRev T B x (cutAt fn' fin B e x) φ := by
+  rw [← map_renFin_cutAt (fn := fn) hB]
+  exact (isCutRev_of_isCutRevB h).map_renFin fn' fin
 
 /-- A run of steps from a halted state is empty. -/
 theorem halted_steps_eq {I : Isa} {P : LprogM} : ∀ {m : Nat} {a t : LstateMF},
