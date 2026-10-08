@@ -765,6 +765,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.TensorExtDialect
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
+CatCrypt.Crypto.SecureCompilation.VIR.TileSelectX86
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
@@ -775,6 +776,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
+CatCrypt.Crypto.SecureCompilation.VIR.X86VecExec
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmByteEncoder
@@ -931,7 +933,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
-CatCrypt.Crypto.SecureCompilation.X86Backend.VecMach
 CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr
