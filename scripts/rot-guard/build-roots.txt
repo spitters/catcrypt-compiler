@@ -184,6 +184,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.MontDomainElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryTransport
 CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.RadixDecompGeneric
+CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn
 CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 CatCrypt.Crypto.Optimizer.Rewrite.WindowedScalarMulGeneric
 CatCrypt.Crypto.Optimizer.ScheduleSearchMontMulNtt
@@ -935,7 +936,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
-CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelImage
+CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr
