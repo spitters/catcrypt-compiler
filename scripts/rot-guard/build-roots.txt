@@ -653,7 +653,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
-CatCrypt.Crypto.SecureCompilation.VIR.LaneStrip
+CatCrypt.Crypto.SecureCompilation.VIR.LaneStripAccept
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.LanesRepFamily
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
