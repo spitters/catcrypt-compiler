@@ -57,8 +57,10 @@ checks it for every pair of an entry and an exit of `cutAt`.
   the argument and result names of its callee, and the rewriting of a body onto them.
 * `runI`, `regUpd`, `movesF`: the run of an instruction list without the counter, a state
   with a new register file and an advanced counter, and the state after a list of copies.
-* `commonFreshB`: the check that the common names are distinct and occur in no operation
-  of a body.
+* `offCongrB`, `commonCongrB`: the check that the described step of an instruction reads
+  no name of a list, and the same for every instruction and branch condition of a body.
+* `commonFreshB`: the check that the common names are distinct, occur in no operation of a
+  body, and that the body passes `commonCongrB` at them.
 * `setRL`, `OffRel`, `expPos`: a state with a register file and a counter, the relation of
   a state of a body to a state of its rewritten body, and the position map of the rewriting.
 * `OffCongr`, `CondCongr`: the step of an instruction commutes with a change of a set of
@@ -92,6 +94,10 @@ checks it for every pair of an entry and an exit of `cutAt`.
   x86 instruction set with procedures is a halting run of the rewritten body, the end states
   related by `OffRel`, under `OffCongr` for the operations and `CondCongr` for the branch
   conditions of the body.
+* `offCongr_of_offCongrB`, `commonCongrB_offCongr`, `commonCongrB_condCongr`: `OffCongr`
+  and `CondCongr` from the checks.
+* `run_onCommonNames`, `obs_onCommonNames`: the two run statements for a body that passes
+  `commonFreshB`, with no further premise.
 * `segTo_of_cutRun`: a halting run of a cut program that halts only at its exit is a
   segment of the body.
 * `cutCheck_sound`: `CutCheckSound` for cut programs of the second body that halt only at
@@ -1104,12 +1110,40 @@ def instrNames : LinstrR → List String
   | .Lopn ds _ ss => (ds ++ ss).flatMap opNames
   | _ => []
 
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV in
+/-- **The check that the step of `i` mentions no name of `N`**: the symbolic step of `i`
+    from the start state is a description, and no guard, written register, written array
+    or flag of the description reads a start register of `N`. -/
+def offCongrB (N : List String) (i : LinstrRM) : Bool :=
+  match symStep i SSt.start with
+  | .ok ss gs =>
+      (gs.flatMap SG.vars ++ ss.wr.flatMap (fun r => (ss.regs r).vars) ++ ss.cf.vars
+          ++ ss.of.vars ++ ss.zf.vars ++ ss.awr.flatMap fun a => (ss.arrs a).vars).all
+        fun r => !N.contains r
+  | _ => false
+
+/-- **The check of the instructions of a body against the names `N`**: the condition of
+    each conditional jump has no operand name in `N`, and every instruction that is neither
+    a control instruction nor a shadow instruction passes `offCongrB N`. -/
+def commonCongrB (N : List String) (B : List LinstrRM) : Bool :=
+  B.all fun i =>
+    match i.fst with
+    | .Lcond c _ => (opNames c).all fun n => !N.contains n
+    | j => isCtl j || (shadowCall? j).isSome || offCongrB N i
+
 /-- **The check of the common names against a body**: the names `args` are distinct, `res`
-    is none of them, and no operation of the body has an operand with a name of `args` or
-    the name `res`. -/
+    is none of them, no operation of the body has an operand with a name of `args` or
+    the name `res`, and the body passes `commonCongrB` at the names `res :: args`. -/
 def commonFreshB (args : List String) (res : String) (B : List LinstrRM) : Bool :=
   decide args.Nodup && !args.contains res
-    && B.all fun i => (instrNames i.fst).all fun n => !args.contains n && n != res
+    && (B.all fun i => (instrNames i.fst).all fun n => !args.contains n && n != res)
+    && commonCongrB (res :: args) B
+
+/-- A body that passes `commonFreshB` passes `commonCongrB` at the common names. -/
+theorem commonFreshB_congr {args : List String} {res : String} {B : List LinstrRM}
+    (h : commonFreshB args res B = true) : commonCongrB (res :: args) B = true := by
+  simp only [commonFreshB, Bool.and_eq_true] at h
+  exact h.2
 
 /-- **A shadow instruction of a body that passes `commonFreshB` meets the side conditions
     of `commonCall_sim`**: the names `args` are distinct, no operand of the shadow
@@ -1122,7 +1156,7 @@ theorem commonFreshB_site {args : List String} {res : String} {B : List LinstrRM
     args.Nodup ∧ (∀ x ∈ xs, x ∉ args) ∧ d ∉ args ∧ d ≠ res := by
   simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
     Bool.not_eq_true', bne_iff_ne, ne_eq] at h
-  obtain ⟨⟨hnd, -⟩, hall⟩ := h
+  obtain ⟨⟨⟨hnd, -⟩, hall⟩, -⟩ := h
   have hin := hall i hi
   unfold shadowCall? at hs
   split at hs
@@ -1147,7 +1181,7 @@ theorem commonFreshB_site_res {args : List String} {res : String} {B : List Lins
     (hxs : regNames? srcs = some xs) : ∀ x ∈ xs, x ≠ res := by
   simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
     Bool.not_eq_true', bne_iff_ne, ne_eq] at h
-  have hin := h.2 i hi
+  have hin := h.1.2 i hi
   unfold shadowCall? at hs
   split at hs
   · rename_i dst opn ss heq
@@ -1207,6 +1241,105 @@ theorem condCongr_of_names {N : List String} {c : LOperand} (h : ∀ n ∈ opNam
       | imm v => rfl
       | arr b n => rfl
       | arrIdx b i n => rfl
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV in
+/-- **An instruction that passes `offCongrB N` commutes with a change of the names `N`.**
+    The description of its step reads no name of `N`, so the step from a register file
+    that agrees off `N` succeeds, writes the same words to the registers it writes, and
+    gives the same arrays, word memory, flags and counter. -/
+theorem offCongr_of_offCongrB {N : List String} {i : LinstrRM} (h : offCongrB N i = true) :
+    OffCongr N i := by
+  intro P P' s t L' hL hs
+  unfold offCongrB at h
+  split at h
+  · rename_i ss gs heq
+    simp only [List.all_eq_true, Bool.not_eq_true'] at h
+    have hrd : ∀ r, r ∈ gs.flatMap SG.vars ++ ss.wr.flatMap (fun r => (ss.regs r).vars)
+        ++ ss.cf.vars ++ ss.of.vars ++ ss.zf.vars ++ ss.awr.flatMap (fun a => (ss.arrs a).vars) →
+        s.prog.base.reg.lvm r = L' r :=
+      fun r hr => (hL r (by simpa using h r hr)).symm
+    have hg := symStep_good i SSt.good_start heq
+    have hD := symStep_sound P i SSt.start s.prog.base.reg.lvm s.prog.base.larr s.prog.base.cf
+      s.prog.base.of s.zf s (holds_start s)
+    have hD' := symStep_sound P' i SSt.start L' s.prog.base.larr s.prog.base.cf
+      s.prog.base.of s.zf (setRL L' s.prog.base.reg.lpc s)
+      (holds_start (setRL L' s.prog.base.reg.lpc s))
+    rw [heq] at hD hD'
+    rw [x86Isa_step] at hs ⊢
+    obtain ⟨hG, hH, hF⟩ := hD.1 t hs
+    have hG' : AllG L' s.prog.base.larr s.prog.base.cf s.prog.base.of gs := by
+      intro g hgm
+      refine (SG.holds_congr _ g (fun r hr => hrd r ?_) (fun _ => ⟨rfl, rfl⟩)).mp (hG g hgm)
+      simp only [List.mem_append, List.mem_flatMap]
+      exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl ⟨g, hgm, hr⟩))))
+    obtain ⟨t', ht'⟩ := Option.isSome_iff_exists.mp (hD'.2 hG')
+    obtain ⟨-, hH', hF'⟩ := hD'.1 t' ht'
+    have e1 : t'.prog.base.reg.lpc = t.prog.base.reg.lpc := by rw [hF'.2.1, hF.2.1]; rfl
+    have e2 : t'.prog.base.larr = t.prog.base.larr := by
+      funext q
+      rw [hH'.2.1 q, hH.2.1 q]
+      by_cases hw : q ∈ ss.awr
+      · refine (SArr.ev_congr _ _ (fun r hr => hrd r ?_) (fun _ => ⟨rfl, rfl⟩)).symm
+        simp only [List.mem_append, List.mem_flatMap]
+        exact Or.inr ⟨q, hw, hr⟩
+      · rw [hg.2 q hw]
+        rfl
+    have e3 : t'.prog.base.lmem = t.prog.base.lmem := by rw [hF'.2.2, hF.2.2]; rfl
+    have e4 : t'.prog.base.cf = t.prog.base.cf := by
+      rw [hH'.2.2.2.1, hH.2.2.2.1]
+      congr 1
+      refine (STerm.ev_congr _ _ (fun r hr => hrd r ?_) (fun _ => ⟨rfl, rfl⟩)).symm
+      simp only [List.mem_append]
+      exact Or.inl (Or.inl (Or.inl (Or.inr hr)))
+    have e5 : t'.prog.base.of = t.prog.base.of := by
+      rw [hH'.2.2.2.2, hH.2.2.2.2]
+      congr 1
+      refine (STerm.ev_congr _ _ (fun r hr => hrd r ?_) (fun _ => ⟨rfl, rfl⟩)).symm
+      simp only [List.mem_append]
+      exact Or.inl (Or.inl (Or.inr hr))
+    have e6 : t'.prog.lfn = t.prog.lfn := by rw [hF'.1, hF.1]; rfl
+    have e7 : t'.zf = t.zf := by
+      rw [hH'.2.2.1, hH.2.2.1]
+      refine (SFlag.ev_congr _ ss.zf (fun r hr => hrd r ?_) (fun _ => ⟨rfl, rfl, rfl⟩)).symm
+      simp only [List.mem_append]
+      exact Or.inl (Or.inr hr)
+    refine ⟨t'.prog.base.reg.lvm, fun r hr => ?_, ?_⟩
+    · rw [hH'.1 r, hH.1 r]
+      by_cases hw : r ∈ ss.wr
+      · refine (STerm.ev_congr _ _ (fun q hq => hrd q ?_) (fun _ => ⟨rfl, rfl⟩)).symm
+        simp only [List.mem_append, List.mem_flatMap]
+        exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨r, hw, hq⟩))))
+      · rw [hg.1 r hw]
+        exact hL r hr
+    · rw [ht']
+      clear hH hH' hF hF' hD hD' hs ht'
+      obtain ⟨⟨⟨⟨lvm', lpc'⟩, larr', lmem', cf', of'⟩, lfn'⟩, zf'⟩ := t'
+      obtain ⟨⟨⟨⟨lvm, lpc⟩, larr, lmem, cf, of⟩, lfn⟩, zf⟩ := t
+      dsimp only at e1 e2 e3 e4 e5 e6 e7
+      subst e1 e2 e3 e4 e5 e6 e7
+      rfl
+  · cases h
+
+/-- An instruction of a body that passes `commonCongrB N`, neither a control instruction
+    nor a shadow instruction, commutes with a change of the names `N`. -/
+theorem commonCongrB_offCongr {N : List String} {B : List LinstrRM}
+    (h : commonCongrB N B = true) {i : LinstrRM} (hi : i ∈ B) (hc : isCtl i.fst = false)
+    (hs : shadowCall? i.fst = none) : OffCongr N i := by
+  have hm := List.all_eq_true.mp h i hi
+  split at hm
+  · rename_i c l heq
+    rw [heq] at hc
+    cases hc
+  · exact offCongr_of_offCongrB (by simpa [hc, hs] using hm)
+
+/-- The condition of a conditional jump of a body that passes `commonCongrB N` does not
+    read the names `N`. -/
+theorem commonCongrB_condCongr {N : List String} {B : List LinstrRM}
+    (h : commonCongrB N B = true) {c : LOperand} {l : LLabel} {tag : MemTag}
+    (hi : (LinstrR.Lcond c l, tag) ∈ B) : CondCongr N c := by
+  have hm := List.all_eq_true.mp h _ hi
+  dsimp only at hm
+  exact condCongr_of_names fun n hn => by simpa using List.all_eq_true.mp hm n hn
 
 /-- The number of instructions of the form of `i` on `n` common argument names. -/
 def expLen (n : Nat) (i : LinstrRM) : Nat :=
@@ -1713,6 +1846,36 @@ theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
   obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT hB hf hcg hcd h0 hrun
+  exact ⟨fuel', t', h', hr.obs ho⟩
+
+/-- **The rewriting of a checked body onto common names preserves halting runs.** Let `f`
+    have a summary in `T`, the body `B` pass `commonFreshB`, and `B'` be its rewriting onto
+    `args` and `res`. A halting run of the x86 instruction set with procedures on `B` from
+    a state at the counter `0` to `t` is matched by a halting run on `B'` from the same
+    state to a state that is `t` up to the registers `res :: args` and the counter, which
+    is at the image of the counter of `t`. -/
+theorem run_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
+    (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+      OffRel (res :: args) (expPos args.length B) t t' :=
+  commonCalls_run hT hB hf
+    (fun _ hi hc hs => commonCongrB_offCongr (commonFreshB_congr hf) hi hc hs)
+    (fun _ _ _ hi => commonCongrB_condCongr (commonFreshB_congr hf) hi) h0 hrun
+
+/-- **The end states of the two runs of a checked body agree on the registers outside the
+    common names, the arrays and the word memory.** -/
+theorem obs_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary}
+    (hT : T f = some pr) {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {outs : List String} (ho : ∀ r ∈ outs, r ∉ res :: args)
+    {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
+    (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+      Obs outs t t' := by
+  obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT hB hf h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
 
 /-! ## 12. A halting run of a cut program is a segment of the body -/

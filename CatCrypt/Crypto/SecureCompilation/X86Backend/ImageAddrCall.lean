@@ -63,8 +63,17 @@ after a call (`ImageCallProbe.reloadOf_call`).
 * `AgreeOffD`, `DeadTab`, `deadStepB`: agreement of two image states up to dead names and
   dead flags, a table of dead names and live flags by position, and the check of a
   described instruction against it.
+* `DeadTab.le`, `deadCtlB`, `deadSegB`, `DeadAgree`: the comparison of two positions of a
+  table, the check of a control instruction and of a body against a table, and agreement
+  up to the table of the position of a state.
 * `SegSim`: the statement of the simulation of one segment `LprogCallCut.SegTo` of a body
-  with shadow instructions, at a table of dead names.
+  with shadow instructions, at a table of dead names, from the positions where no flag is
+  live.
+* `SegExact`, `DeadTab.live`, `callFlagsB`: the statement of the simulation of one segment
+  at the relation `ImgRel`, the positions where a flag is live, and the check that no flag
+  is live after a call.
+* `callImg`: the image of a calling body, `virtImg` with a shadow instruction at each
+  call.
 * `callDeadB`, `SitesOf`, `siteShapeB`: the dead names at the calls, and the shadow
   instructions as calls of one summary on register operands.
 
@@ -88,6 +97,14 @@ after a call (`ImageCallProbe.reloadOf_call`).
   summary at the argument words.
 * `haltsO_of_withProcs_run`: a halting run on the machine with procedures is a run under
   the oracle, from `SegSim`.
+* `ctl_deadStep`, `steps_deadSeg`: a control step and a run of steps of a body that passes
+  `deadSegB` keep the agreement of the table.
+* `segSim_of_segExact`, `haltsO_of_deadChecks`: `SegSim` from `SegExact` for a body that
+  passes `deadSegB`, and the run under the oracle from the Boolean checks and `SegExact`.
+* `callImg_length`, `callImg_getElem?_of_ne`, `callImg_getElem?_call`,
+  `findLabelMem_callImg`: the image of a calling body has the positions and the labels of
+  the image, the instruction of the image off the calls, and the shadow instruction at a
+  call.
 * `printedAddrCB_of_printedAddrB`, `printedAddrB_iff_of_callFree`, `imgGateCB_of_callFree`:
   on a body without calls the classes are the existing ones.
 * `printedAddrCB_reloc`, `printedAddrCB_remote`, `relocShapeOK_of_printedAddrCB`,
@@ -793,6 +810,176 @@ theorem step_deadStepB (P P' : LprogM) {D : DeadTab} {k : Nat} {i : LinstrRM}
       (fun e => h5.resolve_left (by rw [e]; exact Bool.noConfusion))⟩
   · cases hk
 
+/-- **The table at `j` is no stronger than the table at `k`**: a name dead at `k` is dead at
+    `j`, and a flag live at `j` is live at `k`. -/
+def DeadTab.le (D : DeadTab) (k j : Nat) : Bool :=
+  (D.dead k).all (fun r => (D.dead j).contains r) && (!D.z j || D.z k) && (!D.c j || D.c k)
+
+/-- Agreement at the table of `k` gives agreement at a table that is no stronger. -/
+theorem AgreeOffD.of_le {D : DeadTab} {k j : Nat} (h : D.le k j = true) {s s' : LstateMF}
+    (hag : AgreeOffD (D.dead k) (D.z k) (D.c k) s s') :
+    AgreeOffD (D.dead j) (D.z j) (D.c j) s s' := by
+  simp only [DeadTab.le, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
+    Bool.not_eq_true'] at h
+  obtain ⟨⟨h1, h2⟩, h3⟩ := h
+  exact hag.mono (fun r hr => by simpa using h1 r hr)
+    (fun e => h2.resolve_left (by rw [e]; exact Bool.noConfusion))
+    (fun e => h3.resolve_left (by rw [e]; exact Bool.noConfusion))
+
+/-- **The check of a control instruction at position `k` of the body `B` against a table.**
+    A label: the table at `k + 1` is no stronger. A conditional jump: its condition is a
+    condition code, the zero flag is live at `k`, and the tables at `k + 1` and after the
+    target label are no stronger. A jump: the table after the target label is no
+    stronger. -/
+def deadCtlB (D : DeadTab) (B : List LinstrRM) (k : Nat) : LinstrR → Bool
+  | .Llabel _ _ => D.le k (k + 1)
+  | .Lcond c l => (ccPol c).isSome && D.z k && D.le k (k + 1)
+      && (findLabelMem l B).all fun q => D.le k (q + 1)
+  | .Lgoto (_, l) => (findLabelMem l B).all fun q => D.le k (q + 1)
+  | _ => false
+
+/-- Two states agree up to the dead names and the dead flags of the table at their
+    position. -/
+def DeadAgree (D : DeadTab) (s s' : LstateMF) : Prop :=
+  AgreeOffD (D.dead s.prog.base.reg.lpc) (D.z s.prog.base.reg.lpc) (D.c s.prog.base.reg.lpc)
+    s s'
+
+/-- **A checked control step keeps the agreement of the table.** -/
+theorem ctl_deadStep {D : DeadTab} {fn : String} {B : List LinstrRM} {i : LinstrRM}
+    {s s' t : LstateMF} (hk : deadCtlB D B s.prog.base.reg.lpc i.fst = true)
+    (hag : DeadAgree D s s')
+    (hs : LprogIsa.ctlStep decC (singletonProgM fn B) i s = some t) :
+    ∃ t', LprogIsa.ctlStep decC (singletonProgM fn B) i s' = some t' ∧ DeadAgree D t t' := by
+  obtain ⟨x, tag⟩ := i
+  have hjump : ∀ (l : LLabel) (t : LstateMF),
+      ((findLabelMem l B).all fun q => D.le s.prog.base.reg.lpc (q + 1)) = true →
+      (evalJumpMem (singletonProgM fn B) l s.prog).map (fun p => { s with prog := p }) = some t →
+      ∃ t', (evalJumpMem (singletonProgM fn B) l s'.prog).map (fun p => { s' with prog := p })
+          = some t' ∧ DeadAgree D t t' := by
+    intro l t hl ht
+    have hbody : (singletonProgM fn B).body = B := rfl
+    unfold evalJumpMem at ht ⊢
+    rw [hbody] at ht ⊢
+    cases hf : findLabelMem l B with
+    | none => rw [hf] at ht; cases ht
+    | some q =>
+        rw [hf] at ht hl
+        simp only [Option.map_some, Option.some.injEq] at ht
+        subst ht
+        have h2 := AgreeOffD.of_le (by simpa using hl) hag
+        exact ⟨_, rfl, ⟨fun r hr => h2.off.regs r hr, rfl, h2.off.arr, h2.off.fn⟩, h2.zf, h2.cf⟩
+  cases x with
+  | Llabel kd l =>
+      cases hs
+      have h2 := AgreeOffD.of_le hk hag
+      exact ⟨_, rfl, ⟨fun r hr => h2.off.regs r hr, congrArg (· + 1) hag.off.pc, h2.off.arr,
+        h2.off.fn⟩, h2.zf, h2.cf⟩
+  | Lcond c l =>
+      simp only [deadCtlB, Bool.and_eq_true] at hk
+      obtain ⟨⟨⟨hcc, hz⟩, hnext⟩, htgt⟩ := hk
+      have hd : decC s' c = decC s c := by
+        unfold decC
+        cases hp : ccPol c with
+        | none => rw [hp] at hcc; cases hcc
+        | some pol => simp only [hag.zf hz]
+      simp only [LprogIsa.ctlStep] at hs ⊢
+      rw [hd]
+      split at hs
+      · rename_i hc
+        rw [if_pos hc]
+        exact hjump l t htgt hs
+      · rename_i hc
+        rw [if_neg hc]
+        cases hs
+        have h2 := AgreeOffD.of_le hnext hag
+        exact ⟨_, rfl, ⟨fun r hr => h2.off.regs r hr, congrArg (· + 1) hag.off.pc, h2.off.arr,
+          h2.off.fn⟩, h2.zf, h2.cf⟩
+  | Lgoto tg =>
+      obtain ⟨g, l⟩ := tg
+      simp only [LprogIsa.ctlStep] at hs ⊢
+      split at hs
+      · rename_i hc
+        rw [if_pos hc]
+        exact hjump l t hk hs
+      · cases hs
+  | _ => cases hk
+
+/-- **The check of a body against a table**: every control instruction passes `deadCtlB`,
+    and every other instruction is a shadow instruction of a call or passes `deadStepB`. -/
+def deadSegB (D : DeadTab) (B : List LinstrRM) : Bool :=
+  (List.range B.length).all fun k => (B[k]?).all fun i =>
+    if LprogIsa.isCtl i.fst then deadCtlB D B k i.fst
+    else (LprogIsa.shadowCall? i.fst).isSome || deadStepB D k i
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCfg (Steps Halted atPc) in
+/-- **A run of steps of a checked body keeps the agreement of the table.** From two states
+    that agree up to the dead names and the dead flags of their position, a run of steps of
+    the x86 instruction set on a body that passes `deadSegB` is matched by a run of the same
+    number of steps, to states that agree up to the dead names and the dead flags of their
+    position. -/
+theorem steps_deadSeg {D : DeadTab} {fn : String} {B : List LinstrRM}
+    (hD : deadSegB D B = true) :
+    ∀ (n : Nat) (s s' u : LstateMF), DeadAgree D s s' →
+      Steps X86Isa.x86Isa (singletonProgM fn B) n s u →
+      ∃ u', Steps X86Isa.x86Isa (singletonProgM fn B) n s' u' ∧ DeadAgree D u u'
+  | 0, s, s', u, hag, h => by
+      have hsu : s = u := Option.some.inj h
+      subst hsu
+      exact ⟨s', rfl, hag⟩
+  | n + 1, s, s', u, hag, h => by
+      simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨c, hc, h⟩ := h
+      unfold LprogIsa.Isa.lsemStepPMemF at hc ⊢
+      have hfe : findInstrMem (singletonProgM fn B) s'.prog
+          = findInstrMem (singletonProgM fn B) s.prog := by
+        unfold findInstrMem
+        rw [← hag.off.fn]
+        exact congrArg (fun q => if s.prog.lfn = fn then B[q]? else none) hag.off.pc.symm
+      rw [hfe]
+      cases hf : findInstrMem (singletonProgM fn B) s.prog with
+      | none => rw [hf] at hc; cases hc
+      | some i =>
+          rw [hf] at hc
+          dsimp only at hc
+          have hBi : B[s.prog.base.reg.lpc]? = some i := by
+            unfold findInstrMem at hf
+            split at hf
+            · exact hf
+            · cases hf
+          have hchk := List.all_eq_true.mp hD s.prog.base.reg.lpc
+            (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hBi).1)
+          rw [hBi] at hchk
+          simp only [Option.all_some] at hchk
+          have hstep : ∃ c', X86Isa.x86Isa.step (singletonProgM fn B) i s' = some c'
+              ∧ DeadAgree D c c' := by
+            by_cases hctl : LprogIsa.isCtl i.fst = true
+            · rw [if_pos hctl] at hchk
+              rw [X86Isa.x86Isa.step_ctl _ _ _ hctl] at hc ⊢
+              exact ctl_deadStep hchk hag hc
+            · rw [if_neg hctl] at hchk
+              have hctl' : LprogIsa.isCtl i.fst = false := by simpa using hctl
+              rw [X86Isa.x86Isa_step] at hc ⊢
+              cases hsh : LprogIsa.shadowCall? i.fst with
+              | some q =>
+                  rw [LprogIsaProcs.evalInstrPMemF_shadowCall _ i s (by rw [hsh]; simp)] at hc
+                  cases hc
+              | none =>
+                  rw [hsh] at hchk
+                  obtain ⟨c', hc', hag'⟩ := step_deadStepB (singletonProgM fn B)
+                    (singletonProgM fn B) (by simpa using hchk) hag hc
+                  refine ⟨c', hc', ?_⟩
+                  have e : c.prog.base.reg.lpc = s.prog.base.reg.lpc + 1 := by
+                    have := LprogCallCut.x86Isa_pcFree.lpc_succ (singletonProgM fn B) hctl'
+                      (by rw [X86Isa.x86Isa_step]; exact hc)
+                    rw [this]
+                    rfl
+                  unfold DeadAgree
+                  rw [e]
+                  exact hag'
+          obtain ⟨c', hc', hag'⟩ := hstep
+          obtain ⟨u', hu', hagu⟩ := steps_deadSeg hD n c c' u hag' h
+          exact ⟨u', ⟨c', hc', hu'⟩, hagu⟩
+
 end Dead
 
 /-! ## 7. A call re-establishes the relaxed relation, and the run continues -/
@@ -902,9 +1089,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (RunChain SegTo Glue run
 
 /-- **The statement of the simulation of one segment** of the image of a calling body by
     the decoded program `prog` under the oracle `O`, with `pos` the index in `prog` of a
-    position of the body and `E` the dead names at each position. From an image state
-    related, up to the dead names of its position and the flags, to an address state that
-    corresponds to a byte state:
+    position of the body, `E` the dead names at each position and `L` the positions at
+    which a flag is live. From an image state related, up to the dead names of its position
+    and the flags, to an address state that corresponds to a byte state, at a position
+    where no flag is live:
 
     * a segment to the call at position `p` reaches an image state related, up to the dead
       names of `p` and the flags, to an address state at `p` that corresponds to a byte
@@ -917,12 +1105,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (RunChain SegTo Glue run
     The index of the position after a call is the index after the call. -/
 structure SegSim (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (rsp : BitVec 64)
-    (body : Lcmd) (E : Nat → List String) (O : Nat → AState → AState → Prop)
+    (body : Lcmd) (E : Nat → List String) (L : Nat → Bool)
+    (O : Nat → AState → AState → Prop)
     (prog : List RInstr) (pos : Nat → Nat) (tgt : Nat)
     (Seg : LstateMF → Option Nat → LstateMF → Prop) (Fin : LstateMF → AState → Prop) :
     Prop where
   /-- A segment to a call. -/
-  toCall : ∀ s sa sA p u, ImgRelF frame slotArr base body (E sa.reg.lpc) s sa →
+  toCall : ∀ s sa sA p u, L sa.reg.lpc = false →
+    ImgRelF frame slotArr base body (E sa.reg.lpc) s sa →
     ACorr rsp sA sa → Seg s (some p) u →
     ∃ sa' sA', ImgRelF frame slotArr base body (E p) u sa' ∧ ACorr rsp sA' sa'
       ∧ sa'.reg.lpc = p
@@ -931,7 +1121,8 @@ structure SegSim (frame : String → Option (BitVec 64))
       ∧ ∀ s'', HaltsO aMachine O prog (pos p) sA' s'' →
           HaltsO aMachine O prog (pos sa.reg.lpc) sA s''
   /-- A segment to an end state. -/
-  toEnd : ∀ s sa sA t, ImgRelF frame slotArr base body (E sa.reg.lpc) s sa →
+  toEnd : ∀ s sa sA t, L sa.reg.lpc = false →
+    ImgRelF frame slotArr base body (E sa.reg.lpc) s sa →
     ACorr rsp sA sa → Seg s none t →
     ∃ sA', HaltsO aMachine O prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA'
   /-- The index after a call. -/
@@ -969,13 +1160,14 @@ theorem callDeadB_spec {c : CalleeSig} {res : String} {E : Nat → List String} 
 /-- **A chain of segments is a run under the oracle of the callee.** Let the segments
     `SegTo I T P` of a calling body of the class `physImgB` have the simulation `SegSim` at
     the dead names `E` and the oracle of a callee `X` at `tgt`, with `CalleeSpec X c`, the
-    word reading `pr` and the separation `CallerSep`; let `callDeadB` accept `E`, each step
-    `Glue T P` be the step of the summary `pr` at the argument words, and `room` hold at the
-    entry state of every call from a byte state with the stack register `rsp`. Then every
-    chain `RunChain I T P` from an image state related, up to the dead names of its position
-    and the flags, to an address state that corresponds to a byte state is matched by a run
-    of `prog` under the oracle to a byte state that satisfies `Fin` with the end state of
-    the chain. -/
+    word reading `pr` and the separation `CallerSep`; let `callDeadB` accept `E`, no flag be
+    live after a call, each step `Glue T P` be the step of the summary `pr` at the argument
+    words, and `room` hold at the entry state of every call from a byte state with the
+    stack register `rsp`. Then every chain `RunChain I T P` from an image state at a
+    position where no flag is live, related, up to the dead names of its position and the
+    flags, to an address state that corresponds to a byte state is matched by a run of
+    `prog` under the oracle to a byte state that satisfies `Fin` with the end state of the
+    chain. -/
 theorem haltsO_of_runChain {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -984,29 +1176,32 @@ theorem haltsO_of_runChain {frame : String → Option (BitVec 64)}
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {E : Nat → List String}
-    (hdead : callDeadB c res E body = true)
+    (hdead : callDeadB c res E body = true) {L : Nat → Bool}
+    (hLc : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → L (p + 1) = false)
     {I : LprogIsa.Isa} {T : LprogIsa.ProcTable} {P : LprogM}
     {Fin : LstateMF → AState → Prop}
-    (hsim : SegSim frame slotArr base rsp body E (oracleAt tgt X) prog pos tgt (SegTo I T P)
+    (hsim : SegSim frame slotArr base rsp body E L (oracleAt tgt X) prog pos tgt (SegTo I T P)
       Fin)
     (hCall : ∀ p u v, Glue T P p u v → ∃ w,
       pr.run (c.args.map (argWord u.prog.base.reg)) = some w ∧ v = LprogIsa.retWord res w u)
     {s t : LstateMF} (hch : RunChain I T P s t) :
-    ∀ sa sA, ImgRelF frame slotArr base body (E sa.reg.lpc) s sa → ACorr rsp sA sa →
+    ∀ sa sA, L sa.reg.lpc = false →
+      ImgRelF frame slotArr base body (E sa.reg.lpc) s sa → ACorr rsp sA sa →
       ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' := by
   induction hch with
-  | done hseg => exact fun sa sA hI hA => hsim.toEnd _ sa sA _ hI hA hseg
+  | done hseg => exact fun sa sA hL hI hA => hsim.toEnd _ sa sA _ hL hI hA hseg
   | call p hseg hcall _ ih =>
-    intro sa sA hI hA
+    intro sa sA hL hI hA
     obtain ⟨sa1, sA1, hI1, hc1, hpc1, ⟨bi, ra, tg, hb, hbi⟩, hprog, hk⟩ :=
-      hsim.toCall _ sa sA p _ hI hA hseg
+      hsim.toCall _ sa sA p _ hL hI hA hseg
     obtain ⟨w, hw', rfl⟩ := hCall _ _ _ hcall
     subst hpc1
     obtain ⟨hargs, hsub⟩ := callDeadB_spec hdead hb hbi
     obtain ⟨sA2, sa2, -, hpc2, hc2, hI2, hcont⟩ :=
       haltsO_call_imageF hsep hphys hX hw hS hF hI1 hargs hc1 hb hbi hprog
         (hroom _ sA1 hc1.sp) hw'
-    obtain ⟨sA', hrun, hfin⟩ := ih sa2 sA2 (by rw [hpc2]; exact hI2.mono hsub) hc2
+    obtain ⟨sA', hrun, hfin⟩ := ih sa2 sA2 (by rw [hpc2]; exact hLc _ bi ra tg hb hbi)
+      (by rw [hpc2]; exact hI2.mono hsub) hc2
     rw [hpc2, hsim.pos_call _ bi ra tg hb hbi] at hrun
     exact ⟨sA', hk _ (hcont _ hrun), hfin⟩
 
@@ -1092,10 +1287,10 @@ theorem glue_regArgs {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
     instructions are calls of the summary `pr` on the argument registers of `c` with the
     destination `res`, and let the segments of `B` on the x86 instruction set have the
     simulation `SegSim` under the hypotheses of `haltsO_of_runChain`. Then every halting
-    run of `x86Isa.withProcs T` on `B`, from an image state related, up to the dead names
-    of its position and the flags, to an address state that corresponds to a byte state, is
-    matched by a run of `prog` under the oracle to a byte state that satisfies `Fin` with
-    the end state. -/
+    run of `x86Isa.withProcs T` on `B`, from an image state at a position where no flag is
+    live, related, up to the dead names of its position and the flags, to an address state
+    that corresponds to a byte state, is matched by a run of `prog` under the oracle to a
+    byte state that satisfies `Fin` with the end state. -/
 theorem haltsO_of_withProcs_run {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -1104,18 +1299,232 @@ theorem haltsO_of_withProcs_run {frame : String → Option (BitVec 64)}
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {E : Nat → List String}
-    (hdead : callDeadB c res E body = true)
+    (hdead : callDeadB c res E body = true) {L : Nat → Bool}
+    (hLc : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → L (p + 1) = false)
     {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
     {Fin : LstateMF → AState → Prop} (hsite : SitesOf T B pr res c.args)
-    (hsim : SegSim frame slotArr base rsp body E (oracleAt tgt X) prog pos tgt
+    (hsim : SegSim frame slotArr base rsp body E L (oracleAt tgt X) prog pos tgt
       (SegTo X86Isa.x86Isa T (singletonProgM fn B)) Fin)
     (n : Nat) {s t : LstateMF}
     (hrun : (X86Isa.x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) n s = some t)
-    {sa : LstateA} {sA : AState} (hI : ImgRelF frame slotArr base body (E sa.reg.lpc) s sa)
-    (hA : ACorr rsp sA sa) :
+    {sa : LstateA} {sA : AState} (hL : L sa.reg.lpc = false)
+    (hI : ImgRelF frame slotArr base body (E sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
     ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
-  haltsO_of_runChain hsep hphys hX hw hS hF hroom hdead hsim
-    (fun _ _ _ hg => glue_regArgs hsite hg) (runChain_of_run _ T _ n s t hrun) sa sA hI hA
+  haltsO_of_runChain hsep hphys hX hw hS hF hroom hdead hLc hsim
+    (fun _ _ _ hg => glue_regArgs hsite hg) (runChain_of_run _ T _ n s t hrun) sa sA hL hI hA
+
+/-! ## 8b. The simulation of a segment up to dead names, from the simulation at the relation -/
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCfg (Steps Halted atPc)
+
+/-- **The statement of the simulation of one segment at the relation `ImgRel`**: the
+    statement `SegSim` with the image state related to the address state by `ImgRel`, at
+    a start position where no flag is live. -/
+structure SegExact (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (rsp : BitVec 64)
+    (body : Lcmd) (L : Nat → Bool) (O : Nat → AState → AState → Prop)
+    (prog : List RInstr) (pos : Nat → Nat) (tgt : Nat)
+    (Seg : LstateMF → Option Nat → LstateMF → Prop) (Fin : LstateMF → AState → Prop) :
+    Prop where
+  /-- A segment to a call. -/
+  toCall : ∀ s sa zf sA p u, L sa.reg.lpc = false →
+    ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa → Seg s (some p) u →
+    ∃ sa' zf' sA', ImgRel frame slotArr base body u sa' zf' ∧ ACorr rsp sA' sa'
+      ∧ (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t)
+      ∧ prog[pos p]? = some (.call tgt)
+      ∧ ∀ s'', HaltsO aMachine O prog (pos p) sA' s'' →
+          HaltsO aMachine O prog (pos sa.reg.lpc) sA s''
+  /-- A segment to an end state. -/
+  toEnd : ∀ s sa zf sA t, L sa.reg.lpc = false →
+    ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa → Seg s none t →
+    ∃ sA', HaltsO aMachine O prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA'
+  /-- The index after a call. -/
+  pos_call : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
+    pos (p + 1) = pos p + 1
+
+/-- The positions of a table at which a flag is live. -/
+def DeadTab.live (D : DeadTab) (k : Nat) : Bool := D.z k || D.c k
+
+/-- **The check of the flags at the calls of a body**: no flag is live at the position
+    after a call. -/
+def callFlagsB (D : DeadTab) (body : Lcmd) : Bool :=
+  (List.range body.length).all fun p => (body[p]?).all fun bi =>
+    !isCallB bi.li_i || !D.live (p + 1)
+
+/-- **Soundness of `callFlagsB`** at a call instruction. -/
+theorem callFlagsB_spec {D : DeadTab} {body : Lcmd} (h : callFlagsB D body = true) (p : Nat)
+    (bi : Linstr) (ra : Option String) (tgt : String × LLabel) (hb : body[p]? = some bi)
+    (hbi : bi.li_i = .Lcall ra tgt) : D.live (p + 1) = false := by
+  simp only [callFlagsB, List.all_eq_true, List.mem_range] at h
+  have hp := h p (List.getElem?_eq_some_iff.mp hb).1
+  rw [hb] at hp
+  simpa [hbi, isCallB] using hp
+
+/-- The relaxed relation at a position where no flag is live gives a related state that
+    agrees with the image state up to the table of the position. -/
+theorem deadAgree_of_imgRelF {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    {D : DeadTab} {s : LstateMF} {sa : LstateA} (hL : D.live sa.reg.lpc = false)
+    (hI : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) :
+    ∃ s' zf, DeadAgree D s s' ∧ ImgRel frame slotArr base body s' sa zf := by
+  obtain ⟨s', zf, hag, hrel⟩ := hI
+  have hpc : s.prog.base.reg.lpc = sa.reg.lpc := hag.pc.trans hrel.pc.symm
+  simp only [DeadTab.live, Bool.or_eq_false_iff] at hL
+  refine ⟨s', zf, ?_, hrel⟩
+  unfold DeadAgree
+  rw [hpc]
+  exact ⟨hag, fun e => (by rw [hL.1] at e; cases e), fun e => (by rw [hL.2] at e; cases e)⟩
+
+/-- **The simulation of a segment up to dead names, from the simulation at the relation.**
+    Let the body `B` pass `deadSegB` at the table `D`, the segments of `B` on the x86
+    instruction set have the simulation `SegExact` at the positions where no flag of `D` is
+    live, and `Fin` be kept by a change of the dead names of the position of the end state.
+    Then the segments have the simulation `SegSim` at the dead names of `D`. -/
+theorem segSim_of_segExact {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} {D : DeadTab} {O : Nat → AState → AState → Prop} {prog : List RInstr}
+    {pos : Nat → Nat} {tgt : Nat} {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
+    {Fin : LstateMF → AState → Prop} (hD : deadSegB D B = true)
+    (hX : SegExact frame slotArr base rsp body D.live O prog pos tgt
+      (SegTo X86Isa.x86Isa T (singletonProgM fn B)) Fin)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA) :
+    SegSim frame slotArr base rsp body D.dead D.live O prog pos tgt
+      (SegTo X86Isa.x86Isa T (singletonProgM fn B)) Fin := by
+  refine ⟨fun s sa sA p u hL hI hA hseg => ?_, fun s sa sA t hL hI hA hseg => ?_, hX.pos_call⟩
+  · obtain ⟨s', zf, hag, hrel⟩ := deadAgree_of_imgRelF hL hI
+    obtain ⟨n, hn, hat, i, hi, hproc⟩ := hseg
+    obtain ⟨u', hn', hagu⟩ := steps_deadSeg hD n s s' u hag hn
+    have hat' : atPc (singletonProgM fn B) p u' :=
+      ⟨hagu.off.fn.symm.trans hat.1, hagu.off.pc.symm.trans hat.2⟩
+    obtain ⟨sa', zf', sA', hrel', hA', hcall, hprog, hk⟩ :=
+      hX.toCall s' sa zf sA p u' hL hrel hA ⟨n, hn', hat', i, hi, hproc⟩
+    have hpu : u.prog.base.reg.lpc = p := hat.2
+    refine ⟨sa', sA', ⟨u', zf', ?_, hrel'⟩, hA', ?_, hcall, hprog, hk⟩
+    · have := hagu.off
+      rwa [hpu] at this
+    · exact hrel'.pc.trans (hagu.off.pc.symm.trans hpu)
+  · obtain ⟨s', zf, hag, hrel⟩ := deadAgree_of_imgRelF hL hI
+    obtain ⟨n, hn, hhalt⟩ := hseg
+    obtain ⟨t', hn', hagt⟩ := steps_deadSeg hD n s s' t hag hn
+    have hhalt' : Halted (singletonProgM fn B) t' := by
+      unfold Halted findInstrMem at hhalt ⊢
+      rw [← hagt.off.fn]
+      exact (congrArg (fun q => if t.prog.lfn = fn then B[q]? else none) hagt.off.pc.symm).trans
+        hhalt
+    obtain ⟨sA', hrun, hfin⟩ := hX.toEnd s' sa zf sA t' hL hrel hA ⟨n, hn', hhalt'⟩
+    exact ⟨sA', hrun, hFin t t' sA' hagt.off hfin⟩
+
+/-- **A run of a checked body with shadow instructions is a run of the decoded program
+    under the oracle of the callee**, from the simulation of a segment at the relation
+    `ImgRel`. Let the image `B` of the calling body pass `deadSegB` at the table `D` and
+    `siteShapeB` at the symbol `f`, the result name and the argument names of `c`; let
+    `callDeadB` and `callFlagsB` accept `D`; let `T` give `f` the word reading `pr` of the
+    callee, and the callee meet its specification. Then, under the separation `CallerSep`
+    and the simulation `SegExact`, every halting run of `x86Isa.withProcs T` on `B` from an
+    image state at a position where no flag is live, related up to the dead names of its
+    position to an address state that corresponds to a byte state, is matched by a run of
+    `prog` under the oracle to a byte state that satisfies `Fin` with the end state. -/
+theorem haltsO_of_deadChecks {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {res : String}
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
+    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {D : DeadTab}
+    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} {B : List LinstrRM}
+    (hT : T f = some pr) (hshape : siteShapeB f res c.args B = true)
+    (hD : deadSegB D B = true) {Fin : LstateMF → AState → Prop}
+    (hseg : SegExact frame slotArr base rsp body D.live (oracleAt tgt X) prog pos tgt
+      (SegTo X86Isa.x86Isa T (singletonProgM fn B)) Fin)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (n : Nat) {s t : LstateMF}
+    (hrun : (X86Isa.x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) n s = some t)
+    {sa : LstateA} {sA : AState} (hL : D.live sa.reg.lpc = false)
+    (hI : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
+    ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
+  haltsO_of_withProcs_run hsep hphys hX hw hS hF hroom hdead (callFlagsB_spec hflags)
+    (sitesOf_of_siteShapeB hshape hT) (segSim_of_segExact hD hseg hFin) n hrun hL hI hA
+
+/-! ## 8c. The image of a calling body -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel isLabel)
+
+/-- **The image of a calling body**: the image `virtImg`, with the instruction at each
+    position of a call `Lcall none (f, _)` of the body replaced by the shadow instruction
+    `callShadow res f args`. -/
+def callImg (slotArr : String → Option (String × Nat)) (res : String) (args : List LOperand)
+    (body : Lcmd) : List LinstrRM :=
+  (virtImg slotArr body).mapIdx fun k i =>
+    match body[k]? with
+    | some ⟨_, .Lcall none (f, _)⟩ => (LprogIsa.callShadow res f args, .reg none)
+    | _ => i
+
+/-- The image of a calling body has the length of the image. -/
+theorem callImg_length (slotArr : String → Option (String × Nat)) (res : String)
+    (args : List LOperand) (body : Lcmd) :
+    (callImg slotArr res args body).length = body.length - 1 := by
+  simp [callImg, virtImg_length]
+
+/-- At a position that holds no call, the image of a calling body is the image. -/
+theorem callImg_getElem?_of_ne (slotArr : String → Option (String × Nat)) (res : String)
+    (args : List LOperand) {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi)
+    (hn : ∀ f l, bi.li_i ≠ .Lcall none (f, l)) :
+    (callImg slotArr res args body)[k]? = (virtImg slotArr body)[k]? := by
+  simp only [callImg, List.getElem?_mapIdx, hb]
+  cases hv : (virtImg slotArr body)[k]? with
+  | none => rfl
+  | some i =>
+      simp only [Option.map_some, Option.some.injEq]
+      split
+      · rename_i ii f l heq
+        cases Option.some.inj heq
+        exact absurd rfl (hn f l)
+      · rfl
+
+/-- At the position of a call, the image of a calling body holds the shadow instruction of
+    the call. -/
+theorem callImg_getElem?_call (slotArr : String → Option (String × Nat)) (res : String)
+    (args : List LOperand) {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi)
+    (hk : k + 1 < body.length) {f : String} {l : LLabel} (hbi : bi.li_i = .Lcall none (f, l)) :
+    (callImg slotArr res args body)[k]? = some (LprogIsa.callShadow res f args, .reg none) := by
+  obtain ⟨ii, li⟩ := bi
+  simp only at hbi
+  subst hbi
+  have hlt : k < (virtImg slotArr body).length := by rw [virtImg_length]; omega
+  simp only [callImg, List.getElem?_mapIdx, hb, List.getElem?_eq_getElem hlt, Option.map_some]
+
+/-- **The labels of the image of a calling body are the labels of the image.** -/
+theorem findLabelMem_callImg (slotArr : String → Option (String × Nat)) (res : String)
+    (args : List LOperand) (body : Lcmd) (l : LLabel) :
+    findLabelMem l (callImg slotArr res args body) = findLabelMem l (virtImg slotArr body) := by
+  have hmap : ((callImg slotArr res args body).map Prod.fst).map (isLabel l)
+      = ((virtImg slotArr body).map Prod.fst).map (isLabel l) := by
+    apply List.ext_getElem
+    · simp [callImg]
+    · intro n h1 h2
+      simp only [callImg, List.getElem_map, List.getElem_mapIdx]
+      split
+      · rename_i ii f l' heq
+        have hlt : n < body.dropLast.length := by
+          simpa [virtImg] using h2
+        have hv : (virtImg slotArr body)[n]'(by simpa using h2)
+            = imgInstr slotArr body n (.Lcall none (f, l')) := by
+          have hd : body.dropLast[n]? = some ⟨ii, .Lcall none (f, l')⟩ := by
+            rw [List.getElem?_dropLast, if_pos (by simpa using hlt)]
+            exact heq
+          have := virtImg_getElem? slotArr body n
+          rw [hd, List.getElem?_eq_getElem (by simpa using h2)] at this
+          exact Option.some.inj this
+        rw [hv, ImageAddrSim.isLabel_imgInstr]
+        rfl
+      · rfl
+  have e : ∀ xs : List LinstrR,
+      List.findIdx? (isLabel l) xs = (xs.map (isLabel l)).findIdx? id := fun xs => by
+    rw [List.findIdx?_map]; rfl
+  unfold findLabelMem findLabel
+  rw [e, e, hmap]
 
 /-! ## 9. The class of printed bodies with calls -/
 
