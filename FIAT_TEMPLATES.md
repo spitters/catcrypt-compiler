@@ -30,10 +30,13 @@ statement that the word bounds hold:
   for the no-carry block, and `FieldTemplate.route_abi_denote` (`Haxc/FieldRoute.lean`)
   for the assembled route.
 
-At the bytes, each family has one theorem over its records (`field_correct_bytes`,
-`Haxc/FieldBytes.lean`; `ntt_correct_bytes`, `Haxc/NttBytes.lean`; `ec_correct_bytes`,
-`Haxc/EcBytes.lean`). Its per-instance hypothesis is acceptance by `compileJ`
-(`Haxc/BackHalf.lean`), the decided gate of `backend_correct`: for a result
+At the bytes, the field and EC families have one theorem each over their records
+(`field_correct_bytes`, `Haxc/FieldBytes.lean`; `ec_correct_bytes`, `Haxc/EcBytes.lean`);
+the NTT byte theorems were removed. The per-instance hypothesis is acceptance by
+`compileJ` (`Haxc/BackHalf.lean`), the earlier back half, with the decided gate of
+`backend_correct`; the compiler `compileA` uses the region back half `compileRegion`, and
+the byte theorems keep the hypothesis on `compileJ` until they are restated over the
+region back half (plan row B2). For a result
 `(P', bytes)` of `compileJ` on the route program of the instance, the theorem gives a
 halting run of the decoded bytes from which the layout reads back the value of the
 template. An instance with an accepted program is therefore a theorem together with the
@@ -41,7 +44,7 @@ result of running the gate.
 
 ## Instances at the bytes
 
-The executables `field-bytes-emit` and `mpn-bytes-emit` run `compileJ` and record each
+The executables `field-bytes-emit` and `mpn-bytes-emit` run the earlier back half `compileJ` and record each
 accepted program in `scripts/acceptance-registry.tsv` (columns `accepted`, `bytes`,
 `ct`). The `compileJ` and `compileOf` calls the executables run are the hypotheses of the
 theorems named below (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the result of
@@ -90,8 +93,6 @@ that `compileJ` returns `(P', bytes)` on the route program named.
 
 | Statement proved | Programs | Lean names |
 |---|---|---|
-| The decoded bytes halt in a state from which the layout reads back 256 words congruent modulo `q` to the FIPS 203 transform `nttKem` of the input, below `8 q` in absolute value as signed 16-bit words on the selected route and below the lazy bound on the 64-bit route | ML-KEM forward NTT: the selected route `nttRouteSel mlkemNtt`, the signed 16-bit transform, and the 64-bit route `nttRoute mlkemNtt` | `mlkem_ntt_correct_bytes`, `mlkem_ntt_correct_bytes_wide` (`Haxc/NttInstances.lean`) |
-| The decoded bytes halt in a state from which the layout reads back the words of the base multiplication of the two input polynomials, with the Montgomery factor `2 ^ 16` | ML-KEM base multiplication on `basemulRoute` | `mlkem_basemul_correct_bytes` (`Haxc/LatticeRoute.lean`) |
 | The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of one coordinate of the Jacobian sum, for affine, on-curve, distinct inputs, or of the Jacobian double | Jacobian addition and doubling at every Montgomery record and curve | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc/EcBytes.lean`) |
 | The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of the two coordinates of the `Fp2` product or square | `Fp2` multiply and square at every Montgomery record with `u² = β`, with instances at BLS12-381 | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`, `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) |
 | Every value of a source run of the body is read back from a halting run of the decoded bytes | a function over the field accepted by the front `fieldChainFront`, at every limb count and modulus record | `fieldChain_correct_auto` (`Haxc/FieldLowerChain.lean`) |
@@ -111,6 +112,9 @@ Results at the template level, over `Com` programs:
 | The lowered aggregated loop at the powers of `h` computes the GHASH fold of the blocks of the groups below the count, in group order, at every fuel | GHASH, four-block aggregation | [`ghashAggJ_denote_ghashFold`](CatCrypt/Crypto/SecureCompilation/VIR/Gf2Aggregate.lean) |
 | A step of the address machine preserves the width map of a body | every body, across every instruction of the address machine | [`wTyped_step`](CatCrypt/Crypto/SecureCompilation/X86Backend/NarrowTyping.lean) |
 | For a program rejected by the width gate `comWidthsOk`, the printer `renderOwnedCom` returns the one-line text `# UNHANDLED-WIDTH` and prints no instruction | every `Com jasminDialect` program handed to the owned exporter | [`renderOwnedCom_refuse`](CatCrypt/Crypto/SecureCompilation/X86Backend/LprogOptPipeline.lean) |
+
+Poseidon2 is a kernel: the compiler links it under the callee contract and does not
+compile it, and it has no byte theorem.
 
 Probes of the gate accept the multiply and square of the Solinas arm at 2^255−19
 (2452 B, 2399 B) and at 2^521−1 (10 018 B, 10 189 B). The dispatcher `fieldTemplateOf`
@@ -160,7 +164,7 @@ Line counts are those of `wc -l` over the files named, from each repository root
 | field templates | `CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/*.lean` (13 files) | 8 227 |
 | other families | `VIR/{TowerDialect,TowerToLimbs,NegacyclicNttTemplate,NegacyclicNttWord,NegacyclicNttWordSigned,RoundCodec,NarrowField,BasemulWord,PointwiseAcc,Gf2Dialect,Gf2Aggregate,RowLazy,Poseidon2Word}.lean` | 12 241 |
 | limb lowering | `Algebraic/FieldToJasminLimbs*.lean` (4 files) | 1 324 |
-| routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,TowerRoute,LatticeRoute}.lean` | 2 245 |
-| instances (development repository) | `Haxc/{FieldInstances,NttInstances,Poseidon2Bytes,EcInstances,MpnBytes,FieldFrontP256}.lean` | 1 488 |
+| routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,TowerRoute,LatticeRoute}.lean` | 2 205 |
+| instances (development repository) | `Haxc/{FieldInstances,EcInstances,MpnBytes,FieldFrontP256}.lean` | 1 250 |
 
-Templates: 20 468 lines; with lowering and routes, 24 037.
+Templates: 20 468 lines; with lowering and routes, 23 997.

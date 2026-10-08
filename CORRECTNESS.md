@@ -33,13 +33,15 @@ correctness is a template theorem or an ascent theorem ([ASCENT.md](ASCENT.md)).
 A template theorem covers straight-line word arithmetic generated from an algebraic
 template: one denotation theorem over every parameter record, a bounds certificate decided
 per instance (`boundsOk` with `denote_eq_denoteZ_of_boundsOk`, `SchedOk`), and one bytes
-theorem per family (`field_correct_bytes`, `ntt_correct_bytes`, `ec_correct_bytes`) whose
-only per-instance hypothesis is acceptance by the decided gate of `backend_correct`. The
+theorem per family (`field_correct_bytes`, `ec_correct_bytes`) whose only per-instance
+hypothesis is acceptance by the decided gate of `backend_correct` of the earlier back half
+`compileJ`. The
 families with a template are fields, lattices, GHASH, towers, RSA and isogeny moduli.
 [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance tables with the accepted
 programs, the measured ratios against fiat-crypto and the size of the template layer.
 
-- The hax front in `CatCrypt/Crypto/Hax/` lowers hax-lean's `ImpExpr` to `LowCT`
+- The legacy hax front `haxToLowCT` in `CatCrypt/Crypto/Hax/`, a front of the kernel
+  producers outside the pipeline of `compileA`, lowers hax-lean's `ImpExpr` to `LowCT`
   (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
   typed entry point `haxFrontT` (development repository,
   `CatCrypt/Crypto/Hax/HaxFrontT.lean`, `haxFrontT_simulates`) places each name by
@@ -83,10 +85,16 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `ltu_correct_auto` and `ltu_rc_proved` (`LtuCorrect.lean`, `ComposeCTStraight.lean`),
   and `mpn_mul_1_correct_auto` and `mpn_mul_1_correct_auto_ct_regions`
   (`Mul1Correct.lean`, `Mul1CorrectCT.lean`).
-- The back half of `haxc` (modules `Haxc.*` are in the development repository) is
-  `compileJ` (`Haxc.BackHalf`), with the gate `jGateB` and the theorem
-  `backend_correct`; the compiler entry is `compileA`, with `haxc_correct_auto`
-  (`Haxc.ComposeV1`). `backend_correct` is stated over a back-end
+- The compiler entry of `haxc` (modules `Haxc.*` are in the development repository) is
+  `compileA`, defined as `compileA m σ fname := compileARegion m σ fname`, with
+  `haxc_correct_auto` (`Haxc.ComposeV1`). Its front is `haxToNF` (`Haxc.NFChain`), whose
+  domain check is `HaxModule.refusal?`; its chain is `extChain` (`Haxc.NFChainCall`); its
+  back half is `compileRegion` (`Haxc.RegionBackend`), with the one gate `regionCoB` and
+  the byte check `ctGateR`. `haxc_correct_auto` reaches `compileRegion_correct` through
+  `backend_correctJ`.
+- The earlier back half is `compileJ` (`Haxc.BackHalf`), with the gate `jGateB` and the
+  theorem `backend_correct`; `compileA` does not call it, and the field-level byte
+  theorems take a hypothesis on it. `backend_correct` is stated over a back-end
   record `ByteTarget` (machine with halting relation, printed program, legality check,
   encoder, layout reading, gate, soundness of the gate); the x86 value `x86ByteTarget`
   is the default of `backEnd` and `compileJ`.
@@ -115,19 +123,22 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   with `compileJ` at every limb count and modulus record; its instances
   `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
   (`Haxc.PowLoopBytes`, `Haxc.PowLoopBytesP256`) take the route and compile equations
-  as hypotheses, each pinned by a known-answer check. The front of `compileA` is
-  `nfFront`. The desugaring-and-inlining front `nfFrontDI`
-  (`Haxc.NFFrontDesugarInline`) is composed with `compileJ` in the instance
+  as hypotheses, each pinned by a known-answer check. The earlier desugaring-and-inlining
+  front `nfFrontDI` (`Haxc.NFFrontDesugarInline`), not a stage of `compileA`, is composed
+  with `compileJ` in the instance
   `bbAdd_correct_bytes` (`Haxc.BbAddBytes`). The
   tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`.
-  Constant time of the bytes: for every result of `compileA` whose intermediate program
-  the level check `nfFrontLeakCT` accepts, `haxc_ct_proved_all`
+  Constant time of the bytes: for every result of `compileA`, `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) gives constant time of every decoding of the bytes, between
   entry states that satisfy the regions of the layout and agree on its public data;
   `haxc_correct_auto_ct_proved_all` and `haxc_gate_proved_all` are the
-  joint statement with value correctness and the gate conclusion. On a straight-line
+  joint statement with value correctness and the gate conclusion. `compileRegion` returns
+  bytes only if the byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts
+  them, and the conclusion is `ctGateR_sound`; the hypothesis that the level check
+  `haxEntry.leakCT` (on a single function, `nfFrontLeakCT`) accepts the program is not
+  used. In the earlier back half `compileJ`, on a straight-line
   or looped route program the conclusion is derived from the level check
-  `nfFrontLeakCT` of the front through the passes: the two loop
+  of the front through the passes: the two loop
   arms and the straight
   register, array, cell and carry-chain register arms, through `straightReg_bytes_ct`
   (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
@@ -135,11 +146,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
   traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
   `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
-  follows from its gate conclusion by `uc_of_gate`. On a structured program,
-  `compileRegion` returns bytes only if the
-  byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts them; for bytes
-  accepted by `σ.ctGateR`, `ctGateR_sound` gives the constant-time conclusion on that
-  route. The
+  follows from its gate conclusion by `uc_of_gate`. In the earlier back half, the
   loop arm `v1LoopWB` goes
   through `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`) and the register arm
   `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct`, `compileJ_ct` and
@@ -186,14 +193,13 @@ is defined as the run of a chain, and the denotation theorem of the route is
 
 | Route (module) | Chain and its steps | Certificate and `Cert.sound` consumer | Route theorem |
 |---|---|---|---|
-| `nfChain` (`Haxc.NFChain`) | `nfChain`: output-type check, `dceStep`, `nfToCatStep`, `aegraphStep catRules`, `mapStep catToJasmin`, `lowerSelectsStep`, `aegraphStep jasminRules`, `exportStep` | `nfChainCert`, `nfChain_denote` | `haxc_correct_auto` |
+| `extChain D` (`Haxc.NFChainCall`) | `extChain D`: output-type check, `dceStep`, `extCallStep D` (`nfToCatExt` at the declared procedures `D`), `aegraphStep catRules`, `mapStep catToJasmin`, `lowerSelectsStep`, `rangeNFStep`, `aegraphStep jasminRules`; at `D = []` it is `nfChainPre` (`extChain_nil`) | `extChainCert`, `extChain_denote` | `haxc_correct_auto` |
 | `compileField P` (`Haxc.FieldRoute`) | `fieldChainId P` = `limbChainVia (Step.id _) (GoodVB P) (fieldCom P)`: optimisation slot, limb step, identity, `straightStep` | `limbChainViaCert`, `limbChainVia_denote` | `compileField_denote` |
 | `compileFieldS S` (`Haxc.FieldRoute`) | `fieldChainSId S` = `limbChainVia (Step.id _) (GoodLB S) (fieldComOf (lowerOpL S))` | `limbChainViaCert`, `limbChainVia_denote` | `compileFieldS_denote` |
 | `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `p256_jacAdd_correct_bytes`, `p256_jacDbl_correct_bytes` and the `C` variants (`Haxc.EcInstances`), with the compile hypothesis |
 | `nttRoute`, `inttRoute` (`Haxc.NttRoute`) | `.get` of the run of `lanesChainId N` = `lanesChainVia (Step.id _)`: optimisation slot, `lanesStep`, `straightStep` | `lanesChainViaCert`, `lanesChainVia_denote` | `nttRoute_denote`, `inttRoute_denote` |
 | `nttRouteOf A` (`Haxc.NttRouteSel`) | `.get` of the run of `lanesChain N pure`: value numbering `gvnMR pure`, lane lowering, `straightStep` | `lanesChainCert`, `lanesChain_denote` | `nttRouteOf_denote` |
-| `bbPermRoute` (`Haxc.Poseidon2Bytes`) | `.get` of the run of `lanesChainId 16` on `widenProg 32 16` of the BabyBear permutation | `lanesChainViaCert`, `lanesChainVia_denote` | `bb_poseidon2_correct_bytes`, with the compile hypothesis |
-| `latticeRoute`, `basemulRoute`, `pointwiseRoute`, `accRoute` (`Haxc.LatticeRoute`) | `.get` of the run of `lanesChain M pure`; a non-square program is zero-padded to square | `lanesChainCert`, `lanesChain_denote` | `basemulRoute_denote`, `pointwiseRoute_denote`, `accRoute_denote`; `mlkem_basemul_correct_bytes` with the compile hypothesis |
+| `latticeRoute`, `basemulRoute`, `pointwiseRoute`, `accRoute` (`Haxc.LatticeRoute`) | `.get` of the run of `lanesChain M pure`; a non-square program is zero-padded to square | `lanesChainCert`, `lanesChain_denote` | `basemulRoute_denote`, `pointwiseRoute_denote`, `accRoute_denote` |
 | `towerRoute P N` (`Haxc.TowerRoute`) | `towerChain P N`: identity, `towerStep` (`towerCom` under `towerGoodB`), identity, `straightStep` | `towerChainCert`, `towerChain_denote` | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`; instances at BN254 and BLS12-381 with the compile hypothesis |
 
 The optimisation slot of the field chains is the identity step.
@@ -210,8 +216,8 @@ accepts on that route. The acceptance registry of the development repository
 Each leg of `haxc` is a theorem whose hypothesis on the program is a check that the
 compiler runs: for a body accepted by the check, the theorem gives the simulation. The
 compiler returns `none` when a check fails, so the theorems range over the programs it
-accepts. The route to the Jasmin dialect is the chain `nfChain` of the previous
-subsection, with `nfChain_denote`. The checks are of two classes.
+accepts. The route to the Jasmin dialect is the chain `extChain` of the previous
+subsection, with `extChain_denote`. The checks are of two classes.
 
 - Class D: a decidable predicate on one program, with a soundness theorem. It is the
   side condition of a proved pass.
@@ -224,7 +230,7 @@ the development repository.
 
 | Statement proved | Programs | Check and class | Lean names |
 |---|---|---|---|
-| The `LowCT` program of the typed front runs to a state whose result slots agree with the value of every source run that reads to a value | typed bodies accepted by `haxFrontTOk` | `haxFrontTOk`, D | `haxFrontT_simulates_hax64W` (`CatCrypt.Crypto.Hax.HaxFrontHax64W`) |
+| The `LowCT` program of the earlier typed front (not a stage of `compileA`) runs to a state whose result slots agree with the value of every source run that reads to a value | typed bodies accepted by `haxFrontTOk` | `haxFrontTOk`, D | `haxFrontT_simulates_hax64W` (`CatCrypt.Crypto.Hax.HaxFrontHax64W`) |
 | An accepted command lies in the guarded coverage fragment `IsCoveredSCtlGuarded` | `LowCT` commands accepted by `coveredGuardedB` | `coveredGuardedB`, D | [`isCoveredSCtlGuarded_of_coveredGuardedB`](CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectGuarded.lean) |
 | The typed chain of the export, run by `lsemFuelMemF` from the ABI entry, halts with the return register holding the denotation of the program | straight-line programs returning a register, accepted by `straightCertB` | `straightCertB`, D | [`straight_export_faithful_abi`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertStraight.lean) |
 | The certified loop node halts under `lsemFuelMemF` from the ABI entry with the output array decoding to the denotation of the program | a program with one runtime-count loop accepted by `singleLoopB` | the export certificate `comLCertNB` (`routeCertB`), V: a certificate, per program, of a fixed export function | [`singleLoop_export_faithful_gate`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertGate.lean) |
@@ -242,7 +248,8 @@ the development repository.
 | The decoded function bytes of the printed body are constant time when the source events of the single-loop program are | printed bodies accepted by the route check `routeB` with `ownedCheckML`, free of conditional branches | `routeB`, D, with `ownedCheckML`, V | [`route_bytes_ct`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageRouteCT.lean) |
 | The bytes decode to a program whose runs from entry states that satisfy the regions of the layout and agree on its public data have equal leakage traces | bytes accepted by the byte gate `σ.ctGateR`, which `compileRegion` runs on structured programs | `ctGateR`, D on the output bytes | `ctGateR_sound` (`Haxc.CTRegions`) |
 
-On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
+On the image routes of the earlier back half (`ImageAddrRoute.routeB`,
+`ImageStraightCells.straightCellB`) one
 call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
 printed body is the output of the export, the post-pass `fuseMulHiLprog` and the owned
 back end `ownedLprog`. For a pair accepted by this call, `ownedCheckMC_sound` therefore
@@ -251,15 +258,14 @@ two-address form, the post-pass and register allocation together. The reference 
 applies the fusion as `fuseMulHiRM`; for a typed body accepted by `fuseOKL`,
 `fuseMulHi_lsemFuelMemF_pre` gives its run.
 
-For every result of `compileA` whose intermediate program the level check
-`nfFrontLeakCT` accepts, `haxc_ct_proved_all` and `haxc_rc_proved_all` (development
-repository, `Haxc.ComposeCTStraight`) give constant time and robust compilation of every
-decoding of the bytes. On a straight-line or looped route program, for a printed body
-accepted by an image arm of the gate with its check on traced runs, `jGate_bytes_ct`
-derives constant time of the bytes from constant time of the route program, which the
-level check of the source gives. On a structured program, for bytes accepted by
-the byte check `σ.ctGateR` inside `compileRegion`, `ctGateR_sound` gives constant time of
-the decoded program.
+For every result of `compileA`, `haxc_ct_proved_all` and `haxc_rc_proved_all`
+(development repository, `Haxc.ComposeCTStraight`) give constant time and robust
+compilation of every decoding of the bytes. `compileA` compiles a structured program, and
+for bytes accepted by the byte check `σ.ctGateR` inside `compileRegion`, `ctGateR_sound`
+gives constant time of the decoded program. In the earlier back half `compileJ`, on a
+straight-line or looped route program, for a printed body accepted by an image arm of the
+gate with its check on traced runs, `jGate_bytes_ct` derives constant time of the bytes
+from constant time of the route program, which the level check of the source gives.
 
 ### Reference semantics of prime-ir calls
 
