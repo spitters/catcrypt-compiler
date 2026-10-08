@@ -653,6 +653,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
+CatCrypt.Crypto.SecureCompilation.VIR.LaneStrip
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.LanesRepFamily
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
@@ -762,7 +763,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduceReal
 CatCrypt.Crypto.SecureCompilation.VIR.TensorExtDialect
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
-CatCrypt.Crypto.SecureCompilation.VIR.TileBridge
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
