@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.TileLegal
+public import CatCrypt.Crypto.SecureCompilation.VIR.TileLegalX86
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapNF
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVecCore
 
@@ -36,6 +36,11 @@ value at a scalar.
   lane `j` of the lifted and legalised program is lane `k` of `laneMapVec S c` at inputs
   with equal lanes: both are the scalar denotation on that lane
   (`LaneMapVec.laneMapVec_denote`).
+* `legalise_tileAccLoop_isSome` — `legalise T` returns a program on `tileAccLoop` at the
+  shape of `T` when the gate has a block for the elementwise addition.
+* `accLoop_zmmQ`, `accLoop_zmmD` — the counted loop `accLoop` is lifted and legalised at
+  eight 64-bit and at sixteen 32-bit lanes, and lane `j` of the legalised run is
+  `a j + cnt * x j`.
 -/
 
 @[expose] public section
@@ -234,5 +239,88 @@ theorem tileLegal_laneLift_laneMapVec (S : LaneShape) (hm : S.mulhiExpr = none)
       some (.cons (S.laneOfTy k t ((laneMapVec S c).denote W₁)) .nil) := by
   rw [tileLegal_laneLift_denote T fuel j m rm _ q r hq hr W₂, ← hW, NFProg.denote_ofCom,
     laneMapVec_denote_default S hm c hc W₁ k]
+
+/-! ## 4. The counted loop with a carried accumulator -/
+
+/-- `legalise T` returns a program on `tileAccLoop` at the shape of `T` when the gate of `T`
+    has a block for the elementwise addition. -/
+theorem legalise_tileAccLoop_isSome
+    (h : (T.binary? (TileLegal.BinOp.bin .add)).isSome = true) :
+    (legalise T (tileAccLoop jasminDialect T.laneCount T.laneBits)).isSome = true := by
+  unfold legalise
+  rw [if_pos (by rfl)]
+  refine (NFProg.isSome_map?_iff (tileLegal T) (tileLegal_regionTypes T) _ _).2
+    ⟨⟨?_, trivial⟩, trivial⟩
+  have hg : (T.gate (.tileBin .add T.laneCount T.laneBits)).isSome = true := by
+    show (T.binaryGate _ _ _).isSome = true
+    unfold TileTarget.binaryGate
+    rw [dif_pos ⟨rfl, rfl⟩, Option.isSome_map]
+    exact h
+  obtain ⟨g, hg⟩ := Option.isSome_iff_exists.mp hg
+  have hl : (T.lowering.lowerExprBlock?
+      (PartialBlockLowering.opExpr (TileOp.tileBin .add T.laneCount T.laneBits))).isSome =
+        true := by
+    show (Option.map _ (T.gate (.tileBin .add T.laneCount T.laneBits))).isSome = true
+    rw [hg]
+    rfl
+  obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp hl
+  simp only [tileLegal, PartialBlockLowering.sumElimId, PartialBlockLowering.sumBlock?, hb]
+  rfl
+
+open CatCrypt.Crypto.SecureCompilation.VIR.TileLegalX86
+
+/-- **`accLoop` passes both stages at eight 64-bit lanes.** The lifting of `accLoop 64` is
+    `tileAccLoop` (`laneLift_accLoop`), `legalise zmmQ` returns a program `r` on it, and at
+    every fuel and lane `j`: on a valuation `W` of the legalised context, lane `j` of the
+    result of `r` is the result of `accLoop 64` on lane `j` of `W`; on a trip count `cnt`
+    and ZMM registers `X` and `A`, it is `A j + cnt * X j` on the lanes. -/
+theorem accLoop_zmmQ :
+    ∃ r, legalise zmmQ (tileAccLoop jasminDialect 8 64) = some r ∧
+      (∀ (fuel : Nat) (j : Fin 8)
+        (W : Valuation (d := jasminDialect)
+          ((liftTys zmmQ.laneCount zmmQ.laneBits [false, true, true]
+            [.reg 64, .reg 64, .reg 64]).map (legalTy zmmQ))),
+        (r.denote fuel W).map (readOuts zmmQ j [true] [.reg 64]) =
+          (accLoop 64).denote fuel
+            (readOuts zmmQ j [false, true, true] [.reg 64, .reg 64, .reg 64] W)) ∧
+      ∀ (fuel : Nat) (j : Fin 8) (cnt : BitVec 64) (X A : BitVec 512),
+        (r.denote fuel (.cons cnt (.cons X (.cons A .nil)))).map
+            (readOuts zmmQ j [true] [.reg 64]) =
+          some (.cons (kitZmmQ.lane A j + BitVec.ofNat 64 cnt.toNat * kitZmmQ.lane X j)
+            .nil) := by
+  obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
+    (legalise_tileAccLoop_isSome zmmQ (bin_legal .add []).1)
+  have hd := fun fuel j W => tileLegal_laneLift_denote zmmQ fuel j [false, true, true] [true]
+    (accLoop 64) _ r (laneLift_accLoop 8 64) hr W
+  refine ⟨r, hr, hd, fun fuel j cnt X A => ?_⟩
+  exact (hd fuel j (.cons cnt (.cons X (.cons A .nil)))).trans
+    (accLoop_lane_8x64 fuel j cnt (kitZmmQ.lane X) (kitZmmQ.lane A))
+
+/-- **`accLoop` passes both stages at sixteen 32-bit lanes.** The lifting of `accLoop 32` is
+    `tileAccLoop` (`laneLift_accLoop`), `legalise zmmD` returns a program `r` on it, and at
+    every fuel and lane `j`: on a valuation `W` of the legalised context, lane `j` of the
+    result of `r` is the result of `accLoop 32` on lane `j` of `W`; on a trip count `cnt`
+    and ZMM registers `X` and `A`, it is `A j + cnt * X j` on the lanes. -/
+theorem accLoop_zmmD :
+    ∃ r, legalise zmmD (tileAccLoop jasminDialect 16 32) = some r ∧
+      (∀ (fuel : Nat) (j : Fin 16)
+        (W : Valuation (d := jasminDialect)
+          ((liftTys zmmD.laneCount zmmD.laneBits [false, true, true]
+            [.reg 64, .reg 32, .reg 32]).map (legalTy zmmD))),
+        (r.denote fuel W).map (readOuts zmmD j [true] [.reg 32]) =
+          (accLoop 32).denote fuel
+            (readOuts zmmD j [false, true, true] [.reg 64, .reg 32, .reg 32] W)) ∧
+      ∀ (fuel : Nat) (j : Fin 16) (cnt : BitVec 64) (X A : BitVec 512),
+        (r.denote fuel (.cons cnt (.cons X (.cons A .nil)))).map
+            (readOuts zmmD j [true] [.reg 32]) =
+          some (.cons (kitZmmD.lane A j + BitVec.ofNat 32 cnt.toNat * kitZmmD.lane X j)
+            .nil) := by
+  obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
+    (legalise_tileAccLoop_isSome zmmD (bin_legal .add []).2.1)
+  have hd := fun fuel j W => tileLegal_laneLift_denote zmmD fuel j [false, true, true] [true]
+    (accLoop 32) _ r (laneLift_accLoop 16 32) hr W
+  refine ⟨r, hr, hd, fun fuel j cnt X A => ?_⟩
+  exact (hd fuel j (.cons cnt (.cons X (.cons A .nil)))).trans
+    (accLoop_lane_16x32 fuel j cnt (kitZmmD.lane X) (kitZmmD.lane A))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
