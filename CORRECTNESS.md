@@ -119,8 +119,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `nfFront`. The desugaring-and-inlining front `nfFrontDI`
   (`Haxc.NFFrontDesugarInline`) is composed with `compileJ` in the instance
   `bbAdd_correct_bytes` (`Haxc.BbAddBytes`). The
-  tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`, and a loop with
-  carried registers is compiled by `compileLoopJ` under the image gate `v1LoopJB`.
+  tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`.
   Constant time of the bytes: for every result of `compileA` whose intermediate program
   the level check `nfFrontLeakCT` accepts, `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) gives constant time of every decoding of the bytes, between
@@ -136,8 +135,8 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
   traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
   `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
-  follows from its gate conclusion by `uc_of_gate`. On a loop with carried registers,
-  `compileLoopJ` returns bytes only if the image gate `v1LoopJB` holds and the
+  follows from its gate conclusion by `uc_of_gate`. On a structured program,
+  `compileRegion` returns bytes only if the
   byte-level constant-time check `σ.ctGateR` (`Haxc.CTRegions`) accepts them; for bytes
   accepted by `σ.ctGateR`, `ctGateR_sound` gives the constant-time conclusion on that
   route. The
@@ -147,7 +146,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `compileJ_rc` (`Haxc.ComposeCTStraight`) state the result for one accepted program of
   `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
   `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`. The compiler calls the byte check
-  `ctGateR` inside the compile gate, in `compileLoopJ` and in `compileRegion`.
+  `ctGateR` inside the compile gate, in `compileRegion`.
   For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the route program from the level check of the lowered
   program, and `compileJ_ct` carries it to the bytes of `compileJ`; the instances
@@ -241,7 +240,7 @@ the development repository.
 | The function bytes of a body decode to its layout `fundefLayout`, and the bytes of the gated encoder decode to the program `p` | bodies accepted by `decodableLcmd`; bodies accepted by `decodesToB` at `p` | `decodableLcmd`, `decodesToB`, D | [`decodeLprog_encodeLfundefBytes`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean), [`decodeLprog_of_decodesToB`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean) |
 | Every halting run of `lsemFuelMemF` from a state whose registers satisfy the entry facts is in bounds | bodies accepted by the abstract interpretation `idxInvCheckB` | `idxInvCheckB`, D | [`runIdxOk_of_idxInvCheckB`](CatCrypt/Crypto/SecureCompilation/X86Backend/IdxInvCheck.lean) |
 | The decoded function bytes of the printed body are constant time when the source events of the single-loop program are | printed bodies accepted by the route check `routeB` with `ownedCheckML`, free of conditional branches | `routeB`, D, with `ownedCheckML`, V | [`route_bytes_ct`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageRouteCT.lean) |
-| The bytes decode to a program whose runs from entry states that satisfy the regions of the layout and agree on its public data have equal leakage traces | bytes accepted by the byte gate `σ.ctGateR`, which `compileLoopJ` runs on loops with carried registers | `ctGateR`, D on the output bytes | `ctGateR_sound` (`Haxc.CTRegions`) |
+| The bytes decode to a program whose runs from entry states that satisfy the regions of the layout and agree on its public data have equal leakage traces | bytes accepted by the byte gate `σ.ctGateR`, which `compileRegion` runs on structured programs | `ctGateR`, D on the output bytes | `ctGateR_sound` (`Haxc.CTRegions`) |
 
 On the image routes (`ImageAddrRoute.routeB`, `ImageStraightCells.straightCellB`) one
 call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
@@ -258,8 +257,8 @@ repository, `Haxc.ComposeCTStraight`) give constant time and robust compilation 
 decoding of the bytes. On a straight-line or looped route program, for a printed body
 accepted by an image arm of the gate with its check on traced runs, `jGate_bytes_ct`
 derives constant time of the bytes from constant time of the route program, which the
-level check of the source gives. On a loop with carried registers, for bytes accepted by
-the byte check `σ.ctGateR` inside `compileLoopJ`, `ctGateR_sound` gives constant time of
+level check of the source gives. On a structured program, for bytes accepted by
+the byte check `σ.ctGateR` inside `compileRegion`, `ctGateR_sound` gives constant time of
 the decoded program.
 
 ### Reference semantics of prime-ir calls

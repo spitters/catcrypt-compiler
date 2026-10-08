@@ -59,6 +59,12 @@ checks it for every pair of an entry and an exit of `cutAt`.
   with a new register file and an advanced counter, and the state after a list of copies.
 * `commonFreshB`: the check that the common names are distinct and occur in no operation
   of a body.
+* `setRL`, `OffRel`, `expPos`: a state with a register file and a counter, the relation of
+  a state of a body to a state of its rewritten body, and the position map of the rewriting.
+* `OffCongr`, `CondCongr`: the step of an instruction commutes with a change of a set of
+  names, and a branch condition does not read them.
+* `FnStable`, `IsCutRev`, `isCutRevB`: the steps of an instruction set stay in the function,
+  a cut program halts only at its exit, and the check of the latter.
 
 ## Main results
 
@@ -80,6 +86,16 @@ checks it for every pair of an entry and an exit of `cutAt`.
   on common names, up to the argument names and the result name.
 * `commonFreshB_site`: a body that passes `commonFreshB` meets the side conditions of
   `commonCall_sim` at each of its shadow instructions.
+* `findLabelMem_commonCalls?`: a label of the body is declared in the rewritten body at the
+  image of its position.
+* `step_common`, `commonCalls_run`, `commonCalls_run_obs`: a halting run of the body on the
+  x86 instruction set with procedures is a halting run of the rewritten body, the end states
+  related by `OffRel`, under `OffCongr` for the operations and `CondCongr` for the branch
+  conditions of the body.
+* `segTo_of_cutRun`: a halting run of a cut program that halts only at its exit is a
+  segment of the body.
+* `cutCheck_sound`: `CutCheckSound` for cut programs of the second body that halt only at
+  their exits.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
@@ -1122,5 +1138,911 @@ theorem commonFreshB_site {args : List String} {res : String} {B : List LinstrRM
       · exact (hin d (by simp [instrNames, opNames])).2
     · cases hs
   · cases hs
+
+/-- No operand of a shadow instruction of a body that passes `commonFreshB` is the name
+    `res`. -/
+theorem commonFreshB_site_res {args : List String} {res : String} {B : List LinstrRM}
+    (h : commonFreshB args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
+    {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) {xs : List String}
+    (hxs : regNames? srcs = some xs) : ∀ x ∈ xs, x ≠ res := by
+  simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
+    Bool.not_eq_true', bne_iff_ne, ne_eq] at h
+  have hin := h.2 i hi
+  unfold shadowCall? at hs
+  split at hs
+  · rename_i dst opn ss heq
+    split at hs
+    · cases hs
+      rw [heq, regNames?_eq hxs] at hin
+      exact fun x hx => (hin x (by simp [instrNames, opNames, hx])).2
+    · cases hs
+  · cases hs
+
+/-! ## 11. The run of a body rewritten onto common names -/
+
+/-- The state `s` with the register file `L` and the counter `q`. -/
+def setRL (L : String → Σ w, BitVec w) (q : Nat) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base := { s.prog.base with reg := { lvm := L, lpc := q } } } }
+
+/-- **The relation of a state of a body to a state of its rewritten body**, for the names
+    `N` and the position map `ψ`: the second state is the first with a register file that
+    agrees with its register file off `N`, and with the counter at the image of its
+    counter. The arrays, the word memory, the flags and the function name are equal. -/
+def OffRel (N : List String) (ψ : Nat → Nat) (s s' : LstateMF) : Prop :=
+  ∃ L' : String → Σ w, BitVec w, (∀ r, r ∉ N → L' r = s.prog.base.reg.lvm r) ∧
+    s' = setRL L' (ψ s.prog.base.reg.lpc) s
+
+/-- **The step of the instruction `i` on the x86 instruction set commutes with a change of
+    the names `N`.** A step from `s` to `t` is matched, from `s` with a register file that
+    agrees with the register file of `s` off `N`, by a step to `t` with a register file that
+    agrees with the register file of `t` off `N`. -/
+def OffCongr (N : List String) (i : LinstrRM) : Prop :=
+  ∀ (P P' : LprogM) (s t : LstateMF) (L' : String → Σ w, BitVec w),
+    (∀ r, r ∉ N → L' r = s.prog.base.reg.lvm r) → x86Isa.step P i s = some t →
+    ∃ L'' : String → Σ w, BitVec w, (∀ r, r ∉ N → L'' r = t.prog.base.reg.lvm r) ∧
+      x86Isa.step P' i (setRL L' s.prog.base.reg.lpc s) = some (setRL L'' t.prog.base.reg.lpc t)
+
+/-- The branch condition `c` of the x86 instruction set does not read the names `N`. -/
+def CondCongr (N : List String) (c : LOperand) : Prop :=
+  ∀ (s : LstateMF) (L' : String → Σ w, BitVec w) (q : Nat),
+    (∀ r, r ∉ N → L' r = s.prog.base.reg.lvm r) →
+    x86Isa.condEval (setRL L' q s) c = x86Isa.condEval s c
+
+/-- A branch condition with no operand name in `N` does not read the names `N`. -/
+theorem condCongr_of_names {N : List String} {c : LOperand} (h : ∀ n ∈ opNames c, n ∉ N) :
+    CondCongr N c := by
+  intro s L' q hL
+  show X86Backend.OwnedLprogTV.decC _ c = X86Backend.OwnedLprogTV.decC s c
+  unfold X86Backend.OwnedLprogTV.decC
+  cases X86Backend.OwnedLprogTV.ccPol c with
+  | some pol => rfl
+  | none =>
+      cases c with
+      | reg r =>
+          show condNZ _ _ = condNZ _ _
+          have e : (setRL L' q s).prog.base.reg.lvm r = s.prog.base.reg.lvm r :=
+            hL r (h r (by simp [opNames]))
+          simp only [condNZ, evalOperandN, LstateN.getW]
+          rw [e]
+      | imm v => rfl
+      | arr b n => rfl
+      | arrIdx b i n => rfl
+
+/-- The number of instructions of the form of `i` on `n` common argument names. -/
+def expLen (n : Nat) (i : LinstrRM) : Nat :=
+  if (shadowCall? i.fst).isSome then n + 2 else 1
+
+/-- **The position map of the rewriting onto `n` common argument names**: the number of
+    instructions of the forms of the instructions of `B` before the position `p`. -/
+def expPos (n : Nat) (B : List LinstrRM) (p : Nat) : Nat := ((B.take p).map (expLen n)).sum
+
+theorem expPos_zero (n : Nat) (B : List LinstrRM) : expPos n B 0 = 0 := by
+  simp [expPos]
+
+theorem expPos_cons_succ (n : Nat) (i : LinstrRM) (B : List LinstrRM) (p : Nat) :
+    expPos n (i :: B) (p + 1) = expLen n i + expPos n B p := by
+  simp [expPos]
+
+theorem expPos_succ (n : Nat) : ∀ {B : List LinstrRM} {p : Nat} {i : LinstrRM},
+    B[p]? = some i → expPos n B (p + 1) = expPos n B p + expLen n i
+  | [], _, _, h => by simp at h
+  | j :: B, 0, i, h => by
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      simp [expPos]
+  | j :: B, p + 1, i, h => by
+      rw [expPos_cons_succ, expPos_cons_succ, expPos_succ n (B := B) (by simpa using h)]
+      omega
+
+theorem expPos_of_le (n : Nat) {B : List LinstrRM} {p : Nat} (h : B.length ≤ p) :
+    expPos n B p = expPos n B B.length := by
+  simp only [expPos, List.take_of_length_le h, List.take_length]
+
+/-- The form of an instruction that is no shadow instruction is the instruction. -/
+theorem commonCall?_none {f : String} {args : List String} {res : String} {i : LinstrRM}
+    {is : List LinstrRM} (h : commonCall? f args res i = some is)
+    (hn : shadowCall? i.fst = none) : is = [i] := by
+  unfold commonCall? at h
+  rw [hn] at h
+  exact (Option.some.inj h).symm
+
+/-- The form of a shadow instruction is `commonSeq` at its register operands. -/
+theorem commonCall?_some {f : String} {args : List String} {res : String} {i : LinstrRM}
+    {is : List LinstrRM} (h : commonCall? f args res i = some is) {d g : String}
+    {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) :
+    ∃ xs, regNames? srcs = some xs ∧ g = f ∧ xs.length = args.length ∧
+      is = commonSeq f args res d xs := by
+  unfold commonCall? at h
+  rw [hs] at h
+  dsimp only at h
+  split at h
+  · rename_i xs hxs
+    split at h
+    · rename_i hc
+      exact ⟨xs, hxs, hc.1, hc.2, (Option.some.inj h).symm⟩
+    · cases h
+  · cases h
+
+theorem commonCall?_length {f : String} {args : List String} {res : String} {i : LinstrRM}
+    {is : List LinstrRM} (h : commonCall? f args res i = some is) :
+    is.length = expLen args.length i := by
+  cases hs : shadowCall? i.fst with
+  | none => rw [commonCall?_none h hs, expLen, hs]; rfl
+  | some q =>
+      obtain ⟨d, g, srcs⟩ := q
+      obtain ⟨xs, -, -, hlen, rfl⟩ := commonCall?_some h hs
+      simp [expLen, hs, commonSeq, hlen]
+
+/-- **The rewritten body at a position of the body**: the form of the instruction at `p`
+    stands in the rewritten body at the image of `p`. -/
+theorem commonCalls?_split {f : String} {args : List String} {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+      ∀ {p : Nat} {i : LinstrRM}, B[p]? = some i →
+      ∃ is pre post, commonCall? f args res i = some is ∧ B' = pre ++ is ++ post ∧
+        pre.length = expPos args.length B p
+  | [], _, _, _, _, hi => by simp at hi
+  | j :: B, _, h, p, i, hi => by
+      obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
+      cases p with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hi
+          subst hi
+          exact ⟨js, [], B₁, hjs, rfl, by rw [expPos_zero]; rfl⟩
+      | succ p =>
+          obtain ⟨is, pre, post, his, rfl, hpre⟩ :=
+            commonCalls?_split hB₁ (p := p) (i := i) (by simpa using hi)
+          refine ⟨is, js ++ pre, post, his, by simp only [List.append_assoc], ?_⟩
+          rw [List.length_append, expPos_cons_succ, hpre, commonCall?_length hjs]
+
+theorem commonCalls?_length {f : String} {args : List String} {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+      B'.length = expPos args.length B B.length
+  | [], _, h => by cases h; rfl
+  | j :: B, _, h => by
+      obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
+      rw [List.length_append, List.length_cons, expPos_cons_succ, commonCalls?_length hB₁,
+        commonCall?_length hjs]
+
+/-- The form of an instruction that does not declare the label `l` declares no label `l`. -/
+theorem commonCall?_noLabel {f : String} {args : List String} {res : String} {i : LinstrRM}
+    {is : List LinstrRM} (h : commonCall? f args res i = some is) (l : LLabel)
+    (hl : isLabel l i.fst = false) : ∀ j ∈ is, isLabel l j.fst = false := by
+  cases hs : shadowCall? i.fst with
+  | none =>
+      rw [commonCall?_none h hs]
+      intro j hj
+      rw [List.mem_singleton.mp hj]
+      exact hl
+  | some q =>
+      obtain ⟨d, g, srcs⟩ := q
+      obtain ⟨xs, -, -, -, rfl⟩ := commonCall?_some h hs
+      intro j hj
+      simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
+        or_false] at hj
+      rcases hj with ⟨p, -, rfl⟩ | rfl | rfl <;> rfl
+
+/-- **A label declared in the body at `q` is declared in the rewritten body at the image
+    of `q`.** -/
+theorem findLabelMem_commonCalls? {f : String} {args : List String} {res : String}
+    (l : LLabel) : ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+      ∀ {q : Nat}, findLabelMem l B = some q →
+        findLabelMem l B' = some (expPos args.length B q)
+  | [], _, _, _, hq => by simp [findLabelMem, findLabel] at hq
+  | j :: B, _, h, q, hq => by
+      obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
+      simp only [findLabelMem, findLabel, List.map_cons, List.findIdx?_cons] at hq
+      cases hl : isLabel l j.fst with
+      | true =>
+          rw [hl] at hq
+          simp only [if_true, Option.some.injEq] at hq
+          subst hq
+          have hctl : isCtl j.fst = true := by
+            cases hj : j.fst <;> simp_all [isLabel, isCtl]
+          rw [commonCall?_none hjs (shadowCall?_of_isCtl hctl), expPos_zero]
+          simp only [findLabelMem, findLabel, List.cons_append, List.nil_append, List.map_cons,
+            List.findIdx?_cons, hl, if_true]
+      | false =>
+          rw [hl] at hq
+          simp only [Bool.false_eq_true, if_false, Option.map_eq_some_iff] at hq
+          obtain ⟨q₀, hq₀, rfl⟩ := hq
+          have ih := findLabelMem_commonCalls? l hB₁ (q := q₀) hq₀
+          have hnone : (js.map Prod.fst).findIdx? (isLabel l) = none := by
+            rw [List.findIdx?_eq_none_iff]
+            intro x hx
+            obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
+            exact commonCall?_noLabel hjs l hl y hy
+          simp only [findLabelMem, findLabel] at ih
+          simp only [findLabelMem, findLabel, List.map_append, List.findIdx?_append, hnone,
+            Option.none_or, ih, Option.map_some, List.length_map, expPos_cons_succ,
+            commonCall?_length hjs]
+          rw [Nat.add_comm]
+
+/-- The image of the position after a label is the position after the image of the
+    label. -/
+theorem expPos_label_succ (n : Nat) {l : LLabel} {B : List LinstrRM} {q : Nat}
+    (hl : findLabelMem l B = some q) : expPos n B (q + 1) = expPos n B q + 1 := by
+  unfold findLabelMem at hl
+  obtain ⟨k, hk, hlab⟩ := findLabel_sound l _ q hl
+  rw [List.getElem?_map] at hk
+  obtain ⟨i, hi, rfl⟩ := Option.map_eq_some_iff.mp hk
+  have hctl : isCtl i.fst = true := by
+    cases hi' : i.fst <;> simp_all [isLabel, isCtl]
+  rw [expPos_succ n hi, expLen, shadowCall?_of_isCtl hctl]
+  rfl
+
+/-- The step of a non-control instruction that commutes with a change of the names `N`,
+    from a state with the counter `q`. -/
+theorem offCongr_step {N : List String} {i : LinstrRM} (hc : OffCongr N i)
+    (hi : isCtl i.fst = false) (P P' : LprogM) {s t : LstateMF}
+    {L' : String → Σ w, BitVec w} (q : Nat)
+    (hL : ∀ r, r ∉ N → L' r = s.prog.base.reg.lvm r) (h : x86Isa.step P i s = some t) :
+    ∃ L'' : String → Σ w, BitVec w, (∀ r, r ∉ N → L'' r = t.prog.base.reg.lvm r) ∧
+      x86Isa.step P' i (setRL L' q s) = some (setRL L'' (q + 1) t) := by
+  obtain ⟨L'', hL'', h'⟩ := hc P P' s t L' hL h
+  refine ⟨L'', hL'', ?_⟩
+  have hg := x86Isa_pcFree.step P' P' i hi (setRL L' s.prog.base.reg.lpc s) q
+  rw [h'] at hg
+  exact hg
+
+/-- Register operands read at width `64` in two register files that agree on them give
+    the same words. -/
+theorem mapM_regOps_agree (R R' : LstateN) : ∀ (xs : List String),
+    (∀ x ∈ xs, R'.lvm x = R.lvm x) →
+    (xs.map LOperand.reg).mapM (evalOperandN R' 64)
+      = (xs.map LOperand.reg).mapM (evalOperandN R 64)
+  | [], _ => rfl
+  | x :: xs, h => by
+      have e : R'.lvm x = R.lvm x := h x (by simp)
+      have h0 : evalOperandN R' 64 (.reg x) = evalOperandN R 64 (.reg x) := by
+        simp only [evalOperandN, LstateN.getW]
+        rw [e]
+      simp only [List.map_cons, List.mapM_cons, h0]
+      rw [mapM_regOps_agree R R' xs (fun y hy => h y (by simp [hy]))]
+
+/-- **The step of a summary commutes with a change of names that are no operands.** -/
+theorem procStep_setRL {pr : ProcSummary} {d : String} {xs : List String} {s u : LstateMF}
+    (L' : String → Σ w, BitVec w) (q : Nat) (hx : ∀ x ∈ xs, L' x = s.prog.base.reg.lvm x)
+    (h : procStep pr d (xs.map LOperand.reg) s = some u) :
+    ∃ w, u = retWord d w s ∧
+      procStep pr d (xs.map LOperand.reg) (setRL L' q s) = some (retWord d w (setRL L' q s)) := by
+  unfold procStep at h ⊢
+  split at h
+  · rename_i har
+    obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
+    refine ⟨w, rfl, ?_⟩
+    rw [if_pos har, mapM_regOps_agree s.prog.base.reg (setRL L' q s).prog.base.reg xs hx, hvs]
+    simp only [Option.bind_some, hw, Option.map_some]
+  · cases h
+
+/-- A step of an instruction of `commonSeq` on the x86 instruction set with procedures
+    stays in the function and advances the counter by one. -/
+theorem commonSeq_step_pc (T : ProcTable) (P : LprogM) {f : String} {args : List String}
+    {res d : String} {xs : List String} {i : LinstrRM} (hi : i ∈ commonSeq f args res d xs)
+    {a b : LstateMF} (h : (x86Isa.withProcs T).step P i a = some b) :
+    b.prog.lfn = a.prog.lfn ∧ b.prog.base.lpc = a.prog.base.lpc + 1 := by
+  simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
+    or_false] at hi
+  have hmov : ∀ x y, (x86Isa.withProcs T).step P (movI x y) a = some b →
+      b.prog.lfn = a.prog.lfn ∧ b.prog.base.lpc = a.prog.base.lpc + 1 := by
+    intro x y hm
+    rw [step_movI] at hm
+    cases hm
+    exact ⟨rfl, rfl⟩
+  rcases hi with ⟨p, -, rfl⟩ | rfl | rfl
+  · exact hmov _ _ h
+  · replace h : (match procCall? T (callShadow res f (args.map LOperand.reg)) with
+        | some q => procStep q.1 q.2.1 q.2.2 a
+        | none => x86Isa.step P (callShadow res f (args.map LOperand.reg), .reg none) a)
+        = some b := h
+    rw [procCall?_callShadow] at h
+    cases hT : T f with
+    | none =>
+        rw [hT] at h
+        replace h : x86Isa.step P (callShadow res f (args.map LOperand.reg), .reg none) a
+          = some b := h
+        rw [x86Isa_refusesProcs (fun g => if g = f then some ⟨0, fun _ => none⟩ else none) P
+          (callShadow res f (args.map LOperand.reg), .reg none) a
+          (by rw [procCall?_callShadow]; simp)] at h
+        cases h
+    | some pr =>
+        rw [hT] at h
+        replace h : procStep pr res (args.map LOperand.reg) a = some b := h
+        unfold procStep at h
+        split at h
+        · obtain ⟨vs, -, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
+          exact ⟨rfl, by
+            simp only [retWord, JasminLsemMemLoop.LstateM.lpc_nextPc,
+              JasminLsemMemLoop.LstateM.lpc_setReg]⟩
+        · cases h
+  · exact hmov _ _ h
+
+theorem runI_eq_runL (I : Isa) (P : LprogM) : ∀ (is : List LinstrRM) (s : LstateMF),
+    runI I P is s = I.runL P is s
+  | [], _ => rfl
+  | i :: is, s => by
+      simp only [runI, Isa.runL]
+      cases I.step P i s with
+      | none => rfl
+      | some u => exact runI_eq_runL I P is u
+
+/-- **One step of the body is a run of steps of the rewritten body.** Let `f` have a
+    summary in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
+    `res`, every instruction of `B` that is neither a control instruction nor a shadow
+    instruction commute with a change of the names `res :: args`, and no branch condition
+    of `B` read them. From states related by `OffRel` along `expPos`, a step of the x86
+    instruction set with procedures on `B` is matched by a run of steps on `B'` to related
+    states. -/
+theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
+    {s u s' : LstateMF}
+    (h : (x86Isa.withProcs T).lsemStepPMemF (singletonProgM fn B) s = some u)
+    (hr : OffRel (res :: args) (expPos args.length B) s s') :
+    ∃ k u', Steps (x86Isa.withProcs T) (singletonProgM fn B') k s' u' ∧
+      OffRel (res :: args) (expPos args.length B) u u' := by
+  obtain ⟨L', hL, rfl⟩ := hr
+  unfold Isa.lsemStepPMemF at h
+  cases hfi : findInstrMem (singletonProgM fn B) s.prog with
+  | none => rw [hfi] at h; cases h
+  | some i =>
+    rw [hfi] at h
+    replace h : (x86Isa.withProcs T).step (singletonProgM fn B) i s = some u := h
+    unfold findInstrMem at hfi
+    split at hfi
+    · rename_i hfn
+      replace hfi : B[s.prog.base.reg.lpc]? = some i := hfi
+      have hmem : i ∈ B := List.mem_of_getElem? hfi
+      obtain ⟨is, pre, post, his, hB', hpre⟩ := commonCalls?_split hB hfi
+      have hsucc := expPos_succ args.length hfi
+      rw [← hpre] at hsucc ⊢
+      have hat : atPc (singletonProgM fn B') pre.length (setRL L' pre.length s) := ⟨hfn, rfl⟩
+      cases hs : shadowCall? i.fst with
+      | none =>
+        have hq : procCall? T i.fst = none := by simp only [procCall?, hs, Option.bind_none]
+        rw [Isa.withProcs_step_of_none _ T _ i s hq] at h
+        have his' := commonCall?_none his hs
+        subst his'
+        have hget : (singletonProgM fn B').body[pre.length]? = some i := by
+          show B'[pre.length]? = some i
+          rw [hB']
+          simp
+        have hlen : expLen args.length i = 1 := by simp [expLen, hs]
+        rw [hlen] at hsucc
+        suffices hsuff : ∃ u', x86Isa.step (singletonProgM fn B') i (setRL L' pre.length s)
+            = some u' ∧ OffRel (res :: args) (expPos args.length B) u u' by
+          obtain ⟨u', hu', hrel⟩ := hsuff
+          refine ⟨1, u', Steps.one ?_, hrel⟩
+          rw [lsemStepPMemF_of_atPc _ hat hget, Isa.withProcs_step_of_none _ T _ i _ hq]
+          exact hu'
+        cases hctl : isCtl i.fst with
+        | false =>
+          obtain ⟨L'', hL'', hstep⟩ := offCongr_step (hcg i hmem hctl hs) hctl _
+            (singletonProgM fn B') pre.length hL h
+          have hpc : u.prog.base.reg.lpc = s.prog.base.reg.lpc + 1 := by
+            have hu := x86Isa_pcFree.lpc_succ _ hctl h
+            rw [hu]
+            rfl
+          exact ⟨_, hstep, L'', hL'', by rw [hpc, hsucc]⟩
+        | true =>
+          rw [x86Isa.step_ctl _ i s hctl] at h
+          rw [x86Isa.step_ctl _ i _ hctl]
+          obtain ⟨ir, tag⟩ := i
+          cases ir with
+          | Llabel k l =>
+              simp only [ctlStep, Option.some.injEq] at h
+              subst h
+              refine ⟨_, rfl, L', hL, ?_⟩
+              show setRL L' (pre.length + 1) s
+                = setRL L' (expPos args.length B (s.prog.base.reg.lpc + 1)) s
+              rw [hsucc]
+          | Lcond c l =>
+              simp only [ctlStep] at h ⊢
+              rw [hcd c l tag hmem s L' _ hL]
+              split at h
+              · rw [if_pos (by assumption)]
+                unfold evalJumpMem at h ⊢
+                cases hl : findLabelMem l (singletonProgM fn B).body with
+                | none => rw [hl] at h; cases h
+                | some q =>
+                    rw [hl] at h
+                    rw [show findLabelMem l (singletonProgM fn B').body
+                      = some (expPos args.length B q) from findLabelMem_commonCalls? l hB hl]
+                    simp only [Option.map_some, Option.some.injEq] at h
+                    subst h
+                    refine ⟨_, rfl, L', hL, ?_⟩
+                    show setRL L' (expPos args.length B q + 1) s
+                      = setRL L' (expPos args.length B (q + 1)) s
+                    rw [expPos_label_succ args.length (B := B) hl]
+              · rw [if_neg (by assumption)]
+                simp only [Option.some.injEq] at h
+                subst h
+                refine ⟨_, rfl, L', hL, ?_⟩
+                show setRL L' (pre.length + 1) s
+                  = setRL L' (expPos args.length B (s.prog.base.reg.lpc + 1)) s
+                rw [hsucc]
+          | Lgoto tgt =>
+              obtain ⟨g, l⟩ := tgt
+              simp only [ctlStep] at h ⊢
+              split at h
+              · rw [if_pos (by assumption)]
+                unfold evalJumpMem at h ⊢
+                cases hl : findLabelMem l (singletonProgM fn B).body with
+                | none => rw [hl] at h; cases h
+                | some q =>
+                    rw [hl] at h
+                    rw [show findLabelMem l (singletonProgM fn B').body
+                      = some (expPos args.length B q) from findLabelMem_commonCalls? l hB hl]
+                    simp only [Option.map_some, Option.some.injEq] at h
+                    subst h
+                    refine ⟨_, rfl, L', hL, ?_⟩
+                    show setRL L' (expPos args.length B q + 1) s
+                      = setRL L' (expPos args.length B (q + 1)) s
+                    rw [expPos_label_succ args.length (B := B) hl]
+              · cases h
+          | _ => simp [isCtl] at hctl
+      | some q₃ =>
+        obtain ⟨d, g, srcs⟩ := q₃
+        obtain ⟨xs, hxs, rfl, hlen, rfl⟩ := commonCall?_some his hs
+        have hsrcs := regNames?_eq hxs
+        subst hsrcs
+        have hq : procCall? T i.fst = some (pr, d, xs.map LOperand.reg) := by
+          simp only [procCall?, hs, Option.bind_some, hT, Option.map_some]
+        have h1 : procStep pr d (xs.map LOperand.reg) s = some u := by
+          simpa only [Isa.withProcs, hq] using h
+        obtain ⟨hnd, hxa, hda, hdr⟩ := commonFreshB_site hf hmem hs hxs
+        have hxr := commonFreshB_site_res hf hmem hs hxs
+        obtain ⟨w, rfl, h2⟩ := procStep_setRL L' pre.length
+          (fun x hx => hL x (by
+            simp only [List.mem_cons, not_or]
+            exact ⟨hxr x hx, hxa x hx⟩)) h1
+        obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT (singletonProgM fn B') res d hlen hnd hxa h2
+        rw [runI_eq_runL] at hrun
+        obtain ⟨hst, -⟩ := steps_of_runL (x86Isa.withProcs T) (singletonProgM fn B') _ pre post
+          _ _ hB' hat (fun j hj a b hab => commonSeq_step_pc T _ hj hab) hrun
+        have hlenE : expLen args.length i = args.length + 2 := by simp [expLen, hs]
+        rw [hlenE] at hsucc
+        refine ⟨_, _, hst, L₂, fun r hr => ?_, ?_⟩
+        · simp only [List.mem_cons, not_or] at hr
+          rw [hL₂ r hr.2 hr.1, retWord_eq_regUpd, retWord_eq_regUpd]
+          show (if r = d then _ else L' r) = (if r = d then _ else s.prog.base.reg.lvm r)
+          split
+          · rfl
+          · exact hL r (by simp only [List.mem_cons, not_or]; exact hr)
+        · show setRL L₂ (pre.length + 1 + (args.length + 1)) s
+            = setRL L₂ (expPos args.length B (s.prog.base.reg.lpc + 1)) s
+          rw [hsucc, Nat.add_assoc, Nat.add_left_comm 1 args.length 1]
+    · cases hfi
+
+/-- **A run of steps of the body is a run of steps of the rewritten body**, between states
+    related by `OffRel` along `expPos`. -/
+theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c) :
+    ∀ (n : Nat) (s t s' : LstateMF),
+      Steps (x86Isa.withProcs T) (singletonProgM fn B) n s t →
+      OffRel (res :: args) (expPos args.length B) s s' →
+      ∃ n' t', Steps (x86Isa.withProcs T) (singletonProgM fn B') n' s' t' ∧
+        OffRel (res :: args) (expPos args.length B) t t'
+  | 0, s, t, s', h, hr => by
+      have hst : s = t := Option.some.inj h
+      subst hst
+      exact ⟨0, s', Steps.refl _ _ _, hr⟩
+  | n + 1, s, t, s', h, hr => by
+      simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
+      obtain ⟨m, hm, h⟩ := h
+      obtain ⟨k, m', hk, hr'⟩ := step_common hT hB hf hcg hcd hm hr
+      obtain ⟨n', t', hn', hr''⟩ := steps_common hT hB hf hcg hcd n m t m' h hr'
+      exact ⟨k + n', t', hk.trans hn', hr''⟩
+
+/-- A halted state of the body is related to halted states of the rewritten body. -/
+theorem halted_common {f : String} {args : List String} {res fn : String}
+    {B B' : List LinstrRM} (hB : commonCalls? f args res B = some B') {N : List String}
+    {t t' : LstateMF} (ht : Halted (singletonProgM fn B) t)
+    (hr : OffRel N (expPos args.length B) t t') : Halted (singletonProgM fn B') t' := by
+  obtain ⟨L', -, rfl⟩ := hr
+  unfold Halted findInstrMem at ht ⊢
+  split at ht
+  · rename_i hfn
+    rw [if_pos (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
+    have hle : B.length ≤ t.prog.base.reg.lpc := List.getElem?_eq_none_iff.mp ht
+    show B'[expPos args.length B t.prog.base.reg.lpc]? = none
+    rw [expPos_of_le _ hle, ← commonCalls?_length hB]
+    exact List.getElem?_eq_none (Nat.le_refl _)
+  · rename_i hfn
+    exact if_neg hfn
+
+/-- A state at the counter `0` is related to itself. -/
+theorem offRel_entry (N : List String) (n : Nat) (B : List LinstrRM) {s : LstateMF}
+    (h0 : s.prog.base.reg.lpc = 0) : OffRel N (expPos n B) s s :=
+  ⟨s.prog.base.reg.lvm, fun _ _ => rfl, by
+    rw [h0, expPos_zero]
+    calc s = setRL s.prog.base.reg.lvm s.prog.base.reg.lpc s := rfl
+      _ = setRL s.prog.base.reg.lvm 0 s := by rw [h0]⟩
+
+/-- Related states agree on the registers outside `N`, the arrays and the word memory. -/
+theorem OffRel.obs {N : List String} {ψ : Nat → Nat} {t t' : LstateMF} (h : OffRel N ψ t t')
+    {outs : List String} (ho : ∀ r ∈ outs, r ∉ N) : Obs outs t t' := by
+  obtain ⟨L', hL, rfl⟩ := h
+  exact ⟨fun r hr => hL r (ho r hr), rfl, rfl⟩
+
+/-- **The rewriting of a body onto common names preserves halting runs.** Let `f` have a
+    summary in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
+    `res`, every instruction of `B` that is neither a control instruction nor a shadow
+    instruction commute with a change of the names `res :: args`, and no branch condition
+    of `B` read them. A halting run of the x86 instruction set with procedures on `B` from
+    a state at the counter `0` to `t` is matched by a halting run on `B'` from the same
+    state to a state `t'` that is `t` up to the registers `res :: args` and the counter,
+    which is at the image of the counter of `t`. -/
+theorem commonCalls_run {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
+    {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
+    (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+      OffRel (res :: args) (expPos args.length B) t t' := by
+  obtain ⟨n, -, hn, ht⟩ := steps_of_lsemFuelMemF (x86Isa.withProcs T) _ fuel s t hrun
+  obtain ⟨n', t', hn', hr⟩ := steps_common hT hB hf hcg hcd n s t s hn
+    (offRel_entry _ _ _ h0)
+  exact ⟨n' + 0, t', lsemFuelMemF_of_steps _ _ hn' (halted_common hB ht hr) 0, hr⟩
+
+/-- **The end states of the two runs agree on the registers outside the common names, the
+    arrays and the word memory.** -/
+theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
+    (hT : T f = some pr) {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
+    {outs : List String} (ho : ∀ r ∈ outs, r ∉ res :: args)
+    {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
+    (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+      Obs outs t t' := by
+  obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT hB hf hcg hcd h0 hrun
+  exact ⟨fuel', t', h', hr.obs ho⟩
+
+/-! ## 12. A halting run of a cut program is a segment of the body -/
+
+/-- A step of `I` stays in the function of its state. -/
+def FnStable (I : Isa) : Prop :=
+  ∀ (P : LprogM) (i : LinstrRM) (s u : LstateMF), I.step P i s = some u →
+    u.prog.lfn = s.prog.lfn
+
+/-- The label a conditional jump or a goto jumps to. -/
+def jumpLabel? : LinstrR → Option LLabel
+  | .Lcond _ l => some l
+  | .Lgoto (_, l) => some l
+  | _ => none
+
+/-- **The cut `C` of `B` along `φ` for the exit `x` halts only at the exit.** The image of
+    the position of a shadow instruction of a call of a symbol of `T` other than the exit
+    holds such a shadow instruction; when the exit is a shadow instruction, the image of
+    the end of the body holds one; and every label a jump of `B` names is declared in
+    `B`. -/
+structure IsCutRev (T : ProcTable) (B : List LinstrRM) (x : Option Nat) (C : List LinstrRM)
+    (φ : Nat → Nat) : Prop where
+  shadow : ∀ (p : Nat) (i : LinstrRM), B[p]? = some i → procCall? T i.fst ≠ none →
+    x ≠ some p → ∃ j, C[φ p]? = some j ∧ procCall? T j.fst ≠ none
+  stop : ∀ p, x = some p → ∃ j, C[φ B.length]? = some j ∧ procCall? T j.fst ≠ none
+  target : ∀ (p : Nat) (i : LinstrRM) (l : LLabel), B[p]? = some i →
+    jumpLabel? i.fst = some l → (findLabelMem l B).isSome = true
+
+/-- **The check of `IsCutRev`.** -/
+def isCutRevB (T : ProcTable) (B : List LinstrRM) (x : Option Nat) (C : List LinstrRM)
+    (φ : Nat → Nat) : Bool :=
+  (List.range B.length).all (fun p =>
+    match B[p]? with
+    | some i =>
+        ((procCall? T i.fst).isNone || x == some p || (C[φ p]?).any (isProcB T)) &&
+        (match jumpLabel? i.fst with
+          | some l => (findLabelMem l B).isSome
+          | none => true)
+    | none => true) &&
+  (x.isNone || (C[φ B.length]?).any (isProcB T))
+
+/-- **Soundness of `isCutRevB`.** -/
+theorem isCutRev_of_isCutRevB {T : ProcTable} {B : List LinstrRM} {x : Option Nat}
+    {C : List LinstrRM} {φ : Nat → Nat} (h : isCutRevB T B x C φ = true) :
+    IsCutRev T B x C φ := by
+  simp only [isCutRevB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  obtain ⟨hall, hstop⟩ := h
+  have hany : ∀ {o : Option LinstrRM}, o.any (isProcB T) = true →
+      ∃ j, o = some j ∧ procCall? T j.fst ≠ none := by
+    intro o ho
+    cases o with
+    | none => cases ho
+    | some j => exact ⟨j, rfl, Option.isSome_iff_ne_none.mp ho⟩
+  refine ⟨?_, ?_, ?_⟩
+  · intro p i hp hq hx
+    have hpi := hall p (List.getElem?_eq_some_iff.mp hp).1
+    rw [hp] at hpi
+    simp only [Bool.and_eq_true, Bool.or_eq_true, Option.isNone_iff_eq_none, beq_iff_eq] at hpi
+    rcases hpi.1 with (h1 | h1) | h1
+    · exact absurd h1 hq
+    · exact absurd h1 hx
+    · exact hany h1
+  · intro p hx
+    subst hx
+    simp only [Option.isNone_some, Bool.false_or] at hstop
+    exact hany hstop
+  · intro p i l hp hl
+    have hpi := hall p (List.getElem?_eq_some_iff.mp hp).1
+    rw [hp] at hpi
+    simp only [Bool.and_eq_true, hl] at hpi
+    exact hpi.2
+
+/-- A run of steps from a halted state is empty. -/
+theorem halted_steps_eq {I : Isa} {P : LprogM} : ∀ {m : Nat} {a t : LstateMF},
+    Steps I P m a t → Halted P a → a = t
+  | 0, _, _, h, _ => Option.some.inj h
+  | m + 1, a, t, h, ha => by
+      simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
+      obtain ⟨c, hc, -⟩ := h
+      unfold Isa.lsemStepPMemF at hc
+      rw [show findInstrMem P a.prog = none from ha] at hc
+      cases hc
+
+/-- A run of steps to a halted state from a state that fetches `j` starts with the step of
+    `j`. -/
+theorem first_step {I : Isa} {P : LprogM} {m : Nat} {a t : LstateMF} (h : Steps I P m a t)
+    (ht : Halted P t) {j : LinstrRM} (hj : findInstrMem P a.prog = some j) :
+    ∃ m' c, m = m' + 1 ∧ I.step P j a = some c ∧ Steps I P m' c t := by
+  cases m with
+  | zero =>
+      have hat : a = t := Option.some.inj h
+      subst hat
+      rw [show findInstrMem P a.prog = none from ht] at hj
+      cases hj
+  | succ m =>
+      simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
+      obtain ⟨c, hc, h⟩ := h
+      unfold Isa.lsemStepPMemF at hc
+      rw [hj] at hc
+      exact ⟨m, c, rfl, hc, h⟩
+
+/-- **A run of steps of a cut program to a halted state is a segment of the body.** Let
+    `C` be a cut of `B` along `φ` for the entry `e` and the exit `x` that halts only at the
+    exit, and let the steps of `I` stay in the function. A run of steps of `C` from the
+    image of a state `w` of `fn` at a position of `B` to a halted state `t` is a segment of
+    `B` from `w` to the exit `x`, and `t` is the end state of the segment with the counter
+    at the length of `C`. -/
+theorem segTo_of_steps_cut {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
+    {e x : Option Nat} {C : List LinstrRM} {φ : Nat → Nat} (hI : PcFree I)
+    (hR : I.RefusesProcs T) (hS : FnStable I) (hc : IsCut T fn B e x C φ)
+    (hv : IsCutRev T B x C φ) {t : LstateMF} (ht : Halted (singletonProgM fn C) t)
+    (m : Nat) : ∀ (w : LstateMF), w.prog.lfn = fn → w.prog.base.lpc ≤ B.length →
+      Steps I (singletonProgM fn C) m (emb φ w) t →
+      ∃ w', SegTo I T (singletonProgM fn B) w x w' ∧ t = goto w' C.length := by
+  induction m using Nat.strong_induction_on with
+  | _ m ih =>
+  intro w hfn hle hst
+  have hat : atPc (singletonProgM fn C) (φ w.prog.base.lpc) (emb φ w) := ⟨hfn, rfl⟩
+  have hfetch : ∀ j, C[φ w.prog.base.lpc]? = some j →
+      findInstrMem (singletonProgM fn C) (emb φ w).prog = some j := fun j hj => by
+    rw [findInstrMem_of_atPc hat]
+    exact hj
+  have hrefuse : ∀ j, C[φ w.prog.base.lpc]? = some j → procCall? T j.fst ≠ none → False := by
+    intro j hj hne
+    obtain ⟨m', c, -, hstep, -⟩ := first_step hst ht (hfetch j hj)
+    rw [hR _ j _ hne] at hstep
+    cases hstep
+  have hexit : w.prog.base.lpc = stopPos B x → t = goto w C.length := by
+    intro hpc
+    have hex := exit_step (I := I) hc hfn hpc
+    obtain ⟨tag, fin, k, hi, -, -⟩ := hc.exit
+    rw [← hpc] at hi
+    obtain ⟨m', c, -, hstep, hrest⟩ := first_step hst ht (hfetch _ hi)
+    rw [lsemStepPMemF_of_atPc I hat hi, hstep] at hex
+    cases hex
+    exact (halted_steps_eq hrest
+      (halted_of_atPc (P := singletonProgM fn C) ⟨hfn, rfl⟩ (Nat.le_refl _))).symm
+  cases hBi : B[w.prog.base.lpc]? with
+  | none =>
+      have hlen : w.prog.base.lpc = B.length :=
+        Nat.le_antisymm hle (List.getElem?_eq_none_iff.mp hBi)
+      cases x with
+      | none =>
+          refine ⟨w, ⟨0, Steps.refl _ _ _, ?_⟩, hexit hlen⟩
+          show findInstrMem (singletonProgM fn B) w.prog = none
+          unfold findInstrMem
+          rw [if_pos (show w.prog.lfn = (singletonProgM fn B).lfn from hfn)]
+          exact hBi
+      | some p =>
+          obtain ⟨j, hj, hne⟩ := hv.stop p rfl
+          rw [← hlen] at hj
+          exact (hrefuse j hj hne).elim
+  | some i =>
+      by_cases hq : procCall? T i.fst = none
+      · obtain ⟨hCi, hφ⟩ := hc.instr _ i hBi hq
+        obtain ⟨m', c, rfl, hstep, hrest⟩ := first_step hst ht (hfetch i hCi)
+        have hsome : ∃ w₁, I.step (singletonProgM fn B) i w = some w₁ := by
+          cases hctl : isCtl i.fst with
+          | false =>
+              have hg := hI.step (singletonProgM fn B) (singletonProgM fn C) i hctl w
+                (φ w.prog.base.lpc)
+              rw [show goto w (φ w.prog.base.lpc) = emb φ w from rfl, hstep] at hg
+              cases hw : I.step (singletonProgM fn B) i w with
+              | none => rw [hw] at hg; cases hg
+              | some w₁ => exact ⟨w₁, rfl⟩
+          | true =>
+              rw [I.step_ctl _ i _ hctl] at hstep
+              rw [I.step_ctl _ i _ hctl]
+              obtain ⟨ir, tag⟩ := i
+              cases ir with
+              | Llabel k l => exact ⟨_, rfl⟩
+              | Lcond c l =>
+                  obtain ⟨q, hq'⟩ := Option.isSome_iff_exists.mp (hv.target _ _ l hBi rfl)
+                  simp only [ctlStep]
+                  split
+                  · exact ⟨_, evalJumpMem_of_findLabelMem (P := singletonProgM fn B) hq' w⟩
+                  · exact ⟨_, rfl⟩
+              | Lgoto tgt =>
+                  obtain ⟨g, l⟩ := tgt
+                  obtain ⟨q, hq'⟩ := Option.isSome_iff_exists.mp (hv.target _ _ l hBi rfl)
+                  simp only [ctlStep] at hstep ⊢
+                  split at hstep
+                  · rw [if_pos (by assumption)]
+                    exact ⟨_, evalJumpMem_of_findLabelMem (P := singletonProgM fn B) hq' w⟩
+                  · cases hstep
+              | _ => simp [isCtl] at hctl
+        obtain ⟨w₁, hw₁⟩ := hsome
+        have hB1 : I.lsemStepPMemF (singletonProgM fn B) w = some w₁ := by
+          rw [lsemStepPMemF_of_atPc I (k := w.prog.base.lpc) ⟨hfn, rfl⟩ hBi]
+          exact hw₁
+        obtain ⟨hC1, hle₁⟩ := step_emb hI hR hc hB1
+        rw [lsemStepPMemF_of_atPc I hat hCi, hstep] at hC1
+        cases hC1
+        obtain ⟨w', ⟨n, hn, hx⟩, hw'⟩ := ih m' (Nat.lt_succ_self _) w₁
+          ((hS _ _ _ _ hw₁).trans hfn) hle₁ hrest
+        exact ⟨w', ⟨1 + n, (Steps.one hB1).trans hn, hx⟩, hw'⟩
+      · by_cases hxp : x = some w.prog.base.lpc
+        · subst hxp
+          exact ⟨w, ⟨0, Steps.refl _ _ _, ⟨hfn, rfl⟩, i, hBi, Option.isSome_iff_ne_none.mpr hq⟩,
+            hexit rfl⟩
+        · obtain ⟨j, hj, hne⟩ := hv.shadow _ i hBi hq hxp
+          exact (hrefuse j hj hne).elim
+
+/-- **A halting run of a cut program is a segment of the body**, the converse of
+    `cutRun_of_segTo`: a halting run of `C` from the counter `0`, from `s` to `u`, is a
+    segment of `B` from `s` at the entry position to `u` at some counter. -/
+theorem segTo_of_cutRun {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
+    {e x : Option Nat} {C : List LinstrRM} {φ : Nat → Nat} (hI : PcFree I)
+    (hR : I.RefusesProcs T) (hS : FnStable I) (hc : IsCut T fn B e x C φ)
+    (hv : IsCutRev T B x C φ) {s u : LstateMF} (hfn : s.prog.lfn = fn)
+    (hle : entryPos e ≤ B.length) (h : CutRun I fn C s u) :
+    ∃ q, SegTo I T (singletonProgM fn B) (goto s (entryPos e)) x (goto u q) := by
+  obtain ⟨k, q, hk⟩ := h
+  obtain ⟨m, -, hm, ht⟩ := steps_of_lsemFuelMemF I _ (k + 0) _ _ (hk 0)
+  have hs0 : emb φ (goto s (entryPos e)) = goto s 0 := by
+    show goto (goto s (entryPos e)) (φ (entryPos e)) = goto s 0
+    rw [hc.entry]
+    rfl
+  rw [← hs0] at hm
+  obtain ⟨w', hseg, hw'⟩ := segTo_of_steps_cut hI hR hS hc hv ht m
+    (goto s (entryPos e)) hfn hle hm
+  refine ⟨w'.prog.base.lpc, ?_⟩
+  have hw : goto u w'.prog.base.lpc = w' := by
+    calc goto u w'.prog.base.lpc = goto (goto u q) w'.prog.base.lpc := rfl
+      _ = goto (goto w' C.length) w'.prog.base.lpc := by rw [hw']
+      _ = w' := rfl
+  rw [hw]
+  exact hseg
+
+/-! ## 13. Soundness of a validation by segments -/
+
+/-- The step of the summary does not read the counter. -/
+theorem Glue.goto {T : ProcTable} {P : LprogM} {p : Nat} {u v : LstateMF}
+    (hg : Glue T P p u v) (k : Nat) : Glue T P p (goto u k) (goto v (k + 1)) := by
+  obtain ⟨i, pr, dst, srcs, hi, hq, hstep⟩ := hg
+  refine ⟨i, pr, dst, srcs, hi, hq, ?_⟩
+  have he : evalOperandN (Ascent.IsaCfg.goto u k).prog.base.reg 64
+      = evalOperandN u.prog.base.reg 64 := by
+    funext o
+    cases o <;> rfl
+  unfold procStep at hstep ⊢
+  rw [he]
+  split at hstep
+  · rw [if_pos (by assumption)]
+    obtain ⟨vs, hvs, hstep⟩ := Option.bind_eq_some_iff.mp hstep
+    obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp hstep
+    rw [hvs]
+    simp only [Option.bind_some, hr, Option.map_some]
+    rfl
+  · cases hstep
+
+/-- **A chain of halting runs of cut programs of `B` is, under a simulation `CutSim`, a
+    chain of segments of `B'`.** The cut programs of `B'` are cuts that halt only at their
+    exits, and the steps of the x86 instruction set stay in the function. From a state of
+    `fn` related by `R e` to the start of the chain, the chain of segments of `B'` starts
+    at the entry position of `site e` and ends in a state that agrees with the end of the
+    chain on the registers `outs`, the arrays and the word memory. -/
+theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
+    {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
+    {pos' : Option Nat → Option Nat → Nat → Nat} (hS : FnStable x86Isa)
+    (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
+      IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x))
+    (sim : CutSim T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
+    (h : CutChain x86Isa T fn B cut e s t) :
+    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B' (sim.site e) →
+      ∃ t', RunChain x86Isa T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
+        Obs outs t t' := by
+  have hle : ∀ e, IsSite T B' e → entryPos e ≤ B'.length := by
+    intro e he
+    cases e with
+    | none => exact Nat.zero_le _
+    | some p =>
+        obtain ⟨i, hi, -⟩ := he
+        exact (List.getElem?_eq_some_iff.mp hi).1
+  induction h with
+  | @done e s t hrun _ =>
+      intro s' hR hfn he
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e none s s' t hR hrun
+      rw [sim.site_none] at hrun'
+      obtain ⟨hc, hv⟩ := hcut' (sim.site e) none he trivial
+      obtain ⟨q, hseg⟩ := segTo_of_cutRun x86Isa_pcFree (x86Isa_refusesProcs T) hS hc hv hfn
+        (hle _ he) hrun'
+      have ho : Obs outs t u' := sim.fin _ _ hQ
+      exact ⟨_, .done hseg, ho.1, ho.2.1, ho.2.2⟩
+  | @call e s u v t p hrun _ hglue _ ih =>
+      intro s' hR hfn he
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e (some p) s s' u hR hrun
+      obtain ⟨q, v', hsite, hglue', hR'⟩ := sim.glue p u u' v hQ hglue
+      have hq : IsSite T B' (some q) := by
+        obtain ⟨i, pr, dst, srcs, hi, hpq, -⟩ := hglue'
+        exact ⟨i, hi, by simp only [isProcB, hpq, Option.isSome_some]⟩
+      rw [hsite] at hrun'
+      obtain ⟨hc, hv⟩ := hcut' (sim.site e) (some q) he hq
+      obtain ⟨q', hseg⟩ := segTo_of_cutRun x86Isa_pcFree (x86Isa_refusesProcs T) hS hc hv hfn
+        (hle _ he) hrun'
+      have hat : atPc (singletonProgM fn B') q (goto u' q') := by
+        obtain ⟨_, _, hat, _⟩ := hseg
+        exact hat
+      have hqq : q' = q := hat.2
+      subst hqq
+      have hg := hglue'.goto q'
+      have hfn' : v'.prog.lfn = fn := (hg.atPc_succ hat).1
+      obtain ⟨t', hch, hobs⟩ := ih v' hR' hfn' (by rw [hsite]; exact hq)
+      rw [hsite] at hch
+      exact ⟨t', .call q' hseg hg hch, hobs⟩
+
+/-- **Soundness of a validation by segments.** Let the cut programs of `B` be cuts, the
+    cut programs of `B'` be cuts that halt only at their exits, and the steps of the x86
+    instruction set stay in the function. Then `CutCheckSound` holds: under a simulation
+    `CutSim`, every halting run of the x86 instruction set with procedures on `B` from a
+    state of `fn` at the counter `0` is matched by a halting run on `B'` from the same
+    state, the end states agreeing on the registers `outs`, the arrays and the word
+    memory. -/
+theorem cutCheck_sound {T : ProcTable} {outs : List String} {fn : String}
+    {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
+    {pos pos' : Option Nat → Option Nat → Nat → Nat} (hS : FnStable x86Isa)
+    (hcut : ∀ e x, IsSite T B e → IsSite T B x → IsCut T fn B e x (cut e x) (pos e x))
+    (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
+      IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x)) :
+    CutCheckSound T outs fn B B' cut cut' := by
+  intro sim s t hfn hpc fuel hrun
+  have hch := withProcs_run_cut x86Isa_pcFree (x86Isa_refusesProcs T) hcut fuel s t hfn hpc hrun
+  obtain ⟨t', hrc, hobs⟩ := runChain_of_cutChain hS hcut' sim hch s (sim.init s) hfn
+    (by rw [sim.site_none]; trivial)
+  rw [sim.site_none] at hrc
+  have hs : goto s (entryPos none) = s := by
+    calc goto s (entryPos none) = goto s s.prog.base.lpc := by rw [hpc]; rfl
+      _ = s := rfl
+  rw [hs] at hrc
+  obtain ⟨n, hn⟩ := run_of_runChain (x86Isa_refusesProcs T) hrc
+  exact ⟨n + 0, t', hn 0, hobs⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
