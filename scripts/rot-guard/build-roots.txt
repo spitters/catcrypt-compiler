@@ -184,7 +184,6 @@ CatCrypt.Crypto.Optimizer.Rewrite.MontDomainElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryTransport
 CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.RadixDecompGeneric
-CatCrypt.Crypto.Optimizer.Rewrite.RangeSelNF
 CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 CatCrypt.Crypto.Optimizer.Rewrite.WindowedScalarMulGeneric
 CatCrypt.Crypto.Optimizer.ScheduleSearchMontMulNtt
@@ -653,6 +652,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
+CatCrypt.Crypto.SecureCompilation.VIR.LaneMapSel
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneStripAccept
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
@@ -745,7 +745,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.RowLazy
 CatCrypt.Crypto.SecureCompilation.VIR.RustExecSimulatesUnified
 CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered
 CatCrypt.Crypto.SecureCompilation.VIR.SailX86SimdDecoderVsimd
-CatCrypt.Crypto.SecureCompilation.VIR.SelLegal
 CatCrypt.Crypto.SecureCompilation.VIR.SemScalarLToJasminCom
 CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordKConstCom
 CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundAbstractCom
