@@ -48,6 +48,15 @@ semantics at `bi`, with equality as input and output relation, under the typing
 At the module of a single function the call typing is `hax64SigOf`, the table is `bi`, the
 source relation is the run of the entry at `bi`, and the inlining returns its argument.
 
+A module also carries linked functions (`LinkedFn`, the field `HaxModule.linked`, empty
+unless given): functions the compiled entry calls by a machine call. The call typing of a
+module types a call of a linked function from its parameter and result types
+(`HaxModule.sigOf`), the inlining leaves the call in place, and the table of the module has
+no entry for it, so the source relation `HaxModule.Runs` gives a run that calls a linked
+function the value the base table gives the name. For a module without linked functions the
+call typing is that of the prepared callees (`HaxModule.sigOf_of_linked_nil`), and the table,
+the source relation and the inlining do not read the field.
+
 A family of tables along the call depth, `NFInline.CrateTables fs bi T`, states what the
 inlining uses of a table of callees: names of no callee are answered by `bi`, depth `0` answers
 no callee, and a value of a call at depth `n + 1` decodes at the result type and is the value
@@ -67,6 +76,8 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
 * `refBi` — the reference table of a list of functions.
 * `HaxModule`, `HaxModule.single`, `HaxModule.prepared` — a module, the module of one
   function, and the prepared callees of a module.
+* `LinkedFn`, `HaxModule.linkedFns` — a linked function of a module, and the linked
+  functions of a module as callees of the call typing.
 * `HaxModule.sigOf`, `HaxModule.table` — the call typing and the table of a module.
 * `HaxModule.Runs` — the source relation of a module at a base table and a layout.
 * `HaxModule.inline?`, `HaxModule.inlineStep`, `HaxModule.inlineCert` — the inlining of the
@@ -76,6 +87,11 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
 
 * `crateSigOf_nil`, `crateBi_nil` — with no callee the call typing and the table are the base
   ones.
+* `crateSigOf_append`, `typedCalls_crateSigOf` — the call typing of two lists of callees is
+  the typing of the first over the typing of the second, and the typing with callees whose
+  names a table does not answer is sound for the table.
+* `HaxModule.linkedFns_of_linked_nil`, `HaxModule.sigOf_of_linked_nil` — a module without
+  linked functions has the call typing of its prepared callees.
 * `crateCallOp_nil`, `noCrateCall_nil`, `crateInlineOk_nil_zero`, `crateInline?_nil_zero` —
   with no callee no operation is a call of a callee, the check of `0` rounds accepts every
   program, and the inlining returns its argument.
@@ -116,6 +132,30 @@ open Ctxt (Valuation)
 /-- The call typing with no callee is the base typing. -/
 theorem crateSigOf_nil (base : String → List NfTy → Option NfTy) : crateSigOf [] base = base :=
   rfl
+
+/-- The call typing with the callees `A ++ L` is the call typing with `A` over the call
+    typing with `L`. -/
+theorem crateSigOf_append (A L : List CrateFn) (base : String → List NfTy → Option NfTy) :
+    crateSigOf (A ++ L) base = crateSigOf A (crateSigOf L base) := by
+  funext f as
+  unfold crateSigOf
+  rw [List.find?_append]
+  cases A.find? (·.name == f) <;> rfl
+
+/-- **The call typing with callees a table does not answer is sound for the table**: when
+    `base` is sound for `bi` and `bi` answers the name of no function of `L`, the call typing
+    `crateSigOf L base` is sound for `bi`. -/
+theorem typedCalls_crateSigOf {bi : Builtins} {base : String → List NfTy → Option NfTy}
+    (hT : TypedCalls bi base) (L : List CrateFn)
+    (hL : ∀ c ∈ L, ∀ vals, bi c.name vals = none) : TypedCalls bi (crateSigOf L base) := by
+  intro f as r hsig xs v hb
+  unfold crateSigOf at hsig
+  split at hsig
+  · rename_i c hf
+    have hn : c.name = f := by simpa using List.find?_some hf
+    rw [← hn, hL c (List.mem_of_find?_eq_some hf)] at hb
+    cases hb
+  · exact hT f as r hsig xs v hb
 
 /-- The builtins with no callee are the base builtins, at every fuel and call depth. -/
 theorem crateBi_nil (bi : Builtins) (fuel n : Nat) : crateBi [] bi fuel n = bi := by
@@ -494,9 +534,28 @@ theorem crateTables_refBi (P : TExpr → ImpExpr) (fs : List ModFn) (bi : Builti
 
 /-! ## 5. Modules -/
 
-/-- **A module**: an entry function, the functions the entry may call, and the depth to which
-    their calls are inlined. A function is a `ModFn`: its name, its typed parameters, its
-    result type and its extraction. -/
+/-- **A linked function of a module**: a function the compiled entry calls by a machine call,
+    and whose calls are not inlined. It is a function `fn` of a module with the layout
+    `layout` it is compiled under, the machine registers `clob` its code may change, the size
+    `frame` in bytes of its stack frame, and its machine code `bytes`. The typed front reads
+    the name, the parameter types and the result type of `fn`; the other fields are data of
+    the back half of a calling body. -/
+structure LinkedFn where
+  /-- The function: its name, its typed parameters, its result type and its extraction. -/
+  fn : ModFn
+  /-- The layout the function is compiled under. -/
+  layout : AbiLayout
+  /-- The machine registers the code of the function may change. -/
+  clob : List String
+  /-- The size in bytes of the stack frame of the function. -/
+  frame : Nat
+  /-- The machine code of the function. -/
+  bytes : List (BitVec 8)
+
+/-- **A module**: an entry function, the functions the entry may call, the depth to which
+    their calls are inlined, and the linked functions, whose calls stay calls. A function is
+    a `ModFn`: its name, its typed parameters, its result type and its extraction. A module
+    has no linked function unless one is given. -/
 structure HaxModule where
   /-- The extraction of the entry function. -/
   entry : TExpr
@@ -504,11 +563,14 @@ structure HaxModule where
   fns : List ModFn
   /-- The call depth to which the functions run, and the number of rounds of inlining. -/
   depth : Nat
+  /-- The linked functions: a call of one of them is kept as a call. A name that is also
+      the name of a function of `fns` is called as that function. -/
+  linked : List LinkedFn := []
 
 namespace HaxModule
 
-/-- The module of the single function `te`: no callee, depth `0`. -/
-def single (te : TExpr) : HaxModule := ⟨te, [], 0⟩
+/-- The module of the single function `te`: no callee, depth `0`, no linked function. -/
+def single (te : TExpr) : HaxModule := ⟨te, [], 0, []⟩
 
 instance : Coe TExpr HaxModule := ⟨single⟩
 
@@ -518,17 +580,39 @@ def prepared (P : TExpr → ImpExpr) (m : HaxModule) : List CrateFn := m.fns.map
 /-- The module of a single function has no prepared callee. -/
 theorem prepared_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).prepared P = [] := rfl
 
+/-- The linked functions of a module as callees, under the preparation `P` of bodies. The
+    call typing reads their names, their parameter types and their result types. -/
+def linkedFns (P : TExpr → ImpExpr) (m : HaxModule) : List CrateFn :=
+  m.linked.map fun l => l.fn.prep P
+
+/-- A module without linked functions has no linked callee. -/
+theorem linkedFns_of_linked_nil (P : TExpr → ImpExpr) {m : HaxModule} (h : m.linked = []) :
+    m.linkedFns P = [] := by
+  rw [linkedFns, h, List.map_nil]
+
+/-- The module of a single function has no linked callee. -/
+theorem linkedFns_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).linkedFns P = [] :=
+  rfl
+
 /-- The call typing of a module under the preparation `P`: `crateSigOf` at its prepared
-    callees over `hax64SigOf`. -/
+    callees followed by its linked functions, over `hax64SigOf`. A call of a linked function
+    on arguments whose types fit its parameter types has its result type. -/
 def sigOf (P : TExpr → ImpExpr) (m : HaxModule) : String → List NfTy → Option NfTy :=
-  crateSigOf (m.prepared P) hax64SigOf
+  crateSigOf (m.prepared P ++ m.linkedFns P) hax64SigOf
 
 /-- The call typing of the module of a single function is `hax64SigOf`. -/
 theorem sigOf_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).sigOf P = hax64SigOf :=
   rfl
 
+/-- The call typing of a module without linked functions is `crateSigOf` at its prepared
+    callees over `hax64SigOf`. -/
+theorem sigOf_of_linked_nil (P : TExpr → ImpExpr) {m : HaxModule} (h : m.linked = []) :
+    m.sigOf P = crateSigOf (m.prepared P) hax64SigOf := by
+  rw [sigOf, linkedFns_of_linked_nil P h, List.append_nil]
+
 /-- **The table of a module**: the reference table `refBi` at its functions and its depth,
-    each function run at the fuel `fuelC`. -/
+    each function run at the fuel `fuelC`. A linked function has no entry in the table: its
+    name is answered by the base table `bi`. -/
 def table (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
   refBi m.fns bi fuelC m.depth
 
@@ -541,8 +625,11 @@ theorem table_single (te : TExpr) (bi : Builtins) (fuelC : Nat) :
     the callees, runs from an environment `σ` reads off the entry state `sa` to the value `v`,
     which is not a control-flow value. A call of a function of the module is the run of the
     reference reading of the extraction of the callee, from the environment binding the names
-    of its parameters to the argument values. -/
-def Runs (bi : Builtins) (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
+    of its parameters to the argument values. A call of a linked function is a call of the
+    base table `bi` at its name. At a base table that answers the name by no value, a run
+    that calls a linked function has no value, and the relation holds of no such run: the
+    relation states the source meaning of the inlined calls only. -/
+def Runs(bi : Builtins) (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
   ∃ env fuel fuelC env', σ.EnvOf sa env ∧
     (denoteSpine (m.table bi fuelC) fuel m.entry.erase).run env = (.val v, env') ∧
       v.isControlFlow = false
@@ -567,14 +654,20 @@ theorem inline?_single (P : TExpr → ImpExpr) (te : TExpr) {Γ : Ctxt nfDialect
     {ts : List NfTy} (p : NFProg nfDialect Γ ts) : (single te).inline? P p = some p :=
   crateInline?_nil_zero p
 
-/-- **The call typing of the prepared callees is sound for the table of a module**, under the
-    typing of the base table, when the preparation `P` keeps the runs of every function at
-    every depth of the reference table. -/
+/-- **The call typing of a module is sound for the table of the module**, under the typing
+    of the base table, when the preparation `P` keeps the runs of every function at every
+    depth of the reference table and the base table answers the name of no linked function.
+    The hypothesis on the linked functions holds for every module without one. -/
 theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     (hT : TypedCalls bi hax64SigOf) (fuelC : Nat)
-    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns bi fuelC n)) :
-    TypedCalls (m.table bi fuelC) (m.sigOf P) :=
-  (crateTables_refBi P m.fns bi fuelC hsim).typedCalls hT m.depth
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns bi fuelC n))
+    (hL : ∀ l ∈ m.linked, ∀ vals, bi l.fn.name vals = none) :
+    TypedCalls (m.table bi fuelC) (m.sigOf P) := by
+  rw [sigOf, crateSigOf_append]
+  refine (crateTables_refBi P m.fns bi fuelC hsim).typedCalls
+    (typedCalls_crateSigOf hT _ fun c hc vals => ?_) m.depth
+  obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc
+  exact hL l hl vals
 
 /-- **The inlining of the calls of a module keeps every successful run, from the table of the
     module to the base table**, under the typing of the base table, when the preparation `P`
