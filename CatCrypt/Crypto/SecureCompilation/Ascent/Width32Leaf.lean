@@ -134,7 +134,7 @@ open Transfer.Param
 /-- A width-32 word-op tree closed through the `Param` engine. -/
 theorem wEncTreeAddParam32 (x y : BitVec 32) :
     wEnc32 (x * x + y) = wEnc32 x * wEnc32 x + wEnc32 y :=
-  wEncAddParam32 (x * x) _ (wEncMulParam32 x _ rfl x _ rfl) y _ rfl
+  @wEncAddParam32 (x * x) _ (@wEncMulParam32 x _ rfl x _ rfl) y _ rfl
 
 /-! ## The arithmetic fragment and its `ZMod 2^32` / `BitVec 32` evaluators
 

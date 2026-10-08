@@ -174,7 +174,7 @@ open Transfer.Param
 /-- The `Param`-engine witness applied directly at reflexive arguments yields the
     word equation, exactly as `bbAddParam a a rfl b b rfl` does for the field. -/
 example (x y : BitVec 64) : wEnc (x + y) = wEnc x + wEnc y :=
-  wEncAddParam x _ rfl y _ rfl
+  @wEncAddParam x _ rfl y _ rfl
 
 /-- A whole `wEnc` word-op tree closed through the **`Param` engine** — the composed
     `@[param]` `RArrow` witnesses above — as opposed to the `Related`-engine
@@ -182,12 +182,12 @@ example (x y : BitVec 64) : wEnc (x + y) = wEnc x + wEnc y :=
     *other* registry: the register-once bridge feeds one square to both. -/
 theorem wEncTreeAddParam (x y : BitVec 64) :
     wEnc (x * x + y) = wEnc x * wEnc x + wEnc y :=
-  wEncAddParam (x * x) _ (wEncMulParam x _ rfl x _ rfl) y _ rfl
+  @wEncAddParam (x * x) _ (@wEncMulParam x _ rfl x _ rfl) y _ rfl
 
 /-- The subtraction tree, likewise through the `Param`-engine witnesses. -/
 theorem wEncTreeSubParam (x y z : BitVec 64) :
     wEnc (x * y - z) = wEnc x * wEnc y - wEnc z :=
-  wEncSubParam (x * y) _ (wEncMulParam x _ rfl y _ rfl) z _ rfl
+  @wEncSubParam (x * y) _ (@wEncMulParam x _ rfl y _ rfl) z _ rfl
 
 /-! ### `param_auto` on `wEnc` trees: a documented negative
 
