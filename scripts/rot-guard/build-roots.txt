@@ -251,7 +251,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresJRRel
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineRRel
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
@@ -1090,7 +1090,6 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
-HaxAscent.Ascent.CorresRRel
 HaxAscent.Ascent.FnCorresUnique
 HaxAscent.Ascent.IfBreak
 HaxAscent.Ascent.LocalCalls
