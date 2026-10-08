@@ -697,6 +697,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
+CatCrypt.Crypto.SecureCompilation.VIR.NFPassLeakMC
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
 CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
 CatCrypt.Crypto.SecureCompilation.VIR.NarrowFieldPlant64
@@ -772,7 +773,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.TileBridgeLegal
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
-CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
 CatCrypt.Crypto.SecureCompilation.VIR.VecIsa
 CatCrypt.Crypto.SecureCompilation.VIR.WeilReciprocity
