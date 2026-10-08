@@ -801,6 +801,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Miller
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254Fp2AddSubKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.CallTableCongr
 CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeStackRoom
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayQrObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayTransposeObjectEmit
