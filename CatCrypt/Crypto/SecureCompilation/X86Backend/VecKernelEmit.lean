@@ -163,7 +163,7 @@ theorem emitKernel_image (h : emitKernel V sym inOffset nOut c inLen F inBound =
     ∃ prog ro ops, parse V.mode text = .ok (prog, ro) ∧
       blockOfText V.mode ro prog = some ops ∧
       ∀ (A : VecAsm) (cpu : List (BitVec 8) → AState × VState → AState × VState → Prop),
-        A.Lawful → A.Faithful r V.mode cpu →
+        A.Lawful → A.Faithful r V.mode cpu → BlockEncodable A ops →
         ∀ s : AState, (kernelSig V inOffset inBound nOut c inLen F).pre s → ∀ v : VState,
           ∃ (s' : AState) (v' : VState), cpu (lineBytes A frameEnc ops) (s, v) (s', v')
             ∧ (kernelSig V inOffset inBound nOut c inLen F).post s s'
@@ -173,8 +173,8 @@ theorem emitKernel_image (h : emitKernel V sym inOffset nOut c inLen F inBound =
             ∧ ∀ a, ¬ (kernelSig V inOffset inBound nOut c inLen F).foot s a →
                 s'.mem a = s.mem a := by
   obtain ⟨hv, prog, ro, ops, hp, hops, hfr, hF⟩ := emitKernel_ok h
-  exact ⟨prog, ro, ops, hp, hops, fun A cpu hA hFa s hpre v =>
+  exact ⟨prog, ro, ops, hp, hops, fun A cpu hA hFa hbe s hpre v =>
     faithful_calleeSpec r (calleeSpec_of_parsed r V hv hp hops hfr) hFa hA
-      (frameEnc_ok_of_framed hops hfr hF) s hpre v⟩
+      (frameEnc_ok_of_framed hops hfr hF) hbe s hpre v⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelEmit

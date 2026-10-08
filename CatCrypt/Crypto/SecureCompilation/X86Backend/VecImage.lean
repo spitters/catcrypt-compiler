@@ -12,23 +12,27 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.VecMach
 # Byte images with vector instructions
 
 The scalar decoder `LprogBytesDecode.decodeLinstr` accepts no byte string that begins with
-the EVEX escape byte `0x62` (`decodeLinstr_evex`). A table of vector encodings whose entries
-all begin with that byte can therefore be decoded beside the scalar instructions without
-ambiguity.
+the EVEX escape byte `0x62` (`decodeLinstr_evex`) or with the two-byte VEX escape byte `0xC5`
+(`decodeLinstr_vex2`). A table of vector encodings whose entries all begin with one of these
+bytes can therefore be decoded beside the scalar instructions without ambiguity. The
+three-byte VEX escape `0xC4` is not admitted: `decodeLinstr` reads it as the head of the
+BMI2 shifts.
 
-`VecAsm` is the table: one byte string for each vector instruction `VecMach.VInstr`. The
-table carries no proof that its entries are the encodings of the instruction set; the
-conditions `VecAsm.Lawful` (every entry begins with `0x62`, no entry is a prefix of
-another) are the ones the decoder needs. `VecAsm.lookup` inverts the table on the front of a
-byte stream, and `mixedHead` decodes one instruction of a mixed stream: the table when the
-next byte is `0x62`, `decodeLinstr` otherwise.
+`VecAsm` is the table: for each vector instruction `VecMach.VInstr`, its byte string or none
+when the instruction has no encoding. The table carries no proof that its entries are the
+encodings of the instruction set; the conditions `VecAsm.Lawful` (every entry begins with
+`0x62` or `0xC5`, no entry is a prefix of another) are the ones the decoder needs.
+`VecAsm.lookup` inverts the table on the front of a byte stream, and `mixedHead` decodes one
+instruction of a mixed stream: the table when the next byte is `0x62` or `0xC5`,
+`decodeLinstr` otherwise.
 
 `mixedDecode A` extends `LprogBytesDecode.decodeLprog` to mixed streams and `mixedEncode A`
 extends `LprogBytesDecode.itemBytes` to programs of scalar positions and vector
-instructions. A decoded mixed program is a list over `RInstr ⊕ VInstr`, the instruction type
-of `VecMach.x86VecMach`. Offsets are prefix sums of the byte lengths of the positions, as in
-the scalar development, so a branch may cross vector instructions when its displacement
-lands on the byte offset of its label (`mixedBranchOK`).
+instructions. The round trip holds for programs whose vector instructions all have an entry
+(`VecAsm.Encodable`). A decoded mixed program is a list over `RInstr ⊕ VInstr`, the
+instruction type of `VecMach.x86VecMach`. Offsets are prefix sums of the byte lengths of the
+positions, as in the scalar development, so a branch may cross vector instructions when its
+displacement lands on the byte offset of its label (`mixedBranchOK`).
 
 `VecAsm.Faithful` states that a processor, given as a relation between a byte image and two
 machine states, runs every image as `x86VecMach` runs the program `mixedDecode` reads from
@@ -43,9 +47,10 @@ image on `X86Isa.x86Mach` is a halting run on `mixedMach`, the vector state unch
 
 ## Main definitions
 
-* `evexEscape`: the byte `0x62`.
-* `VecAsm`, `VecAsm.Lawful`, `VecAsm.lookup`: the table of vector encodings, its side
-  conditions, and its inverse on the front of a stream.
+* `evexEscape`, `vex2Escape`: the bytes `0x62` and `0xC5`.
+* `VecAsm`, `VecAsm.bytes`, `VecAsm.Encodable`, `VecAsm.Lawful`, `VecAsm.lookup`: the
+  table of vector encodings, the bytes of an entry, the instructions with an entry, the
+  side conditions of the table, and its inverse on the front of a stream.
 * `mixedHead`, `mixedStream`, `mixedResolve`, `mixedDecode`: the decoder of mixed streams.
 * `MixedItem`, `MixedItemOK`, `mixedLayout`, `mixedExpected`, `mixedBranchOK`: positions of
   an assembled mixed program, the program they denote and the well-formedness of branches.
@@ -57,8 +62,10 @@ image on `X86Isa.x86Mach` is a halting run on `mixedMach`, the vector state unch
 
 ## Main results
 
-* `decodeLinstr_evex`: `decodeLinstr (0x62 :: bs) = none`.
-* `ItemOK.ne_evex`: the bytes of a scalar position do not begin with `0x62`.
+* `decodeLinstr_evex`, `decodeLinstr_vex2`: `decodeLinstr (0x62 :: bs) = none` and
+  `decodeLinstr (0xC5 :: bs) = none`.
+* `ItemOK.ne_evex`, `ItemOK.ne_vex2`: the bytes of a scalar position do not begin with
+  `0x62` or `0xC5`.
 * `VecAsm.Lawful.unique`: a stream has at most one table entry in front.
 * `VecAsm.Lawful.lookup_enc`, `VecAsm.lookup_sound`: the table inverse on an entry, and the
   bytes of an instruction it returns.
@@ -150,44 +157,122 @@ theorem ItemOK.ne_evex {it : Item} (h : ItemOK it) : it.bytes.head? ≠ some eve
     rw [List.append_nil] at h0
     exact head?_ne_evex h0
 
+/-- The two-byte VEX escape byte `0xC5`. -/
+def vex2Escape : BitVec 8 := BitVec.ofNat 8 0xc5
+
+/-- `decodeJ1_6` rejects every stream that begins with `0xC5`. -/
+theorem decodeJ1_6_vex2 (bs : List (BitVec 8)) : decodeJ1_6 (vex2Escape :: bs) = none := by
+  rw [decodeJ1_6_of_not_rex (show isRex vex2Escape = false by decide)]
+  rfl
+
+/-- **The scalar decoder rejects the two-byte VEX escape byte.** No byte string that begins
+    with `0xC5` decodes to a scalar instruction. -/
+theorem decodeLinstr_vex2 (bs : List (BitVec 8)) : decodeLinstr (vex2Escape :: bs) = none := by
+  simp only [decodeLinstr, decodeJ1_6_vex2]
+  rfl
+
+/-- A stream the scalar decoder accepts does not begin with `0xC5`. -/
+theorem head?_ne_vex2 {bs : List (BitVec 8)} {p : DInstr × List (BitVec 8)}
+    (h : decodeLinstr bs = some p) : bs.head? ≠ some vex2Escape := by
+  intro hh
+  cases bs with
+  | nil => simp at hh
+  | cons b t =>
+    simp only [List.head?_cons, Option.some.injEq] at hh
+    subst hh
+    rw [decodeLinstr_vex2] at h
+    cases h
+
+/-- The bytes of a scalar position do not begin with `0xC5`. -/
+theorem ItemOK.ne_vex2 {it : Item} (h : ItemOK it) : it.bytes.head? ≠ some vex2Escape := by
+  unfold ItemOK at h
+  cases hdec : it.dec with
+  | none =>
+    rw [hdec] at h
+    rw [show it.bytes = [] from h]
+    simp
+  | some x =>
+    rw [hdec] at h
+    have h0 := h.2 []
+    rw [List.append_nil] at h0
+    exact head?_ne_vex2 h0
+
+/-- A byte that opens a vector instruction: `0x62` or `0xC5`. -/
+def VecHead (bs : List (BitVec 8)) : Prop :=
+  bs.head? = some evexEscape ∨ bs.head? = some vex2Escape
+
+instance (bs : List (BitVec 8)) : Decidable (VecHead bs) :=
+  inferInstanceAs (Decidable (_ ∨ _))
+
+/-- A stream the scalar decoder accepts does not open a vector instruction. -/
+theorem not_vecHead {bs : List (BitVec 8)} {p : DInstr × List (BitVec 8)}
+    (h : decodeLinstr bs = some p) : ¬ VecHead bs := by
+  rintro (hh | hh)
+  · exact head?_ne_evex h hh
+  · exact head?_ne_vex2 h hh
+
 /-! ## 2. The table of vector encodings -/
 
-/-- **The table of vector encodings**: the byte string of each vector instruction. -/
+/-- **The table of vector encodings**: the byte string of each vector instruction, or none
+    when the instruction has no encoding. -/
 structure VecAsm where
   /-- The bytes of a vector instruction. -/
-  enc : VInstr → List (BitVec 8)
+  enc : VInstr → Option (List (BitVec 8))
 
 namespace VecAsm
 
 variable {A : VecAsm}
 
-/-- The side conditions of a table: every entry begins with the EVEX escape byte, and an
-    entry that is a prefix of another is that entry. -/
+/-- The bytes of the entry of `v`, empty when `v` has no entry. -/
+def bytes (A : VecAsm) (v : VInstr) : List (BitVec 8) := (A.enc v).getD []
+
+/-- The instruction `v` has an entry. -/
+def Encodable (A : VecAsm) (v : VInstr) : Prop := ∃ bs, A.enc v = some bs
+
+/-- The entry of an encodable instruction is its bytes. -/
+theorem Encodable.enc_eq {v : VInstr} (h : A.Encodable v) : A.enc v = some (A.bytes v) := by
+  obtain ⟨bs, hb⟩ := h
+  simp [bytes, hb]
+
+/-- The side conditions of a table: every entry begins with the EVEX escape byte `0x62` or
+    the two-byte VEX escape byte `0xC5`, and an entry that is a prefix of another is that
+    entry. -/
 structure Lawful (A : VecAsm) : Prop where
-  /-- Every entry begins with `0x62`. -/
-  evex : ∀ v, ∃ t, A.enc v = evexEscape :: t
+  /-- Every entry begins with `0x62` or `0xC5`. -/
+  escape : ∀ v bs, A.enc v = some bs →
+    ∃ t, bs = evexEscape :: t ∨ bs = vex2Escape :: t
   /-- An entry that is a prefix of the entry of `w` is the entry of `w`, for `w` itself. -/
-  prefixFree : ∀ v w, A.enc v <+: A.enc w → v = w
+  prefixFree : ∀ v w bv bw, A.enc v = some bv → A.enc w = some bw → bv <+: bw → v = w
+
+/-- An entry opens a vector instruction. -/
+theorem Lawful.vecHead (hA : A.Lawful) {v : VInstr} {bs : List (BitVec 8)}
+    (h : A.enc v = some bs) (rest : List (BitVec 8)) : VecHead (bs ++ rest) := by
+  obtain ⟨t, ht | ht⟩ := hA.escape v bs h <;> subst ht
+  · exact Or.inl rfl
+  · exact Or.inr rfl
 
 /-- An entry is not empty. -/
-theorem Lawful.ne_nil (hA : A.Lawful) (v : VInstr) : A.enc v ≠ [] := by
-  obtain ⟨t, ht⟩ := hA.evex v
-  rw [ht]
-  exact List.cons_ne_nil _ _
+theorem Lawful.ne_nil (hA : A.Lawful) {v : VInstr} {bs : List (BitVec 8)}
+    (h : A.enc v = some bs) : bs ≠ [] := by
+  obtain ⟨t, ht | ht⟩ := hA.escape v bs h <;> subst ht <;> exact List.cons_ne_nil _ _
 
 /-- Distinct instructions have distinct entries. -/
-theorem Lawful.enc_injective (hA : A.Lawful) : Function.Injective A.enc :=
-  fun v w h => hA.prefixFree v w (h ▸ List.prefix_refl _)
+theorem Lawful.enc_inj (hA : A.Lawful) {v w : VInstr} {bs : List (BitVec 8)}
+    (hv : A.enc v = some bs) (hw : A.enc w = some bs) : v = w :=
+  hA.prefixFree v w bs bs hv hw (List.prefix_refl _)
 
 /-- **Unique decodability.** Two entries in front of two continuations give the same stream
     only when the instructions and the continuations agree. -/
-theorem Lawful.unique (hA : A.Lawful) {v w : VInstr} {r s : List (BitVec 8)}
-    (h : A.enc v ++ r = A.enc w ++ s) : v = w ∧ r = s := by
+theorem Lawful.unique (hA : A.Lawful) {v w : VInstr} {bv bw r s : List (BitVec 8)}
+    (hv : A.enc v = some bv) (hw : A.enc w = some bw) (h : bv ++ r = bw ++ s) :
+    v = w ∧ r = s := by
   have hvw : v = w := by
     rcases List.append_eq_append_iff.mp h with ⟨a, ha, _⟩ | ⟨c, hc, _⟩
-    · exact hA.prefixFree v w ⟨a, ha.symm⟩
-    · exact (hA.prefixFree w v ⟨c, hc.symm⟩).symm
+    · exact hA.prefixFree v w bv bw hv hw ⟨a, ha.symm⟩
+    · exact (hA.prefixFree w v bw bv hw hv ⟨c, hc.symm⟩).symm
   subst hvw
+  rw [hv] at hw
+  cases hw
   exact ⟨rfl, List.append_cancel_left h⟩
 
 open Classical in
@@ -195,28 +280,31 @@ open Classical in
     prefix of the stream, with the bytes that follow. -/
 noncomputable def lookup (A : VecAsm) (bs : List (BitVec 8)) :
     Option (VInstr × List (BitVec 8)) :=
-  if h : ∃ p : VInstr × List (BitVec 8), bs = A.enc p.1 ++ p.2 then
-    some (Classical.choose h)
+  if h : ∃ p : VInstr × List (BitVec 8) × List (BitVec 8),
+      A.enc p.1 = some p.2.1 ∧ bs = p.2.1 ++ p.2.2 then
+    some ((Classical.choose h).1, (Classical.choose h).2.2)
   else none
 
 /-- The stream of an instruction `lookup` returns is its entry and the remaining bytes. -/
 theorem lookup_sound {bs : List (BitVec 8)} {p : VInstr × List (BitVec 8)}
-    (h : A.lookup bs = some p) : bs = A.enc p.1 ++ p.2 := by
+    (h : A.lookup bs = some p) : ∃ e, A.enc p.1 = some e ∧ bs = e ++ p.2 := by
   unfold lookup at h
   split at h
   · rename_i hex
     simp only [Option.some.injEq] at h
     subst h
-    exact Classical.choose_spec hex
+    exact ⟨_, Classical.choose_spec hex⟩
   · cases h
 
 /-- `lookup` on an entry in front of a continuation returns the instruction and the
     continuation. -/
-theorem Lawful.lookup_enc (hA : A.Lawful) (v : VInstr) (rest : List (BitVec 8)) :
-    A.lookup (A.enc v ++ rest) = some (v, rest) := by
-  have hex : ∃ p : VInstr × List (BitVec 8), A.enc v ++ rest = A.enc p.1 ++ p.2 :=
-    ⟨(v, rest), rfl⟩
-  obtain ⟨h1, h2⟩ := hA.unique (Classical.choose_spec hex)
+theorem Lawful.lookup_enc (hA : A.Lawful) {v : VInstr} {bs : List (BitVec 8)}
+    (hv : A.enc v = some bs) (rest : List (BitVec 8)) :
+    A.lookup (bs ++ rest) = some (v, rest) := by
+  have hex : ∃ p : VInstr × List (BitVec 8) × List (BitVec 8),
+      A.enc p.1 = some p.2.1 ∧ bs ++ rest = p.2.1 ++ p.2.2 :=
+    ⟨(v, bs, rest), hv, rfl⟩
+  obtain ⟨h1, h2⟩ := hA.unique hv (Classical.choose_spec hex).1 (Classical.choose_spec hex).2
   unfold lookup
   rw [dif_pos hex]
   exact congrArg some (Prod.ext h1.symm h2.symm)
@@ -226,29 +314,28 @@ end VecAsm
 /-! ## 3. One instruction of a mixed stream -/
 
 /-- Decode the instruction at the front of a mixed stream: the table when the next byte is
-    `0x62`, the scalar decoder `decodeLinstr` otherwise. -/
+    `0x62` or `0xC5`, the scalar decoder `decodeLinstr` otherwise. -/
 noncomputable def mixedHead (A : VecAsm) (bs : List (BitVec 8)) :
     Option ((DInstr ⊕ VInstr) × List (BitVec 8)) :=
-  if bs.head? = some evexEscape then (A.lookup bs).map fun p => (Sum.inr p.1, p.2)
+  if VecHead bs then (A.lookup bs).map fun p => (Sum.inr p.1, p.2)
   else (decodeLinstr bs).map fun p => (Sum.inl p.1, p.2)
 
 /-- `mixedHead` extends `decodeLinstr`: on a stream the scalar decoder accepts, it returns
     the same instruction and the same remaining bytes. -/
 theorem mixedHead_of_decodeLinstr (A : VecAsm) {bs r : List (BitVec 8)} {x : DInstr}
     (h : decodeLinstr bs = some (x, r)) : mixedHead A bs = some (Sum.inl x, r) := by
-  simp only [mixedHead, if_neg (head?_ne_evex h), h, Option.map_some]
+  simp only [mixedHead, if_neg (not_vecHead h), h, Option.map_some]
 
 /-- `mixedHead` on a table entry in front of a continuation returns the instruction and the
     continuation. -/
-theorem VecAsm.Lawful.mixedHead_enc {A : VecAsm} (hA : A.Lawful) (v : VInstr)
-    (rest : List (BitVec 8)) : mixedHead A (A.enc v ++ rest) = some (Sum.inr v, rest) := by
-  obtain ⟨t, ht⟩ := hA.evex v
-  have hh : (A.enc v ++ rest).head? = some evexEscape := by rw [ht]; rfl
-  simp only [mixedHead, if_pos hh, hA.lookup_enc, Option.map_some]
+theorem VecAsm.Lawful.mixedHead_enc {A : VecAsm} (hA : A.Lawful) {v : VInstr}
+    {bs : List (BitVec 8)} (hv : A.enc v = some bs) (rest : List (BitVec 8)) :
+    mixedHead A (bs ++ rest) = some (Sum.inr v, rest) := by
+  simp only [mixedHead, if_pos (hA.vecHead hv rest), hA.lookup_enc hv, Option.map_some]
 
 /-- A vector instruction `mixedHead` returns was read from its table entry. -/
 theorem mixedHead_inr {A : VecAsm} {bs r : List (BitVec 8)} {v : VInstr}
-    (h : mixedHead A bs = some (Sum.inr v, r)) : bs = A.enc v ++ r := by
+    (h : mixedHead A bs = some (Sum.inr v, r)) : ∃ e, A.enc v = some e ∧ bs = e ++ r := by
   unfold mixedHead at h
   split at h
   · cases hl : A.lookup bs with
@@ -680,9 +767,9 @@ theorem mixedDecode_items (A : VecAsm) (items : List MixedItem)
 def MixedItem.ofScalar (it : Item) : MixedItem :=
   { bytes := it.bytes, dec := it.dec.map Sum.inl, label := it.label, target := it.target }
 
-/-- The position of a vector instruction: its table entry. -/
+/-- The position of a vector instruction: the bytes of its table entry. -/
 def VecAsm.item (A : VecAsm) (v : VInstr) : MixedItem :=
-  { bytes := A.enc v, dec := some (Sum.inr v) }
+  { bytes := A.bytes v, dec := some (Sum.inr v) }
 
 /-- The mixed positions of a program of scalar positions and vector instructions. A label
     in front of a vector instruction is a scalar position without bytes. -/
@@ -690,10 +777,10 @@ def mixedItems (A : VecAsm) (prog : List (Item ⊕ VInstr)) : List MixedItem :=
   prog.map (Sum.elim MixedItem.ofScalar A.item)
 
 /-- The bytes of a program of scalar positions and vector instructions: the bytes of each
-    scalar position, which the scalar encoder produced, and the table entry of each vector
-    instruction. It extends `LprogBytesDecode.itemBytes`. -/
+    scalar position, which the scalar encoder produced, and the bytes of the table entry of
+    each vector instruction. It extends `LprogBytesDecode.itemBytes`. -/
 def mixedEncode (A : VecAsm) (prog : List (Item ⊕ VInstr)) : List (BitVec 8) :=
-  prog.flatMap (Sum.elim Item.bytes A.enc)
+  prog.flatMap (Sum.elim Item.bytes A.bytes)
 
 theorem mixedBytes_mixedItems (A : VecAsm) (prog : List (Item ⊕ VInstr)) :
     mixedBytes (mixedItems A prog) = mixedEncode A prog := by
@@ -701,7 +788,7 @@ theorem mixedBytes_mixedItems (A : VecAsm) (prog : List (Item ⊕ VInstr)) :
   | nil => rfl
   | cons a rest ih =>
     have h : mixedBytes (mixedItems A (a :: rest))
-        = Sum.elim Item.bytes A.enc a ++ mixedBytes (mixedItems A rest) := by
+        = Sum.elim Item.bytes A.bytes a ++ mixedBytes (mixedItems A rest) := by
       cases a <;> simp [mixedBytes, mixedItems, MixedItem.ofScalar, VecAsm.item]
     rw [h, ih]
     simp [mixedEncode]
@@ -717,16 +804,17 @@ theorem MixedItemOK.ofScalar (A : VecAsm) {it : Item} (h : ItemOK it) :
     rw [hdec] at h
     exact ⟨h.1, fun rest => mixedHead_of_decodeLinstr A (h.2 rest)⟩
 
-/-- The position of a vector instruction of a lawful table is well formed. -/
-theorem VecAsm.Lawful.item_ok {A : VecAsm} (hA : A.Lawful) (v : VInstr) :
-    MixedItemOK A (A.item v) :=
-  ⟨hA.ne_nil v, fun rest => hA.mixedHead_enc v rest⟩
+/-- The position of an encodable vector instruction of a lawful table is well formed. -/
+theorem VecAsm.Lawful.item_ok {A : VecAsm} (hA : A.Lawful) {v : VInstr}
+    (hv : A.Encodable v) : MixedItemOK A (A.item v) :=
+  ⟨hA.ne_nil hv.enc_eq, fun rest => hA.mixedHead_enc hv.enc_eq rest⟩
 
 /-- **Round trip of mixed programs.** For a lawful table, the bytes of a program of
-    well-formed scalar positions and vector instructions, with well-formed branches, decode
-    to the program its positions denote. -/
+    well-formed scalar positions and encodable vector instructions, with well-formed
+    branches, decode to the program its positions denote. -/
 theorem mixedDecode_mixedEncode {A : VecAsm} (hA : A.Lawful) (prog : List (Item ⊕ VInstr))
     (hok : ∀ it, Sum.inl it ∈ prog → ItemOK it)
+    (hv : ∀ v, Sum.inr v ∈ prog → A.Encodable v)
     (hbr : mixedBranchOK (mixedItems A prog) 0 (mixedItems A prog) = true) :
     mixedDecode A (mixedEncode A prog)
       = mixedExpected (mixedItems A prog) (mixedItems A prog) := by
@@ -737,7 +825,7 @@ theorem mixedDecode_mixedEncode {A : VecAsm} (hA : A.Lawful) (prog : List (Item 
   obtain ⟨src, hsrc, rfl⟩ := hit
   cases src with
   | inl i => exact MixedItemOK.ofScalar A (hok i hsrc)
-  | inr v => exact hA.item_ok v
+  | inr v => exact hA.item_ok (hv v hsrc)
 
 /-! ## 6. Programs without vector instructions -/
 
@@ -871,7 +959,16 @@ theorem mixedDecode_encodeLcmd (A : VecAsm) (body : Lcmd) (shs : List Shape)
     describes, returns from the image in a state that `s'` describes. The statement is that
     every halting run of `x86VecMach` on the program `mixedDecode A` reads from an image is
     a run of the processor on the image. At a vector instruction `v` the machine runs
-    `vexec v`, so the statement contains: the processor executes `A.enc v` as `vexec v`. -/
+    `vexec v`, so the statement contains: the processor executes the entry of `v` as
+    `vexec v`.
+
+    The statement constrains the processor only on the entries of the table. Each entry is
+    one instruction of the instruction set (a table with a missing instruction leaves it
+    without an entry), and the entry determines the instruction: an instruction that reads
+    a read-only vector reads it from an address its bytes contain, so the relation `cpu`
+    names the states in which that address holds the vector. A processor whose execution of
+    each entry is `vexec` on the states `cpu` relates, as the Intel SDM specifies for the
+    instructions `X86Backend.VecAsmZmm.zmmAsm` encodes in `Mode.zmm`, is faithful. -/
 def VecAsm.Faithful (A : VecAsm) (r : DoitRegime) (m : Mode)
     (cpu : List (BitVec 8) → AState × VState → AState × VState → Prop) : Prop :=
   ∀ (bs : List (BitVec 8)) (prog : List (RInstr ⊕ VInstr)) (s s' : AState × VState),
@@ -896,8 +993,9 @@ theorem VecAsm.Faithful.scalar (hF : A.Faithful r m cpu) {bs : List (BitVec 8)}
     exact hF bs _ s s' (mixedDecode_of_decodeLprog A hp) hh
 
 /-- The table entry of `v` followed by `ret` decodes to the program of `v` and `ret`. -/
-theorem VecAsm.Lawful.mixedDecode_entry_ret (hA : A.Lawful) (v : VInstr) :
-    mixedDecode A (A.enc v ++ LeafBytes.encRet) = some [Sum.inr v, Sum.inl RInstr.ret] := by
+theorem VecAsm.Lawful.mixedDecode_entry_ret (hA : A.Lawful) {v : VInstr}
+    (hv : A.Encodable v) :
+    mixedDecode A (A.bytes v ++ LeafBytes.encRet) = some [Sum.inr v, Sum.inl RInstr.ret] := by
   have h := mixedDecode_mixedEncode hA [Sum.inr v, Sum.inl mkRet]
     (by
       intro it hit
@@ -905,15 +1003,21 @@ theorem VecAsm.Lawful.mixedDecode_entry_ret (hA : A.Lawful) (v : VInstr) :
         false_or] at hit
       subst hit
       exact mkRet_ok)
+    (by
+      intro w hw
+      simp only [List.mem_cons, Sum.inr.injEq, reduceCtorEq, List.not_mem_nil, or_false] at hw
+      subst hw
+      exact hv)
     (by simp [mixedBranchOK, mixedItems, MixedItem.ofScalar, VecAsm.item, mkRet])
   simpa [mixedEncode, mixedItems, mixedExpected, MixedItem.ofScalar, VecAsm.item, mkRet]
     using h
 
 /-- **A faithful processor executes the entry of `v` as `vexec v`**: on the image of the
     entry followed by `ret`, from the state `s`, it returns in the state `vexec m s v`. -/
-theorem VecAsm.Faithful.vexec (hF : A.Faithful r m cpu) (hA : A.Lawful) (v : VInstr)
-    (s : AState × VState) : cpu (A.enc v ++ LeafBytes.encRet) s (vexec m s v) := by
-  refine hF _ _ s _ (hA.mixedDecode_entry_ret v) ?_
+theorem VecAsm.Faithful.vexec (hF : A.Faithful r m cpu) (hA : A.Lawful) {v : VInstr}
+    (hv : A.Encodable v) (s : AState × VState) :
+    cpu (A.bytes v ++ LeafBytes.encRet) s (vexec m s v) := by
+  refine hF _ _ s _ (hA.mixedDecode_entry_ret hv) ?_
   exact IsaMachine.HaltsC.go (pc' := 1) (s' := VecMach.vexec m s v) rfl
     (IsaMachine.HaltsC.ret rfl)
 
@@ -1151,13 +1255,14 @@ theorem VecAsm.faithful_iff_mixedMach :
     fun hF bs prog s s' hd hh => hF bs prog s s' hd (mixedMach_haltsC.mpr hh)⟩
 
 /-- **Round trip on `mixedMach`.** For a lawful table, `mixedMach` decodes the bytes of a
-    program of well-formed scalar positions and vector instructions, with well-formed
-    branches, to the program its positions denote. -/
+    program of well-formed scalar positions and encodable vector instructions, with
+    well-formed branches, to the program its positions denote. -/
 theorem mixedMach_decode_mixedEncode (r : DoitRegime) (m : Mode) (hA : A.Lawful)
     (prog : List (Item ⊕ VInstr)) (hok : ∀ it, Sum.inl it ∈ prog → ItemOK it)
+    (hv : ∀ v, Sum.inr v ∈ prog → A.Encodable v)
     (hbr : mixedBranchOK (mixedItems A prog) 0 (mixedItems A prog) = true) :
     (mixedMach A r m).decode (mixedEncode A prog)
       = mixedExpected (mixedItems A prog) (mixedItems A prog) :=
-  mixedDecode_mixedEncode hA prog hok hbr
+  mixedDecode_mixedEncode hA prog hok hv hbr
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage

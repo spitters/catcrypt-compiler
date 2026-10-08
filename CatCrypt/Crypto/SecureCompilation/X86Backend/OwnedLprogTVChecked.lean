@@ -24,6 +24,15 @@ obligations of a block are collected along its symbolic run (`symObl`). A haltin
 run of the source (`lsemFuelMemFk true`) satisfies the obligations of every block it
 passes, so the rewritten body satisfies its own, and its run is a halting checked run.
 
+The block pairs are compared from must-constant facts at block entry. A fact (`CFact`) states
+that a register holds an immediate; the symbolic run of a block starts from its facts
+(`startC`), so a register known to hold `63` at entry is the immediate `63` in the symbolic
+words of the block. The facts of each of the two graphs are computed by `constAnnot`, which
+is untrusted, and checked as an invariant of that graph by `factCheck`: block `0` has no
+fact, and the run of every block from its facts leaves each register of a fact of a
+successor at that fact's immediate. A halting run therefore satisfies the facts of every
+block it enters, on each of the two bodies.
+
 The checks take the symbolic step and the symbolic branch condition as trailing arguments
 that default to the x86 ones, as in `OwnedLprogTV`. The theorems with the suffix `_at` are
 stated for an instruction set `I : LprogIsa.Isa` whose step the symbolic step describes
@@ -34,6 +43,10 @@ instances at `X86Isa.x86Isa`.
 
 * `SObl`, `SObl.holds`, `oblOf`, `symObl`: index obligations and their collection.
 * `RunLOk`: the steps of a list of instructions are in bounds.
+* `CFact`, `FactsAt`, `startC`: must-constant facts and the symbolic start state they give.
+* `factsOk`, `factCheck`: the invariant check of the facts; `constAnnot`: the annotation.
+* `blockOkS`, `blockRunsS`, `runsOfC`, `CheckedC`: the block check from given start states,
+  its shared runs, and the facts the checks establish.
 * `oblOk`, `oblCheckWith`, `ownedCheckMC`: the checks.
 
 ## Main results
@@ -42,8 +55,13 @@ instances at `X86Isa.x86Isa`.
   hold exactly when its accesses are in bounds.
 * `runIdxOk_runL_at`, `runIdxOk_of_runL_at`, `runIdxOk_runL`, `runIdxOk_of_runL`: the
   in-bounds condition of a run splits at a stretch.
+* `holds_startC`, `factsAt_of_holds`, `factsOk_spec`: the facts describe the block entry and
+  pass to the successors.
+* `blockOkR_specS`, `checkedC_of_withR`, `checkedC_of_with`, `ownedCheckMC_checked_at`: the
+  shared check gives `CheckedC`; `ownedCheckWith` gives it with no fact.
 * `OwnedCheckFuel.sim_stepCF`, `OwnedCheckFuel.simAtCF_all`,
-  `OwnedCheckFuel.ownedCheckWithC_sound_at_fuel`: the simulation of the rewritten body, with
+  `OwnedCheckFuel.checkedC_sound_at_fuel`, `OwnedCheckFuel.ownedCheckWithC_sound_at_fuel`,
+  `OwnedCheckFuel.ownedCheckMC_idx_sound_at_fuel`: the simulation of the rewritten body, with
   its fuel at most `OwnedCheckFuel.checkFuel`.
 * `ownedCheckWithC_sound_at`, `ownedCheckMC_sound_at`: soundness on bounds-checked runs of an
   instruction set.
@@ -349,10 +367,9 @@ theorem runIdxOk_next {P : LprogM} {s s1 : LstateMF} {i : LinstrRM} {f : Nat}
 
 theorem symObl_entry_at {sym : LinstrRM → SSt → SOut}
     (hlab : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss [])
-    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
+    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat} {ss : SSt}
     (hp : EntryAt B b p) (hle : p ≤ bstopOf T b) :
-    symObl ((B.drop p).take (bstopOf T b - p)) SSt.start sym =
-      symObl (bodyAt B b T) SSt.start sym := by
+    symObl ((B.drop p).take (bstopOf T b - p)) ss sym = symObl (bodyAt B b T) ss sym := by
   rcases hp with rfl | ⟨rfl, x, hx, hl⟩
   · rfl
   · unfold bodyAt
@@ -363,50 +380,461 @@ theorem symObl_entry {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
     symObl ((B.drop p).take (bstopOf T b - p)) SSt.start = symObl (bodyAt B b T) SSt.start :=
   symObl_entry_at (fun h ss => symStep_label h ss) hp hle
 
-/-! ## 3. The checks -/
+/-- The symbolic run of a block body entered at `p` from the symbolic state `ss` is the
+    symbolic run of the block body from `ss`. -/
+theorem symRun_entryS_at {sym : LinstrRM → SSt → SOut}
+    (hlab : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss [])
+    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat} {ss : SSt}
+    (hp : EntryAt B b p) (hle : p ≤ bstopOf T b) :
+    symRun ((B.drop p).take (bstopOf T b - p)) ss sym = symRun (bodyAt B b T) ss sym := by
+  rcases hp with rfl | ⟨rfl, x, hx, hl⟩
+  · rfl
+  · unfold bodyAt
+    rw [take_cons B (by omega) hx, symRun_label_at hlab hl]
 
-/-- The index obligations of the rewritten block are obligations of the source block over
-    registers and flags live at the block, unless no halting run passes through the
-    block. -/
-def oblOk (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List LinstrRM)
-    (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+/-! ## 3. Must-constant facts at block entry -/
+
+/-- A must-constant fact: the register `f.1` holds the immediate `f.2.2` at width `f.2.1`. -/
+abbrev CFact : Type := String × Nat × Nat
+
+/-- The fact `f` holds of the register values `V`. -/
+def CFact.holds (V : String → Σ w, BitVec w) (f : CFact) : Prop :=
+  V f.1 = ⟨f.2.1, BitVec.ofNat f.2.1 f.2.2⟩
+
+/-- The facts `fs` hold at the state `s`. -/
+def FactsAt (fs : List CFact) (s : LstateMF) : Prop :=
+  ∀ f ∈ fs, f.holds s.prog.base.reg.lvm
+
+/-- The symbolic state at the start of a block with the facts `fs`: a register with a fact
+    is the immediate of its first fact, every other register and every array name its start
+    value; the registers with a fact count as written. -/
+def startC (fs : List CFact) : SSt :=
+  ⟨fun r =>
+      match fs.find? (fun f => f.1 == r) with
+      | some f => .immW f.2.1 f.2.2
+      | none => .reg r,
+    SArr.cell, .init, fs.map Prod.fst, [], .cin false, .cin true⟩
+
+theorem startC_nil : startC [] = SSt.start := rfl
+
+theorem startC_good (fs : List CFact) : (startC fs).Good := by
+  refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
+  simp only [startC]
+  cases h : fs.find? (fun f => f.1 == r) with
+  | none => rfl
+  | some f =>
+      have he : f.1 = r := by simpa using List.find?_some h
+      exact absurd (List.mem_map.mpr ⟨f, List.mem_of_find?_eq_some h, he⟩) hr
+
+theorem startC_subst (σ : Nat → STerm) (fs : List CFact) :
+    (startC fs).subst σ = startC fs := by
+  simp only [SSt.subst, startC, SArr.subst, SFlag.subst, STerm.subst, SSt.mk.injEq, and_true]
+  funext r
+  cases fs.find? (fun f => f.1 == r) <;> rfl
+
+theorem startC_regs_ev {fs : List CFact} {V : String → Σ w, BitVec w}
+    (h : ∀ f ∈ fs, f.holds V) (A : String → ArrCell) (C O : Bool) (q : String) :
+    ((startC fs).regs q).ev V A C O = V q := by
+  simp only [startC]
+  cases hf : fs.find? (fun f => f.1 == q) with
+  | none => rfl
+  | some f =>
+      have he : f.1 = q := by simpa using List.find?_some hf
+      rw [← he, h f (List.mem_of_find?_eq_some hf)]
+      rfl
+
+/-- A state satisfying the facts `fs`, with the arrays `A`, is described by `startC fs`. -/
+theorem holds_startC {fs : List CFact} {s : LstateMF} {A : String → ArrCell}
+    (hf : FactsAt fs s) (hA : ∀ q, s.prog.base.larr q = A q) :
+    Holds s.prog.base.reg.lvm A s.prog.base.cf s.prog.base.of s.zf (startC fs) s :=
+  ⟨fun q => (startC_regs_ev hf _ _ _ q).symm, hA, rfl, by simp [startC, STerm.ev],
+    by simp [startC, STerm.ev]⟩
+
+/-- The facts `fs` hold at a state described by `ss` whose words of the registers of `fs`
+    are their immediates. -/
+theorem factsAt_of_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
+    {ss : SSt} {u : LstateMF} (hH : Holds V A C O Z ss u) {fs : List CFact}
+    (h : ∀ f ∈ fs, ss.regs f.1 = .immW f.2.1 f.2.2) : FactsAt fs u := by
+  intro f hf
+  unfold CFact.holds
+  rw [hH.1 f.1, h f hf]
+  rfl
+
+/-- The final symbolic state `ss` of a block with terminator `T` gives the facts `A j` of
+    every successor `j`: the word of each of their registers is its immediate. -/
+def factsExit (A : Nat → List CFact) (T : Term) (ss : SSt) : Bool :=
+  T.succs.all fun j => (A j).all fun f => ss.regs f.1 == .immW f.2.1 f.2.2
+
+/-- The run of block `k` (block `b` of `B`, terminator `T`) from its facts `A k` gives the
+    facts of its successors, unless it fails or leaves the fragment. -/
+def factsOk (A : Nat → List CFact) (k : Nat) (T : Term) (B : List LinstrRM) (b : Block)
+    (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+  match symRun (bodyAt B b T) (startC (A k)) sym with
+  | .ok ss _ => factsExit A T ss
+  | _ => true
+
+/-- **The invariant check of the facts `A`** on the graph `G` of `B`: block `0` has no fact
+    and every block passes `factsOk`. -/
+def factCheck (A : Nat → List CFact) (B : List LinstrRM) (G : CFG)
+    (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+  (A 0).isEmpty &&
+    (List.range G.blocks.size).all fun k => factsOk A k (G.blk k).term B (G.blk k) sym
+
+theorem factsOk_spec {A : Nat → List CFact} {k : Nat} {T : Term} {B : List LinstrRM}
+    {b : Block} {sym : LinstrRM → SSt → SOut} (h : factsOk A k T B b sym = true) {ss : SSt}
+    {gs : List SG} (hs : symRun (bodyAt B b T) (startC (A k)) sym = .ok ss gs) :
+    ∀ j ∈ T.succs, ∀ f ∈ A j, ss.regs f.1 = .immW f.2.1 f.2.2 := by
+  unfold factsOk at h
+  rw [hs] at h
+  simpa only [factsExit, List.all_eq_true, beq_iff_eq] using h
+
+theorem factCheck_nil (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut) :
+    factCheck (fun _ => []) B G sym = true := by
+  simp only [factCheck, List.isEmpty_nil, Bool.true_and, List.all_eq_true]
+  intro k _
+  unfold factsOk
+  split <;> simp [factsExit]
+
+/-! ### The annotation -/
+
+/-- The facts a final symbolic state gives: each written register whose word is an
+    immediate. -/
+def constExit (ss : SSt) : List CFact :=
+  ss.wr.eraseDups.filterMap fun r =>
+    match ss.regs r with
+    | .immW w n => some (r, w, n)
+    | _ => none
+
+/-- The symbolic runs of the blocks of `G` from the facts of `ann`. -/
+def exitsOf (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
+    (ann : Array (List CFact)) : Array SOut :=
+  (Array.range G.blocks.size).map fun k =>
+    symRun (bodyAt B (G.blk k) (G.blk k).term) (startC (ann.getD k [])) sym
+
+/-- One widening round of the candidates: each block other than `0` adds the facts the runs
+    of its predecessors give. -/
+def constGrow (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
+    (ann : Array (List CFact)) : Array (List CFact) :=
+  let E := exitsOf B G sym ann
+  (Array.range G.blocks.size).map fun j =>
+    if j = 0 then []
+    else
+      (ann.getD j [] ++ (List.range G.blocks.size).flatMap fun k =>
+        if (G.blk k).term.succs.contains j then
+          match E[k]? with
+          | some (.ok ss _) => constExit ss
+          | _ => []
+        else []).eraseDups
+
+/-- One restriction round: a fact of a block other than `0` is kept when the run of every
+    predecessor from its facts gives it. -/
+def constPass (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
+    (ann : Array (List CFact)) : Array (List CFact) :=
+  let E := exitsOf B G sym ann
+  (Array.range G.blocks.size).map fun j =>
+    if j = 0 then []
+    else
+      (ann.getD j []).filter fun f =>
+        (List.range G.blocks.size).all fun k =>
+          !(G.blk k).term.succs.contains j ||
+            match E[k]? with
+            | some (.ok ss _) => ss.regs f.1 == .immW f.2.1 f.2.2
+            | _ => true
+
+/-- The iteration of `f` from `a`, stopped at a fixed point or after `n` rounds. -/
+def constFix (f : Array (List CFact) → Array (List CFact)) :
+    Nat → Array (List CFact) → Array (List CFact)
+  | 0, a => a
+  | n + 1, a =>
+      let a' := f a
+      if a' == a then a else constFix f n a'
+
+/-- **The annotation of must-constant facts** of the graph `G` of `B`: no fact on a graph of
+    at most one block; otherwise the candidates of `G.blocks.size + 1` widening rounds from
+    no fact, restricted by `constPass` to a fixed point. The annotation is untrusted:
+    `factCheck` checks it. -/
+def constAnnot (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut := symStep) :
+    Nat → List CFact :=
+  if G.blocks.size ≤ 1 then fun _ => []
+  else
+    let a0 := constFix (constGrow B G sym) (G.blocks.size + 1)
+      (Array.replicate G.blocks.size [])
+    let a1 := constFix (constPass B G sym) ((a0.toList.map List.length).sum + 1) a0
+    fun k => a1.getD k []
+
+/-! ## 4. The checks -/
+
+/-- `blockOk` with the symbolic run of the source block started at `st` and that of the
+    rewritten block started at `st'`. -/
+def blockOkS (st st' : SSt) (outs : List String) (L : Nat → List String × Bool) (k : Nat)
+    (T : Term) (B B' : List LinstrRM) (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
+    (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .ret => true
   | _ =>
-      match symRun (bodyAt B b T) SSt.start sym with
+      match symRun (bodyAt B b T) st sym with
+      | .fail => true
+      | .unk => false
+      | .ok ss gs =>
+          match symRun (bodyAt B' b' T) st' sym with
+          | .ok ss' gs' =>
+              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
+                exitAgree outs L (L k) T ss ss' gs gs'
+          | _ => false
+
+theorem blockOkS_spec {st st' : SSt} {outs : List String} {L : Nat → List String × Bool}
+    {k : Nat} {T : Term} {B B' : List LinstrRM} {b b' : Block} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (h : blockOkS st st' outs L k T B B' b b' sym dec = true)
+    (hT : T ≠ .ret) :
+    symRun (bodyAt B b T) st sym = .fail ∨
+      ∃ ss gs ss' gs', symRun (bodyAt B b T) st sym = .ok ss gs ∧
+        symRun (bodyAt B' b' T) st' sym = .ok ss' gs' ∧
+        (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
+          (g.readsF = true → (L k).2 = true)) ∧
+        termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec = true ∧
+        exitAgree outs L (L k) T ss ss' gs gs' = true := by
+  have h2 : (match symRun (bodyAt B b T) st sym with
+      | .fail => true
+      | .unk => false
+      | .ok ss gs =>
+          match symRun (bodyAt B' b' T) st' sym with
+          | .ok ss' gs' =>
+              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+                termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
+                exitAgree outs L (L k) T ss ss' gs gs'
+          | _ => false) = true := by
+    cases T with
+    | ret => exact absurd rfl hT
+    | _ => exact h
+  cases hs : symRun (bodyAt B b T) st sym with
+  | fail => exact Or.inl rfl
+  | unk => rw [hs] at h2; cases h2
+  | ok ss gs =>
+      rw [hs] at h2
+      cases ht : symRun (bodyAt B' b' T) st' sym with
+      | ok ss' gs' =>
+          rw [ht] at h2
+          simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h2
+          obtain ⟨⟨hg, hta⟩, hex⟩ := h2
+          exact Or.inr ⟨ss, gs, ss', gs', rfl, rfl,
+            fun g hg' => ⟨(hg g hg').1, okIn_spec (hg g hg').2⟩, hta, hex⟩
+      | fail => rw [ht] at h2; cases h2
+      | unk => rw [ht] at h2; cases h2
+
+/-- The shared runs of block `b` of `B` from `st` and block `b'` of `B'` from `st'`, with
+    terminator `T`: the final table and the two descriptions over it. -/
+def blockRunsS (st st' : SSt) (B B' : List LinstrRM) (b b' : Block) (T : Term)
+    (sym : LinstrRM → SSt → SOut := symStep) : Tbl × SOut × SOut :=
+  let p := tRun (bodyAt B b T) st Tbl.empty sym
+  let q := tRun (bodyAt B' b' T) st' p.1 sym
+  (q.1, p.2, q.2)
+
+/-- **The shared check implies the check from the starts `st` and `st'`**, for every
+    symbolic step and branch condition that commute with substitution and starts that
+    every substitution fixes. -/
+theorem blockOkR_specS {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hS : SymSubst sym dec) {st st' : SSt} (hst : ∀ σ, st.subst σ = st)
+    (hst' : ∀ σ, st'.subst σ = st') {outs : List String} {L : Nat → List String × Bool}
+    {k : Nat} {T : Term} {B B' : List LinstrRM} {b b' : Block}
+    (h : blockOkR outs L k T (blockRunsS st st' B B' b b' T sym) B B' b b' dec = true) :
+    blockOkS st st' outs L k T B B' b b' sym dec = true := by
+  have hv : TValid (blockRunsS st st' B B' b b' T sym).1.ents :=
+    tRun_valid_at sym _ _ _ (tRun_valid_at sym _ _ _ tValid_empty)
+  obtain ⟨⟨σ, hσ⟩, -⟩ := hv
+  have e1 : symRun (bodyAt B b T) st sym = (blockRunsS st st' B B' b b' T sym).2.1.subst σ := by
+    have h1 := tRun_subst_at hS.step_subst hσ (bodyAt B b T) st Tbl.empty
+      (tRun_ext_at sym _ _ _)
+    rw [hst σ] at h1
+    exact h1.symm
+  have e2 : symRun (bodyAt B' b' T) st' sym =
+      (blockRunsS st st' B B' b b' T sym).2.2.subst σ := by
+    have h2 := tRun_subst_at hS.step_subst hσ (bodyAt B' b' T) st'
+      (tRun (bodyAt B b T) st Tbl.empty sym).1 (TExt.refl _)
+    rw [hst' σ] at h2
+    exact h2.symm
+  unfold blockOkR at h
+  unfold blockOkS
+  split
+  · rfl
+  · rename_i hT
+    have h' : (match (blockRunsS st st' B B' b b' T sym).2.1 with
+      | .fail => true
+      | .unk => false
+      | .ok ss gs =>
+          match (blockRunsS st st' B B' b b' T sym).2.2 with
+          | .ok ss' gs' =>
+              guardsT (blockRunsS st st' B B' b b' T sym).1.ents (L k) gs gs' &&
+                termAgreeT (blockRunsS st st' B B' b b' T sym).1.ents T (L k) ss ss'
+                  B[b.stop - 1]? B'[b'.stop - 1]? dec &&
+                exitAgreeT (blockRunsS st st' B B' b b' T sym).1.ents outs L (L k) T ss ss' gs gs'
+          | _ => false) = true := by
+      split at h
+      · exact absurd rfl hT
+      · exact h
+    rw [e1, e2]
+    revert h'
+    generalize blockRunsS st st' B B' b b' T sym = R at hσ
+    obtain ⟨Tb, o, o'⟩ := R
+    intro h'
+    cases o with
+    | fail => rfl
+    | unk => cases h'
+    | ok ss gs =>
+        cases o' with
+        | ok ss' gs' =>
+            simp only [Bool.and_eq_true] at h'
+            obtain ⟨⟨hg, hta⟩, hex⟩ := h'
+            simp only [SOut.subst, Bool.and_eq_true]
+            exact ⟨⟨guardsT_spec hσ hg, termAgreeT_spec_at hS.dec_subst hσ hta⟩,
+              exitAgreeT_spec hσ hex⟩
+        | fail => cases h'
+        | unk => cases h'
+
+/-- The shared runs of the block pairs of `G` and `G'`: block `k` of the source from its
+    facts `A k`, block `k` of the rewritten body from its facts `A' k`. -/
+def runsOfC (A A' : Nat → List CFact) (B B' : List LinstrRM) (G G' : CFG)
+    (sym : LinstrRM → SSt → SOut := symStep) : Array (Tbl × SOut × SOut) :=
+  (Array.range G.blocks.size).map fun k =>
+    blockRunsS (startC (A k)) (startC (A' k)) B B' (G.blk k) (G'.blk k) (G.blk k).term sym
+
+/-- The facts the checks establish about the two bodies, their graphs, the live sets `L`,
+    the facts `A` of the source graph and the facts `A'` of the rewritten graph: the bodies
+    are non-empty, the graphs have the same number of blocks and the same terminators,
+    every block pair passes `blockOkS` from the facts `A k` and `A' k`, and `A` and `A'`
+    pass `factCheck` on their graphs. -/
+structure CheckedC (outs : List String) (L : Nat → List String × Bool)
+    (A A' : Nat → List CFact) (B B' : List LinstrRM) (G G' : CFG)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) :
+    Prop where
+  hG : cfgOf (B.map Prod.fst) = some G
+  hG' : cfgOf (B'.map Prod.fst) = some G'
+  ne : B.map Prod.fst ≠ []
+  ne' : B'.map Prod.fst ≠ []
+  size : G'.blocks.size = G.blocks.size
+  blk : ∀ k < G.blocks.size, (G'.blk k).term = (G.blk k).term ∧
+    blockOkS (startC (A k)) (startC (A' k)) outs L k (G.blk k).term B B' (G.blk k) (G'.blk k)
+      sym dec = true
+  facts : factCheck A B G sym = true
+  facts' : factCheck A' B' G' sym = true
+
+theorem factCheck_entry {A : Nat → List CFact} {B : List LinstrRM} {G : CFG}
+    {sym : LinstrRM → SSt → SOut} (h : factCheck A B G sym = true) : A 0 = [] := by
+  simp only [factCheck, Bool.and_eq_true, List.isEmpty_iff] at h
+  exact h.1
+
+theorem factCheck_blk {A : Nat → List CFact} {B : List LinstrRM} {G : CFG}
+    {sym : LinstrRM → SSt → SOut} (h : factCheck A B G sym = true) {k : Nat}
+    (hk : k < G.blocks.size) : factsOk A k (G.blk k).term B (G.blk k) sym = true := by
+  simp only [factCheck, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  exact h.2 k hk
+
+/-- The check over the shared runs from the facts `A` and `A'`, with `factCheck` on both
+    graphs, gives `CheckedC`, for every symbolic step and branch condition that commute with
+    substitution. -/
+theorem checkedC_of_withR {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hS : SymSubst sym dec) {outs : List String} {L : Nat → List String × Bool}
+    {A A' : Nat → List CFact} {B B' : List LinstrRM} {G G' : CFG}
+    (hG : cfgOf (B.map Prod.fst) = some G) (hG' : cfgOf (B'.map Prod.fst) = some G')
+    (h : ownedCheckWithR outs L B B' G G' (runsOfC A A' B B' G G' sym) dec = true)
+    (hf : factCheck A B G sym = true) (hf' : factCheck A' B' G' sym = true) :
+    CheckedC outs L A A' B B' G G' sym dec := by
+  simp only [ownedCheckWithR, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+    beq_iff_eq, List.all_eq_true, List.mem_range] at h
+  obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hall⟩ := h
+  refine ⟨hG, hG', by simpa using hne, by simpa using hne', hsz.symm, fun k hk => ?_, hf, hf'⟩
+  obtain ⟨ht, hb⟩ := hall k hk
+  refine ⟨ht.symm, ?_⟩
+  have hR : (runsOfC A A' B B' G G' sym)[k]? =
+      some (blockRunsS (startC (A k)) (startC (A' k)) B B' (G.blk k) (G'.blk k)
+        (G.blk k).term sym) := by
+    simp [runsOfC, hk]
+  rw [hR] at hb
+  exact blockOkR_specS hS (fun σ => startC_subst σ _) (fun σ => startC_subst σ _) hb
+
+/-- `ownedCheckWith` for the live sets `L` gives `CheckedC` with no fact. -/
+theorem checkedC_of_with {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
+    (h : ownedCheckWith outs L B B' sym dec = true) :
+    ∃ G G', CheckedC outs L (fun _ => []) (fun _ => []) B B' G G' sym dec := by
+  unfold ownedCheckWith at h
+  split at h
+  · rename_i G G' hG hG'
+    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
+      List.all_eq_true, List.mem_range] at h
+    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
+    exact ⟨G, G', hG, hG', by simpa using hne, by simpa using hne', hsz.symm,
+      fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩, factCheck_nil B G sym,
+      factCheck_nil B' G' sym⟩
+  · cases h
+
+/-- The index obligations of the rewritten block are obligations of the source block over
+    registers and flags live at the block, unless no halting run passes through the block.
+    The source block runs from its facts `A k`, the rewritten block from its facts `A' k`;
+    both default to no fact. -/
+def oblOk (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List LinstrRM)
+    (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
+    (A A' : Nat → List CFact := fun _ => []) : Bool :=
+  match T with
+  | .ret => true
+  | _ =>
+      match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          (symObl (bodyAt B' b' T) SSt.start sym).all fun o =>
-            (symObl (bodyAt B b T) SSt.start sym).contains o &&
+          (symObl (bodyAt B' b' T) (startC (A' k)) sym).all fun o =>
+            (symObl (bodyAt B b T) (startC (A k)) sym).contains o &&
               okIn (L k) o.1.vars o.1.readsF
       | _ => true
 
-/-- `oblOk` at every block pair of the two graphs. -/
+/-- `oblOk` at every block pair of the two graphs, with the facts `A` and `A'`. -/
 def oblCheckWith (L : Nat → List String × Bool) (B B' : List LinstrRM)
-    (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+    (sym : LinstrRM → SSt → SOut := symStep) (A A' : Nat → List CFact := fun _ => []) :
+    Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
       (List.range G.blocks.size).all fun k =>
-        oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym
+        oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A'
   | _, _ => false
 
-/-- **The checker on bounds-checked runs**: `ownedCheckM` and `oblCheckWith` at the live
-    sets `ownedCheckM` computes. The symbolic step `sym` and the symbolic branch condition
-    `dec` default to the x86 ones, `symStep` and `symDec`. -/
+theorem oblCheckWith_spec {L : Nat → List String × Bool} {B B' : List LinstrRM}
+    {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact} {G G' : CFG}
+    (hG : cfgOf (B.map Prod.fst) = some G) (hG' : cfgOf (B'.map Prod.fst) = some G')
+    (h : oblCheckWith L B B' sym A A' = true) :
+    ∀ k < G.blocks.size,
+      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true := by
+  unfold oblCheckWith at h
+  rw [hG, hG'] at h
+  simpa only [List.all_eq_true, List.mem_range] using h
+
+/-- **The checker on bounds-checked runs.** The must-constant facts `constAnnot` are
+    computed on each of the two graphs and checked as its invariant (`factCheck`); each block
+    pair runs once over a shared term table from the facts of its two blocks (`runsOfC`);
+    the live sets are computed from these runs by `liveIter` and the runs checked by
+    `ownedCheckWithR`, and so are the index obligations (`oblCheckWith`). The symbolic step
+    `sym` and the symbolic branch condition `dec` default to the x86 ones, `symStep` and
+    `symDec`. -/
 def ownedCheckMC (outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let R := runsOf B B' G G' sym
+      let A := constAnnot B G sym
+      let A' := constAnnot B' G' sym
+      let R := runsOfC A A' B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false)) dec
       ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
-        && oblCheckWith (fun k => L.getD k ([], false)) B B' sym
+        && oblCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
+        && factCheck A B G sym && factCheck A' B' G' sym
   | _, _ => false
 
-theorem ownedCheckMC_with_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+/-- A pair `ownedCheckMC` accepts under `sym` and `dec` satisfies `CheckedC` and the index
+    obligations for some live sets and facts, when `sym` and `dec` commute with
+    substitution. -/
+theorem ownedCheckMC_checked_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hS : SymSubst sym dec) {outs : List String} {B B' : List LinstrRM}
     (h : ownedCheckMC outs B B' sym dec = true) :
-    ∃ L, ownedCheckWith outs L B B' sym dec = true ∧ oblCheckWith L B B' sym = true := by
+    ∃ L A A' G G', CheckedC outs L A A' B B' G G' sym dec ∧
+      ∀ k < G.blocks.size,
+        oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true := by
   unfold ownedCheckMC at h
   cases hG : cfgOf (B.map Prod.fst) with
   | none => simp [hG] at h
@@ -416,39 +844,21 @@ theorem ownedCheckMC_with_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
       | some G' =>
           rw [hG, hG'] at h
           simp only [Bool.and_eq_true] at h
-          exact ⟨_, ownedCheckWithR_spec_at hS hG hG' h.1, h.2⟩
-
-theorem ownedCheckMC_with {outs : List String} {B B' : List LinstrRM}
-    (h : ownedCheckMC outs B B' = true) :
-    ∃ L, ownedCheckWith outs L B B' = true ∧ oblCheckWith L B B' = true :=
-  ownedCheckMC_with_at symSubst_x86 h
-
-/-- `ownedCheckMC` accepts only pairs `ownedCheckM` accepts. -/
-theorem ownedCheckM_of_ownedCheckMC {outs : List String} {B B' : List LinstrRM}
-    {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
-    (h : ownedCheckMC outs B B' sym dec = true) : ownedCheckM outs B B' sym dec = true := by
-  unfold ownedCheckMC at h
-  unfold ownedCheckM
-  cases hG : cfgOf (B.map Prod.fst) with
-  | none => simp [hG] at h
-  | some G =>
-      cases hG' : cfgOf (B'.map Prod.fst) with
-      | none => simp [hG, hG'] at h
-      | some G' =>
-          rw [hG, hG'] at h
-          simp only [Bool.and_eq_true] at h
-          exact h.1
+          obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+          exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
+            oblCheckWith_spec hG hG' h2⟩
 
 theorem oblOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B' : List LinstrRM}
-    {b b' : Block} {sym : LinstrRM → SSt → SOut} (h : oblOk L k T B B' b b' sym = true)
-    (hT : T ≠ .ret) {ss : SSt}
-    {gs : List SG} (hs : symRun (bodyAt B b T) SSt.start sym = .ok ss gs) :
-    ∀ o ∈ symObl (bodyAt B' b' T) SSt.start sym, o ∈ symObl (bodyAt B b T) SSt.start sym ∧
+    {b b' : Block} {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact}
+    (h : oblOk L k T B B' b b' sym A A' = true) (hT : T ≠ .ret) {ss : SSt}
+    {gs : List SG} (hs : symRun (bodyAt B b T) (startC (A k)) sym = .ok ss gs) :
+    ∀ o ∈ symObl (bodyAt B' b' T) (startC (A' k)) sym,
+      o ∈ symObl (bodyAt B b T) (startC (A k)) sym ∧
       (∀ v ∈ o.1.vars, v ∈ (L k).1) ∧ (o.1.readsF = true → (L k).2 = true) := by
-  have h2 : (match symRun (bodyAt B b T) SSt.start sym with
+  have h2 : (match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          (symObl (bodyAt B' b' T) SSt.start sym).all fun o =>
-            (symObl (bodyAt B b T) SSt.start sym).contains o &&
+          (symObl (bodyAt B' b' T) (startC (A' k)) sym).all fun o =>
+            (symObl (bodyAt B b T) (startC (A k)) sym).contains o &&
               okIn (L k) o.1.vars o.1.readsF
       | _ => true) = true := by
     cases T with
@@ -476,7 +886,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
 
-/-! ## 4. The simulation with the fuel bound -/
+/-! ## 5. The simulation with the fuel bound -/
 
 /-- The number of blocks of the control-flow graph of a body, `0` when the body has none. -/
 def blockCount (B : List LinstrRM) : Nat :=
@@ -501,14 +911,16 @@ theorem step_bound {L N m f : Nat} (hm : m ≤ L) (hf : f ≤ (L + 1) * N) :
 
 /-- The simulation on runs in bounds of the instruction set `I` up to the measure `N`, with
     the fuel of the rewritten run bounded: a halting source run in bounds from a block entry,
-    of measure below `N`, is matched by a halting run in bounds of the rewritten body of at
-    most `(B'.length + 1) * N` steps. -/
+    of measure below `N`, the source state satisfying the facts `A` of the block and the
+    rewritten state the facts `A'`, is matched by a halting run in bounds of the rewritten
+    body of at most `(B'.length + 1) * N` steps. -/
 def SimAtCF (I : Isa) (outs : List String) (L : Nat → List String × Bool)
-    (B B' : List LinstrRM) (G G' : CFG) (fn : String) (N : Nat) : Prop :=
+    (A A' : Nat → List CFact) (B B' : List LinstrRM) (G G' : CFG) (fn : String) (N : Nat) :
+    Prop :=
   ∀ (fuel k : Nat) (s s' t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     Pair B B' (G.blk k) (G'.blk k) s.prog.base.reg.lpc s'.prog.base.reg.lpc →
-    Rel (L k) s s' → s.prog.lfn = fn →
+    Rel (L k) s s' → FactsAt (A k) s ∧ FactsAt (A' k) s' → s.prog.lfn = fn →
     I.lsemFuelMemF (singletonProgM fn B) fuel s = some t →
     I.RunIdxOk (singletonProgM fn B) fuel s →
     ∃ f' t', f' ≤ (B'.length + 1) * N ∧
@@ -516,16 +928,19 @@ def SimAtCF (I : Isa) (outs : List String) (L : Nat → List String × Bool)
       I.RunIdxOk (singletonProgM fn B') f' s'
 
 theorem fall_contCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
-    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) {N k : Nat}
-    (ih : SimAtCF I outs L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} {fn : String}
+    (hc : CheckedC outs L A A' B B' G G' sym dec) {N k : Nat}
+    (ih : SimAtCF I outs L A A' B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
     (hn : G.next k = nx) (hn' : G'.next k = nx) {w w' t : LstateMF} {f0 : Nat}
     (hw : w.prog.base.reg.lpc = (G.blk k).stop) (hw' : w'.prog.base.reg.lpc = (G'.blk k).stop)
     (hfn : w.prog.lfn = fn) (hfn' : w'.prog.lfn = fn)
     (hrun : I.lsemFuelMemF (singletonProgM fn B) f0 w = some t)
     (hok : I.RunIdxOk (singletonProgM fn B) f0 w)
     (hmeas : f0 * (G.blocks.size + 1) + (G.blocks.size - (k + 1)) < N)
-    (hrel : ∀ j, nx = some j → Rel (L j) w w') (hobs : nx = none → Obs outs w w') :
+    (hrel : ∀ j, nx = some j → Rel (L j) w w')
+    (hfa : ∀ j, nx = some j → FactsAt (A j) w ∧ FactsAt (A' j) w')
+    (hobs : nx = none → Obs outs w w') :
     ∃ f' t', f' ≤ (B'.length + 1) * N ∧
       I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') f' w' := by
@@ -542,11 +957,11 @@ theorem fall_contCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → L
       obtain ⟨-, -, e2⟩ := (stop_next hc.hG' hk').2 j hn'
       subst hj
       exact ih f0 (k + 1) w w' t hmeas hjlt (Or.inl ⟨hw.trans e1, hw'.trans e2⟩) (hrel _ rfl)
-        hfn hrun hok
+        (hfa _ rfl) hfn hrun hok
 
 theorem jump_contCF {I : Isa} {outs : List String} {L : Nat → List String × Bool}
-    {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAtCF I outs L B B' G G' fn N)
+    {A A' : Nat → List CFact} {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} {N tg : Nat} (ih : SimAtCF I outs L A A' B B' G G' fn N)
     (htg : tg < G.blocks.size) {l l' : LLabel}
     (hl : findLabel l (B.map Prod.fst) = some (G.blk tg).start)
     (hl' : findLabel l' (B'.map Prod.fst) = some (G'.blk tg).start) {w w' t : LstateMF}
@@ -554,23 +969,26 @@ theorem jump_contCF {I : Isa} {outs : List String} {L : Nat → List String × B
     (hw' : w'.prog.base.reg.lpc = (G'.blk tg).start + 1) (hfn : w.prog.lfn = fn)
     (hrun : I.lsemFuelMemF (singletonProgM fn B) f1 w = some t)
     (hok : I.RunIdxOk (singletonProgM fn B) f1 w)
-    (hmeas : f1 * (G.blocks.size + 1) + (G.blocks.size - tg) < N) (hrel : Rel (L tg) w w') :
+    (hmeas : f1 * (G.blocks.size + 1) + (G.blocks.size - tg) < N) (hrel : Rel (L tg) w w')
+    (hfa : FactsAt (A tg) w ∧ FactsAt (A' tg) w') :
     ∃ f' t', f' ≤ (B'.length + 1) * N ∧
       I.lsemFuelMemF (singletonProgM fn B') f' w' = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') f' w' :=
-  ih f1 tg w w' t hmeas htg (Or.inr ⟨hw, label_at hl, hw', label_at hl'⟩) hrel hfn hrun hok
+  ih f1 tg w w' t hmeas htg (Or.inr ⟨hw, label_at hl, hw', label_at hl'⟩) hrel hfa hfn hrun hok
 
 /-- **One step of the simulation with the fuel bound.** The rewritten run of the block costs
     at most `B'.length + 1` steps, by the terminator of the block (fall through, jump, branch
     taken, branch not taken). -/
 theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec)
-    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
-    (hob : ∀ k < G.blocks.size, oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true)
-    {N : Nat} (ih : SimAtCF I outs L B B' G G' fn N) :
-    SimAtCF I outs L B B' G G' fn (N + 1) := by
-  intro fuel k s s' t hN hk hpair hrel hfn hrun hokS
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} {fn : String}
+    (hc : CheckedC outs L A A' B B' G G' sym dec)
+    (hob : ∀ k < G.blocks.size,
+      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true)
+    {N : Nat} (ih : SimAtCF I outs L A A' B B' G G' fn N) :
+    SimAtCF I outs L A A' B B' G G' fn (N + 1) := by
+  intro fuel k s s' t hN hk hpair hrel ⟨hfa, hfa'⟩ hfn hrun hokS
   obtain ⟨hTk, hok⟩ := hc.blk k hk
   have hk' : k < G'.blocks.size := hc.size ▸ hk
   have F := blockFacts hc.hG hk
@@ -623,10 +1041,10 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
   -- the symbolic runs of the two block bodies
   have hD := symRun_sound_at hL.step_sound (singletonProgM fn B)
     ((B.drop s.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
-    (holds_start s)
-  rw [symRun_entry_at hL.label hE hle] at hD
-  rcases blockOk_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
+    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) (startC (A k)) _ _ _ _ _ s
+    (holds_startC hfa fun _ => rfl)
+  rw [symRun_entryS_at hL.label hE hle] at hD
+  rcases blockOkS_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
   · rw [hfail] at hD
     simp only [SOut.DescN] at hD
     rw [hD] at hu
@@ -635,14 +1053,14 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
   obtain ⟨hAll, hH, hFr⟩ := hD.1 u hu
   have hV : ∀ r ∈ (L k).1, s'.prog.base.reg.lvm r = s.prog.base.reg.lvm r := hrel.2.2.2.1
   have hH0' : Holds s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of s'.zf
-      SSt.start s' :=
-    ⟨fun _ => rfl, fun q => by rw [hrel.2.1]; rfl, rfl, by simp [SSt.start, STerm.ev],
-      by simp [SSt.start, STerm.ev]⟩
+      (startC (A' k)) s' :=
+    holds_startC hfa' fun q => by rw [hrel.2.1]
   rw [hTk] at hle'
   have hD' := symRun_sound_at hL.step_sound (singletonProgM fn B')
     ((B'.drop s'.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
-  rw [symRun_entry_at hL.label hE' hle', hS'] at hD'
+    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) (startC (A' k))
+    _ _ _ _ _ s' hH0'
+  rw [symRun_entryS_at hL.label hE' hle', hS'] at hD'
   have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
@@ -656,15 +1074,16 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
   have hplain' := body_plain hc.hG' hk' hs1'
   rw [hTk] at hplain' hbstop'
   -- the index obligations: the source block is in bounds, so the rewritten block is
-  have hOS := (symObl_sound_at hL.step_sound (singletonProgM fn B) _ SSt.start _ _ _ _ _ s u
-    (holds_start s)
-    ⟨ss, gs, by rw [symRun_entry_at hL.label hE hle]; exact hS⟩ hu).mp hlS
+  have hOS := (symObl_sound_at hL.step_sound (singletonProgM fn B) _ (startC (A k)) _ _ _ _ _ s
+    u (holds_startC hfa fun _ => rfl)
+    ⟨ss, gs, by rw [symRun_entryS_at hL.label hE hle]; exact hS⟩ hu).mp hlS
   rw [symObl_entry_at hL.label hE hle] at hOS
   have hO := oblOk_spec (hob k hk) hret hS
   have hlI : RunLOk (singletonProgM fn B') ((B'.drop s'.prog.base.reg.lpc).take
       (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) s' I := by
-    refine (symObl_sound_at hL.step_sound (singletonProgM fn B') _ SSt.start _ _ _ _ _ s' u'
-      hH0' ⟨ss', gs', by rw [symRun_entry_at hL.label hE' hle']; exact hS'⟩ hu').mpr
+    refine (symObl_sound_at hL.step_sound (singletonProgM fn B') _
+      (startC (A' k)) _ _ _ _ _ s' u'
+      hH0' ⟨ss', gs', by rw [symRun_entryS_at hL.label hE' hle']; exact hS'⟩ hu').mpr
       fun o ho => ?_
     rw [symObl_entry_at hL.label hE' hle'] at ho
     obtain ⟨hoS, hvars, hfl⟩ := hO o ho
@@ -691,9 +1110,14 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     rw [hFr'.2.1]; simp only [List.length_take, List.length_drop]; omega
   have hul'' : u'.prog.lfn = fn := hFr'.1.trans hfn'
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
-    (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
+    (symRun_good_at hL.good _ (startC_good _) hS) (symRun_good_at hL.good _ (startC_good _) hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
     (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
+  have hfk' := factCheck_blk hc.facts' hk'
+  rw [hTk] at hfk'
+  have hfs : ∀ j ∈ (G.blk k).term.succs, FactsAt (A j) u ∧ FactsAt (A' j) u' := fun j hj =>
+    ⟨factsAt_of_holds hH (factsOk_spec (factCheck_blk hc.facts hk) hS j hj),
+      factsAt_of_holds hH' (factsOk_spec hfk' hS' j hj)⟩
   have hfle : f ≤ fuel := by omega
   obtain ⟨m', hm', hmok, hmle⟩ : ∃ m',
       (∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
@@ -718,6 +1142,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := fall_contCF hc ih hk hnx.symm hnx'.symm hw hw' hul'
       hul'' hru hokU (measure_le hN hfle hk)
       (fun j hj => hsucc j (by simp [hT, Term.succs, hj]))
+      (fun j hj => hfs j (by simp [hT, Term.succs, hj]))
       (fun hn => hhalt (by simp [hT, hn, Term.halts]))
     exact ⟨m' + f'', t',
       Nat.le_trans (Nat.add_le_add_left (Nat.le_succ f'') m') (step_bound hmle hfb),
@@ -755,6 +1180,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
         (by exact hul') hr1 hok1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
+        (hfs tg (by simp [hT, Term.succs]))
       refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_goto _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
@@ -802,6 +1228,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
         (by exact hul') hr1 hok1
         (measure_lt hN (show f1 + 1 ≤ fuel by omega)) (hsucc tg (by simp [hT, Term.succs]))
+        (hfs tg (by simp [hT, Term.succs]))
       refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_cond _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
@@ -819,6 +1246,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
         (by rw [← he]; exact hul') hul'' hr1 hok1
         (measure_le hN (show f1 ≤ fuel by omega) hk)
         (fun j hj => by rw [← he]; exact hsucc j (by simp [hT, Term.succs, hj]))
+        (fun j hj => by rw [← he]; exact hfs j (by simp [hT, Term.succs, hj]))
         (fun hn => by rw [← he]; exact hhalt (by simp [hT, hn, Term.halts]))
       refine ⟨m' + (f'' + 1), t', step_bound hmle hfb, ?_, hobs,
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_cond _ _ _ _) he' hrok)⟩
@@ -828,13 +1256,46 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
 
 theorem simAtCF_all {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec) {outs : List String} {L : Nat → List String × Bool}
-    {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
+    {A A' : Nat → List CFact} {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} (hc : CheckedC outs L A A' B B' G G' sym dec)
     (hob : ∀ k < G.blocks.size,
-      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true) :
-    ∀ N, SimAtCF I outs L B B' G G' fn N
+      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) :
+    ∀ N, SimAtCF I outs L A A' B B' G G' fn N
   | 0 => fun _ _ _ _ _ hN => absurd hN (Nat.not_lt_zero _)
   | N + 1 => sim_stepCF hL hc hob (simAtCF_all hL hc hob N)
+
+/-- **Soundness for given live sets and facts, with the fuel bound.** If the symbolic step
+    `sym` and branch condition `dec` satisfy `SymLaws I sym dec`, the two bodies satisfy
+    `CheckedC` for the live sets `L` and the facts `A` and `A'`, and every block pair meets
+    its index obligations, every halting run of `I` on `B` from pc `0` whose accesses are in
+    bounds is matched by a halting run on `B'` from the same state, of fuel at most
+    `checkFuel B B' fuel`, whose accesses are in bounds, the end states agreeing on `outs`,
+    the arrays and the word memory. -/
+theorem checkedC_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} (hc : CheckedC outs L A A' B B' G G' sym dec)
+    (hob : ∀ k < G.blocks.size,
+      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) (fn : String)
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
+    (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
+    ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
+      I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' ∧
+      I.RunIdxOk (singletonProgM fn B') fuel' s := by
+  obtain ⟨h0, hs0⟩ := cfgOf_start_zero hc.hG hc.ne
+  obtain ⟨-, hs0'⟩ := cfgOf_start_zero hc.hG' hc.ne'
+  have hsim := simAtCF_all hL hc hob
+    (fuel * (G.blocks.size + 1) + (G.blocks.size - 0) + 1) fuel 0 s s t
+    (Nat.lt_succ_self _) h0
+    (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
+    ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩
+    ⟨(by rw [factCheck_entry hc.facts]; intro f hf; cases hf),
+      (by rw [factCheck_entry hc.facts']; intro f hf; cases hf)⟩ hfn hrun hok
+  unfold checkFuel
+  rw [blockCount_eq hc.hG]
+  rw [Nat.sub_zero] at hsim
+  exact hsim
 
 /-- **Soundness for given live sets, with the fuel bound.** If the symbolic step `sym` and
     branch condition `dec` satisfy `SymLaws I sym dec`, and
@@ -853,30 +1314,27 @@ theorem ownedCheckWithC_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut
     ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
       I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' ∧
       I.RunIdxOk (singletonProgM fn B') fuel' s := by
-  unfold ownedCheckWith at h
-  unfold oblCheckWith at hob
-  split at h
-  · rename_i G G' hG hG'
-    rw [hG, hG'] at hob
-    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
-      List.all_eq_true, List.mem_range] at h hob
-    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
-    have hc : Checked outs L B B' G G' sym dec :=
-      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
-    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
-    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
-    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
-    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
-    have hsim := simAtCF_all hL hc hob
-      (fuel * (G.blocks.size + 1) + (G.blocks.size - 0) + 1) fuel 0 s s t
-      (Nat.lt_succ_self _) h0
-      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
-      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun hok
-    unfold checkFuel
-    rw [blockCount_eq hG]
-    rw [Nat.sub_zero] at hsim
-    exact hsim
-  · cases h
+  obtain ⟨G, G', hc⟩ := checkedC_of_with h
+  exact checkedC_sound_at_fuel hL hc (oblCheckWith_spec hc.hG hc.hG' hob) fn s t hfn hpc fuel
+    hrun hok
+
+/-- **Soundness of the checker on runs in bounds, with the fuel bound.** If the symbolic step
+    `sym` and branch condition `dec` satisfy `SymLaws I sym dec` and `SymSubst sym dec`, and
+    `ownedCheckMC outs B B' sym dec` accepts, every halting run of `I` on `B` from pc `0`
+    whose accesses are in bounds is matched by a halting run on `B'` from the same state, of
+    fuel at most `checkFuel B B' fuel`, whose accesses are in bounds, the end states
+    agreeing on `outs`, the arrays and the word memory. -/
+theorem ownedCheckMC_idx_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec) (hS : SymSubst sym dec)
+    {outs : List String} {B B' : List LinstrRM} (h : ownedCheckMC outs B B' sym dec = true)
+    (fn : String) (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (fuel : Nat) (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
+    (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
+    ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
+      I.lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧ Obs outs t t' ∧
+      I.RunIdxOk (singletonProgM fn B') fuel' s := by
+  obtain ⟨L, A, A', G, G', hc, hob⟩ := ownedCheckMC_checked_at hS h
+  exact checkedC_sound_at_fuel hL hc hob fn s t hfn hpc fuel hrun hok
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel
 
@@ -896,7 +1354,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
   (x86Isa x86Isa_lsemFuelMemF x86Isa_runL x86Isa_lsemFuelMemFk x86Isa_RunIdxOk)
 
-/-! ## 5. Soundness -/
+/-! ## 6. Soundness -/
 
 /-- **Soundness on runs in bounds for given live sets, over an instruction set.** If the
     symbolic step `sym` and branch condition `dec` satisfy `SymLaws I sym dec`, and
@@ -950,9 +1408,9 @@ theorem ownedCheckMC_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hrun : I.lsemFuelMemFk true (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', I.lsemFuelMemFk true (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
-  obtain ⟨L, hL', hO⟩ := ownedCheckMC_with_at hS h
-  obtain ⟨f', t', hr, hobs, hok⟩ := ownedCheckWithC_sound_at hL hL' hO fn s t hfn hpc fuel
-    (I.lsemFuelMemF_of_checked _ fuel s t hrun) (I.runIdxOk_of_checked _ fuel s t hrun)
+  obtain ⟨f', t', -, hr, hobs, hok⟩ := OwnedCheckFuel.ownedCheckMC_idx_sound_at_fuel hL hS h
+    fn s t hfn hpc fuel (I.lsemFuelMemF_of_checked _ fuel s t hrun)
+    (I.runIdxOk_of_checked _ fuel s t hrun)
   exact ⟨f', t', I.lsemFuelMemFk_of_runIdxOk true _ f' s t' hr hok, hobs⟩
 
 /-- **Soundness of the checker on bounds-checked runs.** If `ownedCheckMC outs B B'`

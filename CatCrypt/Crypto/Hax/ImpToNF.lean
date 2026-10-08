@@ -3603,18 +3603,37 @@ def _root_.Hax.FieldTag.FieldMethod.sig : _root_.Hax.FieldTag.FieldMethod → Li
   | .add | .sub | .mul => [.word 64, .word 64]
   | .neg | .square | .double => [.word 64]
 
+/-- The argument types of a method of the prime-field interface on elements of the type `t`:
+    two for a method with two arguments, one for a method with one. -/
+def _root_.Hax.FieldTag.FieldMethod.sigAt (m : _root_.Hax.FieldTag.FieldMethod) (t : NfTy) :
+    List NfTy :=
+  if m.binary then [t, t] else [t]
+
+/-- On `64`-bit words, the argument types of a method are `FieldMethod.sig`. -/
+theorem _root_.Hax.FieldTag.FieldMethod.sigAt_word (m : _root_.Hax.FieldTag.FieldMethod) :
+    m.sigAt (.word 64) = m.sig := by
+  cases m <;> rfl
+
+/-- **The type of an element at the modulus `p`**: a `64`-bit word below `2^64`; an array of
+    `Hax.FieldTag.fieldLimbs p` `64`-bit words, the little-endian limbs of the canonical
+    representative, at `p ≥ 2^64`. -/
+def fieldElemTy (p : Nat) : NfTy :=
+  if p < 2 ^ 64 then .word 64 else .arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64)
+
 /-- **The call typing of the tagged field calls**: a head `Hax.FieldTag.fieldTag?` reads as a
-    method has a `64`-bit word result on the argument types of the method. -/
+    method at the modulus `p` has the result type `fieldElemTy p` on the argument types of the
+    method on that type. -/
 def fieldTagSig (f : String) (as : List NfTy) : Option NfTy :=
   match _root_.Hax.FieldTag.fieldTag? f with
-  | some (m, _) => if as = m.sig then some (.word 64) else none
+  | some (m, p) => if as = m.sigAt (fieldElemTy p) then some (fieldElemTy p) else none
   | none => none
 
-/-- A call `fieldTagSig` types has a tagged head, the argument types of its method and a
-    `64`-bit word result. -/
+/-- A call `fieldTagSig` types has a tagged head at a modulus `p`, the argument types of its
+    method on `fieldElemTy p` and the result type `fieldElemTy p`. -/
 theorem fieldTagSig_some {f : String} {as : List NfTy} {r : NfTy}
     (h : fieldTagSig f as = some r) :
-    ∃ m p, _root_.Hax.FieldTag.fieldTag? f = some (m, p) ∧ as = m.sig ∧ r = .word 64 := by
+    ∃ m p, _root_.Hax.FieldTag.fieldTag? f = some (m, p) ∧ as = m.sigAt (fieldElemTy p) ∧
+      r = fieldElemTy p := by
   unfold fieldTagSig at h
   split at h
   · rename_i m p hmp
@@ -3624,6 +3643,24 @@ theorem fieldTagSig_some {f : String} {as : List NfTy} {r : NfTy}
       exact ⟨m, p, hmp, has, rfl⟩
     · cases h
   · cases h
+
+/-- At a modulus below `2^64`, a tagged call on the argument types `FieldMethod.sig` of its
+    method has a `64`-bit word result. -/
+theorem fieldTagSig_narrow {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
+    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : p < 2 ^ 64) :
+    fieldTagSig f m.sig = some (.word 64) := by
+  have he : fieldElemTy p = .word 64 := if_pos hp
+  simp [fieldTagSig, h, he, _root_.Hax.FieldTag.FieldMethod.sigAt_word]
+
+/-- At a modulus `p ≥ 2^64`, a tagged call on arrays of `Hax.FieldTag.fieldLimbs p` `64`-bit
+    words has the same type of result. -/
+theorem fieldTagSig_wide {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
+    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : 2 ^ 64 ≤ p) :
+    fieldTagSig f (m.sigAt (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64))) =
+      some (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64)) := by
+  have he : fieldElemTy p = .arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64) :=
+    if_neg (by omega)
+  simp [fieldTagSig, h, he]
 
 /-- **The call typing of `u64` code**: a tagged field call by `fieldTagSig`; a scalar call by
     `hax64ScalarSig`; at an index of a `hax64NFWordTy` type, `index` of an integer slice is an
@@ -4143,9 +4180,13 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
   · rw [hfs] at hr
     cases hr
     obtain ⟨m, p, hmp, -, rfl⟩ := fieldTagSig_some hfs
-    obtain ⟨n, rfl, hn, hp⟩ :=
-      _root_.Hax.FieldTag.fieldCall_lt (_root_.Hax.hax64Builtins_of_fieldTag? hmp hv)
-    exact dec_word64_nat (by omega)
+    rcases _root_.Hax.FieldTag.fieldCall_some (_root_.Hax.hax64Builtins_of_fieldTag? hmp hv) with
+      ⟨n, rfl, hn, hp⟩ | ⟨hp, n, rfl, -⟩
+    · rw [fieldElemTy, if_pos hp]
+      exact dec_word64_nat (by omega)
+    · rw [fieldElemTy, if_neg (by omega)]
+      exact dec_arr_word _ (_root_.Hax.FieldTag.limbsOf_word _ _)
+        (_root_.Hax.FieldTag.length_limbsOf _ _)
   rw [hfs] at hr
   dsimp only at hr
   split at hr

@@ -102,8 +102,7 @@ theorem ownedCheckMC_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hrun : I.lsemFuelMemFk true (singletonProgM fn B) fuel s = some t) :
     ∃ t', (∀ k, checkFuel B B' fuel ≤ k →
         I.lsemFuelMemFk true (singletonProgM fn B') k s = some t') ∧ Obs outs t t' := by
-  obtain ⟨L, hL', hO⟩ := ownedCheckMC_with_at hS h
-  obtain ⟨f', t', hf, hr, hobs, hok⟩ := ownedCheckWithC_sound_at_fuel hL hL' hO fn s t hfn hpc
+  obtain ⟨f', t', hf, hr, hobs, hok⟩ := ownedCheckMC_idx_sound_at_fuel hL hS h fn s t hfn hpc
     fuel (I.lsemFuelMemF_of_checked _ fuel s t hrun) (I.runIdxOk_of_checked _ fuel s t hrun)
   refine ⟨t', fun k hk => ?_, hobs⟩
   obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le (hf.trans hk)

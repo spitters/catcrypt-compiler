@@ -246,6 +246,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
 CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
+CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
@@ -784,7 +785,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.X86VecMemExec
 CatCrypt.Crypto.SecureCompilation.VIR.X86VecMulRules
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
-CatCrypt.Crypto.SecureCompilation.VIR.ZmmByteEncoder
 CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath
 CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
@@ -938,6 +938,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
+CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc
@@ -1090,7 +1091,6 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
-HaxAscent.Ascent.FnCorresUnique
 HaxAscent.Ascent.IfBreak
 HaxAscent.Ascent.LocalCalls
 HaxAscent.Calculus.CorresMCutPointRustM

@@ -23,7 +23,8 @@ positions of `ops` followed by `vzeroupper`.
 
 A program of this form has no branch, so the branch condition of the round trip
 `VecImage.mixedDecode_mixedEncode` holds for it, and the position of `ret` is well formed
-(`LprogBytesDecode.mkRet_ok`). The round trip therefore needs a lawful table and the
+(`LprogBytesDecode.mkRet_ok`). The round trip therefore needs a lawful table with an entry
+for each vector instruction of the block and for `vzeroupper` (`BlockEncodable`), and the
 well-formedness `LprogBytesDecode.ItemOK` of the position of each scalar operation of the
 block. Under these, the machine `VecImage.mixedMach` decodes `lineBytes A enc ops` to
 `VecMach.lineProg (ops ++ [.inr .zeroUpper])`, whose runs with leakage are `kernelRun`.
@@ -43,6 +44,8 @@ callee specification returns in a state that satisfies the postcondition
 
 * `scalarItem`, `lineItems`, `lineBytes`: the positions and the bytes of a block followed by
   `ret`.
+* `BlockEncodable`: the table has an entry for each vector instruction of a block and for
+  `vzeroupper`.
 * `frameEnc`: the bytes of the scalar operations of a kernel text.
 
 ## Main results
@@ -153,14 +156,37 @@ theorem lineItems_ok {enc : JInstr 64 → List (BitVec 8)} {ops : List (JInstr 6
     | inr v => simp at he
   · exact mkRet_ok
 
+/-- The vector instructions of a block have entries in the table when the block's do. -/
+theorem lineItems_encodable {A : VecAsm} {enc : JInstr 64 → List (BitVec 8)}
+    {ops : List (JInstr 64 ⊕ VInstr)} (hv : ∀ v, Sum.inr v ∈ ops → A.Encodable v) :
+    ∀ v, Sum.inr v ∈ lineItems enc ops → A.Encodable v := by
+  intro v hv'
+  simp only [lineItems, List.mem_append, List.mem_map, List.mem_singleton, reduceCtorEq,
+    or_false] at hv'
+  obtain ⟨o, ho, he⟩ := hv'
+  cases o with
+  | inl i => simp at he
+  | inr w =>
+    simp only [Sum.map_inr, id_eq, Sum.inr.injEq] at he
+    subst he
+    exact hv w ho
+
+/-- Every vector instruction of the block `ops` and the closing `vzeroupper` have an entry in
+    the table `A`. -/
+def BlockEncodable (A : VecAsm) (ops : List (JInstr 64 ⊕ VInstr)) : Prop :=
+  ∀ v, Sum.inr v ∈ ops ++ [.inr .zeroUpper] → A.Encodable v
+
 variable {A : VecAsm}
 
 /-- **The bytes of a block followed by `ret` decode to its line program**, for a lawful
-    table and well-formed positions of the scalar operations. -/
+    table, encodable vector instructions and well-formed positions of the scalar
+    operations. -/
 theorem mixedDecode_lineItems (hA : A.Lawful) (enc : JInstr 64 → List (BitVec 8))
-    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) :
+    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i))
+    (hv : ∀ v, Sum.inr v ∈ ops → A.Encodable v) :
     mixedDecode A (mixedEncode A (lineItems enc ops)) = some (lineProg ops) :=
-  (mixedDecode_mixedEncode hA _ (lineItems_ok hok) (mixedBranchOK_lineItems A enc _ ops 0)).trans
+  (mixedDecode_mixedEncode hA _ (lineItems_ok hok) (lineItems_encodable hv)
+    (mixedBranchOK_lineItems A enc _ ops 0)).trans
     (mixedExpected_lineItems A enc _ ops)
 
 /-! ## 2. The kernel on the machine of mixed images -/
@@ -171,10 +197,11 @@ variable (r : DoitRegime) {m : Mode}
 /-- **`mixedMach` decodes the bytes of a kernel block** to the line program of the block
     followed by `vzeroupper`. -/
 theorem lineBytes_decode (m : Mode) (hA : A.Lawful) (enc : JInstr 64 → List (BitVec 8))
-    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) :
+    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i))
+    (hv : BlockEncodable A ops) :
     (mixedMach A r m).decode (lineBytes A enc ops)
       = some (lineProg (ops ++ [.inr .zeroUpper])) :=
-  mixedDecode_lineItems hA enc _ fun i hi => hok i (by simpa using hi)
+  mixedDecode_lineItems hA enc _ (fun i hi => hok i (by simpa using hi)) hv
 
 /-- The runs of `kernelRun` are the runs with leakage of the line program on `mixedMach`. -/
 theorem kernelRun_iff_mixedMach (A : VecAsm) (ops : List (JInstr 64 ⊕ VInstr)) (s : AState)
@@ -184,16 +211,17 @@ theorem kernelRun_iff_mixedMach (A : VecAsm) (ops : List (JInstr 64 ⊕ VInstr))
         (s', v') :=
   exists_congr fun _ => exists_congr fun _ => mixedMach_runL.symm
 
-/-- **The kernel contract at the byte level.** For a lawful table and well-formed positions
-    of the scalar operations, `mixedMach` decodes the bytes of the kernel block to a
-    program whose runs with leakage, from any vector state to any vector state, are
-    `kernelRun`. -/
+/-- **The kernel contract at the byte level.** For a lawful table that encodes the vector
+    instructions of the block and well-formed positions of the scalar operations,
+    `mixedMach` decodes the bytes of the kernel block to a program whose runs with leakage,
+    from any vector state to any vector state, are `kernelRun`. -/
 theorem kernelImage (hA : A.Lawful) (enc : JInstr 64 → List (BitVec 8))
-    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) :
+    (ops : List (JInstr 64 ⊕ VInstr)) (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i))
+    (hv : BlockEncodable A ops) :
     ∃ prog, (mixedMach A r m).decode (lineBytes A enc ops) = some prog ∧
       ∀ (s : AState) (t : List CTLeak) (s' : AState), kernelRun r m ops s t s' ↔
         ∃ v v' : VState, (mixedMach A r m).RunL (fun _ _ => True) prog 0 (s, v) t (s', v') :=
-  ⟨_, lineBytes_decode r m hA enc ops hok, kernelRun_iff_mixedMach r A ops⟩
+  ⟨_, lineBytes_decode r m hA enc ops hok hv, kernelRun_iff_mixedMach r A ops⟩
 
 /-! ## 3. The scalar operations of a kernel text -/
 
@@ -352,17 +380,18 @@ theorem frameEnc_ok_of_framed {m : Mode} {ro : Std.HashMap String (Array (BitVec
     some vector states. -/
 theorem faithful_kernelRun (hF : A.Faithful r m cpu) (hA : A.Lawful)
     {enc : JInstr 64 → List (BitVec 8)} {ops : List (JInstr 64 ⊕ VInstr)}
-    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) {s : AState} {t : List CTLeak}
-    {s' : AState} (h : kernelRun r m ops s t s') :
+    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) (hv : BlockEncodable A ops)
+    {s : AState} {t : List CTLeak} {s' : AState} (h : kernelRun r m ops s t s') :
     ∃ v v' : VState, cpu (lineBytes A enc ops) (s, v) (s', v') := by
   obtain ⟨v, v', hX⟩ := h
-  exact ⟨v, v', hF _ _ _ _ (lineBytes_decode r m hA enc ops hok) hX.haltsC⟩
+  exact ⟨v, v', hF _ _ _ _ (lineBytes_decode r m hA enc ops hok hv) hX.haltsC⟩
 
 /-- **A faithful processor returns from the bytes of a kernel, from every vector state**,
     in the return state of a run of `kernelRun`. -/
 theorem faithful_kernel_total (hF : A.Faithful r m cpu) (hA : A.Lawful)
     {enc : JInstr 64 → List (BitVec 8)} {ops : List (JInstr 64 ⊕ VInstr)}
-    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) (s : AState) (v : VState) :
+    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) (hv : BlockEncodable A ops)
+    (s : AState) (v : VState) :
     ∃ (t : List CTLeak) (s' : AState) (v' : VState),
       kernelRun r m ops s t s' ∧ cpu (lineBytes A enc ops) (s, v) (s', v') := by
   have hX : (x86VecMach r m).RunL (fun _ _ => True) (lineProg (ops ++ [.inr .zeroUpper])) 0
@@ -370,11 +399,12 @@ theorem faithful_kernel_total (hF : A.Faithful r m cpu) (hA : A.Lawful)
       (((x86VecMach r m).runBlock (s, v) (ops ++ [.inr .zeroUpper])).1,
         ((x86VecMach r m).runBlock (s, v) (ops ++ [.inr .zeroUpper])).2) :=
     (runL_lineProg r m _ _ _ _ _).mpr ⟨IsaMachine.blockOk_true _ _ _, rfl, rfl⟩
-  exact ⟨_, _, _, ⟨v, _, hX⟩, hF _ _ _ _ (lineBytes_decode r m hA enc ops hok) hX.haltsC⟩
+  exact ⟨_, _, _, ⟨v, _, hX⟩, hF _ _ _ _ (lineBytes_decode r m hA enc ops hok hv) hX.haltsC⟩
 
 /-- **The processor on the bytes of a kernel that meets a callee specification.** Let
     `kernelRun` of the block meet the signature `sig`, the processor be faithful to a lawful
-    table, and the positions of the scalar operations be well formed. Then from every entry
+    table that encodes the vector instructions of the block, and the positions of the
+    scalar operations be well formed. Then from every entry
     state that satisfies the precondition, with any vector state, the processor returns
     from the bytes of the kernel in a state that satisfies the postcondition, with `%rsp`
     restored, every register outside the clobber set kept and every byte outside the
@@ -382,21 +412,22 @@ theorem faithful_kernel_total (hF : A.Faithful r m cpu) (hA : A.Lawful)
 theorem faithful_calleeSpec {sig : CalleeSig} {ops : List (JInstr 64 ⊕ VInstr)}
     (hS : CalleeSpec (kernelRun r m ops) sig) (hF : A.Faithful r m cpu) (hA : A.Lawful)
     {enc : JInstr 64 → List (BitVec 8)}
-    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) (s : AState) (hpre : sig.pre s)
-    (v : VState) :
+    (hok : ∀ i, Sum.inl i ∈ ops → ItemOK (scalarItem enc i)) (hv : BlockEncodable A ops)
+    (s : AState) (hpre : sig.pre s) (v : VState) :
     ∃ (s' : AState) (v' : VState), cpu (lineBytes A enc ops) (s, v) (s', v')
       ∧ sig.post s s'
       ∧ s'.regs "%rsp" = s.regs "%rsp"
       ∧ (∀ x, sig.clob x = false → s'.regs x = s.regs x)
       ∧ ∀ a, ¬ sig.foot s a → s'.mem a = s.mem a := by
-  obtain ⟨t, s', v', hX, hc⟩ := faithful_kernel_total r hF hA hok s v
+  obtain ⟨t, s', v', hX, hc⟩ := faithful_kernel_total r hF hA hok hv s v
   exact ⟨s', v', hc, hS.post s t s' hpre hX, hS.rsp s t s' hpre hX, hS.keep s t s' hpre hX,
     hS.frame s t s' hpre hX⟩
 
 /-- **The processor on the bytes of a vector kernel given as text.** When `vectorizeEmit V`
     returns `text` for the scalar program `c`, the text parses, and for every block `ops` of
     its parsed program, every input length and every frame size below `2 ^ 31` at which the
-    program passes the frame check, every lawful table and every processor faithful to it:
+    program passes the frame check, every lawful table that encodes the vector instructions
+    of the block and every processor faithful to it:
     from an entry state with disjoint regions whose input region holds parameters
     lane-wise, with any vector state, the processor returns from the bytes
     `lineBytes A frameEnc ops` in a state whose output region holds lane-wise the outputs
@@ -410,7 +441,7 @@ theorem vectorKernel_image (V : VecShape) {Γ : JCtxt} {t : JasminTy} {sym : Str
         blockOfText V.mode ro prog = some ops → framedB V.mode inLen nOut F 0 prog = true →
         F < 2 ^ 31 →
         ∀ (A : VecAsm) (cpu : List (BitVec 8) → AState × VState → AState × VState → Prop),
-          A.Lawful → A.Faithful r V.mode cpu →
+          A.Lawful → A.Faithful r V.mode cpu → BlockEncodable A ops →
           ∀ s : AState, (kernelSig V inOffset inBound nOut c inLen F).pre s → ∀ v : VState,
             ∃ (s' : AState) (v' : VState), cpu (lineBytes A frameEnc ops) (s, v) (s', v')
               ∧ (kernelSig V inOffset inBound nOut c inLen F).post s s'
@@ -420,8 +451,8 @@ theorem vectorKernel_image (V : VecShape) {Γ : JCtxt} {t : JasminTy} {sym : Str
               ∧ ∀ a, ¬ (kernelSig V inOffset inBound nOut c inLen F).foot s a →
                   s'.mem a = s.mem a := by
   obtain ⟨prog, ro, hp, hk⟩ := vectorKernel_calleeSpec r V h
-  exact ⟨prog, ro, hp, fun ops inLen F hops hfr hF A cpu hA hFa s hpre v =>
+  exact ⟨prog, ro, hp, fun ops inLen F hops hfr hF A cpu hA hFa hv s hpre v =>
     faithful_calleeSpec r (hk ops inLen F hops hfr) hFa hA
-      (frameEnc_ok_of_framed hops hfr hF) s hpre v⟩
+      (frameEnc_ok_of_framed hops hfr hF) hv s hpre v⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelImage

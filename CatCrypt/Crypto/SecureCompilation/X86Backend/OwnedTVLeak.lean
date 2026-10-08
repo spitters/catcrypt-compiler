@@ -28,7 +28,9 @@ flags) live at the block. Array names are not renamed by the checker (the two ru
 their arrays), and the branch events agree because the checker already compares the
 symbolic branch conditions. Under `ownedCheckWith` and `leakCheckWith`, two halting traced
 runs of the source and of the rewritten body from one state have one trace. `ownedCheckML`
-is `ownedCheckMC` with `leakCheckWith` at its live sets.
+is `ownedCheckMC` with `leakCheckWith` at its live sets and its must-constant facts: the
+events of each block are collected from the symbolic run that starts from the facts of the
+block.
 
 The traced run of an instruction set `I : LprogIsa.Isa` is `Isa.lsemFuelMemFLeak`: the
 recursion of `lsemFuelMemFLeak` with the step of `I`, a conditional emitting the branch
@@ -55,9 +57,10 @@ suffix `_at` are stated for an instruction set whose step the symbolic step desc
   `x86Isa` is the traced flag machine.
 * `instrLeakF_holds_at`, `leakL_sound_at`: the events of a stretch from its symbolic run.
 * `fuel_runLLeak_at`, `run_invL_at`: traced runs through a stretch and through one step.
-* `ownedCheckWithL_trace_at`, `ownedCheckML_trace_at`, `ownedCheckML_sound_leak_at`,
-  `memFCT_of_ownedCheckML_at`: one trace, soundness on traced runs and constant time over an
-  instruction set.
+* `ownedCheckML_checked_at`: the checker on traced runs gives `CheckedC` and the event check.
+* `checkedC_trace_at`, `ownedCheckWithL_trace_at`, `ownedCheckML_trace_at`,
+  `ownedCheckML_sound_leak_at`, `memFCT_of_ownedCheckML_at`: one trace, soundness on traced
+  runs and constant time over an instruction set.
 * `ownedCheckWithL_trace`, `ownedCheckML_trace`: one trace for the source and the rewritten
   body.
 * `ownedCheckML_sound_leak`: a halting checked traced run of the source is matched by a
@@ -240,10 +243,9 @@ theorem symLeak_label {i : LinstrRM} (h : isLbl i = true) (is : List LinstrRM) (
 
 theorem symLeak_entry_at {sym : LinstrRM → SSt → SOut}
     (hlab : ∀ {i : LinstrRM}, isLbl i = true → ∀ ss : SSt, sym i ss = .ok ss [])
-    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat}
+    {B : List LinstrRM} {b : Block} {T : Term} {p : Nat} {ss : SSt}
     (hp : EntryAt B b p) (hle : p ≤ bstopOf T b) :
-    symLeak ((B.drop p).take (bstopOf T b - p)) SSt.start sym =
-      symLeak (bodyAt B b T) SSt.start sym := by
+    symLeak ((B.drop p).take (bstopOf T b - p)) ss sym = symLeak (bodyAt B b T) ss sym := by
   rcases hp with rfl | ⟨rfl, x, hx, hl⟩
   · rfl
   · unfold bodyAt
@@ -447,40 +449,58 @@ theorem haltL_at (I : Isa) {fn : String} {B : List LinstrRM} {w : LstateMF}
 
 /-- The symbolic events of the rewritten block are those of the source block, over registers
     and flags live at the block, unless the block ends in `Lret` or the source block always
-    fails. -/
+    fails. The source block runs from its facts `A k`, the rewritten block from its facts
+    `A' k`; both default to no fact. -/
 def leakOk (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List LinstrRM)
-    (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+    (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
+    (A A' : Nat → List CFact := fun _ => []) : Bool :=
   match T with
   | .ret => true
   | _ =>
-      match symRun (bodyAt B b T) SSt.start sym with
+      match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          symLeak (bodyAt B' b' T) SSt.start sym == symLeak (bodyAt B b T) SSt.start sym &&
-            (symLeak (bodyAt B b T) SSt.start sym).all fun e => okIn (L k) e.vars e.readsF
+          symLeak (bodyAt B' b' T) (startC (A' k)) sym ==
+              symLeak (bodyAt B b T) (startC (A k)) sym &&
+            (symLeak (bodyAt B b T) (startC (A k)) sym).all fun e =>
+              okIn (L k) e.vars e.readsF
       | _ => true
 
-/-- `leakOk` at every block pair of the two graphs. -/
+/-- `leakOk` at every block pair of the two graphs, with the facts `A` and `A'`. -/
 def leakCheckWith (L : Nat → List String × Bool) (B B' : List LinstrRM)
-    (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+    (sym : LinstrRM → SSt → SOut := symStep) (A A' : Nat → List CFact := fun _ => []) :
+    Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
       (List.range G.blocks.size).all fun k =>
-        leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym
+        leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A'
   | _, _ => false
 
-/-- **The checker on traced runs**: `ownedCheckMC` and `leakCheckWith` at the live sets
-    `ownedCheckM` computes. The symbolic step `sym` and the symbolic branch condition `dec`
-    default to the x86 ones, `symStep` and `symDec`. -/
+theorem leakCheckWith_spec {L : Nat → List String × Bool} {B B' : List LinstrRM}
+    {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact} {G G' : CFG}
+    (hG : cfgOf (B.map Prod.fst) = some G) (hG' : cfgOf (B'.map Prod.fst) = some G')
+    (h : leakCheckWith L B B' sym A A' = true) :
+    ∀ k < G.blocks.size,
+      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true := by
+  unfold leakCheckWith at h
+  rw [hG, hG'] at h
+  simpa only [List.all_eq_true, List.mem_range] using h
+
+/-- **The checker on traced runs**: `ownedCheckMC` and `leakCheckWith` at its live sets and
+    facts. The symbolic step `sym` and the symbolic branch condition `dec` default to the x86
+    ones, `symStep` and `symDec`. -/
 def ownedCheckML (outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let R := runsOf B B' G G' sym
+      let A := constAnnot B G sym
+      let A' := constAnnot B' G' sym
+      let R := runsOfC A A' B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false)) dec
       ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
-        && oblCheckWith (fun k => L.getD k ([], false)) B B' sym
-        && leakCheckWith (fun k => L.getD k ([], false)) B B' sym
+        && oblCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
+        && factCheck A B G sym && factCheck A' B' G' sym
+        && leakCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
   | _, _ => false
 
 /-- `ownedCheckML` accepts only pairs `ownedCheckMC` accepts. -/
@@ -499,10 +519,14 @@ theorem ownedCheckMC_of_ownedCheckML {outs : List String} {B B' : List LinstrRM}
           simp only [Bool.and_eq_true] at h ⊢
           exact h.1
 
-theorem ownedCheckML_with_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+/-- A pair `ownedCheckML` accepts under `sym` and `dec` satisfies `CheckedC` and the event
+    check for some live sets and facts, when `sym` and `dec` commute with substitution. -/
+theorem ownedCheckML_checked_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hS : SymSubst sym dec) {outs : List String} {B B' : List LinstrRM}
     (h : ownedCheckML outs B B' sym dec = true) :
-    ∃ L, ownedCheckWith outs L B B' sym dec = true ∧ leakCheckWith L B B' sym = true := by
+    ∃ L A A' G G', CheckedC outs L A A' B B' G G' sym dec ∧
+      ∀ k < G.blocks.size,
+        leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true := by
   unfold ownedCheckML at h
   cases hG : cfgOf (B.map Prod.fst) with
   | none => simp [hG] at h
@@ -512,24 +536,24 @@ theorem ownedCheckML_with_at {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
       | some G' =>
           rw [hG, hG'] at h
           simp only [Bool.and_eq_true] at h
-          exact ⟨_, ownedCheckWithR_spec_at hS hG hG' h.1.1, h.2⟩
-
-theorem ownedCheckML_with {outs : List String} {B B' : List LinstrRM}
-    (h : ownedCheckML outs B B' = true) :
-    ∃ L, ownedCheckWith outs L B B' = true ∧ leakCheckWith L B B' = true :=
-  ownedCheckML_with_at symSubst_x86 h
+          obtain ⟨⟨⟨⟨h1, -⟩, h3⟩, h4⟩, h5⟩ := h
+          exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
+            leakCheckWith_spec hG hG' h5⟩
 
 theorem leakOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B' : List LinstrRM}
-    {b b' : Block} {sym : LinstrRM → SSt → SOut} (h : leakOk L k T B B' b b' sym = true)
-    (hT : T ≠ .ret) {ss : SSt}
-    {gs : List SG} (hs : symRun (bodyAt B b T) SSt.start sym = .ok ss gs) :
-    symLeak (bodyAt B' b' T) SSt.start sym = symLeak (bodyAt B b T) SSt.start sym ∧
-      ∀ e ∈ symLeak (bodyAt B b T) SSt.start sym,
+    {b b' : Block} {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact}
+    (h : leakOk L k T B B' b b' sym A A' = true) (hT : T ≠ .ret) {ss : SSt}
+    {gs : List SG} (hs : symRun (bodyAt B b T) (startC (A k)) sym = .ok ss gs) :
+    symLeak (bodyAt B' b' T) (startC (A' k)) sym =
+        symLeak (bodyAt B b T) (startC (A k)) sym ∧
+      ∀ e ∈ symLeak (bodyAt B b T) (startC (A k)) sym,
         (∀ v ∈ e.vars, v ∈ (L k).1) ∧ (e.readsF = true → (L k).2 = true) := by
-  have h2 : (match symRun (bodyAt B b T) SSt.start sym with
+  have h2 : (match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          symLeak (bodyAt B' b' T) SSt.start sym == symLeak (bodyAt B b T) SSt.start sym &&
-            (symLeak (bodyAt B b T) SSt.start sym).all fun e => okIn (L k) e.vars e.readsF
+          symLeak (bodyAt B' b' T) (startC (A' k)) sym ==
+              symLeak (bodyAt B b T) (startC (A k)) sym &&
+            (symLeak (bodyAt B b T) (startC (A k)) sym).all fun e =>
+              okIn (L k) e.vars e.readsF
       | _ => true) = true := by
     cases T with
     | ret => exact absurd rfl hT
@@ -542,20 +566,22 @@ theorem leakOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B'
 
 /-- The trace agreement on the instruction set `I` up to the measure `N`: a halting traced
     source run and a halting traced run of the rewritten body from related states at a block
-    entry have one trace. -/
-def SimAtL (I : Isa) (L : Nat → List String × Bool) (B B' : List LinstrRM) (G G' : CFG)
-    (fn : String) (N : Nat) : Prop :=
+    entry, the source state satisfying the facts `A` of the block and the rewritten state the
+    facts `A'`, have one trace. -/
+def SimAtL (I : Isa) (L : Nat → List String × Bool) (A A' : Nat → List CFact)
+    (B B' : List LinstrRM) (G G' : CFG) (fn : String) (N : Nat) : Prop :=
   ∀ (fuel k : Nat) (s s' t t' : LstateMF) (f' : Nat) (ℓ ℓ' : List CTLeak),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     Pair B B' (G.blk k) (G'.blk k) s.prog.base.reg.lpc s'.prog.base.reg.lpc →
-    Rel (L k) s s' → s.prog.lfn = fn →
+    Rel (L k) s s' → FactsAt (A k) s ∧ FactsAt (A' k) s' → s.prog.lfn = fn →
     I.lsemFuelMemFLeak (singletonProgM fn B) fuel s = some (t, ℓ) →
     I.lsemFuelMemFLeak (singletonProgM fn B') f' s' = some (t', ℓ') → ℓ' = ℓ
 
 theorem fall_contL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
-    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec) {N k : Nat}
-    (ih : SimAtL I L B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} {fn : String}
+    (hc : CheckedC outs L A A' B B' G G' sym dec) {N k : Nat}
+    (ih : SimAtL I L A A' B B' G G' fn N) (hk : k < G.blocks.size) {nx : Option Nat}
     (hn : G.next k = nx) (hn' : G'.next k = nx) {w w' t t' : LstateMF} {f0 f1 : Nat}
     {ℓ ℓ' : List CTLeak}
     (hw : w.prog.base.reg.lpc = (G.blk k).stop) (hw' : w'.prog.base.reg.lpc = (G'.blk k).stop)
@@ -563,7 +589,8 @@ theorem fall_contL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     (hrun : I.lsemFuelMemFLeak (singletonProgM fn B) f0 w = some (t, ℓ))
     (hrun' : I.lsemFuelMemFLeak (singletonProgM fn B') f1 w' = some (t', ℓ'))
     (hmeas : f0 * (G.blocks.size + 1) + (G.blocks.size - (k + 1)) < N)
-    (hrel : ∀ j, nx = some j → Rel (L j) w w') : ℓ' = ℓ := by
+    (hrel : ∀ j, nx = some j → Rel (L j) w w')
+    (hfa : ∀ j, nx = some j → FactsAt (A j) w ∧ FactsAt (A' j) w') : ℓ' = ℓ := by
   have hk' : k < G'.blocks.size := hc.size ▸ hk
   cases nx with
   | none =>
@@ -578,16 +605,18 @@ theorem fall_contL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
       obtain ⟨-, -, e2⟩ := (stop_next hc.hG' hk').2 j hn'
       subst hj
       exact ih f0 (k + 1) w w' t t' f1 ℓ ℓ' hmeas hjlt (Or.inl ⟨hw.trans e1, hw'.trans e2⟩)
-        (hrel _ rfl) hfn hrun hrun'
+        (hrel _ rfl) (hfa _ rfl) hfn hrun hrun'
 
 theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec)
-    {outs : List String} {L : Nat → List String × Bool} {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} {fn : String}
+    (hc : CheckedC outs L A A' B B' G G' sym dec)
     (hlk : ∀ k < G.blocks.size,
-      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true)
-    {N : Nat} (ih : SimAtL I L B B' G G' fn N) : SimAtL I L B B' G G' fn (N + 1) := by
-  intro fuel k s s' t t' f' ℓ ℓ' hN hk hpair hrel hfn hrun hrun'
+      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true)
+    {N : Nat} (ih : SimAtL I L A A' B B' G G' fn N) :
+    SimAtL I L A A' B B' G G' fn (N + 1) := by
+  intro fuel k s s' t t' f' ℓ ℓ' hN hk hpair hrel ⟨hfa, hfa'⟩ hfn hrun hrun'
   obtain ⟨hTk, hok⟩ := hc.blk k hk
   have hk' : k < G'.blocks.size := hc.size ▸ hk
   have F := blockFacts hc.hG hk
@@ -635,10 +664,10 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
   -- the symbolic runs of the two block bodies
   have hD := symRun_sound_at hL.step_sound (singletonProgM fn B)
     ((B.drop s.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
-    (holds_start s)
-  rw [symRun_entry_at hL.label hE hle] at hD
-  rcases blockOk_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
+    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) (startC (A k)) _ _ _ _ _ s
+    (holds_startC hfa fun _ => rfl)
+  rw [symRun_entryS_at hL.label hE hle] at hD
+  rcases blockOkS_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
   · rw [hfail] at hD
     simp only [SOut.DescN] at hD
     rw [hD] at hu
@@ -647,14 +676,14 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
   obtain ⟨hAll, hH, hFr⟩ := hD.1 u hu
   have hV : ∀ r ∈ (L k).1, s'.prog.base.reg.lvm r = s.prog.base.reg.lvm r := hrel.2.2.2.1
   have hH0' : Holds s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of s'.zf
-      SSt.start s' :=
-    ⟨fun _ => rfl, fun q => by rw [hrel.2.1]; rfl, rfl, by simp [SSt.start, STerm.ev],
-      by simp [SSt.start, STerm.ev]⟩
+      (startC (A' k)) s' :=
+    holds_startC hfa' fun q => by rw [hrel.2.1]
   rw [hTk] at hle'
   have hD' := symRun_sound_at hL.step_sound (singletonProgM fn B')
     ((B'.drop s'.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
-  rw [symRun_entry_at hL.label hE' hle', hS'] at hD'
+    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) (startC (A' k))
+    _ _ _ _ _ s' hH0'
+  rw [symRun_entryS_at hL.label hE' hle', hS'] at hD'
   have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
@@ -673,13 +702,13 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
   rw [hu'] at hu''
   cases hu''
   -- the events of the two block bodies
-  have hLS := leakL_sound_at hL.step_sound (singletonProgM fn B) _ SSt.start _ _ _ _ _ s u
-    (holds_start s)
-    hplain ⟨ss, gs, by rw [symRun_entry_at hL.label hE hle]; exact hS⟩ hu
+  have hLS := leakL_sound_at hL.step_sound (singletonProgM fn B) _ (startC (A k)) _ _ _ _ _ s u
+    (holds_startC hfa fun _ => rfl)
+    hplain ⟨ss, gs, by rw [symRun_entryS_at hL.label hE hle]; exact hS⟩ hu
   rw [symLeak_entry_at hL.label hE hle] at hLS
-  have hLI := leakL_sound_at hL.step_sound (singletonProgM fn B') _ SSt.start _ _ _ _ _ s' u'
-    hH0'
-    hplain' ⟨ss', gs', by rw [symRun_entry_at hL.label hE' hle']; exact hS'⟩ hu'
+  have hLI := leakL_sound_at hL.step_sound (singletonProgM fn B') _
+    (startC (A' k)) _ _ _ _ _ s' u' hH0'
+    hplain' ⟨ss', gs', by rw [symRun_entryS_at hL.label hE' hle']; exact hS'⟩ hu'
   rw [symLeak_entry_at hL.label hE' hle'] at hLI
   obtain ⟨hleq, hlv⟩ := leakOk_spec (hlk k hk) hret hS
   have hstretch : leakL I (singletonProgM fn B') ((B'.drop s'.prog.base.reg.lpc).take
@@ -700,9 +729,14 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     rw [hFr'.2.1]; simp only [List.length_take, List.length_drop]; omega
   have hul'' : u'.prog.lfn = fn := hFr'.1.trans hfn'
   obtain ⟨hsucc, -⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
-    (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
+    (symRun_good_at hL.good _ (startC_good _) hS) (symRun_good_at hL.good _ (startC_good _) hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
     (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
+  have hfk' := factCheck_blk hc.facts' hk'
+  rw [hTk] at hfk'
+  have hfs : ∀ j ∈ (G.blk k).term.succs, FactsAt (A j) u ∧ FactsAt (A' j) u' := fun j hj =>
+    ⟨factsAt_of_holds hH (factsOk_spec (factCheck_blk hc.facts hk) hS j hj),
+      factsAt_of_holds hH' (factsOk_spec hfk' hS' j hj)⟩
   have hfle : f ≤ fuel := by omega
   obtain ⟨zi, zt⟩ := z
   obtain ⟨zi', zt'⟩ := z'
@@ -719,6 +753,7 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     have hw' : u'.prog.base.reg.lpc = (G'.blk k).stop := by rw [hupc', hT]; rfl
     exact fall_contL hc ih hk hnx.symm hnx'.symm hw hw' hul' hul'' hru hru'
       (measure_le hN hfle hk) (fun j hj => hsucc j (by simp [hT, Term.succs, hj]))
+      (fun j hj => hfs j (by simp [hT, Term.succs, hj]))
   · -- jump
     obtain ⟨_, hT', _⟩ | ⟨tg', x', l', hT', hzi', htg', hl'⟩ | ⟨_, _, _, _, hT', _⟩ |
         ⟨hT', _⟩ := termOk_spec hterm'
@@ -751,7 +786,7 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
         { prog := { base := u'.prog.base.setLpc ((G'.blk tg).start + 1), lfn := u'.prog.lfn },
           zf := u'.zf } t t' f1' ℓ1 ℓ1' (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
         (Or.inr ⟨rfl, label_at hl, rfl, label_at hl'⟩) (hsucc tg (by simp [hT, Term.succs]))
-        hul' hr1 hr1'
+        (hfs tg (by simp [hT, Term.succs])) hul' hr1 hr1'
     · rw [if_neg hx] at he
       cases he
   · -- branch
@@ -796,7 +831,7 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
         { prog := { base := u'.prog.base.setLpc ((G'.blk tg).start + 1), lfn := u'.prog.lfn },
           zf := u'.zf } t t' f1' ℓ1 ℓ1' (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
         (Or.inr ⟨rfl, label_at hl, rfl, label_at hl'⟩) (hsucc tg (by simp [hT, Term.succs]))
-        hul' hr1 hr1'
+        (hfs tg (by simp [hT, Term.succs])) hul' hr1 hr1'
     · rw [if_neg hd] at he
       rw [if_neg (by rw [hdec]; exact hd)] at he'
       simp only [Option.some.injEq] at he he'
@@ -806,21 +841,45 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
         hc ih hk hnx.symm hnx'.symm ?_ ?_ hul' hul'' hr1 hr1'
         (measure_le hN (show f1 ≤ fuel by omega) hk)
         (fun j hj => hsucc j (by simp [hT, Term.succs, hj]))
+        (fun j hj => hfs j (by simp [hT, Term.succs, hj]))
       · show u.prog.base.reg.lpc + 1 = _; omega
       · show u'.prog.base.reg.lpc + 1 = _; omega
   · exact absurd hT hret
 
 theorem simAtL_all {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
     (hL : SymLaws I sym dec) {outs : List String} {L : Nat → List String × Bool}
-    {B B' : List LinstrRM}
-    {G G' : CFG} {fn : String} (hc : Checked outs L B B' G G' sym dec)
+    {A A' : Nat → List CFact} {B B' : List LinstrRM}
+    {G G' : CFG} {fn : String} (hc : CheckedC outs L A A' B B' G G' sym dec)
     (hlk : ∀ k < G.blocks.size,
-      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym = true) :
-    ∀ N, SimAtL I L B B' G G' fn N
+      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) :
+    ∀ N, SimAtL I L A A' B B' G G' fn N
   | 0 => fun _ _ _ _ _ _ _ _ _ hN => absurd hN (Nat.not_lt_zero _)
   | N + 1 => sim_stepL hL hc hlk (simAtL_all hL hc hlk N)
 
 /-! ## 6. Soundness on traced runs -/
+
+/-- **One trace for given live sets and facts, over an instruction set.** If the symbolic
+    step `sym` and branch condition `dec` satisfy `SymLaws I sym dec`, the two bodies satisfy
+    `CheckedC` for the live sets `L` and the facts `A` and `A'`, and every block pair passes
+    `leakOk`, a halting traced run of `B` and a halting traced run of `B'` on `I`, both from
+    one state at pc `0`, have one trace. -/
+theorem checkedC_trace_at {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} (hc : CheckedC outs L A A' B B' G G' sym dec)
+    (hlk : ∀ k < G.blocks.size,
+      leakOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) (fn : String)
+    (s : LstateMF) (hfn : s.prog.lfn = fn)
+    (hpc : s.prog.base.reg.lpc = 0) {fuel f' : Nat} {t t' : LstateMF} {ℓ ℓ' : List CTLeak}
+    (hrun : I.lsemFuelMemFLeak (singletonProgM fn B) fuel s = some (t, ℓ))
+    (hrun' : I.lsemFuelMemFLeak (singletonProgM fn B') f' s = some (t', ℓ')) : ℓ' = ℓ := by
+  obtain ⟨h0, hs0⟩ := cfgOf_start_zero hc.hG hc.ne
+  obtain ⟨-, hs0'⟩ := cfgOf_start_zero hc.hG' hc.ne'
+  exact simAtL_all hL hc hlk _ fuel 0 s s t t' f' ℓ ℓ' (Nat.lt_succ_self _) h0
+    (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
+    ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩
+    ⟨(by rw [factCheck_entry hc.facts]; intro f hf; cases hf),
+      (by rw [factCheck_entry hc.facts']; intro f hf; cases hf)⟩ hfn hrun hrun'
 
 /-- **One trace for given live sets, over an instruction set.** If the symbolic step `sym`
     and branch condition `dec` satisfy `SymLaws I sym dec`, and
@@ -836,24 +895,8 @@ theorem ownedCheckWithL_trace_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hpc : s.prog.base.reg.lpc = 0) {fuel f' : Nat} {t t' : LstateMF} {ℓ ℓ' : List CTLeak}
     (hrun : I.lsemFuelMemFLeak (singletonProgM fn B) fuel s = some (t, ℓ))
     (hrun' : I.lsemFuelMemFLeak (singletonProgM fn B') f' s = some (t', ℓ')) : ℓ' = ℓ := by
-  unfold ownedCheckWith at h
-  unfold leakCheckWith at hlk
-  split at h
-  · rename_i G G' hG hG'
-    rw [hG, hG'] at hlk
-    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, beq_iff_eq,
-      List.all_eq_true, List.mem_range] at h hlk
-    obtain ⟨⟨⟨hne, hne'⟩, hsz⟩, hblk⟩ := h
-    have hc : Checked outs L B B' G G' sym dec :=
-      ⟨hG, hG', hsz.symm, fun k hk => ⟨(hblk k hk).1.symm, (hblk k hk).2⟩⟩
-    have hwl : B.map Prod.fst ≠ [] := by simpa using hne
-    have hwl' : B'.map Prod.fst ≠ [] := by simpa using hne'
-    obtain ⟨h0, hs0⟩ := cfgOf_start_zero hG hwl
-    obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
-    exact simAtL_all hL hc hlk _ fuel 0 s s t t' f' ℓ ℓ' (Nat.lt_succ_self _) h0
-      (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
-      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun hrun'
-  · cases h
+  obtain ⟨G, G', hc⟩ := checkedC_of_with h
+  exact checkedC_trace_at hL hc (leakCheckWith_spec hc.hG hc.hG' hlk) fn s hfn hpc hrun hrun'
 
 /-- **One trace for given live sets.** If `ownedCheckWith outs L B B'` and
     `leakCheckWith L B B'` accept, a halting traced run of `B` and a halting traced run of
@@ -876,8 +919,8 @@ theorem ownedCheckML_trace_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hpc : s.prog.base.reg.lpc = 0) {fuel f' : Nat} {t t' : LstateMF} {ℓ ℓ' : List CTLeak}
     (hrun : I.lsemFuelMemFLeak (singletonProgM fn B) fuel s = some (t, ℓ))
     (hrun' : I.lsemFuelMemFLeak (singletonProgM fn B') f' s = some (t', ℓ')) : ℓ' = ℓ := by
-  obtain ⟨L, hL', hlk⟩ := ownedCheckML_with_at hS h
-  exact ownedCheckWithL_trace_at hL hL' hlk fn s hfn hpc hrun hrun'
+  obtain ⟨L, A, A', G, G', hc, hlk⟩ := ownedCheckML_checked_at hS h
+  exact checkedC_trace_at hL hc hlk fn s hfn hpc hrun hrun'
 
 /-- **One trace under `ownedCheckML`.** If `ownedCheckML outs B B'` accepts, a halting traced
     run of `B` and a halting traced run of `B'`, both from one state at pc `0` of that
