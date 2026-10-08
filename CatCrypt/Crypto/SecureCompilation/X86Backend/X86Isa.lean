@@ -55,8 +55,9 @@ branch-condition evaluation is `OwnedLprogTV.decC` (the zero flag for the condit
   regime, whose operations, state, step and leakage are those of the address machine
   `aMachine` and of `DecodedCT`.
 * `x86Mach_runL_iff`, `x86Mach_haltsC_iff`, `x86Mach_halts_iff`: the generic leakage
-  semantics and halting runs at `x86Mach` are `DecodedCT.RunL`, `RInstrSemantics.HaltsC` and
-  `RInstrSemantics.Halts`.
+  semantics and halting runs at `x86Mach` are `DecodedCT.RunL`, `RInstrSemantics.HaltsC`
+  (which is `RInstrSemantics.Halts`) and, for the call-free runs,
+  `RInstrSemantics.HaltsNoCall`.
 * `runL_halts_x86`, `haltsC_runL_x86`, `halts_runL_x86`: `DecodedCT.RunL.halts`,
   `DecodedCT.haltsC_runL` and `DecodedCT.halts_runL` as specialisations of the generic
   theorems.
@@ -547,7 +548,7 @@ theorem x86Mach_haltsC_iff {prog : List RInstr} {pc : Nat} {sa sa' : AState} :
 
 /-- The call-free halting runs at `x86Mach` are those of `aMachine`. -/
 theorem x86Mach_halts_iff {prog : List RInstr} {pc : Nat} {sa sa' : AState} :
-    (x86Mach r).Halts prog pc sa sa' ↔ RInstrSemantics.Halts aMachine prog pc sa sa' := by
+    (x86Mach r).Halts prog pc sa sa' ↔ RInstrSemantics.HaltsNoCall aMachine prog pc sa sa' := by
   have hr : ∀ {pc pc' : Nat} {s s' : AState}, (x86Mach r).Reaches prog pc s pc' s' ↔
       RInstrSemantics.Reaches aMachine prog pc s pc' s' := by
     intro pc pc' s s'
@@ -561,7 +562,7 @@ theorem x86Mach_halts_iff {prog : List RInstr} {pc : Nat} {sa sa' : AState} :
       induction h with
       | refl => exact .refl _ _
       | next h _ ih => exact .next (by rw [x86Mach_mstep r]; exact h) ih
-  unfold IsaMachine.Halts RInstrSemantics.Halts
+  unfold IsaMachine.Halts RInstrSemantics.HaltsNoCall
   simp only [hr, x86Act_ret]
 
 /-- `DecodedCT.RunL.halts` is the specialisation of `IsaMachine.RunL.haltsC` at
@@ -579,12 +580,12 @@ theorem haltsC_runL_x86 {prog : List RInstr} {pc : Nat} {sa sa' : AState}
   obtain ⟨t, ht⟩ := IsaMachine.haltsC_runL ((x86Mach_haltsC_iff r).mpr h)
   exact ⟨t, (x86Mach_runL_iff r).mp ht⟩
 
-/-- `DecodedCT.halts_runL` is the specialisation of `IsaMachine.halts_runL` at `x86Mach`. -/
+/-- `DecodedCT.halts_runL` is the specialisation of `IsaMachine.haltsC_runL` at `x86Mach`:
+    `RInstrSemantics.Halts` is `RInstrSemantics.HaltsC`. -/
 theorem halts_runL_x86 {prog : List RInstr} {pc : Nat} {sa sa' : AState}
     (h : RInstrSemantics.Halts aMachine prog pc sa sa') :
-    ∃ t, DecodedCT.RunL r (fun _ _ => True) prog pc sa t sa' := by
-  obtain ⟨t, ht⟩ := IsaMachine.halts_runL ((x86Mach_halts_iff r).mpr h)
-  exact ⟨t, (x86Mach_runL_iff r).mp ht⟩
+    ∃ t, DecodedCT.RunL r (fun _ _ => True) prog pc sa t sa' :=
+  haltsC_runL_x86 r h
 
 end Machine
 

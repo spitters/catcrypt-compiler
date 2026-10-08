@@ -11,6 +11,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.Jasmin.ChaCha20QRSpec
 
 /-!
 # Scalar THIR front: width-parameterized THIR-ANF → `Com jasminDialect` → owned x86
@@ -1758,22 +1759,8 @@ ror(x,32-n)`). The three operation kinds (`thBin .add 32`, `thBin .xor 32`,
 so it is split into four single-output
 programs `qrAThir`/`qrBThir`/`qrCThir`/`qrDThir`, each computing the shared
 12-binding SSA body and returning its own output word (`a'`/`b'`/`c'`/`d'`),
-mirroring the SHA-256 round's `a'`/`e'` split. -/
-
-/-- The reference ChaCha20 quarter-round (RFC 8439 §2.1) over four `BitVec 32`
-    words, returning `(a', b', c', d')`. `rol(x,n)` is rendered as
-    `x.rotateRight (32 - n)`, matching the `thRor (32 - n)` front encoding. -/
-def chachaQRSpec (a b c d : BitVec 32) :
-    (BitVec 32 × BitVec 32 × BitVec 32 × BitVec 32) :=
-  let a := a + b
-  let d := (d ^^^ a).rotateRight (32 - 16)
-  let c := c + d
-  let b := (b ^^^ c).rotateRight (32 - 12)
-  let a := a + b
-  let d := (d ^^^ a).rotateRight (32 - 8)
-  let c := c + d
-  let b := (b ^^^ c).rotateRight (32 - 7)
-  (a, b, c, d)
+mirroring the SHA-256 round's `a'`/`e'` split.  The reference `chachaQRSpec` is
+defined in `Jasmin/ChaCha20QRSpec.lean`. -/
 
 /-- The shared ChaCha20 quarter-round SSA body over the input context
     `[a, b, c, d]` (`a = here`, `b = there here`, `c = there² here`,

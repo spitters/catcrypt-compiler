@@ -12,7 +12,7 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 65536` — the FrodoKEM coefficient modulus
 
 A computable, verified Lean reference implementation of `Z/65536Z` for use
-by the FrodoKEM matrix-multiply bridge (`FrodoHaxLowCTBridge`) to replace
+by the FrodoKEM matrix-multiply bridge (`FrodoKernelBridge`) to replace
 opaque encoder round-trip axioms with proven identities.
 
 `q = 65536 = 2^16` is a **power of two**, not a prime. Reduction `mod 65536`

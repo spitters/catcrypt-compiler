@@ -15,7 +15,7 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 127` — the QR-UOV-Is Mersenne base prime field
 
 A computable, verified Lean reference implementation of `Z/127Z` for use by
-the QR-UOV bridge (`QruovHaxLowCTBridge`) to replace opaque encoder
+the QR-UOV bridge (`QruovKernelBridge`) to replace opaque encoder
 round-trip axioms with proven identities.
 
 `q = 127 = 2^7 - 1` is the Mersenne prime base field of the QR-UOV-Is

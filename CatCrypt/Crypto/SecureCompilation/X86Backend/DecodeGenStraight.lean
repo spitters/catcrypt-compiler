@@ -334,7 +334,7 @@ theorem decLine_result (σ : AbiLayout) (W : LineWit) (fn : String) (ops : List 
   split at hpost
   · rename_i RA hRA
     refine ⟨lineLayout W.js, aMachine.runBlock sa W.js, hdec,
-      ⟨W.js.length, ?_, ?_⟩, ?_⟩
+      halts_of_reaches (pc' := W.js.length) ?_ ?_, ?_⟩
     · have h := reaches_ops aMachine [] W.js [.ret] sa
       simpa [lineLayout] using h
     · simp [lineLayout]

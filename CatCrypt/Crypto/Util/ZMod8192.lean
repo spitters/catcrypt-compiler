@@ -12,7 +12,7 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 8192` — the NTRU-HRSS coefficient modulus
 
 A computable, verified Lean reference implementation of `Z/8192Z` for use by
-the NTRU-HRSS-701 polynomial-multiply bridge (`NtruhrssHaxLowCTBridge`) to
+the NTRU-HRSS-701 polynomial-multiply bridge (`NtruhrssKernelBridge`) to
 replace opaque encoder round-trip axioms with proven identities.
 
 `q = 8192 = 2^13` is a **power of two**, not a prime. Reduction `mod 8192`

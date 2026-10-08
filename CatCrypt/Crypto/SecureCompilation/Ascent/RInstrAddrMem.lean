@@ -21,7 +21,7 @@ view. Its block fold is `runBlockA` and its counted loop is `runXLoopA`.
 prologue `binPrologue` (indices `0`–`18`), the exit branch `je 37` (index `19`), the
 loop segment of `AddrMemIdx.andLoop` (indices `20`–`36`: the body, `cmp %rdi, 0`,
 `jne 20`), the epilogue `binEpilogue` (indices `37`–`43`) and `ret` (index `44`)
-(`binDecoded_and_eq`). Run on `aMachine` from index `0`, it halts in the state of the
+(`binDecoded_and_eq`). Run on `aMachine` from index `0`, it halts without a call in the state of the
 prologue, the loop `runXLoopA fuel _ andLoop` when the counter is nonzero, and the
 epilogue (`binDecoded_and_halts`, `binDecoded_and_halts_zero`).
 
@@ -156,12 +156,12 @@ theorem binDecoded_and_step_exit (sa : AState) (b : Bool) (hz : sa.view.flagB (�
 
 /-- **The decoded `mpn_and_n_loop_owned` runs as the prologue, `andLoop` and the
     epilogue.** From index `0`, when the counter after the prologue is nonzero and the
-    loop of `AddrMemIdx.andLoop` exits in `sa'`, the decoded program halts in
-    `runBlockA sa' binEpilogue`. -/
+    loop of `AddrMemIdx.andLoop` exits in `sa'`, the decoded program halts without a call
+    in `runBlockA sa' binEpilogue`. -/
 theorem binDecoded_and_halts (fuel : Nat) (sa sa' : AState)
     (hz : (runBlockA sa binPrologue).view.flagB (·.zf) = false)
     (hl : runXLoopA fuel (runBlockA sa binPrologue) andLoop = some sa') :
-    Halts aMachine (binDecoded (andMidDecoded .and_)) 0 sa (runBlockA sa' binEpilogue) :=
+    HaltsNoCall aMachine (binDecoded (andMidDecoded .and_)) 0 sa (runBlockA sa' binEpilogue) :=
   ⟨44, (binDecoded_and_reaches_prologue sa).trans
     ((Reaches.single (by rw [binDecoded_and_step_exit _ false hz, if_neg Bool.false_ne_true])).trans
       ((binDecoded_and_reaches_loop fuel _ sa' hl).trans
@@ -170,7 +170,7 @@ theorem binDecoded_and_halts (fuel : Nat) (sa sa' : AState)
 /-- With a zero counter after the prologue the loop is skipped. -/
 theorem binDecoded_and_halts_zero (sa : AState)
     (hz : (runBlockA sa binPrologue).view.flagB (·.zf) = true) :
-    Halts aMachine (binDecoded (andMidDecoded .and_)) 0 sa
+    HaltsNoCall aMachine (binDecoded (andMidDecoded .and_)) 0 sa
       (runBlockA (runBlockA sa binPrologue) binEpilogue) :=
   ⟨44, (binDecoded_and_reaches_prologue sa).trans
     ((Reaches.single (by rw [binDecoded_and_step_exit _ true hz, if_pos rfl])).trans

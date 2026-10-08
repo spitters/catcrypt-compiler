@@ -32,7 +32,7 @@ with leakage trace `t` and final state `sa'`, in the event type `CT.CTLeak`:
 
 Each `op` step also satisfies the side condition `ok sa i`. `RunL.halts` and `haltsC_runL`
 relate `RunL` with the trivial side condition to `RInstrSemantics.HaltsC` on `aMachine`,
-and `halts_runL` covers the call-free `RInstrSemantics.Halts`.
+and `halts_runL` states the same for `RInstrSemantics.Halts`, which is `HaltsC`.
 
 ## The checker
 
@@ -245,11 +245,11 @@ theorem haltsC_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : A
       exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
     · simp at hs
 
-/-- Every call-free halting run of `aMachine` has a leakage trace. -/
+/-- Every halting run of `aMachine` has a leakage trace. -/
 theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
     (h : Halts aMachine prog pc sa sa') :
     ∃ t, RunL r (fun _ _ => True) prog pc sa t sa' :=
-  haltsC_runL r (haltsC_of_halts h)
+  haltsC_runL r h
 
 /-- `RunL` under a stronger side condition is `RunL` under a weaker one. -/
 theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {prog : List RInstr}

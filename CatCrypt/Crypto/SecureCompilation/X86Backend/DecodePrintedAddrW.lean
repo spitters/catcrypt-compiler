@@ -80,8 +80,9 @@ arms to the bodies of `DecodePrintedCFG`.
 * `vtBytes`, `sim_cmovSlot`, `vfBytes`, `sim_cmovSlotF`: the bytes and the simulations of the
   selects with a slot true value and with a slot false value.
 * `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
-* `run_simWN`, `run_simW`, `printedAddr_simW`: the decoded bytes of a body in `printedAddrWB`
-  simulate its run on the address machine.
+* `run_simWN`, `run_simW`, `printedAddr_simW_noCall`, `printedAddr_simW`: the decoded bytes
+  of a body in `printedAddrWB` simulate its run on the address machine, by a halting run
+  without a call.
 * `printedAddrWB_eq_impl` (`@[csimp]`): the gate is evaluated with the body parameters
   computed once per body.
 -/
@@ -4606,8 +4607,8 @@ theorem targetsOK_ofW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body sh
     function bytes. At the end the stack register is restored, every general-purpose name holds
     the value of its machine register, a bit the machine register zero-extends or a 32- or
     16-bit cell of it (`NarrowCell`), and the memories agree outside
-    the red-zone word. -/
-theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : AState)
+    the red-zone word. The halting run makes no call. -/
+theorem printedAddr_simW_noCall (body : Lcmd) (h : printedAddrWB body = true) (sa : AState)
     (s : LstateA) (zf : Bool) (hpc : s.reg.lpc = 0)
     (hent : ∀ R, gpOk R = true → s.reg.getW R 64 = some (sa.regs (phys R))
       ∨ ∃ b : BitVec 1, s.reg.lvm R = ⟨1, b⟩ ∧ sa.regs (phys R) = b.setWidth 64)
@@ -4616,7 +4617,7 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
     (hsafe : RunSafe (frameP (Params.ofBody body) (frameRsp body sa)) body
       (SafeW (frameRsp body sa) body) fuel s zf) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
-      ∧ Halts aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ HaltsNoCall aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
       ∧ (∀ R, gpOk R = true → t.1.reg.getW R 64 = some (sa'.regs (phys R))
           ∨ (∃ b : BitVec 1, t.1.reg.lvm R = ⟨1, b⟩ ∧ sa'.regs (phys R) = b.setWidth 64)
           ∨ NarrowCell (t.1.reg.lvm R) (sa'.regs (phys R)))
@@ -4690,5 +4691,26 @@ theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : ASt
     exact hc2.regs R hR
   · rw [hm2]
     exact hc2.mem x hx
+
+/-- **The decoded bytes of a body in `printedAddrWB` simulate its runs.** The statement of
+    `printedAddr_simW_noCall` with the halting run as a halting run through calls
+    (`halts_of_haltsNoCall`). -/
+theorem printedAddr_simW (body : Lcmd) (h : printedAddrWB body = true) (sa : AState)
+    (s : LstateA) (zf : Bool) (hpc : s.reg.lpc = 0)
+    (hent : ∀ R, gpOk R = true → s.reg.getW R 64 = some (sa.regs (phys R))
+      ∨ ∃ b : BitVec 1, s.reg.lvm R = ⟨1, b⟩ ∧ sa.regs (phys R) = b.setWidth 64)
+    (hmem : s.mem = sa.mem) (fuel : Nat) (t : LstateA × Bool)
+    (hrun : runA (frameP (Params.ofBody body) (frameRsp body sa)) body fuel s zf = some t)
+    (hsafe : RunSafe (frameP (Params.ofBody body) (frameRsp body sa)) body
+      (SafeW (frameRsp body sa) body) fuel s zf) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
+      ∧ Halts aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ R, gpOk R = true → t.1.reg.getW R 64 = some (sa'.regs (phys R))
+          ∨ (∃ b : BitVec 1, t.1.reg.lvm R = ⟨1, b⟩ ∧ sa'.regs (phys R) = b.setWidth 64)
+          ∨ NarrowCell (t.1.reg.lvm R) (sa'.regs (phys R)))
+      ∧ (∀ x, ¬ InRange8 (redW (frameRsp body sa)) x → t.1.mem x = sa'.mem x) := by
+  obtain ⟨prog, sa', hd, hh, h1, h2, h3⟩ :=
+    printedAddr_simW_noCall body h sa s zf hpc hent hmem fuel t hrun hsafe
+  exact ⟨prog, sa', hd, halts_of_haltsNoCall hh, h1, h2, h3⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW

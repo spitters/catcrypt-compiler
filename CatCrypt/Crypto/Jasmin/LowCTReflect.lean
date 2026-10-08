@@ -602,7 +602,7 @@ consumers MAYO, UOV, SNOVA, MQOM, Plonky3, ….
 
 The bridge-side cost: the L3 correctness identity between the rustcmd leaf
 and the Lean-level verified spec is a *cross-side axiom* (e.g.
-`mayo_quadform_n8_eq_mqEvalN8` in `MAYO/MayoHaxLowCTBridge.lean`) — there
+`mayo_quadform_n8_eq_mqEvalN8` in `MAYO/MayoKernelBridge.lean`) — there
 is no shared Lean body that both sides reduce to, so the bridge cannot be
 closed by `rfl`.
 
@@ -671,7 +671,7 @@ to `rfl`-based proofs in any module that imports the `def`.
 #### Bridge consequence (the headline win)
 
 When the leaf is a computable `def`, the cross-side axiom in
-`MayoHaxLowCTBridge.lean` / `UovHaxLowCTBridge.lean`
+`MayoKernelBridge.lean` / `UovKernelBridge.lean`
 (`mayo_quadform_n8_eq_mqEvalN8`, `gf256_dot_l8_eq_evalMqL8`) becomes a
 `rfl`-provable theorem — the bridge has *zero* cross-side axioms for the
 leaf-to-spec correspondence. The structural bijection axioms remain (they

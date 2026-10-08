@@ -1037,12 +1037,13 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
   (ownedCheckMC ownedCheckMC_sound)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB
-  printedAddr_simW)
+  printedAddr_simW_noCall)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (frameP read64_eq_of_agree)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (frameRsp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (Params decodeLprog)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts HaltsNoCall
+  halts_of_haltsNoCall)
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (runA_congr runSafe_congr)
@@ -1056,8 +1057,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (lsemFuelMemF)
     frame map that agrees with the stack frame on the names of the body. A halting run of `B` from a state related to an address state corresponding to the
     machine state `sa` is matched by a halting run of the decoded bytes of the body from
     `sa`, at the end of which every observed name with a frame word outside the red-zone
-    word holds the machine word at that frame word. -/
-theorem virt_bytesC {frame : String → Option (BitVec 64)}
+    word holds the machine word at that frame word. The halting run makes no call. -/
+theorem virt_bytesC_noCall {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
     {sa : AState} {outs : List String} {B : List LinstrRM}
     (hck : ownedCheckMC outs B (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))
@@ -1080,7 +1081,8 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
     (hmem : s.mem = sa.mem) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
     (hok : RunIdxOk (singletonProgM fn B) fuel b) :
-    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
+      ∧ HaltsNoCall aMachine prog 0 sa sa'
       ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
         t.prog.base.reg.lvm r = ⟨64, read64 sa'.mem a⟩ := by
   have hck' := lsemFuelMemFk_of_runIdxOk true _ fuel b t hrun hok
@@ -1106,9 +1108,43 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
   rw [runA_congr hfr] at hrA
   rw [runSafe_congr hfr] at hsafe
   obtain ⟨prog, sa', hdec, hh, -, -, hm'⟩ :=
-    printedAddr_simW body hpr sa s zf hpc (fun R hR => Or.inl (hent R hR)) hmem fA (sA, zA) hrA
-      hsafe
+    printedAddr_simW_noCall body hpr sa s zf hpc (fun R hR => Or.inl (hent R hR)) hmem fA
+      (sA, zA) hrA hsafe
   refine ⟨prog, sa', hdec, hh, fun r a hr ha hd => ?_⟩
   rw [← hobs.1 r hr, hslots r a hr ha, read64_eq_of_agree hm' hd]
+
+/-- **A virtual body on the decoded bytes of a straight body with cells.** The statement of
+    `virt_bytesC_noCall` with the halting run as a halting run through calls
+    (`halts_of_haltsNoCall`). -/
+theorem virt_bytesC {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    {sa : AState} {outs : List String} {B : List LinstrRM}
+    (hck : ownedCheckMC outs B (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr body))
+      = true)
+    (hpr : printedAddrWB body = true)
+    (hphys : JasminLsemAddrImage.physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : (imgGateB frame slotArr (cellBody slotArr body)
+      || (imgGateBW frame slotArr (cellBody slotArr body)
+        && ImageAddrSimW.retOutsB frame (cellBody slotArr body) outs)) = true)
+    (hsep : ImgSep frame slotArr base (frameRsp body sa))
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base (frameRsp body sa) body)
+    (hnc : ∀ (k : Nat) (bi : Linstr), body[k]? = some bi → ∀ cc l, bi.li_i ≠ .Lcond cc l)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = frameP (Params.ofBody body) (frameRsp body sa) q)
+    (fn : String) (b t : LstateMF) (hfn : b.prog.lfn = fn) (hbpc : b.prog.base.reg.lpc = 0)
+    (s : LstateA) (zf : Bool)
+    (hrel : ImgRel frame slotArr base (cellBody slotArr body) b s zf)
+    (hpc : s.reg.lpc = 0)
+    (hent : ∀ R, DecodePrinted.gpOk R = true →
+      s.reg.getW R 64 = some (sa.regs (DecodePrinted.phys R)))
+    (hmem : s.mem = sa.mem) (fuel : Nat)
+    (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
+    (hok : RunIdxOk (singletonProgM fn B) fuel b) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
+        t.prog.base.reg.lvm r = ⟨64, read64 sa'.mem a⟩ := by
+  obtain ⟨prog, sa', hdec, hh, hobs⟩ := virt_bytesC_noCall hck hpr hphys hgate hsep hN hF hnc
+    hfr fn b t hfn hbpc s zf hrel hpc hent hmem fuel hrun hok
+  exact ⟨prog, sa', hdec, halts_of_haltsNoCall hh, hobs⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells

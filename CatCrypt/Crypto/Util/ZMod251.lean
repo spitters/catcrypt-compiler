@@ -15,8 +15,8 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 251` — the MQOM / SDitH base prime field
 
 A computable, verified Lean reference implementation of `Z/251Z` for use by
-the MQOM and SDitH bridges (`MqomHaxLowCTBridge` and
-`SdithHaxLowCTBridge`) to replace opaque encoder round-trip axioms with
+the MQOM and SDitH bridges (`MqomKernelBridge` and
+`SdithKernelBridge`) to replace opaque encoder round-trip axioms with
 proven identities.
 
 `q = 251` is the largest prime fitting in a single byte. It is the base

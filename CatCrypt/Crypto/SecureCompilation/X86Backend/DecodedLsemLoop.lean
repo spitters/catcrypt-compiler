@@ -438,7 +438,8 @@ theorem decNode_halts_fuel (fn : String) (seeds body : List LinstrRM) (top endL 
     simp only [hpre₃, List.length_append, List.length_map, List.length_cons, List.length_nil]
     omega
   refine ⟨aMachine.runBlock sa' post, { prog := { base := b', lfn := fn }, zf := true },
-    ⟨pre.length + l.body.length + 4 + post.length, ?_, ?_⟩, fun k hk => ?_,
+    halts_of_reaches (pc' := pre.length + l.body.length + 4 + post.length) ?_ ?_,
+    fun k hk => ?_,
     hpost _ _ hInv⟩
   · have h₁ := reaches_ops aMachine [] pre
       ([.op l.cmpInstr, .jcc 4 ((pre.map RInstr.op).length + l.body.length + 4)]

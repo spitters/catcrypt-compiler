@@ -12,7 +12,7 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 1024` — the HAWK per-lane modulus
 
 A computable, verified Lean reference implementation of `Z/1024Z` for use
-by the HAWK 4-way ring-multiply bridge (`HawkHaxLowCTBridge`) to replace
+by the HAWK 4-way ring-multiply bridge (`HawkKernelBridge`) to replace
 opaque encoder round-trip axioms with proven identities.
 
 `q = 1024 = 2^10` is a **power of two**, not a prime. Reduction

@@ -21,8 +21,9 @@ in-bounds fuel run of `x86Isa` (`Isa.checkedSem`). A body is a pair of a virtual
 over `x86Isa` and a printed straight body; the gate is the conjunction of the register
 allocation checker `ownedCheckMC` of `B` against the image of the cell body, the class
 `printedAddrWB` of the printed body and the image gates; the encoder emits the function
-bytes of the printed body. The simulation is `ImageAddrCells.virt_bytesC`, which composes
-the image simulation with `DecodePrintedAddrW.printedAddr_simW`. The printed body has no
+bytes of the printed body. The simulation is `ImageAddrCells.virt_bytesC_noCall`, which
+composes the image simulation with `DecodePrintedAddrW.printedAddr_simW_noCall`. The printed
+body has no
 conditional branch.
 
 ## Main definitions
@@ -120,7 +121,7 @@ def x86ImageAsmSim :
     rw [x86Isa_lsemFuelMemF] at hrun
     rw [x86Isa_RunIdxOk] at hok
     obtain ⟨prog, sa', hdec, hh, hobs⟩ :=
-      virt_bytesC hck hpr hphys hgate hsep hN hF hnc hfr fn b t hfn hbpc s zf hrel hpc hent
+      virt_bytesC_noCall hck hpr hphys hgate hsep hN hF hnc hfr fn b t hfn hbpc s zf hrel hpc hent
         hmem fuel hrun hok
     exact ⟨prog, sa', hdec, (x86Mach_halts_iff r).mpr hh, hobs⟩
 
@@ -135,6 +136,6 @@ theorem x86ImageAsmSim_halts {p : List LinstrRM × Lcmd}
       ∧ RInstrSemantics.Halts aMachine prog 0 sa sa' := by
   obtain ⟨prog, sa', hd, hh⟩ :=
     (x86ImageAsmSim frame slotArr base outs fn .doitm).halts hg hpre ⟨fuel, hrun, hok⟩
-  exact ⟨prog, sa', hd, (x86Mach_halts_iff .doitm).mp hh⟩
+  exact ⟨prog, sa', hd, RInstrSemantics.halts_of_haltsNoCall ((x86Mach_halts_iff .doitm).mp hh)⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSimImage

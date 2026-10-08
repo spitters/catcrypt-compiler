@@ -34,8 +34,9 @@ Over the record:
   the leakage of `retOps`.
 
 The x86 instance, whose machine is the address machine `RInstrAddrMem.aMachine` over
-`JInstr 64`, is `X86Backend.X86Isa.x86Mach`; at that instance `RunL`, `HaltsC` and `Halts`
-are those of `DecodedCT` and `RInstrSemantics`.
+`JInstr 64`, is `X86Backend.X86Isa.x86Mach`; at that instance `RunL` is `DecodedCT.RunL`,
+`HaltsC` is `RInstrSemantics.HaltsC` (which `RInstrSemantics.Halts` abbreviates), and the
+call-free `Halts` is `RInstrSemantics.HaltsNoCall`.
 
 ## Main results
 

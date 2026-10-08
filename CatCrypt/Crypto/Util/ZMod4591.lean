@@ -14,7 +14,7 @@ public import Mathlib.Tactic.Ring
 # Verified `ZMod 4591` — the sntrup761 coefficient modulus
 
 A computable, verified Lean reference implementation of `Z/4591Z` for use by
-the sntrup761 polynomial-multiply bridge (`Sntrup761HaxLowCTBridge`) to
+the sntrup761 polynomial-multiply bridge (`Sntrup761KernelBridge`) to
 replace opaque encoder round-trip axioms with proven identities.
 
 `q = 4591` is a **prime** (NTRU Prime's distinctive choice — the field is

@@ -46,8 +46,9 @@ address-machine run alone.
 * `labelPos_fundef`: a label resolves to the decoded index of its first definition.
 * `run_sim`: from instruction `k`, a terminating run of the address machine is matched by a
   path of the machine from `posOf shs k` to the closing `lea`, ending in `ACorr`.
-* `printedAddr_sim`: for every body in `printedAddrB`, every terminating run of the address
-  machine from the identity correspondence is matched by a halting run of `aMachine` on the
+* `printedAddr_sim_noCall`, `printedAddr_sim`: for every body in `printedAddrB`, every
+  terminating run of the address machine from the identity correspondence is matched by a
+  halting run of `aMachine` without a call on the
   decoded function bytes, with the stack register restored, every general-purpose name
   holding the value of its machine register, and the memories agreeing outside the red-zone
   word.
@@ -760,8 +761,8 @@ def frameRsp (body : Lcmd) (sa : AState) : BitVec 64 :=
     register, whose indexed loads read outside the red-zone word, is matched by a halting run
     of the machine on the decoded function bytes. At the end the stack register is restored,
     every general-purpose name holds the value of its machine register, and the memories agree
-    outside the red-zone word. -/
-theorem printedAddr_sim (body : Lcmd) (h : printedAddrB body = true) (sa : AState)
+    outside the red-zone word. The halting run makes no call. -/
+theorem printedAddr_sim_noCall (body : Lcmd) (h : printedAddrB body = true) (sa : AState)
     (s : LstateA) (zf : Bool) (hpc : s.reg.lpc = 0)
     (hent : ∀ R, gpOk R = true → s.reg.getW R 64 = some (sa.regs (phys R)))
     (hmem : s.mem = sa.mem) (fuel : Nat) (t : LstateA × Bool)
@@ -769,7 +770,7 @@ theorem printedAddr_sim (body : Lcmd) (h : printedAddrB body = true) (sa : AStat
     (hsafe : RunSafe (frameP (Params.ofBody body) (frameRsp body sa)) body
       (LoadSafeAt (frameRsp body sa) body) fuel s zf) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
-      ∧ Halts aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ HaltsNoCall aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
       ∧ (∀ R, gpOk R = true → t.1.reg.getW R 64 = some (sa'.regs (phys R)))
       ∧ (∀ x, ¬ InRange8 (redW (frameRsp body sa)) x → t.1.mem x = sa'.mem x) := by
   obtain ⟨shs, hF⟩ := bodyFacts_of h
@@ -831,5 +832,23 @@ theorem printedAddr_sim (body : Lcmd) (h : printedAddrB body = true) (sa : AStat
     exact hc2.regs R hR
   · rw [hm2]
     exact hc2.mem x hx
+
+/-- **The decoded bytes of a covered printed body simulate its run on the address
+    machine.** The statement of `printedAddr_sim_noCall` with the halting run as a halting run
+    through calls (`halts_of_haltsNoCall`). -/
+theorem printedAddr_sim (body : Lcmd) (h : printedAddrB body = true) (sa : AState)
+    (s : LstateA) (zf : Bool) (hpc : s.reg.lpc = 0)
+    (hent : ∀ R, gpOk R = true → s.reg.getW R 64 = some (sa.regs (phys R)))
+    (hmem : s.mem = sa.mem) (fuel : Nat) (t : LstateA × Bool)
+    (hrun : runA (frameP (Params.ofBody body) (frameRsp body sa)) body fuel s zf = some t)
+    (hsafe : RunSafe (frameP (Params.ofBody body) (frameRsp body sa)) body
+      (LoadSafeAt (frameRsp body sa) body) fuel s zf) :
+    ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
+      ∧ Halts aMachine prog 0 sa sa' ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ R, gpOk R = true → t.1.reg.getW R 64 = some (sa'.regs (phys R)))
+      ∧ (∀ x, ¬ InRange8 (redW (frameRsp body sa)) x → t.1.mem x = sa'.mem x) := by
+  obtain ⟨prog, sa', hd, hh, h1, h2, h3⟩ :=
+    printedAddr_sim_noCall body h sa s zf hpc hent hmem fuel t hrun hsafe
+  exact ⟨prog, sa', hd, halts_of_haltsNoCall hh, h1, h2, h3⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG

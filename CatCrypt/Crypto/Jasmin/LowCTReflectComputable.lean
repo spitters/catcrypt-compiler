@@ -38,8 +38,8 @@ the contract here before touching the larger consumers.
 
 ## Scaling out
 
-The MAYO/UOV bridge consumers (`MayoHaxLowCTBridge.lean`,
-`UovHaxLowCTBridge.lean`) still depend on opaque axioms because their
+The MAYO/UOV bridge consumers (`MayoKernelBridge.lean`,
+`UovKernelBridge.lean`) still depend on opaque axioms because their
 Rust↔Lean correspondence claims are about EMITTED ASSEMBLY behavior, not
 Lean equational identities — so an `axiom` is the right shape there.
 This file targets the OTHER use case: protocols whose "leaf" is a

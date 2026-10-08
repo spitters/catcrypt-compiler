@@ -15,7 +15,7 @@ public import Std.Tactic.BVDecide
 
 A computable, verified Lean reference implementation of GF(16) over the
 "low-nibble" Rijndael-style irreducible polynomial `x^4 + x + 1` (encoded
-as `0x13`). Used by the MAYO bridge (`MayoHaxLowCTBridge`) to replace
+as `0x13`). Used by the MAYO bridge (`MayoKernelBridge`) to replace
 opaque encoder round-trip axioms with proven identities.
 
 ## Representation

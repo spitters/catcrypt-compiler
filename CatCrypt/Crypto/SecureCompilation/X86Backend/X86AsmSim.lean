@@ -25,9 +25,9 @@ register lowered by the frame of the body (`frameRsp`).
 
 * `x86AsmSim` is the record of the class `printedAddrWB`, bodies with loops, carry chains,
   casts and immediate moves, with the safety predicate `SafeW`; its simulation is
-  `DecodePrintedAddrW.printedAddr_simW`.
+  `DecodePrintedAddrW.printedAddr_simW_noCall`.
 * `x86AsmSimB` is the record of the class `printedAddrB` with the safety predicate
-  `LoadSafeAt`; its simulation is `DecodePrintedCFG.printedAddr_sim`. Its exit relation is
+  `LoadSafeAt`; its simulation is `DecodePrintedCFG.printedAddr_sim_noCall`. Its exit relation is
   the stronger one: every general-purpose name holds its machine register at width `64`.
 
 ## Main definitions
@@ -55,10 +55,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (Params decodeLprog RInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk phys)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (frameP redW)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB printedAddr_sim
-  frameRsp RunSafe LoadSafeAt)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB
+  printedAddr_sim_noCall frameRsp RunSafe LoadSafeAt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB
-  printedAddr_simW SafeW NarrowCell)
+  printedAddr_simW_noCall SafeW NarrowCell)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState InRange8)
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 
@@ -106,7 +106,7 @@ def x86AsmSim : AsmSim (x86AddrSem SafeW) (x86Mach r) where
     simp only at hrsp hpc hent hmem hrun hsafe
     subst hrsp
     obtain ⟨prog, sa', hdec, hh, h1, h2, h3⟩ :=
-      printedAddr_simW body hg sa s zf hpc hent hmem fuel t hrun hsafe
+      printedAddr_simW_noCall body hg sa s zf hpc hent hmem fuel t hrun hsafe
     exact ⟨prog, sa', hdec, (x86Mach_halts_iff r).mpr hh, h1, h2, h3⟩
 
 /-- **The assembly simulation of x86-64 on the class `printedAddrB`** at the machine
@@ -129,7 +129,7 @@ def x86AsmSimB : AsmSim (x86AddrSem fun rsp body => LoadSafeAt rsp body) (x86Mac
     simp only at hrsp hpc hent hmem hrun hsafe
     subst hrsp
     obtain ⟨prog, sa', hdec, hh, h1, h2, h3⟩ :=
-      printedAddr_sim body hg sa s zf hpc hent hmem fuel t hrun hsafe
+      printedAddr_sim_noCall body hg sa s zf hpc hent hmem fuel t hrun hsafe
     exact ⟨prog, sa', hdec, (x86Mach_halts_iff r).mpr hh, h1, h2, h3⟩
 
 /-- **A safe terminating run of a body in `printedAddrWB` gives a halting run of its
@@ -140,7 +140,7 @@ theorem x86AsmSim_halts {body : Lcmd} (hg : printedAddrWB body = true)
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
       ∧ RInstrSemantics.Halts aMachine prog 0 sa sa' := by
   obtain ⟨prog, sa', hd, hh⟩ := (x86AsmSim .doitm).halts hg hpre hrun
-  exact ⟨prog, sa', hd, (x86Mach_halts_iff .doitm).mp hh⟩
+  exact ⟨prog, sa', hd, RInstrSemantics.halts_of_haltsNoCall ((x86Mach_halts_iff .doitm).mp hh)⟩
 
 /-- **A safe terminating run of a body in `printedAddrB` gives a halting run of its function
     bytes** on the address machine. -/
@@ -150,6 +150,6 @@ theorem x86AsmSimB_halts {body : Lcmd} (hg : printedAddrB body = true)
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
       ∧ RInstrSemantics.Halts aMachine prog 0 sa sa' := by
   obtain ⟨prog, sa', hd, hh⟩ := (x86AsmSimB r).halts hg hpre hrun
-  exact ⟨prog, sa', hd, (x86Mach_halts_iff r).mp hh⟩
+  exact ⟨prog, sa', hd, RInstrSemantics.halts_of_haltsNoCall ((x86Mach_halts_iff r).mp hh)⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSim

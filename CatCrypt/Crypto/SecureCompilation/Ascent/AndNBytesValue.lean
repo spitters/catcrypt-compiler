@@ -787,7 +787,7 @@ theorem binDecoded_and_value (sa : AState) (n : Nat) (hn1 : 1 ≤ n) (hn : n < 2
     (by rw [entryP_rsp, s1mem, r56, entryP_other _ _ (by decide)])
     (by rw [entryP_rsp, s1mem, r48, entryP_other _ _ (by decide)])
     (by rw [entryP_rsp, s1mem, rm8, entryP_other _ _ (by decide)])
-  obtain ⟨f, hf⟩ := run_of_halts (binDecoded_and_halts n sa sa' hz hrun)
+  obtain ⟨f, hf⟩ := run_of_haltsNoCall (binDecoded_and_halts n sa sa' hz hrun)
   obtain ⟨Emem, Ersp, Erbx, Erbp, Er12, Er13, Er14, Er15, -⟩ := binEpilogue_run sa'
   have arsp : sa'.regs "%rsp" = frameBase sa := by rw [aregs "%rsp" (by decide), s1rsp]
   have slot : ∀ (o : Int) (j : Nat), j < 9 → o = -8 + 8 * (j : Int) →

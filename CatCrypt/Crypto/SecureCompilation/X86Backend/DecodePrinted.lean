@@ -1388,8 +1388,9 @@ theorem printed_line_sim (body P1 : Lcmd) (r : Linstr) (hbody : body = P1 ++ [r]
     rw [Machine.runBlock_append]
     rfl
   refine ⟨_, aMachine.runBlock sa (leaFrame (-(Int.ofNat F)) :: js ++ [leaFrame (Int.ofNat F)]),
-    hlay, ⟨(leaFrame (-(Int.ofNat F)) :: js ++ [leaFrame (Int.ofNat F)]).length,
-    ?_, ?_⟩, ?_, ?_⟩
+    hlay, halts_of_reaches
+      (pc' := (leaFrame (-(Int.ofNat F)) :: js ++ [leaFrame (Int.ofNat F)]).length) ?_ ?_,
+    ?_, ?_⟩
   · have h := reaches_ops aMachine [] (leaFrame (-(Int.ofNat F)) :: js ++ [leaFrame (Int.ofNat F)])
       [.ret] sa
     simpa [DecodeGenStraight.lineLayout] using h

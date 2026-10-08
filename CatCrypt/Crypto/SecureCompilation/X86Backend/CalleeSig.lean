@@ -21,7 +21,7 @@ its own theorems.
 `CalleeSig` is the interface of a callee and `CalleeSpec X c` states that the relation `X`
 meets it. `HaltsO M O prog` is the halting run of `prog` in which a `call t` is answered by
 the relation `O t` on states. With the oracle that never answers it is
-`RInstrSemantics.Halts` (`haltsO_empty_iff`); with an oracle whose answers are runs of a
+`RInstrSemantics.HaltsNoCall` (`haltsO_empty_iff`); with an oracle whose answers are runs of a
 block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
 (`haltsC_linked_of_haltsO`, `haltsC_append_of_haltsO`).
 
@@ -30,7 +30,7 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
 * `CalleeRun`, `CalleeSig`, `CalleeSpec`: a callee and its specification.
 * `runOf`, `oracleAt`: the callee of a decoded block, and the oracle of one target.
 * `HaltsO`: halting runs with calls answered by an oracle.
-* `haltsO_empty_iff`: at the oracle that never answers, `HaltsO` is `Halts`.
+* `haltsO_empty_iff`: at the oracle that never answers, `HaltsO` is `HaltsNoCall`.
 * `haltsC_of_haltsO`: an oracle whose answers are runs of the program gives `HaltsC`.
 * `haltsO_of_haltsC`: `HaltsC` is `HaltsO` at the oracle of its own runs.
 * `haltsC_linked_of_haltsO`, `haltsC_append_of_haltsO`, `haltsC_append_of_haltsO_runOf`:
@@ -173,9 +173,9 @@ theorem HaltsO.mono {M : Machine σ} {O O' : Nat → σ → σ → Prop} {prog :
   | go h _ ih => exact .go h ih
   | call h hc _ ih => exact .call h (hO _ _ _ hc) ih
 
-/-- **At the oracle that never answers, `HaltsO` is `Halts`.** -/
+/-- **At the oracle that never answers, `HaltsO` is `HaltsNoCall`.** -/
 theorem haltsO_empty_iff (M : Machine σ) (prog : List RInstr) (pc : Nat) (s s' : σ) :
-    HaltsO M (fun _ _ _ => False) prog pc s s' ↔ Halts M prog pc s s' := by
+    HaltsO M (fun _ _ _ => False) prog pc s s' ↔ HaltsNoCall M prog pc s s' := by
   constructor
   · intro h
     induction h with
@@ -190,8 +190,8 @@ theorem haltsO_empty_iff (M : Machine σ) (prog : List RInstr) (pc : Nat) (s s' 
     | next hs _ ih => exact .go hs (ih hret)
 
 /-- A call-free halting run is a run under every oracle. -/
-theorem haltsO_of_halts {M : Machine σ} (O : Nat → σ → σ → Prop) {prog : List RInstr}
-    {pc : Nat} {s s' : σ} (h : Halts M prog pc s s') : HaltsO M O prog pc s s' :=
+theorem haltsO_of_haltsNoCall {M : Machine σ} (O : Nat → σ → σ → Prop) {prog : List RInstr}
+    {pc : Nat} {s s' : σ} (h : HaltsNoCall M prog pc s s') : HaltsO M O prog pc s s' :=
   HaltsO.mono (fun _ _ _ hf => hf.elim) ((haltsO_empty_iff M prog pc s s').mpr h)
 
 /-- **An oracle whose answers are runs of the program.** If every answer of `O` at a

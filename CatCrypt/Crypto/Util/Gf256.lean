@@ -15,7 +15,7 @@ public import Std.Tactic.BVDecide
 
 A computable, verified Lean reference implementation of GF(256) (the
 AES / UOV Rijndael field, irreducible polynomial `0x11b`). Used by the
-UOV bridge (`UovHaxLowCTBridge`) to replace opaque encoder round-trip
+UOV bridge (`UovKernelBridge`) to replace opaque encoder round-trip
 axioms with proven identities.
 
 ## Representation

@@ -43,7 +43,7 @@ Mathlib provides full `CommRing`/`Field` structure automatically once
   in `ℤ_{12289}[X] / (X^512 + 1)`
 * `normSq` : verified squared-Euclidean norm with centered coefficients
 
-The bridge file (`FNDSA/FndsaHaxLowCTBridge.lean`) reduces the rustcmd
+The bridge file (`FNDSA/FndsaKernelBridge.lean`) reduces the rustcmd
 leaf claims to identities at this verified-spec level.
 
 ## Reference shape

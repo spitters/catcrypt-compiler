@@ -49,7 +49,7 @@ leaf-axiom side never invokes inversion (Montgomery-ladder steps use only
   — the verified reference for the opaque rustcmd leaf
   `x25519_ladder_iter`
 
-The bridge file (`X25519/X25519HaxLowCTBridge.lean`) reduces the
+The bridge file (`X25519/X25519KernelBridge.lean`) reduces the
 rustcmd leaf claim to an identity at this verified-spec level.
 
 ## Reference

@@ -19,9 +19,10 @@ indexes the list; a branch takes its target when Jasmin's condition
 program counter outside the list, or a nibble without a condition, is stuck.
 
 `Reaches M prog pc s pc' s'` is the reflexive-transitive closure of one step, and
-`Halts` is reaching a `ret`. `step` is stuck at a `call`; `HaltsC` runs through calls,
-each callee a nested run from its target to its own `ret` (`haltsC_of_halts` embeds
-the call-free runs). Two shape lemmas give the semantics of the two
+`HaltsNoCall` is reaching a `ret` by steps. `step` is stuck at a `call`; `HaltsC` runs
+through calls, each callee a nested run from its target to its own `ret`, and `Halts` is
+`HaltsC` (`halts_of_haltsNoCall` embeds the call-free runs, `halts_of_reaches` builds a
+halting run from a path to a `ret`). Two shape lemmas give the semantics of the two
 segment forms the encoder lays down: a run of `op`s is the block fold
 (`reaches_ops`), and the segment `body ++ [cmp ctr, 0] ++ [jne head]` is the
 counted loop `Machine.runXLoop` (`reaches_xloop`). The name-keyed machine
@@ -30,7 +31,9 @@ counted loop `Machine.runXLoop` (`reaches_xloop`). The name-keyed machine
 
 ## Main results
 
-* `run_of_halts`: a halting `Reaches` path is a `run` with enough fuel.
+* `run_of_haltsNoCall`: a call-free halting run is a `run` with enough fuel.
+* `Halts`, `halts_of_haltsNoCall`, `halts_of_reaches`: the halting runs through calls and
+  the embedding of the call-free runs.
 * `reaches_ops`: from the first index of a segment `xs.map .op`, the machine reaches
   the index after the segment in the state `Machine.runBlock s xs`.
 * `reaches_xloop`: from the first index of the segment
@@ -142,12 +145,14 @@ theorem run_of_reaches {M : Machine σ} {prog : List RInstr} {pc : Nat} {s : σ}
     obtain ⟨f', hf'⟩ := ih fuel r hr
     exact ⟨f' + 1, by rw [run_go _ _ _ _ _ _ _ hs]; exact hf'⟩
 
-/-- The program halts from `pc` in `s'`: a path to an index holding `ret`. -/
-def Halts (M : Machine σ) (prog : List RInstr) (pc : Nat) (s s' : σ) : Prop :=
+/-- The program halts from `pc` in `s'` without a call: a path of `step`s to an index
+    holding `ret`. -/
+def HaltsNoCall (M : Machine σ) (prog : List RInstr) (pc : Nat) (s s' : σ) : Prop :=
   ∃ pc', Reaches M prog pc s pc' s' ∧ prog[pc']? = some .ret
 
-theorem run_of_halts {M : Machine σ} {prog : List RInstr} {pc : Nat} {s s' : σ}
-    (h : Halts M prog pc s s') : ∃ fuel, run M prog fuel pc s = some s' := by
+/-- A call-free halting run is a `run` with enough fuel. -/
+theorem run_of_haltsNoCall {M : Machine σ} {prog : List RInstr} {pc : Nat} {s s' : σ}
+    (h : HaltsNoCall M prog pc s s') : ∃ fuel, run M prog fuel pc s = some s' := by
   obtain ⟨pc', hr, hret⟩ := h
   exact run_of_reaches hr 1 s' (run_ret M prog 0 pc' s' hret)
 
@@ -166,13 +171,23 @@ inductive HaltsC (M : Machine σ) (prog : List RInstr) : Nat → σ → σ → P
       (hr : HaltsC M prog (pc + 1) (LprogBytesDecode.retOps.foldl M.exec sc) s'') :
       HaltsC M prog pc s s''
 
-/-- A call-free halting run is a halting run through calls. -/
-theorem haltsC_of_halts {M : Machine σ} {prog : List RInstr} {pc : Nat} {s s' : σ}
-    (h : Halts M prog pc s s') : HaltsC M prog pc s s' := by
+/-- The program halts from `pc` in `s'`: the halting run through calls `HaltsC`. -/
+abbrev Halts (M : Machine σ) (prog : List RInstr) (pc : Nat) (s s' : σ) : Prop :=
+  HaltsC M prog pc s s'
+
+/-- A call-free halting run is a halting run. -/
+theorem halts_of_haltsNoCall {M : Machine σ} {prog : List RInstr} {pc : Nat} {s s' : σ}
+    (h : HaltsNoCall M prog pc s s') : Halts M prog pc s s' := by
   obtain ⟨pc', hr, hret⟩ := h
   induction hr with
   | refl => exact .ret hret
   | next hs _ ih => exact .go hs (ih hret)
+
+/-- A path of `step`s to an index holding `ret` is a halting run. -/
+theorem halts_of_reaches {M : Machine σ} {prog : List RInstr} {pc pc' : Nat} {s s' : σ}
+    (hr : Reaches M prog pc s pc' s') (hret : prog[pc']? = some .ret) :
+    Halts M prog pc s s' :=
+  halts_of_haltsNoCall ⟨pc', hr, hret⟩
 
 /-! ## 3. Segments -/
 

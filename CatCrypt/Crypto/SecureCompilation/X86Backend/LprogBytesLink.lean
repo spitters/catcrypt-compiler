@@ -510,8 +510,8 @@ theorem reaches_relocated (M : Machine σ) (pre p post : List RInstr) {pc pc' : 
 /-- **Relocation of call-free halting runs.** A halting run of `p` from `pc` is a halting
     run of the relocated program from `pre.length + pc` with the same final state. -/
 theorem halts_relocated (M : Machine σ) (pre p post : List RInstr) {pc : Nat} {s s' : σ}
-    (h : Halts M p pc s s') :
-    Halts M (pre ++ shiftProg pre.length p ++ post) (pre.length + pc) s s' := by
+    (h : HaltsNoCall M p pc s s') :
+    HaltsNoCall M (pre ++ shiftProg pre.length p ++ post) (pre.length + pc) s s' := by
   obtain ⟨pc', hr, hret⟩ := h
   exact ⟨pre.length + pc', reaches_relocated M pre p post hr,
     getElem?_relocated pre p post hret⟩
