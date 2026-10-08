@@ -64,9 +64,8 @@ over the abstract state space `Except ε A`.
   loop judgment.
 * `guardedRRelPT_trans`: a correspondence composed with a refinement at `AssnRel.ofRel R`
   is the correspondence at the composite relation, by `RRelPT.trans`.
-* `corresM_trans_of_rrelPT`, `corresJ_forget_to_corres_via_rrel`,
-  `corres_of_corresJ_setConst_via_rrel`: compositions of correspondences derived from
-  `guardedRRelPT_trans`.
+* `corresM_trans_of_rrelPT`: the composition of a `CorresM` with a forward simulation,
+  derived from `guardedRRelPT_trans`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
@@ -385,32 +384,6 @@ theorem corresM_trans_of_rrelPT {M₁ M₂ C₁ C₂ : Type} {step₁ : C₁ →
     CorresM step₂ (fun m₂ a => ∃ m₁, R m₂ m₁ ∧ SR m₁ a) P fa c₂ :=
   (corresM_iff_rrelPT _ _ _ _ _).mpr
     (guardedRRelPT_trans () ((corresM_iff_rrelPT _ _ _ _ _).mp h₁) h₂)
-
-/-- `corresJ_forget_to_corres` (`Ascent/CorresBridge.lean`) derived from
-    `guardedRRelPT_trans`: the mirror hypothesis `hmirror` is the refinement of
-    `runBlockM c_J` by `semScalar c_s` at the relation `regEnv st = env`. -/
-theorem corresJ_forget_to_corres_via_rrel (SR_J : JState 64 → AState → Prop)
-    (P : AState → Prop) (fa : AState → AState)
-    (c_J : List (JInstr 64)) (c_s : LowCT)
-    (hJ : CorresJ SR_J P fa c_J)
-    (hmirror : ∀ st, semScalar c_s (regEnv st) = some (regEnv (runBlock st c_J))) :
-    Corres (fun env a => ∃ st, regEnv st = env ∧ SR_J st a) P fa c_s := by
-  refine (corres_semScalar_iff_rrelPT _ P fa c_s).mpr
-    (guardedRRelPT_trans (R := fun env st => regEnv st = env) ExceptConds.false
-      ((corresJ_iff_rrel SR_J P fa c_J).mp hJ) ?_)
-  rintro Q Q' hQ E E' - env ⟨st, rfl, hwp⟩
-  beta_reduce at hwp ⊢
-  rw [wp_runBlockM_apply] at hwp
-  exact ⟨(), regEnv (runBlock st c_J), hmirror st, @hQ () () trivial _ ⟨_, rfl, hwp⟩⟩
-
-/-- `corres_of_corresJ_setConst` (`Ascent/CorresBridge.lean`) as an instance of
-    `corresJ_forget_to_corres_via_rrel`. -/
-theorem corres_of_corresJ_setConst_via_rrel (SR_J : JState 64 → AState → Prop)
-    (P : AState → Prop) (fa : AState → AState) (name : String) (n : Nat)
-    (hJ : CorresJ SR_J P fa [.mov name (.imm n)]) :
-    Corres (fun env a => ∃ st, regEnv st = env ∧ SR_J st a) P fa (.RScalarSet name n) :=
-  corresJ_forget_to_corres_via_rrel SR_J P fa [.mov name (.imm n)] (.RScalarSet name n) hJ
-    (regEnv_mirror_setConst name n)
 
 end Seams
 
