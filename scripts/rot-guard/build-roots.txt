@@ -745,6 +745,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.RowLazy
 CatCrypt.Crypto.SecureCompilation.VIR.RustExecSimulatesUnified
 CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered
 CatCrypt.Crypto.SecureCompilation.VIR.SailX86SimdDecoderVsimd
+CatCrypt.Crypto.SecureCompilation.VIR.SelLegal
 CatCrypt.Crypto.SecureCompilation.VIR.SemScalarLToJasminCom
 CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordKConstCom
 CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundAbstractCom
@@ -776,7 +777,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
-CatCrypt.Crypto.SecureCompilation.VIR.X86VecEmbed
 CatCrypt.Crypto.SecureCompilation.VIR.X86VecExec
 CatCrypt.Crypto.SecureCompilation.VIR.X86VecMulRules
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
