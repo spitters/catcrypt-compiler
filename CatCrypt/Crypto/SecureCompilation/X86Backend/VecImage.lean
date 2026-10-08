@@ -34,6 +34,13 @@ lands on the byte offset of its label (`mixedBranchOK`).
 machine states, runs every image as `x86VecMach` runs the program `mixedDecode` reads from
 it. It is a definition, used as a hypothesis.
 
+`IsaMachine.withDecode M d` is the machine `M` with the decoder `d`; the runs of a decoded
+program do not mention the decoder, so they are those of `M`. `mixedMach A r m` is
+`x86VecMach r m` with the decoder `mixedDecode A`: the machine of mixed images. On a byte
+string the scalar decoder accepts it decodes the same program, so a halting run of a scalar
+image on `X86Isa.x86Mach` is a halting run on `mixedMach`, the vector state unchanged, and
+`VecAsm.Faithful` is the statement that the processor runs every image as `mixedMach` does.
+
 ## Main definitions
 
 * `evexEscape`: the byte `0x62`.
@@ -45,6 +52,8 @@ it. It is a definition, used as a hypothesis.
 * `mixedItems`, `mixedEncode`: the encoder of a program of scalar positions and vector
   instructions.
 * `VecAsm.Faithful`: the processor runs a mixed image as `x86VecMach` runs its decoding.
+* `IsaMachine.withDecode`, `mixedMach`: a machine with another decoder, and the x86 machine
+  with vector registers and the mixed decoder.
 
 ## Main results
 
@@ -67,6 +76,19 @@ it. It is a definition, used as a hypothesis.
   runs the program `decodeLprog` reads from it.
 * `VecAsm.Faithful.vexec`: a faithful processor runs the entry of `v` followed by `ret` as
   `vexec v`.
+* `IsaMachine.withDecode_runL`, `IsaMachine.withDecode_haltsC`,
+  `IsaMachine.withDecode_halts`: the runs of a machine do not depend on its decoder.
+* `IsaMachine.withOps_halts_inl`: a call-free halting run of the base machine on the
+  extended machine.
+* `mixedMach_decode`, `mixedMach_runL`, `mixedMach_haltsC`, `mixedMach_halts`: the decoder
+  of `mixedMach` is `mixedDecode`, and its runs are those of `x86VecMach`.
+* `mixedMach_decode_of_decodeLprog`, `mixedMach_decode_of_x86VecMach`: `mixedMach` decodes
+  a scalar image to the program the scalar decoder reads.
+* `mixedMach_haltsC_of_x86Mach`, `mixedMach_halts_of_x86Mach`, `mixedMach_runL_of_x86Mach`:
+  a decoded halting run of a scalar image on `x86Mach` is one on `mixedMach`, the vector
+  state unchanged.
+* `VecAsm.faithful_iff_mixedMach`: `VecAsm.Faithful` as a statement about `mixedMach`.
+* `mixedMach_decode_mixedEncode`: the round trip of `mixedEncode` on `mixedMach`.
 -/
 
 @[expose] public section
@@ -894,5 +916,248 @@ theorem VecAsm.Faithful.vexec (hF : A.Faithful r m cpu) (hA : A.Lawful) (v : VIn
   refine hF _ _ s _ (hA.mixedDecode_entry_ret v) ?_
   exact IsaMachine.HaltsC.go (pc' := 1) (s' := VecMach.vexec m s v) rfl
     (IsaMachine.HaltsC.ret rfl)
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage
+
+/-! ## 8. A machine with another decoder -/
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.IsaMachine
+
+open CatCrypt.Crypto.SecureCompilation.CT
+
+/-- **The machine `M` with the decoder `d`.** Every other component is that of `M`; the
+    runs of a decoded program do not mention the decoder, so they are those of `M`. -/
+@[reducible] def withDecode (M : IsaMachine) (d : List (BitVec 8) → Option (List M.Instr)) :
+    IsaMachine :=
+  { M with decode := d }
+
+variable {M : IsaMachine} {d : List (BitVec 8) → Option (List M.Instr)}
+
+theorem withDecode_decode (bs : List (BitVec 8)) : (M.withDecode d).decode bs = d bs := rfl
+
+theorem withDecode_runBlock (s : M.MState) (ops : List M.Op) :
+    (M.withDecode d).runBlock s ops = M.runBlock s ops := by
+  induction ops generalizing s with
+  | nil => rfl
+  | cons i is ih => exact ih (M.exec s i)
+
+theorem withDecode_blockLeak (s : M.MState) (ops : List M.Op) :
+    (M.withDecode d).blockLeak s ops = M.blockLeak s ops := by
+  induction ops generalizing s with
+  | nil => rfl
+  | cons i is ih => exact congrArg (M.opLeak s i ++ ·) (ih (M.exec s i))
+
+theorem withDecode_blockOk (ok : M.MState → M.Op → Prop) (s : M.MState) (ops : List M.Op) :
+    (M.withDecode d).BlockOk ok s ops ↔ M.BlockOk ok s ops := by
+  induction ops generalizing s with
+  | nil => exact Iff.rfl
+  | cons i is ih => exact and_congr Iff.rfl (ih (M.exec s i))
+
+theorem withDecode_mstep (prog : List M.Instr) (pc : Nat) (s : M.MState) :
+    (M.withDecode d).mstep prog pc s = M.mstep prog pc s := by
+  simp only [mstep, withDecode_runBlock (d := d)]
+  rcases M.act prog pc s with _ | (i | ops | ⟨c, t⟩ | t | _) <;> rfl
+
+/-- A run with leakage of `M` is a run of `M` with another decoder. -/
+theorem RunL.withDecode {ok : M.MState → M.Op → Prop} {prog : List M.Instr} {pc : Nat}
+    {s : M.MState} {t : List CTLeak} {s' : M.MState} (h : M.RunL ok prog pc s t s') :
+    (M.withDecode d).RunL ok prog pc s t s' := by
+  induction h with
+  | ret h => exact .ret h
+  | op h hok _ ih => exact .op h hok ih
+  | @block pc s ops t s' h hok _ ih =>
+    have hb := IsaMachine.RunL.block (M := M.withDecode d) (ok := ok) (s := s) h
+      ((withDecode_blockOk ok s ops).mpr hok) (by rw [withDecode_runBlock (d := d)];exact ih)
+    rwa [withDecode_blockLeak (d := d)] at hb
+  | branch h _ ih => exact .branch h ih
+  | @call pc tgt s sc tc tr s' h hok _ hokr _ ihc ihr =>
+    have hb := IsaMachine.RunL.call (M := M.withDecode d) (ok := ok) (s := s) (sc := sc) h
+      ((withDecode_blockOk ok s _).mpr hok) (by rw [withDecode_runBlock (d := d)];exact ihc)
+      ((withDecode_blockOk ok sc _).mpr hokr) (by rw [withDecode_runBlock (d := d)];exact ihr)
+    rwa [withDecode_blockLeak (d := d), withDecode_blockLeak (d := d)] at hb
+
+/-- **The runs with leakage of a machine do not depend on its decoder.** -/
+theorem withDecode_runL {ok : M.MState → M.Op → Prop} {prog : List M.Instr} {pc : Nat}
+    {s : M.MState} {t : List CTLeak} {s' : M.MState} :
+    (M.withDecode d).RunL ok prog pc s t s' ↔ M.RunL ok prog pc s t s' :=
+  ⟨fun h => RunL.withDecode (M := M.withDecode d) (d := M.decode) h, RunL.withDecode⟩
+
+/-- A halting run through calls of `M` is one of `M` with another decoder. -/
+theorem HaltsC.withDecode {prog : List M.Instr} {pc : Nat} {s s' : M.MState}
+    (h : M.HaltsC prog pc s s') : (M.withDecode d).HaltsC prog pc s s' := by
+  induction h with
+  | ret h => exact .ret h
+  | go h _ ih => exact .go ((withDecode_mstep _ _ _).trans h) ih
+  | call h _ _ ihc ihr =>
+    exact .call h (by rw [withDecode_runBlock (d := d)];exact ihc)
+      (by rw [withDecode_runBlock (d := d)];exact ihr)
+
+/-- **The halting runs through calls of a machine do not depend on its decoder.** -/
+theorem withDecode_haltsC {prog : List M.Instr} {pc : Nat} {s s' : M.MState} :
+    (M.withDecode d).HaltsC prog pc s s' ↔ M.HaltsC prog pc s s' :=
+  ⟨fun h => HaltsC.withDecode (M := M.withDecode d) (d := M.decode) h, HaltsC.withDecode⟩
+
+theorem Reaches.withDecode {prog : List M.Instr} {pc : Nat} {s : M.MState} {pc' : Nat}
+    {s' : M.MState} (h : M.Reaches prog pc s pc' s') :
+    (M.withDecode d).Reaches prog pc s pc' s' := by
+  induction h with
+  | refl => exact .refl _ _
+  | next h _ ih => exact .next ((withDecode_mstep _ _ _).trans h) ih
+
+/-- **The call-free halting runs of a machine do not depend on its decoder.** -/
+theorem withDecode_halts {prog : List M.Instr} {pc : Nat} {s s' : M.MState} :
+    (M.withDecode d).Halts prog pc s s' ↔ M.Halts prog pc s s' :=
+  ⟨fun ⟨pc', hr, hret⟩ =>
+      ⟨pc', Reaches.withDecode (M := M.withDecode d) (d := M.decode) hr, hret⟩,
+    fun ⟨pc', hr, hret⟩ => ⟨pc', hr.withDecode, hret⟩⟩
+
+variable {S V : Type} {vexec : M.MState × S → V → M.MState × S}
+  {vleak : M.MState × S → V → List CTLeak}
+
+theorem withOps_reaches_inl (hM : M.ActLocal) {prog : List M.Instr} {pc : Nat} {s : M.MState}
+    {pc' : Nat} {s' : M.MState} (v : S) (h : M.Reaches prog pc s pc' s') :
+    (M.withOps S V vexec vleak).Reaches (prog.map Sum.inl) pc (s, v) pc' (s', v) := by
+  induction h with
+  | refl => exact .refl _ _
+  | @next pc s pc₁ s₁ pc₂ s₂ h _ ih =>
+    exact IsaMachine.Reaches.next (M := M.withOps S V vexec vleak) (s := (s, v))
+      (s' := (s₁, v)) ((withOps_mstep_inl_go hM).mpr ⟨h, rfl⟩) ih
+
+/-- A call-free halting run of the base machine is one of the extended machine on the same
+    program, the second state component unchanged. -/
+theorem withOps_halts_inl (hM : M.ActLocal) {prog : List M.Instr} {pc : Nat}
+    {s s' : M.MState} (v : S) (h : M.Halts prog pc s s') :
+    (M.withOps S V vexec vleak).Halts (prog.map Sum.inl) pc (s, v) (s', v) := by
+  obtain ⟨pc', hr, hret⟩ := h
+  exact ⟨pc', withOps_reaches_inl hM v hr, (withOps_act_inl_eq_some hM).mpr ⟨_, hret, rfl⟩⟩
+
+end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.IsaMachine
+
+/-! ## 9. The machine of mixed images -/
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
+open CatCrypt.Crypto.SecureCompilation.X86Backend.VecMach (VInstr VState x86VecMach
+  x86VecMach_decode x86Mach_actLocal)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaMachine)
+open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
+open CatCrypt.Crypto.SecureCompilation.CT (DoitRegime CTLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Mach)
+
+/-- **The x86 machine with vector registers and the mixed decoder**: the machine
+    `x86VecMach r m` with the decoder `mixedDecode A`. A byte image may contain the table
+    entries of vector instructions; the execution of a decoded program is that of
+    `x86VecMach r m`. -/
+@[reducible] noncomputable def mixedMach (A : VecAsm) (r : DoitRegime) (m : Mode) :
+    IsaMachine :=
+  (x86VecMach r m).withDecode (mixedDecode A)
+
+variable {A : VecAsm} {r : DoitRegime} {m : Mode}
+  {cpu : List (BitVec 8) → AState × VState → AState × VState → Prop}
+
+/-- The decoder of `mixedMach` is `mixedDecode`. -/
+theorem mixedMach_decode (bs : List (BitVec 8)) :
+    (mixedMach A r m).decode bs = mixedDecode A bs := rfl
+
+/-- The halting runs through calls of `mixedMach` are those of `x86VecMach`. -/
+theorem mixedMach_haltsC {prog : List (RInstr ⊕ VInstr)} {pc : Nat}
+    {s s' : AState × VState} :
+    (mixedMach A r m).HaltsC prog pc s s' ↔ (x86VecMach r m).HaltsC prog pc s s' :=
+  IsaMachine.withDecode_haltsC
+
+/-- The call-free halting runs of `mixedMach` are those of `x86VecMach`. -/
+theorem mixedMach_halts {prog : List (RInstr ⊕ VInstr)} {pc : Nat}
+    {s s' : AState × VState} :
+    (mixedMach A r m).Halts prog pc s s' ↔ (x86VecMach r m).Halts prog pc s s' :=
+  IsaMachine.withDecode_halts
+
+/-- The runs with leakage of `mixedMach` are those of `x86VecMach`. -/
+theorem mixedMach_runL {ok : AState × VState → JInstr 64 ⊕ VInstr → Prop}
+    {prog : List (RInstr ⊕ VInstr)} {pc : Nat} {s : AState × VState} {t : List CTLeak}
+    {s' : AState × VState} :
+    (mixedMach A r m).RunL ok prog pc s t s' ↔ (x86VecMach r m).RunL ok prog pc s t s' :=
+  IsaMachine.withDecode_runL
+
+/-- **`mixedMach` is conservative over the scalar decoder.** A byte string `decodeLprog`
+    decodes is decoded by `mixedMach` to the same program, for every table. -/
+theorem mixedMach_decode_of_decodeLprog (A : VecAsm) (r : DoitRegime) (m : Mode)
+    {bs : List (BitVec 8)} {p : List RInstr} (h : decodeLprog bs = some p) :
+    (mixedMach A r m).decode bs = some (p.map Sum.inl) :=
+  mixedDecode_of_decodeLprog A h
+
+/-- A program `x86VecMach` decodes from a byte string is the program `mixedMach` decodes
+    from it. -/
+theorem mixedMach_decode_of_x86VecMach (A : VecAsm) {bs : List (BitVec 8)}
+    {prog : List (RInstr ⊕ VInstr)} (hd : (x86VecMach r m).decode bs = some prog) :
+    (mixedMach A r m).decode bs = some prog := by
+  rw [x86VecMach_decode] at hd
+  cases hp : decodeLprog bs with
+  | none => rw [hp] at hd; simp at hd
+  | some p =>
+    rw [hp] at hd
+    simp only [Option.map_some, Option.some.injEq] at hd
+    subst hd
+    exact mixedDecode_of_decodeLprog A hp
+
+/-- **A halting run through calls of a scalar image is a run on `mixedMach`.** When the
+    scalar machine `x86Mach r` decodes a byte string to a program that halts from `s` in
+    `s'`, `mixedMach` decodes the same byte string to a program that halts from `(s, v)` in
+    `(s', v)`, for every table and every vector state `v`. -/
+theorem mixedMach_haltsC_of_x86Mach (A : VecAsm) (m : Mode) {bs : List (BitVec 8)}
+    {s s' : AState}
+    (h : ∃ prog, (x86Mach r).decode bs = some prog ∧ (x86Mach r).HaltsC prog 0 s s')
+    (v : VState) :
+    ∃ prog, (mixedMach A r m).decode bs = some prog ∧
+      (mixedMach A r m).HaltsC prog 0 (s, v) (s', v) := by
+  obtain ⟨p, hd, hh⟩ := h
+  exact ⟨p.map Sum.inl, mixedDecode_of_decodeLprog A hd,
+    mixedMach_haltsC.mpr ((IsaMachine.withOps_haltsC_inl (x86Mach_actLocal r)).mpr ⟨hh, rfl⟩)⟩
+
+/-- **A call-free halting run of a scalar image is a run on `mixedMach`**, the vector state
+    unchanged. -/
+theorem mixedMach_halts_of_x86Mach (A : VecAsm) (m : Mode) {bs : List (BitVec 8)}
+    {s s' : AState}
+    (h : ∃ prog, (x86Mach r).decode bs = some prog ∧ (x86Mach r).Halts prog 0 s s')
+    (v : VState) :
+    ∃ prog, (mixedMach A r m).decode bs = some prog ∧
+      (mixedMach A r m).Halts prog 0 (s, v) (s', v) := by
+  obtain ⟨p, hd, hh⟩ := h
+  exact ⟨p.map Sum.inl, mixedDecode_of_decodeLprog A hd,
+    mixedMach_halts.mpr (IsaMachine.withOps_halts_inl (x86Mach_actLocal r) v hh)⟩
+
+/-- **A run with leakage of a scalar image is a run on `mixedMach`**, with the same trace
+    and the vector state unchanged. -/
+theorem mixedMach_runL_of_x86Mach (A : VecAsm) (m : Mode) {bs : List (BitVec 8)}
+    {ok : AState → JInstr 64 → Prop} {s s' : AState} {t : List CTLeak}
+    (h : ∃ prog, (x86Mach r).decode bs = some prog ∧ (x86Mach r).RunL ok prog 0 s t s')
+    (okV : AState × VState → VInstr → Prop) (v : VState) :
+    ∃ prog, (mixedMach A r m).decode bs = some prog ∧
+      (mixedMach A r m).RunL ((x86Mach r).okLift ok okV) prog 0 (s, v) t (s', v) := by
+  obtain ⟨p, hd, hh⟩ := h
+  exact ⟨p.map Sum.inl, mixedDecode_of_decodeLprog A hd,
+    mixedMach_runL.mpr ((IsaMachine.withOps_runL_inl (x86Mach_actLocal r)).mpr ⟨hh, rfl⟩)⟩
+
+/-- **`VecAsm.Faithful` is a statement about `mixedMach`**: the processor runs every image
+    as `mixedMach` runs the program it decodes from the image. -/
+theorem VecAsm.faithful_iff_mixedMach :
+    A.Faithful r m cpu ↔
+      ∀ (bs : List (BitVec 8)) (prog : List (RInstr ⊕ VInstr)) (s s' : AState × VState),
+        (mixedMach A r m).decode bs = some prog → (mixedMach A r m).HaltsC prog 0 s s' →
+          cpu bs s s' :=
+  ⟨fun hF bs prog s s' hd hh => hF bs prog s s' hd (mixedMach_haltsC.mp hh),
+    fun hF bs prog s s' hd hh => hF bs prog s s' hd (mixedMach_haltsC.mpr hh)⟩
+
+/-- **Round trip on `mixedMach`.** For a lawful table, `mixedMach` decodes the bytes of a
+    program of well-formed scalar positions and vector instructions, with well-formed
+    branches, to the program its positions denote. -/
+theorem mixedMach_decode_mixedEncode (r : DoitRegime) (m : Mode) (hA : A.Lawful)
+    (prog : List (Item ⊕ VInstr)) (hok : ∀ it, Sum.inl it ∈ prog → ItemOK it)
+    (hbr : mixedBranchOK (mixedItems A prog) 0 (mixedItems A prog) = true) :
+    (mixedMach A r m).decode (mixedEncode A prog)
+      = mixedExpected (mixedItems A prog) (mixedItems A prog) :=
+  mixedDecode_mixedEncode hA prog hok hbr
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage
