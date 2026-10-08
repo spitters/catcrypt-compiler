@@ -14,9 +14,9 @@ public import CatCrypt.Crypto.Hax.NFToCatImages
 `nfToCatExt D` is the translation `nfToCat` with a list `D` of declared external procedures
 (`ExtDecl`). A binding whose operation is the leaf call `NfOp.call f as r` is translated by
 `catOp` when `catOp` accepts it; otherwise, when `D` declares `f` at the signature `as → r`
-and every type of the signature is a type whose values encode as integers
-(`ExtDecl.wordSig`), the binding is the node `NFProg.call f` of `catCryptDialect` at the
-signature `as.map catTy → [catTy r]`, on the variables of its arguments. One literal value
+and every type of the signature is a type whose values encode as integers or an array of
+`64`-bit words (`ExtDecl.wordSig`), the binding is the node `NFProg.call f` of
+`catCryptDialect` at the signature `as.map catTy → [catTy r]`, on the variables of its arguments. One literal value
 among the arguments is bound by `bvConst` in front of the node, as `catCallRd0` does for an
 operation. Every other program is translated as by `nfToCat`.
 
@@ -28,8 +28,9 @@ readings of a declared name: the builtin table of the source answers it by the f
 
 ## Main definitions
 
-* `ExtDecl`, `ExtDecl.wordSig`, `declared` — a declared external procedure, the signatures
-  of words, and the test that a list declares a name at a signature.
+* `ExtDecl`, `wordArrTy`, `wordArrSig`, `ExtDecl.wordSig`, `declared` — a declared external
+  procedure, the types and signatures of words and word arrays, and the test that a list
+  declares a name at a signature.
 * `extArgs`, `emitCall`, `emitOp`, `nfToCatExt` — the readings of the arguments of a declared
   call, the node of a call, the translation of a binding, and of a program.
 * `ExtDecl.InTable`, `ExtDecl.ImplementedBy`, `ExtAgree` — the agreement of the builtin table,
@@ -43,7 +44,7 @@ readings of a declared name: the builtin table of the source answers it by the f
   denotes at `E` values related to the values of the source program.
 * `nfToCat_of_callFree` — a translation without `call` is the translation `nfToCat` gives.
 * `nfToCatExt_calls` — every call of a translated program is a declared one, at the mapped
-  signature of its declaration, a signature of `64`-bit words.
+  signature of its declaration, a signature of `64`-bit words and memrefs.
 * `nfToCatExt_opsHaveImages`, `isSome_map?_aegraphOptNF_nfToCatExt` — every operation of a
   translated program has an image in the Jasmin dialect, and the conversion is defined on
   its e-graph pass.
@@ -88,10 +89,21 @@ structure ExtDecl where
   /-- The function of the procedure on values; `none` where the procedure fails. -/
   sem : HVector NfTy.denote args → Option ret.denote
 
-/-- The signatures of words: every argument and the result have a type whose values encode
-    as integers (`int` or the `64`-bit word), which `catTy` maps to `sword 64`. -/
+/-- The types of words and word arrays: a type whose values encode as integers (`int` or the
+    `64`-bit word), which `catTy` maps to `sword 64`, and an array of `64`-bit words, which
+    `catTy` maps to a memref of its length. -/
+def wordArrTy : NfTy → Bool
+  | .arr _ (.word 64) => true
+  | t => ImpToNF.hax64NFWordTy t
+
+/-- The signatures of words and word arrays: every argument type and the result type pass
+    `wordArrTy`. -/
+def wordArrSig (as : List NfTy) (r : NfTy) : Bool :=
+  as.all wordArrTy && wordArrTy r
+
+/-- The signatures of words: the signature of the declaration passes `wordArrSig`. -/
 def ExtDecl.wordSig (d : ExtDecl) : Bool :=
-  d.args.all ImpToNF.hax64NFWordTy && ImpToNF.hax64NFWordTy d.ret
+  wordArrSig d.args d.ret
 
 /-- The declaration `d` is of the name `f` at the signature `as → r`, a signature of
     words. -/
@@ -108,13 +120,24 @@ theorem declared_iff {D : List ExtDecl} {f : String} {as : List NfTy} {r : NfTy}
       ∃ d ∈ D, d.name = f ∧ d.args = as ∧ d.ret = r ∧ d.wordSig = true := by
   simp [declared, ExtDecl.isAt, and_assoc]
 
-/-- The mapped signature of a declaration of words is a signature of `64`-bit words. -/
+/-- A type of words or word arrays maps to `sword 64` or to a memref. -/
+theorem catTy_of_wordArrTy {t : NfTy} (h : wordArrTy t = true) :
+    catTy t = CryptoTy.sword 64 ∨ ∃ n, catTy t = CryptoTy.memref n := by
+  cases t with
+  | arr n _ => exact Or.inr ⟨n, rfl⟩
+  | word w => exact Or.inl (catTy_of_wordTy h)
+  | int => exact Or.inl rfl
+  | _ => simp [wordArrTy, ImpToNF.hax64NFWordTy] at h
+
+/-- The mapped signature of a declaration of words is a signature of `64`-bit words and
+    memrefs. -/
 theorem ExtDecl.wordSig_catTy {d : ExtDecl} (h : d.wordSig = true) :
-    (∀ t ∈ d.args.map catTy, t = CryptoTy.sword 64) ∧ catTy d.ret = CryptoTy.sword 64 := by
-  simp only [ExtDecl.wordSig, Bool.and_eq_true, List.all_eq_true] at h
-  refine ⟨fun t ht => ?_, catTy_of_wordTy h.2⟩
+    (∀ t ∈ d.args.map catTy, t = CryptoTy.sword 64 ∨ ∃ n, t = CryptoTy.memref n) ∧
+      (catTy d.ret = CryptoTy.sword 64 ∨ ∃ n, catTy d.ret = CryptoTy.memref n) := by
+  simp only [ExtDecl.wordSig, wordArrSig, Bool.and_eq_true, List.all_eq_true] at h
+  refine ⟨fun t ht => ?_, catTy_of_wordArrTy h.2⟩
   obtain ⟨s, hs, rfl⟩ := List.mem_map.mp ht
-  exact catTy_of_wordTy (h.1 s hs)
+  exact catTy_of_wordArrTy (h.1 s hs)
 
 /-! ## 2. The translation -/
 
@@ -800,7 +823,7 @@ theorem pinAll_calls {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
 
 /-- **Every call of a translated program is declared.** A program `nfToCatExt D` returns
     calls only names of `D`, each at the mapped signature of its declaration, a signature
-    of `64`-bit words. -/
+    of `ExtDecl.wordSig`. -/
 theorem nfToCatExt_calls (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) :
     ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (q : NFProg catCryptDialect Δ (ts.map catTy)),
