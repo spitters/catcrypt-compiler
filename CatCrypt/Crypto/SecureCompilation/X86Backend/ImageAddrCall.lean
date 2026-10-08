@@ -2037,6 +2037,176 @@ theorem haltsO_of_deadChecks {frame : String → Option (BitVec 64)}
       (segExact_callImg hsep hphys hG hsites (condLiveB_spec hcond) hbytes hI hfin res
         (c.args.map LOperand.reg) T fn) hFin) n hrun hfn hlen hL hI0 hA
 
+/-! ## 9b. The byte simulation from the checks of the relocated layout -/
+
+/-- A call of a named symbol is a remote transfer. -/
+theorem remoteSym_of_remoteCallB {i : LinstrR} (h : remoteCallB i = true) :
+    remoteSym i ≠ none := by
+  cases i with
+  | Lcall ra tg =>
+    obtain ⟨f, l⟩ := tg
+    have hf : f.isEmpty = false := by simpa [remoteCallB] using h
+    simp [remoteSym, hf]
+  | _ => simp [remoteCallB] at h
+
+/-- **The facts of a body of the class with calls** whose shapes are the single shapes
+    `ss`. -/
+theorem callFacts_of_printedAddrCB {G : Nat} {body : Lcmd} {ss : List Shape}
+    (h : printedAddrCB G body = true)
+    (hs : DecodeGen.shapesOf (Params.ofBody body) body
+      = some (ss.map PhysAbiShape.DShape.one)) :
+    LprogBytesLinkReloc.CallFacts body ss := by
+  simp only [printedAddrCB, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨-, hlast⟩, hall⟩, hcond⟩, -⟩ := h
+  refine LprogBytesLinkReloc.callFacts_of_checks hs hlast (fun i hi => ?_) hcond
+  have hi' := List.all_eq_true.mp hall i hi
+  simp only [instrOKCB, Bool.or_eq_true] at hi'
+  exact hi'.imp remoteSym_of_remoteCallB id
+
+/-- **The byte simulation `ByteSeg` of a relocated body.** For a body with the facts
+    `CallFacts`, a program `prog` that satisfies `LinkedProg` at the index `K`, and a frame
+    that agrees with the frame of the body parameters at the names of the body, `ByteSeg`
+    holds under every oracle at the index `DecodePrintedCFG.posOf` and the target `K`,
+    with the end `LprogBytesLinkReloc.FinLea`. -/
+theorem byteSeg_of_linked {body : Lcmd} {ss : List Shape}
+    (hF : LprogBytesLinkReloc.CallFacts body ss) {K : Nat} {prog : List RInstr}
+    (hL : LprogBytesLinkReloc.LinkedProg body (ss.map PhysAbiShape.DShape.one) K
+      (Params.ofBody body).frame prog)
+    (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (O : Nat → AState → AState → Prop) :
+    ByteSeg frame rsp body O prog
+      (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one)) K
+      (LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame) := by
+  obtain ⟨h1, h2, h3, h4⟩ := LprogBytesLinkReloc.linked_seg hF hL rsp hfr O
+  exact ⟨h1, h2, h3, h4⟩
+
+/-- **A halting run of the image of a calling body is a run of the program of its
+    relocated item list under the oracle of the callee**, from Boolean checks. The
+    hypotheses are those of `haltsO_of_deadChecks` with the byte simulation replaced by:
+    the class `printedAddrCB`, the single shapes `ss` of the body, the program `prog` of
+    the relocated item list in front of a callee block at the index `tgt`, and the
+    agreement of `frame` with the frame of the body parameters at the names of the body.
+    The run starts at the index `DecodePrintedCFG.posOf` of the position of the address
+    state, and the end is `LprogBytesLinkReloc.FinLea`. -/
+theorem haltsO_of_linkedChecks {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {res : String}
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
+    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    {ss : List Shape} (hcls : printedAddrCB G body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
+      = some (ss.map PhysAbiShape.DShape.one))
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {prog : List RInstr} {tgt L : Nat}
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) tgt L
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+    {D : DeadTab}
+    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
+    (hshape : siteShapeB f res c.args
+      (callImg slotArr res (c.args.map LOperand.reg) body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I
+      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (n : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)) n s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL : D.live sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
+    ∃ sA', HaltsO aMachine (oracleAt tgt X) prog
+        (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+      ∧ Fin t sA' := by
+  have hCF := callFacts_of_printedAddrCB hcls hshapes
+  exact haltsO_of_deadChecks hsep hphys hgate hsites hX hw hS hF hroom hdead hflags hcond hT
+    hshape hI hD
+    (byteSeg_of_linked hCF
+      (LprogBytesLinkReloc.linkedProg_of_items symBase hCF tgt L prog hP) rsp hfr _)
+    hfin hFin n hrun hfn hlen hL hI0 hA
+
+/-- **A halting run of the image of a calling body is a run through calls of the program
+    its linked bytes decode to**, from Boolean checks. Let the callee block `cb` decode to
+    a block `q` without `call` whose leaky runs meet the specification of `c`, and let the
+    relocated item list of the body satisfy `branchOKReloc` and denote `prog` at its own
+    instruction count and byte length. Under the other hypotheses of
+    `haltsO_of_linkedChecks`, the bytes of the relocated body followed by `cb` decode to
+    `prog` followed by `q` with its targets raised, and this program has a run through
+    calls from the index of the position of the address state to a byte state that
+    satisfies `Fin` with the end state. -/
+theorem haltsC_of_linkedChecks {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {c : CalleeSig}
+    (hX : CalleeSpec (Callee.runOf r q) c) (hq : ∀ tg, RInstr.call tg ∉ q) {res : String}
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
+    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    {ss : List Shape} (hcls : printedAddrCB G body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
+      = some (ss.map PhysAbiShape.DShape.one))
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
+    (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+    {D : DeadTab}
+    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
+    (hshape : siteShapeB f res c.args
+      (callImg slotArr res (c.args.map LOperand.reg) body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I
+      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (n : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)) n s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL : D.live sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
+    LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
+      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
+          (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+        ∧ Fin t sA' := by
+  have hCF := callFacts_of_printedAddrCB hcls hshapes
+  obtain ⟨hsaves, hF0, hFr⟩ := printedAddrCB_reloc hcls
+  obtain ⟨hdec, hLk⟩ := LprogBytesLinkReloc.linkedProg_of_bytes symBase hCF cb q prog hsaves
+    hF0 hFr hcb hne hbr hP
+  obtain ⟨sA', hrun', hfin'⟩ := haltsO_of_deadChecks hsep hphys hgate hsites hX hw hS hF hroom
+    hdead hflags hcond hT hshape hI hD (byteSeg_of_linked hCF hLk rsp hfr _) hfin hFin n hrun
+    hfn hlen hL hI0 hA
+  exact ⟨hdec, sA', Callee.haltsC_append_of_haltsO_runOf r prog q hq hrun', hfin'⟩
+
 /-! ## 10. The allocation pool and the common names of a callee -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (commonCalls? shadowCall?_commonCalls?

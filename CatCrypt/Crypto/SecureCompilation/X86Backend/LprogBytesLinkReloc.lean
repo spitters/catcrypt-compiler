@@ -47,6 +47,13 @@ and has index `k` in the decoded stream.
 * `haltsC_fundefReloc_linked`: a run of the decoded caller with the callee block as an
   oracle at the target `prog.length` is a run through calls of the program the linked
   bytes decode to.
+* `linkedProg_of_items`, `linkedProg_of_bytes`: the program of the relocated item list of
+  a body with the facts `CallFacts` satisfies `LinkedProg`: the decoded instructions of
+  each instruction of the covered fragment at the index `DecodePrintedCFG.posOf`, `call K`
+  at the index of a remote call, and the closing `lea` and `ret`.
+* `linked_step`, `linked_halt`, `linked_call`, `linked_seg`: the byte simulation of a step
+  of the address machine, of the closing return and of a call of such a body on a program
+  that satisfies `LinkedProg`, under every oracle.
 -/
 
 @[expose] public section
@@ -501,5 +508,729 @@ theorem haltsC_fundefReloc_linked (r : DoitRegime) (symBase : String → Option 
       HaltsC aMachine linked 0 s s' :=
   ⟨_, (decodeLprog_fundefReloc_append symBase body shs cb q prog hsaves hF0 hF hsh hcb hne
       hbr hP).2, haltsC_append_of_haltsO_runOf r prog q hq h⟩
+
+/-! ## 6. The decoded program of a relocated body, instruction by instruction -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep (aMachine_step_op)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (bodyNamesI stepA_congr)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (labelAt isLabelB condPol)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
+
+/-- The program of two item lists, one after the other, in front of a callee block. -/
+theorem expectedReloc_append (all : List Item) (k L : Nat) :
+    ∀ (xs ys : List Item), expectedReloc all k L (xs ++ ys)
+      = (expectedReloc all k L xs).bind fun a => (expectedReloc all k L ys).map (a ++ ·) := by
+  intro xs
+  induction xs with
+  | nil => intro ys; cases h : expectedReloc all k L ys <;> simp [expectedReloc, h]
+  | cons it xs ih =>
+    intro ys
+    rw [List.cons_append, expectedReloc, expectedReloc]
+    split
+    · exact ih ys
+    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+    · split
+      · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+      · rfl
+    · split
+      · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
+      · rfl
+
+/-- The program of an item list has one instruction for each item that decodes. -/
+theorem expectedReloc_length (all : List Item) (k L : Nat) :
+    ∀ (xs : List Item) (A : List RInstr), expectedReloc all k L xs = some A →
+      A.length = decCount xs := by
+  intro xs
+  induction xs with
+  | nil =>
+    intro A h
+    obtain rfl := Option.some.inj h
+    rfl
+  | cons it xs ih =>
+    intro A h
+    rw [expectedReloc] at h
+    split at h
+    · rename_i hd
+      rw [decCount, hd, ih A h]
+      simp
+    all_goals
+      rename_i hd
+      first
+        | (obtain ⟨A', hA', rfl⟩ := Option.map_eq_some_iff.mp h
+           rw [decCount, hd, List.length_cons, ih A' hA']
+           simp [Nat.add_comm])
+        | (split at h
+           · obtain ⟨A', hA', rfl⟩ := Option.map_eq_some_iff.mp h
+             rw [decCount, hd, List.length_cons, ih A' hA']
+             simp [Nat.add_comm]
+           · cases h)
+
+/-- **The program around a run of items.** The program of `xs ++ (ms ++ ys)` is the program
+    of `xs`, of length `decCount xs`, the program of `ms`, and the program of `ys`. -/
+theorem expectedReloc_mid (all : List Item) (k L : Nat) (xs ms ys : List Item)
+    (prog : List RInstr) (h : expectedReloc all k L (xs ++ (ms ++ ys)) = some prog) :
+    ∃ A X B, expectedReloc all k L ms = some X ∧ expectedReloc all k L ys = some B
+      ∧ prog = A ++ X ++ B ∧ A.length = decCount xs := by
+  rw [expectedReloc_append, Option.bind_eq_some_iff] at h
+  obtain ⟨A, hA, h⟩ := h
+  obtain ⟨R, hR, rfl⟩ := Option.map_eq_some_iff.mp h
+  rw [expectedReloc_append, Option.bind_eq_some_iff] at hR
+  obtain ⟨X, hX, hR⟩ := hR
+  obtain ⟨B, hB, rfl⟩ := Option.map_eq_some_iff.mp hR
+  exact ⟨A, X, B, hX, hB, by rw [List.append_assoc], expectedReloc_length all k L xs A hA⟩
+
+/-- The shapes of a body are single shapes `ss`, instruction by instruction. -/
+theorem shapesOf_one_forall₂ (P : Params) :
+    ∀ (b : Lcmd) (ss : List Shape), shapesOf P b = some (ss.map DShape.one) →
+      List.Forall₂ (fun i sh => shapeOf P i.li_i = some (DShape.one sh)) b ss := by
+  intro b
+  induction b with
+  | nil =>
+    intro ss h
+    cases ss with
+    | nil => exact .nil
+    | cons _ _ => simp [shapesOf] at h
+  | cons i b ih =>
+    intro ss h
+    simp only [shapesOf] at h
+    split at h
+    · rename_i sh s' h1 h2
+      cases ss with
+      | nil => simp at h
+      | cons s0 ss =>
+        simp only [List.map_cons, Option.some.injEq, List.cons.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact .cons h1 (ih ss h2)
+    · cases h
+
+/-- The single shapes of a body meet the shape condition of the relocating encoder. -/
+theorem relocShapeOK_of_shapes (P : Params) {b : Lcmd} {ss : List Shape}
+    (h : shapesOf P b = some (ss.map DShape.one)) :
+    List.Forall₂ (fun i sh => RelocShapeOK P i.li_i sh) b ss := by
+  refine (shapesOf_one_forall₂ P b ss h).imp fun i sh hs => ?_
+  unfold RelocShapeOK
+  cases hr : remoteSym i.li_i with
+  | none => exact shapeOf_ok P _ _ hs
+  | some f =>
+    revert hs hr
+    cases i.li_i with
+    | Lcall ra tg =>
+      obtain ⟨f', l⟩ := tg
+      intro _ hr
+      simp only [remoteSym] at hr
+      split at hr
+      · cases hr
+      · obtain rfl := Option.some.inj hr
+        exact ⟨ra, l, rfl⟩
+    | Lgoto tg => intro hs; simp [shapeOf] at hs
+    | _ => intro _ hr; simp [remoteSym] at hr
+
+/-- The item list of a body splits at every position. -/
+theorem itemsFromReloc_split (symBase : String → Option Int) (P : Params) :
+    ∀ (n : Nat) (b : Lcmd) (ss : List Shape) (off : Nat), ∃ off',
+      itemsFromReloc symBase P off b ss
+        = itemsFromReloc symBase P off (b.take n) (ss.take n)
+          ++ itemsFromReloc symBase P off' (b.drop n) (ss.drop n) := by
+  intro n
+  induction n with
+  | zero => intro b ss off; exact ⟨off, by simp [itemsFromReloc]⟩
+  | succ n ih =>
+    intro b ss off
+    cases b with
+    | nil => exact ⟨off, by simp [itemsFromReloc]⟩
+    | cons i b =>
+      cases ss with
+      | nil => exact ⟨off, by simp [itemsFromReloc]⟩
+      | cons s ss =>
+        cases hr : remoteSym i.li_i with
+        | none =>
+          obtain ⟨off', h⟩ := ih b ss (off + P.lenAt off i.li_i)
+          exact ⟨off', by simp only [List.take_succ_cons, List.drop_succ_cons, itemsFromReloc, hr,
+            List.cons_append, h]⟩
+        | some f =>
+          obtain ⟨off', h⟩ := ih b ss (off + 5)
+          exact ⟨off', by simp only [List.take_succ_cons, List.drop_succ_cons, itemsFromReloc, hr,
+            List.cons_append, h]⟩
+
+/-- The number of decoded instructions of the item list of a body with single shapes. -/
+theorem decCount_itemsFromReloc (symBase : String → Option Int) (P : Params) {b : Lcmd}
+    {ss : List Shape}
+    (h : List.Forall₂ (fun i sh => shapeOf P i.li_i = some (DShape.one sh)) b ss) :
+    ∀ off, decCount (itemsFromReloc symBase P off b ss)
+      = ((ss.map DShape.one).map nOf).sum := by
+  induction h with
+  | nil => intro off; rfl
+  | @cons i sh _ _ hab _ ih =>
+    intro off
+    cases hr : remoteSym i.li_i with
+    | none =>
+      simp only [itemsFromReloc, hr, decCount, ih, List.map_cons, List.sum_cons]
+      cases sh <;> simp [Shape.dec, nOf]
+    | some f =>
+      simp only [itemsFromReloc, hr, decCount, ih, List.map_cons, List.sum_cons]
+      revert hab hr
+      cases i.li_i with
+      | Lcall ra tg =>
+        intro hab _
+        simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hab
+        subst hab
+        simp [nOf]
+      | _ => simp [remoteSym, shapeOf]
+
+/-- No item of a body without a definition of the label `l` defines `l`. -/
+theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l : LLabel) :
+    ∀ (b : Lcmd) (ss : List Shape) (off : Nat), (∀ i ∈ b, isLabelB l i.li_i = false) →
+      ∀ it ∈ itemsFromReloc symBase P off b ss, it.label ≠ some l := by
+  intro b
+  induction b with
+  | nil => intro ss off _ it hit; simp [itemsFromReloc] at hit
+  | cons i b ih =>
+    intro ss off hb it hit
+    cases ss with
+    | nil => simp [itemsFromReloc] at hit
+    | cons s ss =>
+      cases hr : remoteSym i.li_i with
+      | none =>
+        simp only [itemsFromReloc, hr, List.mem_cons] at hit
+        rcases hit with rfl | hit
+        · intro he
+          have := (isLabelB_iff l i.li_i).mpr he
+          rw [hb i (by simp)] at this
+          cases this
+        · exact ih ss _ (fun j hj => hb j (by simp [hj])) it hit
+      | some f =>
+        simp only [itemsFromReloc, hr, List.mem_cons] at hit
+        rcases hit with rfl | hit
+        · simp
+        · exact ih ss _ (fun j hj => hb j (by simp [hj])) it hit
+
+/-- **A label resolves, in the relocated item list, to the decoded index of its first
+    definition.** -/
+theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd}
+    {ss : List Shape}
+    (hs : shapesOf (Params.ofBody body) body = some (ss.map DShape.one)) {l : LLabel} {p : Nat}
+    (hp : labelAt body l = some p) :
+    ∃ off, labelPos l 0 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)
+      = some (posOf (ss.map DShape.one) p, off) := by
+  have hR := shapesOf_one_forall₂ _ body ss hs
+  obtain ⟨hpl, hlab, hbefore⟩ := labelAt_spec hp
+  have hlab' := (isLabelB_iff l _).mp hlab
+  have hlen : body.length = ss.length := hR.length_eq
+  obtain ⟨off', hsplit⟩ := itemsFromReloc_split symBase (Params.ofBody body) p body ss 0
+  have hpre : ∀ i ∈ body.take p, isLabelB l i.li_i = false := by
+    intro i hi
+    obtain ⟨q, hq, rfl⟩ := List.getElem_of_mem hi
+    simp only [List.length_take] at hq
+    simpa using hbefore q (by omega)
+  have hrem : remoteSym body[p].li_i = none := by
+    revert hlab'
+    cases body[p].li_i <;> simp [labelOf, remoteSym]
+  rw [List.drop_eq_getElem_cons hpl, List.drop_eq_getElem_cons (by omega : p < ss.length)]
+    at hsplit
+  unfold fundefItemsReloc
+  rw [hsplit]
+  simp only [labelPos, mkLea, reduceCtorEq, if_false, Option.isSome_some, if_true]
+  rw [List.append_assoc, labelPos_append_of_ne _ _ _
+    (itemsFromReloc_noLabel symBase _ l _ _ _ hpre),
+    decCount_itemsFromReloc symBase _ (List.forall₂_take p hR)]
+  simp only [itemsFromReloc, hrem, List.cons_append, labelPos, hlab', if_true]
+  simp only [posOf, List.map_take, Option.some.injEq, Prod.mk.injEq]
+  exact ⟨_, trivial, rfl⟩
+
+/-- The facts of a printed body with remote calls that the byte simulation reads: single
+    shapes `ss`, the closing return, every other instruction a remote transfer or in the
+    covered fragment `DecodePrintedCFG.instrOKB`, and every conditional branch directly
+    after a compare. -/
+structure CallFacts (body : Lcmd) (ss : List Shape) : Prop where
+  /-- The shapes of the body are the single shapes `ss`. -/
+  shapes : shapesOf (Params.ofBody body) body = some (ss.map DShape.one)
+  /-- The body is not empty. -/
+  pos : 0 < body.length
+  /-- The last instruction is the return. -/
+  last : (body[body.length - 1]'(by omega)).li_i = .Lret
+  /-- Every other instruction is a remote transfer or in the covered fragment. -/
+  instr : ∀ k (hk : k + 1 < body.length),
+    remoteSym (body[k]'(by omega)).li_i ≠ none
+      ∨ instrOKB body (Params.ofBody body) (body[k]'(by omega)).li_i = true
+  /-- Every conditional branch follows a compare. -/
+  cond : ∀ k, k < body.length → condPrevB body k = true
+
+/-- The decoded program `prog` of a body with shapes `ds` in front of a callee block at
+    index `K`: around an instruction of the covered fragment, `prog` holds its decoded
+    instructions `DecodePrintedCFG.blkOf` from the index `DecodePrintedCFG.posOf`; the
+    index of a remote transfer holds `call K`; and the index of the closing return holds
+    the closing `lea` of the frame `F`, followed by `ret`. -/
+structure LinkedProg (body : Lcmd) (ds : List DShape) (K F : Nat) (prog : List RInstr) :
+    Prop where
+  /-- The decoded instructions of an instruction of the covered fragment. -/
+  blk : ∀ k (hk : k < body.length) (hs : k < ds.length),
+    instrOKB body (Params.ofBody body) body[k].li_i = true →
+    ∃ A B, prog = A ++ blkOf body ds ds[k] ++ B ∧ A.length = posOf ds k
+  /-- The index of a remote transfer. -/
+  call : ∀ k (hk : k < body.length), remoteSym body[k].li_i ≠ none →
+    prog[posOf ds k]? = some (.call K)
+  /-- The closing `lea` and `ret`. -/
+  fin : prog[posOf ds (body.length - 1)]? = some (.op (leaFrame (Int.ofNat F)))
+    ∧ prog[posOf ds (body.length - 1) + 1]? = some .ret
+
+/-- **The decoded program of a relocated body.** For a body with the facts `CallFacts`,
+    the program its relocated item list denotes in front of a callee block at index `K`
+    satisfies `LinkedProg` at `K`. -/
+theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss : List Shape}
+    (hF : CallFacts body ss) (K L : Nat) (prog : List RInstr)
+    (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+      (fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog) :
+    LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog := by
+  have hR := shapesOf_one_forall₂ _ body ss hF.shapes
+  have hlen : body.length = ss.length := hR.length_eq
+  have hshk : ∀ k (hk : k < body.length) (hs : k < ss.length),
+      shapeOf (Params.ofBody body) body[k].li_i = some (DShape.one ss[k]) := by
+    intro k hk hs
+    have := (shapesOf_spec _ body _ hF.shapes).2 k hk (by simpa using hs)
+    simpa using this
+  -- the program around position `k`
+  have hpos : ∀ k (hk : k < body.length) (hs : k < ss.length), ∃ off A X B,
+      expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+          (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ss[k]]) = some X
+        ∧ prog = A ++ X ++ B ∧ A.length = posOf (ss.map DShape.one) k := by
+    intro k hk hs
+    obtain ⟨off, hsplit⟩ := itemsFromReloc_split symBase (Params.ofBody body) k body ss 0
+    rw [List.drop_eq_getElem_cons hk, List.drop_eq_getElem_cons hs] at hsplit
+    obtain ⟨off2, h1⟩ := itemsFromReloc_split symBase (Params.ofBody body) 1
+      (body[k] :: body.drop (k + 1)) (ss[k] :: ss.drop (k + 1)) off
+    simp only [List.take_succ_cons, List.take_zero, List.drop_succ_cons, List.drop_zero]
+      at h1
+    have hP' : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+        ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
+            :: itemsFromReloc symBase (Params.ofBody body) 0 (body.take k) (ss.take k))
+          ++ (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ss[k]]
+            ++ (itemsFromReloc symBase (Params.ofBody body) off2 (body.drop (k + 1))
+                (ss.drop (k + 1))
+              ++ [mkLea (Int.ofNat (Params.ofBody body).frame), mkRet]))) = some prog := by
+      rw [← hP]
+      congr 1
+      rw [fundefItemsReloc, hsplit, h1]
+      simp only [List.cons_append, List.append_assoc]
+    obtain ⟨A, X, B, hX, -, hprog, hA⟩ := expectedReloc_mid _ K L _ _ _ prog hP'
+    refine ⟨off, A, X, B, hX, hprog, ?_⟩
+    rw [hA, decCount, decCount_itemsFromReloc symBase _ (List.forall₂_take k hR)]
+    simp [posOf, mkLea, List.map_take]
+  refine ⟨fun k hk hs hok => ?_, fun k hk hr => ?_, ?_⟩
+  · have hs' : k < ss.length := by omega
+    obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs'
+    have hsh := hshk k hk hs'
+    refine ⟨A, B, ?_, hA⟩
+    rw [hprog, List.getElem_map]
+    congr 2
+    revert hX hsh hok
+    rcases body[k] with ⟨ii, li⟩
+    cases li with
+    | Lopn ds o ss' =>
+      intro _ hX hsh
+      rcases shapeOfBytes_ok (bs := encodeLopn _ _ (.Lopn ds o ss') _) hsh with
+        ⟨q, he, -, -⟩ | ⟨pcs, he, -, -⟩
+      · simp only [DShape.one.injEq] at he
+        rw [he] at hX ⊢
+        simp only [itemsFromReloc, remoteSym, Shape.dec, expectedReloc, Option.map_some,
+          Option.some.injEq] at hX
+        rw [← hX]
+        simp [blkOf, DShape.ops']
+      · cases he
+    | Llabel kd l =>
+      intro _ hX hsh
+      simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hsh
+      rw [← hsh] at hX ⊢
+      simp only [itemsFromReloc, remoteSym, Shape.dec, expectedReloc, Option.some.injEq] at hX
+      rw [← hX]
+      simp [blkOf, DShape.ops']
+    | Lcond c l =>
+      cases c with
+      | reg cc =>
+        intro hok hX hsh
+        simp only [instrOKB, Bool.and_eq_true, Option.isSome_iff_exists] at hok
+        obtain ⟨-, p, hp⟩ := hok
+        obtain ⟨o, ho⟩ := labelPos_fundefItemsReloc symBase hF.shapes hp
+        simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hsh
+        rw [← hsh] at hX ⊢
+        simp only [itemsFromReloc, remoteSym, Shape.dec, Shape.target, expectedReloc,
+          Option.bind_some, ho, Option.map_some, Option.some.injEq] at hX
+        rw [← hX]
+        simp [blkOf, hp]
+      | _ => intro hok; simp [instrOKB] at hok
+    | _ => intro hok; simp [instrOKB] at hok
+  · have hs' : k < ss.length := by omega
+    obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs'
+    obtain ⟨f, hf⟩ := Option.ne_none_iff_exists'.mp hr
+    simp only [itemsFromReloc, hf, expectedReloc, callTgt, Option.map_some,
+      Option.some.injEq] at hX
+    rw [hprog, ← hX, ← hA]
+    simp
+  · have hn : body.length - 1 < ss.length := by have := hF.pos; omega
+    have hP' : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+        ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
+            :: itemsFromReloc symBase (Params.ofBody body) 0 body ss)
+          ++ ([mkLea (Int.ofNat (Params.ofBody body).frame)] ++ [mkRet])) = some prog := by
+      rw [← hP]
+      rfl
+    obtain ⟨A, X, B, hX, hB, hprog, hA⟩ := expectedReloc_mid _ K L _ _ _ prog hP'
+    have hlast : nOf ((ss.map DShape.one)[body.length - 1]'(by simpa using hn)) = 0 := by
+      have h1 := hshk (body.length - 1) (by have := hF.pos; omega) hn
+      rw [hF.last] at h1
+      simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at h1
+      rw [List.getElem_map, ← h1]
+      rfl
+    have hposL : posOf (ss.map DShape.one) (body.length - 1) = A.length := by
+      have h2 : posOf (ss.map DShape.one) body.length
+          = posOf (ss.map DShape.one) (body.length - 1) := by
+        have h := posOf_succ (ss.map DShape.one) (body.length - 1) (by simpa using hn)
+        have e : body.length - 1 + 1 = body.length := by have := hF.pos; omega
+        rw [hlast, e] at h
+        exact h
+      rw [← h2, hA, decCount, decCount_itemsFromReloc symBase _ hR]
+      rw [posOf, List.take_of_length_le (by simp [hlen])]
+      simp [mkLea]
+    simp only [expectedReloc, mkLea, mkRet, Option.map_some, Option.some.injEq] at hX hB
+    rw [hposL, hprog, ← hX, ← hB]
+    simp [leaFrame]
+
+/-! ## 7. The byte simulation of the steps of a relocated body -/
+
+/-- A path of the machine followed by a run under an oracle is a run under the oracle. -/
+theorem haltsO_of_reaches {σ : Type} {M : Machine σ} {O : Nat → σ → σ → Prop}
+    {prog : List RInstr} {pc pc' : Nat} {s s' s'' : σ} (h : Reaches M prog pc s pc' s')
+    (hr : HaltsO M O prog pc' s' s'') : HaltsO M O prog pc s s'' := by
+  induction h with
+  | refl => exact hr
+  | next hs _ ih => exact .go hs (ih hr)
+
+/-- The instruction after a label or a branch is no conditional branch. -/
+theorem CallFacts.not_cond_next {body : Lcmd} {ss : List Shape} (hF : CallFacts body ss)
+    {k : Nat} (hk : k + 1 < body.length) (h : classifyA (body[k]'(by omega)).li_i = none) :
+    isCondB (body[k + 1]'hk).li_i = false := by
+  have hc := hF.cond (k + 1) hk
+  unfold condPrevB at hc
+  rw [List.getElem?_eq_getElem hk] at hc
+  revert hc
+  rcases hb : body[k + 1] with ⟨ii, li⟩
+  cases li <;> simp [isCondB, List.getElem?_eq_getElem (show k < body.length by omega), h]
+
+/-- **One step of the address machine on a relocated body, on the decoded program.** Let
+    the body have the facts `CallFacts` and `prog` satisfy `LinkedProg`, and let `frame`
+    agree with the frame of the body parameters at the names of the body. A step of the
+    address machine, from an address state that corresponds to a byte state `sA` with the
+    zero flag of a conditional branch and whose indexed load reads outside the red-zone
+    word, reaches an address state at a position of the body that corresponds to a byte
+    state `sA'` with the zero flag of a conditional branch, and the machine has a path on
+    `prog` from the index of the start on `sA` to the index of the reached position on
+    `sA'`. -/
+theorem linked_step {body : Lcmd} {ss : List Shape} (hF : CallFacts body ss) {K : Nat}
+    {prog : List RInstr}
+    (hL : LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog)
+    (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (sa : LstateA) (zf : Bool) (sa' : LstateA) (zf' : Bool) (sA : AState)
+    (hsafe : LoadSafeAt rsp body sa)
+    (hst : VIR.JasminLsemAddrRun.stepA frame body sa zf = some (sa', zf'))
+    (hc : ACorr rsp sA sa)
+    (hz : ∀ bi, body[sa.reg.lpc]? = some bi → isCondB bi.li_i = true →
+      sA.flags.zf.getD false = zf) :
+    ∃ sA', ACorr rsp sA' sa' ∧ sa'.reg.lpc < body.length
+      ∧ (∀ bi, body[sa'.reg.lpc]? = some bi → isCondB bi.li_i = true →
+          sA'.flags.zf.getD false = zf')
+      ∧ Reaches aMachine prog (posOf (ss.map DShape.one) sa.reg.lpc) sA
+          (posOf (ss.map DShape.one) sa'.reg.lpc) sA' := by
+  rw [stepA_congr hfr] at hst
+  obtain ⟨hl, hsh⟩ := shapesOf_spec _ body _ hF.shapes
+  cases hb : body[sa.reg.lpc]? with
+  | none => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
+  | some bi =>
+    obtain ⟨hk, hbk⟩ := List.getElem?_eq_some_iff.mp hb
+    have hkn : sa.reg.lpc + 1 < body.length := by
+      by_contra hn
+      have e : sa.reg.lpc = body.length - 1 := by omega
+      have h1 := hF.last
+      rw [(List.getElem?_eq_some_iff.mp (e ▸ hb)).2] at h1
+      obtain ⟨ii, li⟩ := bi
+      simp only at h1
+      subst h1
+      simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
+    have hok0 := hF.instr sa.reg.lpc hkn
+    have hshk := hsh sa.reg.lpc hk (by omega)
+    rw [hbk] at hok0 hshk
+    have hnext : ∀ (sA' : AState) (bi' : Linstr),
+        classifyA bi.li_i = none → body[sa.reg.lpc + 1]? = some bi' →
+        isCondB bi'.li_i = true → sA'.flags.zf.getD false = zf' := by
+      intro sA' bi' hcl hb' hcnd
+      have := hF.not_cond_next hkn (by rw [hbk]; exact hcl)
+      rw [(List.getElem?_eq_some_iff.mp hb').2, hcnd] at this
+      cases this
+    obtain ⟨ii, li⟩ := bi
+    cases li with
+    | Lopn dsts o srcs =>
+      have hokI : instrOKB body (Params.ofBody body) (.Lopn dsts o srcs) = true :=
+        hok0.resolve_left (fun h => h rfl)
+      have hok := hokI
+      simp only [instrOKB] at hok
+      split at hok
+      · rename_i ar hcl
+        have hia := classifyA_instr hcl
+        have hli := AArm.li_eq hok
+        have hsafeA : ar.LoadSafe rsp sa := by
+          cases ar with
+          | ldx D B' I =>
+            intro p vi hp hvi
+            exact hsafe ii D B' I (by rw [hb, ← hia]; rfl) p vi hp hvi
+          | _ => trivial
+        obtain ⟨s', z', hst', hc', hzf'⟩ :=
+          AArm.sim (Params.ofBody body) rsp ar hok sA sa zf hc hsafeA
+        have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
+            = some (s', z') := by
+          simp only [VIR.JasminLsemAddrRun.stepA, hb]
+          rw [← hia, AArm.tagAt_eq, hli]
+          exact hst'
+        obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
+        subst e1
+        subst e2
+        have hpc' : s'.reg.lpc = sa.reg.lpc + 1 := fstepA_lpc _ _ _ _ _ _ hst'
+        refine ⟨aMachine.runBlock sA (ar.js (Params.ofBody body)), hc',
+          by rw [hpc']; exact hkn, ?_, ?_⟩
+        · intro bi' hb' hcnd
+          rw [hpc'] at hb'
+          have hc2 := hF.cond (sa.reg.lpc + 1) hkn
+          unfold condPrevB at hc2
+          rw [hb'] at hc2
+          obtain ⟨ii', li'⟩ := bi'
+          revert hc2 hcnd
+          cases li' <;> simp [isCondB, hb, hcl]
+          exact hzf'
+        · obtain ⟨A, B, hsplit, hA⟩ := hL.blk sa.reg.lpc hk (by omega) (by rw [hbk]; exact hokI)
+          obtain ⟨hblk, hn⟩ := blkOf_lopn (body := body) (shs := ss.map DShape.one) hshk
+          have hops : ((ss.map DShape.one)[sa.reg.lpc]'(by omega)).ops'
+              = ar.js (Params.ofBody body) := AArm.shape_ops hok (by rw [hia]; exact hshk)
+          rw [hblk, hops] at hsplit
+          have h0 := reaches_ops aMachine A (ar.js (Params.ofBody body)) B sA
+          rw [← hsplit, hA] at h0
+          rw [hpc', posOf_succ _ sa.reg.lpc (by omega), hn, hops]
+          exact h0
+      · cases hok
+    | Llabel kd l =>
+      have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
+          = some (sa.setLpc (sa.reg.lpc + 1), zf) := by
+        unfold VIR.JasminLsemAddrRun.stepA
+        rw [hb]
+      obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
+      subst e1
+      subst e2
+      refine ⟨sA, acorr_setLpc hc _, hkn, fun bi' hb' hcnd => hnext sA bi' rfl hb' hcnd, ?_⟩
+      show Reaches aMachine prog (posOf (ss.map DShape.one) sa.reg.lpc) sA
+        (posOf (ss.map DShape.one) (sa.reg.lpc + 1)) sA
+      have hsk : (ss.map DShape.one)[sa.reg.lpc]'(by omega) = .one .skip := by
+        simp only [shapeOf, Option.some.injEq] at hshk
+        exact hshk.symm
+      rw [posOf_succ _ sa.reg.lpc (by omega), hsk]
+      exact .refl _ _
+    | Lcond c l =>
+      cases c with
+      | reg cc =>
+        have hokI : instrOKB body (Params.ofBody body) (.Lcond (.reg cc) l) = true :=
+          hok0.resolve_left (fun h => h rfl)
+        have hok := hokI
+        simp only [instrOKB, Bool.and_eq_true, Option.isSome_iff_exists] at hok
+        obtain ⟨⟨pol, hpol⟩, ⟨p, hp⟩⟩ := hok
+        obtain ⟨hpl, hlabp, -⟩ := labelAt_spec hp
+        have hsk : (ss.map DShape.one)[sa.reg.lpc]'(by omega)
+            = .one (.jcc (ccNibble cc) l) := by
+          simp only [shapeOf, Option.some.injEq] at hshk
+          exact hshk.symm
+        obtain ⟨A, B, hsplit, hA⟩ := hL.blk sa.reg.lpc hk (by omega) (by rw [hbk]; exact hokI)
+        have hj : prog[posOf (ss.map DShape.one) sa.reg.lpc]?
+            = some (.jcc (ccNibble cc) (posOf (ss.map DShape.one) p)) := by
+          rw [hsplit, hsk, ← hA, List.append_assoc, List.getElem?_append_right (by omega)]
+          simp [blkOf, hp]
+        have hzf : sA.flags.zf.getD false = zf := hz _ hb rfl
+        have hms := step_jcc_pol prog _ _ sA cc pol hpol hj
+        rw [hzf] at hms
+        by_cases hzp : zf = pol
+        · have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
+              = some (sa.setLpc p, zf) := by
+            unfold VIR.JasminLsemAddrRun.stepA
+            rw [hb]
+            simp [hpol, hzp, hp]
+          obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
+          subst e1
+          subst e2
+          rw [if_pos hzp] at hms
+          refine ⟨sA, acorr_setLpc hc _, hpl, fun bi' hb' hcnd => ?_, .single hms⟩
+          have hb'' : body[p]? = some bi' := hb'
+          rw [← (List.getElem?_eq_some_iff.mp hb'').2] at hcnd
+          revert hlabp hcnd
+          rcases body[p] with ⟨ii', li'⟩
+          cases li' <;> simp [isCondB, isLabelB]
+        · have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
+              = some (sa.setLpc (sa.reg.lpc + 1), zf) := by
+            unfold VIR.JasminLsemAddrRun.stepA
+            rw [hb]
+            simp [hpol, hzp]
+          obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
+          subst e1
+          subst e2
+          rw [if_neg hzp] at hms
+          refine ⟨sA, acorr_setLpc hc _, hkn, fun bi' hb' hcnd => hnext sA bi' rfl hb' hcnd, ?_⟩
+          show Reaches aMachine prog (posOf (ss.map DShape.one) sa.reg.lpc) sA
+            (posOf (ss.map DShape.one) (sa.reg.lpc + 1)) sA
+          rw [posOf_succ _ sa.reg.lpc (by omega), hsk]
+          exact .single hms
+      | _ => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
+    | _ => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
+
+/-- **The closing return of a relocated body, on the decoded program**: from the index of
+    the last position, `prog` runs the closing `lea` of the frame and halts at `ret`. -/
+theorem linked_halt {body : Lcmd} {ss : List Shape} {K : Nat} {prog : List RInstr}
+    (hL : LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog)
+    (O : Nat → AState → AState → Prop) (sa : LstateA) (sA : AState)
+    (hend : sa.reg.lpc + 1 = body.length) :
+    HaltsO aMachine O prog (posOf (ss.map DShape.one) sa.reg.lpc) sA
+      (evalInstrA sA (leaFrame (Int.ofNat (Params.ofBody body).frame))) := by
+  have e : sa.reg.lpc = body.length - 1 := by omega
+  rw [e]
+  exact .go (aMachine_step_op prog _ sA _ hL.fin.1) (.ret hL.fin.2)
+
+/-- **A call of a relocated body, on the decoded program**: the index of a call holds
+    `call K`, and the index of the next position is the next index. -/
+theorem linked_call {body : Lcmd} {ss : List Shape} (hF : CallFacts body ss) {K : Nat}
+    {prog : List RInstr}
+    (hL : LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog)
+    (p : Nat) (bi : Linstr) (ra : Option String) (t : String × LLabel)
+    (hb : body[p]? = some bi) (hbi : bi.li_i = .Lcall ra t) :
+    prog[posOf (ss.map DShape.one) p]? = some (.call K)
+      ∧ posOf (ss.map DShape.one) (p + 1) = posOf (ss.map DShape.one) p + 1 := by
+  obtain ⟨hk, hbk⟩ := List.getElem?_eq_some_iff.mp hb
+  obtain ⟨hl, hsh⟩ := shapesOf_spec _ body _ hF.shapes
+  have hkn : p + 1 < body.length := by
+    by_contra hn
+    have e : p = body.length - 1 := by omega
+    have h1 := hF.last
+    rw [(List.getElem?_eq_some_iff.mp (e ▸ hb)).2, hbi] at h1
+    cases h1
+  have hrem : remoteSym body[p].li_i ≠ none := by
+    rcases hF.instr p hkn with h | h
+    · exact h
+    · rw [hbk, hbi] at h
+      simp [instrOKB] at h
+  refine ⟨hL.call p hk hrem, ?_⟩
+  have h1 := hsh p hk (by omega)
+  rw [hbk, hbi] at h1
+  obtain ⟨f, l⟩ := t
+  simp only [shapeOf, Option.some.injEq] at h1
+  rw [posOf_succ _ p (by omega), ← h1]
+  rfl
+
+/-- The facts `CallFacts` of a body from its single shapes, its closing return, the
+    condition on every other instruction, and the check of the conditional branches. -/
+theorem callFacts_of_checks {body : Lcmd} {ss : List Shape}
+    (hs : shapesOf (Params.ofBody body) body = some (ss.map DShape.one))
+    (hlast : body.getLast?.any (fun r => isRetB r.li_i) = true)
+    (hall : ∀ i ∈ body.dropLast,
+      remoteSym i.li_i ≠ none ∨ instrOKB body (Params.ofBody body) i.li_i = true)
+    (hcond : (List.range body.length).all (condPrevB body) = true) : CallFacts body ss := by
+  simp only [Option.any_eq_true] at hlast
+  obtain ⟨r, hlast, hret⟩ := hlast
+  have hpos : 0 < body.length := by
+    cases body with
+    | nil => simp at hlast
+    | cons _ _ => simp
+  refine ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => ?_⟩
+  · rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem (by omega)] at hlast
+    obtain rfl := Option.some.inj hlast
+    revert hret
+    unfold isRetB
+    split <;> simp_all
+  · exact hall _ (by
+      rw [List.mem_iff_getElem]
+      exact ⟨k, by simp; omega, by simp⟩)
+  · exact List.all_eq_true.mp hcond k (List.mem_range.mpr hk)
+
+/-- The end of the run of a relocated body: the byte state is the state after the closing
+    `lea` of the frame `F`, from a byte state that corresponds to the address state. -/
+def FinLea (rsp : BitVec 64) (F : Nat) (sa : LstateA) (sA' : AState) : Prop :=
+  ∃ sA, ACorr rsp sA sa ∧ sA' = evalInstrA sA (leaFrame (Int.ofNat F))
+
+/-- **The byte simulation of the segments of a relocated body.** Let the body have the
+    facts `CallFacts`, `prog` satisfy `LinkedProg` at the index `K`, and `frame` agree
+    with the frame of the body parameters at the names of the body. Under every oracle
+    `O`, with the index `DecodePrintedCFG.posOf` of a position:
+
+    * a step of the address machine, from an address state that corresponds to a byte
+      state with the zero flag of a conditional branch and whose indexed load reads
+      outside the red-zone word, reaches an address state at a position of the body that
+      corresponds to a byte state with the zero flag of a conditional branch, and every
+      run under `O` from the index of the reached position extends to a run from the
+      index of the start;
+    * at the closing return there is a run under `O` to a byte state that satisfies
+      `FinLea` with the address state;
+    * the index of a call holds `call K`, and the index of the position after a call is
+      the index after the call. -/
+theorem linked_seg {body : Lcmd} {ss : List Shape} (hF : CallFacts body ss) {K : Nat}
+    {prog : List RInstr}
+    (hL : LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog)
+    (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (O : Nat → AState → AState → Prop) :
+    (∀ sa zf sa' zf' sA, LoadSafeAt rsp body sa →
+        VIR.JasminLsemAddrRun.stepA frame body sa zf = some (sa', zf') → ACorr rsp sA sa →
+        (∀ bi, body[sa.reg.lpc]? = some bi → isCondB bi.li_i = true →
+          sA.flags.zf.getD false = zf) →
+        ∃ sA', ACorr rsp sA' sa' ∧ sa'.reg.lpc < body.length
+          ∧ (∀ bi, body[sa'.reg.lpc]? = some bi → isCondB bi.li_i = true →
+              sA'.flags.zf.getD false = zf')
+          ∧ ∀ s'', HaltsO aMachine O prog (posOf (ss.map DShape.one) sa'.reg.lpc) sA' s'' →
+              HaltsO aMachine O prog (posOf (ss.map DShape.one) sa.reg.lpc) sA s'')
+      ∧ (∀ sa sA, sa.reg.lpc + 1 = body.length → ACorr rsp sA sa →
+          ∃ sA', HaltsO aMachine O prog (posOf (ss.map DShape.one) sa.reg.lpc) sA sA'
+            ∧ FinLea rsp (Params.ofBody body).frame sa sA')
+      ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
+          prog[posOf (ss.map DShape.one) p]? = some (.call K))
+      ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
+          posOf (ss.map DShape.one) (p + 1) = posOf (ss.map DShape.one) p + 1) := by
+  refine ⟨fun sa zf sa' zf' sA hsafe hst hc hz => ?_, fun sa sA hend hc => ?_,
+    fun p bi ra t hb hbi => (linked_call hF hL p bi ra t hb hbi).1,
+    fun p bi ra t hb hbi => (linked_call hF hL p bi ra t hb hbi).2⟩
+  · obtain ⟨sA', hc', hlen, hz', hR⟩ := linked_step hF hL rsp hfr sa zf sa' zf' sA hsafe hst hc hz
+    exact ⟨sA', hc', hlen, hz', fun s'' hr => haltsO_of_reaches hR hr⟩
+  · exact ⟨_, linked_halt hL O sa sA hend, sA, hc, rfl⟩
+
+/-- **The decoded program of the linked bytes of a relocated body.** Under the hypotheses
+    of `decodeLprog_fundefReloc_append` on a body with the facts `CallFacts`, the linked
+    bytes decode to `prog` followed by the callee block, and `prog` satisfies `LinkedProg`
+    at the index `prog.length` of the first instruction of the callee. -/
+theorem linkedProg_of_bytes (symBase : String → Option Int) {body : Lcmd} {ss : List Shape}
+    (hF : CallFacts body ss) (cb : List (BitVec 8)) (q prog : List RInstr)
+    (hsaves : calleeSavedToSave body = [])
+    (hF0 : frameSize body ≠ 0) (hFr : frameSize body < 2 ^ 31)
+    (hcb : decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : branchOKReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (encodeLfundefBytesReloc symBase body).length 0
+      (fundefItemsReloc symBase (Params.ofBody body) body ss) = true)
+    (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (encodeLfundefBytesReloc symBase body).length
+      (fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog) :
+    decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ shiftProg prog.length q)
+      ∧ LinkedProg body (ss.map DShape.one) prog.length (Params.ofBody body).frame prog := by
+  obtain ⟨hlen, hdec⟩ := decodeLprog_fundefReloc_append symBase body ss cb q prog hsaves hF0
+    hFr (relocShapeOK_of_shapes _ hF.shapes) hcb hne hbr hP
+  refine ⟨hdec, ?_⟩
+  rw [hlen]
+  exact linkedProg_of_items symBase hF _ _ prog hP
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc
