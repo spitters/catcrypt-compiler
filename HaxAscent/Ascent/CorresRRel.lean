@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import HaxAscent.Ascent.Wp
-public import Transfer.Integrations.ParamPredTransAbs
+public import CatCryptCore.Refinement.RRel
 
 /-!
 # The source correspondence `Corres` as a relational refinement `RRelPT`
@@ -14,7 +14,7 @@ public import Transfer.Integrations.ParamPredTransAbs
 `Corres bi P G e V Q` (`Ascent/Corres.lean`) states that the run of `e` from an
 environment related by `P` to an abstract state `σ` with `G σ` eventually returns
 `V σ` in an environment related by `Q` to `σ`. This module states it as the
-relational refinement `RRelPT` of `Transfer.Integrations.ParamPredTransAbs` between
+relational refinement `RRelPT` of `CatCryptCore/Refinement/RRel.lean` between
 the weakest precondition of an abstract program and the weakest precondition
 `wpA bi e` of `e`.
 
@@ -23,7 +23,7 @@ the weakest precondition of an abstract program and the weakest precondition
 * The abstract state space is `S ⊕ S`: `.inl σ` is the state `σ` before the run and
   `.inr σ` the state `σ` after it. The relation `entryExitRel P Q` relates an
   environment to `.inl σ` by `P` and to `.inr σ` by `Q`, so one assertion map
-  `AssnRel.ofStateRelExc (entryExitRel P Q)` carries both relations of `Corres`.
+  `AssnRel.ofStateRel (entryExitRel P Q)` carries both relations of `Corres`.
 * The abstract program `corresProg G V : EStateM (Option Value) (S ⊕ S) Value` moves
   `.inl σ` to `.inr σ` with result `V σ` when `G σ` holds; a control-flow value `V σ`
   is raised as the exception `some (V σ)`. A failed guard, and a start from `.inr σ`,
@@ -31,9 +31,6 @@ the weakest precondition of an abstract program and the weakest precondition
 
 ## Main definitions
 
-* `AssnRel.ofStateRelExc`: the assertion map of a relation between states and abstract
-  states, at an abstract shape with one exception type.
-* `AssnRel.ofArgRel`: the assertion map of a relation between two state spaces.
 * `entryExitRel`: one relation to `S ⊕ S` from an entry and an exit relation to `S`.
 * `wpA`: the weakest precondition of `ImpExpr` as an `Assertion` transformer.
 * `corresProg`, `CorresRE`: the abstract program and the relation of the second
@@ -42,9 +39,9 @@ the weakest precondition of an abstract program and the weakest precondition
 ## Main results
 
 * `corres_iff_rrelPT`: `Corres bi P G e V Q` is `RRelPT` between `corresProg G V` and
-  `wpA bi e`, at `AssnRel.ofStateRelExc (entryExitRel P Q)` and equality of values.
+  `wpA bi e`, at `AssnRel.ofStateRel (entryExitRel P Q)` and equality of values.
 * `corres_trans_of_rrelPT`: a correspondence for `e` and a refinement of `wpA bi e` by
-  `wpA bi e'` at `AssnRel.ofArgRel R` give the correspondence for `e'` at the composite
+  `wpA bi e'` at `AssnRel.ofRel R` give the correspondence for `e'` at the composite
   relations, by `RRelPT.trans`.
 * `rrelPT_wpA_of_sim`: a fuel-uniform simulation of `e` by `e'` along one relation is a
   refinement of `wpA bi e` by `wpA bi e'`.
@@ -54,53 +51,15 @@ the weakest precondition of an abstract program and the weakest precondition
 
 set_option autoImplicit false
 
-namespace Transfer.Param
-
-open Std.Do
+namespace Hax.Ascent
 
 /-- The relation of a state `s` to `S ⊕ S`: `.inl σ` by the entry relation `P` and
     `.inr σ` by the exit relation `Q`. -/
 def entryExitRel {σ S : Type} (P Q : σ → S → Prop) (s : σ) : S ⊕ S → Prop :=
   Sum.elim (P s) (Q s)
 
-namespace AssnRel
-
-/-- The assertion map of a relation `SR` between states `σ` and abstract states `A`:
-    an abstract assertion `Q` goes to `fun s => ⌜∃ a, SR s a ∧ Q a⌝`. The abstract
-    shape carries one exception of type `ε`. -/
-def ofStateRelExc {ε σ A : Type} (SR : σ → A → Prop) :
-    AssnRel (.except ε (.arg A .pure)) (.arg σ .pure) where
-  γ Q := fun s => ⌜∃ a, SR s a ∧ (Q a).down⌝
-  mono h := fun _ ⟨a, hs, hq⟩ => ⟨a, hs, h a hq⟩
-  exists_le _ := fun _ ⟨a, hs, ⟨i, hi⟩⟩ => ⟨i, a, hs, hi⟩
-
-/-- The assertion map of a relation `R` between states `σ'` and states `σ`: an
-    assertion `Q` on `σ` goes to `fun s' => ⌜∃ s, R s' s ∧ Q s⌝`. -/
-def ofArgRel {σ σ' : Type} (R : σ' → σ → Prop) :
-    AssnRel (.arg σ .pure) (.arg σ' .pure) where
-  γ Q := fun s' => ⌜∃ s, R s' s ∧ (Q s).down⌝
-  mono h := fun _ ⟨s, hs, hq⟩ => ⟨s, hs, h s hq⟩
-  exists_le _ := fun _ ⟨s, hs, ⟨i, hi⟩⟩ => ⟨i, s, hs, hi⟩
-
-/-- The composite of `ofArgRel R` after `ofStateRelExc SR` is `ofStateRelExc` of the
-    relational composite of `R` and `SR`. -/
-theorem ofArgRel_comp_ofStateRelExc_γ {ε σ σ' A : Type} (R : σ' → σ → Prop)
-    (SR : σ → A → Prop) (Q : Assertion (.except ε (.arg A .pure))) :
-    ((ofArgRel R).comp (ofStateRelExc (ε := ε) SR)).γ Q =
-      (ofStateRelExc (ε := ε) (fun s' a => ∃ s, R s' s ∧ SR s a)).γ Q := by
-  funext s'
-  exact congrArg ULift.up (propext
-    ⟨fun ⟨s, hR, a, hs, hq⟩ => ⟨a, ⟨s, hR, hs⟩, hq⟩,
-     fun ⟨a, ⟨s, hR, hs⟩, hq⟩ => ⟨s, hR, a, hs, hq⟩⟩)
-
-end AssnRel
-
-end Transfer.Param
-
-namespace Hax.Ascent
-
 open Std.Do
-open Transfer.Param
+open CatCrypt.Refinement
 
 variable {bi : Builtins} {S : Type}
 
@@ -186,13 +145,13 @@ theorem wp_corresProg_iff {G : S → Prop} {V : S → Value}
 
 /-- The relation of the second postconditions in `corres_iff_rrelPT`: the abstract
     exception `none` has the false postcondition, and the abstract postcondition of
-    `some v`, mapped by `ofStateRelExc SR`, entails the control-flow postcondition at
+    `some v`, mapped by `ofStateRel SR`, entails the control-flow postcondition at
     `v`. -/
 def CorresRE {σ A : Type} (SR : σ → A → Prop)
     (E : ExceptConds (.except (Option Value) (.arg A .pure)))
     (E' : Value → Assertion (.arg σ .pure)) : Prop :=
   (∀ a, ¬ (E.1 none a).down) ∧
-    ∀ v, (AssnRel.ofStateRelExc (ε := Option Value) SR).γ (E.1 (some v)) ⊢ₛ E' v
+    ∀ v, (AssnRel.ofStateRel (ε := Option Value) SR).γ (E.1 (some v)) ⊢ₛ E' v
 
 /-! ## `Corres` as `RRelPT` -/
 
@@ -203,16 +162,16 @@ def CorresRE {σ A : Type} (SR : σ → A → Prop)
 theorem corres_iff_rrelPT {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} :
     Corres bi P G e V Q ↔
-      RRelPT (AssnRel.ofStateRelExc (entryExitRel P Q)) (CorresRE (entryExitRel P Q)) Eq
+      RRelPT (AssnRel.ofStateRel (entryExitRel P Q)) (CorresRE (entryExitRel P Q)) Eq
         (fun Φ E => wp⟦corresProg G V⟧ (Φ, E)) (wpA bi e) := by
   rw [corres_iff_wp]
   constructor
-  · rintro h Φ Φ' E E' hΦ ⟨hnone, hE⟩ env ⟨x, hx, hwp⟩
+  · rintro h Φ Φ' hΦ E E' ⟨hnone, hE⟩ env ⟨x, hx, hwp⟩
     obtain ⟨σ, rfl, hG, hp⟩ := (wp_corresProg_iff hnone).mp hwp
     refine wp_mono (h σ hG env hx) ?_ ?_
     · rintro v s hc ⟨rfl, hQ⟩
       rcases hp with ⟨_, hp⟩ | ⟨hc', _⟩
-      · exact hΦ _ _ rfl s ⟨.inr σ, hQ, hp⟩
+      · exact @hΦ _ _ rfl s ⟨.inr σ, hQ, hp⟩
       · rw [hc] at hc'
         cases hc'
     · rintro v s hc ⟨rfl, hQ⟩
@@ -224,9 +183,9 @@ theorem corres_iff_rrelPT {P Q : Env → S → Prop} {G : S → Prop} {e : ImpEx
     let E : ExceptConds (.except (Option Value) (.arg (S ⊕ S) .pure)) :=
       (fun o y => ⌜o = some (V σ) ∧ y = .inr σ⌝, ())
     have hnone : ∀ y, ¬ (E.1 none y).down := fun _ ⟨h, _⟩ => nomatch h
-    have hw := h (fun v y => ⌜v = V σ ∧ y = .inr σ⌝) (fun v s => ⌜v = V σ ∧ Q s σ⌝)
-      E (fun v s => ⌜v = V σ ∧ Q s σ⌝)
+    have hw := @h (fun v y => ⌜v = V σ ∧ y = .inr σ⌝) (fun v s => ⌜v = V σ ∧ Q s σ⌝)
       (fun _ _ hv s ⟨_, hx, h₁, h₂⟩ => by subst hv h₂; exact ⟨h₁, hx⟩)
+      E (fun v s => ⌜v = V σ ∧ Q s σ⌝)
       ⟨hnone, fun v s ⟨_, hx, h₁, h₂⟩ => by cases h₁; subst h₂; exact ⟨rfl, hx⟩⟩ env
       ⟨.inl σ, hP, (wp_corresProg_iff hnone).mpr ⟨σ, rfl, hG, by
         cases hc : (V σ).isControlFlow
@@ -237,13 +196,13 @@ theorem corres_iff_rrelPT {P Q : Env → S → Prop} {G : S → Prop} {e : ImpEx
 /-! ## Composition with a refinement of the source -/
 
 /-- **Composition by `RRelPT.trans`.** A correspondence `Corres bi P G e V Q` and a
-    refinement of `wpA bi e` by `wpA bi e'` at `AssnRel.ofArgRel R`, whose second
+    refinement of `wpA bi e` by `wpA bi e'` at `AssnRel.ofRel R`, whose second
     postconditions are related as the first ones, give the correspondence for `e'`
     from and to the environments `R`-related to the entry and exit environments of
     `e`. -/
 theorem corres_trans_of_rrelPT {R : Env → Env → Prop} {P Q : Env → S → Prop}
     {G : S → Prop} {e e' : ImpExpr} {V : S → Value} (h₁ : Corres bi P G e V Q)
-    (h₂ : RRelPT (AssnRel.ofArgRel R) (fun Ψ Ψ' => ∀ v, (AssnRel.ofArgRel R).γ (Ψ v) ⊢ₛ Ψ' v)
+    (h₂ : RRelPT (AssnRel.ofRel R) (fun Ψ Ψ' => ∀ v, (AssnRel.ofRel R).γ (Ψ v) ⊢ₛ Ψ' v)
       Eq (wpA bi e) (wpA bi e')) :
     Corres bi (fun env' σ => ∃ env, R env' env ∧ P env σ) G e' V
       (fun env' σ => ∃ env, R env' env ∧ Q env σ) := by
@@ -253,31 +212,33 @@ theorem corres_trans_of_rrelPT {R : Env → Env → Prop} {P Q : Env → S → P
     funext env' x
     cases x <;> rfl
   have h := RRelPT.trans (corres_iff_rrelPT.mp h₁) h₂
-  refine corres_iff_rrelPT.mpr fun Φ Φ' E E' hΦ ⟨hnone, hE⟩ => ?_
-  have hc := h Φ Φ' E E'
+  refine corres_iff_rrelPT.mpr fun Φ Φ' hΦ E E' ⟨hnone, hE⟩ => ?_
+  have hc := @h Φ Φ'
     (fun a a'' ⟨_, h₁, h₂⟩ => by
       subst h₁ h₂
-      rw [AssnRel.ofArgRel_comp_ofStateRelExc_γ, hrel]
-      exact hΦ a a rfl)
-    ⟨fun v => (AssnRel.ofStateRelExc (ε := Option Value) (entryExitRel P Q)).γ (E.1 (some v)),
+      rw [AssnRel.Rel, AssnRel.ofRel_comp_ofStateRel_γ, hrel]
+      exact @hΦ a a rfl)
+    E E'
+    ⟨fun v => (AssnRel.ofStateRel (ε := Option Value) (entryExitRel P Q)).γ (E.1 (some v)),
       ⟨hnone, fun _ => .rfl⟩, fun v => by
         have := hE v
-        rw [← hrel, ← AssnRel.ofArgRel_comp_ofStateRelExc_γ] at this
+        rw [← hrel, ← AssnRel.ofRel_comp_ofStateRel_γ] at this
         exact this⟩
-  rwa [AssnRel.ofArgRel_comp_ofStateRelExc_γ, hrel] at hc
+  rw [AssnRel.Rel] at hc ⊢
+  rwa [AssnRel.ofRel_comp_ofStateRel_γ, hrel] at hc
 
 /-- **A simulation is a refinement.** When from `R`-related environments the runs of
     `e` and `e'` have the same outcome and end in `R`-related environments at every
-    fuel, `wpA bi e` is refined by `wpA bi e'` at `AssnRel.ofArgRel (flip R)`, with the
+    fuel, `wpA bi e` is refined by `wpA bi e'` at `AssnRel.ofRel (flip R)`, with the
     second postconditions related as the first ones. -/
 theorem rrelPT_wpA_of_sim {R : Env → Env → Prop} {e e' : ImpExpr}
     (hsim : ∀ fuel env envF, R env envF →
       ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
         R ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2) :
-    RRelPT (AssnRel.ofArgRel (flip R))
-      (fun Ψ Ψ' => ∀ v, (AssnRel.ofArgRel (flip R)).γ (Ψ v) ⊢ₛ Ψ' v)
+    RRelPT (AssnRel.ofRel (flip R))
+      (fun Ψ Ψ' => ∀ v, (AssnRel.ofRel (flip R)).γ (Ψ v) ⊢ₛ Ψ' v)
       Eq (wpA bi e) (wpA bi e') := by
-  rintro Φ Φ' Ψ Ψ' hΦ hΨ envF ⟨env, hR, v, env₁, ⟨f₀, hrun⟩, hp⟩
+  rintro Φ Φ' hΦ Ψ Ψ' hΨ envF ⟨env, hR, v, env₁, ⟨f₀, hrun⟩, hp⟩
   obtain ⟨h1, h2⟩ := hsim f₀ env envF hR
   have r₀ : denote' bi f₀ e env = (.val v, env₁) := hrun f₀ (Nat.le_refl _)
   have hv : (denote' bi f₀ e' envF).1 = .val v := by
@@ -292,7 +253,7 @@ theorem rrelPT_wpA_of_sim {R : Env → Env → Prop} {e e' : ImpExpr}
   · rw [denote'_val_mono bi hv hf]
     exact Prod.ext hv rfl
   · rcases hp with ⟨hc, hp⟩ | ⟨hc, hp⟩
-    · exact Or.inl ⟨hc, hΦ v v rfl _ ⟨env₁, hx, hp⟩⟩
+    · exact Or.inl ⟨hc, @hΦ v v rfl _ ⟨env₁, hx, hp⟩⟩
     · exact Or.inr ⟨hc, hΨ v _ ⟨env₁, hx, hp⟩⟩
 
 end Hax.Ascent
