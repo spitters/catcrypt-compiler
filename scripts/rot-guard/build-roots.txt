@@ -23,6 +23,7 @@ CatCrypt.Crypto.Bridges.Transfer.CompilerRegistryExt
 CatCrypt.Crypto.Bridges.Transfer.ForallFoldTactic
 CatCrypt.Crypto.Hash.FullSecurity
 CatCrypt.Crypto.Hash.KangarooTwelve
+CatCrypt.Crypto.Hax.FrontDomain
 CatCrypt.Crypto.Hax.HaxBorrowAlignment
 CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
