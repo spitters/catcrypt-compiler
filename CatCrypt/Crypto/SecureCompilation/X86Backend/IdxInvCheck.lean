@@ -34,11 +34,16 @@ block, along its symbolic run `symRun` from the block entry:
 
 Entailment (`entails`) is syntactic: an upper bound on a sum is read off one fact after
 normalising additions and subtractions of immediates (`linOf`), with the lower bounds of the
-remaining summands; a lower bound is read off a fact on the same term.
+remaining summands; a lower bound is read off a fact on the same term. A sum whose linear
+form is one product with an immediate at width `64` plus a constant is bounded through a
+bound on the other factor (`mulLe`); with the immediate as the first factor the other factor
+must have width `64`, which a width fact states. The index obligations of a block are
+checked from its facts and the width facts of the guards of its symbolic run (`guardW64`).
 
 `idxAnnot` computes an annotation by restricting candidate facts to a fixed point; the
-bounds of its candidates are those of the entry facts and the array lengths of the index
-obligations. The check does not depend on it. `boundFacts` reads the facts of a System V layout's register
+bounds of its candidates are those of the entry facts, the array lengths of the index
+obligations and the immediates the blocks leave in the candidate registers (`seedImms`).
+The check does not depend on it. `boundFacts` reads the facts of a System V layout's register
 bounds, which hold at every entry state satisfying `AbiLayout.Regions`.
 
 ## Main definitions
@@ -92,11 +97,12 @@ inductive IdxFact where
   | ge (r : String) (k : Nat)
   deriving DecidableEq, Repr, Inhabited
 
-/-- A fact over symbolic words: the sum of the values of the terms `ts` is at most `b`, or
-    the value of the term `t` is at least `k`. -/
+/-- A fact over symbolic words: the sum of the values of the terms `ts` is at most `b`, the
+    value of the term `t` is at least `k`, or the term `t` has width `64`. -/
 inductive SFact where
   | le (ts : List STerm) (b : Nat)
   | ge (t : STerm) (k : Nat)
+  | w64 (t : STerm)
   deriving DecidableEq
 
 section Eval
@@ -110,6 +116,7 @@ def tsum (ts : List STerm) : Nat := (ts.map fun t => wval (t.ev V A C O)).sum
 def SFact.holds : SFact → Prop
   | .le ts b => tsum V A C O ts ≤ b
   | .ge t k => k ≤ wval (t.ev V A C O)
+  | .w64 t => (t.ev V A C O).1 = 64
 
 end Eval
 
@@ -139,12 +146,14 @@ def lbOf : List SFact → STerm → Nat
   | [], _ => 0
   | .ge t' k :: F, t => if t' = t then max k (lbOf F t) else lbOf F t
   | .le _ _ :: F, t => lbOf F t
+  | .w64 _ :: F, t => lbOf F t
 
 theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
     ∀ (F : List SFact) (t : STerm), (∀ f ∈ F, f.holds V A C O) →
       lbOf F t ≤ wval (t.ev V A C O)
   | [], _, _ => Nat.zero_le _
   | .le _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
+  | .w64 _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .ge t' k :: F, t, h => by
       have ih := lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
       simp only [lbOf]
@@ -315,15 +324,174 @@ def leBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Boo
       | some R => decide ((b : Int) - (lbSum F R : Int) + K ≤ b')
       | none => false
   | .ge _ _ => false
+  | .w64 _ => false
+
+/-- The sum of `ts` is at most `b'` by its linear form: the form is a constant within the
+    bound, or one fact bounds a sum containing its atoms. -/
+def leLin (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
+  (decide ((sumLin F ts).1 = []) && decide ((sumLin F ts).2 ≤ b'))
+    || F.any (leBy F (sumLin F ts).1 (sumLin F ts).2 b')
+
+theorem leLin_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
+    (h : leLin F ts b' = true) : tsum V A C O ts ≤ b' := by
+  have hs := sumLin_sound hF ts
+  simp only [leLin, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+    List.any_eq_true] at h
+  rcases h with ⟨he, hk⟩ | ⟨f, hf, hl⟩
+  · have h0 : tsum V A C O [] = 0 := rfl
+    rw [he, h0] at hs
+    omega
+  · cases f with
+    | ge _ _ => simp [leBy] at hl
+    | w64 _ => simp [leBy] at hl
+    | le ts0 b =>
+        simp only [leBy] at hl
+        split at hl
+        · rename_i R hR
+          simp only [decide_eq_true_eq] at hl
+          have h0 : tsum V A C O ts0 ≤ b := hF _ hf
+          have h1 := eraseAll_sum V A C O _ _ _ hR
+          have h2 := lbSum_le hF R
+          omega
+        · cases hl
+
+/-- The term `t` has width `64` by its outermost constructors or by a width fact of `F`. -/
+def widOk (F : List SFact) (t : STerm) : Bool :=
+  decide (t.wbase.wknown = some 64) || decide (SFact.w64 t.wbase ∈ F)
+
+theorem widOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {t : STerm} (h : widOk F t = true) :
+    (t.ev V A C O).1 = 64 := by
+  rw [← STerm.wbase_ev]
+  simp only [widOk, Bool.or_eq_true, decide_eq_true_eq] at h
+  rcases h with h | h
+  · exact STerm.wknown_ev V A C O h
+  · exact hF _ h
+
+/-- The immediate factor `c` and the other factor `x` of a product at width `64` whose value
+    is at most `c` times the value of `x`: a product `MUL x c`, or a product `MUL c x` whose
+    factor `x` has width `64` (`widOk`). -/
+def mulParts (F : List SFact) : STerm → Option (Nat × STerm)
+  | .bin m x y =>
+      if m = "MUL" then
+        match y with
+        | .immW w c => if w = 64 then some (c, x) else none
+        | _ =>
+            match x with
+            | .immW w c => if w = 64 ∧ widOk F y = true then some (c, y) else none
+            | _ => none
+      else none
+  | _ => none
+
+theorem mulImm_mod_le (a c : Nat) : a * (c % 2 ^ 64) % 2 ^ 64 ≤ c * a :=
+  (Nat.mod_le _ _).trans ((Nat.mul_le_mul_left a (Nat.mod_le c _)).trans (Nat.mul_comm a c).le)
+
+/-- A product with an immediate as the second factor is at most the product of the values. -/
+theorem wval_mulImm_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (x : STerm) (c : Nat) :
+    wval ((STerm.bin "MUL" x (.immW 64 c)).ev V A C O) ≤ c * wval (x.ev V A C O) := by
+  rw [wval_bin]
+  split
+  · simp only [binW, STerm.ev, extW, BitVec.setWidth_eq]
+    simp only [show ("MUL" = "MULXHI") = False by decide, if_false, applyOpnN,
+      Option.getD_some, BitVec.toNat_mul, BitVec.toNat_ofNat]
+    exact mulImm_mod_le _ _
+  · exact Nat.zero_le _
+
+/-- A product with an immediate as the first factor and a second factor of width `64` is at
+    most the product of the values. -/
+theorem wval_immMul_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (y : STerm) (c : Nat) (hy : (y.ev V A C O).1 = 64) :
+    wval ((STerm.bin "MUL" (.immW 64 c) y).ev V A C O) ≤ c * wval (y.ev V A C O) := by
+  rw [wval_bin]
+  simp only [STerm.ev, if_true, binW, show ("MUL" = "MULXHI") = False by decide, if_false,
+    applyOpnN, Option.getD_some, extW_of_eq hy, BitVec.toNat_mul]
+  unfold wval
+  simp only [castW, dite_true, BitVec.toNat_ofNat]
+  rw [Nat.mul_comm]
+  exact mulImm_mod_le _ _
+
+theorem mulParts_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {a x : STerm} {c : Nat}
+    (h : mulParts F a = some (c, x)) : wval (a.ev V A C O) ≤ c * wval (x.ev V A C O) := by
+  unfold mulParts at h
+  split at h
+  · split at h
+    · rename_i hm
+      subst hm
+      split at h
+      · split at h
+        · rename_i hw
+          subst hw
+          cases h
+          exact wval_mulImm_le V A C O _ _
+        · cases h
+      · split at h
+        · split at h
+          · rename_i hw
+            obtain ⟨rfl, hw⟩ := hw
+            cases h
+            exact wval_immMul_le V A C O _ _ (widOk_sound hF hw)
+          · cases h
+        · cases h
+    · cases h
+  · cases h
+
+/-- If `x ≤ (b' - K) / c` and `K ≤ b'` then `c * x + K ≤ b'`. -/
+theorem mulLe_arith {c x : Nat} {K : Int} {b' : Nat} (hK : K ≤ b')
+    (hx : x ≤ ((b' : Int) - K).toNat / c) : ((c * x : Nat) : Int) + K ≤ b' := by
+  have h1 : c * x ≤ ((b' : Int) - K).toNat :=
+    (Nat.mul_le_mul_left c hx).trans (Nat.mul_div_le _ _)
+  have h2 : ((c * x : Nat) : Int) ≤ ((((b' : Int) - K).toNat : Nat) : Int) :=
+    Int.ofNat_le.mpr h1
+  rw [Int.toNat_of_nonneg (by omega)] at h2
+  omega
+
+/-- The sum of `ts` is at most `b'` by a product: its linear form is one atom `mulParts`
+    reads as `c` times `x`, plus a constant `K ≤ b'`, and `x` is at most `(b' - K) / c` by
+    `leLin`. -/
+def mulLe (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
+  match (sumLin F ts).1 with
+  | [a] =>
+      match mulParts F a with
+      | some (c, x) =>
+          decide ((sumLin F ts).2 ≤ b') &&
+            leLin F [x] (((b' : Int) - (sumLin F ts).2).toNat / c)
+      | none => false
+  | _ => false
+
+theorem mulLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
+    (h : mulLe F ts b' = true) : tsum V A C O ts ≤ b' := by
+  have hs := sumLin_sound hF ts
+  unfold mulLe at h
+  split at h
+  · rename_i a ha
+    split at h
+    · rename_i c x hp
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      have h1 := mulParts_sound (V := V) (A := A) (C := C) (O := O) hF hp
+      have h2 := leLin_sound hF h.2
+      have e1 : tsum V A C O [x] = wval (x.ev V A C O) := by simp [tsum]
+      have e2 : tsum V A C O [a] = wval (a.ev V A C O) := by simp [tsum]
+      rw [e1] at h2
+      rw [ha, e2] at hs
+      have h3 := mulLe_arith h.1 h2
+      have h4 : ((wval (a.ev V A C O) : Nat) : Int) ≤ ((c * wval (x.ev V A C O) : Nat) : Int) :=
+        Int.ofNat_le.mpr h1
+      omega
+    · cases h
+  · cases h
 
 /-- **Entailment**: an upper bound on a sum holds when its linear form is a constant within
-    the bound, or when one fact bounds a sum containing its atoms; a lower bound holds when
-    a fact states it. -/
+    the bound, when one fact bounds a sum containing its atoms (`leLin`), or when the form
+    is a product with an immediate whose other factor is bounded (`mulLe`); a lower bound
+    holds when a fact states it; a width holds by `widOk`. -/
 def entails (F : List SFact) : SFact → Bool
-  | .le ts b' =>
-      (decide ((sumLin F ts).1 = []) && decide ((sumLin F ts).2 ≤ b'))
-        || F.any (leBy F (sumLin F ts).1 (sumLin F ts).2 b')
+  | .le ts b' => leLin F ts b' || mulLe F ts b'
   | .ge t k => decide (k ≤ lbOf F t)
+  | .w64 t => widOk F t
 
 /-- **Entailment is sound.** -/
 theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
@@ -333,26 +501,57 @@ theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
       simp only [entails, decide_eq_true_eq] at h
       exact le_trans h (lbOf_le F t hF)
   | .le ts b', h => by
-      have hs := sumLin_sound hF ts
-      simp only [entails, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
-        List.any_eq_true] at h
-      show tsum V A C O ts ≤ b'
-      rcases h with ⟨he, hk⟩ | ⟨f, hf, hl⟩
-      · have h0 : tsum V A C O [] = 0 := rfl
-        rw [he, h0] at hs
-        omega
-      · cases f with
-        | ge _ _ => simp [leBy] at hl
-        | le ts0 b =>
-            simp only [leBy] at hl
-            split at hl
-            · rename_i R hR
-              simp only [decide_eq_true_eq] at hl
-              have h0 : tsum V A C O ts0 ≤ b := hF _ hf
-              have h1 := eraseAll_sum V A C O _ _ _ hR
-              have h2 := lbSum_le hF R
-              omega
-            · cases hl
+      simp only [entails, Bool.or_eq_true] at h
+      rcases h with h | h
+      · exact leLin_sound hF h
+      · exact mulLe_sound hF h
+  | .w64 t, h => widOk_sound hF h
+
+/-- The width facts a guard of a symbolic run gives: a term of width `64`, or a term whose
+    width is that of a term of width `64`, each at its width base `STerm.wbase`. -/
+def guardW64 : SG → List SFact
+  | .wid t w => if w = 64 then [.w64 t.wbase] else []
+  | .eqW x y =>
+      if x.wbase.wknown = some 64 then [.w64 y.wbase]
+      else if y.wbase.wknown = some 64 then [.w64 x.wbase]
+      else []
+  | .shp _ _ _ => []
+
+/-- The width facts of guards that hold, hold. -/
+theorem guardW64_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {gs : List SG} (h : AllG V A C O gs) : ∀ f ∈ gs.flatMap guardW64, f.holds V A C O := by
+  intro f hf
+  obtain ⟨g, hg, hfg⟩ := List.mem_flatMap.mp hf
+  have hh := h g hg
+  cases g with
+  | wid t w =>
+      simp only [guardW64] at hfg
+      split at hfg
+      · rename_i hw
+        subst hw
+        simp only [List.mem_singleton] at hfg
+        subst hfg
+        exact (STerm.wbase_ev V A C O t).trans hh
+      · simp at hfg
+  | eqW x y =>
+      simp only [guardW64] at hfg
+      have hx := STerm.wbase_ev V A C O x
+      have hy := STerm.wbase_ev V A C O y
+      have he : (x.ev V A C O).1 = (y.ev V A C O).1 := hh
+      split at hfg
+      · rename_i hk
+        simp only [List.mem_singleton] at hfg
+        subst hfg
+        have := STerm.wknown_ev V A C O hk
+        exact hy.trans (he.symm.trans (hx.symm.trans this))
+      · split at hfg
+        · rename_i hk
+          simp only [List.mem_singleton] at hfg
+          subst hfg
+          have := STerm.wknown_ev V A C O hk
+          exact hx.trans (he.trans (hy.symm.trans this))
+        · simp at hfg
+  | shp _ _ _ => simp [guardW64] at hfg
 
 /-! ## 3. Edge facts -/
 
@@ -465,7 +664,8 @@ def termInvOk (ann : List (List IdxFact)) (F : List SFact) (ss : SSt) (T : Term)
 
 /-- **The check of block `k`**: a block ending in `Lret`, or whose symbolic run fails, is
     accepted; otherwise its symbolic run is in the fragment, its index obligations follow
-    from its facts, and the facts of its successors follow. -/
+    from its facts and the width facts `guardW64` of the guards of the run, and the facts of
+    its successors follow. -/
 def blockInvOk (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (k : Nat) : Bool :=
   match (G.blk k).term with
   | .ret => true
@@ -473,8 +673,9 @@ def blockInvOk (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (k : Na
       match symRun (bodyAt B (G.blk k) T) SSt.start with
       | .fail => true
       | .unk => false
-      | .ok ss _ =>
-          oblsOk (startF (annAt ann k)) (symObl (bodyAt B (G.blk k) T) SSt.start) &&
+      | .ok ss gs =>
+          oblsOk (startF (annAt ann k) ++ gs.flatMap guardW64)
+              (symObl (bodyAt B (G.blk k) T) SSt.start) &&
             termInvOk ann (startF (annAt ann k)) ss T B[(G.blk k).stop - 1]?
 
 /-- **The bounds-invariant check** of the body `B` under the annotation `ann`, from the
@@ -549,8 +750,8 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
   have hbk' : (match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
       | .fail => true
       | .unk => false
-      | .ok ss _ =>
-          oblsOk (startF (annAt ann k))
+      | .ok ss gs =>
+          oblsOk (startF (annAt ann k) ++ gs.flatMap guardW64)
               (symObl (bodyAt B (G.blk k) (G.blk k).term) SSt.start) &&
             termInvOk ann (startF (annAt ann k)) ss (G.blk k).term
               B[(G.blk k).stop - 1]?) = true := by
@@ -569,16 +770,22 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
   rw [hS] at hD hbk'
   simp only [Bool.and_eq_true] at hbk'
   obtain ⟨hobl, hti⟩ := hbk'
-  obtain ⟨-, hH, -⟩ := hD.1 u hu
+  obtain ⟨hgs, hH, -⟩ := hD.1 u hu
   have hF0 := startF_holds (A := s.prog.base.larr) (C := s.prog.base.cf) (O := s.prog.base.of)
     hinv
+  have hF1 : ∀ g ∈ startF (annAt ann k) ++ gs.flatMap guardW64,
+      g.holds s.prog.base.reg.lvm s.prog.base.larr s.prog.base.cf s.prog.base.of := by
+    intro g hg
+    rcases List.mem_append.mp hg with hg | hg
+    · exact hF0 g hg
+    · exact guardW64_holds hgs g hg
   -- the stretch is in bounds
   have hlS : RunLOk (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
       (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) s := by
     refine (symObl_sound (singletonProgM fn B) _ SSt.start _ _ _ _ _ s u (holds_start s)
       ⟨ss, gs, by rw [symRun_entry hE hle]; exact hS⟩ hu).mpr fun o ho => ?_
     rw [symObl_entry hE hle] at ho
-    exact oblsOk_sound hobl hF0 o ho
+    exact oblsOk_sound hobl hF1 o ho
   have hokJ : ∀ f0, RunIdxOk (singletonProgM fn B) f0 u →
       RunIdxOk (singletonProgM fn B) (((B.drop s.prog.base.reg.lpc).take
         (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)).length + f0) s :=
@@ -792,18 +999,32 @@ def oblLens (B : List LinstrRM) (G : CFG) : List Nat :=
   (List.range G.blocks.size).flatMap fun k =>
     (symObl (bodyAt B (G.blk k) (G.blk k).term) SSt.start).map (·.2)
 
+/-- The immediates at width `64` that the symbolic run of a block of `B` leaves in a register
+    of `rs`: the values a counter is seeded with. -/
+def seedImms (B : List LinstrRM) (G : CFG) (rs : List String) : List Nat :=
+  (List.range G.blocks.size).flatMap fun k =>
+    match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+    | .ok ss _ =>
+        rs.filterMap fun r =>
+          match ss.regs r with
+          | .immW w n => if w = 64 then some n else none
+          | _ => none
+    | _ => []
+
 /-- **The annotation by restriction**: block `0` holds the candidates the entry facts give,
     every other block all candidates, restricted by `annPass` to a fixed point (within a
     bound on the number of passes). The bounds of the candidates are the bounds of the
-    entry facts and the array lengths `oblLens` of the index obligations, so a counter
-    seeded with an immediate is bounded by the length of the array its index reads.
+    entry facts, the array lengths `oblLens` of the index obligations and the immediates
+    `seedImms` the blocks leave in the candidate registers, so a counter seeded with an
+    immediate is bounded by that immediate and by the length of the array its index reads.
     `idxInvCheckB` checks the result. -/
 def idxAnnot (entry : List IdxFact) (B : List LinstrRM) : List (List IdxFact) :=
   match cfgOf (B.map Prod.fst) with
   | some G =>
+      let rs := annRegs entry B G
       let bs := ((entry.filterMap fun | .le _ b => some b | .ge _ _ => none)
-        ++ oblLens B G).eraseDups
-      let cs := annCands (annRegs entry B G) bs
+        ++ oblLens B G ++ seedImms B G rs).eraseDups
+      let cs := annCands rs bs
       let a0 := (List.range G.blocks.size).map fun k =>
         if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg) else cs
       (List.range (G.blocks.size * cs.length + 1)).foldl (fun a _ => annPass B G a) a0

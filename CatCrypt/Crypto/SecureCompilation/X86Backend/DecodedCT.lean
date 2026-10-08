@@ -342,9 +342,10 @@ def newRegs (P : PubA) : JInstr 64 → List String
   | .loadMem d b o => if b == "%rsp" && P.cells.contains o then [d] else []
   | .lea d b x _ _ => if P.regs.contains b && P.regs.contains x then [d] else []
   | .add d src | .sub d src | .and_ d src | .or_ d src | .xor_ d src
-  | .shl d src | .shr d src | .sar d src =>
+  | .shl d src | .shr d src | .sar d src | .imul d src =>
       if P.regs.contains d && opPub P src then [d] else []
   | .neg d => if P.regs.contains d then [d] else []
+  | .imulri d src _ => if P.regs.contains src then [d] else []
   | _ => []
 
 /-- The public frame words after `i`, when `i` does not write `%rsp`. -/
@@ -457,7 +458,7 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
       simp [evalInstr, JState.setReg, AState.view, hag.1 _ h.1, hag.1 _ h.2]
     · simp at hx
   | add d src | sub d src | and_ d src | or_ d src | xor_ d src | shl d src | shr d src
-  | sar d src =>
+  | sar d src | imul d src =>
     simp only [newRegs] at hx
     split at hx
     · rename_i h
@@ -468,6 +469,19 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
       simp only [evalInstr, JState.writeB5W, JState.get]
       rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
         hd, opPub_eval h.2 hag]
+    · simp at hx
+  | imulri d src imm =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [List.contains_iff_mem] at h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      have hd : s₁.view.get src = s₂.view.get src := by simp [AState.view, hag.1 _ h]
+      simp only [evalInstr, JState.writeB5W, JState.get]
+      rw [show s₁.view.regs src = s₁.view.get src from rfl,
+        show s₂.view.regs src = s₂.view.get src from rfl, hd]
+      simp only [if_true]
     · simp at hx
   | neg d =>
     simp only [newRegs] at hx
