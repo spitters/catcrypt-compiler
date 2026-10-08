@@ -55,8 +55,8 @@ theorem corres_eq_corresM {AState : Type} (SR : SEnvScalar → AState → Prop)
 theorem corresM_weaken {M C AState : Type} (step : C → M → Option M)
     (SR : M → AState → Prop) {P P' : AState → Prop} {fa : AState → AState} {c : C}
     (h : CorresM step SR P fa c) (himp : ∀ a, P' a → P a) :
-    CorresM step SR P' fa c := by
-  intro m a hSR hP'; exact h m a hSR (himp a hP')
+    CorresM step SR P' fa c :=
+  (corresM_iff_rrelPT step SR P' fa c).mpr (((corresM_iff_rrelPT step SR P fa c).mp h).weaken himp)
 
 /-- Sequencing, generic in the machine: any step whose sequencing is Kleisli-bind
     (`step (seq c₁ c₂) = step c₁ >=> step c₂`) composes two correspondences,
@@ -70,10 +70,13 @@ theorem corresM_seq {M C AState : Type} (step : C → M → Option M) (seq : C �
     (h₁ : CorresM step SR P fa c₁) (h₂ : CorresM step SR Q ga c₂)
     (hpre : ∀ a, P a → Q (fa a)) :
     CorresM step SR P (fun a => ga (fa a)) (seq c₁ c₂) := by
-  intro m a hSR hP
-  obtain ⟨m₁, hs₁, hSR₁⟩ := h₁ m a hSR hP
-  obtain ⟨m₂, hs₂, hSR₂⟩ := h₂ m₁ (fa a) hSR₁ (hpre a hP)
-  exact ⟨m₂, by rw [hbind, hs₁, Option.bind_some, hs₂], hSR₂⟩
+  have e : (fun m (_ : Unit) m' => step (seq c₁ c₂) m = some m') =
+      CatCrypt.Refinement.stepComp (fun m (_ : Unit) m' => step c₁ m = some m')
+        (fun m (_ : Unit) m' => step c₂ m = some m') := by
+    funext m _ m'
+    simp only [hbind, Option.bind_eq_some_iff, CatCrypt.Refinement.stepComp]
+  rw [corresM_iff_rrelPT, e]
+  exact ((corresM_iff_rrelPT _ _ _ _ _).mp h₁).seq ((corresM_iff_rrelPT _ _ _ _ _).mp h₂) hpre
 
 /-! ## The bind laws the two machines satisfy -/
 

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
 
 /-!
 # Bridging `Corres` and `CorresJ` — the AutoCorres phase division, made explicit
@@ -91,17 +91,20 @@ def regEnv (st : JState 64) : SEnvScalar :=
     `c_J`'s register effect (`hmirror`), through the pushforward state relation
     `fun env a => ∃ st, regEnv st = env ∧ SR_J st a`. This composes AutoCorres's L1
     (total machine → `Option` machine) and L2 (registers → scalar locals via
-    `regEnv`); the flag axis is forgotten by `regEnv`. -/
+    `regEnv`); the flag axis is forgotten by `regEnv`. It is `corresM_trans_of_rrelPT`
+    at the refinement of `runBlockStep c_J` by `semScalar c_s` along
+    `regEnv st = env` that `hmirror` states. -/
 theorem corresJ_forget_to_corres {AState : Type} (SR_J : JState 64 → AState → Prop)
     (P : AState → Prop) (fa : AState → AState)
     (c_J : List (JInstr 64)) (c_s : LowCT)
     (hJ : CorresJ SR_J P fa c_J)
     (hmirror : ∀ st, semScalar c_s (regEnv st) = some (regEnv (runBlock st c_J))) :
     Corres (fun env a => ∃ st, regEnv st = env ∧ SR_J st a) P fa c_s := by
-  intro env a hSR hP
-  obtain ⟨st, hst, hSRJ⟩ := hSR
-  refine ⟨regEnv (runBlock st c_J), ?_, runBlock st c_J, rfl, hJ st a hSRJ hP⟩
-  rw [← hst]; exact hmirror st
+  refine corresM_trans_of_rrelPT (step₂ := semScalar) (R := fun env st => regEnv st = env)
+    ((corresJ_eq_corresM SR_J P fa c_J).mp hJ) ?_
+  rintro Q Q' hQ E E' - env ⟨st, rfl, b, st', hst', hq⟩
+  cases Option.some.inj hst'
+  exact ⟨(), regEnv (runBlock st c_J), hmirror st, @hQ b () trivial _ ⟨_, rfl, hq⟩⟩
 
 /-! ## Bridge 2 — the shared-spec meet (TS) -/
 

@@ -15,7 +15,6 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsa
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86
 public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Footprint
-public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
 public import HaxAscent.Ascent.CorresRRel
 
 @[expose] public section
@@ -48,24 +47,19 @@ The judgments with distinct entry and exit relations (`CorresMPost`, `CorresH`) 
 judgments with an exceptional abstract result (`CorresE`, `CorresUE`) are `CorresM`
 over the abstract state space `Except ε A`.
 
-## Main definitions
-
-* `GuardedRRelPT`: the refinement of the guarded update by a machine transformer.
+`GuardedRRelPT`, the total, partial and deterministic total shapes
+(`corresRel_iff_rrelPT`, `corresRelP_iff_rrelPT`, `corresFun_iff_rrelPT`) and
+`guardedRRelPT_trans` are in `CatCryptCore/Refinement/Programs.lean`; `corresM_iff_rrelPT`
+and `corresM_trans_of_rrelPT` are in `HaxAscent/Calculus/CorresMCore.lean`.
 
 ## Main results
 
-* `corresRel_iff_rrelPT`, `corresRelP_iff_rrelPT`, `corresFun_iff_rrelPT`: the total,
-  partial and deterministic total correspondence shapes are `GuardedRRelPT`.
-* `corresM_iff_rrelPT` and its instances `corres_semScalar_iff_rrelPT`,
+* the instances of `corresM_iff_rrelPT`: `corres_semScalar_iff_rrelPT`,
   `corresR_iff_rrelPT`, `corresU_iff_rrelPT`, `corresL_iff_rrelPT`,
   `corresUL_iff_rrelPT`, `corresE_iff_rrelPT`, `corresUE_iff_rrelPT`,
   `corresIsa_iff_rrelPT`, `corresIsaRun_iff_rrelPT`, `corresMPost_iff_rrelPT`,
   `corresH_iff_rrelPT`, `corresA_iff_rrelPT`; `corresWhile_iff_rrelPT` for the partial
   loop judgment.
-* `guardedRRelPT_trans`: a correspondence composed with a refinement at `AssnRel.ofRel R`
-  is the correspondence at the composite relation, by `RRelPT.trans`.
-* `corresM_trans_of_rrelPT`: the composition of a `CorresM` with a forward simulation,
-  derived from `guardedRRelPT_trans`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
@@ -78,99 +72,15 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 
 open _root_.Hax.Ascent (optGuard)
 
-/-! ## The generic shape -/
+/-! ## The machine judgments as instances
 
-/-- The refinement of the guarded update `optProg (optGuard P fun a => ((), fa a))` by
-    a machine transformer `wc`: `RRelPT` at the assertion map `AssnRel.ofStateRel SR`,
-    with the abstract exception postcondition fixed to `ExceptConds.false` and the
-    trivial relation on `Unit` values. -/
-abbrev GuardedRRelPT {σ A ε' : Type} (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
-    (wc : (Unit → Assertion (.arg σ .pure)) → ε' → Assertion (.arg σ .pure)) : Prop :=
-  RRelPT (AssnRel.ofStateRel (ε := PUnit) SR) (fun E (_ : ε') => E = ExceptConds.false)
-    (fun (_ : Unit) (_ : Unit) => True)
-    (fun Q E => wp⟦open Classical in optProg (optGuard P fun a => ((), fa a))⟧ (Q, E)) wc
-
-section Generic
-
-variable {σ A : Type}
-
-/-- **The total correspondence shape is `GuardedRRelPT`.** From every `SR`-related
-    state with `P` some `T`-successor is related to `fa a` exactly when the guarded
-    update is refined by `wpRel T`; an instance of `rrelPT_optProg_wpRel_iff`. -/
-theorem corresRel_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
-    (T : σ → σ → Prop) :
-    (∀ s a, SR s a → P a → ∃ s', T s s' ∧ SR s' (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => T s s') := by
-  refine Iff.trans ⟨fun h s a p hs hf => ?_, fun h s a hs hP => ?_⟩ rrelPT_optProg_wpRel_iff.symm
-  · unfold optGuard at hf
-    split at hf
-    · cases hf
-      obtain ⟨s', hT, hs'⟩ := h s a hs ‹_›
-      exact ⟨(), s', hT, trivial, hs'⟩
-    · cases hf
-  · obtain ⟨_, s', hT, -, hs'⟩ := h s a ((), fa a) hs (if_pos hP)
-    exact ⟨s', hT, hs'⟩
-
-/-- **The partial correspondence shape is `GuardedRRelPT`.** From every `SR`-related
-    state with `P` every `T`-successor is related to `fa a` exactly when the guarded
-    update is refined by `wpRelP T`; an instance of `rrelPT_optProg_wpRelP_iff`. -/
-theorem corresRelP_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
-    (T : σ → σ → Prop) :
-    (∀ s a, SR s a → P a → ∀ s', T s s' → SR s' (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRelP fun s (_ : Unit) s' => T s s') := by
-  refine Iff.trans ⟨fun h s a p hs hf v s' hT => ?_, fun h s a hs hP s' hT => ?_⟩
-    rrelPT_optProg_wpRelP_iff.symm
-  · unfold optGuard at hf
-    split at hf
-    · cases hf
-      exact ⟨trivial, h s a hs ‹_› s' hT⟩
-    · cases hf
-  · exact (h s a ((), fa a) hs (if_pos hP) () s' hT).2
-
-/-- **The deterministic total shape is `GuardedRRelPT`**, at the step relation
-    `s' = run s` of a total function `run`. -/
-theorem corresFun_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
-    (run : σ → σ) :
-    (∀ s a, SR s a → P a → SR (run s) (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => s' = run s) :=
-  Iff.trans ⟨fun h s a hs hP => ⟨run s, rfl, h s a hs hP⟩,
-    fun h s a hs hP => by obtain ⟨_, rfl, h'⟩ := h s a hs hP; exact h'⟩
-    (corresRel_iff_rrelPT SR P fa _)
-
-/-- **Composition by `RRelPT.trans`.** A correspondence `GuardedRRelPT SR P fa wb` and
-    a refinement of `wb` by `wc` at the assertion map `AssnRel.ofRel R` give the
-    correspondence for `wc` at the composite relation
-    `fun s₂ a => ∃ s₁, R s₂ s₁ ∧ SR s₁ a`. The element `E₁` witnesses the composite
-    relation of the second arguments. -/
-theorem guardedRRelPT_trans {σ₂ ε₁ : Type} {SR : σ → A → Prop} {R : σ₂ → σ → Prop}
-    {P : A → Prop} {fa : A → A}
-    {wb : (Unit → Assertion (.arg σ .pure)) → ε₁ → Assertion (.arg σ .pure)}
-    {wc : (Unit → Assertion (.arg σ₂ .pure)) → Unit → Assertion (.arg σ₂ .pure)}
-    (E₁ : ε₁) (h₁ : GuardedRRelPT SR P fa wb)
-    (h₂ : RRelPT (AssnRel.ofRel R) (fun (_ : ε₁) (_ : Unit) => True)
-      (fun (_ : Unit) (_ : Unit) => True) wb wc) :
-    GuardedRRelPT (fun s₂ a => ∃ s₁, R s₂ s₁ ∧ SR s₁ a) P fa wc := by
-  have h := RRelPT.trans h₁ h₂
-  intro Q Q' hQ E E' hE
-  have hc := @h Q Q'
-    (fun _ _ _ => by rw [AssnRel.Rel, AssnRel.ofRel_comp_ofStateRel_γ]; exact @hQ () () trivial)
-    E E' ⟨E₁, hE, trivial⟩
-  rw [AssnRel.Rel] at hc ⊢
-  rwa [AssnRel.ofRel_comp_ofStateRel_γ] at hc
-
-end Generic
-
-/-! ## The machine judgments as instances -/
+`GuardedRRelPT`, `corresRel_iff_rrelPT`, `corresRelP_iff_rrelPT` and
+`corresFun_iff_rrelPT` are in `CatCryptCore/Refinement/Programs.lean`;
+`corresM_iff_rrelPT` and `corresM_trans_of_rrelPT` are in `HaxAscent/Calculus/CorresMCore.lean`. -/
 
 section Instances
 
 variable {AState : Type}
-
-/-- `CorresM step SR P fa c` is `GuardedRRelPT` at the step relation of `step c`. -/
-theorem corresM_iff_rrelPT {M C : Type} (step : C → M → Option M) (SR : M → AState → Prop)
-    (P : AState → Prop) (fa : AState → AState) (c : C) :
-    CorresM step SR P fa c ↔ GuardedRRelPT SR P fa (wpRel fun m (_ : Unit) m' => step c m = some m') :=
-  corresRel_iff_rrelPT SR P fa _
 
 /-- `Corres SR P fa c` over `semScalar` is `GuardedRRelPT` at the step relation of
     `semScalar c`. -/
@@ -363,29 +273,6 @@ theorem corresUE_iff_rrelPT (fuel : Nat) (SR : SEnvScalar → Except ε A → Pr
   (corresUE_iff_corresU fuel SR P C fb c).trans (corresU_iff_rrelPT _ _ _ _ _)
 
 end Exc
-
-/-! ## Compositions -/
-
-section Seams
-
-variable {AState : Type}
-
-/-- **Composition of `CorresM` with a forward simulation.** A correspondence for `c₁`
-    under `step₁` and a refinement of its step relation by that of `c₂` under `step₂`
-    at the assertion map `AssnRel.ofRel R` give the correspondence for `c₂` at the
-    composite relation. -/
-theorem corresM_trans_of_rrelPT {M₁ M₂ C₁ C₂ : Type} {step₁ : C₁ → M₁ → Option M₁}
-    {step₂ : C₂ → M₂ → Option M₂} {SR : M₁ → AState → Prop} {R : M₂ → M₁ → Prop}
-    {P : AState → Prop} {fa : AState → AState} {c₁ : C₁} {c₂ : C₂}
-    (h₁ : CorresM step₁ SR P fa c₁)
-    (h₂ : RRelPT (AssnRel.ofRel R) (fun (_ : Unit) (_ : Unit) => True)
-      (fun (_ : Unit) (_ : Unit) => True) (wpRel fun m (_ : Unit) m' => step₁ c₁ m = some m')
-      (wpRel fun m (_ : Unit) m' => step₂ c₂ m = some m')) :
-    CorresM step₂ (fun m₂ a => ∃ m₁, R m₂ m₁ ∧ SR m₁ a) P fa c₂ :=
-  (corresM_iff_rrelPT _ _ _ _ _).mpr
-    (guardedRRelPT_trans () ((corresM_iff_rrelPT _ _ _ _ _).mp h₁) h₂)
-
-end Seams
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
 
