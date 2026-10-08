@@ -803,6 +803,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayQrObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayTransposeObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillEncodable
@@ -844,7 +845,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
