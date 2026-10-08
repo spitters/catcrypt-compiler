@@ -40,6 +40,7 @@ on which no fact is kept, and keeps every other register, the arrays and the fla
 ## Main results
 
 * `x86IsaK_checked`, `x86IsaK_pcFree`, `x86IsaK_refusesProcs`, `fnStable_x86IsaK`.
+* `cutCheck_soundK`: `LprogCallCut.cutCheck_soundI` at `x86IsaK`.
 * `x86IsaK_withProcs_lsemFuelMemF`: the runs of `x86IsaK.withProcs T` are the checked runs
   of `x86Isa.withProcs T`.
 * `deadSteps_x86K`: a body that passes `deadSegB` has `DeadSteps` at `x86IsaK`.
@@ -129,9 +130,22 @@ theorem fnStable_x86IsaK : LprogCallCut.FnStable x86IsaK := fun P i s u h =>
   (AllocCheck.LcmdCFG.evalInstrPMemF_next P i s u
     (JasminLsemMemChecked.evalInstrPMemF_of_k h)).1
 
-/-- A step of `x86Isa` stays in the function of its state. -/
-theorem fnStable_x86Isa : LprogCallCut.FnStable x86Isa := fun P i s u h =>
-  (AllocCheck.LcmdCFG.evalInstrPMemF_next P i s u h).1
+open LprogCallCut (IsSite IsCut IsCutRev CutCheckSoundI) in
+/-- **Soundness of a validation by segments on the bounds-checked x86 instruction set.**
+    `LprogCallCut.cutCheck_soundI` at `x86IsaK`: for cut programs of `B` that are cuts and
+    cut programs of `B'` that are cuts halting only at their exits, under a simulation
+    `CutSimI x86IsaK`, every halting run of `x86IsaK.withProcs T` on `B` from a state of
+    `fn` at the counter `0` is matched by a halting run on `B'` from the same state, the
+    end states agreeing on the registers `outs`, the arrays and the word memory. -/
+theorem cutCheck_soundK {T : ProcTable} {outs : List String} {fn : String}
+    {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
+    {pos pos' : Option Nat → Option Nat → Nat → Nat}
+    (hcut : ∀ e x, IsSite T B e → IsSite T B x → IsCut T fn B e x (cut e x) (pos e x))
+    (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
+      IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x)) :
+    CutCheckSoundI x86IsaK T outs fn B B' cut cut' :=
+  LprogCallCut.cutCheck_soundI x86IsaK_pcFree (x86IsaK_refusesProcs T) fnStable_x86IsaK
+    hcut hcut'
 
 /-- The step of `x86IsaK.withProcs T` is the checked step of `x86Isa.withProcs T`. -/
 theorem x86IsaK_withProcs_step (T : ProcTable) (P : LprogM) (i : LinstrRM) (s : LstateMF) :

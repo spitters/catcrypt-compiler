@@ -48,8 +48,10 @@ checks it for every pair of an entry and an exit of `cutAt`.
   on every cut program of a body.
 * `CutRun`, `CutChain`: a halting run of a cut program from the counter `0`, and a chain of
   such runs joined by `Glue`.
-* `CutCheckSound`: the statement of soundness of a validation of the cut programs of two
-  bodies, segment by segment.
+* `CutSimI`, `CutSim`: a simulation of the cut programs of one body by those of another on
+  an instruction set, and at `x86Isa`.
+* `CutCheckSoundI`, `CutCheckSound`: the statement of soundness of a validation of the cut
+  programs of two bodies, segment by segment, on an instruction set and at `x86Isa`.
 * `shadowFreeB`, `poolAbi`, `lfundefPhysAbiOfVirtAt`: the bodies `expandCallShadows` leaves
   in place, the x86 register file at an allocation pool, and the allocation of a virtual
   function at a pool with the shadow instructions expanded after the allocation.
@@ -72,7 +74,7 @@ checks it for every pair of an entry and an exit of `cutAt`.
 
 * `runChain_of_run`, `run_of_runChain`: a halting run of `I.withProcs T` is a chain of
   segments of `I`, and conversely when `I` refuses the procedures of `T`.
-* `x86Isa_pcFree`: `PcFree x86Isa`.
+* `x86Isa_pcFree`, `fnStable_x86Isa`: `PcFree x86Isa` and `FnStable x86Isa`.
 * `steps_emb`, `cutRun_of_segTo`: a segment of the body is a run of a cut program.
 * `isCut_of_isCutB`: soundness of `isCutB`.
 * `withProcs_run_cut`: a halting run of `I.withProcs T` on a body from the counter `0` is
@@ -100,8 +102,10 @@ checks it for every pair of an entry and an exit of `cutAt`.
   `commonFreshB`, with no further premise.
 * `segTo_of_cutRun`: a halting run of a cut program that halts only at its exit is a
   segment of the body.
-* `cutCheck_sound`: `CutCheckSound` for cut programs of the second body that halt only at
-  their exits.
+* `runChain_of_cutChainI`, `cutCheck_soundI`: `CutCheckSoundI I` for cut programs of the
+  second body that halt only at their exits, on an instruction set `I` with `PcFree I`,
+  `I.RefusesProcs T` and `FnStable I`.
+* `runChain_of_cutChain`, `cutCheck_sound`: the same at `x86Isa`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
@@ -721,27 +725,47 @@ end CutOk
 
 /-! ## 8. The statement of soundness of a validation by segments -/
 
-/-- **A simulation of the cut programs of `B` by the cut programs of `B'`.** `site` sends
-    an entry or exit of `B` to one of `B'`. `R e` relates a state of `B` at the entry `e`
-    to a state of `B'` at the entry `site e`, and `Q x` relates the end states of two
-    segments with the exits `x` and `site x`. Equal states are related at the entry of the
-    bodies; a halting run of a cut program of `B` from a related state is matched by a
-    halting run of the cut program of `B'` to states related by `Q`; states related by `Q`
-    at the end of the bodies agree on the registers `outs`, the arrays and the word memory;
-    and from states related by `Q` at a shadow instruction, the step of the summary on `B`
-    is matched by the step of the summary on `B'` to states related by `R`. -/
-structure CutSim (T : ProcTable) (outs : List String) (fn : String) (B B' : List LinstrRM)
-    (cut cut' : Option Nat → Option Nat → List LinstrRM) : Type where
+/-- **A simulation of the cut programs of `B` by the cut programs of `B'` on the
+    instruction set `I`.** `site` sends an entry or exit of `B` to one of `B'`. `R e`
+    relates a state of `B` at the entry `e` to a state of `B'` at the entry `site e`, and
+    `Q x` relates the end states of two segments with the exits `x` and `site x`. Equal
+    states are related at the entry of the bodies; a halting run on `I` of a cut program of
+    `B` from a related state is matched by a halting run on `I` of the cut program of `B'`
+    to states related by `Q`; states related by `Q` at the end of the bodies agree on the
+    registers `outs`, the arrays and the word memory; and from states related by `Q` at a
+    shadow instruction, the step of the summary on `B` is matched by the step of the
+    summary on `B'` to states related by `R`. -/
+structure CutSimI (I : Isa) (T : ProcTable) (outs : List String) (fn : String)
+    (B B' : List LinstrRM) (cut cut' : Option Nat → Option Nat → List LinstrRM) : Type where
   site : Option Nat → Option Nat
   R : Option Nat → LstateMF → LstateMF → Prop
   Q : Option Nat → LstateMF → LstateMF → Prop
   site_none : site none = none
   init : ∀ s, R none s s
-  seg : ∀ e x s s' u, R e s s' → CutRun x86Isa fn (cut e x) s u →
-    ∃ u', CutRun x86Isa fn (cut' (site e) (site x)) s' u' ∧ Q x u u'
+  seg : ∀ e x s s' u, R e s s' → CutRun I fn (cut e x) s u →
+    ∃ u', CutRun I fn (cut' (site e) (site x)) s' u' ∧ Q x u u'
   fin : ∀ t t', Q none t t' → Obs outs t t'
   glue : ∀ p u u' v, Q (some p) u u' → Glue T (singletonProgM fn B) p u v →
     ∃ q v', site (some p) = some q ∧ Glue T (singletonProgM fn B') q u' v' ∧ R (some p) v v'
+
+/-- **A simulation of the cut programs of `B` by the cut programs of `B'`.** `CutSimI` at
+    the x86 instruction set `x86Isa`. -/
+abbrev CutSim (T : ProcTable) (outs : List String) (fn : String) (B B' : List LinstrRM)
+    (cut cut' : Option Nat → Option Nat → List LinstrRM) : Type :=
+  CutSimI x86Isa T outs fn B B' cut cut'
+
+/-- **The statement of soundness of a validation by segments on the instruction set
+    `I`.** Under a simulation `CutSimI I` of the cut programs of `B` by those of `B'`,
+    every halting run of `I.withProcs T` on `B` from a state of `fn` at the counter `0` is
+    matched by a halting run of `I.withProcs T` on `B'` from the same state, the end
+    states agreeing on the registers `outs`, the arrays and the word memory. -/
+def CutCheckSoundI (I : Isa) (T : ProcTable) (outs : List String) (fn : String)
+    (B B' : List LinstrRM) (cut cut' : Option Nat → Option Nat → List LinstrRM) : Prop :=
+  CutSimI I T outs fn B B' cut cut' → ∀ (s t : LstateMF), s.prog.lfn = fn →
+    s.prog.base.lpc = 0 → ∀ fuel,
+      (I.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t →
+      ∃ fuel' t', (I.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+        Obs outs t t'
 
 /-- **The statement of soundness of a validation by segments.** Under a simulation
     `CutSim` of the cut programs of `B` by those of `B'`, every halting run of
@@ -1885,6 +1909,10 @@ def FnStable (I : Isa) : Prop :=
   ∀ (P : LprogM) (i : LinstrRM) (s u : LstateMF), I.step P i s = some u →
     u.prog.lfn = s.prog.lfn
 
+/-- A step of `x86Isa` stays in the function of its state. -/
+theorem fnStable_x86Isa : FnStable x86Isa := fun P i s u h =>
+  (X86Backend.AllocCheck.LcmdCFG.evalInstrPMemF_next P i s u h).1
+
 /-- The label a conditional jump or a goto jumps to. -/
 def jumpLabel? : LinstrR → Option LLabel
   | .Lcond _ l => some l
@@ -2127,21 +2155,23 @@ theorem Glue.goto {T : ProcTable} {P : LprogM} {p : Nat} {u v : LstateMF}
     rfl
   · cases hstep
 
-/-- **A chain of halting runs of cut programs of `B` is, under a simulation `CutSim`, a
-    chain of segments of `B'`.** The cut programs of `B'` are cuts that halt only at their
-    exits, and the steps of the x86 instruction set stay in the function. From a state of
-    `fn` related by `R e` to the start of the chain, the chain of segments of `B'` starts
-    at the entry position of `site e` and ends in a state that agrees with the end of the
-    chain on the registers `outs`, the arrays and the word memory. -/
-theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
+/-- **A chain of halting runs of cut programs of `B` on the instruction set `I` is, under a
+    simulation `CutSimI I`, a chain of segments of `B'`.** The branch condition of `I` does
+    not read the counter, `I` refuses the procedures of `T`, the steps of `I` stay in the
+    function, and the cut programs of `B'` are cuts that halt only at their exits. From a
+    state of `fn` related by `R e` to the start of the chain, the chain of segments of `B'`
+    starts at the entry position of `site e` and ends in a state that agrees with the end
+    of the chain on the registers `outs`, the arrays and the word memory. -/
+theorem runChain_of_cutChainI {I : Isa} {T : ProcTable} {outs : List String} {fn : String}
     {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
-    {pos' : Option Nat → Option Nat → Nat → Nat} (hS : FnStable x86Isa)
+    {pos' : Option Nat → Option Nat → Nat → Nat} (hI : PcFree I) (hR : I.RefusesProcs T)
+    (hS : FnStable I)
     (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
       IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x))
-    (sim : CutSim T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
-    (h : CutChain x86Isa T fn B cut e s t) :
+    (sim : CutSimI I T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
+    (h : CutChain I T fn B cut e s t) :
     ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B' (sim.site e) →
-      ∃ t', RunChain x86Isa T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
+      ∃ t', RunChain I T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
         Obs outs t t' := by
   have hle : ∀ e, IsSite T B' e → entryPos e ≤ B'.length := by
     intro e he
@@ -2152,25 +2182,23 @@ theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
         exact (List.getElem?_eq_some_iff.mp hi).1
   induction h with
   | @done e s t hrun _ =>
-      intro s' hR hfn he
-      obtain ⟨u', hrun', hQ⟩ := sim.seg e none s s' t hR hrun
+      intro s' hRs hfn he
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e none s s' t hRs hrun
       rw [sim.site_none] at hrun'
       obtain ⟨hc, hv⟩ := hcut' (sim.site e) none he trivial
-      obtain ⟨q, hseg⟩ := segTo_of_cutRun x86Isa_pcFree (x86Isa_refusesProcs T) hS hc hv hfn
-        (hle _ he) hrun'
+      obtain ⟨q, hseg⟩ := segTo_of_cutRun hI hR hS hc hv hfn (hle _ he) hrun'
       have ho : Obs outs t u' := sim.fin _ _ hQ
       exact ⟨_, .done hseg, ho.1, ho.2.1, ho.2.2⟩
   | @call e s u v t p hrun _ hglue _ ih =>
-      intro s' hR hfn he
-      obtain ⟨u', hrun', hQ⟩ := sim.seg e (some p) s s' u hR hrun
+      intro s' hRs hfn he
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e (some p) s s' u hRs hrun
       obtain ⟨q, v', hsite, hglue', hR'⟩ := sim.glue p u u' v hQ hglue
       have hq : IsSite T B' (some q) := by
         obtain ⟨i, pr, dst, srcs, hi, hpq, -⟩ := hglue'
         exact ⟨i, hi, by simp only [isProcB, hpq, Option.isSome_some]⟩
       rw [hsite] at hrun'
       obtain ⟨hc, hv⟩ := hcut' (sim.site e) (some q) he hq
-      obtain ⟨q', hseg⟩ := segTo_of_cutRun x86Isa_pcFree (x86Isa_refusesProcs T) hS hc hv hfn
-        (hle _ he) hrun'
+      obtain ⟨q', hseg⟩ := segTo_of_cutRun hI hR hS hc hv hfn (hle _ he) hrun'
       have hat : atPc (singletonProgM fn B') q (goto u' q') := by
         obtain ⟨_, _, hat, _⟩ := hseg
         exact hat
@@ -2182,30 +2210,64 @@ theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
       rw [hsite] at hch
       exact ⟨t', .call q' hseg hg hch, hobs⟩
 
-/-- **Soundness of a validation by segments.** Let the cut programs of `B` be cuts, the
-    cut programs of `B'` be cuts that halt only at their exits, and the steps of the x86
-    instruction set stay in the function. Then `CutCheckSound` holds: under a simulation
-    `CutSim`, every halting run of the x86 instruction set with procedures on `B` from a
-    state of `fn` at the counter `0` is matched by a halting run on `B'` from the same
-    state, the end states agreeing on the registers `outs`, the arrays and the word
+/-- **A chain of halting runs of cut programs of `B` is, under a simulation `CutSim`, a
+    chain of segments of `B'`.** The cut programs of `B'` are cuts that halt only at their
+    exits. From a state of `fn` related by `R e` to the start of the chain, the chain of
+    segments of `B'` starts at the entry position of `site e` and ends in a state that
+    agrees with the end of the chain on the registers `outs`, the arrays and the word
     memory. -/
-theorem cutCheck_sound {T : ProcTable} {outs : List String} {fn : String}
+theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
     {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
-    {pos pos' : Option Nat → Option Nat → Nat → Nat} (hS : FnStable x86Isa)
+    {pos' : Option Nat → Option Nat → Nat → Nat}
+    (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
+      IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x))
+    (sim : CutSim T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
+    (h : CutChain x86Isa T fn B cut e s t) :
+    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B' (sim.site e) →
+      ∃ t', RunChain x86Isa T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
+        Obs outs t t' :=
+  runChain_of_cutChainI x86Isa_pcFree (x86Isa_refusesProcs T) fnStable_x86Isa hcut' sim h
+
+/-- **Soundness of a validation by segments on the instruction set `I`.** Let the branch
+    condition of `I` not read the counter, `I` refuse the procedures of `T`, the steps of
+    `I` stay in the function, the cut programs of `B` be cuts and the cut programs of `B'`
+    be cuts that halt only at their exits. Then `CutCheckSoundI I` holds: under a
+    simulation `CutSimI I`, every halting run of `I.withProcs T` on `B` from a state of
+    `fn` at the counter `0` is matched by a halting run on `B'` from the same state, the
+    end states agreeing on the registers `outs`, the arrays and the word memory. -/
+theorem cutCheck_soundI {I : Isa} {T : ProcTable} {outs : List String} {fn : String}
+    {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
+    {pos pos' : Option Nat → Option Nat → Nat → Nat} (hI : PcFree I) (hR : I.RefusesProcs T)
+    (hS : FnStable I)
     (hcut : ∀ e x, IsSite T B e → IsSite T B x → IsCut T fn B e x (cut e x) (pos e x))
     (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
       IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x)) :
-    CutCheckSound T outs fn B B' cut cut' := by
+    CutCheckSoundI I T outs fn B B' cut cut' := by
   intro sim s t hfn hpc fuel hrun
-  have hch := withProcs_run_cut x86Isa_pcFree (x86Isa_refusesProcs T) hcut fuel s t hfn hpc hrun
-  obtain ⟨t', hrc, hobs⟩ := runChain_of_cutChain hS hcut' sim hch s (sim.init s) hfn
+  have hch := withProcs_run_cut hI hR hcut fuel s t hfn hpc hrun
+  obtain ⟨t', hrc, hobs⟩ := runChain_of_cutChainI hI hR hS hcut' sim hch s (sim.init s) hfn
     (by rw [sim.site_none]; trivial)
   rw [sim.site_none] at hrc
   have hs : goto s (entryPos none) = s := by
     calc goto s (entryPos none) = goto s s.prog.base.lpc := by rw [hpc]; rfl
       _ = s := rfl
   rw [hs] at hrc
-  obtain ⟨n, hn⟩ := run_of_runChain (x86Isa_refusesProcs T) hrc
+  obtain ⟨n, hn⟩ := run_of_runChain hR hrc
   exact ⟨n + 0, t', hn 0, hobs⟩
+
+/-- **Soundness of a validation by segments.** Let the cut programs of `B` be cuts and the
+    cut programs of `B'` be cuts that halt only at their exits. Then `CutCheckSound` holds:
+    under a simulation `CutSim`, every halting run of the x86 instruction set with
+    procedures on `B` from a state of `fn` at the counter `0` is matched by a halting run
+    on `B'` from the same state, the end states agreeing on the registers `outs`, the
+    arrays and the word memory. -/
+theorem cutCheck_sound {T : ProcTable} {outs : List String} {fn : String}
+    {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
+    {pos pos' : Option Nat → Option Nat → Nat → Nat}
+    (hcut : ∀ e x, IsSite T B e → IsSite T B x → IsCut T fn B e x (cut e x) (pos e x))
+    (hcut' : ∀ e x, IsSite T B' e → IsSite T B' x →
+      IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x)) :
+    CutCheckSound T outs fn B B' cut cut' :=
+  cutCheck_soundI x86Isa_pcFree (x86Isa_refusesProcs T) fnStable_x86Isa hcut hcut'
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
