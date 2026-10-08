@@ -2726,6 +2726,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelImage,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecMach,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP521,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdSecp256k1,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1Ecmult,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1FieldMul,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1FieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.ValeCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Vesta,
     Lake.Glob.one `CatCrypt.Crypto.Vale.VestaFieldMul,
