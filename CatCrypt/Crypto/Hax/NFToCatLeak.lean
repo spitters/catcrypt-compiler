@@ -142,21 +142,25 @@ theorem nfKind_call_scalar {f : String} (h : f ∈ ImpToNF.hax64NFScalar ()) (as
   simp [nfKind, hi, hu, h]
 
 /-- **Coverage of the call typing of `u64` code.** A call `ImpToNF.hax64SigOf` types, which
-    is every call `impToNF ImpToNF.hax64SigOf` emits, has a name of `quietCall`, or is `index`
-    or `array_update`. -/
+    is every call `impToNF ImpToNF.hax64SigOf` emits, has a name of `quietCall`, is `index`
+    or `array_update`, or has a tagged field head (`Hax.FieldTag.fieldTag?`). -/
 theorem hax64SigOf_quietCall {f : String} {as : List NfTy} {r : NfTy}
     (h : ImpToNF.hax64SigOf f as = some r) :
-    quietCall f = true ∨ f = "index" ∨ f = "array_update" :=
+    quietCall f = true ∨ f = "index" ∨ f = "array_update" ∨
+      (_root_.Hax.FieldTag.fieldTag? f).isSome :=
   (ImpToNF.hax64SigOf_name h).imp_left quietCall_iff.mpr
 
-/-- A call `ImpToNF.hax64SigOf` types is not a variable-time leaf call. -/
+/-- A call `ImpToNF.hax64SigOf` types is not a variable-time leaf call, or has a tagged field
+    head. -/
 theorem hax64SigOf_nfKind {f : String} {as : List NfTy} {r : NfTy}
     (h : ImpToNF.hax64SigOf f as = some r) :
-    nfKind (.call f as r) = .quiet ∨ nfKind (.call f as r) = .addrAt 1 := by
-  rcases hax64SigOf_quietCall h with hq | rfl | rfl
+    nfKind (.call f as r) = .quiet ∨ nfKind (.call f as r) = .addrAt 1 ∨
+      (_root_.Hax.FieldTag.fieldTag? f).isSome := by
+  rcases hax64SigOf_quietCall h with hq | rfl | rfl | ht
   · exact Or.inl (nfKind_call_quiet hq as r)
-  · exact Or.inr (nfKind_call_index as r)
-  · exact Or.inr (nfKind_call_array_update as r)
+  · exact Or.inr (Or.inl (nfKind_call_index as r))
+  · exact Or.inr (Or.inl (nfKind_call_array_update as r))
+  · exact Or.inr (Or.inr ht)
 
 /-- The names of the three scalar tables of the front are names of `quietCall`. -/
 theorem quietCall_tables :

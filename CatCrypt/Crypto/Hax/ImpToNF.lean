@@ -3597,11 +3597,42 @@ theorem withSelect_hax64Builtins_of_base {f : String} {vals : List Value} {v : V
     cases h
   · rw [withSelect_of_ne _ hf, h]
 
-/-- **The call typing of `u64` code**: a scalar call by `hax64ScalarSig`; at an index of a
-    `hax64NFWordTy` type, `index` of an integer slice is an integer and `array_update` of an
-    integer slice with a value of a `hax64NFWordTy` type is an integer slice; on
-    fixed-length arrays, `hax64SigOfArr`. -/
+/-- The argument types of a method of the prime-field interface: two `64`-bit words for a
+    method with two arguments, one for a method with one. -/
+def _root_.Hax.FieldTag.FieldMethod.sig : _root_.Hax.FieldTag.FieldMethod → List NfTy
+  | .add | .sub | .mul => [.word 64, .word 64]
+  | .neg | .square | .double => [.word 64]
+
+/-- **The call typing of the tagged field calls**: a head `Hax.FieldTag.fieldTag?` reads as a
+    method has a `64`-bit word result on the argument types of the method. -/
+def fieldTagSig (f : String) (as : List NfTy) : Option NfTy :=
+  match _root_.Hax.FieldTag.fieldTag? f with
+  | some (m, _) => if as = m.sig then some (.word 64) else none
+  | none => none
+
+/-- A call `fieldTagSig` types has a tagged head, the argument types of its method and a
+    `64`-bit word result. -/
+theorem fieldTagSig_some {f : String} {as : List NfTy} {r : NfTy}
+    (h : fieldTagSig f as = some r) :
+    ∃ m p, _root_.Hax.FieldTag.fieldTag? f = some (m, p) ∧ as = m.sig ∧ r = .word 64 := by
+  unfold fieldTagSig at h
+  split at h
+  · rename_i m p hmp
+    split at h
+    · rename_i has
+      cases h
+      exact ⟨m, p, hmp, has, rfl⟩
+    · cases h
+  · cases h
+
+/-- **The call typing of `u64` code**: a tagged field call by `fieldTagSig`; a scalar call by
+    `hax64ScalarSig`; at an index of a `hax64NFWordTy` type, `index` of an integer slice is an
+    integer and `array_update` of an integer slice with a value of a `hax64NFWordTy` type is
+    an integer slice; on fixed-length arrays, `hax64SigOfArr`. -/
 def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
+  match fieldTagSig f as with
+  | some r => some r
+  | none =>
   match hax64ScalarSig f as with
   | some r => some r
   | none =>
@@ -3963,22 +3994,28 @@ theorem dec_slice_int : ∀ (vs : List Value), (∀ v ∈ vs, ∃ z : Int, v = .
         rw [List.map_cons, ← he]
         rfl
 
-/-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index` and
-    `array_update`. -/
+/-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index`,
+    `array_update` and the tagged field calls. -/
 theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
-    (h : hax64SigOf f as = some r) : f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" := by
+    (h : hax64SigOf f as = some r) :
+    f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨
+      (_root_.Hax.FieldTag.fieldTag? f).isSome := by
   unfold hax64SigOf at h
   split at h
   · rename_i hs
-    exact Or.inl (hax64ScalarSig_name hs)
+    obtain ⟨m, p, hmp, -, -⟩ := fieldTagSig_some hs
+    exact Or.inr (Or.inr (Or.inr (by rw [hmp]; rfl)))
   · split at h
-    · exact Or.inr (Or.inl rfl)
-    · exact Or.inr (Or.inr rfl)
-    · unfold hax64SigOfArr at h
-      split at h
+    · rename_i hs
+      exact Or.inl (hax64ScalarSig_name hs)
+    · split at h
       · exact Or.inr (Or.inl rfl)
-      · exact Or.inr (Or.inr rfl)
-      · cases h
+      · exact Or.inr (Or.inr (Or.inl rfl))
+      · unfold hax64SigOfArr at h
+        split at h
+        · exact Or.inr (Or.inl rfl)
+        · exact Or.inr (Or.inr (Or.inl rfl))
+        · cases h
 
 /-- A list of `n` integers decodes as an integer array of length `n`. -/
 theorem dec_arr_int {n : Nat} (vs : List Value) (hvs : ∀ v ∈ vs, ∃ z : Int, v = .int z)
@@ -4101,6 +4138,16 @@ theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
 theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigOf := by
   intro f as r hr xs v hv
   unfold hax64SigOf at hr
+  rcases hfs : fieldTagSig f as with _ | r'
+  swap
+  · rw [hfs] at hr
+    cases hr
+    obtain ⟨m, p, hmp, -, rfl⟩ := fieldTagSig_some hfs
+    obtain ⟨n, rfl, hn, hp⟩ :=
+      _root_.Hax.FieldTag.fieldCall_lt (_root_.Hax.hax64Builtins_of_fieldTag? hmp hv)
+    exact dec_word64_nat (by omega)
+  rw [hfs] at hr
+  dsimp only at hr
   split at hr
   · rename_i hs
     cases hr
@@ -4167,6 +4214,13 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
 theorem hax64SigOf_select {f : String} {as : List NfTy} {r : NfTy} (hf : f = "select")
     (h : hax64SigOf f as = some r) : hax64ScalarSig f as = some r := by
   unfold hax64SigOf at h
+  rcases hfs : fieldTagSig f as with _ | r'
+  swap
+  · obtain ⟨m, p, hmp, -, -⟩ := fieldTagSig_some hfs
+    subst hf
+    cases hmp
+  rw [hfs] at h
+  dsimp only at h
   split at h
   · rename_i hs
     rw [hs, h]
