@@ -36,8 +36,6 @@ refinement `RRelPT` of `CatCryptCore/Refinement/RRel.lean`, in the form of
   judgments are `RRelPT` instances.
 * `refinesO_iff_rrelPT`, `refinesP_iff_rrelPT`, `AbsProg.refines_iff_rrelPT`: the
   forward simulations are `RRelPT` instances.
-* `corres_transport_via_rrel`: transport along one environment relation, the instance
-  of `corres_of_fuelSim_via_rrel` at equal entry and exit relations.
 -/
 
 @[expose] public section
@@ -264,23 +262,6 @@ theorem AbsProg.refines_iff_rrelPT {sem : C → Option D} {SRin : C → A → Pr
   (AbsProg.refines_iff_toExcept sem SRin SRout p).trans refinesO_iff_rrelPT
 
 end Refines
-
-/-! ## Transport along an environment relation -/
-
-/-- **Transport along one relation**: `corres_of_fuelSim_via_rrel` at equal entry and
-    exit relations. When from `R`-related environments the runs of `e` and `e'` have
-    the same outcome and end in `R`-related environments at every fuel, a `Corres`
-    statement for `e` gives one for `e'` from and to the environments `R`-related to
-    the entry and exit environments of `e`. -/
-theorem corres_transport_via_rrel {R : Env → Env → Prop} {e e' : ImpExpr}
-    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
-    (hsim : ∀ fuel env envF, R env envF →
-      ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
-        R ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2)
-    (h : Corres bi P G e V Q) :
-    Corres bi (fun envF σ => ∃ env, P env σ ∧ R env envF) G e' V
-      (fun envF σ => ∃ env, Q env σ ∧ R env envF) :=
-  corres_of_fuelSim_via_rrel hsim h
 
 end Hax.Ascent
 

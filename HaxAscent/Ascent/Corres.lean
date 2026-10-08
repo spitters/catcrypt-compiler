@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import HaxAscent.Ascent.Fuel
+public import HaxAscent.Ascent.Wp
 public import HaxAscent.Ascent.Encode
 public import HaxAscent.Ascent.Refines
 public import Std.Do
@@ -25,9 +25,14 @@ From `P env σ` and `G σ` there are a fuel `fuel₀` and an environment `env'` 
 `Q env' σ` such that at every `fuel ≥ fuel₀` the run is `(.val (V σ), env')`. `letBind`
 extends the environment without restoring it, so the exit relation is part of the
 judgment. The value is a `Value`; a shallow function of surface type `β` reads through
-`fun σ => enc (F σ)` (`HaxAscent/Ascent/Encode.lean`).
+`fun σ => enc (F σ)` (`HaxAscent/Ascent/Encode.lean`). The judgment and the one-step
+equations of `denote'` are defined in `HaxAscent/Ascent/CorresCore.lean`.
 
 ## Rules
+
+Each rule is proved from the corresponding rule of the weakest precondition
+(`HaxAscent/Ascent/Wp.lean`) through `corres_iff_wp` and `corresArgs_iff_wpArgs`; the
+counted loop `corres_forFoldE` is proved from `wp_forFold`.
 
 `corres_conseq`, `corres_lit`, `corres_unitVal`, `corres_var`, `corres_letBind`,
 `corres_seq`, `corres_ifThenElse`, `corres_tuple`, `corres_proj`,
@@ -47,8 +52,9 @@ run from `entry a` returns `enc (f a)` from some fuel on. `haxEval bi e env` is 
 eventual value of the run, and `fnCorres_refinesO` and `fnCorres_absProg` read a
 `FnCorres` as `RefinesO` and as the `Option`-level `AbsProg` refinement of
 `optGuard G f`. `FnPartial` is the partial-correctness form (a value the run returns at
-any fuel is `enc (f a)`), implied by `FnCorres` (`fnPartial_of_fnCorres`), and `fnCorres_iff_triple` states `FnCorres` as a `Std.Do`
-triple over the `Option` program `optGuard G f a`.
+any fuel is `enc (f a)`), implied by `FnCorres` (`fnPartial_of_fnCorres`), and
+`fnCorres_iff_triple` states `FnCorres` as a `Std.Do` triple over the `Option` program
+`optGuard G f a`.
 -/
 
 @[expose] public section
@@ -57,157 +63,11 @@ set_option autoImplicit false
 
 namespace Hax.Ascent
 
-/-! ## One-step equations of `denote'` -/
-
-section Steps
-
-variable (bi : Builtins) (fuel : Nat)
-
-theorem denote'_lit (l : ImpLit) (env : Env) :
-    denote' bi fuel (.lit l) env = (.val (Value.ofLit l), env) := by
-  simp only [denote']; rfl
-
-theorem denote'_unitVal (env : Env) : denote' bi fuel .unitVal env = (.val .unit, env) := by
-  simp only [denote']; rfl
-
-theorem denote'_var {x : String} {env : Env} {v : Value} (h : env x = some v) :
-    denote' bi fuel (.var x) env = (.val v, env) := by
-  simp only [denote', stateM_bind_apply, stateM_get_apply, h]; rfl
-
-theorem denote'_letBind {x : String} {val body : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel val env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.letBind x val body) env = denote' bi fuel body (s.extend x v) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
-/-- The right-hand side's value is bound at the name, and the assignment itself
-    returns `.unit`. -/
-theorem denote'_assign {x : String} {rhs : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel rhs env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.assign x rhs) env = (.val .unit, s.extend x v) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
-theorem denote'_seq {e1 e2 : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel e1 env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.seq e1 e2) env = denote' bi fuel e2 s := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
-theorem denote'_ifThenElse {c t e : ImpExpr} {env s : Env} {b : Bool}
-    (h : denote' bi fuel c env = (.val (.bool b), s)) :
-    denote' bi fuel (.ifThenElse c t e) env = denote' bi fuel (if b then t else e) s := by
-  simp only [denote', stateM_bind_apply, h]
-  cases b <;> rfl
-
-theorem denote'_proj {e : ImpExpr} {i : Nat} {env s : Env} {v w : Value}
-    (h : denote' bi fuel e env = (.val v, s)) (hv : v.isControlFlow = false)
-    (hp : v.projIdx i = some w) :
-    denote' bi fuel (.proj e i) env = (.val w, s) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | (simp only at hp ⊢; simp [hp]; rfl) | simp at hv
-
-theorem denote'_borrow (e : ImpExpr) (env : Env) :
-    denote' bi fuel (.borrow e) env = denote' bi fuel e env := by
-  simp only [denote']
-
-theorem denote'_deref (e : ImpExpr) (env : Env) :
-    denote' bi fuel (.deref e) env = denote' bi fuel e env := by
-  simp only [denote']
-
-theorem denote'_typeAscription (e : ImpExpr) (ty : String) (env : Env) :
-    denote' bi fuel (.typeAscription e ty) env = denote' bi fuel e env := by
-  simp only [denote']
-
-theorem denoteArgs'_nil (env : Env) : denoteArgs' bi fuel [] env = (some [], env) := by
-  simp only [denoteArgs']; rfl
-
-theorem denoteArgs'_cons {e : ImpExpr} {es : List ImpExpr} {env s s' : Env} {v : Value}
-    {vs : List Value} (h : denote' bi fuel e env = (.val v, s)) (hv : v.isControlFlow = false)
-    (hs : denoteArgs' bi fuel es s = (some vs, s')) :
-    denoteArgs' bi fuel (e :: es) env = (some (v :: vs), s') := by
-  simp only [denoteArgs', stateM_bind_apply, h]
-  cases v <;> first | (simp only [stateM_bind_apply, hs]; rfl) | simp at hv
-
-theorem denote'_app {f : String} {args : List ImpExpr} {env s : Env} {vs : List Value}
-    {w : Value} (h : denoteArgs' bi fuel args env = (some vs, s)) (hb : bi f vs = some w) :
-    denote' bi fuel (.app f args) env = (.val w, s) := by
-  simp only [denote', denoteApp', stateM_bind_apply, h, hb]; rfl
-
-theorem denote'_tuple {es : List ImpExpr} {env s : Env} {vs : List Value}
-    (h : denoteArgs' bi fuel es env = (some vs, s)) :
-    denote' bi fuel (.tuple es) env = (.val (.tuple vs), s) := by
-  simp only [denote', stateM_bind_apply, h]; rfl
-
-theorem denote'_cfBreak {e : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel e env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.cfBreak e) env = (.val (.controlFlow true v), s) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
-theorem denote'_cfContinue {e : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel e env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.cfContinue e) env = (.val (.controlFlow false v), s) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
-theorem denote'_forFold {var : String} {lo hi body : ImpExpr} {env s1 s2 : Env} {a b : Int}
-    (hlo : denote' bi fuel lo env = (.val (.int a), s1))
-    (hhi : denote' bi fuel hi s1 = (.val (.int b), s2)) :
-    denote' bi fuel (.forFold var lo hi body) env = denoteForLoop' bi fuel var a b body s2 := by
-  simp only [denote', stateM_bind_apply, hlo, hhi]
-
-theorem denoteForLoop'_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
-    (h : a ≥ b) : denoteForLoop' bi fuel var a b body env = (.val .unit, env) := by
-  rw [denoteForLoop']
-  simp only [if_pos h]; rfl
-
-theorem denoteForLoop'_break (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
-    {w : Value} (hab : a < b) (hf : fuel ≠ 0)
-    (h : denote' bi fuel body (env.extend var (.int a)) = (.val (.controlFlow true w), s)) :
-    denoteForLoop' bi fuel var a b body env = (.val w, s) := by
-  rw [denoteForLoop']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
-  rfl
-
-theorem denoteForLoop'_next (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
-    {v : Value} (hab : a < b) (hf : fuel ≠ 0)
-    (h : denote' bi fuel body (env.extend var (.int a)) = (.val v, s))
-    (hv : ∀ w, v ≠ .controlFlow true w) :
-    denoteForLoop' bi fuel var a b body env = denoteForLoop' bi (fuel - 1) var (a + 1) b body s := by
-  rw [denoteForLoop']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
-  cases v
-  case controlFlow c w =>
-    cases c
-    · rfl
-    · exact absurd rfl (hv w)
-  all_goals rfl
-
-end Steps
-
-/-! ## The judgment -/
+/-! ## The rules of the judgment -/
 
 section Judgment
 
-variable {S : Type} (bi : Builtins)
-
-/-- **The correspondence judgment.** From an environment related to `σ` by `P` with the
-    guard `G σ`, there are a fuel `fuel₀` and an exit environment `env'` related to `σ`
-    by `Q` such that at every `fuel ≥ fuel₀` the run of `e` is `(.val (V σ), env')`. -/
-def Corres (P : Env → S → Prop) (G : S → Prop) (e : ImpExpr) (V : S → Value)
-    (Q : Env → S → Prop) : Prop :=
-  ∀ env σ, P env σ → G σ →
-    ∃ fuel₀ env', Q env' σ ∧ ∀ fuel, fuel₀ ≤ fuel → denote' bi fuel e env = (.val (V σ), env')
-
-/-- The correspondence of an argument list: the run of `denoteArgs'` returns the values
-    `Vs σ`. -/
-def CorresArgs (P : Env → S → Prop) (G : S → Prop) (es : List ImpExpr) (Vs : S → List Value)
-    (Q : Env → S → Prop) : Prop :=
-  ∀ env σ, P env σ → G σ →
-    ∃ fuel₀ env', Q env' σ ∧ ∀ fuel, fuel₀ ≤ fuel → denoteArgs' bi fuel es env = (some (Vs σ), env')
-
-variable {bi}
+variable {S : Type} {bi : Builtins}
 
 /-- **Consequence.** Strengthen the entry relation and the guard, weaken the exit
     relation, and replace the value by one equal to it under the guard. -/
@@ -216,23 +76,25 @@ theorem corres_conseq {P P' : Env → S → Prop} {G G' : S → Prop} {e : ImpEx
     (hP : ∀ env σ, P' env σ → G' σ → P env σ) (hG : ∀ σ, G' σ → G σ)
     (hV : ∀ σ, G' σ → V σ = V' σ) (hQ : ∀ env σ, G' σ → Q env σ → Q' env σ) :
     Corres bi P' G' e V' Q' := by
-  intro env σ hP' hG'
-  obtain ⟨f₀, env', hQ₀, hrun⟩ := h env σ (hP env σ hP' hG') (hG σ hG')
-  exact ⟨f₀, env', hQ env' σ hG' hQ₀, fun fuel hf => by rw [hrun fuel hf, hV σ hG']⟩
+  rw [corres_iff_wp] at h ⊢
+  intro σ hG' env hP'
+  refine wp_mono (h σ (hG σ hG') env (hP env σ hP' hG')) ?_ ?_ <;>
+    exact fun _ s _ ⟨hv, hq⟩ => ⟨hv.trans (hV σ hG'), hQ s σ hG' hq⟩
 
 theorem corres_lit (P : Env → S → Prop) (G : S → Prop) (l : ImpLit) :
     Corres bi P G (.lit l) (fun _ => Value.ofLit l) P :=
-  fun env _ hP _ => ⟨0, env, hP, fun fuel _ => denote'_lit bi fuel l env⟩
+  corres_iff_wp.mpr fun _ _ _ hP => wp_lit.mpr (wpPost_self.mpr ⟨rfl, hP⟩)
 
 theorem corres_unitVal (P : Env → S → Prop) (G : S → Prop) :
     Corres bi P G .unitVal (fun _ => .unit) P :=
-  fun env _ hP _ => ⟨0, env, hP, fun fuel _ => denote'_unitVal bi fuel env⟩
+  corres_iff_wp.mpr fun _ _ _ hP => wp_unitVal.mpr ⟨rfl, hP⟩
 
 /-- A variable read returns the value the entry relation places at the name. -/
 theorem corres_var {P : Env → S → Prop} {G : S → Prop} {x : String} {V : S → Value}
     (h : ∀ env σ, P env σ → G σ → env x = some (V σ)) :
     Corres bi P G (.var x) V P :=
-  fun env σ hP hG => ⟨0, env, hP, fun fuel _ => denote'_var bi fuel (h env σ hP hG)⟩
+  corres_iff_wp.mpr fun σ hG env hP =>
+    wp_var.mpr ⟨_, h env σ hP hG, wpPost_self.mpr ⟨rfl, hP⟩⟩
 
 /-- **`let`.** The bound value is not a control-flow value; the body runs from the exit
     environment of the bound expression extended at the name, related by `P₂`. -/
@@ -242,12 +104,15 @@ theorem corres_letBind {P Q₁ P₂ Q : Env → S → Prop} {G : S → Prop} {x 
     (hlink : ∀ env σ, Q₁ env σ → G σ → P₂ (env.extend x (V₁ σ)) σ)
     (hbody : Corres bi P₂ G body V Q) :
     Corres bi P G (.letBind x val body) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, h₁⟩ := hval env σ hP hG
-  obtain ⟨f₂, e₂, hQ₂, h₂⟩ := hbody _ σ (hlink e₁ σ hQ₁ hG) hG
-  refine ⟨max f₁ f₂, e₂, hQ₂, fun fuel hf => ?_⟩
-  rw [denote'_letBind bi fuel (h₁ fuel (by omega)) (hplain σ hG)]
-  exact h₂ fuel (by omega)
+  rw [corres_iff_wp] at hval hbody ⊢
+  intro σ hG env hP
+  rw [wp_letBind]
+  refine wp_mono (hval σ hG env hP) ?_ ?_
+  · rintro v s _ ⟨rfl, hQ₁⟩
+    exact hbody σ hG _ (hlink s σ hQ₁ hG)
+  · rintro v s hc ⟨rfl, -⟩
+    rw [hplain σ hG] at hc
+    cases hc
 
 /-- **Sequence.** The first expression returns a value that is not a control-flow value;
     the second runs from its exit relation. -/
@@ -256,12 +121,13 @@ theorem corres_seq {P Q₁ Q : Env → S → Prop} {G : S → Prop} {e1 e2 : Imp
     (h1 : Corres bi P G e1 V₁ Q₁) (hplain : ∀ σ, G σ → (V₁ σ).isControlFlow = false)
     (h2 : Corres bi Q₁ G e2 V Q) :
     Corres bi P G (.seq e1 e2) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := h1 env σ hP hG
-  obtain ⟨f₂, e₂, hQ₂, r₂⟩ := h2 e₁ σ hQ₁ hG
-  refine ⟨max f₁ f₂, e₂, hQ₂, fun fuel hf => ?_⟩
-  rw [denote'_seq bi fuel (r₁ fuel (by omega)) (hplain σ hG)]
-  exact r₂ fuel (by omega)
+  rw [corres_iff_wp] at h1 h2 ⊢
+  intro σ hG env hP
+  rw [wp_seq]
+  refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨_, hQ₁⟩ => h2 σ hG s hQ₁) ?_
+  rintro v s hc ⟨rfl, -⟩
+  rw [hplain σ hG] at hc
+  cases hc
 
 /-- **Conditional.** The condition returns `.bool (C σ)`; each branch runs under the
     guard extended by the value of the condition. -/
@@ -271,55 +137,54 @@ theorem corres_ifThenElse {P Q₁ Q : Env → S → Prop} {G : S → Prop} {c t 
     (ht : Corres bi Q₁ (fun σ => G σ ∧ C σ = true) t V Q)
     (he : Corres bi Q₁ (fun σ => G σ ∧ C σ = false) e V Q) :
     Corres bi P G (.ifThenElse c t e) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hc env σ hP hG
-  cases hC : C σ with
-  | true =>
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := ht e₁ σ hQ₁ ⟨hG, hC⟩
-    refine ⟨max f₁ f₂, e₂, hQ₂, fun fuel hf => ?_⟩
-    have r := r₁ fuel (by omega)
-    simp only [hC] at r
-    rw [denote'_ifThenElse bi fuel r]
-    exact r₂ fuel (by omega)
-  | false =>
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := he e₁ σ hQ₁ ⟨hG, hC⟩
-    refine ⟨max f₁ f₂, e₂, hQ₂, fun fuel hf => ?_⟩
-    have r := r₁ fuel (by omega)
-    simp only [hC] at r
-    rw [denote'_ifThenElse bi fuel r]
-    exact r₂ fuel (by omega)
+  rw [corres_iff_wp] at hc ht he ⊢
+  intro σ hG env hP
+  rw [wp_ifThenElse]
+  refine wp_mono (hc σ hG env hP) ?_ ?_
+  · rintro v s _ ⟨rfl, hQ₁⟩
+    cases hC : C σ
+    · exact Or.inr ⟨rfl, he σ ⟨hG, hC⟩ s hQ₁⟩
+    · exact Or.inl ⟨rfl, ht σ ⟨hG, hC⟩ s hQ₁⟩
+  · rintro v s hcf ⟨rfl, -⟩
+    cases hcf
 
 theorem corresArgs_nil (P : Env → S → Prop) (G : S → Prop) :
     CorresArgs bi P G [] (fun _ => []) P :=
-  fun env _ hP _ => ⟨0, env, hP, fun fuel _ => denoteArgs'_nil bi fuel env⟩
+  corresArgs_iff_wpArgs.mpr fun _ _ _ hP => wpArgs_nil.mpr ⟨rfl, hP⟩
 
 theorem corresArgs_cons {P Q₁ Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {es : List ImpExpr} {V₁ : S → Value} {Vs : S → List Value}
     (he : Corres bi P G e V₁ Q₁) (hplain : ∀ σ, G σ → (V₁ σ).isControlFlow = false)
     (hes : CorresArgs bi Q₁ G es Vs Q) :
     CorresArgs bi P G (e :: es) (fun σ => V₁ σ :: Vs σ) Q := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := he env σ hP hG
-  obtain ⟨f₂, e₂, hQ₂, r₂⟩ := hes e₁ σ hQ₁ hG
-  exact ⟨max f₁ f₂, e₂, hQ₂, fun fuel hf =>
-    denoteArgs'_cons bi fuel (r₁ fuel (by omega)) (hplain σ hG) (r₂ fuel (by omega))⟩
+  rw [corres_iff_wp] at he
+  rw [corresArgs_iff_wpArgs] at hes ⊢
+  intro σ hG env hP
+  rw [wpArgs_cons]
+  refine wp_mono (he σ hG env hP) ?_ ?_
+  · rintro v s _ ⟨rfl, hQ₁⟩
+    obtain ⟨vs, s', hE, rfl, hQ⟩ := hes σ hG s hQ₁
+    exact ⟨_, s', hE, rfl, hQ⟩
+  · rintro v s hc ⟨rfl, -⟩
+    rw [hplain σ hG] at hc
+    cases hc
 
 /-- **Leaf call.** The arguments return `Vs σ` and the builtin table maps them to
     `V σ`. -/
 theorem corres_app {P Q : Env → S → Prop} {G : S → Prop} {f : String} {args : List ImpExpr}
     {Vs : S → List Value} {V : S → Value}
     (hargs : CorresArgs bi P G args Vs Q) (hbi : ∀ σ, G σ → bi f (Vs σ) = some (V σ)) :
-    Corres bi P G (.app f args) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := hargs env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => denote'_app bi fuel (r fuel hf) (hbi σ hG)⟩
+    Corres bi P G (.app f args) V Q :=
+  corres_iff_wp.mpr fun σ hG env hP => by
+    obtain ⟨vs, s, hE, rfl, hQ⟩ := corresArgs_iff_wpArgs.mp hargs σ hG env hP
+    exact wp_app.mpr ⟨_, s, hE, V σ, hbi σ hG, wpPost_self.mpr ⟨rfl, hQ⟩⟩
 
 theorem corres_tuple {P Q : Env → S → Prop} {G : S → Prop} {es : List ImpExpr}
     {Vs : S → List Value} (h : CorresArgs bi P G es Vs Q) :
-    Corres bi P G (.tuple es) (fun σ => .tuple (Vs σ)) Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => denote'_tuple bi fuel (r fuel hf)⟩
+    Corres bi P G (.tuple es) (fun σ => .tuple (Vs σ)) Q :=
+  corres_iff_wp.mpr fun σ hG env hP => by
+    obtain ⟨vs, s, hE, rfl, hQ⟩ := corresArgs_iff_wpArgs.mp h σ hG env hP
+    exact wp_tuple.mpr ⟨_, s, hE, rfl, hQ⟩
 
 /-- **Projection.** Index `i` of the value, read by `Value.projIdx`. -/
 theorem corres_proj {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr} {i : Nat}
@@ -327,48 +192,56 @@ theorem corres_proj {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr} {i
     (hplain : ∀ σ, G σ → (W σ).isControlFlow = false)
     (hp : ∀ σ, G σ → (W σ).projIdx i = some (V σ)) :
     Corres bi P G (.proj e i) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => denote'_proj bi fuel (r fuel hf) (hplain σ hG) (hp σ hG)⟩
+  rw [corres_iff_wp] at h ⊢
+  intro σ hG env hP
+  rw [wp_proj]
+  refine wp_mono (h σ hG env hP) ?_ ?_
+  · rintro v s _ ⟨rfl, hQ⟩
+    exact ⟨V σ, hp σ hG, wpPost_self.mpr ⟨rfl, hQ⟩⟩
+  · rintro v s hc ⟨rfl, -⟩
+    rw [hplain σ hG] at hc
+    cases hc
 
 theorem corres_typeAscription {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (ty : String) (h : Corres bi P G e V Q) :
-    Corres bi P G (.typeAscription e ty) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => by rw [denote'_typeAscription]; exact r fuel hf⟩
+    Corres bi P G (.typeAscription e ty) V Q :=
+  corres_iff_wp.mpr fun σ hG env hP => wp_typeAscription.mpr (corres_iff_wp.mp h σ hG env hP)
 
 theorem corres_borrow {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (h : Corres bi P G e V Q) :
-    Corres bi P G (.borrow e) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => by rw [denote'_borrow]; exact r fuel hf⟩
+    Corres bi P G (.borrow e) V Q :=
+  corres_iff_wp.mpr fun σ hG env hP => wp_borrow.mpr (corres_iff_wp.mp h σ hG env hP)
 
 theorem corres_deref {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (h : Corres bi P G e V Q) :
-    Corres bi P G (.deref e) V Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => by rw [denote'_deref]; exact r fuel hf⟩
+    Corres bi P G (.deref e) V Q :=
+  corres_iff_wp.mpr fun σ hG env hP => wp_deref.mpr (corres_iff_wp.mp h σ hG env hP)
 
 /-- **`break`.** The value is tagged `controlFlow true`. -/
 theorem corres_cfBreak {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (h : Corres bi P G e V Q)
     (hplain : ∀ σ, G σ → (V σ).isControlFlow = false) :
     Corres bi P G (.cfBreak e) (fun σ => .controlFlow true (V σ)) Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => denote'_cfBreak bi fuel (r fuel hf) (hplain σ hG)⟩
+  rw [corres_iff_wp] at h ⊢
+  intro σ hG env hP
+  rw [wp_cfBreak]
+  refine wp_mono (h σ hG env hP) (fun _ _ _ ⟨hv, hQ⟩ => ⟨hv ▸ rfl, hQ⟩) ?_
+  rintro v s hc ⟨rfl, -⟩
+  rw [hplain σ hG] at hc
+  cases hc
 
 /-- **`continue`.** The value is tagged `controlFlow false`. -/
 theorem corres_cfContinue {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (h : Corres bi P G e V Q)
     (hplain : ∀ σ, G σ → (V σ).isControlFlow = false) :
     Corres bi P G (.cfContinue e) (fun σ => .controlFlow false (V σ)) Q := by
-  intro env σ hP hG
-  obtain ⟨f₀, e₀, hQ, r⟩ := h env σ hP hG
-  exact ⟨f₀, e₀, hQ, fun fuel hf => denote'_cfContinue bi fuel (r fuel hf) (hplain σ hG)⟩
+  rw [corres_iff_wp] at h ⊢
+  intro σ hG env hP
+  rw [wp_cfContinue]
+  refine wp_mono (h σ hG env hP) (fun _ _ _ ⟨hv, hQ⟩ => ⟨hv ▸ rfl, hQ⟩) ?_
+  rintro v s hc ⟨rfl, -⟩
+  rw [hplain σ hG] at hc
+  cases hc
 
 end Judgment
 
@@ -435,57 +308,6 @@ def LoopBody (bi : Builtins) (var : String) (body : ImpExpr) (G : S → Prop)
       | .ok a' => Inv env t.1 (t.2.1 + 1) a'
       | .error b => Brk env t.1 b)
 
-/-- The run of the loop helper `denoteForLoop'` over the `n` indices from `i` to
-    `hiF σ`. -/
-theorem denoteForLoop'_corres {var : String} {body : ImpExpr} {G : S → Prop}
-    {loF hiF : S → Int}
-    {f : S → Int → A → Except B A} {Inv : Env → S → Int → A → Prop}
-    {Brk : Env → S → B → Prop} {Vb : S × Int × A → Value} {W : S → B → Value}
-    (hbody : LoopBody bi var body G loF hiF f Inv Brk Vb)
-    (hV : ∀ t : S × Int × A, G t.1 → loF t.1 ≤ t.2.1 → t.2.1 < hiF t.1 →
-      match f t.1 t.2.1 t.2.2 with
-      | .ok _ => ∀ w, Vb t ≠ .controlFlow true w
-      | .error b => Vb t = .controlFlow true (W t.1 b))
-    (hext : ∀ env σ i a, Inv env σ i a → Inv (env.extend var (.int i)) σ i a) :
-    ∀ (n : Nat) (σ : S) (i : Int) (a : A) (env : Env), G σ → loF σ ≤ i → i + n = hiF σ →
-      Inv env σ i a →
-      ∃ fuel₀ env', loopExit Inv Brk σ (hiF σ) (foldFromE (f σ) n i a) env' ∧
-        ∀ fuel, fuel₀ ≤ fuel → denoteForLoop' bi fuel var i (hiF σ) body env =
-          (.val (loopVal W σ (foldFromE (f σ) n i a)), env') := by
-  intro n
-  induction n with
-  | zero =>
-    intro σ i a env _ _ hi hInv
-    refine ⟨0, env, ?_, fun fuel _ => ?_⟩
-    · simp only [foldFromE, loopExit]
-      rw [← hi]; simpa using hInv
-    · exact denoteForLoop'_done bi fuel var body env (by omega)
-  | succ n ih =>
-    intro σ i a env hG hlo hi hInv
-    have hlt : i < hiF σ := by omega
-    have hP : Inv (env.extend var (.int i)) σ i a ∧
-        (env.extend var (.int i)) var = some (.int i) :=
-      ⟨hext env σ i a hInv, Env.extend_same _ _ _⟩
-    obtain ⟨fb, e₁, hQ, rb⟩ := hbody (env.extend var (.int i)) (σ, i, a) hP ⟨hG, hlo, hlt⟩
-    have hVt := hV (σ, i, a) hG hlo hlt
-    simp only at hQ hVt rb
-    cases hf : f σ i a with
-    | error b =>
-      simp only [hf] at hQ hVt
-      refine ⟨max fb 1, e₁, ?_, fun fuel hfu => ?_⟩
-      · simp only [foldFromE, hf, loopExit]; exact hQ
-      · simp only [foldFromE, hf, loopVal]
-        rw [hVt] at rb
-        exact denoteForLoop'_break bi fuel var hlt (by omega) (rb fuel (by omega))
-    | ok a' =>
-      simp only [hf] at hQ hVt
-      obtain ⟨fr, e₂, hQ₂, rr⟩ := ih σ (i + 1) a' e₁ hG (by omega) (by omega) hQ
-      refine ⟨max fb (fr + 1), e₂, ?_, fun fuel hfu => ?_⟩
-      · simp only [foldFromE, hf]; exact hQ₂
-      · simp only [foldFromE, hf]
-        rw [denoteForLoop'_next bi fuel var hlt (by omega) (rb fuel (by omega)) hVt]
-        exact rr (fuel - 1) (by omega)
-
 /-- **Counted loop with an exit.** `forFold var lo hi body` over the bounds `loF σ ≤ hiF σ`
     corresponds to the stopping fold `foldRangeE (loF σ) (hiF σ) (a₀ σ) (f σ)`: the loop
     returns `.unit` and ends in the invariant at `hiF σ` when every step continues, and
@@ -509,15 +331,44 @@ theorem corres_forFoldE {P Q₁ Q₂ : Env → S → Prop} {G : S → Prop} {var
     Corres bi P G (.forFold var lo hi body)
       (fun σ => loopVal W σ (foldRangeE (loF σ) (hiF σ) (a₀ σ) (f σ)))
       (fun env σ => loopExit Inv Brk σ (hiF σ) (foldRangeE (loF σ) (hiF σ) (a₀ σ) (f σ)) env) := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hlo env σ hP hG
-  obtain ⟨f₂, e₂, hQ₂, r₂⟩ := hhi e₁ σ hQ₁ hG
-  have hl := hle σ hG
-  obtain ⟨f₃, e₃, hQ₃, r₃⟩ := denoteForLoop'_corres hbody hV hext ((hiF σ - loF σ).toNat) σ
-    (loF σ) (a₀ σ) e₂ hG (Int.le_refl _) (by omega) (hinit e₂ σ hQ₂ hG)
-  refine ⟨max f₁ (max f₂ f₃), e₃, hQ₃, fun fuel hf => ?_⟩
-  rw [denote'_forFold bi fuel (r₁ fuel (by omega)) (r₂ fuel (by omega))]
-  exact r₃ fuel (by omega)
+  rw [corres_iff_wp] at hlo hhi ⊢
+  intro σ hG env hP
+  refine wp_forFold (a := loF σ) (b := hiF σ) (fun i s => loF σ ≤ i ∧ ∃ a, Inv s σ i a ∧
+    foldFromE (f σ) (hiF σ - i).toNat i a = foldRangeE (loF σ) (hiF σ) (a₀ σ) (f σ)) ?_ ?_ ?_
+  · refine wp_mono (hlo σ hG env hP) (fun _ s₁ _ ⟨hv, hQ₁⟩ => ⟨hv, ?_⟩) ?_
+    · refine wp_mono (hhi σ hG s₁ hQ₁) (fun _ s₂ _ ⟨hv, hQ₂⟩ =>
+        ⟨hv, Int.le_refl _, a₀ σ, hinit s₂ σ hQ₂ hG, rfl⟩) ?_
+      rintro v s hc ⟨rfl, -⟩; cases hc
+    · rintro v s hc ⟨rfl, -⟩; cases hc
+  · rintro i s hli hib ⟨-, a, hI, hR⟩
+    have hb := corres_iff_wp.mp hbody (σ, i, a) ⟨hG, hli, hib⟩ (s.extend var (.int i))
+      ⟨hext s σ i a hI, Env.extend_same _ _ _⟩
+    have hVt := hV (σ, i, a) hG hli hib
+    have hn : (hiF σ - i).toNat = (hiF σ - (i + 1)).toNat + 1 := by omega
+    rw [hn] at hR
+    simp only [foldFromE] at hR
+    simp only at hb hVt
+    cases hf : f σ i a with
+    | error b =>
+      simp only [hf] at hb hVt hR
+      refine wp_mono hb ?_ fun _ s' _ ⟨hv, hBrk⟩ =>
+        Or.inl ⟨_, hv.trans hVt, wpPost_self.mpr ⟨by rw [← hR]; rfl, by rw [← hR]; exact hBrk⟩⟩
+      rintro v s' hc ⟨rfl, -⟩
+      rw [hVt] at hc
+      cases hc
+    | ok a' =>
+      simp only [hf] at hb hVt hR
+      refine wp_mono hb (fun _ s' _ ⟨_, hQ⟩ => ⟨by omega, a', hQ, hR⟩) ?_
+      rintro v s' hc ⟨rfl, hQ⟩
+      obtain ⟨c, w, hw⟩ : ∃ c w, Vb (σ, i, a) = .controlFlow c w := by
+        cases h' : Vb (σ, i, a) <;> rw [h'] at hc <;> first | exact ⟨_, _, rfl⟩ | cases hc
+      cases c
+      · exact Or.inr ⟨w, hw, by omega, a', hQ, hR⟩
+      · exact absurd hw (hVt w)
+  · rintro s ⟨-, a, hI, hR⟩
+    rw [Int.max_eq_right (hle σ hG)] at hI hR
+    rw [show (hiF σ - hiF σ).toNat = 0 by omega] at hR
+    exact ⟨by rw [← hR]; rfl, by rw [← hR]; exact hI⟩
 
 /-- **Counted loop.** `forFold var lo hi body` whose body never breaks corresponds to the
     fold `foldRangeSpec (loF σ) (hiF σ) (a₀ σ) (g σ)`: it returns `.unit` and ends in the
@@ -555,15 +406,14 @@ open Std.Do
 
 variable {S : Type} {bi : Builtins}
 
-/-- One value run at some fuel gives the correspondence: the run is the same at every
-    larger fuel (`denote'_val_mono`). -/
+/-- One value run at some fuel gives the correspondence: the run is the eventual run
+    (`Eval.of_run`). -/
 theorem corres_of_run {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr} {V : S → Value}
     (h : ∀ env σ, P env σ → G σ → ∃ fuel env', Q env' σ ∧ denote' bi fuel e env = (.val (V σ), env')) :
-    Corres bi P G e V Q := by
-  intro env σ hP hG
-  obtain ⟨fuel₀, env', hQ, hrun⟩ := h env σ hP hG
-  refine ⟨fuel₀, env', hQ, fun fuel hf => ?_⟩
-  rw [denote'_val_mono bi (by rw [hrun]) hf, hrun]
+    Corres bi P G e V Q :=
+  corres_iff_wp.mpr fun σ hG env hP => by
+    obtain ⟨_, env', hQ, hrun⟩ := h env σ hP hG
+    exact ⟨V σ, env', Eval.of_run hrun, wpPost_self.mpr ⟨rfl, hQ⟩⟩
 
 /-- The environment binding the parameters of a function: the head of the list is bound
     last and shadows the rest. -/
@@ -585,26 +435,6 @@ theorem fnCorres_of_corres {A β : Type} [HaxEnc β] {e : ImpExpr} {entry : A �
   intro a hG
   obtain ⟨fuel₀, env', _, hrun⟩ := h (entry a) a rfl hG
   exact ⟨fuel₀, fun fuel hf => by rw [hrun fuel hf]⟩
-
-/-- The eventual value of the run of `e` from `env`: the value the run returns at every
-    fuel from some fuel on, when there is one. -/
-noncomputable def haxEval (bi : Builtins) (e : ImpExpr) (env : Env) : Option Value :=
-  open Classical in
-  if h : ∃ v fuel₀, ∀ fuel, fuel₀ ≤ fuel → (denote' bi fuel e env).1 = .val v then
-    some h.choose
-  else none
-
-theorem haxEval_eq {e : ImpExpr} {env : Env} {v : Value} {fuel₀ : Nat}
-    (h : ∀ fuel, fuel₀ ≤ fuel → (denote' bi fuel e env).1 = .val v) :
-    haxEval bi e env = some v := by
-  have hex : ∃ v fuel₀, ∀ fuel, fuel₀ ≤ fuel → (denote' bi fuel e env).1 = .val v :=
-    ⟨v, fuel₀, h⟩
-  unfold haxEval
-  rw [dif_pos hex]
-  obtain ⟨fuel₁, h₁⟩ := hex.choose_spec
-  have e₁ := h₁ (max fuel₀ fuel₁) (by omega)
-  rw [h (max fuel₀ fuel₁) (by omega)] at e₁
-  exact congrArg some (Outcome.val.inj e₁).symm
 
 /-- A function correspondence is the `Option`-level refinement of `optGuard G f` by the
     eventual value `haxEval bi e`, with the entry relation `env = entry a` and the output

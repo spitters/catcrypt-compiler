@@ -23,9 +23,8 @@ serves `break`, `continue` and early exit.
   form, each an equivalence and free of fuel
 * `wp_forFold` — the counted loop under an invariant indexed by the counter
 * `corres_iff_wp`, `corresArgs_iff_wpArgs` — the correspondence judgment is the triple
-  whose postcondition is `v = V σ ∧ Q env' σ`
-* `corres_seq_of_wp`, `corres_letBind_of_wp`, `corres_ifThenElse_of_wp` — the rules of
-  `Corres` derived from the weakest precondition
+  whose postcondition is `v = V σ ∧ Q env' σ`; the rules of `Corres`
+  (`HaxAscent/Ascent/Corres.lean`) are proved from the rules here through them
 -/
 
 @[expose] public section
@@ -366,62 +365,5 @@ theorem corresArgs_iff_wpArgs {S : Type} {P Q : Env → S → Prop} {G : S → P
   · intro h env σ hP hG
     obtain ⟨vs, env', ⟨f₀, hrun⟩, rfl, hQ⟩ := h σ hG env hP
     exact ⟨f₀, env', hQ, hrun⟩
-
-/-! ## The rules of `Corres` from the weakest precondition -/
-
-section Adequacy
-
-variable {S : Type}
-
-/-- `corres_seq`, derived from `wp_seq` without fuel. -/
-theorem corres_seq_of_wp {P Q₁ Q : Env → S → Prop} {G : S → Prop} {e1 e2 : ImpExpr}
-    {V₁ V : S → Value}
-    (h1 : Corres bi P G e1 V₁ Q₁) (hplain : ∀ σ, G σ → (V₁ σ).isControlFlow = false)
-    (h2 : Corres bi Q₁ G e2 V Q) :
-    Corres bi P G (.seq e1 e2) V Q := by
-  rw [corres_iff_wp] at h1 h2 ⊢
-  intro σ hG env hP
-  rw [wp_seq]
-  refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨_, hQ₁⟩ => h2 σ hG s hQ₁) ?_
-  rintro v s hc ⟨rfl, -⟩
-  rw [hplain σ hG] at hc
-  cases hc
-
-/-- `corres_letBind`, derived from `wp_letBind` without fuel. -/
-theorem corres_letBind_of_wp {P Q₁ P₂ Q : Env → S → Prop} {G : S → Prop} {x : String}
-    {val body : ImpExpr} {V₁ V : S → Value}
-    (hval : Corres bi P G val V₁ Q₁) (hplain : ∀ σ, G σ → (V₁ σ).isControlFlow = false)
-    (hlink : ∀ env σ, Q₁ env σ → G σ → P₂ (env.extend x (V₁ σ)) σ)
-    (hbody : Corres bi P₂ G body V Q) :
-    Corres bi P G (.letBind x val body) V Q := by
-  rw [corres_iff_wp] at hval hbody ⊢
-  intro σ hG env hP
-  rw [wp_letBind]
-  refine wp_mono (hval σ hG env hP) ?_ ?_
-  · rintro v s _ ⟨rfl, hQ₁⟩
-    exact hbody σ hG _ (hlink s σ hQ₁ hG)
-  · rintro v s hc ⟨rfl, -⟩
-    rw [hplain σ hG] at hc
-    cases hc
-
-/-- `corres_ifThenElse`, derived from `wp_ifThenElse` without fuel. -/
-theorem corres_ifThenElse_of_wp {P Q₁ Q : Env → S → Prop} {G : S → Prop} {c t e : ImpExpr}
-    {C : S → Bool} {V : S → Value}
-    (hc : Corres bi P G c (fun σ => .bool (C σ)) Q₁)
-    (ht : Corres bi Q₁ (fun σ => G σ ∧ C σ = true) t V Q)
-    (he : Corres bi Q₁ (fun σ => G σ ∧ C σ = false) e V Q) :
-    Corres bi P G (.ifThenElse c t e) V Q := by
-  rw [corres_iff_wp] at hc ht he ⊢
-  intro σ hG env hP
-  rw [wp_ifThenElse]
-  refine wp_mono (hc σ hG env hP) ?_ ?_
-  · rintro v s _ ⟨rfl, hQ₁⟩
-    cases hC : C σ
-    · exact Or.inr ⟨rfl, he σ ⟨hG, hC⟩ s hQ₁⟩
-    · exact Or.inl ⟨rfl, ht σ ⟨hG, hC⟩ s hQ₁⟩
-  · rintro v s hcf ⟨rfl, -⟩
-    simp at hcf
-
-end Adequacy
 
 end Hax.Ascent

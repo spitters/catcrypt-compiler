@@ -10,6 +10,7 @@ public import HaxAscent.Ascent.EarlyExit
 public import HaxAscent.Ascent.Structs
 public import HaxAscent.Ascent.ArrStructs
 public import HaxAscent.Ascent.AscentOption
+public import HaxAscent.Ascent.CorresRRel
 
 /-!
 # The descent relations over the ascent judgment
@@ -23,8 +24,9 @@ the ascent judgment.
 runs of `e` and `e'` have the same outcome at every fuel and end in `Rx`-related
 environments.  `corres_of_fuelSim` carries a `Corres` statement for `e` to one for
 `e'` with the same value, from the environments `R`-related to an entry environment
-of `e` to those `Rx`-related to its exit environment; the exit environment is fixed
-by fuel monotonicity (`Hax.Ascent.denote'_val_mono`).  `corres_transport` is the case
+of `e` to those `Rx`-related to its exit environment; it is the relational refinement
+`Hax.Ascent.rrelPT_wpAT_of_sim` composed with the correspondence by
+`Hax.Ascent.corres_trans_of_rrelPT`.  `corres_transport` is the case
 `R = Rx`, `corres_renameVar` its instance at the renaming relation `RenRel`
 (`denote'_renameVar`), and `corres_flatProj` at the flattening relation
 `StructFlatAt` for a field call (`flatProj_sim`).  `FuelSim.of_step` composes a
@@ -120,21 +122,11 @@ theorem corres_of_fuelSim {R Rx : Env → Env → Prop} {e e' : ImpExpr}
     {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value} (hsim : FuelSim bi R Rx e e')
     (h : Corres bi P G e V Q) :
     Corres bi (fun envF σ => ∃ env, P env σ ∧ R env envF) G e' V
-      (fun envF σ => ∃ env, Q env σ ∧ Rx env envF) := by
-  rintro envF σ ⟨env, hP, hR⟩ hG
-  obtain ⟨f₀, env', hQ, hrun⟩ := h env σ hP hG
-  obtain ⟨h1, h2⟩ := hsim f₀ env envF hR
-  have r₀ : denote' bi f₀ e env = (.val (V σ), env') := hrun f₀ (Nat.le_refl _)
-  have hv : (denote' bi f₀ e' envF).1 = .val (V σ) := by
-    have : ((denote' bi f₀ e).run env).1 = .val (V σ) := by
-      show (denote' bi f₀ e env).1 = _; rw [r₀]
-    rw [← this]; exact h1.symm
-  refine ⟨f₀, (denote' bi f₀ e' envF).2, ⟨env', hQ, ?_⟩, fun fuel hf => ?_⟩
-  · have : ((denote' bi f₀ e).run env).2 = env' := by
-      show (denote' bi f₀ e env).2 = _; rw [r₀]
-    rw [← this]; exact h2
-  · rw [_root_.Hax.Ascent.denote'_val_mono bi hv hf]
-    exact Prod.ext hv rfl
+      (fun envF σ => ∃ env, Q env σ ∧ Rx env envF) :=
+  _root_.Hax.Ascent.corres_conseq
+    (_root_.Hax.Ascent.corres_trans_of_rrelPT h (_root_.Hax.Ascent.rrelPT_wpAT_of_sim hsim))
+    (fun _ _ ⟨env, hP, hR⟩ _ => ⟨env, hR, hP⟩) (fun _ h => h) (fun _ _ => rfl)
+    (fun _ _ _ ⟨env, hR, hQ⟩ => ⟨env, hQ, hR⟩)
 
 /-- **Binding arm.**  When at every fuel the runs of `e` and `e'` from `R`-related
     environments are the runs of `b` and `b'` from `R₂`-related environments, a

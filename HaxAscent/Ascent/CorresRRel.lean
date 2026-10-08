@@ -46,9 +46,8 @@ weakest precondition of the abstract program `guardProg`
   to an exit relation is a refinement of `wpAT bi e` by `wpAT bi e'`.
 * `corres_trans_of_rrelPT`: a correspondence for `e` and a refinement of `wpAT bi e` by
   `wpAT bi e'` give the correspondence for `e'` at the composite relations, by
-  `RRelPT.trans`.
-* `corres_of_fuelSim_via_rrel`: transport of `Corres` along a fuel-uniform simulation,
-  derived from `rrelPT_wpAT_of_sim` and `corres_trans_of_rrelPT`.
+  `RRelPT.trans`; with `rrelPT_wpAT_of_sim` it proves the transport `corres_of_fuelSim`
+  (`CatCrypt/Crypto/Hax/HaxToLowCTAscentBridge.lean`).
 -/
 
 @[expose] public section
@@ -253,24 +252,6 @@ theorem corres_trans_of_rrelPT {R Rx : Env → Env → Prop} {P Q : Env → S �
         exact this⟩
   rw [AssnRel.Rel] at hc ⊢
   rwa [AssnRel.ofRel_comp_ofStateRel_γ, hrel] at hc
-
-/-- **Transport along a simulation**, by `rrelPT_wpAT_of_sim` and
-    `corres_trans_of_rrelPT`: when from `R`-related environments the runs of `e` and
-    `e'` have the same outcome at every fuel and end in `Rx`-related environments, a
-    `Corres` statement for `e` gives one for `e'` with the same value, from the
-    environments `R`-related to the entry environments of `e` to those `Rx`-related to
-    its exit environments. -/
-theorem corres_of_fuelSim_via_rrel {R Rx : Env → Env → Prop} {e e' : ImpExpr}
-    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
-    (hsim : ∀ fuel env envF, R env envF →
-      ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
-        Rx ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2)
-    (h : Corres bi P G e V Q) :
-    Corres bi (fun envF σ => ∃ env, P env σ ∧ R env envF) G e' V
-      (fun envF σ => ∃ env, Q env σ ∧ Rx env envF) :=
-  corres_conseq (corres_trans_of_rrelPT h (rrelPT_wpAT_of_sim hsim))
-    (fun _ _ ⟨env, hP, hR⟩ _ => ⟨env, hR, hP⟩) (fun _ h => h) (fun _ _ => rfl)
-    (fun _ _ _ ⟨env, hR, hQ⟩ => ⟨env, hQ, hR⟩)
 
 end Hax.Ascent
 

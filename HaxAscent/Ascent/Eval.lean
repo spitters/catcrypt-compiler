@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import HaxAscent.Ascent.Corres
+public import HaxAscent.Ascent.CorresCore
 
 /-!
 # The eventual semantics of `denote'`
