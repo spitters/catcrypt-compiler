@@ -80,6 +80,18 @@ concrete state related to `f a`. Squares compose sequentially (`corres_seq`,
 | x86 block `List (JInstr 64)` | `runBlock`, the Lean transcription of Jasmin's x86 semantics, with registers, memory and flags | `CorresJ` |
 | RV64 block | `runRBlock64` | `CorresR` |
 
+Every correspondence judgment of the ascent is an instance of one relational weakest
+precondition, `RRelPT` in CatCrypt-core
+([Refinement](https://github.com/spitters/CatCrypt-core/blob/master/CatCryptCore/Refinement/README.md)),
+which states Sebastian Graf's refinement weakest precondition `rwp` as Mathlib's arrow
+relation `Relator.LiftFun`. The instance lemmas are `corres_iff_rrelPT`,
+`fnCorres_iff_rrelPT`, `corresM_iff_rrelPT`, `corresJ_iff_rrel` and those of
+[CorresMachineRRel](CatCrypt/Crypto/SecureCompilation/Ascent/CorresMachineRRel.lean),
+and `RRelPT.trans` composes correspondences across semantics. The source-level `Corres`
+is the weakest precondition of the eventual run of `denote'`
+([Wp](HaxAscent/Ascent/Wp.lean)), and its rules follow from that weakest precondition
+without fuel.
+
 Word abstraction maps machine words to rings (`wEnc : BitVec 64 → ZMod 2^64`), so a
 carry chain over limbs becomes one addition of integers. The compiler's verified
 lowering runs in the opposite direction, and the two meet in `legWeld`, which joins a
