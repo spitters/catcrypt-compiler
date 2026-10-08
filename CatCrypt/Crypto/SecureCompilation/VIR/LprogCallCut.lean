@@ -50,6 +50,15 @@ checks it for every pair of an entry and an exit of `cutAt`.
   such runs joined by `Glue`.
 * `CutCheckSound`: the statement of soundness of a validation of the cut programs of two
   bodies, segment by segment.
+* `shadowFreeB`, `poolAbi`, `lfundefPhysAbiOfVirtAt`: the bodies `expandCallShadows` leaves
+  in place, the x86 register file at an allocation pool, and the allocation of a virtual
+  function at a pool with the shadow instructions expanded after the allocation.
+* `movI`, `commonSeq`, `commonCall?`, `commonCalls?`: the form of a shadow instruction on
+  the argument and result names of its callee, and the rewriting of a body onto them.
+* `runI`, `regUpd`, `movesF`: the run of an instruction list without the counter, a state
+  with a new register file and an advanced counter, and the state after a list of copies.
+* `commonFreshB`: the check that the common names are distinct and occur in no operation
+  of a body.
 
 ## Main results
 
@@ -62,6 +71,15 @@ checks it for every pair of an entry and an exit of `cutAt`.
   a chain of halting runs of cut programs on `I`.
 * `x86_withProcs_run_cutAt`: the same at `x86Isa` for the cut programs `cutAt` of a body
   that `cutOkB` accepts.
+* `expandCallShadows_of_shadowFreeB`, `lfundefPhysAbiOfVirtAt_default`: on a body without
+  call shadows the expansion is the identity, and at the pool of `x86Abi` the allocation
+  with shadow instructions is `lfundefPhysAbiOfVirt`.
+* `shadowCall?_commonCalls?`: every shadow instruction of a rewritten body is a call of the
+  callee on its argument names with its result name.
+* `commonCall_sim`: the step of the summary at a shadow instruction is the run of its form
+  on common names, up to the argument names and the result name.
+* `commonFreshB_site`: a body that passes `commonFreshB` meets the side conditions of
+  `commonCall_sim` at each of its shadow instructions.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
@@ -715,5 +733,394 @@ def CutCheckSound (T : ProcTable) (outs : List String) (fn : String) (B B' : Lis
       (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t →
       ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
         Obs outs t t'
+
+/-! ## 9. The allocation of a body with shadow instructions -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (evalInstrPMemF_movReg)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+
+/-- The instruction is left in place by `expandCallShadows`: it is no operation with one
+    register destination whose mnemonic is a call shadow (`CALLW:`, `CALLNW:`, `CALLN:`,
+    `CALL:`). -/
+def shadowFreeI (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn [.reg _] opn _ =>
+      (parseCallW opn).isNone && !hasPrefix opn "CALLN:" && !hasPrefix opn "CALL:"
+  | _ => true
+
+/-- Every instruction of the body is left in place by `expandCallShadows`. -/
+def shadowFreeB (body : Lcmd) : Bool := body.all shadowFreeI
+
+/-- **`expandCallShadows` is the identity on a body without call shadows.** -/
+theorem expandCallShadows_of_shadowFreeB {body : Lcmd} (h : shadowFreeB body = true) :
+    expandCallShadows body = body := by
+  unfold expandCallShadows
+  induction body with
+  | nil => rfl
+  | cons i B ih =>
+    simp only [shadowFreeB, List.all_cons, Bool.and_eq_true] at h
+    rw [List.flatMap_cons, ih h.2]
+    have hi := h.1
+    unfold shadowFreeI at hi
+    split at hi
+    · rename_i d opn ss heq
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hi
+      simp [heq, hi.1.1, hi.1.2, hi.2]
+    · rename_i hne
+      split
+      · rename_i d opn ss heq
+        exact absurd heq (hne d opn ss)
+      · rfl
+
+/-- The x86 register file with the allocation pool `pool`. -/
+def poolAbi (pool : List String) : IsaAbi := { x86Abi with allocPool := pool }
+
+/-- At the allocation pool of `x86Abi` the register file is `x86Abi`. -/
+theorem poolAbi_default : poolAbi x86Abi.allocPool = x86Abi := rfl
+
+/-- **The physical-ABI allocation of a virtual function with shadow instructions, at the
+    allocation pool `pool`**: `lfundefPhysAbiOfVirt` at the register file `poolAbi pool`,
+    with the shadow instructions in the input of the allocation, followed by
+    `expandCallShadows` on the allocated body. With `pool` a pool of names kept across the
+    call (`Callee.keepPool`), a name live across a shadow instruction is allocated to a
+    register the callee keeps or to a frame word, and the marshalling moves of the
+    expansion write only argument registers and read the result register. -/
+def lfundefPhysAbiOfVirtAt (pool : List String) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool) : Lfundef :=
+  let fd := lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
+    (abiTyin := abiTyin) (abi := poolAbi pool) (posBind := posBind)
+  { fd with lfd_body := expandCallShadows fd.lfd_body }
+
+/-- **At the pool of `x86Abi`, on an allocated body without call shadows, the allocation
+    with shadow instructions is `lfundefPhysAbiOfVirt`.** -/
+theorem lfundefPhysAbiOfVirtAt_default (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (h : shadowFreeB (lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
+      (abiTyin := abiTyin) (posBind := posBind)).lfd_body = true) :
+    lfundefPhysAbiOfVirtAt x86Abi.allocPool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+      = lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
+          (abiTyin := abiTyin) (posBind := posBind) := by
+  unfold lfundefPhysAbiOfVirtAt
+  rw [poolAbi_default]
+  dsimp only
+  rw [expandCallShadows_of_shadowFreeB h]
+
+/-! ## 10. Shadow instructions on common names -/
+
+/-- The copy `MOV:64 dst, src`. -/
+def movI (dst src : String) : LinstrRM :=
+  (.Lopn [.reg dst] (withWidthTag 64 "MOV") [.reg src], .reg none)
+
+/-- A copy is no shadow instruction. -/
+theorem shadowCall?_movI (dst src : String) : shadowCall? (movI dst src).fst = none := by
+  simp only [movI, shadowCall?]
+  rw [if_neg (by decide)]
+
+/-- The names of a list of register operands; `none` when an operand is no register. -/
+def regNames? : List LOperand → Option (List String)
+  | [] => some []
+  | .reg x :: os => (regNames? os).map (x :: ·)
+  | _ :: _ => none
+
+/-- Operands with the names `xs` are the registers `xs`. -/
+theorem regNames?_eq : ∀ {os : List LOperand} {xs : List String},
+    regNames? os = some xs → os = xs.map LOperand.reg
+  | [], _, h => by cases h; rfl
+  | .reg x :: os, xs, h => by
+      obtain ⟨ys, hys, rfl⟩ := Option.map_eq_some_iff.mp h
+      rw [List.map_cons, regNames?_eq hys]
+  | .imm _ :: _, _, h => by cases h
+  | .arr _ _ :: _, _, h => by cases h
+  | .arrIdx _ _ _ :: _, _, h => by cases h
+
+/-- **The call `d ← CALL:f xs` on the common names `args` and `res`**: the copies of the
+    operands `xs` into the names `args`, the shadow instruction `res ← CALL:f args`, and
+    the copy of `res` into `d`. -/
+def commonSeq (f : String) (args : List String) (res d : String) (xs : List String) :
+    List LinstrRM :=
+  (args.zip xs).map (fun p => movI p.1 p.2)
+    ++ [(callShadow res f (args.map LOperand.reg), .reg none), movI d res]
+
+/-- The rewriting of one instruction onto the common names: an instruction that is no
+    shadow instruction is kept; a shadow instruction of a call of `f` on as many register
+    operands as `args` becomes `commonSeq`; every other shadow instruction is refused. -/
+def commonCall? (f : String) (args : List String) (res : String) (i : LinstrRM) :
+    Option (List LinstrRM) :=
+  match shadowCall? i.fst with
+  | none => some [i]
+  | some (d, g, srcs) =>
+      match regNames? srcs with
+      | some xs =>
+          if g = f ∧ xs.length = args.length then some (commonSeq f args res d xs) else none
+      | none => none
+
+/-- **The rewriting of the shadow instructions of a body onto the common names** `args`
+    and `res` of the callee `f`: `commonCall?` at each instruction, in order. -/
+def commonCalls? (f : String) (args : List String) (res : String) :
+    List LinstrRM → Option (List LinstrRM)
+  | [] => some []
+  | i :: B => (commonCall? f args res i).bind fun is =>
+      (commonCalls? f args res B).map (is ++ ·)
+
+/-- A shadow instruction of `commonSeq` has the destination `res`, the symbol `f` and the
+    operands `args` as registers. -/
+theorem shadowCall?_commonSeq {f : String} {args : List String} {res d : String}
+    {xs : List String} {i : LinstrRM} (hi : i ∈ commonSeq f args res d xs)
+    {q : String × String × List LOperand} (hq : shadowCall? i.fst = some q) :
+    q = (res, f, args.map LOperand.reg) := by
+  simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
+    or_false] at hi
+  rcases hi with ⟨p, -, rfl⟩ | rfl | rfl
+  · rw [shadowCall?_movI] at hq; cases hq
+  · rw [shadowCall?_callShadow] at hq; exact (Option.some.inj hq).symm
+  · rw [shadowCall?_movI] at hq; cases hq
+
+/-- **Every shadow instruction of a rewritten body has the destination `res`, the symbol
+    `f` and the operands `args` as registers.** -/
+theorem shadowCall?_commonCalls? {f : String} {args : List String} {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+      ∀ i ∈ B', ∀ q, shadowCall? i.fst = some q → q = (res, f, args.map LOperand.reg)
+  | [], _, h, i, hi, _, _ => by cases h; cases hi
+  | j :: B, _, h, i, hi, q, hq => by
+      obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
+      rcases List.mem_append.mp hi with hi | hi
+      · unfold commonCall? at his
+        split at his
+        · rename_i hn
+          cases his
+          rw [List.mem_singleton.mp hi, hn] at hq
+          cases hq
+        · split at his
+          · split at his
+            · cases his
+              exact shadowCall?_commonSeq hi hq
+            · cases his
+          · cases his
+      · exact shadowCall?_commonCalls? hB₁ i hi q hq
+
+/-- The run of a list of instructions by the steps of `I`, one after the other, without
+    reading the counter. -/
+def runI (I : Isa) (P : LprogM) : List LinstrRM → LstateMF → Option LstateMF
+  | [], s => some s
+  | i :: is, s => (I.step P i s).bind (runI I P is)
+
+theorem runI_append (I : Isa) (P : LprogM) (is js : List LinstrRM) (s : LstateMF) :
+    runI I P (is ++ js) s = (runI I P is s).bind (runI I P js) := by
+  induction is generalizing s with
+  | nil => rfl
+  | cons i is ih =>
+    simp only [List.cons_append, runI]
+    cases I.step P i s with
+    | none => rfl
+    | some u => exact ih u
+
+/-- The state `s` with the register file `g` of its register file and the counter advanced
+    by `k`. -/
+def regUpd (g : (String → Σ w, BitVec w) → String → Σ w, BitVec w) (k : Nat) (s : LstateMF) :
+    LstateMF :=
+  { s with prog := { s.prog with base := { s.prog.base with
+      reg := { lvm := g s.prog.base.reg.lvm, lpc := s.prog.base.reg.lpc + k } } } }
+
+theorem regUpd_regUpd (g g' : (String → Σ w, BitVec w) → String → Σ w, BitVec w) (k k' : Nat)
+    (s : LstateMF) : regUpd g k (regUpd g' k' s) = regUpd (fun L => g (g' L)) (k' + k) s := by
+  simp only [regUpd, Nat.add_assoc]
+
+/-- The state after the copy `MOV:64 dst, src`. -/
+def movS (dst src : String) (s : LstateMF) : LstateMF :=
+  regUpd (fun L r => if r = dst then L src else L r) 1 s
+
+/-- The step of a copy on the x86 instruction set with procedures. -/
+theorem step_movI (T : ProcTable) (P : LprogM) (dst src : String) (s : LstateMF) :
+    (x86Isa.withProcs T).step P (movI dst src) s = some (movS dst src s) := by
+  show (match procCall? T (movI dst src).fst with
+    | some q => procStep q.1 q.2.1 q.2.2 s
+    | none => x86Isa.step P (movI dst src) s) = _
+  simp only [procCall?, shadowCall?_movI, Option.bind_none]
+  rw [x86Isa_step]
+  exact evalInstrPMemF_movReg P dst src (.reg none) s
+
+theorem retWord_eq_regUpd (dst : String) (w : BitVec 64) (s : LstateMF) :
+    retWord dst w s = regUpd (fun L r => if r = dst then ⟨64, w⟩ else L r) 1 s := rfl
+
+/-- The state after the copies `MOV:64 p.1, p.2` of the pairs `ps`, in order. -/
+def movesF : List (String × String) → LstateMF → LstateMF
+  | [], s => s
+  | p :: ps, s => movesF ps (movS p.1 p.2 s)
+
+theorem runI_moves (T : ProcTable) (P : LprogM) :
+    ∀ (ps : List (String × String)) (s : LstateMF),
+      runI (x86Isa.withProcs T) P (ps.map fun p => movI p.1 p.2) s = some (movesF ps s)
+  | [], _ => rfl
+  | p :: ps, s => by
+      simp only [List.map_cons, runI, step_movI, Option.bind_some, movesF]
+      exact runI_moves T P ps _
+
+theorem lvm_movS (dst src : String) (s : LstateMF) (r : String) :
+    (movS dst src s).prog.base.reg.lvm r
+      = if r = dst then s.prog.base.reg.lvm src else s.prog.base.reg.lvm r := rfl
+
+theorem movesF_eq_regUpd : ∀ (ps : List (String × String)) (s : LstateMF),
+    movesF ps s = regUpd (fun _ => (movesF ps s).prog.base.reg.lvm) ps.length s
+  | [], _ => rfl
+  | p :: ps, s => by
+      show movesF ps (movS p.1 p.2 s)
+        = regUpd (fun _ => (movesF ps (movS p.1 p.2 s)).prog.base.reg.lvm) (ps.length + 1) s
+      conv_lhs => rw [movesF_eq_regUpd ps (movS p.1 p.2 s)]
+      rw [movS, regUpd_regUpd, Nat.add_comm]
+
+/-- The copies keep a name that is no destination. -/
+theorem lvm_movesF_of_not_mem : ∀ (ps : List (String × String)) (s : LstateMF) (r : String),
+    r ∉ ps.map Prod.fst → (movesF ps s).prog.base.reg.lvm r = s.prog.base.reg.lvm r
+  | [], _, _, _ => rfl
+  | p :: ps, s, r, h => by
+      simp only [List.map_cons, List.mem_cons, not_or] at h
+      rw [movesF, lvm_movesF_of_not_mem ps _ r h.2, lvm_movS, if_neg h.1]
+
+/-- After copies with distinct destinations and no source among the destinations, each
+    destination holds the entry cell of its source. -/
+theorem lvm_movesF_of_mem : ∀ (ps : List (String × String)) (s : LstateMF),
+    (ps.map Prod.fst).Nodup → (∀ p ∈ ps, p.2 ∉ ps.map Prod.fst) →
+    ∀ p ∈ ps, (movesF ps s).prog.base.reg.lvm p.1 = s.prog.base.reg.lvm p.2
+  | [], _, _, _, _, hp => by cases hp
+  | q :: ps, s, hnd, hx, p, hp => by
+      simp only [List.map_cons, List.nodup_cons] at hnd
+      rw [movesF]
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · rw [lvm_movesF_of_not_mem ps _ _ hnd.1, lvm_movS, if_pos rfl]
+      · rw [lvm_movesF_of_mem ps _ hnd.2
+          (fun p' hp'' hm => hx p' (List.mem_cons_of_mem _ hp'') (by simp [hm])) p hp',
+          lvm_movS, if_neg]
+        intro e
+        exact hx p (List.mem_cons_of_mem _ hp') (by simp [e])
+
+/-- Register operands read at width `64` in two register files give the same words when
+    the files agree on them pairwise. -/
+theorem mapM_reg_congr (R R' : LstateN) : ∀ (as xs : List String), as.length = xs.length →
+    (∀ p ∈ as.zip xs, R'.lvm p.1 = R.lvm p.2) →
+    (as.map LOperand.reg).mapM (evalOperandN R' 64)
+      = (xs.map LOperand.reg).mapM (evalOperandN R 64)
+  | [], [], _, _ => rfl
+  | a :: as, x :: xs, hl, h => by
+      have e : R'.lvm a = R.lvm x := h (a, x) (by simp)
+      have h0 : evalOperandN R' 64 (.reg a) = evalOperandN R 64 (.reg x) := by
+        simp only [evalOperandN, LstateN.getW]
+        rw [e]
+      simp only [List.map_cons, List.mapM_cons, h0]
+      rw [mapM_reg_congr R R' as xs (by simpa using hl) (fun p hp => h p (by simp [hp]))]
+  | [], _ :: _, hl, _ => by simp at hl
+  | _ :: _, [], hl, _ => by simp at hl
+
+/-- **The step of the summary at a shadow instruction is simulated by the run of its form
+    on common names.** Let `f` have the summary `pr` in `T`, the names `args` be distinct
+    and as many as the operands `xs`, and no operand be a name of `args`. When the step of
+    the summary at `d ← CALL:f xs` from `s` gives `v`, the run of `commonSeq f args res d
+    xs` from `s` on the x86 instruction set with procedures gives `v` with the counter
+    advanced by `args.length + 1` and a register file that agrees with the register file of
+    `v` at every name outside `args` other than `res`. The arrays, the word memory, the
+    zero flag and the function name are those of `v`. -/
+theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    (P : LprogM) {args xs : List String} (res d : String) (hlen : xs.length = args.length)
+    (hnd : args.Nodup) (hx : ∀ x ∈ xs, x ∉ args) {s v : LstateMF}
+    (h : procStep pr d (xs.map LOperand.reg) s = some v) :
+    ∃ L' : String → Σ w, BitVec w,
+      runI (x86Isa.withProcs T) P (commonSeq f args res d xs) s
+        = some (regUpd (fun _ => L') (args.length + 1) v)
+      ∧ ∀ r, r ∉ args → r ≠ res → L' r = v.prog.base.reg.lvm r := by
+  unfold procStep at h
+  split at h
+  · rename_i har
+    obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
+    have hfst : (args.zip xs).map Prod.fst = args := List.map_fst_zip (by omega)
+    obtain ⟨u, hu⟩ : ∃ u, u = movesF (args.zip xs) s := ⟨_, rfl⟩
+    have hmap : (args.map LOperand.reg).mapM (evalOperandN u.prog.base.reg 64) = some vs := by
+      rw [mapM_reg_congr s.prog.base.reg _ args xs hlen.symm (fun p hp => by
+        rw [hu]
+        exact lvm_movesF_of_mem _ s (by rw [hfst]; exact hnd)
+          (fun q hq => by rw [hfst]; exact hx _ (List.of_mem_zip hq).2) p hp)]
+      exact hvs
+    have hcall : (x86Isa.withProcs T).step P
+        (callShadow res f (args.map LOperand.reg), .reg none) u = some (retWord res w u) := by
+      show (match procCall? T (callShadow res f (args.map LOperand.reg)) with
+        | some q => procStep q.1 q.2.1 q.2.2 u
+        | none => _) = _
+      rw [procCall?_callShadow, hT]
+      simp only [Option.map_some]
+      unfold procStep
+      rw [if_pos (by simpa [hlen] using har), hmap]
+      simp only [Option.bind_some, hw, Option.map_some]
+    have hreg : u = regUpd (fun _ => u.prog.base.reg.lvm) (args.zip xs).length s := by
+      rw [hu]; exact movesF_eq_regUpd _ s
+    refine ⟨fun r => if r = d then ⟨64, w⟩ else if r = res then ⟨64, w⟩
+      else u.prog.base.reg.lvm r, ?_, ?_⟩
+    · rw [commonSeq, runI_append, runI_moves, ← hu]
+      simp only [Option.bind_some, runI, hcall, step_movI]
+      conv_lhs => rw [hreg]
+      rw [movS, retWord_eq_regUpd, retWord_eq_regUpd, regUpd_regUpd, regUpd_regUpd,
+        regUpd_regUpd]
+      have hl : (args.zip xs).length = args.length := by simp [hlen]
+      rw [hl, Nat.add_comm 1 (args.length + 1), Nat.add_assoc]
+      congr 2
+      funext L r
+      by_cases h1 : r = d <;> by_cases h2 : r = res <;> simp [h1, h2]
+    · intro r hr hres
+      rw [retWord_eq_regUpd]
+      show _ = if r = d then _ else _
+      by_cases h1 : r = d
+      · simp [h1]
+      · simp only [h1, hres, if_false]
+        rw [hu]
+        exact lvm_movesF_of_not_mem _ s r (by rw [hfst]; exact hr)
+  · cases h
+
+/-- The names of an operand. -/
+def opNames : LOperand → List String
+  | .reg r => [r]
+  | .imm _ => []
+  | .arr b _ => [b]
+  | .arrIdx b i _ => [b, i]
+
+/-- The names of the destinations and the sources of an operation; no name for every other
+    instruction. -/
+def instrNames : LinstrR → List String
+  | .Lopn ds _ ss => (ds ++ ss).flatMap opNames
+  | _ => []
+
+/-- **The check of the common names against a body**: the names `args` are distinct, `res`
+    is none of them, and no operation of the body has an operand with a name of `args` or
+    the name `res`. -/
+def commonFreshB (args : List String) (res : String) (B : List LinstrRM) : Bool :=
+  decide args.Nodup && !args.contains res
+    && B.all fun i => (instrNames i.fst).all fun n => !args.contains n && n != res
+
+/-- **A shadow instruction of a body that passes `commonFreshB` meets the side conditions
+    of `commonCall_sim`**: the names `args` are distinct, no operand of the shadow
+    instruction is a name of `args`, and its destination is neither a name of `args` nor
+    `res`. -/
+theorem commonFreshB_site {args : List String} {res : String} {B : List LinstrRM}
+    (h : commonFreshB args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
+    {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) {xs : List String}
+    (hxs : regNames? srcs = some xs) :
+    args.Nodup ∧ (∀ x ∈ xs, x ∉ args) ∧ d ∉ args ∧ d ≠ res := by
+  simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
+    Bool.not_eq_true', bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨hnd, -⟩, hall⟩ := h
+  have hin := hall i hi
+  unfold shadowCall? at hs
+  split at hs
+  · rename_i dst opn ss heq
+    split at hs
+    · cases hs
+      rw [heq, regNames?_eq hxs] at hin
+      refine ⟨hnd, fun x hx => ?_, ?_, ?_⟩
+      · have := (hin x (by simp [instrNames, opNames, hx])).1
+        simpa using this
+      · have := (hin d (by simp [instrNames, opNames])).1
+        simpa using this
+      · exact (hin d (by simp [instrNames, opNames])).2
+    · cases hs
+  · cases hs
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut

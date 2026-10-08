@@ -43,6 +43,9 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   bytes outside the `F` bytes below the entry stack register.
 * `calleeSpec_of_keepCheck`: `CalleeSpec` of the leaky run of a decoded block from the keep
   check, a halting run with a postcondition and equality of traces.
+* `keptB`, `keepPool`, `keepPoolB`, `keepPoolB_spec`, `keepPoolB_keep`: the allocation pool
+  of a caller, made of the general-purpose names kept across a call, its check, and the
+  preservation of the registers of a checked pool by a specified callee.
 -/
 
 @[expose] public section
@@ -552,5 +555,48 @@ theorem calleeSpec_of_keepCheck {r : DoitRegime} {q : List RInstr} {c : CalleeSi
     obtain ⟨_, rfl⟩ := runL_det ht₀ hX
     exact hp
   ct s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ hp hX₁ hX₂ := hct s₁ s₂ t₁ t₂ ⟨hp, h₁, h₂⟩ ⟨s₁', hX₁⟩ ⟨s₂', hX₂⟩
+
+/-! ## 6. The allocation pool of a caller -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpList gpOk phys)
+
+/-- The general-purpose name `r` is kept across a call of `c`: its machine register is
+    outside the clobber set, and it is neither an argument name nor the result name. -/
+def keptB (c : CalleeSig) (r : String) : Bool :=
+  gpOk r && !c.clob (phys r) && !c.args.contains r && (c.res != some r)
+
+/-- **The allocation pool of a caller of `c`**: the general-purpose names kept across a
+    call of `c`, in the order of `gpList`, with `RDX` at index `3`, the index the allocator
+    withholds for a body with a high multiplication
+    (`JasminLprogExport.bodyReservedGP`). -/
+def keepPool (c : CalleeSig) : List String :=
+  let ks := gpList.filter fun r => keptB c r && r != "RDX"
+  ks.take 3 ++ "RDX" :: ks.drop 3
+
+/-- **The check of an allocation pool against a callee**: every name of the pool is kept
+    across a call of `c`, the name at index `3` is `RDX`, and no name occurs twice. -/
+def keepPoolB (c : CalleeSig) (pool : List String) : Bool :=
+  pool.all (keptB c) && decide (pool[3]? = some "RDX") && decide pool.Nodup
+
+/-- A kept name is a general-purpose name whose machine register is outside the clobber
+    set, and is neither an argument name nor the result name. -/
+theorem keptB_spec {c : CalleeSig} {r : String} (h : keptB c r = true) :
+    gpOk r = true ∧ c.clob (phys r) = false ∧ r ∉ c.args ∧ c.res ≠ some r := by
+  simpa [keptB, and_assoc] using h
+
+/-- **Soundness of `keepPoolB`.** -/
+theorem keepPoolB_spec {c : CalleeSig} {pool : List String} (h : keepPoolB c pool = true) :
+    (∀ r ∈ pool, gpOk r = true ∧ c.clob (phys r) = false ∧ r ∉ c.args ∧ c.res ≠ some r)
+      ∧ pool[3]? = some "RDX" ∧ pool.Nodup := by
+  simp only [keepPoolB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
+  exact ⟨fun r hr => keptB_spec (h.1.1 r hr), h.1.2, h.2⟩
+
+/-- **A register of the pool holds its entry value at every return of a specified
+    callee.** -/
+theorem keepPoolB_keep {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
+    {pool : List String} (h : keepPoolB c pool = true) {s s' : AState} {t : List CTLeak}
+    (hpre : c.pre s) (hrun : X s t s') {r : String} (hr : r ∈ pool) :
+    s'.regs (phys r) = s.regs (phys r) :=
+  hX.keep s t s' hpre hrun _ ((keepPoolB_spec h).1 r hr).2.1
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Callee
