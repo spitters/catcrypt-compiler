@@ -184,7 +184,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.MontDomainElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryTransport
 CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.RadixDecompGeneric
-CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
+CatCrypt.Crypto.Optimizer.Rewrite.RangeSelNF
 CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 CatCrypt.Crypto.Optimizer.Rewrite.WindowedScalarMulGeneric
 CatCrypt.Crypto.Optimizer.ScheduleSearchMontMulNtt
