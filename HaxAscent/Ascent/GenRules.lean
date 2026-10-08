@@ -110,6 +110,33 @@ def CorresG (bi : Builtins) (Γ : S → BList) (G : S → Prop) (e : ImpExpr) (C
   CorresB bi Γ G e (fun σ => if C σ = true then .controlFlow true (W σ) else V σ)
     (fun σ => if C σ = true then T σ else N σ)
 
+/-- **`CorresG` as a weakest precondition.** A plain outcome is the value `V σ` with the
+    bindings `N σ` when the guard `C σ` is off; a control-flow outcome is the early exit
+    `controlFlow true (W σ)` with the bindings `T σ` when the guard is on, or the value
+    `V σ` with the bindings `N σ` when it is off. -/
+theorem corresG_iff_wp {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {C : S → Bool}
+    {W V : S → Value} :
+    CorresG bi Γ G e C W V T N ↔ ∀ σ, G σ → ∀ env, Binds env (Γ σ) →
+      wp bi e (fun v s => C σ = false ∧ v = V σ ∧ Binds s (N σ))
+        (fun v s => (C σ = true ∧ v = .controlFlow true (W σ) ∧ Binds s (T σ)) ∨
+          (C σ = false ∧ v = V σ ∧ Binds s (N σ))) env := by
+  unfold CorresG
+  rw [corresB_iff_wp]
+  refine forall_congr' fun σ => forall_congr' fun _ => forall_congr' fun env =>
+    forall_congr' fun _ => wp_congr fun v s => ?_
+  rw [wpPost_self]
+  cases hc : v.isControlFlow
+  · rw [wpPost_of_plain hc]
+    cases hC : C σ
+    · simp only [Bool.false_eq_true, if_false, true_and]
+    · simp only [if_true, Bool.true_eq_false, false_and, iff_false, not_and]
+      rintro rfl
+      simp [Value.isControlFlow] at hc
+  · rw [wpPost_of_cf hc]
+    cases hC : C σ
+    · simp only [Bool.false_eq_true, if_false, false_and, true_and, false_or]
+    · simp only [if_true, Bool.true_eq_false, false_and, true_and, or_false]
+
 theorem CorresG.plain {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {W V : S → Value}
     (h : CorresG bi Γ G e (fun _ => false) W V T N) : CorresB bi Γ G e V N := h
 
@@ -145,23 +172,17 @@ theorem corresG_seq {Γ N₁ T₁ N₂ T₂ : S → BList} {G : S → Prop} {e1 
     CorresG bi Γ G (.seq e1 e2) (fun σ => C₁ σ || C₂ σ)
       (fun σ => if C₁ σ = true then W₁ σ else W₂ σ) V₂
       (fun σ => if C₁ σ = true then T₁ σ else T₂ σ) N₂ := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := h1 env σ hP hG
-  cases hC : C₁ σ with
-  | true =>
-    simp only [hC, if_true] at hQ₁ r₁
-    refine ⟨f₁, e₁, ?_, fun fuel hf => ?_⟩
-    · simp only [hC, Bool.true_or, if_true]; exact hQ₁
-    · simp only [hC, Bool.true_or, if_true]
-      exact denote'_seq_cf bi fuel (r₁ fuel hf)
-  | false =>
-    simp only [hC, Bool.false_eq_true, if_false] at hQ₁ r₁
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := h2 e₁ σ hQ₁ ⟨hG, hC⟩
-    refine ⟨max f₁ f₂, e₂, ?_, fun fuel hf => ?_⟩
-    · simp only [hC, Bool.false_or, Bool.false_eq_true, if_false]; exact hQ₂
-    · simp only [hC, Bool.false_or, Bool.false_eq_true, if_false]
-      rw [denote'_seq bi fuel (r₁ fuel (by omega)) (hp σ hG hC)]
-      exact r₂ fuel (by omega)
+  rw [corresG_iff_wp] at h1 h2 ⊢
+  intro σ hG env hP
+  rw [wp_seq]
+  refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨hC, _, hN⟩ => ?_) fun v s hc h => ?_
+  · refine wp_mono (h2 σ ⟨hG, hC⟩ s hN) (fun _ _ _ h => ?_) fun _ _ _ h => ?_ <;>
+      simpa only [hC, Bool.false_or, Bool.false_eq_true, if_false] using h
+  · rcases h with ⟨hC, hv, hT⟩ | ⟨hC, rfl, -⟩
+    · simp only [hC, Bool.true_or, if_true, true_and, Bool.true_eq_false, false_and, or_false]
+      exact ⟨hv, hT⟩
+    · rw [hp σ hG hC] at hc
+      cases hc
 
 /-- **`let` with a guarded exit.** -/
 theorem corresG_letBind {Γ N₁ T₁ N₂ T₂ : S → BList} {G : S → Prop} {x : String}
@@ -173,23 +194,19 @@ theorem corresG_letBind {Γ N₁ T₁ N₂ T₂ : S → BList} {G : S → Prop} 
     CorresG bi Γ G (.letBind x val body) (fun σ => C₁ σ || C₂ σ)
       (fun σ => if C₁ σ = true then W₁ σ else W₂ σ) V₂
       (fun σ => if C₁ σ = true then T₁ σ else T₂ σ) N₂ := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := h1 env σ hP hG
-  cases hC : C₁ σ with
-  | true =>
-    simp only [hC, if_true] at hQ₁ r₁
-    refine ⟨f₁, e₁, ?_, fun fuel hf => ?_⟩
-    · simp only [hC, Bool.true_or, if_true]; exact hQ₁
-    · simp only [hC, Bool.true_or, if_true]
-      exact denote'_letBind_cf bi fuel (r₁ fuel hf)
-  | false =>
-    simp only [hC, Bool.false_eq_true, if_false] at hQ₁ r₁
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := h2 _ σ (binds_extend hQ₁ x _) ⟨hG, hC⟩
-    refine ⟨max f₁ f₂, e₂, ?_, fun fuel hf => ?_⟩
-    · simp only [hC, Bool.false_or, Bool.false_eq_true, if_false]; exact hQ₂
-    · simp only [hC, Bool.false_or, Bool.false_eq_true, if_false]
-      rw [denote'_letBind bi fuel (r₁ fuel (by omega)) (hp σ hG hC)]
-      exact r₂ fuel (by omega)
+  rw [corresG_iff_wp] at h1 h2 ⊢
+  intro σ hG env hP
+  rw [wp_letBind]
+  refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨hC, hv, hN⟩ => ?_) fun v s hc h => ?_
+  · subst hv
+    refine wp_mono (h2 σ ⟨hG, hC⟩ _ (binds_extend hN x _)) (fun _ _ _ h => ?_)
+      fun _ _ _ h => ?_ <;>
+      simpa only [hC, Bool.false_or, Bool.false_eq_true, if_false] using h
+  · rcases h with ⟨hC, hv, hT⟩ | ⟨hC, rfl, -⟩
+    · simp only [hC, Bool.true_or, if_true, true_and, Bool.true_eq_false, false_and, or_false]
+      exact ⟨hv, hT⟩
+    · rw [hp σ hG hC] at hc
+      cases hc
 
 /-- **Conditional with guarded exits in the branches.** -/
 theorem corresG_ifThenElse {Γ N₀ Nt Tt Ne Te : S → BList} {G : S → Prop} {c t e : ImpExpr}

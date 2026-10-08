@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import HaxAscent.Ascent.Corres
+public import HaxAscent.Ascent.Wp
 public import Lean
 public meta import Lean
 
@@ -56,6 +57,7 @@ by pattern unification in a worklist over goals.
   `corresB_ifThenElse`, `corresArgsB_nil`, `corresArgsB_cons`, `corresB_app`,
   `corresB_tuple`, `corresB_proj`, `corresB_typeAscription`, `corresB_borrow`,
   `corresB_deref`, `corresB_cfBreak`, `corresB_cfContinue`, `corresB_forFold`
+* `corresB_iff_wp` — `CorresB` as a weakest precondition
 * the tactics `hax_corres` and `hax_corres_side`
 -/
 
@@ -181,6 +183,14 @@ def CorresB (bi : Builtins) (Γ : S → List (String × Value)) (G : S → Prop)
 def CorresArgsB (bi : Builtins) (Γ : S → List (String × Value)) (G : S → Prop)
     (es : List ImpExpr) (Vs : S → List Value) (Γ' : S → List (String × Value)) : Prop :=
   CorresArgs bi (fun env σ => Binds env (Γ σ)) G es Vs (fun env σ => Binds env (Γ' σ))
+
+/-- **`CorresB` as a weakest precondition.** The postcondition is the value `V σ` with the
+    exit bindings `Γ' σ`, at plain and control-flow outcomes alike. -/
+theorem corresB_iff_wp {Γ Γ' : S → List (String × Value)} {G : S → Prop} {e : ImpExpr}
+    {V : S → Value} :
+    CorresB bi Γ G e V Γ' ↔ ∀ σ, G σ → ∀ env, Binds env (Γ σ) →
+      wp bi e (fun v s => v = V σ ∧ Binds s (Γ' σ)) (fun v s => v = V σ ∧ Binds s (Γ' σ)) env :=
+  corres_iff_wp
 
 /-- **Entry and exit of a binding-list derivation.** A `CorresB` from the bindings `Γ₀`
     gives the correspondence from any entry relation that implies them, with the value

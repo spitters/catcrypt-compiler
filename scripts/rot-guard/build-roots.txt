@@ -1089,10 +1089,10 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
+HaxAscent.Ascent.CorresRRel
 HaxAscent.Ascent.FnCorresUnique
 HaxAscent.Ascent.IfBreak
 HaxAscent.Ascent.LocalCalls
-HaxAscent.Ascent.WpInstances
 HaxAscent.Calculus.CorresMCutPointRustM
 HaxAscent.Calculus.RustMSquareSpec
 HaxAscent.RustSemantics

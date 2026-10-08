@@ -7,6 +7,7 @@ module
 
 public import HaxAscent.Ascent.WhileFold
 public import HaxAscent.Ascent.Exit
+public import HaxAscent.Ascent.Wp
 
 /-!
 # Early exit in the `denote'` correspondence
@@ -45,6 +46,8 @@ the `AbsProg.except` refinement of `optGuard G f` by `haxEvalX bi e`.
 
 * `excVal`, `CorresX`, `corresX_of_corres`, `corresX_conseq`, `corresX_throw`,
   `corresX_seq`, `corresX_letBind`, `corresX_ifThenElse`
+* `corresX_iff_wp` — `CorresX` as the weakest precondition at the outcome postcondition
+  `wpPost_except_iff` of an `Except` result
 * `corres_cfBreakContinue`
 * `fwdLoop_corres`, `corres_forFoldReturn`, `corres_forFoldRevReturn`,
   `corres_whileFoldReturn`
@@ -198,6 +201,55 @@ def excExit (Q₁ Q₂ : Env → S → Prop) (R : S → Except Value Value) (env
   | .ok _ => Q₂ env σ
   | .error _ => Q₁ env σ
 
+/-- The outcome postcondition of an `Except` result: a plain value is the normal result,
+    and a control-flow value is either an early exit or a normal result. -/
+theorem wpPost_except_iff (r : Except Value Value) (q : Env → Prop) (v : Value) (s : Env) :
+    wpPost (fun v s => r = .ok v ∧ q s)
+      (fun v s => ((∃ w, r = .error w ∧ v = .controlFlow true w) ∨ r = .ok v) ∧ q s) v s ↔
+      v = excVal r ∧ q s := by
+  cases hc : v.isControlFlow
+  · rw [wpPost_of_plain hc]
+    cases r with
+    | ok u =>
+      constructor
+      · rintro ⟨h, hq⟩
+        exact ⟨(Except.ok.inj h).symm, hq⟩
+      · rintro ⟨rfl, hq⟩
+        exact ⟨rfl, hq⟩
+    | error w =>
+      refine ⟨fun ⟨h, _⟩ => (nomatch h), fun ⟨h, _⟩ => ?_⟩
+      subst h
+      simp [excVal, Value.isControlFlow] at hc
+  · rw [wpPost_of_cf hc]
+    cases r with
+    | ok u =>
+      refine ⟨fun ⟨h, hq⟩ => ?_, fun ⟨h, hq⟩ => ⟨Or.inr (h ▸ rfl), hq⟩⟩
+      rcases h with ⟨w, h, _⟩ | h
+      · exact nomatch h
+      · exact ⟨(Except.ok.inj h).symm, hq⟩
+    | error w =>
+      refine ⟨fun ⟨h, hq⟩ => ?_, fun ⟨h, hq⟩ => ⟨Or.inl ⟨w, rfl, h⟩, hq⟩⟩
+      rcases h with ⟨w', h, hv⟩ | h
+      · cases h
+        exact ⟨hv, hq⟩
+      · exact nomatch h
+
+/-- **`CorresX` as a weakest precondition.** A plain outcome is the normal result `R σ`;
+    a control-flow outcome is the early exit `controlFlow true w` of `R σ = .error w`, or a
+    normal result that is itself a control-flow value. -/
+theorem corresX_iff_wp {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
+    {R : S → Except Value Value} :
+    CorresX bi P G e R Q ↔ ∀ σ, G σ → ∀ env, P env σ →
+      wp bi e (fun v s => R σ = .ok v ∧ Q s σ)
+        (fun v s => ((∃ w, R σ = .error w ∧ v = .controlFlow true w) ∨ R σ = .ok v) ∧ Q s σ)
+        env := by
+  unfold CorresX
+  rw [corres_iff_wp]
+  refine forall_congr' fun σ => forall_congr' fun _ => forall_congr' fun env =>
+    forall_congr' fun _ => wp_congr fun v s => ?_
+  rw [wpPost_self]
+  exact (wpPost_except_iff (R σ) (fun s => Q s σ) v s).symm
+
 theorem corresX_of_corres {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr}
     {V : S → Value} (h : Corres bi P G e V Q) : CorresX bi P G e (fun σ => .ok (V σ)) Q := h
 
@@ -224,23 +276,17 @@ theorem corresX_seq {P Q₁ Q₂ : Env → S → Prop} {G : S → Prop} {e1 e2 :
     (hplain : ∀ σ v, G σ → R₁ σ = .ok v → v.isControlFlow = false)
     (h2 : CorresX bi Q₁ (fun σ => G σ ∧ ∃ v, R₁ σ = .ok v) e2 R₂ Q₂) :
     CorresX bi P G (.seq e1 e2) (fun σ => (R₁ σ).bind fun _ => R₂ σ) (excExit Q₁ Q₂ R₁) := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := h1 env σ hP hG
-  dsimp only at r₁ ⊢
-  cases hR : R₁ σ with
-  | error w =>
-    refine ⟨f₁, e₁, by simp only [excExit, hR]; exact hQ₁, fun fuel hf => ?_⟩
-    have r := r₁ fuel hf
-    simp only [hR, excVal] at r
-    rw [denote'_seq_cf bi fuel r]
-    rfl
-  | ok v =>
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := h2 e₁ σ hQ₁ ⟨hG, v, hR⟩
-    refine ⟨max f₁ f₂, e₂, by simp only [excExit, hR]; exact hQ₂, fun fuel hf => ?_⟩
-    have r := r₁ fuel (by omega)
-    simp only [hR, excVal] at r
-    rw [denote'_seq bi fuel r (hplain σ v hG hR)]
-    exact r₂ fuel (by omega)
+  rw [corresX_iff_wp] at h1 h2 ⊢
+  intro σ hG env hP
+  rw [wp_seq]
+  refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨hR, hQ₁⟩ => ?_) fun v s hc ⟨hR, hQ₁⟩ => ?_
+  · refine wp_mono (h2 σ ⟨hG, v, hR⟩ s hQ₁) (fun _ _ _ ⟨h, hQ⟩ => ?_) fun _ _ _ ⟨h, hQ⟩ => ?_ <;>
+      simp only [excExit, hR, Except.bind] <;> exact ⟨h, hQ⟩
+  · rcases hR with ⟨w, hR, hv⟩ | hR
+    · simp only [excExit, hR, Except.bind]
+      exact ⟨Or.inl ⟨w, rfl, hv⟩, hQ₁⟩
+    · rw [hplain σ v hG hR] at hc
+      cases hc
 
 /-- **`let` at the exception level.** A thrown value of the bound expression is the
     result; a normal value `v`, which is not a control-flow value, is bound at `x` and
@@ -252,23 +298,18 @@ theorem corresX_letBind {P Q₁ P₂ Q₂ : Env → S → Prop} {G : S → Prop}
     (hbody : CorresX bi P₂ (fun σ => G σ ∧ ∃ v, R₁ σ = .ok v) body R₂ Q₂) :
     CorresX bi P G (.letBind x val body) (fun σ => (R₁ σ).bind fun _ => R₂ σ)
       (excExit Q₁ Q₂ R₁) := by
-  intro env σ hP hG
-  obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hval env σ hP hG
-  dsimp only at r₁ ⊢
-  cases hR : R₁ σ with
-  | error w =>
-    refine ⟨f₁, e₁, by simp only [excExit, hR]; exact hQ₁, fun fuel hf => ?_⟩
-    have r := r₁ fuel hf
-    simp only [hR, excVal] at r
-    rw [denote'_letBind_cf bi fuel r]
-    rfl
-  | ok v =>
-    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := hbody _ σ (hlink e₁ σ v hQ₁ hG hR) ⟨hG, v, hR⟩
-    refine ⟨max f₁ f₂, e₂, by simp only [excExit, hR]; exact hQ₂, fun fuel hf => ?_⟩
-    have r := r₁ fuel (by omega)
-    simp only [hR, excVal] at r
-    rw [denote'_letBind bi fuel r (hplain σ v hG hR)]
-    exact r₂ fuel (by omega)
+  rw [corresX_iff_wp] at hval hbody ⊢
+  intro σ hG env hP
+  rw [wp_letBind]
+  refine wp_mono (hval σ hG env hP) (fun v s _ ⟨hR, hQ₁⟩ => ?_) fun v s hc ⟨hR, hQ₁⟩ => ?_
+  · refine wp_mono (hbody σ ⟨hG, v, hR⟩ _ (hlink s σ v hQ₁ hG hR))
+      (fun _ _ _ ⟨h, hQ⟩ => ?_) fun _ _ _ ⟨h, hQ⟩ => ?_ <;>
+      simp only [excExit, hR, Except.bind] <;> exact ⟨h, hQ⟩
+  · rcases hR with ⟨w, hR, hv⟩ | hR
+    · simp only [excExit, hR, Except.bind]
+      exact ⟨Or.inl ⟨w, rfl, hv⟩, hQ₁⟩
+    · rw [hplain σ v hG hR] at hc
+      cases hc
 
 /-- **Conditional at the exception level.** -/
 theorem corresX_ifThenElse {P Q₁ Q : Env → S → Prop} {G : S → Prop} {c t e : ImpExpr}
