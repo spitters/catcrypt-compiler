@@ -848,6 +848,51 @@ theorem ownedCheckMC_checked_at {sym : LinstrRM → SSt → SOut} {dec : SSt →
           exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
             oblCheckWith_spec hG hG' h2⟩
 
+/-- **The checker with an entry set**: `ownedCheckMC`, and at the entry block the live
+    names of the computed live sets are names of `ins` and the flags are dead. A pair it
+    accepts is matched from two start states that agree on the names `ins`, the arrays and
+    the word memory (`OwnedCheckFuel.ownedCheckMCIn_sound_rel`). -/
+def ownedCheckMCIn (ins outs : List String) (B B' : List LinstrRM)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
+  match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
+  | some G, some G' =>
+      let A := constAnnot B G sym
+      let A' := constAnnot B' G' sym
+      let R := runsOfC A A' B B' G G' sym
+      let L := liveIter outs B G R (4 * G.blocks.size + 64)
+        (Array.replicate G.blocks.size ([], false)) dec
+      ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
+        && oblCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
+        && factCheck A B G sym && factCheck A' B' G' sym
+        && (L.getD 0 ([], false)).1.all (fun r => ins.contains r)
+        && !(L.getD 0 ([], false)).2
+  | _, _ => false
+
+/-- A pair `ownedCheckMCIn ins` accepts under `sym` and `dec` satisfies `CheckedC` and the
+    index obligations for some live sets and facts, the live names of the entry block are
+    names of `ins` and its flags are dead, when `sym` and `dec` commute with
+    substitution. -/
+theorem ownedCheckMCIn_checked_at {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hS : SymSubst sym dec) {ins outs : List String}
+    {B B' : List LinstrRM} (h : ownedCheckMCIn ins outs B B' sym dec = true) :
+    ∃ L A A' G G', CheckedC outs L A A' B B' G G' sym dec ∧
+      (∀ k < G.blocks.size,
+        oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) ∧
+      (∀ r ∈ (L 0).1, r ∈ ins) ∧ (L 0).2 = false := by
+  unfold ownedCheckMCIn at h
+  cases hG : cfgOf (B.map Prod.fst) with
+  | none => simp [hG] at h
+  | some G =>
+      cases hG' : cfgOf (B'.map Prod.fst) with
+      | none => simp [hG, hG'] at h
+      | some G' =>
+          rw [hG, hG'] at h
+          simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true,
+            List.contains_iff_mem] at h
+          obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
+          exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
+            oblCheckWith_spec hG hG' h2, h5, h6⟩
+
 theorem oblOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B' : List LinstrRM}
     {b b' : Block} {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact}
     (h : oblOk L k T B B' b b' sym A A' = true) (hT : T ≠ .ret) {ss : SSt}
@@ -1297,6 +1342,63 @@ theorem checkedC_sound_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
   rw [Nat.sub_zero] at hsim
   exact hsim
 
+/-- **Soundness for given live sets and facts from related start states, with the fuel
+    bound.** Under the hypotheses of `checkedC_sound_at_fuel`, every halting run of `I` on
+    `B` from a state `s` at pc `0` whose accesses are in bounds is matched by a halting run on
+    `B'`, of fuel at most `checkFuel B B' fuel`, from every state `s'` at pc `0` related to
+    `s` by `Rel (L 0)`, whose accesses are in bounds, the end states agreeing on `outs`, the
+    arrays and the word memory. -/
+theorem checkedC_sound_rel_at_fuel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec)
+    {outs : List String} {L : Nat → List String × Bool} {A A' : Nat → List CFact}
+    {B B' : List LinstrRM} {G G' : CFG} (hc : CheckedC outs L A A' B B' G G' sym dec)
+    (hob : ∀ k < G.blocks.size,
+      oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true) (fn : String)
+    (s s' t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (hpc' : s'.prog.base.reg.lpc = 0) (hrel : Rel (L 0) s s') (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
+    (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
+    ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
+      I.lsemFuelMemF (singletonProgM fn B') fuel' s' = some t' ∧ Obs outs t t' ∧
+      I.RunIdxOk (singletonProgM fn B') fuel' s' := by
+  obtain ⟨h0, hs0⟩ := cfgOf_start_zero hc.hG hc.ne
+  obtain ⟨-, hs0'⟩ := cfgOf_start_zero hc.hG' hc.ne'
+  have hsim := simAtCF_all hL hc hob
+    (fuel * (G.blocks.size + 1) + (G.blocks.size - 0) + 1) fuel 0 s s' t
+    (Nat.lt_succ_self _) h0
+    (Or.inl ⟨hpc.trans hs0.symm, hpc'.trans hs0'.symm⟩) hrel
+    ⟨(by rw [factCheck_entry hc.facts]; intro f hf; cases hf),
+      (by rw [factCheck_entry hc.facts']; intro f hf; cases hf)⟩ hfn hrun hok
+  unfold checkFuel
+  rw [blockCount_eq hc.hG]
+  rw [Nat.sub_zero] at hsim
+  exact hsim
+
+/-- **Soundness of the checker with an entry set on runs in bounds, with the fuel bound.**
+    If the symbolic step `sym` and branch condition `dec` satisfy `SymLaws I sym dec` and
+    `SymSubst sym dec`, and `ownedCheckMCIn ins outs B B' sym dec` accepts, every halting
+    run of `I` on `B` from a state `s` at pc `0` whose accesses are in bounds is matched by a
+    halting run on `B'`, of fuel at most `checkFuel B B' fuel`, from every state `s'` at pc
+    `0` that agrees with `s` on the function, the names `ins`, the arrays and the word
+    memory, whose accesses are in bounds, the end states agreeing on `outs`, the arrays and
+    the word memory. -/
+theorem ownedCheckMCIn_idx_sound_rel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec) (hS : SymSubst sym dec)
+    {ins outs : List String} {B B' : List LinstrRM}
+    (h : ownedCheckMCIn ins outs B B' sym dec = true) (fn : String) (s s' t : LstateMF)
+    (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (hpc' : s'.prog.base.reg.lpc = 0)
+    (hrel : Rel (ins, false) s s') (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t)
+    (hok : I.RunIdxOk (singletonProgM fn B) fuel s) :
+    ∃ fuel' t', fuel' ≤ checkFuel B B' fuel ∧
+      I.lsemFuelMemF (singletonProgM fn B') fuel' s' = some t' ∧ Obs outs t t' ∧
+      I.RunIdxOk (singletonProgM fn B') fuel' s' := by
+  obtain ⟨L, A, A', G, G', hc, hob, hin, hfl⟩ := ownedCheckMCIn_checked_at hS h
+  obtain ⟨h1, h2, h3, h4, -⟩ := hrel
+  exact checkedC_sound_rel_at_fuel hL hc hob fn s s' t hfn hpc hpc'
+    ⟨h1, h2, h3, fun r hr => h4 r (hin r hr), fun hf => absurd (hfl ▸ hf) (by simp)⟩
+    fuel hrun hok
+
 /-- **Soundness for given live sets, with the fuel bound.** If the symbolic step `sym` and
     branch condition `dec` satisfy `SymLaws I sym dec`, and
     `ownedCheckWith outs L B B' sym dec` and `oblCheckWith L B B' sym` accept, every halting
@@ -1412,6 +1514,28 @@ theorem ownedCheckMC_sound_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     fn s t hfn hpc fuel (I.lsemFuelMemF_of_checked _ fuel s t hrun)
     (I.runIdxOk_of_checked _ fuel s t hrun)
   exact ⟨f', t', I.lsemFuelMemFk_of_runIdxOk true _ f' s t' hr hok, hobs⟩
+
+/-- **Soundness of the checker with an entry set on bounds-checked runs, over an
+    instruction set.** If the symbolic step `sym` and branch condition `dec` satisfy
+    `SymLaws I sym dec` and `SymSubst sym dec`, and `ownedCheckMCIn ins outs B B' sym dec`
+    accepts, every halting checked run of the singleton program over `B` from a state `s` at
+    pc `0` of that function is matched by a halting checked run of the singleton program
+    over `B'` from every state `s'` at pc `0` that agrees with `s` on the function, the
+    names `ins`, the arrays and the word memory, the end states agreeing on the registers
+    `outs`, on the arrays and on the word memory. -/
+theorem ownedCheckMCIn_sound_rel {I : Isa} {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hL : SymLaws I sym dec) (hS : SymSubst sym dec)
+    {ins outs : List String} {B B' : List LinstrRM}
+    (h : ownedCheckMCIn ins outs B B' sym dec = true) (fn : String) (s s' t : LstateMF)
+    (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0) (hpc' : s'.prog.base.reg.lpc = 0)
+    (hrel : Rel (ins, false) s s') (fuel : Nat)
+    (hrun : I.lsemFuelMemFk true (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemFk true (singletonProgM fn B') fuel' s' = some t' ∧
+      Obs outs t t' := by
+  obtain ⟨f', t', -, hr, hobs, hok⟩ := OwnedCheckFuel.ownedCheckMCIn_idx_sound_rel hL hS h
+    fn s s' t hfn hpc hpc' hrel fuel (I.lsemFuelMemF_of_checked _ fuel s t hrun)
+    (I.runIdxOk_of_checked _ fuel s t hrun)
+  exact ⟨f', t', I.lsemFuelMemFk_of_runIdxOk true _ f' s' t' hr hok, hobs⟩
 
 /-- **Soundness of the checker on bounds-checked runs.** If `ownedCheckMC outs B B'`
     accepts, every halting checked run (`lsemFuelMemFk true`) of the singleton program over

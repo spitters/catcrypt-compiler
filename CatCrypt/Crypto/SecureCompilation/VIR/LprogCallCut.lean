@@ -734,9 +734,10 @@ end CutOk
     instruction set `I`.** `site` sends an entry or exit of `B` to one of `B'`. `R e`
     relates a state of `B` at the entry `e` to a state of `B'` at the entry `site e`, and
     `Q x` relates the end states of two segments with the exits `x` and `site x`. Equal
-    states are related at the entry of the bodies; a halting run on `I` of a cut program of
-    `B` from a related state is matched by a halting run on `I` of the cut program of `B'`
-    to states related by `Q`; states related by `Q` at the end of the bodies agree on the
+    states are related at the entry of the bodies; for an entry `e` and an exit `x` of `B`,
+    a halting run on `I` of the cut program of `B` from a state related to a state `s'` of
+    `fn` is matched by a halting run on `I` of the cut program of `B'` from `s'` to states
+    related by `Q`; states related by `Q` at the end of the bodies agree on the
     registers `outs`, the arrays and the word memory; and from states related by `Q` at a
     shadow instruction, the step of the summary on `B` is matched by the step of the
     summary on `B'` to states related by `R`. -/
@@ -747,7 +748,8 @@ structure CutSimI (I : Isa) (T : ProcTable) (outs : List String) (fn : String)
   Q : Option Nat → LstateMF → LstateMF → Prop
   site_none : site none = none
   init : ∀ s, R none s s
-  seg : ∀ e x s s' u, R e s s' → CutRun I fn (cut e x) s u →
+  seg : ∀ e x s s' u, IsSite T B e → IsSite T B x → s'.prog.lfn = fn → R e s s' →
+    CutRun I fn (cut e x) s u →
     ∃ u', CutRun I fn (cut' (site e) (site x)) s' u' ∧ Q x u u'
   fin : ∀ t t', Q none t t' → Obs outs t t'
   glue : ∀ p u u' v, Q (some p) u u' → Glue T (singletonProgM fn B) p u v →
@@ -1918,6 +1920,25 @@ def FnStable (I : Isa) : Prop :=
 theorem fnStable_x86Isa : FnStable x86Isa := fun P i s u h =>
   (X86Backend.AllocCheck.LcmdCFG.evalInstrPMemF_next P i s u h).1
 
+/-- A halting run of an instruction set whose steps stay in the function ends in the
+    function of its start state. -/
+theorem FnStable.lsemFuelMemF_lfn {I : Isa} (hS : FnStable I) (P : LprogM) :
+    ∀ (n : Nat) (s t : LstateMF), I.lsemFuelMemF P n s = some t → t.prog.lfn = s.prog.lfn
+  | 0, s, t, h => by
+      simp only [Isa.lsemFuelMemF] at h
+      split at h
+      · cases h; rfl
+      · cases h
+  | n + 1, s, t, h => by
+      simp only [Isa.lsemFuelMemF] at h
+      split at h
+      · cases h; rfl
+      · rename_i i _
+        split at h
+        · rename_i s' hs'
+          exact (hS.lsemFuelMemF_lfn P n s' t h).trans (hS P i s s' hs')
+        · cases h
+
 /-- The label a conditional jump or a goto jumps to. -/
 def jumpLabel? : LinstrR → Option LLabel
   | .Lcond _ l => some l
@@ -2316,9 +2337,10 @@ theorem Glue.goto {T : ProcTable} {P : LprogM} {p : Nat} {u v : LstateMF}
     simulation `CutSimI I`, a chain of segments of `B'`.** The branch condition of `I` does
     not read the counter, `I` refuses the procedures of `T`, the steps of `I` stay in the
     function, and the cut programs of `B'` are cuts that halt only at their exits. From a
-    state of `fn` related by `R e` to the start of the chain, the chain of segments of `B'`
-    starts at the entry position of `site e` and ends in a state that agrees with the end
-    of the chain on the registers `outs`, the arrays and the word memory. -/
+    state of `fn` related by `R e` to the start of the chain, for an entry `e` of `B`, the
+    chain of segments of `B'` starts at the entry position of `site e` and ends in a state
+    that agrees with the end of the chain on the registers `outs`, the arrays and the word
+    memory. -/
 theorem runChain_of_cutChainI {I : Isa} {T : ProcTable} {outs : List String} {fn : String}
     {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
     {pos' : Option Nat → Option Nat → Nat → Nat} (hI : PcFree I) (hR : I.RefusesProcs T)
@@ -2327,7 +2349,8 @@ theorem runChain_of_cutChainI {I : Isa} {T : ProcTable} {outs : List String} {fn
       IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x))
     (sim : CutSimI I T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
     (h : CutChain I T fn B cut e s t) :
-    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B' (sim.site e) →
+    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B e →
+      IsSite T B' (sim.site e) →
       ∃ t', RunChain I T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
         Obs outs t t' := by
   have hle : ∀ e, IsSite T B' e → entryPos e ≤ B'.length := by
@@ -2339,16 +2362,19 @@ theorem runChain_of_cutChainI {I : Isa} {T : ProcTable} {outs : List String} {fn
         exact (List.getElem?_eq_some_iff.mp hi).1
   induction h with
   | @done e s t hrun _ =>
-      intro s' hRs hfn he
-      obtain ⟨u', hrun', hQ⟩ := sim.seg e none s s' t hRs hrun
+      intro s' hRs hfn hB he
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e none s s' t hB trivial hfn hRs hrun
       rw [sim.site_none] at hrun'
       obtain ⟨hc, hv⟩ := hcut' (sim.site e) none he trivial
       obtain ⟨q, hseg⟩ := segTo_of_cutRun hI hR hS hc hv hfn (hle _ he) hrun'
       have ho : Obs outs t u' := sim.fin _ _ hQ
       exact ⟨_, .done hseg, ho.1, ho.2.1, ho.2.2⟩
   | @call e s u v t p hrun _ hglue _ ih =>
-      intro s' hRs hfn he
-      obtain ⟨u', hrun', hQ⟩ := sim.seg e (some p) s s' u hRs hrun
+      intro s' hRs hfn hB he
+      have hp : IsSite T B (some p) := by
+        obtain ⟨i, pr, dst, srcs, hi, hpq, -⟩ := hglue
+        exact ⟨i, hi, by simp only [isProcB, hpq, Option.isSome_some]⟩
+      obtain ⟨u', hrun', hQ⟩ := sim.seg e (some p) s s' u hB hp hfn hRs hrun
       obtain ⟨q, v', hsite, hglue', hR'⟩ := sim.glue p u u' v hQ hglue
       have hq : IsSite T B' (some q) := by
         obtain ⟨i, pr, dst, srcs, hi, hpq, -⟩ := hglue'
@@ -2363,16 +2389,16 @@ theorem runChain_of_cutChainI {I : Isa} {T : ProcTable} {outs : List String} {fn
       subst hqq
       have hg := hglue'.goto q'
       have hfn' : v'.prog.lfn = fn := (hg.atPc_succ hat).1
-      obtain ⟨t', hch, hobs⟩ := ih v' hR' hfn' (by rw [hsite]; exact hq)
+      obtain ⟨t', hch, hobs⟩ := ih v' hR' hfn' hp (by rw [hsite]; exact hq)
       rw [hsite] at hch
       exact ⟨t', .call q' hseg hg hch, hobs⟩
 
 /-- **A chain of halting runs of cut programs of `B` is, under a simulation `CutSim`, a
     chain of segments of `B'`.** The cut programs of `B'` are cuts that halt only at their
-    exits. From a state of `fn` related by `R e` to the start of the chain, the chain of
-    segments of `B'` starts at the entry position of `site e` and ends in a state that
-    agrees with the end of the chain on the registers `outs`, the arrays and the word
-    memory. -/
+    exits. From a state of `fn` related by `R e` to the start of the chain, for an entry `e`
+    of `B`, the chain of segments of `B'` starts at the entry position of `site e` and ends
+    in a state that agrees with the end of the chain on the registers `outs`, the arrays and
+    the word memory. -/
 theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
     {B B' : List LinstrRM} {cut cut' : Option Nat → Option Nat → List LinstrRM}
     {pos' : Option Nat → Option Nat → Nat → Nat}
@@ -2380,7 +2406,8 @@ theorem runChain_of_cutChain {T : ProcTable} {outs : List String} {fn : String}
       IsCut T fn B' e x (cut' e x) (pos' e x) ∧ IsCutRev T B' x (cut' e x) (pos' e x))
     (sim : CutSim T outs fn B B' cut cut') {e : Option Nat} {s t : LstateMF}
     (h : CutChain x86Isa T fn B cut e s t) :
-    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B' (sim.site e) →
+    ∀ (s' : LstateMF), sim.R e s s' → s'.prog.lfn = fn → IsSite T B e →
+      IsSite T B' (sim.site e) →
       ∃ t', RunChain x86Isa T (singletonProgM fn B') (goto s' (entryPos (sim.site e))) t' ∧
         Obs outs t t' :=
   runChain_of_cutChainI x86Isa_pcFree (x86Isa_refusesProcs T) fnStable_x86Isa hcut' sim h
@@ -2403,7 +2430,7 @@ theorem cutCheck_soundI {I : Isa} {T : ProcTable} {outs : List String} {fn : Str
   intro sim s t hfn hpc fuel hrun
   have hch := withProcs_run_cut hI hR hcut fuel s t hfn hpc hrun
   obtain ⟨t', hrc, hobs⟩ := runChain_of_cutChainI hI hR hS hcut' sim hch s (sim.init s) hfn
-    (by rw [sim.site_none]; trivial)
+    trivial (by rw [sim.site_none]; trivial)
   rw [sim.site_none] at hrc
   have hs : goto s (entryPos none) = s := by
     calc goto s (entryPos none) = goto s s.prog.base.lpc := by rw [hpc]; rfl
