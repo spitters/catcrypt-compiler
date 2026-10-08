@@ -944,7 +944,7 @@ theorem forArrHead_stepsL {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
       rw [hat'.2, hzseg, hqseg]
       simp only [typedMoves, List.length_append, List.length_cons, List.length_nil]
       omega)
-  exact ⟨_, u, hL.cast (by rw [hzseg]), ⟨hat'.1, hat'.2⟩, rest⟩
+  exact ⟨_, u, hL.cast (by rw [hzseg]), ⟨hat'.1, hat'.2⟩, rest.2⟩
 
 /-- **The tail of a counted trip, with its events.** The run of `forArrTail_steps` is a
     traced run with the events of the parallel assignment of the returned arrays at the
@@ -1019,7 +1019,7 @@ theorem forArrTail_stepsL {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
       rw [hat'.2, hzseg, hqseg]
       simp only [List.length_append, List.length_cons, List.length_nil, advanceOps]
       omega)
-  exact ⟨_, u, hL.cast (by rw [hzseg]), ⟨hat'.1, hat'.2⟩, rest⟩
+  exact ⟨_, u, hL.cast (by rw [hzseg]), ⟨hat'.1, hat'.2⟩, rest.2⟩
 
 /-- **The shift of a carried block, with its events.** The run of `forArrShift_steps` is a
     traced run with the events `forShiftLeak` of the moves of the carried arrays. -/
@@ -1989,7 +1989,7 @@ theorem whileTail_stepsL {P : LprogM} {d nCar bD : Nat} {ops : List LOperand} {f
       show pre ++ seg = _
       rw [hseg])
     hat hlen hD hops hf hbit
-  refine ⟨seg.length, t, stepsL_of_quiet hbP hq hat hs ?_, ⟨hat'.1, hat'.2⟩, rest⟩
+  refine ⟨seg.length, t, stepsL_of_quiet hbP hq hat hs ?_, ⟨hat'.1, hat'.2⟩, rest.2⟩
   rw [hat'.2, hseg]
   simp only [List.length_append, List.length_cons, List.length_nil, parMoves_length,
     carriedRegs_length, hlen]

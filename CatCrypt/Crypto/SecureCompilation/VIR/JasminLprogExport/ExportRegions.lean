@@ -210,6 +210,9 @@ shadow instructions `x86Isa` refuses (`Isa.RefusesProcs`), is `exportR_sim_procs
 * `LabelsOK` — the label facts of an export.
 * `RegionFrame d n s s'` — `s'` reads as `s` at every register and array name outside the
   registers `regName k`, `d ≤ k`, and the counters `loopCtr l`, `n ≤ l`.
+* `tripFactor` — the factor of the step bound of `ExportRSim`: a run of the export of `p`
+  at the denotation fuel `fuel` takes at most `tripFactor fuel p` times the length of the
+  code.
 * `ResAgrees`, `BindMemN`, `ExportRSim`, `StraightMemN` — the returned-operand agreement,
   the fragment of a binding, the simulation statement, and returns under bindings.
 * `isRegTy`, `RegTys` — the types held in a register cell, and the lists of such types.
@@ -1377,14 +1380,51 @@ def ResAgrees (nArgs D : Nat) (s : LstateM) {ts : List JasminTy} (ops : List LOp
 def BindMemN {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t) : Prop :=
   ∃ (w : Nat) (v : Ctxt.Var (t :: Γ) (.reg w)), ScalarMemN (Com.var e (Com.ret v))
 
+/-- **The trip factor of a program at the denotation fuel `fuel`**: a number of times
+    that bounds how often a run of the export of `p` executes an instruction of the
+    export. A binding and a call count one, a branch the sum of its arms and continuation,
+    a counted loop `2 ^ 64` times its body, and a loop in exit-flag form `fuel` times its
+    body. -/
+def tripFactor (fuel : Nat) :
+    {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts → Nat
+  | _, _, .ret _ => 0
+  | _, _, .var _ k => 1 + tripFactor fuel k
+  | _, _, .forLoop _ _ body k =>
+      2 + 2 ^ 64 * (1 + tripFactor fuel body) + tripFactor fuel k
+  | _, _, .ifThenElse _ thn els k =>
+      2 + tripFactor fuel thn + tripFactor fuel els + tripFactor fuel k
+  | _, _, .whileLoop _ body k => 1 + fuel * (1 + tripFactor fuel body) + tripFactor fuel k
+  | _, _, .call _ _ k => 1 + tripFactor fuel k
+
+/-- A run of `s` steps over a segment of length `s`, a run of at most `X` times a segment of
+    length `lx` and a run of at most `Y` times a segment of length `ly` take together at
+    most `M` times the length `L`, when the three segments lie in `L` and `1 + X + Y ≤ M`. -/
+theorem steps_le_factor {k s x y X Y lx ly M L : Nat} (hx : x ≤ X * lx) (hy : y ≤ Y * ly)
+    (hk : k ≤ s + x + y) (hL : s + lx + ly ≤ L) (hM : 1 + X + Y ≤ M) : k ≤ M * L := by
+  have h1 : X * lx ≤ X * L := Nat.mul_le_mul_left X (by omega)
+  have h2 : Y * ly ≤ Y * L := Nat.mul_le_mul_left Y (by omega)
+  have h3 : (1 + X + Y) * L ≤ M * L := Nat.mul_le_mul_right L hM
+  have h4 : (1 + X + Y) * L = L + X * L + Y * L := by
+    rw [Nat.add_mul, Nat.add_mul, Nat.one_mul]
+  omega
+
+/-- A trip of at most `T` steps followed by a run of at most `n * T` steps takes at most
+    `(n + 1) * T` steps. -/
+theorem trips_le_succ {k k' T n : Nat} (h : k ≤ T) (h' : k' ≤ n * T) :
+    k + k' ≤ (n + 1) * T := by
+  rw [Nat.succ_mul]
+  omega
+
 /-- **The simulation statement of the region export.** For every export of `p` at the
     depth of its context, placed in the body of `P` after a prefix that declares no label
     from the counter on: from a state at the first instruction whose store agrees with `V`,
-    if `p` denotes `v` at `V` then a run of steps of `P` on the instruction set `I` reaches
-    the counter after the code in a state that agrees with the returned operands at `v` and
-    differs from the entry state within the frame of the region. The instruction set is
-    the x86 flag machine `x86Isa` unless given, and the denotation consults the call
-    environment of the instance `CallDenote jasminDialect` in scope. -/
+    if `p` denotes `v` at `V` at the fuel `fuel` then a run of steps of `P` on the
+    instruction set `I` reaches the counter after the code in a state that agrees with the
+    returned operands at `v` and differs from the entry state within the frame of the
+    region, and the length of the run is at most `tripFactor fuel p` times the length of the
+    code. The instruction set is the x86 flag machine `x86Isa` unless given, and the
+    denotation consults the call environment of the instance `CallDenote jasminDialect` in
+    scope. -/
 def ExportRSim (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (I : Isa := x86Isa) [CallDenote jasminDialect] : Prop :=
   ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n = some r → Γ.length = d → nArgs ≤ d →
@@ -1397,6 +1437,7 @@ def ExportRSim (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect} {ts : List 
       ∧ atPc P (pre.length + r.code.length) m'
       ∧ ResAgrees nArgs r.depth m'.prog.base r.res v
       ∧ RegionFrame d n m.prog.base m'.prog.base
+      ∧ k ≤ tripFactor fuel p * r.code.length
 
 /-- A run of steps of an instruction set is a run of steps of every instruction set that
     has its steps. -/
@@ -1514,7 +1555,7 @@ theorem exportRSim_ret (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
   subst h
   rw [NFProg.denote_ret, Option.some.injEq] at hden
   exact ⟨0, m, Steps.refl I P m, by simpa using hat,
-    ⟨Γ, V, vs, hlen, hag, rfl, hden.symm⟩, RegionFrame.refl d n _⟩
+    ⟨Γ, V, vs, hlen, hag, rfl, hden.symm⟩, RegionFrame.refl d n _, Nat.zero_le _⟩
 
 /-- The code of a binding is one instruction. -/
 theorem bindOps_eq_singleton (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -1561,17 +1602,20 @@ theorem exportRSim_var (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
         rw [List.mem_singleton.mp hj]; exact hl),
       List.append_nil, ← findLabelMem_eq_none_iff]
     exact hpre l hl'
-  obtain ⟨k', m', hs2, hat2, hres, hfr2⟩ := hk (d + 1) n rk hrk
+  obtain ⟨k', m', hs2, hat2, hres, hfr2, hle2⟩ := hk (d + 1) n rk hrk
     (by rw [List.length_cons, hlen]) (by omega) P (pre ++ [i]) post hfn
     (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]) hlab
     fuel _ v (setBase m (withALUFlags i m.prog.base st')) hden
     (by rw [List.length_append, List.length_singleton]; exact hat1)
     (StoreAgreesM.withALUFlags i m.prog.base hAg')
-  refine ⟨1 + k', m', (steps_of_stepLe hI hs1).trans hs2, ?_, hres, ?_⟩
+  refine ⟨1 + k', m', (steps_of_stepLe hI hs1).trans hs2, ?_, hres, ?_, ?_⟩
   · rw [hcode, List.length_cons]
     rw [List.length_append, List.length_singleton] at hat2
     rwa [show pre.length + (rk.code.length + 1) = pre.length + 1 + rk.code.length by omega]
   · exact ((RegionFrame.of_writeFrame n hFr).withALUFlags i _).trans hfr2 (by omega) le_rfl
+  · rw [hcode, List.length_cons]
+    exact steps_le_factor (s := 1) (x := 0) (X := 0) (lx := 0) (Nat.zero_le _) hle2
+      (by omega) (by omega) (by simp only [tripFactor]; omega)
 
 /-- The operands of a tuple of word variables read, in a store that agrees with `V`, as
     the words of the tuple at `V`. -/
@@ -2224,7 +2268,8 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
           t.prog.base.reg.getW (regName (d + 1 + (cs.length - 1 - varIndex u))) w
             = some (u.lookup acc1))
-      ∧ b.res.length = cs.length := by
+      ∧ b.res.length = cs.length
+      ∧ k + 1 ≤ (1 + tripFactor fuel body) * (b.code.length + 2 * cs.length + 4) := by
   have hag1 : StoreAgreesM nArgs (d + 1) m.prog.base
       (HVector.cons (BitVec.ofNat 64 i) V : Ctxt.Valuation (JasminTy.reg 64 :: Γ)) :=
     storeAgreesM_append (cs := [JasminTy.reg 64])
@@ -2239,7 +2284,7 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
       (HVector.cons (BitVec.ofNat 64 i) V : Ctxt.Valuation (JasminTy.reg 64 :: Γ))) :=
     storeAgreesM_append hcs (by omega) hag1 hblk
   have hbd := exportR_depth_le nArgs fn body _ _ _ hb
-  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hacc⟩, hfr1⟩ :=
+  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hacc⟩, hfr1, hle1⟩ :=
     hsim (d + 1 + cs.length) (n + 2) b hb
       (by simp only [List.length_append, List.length_cons, hlen]; omega) (by omega) P
       (A ++ [labelI n]) R hfn
@@ -2273,7 +2318,9 @@ theorem forLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) (c 
         exact hctr)
   refine ⟨k1 + (2 * cs.length + 3), t, hs1.trans (steps_of_stepLe hI hs2), hat2, ?_, hz, hidx',
     hctr',
-    fun {w} u => ?_, hres_len⟩
+    fun {w} u => ?_, hres_len,
+    steps_le_factor (s := 2 * cs.length + 4) (y := 0) (Y := 0) (ly := 0) hle1 (Nat.zero_le _)
+      (by omega) (by omega) (by omega)⟩
   · exact (hfr1.mono (by omega) (by omega)).trans
       (RegionFrame.of_cells harr fun r hr hl => hoth r hr (hl n le_rfl)) le_rfl le_rfl
   · have hu := JasminLsemSimulation.varIndex_lt u
@@ -2302,7 +2349,9 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
       ∧ RegionFrame d n m.prog.base m'.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
           m'.prog.base.reg.getW (regName (d + 1 + (cs.length - 1 - varIndex u))) w
-            = some (u.lookup accN)) := by
+            = some (u.lookup accN))
+      ∧ k ≤ (rem + 1)
+          * ((1 + tripFactor fuel body) * (b.code.length + 2 * cs.length + 4)) := by
   have hcc : flagCondCC? (condI (.reg "NZ") n) = some (false, n) := rfl
   have hfetch : b.res.length = cs.length →
       P.body[(A ++ labelI n :: b.code).length + 2 * cs.length + 3]?
@@ -2325,18 +2374,19 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
       rw [List.range'_zero, List.foldlM_nil] at hrest
       obtain rfl : acc1 = accN := Option.some.inj hrest
-      obtain ⟨k, t, hs, hat2, hfr, hz, _, _, hblk', hres⟩ :=
+      obtain ⟨k, t, hs, hat2, hfr, hz, _, _, hblk', hres, hle⟩ :=
         forLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
           hden hat hag hidx hctr hblk
       have hc1 : c - 1#64 = 0#64 := by bv_omega
       obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 (hfetch hres)
         (by rw [hz, hc1]; decide)
-      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u⟩
+      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u,
+        by rw [Nat.zero_add, Nat.one_mul]; exact hle⟩
   | succ rem ih =>
       intro i acc accN m c hfold hc hat hag hidx hctr hblk
       rw [List.range'_succ, List.foldlM_cons] at hfold
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
-      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hres⟩ :=
+      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hres, hle⟩ :=
         forLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hR hA fuel V i acc acc1 m c
           hden hat hag hidx hctr hblk
       have hc1 : c - 1#64 ≠ 0#64 := by bv_omega
@@ -2347,12 +2397,12 @@ theorem forLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m : Ls
         (by rw [hz]; simpa using hc1) hl
       have hfr' : RegionFrame d n m.prog.base (goto t (A.length + 1)).prog.base :=
         hfr.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-      obtain ⟨k', m', hs'', hat'', hfr'', hblk''⟩ := ih (i + 1) acc1 accN
+      obtain ⟨k', m', hs'', hat'', hfr'', hblk'', hle''⟩ := ih (i + 1) acc1 accN
         (goto t (A.length + 1)) (c - 1#64) hrest (by bv_omega) hat'
         (StoreAgreesM.of_regionFrame hlen hag hfr')
         (by rw [BitVec.ofNat_add]; exact hidx') hctr' (fun {w} u => hblk' u)
       exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
-        hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u⟩
+        hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u, trips_le_succ hle hle''⟩
 
 end ForLoop
 
@@ -2595,6 +2645,7 @@ theorem whileTail_steps {P : LprogM} {d nCar bD : Nat} {ops : List LOperand} {f 
     (hops : ∀ o ∈ ops, o = .reg (operandName o) ∧ ∀ k, bD ≤ k → operandName o ≠ regName k)
     (hf : ∀ k, bD ≤ k → f ≠ regName k) (hbit : s.prog.base.reg.lvm f = ⟨1, bit⟩) :
     ∃ (k : Nat) (t : LstateMF), Steps x86Isa P k s t ∧ atPc P (pre.length + 2 * nCar + 4) t
+      ∧ k ≤ 2 * nCar + 4
       ∧ t.prog.base.larr = s.prog.base.larr ∧ t.zf = !decide (bit = 1#1)
       ∧ (∀ j, j < nCar → t.prog.base.reg.lvm (regName (d + (nCar - 1 - j)))
           = s.prog.base.reg.lvm (operandName (ops.getD j (.imm 0))))
@@ -2635,8 +2686,8 @@ theorem whileTail_steps {P : LprogM} {d nCar bD : Nat} {ops : List LOperand} {f 
   have hsrc : ∀ r, (∀ k, bD ≤ k → r ≠ regName k) →
       t3.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r hr =>
     ho3 r (hr _ (by omega)) (hr _ (by omega))
-  refine ⟨_, t5, (hs3.trans hs4).trans hs5, ?_, (ha5.trans ha4).trans ha3, ?_, fun j hj => ?_,
-    fun r hr => ?_⟩
+  refine ⟨_, t5, (hs3.trans hs4).trans hs5, ?_, by omega, (ha5.trans ha4).trans ha3, ?_,
+    fun j hj => ?_, fun r hr => ?_⟩
   · rw [List.length_append] at hat5
     rw [show pre.length + 2 * nCar + 4 = pre.length + 3 + 2 * nCar + 1 by omega]
     exact hat5
@@ -2687,11 +2738,12 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
       ∧ t.zf = !(HasBoolBit.toBool (d := jasminDialect) r.head)
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
           t.prog.base.reg.getW (regName (d + (cs.length - 1 - varIndex u))) w
-            = some (u.lookup r.tail)) := by
+            = some (u.lookup r.tail))
+      ∧ k + 1 ≤ (1 + tripFactor fuel body) * (b.code.length + 2 * cs.length + 5) := by
   have hag2 : StoreAgreesM nArgs (d + cs.length) m.prog.base (hvAppend acc V) :=
     storeAgreesM_append hcs harg hag hblk
   have hbd := exportR_depth_le nArgs fn body _ _ _ hb
-  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hr⟩, hfr1⟩ :=
+  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hr⟩, hfr1, hle1⟩ :=
     hsim (d + cs.length) (n + 1) b hb
       (by rw [List.length_append, hlen]; omega) (by omega) P
       (A ++ [labelI n]) R hfn
@@ -2723,7 +2775,7 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
     rw [List.length_append, List.length_singleton] at hat1
     rw [List.length_append, List.length_cons]
     rwa [show A.length + (b.code.length + 1) = A.length + 1 + b.code.length by omega]
-  obtain ⟨k2, t, hs2, hat2, harr, hz, hblk', hoth⟩ :=
+  obtain ⟨k2, t, hs2, hat2, hle2, harr, hz, hblk', hoth⟩ :=
     whileTail_steps (d := d) (nCar := cs.length) (bD := b.depth) (ops := b.res.tail)
       (f := fname) (A ++ labelI n :: b.code) (condI (.reg "NZ") n :: Z) m1 (bit := v0.lookup W)
       (by rw [hbody, hR]; simp only [List.append_assoc, List.cons_append])
@@ -2734,7 +2786,9 @@ theorem whileLoop_trip (acc : Ctxt.Valuation cs)
         exact resolveVar_operandName_ne_regName v0
           (hΔ ▸ JasminLsemSimulation.varIndex_lt v0) k hk)
       hbit
-  refine ⟨k1 + k2, t, hs1.trans (steps_of_stepLe hI hs2), hat2, ?_, hz, fun {w} u => ?_⟩
+  refine ⟨k1 + k2, t, hs1.trans (steps_of_stepLe hI hs2), hat2, ?_, hz, fun {w} u => ?_,
+    steps_le_factor (s := 2 * cs.length + 5) (y := 0) (Y := 0) (ly := 0) hle1 (Nat.zero_le _)
+      (by omega) (by omega) (by omega)⟩
   · exact (hfr1.mono (by omega) (by omega)).trans
       (RegionFrame.of_cells harr fun r hr _ => hoth r hr) le_rfl le_rfl
   · have hu := JasminLsemSimulation.varIndex_lt u
@@ -2759,7 +2813,8 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
       ∧ RegionFrame d n m.prog.base m'.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
           m'.prog.base.reg.getW (regName (d + (cs.length - 1 - varIndex u))) w
-            = some (u.lookup accN)) := by
+            = some (u.lookup accN))
+      ∧ k ≤ f * ((1 + tripFactor fuel body) * (b.code.length + 2 * cs.length + 5)) := by
   have hcc : flagCondCC? (condI (.reg "NZ") n) = some (false, n) := rfl
   have hreslen := exportR_res_length nArgs fn body _ _ _ hb
   have hfetch : P.body[(A ++ labelI n :: b.code).length + 2 * cs.length + 4]?
@@ -2795,7 +2850,7 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
               (fun acc => body.denote fuel (hvAppend acc V)) f r.tail
           else some r.tail) = some accN := h
       obtain ⟨r, hden, hrest⟩ := Option.bind_eq_some_iff.mp h'
-      obtain ⟨k, t, hs, hat2, hfr, hz, hblk'⟩ :=
+      obtain ⟨k, t, hs, hat2, hfr, hz, hblk', hle⟩ :=
         whileLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hfh hR hA fuel V acc r m
           hden hat hag hblk
       by_cases hbt : HasBoolBit.toBool (d := jasminDialect) r.head = true
@@ -2803,15 +2858,17 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
         obtain ⟨hs', hat'⟩ := steps_cc_taken hcc hat2 hfetch (by rw [hz, hbt]; rfl) hl
         have hfr' : RegionFrame d n m.prog.base (goto t (A.length + 1)).prog.base :=
           hfr.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-        obtain ⟨k', m', hs'', hat'', hfr'', hblk''⟩ := ih r.tail accN (goto t (A.length + 1))
+        obtain ⟨k', m', hs'', hat'', hfr'', hblk'', hle''⟩ := ih r.tail accN
+          (goto t (A.length + 1))
           hrest hat' (StoreAgreesM.of_regionFrame hlen hag hfr') (fun {w} u => hblk' u)
         exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
-          hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u⟩
+          hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u, trips_le_succ hle hle''⟩
       · rw [if_neg hbt] at hrest
         obtain rfl : r.tail = accN := Option.some.inj hrest
         obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 hfetch
           (by rw [hz, Bool.not_eq_true] at *; rw [hbt]; decide)
-        exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u⟩
+        exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, fun {w} u => hblk' u,
+          Nat.le_trans hle (Nat.le_mul_of_pos_left _ (Nat.succ_pos f))⟩
 
 end WhileLoop
 
@@ -2913,7 +2970,7 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
       getW_of_lvm_eq w h1, hops, exprArgsHV_getD, ← evalOperandN_resolveVar, lookup_lookupArgs]
     exact hag.1 (hvToHom inits u)
   -- the trips
-  obtain ⟨k3, m3, hs3, hat3, hfr3, hblk3⟩ :=
+  obtain ⟨k3, m3, hs3, hat3, hfr3, hblk3, hle3⟩ :=
     whileLoop_trips nArgs fn body hcs hI hbsim hb hlen harg hfn hbodyL hfh
       (Z := rk.code ++ post) (by rw [hT]; simp only [List.append_assoc, List.cons_append,
         List.nil_append]) hAlab fuel V fuel (Expr.lookupArgs inits V) accN (next t0) hiter hat1
@@ -2924,7 +2981,7 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
       (fun {w} u => hblk3 u)
   -- the continuation
   have hnext := hLab.le
-  obtain ⟨kK, m', hsK, hatK, hresK, hfrK⟩ := hksim (d + cs.length) b.next rk hrk
+  obtain ⟨kK, m', hsK, hatK, hresK, hfrK, hleK⟩ := hksim (d + cs.length) b.next rk hrk
     (by rw [List.length_append, hlen]; omega) (by omega) P
     (A ++ labelI n :: (b.code ++ T)) post hfn
     (by rw [hbodyL]; simp only [List.append_assoc, List.cons_append])
@@ -2953,9 +3010,15 @@ theorem whileFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     simp only [List.length_append, List.length_cons] at h1 ⊢
     omega
   refine ⟨_, m', ((((steps_of_stepLe hI hs0).trans hs1).trans hs3).trans hsK), ?_, hresK,
-    hfrS.trans hfrK (by omega) (by omega)⟩
-  rw [hlenEq]
-  exact hatK
+    hfrS.trans hfrK (by omega) (by omega), ?_⟩
+  · rw [hlenEq]
+    exact hatK
+  · have hL := hlenEq
+    simp only [List.length_append, List.length_cons, hTlen, hAlen] at hL
+    exact steps_le_factor (s := cs.length + 1) (x := k3)
+      (X := fuel * (1 + tripFactor fuel body)) (lx := b.code.length + 2 * cs.length + 5)
+      (by rw [Nat.mul_assoc]; exact hle3) hleK
+      (by omega) (by omega) (by simp only [tripFactor]; first | done | omega)
 
 /-! ## 18. The branch -/
 
@@ -3204,7 +3267,9 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       ∧ RegionFrame d n m.prog.base mJ.prog.base
       ∧ (∀ {w : Nat} (u : Ctxt.Var rs (.reg w)),
           mJ.prog.base.reg.getW (regName (d + (rs.length - 1 - varIndex u))) w
-            = some (u.lookup rv)) := by
+            = some (u.lookup rv))
+      ∧ kJ ≤ (1 + tripFactor fuel thn + tripFactor fuel els)
+          * (2 * rs.length + 9 + t.code.length + e.code.length) := by
     by_cases hbt : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V) = true
     · rw [if_pos hbt] at hbr
       obtain ⟨hs1, hat1⟩ := steps_cc_fall (pol := true) rfl hat0 hfetchZ
@@ -3214,7 +3279,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         hat1 (fetch_of_body hbodyA rfl)
       have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
         (hfr0 n).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-      obtain ⟨k3, m3, hs3, hat3, hres3, hfr3⟩ := htsim d (n + 3) t ht hlen harg P
+      obtain ⟨k3, m3, hs3, hat3, hres3, hfr3, hle3⟩ := htsim d (n + 3) t ht hlen harg P
         (A ++ [labelI n]) (TM ++ (J ++ labelI (n + 1) :: (e.code ++ (EM
           ++ labelI (n + 2) :: (rk.code ++ post))))) hfn
         (by rw [hbodyA]; simp only [List.append_assoc, List.cons_append, List.nil_append])
@@ -3254,14 +3319,16 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         fun {w} u => (getW_congr w (hm5 _ fun he => by
           have := JasminLsemSimulation.regName_injective he
           have := JasminLsemSimulation.varIndex_lt u
-          omega)).trans (hblk4 u)⟩
+          omega)).trans (hblk4 u),
+        steps_le_factor (s := 2 * rs.length + 9) (y := 0) (Y := 0) (ly := 0) hle3
+          (Nat.zero_le _) (by omega) (by omega) (by omega)⟩
     · rw [if_neg hbt] at hbr
       rw [Bool.not_eq_true] at hbt
       obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; rfl) hl1
       have hfr1 : RegionFrame d n m.prog.base (goto t0 (Y.length + 1)).prog.base :=
         (hfr0 n).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-      obtain ⟨k3, m3, hs3, hat3, hres3, hfr3⟩ := hesim d t.next e he hlen harg P
+      obtain ⟨k3, m3, hs3, hat3, hres3, hfr3, hle3⟩ := hesim d t.next e he hlen harg P
         (Y ++ [labelI (n + 1)]) (EM ++ labelI (n + 2) :: (rk.code ++ post)) hfn
         (by rw [hbodyY]; simp only [List.append_assoc, List.cons_append, List.nil_append])
         (fun l hl => by
@@ -3289,13 +3356,15 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
           (steps_of_stepLe hI hs4)).trans hs5, hat5,
         (((hfr1.trans hfr3 le_rfl (by omega)).trans (hfr4 n) le_rfl le_rfl).trans
           (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl),
-        fun {w} u => hblk4 u⟩
-  obtain ⟨kJ, mJ, hsJ, hatJ, hfrJ, hblkJ⟩ := hjoin
+        fun {w} u => hblk4 u,
+        steps_le_factor (s := 2 * rs.length + 9) (y := 0) (Y := 0) (ly := 0) hle3
+          (Nat.zero_le _) (by omega) (by omega) (by omega)⟩
+  obtain ⟨kJ, mJ, hsJ, hatJ, hfrJ, hblkJ, hleJ⟩ := hjoin
   have hagJ : StoreAgreesM nArgs (d + rs.length) mJ.prog.base (hvAppend rv V) :=
     storeAgreesM_append hrs harg (StoreAgreesM.of_regionFrame hlen hag hfrJ)
       (fun {w} u => hblkJ u)
   -- the continuation
-  obtain ⟨kK, m', hsK, hatK, hresK, hfrK⟩ := hksim (d + rs.length) e.next rk hrk
+  obtain ⟨kK, m', hsK, hatK, hresK, hfrK, hleK⟩ := hksim (d + rs.length) e.next rk hrk
     (by rw [List.length_append, hlen]; omega) (by omega) P (X ++ [labelI (n + 2)]) post hfn
     (by rw [hbodyX]; simp only [List.append_assoc, List.cons_append, List.nil_append])
     (fun l hl => by
@@ -3314,9 +3383,16 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
     rw [hbodyX] at h1
     simp only [List.length_append, List.length_cons, List.length_nil] at h1 ⊢
     omega
-  refine ⟨kJ + kK, m', hsJ.trans hsK, ?_, hresK, hfrJ.trans hfrK (by omega) (by omega)⟩
-  rw [hlenEq]
-  exact hatK
+  refine ⟨kJ + kK, m', hsJ.trans hsK, ?_, hresK, hfrJ.trans hfrK (by omega) (by omega), ?_⟩
+  · rw [hlenEq]
+    exact hatK
+  · have hL := hlenEq
+    simp only [hXd, hYd, hJ, List.length_append, List.length_cons, List.length_nil, hAlen,
+      hTMlen, hEMlen] at hL
+    exact steps_le_factor (s := 0) (x := kJ)
+      (X := 1 + tripFactor fuel thn + tripFactor fuel els)
+      (lx := 2 * rs.length + 9 + t.code.length + e.code.length) hleJ hleK
+      (by omega) (by omega) (by simp only [tripFactor]; first | done | omega)
 
 /-! ## 18a. The frame rule of a call -/
 
@@ -3371,16 +3447,19 @@ theorem exportRSim_call (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
         rw [List.mem_singleton.mp hj]; exact ⟨_, _, _, rfl⟩),
       List.append_nil, ← findLabelMem_eq_none_iff]
     exact hpre l hl'
-  obtain ⟨k', m', hs2, hat2, hres, hfr2⟩ := hk (d + 1) n rk hrk
+  obtain ⟨k', m', hs2, hat2, hres, hfr2, hle2⟩ := hk (d + 1) n rk hrk
     (by simp only [List.length_append, List.length_cons, List.length_nil, hlen]; omega)
     (by omega) P (pre ++ [i]) post hfn
     (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]) hlab
     fuel _ v _ hden
     (by rw [List.length_append, List.length_singleton]; exact hat1) hag1
-  refine ⟨1 + k', m', hs1.trans hs2, ?_, hres, hfr1.trans hfr2 (by omega) le_rfl⟩
-  rw [hcode, List.length_cons]
-  rw [List.length_append, List.length_singleton] at hat2
-  rwa [show pre.length + (rk.code.length + 1) = pre.length + 1 + rk.code.length by omega]
+  refine ⟨1 + k', m', hs1.trans hs2, ?_, hres, hfr1.trans hfr2 (by omega) le_rfl, ?_⟩
+  · rw [hcode, List.length_cons]
+    rw [List.length_append, List.length_singleton] at hat2
+    rwa [show pre.length + (rk.code.length + 1) = pre.length + 1 + rk.code.length by omega]
+  · rw [hcode, List.length_cons]
+    exact steps_le_factor (s := 1) (x := 0) (X := 0) (lx := 0) (Nat.zero_le _) hle2
+      (by omega) (by omega) (by simp only [tripFactor]; first | done | omega)
 
 /-! ## 19. The simulation of the export -/
 
@@ -3497,14 +3576,15 @@ theorem exportRSim_run {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
       (∀ j, I.lsemFuelMemF (singletonProgM fn r.code) (k + j)
         { prog := { base := b0, lfn := fn }, zf := zf } = some t)
       ∧ atPc (singletonProgM fn r.code) r.code.length t
-      ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base := by
-  obtain ⟨k, t, hs, hat, hres, hfr⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code) [] []
-    rfl (by rw [List.nil_append, List.append_nil]; rfl)
+      ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base
+      ∧ k ≤ tripFactor fuel p * r.code.length := by
+  obtain ⟨k, t, hs, hat, hres, hfr, hle⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code)
+    [] [] rfl (by rw [List.nil_append, List.append_nil]; rfl)
     (fun l _ => (findLabelMem_eq_none_iff l []).mpr (by simp)) fuel V v
     { prog := { base := b0, lfn := fn }, zf := zf } hden ⟨rfl, hpc⟩ hag
   rw [List.length_nil, Nat.zero_add] at hat
   exact ⟨k, t, fun j => lsemFuelMemF_of_steps I _ hs (halted_of_atPc hat le_rfl) j, hat, hres,
-    hfr⟩
+    hfr, hle⟩
 
 /-- **The export as a whole body halts under `lsemFuelMemF`**: the statement
     `exportRSim_run` at the x86 flag machine, whose run function is `lsemFuelMemF`. -/
@@ -3518,13 +3598,14 @@ theorem exportRSim_lsemFuelMemF {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDia
       (∀ j, lsemFuelMemF (singletonProgM fn r.code) (k + j)
         { prog := { base := b0, lfn := fn }, zf := zf } = some t)
       ∧ atPc (singletonProgM fn r.code) r.code.length t
-      ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base := by
-  obtain ⟨k, t, hs, hat, hres, hfr⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code) [] []
-    rfl (by rw [List.nil_append, List.append_nil]; rfl)
+      ∧ ResAgrees nArgs r.depth t.prog.base r.res v ∧ RegionFrame d n b0 t.prog.base
+      ∧ k ≤ tripFactor fuel p * r.code.length := by
+  obtain ⟨k, t, hs, hat, hres, hfr, hle⟩ := hsim d n r hr hlen harg (singletonProgM fn r.code)
+    [] [] rfl (by rw [List.nil_append, List.append_nil]; rfl)
     (fun l _ => (findLabelMem_eq_none_iff l []).mpr (by simp)) fuel V v
     { prog := { base := b0, lfn := fn }, zf := zf } hden ⟨rfl, hpc⟩ hag
   rw [List.length_nil, Nat.zero_add] at hat
-  refine ⟨k, t, fun j => ?_, hat, hres, hfr⟩
+  refine ⟨k, t, fun j => ?_, hat, hres, hfr, hle⟩
   rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF]
   exact lsemFuelMemF_of_steps x86Isa _ hs (halted_of_atPc hat le_rfl) j
 
@@ -4343,6 +4424,10 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
             :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)
           ++ parMoves bD ((regPairs tp).map Prod.fst)
             ((regPairs tp).map fun p => .reg p.2)).length + 3) u
+      ∧ pre.length + k ≤ (pre ++ movImmI (regName (bD + 1)) 0
+            :: arrParMoves (regName (bD + 1)) (regName bD) bD (arrPairs tp)
+          ++ parMoves bD ((regPairs tp).map Prod.fst)
+            ((regPairs tp).map fun p => .reg p.2)).length + 3
       ∧ u.zf = (c - 1#64 == 0#64)
       ∧ u.prog.base.reg.lvm (regName d) = ⟨64, x + 1#64⟩
       ∧ u.prog.base.reg.lvm (loopCtr n) = ⟨64, c - 1#64⟩
@@ -4465,8 +4550,11 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   have hlarr5 : u5.prog.base.larr = u1.prog.base.larr :=
     (((ha5.trans ha4).trans ha3).trans ha2)
-  refine ⟨_, u5, ((((hs0.trans hs1).trans hs2).trans hs3).trans hs4).trans hs5, hat5, hz5, ?_, ?_,
-    fun {w} v => ?_, fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  refine ⟨_, u5, ((((hs0.trans hs1).trans hs2).trans hs3).trans hs4).trans hs5, hat5, ?_, hz5,
+    ?_, ?_, fun {w} v => ?_, fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  · rw [hX]
+    simp only [List.length_append, List.length_cons, parMoves_length, List.length_map]
+    omega
   · rw [hm5, hm4, if_neg hri, hm3, if_pos rfl]
   · rw [hm5, hm4, if_pos rfl]
   · have hv := JasminLsemSimulation.varIndex_lt v
@@ -4509,6 +4597,8 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
     ∃ (k : Nat) (u : LstateMF), Steps x86Isa P k s u
       ∧ atPc P ((pre ++ movImmI (regName d) 0
           :: typedMoves (regName d) (regName (d + 1 + cs.length)) tp).length + 2) u
+      ∧ pre.length + k ≤ (pre ++ movImmI (regName d) 0
+          :: typedMoves (regName d) (regName (d + 1 + cs.length)) tp).length + 2
       ∧ u.zf = (cnt == 0#64)
       ∧ u.prog.base.reg.lvm (regName d) = ⟨64, 0#64⟩
       ∧ u.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩
@@ -4579,8 +4669,11 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
     hc3
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   have hlarr4 : u4.prog.base.larr = u1.prog.base.larr := ha4.trans ha3
-  refine ⟨_, u4, ((hs0.trans hs1).trans hs3).trans hs4, hat4, hz4, ?_, ?_, fun {w} v => ?_,
-    fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  refine ⟨_, u4, ((hs0.trans hs1).trans hs3).trans hs4, hat4, ?_, hz4, ?_, ?_,
+    fun {w} v => ?_, fun {w m} v => ?_, fun r hr hrc => ?_, fun r hr => ?_⟩
+  · rw [hX]
+    simp only [List.length_append, List.length_cons]
+    omega
   · rw [hm4, hm3, if_neg hri, hoR _ hidx1 hzt, hm0, if_pos rfl]
   · rw [hm4]
     exact hc3
@@ -4657,7 +4750,8 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
             = some (u.lookup acc1))
       ∧ (∀ {w q : Nat} (u : Ctxt.Var cs (.stackArr w q)),
           t.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex u))) w q
-            = some (u.lookup acc1)) := by
+            = some (u.lookup acc1))
+      ∧ k + 1 ≤ (1 + tripFactor fuel body) * (b.code.length + T.length + 4) := by
   have hag1 : StoreAgreesM nArgs (d + 1) m.prog.base
       (HVector.cons (BitVec.ofNat 64 i) V : Ctxt.Valuation (JasminTy.reg 64 :: Γ)) :=
     storeAgreesM_append (cs := [JasminTy.reg 64])
@@ -4672,7 +4766,7 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
       (HVector.cons (BitVec.ofNat 64 i) V : Ctxt.Valuation (JasminTy.reg 64 :: Γ))) :=
     storeAgreesM_append_arr (by omega) hag1 hblk hblkA
   have hbd := exportR_depth_le nArgs fn body _ _ _ hb
-  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hacc⟩, hfr1⟩ :=
+  obtain ⟨k1, m1, hs1, hat1, ⟨Δ, W, vs, hΔ, hagW, hops, hacc⟩, hfr1, hle1⟩ :=
     hsim (d + 1 + cs.length) (n + 2) b hb
       (by simp only [List.length_append, List.length_cons, hlen]; omega) (by omega) P
       (A ++ [labelI n]) R hfn
@@ -4690,7 +4784,7 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
     rw [List.length_append, List.length_singleton] at hat1
     rw [List.length_append, List.length_cons]
     rwa [show A.length + (b.code.length + 1) = A.length + 1 + b.code.length by omega]
-  obtain ⟨k2, t, hs2, hat2, hz, hidx', hctr', hR', hA', hothR, hothA⟩ :=
+  obtain ⟨k2, t, hs2, hat2, hle2, hz, hidx', hctr', hR', hA', hothR, hothA⟩ :=
     forArrTail_steps (d := d) (n := n) (bD := b.depth) (ops := b.res) htp
       (A ++ labelI n :: b.code) (condI (.reg "NZ") n :: Z) m1 (x := BitVec.ofNat 64 i) (c := c)
       (by rw [hbody, hR, hT]; simp only [List.append_assoc, List.cons_append]) hat1' hres_len hbd
@@ -4705,9 +4799,15 @@ theorem forArrLoop_trip (i : Nat) (acc acc1 : Ctxt.Valuation cs) (m : LstateMF) 
           (fun l hl he => by have := loopCtr_injective he; omega)]
         exact hctr)
       (fun {w q} u => ⟨_, by rw [hops, exprArgsHV_getD]; exact hagW.2 (hvToHom vs u)⟩)
+  have hk2 : k2 ≤ T.length + 3 := by
+    rw [hT]
+    simp only [List.length_append, List.length_cons] at hle2 ⊢
+    omega
   refine ⟨k1 + k2, t, hs1.trans (steps_of_stepLe hI hs2), ?_, ?_, hz, hidx', hctr',
     fun {w} u => ?_,
-    fun {w q} u => ?_⟩
+    fun {w q} u => ?_,
+    steps_le_factor (s := T.length + 4) (y := 0) (Y := 0) (ly := 0) hle1 (Nat.zero_le _)
+      (by omega) (by omega) (by omega)⟩
   · rw [hT]
     simp only [List.length_append, List.length_cons, Nat.add_assoc, Nat.add_comm,
       Nat.add_left_comm] at hat2 ⊢
@@ -4748,7 +4848,8 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
             = some (u.lookup accN))
       ∧ (∀ {w q : Nat} (u : Ctxt.Var cs (.stackArr w q)),
           m'.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex u))) w q
-            = some (u.lookup accN)) := by
+            = some (u.lookup accN))
+      ∧ k ≤ (rem + 1) * ((1 + tripFactor fuel body) * (b.code.length + T.length + 4)) := by
   have hcc : flagCondCC? (condI (.reg "NZ") n) = some (false, n) := rfl
   have hfetch : P.body[A.length + 1 + b.code.length + T.length + 3]?
       = some (condI (.reg "NZ") n) :=
@@ -4767,18 +4868,19 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
       rw [List.range'_zero, List.foldlM_nil] at hrest
       obtain rfl : acc1 = accN := Option.some.inj hrest
-      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', _, hblk', hblkA'⟩ :=
+      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', _, hblk', hblkA', hle⟩ :=
         forArrLoop_trip nArgs fn body hI hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
           m c hden hat hag hidx hctr hblk hblkA
       have hc1 : c - 1#64 = 0#64 := by bv_omega
       obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 hfetch (by rw [hz, hc1]; decide)
-      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, ⟨_, hidx'⟩, fun {w} u => hblk' u,
-        fun {w q} u => hblkA' u⟩
+      exact ⟨k + 1, next t, hs.trans (steps_of_stepLe hI hs'), hat', hfr, ⟨_, hidx'⟩,
+        fun {w} u => hblk' u, fun {w q} u => hblkA' u,
+        by rw [Nat.zero_add, Nat.one_mul]; exact hle⟩
   | succ rem ih =>
       intro i acc accN m c hfold hc hat hag hidx hctr hblk hblkA
       rw [List.range'_succ, List.foldlM_cons] at hfold
       obtain ⟨acc1, hden, hrest⟩ := Option.bind_eq_some_iff.mp hfold
-      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hblkA'⟩ :=
+      obtain ⟨k, t, hs, hat2, hfr, hz, hidx', hctr', hblk', hblkA', hle⟩ :=
         forArrLoop_trip nArgs fn body hI hsim hb hlen harg hfn htp hT hbody hR hA fuel V i acc acc1
           m c hden hat hag hidx hctr hblk hblkA
       have hc1 : c - 1#64 ≠ 0#64 := by bv_omega
@@ -4788,13 +4890,14 @@ theorem forArrLoop_trips : ∀ (rem i : Nat) (acc accN : Ctxt.Valuation cs) (m :
       obtain ⟨hs', hat'⟩ := steps_cc_taken hcc hat2 hfetch (by rw [hz]; simpa using hc1) hl
       have hfr' : RegionFrame d n m.prog.base (goto t (A.length + 1)).prog.base :=
         hfr.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-      obtain ⟨k', m', hs'', hat'', hfr'', hx'', hblk'', hblkA''⟩ := ih (i + 1) acc1 accN
+      obtain ⟨k', m', hs'', hat'', hfr'', hx'', hblk'', hblkA'', hle''⟩ := ih (i + 1) acc1 accN
         (goto t (A.length + 1)) (c - 1#64) hrest (by bv_omega) hat'
         (StoreAgreesM.of_regionFrame hlen hag hfr')
         (by rw [BitVec.ofNat_add]; exact hidx') hctr' (fun {w} u => hblk' u)
         (fun {w q} u => hblkA' u)
       exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
-        hfr'.trans hfr'' le_rfl le_rfl, hx'', fun {w} u => hblk'' u, fun {w q} u => hblkA'' u⟩
+        hfr'.trans hfr'' le_rfl le_rfl, hx'', fun {w} u => hblk'' u, fun {w q} u => hblkA'' u,
+        trips_le_succ hle hle''⟩
 
 end ForArrLoop
 
@@ -4913,11 +5016,12 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     · have := hLab.range _ hm
       omega
   -- the head
-  obtain ⟨k0, t0, hs0, hat0, hz0, hidx0, hctr0, hR0, hA0, hothR0, hothA0⟩ :=
+  obtain ⟨k0, t0, hs0, hat0, hle0, hz0, hidx0, hctr0, hR0, hA0, hothR0, hothA0⟩ :=
     forArrHead_steps (d := d) (n := n) (ops := ops) (cn := cn) htpI pre _ m (cnt := cnt)
       (by rw [hbodyH, hcmp, hS0]) hat hopslen hopsreg hcnk hcnt
       (fun {w q} u => ⟨_, by rw [hops, exprArgsHV_getD]; exact hag.2 (hvToHom inits u)⟩)
-  rw [← hS0] at hat0
+  rw [← hS0] at hat0 hle0
+  rw [List.length_append] at hle0
   have hfr0 : RegionFrame d n m.prog.base t0.prog.base :=
     RegionFrame.of_lvm_larr (fun r hr hl => hothR0 r hr (hl n le_rfl)) hothA0
   have hblkI : ∀ {w : Nat} (u : Ctxt.Var cs (.reg w)),
@@ -4950,7 +5054,9 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
             = some (u.lookup accN))
       ∧ (∀ {w q : Nat} (u : Ctxt.Var cs (.stackArr w q)),
           mE.prog.base.getArr (regName (d + 1 + (cs.length - 1 - varIndex u))) w q
-            = some (u.lookup accN)) := by
+            = some (u.lookup accN))
+      ∧ kE ≤ (1 + 2 ^ 64 * (1 + tripFactor fuel body))
+          * (S0.length + 5 + (b.code.length + T.length + 4)) := by
     cases hN : cnt.toNat with
     | zero =>
         rw [hN, List.range_zero, List.foldlM_nil] at hfold'
@@ -4960,7 +5066,11 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
           (by rw [hz0, hc0]; rfl) hl1
         exact ⟨_, _, steps_of_stepLe hI (hs0.trans hs1), hat1,
           hfr0.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl,
-          ⟨_, hidx0⟩, fun {w} u => hblkI u, fun {w q} u => hblkAI u⟩
+          ⟨_, hidx0⟩, fun {w} u => hblkI u, fun {w q} u => hblkAI u,
+          steps_le_factor (s := S0.length + 5) (x := 0)
+            (X := 2 ^ 64 * (1 + tripFactor fuel body)) (lx := b.code.length + T.length + 4)
+            (y := 0) (Y := 0) (ly := 0) (Nat.zero_le _) (Nat.zero_le _) (by omega) (by omega)
+            (by omega)⟩
     | succ rem =>
         rw [hN, List.range_eq_range'] at hfold'
         have hc0 : cnt ≠ 0#64 := by bv_omega
@@ -4971,7 +5081,7 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
           hat1 (fetch_of_body hbodyL rfl)
         have hfr2 : RegionFrame d n m.prog.base (next (next t0)).prog.base :=
           hfr0.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
-        obtain ⟨k3, m3, hs3, hat3, hfr3, hx3, hblk3, hblkA3⟩ :=
+        obtain ⟨k3, m3, hs3, hat3, hfr3, hx3, hblk3, hblkA3, hle3⟩ :=
           forArrLoop_trips nArgs fn body hI hbsim hb hlen harg hfn htpB hT hbodyL
             (by rw [hR, hcmp]) hAlab fuel V rem 0 (Expr.lookupArgs inits V) accN
             (next (next t0)) cnt hfold' hN hat2
@@ -4980,12 +5090,21 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         rw [← hXlen] at hat3
         obtain ⟨hs4, hat4⟩ := steps_label I (kind := .internal) (l := n + 1)
           (tag := .reg none) hat3 (fetch_of_body hbodyX rfl)
+        have hrem : rem + 1 ≤ 2 ^ 64 := by
+          have := cnt.isLt
+          omega
+        have hx3' : k3 ≤ 2 ^ 64 * (1 + tripFactor fuel body)
+            * (b.code.length + T.length + 4) := by
+          rw [Nat.mul_assoc]
+          exact Nat.le_trans hle3 (Nat.mul_le_mul_right _ hrem)
         exact ⟨_, _, (((steps_of_stepLe hI (hs0.trans hs1)).trans hs2).trans hs3).trans hs4,
           hat4,
           (hfr2.trans hfr3 le_rfl le_rfl).trans (RegionFrame.of_cells rfl fun _ _ _ => rfl)
             le_rfl le_rfl,
-          hx3, fun {w} u => hblk3 u, fun {w q} u => hblkA3 u⟩
-  obtain ⟨kE, mE, hsE, hatE, hfrE, -, hblkE, hblkAE⟩ := hexit
+          hx3, fun {w} u => hblk3 u, fun {w q} u => hblkA3 u,
+          steps_le_factor (s := S0.length + 5) (y := 0) (Y := 0) (ly := 0) hx3' (Nat.zero_le _)
+            (by omega) (by omega) (by omega)⟩
+  obtain ⟨kE, mE, hsE, hatE, hfrE, -, hblkE, hblkAE, hleE⟩ := hexit
   -- the shift of the carried block
   obtain ⟨mS, hsS, hatS, hRS, hAS, hoRS, hoAS⟩ := forArrShift_steps (d := d) (cs := cs)
     (X ++ [labelI (n + 1)]) (rk.code ++ post) mE
@@ -5004,7 +5123,7 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
         exact hblkAE u)
   -- the continuation
   have hnext := hLab.le
-  obtain ⟨kK, m', hsK, hatK, hresK, hfrK⟩ := hksim (d + cs.length) b.next rk hrk
+  obtain ⟨kK, m', hsK, hatK, hresK, hfrK, hleK⟩ := hksim (d + cs.length) b.next rk hrk
     (by rw [List.length_append, hlen]; omega) (by omega) P
     (X ++ labelI (n + 1) :: Sh) post hfn
     (by rw [hbodyX]; simp only [List.append_assoc, List.cons_append])
@@ -5037,10 +5156,20 @@ theorem forArrFrame_sim (nArgs : Nat) (fn : String) {Γ cs : Ctxt jasminDialect}
     rw [hbodyX] at h1
     simp only [List.length_append, List.length_cons] at h1 ⊢
     omega
+  have hShlen : Sh.length = 1 + (typedMoves (regName d) (regName (d + 1 + cs.length))
+      (shiftPairs d cs)).length := by
+    rw [hSh, List.length_cons]
+    omega
   refine ⟨_, m', (hsE.trans (steps_of_stepLe hI hsS)).trans hsK, ?_, hresK,
-    hfrS.trans hfrK (by omega) (by omega)⟩
-  rw [hlenEq]
-  exact hatK
+    hfrS.trans hfrK (by omega) (by omega), ?_⟩
+  · rw [hlenEq]
+    exact hatK
+  · have hL := hlenEq
+    simp only [List.length_append, List.length_cons, hXlen, hAlen] at hL
+    exact steps_le_factor (s := Sh.length) (x := kE)
+      (X := 1 + 2 ^ 64 * (1 + tripFactor fuel body))
+      (lx := S0.length + 5 + (b.code.length + T.length + 4)) hleE hleK
+      (by omega) (by omega) (by simp only [tripFactor]; first | done | omega)
 
 /-! ## 27. The simulation theorem -/
 
@@ -5108,9 +5237,11 @@ theorem exportR_run_procs (fn : String) {Γ : Ctxt jasminDialect} {ts : List Jas
       ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
       ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
   obtain ⟨r, hr⟩ := hp.exportR_eq_some Γ.length fn Γ.length 0
-  exact ⟨r, hr, @exportRSim_run Γ.length fn Γ ts p (x86Isa.withProcs T) ⟨E⟩
+  obtain ⟨k, t, hrun, hat, hres, hfr, -⟩ := @exportRSim_run Γ.length fn Γ ts p
+    (x86Isa.withProcs T) ⟨E⟩
     (exportR_sim_procs Γ.length fn hT hx hp) Γ.length 0 r hr rfl le_rfl fuel V v hden
-    b0 zf hpc hag⟩
+    b0 zf hpc hag
+  exact ⟨r, hr, k, t, hrun, hat, hres, hfr⟩
 
 /-- **The run of a whole program.** A program of `RegionExportable` over the argument
     context `Γ` has an export from the depth `Γ.length` and the label `0`, the export
@@ -5131,7 +5262,9 @@ theorem exportR_lsemFuelMemF (fn : String) {Γ : Ctxt jasminDialect} {ts : List 
       ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
       ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
   obtain ⟨r, hr⟩ := hp.exportR_eq_some Γ.length fn Γ.length 0
-  exact ⟨r, hr, exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp) hr rfl le_rfl fuel V v hden
-    b0 zf hpc hag⟩
+  obtain ⟨k, t, hrun, hat, hres, hfr, -⟩ :=
+    exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp) hr rfl le_rfl fuel V v hden
+      b0 zf hpc hag
+  exact ⟨r, hr, k, t, hrun, hat, hres, hfr⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions

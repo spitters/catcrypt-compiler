@@ -811,8 +811,8 @@ theorem exportR_ret_steps (fn : String) (tag : MemTag) {Γ : Ctxt jasminDialect}
         (retState "RSP" sp ra (spFrame "RSP" (sp - 8) (BitVec.ofNat 64 ra) t))
       ∧ ResAgrees Γ.length r.depth t.prog.base r.res v
       ∧ RegionFrame Γ.length 0 b0 t.prog.base := by
-  obtain ⟨k, t, hrun, hat, hres, hfr⟩ := exportRSim_lsemFuelMemF (exportR_sim Γ.length fn hp)
-    hr rfl le_rfl fuel V v hden b0 zf hpc hag
+  obtain ⟨k, t, hrun, hat, hres, hfr, -⟩ := exportRSim_lsemFuelMemF
+    (exportR_sim Γ.length fn hp) hr rfl le_rfl fuel V v hden b0 zf hpc hag
   have hrun0 := hrun 0
   rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF] at hrun0
   have hrun' : x86Isa.lsemFuelMemF (singletonProgM fn r.code) (k + 0)
