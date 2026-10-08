@@ -37,7 +37,7 @@ unconditional on the `ComOK`/`AllReg64` fragment. They are kept because no
 gate-completeness theorem exists for `printedAddrB`, `imgGateB` or `routeB`, so they
 cannot be restated as corollaries of the `Lprog` route; the completeness results in the
 tree are `twoAddr_ownedCheckM_complete` (the two-address check) and
-`exportCertJB_complete`.
+`comLCertNB_complete` (the export certificate of a single runtime-count loop).
 -/
 
 @[expose] public section
