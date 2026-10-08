@@ -51,6 +51,9 @@ route over the fold `CellFoldLReg.cellFoldLR` and its theorem on the decoded byt
 * `imgSep_cellsU`: `ImageStraightCells.imgSep_cells` at bases read through a name map.
 * `cellRel_entryR`, `cellRel_pre`: the cell relation at the entry states and behind the
   prefix of the virtual body.
+* `subCells_entry`, `subCells_prefix`: the same two statements for a sublist of the cell
+  arrays.
+* `slotArrC_nil`: the slot map with no cell array is the slot map.
 * `imgStepWCond_of_gate`: the step of the image at a conditional branch from the gate.
 -/
 
@@ -570,6 +573,106 @@ theorem cellRel_pre {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   refine ⟨movesState ps bsC, ?_, cellRel_movesState ps hCs hps⟩
   rw [List.append_assoc, runStraightF_append, hpr0C, Option.bind_some, runStraightF_append, hsC,
     Option.bind_some, runStraightF_movesOf]
+
+/-- **The cell relation at the entry, for a sublist of the cell arrays.** For cell arrays
+    `R` among the renamed cell arrays `cellArrsR σ ps`, with distinct cells: the entry state
+    `entryV` at the frame map of the printed body, and the state `entryV` at the frame map
+    with the cells of `R` with the arrays of `R` emptied, are cell-related at `R`, at every
+    program counter, when `unren ps` undoes the renaming on the argument names. -/
+theorem subCells_entry {σ : AbiLayout} {ps : List (String × String)} {body : Lcmd} {sa : AState}
+    {R : Slots} (hsub : ∀ p ∈ R, p ∈ cellArrsR σ ps) (hD : cellsDistinctB R = true)
+    (hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j) (k : Nat) :
+    CellRel R []
+      { entryV σ (frameE body sa) sa (unren ps) with
+        reg := { (entryV σ (frameE body sa) sa (unren ps)).reg with lpc := k } }
+      (emptyArrs R
+        { entryV σ (frameC (baseR σ sa ps) R (frameE body sa)) sa (unren ps) with
+          reg := { (entryV σ (frameC (baseR σ sa ps) R (frameE body sa)) sa (unren ps)).reg with
+            lpc := k } }) := by
+  refine ⟨fun r hr => ?_, rfl, fun r hr => ?_, rfl, rfl, rfl, fun p hp => ?_,
+    fun x k h => by simp [ImageCellFold.kval] at h⟩
+  · rw [isCellB_eq] at hr
+    have hn : cellIdx R r = none := by
+      cases h : cellIdx R r with
+      | none => rfl
+      | some _ => rw [h] at hr; cases hr
+    simp [emptyArrs, entryV, frameC, hn]
+  · simp [emptyArrs, entryV, hr]
+  · obtain ⟨j, a, hj, hk, he⟩ := cellArrsR_mem (hsub p hp)
+    have hu := hunr j (List.getElem?_eq_some_iff.mp hj).1
+    refine ⟨wordsFn sa (sa.regs a.reg) p.2, ?_, fun i hi => ?_⟩
+    · have hl : (entryV σ (frameE body sa) sa (unren ps)).larr p.1
+          = ⟨64, p.2, wordsFn sa (sa.regs a.reg) p.2⟩ := by
+        simp only [entryV, he, hu, abiEntryM, abiEntryM_lookup hj, hk]
+      unfold LstateM.getArr
+      show (if h : _ then _ else _) = _
+      rw [hl]
+      simp
+    · have hc := cellIdx_memName hD hp hi
+      simp only [emptyArrs, entryV, frameC, hc]
+      have hb : baseR σ sa ps (renOf ps (argName j)) = sa.regs a.reg := by
+        show abiBase (abiReg σ) sa (unren ps (renOf ps (argName j))) = _
+        rw [hu, abiBase_argName hj]
+      rw [he, hb]
+      rfl
+
+/-- **The cell relation behind the prefix of a virtual body, for a sublist of the cell
+    arrays.** For cell arrays `R` among `cellArrsR σ ps`: a straight run of the copies of the
+    parameter registers, the seeds and the copies of the renaming from `entryV` is matched
+    by a run from `entryV` at the frame map with the cells of `R`, with the arrays of `R`
+    emptied, into a cell-related state, when the seeds are kept instructions and no source
+    or target of the renaming is a cell name. -/
+theorem subCells_prefix {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {seeds : List LinstrRM} {ps : List (String × String)} {sa : AState} {R : Slots}
+    (hsub : ∀ p ∈ R, p ∈ cellArrsR σ ps)
+    (E : EntryFacts σ nm (frameE body sa)) (N : CellNamesR R σ body)
+    (hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j)
+    (hkeep : seeds.all (keepB R) = true)
+    (hps : ∀ p ∈ ps, isCellB R p.1 = false ∧ isCellB R p.2 = false)
+    {b1 : LstateM} {z1 : Bool}
+    (h : runStraightF (argBind σ nm ++ seeds ++ movesOf ps)
+      (entryV σ (frameE body sa) sa (unren ps)) false = some (b1, z1)) :
+    ∃ b1C, runStraightF (argBind σ nm ++ seeds ++ movesOf ps)
+        (emptyArrs R (entryV σ (frameC (baseR σ sa ps) R (frameE body sa)) sa (unren ps))) false
+          = some (b1C, z1) ∧ CellRel R [] b1 b1C := by
+  have hgpN : ∀ r, gpOk r = true → cellIdx R r = none := by
+    intro r hr
+    cases hc : cellIdx R r with
+    | none => rfl
+    | some _ =>
+        have := N.gp r (by rw [hc]; rfl)
+        rw [hr] at this
+        cases this
+  have hfrA : ∀ j, j < σ.args.length →
+      frameC (baseR σ sa ps) R (frameE body sa) (argName j) = none := by
+    intro j hj
+    simp only [frameC, N.arg j hj]
+    exact E.argF j hj
+  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
+      ∧ frameC (baseR σ sa ps) R (frameE body sa) (nm a.reg) = none := by
+    intro a ha
+    obtain ⟨h1, h2, h3⟩ := E.regs a ha
+    refine ⟨h1, h2, ?_⟩
+    simp only [frameC, hgpN _ h1]
+    exact h3
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hpr0C := runStraightF_argBind_empty (R := R)
+    (argBind_entryV (nm := nm) (sa := sa) (un := unren ps) hfrA E.argG hfrR false)
+  rw [List.append_assoc, runStraightF_append, hpr0, Option.bind_some, runStraightF_append] at h
+  obtain ⟨⟨bs, zs⟩, hs, hm⟩ := Option.bind_eq_some_iff.mp h
+  rw [runStraightF_movesOf] at hm
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm)
+  obtain ⟨bsC, hsC, hCs⟩ := keep_run N.slots seeds hkeep
+    (subCells_entry (body := body) (sa := sa) hsub N.dist hunr σ.args.length) hs
+  refine ⟨movesState ps bsC, ?_, cellRel_movesState ps hCs hps⟩
+  rw [List.append_assoc, runStraightF_append, hpr0C, Option.bind_some, runStraightF_append, hsC,
+    Option.bind_some, runStraightF_movesOf]
+
+/-- The slot map with no cell array is the slot map. -/
+theorem slotArrC_nil (sl : String → Option (String × Nat)) : slotArrC [] sl = sl := by
+  funext q
+  unfold slotArrC
+  cases sl q <;> rfl
 
 /-! ## 7. The checks of the route -/
 
