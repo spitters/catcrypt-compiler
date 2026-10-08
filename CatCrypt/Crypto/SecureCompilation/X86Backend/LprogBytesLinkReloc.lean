@@ -141,6 +141,37 @@ theorem encodeLcmdReloc_eq_encodeFromReloc (symBase : String → Option Int) (bo
   rw [← h]
   rfl
 
+/-- On a body without remote symbol the recursion of the relocating encoder is the
+    recursion `LprogBytesDecode.encodeFrom` of `encodeLcmd`, at every symbol map. -/
+theorem encodeFromReloc_of_local (symBase : String → Option Int) (P : Params) :
+    ∀ (body : Lcmd) (off : Nat), (∀ i ∈ body, remoteSym i.li_i = none) →
+      encodeFromReloc symBase P off body = encodeFrom P off body := by
+  intro body
+  induction body with
+  | nil => intro off _; rfl
+  | cons instr rest ih =>
+    intro off h
+    simp only [encodeFromReloc, encodeFrom, h instr List.mem_cons_self,
+      ih _ fun i hi => h i (List.mem_cons_of_mem _ hi)]
+
+/-- **On a body without remote symbol the relocating encoder is `encodeLfundefBytes`**, at
+    every symbol map. -/
+theorem encodeLfundefBytesReloc_of_local (symBase : String → Option Int) {body : Lcmd}
+    (h : ∀ i ∈ body, remoteSym i.li_i = none) :
+    encodeLfundefBytesReloc symBase body = encodeLfundefBytes body := by
+  unfold encodeLfundefBytesReloc encodeLfundefBytes
+  rw [encodeLcmdReloc_eq_encodeFromReloc, encodeFromReloc_of_local symBase _ body 0 h,
+    ← encodeLcmd_eq_encodeFrom]
+
+/-- **A result of the gated encoder `encodeLfundefBytesChecked` on a body without remote
+    symbol is the bytes of the relocating encoder**, at every symbol map. -/
+theorem encodeLfundefBytesChecked_eq_reloc (symBase : String → Option Int) {body : Lcmd}
+    {bs : List (BitVec 8)} (h : ∀ i ∈ body, remoteSym i.li_i = none)
+    (hc : encodeLfundefBytesChecked body = some bs) :
+    bs = encodeLfundefBytesReloc symBase body := by
+  rw [encodeLfundefBytesReloc_of_local symBase h]
+  exact encodeLfundefBytesChecked_eq hc
+
 /-! ## 2. The item list of a body with remote calls -/
 
 /-- What the relocating encoder needs of one body instruction: a remote transfer is a
