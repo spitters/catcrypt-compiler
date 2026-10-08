@@ -31,6 +31,9 @@ success of both runs (`NFCT`).
 ## Main definitions
 
 * `NFProg.leakRunM`, `NFCTRel`
+* `NFProg.leakRunMC` — the leakage run at a call environment, in which a `call` node runs its
+  callee and emits no event.
+* `Com.OpsQuiet` — every operation of a straight-line program has no event.
 * `flagOk`, `NFProg.levelCheck'`
 
 ## Main results
@@ -146,7 +149,165 @@ theorem NFProg.leakRunM_fst (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : L
         exact ihk _
   | call => rfl
 
+/-- The leakage run of a program at the call environment `E`: the run `NFProg.leakRunM`, in
+    which a `call` node runs the callee of `E` at the looked-up arguments and emits no event;
+    its continuation runs at the results. -/
+def NFProg.leakRunMC (M : LeakModel d) (E : CallEnv d) (fuel : Nat) :
+    {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Valuation Γ →
+    Option (Valuation ts × List CTLeak)
+  | _, _, .ret vs, V => some (Expr.lookupArgs vs V, [])
+  | _, _, .var e k, V =>
+      (e.denoteM (M := Option) V).bind fun x =>
+        (NFProg.leakRunMC M E fuel k (V.extend x)).map fun r => (r.1, Expr.ctLeak M e V ++ r.2)
+  | _, _, .forLoop count inits body k, V =>
+      (forIterLeak
+          (fun i acc => NFProg.leakRunMC M E fuel body
+            (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (List.range (HasWord64.toNat (d := d) (count.lookup V)))
+          (Expr.lookupArgs inits V)).bind fun r =>
+        (NFProg.leakRunMC M E fuel k (hvAppend r.1 V)).map fun q =>
+          (q.1, .trip (HasWord64.toNat (d := d) (count.lookup V)) :: (r.2 ++ q.2))
+  | _, _, .ifThenElse cond thn els k, V =>
+      (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunMC M E fuel thn V
+        else NFProg.leakRunMC M E fuel els V).bind fun r =>
+        (NFProg.leakRunMC M E fuel k (hvAppend r.1 V)).map fun q =>
+          (q.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (r.2 ++ q.2))
+  | _, _, .whileLoop inits body k, V =>
+      (whileIterLeak (fun acc => NFProg.leakRunMC M E fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V)).bind fun r =>
+        (NFProg.leakRunMC M E fuel k (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)
+  | _, _, .call (as := as) (rs := rs) f args k, V =>
+      (E.call f as rs (Expr.lookupArgs args V)).bind fun r =>
+        NFProg.leakRunMC M E fuel k (hvAppend r V)
+
+/-- **The results of the leakage run at a call environment** are the denotation of the
+    program at that environment. -/
+theorem NFProg.leakRunMC_fst (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (V : Valuation Γ) :
+    (NFProg.leakRunMC M E fuel p V).map Prod.fst = p.denoteAt E fuel V := by
+  let _ : CallDenote d := ⟨E⟩
+  show (NFProg.leakRunMC M E fuel p V).map Prod.fst = p.denote fuel V
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [NFProg.leakRunMC, NFProg.denote, Option.bind_eq_bind]
+      rcases e.denoteM (M := Option) V with _ | x
+      · rfl
+      · simp only [Option.bind_some, Option.map_map]
+        exact ih _
+  | forLoop count inits body k ihb ihk =>
+      rw [NFProg.denote_forLoop, ← forIterLeak_fst _ _ (fun i acc => ihb _)]
+      simp only [NFProg.leakRunMC, Option.bind_eq_bind]
+      rcases forIterLeak _ _ _ with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ihk _
+  | ifThenElse cond thn els k iht ihe ihk =>
+      rw [NFProg.denote_ifThenElse]
+      have hc : (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
+          else els.denote fuel V) =
+          (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunMC M E fuel thn V
+            else NFProg.leakRunMC M E fuel els V).map Prod.fst := by
+        split <;> simp only [iht, ihe]
+      rw [hc]
+      simp only [NFProg.leakRunMC, Option.bind_eq_bind]
+      rcases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunMC M E fuel thn V
+        else NFProg.leakRunMC M E fuel els V) with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ihk _
+  | whileLoop inits body k ihb ihk =>
+      rw [NFProg.denote_whileLoop, ← whileIterLeak_fst _ _ (fun acc => ihb _)]
+      simp only [NFProg.leakRunMC, Option.bind_eq_bind]
+      rcases whileIterLeak _ _ _ with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ihk _
+  | call f args k ih =>
+      rw [NFProg.denote_call]
+      simp only [NFProg.leakRunMC, Option.bind_eq_bind]
+      rcases E.call f _ _ (Expr.lookupArgs args V) with _ | r
+      · rfl
+      · exact ih _
+
+/-- **On a program without `call` the leakage run at a call environment is `leakRunM`.** -/
+theorem NFProg.leakRunMC_of_callFree (M : LeakModel d) (E : CallEnv d) (fuel : Nat)
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.callFree = true)
+    (V : Valuation Γ) : NFProg.leakRunMC M E fuel p V = NFProg.leakRunM M fuel p V := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [NFProg.callFree] at hp
+      simp only [NFProg.leakRunMC, NFProg.leakRunM, ih hp]
+  | forLoop count inits body k ihb ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at hp
+      simp only [NFProg.leakRunMC, NFProg.leakRunM, ihb hp.1, ihk hp.2]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at hp
+      simp only [NFProg.leakRunMC, NFProg.leakRunM, iht hp.1.1, ihe hp.1.2, ihk hp.2]
+  | whileLoop inits body k ihb ihk =>
+      simp only [NFProg.callFree, Bool.and_eq_true] at hp
+      simp only [NFProg.leakRunMC, NFProg.leakRunM, ihb hp.1, ihk hp.2]
+  | call => simp [NFProg.callFree] at hp
+
+/-- **At the empty call environment the leakage run is `leakRunM`**: both refuse a `call`
+    node. -/
+theorem NFProg.leakRunMC_empty (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (V : Valuation Γ) :
+    NFProg.leakRunMC M CallEnv.empty fuel p V = NFProg.leakRunM M fuel p V := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih => simp only [NFProg.leakRunMC, NFProg.leakRunM, ih]
+  | forLoop count inits body k ihb ihk => simp only [NFProg.leakRunMC, NFProg.leakRunM, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [NFProg.leakRunMC, NFProg.leakRunM, iht, ihe, ihk]
+  | whileLoop inits body k ihb ihk => simp only [NFProg.leakRunMC, NFProg.leakRunM, ihb, ihk]
+  | call => rfl
+
+/-- **The leakage run reads the call environment at the calls of the program only**: two
+    environments that agree at every call of `p` give the same run. -/
+theorem NFProg.leakRunMC_congr (M : LeakModel d) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (E E' : CallEnv d)
+    (h : ∀ f as rs (x : Valuation as), p.Calls f as rs → E.call f as rs x = E'.call f as rs x)
+    (fuel : Nat) (V : Valuation Γ) :
+    NFProg.leakRunMC M E fuel p V = NFProg.leakRunMC M E' fuel p V := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih => simp only [NFProg.leakRunMC, ih h]
+  | forLoop count inits body k ihb ihk =>
+      simp only [NFProg.leakRunMC, ihb fun f as rs x hc => h f as rs x (Or.inl hc),
+        ihk fun f as rs x hc => h f as rs x (Or.inr hc)]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [NFProg.leakRunMC, iht fun f as rs x hc => h f as rs x (Or.inl hc),
+        ihe fun f as rs x hc => h f as rs x (Or.inr (Or.inl hc)),
+        ihk fun f as rs x hc => h f as rs x (Or.inr (Or.inr hc))]
+  | whileLoop inits body k ihb ihk =>
+      simp only [NFProg.leakRunMC, ihb fun f as rs x hc => h f as rs x (Or.inl hc),
+        ihk fun f as rs x hc => h f as rs x (Or.inr hc)]
+  | call f args k ih =>
+      simp only [NFProg.leakRunMC, h f _ _ _ (Or.inl ⟨rfl, rfl, rfl⟩),
+        ih fun f as rs x hc => h f as rs x (Or.inr hc)]
+
 end Partial
+
+/-- Every operation the straight-line program `c` binds has no event at the leakage
+    model `M`. -/
+def Com.OpsQuiet (M : LeakModel d) : {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → Prop
+  | _, _, .ret _ => True
+  | _, _, .var e k => M.kind e.op = .quiet ∧ Com.OpsQuiet M k
+
+/-- **A straight-line program of quiet operations has no event**: its embedding runs to its
+    denotation and to the empty list of events. -/
+theorem NFProg.leakRunM_ofCom_quiet [DialectDenote d] (M : LeakModel d) (fuel : Nat)
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (hc : Com.OpsQuiet M c) (V : Valuation Γ) :
+    NFProg.leakRunM M fuel (NFProg.ofCom c) V = some (.cons (c.denote V) .nil, []) := by
+  induction c with
+  | ret v => rfl
+  | var e k ih =>
+      obtain ⟨he, hk⟩ := hc
+      simp only [NFProg.ofCom, NFProg.leakRunM, Expr.denoteM_option_eq_some, Option.bind_some,
+        ih hk, Option.map_some, Expr.ctLeak, opLeak, he, List.nil_append]
+      rfl
 
 /-- **Under a pure denotation the two leakage runs coincide.** -/
 theorem NFProg.leakRunM_eq_leakRun [DialectDenote d] (M : LeakModel d) (fuel : Nat)

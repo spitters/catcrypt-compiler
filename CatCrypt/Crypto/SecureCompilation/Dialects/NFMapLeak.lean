@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakM
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgRel
 public import CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
@@ -135,6 +135,50 @@ theorem leakRun_castRetHead (M : LeakModel d) (fuel : Nat) {Δ : Ctxt d} {a b : 
   subst h
   show NFProg.leakRun M fuel p W = _
   cases NFProg.leakRun M fuel p W with
+  | none => rfl
+  | some r =>
+      obtain ⟨r1, ev⟩ := r
+      cases r1
+      rfl
+
+/-- **The leakage run at a call environment of a splice.** The statement `spliceNF?_leakRun`
+    for the run `NFProg.leakRunMC` at `E`. -/
+theorem spliceNF?_leakRunMC (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {ts : List d.Ty} :
+    {Δ : Ctxt d} → {a : d.Ty} → (blk : Com d Δ a) →
+    (k : {Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → Var Δ' a → Option (NFProg d Δ' ts)) →
+    (W : Valuation Δ) → (G : Option (Valuation ts × List CTLeak)) →
+    (∀ {Δ' : Ctxt d} (ren : Ctxt.Hom Δ Δ') (res : Var Δ' a) (W' : Valuation Δ'),
+        (∀ {s : d.Ty} (v : Var Δ s), (ren v).lookup W' = v.lookup W) →
+        res.lookup W' = blk.denote W →
+        ∀ q, k ren res = some q → NFProg.leakRunMC M E fuel q W' = G) →
+    ∀ q, spliceNF? blk k = some q →
+      NFProg.leakRunMC M E fuel q W = G.map fun r => (r.1, Com.ctLeak M blk W ++ r.2)
+  | _, _, .ret v, k, W, G, hk => by
+      intro q hq
+      rw [hk (fun x => x) v W (fun _ => rfl) rfl q hq]
+      cases G <;> rfl
+  | _, _, .var e blk, k, W, G, hk => by
+      intro q hq
+      obtain ⟨q', hq', rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [NFProg.leakRunMC, Expr.denoteM_option_eq_some, Option.bind_some]
+      rw [spliceNF?_leakRunMC M E fuel blk _ (W.extend (e.denote W)) G
+        (fun ren res W' h1 h2 => hk (fun x => ren (.there x)) res W'
+          (fun v => h1 (.there v)) h2) q' hq', Option.map_map]
+      cases G with
+      | none => rfl
+      | some r =>
+          show some _ = some _
+          simp only [Function.comp, Com.ctLeak, List.append_assoc]
+
+/-- The statement `leakRun_castRetHead` for the run `NFProg.leakRunMC` at `E`. -/
+theorem leakRunMC_castRetHead (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt d}
+    {a b : d.Ty} {ts : List d.Ty} (h : a = b) (p : NFProg d Δ (a :: ts)) (W : Valuation Δ) :
+    NFProg.leakRunMC M E fuel (castRetHead h p) W =
+      (NFProg.leakRunMC M E fuel p W).map
+        (fun r => (.cons (tyCast h r.1.head) r.1.tail, r.2)) := by
+  subst h
+  show NFProg.leakRunMC M E fuel p W = _
+  cases NFProg.leakRunMC M E fuel p W with
   | none => rfl
   | some r =>
       obtain ⟨r1, ev⟩ := r
@@ -305,6 +349,129 @@ theorem map?_leakRun (M : LeakModel d) (M' : LeakModel d') (hT : P.RegionTypes)
       obtain ⟨k', _, rfl⟩ := Option.map_eq_some_iff.mp hq
       rfl
 
+/-- **The leakage transformer of `map?` at call environments is the identity.** The
+    statement `map?_leakRun` for the runs `NFProg.leakRunMC` at the call environments `E`
+    and `E'`, which agree along the transport at every call of the program. -/
+theorem map?_leakRunMC (M : LeakModel d) (M' : LeakModel d') (hT : P.RegionTypes)
+    (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
+    (hVar : P.VarTransports transTy mapVal)
+    (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
+      ∀ blk, P.lowerExprBlock? e = some blk →
+      ∀ V : Valuation Γ, blk.denote (mapVal V) = transTy (e.denote V))
+    (hBlkLeak : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
+      ∀ blk, P.lowerExprBlock? e = some blk →
+      ∀ V : Valuation Γ, Com.ctLeak M' blk (mapVal V) = Expr.ctLeak M e V)
+    (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
+    (E : CallEnv d) (E' : CallEnv d') (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (hp : p.Covered Good)
+    (hCall : E.Transports E' (fun as => as.map P.mapTy) (fun x => transArgs P.mapTy transTy x)
+      p.Calls) :
+    ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (P.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
+      pullV ren W = mapVal V → ∀ q, map? P hT p ren = some q →
+      NFProg.leakRunMC M' E' fuel q W =
+        (NFProg.leakRunMC M E fuel p V).map fun r => (transArgs P.mapTy transTy r.1, r.2) := by
+  induction p with
+  | ret vs =>
+      intro Δ ren V W hren q hq
+      cases hq
+      show some _ = some _
+      rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+  | var e k ih =>
+      intro Δ ren V W hren q hq
+      obtain ⟨hg, hk⟩ := hp
+      obtain ⟨blk, hblk, hq⟩ := Option.bind_eq_some_iff.mp hq
+      rw [spliceNF?_leakRunMC M' E' fuel _ _ W
+        ((NFProg.leakRunMC M E fuel k (V.extend (e.denote V))).map
+          fun r => (transArgs P.mapTy transTy r.1, r.2))
+        (fun ren' res W' h1 h2 q' hq' => ih hk hCall _ (V.extend (e.denote V)) W'
+          (pullV_bodyHom P transTy mapVal hExt ren ren' res V _ W W' hren h1 (by
+            rw [h2, FieldDialectBlockDescent.Com.denote_rename, hren, hBlk e hg blk hblk V]))
+          q' hq') q hq,
+        Com.ctLeak_rename_pullV, hren, hBlkLeak e hg blk hblk V]
+      simp only [NFProg.leakRunMC, Expr.denoteM_option_eq_some, Option.bind_some,
+        Option.map_map]
+      rfl
+  | forLoop count inits body k ihb ihk =>
+      intro Δ ren V W hren q hq
+      obtain ⟨hb, hk⟩ := hp
+      have hCb := hCall.mono fun _ _ _ h => Or.inl h
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [NFProg.leakRunMC]
+      rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toNat_trans,
+        lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+      rw [forIterLeak_transport _ _ (transArgs P.mapTy transTy) (fun i acc => by
+        rw [← hR.ofNat_trans i]
+        exact ihb hb hCb _ _ _ (pullV_appHom P transTy mapVal hExt _ _ _
+          (pullV_liftTo P transTy mapVal hExt _ ren V W _ _ hren rfl) _ acc) b hbq)]
+      refine bind_map_comm _ _ _ _ _ (fun r => ?_)
+      dsimp only
+      rw [ihk hk hCk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r.1) k' hkq,
+        Option.map_map, Option.map_map]
+      rfl
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro Δ ren V W hren q hq
+      obtain ⟨ht, he, hk⟩ := hp
+      have hCt := hCall.mono fun _ _ _ h => Or.inl h
+      have hCe := hCall.mono fun _ _ _ h => Or.inr (Or.inl h)
+      have hCk := hCall.mono fun _ _ _ h => Or.inr (Or.inr h)
+      obtain ⟨a, haq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [NFProg.leakRunMC]
+      rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toBool_trans]
+      have harm : (if HasBoolBit.toBool (d := d) (cond.lookup V)
+            then NFProg.leakRunMC M' E' fuel a W else NFProg.leakRunMC M' E' fuel b W) =
+          (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunMC M E fuel thn V
+            else NFProg.leakRunMC M E fuel els V).map
+              fun r => (transArgs P.mapTy transTy r.1, r.2) := by
+        split
+        · exact iht ht hCt ren V W hren a haq
+        · exact ihe he hCe ren V W hren b hbq
+      rw [harm]
+      refine bind_map_comm _ _ _ _ _ (fun r => ?_)
+      dsimp only
+      rw [ihk hk hCk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r.1) k' hkq,
+        Option.map_map, Option.map_map]
+      rfl
+  | whileLoop inits body k ihb ihk =>
+      intro Δ ren V W hren q hq
+      obtain ⟨hb, hk⟩ := hp
+      have hCb := hCall.mono fun _ _ _ h => Or.inl h
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [NFProg.leakRunMC]
+      rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren,
+        whileIterLeak_transport (fun acc => NFProg.leakRunMC M E fuel body (hvAppend acc V))
+          (fun acc => NFProg.leakRunMC M' E' fuel (castRetHead hT.bit_eq b) (hvAppend acc W))
+          (transArgs P.mapTy transTy) (fun x => tyCast hT.bit_eq (transTy x))
+          hR.toBool_trans (fun a => by
+            rw [leakRunMC_castRetHead,
+              ihb hb hCb _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ a) b hbq,
+              Option.map_map]
+            congr 1
+            funext r
+            obtain ⟨r1, ev⟩ := r
+            cases r1
+            rfl)]
+      refine bind_map_comm _ _ _ _ _ (fun r => ?_)
+      dsimp only
+      rw [ihk hk hCk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r.1) k' hkq,
+        Option.map_map, Option.map_map]
+      rfl
+  | call f args k ih =>
+      intro Δ ren V W hren q hq
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [NFProg.leakRunMC]
+      rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren,
+        hCall f _ _ _ (Or.inl ⟨rfl, rfl, rfl⟩)]
+      exact bind_map_comm _ _ _ _ _
+        (fun r => ih hp hCk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r)
+          k' hkq)
+
 end Map
 
 /-! ## 4. `map?` keeps a program branch-free -/
@@ -441,6 +608,45 @@ theorem catToJasmin_map?_ctLeak {P : CatLeakParams} {Pj : JLeakParams}
     (NFProg.leakRun (jLeakModel Pj) fuel q (ctMapValD V)).map Prod.snd =
       (NFProg.leakRun (catLeakModel P) fuel p V).map Prod.snd := by
   rw [catToJasmin_map?_leakRun hc fuel p _ V (ctMapValD V)
+    (FieldDialectBlockDescent.pullV_id _) q hq, Option.map_map]
+  rfl
+
+/-- **The leakage transformer of `map?` along `catToJasmin` at call environments.** The
+    statement `catToJasmin_map?_leakRun` for the runs `NFProg.leakRunMC` at `E` and `E'`,
+    which agree along `ctTransTy` at every call of `p`. -/
+theorem catToJasmin_map?_leakRunMC {P : CatLeakParams} {Pj : JLeakParams}
+    (hc : LeakCompat P Pj) (E : CallEnv catCryptDialect) (E' : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : Ctx} {ts : List CryptoTy} (p : NFProg catCryptDialect Γ ts)
+    (hCall : E.Transports E' (fun as => as.map mapTy)
+      (fun x => transArgs mapTy (fun x => ctTransTy x) x) p.Calls)
+    {Δ : Ctxt jasminDialect} (ren : Ctxt.Hom (mapCtx Γ) Δ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (W : Ctxt.Valuation Δ)
+    (hren : pullV ren W = ctMapValD V) (q : NFProg jasminDialect Δ (ts.map mapTy))
+    (hq : NFProg.map? catToJasmin catToJasmin_regionTypes p ren = some q) :
+    NFProg.leakRunMC (jLeakModel Pj) E' fuel q W =
+      (NFProg.leakRunMC (catLeakModel P) E fuel p V).map
+        fun r => (transArgs mapTy (fun x => ctTransTy x) r.1, r.2) :=
+  NFProg.map?_leakRunMC catToJasmin (fun x => ctTransTy x) ctMapValD (catLeakModel P)
+    (jLeakModel Pj) catToJasmin_regionTypes (fun _ => True) catToJasmin_varTransports
+    (fun e _ blk hblk V => catToJasmin_block e blk hblk V)
+    (fun e _ blk hblk V => catToJasmin_blockLeak hc e blk hblk V)
+    catToJasmin_mapValExtends catToJasmin_regionTransports E E' fuel p
+    (NFProg.covered_of_forall _ (fun _ => trivial) p) hCall ren V W hren q hq
+
+/-- **The events of `map?` along `catToJasmin` at call environments.** The statement
+    `catToJasmin_map?_ctLeak` for the runs `NFProg.leakRunMC` at `E` and `E'`, which agree
+    along `ctTransTy` at every call of `p`. -/
+theorem catToJasmin_map?_ctLeakC {P : CatLeakParams} {Pj : JLeakParams}
+    (hc : LeakCompat P Pj) (E : CallEnv catCryptDialect) (E' : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : Ctx} {ts : List CryptoTy} (p : NFProg catCryptDialect Γ ts)
+    (hCall : E.Transports E' (fun as => as.map mapTy)
+      (fun x => transArgs mapTy (fun x => ctTransTy x) x) p.Calls)
+    (q : NFProg jasminDialect (mapCtx Γ) (ts.map mapTy))
+    (hq : NFProg.map? catToJasmin catToJasmin_regionTypes p (fun v => v) = some q)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    (NFProg.leakRunMC (jLeakModel Pj) E' fuel q (ctMapValD V)).map Prod.snd =
+      (NFProg.leakRunMC (catLeakModel P) E fuel p V).map Prod.snd := by
+  rw [catToJasmin_map?_leakRunMC hc E E' fuel p hCall _ V (ctMapValD V)
     (FieldDialectBlockDescent.pullV_id _) q hq, Option.map_map]
   rfl
 
