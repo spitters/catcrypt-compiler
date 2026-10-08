@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.MLKEM.LeafForms
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-KEM `decompress_d` per-coefficient body
@@ -42,13 +42,12 @@ derive it. (Contrast ML-DSA `reduce32`, whose `>> 23` on a *signed* `int32` is a
 arithmetic shift — the front has no `sar` recognizer, so that one *is* sar-blocked.
 ML-KEM decompress has no `sar`.)
 
-The reduce form `mlkemDecompress10Form` is the closed `BitVec 64` body the source
+The form `LeafForms.mlkemDecompress10Form` is the closed `BitVec 64` body the source
 denotes to; `mlkemDecompress10_compiles` routes the `rfl` source-spec
 (`mlkemDecompress10Src_denoteScalar`) through the C3 per-primitive obligation
 `compileFromHax_meets_spec`, so the emitted jasmin `Com` is *computed by the
 verified compiler* and proven equal to the form. An abstract `round(y·q / 2^d)`
-tie over the `t < 2^10` input domain is `mlkemDecompress10Form_eq_round`
-(pure-`BitVec` `bv_decide`, no wrap on the bounded domain).
+tie over the `t < 2^10` input domain is `LeafForms.mlkemDecompress10Form_eq_round`.
 -/
 
 @[expose] public section
@@ -63,6 +62,7 @@ open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp jasminDialect)
+open CatCrypt.Crypto.MLKEM.LeafForms (mlkemDecompress10Form)
 
 /-! ## The ML-KEM `decompress_10` source — `w = 64`, parameter `["t"]` -/
 
@@ -85,16 +85,6 @@ def mlkemDecompress10Src : ImpExpr :=
      -- r := s >> 10
      (.letBind "r" (.app "shift_right" [.var "s", .lit (.int 10)])
       (.var "r")))))))
-
-/-- The explicit closed **emit form** the source denotes to, at `w = 64`. Stated
-    as a plain `def` so the emitted form is explicit and auditable: this is the
-    exact step-by-step computation `mlkemDecompress10Src` performs.
-    `mlkemDecompress10Form_eq_round` ties it to abstract `round(y·q / 2^d)` on
-    `t < 2^10`. -/
-def mlkemDecompress10Form (t : BitVec 64) : BitVec 64 :=
-  let m := t &&& 0x3ff
-  let s := m * 3329 + 512
-  s >>> (10 : Nat)
 
 /-- The ML-KEM decompress source denotes (under `denoteScalar`, parameter `["t"]`)
     to the closed emit form `mlkemDecompress10Form`, reading `t = inpGet I 0`. The
@@ -139,24 +129,5 @@ theorem mlkemDecompress10_compiles :
     exact mlkemDecompress10Src_denoteScalar (nIn := 1) ![t]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["t"]
     ![t] mlkemDecompress10Src _ hc hspec
-
-/-! ## The abstract `round(y·q / 2^d)` tie (FIPS-203 `Decompress_d`)
-
-The emit form `mlkemDecompress10Form` equals the FIPS-203 rounding decompression
-`(y·q + 2^(d-1)) >> d` (`d = 10`, `q = 3329`) on the deserialized input domain
-`t < 2^10` (every `du = 10` codeword). On this domain `(t & 0x3ff) = t`, and
-`t·3329 + 512 ≤ 1023·3329 + 512 = 3406079 < 2^64`, so the `BitVec 64` body never
-wraps and computes the exact rounding division. -/
-
-/-- **ML-KEM decompress form = FIPS-203 `Decompress_10`** on the codeword domain
-    `t < 2^10`. Ties the emitted closed form `mlkemDecompress10Form` (the
-    `_compiles` deliverable) to the abstract rounding decompression
-    `(t·q + 512) >> 10`. On `t < 0x400` the mask is identity and the body never
-    wraps the `BitVec 64`, so the result is the exact `round(t·q / 2^10)`. Closed
-    by `bv_decide` (pure `BitVec`, bounded input). -/
-theorem mlkemDecompress10Form_eq_round (t : BitVec 64) (ht : t < 0x400#64) :
-    mlkemDecompress10Form t = (t * 3329#64 + 512#64) >>> (10 : Nat) := by
-  unfold mlkemDecompress10Form
-  bv_decide
 
 end CatCrypt.Crypto.SecureCompilation.CompileFromHaxMlkemCompress
