@@ -2721,6 +2721,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecMach,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.VestaFieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.VestaFieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Deep.Bridge,
-    Lake.Glob.one `CatCrypt.Deep.Deterministic,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Deep.Deterministic,
     Lake.Glob.one `CatCrypt.Deep.DeterministicInterp,
     Lake.Glob.one `CatCrypt.Deep.Eval,
     Lake.Glob.one `CatCrypt.Deep.GamePackage,
