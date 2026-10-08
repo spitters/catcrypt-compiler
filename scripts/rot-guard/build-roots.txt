@@ -398,7 +398,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteFrame
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
-CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLJLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.LawfulArrByteOffset
 CatCrypt.Crypto.SecureCompilation.Dialects.LeafCall128Emit
 CatCrypt.Crypto.SecureCompilation.Dialects.MemrefArrayFrontValidate
@@ -829,7 +828,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels
-CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopJ
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
