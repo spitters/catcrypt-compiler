@@ -28,28 +28,29 @@ Each machine correspondence of `Ascent/` states: from a machine state related by
 state relation `SR` to an abstract state `a` with `P a`, a run of the machine ends
 in a state related to `fa a`. This module states every one of them as the relational
 refinement `RRelPT` of `CatCryptCore/Refinement/RRel.lean` between the abstract
-program `guardedUpdate P fa` (`Ascent/CorresJRRel.lean`) and a predicate transformer
-of the machine.
+program `optProg (optGuard P fun a => ((), fa a))` of a guarded update and a predicate
+transformer of the machine, in the form of `rrelPT_optProg_wpRel_iff`
+(`CatCryptCore/Refinement/Programs.lean`).
 
-* `wpRel T` is the weakest precondition of a step relation `T`: some `T`-successor
-  satisfies the postcondition. A partial function `step : σ → Option σ` has the step
-  relation `step s = some s'`, so its failure `none` has weakest precondition `False`;
-  a total function `run` has the relation `s' = run s`.
+* `wpRel T` is the weakest precondition of a step relation `T` with the `Unit` value:
+  some `T`-successor satisfies the postcondition. A partial function
+  `step : σ → Option σ` has the step relation `step s = some s'`, so its failure `none`
+  has weakest precondition `False`; a total function `run` has the relation
+  `s' = run s`.
 * `wpRelP T` is the weakest liberal precondition: every `T`-successor satisfies the
   postcondition.
 * `GuardedRRelPT SR P fa wc` is `RRelPT` at the assertion map `AssnRel.ofStateRel SR`,
-  between `guardedUpdate P fa` with its exception postcondition fixed to false and
-  the machine transformer `wc`.
+  between the guarded update with its exception postcondition fixed to false and the
+  machine transformer `wc`.
 
 The judgments with distinct entry and exit relations (`CorresMPost`, `CorresH`) are
-`CorresM` over the abstract state space `A ⊕ A` with the relation
-`Hax.Ascent.entryExitRel`; the judgments with an exceptional abstract result
-(`CorresE`, `CorresUE`) are `CorresM` over the abstract state space `Except ε A`.
+`CorresM` over the abstract state space `A ⊕ A` with the relation `entryExitRel`; the
+judgments with an exceptional abstract result (`CorresE`, `CorresUE`) are `CorresM`
+over the abstract state space `Except ε A`.
 
 ## Main definitions
 
-* `wpRel`, `wpRelP`: the weakest and weakest liberal preconditions of a step relation.
-* `GuardedRRelPT`: the refinement of `guardedUpdate P fa` by a machine transformer.
+* `GuardedRRelPT`: the refinement of the guarded update by a machine transformer.
 
 ## Main results
 
@@ -76,80 +77,63 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 
-/-! ## The machine transformers and the generic shape -/
+open _root_.Hax.Ascent (optGuard)
 
-/-- The weakest precondition of a step relation `T`: a state `s` satisfies it when
-    some `T`-successor of `s` satisfies the postcondition. -/
-def wpRel {σ : Type} (T : σ → σ → Prop) (Q : Unit → Assertion (.arg σ .pure)) (_ : Unit) :
-    Assertion (.arg σ .pure) :=
-  fun s => ⌜∃ s', T s s' ∧ (Q () s').down⌝
+/-! ## The generic shape -/
 
-/-- The weakest liberal precondition of a step relation `T`: a state `s` satisfies it
-    when every `T`-successor of `s` satisfies the postcondition. -/
-def wpRelP {σ : Type} (T : σ → σ → Prop) (Q : Unit → Assertion (.arg σ .pure)) (_ : Unit) :
-    Assertion (.arg σ .pure) :=
-  fun s => ⌜∀ s', T s s' → (Q () s').down⌝
-
-/-- The refinement of the abstract program `guardedUpdate P fa` by a machine
-    transformer `wc`: `RRelPT` at the assertion map `AssnRel.ofStateRel SR`, with the
-    abstract exception postcondition fixed to `ExceptConds.false` and the trivial
-    relation on `Unit` values. -/
+/-- The refinement of the guarded update `optProg (optGuard P fun a => ((), fa a))` by
+    a machine transformer `wc`: `RRelPT` at the assertion map `AssnRel.ofStateRel SR`,
+    with the abstract exception postcondition fixed to `ExceptConds.false` and the
+    trivial relation on `Unit` values. -/
 abbrev GuardedRRelPT {σ A ε' : Type} (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
     (wc : (Unit → Assertion (.arg σ .pure)) → ε' → Assertion (.arg σ .pure)) : Prop :=
   RRelPT (AssnRel.ofStateRel (ε := PUnit) SR) (fun E (_ : ε') => E = ExceptConds.false)
-    (fun (_ : Unit) (_ : Unit) => True) (fun Q E => wp⟦guardedUpdate P fa⟧ (Q, E)) wc
+    (fun (_ : Unit) (_ : Unit) => True)
+    (fun Q E => wp⟦open Classical in optProg (optGuard P fun a => ((), fa a))⟧ (Q, E)) wc
 
 section Generic
 
 variable {σ A : Type}
 
 /-- **The total correspondence shape is `GuardedRRelPT`.** From every `SR`-related
-    state with `P` some `T`-successor is related to `fa a` exactly when
-    `guardedUpdate P fa` is refined by `wpRel T`. -/
+    state with `P` some `T`-successor is related to `fa a` exactly when the guarded
+    update is refined by `wpRel T`; an instance of `rrelPT_optProg_wpRel_iff`. -/
 theorem corresRel_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
     (T : σ → σ → Prop) :
     (∀ s a, SR s a → P a → ∃ s', T s s' ∧ SR s' (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRel T) := by
-  constructor
-  · rintro h Q Q' hQ E E' rfl s ⟨a, hs, hwp⟩
-    beta_reduce at hwp ⊢
-    by_cases hP : P a
-    · rw [wp_guardedUpdate_of_pos _ hP] at hwp
-      obtain ⟨s', hT, hs'⟩ := h s a hs hP
-      exact ⟨s', hT, @hQ () () trivial s' ⟨fa a, hs', hwp⟩⟩
-    · rw [wp_guardedUpdate_of_neg _ hP] at hwp
-      exact hwp.elim
-  · intro h s a hs hP
-    exact @h (fun _ a' => ⌜a' = fa a⌝) (fun _ s' => ⌜SR s' (fa a)⌝)
-      (fun _ _ _ s' ⟨a', hs', he⟩ => he ▸ hs') ExceptConds.false () rfl s
-      ⟨a, hs, by beta_reduce; rw [wp_guardedUpdate_of_pos _ hP]; exact rfl⟩
+      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => T s s') := by
+  refine Iff.trans ⟨fun h s a p hs hf => ?_, fun h s a hs hP => ?_⟩ rrelPT_optProg_wpRel_iff.symm
+  · unfold optGuard at hf
+    split at hf
+    · cases hf
+      obtain ⟨s', hT, hs'⟩ := h s a hs ‹_›
+      exact ⟨(), s', hT, trivial, hs'⟩
+    · cases hf
+  · obtain ⟨_, s', hT, -, hs'⟩ := h s a ((), fa a) hs (if_pos hP)
+    exact ⟨s', hT, hs'⟩
 
 /-- **The partial correspondence shape is `GuardedRRelPT`.** From every `SR`-related
-    state with `P` every `T`-successor is related to `fa a` exactly when
-    `guardedUpdate P fa` is refined by `wpRelP T`. -/
+    state with `P` every `T`-successor is related to `fa a` exactly when the guarded
+    update is refined by `wpRelP T`; an instance of `rrelPT_optProg_wpRelP_iff`. -/
 theorem corresRelP_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
     (T : σ → σ → Prop) :
     (∀ s a, SR s a → P a → ∀ s', T s s' → SR s' (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRelP T) := by
-  constructor
-  · rintro h Q Q' hQ E E' rfl s ⟨a, hs, hwp⟩
-    beta_reduce at hwp ⊢
-    by_cases hP : P a
-    · rw [wp_guardedUpdate_of_pos _ hP] at hwp
-      exact fun s' hT => @hQ () () trivial s' ⟨fa a, h s a hs hP s' hT, hwp⟩
-    · rw [wp_guardedUpdate_of_neg _ hP] at hwp
-      exact hwp.elim
-  · intro h s a hs hP
-    exact @h (fun _ a' => ⌜a' = fa a⌝) (fun _ s' => ⌜SR s' (fa a)⌝)
-      (fun _ _ _ s' ⟨a', hs', he⟩ => he ▸ hs') ExceptConds.false () rfl s
-      ⟨a, hs, by beta_reduce; rw [wp_guardedUpdate_of_pos _ hP]; exact rfl⟩
+      GuardedRRelPT SR P fa (wpRelP fun s (_ : Unit) s' => T s s') := by
+  refine Iff.trans ⟨fun h s a p hs hf v s' hT => ?_, fun h s a hs hP s' hT => ?_⟩
+    rrelPT_optProg_wpRelP_iff.symm
+  · unfold optGuard at hf
+    split at hf
+    · cases hf
+      exact ⟨trivial, h s a hs ‹_› s' hT⟩
+    · cases hf
+  · exact (h s a ((), fa a) hs (if_pos hP) () s' hT).2
 
 /-- **The deterministic total shape is `GuardedRRelPT`**, at the step relation
     `s' = run s` of a total function `run`. -/
 theorem corresFun_iff_rrelPT (SR : σ → A → Prop) (P : A → Prop) (fa : A → A)
     (run : σ → σ) :
     (∀ s a, SR s a → P a → SR (run s) (fa a)) ↔
-      GuardedRRelPT SR P fa (wpRel fun s s' => s' = run s) :=
+      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => s' = run s) :=
   Iff.trans ⟨fun h s a hs hP => ⟨run s, rfl, h s a hs hP⟩,
     fun h s a hs hP => by obtain ⟨_, rfl, h'⟩ := h s a hs hP; exact h'⟩
     (corresRel_iff_rrelPT SR P fa _)
@@ -186,35 +170,35 @@ variable {AState : Type}
 /-- `CorresM step SR P fa c` is `GuardedRRelPT` at the step relation of `step c`. -/
 theorem corresM_iff_rrelPT {M C : Type} (step : C → M → Option M) (SR : M → AState → Prop)
     (P : AState → Prop) (fa : AState → AState) (c : C) :
-    CorresM step SR P fa c ↔ GuardedRRelPT SR P fa (wpRel fun m m' => step c m = some m') :=
+    CorresM step SR P fa c ↔ GuardedRRelPT SR P fa (wpRel fun m (_ : Unit) m' => step c m = some m') :=
   corresRel_iff_rrelPT SR P fa _
 
 /-- `Corres SR P fa c` over `semScalar` is `GuardedRRelPT` at the step relation of
     `semScalar c`. -/
 theorem corres_semScalar_iff_rrelPT (SR : SEnvScalar → AState → Prop) (P : AState → Prop)
     (fa : AState → AState) (c : LowCT) :
-    Corres SR P fa c ↔ GuardedRRelPT SR P fa (wpRel fun e e' => semScalar c e = some e') :=
+    Corres SR P fa c ↔ GuardedRRelPT SR P fa (wpRel fun e (_ : Unit) e' => semScalar c e = some e') :=
   corresM_iff_rrelPT semScalar SR P fa c
 
 /-- `CorresR SR P fa c` over `runRBlock64` is `GuardedRRelPT` at the graph of the run. -/
 theorem corresR_iff_rrelPT (SR : RISCVBackend.RState64 → AState → Prop) (P : AState → Prop)
     (fa : AState → AState) (c : List RISCVBackend.RInst64) :
     CorresR SR P fa c ↔
-      GuardedRRelPT SR P fa (wpRel fun s s' => s' = RISCVBackend.runRBlock64 s c) :=
+      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => s' = RISCVBackend.runRBlock64 s c) :=
   corresFun_iff_rrelPT SR P fa _
 
 /-- `CorresU fuel SR P fa c` is `GuardedRRelPT` at the step relation of `semU fuel c`. -/
 theorem corresU_iff_rrelPT (fuel : Nat) (SR : SEnvScalar → AState → Prop) (P : AState → Prop)
     (fa : AState → AState) (c : LowCT) :
     CorresU fuel SR P fa c ↔
-      GuardedRRelPT SR P fa (wpRel fun e e' => semU fuel c e = some e') :=
+      GuardedRRelPT SR P fa (wpRel fun e (_ : Unit) e' => semU fuel c e = some e') :=
   corresM_iff_rrelPT (semU fuel) SR P fa c
 
 /-- `CorresL ls SR P fa c` is `GuardedRRelPT` at the step relation of `semScalarL ls c`. -/
 theorem corresL_iff_rrelPT (ls : VIR.CatCryptLeafOracle.SemLeafSpec) (SR : SEnvScalar → AState → Prop)
     (P : AState → Prop) (fa : AState → AState) (c : LowCT) :
     CorresL ls SR P fa c ↔
-      GuardedRRelPT SR P fa (wpRel fun e e' => Dialects.LeafOracleScalar.semScalarL ls c e = some e') :=
+      GuardedRRelPT SR P fa (wpRel fun e (_ : Unit) e' => Dialects.LeafOracleScalar.semScalarL ls c e = some e') :=
   corresRel_iff_rrelPT SR P fa _
 
 /-- `CorresUL ls fuel SR P fa c` is `GuardedRRelPT` at the step relation of
@@ -222,7 +206,7 @@ theorem corresL_iff_rrelPT (ls : VIR.CatCryptLeafOracle.SemLeafSpec) (SR : SEnvS
 theorem corresUL_iff_rrelPT (ls : VIR.CatCryptLeafOracle.SemLeafSpec) (fuel : Nat)
     (SR : SEnvScalar → AState → Prop) (P : AState → Prop) (fa : AState → AState) (c : LowCT) :
     CorresUL ls fuel SR P fa c ↔
-      GuardedRRelPT SR P fa (wpRel fun e e' => Dialects.LeafOracleScalar.semUL ls fuel c e = some e') :=
+      GuardedRRelPT SR P fa (wpRel fun e (_ : Unit) e' => Dialects.LeafOracleScalar.semUL ls fuel c e = some e') :=
   corresRel_iff_rrelPT SR P fa _
 
 /-- `CorresIsa isa P SR Pre fa fuel` is `GuardedRRelPT` at the step relation of the run
@@ -231,7 +215,7 @@ theorem corresIsa_iff_rrelPT (isa : VIR.LprogIsa.Isa) (P : VIR.JasminLsemMemLoop
     (SR : VIR.JasminLsemMemFlagGuard.LstateMF → AState → Prop) (Pre : AState → Prop)
     (fa : AState → AState) (fuel : Nat) :
     CorresIsa isa P SR Pre fa fuel ↔
-      GuardedRRelPT SR Pre fa (wpRel fun m m' => isa.lsemFuelMemF P fuel m = some m') :=
+      GuardedRRelPT SR Pre fa (wpRel fun m (_ : Unit) m' => isa.lsemFuelMemF P fuel m = some m') :=
   corresM_iff_rrelPT (isa.lsemFuelMemF P) SR Pre fa fuel
 
 /-- `CorresIsaRun isa P SR Pre fa` is `GuardedRRelPT` at the step relation "the run of
@@ -241,7 +225,7 @@ theorem corresIsaRun_iff_rrelPT (isa : VIR.LprogIsa.Isa) (P : VIR.JasminLsemMemL
     (fa : AState → AState) :
     CorresIsaRun isa P SR Pre fa ↔
       GuardedRRelPT SR Pre fa
-        (wpRel fun m m' => ∃ fuel, isa.lsemFuelMemF P fuel m = some m') :=
+        (wpRel fun m (_ : Unit) m' => ∃ fuel, isa.lsemFuelMemF P fuel m = some m') :=
   Iff.trans ⟨fun h m a hs hP => let ⟨n, m', hr, h'⟩ := h m a hs hP; ⟨m', ⟨n, hr⟩, h'⟩,
     fun h m a hs hP => let ⟨m', ⟨n, hr⟩, h'⟩ := h m a hs hP; ⟨n, m', hr, h'⟩⟩
     (corresRel_iff_rrelPT SR Pre fa _)
@@ -251,7 +235,7 @@ theorem corresIsaRun_iff_rrelPT (isa : VIR.LprogIsa.Isa) (P : VIR.JasminLsemMemL
 theorem corresA_iff_rrelPT {α : Type} (SR : AddrMem.AState → α → Prop) (P : α → Prop)
     (fa : α → α) (c : List (JInstr 64)) :
     Footprint.CorresA SR P fa c ↔
-      GuardedRRelPT SR P fa (wpRel fun s s' => s' = AddrMem.runBlockA s c) :=
+      GuardedRRelPT SR P fa (wpRel fun s (_ : Unit) s' => s' = AddrMem.runBlockA s c) :=
   corresFun_iff_rrelPT SR P fa _
 
 /-- `CorresWhile SR P fb body` is, for every trip count `k`, `GuardedRRelPT` at the
@@ -260,7 +244,7 @@ theorem corresA_iff_rrelPT {α : Type} (SR : AddrMem.AState → α → Prop) (P 
 theorem corresWhile_iff_rrelPT (SR : SEnvScalar → AState → Prop) (P : AState → Prop)
     (fb : AState → AState) (body : LowCT) :
     CorresWhile SR P fb body ↔ ∀ k, GuardedRRelPT SR P (kfold fb k)
-      (wpRelP fun e e' => semWhileIter (fun e => semScalar body e) k e = some e') :=
+      (wpRelP fun e (_ : Unit) e' => semWhileIter (fun e => semScalar body e) k e = some e') :=
   Iff.trans ⟨fun h k s a hs hP s' hr => h s a k s' hs hP hr,
     fun h s a k s' hs hP hr => h k s a hs hP s' hr⟩
     (forall_congr' fun k => corresRelP_iff_rrelPT SR P (kfold fb k) _)
@@ -290,7 +274,7 @@ def entryStep (fa : A → A) : A ⊕ A → A ⊕ A
 theorem corresMPost_iff_corresM {M C : Type} (step : C → M → Option M)
     (SRin SRout : M → A → Prop) (P : A → Prop) (fa : A → A) (c : C) :
     CorresMPost step SRin SRout P fa c ↔
-      CorresM step (Hax.Ascent.entryExitRel SRin SRout) (entryPre P) (entryStep fa) c := by
+      CorresM step (entryExitRel SRin SRout) (entryPre P) (entryStep fa) c := by
   constructor
   · intro h m x hs hP
     cases x with
@@ -304,8 +288,8 @@ theorem corresMPost_iff_corresM {M C : Type} (step : C → M → Option M)
 theorem corresMPost_iff_rrelPT {M C : Type} (step : C → M → Option M)
     (SRin SRout : M → A → Prop) (P : A → Prop) (fa : A → A) (c : C) :
     CorresMPost step SRin SRout P fa c ↔
-      GuardedRRelPT (Hax.Ascent.entryExitRel SRin SRout) (entryPre P) (entryStep fa)
-        (wpRel fun m m' => step c m = some m') :=
+      GuardedRRelPT (entryExitRel SRin SRout) (entryPre P) (entryStep fa)
+        (wpRel fun m (_ : Unit) m' => step c m = some m') :=
   (corresMPost_iff_corresM step SRin SRout P fa c).trans (corresM_iff_rrelPT _ _ _ _ _)
 
 /-- `CorresH SRi SRo P fa c` over `semScalar` is `GuardedRRelPT` over `A ⊕ A` at the
@@ -313,8 +297,8 @@ theorem corresMPost_iff_rrelPT {M C : Type} (step : C → M → Option M)
 theorem corresH_iff_rrelPT (SRi SRo : SEnvScalar → A → Prop) (P : A → Prop) (fa : A → A)
     (c : LowCT) :
     CorresH SRi SRo P fa c ↔
-      GuardedRRelPT (Hax.Ascent.entryExitRel SRi SRo) (entryPre P) (entryStep fa)
-        (wpRel fun e e' => semScalar c e = some e') :=
+      GuardedRRelPT (entryExitRel SRi SRo) (entryPre P) (entryStep fa)
+        (wpRel fun e (_ : Unit) e' => semScalar c e = some e') :=
   corresMPost_iff_rrelPT semScalar SRi SRo P fa c
 
 end EntryExit
@@ -355,7 +339,7 @@ theorem corresE_iff_corres (SR : SEnvScalar → Except ε A → Prop) (P : A →
 theorem corresE_iff_rrelPT (SR : SEnvScalar → Except ε A → Prop) (P : A → Prop)
     (C : A → Bool) (fb : A → ExceptT ε Id A) (c : LowCT) :
     CorresE SR P C fb c ↔ GuardedRRelPT SR (exceptPre P C) (exceptStep fb)
-      (wpRel fun e e' => semScalar c e = some e') :=
+      (wpRel fun e (_ : Unit) e' => semScalar c e = some e') :=
   (corresE_iff_corres SR P C fb c).trans (corres_semScalar_iff_rrelPT _ _ _ _)
 
 /-- `CorresUE fuel SR P C fb c` is `CorresU fuel` over `Except ε A` at `exceptPre P C`
@@ -376,7 +360,7 @@ theorem corresUE_iff_corresU (fuel : Nat) (SR : SEnvScalar → Except ε A → P
 theorem corresUE_iff_rrelPT (fuel : Nat) (SR : SEnvScalar → Except ε A → Prop)
     (P : A → Prop) (C : A → Bool) (fb : A → ExceptT ε Id A) (c : LowCT) :
     CorresUE fuel SR P C fb c ↔ GuardedRRelPT SR (exceptPre P C) (exceptStep fb)
-      (wpRel fun e e' => semU fuel c e = some e') :=
+      (wpRel fun e (_ : Unit) e' => semU fuel c e = some e') :=
   (corresUE_iff_corresU fuel SR P C fb c).trans (corresU_iff_rrelPT _ _ _ _ _)
 
 end Exc
@@ -396,8 +380,8 @@ theorem corresM_trans_of_rrelPT {M₁ M₂ C₁ C₂ : Type} {step₁ : C₁ →
     {P : AState → Prop} {fa : AState → AState} {c₁ : C₁} {c₂ : C₂}
     (h₁ : CorresM step₁ SR P fa c₁)
     (h₂ : RRelPT (AssnRel.ofRel R) (fun (_ : Unit) (_ : Unit) => True)
-      (fun (_ : Unit) (_ : Unit) => True) (wpRel fun m m' => step₁ c₁ m = some m')
-      (wpRel fun m m' => step₂ c₂ m = some m')) :
+      (fun (_ : Unit) (_ : Unit) => True) (wpRel fun m (_ : Unit) m' => step₁ c₁ m = some m')
+      (wpRel fun m (_ : Unit) m' => step₂ c₂ m = some m')) :
     CorresM step₂ (fun m₂ a => ∃ m₁, R m₂ m₁ ∧ SR m₁ a) P fa c₂ :=
   (corresM_iff_rrelPT _ _ _ _ _).mpr
     (guardedRRelPT_trans () ((corresM_iff_rrelPT _ _ _ _ _).mp h₁) h₂)
@@ -417,7 +401,7 @@ theorem corresJ_forget_to_corres_via_rrel (SR_J : JState 64 → AState → Prop)
   rintro Q Q' hQ E E' - env ⟨st, rfl, hwp⟩
   beta_reduce at hwp ⊢
   rw [wp_runBlockM_apply] at hwp
-  exact ⟨regEnv (runBlock st c_J), hmirror st, @hQ () () trivial _ ⟨_, rfl, hwp⟩⟩
+  exact ⟨(), regEnv (runBlock st c_J), hmirror st, @hQ () () trivial _ ⟨_, rfl, hwp⟩⟩
 
 /-- `corres_of_corresJ_setConst` (`Ascent/CorresBridge.lean`) as an instance of
     `corresJ_forget_to_corres_via_rrel`. -/

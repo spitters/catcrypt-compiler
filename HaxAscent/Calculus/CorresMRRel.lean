@@ -10,19 +10,20 @@ public import HaxAscent.Calculus.RustMSquare
 public import HaxAscent.Calculus.CorresGenericSpec
 
 /-!
-# The two `CorresM` judgments and `StepTriple` as relational refinements
+# The `RustM` square and `StepTriple` as relational refinements
 
-This module states the square `CorresM` over `RustM` (`Calculus/RustMSquare.lean`), the
-dialect-generic forward simulation `CorresM` over an `Option`-valued step
-(`Calculus/CorresMCore.lean`) and the total triple `StepTriple`
-(`Calculus/CorresGenericSpec.lean`) as the relational refinement `RRelPT` of
-`CatCryptCore/Refinement/RRel.lean`.
+This module states the square `CorresM` over `RustM` (`Calculus/RustMSquare.lean`) and
+the total triple `StepTriple` (`Calculus/CorresGenericSpec.lean`) as the relational
+refinement `RRelPT` of `CatCryptCore/Refinement/RRel.lean`. The dialect-generic
+`CorresM` over an `Option`-valued step is `RefinesP` (`Calculus/CorresMCore.lean`); its
+`RRelPT` form is `corresM_iff_rrelPT` (`Ascent/CorresMachineRRel.lean`).
 
 * The `RustM` square is the refinement of the guarded constant program
-  `guardProg G (fun σ => .ok (V σ))` (`Ascent/FnCorresRRel.lean`) by the transformer
-  `wpRustM p`, which reads the weakest precondition of `RustM` at the program `p c`.
-* The step forms are the refinement of an `optProg` program by the weakest
-  precondition `wpOpt (step c)` of the step, as for `RefinesP` and `RefinesO`.
+  `guardProg G (fun σ => .ok (V σ))` (`CatCryptCore/Refinement/Programs.lean`) by the
+  transformer `wpRustM p`, which reads the weakest precondition of `RustM` at the
+  program `p c`.
+* The step triple is the refinement of an `optProg` program by the weakest
+  precondition `wpRel` of the step relation, as for `RefinesO`.
 
 ## Main definitions
 
@@ -32,8 +33,7 @@ dialect-generic forward simulation `CorresM` over an `Option`-valued step
 ## Main results
 
 * `RustM.corresM_iff_rrelPT`: the `RustM` square is an `RRelPT` instance.
-* `corresM_iff_rrelPT`, `stepTriple_iff_rrelPT`: the step correspondence and the step
-  triple are `RRelPT` instances.
+* `stepTriple_iff_rrelPT`: the step triple is an `RRelPT` instance.
 -/
 
 @[expose] public section
@@ -104,32 +104,20 @@ end Hax.Ascent.RustM
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-open Hax.Ascent (optProg optGuard wpOpt RefinesO refinesO_iff_rrelPT refinesP_iff_rrelPT)
+open Hax.Ascent (RefinesO refinesO_iff_rrelPT)
 
-variable {M C AState : Type} {step : C → M → Option M}
-
-/-- **The step correspondence is `RRelPT`.** Under a decidable precondition `P`,
-    `CorresM step SR P fa c` is the refinement of `optProg (optGuard P fa)` by the weakest
-    precondition `wpOpt (step c)` of the step, at the assertion map of `SR`, with the
-    abstract exception postcondition fixed to false and the value relation `SR` between
-    the step result and the abstract result. -/
-theorem corresM_iff_rrelPT {SR : M → AState → Prop} {P : AState → Prop} [DecidablePred P]
-    {fa : AState → AState} {c : C} :
-    CorresM step SR P fa c ↔
-      RRelPT (AssnRel.ofStateRel SR) (fun E (_ : Unit) => E = ExceptConds.false)
-        (fun a m => SR m a) (fun Φ E => wp⟦optProg (optGuard P fa)⟧ (Φ, E))
-        (wpOpt (step c)) :=
-  refinesP_iff_rrelPT
+variable {M C : Type} {step : C → M → Option M}
 
 /-- **The step triple is `RRelPT`.** `StepTriple step pre c post` is the refinement of
-    the one-point program `optProg (fun _ => some ())` by the weakest precondition
-    `wpOpt (step c)` of the step, at the assertion map of `pre` and the value relation
-    `post` on the step result. -/
+    the one-point program `optProg (fun _ => some ((), ()))` by the weakest precondition
+    `wpRel` of the step relation `step c m = some d ∧ m' = m`, at the assertion map of
+    `pre` and the value relation `post` on the step result. -/
 theorem stepTriple_iff_rrelPT {pre post : M → Prop} {c : C} :
     StepTriple step pre c post ↔
       RRelPT (AssnRel.ofStateRel (fun m (_ : Unit) => pre m))
         (fun E (_ : Unit) => E = ExceptConds.false) (fun _ m => post m)
-        (fun Φ E => wp⟦optProg (fun (_ : Unit) => some ())⟧ (Φ, E)) (wpOpt (step c)) :=
+        (fun Φ E => wp⟦optProg fun (_ : Unit) => some ((), ())⟧ (Φ, E))
+        (wpRel fun m d m' => step c m = some d ∧ m' = m) :=
   (show StepTriple step pre c post ↔
       RefinesO (step c) (fun m (_ : Unit) => pre m) (fun m (_ : Unit) => post m)
         (fun _ => some ()) from

@@ -259,7 +259,7 @@ theorem corresIsa_withCalls_iff (isa : Isa) (P : LprogM)
     (hP : ∀ i ∈ P.body, isCall i.fst = false) (SR : LstateMF → A → Prop) (Pre : A → Prop)
     (fa : A → A) (fuel : Nat) :
     CorresIsa isa.withCalls P SR Pre fa fuel ↔ CorresIsa isa P SR Pre fa fuel := by
-  simp only [CorresIsa, CorresM, isa.withCalls_lsemFuelMemF P hP]
+  simp only [CorresIsa, CorresM, Hax.Ascent.RefinesP, isa.withCalls_lsemFuelMemF P hP]
 
 /-- **The per-state-fuel correspondence at the instruction set with calls.** On a program
     `P` in which no instruction is a call or a return, `CorresIsaRun` at `isa.withCalls` is

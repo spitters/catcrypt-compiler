@@ -5,13 +5,16 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import HaxAscent.Ascent.Refines
+
 /-!
 # The dialect-generic correspondence `CorresM`
 
 `CorresM step SR P fa c` is the forward simulation of a machine with step function
 `step : C → M → Option M` against an abstract state transformer `fa`, under the state
-relation `SR` and the abstract precondition `P`. The definition uses only Lean core,
-so modules that reason about the generic relation import no machine model.
+relation `SR` and the abstract precondition `P`: the forward simulation `RefinesP`
+(`Ascent/Refines.lean`) of `fa` by `step c` with `SR` as the input and the output
+relation. The module imports no machine model.
 
 ## Main definitions
 
@@ -27,11 +30,10 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
 /-- The dialect-generic forward simulation: from a machine state `m` related by `SR`
     to an abstract state satisfying `P`, the step `step c` makes progress
-    (`= some m'`) to a state related to the abstract result `fa a`. Generic in the
-    machine state `M`, the program `C`, the step function, the state relation `SR`,
-    and the abstract state `AState`. -/
-def CorresM {M : Type} {C : Type} {AState : Type} (step : C → M → Option M)
+    (`= some m'`) to a state related to the abstract result `fa a`. It is `RefinesP`
+    of `fa` by `step c` with `SR` on inputs and outputs. -/
+abbrev CorresM {M : Type} {C : Type} {AState : Type} (step : C → M → Option M)
     (SR : M → AState → Prop) (P : AState → Prop) (fa : AState → AState) (c : C) : Prop :=
-  ∀ m a, SR m a → P a → ∃ m', step c m = some m' ∧ SR m' (fa a)
+  _root_.Hax.Ascent.RefinesP (step c) SR SR P fa
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
