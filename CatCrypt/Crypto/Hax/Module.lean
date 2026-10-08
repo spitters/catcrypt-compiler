@@ -49,15 +49,17 @@ At the module of a single function the call typing is `hax64SigOf`, the table is
 source relation is the run of the entry at `bi`, and the inlining returns its argument.
 
 A module also carries linked functions (`LinkedFn`, the field `HaxModule.linked`, empty
-unless given): functions the compiled entry calls by a machine call. The call typing of a
-module types a call of a linked function from its parameter and result types
-(`HaxModule.sigOf`), and the inlining leaves the call in place. The table of the module
-answers the name of a linked function by the run of the reference reading of its extraction
-at the base table (`HaxModule.linkTable`, the reference table of the linked functions at
-depth `1`); the functions of the module run over that table. The source meaning of a call
-of a linked function is therefore the run of the extraction of the callee, and the inlining
-keeps the runs from the table of the module to the table of the linked functions
-(`HaxModule.denote_inline?`). For a module without linked functions the call typing is that
+unless given): kernels the compiled entry calls by a machine call. A linked function is a
+kernel record: its typed interface, its meaning `sem` on argument values, its layout, its
+machine contract (precondition, footprint, postcondition and public relation, with the
+value-level contract `LinkedFn.post_sem` relating the postcondition to `sem`), and its
+machine code. The call typing of a module types a call of a linked function from its
+parameter and result types (`HaxModule.sigOf`), and the inlining leaves the call in place.
+The table of the module answers the name of a linked function by its meaning
+(`HaxModule.linkTable`, the table `linkBi` of the linked functions); the functions of the
+module run over that table. The source meaning of a call of a linked function is therefore
+the meaning of the kernel, and the inlining keeps the runs from the table of the module to
+the table of the linked functions (`HaxModule.denote_inline?`). For a module without linked functions the call typing is that
 of the prepared callees (`HaxModule.sigOf_of_linked_nil`), the table of the linked
 functions is the base table (`HaxModule.linkTable_of_linked_nil`), and the table of the
 module is the reference table of its functions over the base table
@@ -82,8 +84,9 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
 * `refBi` — the reference table of a list of functions.
 * `HaxModule`, `HaxModule.single`, `HaxModule.prepared` — a module, the module of one
   function, and the prepared callees of a module.
-* `LinkedFn`, `HaxModule.linkedFns` — a linked function of a module, and the linked
-  functions of a module as callees of the call typing.
+* `LinkedFn`, `LinkedFn.callee`, `linkBi`, `HaxModule.linkedFns` — a linked function of a
+  module as a kernel record, its callee in the call typing, the table of a list of linked
+  functions, and the linked functions of a module as callees of the call typing.
 * `HaxModule.sigOf`, `HaxModule.linkTable`, `HaxModule.table` — the call typing, the table
   of the linked functions and the table of a module.
 * `HaxModule.Runs` — the source relation of a module at a base table and a layout.
@@ -117,6 +120,10 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
   single function.
 * `typedCalls_refBi` — the reference table of a list of functions is typed by the call
   typing of their prepared callees over a typing of the base table.
+* `linkBi_nil`, `linkBi_of_find_none`, `linkBi_of_find_some`, `typedCalls_linkBi` — the
+  table of the linked functions with none is the base table, answers a name of none by the
+  base table and a name of one by its meaning, and is typed by the call typing of their
+  callees.
 * `HaxModule.linkTable_of_linked_nil`, `HaxModule.table_of_linked_nil` — without linked
   functions the table of the linked functions is the base table, and the table of the module
   is the reference table of its functions over the base table.
@@ -582,23 +589,114 @@ theorem typedCalls_refBi (P : TExpr → ImpExpr) (fs : List ModFn) {bi : Builtin
 
 /-! ## 5. Modules -/
 
-/-- **A linked function of a module**: a function the compiled entry calls by a machine call,
-    and whose calls are not inlined. It is a function `fn` of a module with the layout
-    `layout` it is compiled under, the machine registers `clob` its code may change, the size
-    `frame` in bytes of its stack frame, and its machine code `bytes`. The typed front reads
-    the name, the parameter types and the result type of `fn`; the other fields are data of
-    the back half of a calling body. -/
+/-- **A linked function of a module**: a kernel the compiled entry calls by a machine call,
+    whose calls are not inlined. The typed front reads its name `name`, its typed parameters
+    `params` and its result type `res`. Its meaning is `sem` on the argument values, whose
+    values decode at the result type (`sem_res`). The layout `layout` places its arguments and
+    its result in machine states. Its machine contract has the shape of the interface
+    `X86Backend.Callee.CalleeSig`: the precondition `pre` on entry states, the addresses
+    `foot` it may write, the postcondition `post` relating the entry state and the return
+    state, and the relation `pub` between entry states that agree on the public arguments.
+    From an entry state satisfying `pre`, every state `post` relates to it holds, in the
+    result read-back of the layout, the value of `sem` at the arguments the layout reads
+    (`post_sem`), the value-level contract of `ProtocolEmitRealizes.KernelRealizes` at the
+    layout. Its machine code is `bytes`, which may change the registers `clob` and uses a
+    stack frame of `frame` bytes. -/
 structure LinkedFn where
-  /-- The function: its name, its typed parameters, its result type and its extraction. -/
-  fn : ModFn
-  /-- The layout the function is compiled under. -/
+  /-- The name the callers call it by. -/
+  name : String
+  /-- The parameters, each a name with its type. -/
+  params : List (String × NfTy)
+  /-- The result type. -/
+  res : NfTy
+  /-- The meaning of the kernel on the argument values. -/
+  sem : List Value → Option Value
+  /-- A value of the meaning decodes at the result type. -/
+  sem_res : ∀ vals v, sem vals = some v → (dec res v).isSome = true
+  /-- The placement of the arguments and of the result in machine states. -/
   layout : AbiLayout
-  /-- The machine registers the code of the function may change. -/
+  /-- The precondition on the state at the entry of the kernel. -/
+  pre : AState → Prop
+  /-- The addresses the kernel may write, from the state at its entry. -/
+  foot : AState → BitVec 64 → Prop
+  /-- The relation between the entry state and the return state. -/
+  post : AState → AState → Prop
+  /-- The relation between two entry states that agree on the public arguments. -/
+  pub : AState → AState → Prop
+  /-- **The value-level contract**: from an entry state satisfying the precondition, a return
+      state the postcondition relates to it holds, in the result read-back of the layout, the
+      value of the meaning at the arguments the layout reads. -/
+  post_sem : ∀ sa sa' v, pre sa → post sa sa' →
+    sem (layout.args.map (·.read sa)) = some v → layout.ResultOf sa sa' v
+  /-- The machine registers the code may change. -/
   clob : List String
-  /-- The size in bytes of the stack frame of the function. -/
+  /-- The size in bytes of the stack frame. -/
   frame : Nat
-  /-- The machine code of the function. -/
+  /-- The machine code. -/
   bytes : List (BitVec 8)
+
+namespace LinkedFn
+
+/-- The callee of a linked function in the call typing: its name, its parameters and its
+    result type, with the call of the function on its parameters as body. -/
+def callee (l : LinkedFn) : CrateFn :=
+  ⟨l.name, l.params, l.res, .app l.name (l.params.map fun p => .var p.1)⟩
+
+end LinkedFn
+
+/-- **The table of the linked functions `ls` over the table `bi`**: the first linked function
+    with a name answers a call by its meaning `sem` on the argument values; every other call
+    is a call of `bi`. -/
+def linkBi (ls : List LinkedFn) (bi : Builtins) : Builtins := fun g vals =>
+  match ls.find? (·.name == g) with
+  | some l => l.sem vals
+  | none => bi g vals
+
+/-- At a name no linked function of `ls` has, the table of the linked functions is `bi`. -/
+theorem linkBi_of_find_none (ls : List LinkedFn) (bi : Builtins) {g : String}
+    (hg : ls.find? (·.name == g) = none) (vals : List Value) : linkBi ls bi g vals = bi g vals :=
+  by simp only [linkBi, hg]
+
+/-- At the name of a linked function the table of the linked functions is its meaning. -/
+theorem linkBi_of_find_some (ls : List LinkedFn) (bi : Builtins) {g : String} {l : LinkedFn}
+    (hg : ls.find? (·.name == g) = some l) (vals : List Value) :
+    linkBi ls bi g vals = l.sem vals := by
+  simp only [linkBi, hg]
+
+/-- With no linked function the table of the linked functions is the base table. -/
+theorem linkBi_nil (bi : Builtins) : linkBi [] bi = bi := rfl
+
+/-- The first callee with a name among the callees of linked functions is the callee of the
+    first linked function with the name. -/
+theorem find?_callee (ls : List LinkedFn) (g : String) :
+    (ls.map LinkedFn.callee).find? (·.name == g) = (ls.find? (·.name == g)).map LinkedFn.callee
+    := by
+  rw [List.find?_map]
+  rfl
+
+/-- **The table of the linked functions `ls` is typed by the call typing of their callees**
+    over a typing `base` of the base table: a value of a call of a linked function is the value
+    of its meaning, which decodes at its result type (`LinkedFn.sem_res`). -/
+theorem typedCalls_linkBi (ls : List LinkedFn) {bi : Builtins}
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) :
+    TypedCalls (linkBi ls bi) (crateSigOf (ls.map LinkedFn.callee) base) := by
+  intro f as r hsig xs v hb
+  unfold crateSigOf at hsig
+  rw [find?_callee] at hsig
+  cases hf : ls.find? (·.name == f) with
+  | none =>
+      rw [hf] at hsig
+      rw [linkBi_of_find_none ls bi hf] at hb
+      exact hT f as r hsig xs v hb
+  | some l =>
+      rw [hf] at hsig
+      simp only [Option.map_some] at hsig
+      split at hsig
+      · cases hsig
+        rw [linkBi_of_find_some ls bi hf] at hb
+        obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp (l.sem_res _ _ hb)
+        exact ⟨y, hy, dec_sound _ _ _ hy⟩
+      · cases hsig
 
 /-- **A module**: an entry function, the functions the entry may call, the depth to which
     their calls are inlined, and the linked functions, whose calls stay calls. A function is
@@ -628,25 +726,24 @@ def prepared (P : TExpr → ImpExpr) (m : HaxModule) : List CrateFn := m.fns.map
 /-- The module of a single function has no prepared callee. -/
 theorem prepared_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).prepared P = [] := rfl
 
-/-- The linked functions of a module as callees, under the preparation `P` of bodies. The
-    call typing reads their names, their parameter types and their result types. -/
-def linkedFns (P : TExpr → ImpExpr) (m : HaxModule) : List CrateFn :=
-  m.linked.map fun l => l.fn.prep P
+/-- The linked functions of a module as callees (`LinkedFn.callee`). The call typing reads
+    their names, their parameter types and their result types. -/
+def linkedFns (m : HaxModule) : List CrateFn :=
+  m.linked.map LinkedFn.callee
 
 /-- A module without linked functions has no linked callee. -/
-theorem linkedFns_of_linked_nil (P : TExpr → ImpExpr) {m : HaxModule} (h : m.linked = []) :
-    m.linkedFns P = [] := by
+theorem linkedFns_of_linked_nil {m : HaxModule} (h : m.linked = []) : m.linkedFns = [] := by
   rw [linkedFns, h, List.map_nil]
 
 /-- The module of a single function has no linked callee. -/
-theorem linkedFns_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).linkedFns P = [] :=
+theorem linkedFns_single (te : TExpr) : (single te).linkedFns = [] :=
   rfl
 
 /-- The call typing of a module under the preparation `P`: `crateSigOf` at its prepared
     callees followed by its linked functions, over `hax64SigOf`. A call of a linked function
     on arguments whose types fit its parameter types has its result type. -/
 def sigOf (P : TExpr → ImpExpr) (m : HaxModule) : String → List NfTy → Option NfTy :=
-  crateSigOf (m.prepared P ++ m.linkedFns P) hax64SigOf
+  crateSigOf (m.prepared P ++ m.linkedFns) hax64SigOf
 
 /-- The call typing of the module of a single function is `hax64SigOf`. -/
 theorem sigOf_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).sigOf P = hax64SigOf :=
@@ -656,29 +753,27 @@ theorem sigOf_single (P : TExpr → ImpExpr) (te : TExpr) : (single te).sigOf P 
     callees over `hax64SigOf`. -/
 theorem sigOf_of_linked_nil (P : TExpr → ImpExpr) {m : HaxModule} (h : m.linked = []) :
     m.sigOf P = crateSigOf (m.prepared P) hax64SigOf := by
-  rw [sigOf, linkedFns_of_linked_nil P h, List.append_nil]
+  rw [sigOf, linkedFns_of_linked_nil h, List.append_nil]
 
-/-- **The table of the linked functions of a module**: the reference table `refBi` at the
-    linked functions and the depth `1`, each run at the fuel `fuelC`. A call of a linked
-    function is the run of the reference reading of its extraction at the base table `bi`,
-    from the environment binding the names of its parameters to the argument values, when
-    `dec` decodes the value at its result type; every other call is a call of `bi`. The
-    first linked function with a name is the one called. -/
-def linkTable (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
-  refBi (m.linked.map (·.fn)) bi fuelC 1
+/-- **The table of the linked functions of a module**: `linkBi` at its linked functions over
+    the base table `bi`. A call of a linked function is the value of its meaning `sem` on the
+    argument values; every other call is a call of `bi`. The first linked function with a name
+    is the one called. -/
+def linkTable (m : HaxModule) (bi : Builtins) : Builtins :=
+  linkBi m.linked bi
 
 /-- Without linked functions the table of the linked functions is the base table. -/
-theorem linkTable_of_linked_nil {m : HaxModule} (h : m.linked = []) (bi : Builtins)
-    (fuelC : Nat) : m.linkTable bi fuelC = bi := by
-  rw [linkTable, h, List.map_nil, refBi_nil]
+theorem linkTable_of_linked_nil {m : HaxModule} (h : m.linked = []) (bi : Builtins) :
+    m.linkTable bi = bi := by
+  rw [linkTable, h, linkBi_nil]
 
 /-- **The table of a module**: the reference table `refBi` at its functions and its depth,
     over the table `linkTable` of its linked functions, each function run at the fuel
     `fuelC`. A call of a function of the module is the run of the reference reading of its
     extraction to the depth of the module; a call of a linked function, from the entry or
-    from a function of the module, is the run of the reference reading of the extraction of
-    the linked function at the base table `bi`. A name that both a function and a linked
-    function have is called as the function.
+    from a function of the module, is the value of the meaning `sem` of the linked function
+    on the argument values. A name that both a function and a linked function have is called
+    as the function.
 
     For a module with linked functions this table gives a call of a linked function a
     source meaning. The compiler `compileA` returns no result on such a module, so the
@@ -686,7 +781,7 @@ theorem linkTable_of_linked_nil {m : HaxModule} (h : m.linked = []) (bi : Builti
     a module without linked functions the table is the reference table of its functions
     over `bi` (`table_of_linked_nil`). -/
 def table (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
-  refBi m.fns (m.linkTable bi fuelC) fuelC m.depth
+  refBi m.fns (m.linkTable bi) fuelC m.depth
 
 /-- The table of the module of a single function is the base table. -/
 theorem table_single (te : TExpr) (bi : Builtins) (fuelC : Nat) :
@@ -703,10 +798,8 @@ theorem table_of_linked_nil {m : HaxModule} (h : m.linked = []) (bi : Builtins)
     the callees, runs from an environment `σ` reads off the entry state `sa` to the value `v`,
     which is not a control-flow value. A call of a function of the module is the run of the
     reference reading of the extraction of the callee, from the environment binding the names
-    of its parameters to the argument values. A call of a linked function is the run of the
-    reference reading of the extraction of the linked function at the base table `bi`, from
-    the environment binding the names of its parameters to the argument values
-    (`HaxModule.linkTable`). -/
+    of its parameters to the argument values. A call of a linked function is the value of its
+    meaning `sem` on the argument values (`HaxModule.linkTable`). -/
 def Runs(bi : Builtins) (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
   ∃ env fuel fuelC env', σ.EnvOf sa env ∧
     (denoteSpine (m.table bi fuelC) fuel m.entry.erase).run env = (.val v, env') ∧
@@ -734,15 +827,13 @@ theorem inline?_single (P : TExpr → ImpExpr) (te : TExpr) {Γ : Ctxt nfDialect
 
 /-- **The call typing of a module is sound for the table of the module**, under the typing
     of the base table: the table of the linked functions is typed by the call typing of the
-    linked functions over `hax64SigOf`, and the table of the module by the call typing of
-    the prepared callees over that (`typedCalls_refBi`). -/
+    linked functions over `hax64SigOf` (`typedCalls_linkBi`), and the table of the module by
+    the call typing of the prepared callees over that (`typedCalls_refBi`). -/
 theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     (hT : TypedCalls bi hax64SigOf) (fuelC : Nat) :
     TypedCalls (m.table bi fuelC) (m.sigOf P) := by
   rw [sigOf, crateSigOf_append]
-  refine typedCalls_refBi P m.fns ?_ fuelC m.depth
-  have h := typedCalls_refBi P (m.linked.map (·.fn)) hT fuelC 1
-  rwa [List.map_map] at h
+  exact typedCalls_refBi P m.fns (typedCalls_linkBi m.linked hT) fuelC m.depth
 
 /-- **The inlining of the calls of a module keeps every successful run, from the table of the
     module to the table of its linked functions**, under the typing `hax64SigOf` of the
@@ -750,12 +841,12 @@ theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     at every depth of the reference table over it. For a module without linked functions the
     table of the linked functions is the base table (`linkTable_of_linked_nil`). -/
 theorem denote_inline? (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi fuelC) hax64SigOf) (tf : Nat)
-    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi fuelC) fuelC n))
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
     {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
     (h : m.inline? P p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
     (hp : PDenP (m.table bi fuelC) tf p V = some out) :
-    PDenP (m.linkTable bi fuelC) tf p' V = some out :=
+    PDenP (m.linkTable bi) tf p' V = some out :=
   (crateTables_refBi P m.fns _ fuelC hsim).denote_crateInline? hT tf m.depth h hp
 
 /-- The inlining of the calls of a module as a chain step. -/
@@ -769,12 +860,12 @@ def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts
     when the preparation `P` keeps the runs of every function at every depth of the
     reference table over the table of the linked functions. -/
 def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi fuelC) hax64SigOf) (tf : Nat)
-    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi fuelC) fuelC n))
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
     (Γ : Ctxt nfDialect) (ts : List NfTy) :
     PassChain.StepCert (m.inlineStep P Γ ts).run
       (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.table bi fuelC))) _ Γ ts)
-      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.linkTable bi fuelC))) _ Γ ts) where
+      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.linkTable bi))) _ Γ ts) where
   relIn V W := V = W
   relOut o o' := o = o'
   sound := by
