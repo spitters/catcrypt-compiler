@@ -246,6 +246,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
 CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
+CatCrypt.Crypto.SecureCompilation.Ascent.BlockHalts
 CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
