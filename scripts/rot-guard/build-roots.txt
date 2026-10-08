@@ -39,6 +39,7 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_WhileTrue
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsCT
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
+CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
 CatCrypt.Crypto.Hax.HaxWideMulFuse
 CatCrypt.Crypto.Hax.ImpDesugarRun
 CatCrypt.Crypto.Hax.ImpDesugarWide
@@ -486,7 +487,6 @@ CatCrypt.Crypto.SecureCompilation.MontgomeryLadderGeneric
 CatCrypt.Crypto.SecureCompilation.MoreKernelRegistryEntries
 CatCrypt.Crypto.SecureCompilation.MultiWidthGoldenPath
 CatCrypt.Crypto.SecureCompilation.NttPassBridgeComplete
-CatCrypt.Crypto.SecureCompilation.PipelineMap
 CatCrypt.Crypto.SecureCompilation.PlonkyRouting
 CatCrypt.Crypto.SecureCompilation.PolyRelationalCompileHigh
 CatCrypt.Crypto.SecureCompilation.PqcMpcProtocolKernels

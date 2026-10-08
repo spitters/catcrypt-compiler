@@ -17,8 +17,8 @@ with `CatCrypt/` or name a document at the package root.
 - [DEMO.md](../../../DEMO.md) and [EXAMPLES.md](../../../EXAMPLES.md): worked examples.
 - [CAPABILITIES.md](../../../CAPABILITIES.md): per-primitive modules and theorems.
 - [VIR/DIALECTS.md](VIR/DIALECTS.md): which dialect lowers to which, and which reach bytes.
-- [PipelineMap.lean](PipelineMap.lean): the two hax ingestion pipelines
-  (`compileFromHax` and `haxToLowCT`) and what each accepts.
+- [Hax/FrontDomain.lean](../Hax/FrontDomain.lean): `HaxModule.refusal?`, the domain of
+  the front `haxToNF` of `compileA` (listed in `DESIGN.md` "The domain of the front").
 - [Dialects/FrontRoutePlan.lean](Dialects/FrontRoutePlan.lean): the rolled-loop front
   indexed by loop shape, body front, continuation and post-pass; `analyse` classifies
   a `LowCT` source, `compile` dispatches, and an unsupported combination is reported

@@ -365,7 +365,7 @@ mathematical Tate or Weil pairing.
   (`ThirToComFront.lean`; `compileFromHax` in `CompileFromHax.lean`, with
   `compileFromHax_denote`).
 - Loops and arrays (older route): `hax ImpExpr → haxToLowCT → LowCT →
-  catCryptDialect / ComL` (`CatCrypt/Crypto/Hax/HaxToLowCT.lean`; `PipelineMap.lean`;
+  catCryptDialect / ComL` (`CatCrypt/Crypto/Hax/HaxToLowCT.lean`;
   the `Dialects/TranslateDialect*` translators). The dev compiler `Haxc.compileA`
   (`Haxc/ComposeV1.lean`, with `haxc_correct_auto`) takes a different route: its front
   `nfFront` (`Haxc/NFChain.lean`) translates the typed body to `NFProg` and lowers it by
