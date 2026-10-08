@@ -654,7 +654,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapSel
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
-CatCrypt.Crypto.SecureCompilation.VIR.LaneStripAccept
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.LanesRepFamily
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
@@ -765,6 +764,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduceReal
 CatCrypt.Crypto.SecureCompilation.VIR.TensorExtDialect
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
+CatCrypt.Crypto.SecureCompilation.VIR.TileBridgeLegal
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
@@ -777,6 +777,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
 CatCrypt.Crypto.SecureCompilation.VIR.X86VecExec
+CatCrypt.Crypto.SecureCompilation.VIR.X86VecMemExec
 CatCrypt.Crypto.SecureCompilation.VIR.X86VecMulRules
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
