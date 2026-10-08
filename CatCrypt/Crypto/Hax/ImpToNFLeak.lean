@@ -1,0 +1,1539 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.Hax.HaxSourceLeak
+public import CatCrypt.Crypto.Hax.NFToCatLeak
+public import CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
+
+/-!
+# The leakage transformer of `impToNF`
+
+The front `ImpToNF.impToNF` as a pass of the structured-leakage pattern: the leakage of the
+`NFProg` it emits is a function of the source leakage alone.
+
+## The source leakage
+
+`srcLeakNF bi e fuel env` is the leakage of the run of `denote' bi fuel e` from `env`, a tree
+of the events `SrcEv` of `srcLeak` with the shape of the evaluation. It differs from `srcLeak`
+on the constructs that `srcLeak` leaves opaque: a call `app f args` leaves the leakages of its
+arguments, left to right, and then the event `op (callLeak f vals)` of the call on the
+argument values `vals`; an assignment leaves the leakage of its right-hand side; a tuple the
+leakages of its components. `callLeak f vals` is the event list of the leakage model
+`nfLeakModel` for a call of `f`, read on the source values (`valNatOf`).
+
+## The transformer
+
+`nfTrace l` maps a source leakage tree to the events of `nfLeakModel`: a branch to `branch`,
+the bounds `lo, hi` of a counted loop to the trip count `trip ((hi - lo).toNat % 2 ^ 64)`, an
+operation event to its events, and every other event to none.
+
+## The prefix leakage
+
+`NFPre.leakRunM` is the leakage run of a prefix of an `NFProg`, with the events of
+`NFProg.leakRunM`; a filled prefix runs the prefix and then its continuation
+(`NFPre.leakRunM_plug`).
+
+## Constant time
+
+From source constant time `SourceCTNF` for a level table `lt`, two leakage runs of the
+emitted program from valuations related to environments agreeing on the public variables
+emit equal events (`impToNF_ct_runs`). For a function body with the parameters `ps`, whose
+source run ends in a value from every valuation of the parameters, this is `NFCTRel` for the
+labels `entryLabels lt ps` (`impToNF_nfCTRel`). At `lt = levelsOf s`, with every parameter
+listed in the secrecy record `s`, it holds for the parameter levels `paramLevelOf s`, the
+levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`).
+
+## Main definitions
+
+* `NFPre.leakRunM`, `PLeak`, `QuietPre`
+* `valNatOf`, `callLeak`, `srcLeakNF`, `srcArgsLeakNF`, `nfEv`, `nfTrace`
+* `LSound` — the simulation statement of `ImpToNF.Sound` with the leakage of the prefix
+* `SourceCTNF` — constant time at the source for `srcLeakNF`
+* `entryLabels`, `entryEnvOf`, `paramLevelOf`
+
+## Main results
+
+* `NFPre.leakRunM_plug`, `NFPre.leakRunM_append`, `NFPre.leakRunM_fst`
+* the case lemmas `lsound_lit`, `lsound_atom`, `lsound_seq`, `lsound_letBind`,
+  `lsound_assign`, `lsound_args`, `lsound_app`, `lsound_tuple`, `lsound_cond`,
+  `loop_leak`, `loopOut_leak`, `lsound_forFold`
+* `impToNF_lsound`, `impToNF_leak` — the leakage transformer of the front
+* `impToNF_ct_runs`, `impToNF_nfCTRel`, `pubEqV_entryLabels_levelsOf`,
+  `impToNF_nfCTRel_params`
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
+open MultiBlockLowering (hvAppend)
+open Ctxt (Var Valuation)
+
+variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+  [HasBoolBit d] [DialectDenoteM d Option]
+
+/-- The run of a prefix from a valuation with the list of its events: the valuation of the
+    hole and the events of `NFProg.leakRunM` of the bindings, loops and branches of the
+    prefix. -/
+def NFPre.leakRunM (M : LeakModel d) (fuel : Nat) :
+    {Γ Δ : Ctxt d} → NFPre d Γ Δ → Valuation Γ → Option (Valuation Δ × List CTLeak)
+  | _, _, .nil, V => some (V, [])
+  | _, _, .var e p, V =>
+      (e.denoteM (M := Option) V).bind fun x =>
+        (NFPre.leakRunM M fuel p (V.extend x)).map fun r => (r.1, Expr.ctLeak M e V ++ r.2)
+  | _, _, .forLoop count inits body p, V =>
+      (forIterLeak
+          (fun i acc => NFProg.leakRunM M fuel body
+            (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (List.range (HasWord64.toNat (d := d) (count.lookup V)))
+          (Expr.lookupArgs inits V)).bind fun r =>
+        (NFPre.leakRunM M fuel p (hvAppend r.1 V)).map fun q =>
+          (q.1, .trip (HasWord64.toNat (d := d) (count.lookup V)) :: (r.2 ++ q.2))
+  | _, _, .ifThenElse cond thn els p, V =>
+      (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+        else NFProg.leakRunM M fuel els V).bind fun r =>
+        (NFPre.leakRunM M fuel p (hvAppend r.1 V)).map fun q =>
+          (q.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (r.2 ++ q.2))
+
+/-- **A filled prefix** runs the prefix and then its continuation from the valuation of the
+    hole, with the events of the two in order. -/
+theorem NFPre.leakRunM_plug (M : LeakModel d) (fuel : Nat) {Γ Δ : Ctxt d} {ts : List d.Ty}
+    (p : NFPre d Γ Δ) (k : NFProg d Δ ts) (V : Valuation Γ) :
+    NFProg.leakRunM M fuel (p.plug k) V =
+      (NFPre.leakRunM M fuel p V).bind fun r =>
+        (NFProg.leakRunM M fuel k r.1).map fun q => (q.1, r.2 ++ q.2) := by
+  induction p with
+  | nil =>
+      simp only [NFPre.plug, NFPre.leakRunM, Option.bind_some, List.nil_append]
+      cases NFProg.leakRunM M fuel k V <;> rfl
+  | var e p ih =>
+      simp only [NFPre.plug, NFProg.leakRunM, NFPre.leakRunM, ih]
+      cases e.denoteM (M := Option) V with
+      | none => rfl
+      | some x =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (V.extend x) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some, Option.map_map]
+              cases NFProg.leakRunM M fuel k r.1 <;> simp [List.append_assoc]
+  | forLoop count inits body p ih =>
+      simp only [NFPre.plug, NFProg.leakRunM, NFPre.leakRunM, ih]
+      cases forIterLeak (fun i acc => NFProg.leakRunM M fuel body
+          (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (List.range (HasWord64.toNat (d := d) (count.lookup V)))
+          (Expr.lookupArgs inits V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFProg.leakRunM M fuel k r.1 <;> simp [List.append_assoc]
+  | ifThenElse cond thn els p ih =>
+      simp only [NFPre.plug, NFProg.leakRunM, NFPre.leakRunM, ih]
+      cases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+        else NFProg.leakRunM M fuel els V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFProg.leakRunM M fuel k r.1 <;> simp [List.append_assoc]
+
+/-- **A composed prefix** runs the first prefix and then the second from the valuation of the
+    hole of the first, with the events of the two in order. -/
+theorem NFPre.leakRunM_append (M : LeakModel d) (fuel : Nat) {Γ Δ Θ : Ctxt d}
+    (p : NFPre d Γ Δ) (q : NFPre d Δ Θ) (V : Valuation Γ) :
+    NFPre.leakRunM M fuel (p.append q) V =
+      (NFPre.leakRunM M fuel p V).bind fun r =>
+        (NFPre.leakRunM M fuel q r.1).map fun s => (s.1, r.2 ++ s.2) := by
+  induction p with
+  | nil =>
+      simp only [NFPre.append, NFPre.leakRunM, Option.bind_some, List.nil_append]
+      cases NFPre.leakRunM M fuel q V <;> rfl
+  | var e p ih =>
+      simp only [NFPre.append, NFPre.leakRunM, ih]
+      cases e.denoteM (M := Option) V with
+      | none => rfl
+      | some x =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (V.extend x) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFPre.leakRunM M fuel q r.1 <;> simp [List.append_assoc]
+  | forLoop count inits body p ih =>
+      simp only [NFPre.append, NFPre.leakRunM, ih]
+      cases forIterLeak (fun i acc => NFProg.leakRunM M fuel body
+          (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (List.range (HasWord64.toNat (d := d) (count.lookup V)))
+          (Expr.lookupArgs inits V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFPre.leakRunM M fuel q r.1 <;> simp [List.append_assoc]
+  | ifThenElse cond thn els p ih =>
+      simp only [NFPre.append, NFPre.leakRunM, ih]
+      cases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+        else NFProg.leakRunM M fuel els V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunM M fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFPre.leakRunM M fuel q r.1 <;> simp [List.append_assoc]
+
+/-- **The valuation of the leakage run of a prefix** is its denotation in the empty call
+    environment. -/
+theorem NFPre.leakRunM_fst (M : LeakModel d) (fuel : Nat) {Γ Δ : Ctxt d}
+    (p : NFPre d Γ Δ) (V : Valuation Γ) :
+    (NFPre.leakRunM M fuel p V).map Prod.fst =
+      @NFPre.denote d _ _ _ _ _ ⟨CallEnv.empty⟩ fuel Γ Δ p V := by
+  let _ : CallDenote d := ⟨CallEnv.empty⟩
+  induction p with
+  | nil => rfl
+  | var e p ih =>
+      simp only [NFPre.leakRunM, NFPre.denote, Option.bind_eq_bind]
+      rcases e.denoteM (M := Option) V with _ | x
+      · rfl
+      · simp only [Option.bind_some, Option.map_map]
+        exact ih _
+  | @forLoop Γ' Δ' cs_1 count inits body p ih =>
+      have hb : ∀ (i : Nat) (acc : Valuation cs_1),
+          (NFProg.leakRunM M fuel body
+            (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V))).map Prod.fst =
+          body.denote fuel (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)) :=
+        fun i acc => NFProg.leakRunM_fst M fuel body
+          (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V))
+      rw [NFPre.denote, ← forIterLeak_fst _ _ hb]
+      simp only [NFPre.leakRunM, Option.bind_eq_bind]
+      rcases forIterLeak (fun i acc => NFProg.leakRunM M fuel body
+          (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
+          (List.range (HasWord64.toNat (d := d) (count.lookup V)))
+          (Expr.lookupArgs inits V) with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ih _
+  | ifThenElse cond thn els p ih =>
+      have hc : (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
+          else els.denote fuel V) =
+          (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+            else NFProg.leakRunM M fuel els V).map Prod.fst := by
+        split
+        · exact (NFProg.leakRunM_fst M fuel thn V).symm
+        · exact (NFProg.leakRunM_fst M fuel els V).symm
+      simp only [NFPre.denote, hc]
+      simp only [NFPre.leakRunM, Option.bind_eq_bind]
+      rcases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+        else NFProg.leakRunM M fuel els V) with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ih _
+
+end CatCrypt.Crypto.SecureCompilation.VIR
+
+namespace CatCrypt.Crypto.Hax.ImpToNF
+
+open _root_.Hax (ImpExpr ImpLit Value Env Outcome Builtins denote' denoteArgs')
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
+open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
+open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
+open CatCrypt.Crypto.Hax.NFToCat (nfLeakModel nfKind nfValNat nfLeakRun)
+open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
+open MultiBlockLowering (hvAppend)
+open Ctxt (Var Valuation)
+
+/-! ## The prefix leakage over `nfDialect` -/
+
+/-- The leakage run of a prefix over `nfDialect` with the leaves of `tableOf bi`, in the
+    leakage model `nfLeakModel`. -/
+abbrev PLeak (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ)
+    (V : Valuation Γ) : Option (Valuation Δ × List CTLeak) :=
+  @NFPre.leakRunM nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel fuel Γ Δ p V
+
+/-- The valuation of the prefix leakage run is the denotation of the prefix. -/
+theorem PLeak_fst (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect}
+    (p : NFPre nfDialect Γ Δ) (V : Valuation Γ) :
+    (PLeak bi fuel p V).map Prod.fst = PDen bi fuel p V :=
+  @NFPre.leakRunM_fst nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel fuel _ _ p V
+
+/-- A prefix leakage run that succeeds ends at the denotation of the prefix. -/
+theorem PLeak_den {bi : Builtins} {fuel : Nat} {Γ Δ : Ctxt nfDialect}
+    {p : NFPre nfDialect Γ Δ} {V : Valuation Γ} {W : Valuation Δ} {t : List CTLeak}
+    (h : PLeak bi fuel p V = some (W, t)) : PDen bi fuel p V = some W := by
+  rw [← PLeak_fst, h]; rfl
+
+/-- The prefix leakage run of a composed prefix. -/
+theorem PLeak_append (bi : Builtins) (fuel : Nat) {Γ Δ Θ : Ctxt nfDialect}
+    (p : NFPre nfDialect Γ Δ) (q : NFPre nfDialect Δ Θ) (V : Valuation Γ) :
+    PLeak bi fuel (p.append q) V =
+      (PLeak bi fuel p V).bind fun r => (PLeak bi fuel q r.1).map fun s => (s.1, r.2 ++ s.2) :=
+  @NFPre.leakRunM_append nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel fuel _ _ _ p q V
+
+/-- Two prefix leakage runs that succeed compose. -/
+theorem PLeak_append_some {bi : Builtins} {fuel : Nat} {Γ Δ Θ : Ctxt nfDialect}
+    {p : NFPre nfDialect Γ Δ} {q : NFPre nfDialect Δ Θ} {V : Valuation Γ} {W₁ : Valuation Δ}
+    {W₂ : Valuation Θ} {t₁ t₂ : List CTLeak} (h₁ : PLeak bi fuel p V = some (W₁, t₁))
+    (h₂ : PLeak bi fuel q W₁ = some (W₂, t₂)) :
+    PLeak bi fuel (p.append q) V = some (W₂, t₁ ++ t₂) := by
+  rw [PLeak_append, h₁, Option.bind_some, h₂]; rfl
+
+/-- The leakage run of a filled prefix over `nfDialect`. -/
+theorem nfLeakRun_plug (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFPre nfDialect Γ Δ) (k : NFProg nfDialect Δ ts) (V : Valuation Γ) :
+    nfLeakRun bi fuel (p.plug k) V =
+      (PLeak bi fuel p V).bind fun r => (nfLeakRun bi fuel k r.1).map fun q => (q.1, r.2 ++ q.2) :=
+  @NFPre.leakRunM_plug nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel fuel _ _ _ p k V
+
+/-! ## The events of an operation of the front -/
+
+/-- The natural-number reading of a source value: an integer by its natural number, a
+    boolean by its bit, every other value as `0`. -/
+def valNatOf : Value → Nat
+  | .int n => n.toNat
+  | .bool b => b.toNat
+  | _ => 0
+
+/-- The reading of the encoding of a value is the reading `nfValNat` of the value. -/
+theorem valNatOf_enc : (t : NfTy) → (x : t.denote) → valNatOf (enc t x) = nfValNat t x
+  | .word _, x => by simp [enc, valNatOf, nfValNat]
+  | .int, _ => rfl
+  | .bit, _ => rfl
+  | .unit, _ => rfl
+  | .arr _ _, _ => rfl
+  | .pair _ _, _ => rfl
+  | .uint _, _ => rfl
+  | .sint _, _ => rfl
+  | .tnil, _ => rfl
+  | .tcons _ _, _ => rfl
+  | .slice _, _ => rfl
+
+/-- The readings of a vector of values are the readings of their encodings. -/
+theorem valsNat_encAll : (as : List NfTy) → (xs : HVector NfTy.denote as) →
+    valsNat nfLeakModel xs = (encAll as xs).map valNatOf
+  | [], .nil => rfl
+  | a :: as, .cons x xs => by
+      change nfValNat a x :: valsNat nfLeakModel xs = valNatOf (enc a x) :: _
+      rw [valNatOf_enc, valsNat_encAll as xs]
+
+/-- The events of a call of `f` on the source values `vals` in the leakage model
+    `nfLeakModel`: the class `nfKind` of a call of `f`, read on the values by `valNatOf`. -/
+def callLeak (f : String) (vals : List Value) : List CTLeak :=
+  match nfKind (.call f [] .unit) with
+  | .quiet => []
+  | .addrAt k => [.addr "" (((vals.map valNatOf).getD k 0 : Nat) : Int)]
+  | .vt m => [.vt m (vals.map valNatOf)]
+  | .vtCall g => [.vtCall g ((vals.map valNatOf).map fun x => [x])]
+
+/-- The events of a call binding of the front are the events `callLeak` of the call on the
+    encodings of its arguments. -/
+theorem ctLeak_call (tgt : Option String) {Γ : Ctxt nfDialect} (f : String) (as : List NfTy)
+    (r : NfTy) (args : HVector (fun t => Var Γ t) as) (V : Valuation Γ) :
+    Expr.ctLeak nfLeakModel (mkEN tgt (.call f as r) args) V =
+      callLeak f (encAll as (Expr.lookupArgs args V)) := by
+  have hk : nfKind (.call f as r) = nfKind (.call f [] .unit) := rfl
+  cases tgt <;>
+  · simp only [Expr.ctLeak, mkEN, callLeak]
+    change (match nfKind (.call f as r) with
+      | .quiet => [] | .addrAt k => _ | .vt m => _ | .vtCall g => _) = _
+    rw [hk, valsNat_encAll]
+    rfl
+
+/-- A binding of the front of a quiet operation has no event. -/
+theorem ctLeak_quiet (tgt : Option String) {Γ : Ctxt nfDialect} (op : NfOp)
+    (hq : nfKind op = .quiet) (args : HVector (fun t => Var Γ t) op.sig) (V : Valuation Γ) :
+    Expr.ctLeak nfLeakModel (mkEN tgt op args) V = [] := by
+  cases tgt <;>
+  · simp only [Expr.ctLeak, mkEN]
+    change (match nfKind op with
+      | .quiet => [] | .addrAt k => _ | .vt m => _ | .vtCall g => _) = _
+    rw [hq]
+
+/-! ## The source leakage -/
+
+mutual
+/-- **The source leakage of the fragment of `impToNF`** (see the module docstring). -/
+def srcLeakNF (bi : Builtins) : ImpExpr → Nat → Env → SrcLeak
+  | .lit _, _, _ => .nil
+  | .var _, _, _ => .nil
+  | .unitVal, _, _ => .nil
+  | .typeAscription e _, fuel, env => srcLeakNF bi e fuel env
+  | .letBind n v body, fuel, env =>
+    .cat (srcLeakNF bi v fuel env)
+      (contLeak ((denote' bi fuel v).run env) fun w e1 => srcLeakNF bi body fuel (e1.extend n w))
+  | .seq a b, fuel, env =>
+    .cat (srcLeakNF bi a fuel env)
+      (contLeak ((denote' bi fuel a).run env) fun _ e1 => srcLeakNF bi b fuel e1)
+  | .assign _ r, fuel, env => srcLeakNF bi r fuel env
+  | .app f args, fuel, env =>
+    .cat (srcArgsLeakNF bi args fuel env)
+      (match (denoteArgs' bi fuel args).run env with
+       | (some vals, _) => .ev (.op (callLeak f vals))
+       | _ => .nil)
+  | .tuple es, fuel, env => srcArgsLeakNF bi es fuel env
+  | .ifThenElse c t e, fuel, env =>
+    .cat (srcLeakNF bi c fuel env)
+      (match (denote' bi fuel c).run env with
+       | (.val (.bool true), e1) => .cat (.ev (.branch true)) (srcLeakNF bi t fuel e1)
+       | (.val (.bool false), e1) => .cat (.ev (.branch false)) (srcLeakNF bi e fuel e1)
+       | _ => .nil)
+  | .forFold i lo hi body, fuel, env =>
+    boundsLeak bi lo hi (srcLeakNF bi lo fuel) (srcLeakNF bi hi fuel) fuel
+      (fun l h => forLeak bi i body (srcLeakNF bi body) fuel l h) env
+  | e, _, env => .ev (.opaque env e)
+
+/-- The source leakage of a list of expressions run left to right, as `denoteArgs'` runs
+    them. -/
+def srcArgsLeakNF (bi : Builtins) : List ImpExpr → Nat → Env → SrcLeak
+  | [], _, _ => .nil
+  | e :: es, fuel, env =>
+    .cat (srcLeakNF bi e fuel env)
+      (contLeak ((denote' bi fuel e).run env) fun _ e1 => srcArgsLeakNF bi es fuel e1)
+end
+
+/-- The events of `nfLeakModel` of a source event. -/
+def nfEv : SrcEv → List CTLeak
+  | .branch b => [.branch b]
+  | .exit => []
+  | .bound lo hi => [.trip ((hi - lo).toNat % 2 ^ 64)]
+  | .op l => l
+  | .opaque _ _ => []
+
+/-- **The leakage transformer of `impToNF`**: the events of `nfLeakModel` of a source
+    leakage tree, in evaluation order. -/
+def nfTrace : SrcLeak → List CTLeak
+  | .nil => []
+  | .ev x => nfEv x
+  | .cat a b => nfTrace a ++ nfTrace b
+
+/-- The leakage after a value that is the encoding of a value of the front. -/
+theorem contLeak_enc (t : NfTy) (x : t.denote) (e1 : Env) (k : Value → Env → SrcLeak) :
+    contLeak (.val (enc t x), e1) k = k (enc t x) e1 := by
+  have h := enc_ne_controlFlow t x
+  generalize enc t x = w at h ⊢
+  cases w <;> first | rfl | exact absurd rfl (h _ _)
+
+/-! ## The simulation with leakage -/
+
+/-- **The simulation statement with leakage** for the expression `e` and the output `o` of
+    the front from `σ`: `ImpToNF.Sound`, with the prefix run by its leakage run, whose events
+    are the transformed source leakage `nfTrace (srcLeakNF bi e fuel env)`. -/
+def LSound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
+    (o : Out Γ) : Prop :=
+  ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
+    (denote' bi fuel e).run env = (.val v, env') →
+    ∀ tf, ∃ W, PLeak bi tf o.pre V = some (W, nfTrace (srcLeakNF bi e fuel env)) ∧
+      EnvRel o.σ env' W ∧ v = enc o.t (o.res.lookup W)
+
+/-- The simulation with leakage implies the simulation. -/
+theorem LSound.sound {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ} (h : LSound bi fuel e σ o) : Sound bi fuel e σ o := by
+  intro env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := h env V v env' hrel hrun tf
+  exact ⟨W, PLeak_den hW, hr, hv⟩
+
+/-- The prefix leakage run of one binding of a quiet operation. -/
+theorem PLeak_bind1N_quiet (bi : Builtins) (fuel : Nat) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (op : NfOp) (hq : nfKind op = .quiet)
+    (args : HVector (fun t => Var Γ t) op.sig) (V : Valuation Γ) :
+    PLeak bi fuel (bind1N tgt σ op args).pre V =
+      (nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V)).map fun x => (V.extend x, []) := by
+  simp only [PLeak, bind1N, NFPre.leakRunM]
+  rw [ctLeak_quiet tgt op hq args V]
+  cases tgt <;>
+  · simp only [mkEN, Expr.denoteM, nfDenote_denoteM]
+    change (nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V)).bind
+      (fun x => Option.map (fun r => (r.1, [] ++ r.2)) (some (V.extend x, []))) = _
+    cases nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) <;> rfl
+
+/-- `ImpToNF.sound_bind1N` with leakage, for a quiet operation and an expression with no
+    source event. -/
+theorem lsound_bind1N (bi : Builtins) (fuel : Nat) (e : ImpExpr) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (op : NfOp) (hq : nfKind op = .quiet)
+    (args : HVector (fun t => Var Γ t) op.sig)
+    (hl : ∀ env, nfTrace (srcLeakNF bi e fuel env) = [])
+    (h : ∀ env V v env', EnvRel σ env V → (denote' bi fuel e).run env = (.val v, env') →
+      env' = env ∧ ∃ x, nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) = some x ∧
+        v = enc op.ret x) :
+    LSound bi fuel e σ (bind1N tgt σ op args) := by
+  intro env V v env' hrel hrun tf
+  obtain ⟨rfl, x, hx, rfl⟩ := h env V v env' hrel hrun
+  refine ⟨V.extend x, ?_, hrel.mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
+  rw [hl, PLeak_bind1N_quiet bi tf tgt σ op hq args V, hx]
+  rfl
+
+/-! ## Prefixes with no event -/
+
+/-- A prefix with no event: its leakage run is its denotation with the empty list. -/
+def QuietPre (bi : Builtins) (tf : Nat) {Γ Δ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ) :
+    Prop :=
+  ∀ V, PLeak bi tf p V = (PDen bi tf p V).map fun W => (W, [])
+
+theorem QuietPre.nil (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} :
+    QuietPre bi tf (NFPre.nil : NFPre nfDialect Γ Γ) := fun _ => rfl
+
+theorem QuietPre.append {bi : Builtins} {tf : Nat} {Γ Δ Θ : Ctxt nfDialect}
+    {p : NFPre nfDialect Γ Δ} {q : NFPre nfDialect Δ Θ} (hp : QuietPre bi tf p)
+    (hq : QuietPre bi tf q) : QuietPre bi tf (p.append q) := by
+  intro V
+  rw [PLeak_append, PDen_append, hp]
+  cases PDen bi tf p V with
+  | none => rfl
+  | some W =>
+      simp only [Option.map_some, Option.bind_some]
+      rw [hq W]
+      cases PDen bi tf q W <;> rfl
+
+/-- One binding of a quiet operation has no event. -/
+theorem QuietPre.var (bi : Builtins) (tf : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
+    (op : NfOp) (hq : nfKind op = .quiet) (args : HVector (fun t => Var Γ t) op.sig) :
+    QuietPre bi tf (.var (mkEN tgt op args) .nil : NFPre nfDialect Γ (op.ret :: Γ)) := by
+  intro V
+  have h1 := PLeak_bind1N_quiet bi tf tgt [] op hq args V
+  have h2 := PDen_bind1N bi tf tgt [] op args V
+  simp only [bind1N] at h1 h2
+  rw [h1, h2]
+  cases nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) <;> rfl
+
+/-- The bindings of `tupleOut` have no event. -/
+theorem quietPre_tupleOut (bi : Builtins) (tf : Nat) :
+    ∀ {Γ : Ctxt nfDialect} (tgt : Option String) (as : List NfTy)
+      (vs : HVector (fun t => Var Γ t) as), QuietPre bi tf (tupleOut tgt as vs).2.1
+  | _, tgt, [], .nil => QuietPre.var bi tf tgt .tnilV rfl .nil
+  | _, tgt, _ :: as, .cons _ vs =>
+      QuietPre.append (quietPre_tupleOut bi tf none as vs) (QuietPre.var bi tf tgt _ rfl _)
+
+/-- The prefix of an atom has no event. -/
+theorem quietPre_atomOut (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
+    (a : ImpExpr) {o : Out Γ} (h : atomOut σ a = some o) : QuietPre bi tf o.pre := by
+  cases a with
+  | var x =>
+      simp only [atomOut, Option.map_eq_some_iff] at h
+      obtain ⟨_, _, rfl⟩ := h
+      exact QuietPre.nil bi tf
+  | lit l =>
+      cases l with
+      | bool b =>
+          simp only [atomOut, litOut, Option.some.injEq] at h
+          subst h
+          exact QuietPre.var bi tf none _ rfl _
+      | unit =>
+          simp only [atomOut, litOut, Option.some.injEq] at h
+          subst h
+          exact QuietPre.var bi tf none _ rfl _
+      | int n | uintLit W n | sintLit W n =>
+          simp only [atomOut, litOut, Option.bind_eq_some_iff] at h
+          obtain ⟨⟨t, v⟩, -, hs⟩ := h
+          split at hs
+          · simp only [Option.some.injEq] at hs
+            subst hs
+            exact QuietPre.var bi tf none _ rfl _
+          · cases hs
+  | _ => simp [atomOut] at h
+
+/-- The prefix of a list of atoms has no event. -/
+theorem quietPre_argsOut (bi : Builtins) (tf : Nat) (es : List ImpExpr) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, argsOut σ es = some oa →
+      QuietPre bi tf oa.pre := by
+  induction es with
+  | nil =>
+      intro Γ σ oa h
+      simp only [argsOut, Option.some.injEq] at h
+      subst h
+      exact QuietPre.nil bi tf
+  | cons e es ih =>
+      intro Γ σ oa h
+      simp only [argsOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      exact QuietPre.append (quietPre_atomOut bi tf σ e ho) (ih o.σ hos)
+
+/-- The leakage after a part has no event when no continuation has one. -/
+theorem nfTrace_contLeak_nil (o : Outcome × Env) (k : Value → Env → SrcLeak)
+    (hk : ∀ w e, nfTrace (k w e) = []) : nfTrace (contLeak o k) = [] := by
+  unfold contLeak
+  split <;> first | rfl | exact hk _ _
+
+/-- A list of atoms has no source event. -/
+theorem nfTrace_srcArgsLeakNF_atoms (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} :
+    ∀ (es : List ImpExpr) (σ : NfEnv Γ) {oa : ArgsOut Γ}, argsOut σ es = some oa →
+      ∀ env, nfTrace (srcArgsLeakNF bi es fuel env) = [] := by
+  intro es
+  induction es generalizing Γ with
+  | nil => intro σ oa _ env; simp only [srcArgsLeakNF, nfTrace]
+  | cons e es ih =>
+      intro σ oa h env
+      simp only [argsOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      have he : nfTrace (srcLeakNF bi e fuel env) = [] := by
+        cases e with
+        | var x => rfl
+        | lit l => rfl
+        | _ => simp [atomOut] at ho
+      simp only [srcArgsLeakNF, nfTrace, he, List.nil_append]
+      exact nfTrace_contLeak_nil _ _ fun _ e1 => ih o.σ hos e1
+
+/-! ## The constructs other than the loop and the conditional -/
+
+open _root_.Hax.ContinueFlag (var_run lit_run unitVal_run letBind_run seq_run app_run
+  args_nil_run args_cons_run)
+
+/-- A literal is sound with leakage. -/
+theorem lsound_lit (bi : Builtins) (fuel : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
+    (σ : NfEnv Γ) (l : ImpLit) {o : Out Γ} (h : litOut tgt σ l = some o) :
+    LSound bi fuel (.lit l) σ o := by
+  have hsrc : ∀ (env : Env) (v : Value) (env' : Env),
+      (denote' bi fuel (.lit l)).run env = (.val v, env') → env' = env ∧ v = Value.ofLit l := by
+    intro env v env' hr
+    rw [lit_run] at hr
+    cases hr
+    exact ⟨rfl, rfl⟩
+  have hl : ∀ env, nfTrace (srcLeakNF bi (.lit l) fuel env) = [] := fun _ => rfl
+  cases l with
+  | bool b =>
+      simp only [litOut, Option.some.injEq] at h
+      subst h
+      exact lsound_bind1N bi fuel _ tgt σ _ rfl _ hl fun env V v env' _ hr => by
+        obtain ⟨rfl, rfl⟩ := hsrc env v env' hr
+        exact ⟨rfl, b, rfl, rfl⟩
+  | unit =>
+      simp only [litOut, Option.some.injEq] at h
+      subst h
+      exact lsound_bind1N bi fuel _ tgt σ _ rfl _ hl fun env V v env' _ hr => by
+        obtain ⟨rfl, rfl⟩ := hsrc env v env' hr
+        exact ⟨rfl, (), rfl, rfl⟩
+  | int n | uintLit W n | sintLit W n =>
+      simp only [litOut, Option.bind_eq_some_iff] at h
+      obtain ⟨⟨t, v⟩, hlit, hs⟩ := h
+      split at hs
+      · rename_i hsome
+        simp only [Option.some.injEq] at hs
+        subst hs
+        obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hsome
+        exact lsound_bind1N bi fuel _ tgt σ _ rfl _ hl fun env V v' env' _ hr => by
+          obtain ⟨rfl, rfl⟩ := hsrc env v' env' hr
+          exact ⟨rfl, x, hx, ofLit_enc hlit hx⟩
+      · cases hs
+
+/-- An atom is sound with leakage. -/
+theorem lsound_atom (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
+    (a : ImpExpr) {o : Out Γ} (h : atomOut σ a = some o) : LSound bi fuel a σ o := by
+  cases a with
+  | var x =>
+      simp only [atomOut, Option.map_eq_some_iff] at h
+      obtain ⟨⟨t, r⟩, hx, rfl⟩ := h
+      intro env V v env' hrel hrun tf
+      rw [var_run] at hrun
+      rw [hrel x t r hx] at hrun
+      cases hrun
+      exact ⟨V, rfl, hrel, rfl⟩
+  | lit l => exact lsound_lit bi fuel none σ l h
+  | _ => simp [atomOut] at h
+
+/-- A sequence of two outputs sound with leakage is sound with leakage. -/
+theorem lsound_seq (bi : Builtins) (fuel : Nat) {a b : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {oa : Out Γ} (ha : LSound bi fuel a σ oa) {ob : Out oa.Δ}
+    (hb : LSound bi fuel b oa.σ ob) : LSound bi fuel (.seq a b) σ (oa.comp ob) := by
+  intro env V v env' hrel hrun tf
+  obtain ⟨ra, e1, h1⟩ := run_val_split (denote' bi fuel a) env
+  cases ra with
+  | val va =>
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := ha env V va e1 hrel h1 tf
+      rw [seq_run_val bi fuel b h1 (enc_ne_controlFlow _ _)] at hrun
+      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb e1 W1 v env' hrel1 hrun tf
+      refine ⟨W2, ?_, hrel2, rfl⟩
+      show PLeak bi tf (oa.pre.append ob.pre) V = _
+      rw [PLeak_append_some hW1 hW2]
+      simp only [srcLeakNF, h1, contLeak_enc, nfTrace]
+      rfl
+  | _ => rw [seq_run, h1] at hrun; cases hrun
+
+/-- A binding of an output sound with leakage, followed by an output sound with leakage from
+    the environment of names with the bound name, is sound with leakage. -/
+theorem lsound_letBind (bi : Builtins) (fuel : Nat) (x : String) {v b : ImpExpr}
+    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {ov : Out Γ} (hv : LSound bi fuel v σ ov)
+    {ob : Out ov.Δ} (hb : LSound bi fuel b ((x, ⟨ov.t, ov.res⟩) :: ov.σ) ob) :
+    LSound bi fuel (.letBind x v b) σ (ov.comp ob) := by
+  intro env V w env' hrel hrun tf
+  obtain ⟨rv, e1, h1⟩ := run_val_split (denote' bi fuel v) env
+  cases rv with
+  | val wv =>
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := hv env V wv e1 hrel h1 tf
+      rw [letBind_run_val bi fuel x b h1 (enc_ne_controlFlow _ _)] at hrun
+      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb _ W1 w env' (hrel1.cons x ov.t ov.res) hrun tf
+      refine ⟨W2, ?_, hrel2, rfl⟩
+      show PLeak bi tf (ov.pre.append ob.pre) V = _
+      rw [PLeak_append_some hW1 hW2]
+      simp only [srcLeakNF, h1, contLeak_enc, nfTrace]
+      rfl
+  | _ => rw [letBind_run, h1] at hrun; cases hrun
+
+/-- An assignment of an output sound with leakage is sound with leakage. -/
+theorem lsound_assign (bi : Builtins) (fuel : Nat) (x : String) (tgt : Option String)
+    {r : ImpExpr} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hr : LSound bi fuel r σ o) :
+    LSound bi fuel (.assign x r) σ
+      (o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)) := by
+  intro env V w env' hrel hrun tf
+  obtain ⟨rv, e1, h1⟩ := run_val_split (denote' bi fuel r) env
+  cases rv with
+  | val wv =>
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := hr env V wv e1 hrel h1 tf
+      rw [assign_run_val bi fuel x h1 (enc_ne_controlFlow _ _)] at hrun
+      cases hrun
+      refine ⟨W1.extend (), ?_, (hrel1.cons x o.t o.res).mapV (fun v => Var.there v)
+        fun _ _ => rfl, rfl⟩
+      have h2 := PLeak_bind1N_quiet bi tf tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit rfl .nil W1
+      have hs : srcLeakNF bi (.assign x r) fuel env = srcLeakNF bi r fuel env := by
+        simp only [srcLeakNF]
+      have h2' : PLeak bi tf (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil).pre W1 =
+          some (W1.extend (show NfTy.unit.denote from ()), []) := h2.trans rfl
+      have h3 := PLeak_append_some hW1 h2'
+      rw [List.append_nil] at h3
+      rw [hs]
+      exact h3
+  | _ =>
+      simp only [denote', StateT.run, bind, StateT.bind, pure, modify, modifyGet,
+        MonadStateOf.modifyGet] at h1 hrun
+      rw [h1] at hrun
+      cases hrun
+
+/-- **The arguments of a call are sound with leakage** when the front is sound with leakage
+    for each argument. -/
+theorem lsound_args (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (es : List ImpExpr)
+    (H : ∀ e ∈ es, ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
+      impToNF sigOf none σ e = some o → LSound bi fuel e σ o) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, impArgsNF sigOf σ es = some oa →
+    ∀ (env : Env) (V : Valuation Γ) (vals : List Value) (env' : Env), EnvRel σ env V →
+    (denoteArgs' bi fuel es).run env = (some vals, env') →
+    ∀ tf, ∃ W, PLeak bi tf oa.pre V = some (W, nfTrace (srcArgsLeakNF bi es fuel env)) ∧
+      EnvRel oa.σ env' W ∧ vals = encAll oa.as (Expr.lookupArgs oa.vs W) := by
+  induction es with
+  | nil =>
+      intro Γ σ oa h env V vals env' hrel hr tf
+      simp only [impArgsNF, Option.some.injEq] at h
+      subst h
+      rw [args_nil_run] at hr
+      cases hr
+      exact ⟨V, rfl, hrel, rfl⟩
+  | cons e es ih =>
+      intro Γ σ oa h env V vals env' hrel hr tf
+      simp only [impArgsNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel e) env
+      cases a with
+      | val v =>
+          obtain ⟨W1, hW1, hrel1, rfl⟩ :=
+            H e List.mem_cons_self σ ho env V v e1 hrel h1 tf
+          rw [args_cons_run_val bi fuel es h1 (enc_ne_controlFlow _ _)] at hr
+          obtain ⟨m, e2, h2⟩ := run_val_split (denoteArgs' bi fuel es) e1
+          rw [h2] at hr
+          cases m with
+          | none => cases hr
+          | some vals' =>
+              cases hr
+              obtain ⟨W2, hW2, hrel2, rfl⟩ :=
+                ih (fun e' he' => H e' (List.mem_cons_of_mem _ he')) o.σ hos e1 W1 vals' e2
+                  hrel1 h2 tf
+              refine ⟨W2, ?_, hrel2, ?_⟩
+              · show PLeak bi tf (o.pre.append os.pre) V = _
+                rw [PLeak_append_some hW1 hW2]
+                simp only [srcArgsLeakNF, h1, contLeak_enc, nfTrace]
+              · show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
+                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ os.pre
+                  o.res _ _ (PLeak_den hW2)]
+      | _ =>
+          rw [args_cons_run, h1] at hr
+          cases hr
+
+/-- A call of a builtin is sound with leakage under `TypedCalls`, when the front is sound
+    with leakage for each argument: its events are those of the arguments followed by
+    `callLeak` of the call on the argument values. -/
+theorem lsound_app (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (fuel : Nat) (tgt : Option String) (f : String)
+    (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' e = some o' → LSound bi fuel e σ' o')
+    (h : impToNF sigOf tgt σ (.app f args) = some o) : LSound bi fuel (.app f args) σ o := by
+  simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  obtain ⟨oa, hoa, r, hr, rfl⟩ := h
+  intro env V v env' hrel hrun tf
+  obtain ⟨m, e1, h1⟩ := run_val_split (denoteArgs' bi fuel args) env
+  rw [app_run, h1] at hrun
+  cases m with
+  | none => cases hrun
+  | some vals =>
+      obtain ⟨W, hW, hrel1, rfl⟩ :=
+        lsound_args bi sigOf fuel args HA σ hoa env V vals e1 hrel h1 tf
+      dsimp only at hrun
+      cases hb : bi f (encAll oa.as (Expr.lookupArgs oa.vs W)) with
+      | none => rw [hb] at hrun; cases hrun
+      | some w =>
+          rw [hb] at hrun
+          cases hrun
+          obtain ⟨y, hy, rfl⟩ := hT f oa.as r hr _ _ hb
+          refine ⟨W.extend y, ?_, hrel1.mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
+          have hstep : PLeak bi tf (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil) W =
+              some (W.extend y, callLeak f (encAll oa.as (Expr.lookupArgs oa.vs W))) := by
+            simp only [PLeak, NFPre.leakRunM]
+            rw [ctLeak_call]
+            cases tgt <;>
+            · simp only [mkEN, Expr.denoteM, nfDenote_denoteM]
+              change ((tableOf bi).call f oa.as r (Expr.lookupArgs oa.vs W)).bind
+                (fun x => Option.map (fun q => (q.1,
+                  callLeak f (encAll oa.as (Expr.lookupArgs oa.vs W)) ++ q.2))
+                  (some (W.extend x, []))) = _
+              simp only [tableOf, hb, Option.bind_some, hy, Option.map_some, List.append_nil]
+          show PLeak bi tf (oa.pre.append _) V = _
+          rw [PLeak_append_some hW hstep]
+          simp only [srcLeakNF, h1, nfTrace, nfEv]
+
+/-- A tuple of atoms is sound with leakage, with no event. -/
+theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (es : List ImpExpr) {Γ : Ctxt nfDialect}
+    (σ : NfEnv Γ) {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.tuple es) = some o) : LSound bi fuel (.tuple es) σ o := by
+  have hs := tuple_sound bi sigOf fuel tgt es σ h
+  simp only [impToNF, Option.map_eq_some_iff] at h
+  obtain ⟨oa, hoa, rfl⟩ := h
+  intro env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  refine ⟨W, ?_, hr, hv⟩
+  have hq : QuietPre bi tf (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) :=
+    QuietPre.append (quietPre_argsOut bi tf es σ hoa) (quietPre_tupleOut bi tf tgt oa.as oa.vs)
+  have ht : nfTrace (srcLeakNF bi (.tuple es) fuel env) = [] := by
+    simp only [srcLeakNF]
+    exact nfTrace_srcArgsLeakNF_atoms bi fuel es σ hoa env
+  rw [ht]
+  show PLeak bi tf (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) V = _
+  rw [hq]
+  rw [show PDen bi tf (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) V = some W from hW]
+  rfl
+
+/-- The simulation with leakage from the simulation and the events of the prefix: a prefix
+    leakage run that succeeds ends at the valuation of the simulation. -/
+theorem lsound_of_sound {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel e σ o)
+    (ht : ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
+      (denote' bi fuel e).run env = (.val v, env') →
+      ∀ tf, ∃ W, PLeak bi tf o.pre V = some (W, nfTrace (srcLeakNF bi e fuel env))) :
+    LSound bi fuel e σ o := by
+  intro env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  obtain ⟨W', hW'⟩ := ht env V v env' hrel hrun tf
+  have hd := PLeak_den hW'
+  rw [hW, Option.some.injEq] at hd
+  subst hd
+  exact ⟨W, hW', hr, hv⟩
+
+/-! ## The conditional -/
+
+/-- The prefix leakage run of the branch of `condOut` whose taken arm runs to the results `r`
+    with the events `t`: the event `branch` of the condition, then `t`. -/
+theorem PLeak_ifThenElse_some (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+    {rs : List NfTy} (cond : Var Γ NfTy.bit) (thn els : NFProg nfDialect Γ rs)
+    (V : Valuation Γ) {r : Valuation (d := nfDialect) rs} {t : List CTLeak}
+    (hr : nfLeakRun bi tf (if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then thn
+      else els) V = some (r, t)) :
+    PLeak bi tf (.ifThenElse cond thn els .nil : NFPre nfDialect Γ (rs ++ Γ)) V =
+      some (hvAppend r V, .branch (HasBoolBit.toBool (d := nfDialect) (cond.lookup V)) ::
+        (t ++ [])) := by
+  have hr' : (if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
+      nfLeakRun bi tf thn V else nfLeakRun bi tf els V) = some (r, t) := by
+    split
+    · rename_i hc; rw [if_pos hc] at hr; exact hr
+    · rename_i hc; rw [if_neg hc] at hr; exact hr
+  simp only [PLeak, NFPre.leakRunM]
+  rw [hr']
+  rfl
+
+/-- **A conditional is sound with leakage**, when the front is sound with leakage for its
+    condition and its arms: its events are those of the condition, the event `branch` of the
+    condition, and the events of the arm taken. -/
+theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (c a b : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
+    {o : Out Γ} (h : impToNF sigOf tgt σ (.ifThenElse c a b) = some o)
+    (HC : ∀ {o' : Out Γ}, impToNF sigOf none σ c = some o' → LSound bi fuel c σ o')
+    (HA : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' a = some o' → LSound bi fuel a σ' o')
+    (HB : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' b = some o' → LSound bi fuel b σ' o') :
+    LSound bi fuel (.ifThenElse c a b) σ o := by
+  have hS := cond_sound bi sigOf fuel tgt c a b σ h (fun h' => (HC h').sound)
+    (fun σ' _ h' => (HA σ' h').sound) (fun σ' _ h' => (HB σ' h').sound)
+  refine lsound_of_sound hS ?_
+  simp only [impToNF, Option.bind_eq_some_iff] at h
+  obtain ⟨oc, hoc, h⟩ := h
+  have hC := HC hoc
+  obtain ⟨Δc, tc, prec, σc, resc⟩ := oc
+  by_cases htc : tc = NfTy.bit
+  · subst htc
+    rw [dif_pos rfl] at h
+    intro env V r env' hrel hrun tf
+    obtain ⟨rc, e1, h1⟩ := run_val_split (denote' bi fuel c) env
+    cases rc with
+    | val vc =>
+        obtain ⟨W1, hW1, hrel1, rfl⟩ := hC env V vc e1 hrel h1 tf
+        rw [ifThenElse_run_bool bi fuel a b h1] at hrun
+        unfold condOut at h
+        obtain ⟨oa, hoa, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨ob, hob, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨Δb, tb, preb, σb, resb⟩ := ob
+        by_cases ht : tb = oa.t
+        · subst ht
+          rw [dif_pos rfl] at h
+          obtain ⟨ra, hra, h⟩ := Option.bind_eq_some_iff.mp h
+          obtain ⟨rb, hrb, rfl⟩ := Option.map_eq_some_iff.mp h
+          cases hk : resc.lookup W1 with
+          | true =>
+              have hrun' : (denote' bi fuel a).run e1 = (.val r, env') := by
+                simpa [hk] using hrun
+              obtain ⟨W2, hW2, -, -⟩ := HA σc hoa e1 W1 r env' hrel1 hrun' tf
+              have harm : nfLeakRun bi tf (oa.pre.plug (.ret (.cons oa.res ra))) W1 =
+                  some (Expr.lookupArgs (.cons oa.res ra) W2,
+                    nfTrace (srcLeakNF bi a fuel e1) ++ []) := by
+                rw [nfLeakRun_plug, hW2]; rfl
+              have hstep := PLeak_ifThenElse_some bi tf resc (oa.pre.plug (.ret (.cons oa.res ra)))
+                ((Out.mk Δb oa.t preb σb resb).pre.plug (.ret (.cons resb rb))) W1
+                (r := Expr.lookupArgs (.cons oa.res ra) W2)
+                (by
+                  have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = true := hk
+                  rw [if_pos this]; exact harm)
+              refine ⟨hvAppend (Expr.lookupArgs (.cons oa.res ra) W2) W1,
+                (PLeak_append_some hW1 hstep).trans ?_⟩
+              simp only [srcLeakNF, h1, hk, enc, nfTrace, nfEv, List.append_nil]
+              rfl
+          | false =>
+              have hrun' : (denote' bi fuel b).run e1 = (.val r, env') := by
+                simpa [hk] using hrun
+              obtain ⟨W2, hW2, -, -⟩ := HB σc hob e1 W1 r env' hrel1 hrun' tf
+              have harm : nfLeakRun bi tf
+                  ((Out.mk Δb oa.t preb σb resb).pre.plug (.ret (.cons resb rb))) W1 =
+                  some (Expr.lookupArgs (.cons resb rb) W2,
+                    nfTrace (srcLeakNF bi b fuel e1) ++ []) := by
+                rw [nfLeakRun_plug]
+                rw [show PLeak bi tf preb W1 = _ from hW2]
+                rfl
+              have hstep := PLeak_ifThenElse_some bi tf resc (oa.pre.plug (.ret (.cons oa.res ra)))
+                ((Out.mk Δb oa.t preb σb resb).pre.plug (.ret (.cons resb rb))) W1
+                (r := Expr.lookupArgs (.cons resb rb) W2)
+                (by
+                  have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = false := hk
+                  rw [if_neg (by rw [this]; exact Bool.false_ne_true)]; exact harm)
+              refine ⟨hvAppend (Expr.lookupArgs (.cons resb rb) W2) W1,
+                (PLeak_append_some hW1 hstep).trans ?_⟩
+              simp only [srcLeakNF, h1, hk, enc, nfTrace, nfEv, List.append_nil]
+              rfl
+        · rw [dif_neg ht] at h
+          cases h
+    | _ =>
+        rw [_root_.Hax.ContinueFlag.ifThenElse_run, h1] at hrun
+        cases hrun
+  · rw [dif_neg htc] at h
+    cases h
+
+/-! ## The counted loop -/
+
+open _root_.Hax.ContinueFlag (forLoop_ge_run forLoop_zero_run forLoop_succ_run)
+open _root_.Hax.InlineLocalClosures (frameOk)
+
+/-- A value that is not a control-flow value. -/
+theorem isControlFlow_false {w : Value} (h : ∀ b u, w ≠ .controlFlow b u) :
+    w.isControlFlow = false := by
+  cases w <;> first | rfl | exact absurd rfl (h _ _)
+
+/-- The trips of a counted loop from a counter at or above the upper bound leave no event. -/
+theorem forLeak_ge (bi : Builtins) (i : String) (body : ImpExpr) (lb : Nat → Env → SrcLeak)
+    (fuel : Nat) {lo hi : Int} (h : hi ≤ lo) (env : Env) :
+    forLeak bi i body lb fuel lo hi env = .nil := by
+  cases fuel with
+  | zero => rfl
+  | succ n => simp only [forLeak, if_pos (show lo ≥ hi from h)]
+
+/-- **The loop with leakage.** `ImpToNF.loop_sound` for a step with events: let every run of
+    the body from an environment satisfying `Inv`, extended with the counter `lo + k`, to a
+    value be matched by the step at `k` with the events of the transformed source leakage of
+    the body. Then a run of `denoteForLoop'` from the counter `lo + k` to a value, with `m`
+    trips left, is matched by the iteration of the step over `k, …, k + m - 1`, with the events
+    of the transformed leakage `forLeak` of the trips. -/
+theorem loop_leak (bi : Builtins) (i : String) (body : ImpExpr) (lo h : Int) {cs : List NfTy}
+    (step : Nat → Valuation (d := nfDialect) cs →
+      Option (Valuation (d := nfDialect) cs × List CTLeak))
+    (Inv : Env → Valuation (d := nfDialect) cs → Prop)
+    (HS : ∀ (k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
+      (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv env acc →
+      (denote' bi fuel body).run (env.extend i (.int (lo + k))) = (rb, e₂) →
+      (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
+        step k acc =
+          some (acc', nfTrace (srcLeakNF bi body fuel (env.extend i (.int (lo + k))))) ∧
+        Inv e₂ acc') :
+    ∀ (m k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (r : Value) (e : Env),
+      (h - (lo + k)).toNat = m → k + m < 2 ^ 64 → Inv env acc →
+      (_root_.Hax.denoteForLoop' bi fuel i (lo + k) h body).run env = (.val r, e) →
+      ∃ acc', forIterLeak step (List.range' k m) acc =
+          some (acc', nfTrace (forLeak bi i body (srcLeakNF bi body) fuel (lo + k) h env)) ∧
+        Inv e acc' := by
+  intro m
+  induction m with
+  | zero =>
+      intro k fuel env acc r e hm _ hinv hrun
+      rw [forLoop_ge_run bi fuel i _ h body env (by omega)] at hrun
+      cases hrun
+      refine ⟨acc, ?_, hinv⟩
+      rw [forLeak_ge bi i body _ fuel (by omega) env]
+      rfl
+  | succ m ih =>
+      intro k fuel env acc r e hm hk hinv hrun
+      have hlt : lo + k < h := by omega
+      cases fuel with
+      | zero =>
+          rw [forLoop_zero_run bi i _ h body env hlt] at hrun
+          cases hrun
+      | succ f =>
+          obtain ⟨rb, e₂, hb⟩ := run_val_split (denote' bi (f + 1) body)
+            (env.extend i (.int (lo + k)))
+          cases rb with
+          | val w =>
+              obtain ⟨w, acc', hw, hcf, hacc', hinv'⟩ := HS k (f + 1) env acc _ e₂
+                (by omega) hlt hinv hb ⟨w, rfl⟩
+              cases hw
+              rw [forLoop_succ_run_val bi f i body hlt hb hcf] at hrun
+              have hk1 : lo + k + 1 = lo + ((k + 1 : Nat) : Int) := by push_cast; ring
+              rw [hk1] at hrun
+              obtain ⟨acc'', hfold, hinv''⟩ :=
+                ih (k + 1) f e₂ acc' r e (by omega) (by omega) hinv' hrun
+              refine ⟨acc'', ?_, hinv''⟩
+              rw [List.range'_succ]
+              simp only [forIterLeak, hacc', Option.bind_some, hfold, Option.map_some]
+              simp only [forLeak, if_neg (show ¬ (lo + (k : Int) ≥ h) by omega), hb,
+                tripCont_val (isControlFlow_false hcf), hk1, nfTrace]
+          | _ =>
+              rw [forLoop_succ_run bi f i _ h body env hlt, hb] at hrun
+              cases hrun
+
+/-- The prefix leakage run of a counted loop whose iteration over the trips `0, …, n - 1`
+    succeeds with the events `t`, followed by a prefix with no event: the event `trip n`, then
+    `t`. -/
+theorem PLeak_forLoop_some (bi : Builtins) (tf : Nat) {Γ Δ : Ctxt nfDialect}
+    {cs : List NfTy} {count : Var Γ (NfTy.word 64)} {inits : HVector (fun t => Var Γ t) cs}
+    {body : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ) cs} {p : NFPre nfDialect (cs ++ Γ) Δ}
+    {V : Valuation Γ} {acc : Valuation (d := nfDialect) cs} {W : Valuation Δ} {t : List CTLeak}
+    (n : Nat) (hn : (count.lookup V).toNat = n)
+    (hfold : forIterLeak (fun j a => nfLeakRun bi tf body
+      (hvAppend a (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))
+      (List.range' 0 n) (Expr.lookupArgs inits V) = some (acc, t))
+    (hp : PLeak bi tf p (hvAppend acc V) = some (W, [])) :
+    PLeak bi tf (.forLoop count inits body p) V = some (W, .trip n :: (t ++ [])) := by
+  show (forIterLeak (fun j a => nfLeakRun bi tf body
+      (hvAppend a (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))
+      (List.range (count.lookup V).toNat) (Expr.lookupArgs inits V)).bind (fun r =>
+        (PLeak bi tf p (hvAppend r.1 V)).map fun q =>
+          (q.1, CTLeak.trip (count.lookup V).toNat :: (r.2 ++ q.2))) = _
+  rw [hn, List.range_eq_range', hfold, Option.bind_some, hp]
+  rfl
+
+/-- **The counted loop of the front with leakage.** Under the hypotheses of
+    `ImpToNF.loopOut_sound`, with the prefix `pre₀` run by its leakage run to `V₃` with the
+    events `tpre` and the body sound with leakage, the output of `loopOut` emits `tpre`, the
+    trip count, and the transformed leakage `forLeak` of the trips of the source loop. -/
+theorem loopOut_leak (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Option String)
+    {Γ Γ₃ : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γ₃) (σ₃ : NfEnv Γ₃)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64)) (i : String) (xs : List String)
+    (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {o : Out Γ}
+    (h₀ : loopOut tgt pre₀ σ₃ loV tripV i xs cs inits rec = some o)
+    (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ}, rec σ' = some o' →
+      ∀ fuel', LSound bi fuel' body σ' o')
+    (hlen : xs.length = cs.length)
+    (hfr : ∀ x, x ∉ xs → x ≠ i → ∀ q, σ₃.lookup x = some q →
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
+    (env : Env) (V : Valuation Γ) (V₃ : Valuation Γ₃) (tf : Nat) (tpre : List CTLeak)
+    (hpre : PLeak bi tf pre₀ V = some (V₃, tpre)) (hrel : EnvRel σ₃ env V₃)
+    (hcar : CarriedRel env xs cs (Expr.lookupArgs inits V₃)) (lo h : Int)
+    (hlo : loV.lookup V₃ = lo) (htrip : tripV.lookup V₃ = BitVec.ofNat 64 (h - lo).toNat)
+    (hM : (h - lo).toNat < 2 ^ 64) (hlo0 : 0 ≤ lo) (hh64 : h ≤ 2 ^ 64) (r : Value)
+    (env' : Env)
+    (hrun : (_root_.Hax.denoteForLoop' bi fuel i lo h body).run env = (.val r, env')) :
+    ∃ W, PLeak bi tf o.pre V = some (W, tpre ++ (.trip (h - lo).toNat ::
+      (nfTrace (forLeak bi i body (srcLeakNF bi body) fuel lo h env) ++ []))) := by
+  simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
+  obtain ⟨ob, hob, rets, hrets, rfl⟩ := h₀
+  let Inv : Env → Valuation (d := nfDialect) cs → Prop := fun e acc =>
+    CarriedRel e xs cs acc ∧ FrameRel σ₃ i xs e V₃
+  let oC := bind1N (some i) (loopEnv σ₃ i xs cs (headVars cs)
+    fun v => Var.shiftApp (d := nfDialect) cs v.there) .ctr
+    (.cons (Var.shiftApp cs (Var.there loV))
+      (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+  have HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
+      (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv e acc →
+      (denote' bi f body).run (e.extend i (.int (lo + k))) = (rb, e₂) →
+      (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
+        nfLeakRun bi tf ((NFPre.append oC.pre ob.pre).plug (.ret rets))
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+          some (acc', nfTrace (srcLeakNF bi body f (e.extend i (.int (lo + k))))) ∧
+        Inv e₂ acc' := by
+    intro k f e acc rb e₂ hk hkh hinv hb hval
+    obtain ⟨w, rfl⟩ := hval
+    have hencC : Value.int (lo + (k : Int)) =
+        enc (NfTy.word 64) (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
+      show _ = Value.int ((BitVec.ofNat 64 (lo + (k : Int)).toNat).toNat : Int)
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg (by omega)]
+    rw [hencC] at hb
+    have hB : EnvRel (loopEnv σ₃ i xs cs (headVars cs)
+        fun v => Var.shiftApp (d := nfDialect) cs v.there) e
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) :=
+      EnvRel.loopEnv σ₃ i xs cs hlen (headVars cs) _
+        (W := hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (by rw [lookupArgs_headVars]; exact hinv.1) hinv.2
+        (by intro t v; rw [Var.lookup_shiftApp]; rfl)
+    have hctr : nfDenoteOp (tableOf bi) .ctr
+        (Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
+          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))) =
+          some (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
+      have hargs : Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
+          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+          HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+            (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) .nil) := by
+        show HVector.cons ((Var.shiftApp cs (Var.there loV)).lookup _)
+          (HVector.cons ((Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))).lookup _)
+            .nil) = _
+        rw [Var.lookup_shiftApp, Var.lookup_shiftApp, ← hlo]
+        rfl
+      rw [hargs]
+      show (if 0 ≤ lo ∧ lo + ((BitVec.ofNat 64 k).toNat : Int) < 2 ^ 64 then
+        some (BitVec.ofNat 64 (lo + ((BitVec.ofNat 64 k).toNat : Int)).toNat) else none) = _
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk, if_pos ⟨hlo0, by omega⟩]
+    have hpC : PLeak bi tf oC.pre
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+        some (Ctxt.Valuation.extend (t := NfTy.word 64)
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+          (BitVec.ofNat 64 (lo + (k : Int)).toNat), []) := by
+      refine (PLeak_bind1N_quiet bi tf (some i) _ .ctr rfl _ _).trans ?_
+      rw [hctr]
+      rfl
+    have hC := (hB.mapV (fun v => Var.there (s := NfTy.word 64) v) fun _ _ => rfl).cons i
+      (NfTy.word 64) (@Var.here nfDialect (cs ++ NfTy.word 64 :: Γ₃) (NfTy.word 64))
+      (V := Ctxt.Valuation.extend (t := NfTy.word 64)
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (BitVec.ofNat 64 (lo + (k : Int)).toNat))
+    obtain ⟨W', hW', hrel', rfl⟩ := HB _ hob f _ _ w e₂ hC hb tf
+    refine ⟨_, Expr.lookupArgs rets W', rfl, enc_ne_controlFlow _ _, ?_, ?_, ?_⟩
+    · rw [nfLeakRun_plug, PLeak_append_some hpC hW', hencC]
+      simp only [Option.bind_some, List.nil_append]
+      show Option.map _ (some (Expr.lookupArgs rets W', ([] : List CTLeak))) = _
+      simp only [Option.map_some, List.append_nil]
+      rfl
+    · exact CarriedRel.of_varsAt hrel' xs cs hrets
+    · intro x hx hxi t v hl
+      rw [denote'_keeps bi body (hfr x hx hxi _ hl) f _ hb (by rintro ⟨_, h⟩; cases h),
+        Env.extend_other _ _ _ _ hxi]
+      exact hinv.2 x hx hxi t v hl
+  have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i (lo + ((0 : Nat) : Int)) h body).run env =
+      (.val r, env') := by simpa using hrun
+  obtain ⟨accF, hfold, -⟩ := loop_leak bi i body lo h _ Inv HS
+    ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp) (by simpa using hM)
+    ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
+  have hl0 : lo + ((0 : Nat) : Int) = lo := by simp
+  rw [hl0] at hfold
+  refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V₃), ?_⟩
+  refine PLeak_append_some hpre (PLeak_forLoop_some bi tf ((h - lo).toNat) ?_ hfold ?_)
+  · rw [htrip, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hM]
+  · exact (PLeak_bind1N_quiet bi tf tgt _ .constUnit rfl .nil _).trans rfl
+
+/-- The integer a counted-loop bound denotes, read off an encoded value, is the integer
+    `NfTy.toInt?` reads. -/
+theorem boundInt_enc {t : NfTy} {x : t.denote} {h : Int} (hx : NfTy.toInt? t x = some h) :
+    boundInt (enc t x) = some h := by
+  cases t <;> simp only [NfTy.toInt?, reduceCtorEq] at hx <;> cases hx <;> rfl
+
+/-- **A counted loop is sound with leakage**, when the front is sound with leakage for its
+    body: its events are the trip count and the events of the trips. -/
+theorem lsound_forFold (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (i : String) (lo : Int) (hi body : ImpExpr)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.forFold i (.lit (.int lo)) hi body) = some o)
+    (HB : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' body = some o' → ∀ fuel', LSound bi fuel' body σ' o') :
+    LSound bi fuel (.forFold i (.lit (.int lo)) hi body) σ o := by
+  have hS := forFold_sound bi sigOf fuel tgt i lo hi body σ h
+    (fun σ' _ h' fuel' => (HB σ' h' fuel').sound)
+  refine lsound_of_sound hS ?_
+  simp only [impToNF, Option.bind_eq_some_iff] at h
+  obtain ⟨oHi, hHi, hL⟩ := h
+  split at hL
+  case isFalse => cases hL
+  rename_i hbd
+  intro env V r env' hrel hrun tf
+  obtain ⟨hv, e1, hh⟩ := forFold_hi_val bi fuel i lo hi body hrun
+  have he1 : e1 = env := by
+    have := atomOut_env bi fuel _ hi hHi env
+    rw [hh] at this; exact this
+  subst he1
+  have hrelLo : EnvRel (bind1 σ (.ilit .int lo) .nil).σ e1
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo V) :=
+    hrel.mapV (fun v => Var.there v) fun _ _ => rfl
+  have hLo : PDen bi tf (bind1 σ (.ilit .int lo) .nil).pre V =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo V) :=
+    (PDen_bind1 bi tf σ (.ilit .int lo) .nil V).trans rfl
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh tf
+  obtain ⟨hInt, htoInt, hloop⟩ := forFold_enc_run bi fuel i lo hi body hh hrun
+  have hloW : (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res).lookup W2 = lo :=
+    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ oHi.pre _ _ _ hW2).trans
+      rfl
+  have hargsT : Expr.lookupArgs (HVector.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res)
+      (HVector.cons oHi.res .nil)) W2 =
+      HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+        (HVector.cons (t := oHi.t) (oHi.res.lookup W2) .nil) := by
+    show HVector.cons ((oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res).lookup W2)
+      (HVector.cons (oHi.res.lookup W2) .nil) = _
+    rw [hloW]
+    rfl
+  have hTrip : PDen bi tf (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).pre W2 =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat) W2) := by
+    refine (PDen_bind1 bi tf _ (.trip oHi.t) _ W2).trans ?_
+    refine (congrArg (fun a => Option.map _ (nfDenoteOp (tableOf bi) (.trip oHi.t) a))
+      hargsT).trans ?_
+    show Option.map _ ((NfTy.toInt? oHi.t (oHi.res.lookup W2)).map
+      fun hi => BitVec.ofNat 64 (hi - lo).toNat) = _
+    rw [htoInt]
+    rfl
+  have hrelT : EnvRel (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).σ e1
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat) W2) :=
+    hrel2.mapV (fun v => Var.there v) fun _ _ => rfl
+  have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
+    fun n hn => by
+      subst hn
+      rw [lit_run] at hh
+      have h1 := (Prod.mk.inj hh).1
+      injection h1 with h2
+      exact h2.symm
+  have hrange := bound_range hbd htoInt hlitE
+  have hM := trip_lt_of_bound hbd htoInt hlitE
+  -- the prefix before the loop has no event
+  have hq : QuietPre bi tf (((bind1 σ (.ilit .int lo) .nil).pre.append oHi.pre).append
+      (bind1 oHi.σ (.trip oHi.t)
+        (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).pre) :=
+    QuietPre.append (QuietPre.append (QuietPre.var bi tf none _ rfl _)
+      (quietPre_atomOut bi tf _ hi hHi)) (QuietPre.var bi tf none _ rfl _)
+  have hpre := hq V
+  rw [PDen_append_some bi tf (PDen_append_some bi tf hLo hW2) hTrip] at hpre
+  obtain ⟨W, hW⟩ := loopOut_leak bi fuel body tgt _ _ _ _ i _ _ _ _ hL
+    (fun σ' _ h' fuel' => HB σ' h' fuel')
+    (by rw [List.length_map, entriesVars_length])
+    (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
+    e1 V _ tf [] hpre hrelT
+    (CarriedRel.of_entries hrelT _ (carried_lookup _ i body)) lo hInt hloW rfl
+    hM hrange.1 (le_of_lt hrange.2) r env' hloop
+  refine ⟨W, hW.trans ?_⟩
+  -- the source trace
+  have hhi : nfTrace (srcLeakNF bi hi fuel e1) = [] := by
+    cases hi with
+    | var x => rfl
+    | lit l => rfl
+    | _ => simp [atomOut] at hHi
+  have hlo' : (denote' bi fuel (.lit (.int lo))).run e1 = (.val (.int lo), e1) :=
+    lit_run bi fuel _ _
+  simp only [srcLeakNF, boundsLeak, hlo', hh]
+  rw [boundInt_enc htoInt]
+  simp only [boundInt, nfTrace, nfEv, hhi, Nat.mod_eq_of_lt hM, List.nil_append,
+    List.append_nil, List.cons_append]
+
+/-! ## The leakage transformer of the front -/
+
+/-- **The front simulates `denote'` with leakage.** Under `TypedCalls bi sigOf`, for every
+    expression `e` the front translates from `σ`, a run of `denote' bi fuel e` from an
+    environment related to `V` to a value is matched, at every target fuel, by the leakage
+    run of the prefix, whose events are the transformed source leakage
+    `nfTrace (srcLeakNF bi e fuel env)`. -/
+theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (e : ImpExpr) :
+    ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
+      impToNF sigOf tgt σ e = some o → ∀ fuel, LSound bi fuel e σ o := by
+  induction e using ImpExpr.ind
+  case lit l => intro tgt Γ σ o h fuel; exact lsound_lit bi fuel tgt σ l h
+  case var x => intro tgt Γ σ o h fuel; exact lsound_atom bi fuel σ _ h
+  case letBind x v b ihv ihb =>
+    intro tgt Γ σ o h fuel
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ov, hov, ob, hob, rfl⟩ := h
+    exact lsound_letBind bi fuel x (ihv _ σ hov fuel) (ihb _ _ hob fuel)
+  case seq a b iha ihb =>
+    intro tgt Γ σ o h fuel
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, ob, hob, rfl⟩ := h
+    exact lsound_seq bi fuel (iha _ σ hoa fuel) (ihb _ _ hob fuel)
+  case assign x r ih =>
+    intro tgt Γ σ o h fuel
+    simp only [impToNF, Option.map_eq_some_iff] at h
+    obtain ⟨o', ho', rfl⟩ := h
+    exact lsound_assign bi fuel x tgt (ih _ σ ho' fuel)
+  case app f args iha =>
+    intro tgt Γ σ o h fuel
+    exact lsound_app bi sigOf hT fuel tgt f args σ
+      (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
+  case tuple es _ => intro tgt Γ σ o h fuel; exact lsound_tuple bi sigOf fuel tgt es σ h
+  case unitVal =>
+    intro tgt Γ σ o h fuel
+    simp only [impToNF, Option.some.injEq] at h
+    subst h
+    exact lsound_bind1N bi fuel _ tgt σ _ rfl _ (fun _ => rfl) fun env V v env' _ hr => by
+      rw [unitVal_run] at hr
+      cases hr
+      exact ⟨rfl, (), rfl, rfl⟩
+  case typeAscription e s ih =>
+    intro tgt Γ σ o h fuel env V v env' hrel hrun tf
+    have hr : (denote' bi fuel (.typeAscription e s)).run env = (denote' bi fuel e).run env := by
+      simp only [denote']
+    have hs : srcLeakNF bi (.typeAscription e s) fuel env = srcLeakNF bi e fuel env := by
+      simp only [srcLeakNF]
+    rw [hr] at hrun
+    rw [hs]
+    exact ih _ σ h fuel env V v env' hrel hrun tf
+  case forFold i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h fuel
+    cases lo with
+    | lit l =>
+        cases l with
+        | int n =>
+            exact lsound_forFold bi sigOf fuel tgt i n hi body σ h
+              fun σ' _ h' fuel' => ihb none σ' h' fuel'
+        | _ => simp [impToNF] at h
+    | _ => simp [impToNF] at h
+  case ifThenElse c a b ihc iha ihb =>
+    intro tgt Γ σ o h fuel
+    exact lsound_cond bi sigOf fuel tgt c a b σ h (fun h' => ihc none σ h' fuel)
+      (fun σ' _ h' => iha none σ' h' fuel) (fun σ' _ h' => ihb none σ' h' fuel)
+  all_goals intro tgt Γ σ o h; simp [impToNF] at h
+
+/-- **The leakage transformer of `impToNF`.** Under `TypedCalls bi sigOf`, a run of
+    `denote' bi fuel e` from an environment related to `V` by `σ` to a value is matched, at
+    every target fuel, by the leakage run `nfLeakRun` of the program `impToNF` emits, which
+    returns the encoding of the value and the events `nfTrace (srcLeakNF bi e fuel env)`, a
+    function of the source leakage alone. -/
+theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) {e : ImpExpr} {tgt : Option String} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env : Env}
+    {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
+    (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
+    ∃ x : o.t.denote, nfLeakRun bi tf o.prog V =
+        some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakNF bi e fuel env)) ∧
+      v = enc o.t x := by
+  obtain ⟨W, hW, -, rfl⟩ := impToNF_lsound bi sigOf hT e tgt σ h fuel env V v env' hrel hrun tf
+  refine ⟨o.res.lookup W, ?_, rfl⟩
+  rw [Out.prog, nfLeakRun_plug, hW, Option.bind_some]
+  show Option.map _ (some (Expr.lookupArgs (HVector.cons o.res .nil) W, ([] : List CTLeak))) = _
+  simp only [Option.map_some, List.append_nil]
+  rfl
+
+/-! ## Constant time through the front -/
+
+/-- **Source constant time for `srcLeakNF`** of `e` for the split `lt`: two runs at the same
+    fuel from environments agreeing on the public variables, both ending in a value, have
+    equal leakage. -/
+def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
+  ∀ (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (v₁ v₂ : Value),
+    PubEqEnv lt env₁ env₂ →
+    (denote' bi fuel e).run env₁ = (.val v₁, env₁') →
+    (denote' bi fuel e).run env₂ = (.val v₂, env₂') →
+    srcLeakNF bi e fuel env₁ = srcLeakNF bi e fuel env₂
+
+/-- **Two runs through the front.** Under `TypedCalls bi sigOf` and source constant time,
+    the leakage runs of the program `impToNF` emits from two valuations related by `σ` to
+    environments agreeing on the public variables, from which the source runs to values, emit
+    equal events. -/
+theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)
+    {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
+    (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env₁ env₂ env₁' env₂' : Env}
+    {V₁ V₂ : Valuation Γ} {v₁ v₂ : Value} (hr₁ : EnvRel σ env₁ V₁) (hr₂ : EnvRel σ env₂ V₂)
+    (hpub : PubEqEnv lt env₁ env₂)
+    (hrun₁ : (denote' bi fuel e).run env₁ = (.val v₁, env₁'))
+    (hrun₂ : (denote' bi fuel e).run env₂ = (.val v₂, env₂')) (tf : Nat)
+    {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
+    (hq₁ : nfLeakRun bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRun bi tf o.prog V₂ = some q₂) :
+    q₁.2 = q₂.2 := by
+  obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT h hr₁ hrun₁ tf
+  obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT h hr₂ hrun₂ tf
+  rw [hq₁, Option.some.injEq] at h₁
+  rw [hq₂, Option.some.injEq] at h₂
+  rw [h₁, h₂, hct fuel env₁ env₂ env₁' env₂' v₁ v₂ hpub hrun₁ hrun₂]
+
+/-- The labels of the parameters `ps` read from the level table `lt`. -/
+def entryLabels (lt : LevelTable) : (ps : List (String × NfTy)) →
+    Labels (d := nfDialect) (entryCtx ps)
+  | [] => .nil
+  | (x, _) :: ps => .cons (lt x) (entryLabels lt ps)
+
+/-- The source environment of a valuation of the parameters `ps`: each name bound to the
+    encoding of the value of its first occurrence, every other name unbound. -/
+def entryEnvOf : (ps : List (String × NfTy)) → Valuation (entryCtx ps) → Env
+  | [], _ => fun _ => none
+  | (x, t) :: ps, .cons y V => (entryEnvOf ps V).extend x (enc t y)
+
+/-- The environment of names of the parameters is related to the source environment of a
+    valuation. -/
+theorem entryEnvOf_rel : ∀ (ps : List (String × NfTy)) (V : Valuation (entryCtx ps)),
+    EnvRel (entryEnv ps) (entryEnvOf ps V) V
+  | [], .nil => by
+      intro x t v hx
+      simp [entryEnv, NfEnv.lookup] at hx
+  | (x, t) :: ps, .cons y V => by
+      intro x' t' v hx'
+      change NfEnv.lookup ((x, ⟨t, Var.here⟩) ::
+        NfEnv.mapV (fun v => Var.there v) (entryEnv ps)) x' = _ at hx'
+      rw [NfEnv.lookup_cons] at hx'
+      split at hx'
+      · rename_i hxx
+        subst hxx
+        cases hx'
+        exact Env.extend_same _ _ _
+      · rename_i hxx
+        have := EnvRel.mapV (entryEnvOf_rel ps V) (fun v => Var.there v) (W := .cons y V)
+          (fun _ _ => rfl) x' t' v hx'
+        change ((entryEnvOf ps V).extend x (enc t y)) x' = _
+        rw [Env.extend_other _ _ _ _ (Ne.symm (by simpa using hxx))]
+        exact this
+
+/-- Valuations agreeing on the positions `entryLabels lt ps` marks public have source
+    environments agreeing on the variables `lt` marks public. -/
+theorem pubEqEnv_entryEnvOf (lt : LevelTable) : ∀ (ps : List (String × NfTy))
+    (V₁ V₂ : Valuation (entryCtx ps)), PubEqV (entryLabels lt ps) V₁ V₂ →
+    PubEqEnv lt (entryEnvOf ps V₁) (entryEnvOf ps V₂)
+  | [], .nil, .nil, _ => fun _ _ => rfl
+  | (x, t) :: ps, .cons y₁ V₁, .cons y₂ V₂, h => by
+      intro z hz
+      change ((entryEnvOf ps V₁).extend x (enc t y₁)) z =
+        ((entryEnvOf ps V₂).extend x (enc t y₂)) z
+      by_cases hxz : x = z
+      · subst hxz
+        rw [Env.extend_same, Env.extend_same]
+        have := h t (Var.here) hz
+        exact congrArg (fun w => some (enc t w)) this
+      · rw [Env.extend_other _ _ _ _ (Ne.symm hxz), Env.extend_other _ _ _ _ (Ne.symm hxz)]
+        exact pubEqEnv_entryEnvOf lt ps V₁ V₂
+          (fun t' v hv => h t' (Var.there v) hv) z hz
+
+/-- **Constant time through the front.** Under `TypedCalls bi sigOf`, let `e` be constant
+    time at the source for the level table `lt` (`SourceCTNF`), and let the source run of `e`
+    at the fuel `fuel` end in a value from the source environment of every valuation of the
+    parameters `ps`. Then the program `impToNF` emits from the parameters is constant time,
+    relative to the runs that succeed, for the labels `entryLabels lt ps` of the parameters,
+    at every target fuel. -/
+theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (lt : LevelTable) (ps : List (String × NfTy)) {e : ImpExpr}
+    (hct : SourceCTNF bi lt e) {tgt : Option String} {o : Out (entryCtx ps)}
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
+      (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
+    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel _ _
+      (entryLabels lt ps) tf o.prog := by
+  intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
+  obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
+  obtain ⟨v₂, env₂', hrun₂⟩ := hterm V₂
+  exact impToNF_ct_runs bi sigOf hT hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
+    (pubEqEnv_entryEnvOf lt ps V₁ V₂ hpub) hrun₁ hrun₂ tf hq₁ hq₂
+
+/-! ## The labels of a secrecy record -/
+
+open _root_.Hax (FnSecrecy BindingSecrecy)
+open CatCrypt.Crypto.SecureCompilation.CT (levelsOf levelsOf_eq_public_iff secretSlots
+  bindingSlots)
+
+/-- The level of a parameter named `x` in the secrecy record `s`: public when the record lists
+    it as public, secret otherwise (the level of the parameter labels `nfLabels` of the direct
+    front). -/
+def paramLevelOf (s : FnSecrecy) (x : String) : SecretLevel :=
+  if s.params.lookup x = some .pub then .Public else .Secret
+
+/-- A listed parameter that `levelsOf s` marks public is listed as public. -/
+theorem paramLevelOf_of_levelsOf {s : FnSecrecy} {x : String}
+    (hx : ∃ b, (x, b) ∈ s.params) (h : levelsOf s x = .Public) :
+    paramLevelOf s x = .Public := by
+  rw [levelsOf_eq_public_iff] at h
+  have key : ∀ (l : List (String × BindingSecrecy)) (b : BindingSecrecy), (x, b) ∈ l →
+      ∃ b', l.lookup x = some b' ∧ (x, b') ∈ l := by
+    intro l b hb
+    induction l with
+    | nil => cases hb
+    | cons p ps ih =>
+        obtain ⟨y, c⟩ := p
+        by_cases hxy : x = y
+        · subst hxy
+          exact ⟨c, by simp [List.lookup], List.mem_cons_self⟩
+        · rcases List.mem_cons.mp hb with hb | hb
+          · cases hb; exact absurd rfl hxy
+          · obtain ⟨b', h1, h2⟩ := ih hb
+            refine ⟨b', ?_, List.mem_cons_of_mem _ h2⟩
+            have : (x == y) = false := by simpa using hxy
+            simp [List.lookup, this, h1]
+  obtain ⟨b, hl, hm⟩ := key s.params hx.choose hx.choose_spec
+  unfold paramLevelOf
+  rw [hl]
+  cases b with
+  | pub => rfl
+  | secret =>
+      exact absurd (List.mem_flatMap.mpr ⟨(x, .secret), hm, by simp [bindingSlots]⟩) h
+  | fields fs =>
+      exact absurd (List.mem_flatMap.mpr ⟨(x, .fields fs), hm, by simp [bindingSlots]⟩) h
+
+/-- **The label correspondence.** When every parameter of `ps` is listed in the secrecy
+    record `s`, valuations agreeing on the positions the parameter levels `paramLevelOf s`
+    mark public agree on the positions `entryLabels (levelsOf s) ps` marks public. -/
+theorem pubEqV_entryLabels_levelsOf (s : FnSecrecy) :
+    ∀ (ps : List (String × NfTy)), (∀ p ∈ ps, ∃ b, (p.1, b) ∈ s.params) →
+    ∀ (V₁ V₂ : Valuation (entryCtx ps)), PubEqV (entryLabels (paramLevelOf s) ps) V₁ V₂ →
+      PubEqV (entryLabels (levelsOf s) ps) V₁ V₂
+  | [], _, _, _, _ => fun _ v => nomatch v
+  | (x, t) :: ps, hps, .cons y₁ V₁, .cons y₂ V₂, h => by
+      intro t' v hv
+      cases v with
+      | here =>
+          exact h _ .here (paramLevelOf_of_levelsOf (hps (x, t) List.mem_cons_self) hv)
+      | there v =>
+          exact pubEqV_entryLabels_levelsOf s ps
+            (fun p hp => hps p (List.mem_cons_of_mem _ hp)) V₁ V₂
+            (fun t'' w hw => h t'' (.there w) hw) t' v hv
+
+/-- **Constant time through the front, for the parameter labels of a secrecy record.**
+    `impToNF_nfCTRel` at the level table `levelsOf s`, stated for the labels `paramLevelOf s`
+    of the parameters, each of which `s` lists. -/
+theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (s : FnSecrecy) (ps : List (String × NfTy))
+    (hps : ∀ p ∈ ps, ∃ b, (p.1, b) ∈ s.params) {e : ImpExpr}
+    (hct : SourceCTNF bi (levelsOf s) e) {tgt : Option String} {o : Out (entryCtx ps)}
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
+      (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
+    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel _ _
+      (entryLabels (paramLevelOf s) ps) tf o.prog := by
+  intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
+  exact impToNF_nfCTRel bi sigOf hT (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
+    (pubEqV_entryLabels_levelsOf s ps hps V₁ V₂ hpub) hq₁ hq₂
+
+end CatCrypt.Crypto.Hax.ImpToNF
