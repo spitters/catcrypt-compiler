@@ -123,10 +123,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   with `compileJ` at every limb count and modulus record; its instances
   `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
   (`Haxc.PowLoopBytes`, `Haxc.PowLoopBytesP256`) take the route and compile equations
-  as hypotheses, each pinned by a known-answer check. The earlier desugaring-and-inlining
-  front `nfFrontDI` (`Haxc.NFFrontDesugarInline`), not a stage of `compileA`, is composed
-  with `compileJ` in the instance
-  `bbAdd_correct_bytes` (`Haxc.BbAddBytes`). The
+  as hypotheses, each pinned by a known-answer check. The
   tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`.
   Constant time of the bytes: for every result of `compileA`, `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) gives constant time of every decoding of the bytes, between
