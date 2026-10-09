@@ -50,7 +50,8 @@ check of its kind against the names live after it.
   into a state related on `obs`.
 * `renArr_callShadow`, `coInstrB_callShadow`, `step_coalesce_calls`,
   `lsemFuelMemF_coalesce_calls`: the same matching at an instruction set `I` with
-  `x86Isa.StepLe I` whose further steps are local calls on words (`Isa.CallLocal`); the
+  `x86Isa.StepLe I` whose further steps are local calls on words with word results
+  (`Isa.CallLocalWord`); the
   renaming keeps a shadow instruction of a call, and `lsemFuelMemF_coalesce` is the
   instance at `x86Isa`.
 -/
@@ -773,9 +774,10 @@ theorem coInstrB_callShadow {body : List LinstrRM} {L : Nat → List String} {k 
 
 /-- **One step of a coalesced instruction at an instruction set with local calls.** The
     statement of `evalInstrPMemF_coalesce` for the step of an instruction set `I` whose steps
-    contain those of `x86Isa` and whose further steps are local calls on words. -/
+    contain those of `x86Isa` and whose further steps are local calls on words with word
+    results. -/
 theorem step_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
+    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
     {L : Nat → List String} {i : LinstrRM} {s s' t : LstateMF}
     (hc : coInstrB σ body L s.prog.base.lpc i = true) (hlt : s.prog.base.lpc < body.length)
     (hR : CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base)
@@ -806,7 +808,7 @@ theorem step_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
 
 /-- **The coalesced body at an instruction set with local calls.** For a body accepted by
     `coCfgB σ body L obs` and an instruction set `I` whose steps contain those of `x86Isa` and
-    whose further steps are local calls on words, a halting run of `I` on `body`, from a state
+    whose further steps are local calls on words with word results, a halting run of `I` on `body`, from a state
     `s` of the function `fn` at a position at most `body.length`, is matched with the same
     fuel by a halting run of `I` on the coalesced body `body.map (renArr σ)` from every state
     `s'` that has the registers, word memory, flags and function name of `s` and whose arrays
@@ -814,7 +816,7 @@ theorem step_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
     states have equal registers, word memory and flags, and their arrays agree through `σ` on
     `obs`. -/
 theorem lsemFuelMemF_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
+    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
     {L : Nat → List String} {obs : List String} (hc : coCfgB σ body L obs = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
@@ -890,6 +892,6 @@ theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → 
         ∧ CoRel σ obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
   rw [← x86Isa_lsemFuelMemF]
   exact lsemFuelMemF_coalesce_calls (Isa.StepLe.refl x86Isa)
-    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) hc
+    (Isa.CallLocalWord.refl x86Isa (fun _ _ => none)) hc
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg

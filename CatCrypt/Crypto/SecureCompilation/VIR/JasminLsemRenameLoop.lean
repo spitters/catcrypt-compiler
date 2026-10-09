@@ -169,7 +169,7 @@ theorem lsemFuelMemF_seg_fuel_calls {I : Isa} {aa : String → Nat → Option Na
       have hstep : ∀ u, I.step P i { prog := { base := b0, lfn := fn }, zf := zf } = some u →
           ∃ b1 z1, u = { prog := { base := b1, lfn := fn }, zf := z1 } ∧ b1.lpc = b0.lpc + 1 := by
         intro u hu
-        rcases hcl P i _ u hu with hx | ⟨dst, f, srcs, r, -, rfl, -⟩
+        rcases hcl P i _ u hu with hx | ⟨dst, f, srcs, x, -, rfl, -⟩
         · change evalInstrPMemF P i _ = some u at hx
           rw [evalInstrPMemF_isLopn P i _ (hl i List.mem_cons_self)] at hx
           cases hb : fstepF i b0 zf with
@@ -178,8 +178,8 @@ theorem lsemFuelMemF_seg_fuel_calls {I : Isa} {aa : String → Nat → Option Na
               obtain ⟨b1, z1⟩ := bz
               simp only [hb, Option.map_some, Option.some.injEq] at hx
               exact ⟨b1, z1, hx.symm, fstepF_lpc_succ _ _ _ _ _ hb⟩
-        · refine ⟨(b0.setReg dst r).nextPc, zf, rfl, ?_⟩
-          simp [LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc, LstateN.setReg]
+        · exact ⟨(LprogIsa.retRes dst x { prog := { base := b0, lfn := fn }, zf := zf }).prog.base,
+            zf, by cases x <;> rfl, LprogIsa.lpc_retRes _ _ _⟩
       cases k with
       | zero => simp [Isa.lsemFuelMemF, hfetch] at h
       | succ k =>

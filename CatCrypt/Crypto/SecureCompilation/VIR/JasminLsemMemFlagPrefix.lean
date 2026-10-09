@@ -369,7 +369,8 @@ theorem lsemFuelMemF_prefix_eq (fn : String) (pre B : List LinstrRM)
 section Calls
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
-  (Isa shadowCall? callShadow retWord argsRead argsRead_congr eq_callShadow_of_shadowCall?)
+  (Isa shadowCall? callShadow retWord CallRes retRes retRes_arr retArr argsRead argsRead_congr
+    eq_callShadow_of_shadowCall?)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
 /-- The argument words of operands do not depend on the program counter. -/
@@ -384,6 +385,15 @@ theorem retWord_shiftS (dst : String) (r : BitVec 64) (d : Nat) (s : LstateMF) :
     retWord dst r (shiftS d s) = shiftS d (retWord dst r s) := by
   simp only [retWord, shiftS, LstateM.setReg, LstateM.nextPc, LstateM.setLpc, LstateM.lpc,
     JasminLsemWidthN.LstateN.setReg, JasminLsemWidthN.LstateN.nextPc, Nat.add_right_comm]
+
+/-- Writing the result of a call commutes with moving the program counter. -/
+theorem retRes_shiftS (dst : String) (x : CallRes) (d : Nat) (s : LstateMF) :
+    retRes dst x (shiftS d s) = shiftS d (retRes dst x s) := by
+  cases x with
+  | word r => exact retWord_shiftS dst r d s
+  | arr a =>
+      simp only [retRes_arr, retArr, shiftS, LstateM.setArr, LstateM.nextPc, LstateM.setLpc,
+        LstateM.lpc, JasminLsemWidthN.LstateN.nextPc, Nat.add_right_comm]
 
 /-- **One step behind the prefix at an instruction set with local calls.** For an instruction
     set `I` whose steps contain those of `x86Isa` and whose further steps are local calls, at
@@ -403,20 +413,20 @@ theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
   | some q =>
       cases hB : I.step (singletonProgM fn B) i s with
       | some t =>
-          rcases hcl _ _ s t hB with hxB | ⟨dst, f, srcs, r, hsh', rfl, hfwd⟩
+          rcases hcl _ _ s t hB with hxB | ⟨dst, f, srcs, x, hsh', rfl, hfwd⟩
           · rw [hxB, Option.map_some] at hx
             exact hle _ _ _ _ hx
           · obtain ⟨w, tag⟩ := i
             simp only at hsh'
             subst hsh'
-            rw [Option.map_some, ← retWord_shiftS]
+            rw [Option.map_some, ← retRes_shiftS]
             exact hfwd _ tag dst srcs _ rfl (argsRead_shiftS _ _ _ _ _)
       | none =>
           cases hA : I.step (singletonProgM fn (pre ++ B)) i (shiftS pre.length s) with
           | none => rfl
           | some t' =>
               exfalso
-              rcases hcl _ _ _ t' hA with hxA | ⟨dst, f, srcs, r, hsh', -, hfwd⟩
+              rcases hcl _ _ _ t' hA with hxA | ⟨dst, f, srcs, x, hsh', -, hfwd⟩
               · rw [hxA] at hx
                 obtain ⟨u, hu, -⟩ := Option.map_eq_some_iff.mp hx.symm
                 rw [hle _ _ _ _ hu] at hB

@@ -1361,7 +1361,8 @@ theorem renProg_map (fn : String) (body : List LinstrRM) {k0 : Nat} (hk0 : k0 �
 
 section Calls
 
-open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow retWord argRead argsRead)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow retRes lpc_retRes argRead
+  argsRead)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 
 /-- Related states read the same argument words from operands with names in `N` and from
@@ -1391,7 +1392,8 @@ theorem RelM.argsRead_ren {s s' : LstateM} (h : RelM σ N s s') (aa : Nat → Op
     successful step of the original instruction is matched by a step of the renamed
     instruction from a related state, into a related state, and the program counter stays at
     `k0` or later. A local call reads the same argument words from the renamed operands
-    (`RelM.argsRead_ren`), at word and at array positions. -/
+    (`RelM.argsRead_ren`), at word and at array positions, and writes its result, a word or a
+    word array, to the renamed destination. -/
 theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86Isa.StepLe I)
     (hcl : I.CallLocal x86Isa aa) {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
     (hP : RenProg σ N k0 P P') (i : LinstrRM) (hi : ∀ n ∈ instrNames i.1, N n)
@@ -1399,7 +1401,7 @@ theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86
     (hk : k0 ≤ s.prog.base.lpc) (h : I.step P i s = some t) :
     ∃ t', I.step P' (renRM σ i) s' = some t' ∧ RelF σ N t t'
       ∧ k0 ≤ t.prog.base.lpc := by
-  rcases hcl P i s t h with hx | ⟨dst, f, srcs, r, hsh, rfl, hfwd⟩
+  rcases hcl P i s t h with hx | ⟨dst, f, srcs, x, hsh, rfl, hfwd⟩
   · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_ren hσ hP i hi hc hR hk hx
     exact ⟨t', hle _ _ _ _ ht', hrest⟩
   · obtain ⟨w, tag⟩ := i
@@ -1411,12 +1413,13 @@ theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86
         simp only [callShadow, instrNames, List.flatMap_append, List.mem_append,
           List.mem_flatMap]
         exact Or.inr ⟨o, ho, hn⟩)
-    refine ⟨retWord (σ dst) r s', ?_, ⟨RelM.setReg hσ hR.1 hd r, hR.2.1, hR.2.2⟩, ?_⟩
+    refine ⟨retRes (σ dst) x s', ?_, ?_, ?_⟩
     · exact hfwd P' tag (σ dst) (srcs.map (renOperand σ)) s' (List.length_map _)
         (hR.1.argsRead_ren (aa f) 0 srcs hs)
-    · show k0 ≤ (s.prog.base.setReg dst r).nextPc.lpc
-      simp only [LstateM.lpc, LstateM.nextPc, LstateM.setReg, JasminLsemWidthN.LstateN.nextPc,
-        JasminLsemWidthN.LstateN.setReg]
+    · cases x with
+      | word r => exact ⟨RelM.setReg hσ hR.1 hd r, hR.2.1, hR.2.2⟩
+      | arr a => exact ⟨RelM.setArr hσ hR.1 hd a, hR.2.1, hR.2.2⟩
+    · rw [lpc_retRes]
       exact Nat.le_succ_of_le hk
 
 /-- **An instruction set with local calls under a renaming.** For two programs related by a

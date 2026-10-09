@@ -41,7 +41,8 @@ stack slot `k.N` is a register name like any other.
   fall-through edges satisfy `Keeps`, and jump edges shrink the sets. Under a
   certificate every halting run is matched with the same fuel.
   `lsemFuelMemF_live_calls` is the same matching at an instruction set `I` with
-  `x86Isa.StepLe I` whose further steps are local calls on words (`Isa.CallLocal`):
+  `x86Isa.StepLe I` whose further steps are local calls on words with word results
+  (`Isa.CallLocalWord`):
   a shadow instruction of a call writes its destination and no array
   (`regDefs_callShadow`, `arrDefs_callShadow`), and its renamed operands read the
   same words. `lsemFuelMemF_live` is the instance at `x86Isa`.
@@ -1112,9 +1113,10 @@ theorem mapM_evalOperandN_ren {s s' : LstateN} (h : RelN σ N s s') :
 
 /-- **The step under a liveness certificate at an instruction set with local calls.** The
     statement of `evalInstrPMemF_live` for the step of an instruction set `I` whose steps
-    contain those of `x86Isa` and whose further steps are local calls on words. -/
+    contain those of `x86Isa` and whose further steps are local calls on words with word
+    results. -/
 theorem step_live_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
+    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
     {s s' t : LstateMF} (hk : k0 ≤ s.prog.base.lpc) (hget : P.body[s.prog.base.lpc]? = some i)
     (hR : RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s')
     (h : I.step P i s = some t) :
@@ -1151,12 +1153,12 @@ theorem step_live_calls {I : Isa} (hle : x86Isa.StepLe I)
 /-- **The flag machine under a liveness certificate, at an instruction set with local
     calls.** For a program `P`, a renaming `σ`, a program `P'` with a certificate from `k0`
     on and an instruction set `I` whose steps contain those of `x86Isa` and whose further
-    steps are local calls on words, every halting run of `I` on `P` from a state at program
-    counter `k ≥ k0` is matched, with the same fuel, by a halting run of `I` on `P'` from a
-    state related on the sets at `k`, into a state related on the sets at the final program
-    counter. -/
+    steps are local calls on words with word results, every halting run of `I` on `P` from a
+    state at program counter `k ≥ k0` is matched, with the same fuel, by a halting run of `I`
+    on `P'` from a state related on the sets at `k`, into a state related on the sets at the
+    final program counter. -/
 theorem lsemFuelMemF_live_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) :
+    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) :
     ∀ (fuel : Nat) {s s' t : LstateMF},
       RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s' → k0 ≤ s.prog.base.lpc →
       I.lsemFuelMemF P fuel s = some t →
@@ -1215,7 +1217,7 @@ theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
         ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' := by
   rw [← x86Isa_lsemFuelMemF]
   exact lsemFuelMemF_live_calls (Isa.StepLe.refl x86Isa)
-    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) hC
+    (Isa.CallLocalWord.refl x86Isa (fun _ _ => none)) hC
 
 /-! ## 7. Certificates from live ranges
 
