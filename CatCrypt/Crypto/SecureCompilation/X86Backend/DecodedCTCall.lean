@@ -32,10 +32,14 @@ certificate's set at index `0` have equal traces as runs of the linked program.
 * `presPost_of_calleeSpec`: a specified callee whose footprint lies in the `G` bytes below
   its entry stack register preserves the registers outside its clobber set and the frame
   words above its entry stack register.
+* `presPostO_of_calleeSpec`: the same for a callee whose footprint also covers an out region
+  `O`, for frame words outside `O`.
 * `OracleRun.mono_oracle`: a run under an oracle is a run under every oracle with more
   answers.
 * `linkedRunX_trace_eq`: equal traces of the linked program for two runs of a checked
   caller that halt under the guarded oracle of the callee.
+* `linkedRunX_trace_eq_out`: the same for a callee with an out region `O`, when the frame
+  words the caller keeps lie outside `O`.
 -/
 
 @[expose] public section
@@ -246,6 +250,35 @@ theorem not_inFrame_of_inRange8 {e x : BitVec 64} {G : Nat} {q : Int} (h0 : 0 �
   simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofInt] at hx hf
   omega
 
+/-- **What a specified callee with an out region preserves.** Let the footprint of `c` lie
+    in the `G` bytes below the entry stack register or in the out region `O` of the entry
+    state, the registers `R` lie outside the clobber set, and the offsets `Q` be
+    non-negative with `q + 8 + G ≤ 2 ^ 64` and their words outside `O`. A run of a callee
+    with `CalleeSpec X c` from an entry state satisfying the precondition restores `%rsp`
+    and keeps the registers `R` and the frame words at the offsets `Q`. -/
+theorem presPostO_of_calleeSpec {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
+    {R : List String} {Q : List Int} {G : Nat} {O : AState → BitVec 64 → Prop}
+    (hR : ∀ x ∈ R, c.clob x = false)
+    (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x ∨ O s x)
+    (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
+    (hQO : ∀ s, ∀ q ∈ Q, ∀ x, InRange8 (s.regs "%rsp" + BitVec.ofInt 64 q) x → ¬ O s x)
+    {s s' : AState} {t : List CTLeak} (hpre : c.pre s) (hrun : X s t s') :
+    PresPost R Q s s' := by
+  have hrsp := hX.rsp _ _ _ hpre hrun
+  refine ⟨hrsp, fun x hx => hX.keep _ _ _ hpre hrun x (hR x hx), fun q hq => ?_⟩
+  obtain ⟨h0, hq8⟩ := hQ q hq
+  unfold cellAt
+  rw [hrsp]
+  have hm : ∀ x, InRange8 (s.regs "%rsp" + BitVec.ofInt 64 q) x → s'.mem x = s.mem x :=
+    fun x hx => hX.frame _ _ _ hpre hrun x fun hf =>
+      (hfoot s x hf).elim (not_inFrame_of_inRange8 h0 hq8 hx) (hQO s q hq x hx)
+  set a := s.regs "%rsp" + BitVec.ofInt 64 q
+  have hk : ∀ k, k < 8 → s'.mem (a + BitVec.ofNat 64 k) = s.mem (a + BitVec.ofNat 64 k) :=
+    fun k hk => hm _ (by unfold InRange8; simp; omega)
+  have h0' : s'.mem a = s.mem a := by simpa using hk 0 (by decide)
+  simp only [read64, h0', hk 1 (by decide), hk 2 (by decide), hk 3 (by decide),
+    hk 4 (by decide), hk 5 (by decide), hk 6 (by decide), hk 7 (by decide)]
+
 /-- **What a specified callee preserves.** Let the footprint of `c` lie in the `G` bytes
     below the entry stack register, the registers `R` lie outside the clobber set and the
     offsets `Q` be non-negative with `q + 8 + G ≤ 2 ^ 64`. A run of a callee with
@@ -255,21 +288,9 @@ theorem presPost_of_calleeSpec {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec 
     {R : List String} {Q : List Int} {G : Nat} (hR : ∀ x ∈ R, c.clob x = false)
     (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x)
     (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64) {s s' : AState} {t : List CTLeak}
-    (hpre : c.pre s) (hrun : X s t s') : PresPost R Q s s' := by
-  have hrsp := hX.rsp _ _ _ hpre hrun
-  refine ⟨hrsp, fun x hx => hX.keep _ _ _ hpre hrun x (hR x hx), fun q hq => ?_⟩
-  obtain ⟨h0, hq8⟩ := hQ q hq
-  unfold cellAt
-  rw [hrsp]
-  have hm : ∀ x, InRange8 (s.regs "%rsp" + BitVec.ofInt 64 q) x → s'.mem x = s.mem x :=
-    fun x hx => hX.frame _ _ _ hpre hrun x fun hf =>
-      not_inFrame_of_inRange8 h0 hq8 hx (hfoot s x hf)
-  set a := s.regs "%rsp" + BitVec.ofInt 64 q
-  have hk : ∀ k, k < 8 → s'.mem (a + BitVec.ofNat 64 k) = s.mem (a + BitVec.ofNat 64 k) :=
-    fun k hk => hm _ (by unfold InRange8; simp; omega)
-  have h0' : s'.mem a = s.mem a := by simpa using hk 0 (by decide)
-  simp only [read64, h0', hk 1 (by decide), hk 2 (by decide), hk 3 (by decide),
-    hk 4 (by decide), hk 5 (by decide), hk 6 (by decide), hk 7 (by decide)]
+    (hpre : c.pre s) (hrun : X s t s') : PresPost R Q s s' :=
+  presPostO_of_calleeSpec (O := fun _ _ => False) hX hR (fun s x h => Or.inl (hfoot s x h)) hQ
+    (fun _ _ _ _ _ h => h) hpre hrun
 
 /-! ## 4. Runs under the guarded oracle -/
 
@@ -306,22 +327,24 @@ theorem pubSummary_guarded {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
       hX.ct _ _ _ _ _ _ hX₁.1 hX₂.1 (hpub _ _ hX₁.1 hX₂.1 hp) hX₁.2 hX₂.2,
     fun _ _ _ _ _ _ _ _ _ _ _ => trivial⟩
 
-/-- **Equal leakage of the linked program under the guarded oracle.** Let `q` be a block
-    without `call` with `CalleeSpec (runOf r q) c`, whose footprint lies in the `G` bytes
-    below the entry stack register, and let the caller `p` pass `checkCertX` at the entry
+/-- **Equal leakage of the linked program under the guarded oracle of a callee with an out
+    region.** Let `q` be a block without `call` with `CalleeSpec (runOf r q) c`, whose
+    footprint lies in the `G` bytes below the entry stack register or in the out region
+    `O` of the entry state, and let the caller `p` pass `checkCertX` at the entry
     `p.length` with registers `R` outside the clobber set, offsets `Q` as in
-    `presPost_of_calleeSpec`, and agreement on `callPub pubRegs` giving `c.pub`. Let `p`
+    `presPostO_of_calleeSpec`, and agreement on `callPub pubRegs` giving `c.pub`. Let `p`
     halt under the oracle of the guarded callee from two states agreeing on the
     certificate's set at index `0`, with the runs under the oracle satisfying `FrameSep F`.
     Then every two runs with leakage of `p ++ shiftProg p.length q` from these states have
     equal traces. -/
-theorem linkedRunX_trace_eq {r : DoitRegime} {F : List Int} {pubRegs R : List String}
+theorem linkedRunX_trace_eq_out {r : DoitRegime} {F : List Int} {pubRegs R : List String}
     {Q : List Int} {A : List (Option PubA)} {p q : List RInstr}
     (hq : ∀ tg, RInstr.call tg ∉ q) {c : CalleeSig} (hX : CalleeSpec (runOf r q) c)
     (hc : checkCertX r F p.length pubRegs R Q p A = true)
-    (hR : ∀ x ∈ R, c.clob x = false) {G : Nat}
-    (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x)
+    (hR : ∀ x ∈ R, c.clob x = false) {G : Nat} {O : AState → BitVec 64 → Prop}
+    (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x ∨ O s x)
     (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
+    (hQO : ∀ s, ∀ q ∈ Q, ∀ x, InRange8 (s.regs "%rsp" + BitVec.ofInt 64 q) x → ¬ O s x)
     (hpub : ∀ s₁ s₂, c.pre s₁ → c.pre s₂ → (callPub pubRegs).Agree s₁ s₂ → c.pub s₁ s₂)
     {s₁ s₂ s₁' s₂' : AState} (hI : CertRel A 0 s₁ s₂)
     (h₁ : HaltsO aMachine (oracleAt p.length (guarded c (runOf r q))) p 0 s₁ s₁')
@@ -367,9 +390,42 @@ theorem linkedRunX_trace_eq {r : DoitRegime} {F : List Int} {pubRegs R : List St
         fun o ho => by simp [rspPub] at ho, fun hf => by simp [rspPub] at hf⟩
     obtain ⟨hl, _⟩ := blockOkA_sound _ _ hbr hra (blockOk_frameSep_retOps F sc₁)
       (blockOk_frameSep_retOps F sc₂)
-    have hkeep := keepA_agree hag (presPost_of_calleeSpec hX hR hfoot hQ hX₁.1 hX₁.2)
-      (presPost_of_calleeSpec hX hR hfoot hQ hX₂.1 hX₂.2)
+    have hkeep := keepA_agree hag (presPostO_of_calleeSpec hX hR hfoot hQ hQO hX₁.1 hX₁.2)
+      (presPostO_of_calleeSpec hX hR hfoot hQ hQO hX₂.1 hX₂.2)
     obtain ⟨b', hb', hle'⟩ := succOk_spec hsucc
     exact ⟨hl, b', hb', PubA.agree_of_le hle' hkeep⟩
+
+/-- **Equal leakage of the linked program under the guarded oracle.** Let `q` be a block
+    without `call` with `CalleeSpec (runOf r q) c`, whose footprint lies in the `G` bytes
+    below the entry stack register, and let the caller `p` pass `checkCertX` at the entry
+    `p.length` with registers `R` outside the clobber set, offsets `Q` as in
+    `presPost_of_calleeSpec`, and agreement on `callPub pubRegs` giving `c.pub`. Let `p`
+    halt under the oracle of the guarded callee from two states agreeing on the
+    certificate's set at index `0`, with the runs under the oracle satisfying `FrameSep F`.
+    Then every two runs with leakage of `p ++ shiftProg p.length q` from these states have
+    equal traces. -/
+theorem linkedRunX_trace_eq {r : DoitRegime} {F : List Int} {pubRegs R : List String}
+    {Q : List Int} {A : List (Option PubA)} {p q : List RInstr}
+    (hq : ∀ tg, RInstr.call tg ∉ q) {c : CalleeSig} (hX : CalleeSpec (runOf r q) c)
+    (hc : checkCertX r F p.length pubRegs R Q p A = true)
+    (hR : ∀ x ∈ R, c.clob x = false) {G : Nat}
+    (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x)
+    (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
+    (hpub : ∀ s₁ s₂, c.pre s₁ → c.pre s₂ → (callPub pubRegs).Agree s₁ s₂ → c.pub s₁ s₂)
+    {s₁ s₂ s₁' s₂' : AState} (hI : CertRel A 0 s₁ s₂)
+    (h₁ : HaltsO aMachine (oracleAt p.length (guarded c (runOf r q))) p 0 s₁ s₁')
+    (h₂ : HaltsO aMachine (oracleAt p.length (guarded c (runOf r q))) p 0 s₂ s₂')
+    (hsep₁ : ∀ t s', OracleRun r (fun _ _ => True) (tracedAt p.length (guarded c (runOf r q)))
+      p 0 s₁ t s' →
+      OracleRun r (FrameSep F) (tracedAt p.length (guarded c (runOf r q))) p 0 s₁ t s')
+    (hsep₂ : ∀ t s', OracleRun r (fun _ _ => True) (tracedAt p.length (guarded c (runOf r q)))
+      p 0 s₂ t s' →
+      OracleRun r (FrameSep F) (tracedAt p.length (guarded c (runOf r q))) p 0 s₂ t s')
+    {ok₁ ok₂ : AState → JInstr 64 → Prop} {t₁ t₂ : List CTLeak} {e₁ e₂ : AState}
+    (hr₁ : RunL r ok₁ (p ++ shiftProg p.length q) 0 s₁ t₁ e₁)
+    (hr₂ : RunL r ok₂ (p ++ shiftProg p.length q) 0 s₂ t₂ e₂) : t₁ = t₂ :=
+  linkedRunX_trace_eq_out (O := fun _ _ => False) hq hX hc hR
+    (fun s x h => Or.inl (hfoot s x h)) hQ (fun _ _ _ _ _ h => h) hpub hI h₁ h₂ hsep₁ hsep₂
+    hr₁ hr₂
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTCall

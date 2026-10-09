@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOut
 public import CatCrypt.Crypto.Hax.Module
 
 @[expose] public section
@@ -21,7 +21,8 @@ result read-back of the layout, the value of `sem` at the values the layout read
 (`LinkedFn.post_sem`). This module reads such a record as a callee of the image call step:
 for a layout of word arguments with the result in a register, as `ImageAddrCall.WordCallee`,
 and for a layout of word arguments followed by one read-only word array, as
-`ImageAddrCallArr.ArrCallee`. The procedure summary applies `sem` to the argument words as
+`ImageAddrCallArr.ArrCallee`, and for a layout whose result is a word array the record writes
+at a pointer register, as `ImageAddrCallOut.OutCallee`. The procedure summary applies `sem` to the argument words as
 source integers (and the array words as a source array) and decodes the value as a word. The
 interface has the footprint, postcondition, public relation and clobbered registers of the
 record; its precondition is the precondition of the record at an entry state at whose
@@ -37,6 +38,9 @@ of the record's interface to it.
 * `WordLayout`, `ArrLayout`: the layout passes the argument words in the registers of the
   names, then (for `ArrLayout`) the array at the register of the pointer name, and returns
   the result in the register of the result name.
+* `readIns`: the summary input of a list of parameters, each a scalar or a word array.
+* `outSummary`, `outSig`, `OutLayout`: the summary, interface and layout of a linked function
+  whose result is the `n` words at the register of a pointer name.
 
 ## Main results
 
@@ -46,6 +50,10 @@ of the record's interface to it.
 * `arrCallee_of_linkedFn`: a linked function with an array layout is an `ArrCallee`.
 * `pub_of_ptrArg`: under an array layout, agreement on `%rsp`, the bounded word arguments and
   the array pointer register gives the public relation of the record.
+* `outCallee_of_linkedFn`: a linked function with an out layout is an `OutCallee`.
+* `pub_of_outPtr`: under an out layout, agreement on `%rsp`, the public parameters and the
+  out pointer register gives the public relation of the record.
+* `readIns_arr`: the summary input of scalars followed by one array is `readArgs`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
@@ -53,10 +61,10 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk phys)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (cellAt)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (CalleeRun CalleeSig CalleeSpec)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (CalleeRun CalleeSig CalleeSpec InFrame)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall (WordCallee)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr (arrWords readArgs ArrCallee)
-open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState AMem read64 InRange8)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiArg ArgKind ResultKind wordsAt)
 open CatCrypt.Crypto.Hax (LinkedFn)
 open CatCrypt.Crypto.Hax.ImpToNF (dec)
@@ -288,5 +296,183 @@ theorem pub_of_ptrArg {l : LinkedFn} {ws : List String} {pa : String} {n : Nat}
     exact hws w hw hp
   · rw [hr]
     exact hpa
+
+/-! ## 5. A linked function with a word-array result -/
+
+/-- The source values of a list of argument words under a list of parameter kinds: a scalar
+    takes one word as a source integer, an array of `m` words takes the next `m` words as a
+    source array. -/
+def insVals : List ArgKind → List (BitVec 64) → List Value
+  | [], _ => []
+  | .scalar :: ks, xs => wordVal (xs.headD 0) :: insVals ks xs.tail
+  | .words m :: ks, xs => .array ((xs.take m).map wordVal) :: insVals ks (xs.drop m)
+
+/-- The argument words of a parameter at a state: the word of the register of the name for
+    a scalar, the `m` words at the address in that register for an array of `m` words. -/
+def readIn (p : String × ArgKind) (s : AState) : List (BitVec 64) :=
+  match p.2 with
+  | .scalar => [s.regs (phys p.1)]
+  | .words m => arrWords s.mem (s.regs (phys p.1)) m
+
+/-- **The summary input of a list of parameters at a state**: the argument words of each
+    parameter, in order. -/
+def readIns (ins : List (String × ArgKind)) (s : AState) : List (BitVec 64) :=
+  ins.flatMap (readIn · s)
+
+/-- The summary input of scalars of the names `ws` followed by an array of `n` words at
+    `pa` is `readArgs ws pa n`. -/
+theorem readIns_arr (ws : List String) (pa : String) (n : Nat) (s : AState) :
+    readIns (ws.map (fun w => (w, ArgKind.scalar)) ++ [(pa, ArgKind.words n)]) s =
+      readArgs ws pa n s := by
+  simp only [readIns, readIn, readArgs, List.flatMap_append, List.flatMap_map,
+    List.flatMap_singleton]
+  induction ws <;> simp_all
+
+/-- The source values of the summary input of a list of parameters are the values the
+    parameters read. -/
+theorem insVals_readIns (s : AState) :
+    ∀ ins : List (String × ArgKind),
+      insVals (ins.map (·.2)) (readIns ins s) = ins.map fun p => readRK (phys p.1, p.2) s
+  | [] => rfl
+  | (w, .scalar) :: ins => by
+      have ih := insVals_readIns s ins
+      simp only [readIns, List.flatMap_cons, readIn] at ih ⊢
+      simp [insVals, readRK, wordVal, ih]
+  | (w, .words m) :: ins => by
+      have ih := insVals_readIns s ins
+      have hl : (arrWords s.mem (s.regs (phys w)) m).length = m := by simp [arrWords]
+      simp only [readIns, List.flatMap_cons, readIn] at ih ⊢
+      simp only [List.map_cons, insVals, List.take_left' hl, List.drop_left' hl, ih, readRK,
+        wordsAt_eq]
+
+/-- **An out layout**: the parameters of the layout are, in order, the parameters `ins`, each
+    a name with its kind, in the registers of the names; the result is read back as the `n`
+    words at the entry value of the register of the general-purpose name `po`; the footprint
+    of the record is among the `l.frame` bytes below its entry stack register and those `n`
+    words; and two entry states that agree on `%rsp`, on the registers of the public
+    parameters and on the register of `po` are related by the public relation of the
+    record. -/
+structure OutLayout (l : LinkedFn) (ins : List (String × ArgKind)) (po : String) (n : Nat) :
+    Prop where
+  /-- The parameters: the kind of each parameter of `ins` in the register of its name. -/
+  args : l.layout.args.map (fun a => (a.reg, a.kind)) = ins.map fun p => (phys p.1, p.2)
+  /-- The result is the `n` words at the register of `po`. -/
+  result : l.layout.result = .words (phys po) n
+  /-- The parameter names are general-purpose names. -/
+  ins_gp : ∀ p ∈ ins, gpOk p.1 = true
+  /-- The pointer name of the result is a general-purpose name. -/
+  po_gp : gpOk po = true
+  /-- The footprint is among the frame bytes and the `n` words at the pointer of `po`. -/
+  foot : ∀ s x, l.foot s x →
+    InFrame (s.regs "%rsp") l.frame x ∨ ∃ j < n, InRange8 (cellAt (s.regs (phys po)) j) x
+  /-- Agreement on `%rsp`, the registers of the public parameters and the register of `po`
+      gives the public relation of the record. -/
+  pub_out : ∀ s₁ s₂, s₁.regs "%rsp" = s₂.regs "%rsp" →
+    (∀ a ∈ l.layout.args, l.layout.argPub a = true → s₁.regs a.reg = s₂.regs a.reg) →
+    s₁.regs (phys po) = s₂.regs (phys po) → l.pub s₁ s₂
+
+/-- **The procedure summary of a linked function with a word-array result of length `n`**:
+    no word result, and as array result the meaning at the source values of the argument
+    words under the kinds of `ins`, decoded as an array of words. -/
+def outSummary (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) :
+    LprogIsa.ProcSummary where
+  arity := l.params.length
+  run := fun _ => none
+  out := some n
+  runOut m xs := (l.sem (insVals (ins.map (·.2)) xs)).bind (dec (.arr m (.word 64)))
+
+/-- **The interface of a linked function with a word-array result**: the parameter names of
+    `ins` followed by the pointer name `po`, no result register, the clobbered registers,
+    footprint, postcondition and public relation of the record, and as precondition the
+    precondition of the record at an entry state at whose `readIns` the array result of
+    `outSummary` is defined. -/
+def outSig (l : LinkedFn) (ins : List (String × ArgKind)) (po : String) (n : Nat) :
+    CalleeSig where
+  args := ins.map (·.1) ++ [po]
+  res := none
+  clob := fun x => l.clob.contains x
+  pre := fun s => l.pre s ∧ ((outSummary l ins n).runOut n (readIns ins s)).isSome
+  foot := l.foot
+  post := l.post
+  pub := l.pub
+
+/-- The footprint of the out interface is a footprint of `FootBelowOut` at the frame size of
+    the record. -/
+theorem footBelowOut_outSig {l : LinkedFn} {ins : List (String × ArgKind)} {po : String}
+    {n : Nat} (hL : OutLayout l ins po n) :
+    ImageAddrCallOut.FootBelowOut (outSig l ins po n) l.frame po n :=
+  hL.foot
+
+/-- Under an out layout, the values the layout reads are the source values of `readIns`. -/
+theorem read_outLayout {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
+    (hL : OutLayout l ins po n) (s : AState) :
+    l.layout.args.map (·.read s) = insVals (ins.map (·.2)) (readIns ins s) := by
+  rw [map_read_eq, hL.args, insVals_readIns, List.map_map]
+  rfl
+
+/-- The source array of the words at an address decodes as the function of those words. -/
+theorem dec_arr_wordsAt (m : AMem) (p : BitVec 64) (n : Nat) :
+    dec (.arr n (.word 64)) (.array (wordsAt m p n)) =
+      some fun j : Fin n => read64 m (cellAt p j.val) := by
+  have hm : ∀ xs : List (BitVec 64), (xs.map wordVal).mapM (dec (.word 64)) = some xs := by
+    intro xs
+    induction xs with
+    | nil => rfl
+    | cons x xs ih => simp [List.mapM_cons, dec_wordVal, ih]
+  have hl : (arrWords m p n).length = n := by simp [arrWords]
+  have hw : wordsAt m p n = (arrWords m p n).map wordVal := by
+    simp [wordsAt, arrWords, wordVal, cellAt, List.map_map, Function.comp_def]
+  rw [hw]
+  simp only [dec, hm, Option.bind_some, dif_pos hl]
+  congr 1
+  funext j
+  simp [arrWords]
+
+/-- **A linked function with an out layout is an out callee.** Under `OutLayout`, the out
+    interface `outSig` has the reading `outSummary` on the summary input `readIns ins`: the
+    words the record writes at the pointer of `po` are the array result. -/
+theorem outCallee_of_linkedFn {l : LinkedFn} {ins : List (String × ArgKind)} {po : String}
+    {n : Nat} (hL : OutLayout l ins po n) :
+    ImageAddrCallOut.OutCallee (outSig l ins po n) (readIns ins) po n (outSummary l ins n)
+      l.pre where
+  po_gp := hL.po_gp
+  res_none := rfl
+  len := rfl
+  pre _ h hd := ⟨h, hd⟩
+  post s s' h hpost := by
+    obtain ⟨hp, hd⟩ := h
+    change ((l.sem (insVals (ins.map (·.2)) (readIns ins s))).bind
+      (dec (.arr n (.word 64)))).isSome = true at hd
+    change (l.sem (insVals (ins.map (·.2)) (readIns ins s))).bind
+      (dec (.arr n (.word 64))) = _
+    obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (Option.isSome_of_isSome_bind hd)
+    have h := l.post_sem s s' v hp hpost (by rw [read_outLayout hL]; exact hv)
+    simp only [CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout.ResultOf, hL.result,
+      ResultKind.read] at h
+    rw [hv, h, Option.bind_some]
+    exact dec_arr_wordsAt _ _ _
+
+/-- **The public relation of an out layout from register agreement.** Under `OutLayout`, two
+    entry states that agree on `%rsp`, on the register of each parameter of `ins` that is
+    public (an array, or a scalar whose register carries a bound of the layout), and on the
+    register of the pointer name `po` are related by the public relation of the record. -/
+theorem pub_of_outPtr {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
+    (hL : OutLayout l ins po n) {s₁ s₂ : AState}
+    (hrsp : s₁.regs "%rsp" = s₂.regs "%rsp")
+    (hins : ∀ p ∈ ins, l.layout.argPub ⟨p.1, phys p.1, p.2⟩ = true →
+      s₁.regs (phys p.1) = s₂.regs (phys p.1))
+    (hpo : s₁.regs (phys po) = s₂.regs (phys po)) : l.pub s₁ s₂ := by
+  refine hL.pub_out s₁ s₂ hrsp (fun a ha hp => ?_) hpo
+  have hm : (a.reg, a.kind) ∈ ins.map fun p => (phys p.1, p.2) :=
+    hL.args ▸ List.mem_map.mpr ⟨a, ha, rfl⟩
+  obtain ⟨p, hp', he⟩ := List.mem_map.mp hm
+  simp only [Prod.mk.injEq] at he
+  obtain ⟨hr, hk⟩ := he
+  rw [← hr]
+  refine hins p hp' ?_
+  have e : l.layout.argPub ⟨p.1, phys p.1, p.2⟩ = l.layout.argPub a := by
+    simp only [CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout.argPub, hk, hr]
+  rw [e]
+  exact hp
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
