@@ -507,7 +507,7 @@ def LeafCallScalarTys (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : T
     (`LeafCallAgreesArgs`, for every call other than the array operations `index`,
     `array_update`, `array_lit`, `repeat`) and with a
     scalar result (`LeafCallScalar`, for the scalar calls and for the leaves of
-    `exitTowerScalarNames`), the element load and the element store on an array of words
+    `exitTowerScalarNames` whose names the front admits, `exitAdmits`), the element load and the element store on an array of words
     and on an array of tower values, the array literal of `k` values at each array type of
     `k` elements (`arrLitN`), the `repeat` with count `k` at each such type (`repeatN`),
     the calls other than the array operations with a declared
@@ -527,11 +527,13 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
   callT : ∀ f, exitScalarRes f = false → f ≠ "index" → f ≠ "array_update" →
     f ≠ "array_lit" → f ≠ "repeat" → DA f = none →
     LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
-  callS : ∀ f, exitScalarCall f = true → LeafCallScalar bi leafSpec f (towerOfCallName f) br
-  /-- The leaf calls of `exitTowerScalarNames`, whose arguments are related by `br` to
-      tower values and whose result is a scalar word read from limb `0` of the leaf
-      output, with no bridge on the result. -/
-  callTS : ∀ f, exitTowerScalarCall f = true →
+  /-- The scalar calls with an admitted name (`exitAdmits`). -/
+  callS : ∀ f, exitScalarCall f = true → exitAdmits f = true →
+    LeafCallScalar bi leafSpec f (towerOfCallName f) br
+  /-- The leaf calls of `exitTowerScalarNames` with an admitted name, whose arguments are
+      related by `br` to tower values and whose result is a scalar word read from limb `0`
+      of the leaf output, with no bridge on the result. -/
+  callTS : ∀ f, exitTowerScalarCall f = true → exitAdmits f = true →
     LeafCallScalar bi leafSpec f (towerOfCallName f) br
   index : IndexScalarAgrees br bi leafSpec
   update : ArrUpdateWordAgrees br bi leafSpec
@@ -621,15 +623,16 @@ theorem ExitLeaves.atExitTowers {bi : Builtins} {leafSpec : LeafSpec} {br : Valu
     (fun f t h => by rw [exitOptTys_exitTowers] at h; cases h) (fun _ _ _ => rfl)
     (fun f x h => by rw [exitCalleeTys_exitTowers] at h; cases h) (fun _ _ => rfl)
 
-/-- Every call of `exitScalarRes` satisfies `LeafCallScalar`. -/
+/-- Every call of `exitScalarRes` with an admitted name satisfies `LeafCallScalar`. -/
 theorem ExitLeaves.callSR {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
     {D DO : String → Option TowerType} {DA : String → Option (List TowerType × TowerType)}
-    (hL : ExitLeaves bi leafSpec br D DO DA) {f : String} (hf : exitScalarRes f = true) :
+    (hL : ExitLeaves bi leafSpec br D DO DA) {f : String} (hf : exitScalarRes f = true)
+    (ha : exitAdmits f = true) :
     LeafCallScalar bi leafSpec f (towerOfCallName f) br := by
   unfold exitScalarRes at hf
   rcases Bool.or_eq_true_iff.mp hf with h | h
-  · exact hL.callS f h
-  · exact hL.callTS f h
+  · exact hL.callS f h ha
+  · exact hL.callTS f h ha
 
 /-- A builtin table that does not implement `f` satisfies the scalar leaf condition. -/
 theorem leafCallScalar_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (f : String)
@@ -2135,7 +2138,7 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
   by_cases hs : exitScalarRes f = true
   · rw [if_pos hs] at h
     split_ifs at h with hn
-    exact ⟨_, _, h, Or.inl ⟨hs, hn, rfl⟩⟩
+    exact ⟨_, _, h, Or.inl ⟨hs, hn.1, rfl⟩⟩
   · rw [if_neg hs] at h
     have hs' : exitScalarRes f = false := by simpa using hs
     rcases hc : exitCalleeTys A f with _ | ⟨ts, dr⟩ <;> rw [hc] at h
@@ -2158,6 +2161,16 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
         exact hn (Or.inr (Or.inr (Or.inr hne)))
       · by_contra hne
         exact hn (Or.inr (Or.inr (Or.inl ⟨h0, hne⟩)))
+
+/-- A call head of `callHeadT` has an admitted name (`exitAdmits`). -/
+theorem callHeadT_admits {n f : String} {args : List ImpExpr} {k : LowCT → LowCT}
+    (h : callHeadT A n f args = some k) : exitAdmits f = true := by
+  by_cases hs : exitScalarRes f = true
+  · unfold callHeadT at h
+    rw [if_pos hs] at h
+    split_ifs at h with hn
+    exact hn.2
+  · exact exitAdmits_of_scalarRes_false (by simpa using hs)
 
 /-- The call of `optHeadT` on the marshalling context `ctx` and the argument slots `ls`. -/
 def optCallC (f : String) (t : TowerType) (ctx : LowCT → LowCT) (ls : List Located) : LowCT :=
@@ -2571,8 +2584,8 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)
     · obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
       rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hce, hd, hdo, hnone⟩ | ⟨hsc, hce, -, hnA, rfl⟩ |
           ⟨ts, hsc, hca, rfl, hmts, hnone⟩
-      · exact headT_callAt hL (fun h => by rw [hnA] at h; cases h) (fun _ => hL.callSR hsc) hc
-          hn hargs hF hbi hag hret
+      · exact headT_callAt hL (fun h => by rw [hnA] at h; cases h)
+          (fun _ => hL.callSR hsc (callHeadT_admits A hk)) hc hn hargs hF hbi hag hret
       · refine headT_callAt hL
           (fun _ => leafCallAgreesArgsLen_of (hL.callD f dr hd hdo hce hsc hfi hfu hfl hfr) _)
           (fun h0 => ?_) hc hn hargs hF hbi hag hret

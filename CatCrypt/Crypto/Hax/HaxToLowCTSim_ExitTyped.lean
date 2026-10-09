@@ -1071,12 +1071,12 @@ theorem ExitLeaves.withCallee {bi : Builtins} {leafSpec : LeafSpec}
   callT f hsc h1 h2 h3 h4 hda := by
     have hne : f ≠ g := by rintro rfl; rw [hDAg] at hda; cases hda
     exact leafCallAgreesArgs_callee_ne hne (hL.callT f hsc h1 h2 h3 h4 hda)
-  callS f hf := by
+  callS f hf ha := by
     have hne : f ≠ g := by rintro rfl; rw [hSg] at hf; cases hf
-    exact leafCallScalar_callee_ne hne (hL.callS f hf)
-  callTS f hf := by
+    exact leafCallScalar_callee_ne hne (hL.callS f hf ha)
+  callTS f hf ha := by
     have hne : f ≠ g := by rintro rfl; rw [hTSg] at hf; cases hf
-    exact leafCallScalar_callee_ne hne (hL.callTS f hf)
+    exact leafCallScalar_callee_ne hne (hL.callTS f hf ha)
   index t vArr vIdx vRes arrV k h1 h2 h3 hbi := by
     rw [calleeTable_of_ne bi run (Ne.symm hgi)] at hbi
     exact hL.index t vArr vIdx vRes arrV k h1 h2 h3 hbi
