@@ -39,6 +39,8 @@ function with an out layout (`LinkedFnCallee.OutLayout`) the callee reading is
 * `siteStep_out`: the step of a call site of an out callee.
 * `haltsC_of_linkedChecks_out`: a halting run of the image of a calling body whose call sites
   call one linked function with an out layout is a run through calls of its linked bytes.
+* `haltsO_of_linkedChecks_out`: such a run is a run of the program of the relocated item list
+  under the oracle of the callee.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
@@ -128,12 +130,11 @@ theorem glue_out {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
 
 /-- **The step of a call site of an out callee.** Let the callee meet its specification and
     have the reading `pr` whose array result is written at the pointer `po`
-    (`OutCallee`), the caller be separated (`CallerSep`) for a callee of `FootBelowOut`,
-    `room` hold at the entry state of every call from a byte state with the stack register
-    `rsp`, and `A` be the array of a frame slot of length `n`. Let, at every call of the body,
-    from an image state related by `ImgRel` to an address state that corresponds to a byte
-    state, the pointer name hold the base of `A` and the summary input of the entry state be
-    the argument words of the operands `args`. Under `callDeadOutB` at a call position `p`, a
+    (`OutCallee`), the caller be separated (`CallerSep`) for a callee of `FootBelowOut`, and
+    `A` be the array of a frame slot of length `n`. Let, at every call of the body, from an
+    image state related by `ImgRel` to an address state that corresponds to a byte state,
+    the entry state of the call satisfy `room`, the pointer name hold the base of `A` and the
+    summary input of the entry state be the argument words of the operands `args`. Under `callDeadOutB` at a call position `p`, a
     step to the image state after the array result at the argument words of `args` is a step
     of the site (`SiteStep`) at the dead names of `p` and `p + 1`. -/
 theorem siteStep_out {frame : String → Option (BitVec 64)}
@@ -143,7 +144,9 @@ theorem siteStep_out {frame : String → Option (BitVec 64)}
     {po : String} {n : Nat} {pr : LprogIsa.ProcSummary} {room : AState → Prop}
     (hw : OutCallee c rd po n pr room) {G : Nat} (hS : CallerSep frame slotArr base rsp G)
     (hF : FootBelowOut c G po n)
-    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ ret, room (entryOf ret sA))
     {qA A : String} (hqA : slotArr qA = some (A, n)) {args : List String}
     (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
@@ -168,7 +171,7 @@ theorem siteStep_out {frame : String → Option (BitVec 64)}
   obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
   obtain ⟨hptr, hrd⟩ := hentry u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩
   obtain ⟨hpre, hall⟩ := call_reestablishes_out hsep hphys hX hw hS hF hrel hc hb' hbi' hqA
-    hptr ret (hrd ret vs hvs') (hroom ret sA hc.sp) harr
+    hptr ret (hrd ret vs hvs') (hroom u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret) harr
   exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
 
 /-! ## 4. The linked run of a body that calls a linked function with an out layout -/
@@ -176,13 +179,13 @@ theorem siteStep_out {frame : String → Option (BitVec 64)}
 /-- **A halting run of the image of a calling body whose call sites call one linked function
     with an out layout is a run through calls of the program its linked bytes decode to.**
     Let `l` have the out layout `OutLayout l ins po n` and the code `q` of the callee block
-    `cb` meet the out interface `outSig l ins po n`; let `T` give the symbol `f` the summary
+    `cb` meet the out interface `outSig l ins n`; let `T` give the symbol `f` the summary
     `outSummary l ins n`, the image `callImg` at the destination `A` and the operands `args`
     pass `siteShapeB`, `A` be the array of a frame slot of length `n`, and `callDeadOutB`
     accept the table `D`. Let, at every call of the body, from an image state related by
-    `ImgRel` to an address state that corresponds to a byte state, the pointer name `po` hold
-    the base of `A` and the summary input `readIns ins` of the entry state be the argument
-    words of `args`. Under the other hypotheses of `haltsC_of_linkedChecksS`, at the frame
+    `ImgRel` to an address state that corresponds to a byte state, the entry state of the
+    call satisfy the precondition of `l`, the pointer name `po` hold the base of `A` and the
+    summary input `readIns ins` of the entry state be the argument words of `args`. Under the other hypotheses of `haltsC_of_linkedChecksS`, at the frame
     size `l.frame`, the bytes of the relocated body followed by `cb` decode to `prog`
     followed by `q` with its targets raised, and this program has a run through calls from
     the index of the position of the address state to a byte state that satisfies `Fin` with
@@ -193,9 +196,11 @@ theorem haltsC_of_linkedChecks_out {frame : String → Option (BitVec 64)}
     (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
     (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {l : LinkedFn}
     {ins : List (String × ArgKind)} {po : String} {n : Nat} (hL : OutLayout l ins po n)
-    (hX : CalleeSpec (Callee.runOf r q) (outSig l ins po n)) (hq : ∀ tg, RInstr.call tg ∉ q)
+    (hX : CalleeSpec (Callee.runOf r q) (outSig l ins n)) (hq : ∀ tg, RInstr.call tg ∉ q)
     (hS : CallerSep frame slotArr base rsp l.frame)
-    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → l.pre (entryOf ret sA))
+    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ ret, l.pre (entryOf ret sA))
     {qA A : String} (hqA : slotArr qA = some (A, n)) {args : List String}
     (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
@@ -221,7 +226,7 @@ theorem haltsC_of_linkedChecks_out {frame : String → Option (BitVec 64)}
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
       (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
     {D : DeadTab}
-    (hdead : callDeadOutB (outSig l ins po n) args D.dead body = true)
+    (hdead : callDeadOutB (outSig l ins n) args D.dead body = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
     {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (outSummary l ins n))
     (hshape : siteShapeB f A args (callImg slotArr A (args.map LOperand.reg) body) = true)
@@ -246,6 +251,68 @@ theorem haltsC_of_linkedChecks_out {frame : String → Option (BitVec 64)}
         ∧ Fin t sA' :=
   haltsC_of_linkedChecksS hsep hphys hgate hsites r hX hq hcls hshapes hfr symBase hcb hne hbr
     hP hflags hcond hI hD hfin hFin
+    (fun _ _ _ hg hb => siteStep_out hsep hphys hX (outCallee_of_linkedFn hL) hS
+      (footBelowOut_outSig hL) hroom hqA hentry hdead hb
+      (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
+        (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA
+
+/-- **A halting run of the image of a calling body whose call sites call one linked function
+    with an out layout is a run of the program of its relocated item list under the oracle
+    of the callee.** The hypotheses are those of `haltsC_of_linkedChecks_out` with the callee
+    an arbitrary run `X` that meets the out interface `outSig l ins n`, and the bytes of the
+    callee replaced by the program `prog` of the relocated item list in front of a callee
+    block at the index `tgt`. The run starts at the index `DecodePrintedCFG.posOf` of the
+    position of the address state and ends in a byte state that satisfies `Fin` with the end
+    state. -/
+theorem haltsO_of_linkedChecks_out {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    {X : CalleeRun} {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
+    (hL : OutLayout l ins po n) (hX : CalleeSpec X (outSig l ins n))
+    (hS : CallerSep frame slotArr base rsp l.frame)
+    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ ret, l.pre (entryOf ret sA))
+    {qA A : String} (hqA : slotArr qA = some (A, n)) {args : List String}
+    (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      sa.reg.getW po 64 = some (base A)
+        ∧ ∀ ret vs, LprogIsa.argsRead (outSummary l ins n).arrArgs s.prog.base 0
+            (args.map LOperand.reg) = some vs → readIns ins (entryOf ret sA) = vs)
+    {ss : List Shape} (hcls : printedAddrCB l.frame body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
+      = some (ss.map PhysAbiShape.DShape.one))
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {prog : List RInstr} {tgt L : Nat}
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) tgt L
+      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+    {D : DeadTab}
+    (hdead : callDeadOutB (outSig l ins n) args D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (outSummary l ins n))
+    (hshape : siteShapeB f A args (callImg slotArr A (args.map LOperand.reg) body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr A (args.map LOperand.reg) body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (k : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr A (args.map LOperand.reg) body)) k s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL0 : D.live sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
+    ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
+        (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+      ∧ Fin t sA' :=
+  haltsO_of_linkedChecksS hsep hphys hgate hsites hX hcls hshapes hfr symBase hP hflags hcond
+    hI hD hfin hFin
     (fun _ _ _ hg hb => siteStep_out hsep hphys hX (outCallee_of_linkedFn hL) hS
       (footBelowOut_outSig hL) hroom hqA hentry hdead hb
       (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)

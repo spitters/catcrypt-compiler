@@ -39,7 +39,8 @@ of the record's interface to it.
   the result in the register of the result name.
 * `readIns`: the summary input of a list of parameters, each a scalar or a word array.
 * `outSummary`, `outSig`, `OutLayout`: the summary, interface and layout of a linked function
-  whose result is the `n` words at the register of a pointer name.
+  whose result is the `n` words of its first parameter, the destination, at the register of
+  a pointer name.
 
 ## Main results
 
@@ -50,8 +51,8 @@ of the record's interface to it.
 * `pub_of_ptrArg`: under an array layout, agreement on `%rsp`, the bounded word arguments and
   the array pointer register gives the public relation of the record.
 * `outCallee_of_linkedFn`: a linked function with an out layout is an `OutCallee`.
-* `pub_of_outPtr`: under an out layout, agreement on `%rsp`, the public parameters and the
-  out pointer register gives the public relation of the record.
+* `pub_of_outPtr`: under an out layout, agreement on `%rsp` and the public parameters, the
+  destination among them, gives the public relation of the record.
 * `readIns_arr`: the summary input of scalars followed by one array is `readArgs`.
 -/
 
@@ -328,30 +329,29 @@ theorem insVals_readIns (s : AState) :
         wordsAt_eq]
 
 /-- **An out layout**: the parameters of the layout are, in order, the parameters `ins`, each
-    a name with its kind, in the registers of the names; the result is read back as the `n`
-    words at the entry value of the register of the general-purpose name `po`; the footprint
-    of the record is among the `l.frame` bytes below its entry stack register and those `n`
-    words; and two entry states that agree on `%rsp`, on the registers of the public
-    parameters and on the register of `po` are related by the public relation of the
-    record. -/
+    a name with its kind, in the registers of the names; the first parameter is the
+    destination, an array of `n` words at the register of the general-purpose name `po`; the
+    result is read back as the `n` words at the entry value of that register; and the
+    footprint of the record is among the `l.frame` bytes below its entry stack register and
+    those `n` words. -/
 structure OutLayout (l : LinkedFn) (ins : List (String × ArgKind)) (po : String) (n : Nat) :
     Prop where
   /-- The parameters: the kind of each parameter of `ins` in the register of its name. -/
   args : l.layout.args.map (fun a => (a.reg, a.kind)) = ins.map fun p => (phys p.1, p.2)
+  /-- The first parameter is the destination: `n` words at the register of `po`. -/
+  dest : ins.head? = some (po, ArgKind.words n)
   /-- The result is the `n` words at the register of `po`. -/
   result : l.layout.result = .words (phys po) n
   /-- The parameter names are general-purpose names. -/
   ins_gp : ∀ p ∈ ins, gpOk p.1 = true
-  /-- The pointer name of the result is a general-purpose name. -/
-  po_gp : gpOk po = true
   /-- The footprint is among the frame bytes and the `n` words at the pointer of `po`. -/
   foot : ∀ s x, l.foot s x →
     InFrame (s.regs "%rsp") l.frame x ∨ ∃ j < n, InRange8 (cellAt (s.regs (phys po)) j) x
-  /-- Agreement on `%rsp`, the registers of the public parameters and the register of `po`
-      gives the public relation of the record. -/
-  pub_out : ∀ s₁ s₂, s₁.regs "%rsp" = s₂.regs "%rsp" →
-    (∀ a ∈ l.layout.args, l.layout.argPub a = true → s₁.regs a.reg = s₂.regs a.reg) →
-    s₁.regs (phys po) = s₂.regs (phys po) → l.pub s₁ s₂
+
+/-- Under an out layout the pointer name of the destination is a general-purpose name. -/
+theorem OutLayout.po_gp {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
+    (hL : OutLayout l ins po n) : gpOk po = true :=
+  hL.ins_gp (po, ArgKind.words n) (List.mem_of_head? hL.dest)
 
 /-- **The procedure summary of a linked function with a word-array result of length `n`**:
     the array positions of the kinds of `ins`, no word result, and as array result the
@@ -366,13 +366,12 @@ def outSummary (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) :
   runOut m xs := (l.sem (insVals (ins.map (·.2)) xs)).bind (dec (.arr m (.word 64)))
 
 /-- **The interface of a linked function with a word-array result**: the parameter names of
-    `ins` followed by the pointer name `po`, no result register, the clobbered registers,
-    footprint, postcondition and public relation of the record, and as precondition the
-    precondition of the record at an entry state at whose `readIns` the array result of
-    `outSummary` is defined. -/
-def outSig (l : LinkedFn) (ins : List (String × ArgKind)) (po : String) (n : Nat) :
-    CalleeSig where
-  args := ins.map (·.1) ++ [po]
+    `ins`, the destination first, no result register, the clobbered registers, footprint,
+    postcondition and public relation of the record, and as precondition the precondition of
+    the record at an entry state at whose `readIns` the array result of `outSummary` is
+    defined. -/
+def outSig (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) : CalleeSig where
+  args := ins.map (·.1)
   res := none
   clob := fun x => l.clob.contains x
   pre := fun s => l.pre s ∧ ((outSummary l ins n).runOut n (readIns ins s)).isSome
@@ -384,7 +383,7 @@ def outSig (l : LinkedFn) (ins : List (String × ArgKind)) (po : String) (n : Na
     the record. -/
 theorem footBelowOut_outSig {l : LinkedFn} {ins : List (String × ArgKind)} {po : String}
     {n : Nat} (hL : OutLayout l ins po n) :
-    ImageAddrCallOut.FootBelowOut (outSig l ins po n) l.frame po n :=
+    ImageAddrCallOut.FootBelowOut (outSig l ins n) l.frame po n :=
   hL.foot
 
 /-- Under an out layout, the values the layout reads are the source values of `readIns`. -/
@@ -417,7 +416,7 @@ theorem dec_arr_wordsAt (m : AMem) (p : BitVec 64) (n : Nat) :
     words the record writes at the pointer of `po` are the array result. -/
 theorem outCallee_of_linkedFn {l : LinkedFn} {ins : List (String × ArgKind)} {po : String}
     {n : Nat} (hL : OutLayout l ins po n) :
-    ImageAddrCallOut.OutCallee (outSig l ins po n) (readIns ins) po n (outSummary l ins n)
+    ImageAddrCallOut.OutCallee (outSig l ins n) (readIns ins) po n (outSummary l ins n)
       l.pre where
   po_gp := hL.po_gp
   res_none := rfl
@@ -437,16 +436,16 @@ theorem outCallee_of_linkedFn {l : LinkedFn} {ins : List (String × ArgKind)} {p
     exact dec_arr_wordsAt _ _ _
 
 /-- **The public relation of an out layout from register agreement.** Under `OutLayout`, two
-    entry states that agree on `%rsp`, on the register of each parameter of `ins` that is
-    public (an array, or a scalar whose register carries a bound of the layout), and on the
-    register of the pointer name `po` are related by the public relation of the record. -/
+    entry states that agree on `%rsp` and on the register of each parameter of `ins` that is
+    public (an array, among them the destination, or a scalar whose register carries a bound
+    of the layout) are related by the public relation of the record
+    (`LinkedFn.pub_of_regs`). -/
 theorem pub_of_outPtr {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
     (hL : OutLayout l ins po n) {s₁ s₂ : AState}
     (hrsp : s₁.regs "%rsp" = s₂.regs "%rsp")
     (hins : ∀ p ∈ ins, l.layout.argPub ⟨p.1, phys p.1, p.2⟩ = true →
-      s₁.regs (phys p.1) = s₂.regs (phys p.1))
-    (hpo : s₁.regs (phys po) = s₂.regs (phys po)) : l.pub s₁ s₂ := by
-  refine hL.pub_out s₁ s₂ hrsp (fun a ha hp => ?_) hpo
+      s₁.regs (phys p.1) = s₂.regs (phys p.1)) : l.pub s₁ s₂ := by
+  refine l.pub_of_regs s₁ s₂ hrsp fun a ha hp => ?_
   have hm : (a.reg, a.kind) ∈ ins.map fun p => (phys p.1, p.2) :=
     hL.args ▸ List.mem_map.mpr ⟨a, ha, rfl⟩
   obtain ⟨p, hp', he⟩ := List.mem_map.mp hm
