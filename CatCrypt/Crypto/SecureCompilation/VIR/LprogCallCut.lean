@@ -55,8 +55,12 @@ checks it for every pair of an entry and an exit of `cutAt`.
 * `shadowFreeB`, `poolAbi`, `lfundefPhysAbiOfVirtAt`: the bodies `expandCallShadows` leaves
   in place, the x86 register file at an allocation pool, and the allocation of a virtual
   function at a pool with the shadow instructions expanded after the allocation.
+* `CallShape`, `commonPairs`, `commonOps`, `commonLen`: the array positions and the out
+  result of a call, the copies and the operands of its form on common names, and the
+  number of instructions of the form.
 * `movI`, `commonSeq`, `commonCall?`, `commonCalls?`: the form of a shadow instruction on
-  the argument and result names of its callee, and the rewriting of a body onto them.
+  the argument and result names of its callee (word operands copied, array operands and an
+  out destination in place), and the rewriting of a body onto them.
 * `runI`, `regUpd`, `movesF`: the run of an instruction list without the counter, a state
   with a new register file and an advanced counter, and the state after a list of copies.
 * `offCongrB`, `commonCongrB`: the check that the described step of an instruction reads
@@ -885,53 +889,160 @@ theorem regNames?_eq : ∀ {os : List LOperand} {xs : List String},
   | .arr _ _ :: _, _, h => by cases h
   | .arrIdx _ _ _ :: _, _, h => by cases h
 
-/-- **The call `d ← CALL:f xs` on the common names `args` and `res`**: the copies of the
-    operands `xs` into the names `args`, the shadow instruction `res ← CALL:f args`, and
-    the copy of `res` into `d`. -/
-def commonSeq (f : String) (args : List String) (res d : String) (xs : List String) :
-    List LinstrRM :=
-  (args.zip xs).map (fun p => movI p.1 p.2)
-    ++ [(callShadow res f (args.map LOperand.reg), .reg none), movI d res]
+/-- **The shape of a call on common names**: the positions of the array arguments, with
+    their lengths in words (`none` at a word argument), and whether the result is an out
+    result, which the call writes at its destination. The default is the shape of a call on
+    words with a word result. -/
+structure CallShape where
+  /-- The length in words of the array argument at a position; `none` at a word argument. -/
+  arrArgs : Nat → Option Nat := fun _ => none
+  /-- Whether the call writes its result at its destination. -/
+  out : Bool := false
+
+/-- The copies of a call on common names from the argument position `i`: the pair of the
+    common name and the operand at each word position of `sh`, in order. -/
+def commonPairs (sh : CallShape) : Nat → List String → List String → List (String × String)
+  | i, a :: as, x :: xs =>
+      if (sh.arrArgs i).isSome then commonPairs sh (i + 1) as xs
+      else (a, x) :: commonPairs sh (i + 1) as xs
+  | _, _, _ => []
+
+/-- The operands of a call on common names from the argument position `i`: the common name
+    at a word position of `sh` and the operand itself at an array position. -/
+def commonOps (sh : CallShape) : Nat → List String → List String → List String
+  | i, a :: as, x :: xs =>
+      (if (sh.arrArgs i).isSome then x else a) :: commonOps sh (i + 1) as xs
+  | _, _, _ => []
+
+/-- The number of word positions of `sh` among the `n` positions from `i`. -/
+def wordCount (sh : CallShape) : Nat → Nat → Nat
+  | _, 0 => 0
+  | i, n + 1 => (if (sh.arrArgs i).isSome then 0 else 1) + wordCount sh (i + 1) n
+
+/-- The number of instructions of a call of the shape `sh` on `n` common names: a copy at
+    each word position, the shadow instruction, and the copy of the result for a word
+    result. -/
+def commonLen (sh : CallShape) (n : Nat) : Nat :=
+  wordCount sh 0 n + (if sh.out then 0 else 1) + 1
+
+/-- **The call `d ← CALL:f xs` of the shape `sh` on the common names `args` and `res`**:
+    the copies of the word operands of `xs` into the names of `args` at their positions;
+    the shadow instruction of the call on those names and on the array operands of `xs`
+    in place; for a word result its destination `res` and the copy of `res` into `d`, and
+    for an out result the destination `d` in place. -/
+def commonSeq (sh : CallShape) (f : String) (args : List String) (res d : String)
+    (xs : List String) : List LinstrRM :=
+  (commonPairs sh 0 args xs).map (fun p => movI p.1 p.2)
+    ++ if sh.out then [(callShadow d f ((commonOps sh 0 args xs).map LOperand.reg), .reg none)]
+      else [(callShadow res f ((commonOps sh 0 args xs).map LOperand.reg), .reg none),
+        movI d res]
 
 /-- The rewriting of one instruction onto the common names: an instruction that is no
     shadow instruction is kept; a shadow instruction of a call of `f` on as many register
     operands as `args` becomes `commonSeq`; every other shadow instruction is refused. -/
-def commonCall? (f : String) (args : List String) (res : String) (i : LinstrRM) :
-    Option (List LinstrRM) :=
+def commonCall? (sh : CallShape) (f : String) (args : List String) (res : String)
+    (i : LinstrRM) : Option (List LinstrRM) :=
   match shadowCall? i.fst with
   | none => some [i]
   | some (d, g, srcs) =>
       match regNames? srcs with
       | some xs =>
-          if g = f ∧ xs.length = args.length then some (commonSeq f args res d xs) else none
+          if g = f ∧ xs.length = args.length then some (commonSeq sh f args res d xs)
+          else none
       | none => none
 
 /-- **The rewriting of the shadow instructions of a body onto the common names** `args`
-    and `res` of the callee `f`: `commonCall?` at each instruction, in order. -/
-def commonCalls? (f : String) (args : List String) (res : String) :
+    and `res` of the callee `f` with calls of the shape `sh`: `commonCall?` at each
+    instruction, in order. -/
+def commonCalls? (sh : CallShape) (f : String) (args : List String) (res : String) :
     List LinstrRM → Option (List LinstrRM)
   | [] => some []
-  | i :: B => (commonCall? f args res i).bind fun is =>
-      (commonCalls? f args res B).map (is ++ ·)
+  | i :: B => (commonCall? sh f args res i).bind fun is =>
+      (commonCalls? sh f args res B).map (is ++ ·)
 
-/-- A shadow instruction of `commonSeq` has the destination `res`, the symbol `f` and the
-    operands `args` as registers. -/
-theorem shadowCall?_commonSeq {f : String} {args : List String} {res d : String}
-    {xs : List String} {i : LinstrRM} (hi : i ∈ commonSeq f args res d xs)
-    {q : String × String × List LOperand} (hq : shadowCall? i.fst = some q) :
-    q = (res, f, args.map LOperand.reg) := by
-  simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
-    or_false] at hi
-  rcases hi with ⟨p, -, rfl⟩ | rfl | rfl
-  · rw [shadowCall?_movI] at hq; cases hq
-  · rw [shadowCall?_callShadow] at hq; exact (Option.some.inj hq).symm
-  · rw [shadowCall?_movI] at hq; cases hq
+theorem commonPairs_length (sh : CallShape) : ∀ (i : Nat) (as xs : List String),
+    as.length = xs.length → (commonPairs sh i as xs).length = wordCount sh i as.length
+  | _, [], [], _ => rfl
+  | i, a :: as, x :: xs, hl => by
+      have ih := commonPairs_length sh (i + 1) as xs (by simpa using hl)
+      simp only [commonPairs, List.length_cons, wordCount]
+      split
+      · simp [*]
+      · simp only [List.length_cons, *]; omega
+  | _, [], _ :: _, hl => by simp at hl
+  | _, _ :: _, [], hl => by simp at hl
 
-/-- **Every shadow instruction of a rewritten body has the destination `res`, the symbol
-    `f` and the operands `args` as registers.** -/
-theorem shadowCall?_commonCalls? {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
-      ∀ i ∈ B', ∀ q, shadowCall? i.fst = some q → q = (res, f, args.map LOperand.reg)
+theorem commonOps_length (sh : CallShape) : ∀ (i : Nat) (as xs : List String),
+    as.length = xs.length → (commonOps sh i as xs).length = as.length
+  | _, [], [], _ => rfl
+  | i, a :: as, x :: xs, hl => by
+      simp only [commonOps, List.length_cons,
+        commonOps_length sh (i + 1) as xs (by simpa using hl)]
+  | _, [], _ :: _, hl => by simp at hl
+  | _, _ :: _, [], hl => by simp at hl
+
+/-- The copies of a call on common names are pairs of a common name and its operand. -/
+theorem commonPairs_sublist (sh : CallShape) : ∀ (i : Nat) (as xs : List String),
+    (commonPairs sh i as xs).Sublist (as.zip xs)
+  | _, [], _ => by simp [commonPairs]
+  | _, _ :: _, [] => by simp [commonPairs]
+  | i, a :: as, x :: xs => by
+      simp only [commonPairs, List.zip_cons_cons]
+      split
+      · exact (commonPairs_sublist sh (i + 1) as xs).cons _
+      · exact (commonPairs_sublist sh (i + 1) as xs).cons_cons _
+
+/-- **The call of the default shape is the call on words with a word result**: every
+    operand is copied onto its common name. -/
+theorem commonPairs_default : ∀ (i : Nat) (as xs : List String),
+    commonPairs {} i as xs = as.zip xs
+  | _, [], _ => by simp [commonPairs]
+  | _, _ :: _, [] => by simp [commonPairs]
+  | i, a :: as, x :: xs => by
+      simp [commonPairs, commonPairs_default (i + 1) as xs]
+
+theorem commonOps_default : ∀ (i : Nat) (as xs : List String), as.length = xs.length →
+    commonOps {} i as xs = as
+  | _, [], [], _ => rfl
+  | i, a :: as, x :: xs, hl => by
+      simp [commonOps, commonOps_default (i + 1) as xs (by simpa using hl)]
+  | _, [], _ :: _, hl => by simp at hl
+  | _, _ :: _, [], hl => by simp at hl
+
+theorem wordCount_default : ∀ (i n : Nat), wordCount {} i n = n
+  | _, 0 => rfl
+  | i, n + 1 => by simp [wordCount, wordCount_default (i + 1) n]; omega
+
+/-- **The form of a call of the default shape**: the copies of the operands `xs` into the
+    names `args`, the shadow instruction `res ← CALL:f args`, and the copy of `res` into
+    `d`. -/
+theorem commonSeq_default (f : String) (args : List String) (res d : String)
+    {xs : List String} (hlen : xs.length = args.length) :
+    commonSeq {} f args res d xs = (args.zip xs).map (fun p => movI p.1 p.2)
+      ++ [(callShadow res f (args.map LOperand.reg), .reg none), movI d res] := by
+  simp [commonSeq, commonPairs_default, commonOps_default 0 args xs hlen.symm]
+
+/-- **Every shadow instruction of `commonSeq` is a call of the symbol `f`.** -/
+theorem shadowCall?_commonSeq {sh : CallShape} {f : String} {args : List String}
+    {res d : String} {xs : List String} {i : LinstrRM} (hi : i ∈ commonSeq sh f args res d xs)
+    {q : String × String × List LOperand} (hq : shadowCall? i.fst = some q) : q.2.1 = f := by
+  simp only [commonSeq, List.mem_append, List.mem_map] at hi
+  rcases hi with ⟨p, -, rfl⟩ | hi
+  · rw [shadowCall?_movI] at hq; cases hq
+  · split at hi
+    · rw [List.mem_singleton.mp hi, shadowCall?_callShadow] at hq
+      rw [← Option.some.inj hq]
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with rfl | rfl
+      · rw [shadowCall?_callShadow] at hq
+        rw [← Option.some.inj hq]
+      · rw [shadowCall?_movI] at hq; cases hq
+
+/-- **Every shadow instruction of a rewritten body is a call of the symbol `f`.** -/
+theorem shadowCall?_commonCalls? {sh : CallShape} {f : String} {args : List String}
+    {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
+      ∀ i ∈ B', ∀ q, shadowCall? i.fst = some q → q.2.1 = f
   | [], _, h, i, hi, _, _ => by cases h; cases hi
   | j :: B, _, h, i, hi, q, hq => by
       obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1063,68 +1174,172 @@ theorem mapM_reg_congr (R R' : LstateN) : ∀ (as xs : List String), as.length =
   | [], _ :: _, hl, _ => by simp at hl
   | _ :: _, [], hl, _ => by simp at hl
 
+/-- **The argument words of a call on common names are the argument words of the call.**
+    Let every word position of `sh` be a word position of `aa`, the register file of `b'`
+    hold at each common name of a copy the value of its operand in `b`, agree with `b` at
+    every operand, and the array carriers be equal. Then the argument words of the operands
+    `commonOps` at `b'` are the argument words of the operands `xs` at `b`. -/
+theorem argsRead_commonOps {sh : CallShape} {aa : Nat → Option Nat}
+    (haa : ∀ i, sh.arrArgs i = none → aa i = none) {b b' : LstateM} (hla : b'.larr = b.larr) :
+    ∀ (i : Nat) (as xs : List String), as.length = xs.length →
+      (∀ p ∈ commonPairs sh i as xs, b'.reg.lvm p.1 = b.reg.lvm p.2) →
+      (∀ x ∈ xs, b'.reg.lvm x = b.reg.lvm x) →
+      argsRead aa b' i ((commonOps sh i as xs).map LOperand.reg)
+        = argsRead aa b i (xs.map LOperand.reg)
+  | _, [], [], _, _, _ => rfl
+  | i, a :: as, x :: xs, hl, hp, hx => by
+      have hp' : ∀ p ∈ commonPairs sh (i + 1) as xs, b'.reg.lvm p.1 = b.reg.lvm p.2 :=
+        fun p hm => hp p (by unfold commonPairs; split <;> simp [hm])
+      have ih := argsRead_commonOps haa hla (i + 1) as xs (by simpa using hl) hp'
+        (fun y hy => hx y (List.mem_cons_of_mem _ hy))
+      have h0 : argRead aa b' i (.reg (if (sh.arrArgs i).isSome then x else a))
+          = argRead aa b i (.reg x) := by
+        cases hs : sh.arrArgs i with
+        | some n =>
+            simp only [Option.isSome_some, if_true]
+            unfold argRead
+            split
+            · simp only [evalOperandN, LstateN.getW]
+              rw [hx x (List.mem_cons_self ..)]
+            · unfold LstateM.getArr
+              rw [hla]
+        | none =>
+            have hpa : b'.reg.lvm a = b.reg.lvm x := hp (a, x) (by simp [commonPairs, hs])
+            simp only [Option.isSome_none, Bool.false_eq_true, if_false]
+            unfold argRead
+            rw [haa i hs]
+            simp only [evalOperandN, LstateN.getW]
+            rw [hpa]
+      simp only [commonOps, List.map_cons, argsRead, h0, ih]
+  | _, [], _ :: _, hl, _, _ => by simp at hl
+  | _, _ :: _, [], hl, _, _ => by simp at hl
+
+/-- The register file after the result of a call: the word at the destination for a word
+    result, and the register file itself for an array result. -/
+theorem lvm_retRes (dst : String) (x : CallRes) (s : LstateMF) (r : String) :
+    (retRes dst x s).prog.base.reg.lvm r
+      = match x with
+        | .word w => if r = dst then ⟨64, w⟩ else s.prog.base.reg.lvm r
+        | .arr _ => s.prog.base.reg.lvm r := by
+  cases x <;> rfl
+
+/-- The result of a call after a change of the register file and the counter is the result
+    of the call with that change. -/
+theorem retRes_regUpd (dst : String) (x : CallRes)
+    (g : (String → Σ w, BitVec w) → String → Σ w, BitVec w) (k : Nat) (s : LstateMF) :
+    retRes dst x (regUpd g k s)
+      = regUpd (fun _ => (retRes dst x (regUpd g k s)).prog.base.reg.lvm) k (retRes dst x s) := by
+  cases x <;>
+  · simp only [retRes, retWord, retArr, regUpd, LstateM.setReg, LstateM.setArr,
+      LstateM.nextPc, LstateN.nextPc, LstateN.setReg]
+    congr 4
+    omega
+
 /-- **The step of the summary at a shadow instruction is simulated by the run of its form
-    on common names.** Let `f` have the summary `pr` on words with a word result in `T`, the
-    names `args` be distinct and as many as the operands `xs`, and no operand be a name of
-    `args`. When the step of
-    the summary at `d ← CALL:f xs` from `s` gives `v`, the run of `commonSeq f args res d
-    xs` from `s` on the x86 instruction set with procedures gives `v` with the counter
-    advanced by `args.length + 1` and a register file that agrees with the register file of
-    `v` at every name outside `args` other than `res`. The arrays, the word memory, the
-    zero flag and the function name are those of `v`. -/
+    on common names.** Let `f` have the summary `pr` in `T`, every word position of the
+    shape `sh` be a word position of `pr`, and `pr` have no word-array result when `sh` has
+    no out result; let the names `args` be distinct and as many as the operands `xs`, and
+    no operand be a name of `args`. When the step of the summary at `d ← CALL:f xs` from
+    `s` gives `v`, the run of `commonSeq sh f args res d xs` from `s` on the x86
+    instruction set with procedures gives `v` with the counter advanced by the number of
+    the copies of the form and a register file that agrees with the register file of `v`
+    at every name outside `args` other than `res`. The arrays, the word memory, the zero
+    flag and the function name are those of `v`. -/
 theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (hwo : pr.WordOnly) (hrw : pr.RetWord) (P : LprogM) {args xs : List String}
+    {sh : CallShape} (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none)
+    (hro : sh.out = false → pr.RetWord) (P : LprogM) {args xs : List String}
     (res d : String) (hlen : xs.length = args.length)
     (hnd : args.Nodup) (hx : ∀ x ∈ xs, x ∉ args) {s v : LstateMF}
     (h : procStep pr d (xs.map LOperand.reg) s = some v) :
     ∃ L' : String → Σ w, BitVec w,
-      runI (x86Isa.withProcs T) P (commonSeq f args res d xs) s
-        = some (regUpd (fun _ => L') (args.length + 1) v)
+      runI (x86Isa.withProcs T) P (commonSeq sh f args res d xs) s
+        = some (regUpd (fun _ => L')
+            (wordCount sh 0 args.length + if sh.out then 0 else 1) v)
       ∧ ∀ r, r ∉ args → r ≠ res → L' r = v.prog.base.reg.lvm r := by
-  rw [procStep_of_wordOnly hwo hrw] at h
+  unfold procStep at h
   split at h
   · rename_i har
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
-    have hfst : (args.zip xs).map Prod.fst = args := List.map_fst_zip (by omega)
-    obtain ⟨u, hu⟩ : ∃ u, u = movesF (args.zip xs) s := ⟨_, rfl⟩
-    have hmap : (args.map LOperand.reg).mapM (evalOperandN u.prog.base.reg 64) = some vs := by
-      rw [mapM_reg_congr s.prog.base.reg _ args xs hlen.symm (fun p hp => by
-        rw [hu]
-        exact lvm_movesF_of_mem _ s (by rw [hfst]; exact hnd)
-          (fun q hq => by rw [hfst]; exact hx _ (List.of_mem_zip hq).2) p hp)]
-      exact hvs
-    have hcall : (x86Isa.withProcs T).step P
-        (callShadow res f (args.map LOperand.reg), .reg none) u = some (retWord res w u) := by
-      show (match procCall? T (callShadow res f (args.map LOperand.reg)) with
+    obtain ⟨x, hxr, rfl⟩ := Option.map_eq_some_iff.mp h
+    have hsub := commonPairs_sublist sh 0 args xs
+    have hfst : ∀ p ∈ commonPairs sh 0 args xs, p.1 ∈ args :=
+      fun p hp => (List.of_mem_zip (hsub.subset hp)).1
+    have hsnd : ∀ p ∈ commonPairs sh 0 args xs, p.2 ∈ xs :=
+      fun p hp => (List.of_mem_zip (hsub.subset hp)).2
+    have hnd' : ((commonPairs sh 0 args xs).map Prod.fst).Nodup :=
+      (hsub.map Prod.fst).nodup (by rw [List.map_fst_zip (by omega)]; exact hnd)
+    have hnf : ∀ r, r ∉ args → r ∉ (commonPairs sh 0 args xs).map Prod.fst := by
+      intro r hr hm
+      obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hm
+      exact hr (hfst q hq)
+    obtain ⟨u, hu⟩ : ∃ u, u = movesF (commonPairs sh 0 args xs) s := ⟨_, rfl⟩
+    have hreg : u = regUpd (fun _ => u.prog.base.reg.lvm) (commonPairs sh 0 args xs).length s := by
+      rw [hu]; exact movesF_eq_regUpd _ s
+    have hU1 : ∀ p ∈ commonPairs sh 0 args xs,
+        u.prog.base.reg.lvm p.1 = s.prog.base.reg.lvm p.2 := fun p hp => by
+      rw [hu]
+      exact lvm_movesF_of_mem _ s hnd' (fun q hq => hnf _ (hx _ (hsnd q hq))) p hp
+    have hU2 : ∀ r, r ∉ args → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r hr => by
+      rw [hu]
+      exact lvm_movesF_of_not_mem _ s r (hnf r hr)
+    have hread : argsRead pr.arrArgs u.prog.base 0
+        ((commonOps sh 0 args xs).map LOperand.reg) = some vs := by
+      rw [argsRead_commonOps haa (b := s.prog.base) (by rw [hreg]; rfl) 0 args xs hlen.symm
+        hU1 (fun y hy => hU2 y (hx y hy)), hvs]
+    have hopsl := commonOps_length sh 0 args xs hlen.symm
+    have hcall : ∀ dst, (x86Isa.withProcs T).step P
+        (callShadow dst f ((commonOps sh 0 args xs).map LOperand.reg), .reg none) u
+          = some (retRes dst x u) := by
+      intro dst
+      show (match procCall? T (callShadow dst f ((commonOps sh 0 args xs).map LOperand.reg)) with
         | some q => procStep q.1 q.2.1 q.2.2 u
         | none => _) = _
       rw [procCall?_callShadow, hT]
       simp only [Option.map_some]
-      rw [procStep_of_wordOnly hwo hrw, if_pos (by simpa [hlen] using har), hmap]
-      simp only [Option.bind_some, hw, Option.map_some]
-    have hreg : u = regUpd (fun _ => u.prog.base.reg.lvm) (args.zip xs).length s := by
-      rw [hu]; exact movesF_eq_regUpd _ s
-    refine ⟨fun r => if r = d then ⟨64, w⟩ else if r = res then ⟨64, w⟩
-      else u.prog.base.reg.lvm r, ?_, ?_⟩
-    · rw [commonSeq, runI_append, runI_moves, ← hu]
-      simp only [Option.bind_some, runI, hcall, step_movI]
-      conv_lhs => rw [hreg]
-      rw [movS, retWord_eq_regUpd, retWord_eq_regUpd, regUpd_regUpd, regUpd_regUpd,
-        regUpd_regUpd]
-      have hl : (args.zip xs).length = args.length := by simp [hlen]
-      rw [hl, Nat.add_comm 1 (args.length + 1), Nat.add_assoc]
-      congr 2
-      funext L r
-      by_cases h1 : r = d <;> by_cases h2 : r = res <;> simp [h1, h2]
-    · intro r hr hres
-      rw [retWord_eq_regUpd]
-      show _ = if r = d then _ else _
-      by_cases h1 : r = d
-      · simp [h1]
-      · simp only [h1, hres, if_false]
-        rw [hu]
-        exact lvm_movesF_of_not_mem _ s r (by rw [hfst]; exact hr)
+      unfold procStep
+      rw [if_pos (by simpa [hopsl, hlen] using har), hread]
+      simp only [Option.bind_some, hxr, Option.map_some]
+    have hpl := commonPairs_length sh 0 args xs hlen.symm
+    cases hout : sh.out with
+    | false =>
+      obtain ⟨w, rfl⟩ : ∃ w, x = .word w := by
+        rw [ProcSummary.result_of_retWord (hro hout)] at hxr
+        obtain ⟨w, -, rfl⟩ := Option.map_eq_some_iff.mp hxr
+        exact ⟨w, rfl⟩
+      refine ⟨fun r => if r = d then ⟨64, w⟩ else if r = res then ⟨64, w⟩
+        else u.prog.base.reg.lvm r, ?_, ?_⟩
+      · rw [commonSeq, hout, runI_append, runI_moves, ← hu]
+        simp only [Bool.false_eq_true, if_false, Option.bind_some, runI, hcall, retRes_word,
+          step_movI]
+        conv_lhs => rw [hreg]
+        rw [movS, retWord_eq_regUpd, retWord_eq_regUpd, regUpd_regUpd, regUpd_regUpd,
+          regUpd_regUpd, hpl, Nat.add_comm 1 (wordCount sh 0 args.length + 1), Nat.add_assoc]
+        congr 2
+        funext L r
+        by_cases h1 : r = d <;> by_cases h2 : r = res <;> simp [h1, h2]
+      · intro r hr hres
+        rw [retRes_word, retWord_eq_regUpd]
+        show _ = if r = d then _ else _
+        by_cases h1 : r = d
+        · simp [h1]
+        · simp only [h1, hres, if_false]
+          exact hU2 r hr
+    | true =>
+      refine ⟨(retRes d x u).prog.base.reg.lvm, ?_, ?_⟩
+      · rw [commonSeq, hout, runI_append, runI_moves, ← hu]
+        simp only [if_true, Option.bind_some, runI, hcall, Nat.add_zero]
+        conv_lhs => rw [hreg, retRes_regUpd]
+        rw [← hreg, hpl]
+      · intro r hr _
+        cases x with
+        | word w =>
+            rw [retRes_word, retRes_word, retWord_eq_regUpd, retWord_eq_regUpd]
+            show (if r = d then _ else _) = (if r = d then _ else _)
+            by_cases h1 : r = d
+            · simp [h1]
+            · simp only [h1, if_false]
+              exact hU2 r hr
+        | arr a => exact hU2 r hr
   · cases h
 
 /-- The names of an operand. -/
@@ -1371,12 +1586,14 @@ theorem commonCongrB_condCongr {N : List String} {B : List LinstrRM}
   dsimp only at hm
   exact condCongr_of_names fun n hn => by simpa using List.all_eq_true.mp hm n hn
 
-/-- The number of instructions of the form of `i` on `n` common argument names. -/
+/-- The number of instructions of the form of `i` when the form of a shadow instruction has
+    `n` instructions. -/
 def expLen (n : Nat) (i : LinstrRM) : Nat :=
-  if (shadowCall? i.fst).isSome then n + 2 else 1
+  if (shadowCall? i.fst).isSome then n else 1
 
-/-- **The position map of the rewriting onto `n` common argument names**: the number of
-    instructions of the forms of the instructions of `B` before the position `p`. -/
+/-- **The position map of the rewriting onto common names with forms of `n` instructions at
+    the shadow instructions**: the number of instructions of the forms of the instructions
+    of `B` before the position `p`. -/
 def expPos (n : Nat) (B : List LinstrRM) (p : Nat) : Nat := ((B.take p).map (expLen n)).sum
 
 theorem expPos_zero (n : Nat) (B : List LinstrRM) : expPos n B 0 = 0 := by
@@ -1402,19 +1619,19 @@ theorem expPos_of_le (n : Nat) {B : List LinstrRM} {p : Nat} (h : B.length ≤ p
   simp only [expPos, List.take_of_length_le h, List.take_length]
 
 /-- The form of an instruction that is no shadow instruction is the instruction. -/
-theorem commonCall?_none {f : String} {args : List String} {res : String} {i : LinstrRM}
-    {is : List LinstrRM} (h : commonCall? f args res i = some is)
+theorem commonCall?_none {sh : CallShape} {f : String} {args : List String} {res : String}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is)
     (hn : shadowCall? i.fst = none) : is = [i] := by
   unfold commonCall? at h
   rw [hn] at h
   exact (Option.some.inj h).symm
 
 /-- The form of a shadow instruction is `commonSeq` at its register operands. -/
-theorem commonCall?_some {f : String} {args : List String} {res : String} {i : LinstrRM}
-    {is : List LinstrRM} (h : commonCall? f args res i = some is) {d g : String}
-    {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) :
+theorem commonCall?_some {sh : CallShape} {f : String} {args : List String} {res : String}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is)
+    {d g : String} {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) :
     ∃ xs, regNames? srcs = some xs ∧ g = f ∧ xs.length = args.length ∧
-      is = commonSeq f args res d xs := by
+      is = commonSeq sh f args res d xs := by
   unfold commonCall? at h
   rw [hs] at h
   dsimp only at h
@@ -1426,23 +1643,31 @@ theorem commonCall?_some {f : String} {args : List String} {res : String} {i : L
     · cases h
   · cases h
 
-theorem commonCall?_length {f : String} {args : List String} {res : String} {i : LinstrRM}
-    {is : List LinstrRM} (h : commonCall? f args res i = some is) :
-    is.length = expLen args.length i := by
+theorem commonSeq_length (sh : CallShape) (f : String) {args : List String} (res d : String)
+    {xs : List String} (hlen : xs.length = args.length) :
+    (commonSeq sh f args res d xs).length = commonLen sh args.length := by
+  simp only [commonSeq, List.length_append, List.length_map,
+    commonPairs_length sh 0 args xs hlen.symm, commonLen]
+  cases sh.out <;> simp
+
+theorem commonCall?_length {sh : CallShape} {f : String} {args : List String} {res : String}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is) :
+    is.length = expLen (commonLen sh args.length) i := by
   cases hs : shadowCall? i.fst with
   | none => rw [commonCall?_none h hs, expLen, hs]; rfl
   | some q =>
       obtain ⟨d, g, srcs⟩ := q
       obtain ⟨xs, -, -, hlen, rfl⟩ := commonCall?_some h hs
-      simp [expLen, hs, commonSeq, hlen]
+      rw [commonSeq_length sh f res d hlen, expLen, hs]
+      rfl
 
 /-- **The rewritten body at a position of the body**: the form of the instruction at `p`
     stands in the rewritten body at the image of `p`. -/
-theorem commonCalls?_split {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+theorem commonCalls?_split {sh : CallShape} {f : String} {args : List String} {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
       ∀ {p : Nat} {i : LinstrRM}, B[p]? = some i →
-      ∃ is pre post, commonCall? f args res i = some is ∧ B' = pre ++ is ++ post ∧
-        pre.length = expPos args.length B p
+      ∃ is pre post, commonCall? sh f args res i = some is ∧ B' = pre ++ is ++ post ∧
+        pre.length = expPos (commonLen sh args.length) B p
   | [], _, _, _, _, hi => by simp at hi
   | j :: B, _, h, p, i, hi => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1458,9 +1683,9 @@ theorem commonCalls?_split {f : String} {args : List String} {res : String} :
           refine ⟨is, js ++ pre, post, his, by simp only [List.append_assoc], ?_⟩
           rw [List.length_append, expPos_cons_succ, hpre, commonCall?_length hjs]
 
-theorem commonCalls?_length {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
-      B'.length = expPos args.length B B.length
+theorem commonCalls?_length {sh : CallShape} {f : String} {args : List String} {res : String} :
+    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
+      B'.length = expPos (commonLen sh args.length) B B.length
   | [], _, h => by cases h; rfl
   | j :: B, _, h => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1469,8 +1694,8 @@ theorem commonCalls?_length {f : String} {args : List String} {res : String} :
         commonCall?_length hjs]
 
 /-- The form of an instruction that does not declare the label `l` declares no label `l`. -/
-theorem commonCall?_noLabel {f : String} {args : List String} {res : String} {i : LinstrRM}
-    {is : List LinstrRM} (h : commonCall? f args res i = some is) (l : LLabel)
+theorem commonCall?_noLabel {sh : CallShape} {f : String} {args : List String} {res : String}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is) (l : LLabel)
     (hl : isLabel l i.fst = false) : ∀ j ∈ is, isLabel l j.fst = false := by
   cases hs : shadowCall? i.fst with
   | none =>
@@ -1482,16 +1707,21 @@ theorem commonCall?_noLabel {f : String} {args : List String} {res : String} {i 
       obtain ⟨d, g, srcs⟩ := q
       obtain ⟨xs, -, -, -, rfl⟩ := commonCall?_some h hs
       intro j hj
-      simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
-        or_false] at hj
-      rcases hj with ⟨p, -, rfl⟩ | rfl | rfl <;> rfl
+      simp only [commonSeq, List.mem_append, List.mem_map] at hj
+      rcases hj with ⟨p, -, rfl⟩ | hj
+      · rfl
+      · split at hj
+        · rw [List.mem_singleton.mp hj]; rfl
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+          rcases hj with rfl | rfl <;> rfl
 
 /-- **A label declared in the body at `q` is declared in the rewritten body at the image
     of `q`.** -/
-theorem findLabelMem_commonCalls? {f : String} {args : List String} {res : String}
-    (l : LLabel) : ∀ {B B' : List LinstrRM}, commonCalls? f args res B = some B' →
+theorem findLabelMem_commonCalls? {sh : CallShape} {f : String} {args : List String}
+    {res : String} (l : LLabel) :
+    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
       ∀ {q : Nat}, findLabelMem l B = some q →
-        findLabelMem l B' = some (expPos args.length B q)
+        findLabelMem l B' = some (expPos (commonLen sh args.length) B q)
   | [], _, _, _, hq => by simp [findLabelMem, findLabel] at hq
   | j :: B, _, h, q, hq => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1565,66 +1795,76 @@ theorem mapM_regOps_agree (R R' : LstateN) : ∀ (xs : List String),
       simp only [List.map_cons, List.mapM_cons, h0]
       rw [mapM_regOps_agree R R' xs (fun y hy => h y (by simp [hy]))]
 
-/-- **The step of a summary with a word result commutes with a change of names that are no
-    operands.** -/
-theorem procStep_setRL {pr : ProcSummary} (hrw : pr.RetWord) {d : String} {xs : List String}
+/-- **The step of a summary commutes with a change of names that are no operands.** -/
+theorem procStep_setRL {pr : ProcSummary} {d : String} {xs : List String}
     {s u : LstateMF}
     (L' : String → Σ w, BitVec w) (q : Nat) (hx : ∀ x ∈ xs, L' x = s.prog.base.reg.lvm x)
     (h : procStep pr d (xs.map LOperand.reg) s = some u) :
-    ∃ w, u = retWord d w s ∧
-      procStep pr d (xs.map LOperand.reg) (setRL L' q s) = some (retWord d w (setRL L' q s)) := by
-  rw [procStep_of_retWord hrw] at h ⊢
+    ∃ x, u = retRes d x s ∧
+      procStep pr d (xs.map LOperand.reg) (setRL L' q s) = some (retRes d x (setRL L' q s)) := by
+  unfold procStep at h ⊢
   split at h
   · rename_i har
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
-    refine ⟨w, rfl, ?_⟩
+    obtain ⟨x, hx', rfl⟩ := Option.map_eq_some_iff.mp h
+    refine ⟨x, rfl, ?_⟩
     rw [if_pos har, argsRead_regs_congr (b := s.prog.base) (b' := (setRL L' q s).prog.base)
       pr.arrArgs rfl 0 hx, hvs]
-    simp only [Option.bind_some, hw, Option.map_some]
+    simp only [Option.bind_some, hx', Option.map_some]
   · cases h
+
+/-- A step of a shadow instruction of a call on the x86 instruction set with procedures
+    stays in the function and advances the counter by one. -/
+theorem callShadow_step_pc (T : ProcTable) (P : LprogM) (dst f : String) (os : List LOperand)
+    {a b : LstateMF} (h : (x86Isa.withProcs T).step P (callShadow dst f os, .reg none) a = some b) :
+    b.prog.lfn = a.prog.lfn ∧ b.prog.base.lpc = a.prog.base.lpc + 1 := by
+  replace h : (match procCall? T (callShadow dst f os) with
+      | some q => procStep q.1 q.2.1 q.2.2 a
+      | none => x86Isa.step P (callShadow dst f os, .reg none) a)
+      = some b := h
+  rw [procCall?_callShadow] at h
+  cases hT : T f with
+  | none =>
+      rw [hT] at h
+      replace h : x86Isa.step P (callShadow dst f os, .reg none) a = some b := h
+      rw [x86Isa_refusesProcs
+        (fun g => if g = f then some { arity := 0, run := fun _ => none } else none) P
+        (callShadow dst f os, .reg none) a
+        (by rw [procCall?_callShadow]; simp)] at h
+      cases h
+  | some pr =>
+      rw [hT] at h
+      replace h : procStep pr dst os a = some b := h
+      unfold procStep at h
+      split at h
+      · obtain ⟨vs, -, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨x, -, rfl⟩ := Option.map_eq_some_iff.mp h
+        exact ⟨lfn_retRes dst x a, lpc_retRes dst x a⟩
+      · cases h
 
 /-- A step of an instruction of `commonSeq` on the x86 instruction set with procedures
     stays in the function and advances the counter by one. -/
-theorem commonSeq_step_pc (T : ProcTable) (P : LprogM) {f : String} {args : List String}
-    {res d : String} {xs : List String} {i : LinstrRM} (hi : i ∈ commonSeq f args res d xs)
+theorem commonSeq_step_pc (T : ProcTable) (P : LprogM) {sh : CallShape} {f : String}
+    {args : List String} {res d : String} {xs : List String} {i : LinstrRM}
+    (hi : i ∈ commonSeq sh f args res d xs)
     {a b : LstateMF} (h : (x86Isa.withProcs T).step P i a = some b) :
     b.prog.lfn = a.prog.lfn ∧ b.prog.base.lpc = a.prog.base.lpc + 1 := by
-  simp only [commonSeq, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
-    or_false] at hi
+  simp only [commonSeq, List.mem_append, List.mem_map] at hi
   have hmov : ∀ x y, (x86Isa.withProcs T).step P (movI x y) a = some b →
       b.prog.lfn = a.prog.lfn ∧ b.prog.base.lpc = a.prog.base.lpc + 1 := by
     intro x y hm
     rw [step_movI] at hm
     cases hm
     exact ⟨rfl, rfl⟩
-  rcases hi with ⟨p, -, rfl⟩ | rfl | rfl
+  rcases hi with ⟨p, -, rfl⟩ | hi
   · exact hmov _ _ h
-  · replace h : (match procCall? T (callShadow res f (args.map LOperand.reg)) with
-        | some q => procStep q.1 q.2.1 q.2.2 a
-        | none => x86Isa.step P (callShadow res f (args.map LOperand.reg), .reg none) a)
-        = some b := h
-    rw [procCall?_callShadow] at h
-    cases hT : T f with
-    | none =>
-        rw [hT] at h
-        replace h : x86Isa.step P (callShadow res f (args.map LOperand.reg), .reg none) a
-          = some b := h
-        rw [x86Isa_refusesProcs
-          (fun g => if g = f then some { arity := 0, run := fun _ => none } else none) P
-          (callShadow res f (args.map LOperand.reg), .reg none) a
-          (by rw [procCall?_callShadow]; simp)] at h
-        cases h
-    | some pr =>
-        rw [hT] at h
-        replace h : procStep pr res (args.map LOperand.reg) a = some b := h
-        unfold procStep at h
-        split at h
-        · obtain ⟨vs, -, h⟩ := Option.bind_eq_some_iff.mp h
-          obtain ⟨x, -, rfl⟩ := Option.map_eq_some_iff.mp h
-          exact ⟨lfn_retRes res x a, lpc_retRes res x a⟩
-        · cases h
-  · exact hmov _ _ h
+  · split at hi
+    · rw [List.mem_singleton.mp hi] at h
+      exact callShadow_step_pc T P _ _ _ h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with rfl | rfl
+      · exact callShadow_step_pc T P _ _ _ h
+      · exact hmov _ _ h
 
 theorem runI_eq_runL (I : Isa) (P : LprogM) : ∀ (is : List LinstrRM) (s : LstateMF),
     runI I P is s = I.runL P is s
@@ -1636,23 +1876,26 @@ theorem runI_eq_runL (I : Isa) (P : LprogM) : ∀ (is : List LinstrRM) (s : Lsta
       | some u => exact runI_eq_runL I P is u
 
 /-- **One step of the body is a run of steps of the rewritten body.** Let `f` have a
-    summary on words without a word-array result in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
-    `res`, every instruction of `B` that is neither a control instruction nor a shadow
-    instruction commute with a change of the names `res :: args`, and no branch condition
-    of `B` read them. From states related by `OffRel` along `expPos`, a step of the x86
+    summary in `T` whose word positions include those of the shape `sh` and which has no
+    word-array result when `sh` has no out result, the body `B` pass `commonFreshB`, `B'` be
+    its rewriting onto `args` and `res` with calls of the shape `sh`, every instruction of
+    `B` that is neither a control instruction nor a shadow instruction commute with a change
+    of the names `res :: args`, and no branch condition of `B` read them. From states related by `OffRel` along `expPos`, a step of the x86
     instruction set with procedures on `B` is matched by a run of steps on `B'` to related
     states. -/
 theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
     {s u s' : LstateMF}
     (h : (x86Isa.withProcs T).lsemStepPMemF (singletonProgM fn B) s = some u)
-    (hr : OffRel (res :: args) (expPos args.length B) s s') :
+    (hr : OffRel (res :: args) (expPos (commonLen sh args.length) B) s s') :
     ∃ k u', Steps (x86Isa.withProcs T) (singletonProgM fn B') k s' u' ∧
-      OffRel (res :: args) (expPos args.length B) u u' := by
+      OffRel (res :: args) (expPos (commonLen sh args.length) B) u u' := by
   obtain ⟨L', hL, rfl⟩ := hr
   unfold Isa.lsemStepPMemF at h
   cases hfi : findInstrMem (singletonProgM fn B) s.prog with
@@ -1666,7 +1909,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
       replace hfi : B[s.prog.base.reg.lpc]? = some i := hfi
       have hmem : i ∈ B := List.mem_of_getElem? hfi
       obtain ⟨is, pre, post, his, hB', hpre⟩ := commonCalls?_split hB hfi
-      have hsucc := expPos_succ args.length hfi
+      have hsucc := expPos_succ (commonLen sh args.length) hfi
       rw [← hpre] at hsucc ⊢
       have hat : atPc (singletonProgM fn B') pre.length (setRL L' pre.length s) := ⟨hfn, rfl⟩
       cases hs : shadowCall? i.fst with
@@ -1679,10 +1922,10 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
           show B'[pre.length]? = some i
           rw [hB']
           simp
-        have hlen : expLen args.length i = 1 := by simp [expLen, hs]
+        have hlen : expLen (commonLen sh args.length) i = 1 := by simp [expLen, hs]
         rw [hlen] at hsucc
         suffices hsuff : ∃ u', x86Isa.step (singletonProgM fn B') i (setRL L' pre.length s)
-            = some u' ∧ OffRel (res :: args) (expPos args.length B) u u' by
+            = some u' ∧ OffRel (res :: args) (expPos (commonLen sh args.length) B) u u' by
           obtain ⟨u', hu', hrel⟩ := hsuff
           refine ⟨1, u', Steps.one ?_, hrel⟩
           rw [lsemStepPMemF_of_atPc _ hat hget, Isa.withProcs_step_of_none _ T _ i _ hq]
@@ -1706,7 +1949,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
               subst h
               refine ⟨_, rfl, L', hL, ?_⟩
               show setRL L' (pre.length + 1) s
-                = setRL L' (expPos args.length B (s.prog.base.reg.lpc + 1)) s
+                = setRL L' (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1)) s
               rw [hsucc]
           | Lcond c l =>
               simp only [ctlStep] at h ⊢
@@ -1719,19 +1962,20 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
                 | some q =>
                     rw [hl] at h
                     rw [show findLabelMem l (singletonProgM fn B').body
-                      = some (expPos args.length B q) from findLabelMem_commonCalls? l hB hl]
+                      = some (expPos (commonLen sh args.length) B q) from
+                        findLabelMem_commonCalls? l hB hl]
                     simp only [Option.map_some, Option.some.injEq] at h
                     subst h
                     refine ⟨_, rfl, L', hL, ?_⟩
-                    show setRL L' (expPos args.length B q + 1) s
-                      = setRL L' (expPos args.length B (q + 1)) s
-                    rw [expPos_label_succ args.length (B := B) hl]
+                    show setRL L' (expPos (commonLen sh args.length) B q + 1) s
+                      = setRL L' (expPos (commonLen sh args.length) B (q + 1)) s
+                    rw [expPos_label_succ (commonLen sh args.length) (B := B) hl]
               · rw [if_neg (by assumption)]
                 simp only [Option.some.injEq] at h
                 subst h
                 refine ⟨_, rfl, L', hL, ?_⟩
                 show setRL L' (pre.length + 1) s
-                  = setRL L' (expPos args.length B (s.prog.base.reg.lpc + 1)) s
+                  = setRL L' (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1)) s
                 rw [hsucc]
           | Lgoto tgt =>
               obtain ⟨g, l⟩ := tgt
@@ -1744,13 +1988,14 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
                 | some q =>
                     rw [hl] at h
                     rw [show findLabelMem l (singletonProgM fn B').body
-                      = some (expPos args.length B q) from findLabelMem_commonCalls? l hB hl]
+                      = some (expPos (commonLen sh args.length) B q) from
+                        findLabelMem_commonCalls? l hB hl]
                     simp only [Option.map_some, Option.some.injEq] at h
                     subst h
                     refine ⟨_, rfl, L', hL, ?_⟩
-                    show setRL L' (expPos args.length B q + 1) s
-                      = setRL L' (expPos args.length B (q + 1)) s
-                    rw [expPos_label_succ args.length (B := B) hl]
+                    show setRL L' (expPos (commonLen sh args.length) B q + 1) s
+                      = setRL L' (expPos (commonLen sh args.length) B (q + 1)) s
+                    rw [expPos_label_succ (commonLen sh args.length) (B := B) hl]
               · cases h
           | _ => simp [isCtl] at hctl
       | some q₃ =>
@@ -1764,42 +2009,64 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
           simpa only [Isa.withProcs, hq] using h
         obtain ⟨hnd, hxa, hda, hdr⟩ := commonFreshB_site hf hmem hs hxs
         have hxr := commonFreshB_site_res hf hmem hs hxs
-        obtain ⟨w, rfl, h2⟩ := procStep_setRL hrw L' pre.length
+        obtain ⟨x, rfl, h2⟩ := procStep_setRL L' pre.length
           (fun x hx => hL x (by
             simp only [List.mem_cons, not_or]
             exact ⟨hxr x hx, hxa x hx⟩)) h1
-        obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT hwo hrw (singletonProgM fn B') res d hlen hnd hxa
-          h2
+        obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT haa hro (singletonProgM fn B') res d hlen
+          hnd hxa h2
         rw [runI_eq_runL] at hrun
         obtain ⟨hst, -⟩ := steps_of_runL (x86Isa.withProcs T) (singletonProgM fn B') _ pre post
           _ _ hB' hat (fun j hj a b hab => commonSeq_step_pc T _ hj hab) hrun
-        have hlenE : expLen args.length i = args.length + 2 := by simp [expLen, hs]
+        have hlenE : expLen (commonLen sh args.length) i = commonLen sh args.length := by
+          simp [expLen, hs]
         rw [hlenE] at hsucc
         refine ⟨_, _, hst, L₂, fun r hr => ?_, ?_⟩
         · simp only [List.mem_cons, not_or] at hr
-          rw [hL₂ r hr.2 hr.1, retWord_eq_regUpd, retWord_eq_regUpd]
-          show (if r = d then _ else L' r) = (if r = d then _ else s.prog.base.reg.lvm r)
-          split
-          · rfl
-          · exact hL r (by simp only [List.mem_cons, not_or]; exact hr)
-        · show setRL L₂ (pre.length + 1 + (args.length + 1)) s
-            = setRL L₂ (expPos args.length B (s.prog.base.reg.lpc + 1)) s
-          rw [hsucc, Nat.add_assoc, Nat.add_left_comm 1 args.length 1]
+          rw [hL₂ r hr.2 hr.1, lvm_retRes, lvm_retRes]
+          have hLr := hL r (by simp only [List.mem_cons, not_or]; exact hr)
+          cases x with
+          | word w =>
+              show (if r = d then _ else L' r) = (if r = d then _ else s.prog.base.reg.lvm r)
+              split
+              · rfl
+              · exact hLr
+          | arr a => exact hLr
+        · have hk : pre.length + 1
+              + (wordCount sh 0 args.length + if sh.out then 0 else 1)
+              = expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1) := by
+            rw [hsucc, commonLen]
+            omega
+          cases x with
+          | word w =>
+              show setRL L₂ (pre.length + 1
+                  + (wordCount sh 0 args.length + if sh.out then 0 else 1)) (retWord d w s)
+                = setRL L₂ (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1))
+                  (retWord d w s)
+              rw [hk]
+          | arr a =>
+              show setRL L₂ (pre.length + 1
+                  + (wordCount sh 0 args.length + if sh.out then 0 else 1)) (retArr d a s)
+                = setRL L₂ (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1))
+                  (retArr d a s)
+              rw [hk]
     · cases hfi
 
 /-- **A run of steps of the body is a run of steps of the rewritten body**, between states
     related by `OffRel` along `expPos`. -/
 theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c) :
     ∀ (n : Nat) (s t s' : LstateMF),
       Steps (x86Isa.withProcs T) (singletonProgM fn B) n s t →
-      OffRel (res :: args) (expPos args.length B) s s' →
+      OffRel (res :: args) (expPos (commonLen sh args.length) B) s s' →
       ∃ n' t', Steps (x86Isa.withProcs T) (singletonProgM fn B') n' s' t' ∧
-        OffRel (res :: args) (expPos args.length B) t t'
+        OffRel (res :: args) (expPos (commonLen sh args.length) B) t t'
   | 0, s, t, s', h, hr => by
       have hst : s = t := Option.some.inj h
       subst hst
@@ -1807,22 +2074,23 @@ theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f =
   | n + 1, s, t, s', h, hr => by
       simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
       obtain ⟨m, hm, h⟩ := h
-      obtain ⟨k, m', hk, hr'⟩ := step_common hT hwo hrw hB hf hcg hcd hm hr
-      obtain ⟨n', t', hn', hr''⟩ := steps_common hT hwo hrw hB hf hcg hcd n m t m' h hr'
+      obtain ⟨k, m', hk, hr'⟩ := step_common hT haa hro hB hf hcg hcd hm hr
+      obtain ⟨n', t', hn', hr''⟩ := steps_common hT haa hro hB hf hcg hcd n m t m' h hr'
       exact ⟨k + n', t', hk.trans hn', hr''⟩
 
 /-- A halted state of the body is related to halted states of the rewritten body. -/
-theorem halted_common {f : String} {args : List String} {res fn : String}
-    {B B' : List LinstrRM} (hB : commonCalls? f args res B = some B') {N : List String}
+theorem halted_common {sh : CallShape} {f : String} {args : List String} {res fn : String}
+    {B B' : List LinstrRM} (hB : commonCalls? sh f args res B = some B') {N : List String}
     {t t' : LstateMF} (ht : Halted (singletonProgM fn B) t)
-    (hr : OffRel N (expPos args.length B) t t') : Halted (singletonProgM fn B') t' := by
+    (hr : OffRel N (expPos (commonLen sh args.length) B) t t') :
+    Halted (singletonProgM fn B') t' := by
   obtain ⟨L', -, rfl⟩ := hr
   unfold Halted findInstrMem at ht ⊢
   split at ht
   · rename_i hfn
     rw [if_pos (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
     have hle : B.length ≤ t.prog.base.reg.lpc := List.getElem?_eq_none_iff.mp ht
-    show B'[expPos args.length B t.prog.base.reg.lpc]? = none
+    show B'[expPos (commonLen sh args.length) B t.prog.base.reg.lpc]? = none
     rw [expPos_of_le _ hle, ← commonCalls?_length hB]
     exact List.getElem?_eq_none (Nat.le_refl _)
   · rename_i hfn
@@ -1843,34 +2111,39 @@ theorem OffRel.obs {N : List String} {ψ : Nat → Nat} {t t' : LstateMF} (h : O
   exact ⟨fun r hr => hL r (ho r hr), rfl, rfl⟩
 
 /-- **The rewriting of a body onto common names preserves halting runs.** Let `f` have a
-    summary on words in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
-    `res`, every instruction of `B` that is neither a control instruction nor a shadow
-    instruction commute with a change of the names `res :: args`, and no branch condition
-    of `B` read them. A halting run of the x86 instruction set with procedures on `B` from
+    summary in `T` whose word positions include those of the shape `sh` and which has no
+    word-array result when `sh` has no out result, the body `B` pass `commonFreshB`, `B'` be
+    its rewriting onto `args` and `res` with calls of the shape `sh`, every instruction of
+    `B` that is neither a control instruction nor a shadow instruction commute with a change
+    of the names `res :: args`, and no branch condition of `B` read them. A halting run of the x86 instruction set with procedures on `B` from
     a state at the counter `0` to `t` is matched by a halting run on `B'` from the same
     state to a state `t'` that is `t` up to the registers `res :: args` and the counter,
     which is at the image of the counter of `t`. -/
 theorem commonCalls_run {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
-      OffRel (res :: args) (expPos args.length B) t t' := by
+      OffRel (res :: args) (expPos (commonLen sh args.length) B) t t' := by
   obtain ⟨n, -, hn, ht⟩ := steps_of_lsemFuelMemF (x86Isa.withProcs T) _ fuel s t hrun
-  obtain ⟨n', t', hn', hr⟩ := steps_common hT hwo hrw hB hf hcg hcd n s t s hn
+  obtain ⟨n', t', hn', hr⟩ := steps_common hT haa hro hB hf hcg hcd n s t s hn
     (offRel_entry _ _ _ h0)
   exact ⟨n' + 0, t', lsemFuelMemF_of_steps _ _ hn' (halted_common hB ht hr) 0, hr⟩
 
 /-- **The end states of the two runs agree on the registers outside the common names, the
     arrays and the word memory.** -/
 theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
-    (hT : T f = some pr) (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String}
+    (hT : T f = some pr) {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String}
     {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
@@ -1879,38 +2152,43 @@ theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
-  obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT hwo hrw hB hf hcg hcd h0 hrun
+  obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT haa hro hB hf hcg hcd h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
 
 /-- **The rewriting of a checked body onto common names preserves halting runs.** Let `f`
-    have a summary on words in `T`, the body `B` pass `commonFreshB`, and `B'` be its rewriting onto
-    `args` and `res`. A halting run of the x86 instruction set with procedures on `B` from
-    a state at the counter `0` to `t` is matched by a halting run on `B'` from the same
-    state to a state that is `t` up to the registers `res :: args` and the counter, which
-    is at the image of the counter of `t`. -/
+    have a summary in `T` whose word positions include those of the shape `sh` and which has
+    no word-array result when `sh` has no out result, the body `B` pass `commonFreshB`, and
+    `B'` be its rewriting onto `args` and `res` with calls of the shape `sh`. A halting run
+    of the x86 instruction set with procedures on `B` from a state at the counter `0` to `t`
+    is matched by a halting run on `B'` from the same state to a state that is `t` up to the
+    registers `res :: args` and the counter, which is at the image of the counter of `t`. -/
 theorem run_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
-      OffRel (res :: args) (expPos args.length B) t t' :=
-  commonCalls_run hT hwo hrw hB hf
+      OffRel (res :: args) (expPos (commonLen sh args.length) B) t t' :=
+  commonCalls_run hT haa hro hB hf
     (fun _ hi hc hs => commonCongrB_offCongr (commonFreshB_congr hf) hi hc hs)
     (fun _ _ _ hi => commonCongrB_condCongr (commonFreshB_congr hf) hi) h0 hrun
 
 /-- **The end states of the two runs of a checked body agree on the registers outside the
     common names, the arrays and the word memory.** -/
 theorem obs_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary}
-    (hT : T f = some pr) (hwo : pr.WordOnly) (hrw : pr.RetWord) {args : List String} {res fn : String}
+    (hT : T f = some pr) {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String}
     {B B' : List LinstrRM}
-    (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
     {outs : List String} (ho : ∀ r ∈ outs, r ∉ res :: args)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
-  obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT hwo hrw hB hf h0 hrun
+  obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT haa hro hB hf h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
 
 /-! ## 12. A halting run of a cut program is a segment of the body -/

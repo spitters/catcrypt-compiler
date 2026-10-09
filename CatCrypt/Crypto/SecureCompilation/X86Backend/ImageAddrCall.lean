@@ -128,8 +128,6 @@ after a call (`ImageCallProbe.reloadOf_call`).
   frame.
 * `keepPoolB_clobN`: a name of a checked allocation pool is not set by the summary step
   and is not exempted after a call.
-* `siteShapeB_commonCalls`: a body rewritten by `LprogCallCut.commonCalls?` passes
-  `siteShapeB`.
 * `lfundefPhysAbiOfVirtC`: the allocation of a caller of `c` at the pool `keepPool c`, with
   the shadow instructions expanded after the allocation.
 -/
@@ -2524,8 +2522,7 @@ theorem haltsC_of_linkedChecks {frame : String → Option (BitVec 64)}
 
 /-! ## 10. The allocation pool and the common names of a callee -/
 
-open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (commonCalls? shadowCall?_commonCalls?
-  lfundefPhysAbiOfVirtAt)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (lfundefPhysAbiOfVirtAt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (keepPool keepPoolB keepPoolB_spec)
 
 /-- **A name of a checked allocation pool is kept by the summary step of a call**: it is
@@ -2535,16 +2532,6 @@ theorem keepPoolB_clobN {c : CalleeSig} {pool : List String} (h : keepPoolB c po
   have hk := ((keepPoolB_spec h).1 r hr).2.1
   refine ⟨by simp [clobN, hk], fun hm => ?_⟩
   simp [exemptC, hk] at hm
-
-/-- **A body rewritten onto the common names passes `siteShapeB`** at the symbol, the
-    result name and the argument names of the rewriting. -/
-theorem siteShapeB_commonCalls {f res : String} {args : List String} {B B' : List LinstrRM}
-    (h : commonCalls? f args res B = some B') : siteShapeB f res args B' = true := by
-  simp only [siteShapeB, List.all_eq_true]
-  intro i hi
-  cases hs : LprogIsa.shadowCall? i.fst with
-  | none => rfl
-  | some q => simpa using shadowCall?_commonCalls? h i hi q hs
 
 /-- **The allocation of a virtual function that calls `c`**: `lfundefPhysAbiOfVirtAt` at
     the pool `keepPool c` of the names kept across a call of `c`. -/
