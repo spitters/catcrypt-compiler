@@ -40,6 +40,8 @@ its frame, so `ImageAddrCall.FootBelow`, `ImageAddrCall.call_reestablishes` and
   reloaded register holds the base of the array.
 * `readArgs_entry`: at the entry of a call, the summary input read from the byte state is
   the summary input on the image.
+* `argsRead_imgArgs`: the argument words the step of a summary reads at a call on words and
+  one array (`LprogIsa.argsRead`) are the summary input on the image.
 * `pre_of_imageArr`: the precondition of the callee from the image relation.
 * `call_reestablishes_arr`: after every run of the callee, the result register holds the
   word of the summary and the relaxed relation holds at the step of the summary.
@@ -93,6 +95,49 @@ def readArgs (ws : List String) (pa : String) (n : Nat) (s : AState) : List (Bit
 def imgArgs (R : LstateN) (ws : List String) {n : Nat} (arr : Fin n → BitVec 64) :
     List (BitVec 64) :=
   ws.map (argWord R) ++ List.ofFn arr
+
+/-- The argument words of register operands at word positions in front of further operands
+    are the words of the registers followed by the argument words of the further operands. -/
+theorem argsRead_words_append {aa : Nat → Option Nat} {b : LstateM} (rest : List LOperand) :
+    ∀ (ws : List String) (i : Nat) (vs : List (BitVec 64)),
+      (∀ j < ws.length, aa (i + j) = none) →
+      (ws.map LOperand.reg).mapM (evalOperandN b.reg 64) = some vs →
+      LprogIsa.argsRead aa b i (ws.map LOperand.reg ++ rest)
+        = (LprogIsa.argsRead aa b (i + ws.length) rest).map (vs ++ ·)
+  | [], i, vs, _, h => by
+      simp only [List.map_nil, List.mapM_nil, Option.pure_def, Option.some.injEq] at h
+      subst h
+      simp only [List.map_nil, List.nil_append, List.length_nil, Nat.add_zero]
+      cases LprogIsa.argsRead aa b i rest <;> rfl
+  | a :: ws, i, vs, hn, h => by
+      simp only [List.map_cons, List.mapM_cons, Option.bind_eq_bind,
+        Option.bind_eq_some_iff] at h
+      obtain ⟨x, hx, ys, hys, h⟩ := h
+      cases h
+      have ha : aa i = none := by simpa using hn 0 (by simp)
+      have hn' : ∀ j < ws.length, aa (i + 1 + j) = none := by
+        intro j hj
+        have h1 := hn (j + 1) (by simp [hj])
+        rwa [show i + (j + 1) = i + 1 + j by omega] at h1
+      have ih := argsRead_words_append rest ws (i + 1) ys hn' hys
+      rw [List.map_cons, List.cons_append, LprogIsa.argsRead, ih]
+      simp only [LprogIsa.argRead, ha, hx, Option.map_some, Option.bind_some,
+        List.length_cons, Option.map_map]
+      rw [show i + 1 + ws.length = i + (ws.length + 1) by omega]
+      cases LprogIsa.argsRead aa b (i + (ws.length + 1)) rest <;> rfl
+
+/-- **The argument words of a call on the words `ws` and the array `A` are the summary input
+    on the image** (`imgArgs`), at array positions with the one array of length `n` after
+    the words. This is the input `readArgs` reads from the byte state (`readArgs_entry`). -/
+theorem argsRead_imgArgs {aa : Nat → Option Nat} {b : LstateM} {ws : List String}
+    {n : Nat} (hw : ∀ j < ws.length, aa j = none) (ha : aa ws.length = some n)
+    {vs : List (BitVec 64)} (hvs : (ws.map LOperand.reg).mapM (evalOperandN b.reg 64) = some vs)
+    {A : String} {arr : Fin n → BitVec 64} (harr : b.getArr A 64 n = some arr) :
+    LprogIsa.argsRead aa b 0 (ws.map LOperand.reg ++ [.reg A]) = some (imgArgs b.reg ws arr) := by
+  rw [argsRead_words_append [.reg A] ws 0 vs (by simpa using hw) hvs, Nat.zero_add,
+    mapM_reg_argWord b.reg ws vs hvs]
+  simp only [LprogIsa.argsRead, LprogIsa.argRead, ha, harr, Option.map_some, Option.bind_some,
+    List.append_nil, imgArgs]
 
 /-- **The reading of an interface as a procedure summary on words and one array.** The
     argument registers are those of the word names `ws` followed by the pointer name `pa`;

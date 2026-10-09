@@ -140,9 +140,10 @@ theorem mapM_reg_congr {R R' : LstateN} : ∀ {args : List String},
         mapM_reg_congr (fun r hr => h r (List.mem_cons_of_mem _ hr))]
 
 /-- **The step of a summary on register operands at two states that agree on the
-    operands** writes the same word. -/
+    operands and on the arrays** writes the same word. -/
 theorem procStep_congr {pr : ProcSummary} {dst : String} {args : List String}
     {u u' v : LstateMF} (hag : ∀ r ∈ args, u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r)
+    (hla : u'.prog.base.larr = u.prog.base.larr)
     (h : procStep pr dst (args.map LOperand.reg) u = some v) :
     ∃ w, v = retWord dst w u ∧
       procStep pr dst (args.map LOperand.reg) u' = some (retWord dst w u') := by
@@ -152,7 +153,7 @@ theorem procStep_congr {pr : ProcSummary} {dst : String} {args : List String}
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
     refine ⟨w, rfl, ?_⟩
-    rw [if_pos hlen, mapM_reg_congr hag, hvs]
+    rw [if_pos hlen, LprogIsa.argsRead_regs_congr pr.arrArgs hla 0 hag, hvs]
     simp [hw]
   · cases h
 
@@ -169,11 +170,12 @@ theorem glue_congr {T : ProcTable} {fn : String} {B B' : List LinstrRM} {pr : Pr
       pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg)
     {p q : Nat} (hq : IsSite T B' (some q)) {u u' v : LstateMF}
     (hag : ∀ r ∈ args, u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r)
+    (hla : u'.prog.base.larr = u.prog.base.larr)
     (hg : Glue T (singletonProgM fn B) p u v) :
     ∃ w, v = retWord res w u ∧ Glue T (singletonProgM fn B') q u' (retWord res w u') := by
   obtain ⟨i, pr1, dst, srcs, hi, hpq, hstep⟩ := hg
   obtain ⟨rfl, rfl, rfl⟩ := hs p i pr1 dst srcs hi hpq
-  obtain ⟨w, rfl, hstep'⟩ := procStep_congr hag hstep
+  obtain ⟨w, rfl, hstep'⟩ := procStep_congr hag hla hstep
   obtain ⟨j, hj, hjp⟩ := hq
   simp only [isProcB] at hjp
   obtain ⟨⟨pr2, dst2, srcs2⟩, hq'⟩ := Option.isSome_iff_exists.mp hjp
@@ -261,7 +263,7 @@ def segSimI_of_checks {I : Isa} (hK : I.lsemFuelMemF = x86Isa.lsemFuelMemFk true
     obtain ⟨q, hq, hqs⟩ := siteMap_some h.1 hp
     obtain ⟨hobs, hfn⟩ := hQ
     obtain ⟨w, rfl, hg'⟩ := glue_congr hsr hsi hqs
-      (fun r hr => hobs.1 r (List.mem_append_left _ hr)) hg
+      (fun r hr => hobs.1 r (List.mem_append_left _ hr)) hobs.2.1 hg
     refine ⟨q, retWord res w u', hq, hg', hfn, hobs.2.1, hobs.2.2, fun r hr => ?_,
       fun h => by cases h⟩
     by_cases hrr : r = res

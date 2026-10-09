@@ -174,7 +174,8 @@ compare), then the selected branch and the assignment of its results to the resu
 and joins the two runs at the counter after the join label.
 
 `RegionExportable` collects the hypotheses of the rules: every `call` at a signature of
-`wordSig` (arguments of type `reg 64`, one result of type `reg 64`), every binding in
+`wordSig` (arguments of type `reg 64` or `stackArr 64 n`, one result of type `reg 64`),
+every binding in
 `BindMemN`, register carried types of an exit-flag loop and register result types of a
 branch. `exportR` returns `none` exactly on a program with a `call` at another signature
 (`exportR_eq_none_iff`).
@@ -187,7 +188,11 @@ operands and the destination `regName d`. The frame rules are stated over an ins
 set `I` that has the steps of `x86Isa` (`Isa.StepLe`); the steps of the frame instructions
 are proved on `x86Isa` and lifted by `steps_of_stepLe`. The frame rule of a call
 (`exportRSim_call`) assumes that `I` performs the calls of the call environment
-(`CallsSim`): the step of the shadow instruction writes the result word of the callee.
+(`CallsSim`): the step of the shadow instruction writes the result word of the callee. The
+operand of an array argument is the register name of its array carrier, and the argument
+words of a call are the words of its word arguments and all the words of its array
+arguments, in order (`wordsOf`, read by `LprogIsa.argsRead` at the array positions
+`arrArgsOf`).
 `exportR_sim_calls` is the induction over the program under these two hypotheses. Its
 instance at `x86Isa` and the call environment of `jasminDialect`, in which every call
 refuses, is `exportR_sim`. Its instance at `x86Isa.withProcs T`, for a table `T` of
@@ -217,8 +222,10 @@ shadow instructions `x86Isa` refuses (`Isa.RefusesProcs`), is `exportR_sim_procs
   the fragment of a binding, the simulation statement, and returns under bindings.
 * `isRegTy`, `RegTys` — the types held in a register cell, and the lists of such types.
 * `RegionExportable` — the programs the export simulates.
-* `wordSig`, `wordCalls`, `callI` — the signature of a call on words, the programs whose
-  calls have such a signature, and the shadow instruction of a call.
+* `callArgTy`, `wordSig`, `wordCalls`, `callI` — the argument types of a call, the signature
+  of a call on words and word arrays, the programs whose calls have such a signature, and
+  the shadow instruction of a call.
+* `arrArgsOf` — the positions of the array arguments of a signature with their lengths.
 * `wordsOf`, `resWord`, `CallsSim`, `ProcsAgree` — the words of a valuation, the instruction
   sets that perform the calls of a call environment, and the tables of procedure summaries
   that agree with one.
@@ -572,14 +579,49 @@ structure Exported where
 def Exported.prepend (c : List LinstrRM) (r : Exported) : Exported :=
   { r with code := c ++ r.code }
 
-/-- The signature of a call on words with one word result: every argument type and the one
-    result type are `reg 64`. -/
+/-- An argument type of a call: a `64`-bit word or an array of `64`-bit words. -/
+def callArgTy : JasminTy → Bool
+  | .reg w => w == 64
+  | .stackArr w _ => w == 64
+  | _ => false
+
+/-- The word type is an argument type of a call. -/
+@[simp] theorem callArgTy_reg64 : callArgTy (JasminTy.reg 64) = true := rfl
+
+/-- The signature of a call on words and word arrays with one word result: every argument
+    type is `reg 64` or `stackArr 64 n`, and the one result type is `reg 64`. -/
 def wordSig (as rs : List JasminTy) : Bool :=
-  as.all (fun t => decide (t = JasminTy.reg 64)) && decide (rs = [JasminTy.reg 64])
+  as.all callArgTy && decide (rs = [JasminTy.reg 64])
 
 theorem wordSig_iff {as rs : List JasminTy} :
-    wordSig as rs = true ↔ (∀ t ∈ as, t = JasminTy.reg 64) ∧ rs = [JasminTy.reg 64] := by
+    wordSig as rs = true ↔ (∀ t ∈ as, callArgTy t = true) ∧ rs = [JasminTy.reg 64] := by
   simp [wordSig]
+
+/-- The positions of the array arguments of the argument types `as`, with the length of each
+    array; `none` at every other position. -/
+def arrArgsOf : List JasminTy → Nat → Option Nat
+  | [], _ => none
+  | .stackArr _ n :: _, 0 => some n
+  | _ :: _, 0 => none
+  | _ :: as, i + 1 => arrArgsOf as i
+
+/-- The array positions after the first argument type. -/
+theorem arrArgsOf_cons_succ (t : JasminTy) (as : List JasminTy) (i : Nat) :
+    arrArgsOf (t :: as) (i + 1) = arrArgsOf as i := by
+  cases t <;> rfl
+
+/-- Argument types of words have no array position. -/
+theorem arrArgsOf_of_words : ∀ {as : List JasminTy}, (∀ t ∈ as, t = JasminTy.reg 64) →
+    arrArgsOf as = fun _ => none
+  | [], _ => rfl
+  | t :: as, h => by
+      obtain rfl := h t List.mem_cons_self
+      funext i
+      cases i with
+      | zero => rfl
+      | succ i =>
+          show arrArgsOf as i = none
+          rw [arrArgsOf_of_words fun t ht => h t (List.mem_cons_of_mem _ ht)]
 
 /-- The shadow instruction of a call of `f` on the operands `srcs` with the result in
     `dst`. -/
@@ -1459,11 +1501,12 @@ theorem steps_of_stepLe {I J : Isa} (h : I.StepLe J) {P : LprogM} :
       obtain ⟨u, hu, hrest⟩ := hs
       exact ⟨u, hstep s u hu, ih hrest⟩
 
-/-- The words of the register entries of a valuation, each at width `64`. -/
+/-- The words of the register and array entries of a valuation, each at width `64`: one word
+    for a register entry and the words of the array, in order, for an array entry. -/
 def wordsOf : {as : List JasminTy} → Ctxt.Valuation (d := jasminDialect) as → List (BitVec 64)
   | [], _ => []
   | .reg _ :: _, .cons v vs => v.setWidth 64 :: wordsOf vs
-  | .stackArr _ _ :: _, .cons _ vs => wordsOf vs
+  | .stackArr _ _ :: _, .cons a vs => List.ofFn (fun j => (a j).setWidth 64) ++ wordsOf vs
   | .inlineInt :: _, .cons _ vs => wordsOf vs
   | .bool :: _, .cons _ vs => wordsOf vs
 
@@ -1473,17 +1516,19 @@ def resWord (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]) : BitVec
   | .cons r _ => r
 
 /-- **The instruction set `I` performs the calls of the environment `E`.** For every
-    symbol `f` whose callee in `E` at a signature of words returns `v` on the arguments
-    `a`, the step of the shadow instruction of a call of `f`, from a state in which the
-    operands read as the words of `a`, writes the word of `v` to the destination and
+    symbol `f` whose callee in `E` at a signature of words and word arrays returns `v` on
+    the arguments `a`, the step of the shadow instruction of a call of `f` on as many
+    operands as arguments, from a state in which the operands read as the words of `a` at
+    the array positions of the signature, writes the word of `v` to the destination and
     advances the program counter. -/
 def CallsSim (I : Isa) (E : CallEnv jasminDialect) : Prop :=
-  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, t = JasminTy.reg 64) →
+  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, callArgTy t = true) →
   ∀ (a : Ctxt.Valuation (d := jasminDialect) as)
     (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]),
     E.call f as [JasminTy.reg 64] a = some v →
   ∀ (P : LprogM) (dst : String) (srcs : List LOperand) (tag : MemTag) (s : LstateMF),
-    srcs.mapM (evalOperandN s.prog.base.reg 64) = some (wordsOf a) →
+    srcs.length = as.length →
+    LprogIsa.argsRead (arrArgsOf as) s.prog.base 0 srcs = some (wordsOf a) →
     I.step P (callShadow dst f srcs, tag) s = some (retWord dst (resWord v) s)
 
 /-- No instruction set has a call to perform in the environment in which every call
@@ -1492,15 +1537,17 @@ theorem callsSim_empty (I : Isa) : CallsSim I CallEnv.empty :=
   fun _ _ _ _ _ h => by cases h
 
 /-- **The agreement of a table of procedure summaries with a call environment.** For every
-    symbol `f` whose callee in `E` at a signature of words returns `v` on the arguments
-    `a`, the table has a summary of `f` whose arity is the number of arguments and whose
-    function returns the word of `v` on the words of `a`. -/
+    symbol `f` whose callee in `E` at a signature of words and word arrays returns `v` on
+    the arguments `a`, the table has a summary of `f` whose arity is the number of
+    arguments, whose array positions are those of the signature, and whose function
+    returns the word of `v` on the words of `a`. -/
 def ProcsAgree (E : CallEnv jasminDialect) (T : ProcTable) : Prop :=
-  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, t = JasminTy.reg 64) →
+  ∀ (f : String) (as : List JasminTy), (∀ t ∈ as, callArgTy t = true) →
   ∀ (a : Ctxt.Valuation (d := jasminDialect) as)
     (v : Ctxt.Valuation (d := jasminDialect) [JasminTy.reg 64]),
     E.call f as [JasminTy.reg 64] a = some v →
-    ∃ pr, T f = some pr ∧ pr.arity = as.length ∧ pr.run (wordsOf a) = some (resWord v)
+    ∃ pr, T f = some pr ∧ pr.arity = as.length ∧ pr.arrArgs = arrArgsOf as ∧
+      pr.run (wordsOf a) = some (resWord v)
 
 /-- The read of a list of operands as words has the length of the list. -/
 theorem length_of_mapM_eq_some {α β : Type} {g : α → Option β} :
@@ -1536,10 +1583,9 @@ theorem wordsOf_length : ∀ {as : List JasminTy} (_ : ∀ t ∈ as, t = JasminT
     calls of `E`.** -/
 theorem callsSim_withProcs (I : Isa) {E : CallEnv jasminDialect} {T : ProcTable}
     (h : ProcsAgree E T) : CallsSim (I.withProcs T) E := by
-  intro f as has a v hcall P dst srcs tag s hsrcs
-  obtain ⟨pr, hf, har, hrun⟩ := h f as has a v hcall
-  rw [I.withProcs_step_callShadow T hf, procStep,
-    if_pos (by rw [har, ← wordsOf_length has a, length_of_mapM_eq_some hsrcs]), hsrcs]
+  intro f as has a v hcall P dst srcs tag s hlen hsrcs
+  obtain ⟨pr, hf, har, harr, hrun⟩ := h f as has a v hcall
+  rw [I.withProcs_step_callShadow T hf, procStep, if_pos (by rw [har, hlen]), harr, hsrcs]
   simp only [Option.bind_some, hrun, Option.map_some]
 
 /-! ## 10. The return and the binding -/
@@ -1635,6 +1681,54 @@ theorem mapM_exprArgsHV_words {nArgs d : Nat} {Γ : Ctxt jasminDialect} {s : Lst
         = some (BitVec.setWidth 64 (u.lookup V) :: wordsOf (Expr.lookupArgs us V))
       rw [List.mapM_cons, hu, ih, BitVec.setWidth_eq]
       rfl
+
+/-- The resolved operand of a variable without immediate slots is a register name. -/
+theorem resolveVar_eq_reg (d nArgs : Nat) {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (v : Ctxt.Var Γ τ) :
+    resolveVar d nArgs argName (fun _ => none) v
+      = .reg (operandName (resolveVar d nArgs argName (fun _ => none) v)) := by
+  simp only [resolveVar]
+  by_cases h : d - 1 - varIndex v < nArgs <;> simp [h, operandName]
+
+/-- **The argument words of the resolved arguments of a call on words and word arrays**,
+    read at the array positions of the signature from the argument position `i` on, are
+    the words of the arguments at the valuation the store agrees with. -/
+theorem argsRead_exprArgsHV {nArgs d : Nat} {Γ : Ctxt jasminDialect} {s : LstateM}
+    {V : Ctxt.Valuation Γ} (hag : StoreAgreesM nArgs d s V) :
+    ∀ {as : List JasminTy} (_ : ∀ t ∈ as, callArgTy t = true)
+      (args : HVector (fun t => Ctxt.Var Γ t) as) (aa : Nat → Option Nat) (i : Nat),
+      (∀ j, aa (i + j) = arrArgsOf as j) →
+      LprogIsa.argsRead aa s i (exprArgsHV d nArgs argName (fun _ => none) args)
+        = some (wordsOf (Expr.lookupArgs args V))
+  | [], _, .nil, _, _, _ => rfl
+  | t :: as, h, .cons u us, aa, i, haa => by
+      have ih := argsRead_exprArgsHV hag (fun t ht => h t (List.mem_cons_of_mem _ ht)) us aa
+        (i + 1) fun j => by
+          rw [Nat.add_assoc, Nat.add_comm 1 j, haa (j + 1), arrArgsOf_cons_succ]
+      have ha0 : aa i = arrArgsOf (t :: as) 0 := haa 0
+      show LprogIsa.argsRead aa s i (resolveVar d nArgs argName (fun _ => none) u
+          :: exprArgsHV d nArgs argName (fun _ => none) us)
+        = some (wordsOf (Expr.lookupArgs (HVector.cons u us) V))
+      rw [LprogIsa.argsRead, ih]
+      have ht := h t List.mem_cons_self
+      cases t with
+      | reg w =>
+          obtain rfl : w = 64 := by simpa [callArgTy] using ht
+          have hu := hag.reg u
+          simp only [LprogIsa.argRead, ha0, arrArgsOf, hu, Option.map_some, Option.bind_some]
+          show some ([u.lookup V] ++ _) = some (BitVec.setWidth 64 (u.lookup V) :: _)
+          rw [BitVec.setWidth_eq]
+          rfl
+      | stackArr w n =>
+          obtain rfl : w = 64 := by simpa [callArgTy] using ht
+          have hu := hag.arr u
+          rw [LprogIsa.argRead, ha0, resolveVar_eq_reg d nArgs u]
+          simp only [arrArgsOf, hu, Option.map_some, Option.bind_some]
+          show some (List.ofFn (u.lookup V) ++ _)
+            = some (List.ofFn (fun j => ((u.lookup V) j).setWidth 64) ++ _)
+          simp only [BitVec.setWidth_eq]
+      | inlineInt => simp [callArgTy] at ht
+      | bool => simp [callArgTy] at ht
 
 /-! ## 11. Returns under bindings -/
 
@@ -3402,7 +3496,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
 theorem exportRSim_call (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
     {as ts : List JasminTy} (f : String) (args : HVector (fun t => Ctxt.Var Γ t) as)
     (k : NFProg jasminDialect ([JasminTy.reg 64] ++ Γ) ts)
-    (has : ∀ t ∈ as, t = JasminTy.reg 64) {I : Isa} [CallDenote jasminDialect]
+    (has : ∀ t ∈ as, callArgTy t = true) {I : Isa} [CallDenote jasminDialect]
     (hc : CallsSim I (CallDenote.env (d := jasminDialect)))
     (hk : ExportRSim nArgs fn k I) :
     ExportRSim nArgs fn (NFProg.call (rs := [JasminTy.reg 64]) f args k) I := by
@@ -3419,7 +3513,8 @@ theorem exportRSim_call (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
     rfl
   have hstep := hc f as has _ res hcall P (regName d)
     (exprArgsHV d nArgs argName (fun _ => none) args) (.reg none) m
-    (mapM_exprArgsHV_words hag has args)
+    (exprArgsHV_length d nArgs args)
+    (argsRead_exprArgsHV hag has args (arrArgsOf as) 0 fun j => by rw [Nat.zero_add])
   have hs1 : Steps I P 1 m (retWord (regName d) (resWord res) m) :=
     Steps.one (by rw [lsemStepPMemF_of_atPc I hat hfetch]; exact hstep)
   have hat1 : atPc P (pre.length + 1) (retWord (regName d) (resWord res) m) :=

@@ -1066,7 +1066,7 @@ theorem mapM_reg_congr (R R' : LstateN) : ∀ (as xs : List String), as.length =
   | _ :: _, [], hl, _ => by simp at hl
 
 /-- **The step of the summary at a shadow instruction is simulated by the run of its form
-    on common names.** Let `f` have the summary `pr` in `T`, the names `args` be distinct
+    on common names.** Let `f` have the summary `pr` on words in `T`, the names `args` be distinct
     and as many as the operands `xs`, and no operand be a name of `args`. When the step of
     the summary at `d ← CALL:f xs` from `s` gives `v`, the run of `commonSeq f args res d
     xs` from `s` on the x86 instruction set with procedures gives `v` with the counter
@@ -1074,14 +1074,15 @@ theorem mapM_reg_congr (R R' : LstateN) : ∀ (as xs : List String), as.length =
     `v` at every name outside `args` other than `res`. The arrays, the word memory, the
     zero flag and the function name are those of `v`. -/
 theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    (P : LprogM) {args xs : List String} (res d : String) (hlen : xs.length = args.length)
+    (hwo : pr.WordOnly) (P : LprogM) {args xs : List String} (res d : String)
+    (hlen : xs.length = args.length)
     (hnd : args.Nodup) (hx : ∀ x ∈ xs, x ∉ args) {s v : LstateMF}
     (h : procStep pr d (xs.map LOperand.reg) s = some v) :
     ∃ L' : String → Σ w, BitVec w,
       runI (x86Isa.withProcs T) P (commonSeq f args res d xs) s
         = some (regUpd (fun _ => L') (args.length + 1) v)
       ∧ ∀ r, r ∉ args → r ≠ res → L' r = v.prog.base.reg.lvm r := by
-  unfold procStep at h
+  rw [procStep_of_wordOnly hwo] at h
   split at h
   · rename_i har
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1101,8 +1102,7 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
         | none => _) = _
       rw [procCall?_callShadow, hT]
       simp only [Option.map_some]
-      unfold procStep
-      rw [if_pos (by simpa [hlen] using har), hmap]
+      rw [procStep_of_wordOnly hwo, if_pos (by simpa [hlen] using har), hmap]
       simp only [Option.bind_some, hw, Option.map_some]
     have hreg : u = regUpd (fun _ => u.prog.base.reg.lvm) (args.zip xs).length s := by
       rw [hu]; exact movesF_eq_regUpd _ s
@@ -1578,7 +1578,8 @@ theorem procStep_setRL {pr : ProcSummary} {d : String} {xs : List String} {s u :
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
     refine ⟨w, rfl, ?_⟩
-    rw [if_pos har, mapM_regOps_agree s.prog.base.reg (setRL L' q s).prog.base.reg xs hx, hvs]
+    rw [if_pos har, argsRead_regs_congr (b := s.prog.base) (b' := (setRL L' q s).prog.base)
+      pr.arrArgs rfl 0 hx, hvs]
     simp only [Option.bind_some, hw, Option.map_some]
   · cases h
 
@@ -1608,7 +1609,8 @@ theorem commonSeq_step_pc (T : ProcTable) (P : LprogM) {f : String} {args : List
         rw [hT] at h
         replace h : x86Isa.step P (callShadow res f (args.map LOperand.reg), .reg none) a
           = some b := h
-        rw [x86Isa_refusesProcs (fun g => if g = f then some ⟨0, fun _ => none⟩ else none) P
+        rw [x86Isa_refusesProcs
+          (fun g => if g = f then some { arity := 0, run := fun _ => none } else none) P
           (callShadow res f (args.map LOperand.reg), .reg none) a
           (by rw [procCall?_callShadow]; simp)] at h
         cases h
@@ -1635,14 +1637,14 @@ theorem runI_eq_runL (I : Isa) (P : LprogM) : ∀ (is : List LinstrRM) (s : Lsta
       | some u => exact runI_eq_runL I P is u
 
 /-- **One step of the body is a run of steps of the rewritten body.** Let `f` have a
-    summary in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
+    summary on words in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
     `res`, every instruction of `B` that is neither a control instruction nor a shadow
     instruction commute with a change of the names `res :: args`, and no branch condition
     of `B` read them. From states related by `OffRel` along `expPos`, a step of the x86
     instruction set with procedures on `B` is matched by a run of steps on `B'` to related
     states. -/
 theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hwo : pr.WordOnly) {args : List String} {res fn : String} {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
@@ -1767,7 +1769,8 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
           (fun x hx => hL x (by
             simp only [List.mem_cons, not_or]
             exact ⟨hxr x hx, hxa x hx⟩)) h1
-        obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT (singletonProgM fn B') res d hlen hnd hxa h2
+        obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT hwo (singletonProgM fn B') res d hlen hnd hxa
+          h2
         rw [runI_eq_runL] at hrun
         obtain ⟨hst, -⟩ := steps_of_runL (x86Isa.withProcs T) (singletonProgM fn B') _ pre post
           _ _ hB' hat (fun j hj a b hab => commonSeq_step_pc T _ hj hab) hrun
@@ -1788,7 +1791,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
 /-- **A run of steps of the body is a run of steps of the rewritten body**, between states
     related by `OffRel` along `expPos`. -/
 theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hwo : pr.WordOnly) {args : List String} {res fn : String} {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
@@ -1805,8 +1808,8 @@ theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f =
   | n + 1, s, t, s', h, hr => by
       simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
       obtain ⟨m, hm, h⟩ := h
-      obtain ⟨k, m', hk, hr'⟩ := step_common hT hB hf hcg hcd hm hr
-      obtain ⟨n', t', hn', hr''⟩ := steps_common hT hB hf hcg hcd n m t m' h hr'
+      obtain ⟨k, m', hk, hr'⟩ := step_common hT hwo hB hf hcg hcd hm hr
+      obtain ⟨n', t', hn', hr''⟩ := steps_common hT hwo hB hf hcg hcd n m t m' h hr'
       exact ⟨k + n', t', hk.trans hn', hr''⟩
 
 /-- A halted state of the body is related to halted states of the rewritten body. -/
@@ -1841,7 +1844,7 @@ theorem OffRel.obs {N : List String} {ψ : Nat → Nat} {t t' : LstateMF} (h : O
   exact ⟨fun r hr => hL r (ho r hr), rfl, rfl⟩
 
 /-- **The rewriting of a body onto common names preserves halting runs.** Let `f` have a
-    summary in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
+    summary on words in `T`, the body `B` pass `commonFreshB`, `B'` be its rewriting onto `args` and
     `res`, every instruction of `B` that is neither a control instruction nor a shadow
     instruction commute with a change of the names `res :: args`, and no branch condition
     of `B` read them. A halting run of the x86 instruction set with procedures on `B` from
@@ -1849,7 +1852,7 @@ theorem OffRel.obs {N : List String} {ψ : Nat → Nat} {t t' : LstateMF} (h : O
     state to a state `t'` that is `t` up to the registers `res :: args` and the counter,
     which is at the image of the counter of `t`. -/
 theorem commonCalls_run {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hwo : pr.WordOnly) {args : List String} {res fn : String} {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
@@ -1859,14 +1862,15 @@ theorem commonCalls_run {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T 
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       OffRel (res :: args) (expPos args.length B) t t' := by
   obtain ⟨n, -, hn, ht⟩ := steps_of_lsemFuelMemF (x86Isa.withProcs T) _ fuel s t hrun
-  obtain ⟨n', t', hn', hr⟩ := steps_common hT hB hf hcg hcd n s t s hn
+  obtain ⟨n', t', hn', hr⟩ := steps_common hT hwo hB hf hcg hcd n s t s hn
     (offRel_entry _ _ _ h0)
   exact ⟨n' + 0, t', lsemFuelMemF_of_steps _ _ hn' (halted_common hB ht hr) 0, hr⟩
 
 /-- **The end states of the two runs agree on the registers outside the common names, the
     arrays and the word memory.** -/
 theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
-    (hT : T f = some pr) {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hT : T f = some pr) (hwo : pr.WordOnly) {args : List String} {res fn : String}
+    {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
@@ -1876,37 +1880,38 @@ theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
-  obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT hB hf hcg hcd h0 hrun
+  obtain ⟨fuel', t', h', hr⟩ := commonCalls_run hT hwo hB hf hcg hcd h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
 
 /-- **The rewriting of a checked body onto common names preserves halting runs.** Let `f`
-    have a summary in `T`, the body `B` pass `commonFreshB`, and `B'` be its rewriting onto
+    have a summary on words in `T`, the body `B` pass `commonFreshB`, and `B'` be its rewriting onto
     `args` and `res`. A halting run of the x86 instruction set with procedures on `B` from
     a state at the counter `0` to `t` is matched by a halting run on `B'` from the same
     state to a state that is `t` up to the registers `res :: args` and the counter, which
     is at the image of the counter of `t`. -/
 theorem run_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hwo : pr.WordOnly) {args : List String} {res fn : String} {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       OffRel (res :: args) (expPos args.length B) t t' :=
-  commonCalls_run hT hB hf
+  commonCalls_run hT hwo hB hf
     (fun _ hi hc hs => commonCongrB_offCongr (commonFreshB_congr hf) hi hc hs)
     (fun _ _ _ hi => commonCongrB_condCongr (commonFreshB_congr hf) hi) h0 hrun
 
 /-- **The end states of the two runs of a checked body agree on the registers outside the
     common names, the arrays and the word memory.** -/
 theorem obs_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary}
-    (hT : T f = some pr) {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hT : T f = some pr) (hwo : pr.WordOnly) {args : List String} {res fn : String}
+    {B B' : List LinstrRM}
     (hB : commonCalls? f args res B = some B') (hf : commonFreshB args res B = true)
     {outs : List String} (ho : ∀ r ∈ outs, r ∉ res :: args)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' := by
-  obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT hB hf h0 hrun
+  obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT hwo hB hf h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
 
 /-! ## 12. A halting run of a cut program is a segment of the body -/
@@ -2323,7 +2328,8 @@ theorem Glue.goto {T : ProcTable} {P : LprogM} {p : Nat} {u v : LstateMF}
     funext o
     cases o <;> rfl
   unfold procStep at hstep ⊢
-  rw [he]
+  rw [argsRead_congr (b := u.prog.base) (b' := (Ascent.IsaCfg.goto u k).prog.base) pr.arrArgs
+    rfl 0 srcs fun o _ => congrFun he o]
   split at hstep
   · rw [if_pos (by assumption)]
     obtain ⟨vs, hvs, hstep⟩ := Option.bind_eq_some_iff.mp hstep

@@ -48,8 +48,8 @@ every other instruction are those of `I`.
 
 A call of a separately provided procedure is, at this level, one instruction: the shadow
 `callShadow dst f srcs`, an `Lopn` with the mnemonic `"CALL:" ++ f`. A table `ProcTable`
-gives a summary `ProcSummary` (arity and a partial function on words) to each procedure
-name, and `Isa.withProcs I T` is the record `I` whose step on a shadow instruction of a
+gives a summary `ProcSummary` (arity, a partial function on words and the positions of
+array arguments) to each procedure name, and `Isa.withProcs I T` is the record `I` whose step on a shadow instruction of a
 symbol of `T` is the step `procStep` of its summary. Return addresses and the stack pointer
 do not appear in this step.
 
@@ -71,6 +71,9 @@ do not appear in this step.
   step of the keep marker and the instruction set that carries it.
 * `ProcSummary`, `ProcTable`, `callShadow`, `procStep`, `Isa.withProcs`: procedure
   summaries and the instruction set that carries them.
+* `argsRead`, `argsRead_none`, `argsRead_congr`, `procStep_of_wordOnly`: the argument words
+  of a call, which read word operands from the registers and array operands from the array
+  carrier, and the step of a summary without array arguments.
 * `Isa.withProcs_step_callShadow`, `Isa.withProcs_step_of_none`, `Isa.withProcs_empty`: the
   step of `I.withProcs T` on a shadow instruction and on every other instruction, and the
   instruction set at the table without procedures.
@@ -538,13 +541,22 @@ end Isa
 
 /-! ## Procedure summaries -/
 
-/-- A procedure summary: the number of arguments and a partial function from the argument
-    words to the result word. -/
+/-- A procedure summary: the number of arguments, a partial function from the argument
+    words to the result word, and the positions of the array arguments with their lengths
+    in words. The argument words are the words of the arguments in order, an array argument
+    contributing all its words. -/
 structure ProcSummary where
   /-- The number of arguments. -/
   arity : Nat
   /-- The result word at the argument words; `none` is a refusal. -/
   run : List (BitVec 64) → Option (BitVec 64)
+  /-- The length in words of the array argument at a position; `none` at a word
+      argument. -/
+  arrArgs : Nat → Option Nat := fun _ => none
+
+/-- A summary whose every argument is a word. -/
+def ProcSummary.WordOnly (pr : ProcSummary) : Prop :=
+  pr.arrArgs = fun _ => none
 
 /-- A table of procedure summaries by symbol name. -/
 abbrev ProcTable : Type := String → Option ProcSummary
@@ -592,16 +604,88 @@ theorem procCall?_callShadow (T : ProcTable) (dst f : String) (srcs : List LOper
 def retWord (dst : String) (r : BitVec 64) (s : LstateMF) : LstateMF :=
   { s with prog := { s.prog with base := (s.prog.base.setReg dst r).nextPc } }
 
+/-- The words of the operand `o` at the argument position `i`, for the array positions
+    `aa`: at a word position the word of the operand, at an array position of length `n`
+    the `n` words of the array carrier of the register name of the operand. -/
+def argRead (aa : Nat → Option Nat) (b : LstateM) (i : Nat) (o : LOperand) :
+    Option (List (BitVec 64)) :=
+  match aa i with
+  | none => (evalOperandN b.reg 64 o).map fun v => [v]
+  | some n =>
+      match o with
+      | .reg A => (b.getArr A 64 n).map List.ofFn
+      | _ => none
+
+/-- The argument words of the operands `srcs` from the argument position `i`, for the array
+    positions `aa`: the words of each operand (`argRead`), in order. -/
+def argsRead (aa : Nat → Option Nat) (b : LstateM) : Nat → List LOperand →
+    Option (List (BitVec 64))
+  | _, [] => some []
+  | i, o :: os => (argRead aa b i o).bind fun v => (argsRead aa b (i + 1) os).map (v ++ ·)
+
+/-- **Without array positions the argument words are the words of the operands.** -/
+theorem argsRead_none (b : LstateM) :
+    ∀ (i : Nat) (srcs : List LOperand),
+      argsRead (fun _ => none) b i srcs = srcs.mapM (evalOperandN b.reg 64)
+  | _, [] => rfl
+  | i, o :: os => by
+      rw [argsRead, List.mapM_cons, argsRead_none b (i + 1) os]
+      simp only [argRead]
+      cases evalOperandN b.reg 64 o <;> cases os.mapM (evalOperandN b.reg 64) <;> rfl
+
+/-- **The argument words read only the operand values and the array carrier.** -/
+theorem argsRead_congr (aa : Nat → Option Nat) {b b' : LstateM}
+    (hla : b'.larr = b.larr) :
+    ∀ (i : Nat) (srcs : List LOperand),
+      (∀ o ∈ srcs, evalOperandN b'.reg 64 o = evalOperandN b.reg 64 o) →
+      argsRead aa b' i srcs = argsRead aa b i srcs
+  | _, [], _ => rfl
+  | i, o :: os, h => by
+      have ho : argRead aa b' i o = argRead aa b i o := by
+        unfold argRead
+        split
+        · rw [h o (List.mem_cons_self ..)]
+        · split
+          · unfold LstateM.getArr
+            rw [hla]
+          · rfl
+      rw [argsRead, argsRead, ho,
+        argsRead_congr aa hla (i + 1) os fun o' ho' => h o' (List.mem_cons_of_mem _ ho')]
+
+/-- The argument words of register operands at two states that agree on the registers and
+    on the array carrier are equal. -/
+theorem argsRead_regs_congr (aa : Nat → Option Nat) {b b' : LstateM}
+    (hla : b'.larr = b.larr) (i : Nat) {xs : List String}
+    (h : ∀ x ∈ xs, b'.reg.lvm x = b.reg.lvm x) :
+    argsRead aa b' i (xs.map LOperand.reg) = argsRead aa b i (xs.map LOperand.reg) := by
+  refine argsRead_congr aa hla i _ fun o ho => ?_
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.mp ho
+  simp only [evalOperandN]
+  unfold LstateN.getW
+  rw [h x hx]
+
 /-- **The step of a procedure summary** on the operands `srcs` with the destination `dst`:
-    read the operands as words, apply the function of the summary and write the result to
-    `dst`, advancing the program counter. A number of operands other than the arity, an
-    unreadable operand and a refusal of the function have no step. -/
+    read the argument words of the operands (`argsRead` at the array positions of the
+    summary), apply the function of the summary and write the result to `dst`, advancing
+    the program counter. A number of operands other than the arity, an unreadable operand
+    and a refusal of the function have no step. -/
 def procStep (pr : ProcSummary) (dst : String) (srcs : List LOperand) (s : LstateMF) :
     Option LstateMF :=
   if srcs.length = pr.arity then
-    (srcs.mapM (evalOperandN s.prog.base.reg 64)).bind fun vs =>
+    (argsRead pr.arrArgs s.prog.base 0 srcs).bind fun vs =>
       (pr.run vs).map fun r => retWord dst r s
   else none
+
+/-- **The step of a summary on words** reads the operands as words. -/
+theorem procStep_of_wordOnly {pr : ProcSummary} (h : pr.WordOnly) (dst : String)
+    (srcs : List LOperand) (s : LstateMF) :
+    procStep pr dst srcs s =
+      if srcs.length = pr.arity then
+        (srcs.mapM (evalOperandN s.prog.base.reg 64)).bind fun vs =>
+          (pr.run vs).map fun r => retWord dst r s
+      else none := by
+  unfold procStep
+  rw [h, argsRead_none]
 
 namespace Isa
 
