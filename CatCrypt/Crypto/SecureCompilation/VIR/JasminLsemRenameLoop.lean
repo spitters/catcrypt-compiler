@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 
 @[expose] public section
 
@@ -33,8 +34,9 @@ renamed body into a state related by the renaming.
   other register, the arrays, the word memory and the flags.
 * `renOf_of_not_mem`, `ctlOK_renRM`: the renaming off the sources, and the covered
   instructions under a renaming.
-* `lsemFuelMemF_seg_fuel`: a halting run through a straight segment at the program counter
-  spends at least its length in fuel.
+* `lsemFuelMemF_seg_fuel`, `lsemFuelMemF_seg_fuel_calls`: a halting run through a straight
+  segment at the program counter spends at least its length in fuel, at the flag machine and
+  at every instruction set whose steps beyond `x86Isa` are local calls (`Isa.CallLocal`).
 * `renameLoop_sim`: the simulation of `pre ++ loop` by the renamed body.
 * `shiftS_getArr`, `shiftS_getW`, `renameLoop_getArr`: the array result of `pre ++ loop` read
   back at the renamed name in the final state of the renamed body.
@@ -53,6 +55,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer (renRM)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa retWord)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
 /-! ## 1. The copies -/
 
@@ -143,13 +147,15 @@ theorem movesState_target (ps : List (String × String))
 
 /-! ## 2. Fuel through a straight segment -/
 
-/-- A halting run that starts at a straight segment of `Lopn` instructions spends at least the
-    length of the segment in fuel. -/
-theorem lsemFuelMemF_seg_fuel (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
+/-- A halting run of an instruction set whose steps beyond `x86Isa` are local calls, started at
+    a straight segment of `Lopn` instructions, spends at least the length of the segment in
+    fuel. -/
+theorem lsemFuelMemF_seg_fuel_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hcl : I.CallLocal x86Isa aa) (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
     ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (k : Nat) (t : LstateMF),
       (∀ i ∈ seg, IsLopn i) →
       (∀ j, j < seg.length → P.body[b0.lpc + j]? = seg[j]?) →
-      lsemFuelMemF P k { prog := { base := b0, lfn := fn }, zf := zf } = some t →
+      I.lsemFuelMemF P k { prog := { base := b0, lfn := fn }, zf := zf } = some t →
       seg.length ≤ k := by
   intro seg
   induction seg with
@@ -160,24 +166,47 @@ theorem lsemFuelMemF_seg_fuel (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
         unfold findInstrMem
         rw [if_pos hfn]
         simpa using hpos 0 (by simp)
-      cases k with
-      | zero => simp [lsemFuelMemF, hfetch] at h
-      | succ k =>
-          rw [lsemFuelMemF, hfetch] at h
-          simp only at h
-          rw [evalInstrPMemF_isLopn P i _ (hl i List.mem_cons_self)] at h
+      have hstep : ∀ u, I.step P i { prog := { base := b0, lfn := fn }, zf := zf } = some u →
+          ∃ b1 z1, u = { prog := { base := b1, lfn := fn }, zf := z1 } ∧ b1.lpc = b0.lpc + 1 := by
+        intro u hu
+        rcases hcl P i _ u hu with hx | ⟨dst, f, srcs, r, -, rfl, -⟩
+        · change evalInstrPMemF P i _ = some u at hx
+          rw [evalInstrPMemF_isLopn P i _ (hl i List.mem_cons_self)] at hx
           cases hb : fstepF i b0 zf with
-          | none => simp [hb] at h
+          | none => simp [hb] at hx
           | some bz =>
               obtain ⟨b1, z1⟩ := bz
-              simp only [hb, Option.map_some] at h
-              have hpc := fstepF_lpc_succ _ _ _ _ _ hb
+              simp only [hb, Option.map_some, Option.some.injEq] at hx
+              exact ⟨b1, z1, hx.symm, fstepF_lpc_succ _ _ _ _ _ hb⟩
+        · refine ⟨(b0.setReg dst r).nextPc, zf, rfl, ?_⟩
+          simp [LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc, LstateN.setReg]
+      cases k with
+      | zero => simp [Isa.lsemFuelMemF, hfetch] at h
+      | succ k =>
+          rw [Isa.lsemFuelMemF, hfetch] at h
+          simp only at h
+          cases hu : I.step P i { prog := { base := b0, lfn := fn }, zf := zf } with
+          | none => simp [hu] at h
+          | some u =>
+              simp only [hu] at h
+              obtain ⟨b1, z1, rfl, hpc⟩ := hstep u hu
               have := ih b1 z1 k t (fun j hj => hl j (List.mem_cons_of_mem _ hj))
                 (fun j hj => by
                   rw [hpc, Nat.add_assoc, Nat.add_comm 1 j]
                   simpa using hpos (j + 1) (by simp; omega)) h
               simp only [List.length_cons]
               omega
+
+/-- A halting run that starts at a straight segment of `Lopn` instructions spends at least the
+    length of the segment in fuel. -/
+theorem lsemFuelMemF_seg_fuel (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
+    ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (k : Nat) (t : LstateMF),
+      (∀ i ∈ seg, IsLopn i) →
+      (∀ j, j < seg.length → P.body[b0.lpc + j]? = seg[j]?) →
+      lsemFuelMemF P k { prog := { base := b0, lfn := fn }, zf := zf } = some t →
+      seg.length ≤ k := by
+  rw [← x86Isa_lsemFuelMemF]
+  exact lsemFuelMemF_seg_fuel_calls (Isa.CallLocal.refl x86Isa (fun _ _ => none)) P fn hfn
 
 /-! ## 3. The renamed loop -/
 

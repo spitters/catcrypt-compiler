@@ -48,6 +48,11 @@ check of its kind against the names live after it.
 * `lsemFuelMemF_coalesce`: a halting run of an accepted body is matched, with the same
   fuel, by a halting run of the coalesced body `body.map (renArr σ)` from a related state,
   into a state related on `obs`.
+* `renArr_callShadow`, `coInstrB_callShadow`, `step_coalesce_calls`,
+  `lsemFuelMemF_coalesce_calls`: the same matching at an instruction set `I` with
+  `x86Isa.StepLe I` whose further steps are local calls on words (`Isa.CallLocal`); the
+  renaming keeps a shadow instruction of a call, and `lsemFuelMemF_coalesce` is the
+  instance at `x86Isa`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
@@ -64,6 +69,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix (CtlOK)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (lsemStepMem_of_carryArgs
   lsemStepMem_of_wideArgs)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (arrReads arrWrite CoRel)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow retWord argsRead_none
+  loadStruct?_callShadow storeStruct?_callShadow)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
 /-! ## 1. The check -/
 
@@ -726,21 +734,92 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
   | Ligoto _ => simp at hc
   | LstoreLabel _ _ => simp at hc
 
-/-! ## 4. The run -/
+/-! ## 5. The step of a call shadow -/
 
-/-- **The coalesced body.** For a body accepted by `coCfgB σ body L obs`, a halting run of
-    the flag machine on `body`, from a state `s` of the function `fn` at a position at most
-    `body.length`, is matched with the same fuel by a halting run on the coalesced body
-    `body.map (renArr σ)` from every state `s'` that has the registers, word memory, flags
-    and function name of `s` and whose arrays agree with those of `s` through `σ` on the
-    names `L` gives the position of `s`. The final states have equal registers, word memory
-    and flags, and their arrays agree through `σ` on `obs`. -/
-theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → List String}
-    {obs : List String} (hc : coCfgB σ body L obs = true) :
+/-- The renaming of array positions keeps a shadow instruction of a call. -/
+theorem renArr_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
+    renArr σ (callShadow dst f srcs, tag) = (callShadow dst f srcs, tag) := by
+  unfold renArr
+  cases tag <;> simp only [renLoad_of_none (loadStruct?_callShadow dst f srcs),
+    renStore_of_none (storeStruct?_callShadow dst f srcs)]
+
+/-- A shadow instruction of a call accepted by `coInstrB` at `k` keeps every array name live
+    after it live before it. -/
+theorem coInstrB_callShadow {body : List LinstrRM} {L : Nat → List String} {k : Nat}
+    {dst f : String} {srcs : List LOperand} {tag : MemTag}
+    (hc : coInstrB σ body L k (callShadow dst f srcs, tag) = true) :
+    ∀ r ∈ L (k + 1), r ∈ L k := by
+  have hw : arrWrite (callShadow dst f srcs, tag) = none := by
+    cases tag <;> simp [arrWrite, storeStruct?_callShadow]
+  unfold callShadow at hc hw
+  have hfil : ∀ r ∈ L (k + 1), r ∈ arrReads (LinstrR.Lopn [.reg dst] ("CALL:" ++ f) srcs, tag)
+      ++ (L (k + 1)).filter fun r =>
+        some r != arrWrite (LinstrR.Lopn [.reg dst] ("CALL:" ++ f) srcs, tag) :=
+    fun r hr => List.mem_append_right _ (List.mem_filter.mpr ⟨hr, by rw [hw]; simp⟩)
+  unfold coInstrB at hc
+  split at hc
+  · simp only [Bool.and_eq_true] at hc
+    exact fun r hr => subB_spec hc.2 r (hfil r hr)
+  split at hc
+  · exact subB_spec hc
+  split at hc
+  · simp only [Bool.and_eq_true] at hc
+    exact subB_spec hc.1
+  dsimp only at hc
+  split at hc
+  · exact subB_spec hc
+  · simp only [Bool.and_eq_true] at hc
+    exact fun r hr => subB_spec hc.2 r (hfil r hr)
+
+/-- **One step of a coalesced instruction at an instruction set with local calls.** The
+    statement of `evalInstrPMemF_coalesce` for the step of an instruction set `I` whose steps
+    contain those of `x86Isa` and whose further steps are local calls on words. -/
+theorem step_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
+    {L : Nat → List String} {i : LinstrRM} {s s' t : LstateMF}
+    (hc : coInstrB σ body L s.prog.base.lpc i = true) (hlt : s.prog.base.lpc < body.length)
+    (hR : CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base)
+    (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
+    (h : I.step (singletonProgM fn body) i s = some t) :
+    ∃ t', I.step (singletonProgM fn (body.map (renArr σ))) (renArr σ i) s' = some t'
+      ∧ CoRel σ (L t.prog.base.lpc) t.prog.base t'.prog.base
+      ∧ t'.prog.lfn = t.prog.lfn ∧ t.prog.lfn = s.prog.lfn ∧ t'.zf = t.zf
+      ∧ t.prog.base.lpc ≤ body.length := by
+  rcases hcl _ i s t h with hx | ⟨dst, f, srcs, r, hi, rfl, hfwd⟩
+  · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_coalesce hc hlt hR hfn hz hx
+    exact ⟨t', hle _ _ _ _ ht', hrest⟩
+  · obtain ⟨w, tag⟩ := i
+    simp only at hi
+    subst hi
+    rw [renArr_callShadow]
+    have hpc : (retWord dst r s).prog.base.lpc = s.prog.base.lpc + 1 := by
+      simp [retWord, LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc,
+        LstateN.setReg]
+    refine ⟨retWord dst r s', hfwd _ tag dst srcs s' rfl ?_, ?_, hfn, rfl, hz, ?_⟩
+    · rw [argsRead_none, argsRead_none, hR.reg]
+    · rw [hpc]
+      exact coRel_nextPc (coRel_setReg (hR.mono (coInstrB_callShadow hc)) dst r)
+    · rw [hpc]
+      exact hlt
+
+/-! ## 6. The run -/
+
+/-- **The coalesced body at an instruction set with local calls.** For a body accepted by
+    `coCfgB σ body L obs` and an instruction set `I` whose steps contain those of `x86Isa` and
+    whose further steps are local calls on words, a halting run of `I` on `body`, from a state
+    `s` of the function `fn` at a position at most `body.length`, is matched with the same
+    fuel by a halting run of `I` on the coalesced body `body.map (renArr σ)` from every state
+    `s'` that has the registers, word memory, flags and function name of `s` and whose arrays
+    agree with those of `s` through `σ` on the names `L` gives the position of `s`. The final
+    states have equal registers, word memory and flags, and their arrays agree through `σ` on
+    `obs`. -/
+theorem lsemFuelMemF_coalesce_calls {I : Isa} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
+    {L : Nat → List String} {obs : List String} (hc : coCfgB σ body L obs = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
-      s'.zf = s.zf → lsemFuelMemF (singletonProgM fn body) fuel s = some t →
-      ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'
+      s'.zf = s.zf → I.lsemFuelMemF (singletonProgM fn body) fuel s = some t →
+      ∃ t', I.lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'
         ∧ CoRel σ obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
   have hfetch : ∀ {s s' : LstateMF}, s.prog.lfn = fn →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
@@ -762,37 +841,55 @@ theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → 
   intro fuel
   induction fuel with
   | zero =>
-      intro s s' t hf hle hR hfn hz h
+      intro s s' t hf hpc hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
-      unfold lsemFuelMemF at h ⊢
+      unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
       rw [e2]
       cases hb : body[s.prog.base.lpc]? with
       | none =>
           simp only [hb, Option.map_none, Option.some.injEq] at h ⊢
           subst h
-          exact ⟨_, rfl, hhalt hle hR hb, hz⟩
+          exact ⟨_, rfl, hhalt hpc hR hb, hz⟩
       | some i => simp [hb] at h
   | succ n ih =>
-      intro s s' t hf hle hR hfn hz h
+      intro s s' t hf hpc hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
-      unfold lsemFuelMemF at h ⊢
+      unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
       rw [e2]
       cases hb : body[s.prog.base.lpc]? with
       | none =>
           simp only [hb, Option.map_none, Option.some.injEq] at h ⊢
           subst h
-          exact ⟨_, rfl, hhalt hle hR hb, hz⟩
+          exact ⟨_, rfl, hhalt hpc hR hb, hz⟩
       | some i =>
           simp only [hb, Option.map_some] at h ⊢
-          cases he : evalInstrPMemF (singletonProgM fn body) i s with
+          cases he : I.step (singletonProgM fn body) i s with
           | none => simp [he] at h
           | some u =>
               simp only [he] at h
-              obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ := evalInstrPMemF_coalesce
+              obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ := step_coalesce_calls hle hcl
                 (coCfgB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1 hR hfn hz he
               simp only [hu']
               exact ih (hfs.trans hf) hleu hRu hfu hzu h
+
+/-- **The coalesced body.** For a body accepted by `coCfgB σ body L obs`, a halting run of
+    the flag machine on `body`, from a state `s` of the function `fn` at a position at most
+    `body.length`, is matched with the same fuel by a halting run on the coalesced body
+    `body.map (renArr σ)` from every state `s'` that has the registers, word memory, flags
+    and function name of `s` and whose arrays agree with those of `s` through `σ` on the
+    names `L` gives the position of `s`. The final states have equal registers, word memory
+    and flags, and their arrays agree through `σ` on `obs`. -/
+theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → List String}
+    {obs : List String} (hc : coCfgB σ body L obs = true) :
+    ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
+      CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
+      s'.zf = s.zf → lsemFuelMemF (singletonProgM fn body) fuel s = some t →
+      ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'
+        ∧ CoRel σ obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
+  rw [← x86Isa_lsemFuelMemF]
+  exact lsemFuelMemF_coalesce_calls (Isa.StepLe.refl x86Isa)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) hc
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg

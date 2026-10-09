@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 
 @[expose] public section
 
@@ -39,6 +40,11 @@ stack slot `k.N` is a register name like any other.
   counter, the related register names and array names; reads lie in the sets,
   fall-through edges satisfy `Keeps`, and jump edges shrink the sets. Under a
   certificate every halting run is matched with the same fuel.
+  `lsemFuelMemF_live_calls` is the same matching at an instruction set `I` with
+  `x86Isa.StepLe I` whose further steps are local calls on words (`Isa.CallLocal`):
+  a shadow instruction of a call writes its destination and no array
+  (`regDefs_callShadow`, `arrDefs_callShadow`), and its renamed operands read the
+  same words. `lsemFuelMemF_live` is the instance at `x86Isa`.
 * **§7 live ranges.** `liveCert_of_ranges` builds a certificate from one interval
   per name (`RangeCert`): a write lies in the interval of its name, a name that
   is not an input starts at a write, and names whose intervals share a program
@@ -78,6 +84,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill (physRename)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference
   (LiveAt physRename_hinj_of_liveAt)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow callMnem_ne retWord
+  argsRead_none storeStruct?_callShadow)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
 /-! ## 1. Read names, written names and the write condition -/
 
@@ -1062,16 +1071,96 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
             omega
 
 
-/-- **The flag machine under a liveness certificate.** For a program `P`, a
-    renaming `σ` and a program `P'` with a certificate from `k0` on, every halting
-    run of `P` from a state at program counter `k ≥ k0` is matched, with the same
-    fuel, by a halting run of `P'` from a state related on the sets at `k`, into a
-    state related on the sets at the final program counter. -/
-theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
+theorem cmpArgs?_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
+    cmpArgs? (callShadow dst f srcs, tag) = none := by
+  unfold cmpArgs? callShadow
+  split
+  · next heq =>
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      exact if_neg (callMnem_ne (by decide))
+  · rfl
+
+/-- A shadow instruction of a call writes its destination register. -/
+theorem regDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
+    regDefs (callShadow dst f srcs, tag) = [dst] := by
+  have hs : storeHit? (callShadow dst f srcs, tag) = none := by
+    cases tag <;> simp [storeHit?, storeStruct?_callShadow]
+  unfold regDefs memRegDefs
+  rw [cmpArgs?_callShadow, hs]
+  simp only [Option.isSome_none, Bool.false_eq_true, if_false, ite_self]
+  rfl
+
+/-- A shadow instruction of a call writes no array. -/
+theorem arrDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
+    arrDefs (callShadow dst f srcs, tag) = [] := by
+  have hs : storeHit? (callShadow dst f srcs, tag) = none := by
+    cases tag <;> simp [storeHit?, storeStruct?_callShadow]
+  unfold arrDefs memArrDefs
+  rw [cmpArgs?_callShadow, hs]
+  simp only [Option.isSome_none, Bool.false_eq_true, Option.toList_none, ite_self]
+
+/-- The renamed operands read, as words, the words of the operands. -/
+theorem mapM_evalOperandN_ren {s s' : LstateN} (h : RelN σ N s s') :
+    ∀ (srcs : List LOperand), (∀ o ∈ srcs, ∀ n ∈ opNames o, N n) →
+      (srcs.map (renOperand σ)).mapM (evalOperandN s' 64) = srcs.mapM (evalOperandN s 64)
+  | [], _ => rfl
+  | o :: os, ho => by
+      rw [List.map_cons, List.mapM_cons, List.mapM_cons,
+        h.evalOperandN 64 o (ho o List.mem_cons_self),
+        mapM_evalOperandN_ren h os fun o' h' => ho o' (List.mem_cons_of_mem _ h')]
+
+/-- **The step under a liveness certificate at an instruction set with local calls.** The
+    statement of `evalInstrPMemF_live` for the step of an instruction set `I` whose steps
+    contain those of `x86Isa` and whose further steps are local calls on words. -/
+theorem step_live_calls {I : Isa} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
+    {s s' t : LstateMF} (hk : k0 ≤ s.prog.base.lpc) (hget : P.body[s.prog.base.lpc]? = some i)
+    (hR : RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s')
+    (h : I.step P i s = some t) :
+    ∃ t', I.step P' (renRM σ i) s' = some t'
+      ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' ∧ k0 ≤ t.prog.base.lpc := by
+  rcases hcl P i s t h with hx | ⟨dst, f, srcs, r, hi, rfl, hfwd⟩
+  · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_live hC i hk hget hR hx
+    exact ⟨t', hle _ _ _ _ ht', hrest⟩
+  · obtain ⟨w, tag⟩ := i
+    simp only at hi
+    subst hi
+    have hu := hC.uses _ _ hk hget
+    have hKr := hC.fallR _ _ hk hget
+    have hKa := hC.fallA _ _ hk hget
+    rw [regDefs_callShadow] at hKr
+    rw [arrDefs_callShadow] at hKa
+    have hpc : (retWord dst r s).prog.base.lpc = s.prog.base.lpc + 1 := by
+      simp [retWord, LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc,
+        LstateN.setReg]
+    have hren : renRM σ (callShadow dst f srcs, tag)
+        = (callShadow (σ dst) f (srcs.map (renOperand σ)), tag) := rfl
+    rw [hren]
+    obtain ⟨⟨hRn, hRa, hRm⟩, hfn, hz, hcf, hof⟩ := hR
+    refine ⟨retWord (σ dst) r s', hfwd P' tag (σ dst) _ s' (List.length_map _) ?_, ?_, ?_⟩
+    · rw [argsRead_none, argsRead_none]
+      exact mapM_evalOperandN_ren hRn srcs fun o ho n hn =>
+        hu n (List.mem_flatMap.mpr ⟨o, ho, hn⟩)
+    · rw [hpc]
+      exact ⟨⟨relN_setReg_keeps hRn hKr r, fun a ha => hRa a (hKa.sub a ha), hRm⟩, hfn, hz,
+        hcf, hof⟩
+    · rw [hpc]
+      exact Nat.le_succ_of_le hk
+
+/-- **The flag machine under a liveness certificate, at an instruction set with local
+    calls.** For a program `P`, a renaming `σ`, a program `P'` with a certificate from `k0`
+    on and an instruction set `I` whose steps contain those of `x86Isa` and whose further
+    steps are local calls on words, every halting run of `I` on `P` from a state at program
+    counter `k ≥ k0` is matched, with the same fuel, by a halting run of `I` on `P'` from a
+    state related on the sets at `k`, into a state related on the sets at the final program
+    counter. -/
+theorem lsemFuelMemF_live_calls {I : Isa} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) :
     ∀ (fuel : Nat) {s s' t : LstateMF},
       RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s' → k0 ≤ s.prog.base.lpc →
-      lsemFuelMemF P fuel s = some t →
-      ∃ t', lsemFuelMemF P' fuel s' = some t'
+      I.lsemFuelMemF P fuel s = some t →
+      ∃ t', I.lsemFuelMemF P' fuel s' = some t'
         ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' := by
   have hfetch : ∀ {s s' : LstateMF},
       RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s' → k0 ≤ s.prog.base.lpc →
@@ -1087,14 +1176,14 @@ theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
   induction fuel with
   | zero =>
       intro s s' t hR hk h
-      unfold lsemFuelMemF at h ⊢
+      unfold Isa.lsemFuelMemF at h ⊢
       rw [hfetch hR hk]
       cases hf : findInstrMem P s.prog with
       | none => simp only [hf] at h ⊢; cases h; exact ⟨_, rfl, hR⟩
       | some i => simp [hf] at h
   | succ n ih =>
       intro s s' t hR hk h
-      unfold lsemFuelMemF at h ⊢
+      unfold Isa.lsemFuelMemF at h ⊢
       rw [hfetch hR hk]
       cases hf : findInstrMem P s.prog with
       | none => simp only [hf] at h ⊢; cases h; exact ⟨_, rfl, hR⟩
@@ -1105,13 +1194,28 @@ theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
             split at hf
             · exact hf
             · simp at hf
-          cases he : evalInstrPMemF P i s with
+          cases he : I.step P i s with
           | none => simp [he] at h
           | some u =>
               simp only [he] at h
-              obtain ⟨u', hu', hRu, hku⟩ := evalInstrPMemF_live hC i hk hget hR he
+              obtain ⟨u', hu', hRu, hku⟩ := step_live_calls hle hcl hC i hk hget hR he
               simp only [hu']
               exact ih hRu hku h
+
+/-- **The flag machine under a liveness certificate.** For a program `P`, a
+    renaming `σ` and a program `P'` with a certificate from `k0` on, every halting
+    run of `P` from a state at program counter `k ≥ k0` is matched, with the same
+    fuel, by a halting run of `P'` from a state related on the sets at `k`, into a
+    state related on the sets at the final program counter. -/
+theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
+    ∀ (fuel : Nat) {s s' t : LstateMF},
+      RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s' → k0 ≤ s.prog.base.lpc →
+      lsemFuelMemF P fuel s = some t →
+      ∃ t', lsemFuelMemF P' fuel s' = some t'
+        ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' := by
+  rw [← x86Isa_lsemFuelMemF]
+  exact lsemFuelMemF_live_calls (Isa.StepLe.refl x86Isa)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) hC
 
 /-! ## 7. Certificates from live ranges
 

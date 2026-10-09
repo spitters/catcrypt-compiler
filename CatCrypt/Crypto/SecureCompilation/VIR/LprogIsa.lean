@@ -80,6 +80,13 @@ do not appear in this step.
 * `Isa.StepLe`, `Isa.RefusesProcs`, `Isa.withProcs_stepLe`: every step of an instruction
   set that refuses the shadow instructions of `T` is a step of the set with the summaries
   of `T`.
+* `callMnem_ne`, `eq_callShadow_of_shadowCall?`, `loadStruct?_callShadow`,
+  `storeStruct?_callShadow`: the shape of a shadow instruction of a call.
+* `Isa.CallLocal`, `Isa.CallLocal.step_eq`, `Isa.withProcs_callLocal`,
+  `Isa.withProcs_callLocal_wordOnly`: the steps of an instruction set beyond another are
+  shadow instructions whose result word depends on the argument words only and which write
+  only the destination and the program counter; off the shadow instructions the two steps
+  agree; the instruction set with the summaries of a table is such an extension.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -583,6 +590,53 @@ theorem shadowCall?_callShadow (dst f : String) (srcs : List LOperand) :
   rw [String.toList_append]
   simp [List.isPrefixOf, String.ofList_toList]
 
+/-- The mnemonic of a shadow instruction is no mnemonic without the prefix `"CALL:"`. -/
+theorem callMnem_ne {f x : String} (hx : "CALL:".toList.isPrefixOf x.toList = false) :
+    "CALL:" ++ f ≠ x := by
+  rintro rfl
+  rw [String.toList_append] at hx
+  simp [List.isPrefixOf] at hx
+
+/-- An instruction is the shadow instruction of a call exactly when `shadowCall?` reads it. -/
+theorem eq_callShadow_of_shadowCall? {i : LinstrR} {dst f : String} {srcs : List LOperand}
+    (h : shadowCall? i = some (dst, f, srcs)) : i = callShadow dst f srcs := by
+  unfold shadowCall? at h
+  split at h
+  · rename_i dst' opn srcs'
+    split at h
+    · rename_i hp
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      have hpre := (List.prefix_iff_eq_append).mp (List.isPrefixOf_iff_prefix.mp hp)
+      simp only [callShadow, LinstrR.Lopn.injEq, true_and, and_true]
+      apply String.toList_injective
+      rw [String.toList_append]
+      simpa using hpre.symm
+    · cases h
+  · cases h
+
+/-- A shadow instruction of a call is no runtime-indexed load. -/
+theorem loadStruct?_callShadow (dst f : String) (srcs : List LOperand) :
+    loadStruct? (callShadow dst f srcs) = none := by
+  unfold loadStruct? callShadow
+  split
+  · next heq =>
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      exact if_neg (callMnem_ne (by decide))
+  · rfl
+
+/-- A shadow instruction of a call is no runtime-indexed store. -/
+theorem storeStruct?_callShadow (dst f : String) (srcs : List LOperand) :
+    storeStruct? (callShadow dst f srcs) = none := by
+  unfold storeStruct? callShadow
+  split
+  · next heq =>
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      exact if_neg (callMnem_ne (by decide))
+  · rfl
+
 /-- A control instruction is no shadow instruction of a call. -/
 theorem shadowCall?_of_isCtl {i : LinstrR} (h : isCtl i = true) : shadowCall? i = none := by
   cases i <;> simp_all [isCtl, shadowCall?]
@@ -752,6 +806,97 @@ theorem withProcs_stepLe {T : ProcTable} (h : I.RefusesProcs T) : I.StepLe (I.wi
   cases hq : procCall? T i.fst with
   | none => rw [I.withProcs_step_of_none T P i s hq]; exact hs
   | some q => rw [h P i s (by rw [hq]; exact Option.some_ne_none q)] at hs; cases hs
+
+/-- **The steps of `I` beyond `J` are local calls**, with the array positions `aa f` of each
+    symbol `f`. Every step of `I` is a step of `J` to the same state, or a step of a shadow
+    instruction `callShadow dst f srcs` that writes a word `r` to `dst` and advances the
+    program counter (`retWord dst r`), and that `I` takes, to the word `r` again, at every
+    program, tag, destination and state on every list of as many operands whose argument
+    words (`argsRead (aa f)`) are those of `srcs`. The result word thus depends on the
+    operand values and on the array carrier at the array positions only, and the step writes
+    only the destination and the program counter. -/
+def CallLocal (J : Isa) (aa : String → Nat → Option Nat) : Prop :=
+  ∀ (P : LprogM) (i : LinstrRM) (s t : LstateMF), I.step P i s = some t →
+    J.step P i s = some t ∨
+      ∃ (dst f : String) (srcs : List LOperand) (r : BitVec 64),
+        i.1 = callShadow dst f srcs ∧ t = retWord dst r s ∧
+        ∀ (P' : LprogM) (tag : MemTag) (dst' : String) (srcs' : List LOperand) (s' : LstateMF),
+          srcs'.length = srcs.length →
+          argsRead (aa f) s'.prog.base 0 srcs' = argsRead (aa f) s.prog.base 0 srcs →
+          I.step P' (callShadow dst' f srcs', tag) s' = some (retWord dst' r s')
+
+/-- Every instruction set is call-local over itself. -/
+theorem CallLocal.refl (aa : String → Nat → Option Nat) : I.CallLocal I aa :=
+  fun _ _ _ _ h => Or.inl h
+
+/-- **Off the shadow instructions the steps agree.** When every step of `J` is a step of `I`
+    and the steps of `I` beyond `J` are local calls, the step of `I` at an instruction that is
+    no shadow instruction of a call is the step of `J`. -/
+theorem CallLocal.step_eq {J : Isa} {aa : String → Nat → Option Nat} (hle : J.StepLe I)
+    (hcl : I.CallLocal J aa) (P : LprogM) {i : LinstrRM} (hi : shadowCall? i.1 = none)
+    (s : LstateMF) : I.step P i s = J.step P i s := by
+  cases hI : I.step P i s with
+  | some t =>
+      rcases hcl P i s t hI with h | ⟨dst, f, srcs, r, hsh, -, -⟩
+      · exact h.symm
+      · rw [hsh, shadowCall?_callShadow] at hi
+        cases hi
+  | none =>
+      cases hJ : J.step P i s with
+      | none => rfl
+      | some t => rw [hle P i s t hJ] at hI; cases hI
+
+/-- The array positions of the summaries of a table, by symbol; no array position at a
+    symbol without a summary. -/
+def procArrArgs (T : ProcTable) (f : String) : Nat → Option Nat :=
+  match T f with
+  | some pr => pr.arrArgs
+  | none => fun _ => none
+
+/-- **The steps of `I.withProcs T` beyond `I` are local calls** at the array positions of the
+    summaries. -/
+theorem withProcs_callLocal (T : ProcTable) : (I.withProcs T).CallLocal I (procArrArgs T) := by
+  intro P i s t h
+  cases hq : procCall? T i.1 with
+  | none => rw [I.withProcs_step_of_none T P i s hq] at h; exact Or.inl h
+  | some q =>
+      obtain ⟨pr, dst, srcs⟩ := q
+      right
+      simp only [procCall?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨⟨dst₀, f, srcs₀⟩, hsh, pr', hf, hpr⟩ := hq
+      simp only [Prod.mk.injEq] at hpr
+      obtain ⟨rfl, rfl, rfl⟩ := hpr
+      have hi := eq_callShadow_of_shadowCall? hsh
+      have hstep : (I.withProcs T).step P i s = procStep pr' dst₀ srcs₀ s := by
+        obtain ⟨w, tag⟩ := i
+        simp only at hi
+        subst hi
+        exact I.withProcs_step_callShadow T hf P dst₀ srcs₀ tag s
+      rw [hstep] at h
+      unfold procStep at h
+      split at h
+      · rename_i hlen
+        obtain ⟨vs, hvs, hrun⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp hrun
+        have haa : procArrArgs T f = pr'.arrArgs := by simp only [procArrArgs, hf]
+        refine ⟨dst₀, f, srcs₀, r, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_⟩
+        rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep,
+          if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hr, Option.map_some]
+      · cases h
+
+/-- **At a table of summaries on words, the steps of `I.withProcs T` beyond `I` are local calls
+    on words.** -/
+theorem withProcs_callLocal_wordOnly {T : ProcTable}
+    (hT : ∀ f pr, T f = some pr → pr.WordOnly) :
+    (I.withProcs T).CallLocal I (fun _ _ => none) := by
+  have h : procArrArgs T = fun _ _ => none := by
+    funext f
+    unfold procArrArgs
+    cases hf : T f with
+    | none => rfl
+    | some pr => exact hT f pr hf
+  rw [← h]
+  exact I.withProcs_callLocal T
 
 end Isa
 
