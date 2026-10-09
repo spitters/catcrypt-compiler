@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelImage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalSyntax
 
 @[expose] public section
 
@@ -18,8 +19,9 @@ set_option autoImplicit false
 `VectorizeEmit.vectorizeEmit` on the straight-line scalar program `c`, parses the text it
 returns, computes the block of operations `VecMach.blockOfText` of the parsed program, runs
 the frame check `VecKernelSpec.framedB` at the input length `inLen` and the frame size `F`,
-and checks `F < 2 ^ 31`. It returns the text when every step succeeds, and otherwise the
-error of the vector route or an error naming the step that failed.
+checks `F < 2 ^ 31`, and runs the vector-locality check `VecLocalCheck.vecLocalCheck` on the
+block. It returns the text when every step succeeds, and otherwise the error of the vector
+route or an error naming the step that failed.
 
 A text `emitKernel` returns therefore has a parsed program and a block of operations whose
 callee `VecKernelSpec.kernelRun` meets the signature `VecKernelSpec.kernelSig`
@@ -29,13 +31,14 @@ the postcondition of the signature (`emitKernel_image`).
 
 ## Main definitions
 
-* `emitKernel`: the vector route followed by the parse, the block, the frame check and the
-  bound of the frame size.
+* `emitKernel`: the vector route followed by the parse, the block, the frame check, the
+  bound of the frame size and the vector-locality check.
 
 ## Main results
 
 * `emitKernel_ok`: a text `emitKernel` returns is the text of `vectorizeEmit`, it parses,
   its parsed program has a block and passes the frame check, and `F < 2 ^ 31`.
+* `emitKernel_vecLocal`: the block of a text `emitKernel` returns passes `vecLocalCheck`.
 * `emitKernel_calleeSpec`: the callee of the block of a text `emitKernel` returns meets
   `kernelSig`.
 * `emitKernel_post`: a run of that callee from disjoint regions whose input region holds
@@ -68,8 +71,9 @@ open CatCrypt.Crypto.SecureCompilation.CT
 /-- **The checked emitter of a vector kernel.** The text `vectorizeEmit V` returns for the
     scalar program `c`, returned when it parses, its parsed program has a block of
     operations, the program passes the frame check at the input length `inLen` and the
-    frame size `F`, and `F < 2 ^ 31`. Otherwise the error of `vectorizeEmit`, or an error
-    naming the first of the four checks that failed. -/
+    frame size `F`, `F < 2 ^ 31`, and the block passes the vector-locality check
+    `VecLocalCheck.vecLocalCheck`. Otherwise the error of `vectorizeEmit`, or an error
+    naming the first of the five checks that failed. -/
 def emitKernel (V : VecShape) {Γ : JCtxt} {t : JasminTy} (sym : String)
     (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t) (inLen F : Nat)
     (inBound : Option Nat := none) : Except String String :=
@@ -81,9 +85,12 @@ def emitKernel (V : VecShape) {Γ : JCtxt} {t : JasminTy} (sym : String)
     | .ok (prog, ro) =>
       match blockOfText V.mode ro prog with
       | none => .error s!"emitKernel {sym}: the parsed program has no block of operations"
-      | some _ =>
+      | some ops =>
         if framedB V.mode inLen nOut F 0 prog then
-          if F < 2 ^ 31 then .ok text
+          if F < 2 ^ 31 then
+            if VecLocalCheck.vecLocalCheck ops then .ok text
+            else .error s!"emitKernel {sym}: a vector instruction of the block reads a \
+              vector or mask register no earlier instruction of the block writes"
           else .error s!"emitKernel {sym}: the frame size {F} is not below 2^31"
         else
           .error s!"emitKernel {sym}: the frame check fails at input length {inLen}, \
@@ -115,10 +122,32 @@ theorem emitKernel_ok (h : emitKernel V sym inOffset nOut c inLen F inBound = .o
         · rename_i hfr
           split at h
           · rename_i hF
-            cases h
-            exact ⟨hv, prog, ro, ops, hp, hops, hfr, hF⟩
+            split at h
+            · cases h
+              exact ⟨hv, prog, ro, ops, hp, hops, hfr, hF⟩
+            · cases h
           · cases h
         · cases h
+
+/-- **The block of a text of `emitKernel` passes the vector-locality check.** The text
+    parses to a program whose block of operations `ops` satisfies
+    `VecLocalCheck.vecLocalCheck`. -/
+theorem emitKernel_vecLocal
+    (h : emitKernel V sym inOffset nOut c inLen F inBound = .ok text) :
+    ∃ prog ro ops, parse V.mode text = .ok (prog, ro) ∧
+      blockOfText V.mode ro prog = some ops ∧ VecLocalCheck.vecLocalCheck ops = true := by
+  obtain ⟨hv, prog, ro, ops, hp, hops, -⟩ := emitKernel_ok h
+  refine ⟨prog, ro, ops, hp, hops, ?_⟩
+  unfold emitKernel at h
+  rw [hv] at h
+  simp only [hp, hops] at h
+  split at h
+  · split at h
+    · split at h
+      · assumption
+      · cases h
+    · cases h
+  · cases h
 
 /-! ## 2. The callee contract -/
 

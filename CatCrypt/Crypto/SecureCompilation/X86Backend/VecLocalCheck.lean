@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelMixedLink
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalSyntax
 
 @[expose] public section
 
@@ -16,18 +17,14 @@ set_option autoImplicit false
 
 A block of scalar operations and vector instructions is vector-local when every vector
 register and every mask register that a vector instruction of the block reads is written by
-an earlier instruction of the block. `vecLocalCheck` decides this by a fold over the block
-that keeps the registers written so far. From two entry states with the same scalar part,
-the runs of an accepted block keep the same scalar part and agree on the registers written
-so far; the scalar state and the leakage after the block therefore do not depend on the
-entry vector state (`VecKernelMixedLink.VecLocalOn`, for every precondition).
+an earlier instruction of the block, which the check `vecLocalCheck` of `VecLocalSyntax`
+decides. From two entry states with the same scalar part, the runs of an accepted block
+keep the same scalar part and agree on the registers written so far; the scalar state and
+the leakage after the block therefore do not depend on the entry vector state
+(`VecKernelMixedLink.VecLocalOn`, for every precondition).
 
 ## Main definitions
 
-* `vReadsZ`, `vReadsK`, `vWritesZ`, `vWritesK`: the vector and mask registers a vector
-  instruction reads and writes.
-* `vecLocalCheckFrom`, `vecLocalCheck`: the check over a block, from given sets of written
-  registers and from the empty sets.
 * `VAgree`: two vector states agree on given sets of vector and mask registers.
 
 ## Main results
@@ -39,6 +36,10 @@ entry vector state (`VecKernelMixedLink.VecLocalOn`, for every precondition).
 * `kernelRun_vecLocal_of_check`: the callee `kernelRun` of an accepted block is vector-local.
 * `VecKernelCallee.cpu_link_of_check`: `VecKernelMixedLink.cpu_link` for a spec-carrying
   kernel whose callee is `kernelRun` of an accepted block.
+* `ofVecKernel_vecLocalCheck`: the block of the record of a text `emitKernel` returns
+  passes the check.
+* `ofVecKernel_cpu_link`: `cpu_link_of_check` for the record of a text `emitKernel`
+  returns, with no vector-locality hypothesis.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalCheck
@@ -61,72 +62,7 @@ open CatCrypt.Crypto.SecureCompilation.CT
 
 variable {r : DoitRegime} {m : Mode}
 
-/-! ## 1. The registers of a vector instruction -/
-
-/-- The vector registers a vector instruction reads. `vzeroupper` maps each register to a
-    function of itself and is given no reads. -/
-def vReadsZ : VInstr → List (Fin 32)
-  | .ld _ _ => []
-  | .st src _ => [src]
-  | .op _ _ s2 s1 _ => [s2, s1]
-  | .shi _ _ _ src _ => [src]
-  | .dup _ src _ none => [src]
-  | .dup _ src d (some _) => [src, d]
-  | .mova src _ => [src]
-  | .perm x i _ => [x, i]
-  | .blend _ a b _ => [a, b]
-  | .rol _ _ src _ => [src]
-  | .tern _ _ s3 s2 d => [d, s2, s3]
-  | .ldK _ _ => []
-  | .opK _ _ _ s1 _ => [s1]
-  | .kmov _ => []
-  | .zeroUpper => []
-
-/-- The mask registers a vector instruction reads. -/
-def vReadsK : VInstr → List (Fin 8)
-  | .dup _ _ _ (some k) => [k]
-  | .blend k _ _ _ => [k]
-  | _ => []
-
-/-- The vector register a vector instruction writes. -/
-def vWritesZ : VInstr → List (Fin 32)
-  | .ld _ d => [d]
-  | .op _ _ _ _ d => [d]
-  | .shi _ _ _ _ d => [d]
-  | .dup _ _ d _ => [d]
-  | .mova _ d => [d]
-  | .perm _ _ d => [d]
-  | .blend _ _ _ d => [d]
-  | .rol _ _ _ d => [d]
-  | .tern _ _ _ _ d => [d]
-  | .ldK _ d => [d]
-  | .opK _ _ _ _ d => [d]
-  | _ => []
-
-/-- The mask register a vector instruction writes. -/
-def vWritesK : VInstr → List (Fin 8)
-  | .kmov k => [k]
-  | _ => []
-
-/-! ## 2. The check -/
-
-/-- **Every register a vector instruction of the block reads is written before**, from the
-    vector registers `Z` and the mask registers `K` written so far. Scalar operations are
-    not inspected. -/
-def vecLocalCheckFrom (Z : List (Fin 32)) (K : List (Fin 8)) :
-    List (JInstr 64 ⊕ VInstr) → Bool
-  | [] => true
-  | .inl _ :: ops => vecLocalCheckFrom Z K ops
-  | .inr v :: ops =>
-      (vReadsZ v).all (fun x => decide (x ∈ Z)) && (vReadsK v).all (fun k => decide (k ∈ K)) &&
-        vecLocalCheckFrom (vWritesZ v ++ Z) (vWritesK v ++ K) ops
-
-/-- **Every vector and mask register a vector instruction of the block reads is written
-    earlier in the block.** -/
-def vecLocalCheck (ops : List (JInstr 64 ⊕ VInstr)) : Bool :=
-  vecLocalCheckFrom [] [] ops
-
-/-! ## 3. The simulation -/
+/-! ## 1. The simulation -/
 
 /-- Two vector states agree on the vector registers `Z` and the mask registers `K`. -/
 def VAgree (Z : List (Fin 32)) (K : List (Fin 8)) (v w : VState) : Prop :=
@@ -232,7 +168,7 @@ theorem kernelRun_vecLocal_of_check {ops : List (JInstr 64 ⊕ VInstr)}
   rw [runBlock_zeroUpper_fst, hs',
     ((vecLocalCheck_sound (pre := fun _ => True) hc) s trivial v v₀).1]
 
-/-! ## 4. The link of an accepted kernel -/
+/-! ## 2. The link of an accepted kernel -/
 
 /-- **The vector-local callee of a spec-carrying kernel with an accepted block meets its
     signature**, when the callee of the record is `kernelRun` of its block. -/
@@ -260,5 +196,50 @@ theorem VecKernelCallee.cpu_link_of_check {sig : CalleeSig} (k : VecKernelCallee
   rw [hrun] at h
   exact VecKernelMixedLink.cpu_link hA hF hok hres frameEnc henc hbe
     (kernelRun_vecLocal_of_check hc) h v
+
+/-! ## 3. The link of an emitted kernel -/
+
+section Emitted
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+open CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
+open CatCrypt.Crypto.SecureCompilation.VIR.ComRange (JCtxt)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelEmit
+
+variable {V : VecShape} {Γ : JCtxt} {t : JasminTy} {sym : String} {inOffset : Nat → Nat}
+  {nOut : Nat} {c : Com jasminDialect Γ t} {inLen F : Nat} {inBound : Option Nat}
+  {text : String}
+
+/-- **The block of the record of an emitted kernel passes the vector-locality check.** -/
+theorem ofVecKernel_vecLocalCheck (r : DoitRegime)
+    (h : emitKernel V sym inOffset nOut c inLen F inBound = .ok text) :
+    vecLocalCheck (ofVecKernel r h).ops = true := by
+  obtain ⟨prog, ro, ops, hp, hops, hc⟩ := emitKernel_vecLocal h
+  simp only [ofVecKernel, kernelOps, hp, hops, Option.getD_some]
+  exact hc
+
+/-- **A faithful processor runs a caller linked with an emitted kernel.** Let `emitKernel`
+    return `text`, and let the caller `prog` run from index `0` in `s` to `s'` under the
+    oracle that answers a call to `prog.length` by the callee of `ofVecKernel r h`. Then the
+    processor runs the caller bytes followed by the kernel bytes from `(s, v)` to `(s', v')`,
+    for every entry vector state `v` and some `v'`. -/
+theorem ofVecKernel_cpu_link (r : DoitRegime)
+    (h : emitKernel V sym inOffset nOut c inLen F inBound = .ok text) {A : VecAsm}
+    {cpu : List (BitVec 8) → AState × VState → AState × VState → Prop}
+    (hA : A.Lawful) (hF : A.Faithful r V.mode cpu) (hbe : BlockEncodable A (ofVecKernel r h).ops)
+    (henc : ∀ i, Sum.inl i ∈ (ofVecKernel r h).ops → ItemOK (scalarItem frameEnc i))
+    {items : List Item} (hok : ∀ it ∈ items, ItemOK it) {prog : List RInstr}
+    (hres : ∀ e x tl, resolveAll (layoutAt 0 items ++ ((itemBytes items).length, e, x) :: tl)
+      (layoutAt 0 items) = some prog) {s s' : AState}
+    (hX : HaltsO aMachine (oracleAt prog.length (ofVecKernel r h).run) prog 0 s s')
+    (v : VState) :
+    ∃ v' : VState,
+      cpu (itemBytes items ++ lineBytes A frameEnc (ofVecKernel r h).ops) (s, v) (s', v') :=
+  VecLocalCheck.VecKernelCallee.cpu_link_of_check (ofVecKernel r h) rfl
+    (ofVecKernel_vecLocalCheck r h) hA hF hbe henc hok hres hX v
+
+end Emitted
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalCheck
