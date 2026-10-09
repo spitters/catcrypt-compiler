@@ -273,7 +273,8 @@ theorem refRun_checked_of_domEq {T₀ : ProcTable} {entry : List IdxFact}
 
 /-- **`calleeSegB_soundK` from checks of the segments passed at an agreeing table.** For
     bodies whose shadow instructions are calls of the symbol `f` of `T` on the registers
-    `args` with the destination `res`, if `calleeSegB T₀` accepts and `T₀` agrees with `T`
+    `args` with the destination `res`, where the summary of `f` has no word-array result or
+    `res` is among `args`, if `calleeSegB T₀` accepts and `T₀` agrees with `T`
     on `ref` and `img`, then under `CutCheckSoundI` at `T` every halting run of
     `x86IsaK.withProcs T` on `ref` from a state of `fn` at the counter `0` is matched by a
     halting run on `img` from the same state, the end states agreeing on `outs`, the arrays
@@ -287,10 +288,10 @@ theorem calleeSegB_soundK_of_domEq {T₀ : ProcTable} {f res : String} {args : L
     (hsound : CutCheckSoundI x86IsaK T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img))
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.lpc = 0) (fuel : Nat)
     (hrun : (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn ref) fuel s = some t)
-    (hrw : pr.RetWord := by exact rfl) :
+    (hres : pr.RetWord ∨ res ∈ args := by exact Or.inl rfl) :
     ∃ fuel' t', (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn img) fuel' s = some t'
       ∧ Obs outs t t' :=
   calleeSegB_soundK hT hsr hsi ((calleeSegB_congr hDr hDi).symm.trans h) hsound s t hfn hpc
-    fuel hrun hrw
+    fuel hrun hres
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CallTableCongr
