@@ -9,6 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaDef
 
 @[expose] public section
 
@@ -275,26 +276,32 @@ theorem runStraightF_of_lsemStraightMem (seg : List LinstrRM) (hplain : PlainLop
   rw [hc]
   rfl
 
-/-- **Extended straight-line segment run with continuation fuel.**  The
-    `Lopn ∪ MOV ∪ CMP` extension of `lsemFuelMemF_seg`: an all-`Lopn`
-    segment (reg-copy `MOV`s and flag-`CMP`s allowed) at positions
-    `lpc .. lpc+|seg|-1` executes the extended fold `runStraightF` and
-    continues with `f` fuel. -/
-theorem lsemFuelMemF_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
-    ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat),
+section Calls
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
+
+/-- **A straight segment at an instruction set that contains `x86Isa`.** When the extended
+    fold `runStraightF` runs an all-`Lopn` segment at positions `lpc .. lpc+|seg|-1` to a
+    state, an instruction set `I` whose steps contain those of `x86Isa` runs the segment to the
+    same state and continues with `f` fuel. -/
+theorem lsemFuelMemF_segF_of_some {I : Isa} (hle : x86Isa.StepLe I) (P : LprogM) (fn : String)
+    (hfn : fn = P.lfn) :
+    ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat) (bz : LstateM × Bool),
       (∀ i ∈ seg, IsLopn i) →
       (∀ k, k < seg.length → P.body[b0.lpc + k]? = seg[k]?) →
-      lsemFuelMemF P (seg.length + f) { prog := { base := b0, lfn := fn }, zf := zf }
-        = (runStraightF seg b0 zf).bind
-            (fun bz => lsemFuelMemF P f
-              { prog := { base := bz.1, lfn := fn }, zf := bz.2 }) := by
+      runStraightF seg b0 zf = some bz →
+      I.lsemFuelMemF P (seg.length + f) { prog := { base := b0, lfn := fn }, zf := zf }
+        = I.lsemFuelMemF P f { prog := { base := bz.1, lfn := fn }, zf := bz.2 } := by
   intro seg
   induction seg with
   | nil =>
-      intro b0 zf f _ _
-      simp only [List.length_nil, Nat.zero_add, runStraightF_nil, Option.bind_some]
+      intro b0 zf f bz _ _ h
+      simp only [runStraightF_nil, Option.some.injEq] at h
+      subst h
+      simp only [List.length_nil, Nat.zero_add]
   | cons i is ih =>
-      intro b0 zf f hlopn hpos
+      intro b0 zf f bz hlopn hpos h
       have hi : IsLopn i := hlopn i (by simp)
       have his : ∀ j ∈ is, IsLopn j := fun j hj => hlopn j (by simp [hj])
       have hfetch : findInstrMem P
@@ -304,9 +311,68 @@ theorem lsemFuelMemF_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
         rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
         have := hpos 0 (by simp)
         simpa using this
+      rw [runStraightF_cons] at h
+      cases hstep : fstepF i b0 zf with
+      | none => rw [hstep] at h; cases h
+      | some bz1 =>
+          rw [hstep, Option.bind_some] at h
+          have hx : x86Isa.step P i { prog := { base := b0, lfn := fn }, zf := zf }
+              = some { prog := { base := bz1.1, lfn := fn }, zf := bz1.2 } := by
+            change evalInstrPMemF P i _ = _
+            rw [evalInstrPMemF_isLopn P i _ hi]
+            simp only [hstep, Option.map_some]
+          rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega,
+            I.lsemFuelMemF_step P _ i _ _ hfetch (hle _ _ _ _ hx)]
+          have hb_lpc : bz1.1.lpc = b0.lpc + 1 :=
+            fstepF_lpc_succ i b0 bz1.1 zf bz1.2 (by rw [hstep])
+          have hpos' : ∀ k, k < is.length → P.body[bz1.1.lpc + k]? = is[k]? := by
+            intro k hk
+            have hp := hpos (k + 1) (by simpa using Nat.succ_lt_succ hk)
+            rw [hb_lpc, show b0.lpc + 1 + k = b0.lpc + (k + 1) from by omega, hp]
+            simp
+          exact ih bz1.1 bz1.2 f bz his hpos' h
+
+/-- **Extended straight-line segment run at an instruction set that agrees with `x86Isa` on
+    the segment.** For an instruction set `I` whose step at every instruction of an all-`Lopn`
+    segment is the step of `x86Isa`, the segment at positions `lpc .. lpc+|seg|-1` executes
+    the extended fold `runStraightF` and continues with `f` fuel. An instruction set whose
+    steps contain those of `x86Isa` and whose further steps are local calls agrees with
+    `x86Isa` at every instruction that is no shadow instruction of a call
+    (`Isa.CallLocal.step_eq`). -/
+theorem lsemFuelMemF_segF_agree {I : Isa} (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
+    ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat),
+      (∀ i ∈ seg, IsLopn i) →
+      (∀ i ∈ seg, ∀ (Q : LprogM) (s : LstateMF), I.step Q i s = x86Isa.step Q i s) →
+      (∀ k, k < seg.length → P.body[b0.lpc + k]? = seg[k]?) →
+      I.lsemFuelMemF P (seg.length + f) { prog := { base := b0, lfn := fn }, zf := zf }
+        = (runStraightF seg b0 zf).bind
+            (fun bz => I.lsemFuelMemF P f
+              { prog := { base := bz.1, lfn := fn }, zf := bz.2 }) := by
+  intro seg
+  induction seg with
+  | nil =>
+      intro b0 zf f _ _ _
+      simp only [List.length_nil, Nat.zero_add, runStraightF_nil, Option.bind_some]
+  | cons i is ih =>
+      intro b0 zf f hlopn hns hpos
+      have hi : IsLopn i := hlopn i (by simp)
+      have his : ∀ j ∈ is, IsLopn j := fun j hj => hlopn j (by simp [hj])
+      have hns' : ∀ j ∈ is, ∀ (Q : LprogM) (s : LstateMF), I.step Q j s = x86Isa.step Q j s :=
+        fun j hj => hns j (by simp [hj])
+      have hfetch : findInstrMem P
+          ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
+        show findInstrMem P { base := b0, lfn := fn } = some i
+        unfold findInstrMem
+        rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+        have := hpos 0 (by simp)
+        simpa using this
       rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega,
-        lsemFuelMemF, hfetch]
+        Isa.lsemFuelMemF, hfetch]
       simp only []
+      rw [hns i (by simp) P]
+      change (match evalInstrPMemF P i _ with
+        | some s' => I.lsemFuelMemF P (is.length + f) s'
+        | none => none) = _
       rw [evalInstrPMemF_isLopn P i _ hi]
       cases hstep : fstepF i b0 zf with
       | none =>
@@ -323,7 +389,26 @@ theorem lsemFuelMemF_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
             have hp := hpos (k + 1) (by simpa using Nat.succ_lt_succ hk)
             rw [hb_lpc, show b0.lpc + 1 + k = b0.lpc + (k + 1) from by omega, hp]
             simp
-          exact ih bz.1 bz.2 f his hpos'
+          exact ih bz.1 bz.2 f his hns' hpos'
+
+/-- **Extended straight-line segment run with continuation fuel.**  The
+    `Lopn ∪ MOV ∪ CMP` extension of `lsemFuelMemF_seg`: an all-`Lopn`
+    segment (reg-copy `MOV`s and flag-`CMP`s allowed) at positions
+    `lpc .. lpc+|seg|-1` executes the extended fold `runStraightF` and
+    continues with `f` fuel. -/
+theorem lsemFuelMemF_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
+    ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat),
+      (∀ i ∈ seg, IsLopn i) →
+      (∀ k, k < seg.length → P.body[b0.lpc + k]? = seg[k]?) →
+      lsemFuelMemF P (seg.length + f) { prog := { base := b0, lfn := fn }, zf := zf }
+        = (runStraightF seg b0 zf).bind
+            (fun bz => lsemFuelMemF P f
+              { prog := { base := bz.1, lfn := fn }, zf := bz.2 }) := by
+  intro seg b0 zf f hl hpos
+  rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF]
+  exact lsemFuelMemF_segF_agree P fn hfn seg b0 zf f hl (fun _ _ _ _ => rfl) hpos
+
+end Calls
 
 /-! ## 2. The flag block grammar: straight segments and flag-guarded regions
 

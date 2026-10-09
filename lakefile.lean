@@ -2769,6 +2769,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaDef,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381FieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381Msm,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.ChaCha20Vec256,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Curve25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Ed25519,

@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaDef
 
 @[expose] public section
 
@@ -36,6 +37,10 @@ length, and composes it with the run of the prefix.
 * `shiftS`, `evalInstrPMemF_prefix_eq`, `lsemFuelMemF_prefix_eq`: the run of `pre ++ B` from
   the moved state is the moved run of `B`, as an equation; `lsemFuelMemF_of_prefix` is its
   converse direction, a halting run of the body behind the prefix as a halting run of `B`.
+* `step_prefix_eq_calls`, `lsemFuelMemF_prefix_eq_calls`, `lsemFuelMemF_of_prefix_calls`,
+  `lsemFuelMemF_prepend_calls`: the same at an instruction set whose steps contain those of
+  `x86Isa` and whose further steps are local calls; `lsemFuelMemF_of_prefix` and
+  `lsemFuelMemF_prepend` are their instances at `x86Isa`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix
@@ -231,33 +236,6 @@ theorem lsemFuelMemF_prefix (fn : String) (pre B : List LinstrRM)
               rw [he']
               exact ih hRu h
 
-/-- **The prefix and then the body.** If the prefix runs from a base `b0` at program counter
-    `0` to `b1`, and `B` runs from `b1` with the program counter at `0` to `t`, then
-    `pre ++ B` runs from `b0` to the state `t` with the program counter moved by the length of
-    the prefix. -/
-theorem lsemFuelMemF_prepend (fn : String) (pre B : List LinstrRM)
-    (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (b0 b1 : LstateM) (zf z1 : Bool)
-    (h0 : b0.lpc = 0) (hpreRun : runStraightF pre b0 zf = some (b1, z1)) (fuel : Nat)
-    (t : LstateMF)
-    (h : lsemFuelMemF (singletonProgM fn B) fuel
-      { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } = some t) :
-    ∃ t', lsemFuelMemF (singletonProgM fn (pre ++ B)) (pre.length + fuel)
-        { prog := { base := b0, lfn := fn }, zf := zf } = some t'
-      ∧ ShiftRel pre.length t t' := by
-  have hseg := lsemFuelMemF_segF (singletonProgM fn (pre ++ B)) fn rfl pre b0 zf fuel hpre
-    (fun k hk => by
-      simp only [singletonProgM, h0, Nat.zero_add]
-      exact List.getElem?_append_left hk)
-  rw [hseg, hpreRun, Option.bind_some]
-  have hpc := runStraightF_lpc pre b0 zf b1 z1 hpreRun
-  rw [h0, Nat.zero_add] at hpc
-  have hbase : b1 = (b1.setLpc 0).setLpc ((b1.setLpc 0).lpc + pre.length) := by
-    rw [LstateM.lpc_setLpc, Nat.zero_add, ← hpc]
-    rfl
-  exact lsemFuelMemF_prefix fn pre B hpre hB fuel
-    (s := { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 })
-    (s' := { prog := { base := b1, lfn := fn }, zf := z1 }) ⟨rfl, rfl, hbase⟩ h
-
 /-! ## The run behind the prefix as an equation -/
 
 /-- The state with its program counter moved by `d`. -/
@@ -386,6 +364,141 @@ theorem lsemFuelMemF_prefix_eq (fn : String) (pre B : List LinstrRM)
           | none => rfl
           | some u => exact ih u
 
+/-! ## The prefix at an instruction set with local calls -/
+
+section Calls
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
+  (Isa shadowCall? callShadow retWord argsRead argsRead_congr eq_callShadow_of_shadowCall?)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
+
+/-- The argument words of operands do not depend on the program counter. -/
+theorem argsRead_shiftS (aa : Nat → Option Nat) (d : Nat) (s : LstateMF) (k : Nat)
+    (srcs : List LOperand) :
+    argsRead aa (shiftS d s).prog.base k srcs = argsRead aa s.prog.base k srcs :=
+  argsRead_congr aa (b := s.prog.base) (b' := (shiftS d s).prog.base) rfl k srcs
+    fun o _ => by cases o <;> rfl
+
+/-- Writing a result word commutes with moving the program counter. -/
+theorem retWord_shiftS (dst : String) (r : BitVec 64) (d : Nat) (s : LstateMF) :
+    retWord dst r (shiftS d s) = shiftS d (retWord dst r s) := by
+  simp only [retWord, shiftS, LstateM.setReg, LstateM.nextPc, LstateM.setLpc, LstateM.lpc,
+    JasminLsemWidthN.LstateN.setReg, JasminLsemWidthN.LstateN.nextPc, Nat.add_right_comm]
+
+/-- **One step behind the prefix at an instruction set with local calls.** For an instruction
+    set `I` whose steps contain those of `x86Isa` and whose further steps are local calls, at
+    an instruction of `CtlOK` the step of `pre ++ B` from the moved state is the moved step of
+    `B`. -/
+theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    (hpre : ∀ i ∈ pre, IsLopn i) {i : LinstrRM} (hi : CtlOK i) (s : LstateMF) :
+    I.step (singletonProgM fn (pre ++ B)) i (shiftS pre.length s)
+      = (I.step (singletonProgM fn B) i s).map (shiftS pre.length) := by
+  have hx : x86Isa.step (singletonProgM fn (pre ++ B)) i (shiftS pre.length s)
+      = (x86Isa.step (singletonProgM fn B) i s).map (shiftS pre.length) :=
+    evalInstrPMemF_prefix_eq fn pre B hpre hi s
+  cases hsh : shadowCall? i.1 with
+  | none =>
+      rw [Isa.CallLocal.step_eq I hle hcl _ hsh, Isa.CallLocal.step_eq I hle hcl _ hsh, hx]
+  | some q =>
+      cases hB : I.step (singletonProgM fn B) i s with
+      | some t =>
+          rcases hcl _ _ s t hB with hxB | ⟨dst, f, srcs, r, hsh', rfl, hfwd⟩
+          · rw [hxB, Option.map_some] at hx
+            exact hle _ _ _ _ hx
+          · obtain ⟨w, tag⟩ := i
+            simp only at hsh'
+            subst hsh'
+            rw [Option.map_some, ← retWord_shiftS]
+            exact hfwd _ tag dst srcs _ rfl (argsRead_shiftS _ _ _ _ _)
+      | none =>
+          cases hA : I.step (singletonProgM fn (pre ++ B)) i (shiftS pre.length s) with
+          | none => rfl
+          | some t' =>
+              exfalso
+              rcases hcl _ _ _ t' hA with hxA | ⟨dst, f, srcs, r, hsh', -, hfwd⟩
+              · rw [hxA] at hx
+                obtain ⟨u, hu, -⟩ := Option.map_eq_some_iff.mp hx.symm
+                rw [hle _ _ _ _ hu] at hB
+                cases hB
+              · obtain ⟨w, tag⟩ := i
+                simp only at hsh'
+                subst hsh'
+                rw [hfwd _ tag dst srcs s rfl (argsRead_shiftS _ _ _ _ _).symm] at hB
+                cases hB
+
+/-- **A run behind the prefix at an instruction set with local calls, as an equation.** The
+    run of `pre ++ B` from the moved state is the moved run of `B`. -/
+theorem lsemFuelMemF_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) :
+    ∀ (fuel : Nat) (s : LstateMF),
+      I.lsemFuelMemF (singletonProgM fn (pre ++ B)) fuel (shiftS pre.length s)
+        = (I.lsemFuelMemF (singletonProgM fn B) fuel s).map (shiftS pre.length) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro s
+      unfold Isa.lsemFuelMemF
+      rw [findInstrMem_prefix fn pre B (shiftRel_shiftS _ s)]
+      cases findInstrMem (singletonProgM fn B) s.prog <;> rfl
+  | succ n ih =>
+      intro s
+      unfold Isa.lsemFuelMemF
+      rw [findInstrMem_prefix fn pre B (shiftRel_shiftS _ s)]
+      cases hf : findInstrMem (singletonProgM fn B) s.prog with
+      | none => rfl
+      | some i =>
+          have hiB : i ∈ B := by
+            unfold findInstrMem at hf
+            split at hf
+            · exact List.mem_of_getElem? hf
+            · cases hf
+          simp only
+          rw [step_prefix_eq_calls hle hcl fn pre B hpre (hB i hiB) s]
+          cases I.step (singletonProgM fn B) i s with
+          | none => rfl
+          | some u => exact ih u
+
+/-- **The body behind the prefix at an instruction set with local calls.** A halting run of
+    `pre ++ B` from the moved state is the moved halting run of `B`. -/
+theorem lsemFuelMemF_of_prefix_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (fuel : Nat) (s : LstateMF)
+    (t' : LstateMF)
+    (h : I.lsemFuelMemF (singletonProgM fn (pre ++ B)) fuel (shiftS pre.length s) = some t') :
+    ∃ t, I.lsemFuelMemF (singletonProgM fn B) fuel s = some t ∧ t' = shiftS pre.length t := by
+  rw [lsemFuelMemF_prefix_eq_calls hle hcl fn pre B hpre hB fuel s] at h
+  obtain ⟨t, ht, rfl⟩ := Option.map_eq_some_iff.mp h
+  exact ⟨t, ht, rfl⟩
+
+/-- **The prefix and then the body at an instruction set with local calls.** If the prefix
+    runs from a base `b0` at program counter `0` to `b1`, and `B` runs at `I` from `b1` with
+    the program counter at `0` to `t`, then `pre ++ B` runs at `I` from `b0` to the state `t`
+    with the program counter moved by the length of the prefix. -/
+theorem lsemFuelMemF_prepend_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (b0 b1 : LstateM) (zf z1 : Bool)
+    (h0 : b0.lpc = 0) (hpreRun : runStraightF pre b0 zf = some (b1, z1)) (fuel : Nat)
+    (t : LstateMF)
+    (h : I.lsemFuelMemF (singletonProgM fn B) fuel
+      { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } = some t) :
+    ∃ t', I.lsemFuelMemF (singletonProgM fn (pre ++ B)) (pre.length + fuel)
+        { prog := { base := b0, lfn := fn }, zf := zf } = some t'
+      ∧ ShiftRel pre.length t t' := by
+  rw [lsemFuelMemF_segF_of_some hle (singletonProgM fn (pre ++ B)) fn rfl pre b0 zf fuel _ hpre
+    (fun k hk => by
+      simp only [singletonProgM, h0, Nat.zero_add]
+      exact List.getElem?_append_left hk) hpreRun]
+  have hpc := runStraightF_lpc pre b0 zf b1 z1 hpreRun
+  rw [h0, Nat.zero_add] at hpc
+  have hsh : ({ prog := { base := b1, lfn := fn }, zf := z1 } : LstateMF)
+      = shiftS pre.length { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } := by
+    simp only [shiftS, LstateM.lpc_setLpc, Nat.zero_add, ← hpc]
+    rfl
+  rw [hsh, lsemFuelMemF_prefix_eq_calls hle hcl fn pre B hpre hB fuel, h, Option.map_some]
+  exact ⟨_, rfl, shiftRel_shiftS _ _⟩
+
 /-- **The body behind the prefix.** A halting run of `pre ++ B` from the moved state is the
     moved halting run of `B`. -/
 theorem lsemFuelMemF_of_prefix (fn : String) (pre B : List LinstrRM)
@@ -393,8 +506,28 @@ theorem lsemFuelMemF_of_prefix (fn : String) (pre B : List LinstrRM)
     (t' : LstateMF)
     (h : lsemFuelMemF (singletonProgM fn (pre ++ B)) fuel (shiftS pre.length s) = some t') :
     ∃ t, lsemFuelMemF (singletonProgM fn B) fuel s = some t ∧ t' = shiftS pre.length t := by
-  rw [lsemFuelMemF_prefix_eq fn pre B hpre hB fuel s] at h
-  obtain ⟨t, ht, rfl⟩ := Option.map_eq_some_iff.mp h
-  exact ⟨t, ht, rfl⟩
+  rw [← x86Isa_lsemFuelMemF] at h ⊢
+  exact lsemFuelMemF_of_prefix_calls (Isa.StepLe.refl x86Isa)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) fn pre B hpre hB fuel s t' h
+
+/-- **The prefix and then the body.** If the prefix runs from a base `b0` at program counter
+    `0` to `b1`, and `B` runs from `b1` with the program counter at `0` to `t`, then
+    `pre ++ B` runs from `b0` to the state `t` with the program counter moved by the length of
+    the prefix. -/
+theorem lsemFuelMemF_prepend (fn : String) (pre B : List LinstrRM)
+    (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (b0 b1 : LstateM) (zf z1 : Bool)
+    (h0 : b0.lpc = 0) (hpreRun : runStraightF pre b0 zf = some (b1, z1)) (fuel : Nat)
+    (t : LstateMF)
+    (h : lsemFuelMemF (singletonProgM fn B) fuel
+      { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } = some t) :
+    ∃ t', lsemFuelMemF (singletonProgM fn (pre ++ B)) (pre.length + fuel)
+        { prog := { base := b0, lfn := fn }, zf := zf } = some t'
+      ∧ ShiftRel pre.length t t' := by
+  rw [← x86Isa_lsemFuelMemF] at h ⊢
+  exact lsemFuelMemF_prepend_calls (Isa.StepLe.refl x86Isa)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) fn pre B hpre hB b0 b1 zf z1 h0 hpreRun
+    fuel t h
+
+end Calls
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix

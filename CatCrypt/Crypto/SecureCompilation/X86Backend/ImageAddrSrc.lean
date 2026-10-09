@@ -72,6 +72,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
 
 /-- The fuel of the virtual body `pre0 ++ seeds ++ movesOf ps ++ loop.map (renRM (renOf ps))`
     for a run of the node at fuel `fuel`: the length of `pre0`, the fuel of the node and one
@@ -87,6 +88,106 @@ theorem lsemFuelMemF_le (P : LprogM) {n k : Nat} {s t : LstateMF}
   obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le hk
   rw [← x86Isa_lsemFuelMemF] at h ⊢
   exact x86Isa.lsemFuelMemF_add P n d s t h
+
+/-- An instruction set whose steps contain those of `x86Isa` and whose further steps are local
+    calls takes the step of `x86Isa` at every copy of `movesOf ps`: a copy is no shadow
+    instruction of a call. -/
+theorem movesOf_agree {I : Isa} {aa : String → Nat → Option Nat} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa aa) (ps : List (String × String)) :
+    ∀ i ∈ movesOf ps, ∀ (Q : LprogM) (s : LstateMF), I.step Q i s = x86Isa.step Q i s := by
+  intro i hi Q s
+  obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
+  refine Isa.CallLocal.step_eq I hle hcl Q ?_ s
+  simp only [JasminLsemExportLower.movWire, LprogIsa.shadowCall?]
+  rfl
+
+/-- **The loop renamed behind the copies, at an explicit fuel, at an instruction set with local
+    calls.** For an instruction set `I` whose steps contain those of `x86Isa` and whose further
+    steps are local calls, under the hypotheses of `renameLoop_sim` and a prefix `pre` at whose
+    instructions the step of `I` is the step of `x86Isa` (every instruction that is no shadow
+    instruction of a call, by `Isa.CallLocal.step_eq`), a halting run of `I` on `pre ++ loop`
+    at fuel `fuel` is matched by a halting run of `I` on
+    `pre ++ movesOf ps ++ map (renRM (renOf ps)) loop` at fuel `fuel + ps.length`, the final
+    states related as in `renameLoop_sim`. -/
+theorem renameLoop_sim_fuel_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String)
+    (pre loop : List LinstrRM) (ps : List (String × String))
+    (N : String → Prop) (hpre : ∀ i ∈ pre, IsLopn i)
+    (hagree : ∀ i ∈ pre, ∀ (Q : LprogM) (s : LstateMF), I.step Q i s = x86Isa.step Q i s)
+    (hloop : ∀ i ∈ loop, CtlOK i)
+    (hcond : ∀ i ∈ loop, CondOK i) (hσ : RenOn (renOf ps) N)
+    (hn : ∀ i ∈ loop, ∀ n ∈ instrNames i.1, N n) (hnd : (ps.map Prod.snd).Nodup)
+    (hts : ∀ p ∈ ps, ∀ q ∈ ps, q.2 ≠ p.1) (hren : ∀ p ∈ ps, renOf ps p.1 = p.2)
+    (hfresh : ∀ p ∈ ps, ¬ N p.2) (b0 : LstateM) (zf : Bool) (h0 : b0.lpc = 0)
+    (hA : ∀ b1 z1, runStraightF pre b0 zf = some (b1, z1) →
+      ∀ r, N r → b1.larr (renOf ps r) = b1.larr r)
+    (fuel : Nat) (t : LstateMF)
+    (hrun : I.lsemFuelMemF (singletonProgM fn (pre ++ loop)) fuel
+      { prog := { base := b0, lfn := fn }, zf := zf } = some t) :
+    ∃ t', I.lsemFuelMemF
+        (singletonProgM fn (pre ++ movesOf ps ++ loop.map (renRM (renOf ps))))
+        (fuel + ps.length) { prog := { base := b0, lfn := fn }, zf := zf } = some t'
+      ∧ ∃ tl tl', t = shiftS pre.length tl ∧ t' = shiftS (pre.length + ps.length) tl'
+        ∧ RelF (renOf ps) N tl tl' := by
+  have hpos : ∀ j, j < pre.length →
+      (singletonProgM fn (pre ++ loop)).body[b0.lpc + j]? = pre[j]? := fun j hj => by
+    simp only [singletonProgM, h0, Nat.zero_add]
+    exact List.getElem?_append_left hj
+  obtain ⟨f, rfl⟩ := Nat.exists_eq_add_of_le
+    (lsemFuelMemF_seg_fuel_calls hcl _ fn rfl pre b0 zf fuel t hpre hpos hrun)
+  rw [lsemFuelMemF_segF_agree _ fn rfl pre b0 zf f hpre hagree hpos] at hrun
+  cases hp : runStraightF pre b0 zf with
+  | none => simp [hp] at hrun
+  | some bz =>
+      obtain ⟨b1, z1⟩ := bz
+      rw [hp, Option.bind_some] at hrun
+      have hpc : b1.lpc = pre.length := by
+        rw [runStraightF_lpc pre b0 zf b1 z1 hp, h0, Nat.zero_add]
+      have hsh : ({ prog := { base := b1, lfn := fn }, zf := z1 } : LstateMF)
+          = shiftS pre.length { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } := by
+        simp only [shiftS, LstateM.lpc_setLpc, Nat.zero_add, ← hpc]
+        rfl
+      rw [hsh] at hrun
+      obtain ⟨tl, htl, rfl⟩ :=
+        lsemFuelMemF_of_prefix_calls hle hcl fn pre loop hpre hloop f _ t hrun
+      have hR : RelF (renOf ps) N { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 }
+          { prog := { base := (movesState ps b1).setLpc 0, lfn := fn }, zf := z1 } := by
+        obtain ⟨hl, hm, hc, ho⟩ := movesState_larr ps b1
+        refine ⟨⟨⟨rfl, fun r hr => ?_⟩, fun r hr => ?_, hm⟩, rfl, rfl, hc, ho⟩
+        · show (movesState ps b1).reg.lvm (renOf ps r) = b1.reg.lvm r
+          by_cases hm' : r ∈ ps.map Prod.fst
+          · obtain ⟨p, hp', rfl⟩ := List.mem_map.mp hm'
+            rw [hren p hp']
+            exact movesState_target ps hnd hts b1 p hp'
+          · rw [renOf_of_not_mem hm']
+            refine movesState_other ps b1 r fun hmem => ?_
+            obtain ⟨p, hp', rfl⟩ := List.mem_map.mp hmem
+            exact hfresh p hp' hr
+        · show (movesState ps b1).larr (renOf ps r) = b1.larr r
+          rw [hl]
+          exact hA b1 z1 hp r hr
+      obtain ⟨tl', htl', hRt⟩ :=
+        lsemFuelMemF_map_renRM_calls hle hcl hσ fn loop hn hcond f hR htl
+      have hpre' : ∀ i ∈ pre ++ movesOf ps, IsLopn i := by
+        intro i hi
+        rcases List.mem_append.mp hi with hi | hi
+        · exact hpre i hi
+        · exact movesOf_isLopn ps i hi
+      have hB' : ∀ i ∈ loop.map (renRM (renOf ps)), CtlOK i := by
+        intro i hi
+        obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi
+        exact ctlOK_renRM _ (hloop j hj)
+      have hrunPre : runStraightF (pre ++ movesOf ps) b0 zf = some (movesState ps b1, z1) := by
+        rw [JasminLsemAddrMem.runStraightF_append, hp, Option.bind_some,
+          runStraightF_movesOf]
+      obtain ⟨t', ht', hRs⟩ := lsemFuelMemF_prepend_calls hle hcl fn (pre ++ movesOf ps)
+        (loop.map (renRM (renOf ps))) hpre' hB' b0 (movesState ps b1) zf z1 h0 hrunPre f tl'
+        htl'
+      refine ⟨t', ?_, tl, tl', rfl, ?_, hRt⟩
+      · rw [List.length_append, movesOf_length] at ht'
+        rw [show pre.length + f + ps.length = pre.length + ps.length + f by omega]
+        exact ht'
+      · rw [hRs.eq_shiftS, List.length_append, movesOf_length]
 
 /-- **The loop renamed behind the copies, at an explicit fuel.** Under the hypotheses of
     `renameLoop_sim`, a halting run of `pre ++ loop` at fuel `fuel` is matched by a halting
@@ -108,63 +209,10 @@ theorem renameLoop_sim_fuel (fn : String) (pre loop : List LinstrRM)
         (fuel + ps.length) { prog := { base := b0, lfn := fn }, zf := zf } = some t'
       ∧ ∃ tl tl', t = shiftS pre.length tl ∧ t' = shiftS (pre.length + ps.length) tl'
         ∧ RelF (renOf ps) N tl tl' := by
-  have hpos : ∀ j, j < pre.length →
-      (singletonProgM fn (pre ++ loop)).body[b0.lpc + j]? = pre[j]? := fun j hj => by
-    simp only [singletonProgM, h0, Nat.zero_add]
-    exact List.getElem?_append_left hj
-  obtain ⟨f, rfl⟩ := Nat.exists_eq_add_of_le
-    (lsemFuelMemF_seg_fuel _ fn rfl pre b0 zf fuel t hpre hpos hrun)
-  rw [lsemFuelMemF_segF _ fn rfl pre b0 zf f hpre hpos] at hrun
-  cases hp : runStraightF pre b0 zf with
-  | none => simp [hp] at hrun
-  | some bz =>
-      obtain ⟨b1, z1⟩ := bz
-      rw [hp, Option.bind_some] at hrun
-      have hpc : b1.lpc = pre.length := by
-        rw [runStraightF_lpc pre b0 zf b1 z1 hp, h0, Nat.zero_add]
-      have hsh : ({ prog := { base := b1, lfn := fn }, zf := z1 } : LstateMF)
-          = shiftS pre.length { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 } := by
-        simp only [shiftS, LstateM.lpc_setLpc, Nat.zero_add, ← hpc]
-        rfl
-      rw [hsh] at hrun
-      obtain ⟨tl, htl, rfl⟩ := lsemFuelMemF_of_prefix fn pre loop hpre hloop f _ t hrun
-      have hR : RelF (renOf ps) N { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 }
-          { prog := { base := (movesState ps b1).setLpc 0, lfn := fn }, zf := z1 } := by
-        obtain ⟨hl, hm, hc, ho⟩ := movesState_larr ps b1
-        refine ⟨⟨⟨rfl, fun r hr => ?_⟩, fun r hr => ?_, hm⟩, rfl, rfl, hc, ho⟩
-        · show (movesState ps b1).reg.lvm (renOf ps r) = b1.reg.lvm r
-          by_cases hm' : r ∈ ps.map Prod.fst
-          · obtain ⟨p, hp', rfl⟩ := List.mem_map.mp hm'
-            rw [hren p hp']
-            exact movesState_target ps hnd hts b1 p hp'
-          · rw [renOf_of_not_mem hm']
-            refine movesState_other ps b1 r fun hmem => ?_
-            obtain ⟨p, hp', rfl⟩ := List.mem_map.mp hmem
-            exact hfresh p hp' hr
-        · show (movesState ps b1).larr (renOf ps r) = b1.larr r
-          rw [hl]
-          exact hA b1 z1 hp r hr
-      obtain ⟨tl', htl', hRt⟩ := lsemFuelMemF_map_renRM hσ fn loop hn hcond f hR htl
-      have hpre' : ∀ i ∈ pre ++ movesOf ps, IsLopn i := by
-        intro i hi
-        rcases List.mem_append.mp hi with hi | hi
-        · exact hpre i hi
-        · exact movesOf_isLopn ps i hi
-      have hB' : ∀ i ∈ loop.map (renRM (renOf ps)), CtlOK i := by
-        intro i hi
-        obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi
-        exact ctlOK_renRM _ (hloop j hj)
-      have hrunPre : runStraightF (pre ++ movesOf ps) b0 zf = some (movesState ps b1, z1) := by
-        rw [JasminLsemAddrMem.runStraightF_append, hp, Option.bind_some,
-          runStraightF_movesOf]
-      obtain ⟨t', ht', hRs⟩ := lsemFuelMemF_prepend fn (pre ++ movesOf ps)
-        (loop.map (renRM (renOf ps))) hpre' hB' b0 (movesState ps b1) zf z1 h0 hrunPre f tl'
-        htl'
-      refine ⟨t', ?_, tl, tl', rfl, ?_, hRt⟩
-      · rw [List.length_append, movesOf_length] at ht'
-        rw [show pre.length + f + ps.length = pre.length + ps.length + f by omega]
-        exact ht'
-      · rw [hRs.eq_shiftS, List.length_append, movesOf_length]
+  rw [← x86Isa_lsemFuelMemF] at hrun ⊢
+  exact renameLoop_sim_fuel_calls (Isa.StepLe.refl x86Isa)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) fn pre loop ps N hpre
+    (fun _ _ _ _ => rfl) hloop hcond hσ hn hnd hts hren hfresh b0 zf h0 hA fuel t hrun
 
 /-- **The array result of the renamed loop, at an explicit fuel.** Under the hypotheses of
     `renameLoop_getArr`, the renamed body halts at fuel `fuel + ps.length` in a state that

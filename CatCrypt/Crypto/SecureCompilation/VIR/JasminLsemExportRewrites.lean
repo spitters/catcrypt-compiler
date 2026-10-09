@@ -1359,6 +1359,138 @@ theorem renProg_map (fn : String) (body : List LinstrRM) {k0 : Nat} (hk0 : k0 �
   cond := hc
   jmp := fun _ _ _ => by omega
 
+section Calls
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow retWord argRead argsRead)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
+
+/-- Related states read the same argument words from operands with names in `N` and from
+    their renamings, at every array position: a word position reads the register file, an
+    array position the array carrier, and the relation holds on both. -/
+theorem RelM.argsRead_ren {s s' : LstateM} (h : RelM σ N s s') (aa : Nat → Option Nat) :
+    ∀ (k : Nat) (srcs : List LOperand), (∀ o ∈ srcs, ∀ n ∈ opNames o, N n) →
+      argsRead aa s' k (srcs.map (renOperand σ)) = argsRead aa s k srcs
+  | _, [], _ => rfl
+  | k, o :: os, ho => by
+      have h1 : argRead aa s' k (renOperand σ o) = argRead aa s k o := by
+        unfold argRead
+        split
+        · rw [h.1.evalOperandN 64 o (ho o List.mem_cons_self)]
+        · cases o with
+          | reg A =>
+              have hA : N A := ho _ List.mem_cons_self A (by simp [opNames])
+              simp only [renOperand, h.getArr hA]
+          | imm _ => rfl
+          | arr _ _ => rfl
+          | arrIdx _ _ _ => rfl
+      rw [List.map_cons, argsRead, argsRead, h1,
+        RelM.argsRead_ren h aa (k + 1) os fun o' ho' => ho o' (List.mem_cons_of_mem _ ho')]
+
+/-- **A step under a renaming at an instruction set with local calls.** For an instruction set
+    `I` whose steps contain those of `x86Isa` and whose further steps are local calls, a
+    successful step of the original instruction is matched by a step of the renamed
+    instruction from a related state, into a related state, and the program counter stays at
+    `k0` or later. A local call reads the same argument words from the renamed operands
+    (`RelM.argsRead_ren`), at word and at array positions. -/
+theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa aa) {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
+    (hP : RenProg σ N k0 P P') (i : LinstrRM) (hi : ∀ n ∈ instrNames i.1, N n)
+    (hc : CondOK i) {s s' t : LstateMF} (hR : RelF σ N s s')
+    (hk : k0 ≤ s.prog.base.lpc) (h : I.step P i s = some t) :
+    ∃ t', I.step P' (renRM σ i) s' = some t' ∧ RelF σ N t t'
+      ∧ k0 ≤ t.prog.base.lpc := by
+  rcases hcl P i s t h with hx | ⟨dst, f, srcs, r, hsh, rfl, hfwd⟩
+  · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_ren hσ hP i hi hc hR hk hx
+    exact ⟨t', hle _ _ _ _ ht', hrest⟩
+  · obtain ⟨w, tag⟩ := i
+    simp only at hsh
+    subst hsh
+    have hd : N dst := hi dst (by simp [callShadow, instrNames, opNames])
+    have hs : ∀ o ∈ srcs, ∀ n ∈ opNames o, N n := fun o ho n hn =>
+      hi n (by
+        simp only [callShadow, instrNames, List.flatMap_append, List.mem_append,
+          List.mem_flatMap]
+        exact Or.inr ⟨o, ho, hn⟩)
+    refine ⟨retWord (σ dst) r s', ?_, ⟨RelM.setReg hσ hR.1 hd r, hR.2.1, hR.2.2⟩, ?_⟩
+    · exact hfwd P' tag (σ dst) (srcs.map (renOperand σ)) s' (List.length_map _)
+        (hR.1.argsRead_ren (aa f) 0 srcs hs)
+    · show k0 ≤ (s.prog.base.setReg dst r).nextPc.lpc
+      simp only [LstateM.lpc, LstateM.nextPc, LstateM.setReg, JasminLsemWidthN.LstateN.nextPc,
+        JasminLsemWidthN.LstateN.setReg]
+      exact Nat.le_succ_of_le hk
+
+/-- **An instruction set with local calls under a renaming.** For two programs related by a
+    renaming from `k0` on (`RenProg`) and an instruction set `I` whose steps contain those of
+    `x86Isa` and whose further steps are local calls, every halting run of `I` on the original
+    from a state at program counter `k0` or later is matched, with the same fuel, by a halting
+    run of `I` on the renamed program from a related state, into a related state. -/
+theorem lsemFuelMemF_ren_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) {k0 : Nat} {P P' : LprogM}
+    (hσ : RenOn σ N) (hP : RenProg σ N k0 P P') :
+    ∀ (fuel : Nat) {s s' t : LstateMF}, RelF σ N s s' → k0 ≤ s.prog.base.lpc →
+      I.lsemFuelMemF P fuel s = some t →
+      ∃ t', I.lsemFuelMemF P' fuel s' = some t' ∧ RelF σ N t t' := by
+  have hfetch : ∀ {s s' : LstateMF}, RelF σ N s s' → k0 ≤ s.prog.base.lpc →
+      findInstrMem P' s'.prog = (findInstrMem P s.prog).map (renRM σ) := by
+    intro s s' hR hk
+    unfold findInstrMem
+    rw [hR.2.1, hP.lfn]
+    have hpc : s'.prog.base.lpc = s.prog.base.lpc := hR.1.1.1
+    split
+    · rw [hpc]; exact hP.body _ hk
+    · rfl
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro s s' t hR hk h
+      unfold Isa.lsemFuelMemF at h ⊢
+      rw [hfetch hR hk]
+      cases hf : findInstrMem P s.prog with
+      | none => simp only [hf] at h ⊢; cases h; exact ⟨_, rfl, hR⟩
+      | some i => simp [hf] at h
+  | succ n ih =>
+      intro s s' t hR hk h
+      unfold Isa.lsemFuelMemF at h ⊢
+      rw [hfetch hR hk]
+      cases hf : findInstrMem P s.prog with
+      | none => simp only [hf] at h ⊢; cases h; exact ⟨_, rfl, hR⟩
+      | some i =>
+          simp only [hf, Option.map_some] at h ⊢
+          have hget : P.body[s.prog.base.lpc]? = some i := by
+            unfold findInstrMem at hf
+            split at hf
+            · exact hf
+            · simp at hf
+          cases he : I.step P i s with
+          | none => simp [he] at h
+          | some u =>
+              simp only [he] at h
+              obtain ⟨u', hu', hRu, hku⟩ := step_ren_calls hle hcl hσ hP i
+                (hP.names _ i hk hget) (hP.cond _ i hk hget) hR hk he
+              simp only [hu']
+              exact ih hRu hku h
+
+/-- **Renaming a whole program at an instruction set with local calls.** For `σ` usable on
+    `N`, a program whose instructions mention names of `N` only and branch on the zero flag
+    only, its image under `σ`, and an instruction set `I` whose steps contain those of
+    `x86Isa` and whose further steps are local calls at any array positions: every halting run
+    of `I` on the original is matched, with the same fuel, by a halting run of `I` on the image
+    from a related state, into a related state. -/
+theorem lsemFuelMemF_map_renRM_calls {I : Isa} {aa : String → Nat → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (hσ : RenOn σ N) (fn : String)
+    (body : List LinstrRM) (hn : ∀ i ∈ body, ∀ n ∈ instrNames i.1, N n)
+    (hc : ∀ i ∈ body, CondOK i) (fuel : Nat) {s s' t : LstateMF} (hR : RelF σ N s s')
+    (h : I.lsemFuelMemF (singletonProgM fn body) fuel s = some t) :
+    ∃ t', I.lsemFuelMemF (singletonProgM fn (body.map (renRM σ))) fuel s' = some t'
+      ∧ RelF σ N t t' :=
+  lsemFuelMemF_ren_calls hle hcl hσ
+    (renProg_map fn body (Nat.zero_le 1)
+      (fun _ i _ hi => hn i (List.mem_of_getElem? hi))
+      (fun _ i _ hi => hc i (List.mem_of_getElem? hi)))
+    fuel hR (Nat.zero_le _) h
+
+end Calls
+
 /-- **Renaming a whole program.** For `σ` usable on `N`, a program whose
     instructions mention names of `N` only and branch on the zero flag only, and
     its image under `σ`: every halting flag-machine run of the original is
@@ -1369,12 +1501,10 @@ theorem lsemFuelMemF_map_renRM (hσ : RenOn σ N) (fn : String) (body : List Lin
     (fuel : Nat) {s s' t : LstateMF} (hR : RelF σ N s s')
     (h : lsemFuelMemF (singletonProgM fn body) fuel s = some t) :
     ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renRM σ))) fuel s' = some t'
-      ∧ RelF σ N t t' :=
-  lsemFuelMemF_ren hσ
-    (renProg_map fn body (Nat.zero_le 1)
-      (fun _ i _ hi => hn i (List.mem_of_getElem? hi))
-      (fun _ i _ hi => hc i (List.mem_of_getElem? hi)))
-    fuel hR (Nat.zero_le _) h
+      ∧ RelF σ N t t' := by
+  rw [← X86Backend.X86Isa.x86Isa_lsemFuelMemF] at h ⊢
+  exact lsemFuelMemF_map_renRM_calls (LprogIsa.Isa.StepLe.refl _)
+    (LprogIsa.Isa.CallLocal.refl _ (fun _ _ => none)) hσ fn body hn hc fuel hR h
 
 /-! ## 11. The two body rewrites as renamings -/
 
