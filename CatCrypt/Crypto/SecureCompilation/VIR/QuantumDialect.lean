@@ -152,7 +152,9 @@ inductive QOp where
   | genericGate (name : String) (params : List Float)
   /-- IR-level adjoint of another op. One level of nesting. -/
   | adjoint (op : QOp)
-  /-- IR-level controlled version of another op. One level of nesting. -/
+  /-- IR-level controlled version of another op: its first argument is the
+      control qubit, followed by the arguments of `op`, and it returns the
+      control qubit paired with the result of `op`. -/
   | controlled (op : QOp)
 
 /-! ## VEIR-DIFF: `Float` vs `ℝ` — RESOLVED via `rzReal`
@@ -211,7 +213,8 @@ def QOp.sig : QOp → List QTy
   | .measure => [.qubit]
   | .discard => [.qubit]
   | .genericGate _ _ => []  -- VEIR-DIFF: variadic not modelled in Phase 1
-  | .adjoint op | .controlled op => op.sig
+  | .adjoint op => op.sig
+  | .controlled op => .qubit :: op.sig
 
 /-- Return type of an op. -/
 def QOp.ret : QOp → QTy
@@ -224,7 +227,7 @@ def QOp.ret : QOp → QTy
   | .discard => .unit
   | .genericGate _ _ => .unit  -- VEIR-DIFF: opaque-signature ops return unit
   | .adjoint op => op.ret
-  | .controlled op => op.ret  -- VEIR-DIFF: real lowering would prepend a control wire
+  | .controlled op => .pair .qubit op.ret
 
 instance : DialectSignature quantumDialect where
   sig := QOp.sig
