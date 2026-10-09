@@ -1586,7 +1586,8 @@ theorem callsSim_withProcs (I : Isa) {E : CallEnv jasminDialect} {T : ProcTable}
   intro f as has a v hcall P dst srcs tag s hlen hsrcs
   obtain ⟨pr, hf, har, harr, hrun⟩ := h f as has a v hcall
   rw [I.withProcs_step_callShadow T hf, procStep, if_pos (by rw [har, hlen]), harr, hsrcs]
-  simp only [Option.bind_some, hrun, Option.map_some]
+  simp only [Option.bind_some, LprogIsa.ProcSummary.result, hrun, Option.map_some,
+    LprogIsa.retRes_word]
 
 /-! ## 10. The return and the binding -/
 

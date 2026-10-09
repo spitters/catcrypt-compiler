@@ -27,9 +27,9 @@ symbolic walk of a block (`segWalk`) steps over the shadow instruction of a call
 procedure of `T` by starting a new symbolic segment at the state after the call. The facts
 at the start of the new segment are the facts of the annotation that do not name the
 destination of the call and that follow from the facts before the call, read through the
-symbolic registers before the call (`callFacts`). The call sets its destination to a word
-on which no fact is kept, and keeps every other register, the arrays and the flags, as
-`LprogIsa.retWord` does.
+symbolic registers before the call (`callFacts`). The call writes its destination, a word
+to the register or an array to the array carrier, on which no fact is kept, and keeps every
+other register and the flags, as `LprogIsa.retRes` does.
 
 ## Main definitions
 
@@ -60,7 +60,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa ProcTable procCall? shadowCall?
-  procStep retWord isCtl ctlStep)
+  procStep retWord retArr retRes CallRes lfn_retRes lpc_retRes isCtl ctlStep)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_step)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (idxOkB_of_none)
@@ -322,11 +322,22 @@ theorem deadSteps_x86K {D : DeadTab} {fn : String} {B : List LinstrRM}
 
 /-! ## 3. The steps of a procedure summary -/
 
-/-- A step of a procedure summary writes a word to its destination and advances the
-    counter. -/
-theorem procStep_retWord {pr : LprogIsa.ProcSummary} {dst : String} {srcs : List LOperand}
-    {s s1 : LstateMF} (h : procStep pr dst srcs s = some s1) : ∃ r, s1 = retWord dst r s := by
+/-- A step of a procedure summary writes a result, a word or a word array, to its
+    destination and advances the counter. -/
+theorem procStep_retRes {pr : LprogIsa.ProcSummary} {dst : String} {srcs : List LOperand}
+    {s s1 : LstateMF} (h : procStep pr dst srcs s = some s1) : ∃ x, s1 = retRes dst x s := by
   unfold procStep at h
+  split_ifs at h
+  obtain ⟨vs, -, h⟩ := Option.bind_eq_some_iff.mp h
+  obtain ⟨x, -, rfl⟩ := Option.map_eq_some_iff.mp h
+  exact ⟨x, rfl⟩
+
+/-- A step of a procedure summary without a word-array result writes a word to its
+    destination and advances the counter. -/
+theorem procStep_retWord {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {dst : String}
+    {srcs : List LOperand} {s s1 : LstateMF} (h : procStep pr dst srcs s = some s1) :
+    ∃ r, s1 = retWord dst r s := by
+  rw [LprogIsa.procStep_of_retWord hrw] at h
   split_ifs at h
   obtain ⟨vs, -, h⟩ := Option.bind_eq_some_iff.mp h
   obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -335,6 +346,11 @@ theorem procStep_retWord {pr : LprogIsa.ProcSummary} {dst : String} {srcs : List
 theorem retWord_lvm_ne {dst q : String} (r : BitVec 64) (s : LstateMF) (h : q ≠ dst) :
     (retWord dst r s).prog.base.reg.lvm q = s.prog.base.reg.lvm q := by
   simp [retWord, h]
+
+/-- The result of a call keeps every register other than the destination. -/
+theorem retRes_lvm_ne {dst q : String} (x : CallRes) (s : LstateMF) (h : q ≠ dst) :
+    (retRes dst x s).prog.base.reg.lvm q = s.prog.base.reg.lvm q := by
+  cases x <;> simp [retWord, retArr, h]
 
 /-- A step of `x86Isa.withProcs T` at an instruction that is no terminator stays in the
     function and advances the pc by one. -/
@@ -346,8 +362,8 @@ theorem stepPlain_withProcs (T : ProcTable) : StepPlain (x86Isa.withProcs T) := 
       exact stepPlain_x86 P hx h
   | some q =>
       simp only [Isa.withProcs, hq] at h
-      obtain ⟨r, rfl⟩ := procStep_retWord h
-      exact ⟨rfl, by simp [retWord]⟩
+      obtain ⟨x, rfl⟩ := procStep_retRes h
+      exact ⟨lfn_retRes _ x s, lpc_retRes _ x s⟩
 
 /-- `x86Isa.withProcs T` takes no step at `Lret`. -/
 theorem withProcs_ret (T : ProcTable) (P : LprogM) (tag : MemTag) (s : LstateMF) :
@@ -460,14 +476,14 @@ theorem segWalk_sound (T : ProcTable) (cs : List IdxFact) (P : LprogM) :
             simp only [segWalk, hq]
           have e1' : procStep q.1 q.2.1 q.2.2 s = some s1 := by
             simpa only [Isa.withProcs, hq] using e1
-          obtain ⟨r, hr⟩ := procStep_retWord e1'
+          obtain ⟨r, hr⟩ := procStep_retRes e1'
           have hsh : shadowCall? i.fst ≠ none := by
             intro hn
             simp [procCall?, hn] at hq
           have hF1 : ∀ g ∈ startF (callFacts cs F ss q.2.1),
               g.holds s1.prog.base.reg.lvm s1.prog.base.larr s1.prog.base.cf s1.prog.base.of :=
             startF_holds (callFacts_sound hF hs fun q' hq' => by
-              rw [hr]; exact retWord_lvm_ne r s hq')
+              rw [hr]; exact retRes_lvm_ne r s hq')
           rw [hw] at hb ⊢
           obtain ⟨ih1, ih2⟩ := segWalk_sound T cs P is _ _ _ _ _ _ _ _ u (holds_start s1) hF1 e2 hb
           refine ⟨⟨idxOkB_of_shadowCall hsh s, fun s1' e1'' => ?_⟩, ih2⟩

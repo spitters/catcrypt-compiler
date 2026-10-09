@@ -48,10 +48,12 @@ every other instruction are those of `I`.
 
 A call of a separately provided procedure is, at this level, one instruction: the shadow
 `callShadow dst f srcs`, an `Lopn` with the mnemonic `"CALL:" ++ f`. A table `ProcTable`
-gives a summary `ProcSummary` (arity, a partial function on words and the positions of
-array arguments) to each procedure name, and `Isa.withProcs I T` is the record `I` whose step on a shadow instruction of a
-symbol of `T` is the step `procStep` of its summary. Return addresses and the stack pointer
-do not appear in this step.
+gives a summary `ProcSummary` (arity, a partial function on words, the positions of
+array arguments and the length and function of a word-array result) to each procedure name,
+and `Isa.withProcs I T` is the record `I` whose step on a shadow instruction of a
+symbol of `T` is the step `procStep` of its summary. The step writes a word result to the
+register of the destination and a word-array result to its array carrier (`retRes`).
+Return addresses and the stack pointer do not appear in this step.
 
 ## Main results
 
@@ -71,6 +73,9 @@ do not appear in this step.
   step of the keep marker and the instruction set that carries it.
 * `ProcSummary`, `ProcTable`, `callShadow`, `procStep`, `Isa.withProcs`: procedure
   summaries and the instruction set that carries them.
+* `CallRes`, `ProcSummary.result`, `ProcSummary.result_of_out`, `retArr`, `retRes`,
+  `ProcSummary.RetWord`, `procStep_of_retWord`: the result of a call, a word or a word array, its write to the
+  destination, and the step of a summary without a word-array result.
 * `argsRead`, `argsRead_none`, `argsRead_congr`, `procStep_of_wordOnly`: the argument words
   of a call, which read word operands from the registers and array operands from the array
   carrier, and the step of a summary without array arguments.
@@ -86,7 +91,8 @@ do not appear in this step.
   `Isa.withProcs_callLocal_wordOnly`: the steps of an instruction set beyond another are
   shadow instructions whose result word depends on the argument words only and which write
   only the destination and the program counter; off the shadow instructions the two steps
-  agree; the instruction set with the summaries of a table is such an extension.
+  agree; the instruction set with the summaries of a table without word-array results is
+  such an extension.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -549,9 +555,10 @@ end Isa
 /-! ## Procedure summaries -/
 
 /-- A procedure summary: the number of arguments, a partial function from the argument
-    words to the result word, and the positions of the array arguments with their lengths
-    in words. The argument words are the words of the arguments in order, an array argument
-    contributing all its words. -/
+    words to the result word, the positions of the array arguments with their lengths
+    in words, and the length of a word-array result with a partial function from the
+    argument words to that array. The argument words are the words of the arguments in
+    order, an array argument contributing all its words. -/
 structure ProcSummary where
   /-- The number of arguments. -/
   arity : Nat
@@ -560,10 +567,51 @@ structure ProcSummary where
   /-- The length in words of the array argument at a position; `none` at a word
       argument. -/
   arrArgs : Nat → Option Nat := fun _ => none
+  /-- The length in words of the word-array result; `none` at a summary without one. -/
+  out : Option Nat := none
+  /-- The word-array result of length `n` at the argument words; `none` is a refusal. The
+      step reads it at the length `out` only. -/
+  runOut : (n : Nat) → List (BitVec 64) → Option (Fin n → BitVec 64) := fun _ _ => none
 
 /-- A summary whose every argument is a word. -/
 def ProcSummary.WordOnly (pr : ProcSummary) : Prop :=
   pr.arrArgs = fun _ => none
+
+/-- A summary without a word-array result. -/
+def ProcSummary.RetWord (pr : ProcSummary) : Prop :=
+  pr.out = none
+
+/-- The result of a call: a word, or an array of `n` words. -/
+inductive CallRes : Type where
+  /-- A word result. -/
+  | word (r : BitVec 64)
+  /-- A word-array result of length `n`. -/
+  | arr {n : Nat} (a : Fin n → BitVec 64)
+
+/-- The result of a summary at the argument words: the word of `run` where it is defined,
+    and otherwise the array of `runOut` at the length `out`. -/
+def ProcSummary.result (pr : ProcSummary) (vs : List (BitVec 64)) : Option CallRes :=
+  match pr.run vs with
+  | some r => some (.word r)
+  | none =>
+      match pr.out with
+      | none => none
+      | some n => (pr.runOut n vs).map CallRes.arr
+
+/-- **The result of a summary without a word-array result is the word of `run`.** -/
+theorem ProcSummary.result_of_retWord {pr : ProcSummary} (h : pr.RetWord)
+    (vs : List (BitVec 64)) : pr.result vs = (pr.run vs).map CallRes.word := by
+  unfold result
+  rw [show pr.out = none from h]
+  cases pr.run vs <;> rfl
+
+/-- **The result of a summary with a word-array result of length `n`**, at argument words
+    where `run` is undefined, is the array of `runOut n`. -/
+theorem ProcSummary.result_of_out {pr : ProcSummary} {n : Nat} (h : pr.out = some n)
+    {vs : List (BitVec 64)} (hr : pr.run vs = none) :
+    pr.result vs = (pr.runOut n vs).map CallRes.arr := by
+  unfold result
+  rw [hr, h]
 
 /-- A table of procedure summaries by symbol name. -/
 abbrev ProcTable : Type := String → Option ProcSummary
@@ -658,6 +706,33 @@ theorem procCall?_callShadow (T : ProcTable) (dst f : String) (srcs : List LOper
 def retWord (dst : String) (r : BitVec 64) (s : LstateMF) : LstateMF :=
   { s with prog := { s.prog with base := (s.prog.base.setReg dst r).nextPc } }
 
+/-- The state `s` with the array `a` in the array carrier of `dst` and the program counter
+    advanced. -/
+def retArr (dst : String) {n : Nat} (a : Fin n → BitVec 64) (s : LstateMF) : LstateMF :=
+  { s with prog := { s.prog with base := (s.prog.base.setArr dst a).nextPc } }
+
+/-- The state `s` with the result `x` of a call at the destination `dst` (`retWord` for a
+    word, `retArr` for an array) and the program counter advanced. -/
+def retRes (dst : String) : CallRes → LstateMF → LstateMF
+  | .word r => retWord dst r
+  | .arr a => retArr dst a
+
+@[simp] theorem retRes_word (dst : String) (r : BitVec 64) (s : LstateMF) :
+    retRes dst (.word r) s = retWord dst r s := rfl
+
+@[simp] theorem retRes_arr (dst : String) {n : Nat} (a : Fin n → BitVec 64) (s : LstateMF) :
+    retRes dst (.arr a) s = retArr dst a s := rfl
+
+/-- The result of a call advances the program counter. -/
+theorem lpc_retRes (dst : String) (x : CallRes) (s : LstateMF) :
+    (retRes dst x s).prog.base.lpc = s.prog.base.lpc + 1 := by
+  cases x <;> rfl
+
+/-- The result of a call keeps the function name. -/
+theorem lfn_retRes (dst : String) (x : CallRes) (s : LstateMF) :
+    (retRes dst x s).prog.lfn = s.prog.lfn := by
+  cases x <;> rfl
+
 /-- The words of the operand `o` at the argument position `i`, for the array positions
     `aa`: at a word position the word of the operand, at an array position of length `n`
     the `n` words of the array carrier of the register name of the operand. -/
@@ -720,26 +795,39 @@ theorem argsRead_regs_congr (aa : Nat → Option Nat) {b b' : LstateM}
 
 /-- **The step of a procedure summary** on the operands `srcs` with the destination `dst`:
     read the argument words of the operands (`argsRead` at the array positions of the
-    summary), apply the function of the summary and write the result to `dst`, advancing
-    the program counter. A number of operands other than the arity, an unreadable operand
-    and a refusal of the function have no step. -/
+    summary), take the result of the summary (`ProcSummary.result`) and write it to `dst`
+    (`retRes`: a word to the register, an array to the array carrier), advancing the
+    program counter. A number of operands other than the arity, an unreadable operand and
+    a refusal of the summary have no step. -/
 def procStep (pr : ProcSummary) (dst : String) (srcs : List LOperand) (s : LstateMF) :
     Option LstateMF :=
   if srcs.length = pr.arity then
     (argsRead pr.arrArgs s.prog.base 0 srcs).bind fun vs =>
-      (pr.run vs).map fun r => retWord dst r s
+      (pr.result vs).map fun x => retRes dst x s
   else none
 
-/-- **The step of a summary on words** reads the operands as words. -/
-theorem procStep_of_wordOnly {pr : ProcSummary} (h : pr.WordOnly) (dst : String)
+/-- **The step of a summary without a word-array result** writes the word of `run` to the
+    register `dst`. -/
+theorem procStep_of_retWord {pr : ProcSummary} (h : pr.RetWord) (dst : String)
     (srcs : List LOperand) (s : LstateMF) :
+    procStep pr dst srcs s =
+      if srcs.length = pr.arity then
+        (argsRead pr.arrArgs s.prog.base 0 srcs).bind fun vs =>
+          (pr.run vs).map fun r => retWord dst r s
+      else none := by
+  unfold procStep
+  simp only [ProcSummary.result_of_retWord h, Option.map_map]
+  rfl
+
+/-- **The step of a summary on words** reads the operands as words. -/
+theorem procStep_of_wordOnly {pr : ProcSummary} (h : pr.WordOnly) (hr : pr.RetWord)
+    (dst : String) (srcs : List LOperand) (s : LstateMF) :
     procStep pr dst srcs s =
       if srcs.length = pr.arity then
         (srcs.mapM (evalOperandN s.prog.base.reg 64)).bind fun vs =>
           (pr.run vs).map fun r => retWord dst r s
       else none := by
-  unfold procStep
-  rw [h, argsRead_none]
+  rw [procStep_of_retWord hr, h, argsRead_none]
 
 namespace Isa
 
@@ -854,8 +942,9 @@ def procArrArgs (T : ProcTable) (f : String) : Nat → Option Nat :=
   | none => fun _ => none
 
 /-- **The steps of `I.withProcs T` beyond `I` are local calls** at the array positions of the
-    summaries. -/
-theorem withProcs_callLocal (T : ProcTable) : (I.withProcs T).CallLocal I (procArrArgs T) := by
+    summaries, for a table of summaries without word-array results. -/
+theorem withProcs_callLocal (T : ProcTable) (hR : ∀ f pr, T f = some pr → pr.RetWord) :
+    (I.withProcs T).CallLocal I (procArrArgs T) := by
   intro P i s t h
   cases hq : procCall? T i.1 with
   | none => rw [I.withProcs_step_of_none T P i s hq] at h; exact Or.inl h
@@ -872,22 +961,22 @@ theorem withProcs_callLocal (T : ProcTable) : (I.withProcs T).CallLocal I (procA
         simp only at hi
         subst hi
         exact I.withProcs_step_callShadow T hf P dst₀ srcs₀ tag s
-      rw [hstep] at h
-      unfold procStep at h
+      have hrw := hR f pr' hf
+      rw [hstep, procStep_of_retWord hrw] at h
       split at h
       · rename_i hlen
         obtain ⟨vs, hvs, hrun⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp hrun
         have haa : procArrArgs T f = pr'.arrArgs := by simp only [procArrArgs, hf]
         refine ⟨dst₀, f, srcs₀, r, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_⟩
-        rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep,
+        rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep_of_retWord hrw,
           if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hr, Option.map_some]
       · cases h
 
-/-- **At a table of summaries on words, the steps of `I.withProcs T` beyond `I` are local calls
-    on words.** -/
+/-- **At a table of summaries on words without word-array results, the steps of
+    `I.withProcs T` beyond `I` are local calls on words.** -/
 theorem withProcs_callLocal_wordOnly {T : ProcTable}
-    (hT : ∀ f pr, T f = some pr → pr.WordOnly) :
+    (hT : ∀ f pr, T f = some pr → pr.WordOnly) (hR : ∀ f pr, T f = some pr → pr.RetWord) :
     (I.withProcs T).CallLocal I (fun _ _ => none) := by
   have h : procArrArgs T = fun _ _ => none := by
     funext f
@@ -896,7 +985,7 @@ theorem withProcs_callLocal_wordOnly {T : ProcTable}
     | none => rfl
     | some pr => exact hT f pr hf
   rw [← h]
-  exact I.withProcs_callLocal T
+  exact I.withProcs_callLocal T hR
 
 end Isa
 

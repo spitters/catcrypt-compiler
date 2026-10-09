@@ -286,10 +286,11 @@ theorem calleeSegB_soundK_of_domEq {T₀ : ProcTable} {f res : String} {args : L
     (hDr : ProcTable.DomEq T₀ T ref) (hDi : ProcTable.DomEq T₀ T img)
     (hsound : CutCheckSoundI x86IsaK T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img))
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.lpc = 0) (fuel : Nat)
-    (hrun : (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn ref) fuel s = some t) :
+    (hrun : (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn ref) fuel s = some t)
+    (hrw : pr.RetWord := by exact rfl) :
     ∃ fuel' t', (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn img) fuel' s = some t'
       ∧ Obs outs t t' :=
   calleeSegB_soundK hT hsr hsi ((calleeSegB_congr hDr hDi).symm.trans h) hsound s t hfn hpc
-    fuel hrun
+    fuel hrun hrw
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CallTableCongr

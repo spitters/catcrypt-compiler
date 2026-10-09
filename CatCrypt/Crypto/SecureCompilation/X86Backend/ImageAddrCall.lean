@@ -484,6 +484,8 @@ structure WordCallee (c : CalleeSig) (res : String) (pr : LprogIsa.ProcSummary)
     pr.run (c.args.map fun a => s.regs (phys a)) = some (s'.regs (phys res))
   /-- Every argument of the summary is a word. -/
   wordOnly : pr.WordOnly := by exact rfl
+  /-- The summary has no word-array result. -/
+  wordRet : pr.RetWord := by exact rfl
 
 /-- **The argument registers at the entry of a call hold the argument words of the image.**
     Under `ImgRel` and `ACorr`, the words of the general-purpose argument names in the image
@@ -1243,12 +1245,12 @@ theorem mapM_reg_argWord (R : LstateN) :
 
 /-- **The step of a summary on register operands**: the result word of the summary at the
     argument words, written to the destination. -/
-theorem procStep_regArgs {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) {res : String}
-    {args : List String} {u v : LstateMF}
+theorem procStep_regArgs {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) (hrw : pr.RetWord)
+    {res : String} {args : List String} {u v : LstateMF}
     (h : LprogIsa.procStep pr res (args.map LOperand.reg) u = some v) :
     ∃ w, pr.run (args.map (argWord u.prog.base.reg)) = some w
       ∧ v = LprogIsa.retWord res w u := by
-  rw [LprogIsa.procStep_of_wordOnly hwo] at h
+  rw [LprogIsa.procStep_of_wordOnly hwo hrw] at h
   split at h
   · obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -1293,14 +1295,14 @@ theorem sitesOf_of_siteShapeB {T : LprogIsa.ProcTable} {B : List LinstrRM}
     words**, for a body whose shadow instructions are calls of `pr` on the registers
     `args` with the destination `res`. -/
 theorem glue_regArgs {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
-    {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) {res : String} {args : List String}
-    (hsite : SitesOf T B pr res args) {p : Nat} {u v : LstateMF}
+    {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) (hrw : pr.RetWord) {res : String}
+    {args : List String} (hsite : SitesOf T B pr res args) {p : Nat} {u v : LstateMF}
     (hg : Glue T (singletonProgM fn B) p u v) :
     ∃ w, pr.run (args.map (argWord u.prog.base.reg)) = some w
       ∧ v = LprogIsa.retWord res w u := by
   obtain ⟨i, pr', dst, srcs, hi, hq, hstep⟩ := hg
   obtain ⟨rfl, rfl, rfl⟩ := hsite p i pr' dst srcs hi hq
-  exact procStep_regArgs hwo hstep
+  exact procStep_regArgs hwo hrw hstep
 
 /-- **A run of a body with shadow instructions on the machine with procedures is a run of
     the decoded program under the oracle of the callee.** Let `B` be a body whose shadow
@@ -1333,7 +1335,7 @@ theorem haltsO_of_withProcs_run {frame : String → Option (BitVec 64)}
     (hI : ImgRelF frame slotArr base body (E sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
     ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
   haltsO_of_runChain hsep hphys hX hw hS hF hroom hdead hLc hcl hsim
-    (fun _ _ _ hg => glue_regArgs hw.wordOnly hsite hg) (runChain_of_run _ T _ n s t hrun) sa sA
+    (fun _ _ _ hg => glue_regArgs hw.wordOnly hw.wordRet hsite hg) (runChain_of_run _ T _ n s t hrun) sa sA
     hfn hlen hL hI hA
 
 /-! ## 8b. The simulation of a segment up to dead names, from the simulation at the relation -/
