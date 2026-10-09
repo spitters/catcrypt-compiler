@@ -202,6 +202,13 @@ is defined as the run of a chain, and the denotation theorem of the route is
 
 The optimisation slot of the field chains is the identity step.
 
+At the narrow modulus BabyBear the coordinates of the Jacobian addition and doubling are
+Lean functions compiled by `compileA`: `reifyField%` reads each coordinate of `jacAddOps`
+and of `jacDblOps` (curve coefficient as a fourth argument) as a literal, and `jacAdd_bytes`,
+`jacDbl_bytes` (`Haxc.LeanFrontEc`) state that every result of `compileA` on the literal of
+coordinate `i` computes coordinate `i` of the formula. `jacAddProg` and `jacDblProg` serve
+the wide moduli.
+
 A route theorem that keeps the compile hypothesis holds for every program the back half
 accepts on that route. The acceptance registry of the development repository
 (`scripts/acceptance-registry.tsv`) records the accepted programs: among these routes,
