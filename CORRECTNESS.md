@@ -149,9 +149,8 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   follows from its gate conclusion by `uc_of_gate`. In the earlier back half, the
   loop arm `v1LoopWB` goes
   through `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`) and the register arm
-  `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct`, `compileJ_ct` and
-  `compileJ_rc` (`Haxc.ComposeCTStraight`) state the result for one accepted program of
-  `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
+  `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct` and `compileJ_ct`
+  (`Haxc.ComposeCTStraight`) state the result for one accepted program of `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
   `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
   For a loop of field multiplications, `fieldLoop_routeCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the route program from the level check of the lowered
