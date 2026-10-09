@@ -14,11 +14,15 @@ public meta import HaxLean.Semantics
 /-!
 # A reifier for prime-field arithmetic over `ZMod n`
 
-`reifyField% n f unfolding c₁ … cₖ` is `reifyImp% n f` on the body of `f` after three
+`reifyField% n f unfolding c₁ … cₖ` is `reifyImp% n f` on the body of `f` after four
 rewrites of that body:
 
 * every application of a constant `cᵢ` is unfolded and beta-reduced, so a function defined
   as a wrapper around a function over named operations is read at its field operations;
+* a projection `Prod.fst`, `Prod.snd` (or `.1`, `.2`) of a `Prod.mk` is reduced to the
+  component, a projection of a `let` is moved into its body, and a `let` whose variable is
+  unused is dropped, so a function returning one component of a tuple-valued function is
+  read without its other components;
 * an application of `+`, `-`, `*` (as `HAdd.hAdd`, `HSub.hSub`, `HMul.hMul`, `Add.add`,
   `Sub.sub`, `Mul.mul`) or of `-` (as `Neg.neg`) at a type `ZMod n`, with `n` evaluated to a
   literal at least `2`, is read as the call of the tagged head `FieldTag.fieldHead m n` of
@@ -114,6 +118,61 @@ def unfoldListed (cs : Array Name) (e : Expr) : MetaM Expr := do
     return .continue)
   Core.betaReduce e
 
+/-- The projection `i` of `x`: `x.i` when `ts` is `none`, and the application of the
+    projection function `f` at the types `α`, `β` when `ts` is `some (f, α, β)`. -/
+def mkProjAt (i : Nat) (ts : Option (Expr × Expr × Expr)) (x : Expr) : Expr :=
+  match ts with
+  | none => .proj ``Prod i x
+  | some (f, α, β) => mkApp3 f α β x
+
+/-- The component `i` (`0` for the first, `1` for the second) of `x`, with the projection
+    reduced: the component of a `Prod.mk` is its argument, the projection of a `let` is the
+    `let` of the projection of its body, dropped when that body does not use its variable,
+    and any other argument keeps the projection `mkProjAt i ts x`. -/
+partial def pushProj (i : Nat) (ts : Option (Expr × Expr × Expr)) (x : Expr) : Expr :=
+  match x with
+  | .mdata _ x => pushProj i ts x
+  | .letE n t v b nd =>
+    let ts' := ts.map fun (f, α, β) => (f, α.liftLooseBVars 0 1, β.liftLooseBVars 0 1)
+    let b' := pushProj i ts' b
+    if b'.hasLooseBVar 0 then .letE n t v b' nd else b'.lowerLooseBVars 1 1
+  | _ =>
+    if x.isAppOfArity ``Prod.mk 4 then x.getArg! (2 + i) else mkProjAt i ts x
+
+/-- The projection `Prod.fst x`, `Prod.snd x`, `x.1` or `x.2`: its index, the form
+    `mkProjAt` rebuilds it from, and its argument. -/
+def projOf? (e : Expr) : Option (Nat × Option (Expr × Expr × Expr) × Expr) :=
+  match e with
+  | .proj ``Prod i x => some (i, none, x)
+  | _ =>
+    if e.isAppOfArity ``Prod.fst 3 then
+      some (0, some (e.getAppFn, e.getArg! 0, e.getArg! 1), e.appArg!)
+    else if e.isAppOfArity ``Prod.snd 3 then
+      some (1, some (e.getAppFn, e.getArg! 0, e.getArg! 1), e.appArg!)
+    else none
+
+/-- The expression `e` with every projection of a `Prod.mk` reduced to the component, every
+    projection of a `let` moved into its body, and every `let` whose variable is unused
+    dropped. -/
+partial def reduceProjs (e : Expr) : Expr :=
+  match e with
+  | .app .. =>
+    let e' := mkAppN (reduceProjs e.getAppFn) (e.getAppArgs.map reduceProjs)
+    match projOf? e' with
+    | some (i, ts, x) => pushProj i ts x
+    | none => e'
+  | .proj s i x =>
+    let e' := Expr.proj s i (reduceProjs x)
+    match projOf? e' with
+    | some (i, ts, x) => pushProj i ts x
+    | none => e'
+  | .letE n t v b nd =>
+    let b' := reduceProjs b
+    if b'.hasLooseBVar 0 then .letE n t (reduceProjs v) b' nd else b'.lowerLooseBVars 1 1
+  | .lam n t b bi => .lam n t (reduceProjs b) bi
+  | .mdata m x => .mdata m (reduceProjs x)
+  | _ => e
+
 /-- The field operations of `e`, without repetition: method, modulus and the type
     `ZMod n`. -/
 def collectOps (e : Expr) :
@@ -179,7 +238,7 @@ def reifyFieldConst (c : Name) (n : Nat) (us : Array Name) : MetaM Expr := do
         ctx := { ctx with ops := ctx.ops.insert x.fvarId! s }
       else
         ctx := { ctx with vars := ctx.vars.insert x.fvarId! s }
-    let body ← unfoldListed us body
+    let body := reduceProjs (← unfoldListed us body)
     let fops ← collectOps body
     withOps fops.toList fun ops => do
       let body ← replaceOps ops body
@@ -190,6 +249,7 @@ def reifyFieldConst (c : Name) (n : Nat) (us : Array Name) : MetaM Expr := do
 
 /-- `reifyField% n f unfolding c₁ … cₖ` is the `ImpExpr` literal of the body of `f` over its
     last `n` explicit parameters, as `reifyImp%`, with the constants `cᵢ` unfolded, the
+    projections of tuples and of `let`s reduced and unused `let`s dropped (`reduceProjs`), the
     operations `+`, `-`, `*` and negation at `ZMod p` read as the calls of the tagged heads
     `FieldTag.fieldHead m p`, and a numeral `k : ZMod p` read as the literal `k % p`. Without
     `n`, every explicit binder is a parameter. -/
