@@ -29,6 +29,13 @@ rewrites of that body:
   the method `m`, the head `<method>#p<modulus>` of the builtin table `Hax.hax64Builtins`;
 * a numeral `k : ZMod n` is read as the integer literal `.lit (.int (k % n))`.
 
+A counted fold `Hax.foldRange lo hi init step` (or `Hax.foldRangeRev`) with one accumulator,
+on the `let` spine of the body or of a loop body or in tail position, is read as
+`let acc := init; for i in lo..hi { let acc := step i acc }; acc` (`reifyFold`), the loop
+the `forFold` (`forFoldRev`) of the hax extraction, an integer literal bound kept as a
+literal. The ascent generator states the loop by the same combinator, so `ascend_reified`
+validates the literal against the function.
+
 Values of `ZMod p` are encoded as the integer of their canonical representative
 (`HaxEnc (ZMod p)`, `enc x = .int x.val`), the encoding `Hax.hax64Builtins` reads at a modulus
 below `2^64`. The leaf lemmas `hax64Builtins_zmod_add`, `_sub`, `_mul`, `_neg` state that the
@@ -45,6 +52,8 @@ table answers a tagged head on encoded elements by the encoding of the field ope
 * `mulAddLean`, `mulAddImp` — `x * y + x` over BabyBear, and its literal
 * `affineLean`, `affineImp` — a wrapper around a function over named operations, with a
   numeral, a negation and a difference, and its literal
+* `mulLoopLean`, `mulLoopImp` — sixteen multiplications as a counted fold over BabyBear,
+  and its literal
 
 ## Main results
 
@@ -56,6 +65,8 @@ table answers a tagged head on encoded elements by the encoding of the field ope
 * `mulAddImp_eq`, `affineImp_eq` — the literals of the tests, stated in full
 * `mulAddImp_toTExpr` — the lift of `mulAddImp`, every node a `u64` word
 * `mulAdd_fnCorres` — the literal denotes `mulAddLean` under `Hax.hax64Builtins`
+* `mulLoopImp_eq`, `mulLoop_fnCorres` — the literal of the loop, and that it denotes
+  `mulLoopLean`
 -/
 
 @[expose] public section
@@ -212,6 +223,90 @@ def replaceOps (ops : List (Expr × _root_.Hax.FieldTag.FieldMethod × Nat × St
       return .done (← mkNumeral (mkConst ``Int) r)
     return .continue)
 
+/-- A counted fold `Hax.foldRange lo hi init step` (`false`) or
+    `Hax.foldRangeRev lo hi init step` (`true`): its direction, bounds, initial value and
+    step. -/
+def foldOf? (e : Expr) : Option (Bool × Expr × Expr × Expr × Expr) :=
+  if e.isAppOfArity ``Hax.foldRange 5 then
+    some (false, e.getArg! 1, e.getArg! 2, e.getArg! 3, e.getArg! 4)
+  else if e.isAppOfArity ``Hax.foldRangeRev 5 then
+    some (true, e.getArg! 1, e.getArg! 2, e.getArg! 3, e.getArg! 4)
+  else none
+
+/-- The literal `e`, a chain of `let`s ending in a value `v`, with `acc` rebound to the
+    value: `let acc := v; acc` in place of `v`, and `let acc := w; acc` in place of a last
+    binding `let t := w; t`. -/
+partial def rebindTail (acc : String) (e : Expr) : Expr :=
+  let rebind (v : Expr) : Expr :=
+    mkApp3 (mkConst ``Hax.ImpExpr.letBind) (mkStrLit acc) v (CatCrypt.Hax.ReifyImp.mkVar acc)
+  if e.isAppOfArity ``Hax.ImpExpr.letBind 3 then
+    let b := e.getArg! 2
+    if b.isAppOfArity ``Hax.ImpExpr.var 1 && b.appArg! == e.getArg! 0 then rebind (e.getArg! 1)
+    else mkApp3 (mkConst ``Hax.ImpExpr.letBind) (e.getArg! 0) (e.getArg! 1) (rebindTail acc b)
+  else rebind e
+
+/-- The literal of a loop bound: an integer literal itself, any other term bindings followed
+    by a variable. -/
+def reifyBound (ctx : CatCrypt.Hax.ReifyImp.Ctx) (e : Expr) :
+    CatCrypt.Hax.ReifyImp.ReifyM (List (String × Expr) × Expr) := do
+  let (bs, r) ← CatCrypt.Hax.ReifyImp.reifyRhs ctx e
+  if bs.isEmpty && r.isAppOfArity ``Hax.ImpExpr.lit 1 then return ([], r)
+  CatCrypt.Hax.ReifyImp.atomize (bs, r)
+
+mutual
+
+/-- The A-normal literal of a term in tail position, as `ReifyImp.reify`, with a counted
+    fold on the `let` spine or in tail position read as a loop (`reifyFold`). -/
+partial def reifyL (ctx : CatCrypt.Hax.ReifyImp.Ctx) (e : Expr) :
+    CatCrypt.Hax.ReifyImp.ReifyM Expr := do
+  let e := (← instantiateMVars e).headBeta
+  match e with
+  | .mdata _ b => reifyL ctx b
+  | .letE n t v b _ =>
+    if let some fd := foldOf? (← instantiateMVars v).headBeta.consumeMData then
+      reifyFold ctx fd fun acc => withLetDecl n t v fun x =>
+        reifyL { ctx with vars := ctx.vars.insert x.fvarId! acc } (b.instantiate1 x)
+    else
+      let (bs, rv) ← CatCrypt.Hax.ReifyImp.reifyRhs ctx v
+      withLetDecl n t v fun x => do
+        let s ← CatCrypt.Hax.ReifyImp.fresh (CatCrypt.Hax.ReifyImp.nameStr n)
+        let bE ← reifyL { ctx with vars := ctx.vars.insert x.fvarId! s } (b.instantiate1 x)
+        return CatCrypt.Hax.ReifyImp.wrapLets (bs ++ [(s, rv)]) bE
+  | _ =>
+    if let some fd := foldOf? e then
+      reifyFold ctx fd fun acc => pure (CatCrypt.Hax.ReifyImp.mkVar acc)
+    else CatCrypt.Hax.ReifyImp.reify ctx e
+
+/-- The literal of the counted fold `(rev, lo, hi, init, step)` followed by the literal
+    `k acc` of its continuation, with the result of the fold held in the variable `acc`:
+    `let acc := init; for i in lo..hi { let acc := step i acc }; k acc`, the loop a
+    `forFold` (`forFoldRev` for `rev`) whose body is the literal of `step i acc` ending in
+    the rebinding of `acc` to its value (`rebindTail`). The accumulator is one variable. -/
+partial def reifyFold (ctx : CatCrypt.Hax.ReifyImp.Ctx) (fd : Bool × Expr × Expr × Expr × Expr)
+    (k : String → CatCrypt.Hax.ReifyImp.ReifyM Expr) : CatCrypt.Hax.ReifyImp.ReifyM Expr := do
+  let (rev, lo, hi, init, step) := fd
+  let accTy ← inferType init
+  unless (← CatCrypt.Hax.ReifyImp.tupleArity accTy) = 1 do
+    throwError "reifyField: fold with a tuple accumulator: {step}"
+  let (bs0, i0) ← CatCrypt.Hax.ReifyImp.reifyAtom ctx init
+  let (bsl, loE) ← reifyBound ctx lo
+  let (bsh, hiE) ← reifyBound ctx hi
+  let (iN, aN) := match step.consumeMData with
+    | .lam i _ (.lam a _ _ _) _ => (i, a)
+    | _ => (`i, `acc)
+  let iS ← CatCrypt.Hax.ReifyImp.fresh (CatCrypt.Hax.ReifyImp.nameStr iN)
+  let acc ← CatCrypt.Hax.ReifyImp.fresh (CatCrypt.Hax.ReifyImp.nameStr aN)
+  let bodyE ← withLocalDeclD iN (mkConst ``Int) fun ix => withLocalDeclD aN accTy fun ax =>
+    reifyL { ctx with vars := (ctx.vars.insert ix.fvarId! iS).insert ax.fvarId! acc }
+      (mkApp2 step ix ax).headBeta
+  let loop := mkApp4 (mkConst (if rev then ``Hax.ImpExpr.forFoldRev else ``Hax.ImpExpr.forFold))
+    (mkStrLit iS) loE hiE (rebindTail acc bodyE)
+  let rest ← k acc
+  return CatCrypt.Hax.ReifyImp.wrapLets (bs0 ++ bsl ++ bsh ++ [(acc, i0)])
+    (mkApp2 (mkConst ``Hax.ImpExpr.seq) loop rest)
+
+end
+
 /-- The literal of the definition `c` over its last `n` explicit parameters, the binders
     before them read as operations, the constants of `us` unfolded, and the field
     operations at `ZMod n` read as tagged heads. -/
@@ -245,14 +340,15 @@ def reifyFieldConst (c : Name) (n : Nat) (us : Array Name) : MetaM Expr := do
       let mut ctx := ctx
       for (x, _, _, h) in ops do
         ctx := { ctx with ops := ctx.ops.insert x.fvarId! h }
-      (CatCrypt.Hax.ReifyImp.reify ctx body).run' (used ++ ops.map (·.2.2.2))
+      (reifyL ctx body).run' (used ++ ops.map (·.2.2.2))
 
 /-- `reifyField% n f unfolding c₁ … cₖ` is the `ImpExpr` literal of the body of `f` over its
     last `n` explicit parameters, as `reifyImp%`, with the constants `cᵢ` unfolded, the
     projections of tuples and of `let`s reduced and unused `let`s dropped (`reduceProjs`), the
     operations `+`, `-`, `*` and negation at `ZMod p` read as the calls of the tagged heads
-    `FieldTag.fieldHead m p`, and a numeral `k : ZMod p` read as the literal `k % p`. Without
-    `n`, every explicit binder is a parameter. -/
+    `FieldTag.fieldHead m p`, a numeral `k : ZMod p` read as the literal `k % p`, and a
+    counted fold `Hax.foldRange` read as a loop (`reifyFold`). Without `n`, every explicit
+    binder is a parameter. -/
 syntax (name := reifyFieldStx) "reifyField% " (num)? ident (" unfolding " ident+)? : term
 
 @[term_elab reifyFieldStx]
@@ -652,5 +748,30 @@ theorem mulAddImp_toTExpr :
             [⟨.var "t", .uint .w64⟩, ⟨.var "x", .uint .w64⟩], .uint .w64⟩
           ⟨.var "t_1", .uint .w64⟩, .uint .w64⟩, .uint .w64⟩ := by
   rfl
+
+/-- `x` multiplied by `a` sixteen times over BabyBear, as the counted fold
+    `Hax.foldRange`. -/
+def mulLoopLean (x a : ZMod 2013265921) : ZMod 2013265921 :=
+  _root_.Hax.foldRange 0 16 x fun _i y => y * a
+
+/-- The literal of `mulLoopLean`. -/
+def mulLoopImp : ImpExpr := reifyField% mulLoopLean
+
+/-- The literal of `mulLoopLean`: the accumulator `y` bound to `x`, a `forFold` over
+    `[0, 16)` whose body rebinds `y` to the product, and the result `y`. -/
+theorem mulLoopImp_eq : mulLoopImp =
+    .letBind "y" (.var "x")
+    (.seq (.forFold "_i" (.lit (.int 0)) (.lit (.int 16))
+      (.letBind "y" (.app "mul#p2013265921" [.var "y", .var "a"]) (.var "y")))
+      (.var "y")) :=
+  rfl
+
+/-- From the entry environment binding `x` and `a`, the literal `mulLoopImp` returns the
+    encoding of `mulLoopLean` under the table `hax64Builtins`. -/
+theorem mulLoop_fnCorres :
+    FnCorres hax64Builtins mulLoopImp (A := ZMod 2013265921 × ZMod 2013265921 × Unit)
+      (fun a => bindParams [("x", enc a.1), ("a", enc a.2.1)]) (fun _ => True)
+      (fun a => mulLoopLean a.1 a.2.1) := by
+  ascend_reified mulLoopLean using [hax64Builtins_mul_babyBear]
 
 end CatCrypt.Hax.ReifyField
