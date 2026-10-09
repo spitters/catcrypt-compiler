@@ -942,7 +942,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm
-CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelMixedLink
+CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalCheck
 CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr
