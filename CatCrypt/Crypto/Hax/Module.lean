@@ -596,8 +596,9 @@ theorem typedCalls_refBi (P : TExpr → ImpExpr) (fs : List ModFn) {bi : Builtin
     its result in machine states. Its machine contract has the shape of the interface
     `X86Backend.Callee.CalleeSig`: the precondition `pre` on entry states, the addresses
     `foot` it may write, the postcondition `post` relating the entry state and the return
-    state, and the relation `pub` between entry states that agree on the public arguments.
-    From an entry state satisfying `pre`, every state `post` relates to it holds, in the
+    state, and the relation `pub` between entry states that agree on the public arguments,
+    which holds between any two states agreeing on `%rsp` and on the registers of the public
+    parameters of the layout (`pub_of_regs`). From an entry state satisfying `pre`, every state `post` relates to it holds, in the
     result read-back of the layout, the value of `sem` at the arguments the layout reads
     (`post_sem`), the value-level contract of `ProtocolEmitRealizes.KernelRealizes` at the
     layout. Its machine code is `bytes`, which may change the registers `clob` and uses a
@@ -623,6 +624,10 @@ structure LinkedFn where
   post : AState → AState → Prop
   /-- The relation between two entry states that agree on the public arguments. -/
   pub : AState → AState → Prop
+  /-- Two entry states that agree on the stack pointer and on the register of each public
+      parameter of the layout are related by `pub`. -/
+  pub_of_regs : ∀ s₁ s₂, s₁.regs "%rsp" = s₂.regs "%rsp" →
+    (∀ a ∈ layout.args, layout.argPub a = true → s₁.regs a.reg = s₂.regs a.reg) → pub s₁ s₂
   /-- **The value-level contract**: from an entry state satisfying the precondition, a return
       state the postcondition relates to it holds, in the result read-back of the layout, the
       value of the meaning at the arguments the layout reads. -/

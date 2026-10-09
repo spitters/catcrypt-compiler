@@ -44,6 +44,8 @@ of the record's interface to it.
   interface with a stronger precondition.
 * `wordCallee_of_linkedFn`: a linked function with a word layout is a `WordCallee`.
 * `arrCallee_of_linkedFn`: a linked function with an array layout is an `ArrCallee`.
+* `pub_of_ptrArg`: under an array layout, agreement on `%rsp`, the bounded word arguments and
+  the array pointer register gives the public relation of the record.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
@@ -263,5 +265,28 @@ theorem arrCallee_of_linkedFn {l : LinkedFn} {ws : List String} {pa : String} {n
   res_clob := hL.res_clob
   pre _ h hd := ⟨h, hd⟩
   post _ _ h hpost := run_of_post hL.result (read_arrLayout hL _) h.1 hpost h.2
+
+/-- **The public relation of an array layout from register agreement.** Under `ArrLayout`,
+    two entry states that agree on `%rsp`, on the register of each word argument of `ws` that
+    carries a bound of the layout, and on the register of the pointer name `pa` are related
+    by the public relation of the record: the array parameter is public under the layout
+    (`AbiLayout.argPub` of `.words n` is `true`). -/
+theorem pub_of_ptrArg {l : LinkedFn} {ws : List String} {pa : String} {n : Nat}
+    {res : String} (hL : ArrLayout l ws pa n res) {s₁ s₂ : AState}
+    (hrsp : s₁.regs "%rsp" = s₂.regs "%rsp")
+    (hws : ∀ w ∈ ws, l.layout.bounds.any (·.1 == phys w) = true →
+      s₁.regs (phys w) = s₂.regs (phys w))
+    (hpa : s₁.regs (phys pa) = s₂.regs (phys pa)) : l.pub s₁ s₂ := by
+  refine l.pub_of_regs s₁ s₂ hrsp fun a ha hp => ?_
+  have hm : (a.reg, a.kind) ∈
+      ws.map (fun w => (phys w, ArgKind.scalar)) ++ [(phys pa, ArgKind.words n)] :=
+    hL.args ▸ List.mem_map.mpr ⟨a, ha, rfl⟩
+  simp only [List.mem_append, List.mem_map, List.mem_singleton, Prod.mk.injEq] at hm
+  rcases hm with ⟨w, hw, hr, hk⟩ | ⟨hr, -⟩
+  · rw [CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout.argPub, ← hk, ← hr] at hp
+    rw [← hr]
+    exact hws w hw hp
+  · rw [hr]
+    exact hpa
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee

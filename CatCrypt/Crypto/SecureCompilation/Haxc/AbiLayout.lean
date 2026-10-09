@@ -32,6 +32,8 @@ and the runtime counts stay within stated bounds.
 * `ArgKind`, `AbiArg`, `AbiArg.read` — a parameter, its register and the value it denotes.
 * `ResultKind`, `ResultKind.read` — the read-back of a result from the entry and exit states.
 * `AbiLayout` — parameters, constants, result, count bounds and the stack frame.
+* `AbiLayout.argPub`, `AbiLayout.PubAgree` — the public parameters of a layout, and the
+  agreement of two entry states on the stack pointer and the public parameter registers.
 * `AbiLayout.Regions` — the count bounds and the separation of the pointer regions and the
   frame at an entry state.
 * `AbiLayout.EnvOf` — a hax environment binding each parameter to the value its register
@@ -140,6 +142,19 @@ namespace AbiLayout
 /-- The pointer regions of a layout: register and length in words of each array
     parameter, in parameter order. -/
 def regions (σ : AbiLayout) : List (String × Nat) := σ.args.filterMap AbiArg.region
+
+/-- A parameter is public under the layout `σ`: an array parameter, whose register holds an
+    address, or a scalar parameter whose register carries a bound of `σ`. -/
+def argPub (σ : AbiLayout) (a : AbiArg) : Bool :=
+  match a.kind with
+  | .words _ => true
+  | .scalar => σ.bounds.any (·.1 == a.reg)
+
+/-- Two entry states agree on the public data of the layout: the stack pointer and the
+    register of each public parameter. -/
+def PubAgree (σ : AbiLayout) (s₁ s₂ : AState) : Prop :=
+  s₁.regs "%rsp" = s₂.regs "%rsp" ∧
+    ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg
 
 /-- The entry conditions of a layout at the state `sa`: every bounded register is within its
     bound; the words of two distinct pointer regions are pairwise disjoint; and every word of
