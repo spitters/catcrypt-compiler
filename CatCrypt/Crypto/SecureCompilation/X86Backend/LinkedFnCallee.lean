@@ -31,7 +31,6 @@ of the record's interface to it.
 
 ## Main definitions
 
-* `wordVal`: a word as a source integer.
 * `wordSummary`, `arrSummary`: the procedure summaries of a linked function on words, and on
   words followed by an array.
 * `wordSig`, `arrSig`: the interfaces of a linked function for the two readings.
@@ -66,7 +65,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall (WordCallee)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr (arrWords readArgs ArrCallee)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState AMem read64 InRange8)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiArg ArgKind ResultKind wordsAt)
-open CatCrypt.Crypto.Hax (LinkedFn)
+open CatCrypt.Crypto.Hax (LinkedFn wordVal dec_wordVal insVals insArrArgs)
 open CatCrypt.Crypto.Hax.ImpToNF (dec)
 open _root_.Hax (Value)
 
@@ -84,15 +83,6 @@ theorem CalleeSpec.restrictPre {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec 
   ct s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ := hX.ct s₁ s₂ t₁ t₂ s₁' s₂' (hP s₁ h₁) (hP s₂ h₂)
 
 /-! ## 2. Procedure summaries and interfaces of a linked function -/
-
-/-- A word as a source integer. -/
-def wordVal (x : BitVec 64) : Value := .int x.toNat
-
-/-- The word decoding of a word as a source integer is the word. -/
-theorem dec_wordVal (x : BitVec 64) : dec (.word 64) (wordVal x) = some x := by
-  have h : ((x.toNat : Int)).toNat = x.toNat := Int.toNat_natCast _
-  simp only [wordVal, dec, h, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-  rw [if_pos ⟨Int.natCast_nonneg _, by exact_mod_cast x.isLt⟩]
 
 /-- **The procedure summary of a linked function on words**: the meaning at the argument
     words as source integers, decoded as a word. -/
@@ -299,14 +289,6 @@ theorem pub_of_ptrArg {l : LinkedFn} {ws : List String} {pa : String} {n : Nat}
 
 /-! ## 5. A linked function with a word-array result -/
 
-/-- The source values of a list of argument words under a list of parameter kinds: a scalar
-    takes one word as a source integer, an array of `m` words takes the next `m` words as a
-    source array. -/
-def insVals : List ArgKind → List (BitVec 64) → List Value
-  | [], _ => []
-  | .scalar :: ks, xs => wordVal (xs.headD 0) :: insVals ks xs.tail
-  | .words m :: ks, xs => .array ((xs.take m).map wordVal) :: insVals ks (xs.drop m)
-
 /-- The argument words of a parameter at a state: the word of the register of the name for
     a scalar, the `m` words at the address in that register for an array of `m` words. -/
 def readIn (p : String × ArgKind) (s : AState) : List (BitVec 64) :=
@@ -372,12 +354,14 @@ structure OutLayout (l : LinkedFn) (ins : List (String × ArgKind)) (po : String
     s₁.regs (phys po) = s₂.regs (phys po) → l.pub s₁ s₂
 
 /-- **The procedure summary of a linked function with a word-array result of length `n`**:
-    no word result, and as array result the meaning at the source values of the argument
-    words under the kinds of `ins`, decoded as an array of words. -/
+    the array positions of the kinds of `ins`, no word result, and as array result the
+    meaning at the source values of the argument words under the kinds of `ins`, decoded as
+    an array of words. -/
 def outSummary (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) :
     LprogIsa.ProcSummary where
   arity := l.params.length
   run := fun _ => none
+  arrArgs := insArrArgs (ins.map (·.2))
   out := some n
   runOut m xs := (l.sem (insVals (ins.map (·.2)) xs)).bind (dec (.arr m (.word 64)))
 

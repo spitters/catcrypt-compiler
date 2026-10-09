@@ -87,6 +87,9 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
 * `LinkedFn`, `LinkedFn.callee`, `linkBi`, `HaxModule.linkedFns` — a linked function of a
   module as a kernel record, its callee in the call typing, the table of a list of linked
   functions, and the linked functions of a module as callees of the call typing.
+* `wordVal`, `insVals`, `insArrArgs` — a word as a source integer, the source values of a
+  list of argument words under a list of parameter kinds, and the array positions of a list
+  of parameter kinds.
 * `HaxModule.sigOf`, `HaxModule.linkTable`, `HaxModule.table` — the call typing, the table
   of the linked functions and the table of a module.
 * `HaxModule.Runs` — the source relation of a module at a base table and a layout.
@@ -124,6 +127,8 @@ every such family to `bi` (`CrateTables.denote_crateInline?`).
   table of the linked functions with none is the base table, answers a name of none by the
   base table and a name of one by its meaning, and is typed by the call typing of their
   callees.
+* `dec_wordVal`, `insArrArgs_of_scalars` — the word decoding of a word as a source integer
+  is the word, and scalar parameter kinds have no array position.
 * `HaxModule.linkTable_of_linked_nil`, `HaxModule.table_of_linked_nil` — without linked
   functions the table of the linked functions is the base table, and the table of the module
   is the reference table of its functions over the base table.
@@ -424,7 +429,7 @@ namespace CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses (nfSem)
-open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout)
+open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout ArgKind)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls PDenP
   paramsEnv dec dec_sound)
@@ -648,6 +653,43 @@ def callee (l : LinkedFn) : CrateFn :=
   ⟨l.name, l.params, l.res, .app l.name (l.params.map fun p => .var p.1)⟩
 
 end LinkedFn
+
+/-- A word as a source integer. -/
+def wordVal (x : BitVec 64) : Value := .int x.toNat
+
+/-- The word decoding of a word as a source integer is the word. -/
+theorem dec_wordVal (x : BitVec 64) : dec (.word 64) (wordVal x) = some x := by
+  have h : ((x.toNat : Int)).toNat = x.toNat := Int.toNat_natCast _
+  simp only [wordVal, dec, h, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  rw [if_pos ⟨Int.natCast_nonneg _, by exact_mod_cast x.isLt⟩]
+
+/-- The source values of a list of argument words under a list of parameter kinds: a scalar
+    takes one word as a source integer, an array of `m` words takes the next `m` words as a
+    source array. -/
+def insVals : List ArgKind → List (BitVec 64) → List Value
+  | [], _ => []
+  | .scalar :: ks, xs => wordVal (xs.headD 0) :: insVals ks xs.tail
+  | .words m :: ks, xs => .array ((xs.take m).map wordVal) :: insVals ks (xs.drop m)
+
+/-- The positions of the array parameters of a list of parameter kinds, with the length of
+    each array in words; `none` at a scalar position and past the end of the list. -/
+def insArrArgs : List ArgKind → Nat → Option Nat
+  | [], _ => none
+  | .words m :: _, 0 => some m
+  | .scalar :: _, 0 => none
+  | _ :: ks, i + 1 => insArrArgs ks i
+
+/-- A list of scalar parameter kinds has no array position. -/
+theorem insArrArgs_of_scalars : ∀ {ks : List ArgKind}, (∀ k ∈ ks, k = .scalar) →
+    insArrArgs ks = fun _ => none
+  | [], _ => by funext i; cases i <;> rfl
+  | k :: ks, h => by
+      obtain rfl := h k List.mem_cons_self
+      funext i
+      cases i with
+      | zero => rfl
+      | succ i =>
+          exact congrFun (insArrArgs_of_scalars fun k hk => h k (List.mem_cons_of_mem _ hk)) i
 
 /-- **The table of the linked functions `ls` over the table `bi`**: the first linked function
     with a name answers a call by its meaning `sem` on the argument values; every other call
