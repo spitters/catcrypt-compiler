@@ -52,21 +52,14 @@ coupling the IR layer to the existing pure-state model.
 * `genericGate` carries `(name, params)` payload; its semantics is
   deliberately a no-op stub in this file. Lowering paths that need a
   concrete unitary register a new per-gate constructor instead.
-* **`DialectDenoteM` cannot host real quantum semantics.** `VIR`'s
-  generic `DialectDenoteM` typeclass denotes ops by `op → args : HVector
-  ⟦·⟧ op.sig → M ⟦op.ret⟧`. Quantum semantics, however, needs the
-  *physical-qubit index* a gate acts on — but qubit types in this
-  dialect are nominal handles (`⟦.qubit⟧ = Unit`), so `args` carries
-  no index. The real semantics for VIR quantum programs is therefore
-  defined *outside* `DialectDenoteM`, in
-  `CatCrypt/Crypto/Quantum/VIR/QSSAToVIRCircuit.lean`, via
-  `Com.realDenoteQComp := unitaryDenote ∘ lowerVIRCom` — a direct
-  translation into the existing `Quantum/QSSAToCircuit` framework that
-  threads a `RegAlloc` for De Bruijn-to-physical resolution. This file
-  ships no `DialectDenoteM` instance, so nothing can be stated about a
-  quantum program's semantics except through that lowering; a Phase 4
-  refactor that indexes `QTy.qubit` by a physical register slot would
-  be needed to host a meaningful `DialectDenoteM` instance.
+* The operation semantics lives in
+  `CatCrypt/Crypto/Quantum/VIR/QuantumDialectDenote.lean`: a `DialectDenoteM`
+  value over the type denotation `QTy.phys numQ`, in which a qubit denotes its
+  physical wire. That type denotation is passed explicitly; `QTy.denote` below is
+  the default one, with nominal qubit handles. On programs the lowering
+  translates exactly, the semantics agrees with
+  `Com.realDenoteQComp := unitaryDenote ∘ lowerVIRCom`
+  (`Com.denoteQ_forget_eq_realDenoteQComp`).
 
 ## References
 
