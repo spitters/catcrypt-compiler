@@ -233,6 +233,7 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mpn
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.UnsatField
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.MontDeg
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
@@ -846,7 +847,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOut
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
