@@ -49,9 +49,12 @@ readings of a declared name: the builtin table of the source answers it by the f
   translated program has an image in the Jasmin dialect, and the conversion is defined on
   its e-graph pass.
 * `nfToCatExt_leak` — the leakage transformer on the translations without `call`.
-* `nfToCatExt_leakC` — the leakage transformer at a call environment, for declarations of
-  tagged field heads: the events of the translation are the source events without the
-  variable-time leaf calls of tagged field heads (`stripField`).
+* `nfToCatExt_leakD` — the leakage transformer at a call environment, for declarations of
+  no name `index` or `array_update`: the events of the translation are the source events
+  without the variable-time leaf calls of tagged field heads and of declared names
+  (`stripDecl D`).
+* `nfToCatExt_leakC` — the same at declarations of tagged field heads, at which
+  `stripDecl D` is `stripField`.
 -/
 
 @[expose] public section
@@ -1141,6 +1144,126 @@ theorem stripField_opLeak_of_extArgs {D : List ExtDecl}
       · cases hc
   | _ => intro args c hc; cases hc
 
+/-- Whether an event is a variable-time leaf call of a tagged field head or of a name that `D`
+    declares. -/
+def isDeclEvent (D : List ExtDecl) : CTLeak → Bool
+  | .vtCall f _ =>
+      (_root_.Hax.FieldTag.fieldTag? f).isSome || D.any fun d => decide (d.name = f)
+  | _ => false
+
+/-- The events with the variable-time leaf calls of tagged field heads and of the names that
+    `D` declares removed. -/
+def stripDecl (D : List ExtDecl) (l : List CTLeak) : List CTLeak :=
+  l.filter fun e => !isDeclEvent D e
+
+@[simp] theorem stripDecl_nil (D : List ExtDecl) : stripDecl D [] = [] := rfl
+
+@[simp] theorem stripDecl_append (D : List ExtDecl) (l₁ l₂ : List CTLeak) :
+    stripDecl D (l₁ ++ l₂) = stripDecl D l₁ ++ stripDecl D l₂ :=
+  List.filter_append ..
+
+@[simp] theorem stripDecl_branch (D : List ExtDecl) (b : Bool) (l : List CTLeak) :
+    stripDecl D (.branch b :: l) = .branch b :: stripDecl D l := by
+  simp [stripDecl, isDeclEvent]
+
+@[simp] theorem stripDecl_trip (D : List ExtDecl) (n : Nat) (l : List CTLeak) :
+    stripDecl D (.trip n :: l) = .trip n :: stripDecl D l := by
+  simp [stripDecl, isDeclEvent]
+
+/-- At declarations of tagged field heads, `stripDecl D` is `stripField`. -/
+theorem stripDecl_eq_stripField {D : List ExtDecl}
+    (hT : ∀ d ∈ D, (_root_.Hax.FieldTag.fieldTag? d.name).isSome = true) (l : List CTLeak) :
+    stripDecl D l = stripField l := by
+  unfold stripDecl stripField
+  congr 1
+  funext e
+  cases e with
+  | vtCall f _ =>
+      simp only [isDeclEvent, isFieldEvent]
+      cases h : (_root_.Hax.FieldTag.fieldTag? f).isSome
+      · rw [Bool.false_or, List.any_eq_false.mpr fun d hd hn => by
+          rw [decide_eq_true_eq] at hn
+          subst hn
+          rw [hT d hd] at h
+          cases h]
+      · rfl
+  | _ => rfl
+
+/-- A tagged field head is neither `index` nor `array_update`. -/
+theorem ne_index_of_tagged {f : String}
+    (hf : (_root_.Hax.FieldTag.fieldTag? f).isSome = true) :
+    f ≠ "index" ∧ f ≠ "array_update" := by
+  refine ⟨fun h => ?_, fun h => ?_⟩ <;> subst h <;> exact absurd hf (by decide)
+
+/-- The leakage kind of an operation `catOp` translates is no variable-time leaf call. -/
+theorem nfKind_ne_vtCall_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect}
+    (σ : TRd Γ Δ) :
+    ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig) (res : OpRes Δ op.ret),
+      catOp σ op args = some res → ∀ g, nfKind op ≠ .vtCall g := by
+  intro op
+  induction op with
+  | named n op ih => exact ih
+  | call f as r =>
+      intro args res h g hg
+      have hn := catCallRd_name h
+      simp only [nfKind] at hg
+      split_ifs at hg with h1 h2
+      cases hg
+      rcases hn with rfl | rfl | hq
+      · exact absurd (Or.inl rfl) h1
+      · exact absurd (Or.inr rfl) h1
+      · exact absurd hq h2
+  | ilit t v => intro _ _ _ g hg; cases hg
+  | ctr => intro _ _ _ g hg; cases hg
+  | trip t => intro _ _ _ g hg; cases hg
+  | _ => intro _ _ h; cases h
+
+/-- The events of an operation `catOp` translates are kept by `stripDecl D`. -/
+theorem stripDecl_opLeak_of_catOp (D : List ExtDecl) {Γ : Ctxt nfDialect}
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (op : NfOp)
+    (args : HVector (fun t => Var Γ t) op.sig) (res : OpRes Δ op.ret)
+    (h : catOp σ op args = some res) (xs) :
+    stripDecl D (opLeak nfLeakModel op xs) = opLeak nfLeakModel op xs := by
+  have hk := nfKind_ne_vtCall_of_catOp σ op args res h
+  unfold opLeak
+  split
+  · rfl
+  · simp [stripDecl, isDeclEvent]
+  · simp [stripDecl, isDeclEvent]
+  · rename_i g hg
+    exact absurd hg (hk g)
+
+/-- The events of an operation `extArgs` reads as a declared call are removed by
+    `stripDecl D` when no declaration is named `index` or `array_update`. -/
+theorem stripDecl_opLeak_of_extArgs {D : List ExtDecl}
+    (hN : ∀ d ∈ D, d.name ≠ "index" ∧ d.name ≠ "array_update")
+    {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
+    ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig)
+      (c : String × (as : List NfTy) × HVector (fun t => Rd Δ t) as),
+      extArgs D σ op args = some c → ∀ xs, stripDecl D (opLeak nfLeakModel op xs) = [] := by
+  intro op
+  induction op with
+  | named n op ih => exact ih
+  | call g bs r =>
+      intro args c hc xs
+      unfold extArgs at hc
+      split at hc
+      · rename_i hdec
+        obtain ⟨d, hd, hn, -, -, -⟩ := declared_iff.mp hdec
+        subst hn
+        unfold opLeak
+        show stripDecl D (match nfKind (.call d.name bs r) with
+          | .quiet => [] | .addrAt k => _ | .vt m => _ | .vtCall g => _) = []
+        simp only [nfKind]
+        split_ifs with h1 h2
+        · rcases h1 with h1 | h1
+          exacts [absurd h1 (hN d hd).1, absurd h1 (hN d hd).2]
+        · rfl
+        · simp only [stripDecl, isDeclEvent]
+          simpa using Or.inr ⟨d, hd, rfl⟩
+      · cases hc
+  | _ => intro args c hc; cases hc
+
 /-- The leakage transformer statement of the translation with declarations of the program
     `p` at the call environment `E`: a leakage run of `p` that succeeds from a valuation
     related to `W` by the readings is matched by a leakage run at `E` of the translated
@@ -1154,6 +1277,22 @@ def NFLeakSoundC (P : CatLeakParams) (bi : _root_.Hax.Builtins) (E : CallEnv cat
     ∀ (V : Valuation Γ) (W : Valuation Δ) (r : Valuation (d := nfDialect) ts × List CTLeak),
     σ.Agree V W → nfLeakRun bi fuel p V = some r →
     ∃ r', NFProg.leakRunMC (catLeakModel P) E fuel p' W = some r' ∧ r'.2 = stripField r.2 ∧
+      VRelL ts r.1 r'.1
+
+/-- The leakage transformer statement of the translation with the declarations `D` of the
+    program `p` at the call environment `E`: a leakage run of `p` that succeeds from a
+    valuation related to `W` by the readings is matched by a leakage run at `E` of the
+    translated program from `W`, whose events are those of the source with the variable-time
+    leaf calls of tagged field heads and of the names `D` declares removed (`stripDecl D`),
+    and with related results. -/
+def NFLeakSoundD (P : CatLeakParams) (bi : _root_.Hax.Builtins) (E : CallEnv catCryptDialect)
+    (D : List ExtDecl) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Prop :=
+  ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
+    (p' : NFProg catCryptDialect Δ (ts.map catTy)), nfToCatExt D p σ = some p' →
+    ∀ (V : Valuation Γ) (W : Valuation Δ) (r : Valuation (d := nfDialect) ts × List CTLeak),
+    σ.Agree V W → nfLeakRun bi fuel p V = some r →
+    ∃ r', NFProg.leakRunMC (catLeakModel P) E fuel p' W = some r' ∧ r'.2 = stripDecl D r.2 ∧
       VRelL ts r.1 r'.1
 
 /-- The literal binding `bvConst` emits no event at parameters with no variable-time
@@ -1318,16 +1457,17 @@ theorem emitCall_leakC {P : CatLeakParams} (hP : NoVT P) (E : CallEnv catCryptDi
 
 /-- **The leakage transformer of the translation with declarations.** Under `SubTable bi`,
     the agreement `ExtAgree bi E D`, parameters with no variable-time operation, and
-    declarations of tagged field heads only, a leakage run of a program that succeeds is
-    matched by the leakage run at `E` of its translation, in which a call node emits no
-    event: the events of the translation are those of the source with the variable-time leaf
-    calls of tagged field heads removed (`stripField`). -/
-theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
+    declarations of no name `index` or `array_update`, a leakage run of a program that
+    succeeds is matched by the leakage run at `E` of its translation, in which a call node
+    emits no event: the events of the translation are those of the source with the
+    variable-time leaf calls of tagged field heads and of the declared names removed
+    (`stripDecl D`). -/
+theorem nfToCatExt_leakD {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) {E : CallEnv catCryptDialect} {D : List ExtDecl}
     (hD : ExtAgree bi E D)
-    (hT : ∀ d ∈ D, (_root_.Hax.FieldTag.fieldTag? d.name).isSome = true) (fuel : Nat)
+    (hN : ∀ d ∈ D, d.name ≠ "index" ∧ d.name ≠ "array_update") (fuel : Nat)
     {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) :
-    NFLeakSoundC P bi E D fuel p := by
+    NFLeakSoundD P bi E D fuel p := by
   induction p with
   | ret vs =>
       intro Δ σ p' h V W r hag hr
@@ -1352,25 +1492,25 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
         have hlk := catOp_leak hP σ hag op args res hres
         change resLeak P W res = Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V at hlk
         obtain ⟨q', hq', he, hR⟩ := emitRes_leakC hP E fuel (fun σ' => nfToCatExt D k σ') V
-          y q.1 (stripField q.2)
+          y q.1 (stripDecl D q.2)
           (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' q hag' hq) res σ W p' h hag
           hrel
         refine ⟨q', hq', ?_, hR⟩
-        rw [he, hlk, stripField_append]
-        exact congrArg (· ++ stripField q.2)
-          (stripField_opLeak_of_catOp σ op args res hres (Expr.lookupArgs args V)).symm
+        rw [he, hlk, stripDecl_append]
+        exact congrArg (· ++ stripDecl D q.2)
+          (stripDecl_opLeak_of_catOp D σ op args res hres (Expr.lookupArgs args V)).symm
       · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨f, as, rs⟩ := c
         obtain ⟨xs, hx, hE⟩ := extArgs_sound hD σ hag op args f as rs y hc hy
         obtain ⟨q', hq', he, hR⟩ := emitCall_leakC hP E fuel (fun σ' => nfToCatExt D k σ') V
-          y q.1 (stripField q.2)
+          y q.1 (stripDecl D q.2)
           (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' q hag' hq)
           f as rs σ W xs p' h hag hx hE
         refine ⟨q', hq', ?_, hR⟩
-        rw [he, stripField_append]
-        suffices hs : stripField (Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V) = [] by
+        rw [he, stripDecl_append]
+        suffices hs : stripDecl D (Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V) = [] by
           rw [hs, List.nil_append]
-        exact stripField_opLeak_of_extArgs hT σ op args _ hc _
+        exact stripDecl_opLeak_of_extArgs hN σ op args _ hc _
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W r hag hr
       change (forIterLeak
@@ -1389,7 +1529,7 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
           nfToCatExt D k (TRd.liftApp cs σ') = some k' →
           ∃ r', NFProg.leakRunMC (catLeakModel P) E fuel
               (NFProg.forLoop (cs := cs.map catTy) c is body' k') W' = some r' ∧
-            r'.2 = stripField (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2)) ∧
+            r'.2 = stripDecl D (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2)) ∧
             VRelL ts₀ q.1 r'.1 := by
         intro Δ' σ' W' c is body' k' hag' hcnt his hb' hk'
         have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
@@ -1400,7 +1540,7 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
               some a →
             ∃ a', forIterLeak (fun i acc => NFProg.leakRunMC (catLeakModel P) E fuel body'
               (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 i) W')))
-              l acc' = some a' ∧ a'.2 = stripField a.2 ∧ VRelL cs a.1 a'.1 := by
+              l acc' = some a' ∧ a'.2 = stripDecl D a.2 ∧ VRelL cs a.1 a'.1 := by
           intro l
           induction l with
           | nil =>
@@ -1422,7 +1562,7 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
               · simp only [forIterLeak]
                 erw [ha1']
                 rw [Option.bind_some, ha2', Option.map_some]
-              · simp only [he1, he2, stripField_append]
+              · simp only [he1, he2, stripDecl_append]
         obtain ⟨a', ha', he, hrA⟩ := key _ _ _ a his ha
         obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend a.1 V)
           (hvAppend a'.1 W') q (TRd.agree_liftApp hag' cs a.1 a'.1 hrA) hq
@@ -1434,10 +1574,10 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
           rw [hc2]
           erw [ha']
           rw [Option.bind_some, hq', Option.map_some, ← hcnt]
-        · simp only [he, heq, ← hcnt, stripField_trip, stripField_append]
+        · simp only [he, heq, ← hcnt, stripDecl_trip, stripDecl_append]
       refine pinAll_leakC hP E fuel (ts := .word 64 :: cs) _ V
         (Expr.lookupArgs (HVector.cons count inits) V) q.1
-        (stripField (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2))) ?_ σ _ p' W h
+        (stripDecl D (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2))) ?_ σ _ p' W h
         hag (TRd.rdRelL_rds hag (HVector.cons count inits))
       intro Δ' σ' ws p'' W' hk hag' hrel
       rcases ws with _ | ⟨c, is⟩
@@ -1466,7 +1606,7 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
         obtain ⟨a', ha', hea, hrA⟩ : ∃ a', (if HasBoolBit.toBool (d := catCryptDialect)
             (c.lookup W) = true then NFProg.leakRunMC (catLeakModel P) E fuel thn' W
             else NFProg.leakRunMC (catLeakModel P) E fuel els' W) = some a' ∧
-            a'.2 = stripField a.2 ∧ VRelL rs a.1 a'.1 := by
+            a'.2 = stripDecl D a.2 ∧ VRelL rs a.1 a'.1 := by
           rw [hcb]
           cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
           · rw [hb] at ha
@@ -1480,7 +1620,7 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
         · simp only [NFProg.leakRunMC]
           erw [ha']
           rw [Option.bind_some, hq', Option.map_some]
-        · simp only [hea, heq, hcb, stripField_branch, stripField_append]
+        · simp only [hea, heq, hcb, stripDecl_branch, stripDecl_append]
       · cases h
   | whileLoop inits body k _ _ =>
       intro Δ σ p' h
@@ -1488,5 +1628,19 @@ theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
   | call f args k _ =>
       intro Δ σ p' h
       cases h
+
+/-- **The leakage transformer of the translation with declarations of tagged field heads.**
+    The statement `nfToCatExt_leakD` at declarations of tagged field heads only, at which
+    `stripDecl D` is `stripField` (`stripDecl_eq_stripField`). -/
+theorem nfToCatExt_leakC {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
+    (hbi : SubTable bi) {E : CallEnv catCryptDialect} {D : List ExtDecl}
+    (hD : ExtAgree bi E D)
+    (hT : ∀ d ∈ D, (_root_.Hax.FieldTag.fieldTag? d.name).isSome = true) (fuel : Nat)
+    {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) :
+    NFLeakSoundC P bi E D fuel p := by
+  intro Δ σ p' h V W r hag hr
+  obtain ⟨r', h₁, h₂, h₃⟩ := nfToCatExt_leakD hP hbi hD
+    (fun d hd => ne_index_of_tagged (hT d hd)) fuel p σ p' h V W r hag hr
+  exact ⟨r', h₁, h₂.trans (stripDecl_eq_stripField hT r.2), h₃⟩
 
 end CatCrypt.Crypto.Hax.NFToCat
