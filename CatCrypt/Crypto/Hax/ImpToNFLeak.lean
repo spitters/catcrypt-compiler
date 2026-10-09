@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.HaxSourceLeak
 public import CatCrypt.Crypto.Hax.NFToCatLeak
+public import CatCrypt.Crypto.Hax.NFToCatCall
 public import CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
 
 /-!
@@ -39,9 +40,13 @@ operation event to its events, and every other event to none.
 
 ## Constant time
 
-From source constant time `SourceCTNF` for a level table `lt`, two leakage runs of the
-emitted program from valuations related to environments agreeing on the public variables
-emit equal events (`impToNF_ct_runs`). For a function body with the parameters `ps`, whose
+Source constant time `SourceCTNF` for a level table `lt` compares the events `nfTrace` of two
+runs without the leaf calls of tagged field heads (`stripField`): a tagged field call is
+compiled to a field body whose constant time is proved separately. The leakage model
+`nfLeakModelQ` makes those calls quiet, and its runs are the stripped runs of `nfLeakModel`
+(`nfLeakRunQ_eq`, from the change of model `NFProg.leakRunM_filter`). From `SourceCTNF`, two
+leakage runs in `nfLeakModelQ` of the emitted program from valuations related to environments
+agreeing on the public variables emit equal events (`impToNF_ct_runs`). For a function body with the parameters `ps`, whose
 source run ends in a value from every valuation of the parameters, this is `NFCTRel` for the
 labels `entryLabels lt ps` (`impToNF_nfCTRel`). At `lt = levelsOf s`, with every parameter
 listed in the secrecy record `s`, it holds for the parameter levels `paramLevelOf s`, the
@@ -52,7 +57,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * `NFPre.leakRunM`, `PLeak`, `QuietPre`
 * `valNatOf`, `callLeak`, `srcLeakNF`, `srcArgsLeakNF`, `nfEv`, `nfTrace`
 * `LSound` — the simulation statement of `ImpToNF.Sound` with the leakage of the prefix
-* `SourceCTNF` — constant time at the source for `srcLeakNF`
+* `nfLeakModelQ`, `nfLeakRunQ` — the leakage model with quiet field calls and its runs
+* `SourceCTNF` — constant time at the source for `srcLeakNF`, modulo the field calls
 * `entryLabels`, `entryEnvOf`, `paramLevelOf`
 
 ## Main results
@@ -61,6 +67,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * the case lemmas `lsound_lit`, `lsound_atom`, `lsound_seq`, `lsound_letBind`,
   `lsound_assign`, `lsound_args`, `lsound_app`, `lsound_tuple`, `lsound_cond`,
   `loop_leak`, `loopOut_leak`, `lsound_forFold`
+* `forIterLeak_filter`, `whileIterLeak_filter`, `NFProg.leakRunM_filter`,
+  `opLeak_nfLeakModelQ`, `nfLeakRunQ_eq` — the change of leakage model
 * `impToNF_lsound`, `impToNF_leak` — the leakage transformer of the front
 * `impToNF_ct_runs`, `impToNF_nfCTRel`, `pubEqV_entryLabels_levelsOf`,
   `impToNF_nfCTRel_params`
@@ -249,6 +257,106 @@ theorem NFPre.leakRunM_fst (M : LeakModel d) (fuel : Nat) {Γ Δ : Ctxt d}
       · simp only [Option.bind_some, Option.map_some, Option.map_map]
         exact ih _
 
+/-! ## A change of leakage model that filters the events -/
+
+omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] in
+/-- The iterations of a counted loop under a step whose events are the events of `step`
+    filtered by `q` have the events of the iterations under `step` filtered by `q`. -/
+theorem forIterLeak_filter (q : CTLeak → Bool) {cs : List d.Ty}
+    (step step' : Nat → Valuation cs → Option (Valuation cs × List CTLeak))
+    (h : ∀ i acc, step' i acc = (step i acc).map fun r => (r.1, r.2.filter q)) :
+    ∀ (is : List Nat) (acc : Valuation cs), forIterLeak step' is acc =
+      (forIterLeak step is acc).map fun r => (r.1, r.2.filter q)
+  | [], _ => rfl
+  | i :: is, acc => by
+      simp only [forIterLeak, h]
+      rcases step i acc with _ | ⟨a, l⟩
+      · rfl
+      · simp only [Option.map_some, Option.bind_some, forIterLeak_filter q step step' h is a]
+        rcases forIterLeak step is a with _ | ⟨b, m⟩
+        · rfl
+        · simp [List.filter_append]
+
+omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
+/-- The runs of a loop in exit-flag form under a body whose events are the events of `step`
+    filtered by `q`, for a `q` that keeps every branch event, have the events of the runs
+    under `step` filtered by `q`. -/
+theorem whileIterLeak_filter (q : CTLeak → Bool) (hb : ∀ b, q (.branch b) = true)
+    {cs : List d.Ty}
+    (step step' : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs) × List CTLeak))
+    (h : ∀ acc, step' acc = (step acc).map fun r => (r.1, r.2.filter q)) :
+    ∀ (n : Nat) (acc : Valuation cs), whileIterLeak step' n acc =
+      (whileIterLeak step n acc).map fun r => (r.1, r.2.filter q)
+  | 0, _ => rfl
+  | n + 1, acc => by
+      simp only [whileIterLeak, h]
+      rcases step acc with _ | ⟨a, l⟩
+      · rfl
+      · simp only [Option.map_some, Option.bind_some]
+        split
+        · rw [whileIterLeak_filter q hb step step' h n]
+          rcases whileIterLeak step n a.tail with _ | ⟨b, m⟩
+          · rfl
+          · simp [List.filter_append, hb]
+        · simp [List.filter_append, hb]
+
+/-- **A change of leakage model that filters the events.** When every operation emits under
+    `M'` the events it emits under `M` filtered by `q`, and `q` keeps every branch and trip
+    event, the leakage run of a program under `M'` is its run under `M` with the events
+    filtered by `q`. -/
+theorem NFProg.leakRunM_filter (M M' : LeakModel d) (q : CTLeak → Bool)
+    (hb : ∀ b, q (.branch b) = true) (ht : ∀ n, q (.trip n) = true)
+    (hop : ∀ op vals, opLeak M' op vals = (opLeak M op vals).filter q) (fuel : Nat)
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (V : Valuation Γ) :
+    NFProg.leakRunM M' fuel p V =
+      (NFProg.leakRunM M fuel p V).map fun r => (r.1, r.2.filter q) := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [NFProg.leakRunM]
+      rcases e.denoteM (M := Option) V with _ | x
+      · rfl
+      · simp only [Option.bind_some, ih, Option.map_map]
+        congr 1
+        funext r
+        simp [Expr.ctLeak, hop, List.filter_append]
+  | forLoop count inits body k ihb ihk =>
+      simp only [NFProg.leakRunM]
+      rw [forIterLeak_filter q _ _ (fun i acc => ihb _)]
+      rcases forIterLeak _ _ _ with _ | ⟨a, l⟩
+      · rfl
+      · simp only [Option.map_some, Option.bind_some, ihk, Option.map_map]
+        congr 1
+        funext r
+        simp [List.filter_append, ht]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [NFProg.leakRunM]
+      have hc : (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M' fuel thn V
+          else NFProg.leakRunM M' fuel els V) =
+          (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+            else NFProg.leakRunM M fuel els V).map fun r => (r.1, r.2.filter q) := by
+        split
+        · exact iht V
+        · exact ihe V
+      rw [hc]
+      rcases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunM M fuel thn V
+        else NFProg.leakRunM M fuel els V) with _ | ⟨a, l⟩
+      · rfl
+      · simp only [Option.map_some, Option.bind_some, ihk, Option.map_map]
+        congr 1
+        funext r
+        simp [List.filter_append, hb]
+  | whileLoop inits body k ihb ihk =>
+      simp only [NFProg.leakRunM]
+      rw [whileIterLeak_filter q hb _ _ (fun acc => ihb _)]
+      rcases whileIterLeak _ _ _ with _ | ⟨a, l⟩
+      · rfl
+      · simp only [Option.map_some, Option.bind_some, ihk, Option.map_map]
+        congr 1
+        funext r
+        simp [List.filter_append]
+  | call => rfl
+
 end CatCrypt.Crypto.SecureCompilation.VIR
 
 namespace CatCrypt.Crypto.Hax.ImpToNF
@@ -259,7 +367,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
 open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
-open CatCrypt.Crypto.Hax.NFToCat (nfLeakModel nfKind nfValNat nfLeakRun)
+open CatCrypt.Crypto.Hax.NFToCat (nfLeakModel nfKind nfValNat nfLeakRun stripField
+  isFieldEvent)
 open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
 open MultiBlockLowering (hvAppend)
 open Ctxt (Var Valuation)
@@ -1351,22 +1460,75 @@ theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option Nf
   simp only [Option.map_some, List.append_nil]
   rfl
 
+/-! ## The leakage model with quiet field calls -/
+
+/-- **The leakage model of `nfDialect` with quiet field calls**: the class `nfKind` of an
+    operation, except that a call of a tagged field head (`Hax.FieldTag.fieldTag?`) is
+    quiet. -/
+def nfLeakModelQ : LeakModel nfDialect where
+  kind op := match nfKind op with
+    | .vtCall f => if (_root_.Hax.FieldTag.fieldTag? f).isSome then .quiet else .vtCall f
+    | k => k
+  valNat := nfValNat
+
+/-- The events of an operation under `nfLeakModelQ` are its events under `nfLeakModel`
+    without the leaf calls of tagged field heads. -/
+theorem opLeak_nfLeakModelQ (op : NfOp)
+    (vals : HVector (fun t => ⟦t⟧) (DialectSignature.sig (d := nfDialect) op)) :
+    ComLevelCheck.opLeak nfLeakModelQ op vals =
+      stripField (ComLevelCheck.opLeak nfLeakModel op vals) := by
+  have hv : ∀ {tys : List NfTy} (xs : HVector (fun t => ⟦t⟧) tys),
+      valsNat nfLeakModelQ xs = valsNat nfLeakModel xs := by
+    intro tys xs
+    induction xs with
+    | nil => rfl
+    | cons x xs ih => exact congrArg (List.cons _) ih
+  unfold ComLevelCheck.opLeak
+  rw [hv]
+  simp only [nfLeakModelQ, nfLeakModel]
+  cases nfKind op with
+  | vtCall f =>
+      cases h : (_root_.Hax.FieldTag.fieldTag? f).isSome <;>
+        simp [stripField, isFieldEvent, h]
+  | _ => simp [stripField, isFieldEvent]
+
+/-- The leakage run of a program of `nfDialect` over the leaf table of the builtin table `bi`
+    in the leakage model `nfLeakModelQ`. -/
+abbrev nfLeakRunQ (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
+    Option (Valuation (d := nfDialect) ts × List CTLeak) :=
+  @NFProg.leakRunM nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ fuel _ _ p V
+
+/-- **The run with quiet field calls is the stripped run**: the leakage run of a program in
+    `nfLeakModelQ` is its run in `nfLeakModel` with the leaf calls of tagged field heads
+    removed from the events (`stripField`). -/
+theorem nfLeakRunQ_eq (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
+    nfLeakRunQ bi fuel p V = (nfLeakRun bi fuel p V).map fun r => (r.1, stripField r.2) :=
+  @NFProg.leakRunM_filter nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel nfLeakModelQ
+    (fun e => !isFieldEvent e) (fun _ => rfl) (fun _ => rfl) opLeak_nfLeakModelQ fuel _ _ p V
+
 /-! ## Constant time through the front -/
 
-/-- **Source constant time for `srcLeakNF`** of `e` for the split `lt`: two runs at the same
-    fuel from environments agreeing on the public variables, both ending in a value, have
-    equal leakage. -/
+/-- **Source constant time for `srcLeakNF`, modulo the field calls,** of `e` for the split
+    `lt`: two runs at the same fuel from environments agreeing on the public variables, both
+    ending in a value, have equal events `nfTrace` of their leakage once the leaf calls of
+    tagged field heads are removed (`stripField`). A tagged field call is compiled to a
+    fiat-template body whose constant time is a property of that body
+    (`FieldLevel.fieldBody_nfCTRel`); its arguments are the only events removed. -/
 def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
   ∀ (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (v₁ v₂ : Value),
     PubEqEnv lt env₁ env₂ →
     (denote' bi fuel e).run env₁ = (.val v₁, env₁') →
     (denote' bi fuel e).run env₂ = (.val v₂, env₂') →
-    srcLeakNF bi e fuel env₁ = srcLeakNF bi e fuel env₂
+    stripField (nfTrace (srcLeakNF bi e fuel env₁)) =
+      stripField (nfTrace (srcLeakNF bi e fuel env₂))
 
-/-- **Two runs through the front.** Under `TypedCalls bi sigOf` and source constant time,
-    the leakage runs of the program `impToNF` emits from two valuations related by `σ` to
-    environments agreeing on the public variables, from which the source runs to values, emit
-    equal events. -/
+/-- **Two runs through the front.** Under `TypedCalls bi sigOf` and source constant time
+    modulo the field calls, the leakage runs of the program `impToNF` emits from two
+    valuations related by `σ` to environments agreeing on the public variables, from which the
+    source runs to values, emit equal events once the leaf calls of tagged field heads are
+    removed. -/
 theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
@@ -1376,13 +1538,14 @@ theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option
     (hrun₁ : (denote' bi fuel e).run env₁ = (.val v₁, env₁'))
     (hrun₂ : (denote' bi fuel e).run env₂ = (.val v₂, env₂')) (tf : Nat)
     {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
-    (hq₁ : nfLeakRun bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRun bi tf o.prog V₂ = some q₂) :
+    (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
     q₁.2 = q₂.2 := by
   obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT h hr₁ hrun₁ tf
   obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT h hr₂ hrun₂ tf
-  rw [hq₁, Option.some.injEq] at h₁
-  rw [hq₂, Option.some.injEq] at h₂
-  rw [h₁, h₂, hct fuel env₁ env₂ env₁' env₂' v₁ v₂ hpub hrun₁ hrun₂]
+  rw [nfLeakRunQ_eq, h₁, Option.map_some, Option.some.injEq] at hq₁
+  rw [nfLeakRunQ_eq, h₂, Option.map_some, Option.some.injEq] at hq₂
+  rw [← hq₁, ← hq₂]
+  exact hct fuel env₁ env₂ env₁' env₂' v₁ v₂ hpub hrun₁ hrun₂
 
 /-- The labels of the parameters `ps` read from the level table `lt`. -/
 def entryLabels (lt : LevelTable) : (ps : List (String × NfTy)) →
@@ -1440,9 +1603,10 @@ theorem pubEqEnv_entryEnvOf (lt : LevelTable) : ∀ (ps : List (String × NfTy))
           (fun t' v hv => h t' (Var.there v) hv) z hz
 
 /-- **Constant time through the front.** Under `TypedCalls bi sigOf`, let `e` be constant
-    time at the source for the level table `lt` (`SourceCTNF`), and let the source run of `e`
-    at the fuel `fuel` end in a value from the source environment of every valuation of the
-    parameters `ps`. Then the program `impToNF` emits from the parameters is constant time,
+    time at the source modulo the field calls for the level table `lt` (`SourceCTNF`), and
+    let the source run of `e` at the fuel `fuel` end in a value from the source environment of
+    every valuation of the parameters `ps`. Then the program `impToNF` emits from the
+    parameters is constant time in the leakage model `nfLeakModelQ` with quiet field calls,
     relative to the runs that succeed, for the labels `entryLabels lt ps` of the parameters,
     at every target fuel. -/
 theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
@@ -1451,7 +1615,7 @@ theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option
     (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
       (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
-    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel _ _
+    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ _ _
       (entryLabels lt ps) tf o.prog := by
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
   obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
@@ -1530,7 +1694,7 @@ theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy →
     (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
       (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
-    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModel _ _
+    @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ _ _
       (entryLabels (paramLevelOf s) ps) tf o.prog := by
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
   exact impToNF_nfCTRel bi sigOf hT (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
