@@ -43,8 +43,9 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   bytes outside the `F` bytes below the entry stack register.
 * `calleeSpec_of_keepCheck`: `CalleeSpec` of the leaky run of a decoded block from the keep
   check, a halting run with a postcondition and equality of traces.
-* `keptB`, `keepPool`, `keepPoolB`, `keepPoolB_spec`, `keepPoolB_keep`: the allocation pool
-  of a caller, made of the general-purpose names kept across a call, its check, and the
+* `keptB`, `keepPool`, `scratch_not_mem_keepPool`, `keepPoolB`, `keepPoolB_spec`,
+  `keepPoolB_keep`: the allocation pool of a caller, made of the general-purpose names kept
+  across a call other than the reload scratches of the allocator, its check, and the
   preservation of the registers of a checked pool by a specified callee.
 * `PubSummary`, `CalleeSpec.kept_agree`, `pubSummary_of_ct`, `pubSummary_of_checkCert`: the
   leakage summary of a callee, what a specified callee keeps equal between two runs, and
@@ -577,12 +578,31 @@ def keptB (c : CalleeSig) (r : String) : Bool :=
   gpOk r && !c.clob (phys r) && !c.args.contains r && (c.res != some r)
 
 /-- **The allocation pool of a caller of `c`**: the general-purpose names kept across a
-    call of `c`, in the order of `gpList`, with `RDX` at index `3`, the index the allocator
-    withholds for a body with a high multiplication
+    call of `c`, in the order of `gpList`, other than the reload scratches `R15` and `R14`
+    of the allocator (`JasminLprogExport.reloadScratch`, `JasminLprogExport.reloadScratch2`),
+    which the reload of a spilled name and the load of an array base write; with `RDX` at
+    index `3`, the index the allocator withholds for a body with a high multiplication
     (`JasminLprogExport.bodyReservedGP`). -/
 def keepPool (c : CalleeSig) : List String :=
-  let ks := gpList.filter fun r => keptB c r && r != "RDX"
+  let ks := gpList.filter fun r => keptB c r && r != "RDX" && r != "R14" && r != "R15"
   ks.take 3 ++ "RDX" :: ks.drop 3
+
+/-- The pool `keepPool c` holds neither reload scratch of the allocator. -/
+theorem scratch_not_mem_keepPool (c : CalleeSig) :
+    "R14" ∉ keepPool c ∧ "R15" ∉ keepPool c := by
+  have h : ∀ x, x ∈ keepPool c → x ≠ "R14" ∧ x ≠ "R15" := by
+    intro x hx
+    simp only [keepPool] at hx
+    rcases List.mem_append.mp hx with hx | hx
+    · have := (List.mem_filter.mp (List.mem_of_mem_take hx)).2
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
+      exact ⟨this.1.2, this.2⟩
+    · rcases List.mem_cons.mp hx with rfl | hx
+      · decide
+      · have := (List.mem_filter.mp (List.mem_of_mem_drop hx)).2
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
+        exact ⟨this.1.2, this.2⟩
+  exact ⟨fun hm => (h _ hm).1 rfl, fun hm => (h _ hm).2 rfl⟩
 
 /-- **The check of an allocation pool against a callee**: every name of the pool is kept
     across a call of `c`, the name at index `3` is `RDX`, and no name occurs twice. -/
