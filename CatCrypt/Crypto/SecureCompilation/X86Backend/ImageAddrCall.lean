@@ -2534,9 +2534,11 @@ theorem keepPoolB_clobN {c : CalleeSig} {pool : List String} (h : keepPoolB c po
   simp [exemptC, hk] at hm
 
 /-- **The allocation of a virtual function that calls `c`**: `lfundefPhysAbiOfVirtAt` at
-    the pool `keepPool c` of the names kept across a call of `c`. -/
+    the pool `keepPool c` of the names kept across a call of `c`, with the out symbols
+    `outs`, whose calls copy no result register. -/
 def lfundefPhysAbiOfVirtC (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
-    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool) : Lfundef :=
-  lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String := []) : Lfundef :=
+  lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall

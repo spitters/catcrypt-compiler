@@ -633,6 +633,12 @@ emits the **System V AMD64** sequence around a real `Lcall`:
 
 The marshalling `MOV`s name the ABI arg registers literally, so they survive
 the physical RA (the linear scan never reassigns a literal hardware register).
+They form a parallel move (`parMoves`): a move into an argument register is
+emitted only after every other move that reads that register, and a cycle of
+argument registers is broken through `RAX`, so every argument register receives
+the value its operand has before the sequence (`runMoves_parMoves`). An out call,
+whose callee writes its result through the pointer of its first argument, has no
+copy of `RAX` into its destination, which keeps that pointer.
 
 **Caller-save / frame requirement (the live-across-the-call obligation).** A
 real `call` clobbers all SysV *caller-saved* registers
@@ -649,22 +655,283 @@ only when the loop-carried set already lands in callee-saved registers.
 The registers `sysvArgRegs`, `sysvRetReg` and `sysvCallerSaved` are defined in
 `VIR.X86IsaData`. -/
 
+/-- The names an operand reads: a register, the base of a memory operand, the base
+    and the index of an indexed operand, and no name for an immediate. -/
+def marshalReads : LOperand → List String
+  | .reg x => [x]
+  | .arr b _ => [b]
+  | .imm _ => []
+  | .arrIdx b i _ => [b, i]
+
+/-- A move into `d` is blocked in the pending moves `ms` when a move of `ms` into a
+    register other than `d` reads `d`. -/
+def moveBlockedB (ms : List (String × LOperand)) (d : String) : Bool :=
+  ms.any fun m => m.1 != d && (marshalReads m.2).contains d
+
+/-- The operand `o` with the register `d` replaced by the register `t`. -/
+def substReg (d t : String) : LOperand → LOperand
+  | .reg x => if x = d then .reg t else .reg x
+  | o => o
+
+/-- **The parallel move of the pending moves `ms`** (pairs of a destination register
+    and a source operand) through the temporary `tmp`, with `fuel` steps: the first
+    move of `ms` that is not blocked (`moveBlockedB`) is emitted first and removed;
+    when every move is blocked, the destination `d` of the first move is copied into
+    `tmp` and every source register `d` is replaced by `tmp`, provided no pending
+    move writes or reads `tmp`. `none` when that proviso fails or the fuel runs out. -/
+def parMovesAux (tmp : String) : Nat → List (String × LOperand) →
+    Option (List (String × LOperand))
+  | _, [] => some []
+  | 0, _ :: _ => none
+  | fuel + 1, m0 :: ms0 =>
+      let ms := m0 :: ms0
+      match ms.find? (fun m => !moveBlockedB ms m.1) with
+      | some m => (parMovesAux tmp fuel (ms.filter fun m' => m'.1 != m.1)).map (m :: ·)
+      | none =>
+          if ms.any (fun m => m.1 == tmp || (marshalReads m.2).contains tmp) then none
+          else (parMovesAux tmp fuel (ms.map fun m => (m.1, substReg m0.1 tmp m.2))).map
+            ((tmp, .reg m0.1) :: ·)
+
+/-- The parallel move of `ms` through `tmp` (`parMovesAux` with fuel twice the number of
+    moves, plus one), or `ms` in order when it fails. -/
+def parMoves (tmp : String) (ms : List (String × LOperand)) : List (String × LOperand) :=
+  (parMovesAux tmp (2 * ms.length + 1) ms).getD ms
+
+/-- The run of a list of moves, in order, on the register file `R`, with `ev R o` the
+    value of the operand `o` at `R`. -/
+def runMoves {α : Type} (ev : (String → α) → LOperand → α) :
+    (String → α) → List (String × LOperand) → (String → α)
+  | R, [] => R
+  | R, (d, s) :: ms => runMoves ev (fun x => if x = d then ev R s else R x) ms
+
+/-- Two members of a list of pairs with distinct first components and the same first
+    component are equal. -/
+theorem eq_of_mem_of_fst_eq {β γ : Type} : ∀ {l : List (β × γ)}, (l.map Prod.fst).Nodup →
+    ∀ {a b : β × γ}, a ∈ l → b ∈ l → a.1 = b.1 → a = b
+  | [], _, _, _, ha, _, _ => by cases ha
+  | c :: l, hnd, a, b, ha, hb, he => by
+      rw [List.map_cons, List.nodup_cons] at hnd
+      rcases List.mem_cons.mp ha with rfl | ha' <;> rcases List.mem_cons.mp hb with rfl | hb'
+      · rfl
+      · exact absurd (by rw [he]; exact List.mem_map_of_mem hb') hnd.1
+      · exact absurd (by rw [← he]; exact List.mem_map_of_mem ha') hnd.1
+      · exact eq_of_mem_of_fst_eq hnd.2 ha' hb' he
+
+/-- **Soundness of the parallel move.** Let `ev` read a register as its value and
+    let the value of an operand depend only on the names it reads (`marshalReads`).
+    If `parMovesAux` returns `out` on moves `ms` with distinct destinations, none of
+    them `tmp`, then the run of `out` from `R` holds, at the destination of each move
+    of `ms`, the value of its source at `R`, and keeps every register that is neither
+    a destination nor `tmp`. -/
+theorem runMoves_parMovesAux {α : Type} {ev : (String → α) → LOperand → α}
+    (hreg : ∀ R x, ev R (.reg x) = R x)
+    (hloc : ∀ R R' o, (∀ x ∈ marshalReads o, R x = R' x) → ev R o = ev R' o)
+    (tmp : String) :
+    ∀ (fuel : Nat) (ms : List (String × LOperand)) (out : List (String × LOperand))
+      (R : String → α), parMovesAux tmp fuel ms = some out → (ms.map Prod.fst).Nodup →
+      (∀ m ∈ ms, m.1 ≠ tmp) →
+      (∀ m ∈ ms, runMoves ev R out m.1 = ev R m.2)
+        ∧ ∀ x, x ∉ ms.map Prod.fst → x ≠ tmp → runMoves ev R out x = R x
+  | fuel, [], out, R, h, _, _ => by
+      obtain rfl : out = [] := by
+        cases fuel <;> simp only [parMovesAux, Option.some.injEq] at h <;> exact h.symm
+      exact ⟨fun _ hm => absurd hm List.not_mem_nil, fun _ _ _ => rfl⟩
+  | 0, _ :: _, _, _, h, _, _ => by cases h
+  | fuel + 1, m0 :: ms0, out, R, h, hnd, htmp => by
+      simp only [parMovesAux] at h
+      split at h
+      · rename_i m hf
+        obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hm := List.mem_of_find?_eq_some hf
+        have hnb := List.find?_some hf
+        simp only [Bool.not_eq_true', moveBlockedB, List.any_eq_false, Bool.and_eq_true,
+          bne_iff_ne, ne_eq, List.contains_iff_mem, not_and] at hnb
+        set ms := m0 :: ms0 with hms
+        have hsub : (ms.filter fun m' => m'.1 != m.1).Sublist ms := List.filter_sublist
+        have hnd' : ((ms.filter fun m' => m'.1 != m.1).map Prod.fst).Nodup :=
+          (hsub.map Prod.fst).nodup hnd
+        have htmp' : ∀ m' ∈ ms.filter (fun m' => m'.1 != m.1), m'.1 ≠ tmp :=
+          fun m' hm' => htmp m' (hsub.subset hm')
+        obtain ⟨ih1, ih2⟩ := runMoves_parMovesAux hreg hloc tmp fuel _ out'
+          (fun x => if x = m.1 then ev R m.2 else R x) h' hnd' htmp'
+        have hdst : m.1 ∉ (ms.filter fun m' => m'.1 != m.1).map Prod.fst := by
+          simp
+        refine ⟨fun m' hm' => ?_, fun x hx hxt => ?_⟩
+        · by_cases hd : m'.1 = m.1
+          · rw [runMoves, hd, ih2 m.1 hdst (htmp m hm)]
+            simp [eq_of_mem_of_fst_eq hnd hm' hm hd]
+          · rw [runMoves, ih1 m' (List.mem_filter.mpr ⟨hm', by simpa using hd⟩)]
+            refine hloc _ _ _ fun x hx => ?_
+            have : x ≠ m.1 := by
+              rintro rfl
+              exact hnb m' hm' hd hx
+            simp [this]
+        · have hx' : x ∉ (ms.filter fun m' => m'.1 != m.1).map Prod.fst := fun hx' =>
+            hx ((hsub.map Prod.fst).subset hx')
+          rw [runMoves, ih2 x hx' hxt]
+          have : x ≠ m.1 := fun he => hx (he ▸ List.mem_map_of_mem hm)
+          simp [this]
+      · split at h
+        · cases h
+        · rename_i hf hany
+          obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
+          simp only [List.any_eq_true, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem,
+            not_exists, not_and, not_or] at hany
+          set ms := m0 :: ms0 with hms
+          have hmap : (ms.map fun m => (m.1, substReg m0.1 tmp m.2)).map Prod.fst =
+              ms.map Prod.fst := by simp
+          have hnd' : ((ms.map fun m => (m.1, substReg m0.1 tmp m.2)).map Prod.fst).Nodup := by
+            rw [hmap]; exact hnd
+          have htmp' : ∀ m' ∈ ms.map (fun m => (m.1, substReg m0.1 tmp m.2)), m'.1 ≠ tmp := by
+            intro m' hm'
+            obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hm'
+            exact htmp m hm
+          obtain ⟨ih1, ih2⟩ := runMoves_parMovesAux hreg hloc tmp fuel _ out'
+            (fun x => if x = tmp then ev R (.reg m0.1) else R x) h' hnd' htmp'
+          refine ⟨fun m hm => ?_, fun x hx hxt => ?_⟩
+          · rw [runMoves, ih1 (m.1, substReg m0.1 tmp m.2) (List.mem_map_of_mem hm)]
+            dsimp only
+            have hnt : tmp ∉ marshalReads m.2 := (hany m hm).2
+            cases ho : m.2 with
+            | reg y =>
+                rw [ho] at hnt
+                by_cases hy : y = m0.1
+                · simp [substReg, hy, hreg]
+                · have hyt : y ≠ tmp := by
+                    intro he; exact hnt (by simp [marshalReads, he])
+                  simp [substReg, hy, hreg, hyt]
+            | arr b i =>
+                rw [ho] at hnt
+                simp only [substReg]
+                refine hloc _ _ _ fun z hz => ?_
+                have : z ≠ tmp := fun he => hnt (he ▸ hz)
+                simp [this]
+            | imm k =>
+                simp only [substReg]
+                exact hloc _ _ _ fun z hz => by simp [marshalReads] at hz
+            | arrIdx b i s =>
+                rw [ho] at hnt
+                simp only [substReg]
+                refine hloc _ _ _ fun z hz => ?_
+                have : z ≠ tmp := fun he => hnt (he ▸ hz)
+                simp [this]
+          · rw [runMoves, ih2 x (by rw [hmap]; exact hx) hxt]
+            simp [hxt]
+
+/-- **Soundness of `parMoves`** when the parallel move succeeds: the run of
+    `parMoves tmp ms` holds, at the destination of each move of `ms`, the value of its
+    source before the run, and keeps every register that is neither a destination nor
+    `tmp`. -/
+theorem runMoves_parMoves {α : Type} {ev : (String → α) → LOperand → α}
+    (hreg : ∀ R x, ev R (.reg x) = R x)
+    (hloc : ∀ R R' o, (∀ x ∈ marshalReads o, R x = R' x) → ev R o = ev R' o)
+    {tmp : String} {ms : List (String × LOperand)}
+    (hok : (parMovesAux tmp (2 * ms.length + 1) ms).isSome) (hnd : (ms.map Prod.fst).Nodup)
+    (htmp : ∀ m ∈ ms, m.1 ≠ tmp) (R : String → α) :
+    (∀ m ∈ ms, runMoves ev R (parMoves tmp ms) m.1 = ev R m.2)
+      ∧ ∀ x, x ∉ ms.map Prod.fst → x ≠ tmp → runMoves ev R (parMoves tmp ms) x = R x := by
+  obtain ⟨out, hout⟩ := Option.isSome_iff_exists.mp hok
+  rw [parMoves, hout, Option.getD_some]
+  exact runMoves_parMovesAux hreg hloc tmp _ ms out R hout hnd htmp
+
+/-- Every source of the parallel move satisfies a property of operands that holds at
+    every register and at every source of `ms`. -/
+theorem parMovesAux_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String) :
+    ∀ (fuel : Nat) (ms out : List (String × LOperand)), parMovesAux tmp fuel ms = some out →
+      (∀ m ∈ ms, P m.2) → ∀ m ∈ out, P m.2
+  | fuel, [], out, h, _ => by
+      obtain rfl : out = [] := by
+        cases fuel <;> simp only [parMovesAux, Option.some.injEq] at h <;> exact h.symm
+      intro m hm; cases hm
+  | 0, _ :: _, _, h, _ => by cases h
+  | fuel + 1, m0 :: ms0, out, h, hms => by
+      simp only [parMovesAux] at h
+      split at h
+      · rename_i m hf
+        obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
+        have ih := parMovesAux_src hP tmp fuel _ out' h'
+          (fun m' hm' => hms m' (List.mem_filter.mp hm').1)
+        intro m' hm'
+        rcases List.mem_cons.mp hm' with rfl | hm'
+        · exact hms _ (List.mem_of_find?_eq_some hf)
+        · exact ih m' hm'
+      · split at h
+        · cases h
+        · obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
+          have ih := parMovesAux_src hP tmp fuel _ out' h' (by
+            intro m' hm'
+            obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hm'
+            have := hms m hm
+            dsimp only
+            cases ho : m.2 with
+            | reg y => simp only [substReg]; split <;> exact hP _
+            | _ => simpa [substReg, ho] using this)
+          intro m' hm'
+          rcases List.mem_cons.mp hm' with rfl | hm'
+          · exact hP _
+          · exact ih m' hm'
+
+/-- Every source of `parMoves tmp ms` satisfies a property of operands that holds at
+    every register and at every source of `ms`. -/
+theorem parMoves_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String)
+    {ms : List (String × LOperand)} (hms : ∀ m ∈ ms, P m.2) :
+    ∀ m ∈ parMoves tmp ms, P m.2 := by
+  unfold parMoves
+  cases h : parMovesAux tmp (2 * ms.length + 1) ms with
+  | none => exact hms
+  | some out => exact parMovesAux_src hP tmp _ ms out h hms
+
+/-- **The marshalling moves of a call**: the parallel move (`parMoves`, through
+    `sysvRetReg`) of the pairs of each SysV argument register and its operand. -/
+def marshalMoves (argOps : List LOperand) : List (String × LOperand) :=
+  parMoves sysvRetReg ((argOps.zip sysvArgRegs).map fun p => (p.2, p.1))
+
 /-- Emit a real-`Lcall` SysV call to the opaque leaf `sym`, marshalling the
     resolved call-argument operands `argOps` into the SysV arg registers, then
-    capturing the integer return value into `dst`. The body of a loop that must
-    `call` a leaf splices this in place of the `CALL:` shadow.
+    capturing the integer return value into `dst` unless the call is an out call
+    (`out = true`), whose callee writes its result through the pointer of its first
+    argument. The body of a loop that must `call` a leaf splices this in place of
+    the `CALL:` shadow.
 
-    Shape: one `MOV <argReg>, <argOp>` per argument (up to 6), then the `Lcall`,
-    then `MOV dst, RAX`. The `Lcall`'s `ra` (return-address slot) is `none`
-    (jasmin's export path manages it); the remote label is `(sym, 0)`. -/
-def loopBodyCallLcmd (dst : String) (sym : String) (argOps : List LOperand) :
-    Lcmd :=
+    Shape: the moves `marshalMoves argOps` (one `MOV <argReg>, <argOp>` per argument,
+    up to 6, ordered as a parallel move, with a copy through `RAX` at a cycle), then
+    the `Lcall`, then `MOV dst, RAX` when `out = false`. The `Lcall`'s `ra`
+    (return-address slot) is `none` (jasmin's export path manages it); the remote
+    label is `(sym, 0)`. -/
+def loopBodyCallLcmd (dst : String) (sym : String) (argOps : List LOperand)
+    (out : Bool := false) : Lcmd :=
   let marshal : Lcmd :=
-    (argOps.zip sysvArgRegs).map (fun ⟨op, areg⟩ =>
+    (marshalMoves argOps).map (fun ⟨areg, op⟩ =>
       ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩)
   marshal
-  ++ [ ⟨0, .Lcall none (sym, 0)⟩
-     , ⟨0, .Lopn [.reg dst] (withWidthTag 64 "MOV") [.reg sysvRetReg]⟩ ]
+  ++ ⟨0, .Lcall none (sym, 0)⟩
+  :: if out then [] else [⟨0, .Lopn [.reg dst] (withWidthTag 64 "MOV") [.reg sysvRetReg]⟩]
+
+/-- Every source of the marshalling moves of a call satisfies a property of operands that
+    holds at every register and at every operand of the call. -/
+theorem marshalMoves_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) {argOps : List LOperand}
+    (h : ∀ o ∈ argOps, P o) : ∀ m ∈ marshalMoves argOps, P m.2 :=
+  parMoves_src hP sysvRetReg (fun m hm => by
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hm
+    exact h _ (List.of_mem_zip hp).1)
+
+/-- **The instructions of a call sequence**: a marshalling move `MOV a, o` of
+    `marshalMoves argOps`, the `Lcall` of `sym`, or the copy `MOV dst, RAX`. -/
+theorem mem_loopBodyCallLcmd {dst sym : String} {argOps : List LOperand} {out : Bool}
+    {z : Linstr} (hz : z ∈ loopBodyCallLcmd dst sym argOps out) :
+    (∃ a o, (a, o) ∈ marshalMoves argOps
+        ∧ z = ⟨0, .Lopn [.reg a] (withWidthTag 64 "MOV") [o]⟩)
+      ∨ z = ⟨0, .Lcall none (sym, 0)⟩
+      ∨ z = ⟨0, .Lopn [.reg dst] (withWidthTag 64 "MOV") [.reg sysvRetReg]⟩ := by
+  unfold loopBodyCallLcmd at hz
+  simp only [List.mem_append, List.mem_map, List.mem_cons] at hz
+  rcases hz with ⟨⟨a, o⟩, hp, rfl⟩ | rfl | hz
+  · exact Or.inl ⟨a, o, hp, rfl⟩
+  · exact Or.inr (Or.inl rfl)
+  · split at hz
+    · cases hz
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
+      exact Or.inr (Or.inr hz)
 
 /-! ### 3b‴′. 128-bit (SSE-class) leaf-call marshalling
 
@@ -1077,8 +1344,10 @@ path (`comToLfundefPhys`) and the looped call path already do. -/
     marshalling sequence `loopBodyCallLcmd`. Every non-shadow instruction passes
     through unchanged; a body with no shadow is the identity image (byte-identical
     call-free export). The `CALLN:` (multi-result) head slot captures `RAX` (the
-    single-output linstr layer names the head result only). -/
-def expandCallShadows (body : Lcmd) : Lcmd :=
+    single-output linstr layer names the head result only). A `CALL:<sym>` shadow
+    whose symbol is among the out symbols `outs` is an out call and captures no
+    `RAX`. -/
+def expandCallShadows (body : Lcmd) (outs : List String := []) : Lcmd :=
   body.flatMap (fun i =>
     match i.li_i with
     | .Lopn [.reg dst] opn argOps =>
@@ -1091,7 +1360,8 @@ def expandCallShadows (body : Lcmd) : Lcmd :=
             loopBodyCallLcmdClassed dst (retW > 64) sym classed
         | none =>
           if hasPrefix opn "CALLN:" then loopBodyCallLcmd dst (strDrop opn 6) argOps
-          else if hasPrefix opn "CALL:" then loopBodyCallLcmd dst (strDrop opn 5) argOps
+          else if hasPrefix opn "CALL:" then
+            loopBodyCallLcmd dst (strDrop opn 5) argOps (outs.contains (strDrop opn 5))
           else [i]
     | _ => [i])
 

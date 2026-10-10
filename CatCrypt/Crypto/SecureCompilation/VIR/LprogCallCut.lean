@@ -809,8 +809,8 @@ def shadowFreeI (i : Linstr) : Bool :=
 def shadowFreeB (body : Lcmd) : Bool := body.all shadowFreeI
 
 /-- **`expandCallShadows` is the identity on a body without call shadows.** -/
-theorem expandCallShadows_of_shadowFreeB {body : Lcmd} (h : shadowFreeB body = true) :
-    expandCallShadows body = body := by
+theorem expandCallShadows_of_shadowFreeB {body : Lcmd} (h : shadowFreeB body = true)
+    {outs : List String} : expandCallShadows body outs = body := by
   unfold expandCallShadows
   induction body with
   | nil => rfl
@@ -841,20 +841,23 @@ theorem poolAbi_default : poolAbi x86Abi.allocPool = x86Abi := rfl
     `expandCallShadows` on the allocated body. With `pool` a pool of names kept across the
     call (`Callee.keepPool`), a name live across a shadow instruction is allocated to a
     register the callee keeps or to a frame word, and the marshalling moves of the
-    expansion write only argument registers and read the result register. -/
+    expansion write only argument registers and read the result register. A call of a
+    symbol of `outs` is an out call, whose expansion copies no result register. -/
 def lfundefPhysAbiOfVirtAt (pool : List String) (virt0 : Lfundef) (outArg' : String)
-    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool) : Lfundef :=
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String := []) : Lfundef :=
   let fd := lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
     (abiTyin := abiTyin) (abi := poolAbi pool) (posBind := posBind)
-  { fd with lfd_body := expandCallShadows fd.lfd_body }
+  { fd with lfd_body := expandCallShadows fd.lfd_body outs }
 
 /-- **At the pool of `x86Abi`, on an allocated body without call shadows, the allocation
     with shadow instructions is `lfundefPhysAbiOfVirt`.** -/
 theorem lfundefPhysAbiOfVirtAt_default (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (h : shadowFreeB (lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
-      (abiTyin := abiTyin) (posBind := posBind)).lfd_body = true) :
+      (abiTyin := abiTyin) (posBind := posBind)).lfd_body = true) (outs : List String := []) :
     lfundefPhysAbiOfVirtAt x86Abi.allocPool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+        outs
       = lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
           (abiTyin := abiTyin) (posBind := posBind) := by
   unfold lfundefPhysAbiOfVirtAt

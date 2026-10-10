@@ -834,18 +834,16 @@ theorem marshalClassedArgs_direct (args : List (LOperand × Bool))
       · exact ih ht _ _
 
 theorem loopBodyCallLcmd_direct (dst sym : String) (argOps : List LOperand)
-    (h : ∀ o ∈ argOps, isIndexed o = false) :
-    lcmdDirect (loopBodyCallLcmd dst sym argOps) = true := by
-  unfold loopBodyCallLcmd
+    (h : ∀ o ∈ argOps, isIndexed o = false) (out : Bool := false) :
+    lcmdDirect (loopBodyCallLcmd dst sym argOps out) = true := by
   refine lcmdDirect_of_mem ?_
   intro z hz
-  simp only [List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hz
-  rcases hz with ⟨p, hp, rfl⟩ | rfl | rfl
+  rcases mem_loopBodyCallLcmd hz with ⟨a, o, ho, rfl⟩ | rfl | rfl
   · exact linstrRDirect_Lopn_mk (by simp) (by
-      intro o ho
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
-      subst ho
-      exact h _ (List.of_mem_zip hp).1)
+      intro o' ho'
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at ho'
+      subst ho'
+      exact marshalMoves_src (P := fun o => isIndexed o = false) (fun _ => rfl) h _ ho)
   · rfl
   · exact linstrRDirect_Lopn_mk (by simp) (by simp)
 
@@ -863,8 +861,8 @@ theorem loopBodyCallLcmdClassed_direct (dst : String) (dstIsVec : Bool) (sym : S
   · dsimp only
     split <;> exact linstrRDirect_Lopn_mk (by simp) (by simp)
 
-theorem expandCallShadows_lcmdDirect {body : Lcmd} (h : lcmdDirect body = true) :
-    lcmdDirect (expandCallShadows body) = true := by
+theorem expandCallShadows_lcmdDirect {body : Lcmd} (h : lcmdDirect body = true)
+    {outs : List String} : lcmdDirect (expandCallShadows body outs) = true := by
   unfold expandCallShadows
   refine lcmdDirect_flatMap _ _ ?_
   intro i hi
@@ -882,7 +880,7 @@ theorem expandCallShadows_lcmdDirect {body : Lcmd} (h : lcmdDirect body = true) 
     · split
       · exact loopBodyCallLcmd_direct _ _ _ hS
       · split
-        · exact loopBodyCallLcmd_direct _ _ _ hS
+        · exact loopBodyCallLcmd_direct _ _ _ hS _
         · simpa [lcmdDirect] using h1
   · simpa [lcmdDirect] using h1
 
