@@ -52,6 +52,8 @@ that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
   further bindings, and the identity.
 * `NFProg.seq?` — a body renamed into a context, followed by a continuation.
 * `InlineLib`, `InlineLib.Sound` — inlining libraries and their soundness.
+* `InlineLib.LeakSound` — soundness of a library for the leakage run, with a list of events
+  per symbol that does not depend on the arguments.
 * `NFProg.inlineVar`, `NFProg.inline?`, `NFProg.inlineIter` — inlining at one binding, in a
   program, and repeated.
 * `NFProgPasses.inlineStep`, `NFProgPasses.inlineCert` — the repeated inlining as a chain step
@@ -74,6 +76,11 @@ that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
 * `NFProg.denote_inline?`, `NFProg.denoteAt_inline?` — inlining under a sound library keeps
   every successful run.
 * `NFProg.denote_inlineIter` — so does the repeated inlining.
+* `NFProg.leakRunMC_inline?` — inlining under a library sound for the leakage run whose
+  bodies of symbols emit no event keeps every successful leakage run.
+* `NFProg.leakRunMC_inline?_prefix` — inlining under a library sound for the leakage run with
+  a fixed list of events per symbol (`InlineLib.LeakSound`) maps two runs with equal events
+  to two runs with equal events.
 * `NFProg.allOps_iff`, `noCrateCall_iff` — the checks on the operations of a program accept
   the programs all of whose operations pass.
 * `NFProg.denote_inline?_step`, `NFProg.denote_inlineIter_step` — inlining between two
@@ -465,19 +472,22 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak (forIterLeak whileIterLea
 
 variable [DialectDenoteM d Option]
 
-/-- **A library is sound for the leakage run at `E`** at the fuel `fuel`: the body of an
-    operation runs, on every argument vector on which the operation succeeds, to its result
-    and to the events of the operation, and the body of a symbol runs, on every argument vector
-    on which the callee of `E` succeeds, to its result and to no event. -/
+/-- **A library is sound for the leakage run at `E`** at the fuel `fuel` with the events `ev`
+    of the symbols: the body of an operation runs, on every argument vector on which the
+    operation succeeds, to its result and to the events of the operation, and the body of the
+    symbol `f` at the signature `as → rs` runs, on every argument vector on which the callee
+    of `E` succeeds, to its result and to the events `ev f as rs`, which do not depend on the
+    arguments. The default `ev` is the empty list at every symbol. -/
 structure InlineLib.LeakSound (M : LeakModel d) (E : CallEnv d) (L : InlineLib d)
-    (fuel : Nat) : Prop where
+    (fuel : Nat) (ev : String → List d.Ty → List d.Ty → List CTLeak := fun _ _ _ => []) :
+    Prop where
   /-- The body of an operation runs as the operation, with its events. -/
   op : ∀ (o : d.Op) b, L.op o = some b → ∀ x y,
     DialectDenoteM.denoteM (M := Option) o x = some y →
     Dialects.NFLeak.NFProg.leakRunMC M E fuel b x = some (.cons y .nil, opLeak M o x)
-  /-- The body of a symbol runs as its callee, with no event. -/
+  /-- The body of a symbol runs as its callee, with the events of the symbol. -/
   call : ∀ f as rs b, L.call f as rs = some b → ∀ x y, E.call f as rs x = some y →
-    Dialects.NFLeak.NFProg.leakRunMC M E fuel b x = some (y, [])
+    Dialects.NFLeak.NFProg.leakRunMC M E fuel b x = some (y, ev f as rs)
 
 namespace NFProg
 
@@ -734,6 +744,313 @@ theorem leakRunMC_inline? (M : LeakModel d) (E : CallEnv d) {L : InlineLib d} {f
         rw [h', List.nil_append]
       · cases hq
         simp only [leakRunMC, hy, Option.bind_some, hs']
+
+omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] in
+/-- **The iterations of two counted loops whose single iterations split, split.** When every
+    pair of iterations of the steps `f₁` and `f₂` is matched by iterations of `g₁` and `g₂`
+    with the same accumulators and with events that are equal, together with the lists that
+    follow them, whenever the source events extended by those lists are equal, the same holds
+    for the iterations over a list of indices. -/
+theorem forIterLeak_prefix {cs : List d.Ty}
+    (f₁ f₂ g₁ g₂ : Nat → Valuation cs → Option (Valuation cs × List CTLeak))
+    (h : ∀ i X₁ X₂ u₁ u₂, f₁ i X₁ = some u₁ → f₂ i X₂ = some u₂ →
+      ∃ m₁ m₂, g₁ i X₁ = some (u₁.1, m₁) ∧ g₂ i X₂ = some (u₂.1, m₂) ∧
+        ∀ s₁ s₂ : List CTLeak, u₁.2 ++ s₁ = u₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂) :
+    ∀ (l : List Nat) (X₁ X₂ : Valuation cs) (r₁ r₂ : Valuation cs × List CTLeak),
+      forIterLeak f₁ l X₁ = some r₁ → forIterLeak f₂ l X₂ = some r₂ →
+      ∃ m₁ m₂, forIterLeak g₁ l X₁ = some (r₁.1, m₁) ∧ forIterLeak g₂ l X₂ = some (r₂.1, m₂) ∧
+        ∀ s₁ s₂ : List CTLeak, r₁.2 ++ s₁ = r₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂
+  | [], X₁, X₂, r₁, r₂, h₁, h₂ => by
+      simp only [forIterLeak, Option.some.injEq] at h₁ h₂
+      subst h₁ h₂
+      exact ⟨[], [], rfl, rfl, fun s₁ s₂ hs => ⟨rfl, by simpa using hs⟩⟩
+  | i :: l, X₁, X₂, r₁, r₂, h₁, h₂ => by
+      simp only [forIterLeak, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+      obtain ⟨u₁, hu₁, q₁, hq₁, rfl⟩ := h₁
+      obtain ⟨u₂, hu₂, q₂, hq₂, rfl⟩ := h₂
+      obtain ⟨m₁, m₂, hm₁, hm₂, hm⟩ := h i X₁ X₂ u₁ u₂ hu₁ hu₂
+      obtain ⟨n₁, n₂, hn₁, hn₂, hn⟩ :=
+        forIterLeak_prefix f₁ f₂ g₁ g₂ h l u₁.1 u₂.1 q₁ q₂ hq₁ hq₂
+      refine ⟨m₁ ++ n₁, m₂ ++ n₂, ?_, ?_, fun s₁ s₂ hs => ?_⟩
+      · simp only [forIterLeak, hm₁, hn₁, Option.bind_some, Option.map_some]
+      · simp only [forIterLeak, hm₂, hn₂, Option.bind_some, Option.map_some]
+      · simp only [List.append_assoc] at hs
+        obtain ⟨rfl, hs⟩ := hm _ _ hs
+        obtain ⟨rfl, rfl⟩ := hn _ _ hs
+        exact ⟨rfl, rfl⟩
+
+omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
+/-- The iterations of an exit-flag loop whose body succeeds wherever a first body does, with
+    the same result and some events, succeed with the same result. -/
+theorem whileIterLeak_exists {cs : List d.Ty}
+    (f g : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs) × List CTLeak))
+    (h : ∀ X u, f X = some u → ∃ m, g X = some (u.1, m)) :
+    ∀ (n : Nat) (X : Valuation cs) (r : Valuation cs × List CTLeak),
+      whileIterLeak f n X = some r → ∃ m, whileIterLeak g n X = some (r.1, m)
+  | 0, _, _, h₁ => by simp [whileIterLeak] at h₁
+  | n + 1, X, r, h₁ => by
+      simp only [whileIterLeak, Option.bind_eq_some_iff] at h₁
+      obtain ⟨u, hu, h₁⟩ := h₁
+      obtain ⟨m, hm⟩ := h X u hu
+      by_cases hb : HasBoolBit.toBool (d := d) u.1.head = true
+      · rw [if_pos hb] at h₁
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h₁
+        obtain ⟨k, hk⟩ := whileIterLeak_exists f g h n _ q hq
+        exact ⟨m ++ .branch true :: k, by
+          simp only [whileIterLeak, hm, Option.bind_some, hb, if_true, hk, Option.map_some]⟩
+      · rw [if_neg hb] at h₁
+        cases h₁
+        exact ⟨m ++ [.branch false], by
+          simp only [whileIterLeak, hm, Option.bind_some, hb, Bool.false_eq_true, if_false]⟩
+
+omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
+/-- **The iterations of two exit-flag loops whose single bodies split, split**: the analogue
+    of `forIterLeak_prefix` for `whileIterLeak` at a common fuel, when each target body
+    succeeds wherever its source body does. The flag a body returns is an event, so two runs
+    whose events split take the same number of iterations. -/
+theorem whileIterLeak_prefix {cs : List d.Ty}
+    (f₁ f₂ g₁ g₂ : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs) × List CTLeak))
+    (e₁ : ∀ X u, f₁ X = some u → ∃ m, g₁ X = some (u.1, m))
+    (e₂ : ∀ X u, f₂ X = some u → ∃ m, g₂ X = some (u.1, m))
+    (h : ∀ X₁ X₂ u₁ u₂, f₁ X₁ = some u₁ → f₂ X₂ = some u₂ →
+      ∃ m₁ m₂, g₁ X₁ = some (u₁.1, m₁) ∧ g₂ X₂ = some (u₂.1, m₂) ∧
+        ∀ s₁ s₂ : List CTLeak, u₁.2 ++ s₁ = u₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂) :
+    ∀ (n : Nat) (X₁ X₂ : Valuation cs) (r₁ r₂ : Valuation cs × List CTLeak),
+      whileIterLeak f₁ n X₁ = some r₁ → whileIterLeak f₂ n X₂ = some r₂ →
+      ∃ m₁ m₂, whileIterLeak g₁ n X₁ = some (r₁.1, m₁) ∧
+        whileIterLeak g₂ n X₂ = some (r₂.1, m₂) ∧
+        ∀ s₁ s₂ : List CTLeak, r₁.2 ++ s₁ = r₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂
+  | 0, _, _, _, _, h₁, _ => by simp [whileIterLeak] at h₁
+  | n + 1, X₁, X₂, r₁, r₂, h₁, h₂ => by
+      simp only [whileIterLeak, Option.bind_eq_some_iff] at h₁ h₂
+      obtain ⟨u₁, hu₁, h₁⟩ := h₁
+      obtain ⟨u₂, hu₂, h₂⟩ := h₂
+      obtain ⟨m₁, m₂, hm₁, hm₂, hm⟩ := h X₁ X₂ u₁ u₂ hu₁ hu₂
+      by_cases hb₁ : HasBoolBit.toBool (d := d) u₁.1.head = true <;>
+        by_cases hb₂ : HasBoolBit.toBool (d := d) u₂.1.head = true
+      · rw [if_pos hb₁] at h₁
+        rw [if_pos hb₂] at h₂
+        obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
+        obtain ⟨q₂, hq₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
+        obtain ⟨k₁, k₂, hk₁, hk₂, hk⟩ :=
+          whileIterLeak_prefix f₁ f₂ g₁ g₂ e₁ e₂ h n _ _ q₁ q₂ hq₁ hq₂
+        refine ⟨m₁ ++ .branch true :: k₁, m₂ ++ .branch true :: k₂, ?_, ?_,
+          fun s₁ s₂ hs => ?_⟩
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, if_true, hk₁, Option.map_some]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, if_true, hk₂, Option.map_some]
+        · simp only [List.append_assoc, List.cons_append] at hs
+          obtain ⟨rfl, hs⟩ := hm _ _ hs
+          obtain ⟨rfl, rfl⟩ := hk _ _ (List.cons.inj hs).2
+          exact ⟨rfl, rfl⟩
+      · rw [if_pos hb₁] at h₁
+        rw [if_neg hb₂] at h₂
+        obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
+        cases h₂
+        obtain ⟨k₁, hk₁⟩ := whileIterLeak_exists f₁ g₁ e₁ n _ q₁ hq₁
+        refine ⟨m₁ ++ .branch true :: k₁, m₂ ++ [.branch false], ?_, ?_, fun s₁ s₂ hs => ?_⟩
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, if_true, hk₁, Option.map_some]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, if_false]
+        · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
+          obtain ⟨-, hs⟩ := hm _ _ hs
+          simp at hs
+      · rw [if_neg hb₁] at h₁
+        rw [if_pos hb₂] at h₂
+        cases h₁
+        obtain ⟨q₂, hq₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
+        obtain ⟨k₂, hk₂⟩ := whileIterLeak_exists f₂ g₂ e₂ n _ q₂ hq₂
+        refine ⟨m₁ ++ [.branch false], m₂ ++ .branch true :: k₂, ?_, ?_, fun s₁ s₂ hs => ?_⟩
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, if_false]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, if_true, hk₂, Option.map_some]
+        · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
+          obtain ⟨-, hs⟩ := hm _ _ hs
+          simp at hs
+      · rw [if_neg hb₁] at h₁
+        rw [if_neg hb₂] at h₂
+        cases h₁
+        cases h₂
+        refine ⟨m₁ ++ [.branch false], m₂ ++ [.branch false], ?_, ?_, fun s₁ s₂ hs => ?_⟩
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, if_false]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, if_false]
+        · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
+          obtain ⟨rfl, hs⟩ := hm _ _ hs
+          exact ⟨rfl, (List.cons.inj hs).2⟩
+
+/-- **Inlining maps two leakage runs at `E` whose events split to two runs whose events
+    split**, under a library sound for the leakage run at `E` with the events `ev`: the
+    inlined program runs from each valuation to the results of the source run, and when the
+    events of the two source runs, each followed by a list, are equal, the events of the two
+    inlined runs are equal and so are the two lists. Taking the empty lists, inlining maps
+    equal events to equal events. A body of a symbol emits the events `ev f as rs` at every
+    argument vector, an operation emits a number of events fixed by the operation
+    (`Expr.ctLeak_length`), and a loop or a branch first emits its trip count or its
+    condition, so equal events fix the path through the program. -/
+theorem leakRunMC_inline?_prefix (M : LeakModel d) (E : CallEnv d) {L : InlineLib d}
+    {fuel : Nat} {ev : String → List d.Ty → List d.Ty → List CTLeak}
+    (hL : L.LeakSound M E fuel ev) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+    ∀ {p' : NFProg d Γ ts} {V₁ V₂ : Valuation Γ} {r₁ r₂ : Valuation ts × List CTLeak},
+      inline? L p = some p' → leakRunMC M E fuel p V₁ = some r₁ →
+      leakRunMC M E fuel p V₂ = some r₂ →
+      ∃ l₁ l₂, leakRunMC M E fuel p' V₁ = some (r₁.1, l₁) ∧
+        leakRunMC M E fuel p' V₂ = some (r₂.1, l₂) ∧
+        ∀ s₁ s₂ : List CTLeak, r₁.2 ++ s₁ = r₂.2 ++ s₂ → l₁ = l₂ ∧ s₁ = s₂ := by
+  induction p with
+  | ret vs =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      cases hq
+      simp only [leakRunMC, Option.some.injEq] at h₁ h₂
+      subst h₁ h₂
+      exact ⟨[], [], rfl, rfl, fun s₁ s₂ hs => ⟨rfl, by simpa using hs⟩⟩
+  | var e k ih =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+      obtain ⟨x₁, hx₁, u₁, hu₁, rfl⟩ := h₁
+      obtain ⟨x₂, hx₂, u₂, hu₂, rfl⟩ := h₂
+      obtain ⟨l₁, l₂, hl₁, hl₂, hl⟩ := ih hk' hu₁ hu₂
+      have hrel : ∀ s₁ s₂ : List CTLeak,
+          (Expr.ctLeak M e V₁ ++ u₁.2) ++ s₁ = (Expr.ctLeak M e V₂ ++ u₂.2) ++ s₂ →
+            Expr.ctLeak M e V₁ ++ l₁ = Expr.ctLeak M e V₂ ++ l₂ ∧ s₁ = s₂ := by
+        intro s₁ s₂ hs
+        rw [List.append_assoc, List.append_assoc] at hs
+        obtain ⟨he, hs⟩ := List.append_inj hs
+          (by rw [Dialects.NFLeak.Expr.ctLeak_length, Dialects.NFLeak.Expr.ctLeak_length])
+        obtain ⟨rfl, rfl⟩ := hl _ _ hs
+        exact ⟨by rw [he], rfl⟩
+      refine ⟨Expr.ctLeak M e V₁ ++ l₁, Expr.ctLeak M e V₂ ++ l₂, ?_, ?_, hrel⟩
+      all_goals
+        obtain ⟨o, rfl, args⟩ := e
+        simp only [inlineVar] at hq
+        split at hq
+      · rename_i b hb
+        exact leakRunMC_seq? M E fuel b k' hq (PRen.agrees_ofArgs V₁ args) (PRen.agrees_id V₁)
+          (hL.op o b hb _ x₁ hx₁) hl₁
+      · cases hq
+        simp only [leakRunMC, hx₁, Option.bind_some, hl₁, Option.map_some]
+      · rename_i b hb
+        exact leakRunMC_seq? M E fuel b k' hq (PRen.agrees_ofArgs V₂ args) (PRen.agrees_id V₂)
+          (hL.op o b hb _ x₂ hx₂) hl₂
+      · cases hq
+        simp only [leakRunMC, hx₂, Option.bind_some, hl₂, Option.map_some]
+  | forLoop count inits body k ihb ihk =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+      obtain ⟨a₁, ha₁, u₁, hu₁, rfl⟩ := h₁
+      obtain ⟨a₂, ha₂, u₂, hu₂, rfl⟩ := h₂
+      have hit := fun (W₁ W₂ : Valuation _) =>
+        forIterLeak_prefix
+          (fun i acc => leakRunMC M E fuel body (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) W₁)))
+          (fun i acc => leakRunMC M E fuel body (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) W₂)))
+          (fun i acc => leakRunMC M E fuel b' (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) W₁)))
+          (fun i acc => leakRunMC M E fuel b' (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) W₂)))
+          (fun i X₁ X₂ u₁ u₂ h₁ h₂ => ihb hb' h₁ h₂)
+      obtain ⟨m₁, -, hm₁, -, -⟩ := hit V₁ V₁ _ _ _ a₁ a₁ ha₁ ha₁
+      obtain ⟨m₂, -, hm₂, -, -⟩ := hit V₂ V₂ _ _ _ a₂ a₂ ha₂ ha₂
+      obtain ⟨n₁, n₂, hn₁, hn₂, hn⟩ := ihk hk' hu₁ hu₂
+      refine ⟨.trip (HasWord64.toNat (d := d) (count.lookup V₁)) :: (m₁ ++ n₁),
+        .trip (HasWord64.toNat (d := d) (count.lookup V₂)) :: (m₂ ++ n₂), ?_, ?_,
+        fun s₁ s₂ hs => ?_⟩
+      · simp only [leakRunMC, hm₁, Option.bind_some, hn₁, Option.map_some]
+      · simp only [leakRunMC, hm₂, Option.bind_some, hn₂, Option.map_some]
+      · simp only [List.cons_append, List.append_assoc, List.cons.injEq,
+          CTLeak.trip.injEq] at hs
+        obtain ⟨hc, hs⟩ := hs
+        rw [← hc] at ha₂
+        obtain ⟨m₁', m₂', hm₁', hm₂', hm⟩ := hit V₁ V₂ _ _ _ a₁ a₂ ha₁ ha₂
+        rw [hm₁, Option.some.injEq, Prod.mk.injEq] at hm₁'
+        rw [hc, hm₂, Option.some.injEq, Prod.mk.injEq] at hm₂'
+        obtain ⟨-, rfl⟩ := hm₁'
+        obtain ⟨-, rfl⟩ := hm₂'
+        obtain ⟨rfl, hs⟩ := hm _ _ hs
+        obtain ⟨rfl, rfl⟩ := hn _ _ hs
+        exact ⟨by rw [hc], rfl⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨t', ht', e', he', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+      obtain ⟨a₁, ha₁, u₁, hu₁, rfl⟩ := h₁
+      obtain ⟨a₂, ha₂, u₂, hu₂, rfl⟩ := h₂
+      have hbr : ∀ (W₁ W₂ : Valuation _) (c : Bool) (b₁ b₂ : Valuation _ × List CTLeak),
+          (if c then leakRunMC M E fuel thn W₁ else leakRunMC M E fuel els W₁) = some b₁ →
+          (if c then leakRunMC M E fuel thn W₂ else leakRunMC M E fuel els W₂) = some b₂ →
+          ∃ m₁ m₂, (if c then leakRunMC M E fuel t' W₁ else leakRunMC M E fuel e' W₁) =
+              some (b₁.1, m₁) ∧
+            (if c then leakRunMC M E fuel t' W₂ else leakRunMC M E fuel e' W₂) =
+              some (b₂.1, m₂) ∧
+            ∀ s₁ s₂ : List CTLeak, b₁.2 ++ s₁ = b₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂ := by
+        intro W₁ W₂ c b₁ b₂ h₁ h₂
+        cases c
+        · simp only [Bool.false_eq_true, if_false] at h₁ h₂ ⊢
+          exact ihe he' h₁ h₂
+        · simp only [if_true] at h₁ h₂ ⊢
+          exact iht ht' h₁ h₂
+      obtain ⟨m₁, -, hm₁, -, -⟩ := hbr V₁ V₁ _ a₁ a₁ ha₁ ha₁
+      obtain ⟨m₂, -, hm₂, -, -⟩ := hbr V₂ V₂ _ a₂ a₂ ha₂ ha₂
+      obtain ⟨n₁, n₂, hn₁, hn₂, hn⟩ := ihk hk' hu₁ hu₂
+      refine ⟨.branch (HasBoolBit.toBool (d := d) (cond.lookup V₁)) :: (m₁ ++ n₁),
+        .branch (HasBoolBit.toBool (d := d) (cond.lookup V₂)) :: (m₂ ++ n₂), ?_, ?_,
+        fun s₁ s₂ hs => ?_⟩
+      · simp only [leakRunMC, hm₁, Option.bind_some, hn₁, Option.map_some]
+      · simp only [leakRunMC, hm₂, Option.bind_some, hn₂, Option.map_some]
+      · simp only [List.cons_append, List.append_assoc, List.cons.injEq,
+          CTLeak.branch.injEq] at hs
+        obtain ⟨hc, hs⟩ := hs
+        rw [← hc] at ha₂ hm₂
+        obtain ⟨m₁', m₂', hm₁', hm₂', hm⟩ := hbr V₁ V₂ _ a₁ a₂ ha₁ ha₂
+        rw [hm₁, Option.some.injEq, Prod.mk.injEq] at hm₁'
+        rw [hm₂, Option.some.injEq, Prod.mk.injEq] at hm₂'
+        obtain ⟨-, rfl⟩ := hm₁'
+        obtain ⟨-, rfl⟩ := hm₂'
+        obtain ⟨rfl, hs⟩ := hm _ _ hs
+        obtain ⟨rfl, rfl⟩ := hn _ _ hs
+        exact ⟨by rw [hc], rfl⟩
+  | whileLoop inits body k ihb ihk =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+      obtain ⟨a₁, ha₁, u₁, hu₁, rfl⟩ := h₁
+      obtain ⟨a₂, ha₂, u₂, hu₂, rfl⟩ := h₂
+      have hex : ∀ (W : Valuation _) X u, leakRunMC M E fuel body (hvAppend X W) = some u →
+          ∃ m, leakRunMC M E fuel b' (hvAppend X W) = some (u.1, m) := fun W X u hu => by
+        obtain ⟨m, -, hm, -, -⟩ := ihb hb' hu hu
+        exact ⟨m, hm⟩
+      obtain ⟨m₁, m₂, hm₁, hm₂, hm⟩ := whileIterLeak_prefix
+        (fun acc => leakRunMC M E fuel body (hvAppend acc V₁))
+        (fun acc => leakRunMC M E fuel body (hvAppend acc V₂))
+        (fun acc => leakRunMC M E fuel b' (hvAppend acc V₁))
+        (fun acc => leakRunMC M E fuel b' (hvAppend acc V₂))
+        (hex V₁) (hex V₂) (fun X₁ X₂ u₁ u₂ h₁ h₂ => ihb hb' h₁ h₂) _ _ _ a₁ a₂ ha₁ ha₂
+      obtain ⟨n₁, n₂, hn₁, hn₂, hn⟩ := ihk hk' hu₁ hu₂
+      refine ⟨m₁ ++ n₁, m₂ ++ n₂, ?_, ?_, fun s₁ s₂ hs => ?_⟩
+      · simp only [leakRunMC, hm₁, Option.bind_some, hn₁, Option.map_some]
+      · simp only [leakRunMC, hm₂, Option.bind_some, hn₂, Option.map_some]
+      · simp only [List.append_assoc] at hs
+        obtain ⟨rfl, hs⟩ := hm _ _ hs
+        obtain ⟨rfl, rfl⟩ := hn _ _ hs
+        exact ⟨rfl, rfl⟩
+  | call f args k ih =>
+      intro p' V₁ V₂ r₁ r₂ hq h₁ h₂
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff] at h₁ h₂
+      obtain ⟨y₁, hy₁, hu₁⟩ := h₁
+      obtain ⟨y₂, hy₂, hu₂⟩ := h₂
+      obtain ⟨l₁, l₂, hl₁, hl₂, hl⟩ := ih hk' hu₁ hu₂
+      split at hq
+      · rename_i b hb
+        refine ⟨_ ++ l₁, _ ++ l₂, leakRunMC_seq? M E fuel b k' hq (PRen.agrees_ofArgs V₁ args)
+          (PRen.agrees_id V₁) (hL.call f _ _ b hb _ y₁ hy₁) hl₁,
+          leakRunMC_seq? M E fuel b k' hq (PRen.agrees_ofArgs V₂ args)
+          (PRen.agrees_id V₂) (hL.call f _ _ b hb _ y₂ hy₂) hl₂, fun s₁ s₂ hs => ?_⟩
+        obtain ⟨rfl, rfl⟩ := hl _ _ hs
+        exact ⟨rfl, rfl⟩
+      · cases hq
+        exact ⟨l₁, l₂, by simp only [leakRunMC, hy₁, Option.bind_some, hl₁],
+          by simp only [leakRunMC, hy₂, Option.bind_some, hl₂], hl⟩
 
 end NFProg
 
