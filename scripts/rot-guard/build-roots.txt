@@ -43,6 +43,7 @@ CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
 CatCrypt.Crypto.Hax.HaxWideMulFuse
 CatCrypt.Crypto.Hax.ImpDesugarRun
 CatCrypt.Crypto.Hax.ImpDesugarWide
+CatCrypt.Crypto.Hax.ImpInline
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.ImpToNFExit
 CatCrypt.Crypto.Hax.ImpToNFLeak
@@ -848,6 +849,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
