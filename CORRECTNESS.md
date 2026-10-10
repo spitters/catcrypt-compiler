@@ -111,10 +111,8 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `cmpReloadOK` (the body is free of the scratch register and of `MULX`). `cmpReload_of_checked` (`X86Backend/CmpSpillEncodable.lean`) shows that the pass
   is the identity on a body the checked encoder accepts.
   `fieldChain_correct_auto` (`Haxc.FieldLowerChain`) composes the field chain front
-  with `compileRegion` at every limb count and modulus record; its instances
-  `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
-  (`Haxc.PowLoopBytes`, `Haxc.PowLoopBytesP256`) take the route and compile equations
-  as hypotheses, each pinned by a known-answer check. The
+  with `compileRegion` at every limb count and modulus record, with the front and compile
+  equations as hypotheses. The
   tuple entry `compileAT` (`Haxc.ComposeTuple`) calls `compileA`.
   Constant time of the bytes: for every result of `compileA`, `haxc_ct_proved_all`
   (`Haxc.ComposeCTStraight`) gives constant time of every decoding of the bytes, between
@@ -133,10 +131,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
   For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the region program from the level check of the lowered
-  program, and `regionChain_bytes_ct` carries it to the bytes of `compileRegion`; the
-  instances `powLoop1_ct'` (one limb, `Haxc.FieldLoopCT`) and `powLoop4_ct'` (P-256,
-  `Haxc.PowLoopCTP256`) take the front and compile equations as hypotheses, with the
-  trip count public.
+  program, and `regionChain_bytes_ct` carries it to the bytes of `compileRegion`.
 - On `Lprog`, `LprogGpRealloc` re-allocates general-purpose
   registers with an untrusted allocator whose decisions a checked pass validates.
   `ConstIndexFold` rewrites each register-indexed load and store with a known index
@@ -173,11 +168,11 @@ is defined as the run of a chain, and the denotation theorem of the route is
 | `extChain D` (`Haxc.NFChainCall`) | `extChain D`: output-type check, `dceStep`, `extCallStep D` (`nfToCatExt` at the declared procedures `D`), `aegraphStep catRules`, `mapStep catToJasmin`, `lowerSelectsStep`, `rangeNFStep`, `aegraphStep jasminRules`; at `D = []` it is `nfChainPre` (`extChain_nil`) | `extChainCert`, `extChain_denote` | `haxc_correct_auto` |
 | `compileField P` (`Haxc.FieldRoute`) | `fieldChainId P` = `limbChainVia (Step.id _) (GoodVB P) (fieldCom P)`: optimisation slot, limb step, identity, `straightStep` | `limbChainViaCert`, `limbChainVia_denote` | `compileField_denote` |
 | `compileFieldS S` (`Haxc.FieldRoute`) | `fieldChainSId S` = `limbChainVia (Step.id _) (GoodLB S) (fieldComOf (lowerOpL S))` | `limbChainViaCert`, `limbChainVia_denote` | `compileFieldS_denote` |
-| `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `p256_jacAdd_correct_bytes`, `p256_jacDbl_correct_bytes` and the `C` variants (`Haxc.EcInstances`), with the compile hypothesis |
+| `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc.EcBytes`), with the compile hypothesis |
 | `nttRoute`, `inttRoute` (`Haxc.NttRoute`) | `.get` of the run of `lanesChainId N` = `lanesChainVia (Step.id _)`: optimisation slot, `lanesStep`, `straightStep` | `lanesChainViaCert`, `lanesChainVia_denote` | `nttRoute_denote`, `inttRoute_denote` |
 | `nttRouteOf A` (`Haxc.NttRouteSel`) | `.get` of the run of `lanesChain N pure`: value numbering `gvnMR pure`, lane lowering, `straightStep` | `lanesChainCert`, `lanesChain_denote` | `nttRouteOf_denote` |
 | `latticeRoute`, `basemulRoute`, `pointwiseRoute`, `accRoute` (`Haxc.LatticeRoute`) | `.get` of the run of `lanesChain M pure`; a non-square program is zero-padded to square | `lanesChainCert`, `lanesChain_denote` | `basemulRoute_denote`, `pointwiseRoute_denote`, `accRoute_denote` |
-| `towerRoute P N` (`Haxc.TowerRoute`) | `towerChain P N`: identity, `towerStep` (`towerCom` under `towerGoodB`), identity, `straightStep` | `towerChainCert`, `towerChain_denote` | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`; instances at BN254 and BLS12-381 with the compile hypothesis |
+| `towerChain P N` (`Haxc.FieldChain`) | identity, `towerStep` (`towerCom` under `towerGoodB`), identity, `straightStep` | `towerChainCert`, `towerChain_denote` | `towerChain_denote` |
 
 The optimisation slot of the field chains is the identity step.
 
@@ -190,9 +185,7 @@ the wide moduli.
 
 A route theorem that keeps the compile hypothesis holds for every program the back half
 accepts on that route. The acceptance registry of the development repository
-(`scripts/acceptance-registry.tsv`) records the accepted programs: among these routes,
-`Fp2` multiplication and squaring at BN254 (rows `tower/bn254_fp2_mul`,
-`tower/bn254_fp2_sqr`), with the constant-time byte gate passing on both.
+(`scripts/acceptance-registry.tsv`) records the accepted programs.
 [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) has the tables per instance.
 
 ### Proofs, checks and translation validation in `haxc`

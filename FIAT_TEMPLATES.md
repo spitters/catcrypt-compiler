@@ -85,7 +85,6 @@ of `compileOf` for the prime-ir row, that the registry row records.
 | Statement proved | Programs | Registry row: size, `ct` | Lean names |
 |---|---|---|---|
 | The decoded bytes halt in a state from which the layout reads back `n + 1` words: the sum with its carry, the difference with its borrow, the product by one word with its high word, or that product added to the destination | `mpn_add_n`, `mpn_sub_n`, `mpn_mul_1`, `mpn_addmul_1` at every `n`; accepted at `n = 4` and `n = 8` | `n = 4`: 301 B, 359 B, 369 B, 499 B; `n = 8`: 534 B, 623 B, 614 B, 992 B; `ct` yes on all eight | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`) |
-| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of the two coordinates of the `Fp2` product or square | `Fp2` multiply and square at BN254 | `tower/bn254_fp2_mul`: 13 720 B, `ct` yes; `tower/bn254_fp2_sqr`: 9008 B, `ct` yes | `bn254_fp2_mul_correct_bytes`, `bn254_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) |
 | The field front accepts the surface function, and the decoded bytes halt in a state from which the layout reads back the Montgomery limbs of `fe_mul_add a b c` | prime-ir `fe_mul_add` at P-256, from the surface function to the bytes | `primeir/fe_mul_add_p256`: 3901 B, `ct` yes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), [`impArgsNF_sound`](CatCrypt/Crypto/Hax/ImpToNF.lean), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) |
 
 Theorems over every program the gate accepts. The hypothesis of each is the equation
@@ -94,15 +93,8 @@ that `compileJ` returns `(P', bytes)` on the route program named.
 | Statement proved | Programs | Lean names |
 |---|---|---|
 | The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of one coordinate of the Jacobian sum, for affine, on-curve, distinct inputs, or of the Jacobian double | Jacobian addition and doubling at every Montgomery record and curve | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc/EcBytes.lean`) |
-| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of the two coordinates of the `Fp2` product or square | `Fp2` multiply and square at every Montgomery record with `u² = β`, with instances at BLS12-381 | `fp2_mul_correct_bytes`, `fp2_sqr_correct_bytes`, `bls12381_fp2_mul_correct_bytes`, `bls12381_fp2_sqr_correct_bytes` (`Haxc/TowerRoute.lean`) |
 | Every value of a source run of the body is read back from a halting run of the decoded bytes | a function over the field accepted by the front `fieldChainFront`, at every limb count and modulus record | `fieldChain_correct_auto` (`Haxc/FieldLowerChain.lean`) |
-| `fieldChainFront` returns a program on `powLoopBody`, and the decoded bytes halt in a state from which the layout reads back the Montgomery encoding of `x * a ^ k` for a run-time trip count `k`; the route and compile equations are hypotheses | counted loop of field multiplications at one limb and at P-256 | `powLoop_front_accepts` (`Haxc/FieldLowerChain.lean`), `powLoop_correct_bytes_pow_1` (`Haxc/PowLoopBytes.lean`), `powLoop_correct_bytes_pow_p256` (`Haxc/PowLoopBytesP256.lean`) |
-| Every decoding of the bytes is constant time between entry states that satisfy the regions of the layout and agree on its public data, the trip count among them, for a lowered program accepted by the level check `fieldFrontLeakCT`; the route and compile equations are hypotheses | the same loops | `fieldRegionFront_nfCT`, `powLoop1_ct'` (`Haxc/FieldLoopCT.lean`), `powLoop4_ct'` (`Haxc/PowLoopCTP256.lean`) |
-
-The loop of field multiplications compiles through the loop arm `v1LoopWB` of the gate of
-`compileJ`, which covers carry chains and cell accesses; a `#kat` in
-`Haxc/PowLoopBytes.lean` and in `Haxc/PowLoopBytesP256.lean` pins that the back end
-returns a program for the loop.
+| The program of the front is constant time at every fuel when the level check `fieldFrontLeakCT` accepts the lowered program, which a counted loop passes when its trip count is public | a function over the field accepted by the front `fieldRegionFront` | `fieldRegionFront_nfCT` (`Haxc/FieldLoopCT.lean`) |
 
 Results at the template level, over `Com` programs:
 
@@ -164,7 +156,7 @@ Line counts are those of `wc -l` over the files named, from each repository root
 | field templates | `CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/*.lean` (13 files) | 8 227 |
 | other families | `VIR/{TowerDialect,TowerToLimbs,NegacyclicNttTemplate,NegacyclicNttWord,NegacyclicNttWordSigned,RoundCodec,NarrowField,BasemulWord,PointwiseAcc,Gf2Dialect,Gf2Aggregate,RowLazy,Poseidon2Word}.lean` | 12 241 |
 | limb lowering | `Algebraic/FieldToJasminLimbs*.lean` (4 files) | 1 324 |
-| routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,TowerRoute,LatticeRoute}.lean` | 2 205 |
-| instances (development repository) | `Haxc/{FieldInstances,EcInstances,MpnBytes,FieldFrontP256}.lean` | 1 250 |
+| routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,LatticeRoute}.lean` | 1 705 |
+| instances (development repository) | `Haxc/{FieldInstances,MpnBytes,FieldFrontP256}.lean` | 1 103 |
 
-Templates: 20 468 lines; with lowering and routes, 23 997.
+Templates: 20 468 lines; with lowering and routes, 23 497.

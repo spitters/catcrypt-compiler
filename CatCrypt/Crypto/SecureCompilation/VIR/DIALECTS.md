@@ -531,7 +531,6 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `towerDialect` | `jasminDialect` | `bn254Tower` | record | `VIR/TowerToLimbs.lean` |
 | `towerDialect` | `jasminDialect` | `towerCom` | signature | `VIR/TowerToLimbs.lean` |
 | `towerDialect` | `jasminDialect` | `towerLimbsR` | record | `VIR/MultiLoweringRegionTypes.lean` |
-| `towerDialect` | `jasminDialect` | `towerRoute` | signature | `Haxc/TowerRoute.lean (SSProve-lean)` |
 | `towerDialect` | `jasminDialect` | `towerToLimbs` | record | `VIR/TowerToLimbs.lean` |
 | `vectorDialect` | `jasminDialect` | `lowerVectorToJasmin` | signature | `Dialects/VectorToJasmin.lean` |
 | `zpDialect` | `jasminDialect` | `barLowering` | record | `VIR/MultiBlockLoweringRel.lean` |
