@@ -50,6 +50,7 @@ of the record's interface to it.
 * `arrCallee_of_linkedFn`: a linked function with an array layout is an `ArrCallee`.
 * `pub_of_ptrArg`: under an array layout, agreement on `%rsp`, the bounded word arguments and
   the array pointer register gives the public relation of the record.
+* `outSummary_kinded`: the out summary has its declared result kind.
 * `outCallee_of_linkedFn`: a linked function with an out layout is an `OutCallee`.
 * `pub_of_outPtr`: under an out layout, agreement on `%rsp` and the public parameters, the
   destination among them, gives the public relation of the record.
@@ -364,6 +365,12 @@ def outSummary (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) :
   arrArgs := insArrArgs (ins.map (·.2))
   out := some n
   runOut m xs := (l.sem (insVals (ins.map (·.2)) xs)).bind (dec (.arr m (.word 64)))
+
+/-- The out summary of a linked function has its declared result kind: it has no word
+    result. -/
+theorem outSummary_kinded (l : LinkedFn) (ins : List (String × ArgKind)) (n : Nat) :
+    (outSummary l ins n).Kinded :=
+  fun _ _ _ => rfl
 
 /-- **The interface of a linked function with a word-array result**: the parameter names of
     `ins`, the destination first, no result register, the clobbered registers, footprint,
