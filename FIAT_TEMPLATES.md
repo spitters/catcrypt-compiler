@@ -53,29 +53,17 @@ with `%rsp` and the array pointers public and the limb contents and scalar words
 
 ### Fields (F1): Montgomery multiply, square, add, subtract
 
-Each cell is an accepted program with its size in bytes, the registry row
-`field/<prime>_<op>`. Its theorem is `<prime>_<op>_correct_bytes` in
-`Haxc/FieldInstances.lean`: the decoded bytes halt in a state from which the layout reads
-back the Montgomery limbs of the product, square, sum or difference.
-
-| prime | mul | sqr | add | sub |
-|---|---|---|---|---|
-| P-256 | 3541 B | 3529 B | 510 B | 451 B |
-| secp256k1 | 3691 B | 3701 B | 457 B | 414 B |
-| P-384 | 7211 B | 7072 B | 731 B | 678 B |
-| BN254 | 3813 B | 3823 B | 508 B | 472 B |
-| BLS12-381 | 7418 B | 7309 B | 767 B | 713 B |
-
-All 20 programs are accepted. For each of the five primes, `nfChainF_ct_<prime>` and
-`nfChainF_ct_of_levelCheck'_<prime>` (`Haxc/FieldBlocksCT.lean`) state constant time of
-the field chain: two runs whose source leak traces agree have equal leak traces of the
-route program the chain returns. The decided check `blocksCheck_<prime>` discharges the
-hypothesis on the blocks of the template. In the conformance run, 69 arms over the 20
-cells agree with GMP and the peers (`bench/field_bytes/README.md`). The interleaved
-multiply `Mont.mulBlkRoute` selects `mulBlkI` from six limbs and denotes the Montgomery
-form of the product at every limb count
-([`mulBlkRoute_denote`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/MontCIOS.lean));
-the P-384 and BLS12-381 sizes are those of this block.
+At each of the primes P-256, secp256k1, P-384, BN254 and BLS12-381, the theorem
+`<prime>_<op>_correct_bytes` in `Haxc/FieldInstances.lean` states that, for a result of the
+back half on the program of the operation, the decoded bytes halt in a state from which the
+layout reads back the Montgomery limbs of the product, square, sum or difference. For each
+of the five primes, `nfChainF_ct_<prime>` and `nfChainF_ct_of_levelCheck'_<prime>`
+(`Haxc/FieldBlocksCT.lean`) state constant time of the field chain: two runs whose source
+leak traces agree have equal leak traces of the route program the chain returns. The
+decided check `blocksCheck_<prime>` discharges the hypothesis on the blocks of the
+template. The interleaved multiply `Mont.mulBlkRoute` selects `mulBlkI` from six limbs and
+denotes the Montgomery form of the product at every limb count
+([`mulBlkRoute_denote`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/MontCIOS.lean)).
 
 ### Lattice, symmetric, EC, mpn, towers (F3) and the prime-ir front (F4)
 

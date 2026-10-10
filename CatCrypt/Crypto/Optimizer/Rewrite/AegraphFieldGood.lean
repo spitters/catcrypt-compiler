@@ -25,10 +25,8 @@ modulus of a subtraction, and constant folds `fConst q x` at the result type `fp
 folded operation, so they preserve `opGoodB P`.
 
 With `aegraphOptField_goodVB` and the coverage of the Jacobian programs
-(`EcRoute.goodVB_jacAdd`, `EcRoute.goodVB_jacDbl`), the dev definitions
-`FieldChain.jacAddRouteOf fieldRules P i` and `FieldChain.jacDblRouteOf fieldRules P a i`
-are `some`: by `FieldChain.fieldChainOf_run` the chain runs to
-`compileField P (aegraphOptField c)`, and `compileField P c'` is `some` when
+(`EcRoute.goodVB_jacAdd`, `EcRoute.goodVB_jacDbl`), the Jacobian addition and doubling
+programs after `aegraphOptField` satisfy `GoodVB P`, and `compileField P c'` is `some` when
 `GoodVB P c' = true`.
 
 ## Main results
