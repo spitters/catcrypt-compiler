@@ -823,8 +823,9 @@ theorem linkTable_of_linked_nil {m : HaxModule} (h : m.linked = []) (bi : Builti
     as the function.
 
     For a module with linked functions this table gives a call of a linked function a
-    source meaning. The compiler `compileA` returns no result on such a module, so the
-    compiler theorems state nothing about the bytes of a module with linked functions. For
+    source meaning. The compiler `compileA` passes the linked word kernels of such a module
+    to `compileRegion`; the theorem for its bytes is `RegionLinkCall.compileRegion_correct_linked`,
+    and `haxc_correct_auto` is stated for modules without linked functions. For
     a module without linked functions the table is the reference table of its functions
     over `bi` (`table_of_linked_nil`). -/
 def table (m : HaxModule) (bi : Builtins) (fuelC : Nat) : Builtins :=
