@@ -123,7 +123,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `haxc_correct_auto_ct_proved_all` and `haxc_gate_proved_all` are the
   joint statement with value correctness and the gate conclusion. The conclusion is
   derived from the level check of the source through the region chain
-  (`NFEntry.levelCheck_region_bytes`): the chain passes (`NFEntry.regionCT`), the export
+  (`regionChain_bytes_ct`): the chain passes (`haxToNFCT_of_haxToNFCTB`), the export
   (`regionRef_memFCT`), allocation and printing by translation validation
   (`regionImage_memFCT`) and the bytes (`regionChain_bytes_ct`); `compileRegion` returns
   bytes only if the leakage checks `regionCtB` accept the printed body, and the theorems
@@ -230,7 +230,7 @@ the development repository.
 | The function bytes of a body decode to its layout `fundefLayout`, and the bytes of the gated encoder decode to the program `p` | bodies accepted by `decodableLcmd`; bodies accepted by `decodesToB` at `p` | `decodableLcmd`, `decodesToB`, D | [`decodeLprog_encodeLfundefBytes`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean), [`decodeLprog_of_decodesToB`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodeLayout.lean) |
 | Every halting run of `lsemFuelMemF` from a state whose registers satisfy the entry facts is in bounds | bodies accepted by the abstract interpretation `idxInvCheckB` | `idxInvCheckB`, D | [`runIdxOk_of_idxInvCheckB`](CatCrypt/Crypto/SecureCompilation/X86Backend/IdxInvCheck.lean) |
 | The decoded function bytes of the printed body are constant time when the source events of the single-loop program are | printed bodies accepted by the route check `routeB` with `ownedCheckML`, free of conditional branches | `routeB`, D, with `ownedCheckML`, V | [`route_bytes_ct`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageRouteCT.lean) |
-| The bytes decode to a program whose runs from entry states that satisfy the regions of the layout, agree on its public data and from which the source runs have equal leakage traces | a source accepted by the level check, and a printed body accepted by `regionCtB` in the gate of `compileRegion` | preservation along the region chain, with translation validation at allocation and printing | `NFEntry.levelCheck_region_bytes` (`Haxc.ComposeCTStraight`) |
+| The bytes decode to a program whose runs from entry states that satisfy the regions of the layout, agree on its public data and from which the source runs have equal leakage traces | a source accepted by the level check, and a printed body accepted by `regionCtB` in the gate of `compileRegion` | preservation along the region chain, with translation validation at allocation and printing | `regionChain_bytes_ct` (`Haxc.ComposeCTStraight`) |
 
 On the image routes of the earlier back half (`ImageAddrRoute.routeB`,
 `ImageStraightCells.straightCellB`) one
@@ -246,7 +246,7 @@ For every result of `compileA`, `haxc_ct_proved_all` and `haxc_rc_proved_all`
 (development repository, `Haxc.ComposeCTStraight`) give constant time and robust
 compilation of every decoding of the bytes. `compileA` compiles a structured program, and
 constant time of the decoded program follows from the level check of the source through
-the region chain (`NFEntry.levelCheck_region_bytes`).
+the region chain (`regionChain_bytes_ct`).
 
 ### Reference semantics of prime-ir calls
 
