@@ -108,6 +108,25 @@ theorem loopS_ok_of_inv {Inv : AVal → Prop} {step step' : Nat → AEnv → Rus
     rw [h1', rustM_ok_bind]
     exact h2'
 
+/-- **The reverse counted loop under two steps that agree on invariant environments.** The
+    statement of `loopS_ok_of_inv` for `loopRevS`. -/
+theorem loopRevS_ok_of_inv {Inv : AVal → Prop} {step step' : Nat → AEnv → RustM AEnv}
+    (hstep : ∀ i ρ ρ', EnvInv Inv ρ → step i ρ = .ok ρ' →
+      step' i ρ = .ok ρ' ∧ EnvInv Inv ρ') :
+    ∀ (k i : Nat) (ρ ρ' : AEnv), EnvInv Inv ρ → loopRevS step k i ρ = .ok ρ' →
+      loopRevS step' k i ρ = .ok ρ' ∧ EnvInv Inv ρ'
+  | 0, _, ρ, ρ', hρ, h => by
+    cases h
+    exact ⟨rfl, hρ⟩
+  | k + 1, i, ρ, ρ', hρ, h => by
+    obtain ⟨ρ1, h1, h2⟩ := rustM_bind_ok h
+    obtain ⟨h1', hρ1⟩ := hstep (i + k) ρ ρ1 hρ h1
+    obtain ⟨h2', hρ'⟩ := loopRevS_ok_of_inv hstep k i ρ1 ρ' hρ1 h2
+    refine ⟨?_, hρ'⟩
+    show (step' (i + k) ρ >>= loopRevS step' k i) = _
+    rw [h1', rustM_ok_bind]
+    exact h2'
+
 /-- **Congruence of the reading along invariant values.** Let `Inv` hold of the values the
     reading makes, let a value of `app` on arguments satisfying `Inv` be the value of `app'`
     and satisfy `Inv` at every name accepted by `ok`, and let every call of `e` be to such
@@ -270,7 +289,38 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         obtain ⟨hloop', hρ3⟩ := loopS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
         simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
-  case case16 =>
+  case case16 var lo hi body ρ ih3 ih2 ih1 =>
+    intro r hc hρ h
+    simp only [callsOK, Bool.and_eq_true] at hc
+    obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
+    obtain ⟨hp', -, hρ1⟩ := ih3 (l, ρ1) hc.1.1 hρ hp
+    obtain ⟨hq', -, hρ2⟩ := ih2 (l, ρ1) (u, ρ2) hc.1.2 hρ1 hq
+    cases hl : l.toInt? with
+    | none => simp only [hl] at h; cases h
+    | some a =>
+      cases hu : u.toInt? with
+      | none => simp only [hl, hu] at h; cases h
+      | some b =>
+        simp only [hl, hu] at h
+        by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
+        case neg => rw [if_neg hab] at h; cases h
+        rw [if_pos hab] at h
+        obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
+        cases h
+        have hstep : ∀ (i : Nat) (ρ ρ' : AEnv), EnvInv Inv ρ →
+            (toRustMS app body (ρ.upd var (ctr i)) >>= fun s => RustM.ok s.2) = .ok ρ' →
+            (toRustMS app' body (ρ.upd var (ctr i)) >>= fun s => RustM.ok s.2) = .ok ρ' ∧
+              EnvInv Inv ρ' := by
+          intro i ρ ρ'' hρi hs
+          obtain ⟨s, hs', hfin⟩ := rustM_bind_ok hs
+          cases hfin
+          obtain ⟨h1, -, h2⟩ := ih1 i ρ s hc.2 (hρi.upd var (hI.ctr i)) hs'
+          exact ⟨by rw [h1, rustM_ok_bind], h2⟩
+        obtain ⟨hloop', hρ3⟩ := loopRevS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
+        refine ⟨?_, hI.unit, hρ3⟩
+        simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
+  case case17 =>
     intro r hc hρ h
     cases h
 

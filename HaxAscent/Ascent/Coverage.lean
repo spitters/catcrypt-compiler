@@ -31,7 +31,9 @@ in source order from the module that declares the class.
   with the last one under `Boxed` (`StructInfo.encTy`), so that its encoding has one
   component per field. A newtype, an abbreviation `S_T` with a constructor `S.mk : T → S_T`
   and a projection `S.0`, is a struct of arity one whose constructor the literal calls
-  `S.mk` and whose projection it calls `::namedProj::S`.
+  `S` and whose projection it calls `.0`, the erasure of a typed newtype projection. The
+  projection name `.0` is shared by all newtypes; its leaf lemma for `S` is declared as
+  `.0#S`.
 * Dependencies: every field of the class, including fields without arguments, is a
   `DepMethod` over the right-nested tuple of its argument types. A field whose name is a
   runtime operation is left out and noted.
@@ -195,7 +197,7 @@ def collectStructs (ns : Name) (consts : Array Name) :
     let S := dropEnd s 2
     let ctor := Name.str ns S
     unless env.contains ctor do
-      -- a newtype: the constructor `S.mk` and the projection `S.0`, called `::namedProj::S`
+      -- a newtype: the constructor `S.mk`, called `S`, and the projection `S.0`, called `.0`
       let mk := Name.str ns (S ++ ".mk")
       let p0 := Name.str ns (S ++ ".0")
       unless env.contains mk && env.contains p0 do continue
@@ -203,8 +205,8 @@ def collectStructs (ns : Name) (consts : Array Name) :
           unless xs.size == 1 && r.isConstOf c do return none
           return some (← inferType xs[0]!)) | continue
       let info : StructInfo :=
-        { lit := S ++ ".mk", ctor := mk, tyName := c, arity := 1, fieldTys := #[fty],
-          projs := #[("::namedProj::" ++ S, p0, 0)] }
+        { lit := S, ctor := mk, tyName := c, arity := 1, fieldTys := #[fty],
+          projs := #[(".0", p0, 0)] }
       out := out.push info
       continue
     let cty ← inferType (mkConst ctor)
@@ -649,7 +651,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     let leafNs := ns ++ `HaxLeaf
     let valTy := mkConst ``Hax.Value
     let fnsTy := mkApp (mkConst ``List [Level.zero]) (mkConst ``Hax.Ascent.ExtFn)
-    let mkLeafThm (name : String) (argTys : List Expr) (l : MetaM Expr)
+    let mkLeafThm (declName name : String) (argTys : List Expr) (l : MetaM Expr)
         (transport : Array Expr → MetaM Expr) (rhs : Array Expr → MetaM Expr) : MetaM Unit := do
       withLocalDeclD `fns fnsTy fun fns => do
         let xs ← argTys.toArray.mapIdxM fun i t => pure (Name.mkSimple s!"x{i}", t)
@@ -664,12 +666,12 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
           r.side `hrt; r.side `htag; r.side `hl
           let pf ← mkEqTrans (← r.done) (← transport xs)
           let pf ← mkExpectedTypeHint pf ty
-          addThm (Name.str leafNs name) (← mkForallFVars (insts ++ #[fns] ++ xs) ty)
+          addThm (Name.str leafNs declName) (← mkForallFVars (insts ++ #[fns] ++ xs) ty)
             (← mkLambdaFVars (insts ++ #[fns] ++ xs) pf)
     let mut leafNames : Array Name := #[]
     for (f, m, proj, tys, r) in depElems do
       unless allApps.contains f do continue
-      match ← budgeted (mkLeafThm f tys (mkAppM ``Hax.Ascent.DepMethod.leaf #[m])
+      match ← budgeted (mkLeafThm f f tys (mkAppM ``Hax.Ascent.DepMethod.leaf #[m])
           (fun xs => do mkAppM ``Hax.Ascent.DepMethod.leaf_apply #[m, ← mkArgTuple xs.toList])
           (fun xs => do mkEnc r (mkAppN (← applyInsts proj insts) xs))) with
       | .ok () => leafNames := leafNames.push (Name.str leafNs f)
@@ -677,7 +679,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     for s in structs do
       let sty ← s.encTy
       if allApps.contains s.lit then
-        match ← budgeted (mkLeafThm s.lit s.fieldTys.toList
+        match ← budgeted (mkLeafThm s.lit s.lit s.fieldTys.toList
             (mkAppM ``Hax.Ascent.ctorLeaf #[mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.ctorLeaf_one #[xs[0]!]
@@ -693,7 +695,9 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
       for (pl, pd, i) in s.projs do
         unless allApps.contains pl do continue
         let fty := if s.arity == 1 then sty else s.fieldTys[i]!
-        match ← budgeted (mkLeafThm pl [sty]
+        -- the newtype projection `.0` is shared: its lemma is declared per newtype
+        let dn := if pl == ".0" then s!".0#{s.lit}" else pl
+        match ← budgeted (mkLeafThm dn pl [sty]
             (mkAppM ``Hax.Ascent.projLeaf #[mkNatLit i, mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.projLeaf_one #[xs[0]!]
@@ -704,13 +708,13 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.side `hn
                 r.done)
             (fun xs => mkEnc fty (mkApp (mkConst pd) xs[0]!))) with
-        | .ok () => leafNames := leafNames.push (Name.str leafNs pl)
+        | .ok () => leafNames := leafNames.push (Name.str leafNs dn)
         | .error e => notes := notes.push s!"leaf {pl}: {e}"
       for i in [0:s.arity] do
         let un := s!"struct_update#{s.lit}#{i}#{s.arity}"
         unless allApps.contains un do continue
         let fty := s.fieldTys[i]!
-        match ← budgeted (mkLeafThm un [sty, fty]
+        match ← budgeted (mkLeafThm un un [sty, fty]
             (mkAppM ``Hax.Ascent.updateLeaf #[mkNatLit i, mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.updateLeaf_one #[xs[0]!, xs[1]!]

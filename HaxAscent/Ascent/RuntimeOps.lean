@@ -58,9 +58,9 @@ which `denote'` does not evaluate), `Ok` and `Err` (no `HaxEnc` for `Except`), `
 `Hax.new`). `str_opaque`, the extraction of a string literal, is the unit value, the
 encoding of every string. A tagged name whose family has no width entry, such as the
 dependency constant `MAX#32`, is read from `base` (`runtimeBuiltins_of_baseTag`). `min`
-and `max`, which the printer emits unchanged, are the `min` and `max` of `Int`. The printer's projection markers `::proj::.1` and `::proj::.2`
-are the Lean projections `p.1` and `p.2` of a right-nested tuple (`projFstLeaf`,
-`projSndLeaf`).
+and `max`, which the printer emits unchanged, are the `min` and `max` of `Int`. A tuple
+projection is the literal's `.proj e i` with the flat component index `i`, read by the
+generator (`corresB_proj`) and not by the table.
 
 ## Main definitions
 
@@ -153,8 +153,6 @@ noncomputable def runtimeTable : Table :=
    ("is_empty", isEmptyLeaf),
    ("RangeTo", rangeToLeaf), ("RangeFrom", rangeFromLeaf), ("Range", rangeLeaf),
    ("RangeFull", constLeaf (rangeVal 0 none)),
-   -- tuple projections of the printer
-   ("::proj::.1", projFstLeaf), ("::proj::.2", projSndLeaf),
    -- arithmetic
    ("Add", intArrLeaf2 Hax.add Hax.add), ("add", intArrLeaf2 Hax.add Hax.add),
    ("Sub", intArrLeaf2 Hax.sub Hax.sub), ("sub", intArrLeaf2 Hax.sub Hax.sub),
@@ -290,19 +288,6 @@ theorem index_pos [Inhabited α] (a : Array α) (h : 0 < a.size) (i : Int) :
 theorem index_mut_pos [Inhabited α] (a : Array α) (h : 0 < a.size) (i : Int) :
     runtimeBuiltins base "index_mut" [enc a, .int i] = some (enc (Hax.index a i)) :=
   (runtimeBuiltins_of_lookup rfl).trans (indexLeaf_pos a h i)
-
-theorem proj_fst {γ : Type} [HaxTupleEnc γ] (a : α) (c : γ) :
-    runtimeBuiltins base "::proj::.1" [enc (a, c)] = some (enc (a, c).1) :=
-  (runtimeBuiltins_of_lookup rfl).trans (projFstLeaf_enc a c)
-
-theorem proj_snd_single {β : Type} [HaxEnc β] (a : α) (b : β) :
-    runtimeBuiltins base "::proj::.2" [.tuple [enc a, enc b]] = some (enc b) :=
-  (runtimeBuiltins_of_lookup rfl).trans (projSndLeaf_single a b)
-
-theorem proj_snd_prod {β δ : Type} [HaxEnc β] [HaxTupleEnc δ] (a : α) (c : β × δ)
-    (h : 1 ≤ (HaxTupleEnc.encList c.2).length) :
-    runtimeBuiltins base "::proj::.2" [enc (a, c)] = some (enc (a, c).2) :=
-  (runtimeBuiltins_of_lookup rfl).trans (projSndLeaf_prod a c h)
 
 theorem index_slice_to (a : Array α) (n : Int) :
     runtimeBuiltins base "index" [enc a, rangeVal 0 (some n)] =

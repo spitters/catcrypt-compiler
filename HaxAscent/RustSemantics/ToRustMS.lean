@@ -15,8 +15,8 @@ public import HaxAscent.Ascent.ExtTable
 
 `toRustMS app e ρ` reads the literal `e` as an Aeneas program over `Aeneas.Std.RustM` that
 threads an environment, as `Hax.denote'` does: a `letBind` extends the environment for the
-rest of the run, a counted loop `forFold` binds its index and keeps the bindings its body
-makes, and a call `.app f args` evaluates its arguments left to right and applies
+rest of the run, a counted loop `forFold` (upwards) or `forFoldRev` (downwards) binds its
+index and keeps the bindings its body makes, and a call `.app f args` evaluates its arguments left to right and applies
 `app f` to their values. The values (`AVal`) are integer literals, Booleans, unsigned
 words of every Aeneas width, Aeneas arrays `Aeneas.Std.Array (UScalar ty) n` of words,
 tuples and the unit value.
@@ -60,8 +60,9 @@ constructs it reads, and the call names `appRt` or a local function reads.
 ## Main definitions
 
 * `AVal`, `AVal.toValue`, `AEnv`, `AEnv.upd`, `encEnv`, `AVal.asW`
-* `appRt`, `AppOk`, `loopS`, `toRustMS`, `callS`, `appExt`, `ExtNamesOk`, `fragOk`
-* `appRt_ok`, `loopS_sim`, `toRustMS_sim`, `appExt_ok`, `fnCorres_toRustMS`
+* `appRt`, `AppOk`, `loopS`, `loopRevS`, `toRustMS`, `callS`, `appExt`, `ExtNamesOk`,
+  `fragOk`
+* `appRt_ok`, `loopS_sim`, `loopRevS_sim`, `toRustMS_sim`, `appExt_ok`, `fnCorres_toRustMS`
 -/
 
 @[expose] public section
@@ -567,6 +568,11 @@ def loopS (step : Nat → AEnv → RustM AEnv) : Nat → Nat → AEnv → RustM 
   | 0, _, ρ => .ok ρ
   | k + 1, i, ρ => step i ρ >>= loopS step k (i + 1)
 
+/-- `step` run on `k` successive indices downwards, from `i + k - 1` to `i`. -/
+def loopRevS (step : Nat → AEnv → RustM AEnv) : Nat → Nat → AEnv → RustM AEnv
+  | 0, _, ρ => .ok ρ
+  | k + 1, i, ρ => step (i + k) ρ >>= loopRevS step k i
+
 /-- The loop index `i`, a `usize` word. -/
 def ctr (i : Nat) : AVal := .w .Usize ⟨BitVec.ofNat _ i⟩
 
@@ -611,6 +617,15 @@ def toRustMS (app : String → List AVal → RustM AVal) :
             (b - a).toNat a.toNat q.2 >>= fun ρ3 => .ok (.unit, ρ3)
         else .fail .undef
       | _, _ => .fail .undef
+  | .forFoldRev var lo hi body, ρ =>
+    toRustMS app lo ρ >>= fun p => toRustMS app hi p.2 >>= fun q =>
+      match p.1.toInt?, q.1.toInt? with
+      | some a, some b =>
+        if 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits then
+          loopRevS (fun i ρ => toRustMS app body (ρ.upd var (ctr i)) >>= fun s => .ok s.2)
+            (b - a).toNat a.toNat q.2 >>= fun ρ3 => .ok (.unit, ρ3)
+        else .fail .undef
+      | _, _ => .fail .undef
   | _, _ => .fail .undef
 
 /-! ## Pasting -/
@@ -652,6 +667,67 @@ theorem loopS_sim {bi : Hax.Builtins} {var : String} {body : Hax.ImpExpr}
     have h3 := hF2 (fuel - 1) (by omega)
     rw [show ((i + 1 : Nat) : Int) = (i : Int) + 1 by push_cast; rfl] at h3
     exact h3
+
+section RevLoop
+
+variable (bi : Hax.Builtins) (fuel : Nat)
+
+theorem denote'_forFoldRev {var : String} {lo hi body : Hax.ImpExpr} {env s1 s2 : Hax.Env}
+    {a b : Int} (hlo : Hax.denote' bi fuel lo env = (.val (.int a), s1))
+    (hhi : Hax.denote' bi fuel hi s1 = (.val (.int b), s2)) :
+    Hax.denote' bi fuel (.forFoldRev var lo hi body) env =
+      Hax.denoteForLoopRev' bi fuel var a b body s2 := by
+  simp only [Hax.denote', Hax.Ascent.stateM_bind_apply, hlo, hhi]
+
+theorem denoteForLoopRev'_done (var : String) {a b : Int} (body : Hax.ImpExpr) (env : Hax.Env)
+    (h : a ≥ b) : Hax.denoteForLoopRev' bi fuel var a b body env = (.val .unit, env) := by
+  rw [Hax.denoteForLoopRev']
+  simp only [if_pos h]; rfl
+
+theorem denoteForLoopRev'_next (var : String) {a b : Int} {body : Hax.ImpExpr}
+    {env s : Hax.Env} {v : Hax.Value} (hab : a < b) (hf : fuel ≠ 0)
+    (h : Hax.denote' bi fuel body (env.extend var (.int (b - 1))) = (.val v, s))
+    (hv : ∀ w, v ≠ .controlFlow true w) :
+    Hax.denoteForLoopRev' bi fuel var a b body env =
+      Hax.denoteForLoopRev' bi (fuel - 1) var a (b - 1) body s := by
+  rw [Hax.denoteForLoopRev']
+  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, Hax.Ascent.stateM_bind_apply,
+    Hax.Ascent.stateM_modify_apply, h]
+  cases v
+  case controlFlow c w =>
+    cases c
+    · rfl
+    · exact absurd rfl (hv w)
+  all_goals rfl
+
+end RevLoop
+
+/-- **The reverse loop square.** `k` steps of the reading downwards from the index
+    `i + k - 1` to `i`, each a run of the body from the environment with the index bound,
+    are the reverse counted loop of the runtime over `[i, b)`. -/
+theorem loopRevS_sim {bi : Hax.Builtins} {var : String} {body : Hax.ImpExpr}
+    {step : Nat → AEnv → RustM AEnv}
+    (hstep : ∀ i ρ ρ', step i ρ = .ok ρ' → ∃ v, Sim bi body (ρ.upd var (ctr i)) ρ' v) :
+    ∀ (k i : Nat) (b : Int) (ρ ρ' : AEnv), (b - i).toNat = k →
+      b ≤ 2 ^ UScalarTy.Usize.numBits → loopRevS step k i ρ = .ok ρ' →
+      ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
+        Hax.denoteForLoopRev' bi fuel var i b body (encEnv ρ) = (.val .unit, encEnv ρ')
+  | 0, i, b, ρ, ρ', hk, _, h => by
+    cases h
+    exact ⟨0, fun fuel _ => denoteForLoopRev'_done bi fuel var body _ (by omega)⟩
+  | k + 1, i, b, ρ, ρ', hk, hb, h => by
+    obtain ⟨ρ1, h1, h2⟩ := rustM_bind_ok h
+    obtain ⟨v, F1, hF1⟩ := hstep (i + k) ρ ρ1 h1
+    obtain ⟨F2, hF2⟩ := loopRevS_sim hstep k i (b - 1) ρ1 ρ' (by omega) (by omega) h2
+    refine ⟨max F1 (F2 + 1), fun fuel hf => ?_⟩
+    have hik : ((i + k : Nat) : Int) = b - 1 := by omega
+    have hi' : ((i + k : Nat) : Int) < 2 ^ UScalarTy.Usize.numBits := by omega
+    have hi : i + k < 2 ^ UScalarTy.Usize.numBits := by exact_mod_cast hi'
+    have hbody := hF1 fuel (by omega)
+    rw [encEnv_upd, ctr_toValue hi, hik] at hbody
+    rw [denoteForLoopRev'_next bi fuel var (by omega) (by omega) hbody
+      (AVal.toValue_ne_break v)]
+    exact hF2 (fuel - 1) (by omega)
 
 theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
     (happ : AppOk bi app) (e : Hax.ImpExpr) (ρ : AEnv) :
@@ -824,7 +900,42 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         have h4 := h3 fuel (by omega)
         rw [Int.toNat_of_nonneg hab.1] at h4
         exact h4
-  case case16 =>
+  case case16 var lo hi body ρ ih3 ih2 ih1 =>
+    intro v ρ' h
+    obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
+    obtain ⟨F1, h1⟩ := ih3 l ρ1 hp
+    obtain ⟨F2, h2⟩ := ih2 (l, ρ1) u ρ2 hq
+    cases hl : l.toInt? with
+    | none => simp only [hl] at h; cases h
+    | some a =>
+      cases hu : u.toInt? with
+      | none => simp only [hl, hu] at h; cases h
+      | some b =>
+        simp only [hl, hu] at h
+        by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
+        case neg => rw [if_neg hab] at h; cases h
+        rw [if_pos hab] at h
+        obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
+        cases h
+        have hstep : ∀ (i : Nat) (ρ ρ' : AEnv), (toRustMS app body (ρ.upd var (ctr i)) >>=
+            fun s => RustM.ok s.2) = .ok ρ' → ∃ w, Sim bi body (ρ.upd var (ctr i)) ρ' w := by
+          intro i ρ ρ'' hs
+          obtain ⟨s, hs', hfin⟩ := rustM_bind_ok hs
+          cases hfin
+          exact ⟨s.1, ih1 i ρ s.1 s.2 hs'⟩
+        obtain ⟨F3, h3⟩ := loopRevS_sim hstep (b - a).toNat a.toNat b ρ2 ρ'
+          (by rw [Int.toNat_of_nonneg hab.1]) hab.2 hloop
+        refine ⟨max F1 (max F2 F3), fun fuel hf => ?_⟩
+        have hlo := h1 fuel (by omega)
+        have hhi := h2 fuel (by omega)
+        rw [AVal.toValue_of_toInt? hl] at hlo
+        rw [AVal.toValue_of_toInt? hu] at hhi
+        rw [denote'_forFoldRev bi fuel hlo hhi]
+        have h4 := h3 fuel (by omega)
+        rw [Int.toNat_of_nonneg hab.1] at h4
+        exact h4
+  case case17 =>
     intro v ρ' h
     cases h
 
@@ -984,6 +1095,7 @@ def fragOk (locals : List String) : Hax.ImpExpr → Bool
   | .tuple [a, b, c] => fragOk locals a && fragOk locals b && fragOk locals c
   | .ifThenElse c t e => fragOk locals c && fragOk locals t && fragOk locals e
   | .forFold _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
+  | .forFoldRev _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
   | _ => false
 
 /-! ## Composition with the ascent -/
