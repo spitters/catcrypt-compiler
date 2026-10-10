@@ -2757,6 +2757,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelLink,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelLinkedFn,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelMixedLink,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelOutFacts,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalCheck,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalSyntax,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod127,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod251,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod3329,
-    Lake.Glob.one `CatCrypt.Crypto.Util.ZMod4591,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.ZMod4591,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod65536,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod8192,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod8380417,
