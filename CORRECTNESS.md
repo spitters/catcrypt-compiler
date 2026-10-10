@@ -34,8 +34,8 @@ A template theorem covers straight-line word arithmetic generated from an algebr
 template: one denotation theorem over every parameter record, a bounds certificate decided
 per instance (`boundsOk` with `denote_eq_denoteZ_of_boundsOk`, `SchedOk`), and one bytes
 theorem per family (`field_correct_bytes`, `ec_correct_bytes`) whose only per-instance
-hypothesis is acceptance by the decided gate of `backend_correct` of the earlier back half
-`compileJ`. The
+hypothesis is acceptance by the region back half `compileRegion`, whose correctness is
+`compileRegion_correct`. The
 families with a template are fields, lattices, GHASH, towers, RSA and isogeny moduli.
 [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance tables with the accepted
 programs, the measured ratios against fiat-crypto and the size of the template layer.
@@ -91,36 +91,27 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   domain check is `HaxModule.refusal?`; its chain is `extChain` (`Haxc.NFChainCall`); its
   back half is `compileRegion` (`Haxc.RegionBackend`), with the one gate `regionCoB` and
   the leakage checks `regionCtB`. `haxc_correct_auto` is `NFEntry.compileR_correct` at
-  `haxEntry`, through `compileRegion_correct`.
-- The earlier back half is `compileJ` (`Haxc.BackHalf`), with the gate `jGateB` and the
-  theorem `backend_correct`; `compileA` does not call it, and the field-level byte
-  theorems take a hypothesis on it. `backend_correct` is stated over a back-end
-  record `ByteTarget` (machine with halting relation, printed program, legality check,
-  encoder, layout reading, gate, soundness of the gate); the x86 value `x86ByteTarget`
-  is the default of `backEnd` and `compileJ`.
-  `jGateB` consists of the image arms of `imageArmB`: six straight
-  image arms (register, array, cell, fused cell, and the register arm `v1StraightRWB`
-  over the printed class `printedAddrWB`, plain and fused) and two loop image arms
-  (`v1LoopB` and `v1LoopWB`), each conjoined with its check on traced runs. The route
-  check of `v1LoopWB`, `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
-  `loop_image_bytesW`), covers carry chains and cell accesses, with a width analysis
-  that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in
+  `haxEntry`, through `compileRegion_correct`. The compile line is
+  `compileA = haxToNF → extChain → compileRegion`, and `compileRegion` is the only back
+  half; the field, tower and curve modules compile through it as well.
+- The image route `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
+  `loop_image_bytesW`) covers loops with carry chains and cell accesses, with a width
+  analysis that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in
   `X86Backend/ImageAddrSimW.lean`). Inside `routeBW` the call of `ownedCheckMC` is the
   translation validation of register allocation and the other conjuncts are decided
   side conditions, so the route has one validated step. `straightRegW_bytes`
   (`X86Backend/ImageStraightRegW.lean`) takes a register-returning straight-line
   program over `printedAddrWB` to the bytes, and `straightRegW_bytes_ct` is its
-  constant-time statement. The compare reload: `cmpReload`
+  constant-time statement. No stage of `compileA` calls these image routes.
+  The compare reload: `cmpReload`
   (`X86Backend/CmpSpillReload.lean`) rewrites a compare whose first operand is a spill
-  slot into a copy to the scratch register and a compare on it, and the stages
-  `backEnd` of `compileJ` print every body through it (`printedLprog`). Its semantic
+  slot into a copy to the scratch register and a compare on it, and the printed program
+  `printedLprog` (`Haxc.BackHalfBase`) passes every body through it. Its semantic
   theorem `cmpReload_lsemFuelMemF` holds for a body accepted by the decidable check
-  `cmpReloadOK` (the body is free of the scratch register and of `MULX`). The gate
-  checks the rewritten body against the source program, so the validation of register
-  allocation covers the rewrite. `cmpReload_of_checked` (`X86Backend/CmpSpillEncodable.lean`) shows that the pass
+  `cmpReloadOK` (the body is free of the scratch register and of `MULX`). `cmpReload_of_checked` (`X86Backend/CmpSpillEncodable.lean`) shows that the pass
   is the identity on a body the checked encoder accepts.
   `fieldChain_correct_auto` (`Haxc.FieldLowerChain`) composes the field chain front
-  with `compileJ` at every limb count and modulus record; its instances
+  with `compileRegion` at every limb count and modulus record; its instances
   `powLoop_correct_bytes_pow_1` and `powLoop_correct_bytes_pow_p256`
   (`Haxc.PowLoopBytes`, `Haxc.PowLoopBytesP256`) take the route and compile equations
   as hypotheses, each pinned by a known-answer check. The
@@ -136,21 +127,9 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`regionRef_memFCT`), allocation and printing by translation validation
   (`regionImage_memFCT`) and the bytes (`regionChain_bytes_ct`); `compileRegion` returns
   bytes only if the leakage checks `regionCtB` accept the printed body, and the theorems
-  take `m.linked = []`. In the earlier back half `compileJ`, on a straight-line
-  or looped route program the conclusion is derived from the level check
-  of the front through the passes: the two loop
-  arms and the straight
-  register, array, cell and carry-chain register arms, through `straightReg_bytes_ct`
-  (`X86Backend/ImageStraightLeak.lean`), `straightArr_bytes_ct`
-  (`X86Backend/ImageStraightArrLeak.lean`) and `straightCell_bytes_ct_src`
-  (`X86Backend/ImageStraightCellsCT.lean`). Each arm of the gate carries the check on
-  traced runs `ownedCheckML`, the leakage form of the register-allocation validation.
+  take `m.linked = []`.
   `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
-  follows from its gate conclusion by `uc_of_gate`. In the earlier back half, the
-  loop arm `v1LoopWB` goes
-  through `loop_bytesW_ct_src` (`X86Backend/ImageLoopWLeak.lean`) and the register arm
-  `v1StraightRWB` through `straightRegW_bytes_ct`; `jGate_bytes_ct` (`Haxc.ComposeCTStraight`) states the result
-  for one accepted program of `compileJ`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
+  follows from its gate conclusion by `uc_of_gate`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
   `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
   For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the region program from the level check of the lowered
@@ -267,10 +246,7 @@ For every result of `compileA`, `haxc_ct_proved_all` and `haxc_rc_proved_all`
 (development repository, `Haxc.ComposeCTStraight`) give constant time and robust
 compilation of every decoding of the bytes. `compileA` compiles a structured program, and
 constant time of the decoded program follows from the level check of the source through
-the region chain (`NFEntry.levelCheck_region_bytes`). In the earlier back half `compileJ`, on a
-straight-line or looped route program, for a printed body accepted by an image arm of the
-gate with its check on traced runs, `jGate_bytes_ct` derives constant time of the bytes
-from constant time of the route program, which the level check of the source gives.
+the region chain (`NFEntry.levelCheck_region_bytes`).
 
 ### Reference semantics of prime-ir calls
 
@@ -389,10 +365,9 @@ The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
   `maj_corresIsa_bytes_of_fnCorres` gives `CorresIsa x86Isa` at the decoded block. All
   three use `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`). The
   shipped `mpn_mul_1` loop has a `CorresIsaRun x86Isa` result (`mul1_corresIsaRun`)
-  against its loop specification. For every program the compile gate accepts the
-  development tree has the instruction-set judgement against the source denotation
-  (`v1Loop_corresIsa`, `jGate_straight_corresIsa`, and with the printed body as the
-  program `v1Loop_image_corresIsaRun` and its straight-arm siblings);
+  against its loop specification. For a program the region gate accepts the
+  development tree has the instruction-set judgement at a fixed fuel
+  (`regionGate_corresIsa`, `Haxc/RegionCorresIsa.lean`);
   [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
   states which program each is about; see also
   [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md#the-ascent-against-a-hax-reference).
