@@ -323,6 +323,35 @@ def abiSaveOfExt (reg : String) : Option String :=
       else if reg == "R9"  then some "qsave.R9"
       else none
 
+/-- **The stack offset of an argument name**: `off` for the export name `RSP+off` of a
+    parameter that the caller passes in the stack word `[RSP + off]` (the seventh and later
+    System V integer arguments), and `none` for every other name, among them every
+    argument register. -/
+def abiStackOff? (reg : String) : Option Nat :=
+  match reg.toList with
+  | 'R' :: 'S' :: 'P' :: '+' :: ds =>
+      if !ds.isEmpty && ds.all Char.isDigit then some (Nat.ofDigitChars 10 ds 0) else none
+  | _ => none
+
+/-- The export name `RSP+off` has the stack offset `off`. -/
+theorem abiStackOff?_rsp (off : Nat) : abiStackOff? ("RSP+" ++ toString off) = some off := by
+  have hne := Nat.toDigits_ne_nil (b := 10) (n := off)
+  have hd : (Nat.toDigits 10 off).all Char.isDigit = true :=
+    List.all_eq_true.mpr fun c hc => Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
+  simp only [abiStackOff?, String.toList_append, Nat.toString_eq_ofList_toDigits,
+    String.toList_ofList]
+  simp [hd, hne, Nat.ofDigitChars_ten_toDigits]
+
+/-- An argument register has no stack offset. -/
+theorem abiStackOff?_of_ne {reg : String} (h : reg.toList.take 4 ≠ ['R', 'S', 'P', '+']) :
+    abiStackOff? reg = none := by
+  unfold abiStackOff?
+  split
+  · rename_i ds hds
+    rw [hds] at h
+    exact absurd rfl h
+  · rfl
+
 /-- **Materialize the pointer arguments into the body's register file.**
 
     The 2-pointer memref ABI (`inLoadMap = none`, `outStoreMap = []`: the body
@@ -350,7 +379,8 @@ def abiSaveOfExt (reg : String) : Option String :=
     For an ABI register with no red-zone save (any beyond the canonical `RDI`/
     `RSI`), the copy sources the live ABI register directly (`mov R, ABIreg`);
     these run after the qsave-sourced copies and the live register is untouched
-    by them. The per-word scalar ABI (`inLoadMap` non-empty) sets `aj` via the
+    by them. A stack argument, named `RSP+off` (`abiStackOff?`), is loaded from its
+    stack word: `mov dst, [RSP + off]`. The per-word scalar ABI (`inLoadMap` non-empty) sets `aj` via the
     inline first-use loads instead, so for those callers this prelude is empty
     (their `aj` names are not used as bare registers / SIB bases). -/
 def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
@@ -394,13 +424,23 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
               else
                 [⟨0, .Lopn [dst] "MOVQ" [memSrc]⟩]
           | none =>
-              -- No red-zone save: source the live ABI register directly.
-              if phys == abiReg then []
-              else if dst.isSpill then
-                [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg abiReg]⟩,
-                 ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
-              else
-                [⟨0, .Lopn [dst] "MOVQ" [.reg abiReg]⟩])
+              match abiStackOff? abiReg with
+              | some off =>
+                -- A stack argument: load its stack word, through `reloadScratch` into a
+                -- spill slot (a memory-to-memory `mov` is not an instruction).
+                if dst.isSpill then
+                  [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg (memName "RSP" off)]⟩,
+                   ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
+                else
+                  [⟨0, .Lopn [dst] "MOVQ" [.reg (memName "RSP" off)]⟩]
+              | none =>
+                -- No red-zone save: source the live ABI register directly.
+                if phys == abiReg then []
+                else if dst.isSpill then
+                  [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg abiReg]⟩,
+                   ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
+                else
+                  [⟨0, .Lopn [dst] "MOVQ" [.reg abiReg]⟩])
 
 /-- Build the ABI epilogue. The epilogue runs after the verified two-address
     body, and is responsible for getting the body's last-`n` SSA results out

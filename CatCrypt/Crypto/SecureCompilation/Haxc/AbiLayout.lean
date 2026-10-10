@@ -17,8 +17,9 @@ set_option autoImplicit false
 
 An `AbiLayout` reads a hax environment and a hax result off address-machine states
 (`Ascent.AddrMem.AState`) under the System V calling convention of the v0 route set of the
-general compiler theorem: each source parameter is a `u64` scalar held in an argument
-register or a word array passed by pointer in an argument register, a list of named
+general compiler theorem: each source parameter is a `u64` scalar or a word array passed by
+pointer, carried in an argument register or in a stack word `%rsp + 8 k` at entry (the
+seventh and later integer arguments), a list of named
 constants completes the environment, and the result is read back from registers and from
 the words at the entry pointers after the run.
 
@@ -30,6 +31,12 @@ and the runtime counts stay within stated bounds.
 
 * `wordsAt` — the words at `base + 8 j`, `j < k`, as source integers.
 * `ArgKind`, `AbiArg`, `AbiArg.read` — a parameter, its register and the value it denotes.
+* `stackArgReg`, `stackArgReg_inj`, `ne_stackArgReg` — the carrier name of a parameter in
+  the stack word `%rsp + 8 k`.
+* `AbiLayout.StackIn`, `AbiLayout.StackWF`, `AbiLayout.RegCarried` — the stack parameters
+  at an entry state, their placement above the return address and the frame, and the
+  layouts without stack parameters, at which both hold (`stackIn_of_regCarried`,
+  `stackWF_of_regCarried`).
 * `ResultKind`, `ResultKind.read` — the read-back of a result from the entry and exit states.
 * `AbiLayout` — parameters, constants, result, count bounds and the stack frame.
 * `AbiLayout.argPub`, `AbiLayout.PubAgree` — the public parameters of a layout, and the
@@ -85,6 +92,30 @@ def AbiArg.region (a : AbiArg) : Option (String × Nat) :=
   match a.kind with
   | .scalar => none
   | .words n => some (a.reg, n)
+
+/-- **The carrier name of a stack parameter**: the name `"%rsp+8k"` under which a layout
+    carries the parameter that the caller passes in the stack word `%rsp + 8 k` at entry, as
+    System V passes the seventh and later integer arguments (`k ≥ 1`). No machine register
+    has this name: the entry state holds the word in the register file under it, which
+    `AbiLayout.StackIn` ties to the memory, and every definition over `AbiArg.reg` reads a
+    stack parameter as it reads a register parameter. -/
+def stackArgReg (k : Nat) : String := "%rsp+" ++ toString (8 * k)
+
+/-- Distinct stack words have distinct carrier names. -/
+theorem stackArgReg_inj {j k : Nat} (h : stackArgReg j = stackArgReg k) : j = k := by
+  have h1 := congrArg String.toList h
+  simp only [stackArgReg, String.toList_append, Nat.toString_eq_ofList_toDigits,
+    String.toList_ofList, List.append_cancel_left_eq] at h1
+  have h2 := congrArg (Nat.ofDigitChars 10 · 0) h1
+  simp only [Nat.ofDigitChars_ten_toDigits] at h2
+  omega
+
+/-- A name whose characters do not begin with `%rsp+` is the carrier name of no stack word;
+    every System V register name is such a name. -/
+theorem ne_stackArgReg {r : String} (h : ¬ "%rsp+".toList <+: r.toList) (k : Nat) :
+    r ≠ stackArgReg k := by
+  rintro rfl
+  exact h ⟨(toString (8 * k)).toList, by simp [stackArgReg]⟩
 
 /-- How a result is read back after the run. -/
 inductive ResultKind where
@@ -168,6 +199,33 @@ def Regions (σ : AbiLayout) (sa : AState) : Prop :=
     ∧ (∀ p ∈ σ.regions, ∀ k, k < p.2 → ∀ o : Int, σ.frameLo ≤ o → o ≤ σ.frameHi →
         Disjoint8 (sa.regs "%rsp" + BitVec.ofInt 64 o)
           (sa.regs p.1 + BitVec.ofNat 64 (8 * k)))
+
+/-- Every parameter of the layout is carried in a register: no parameter has the carrier
+    name `stackArgReg k` of a stack word. -/
+def RegCarried (σ : AbiLayout) : Prop :=
+  ∀ a ∈ σ.args, ∀ k, a.reg ≠ stackArgReg k
+
+/-- **The stack parameters at entry**: at the state `sa`, the carrier name `stackArgReg k` of
+    every stack parameter holds the word at `%rsp + 8 k` of the memory. -/
+def StackIn (σ : AbiLayout) (sa : AState) : Prop :=
+  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k →
+    sa.regs a.reg = read64 sa.mem (sa.regs "%rsp" + BitVec.ofNat 64 (8 * k))
+
+/-- **The well-formed stack parameters** of a layout: each stack parameter lies in a word
+    `%rsp + 8 k` with `k ≥ 1`, above the return address at `%rsp`, and above every stack
+    word `%rsp + o`, `o ≤ frameHi`, that the body uses. -/
+def StackWF (σ : AbiLayout) : Prop :=
+  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k → 1 ≤ k ∧ σ.frameHi + 8 ≤ 8 * (k : Int)
+
+/-- A layout whose parameters are all register-carried has its stack parameters at every
+    entry state. -/
+theorem stackIn_of_regCarried {σ : AbiLayout} (h : σ.RegCarried) (sa : AState) :
+    σ.StackIn sa :=
+  fun a ha k hk => absurd hk (h a ha k)
+
+/-- A layout whose parameters are all register-carried has well-formed stack parameters. -/
+theorem stackWF_of_regCarried {σ : AbiLayout} (h : σ.RegCarried) : σ.StackWF :=
+  fun a ha k hk => absurd hk (h a ha k)
 
 /-- The names a layout binds in the source environment: the parameters, then the
     constants. -/
