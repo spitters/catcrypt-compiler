@@ -23,8 +23,16 @@ The carried state `FSt` holds the symbolic registers and arrays in hash maps, so
 costs a hash-map access and not one test per write since the start of the block. A step
 runs `symStep` on the state `FSt.toSSt` the maps describe and inserts the at most two
 registers and array names the step writes (`FSt.upd`), which the frame lemma `symStep_frame`
-justifies. Symbolic words share their subterms in memory, and the comparisons of `siteOK`
-run through `decEqTermP`, which tests pointer equality before it compares two subterms.
+justifies. `stepOut` takes both states apart before it inserts, so the closures of the
+returned state, which read the maps, are released and the maps are updated in place.
+Symbolic words share their subterms in memory, and the comparisons of `siteOK` run through
+`decEqTermP`, which tests pointer equality before it compares two subterms.
+
+The width check of `posOK` over every register of `E` walks the width base `STerm.wbase` of
+each word, whose length grows with the block. The pass carries that check as a flag: a step
+recomputes it only for the registers of `E` among the at most two registers it writes
+(`all_w64_frame`), which is exact while the check held before the step, and a pass whose
+check fails stops there.
 
 The equality `fuseOKL_eq_fast` is registered with `@[csimp]`, so compiled code runs
 `fuseOKLFast` whenever it calls `fuseOKL`; the definition `fuseOKL` and its theorems are
@@ -35,6 +43,8 @@ unchanged.
 * `FSt` — a symbolic state with its registers and arrays in hash maps.
 * `decEqTermP` — equality of symbolic words with a pointer-equality test at each subterm.
 * `posPass` — the per-position checks from the current position on, in one forward pass.
+* `FOut` — a symbolic outcome over the hash-map state with the carried width flag.
+* `stepOut` — the hash-map state and the width flag after a step.
 * `posPassF` — `posPass` over the hash-map state.
 * `fuseOKLFast` — the fusion check in one forward pass over the body.
 
@@ -44,7 +54,12 @@ unchanged.
   names.
 * `FSt.toSSt_upd` — the hash-map state after a step describes the state `symStep` returns.
 * `posPass_drop` — the forward pass from position `k` equals the per-position checks from `k`.
-* `posPassF_eq` — `posPassF` equals `posPass` on the described state.
+* `all_w64_frame` — after a step, the width check of `E` is the check of its written
+  registers, when the check held before.
+* `nextF_EA`, `nextF_toS` — the step over the hash-map state keeps the width flag exact and
+  describes `nextS`.
+* `posPassF_eq` — `posPassF` equals `posPass` on the described state, when the flag is
+  exact.
 * `fuseOKL_eq_fast` — `fuseOKL = fuseOKLFast`, registered with `@[csimp]`.
 -/
 
@@ -260,8 +275,8 @@ def FSt.start : FSt := ⟨∅, ∅, .init, [], [], .cin false, .cin true⟩
 /-- The hash-map state after a step to `ss'`: the first two written registers and array names
     of `ss'` take their values in `ss'`, the other fields are those of `ss'`. -/
 def FSt.upd (F : FSt) (ss' : SSt) : FSt :=
-  ⟨(ss'.wr.take 2).foldl (fun m d => m.insert d (ss'.regs d)) F.regs,
-    (ss'.awr.take 2).foldl (fun m d => m.insert d (ss'.arrs d)) F.arrs,
+  ⟨((ss'.wr.take 2).map fun d => (d, ss'.regs d)).foldl (fun m p => m.insert p.1 p.2) F.regs,
+    ((ss'.awr.take 2).map fun d => (d, ss'.arrs d)).foldl (fun m p => m.insert p.1 p.2) F.arrs,
     ss'.zf, ss'.wr, ss'.awr, ss'.cf, ss'.of⟩
 
 theorem FSt.toSSt_start : FSt.start.toSSt = SSt.start := by
@@ -285,7 +300,7 @@ theorem FSt.toSSt_upd {F : FSt} {ss' : SSt} (h : FrameT F.toSSt ss') :
     (F.upd ss').toSSt = ss' := by
   obtain ⟨hr, ha⟩ := h
   obtain ⟨regs, arrs, zf, wr, awr, cf, of⟩ := ss'
-  simp only [FSt.toSSt, FSt.upd, SSt.mk.injEq, and_true]
+  simp only [FSt.toSSt, FSt.upd, SSt.mk.injEq, and_true, List.foldl_map]
   refine ⟨funext fun r => ?_, funext fun r => ?_⟩
   · rw [getD_foldl_insert]
     split
@@ -398,38 +413,76 @@ theorem siteOKF_eq : siteOKF = siteOK := by
 
 /-! ## The forward pass over the hash-map state -/
 
-/-- A symbolic outcome over the hash-map state, guards dropped. -/
+/-- `w64` with the width base `STerm.wbase` computed once. -/
+def w64F (E : List String) (t : STerm) : Bool :=
+  let b := t.wbase
+  b.wknown == some 64 || (match b with | .reg x => E.contains x | _ => false)
+
+theorem w64F_eq : w64F = w64 := rfl
+
+/-- A symbolic outcome over the hash-map state, guards dropped; a described state carries
+    the flag `ea`, which the forward pass keeps equal to the width check of every register
+    of `E` while that check holds (`FOut.EA`). -/
 inductive FOut where
-  | ok (F : FSt)
+  | ok (F : FSt) (ea : Bool)
   | fail
   | unk
 
 /-- The symbolic outcome an `FOut` describes. -/
 def FOut.toS : FOut → SOut
-  | .ok F => .ok F.toSSt []
+  | .ok F _ => .ok F.toSSt []
   | .fail => .fail
   | .unk => .unk
 
-/-- `posAt` over the hash-map state. -/
+/-- The flag of a described state is the width check `posAt` makes of every register of
+    `E`. -/
+def FOut.EA (E : List String) : FOut → Prop
+  | .ok F ea => ea = E.all (fun x => w64 E (F.toSSt.regs x))
+  | .fail => True
+  | .unk => True
+
+/-- `posAt` over the hash-map state, with the width check of the registers of `E` read from
+    the carried flag. -/
 def posAtF (E : List String) (l : Option (Option String)) (ci : Option LinstrRM) (o : FOut) :
     Bool :=
   match o with
-  | .ok F =>
-      E.all (fun x => w64 E (F.regs.getD x (.reg x))) &&
+  | .ok F ea =>
+      ea &&
         (match l with
          | some (some d) => ci.any (fun i => siteOKF E d i F.toSSt)
          | _ => true)
   | .fail => true
   | .unk => false
 
+/-- The outcome after a step from `F` to `ss'`: the state `F.upd ss'`, and the flag that every
+    register of `E` among the first two written registers of `ss'` has a word of width `64`.
+    Both states are taken apart before the maps are updated, so that the closures of `ss'`,
+    which read the maps of `F`, are released before the inserts. -/
+def stepOut (E : List String) (F : FSt) (ss' : SSt) : FOut :=
+  match F, ss' with
+  | ⟨mr, ma, _, _, _, _, _⟩, ⟨regs, arrs, zf, wr, awr, cf, of⟩ =>
+      let rv := (wr.take 2).map fun d => (d, regs d)
+      let av := (awr.take 2).map fun d => (d, arrs d)
+      .ok ⟨rv.foldl (fun m p => m.insert p.1 p.2) mr, av.foldl (fun m p => m.insert p.1 p.2) ma,
+          zf, wr, awr, cf, of⟩
+        (rv.all fun p => !E.contains p.1 || w64F E p.2)
+
+theorem stepOut_eq (E : List String) (F : FSt) (ss' : SSt) :
+    stepOut E F ss' = .ok (F.upd ss')
+      (((ss'.wr.take 2).map fun d => (d, ss'.regs d)).all
+        fun p => !E.contains p.1 || w64F E p.2) := by
+  obtain ⟨_, _, _, _, _, _, _⟩ := F
+  obtain ⟨_, _, _, _, _, _, _⟩ := ss'
+  rfl
+
 /-- `nextS` over the hash-map state: the step runs `symStep` on the described state and
-    updates the maps by `FSt.upd`. -/
-def nextF (o : FOut) (i : LinstrRM) : FOut :=
-  if isCtlB i then .ok FSt.start else
+    updates the maps and the flag by `stepOut`. -/
+def nextF (E : List String) (o : FOut) (i : LinstrRM) : FOut :=
+  if isCtlB i then .ok FSt.start true else
     match o with
-    | .ok F =>
+    | .ok F _ =>
         match symStep i F.toSSt with
-        | .ok ss' _ => .ok (F.upd ss')
+        | .ok ss' _ => stepOut E F ss'
         | .fail => .fail
         | .unk => .unk
     | .fail => .fail
@@ -438,35 +491,89 @@ def nextF (o : FOut) (i : LinstrRM) : FOut :=
 /-- `posPass` over the hash-map state. -/
 def posPassF (E : List String) : List (Option String) → List LinstrRM → FOut → Bool
   | Ls, [], o => posAtF E Ls.head? none o
-  | Ls, i :: cs, o => posAtF E Ls.head? (some i) o && posPassF E Ls.tail cs (nextF o i)
+  | Ls, i :: cs, o => posAtF E Ls.head? (some i) o && posPassF E Ls.tail cs (nextF E o i)
 
 theorem posAtF_eq (E : List String) (l : Option (Option String)) (ci : Option LinstrRM)
-    (o : FOut) : posAtF E l ci o = posAt E l ci o.toS := by
+    {o : FOut} (h : o.EA E) : posAtF E l ci o = posAt E l ci o.toS := by
   cases o with
-  | ok F => simp only [posAtF, posAt, FOut.toS, siteOKF_eq]; rfl
+  | ok F ea =>
+      simp only [FOut.EA] at h
+      subst h
+      simp only [posAtF, posAt, FOut.toS, siteOKF_eq]
   | fail => rfl
   | unk => rfl
 
-theorem nextF_toS (o : FOut) (i : LinstrRM) : (nextF o i).toS = nextS o.toS i := by
+/-- Every register of `E` has a word of width `64` in the start state. -/
+theorem all_w64_start (E : List String) : E.all (fun x => w64 E (SSt.start.regs x)) = true :=
+  List.all_eq_true.mpr fun x hx => by simp [SSt.start, w64, STerm.wbase, STerm.wknown, hx]
+
+/-- After a step that passes the width check before it, the width check of every register of
+    `E` is the check of the registers of `E` among the first two written registers. -/
+theorem all_w64_frame {E : List String} {ss ss' : SSt} (hf : FrameT ss ss')
+    (h : E.all (fun x => w64 E (ss.regs x)) = true) :
+    (((ss'.wr.take 2).map fun d => (d, ss'.regs d)).all
+        fun p => !E.contains p.1 || w64F E p.2)
+      = E.all (fun x => w64 E (ss'.regs x)) := by
+  rw [w64F_eq]
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.all_map, List.all_eq_true, Function.comp_apply, Bool.or_eq_true,
+    Bool.not_eq_true']
+  constructor
+  · intro hw x hx
+    by_cases hm : x ∈ ss'.wr.take 2
+    · exact (hw x hm).resolve_left (by simpa using hx)
+    · rw [hf.1 x hm]; exact List.all_eq_true.mp h x hx
+  · intro hall d _
+    by_cases hd : d ∈ E
+    · exact Or.inr (hall d hd)
+    · exact Or.inl (by simpa using hd)
+
+theorem nextF_EA (E : List String) {o : FOut} {l : Option (Option String)} {i : LinstrRM}
+    (h : o.EA E) (hp : posAt E l (some i) o.toS = true) : (nextF E o i).EA E := by
+  unfold nextF
+  split
+  · simp only [FOut.EA, FSt.toSSt_start, all_w64_start]
+  · cases o with
+    | ok F ea =>
+        have hall : E.all (fun x => w64 E (F.toSSt.regs x)) = true := by
+          simp only [posAt, FOut.toS, Bool.and_eq_true] at hp
+          exact hp.1
+        dsimp only
+        cases hs : symStep i F.toSSt with
+        | ok ss' g =>
+            have hf := symStep_frame i hs
+            simp only [stepOut_eq, FOut.EA, FSt.toSSt_upd hf]
+            exact all_w64_frame hf hall
+        | fail => trivial
+        | unk => trivial
+    | fail => trivial
+    | unk => trivial
+
+theorem nextF_toS (E : List String) (o : FOut) (i : LinstrRM) :
+    (nextF E o i).toS = nextS o.toS i := by
   unfold nextF nextS
   split
   · simp only [FOut.toS, FSt.toSSt_start]
   · cases o with
-    | ok F =>
+    | ok F ea =>
         simp only [FOut.toS, symSnoc]
         cases h : symStep i F.toSSt with
-        | ok ss' g => simp only [forgetG, FSt.toSSt_upd (symStep_frame i h)]
+        | ok ss' g => simp only [stepOut_eq, forgetG, FSt.toSSt_upd (symStep_frame i h)]
         | fail => rfl
         | unk => rfl
     | fail => rfl
     | unk => rfl
 
 theorem posPassF_eq (E : List String) :
-    ∀ (Ls : List (Option String)) (cs : List LinstrRM) (o : FOut),
+    ∀ (Ls : List (Option String)) (cs : List LinstrRM) (o : FOut), o.EA E →
       posPassF E Ls cs o = posPass E Ls cs o.toS
-  | Ls, [], o => by rw [posPassF, posPass, posAtF_eq]
-  | Ls, i :: cs, o => by
-      rw [posPassF, posPass, posAtF_eq, posPassF_eq E Ls.tail cs (nextF o i), nextF_toS]
+  | Ls, [], o, h => by rw [posPassF, posPass, posAtF_eq E _ _ h]
+  | Ls, i :: cs, o, h => by
+      rw [posPassF, posPass, posAtF_eq E _ _ h]
+      cases hp : posAt E Ls.head? (some i) o.toS
+      · rfl
+      · rw [Bool.true_and, Bool.true_and, posPassF_eq E Ls.tail cs _ (nextF_EA E h hp),
+          nextF_toS]
 
 /-! ## The fast check -/
 
@@ -474,7 +581,7 @@ theorem posPassF_eq (E : List String) :
     `posPassF` from the start state. -/
 def fuseOKLFast (E : List String) (L : List (Option String)) (c : List LinstrRM) : Bool :=
   c.all (fun i => clsB i && wireOK i.1 && JasminLsemExportRewrites.mulxFree i)
-    && posPassF E L c (.ok FSt.start)
+    && posPassF E L c (.ok FSt.start true)
 
 /-- **The single-pass fusion check equals `fuseOKL`**; compiled code runs `fuseOKLFast`. -/
 @[csimp] theorem fuseOKL_eq_fast : @fuseOKL = @fuseOKLFast := by
@@ -483,7 +590,9 @@ def fuseOKLFast (E : List String) (L : List (Option String)) (c : List LinstrRM)
   congr 1
   have h := posPass_drop E L c c.length 0 (by omega)
   rw [List.drop_zero, List.drop_zero, blk_zero] at h
-  rw [List.range_eq_range', posPassF_eq, FOut.toS, FSt.toSSt_start]
+  have hs : (FOut.ok FSt.start true).EA E := by
+    simp only [FOut.EA, FSt.toSSt_start, all_w64_start]
+  rw [List.range_eq_range', posPassF_eq E L c _ hs, FOut.toS, FSt.toSSt_start]
   exact h.symm
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi
