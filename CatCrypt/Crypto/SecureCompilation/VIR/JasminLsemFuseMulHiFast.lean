@@ -28,8 +28,12 @@ returned state, which read the maps, are released and the maps are updated in pl
 Symbolic words share their subterms in memory, and the comparisons of `siteOK` run through
 `decEqTermP`, which tests pointer equality before it compares two subterms and compares a
 subterm only when the scalar fields and every earlier subterm agree, so that two different
-words are compared along one path to their first difference. `mulLoBF` reads the outer
-constructor and operation of the low destination's word before any comparison.
+words are compared along one path to their first difference. Compiled code runs `termEqP`
+as `termEqPMemo`, which keeps the address pairs of the subterms found equal during one
+comparison in a hash set, so that equal words built along two paths, whose subterms are equal
+but distinct objects, are compared once per pair of subterm objects and not once per path.
+`mulLoBF` reads the outer constructor and operation of the low destination's word before any
+comparison.
 
 The width check of `posOK` over every register of `E` walks the width base `STerm.wbase` of
 each word, whose length grows with the block. The pass carries that check as a flag: a step
@@ -46,6 +50,8 @@ unchanged.
 * `FSt` — a symbolic state with its registers and arrays in hash maps.
 * `decAndL` — a decided conjunction whose second decision runs only when the first holds.
 * `decEqTermP` — equality of symbolic words with a pointer-equality test at each subterm.
+* `termEqMemo` — the compiled equality of symbolic words, with a table of the address pairs
+  found equal.
 * `mulLoBF` — the low-product test of a fused site, decided on the outer constructor first.
 * `posPass` — the per-position checks from the current position on, in one forward pass.
 * `FOut` — a symbolic outcome over the hash-map state with the carried width flag.
@@ -407,7 +413,79 @@ def decEqArrP : (a b : SArr) → Decidable (a = b)
   | a, b => decEq a b
 end
 
-/-- The Boolean equality of symbolic words through `decEqTermP`. -/
+/-- The pairs of addresses of symbolic words found equal during one comparison. -/
+abbrev EqMemo := Std.HashSet (USize × USize)
+
+mutual
+/-- Structural equality of symbolic words with a table of the address pairs already found
+    equal: a pair of words that are one object, or whose addresses are in the table, is
+    equal; otherwise the scalar fields are compared, then the subterms from left to right,
+    each only when every earlier comparison succeeded, and a pair found equal is added to the
+    table. Each pair of subterm objects is compared structurally at most once per call. -/
+unsafe def termEqMemo (a b : STerm) : StateM EqMemo Bool := do
+  if ptrEq a b then return true
+  let key := (ptrAddrUnsafe a, ptrAddrUnsafe b)
+  if (← get).contains key then return true
+  let r ← match a, b with
+    | .immAt n x, .immAt n' x' => if n == n' then termEqMemo x x' else pure false
+    | .bin m x y, .bin m' x' y' =>
+        if m == m' then do
+          if ← termEqMemo x x' then termEqMemo y y' else pure false
+        else pure false
+    | .un m x, .un m' x' => if m == m' then termEqMemo x x' else pure false
+    | .shImm m k x, .shImm m' k' x' =>
+        if m == m' && k == k' then termEqMemo x x' else pure false
+    | .aget a w n i, .aget a' w' n' i' =>
+        if w == w' && n == n' then do
+          if ← termEqMemo i i' then arrEqMemo a a' else pure false
+        else pure false
+    | .aluF op o x y z, .aluF op' o' x' y' z' =>
+        if op == op' && o == o' then termEqMemo3 x y z x' y' z' else pure false
+    | .carryW op x y z, .carryW op' x' y' z' =>
+        if op == op' then termEqMemo3 x y z x' y' z' else pure false
+    | .carryF op o x y z, .carryF op' o' x' y' z' =>
+        if op == op' && o == o' then termEqMemo3 x y z x' y' z' else pure false
+    | .mulx h x y, .mulx h' x' y' =>
+        if h == h' then do
+          if ← termEqMemo x x' then termEqMemo y y' else pure false
+        else pure false
+    | .cout s x y z, .cout s' x' y' z' =>
+        if s == s' then termEqMemo3 x y z x' y' z' else pure false
+    | .sel x y z, .sel x' y' z' => termEqMemo3 x y z x' y' z'
+    | a, b => pure (decide (a = b))
+  if r then modify (·.insert key)
+  return r
+
+/-- The pairs `(x, x')`, `(y, y')`, `(z, z')` compared by `termEqMemo` from left to right,
+    each only when every earlier comparison succeeded. -/
+unsafe def termEqMemo3 (x y z x' y' z' : STerm) : StateM EqMemo Bool := do
+  if ← termEqMemo x x' then
+    if ← termEqMemo y y' then termEqMemo z z' else pure false
+  else pure false
+
+/-- Structural equality of symbolic arrays: a pair that is one object is equal; otherwise the
+    shape, the index, the value and the array below are compared, each only when every
+    earlier comparison succeeded, with the words compared by `termEqMemo`. -/
+unsafe def arrEqMemo (a b : SArr) : StateM EqMemo Bool := do
+  if ptrEq a b then return true
+  match a, b with
+  | .aset a w n i v, .aset a' w' n' i' v' =>
+      if w == w' && n == n' then do
+        if ← termEqMemo i i' then
+          if ← termEqMemo v v' then arrEqMemo a a' else pure false
+        else pure false
+      else pure false
+  | a, b => pure (decide (a = b))
+end
+
+/-- `termEqMemo` from the empty table. -/
+unsafe def termEqPMemo (a b : STerm) : Bool := (termEqMemo a b).run' {}
+
+/-- The Boolean equality of symbolic words through `decEqTermP`. Compiled code runs
+    `termEqPMemo`, which compares each pair of subterm objects structurally at most once, so
+    that two equal words whose shared subterms are distinct objects are compared in time
+    polynomial in their numbers of distinct subterm objects. -/
+@[implemented_by termEqPMemo]
 def termEqP (a b : STerm) : Bool := @decide (a = b) (decEqTermP a b)
 
 theorem termEqP_eq (a b : STerm) : termEqP a b = (a == b) := by
