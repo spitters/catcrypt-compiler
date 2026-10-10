@@ -66,7 +66,8 @@ checks it for every pair of an entry and an exit of `cutAt`.
 * `offCongrB`, `commonCongrB`: the check that the described step of an instruction reads
   no name of a list, and the same for every instruction and branch condition of a body.
 * `commonFreshB`: the check that the common names are distinct, occur in no operation of a
-  body, and that the body passes `commonCongrB` at them.
+  body, and that the body passes `commonCongrB` at them; at a call with an out result the
+  result name is the destination, an argument name.
 * `setRL`, `OffRel`, `expPos`: a state with a register file and a counter, the relation of
   a state of a body to a state of its rewritten body, and the position map of the rewriting.
 * `OffCongr`, `CondCongr`: the step of an instruction commutes with a change of a set of
@@ -1376,17 +1377,20 @@ def commonCongrB (N : List String) (B : List LinstrRM) : Bool :=
     | .Lcond c _ => (opNames c).all fun n => !N.contains n
     | j => isCtl j || (shadowCall? j).isSome || offCongrB N i
 
-/-- **The check of the common names against a body**: the names `args` are distinct, `res`
-    is none of them, no operation of the body has an operand with a name of `args` or
-    the name `res`, and the body passes `commonCongrB` at the names `res :: args`. -/
-def commonFreshB (args : List String) (res : String) (B : List LinstrRM) : Bool :=
-  decide args.Nodup && !args.contains res
+/-- **The check of the common names against a body for calls of the shape `sh`**: the names
+    `args` are distinct, `res` is none of them unless `sh` has an out result (whose result
+    register is the destination, an argument), no operation of the body has an operand with
+    a name of `args` or the name `res`, and the body passes `commonCongrB` at the names
+    `res :: args`. -/
+def commonFreshB (sh : CallShape) (args : List String) (res : String) (B : List LinstrRM) :
+    Bool :=
+  decide args.Nodup && (sh.out || !args.contains res)
     && (B.all fun i => (instrNames i.fst).all fun n => !args.contains n && n != res)
     && commonCongrB (res :: args) B
 
 /-- A body that passes `commonFreshB` passes `commonCongrB` at the common names. -/
-theorem commonFreshB_congr {args : List String} {res : String} {B : List LinstrRM}
-    (h : commonFreshB args res B = true) : commonCongrB (res :: args) B = true := by
+theorem commonFreshB_congr {sh : CallShape} {args : List String} {res : String}
+    {B : List LinstrRM} (h : commonFreshB sh args res B = true) : commonCongrB (res :: args) B = true := by
   simp only [commonFreshB, Bool.and_eq_true] at h
   exact h.2
 
@@ -1394,8 +1398,8 @@ theorem commonFreshB_congr {args : List String} {res : String} {B : List LinstrR
     of `commonCall_sim`**: the names `args` are distinct, no operand of the shadow
     instruction is a name of `args`, and its destination is neither a name of `args` nor
     `res`. -/
-theorem commonFreshB_site {args : List String} {res : String} {B : List LinstrRM}
-    (h : commonFreshB args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
+theorem commonFreshB_site {sh : CallShape} {args : List String} {res : String}
+    {B : List LinstrRM} (h : commonFreshB sh args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
     {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) {xs : List String}
     (hxs : regNames? srcs = some xs) :
     args.Nodup ∧ (∀ x ∈ xs, x ∉ args) ∧ d ∉ args ∧ d ≠ res := by
@@ -1420,8 +1424,8 @@ theorem commonFreshB_site {args : List String} {res : String} {B : List LinstrRM
 
 /-- No operand of a shadow instruction of a body that passes `commonFreshB` is the name
     `res`. -/
-theorem commonFreshB_site_res {args : List String} {res : String} {B : List LinstrRM}
-    (h : commonFreshB args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
+theorem commonFreshB_site_res {sh : CallShape} {args : List String} {res : String}
+    {B : List LinstrRM} (h : commonFreshB sh args res B = true) {i : LinstrRM} (hi : i ∈ B) {d g : String}
     {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) {xs : List String}
     (hxs : regNames? srcs = some xs) : ∀ x ∈ xs, x ≠ res := by
   simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
@@ -1887,7 +1891,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
     {sh : CallShape}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
@@ -2058,7 +2062,7 @@ theorem steps_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f =
     {sh : CallShape}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c) :
@@ -2123,7 +2127,7 @@ theorem commonCalls_run {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T 
     {sh : CallShape}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
@@ -2143,7 +2147,7 @@ theorem commonCalls_run_obs {T : ProcTable} {f : String} {pr : ProcSummary}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String}
     {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
       OffCongr (res :: args) i)
     (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
@@ -2166,7 +2170,7 @@ theorem run_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary} (hT : 
     {sh : CallShape}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
@@ -2182,7 +2186,7 @@ theorem obs_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary}
     (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
     {args : List String} {res fn : String}
     {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB args res B = true)
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
     {outs : List String} (ho : ∀ r ∈ outs, r ∉ res :: args)
     {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
