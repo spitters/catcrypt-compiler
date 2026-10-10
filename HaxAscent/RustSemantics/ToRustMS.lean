@@ -17,7 +17,8 @@ public import HaxAscent.Ascent.ExtTable
 threads an environment, as `Hax.denote'` does: a `letBind` extends the environment for the
 rest of the run, a counted loop `forFold` (upwards) or `forFoldRev` (downwards) binds its
 index and keeps the bindings its body makes, and a call `.app f args` evaluates its arguments left to right and applies
-`app f` to their values. The values (`AVal`) are integer literals, Booleans, unsigned
+`app f` to their values, and a projection `.proj e i` returns component `i` of the tuple
+`e` returns. The values (`AVal`) are integer literals, Booleans, unsigned
 words of every Aeneas width, Aeneas arrays `Aeneas.Std.Array (UScalar ty) n` of words,
 tuples and the unit value.
 
@@ -116,6 +117,11 @@ theorem AVal.toValue_isControlFlow (v : AVal) : v.toValue.isControlFlow = false 
 
 theorem AVal.toValue_ne_break (v : AVal) (w : Hax.Value) : v.toValue ≠ .controlFlow true w := by
   cases v <;> simp [AVal.toValue]
+
+theorem AVal.toValues_eq_map (vs : List AVal) : AVal.toValues vs = vs.map AVal.toValue := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih => rw [AVal.toValues, ih]; rfl
 
 /-- An environment of the reading. -/
 abbrev AEnv := String → Option AVal
@@ -626,6 +632,12 @@ def toRustMS (app : String → List AVal → RustM AVal) :
             (b - a).toNat a.toNat q.2 >>= fun ρ3 => .ok (.unit, ρ3)
         else .fail .undef
       | _, _ => .fail .undef
+  | .proj e i, ρ =>
+    toRustMS app e ρ >>= fun p => match p.1 with
+      | .tup vs => match vs[i]? with
+        | some v => .ok (v, p.2)
+        | none => .fail .undef
+      | _ => .fail .undef
   | _, _ => .fail .undef
 
 /-! ## Pasting -/
@@ -935,7 +947,23 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         have h4 := h3 fuel (by omega)
         rw [Int.toNat_of_nonneg hab.1] at h4
         exact h4
-  case case17 =>
+  case case17 e i ρ ih1 =>
+    intro v ρ' h
+    obtain ⟨⟨t, ρ1⟩, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨F1, h1⟩ := ih1 t ρ1 hp
+    cases t with
+    | tup vs =>
+      cases hvi : vs[i]? with
+      | none => simp only [hvi] at h; cases h
+      | some w =>
+        simp only [hvi] at h
+        cases h
+        refine ⟨F1, fun fuel hf => ?_⟩
+        refine Hax.Ascent.denote'_proj bi fuel (h1 fuel hf) (AVal.toValue_isControlFlow _) ?_
+        simp only [AVal.toValue, Hax.Value.projIdx, AVal.toValues_eq_map, List.getElem?_map,
+          hvi, Option.map_some]
+    | _ => cases h
+  case case18 =>
     intro v ρ' h
     cases h
 
@@ -959,11 +987,6 @@ theorem encEnv_bindA (l : List (String × AVal)) :
     obtain ⟨x, v⟩ := p
     rw [bindA, encEnv_upd, ih]
     rfl
-
-theorem AVal.toValues_eq_map (vs : List AVal) : AVal.toValues vs = vs.map AVal.toValue := by
-  induction vs with
-  | nil => rfl
-  | cons v vs ih => rw [AVal.toValues, ih]; rfl
 
 theorem AVal.retVal_toValue (v : AVal) : Hax.Ascent.retVal v.toValue = v.toValue := by
   cases v <;> rfl
@@ -1096,6 +1119,7 @@ def fragOk (locals : List String) : Hax.ImpExpr → Bool
   | .ifThenElse c t e => fragOk locals c && fragOk locals t && fragOk locals e
   | .forFold _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
   | .forFoldRev _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
+  | .proj e _ => fragOk locals e
   | _ => false
 
 /-! ## Composition with the ascent -/

@@ -21,7 +21,7 @@ returns under `app`, and the returned value and environment satisfy `Inv`.
 
 The predicate must hold of the values the reading itself makes (`ValInv`): the integer
 literals, the Booleans, the unit value, a tuple of values that satisfy it, and the loop
-index `ctr i`. The comparison is one-directional: a failure or a divergence of the reading
+index `ctr i`, and pass from a tuple to each of its components. The comparison is one-directional: a failure or a divergence of the reading
 under `app` gives no statement on the reading under `app'`.
 
 ## Main definitions
@@ -50,7 +50,7 @@ open Aeneas.Std Aeneas.Std.WP Std.Do Hax.Ascent
 
 /-- A predicate on values that holds of the values the reading makes without a call: the
     integer literals, the Booleans, the unit value, a tuple of values that satisfy it, and
-    the loop index. -/
+    the loop index; it holds of each component of a tuple that satisfies it. -/
 structure ValInv (Inv : AVal → Prop) : Prop where
   /-- Every integer literal satisfies the predicate. -/
   int : ∀ n, Inv (.int n)
@@ -60,6 +60,8 @@ structure ValInv (Inv : AVal → Prop) : Prop where
   unit : Inv .unit
   /-- A tuple of values that satisfy the predicate satisfies it. -/
   tup : ∀ vs, (∀ v ∈ vs, Inv v) → Inv (.tup vs)
+  /-- Every component of a tuple that satisfies the predicate satisfies it. -/
+  proj : ∀ vs v, Inv (.tup vs) → v ∈ vs → Inv v
   /-- Every loop index satisfies the predicate. -/
   ctr : ∀ i, Inv (ctr i)
 
@@ -320,7 +322,22 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         obtain ⟨hloop', hρ3⟩ := loopRevS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
         simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
-  case case17 =>
+  case case17 e i ρ ih1 =>
+    intro r hc hρ h
+    simp only [callsOK] at hc
+    obtain ⟨⟨t, ρ1⟩, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨hp', ht, hρ1⟩ := ih1 (t, ρ1) hc hρ hp
+    cases t with
+    | tup vs =>
+      cases hvi : vs[i]? with
+      | none => simp only [hvi] at h; cases h
+      | some w =>
+        simp only [hvi] at h
+        cases h
+        refine ⟨?_, hI.proj vs w ht (List.mem_of_getElem? hvi), hρ1⟩
+        simp only [toRustMS, hp', rustM_ok_bind, hvi]
+    | _ => cases h
+  case case18 =>
     intro r hc hρ h
     cases h
 
