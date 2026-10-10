@@ -458,4 +458,99 @@ theorem pub_of_outPtr {l : LinkedFn} {ins : List (String × ArgKind)} {po : Stri
   rw [e]
   exact hp
 
+/-! ## 6. The summary input at the entry of a call with array parameters -/
+
+section Entry
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (ACorr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgSep ImgRel)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe (entryOf argWord)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall (CallerSep args_entry
+  mapM_reg_argWord)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr (imgArgs readArgs_entry)
+
+/-- The argument words from the argument position `i + d` at the array positions `aa` are
+    the argument words from the position `i` at the array positions shifted by `d`. -/
+theorem argsRead_add (aa : Nat → Option Nat) (b : LstateM) (d : Nat) :
+    ∀ (i : Nat) (os : List LOperand),
+      LprogIsa.argsRead aa b (i + d) os = LprogIsa.argsRead (fun j => aa (j + d)) b i os
+  | _, [] => rfl
+  | i, o :: os => by
+      have h := argsRead_add aa b d (i + 1) os
+      rw [show i + 1 + d = i + d + 1 by omega] at h
+      simp only [LprogIsa.argsRead, LprogIsa.argRead, h]
+
+/-- The array positions of a list of kinds behind its first kind. -/
+theorem insArrArgs_cons_succ (k : ArgKind) (ks : List ArgKind) :
+    (fun j => insArrArgs (k :: ks) (j + 1)) = insArrArgs ks := by
+  funext j
+  cases k <;> rfl
+
+/-- **The operand `x` passes the parameter `p` at the entry of a call** from the address
+    state `sa`: the name of `p` is a general-purpose name; a scalar parameter is the operand
+    itself; the register of an array parameter of `m` words holds the base of the array `x`
+    of a frame slot of length `m`. -/
+def ParamAt (slotArr : String → Option (String × Nat)) (base : String → BitVec 64)
+    (sa : LstateA) (p : String × ArgKind) (x : String) : Prop :=
+  gpOk p.1 = true ∧ match p.2 with
+    | .scalar => p.1 = x
+    | .words m => (∃ q, slotArr q = some (x, m)) ∧ sa.reg.getW p.1 64 = some (base x)
+
+/-- **The summary input at the entry of a call with array parameters.** Under `ImgSep`,
+    `ImgRel`, `ACorr` and `CallerSep`, for parameters `ins` passed by the operands `args`
+    (`ParamAt`), the argument words of the operands at the array positions of the kinds of
+    `ins` are the summary input `readIns ins` of the entry state of the call. -/
+theorem readIns_entry {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) {G : Nat}
+    (hS : CallerSep frame slotArr base rsp G) {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRel frame slotArr base body s sa zf) {sA : AState} (hc : ACorr rsp sA sa)
+    (ret : Nat) :
+    ∀ {ins : List (String × ArgKind)} {args : List String},
+      List.Forall₂ (ParamAt slotArr base sa) ins args → ∀ {vs : List (BitVec 64)},
+      LprogIsa.argsRead (insArrArgs (ins.map (·.2))) s.prog.base 0 (args.map LOperand.reg)
+        = some vs → readIns ins (entryOf ret sA) = vs
+  | [], [], .nil, vs, h => by
+      simp only [List.map_nil, LprogIsa.argsRead, Option.some.injEq] at h
+      subst h
+      rfl
+  | p :: ps, x :: xs, .cons hpx hrest, vs, h => by
+      rw [List.map_cons, List.map_cons, LprogIsa.argsRead,
+        show (1 : Nat) = 0 + 1 from rfl, argsRead_add, insArrArgs_cons_succ] at h
+      obtain ⟨v, hv, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨ws, hws, rfl⟩ := Option.map_eq_some_iff.mp h
+      have ih := readIns_entry hsep hS hrel hc ret hrest hws
+      simp only [readIns, List.flatMap_cons] at ih ⊢
+      rw [ih]
+      congr 1
+      obtain ⟨hgp, hk⟩ := hpx
+      obtain ⟨pn, k⟩ := p
+      cases k with
+      | scalar =>
+          simp only at hk hgp
+          subst hk
+          simp only [LprogIsa.argRead, insArrArgs] at hv
+          obtain ⟨u, hu, rfl⟩ := Option.map_eq_some_iff.mp hv
+          have hu' := mapM_reg_argWord s.prog.base.reg [pn] [u]
+            (by simp only [List.map_cons, List.map_nil, List.mapM_cons, List.mapM_nil, hu]; rfl)
+          have he := args_entry hsep (args := [pn]) (by simpa using hgp) hrel hc ret
+          simp only [List.map_cons, List.map_nil, List.cons.injEq, and_true] at hu' he
+          simp only [readIn, he, hu']
+      | words m =>
+          simp only at hk hgp
+          obtain ⟨⟨q, hq⟩, hptr⟩ := hk
+          simp only [LprogIsa.argRead, insArrArgs] at hv
+          obtain ⟨arr, harr, rfl⟩ := Option.map_eq_some_iff.mp hv
+          have he := readArgs_entry hsep hS (ws := []) (by simp) hgp hrel hc hq hptr harr ret
+          simpa [readIn, readArgs, imgArgs] using he
+
+end Entry
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee

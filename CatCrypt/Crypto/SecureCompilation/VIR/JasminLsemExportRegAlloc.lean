@@ -41,11 +41,12 @@ stack slot `k.N` is a register name like any other.
   fall-through edges satisfy `Keeps`, and jump edges shrink the sets. Under a
   certificate every halting run is matched with the same fuel.
   `lsemFuelMemF_live_calls` is the same matching at an instruction set `I` with
-  `x86Isa.StepLe I` whose further steps are local calls on words with word results
-  (`Isa.CallLocalWord`):
-  a shadow instruction of a call writes its destination and no array
-  (`regDefs_callShadow`, `arrDefs_callShadow`), and its renamed operands read the
-  same words. `lsemFuelMemF_live` is the instance at `x86Isa`.
+  `x86Isa.StepLe I` whose further steps are local calls (`Isa.CallLocal`), under the
+  call condition `LiveCalls`: the array operands of a call are related arrays, and the
+  destination of a word-array result is related before the call. A word result is
+  written as by `regDefs_callShadow`, an array result as an array store, and the renamed
+  operands read the same argument words (`argsRead_ren`). `lsemFuelMemF_live` is the
+  instance at `x86Isa`.
 * **§7 live ranges.** `liveCert_of_ranges` builds a certificate from one interval
   per name (`RangeCert`): a write lies in the interval of its name, a name that
   is not an input starts at a write, and names whose intervals share a program
@@ -86,7 +87,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill (physRena
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference
   (LiveAt physRename_hinj_of_liveAt)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow callMnem_ne retWord
-  argsRead_none storeStruct?_callShadow)
+  retRes lpc_retRes argRead argsRead argsRead_none storeStruct?_callShadow)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
 /-! ## 1. Read names, written names and the write condition -/
@@ -1111,18 +1112,65 @@ theorem mapM_evalOperandN_ren {s s' : LstateN} (h : RelN σ N s s') :
         h.evalOperandN 64 o (ho o List.mem_cons_self),
         mapM_evalOperandN_ren h os fun o' h' => ho o' (List.mem_cons_of_mem _ h')]
 
+/-- **The call condition of a liveness certificate**, at the array positions `aa f` and the
+    result lengths `ao f` of the called symbols: from `k0` on, at a shadow instruction
+    `callShadow dst f srcs`, the register operand at every array position of `f` names an
+    array related before the step; and at a symbol with a word-array result, the destination
+    is a register name related before the step, and every array name related after the step
+    is the destination, or is related before it and has an image other than the image of
+    the destination. -/
+def LiveCalls (σ : String → String) (k0 : Nat) (P : LprogM) (Lr La : Nat → String → Prop)
+    (aa : String → Nat → Option Nat) (ao : String → Option Nat) : Prop :=
+  ∀ (k : Nat) (i : LinstrRM) (dst f : String) (srcs : List LOperand), k0 ≤ k →
+    P.body[k]? = some i → i.1 = callShadow dst f srcs →
+      (∀ (j n : Nat) (A : String), aa f j = some n → srcs[j]? = some (.reg A) → La k A)
+      ∧ ∀ n, ao f = some n → Lr k dst ∧ Keeps σ (La k) (La (k + 1)) [dst]
+
+/-- Without array positions and without word-array results the call condition holds. -/
+theorem liveCalls_none : LiveCalls σ k0 P Lr La (fun _ _ => none) (fun _ => none) :=
+  fun _ _ _ _ _ _ _ _ => ⟨fun _ _ _ h _ => (nomatch h), fun _ h => (nomatch h)⟩
+
+/-- **The argument words of the renamed operands.** In states related on the register names
+    `Nr` and the array names `Na`, the renamed operands read, from the argument position
+    `j` at the array positions `a`, the argument words of the operands, when the register
+    names of the operands lie in `Nr` and the register operand at every array position
+    names an array of `Na`. -/
+theorem argsRead_ren {Nr Na : String → Prop} {a : Nat → Option Nat} {b b' : LstateM}
+    (hR : RelM2 σ Nr Na b b') :
+    ∀ (j : Nat) (srcs : List LOperand), (∀ o ∈ srcs, ∀ n ∈ opNames o, Nr n) →
+      (∀ (m n : Nat) (A : String), a (j + m) = some n → srcs[m]? = some (.reg A) → Na A) →
+      argsRead a b' j (srcs.map (renOperand σ)) = argsRead a b j srcs
+  | _, [], _, _ => rfl
+  | j, o :: os, hu, hA => by
+      have ho : argRead a b' j (renOperand σ o) = argRead a b j o := by
+        unfold argRead
+        cases hj : a j with
+        | none =>
+            simp only
+            rw [hR.1.evalOperandN 64 o (hu o List.mem_cons_self)]
+        | some n =>
+            cases o with
+            | reg A =>
+                have hNA : Na A := hA 0 n A (by simpa using hj) rfl
+                simp only [renOperand, hR.getArr hNA]
+            | _ => rfl
+      rw [List.map_cons, argsRead, argsRead, ho,
+        argsRead_ren hR (j + 1) os (fun o' h' => hu o' (List.mem_cons_of_mem _ h'))
+          (fun m n A h1 h2 => hA (m + 1) n A (by rw [← h1]; congr 1; omega) h2)]
+
 /-- **The step under a liveness certificate at an instruction set with local calls.** The
     statement of `evalInstrPMemF_live` for the step of an instruction set `I` whose steps
-    contain those of `x86Isa` and whose further steps are local calls on words with word
-    results. -/
-theorem step_live_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
+    contain those of `x86Isa` and whose further steps are local calls at the array
+    positions `aa` and the result lengths `ao`, under the call condition `LiveCalls`. -/
+theorem step_live_calls {I : Isa} {aa : String → Nat → Option Nat} {ao : String → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao) (hC : LiveCert σ k0 P P' Lr La)
+    (hK : LiveCalls σ k0 P Lr La aa ao) (i : LinstrRM)
     {s s' t : LstateMF} (hk : k0 ≤ s.prog.base.lpc) (hget : P.body[s.prog.base.lpc]? = some i)
     (hR : RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s')
     (h : I.step P i s = some t) :
     ∃ t', I.step P' (renRM σ i) s' = some t'
       ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' ∧ k0 ≤ t.prog.base.lpc := by
-  rcases hcl P i s t h with hx | ⟨dst, f, srcs, r, hi, rfl, hfwd⟩
+  rcases hcl P i s t h with hx | ⟨dst, f, srcs, x, hi, rfl, hfwd, hlen⟩
   · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_live hC i hk hget hR hx
     exact ⟨t', hle _ _ _ _ ht', hrest⟩
   · obtain ⟨w, tag⟩ := i
@@ -1131,34 +1179,45 @@ theorem step_live_calls {I : Isa} (hle : x86Isa.StepLe I)
     have hu := hC.uses _ _ hk hget
     have hKr := hC.fallR _ _ hk hget
     have hKa := hC.fallA _ _ hk hget
+    obtain ⟨hcA, hcO⟩ := hK _ _ dst f srcs hk hget rfl
     rw [regDefs_callShadow] at hKr
     rw [arrDefs_callShadow] at hKa
-    have hpc : (retWord dst r s).prog.base.lpc = s.prog.base.lpc + 1 := by
-      simp [retWord, LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc,
-        LstateN.setReg]
+    have hpc := lpc_retRes dst x s
     have hren : renRM σ (callShadow dst f srcs, tag)
         = (callShadow (σ dst) f (srcs.map (renOperand σ)), tag) := rfl
     rw [hren]
     obtain ⟨⟨hRn, hRa, hRm⟩, hfn, hz, hcf, hof⟩ := hR
-    refine ⟨retWord (σ dst) r s', hfwd P' tag (σ dst) _ s' (List.length_map _) ?_, ?_, ?_⟩
-    · rw [argsRead_none, argsRead_none]
-      exact mapM_evalOperandN_ren hRn srcs fun o ho n hn =>
-        hu n (List.mem_flatMap.mpr ⟨o, ho, hn⟩)
+    refine ⟨retRes (σ dst) x s', hfwd P' tag (σ dst) _ s' (List.length_map _) ?_, ?_, ?_⟩
+    · exact argsRead_ren ⟨hRn, hRa, hRm⟩ 0 srcs
+        (fun o ho n hn => hu n (List.mem_flatMap.mpr ⟨o, ho, hn⟩))
+        (fun m n A h1 h2 => hcA m n A (by simpa using h1) h2)
     · rw [hpc]
-      exact ⟨⟨relN_setReg_keeps hRn hKr r, fun a ha => hRa a (hKa.sub a ha), hRm⟩, hfn, hz,
-        hcf, hof⟩
+      cases x with
+      | word r =>
+          exact ⟨⟨relN_setReg_keeps hRn hKr r, fun a ha => hRa a (hKa.sub a ha), hRm⟩, hfn, hz,
+            hcf, hof⟩
+      | arr a =>
+          obtain ⟨hd, hKa'⟩ := hcO _ hlen.symm
+          have hsub : ∀ r, Lr (s.prog.base.lpc + 1) r → Lr s.prog.base.lpc r := fun r hr => by
+            rcases hKr r hr with h1 | h1
+            · obtain rfl : dst = r := by simpa using h1
+              exact hd
+            · exact h1.1
+          exact ⟨RelM2.setArr_keeps ⟨hRn, hRa, hRm⟩ hKa' hsub a, hfn, hz, hcf, hof⟩
     · rw [hpc]
       exact Nat.le_succ_of_le hk
 
 /-- **The flag machine under a liveness certificate, at an instruction set with local
     calls.** For a program `P`, a renaming `σ`, a program `P'` with a certificate from `k0`
     on and an instruction set `I` whose steps contain those of `x86Isa` and whose further
-    steps are local calls on words with word results, every halting run of `I` on `P` from a
-    state at program counter `k ≥ k0` is matched, with the same fuel, by a halting run of `I`
-    on `P'` from a state related on the sets at `k`, into a state related on the sets at the
-    final program counter. -/
-theorem lsemFuelMemF_live_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) (hC : LiveCert σ k0 P P' Lr La) :
+    steps are local calls at the array positions `aa` and the result lengths `ao`, under
+    the call condition `LiveCalls`, every halting run of `I` on `P` from a state at program
+    counter `k ≥ k0` is matched, with the same fuel, by a halting run of `I` on `P'` from a
+    state related on the sets at `k`, into a state related on the sets at the final program
+    counter. -/
+theorem lsemFuelMemF_live_calls {I : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (hC : LiveCert σ k0 P P' Lr La) (hK : LiveCalls σ k0 P Lr La aa ao) :
     ∀ (fuel : Nat) {s s' t : LstateMF},
       RelF2 σ (Lr s.prog.base.lpc) (La s.prog.base.lpc) s s' → k0 ≤ s.prog.base.lpc →
       I.lsemFuelMemF P fuel s = some t →
@@ -1200,7 +1259,7 @@ theorem lsemFuelMemF_live_calls {I : Isa} (hle : x86Isa.StepLe I)
           | none => simp [he] at h
           | some u =>
               simp only [he] at h
-              obtain ⟨u', hu', hRu, hku⟩ := step_live_calls hle hcl hC i hk hget hR he
+              obtain ⟨u', hu', hRu, hku⟩ := step_live_calls hle hcl hC hK i hk hget hR he
               simp only [hu']
               exact ih hRu hku h
 
@@ -1217,7 +1276,7 @@ theorem lsemFuelMemF_live (hC : LiveCert σ k0 P P' Lr La) :
         ∧ RelF2 σ (Lr t.prog.base.lpc) (La t.prog.base.lpc) t t' := by
   rw [← x86Isa_lsemFuelMemF]
   exact lsemFuelMemF_live_calls (Isa.StepLe.refl x86Isa)
-    (Isa.CallLocalWord.refl x86Isa (fun _ _ => none)) hC
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) hC liveCalls_none
 
 /-! ## 7. Certificates from live ranges
 

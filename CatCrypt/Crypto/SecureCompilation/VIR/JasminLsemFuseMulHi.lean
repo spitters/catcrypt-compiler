@@ -59,7 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa retWord callShadow shadowCall?
-  argsRead_none)
+  argsRead_none CallRes retRes lpc_retRes lfn_retRes argRead argsRead)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs (evalInstrPMemF_shadowCall)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
 
@@ -369,30 +369,31 @@ theorem evalInstrPMemF_expI {I : Isa} {fn : String} {body : List LinstrRM}
       · exact absurd hq (by simp)
 
 /-- **One step of a shadow instruction of a call.** At an instruction set `I` whose steps
-    beyond `x86Isa` are local calls with word results, a step of the call at instruction `i`,
-    which expands to itself, is matched by the same call from a related state, when the
-    relation and the invariant give equal argument words and are kept by the write of the
-    result. -/
-theorem step_expI_call {I : Isa} (hcl : I.CallLocalWord x86Isa (fun _ _ => none))
+    beyond `x86Isa` are local calls at the array positions `aa`, a step of the call at
+    instruction `i`, which expands to itself, is matched by the same call from a related
+    state, when the relation and the invariant give equal argument words and are kept by the
+    write of every result, a word or a word array. -/
+theorem step_expI_call {I : Isa} {aa : String → Nat → Option Nat} {ao : String → Option Nat}
+    (hcl : I.CallLocal x86Isa aa ao)
     {fn : String} {body : List LinstrRM} {s s' u : LstateMF} {i : LinstrRM}
     (hR : RelI Q Inv e body s s') (hfn : s.prog.lfn = fn)
     (hget : body[s.prog.base.lpc]? = some i) (hsh : shadowCall? i.1 ≠ none)
     (hself : e s.prog.base.lpc i = [i])
     (hfacts : ∀ (dst f : String) (srcs : List LOperand), i.1 = callShadow dst f srcs →
-      ∀ (r : BitVec 64),
-        srcs.mapM (evalOperandN s'.prog.base.reg 64) = srcs.mapM (evalOperandN s.prog.base.reg 64)
-          ∧ Inv (s.prog.base.lpc + 1) (s.prog.base.setReg dst r).nextPc s.zf
-          ∧ Q (s.prog.base.setReg dst r).nextPc (s'.prog.base.setReg dst r).nextPc)
+      ∀ (x : CallRes),
+        argsRead (aa f) s'.prog.base 0 srcs = argsRead (aa f) s.prog.base 0 srcs
+          ∧ Inv (s.prog.base.lpc + 1) (retRes dst x s).prog.base s.zf
+          ∧ Q (retRes dst x s).prog.base (retRes dst x s').prog.base)
     (he : I.step (singletonProgM fn body) i s = some u) :
     ∃ u', (∀ f, I.lsemFuelMemF (singletonProgM fn (expI e body 0))
         ((e s.prog.base.lpc i).length + f) s'
           = I.lsemFuelMemF (singletonProgM fn (expI e body 0)) f u')
       ∧ RelI Q Inv e body u u' := by
-  rcases hcl _ i s u he with hx | ⟨dst, f, srcs, r, hi, rfl, hfwd⟩
+  rcases hcl _ i s u he with hx | ⟨dst, f, srcs, x, hi, rfl, hfwd, -⟩
   · have hx' : evalInstrPMemF (singletonProgM fn body) i s = some u := hx
     rw [evalInstrPMemF_shadowCall _ i s hsh] at hx'
     cases hx'
-  · obtain ⟨hargs, hinv, hQ⟩ := hfacts dst f srcs hi r
+  · obtain ⟨hargs, hinv, hQ⟩ := hfacts dst f srcs hi x
     have hfetch : findInstrMem (singletonProgM fn (expI e body 0)) s'.prog = some i := by
       rw [findInstrMem_singleton fn _ s'.prog (hR.lfn.trans hfn), hR.pc]
       have := getElem?_expI_pcI e hget (j := 0) (by rw [hself]; simp)
@@ -402,42 +403,40 @@ theorem step_expI_call {I : Isa} (hcl : I.CallLocalWord x86Isa (fun _ _ => none)
     simp only at hi
     subst hi
     have hstep : I.step (singletonProgM fn (expI e body 0)) (callShadow dst f srcs, tag) s'
-        = some (retWord dst r s') :=
-      hfwd _ tag dst srcs s' rfl (by simp only [argsRead_none]; exact hargs)
-    have hpc : ∀ x : LstateMF, (retWord dst r x).prog.base.lpc = x.prog.base.lpc + 1 := by
-      intro x
-      simp [retWord, LstateM.nextPc, LstateM.setReg, LstateM.lpc, LstateN.nextPc,
-        LstateN.setReg]
-    refine ⟨retWord dst r s', fun f' => ?_, ⟨hR.lfn, hR.zf, ?_, hQ, ?_⟩⟩
+        = some (retRes dst x s') :=
+      hfwd _ tag dst srcs s' rfl hargs
+    have hz : ∀ y : LstateMF, (retRes dst x y).zf = y.zf := fun y => by cases x <;> rfl
+    refine ⟨retRes dst x s', fun f' => ?_, ⟨by rw [lfn_retRes, lfn_retRes]; exact hR.lfn,
+      by rw [hz, hz]; exact hR.zf, ?_, hQ, ?_⟩⟩
     · rw [hself, List.length_singleton, Nat.add_comm]
       exact I.lsemFuelMemF_step _ f' _ s' _ hfetch hstep
-    · rw [hpc, hpc, pcI_succ e hget, hself, hR.pc]
+    · rw [lpc_retRes, lpc_retRes, pcI_succ e hget, hself, hR.pc]
       rfl
-    · show Inv (retWord dst r s).prog.base.lpc (s.prog.base.setReg dst r).nextPc s.zf
-      rw [hpc]
+    · rw [lpc_retRes, hz]
       exact hinv
 
 /-- **An index-dependent expansion with an invariant at an instruction set with local
     calls.** Let `I` be an instruction set whose steps contain those of `x86Isa` and whose
-    further steps are local calls with word results. When the step of `I` at every
+    further steps are local calls at the array positions `aa`. When the step of `I` at every
     instruction of the expansion of an instruction that is no shadow instruction of a call is
     the step of `x86Isa`, and each shadow instruction of a call that `I` steps expands to
     itself with equal argument words on related states and with the relation and the
-    invariant kept by the write of the result, every halting run of `I` on the source body is
-    matched, from a related state, by a halting run of `I` on the expanded body into a related
-    state, with fuel at most `fuel * m` for a bound `m` on the expansion lengths. -/
-theorem lsemFuelMemF_expI_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) {fn : String} {body : List LinstrRM}
+    invariant kept by the write of every result, every halting run of `I` on the source body
+    is matched, from a related state, by a halting run of `I` on the expanded body into a
+    related state, with fuel at most `fuel * m` for a bound `m` on the expansion lengths. -/
+theorem lsemFuelMemF_expI_calls {I : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa aa ao) {fn : String} {body : List LinstrRM}
     (h : ExpInv Q G Inv e body)
     (hag : ∀ k i, body[k]? = some i → shadowCall? i.1 = none →
       ∀ j ∈ e k i, ∀ (P : LprogM) (x : LstateMF), I.step P j x = x86Isa.step P j x)
     (hcall : ∀ k i, body[k]? = some i → shadowCall? i.1 ≠ none →
       (∃ (P : LprogM) (x u : LstateMF), I.step P i x = some u) →
       e k i = [i] ∧ ∀ (dst f : String) (srcs : List LOperand), i.1 = callShadow dst f srcs →
-        ∀ (s s' : LstateM) (z : Bool) (r : BitVec 64), Inv k s z → Q s s' →
-          srcs.mapM (evalOperandN s'.reg 64) = srcs.mapM (evalOperandN s.reg 64)
-            ∧ Inv (k + 1) (s.setReg dst r).nextPc z
-            ∧ Q (s.setReg dst r).nextPc (s'.setReg dst r).nextPc)
+        ∀ (s s' : LstateMF) (x : CallRes), Inv k s.prog.base s.zf → Q s.prog.base s'.prog.base →
+          argsRead (aa f) s'.prog.base 0 srcs = argsRead (aa f) s.prog.base 0 srcs
+            ∧ Inv (k + 1) (retRes dst x s).prog.base s.zf
+            ∧ Q (retRes dst x s).prog.base (retRes dst x s').prog.base)
     {m : Nat} (hm : ∀ k i, body[k]? = some i → (e k i).length ≤ m) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, RelI Q Inv e body s s' →
       I.lsemFuelMemF (singletonProgM fn body) fuel s = some t →
@@ -493,11 +492,11 @@ theorem lsemFuelMemF_expI_calls {I : Isa} (hle : x86Isa.StepLe I)
                 by_cases hsh : shadowCall? i.1 = none
                 · have he' : evalInstrPMemF (singletonProgM fn body) i s = some u := by
                     rw [← he]
-                    exact (Isa.CallLocal.step_eq I hle hcl.callLocal _ hsh s).symm
+                    exact (Isa.CallLocal.step_eq I hle hcl _ hsh s).symm
                   exact evalInstrPMemF_expI h hR hfg.1 hfg.2 (hag _ i hfg.2 hsh) he'
                 · obtain ⟨hself, hfacts⟩ := hcall _ i hfg.2 hsh ⟨_, _, _, he⟩
                   exact step_expI_call hcl hR hfg.1 hfg.2 hsh hself
-                    (fun dst f srcs hi r => hfacts dst f srcs hi _ _ s.zf r hR.inv hR.base) he
+                    (fun dst f srcs hi x => hfacts dst f srcs hi s s' x hR.inv hR.base) he
               obtain ⟨u', hrun1, hRu⟩ := hstep
               obtain ⟨f', t', hf', hrun', hRt⟩ := ih hRu hrun
               have hlen := hm _ i hfg.2
@@ -519,7 +518,7 @@ theorem lsemFuelMemF_expI {fn : String} {body : List LinstrRM} (h : ExpInv Q G I
         ∧ RelI Q Inv e body t t' := by
   rw [← x86Isa_lsemFuelMemF]
   refine lsemFuelMemF_expI_calls (Isa.StepLe.refl x86Isa)
-    (Isa.CallLocalWord.refl x86Isa (fun _ _ => none)) h (fun _ _ _ _ _ _ _ _ => rfl)
+    (Isa.CallLocal.refl x86Isa (fun _ _ => none)) h (fun _ _ _ _ _ _ _ _ => rfl)
     (fun _ i _ hsh ⟨P, x, u, hu⟩ => ?_) hm
   have hu' : evalInstrPMemF P i x = some u := hu
   rw [evalInstrPMemF_shadowCall P i x hsh] at hu'
@@ -1543,22 +1542,62 @@ theorem mapM_evalOperandN_congr {s s' : LstateN} :
           exact ⟨a, List.mem_cons_of_mem _ ha, hna⟩))
       rw [List.mapM_cons, List.mapM_cons, ho, mapM_evalOperandN_congr os hos]
 
+theorem Agree.setArr {a b : LstateM} (h : Agree a b) (dst : String) {n : Nat}
+    (v : Fin n → BitVec 64) : Agree (a.setArr dst v).nextPc (b.setArr dst v).nextPc := by
+  refine ⟨fun x hx => h.reg x hx, fun x hx => ?_, h.mem, h.cf, h.of⟩
+  simp only [LstateM.larr_nextPc, LstateM.larr_setArr]
+  split
+  · rfl
+  · exact h.arr x hx
+
+/-- Argument words at the array positions `a` read only the registers and the arrays the
+    operands name. -/
+theorem argsRead_congr_names (a : Nat → Option Nat) {b b' : LstateM} :
+    ∀ (j : Nat) (srcs : List LOperand),
+      (∀ n ∈ srcs.flatMap opNames, b'.reg.lvm n = b.reg.lvm n ∧ b'.larr n = b.larr n) →
+      argsRead a b' j srcs = argsRead a b j srcs
+  | _, [], _ => rfl
+  | j, o :: os, h => by
+      have ho : argRead a b' j o = argRead a b j o := by
+        unfold argRead
+        cases o with
+        | reg n =>
+            have hn := h n (by simp [opNames])
+            cases a j with
+            | none =>
+                simp only [evalOperandN]
+                unfold LstateN.getW
+                rw [hn.1]
+            | some m =>
+                simp only
+                unfold LstateM.getArr
+                rw [hn.2]
+        | _ => cases a j <;> rfl
+      rw [argsRead, argsRead, ho, argsRead_congr_names a (j + 1) os fun n hn =>
+        h n (List.mem_flatMap.mpr (by
+          obtain ⟨x, hx, hnx⟩ := List.mem_flatMap.mp hn
+          exact ⟨x, List.mem_cons_of_mem _ hx, hnx⟩))]
+
 /-- **A call in a checked body.** At a shadow instruction of a call in a body that passes
-    `fuseOKL`, agreeing bases give equal argument words, the write of a word result keeps the
-    invariant, which restarts after the call, and keeps the agreement. -/
+    `fuseOKL`, agreeing bases give equal argument words at every choice `a` of array
+    positions, and the write of a result, a word or a word array, keeps the invariant,
+    which restarts after the call, and keeps the agreement. -/
 theorem fuse_call {E : List String} {L : List (Option String)} {c : List LinstrRM}
     (h : fuseOKL E L c = true) {k : Nat} {i : LinstrRM} (hk : c[k]? = some i)
     {dst f : String} {srcs : List LOperand} (hi : i.1 = callShadow dst f srcs)
-    {s s' : LstateM} {z : Bool} (r : BitVec 64) (hI : FInv E c k s z) (hA : Agree s s') :
-    srcs.mapM (evalOperandN s'.reg 64) = srcs.mapM (evalOperandN s.reg 64)
-      ∧ FInv E c (k + 1) (s.setReg dst r).nextPc z
-      ∧ Agree (s.setReg dst r).nextPc (s'.setReg dst r).nextPc := by
+    (a : Nat → Option Nat) {s s' : LstateMF} (x : CallRes)
+    (hI : FInv E c k s.prog.base s.zf) (hA : Agree s.prog.base s'.prog.base) :
+    argsRead a s'.prog.base 0 srcs = argsRead a s.prog.base 0 srcs
+      ∧ FInv E c (k + 1) (retRes dst x s).prog.base s.zf
+      ∧ Agree (retRes dst x s).prog.base (retRes dst x s').prog.base := by
   obtain ⟨-, hw, -⟩ := instr_of h hk
-  refine ⟨mapM_evalOperandN_congr srcs fun n hn =>
-      hA.reg n (keptN_of_nameOK (nameOK_of_mem hw ?_)), ?_, hA.setReg dst r⟩
-  · rw [hi]
-    simp only [callShadow, instrNames, List.flatMap_append, List.mem_append]
-    exact Or.inr hn
+  have hkept : ∀ n ∈ srcs.flatMap opNames, KeptN n := fun n hn =>
+    keptN_of_nameOK (nameOK_of_mem hw (by
+      rw [hi]
+      simp only [callShadow, instrNames, List.flatMap_append, List.mem_append]
+      exact Or.inr hn))
+  refine ⟨argsRead_congr_names a 0 srcs fun n hn =>
+      ⟨hA.reg n (hkept n hn), hA.arr n (hkept n hn)⟩, ?_, ?_⟩
   · have hctl : isCtlB i = true := by
       have hs := LprogIsa.shadowCall?_callShadow dst f srcs
       obtain ⟨w, tag⟩ := i
@@ -1566,14 +1605,22 @@ theorem fuse_call {E : List String} {L : List (Option String)} {c : List LinstrR
       subst hi
       unfold callShadow at hs
       simp [isCtlB, callShadow, hs]
-    exact finv_start E c (k + 1) _ z (blk_succ_ctl hk hctl) (e64_setReg hI.1 dst r)
+    have hE : E64 E (retRes dst x s).prog.base := by
+      cases x with
+      | word r => exact e64_setReg hI.1 dst r
+      | arr v => exact fun y hy => hI.1 y hy
+    exact finv_start E c (k + 1) _ s.zf (blk_succ_ctl hk hctl) hE
+  · cases x with
+    | word r => exact hA.setReg dst r
+    | arr v => exact hA.setArr dst v
 
 /-- **The fusion at an instruction set with local calls (by position).** The statement of
     `lsemFuelMemF_fuseOKL` for an instruction set `I` whose steps contain those of `x86Isa`
-    and whose further steps are local calls with word results, when no fused position holds
-    a shadow instruction of a call. -/
-theorem lsemFuelMemF_fuseOKL_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) {E : List String}
+    and whose further steps are local calls, when no fused position holds a shadow
+    instruction of a call. -/
+theorem lsemFuelMemF_fuseOKL_calls {I : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa aa ao) {E : List String}
     {L : List (Option String)} {c : List LinstrRM} (h : fuseOKL E L c = true)
     (hL : ∀ (k : Nat) (i : LinstrRM) (d : String), c[k]? = some i → L[k]? = some (some d) →
       shadowCall? i.1 = none)
@@ -1590,9 +1637,9 @@ theorem lsemFuelMemF_fuseOKL_calls {I : Isa} (hle : x86Isa.StepLe I)
   obtain ⟨fuel', t', hf, hrun', hRt⟩ :=
     lsemFuelMemF_expI_calls hle hcl (expInv_fuse h)
       (fun _ _ _ hsh j hj P x =>
-        Isa.CallLocal.step_eq I hle hcl.callLocal P (fuseE_shadowCall hsh j hj) x)
+        Isa.CallLocal.step_eq I hle hcl P (fuseE_shadowCall hsh j hj) x)
       (fun _ _ hk hsh _ => ⟨fuseE_call hL hk hsh,
-        fun _ _ _ hi _ _ _ r hI hA => fuse_call h hk hi r hI hA⟩)
+        fun _ f _ hi _ _ x hI hA => fuse_call h hk hi (aa f) x hI hA⟩)
       (fun k i _ => length_fuseE_le L k i) fuel hR hrun
   exact ⟨fuel', t', hf, hrun', hRt.base, hRt.zf, hRt.lfn⟩
 
@@ -1638,9 +1685,10 @@ theorem fuseLoAux_site : ∀ (pend : List (String × String)) (xs : List LinstrR
 
 /-- **The fusion of the loop part of a body at an instruction set with local calls.** The
     statement of `fuseMulHi_lsemFuelMemF_pre` for an instruction set `I` whose steps contain
-    those of `x86Isa` and whose further steps are local calls with word results. -/
-theorem fuseMulHi_lsemFuelMemF_pre_calls {I : Isa} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocalWord x86Isa (fun _ _ => none)) {E : List String}
+    those of `x86Isa` and whose further steps are local calls. -/
+theorem fuseMulHi_lsemFuelMemF_pre_calls {I : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I)
+    (hcl : I.CallLocal x86Isa aa ao) {E : List String}
     {pre loop : List LinstrRM}
     (h : fuseOKL E (fuseLoPre pre loop) (pre ++ loop) = true) (fn : String) (s t : LstateMF)
     (hpc : s.prog.base.lpc = 0) (hE : E64 E s.prog.base) (fuel : Nat)
