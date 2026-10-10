@@ -52,8 +52,9 @@ every array name `r ≠ d` read later (`liveArr`) has `σ r ≠ σ d`.
   the loop, the renaming and the fusion, on the virtual body `argBind ++ C` of a straight
   chain `C`; a run of `C` is matched by a halting run of the decoded bytes of the printed
   body, with each slot's array in memory at its entry base.
-* `chainAlias`, `straightArrB`, `straight_arr_bytes`: the coalescing renaming of a chain
-  (the export's alias map `arrChainAlias`), the gate of an array-returning straight-line
+* `chainAliasO`, `chainAlias`, `straightArrB`, `straight_arr_bytes`: the coalescing
+  renaming of a chain (the export's alias map `arrChainAlias`, with the destination of a
+  call of an out symbol sent to its first operand), the gate of an array-returning straight-line
   program, and its correctness at the bytes: from every separated entry state, the decoded
   bytes of the printed body halt in a state from which the layout reads back the words of
   the program's denotation.
@@ -464,10 +465,37 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (isLopnB is
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (entryV_abiEntry resultOf_words)
 
-/-- The coalescing renaming of a chain: the alias map `arrChainAlias` of the physical-ABI
-    export, which sends the destination of every store to the root of its base. -/
+/-- One instruction of the alias map of a chain at the out symbols `outs`, applied to the
+    map `m` of the instructions before it: the destination of a store is sent to the root
+    of its base, and the destination of a shadow instruction of a call of a symbol of
+    `outs` whose first operand is a register is sent to the root of that operand, the
+    destination array of the call. Every other instruction leaves `m` unchanged. -/
+def aliasStepO (outs : List String) (m : Std.HashMap String String) (i : LinstrRM) :
+    Std.HashMap String String :=
+  match LprogIsa.shadowCall? i.1 with
+  | some (dst, f, .reg A :: _) => if outs.contains f then m.insert dst (m.getD A A) else m
+  | some _ => m
+  | none =>
+      match i.1 with
+      | .Lopn [.reg dst] opn (.arrIdx base _ _ :: _) =>
+          if isMemStore opn then m.insert dst (m.getD base base) else m
+      | _ => m
+
+/-- **The coalescing renaming of a chain at the out symbols `outs`**: the destination of
+    every store is sent to the root of its base, as in the alias map `arrChainAlias` of the
+    physical-ABI export, and the destination of every call of a symbol of `outs` to the
+    root of its first operand, the array the called function writes in place. Instructions
+    are processed in order, each base resolved through the aliases before it. -/
+def chainAliasO (outs : List String) (is : List LinstrRM) : String → String :=
+  canonMemrefName (is.foldl (aliasStepO outs) {})
+
+/-- The coalescing renaming of a chain without out symbols: the destination of every store
+    is sent to the root of its base. -/
 def chainAlias (is : List LinstrRM) : String → String :=
-  canonMemrefName (arrChainAlias (is.map fun i => ⟨0, i.1⟩))
+  chainAliasO [] is
+
+/-- Without out symbols the coalescing renaming is `chainAlias`. -/
+theorem chainAliasO_nil : chainAliasO [] = chainAlias := rfl
 
 /-- A decision of `PlainLopnBody`. -/
 def plainB (is : List LinstrRM) : Bool :=
