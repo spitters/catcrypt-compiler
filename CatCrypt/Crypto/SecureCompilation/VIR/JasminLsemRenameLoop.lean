@@ -151,7 +151,8 @@ theorem movesState_target (ps : List (String × String))
     a straight segment of `Lopn` instructions, spends at least the length of the segment in
     fuel. -/
 theorem lsemFuelMemF_seg_fuel_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hcl : I.CallLocal x86Isa aa) (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
+    {ao : String → Option Nat} (hcl : I.CallLocal x86Isa aa ao) (P : LprogM) (fn : String)
+    (hfn : fn = P.lfn) :
     ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (k : Nat) (t : LstateMF),
       (∀ i ∈ seg, IsLopn i) →
       (∀ j, j < seg.length → P.body[b0.lpc + j]? = seg[j]?) →

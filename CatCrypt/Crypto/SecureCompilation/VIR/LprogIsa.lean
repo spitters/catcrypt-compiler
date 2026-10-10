@@ -76,6 +76,8 @@ Return addresses and the stack pointer do not appear in this step.
 * `CallRes`, `ProcSummary.result`, `ProcSummary.result_of_out`, `retArr`, `retRes`,
   `ProcSummary.RetWord`, `procStep_of_retWord`: the result of a call, a word or a word array, its write to the
   destination, and the step of a summary without a word-array result.
+* `CallRes.len`, `ProcSummary.Kinded`, `ProcSummary.len_of_result`, `procOut`: the length of
+  a call result, and the summaries whose results have their declared length.
 * `argsRead`, `argsRead_none`, `argsRead_congr`, `procStep_of_wordOnly`: the argument words
   of a call, which read word operands from the registers and array operands from the array
   carrier, and the step of a summary without array arguments.
@@ -89,9 +91,9 @@ Return addresses and the stack pointer do not appear in this step.
   `storeStruct?_callShadow`: the shape of a shadow instruction of a call.
 * `Isa.CallLocal`, `Isa.CallLocal.step_eq`, `Isa.withProcs_callLocal`: the steps of an
   instruction set beyond another are shadow instructions whose result (a word or a word
-  array) depends on the argument words only and which write only the destination and the
-  program counter; off the shadow instructions the two steps agree; the instruction set with
-  the summaries of a table is such an extension.
+  array of the length the symbol declares) depends on the argument words only and which
+  write only the destination and the program counter; off the shadow instructions the two
+  steps agree; the instruction set with the summaries of a table is such an extension.
 * `Isa.CallLocalWord`, `Isa.CallLocalWord.callLocal`, `Isa.withProcs_callLocalWord`,
   `Isa.withProcs_callLocal_wordOnly`: the same with a word result at every call, and the
   instruction set with the summaries of a table without word-array results.
@@ -590,6 +592,22 @@ inductive CallRes : Type where
   /-- A word-array result of length `n`. -/
   | arr {n : Nat} (a : Fin n → BitVec 64)
 
+/-- The length of a call result: `none` at a word, `some n` at an array of `n` words. -/
+def CallRes.len : CallRes → Option Nat
+  | .word _ => none
+  | .arr (n := n) _ => some n
+
+/-- A summary whose result kind is its declared one: with a word-array result, `run`
+    refuses every list of argument words. -/
+def ProcSummary.Kinded (pr : ProcSummary) : Prop :=
+  ∀ n, pr.out = some n → ∀ vs, pr.run vs = none
+
+/-- A summary without a word-array result has its declared result kind. -/
+theorem ProcSummary.kinded_of_retWord {pr : ProcSummary} (h : pr.RetWord) : pr.Kinded := by
+  intro n hn
+  rw [show pr.out = none from h] at hn
+  cases hn
+
 /-- The result of a summary at the argument words: the word of `run` where it is defined,
     and otherwise the array of `runOut` at the length `out`. -/
 def ProcSummary.result (pr : ProcSummary) (vs : List (BitVec 64)) : Option CallRes :=
@@ -614,6 +632,21 @@ theorem ProcSummary.result_of_out {pr : ProcSummary} {n : Nat} (h : pr.out = som
     pr.result vs = (pr.runOut n vs).map CallRes.arr := by
   unfold result
   rw [hr, h]
+
+/-- **The result of a summary of its declared kind has the declared length**: a word
+    without a word-array result, an array of `n` words with a word-array result of
+    length `n`. -/
+theorem ProcSummary.len_of_result {pr : ProcSummary} (hk : pr.Kinded)
+    {vs : List (BitVec 64)} {x : CallRes} (h : pr.result vs = some x) : x.len = pr.out := by
+  cases ho : pr.out with
+  | none =>
+      rw [ProcSummary.result_of_retWord ho] at h
+      obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      rfl
+  | some n =>
+      rw [ProcSummary.result_of_out ho (hk n ho vs)] at h
+      obtain ⟨a, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      rfl
 
 /-- A table of procedure summaries by symbol name. -/
 abbrev ProcTable : Type := String → Option ProcSummary
@@ -904,19 +937,24 @@ theorem withProcs_stepLe {T : ProcTable} (h : I.RefusesProcs T) : I.StepLe (I.wi
     result `x` again, at every program, tag, destination and state on every list of as many
     operands whose argument words (`argsRead (aa f)`) are those of `srcs`. The result thus
     depends on the operand values and on the array carrier at the array positions only, and
-    the step writes only the destination and the program counter. -/
-def CallLocal (J : Isa) (aa : String → Nat → Option Nat) : Prop :=
+    the step writes only the destination and the program counter. The result of a call of
+    `f` has the length `ao f` (`CallRes.len`): a word where `ao f = none`, an array of `n`
+    words where `ao f = some n`; the default `ao` admits word results only. -/
+def CallLocal (J : Isa) (aa : String → Nat → Option Nat)
+    (ao : String → Option Nat := fun _ => none) : Prop :=
   ∀ (P : LprogM) (i : LinstrRM) (s t : LstateMF), I.step P i s = some t →
     J.step P i s = some t ∨
       ∃ (dst f : String) (srcs : List LOperand) (x : CallRes),
         i.1 = callShadow dst f srcs ∧ t = retRes dst x s ∧
-        ∀ (P' : LprogM) (tag : MemTag) (dst' : String) (srcs' : List LOperand) (s' : LstateMF),
-          srcs'.length = srcs.length →
+        (∀ (P' : LprogM) (tag : MemTag) (dst' : String) (srcs' : List LOperand)
+          (s' : LstateMF), srcs'.length = srcs.length →
           argsRead (aa f) s'.prog.base 0 srcs' = argsRead (aa f) s.prog.base 0 srcs →
-          I.step P' (callShadow dst' f srcs', tag) s' = some (retRes dst' x s')
+          I.step P' (callShadow dst' f srcs', tag) s' = some (retRes dst' x s')) ∧
+        x.len = ao f
 
 /-- Every instruction set is call-local over itself. -/
-theorem CallLocal.refl (aa : String → Nat → Option Nat) : I.CallLocal I aa :=
+theorem CallLocal.refl (aa : String → Nat → Option Nat)
+    (ao : String → Option Nat := fun _ => none) : I.CallLocal I aa ao :=
   fun _ _ _ _ h => Or.inl h
 
 /-- **The steps of `I` beyond `J` are local calls with word results**: `CallLocal` with a
@@ -937,7 +975,7 @@ theorem CallLocalWord.callLocal {J : Isa} {aa : String → Nat → Option Nat}
   intro P i s t hs
   rcases h P i s t hs with hx | ⟨dst, f, srcs, r, hi, ht, hfwd⟩
   · exact Or.inl hx
-  · exact Or.inr ⟨dst, f, srcs, .word r, hi, ht, hfwd⟩
+  · exact Or.inr ⟨dst, f, srcs, .word r, hi, ht, hfwd, rfl⟩
 
 /-- Every instruction set is call-local with word results over itself. -/
 theorem CallLocalWord.refl (aa : String → Nat → Option Nat) : I.CallLocalWord I aa :=
@@ -946,9 +984,9 @@ theorem CallLocalWord.refl (aa : String → Nat → Option Nat) : I.CallLocalWor
 /-- **Off the shadow instructions the steps agree.** When every step of `J` is a step of `I`
     and the steps of `I` beyond `J` are local calls, the step of `I` at an instruction that is
     no shadow instruction of a call is the step of `J`. -/
-theorem CallLocal.step_eq {J : Isa} {aa : String → Nat → Option Nat} (hle : J.StepLe I)
-    (hcl : I.CallLocal J aa) (P : LprogM) {i : LinstrRM} (hi : shadowCall? i.1 = none)
-    (s : LstateMF) : I.step P i s = J.step P i s := by
+theorem CallLocal.step_eq {J : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : J.StepLe I) (hcl : I.CallLocal J aa ao) (P : LprogM)
+    {i : LinstrRM} (hi : shadowCall? i.1 = none) (s : LstateMF) : I.step P i s = J.step P i s := by
   cases hI : I.step P i s with
   | some t =>
       rcases hcl P i s t hI with h | ⟨dst, f, srcs, x, hsh, -, -⟩
@@ -967,9 +1005,16 @@ def procArrArgs (T : ProcTable) (f : String) : Nat → Option Nat :=
   | some pr => pr.arrArgs
   | none => fun _ => none
 
-/-- **The steps of `I.withProcs T` beyond `I` are local calls** at the array positions of the
-    summaries. -/
-theorem withProcs_callLocal (T : ProcTable) : (I.withProcs T).CallLocal I (procArrArgs T) := by
+/-- The length of the word-array result of the summary of a table, by symbol; `none` at a
+    symbol without a summary or with a word result. -/
+def procOut (T : ProcTable) (f : String) : Option Nat :=
+  (T f).bind (·.out)
+
+/-- **The steps of `I.withProcs T` beyond `I` are local calls** at the array positions and
+    the result lengths of the summaries, for a table of summaries of their declared result
+    kinds. -/
+theorem withProcs_callLocal (T : ProcTable) (hk : ∀ f pr, T f = some pr → pr.Kinded) :
+    (I.withProcs T).CallLocal I (procArrArgs T) (procOut T) := by
   intro P i s t h
   cases hq : procCall? T i.1 with
   | none => rw [I.withProcs_step_of_none T P i s hq] at h; exact Or.inl h
@@ -993,9 +1038,10 @@ theorem withProcs_callLocal (T : ProcTable) : (I.withProcs T).CallLocal I (procA
         obtain ⟨vs, hvs, hrun⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.mp hrun
         have haa : procArrArgs T f = pr'.arrArgs := by simp only [procArrArgs, hf]
-        refine ⟨dst₀, f, srcs₀, x, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_⟩
-        rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep,
-          if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hx, Option.map_some]
+        refine ⟨dst₀, f, srcs₀, x, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_, ?_⟩
+        · rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep,
+            if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hx, Option.map_some]
+        · rw [ProcSummary.len_of_result (hk f pr' hf) hx, procOut, hf, Option.bind_some]
       · cases h
 
 /-- **The steps of `I.withProcs T` beyond `I` are local calls with word results** at the

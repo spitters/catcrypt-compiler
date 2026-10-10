@@ -1394,14 +1394,15 @@ theorem RelM.argsRead_ren {s s' : LstateM} (h : RelM σ N s s') (aa : Nat → Op
     `k0` or later. A local call reads the same argument words from the renamed operands
     (`RelM.argsRead_ren`), at word and at array positions, and writes its result, a word or a
     word array, to the renamed destination. -/
-theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa aa) {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
+theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} {ao : String → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao) {k0 : Nat} {P P' : LprogM}
+    (hσ : RenOn σ N)
     (hP : RenProg σ N k0 P P') (i : LinstrRM) (hi : ∀ n ∈ instrNames i.1, N n)
     (hc : CondOK i) {s s' t : LstateMF} (hR : RelF σ N s s')
     (hk : k0 ≤ s.prog.base.lpc) (h : I.step P i s = some t) :
     ∃ t', I.step P' (renRM σ i) s' = some t' ∧ RelF σ N t t'
       ∧ k0 ≤ t.prog.base.lpc := by
-  rcases hcl P i s t h with hx | ⟨dst, f, srcs, x, hsh, rfl, hfwd⟩
+  rcases hcl P i s t h with hx | ⟨dst, f, srcs, x, hsh, rfl, hfwd, -⟩
   · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_ren hσ hP i hi hc hR hk hx
     exact ⟨t', hle _ _ _ _ ht', hrest⟩
   · obtain ⟨w, tag⟩ := i
@@ -1428,7 +1429,8 @@ theorem step_ren_calls {I : Isa} {aa : String → Nat → Option Nat} (hle : x86
     from a state at program counter `k0` or later is matched, with the same fuel, by a halting
     run of `I` on the renamed program from a related state, into a related state. -/
 theorem lsemFuelMemF_ren_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) {k0 : Nat} {P P' : LprogM}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    {k0 : Nat} {P P' : LprogM}
     (hσ : RenOn σ N) (hP : RenProg σ N k0 P P') :
     ∀ (fuel : Nat) {s s' t : LstateMF}, RelF σ N s s' → k0 ≤ s.prog.base.lpc →
       I.lsemFuelMemF P fuel s = some t →
@@ -1480,7 +1482,8 @@ theorem lsemFuelMemF_ren_calls {I : Isa} {aa : String → Nat → Option Nat}
     of `I` on the original is matched, with the same fuel, by a halting run of `I` on the image
     from a related state, into a related state. -/
 theorem lsemFuelMemF_map_renRM_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (hσ : RenOn σ N) (fn : String)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (hσ : RenOn σ N) (fn : String)
     (body : List LinstrRM) (hn : ∀ i ∈ body, ∀ n ∈ instrNames i.1, N n)
     (hc : ∀ i ∈ body, CondOK i) (fuel : Nat) {s s' t : LstateMF} (hR : RelF σ N s s')
     (h : I.lsemFuelMemF (singletonProgM fn body) fuel s = some t) :

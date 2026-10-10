@@ -400,7 +400,8 @@ theorem retRes_shiftS (dst : String) (x : CallRes) (d : Nat) (s : LstateMF) :
     an instruction of `CtlOK` the step of `pre ++ B` from the moved state is the moved step of
     `B`. -/
 theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (fn : String) (pre B : List LinstrRM)
     (hpre : ∀ i ∈ pre, IsLopn i) {i : LinstrRM} (hi : CtlOK i) (s : LstateMF) :
     I.step (singletonProgM fn (pre ++ B)) i (shiftS pre.length s)
       = (I.step (singletonProgM fn B) i s).map (shiftS pre.length) := by
@@ -413,7 +414,7 @@ theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
   | some q =>
       cases hB : I.step (singletonProgM fn B) i s with
       | some t =>
-          rcases hcl _ _ s t hB with hxB | ⟨dst, f, srcs, x, hsh', rfl, hfwd⟩
+          rcases hcl _ _ s t hB with hxB | ⟨dst, f, srcs, x, hsh', rfl, hfwd, -⟩
           · rw [hxB, Option.map_some] at hx
             exact hle _ _ _ _ hx
           · obtain ⟨w, tag⟩ := i
@@ -426,7 +427,7 @@ theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
           | none => rfl
           | some t' =>
               exfalso
-              rcases hcl _ _ _ t' hA with hxA | ⟨dst, f, srcs, x, hsh', -, hfwd⟩
+              rcases hcl _ _ _ t' hA with hxA | ⟨dst, f, srcs, x, hsh', -, hfwd, -⟩
               · rw [hxA] at hx
                 obtain ⟨u, hu, -⟩ := Option.map_eq_some_iff.mp hx.symm
                 rw [hle _ _ _ _ hu] at hB
@@ -440,7 +441,8 @@ theorem step_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
 /-- **A run behind the prefix at an instruction set with local calls, as an equation.** The
     run of `pre ++ B` from the moved state is the moved run of `B`. -/
 theorem lsemFuelMemF_prefix_eq_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (fn : String) (pre B : List LinstrRM)
     (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) :
     ∀ (fuel : Nat) (s : LstateMF),
       I.lsemFuelMemF (singletonProgM fn (pre ++ B)) fuel (shiftS pre.length s)
@@ -473,7 +475,8 @@ theorem lsemFuelMemF_prefix_eq_calls {I : Isa} {aa : String → Nat → Option N
 /-- **The body behind the prefix at an instruction set with local calls.** A halting run of
     `pre ++ B` from the moved state is the moved halting run of `B`. -/
 theorem lsemFuelMemF_of_prefix_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (fn : String) (pre B : List LinstrRM)
     (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (fuel : Nat) (s : LstateMF)
     (t' : LstateMF)
     (h : I.lsemFuelMemF (singletonProgM fn (pre ++ B)) fuel (shiftS pre.length s) = some t') :
@@ -487,7 +490,8 @@ theorem lsemFuelMemF_of_prefix_calls {I : Isa} {aa : String → Nat → Option N
     the program counter at `0` to `t`, then `pre ++ B` runs at `I` from `b0` to the state `t`
     with the program counter moved by the length of the prefix. -/
 theorem lsemFuelMemF_prepend_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String) (pre B : List LinstrRM)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (fn : String) (pre B : List LinstrRM)
     (hpre : ∀ i ∈ pre, IsLopn i) (hB : ∀ i ∈ B, CtlOK i) (b0 b1 : LstateM) (zf z1 : Bool)
     (h0 : b0.lpc = 0) (hpreRun : runStraightF pre b0 zf = some (b1, z1)) (fuel : Nat)
     (t : LstateMF)

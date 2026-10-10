@@ -62,6 +62,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop (renEv)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTimeRel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (CoRel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (shadowCall?)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs (evalInstrPMemF_shadowCall)
 
 variable {σ : String → String}
 
@@ -171,9 +173,11 @@ theorem flagCondCC?_of_arrShape {i : LinstrRM} (hsh : arrShapeB i = true) :
   | _ => simp [arrShapeB] at hsh
 
 /-- **The events of a coalesced instruction on the flag machine.** For an instruction
-    accepted by `leakFixB σ`, the renamed instruction `renArr σ i` emits, from a state with
-    the registers and the zero flag of `s`, the events of `i` from `s` mapped by `renEv σ`. -/
-theorem instrLeakF_coalesce {i : LinstrRM} (hfix : leakFixB σ i = true) {s s' : LstateMF}
+    accepted by `leakFixB σ` that is no shadow instruction of a call, the renamed instruction
+    `renArr σ i` emits, from a state with the registers and the zero flag of `s`, the events
+    of `i` from `s` mapped by `renEv σ`. -/
+theorem instrLeakF_coalesce {i : LinstrRM} (hfix : leakFixB σ i = true)
+    (hn : shadowCall? i.1 = none) {s s' : LstateMF}
     (hreg : s'.prog.base.reg = s.prog.base.reg) (hz : s'.zf = s.zf) :
     instrLeakF (renArr σ i) s' = (instrLeakF i s).map (renEv σ) := by
   by_cases hsh : arrShapeB i = true
@@ -181,7 +185,7 @@ theorem instrLeakF_coalesce {i : LinstrRM} (hfix : leakFixB σ i = true) {s s' :
     simp only [instrLeakF, e1, e2, hreg]
     exact instrLeakB_renArr hsh _
   · have hsh' : arrShapeB i = false := by simpa using hsh
-    rw [renArr_of_not_shape hsh']
+    rw [renArr_of_not_shape hsh' hn]
     unfold instrLeakF
     cases hf : flagCondCC? i with
     | some p => simp [hz, renEv]
@@ -262,7 +266,12 @@ theorem lsemFuelMemFLeak_coalesce {fn : String} {body : List LinstrRM} {L : Nat 
               refine ⟨t', ?_, hRt, hzt⟩
               rw [lsemFuelMemFLeak_step _ _ (renArr σ i) s' u' (by rw [e2, hb]; rfl) hu', ht',
                 Option.map_some, List.map_append,
-                instrLeakF_coalesce (leakFixCfgB_instr hx hb) hR.reg hz]
+                instrLeakF_coalesce (leakFixCfgB_instr hx hb)
+                  (by
+                    by_contra hne
+                    rw [evalInstrPMemF_shadowCall _ i s hne] at he
+                    cases he)
+                  hR.reg hz]
 
 /-! ## 3. Constant time -/
 

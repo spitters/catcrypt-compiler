@@ -92,8 +92,8 @@ theorem lsemFuelMemF_le (P : LprogM) {n k : Nat} {s t : LstateMF}
 /-- An instruction set whose steps contain those of `x86Isa` and whose further steps are local
     calls takes the step of `x86Isa` at every copy of `movesOf ps`: a copy is no shadow
     instruction of a call. -/
-theorem movesOf_agree {I : Isa} {aa : String → Nat → Option Nat} (hle : x86Isa.StepLe I)
-    (hcl : I.CallLocal x86Isa aa) (ps : List (String × String)) :
+theorem movesOf_agree {I : Isa} {aa : String → Nat → Option Nat} {ao : String → Option Nat}
+    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao) (ps : List (String × String)) :
     ∀ i ∈ movesOf ps, ∀ (Q : LprogM) (s : LstateMF), I.step Q i s = x86Isa.step Q i s := by
   intro i hi Q s
   obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
@@ -110,7 +110,8 @@ theorem movesOf_agree {I : Isa} {aa : String → Nat → Option Nat} (hle : x86I
     `pre ++ movesOf ps ++ map (renRM (renOf ps)) loop` at fuel `fuel + ps.length`, the final
     states related as in `renameLoop_sim`. -/
 theorem renameLoop_sim_fuel_calls {I : Isa} {aa : String → Nat → Option Nat}
-    (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa) (fn : String)
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (fn : String)
     (pre loop : List LinstrRM) (ps : List (String × String))
     (N : String → Prop) (hpre : ∀ i ∈ pre, IsLopn i)
     (hagree : ∀ i ∈ pre, ∀ (Q : LprogM) (s : LstateMF), I.step Q i s = x86Isa.step Q i s)
