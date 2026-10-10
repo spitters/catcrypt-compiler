@@ -26,7 +26,10 @@ registers and array names the step writes (`FSt.upd`), which the frame lemma `sy
 justifies. `stepOut` takes both states apart before it inserts, so the closures of the
 returned state, which read the maps, are released and the maps are updated in place.
 Symbolic words share their subterms in memory, and the comparisons of `siteOK` run through
-`decEqTermP`, which tests pointer equality before it compares two subterms.
+`decEqTermP`, which tests pointer equality before it compares two subterms and compares a
+subterm only when the scalar fields and every earlier subterm agree, so that two different
+words are compared along one path to their first difference. `mulLoBF` reads the outer
+constructor and operation of the low destination's word before any comparison.
 
 The width check of `posOK` over every register of `E` walks the width base `STerm.wbase` of
 each word, whose length grows with the block. The pass carries that check as a flag: a step
@@ -41,7 +44,9 @@ unchanged.
 ## Main definitions
 
 * `FSt` — a symbolic state with its registers and arrays in hash maps.
+* `decAndL` — a decided conjunction whose second decision runs only when the first holds.
 * `decEqTermP` — equality of symbolic words with a pointer-equality test at each subterm.
+* `mulLoBF` — the low-product test of a fused site, decided on the outer constructor first.
 * `posPass` — the per-position checks from the current position on, in one forward pass.
 * `FOut` — a symbolic outcome over the hash-map state with the carried width flag.
 * `stepOut` — the hash-map state and the width flag after a step.
@@ -313,67 +318,92 @@ theorem FSt.toSSt_upd {F : FSt} {ss' : SSt} (h : FrameT F.toSSt ss') :
 
 /-! ## Equality of symbolic words with a pointer-equality test -/
 
+/-- The conjunction `p ∧ q` decided by `dp`, with the decision `dq` of `q` called only when
+    `p` holds. -/
+@[inline] def decAndL {p q : Prop} (dp : Decidable p) (dq : p → Decidable q) :
+    Decidable (p ∧ q) :=
+  match dp with
+  | isTrue hp =>
+      match dq hp with
+      | isTrue hq => isTrue ⟨hp, hq⟩
+      | isFalse hq => isFalse fun h => hq h.2
+  | isFalse hp => isFalse fun h => hp h.1
+
 mutual
-/-- Equality of symbolic words, decided structurally with a pointer-equality test
-    (`withPtrEqDecEq`) before each comparison of two subterms, so that subterms shared in
-    memory are compared in constant time. -/
+/-- Equality of symbolic words, decided structurally: the scalar fields are compared first,
+    then the subterms from left to right, each with a pointer-equality test
+    (`withPtrEqDecEq`) before its comparison, and each comparison runs only when every earlier
+    one succeeded (`decAndL`). Subterms shared in memory are compared in constant time, and
+    two words that differ are compared along one path to their first difference. -/
 def decEqTermP : (a b : STerm) → Decidable (a = b)
   | .immAt n x, .immAt n' x' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      decidable_of_iff (n = n' ∧ x = x') (by simp)
+      @decidable_of_iff _ (n = n' ∧ x = x') (by simp)
+        (decAndL (decEq n n') fun _ => withPtrEqDecEq x x' fun _ => decEqTermP x x')
   | .bin m x y, .bin m' x' y' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      decidable_of_iff (m = m' ∧ x = x' ∧ y = y') (by simp)
+      @decidable_of_iff _ (m = m' ∧ x = x' ∧ y = y') (by simp)
+        (decAndL (decEq m m') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            withPtrEqDecEq y y' fun _ => decEqTermP y y')
   | .un m x, .un m' x' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      decidable_of_iff (m = m' ∧ x = x') (by simp)
+      @decidable_of_iff _ (m = m' ∧ x = x') (by simp)
+        (decAndL (decEq m m') fun _ => withPtrEqDecEq x x' fun _ => decEqTermP x x')
   | .shImm m k x, .shImm m' k' x' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      decidable_of_iff (m = m' ∧ k = k' ∧ x = x') (by simp)
+      @decidable_of_iff _ (m = m' ∧ k = k' ∧ x = x') (by simp)
+        (decAndL (decEq m m') fun _ => decAndL (decEq k k') fun _ =>
+          withPtrEqDecEq x x' fun _ => decEqTermP x x')
   | .aget a w n i, .aget a' w' n' i' =>
-      have : Decidable (a = a') := withPtrEqDecEq a a' (fun _ => decEqArrP a a')
-      have : Decidable (i = i') := withPtrEqDecEq i i' (fun _ => decEqTermP i i')
-      decidable_of_iff (a = a' ∧ w = w' ∧ n = n' ∧ i = i') (by simp)
+      @decidable_of_iff _ (w = w' ∧ n = n' ∧ i = i' ∧ a = a')
+        (by simp only [STerm.aget.injEq]; tauto)
+        (decAndL (decEq w w') fun _ => decAndL (decEq n n') fun _ =>
+          decAndL (withPtrEqDecEq i i' fun _ => decEqTermP i i') fun _ =>
+            withPtrEqDecEq a a' fun _ => decEqArrP a a')
   | .aluF op o x y z, .aluF op' o' x' y' z' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      have : Decidable (z = z') := withPtrEqDecEq z z' (fun _ => decEqTermP z z')
-      decidable_of_iff (op = op' ∧ o = o' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+      @decidable_of_iff _ (op = op' ∧ o = o' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+        (decAndL (decEq op op') fun _ => decAndL (decEq o o') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            decAndL (withPtrEqDecEq y y' fun _ => decEqTermP y y') fun _ =>
+              withPtrEqDecEq z z' fun _ => decEqTermP z z')
   | .carryW op x y z, .carryW op' x' y' z' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      have : Decidable (z = z') := withPtrEqDecEq z z' (fun _ => decEqTermP z z')
-      decidable_of_iff (op = op' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+      @decidable_of_iff _ (op = op' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+        (decAndL (decEq op op') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            decAndL (withPtrEqDecEq y y' fun _ => decEqTermP y y') fun _ =>
+              withPtrEqDecEq z z' fun _ => decEqTermP z z')
   | .carryF op o x y z, .carryF op' o' x' y' z' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      have : Decidable (z = z') := withPtrEqDecEq z z' (fun _ => decEqTermP z z')
-      decidable_of_iff (op = op' ∧ o = o' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+      @decidable_of_iff _ (op = op' ∧ o = o' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+        (decAndL (decEq op op') fun _ => decAndL (decEq o o') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            decAndL (withPtrEqDecEq y y' fun _ => decEqTermP y y') fun _ =>
+              withPtrEqDecEq z z' fun _ => decEqTermP z z')
   | .mulx h x y, .mulx h' x' y' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      decidable_of_iff (h = h' ∧ x = x' ∧ y = y') (by simp)
+      @decidable_of_iff _ (h = h' ∧ x = x' ∧ y = y') (by simp)
+        (decAndL (decEq h h') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            withPtrEqDecEq y y' fun _ => decEqTermP y y')
   | .cout s x y z, .cout s' x' y' z' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      have : Decidable (z = z') := withPtrEqDecEq z z' (fun _ => decEqTermP z z')
-      decidable_of_iff (s = s' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+      @decidable_of_iff _ (s = s' ∧ x = x' ∧ y = y' ∧ z = z') (by simp)
+        (decAndL (decEq s s') fun _ =>
+          decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+            decAndL (withPtrEqDecEq y y' fun _ => decEqTermP y y') fun _ =>
+              withPtrEqDecEq z z' fun _ => decEqTermP z z')
   | .sel x y z, .sel x' y' z' =>
-      have : Decidable (x = x') := withPtrEqDecEq x x' (fun _ => decEqTermP x x')
-      have : Decidable (y = y') := withPtrEqDecEq y y' (fun _ => decEqTermP y y')
-      have : Decidable (z = z') := withPtrEqDecEq z z' (fun _ => decEqTermP z z')
-      decidable_of_iff (x = x' ∧ y = y' ∧ z = z') (by simp)
+      @decidable_of_iff _ (x = x' ∧ y = y' ∧ z = z') (by simp)
+        (decAndL (withPtrEqDecEq x x' fun _ => decEqTermP x x') fun _ =>
+          decAndL (withPtrEqDecEq y y' fun _ => decEqTermP y y') fun _ =>
+            withPtrEqDecEq z z' fun _ => decEqTermP z z')
   | a, b => decEq a b
 
-/-- Equality of symbolic arrays, decided structurally with a pointer-equality test before
-    each comparison of two subterms. -/
+/-- Equality of symbolic arrays, decided structurally: the shape first, then the index, the
+    value and the array below, each with a pointer-equality test before its comparison and
+    each comparison run only when every earlier one succeeded. -/
 def decEqArrP : (a b : SArr) → Decidable (a = b)
   | .aset a w n i v, .aset a' w' n' i' v' =>
-      have : Decidable (a = a') := withPtrEqDecEq a a' (fun _ => decEqArrP a a')
-      have : Decidable (i = i') := withPtrEqDecEq i i' (fun _ => decEqTermP i i')
-      have : Decidable (v = v') := withPtrEqDecEq v v' (fun _ => decEqTermP v v')
-      decidable_of_iff (a = a' ∧ w = w' ∧ n = n' ∧ i = i' ∧ v = v') (by simp)
+      @decidable_of_iff _ (w = w' ∧ n = n' ∧ i = i' ∧ v = v' ∧ a = a')
+        (by simp only [SArr.aset.injEq]; tauto)
+        (decAndL (decEq w w') fun _ => decAndL (decEq n n') fun _ =>
+          decAndL (withPtrEqDecEq i i' fun _ => decEqTermP i i') fun _ =>
+            decAndL (withPtrEqDecEq v v' fun _ => decEqTermP v v') fun _ =>
+              withPtrEqDecEq a a' fun _ => decEqArrP a a')
   | a, b => decEq a b
 end
 
@@ -384,13 +414,19 @@ theorem termEqP_eq (a b : STerm) : termEqP a b = (a == b) := by
   unfold termEqP
   exact congrArg (@decide (a = b)) (Subsingleton.elim _ _)
 
-/-- `mulLoB` with the comparisons of `termEqP`. -/
+/-- `mulLoB` decided on the outer constructor and operation of `dt` first: a low `MUL` compares
+    its sources with `a` and `b` in both orders, a low `mulx` in the given order, and any other
+    word fails at the root. -/
 def mulLoBF (dt a b : STerm) : Bool :=
-  termEqP dt (.bin "MUL" a b) || termEqP dt (.bin "MUL" b a) || termEqP dt (.mulx false a b)
+  match dt with
+  | .bin m x y => m == "MUL" && ((termEqP x a && termEqP y b) || (termEqP x b && termEqP y a))
+  | .mulx h x y => !h && termEqP x a && termEqP y b
+  | _ => false
 
 theorem mulLoBF_eq : mulLoBF = mulLoB := by
   funext dt a b
-  simp only [mulLoBF, mulLoB, termEqP_eq]
+  cases dt <;> simp only [mulLoBF, mulLoB, termEqP_eq] <;> rw [Bool.eq_iff_iff] <;> simp <;>
+    tauto
 
 /-- `siteOK` with the comparisons of `termEqP`. -/
 def siteOKF (E : List String) (d : String) (i : LinstrRM) (ss : SSt) : Bool :=
