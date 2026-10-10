@@ -346,6 +346,14 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       · obtain ⟨r', -, rfl⟩ := Option.map_eq_some_iff.mp h
         exact tripRes_image r'
       · cases h
+  | bin o w =>
+      rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+      change binRes? o w (σ a) (σ b) = some res at h
+      unfold binRes? at h
+      split at h
+      · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
+        exact withVar2_image (fun _ _ _ hk => binChain_image hk) h
+      · cases h
   | _ => cases h
 
 /-- The bindings `emitRes` gives a translation whose operations have images, in front of a

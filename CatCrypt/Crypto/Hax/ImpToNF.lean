@@ -42,7 +42,9 @@ Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, 
 a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
 literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
-the fragment; an integer literal in `[0, 2 ^ 64)` has the type of `64`-bit words (`litInt`);
+the fragment; a reverse counted loop `forFoldRev` with the same bounds, whose trip `k` has the
+counter `lo + (trip - 1 - k)` (`ctrOut`); an integer literal in `[0, 2 ^ 64)` has the type of
+`64`-bit words (`litInt`);
 and a conditional `ifThenElse` whose condition translates to a bit and whose
 arms are in the fragment, with one result type, as the region `NFPre.ifThenElse` (`condOut`):
 its results are the value of the conditional and the names an arm may bind (`condCarried`).
@@ -62,7 +64,8 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
 * `NfEnv`, `NfEnv.lookup`, `EnvRel` — the environment of names and its relation to a
   source environment.
 * `Out`, `ArgsOut` — the output of the front on an expression and on a list of atoms.
-* `loopOut` — the counted loop of the front.
+* `ctrOut`, `loopOut` — the counter binding of a loop body, forward or reverse, and the
+  counted loop of the front.
 * `condCarried`, `condEnv`, `condOut` — the carried names of a conditional, the environment
   of names after it, and the conditional of the front.
 * `impToNF`, `impArgsNF` — the front, and its translation of the arguments of a call.
@@ -91,8 +94,9 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
 * `atomOut_sound`, `argsOut_sound`, `tupleOut_sound`, `seq_sound`, `letBind_sound`,
   `assign_sound`, `impArgsNF_sound`, `app_sound`, `tuple_sound` — the constructs other
   than the loop.
-* `loop_sound`, `loopOut_sound`, `forFold_sound` — the counted loop: the trips of
-  `denoteForLoop'` against the fold of `NFProg.forLoop`.
+* `loop_sound`, `loopRev_sound`, `ctrOut_sound`, `loopOut_sound`, `forFold_sound`,
+  `forFoldRev_sound` — the counted loop: the trips of `denoteForLoop'` and of
+  `denoteForLoopRev'` against the fold of `NFProg.forLoop`.
 * `condArm_sound`, `condOut_sound`, `cond_sound` — the conditional: the run of the arm the
   condition selects against the region `NFPre.ifThenElse`.
 * `impToNF_cond_arms` — a translated conditional has a translated condition and arms.
@@ -376,24 +380,42 @@ def loopEnv {Γ₃ Δ : Ctxt nfDialect} (σ : NfEnv Γ₃) (i : String) (xs : Li
     (g : ∀ {t : NfTy}, Var Γ₃ t → Var Δ t) : NfEnv Δ :=
   NfEnv.bindAll xs cs hv (NfEnv.mapV g (σ.filter fun p => p.1 != i))
 
+/-- The counter binding at the head of a loop body over the context `cs ++ word 64 :: Γ₃`,
+    whose variable after the carried tuple is the trip index `k`: on `none`, the counter `i`
+    bound to the `64`-bit word of `lo + k` (`ctr` on the lower bound in `loV` and `k`); on
+    `some m`, the difference of the word in `m` and `k` (`bin .sub 64`), then the counter `i`
+    bound to `ctr` on the lower bound and that difference. With the word `trip - 1` in `m`,
+    the counter of trip `k` is `lo + (trip - 1 - k)`, the counter of a reverse loop. -/
+def ctrOut {Γ₃ : Ctxt nfDialect} (cs : List NfTy) (i : String)
+    (σB : NfEnv (cs ++ NfTy.word 64 :: Γ₃)) (loV : Var Γ₃ NfTy.int) :
+    Option (Var Γ₃ (NfTy.word 64)) → Out (cs ++ NfTy.word 64 :: Γ₃)
+  | none => bind1N (some i) σB .ctr
+      (.cons (Var.shiftApp cs (Var.there loV))
+        (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+  | some m =>
+      let oD := bind1 σB (.bin .sub 64)
+        (.cons (Var.shiftApp cs (Var.there m))
+          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+      oD.comp (bind1N (some i) oD.σ .ctr
+        (.cons (Var.there (Var.shiftApp cs (Var.there loV))) (.cons oD.res .nil)))
+
 /-- **The counted loop of the front.** After the prefix `pre₀` to the context `Γ₃`, with
     the environment of names `σ₃`, the lower bound in `loV` and the trip count in `tripV`,
     the loop carrying the names `xs` at the types `cs` from the variables `inits`: the body
-    binds the counter `i` to the `64`-bit word of `lo + k` (`ctr`, with the source name
-    `i`), runs the translation
+    binds the counter `i` by `ctrOut` on `rev` (with the source name `i`): the `64`-bit word
+    of `lo + k` on `none`, and of `lo + (m - k)` on `some m`; it runs the translation
     `rec` of the source body, and returns the carried names; the continuation binds the unit
     value, with the source name `tgt`. -/
 def loopOut {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nfDialect Γ Γ₃)
     (σ₃ : NfEnv Γ₃)
-    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64)) (i : String) (xs : List String)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
     (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) : Option (Out Γ) :=
   let σB : NfEnv (cs ++ NfTy.word 64 :: Γ₃) :=
     loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp (d := nfDialect) cs v.there
-  let oC := bind1N (some i) σB .ctr
-    (.cons (Var.shiftApp cs (Var.there loV))
-      (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
-  (rec ((i, ⟨NfTy.word 64, oC.res⟩) :: oC.σ)).bind fun ob =>
+  let oC := ctrOut cs i σB loV rev
+  (rec ((i, ⟨oC.t, oC.res⟩) :: oC.σ)).bind fun ob =>
     (varsAt ob.σ xs cs).map fun rets =>
       let oU := bind1N tgt (loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp cs v)
         .constUnit .nil
@@ -451,6 +473,10 @@ mutual
     `[0, 2 ^ 64)` has the type of `64`-bit words (`litInt`), the type `boundOk` accepts for
     an upper bound.
 
+    A reverse loop `forFoldRev i lo hi body` binds, after the trip count, the word
+    `trip - 1` (`ilit` and `bin .sub 64`), and its body binds the counter `i` to
+    `lo + ((trip - 1) - k)` at the trip index `k` (`ctrOut`).
+
     A conditional `ifThenElse c a b` is the region `NFPre.ifThenElse` (`condOut`). The
     condition `c` is translated first, to a variable of the bit type. The two arms are
     translated from the environment of names after the condition, without a source name.
@@ -488,8 +514,21 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
           let W := carried oT.σ i body
           loopOut tgt ((oLo.pre.append oHi.pre).append oT.pre) oT.σ
             (oT.pre.wk (oHi.pre.wk oLo.res))
-            oT.res i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
+            oT.res none i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
             (fun σB => impToNF sigOf none σB body)
+        else none
+  | tgt, _, σ, .forFoldRev i (.lit (.int lo)) hi body =>
+      let oLo := bind1 σ (.ilit .int lo) .nil
+      (atomOut oLo.σ hi).bind fun oHi =>
+        if boundOk lo oHi.t || litBoundOk lo hi then
+          let oT := bind1 oHi.σ (.trip oHi.t) (.cons (oHi.pre.wk oLo.res) (.cons oHi.res .nil))
+          let oOne := bind1 oT.σ (.ilit (.word 64) 1) .nil
+          let oM := bind1 oOne.σ (.bin .sub 64) (.cons (oOne.pre.wk oT.res) (.cons oOne.res .nil))
+          let W := carried oM.σ i body
+          loopOut tgt ((((oLo.pre.append oHi.pre).append oT.pre).append oOne.pre).append oM.pre)
+            oM.σ (oM.pre.wk (oOne.pre.wk (oT.pre.wk (oHi.pre.wk oLo.res))))
+            (oM.pre.wk (oOne.pre.wk oT.res)) (some oM.res) i (W.map (·.1)) (entriesVars W).1
+            (entriesVars W).2 (fun σB => impToNF sigOf none σB body)
         else none
   | _, _, σ, .ifThenElse c a b => (impToNF sigOf none σ c).bind fun oc =>
       if h : oc.t = NfTy.bit then
@@ -1485,18 +1524,254 @@ theorem forFold_enc_run (bi : Builtins) (fuel : Nat) (i : String) (lo : Int)
     | exact ⟨_, rfl, hrun⟩
     | cases hrun
 
+/-- A step of `denoteForLoopRev'` at an empty range ends with the unit value. -/
+theorem forLoopRev_ge_run (bi : Builtins) (fuel : Nat) (i : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
+    (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env = (.val .unit, env) := by
+  rw [_root_.Hax.denoteForLoopRev', if_pos h]; rfl
+
+/-- A step of `denoteForLoopRev'` at a non-empty range without fuel fails. -/
+theorem forLoopRev_zero_run (bi : Builtins) (i : String) (lo hi : Int) (body : ImpExpr)
+    (env : Env) (h : lo < hi) :
+    (_root_.Hax.denoteForLoopRev' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
+  rw [_root_.Hax.denoteForLoopRev', if_neg (Int.not_le.mpr h), if_pos rfl]; rfl
+
+/-- A step of `denoteForLoopRev'` at a non-empty range runs the body with the counter
+    `hi - 1` and continues on the range up to `hi - 1`. -/
+theorem forLoopRev_succ_run (bi : Builtins) (n : Nat) (i : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env =
+      match (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) with
+      | (.val (.controlFlow true v), e2) => (.val v, e2)
+      | (.val (.controlFlow false _), e2) =>
+          (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
+      | (.val _, e2) => (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
+      | (o, e2) => (o, e2) := by
+  rw [_root_.Hax.denoteForLoopRev', if_neg (Int.not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+    modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
+  rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
+  rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
+  cases v2 with
+  | controlFlow k w => cases k <;> rfl
+  | _ => rfl
+
+/-- A step of `denoteForLoopRev'` whose body runs to a value that is not a control-flow
+    value continues on the range up to `hi - 1`. -/
+theorem forLoopRev_succ_run_val (bi : Builtins) (n : Nat) (i : String) {lo hi : Int}
+    (body : ImpExpr) {env e2 : Env} {w : Value} (h : lo < hi)
+    (hb : (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) = (.val w, e2))
+    (hw : ∀ b u, w ≠ .controlFlow b u) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env =
+      (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2 := by
+  rw [forLoopRev_succ_run bi n i lo hi body env h, hb]
+  cases w with
+  | controlFlow b u => exact absurd rfl (hw b u)
+  | _ => rfl
+
+/-- **The reverse loop.** `loop_sound` for `denoteForLoopRev'`: let every run of the body from
+    an environment satisfying `Inv`, extended with the counter `h - 1 - k`, to a value be
+    matched by the target body at the trip index `k`. Then a run of `denoteForLoopRev'` on the
+    range from `lo` to `h - k`, with `m` trips left and `k + m < 2 ^ 64`, is matched by the
+    fold of the target body over the trip indices `k, …, k + m - 1`. -/
+theorem loopRev_sound (bi : Builtins) (i : String)
+    (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt nfDialect} (V₃ : Valuation Γ₃) {cs : List NfTy}
+    (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs) (tf : Nat)
+    (Inv : Env → Valuation (d := nfDialect) cs → Prop)
+    (HS : ∀ (k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
+      (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv env acc →
+      (denote' bi fuel body).run (env.extend i (.int (h - 1 - k))) = (rb, e₂) →
+      (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
+        PDenP bi tf bodyP
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧
+        Inv e₂ acc') :
+    ∀ (m k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (r : Value) (e : Env),
+      (h - k - lo).toNat = m → k + m < 2 ^ 64 → Inv env acc →
+      (_root_.Hax.denoteForLoopRev' bi fuel i lo (h - k) body).run env = (.val r, e) →
+      r = .unit ∧ ∃ acc', (List.range' k m).foldlM
+        (fun a j => PDenP bi tf bodyP (hvAppend a (.cons (BitVec.ofNat 64 j) V₃))) acc =
+          some acc' ∧ Inv e acc' := by
+  intro m
+  induction m with
+  | zero =>
+      intro k fuel env acc r e hm _ hinv hrun
+      rw [forLoopRev_ge_run bi fuel i lo _ body env (by omega)] at hrun
+      cases hrun
+      exact ⟨rfl, acc, rfl, hinv⟩
+  | succ m ih =>
+      intro k fuel env acc r e hm hk hinv hrun
+      have hlt : lo < h - k := by omega
+      cases fuel with
+      | zero =>
+          rw [forLoopRev_zero_run bi i lo _ body env hlt] at hrun
+          cases hrun
+      | succ f =>
+          have hc : h - (k : Int) - 1 = h - 1 - k := by ring
+          obtain ⟨rb, e₂, hb⟩ := run_val_split (denote' bi (f + 1) body)
+            (env.extend i (.int (h - 1 - k)))
+          cases rb with
+          | val w =>
+              obtain ⟨w, acc', hw, hcf, hacc', hinv'⟩ := HS k (f + 1) env acc _ e₂
+                (by omega) (by omega) hinv hb ⟨w, rfl⟩
+              cases hw
+              rw [← hc] at hb
+              rw [forLoopRev_succ_run_val bi f i body hlt hb hcf] at hrun
+              have hk1 : h - (k : Int) - 1 = h - ((k + 1 : Nat) : Int) := by push_cast; ring
+              rw [hk1] at hrun
+              obtain ⟨hr, acc'', hfold, hinv''⟩ :=
+                ih (k + 1) f e₂ acc' r e (by omega) (by omega) hinv' hrun
+              refine ⟨hr, acc'', ?_, hinv''⟩
+              rw [List.range'_succ, List.foldlM_cons]
+              show (PDenP bi tf bodyP (hvAppend acc
+                (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))).bind _ = _
+              rw [hacc', Option.bind_some]
+              exact hfold
+          | _ =>
+              rw [← hc] at hb
+              rw [forLoopRev_succ_run bi f i lo _ body env hlt, hb] at hrun
+              cases hrun
+
+/-- The counter `ctrOut` binds at the trip index `k`, from the lower bound `lo`: `lo + k` on
+    `none`, and `lo + (m - k)` on the word `m`. -/
+def ctrVal (lo : Int) (k : Nat) : Option (BitVec 64) → Int
+  | none => lo + k
+  | some m => lo + (m - BitVec.ofNat 64 k).toNat
+
+/-- `ctr` on a non-negative lower bound and an index whose sum is below `2 ^ 64`. -/
+theorem nfDenoteOp_ctr (T : NfLeafTable) (lo : Int) (x : BitVec 64) (h0 : 0 ≤ lo)
+    (h : lo + (x.toNat : Int) < 2 ^ 64) :
+    nfDenoteOp T .ctr (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+      (HVector.cons (t := NfTy.word 64) x .nil)) =
+      some (BitVec.ofNat 64 (lo + (x.toNat : Int)).toNat) := by
+  show (if 0 ≤ lo ∧ lo + (x.toNat : Int) < 2 ^ 64 then _ else none) = _
+  rw [if_pos ⟨h0, h⟩]
+  rfl
+
+/-- The `64`-bit word of an integer in `[0, 2 ^ 64)` encodes that integer. -/
+theorem enc_ofNat_word64 {c : Int} (h0 : 0 ≤ c) (h : c < 2 ^ 64) :
+    enc (NfTy.word 64) (BitVec.ofNat 64 c.toNat) = .int c := by
+  show Value.int ((BitVec.ofNat 64 c.toNat).toNat : Int) = _
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg h0]
+
+/-- The counter of trip `k` of a reverse loop with `T` trips: `(T - 1) - k` on `64`-bit
+    words is `T - 1 - k`. -/
+theorem revCtr_toNat (T k : Nat) (hT : T < 2 ^ 64) (hk : k < T) :
+    ((BitVec.ofNat 64 T - 1) - BitVec.ofNat 64 k).toNat = T - 1 - k := by
+  have h1 : (1 : BitVec 64).toNat = 1 := rfl
+  simp only [BitVec.toNat_sub, BitVec.toNat_ofNat, h1]
+  omega
+
+/-- **The counter binding is sound.** From a valuation of the loop body at the trip index `k`
+    related by `σB` to `env`, with the lower bound `lo ≥ 0` in `loV` and the counter
+    `ctrVal` below `2 ^ 64`, the prefix of `ctrOut` denotes a valuation related by its
+    environment of names to `env`, whose variable encodes the counter. -/
+theorem ctrOut_sound (bi : Builtins) {Γ₃ : Ctxt nfDialect} (cs : List NfTy) (i : String)
+    (σB : NfEnv (cs ++ NfTy.word 64 :: Γ₃)) (loV : Var Γ₃ NfTy.int)
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (acc : Valuation (d := nfDialect) cs)
+    (V₃ : Valuation Γ₃) (k : Nat) (env : Env)
+    (hB : EnvRel σB env (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)))
+    (hk : k < 2 ^ 64) (lo : Int) (hlo : loV.lookup V₃ = lo) (hlo0 : 0 ≤ lo)
+    (hc : ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64)) < 2 ^ 64) :
+    ∃ W, (∀ tf, PDen bi tf (ctrOut cs i σB loV rev).pre
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some W) ∧
+      EnvRel (ctrOut cs i σB loV rev).σ env W ∧
+      enc (ctrOut cs i σB loV rev).t ((ctrOut cs i σB loV rev).res.lookup W) =
+        .int (ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64))) := by
+  have hkV : (BitVec.ofNat 64 k).toNat = k := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+  have hloA : (Var.shiftApp cs (Var.there loV)).lookup
+      (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = lo := by
+    rw [Var.lookup_shiftApp, ← hlo]; rfl
+  have hkA : (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))).lookup
+      (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+      BitVec.ofNat 64 k := by
+    rw [Var.lookup_shiftApp]; rfl
+  cases rev with
+  | none =>
+      simp only [ctrVal, Option.map_none] at hc ⊢
+      have hargs : Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
+          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+          HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+            (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) .nil) := by
+        show HVector.cons _ (HVector.cons _ .nil) = _
+        rw [hloA, hkA]
+      refine ⟨Ctxt.Valuation.extend (t := NfTy.word 64)
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (BitVec.ofNat 64 (lo + (k : Int)).toNat), fun tf => ?_,
+        hB.mapV (fun v => Var.there v) fun _ _ => rfl, enc_ofNat_word64 (by omega) hc⟩
+      refine (PDen_bind1N bi tf (some i) _ .ctr _ _).trans ?_
+      rw [hargs, nfDenoteOp_ctr _ lo _ hlo0 (by rw [hkV]; exact hc), hkV]
+      rfl
+  | some m =>
+      simp only [ctrVal, Option.map_some] at hc ⊢
+      obtain ⟨mv, hmv⟩ : ∃ mv : BitVec 64, m.lookup V₃ = mv := ⟨_, rfl⟩
+      rw [hmv] at hc ⊢
+      have hargs : Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there m))
+          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+          HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) mv
+            (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) .nil) := by
+        show HVector.cons _ (HVector.cons _ .nil) = _
+        rw [hkA, Var.lookup_shiftApp, ← hmv]; rfl
+      have hargs2 : Expr.lookupArgs (.cons (Var.there (Var.shiftApp cs (Var.there loV)))
+          (.cons (@Var.here nfDialect (cs ++ NfTy.word 64 :: Γ₃) (NfTy.word 64)) .nil))
+          (Ctxt.Valuation.extend (t := NfTy.word 64)
+            (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+            (mv - BitVec.ofNat 64 k)) =
+          HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+            (HVector.cons (t := NfTy.word 64) (mv - BitVec.ofNat 64 k) .nil) := by
+        show HVector.cons _ (HVector.cons _ .nil) = _
+        rw [← hloA]; rfl
+      refine ⟨Ctxt.Valuation.extend (t := NfTy.word 64) (Ctxt.Valuation.extend
+        (t := NfTy.word 64)
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (mv - BitVec.ofNat 64 k))
+        (BitVec.ofNat 64 (lo + ((mv - BitVec.ofNat 64 k).toNat : Int)).toNat),
+        fun tf => ?_,
+        (hB.mapV (fun v => Var.there v) fun _ _ => rfl).mapV (fun v => Var.there v)
+          fun _ _ => rfl,
+        enc_ofNat_word64 (by omega) hc⟩
+      refine PDen_append_some bi tf (W := Ctxt.Valuation.extend (t := NfTy.word 64)
+        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+        (mv - BitVec.ofNat 64 k)) ((PDen_bind1 bi tf σB (.bin .sub 64) _ _).trans ?_)
+        ((PDen_bind1N bi tf (some i) _ .ctr _ _).trans ?_)
+      · rw [hargs]; rfl
+      · refine (congrArg (fun a => Option.map (Ctxt.Valuation.extend (t := NfTy.word 64)
+          (Ctxt.Valuation.extend (t := NfTy.word 64)
+            (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
+            (mv - BitVec.ofNat 64 k))) (nfDenoteOp (tableOf bi) .ctr a)) hargs2).trans ?_
+        rw [nfDenoteOp_ctr _ lo _ hlo0 hc]
+        rfl
+
+/-- The counter of `ctrOut` at a trip `k` of a loop from `lo` to `h`: `lo + k` on `none`;
+    `h - 1 - k` on a word holding `trip - 1`, for the trip count `trip = (h - lo).toNat`. -/
+theorem ctrVal_trip (lo h : Int) (k : Nat) (hM : (h - lo).toNat < 2 ^ 64)
+    (hk : lo + (k : Int) < h) (rev : Option (BitVec 64))
+    (hrev : ∀ m, rev = some m → m = BitVec.ofNat 64 (h - lo).toNat - 1) :
+    ctrVal lo k rev = rev.elim (lo + k) fun _ => h - 1 - k := by
+  cases rev with
+  | none => rfl
+  | some m =>
+      rw [hrev m rfl]
+      simp only [ctrVal, Option.elim]
+      rw [revCtr_toNat _ k hM (by omega)]
+      omega
+
 /-- **The counted loop of the front is sound.** Let the prefix `pre₀` denote `V₃`, related
     by `σ₃` to `env`, with `lo` in `loV` and the trip count `(h - lo).toNat` in `tripV`;
     let the names `xs` carry the values of `inits`, every name of `σ₃` other than `i` and
-    the names `xs` be one the body does not bind, and `rec` be sound for the body. A run of
-    `denoteForLoop'` from `lo` to `h`, with `0 ≤ lo` and `h ≤ 2 ^ 64`, is then matched by the
-    output of `loopOut`. -/
+    the names `xs` be one the body does not bind, and `rec` be sound for the body. On
+    `rev = none`, a run of `denoteForLoop'` from `lo` to `h`, and on `rev = some m` with
+    `trip - 1` in `m`, a run of `denoteForLoopRev'` from `lo` to `h`, with `0 ≤ lo` and
+    `h ≤ 2 ^ 64`, is then matched by the output of `loopOut`. -/
 theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Option String)
     {Γ Γ₃ : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γ₃) (σ₃ : NfEnv Γ₃)
-    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64)) (i : String) (xs : List String)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
     (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {o : Out Γ}
-    (h₀ : loopOut tgt pre₀ σ₃ loV tripV i xs cs inits rec = some o)
+    (h₀ : loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits rec = some o)
     (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ}, rec σ' = some o' →
       ∀ fuel', Sound bi fuel' body σ' o')
     (hlen : xs.length = cs.length)
@@ -1506,31 +1781,39 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
     (tf : Nat) (hpre : PDen bi tf pre₀ V = some V₃) (hrel : EnvRel σ₃ env V₃)
     (hcar : CarriedRel env xs cs (Expr.lookupArgs inits V₃)) (lo h : Int)
     (hlo : loV.lookup V₃ = lo) (htrip : tripV.lookup V₃ = BitVec.ofNat 64 (h - lo).toNat)
-    (hM : (h - lo).toNat < 2 ^ 64) (hlo0 : 0 ≤ lo) (hh64 : h ≤ 2 ^ 64) (r : Value) (env' : Env)
-    (hrun : (_root_.Hax.denoteForLoop' bi fuel i lo h body).run env = (.val r, env')) :
+    (hM : (h - lo).toNat < 2 ^ 64) (hlo0 : 0 ≤ lo) (hh64 : h ≤ 2 ^ 64)
+    (hrev : ∀ m, rev = some m →
+      (m.lookup V₃ : BitVec 64) = BitVec.ofNat 64 (h - lo).toNat - 1) (r : Value) (env' : Env)
+    (hrun : (match rev with
+      | none => _root_.Hax.denoteForLoop' bi fuel i lo h body
+      | some _ => _root_.Hax.denoteForLoopRev' bi fuel i lo h body).run env = (.val r, env')) :
     ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
   simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
   obtain ⟨ob, hob, rets, hrets, rfl⟩ := h₀
   -- the invariant of the loop: the carried names and the frame
   let Inv : Env → Valuation (d := nfDialect) cs → Prop := fun e acc =>
     CarriedRel e xs cs acc ∧ FrameRel σ₃ i xs e V₃
+  have hcv : ∀ k : Nat, lo + (k : Int) < h →
+      ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64)) =
+        (rev.map fun m => (m.lookup V₃ : BitVec 64)).elim (lo + k) fun _ => h - 1 - k :=
+    fun k hk => ctrVal_trip lo h k hM hk (rev.map fun m => (m.lookup V₃ : BitVec 64))
+      fun m hm => by
+        obtain ⟨m', hm', hmm⟩ := Option.map_eq_some_iff.mp hm
+        rw [← hmm]
+        exact hrev m' hm'
   have HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
       (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv e acc →
-      (denote' bi f body).run (e.extend i (.int (lo + k))) = (rb, e₂) →
+      (denote' bi f body).run
+        (e.extend i (.int (ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64))))) =
+        (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
-        PDenP bi tf ((NFPre.append (bind1N (some i) (loopEnv σ₃ i xs cs (headVars cs)
-            fun v => Var.shiftApp (d := nfDialect) cs v.there) .ctr
-            (.cons (Var.shiftApp cs (Var.there loV))
-              (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))).pre
+        PDenP bi tf ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs (headVars cs)
+            fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre
             ob.pre).plug (.ret rets))
-          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧ Inv e₂ acc' := by
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
+          some acc' ∧ Inv e₂ acc' := by
     intro k f e acc rb e₂ hk hkh hinv hb hval
     obtain ⟨w, rfl⟩ := hval
-    have hencC : Value.int (lo + (k : Int)) =
-        enc (NfTy.word 64) (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
-      show _ = Value.int ((BitVec.ofNat 64 (lo + (k : Int)).toNat).toNat : Int)
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg (by omega)]
-    rw [hencC] at hb
     have hB : EnvRel (loopEnv σ₃ i xs cs (headVars cs)
         fun v => Var.shiftApp (d := nfDialect) cs v.there) e
         (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) :=
@@ -1538,54 +1821,42 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
         (W := hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
         (by rw [lookupArgs_headVars]; exact hinv.1) hinv.2
         (by intro t v; rw [Var.lookup_shiftApp]; rfl)
-    have hctr : nfDenoteOp (tableOf bi) .ctr
-        (Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
-          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
-          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))) =
-          some (BitVec.ofNat 64 (lo + (k : Int)).toNat) := by
-      have hargs : Expr.lookupArgs (.cons (Var.shiftApp cs (Var.there loV))
-          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
-          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
-          HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
-            (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) .nil) := by
-        show HVector.cons ((Var.shiftApp cs (Var.there loV)).lookup _)
-          (HVector.cons ((Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))).lookup _)
-            .nil) = _
-        rw [Var.lookup_shiftApp, Var.lookup_shiftApp, ← hlo]
-        rfl
-      rw [hargs]
-      show (if 0 ≤ lo ∧ lo + ((BitVec.ofNat 64 k).toNat : Int) < 2 ^ 64 then
-        some (BitVec.ofNat 64 (lo + ((BitVec.ofNat 64 k).toNat : Int)).toNat) else none) = _
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk, if_pos ⟨hlo0, by omega⟩]
-    have hpC : ∀ tf', PDen bi tf' (bind1N (some i) (loopEnv σ₃ i xs cs (headVars cs)
-        fun v => Var.shiftApp (d := nfDialect) cs v.there) .ctr
-        (.cons (Var.shiftApp cs (Var.there loV))
-          (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))).pre
-        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
-        some (Ctxt.Valuation.extend (t := NfTy.word 64)
-          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
-          (BitVec.ofNat 64 (lo + (k : Int)).toNat)) := by
-      intro tf'
-      exact (PDen_bind1N bi tf' (some i) _ .ctr _ _).trans
-        ((congrArg (Option.map _) hctr).trans rfl)
-    have hC := (hB.mapV (fun v => Var.there (s := NfTy.word 64) v) fun _ _ => rfl).cons i
-      (NfTy.word 64) (@Var.here nfDialect (cs ++ NfTy.word 64 :: Γ₃) (NfTy.word 64))
-      (V := Ctxt.Valuation.extend (t := NfTy.word 64)
-        (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))
-        (BitVec.ofNat 64 (lo + (k : Int)).toNat))
-    obtain ⟨W', hW', hrel', rfl⟩ := HB _ hob f _ _ w e₂ hC hb tf
+    have hc : ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64)) < 2 ^ 64 := by
+      rw [hcv k hkh]
+      generalize (rev.map fun m => (m.lookup V₃ : BitVec 64)) = q
+      cases q <;> simp only [Option.elim] <;> omega
+    obtain ⟨Wc, hWc, hrelC, hencC⟩ := ctrOut_sound bi cs i _ loV rev acc V₃ k e hB hk lo hlo
+      hlo0 hc
+    rw [← hencC] at hb
+    obtain ⟨W', hW', hrel', rfl⟩ := HB _ hob f _ _ w e₂ (hrelC.cons i _ _) hb tf
     refine ⟨_, Expr.lookupArgs rets W', rfl, enc_ne_controlFlow _ _, ?_, ?_, ?_⟩
-    · exact PDenP_plug_ret bi tf _ rets _ (PDen_append_some bi tf (hpC tf) hW')
+    · exact PDenP_plug_ret bi tf _ rets _ (PDen_append_some bi tf (hWc tf) hW')
     · exact CarriedRel.of_varsAt hrel' xs cs hrets
     · intro x hx hxi t v hl
       rw [denote'_keeps bi body (hfr x hx hxi _ hl) f _ hb (by rintro ⟨_, h⟩; cases h),
         Env.extend_other _ _ _ _ hxi]
       exact hinv.2 x hx hxi t v hl
-  have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i (lo + ((0 : Nat) : Int)) h body).run env =
-      (.val r, env') := by simpa using hrun
-  obtain ⟨rfl, accF, hfold, hinvF⟩ := loop_sound bi i body lo h V₃ _ tf Inv HS
-    ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp) (by simpa using hM)
-    ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
+  obtain ⟨rfl, accF, hfold, hinvF⟩ : r = .unit ∧ ∃ accF, (List.range' 0 (h - lo).toNat).foldlM
+      (fun a j => PDenP bi tf ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs (headVars cs)
+            fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre
+            ob.pre).plug (.ret rets)) (hvAppend a (.cons (BitVec.ofNat 64 j) V₃)))
+      (Expr.lookupArgs inits V₃) = some accF ∧ Inv env' accF := by
+    cases rev with
+    | none =>
+        have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i (lo + ((0 : Nat) : Int)) h
+            body).run env = (.val r, env') := by simpa using hrun
+        exact loop_sound bi i body lo h V₃ _ tf Inv
+          (fun k f e acc rb e₂ hk hkh hinv hb hval => HS k f e acc rb e₂ hk hkh hinv hb hval)
+          ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp)
+          (by simpa using hM) ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
+    | some m =>
+        have hrun0 : (_root_.Hax.denoteForLoopRev' bi fuel i lo (h - ((0 : Nat) : Int))
+            body).run env = (.val r, env') := by simpa using hrun
+        exact loopRev_sound bi i body lo h V₃ _ tf Inv
+          (fun k f e acc rb e₂ hk hkh hinv hb hval => HS k f e acc rb e₂ hk hkh hinv
+            (by rw [hcv k hkh]; exact hb) hval)
+          ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp)
+          (by simpa using hM) ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
   refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V₃), ?_, ?_, rfl⟩
   · refine PDen_append_some bi tf hpre
       (PDen_forLoop_some bi tf ((h - lo).toNat) ?_ hfold ?_)
@@ -1742,13 +2013,148 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       injection h1 with h2
       exact h2.symm
   have hrange := bound_range hbd htoInt hlitE
-  exact loopOut_sound bi fuel body tgt _ _ _ _ i _ _ _ _ hL
+  exact loopOut_sound bi fuel body tgt _ _ _ _ _ i _ _ _ _ hL
     (fun σ' _ h' fuel' => HB σ' h' fuel')
     (by rw [List.length_map, entriesVars_length])
     (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
     e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (hLo tf) hW2) hTrip) hrelT
     (CarriedRel.of_entries hrelT _ (carried_lookup _ i body)) lo hInt hloW rfl
-    (trip_lt_of_bound hbd htoInt hlitE) hrange.1 (le_of_lt hrange.2) r env' hloop
+    (trip_lt_of_bound hbd htoInt hlitE) hrange.1 (le_of_lt hrange.2) (fun _ h => by cases h)
+    r env' hloop
+
+/-- A run to a value of a `forFoldRev` with a literal lower bound runs its upper bound to a
+    value. -/
+theorem forFoldRev_hi_val (bi : Builtins) (fuel : Nat) (i : String) (lo : Int)
+    (hi body : ImpExpr) {env env' : Env} {r : Value}
+    (hrun : (denote' bi fuel (.forFoldRev i (.lit (.int lo)) hi body)).run env =
+      (.val r, env')) :
+    ∃ hv e1, (denote' bi fuel hi).run env = (.val hv, e1) := by
+  simp only [denote', StateT.run, bind, StateT.bind, pure, StateT.pure, Value.ofLit] at hrun
+  rcases hh : denote' bi fuel hi env with ⟨o1, e1⟩
+  rw [hh] at hrun
+  cases o1 with
+  | val v => exact ⟨v, e1, hh⟩
+  | _ => cases hrun
+
+/-- A run to a value of a `forFoldRev` with a literal lower bound, whose upper bound runs to
+    an encoded value, is a run of the reverse loop on the bound `NfTy.toInt?` reads. -/
+theorem forFoldRev_enc_run (bi : Builtins) (fuel : Nat) (i : String) (lo : Int)
+    (hi body : ImpExpr) {env e1 env' : Env} {r : Value} {t : NfTy} {x : t.denote}
+    (hh : (denote' bi fuel hi).run env = (.val (enc t x), e1))
+    (hrun : (denote' bi fuel (.forFoldRev i (.lit (.int lo)) hi body)).run env =
+      (.val r, env')) :
+    ∃ h, NfTy.toInt? t x = some h ∧
+      (_root_.Hax.denoteForLoopRev' bi fuel i lo h body).run e1 = (.val r, env') := by
+  simp only [denote', StateT.run, bind, StateT.bind, pure, StateT.pure, Value.ofLit] at hh hrun
+  rw [hh] at hrun
+  cases t <;> simp only [enc] at hrun
+  all_goals first
+    | exact ⟨_, rfl, hrun⟩
+    | cases hrun
+
+/-- **A reverse counted loop is sound**, when the front is sound for its body: the counter
+    of trip `k` is `lo + (trip - 1 - k)`, from the word `trip - 1` bound before the loop. -/
+theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (i : String) (lo : Int) (hi body : ImpExpr)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.forFoldRev i (.lit (.int lo)) hi body) = some o)
+    (HB : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
+      impToNF sigOf none σ' body = some o' → ∀ fuel', Sound bi fuel' body σ' o') :
+    Sound bi fuel (.forFoldRev i (.lit (.int lo)) hi body) σ o := by
+  simp only [impToNF, Option.bind_eq_some_iff] at h
+  obtain ⟨oHi, hHi, hL⟩ := h
+  split at hL
+  case isFalse => cases hL
+  rename_i hbd
+  intro env V r env' hrel hrun tf
+  obtain ⟨hv, e1, hh⟩ := forFoldRev_hi_val bi fuel i lo hi body hrun
+  have he1 : e1 = env := by
+    have := atomOut_env bi fuel _ hi hHi env
+    rw [hh] at this; exact this
+  subst he1
+  have hrelLo : EnvRel (bind1 σ (.ilit .int lo) .nil).σ e1
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo V) :=
+    hrel.mapV (fun v => Var.there v) fun _ _ => rfl
+  have hLo : ∀ tf', PDen bi tf' (bind1 σ (.ilit .int lo) .nil).pre V =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo V) := fun tf' =>
+    (PDen_bind1 bi tf' σ (.ilit .int lo) .nil V).trans rfl
+  have hHiS := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := hHiS tf
+  obtain ⟨hInt, htoInt, hloop⟩ := forFoldRev_enc_run bi fuel i lo hi body hh hrun
+  have hloW : (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res).lookup W2 = lo :=
+    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ oHi.pre _ _ _
+      hW2).trans rfl
+  have hargsT : Expr.lookupArgs (HVector.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res)
+      (HVector.cons oHi.res .nil)) W2 =
+      HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) lo
+        (HVector.cons (t := oHi.t) (oHi.res.lookup W2) .nil) := by
+    show HVector.cons ((oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res).lookup W2)
+      (HVector.cons (oHi.res.lookup W2) .nil) = _
+    rw [hloW]
+    rfl
+  have hTrip : PDen bi tf (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).pre W2 =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat) W2) := by
+    refine (PDen_bind1 bi tf _ (.trip oHi.t) _ W2).trans ?_
+    refine (congrArg (fun a => Option.map _ (nfDenoteOp (tableOf bi) (.trip oHi.t) a))
+      hargsT).trans ?_
+    show Option.map _ ((NfTy.toInt? oHi.t (oHi.res.lookup W2)).map
+      fun hi => BitVec.ofNat 64 (hi - lo).toNat) = _
+    rw [htoInt]
+    rfl
+  have hrelT : EnvRel (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).σ e1
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat) W2) :=
+    hrel2.mapV (fun v => Var.there v) fun _ _ => rfl
+  -- the word `trip - 1`
+  have hOne : PDen bi tf (bind1 (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).σ
+      (.ilit (.word 64) 1) .nil).pre
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat) W2) =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
+        (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+          (BitVec.ofNat 64 (hInt - lo).toNat) W2)) :=
+    (PDen_bind1 bi tf _ (.ilit (.word 64) 1) .nil _).trans rfl
+  have hSub : PDen bi tf (bind1 (bind1 (bind1 oHi.σ (.trip oHi.t)
+      (.cons (oHi.pre.wk (bind1 σ (.ilit .int lo) .nil).res) (.cons oHi.res .nil))).σ
+      (.ilit (.word 64) 1) .nil).σ (.bin .sub 64)
+      (.cons (Var.there Var.here) (.cons Var.here .nil))).pre
+      (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
+        (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+          (BitVec.ofNat 64 (hInt - lo).toNat) W2)) =
+      some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat - 1)
+        (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
+          (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+            (BitVec.ofNat 64 (hInt - lo).toNat) W2))) :=
+    (PDen_bind1 bi tf _ (.bin .sub 64) _ _).trans rfl
+  have hrelM := (hrelT.mapV (fun v => Var.there (s := NfTy.word 64) v) fun _ _ => rfl).mapV
+    (fun v => Var.there (s := NfTy.word 64) v)
+    (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+        (BitVec.ofNat 64 (hInt - lo).toNat - 1)
+        (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
+          (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
+            (BitVec.ofNat 64 (hInt - lo).toNat) W2))) fun _ _ => rfl
+  have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
+    fun n hn => by
+      subst hn
+      rw [lit_run] at hh
+      have h1 := (Prod.mk.inj hh).1
+      injection h1 with h2
+      exact h2.symm
+  have hrange := bound_range hbd htoInt hlitE
+  exact loopOut_sound bi fuel body tgt _ _ _ _ _ i _ _ _ _ hL
+    (fun σ' _ h' fuel' => HB σ' h' fuel')
+    (by rw [List.length_map, entriesVars_length])
+    (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
+    e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (PDen_append_some bi tf
+      (PDen_append_some bi tf (hLo tf) hW2) hTrip) hOne) hSub) hrelM
+    (CarriedRel.of_entries hrelM _ (carried_lookup _ i body)) lo hInt hloW rfl
+    (trip_lt_of_bound hbd htoInt hlitE) hrange.1 (le_of_lt hrange.2)
+    (fun _ hm => by cases hm; rfl) r env' hloop
 
 /-! ## 10b. The conditional -/
 
@@ -2003,6 +2409,16 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
         cases l with
         | int n =>
             exact forFold_sound bi sigOf fuel tgt i n hi body σ h
+              fun σ' _ h' fuel' => ihb none σ' h' fuel'
+        | _ => simp [impToNF] at h
+    | _ => simp [impToNF] at h
+  case forFoldRev i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h fuel
+    cases lo with
+    | lit l =>
+        cases l with
+        | int n =>
+            exact forFoldRev_sound bi sigOf fuel tgt i n hi body σ h
               fun σ' _ h' fuel' => ihb none σ' h' fuel'
         | _ => simp [impToNF] at h
     | _ => simp [impToNF] at h

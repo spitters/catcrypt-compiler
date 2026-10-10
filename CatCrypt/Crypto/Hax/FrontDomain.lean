@@ -103,7 +103,7 @@ def tyName : NfTy → String
 /-- **A construct `impToNF` does not accept.** -/
 inductive Refusal where
   /-- An expression whose constructor has no arm in `impToNF`: a closure, a projection, a
-      `match`, a borrow, an exit, or a loop other than `forFold`. -/
+      `match`, a borrow, an exit, or a loop other than `forFold` and `forFoldRev`. -/
   | construct (head : String)
   /-- A name the environment of names does not bind. -/
   | unbound (x : String)
@@ -113,7 +113,7 @@ inductive Refusal where
   | call (f : String) (as : List NfTy)
   /-- A component of a tuple or an upper bound of a loop that is not a name or a literal. -/
   | operand (head : String)
-  /-- A `forFold` whose lower bound is not an integer literal. -/
+  /-- A `forFold` or `forFoldRev` whose lower bound is not an integer literal. -/
   | loopLower (head : String)
   /-- A `forFold` whose bounds pass neither `boundOk` nor `litBoundOk`, with the type of the
       upper bound. -/
@@ -239,16 +239,15 @@ def carriedMiss {Δ : Ctxt nfDialect} (σ : NfEnv Δ) : List String → List NfT
     unbound or at another type. -/
 def loopE {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nfDialect Γ Γ₃)
     (σ₃ : NfEnv Γ₃)
-    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64)) (i : String) (xs : List String)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
     (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
     Except Refusal (Out Γ) :=
   let σB : NfEnv (cs ++ NfTy.word 64 :: Γ₃) :=
     loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp (d := nfDialect) cs v.there
-  let oC := bind1N (some i) σB .ctr
-    (.cons (Var.shiftApp cs (Var.there loV))
-      (.cons (Var.shiftApp (d := nfDialect) cs (Var.here (Γ := Γ₃))) .nil))
-  (rec ((i, ⟨NfTy.word 64, oC.res⟩) :: oC.σ)).bind fun ob =>
+  let oC := ctrOut cs i σB loV rev
+  (rec ((i, ⟨oC.t, oC.res⟩) :: oC.σ)).bind fun ob =>
     orRefuse (.loopCarried (carriedMiss ob.σ xs cs)) <| (varsAt ob.σ xs cs).map fun rets =>
       let oU := bind1N tgt (loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp cs v)
         .constUnit .nil
@@ -258,11 +257,12 @@ def loopE {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String) (pre₀ : NFPre nfDi
 
 theorem toOption_loopE {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
     (pre₀ : NFPre nfDialect Γ Γ₃) (σ₃ : NfEnv Γ₃)
-    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64)) (i : String) (xs : List String)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
     (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
-    (loopE tgt pre₀ σ₃ loV tripV i xs cs inits rec).toOption =
-      loopOut tgt pre₀ σ₃ loV tripV i xs cs inits fun σ => (rec σ).toOption := by
+    (loopE tgt pre₀ σ₃ loV tripV rev i xs cs inits rec).toOption =
+      loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits fun σ => (rec σ).toOption := by
   simp only [loopE, loopOut, toOption_bind, toOption_orRefuse]
 
 /-- `condOut` with the refusal: that of the first arm, then that of the second, then the
@@ -322,8 +322,21 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
           let W := carried oT.σ i body
           loopE tgt ((oLo.pre.append oHi.pre).append oT.pre) oT.σ
             (oT.pre.wk (oHi.pre.wk oLo.res))
-            oT.res i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
+            oT.res none i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
             (fun σB => frontOut sigOf none σB body)
+        else .error (.loopBound oHi.t)
+  | tgt, _, σ, .forFoldRev i (.lit (.int lo)) hi body =>
+      let oLo := bind1 σ (.ilit .int lo) .nil
+      (atomE oLo.σ hi).bind fun oHi =>
+        if boundOk lo oHi.t || litBoundOk lo hi then
+          let oT := bind1 oHi.σ (.trip oHi.t) (.cons (oHi.pre.wk oLo.res) (.cons oHi.res .nil))
+          let oOne := bind1 oT.σ (.ilit (.word 64) 1) .nil
+          let oM := bind1 oOne.σ (.bin .sub 64) (.cons (oOne.pre.wk oT.res) (.cons oOne.res .nil))
+          let W := carried oM.σ i body
+          loopE tgt ((((oLo.pre.append oHi.pre).append oT.pre).append oOne.pre).append oM.pre)
+            oM.σ (oM.pre.wk (oOne.pre.wk (oT.pre.wk (oHi.pre.wk oLo.res))))
+            (oM.pre.wk (oOne.pre.wk oT.res)) (some oM.res) i (W.map (·.1)) (entriesVars W).1
+            (entriesVars W).2 (fun σB => frontOut sigOf none σB body)
         else .error (.loopBound oHi.t)
   | _, _, σ, .ifThenElse c a b => (frontOut sigOf none σ c).bind fun oc =>
       if h : oc.t = NfTy.bit then
@@ -332,6 +345,7 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
           (frontOut sigOf none oc.σ a) (frontOut sigOf none oc.σ b)
       else .error (.condType oc.t)
   | _, _, _, .forFold _ lo _ _ => .error (.loopLower (exprHead lo))
+  | _, _, _, .forFoldRev _ lo _ _ => .error (.loopLower (exprHead lo))
   | _, _, _, e => .error (.construct (exprHead e))
 
 /-- `impArgsNF` with the refusal. -/
@@ -401,7 +415,24 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
         congr 1
         funext oHi
         split
-        · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _).trans ?_
+        · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
+          congr 1
+          funext Δ σB
+          exact ihb _ _
+        · rfl
+      | _ => rfl
+    | _ => rfl
+  case forFoldRev i lo hi body _ _ ihb =>
+    intro tgt Γ σ
+    cases lo with
+    | lit l =>
+      cases l with
+      | int n =>
+        simp only [frontOut, impToNF, toOption_bind, atomE, toOption_orRefuse]
+        congr 1
+        funext oHi
+        split
+        · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
           congr 1
           funext Δ σB
           exact ihb _ _

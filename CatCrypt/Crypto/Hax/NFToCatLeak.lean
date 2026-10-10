@@ -704,6 +704,16 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
             rw [ctLeak_quiet _ W (by simp [cstE, catKind, opVT_none hP])]
             rfl
       · cases h
+  | bin o w =>
+      intro args res h
+      rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+      change binRes? o w (σ a) (σ b) = some res at h
+      unfold binRes? at h
+      split at h
+      · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
+        rw [resLeak_quiet W res (withVar2_quiet hP (fun _ _ _ hk => binChain_quiet hP hk) h)]
+        rfl
+      · cases h
   | _ =>
       intro args res h
       cases h

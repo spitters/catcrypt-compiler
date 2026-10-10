@@ -25,8 +25,9 @@ read variables: `pinAll` binds each literal among the readings of a result, of a
 of the seeds by `bvConst` in front of the return or the loop.
 
 The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
-`array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)` and the loop operations
-`ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
+`array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)`, the subtraction
+`bin .sub 64` of `64`-bit words (`binRes?`, by `binChain`), which computes the counter of a
+reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
 comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
@@ -41,7 +42,8 @@ the literal `hi`.
   source values, and the readings of a context.
 * `scalarRes?`, `binChain`, `rotChain`, `unChain`, `cmpChain` — the translation of the
   scalar table on `64`-bit words.
-* `catCallRd`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of an operation,
+* `catCallRd`, `binRes?`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of a
+  word subtraction, of an operation,
   of the bindings of a translated operation and of a program.
 * `pinAll` — the `bvConst` bindings of the literals among a vector of readings, in front of
   a program on their variables.
@@ -711,14 +713,24 @@ def tripRes {Δ : Ctxt catCryptDialect} : Rd Δ (.word 64) → OpRes Δ (.word 6
   | .var w => .rd (.var w)
   | .lit k _ => .expr (cstE (BitVec.ofNat 64 k))
 
+/-- The translation of a binary word operation of `nfDialect` on two readings: the
+    subtraction of `64`-bit words by `binChain`, on word variables (`withVar2`); `none` on
+    every other operation. -/
+def binRes? {Δ : Ctxt catCryptDialect} (o : NfBinOp) (w : Nat) (a b : Rd Δ (.word w)) :
+    Option (OpRes Δ (.word w)) :=
+  if h : o = .sub ∧ w = 64 then
+    h.2 ▸ withVar2 (.word 64) (.word 64) (h.2 ▸ a) (h.2 ▸ b) fun x y => binChain .sub 64 x y
+  else none
+
 /-- **The translation of an operation** of the fragment on the readings `σ` of its
     arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading;
-    `ctr` and `trip` on a lower bound that reads as the literal `0` as the reading of the
-    index and of the upper bound. -/
+    the subtraction of `64`-bit words by `binRes?`; `ctr` and `trip` on a lower bound that
+    reads as the literal `0` as the reading of the index and of the upper bound. -/
 def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (OpRes Δ op.ret)
   | .named _ op, args => catOp σ op args
   | .call f as r, args => catCallRd f as r (σ.rds args)
+  | .bin o w, args => binRes? o w (σ args.head) (σ args.tail.head)
   | .ilit t v, _ =>
       if ht : ImpToNF.hax64NFWordTy t = true ∧ 0 ≤ v ∧ v < 2 ^ 64 then
         some (.rd (.lit v.toNat ht.1))
@@ -1954,6 +1966,33 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
             obtain rfl := Option.some.inj hy
             change BitVec.ofNat 64 (((k : Int) - 0)).toNat = BitVec.ofNat 64 k
             simp only [sub_zero, Int.toNat_natCast]
+      · cases h
+  | bin o w =>
+      intro args res y h hy
+      rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+      change binRes? o w (σ a) (σ b) = some res at h
+      unfold binRes? at h
+      split at h
+      · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
+        change some (@HSub.hSub (BitVec 64) (BitVec 64) (BitVec 64) _ (a.lookup V)
+          (b.lookup V)) = some y at hy
+        obtain rfl := Option.some.inj hy
+        refine withVar2_sound W (hag _ a) (hag _ b) _ _ h ?_
+        intro Δ' W' x z res' hk ha hb
+        have ha' : ((a.lookup V : BitVec 64).toNat : Int) = ((x.lookup W').toNat : Int) := by
+          change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at ha
+          exact _root_.Hax.Value.int.inj ha
+        have hb' : ((b.lookup V : BitVec 64).toNat : Int) = ((z.lookup W').toNat : Int) := by
+          change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at hb
+          exact _root_.Hax.Value.int.inj hb
+        have hr := binChain_rel W' .sub (Or.inr (Or.inr (Or.inr rfl))) (by simp)
+          ⟨by simp, by simp⟩ x z hk rfl
+        convert hr using 1
+        apply BitVec.eq_of_toNat_eq
+        have h1 := (a.lookup V : BitVec 64).isLt
+        have h2 := (b.lookup V : BitVec 64).isLt
+        simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
+        omega
       · cases h
   | _ =>
       intro args res y h hy
