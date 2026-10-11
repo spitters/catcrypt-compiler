@@ -394,9 +394,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgRel)
 /-- **The relation at entry.** At program counter `0`, a name-keyed state and an address
     state are related when they agree off the frame words and on the flags, every frame-word
     name holds its frame word, every general-purpose name of the address state has width
-    `64`, every array holds the words at its base, every register whose frame word is the
-    pointer of an array holds the base of the array, and the entry-held frame words hold their
-    bases. -/
+    `64`, every array holds the words at its base, every register whose save into its frame
+    word saves the pointer of an array holds the base of the array, and the entry-held frame
+    words hold their bases. -/
 theorem imgRel_entry {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
     {s : LstateMF} {sa : LstateA} {zf : Bool} (hpc : sa.reg.lpc = 0)
@@ -407,12 +407,13 @@ theorem imgRel_entry {frame : String → Option (BitVec 64)}
     (hwid : ∀ r, gpOk r = true → (sa.reg.lvm r).1 = 64)
     (hcells : ∀ q A n, slotArr q = some (A, n) →
       s.prog.base.getArr A 64 n = some (fun i => read64 sa.mem (cellAt (base A) i.val)))
-    (hptr : ∀ R A n, slotArr (slotOfReg R) = some (A, n) → sa.reg.getW R 64 = some (base A))
+    (hptr : ∀ k R A n, ImageAddrSim.SaveAt body k R → slotArr (slotOfReg R) = some (A, n) →
+      sa.reg.getW R 64 = some (base A))
     (hheld : ImageAddrSim.HeldAt frame slotArr base sa.mem) :
     ImgRel frame slotArr base body s sa zf := by
   refine ⟨by rw [hpc, hspc], hregs, hslots, hz, hc, ho, hwid,
     fun q A n hq => ⟨_, hcells q A n hq, fun j hj => rfl⟩,
-    fun k R A n a _ hA _ => ⟨fun hk => by omega, fun _ => hptr R A n hA⟩,
+    fun k R A n a hs hA _ => ⟨fun hk => by omega, fun _ => hptr k R A n hs hA⟩,
     fun b q a A n h => (by
       rw [hpc, CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage.reloadOf_zero] at h
       cases h), hheld⟩

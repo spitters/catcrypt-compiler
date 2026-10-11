@@ -917,13 +917,14 @@ abbrev cellEntry (σ : AbiLayout) (body : Lcmd) (fn : String) (sa : AState) : Ls
 /-- **The trace of the virtual body of the cell route.** Let the folded chain `C2` pass
     `cellRouteB` against the printed body, the cell names pass `cellNamesOkB`, and `C2` be
     the cell fold of a chain `C` that runs from the state `afterArgs` behind the copies of
-    the parameter registers. Every terminating traced run of the virtual body
-    `cellVirt σ nm C2 fuse` from `cellEntry` emits `cellT` of the events of `C` from
-    `afterArgs`. -/
+    the parameter registers. At a machine state with the stack parameters at entry, every
+    terminating traced run of the virtual body `cellVirt σ nm C2 fuse` from `cellEntry` emits
+    `cellT` of the events of `C` from `afterArgs`. -/
 theorem cellVirt_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {outs : List String} {C C2 : List LinstrRM} {fuse : Bool}
     (hg : cellRouteB σ nm body outs C2 fuse = true) (hN : cellNamesOkB σ body = true)
-    (hfold : cellFold (cellArrs σ) [] C = some C2) (sa : AState) (fn : String)
+    (hfold : cellFold (cellArrs σ) [] C = some C2) (sa : AState) (hst : σ.StackIn sa)
+    (fn : String)
     {bz : LstateM × Bool} (hrun : runStraightF C (afterArgs σ body sa) false = some bz)
     {ℓ : List CTLeak}
     (hr : FRun (singletonProgM fn (cellVirt σ nm C2 fuse)) (cellEntry σ body fn sa) ℓ) :
@@ -946,13 +947,10 @@ theorem cellVirt_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ DecodePrinted.phys (nm a.reg) = a.reg
-      ∧ frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa) (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
+  have hfrR : ImageAddrRoute.ArgSrc σ nm
+      (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa :=
+    (E.argSrc hst).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
   have hpr0 := ImageAddrRoute.argBind_entryV (nm := nm) (sa := sa) (un := fun x => x) hfrA
     E.argG hfrR false
   have hpr1 := runStraightF_argBind_empty (R := cellArrs σ) hpr0
@@ -991,8 +989,7 @@ theorem cellVirt_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         · rcases List.mem_append.mp hx with hx | hx
           · exact e64_of_abiEntryM habiC x hx
           · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-            obtain ⟨h1, -, h3⟩ := hfrR a ha
-            simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+            exact congrArg (·.1) (ImageAddrRoute.entryV_srcOf (un := fun x => x) hfrR ha)
         · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
           simp only [emptyArrs, entryV, frameC, hc]
       obtain ⟨fuel, t, hrun0⟩ := hfr0
@@ -1060,7 +1057,9 @@ theorem straightCell_memFCT {σ : AbiLayout} {nm : String → String} {body : Lc
       (StraightEntryPub σ L (cellEntry σ body fn)) := by
   rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, hpub, rfl, rfl⟩ r₁ r₂
   obtain ⟨⟨bz₁, h₁⟩, ⟨bz₂, h₂⟩, he⟩ := hC sa₁ sa₂ hpub
-  rw [cellVirt_leak hg hN hfold sa₁ fn h₁ r₁, cellVirt_leak hg hN hfold sa₂ fn h₂ r₂, he]
+  obtain ⟨-, -, -, -, -, hr₁, hr₂, -⟩ := hpub
+  rw [cellVirt_leak hg hN hfold sa₁ hr₁.stackIn fn h₁ r₁,
+    cellVirt_leak hg hN hfold sa₂ hr₂.stackIn fn h₂ r₂, he]
 
 /-- **The check on traced runs of the cell route**: `ownedCheckML` observing `outs` on the
     virtual body `cellVirt σ nm C2 fuse` and the image of the cell body of the printed body,
@@ -1133,6 +1132,7 @@ theorem cellVirt_checked_run {σ : AbiLayout} {nm : String → String} {body : L
       (cellEntry σ body fn sa) = some t := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hidx⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩, hlop⟩, hfuse⟩ := hg
+  have hst := hreg.stackIn
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   obtain ⟨b, z⟩ := bz
@@ -1149,13 +1149,10 @@ theorem cellVirt_checked_run {σ : AbiLayout} {nm : String → String} {body : L
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ DecodePrinted.phys (nm a.reg) = a.reg
-      ∧ frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa) (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
+  have hfrR : ImageAddrRoute.ArgSrc σ nm
+      (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa :=
+    (E.argSrc hst).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
   have hpr0 := ImageAddrRoute.argBind_entryV (nm := nm) (sa := sa) (un := fun x => x) hfrA
     E.argG hfrR false
   have hpr1 := runStraightF_argBind_empty (R := cellArrs σ) hpr0
@@ -1189,8 +1186,7 @@ theorem cellVirt_checked_run {σ : AbiLayout} {nm : String → String} {body : L
           · rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habiC x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+              exact congrArg (·.1) (ImageAddrRoute.entryV_srcOf (un := fun x => x) hfrR ha)
           · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
             simp only [emptyArrs, entryV, frameC, hc]
         obtain ⟨f2, t2, -, ht2, -⟩ := fuseMulHi_lsemFuelMemF_pre hfuse.1 fn _ _ rfl hE _ hrun'
@@ -1305,11 +1301,21 @@ theorem cellRoute_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     show frameIn body _ q = _
     unfold frameIn
     rw [if_pos hq]
+  have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrs σ) r = none := by
+    intro r hr
+    cases hc : cellIdx (cellArrs σ) r with
+    | none => rfl
+    | some _ =>
+        have := N.gp r (by rw [hc]; rfl)
+        rw [hr] at this
+        cases this
   have hrel0 := imgRel_entryV (nm := nm)
     (fr := frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) (sa := sa)
     (body := cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
     (fn := fn) (ren := fun x => x) (un := fun x => x)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl
+    ((E.argSrc hreg.stackIn).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg]))
+    (fun _ _ hs => cellBody_save hent hs) fun _ _ => rfl
   exact ⟨hsep, hF, hgate', hfr', imgRel_cellArrs (R := cellArrs σ) hrel0⟩
 
 /-- The slot map of the cell route: the slot map of the layout with the cell arrays at

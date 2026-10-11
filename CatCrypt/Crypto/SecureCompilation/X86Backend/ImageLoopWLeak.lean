@@ -726,8 +726,9 @@ abbrev routeEntryW (σ : AbiLayout) (body : Lcmd) (ps : List (String × String))
 /-- **The trace of the virtual body of the route with carry chains and cells.** Let the
     printed body, the node `seeds ++ loop`, the renaming `ps`, the fusion flag and the output
     array pass `routeBW` with the cell fold `L2` of the renamed loop, the seeds emit no event
-    and the loop have no compile-time array operand. For every terminating traced run of the
-    node from `routeEntry` with trace `ℓ`, the renamed loop has a terminating traced run from
+    and the loop have no compile-time array operand. At a machine state with the stack
+    parameters at entry, for every terminating traced run of the node from `routeEntry` with
+    trace `ℓ`, the renamed loop has a terminating traced run from
     a state `sX` at program counter `0` with trace `ℓ` with renamed array bases, and the
     virtual body `virtBW` has a terminating traced run from `routeEntryW` whose trace is the
     trace `GTr` computed along the run of the renamed loop by `foldG L2`. -/
@@ -737,7 +738,8 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (hg : routeBW σ nm body seeds loop ps fuse out m = true)
     (hfold : cellFoldLR (cellArrsR σ ps) [] (loop.map (renRM (renOf ps))) = some L2)
     (hqs : ∀ i ∈ seeds, ∀ r, instrLeakB r i = []) (ha : ∀ i ∈ loop, NoCArr i.1)
-    (sa : AState) (fn : String) (fuel : Nat) (t : LstateMF) (ℓ : List CTLeak)
+    (sa : AState) (hst : σ.StackIn sa) (fn : String) (fuel : Nat) (t : LstateMF)
+    (ℓ : List CTLeak)
     (hrun : lsemFuelMemFLeak (singletonProgM fn (seeds ++ loop)) fuel
       (routeEntry σ body ps fn sa) = some (t, ℓ)) :
     ∃ (sX tX : LstateMF) (fX : Nat) (g : List CTLeak) (fuel' : Nat) (t' : LstateMF),
@@ -770,14 +772,11 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ frameR σ sa ps body (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hS := E.argSrc hst
+  have hfrR : ArgSrc σ nm (frameR σ sa ps body) sa :=
+    hS.congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds)
       (entryV σ (frameE body sa) sa (unren ps)) false = some (b2, z2) →
       ∀ r, r ∈ loopNames loop → b2.larr (renOf ps r) = b2.larr r := by
@@ -844,7 +843,7 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         = ℓ.map (renEv (renOf ps)) := congrArg Prod.snd hqe
     rw [straightLeakFF_quiet _ hpreQ] at h2
     exact h2
-  obtain ⟨b1C, hb1C, hC1⟩ := cellRel_pre E N hunr hkeep (fun p hp => by
+  obtain ⟨b1C, hb1C, hC1⟩ := cellRel_pre E hS N hunr hkeep (fun p hp => by
     have := List.all_eq_true.mp hpsC p hp
     simpa using this) hb1run
   have hCF : CellRelF (cellArrsR σ ps) []
@@ -895,8 +894,7 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
           · rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habiC x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, entryA, h1, if_true]
+              exact congrArg (·.1) (entryV_srcOf (un := unren ps) hfrR ha)
           · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
             simp only [emptyArrs, entryV, frameC, hc]
         exact fuseMulHi_lsemFuelMemFLeak_pre hfuse.1 fn (routeEntryW σ body ps fn sa) rfl hE _
@@ -904,12 +902,14 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   obtain ⟨fuel', t', hfin⟩ := hfin
   exact ⟨_, ql.1, f, g, fuel', t', rfl, rfl, by rw [hql, ← hT], hG, hfin⟩
 
-/-- Two entry states of the virtual body `virtBW` at machine states whose valuations, as
-    `σ` reads them off, agree on the positions `L` marks public. -/
+/-- Two entry states of the virtual body `virtBW` at machine states with the stack parameters
+    at entry whose valuations, as `σ` reads them off, agree on the positions `L` marks
+    public. -/
 def RouteEntryPubW (σ : AbiLayout) (body : Lcmd) (ps : List (String × String)) (fn : String)
     {Γ : Ctxt jasminDialect} (L : Labels Γ) (s₁ s₂ : LstateMF) : Prop :=
   ∃ (sa₁ sa₂ : AState) (V₁ V₂ : Ctxt.Valuation Γ), AbiValOf σ sa₁ V₁ ∧ AbiValOf σ sa₂ V₂
-    ∧ PubEqV L V₁ V₂ ∧ s₁ = routeEntryW σ body ps fn sa₁ ∧ s₂ = routeEntryW σ body ps fn sa₂
+    ∧ PubEqV L V₁ V₂ ∧ σ.StackIn sa₁ ∧ σ.StackIn sa₂ ∧ s₁ = routeEntryW σ body ps fn sa₁
+    ∧ s₂ = routeEntryW σ body ps fn sa₂
 
 /-- **Constant time of the virtual body of the route with carry chains and cells from the
     source.** Let the single-loop program pass `loopCertB` with an update in `ArrMemN` with
@@ -940,11 +940,11 @@ theorem virtBW_memFCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Nat}
       (ComL.ctLeak (jLeakModel Pj) (singleLoop update count init invs))) :
     MemFCT (singletonProgM fn (virtBW σ nm seeds ps L2 fuse))
       (RouteEntryPubW σ body ps fn L) := by
-  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, rfl, rfl⟩ r₁ r₂
+  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, hs₁, hs₂, rfl, rfl⟩ r₁ r₂
   have ha : ∀ i ∈ loop, NoCArr i.1 := fun i hi0 =>
     certNode_noCArr update count init invs outArg inArgs abiArgs hexp hcert out c hi hcn i
       (hnode ▸ List.mem_append_right _ hi0)
-  have key : ∀ (sa : AState) (V : Ctxt.Valuation Γ), AbiValOf σ sa V →
+  have key : ∀ (sa : AState) (V : Ctxt.Valuation Γ), AbiValOf σ sa V → σ.StackIn sa →
       ∃ (ℓ : List CTLeak) (sX tX : LstateMF) (fX : Nat) (g : List CTLeak) (fuel' : Nat)
         (t' : LstateMF),
         FRun (singletonProgM fn (certNode update invs out c)) (routeEntry σ body ps fn sa) ℓ
@@ -954,7 +954,7 @@ theorem virtBW_memFCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Nat}
         ∧ GTr (foldG L2) (singletonProgM fn (loop.map (renRM (renOf ps)))) sX g
         ∧ lsemFuelMemFLeak (singletonProgM fn (virtBW σ nm seeds ps L2 fuse)) fuel'
             (routeEntryW σ body ps fn sa) = some (t', g) := by
-    intro sa V hV
+    intro sa V hV hst
     have habi := routeBW_abiEntry hg sa
     obtain ⟨out', c', hi', hc', -, hrun⟩ :=
       singleLoop_export_faithful_abi update count init invs outArg inArgs abiArgs hupd hexp
@@ -971,10 +971,10 @@ theorem virtBW_memFCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Nat}
     have hr0' := hr0
     rw [← hnode] at hr0'
     obtain ⟨sX, tX, fX, g, fuel', t', h1, h2, h3, h4, h5⟩ :=
-      virtBW_gtr hg hfold hqs ha sa fn k r0.1 r0.2 hr0'
+      virtBW_gtr hg hfold hqs ha sa hst fn k r0.1 r0.2 hr0'
     exact ⟨r0.2, sX, tX, fX, g, fuel', t', ⟨k, r0.1, hr0⟩, h1, h2, h3, h4, h5⟩
-  obtain ⟨v₁, x₁, u₁, f₁, g₁, k₁, w₁, hF₁, hfn₁, hpc₁, hx₁, hG₁, hv₁⟩ := key sa₁ V₁ hV₁
-  obtain ⟨v₂, x₂, u₂, f₂, g₂, k₂, w₂, hF₂, hfn₂, hpc₂, hx₂, hG₂, hv₂⟩ := key sa₂ V₂ hV₂
+  obtain ⟨v₁, x₁, u₁, f₁, g₁, k₁, w₁, hF₁, hfn₁, hpc₁, hx₁, hG₁, hv₁⟩ := key sa₁ V₁ hV₁ hs₁
+  obtain ⟨v₂, x₂, u₂, f₂, g₂, k₂, w₂, hF₂, hfn₂, hpc₂, hx₂, hG₂, hv₂⟩ := key sa₂ V₂ hV₂ hs₂
   have hv : v₁ = v₂ := by
     rw [singleLoop_leak_abi Pj update count init invs outArg inArgs abiArgs hupd hexp hcert out
         c hi hcn σ sa₁ V₁ fn _ false hV₁ (routeBW_abiEntry hg sa₁) hF₁,
@@ -1044,6 +1044,14 @@ theorem routeBW_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   have E := entryB_spec hent sa
   have R := renB_spec hren
   have N := cellNamesRB_spec hN
+  have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrsR σ ps) r = none := by
+    intro r hr
+    cases hc : cellIdx (cellArrsR σ ps) r with
+    | none => rfl
+    | some _ =>
+        have := N.gp r (by rw [hc]; rfl)
+        rw [hr] at this
+        cases this
   have hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j :=
     fun j hj => (R.unr j hj).2
   have hun : ∀ q A n, slotArrOf σ nm q = some (A, n) → unren ps (renOf ps A) = A := by
@@ -1115,7 +1123,9 @@ theorem routeBW_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     rw [if_pos hq']
   have hrel0 := imgRel_entryV (nm := nm) (fr := frameR σ sa ps body) (sa := sa)
     (body := cellBody (slotR σ nm ps) body) (fn := fn) (ren := renOf ps) (un := unren ps)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) hunr
+    ((E.argSrc hreg.stackIn).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg]))
+    (fun _ _ hs => cellBody_save hent hs) hunr
   exact ⟨hsep, hF, hgate', hfr', imgRel_cellArrs (R := cellArrsR σ ps) hrel0⟩
 
 /-- **The virtual body of the route halts on checked runs.** Under the hypotheses of
@@ -1134,7 +1144,7 @@ theorem virtBW_checked_run {σ : AbiLayout} {nm : String → String} {body : Lcm
       (routeEntryW σ body ps fn sa) = some t := by
   obtain ⟨fuel, t, hrun⟩ := hrun
   obtain ⟨-, -, -, g, fuel', t', -, -, -, -, h5⟩ :=
-    virtBW_gtr hg hfold hqs ha sa fn fuel t ℓ hrun
+    virtBW_gtr hg hfold hqs ha sa hreg.stackIn fn fuel t ℓ hrun
   have hrunB : lsemFuelMemF (singletonProgM fn (virtBW σ nm seeds ps L2 fuse)) fuel'
       (routeEntryW σ body ps fn sa) = some t' := by
     rw [← lsemFuelMemFLeak_fst, h5]
@@ -1373,7 +1383,8 @@ theorem loop_bytesW_ct_src (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : N
   exact loop_bytesW_ct hg hfold hlk ""
     (virtBW_memFCT Pj update count init invs outArg inArgs abiArgs hupd hexp hcert out c hi hcn
       hg hfold hnode hqs L "" hct) ok hdec sa₁ sa₂ u₁ u₂
-    ⟨⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, rfl, rfl⟩, hreg₁, hreg₂, hrsp, hbases, hk sa₁ V₁ hV₁ hreg₁,
+    ⟨⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, hreg₁.stackIn, hreg₂.stackIn, rfl, rfl⟩, hreg₁, hreg₂,
+      hrsp, hbases, hk sa₁ V₁ hV₁ hreg₁,
       hk sa₂ V₂ hV₂ hreg₂⟩ hb₁ hb₂
 
 end Route

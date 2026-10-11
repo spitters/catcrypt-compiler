@@ -960,7 +960,7 @@ theorem frameSep_of_regions (hrs : rsOK σ rs = true) {sa : AState} (h : σ.Regi
   obtain ⟨g, -, hg, rfl, hj⟩ := regK_region hk
   obtain ⟨a, -, hreg, -, hb⟩ := rsOK_region hrs hg sa
   simp only [Layout.addr, regLay, hb]
-  exact h.2.2 _ hreg j hj o ho1 ho2
+  exact h.2.2.1 _ hreg j hj o ho1 ho2
 
 /-- **`MemSep` from the layout.** Accepted regions at the entry bases, with their pointer
     slots at the stack pointer `sa.regs "%rsp" + sp` inside the frame range of `σ`, satisfy

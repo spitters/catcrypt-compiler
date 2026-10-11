@@ -71,6 +71,16 @@ theorem cellIdx_spec {R : Slots} {q A : String} {j : Nat} (h : cellIdx R q = som
   have hq : q = memName p.1 (8 * j') := by simpa using List.find?_some hj'
   exact ⟨p.2, hp, List.mem_range.mp hm, hq⟩
 
+/-- A slot name `qsave.x` is no cell name. -/
+theorem cellIdx_slotOfReg (R : Slots) (x : String) :
+    cellIdx R (JasminLsemAddrImage.slotOfReg x) = none := by
+  cases h : cellIdx R (JasminLsemAddrImage.slotOfReg x) with
+  | none => rfl
+  | some p =>
+      obtain ⟨n, -, -, he⟩ := cellIdx_spec (A := p.1) (j := p.2) h
+      have := congrArg (fun s : String => s.toList.head?) he
+      simp [JasminLsemAddrImage.slotOfReg, memName] at this
+
 theorem cellIdx_memName {R : Slots} (hD : cellsDistinctB R = true) {p : String × Nat}
     (hp : p ∈ R) {j : Nat} (hj : j < p.2) : cellIdx R (memName p.1 (8 * j)) = some (p.1, j) := by
   cases hc : cellIdx R (memName p.1 (8 * j)) with
@@ -722,6 +732,32 @@ theorem cellRouteB_entryB {σ : AbiLayout} {nm : String → String} {body : Lcmd
   simp only [cellRouteB, Bool.and_eq_true] at h
   exact h.1.1.1.1.1.2
 
+/-- No save of the cell body of a printed body that passes the entry check reads a
+    stack-argument name. -/
+theorem cellBody_save {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    {sl : String → Option (String × Nat)} (hent : entryB σ nm body = true) {k : Nat}
+    {R : String} (hs : ImageAddrSim.SaveAt (cellBody sl body) k R) : abiStackOff? R = none := by
+  obtain ⟨i', hi', hm⟩ := hs
+  rw [ImageAddrCells.cellBody_getElem?] at hi'
+  obtain ⟨i, hi, rfl⟩ := Option.map_eq_some_iff.mp hi'
+  have hb : ImageAddrSim.SaveAt body k R → abiStackOff? R = none :=
+    ImageAddrRoute.entryB_save hent
+  unfold cellMove at hm
+  split at hm
+  · split at hm
+    · simp only [JasminLsemAddrMem.slotMov?, Option.ite_none_right_eq_some, Option.some.injEq,
+        Prod.mk.injEq] at hm
+      obtain ⟨-, -, rfl⟩ := hm
+      exact abiStackOff?_of_ne (by simp [memName])
+    · exact hb ⟨i, hi, hm⟩
+  · split at hm
+    · simp only [JasminLsemAddrMem.slotMov?, Option.ite_none_right_eq_some, Option.some.injEq,
+        Prod.mk.injEq] at hm
+      have := congrArg (fun s : String => s.toList.head?) hm.2.1
+      simp [JasminLsemAddrImage.slotOfReg, memName] at this
+    · exact hb ⟨i, hi, hm⟩
+  · exact hb ⟨i, hi, hm⟩
+
 /-- **The cell route on the decoded bytes.** Let the folded chain `C2` pass `cellRouteB`
     against the printed body `body` with the observed names `outs`, and the cell names of
     `σ` pass `cellNamesOkB`. From every machine state `sa` satisfying `σ.Regions`, a run of
@@ -755,13 +791,10 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ DecodePrinted.phys (nm a.reg) = a.reg
-      ∧ frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa) (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
+  have hfrR : ImageAddrRoute.ArgSrc σ nm
+      (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa :=
+    (E.argSrc hreg.stackIn).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
   have hpr0 := ImageAddrRoute.argBind_entryV (nm := nm) (sa := sa) (un := fun x => x) hfrA E.argG
     hfrR false
   have hB : runStraightF (argBind σ nm ++ C2) (emptyArrs (cellArrs σ)
@@ -786,7 +819,8 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     | true =>
         simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, List.all_eq_true,
           bne_iff_ne, ne_eq] at hfuse
-        have habiC := ImageAddrRoute.entryV_abiEntry (un := fun x => x) (sa := sa) hfrA E.argG fun _ _ => rfl
+        have habiC := ImageAddrRoute.entryV_abiEntry (un := fun x => x) (sa := sa) hfrA E.argG
+          fun _ _ => rfl
         have hE : JasminLsemFuseMulHi.E64 (fuseRegs σ nm ++ cellNames (cellArrs σ))
             (emptyArrs (cellArrs σ)
             (entryV σ (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa
@@ -796,8 +830,7 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
           · rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habiC x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+              exact congrArg (·.1) (ImageAddrRoute.entryV_srcOf (un := fun x => x) hfrR ha)
           · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
             simp only [emptyArrs, entryV, frameC, hc]
         obtain ⟨f2, t2, -, ht2, hag, -, -⟩ :=
@@ -877,7 +910,7 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (fr := frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) (sa := sa)
     (body := cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
     (fn := "") (ren := fun x => x) (un := fun x => x)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl
+    hfrR (fun _ _ hs => cellBody_save hent hs) fun _ _ => rfl
   have hrel := imgRel_cellArrs (R := cellArrs σ) hrel0
   obtain ⟨prog, sa', hdec, hh, hobs⟩ := ImageAddrCells.virt_bytesC
     (base := abiBase (abiReg σ) sa) hck hpr hphys hgate' hsep (cellNoSlotB_spec hns) hF

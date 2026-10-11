@@ -713,7 +713,8 @@ abbrev routeEntry (σ : AbiLayout) (body : Lcmd) (ps : List (String × String)) 
 
 /-- **The trace of the virtual body of the image route.** Let the printed body `body`, the
     node `seeds ++ loop`, the renaming `ps`, the fusion flag `fuse` and the output `out` pass
-    `routeB`, the seeds emit no event and the loop have no compile-time array operand. Every
+    `routeB`, the seeds emit no event and the loop have no compile-time array operand. At a
+    machine state with the stack parameters at entry (`AbiLayout.StackIn`), every
     terminating traced run of the node from `routeEntry` with trace `ℓ` is matched by a
     terminating traced run of the virtual body `virtB` from the same state with trace `ℓ` with
     array bases renamed by `renOf ps`. -/
@@ -721,7 +722,8 @@ theorem virtB_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds loop : List LinstrRM} {ps : List (String × String)} {fuse : Bool} {out : String}
     (hg : routeB σ nm body seeds loop ps fuse out = true)
     (hqs : ∀ i ∈ seeds, ∀ r, instrLeakB r i = []) (ha : ∀ i ∈ loop, NoCArr i.1)
-    (sa : AState) (fn : String) (fuel : Nat) (t : LstateMF) (ℓ : List CTLeak)
+    (sa : AState) (hst : σ.StackIn sa) (fn : String) (fuel : Nat) (t : LstateMF)
+    (ℓ : List CTLeak)
     (hrun : lsemFuelMemFLeak (singletonProgM fn (seeds ++ loop)) fuel
       (routeEntry σ body ps fn sa) = some (t, ℓ)) :
     ∃ fuel' t', lsemFuelMemFLeak (singletonProgM fn (virtB σ nm seeds loop ps fuse)) fuel'
@@ -734,7 +736,8 @@ theorem virtB_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   set fr := frameE body sa with hfrdef
   set b0 := entryV σ fr sa (unren ps) with hb0
   have habi : AbiEntryM σ sa b0 := entryV_abiEntry E.argF E.argG fun j hj => (R.unr j hj).1
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hS := E.argSrc hst
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hb1 : ({ b0 with reg := { b0.reg with lpc := σ.args.length } } : LstateM).setLpc 0
       = b0 := rfl
   have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds) b0 false = some (b2, z2) →
@@ -758,8 +761,7 @@ theorem virtB_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         rcases List.mem_append.mp hx with hx | hx
         · exact e64_of_abiEntryM habi x hx
         · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-          obtain ⟨h1, -, h3⟩ := E.regs a ha
-          simp only [hb0, entryV, h3, entryA, h1, if_true]) f1 _ ht1
+          exact congrArg (·.1) (entryV_srcOf (un := unren ps) hS ha)) f1 _ ht1
       exact ⟨f2, t2, ht2⟩
 
 end Route
@@ -896,8 +898,9 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
     single-loop program pass `loopCertB` with an update in `ArrMemN` with `ComExpOK`, and let
     its certified node be `seeds ++ loop` with seeds that emit no event, passing `routeB`
     against the printed body `body`. Every terminating traced run of the virtual body `virtB`
-    from `routeEntry` at a machine state `sa` emits `loopT` of the source events at the
-    valuation `σ` reads off `sa`, with array bases renamed by `renOf ps`. -/
+    from `routeEntry` at a machine state `sa` with the stack parameters at entry emits `loopT`
+    of the source events at the valuation `σ` reads off `sa`, with array bases renamed by
+    `renOf ps`. -/
 theorem virtB_leak_source (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Nat}
     {invTys : Ctxt jasminDialect}
     (update : Com jasminDialect
@@ -914,8 +917,8 @@ theorem virtB_leak_source (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Na
     (hg : routeB σ nm body seeds loop ps fuse outR = true)
     (hnode : seeds ++ loop = certNode update invs out c)
     (hqs : ∀ i ∈ seeds, ∀ r, instrLeakB r i = [])
-    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (fn : String)
-    {ℓ : List CTLeak}
+    (sa : AState) (hst : σ.StackIn sa) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V)
+    (fn : String) {ℓ : List CTLeak}
     (hr : FRun (singletonProgM fn (virtB σ nm seeds loop ps fuse)) (routeEntry σ body ps fn sa)
       ℓ) :
     ℓ = (loopT Pj (X86Backend.ExportCertFaithful.certTau Γ.length (regName Γ.length) out update
@@ -940,15 +943,17 @@ theorem virtB_leak_source (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Na
     certNode_noCArr update count init invs outArg inArgs abiArgs hexp hcert out c hi hcn i
       (hnode ▸ List.mem_append_right _ hi0)
   rw [← hnode] at hr0
-  obtain ⟨f', t', ht'⟩ := virtB_leak hg hqs ha sa fn k r0.1 r0.2 hr0
+  obtain ⟨f', t', ht'⟩ := virtB_leak hg hqs ha sa hst fn k r0.1 r0.2 hr0
   rw [fRun_unique hr ⟨f', t', ht'⟩, hsrc]
 
-/-- Two entry states of the virtual body of the image route at machine states whose
-    valuations, as `σ` reads them off, agree on the positions `L` marks public. -/
+/-- Two entry states of the virtual body of the image route at machine states with the
+    stack parameters at entry whose valuations, as `σ` reads them off, agree on the positions
+    `L` marks public. -/
 def RouteEntryPub (σ : AbiLayout) (body : Lcmd) (ps : List (String × String)) (fn : String)
     {Γ : Ctxt jasminDialect} (L : Labels Γ) (s₁ s₂ : LstateMF) : Prop :=
   ∃ (sa₁ sa₂ : AState) (V₁ V₂ : Ctxt.Valuation Γ), AbiValOf σ sa₁ V₁ ∧ AbiValOf σ sa₂ V₂
-    ∧ PubEqV L V₁ V₂ ∧ s₁ = routeEntry σ body ps fn sa₁ ∧ s₂ = routeEntry σ body ps fn sa₂
+    ∧ PubEqV L V₁ V₂ ∧ σ.StackIn sa₁ ∧ σ.StackIn sa₂ ∧ s₁ = routeEntry σ body ps fn sa₁
+    ∧ s₂ = routeEntry σ body ps fn sa₂
 
 /-- **Constant time of the virtual body of the image route from the source.** Under the
     hypotheses of `virtB_leak_source`, if the source events of the single-loop program are
@@ -975,11 +980,11 @@ theorem virtB_memFCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w n : Nat}
       (ComL.ctLeak (jLeakModel Pj) (singleLoop update count init invs))) :
     MemFCT (singletonProgM fn (virtB σ nm seeds loop ps fuse))
       (RouteEntryPub σ body ps fn L) := by
-  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, rfl, rfl⟩ r₁ r₂
+  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, V₁, V₂, hV₁, hV₂, hp, hs₁, hs₂, rfl, rfl⟩ r₁ r₂
   rw [virtB_leak_source Pj update count init invs outArg inArgs abiArgs hupd hexp hcert out c
-      hi hcn hg hnode hqs sa₁ V₁ hV₁ fn r₁,
+      hi hcn hg hnode hqs sa₁ hs₁ V₁ hV₁ fn r₁,
     virtB_leak_source Pj update count init invs outArg inArgs abiArgs hupd hexp hcert out c
-      hi hcn hg hnode hqs sa₂ V₂ hV₂ fn r₂, hct V₁ V₂ hp]
+      hi hcn hg hnode hqs sa₂ hs₂ V₂ hV₂ fn r₂, hct V₁ V₂ hp]
 
 end Cert
 

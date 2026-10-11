@@ -740,14 +740,11 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ frameR σ sa ps body (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hS := E.argSrc hreg.stackIn
+  have hfrR : ArgSrc σ nm (frameR σ sa ps body) sa :=
+    hS.congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds)
       (entryV σ (frameE body sa) sa (unren ps)) false = some (b2, z2) →
       ∀ r, r ∈ loopNames loop → b2.larr (renOf ps r) = b2.larr r := by
@@ -773,7 +770,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     · exact movesOf_isLopn _ i hi
   obtain ⟨b1, z1, tX, hb1run, hXrun, rfl⟩ :=
     strip_prefix fn _ _ hpreL hXL.1 _ false rfl fuel' t' hrun'
-  obtain ⟨b1C, hb1C, hC1⟩ := cellRel_pre E N hunr hkeep (fun p hp => by
+  obtain ⟨b1C, hb1C, hC1⟩ := cellRel_pre E hS N hunr hkeep (fun p hp => by
     have := List.all_eq_true.mp hpsC p hp
     simpa using this) hb1run
   have hCF : CellRelF (cellArrsR σ ps) []
@@ -811,8 +808,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
           · rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habiC x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, entryA, h1, if_true]
+              exact congrArg (·.1) (entryV_srcOf (un := unren ps) hfrR ha)
           · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
             simp only [emptyArrs, entryV, frameC, hc]
         obtain ⟨f2, t3, -, ht3, hag, -, -⟩ :=
@@ -896,7 +892,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     rw [if_pos hq']
   have hrel0 := imgRel_entryV (nm := nm) (fr := frameR σ sa ps body) (sa := sa)
     (body := cellBody (slotR σ nm ps) body) (fn := fn) (ren := renOf ps) (un := unren ps)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) hunr
+    hfrR (fun _ _ hs => cellBody_save hent hs) hunr
   have hrel := imgRel_cellArrs (R := cellArrsR σ ps) hrel0
   obtain ⟨prog, sa', hdec, hh, hobs⟩ := virt_bytesC' (base := baseR σ sa ps) hck hpr hphys
     (by rw [hgate', hro']; simp) hsep (cellNoSlotB_spec hns) hF hfr' fn

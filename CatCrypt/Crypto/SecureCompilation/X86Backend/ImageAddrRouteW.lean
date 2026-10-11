@@ -533,7 +533,8 @@ theorem cellRel_entryR {σ : AbiLayout} {ps : List (String × String)} {body : L
     the seeds are kept instructions and no source or target of the renaming is a cell name. -/
 theorem cellRel_pre {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds : List LinstrRM} {ps : List (String × String)} {sa : AState}
-    (E : EntryFacts σ nm (frameE body sa)) (N : CellNamesR (cellArrsR σ ps) σ body)
+    (E : EntryFacts σ nm (frameE body sa)) (hS : ArgSrc σ nm (frameE body sa) sa)
+    (N : CellNamesR (cellArrsR σ ps) σ body)
     (hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j)
     (hkeep : seeds.all (keepB (cellArrsR σ ps)) = true)
     (hps : ∀ p ∈ ps, isCellB (cellArrsR σ ps) p.1 = false ∧ isCellB (cellArrsR σ ps) p.2 = false)
@@ -554,14 +555,10 @@ theorem cellRel_pre {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ frameR σ sa ps body (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hfrR : ArgSrc σ nm (frameR σ sa ps body) sa :=
+    hS.congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, ImageStraightCells.cellIdx_slotOfReg])
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hpr0C := runStraightF_argBind_empty (R := cellArrsR σ ps)
     (argBind_entryV (nm := nm) (sa := sa) (un := unren ps) hfrA E.argG hfrR false)
   rw [List.append_assoc, runStraightF_append, hpr0, Option.bind_some, runStraightF_append] at h
@@ -625,7 +622,8 @@ theorem subCells_entry {σ : AbiLayout} {ps : List (String × String)} {body : L
 theorem subCells_prefix {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {seeds : List LinstrRM} {ps : List (String × String)} {sa : AState} {R : Slots}
     (hsub : ∀ p ∈ R, p ∈ cellArrsR σ ps)
-    (E : EntryFacts σ nm (frameE body sa)) (N : CellNamesR R σ body)
+    (E : EntryFacts σ nm (frameE body sa)) (hS : ArgSrc σ nm (frameE body sa) sa)
+    (N : CellNamesR R σ body)
     (hunr : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j)
     (hkeep : seeds.all (keepB R) = true)
     (hps : ∀ p ∈ ps, isCellB R p.1 = false ∧ isCellB R p.2 = false)
@@ -648,14 +646,10 @@ theorem subCells_prefix {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ frameC (baseR σ sa ps) R (frameE body sa) (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hfrR : ArgSrc σ nm (frameC (baseR σ sa ps) R (frameE body sa)) sa :=
+    hS.congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, ImageStraightCells.cellIdx_slotOfReg])
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hpr0C := runStraightF_argBind_empty (R := R)
     (argBind_entryV (nm := nm) (sa := sa) (un := unren ps) hfrA E.argG hfrR false)
   rw [List.append_assoc, runStraightF_append, hpr0, Option.bind_some, runStraightF_append] at h

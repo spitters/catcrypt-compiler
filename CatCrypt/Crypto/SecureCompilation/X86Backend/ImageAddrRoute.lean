@@ -29,7 +29,10 @@ words at the frame names.
 
 ## Main definitions
 
-* `argPairs`, `argBind`: the copies of the parameter registers into the argument names.
+* `srcOf`, `argPairs`, `argBind`: the copies of the parameter registers, or of the caller
+  slots `qsave.RSP+off` of stack parameters, into the argument names.
+* `ArgSrc`: the sources of the parameters at entry.
+* `stackArgB`, `stackReadFreeB`: the stack clauses of the entry check.
 * `slotArrOf`: the array, with its length, whose pointer a frame slot holds.
 * `synthRen`: the renaming of the loop-carried names synthesised from the virtual body and
   the image.
@@ -47,6 +50,10 @@ words at the frame names.
 * `entryV_abiEntry`, `argBind_entryV`, `boundFacts_entryV`, `imgRel_entryV`: the entry states
   are an ABI entry, the copies leave them unchanged, the register bounds hold, and they are
   related by the relation of the image simulation.
+* `frameE_stack`, `EntryFacts.argSrc`: the caller slot of a stack word is `off` bytes above
+  the entry stack pointer, and under `AbiLayout.StackIn` the entry check gives `ArgSrc`.
+* `entryB_save`, `imgRel_entryS`: no save reads a stack-argument name, and the entry pair is
+  related under the entry check.
 * `imgSep_slotRen`: the separation carries over to the renamed slot map.
 * `image_route_bytes`: a halting run of the node from `entryV` is matched by a halting run of
   the decoded bytes of the printed body, with the output array in memory at its entry base.
@@ -68,12 +75,17 @@ open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout AbiArg)
 
 /-! ## 1. The copies of the parameter registers -/
 
-/-- The pairs `(nm R, argName j)` of the register `R` of each parameter `j` of `σ`. -/
-def argPairs (σ : AbiLayout) (nm : String → String) : List (String × String) :=
-  σ.args.mapIdx fun j a => (nm a.reg, argName j)
+/-- **The source name of a parameter** whose register has the name `R`: the caller slot
+    `qsave.R` of a stack-argument name `R` (`abiStackOff?`), which the prologue loads, and `R`
+    itself otherwise. -/
+def srcOf (R : String) : String := if (abiStackOff? R).isSome then slotOfReg R else R
 
-/-- The copies `argName j := nm R` of the register `R` of each parameter `j` of `σ` into its
-    argument name. -/
+/-- The pairs `(srcOf (nm R), argName j)` of the register `R` of each parameter `j` of `σ`. -/
+def argPairs (σ : AbiLayout) (nm : String → String) : List (String × String) :=
+  σ.args.mapIdx fun j a => (srcOf (nm a.reg), argName j)
+
+/-- The copies `argName j := srcOf (nm R)` of the register `R` of each parameter `j` of `σ`
+    into its argument name. -/
 def argBind (σ : AbiLayout) (nm : String → String) : List LinstrRM := movesOf (argPairs σ nm)
 
 /-- The array, with its length, whose pointer the slot `q` holds under the layout `σ` with
@@ -312,15 +324,59 @@ theorem entryV_abiEntry {σ : AbiLayout} {fr : String → Option (BitVec 64)} {s
     rw [he]
     exact (abiEntryM_spec σ sa).arr j a n h hk
 
+/-- **The sources of the parameters at entry** under the frame map `fr` at the machine state
+    `sa`: the register of each parameter is named by a general-purpose name of that machine
+    register without a frame word, or by a stack-argument name (`abiStackOff?`) whose caller
+    slot has a frame word that holds the entry value of the parameter. -/
+def ArgSrc (σ : AbiLayout) (nm : String → String) (fr : String → Option (BitVec 64))
+    (sa : AState) : Prop :=
+  ∀ a ∈ σ.args, (gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg ∧ fr (nm a.reg) = none)
+    ∨ ((abiStackOff? (nm a.reg)).isSome = true
+      ∧ ∃ w, fr (slotOfReg (nm a.reg)) = some w ∧ read64 sa.mem w = sa.regs a.reg)
+
+theorem srcOf_of_gpOk {R : String} (h : gpOk R = true) : srcOf R = R := by
+  simp [srcOf, ImageAddrSim.abiStackOff?_of_gpOk h]
+
+theorem srcOf_of_stack {R : String} (h : (abiStackOff? R).isSome = true) :
+    srcOf R = slotOfReg R := by
+  simp [srcOf, h]
+
+/-- Parameters named by general-purpose names without a frame word have their sources. -/
+theorem ArgSrc.of_gp {σ : AbiLayout} {nm : String → String}
+    {fr : String → Option (BitVec 64)} {sa : AState}
+    (h : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg ∧ fr (nm a.reg) = none) :
+    ArgSrc σ nm fr sa :=
+  fun a ha => Or.inl (h a ha)
+
+/-- The sources carry over to a frame map that agrees on the general-purpose names and on the
+    slots `qsave.R`. -/
+theorem ArgSrc.congr {σ : AbiLayout} {nm : String → String}
+    {fr fr' : String → Option (BitVec 64)} {sa : AState} (h : ArgSrc σ nm fr sa)
+    (hg : ∀ x, gpOk x = true → fr' x = fr x) (hs : ∀ R, fr' (slotOfReg R) = fr (slotOfReg R)) :
+    ArgSrc σ nm fr' sa := by
+  intro a ha
+  rcases h a ha with ⟨h1, h2, h3⟩ | ⟨h1, w, hw, hv⟩
+  · exact Or.inl ⟨h1, h2, by rw [hg _ h1, h3]⟩
+  · exact Or.inr ⟨h1, w, by rw [hs, hw], hv⟩
+
+/-- The source name of a parameter holds the entry value of the parameter in `entryV`. -/
+theorem entryV_srcOf {σ : AbiLayout} {nm : String → String}
+    {fr : String → Option (BitVec 64)} {sa : AState} {un : String → String}
+    (hR : ArgSrc σ nm fr sa) {a : AbiArg} (ha : a ∈ σ.args) :
+    (entryV σ fr sa un).reg.lvm (srcOf (nm a.reg)) = ⟨64, sa.regs a.reg⟩ := by
+  rcases hR a ha with ⟨h1, h2, h3⟩ | ⟨h1, w, hw, hv⟩
+  · rw [srcOf_of_gpOk h1]
+    simp only [entryV, entryA, h3, h1, if_true, h2]
+  · rw [srcOf_of_stack h1]
+    simp only [entryV, hw, hv]
+
 /-- **The copies of the parameter registers leave `entryV` unchanged** but for the program
-    counter, when each parameter register is named by a general-purpose name of that
-    machine register without a frame word. -/
+    counter, when each parameter has its source (`ArgSrc`). -/
 theorem argBind_entryV {σ : AbiLayout} {nm : String → String}
     {fr : String → Option (BitVec 64)} {sa : AState} {un : String → String}
     (hF : ∀ j, j < σ.args.length → fr (argName j) = none)
     (hG : ∀ j, j < σ.args.length → gpOk (argName j) = false)
-    (hR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg
-      ∧ fr (nm a.reg) = none) (zf : Bool) :
+    (hR : ArgSrc σ nm fr sa) (zf : Bool) :
     runStraightF (argBind σ nm) (entryV σ fr sa un) zf
       = some ({ entryV σ fr sa un with reg := { (entryV σ fr sa un).reg with
           lpc := σ.args.length } }, zf) := by
@@ -331,9 +387,7 @@ theorem argBind_entryV {σ : AbiLayout} {nm : String → String}
     simp only [argPairs, List.mem_mapIdx] at hp
     obtain ⟨j, hj, rfl⟩ := hp
     have ha : σ.args[j]? = some σ.args[j] := List.getElem?_eq_getElem hj
-    obtain ⟨h1, h2, h3⟩ := hR _ (List.getElem_mem hj)
-    rw [entryV_argName ha (hF j hj) (hG j hj)]
-    simp only [entryV, entryA, h3, h1, if_true, h2]
+    rw [entryV_argName ha (hF j hj) (hG j hj), entryV_srcOf hR (List.getElem_mem hj)]
 
 /-- The register bounds of `σ` hold at `entryV` at the names `nm`, when each bounded
     register is named by a general-purpose name of that machine register without a frame
@@ -415,19 +469,20 @@ theorem imgSep_slotRen {fr : String → Option (BitVec 64)} {sl : String → Opt
 /-- **The entry pair is related.** `entryV` at the name map `un` and `entryA` are related by
     the relation of the image simulation at the frame map `fr`, the slots of `slotArrOf σ nm`
     with their array names renamed by `ren`, and the entry bases of the parameters at the
-    names `un` gives, when `un` undoes `ren` on the argument names of the array parameters and
-    the register of each parameter is named by a general-purpose name of that machine
-    register. -/
+    names `un` gives, when `un` undoes `ren` on the argument names of the array parameters,
+    each parameter has its source (`ArgSrc`), and no save of the body reads a stack-argument
+    name. -/
 theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
     {fr : String → Option (BitVec 64)} {sa : AState} {body : Lcmd} {fn : String}
     {ren un : String → String}
-    (hS : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg)
+    (hS : ArgSrc σ nm fr sa)
+    (hsv : ∀ k R, ImageAddrSim.SaveAt body k R → abiStackOff? R = none)
     (hUR : ∀ j, j < σ.args.length → un (ren (argName j)) = argName j) :
     ImgRel fr (slotRen (slotArrOf σ nm) ren) (fun A => abiBase (abiReg σ) sa (un A)) body
       { prog := { base := entryV σ fr sa un, lfn := fn }, zf := false } (entryA σ sa)
       false := by
   refine ImageAddrFrame.imgRel_entry rfl rfl (fun r h => ?_) (fun q a h => ?_) rfl rfl rfl
-    (fun r h => ?_) (fun q A n h => ?_) (fun R A n h => ?_) (fun R A n a hR h _ => ?_)
+    (fun r h => ?_) (fun q A n h => ?_) (fun k R A n hs h => ?_) (fun R A n w hR h hw => ?_)
   · simp [entryV, h]
   · simp [entryV, entryA, h]
   · simp [entryA, h]
@@ -441,23 +496,33 @@ theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
     show (entryV σ fr sa un).getArr (ren (argName j)) 64 n = _
     rw [he, hu, abiBase_argName hj]
     exact (abiEntryM_spec σ sa).arr j a n hj hk
-  · obtain ⟨A0, h0, rfl⟩ := slotRen_some h
+  · have hgR := hsv k R hs
+    obtain ⟨A0, h0, rfl⟩ := slotRen_some h
     obtain ⟨j, a, hj, -, rfl, hq⟩ := slotArrOf_some h0
     have hu := hUR j (List.getElem?_eq_some_iff.mp hj).1
     have hR : nm a.reg = R := by simpa [slotOfReg] using hq
-    obtain ⟨h1, h2⟩ := hS a (List.mem_of_getElem? hj)
-    have hl : (entryA σ sa).reg.lvm (nm a.reg) = ⟨64, sa.regs a.reg⟩ := by
-      simp only [entryA, h1, if_true, h2]
-    show _ = some (abiBase (abiReg σ) sa (un (ren (argName j))))
-    rw [hu, abiBase_argName hj, ← hR]
-    unfold LstateN.getW
-    rw [hl]
-    simp
-  · obtain ⟨A0, h0, -⟩ := slotRen_some h
-    obtain ⟨j, a, hj, -, -, hq⟩ := slotArrOf_some h0
+    rcases hS a (List.mem_of_getElem? hj) with ⟨h1, h2, -⟩ | ⟨h1, -⟩
+    · have hl : (entryA σ sa).reg.lvm (nm a.reg) = ⟨64, sa.regs a.reg⟩ := by
+        simp only [entryA, h1, if_true, h2]
+      show _ = some (abiBase (abiReg σ) sa (un (ren (argName j))))
+      rw [hu, abiBase_argName hj, ← hR]
+      unfold LstateN.getW
+      rw [hl]
+      simp
+    · rw [hR, hgR] at h1
+      cases h1
+  · obtain ⟨A0, h0, rfl⟩ := slotRen_some h
+    obtain ⟨j, a, hj, -, rfl, hq⟩ := slotArrOf_some h0
+    have hu := hUR j (List.getElem?_eq_some_iff.mp hj).1
     have hR' : nm a.reg = R := by simpa [slotOfReg] using hq
-    rw [← hR', ImageAddrSim.abiStackOff?_of_gpOk (hS a (List.mem_of_getElem? hj)).1] at hR
-    cases hR
+    rcases hS a (List.mem_of_getElem? hj) with ⟨h1, -, -⟩ | ⟨-, w', hw', hv⟩
+    · rw [← hR', ImageAddrSim.abiStackOff?_of_gpOk h1] at hR
+      cases hR
+    · rw [hR', hw] at hw'
+      cases hw'
+      show read64 sa.mem w = abiBase (abiReg σ) sa (un (ren (argName j)))
+      rw [hu, abiBase_argName hj]
+      exact hv
 
 /-! ## 5. The checks of the route -/
 
@@ -567,15 +632,54 @@ def renB (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
     && (List.range σ.args.length).all (fun j => unren ps (argName j) == argName j
       && unren ps (renOf ps (argName j)) == argName j)
 
+/-- No move of `body` reads a stack-argument name (`abiStackOff?`): the caller's stack words
+    are read through their slots `qsave.RSP+off` only. -/
+def stackReadFreeB (body : Lcmd) : Bool :=
+  body.all fun i => match JasminLsemAddrMem.slotMov? i.li_i with
+    | some (_, s) => (abiStackOff? s).isNone
+    | none => true
+
+/-- No save of a body that passes `stackReadFreeB` reads a stack-argument name. -/
+theorem stackReadFreeB_save {body : Lcmd} (h : stackReadFreeB body = true) {k : Nat}
+    {R : String} (hs : ImageAddrSim.SaveAt body k R) : abiStackOff? R = none := by
+  obtain ⟨i, hi, hm⟩ := hs
+  have := List.all_eq_true.mp h i (List.mem_of_getElem? hi)
+  rw [hm] at this
+  simpa using this
+
+/-- **The stack clause of the entry check** for the parameter `a` under the frame map `fm`:
+    the register of `a` is the carrier name `%rsp+off` of a stack word, `off` a multiple of
+    `8`, named by the stack-argument name `RSP+off`, whose caller slot has a frame word. -/
+def stackArgB (nm : String → String) (fm : String → Option (BitVec 64)) (a : AbiArg) : Bool :=
+  match abiStackOff? (nm a.reg) with
+  | some off => off % 8 == 0 && a.reg == "%rsp+" ++ toString off
+      && nm a.reg == "RSP+" ++ toString off && (fm (slotOfReg (nm a.reg))).isSome
+  | none => false
+
+theorem stackArgB_spec {nm : String → String} {fm : String → Option (BitVec 64)} {a : AbiArg}
+    (h : stackArgB nm fm a = true) :
+    ∃ k, a.reg = Haxc.stackArgReg k ∧ nm a.reg = "RSP+" ++ toString (8 * k)
+      ∧ (fm (slotOfReg (nm a.reg))).isSome = true := by
+  unfold stackArgB at h
+  split at h
+  · rename_i off _
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨⟨⟨h8, h1⟩, h2⟩, h3⟩ := h
+    have hk : 8 * (off / 8) = off := by omega
+    exact ⟨off / 8, by rw [Haxc.stackArgReg, hk, h1], by rw [hk, h2], h3⟩
+  · cases h
+
 /-- **The entry check**: no argument name is a general-purpose name or has a frame word; the
-    register of each parameter and each bounded register is named by a general-purpose name
-    of that machine register without a frame word; the slot of each array parameter has a
-    frame word. -/
+    register of each parameter is named by a general-purpose name of that machine register
+    without a frame word or passes the stack clause `stackArgB`; each bounded register is
+    named by a general-purpose name of that machine register without a frame word; the slot
+    of each array parameter has a frame word; no move of the body reads a stack-argument
+    name. -/
 def entryB (σ : AbiLayout) (nm : String → String) (body : Lcmd) : Bool :=
   let fm := frameMark (frameNames body)
   (List.range σ.args.length).all (fun j => !gpOk (argName j) && (fm (argName j)).isNone)
-    && σ.args.all (fun a => gpOk (nm a.reg) && phys (nm a.reg) == a.reg
-      && (fm (nm a.reg)).isNone)
+    && σ.args.all (fun a => (gpOk (nm a.reg) && phys (nm a.reg) == a.reg
+      && (fm (nm a.reg)).isNone) || stackArgB nm fm a)
     && σ.bounds.all (fun b => gpOk (nm b.1) && phys (nm b.1) == b.1 && (fm (nm b.1)).isNone)
     && σ.args.all (fun a => match a.kind with
       | .words _ => (fm (slotOfReg (nm a.reg))).isSome
@@ -586,11 +690,12 @@ def entryB (σ : AbiLayout) (nm : String → String) (body : Lcmd) : Bool :=
         | .words n => regLen (rsOf σ) (argName j) == n
         | .scalar => true
       | none => true)
+    && stackReadFreeB body
 
-/-- The names the fusion check reads at width `64` at entry: the argument names and the names
-    of the parameter registers. -/
+/-- The names the fusion check reads at width `64` at entry: the argument names and the
+    source names (`srcOf`) of the parameter registers. -/
 def fuseRegs (σ : AbiLayout) (nm : String → String) : List String :=
-  abiArgNames σ ++ σ.args.map fun a => nm a.reg
+  abiArgNames σ ++ σ.args.map fun a => srcOf (nm a.reg)
 
 /-- **The check of the image route** of the node `seeds ++ loop` with the renaming `ps`, the
     fusion flag `fuse` and the output array `out`, against the printed body `body`: the
@@ -635,7 +740,9 @@ structure EntryFacts (σ : AbiLayout) (nm : String → String) (fr : String → 
     Prop where
   argF : ∀ j, j < σ.args.length → fr (argName j) = none
   argG : ∀ j, j < σ.args.length → gpOk (argName j) = false
-  regs : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg ∧ fr (nm a.reg) = none
+  regs : ∀ a ∈ σ.args, (gpOk (nm a.reg) = true ∧ phys (nm a.reg) = a.reg ∧ fr (nm a.reg) = none)
+    ∨ ∃ k, a.reg = Haxc.stackArgReg k ∧ nm a.reg = "RSP+" ++ toString (8 * k)
+      ∧ (fr (slotOfReg (nm a.reg))).isSome = true
   bnds : ∀ b ∈ σ.bounds, gpOk (nm b.1) = true ∧ phys (nm b.1) = b.1 ∧ fr (nm b.1) = none
   slot : ∀ q A n, slotArrOf σ nm q = some (A, n) → ∃ a, fr q = some a
   rs : rsOK σ (rsOf σ) = true
@@ -645,11 +752,17 @@ theorem entryB_spec {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (h : entryB σ nm body = true) (sa : AState) : EntryFacts σ nm (frameE body sa) := by
   simp only [entryB, Bool.and_eq_true, List.all_eq_true, List.mem_range, Bool.not_eq_true',
     beq_iff_eq] at h
-  obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, -⟩ := h
   refine ⟨fun j hj => frameE_none sa (h1 j hj).2, fun j hj => (h1 j hj).1,
-    fun a ha => ⟨(h2 a ha).1.1, (h2 a ha).1.2, frameE_none sa (h2 a ha).2⟩,
+    fun a ha => ?_,
     fun b hb => ⟨(h3 b hb).1.1, (h3 b hb).1.2, frameE_none sa (h3 b hb).2⟩,
     fun q A n hq => ?_, h5, fun q A n hq => ?_⟩
+  · rcases Bool.or_eq_true_iff.mp (h2 a ha) with h | h
+    · simp only [Bool.and_eq_true, beq_iff_eq] at h
+      exact Or.inl ⟨h.1.1, h.1.2, frameE_none sa h.2⟩
+    · obtain ⟨k, hk, hn, hs⟩ := stackArgB_spec h
+      obtain ⟨w, hw⟩ := frameE_some sa hs
+      exact Or.inr ⟨k, hk, hn, by rw [hw]; rfl⟩
   · obtain ⟨j, a, hj, hk, rfl, rfl⟩ := slotArrOf_some hq
     have := h4 a (List.mem_of_getElem? hj)
     rw [hk] at this
@@ -659,6 +772,75 @@ theorem entryB_spec {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     rw [hj] at this
     simp only [hk, beq_iff_eq] at this
     exact this
+
+/-- No save of a body that passes the entry check reads a stack-argument name. -/
+theorem entryB_save {σ : AbiLayout} {nm : String → String} {body : Lcmd}
+    (h : entryB σ nm body = true) {k : Nat} {R : String} (hs : ImageAddrSim.SaveAt body k R) :
+    abiStackOff? R = none := by
+  simp only [entryB, Bool.and_eq_true] at h
+  exact stackReadFreeB_save h.2 hs
+
+/-- **The entry pair is related under the entry check**: `imgRel_entryV` for a printed body
+    that passes `entryB`. -/
+theorem imgRel_entryS {σ : AbiLayout} {nm : String → String}
+    {fr : String → Option (BitVec 64)} {sa : AState} {body : Lcmd} {fn : String}
+    {ren un : String → String}
+    (hS : ArgSrc σ nm fr sa) (hent : entryB σ nm body = true)
+    (hUR : ∀ j, j < σ.args.length → un (ren (argName j)) = argName j) :
+    ImgRel fr (slotRen (slotArrOf σ nm) ren) (fun A => abiBase (abiReg σ) sa (un A)) body
+      { prog := { base := entryV σ fr sa un, lfn := fn }, zf := false } (entryA σ sa)
+      false :=
+  imgRel_entryV hS (fun _ _ hs => entryB_save hent hs) hUR
+
+/-- The caller slot `qsave.RSP+off` is `off` bytes above a frame of any shape. -/
+theorem spillQsaveOff_rsp (F W Q off : Nat) :
+    LprogBytes.spillQsaveOff F W (slotOfReg ("RSP+" ++ toString off)) Q
+      = some (Int.ofNat F + Int.ofNat off) := by
+  unfold LprogBytes.spillQsaveOff
+  have h1 : hasPrefix (slotOfReg ("RSP+" ++ toString off)) "k." = false := by
+    simp [hasPrefix, slotOfReg, List.isPrefixOf]
+  have h2 : hasPrefix (slotOfReg ("RSP+" ++ toString off)) "qsave." = true := by
+    simp [hasPrefix, slotOfReg]
+  have h3 : String.ofList ((slotOfReg ("RSP+" ++ toString off)).toList.drop 6)
+      = "RSP+" ++ toString off := by
+    rw [slotOfReg, String.toList_append, show (6 : Nat) = "qsave.".toList.length from rfl,
+      List.drop_left, String.ofList_toList]
+  rw [if_neg (by rw [h1]; exact Bool.false_ne_true), if_pos h2, h3,
+    LprogAsmPrinter.qsaveFrameOff_rsp]
+
+/-- **The caller slot of a stack word at entry**: the frame word of the caller slot
+    `qsave.RSP+off`, when it has one, is the word `off` bytes above the entry stack
+    pointer. -/
+theorem frameE_stack {body : Lcmd} (sa : AState) (off : Nat)
+    (h : (frameE body sa (slotOfReg ("RSP+" ++ toString off))).isSome = true) :
+    frameE body sa (slotOfReg ("RSP+" ++ toString off))
+      = some (sa.regs "%rsp" + BitVec.ofNat 64 off) := by
+  have hq : slotOfReg ("RSP+" ++ toString off) ∈ ImageAddrFrame.bodyNamesI body := by
+    by_contra hn
+    rw [show frameE body sa (slotOfReg ("RSP+" ++ toString off)) = none from if_neg hn] at h
+    cases h
+  show ImageAddrFrame.frameIn body _ _ = _
+  rw [ImageAddrFrame.frameIn, if_pos hq, frameP, spillQsaveOff_rsp, Option.map_some,
+    frameRsp]
+  congr 1
+  rw [BitVec.add_assoc]
+  congr 1
+  apply BitVec.eq_of_toNat_eq
+  simp
+  omega
+
+/-- **The sources of the parameters from the entry check**: under the entry facts at the frame
+    of the printed body and the stack parameters at entry (`AbiLayout.StackIn`), each parameter
+    has its source. -/
+theorem EntryFacts.argSrc {σ : AbiLayout} {nm : String → String} {body : Lcmd} {sa : AState}
+    (E : EntryFacts σ nm (frameE body sa)) (hst : σ.StackIn sa) :
+    ArgSrc σ nm (frameE body sa) sa := by
+  intro a ha
+  rcases E.regs a ha with h | ⟨k, hk, hn, hs⟩
+  · exact Or.inl h
+  · rw [hn] at hs ⊢
+    refine Or.inr ⟨by rw [abiStackOff?_rsp]; rfl, _, frameE_stack sa _ hs, ?_⟩
+    exact (hst a ha k hk).symm
 
 /-- The facts the renaming check decides, for the names `N` of the loop. -/
 structure RenFacts (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
@@ -747,7 +929,8 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
   set fr := frameE body sa with hfrdef
   set b0 := entryV σ fr sa (unren ps) with hb0
   have habi : AbiEntryM σ sa b0 := entryV_abiEntry E.argF E.argG fun j hj => (R.unr j hj).1
-  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG E.regs false
+  have hS := E.argSrc hreg.stackIn
+  have hpr0 := argBind_entryV (nm := nm) (sa := sa) (un := unren ps) E.argF E.argG hS false
   have hb1 : ({ b0 with reg := { b0.reg with lpc := σ.args.length } } : LstateM).setLpc 0
       = b0 := rfl
   have hA : ∀ b2 z2, runStraightF (argBind σ nm ++ seeds) b0 false = some (b2, z2) →
@@ -784,8 +967,7 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
             rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habi x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := E.regs a ha
-              simp only [hb0, entryV, h3, entryA, h1, if_true])
+              exact congrArg (·.1) (entryV_srcOf (un := unren ps) hS ha))
           fuel t hrun out hout hfuse.2 64 n
   -- the bounds invariant
   have hents := boundFacts_entryV (nm := nm) (fr := fr) (un := unren ps) hreg E.bnds
@@ -796,8 +978,8 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
   have hsep := imgSep_slotRen (ren := renOf ps)
     (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
   obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
-    hsep fn _ t' rfl rfl (entryA σ sa) false (imgRel_entryV (fun a ha =>
-      ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun j hj => (R.unr j hj).2) rfl (fun R hR => by
+    hsep fn _ t' rfl rfl (entryA σ sa) false (imgRel_entryS hS hent
+      fun j hj => (R.unr j hj).2) rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
           simp only [entryA, hR, if_true]
         unfold LstateN.getW

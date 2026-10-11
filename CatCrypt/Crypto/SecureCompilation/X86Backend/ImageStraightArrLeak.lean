@@ -277,13 +277,13 @@ theorem arrChain_run (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String
 
 /-- **The trace of the virtual body of the array route from the source events.** For a
     program that passes `straightArrB` against the printed body `body`: every terminating
-    traced run of the virtual body from `straightEntry` at a machine state `sa` emits
-    `straightT` of the source events of the program at the valuation `σ` reads off `sa`,
-    with array names renamed by the alias map of the chain. -/
+    traced run of the virtual body from `straightEntry` at a machine state `sa` with the
+    stack parameters at entry emits `straightT` of the source events of the program at the
+    valuation `σ` reads off `sa`, with array names renamed by the alias map of the chain. -/
 theorem straightArr_leak (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String}
     {body : Lcmd} {Γ : Ctxt jasminDialect} {t : JasminTy} (com : Com jasminDialect Γ t)
-    (hg : straightArrB σ nm body com = true) (sa : AState) (V : Ctxt.Valuation Γ)
-    (hV : AbiValOf σ sa V) (fn : String) {ℓ : List CTLeak}
+    (hg : straightArrB σ nm body com = true) (sa : AState) (hst : σ.StackIn sa)
+    (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (fn : String) {ℓ : List CTLeak}
     (hr : FRun (singletonProgM fn (argBind σ nm ++ arrChain com))
       (straightEntry σ body fn sa) ℓ) :
     ℓ = (straightT Pj Γ.length com Γ.length (Com.ctLeak (jLeakModel Pj) com V)).map
@@ -292,7 +292,7 @@ theorem straightArr_leak (Pj : JLeakParams) {σ : AbiLayout} {nm : String → St
   have hroute := straightArrB_spec hg
   simp only [straightRouteOutB, Bool.and_eq_true] at hroute
   obtain ⟨hC, ⟨bz, hrun⟩, hT⟩ := arrChain_run Pj com hg sa V hV
-  rw [straightVirt_leak hroute.2 hC sa fn hrun hr, hT]
+  rw [straightVirt_leak hroute.2 hC sa hst fn hrun hr, hT]
 
 /-- **Constant time of the virtual body of the array route from the source.** For a program
     that passes `straightArrB` against the printed body `body`: if the source events of the
@@ -305,9 +305,9 @@ theorem straightArr_memFCT (Pj : JLeakParams) {σ : AbiLayout} {nm : String → 
     (hct : ConstantTime (PubEqV L) (Com.ctLeak (jLeakModel Pj) com)) :
     MemFCT (singletonProgM fn (argBind σ nm ++ arrChain com))
       (StraightEntryPub σ L (straightEntry σ body fn)) := by
-  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, ⟨V₁, V₂, hV₁, hV₂, hp, -⟩, rfl, rfl⟩ r₁ r₂
-  rw [straightArr_leak Pj com hg sa₁ V₁ hV₁ fn r₁,
-    straightArr_leak Pj com hg sa₂ V₂ hV₂ fn r₂, hct V₁ V₂ hp]
+  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, ⟨V₁, V₂, hV₁, hV₂, hp, hr₁, hr₂, -⟩, rfl, rfl⟩ r₁ r₂
+  rw [straightArr_leak Pj com hg sa₁ hr₁.stackIn V₁ hV₁ fn r₁,
+    straightArr_leak Pj com hg sa₂ hr₂.stackIn V₂ hV₂ fn r₂, hct V₁ V₂ hp]
 
 /-- **The virtual body of the array route halts on checked runs** from the entry of every
     machine state that satisfies `σ.Regions` and has a valuation. -/

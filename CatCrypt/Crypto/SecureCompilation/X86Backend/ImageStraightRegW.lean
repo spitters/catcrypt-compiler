@@ -205,13 +205,10 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
     intro j hj
     simp only [frameC, N.arg j hj]
     exact E.argF j hj
-  have hfrR : ∀ a ∈ σ.args, gpOk (nm a.reg) = true ∧ DecodePrinted.phys (nm a.reg) = a.reg
-      ∧ frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa) (nm a.reg) = none := by
-    intro a ha
-    obtain ⟨h1, h2, h3⟩ := E.regs a ha
-    refine ⟨h1, h2, ?_⟩
-    simp only [frameC, hgpN _ h1]
-    exact h3
+  have hfrR : ImageAddrRoute.ArgSrc σ nm
+      (frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) sa :=
+    (E.argSrc hreg.stackIn).congr (fun x hx => by simp only [frameC, hgpN _ hx])
+      (fun x => by simp only [frameC, cellIdx_slotOfReg])
   have hpr0 := ImageAddrRoute.argBind_entryV (nm := nm) (sa := sa) (un := fun x => x) hfrA E.argG
     hfrR false
   have hB : runStraightF (argBind σ nm ++ C2) (emptyArrs (cellArrs σ)
@@ -247,8 +244,7 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
           · rcases List.mem_append.mp hx with hx | hx
             · exact e64_of_abiEntryM habiC x hx
             · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-              obtain ⟨h1, -, h3⟩ := hfrR a ha
-              simp only [emptyArrs, entryV, h3, ImageAddrRoute.entryA, h1, if_true]
+              exact congrArg (·.1) (ImageAddrRoute.entryV_srcOf (un := fun x => x) hfrR ha)
           · obtain ⟨⟨A, j⟩, hc⟩ := Option.isSome_iff_exists.mp (cellIdx_isSome.mpr hx)
             simp only [emptyArrs, entryV, frameC, hc]
         obtain ⟨f2, t2, -, ht2, hag, -, -⟩ :=
@@ -328,7 +324,7 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
     (fr := frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) (sa := sa)
     (body := cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
     (fn := "") (ren := fun x => x) (un := fun x => x)
-    (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl
+    hfrR (fun _ _ hs => cellBody_save hent hs) fun _ _ => rfl
   have hrel := imgRel_cellArrs (R := cellArrs σ) hrel0
   obtain ⟨prog, sa', hdec, hh, hobs⟩ := virt_bytesC_reg
     (base := abiBase (abiReg σ) sa) hck hpr hphys hgate' hsep (cellNoSlotB_spec hns) hF
@@ -421,7 +417,8 @@ theorem straightRegW_bytes {σ : AbiLayout} {nm : String → String} {body : Lcm
         exact JasminLsemRenameLoop.runStraightF_movesOf _ _ _
       obtain ⟨env', b2, hF3, hCR⟩ :=
         runStraightF_cellFold N.slots N.dist _ [] C2 hfold (cellRel_entry N.dist) hF2
-      obtain ⟨prog, sa', hdec, hh, hR⟩ := cell_route_reg_bytes hroute hN sa hreg b2 false hF3
+      obtain ⟨prog, sa', hdec, hh, hR⟩ := cell_route_reg_bytes hroute hN sa hreg b2 false
+        hF3
       refine ⟨prog, sa', hdec, hh, ?_⟩
       have hcell : isCellB (cellArrs σ) (nm RA) = false := by
         rw [isCellB_eq]

@@ -347,7 +347,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (runStraigh
   runStraightF_lpc lsemFuelMemF_segF)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (physImgB virtImg)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (argBind slotArrOf slotRen
-  entryA entryV entryB entryB_spec argBind_entryV boundFacts_entryV imgRel_entryV
+  entryA entryV entryB entryB_spec argBind_entryV boundFacts_entryV imgRel_entryS
   imgSep_slotRen frameE)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (frameNames frameMark
   frameOkB)
@@ -424,7 +424,7 @@ theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : L
   obtain ⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩ := hg
   have E := entryB_spec hent sa
   have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
-    (un := fun x => x) E.argF E.argG E.regs false
+    (un := fun x => x) E.argF E.argG (E.argSrc hreg.stackIn) false
   have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
       = some (b, z) := by
     rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
@@ -445,8 +445,8 @@ theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : L
   have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
     (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
   obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
-    hsep fn _ _ rfl rfl (entryA σ sa) false (imgRel_entryV (fun a ha =>
-      ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl) rfl (fun R hR => by
+    hsep fn _ _ rfl rfl (entryA σ sa) false (imgRel_entryS (E.argSrc hreg.stackIn) hent
+      fun _ _ => rfl) rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (DecodePrinted.phys R)⟩ := by
           simp only [entryA, hR, if_true]
         unfold JasminLsemWidthN.LstateN.getW
@@ -647,7 +647,7 @@ theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body
   obtain ⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩ := hg
   have E := entryB_spec hent sa
   have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
-    (un := fun x => x) E.argF E.argG E.regs false
+    (un := fun x => x) E.argF E.argG (E.argSrc hreg.stackIn) false
   have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
       = some (b, z) := by
     rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
@@ -671,7 +671,7 @@ theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body
   obtain ⟨f', t', hr', hobs⟩ := OwnedLprogTVChecked.ownedCheckMC_sound hck fn _ _ rfl rfl _ hck'
   obtain ⟨fuel', s', zf', hrA, hrel', hsafe⟩ :=
     ImageAddrSim.image_addr_sim hsep hphys hgate' fn f' _ t' (entryA σ sa) false rfl
-      (imgRel_entryV (fun a ha => ⟨(E.regs a ha).1, (E.regs a ha).2.1⟩) fun _ _ => rfl) hr'
+      (imgRel_entryS (E.argSrc hreg.stackIn) hent fun _ _ => rfl) hr'
   rw [ImageAddrFrame.runA_frameIn] at hrA
   rw [ImageAddrFrame.runSafe_frameIn] at hsafe
   obtain ⟨prog, sa', hdec, hh, -, hregs, -⟩ :=
@@ -759,7 +759,8 @@ theorem straight_reg_bytes {σ : AbiLayout} {nm : String → String} {body : Lcm
       rcases List.mem_append.mp hi with hi | hi
       · exact (hpl i hi).1
       · exact JasminLsemRenameLoop.movesOf_isLopn _ i hi
-    obtain ⟨prog, sa', hdec, hh, hR⟩ := straight_image_reg_bytes hroute hC hgp hfr sa hreg "" _ _ hF2
+    obtain ⟨prog, sa', hdec, hh, hR⟩ := straight_image_reg_bytes hroute hC hgp hfr sa hreg "" _ _
+      hF2
     refine ⟨prog, sa', hdec, hh, ?_⟩
     have h0 : b.reg.getW ret 64 = some (com.denote V) := by
       simpa only [JasminLsemWidthN.evalOperandN] using hval

@@ -98,7 +98,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (scalarMemN
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (AbiValOf AbiEntryM
   storeAgreesM_of_abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (argBind slotArrOf slotRen
-  entryA entryV entryB entryB_spec argBind_entryV boundFacts_entryV imgRel_entryV
+  entryA entryV entryB entryB_spec argBind_entryV boundFacts_entryV imgRel_entryV entryB_save
   imgSep_slotRen frameE entryV_abiEntry slotArrOf_some slotRen_some abiBase_argName)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeak (movesOf_quiet)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (frameIn imgGateB_frameMark
@@ -197,17 +197,18 @@ theorem fRun_of_runStraightF (fn : String) (seg : List LinstrRM) (hl : ∀ i ∈
 
 /-- **The trace of the virtual body of a chain.** Let the printed body pass the entry check
     and the chain `C` of `Lopn`s run from the state `afterArgs` behind the copies of the
-    parameter registers. Every terminating traced run of the virtual body `argBind σ nm ++ C`
-    from `straightEntry` emits the events `straightLeakFF` of `C` from `afterArgs`. -/
+    parameter registers. At a machine state with the stack parameters at entry, every
+    terminating traced run of the virtual body `argBind σ nm ++ C` from `straightEntry` emits
+    the events `straightLeakFF` of `C` from `afterArgs`. -/
 theorem straightVirt_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (hent : entryB σ nm body = true) {C : List LinstrRM} (hC : ∀ i ∈ C, IsLopn i)
-    (sa : AState) (fn : String) {bz : LstateM × Bool}
+    (sa : AState) (hst : σ.StackIn sa) (fn : String) {bz : LstateM × Bool}
     (hrun : runStraightF C (afterArgs σ body sa) false = some bz) {ℓ : List CTLeak}
     (hr : FRun (singletonProgM fn (argBind σ nm ++ C)) (straightEntry σ body fn sa) ℓ) :
     ℓ = straightLeakFF C (afterArgs σ body sa) false := by
   have E := entryB_spec hent sa
   have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
-    (un := fun x => x) E.argF E.argG E.regs false
+    (un := fun x => x) E.argF E.argG (E.argSrc hst) false
   have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
       = some bz := by
     rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
@@ -237,7 +238,7 @@ theorem straightVirt_checked_run {σ : AbiLayout} {nm : String → String} {body
       (straightEntry σ body fn sa) = some t := by
   have E := entryB_spec hent sa
   have hpr0 := argBind_entryV (nm := nm) (sa := sa) (fr := frameE body sa)
-    (un := fun x => x) E.argF E.argG E.regs false
+    (un := fun x => x) E.argF E.argG (E.argSrc hreg.stackIn) false
   have hB : runStraightF (argBind σ nm ++ C) (entryV σ (frameE body sa) sa fun x => x) false
       = some (bz.1, bz.2) := by
     rw [JasminLsemAddrMem.runStraightF_append, hpr0, Option.bind_some]
@@ -323,10 +324,10 @@ theorem straight_imgBytePub {σ : AbiLayout} {nm : String → String} {body : Lc
       simp, rfl⟩
   have hrel₁ := imgRel_entryV (σ := σ) (nm := nm) (fr := frameE body sa₁)
     (sa := sa₁) (body := body) (fn := fn) (ren := fun x => x) (un := fun x => x)
-    (fun a ha => ⟨(E₁.regs a ha).1, (E₁.regs a ha).2.1⟩) (fun _ _ => rfl)
+    (E₁.argSrc hreg₁.stackIn) (fun _ _ hs => entryB_save hent hs) (fun _ _ => rfl)
   have hrel₂ := imgRel_entryV (σ := σ) (nm := nm) (fr := frameE body sa₂)
     (sa := sa₂) (body := body) (fn := fn) (ren := fun x => x) (un := fun x => x)
-    (fun a ha => ⟨(E₂.regs a ha).1, (E₂.regs a ha).2.1⟩) (fun _ _ => rfl)
+    (E₂.argSrc hreg₂.stackIn) (fun _ _ hs => entryB_save hent hs) (fun _ _ => rfl)
   have hbase : ∀ q A n, slotRen (slotArrOf σ nm) (fun x => x) q = some (A, n) →
       abiBase (abiReg σ) sa₂ A = abiBase (abiReg σ) sa₁ A := by
     intro q A n hq
@@ -448,13 +449,13 @@ theorem regChain_run (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String
 /-- **The trace of the virtual body of the register route from the source events.** For a
     program that passes `straightRegB` against the printed body `body`, at a layout whose
     result is the register `RA`: every terminating traced run of the virtual body from
-    `straightEntry` at a machine state `sa` emits `straightT` of the source events of the
-    program at the valuation `σ` reads off `sa`. -/
+    `straightEntry` at a machine state `sa` with the stack parameters at entry emits
+    `straightT` of the source events of the program at the valuation `σ` reads off `sa`. -/
 theorem straightReg_leak (Pj : JLeakParams) {σ : AbiLayout} {nm : String → String}
     {body : Lcmd} {Γ : Ctxt jasminDialect} {t : JasminTy} (com : Com jasminDialect Γ t)
     (hg : straightRegB σ nm body com = true) {RA : String} (hσ : σ.result = .reg RA)
-    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (fn : String)
-    {ℓ : List CTLeak}
+    (sa : AState) (hst : σ.StackIn sa) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V)
+    (fn : String) {ℓ : List CTLeak}
     (hr : FRun (singletonProgM fn (argBind σ nm ++ regChain (nm RA) com))
       (straightEntry σ body fn sa) ℓ) :
     ℓ = straightT Pj Γ.length com Γ.length (Com.ctLeak (jLeakModel Pj) com V) := by
@@ -462,7 +463,7 @@ theorem straightReg_leak (Pj : JLeakParams) {σ : AbiLayout} {nm : String → St
   obtain rfl := straightRegB_ty hg
   simp only [straightRouteOutB, Bool.and_eq_true] at hroute
   obtain ⟨hC, ⟨bz, hrun⟩, hT⟩ := regChain_run Pj com hmem hroute.2 (nm RA) sa V hV
-  rw [straightVirt_leak hroute.2 hC sa fn hrun hr, hT]
+  rw [straightVirt_leak hroute.2 hC sa hst fn hrun hr, hT]
 
 /-- **Constant time of the virtual body of the register route from the source.** For a
     program that passes `straightRegB` against the printed body `body`, at a layout whose
@@ -476,9 +477,9 @@ theorem straightReg_memFCT (Pj : JLeakParams) {σ : AbiLayout} {nm : String → 
     (hct : ConstantTime (PubEqV L) (Com.ctLeak (jLeakModel Pj) com)) :
     MemFCT (singletonProgM fn (argBind σ nm ++ regChain (nm RA) com))
       (StraightEntryPub σ L (straightEntry σ body fn)) := by
-  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, ⟨V₁, V₂, hV₁, hV₂, hp, -⟩, rfl, rfl⟩ r₁ r₂
-  rw [straightReg_leak Pj com hg hσ sa₁ V₁ hV₁ fn r₁,
-    straightReg_leak Pj com hg hσ sa₂ V₂ hV₂ fn r₂, hct V₁ V₂ hp]
+  rintro s₁ s₂ ℓ₁ ℓ₂ ⟨sa₁, sa₂, ⟨V₁, V₂, hV₁, hV₂, hp, hr₁, hr₂, -⟩, rfl, rfl⟩ r₁ r₂
+  rw [straightReg_leak Pj com hg hσ sa₁ hr₁.stackIn V₁ hV₁ fn r₁,
+    straightReg_leak Pj com hg hσ sa₂ hr₂.stackIn V₂ hV₂ fn r₂, hct V₁ V₂ hp]
 
 /-- **The virtual body of the register route halts on checked runs** from the entry of every
     machine state that satisfies `σ.Regions` and has a valuation. -/

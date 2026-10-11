@@ -36,13 +36,13 @@ and the runtime counts stay within stated bounds.
 * `AbiLayout.StackIn`, `AbiLayout.StackWF`, `AbiLayout.RegCarried` — the stack parameters
   at an entry state, their placement above the return address and the frame, and the
   layouts without stack parameters, at which both hold (`stackIn_of_regCarried`,
-  `stackWF_of_regCarried`).
+  `stackWF_of_regCarried`), decided by `regCarriedB` (`stackIn_of_regCarriedB`).
 * `ResultKind`, `ResultKind.read` — the read-back of a result from the entry and exit states.
 * `AbiLayout` — parameters, constants, result, count bounds and the stack frame.
 * `AbiLayout.argPub`, `AbiLayout.PubAgree` — the public parameters of a layout, and the
   agreement of two entry states on the stack pointer and the public parameter registers.
-* `AbiLayout.Regions` — the count bounds and the separation of the pointer regions and the
-  frame at an entry state.
+* `AbiLayout.Regions`, `AbiLayout.Regions.stackIn` — the count bounds, the separation of
+  the pointer regions and the frame, and the stack parameters at an entry state.
 * `AbiLayout.EnvOf` — a hax environment binding each parameter to the value its register
   denotes, each constant to its value, and no other name.
 * `AbiLayout.canonEnv`, `AbiLayout.envOf_canonEnv` — the canonical environment of an entry
@@ -187,9 +187,16 @@ def PubAgree (σ : AbiLayout) (s₁ s₂ : AState) : Prop :=
   s₁.regs "%rsp" = s₂.regs "%rsp" ∧
     ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg
 
+/-- **The stack parameters at entry**: at the state `sa`, the carrier name `stackArgReg k` of
+    every stack parameter holds the word at `%rsp + 8 k` of the memory. -/
+def StackIn (σ : AbiLayout) (sa : AState) : Prop :=
+  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k →
+    sa.regs a.reg = read64 sa.mem (sa.regs "%rsp" + BitVec.ofNat 64 (8 * k))
+
 /-- The entry conditions of a layout at the state `sa`: every bounded register is within its
-    bound; the words of two distinct pointer regions are pairwise disjoint; and every word of
-    a pointer region is disjoint from every stack word `%rsp + o`, `frameLo ≤ o ≤ frameHi`. -/
+    bound; the words of two distinct pointer regions are pairwise disjoint; every word of a
+    pointer region is disjoint from every stack word `%rsp + o`, `frameLo ≤ o ≤ frameHi`; and
+    the stack parameters are at entry (`StackIn`). -/
 def Regions (σ : AbiLayout) (sa : AState) : Prop :=
   (∀ b ∈ σ.bounds, (sa.regs b.1).toNat ≤ b.2)
     ∧ (∀ (i j : Nat) (p q : String × Nat), i ≠ j → σ.regions[i]? = some p →
@@ -199,17 +206,16 @@ def Regions (σ : AbiLayout) (sa : AState) : Prop :=
     ∧ (∀ p ∈ σ.regions, ∀ k, k < p.2 → ∀ o : Int, σ.frameLo ≤ o → o ≤ σ.frameHi →
         Disjoint8 (sa.regs "%rsp" + BitVec.ofInt 64 o)
           (sa.regs p.1 + BitVec.ofNat 64 (8 * k)))
+    ∧ σ.StackIn sa
+
+/-- The stack parameters at an entry state satisfying `Regions`. -/
+theorem Regions.stackIn {σ : AbiLayout} {sa : AState} (h : σ.Regions sa) : σ.StackIn sa :=
+  h.2.2.2
 
 /-- Every parameter of the layout is carried in a register: no parameter has the carrier
     name `stackArgReg k` of a stack word. -/
 def RegCarried (σ : AbiLayout) : Prop :=
   ∀ a ∈ σ.args, ∀ k, a.reg ≠ stackArgReg k
-
-/-- **The stack parameters at entry**: at the state `sa`, the carrier name `stackArgReg k` of
-    every stack parameter holds the word at `%rsp + 8 k` of the memory. -/
-def StackIn (σ : AbiLayout) (sa : AState) : Prop :=
-  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k →
-    sa.regs a.reg = read64 sa.mem (sa.regs "%rsp" + BitVec.ofNat 64 (8 * k))
 
 /-- **The well-formed stack parameters** of a layout: each stack parameter lies in a word
     `%rsp + 8 k` with `k ≥ 1`, above the return address at `%rsp`, at an offset
@@ -227,6 +233,25 @@ theorem stackIn_of_regCarried {σ : AbiLayout} (h : σ.RegCarried) (sa : AState)
 /-- A layout whose parameters are all register-carried has well-formed stack parameters. -/
 theorem stackWF_of_regCarried {σ : AbiLayout} (h : σ.RegCarried) : σ.StackWF :=
   fun a ha k hk => absurd hk (h a ha k)
+
+/-- The check that no parameter register of the layout has a name beginning with `%rsp+`. -/
+def regCarriedB (σ : AbiLayout) : Bool :=
+  σ.args.all fun a => !("%rsp+".toList.isPrefixOf a.reg.toList)
+
+/-- A layout that passes `regCarriedB` has all its parameters carried in registers. -/
+theorem regCarried_of_regCarriedB {σ : AbiLayout} (h : σ.regCarriedB = true) :
+    σ.RegCarried := by
+  intro a ha k
+  apply ne_stackArgReg
+  have h1 := List.all_eq_true.mp h a ha
+  rw [Bool.not_eq_true'] at h1
+  rw [← List.isPrefixOf_iff_prefix, h1]
+  exact Bool.false_ne_true
+
+/-- A layout that passes `regCarriedB` has its stack parameters at every entry state. -/
+theorem stackIn_of_regCarriedB {σ : AbiLayout} (h : σ.regCarriedB = true) (sa : AState) :
+    σ.StackIn sa :=
+  stackIn_of_regCarried (regCarried_of_regCarriedB h) sa
 
 /-- The names a layout binds in the source environment: the parameters, then the
     constants. -/
