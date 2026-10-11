@@ -352,6 +352,28 @@ theorem abiStackOff?_of_ne {reg : String} (h : reg.toList.take 4 ≠ ['R', 'S', 
     exact absurd rfl h
   · rfl
 
+/-- **The frame slot an argument is read from**: the save slot `abiSaveOfExt` of an
+    argument register, and for a stack argument `RSP+off` the caller's stack word, named
+    `qsave.RSP+off`, which the printer places `off` bytes above the frame. A stack word is
+    written by the caller only, so it has no save in the prologue (`extraInputSaves` reads
+    `abiSaveOfExt`). -/
+def abiSlotOfExt (reg : String) : Option String :=
+  match abiSaveOfExt reg with
+  | some s => some s
+  | none => (abiStackOff? reg).map fun _ => "qsave." ++ reg
+
+/-- A stack argument `RSP+off` is read from the frame slot `qsave.RSP+off`. -/
+theorem abiSlotOfExt_rsp (off : Nat) :
+    abiSlotOfExt ("RSP+" ++ toString off) = some ("qsave." ++ ("RSP+" ++ toString off)) := by
+  have hs : abiSaveOfExt ("RSP+" ++ toString off) = none := by
+    have h4 : ∀ r : String, r.toList.take 4 = ['R', 'S', 'P', '+'] →
+        r ≠ "RDI" ∧ r ≠ "RSI" ∧ r ≠ "RDX" ∧ r ≠ "RCX" ∧ r ≠ "R8" ∧ r ≠ "R9" := by
+      intro r hr
+      refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> (rintro rfl; simp at hr)
+    obtain ⟨h1, h2, h3, h5, h6, h7⟩ := h4 ("RSP+" ++ toString off) (by simp)
+    simp only [abiSaveOfExt, abiSaveOf, beq_iff_eq, h1, h2, h3, h5, h6, h7, if_false]
+  simp only [abiSlotOfExt, hs, abiStackOff?_rsp, Option.map_some]
+
 /-- **Materialize the pointer arguments into the body's register file.**
 
     The 2-pointer memref ABI (`inLoadMap = none`, `outStoreMap = []`: the body
@@ -379,9 +401,10 @@ theorem abiStackOff?_of_ne {reg : String} (h : reg.toList.take 4 ≠ ['R', 'S', 
     For an ABI register with no red-zone save (any beyond the canonical `RDI`/
     `RSI`), the copy sources the live ABI register directly (`mov R, ABIreg`);
     these run after the qsave-sourced copies and the live register is untouched
-    by them. A stack argument, named `RSP+off` (`abiStackOff?`), is loaded from its
-    stack word: `mov dst, [RSP + off]`. The per-word scalar ABI (`inLoadMap` non-empty) sets `aj` via the
-    inline first-use loads instead, so for those callers this prelude is empty
+    by them. A stack argument, named `RSP+off` (`abiStackOff?`), is loaded from the
+    caller's stack word `qsave.RSP+off` (`abiSlotOfExt`), which the printer places `off`
+    bytes above the frame. The per-word scalar ABI (`inLoadMap` non-empty) sets `aj` via
+    the inline first-use loads instead, so for those callers this prelude is empty
     (their `aj` names are not used as bare registers / SIB bases). -/
 def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
     (abiArgs : List String) (inLoadMap : InLoadMap) (abi : IsaAbi := x86Abi) : Lcmd :=
@@ -408,11 +431,11 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
           -- pointer load targets the same register a call-containing body reads.
           let phys := physNameForBody body tbl nm abi
           let dst : LOperand := .reg phys
-          -- `abiSaveOfExt`: the 3rd+ SysV argument registers (`RDX`/`RCX`/…) source
+          -- `abiSlotOfExt`: the 3rd+ SysV argument registers (`RDX`/`RCX`/…) source
           -- from their own qsave slots (saved by the `extraInputSaves` prologue
-          -- tail). `abiSaveOfExt = abiSaveOf` on `{RDI, RSI}`, so ≤2-arg kernels
-          -- are byte-identical.
-          match abiSaveOfExt abiReg with
+          -- tail), and a stack argument from the caller's stack word. It is
+          -- `abiSaveOf` on `{RDI, RSI}`, so ≤2-arg kernels are byte-identical.
+          match abiSlotOfExt abiReg with
           | some saveName =>
               let memSrc : LOperand := .reg saveName
               if dst.isSpill then
@@ -424,23 +447,13 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
               else
                 [⟨0, .Lopn [dst] "MOVQ" [memSrc]⟩]
           | none =>
-              match abiStackOff? abiReg with
-              | some off =>
-                -- A stack argument: load its stack word, through `reloadScratch` into a
-                -- spill slot (a memory-to-memory `mov` is not an instruction).
-                if dst.isSpill then
-                  [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg (memName "RSP" off)]⟩,
-                   ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
-                else
-                  [⟨0, .Lopn [dst] "MOVQ" [.reg (memName "RSP" off)]⟩]
-              | none =>
-                -- No red-zone save: source the live ABI register directly.
-                if phys == abiReg then []
-                else if dst.isSpill then
-                  [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg abiReg]⟩,
-                   ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
-                else
-                  [⟨0, .Lopn [dst] "MOVQ" [.reg abiReg]⟩])
+              -- No red-zone save: source the live ABI register directly.
+              if phys == abiReg then []
+              else if dst.isSpill then
+                [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg abiReg]⟩,
+                 ⟨0, .Lopn [dst] "MOVQ" [.reg reloadScratch]⟩]
+              else
+                [⟨0, .Lopn [dst] "MOVQ" [.reg abiReg]⟩])
 
 /-- Build the ABI epilogue. The epilogue runs after the verified two-address
     body, and is responsible for getting the body's last-`n` SSA results out
@@ -1688,9 +1701,10 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
         match inLoadMap j with
         | some _ => none
         | none =>
-            -- `abiSaveOfExt`: a 3rd+ array argument (`RDX`/…) reloads its SIB base
-            -- from its own qsave slot instead of the `RSI` input slot.
-            match abiSaveOfExt abiReg with
+            -- `abiSlotOfExt`: a 3rd+ array argument (`RDX`/…) reloads its SIB base
+            -- from its own qsave slot instead of the `RSI` input slot, and a stack
+            -- argument from the caller's stack word.
+            match abiSlotOfExt abiReg with
             | some saveName =>
                 let phys := physNameForBody virt.lfd_body tbl (argName j) abi
                 some (phys, saveName)

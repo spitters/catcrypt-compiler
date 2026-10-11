@@ -88,14 +88,22 @@ The name classes `LprogAsmPrinter.resolveName` resolves to an `%rsp`-relative
 address: the register allocator's spill slots `k.N`, the ABI save slots
 `qsave.X`, and the frame scratch buffers `mem.RSP.<off>`. Every other name is
 either a bare physical register or a caller-memory reference
-(`mem.RDI.<off>`, `mem.R14.<off>`, …). -/
+(`mem.RDI.<off>`, `mem.R14.<off>`, …). The name `qsave.RSP+off` of a stack argument
+resolves to the caller's stack word above the frame and is no frame cell. -/
 
 /-- True iff the operand name denotes a cell of this function's own stack frame:
-    a spill slot `k.N`, an ABI save slot `qsave.X`, or a frame scratch buffer
-    `mem.RSP.<off>`. A `mem.<base>.<off>` name with a base other than `RSP` is
-    caller memory and is excluded. -/
+    a spill slot `k.N`, an ABI save slot `qsave.X` other than a caller stack word
+    `qsave.RSP+off`, or a frame scratch buffer `mem.RSP.<off>`. A `mem.<base>.<off>`
+    name with a base other than `RSP` is caller memory and is excluded. -/
 def isFrameCell (n : String) : Bool :=
-  "k.".isPrefixOf n || "qsave.".isPrefixOf n || "mem.RSP.".isPrefixOf n
+  "k.".isPrefixOf n || ("qsave.".isPrefixOf n && !"qsave.RSP+".isPrefixOf n)
+    || "mem.RSP.".isPrefixOf n
+
+/-- A caller stack word `qsave.RSP+off` is no frame cell, so the pass writes no zero
+    store to it. -/
+theorem isFrameCell_rsp (off : Nat) : isFrameCell ("qsave.RSP+" ++ toString off) = false := by
+  simp only [isFrameCell, isPrefixOf_eq_hasPrefix, hasPrefix, String.toList_append]
+  simp [List.isPrefixOf]
 
 /-- The frame-cell names an instruction writes as a destination. Non-`Lopn`
     instructions write nothing. -/

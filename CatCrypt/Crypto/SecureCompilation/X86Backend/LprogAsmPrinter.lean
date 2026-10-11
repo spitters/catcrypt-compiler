@@ -50,6 +50,8 @@ encoder. The trusted-but-unverified surface is then exactly `gas` (mnemonic+oper
   a latent U64 aliasing bug — see module note);
 * `qsave.X` → fixed slot (`RDI`=-128, `RSI`=-120, `RBX`=-112, `RBP`=-104,
   `R12`=-96, `R13`=-88, `R14`=-80, `R15`=-72, relative to entry `%rsp`);
+* `qsave.RSP+off` → the caller's stack word at `off` from entry `%rsp`, where a stack
+  argument is passed;
 * `mem.<base>.<off>` → `off(%base)`;
 * `#v` immediate → `$v`.
 
@@ -194,14 +196,37 @@ def qsaveBytesFor (body : VIR.JasminLprogExport.Lcmd) : Nat :=
     placement is sound exactly for a body that issues no `call`; `qsaveBytesFor`
     is what widens the block to hold slots 8-11 for a calling body. At the
     default `qsaveB = qsaveBytes` the eight standard slots are in-frame and slots
-    8-11 are red-zone, which is the call-free layout. -/
+    8-11 are red-zone, which is the call-free layout.
+
+    A name `RSP+off` (`abiStackOff?`) is the caller's stack word `[RSP + off]` at entry,
+    where the caller passes the seventh and later System V integer arguments. It lies
+    above the frame, at `frame + off` from the post-`leaq` `%rsp`. -/
 def qsaveFrameOff (frame : Nat) (reg : String) (qsaveB : Nat := qsaveBytes) :
     Option Int :=
-  (x86Abi.saveSlot reg).map (fun i =>
+  ((x86Abi.saveSlot reg).map (fun i =>
     if 8 * (i + 1) ≤ qsaveB then
       Int.ofNat frame - 8 * (Int.ofNat i + 1)
     else
-      -(8 * (Int.ofNat i - 7)))
+      -(8 * (Int.ofNat i - 7)))).or
+    ((abiStackOff? reg).map fun off => Int.ofNat frame + Int.ofNat off)
+
+/-- A stack-argument name `RSP+off` has no save slot. -/
+theorem qsaveSlot_rsp (off : Nat) : qsaveSlot ("RSP+" ++ toString off) = none := by
+  unfold qsaveSlot
+  split
+  all_goals first
+    | rfl
+    | (rename_i h
+       have h4 := congrArg (fun s : String => s.toList.take 4) h
+       simp at h4)
+
+/-- **The caller stack word `RSP+off`** lies `off` bytes above a frame of size `frame`, at
+    every save block size. -/
+theorem qsaveFrameOff_rsp (frame off qsaveB : Nat) :
+    qsaveFrameOff frame ("RSP+" ++ toString off) qsaveB
+      = some (Int.ofNat frame + Int.ofNat off) := by
+  simp only [qsaveFrameOff, qsaveSlot_rsp, abiStackOff?_rsp, Option.map_none, Option.map_some,
+    Option.none_or]
 
 /-- The positive frame offset (from the post-`leaq` `%rsp`) of U32-spill slot
     `k.idx` at op width `w` in a frame of size `frame` whose qsave block is
