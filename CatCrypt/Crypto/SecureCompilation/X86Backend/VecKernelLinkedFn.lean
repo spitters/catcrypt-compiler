@@ -197,7 +197,7 @@ theorem ofVecOut_outLayout (name outN inN : String) (ni : Nat)
     OutLayout (LinkedFn.ofVecOut name outN inN ni sem sem_res hsem k A)
       (vecOutIns (outWords V.mode nOut) ni) "RDI" (outWords V.mode nOut) where
   args := by simp [LinkedFn.ofVecOut, vecOutLayout, vecOutIns, phys_RDI, phys_RSI]
-  dest := rfl
+  dest := List.mem_cons_self
   result := by simp [LinkedFn.ofVecOut, vecOutLayout, phys_RDI]
   ins_gp p hp := by
     simp only [vecOutIns, List.mem_cons, List.not_mem_nil, or_false] at hp

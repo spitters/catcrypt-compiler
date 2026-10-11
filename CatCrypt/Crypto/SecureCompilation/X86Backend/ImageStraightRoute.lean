@@ -54,7 +54,7 @@ every array name `r ≠ d` read later (`liveArr`) has `σ r ≠ σ d`.
   body, with each slot's array in memory at its entry base.
 * `chainAliasO`, `chainAlias`, `straightArrB`, `straight_arr_bytes`: the coalescing
   renaming of a chain (the export's alias map `arrChainAlias`, with the destination of a
-  call of an out symbol sent to its first operand), the gate of an array-returning straight-line
+  call of an out symbol sent to its destination operand), the gate of an array-returning straight-line
   program, and its correctness at the bytes: from every separated entry state, the decoded
   bytes of the printed body halt in a state from which the layout reads back the words of
   the program's denotation.
@@ -465,16 +465,22 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (isLopnB is
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (entryV_abiEntry resultOf_words)
 
-/-- One instruction of the alias map of a chain at the out symbols `outs`, applied to the
-    map `m` of the instructions before it: the destination of a store is sent to the root
-    of its base, and the destination of a shadow instruction of a call of a symbol of
-    `outs` whose first operand is a register is sent to the root of that operand, the
-    destination array of the call. Every other instruction leaves `m` unchanged. -/
-def aliasStepO (outs : List String) (m : Std.HashMap String String) (i : LinstrRM) :
+/-- One instruction of the alias map of a chain at the out symbols `outs`, each paired with
+    the position of its destination operand, applied to the map `m` of the instructions
+    before it: the destination of a store is sent to the root of its base, and the
+    destination of a shadow instruction of a call of a symbol `f` of `outs` whose operand at
+    the destination position `k` of `f` is a register is sent to the root of that operand,
+    the destination array of the call. Every other instruction leaves `m` unchanged. -/
+def aliasStepO (outs : List (String × Nat)) (m : Std.HashMap String String) (i : LinstrRM) :
     Std.HashMap String String :=
   match LprogIsa.shadowCall? i.1 with
-  | some (dst, f, .reg A :: _) => if outs.contains f then m.insert dst (m.getD A A) else m
-  | some _ => m
+  | some (dst, f, srcs) =>
+      match outs.lookup f with
+      | some k =>
+          match srcs[k]? with
+          | some (.reg A) => m.insert dst (m.getD A A)
+          | _ => m
+      | none => m
   | none =>
       match i.1 with
       | .Lopn [.reg dst] opn (.arrIdx base _ _ :: _) =>
@@ -484,9 +490,10 @@ def aliasStepO (outs : List String) (m : Std.HashMap String String) (i : LinstrR
 /-- **The coalescing renaming of a chain at the out symbols `outs`**: the destination of
     every store is sent to the root of its base, as in the alias map `arrChainAlias` of the
     physical-ABI export, and the destination of every call of a symbol of `outs` to the
-    root of its first operand, the array the called function writes in place. Instructions
-    are processed in order, each base resolved through the aliases before it. -/
-def chainAliasO (outs : List String) (is : List LinstrRM) : String → String :=
+    root of its operand at the destination position the symbol is paired with, the array
+    the called function writes in place. Instructions are processed in order, each base
+    resolved through the aliases before it. -/
+def chainAliasO (outs : List (String × Nat)) (is : List LinstrRM) : String → String :=
   canonMemrefName (is.foldl (aliasStepO outs) {})
 
 /-- The coalescing renaming of a chain without out symbols: the destination of every store

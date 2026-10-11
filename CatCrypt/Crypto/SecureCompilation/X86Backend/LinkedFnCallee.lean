@@ -39,7 +39,7 @@ of the record's interface to it.
   the result in the register of the result name.
 * `readIns`: the summary input of a list of parameters, each a scalar or a word array.
 * `outSummary`, `outSig`, `OutLayout`: the summary, interface and layout of a linked function
-  whose result is the `n` words of its first parameter, the destination, at the register of
+  whose result is the `n` words of one of its parameters, the destination, at the register of
   a pointer name.
 
 ## Main results
@@ -330,7 +330,7 @@ theorem insVals_readIns (s : AState) :
         wordsAt_eq]
 
 /-- **An out layout**: the parameters of the layout are, in order, the parameters `ins`, each
-    a name with its kind, in the registers of the names; the first parameter is the
+    a name with its kind, in the registers of the names; a parameter, at any position, is the
     destination, an array of `n` words at the register of the general-purpose name `po`; the
     result is read back as the `n` words at the entry value of that register; and the
     footprint of the record is among the `l.frame` bytes below its entry stack register and
@@ -339,8 +339,8 @@ structure OutLayout (l : LinkedFn) (ins : List (String × ArgKind)) (po : String
     Prop where
   /-- The parameters: the kind of each parameter of `ins` in the register of its name. -/
   args : l.layout.args.map (fun a => (a.reg, a.kind)) = ins.map fun p => (phys p.1, p.2)
-  /-- The first parameter is the destination: `n` words at the register of `po`. -/
-  dest : ins.head? = some (po, ArgKind.words n)
+  /-- A parameter is the destination: `n` words at the register of `po`. -/
+  dest : (po, ArgKind.words n) ∈ ins
   /-- The result is the `n` words at the register of `po`. -/
   result : l.layout.result = .words (phys po) n
   /-- The parameter names are general-purpose names. -/
@@ -352,7 +352,7 @@ structure OutLayout (l : LinkedFn) (ins : List (String × ArgKind)) (po : String
 /-- Under an out layout the pointer name of the destination is a general-purpose name. -/
 theorem OutLayout.po_gp {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
     (hL : OutLayout l ins po n) : gpOk po = true :=
-  hL.ins_gp (po, ArgKind.words n) (List.mem_of_head? hL.dest)
+  hL.ins_gp (po, ArgKind.words n) hL.dest
 
 /-- **The procedure summary of a linked function with a word-array result of length `n`**:
     the array positions of the kinds of `ins`, no word result, and as array result the
