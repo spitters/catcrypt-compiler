@@ -46,7 +46,9 @@ operation event to its events, and every other event to none.
 ## The leakage run with an event function
 
 `NFProg.leakRunE ev` is the leakage run of an `NFProg` in which a binding of an operation `op`
-on the values `x` emits the events `ev op x`; at `ev = opLeak M` it is the run
+on the values `x` emits the events `ev op x` (`OpEvents`, `NFLeakM`): the run
+`NFProg.leakRunMC ev.toExprEv` at the empty call environment, with the equations
+`NFProg.leakRunE_ret` to `NFProg.leakRunE_call`. At `ev = opLeak M` it is the run
 `NFProg.leakRunM M` (`NFProg.leakRunE_opLeak`). `NFPre.leakRunE ev` is the leakage run of a
 prefix; a filled prefix runs the prefix and then its continuation (`NFPre.leakRunE_plug`).
 
@@ -66,7 +68,7 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 
 ## Main definitions
 
-* `OpEvents`, `NFProg.leakRunE`, `NFPre.leakRunE`, `PLeak`, `nfLeakRunE`, `QuietPre`
+* `NFProg.leakRunE`, `NFPre.leakRunE`, `PLeak`, `nfLeakRunE`, `QuietPre`
 * `CallLeak`, `CallLeak.opEv`, `CallLeak.Quiet`, `CallLeak.Agrees`, `CallLeak.nf`
 * `valNatOf`, `callLeak`, `srcLeakCl`, `srcArgsLeakCl`, `nfCallLeak`, `srcLeakNF`,
   `srcArgsLeakNF`, `nfEv`, `nfTrace`
@@ -77,7 +79,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 
 ## Main results
 
-* `NFProg.leakRunE_opLeak`, `NFProg.leakRunE_congr`, `NFProg.leakRunE_fst`
+* `NFProg.leakRunE_opLeak`, `NFProg.leakRunE_congr`, `NFProg.leakRunE_fst`, and the
+  equations `NFProg.leakRunE_ret`, `_var`, `_forLoop`, `_ifThenElse`, `_whileLoop`, `_call`
 * `NFPre.leakRunE_plug`, `NFPre.leakRunE_append`, `NFPre.leakRunE_fst`
 * `CallLeak.nf_agrees`, `CallLeak.nf_opEv`, `nfLeakRunE_nf` — the call leakage of the front
 * the case lemmas `lsound_lit`, `lsound_atom`, `lsound_seq`, `lsound_letBind`,
@@ -106,54 +109,77 @@ open Ctxt (Var Valuation)
 variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d] [DialectDenoteM d Option]
 
-/-- The events of each operation of `d` on its argument values. `opLeak M` is the event
-    function of a leakage model `M`. -/
-abbrev OpEvents (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] : Type :=
-  (op : d.Op) → HVector (fun t => ⟦t⟧) (DialectSignature.sig op) → List CTLeak
-
 /-- The run of a program from a valuation with the list of its events, in which a binding of
-    an operation `op` on the argument values `x` emits the events `ev op x`: the run
-    `NFProg.leakRunM M` with the event function `ev` in place of `opLeak M`
+    an operation `op` on the argument values `x` emits the events `ev op x`: the leakage run
+    `NFProg.leakRunMC` with the events `ev.toExprEv` at the empty call environment, which
+    refuses a `call` node. At `ev = opLeak M` it is `NFProg.leakRunM M`
     (`NFProg.leakRunE_opLeak`). -/
-def NFProg.leakRunE (ev : OpEvents d) (fuel : Nat) :
-    {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Valuation Γ →
-    Option (Valuation ts × List CTLeak)
-  | _, _, .ret vs, V => some (Expr.lookupArgs vs V, [])
-  | _, _, .var e k, V =>
+def NFProg.leakRunE (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (V : Valuation Γ) : Option (Valuation ts × List CTLeak) :=
+  NFProg.leakRunMC ev.toExprEv CallEnv.empty fuel p V
+
+/-- The run of a return. -/
+theorem NFProg.leakRunE_ret (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (vs : HVector (Var Γ) ts) (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.ret vs) V = some (Expr.lookupArgs vs V, []) := rfl
+
+/-- The run of a binding: the events `ev` of its operation, then those of the continuation. -/
+theorem NFProg.leakRunE_var (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    {t : d.Ty} (e : Expr d Γ t) (k : NFProg d (t :: Γ) ts) (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.var e k) V =
       (e.denoteM (M := Option) V).bind fun x =>
         (NFProg.leakRunE ev fuel k (V.extend x)).map fun r =>
-          (r.1, ev e.op (Expr.lookupArgs e.args V) ++ r.2)
-  | _, _, .forLoop count inits body k, V =>
+          (r.1, ev e.op (Expr.lookupArgs e.args V) ++ r.2) := rfl
+
+/-- The run of a counted loop: its trip count, the events of its iterations, then those of
+    the continuation. -/
+theorem NFProg.leakRunE_forLoop (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d}
+    {ts cs : List d.Ty} (count : Var Γ (HasWord64.word (d := d)))
+    (inits : HVector (Var Γ) cs)
+    (body : NFProg d (cs ++ HasWord64.word (d := d) :: Γ) cs) (k : NFProg d (cs ++ Γ) ts)
+    (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.forLoop count inits body k) V =
       (forIterLeak
           (fun i acc => NFProg.leakRunE ev fuel body
             (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
           (List.range (HasWord64.toNat (d := d) (count.lookup V)))
           (Expr.lookupArgs inits V)).bind fun r =>
         (NFProg.leakRunE ev fuel k (hvAppend r.1 V)).map fun q =>
-          (q.1, .trip (HasWord64.toNat (d := d) (count.lookup V)) :: (r.2 ++ q.2))
-  | _, _, .ifThenElse cond thn els k, V =>
+          (q.1, .trip (HasWord64.toNat (d := d) (count.lookup V)) :: (r.2 ++ q.2)) := rfl
+
+/-- The run of a branch: its condition, the events of the arm taken, then those of the
+    continuation. -/
+theorem NFProg.leakRunE_ifThenElse (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d}
+    {ts rs : List d.Ty} (cond : Var Γ (HasBitType.bit (d := d))) (thn els : NFProg d Γ rs)
+    (k : NFProg d (rs ++ Γ) ts) (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.ifThenElse cond thn els k) V =
       (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
         else NFProg.leakRunE ev fuel els V).bind fun r =>
         (NFProg.leakRunE ev fuel k (hvAppend r.1 V)).map fun q =>
-          (q.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (r.2 ++ q.2))
-  | _, _, .whileLoop inits body k, V =>
+          (q.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (r.2 ++ q.2)) := rfl
+
+/-- The run of an exit-flag loop: the events of its iterations, then those of the
+    continuation. -/
+theorem NFProg.leakRunE_whileLoop (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d}
+    {ts cs : List d.Ty} (inits : HVector (Var Γ) cs)
+    (body : NFProg d (cs ++ Γ) (HasBitType.bit (d := d) :: cs)) (k : NFProg d (cs ++ Γ) ts)
+    (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.whileLoop inits body k) V =
       (whileIterLeak (fun acc => NFProg.leakRunE ev fuel body (hvAppend acc V)) fuel
           (Expr.lookupArgs inits V)).bind fun r =>
-        (NFProg.leakRunE ev fuel k (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)
-  | _, _, .call .., _ => none
+        (NFProg.leakRunE ev fuel k (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2) := rfl
+
+/-- The run refuses a `call` node. -/
+theorem NFProg.leakRunE_call (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d}
+    {ts as rs : List d.Ty} (f : String) (args : HVector (Var Γ) as)
+    (k : NFProg d (rs ++ Γ) ts) (V : Valuation Γ) :
+    NFProg.leakRunE ev fuel (.call f args k) V = none := rfl
 
 /-- **The run with the events of a leakage model** is the leakage run `NFProg.leakRunM`. -/
 theorem NFProg.leakRunE_opLeak (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (V : Valuation Γ) :
-    NFProg.leakRunE (opLeak M) fuel p V = NFProg.leakRunM M fuel p V := by
-  induction p with
-  | ret vs => rfl
-  | var e k ih => simp only [NFProg.leakRunE, NFProg.leakRunM, ih]; rfl
-  | forLoop count inits body k ihb ihk => simp only [NFProg.leakRunE, NFProg.leakRunM, ihb, ihk]
-  | ifThenElse cond thn els k iht ihe ihk =>
-      simp only [NFProg.leakRunE, NFProg.leakRunM, iht, ihe, ihk]
-  | whileLoop inits body k ihb ihk => simp only [NFProg.leakRunE, NFProg.leakRunM, ihb, ihk]
-  | call => rfl
+    NFProg.leakRunE (opLeak M) fuel p V = NFProg.leakRunM M fuel p V :=
+  NFProg.leakRunMC_empty M fuel p V
 
 /-- Two event functions that agree give the same run. -/
 theorem NFProg.leakRunE_congr {ev ev' : OpEvents d} (h : ∀ op x, ev op x = ev' op x)
@@ -167,46 +193,8 @@ theorem NFProg.leakRunE_congr {ev ev' : OpEvents d} (h : ∀ op x, ev op x = ev'
     environment. -/
 theorem NFProg.leakRunE_fst (ev : OpEvents d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
     (p : NFProg d Γ ts) (V : Valuation Γ) :
-    (NFProg.leakRunE ev fuel p V).map Prod.fst = p.denoteAt CallEnv.empty fuel V := by
-  let _ : CallDenote d := ⟨CallEnv.empty⟩
-  show (NFProg.leakRunE ev fuel p V).map Prod.fst = p.denote fuel V
-  induction p with
-  | ret vs => rfl
-  | var e k ih =>
-      simp only [NFProg.leakRunE, NFProg.denote, Option.bind_eq_bind]
-      rcases e.denoteM (M := Option) V with _ | x
-      · rfl
-      · simp only [Option.bind_some, Option.map_map]
-        exact ih _
-  | forLoop count inits body k ihb ihk =>
-      rw [NFProg.denote_forLoop, ← forIterLeak_fst _ _ (fun i acc => ihb _)]
-      simp only [NFProg.leakRunE, Option.bind_eq_bind]
-      rcases forIterLeak _ _ _ with _ | ⟨a, t⟩
-      · rfl
-      · simp only [Option.bind_some, Option.map_some, Option.map_map]
-        exact ihk _
-  | ifThenElse cond thn els k iht ihe ihk =>
-      rw [NFProg.denote_ifThenElse]
-      have hc : (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
-          else els.denote fuel V) =
-          (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
-            else NFProg.leakRunE ev fuel els V).map Prod.fst := by
-        split <;> simp only [iht, ihe]
-      rw [hc]
-      simp only [NFProg.leakRunE, Option.bind_eq_bind]
-      rcases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
-        else NFProg.leakRunE ev fuel els V) with _ | ⟨a, t⟩
-      · rfl
-      · simp only [Option.bind_some, Option.map_some, Option.map_map]
-        exact ihk _
-  | whileLoop inits body k ihb ihk =>
-      rw [NFProg.denote_whileLoop, ← whileIterLeak_fst _ _ (fun acc => ihb _)]
-      simp only [NFProg.leakRunE, Option.bind_eq_bind]
-      rcases whileIterLeak _ _ _ with _ | ⟨a, t⟩
-      · rfl
-      · simp only [Option.bind_some, Option.map_some, Option.map_map]
-        exact ihk _
-  | call => rfl
+    (NFProg.leakRunE ev fuel p V).map Prod.fst = p.denoteAt CallEnv.empty fuel V :=
+  NFProg.leakRunMC_fst _ CallEnv.empty fuel p V
 
 /-- The run of a prefix from a valuation with the list of its events: the valuation of the
     hole and the events of `NFProg.leakRunE ev` of the bindings, loops and branches of the
@@ -244,7 +232,7 @@ theorem NFPre.leakRunE_plug (ev : OpEvents d) (fuel : Nat) {Γ Δ : Ctxt d} {ts 
       simp only [NFPre.plug, NFPre.leakRunE, Option.bind_some, List.nil_append]
       cases NFProg.leakRunE ev fuel k V <;> rfl
   | var e p ih =>
-      simp only [NFPre.plug, NFProg.leakRunE, NFPre.leakRunE, ih]
+      simp only [NFPre.plug, NFProg.leakRunE_var, NFPre.leakRunE, ih]
       cases e.denoteM (M := Option) V with
       | none => rfl
       | some x =>
@@ -255,7 +243,7 @@ theorem NFPre.leakRunE_plug (ev : OpEvents d) (fuel : Nat) {Γ Δ : Ctxt d} {ts 
               simp only [Option.bind_some, Option.map_some, Option.map_map]
               cases NFProg.leakRunE ev fuel k r.1 <;> simp [List.append_assoc]
   | forLoop count inits body p ih =>
-      simp only [NFPre.plug, NFProg.leakRunE, NFPre.leakRunE, ih]
+      simp only [NFPre.plug, NFProg.leakRunE_forLoop, NFPre.leakRunE, ih]
       cases forIterLeak (fun i acc => NFProg.leakRunE ev fuel body
           (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)))
           (List.range (HasWord64.toNat (d := d) (count.lookup V)))
@@ -269,7 +257,7 @@ theorem NFPre.leakRunE_plug (ev : OpEvents d) (fuel : Nat) {Γ Δ : Ctxt d} {ts 
               simp only [Option.bind_some, Option.map_some]
               cases NFProg.leakRunE ev fuel k r.1 <;> simp [List.append_assoc]
   | ifThenElse cond thn els p ih =>
-      simp only [NFPre.plug, NFProg.leakRunE, NFPre.leakRunE, ih]
+      simp only [NFPre.plug, NFProg.leakRunE_ifThenElse, NFPre.leakRunE, ih]
       cases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
         else NFProg.leakRunE ev fuel els V) with
       | none => rfl

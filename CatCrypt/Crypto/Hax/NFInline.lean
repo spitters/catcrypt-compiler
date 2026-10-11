@@ -62,6 +62,8 @@ that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
   of a crate, at a leaf call and at a named leaf call.
 * `InlineLib.SoundStep` — soundness of a library from one denotation of the operations to
   another.
+* `InlineLib.LeakSoundStep` — soundness of a library for the leakage run from one denotation
+  and event function of the operations to another.
 * `NFProg.allOps`, `NFProg.HasOp`, `NFProg.inlineIterOk` — a check on every operation of a
   program, the operations of a program, and the check of the rounds of inlining.
 * `NFInline.crateCallOp`, `NFInline.noCrateCall`, `NFInline.crateInlineOk` — the calls of the
@@ -76,8 +78,15 @@ that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
 * `NFProg.denote_inline?`, `NFProg.denoteAt_inline?` — inlining under a sound library keeps
   every successful run.
 * `NFProg.denote_inlineIter` — so does the repeated inlining.
+* `NFProg.leakRunMC_ev_rename?`, `NFProg.leakRunMC_ev_seq?` — the leakage run of a renamed
+  program and of a splice, under an event function of the operations; `leakRunMC_rename?`
+  and `leakRunMC_seq?` are their instances at a leakage model.
 * `NFProg.leakRunMC_inline?` — inlining under a library sound for the leakage run whose
   bodies of symbols emit no event keeps every successful leakage run.
+* `NFProg.leakRunMC_inline?_step` — inlining keeps every successful leakage run from one
+  denotation and event function of the operations to another (`InlineLib.LeakSoundStep`).
+* `NFProg.leakRunMC_congr_ops` — the leakage run reads the denotation and the events of the
+  operations of the program only.
 * `NFProg.leakRunMC_inline?_prefix` — inlining under a library sound for the leakage run with
   a fixed list of events per symbol (`InlineLib.LeakSound`) maps two runs with equal events
   to two runs with equal events.
@@ -493,12 +502,28 @@ namespace NFProg
 
 open Dialects.NFLeak.NFProg (leakRunMC)
 
-/-- **A renamed program has the leakage run at `E` of the source.** -/
-theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d}
+open Dialects.NFLeak (OpEvents OpEvents.toExprEv)
+
+omit [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] in
+/-- A renamed expression has the events of the source under an event function of the
+    operations. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak.OpEvents.toExprEv_rename?
+    (ev : OpEvents d) {Γ Δ : Ctxt d} {t : d.Ty} {f : PRen Γ Δ} {V : Valuation Γ}
+    {W : Valuation Δ} (h : PRen.Agrees f V W) (e : Expr d Γ t) {e' : Expr d Δ t}
+    (he : Expr.rename? f e = some e') :
+    ev.toExprEv.ev Δ t e' W = ev.toExprEv.ev Γ t e V := by
+  simp only [Expr.rename?, Option.map_eq_some_iff] at he
+  obtain ⟨args, hargs, rfl⟩ := he
+  show ev e.op (Expr.lookupArgs args W) = ev e.op (Expr.lookupArgs e.args V)
+  rw [PRen.lookupArgs_vars? h e.args hargs]
+
+/-- **A renamed program has the leakage run at `E` of the source**, under the events `ev` of
+    the operations. -/
+theorem leakRunMC_ev_rename? (ev : OpEvents d) (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d}
     {ts : List d.Ty} (p : NFProg d Γ ts) :
     ∀ {Δ : Ctxt d} {f : PRen Γ Δ} {p' : NFProg d Δ ts} {V : Valuation Γ}
       {W : Valuation Δ}, NFProg.rename? f p = some p' → PRen.Agrees f V W →
-      leakRunMC M E fuel p' W = leakRunMC M E fuel p V := by
+      leakRunMC ev.toExprEv E fuel p' W = leakRunMC ev.toExprEv E fuel p V := by
   induction p with
   | ret vs =>
       intro Δ f p' V W hp h
@@ -509,8 +534,7 @@ theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : C
       intro Δ f p' V W hp h
       simp only [NFProg.rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
       obtain ⟨e', he, k', hk, rfl⟩ := hp
-      simp only [leakRunMC, Expr.denoteM_rename? h e he,
-        Dialects.NFLeak.Expr.ctLeak_rename? M h e he]
+      simp only [leakRunMC, Expr.denoteM_rename? h e he, OpEvents.toExprEv_rename? ev h e he]
       congr 1
       funext x
       rw [ih hk (PRen.agrees_lift h x)]
@@ -519,9 +543,9 @@ theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : C
       simp only [NFProg.rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
       obtain ⟨c', hc, i', hi, b', hb, k', hk, rfl⟩ := hp
       simp only [leakRunMC, h count c' hc, PRen.lookupArgs_vars? h inits hi]
-      have hbody : (fun i acc => leakRunMC M E fuel b'
+      have hbody : (fun i acc => leakRunMC ev.toExprEv E fuel b'
             (hvAppend acc (HVector.cons (HasWord64.ofNat (d := d) i) W))) =
-          (fun i acc => leakRunMC M E fuel body
+          (fun i acc => leakRunMC ev.toExprEv E fuel body
             (hvAppend acc (HVector.cons (HasWord64.ofNat (d := d) i) V))) := by
         funext i acc
         exact ihb hb (PRen.agrees_liftApp (PRen.agrees_lift h _) _ acc)
@@ -542,8 +566,8 @@ theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : C
       simp only [NFProg.rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
       obtain ⟨i', hi, b', hb, k', hk, rfl⟩ := hp
       simp only [leakRunMC, PRen.lookupArgs_vars? h inits hi]
-      have hbody : (fun acc => leakRunMC M E fuel b' (hvAppend acc W)) =
-          (fun acc => leakRunMC M E fuel body (hvAppend acc V)) := by
+      have hbody : (fun acc => leakRunMC ev.toExprEv E fuel b' (hvAppend acc W)) =
+          (fun acc => leakRunMC ev.toExprEv E fuel body (hvAppend acc V)) := by
         funext acc
         exact ihb hb (PRen.agrees_liftApp h _ acc)
       rw [hbody]
@@ -562,16 +586,16 @@ theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : C
 /-- **The leakage run at `E` of a splice.** When `ρ` relates `U` to `W`, `θ` relates `V₀` to
     `W`, the body runs at `U` to `r` and the continuation at the results of `r` and `V₀` to
     `s`, the splice runs at `W` to the results of `s` and the events of `r` followed by those
-    of `s`. -/
-theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt d}
+    of `s`; under the events `ev` of the operations. -/
+theorem leakRunMC_ev_seq? (ev : OpEvents d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt d}
     {rs : List d.Ty} (b : NFProg d Δ rs) :
     ∀ {Γ₀ : Ctxt d} {ts : List d.Ty} (k : NFProg d (rs ++ Γ₀) ts) {Γ : Ctxt d}
       {ρ : PRen Δ Γ} {θ : PRen Γ₀ Γ} {q : NFProg d Γ ts} {U : Valuation Δ}
       {V₀ : Valuation Γ₀} {W : Valuation Γ} {r : Valuation rs × List CTLeak}
       {s : Valuation ts × List CTLeak}, seq? k b ρ θ = some q →
-      PRen.Agrees ρ U W → PRen.Agrees θ V₀ W → leakRunMC M E fuel b U = some r →
-      leakRunMC M E fuel k (hvAppend r.1 V₀) = some s →
-      leakRunMC M E fuel q W = some (s.1, r.2 ++ s.2) := by
+      PRen.Agrees ρ U W → PRen.Agrees θ V₀ W → leakRunMC ev.toExprEv E fuel b U = some r →
+      leakRunMC ev.toExprEv E fuel k (hvAppend r.1 V₀) = some s →
+      leakRunMC ev.toExprEv E fuel q W = some (s.1, r.2 ++ s.2) := by
   induction b with
   | ret vs =>
       intro Γ₀ ts k Γ ρ θ q U V₀ W r s hq hρ hθ hr hs
@@ -579,7 +603,7 @@ theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt
       obtain ⟨ws, hws, hq⟩ := hq
       simp only [leakRunMC, Option.some.injEq] at hr
       subst hr
-      rw [leakRunMC_rename? M E fuel k hq (PRen.agrees_appendVars hθ ws),
+      rw [leakRunMC_ev_rename? ev E fuel k hq (PRen.agrees_appendVars hθ ws),
         PRen.lookupArgs_vars? hρ vs hws]
       rw [hs, List.nil_append]
   | var e b ih =>
@@ -590,19 +614,19 @@ theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt
       obtain ⟨x, hx, u, hu, rfl⟩ := hr
       have h' := ih k hb (PRen.agrees_lift hρ x) (PRen.agrees_shift hθ _ (.cons x .nil)) hu hs
       simp only [leakRunMC, Expr.denoteM_rename? hρ e he, hx, Option.bind_some, h',
-        Option.map_some, Dialects.NFLeak.Expr.ctLeak_rename? M hρ e he, List.append_assoc]
+        Option.map_some, OpEvents.toExprEv_rename? ev hρ e he, List.append_assoc]
   | forLoop count inits body b _ ih =>
       intro Γ₀ ts k Γ ρ θ q U V₀ W r s hq hρ hθ hr hs
       simp only [seq?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
       obtain ⟨c', hc, i', hi, body', hbody', b', hb, rfl⟩ := hq
       simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
       obtain ⟨a, ha, u, hu, rfl⟩ := hr
-      have hstep : (fun i acc => leakRunMC M E fuel body'
+      have hstep : (fun i acc => leakRunMC ev.toExprEv E fuel body'
             (hvAppend acc (HVector.cons (HasWord64.ofNat (d := d) i) W))) =
-          (fun i acc => leakRunMC M E fuel body
+          (fun i acc => leakRunMC ev.toExprEv E fuel body
             (hvAppend acc (HVector.cons (HasWord64.ofNat (d := d) i) U))) := by
         funext i acc
-        exact leakRunMC_rename? M E fuel body hbody'
+        exact leakRunMC_ev_rename? ev E fuel body hbody'
           (PRen.agrees_liftApp (PRen.agrees_lift hρ _) _ acc)
       have h' := ih k hb (PRen.agrees_liftApp hρ _ a.1) (PRen.agrees_shift hθ _ a.1) hu hs
       simp only [leakRunMC, hρ count c' hc, PRen.lookupArgs_vars? hρ inits hi, hstep, ha,
@@ -614,8 +638,8 @@ theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt
       simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
       obtain ⟨a, ha, u, hu, rfl⟩ := hr
       have h' := ih k hb (PRen.agrees_liftApp hρ _ a.1) (PRen.agrees_shift hθ _ a.1) hu hs
-      simp only [leakRunMC, hρ cond c' hc, leakRunMC_rename? M E fuel thn ht hρ,
-        leakRunMC_rename? M E fuel els he hρ, ha, Option.bind_some, h', Option.map_some,
+      simp only [leakRunMC, hρ cond c' hc, leakRunMC_ev_rename? ev E fuel thn ht hρ,
+        leakRunMC_ev_rename? ev E fuel els he hρ, ha, Option.bind_some, h', Option.map_some,
         List.cons_append, List.append_assoc]
   | whileLoop inits body b _ ih =>
       intro Γ₀ ts k Γ ρ θ q U V₀ W r s hq hρ hθ hr hs
@@ -623,10 +647,10 @@ theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt
       obtain ⟨i', hi, body', hbody', b', hb, rfl⟩ := hq
       simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
       obtain ⟨a, ha, u, hu, rfl⟩ := hr
-      have hstep : (fun acc => leakRunMC M E fuel body' (hvAppend acc W)) =
-          (fun acc => leakRunMC M E fuel body (hvAppend acc U)) := by
+      have hstep : (fun acc => leakRunMC ev.toExprEv E fuel body' (hvAppend acc W)) =
+          (fun acc => leakRunMC ev.toExprEv E fuel body (hvAppend acc U)) := by
         funext acc
-        exact leakRunMC_rename? M E fuel body hbody' (PRen.agrees_liftApp hρ _ acc)
+        exact leakRunMC_ev_rename? ev E fuel body hbody' (PRen.agrees_liftApp hρ _ acc)
       have h' := ih k hb (PRen.agrees_liftApp hρ _ a.1) (PRen.agrees_shift hθ _ a.1) hu hs
       simp only [leakRunMC, PRen.lookupArgs_vars? hρ inits hi, hstep, ha, Option.bind_some, h',
         Option.map_some, List.append_assoc]
@@ -638,6 +662,27 @@ theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt
       obtain ⟨y, hy, hu⟩ := hr
       have h' := ih k hb (PRen.agrees_liftApp hρ _ y) (PRen.agrees_shift hθ _ y) hu hs
       simp only [leakRunMC, PRen.lookupArgs_vars? hρ args ha, hy, Option.bind_some, h']
+
+/-- **A renamed program has the leakage run at `E` of the source.** -/
+theorem leakRunMC_rename? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) {Δ : Ctxt d} {f : PRen Γ Δ} {p' : NFProg d Δ ts}
+    {V : Valuation Γ} {W : Valuation Δ} (hp : NFProg.rename? f p = some p')
+    (h : PRen.Agrees f V W) : leakRunMC M E fuel p' W = leakRunMC M E fuel p V :=
+  leakRunMC_ev_rename? (opLeak M) E fuel p hp h
+
+/-- **The leakage run at `E` of a splice.** When `ρ` relates `U` to `W`, `θ` relates `V₀` to
+    `W`, the body runs at `U` to `r` and the continuation at the results of `r` and `V₀` to
+    `s`, the splice runs at `W` to the results of `s` and the events of `r` followed by those
+    of `s`. -/
+theorem leakRunMC_seq? (M : LeakModel d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt d}
+    {rs : List d.Ty} (b : NFProg d Δ rs) {Γ₀ : Ctxt d} {ts : List d.Ty}
+    (k : NFProg d (rs ++ Γ₀) ts) {Γ : Ctxt d} {ρ : PRen Δ Γ} {θ : PRen Γ₀ Γ}
+    {q : NFProg d Γ ts} {U : Valuation Δ} {V₀ : Valuation Γ₀} {W : Valuation Γ}
+    {r : Valuation rs × List CTLeak} {s : Valuation ts × List CTLeak}
+    (hq : seq? k b ρ θ = some q) (hρ : PRen.Agrees ρ U W) (hθ : PRen.Agrees θ V₀ W)
+    (hr : leakRunMC M E fuel b U = some r) (hs : leakRunMC M E fuel k (hvAppend r.1 V₀) = some s) :
+    leakRunMC M E fuel q W = some (s.1, r.2 ++ s.2) :=
+  leakRunMC_ev_seq? (opLeak M) E fuel b k hq hρ hθ hr hs
 
 omit [DialectSignature d] [HasWord64 d] [HasBoolBit d] [DialectDenoteM d Option] in
 /-- The iterations of a counted loop whose second step succeeds wherever the first does,
@@ -1253,6 +1298,174 @@ theorem denote_inline?_step [CallDenote d] {L : InlineLib d} {D₁ D₂ : Dialec
       · cases hq
         simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff]
         exact ⟨r, hr, hk''⟩
+
+end NFProg
+
+section LeakStep
+
+open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
+open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak (OpEvents OpEvents.toExprEv)
+open Dialects.NFLeak.NFProg (leakRunMC)
+
+/-- **A library is sound for the leakage run from the denotation `D₁` and the events `ev₁` to
+    the denotation `D₂` and the events `ev₂`**, at the call environment `E`, the fuel `fuel`
+    and for the kept operations `P`: the body of an operation runs at `D₂` and `ev₂`, on every
+    argument vector on which the operation succeeds at `D₁`, to its result and to the events
+    `ev₁` of the operation; an operation of `P` runs at `D₂` as at `D₁`, with the same events;
+    and the body of a symbol runs at `D₂` and `ev₂` as its callee in `E`, with no event. -/
+structure InlineLib.LeakSoundStep (L : InlineLib d) (D₁ D₂ : DialectDenoteM d Option)
+    (ev₁ ev₂ : OpEvents d) (E : CallEnv d) (P : d.Op → Bool) (fuel : Nat) : Prop where
+  /-- The body of an operation runs at `D₂` as the operation at `D₁`, with its events. -/
+  op : ∀ (o : d.Op) b, L.op o = some b → ∀ x y, D₁.denoteM o x = some y →
+    @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ b x = some (.cons y .nil, ev₁ o x)
+  /-- An operation of `P` runs at `D₂` as at `D₁`, with the same events. -/
+  keep : ∀ (o : d.Op), P o = true → ∀ x y, D₁.denoteM o x = some y →
+    D₂.denoteM o x = some y ∧ ev₂ o x = ev₁ o x
+  /-- The body of a symbol runs at `D₂` as its callee, with no event. -/
+  call : ∀ f as rs b, L.call f as rs = some b → ∀ x y, E.call f as rs x = some y →
+    @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ b x = some (y, [])
+
+namespace NFProg
+
+/-- **Inlining keeps every successful leakage run, from the denotation `D₁` and the events
+    `ev₁` to the denotation `D₂` and the events `ev₂`**, under a library sound for the leakage
+    run from the one to the other for the kept operations `P`, on a program each of whose
+    operations the library has a body for or is of `P`: the inlined program runs to the same
+    results and the same events. -/
+theorem leakRunMC_inline?_step {L : InlineLib d} {D₁ D₂ : DialectDenoteM d Option}
+    {ev₁ ev₂ : OpEvents d} {E : CallEnv d} {P : d.Op → Bool} {fuel : Nat}
+    (hL : L.LeakSoundStep D₁ D₂ ev₁ ev₂ E P fuel) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) :
+    ∀ {p' : NFProg d Γ ts} {V : Valuation Γ} {r : Valuation ts × List CTLeak},
+      p.allOps (fun o => (L.op o).isSome || P o) = true → inline? L p = some p' →
+      @leakRunMC d _ _ _ _ D₁ ev₁.toExprEv E fuel _ _ p V = some r →
+      @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ p' V = some r := by
+  induction p with
+  | ret vs =>
+      intro p' V r _ hq hp
+      cases hq
+      exact hp
+  | var e k ih =>
+      intro p' V r ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨x, hx, s, hs, rfl⟩ := hp
+      have hs' := ih ha.2 hk' hs
+      obtain ⟨o, rfl, args⟩ := e
+      simp only [inlineVar] at hq
+      split at hq
+      · rename_i b hb
+        exact @leakRunMC_ev_seq? d _ _ _ _ D₂ ev₂ E fuel _ _ b _ _ k' _ _ _ _ _ _ _ _ _ hq
+          (PRen.agrees_ofArgs V args) (PRen.agrees_id V) (hL.op o b hb _ x hx) hs'
+      · rename_i hb
+        cases hq
+        have hPo : P o = true := by
+          have h := ha.1
+          simp only [hb, Option.isSome_none, Bool.false_or] at h
+          exact h
+        obtain ⟨hx', hev⟩ := hL.keep o hPo _ x hx
+        simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff]
+        refine ⟨x, hx', s, hs', ?_⟩
+        show (s.1, ev₂ o (Expr.lookupArgs args V) ++ s.2) =
+          (s.1, ev₁ o (Expr.lookupArgs args V) ++ s.2)
+        rw [hev]
+  | forLoop count inits body k ihb ihk =>
+      intro p' V r ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨a, ha', s, hs, rfl⟩ := hp
+      have ha'' := forIterLeak_mono _ _ (fun i X r h => ihb ha.1 hb' h) _ _ a ha'
+      simp only [leakRunMC, ha'', Option.bind_some, ihk ha.2 hk' hs, Option.map_some]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro p' V r ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨t', ht', e', he', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨a, ha', s, hs, rfl⟩ := hp
+      have ha'' : (if HasBoolBit.toBool (d := d) (cond.lookup V) then
+          @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ t' V
+          else @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ e' V) = some a := by
+        split at ha'
+        · rw [if_pos ‹_›]
+          exact iht ha.1.1 ht' ha'
+        · rw [if_neg ‹_›]
+          exact ihe ha.1.2 he' ha'
+      simp only [leakRunMC, ha'', Option.bind_some, ihk ha.2 hk' hs, Option.map_some]
+  | whileLoop inits body k ihb ihk =>
+      intro p' V r ha hq hp
+      simp only [allOps, Bool.and_eq_true] at ha
+      simp only [inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨b', hb', k', hk', rfl⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hp
+      obtain ⟨a, ha', s, hs, rfl⟩ := hp
+      have ha'' := whileIterLeak_mono _ _ (fun X r h => ihb ha.1 hb' h) _ _ a ha'
+      simp only [leakRunMC, ha'', Option.bind_some, ihk ha.2 hk' hs, Option.map_some]
+  | call f args k ih =>
+      intro p' V r ha hq hp
+      simp only [allOps] at ha
+      simp only [inline?, Option.bind_eq_some_iff] at hq
+      obtain ⟨k', hk', hq⟩ := hq
+      simp only [leakRunMC, Option.bind_eq_some_iff] at hp
+      obtain ⟨y, hy, hs⟩ := hp
+      have hs' := ih ha hk' hs
+      split at hq
+      · rename_i b hb
+        have h' := @leakRunMC_ev_seq? d _ _ _ _ D₂ ev₂ E fuel _ _ b _ _ k' _ _ _ _ _ _ _ _ _ hq
+          (PRen.agrees_ofArgs V args) (PRen.agrees_id V) (hL.call f _ _ b hb _ y hy) hs'
+        rw [h', List.nil_append]
+      · cases hq
+        simp only [leakRunMC, hy, Option.bind_some, hs']
+
+/-- **The leakage run reads the denotation and the events of the operations of the program
+    only**: two denotations and two event functions that agree at every operation of `P`
+    give the same leakage run of a program all of whose operations are of `P`. -/
+theorem leakRunMC_congr_ops (D₁ D₂ : DialectDenoteM d Option) (ev₁ ev₂ : OpEvents d)
+    (P : d.Op → Bool)
+    (hP : ∀ o, P o = true → ∀ x, D₁.denoteM o x = D₂.denoteM o x ∧ ev₁ o x = ev₂ o x)
+    (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
+    (hp : p.allOps P = true) (V : Valuation Γ) :
+    @leakRunMC d _ _ _ _ D₁ ev₁.toExprEv E fuel _ _ p V =
+      @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ p V := by
+  induction p with
+  | ret vs => rfl
+  | var e k ih =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      obtain ⟨o, rfl, args⟩ := e
+      simp only [leakRunMC]
+      rw [show @Expr.denoteM d Option _ _ D₁ _ _ ⟨o, rfl, args⟩ V =
+          @Expr.denoteM d Option _ _ D₂ _ _ ⟨o, rfl, args⟩ V from (hP o hp.1 _).1]
+      have hev : ev₁.toExprEv.ev _ _ (⟨o, rfl, args⟩ : Expr d _ _) V =
+          ev₂.toExprEv.ev _ _ (⟨o, rfl, args⟩ : Expr d _ _) V := (hP o hp.1 _).2
+      rw [hev]
+      congr 1
+      funext x
+      rw [ih hp.2 _]
+  | forLoop count inits body k ihb ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [leakRunMC,
+        fun acc i => ihb hp.1 (hvAppend acc (.cons (HasWord64.ofNat (d := d) i) V)),
+        fun acc => ihk hp.2 (hvAppend acc V)]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [leakRunMC, iht hp.1.1, ihe hp.1.2, fun r => ihk hp.2 (hvAppend r V)]
+  | whileLoop inits body k ihb ihk =>
+      simp only [allOps, Bool.and_eq_true] at hp
+      simp only [leakRunMC, fun acc => ihb hp.1 (hvAppend acc V),
+        fun acc => ihk hp.2 (hvAppend acc V)]
+  | call f args k ih =>
+      simp only [allOps] at hp
+      simp only [leakRunMC, fun r => ih hp (hvAppend r V)]
+
+end NFProg
+
+end LeakStep
+
+namespace NFProg
 
 /-- **The check of repeated inlining**: at each of the `n` rounds, every operation of the
     program of the round has a body in the library `L` or is of `P`, and the round does not
