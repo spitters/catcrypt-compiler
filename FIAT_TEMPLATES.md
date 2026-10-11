@@ -101,35 +101,7 @@ Probes of the gate accept the multiply and square of the Solinas arm at 2^255−
 tries the unsaturated arm (`unsatReprs`) first and selects it at 2^255−19; it selects
 the Solinas arm at 2^521−1.
 
-## Measured ratios (F2)
-
-The target is ours/fiat-C ≤ 1.25 for mul and sqr at the five primes; a proven hand kernel
-retires when the template bytes measure within 1.1 of it. The table gives the ratio
-ours/peer as latency / throughput, measured on the objects with `mulBlkRoute` and
-`mulLoadBody` (`bench/field_bytes/results/summary.md`; every conformance arm passes).
-
-| prime | op | ours/peer | peer |
-|---|---|---|---|
-| P-256 | mul | 1.54 / 1.54 | fiat C |
-| P-256 | sqr | 1.60 / 1.54 | fiat C |
-| secp256k1 | mul | 1.55 / 1.58 | fiat C |
-| secp256k1 | sqr | 1.70 / 1.66 | fiat C |
-| P-384 | mul | 1.16 / 1.15 | fiat C |
-| P-384 | sqr | 1.18 / 1.15 | fiat C |
-| BN254 | mul | 1.54 / 1.59 | fiat/bedrock2 C |
-| BN254 | sqr | 1.55 / 1.64 | fiat/bedrock2 C |
-| BLS12-381 | mul | 2.93 / 2.97 | blst |
-
-The ratio is within the target at P-384, where the route selects the six-limb CIOS block
-`mulBlkI`. Below six limbs the route uses `mulLoadBody`, which loads each row word of
-the second factor at its row; at six limbs `mulLoadBody` measures 1.37 at P-384, against
-1.16 to 1.18 for the CIOS block. The P-256 multiply has 791 instructions and nine stack
-reloads of `%r14`: four reload the operand pointer, one per row, and three reload the
-spilled reduction word.
-
-Against the fastest hand kernels the latency ratios are 3.01 (mul) and 3.09 (sqr) at
-BN254 and 3.24 (mul) and 3.27 (sqr) at BLS12-381, measured on the objects of the
-dead-write pass (`bench/field_bytes/README.md`).
+## Printed Rust
 
 The printed Rust (`bench/fiat_rust_compare/README.md`) measures 0.68–1.18 of
 fiat-crypto's Rust for mul and sqr at P-256, secp256k1 and P-384
