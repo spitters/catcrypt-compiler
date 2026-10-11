@@ -1553,28 +1553,43 @@ abbrev ShiftImmOracle := String → Option Nat
     *inputs*, as ChaCha/SHA/Keccak use) still avoid the x86 forced-`CL`
     constraint, with no per-binding oracle to hand-write.
 
-    `regName` is De-Bruijn-unique (`"r" ++ toString depth`), so each `MOV r,#v`
-    defines a distinct `r`; the last definition for a given name wins (a name is
-    never redefined under SSA, so the fold is unambiguous). Only single-source
-    immediate MOVs contribute (the `regConst` shape); two-address legalization
-    MOVs (`MOV dst, src0`) carry a register source and are ignored. -/
+    `regName` is De-Bruijn-unique (`"r" ++ toString depth`), but a body need not be
+    in SSA form: the loop frames of the region export seed a trip index with
+    `MOV r,#0`, advance it with `ADD` and reset it after the exit label. A name
+    therefore resolves only when the body writes it exactly once, by that `MOV`; a
+    name written by another `Lopn` or more than once resolves to none. Only
+    single-source immediate MOVs contribute (the `regConst` shape); two-address
+    legalization MOVs (`MOV dst, src0`) carry a register source and are ignored. -/
 def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
   -- Index the resolved counts by the De-Bruijn depth `k` encoded in the body
   -- name `regName k = "r" ++ toString k`, in a single `Array (Option Nat)` pass.
   -- This avoids String-keyed hashing over a ~364k-instruction body: build is
   -- O(n), lookup is O(1) on the parsed index. Names that aren't `r<k>` (e.g.
   -- `a<j>` args) never name a `regConst`, so they're absent and resolve to none.
+  -- `w` counts the writes of each name by an `Lopn`.
   let mut a : Array (Option Nat) := Array.replicate body.length none
+  let mut w : Array Nat := Array.replicate body.length 0
   for i in body do
     match i.li_i with
-    | .Lopn [.reg d] opn [.imm v] =>
-        if (stripWidthTag opn) == "MOV" then
-          if d.startsWith "r" then
-            match strDropToNat? d 1 with
-            | some k => if k < a.size then a := a.set! k (some v)
-            | none => pure ()
+    | .Lopn outs opn ins =>
+        for o in outs do
+          match o with
+          | .reg d =>
+              if d.startsWith "r" then
+                match strDropToNat? d 1 with
+                | some k => if k < w.size then w := w.set! k (w[k]! + 1)
+                | none => pure ()
+          | _ => pure ()
+        match outs, ins with
+        | [.reg d], [.imm v] =>
+            if (stripWidthTag opn) == "MOV" then
+              if d.startsWith "r" then
+                match strDropToNat? d 1 with
+                | some k => if k < a.size then a := a.set! k (some v)
+                | none => pure ()
+        | _, _ => pure ()
     | _ => pure ()
-  return a
+  return (a.zip w).map fun (v, n) => if n == 1 then v else none
 
 /-- Resolve a body register name `r<k>` against a prebuilt `movImmTable`. -/
 def movImmLookup (tbl : Array (Option Nat)) (n : String) : Option Nat :=
