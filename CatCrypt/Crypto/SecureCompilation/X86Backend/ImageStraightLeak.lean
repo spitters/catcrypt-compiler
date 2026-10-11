@@ -266,7 +266,7 @@ theorem imgRel_of_base_eq {frame : String → Option (BitVec 64)}
   ⟨hr.pc, hr.regs, hr.slots, hr.zf, hr.cf, hr.of, hr.wid,
     fun q A n hq => by rw [← h q A n hq]; exact hr.cells q A n hq,
     fun k R A n a hs hq hf => by rw [← h _ A n hq]; exact hr.saved k R A n a hs hq hf,
-    hr.reload⟩
+    hr.reload, fun R A n a hR hq hf => by rw [← h _ A n hq]; exact hr.held R A n a hR hq hf⟩
 
 /-- **The entry bridge of a straight route.** Let the printed body `body` and the chain `C`
     pass `straightRouteOutB` with the observed registers `outs`, and let the virtual body

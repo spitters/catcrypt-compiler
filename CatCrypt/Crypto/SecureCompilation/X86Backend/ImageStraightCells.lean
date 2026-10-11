@@ -373,7 +373,10 @@ theorem imgRel_cellArrs {frame : String → Option (BitVec 64)}
     ImgRel frame (slotArrC R sl) base body
       { s with prog := { s.prog with base := emptyArrs R s.prog.base } } sa zf := by
   refine ⟨h.pc, h.regs, h.slots, h.zf, h.cf, h.of, h.wid, fun q A n hq => ?_,
-    fun k R' A n a hk hA ha => ?_, fun b q a A n hr hq ha hbf => ?_⟩
+    fun k R' A n a hk hA ha => ?_, fun b q a A n hr hq ha hbf => ?_,
+    fun R' A n a hR hA ha => by
+      obtain ⟨m, hsq, -⟩ := slotArrC_some hA
+      exact h.held R' A m a hR hsq ha⟩
   · obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     rcases hcase with ⟨hA, rfl⟩ | ⟨hA, rfl⟩
     · exact ⟨Fin.elim0, getArr_emptyArrs hA, fun j hj => absurd hj (Nat.not_lt_zero j)⟩

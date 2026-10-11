@@ -298,7 +298,10 @@ theorem imgRel_call {frame : String → Option (BitVec 64)}
     simp [callRegs, h1, clobB, hr]
   refine ⟨congrArg (· + 1) hrel.pc, fun r hr => ?_, fun q a ha => ?_, rfl, rfl, rfl,
     fun r hr => ?_, fun q A n hq => ?_, fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩,
-    fun b q a A n hr => ?_⟩
+    fun b q a A n hr => ?_, fun R A n a hR hA ha => by
+      show read64 m a = base A
+      rw [read64_congr_range (hfr _ a ha)]
+      exact hrel.held R A n a hR hA ha⟩
   · show (callRegs c ω s.prog.base.reg).lvm r = (callRegs c ω sa.reg).lvm r
     simp only [callRegs, hmap, hrel.regs r hr]
   · have hq : gpOk q = false := by
@@ -430,6 +433,7 @@ theorem imgRel_of_agree {frame : String → Option (BitVec 64)}
     exact ⟨arr, by rw [getArr_congr h.arr]; exact h1, h2⟩
   saved := hrel.saved
   reload := hrel.reload
+  held := hrel.held
 
 /-- **The relaxed relation with no exempted name is the relation.** -/
 theorem imgRelX_nil {frame : String → Option (BitVec 64)}

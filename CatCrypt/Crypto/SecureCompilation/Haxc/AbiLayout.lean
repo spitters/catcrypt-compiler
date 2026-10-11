@@ -212,10 +212,11 @@ def StackIn (σ : AbiLayout) (sa : AState) : Prop :=
     sa.regs a.reg = read64 sa.mem (sa.regs "%rsp" + BitVec.ofNat 64 (8 * k))
 
 /-- **The well-formed stack parameters** of a layout: each stack parameter lies in a word
-    `%rsp + 8 k` with `k ≥ 1`, above the return address at `%rsp`, and above every stack
-    word `%rsp + o`, `o ≤ frameHi`, that the body uses. -/
+    `%rsp + 8 k` with `k ≥ 1`, above the return address at `%rsp`, at an offset
+    `8 k ≤ frameHi` inside the stack words of the layout, so that `Regions` separates every
+    pointer region from it. -/
 def StackWF (σ : AbiLayout) : Prop :=
-  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k → 1 ≤ k ∧ σ.frameHi + 8 ≤ 8 * (k : Int)
+  ∀ a ∈ σ.args, ∀ k, a.reg = stackArgReg k → 1 ≤ k ∧ 8 * (k : Int) ≤ σ.frameHi
 
 /-- A layout whose parameters are all register-carried has its stack parameters at every
     entry state. -/

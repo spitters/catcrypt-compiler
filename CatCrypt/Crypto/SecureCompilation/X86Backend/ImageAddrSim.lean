@@ -36,12 +36,15 @@ registers and its arrays (`step_congr`).
 `ImgRel` relates a state of the image to an address state: equal program counters, flags
 and names without a frame word; a frame-word name holds its frame word; each array holds the
 words at its base; the frame word of an array pointer holds the base once its save has run;
-after a reload the reloaded register holds the frame word. `ImgSep` is the separation of
+after a reload the reloaded register holds the frame word; the frame word of the slot of a
+stack-argument name, which holds an array pointer from entry with no save, holds the base
+(`HeldAt`). `ImgSep` is the separation of
 frame words, array words and the red-zone word. `imgGateB` is the decided condition on the
 body: each instruction is a label, a branch on a condition code, an indexed access through a
 reloaded array pointer, a frame-word move or compare, or a register instruction whose
 symbolic description reads and writes no frame word and no array (`regGateB`); and every
-reload of an array pointer follows its save (`reloadSavedB`). `ImgGate` is the positionwise
+reload of an array pointer follows its save or reads an entry-held slot (`reloadSavedB`,
+`heldReg?`). `ImgGate` is the positionwise
 form the step lemmas take: `instrGateB` at each position before the last that holds no call,
 the closing return, and `reloadSavedB`; `ImgGate.of_imgGateB` gives it from `imgGateB`.
 
@@ -50,6 +53,8 @@ the closing return, and `reloadSavedB`; `ImgGate.of_imgGateB` gives it from `img
 * `termArrFree`, `termArrFree_ev`: a term reading no array has one value for all arrays.
 * `descReads`, `descArrFree`, `step_congr`: the congruence of a described step.
 * `reg_step`: a register instruction on the two machines.
+* `heldReg?_spec`, `reloadSavedB_spec`: a reload of an array pointer reads a slot saved
+  before it or the entry-held slot of a stack-argument name.
 * `rel_reg`, `rel_sload`, `rel_sstore`, `rel_scmp`, `rel_ldx`, `rel_stx`, `rel_label`,
   `rel_jump`: each kind of instruction keeps the relation.
 * `img_step`: one checked step of the image is one or two steps of the address machine.
@@ -817,14 +822,44 @@ def instrGateB (frame : String → Option (BitVec 64)) (slotArr : String → Opt
   | .reg => regGateB frame (normA x) && !bitMovB body k x && !bitStoreB body k x
   | .other => false
 
-/-- Every reload of the pointer of an array follows a save of that pointer. -/
+/-- **The name of an entry-held frame slot**: the name `R` of a slot `qsave.R` whose name is a
+    stack-argument name `RSP+off` (`abiStackOff?`). Its frame word is the stack word in which
+    the caller passes an argument; it holds its value from entry, with no save. -/
+def heldReg? (q : String) : Option String :=
+  match q.toList with
+  | 'q' :: 's' :: 'a' :: 'v' :: 'e' :: '.' :: r =>
+      if (abiStackOff? (String.ofList r)).isSome then some (String.ofList r) else none
+  | _ => none
+
+/-- An entry-held slot is the slot of a stack-argument name. -/
+theorem heldReg?_spec {q R : String} (h : heldReg? q = some R) :
+    q = slotOfReg R ∧ (abiStackOff? R).isSome = true := by
+  unfold heldReg? at h
+  split at h
+  · rename_i r hq
+    split_ifs at h with hs
+    obtain rfl := Option.some.inj h
+    refine ⟨?_, hs⟩
+    apply String.toList_injective
+    simp [slotOfReg, hq]
+  · cases h
+
+/-- A general-purpose name is no stack-argument name. -/
+theorem abiStackOff?_of_gpOk {R : String} (h : gpOk R = true) : abiStackOff? R = none := by
+  simp only [gpOk, DecodePrinted.gpList, List.contains_eq_mem, decide_eq_true_eq, List.mem_cons,
+    List.not_mem_nil, or_false] at h
+  rcases h with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl <;> decide
+
+/-- Every reload of the pointer of an array follows a save of that pointer, or reads an
+    entry-held slot (`heldReg?`). -/
 def reloadSavedB (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   (List.range body.length).all fun k =>
     match body[k]? with
     | some i =>
         match slotMov? i.li_i with
         | some (_, q) =>
-            (slotArr q).isNone || (List.range k).any fun j =>
+            (slotArr q).isNone || (heldReg? q).isSome || (List.range k).any fun j =>
               (body[j]?).any fun i' => isSaveB i'.li_i && ((slotMov? i'.li_i).map Prod.fst == some q)
         | none => true
     | none => true
@@ -867,13 +902,30 @@ theorem ImgSep.slotFrameB {frame : String → Option (BitVec 64)}
 def SaveAt (body : Lcmd) (k : Nat) (R : String) : Prop :=
   ∃ i, body[k]? = some i ∧ slotMov? i.li_i = some (slotOfReg R, R)
 
+/-- **The entry-held frame words** at the memory `mem`: the frame word of the slot
+    `qsave.R` of a stack-argument name `R` (`abiStackOff?`) that holds the pointer of an
+    array holds the base of the array. -/
+def HeldAt (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (base : String → BitVec 64) (mem : Ascent.AddrMem.AMem) : Prop :=
+  ∀ R A n a, (abiStackOff? R).isSome = true → slotArr (slotOfReg R) = some (A, n) →
+    frame (slotOfReg R) = some a → read64 mem a = base A
+
+/-- The entry-held frame words are kept by a step that keeps every frame word. -/
+theorem HeldAt.of_frames {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64}
+    {mem mem' : Ascent.AddrMem.AMem} (h : HeldAt frame slotArr base mem)
+    (hmem : ∀ q a, frame q = some a → read64 mem' a = read64 mem a) :
+    HeldAt frame slotArr base mem' :=
+  fun R A n a hR hA ha => (hmem _ a ha).trans (h R A n a hR hA ha)
+
 /-- **The relation of the image simulation** between a state `s` of the name-keyed machine
     on the image and a state `sa` of the address machine with zero flag `zf` on the body:
     the program counters, the names without a frame word, the zero, carry and overflow flags
     are equal; a frame-word name holds its frame word; a general-purpose name has width `64`;
     each array holds the words at its base; the frame word of an array pointer holds the
-    base once its save has run, and the saved register holds it before; and after a reload
-    the reloaded register holds the frame word. -/
+    base once its save has run, and the saved register holds it before; after a reload
+    the reloaded register holds the frame word; and the entry-held frame words hold their
+    bases (`HeldAt`). -/
 structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (base : String → BitVec 64) (body : Lcmd) (s : LstateMF) (sa : LstateA) (zf : Bool) :
     Prop where
@@ -893,6 +945,7 @@ structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → O
   reload : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
     slotArr q = some (A, n) → frame q = some a → frame b = none →
       sa.reg.lvm b = ⟨64, read64 sa.mem a⟩
+  held : HeldAt frame slotArr base sa.mem
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (opNames)
@@ -1036,7 +1089,8 @@ theorem accArr_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} 
 theorem reloadSavedB_spec {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (h : reloadSavedB slotArr body = true) {k : Nat} {i : Linstr} (hi : body[k]? = some i)
     {b q : String} (hm : slotMov? i.li_i = some (b, q)) (hq : (slotArr q).isSome = true) :
-    ∃ j R, j < k ∧ SaveAt body j R ∧ q = slotOfReg R := by
+    (∃ j R, j < k ∧ SaveAt body j R ∧ q = slotOfReg R)
+      ∨ ∃ R, q = slotOfReg R ∧ (abiStackOff? R).isSome = true := by
   unfold reloadSavedB at h
   rw [List.all_eq_true] at h
   have hk : k < body.length := (List.getElem?_eq_some_iff.mp hi).1
@@ -1044,9 +1098,12 @@ theorem reloadSavedB_spec {slotArr : String → Option (String × Nat)} {body : 
   rw [hi] at this
   simp only [hm, Bool.or_eq_true, Option.isNone_iff_eq_none, List.any_eq_true,
     List.mem_range] at this
-  rcases this with hn | ⟨j, hj, hany⟩
+  rcases this with (hn | hh) | ⟨j, hj, hany⟩
   · rw [hn] at hq; cases hq
-  · cases hb : body[j]? with
+  · obtain ⟨R, hR⟩ := Option.isSome_iff_exists.mp hh
+    exact Or.inr ⟨R, heldReg?_spec hR⟩
+  · refine Or.inl ?_
+    cases hb : body[j]? with
     | none => rw [hb] at hany; cases hany
     | some i' =>
         rw [hb] at hany
@@ -1239,7 +1296,8 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
     reg_step hl hg P s t sa zf hrel.regs hrel.zf hrel.cf hrel.of hrel.wid hs
   have hmovF : ∀ d src, slotMov? bi.li_i = some (d, src) → frame d = none ∧ frame src = none :=
     fun d src hm => regGateB_slotMov hg (by rw [slotMov?_normA]; exact hm)
-  refine ⟨sa', hst, ⟨?_, hregs', ?_, rfl, hcf, hof, hwid', ?_, ?_, ?_⟩⟩
+  refine ⟨sa', hst, ⟨?_, hregs', ?_, rfl, hcf, hof, hwid', ?_, ?_, ?_, by
+    rw [hmem]; exact hrel.held⟩⟩
   · rw [hlpcA, hlpcI, hrel.pc]
   · intro q a ha
     rw [hkeepF q (by rw [ha]; simp), hrel.slots q a ha, hmem]
@@ -1316,7 +1374,8 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
   subst hz
   have hsq := hrel.slots q a ha
   refine ⟨{ sa with reg := (sa.reg.setReg d (read64 sa.mem a)).nextPc },
-    fstepA_slotLoad frame hm ha sa _, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_⟩⟩
+    fstepA_slotLoad frame hm ha sa _, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_,
+      hrel.held⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     by_cases e : r = d
@@ -1393,7 +1452,8 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
   have hSv : s.prog.base.reg.lvm S = ⟨64, castW (sa.reg.lvm S) 64⟩ := by
     rw [hrel.regs S hS, sigma_of_castW hw]
   refine ⟨{ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (castW (sa.reg.lvm S) 64) },
-    fstepA_slotStore frame hm hS ha sa _ hv, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_⟩⟩
+    fstepA_slotStore frame hm hS ha sa _ hv,
+    ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, ?_⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     have e : r ≠ q := fun e => by rw [e, ha] at hr; cases hr
@@ -1458,6 +1518,18 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       have hne : q ≠ q' := fun e => by rw [e, hq'] at hd; cases hd
       exact read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' hne)
+  · intro R A n a' hR hA ha'
+    by_cases hqR : slotOfReg R = q
+    · exfalso
+      rw [← hqR] at hm
+      obtain ⟨hqS, -⟩ := physImgB_slotStore hphys hb hm (by rw [hA]; rfl)
+      have h0 := abiStackOff?_of_gpOk hgS
+      rw [← slotOfReg_inj hqS] at h0
+      rw [h0] at hR
+      cases hR
+    · show read64 (write64 sa.mem a _) a' = base A
+      rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' ha ha' (Ne.symm hqR))]
+      exact hrel.held R A n a' hR hA ha'
 
 /-- A step at an instruction that is no move, keeping every frame word and every name without
     a frame word outside the instruction's destinations, keeps the save and reload components
@@ -1533,7 +1605,7 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
       fun r hr => by simpa [LstateM.nextPc] using hrel.regs r hr,
       fun q' a' ha' => by simpa [LstateM.nextPc] using hrel.slots q' a' ha', rfl, hrel.cf,
       hrel.of, fun r hr => by simpa using hrel.wid r hr,
-      fun q' A n hq' => by simpa using hrel.cells q' A n hq', hsv, hrl⟩⟩
+      fun q' A n hq' => by simpa using hrel.cells q' A n hq', hsv, hrl, hrel.held⟩⟩
 
 /-- At an indexed access whose pointer register was reloaded from the frame word of an
     array, the pointer register holds the base of the array. -/
@@ -1548,10 +1620,13 @@ theorem ptr_of_reload {frame : String → Option (BitVec 64)}
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := hgate.saved
-  obtain ⟨j, R, hj, hS, hqR⟩ := reloadSavedB_spec hrs hi hm (by rw [hq]; rfl)
-  subst hqR
-  have hp := (hrel.saved j R A n a hS hq ha).1 (by omega)
-  refine ⟨slotOfReg R, hq, ?_⟩
+  have hp : read64 sa.mem a = base A := by
+    rcases reloadSavedB_spec hrs hi hm (by rw [hq]; rfl) with ⟨j, R, hj, hS, hqR⟩ | ⟨R, hqR, hR⟩
+    · subst hqR
+      exact (hrel.saved j R A n a hS hq ha).1 (by omega)
+    · subst hqR
+      exact hrel.held R A n a hR hq ha
+  refine ⟨q, hq, ?_⟩
   rw [getW_eq, hrl]
   simp [castW, hp]
 
@@ -1623,7 +1698,8 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
       have hrd : r ≠ d := fun e => hr (by simp [e, dstNames, opNames])
       simp [LstateN.setReg, LstateN.nextPc, hrd])
   refine ⟨_, rfl, ⟨by simp [LstateM.setReg, LstateM.nextPc, hrel.pc], ?_, ?_, rfl, hrel.cf,
-    hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl⟩⟩
+    hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl,
+    hrel.held⟩⟩
   · intro r hr
     by_cases e : r = d
     · subst e
@@ -1683,7 +1759,9 @@ theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Op
       (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
-    hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl⟩⟩
+    hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
+    hrel.held.of_frames fun q' a ha => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
     rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)]
@@ -1726,7 +1804,8 @@ theorem rel_pc {frame : String → Option (BitVec 64)} {slotArr : String → Opt
         sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩) :
     ImgRel frame slotArr base body t sa' zf := by
   refine ⟨hpc, fun r hr => ?_, fun q a ha => ?_, by rw [hz, hrel.zf], by rw [hc', hc, hrel.cf],
-    by rw [ho', ho, hrel.of], fun r hr => ?_, fun q A n hq => ?_, hsv, hrl⟩
+    by rw [ho', ho, hrel.of], fun r hr => ?_, fun q A n hq => ?_, hsv, hrl,
+    by rw [hmem]; exact hrel.held⟩
   · rw [hlvm, hreg]; exact hrel.regs r hr
   · rw [hlvm, hmem]; exact hrel.slots q a ha
   · rw [hreg]; exact hrel.wid r hr

@@ -427,7 +427,7 @@ theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
       { prog := { base := entryV σ fr sa un, lfn := fn }, zf := false } (entryA σ sa)
       false := by
   refine ImageAddrFrame.imgRel_entry rfl rfl (fun r h => ?_) (fun q a h => ?_) rfl rfl rfl
-    (fun r h => ?_) (fun q A n h => ?_) (fun R A n h => ?_)
+    (fun r h => ?_) (fun q A n h => ?_) (fun R A n h => ?_) (fun R A n a hR h _ => ?_)
   · simp [entryV, h]
   · simp [entryV, entryA, h]
   · simp [entryA, h]
@@ -453,6 +453,11 @@ theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
     unfold LstateN.getW
     rw [hl]
     simp
+  · obtain ⟨A0, h0, -⟩ := slotRen_some h
+    obtain ⟨j, a, hj, -, -, hq⟩ := slotArrOf_some h0
+    have hR' : nm a.reg = R := by simpa [slotOfReg] using hq
+    rw [← hR', ImageAddrSim.abiStackOff?_of_gpOk (hS a (List.mem_of_getElem? hj)).1] at hR
+    cases hR
 
 /-! ## 5. The checks of the route -/
 
