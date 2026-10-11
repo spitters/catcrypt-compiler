@@ -21,6 +21,9 @@ Rust computes the high word of the `64 × 64 → 128` product of two `u64` value
 cast#64 (Shr#128 (Mul (cast#128 a) (cast#128 b)) 64)
 ```
 
+The width-tagged extraction names the multiply `Mul#128` in place of `Mul`; the pass
+recognises both (`mulStepB`, `mulHiChainM`).
+
 The typed front holds every scalar in one `64`-bit word, so it cannot hold the `128`-bit
 intermediates of this chain. The pass `fuseMulHi` replaces each occurrence of the chain on
 two variables, in any position of an expression, by the single word call `mulhi#64 a b`
@@ -39,7 +42,9 @@ pairs (`MulHiLaw`), the two expressions have the same run up to the text of an e
 
 ## Main definitions
 
-* `mulHiOf` — the two variables of the chain `mulHiChain (.var a) (.var b)`.
+* `mulStepB`, `mulHiChainM` — the two names of the `128`-bit multiply, and the chain with
+  the multiply call given by name.
+* `mulHiOf` — the two variables of the chain `mulHiChainM m (.var a) (.var b)`.
 * `fuseMulHi`, `fuseMulHiT` — the pass on untyped and on typed expressions.
 * `mulHiChainVal`, `MulHiLaw` — the value of the chain under a table, and the law that
   it is the value of `mulhi#64`.
@@ -50,8 +55,8 @@ pairs (`MulHiLaw`), the two expressions have the same run up to the text of an e
 
 ## Main results
 
-* `mulHiOf_eq_some`, `mulHiOf_mulHiChain` — an expression is recognised exactly when it is
-  the chain on two variables.
+* `mulHiOf_eq_some`, `mulHiOf_mulHiChainM` — an expression is recognised exactly when it is
+  the chain on two variables with either name of the multiply.
 * `flatRun_var`, `flatRun_lit`, `flatRun_app` — the runs of variables, literals and calls
   on such runs.
 * `denote'_mulHi` — under `MulHiLaw`, the word call runs as the chain.
@@ -74,32 +79,50 @@ open _root_.Hax.Monomorphise (ErrEq ErrEq.refl ErrEq.bind ErrEq.bindU ErrEq.pure
 
 /-! ## 1. The chain and the pass -/
 
-/-- The two variables of an expression that is the chain `mulHiChain (.var a) (.var b)`, and
-    `none` for every other expression. -/
+/-- The names of the `128`-bit multiply of the chain: `Mul`, and `Mul#128` of the
+    width-tagged extraction. -/
+def mulStepB (m : String) : Bool := m == "Mul" || m == "Mul#128"
+
+/-- The chain `cast#64 (Shr#128 (m (cast#128 a) (cast#128 b)) 64)` with the multiply call
+    named `m`. -/
+def mulHiChainM (m : String) (a b : ImpExpr) : ImpExpr :=
+  .app "cast#64" [.app "Shr#128" [.app m [.app "cast#128" [a], .app "cast#128" [b]],
+    .lit (.int 64)]]
+
+theorem mulHiChainM_mul (a b : ImpExpr) : mulHiChainM "Mul" a b = mulHiChain a b := rfl
+
+/-- The two variables of an expression that is the chain `mulHiChainM m (.var a) (.var b)`
+    with `m` a name of the `128`-bit multiply, and `none` for every other expression. -/
 def mulHiOf (e : ImpExpr) : Option (String × String) :=
   match e with
   | .app f [.app g [.app m [.app c₁ [.var a], .app c₂ [.var b]], .lit (.int k)]] =>
-      if f = "cast#64" ∧ g = "Shr#128" ∧ m = "Mul" ∧ c₁ = "cast#128" ∧ c₂ = "cast#128" ∧ k = 64
+      if f = "cast#64" ∧ g = "Shr#128" ∧ mulStepB m = true ∧ c₁ = "cast#128" ∧
+        c₂ = "cast#128" ∧ k = 64
       then some (a, b) else none
   | _ => none
 
 theorem mulHiOf_eq_some {e : ImpExpr} {a b : String} (h : mulHiOf e = some (a, b)) :
-    e = mulHiChain (.var a) (.var b) := by
+    ∃ m, mulStepB m = true ∧ e = mulHiChainM m (.var a) (.var b) := by
   unfold mulHiOf at h
   split at h
   · split at h
     · rename_i hc
-      obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩ := hc
+      obtain ⟨rfl, rfl, hm, rfl, rfl, rfl⟩ := hc
       cases h
-      rfl
+      exact ⟨_, hm, rfl⟩
     · cases h
   · cases h
 
-theorem mulHiOf_mulHiChain (a b : String) : mulHiOf (mulHiChain (.var a) (.var b)) = some (a, b) := by
-  simp [mulHiOf, mulHiChain]
+theorem mulHiOf_mulHiChainM {m : String} (hm : mulStepB m = true) (a b : String) :
+    mulHiOf (mulHiChainM m (.var a) (.var b)) = some (a, b) := by
+  simp [mulHiOf, mulHiChainM, hm]
 
-/-- **The pass.** Every occurrence of the chain `mulHiChain (.var a) (.var b)` becomes the
-    word call `mulhi#64 a b`; every other node is kept. -/
+theorem mulHiOf_mulHiChain (a b : String) : mulHiOf (mulHiChain (.var a) (.var b)) = some (a, b) :=
+  mulHiOf_mulHiChainM (m := "Mul") rfl a b
+
+/-- **The pass.** Every occurrence of the chain `mulHiChainM m (.var a) (.var b)`, `m` a name
+    of the `128`-bit multiply, becomes the word call `mulhi#64 a b`; every other node is
+    kept. -/
 def fuseMulHi : ImpExpr → ImpExpr
   | .lit v => .lit v
   | .var n => .var n
@@ -160,8 +183,8 @@ where
   | nil => rfl
   | cons pa arms ih => obtain ⟨p, e⟩ := pa; simp [fuseMulHi.mapArms, ih]
 
-/-- The `128`-bit steps of the chain: `Mul`, `Shr#128` and `cast#128`. -/
-def wideStepB (f : String) : Bool := f == "Mul" || f == "Shr#128" || f == "cast#128"
+/-- The `128`-bit steps of the chain: the multiply (`mulStepB`), `Shr#128` and `cast#128`. -/
+def wideStepB (f : String) : Bool := mulStepB f || f == "Shr#128" || f == "cast#128"
 
 /-- **The check.** No call of `e`, closures included, is a `128`-bit step of the chain. On
     the output of `fuseMulHi` it holds when every such step of the input was part of a chain
@@ -276,23 +299,24 @@ theorem FlatRun.errEq {bi : Builtins} {fuel : Nat} {e₁ e₂ : ImpExpr}
 
 /-! ## 3. The law and the chain -/
 
-/-- The value of the chain under the table `bi` on the argument values `va`, `vb`: the four
-    calls `cast#128`, `cast#128`, `Mul`, `Shr#128` (with `64`) and `cast#64`, each argument
-    refused when it is a control-flow value. -/
-def mulHiChainVal (bi : Builtins) (va vb : Value) : Option Value :=
-  (argsOpt [(argsOpt [(argsOpt [bi "cast#128" [va], bi "cast#128" [vb]]).bind (bi "Mul"),
+/-- The value of the chain with multiply `m` under the table `bi` on the argument values
+    `va`, `vb`: the calls `cast#128`, `cast#128`, `m`, `Shr#128` (with `64`) and `cast#64`,
+    each argument refused when it is a control-flow value. -/
+def mulHiChainVal (bi : Builtins) (m : String) (va vb : Value) : Option Value :=
+  (argsOpt [(argsOpt [(argsOpt [bi "cast#128" [va], bi "cast#128" [vb]]).bind (bi m),
     some (.int 64)]).bind (bi "Shr#128")]).bind (bi "cast#64")
 
-/-- **The law of the widening multiply.** On every pair of values that are not
-    control-flow values, the chain computes under `bi` the value of `mulhi#64`, both
-    refusing the same pairs. -/
+/-- **The law of the widening multiply.** For each name `m` of the `128`-bit multiply and on
+    every pair of values that are not control-flow values, the chain with multiply `m`
+    computes under `bi` the value of `mulhi#64`, both refusing the same pairs. -/
 def MulHiLaw (bi : Builtins) : Prop :=
-  ∀ va vb : Value, va.isControlFlow = false → vb.isControlFlow = false →
-    mulHiChainVal bi va vb = bi mulHiCallName [va, vb]
+  ∀ m : String, mulStepB m = true → ∀ va vb : Value, va.isControlFlow = false →
+    vb.isControlFlow = false → mulHiChainVal bi m va vb = bi mulHiCallName [va, vb]
 
-theorem mulHi_flat {bi : Builtins} (hL : MulHiLaw bi) (xa xb : Option Value) :
+theorem mulHi_flat {bi : Builtins} (hL : MulHiLaw bi) {m : String} (hm : mulStepB m = true)
+    (xa xb : Option Value) :
     (argsOpt [(argsOpt [(argsOpt [(argsOpt [xa]).bind (bi "cast#128"),
-      (argsOpt [xb]).bind (bi "cast#128")]).bind (bi "Mul"),
+      (argsOpt [xb]).bind (bi "cast#128")]).bind (bi m),
       some (Value.ofLit (.int 64))]).bind (bi "Shr#128")]).bind (bi "cast#64") =
       (argsOpt [xa, xb]).bind (bi mulHiCallName) := by
   rcases xa with _ | va
@@ -301,25 +325,27 @@ theorem mulHi_flat {bi : Builtins} (hL : MulHiLaw bi) (xa xb : Option Value) :
   · cases (nonCF va) <;> simp [argsOpt]
   cases hca : va.isControlFlow
   · cases hcb : vb.isControlFlow
-    · have := hL va vb hca hcb
+    · have := hL m hm va vb hca hcb
       simp only [mulHiChainVal] at this
       simpa [argsOpt, nonCF, hca, hcb, Value.ofLit] using this
     · simp [argsOpt, nonCF, hca, hcb]
   · simp [argsOpt, nonCF, hca]
 
-/-- **The word call runs as the chain.** Under `MulHiLaw bi`, `mulhi#64 a b` and the chain
-    `mulHiChain (.var a) (.var b)` agree up to the text of an error. -/
-theorem denote'_mulHi {bi : Builtins} (hL : MulHiLaw bi) (a b : String) (fuel : Nat) :
+/-- **The word call runs as the chain.** Under `MulHiLaw bi`, for each name `m` of the
+    `128`-bit multiply, `mulhi#64 a b` and the chain `mulHiChainM m (.var a) (.var b)` agree
+    up to the text of an error. -/
+theorem denote'_mulHi {bi : Builtins} (hL : MulHiLaw bi) {m : String} (hm : mulStepB m = true)
+    (a b : String) (fuel : Nat) :
     ErrEq (denote' bi fuel (.app mulHiCallName [.var a, .var b]))
-      (denote' bi fuel (mulHiChain (.var a) (.var b))) := by
+      (denote' bi fuel (mulHiChainM m (.var a) (.var b))) := by
   apply FlatRun.errEq
   intro ρ
   have hva := flatRun_var bi fuel a ρ
   have hvb := flatRun_var bi fuel b ρ
   have h5 := flatRun_app1 "cast#64" (flatRun_app2 "Shr#128"
-    (flatRun_app2 "Mul" (flatRun_app1 "cast#128" hva) (flatRun_app1 "cast#128" hvb))
+    (flatRun_app2 m (flatRun_app1 "cast#128" hva) (flatRun_app1 "cast#128" hvb))
     (flatRun_lit bi fuel (.int 64) ρ))
-  rw [mulHi_flat hL] at h5
+  rw [mulHi_flat hL hm] at h5
   exact ⟨_, flatRun_app2 mulHiCallName hva hvb, h5⟩
 
 /-! ## 4. The pass preserves the run -/
@@ -370,8 +396,9 @@ theorem denote'_fuseMulHi (hL : MulHiLaw bi) (e : ImpExpr) : ∀ fuel,
       rw [denoteArgs'_fuseMulHi args ih fuel]
       exact ErrEq.refl _
     · simp only
-      rw [mulHiOf_eq_some hm]
-      exact denote'_mulHi hL a b fuel
+      obtain ⟨m, hmm, he⟩ := mulHiOf_eq_some hm
+      rw [he]
+      exact denote'_mulHi hL hmm a b fuel
   | tuple es ih =>
     intro fuel
     simp only [fuseMulHi, fuseMulHi.mapExpr_eq, denote', denoteArgs'_fuseMulHi es ih fuel]
@@ -429,8 +456,8 @@ end Pass
 
 /-! ## 5. The pass on typed expressions -/
 
-/-- **The typed pass.** Every call whose erasure is the chain `mulHiChain (.var a) (.var b)`
-    becomes the word call `mulhi#64 a b` at the call's type, its two arguments variables of
+/-- **The typed pass.** Every call whose erasure is a chain `mulHiChainM m (.var a) (.var b)`
+    (`mulHiOf`) becomes the word call `mulhi#64 a b` at the call's type, its two arguments variables of
     that type; every other node and every type is kept. -/
 def fuseMulHiT : TExpr → TExpr
   | .mk (.lit v) ty => .mk (.lit v) ty
