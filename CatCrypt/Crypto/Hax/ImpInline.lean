@@ -46,6 +46,8 @@ and a body accepted at the depth below, and no call of a function of `fs` at the
 * `inlineCrate_denote'` — every run of the source term at `crateBi fs bi fuelC n` that does
   not end in an error is a run of `inlineCrate fs n e` at `bi`, with the same outcome and a
   final environment that holds every binding of a name of the source.
+* `inlRel_srcAgree` — agreement on the bindings of the names of the source is a relation
+  `InlRel n id`.
 -/
 
 @[expose] public section
@@ -672,6 +674,26 @@ theorem inl_ref (fs : List CrateFn) (bi : Builtins) (fuelC : Nat) :
         exact callBlock_ref hf hR hg.1 hD hargs
           (fun R' hR' D' hD' F₀ => inl_ref fs bi fuelC n (lvlName n) R' hR' c.body hg.2 D' hD' F₀)
 
+/-- The relation of `inlineCrate_denote'`: every binding of a name of the source of the
+    right environment is a binding of the left one. It is a relation `InlRel n id` at every
+    depth. -/
+theorem inlRel_srcAgree (n : Nat) :
+    InlRel n id fun a b => ∀ x v, okName x = true → b x = some v → a x = some v := by
+  refine ⟨fun a b x v h hx hb => h x v hx hb, fun a b x w h hx => ?_,
+    fun a a' b h hlo => ?_⟩
+  · intro z u hz hb
+    by_cases hzx : z = x
+    · subst hzx
+      rw [Env.extend_same] at hb
+      simpa using hb
+    · rw [Env.extend_other _ _ _ _ hzx] at hb
+      simp only [id]
+      rw [Env.extend_other _ _ _ _ hzx]
+      exact h z u hz hb
+  · intro z u hz hb
+    rw [hlo z (not_isLow_of_okName hz n)]
+    exact h z u hz hb
+
 /-- **Inlining keeps every run that does not end in an error.** For a term `e` accepted by
     `inlOk fs n`, a run of `e` at the builtins with the crate `crateBi fs bi fuelC n` and the
     fuel `F` from `env` that does not end in an error is a run of `inlineCrate fs n e` at the
@@ -682,23 +704,8 @@ theorem inlineCrate_denote' (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) 
     (he : inlOk fs n e = true) {F D : Nat} (hD : n * fuelC ≤ D) {env s : Env} {o : Outcome}
     (hrun : (denote' (crateBi fs bi fuelC n) F e).run env = (o, s)) (ho : ¬ IsErr o) :
     ∃ s', (denote' bi (F + D) (inlineCrate fs n e)).run env = (o, s') ∧
-      ∀ x v, okName x = true → s x = some v → s' x = some v := by
-  let R : Env → Env → Prop := fun a b => ∀ x v, okName x = true → b x = some v → a x = some v
-  have hR : InlRel n id R := by
-    refine ⟨fun a b x v h hx hb => h x v hx hb, fun a b x w h hx => ?_,
-      fun a a' b h hlo => ?_⟩
-    · intro z u hz hb
-      by_cases hzx : z = x
-      · subst hzx
-        rw [Env.extend_same] at hb
-        simpa using hb
-      · rw [Env.extend_other _ _ _ _ hzx] at hb
-        simp only [id]
-        rw [Env.extend_other _ _ _ _ hzx]
-        exact h z u hz hb
-    · intro z u hz hb
-      rw [hlo z (not_isLow_of_okName hz n)]
-      exact h z u hz hb
-  exact inl_ref fs bi fuelC n id R hR e he D hD F env env (fun _ _ _ h => h) o s hrun ho
+      ∀ x v, okName x = true → s x = some v → s' x = some v :=
+  inl_ref fs bi fuelC n id _ (inlRel_srcAgree n) e he D hD F env env (fun _ _ _ h => h) o s
+    hrun ho
 
 end CatCrypt.Crypto.Hax.ImpInline

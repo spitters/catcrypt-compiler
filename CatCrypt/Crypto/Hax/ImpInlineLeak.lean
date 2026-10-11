@@ -17,8 +17,9 @@ leakage of `e` run at the builtins with the crate. At a call of a function of th
 the inlined term the call is the call block of the body of the function, whose leakage is the
 leakage of the arguments followed by the leakage of the body.
 
-`srcLeakCl bi cl` is `srcLeakNF bi` with the leakage of a call `f` on the values `vals` given
-by `cl f vals`. The expanded call leakage `expLeak fs bi fuelC n` gives, at the depth
+`srcLeakCl bi cl` (`ImpToNFLeak`) is the source leakage with the leakage of a call `f` on the
+values `vals` given by `cl f vals`; `srcLeakNF bi` is `srcLeakCl bi nfCallLeak`. The expanded
+call leakage `expLeak fs bi fuelC n` gives, at the depth
 `n + 1`, a call of a function `c` of `fs` the leakage of the run of its body at the depth `n`
 and the fuel `fuelC` from the environment of its parameters, and every other call the event
 of `srcLeakNF`. `srcLeakX fs bi fuelC n` is the source leakage at the builtins with the crate
@@ -26,8 +27,8 @@ of `srcLeakNF`. `srcLeakX fs bi fuelC n` is the source leakage at the builtins w
 
 ## Main definitions
 
-* `srcLeakCl`, `srcArgsLeakCl` — the source leakage with a call leakage `cl`.
 * `expLeak`, `srcLeakX` — the expanded call leakage of a crate and the source leakage with it.
+* `expCallLeak` — the expanded call leakage as a call leakage `CallLeak`.
 * `TraceEq` — equal events `nfTrace` of two leakages from related environments, on the runs
   of a computation that do not end in a bad result.
 
@@ -41,6 +42,9 @@ of `srcLeakNF`. `srcLeakX fs bi fuelC n` is the source leakage at the builtins w
   builtins with the crate that does not end in an error, the events `nfTrace` of the source
   leakage of `inlineCrate fs n e` at the builtins `bi` and the fuel `F + D` are those of
   `srcLeakX fs bi fuelC n e F`, for `D ≥ n * fuelC`.
+* `expCallLeak_agrees`, `impToNF_leak_inlineCrate` — the program `impToNF` emits for `e` at
+  the builtins with the crate, run with the expanded call leakage `expCallLeak`, has the
+  events `nfTrace` of the source leakage of `inlineCrate fs n e`.
 -/
 
 @[expose] public section
@@ -57,54 +61,13 @@ open _root_.Hax.ContinueFlag (letBind_run seq_run ifThenElse_run app_run args_co
 open CatCrypt.Crypto.Hax (SrcLeak SrcEv contLeak boundsLeak forLeak forRevLeak tripCont
   boundInt)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateBi paramsEnv crateBi_of_find_none srcLeakNF
-  srcArgsLeakNF nfTrace nfEv callLeak)
+  srcArgsLeakNF srcLeakCl srcArgsLeakCl nfCallLeak nfTrace nfEv callLeak CallLeak nfLeakRunE
+  impToNF_leakE impToNF TypedCalls Out NfEnv EnvRel enc encAll)
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open Ctxt (Valuation)
 
-/-! ## The source leakage with a call leakage -/
-
-mutual
-/-- The source leakage `srcLeakNF bi` with the leakage `cl f vals` of a call of `f` on the
-    argument values `vals`. -/
-def srcLeakCl (bi : Builtins) (cl : String → List Value → SrcLeak) :
-    ImpExpr → Nat → Env → SrcLeak
-  | .lit _, _, _ => .nil
-  | .var _, _, _ => .nil
-  | .unitVal, _, _ => .nil
-  | .typeAscription e _, fuel, env => srcLeakCl bi cl e fuel env
-  | .letBind n v body, fuel, env =>
-    .cat (srcLeakCl bi cl v fuel env)
-      (contLeak ((denote' bi fuel v).run env) fun w e1 => srcLeakCl bi cl body fuel (e1.extend n w))
-  | .seq a b, fuel, env =>
-    .cat (srcLeakCl bi cl a fuel env)
-      (contLeak ((denote' bi fuel a).run env) fun _ e1 => srcLeakCl bi cl b fuel e1)
-  | .assign _ r, fuel, env => srcLeakCl bi cl r fuel env
-  | .app f args, fuel, env =>
-    .cat (srcArgsLeakCl bi cl args fuel env)
-      (match (denoteArgs' bi fuel args).run env with
-       | (some vals, _) => cl f vals
-       | _ => .nil)
-  | .tuple es, fuel, env => srcArgsLeakCl bi cl es fuel env
-  | .ifThenElse c t e, fuel, env =>
-    .cat (srcLeakCl bi cl c fuel env)
-      (match (denote' bi fuel c).run env with
-       | (.val (.bool true), e1) => .cat (.ev (.branch true)) (srcLeakCl bi cl t fuel e1)
-       | (.val (.bool false), e1) => .cat (.ev (.branch false)) (srcLeakCl bi cl e fuel e1)
-       | _ => .nil)
-  | .forFold i lo hi body, fuel, env =>
-    boundsLeak bi lo hi (srcLeakCl bi cl lo fuel) (srcLeakCl bi cl hi fuel) fuel
-      (fun l h => forLeak bi i body (srcLeakCl bi cl body) fuel l h) env
-  | .forFoldRev i lo hi body, fuel, env =>
-    boundsLeak bi lo hi (srcLeakCl bi cl lo fuel) (srcLeakCl bi cl hi fuel) fuel
-      (fun l h => forRevLeak bi i body (srcLeakCl bi cl body) fuel l h) env
-  | e, _, env => .ev (.opaque env e)
-
-/-- `srcLeakCl` of a list of expressions run left to right. -/
-def srcArgsLeakCl (bi : Builtins) (cl : String → List Value → SrcLeak) :
-    List ImpExpr → Nat → Env → SrcLeak
-  | [], _, _ => .nil
-  | e :: es, fuel, env =>
-    .cat (srcLeakCl bi cl e fuel env)
-      (contLeak ((denote' bi fuel e).run env) fun _ e1 => srcArgsLeakCl bi cl es fuel e1)
-end
+/-! ## The expanded call leakage -/
 
 /-- **The expanded call leakage of a crate** at the depth `n`: at the depth `n + 1`, a call
     of a function `c` of `fs` on the values `vals` leaks the leakage `srcLeakCl` of the run of
@@ -409,7 +372,7 @@ theorem app_leak {g : String}
   | none => exact absurd ⟨_, rfl⟩ hnb
   | some vals =>
     obtain ⟨s₁, hA₁, -⟩ := hargs e₁ e₂ hP (some vals) s₂ hA (by simp)
-    simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hA₁, hcl]
+    simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hA₁, hcl, nfCallLeak]
     rw [hargsL e₁ e₂ hP (by rw [hA]; simp)]
 
 end Steps
@@ -648,7 +611,7 @@ theorem bindParams_run_leak (bi : Builtins) (F n : Nat) (vals : List Value)
         generalize vals[i] = v at hv ⊢
         cases v <;> first | rfl | exact absurd rfl (hv _ _)
       · rw [bindParams, hleak]
-        simp only [srcLeakNF, nfTrace_cat, hproj]
+        simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hproj]
         rw [show nfTrace (SrcLeak.ev (SrcEv.opaque e'' (.proj (.var (tmpName n)) i))) = []
           from rfl, List.nil_append]
         generalize vals[i] = v at hv ⊢
@@ -797,27 +760,8 @@ theorem inl_leak (fs : List CrateFn) (bi : Builtins) (fuelC : Nat) :
           simp only [hf, Bool.and_eq_true, beq_iff_eq] at hg
           simp only [Option.map_some, Option.getD_some]
           exact callBlock_leak hf hg.1 hD hargs hargsL
-            (fun R' hR' D' hD' F₀ => inl_leak fs bi fuelC n (lvlName n) R' hR' c.body hg.2 D' hD' F₀)
-
-/-- The relation of `inlineCrate_denote'`: every binding of a name of the source of the
-    right environment is a binding of the left one. It is a relation `InlRel n id` at every
-    depth. -/
-theorem inlRel_srcAgree (n : Nat) :
-    InlRel n id fun a b => ∀ x v, okName x = true → b x = some v → a x = some v := by
-  refine ⟨fun a b x v h hx hb => h x v hx hb, fun a b x w h hx => ?_,
-    fun a a' b h hlo => ?_⟩
-  · intro z u hz hb
-    by_cases hzx : z = x
-    · subst hzx
-      rw [Env.extend_same] at hb
-      simpa using hb
-    · rw [Env.extend_other _ _ _ _ hzx] at hb
-      simp only [id]
-      rw [Env.extend_other _ _ _ _ hzx]
-      exact h z u hz hb
-  · intro z u hz hb
-    rw [hlo z (not_isLow_of_okName hz n)]
-    exact h z u hz hb
+            (fun R' hR' D' hD' F₀ =>
+              inl_leak fs bi fuelC n (lvlName n) R' hR' c.body hg.2 D' hD' F₀)
 
 /-- **The source leakage of the inlining of a crate.** For a term `e` accepted by
     `inlOk fs n` and a run of `e` at the builtins with the crate `crateBi fs bi fuelC n` and
@@ -832,5 +776,43 @@ theorem inlineCrate_srcLeak (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) 
       nfTrace (srcLeakX fs bi fuelC n e F env) :=
   inl_leak fs bi fuelC n id _ (inlRel_srcAgree n) e he D hD F env env (fun _ _ _ h => h)
     (by rw [hrun]; exact ho)
+
+/-! ## The program of the front with the expanded calls -/
+
+/-- **The expanded call leakage of a crate as a call leakage**: the source call leakage
+    `expLeak fs bi fuelC n`, and at a binding of a call the events `nfTrace` of that leakage
+    on the encoded arguments. -/
+def expCallLeak (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) : CallLeak where
+  cl := expLeak fs bi fuelC n
+  ce f as _ x := nfTrace (expLeak fs bi fuelC n f (encAll as x))
+
+/-- The expanded call leakage agrees with every builtins. -/
+theorem expCallLeak_agrees (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) (B : Builtins) :
+    (expCallLeak fs bi fuelC n).Agrees B :=
+  fun _ _ _ _ _ _ => rfl
+
+/-- **The program the front emits for a term of a crate, run with the expanded calls, has the
+    events of the inlined term.** Let `impToNF` translate `e` from `σ` under typed builtins
+    with the crate `crateBi fs bi fuelC n`, `inlOk fs n` accept `e`, and `e` run at those
+    builtins and the fuel `F` from an environment related to `V` to a value. Then the leakage
+    run of the emitted program at those builtins with the expanded call leakage
+    `expCallLeak fs bi fuelC n` returns the encoding of the value and the events
+    `nfTrace` of the source leakage of `inlineCrate fs n e` at the builtins `bi` and the fuel
+    `F + D`, for every `D ≥ n * fuelC`. -/
+theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat)
+    (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls (crateBi fs bi fuelC n) sigOf) {e : ImpExpr} (he : inlOk fs n e = true)
+    {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
+    (h : impToNF sigOf tgt σ e = some o) {F D : Nat} (hD : n * fuelC ≤ D) {env : Env}
+    {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
+    (hrun : (denote' (crateBi fs bi fuelC n) F e).run env = (.val v, env')) (tf : Nat) :
+    ∃ x : o.t.denote,
+      nfLeakRunE (crateBi fs bi fuelC n) (expCallLeak fs bi fuelC n) tf o.prog V =
+        some (HVector.cons (f := fun t => ⟦t⟧) x .nil,
+          nfTrace (srcLeakNF bi (inlineCrate fs n e) (F + D) env)) ∧
+      v = enc o.t x := by
+  rw [inlineCrate_srcLeak fs bi fuelC n he hD hrun (by rintro ⟨m, hm⟩; cases hm)]
+  exact impToNF_leakE (crateBi fs bi fuelC n) sigOf hT (expCallLeak_agrees fs bi fuelC n _) h
+    hrel hrun tf
 
 end CatCrypt.Crypto.Hax.ImpInline
