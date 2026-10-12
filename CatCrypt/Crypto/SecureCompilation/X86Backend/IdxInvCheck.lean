@@ -658,6 +658,248 @@ theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
         omega
       · cases hl
 
+/-- An upper bound on the value of the term `t`: the least `b - lbSum F (ts.erase t)` over
+    the facts `.le ts b` of `G` with `t ∈ ts`, and `2 ^ 64 - 1` when there is none. -/
+def hiOf (F : List SFact) : List SFact → STerm → Nat
+  | [], _ => 2 ^ 64 - 1
+  | .le ts b :: G, t =>
+      if t ∈ ts then min (b - lbSum F (ts.erase t)) (hiOf F G t) else hiOf F G t
+  | .ge _ _ :: G, t => hiOf F G t
+  | .w64 _ :: G, t => hiOf F G t
+
+theorem hiOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ (G : List SFact) (t : STerm), (∀ f ∈ G, f.holds V A C O) →
+      wval (t.ev V A C O) ≤ hiOf F G t
+  | [], t, _ => by
+      have := wval_lt (t.ev V A C O)
+      simp only [hiOf]
+      omega
+  | .ge _ _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+  | .w64 _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+  | .le ts b :: G, t, hG => by
+      have ih := hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+      simp only [hiOf]
+      split
+      · rename_i ht
+        have h0 : tsum V A C O ts ≤ b := hG (.le ts b) List.mem_cons_self
+        have hp := ((List.perm_cons_erase ht).map fun t => wval (t.ev V A C O)).sum_eq
+        have h1 := lbSum_le hF (ts.erase t)
+        simp only [tsum, List.map_cons, List.sum_cons] at hp h0 h1
+        exact le_min (by omega) ih
+      · exact ih
+
+/-- The value of an affine form: the sum of the coefficients times the values of the atoms. -/
+def affEv (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    List (STerm × Int) → Int
+  | [] => 0
+  | p :: L => p.2 * (wval (p.1.ev V A C O) : Int) + affEv V A C O L
+
+/-- The affine form `L` plus the coefficient `p.2` on the atom `p.1`, merged into the entry of
+    `p.1` when `L` has one. -/
+def affAdd1 (p : STerm × Int) : List (STerm × Int) → List (STerm × Int)
+  | [] => [p]
+  | q :: L => if q.1 = p.1 then (q.1, q.2 + p.2) :: L else q :: affAdd1 p L
+
+theorem affEv_add1 (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (p : STerm × Int) :
+    ∀ L, affEv V A C O (affAdd1 p L) = p.2 * (wval (p.1.ev V A C O) : Int) + affEv V A C O L
+  | [] => by simp [affAdd1, affEv]
+  | q :: L => by
+      simp only [affAdd1]
+      split
+      · rename_i h
+        rw [← h]
+        simp only [affEv]
+        ring
+      · simp only [affEv, affEv_add1 V A C O p L]
+        ring
+
+/-- The sum of two affine forms, with the coefficients of a common atom merged. -/
+def affAdd : List (STerm × Int) → List (STerm × Int) → List (STerm × Int)
+  | [], M => M
+  | p :: L, M => affAdd1 p (affAdd L M)
+
+theorem affEv_add (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    ∀ L M, affEv V A C O (affAdd L M) = affEv V A C O L + affEv V A C O M
+  | [], M => by simp [affAdd, affEv]
+  | p :: L, M => by
+      simp only [affAdd, affEv_add1, affEv, affEv_add V A C O L M]
+      ring
+
+/-- An affine form times the integer `c`. -/
+def affScale (c : Int) (L : List (STerm × Int)) : List (STerm × Int) :=
+  L.map fun p => (p.1, c * p.2)
+
+theorem affEv_scale (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (c : Int) : ∀ L, affEv V A C O (affScale c L) = c * affEv V A C O L
+  | [] => by simp [affScale, affEv]
+  | p :: L => by
+      have := affEv_scale V A C O c L
+      simp only [affScale, List.map_cons, affEv] at this ⊢
+      rw [this]
+      ring
+
+/-- An upper bound on the value of an affine form: an atom with a non-negative coefficient at
+    its upper bound `hiOf`, one with a negative coefficient at its lower bound `lbOf`. -/
+def affHi (F : List SFact) : List (STerm × Int) → Int
+  | [] => 0
+  | p :: L =>
+      (if 0 ≤ p.2 then p.2 * (hiOf F F p.1 : Int) else p.2 * (lbOf F p.1 : Int)) + affHi F L
+
+/-- A lower bound on the value of an affine form: an atom with a non-negative coefficient at
+    its lower bound `lbOf`, one with a negative coefficient at its upper bound `hiOf`. -/
+def affLo (F : List SFact) : List (STerm × Int) → Int
+  | [] => 0
+  | p :: L =>
+      (if 0 ≤ p.2 then p.2 * (lbOf F p.1 : Int) else p.2 * (hiOf F F p.1 : Int)) + affLo F L
+
+theorem affHi_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ L, affEv V A C O L ≤ affHi F L
+  | [] => by simp [affEv, affHi]
+  | p :: L => by
+      have ih := affHi_sound hF L
+      have hh : ((wval (p.1.ev V A C O) : Nat) : Int) ≤ (hiOf F F p.1 : Int) :=
+        Int.ofNat_le.mpr (hiOf_sound hF F p.1 hF)
+      have hl : ((lbOf F p.1 : Nat) : Int) ≤ (wval (p.1.ev V A C O) : Int) :=
+        Int.ofNat_le.mpr (lbOf_le F p.1 hF)
+      simp only [affEv, affHi]
+      split
+      · rename_i hc
+        have := Int.mul_le_mul_of_nonneg_left hh hc
+        omega
+      · rename_i hc
+        have := Int.mul_le_mul_of_nonpos_left (by omega : p.2 ≤ 0) hl
+        omega
+
+theorem affLo_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ L, affLo F L ≤ affEv V A C O L
+  | [] => by simp [affEv, affLo]
+  | p :: L => by
+      have ih := affLo_sound hF L
+      have hh : ((wval (p.1.ev V A C O) : Nat) : Int) ≤ (hiOf F F p.1 : Int) :=
+        Int.ofNat_le.mpr (hiOf_sound hF F p.1 hF)
+      have hl : ((lbOf F p.1 : Nat) : Int) ≤ (wval (p.1.ev V A C O) : Int) :=
+        Int.ofNat_le.mpr (lbOf_le F p.1 hF)
+      simp only [affEv, affLo]
+      split
+      · rename_i hc
+        have := Int.mul_le_mul_of_nonneg_left hl hc
+        omega
+      · rename_i hc
+        have := Int.mul_le_mul_of_nonpos_left (by omega : p.2 ≤ 0) hh
+        omega
+
+/-- The operation `m` on two terms of width `64` at width `64`. -/
+theorem wval_bin64 (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (m : String) (x y : STerm) (hx : (x.ev V A C O).1 = 64) (hy : (y.ev V A C O).1 = 64) :
+    wval ((STerm.bin m x y).ev V A C O) =
+      (binW 64 m (castW (x.ev V A C O) 64) (castW (y.ev V A C O) 64)).toNat := by
+  rw [wval_bin, if_pos hx, extW_of_eq hy]
+
+/-- A product `MUL x y` of two terms of width `64` whose affine forms bound the product of
+    their values below `2 ^ 64` is the product of the values. -/
+theorem affEv_mulW {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {x y : STerm}
+    {Lx Ly : List (STerm × Int)} {Kx Ky : Int} (hw : widOk F x = true ∧ widOk F y = true)
+    (hlt : (affHi F Lx + Kx) * (affHi F Ly + Ky) < 2 ^ 64)
+    (ihx : (wval (x.ev V A C O) : Int) = affEv V A C O Lx + Kx)
+    (ihy : (wval (y.ev V A C O) : Int) = affEv V A C O Ly + Ky) :
+    (wval ((STerm.bin "MUL" x y).ev V A C O) : Int) =
+      (wval (x.ev V A C O) : Int) * wval (y.ev V A C O) := by
+  have bx := affHi_sound hF Lx
+  have bY := affHi_sound hF Ly
+  rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
+  simp only [binW, show ("MUL" = "MULXHI") = False by decide, if_false, applyOpnN,
+    Option.getD_some, BitVec.toNat_mul]
+  change (((wval (x.ev V A C O) * wval (y.ev V A C O)) % 2 ^ 64 : Nat) : Int) = _
+  have hm : (wval (x.ev V A C O) : Int) * wval (y.ev V A C O) < 2 ^ 64 :=
+    lt_of_le_of_lt (Int.mul_le_mul (by omega) (by omega) (by omega) (by omega)) hlt
+  have hm' : wval (x.ev V A C O) * wval (y.ev V A C O) < 2 ^ 64 := by exact_mod_cast hm
+  rw [Nat.mod_eq_of_lt hm']
+  push_cast
+  rfl
+
+/-- **The affine form of a term**: atoms with integer coefficients and a constant whose sum is
+    the value of the term. An immediate at width `64` is a constant; a sum `ADD`, a difference
+    `SUB` and a product `MUL` with one constant factor, of two terms of width `64` (`widOk`),
+    combine the forms of their operands when the bounds `affHi`, `affLo` of the forms exclude
+    a wrap-around at width `64`; every other term is an atom with coefficient `1`. -/
+def affOf (F : List SFact) : STerm → List (STerm × Int) × Int
+  | .immW w n => if w = 64 then ([], ((n % 2 ^ 64 : Nat) : Int)) else ([(.immW w n, 1)], 0)
+  | .bin m x y =>
+      if widOk F x ∧ widOk F y then
+        if m = "ADD" ∧ affHi F (affOf F x).1 + (affOf F x).2 +
+            (affHi F (affOf F y).1 + (affOf F y).2) < 2 ^ 64 then
+          (affAdd (affOf F x).1 (affOf F y).1, (affOf F x).2 + (affOf F y).2)
+        else if m = "SUB" ∧ 0 ≤ affLo F (affAdd (affOf F x).1 (affScale (-1) (affOf F y).1)) +
+            ((affOf F x).2 - (affOf F y).2) then
+          (affAdd (affOf F x).1 (affScale (-1) (affOf F y).1), (affOf F x).2 - (affOf F y).2)
+        else if m = "MUL" ∧ (affHi F (affOf F x).1 + (affOf F x).2) *
+            (affHi F (affOf F y).1 + (affOf F y).2) < 2 ^ 64 then
+          if (affOf F y).1 = [] then
+            (affScale (affOf F y).2 (affOf F x).1, (affOf F x).2 * (affOf F y).2)
+          else if (affOf F x).1 = [] then
+            (affScale (affOf F x).2 (affOf F y).1, (affOf F x).2 * (affOf F y).2)
+          else ([(.bin m x y, 1)], 0)
+        else ([(.bin m x y, 1)], 0)
+      else ([(.bin m x y, 1)], 0)
+  | t => ([(t, 1)], 0)
+
+theorem affOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    (wval (t.ev V A C O) : Int) = affEv V A C O (affOf F t).1 + (affOf F t).2 := by
+  fun_induction affOf F t with
+  | case1 n => simp [affEv, wval, STerm.ev, castW]
+  | case3 m x y hw h ihx ihy =>
+      obtain ⟨rfl, hlt⟩ := h
+      have bx := affHi_sound hF (affOf F x).1
+      have bY := affHi_sound hF (affOf F y).1
+      rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
+      simp only [binW, show ("ADD" = "MULXHI") = False by decide, if_false, applyOpnN,
+        Option.getD_some, BitVec.toNat_add]
+      change (((wval (x.ev V A C O) + wval (y.ev V A C O)) % 2 ^ 64 : Nat) : Int) = _
+      rw [Nat.mod_eq_of_lt (by omega), affEv_add]
+      push_cast
+      omega
+  | case4 m x y hw _ h ihx ihy =>
+      obtain ⟨rfl, hle⟩ := h
+      have bl := affLo_sound hF (affAdd (affOf F x).1 (affScale (-1) (affOf F y).1))
+      rw [affEv_add, affEv_scale] at bl
+      rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
+      simp only [binW, show ("SUB" = "MULXHI") = False by decide, if_false, applyOpnN,
+        Option.getD_some]
+      have hyx : wval (y.ev V A C O) ≤ wval (x.ev V A C O) := by omega
+      rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def]; exact hyx)]
+      change ((wval (x.ev V A C O) - wval (y.ev V A C O) : Nat) : Int) = _
+      rw [affEv_add, affEv_scale]
+      omega
+  | case5 m x y hw _ _ h hy ihx ihy =>
+      obtain ⟨rfl, hlt⟩ := h
+      rw [affEv_mulW hF hw hlt ihx ihy, affEv_scale, ihx, ihy, hy]
+      simp only [affEv]
+      ring
+  | case6 m x y hw _ _ h _ hx ihx ihy =>
+      obtain ⟨rfl, hlt⟩ := h
+      rw [affEv_mulW hF hw hlt ihx ihy, affEv_scale, ihx, ihy, hx]
+      simp only [affEv]
+      ring
+  | _ => simp [affEv]
+
+/-- The index term `t` is at most `b'` by the upper bound `affHi` of its affine form. -/
+def affLe (F : List SFact) (t : STerm) (b' : Nat) : Bool :=
+  decide (affHi F (affOf F t).1 + (affOf F t).2 ≤ b')
+
+theorem affLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {t : STerm} {b' : Nat}
+    (h : affLe F t b' = true) : wval (t.ev V A C O) ≤ b' := by
+  simp only [affLe, decide_eq_true_eq] at h
+  have h1 := affOf_sound hF t
+  have h2 := affHi_sound hF (affOf F t).1
+  omega
+
 /-- **Entailment**: an upper bound on a sum holds when its linear form is a constant within
     the bound, when one fact bounds a sum containing its atoms (`leLin`), or when the form
     is a product with an immediate whose other factor is bounded (`mulLe`); a lower bound
@@ -803,10 +1045,10 @@ theorem succOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   exact this
 
 /-- Every index obligation follows from the facts `F`: its index is below the length, by
-    `entails` or by `leMix`. -/
+    `entails`, by `leMix` or by the affine form of the index (`affLe`). -/
 def oblsOk (F : List SFact) (os : List SObl) : Bool :=
   os.all fun o => decide (0 < o.2) &&
-    (entails F (.le [o.1] (o.2 - 1)) || leMix F [o.1] (o.2 - 1))
+    (entails F (.le [o.1] (o.2 - 1)) || leMix F [o.1] (o.2 - 1) || affLe F o.1 (o.2 - 1))
 
 theorem oblsOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} {os : List SObl} (h : oblsOk F os = true)
@@ -816,8 +1058,10 @@ theorem oblsOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   obtain ⟨hn, he⟩ := h o ho
   have : (SFact.le [o.1] (o.2 - 1)).holds V A C O := by
     rcases Bool.or_eq_true_iff.mp he with he | he
-    · exact entails_sound hF _ he
-    · exact leMix_sound hF he
+    · rcases Bool.or_eq_true_iff.mp he with he | he
+      · exact entails_sound hF _ he
+      · exact leMix_sound hF he
+    · simpa [SFact.holds, tsum] using affLe_sound hF he
   simp only [SFact.holds, tsum, List.map_cons, List.map_nil, List.sum_cons,
     List.sum_nil, add_zero] at this
   unfold wval at this
@@ -1173,6 +1417,51 @@ def annPass (B : List LinstrRM) (G : CFG) (ann : List (List IdxFact)) :
         | _ => ann
     | _ => ann) ann
 
+/-- The restriction edges of block `k` of `B`: each successor `j` with the facts its edge
+    condition adds and the final symbolic registers of the block, as `annPass` uses them. -/
+def annEdges (B : List LinstrRM) (G : CFG) (k : Nat) :
+    List (Nat × List SFact × (String → STerm)) :=
+  match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+  | .ok ss _ =>
+      match (G.blk k).term with
+      | .fall (some j) => [(j, [], ss.regs)]
+      | .goto tg => [(tg, [], ss.regs)]
+      | .cond tg nx =>
+          match B[(G.blk k).stop - 1]? with
+          | some (.Lcond c _, _) =>
+              (tg, edgeFacts (symDec ss c) true, ss.regs) ::
+                match nx with
+                | some j => [(j, edgeFacts (symDec ss c) false, ss.regs)]
+                | none => []
+          | _ => []
+      | _ => []
+  | _ => []
+
+/-- One worklist step of the restriction at block `k`: the facts of each successor that do
+    not follow from the facts `F` of the block (with the condition of the edge) are dropped,
+    and each successor whose facts shrank is queued unless it is pending. -/
+def annVisit (F : List SFact) (es : List (Nat × List SFact × (String → STerm)))
+    (st : Array (List IdxFact) × Array Bool × Std.Queue Nat) :
+    Array (List IdxFact) × Array Bool × Std.Queue Nat :=
+  es.foldl (fun (a, pend, q) (j, ex, regs) =>
+    let old := a.getD j []
+    let new := old.filter fun f => entails (F ++ ex) (f.toS regs)
+    if new.length < old.length then
+      if pend.getD j false then (a.set! j new, pend, q)
+      else (a.set! j new, pend.set! j true, q.enqueue j)
+    else (a, pend, q)) st
+
+/-- The restriction by a worklist, within `fuel` visits: a block is visited when it is
+    dequeued, and queued again only when its facts shrank. -/
+def annWork (E : Array (List (Nat × List SFact × (String → STerm)))) :
+    Nat → Array (List IdxFact) × Array Bool × Std.Queue Nat → Array (List IdxFact)
+  | 0, (a, _, _) => a
+  | fuel + 1, (a, pend, q) =>
+      match q.dequeue? with
+      | none => a
+      | some (k, q) =>
+          annWork E fuel (annVisit (startF (a.getD k [])) (E.getD k []) (a, pend.set! k false, q))
+
 /-- The array lengths of the index obligations of the blocks of `B`. -/
 def oblLens (B : List LinstrRM) (G : CFG) : List Nat :=
   (List.range G.blocks.size).flatMap fun k =>
@@ -1191,22 +1480,26 @@ def seedImms (B : List LinstrRM) (G : CFG) (rs : List String) : List Nat :=
     | _ => []
 
 /-- **The annotation by restriction**: block `0` holds the candidates the entry facts give,
-    every other block all candidates, restricted by `annPass` to a fixed point (within a
-    bound on the number of passes). The bounds of the candidates are the bounds of the
-    entry facts, the array lengths `oblLens` of the index obligations and the immediates
-    `seedImms` the blocks leave in the candidate registers, so a counter seeded with an
-    immediate is bounded by that immediate and by the length of the array its index reads.
-    `idxInvCheckB` checks the result. -/
+    every other block all candidates, restricted along the edges `annEdges` of the blocks
+    by the worklist `annWork` to a fixed point (within a bound on the number of visits:
+    every visit after the first of each block follows the removal of a fact). The bounds
+    of the candidates are the bounds of the entry facts, the array lengths `oblLens` of the
+    index obligations and the immediates `seedImms` the blocks leave in the candidate
+    registers, so a counter seeded with an immediate is bounded by that immediate and by
+    the length of the array its index reads. `idxInvCheckB` checks the result. -/
 def idxAnnot (entry : List IdxFact) (B : List LinstrRM) : List (List IdxFact) :=
   match cfgOf (B.map Prod.fst) with
   | some G =>
+      let nb := G.blocks.size
       let rs := annRegs entry B G
       let bs := ((entry.filterMap fun | .le _ b => some b | .ge _ _ => none)
         ++ oblLens B G ++ seedImms B G rs).eraseDups
       let cs := annCands rs bs
-      let a0 := (List.range G.blocks.size).map fun k =>
+      let a0 := (Array.range nb).map fun k =>
         if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg) else cs
-      (List.range (G.blocks.size * cs.length + 1)).foldl (fun a _ => annPass B G a) a0
+      let E := (Array.range nb).map (annEdges B G)
+      let q0 := (List.range nb).foldl (fun q k => q.enqueue k) Std.Queue.empty
+      (annWork E (nb * (cs.length + 1) + 1) (a0, Array.replicate nb true, q0)).toList
   | none => []
 
 /-! ## 7. The facts of a layout's register bounds -/

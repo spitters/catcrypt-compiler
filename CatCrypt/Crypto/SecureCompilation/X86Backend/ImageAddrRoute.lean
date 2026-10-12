@@ -615,6 +615,83 @@ def rsOf (σ : AbiLayout) : List Region :=
       | .scalar => none
     | none => none
 
+/-- The map of the renaming `renOf ps`: each source to the target of its first pair. -/
+def renMapOf (ps : List (String × String)) : Std.HashMap String String :=
+  ps.foldr (fun p m => m.insert p.1 p.2) {}
+
+/-- The renaming of the map `m`: a key to its value, the identity off the keys. -/
+def renOfH (m : Std.HashMap String String) (n : String) : String := m.getD n n
+
+/-- **The renaming through its map is `renOf`.** -/
+theorem renOfH_eq (ps : List (String × String)) (n : String) :
+    renOfH (renMapOf ps) n = renOf ps n := by
+  induction ps with
+  | nil => simp [renOfH, renMapOf, renOf]
+  | cons p ps ih =>
+      simp only [renOfH, renMapOf, List.foldr_cons, Std.HashMap.getD_insert] at ih ⊢
+      rw [ih]
+      unfold renOf
+      by_cases h : p.1 = n <;> simp [h]
+
+/-- One step of the injectivity fold at the name `a`: the image map from `f a` to `a`, or
+    `none` once two distinct names share an image. -/
+def injHashStep (f : String → String) (acc : Option (Std.HashMap String String))
+    (a : String) : Option (Std.HashMap String String) :=
+  acc.bind fun m => match m[f a]? with
+    | some b => if b == a then some m else none
+    | none => some (m.insert (f a) a)
+
+/-- **Injectivity of `f` on the names `Ns`**, by a fold of the image map. -/
+def injHashB (f : String → String) (Ns : List String) : Bool :=
+  (Ns.foldl (injHashStep f) (some {})).isSome
+
+/-- The image map of the injectivity fold sends the image of each name folded to the name. -/
+theorem injHash_fold (f : String → String) : ∀ (Ns P : List String)
+    (acc : Option (Std.HashMap String String)),
+    (∀ m, acc = some m → ∀ a ∈ P, m[f a]? = some a) →
+    ∀ m, Ns.foldl (injHashStep f) acc = some m → ∀ a ∈ P ++ Ns, m[f a]? = some a
+  | [], P, acc, h, m, hm => by simpa using h m hm
+  | x :: Ns, P, acc, h, m, hm => by
+      rw [List.foldl_cons] at hm
+      have := injHash_fold f Ns (P ++ [x]) _ ?_ m hm
+      · simpa using this
+      intro m' hm' a ha
+      cases acc with
+      | none => simp [injHashStep] at hm'
+      | some m0 =>
+        have h0 := h m0 rfl
+        simp only [injHashStep, Option.bind_some] at hm'
+        split at hm'
+        · split at hm'
+          · cases hm'
+            rcases List.mem_append.mp ha with ha | ha
+            · exact h0 a ha
+            · simp at ha; subst ha; simp_all
+          · cases hm'
+        · cases hm'
+          rw [Std.HashMap.getElem?_insert]
+          rcases List.mem_append.mp ha with ha | ha
+          · have h1 := h0 a ha
+            split
+            · rename_i he
+              have : f x = f a := by simpa using he
+              rw [← this] at h1; simp_all
+            · exact h1
+          · simp at ha; subst ha; simp
+
+/-- **The injectivity fold decides injectivity**: if `injHashB f Ns` accepts, `f` is
+    injective on the members of `Ns`. -/
+theorem injHashB_spec {f : String → String} {Ns : List String} (h : injHashB f Ns = true) :
+    ∀ a ∈ Ns, ∀ b ∈ Ns, f a = f b → a = b := by
+  unfold injHashB at h
+  obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp h
+  have H := injHash_fold f Ns [] (some {}) (by simp) m hm
+  intro a ha b hb he
+  have h1 := H a (by simpa using ha)
+  have h2 := H b (by simpa using hb)
+  rw [he, h2] at h1
+  exact (Option.some.inj h1).symm
+
 /-- **The renaming check**: the seeds are `Lopn`s, the loop is in the covered classes and
     reads no implicit register, the renaming is injective on the names of the loop and fixes
     the empty name, its targets are distinct, no source and not names of the loop, it sends
@@ -623,11 +700,13 @@ def rsOf (σ : AbiLayout) : List Region :=
 def renB (σ : AbiLayout) (nm : String → String) (seeds loop : List LinstrRM)
     (ps : List (String × String)) : Bool :=
   let Ns := loopNames loop
+  let S : Std.HashSet String := Std.HashSet.ofList Ns
+  let r := renOfH (renMapOf ps)
   seeds.all isLopnB && loop.all (fun i => clsB i && mulxFree i)
-    && Ns.all (fun a => Ns.all fun b => !(renOf ps a == renOf ps b) || a == b)
-    && renOf ps "" == ""
+    && injHashB r Ns
+    && r "" == ""
     && decide ((ps.map Prod.snd).Nodup) && ps.all (fun p => ps.all fun q => q.2 != p.1)
-    && ps.all (fun p => renOf ps p.1 == p.2) && ps.all (fun p => !Ns.contains p.2)
+    && ps.all (fun p => r p.1 == p.2) && ps.all (fun p => !S.contains p.2)
     && (argBind σ nm ++ seeds).all noStoreB
     && (List.range σ.args.length).all (fun j => unren ps (argName j) == argName j
       && unren ps (renOf ps (argName j)) == argName j)
@@ -861,19 +940,15 @@ structure RenFacts (σ : AbiLayout) (nm : String → String) (seeds loop : List 
 theorem renB_spec {σ : AbiLayout} {nm : String → String} {seeds loop : List LinstrRM}
     {ps : List (String × String)} (h : renB σ nm seeds loop ps = true) :
     RenFacts σ nm seeds loop ps := by
-  simp only [renB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, beq_iff_eq,
-    bne_iff_ne, Bool.not_eq_true', List.contains_eq_mem, decide_eq_false_iff_not] at h
+  have hr : renOfH (renMapOf ps) = renOf ps := funext (renOfH_eq ps)
+  simp only [renB, hr, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, beq_iff_eq,
+    bne_iff_ne, Bool.not_eq_true', Std.HashSet.contains_ofList, List.contains_eq_mem,
+    decide_eq_false_iff_not] at h
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩, h9⟩, h10⟩ := h
   refine ⟨fun i hi => isLopnB_isLopn (h1 i hi), fun i hi => (clsB_ctl_cond (h2 i hi).1
     (h2 i hi).2).1, fun i hi => (clsB_ctl_cond (h2 i hi).1 (h2 i hi).2).2,
-    ⟨fun a b ha hb he => ?_, List.mem_cons_self .., h4⟩, fun i hi n hn => ?_, h5, h6, h7,
-    h8, ?_, fun j hj => h10 j (List.mem_range.mpr hj)⟩
-  · have := h3 a ha b hb
-    simp only [Bool.or_eq_true, Bool.not_eq_true', beq_eq_false_iff_ne, ne_eq,
-      beq_iff_eq] at this
-    rcases this with h | h
-    · exact absurd he h
-    · exact h
+    ⟨fun a b ha hb he => injHashB_spec h3 a ha b hb he, List.mem_cons_self .., h4⟩,
+    fun i hi n hn => ?_, h5, h6, h7, h8, ?_, fun j hj => h10 j (List.mem_range.mpr hj)⟩
   · exact List.mem_cons_of_mem _ (List.mem_flatMap.mpr ⟨i, hi, hn⟩)
   · simpa only [List.all_eq_true] using h9
 
