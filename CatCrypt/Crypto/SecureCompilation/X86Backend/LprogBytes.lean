@@ -681,6 +681,21 @@ def encSetccReg (op d : Nat) : List (BitVec 8) :=
   ((if bit d 3 = 1 then [rex 0 0 0 1] else if 4 ≤ d ∧ d < 8 then [rex 0 0 0 0] else [])
     ++ [0x0f, op, modRMReg 0 d]).map (BitVec.ofNat 8)
 
+/-- `SET<cc> off(%rsp)` (`0F op /0` with a memory ModRM): write the flag byte into the
+    low byte of the frame word at `off`. The addressing tail is `encRspMem`'s at
+    `reg = 0` (`rm = 100`, SIB `0x24`, the displacement band its size selects); no `REX`
+    is needed, since the base is `%rsp` and there is no index. Gas-pinned:
+    `setc 8(%rsp)` = `0F 92 44 24 08`. -/
+def encSetccRspMem (op : Nat) (off : Int) : List (BitVec 8) :=
+  BitVec.ofNat 8 0x0f :: encRspMem 0 op 0 off
+
+/-- The carry-out binding into a frame slot: `movq $0, off(%rsp)` then
+    `set<cc> off(%rsp)`, the two lines `renderLinstrR` prints for a spilled carry-out
+    destination. The `mov` leaves the flags alone, so `set<cc>` reads the carry of the
+    data op before it, and the slot holds the zero-extended flag. -/
+def encCarryOutRspMem (op : Nat) (off : Int) : List (BitVec 8) :=
+  encMovImmRspMem 1 off 0 ++ encSetccRspMem op off
+
 /-- The materialised comparison `SET<cc>:<w> [d] [a, b]` over three registers: the byte
     image of `LprogAsmPrinter.renderSetcc`'s three lines `cmp<sz> %b, %a`,
     `mov<sz> $0, %d`, `set<cc> %d8`. The compare is `39 /r` (`reg` = `b`, `rm` = `a`,
@@ -1089,13 +1104,17 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
         -- dropping it silently corrupts the next limb). The MULX high-word binding
         -- (`MULXHI`) stays nil — a fused body has none (`fuseMulHiLprog` consumed
         -- the pair), and the flag/high word is the data op's side effect.
-        -- A carry-out destination in a frame slot or a cell is the printer's
-        -- `movq $0, slot; setc slot`, which this arm does not build: it is left as the
-        -- empty byte list rather than written to `%rax`.
+        -- A carry-out destination in a frame slot (`k.N`/`qsave.X`) is the printer's
+        -- `movq $0, slot; setc slot` (`encCarryOutRspMem`). A destination in a `mem.*`
+        -- cell is left as the empty byte list rather than written to `%rax`.
         if isCarryOutBinding opn then
           match dsts with
           | [.reg dn] =>
               if isGpName dn then encSetccMovzx (carryOutSetccOp (stripWidthTag opn)) (gpNumU dn)
+              else if isSpillOrQsave dn then
+                match spillQsaveOff frame spillW dn qsaveB with
+                | some off => encCarryOutRspMem (carryOutSetccOp (stripWidthTag opn)) off
+                | none => []
               else []
           | _ => []
         else []
@@ -2568,8 +2587,8 @@ theorem encodeLopn_setc (frame spillW : Nat) (dn : String) :
     (`0x92`) into a general-purpose register, for ANY source list — the sources are
     the SSA operands of the matching data add, not x86 operands. -/
 theorem encodeLopn_adcxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand)
-    (hd : isGpName dn = true) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "ADCXHI:64" srcs)
+    {qsaveB : Nat} (hd : isGpName dn = true) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADCXHI:64" srcs) qsaveB
       = encSetccMovzx 0x92 (gpNumU dn) := by
   simp only [encodeLopn,
     show isCarryOutBinding "ADCXHI:64" = true from by decide +kernel,
@@ -2579,13 +2598,38 @@ theorem encodeLopn_adcxhi (frame spillW : Nat) (dn : String) (srcs : List LOpera
 /-- `ADOXHI` (the OF carry-out binding) materialises through `seto`+`movzbq`
     (`0x90`) into a general-purpose register. -/
 theorem encodeLopn_adoxhi (frame spillW : Nat) (dn : String) (srcs : List LOperand)
-    (hd : isGpName dn = true) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "ADOXHI:64" srcs)
+    {qsaveB : Nat} (hd : isGpName dn = true) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADOXHI:64" srcs) qsaveB
       = encSetccMovzx 0x90 (gpNumU dn) := by
   simp only [encodeLopn,
     show isCarryOutBinding "ADOXHI:64" = true from by decide +kernel,
     show carryOutSetccOp (stripWidthTag "ADOXHI:64") = 0x90 from by decide +kernel,
     Bool.true_or, reduceIte, hd]
+
+/-- A carry-out binding (`ADCXHI`/`ADOXHI`) into a frame slot at offset `off` encodes to
+    `movq $0, off(%rsp)` and `set<cc> off(%rsp)`, for any source list. -/
+theorem encodeLopn_carryOut_slot (frame spillW : Nat) {opn dn : String}
+    (srcs : List LOperand) (qsaveB : Nat) {off : Int}
+    (hopn : isCarryOutBinding opn = true) (hs : isSpillOrQsave dn = true)
+    (ho : spillQsaveOff frame spillW dn qsaveB = some off) :
+    encodeLopn frame spillW (.Lopn [.reg dn] opn srcs) qsaveB
+      = encCarryOutRspMem (carryOutSetccOp (stripWidthTag opn)) off := by
+  have hg : isGpName dn = false := by
+    cases h : isGpName dn
+    · rfl
+    · rw [(notSlotMem_of_isGpName h).1] at hs; cases hs
+  simp only [encodeLopn, hopn, Bool.true_or, reduceIte, hg, hs, ho, Bool.false_eq_true]
+
+/-- A carry-out binding into a frame slot whose offset resolves is encodable. -/
+theorem encodableLinstrR_carryOut_slot (frame spillW : Nat) {opn dn : String}
+    (srcs : List LOperand) (qsaveB : Nat) {off : Int}
+    (hopn : isCarryOutBinding opn = true) (hs : isSpillOrQsave dn = true)
+    (ho : spillQsaveOff frame spillW dn qsaveB = some off) :
+    encodableLinstrR frame spillW (.Lopn [.reg dn] opn srcs) qsaveB = true := by
+  simp only [encodableLinstrR, encodeLinstrR,
+    encodeLopn_carryOut_slot frame spillW srcs qsaveB hopn hs ho, encCarryOutRspMem,
+    encMovImmRspMem]
+  split_ifs <;> simp
 
 /-- The `MULXHI` high-word binding encodes to NO bytes (the fused body's
     two-output `mulx` already wrote the high word), with the carry-out

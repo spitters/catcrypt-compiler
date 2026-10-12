@@ -47,8 +47,8 @@ decode to the printed instructions.
 ## Main results
 
 * `#kat` pins of the slot-operand encodings of `ADC`/`ADD`/`MOV`, `MULX` and `ADCX`, of the
-  refused slot `MULX` destination, the refused three-source `ADOX`, the refused carry-out
-  `ADCXHI` into a slot, and of the `shapeOf` decode of both spilled `ADCX` forms.
+  refused slot `MULX` destination, the refused three-source `ADOX`, the carry-out `ADCXHI`
+  into a slot, and of the `shapeOf` decode of both spilled `ADCX` forms.
 * `#kat` pins of `ADCX` with a slot carry-in: the bytes, the `shapeOf` decode and the printed
   lines for a register and a slot destination, and the refused 32-bit form.
 * `#kat` pins of the slot-source `CMOV:64` select: the printed lines, the bytes against the
@@ -188,8 +188,9 @@ def adcxSlotCX : LinstrR := .Lopn [.reg "RCX"] "ADCX:64" [.reg "RAX", .reg "R11"
 #kat (LprogAsmPrinter.renderLopn 0 0 false [.reg "RAX"] "ADOX:64"
     [.reg "RAX", .reg "RBX", .reg "RCX"]).all (fun l => "\t# UNHANDLED".isPrefixOf l)
 
--- a carry-out into a frame slot has no encoding (the printer's `setc` into memory)
-#kat enc (.Lopn [.reg "k.0"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"]) == []
+-- a carry-out into a frame slot is `movq $0` and `setc` into the slot, as the printer prints it
+#kat enc (.Lopn [.reg "k.0"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"])
+  == encCarryOutRspMem 0x92 56
 
 -- a carry-out into a register is `setc` and `movzbq`
 #kat enc (.Lopn [.reg "RBX"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"])
