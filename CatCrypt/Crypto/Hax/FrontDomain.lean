@@ -30,6 +30,9 @@ the bounds of a loop before its body, the arguments of a call before the typing 
   a refusal of the entry, or calls left after the rounds of inlining.
 * `frontOut`, `frontArgs` — `impToNF` and `impArgsNF` with the refusal.
 * `frontRefusal?` — the refusal of `frontOut`, if any.
+* `ilitWordOp`, `opsProg`, `opsPre` — an operation that is not an integer literal or is one in
+  `[0, 2 ^ 64)` at the integer type, the `64`-bit words or an unsigned width of at most `64`
+  bits; a check on every operation of a program and of a prefix.
 
 ## Main results
 
@@ -37,6 +40,8 @@ the bounds of a loop before its body, the arguments of a call before the typing 
   `impArgsNF`.
 * `frontRefusal?_eq_none_iff` — no refusal exactly when `impToNF` returns a program.
 * `frontRefusal?_eq_some_iff` — a refusal exactly when `impToNF` returns `none`.
+* `impToNF_ilitWord`, `frontOut_ilit_word` — every integer literal of the prefix `impToNF`
+  returns satisfies `ilitWordOp`; with no refusal, `impToNF` returns such a prefix.
 -/
 
 @[expose] public section
@@ -108,7 +113,9 @@ inductive Refusal where
   | construct (head : String)
   /-- A name the environment of names does not bind. -/
   | unbound (x : String)
-  /-- An integer literal outside the range of its type. -/
+  /-- An integer literal outside the domain of the front (`litInt`): an integer literal
+      outside `[0, 2 ^ 64)`, a literal of a signed width, or a literal of a width above
+      `64` bits. -/
   | literal (l : ImpLit)
   /-- A call whose head the call typing does not type at the types of its arguments. -/
   | call (f : String) (as : List NfTy)
@@ -116,8 +123,8 @@ inductive Refusal where
   | operand (head : String)
   /-- A `forFold` or `forFoldRev` whose lower bound is not an integer literal. -/
   | loopLower (head : String)
-  /-- A `forFold` whose bounds pass neither `boundOk` nor `litBoundOk`, with the type of the
-      upper bound. -/
+  /-- A `forFold` whose bounds pass neither `boundOk` nor `litBoundOk` (a lower bound outside
+      `[0, 2 ^ 64)` among them), with the type of the upper bound. -/
   | loopBound (t : NfTy)
   /-- A name a loop carries that its body leaves unbound or at another type. -/
   | loopCarried (x : String)
@@ -133,9 +140,11 @@ def Refusal.toString : Refusal → String
   | .construct h => h
   | .unbound x => s!"unbound name {x}"
   | .literal l =>
-      match litInt l with
-      | some (t, v) => s!"literal {v} outside {tyName t}"
-      | none => "literal"
+      match l with
+      | .int n => s!"integer literal {n} outside [0, 2^64)"
+      | .uintLit W n => s!"literal {n} of width u{W.bits} above 64 bits"
+      | .sintLit W n => s!"literal {n} of signed width i{W.bits}"
+      | _ => "literal"
   | .call f as => s!"call {f}({", ".intercalate (as.map tyName)})"
   | .operand h => s!"non-atom operand ({h})"
   | .loopLower h => s!"forFold with a non-literal lower bound ({h})"
@@ -489,5 +498,344 @@ theorem frontRefusal?_eq_some_iff (sigOf : String → List NfTy → Option NfTy)
     (∃ r, frontRefusal? sigOf tgt σ e = some r) ↔ impToNF sigOf tgt σ e = none := by
   rw [← toOption_frontOut, frontRefusal?]
   cases frontOut sigOf tgt σ e <;> simp [Except.toOption]
+
+/-! ## 5. The integer literals of the output -/
+
+/-- An operation that is not an integer literal, or an integer literal in `[0, 2 ^ 64)` at the
+    integer type, at the `64`-bit words or at an unsigned width of at most `64` bits. -/
+def ilitWordOp : NfOp → Bool
+  | .named _ op => ilitWordOp op
+  | .ilit t v => decide (0 ≤ v) && decide (v < 2 ^ 64) &&
+      (hax64NFWordTy t ||
+        match t with
+        | .uint W => decide (W.bits ≤ 64)
+        | _ => false)
+  | _ => true
+
+/-- An integer literal satisfies `ilitWordOp` exactly when its value is in `[0, 2 ^ 64)` and
+    its type is the integer type, the `64`-bit words or an unsigned width of at most `64`
+    bits. -/
+theorem ilitWordOp_ilit_iff (t : NfTy) (v : Int) :
+    ilitWordOp (.ilit t v) = true ↔ 0 ≤ v ∧ v < 2 ^ 64 ∧
+      (t = .int ∨ t = .word 64 ∨ ∃ W : _root_.Hax.IntWidth, t = .uint W ∧ W.bits ≤ 64) := by
+  cases t with
+  | word w =>
+      by_cases hw : w = 64
+      · subst hw
+        simp [ilitWordOp, hax64NFWordTy]
+      · simp [ilitWordOp, hax64NFWordTy, hw]
+  | uint W => simp [ilitWordOp, hax64NFWordTy, and_assoc]
+  | _ => simp [ilitWordOp, hax64NFWordTy]
+
+/-- Every operation of a program, in every region and continuation, satisfies `P`. -/
+def opsProg (P : NfOp → Bool) :
+    {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var e k => P e.op && opsProg P k
+  | _, _, .forLoop _ _ body k => opsProg P body && opsProg P k
+  | _, _, .ifThenElse _ thn els k => opsProg P thn && opsProg P els && opsProg P k
+  | _, _, .whileLoop _ body k => opsProg P body && opsProg P k
+  | _, _, .call _ _ k => opsProg P k
+
+/-- Every operation of a prefix, in every region and continuation, satisfies `P`. -/
+def opsPre (P : NfOp → Bool) : {Γ Δ : Ctxt nfDialect} → NFPre nfDialect Γ Δ → Bool
+  | _, _, .nil => true
+  | _, _, .var e p => P e.op && opsPre P p
+  | _, _, .forLoop _ _ body p => opsProg P body && opsPre P p
+  | _, _, .ifThenElse _ thn els p => opsProg P thn && opsProg P els && opsPre P p
+
+theorem opsPre_append (P : NfOp → Bool) {Γ Δ Θ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ)
+    (q : NFPre nfDialect Δ Θ) : opsPre P (p.append q) = (opsPre P p && opsPre P q) := by
+  induction p with
+  | nil => simp [NFPre.append, opsPre]
+  | var e p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
+  | forLoop _ _ body p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
+  | ifThenElse _ thn els p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
+
+theorem opsProg_plug (P : NfOp → Bool) {Γ Δ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFPre nfDialect Γ Δ) (k : NFProg nfDialect Δ ts) :
+    opsProg P (p.plug k) = (opsPre P p && opsProg P k) := by
+  induction p with
+  | nil => simp [NFPre.plug, opsPre]
+  | var e p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
+  | forLoop _ _ body p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
+  | ifThenElse _ thn els p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
+
+theorem ilitWordOp_mkEN {Γ : Ctxt nfDialect} (tgt : Option String) (op : NfOp)
+    (args : HVector (fun t => Var Γ t) op.sig) :
+    ilitWordOp (mkEN tgt op args).op = ilitWordOp op := by
+  cases tgt <;> rfl
+
+theorem opsPre_bind1N {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (op : NfOp)
+    (args : HVector (fun t => Var Γ t) op.sig) :
+    opsPre ilitWordOp (bind1N tgt σ op args).pre = ilitWordOp op := by
+  simp [bind1N, opsPre, ilitWordOp_mkEN]
+
+theorem opsPre_bind1 {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (op : NfOp)
+    (args : HVector (fun t => Var Γ t) op.sig) :
+    opsPre ilitWordOp (bind1 σ op args).pre = ilitWordOp op := by
+  simp [bind1, opsPre, mkE]
+
+/-- The integer literals `litInt` types lie in `[0, 2 ^ 64)` at the `64`-bit words or at an
+    unsigned width of at most `64` bits. -/
+theorem litInt_ilitWord {l : ImpLit} {t : NfTy} {v : Int} (h : litInt l = some (t, v)) :
+    ilitWordOp (.ilit t v) = true := by
+  cases l with
+  | int n =>
+      by_cases hc : 0 ≤ n ∧ n < 2 ^ 64
+      · simp only [litInt, if_pos hc, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        simp only [ilitWordOp, hax64NFWordTy, Bool.true_or, Bool.and_true, Bool.and_eq_true,
+          decide_eq_true_eq]
+        exact hc
+      · simp only [litInt, if_neg hc, reduceCtorEq] at h
+  | uintLit W n =>
+      by_cases hw : W.bits ≤ 64
+      · simp only [litInt, if_pos hw, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        have h1 : n % W.modulus < W.modulus := Nat.mod_lt _ (Nat.two_pow_pos _)
+        have h2 : W.modulus ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
+        simp only [ilitWordOp, hw, decide_true, Bool.or_true, Bool.and_true,
+          Bool.and_eq_true, decide_eq_true_eq]
+        omega
+      · simp only [litInt, if_neg hw, reduceCtorEq] at h
+  | _ => simp [litInt] at h
+
+theorem litOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (l : ImpLit)
+    {o : Out Γ} (h : litOut tgt σ l = some o) : opsPre ilitWordOp o.pre = true := by
+  cases l with
+  | bool b =>
+      simp only [litOut, Option.some.injEq] at h
+      subst h
+      simp [opsPre_bind1N, ilitWordOp]
+  | unit =>
+      simp only [litOut, Option.some.injEq] at h
+      subst h
+      simp [opsPre_bind1N, ilitWordOp]
+  | int n | uintLit W n | sintLit W n =>
+      simp only [litOut, Option.bind_eq_some_iff] at h
+      obtain ⟨⟨t, v⟩, hl, hs⟩ := h
+      split at hs
+      · simp only [Option.some.injEq] at hs
+        subst hs
+        rw [opsPre_bind1N]
+        exact litInt_ilitWord hl
+      · cases hs
+
+theorem atomOut_ilitWord {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a : ImpExpr) {o : Out Γ}
+    (h : atomOut σ a = some o) : opsPre ilitWordOp o.pre = true := by
+  cases a with
+  | var x =>
+      simp only [atomOut, Option.map_eq_some_iff] at h
+      obtain ⟨_, _, rfl⟩ := h
+      rfl
+  | lit l => exact litOut_ilitWord none σ l h
+  | _ => simp [atomOut] at h
+
+theorem argsOut_ilitWord (es : List ImpExpr) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, argsOut σ es = some oa →
+      opsPre ilitWordOp oa.pre = true := by
+  induction es with
+  | nil =>
+      intro Γ σ oa h
+      simp only [argsOut, Option.some.injEq] at h
+      subst h
+      rfl
+  | cons e es ih =>
+      intro Γ σ oa h
+      simp only [argsOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      simp only [opsPre_append, atomOut_ilitWord σ e ho, ih o.σ hos, Bool.and_self]
+
+theorem tupleOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (as : List NfTy)
+    (vs : HVector (fun t => Var Γ t) as) :
+    opsPre ilitWordOp (tupleOut tgt as vs).snd.fst = true := by
+  induction as generalizing tgt with
+  | nil => cases vs; simp [tupleOut, opsPre, ilitWordOp_mkEN, ilitWordOp]
+  | cons a as ih =>
+      cases vs with
+      | cons v vs =>
+          rw [tupleOut]
+          simp [opsPre_append, opsPre, ilitWordOp_mkEN, ilitWordOp, ih]
+
+theorem ctrOut_ilitWord {Γ₃ : Ctxt nfDialect} (cs : List NfTy) (i : String)
+    (σB : NfEnv (cs ++ NfTy.word 64 :: Γ₃)) (loV : Var Γ₃ NfTy.int)
+    (rev : Option (Var Γ₃ (NfTy.word 64))) :
+    opsPre ilitWordOp (ctrOut cs i σB loV rev).pre = true := by
+  cases rev <;> simp [ctrOut, Out.comp, opsPre_append, opsPre_bind1N, opsPre_bind1, ilitWordOp]
+
+theorem loopOut_ilitWord {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
+    (pre₀ : NFPre nfDialect Γ Γ₃) (σ₃ : NfEnv Γ₃)
+    (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
+    (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
+    (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ))
+    (hpre : opsPre ilitWordOp pre₀ = true)
+    (hrec : ∀ {Δ : Ctxt nfDialect} (σ : NfEnv Δ) (o : Out Δ), rec σ = some o →
+      opsPre ilitWordOp o.pre = true)
+    {o : Out Γ} (h : loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits rec = some o) :
+    opsPre ilitWordOp o.pre = true := by
+  simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  obtain ⟨ob, hob, rets, -, rfl⟩ := h
+  simp [opsPre_append, opsPre, opsProg_plug, opsProg, hpre, ctrOut_ilitWord, hrec _ _ hob,
+    opsPre_bind1N, ilitWordOp]
+
+theorem condOut_ilitWord {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc)
+    (σc : NfEnv Γc) (cV : Var Γc NfTy.bit) (xs : List String) (cs : List NfTy)
+    (recA recB : Option (Out Γc)) (hpre : opsPre ilitWordOp pre₀ = true)
+    (hA : ∀ oa, recA = some oa → opsPre ilitWordOp oa.pre = true)
+    (hB : ∀ ob, recB = some ob → opsPre ilitWordOp ob.pre = true)
+    {o : Out Γ} (h : condOut pre₀ σc cV xs cs recA recB = some o) :
+    opsPre ilitWordOp o.pre = true := by
+  simp only [condOut, Option.bind_eq_some_iff] at h
+  obtain ⟨oa, hoa, ob, hob, h⟩ := h
+  split at h
+  · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ra, -, rb, -, h⟩ := h
+    split at h <;> (subst h; simp [opsPre_append, opsPre, opsProg_plug, opsProg, hpre,
+      hA oa hoa, hB ob hob, opsPre_bind1N, ilitWordOp])
+  · cases h
+
+/-- The lower bound of a counted loop under the bounds of `boundOk` or of `litBoundOk` lies
+    in `[0, 2 ^ 64)`. -/
+theorem lo_range_of_bound {lo : Int} {t : NfTy} {hi : ImpExpr}
+    (hb : (boundOk lo t || litBoundOk lo hi) = true) : 0 ≤ lo ∧ lo < 2 ^ 64 := by
+  rcases Bool.or_eq_true_iff.mp hb with hb | hb
+  · cases t with
+    | uint W =>
+        simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        exact hb.1
+    | word w =>
+        simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        exact hb.1
+    | _ => simp [boundOk] at hb
+  · match hi, hb with
+    | .lit (.int n), hb =>
+        simp only [litBoundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+        exact hb.1
+
+/-- The prefix of `impArgsNF` satisfies `ilitWordOp` when the prefix of `impToNF` on each
+    argument does. -/
+theorem impArgsNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (args : List ImpExpr)
+    (ih : ∀ e ∈ args, ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ),
+      impToNF sigOf tgt σ e = some o → opsPre ilitWordOp o.pre = true) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (oa : ArgsOut Γ),
+      impArgsNF sigOf σ args = some oa → opsPre ilitWordOp oa.pre = true := by
+  induction args with
+  | nil =>
+      intro Γ σ oa h
+      simp only [impArgsNF, Option.some.injEq] at h
+      subst h
+      rfl
+  | cons e es ihes =>
+      intro Γ σ oa h
+      simp only [impArgsNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨o, ho, os, hos, rfl⟩ := h
+      simp only [opsPre_append, ih e List.mem_cons_self none σ o ho,
+        ihes (fun a ha => ih a (List.mem_cons_of_mem _ ha)) o.σ os hos, Bool.and_self]
+
+/-- **The integer literals of the front's output**: every integer literal of a prefix
+    `impToNF` returns lies in `[0, 2 ^ 64)`, at the integer type, at the `64`-bit words or at
+    an unsigned width of at most `64` bits. -/
+theorem impToNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (e : ImpExpr) :
+    ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ),
+      impToNF sigOf tgt σ e = some o → opsPre ilitWordOp o.pre = true := by
+  induction e using ImpExpr.ind
+  case lit l =>
+    intro tgt Γ σ o h
+    exact litOut_ilitWord tgt σ l h
+  case var x =>
+    intro tgt Γ σ o h
+    exact atomOut_ilitWord σ (.var x) h
+  case unitVal =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.some.injEq] at h
+    subst h
+    simp [opsPre_bind1N, ilitWordOp]
+  case letBind x v b ihv ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ov, hov, ob, hob, rfl⟩ := h
+    simp only [Out.comp, opsPre_append, ihv _ _ _ hov, ihb _ _ _ hob, Bool.and_self]
+  case seq a b iha ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, ob, hob, rfl⟩ := h
+    simp only [Out.comp, opsPre_append, iha _ _ _ hoa, ihb _ _ _ hob, Bool.and_self]
+  case assign x r ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.map_eq_some_iff] at h
+    obtain ⟨o', ho', rfl⟩ := h
+    simp [Out.comp, opsPre_append, ih _ _ _ ho', opsPre_bind1N, ilitWordOp]
+  case typeAscription e s ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF] at h
+    exact ih _ _ _ h
+  case app f args iha =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, r, -, rfl⟩ := h
+    simp [opsPre_append, opsPre, impArgsNF_ilitWord sigOf args iha _ _ hoa, ilitWordOp_mkEN,
+      ilitWordOp]
+  case tuple es _ =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, rfl⟩ := h
+    simp only [opsPre_append, argsOut_ilitWord es σ hoa, tupleOut_ilitWord, Bool.and_self]
+  case forFold i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h
+    cases lo with
+    | lit l =>
+      cases l with
+      | int lo =>
+        simp only [impToNF, Option.bind_eq_some_iff] at h
+        obtain ⟨oHi, hHi, h⟩ := h
+        split at h
+        · rename_i hb
+          obtain ⟨h0, h1⟩ := lo_range_of_bound hb
+          refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
+          simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, ilitWordOp,
+            hax64NFWordTy, h0, h1, decide_true, Bool.true_or, Bool.and_self]
+        · cases h
+      | _ => simp [impToNF] at h
+    | _ => simp [impToNF] at h
+  case forFoldRev i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h
+    cases lo with
+    | lit l =>
+      cases l with
+      | int lo =>
+        simp only [impToNF, Option.bind_eq_some_iff] at h
+        obtain ⟨oHi, hHi, h⟩ := h
+        split at h
+        · rename_i hb
+          obtain ⟨h0, h1⟩ := lo_range_of_bound hb
+          refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
+          simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, ilitWordOp,
+            hax64NFWordTy, h0, h1, decide_true, Bool.true_or, Bool.and_self]
+          decide
+        · cases h
+      | _ => simp [impToNF] at h
+    | _ => simp [impToNF] at h
+  case ifThenElse c a b ihc iha ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨oc, hoc, h⟩ := h
+    split at h
+    · exact condOut_ilitWord _ _ _ _ _ _ _ (ihc _ _ _ hoc) (fun oa ha => iha _ _ _ ha)
+        (fun ob hb => ihb _ _ _ hb) h
+    · cases h
+  all_goals
+    intro tgt Γ σ o h
+    simp [impToNF] at h
+
+/-- **With no refusal, the integer literals of the front's output are words**: when `frontRefusal?` returns no refusal, `impToNF` returns a program every integer literal
+    of which lies in `[0, 2 ^ 64)`, at the integer type, at the `64`-bit words or at an
+    unsigned width of at most `64` bits. -/
+theorem frontOut_ilit_word (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (e : ImpExpr) (h : frontRefusal? sigOf tgt σ e = none) :
+    ∃ o, impToNF sigOf tgt σ e = some o ∧ opsPre ilitWordOp o.pre = true := by
+  obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp ((frontRefusal?_eq_none_iff sigOf tgt σ e).mp h)
+  exact ⟨o, ho, impToNF_ilitWord sigOf e tgt σ o ho⟩
 
 end CatCrypt.Crypto.Hax.FrontDomain

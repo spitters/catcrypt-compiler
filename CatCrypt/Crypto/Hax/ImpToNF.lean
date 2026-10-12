@@ -39,12 +39,12 @@ encodes the arguments, calls the builtin and decodes the result. The hypothesis
 the builtins.
 
 Fragment. A literal, a variable, `unitVal`, `typeAscription`, `seq`, `letBind`, `assign`,
-a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with a non-negative integer
-literal as lower bound, an atom of an unsigned integer or word type of at most `64` bits
+a call on arguments in the fragment, a tuple of atoms, and a counted loop `forFold` with an integer
+literal in `[0, 2 ^ 64)` as lower bound, an atom of an unsigned integer or word type of at most `64` bits
 (`boundOk`) or an integer literal below `2 ^ 64` (`litBoundOk`) as upper bound, and a body in
 the fragment; a reverse counted loop `forFoldRev` with the same bounds, whose trip `k` has the
 counter `lo + (trip - 1 - k)` (`ctrOut`); an integer literal in `[0, 2 ^ 64)` has the type of
-`64`-bit words (`litInt`);
+`64`-bit words and a literal of an unsigned width of at most `64` bits its type (`litInt`);
 and a conditional `ifThenElse` whose condition translates to a bit and whose
 arms are in the fragment, with one result type, as the region `NFPre.ifThenElse` (`condOut`):
 its results are the value of the conditional, the names an arm may bind (`condCarried`), and
@@ -280,13 +280,14 @@ def bind1N {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (op : NfO
 def Out.comp {Γ : Ctxt nfDialect} (o : Out Γ) (o₂ : Out o.Δ) : Out Γ :=
   ⟨o₂.Δ, o₂.t, o.pre.append o₂.pre, o₂.σ, o₂.res⟩
 
-/-- The type and the integer value of a literal at the types of `NfTy.ofLit?`: an integer
-    literal in `[0, 2 ^ 64)` has the type of `64`-bit words, every other integer literal the
-    integer type, and a literal of a width its type. -/
+/-- The type and the integer value of a literal of the domain of the front: an integer
+    literal in `[0, 2 ^ 64)` has the type of `64`-bit words, and a literal of an unsigned width
+    of at most `64` bits its type. An integer literal outside `[0, 2 ^ 64)`, a literal of a
+    signed width and a literal of a width above `64` bits have none. -/
 def litInt : ImpLit → Option (NfTy × Int)
-  | .int n => some (if 0 ≤ n ∧ n < 2 ^ 64 then .word 64 else .int, n)
-  | .uintLit W n => some (.uint W, ((n % W.modulus : Nat) : Int))
-  | .sintLit W n => some (.sint W, n)
+  | .int n => if 0 ≤ n ∧ n < 2 ^ 64 then some (.word 64, n) else none
+  | .uintLit W n =>
+      if W.bits ≤ 64 then some (.uint W, ((n % W.modulus : Nat) : Int)) else none
   | _ => none
 
 /-- A literal: a bit, the unit value, or an integer literal that `NfTy.ofLit?` accepts, its
@@ -360,19 +361,19 @@ def varsAt {Δ : Ctxt nfDialect} (σ : NfEnv Δ) :
       if h : p.1 = c then (varsAt σ xs cs).map (.cons (h ▸ p.2)) else none
   | _, _ => none
 
-/-- The bounds the counted loop of the front accepts: a non-negative lower bound and an
+/-- The bounds the counted loop of the front accepts: a lower bound in `[0, 2 ^ 64)` and an
     upper bound of an unsigned integer type or a word type of at most `64` bits, so that the
     trip count is below `2 ^ 64`. -/
 def boundOk (lo : Int) : NfTy → Bool
-  | .uint W => decide (0 ≤ lo) && decide (W.bits ≤ 64)
-  | .word w => decide (0 ≤ lo) && decide (w ≤ 64)
+  | .uint W => decide (0 ≤ lo ∧ lo < 2 ^ 64) && decide (W.bits ≤ 64)
+  | .word w => decide (0 ≤ lo ∧ lo < 2 ^ 64) && decide (w ≤ 64)
   | _ => false
 
 /-- The literal upper bounds the counted loop of the front accepts beside `boundOk`: a
-    non-negative lower bound and an integer literal below `2 ^ 64`, so that the trip count is
+    lower bound in `[0, 2 ^ 64)` and an integer literal below `2 ^ 64`, so that the trip count is
     below `2 ^ 64`. -/
 def litBoundOk (lo : Int) : ImpExpr → Bool
-  | .lit (.int n) => decide (0 ≤ lo) && decide (n < 2 ^ 64)
+  | .lit (.int n) => decide (0 ≤ lo ∧ lo < 2 ^ 64) && decide (n < 2 ^ 64)
   | _ => false
 
 /-- The environment of names of a loop body or of the continuation of a loop: the carried
@@ -506,7 +507,8 @@ mutual
 
     A binding `let x = v; b` binds `x` at the type of its value; an integer literal in
     `[0, 2 ^ 64)` has the type of `64`-bit words (`litInt`), the type `boundOk` accepts for
-    an upper bound.
+    an upper bound. An integer literal outside `[0, 2 ^ 64)`, a literal of a signed
+    width and a literal of a width above `64` bits are `none`.
 
     A reverse loop `forFoldRev i lo hi body` binds, after the trip count, the word
     `trip - 1` (`ilit` and `bin .sub 64`), and its body binds the counter `i` to
@@ -856,41 +858,27 @@ theorem ofLit_enc {l : ImpLit} {t : NfTy} {v : Int} (hl : litInt l = some (t, v)
     {x : t.denote} (hx : NfTy.ofLit? t v = some x) : Value.ofLit l = enc t x := by
   cases l with
   | int n =>
-      simp only [litInt, Option.some.injEq, Prod.mk.injEq] at hl
-      obtain ⟨ht, rfl⟩ := hl
       by_cases hc : 0 ≤ n ∧ n < 2 ^ 64
-      · rw [if_pos hc] at ht
-        subst ht
+      · simp only [litInt, if_pos hc, Option.some.injEq, Prod.mk.injEq] at hl
+        obtain ⟨rfl, rfl⟩ := hl
         simp only [NfTy.ofLit?, if_pos hc, Option.some.injEq] at hx
         subst hx
         show Value.int n = Value.int ((BitVec.ofNat 64 n.toNat).toNat : Int)
         rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg hc.1]
-      · rw [if_neg hc] at ht
-        subst ht
-        simp only [NfTy.ofLit?, Option.some.injEq] at hx
-        subst hx; rfl
+      · simp only [litInt, if_neg hc, reduceCtorEq] at hl
   | uintLit W n =>
-      simp only [litInt, Option.some.injEq, Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      simp only [NfTy.ofLit?] at hx
-      split at hx
-      · simp only [Option.some.injEq] at hx
-        subst hx
-        simp only [Value.ofLit, enc, BitVec.ofInt_natCast, BitVec.toNat_ofNat,
-          IntWidth.modulus, Nat.mod_mod]
-      · cases hx
-  | sintLit W n =>
-      simp only [litInt, Option.some.injEq, Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      simp only [NfTy.ofLit?] at hx
-      split at hx
-      · rename_i hr
-        simp only [Option.some.injEq] at hx
-        subst hx
-        simp only [Value.ofLit, enc, BitVec.toInt_ofInt]
-        congr 1
-        rw [Int.bmod_eq_of_le] <;> cases W <;> simp_all [IntWidth.bits]
-      · cases hx
+      by_cases hw : W.bits ≤ 64
+      · simp only [litInt, if_pos hw, Option.some.injEq, Prod.mk.injEq] at hl
+        obtain ⟨rfl, rfl⟩ := hl
+        simp only [NfTy.ofLit?] at hx
+        split at hx
+        · simp only [Option.some.injEq] at hx
+          subst hx
+          simp only [Value.ofLit, enc, BitVec.ofInt_natCast, BitVec.toNat_ofNat,
+            IntWidth.modulus, Nat.mod_mod]
+        · cases hx
+      · simp only [litInt, if_neg hw, reduceCtorEq] at hl
+  | sintLit W n => simp [litInt] at hl
   | bool b => simp [litInt] at hl
   | unit => simp [litInt] at hl
 
@@ -1973,20 +1961,20 @@ theorem bound_range {lo : Int} {t : NfTy} {x : t.denote} {h : Int} {hi : ImpExpr
         subst hx
         have h1 : x.toNat < 2 ^ W.bits := x.isLt
         have h2 : 2 ^ W.bits ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
-        exact ⟨hb.1, by omega⟩
+        exact ⟨hb.1.1, by omega⟩
     | word w =>
         simp only [boundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
         simp only [NfTy.toInt?, Option.some.injEq] at hx
         subst hx
         have h1 : x.toNat < 2 ^ w := x.isLt
         have h2 : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hb.2
-        exact ⟨hb.1, by omega⟩
+        exact ⟨hb.1.1, by omega⟩
     | _ => simp [boundOk] at hb
   · match hi, hb with
     | .lit (.int n), hb =>
         simp only [litBoundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
         obtain rfl := toInt_of_enc_int (hlit n rfl) hx
-        exact ⟨hb.1, hb.2⟩
+        exact ⟨hb.1.1, hb.2⟩
 
 /-- **A counted loop is sound**, when the front is sound for its body. -/
 theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
