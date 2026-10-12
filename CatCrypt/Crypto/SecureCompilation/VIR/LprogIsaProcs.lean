@@ -162,12 +162,16 @@ theorem lsemStepN_callMnem (h : CallMnem opn) (s : LstateN) :
   have h2 := h.strip_ne "MOV" (by decide)
   have h3 := h.strip_ne "NEG" (by decide)
   have h4 := h.strip_ne "LEA" (by decide)
+  have h5 : cmpOfName? (stripWidthTag opn) = none :=
+    cmpOfName?_eq_none (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide))
+      (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide))
+      (h.strip_ne _ (by decide))
   unfold lsemStepN
   split <;> first
     | rfl
     | (rename_i heq
        cases heq <;>
-         (try simp only [h1, h2, h3, h4, hap, immFirstN, immShiftMnem?_callMnem h, if_false,
+         (try simp only [h1, h2, h3, h4, h5, hap, immFirstN, immShiftMnem?_callMnem h, if_false,
            Option.map_none]) <;>
          repeat' (first | rfl | split))
 

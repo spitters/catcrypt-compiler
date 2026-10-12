@@ -368,6 +368,39 @@ theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
     JasminLprogExport.stripWidthTag (JasminLprogExport.withWidthTag w "NEG") = "NEG" := by
   unfold JasminLprogExport.withWidthTag; split <;> decide +kernel
 
+/-- The relation of a base comparison mnemonic: `some c` on `cmpName c` (`SETE`, `SETNE`,
+    `SETB`, `SETBE`, `SETA`, `SETAE`), `none` on every other mnemonic. -/
+def cmpOfName? : String → Option JasminCmp
+  | "SETE" => some .eq
+  | "SETNE" => some .ne
+  | "SETB" => some .ult
+  | "SETBE" => some .ule
+  | "SETA" => some .ugt
+  | "SETAE" => some .uge
+  | _ => none
+
+@[simp] theorem cmpOfName?_cmpName (c : JasminCmp) : cmpOfName? (cmpName c) = some c := by
+  cases c <;> rfl
+
+/-- A mnemonic different from the six comparison mnemonics names no relation. -/
+theorem cmpOfName?_eq_none {m : String} (h1 : m ≠ "SETE") (h2 : m ≠ "SETNE")
+    (h3 : m ≠ "SETB") (h4 : m ≠ "SETBE") (h5 : m ≠ "SETA") (h6 : m ≠ "SETAE") :
+    cmpOfName? m = none := by
+  unfold cmpOfName?
+  split <;> simp_all
+
+/-- `applyOpnN` has no comparison arm: a comparison writes a width-`1` word, not a
+    width-`w` one. -/
+@[simp] theorem applyOpnN_cmpName {w : Nat} (c : JasminCmp) (l : List (BitVec w)) :
+    applyOpnN w (cmpName c) l = none := by
+  cases c <;> rcases l with _ | ⟨a, _ | ⟨b, _ | ⟨c, l⟩⟩⟩ <;> rfl
+
+/-- A mnemonic `applyOpnN` models is no comparison mnemonic. -/
+theorem cmpOfName?_of_applyOpnN {w : Nat} {m : String} {l : List (BitVec w)} {v : BitVec w}
+    (h : applyOpnN w m l = some v) : cmpOfName? m = none := by
+  unfold applyOpnN at h
+  split at h <;> first | rfl | exact absurd h (by simp)
+
 /-- The two-source operation `opn d, [imm n, b]` with an immediate first source: the data
     width is the width of the mnemonic's tag (`widthFromTag`), as for the immediate `MOV`;
     `b` is evaluated at that width, the operation is applied to the literal `n` at that
@@ -387,6 +420,10 @@ def immFirstN (s : LstateN) (dst opn : String) (n : Nat) (b : LOperand) : Option
       the binop, write `dst` at width `wₐ`, advance pc. (`regArith`.) With an
       immediate first source `a = .imm n` the width is that of the mnemonic's tag
       (`immFirstN`).
+    * `Lopn [.reg dst] opn [a, b]` with `cmpOfName? (stripWidthTag opn) = some c` — the
+      materialised comparison `SET<cc>`: read `a` at its store width `wₐ`, evaluate `b`
+      at `wₐ`, write `cmpBit c va vb` to `dst` at width `1`, advance pc. (`cmp`,
+      `cmpImm`; the x86 image is `cmp a, b; mov dst, 0; set<cc> dst`.)
     * `Lopn [.reg dst] opn [c, a, b]` with `stripWidthTag opn = "CMOV"` —
       read the cond at width 1 from `c`, the data width `wₐ` from `a`'s store
       tag, evaluate `b` at `wₐ`, write `selectW cond a b` to `dst` at width `wₐ`,
@@ -440,7 +477,11 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
           | some vb =>
               match applyOpnN wₐ (stripWidthTag opn) [va, vb] with
               | some v => some ((s.setReg dst v).nextPc)
-              | none => none
+              | none =>
+                  -- `cmp` image: the comparison bit, written at width `1`.
+                  match cmpOfName? (stripWidthTag opn) with
+                  | some c => some ((s.setReg dst (cmpBit c va vb)).nextPc)
+                  | none => none
           | none => none
       | none =>
           match a with
@@ -534,6 +575,17 @@ theorem getW_eq_some_iff {s : LstateN} {r : String} {w : Nat} {v : BitVec w} :
 theorem readReg_of_getW {s : LstateN} {r : String} {w : Nat} {v : BitVec w}
     (h : s.getW r w = some v) : readReg s (.reg r) = some ⟨w, v⟩ := by
   simp only [readReg, (getW_eq_some_iff).1 h]
+
+/-- **The comparison step.** The `SET<cc>` wire `Lopn [.reg dst] (withWidthTag wOp (cmpName c))
+    [.reg a, b]`, with `a` read at its store width `w` and `b` evaluated at `w`, writes the
+    comparison bit `cmpBit c va vb : BitVec 1` to `dst` and advances the pc. -/
+theorem lsemStepN_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOperand)
+    (s : LstateN) {w : Nat} {va vb : BitVec w} (ha : s.getW a w = some va)
+    (hb : evalOperandN s w b = some vb) :
+    lsemStepN (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b]) s
+      = some ((s.setReg dst (cmpBit c va vb)).nextPc) := by
+  simp only [lsemStepN, readReg_of_getW ha, hb, stripWidthTag_withWidthTag_cmpName,
+    applyOpnN_cmpName, cmpOfName?_cmpName]
 
 /-! ## 4. `lsem1N` / determinism and `lsemStraightN`
 

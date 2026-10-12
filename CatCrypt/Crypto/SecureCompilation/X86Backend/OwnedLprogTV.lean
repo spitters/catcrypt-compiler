@@ -717,6 +717,7 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
                   .set dst (.bin (stripWidthTag opn) (R ra) (.immW (widthFromTag opn) n)) []
                 else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
             | _ => .fail
+          else if (cmpOfName? (stripWidthTag opn)).isSome then .unk
           else .fail
       | .imm n =>
           if binOk (stripWidthTag opn) then
@@ -753,7 +754,13 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
 
 theorem readReg_reg (r : LstateN) (a : String) : readReg r (.reg a) = some (r.lvm a) := rfl
 
-theorem stepN_bin_reg (r : LstateN) (dst opn ra rb : String) :
+/-- A mnemonic of `binOk` is no comparison mnemonic. -/
+theorem cmpOfName?_of_binOk {m : String} (h : binOk m = true) : cmpOfName? m = none := by
+  simp only [binOk, Bool.or_eq_true, beq_iff_eq] at h
+  rcases h with ((((((((rfl | rfl) | rfl) | rfl) | rfl) | rfl) | rfl) | rfl) | rfl) <;> rfl
+
+theorem stepN_bin_reg (r : LstateN) (dst opn ra rb : String)
+    (hc : cmpOfName? (stripWidthTag opn) = none) :
     lsemStepN (.Lopn [.reg dst] opn [.reg ra, .reg rb]) r =
       if (r.lvm rb).1 = (r.lvm ra).1 then
         (applyOpnN (r.lvm ra).1 (stripWidthTag opn) [(r.lvm ra).2, castW (r.lvm rb) (r.lvm ra).1]).map
@@ -762,15 +769,16 @@ theorem stepN_bin_reg (r : LstateN) (dst opn ra rb : String) :
   simp only [lsemStepN, readReg_reg, evalOperandN, getW_eq]
   split_ifs
   · simp only []
-    cases applyOpnN _ _ _ <;> rfl
+    cases applyOpnN _ _ _ <;> simp [hc]
   · rfl
 
-theorem stepN_bin_imm (r : LstateN) (dst opn ra : String) (n : Nat) :
+theorem stepN_bin_imm (r : LstateN) (dst opn ra : String) (n : Nat)
+    (hc : cmpOfName? (stripWidthTag opn) = none) :
     lsemStepN (.Lopn [.reg dst] opn [.reg ra, .imm n]) r =
       (applyOpnN (r.lvm ra).1 (stripWidthTag opn) [(r.lvm ra).2, BitVec.ofNat _ n]).map
         (fun v => (r.setReg dst v).nextPc) := by
   simp only [lsemStepN, readReg_reg, evalOperandN]
-  cases applyOpnN _ _ _ <;> rfl
+  cases applyOpnN _ _ _ <;> simp [hc]
 
 @[simp] theorem castW_mk {w : Nat} (v : BitVec w) : castW ⟨w, v⟩ w = v := by
   simp [castW]
@@ -838,7 +846,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           have key : ROut.Desc (lsemStepN (.Lopn [.reg dst] opn [.reg ra, .reg rb])) V A C O r
               (.set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]) := by
             simp only [ROut.Desc]
-            rw [stepN_bin_reg, hr ra, hr rb]
+            rw [stepN_bin_reg _ _ _ _ _ (cmpOfName?_of_binOk hb), hr ra, hr rb]
             obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
               ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
             simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev,
@@ -852,7 +860,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           · exact key
         · rename_i n
           simp only [ROut.Desc]
-          rw [stepN_bin_imm, hr ra]
+          rw [stepN_bin_imm _ _ _ _ _ (cmpOfName?_of_binOk hb), hr ra]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
             ((R ra).ev V A C O).2 (BitVec.ofNat ((R ra).ev V A C O).1 n))
           split_ifs with hs
@@ -873,12 +881,15 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           | arr _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
           | arrIdx _ _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
       · rw [if_neg hb]
-        simp only [ROut.Desc]
+        cases hc : cmpOfName? (stripWidthTag opn) with
+        | some _ => trivial
+        | none =>
+        simp only [Option.isSome_none, Bool.false_eq_true, if_false, ROut.Desc]
         have hn : ∀ {w : Nat} (x y : BitVec w), applyOpnN w (stripWidthTag opn) [x, y] = none :=
           fun x y => applyOpnN_bin_none (Bool.eq_false_iff.mpr hb) x y
         cases b with
-        | reg rb => rw [stepN_bin_reg, hn]; simp
-        | imm n => rw [stepN_bin_imm, hn]; simp
+        | reg rb => rw [stepN_bin_reg _ _ _ _ _ hc, hn]; simp
+        | imm n => rw [stepN_bin_imm _ _ _ _ _ hc, hn]; simp
         | _ => simp [lsemStepN, evalOperandN, readReg]
     · rename_i n
       by_cases hb : binOk (stripWidthTag opn) = true

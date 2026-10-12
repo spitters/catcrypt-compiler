@@ -278,6 +278,22 @@ theorem lsemStepMC_of_delegate (i : LinstrR) (s : LstateN)
     lsemStepMC i s = lsemStepSh i s := by
   simp only [lsemStepMC, hm, ha, hh, hs, hsh]
 
+/-- **The comparison step.** The `SET<cc>` wire `Lopn [.reg dst] (withWidthTag wOp (cmpName c))
+    [.reg a, b]` is recognised by none of the multiply, carry and `SAR` heads, so
+    `lsemStepMC` writes the comparison bit `cmpBit c va vb : BitVec 1` to `dst`, as
+    `lsemStepN_cmp`. -/
+theorem lsemStepMC_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOperand)
+    (s : LstateN) {w : Nat} {va vb : BitVec w} (ha : s.getW a w = some va)
+    (hb : evalOperandN s w b = some vb) :
+    lsemStepMC (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b]) s
+      = some ((s.setReg dst (cmpBit c va vb)).nextPc) := by
+  have hs := JasminLsem.stripWidthTag_withWidthTag_cmpName wOp c
+  rw [lsemStepMC_of_delegate _ _
+      (by cases b <;> simp only [mulhiStruct?, hs]; cases c <;> rfl)
+      (by cases b <;> rfl) (by cases b <;> rfl) (by cases b <;> rfl) (by cases b <;> rfl),
+    lsemStepSh_of_not_sar _ _ (by cases b <;> simp only [sarStruct?, hs]; cases c <;> rfl)]
+  exact lsemStepN_cmp c wOp dst a b s ha hb
+
 /-! ### `lsemStraightMC` / leakage / composition over the mul/carry-aware step -/
 
 /-- Mul/carry-aware straight-line execution: the sequential fold of `lsemStepMC`. -/

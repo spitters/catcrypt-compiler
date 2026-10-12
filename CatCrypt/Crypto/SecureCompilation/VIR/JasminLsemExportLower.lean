@@ -588,7 +588,7 @@ theorem lsemStepMC_twoAddr (st : LstateN) (d s0 : String) (s1 : LOperand) (opn :
         split
         · split
           · simp only [Option.map_some, setReg_nextPc_setReg]
-          · rfl
+          · split <;> simp only [Option.map_some, Option.map_none, setReg_nextPc_setReg]
         · rfl
   | imm n =>
       simp only [binopWire, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
@@ -598,7 +598,7 @@ theorem lsemStepMC_twoAddr (st : LstateN) (d s0 : String) (s1 : LOperand) (opn :
       · simp only [hm, ↓reduceIte]
         split
         · simp only [Option.map_some, setReg_nextPc_setReg]
-        · rfl
+        · split <;> simp only [Option.map_some, Option.map_none, setReg_nextPc_setReg]
   | arr _ _ => rfl
   | arrIdx _ _ _ => rfl
 

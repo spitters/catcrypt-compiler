@@ -499,7 +499,10 @@ theorem lsemStepN_immShiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m
           | some vb =>
               match applyOpnN wa (stripWidthTag (withWidthTag w "SHR")) [va, vb] with
               | some v => some ((r.setReg dst v).nextPc)
-              | none => none
+              | none =>
+                  match cmpOfName? (stripWidthTag (withWidthTag w "SHR")) with
+                  | some c => some ((r.setReg dst (cmpBit c va vb)).nextPc)
+                  | none => none
           | none => none
       | none => none)
     rw [stripWidthTag_withWidthTag_SHR]
@@ -512,7 +515,10 @@ theorem lsemStepN_immShiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m
           | some vb =>
               match applyOpnN wa (stripWidthTag (withWidthTag w "SHL")) [va, vb] with
               | some v => some ((r.setReg dst v).nextPc)
-              | none => none
+              | none =>
+                  match cmpOfName? (stripWidthTag (withWidthTag w "SHL")) with
+                  | some c => some ((r.setReg dst (cmpBit c va vb)).nextPc)
+                  | none => none
           | none => none
       | none => none)
     rw [stripWidthTag_withWidthTag_SHL]

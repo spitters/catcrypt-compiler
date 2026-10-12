@@ -424,6 +424,19 @@ theorem lsemStepMem_reg (wire : LinstrR) (castDescr : Option Nat) (s : LstateM) 
     lsemStepMem (wire, .reg castDescr) s =
       (lsemStepCast (wire, castDescr) s.reg).map (fun r => { s with reg := r }) := rfl
 
+/-- **The comparison step.** A register binding whose wire is the `SET<cc>` form
+    `Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b]`, with `a` read at its
+    store width `w` and `b` evaluated at `w`, writes the comparison bit
+    `cmpBit c va vb : BitVec 1` to `dst` and advances the pc, leaving the array carrier
+    unchanged. -/
+theorem lsemStepMem_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOperand)
+    (cd : Option Nat) (s : LstateM) {w : Nat} {va vb : BitVec w}
+    (ha : s.reg.getW a w = some va) (hb : evalOperandN s.reg w b = some vb) :
+    lsemStepMem (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b], .reg cd) s
+      = some ((s.setReg dst (cmpBit c va vb)).nextPc) := by
+  rw [lsemStepMem_reg, lsemStepCast_cmp c wOp dst a b cd s.reg ha hb]
+  rfl
+
 /-! ## 3. Recognizer facts: the load/store heads on the real wire forms
 
 `loadStruct?`/`storeStruct?` recognise the real runtime-indexed `stackLoad`/

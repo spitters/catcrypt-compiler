@@ -210,6 +210,7 @@ theorem fstepA_arithWidth (frame : String → Option (BitVec 64)) (D A o : Strin
       repeat' split at hr
       all_goals first
         | (cases hr; done)
+        | (rename_i c hc; cases c <;> exact absurd hc (by decide +kernel))
         | (cases hr; simp [LstateN.setReg, LstateN.nextPc])
     · cases ht
 

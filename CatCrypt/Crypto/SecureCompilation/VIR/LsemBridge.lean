@@ -884,13 +884,13 @@ theorem fragFB_of_fragB {A : String → Option Nat} {i : LinstrRM} (hi : fragB A
 
 /-! ### The per-instruction simulation with flags -/
 
-/-- The memory step does not step a two-source instruction whose base mnemonic `applyOpnN`
-    does not model. -/
+/-- The memory step does not step a two-source instruction whose base mnemonic neither
+    `applyOpnN` nor the comparison arm models. -/
 theorem lsemStepMem_two_none (dst a : String) (b : LOperand) (ls : LstateM) (base : String)
     (hstrip : stripWidthTag (withWidthTag 64 base) = base)
     (h1 : base ≠ "MULXHI") (h4 : base ≠ "SAR") (va vb : BitVec 64)
     (hva : ls.reg.getW a 64 = some va) (hvb : evalOperandN ls.reg 64 b = some vb)
-    (hop : applyOpnN 64 base [va, vb] = none) :
+    (hop : applyOpnN 64 base [va, vb] = none) (hc : cmpOfName? base = none) :
     lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b], .reg none) ls = none := by
   have hm : mulhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> simp only [mulhiStruct?, hstrip, if_neg h1]
@@ -903,7 +903,7 @@ theorem lsemStepMem_two_none (dst a : String) (b : LOperand) (ls : LstateM) (bas
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
       lsemStepSh_of_not_sar _ _ hs]
-  simp only [lsemStepN, readReg_of_getW hva, hvb, hstrip, hop, Option.map_none]
+  simp only [lsemStepN, readReg_of_getW hva, hvb, hstrip, hop, hc, Option.map_none]
 
 theorem carry_facts (op : CarryOp) (x y : BitVec 64) :
     stripWidthTag (withWidthTag 64 (carryBase op)) = carryBase op ∧
@@ -942,7 +942,7 @@ theorem lsemStepFlag_stepMemF_rel {A : String → Option Nat} {i : LinstrRM}
       have hvb : evalOperandN s.reg 64 b = some (evalOperand l b) :=
         evalOperand_regOrImm hr.toLsemRel hok
       have hM := lsemStepMem_two_none d a b s (carryBase op) hstrip h1 h4 _ _
-        (hr.getW a) hvb hN
+        (hr.getW a) hvb hN (by cases op <;> rfl)
       have hL : lsemStep (ShapeF.toInstr (.carry op d a b)).1 l = none := by
         simp only [ShapeF.toInstr, lsemStep, hstrip, List.map]
         rw [show evalOperand l (.reg a) = l.lvm a from rfl, hO]
@@ -967,7 +967,7 @@ theorem lsemStepFlag_stepMemF_rel {A : String → Option Nat} {i : LinstrRM}
         evalOperand_regOrImm hr.toLsemRel hok
       have hM := lsemStepMem_two_none d x b s "MOV"
         (JasminLsemScalar.stripWidthTag_withWidthTag_MOV 64) (by decide) (by decide) _ _
-        (hr.getW x) hvb rfl
+        (hr.getW x) hvb rfl rfl
       have hL : lsemStep (ShapeF.toInstr (.mov2 d x b)).1 l = none := by
         simp only [ShapeF.toInstr, lsemStep,
           JasminLsemScalar.stripWidthTag_withWidthTag_MOV, List.map]

@@ -1250,7 +1250,10 @@ def stepEff (i : LinstrR) (s : LstateN) : Option (Option Cell) :=
           | some vb =>
               match applyOpnN wa (stripWidthTag opn) [va, vb] with
               | some v => some (some (dst, ⟨wa, v⟩))
-              | none => none
+              | none =>
+                  match cmpOfName? (stripWidthTag opn) with
+                  | some c => some (some (dst, ⟨1, cmpBit c va vb⟩))
+                  | none => none
           | none => none
       | none =>
           match a with

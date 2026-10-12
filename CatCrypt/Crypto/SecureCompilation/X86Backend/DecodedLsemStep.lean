@@ -325,7 +325,8 @@ theorem decSim_binReg (opn base : String) (hstrip : stripWidthTag opn = base)
     (h.write d (f (sa.regs (π a)) (sa.regs (π c))) _ (fun r => by rw [hmk, hda]) (hmkm _ _ _) hL
       (fun hz => hz.elim)).withALUFlags (binRegI opn d a c) b⟩
   rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _
-    (h.regs a ha), h.regs c hc, Option.bind_some, hf, Option.map_some]
+    (h.regs a ha) (cmpOfName?_of_applyOpnN (hf 0 0)), h.regs c hc, Option.bind_some, hf,
+    Option.map_some]
 
 theorem stripWidthTag_MUL64 : stripWidthTag "MUL:64" = "MUL" := by decide +kernel
 

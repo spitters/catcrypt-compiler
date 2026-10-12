@@ -1019,7 +1019,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
         (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, if_neg hr])
         (by rw [withALUFlags_reg, getW_setReg_nextPc, if_pos rfl])⟩
     rw [fstepF_binRegI m base D D S hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _
-      (hc.regs D hD), hc.regs S hS, Option.bind_some, hf, Option.map_some]
+      (hc.regs D hD) (cmpOfName?_of_applyOpnN (hf 0 0)), hc.regs S hS, Option.bind_some, hf,
+      Option.map_some]
   | aluI m D v =>
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨hm, hD⟩, -⟩ := h

@@ -643,7 +643,8 @@ theorem decSim_binReg_mov (opn base : String) (hstrip : stripWidthTag opn = base
     (aMachine.runBlock sa [.mov (π d) (.reg (π a)), mk (π d) (.reg (π c))]) (fun r => ?_)
     (hmkm _ _ _) hL (fun hz : False => hz.elim)) (binRegI opn d a c) b⟩
   · rw [runStraightF_singleton, fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry
-      (ne_mov_of_applyOpnN hf) b zf _ (h.regs a ha), h.regs c hc, Option.bind_some, hf,
+      (ne_mov_of_applyOpnN hf) b zf _ (h.regs a ha) (cmpOfName?_of_applyOpnN (hf 0 0)),
+      h.regs c hc, Option.bind_some, hf,
       Option.map_some]
   · show (evalInstrA (evalInstrA sa (.mov (π d) (.reg (π a)))) (mk (π d) (.reg (π c)))).regs r
       = _

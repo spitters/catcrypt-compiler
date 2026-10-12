@@ -489,6 +489,32 @@ theorem stepMemF_of_quiet {i : LinstrRM} (ha : aluFlagOp? i = none)
   | some b => show some (withALUFlags i s b) = some b; rw [withALUFlags_of_none ha]
   | none => simp only [hk, hw]
 
+/-- The `SET<cc>` wire is no recognised arithmetic or logical operation. -/
+theorem aluFlagOp?_cmp (c : JasminDialect.JasminCmp) (wOp : Nat) (dst : String)
+    (a b : LOperand) (tag : MemTag) :
+    aluFlagOp? (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [a, b], tag) = none := by
+  have hs := JasminLsem.stripWidthTag_withWidthTag_cmpName wOp c
+  have hne : ∀ m : String, stripWidthTag (withWidthTag 64 m) = m → cmpName c ≠ m →
+      withWidthTag wOp (cmpName c) ≠ withWidthTag 64 m :=
+    fun m h1 h2 he => h2 (hs.symm.trans (he ▸ h1))
+  simp only [aluFlagOp?,
+    if_neg (hne "ADD" (by decide +kernel) (by cases c <;> decide)),
+    if_neg (hne "SUB" (by decide +kernel) (by cases c <;> decide)),
+    if_neg (hne "AND" (by decide +kernel) (by cases c <;> decide)),
+    if_neg (hne "OR" (by decide +kernel) (by cases c <;> decide)),
+    if_neg (hne "XOR" (by decide +kernel) (by cases c <;> decide))]
+
+/-- **The comparison step of the flag machine.** The `SET<cc>` wire writes the comparison
+    bit `cmpBit c va vb : BitVec 1` to `dst` and advances the pc, as `lsemStepMem_cmp`; the
+    carry and overflow flags are unchanged. -/
+theorem stepMemF_cmp (c : JasminDialect.JasminCmp) (wOp : Nat) (dst a : String) (b : LOperand)
+    (cd : Option Nat) (s : LstateM) {w : Nat} {va vb : BitVec w}
+    (ha : s.reg.getW a w = some va) (hb : evalOperandN s.reg w b = some vb) :
+    stepMemF (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b], .reg cd) s
+      = some ((s.setReg dst (JasminDialect.cmpBit c va vb)).nextPc) := by
+  rw [stepMemF_of_lsemStepMem (lsemStepMem_cmp c wOp dst a b cd s ha hb),
+    withALUFlags_of_none (aluFlagOp?_cmp c wOp dst (.reg a) b _)]
+
 /-! ## 2. The flag-extended program state and step -/
 
 /-- The flag-extended memref program state: the loop program state `LstatePM`

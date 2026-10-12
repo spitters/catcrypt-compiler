@@ -193,6 +193,18 @@ theorem lsemStepCast_of_delegate (i : LinstrRT) (s : LstateN)
   · simp only [lsemStepCast, h, h']
   · simp only [lsemStepCast, h]; cases castStruct? i.fst <;> cases movImmStruct? i.fst <;> rfl
 
+/-- **The comparison step.** The `SET<cc>` wire `Lopn [.reg dst] (withWidthTag wOp (cmpName c))
+    [.reg a, b]` is no cast head and no immediate move, so at every descriptor
+    `lsemStepCast` writes the comparison bit `cmpBit c va vb : BitVec 1` to `dst`, as
+    `lsemStepMC_cmp`. -/
+theorem lsemStepCast_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOperand)
+    (cd : Option Nat) (s : LstateN) {w : Nat} {va vb : BitVec w}
+    (ha : s.getW a w = some va) (hb : evalOperandN s w b = some vb) :
+    lsemStepCast (.Lopn [.reg dst] (withWidthTag wOp (cmpName c)) [.reg a, b], cd) s
+      = some ((s.setReg dst (cmpBit c va vb)).nextPc) := by
+  rw [lsemStepCast_of_delegate _ _ (Or.inl ⟨by cases b <;> rfl, by simp [movImmStruct?]⟩)]
+  exact lsemStepMC_cmp c wOp dst a b s ha hb
+
 /-- **The immediate move at a descriptor width.** An untagged immediate move
     `MOV dst, $n` with the descriptor `some w'` writes `BitVec.ofNat w' n` to `dst`. -/
 theorem lsemStepCast_movImm (dst : String) (n w' : Nat) (s : LstateN) :

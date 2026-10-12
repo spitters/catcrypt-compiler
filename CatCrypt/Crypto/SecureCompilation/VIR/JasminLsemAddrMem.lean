@@ -1541,7 +1541,8 @@ theorem fstepF_binRegI (opn base dst a b : String) (hstrip : stripWidthTag opn =
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
     (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (hmov : base ≠ "MOV")
-    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va)
+    (hset : cmpOfName? base = none := by rfl) :
     fstepF (binRegI opn dst a b) s zf = (s.reg.getW b w).bind fun vb =>
       (applyOpnN w base [va, vb]).map fun v =>
         (withALUFlags (binRegI opn dst a b) s ((s.setReg dst v).nextPc), zf) := by
@@ -1566,7 +1567,7 @@ theorem fstepF_binRegI (opn base dst a b : String) (hstrip : stripWidthTag opn =
     cases s.reg.getW b w with
     | none => rfl
     | some vb => cases hv : applyOpnN w base [va, vb] <;>
-      simp only [hv, Option.bind_some, Option.map_some, Option.map_none]
+      simp only [hv, hset, Option.bind_some, Option.map_some, Option.map_none]
   unfold fstepF stepMemF
   simp only [hc, hm, hk, hw]
   rw [binRegI, lsemStepMem_reg, hstep]
@@ -1590,14 +1591,16 @@ theorem regCompat_binRegI (scr opn base dst a b : String) (hstrip : stripWidthTa
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
     (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (hmov : base ≠ "MOV")
-    (ha : a ≠ scr) (hb : b ≠ scr) : RegCompat scr (binRegI opn dst a b) :=
+    (ha : a ≠ scr) (hb : b ≠ scr) (hset : cmpOfName? base = none := by rfl) :
+    RegCompat scr (binRegI opn dst a b) :=
   regCompat_of_binary scr _ dst a b ha hb
     (fun _ hp => by
       obtain ⟨h1, h2⟩ := aluFlagOp?_ops hp
       rw [h1, h2]
       exact ⟨fun he => ha (LOperand.reg.inj he), fun he => hb (LOperand.reg.inj he)⟩)
     (fun w va vb => applyOpnN w base [va, vb])
-    fun s zf _ va hg => fstepF_binRegI opn base dst a b hstrip hcmp hmul hcarry hmov s zf va hg
+    fun s zf _ va hg =>
+      fstepF_binRegI opn base dst a b hstrip hcmp hmul hcarry hmov s zf va hg hset
 
 theorem isRegInstr_binRegI (frame : String → Option (BitVec 64)) (opn dst a b : String)
     (hopn : opn ≠ "CMP:64") :
@@ -1621,10 +1624,10 @@ theorem fstepF_binRegI_getW {opn base dst a b : String} (hstrip : stripWidthTag 
     (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (hmov : base ≠ "MOV") {s bst : LstateM} {zf z : Bool}
     (h : fstepF (binRegI opn dst a b) s zf = some (bst, z)) (x : String) (hx : x ≠ dst)
-    (w : Nat) : bst.reg.getW x w = s.reg.getW x w := by
+    (w : Nat) (hset : cmpOfName? base = none := by rfl) : bst.reg.getW x w = s.reg.getW x w := by
   rcases hs : s.reg.lvm a with ⟨wa, va⟩
   rw [fstepF_binRegI opn base dst a b hstrip hcmp hmul hcarry hmov s zf va
-    (getW_eq_some_iff.mpr hs)] at h
+    (getW_eq_some_iff.mpr hs) hset] at h
   cases hvb : s.reg.getW b wa with
   | none => simp [hvb] at h
   | some vb =>

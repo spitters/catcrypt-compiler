@@ -786,7 +786,7 @@ theorem lsemStepCast_carry (d opn : String) (a b : LOperand)
       simp only []
       cases evalOperandN r w b with
       | none => rfl
-      | some vb => rcases hm with h | h | h | h <;> simp [h, applyOpnN]
+      | some vb => rcases hm with h | h | h | h <;> simp [h, applyOpnN, cmpOfName?]
 
 /-- The memory step does not step a carry-family instruction. -/
 theorem lsemStepMem_of_carryArgs {i : LinstrRM} {p : CarryOp × String × LOperand × LOperand}
@@ -871,7 +871,7 @@ theorem lsemStepCast_mov2 (d opn : String) (a b : LOperand) (hm : stripWidthTag 
       simp only []
       cases evalOperandN r w b with
       | none => rfl
-      | some vb => simp [hm, applyOpnN]
+      | some vb => simp [hm, applyOpnN, cmpOfName?]
 
 /-- The memory step does not step a flag-quiet lift instruction. -/
 theorem lsemStepMem_of_wideArgs {i : LinstrRM} {w : WideOp} (h : wideArgs? i = some w)

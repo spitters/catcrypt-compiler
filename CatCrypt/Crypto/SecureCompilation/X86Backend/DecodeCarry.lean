@@ -303,8 +303,8 @@ theorem decSimC_alu (opn base : String) (op : AluOp) (hstrip : stripWidthTag opn
   obtain ⟨hC, -, -⟩ := h
   have hva := hC.regs a ha
   have hvc := hC.regs c hc
-  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _ hva,
-    hvc, Option.bind_some, hf, Option.map_some]
+  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _ hva
+    (cmpOfName?_of_applyOpnN (hf 0 0)), hvc, Option.bind_some, hf, Option.map_some]
   have hw := withALUFlags_reg2 (hop d a c) hva hvc
     ((b.setReg d (f (sa.regs (π a)) (sa.regs (π c)))).nextPc)
   refine ⟨_, zf, rfl, DecLsemCorr.withALUFlags (hC.write d (f (sa.regs (π a)) (sa.regs (π c)))
