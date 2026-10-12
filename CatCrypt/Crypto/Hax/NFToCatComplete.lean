@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.NFToCat
+public import CatCrypt.Crypto.Hax.NFToCatCall
 
 /-!
 # The domain of `nfToCat`
@@ -23,6 +24,10 @@ scalar table by an amount bound to an integer literal in `[0, 2^64)` at an integ
 word, a subset of `nbOp`; `NBL` tracks these bindings as a list of flags aligned with the
 context. `nfToCat` is `some` on every program of `NB` at every reading of its context.
 
+`NBD D` widens `NB` by the let-bound calls `NfOp.call f as r`, possibly under `named`, that the
+list `D` declares (`extOk D`). The translation `nfToCatExt D` is `some` on every program of
+`NBD D`: a declared call that `catOp` refuses is translated by `emitCall`.
+
 ## Main definitions
 
 * `litCount` — the number of literals among a vector of readings.
@@ -30,6 +35,8 @@ context. `nfToCat` is `some` on every program of `NB` at every reading of its co
 * `scalarCallOk`, `memCallOk`, `ilitOk`, `tripOk`, `nbOp` — the operations of the domain.
 * `rotCallOk`, `rotOpOk`, `litOp` — the rotations by a literal and the literal bindings.
 * `NBL`, `NB` — the programs of the domain at a list of flags, and at the empty list.
+* `extOk`, `NBDL`, `NBD` — the declared calls, and the programs of the domain with declared
+  calls at a list of flags and at the empty list.
 
 ## Main results
 
@@ -39,6 +46,9 @@ context. `nfToCat` is `some` on every program of `NB` at every reading of its co
 * `catOp_isSome_of_nbOpAt` — `catOp` is `some` on every operation of `nbOp` or `rotOpOk`.
 * `nfToCat_isSome_of_NBL`, `nfToCat_isSome_of_NB` — `nfToCat` is `some` on every program of
   `NBL` at readings of its flags, and on every program of `NB`.
+* `NBDL_of_NBL`, `NBD_of_NB` — the domain with declared calls contains the domain.
+* `nfToCatExt_isSome_of_NBDL`, `nfToCatExt_isSome_of_NBD` — `nfToCatExt D` is `some` on every
+  program of `NBDL D` at readings of its flags, and on every program of `NBD D`.
 -/
 
 @[expose] public section
@@ -725,5 +735,155 @@ theorem nfToCat_isSome_of_NB {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (hp : NB p = true) :
     ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ), (nfToCat p σ).isSome :=
   fun σ => nfToCat_isSome_of_NBL p [] hp σ (litOn_nil σ)
+
+/-! ## 5. The programs of the domain with declared calls -/
+
+/-- The calls that the list `D` declares, under the source names of `named`. -/
+def extOk (D : List ExtDecl) : NfOp → Bool
+  | .named _ op => extOk D op
+  | .call f as r => declared D f as r
+  | _ => false
+
+/-- `extArgs` is defined on every call of `extOk D`. -/
+theorem extArgs_isSome_of_extOk {D : List ExtDecl} {Γ : Ctxt nfDialect}
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
+    ∀ (op : NfOp), extOk D op = true →
+      ∀ (args : HVector (fun t => Var Γ t) op.sig), (extArgs D σ op args).isSome := by
+  intro op
+  induction op with
+  | named n op ih => exact ih
+  | call f as r =>
+      intro h args
+      simp only [extOk] at h
+      simp [extArgs, h]
+  | _ => intro h; simp [extOk] at h
+
+/-- **The programs of the domain with the declared calls `D`, at the literal flags `L`**:
+    `NBL`, where a let-bound operation may also be a call of `extOk D`. -/
+def NBDL (D : List ExtDecl) :
+    {Γ : Ctxt nfDialect} → {ts : List NfTy} → List Bool → NFProg nfDialect Γ ts → Bool
+  | _, _, _, .ret _ => true
+  | _, _, L, .var e k =>
+      (nbOp e.op || rotOpOk L e.op e.args || extOk D e.op) && NBDL D (litOp e.op :: L) k
+  | _, _, L, .forLoop (cs := cs) _ _ body k =>
+      NBDL D (List.replicate cs.length false ++ false :: L) body &&
+        NBDL D (List.replicate cs.length false ++ L) k
+  | _, _, L, .ifThenElse (rs := rs) _ thn els k =>
+      NBDL D L thn && NBDL D L els && NBDL D (List.replicate rs.length false ++ L) k
+  | _, _, _, .whileLoop .. => false
+  | _, _, _, .call .. => false
+
+/-- **The programs of the domain with the declared calls `D`**: `NBDL` with no variable of the
+    context flagged. -/
+def NBD (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Bool :=
+  NBDL D [] p
+
+/-- A program of `NBL` is a program of `NBDL` at every list of declarations. -/
+theorem NBDL_of_NBL (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : ∀ (L : List Bool), NBL L p = true → NBDL D L p = true := by
+  induction p with
+  | ret => intro _ _; rfl
+  | var e k ih =>
+      intro L hp
+      simp only [NBL, Bool.and_eq_true] at hp
+      simp only [NBDL, Bool.and_eq_true, Bool.or_eq_true]
+      exact ⟨Or.inl (Bool.or_eq_true_iff.mp hp.1), ih _ hp.2⟩
+  | forLoop count inits body k ihb ihk =>
+      intro L hp
+      simp only [NBL, Bool.and_eq_true] at hp
+      simp only [NBDL, Bool.and_eq_true]
+      exact ⟨ihb _ hp.1, ihk _ hp.2⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro L hp
+      simp only [NBL, Bool.and_eq_true] at hp
+      simp only [NBDL, Bool.and_eq_true]
+      exact ⟨⟨iht _ hp.1.1, ihe _ hp.1.2⟩, ihk _ hp.2⟩
+  | whileLoop => intro _ hp; simp [NBL] at hp
+  | call => intro _ hp; simp [NBL] at hp
+
+/-- A program of `NB` is a program of `NBD` at every list of declarations. -/
+theorem NBD_of_NB (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (hp : NB p = true) : NBD D p = true :=
+  NBDL_of_NBL D p [] hp
+
+/-- **`nfToCatExt D` is defined on every program of `NBDL D` at the flags `L`**, at every
+    reading of its context that reads the flagged variables as literals. -/
+theorem nfToCatExt_isSome_of_NBDL (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) :
+    ∀ (L : List Bool), NBDL D L p = true →
+      ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ), LitOn L σ → (nfToCatExt D p σ).isSome := by
+  induction p with
+  | ret vs =>
+      intro _ _ _ σ _
+      exact pinAll_isSome (fun _ _ => rfl) σ _
+  | var e k ih =>
+      intro L hp _ σ hσ
+      rcases e with ⟨op, he, args⟩
+      simp only [NBDL, Bool.and_eq_true] at hp
+      obtain ⟨hop, hk⟩ := hp
+      change (emitOp D (fun σ' => nfToCatExt D k σ') σ op he args).isSome
+      unfold emitOp
+      cases hc : catOp σ op args with
+      | some res =>
+          cases hl : litOp op
+          · rw [hl] at hk
+            exact emitRes_isSome_of (fun σ' hσ' => ih _ hk σ' hσ') he res σ hσ
+          · rw [hl] at hk
+            obtain ⟨n, hn, hc'⟩ := catOp_litOp σ op hl args
+            rw [hc'] at hc
+            cases hc
+            subst he
+            exact ih _ hk _ (litOn_cons (fun _ => ⟨n, hn, rfl⟩) hσ)
+      | none =>
+          have hl : litOp op = false := by
+            cases hl : litOp op
+            · rfl
+            · obtain ⟨n, hn, hc'⟩ := catOp_litOp σ op hl args
+              rw [hc'] at hc
+              cases hc
+          rw [hl] at hk
+          have hx : extOk D op = true := by
+            rcases Bool.or_eq_true_iff.mp hop with h1 | h2
+            · have := catOp_isSome_of_nbOpAt σ hσ op args h1
+              rw [hc] at this
+              cases this
+            · exact h2
+          obtain ⟨c, hcx⟩ :=
+            Option.isSome_iff_exists.mp (extArgs_isSome_of_extOk σ op hx args)
+          simp only [hcx, Option.bind_some, emitCall]
+          refine pinAll_isSome_of (fun σ' => LitOn L σ') (fun _ h => litOn_wk h)
+            (fun σ' ws hσ' => ?_) σ _ hσ
+          obtain ⟨k', hk'⟩ :=
+            Option.isSome_iff_exists.mp (ih _ hk σ'.lift (litOn_lift hσ'))
+          simp [hk']
+  | forLoop count inits body k ihb ihk =>
+      intro L hp _ σ hσ
+      simp only [NBDL, Bool.and_eq_true] at hp
+      refine pinAll_isSome_of (fun σ' => LitOn L σ') (fun _ h => litOn_wk h)
+        (fun σ' ws hσ' => ?_) σ _ hσ
+      obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp
+        (ihb _ hp.1 (TRd.liftApp _ (TRd.lift σ')) (litOn_liftApp (litOn_lift hσ') _))
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp
+        (ihk _ hp.2 (TRd.liftApp _ σ') (litOn_liftApp hσ' _))
+      simp [hb, hk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro L hp _ σ hσ
+      simp only [NBDL, Bool.and_eq_true] at hp
+      obtain ⟨c, hc⟩ := Rd.eq_var_of_bit (σ cond)
+      obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (iht _ hp.1.1 σ hσ)
+      obtain ⟨e', he⟩ := Option.isSome_iff_exists.mp (ihe _ hp.1.2 σ hσ)
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp
+        (ihk _ hp.2 (TRd.liftApp _ σ) (litOn_liftApp hσ _))
+      simp [nfToCatExt, hc, ht, he, hk]
+  | whileLoop => intro _ hp; simp [NBDL] at hp
+  | call => intro _ hp; simp [NBDL] at hp
+
+/-- **`nfToCatExt D` is defined on every program of the domain with the declared calls `D`**,
+    at every reading of its context. -/
+theorem nfToCatExt_isSome_of_NBD (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (hp : NBD D p = true) :
+    ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ), (nfToCatExt D p σ).isSome :=
+  fun σ => nfToCatExt_isSome_of_NBDL D p [] hp σ (litOn_nil σ)
 
 end CatCrypt.Crypto.Hax.NFToCatComplete
