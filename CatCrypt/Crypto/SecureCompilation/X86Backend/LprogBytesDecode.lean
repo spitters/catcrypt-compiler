@@ -416,6 +416,36 @@ theorem decodeLinstr_leaRsp (disp : Int) (rest : List (BitVec 8))
     rexB_rex _ _ _ (bit_le_one _ _)]
   rfl
 
+/-- `encMemMovw` at base `%rsp` is the `[base + disp]` encoder at base `%rsp`. -/
+theorem encMemMovw_rsp_eq_memTail (op r : Nat) (off : Int) :
+    encMemMovw 1 op r 4 off
+      = BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 op :: memTail r 4 off := by
+  simp only [encMemMovw, rexOpt_w1, show bit 4 3 = 0 by decide, List.cons_append,
+    List.nil_append]
+
+/-- `LEA off(%rsp), %r` (`REX.W 8D /r` at base `%rsp`) decodes to the index-free `lea`
+    of `r` from `%rsp`, for every general-purpose `r`. -/
+theorem decodeLinstr_leaRspR (r : Nat) (off : Int) (rest : List (BitVec 8))
+    (hr : r < 16) (h : dispOk32 off = true) :
+    decodeLinstr (encMemMovw 1 0x8d r 4 off ++ rest)
+      = some (.op (.lea (regName r) "%rsp" "%rsp" 0 off), rest) := by
+  apply decodeLinstr_of_decodeJ1
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head r 4 off
+  have hdec := decodeMemTail_memTail32 r 4 off rest h
+  rw [hm, List.cons_append] at hdec
+  simp only [encMemMovw_rsp_eq_memTail, List.cons_append, hm,
+    decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1),
+    decodeRex, BitVec.toNat_ofNat,
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x0f) by decide),
+    if_neg (show ¬(0xb8 ≤ (0x8d : Nat) % 2 ^ 8 ∧ (0x8d : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x8b) by decide),
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x89) by decide),
+    ne_eq, hmod, not_false_eq_true, if_pos,
+    SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1), hdec,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1),
+    rexB_rex _ _ _ (Nat.zero_le 1), bitsplit _ hr]
+  rfl
+
 /-- `MOV $imm32, %d` (`REX.W C7 /0 id`) decodes to a `mov` of the immediate, a
     64-bit value that sign-extends from 32 bits. -/
 theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))

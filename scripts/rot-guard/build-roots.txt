@@ -49,6 +49,7 @@ CatCrypt.Crypto.Hax.ImpToNFExit
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.Hax.NFFieldSumLeak
+CatCrypt.Crypto.Hax.NFToCatComplete
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
 CatCrypt.Crypto.Jasmin.AesBitsliceReflect
