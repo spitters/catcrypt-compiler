@@ -28,6 +28,8 @@ the bounds of a loop before its body, the arguments of a call before the typing 
   array operation, a function failing a shape condition, a linked function with a reserved
   name or a signature other than words and word arrays, a callee with an integer-slice type,
   a refusal of the entry, or calls left after the rounds of inlining.
+* `callRefusal` — the refusal of an untyped call: a tagged field head at a modulus without a
+  template (`ImpToNF.fieldModOk`), or a call the call typing does not type.
 * `frontOut`, `frontArgs` — `impToNF` and `impArgsNF` with the refusal.
 * `frontRefusal?` — the refusal of `frontOut`, if any.
 * `ilitWordOp`, `opsProg`, `opsPre` — an operation that is not an integer literal or is one in
@@ -119,6 +121,9 @@ inductive Refusal where
   | literal (l : ImpLit)
   /-- A call whose head the call typing does not type at the types of its arguments. -/
   | call (f : String) (as : List NfTy)
+  /-- A call of a tagged field head `f` (`Hax.FieldTag.fieldTag?`) at a modulus `p` without a
+      field template (`ImpToNF.fieldModOk`). -/
+  | fieldModulus (f : String) (p : Nat)
   /-- A component of a tuple or an upper bound of a loop that is not a name or a literal. -/
   | operand (head : String)
   /-- A `forFold` or `forFoldRev` whose lower bound is not an integer literal. -/
@@ -146,6 +151,7 @@ def Refusal.toString : Refusal → String
       | .sintLit W n => s!"literal {n} of signed width i{W.bits}"
       | _ => "literal"
   | .call f as => s!"call {f}({", ".intercalate (as.map tyName)})"
+  | .fieldModulus f p => s!"field call {f} at the modulus {p} without a template"
   | .operand h => s!"non-atom operand ({h})"
   | .loopLower h => s!"forFold with a non-literal lower bound ({h})"
   | .loopBound t => s!"loop bound of type {tyName t}"
@@ -229,6 +235,13 @@ theorem toOption_map {ε α β : Type} (x : Except ε α) (f : α → β) :
   cases x <;> rfl
 
 /-! ## 3. The front with the refusal -/
+
+/-- The refusal of a call the call typing does not type: `Refusal.fieldModulus` at a tagged
+    field head whose modulus fails `fieldModOk`, `Refusal.call` otherwise. -/
+def callRefusal (f : String) (as : List NfTy) : Refusal :=
+  match _root_.Hax.FieldTag.fieldTag? f with
+  | some (_, p) => if fieldModOk p then .call f as else .fieldModulus f p
+  | none => .call f as
 
 /-- The refusal of an expression that `atomOut` does not accept. -/
 def atomRefusal : ImpExpr → Refusal
@@ -333,7 +346,7 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .assign x r => (frontOut sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
   | tgt, _, σ, .app f args => (frontArgs sigOf σ args).bind fun oa =>
-      orRefuse (.call f oa.as) <| (sigOf f oa.as).map fun r =>
+      orRefuse (callRefusal f oa.as) <| (sigOf f oa.as).map fun r =>
       ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
         oa.σ.mapV .there, .here⟩
   | tgt, _, σ, .tuple es => (atomsE σ es).map fun oa =>

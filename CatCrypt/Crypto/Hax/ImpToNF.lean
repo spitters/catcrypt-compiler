@@ -85,6 +85,8 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   the scalar calls of `u64` code at the widths `8`, `16`, `32`, `64`, with their operation.
 * `hax64ScalarSig`, `hax64SigOf` — the call typing of `u64` code: a `64`-bit word result for
   an integer call, a bit for a comparison, the type `selTy` of its two values for `select`.
+* `fieldFoldsOk`, `fieldNarrowOk`, `fieldModOk`, `fieldTagSig` — the moduli with a field
+  template, and the call typing of the tagged field calls at those moduli.
 * `hax64TerTable`, `selectOp`, `withSelect` — the call `select`, its value on a Boolean and
   two values, and a builtin table with it.
 * `CrateFn`, `crateSigOf`, `paramsEnv`, `crateBi` — the functions of a crate as callees: the
@@ -116,6 +118,8 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   `[0, 2 ^ 64)` refused.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
   `hax64BuiltinsR`.
+* `hax64SigOf_eq_none_of_fieldModOk` — `hax64SigOf` types no tagged call at a modulus that
+  fails `fieldModOk`.
 * `withSelect_typedCalls` — the call typing `hax64SigOf` is sound for builtins with `select`
   when it is sound for the builtins.
 * `crateBi_typedCalls` — the call typing with a crate is sound for the builtins with the
@@ -4156,12 +4160,33 @@ theorem _root_.Hax.FieldTag.FieldMethod.sigAt_word (m : _root_.Hax.FieldTag.Fiel
 def fieldElemTy (p : Nat) : NfTy :=
   if p < 2 ^ 64 then .word 64 else .arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64)
 
+/-- **The bound chain of `k` folds by `c`** from a strict upper bound `B` of a product: each
+    fold needs `B ≤ 2⁶²` and maps `B` to `⌊B / 2³¹⌋ · c + 2³¹`; the last bound is at most
+    `2 P`. -/
+def fieldFoldsOk (c P : Nat) : Nat → Nat → Bool
+  | 0, B => decide (B ≤ 2 * P)
+  | k + 1, B => decide (B ≤ 2 ^ 62) && fieldFoldsOk c P k (B / 2 ^ 31 * c + 2 ^ 31)
+
+/-- **The moduli of the fold template**: `1 < p ≤ 2³¹` with a bound chain `fieldFoldsOk` of
+    fewer than `16` folds by `2³¹ − p` from the product bound `(p − 1)² + 1`. -/
+def fieldNarrowOk (p : Nat) : Bool :=
+  (List.range 16).any fun n =>
+    decide (1 < p ∧ p ≤ 2 ^ 31) && fieldFoldsOk (2 ^ 31 - p) p n ((p - 1) * (p - 1) + 1)
+
+/-- **The moduli with a field template**: an odd `p > 1` whose number of limbs
+    `Hax.FieldTag.fieldLimbs p` is below `2^64` (the Montgomery templates of one and of
+    several words), or a modulus `fieldNarrowOk` accepts (the fold template). -/
+def fieldModOk (p : Nat) : Bool :=
+  (decide (1 < p) && p % 2 == 1 && decide (_root_.Hax.FieldTag.fieldLimbs p < 2 ^ 64)) ||
+    fieldNarrowOk p
+
 /-- **The call typing of the tagged field calls**: a head `Hax.FieldTag.fieldTag?` reads as a
-    method at the modulus `p` has the result type `fieldElemTy p` on the argument types of the
-    method on that type. -/
+    method at a modulus `p` that passes `fieldModOk` has the result type `fieldElemTy p` on
+    the argument types of the method on that type. -/
 def fieldTagSig (f : String) (as : List NfTy) : Option NfTy :=
   match _root_.Hax.FieldTag.fieldTag? f with
-  | some (m, p) => if as = m.sigAt (fieldElemTy p) then some (fieldElemTy p) else none
+  | some (m, p) =>
+      if fieldModOk p = true ∧ as = m.sigAt (fieldElemTy p) then some (fieldElemTy p) else none
   | none => none
 
 /-- A call `fieldTagSig` types has a tagged head at a modulus `p`, the argument types of its
@@ -4176,27 +4201,51 @@ theorem fieldTagSig_some {f : String} {as : List NfTy} {r : NfTy}
     split at h
     · rename_i has
       cases h
-      exact ⟨m, p, hmp, has, rfl⟩
+      exact ⟨m, p, hmp, has.2, rfl⟩
     · cases h
   · cases h
 
-/-- At a modulus below `2^64`, a tagged call on the argument types `FieldMethod.sig` of its
-    method has a `64`-bit word result. -/
+/-- The modulus of a call `fieldTagSig` types passes `fieldModOk`. -/
+theorem fieldTagSig_modOk {f : String} {as : List NfTy} {r : NfTy}
+    (h : fieldTagSig f as = some r) {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
+    (hmp : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) : fieldModOk p = true := by
+  unfold fieldTagSig at h
+  rw [hmp] at h
+  dsimp only at h
+  split at h
+  · rename_i has
+    exact has.1
+  · cases h
+
+/-- **A tagged call at a modulus without a template has no type**: when `fieldModOk p` fails,
+    `fieldTagSig` types no call of a head at the modulus `p`. -/
+theorem fieldTagSig_eq_none {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
+    (hmp : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : fieldModOk p = false)
+    (as : List NfTy) : fieldTagSig f as = none := by
+  rcases hs : fieldTagSig f as with _ | r
+  · rfl
+  · rw [fieldTagSig_modOk hs hmp] at hp
+    cases hp
+
+/-- At a modulus below `2^64` that passes `fieldModOk`, a tagged call on the argument types
+    `FieldMethod.sig` of its method has a `64`-bit word result. -/
 theorem fieldTagSig_narrow {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
-    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : p < 2 ^ 64) :
+    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : p < 2 ^ 64)
+    (hok : fieldModOk p = true) :
     fieldTagSig f m.sig = some (.word 64) := by
   have he : fieldElemTy p = .word 64 := if_pos hp
-  simp [fieldTagSig, h, he, _root_.Hax.FieldTag.FieldMethod.sigAt_word]
+  simp [fieldTagSig, h, he, hok, _root_.Hax.FieldTag.FieldMethod.sigAt_word]
 
-/-- At a modulus `p ≥ 2^64`, a tagged call on arrays of `Hax.FieldTag.fieldLimbs p` `64`-bit
-    words has the same type of result. -/
+/-- At a modulus `p ≥ 2^64` that passes `fieldModOk`, a tagged call on arrays of
+    `Hax.FieldTag.fieldLimbs p` `64`-bit words has the same type of result. -/
 theorem fieldTagSig_wide {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p : Nat}
-    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : 2 ^ 64 ≤ p) :
+    (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : 2 ^ 64 ≤ p)
+    (hok : fieldModOk p = true) :
     fieldTagSig f (m.sigAt (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64))) =
       some (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64)) := by
   have he : fieldElemTy p = .arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64) :=
     if_neg (by omega)
-  simp [fieldTagSig, h, he]
+  simp [fieldTagSig, h, he, hok]
 
 /-- **The call typing of `u64` code**: a tagged field call by `fieldTagSig`; a scalar call by
     `hax64ScalarSig`; at an index of a `hax64NFWordTy` type, `index` of an integer slice is an
@@ -4652,6 +4701,39 @@ theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
         · exact Or.inr (Or.inl rfl)
         · exact Or.inr (Or.inr (Or.inl rfl))
         · cases h
+
+/-- No scalar call of `u64` code has a tagged field head. -/
+theorem fieldTag?_of_mem_hax64NFScalar {f : String} (hf : f ∈ hax64NFScalar ()) :
+    _root_.Hax.FieldTag.fieldTag? f = none := by
+  have h : ∀ g ∈ hax64NFScalar (), _root_.Hax.FieldTag.fieldTag? g = none := by
+    decide +kernel
+  exact h f hf
+
+/-- **`hax64SigOf` types no tagged call at a modulus without a template**: at a head of a
+    method at a modulus `p` that fails `fieldModOk`, `hax64SigOf` returns `none`, so
+    `impToNF` returns `none` on the call. -/
+theorem hax64SigOf_eq_none_of_fieldModOk {f : String} {m : _root_.Hax.FieldTag.FieldMethod}
+    {p : Nat} (hmp : _root_.Hax.FieldTag.fieldTag? f = some (m, p))
+    (hp : fieldModOk p = false) (as : List NfTy) : hax64SigOf f as = none := by
+  have hne : ∀ s : String, _root_.Hax.FieldTag.fieldTag? s = none → f ≠ s := by
+    rintro s hs rfl
+    rw [hs] at hmp
+    cases hmp
+  unfold hax64SigOf
+  rw [fieldTagSig_eq_none hmp hp]
+  dsimp only
+  split
+  · rename_i r hs
+    rw [fieldTag?_of_mem_hax64NFScalar (hax64ScalarSig_name hs)] at hmp
+    cases hmp
+  · split
+    · exact absurd rfl (hne _ rfl)
+    · exact absurd rfl (hne _ rfl)
+    · unfold hax64SigOfArr
+      split
+      · exact absurd rfl (hne _ rfl)
+      · exact absurd rfl (hne _ rfl)
+      · rfl
 
 /-- A list of `n` integers decodes as an integer array of length `n`. -/
 theorem dec_arr_int {n : Nat} (vs : List Value) (hvs : ∀ v ∈ vs, ∃ z : Int, v = .int z)
