@@ -48,6 +48,11 @@ lowers towerDialect
 lowers gf2Dialect
 lowers rowDialect
 lowers laneDialect
+# scalarTile jasminDialect (VIR/NFTileSum): TileLegal.legalise at the shapes zmmQ, zmmD,
+# ymmQ (VIR/TileLegalX86) maps it to NFProg jasminDialect on the operations each gate
+# accepts; tileLegal_denote, tileLegal_laneLift_denote (VIR/TileLegalLaneMap). No pass
+# of the pipeline calls legalise.
+theory jasminTileDialect
 
 # ---- theory (correspondence / MLIR-mirror / optimizer-playground; no lowering out) ----
 theory mlirArithDialect
@@ -71,6 +76,30 @@ theory flagDialect
 theory mixedDialect
 # RNS ring ops; DIALECTS.md: lowering "no | none".
 theory ringDialect
+# x86 vector track. x86vec (VIR/X86VecDialect) and vecMem (VIR/X86VecMem) are the value
+# forms of ZMM register and memory instructions, with lane laws against ZmmTextModel and
+# the one-instruction execution lemmas vexec_* (VIR/X86VecExec); no program lowering of
+# jasminVec or jasminVecMem to Lprog or bytes exists.
+theory x86vec
+theory vecMem
+# Lowerings with theorems whose target is jasminVec or jasminVecMem, which have no path
+# to bytes: tileVec by tileLegal at selD, selQ (VIR/TileSelectX86); vecTileSel by
+# legaliseSel at dwordSel, qwordSel (selLegal_denote, VIR/SelLegal); tileVecMem is the
+# coproduct of jasminVecMem and tileDialect (VIR/TileBridgeLegal); jasminTileMem by
+# legaliseBridge at qwordMem, dwordMem (bridgeLegal_denote, VIR/TileBridgeLegal);
+# jasminBridge is the bridge summand of jasminTileMem (VIR/TileBridge).
+theory tileVec
+theory vecTileSel
+theory tileVecMem
+theory jasminTileMem
+theory jasminBridge
+# Denotation and leakage model with proved lemmas; no lowering out. selOps is the
+# summand of jasminSel (VIR/SelDialect); jasminTileSel = tileSel jasminDialect has no
+# SelTarget at a jasminDialect shape (the gates dwordSel, qwordSel are over jasminVec);
+# nfTileDialect = scalarTile nfDialect has no TileTarget nfDialect (VIR/NFTileSum).
+theory selOps
+theory jasminTileSel
+theory nfTileDialect
 
 # ---- test / example ----
 test toyDialect

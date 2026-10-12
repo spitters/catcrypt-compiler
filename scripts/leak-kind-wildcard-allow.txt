@@ -3,3 +3,34 @@
 # One `path:declaration` per line: a leak-kind function that keeps a wildcard
 # arm returning the quiet class. Each entry has a comment above it stating why
 # every constructor the wildcard covers is quiet and stays quiet.
+
+# Quiet on the second summand of a sum by design: x86vec holds the register-to-register
+# vector operations only (memory operations are the separate dialect vecMem, with its
+# own address classes in jasminVecMemLeak), so every X86VecOp reads and writes registers.
+CatCrypt/Crypto/SecureCompilation/VIR/X86VecDialect.lean:jasminVecLeak
+
+# Quiet on the second summand by design: SelOp has the two register operations umin and
+# mulu, which access no memory and do not branch.
+CatCrypt/Crypto/SecureCompilation/VIR/SelDialect.lean:jasminSelLeak
+
+# Quiet on the second summand by design: SelTileOp has the two lane-wise register
+# operations tileMinu and tileMulu, which access no memory and do not branch.
+CatCrypt/Crypto/SecureCompilation/VIR/SelDialect.lean:tileSelLeak
+
+# The constant model, quiet on every operation by definition. It instantiates the
+# leakage argument of the leak-parametric lane lifting (tableLift_denote, tableLiftCert)
+# in the denotation theorems of LaneMapNF and LaneMapSel, whose statements do not
+# depend on the model.
+CatCrypt/Crypto/SecureCompilation/VIR/LaneMapNF.lean:quietModel
+
+# Every TileOp acts on values held in lane registers: no operation of tileDialect
+# addresses memory or branches (loads, stores and broadcasts from scalars are the bridge
+# dialect of TileBridge, with address classes in tileMemLeak).
+CatCrypt/Crypto/SecureCompilation/VIR/NFTileSum.lean:tileLeakModel
+
+# The leakage model of the strip-mining example, defined as: a stackLoad and a
+# stackStore emit their index, every other jasminDialect operation is quiet. The
+# theorems over it (scaledAddStrip_events, scaledAddStrip_ct, scaledAddVec_events) are
+# stated relative to this model, which classes no operation of the example program
+# other than its loads and stores.
+CatCrypt/Crypto/SecureCompilation/VIR/LaneStrip.lean:addrModel
