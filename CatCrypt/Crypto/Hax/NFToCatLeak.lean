@@ -468,11 +468,15 @@ theorem catCallRd0_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
     · rename_i e he
       cases h
       exact shiftImm_leak hP W f as r rs e xs he
-    · obtain ⟨k, hk, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
-      have hk64 := firstLit_lt xs rs hk hx
-      exact catCall_leak hP _ f as r ws e xs he (pinLit_rel hk64 xs rs ws hws hx)
+    · refine pinRes_elim (M := fun {Δ} rs res => ∀ W : Valuation Δ, RdRelL W as xs rs →
+        resLeak P W res = opLeak nfLeakModel (.call f as r) xs) ?_ ?_ _ rs res h W hx
+      · intro Δ rs ws e hws he W hx
+        exact catCall_leak hP W f as r ws e xs he (pinVars_rel xs rs ws hws hx)
+      · intro Δ rs c res hc ih W hx
+        simp only [resLeak]
+        simp only [Expr.ctLeak, opLeak, catLeakModel, catKind]
+        rw [hP]
+        exact ih _ (bindLit_rel (firstLit_lt xs rs hc hx) xs rs hx)
 
 /-! ### The scalar table is quiet -/
 
@@ -728,6 +732,14 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
         rw [resLeak_quiet W res (withVar2_quiet hP (fun _ _ _ hk => binChain_quiet hP hk) h)]
         rfl
       · cases h
+  | constBit b =>
+      intro args res h
+      cases h
+      exact ctLeak_quiet _ W (by simp [catKind, opVT_none hP])
+  | constUnit =>
+      intro args res h
+      cases h
+      exact ctLeak_quiet _ W (by simp [catKind, opVT_none hP])
   | _ =>
       intro args res h
       cases h

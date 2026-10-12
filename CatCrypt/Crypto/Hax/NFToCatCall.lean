@@ -16,9 +16,10 @@ public import CatCrypt.Crypto.Hax.NFToCatImages
 `catOp` when `catOp` accepts it; otherwise, when `D` declares `f` at the signature `as → r`
 and every type of the signature is a type whose values encode as integers or an array of
 `64`-bit words (`ExtDecl.wordSig`), the binding is the node `NFProg.call f` of
-`catCryptDialect` at the signature `as.map catTy → [catTy r]`, on the variables of its arguments. One literal value
-among the arguments is bound by `bvConst` in front of the node, as `catCallRd0` does for an
-operation. Every other program is translated as by `nfToCat`.
+`catCryptDialect` at the signature `as.map catTy → [catTy r]`, on the variables of its
+arguments. Each distinct literal value among the arguments is bound by `bvConst` in front of
+the node (`pinAll`), as `catCallRd0` does for an operation (`pinRes`). Every other program is
+translated as by `nfToCat`.
 
 The value of a translated program is stated at an explicit call environment `E` of
 `catCryptDialect` (`NFProg.denoteAt`). The hypothesis `ExtAgree bi E D` relates the three
@@ -179,23 +180,16 @@ theorem extArgs_declared {D : List ExtDecl} {Γ : Ctxt nfDialect} {Δ : Ctxt cat
       cases h
 
 /-- The node of a call of `f` on the readings `rs`, binding a result of the type `s`,
-    followed by the translation `cont` of the continuation: the node on the variables when no
-    reading is a literal; otherwise the node under one binding of the literal, which every
-    literal reading must be. -/
+    followed by the translation `cont` of the continuation: the node on the variables of the
+    readings, behind the `bvConst` bindings `pinAll` gives the literals among them. -/
 def emitCall {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
       Option (NFProg catCryptDialect Δ' (ts.map catTy)))
     {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy)
     (rs : HVector (fun t => Rd Δ t) as) (σ : TRd Γ Δ) :
     Option (NFProg catCryptDialect Δ (ts.map catTy)) :=
-  match pinVars rs with
-  | some ws => (cont σ.lift).map fun k' => NFProg.call (rs := [catTy s]) f ws k'
-  | none =>
-      (firstLit rs).bind fun c =>
-        (pinLit c rs).bind fun ws =>
-          (cont (TRd.lift (TRd.wk (c := CryptoTy.sword 64) σ))).map fun k' =>
-            .var ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩
-              (NFProg.call (rs := [catTy s]) f ws k')
+  pinAll (fun σ' ws => (cont σ'.lift).map fun k' => NFProg.call (rs := [catTy s]) f ws k')
+    σ rs
 
 /-- The translation of a binding of the operation `op`, followed by the translation `cont`
     of the continuation: the bindings `emitRes` gives for `catOp`, and, on an operation
@@ -441,53 +435,6 @@ theorem emitRes_denoteAt (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {s 
       rw [denoteAt_var, Expr.denoteM_option_eq_some]
       exact hden
 
-/-- **The node of a call simulates.** When the continuation `cont` simulates at `E` from
-    every reading that relates `V.extend y`, and `E` answers `f`, on every vector related to
-    the arguments `xs` the readings `rs` read, by one result related to `y`, the node
-    `emitCall` builds simulates from every valuation the readings `σ` relate to `V`. -/
-theorem emitCall_sound (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {s : NfTy}
-    {ts : List NfTy}
-    (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
-      Option (NFProg catCryptDialect Δ' (ts.map catTy)))
-    (V : Valuation Γ) (y : s.denote) (out : Valuation (d := nfDialect) ts) (fuel : Nat)
-    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd (s :: Γ) Δ')
-      (p' : NFProg catCryptDialect Δ' (ts.map catTy)) (W' : Valuation Δ'),
-      cont σ' = some p' → σ'.Agree (V.extend y) W' →
-      ∃ out', p'.denoteAt E fuel W' = some out' ∧ VRelL ts out out')
-    {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy)
-    (rs : HVector (fun t => Rd Δ t) as) (σ : TRd Γ Δ) (W : Valuation Δ)
-    (xs : Valuation (d := nfDialect) as) (p' : NFProg catCryptDialect Δ (ts.map catTy))
-    (h : emitCall cont f as rs σ = some p') (hag : σ.Agree V W) (hx : RdRelL W as xs rs)
-    (hE : ∀ ws : Valuation (d := catCryptDialect) (as.map catTy), VRelL as xs ws →
-      ∃ y' : (catTy s).denote,
-        E.call f (as.map catTy) [catTy s] ws = some (HVector.cons y' .nil) ∧ VRel s y y') :
-    ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts out out' := by
-  unfold emitCall at h
-  split at h
-  · rename_i ws hws
-    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    obtain ⟨y', hcall, hy'⟩ := hE _ (pinVars_rel xs rs ws hws hx)
-    obtain ⟨out', hden, hR⟩ := HK σ.lift k' (W.extend y') hk' (TRd.agree_lift hag hy')
-    refine ⟨out', ?_, hR⟩
-    rw [denoteAt_callNode, hcall]
-    exact hden
-  · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    have hc64 := firstLit_lt xs rs hc hx
-    obtain ⟨y', hcall, hy'⟩ := hE _ (pinLit_rel hc64 xs rs ws hws hx)
-    have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
-    let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: _) :=
-      W.extend (BitVec.ofNat 64 c)
-    obtain ⟨out', hden, hR⟩ := HK (TRd.lift (TRd.wk σ)) k' (W1.extend y') hk'
-      (TRd.agree_lift hW1 hy')
-    refine ⟨out', ?_, hR⟩
-    rw [denoteAt_var, Expr.denoteM_option_eq_some]
-    change (E.call f (as.map catTy) [catTy s]
-      (Expr.lookupArgs ws (HVector.cons (BitVec.ofNat 64 c) W))).bind _ = some out'
-    rw [hcall]
-    exact hden
-
 /-- **The bindings of `pinAll` simulate at a call environment.** The statement
     `pinAll_sound` with the translated programs denoted at `E`. -/
 theorem pinAll_denoteAt (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect}
@@ -518,6 +465,36 @@ theorem pinAll_denoteAt (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect}
     refine ⟨out', ?_, hR⟩
     rw [denoteAt_var, Expr.denoteM_option_eq_some]
     exact hden
+
+/-- **The node of a call simulates.** When the continuation `cont` simulates at `E` from
+    every reading that relates `V.extend y`, and `E` answers `f`, on every vector related to
+    the arguments `xs` the readings `rs` read, by one result related to `y`, the node
+    `emitCall` builds simulates from every valuation the readings `σ` relate to `V`. -/
+theorem emitCall_sound (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {s : NfTy}
+    {ts : List NfTy}
+    (cont : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
+      Option (NFProg catCryptDialect Δ' (ts.map catTy)))
+    (V : Valuation Γ) (y : s.denote) (out : Valuation (d := nfDialect) ts) (fuel : Nat)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd (s :: Γ) Δ')
+      (p' : NFProg catCryptDialect Δ' (ts.map catTy)) (W' : Valuation Δ'),
+      cont σ' = some p' → σ'.Agree (V.extend y) W' →
+      ∃ out', p'.denoteAt E fuel W' = some out' ∧ VRelL ts out out')
+    {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) (σ : TRd Γ Δ) (W : Valuation Δ)
+    (xs : Valuation (d := nfDialect) as) (p' : NFProg catCryptDialect Δ (ts.map catTy))
+    (h : emitCall cont f as rs σ = some p') (hag : σ.Agree V W) (hx : RdRelL W as xs rs)
+    (hE : ∀ ws : Valuation (d := catCryptDialect) (as.map catTy), VRelL as xs ws →
+      ∃ y' : (catTy s).denote,
+        E.call f (as.map catTy) [catTy s] ws = some (HVector.cons y' .nil) ∧ VRel s y y') :
+    ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts out out' := by
+  refine pinAll_denoteAt E _ V xs out fuel ?_ σ rs p' W h hag hx
+  intro Δ' σ' ws p'' W' hk hag' hws
+  obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+  obtain ⟨y', hcall, hy'⟩ := hE _ hws
+  obtain ⟨out', hden, hR⟩ := HK σ'.lift k' (W'.extend y') hk' (TRd.agree_lift hag' hy')
+  refine ⟨out', ?_, hR⟩
+  rw [denoteAt_callNode, hcall]
+  exact hden
 
 /-- **The simulation statement of the translation with declarations** of the program `p`,
     at the call environment `E`: a denotation of `p` to `out` from a valuation related to `W`
@@ -688,15 +665,10 @@ theorem emitCall_callFree {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
     {rs : HVector (fun t => Rd Δ t) as} {σ : TRd Γ Δ}
     {q : NFProg catCryptDialect Δ (ts.map catTy)} (h : emitCall cont f as rs σ = some q) :
-    q.callFree = false := by
-  unfold emitCall at h
-  split at h
-  · obtain ⟨k', -, rfl⟩ := Option.map_eq_some_iff.mp h
-    rfl
-  · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨ws, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨k', -, rfl⟩ := Option.map_eq_some_iff.mp h
-    rfl
+    q.callFree = false :=
+  pinAll_elim (M := fun {_} _ _ q => q.callFree = false)
+    (fun _ _ _ _ _ hq => by obtain ⟨k', -, rfl⟩ := Option.map_eq_some_iff.mp hq; rfl)
+    (fun _ _ _ _ _ ih => by simpa [NFProg.callFree] using ih) σ rs q h
 
 /-- The bindings of `pinAll` in front of two programs: when the second gives every program
     without `call` the first gives, so does `pinAll` on it. -/
@@ -851,19 +823,13 @@ theorem nfToCatExt_calls (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfT
         obtain ⟨d, hd, rfl, rfl, hr, hw⟩ := extArgs_declared σ op args g bs rds hc
         dsimp only at h
         unfold emitCall at h
-        split at h
-        · obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          intro f as rs hcl
-          rcases hcl with ⟨rfl, rfl, rfl⟩ | hcl
-          · exact ⟨d, hd, rfl, rfl, congrArg (fun t => [catTy t]) hr, hw⟩
-          · exact ih _ k' hk' f as rs hcl
-        · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
-          obtain ⟨ws, -, h⟩ := Option.bind_eq_some_iff.mp h
-          obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-          intro f as rs hcl
-          rcases hcl with ⟨rfl, rfl, rfl⟩ | hcl
-          · exact ⟨d, hd, rfl, rfl, congrArg (fun t => [catTy t]) hr, hw⟩
-          · exact ih _ k' hk' f as rs hcl
+        refine pinAll_calls ?_ σ rds q h
+        intro _ _ _ q' hq'
+        obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq'
+        intro f as rs hcl
+        rcases hcl with ⟨rfl, rfl, rfl⟩ | hcl
+        · exact ⟨d, hd, rfl, rfl, congrArg (fun t => [catTy t]) hr, hw⟩
+        · exact ih _ k' hk' f as rs hcl
   | @forLoop _ cs _ count inits body k ihb ihk =>
       intro Δ σ q h
       refine pinAll_calls (ts := .word 64 :: cs) ?_ σ _ q h
@@ -907,19 +873,10 @@ theorem emitCall_opsHaveImages {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
     {rs : HVector (fun t => Rd Δ t) as} {σ : TRd Γ Δ}
     {q : NFProg catCryptDialect Δ (ts.map catTy)} (h : emitCall cont f as rs σ = some q) :
     OpsHaveImages q := by
-  unfold emitCall at h
-  split at h
-  · obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    exact hcont _ k' hk'
-  · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨ws, -, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    refine And.intro ?_ (hcont _ k' hk')
-    intro _ _ e he
-    obtain ⟨op, hr, args⟩ := e
-    dsimp only at he
-    subst he
-    rfl
+  refine pinAll_opsHaveImages ?_ σ rs q h
+  intro _ _ _ q' hq'
+  obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq'
+  exact hcont _ k' hk'
 
 /-- **Every operation of a program translated with declarations has an image.** The node
     `call` binds no expression, so the statement of `nfToCat_opsHaveImages` holds of
@@ -1068,10 +1025,8 @@ theorem catCallRd_name {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
             · cases he
           · cases he
         · cases he
-      · obtain ⟨k, -, h₀⟩ := Option.bind_eq_some_iff.mp h₀
-        obtain ⟨ws, -, h₀⟩ := Option.bind_eq_some_iff.mp h₀
-        obtain ⟨e, he, -⟩ := Option.map_eq_some_iff.mp h₀
-        exact hcall _ e he
+      · exact pinRes_elim (M := fun _ _ => f = "index" ∨ f = "array_update" ∨
+          quietCall f = true) (fun _ ws e _ he => hcall ws e he) (fun _ _ _ _ ih => ih) _ _ _ h₀
   next =>
     exact Or.inr (Or.inr (quietCall_iff.mpr
       (scalarRes_quiet (P := CatLeakParams.owned) noVT_owned h).2))
@@ -1102,6 +1057,8 @@ theorem stripField_opLeak_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDial
     | ctr => intro g hg; cases hg
     | trip t => intro g hg; cases hg
     | bin o w => intro g hg; cases o <;> cases hg
+    | constBit b => intro g hg; cases hg
+    | constUnit => intro g hg; cases hg
     | _ => cases h
   unfold opLeak
   split
@@ -1218,6 +1175,8 @@ theorem nfKind_ne_vtCall_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDiale
   | ctr => intro _ _ _ g hg; cases hg
   | trip t => intro _ _ _ g hg; cases hg
   | bin o w => intro _ _ _ g hg; cases o <;> cases hg
+  | constBit b => intro _ _ _ g hg; cases hg
+  | constUnit => intro _ _ _ g hg; cases hg
   | _ => intro _ _ h; cases h
 
 /-- The events of an operation `catOp` translates are kept by `stripDecl D`. -/
@@ -1426,36 +1385,15 @@ theorem emitCall_leakC {P : CatLeakParams} (hP : NoVT P) (E : CallEnv catCryptDi
         E.call f (as.map catTy) [catTy s] ws = some (HVector.cons y' .nil) ∧ VRel s y y') :
     ∃ q', NFProg.leakRunMC (catLeakModel P) E fuel p' W = some q' ∧ q'.2 = ev ∧
       VRelL ts out q'.1 := by
-  unfold emitCall at h
-  split at h
-  · rename_i ws hws
-    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    obtain ⟨y', hcall, hy'⟩ := hE _ (pinVars_rel xs rs ws hws hx)
-    obtain ⟨q', hq', he, hR⟩ := HK σ.lift k' (W.extend y') hk' (TRd.agree_lift hag hy')
-    refine ⟨q', ?_, he, hR⟩
-    simp only [NFProg.leakRunMC]
-    rw [hcall, Option.bind_some]
-    exact hq'
-  · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
-    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
-    have hc64 := firstLit_lt xs rs hc hx
-    obtain ⟨y', hcall, hy'⟩ := hE _ (pinLit_rel hc64 xs rs ws hws hx)
-    have hW1 := TRd.agree_wk (c := CryptoTy.sword 64) hag (BitVec.ofNat 64 c)
-    let W1 : Valuation (d := catCryptDialect) (CryptoTy.sword 64 :: _) :=
-      W.extend (BitVec.ofNat 64 c)
-    obtain ⟨q', hq', he, hR⟩ := HK (TRd.lift (TRd.wk σ)) k' (W1.extend y') hk'
-      (TRd.agree_lift hW1 hy')
-    refine ⟨(q'.1, Expr.ctLeak (catLeakModel P)
-      (⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ : Expr catCryptDialect Δ _) W ++ q'.2),
-      ?_, ?_, hR⟩
-    · simp only [NFProg.leakRunMC, Expr.denoteM_option_eq_some, Option.bind_some]
-      change (((E.call f (as.map catTy) [catTy s]
-        (Expr.lookupArgs ws (HVector.cons (BitVec.ofNat 64 c) W))).bind _).map _) = _
-      rw [hcall, Option.bind_some]
-      erw [hq']
-      rfl
-    · rw [ctLeak_bvConst hP, List.nil_append, he]
+  refine pinAll_leakC hP E fuel _ V xs out ev ?_ σ rs p' W h hag hx
+  intro Δ' σ' ws p'' W' hk hag' hws
+  obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+  obtain ⟨y', hcall, hy'⟩ := hE _ hws
+  obtain ⟨q', hq', he, hR⟩ := HK σ'.lift k' (W'.extend y') hk' (TRd.agree_lift hag' hy')
+  refine ⟨q', ?_, he, hR⟩
+  simp only [NFProg.leakRunMC]
+  rw [hcall, Option.bind_some]
+  exact hq'
 
 /-- **The leakage transformer of the translation with declarations.** Under `SubTable bi`,
     the agreement `ExtAgree bi E D`, parameters with no variable-time operation, and

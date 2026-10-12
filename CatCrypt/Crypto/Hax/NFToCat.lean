@@ -27,7 +27,8 @@ of the seeds by `bvConst` in front of the return or the loop.
 
 The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
 `array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)`, literals of an
-unsigned integer type of at most `64` bits (`uintLit?`, bound by `bvConst`), the subtraction
+unsigned integer type of at most `64` bits (`uintLit?`, bound by `bvConst`), the bit and unit
+constants (`constBit`, `constUnit`), the subtraction
 `bin .sub 64` of `64`-bit words (`binRes?`, by `binChain`), which computes the counter of a
 reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
@@ -52,6 +53,8 @@ also reads a variable of an unsigned integer type as its word), or the binding o
   of the bindings of a translated operation and of a program.
 * `pinAll` — the `bvConst` bindings of the literals among a vector of readings, in front of
   a program on their variables.
+* `pinRes` — the `bvConst` bindings of the literals among the readings of a call, in front of
+  the expression of the call on their variables.
 * `toCatVal`, `mapVal`, `TRd.id`, `abiParamsArr` — the entry: the mapped valuation, the
   readings of a context in its mapped context, and the parameters of a System V layout with
   the types of arrays of `64`-bit words.
@@ -63,6 +66,8 @@ also reads a variable of an unsigned integer type as its word), or the binding o
 * `emitRes_sound` — the bindings of a translated operation simulate.
 * `pinAll_of_pinVars`, `pinAll_elim`, `pinAll_sound` — `pinAll` binds nothing on readings
   without a literal; the programs it returns; its bindings simulate.
+* `pinRes_elim`, `pinRes_sound` — the results of `pinRes`; its bindings simulate.
+* `Rd.eq_var_of_bit` — the condition of a branch reads as a variable.
 * `nfToCat_sound` — a translated program denotes values related to the values of the source
   program, under every leaf table that agrees with the `u64` table at the translated calls
   (`SubTable`).
@@ -418,18 +423,6 @@ def litVar {Δ : Ctxt catCryptDialect} {t : NfTy} (h : ImpToNF.hax64NFWordTy t =
   (catTy_of_wordTy h).symm ▸ (Var.here : Var (d := catCryptDialect) (CryptoTy.sword 64 :: Δ)
     (.sword 64))
 
-/-- The variables of a vector of readings under a binding of the literal `k`: the variables
-    weakened, and every literal, which must be `k`, the new binding. -/
-def pinLit {Δ : Ctxt catCryptDialect} (k : Nat) : {ts : List NfTy} →
-    HVector (fun t => Rd Δ t) ts →
-    Option (HVector (fun t => Var (d := catCryptDialect) (CryptoTy.sword 64 :: Δ) t)
-      (ts.map catTy))
-  | [], .nil => some .nil
-  | _ :: _, .cons r rs =>
-      match r with
-      | .var w => (pinLit k rs).map (.cons w.there)
-      | .lit k' h => if k' = k then (pinLit k rs).map (.cons (litVar h)) else none
-
 /-- The first literal of a vector of readings. -/
 def firstLit {Δ : Ctxt catCryptDialect} : {ts : List NfTy} → HVector (fun t => Rd Δ t) ts →
     Option Nat
@@ -438,6 +431,19 @@ def firstLit {Δ : Ctxt catCryptDialect} : {ts : List NfTy} → HVector (fun t =
       match r with
       | .lit k _ => some k
       | .var _ => firstLit rs
+
+/-- A reading under a binding of the literal `k`: a reading of the literal `k` is the new
+    binding, and every other reading is weakened. -/
+def Rd.pin {Δ : Ctxt catCryptDialect} (k : Nat) {t : NfTy} :
+    Rd Δ t → Rd (CryptoTy.sword 64 :: Δ) t
+  | .var w => .var w.there
+  | .lit k' h => if k' = k then .var (litVar h) else .lit k' h
+
+/-- A vector of readings under a binding of the literal `k`, reading by reading. -/
+def bindLit {Δ : Ctxt catCryptDialect} (k : Nat) : {ts : List NfTy} →
+    HVector (fun t => Rd Δ t) ts → HVector (fun t => Rd (CryptoTy.sword 64 :: Δ) t) ts
+  | [], .nil => .nil
+  | _ :: _, .cons r rs => .cons (r.pin k) (bindLit k rs)
 
 /-- A shift `Shr#64` or `Shl#64` of a variable by a literal below `64`, as the shift by an
     immediate. -/
@@ -473,9 +479,24 @@ inductive OpRes : Ctxt catCryptDialect → NfTy → Type where
   | bind {Δ : Ctxt catCryptDialect} {t : NfTy} (c : CryptoTy) (e : Expr catCryptDialect Δ c)
       (k : OpRes (c :: Δ) t) : OpRes Δ t
 
+/-- The expression `k` gives on the variables of a vector of readings, behind a `bvConst`
+    binding of each distinct literal among them: on readings without a literal, the
+    expression on their variables; otherwise the binding of the first literal in front of the
+    translation of the readings `bindLit` gives, at most `n` times. -/
+def pinRes {as : List NfTy} {r : NfTy}
+    (k : ∀ {Δ' : Ctxt catCryptDialect}, HVector (fun t => Var Δ' t) (as.map catTy) →
+      Option (Expr catCryptDialect Δ' (catTy r))) :
+    Nat → {Δ : Ctxt catCryptDialect} → HVector (fun t => Rd Δ t) as → Option (OpRes Δ r)
+  | 0, _, rs => (pinVars rs).bind fun ws => (k ws).map .expr
+  | n + 1, _, rs =>
+      match firstLit rs with
+      | none => (pinVars rs).bind fun ws => (k ws).map .expr
+      | some c => (pinRes k n (bindLit c rs)).map
+          (.bind _ ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩)
+
 /-- The translation of a call of `catCall?` on readings: `catCall?` on the variables when no
     reading is a literal; a shift by a literal as the shift by an immediate; otherwise
-    `catCall?` under one binding of the literal, which every literal reading must be. -/
+    `catCall?` behind a `bvConst` binding of each distinct literal reading (`pinRes`). -/
 def catCallRd0 {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : NfTy)
     (rs : HVector (fun t => Rd Δ t) as) : Option (OpRes Δ r) :=
   match pinVars rs with
@@ -483,9 +504,7 @@ def catCallRd0 {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : Nf
   | none =>
       match shiftImm? f as r rs with
       | some e => some (.expr e)
-      | none =>
-          (firstLit rs).bind fun k =>
-            (pinLit k rs).bind fun ws => (catCall? f as r ws).map (OpRes.expr1 k)
+      | none => pinRes (catCall? f as r) as.length rs
 
 /-- A reading of a `64`-bit word as a reading of an integer. -/
 def Rd.ofWord {Δ : Ctxt catCryptDialect} : Rd Δ (.word 64) → Rd Δ .int
@@ -753,7 +772,8 @@ def uintLit? {Δ : Ctxt catCryptDialect} : (t : NfTy) → Int → Option (OpRes 
 
 /-- **The translation of an operation** of the fragment on the readings `σ` of its
     arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading,
-    and a literal of an unsigned integer type by `uintLit?`; the subtraction of `64`-bit words
+    and a literal of an unsigned integer type by `uintLit?`; a bit constant and the unit
+    constant by `constBit` and `constUnit`; the subtraction of `64`-bit words
     by `binRes?`; `ctr` and `trip` on a lower bound that reads as the literal `0` as the
     reading of the index and of the upper bound (`Rd.toCount`). -/
 def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
@@ -765,6 +785,8 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
       if ht : ImpToNF.hax64NFWordTy t = true ∧ 0 ≤ v ∧ v < 2 ^ 64 then
         some (.rd (.lit v.toNat ht.1))
       else uintLit? t v
+  | .constBit b, _ => some (.expr ⟨.constBit b, rfl, .nil⟩)
+  | .constUnit, _ => some (.expr ⟨.constUnit, rfl, .nil⟩)
   | .ctr, args =>
       match σ args.head with
       | .lit 0 _ => some (.rd (σ args.tail.head))
@@ -1198,31 +1220,6 @@ theorem litVar_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {t : NfTy}
     change x = BitVec.ofNat 64 k
     rw [← hx', BitVec.ofNat_toNat, BitVec.setWidth_eq]
 
-theorem pinLit_rel {Δ : Ctxt catCryptDialect} {W : Valuation Δ} {k : Nat} (hk : k < 2 ^ 64) :
-    ∀ {ts : List NfTy} (xs : Valuation (d := nfDialect) ts) (rs : HVector (fun t => Rd Δ t) ts)
-      (ws : HVector (fun t => Var (d := catCryptDialect) (CryptoTy.sword 64 :: Δ) t)
-        (ts.map catTy)), pinLit k rs = some ws → RdRelL W ts xs rs →
-      VRelL ts xs (Expr.lookupArgs ws (HVector.cons (t := CryptoTy.sword 64)
-        (BitVec.ofNat 64 k) W))
-  | [], .nil, .nil, ws, h, _ => by
-      cases h
-      trivial
-  | _ :: _, .cons _ xs, .cons r rs, ws, h, hr => by
-      cases r with
-      | var w =>
-          simp only [pinLit, Option.map_eq_some_iff] at h
-          obtain ⟨ws', h', rfl⟩ := h
-          exact ⟨hr.1, pinLit_rel hk xs rs ws' h' hr.2⟩
-      | lit k' hw =>
-          simp only [pinLit] at h
-          split at h
-          · rename_i hkk
-            subst hkk
-            simp only [Option.map_eq_some_iff] at h
-            obtain ⟨ws', h', rfl⟩ := h
-            exact ⟨litVar_rel W hw hr.1.1 hk, pinLit_rel hk xs rs ws' h' hr.2⟩
-          · cases h
-
 theorem firstLit_lt {Δ : Ctxt catCryptDialect} {W : Valuation Δ} :
     ∀ {ts : List NfTy} (xs : Valuation (d := nfDialect) ts) (rs : HVector (fun t => Rd Δ t) ts)
       {k : Nat}, firstLit rs = some k → RdRelL W ts xs rs → k < 2 ^ 64
@@ -1235,6 +1232,90 @@ theorem firstLit_lt {Δ : Ctxt catCryptDialect} {W : Valuation Δ} :
           subst h
           exact hr.1.2
 
+/-- A reading under a binding of a literal below `2 ^ 64` relates the value it related. -/
+theorem rdRel_pin {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {k : Nat} (hk : k < 2 ^ 64)
+    {t : NfTy} (x : t.denote) :
+    ∀ (r : Rd Δ t), RdRel W t x r →
+      RdRel (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) t x (r.pin k)
+  | .var _, h => h
+  | .lit k' hw, h => by
+      by_cases hkk : k' = k
+      · subst hkk
+        simp only [Rd.pin, if_pos]
+        exact litVar_rel W hw h.1 hk
+      · simp only [Rd.pin, if_neg hkk]
+        exact h
+
+theorem bindLit_rel {Δ : Ctxt catCryptDialect} {W : Valuation Δ} {k : Nat} (hk : k < 2 ^ 64) :
+    ∀ {ts : List NfTy} (xs : Valuation (d := nfDialect) ts) (rs : HVector (fun t => Rd Δ t) ts),
+      RdRelL W ts xs rs →
+      RdRelL (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) ts xs (bindLit k rs)
+  | [], .nil, .nil, _ => trivial
+  | _ :: _, .cons x xs, .cons r rs, hr => ⟨rdRel_pin W hk x r hr.1, bindLit_rel hk xs rs hr.2⟩
+
+/-- **The results of `pinRes`.** A property that holds of the expression `k` gives on the
+    variables of readings without a literal, and of a `bvConst` binding of the first literal
+    of a vector in front of a result of which it holds at the readings `bindLit` gives, holds
+    of every result `pinRes` returns. -/
+theorem pinRes_elim {as : List NfTy} {r : NfTy}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, HVector (fun t => Var Δ' t) (as.map catTy) →
+      Option (Expr catCryptDialect Δ' (catTy r))}
+    (M : ∀ {Δ : Ctxt catCryptDialect}, HVector (fun t => Rd Δ t) as → OpRes Δ r → Prop)
+    (base : ∀ {Δ : Ctxt catCryptDialect} (rs : HVector (fun t => Rd Δ t) as)
+      (ws : HVector (fun t => Var Δ t) (as.map catTy)) (e : Expr catCryptDialect Δ (catTy r)),
+      pinVars rs = some ws → k ws = some e → M rs (.expr e))
+    (step : ∀ {Δ : Ctxt catCryptDialect} (rs : HVector (fun t => Rd Δ t) as) (c : Nat)
+      (res : OpRes (CryptoTy.sword 64 :: Δ) r), firstLit rs = some c →
+      M (bindLit c rs) res → M rs (.bind _ ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩ res)) :
+    ∀ (n : Nat) {Δ : Ctxt catCryptDialect} (rs : HVector (fun t => Rd Δ t) as)
+      (res : OpRes Δ r), pinRes k n rs = some res → M rs res := by
+  intro n
+  induction n with
+  | zero =>
+      intro Δ rs res h
+      obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
+      exact base rs ws e hws he
+  | succ n ih =>
+      intro Δ rs res h
+      simp only [pinRes] at h
+      split at h
+      · obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
+        exact base rs ws e hws he
+      · rename_i c hc
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
+        exact step rs c q hc (ih _ q hq)
+
+/-- The relation of a value and an operation result at the valuation `W` of the target. -/
+def OpResRel : {Δ : Ctxt catCryptDialect} → (W : Valuation Δ) → (t : NfTy) → (y : t.denote) →
+    OpRes Δ t → Prop
+  | _, W, t, y, .rd r => RdRel W t y r
+  | _, W, t, y, .expr e => VRel t y (e.denote W)
+  | _, W, t, y, .expr1 k e => VRel t y (e.denote (HVector.cons (t := CryptoTy.sword 64)
+      (BitVec.ofNat 64 k) W))
+  | _, W, t, y, .bind _ e k => OpResRel (W.extend (e.denote W)) t y k
+
+/-- **The bindings of `pinRes` simulate.** When the expression `k` gives on every vector of
+    variables whose values are related to `xs` is related to `y`, every result `pinRes`
+    returns on readings related to `xs` is related to `y`. -/
+theorem pinRes_sound {as : List NfTy} {r : NfTy}
+    {k : ∀ {Δ' : Ctxt catCryptDialect}, HVector (fun t => Var Δ' t) (as.map catTy) →
+      Option (Expr catCryptDialect Δ' (catTy r))}
+    (xs : Valuation (d := nfDialect) as) (y : r.denote)
+    (HK : ∀ {Δ' : Ctxt catCryptDialect} (W' : Valuation Δ')
+      (ws : HVector (fun t => Var Δ' t) (as.map catTy)) (e : Expr catCryptDialect Δ' (catTy r)),
+      k ws = some e → VRelL as xs (Expr.lookupArgs ws W') → VRel r y (e.denote W'))
+    (n : Nat) {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (rs : HVector (fun t => Rd Δ t) as)
+    (res : OpRes Δ r) (h : pinRes k n rs = some res) (hx : RdRelL W as xs rs) :
+    OpResRel W r y res := by
+  refine pinRes_elim (M := fun {Δ} rs res => ∀ W : Valuation Δ, RdRelL W as xs rs →
+    OpResRel W r y res) ?_ ?_ n rs res h W hx
+  · intro Δ rs ws e hws he W hx
+    exact HK W ws e he (pinVars_rel xs rs ws hws hx)
+  · intro Δ rs c res hc ih W hx
+    exact ih _ (bindLit_rel (firstLit_lt xs rs hc hx) xs rs hx)
+
 /-- A value of a type whose values encode as integers, whose integer is `k`, encodes as `k`. -/
 theorem enc_of_toInt {t : NfTy} (h : ImpToNF.hax64NFWordTy t = true) {x : t.denote} {k : Int}
     (hx : NfTy.toInt? t x = some k) : ImpToNF.enc t x = .int k := by
@@ -1245,15 +1326,6 @@ theorem enc_of_toInt {t : NfTy} (h : ImpToNF.hax64NFWordTy t = true) {x : t.deno
   · change some (x.toNat : Int) = some k at hx
     obtain rfl := Option.some.inj hx
     rfl
-
-/-- The relation of a value and an operation result at the valuation `W` of the target. -/
-def OpResRel : {Δ : Ctxt catCryptDialect} → (W : Valuation Δ) → (t : NfTy) → (y : t.denote) →
-    OpRes Δ t → Prop
-  | _, W, t, y, .rd r => RdRel W t y r
-  | _, W, t, y, .expr e => VRel t y (e.denote W)
-  | _, W, t, y, .expr1 k e => VRel t y (e.denote (HVector.cons (t := CryptoTy.sword 64)
-      (BitVec.ofNat 64 k) W))
-  | _, W, t, y, .bind _ e k => OpResRel (W.extend (e.denote W)) t y k
 
 /-- **A shift by an immediate simulates.** -/
 theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
@@ -1355,11 +1427,8 @@ theorem catCallRd0_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     · rename_i e he
       cases h
       exact shiftImm_sound hbi W f as r rs e xs y he hx hy
-    · obtain ⟨k, hk, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨ws, hws, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
-      have hk64 := firstLit_lt xs rs hk hx
-      exact catCall_sound hbi _ f as r ws e xs y he (pinLit_rel hk64 xs rs ws hws hx) hy
+    · exact pinRes_sound xs y (fun W' ws e he hws => catCall_sound hbi W' f as r ws e xs y he
+        hws hy) _ W rs res h hx
 
 /-! ### The scalar table simulates -/
 
@@ -1959,6 +2028,16 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
             · cases hy
           · cases h
         · cases h
+  | constBit b =>
+      intro args res y h hy
+      cases h
+      change some b = some y at hy
+      cases hy
+      rfl
+  | constUnit =>
+      intro args res y h hy
+      cases h
+      trivial
   | ctr =>
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
@@ -2055,19 +2134,6 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
 
 /-! ## 6. Programs -/
 
-/-- A reading under a binding of the literal `k`: a reading of the literal `k` is the new
-    binding, and every other reading is weakened. -/
-def Rd.pin {Δ : Ctxt catCryptDialect} (k : Nat) {t : NfTy} :
-    Rd Δ t → Rd (CryptoTy.sword 64 :: Δ) t
-  | .var w => .var w.there
-  | .lit k' h => if k' = k then .var (litVar h) else .lit k' h
-
-/-- A vector of readings under a binding of the literal `k`, reading by reading. -/
-def bindLit {Δ : Ctxt catCryptDialect} (k : Nat) : {ts : List NfTy} →
-    HVector (fun t => Rd Δ t) ts → HVector (fun t => Rd (CryptoTy.sword 64 :: Δ) t) ts
-  | [], .nil => .nil
-  | _ :: _, .cons r rs => .cons (r.pin k) (bindLit k rs)
-
 /-- The program `k` gives on the variables of a vector of readings, behind a `bvConst`
     binding of each literal among them: on readings without a literal, `k` on their
     variables; otherwise the binding of the first literal in front of the program on the
@@ -2153,27 +2219,6 @@ theorem pinAll_elim {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         exact step σ rs c q hc (ih _ _ q hq)
 
-/-- A reading under a binding of a literal below `2 ^ 64` relates the value it related. -/
-theorem rdRel_pin {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {k : Nat} (hk : k < 2 ^ 64)
-    {t : NfTy} (x : t.denote) :
-    ∀ (r : Rd Δ t), RdRel W t x r →
-      RdRel (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) t x (r.pin k)
-  | .var _, h => h
-  | .lit k' hw, h => by
-      by_cases hkk : k' = k
-      · subst hkk
-        simp only [Rd.pin, if_pos]
-        exact litVar_rel W hw h.1 hk
-      · simp only [Rd.pin, if_neg hkk]
-        exact h
-
-theorem bindLit_rel {Δ : Ctxt catCryptDialect} {W : Valuation Δ} {k : Nat} (hk : k < 2 ^ 64) :
-    ∀ {ts : List NfTy} (xs : Valuation (d := nfDialect) ts) (rs : HVector (fun t => Rd Δ t) ts),
-      RdRelL W ts xs rs →
-      RdRelL (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 k) W) ts xs (bindLit k rs)
-  | [], .nil, .nil, _ => trivial
-  | _ :: _, .cons x xs, .cons r rs, hr => ⟨rdRel_pin W hk x r hr.1, bindLit_rel hk xs rs hr.2⟩
-
 /-- **The bindings of `pinAll` simulate.** When the program `k` gives simulates from every
     reading that relates `V` and every vector of variables whose values are related to `xs`,
     the program `pinAll` returns simulates from every valuation the readings `σ` relate to
@@ -2253,6 +2298,14 @@ def nfToCat : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} → {ts : Li
       | .lit _ _ => none
   | _, _, _, .whileLoop .., _ => none
   | _, _, _, .call .., _ => none
+
+/-- A reading of a bit is a variable: the condition of a branch never reads as a literal, so
+    `nfToCat` translates every branch whose arms and continuation it translates. -/
+theorem Rd.eq_var_of_bit {Δ : Ctxt catCryptDialect}
+    (r : Rd Δ (HasBitType.bit (d := nfDialect))) : ∃ c, r = .var c := by
+  cases r with
+  | var c => exact ⟨c, rfl⟩
+  | lit _ h => exact absurd h (by decide)
 
 /-- **The simulation statement of the translation** of the program `p`: a denotation of `p`
     to `out` from a valuation related to `W` by the readings is matched, at every fuel, by a

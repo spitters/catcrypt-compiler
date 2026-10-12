@@ -178,10 +178,11 @@ theorem catCallRd0_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
     · rename_i e he
       cases h
       exact shiftImm?_image he
-    · obtain ⟨k, -, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨ws, -, h⟩ := Option.bind_eq_some_iff.mp h
-      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
-      exact catCall?_image he
+    · exact pinRes_elim (M := fun _ res => OpResImages res)
+        (fun _ _ _ _ he => by simp only [OpResImages]; exact catCall?_image he)
+        (fun _ c _ _ ih => by
+          simp only [OpResImages]
+          exact ⟨(by image_op : HasImage (.bvConst 64 (BitVec.ofNat 64 c))), ih⟩) _ rs res h
 
 theorem binE_image {Δ : Ctxt catCryptDialect} {o : ImpToNF.ScalarBin} {a b : Var Δ (.sword 64)}
     {e : Expr catCryptDialect Δ (.sword 64)} (h : binE o a b = some e) :
@@ -359,6 +360,12 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
         exact withVar2_image (fun _ _ _ hk => binChain_image hk) h
       · cases h
+  | constBit b =>
+      cases h
+      exact (by image_op : HasImage (.constBit b))
+  | constUnit =>
+      cases h
+      exact (by image_op : HasImage .constUnit)
   | _ => cases h
 
 /-- The bindings `emitRes` gives a translation whose operations have images, in front of a
