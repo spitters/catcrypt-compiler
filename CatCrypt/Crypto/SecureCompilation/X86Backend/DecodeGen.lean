@@ -28,7 +28,8 @@ round-trip lemma of the form `decodeLinstr (bytes ++ rest) = some (.op j, rest)`
 continuation `rest` (`pieceTemplates_sound`). The templates are the encoder forms of
 `LprogBytesDecode` over register numbers (register copies and the group-1 `ALU` forms, the
 compares, the sign-extended `imm8` forms, the `%rsp`-relative loads, stores, compares and
-`cmovne`, the indexed moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts) and every instruction
+`cmovne`, the indexed moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts, the
+indexed `lea`) and every instruction
 `SailX86Decoder.encodeJInstr` encodes and `decodeJ1` inverts (`roundtrip_decodeJ1`), at the
 identity allocation on the canonical `%rN` names. The template set is a closed list, so the
 proposal of the decoder is checked rather than trusted. Labels, `Lret` and `Lalign` carry no
@@ -154,6 +155,19 @@ def tmplJ (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
     [(encodeJInstr (canonAlloc ()) j, j)]
   else []
 
+/-- The template of the indexed address computation `LEA (%b,%i,s), %d` (`REX.W 8D /r` with a
+    SIB byte, no displacement) at the register numbers of the names of `j`, for `j` an `lea`
+    with displacement `0`, an index other than `%rsp` and a stride SIB encodes. -/
+def tmplLea : JInstr 64 → List (List (BitVec 8) × JInstr 64)
+  | .lea d b i s 0 =>
+      match regNum? d, regNum? b, regNum? i with
+      | some r, some bn, some x =>
+          if x != 4 && scaleOk s then
+            [(encMemMovSibw 1 0x8d r bn x s, .lea (regName r) (regName bn) (regName x) s 0)]
+          else []
+      | _, _, _ => []
+  | _ => []
+
 /-- The register names of an operand. -/
 def opNames : JOperand → List String
   | .reg r => [r]
@@ -185,7 +199,7 @@ def guess : JInstr 64 → List String × List Nat × List Int
 def pieceTemplates (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
   let g := guess j
   let ns := g.1.filterMap regNum?
-  tmplJ j ++ ns.flatMap (fun d =>
+  tmplJ j ++ tmplLea j ++ ns.flatMap (fun d =>
     ns.flatMap (fun s => tmplRR d s ++ tmplCast d s
         ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c))
       ++ g.2.1.flatMap (tmplImm d) ++ tmpl1 d ++ g.2.2.flatMap (tmplRsp d))
@@ -330,6 +344,23 @@ theorem tmplJ_sound (j : JInstr 64) : ∀ q ∈ tmplJ j, PieceDec q := by
     exact decodeLinstr_of_decodeJ1 h
   · simp at hq
 
+theorem tmplLea_sound (j : JInstr 64) : ∀ q ∈ tmplLea j, PieceDec q := by
+  intro q hq rest
+  unfold tmplLea at hq
+  split at hq
+  · split at hq
+    · rename_i r bn x hr hb hx
+      split at hq
+      · rename_i hc
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+        simp only [List.mem_singleton] at hq
+        subst hq
+        exact decodeLinstr_leaIdx r bn x _ rest (regNum?_spec hr).1 (regNum?_spec hb).1
+          (regNum?_spec hx).1 hc.1 hc.2
+      · simp at hq
+    · simp at hq
+  · simp at hq
+
 /-- **Every template decodes to its instruction.** -/
 theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, PieceDec q := by
   intro q hq
@@ -337,8 +368,9 @@ theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, Piece
   have hn : ∀ n ∈ (guess j).1.filterMap regNum?, n < 16 := fun n hn => by
     obtain ⟨r, _, hr⟩ := List.mem_filterMap.mp hn
     exact (regNum?_spec hr).1
-  rcases hq with hq | ⟨d, hd, hq⟩
+  rcases hq with (hq | hq) | ⟨d, hd, hq⟩
   · exact tmplJ_sound j q hq
+  · exact tmplLea_sound j q hq
   · rcases hq with (((⟨s, hs, hq⟩ | ⟨v, _, hq⟩) | hq) | ⟨off, _, hq⟩)
     · rcases hq with (hq | hq) | ⟨c, hc, hq⟩
       · exact tmplRR_sound d s (hn d hd) (hn s hs) q hq

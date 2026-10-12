@@ -19,10 +19,11 @@ module decodes those bytes followed by the bytes `cb` of a callee block.
 `encodeFromReloc` is the fold of `LprogBytes.encodeLcmdReloc` as a recursion
 (`encodeLcmdReloc_eq_encodeFromReloc`). It agrees with `LprogBytesDecode.encodeFrom`
 except at a remote call, where the displacement is `relocDisp` and the encoder's offset
-advances by five. `itemsFromReloc` is the item list of a body: a remote call is an item
-without target label, every other position is the item of `LprogBytesDecode.itemsFrom`.
-`fundefItemsReloc` adds the frame `leaq`, the closing `leaq` and `ret`
-(`encodeLfundefBytesReloc_eq_itemBytes`).
+advances by five. `itemsFromReloc` is the item list of a body with list-valued shapes
+`PhysAbiShape.DShape`: a remote call is an item without target label, every other position
+is the run of items `PhysAbiShape.dItems` of its shape. `fundefItemsRelocL` adds the frame
+`leaq`, the closing `leaq` and `ret` (`encodeLfundefBytesReloc_eq_itemBytesL`);
+`fundefItemsReloc` is `fundefItemsRelocL` at single shapes.
 
 ## Resolution
 
@@ -41,7 +42,11 @@ and has index `k` in the decoded stream.
   that decodes to `q` decode to `prog ++ shiftProg prog.length q`, where `prog` is
   `expectedReloc` of the items and each call without target label is
   `call prog.length`.
-* `decodeLprog_fundefReloc_append`: the same for `encodeLfundefBytesReloc symBase body`.
+* `decodeLprog_fundefRelocL_append`: the same for `encodeLfundefBytesReloc symBase body`,
+  whose instructions are remote calls or have list-valued shapes;
+  `decodeLprog_fundefReloc_append` is its form at single shapes.
+* `relocDShapeOK_of_shapes`: the computed shapes `DecodeGen.shapesOf` of a body meet the
+  shape condition `RelocDShapeOK` of the relocating encoder.
 * `relocDisp_lands`: the displacement of a remote call whose symbol base is the byte
   length of the function, less the frame `leaq`, ends on that byte length.
 * `haltsC_fundefReloc_linked`: a run of the decoded caller with the callee block as an
@@ -76,6 +81,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.SecureCompilation.CT
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+  (DShape DShapeOK dItems dItems_ok itemBytes_dItems)
 
 /-! ## 1. The relocating body encoder as a recursion -/
 
@@ -175,16 +182,34 @@ theorem encodeLfundefBytesChecked_eq_reloc (symBase : String → Option Int) {bo
 /-! ## 2. The item list of a body with remote calls -/
 
 /-- What the relocating encoder needs of one body instruction: a remote transfer is a
-    call, and every other instruction has the shape `sh`. -/
+    call, and every other instruction has the list-valued shape `sh` (`DShapeOK`). -/
+def RelocDShapeOK (P : Params) (i : LinstrR) (sh : DShape) : Prop :=
+  match remoteSym i with
+  | some f => ∃ ra l, i = .Lcall ra (f, l)
+  | none => DShapeOK P i sh
+
+/-- `RelocDShapeOK` at a single shape: a remote transfer is a call, and every other
+    instruction has the shape `sh`. -/
 def RelocShapeOK (P : Params) (i : LinstrR) (sh : Shape) : Prop :=
   match remoteSym i with
   | some f => ∃ ra l, i = .Lcall ra (f, l)
   | none => ShapeOK P i sh
 
+theorem relocShapeOK_iff (P : Params) (i : LinstrR) (sh : Shape) :
+    RelocShapeOK P i sh ↔ RelocDShapeOK P i (.one sh) := by
+  unfold RelocShapeOK RelocDShapeOK
+  cases remoteSym i <;> exact Iff.rfl
+
+theorem relocDShapeOK_forall₂_one (P : Params) {body : Lcmd} {ss : List Shape}
+    (h : List.Forall₂ (fun instr sh => RelocShapeOK P instr.li_i sh) body ss) :
+    List.Forall₂ (fun instr sh => RelocDShapeOK P instr.li_i sh) body (ss.map DShape.one) :=
+  List.forall₂_map_right_iff.mpr (h.imp fun _ _ hs => (relocShapeOK_iff P _ _).mp hs)
+
 /-- The item list of a body under the relocating encoder, laid out from body offset
-    `off`. A remote call carries no target label. -/
+    `off`: a remote call is one item without target label, every other instruction the
+    items `dItems` of its list-valued shape. -/
 def itemsFromReloc (symBase : String → Option Int) (P : Params) :
-    Nat → Lcmd → List Shape → List Item
+    Nat → Lcmd → List DShape → List Item
   | off, instr :: body, sh :: shs =>
       match remoteSym instr.li_i with
       | some f =>
@@ -193,25 +218,25 @@ def itemsFromReloc (symBase : String → Option Int) (P : Params) :
             label := none, target := none }
             :: itemsFromReloc symBase P (off + 5) body shs
       | none =>
-          { bytes := P.encAt off instr.li_i, dec := sh.dec (P.dispAt off instr.li_i),
-            label := labelOf instr.li_i, target := sh.target }
-            :: itemsFromReloc symBase P (off + P.lenAt off instr.li_i) body shs
+          dItems P off instr sh
+            ++ itemsFromReloc symBase P (off + P.lenAt off instr.li_i) body shs
   | _, _, _ => []
 
 theorem itemBytes_itemsFromReloc (symBase : String → Option Int) (P : Params) {body : Lcmd}
-    {shs : List Shape}
-    (h : List.Forall₂ (fun instr sh => RelocShapeOK P instr.li_i sh) body shs) :
+    {shs : List DShape}
+    (h : List.Forall₂ (fun instr sh => RelocDShapeOK P instr.li_i sh) body shs) :
     ∀ off, itemBytes (itemsFromReloc symBase P off body shs)
       = encodeFromReloc symBase P off body := by
   induction h with
   | nil => intro off; rfl
   | @cons instr sh _ _ hab _ ih =>
     intro off
-    unfold RelocShapeOK at hab
+    unfold RelocDShapeOK at hab
     cases hr : remoteSym instr.li_i with
     | none =>
-      simp only [itemsFromReloc, encodeFromReloc, hr, itemBytes, List.flatMap_cons]
-      exact congrArg _ (ih _)
+      rw [hr] at hab
+      simp only [itemsFromReloc, encodeFromReloc, hr, itemBytes, List.flatMap_append]
+      rw [← itemBytes, ← itemBytes, itemBytes_dItems _ _ _ _ hab, ih]
     | some f =>
       rw [hr] at hab
       obtain ⟨ra, l, hi⟩ := hab
@@ -220,20 +245,20 @@ theorem itemBytes_itemsFromReloc (symBase : String → Option Int) (P : Params) 
       exact congrArg _ (ih _)
 
 theorem itemsFromReloc_ok (symBase : String → Option Int) (P : Params) {body : Lcmd}
-    {shs : List Shape}
-    (h : List.Forall₂ (fun instr sh => RelocShapeOK P instr.li_i sh) body shs) :
+    {shs : List DShape}
+    (h : List.Forall₂ (fun instr sh => RelocDShapeOK P instr.li_i sh) body shs) :
     ∀ off, ∀ it ∈ itemsFromReloc symBase P off body shs, ItemOK it := by
   induction h with
   | nil => intro off it hit; cases hit
   | @cons instr sh _ _ hab _ ih =>
     intro off it hit
-    unfold RelocShapeOK at hab
+    unfold RelocDShapeOK at hab
     cases hr : remoteSym instr.li_i with
     | none =>
       rw [hr] at hab
-      simp only [itemsFromReloc, hr, List.mem_cons] at hit
-      rcases hit with rfl | hit
-      · exact hab _
+      simp only [itemsFromReloc, hr, List.mem_append] at hit
+      rcases hit with hit | hit
+      · exact dItems_ok _ _ _ _ hab it hit
       · exact ih _ it hit
     | some f =>
       simp only [itemsFromReloc, hr, List.mem_cons] at hit
@@ -242,11 +267,37 @@ theorem itemsFromReloc_ok (symBase : String → Option Int) (P : Params) {body :
       · exact ih _ it hit
 
 /-- The item list of a function that saves no register by `push`, under the relocating
-    encoder: the frame `leaq`, the body, the closing `leaq`, `ret`. -/
+    encoder, with list-valued shapes: the frame `leaq`, the body, the closing `leaq`,
+    `ret`. -/
+def fundefItemsRelocL (symBase : String → Option Int) (P : Params) (body : Lcmd)
+    (shs : List DShape) : List Item :=
+  mkLea (-(Int.ofNat P.frame))
+    :: (itemsFromReloc symBase P 0 body shs ++ [mkLea (Int.ofNat P.frame), mkRet])
+
+/-- `fundefItemsRelocL` at the single shapes `shs`. -/
 def fundefItemsReloc (symBase : String → Option Int) (P : Params) (body : Lcmd)
     (shs : List Shape) : List Item :=
   mkLea (-(Int.ofNat P.frame))
-    :: (itemsFromReloc symBase P 0 body shs ++ [mkLea (Int.ofNat P.frame), mkRet])
+    :: (itemsFromReloc symBase P 0 body (shs.map DShape.one)
+      ++ [mkLea (Int.ofNat P.frame), mkRet])
+
+theorem fundefItemsReloc_eq (symBase : String → Option Int) (P : Params) (body : Lcmd)
+    (shs : List Shape) :
+    fundefItemsReloc symBase P body shs = fundefItemsRelocL symBase P body (shs.map DShape.one) :=
+  rfl
+
+/-- The function bytes of the relocating encoder are the bytes of `fundefItemsRelocL`. -/
+theorem encodeLfundefBytesReloc_eq_itemBytesL (symBase : String → Option Int) (body : Lcmd)
+    (shs : List DShape) (hsaves : calleeSavedToSave body = [])
+    (hsh : List.Forall₂
+      (fun instr sh => RelocDShapeOK (Params.ofBody body) instr.li_i sh) body shs) :
+    encodeLfundefBytesReloc symBase body
+      = itemBytes (fundefItemsRelocL symBase (Params.ofBody body) body shs) := by
+  have hb := itemBytes_itemsFromReloc symBase (Params.ofBody body) hsh 0
+  have hfr : (Params.ofBody body).frame = frameSize body := rfl
+  simp only [itemBytes] at hb
+  simp [encodeLfundefBytesReloc, fundefItemsRelocL, hsaves, itemBytes, mkLea, mkRet,
+    encodeLcmdReloc_eq_encodeFromReloc, hb, hfr]
 
 /-- The function bytes of the relocating encoder are the bytes of `fundefItemsReloc`. -/
 theorem encodeLfundefBytesReloc_eq_itemBytes (symBase : String → Option Int) (body : Lcmd)
@@ -254,19 +305,16 @@ theorem encodeLfundefBytesReloc_eq_itemBytes (symBase : String → Option Int) (
     (hsh : List.Forall₂
       (fun instr sh => RelocShapeOK (Params.ofBody body) instr.li_i sh) body shs) :
     encodeLfundefBytesReloc symBase body
-      = itemBytes (fundefItemsReloc symBase (Params.ofBody body) body shs) := by
-  have hb := itemBytes_itemsFromReloc symBase (Params.ofBody body) hsh 0
-  have hfr : (Params.ofBody body).frame = frameSize body := rfl
-  simp only [itemBytes] at hb
-  simp [encodeLfundefBytesReloc, fundefItemsReloc, hsaves, itemBytes, mkLea, mkRet,
-    encodeLcmdReloc_eq_encodeFromReloc, hb, hfr]
+      = itemBytes (fundefItemsReloc symBase (Params.ofBody body) body shs) :=
+  encodeLfundefBytesReloc_eq_itemBytesL symBase body _ hsaves
+    (relocDShapeOK_forall₂_one _ hsh)
 
-theorem fundefItemsReloc_ok (symBase : String → Option Int) (P : Params) (body : Lcmd)
-    (shs : List Shape) (hF0 : P.frame ≠ 0) (hF : P.frame < 2 ^ 31)
-    (hsh : List.Forall₂ (fun instr sh => RelocShapeOK P instr.li_i sh) body shs) :
-    ∀ it ∈ fundefItemsReloc symBase P body shs, ItemOK it := by
+theorem fundefItemsRelocL_ok (symBase : String → Option Int) (P : Params) (body : Lcmd)
+    (shs : List DShape) (hF0 : P.frame ≠ 0) (hF : P.frame < 2 ^ 31)
+    (hsh : List.Forall₂ (fun instr sh => RelocDShapeOK P instr.li_i sh) body shs) :
+    ∀ it ∈ fundefItemsRelocL symBase P body shs, ItemOK it := by
   intro it hit
-  simp only [fundefItemsReloc, List.mem_cons, List.mem_append, List.not_mem_nil,
+  simp only [fundefItemsRelocL, List.mem_cons, List.mem_append, List.not_mem_nil,
     or_false] at hit
   rcases hit with rfl | hit | rfl | rfl
   · exact mkLea_ok _ (by simp only [Int.ofNat_eq_natCast]; omega)
@@ -275,6 +323,12 @@ theorem fundefItemsReloc_ok (symBase : String → Option Int) (P : Params) (body
   · exact mkLea_ok _ (by simp only [Int.ofNat_eq_natCast]; omega)
       (by simp only [dispOk32, Int.ofNat_eq_natCast, decide_eq_true_eq]; omega)
   · exact mkRet_ok
+
+theorem fundefItemsReloc_ok (symBase : String → Option Int) (P : Params) (body : Lcmd)
+    (shs : List Shape) (hF0 : P.frame ≠ 0) (hF : P.frame < 2 ^ 31)
+    (hsh : List.Forall₂ (fun instr sh => RelocShapeOK P instr.li_i sh) body shs) :
+    ∀ it ∈ fundefItemsReloc symBase P body shs, ItemOK it :=
+  fundefItemsRelocL_ok symBase P body _ hF0 hF (relocDShapeOK_forall₂_one P hsh)
 
 /-- **The displacement of a remote call lands on the symbol.** For a symbol whose base is
     `L - pre` (`pre` the bytes in front of the body) and a call at body offset `off`, the
@@ -482,11 +536,36 @@ theorem decodeLprog_items_linked (items : List Item) (hok : ∀ it ∈ items, It
 
 /-- **Decoding of a relocated function followed by its callee.** Let `body` save no
     register by `push`, have a nonzero frame below `2 ^ 31`, and consist of remote calls
-    and instructions with shapes. Let its item list satisfy `branchOKReloc` at its own
-    instruction count and byte length and denote `prog`, and let the nonempty stream `cb`
-    decode to `q`. Then `encodeLfundefBytesReloc symBase body ++ cb` decodes to `prog`
-    followed by `q` with its targets raised by `prog.length`, and each remote call of
-    `body` is `call prog.length` in `prog`. -/
+    and instructions with list-valued shapes. Let its item list satisfy `branchOKReloc` at
+    its own instruction count and byte length and denote `prog`, and let the nonempty
+    stream `cb` decode to `q`. Then `encodeLfundefBytesReloc symBase body ++ cb` decodes to
+    `prog` followed by `q` with its targets raised by `prog.length`, and each remote call
+    of `body` is `call prog.length` in `prog`. -/
+theorem decodeLprog_fundefRelocL_append (symBase : String → Option Int) (body : Lcmd)
+    (shs : List DShape) (cb : List (BitVec 8)) (q prog : List RInstr)
+    (hsaves : calleeSavedToSave body = [])
+    (hF0 : frameSize body ≠ 0) (hF : frameSize body < 2 ^ 31)
+    (hsh : List.Forall₂
+      (fun instr sh => RelocDShapeOK (Params.ofBody body) instr.li_i sh) body shs)
+    (hcb : decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : branchOKReloc (fundefItemsRelocL symBase (Params.ofBody body) body shs)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body shs))
+      (encodeLfundefBytesReloc symBase body).length 0
+      (fundefItemsRelocL symBase (Params.ofBody body) body shs) = true)
+    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body shs)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body shs))
+      (encodeLfundefBytesReloc symBase body).length
+      (fundefItemsRelocL symBase (Params.ofBody body) body shs) = some prog) :
+    prog.length = decCount (fundefItemsRelocL symBase (Params.ofBody body) body shs) ∧
+      decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ shiftProg prog.length q) := by
+  have hbytes := encodeLfundefBytesReloc_eq_itemBytesL symBase body shs hsaves hsh
+  rw [hbytes] at hbr hP ⊢
+  exact decodeLprog_items_linked _
+    (fundefItemsRelocL_ok symBase (Params.ofBody body) body shs hF0 hF hsh) cb q prog hcb hne
+    hbr hP
+
+/-- `decodeLprog_fundefRelocL_append` at single shapes. -/
 theorem decodeLprog_fundefReloc_append (symBase : String → Option Int) (body : Lcmd)
     (shs : List Shape) (cb : List (BitVec 8)) (q prog : List RInstr)
     (hsaves : calleeSavedToSave body = [])
@@ -504,40 +583,37 @@ theorem decodeLprog_fundefReloc_append (symBase : String → Option Int) (body :
       (fundefItemsReloc symBase (Params.ofBody body) body shs) = some prog) :
     prog.length = decCount (fundefItemsReloc symBase (Params.ofBody body) body shs) ∧
       decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
-        = some (prog ++ shiftProg prog.length q) := by
-  have hbytes := encodeLfundefBytesReloc_eq_itemBytes symBase body shs hsaves hsh
-  rw [hbytes] at hbr hP ⊢
-  exact decodeLprog_items_linked _
-    (fundefItemsReloc_ok symBase (Params.ofBody body) body shs hF0 hF hsh) cb q prog hcb hne
-    hbr hP
+        = some (prog ++ shiftProg prog.length q) :=
+  decodeLprog_fundefRelocL_append symBase body _ cb q prog hsaves hF0 hF
+    (relocDShapeOK_forall₂_one _ hsh) hcb hne hbr hP
 
 /-! ## 5. The run of the linked bytes -/
 
 /-- **A caller linked with its callee, over bytes.** Under the hypotheses of
-    `decodeLprog_fundefReloc_append`, with `q` a block without `call`, a run of the
+    `decodeLprog_fundefRelocL_append`, with `q` a block without `call`, a run of the
     decoded caller `prog` from index `0` under the oracle of the leaky runs of `q` at the
     target `prog.length` is a run through calls of the program the linked bytes decode
     to. -/
 theorem haltsC_fundefReloc_linked (r : DoitRegime) (symBase : String → Option Int)
-    (body : Lcmd) (shs : List Shape) (cb : List (BitVec 8)) (q prog : List RInstr)
+    (body : Lcmd) (shs : List DShape) (cb : List (BitVec 8)) (q prog : List RInstr)
     (hsaves : calleeSavedToSave body = [])
     (hF0 : frameSize body ≠ 0) (hF : frameSize body < 2 ^ 31)
     (hsh : List.Forall₂
-      (fun instr sh => RelocShapeOK (Params.ofBody body) instr.li_i sh) body shs)
+      (fun instr sh => RelocDShapeOK (Params.ofBody body) instr.li_i sh) body shs)
     (hcb : decodeLprog cb = some q) (hne : cb ≠ [])
-    (hbr : branchOKReloc (fundefItemsReloc symBase (Params.ofBody body) body shs)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body shs))
+    (hbr : branchOKReloc (fundefItemsRelocL symBase (Params.ofBody body) body shs)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body shs))
       (encodeLfundefBytesReloc symBase body).length 0
-      (fundefItemsReloc symBase (Params.ofBody body) body shs) = true)
-    (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body shs)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body shs))
+      (fundefItemsRelocL symBase (Params.ofBody body) body shs) = true)
+    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body shs)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body shs))
       (encodeLfundefBytesReloc symBase body).length
-      (fundefItemsReloc symBase (Params.ofBody body) body shs) = some prog)
+      (fundefItemsRelocL symBase (Params.ofBody body) body shs) = some prog)
     (hq : ∀ tg, RInstr.call tg ∉ q) {s s' : AState}
     (h : HaltsO aMachine (oracleAt prog.length (runOf r q)) prog 0 s s') :
     ∃ linked, decodeLprog (encodeLfundefBytesReloc symBase body ++ cb) = some linked ∧
       HaltsC aMachine linked 0 s s' :=
-  ⟨_, (decodeLprog_fundefReloc_append symBase body shs cb q prog hsaves hF0 hF hsh hcb hne
+  ⟨_, (decodeLprog_fundefRelocL_append symBase body shs cb q prog hsaves hF0 hF hsh hcb hne
       hbr hP).2, haltsC_append_of_haltsO_runOf r prog q hq h⟩
 
 /-! ## 6. The decoded program of a relocated body, instruction by instruction -/
@@ -618,36 +694,41 @@ theorem expectedReloc_mid (all : List Item) (k L : Nat) (xs ms ys : List Item)
   obtain ⟨B, hB, rfl⟩ := Option.map_eq_some_iff.mp hR
   exact ⟨A, X, B, hX, hB, by rw [List.append_assoc], expectedReloc_length all k L xs A hA⟩
 
-/-- The shapes of a body are single shapes `ss`, instruction by instruction. -/
-theorem shapesOf_one_forall₂ (P : Params) :
-    ∀ (b : Lcmd) (ss : List Shape), shapesOf P b = some (ss.map DShape.one) →
-      List.Forall₂ (fun i sh => shapeOf P i.li_i = some (DShape.one sh)) b ss := by
+/-- The shapes of a body are the shapes `shapeOf` of its instructions, instruction by
+    instruction. -/
+theorem shapesOf_forall₂_shapeOf (P : Params) :
+    ∀ (b : Lcmd) (ds : List DShape), shapesOf P b = some ds →
+      List.Forall₂ (fun i sh => shapeOf P i.li_i = some sh) b ds := by
   intro b
   induction b with
   | nil =>
-    intro ss h
-    cases ss with
-    | nil => exact .nil
-    | cons _ _ => simp [shapesOf] at h
+    intro ds h
+    simp only [shapesOf, Option.some.injEq] at h
+    subst h
+    exact .nil
   | cons i b ih =>
-    intro ss h
+    intro ds h
     simp only [shapesOf] at h
     split at h
     · rename_i sh s' h1 h2
-      cases ss with
-      | nil => simp at h
-      | cons s0 ss =>
-        simp only [List.map_cons, Option.some.injEq, List.cons.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact .cons h1 (ih ss h2)
+      simp only [Option.some.injEq] at h
+      subst h
+      exact .cons h1 (ih s' h2)
     · cases h
 
-/-- The single shapes of a body meet the shape condition of the relocating encoder. -/
-theorem relocShapeOK_of_shapes (P : Params) {b : Lcmd} {ss : List Shape}
+/-- The shapes of a body are single shapes `ss`, instruction by instruction. -/
+theorem shapesOf_one_forall₂ (P : Params) (b : Lcmd) (ss : List Shape)
     (h : shapesOf P b = some (ss.map DShape.one)) :
-    List.Forall₂ (fun i sh => RelocShapeOK P i.li_i sh) b ss := by
-  refine (shapesOf_one_forall₂ P b ss h).imp fun i sh hs => ?_
-  unfold RelocShapeOK
+    List.Forall₂ (fun i sh => shapeOf P i.li_i = some (DShape.one sh)) b ss := by
+  have h₂ := shapesOf_forall₂_shapeOf P b _ h
+  rwa [List.forall₂_map_right_iff] at h₂
+
+/-- The computed shapes of a body meet the shape condition of the relocating encoder. -/
+theorem relocDShapeOK_of_shapes (P : Params) {b : Lcmd} {ds : List DShape}
+    (h : shapesOf P b = some ds) :
+    List.Forall₂ (fun i sh => RelocDShapeOK P i.li_i sh) b ds := by
+  refine (shapesOf_forall₂_shapeOf P b ds h).imp fun i sh hs => ?_
+  unfold RelocDShapeOK
   cases hr : remoteSym i.li_i with
   | none => exact shapeOf_ok P _ _ hs
   | some f =>
@@ -664,9 +745,16 @@ theorem relocShapeOK_of_shapes (P : Params) {b : Lcmd} {ss : List Shape}
     | Lgoto tg => intro hs; simp [shapeOf] at hs
     | _ => intro _ hr; simp [remoteSym] at hr
 
+/-- The single shapes of a body meet the shape condition of the relocating encoder. -/
+theorem relocShapeOK_of_shapes (P : Params) {b : Lcmd} {ss : List Shape}
+    (h : shapesOf P b = some (ss.map DShape.one)) :
+    List.Forall₂ (fun i sh => RelocShapeOK P i.li_i sh) b ss :=
+  (List.forall₂_map_right_iff.mp (relocDShapeOK_of_shapes P h)).imp
+    fun _ _ hs => (relocShapeOK_iff P _ _).mpr hs
+
 /-- The item list of a body splits at every position. -/
 theorem itemsFromReloc_split (symBase : String → Option Int) (P : Params) :
-    ∀ (n : Nat) (b : Lcmd) (ss : List Shape) (off : Nat), ∃ off',
+    ∀ (n : Nat) (b : Lcmd) (ss : List DShape) (off : Nat), ∃ off',
       itemsFromReloc symBase P off b ss
         = itemsFromReloc symBase P off (b.take n) (ss.take n)
           ++ itemsFromReloc symBase P off' (b.drop n) (ss.drop n) := by
@@ -685,40 +773,40 @@ theorem itemsFromReloc_split (symBase : String → Option Int) (P : Params) :
         | none =>
           obtain ⟨off', h⟩ := ih b ss (off + P.lenAt off i.li_i)
           exact ⟨off', by simp only [List.take_succ_cons, List.drop_succ_cons, itemsFromReloc, hr,
-            List.cons_append, h]⟩
+            List.append_assoc, h]⟩
         | some f =>
           obtain ⟨off', h⟩ := ih b ss (off + 5)
           exact ⟨off', by simp only [List.take_succ_cons, List.drop_succ_cons, itemsFromReloc, hr,
             List.cons_append, h]⟩
 
-/-- The number of decoded instructions of the item list of a body with single shapes. -/
+/-- The number of decoded instructions of the item list of a body with computed shapes. -/
 theorem decCount_itemsFromReloc (symBase : String → Option Int) (P : Params) {b : Lcmd}
-    {ss : List Shape}
-    (h : List.Forall₂ (fun i sh => shapeOf P i.li_i = some (DShape.one sh)) b ss) :
-    ∀ off, decCount (itemsFromReloc symBase P off b ss)
-      = ((ss.map DShape.one).map nOf).sum := by
+    {ss : List DShape}
+    (h : List.Forall₂ (fun i sh => shapeOf P i.li_i = some sh) b ss) :
+    ∀ off, decCount (itemsFromReloc symBase P off b ss) = (ss.map nOf).sum := by
   induction h with
   | nil => intro off; rfl
   | @cons i sh _ _ hab _ ih =>
     intro off
     cases hr : remoteSym i.li_i with
     | none =>
-      simp only [itemsFromReloc, hr, decCount, ih, List.map_cons, List.sum_cons]
-      cases sh <;> simp [Shape.dec, nOf]
+      simp only [itemsFromReloc, hr, decCount_append, decCount_dItems, ih, List.map_cons,
+        List.sum_cons]
     | some f =>
       simp only [itemsFromReloc, hr, decCount, ih, List.map_cons, List.sum_cons]
       revert hab hr
       cases i.li_i with
       | Lcall ra tg =>
+        obtain ⟨f', l⟩ := tg
         intro hab _
-        simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hab
+        simp only [shapeOf, Option.some.injEq] at hab
         subst hab
         simp [nOf]
       | _ => simp [remoteSym, shapeOf]
 
 /-- No item of a body without a definition of the label `l` defines `l`. -/
 theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l : LLabel) :
-    ∀ (b : Lcmd) (ss : List Shape) (off : Nat), (∀ i ∈ b, isLabelB l i.li_i = false) →
+    ∀ (b : Lcmd) (ss : List DShape) (off : Nat), (∀ i ∈ b, isLabelB l i.li_i = false) →
       ∀ it ∈ itemsFromReloc symBase P off b ss, it.label ≠ some l := by
   intro b
   induction b with
@@ -730,12 +818,15 @@ theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l
     | cons s ss =>
       cases hr : remoteSym i.li_i with
       | none =>
-        simp only [itemsFromReloc, hr, List.mem_cons] at hit
-        rcases hit with rfl | hit
-        · intro he
-          have := (isLabelB_iff l i.li_i).mpr he
-          rw [hb i (by simp)] at this
-          cases this
+        simp only [itemsFromReloc, hr, List.mem_append] at hit
+        rcases hit with hit | hit
+        · rcases dItems_label P off i s it hit with h | h
+          · rw [h]; simp
+          · rw [h]
+            intro he
+            have := (isLabelB_iff l i.li_i).mpr he
+            rw [hb i (by simp)] at this
+            cases this
         · exact ih ss _ (fun j hj => hb j (by simp [hj])) it hit
       | some f =>
         simp only [itemsFromReloc, hr, List.mem_cons] at hit
@@ -746,16 +837,20 @@ theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l
 /-- **A label resolves, in the relocated item list, to the decoded index of its first
     definition.** -/
 theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd}
-    {ss : List Shape}
-    (hs : shapesOf (Params.ofBody body) body = some (ss.map DShape.one)) {l : LLabel} {p : Nat}
+    {ds : List DShape}
+    (hs : shapesOf (Params.ofBody body) body = some ds) {l : LLabel} {p : Nat}
     (hp : labelAt body l = some p) :
-    ∃ off, labelPos l 0 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      = some (posOf (ss.map DShape.one) p, off) := by
-  have hR := shapesOf_one_forall₂ _ body ss hs
+    ∃ off, labelPos l 0 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      = some (posOf ds p, off) := by
+  have hR := shapesOf_forall₂_shapeOf _ body ds hs
   obtain ⟨hpl, hlab, hbefore⟩ := labelAt_spec hp
   have hlab' := (isLabelB_iff l _).mp hlab
-  have hlen : body.length = ss.length := hR.length_eq
-  obtain ⟨off', hsplit⟩ := itemsFromReloc_split symBase (Params.ofBody body) p body ss 0
+  have hlen : body.length = ds.length := hR.length_eq
+  have hskip : ds[p]'(by omega) = .one .skip := by
+    have hsp := (shapesOf_spec _ body ds hs).2 p hpl (by omega)
+    cases hb : body[p].li_i <;> rw [hb] at hsp hlab' <;> simp [shapeOf, labelOf] at hsp hlab'
+    exact hsp.symm
+  obtain ⟨off', hsplit⟩ := itemsFromReloc_split symBase (Params.ofBody body) p body ds 0
   have hpre : ∀ i ∈ body.take p, isLabelB l i.li_i = false := by
     intro i hi
     obtain ⟨q, hq, rfl⟩ := List.getElem_of_mem hi
@@ -764,16 +859,16 @@ theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd
   have hrem : remoteSym body[p].li_i = none := by
     revert hlab'
     cases body[p].li_i <;> simp [labelOf, remoteSym]
-  rw [List.drop_eq_getElem_cons hpl, List.drop_eq_getElem_cons (by omega : p < ss.length)]
-    at hsplit
-  unfold fundefItemsReloc
+  rw [List.drop_eq_getElem_cons hpl, List.drop_eq_getElem_cons (by omega : p < ds.length),
+    hskip] at hsplit
+  unfold fundefItemsRelocL
   rw [hsplit]
   simp only [labelPos, mkLea, reduceCtorEq, if_false, Option.isSome_some, if_true]
   rw [List.append_assoc, labelPos_append_of_ne _ _ _
     (itemsFromReloc_noLabel symBase _ l _ _ _ hpre),
     decCount_itemsFromReloc symBase _ (List.forall₂_take p hR)]
-  simp only [itemsFromReloc, hrem, List.cons_append, labelPos, hlab', if_true]
-  simp only [posOf, List.map_take, Option.some.injEq, Prod.mk.injEq]
+  simp only [itemsFromReloc, hrem, dItems, List.cons_append, labelPos, hlab', if_true]
+  simp only [posOf, Option.some.injEq, Prod.mk.injEq]
   exact ⟨_, trivial, rfl⟩
 
 /-- The facts of a printed body with remote calls that the byte simulation reads: single
@@ -820,8 +915,9 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
     (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
       (fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog) :
     LinkedProg body (ss.map DShape.one) K (Params.ofBody body).frame prog := by
-  have hR := shapesOf_one_forall₂ _ body ss hF.shapes
-  have hlen : body.length = ss.length := hR.length_eq
+  rw [fundefItemsReloc_eq] at hP
+  have hR := shapesOf_forall₂_shapeOf _ body _ hF.shapes
+  have hlen : body.length = ss.length := by simpa using hR.length_eq
   have hshk : ∀ k (hk : k < body.length) (hs : k < ss.length),
       shapeOf (Params.ofBody body) body[k].li_i = some (DShape.one ss[k]) := by
     intro k hk hs
@@ -829,31 +925,37 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
     simpa using this
   -- the program around position `k`
   have hpos : ∀ k (hk : k < body.length) (hs : k < ss.length), ∃ off A X B,
-      expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
-          (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ss[k]]) = some X
+      expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body (ss.map DShape.one))
+          K L (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [DShape.one ss[k]])
+          = some X
         ∧ prog = A ++ X ++ B ∧ A.length = posOf (ss.map DShape.one) k := by
     intro k hk hs
-    obtain ⟨off, hsplit⟩ := itemsFromReloc_split symBase (Params.ofBody body) k body ss 0
-    rw [List.drop_eq_getElem_cons hk, List.drop_eq_getElem_cons hs] at hsplit
+    have hs1 : k < (ss.map DShape.one).length := by simpa using hs
+    obtain ⟨off, hsplit⟩ :=
+      itemsFromReloc_split symBase (Params.ofBody body) k body (ss.map DShape.one) 0
+    rw [List.drop_eq_getElem_cons hk, List.drop_eq_getElem_cons hs1, List.getElem_map]
+      at hsplit
     obtain ⟨off2, h1⟩ := itemsFromReloc_split symBase (Params.ofBody body) 1
-      (body[k] :: body.drop (k + 1)) (ss[k] :: ss.drop (k + 1)) off
+      (body[k] :: body.drop (k + 1)) (DShape.one ss[k] :: (ss.map DShape.one).drop (k + 1)) off
     simp only [List.take_succ_cons, List.take_zero, List.drop_succ_cons, List.drop_zero]
       at h1
-    have hP' : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+    have hP' : expectedReloc
+        (fundefItemsRelocL symBase (Params.ofBody body) body (ss.map DShape.one)) K L
         ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
-            :: itemsFromReloc symBase (Params.ofBody body) 0 (body.take k) (ss.take k))
-          ++ (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ss[k]]
+            :: itemsFromReloc symBase (Params.ofBody body) 0 (body.take k)
+              ((ss.map DShape.one).take k))
+          ++ (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [DShape.one ss[k]]
             ++ (itemsFromReloc symBase (Params.ofBody body) off2 (body.drop (k + 1))
-                (ss.drop (k + 1))
+                ((ss.map DShape.one).drop (k + 1))
               ++ [mkLea (Int.ofNat (Params.ofBody body).frame), mkRet]))) = some prog := by
       rw [← hP]
       congr 1
-      rw [fundefItemsReloc, hsplit, h1]
+      rw [fundefItemsRelocL, hsplit, h1]
       simp only [List.cons_append, List.append_assoc]
     obtain ⟨A, X, B, hX, -, hprog, hA⟩ := expectedReloc_mid _ K L _ _ _ prog hP'
     refine ⟨off, A, X, B, hX, hprog, ?_⟩
     rw [hA, decCount, decCount_itemsFromReloc symBase _ (List.forall₂_take k hR)]
-    simp [posOf, mkLea, List.map_take]
+    simp [posOf, mkLea]
   refine ⟨fun k hk hs hok => ?_, fun k hk hr => ?_, ?_⟩
   · have hs' : k < ss.length := by omega
     obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs'
@@ -870,8 +972,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
         ⟨q, he, -, -⟩ | ⟨pcs, he, -, -⟩
       · simp only [DShape.one.injEq] at he
         rw [he] at hX ⊢
-        simp only [itemsFromReloc, remoteSym, Shape.dec, expectedReloc, Option.map_some,
-          Option.some.injEq] at hX
+        simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, expectedReloc,
+          Option.map_some, Option.some.injEq] at hX
         rw [← hX]
         simp [blkOf, DShape.ops']
       · cases he
@@ -879,7 +981,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
       intro _ hX hsh
       simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hsh
       rw [← hsh] at hX ⊢
-      simp only [itemsFromReloc, remoteSym, Shape.dec, expectedReloc, Option.some.injEq] at hX
+      simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, expectedReloc,
+        Option.some.injEq] at hX
       rw [← hX]
       simp [blkOf, DShape.ops']
     | Lcond c l =>
@@ -891,8 +994,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
         obtain ⟨o, ho⟩ := labelPos_fundefItemsReloc symBase hF.shapes hp
         simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at hsh
         rw [← hsh] at hX ⊢
-        simp only [itemsFromReloc, remoteSym, Shape.dec, Shape.target, expectedReloc,
-          Option.bind_some, ho, Option.map_some, Option.some.injEq] at hX
+        simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, Shape.target,
+          expectedReloc, Option.bind_some, ho, Option.map_some, Option.some.injEq] at hX
         rw [← hX]
         simp [blkOf, hp]
       | _ => intro hok; simp [instrOKB] at hok
@@ -905,9 +1008,10 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ss 
     rw [hprog, ← hX, ← hA]
     simp
   · have hn : body.length - 1 < ss.length := by have := hF.pos; omega
-    have hP' : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss) K L
+    have hP' : expectedReloc
+        (fundefItemsRelocL symBase (Params.ofBody body) body (ss.map DShape.one)) K L
         ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
-            :: itemsFromReloc symBase (Params.ofBody body) 0 body ss)
+            :: itemsFromReloc symBase (Params.ofBody body) 0 body (ss.map DShape.one))
           ++ ([mkLea (Int.ofNat (Params.ofBody body).frame)] ++ [mkRet])) = some prog := by
       rw [← hP]
       rfl
