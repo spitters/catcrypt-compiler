@@ -21,7 +21,8 @@ instruction it fetches (`RunIdxOk`). This module decides `RunIdxOk` of the halti
 body from an entry state satisfying a list of facts.
 
 A fact (`IdxFact`) bounds the sum of the `64`-bit values of a list of registers from above
-or the value of one register from below. An annotation assigns a list of facts to each
+or the value of one register from below; a symbolic fact (`SFact`) may also exclude one value
+of a term. An annotation assigns a list of facts to each
 block of the control-flow graph `cfgOf`; it is untrusted. `idxInvCheckB` checks, for every
 block, along its symbolic run `symRun` from the block entry:
 
@@ -29,12 +30,15 @@ block, along its symbolic run `symRun` from the block entry:
   follows from the facts of the block;
 * the facts of every successor block, read through the final symbolic registers, follow
   from the facts of the block and from the condition of the edge (`edgeFacts`: a branch on
-  the zero flag of a comparison with `0`, or on a register being non-zero);
+  the zero flag of a comparison with an immediate gives the value of the other operand on
+  the equal edge and excludes it on the other, and a branch on a register bounds it);
 * the entry facts give the facts of block `0`.
 
 Entailment (`entails`) is syntactic: an upper bound on a sum is read off one fact after
 normalising additions and subtractions of immediates (`linOf`), with the lower bounds of the
-remaining summands; a lower bound is read off a fact on the same term. A sum whose linear
+remaining summands, or from the upper bounds of its terms (`hiLe`: the facts containing the
+term, a conjunction with an immediate mask, and an excluded bound); a lower bound is read off
+a fact on the same term. A sum whose linear
 form is one product with an immediate at width `64` plus a constant is bounded through a
 bound on the other factor (`mulLe`); with the immediate as the first factor the other factor
 must have width `64`, which a width fact states. The index obligations of a block are
@@ -98,11 +102,13 @@ inductive IdxFact where
   deriving DecidableEq, Repr, Inhabited
 
 /-- A fact over symbolic words: the sum of the values of the terms `ts` is at most `b`, the
-    value of the term `t` is at least `k`, or the term `t` has width `64`. -/
+    value of the term `t` is at least `k`, the term `t` has width `64`, or the value of the
+    term `t` is not `c`. -/
 inductive SFact where
   | le (ts : List STerm) (b : Nat)
   | ge (t : STerm) (k : Nat)
   | w64 (t : STerm)
+  | ne (t : STerm) (c : Nat)
   deriving DecidableEq
 
 section Eval
@@ -117,6 +123,7 @@ def SFact.holds : SFact → Prop
   | .le ts b => tsum V A C O ts ≤ b
   | .ge t k => k ≤ wval (t.ev V A C O)
   | .w64 t => (t.ev V A C O).1 = 64
+  | .ne t c => wval (t.ev V A C O) ≠ c
 
 end Eval
 
@@ -165,6 +172,7 @@ def lbOf : List SFact → STerm → Nat
   | .ge t' k :: F, t => if t' = t then max k (lbOf F t) else lbOf F t
   | .le _ _ :: F, t => lbOf F t
   | .w64 _ :: F, t => lbOf F t
+  | .ne _ _ :: F, t => lbOf F t
 
 theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
     ∀ (F : List SFact) (t : STerm), (∀ f ∈ F, f.holds V A C O) →
@@ -172,6 +180,7 @@ theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : 
   | [], t, _ => immLb_le V A C O t
   | .le _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .w64 _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
+  | .ne _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .ge t' k :: F, t, h => by
       have ih := lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
       simp only [lbOf]
@@ -343,6 +352,7 @@ def leBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Boo
       | none => false
   | .ge _ _ => false
   | .w64 _ => false
+  | .ne _ _ => false
 
 /-- The sum of `ts` is at most `b'` by its linear form: the form is a constant within the
     bound, or one fact bounds a sum containing its atoms. -/
@@ -363,6 +373,7 @@ theorem leLin_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
   · cases f with
     | ge _ _ => simp [leBy] at hl
     | w64 _ => simp [leBy] at hl
+    | ne _ _ => simp [leBy] at hl
     | le ts0 b =>
         simp only [leBy] at hl
         split at hl
@@ -529,6 +540,8 @@ theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
   | .w64 _ :: F, t, u, hF, h =>
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .ne _ _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
 
 /-- The sum of the upper bounds `ubOf` of a list of terms, when each has one. -/
 def ubSum (F : List SFact) : List STerm → Option Nat
@@ -644,6 +657,7 @@ def leMixBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → 
       | none => false
   | .ge _ _ => false
   | .w64 _ => false
+  | .ne _ _ => false
 
 /-- The sum of `ts` is at most `b'` by its linear form, one fact for the atoms it contains and
     single-term facts for the others (an index `off + i` with a bound on `off` and a loop
@@ -664,6 +678,7 @@ theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
   cases f with
   | ge _ _ => simp [leMixBy] at hl
   | w64 _ => simp [leMixBy] at hl
+  | ne _ _ => simp [leMixBy] at hl
   | le ts0 b =>
       simp only [leMixBy] at hl
       split at hl
@@ -676,25 +691,95 @@ theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
         omega
       · cases hl
 
+/-- The value of an immediate at width `64`, and `2 ^ 64 - 1` for every other term: an upper
+    bound on the value of the term. -/
+def maskOf : STerm → Nat
+  | .immW w n => if w = 64 then n % 2 ^ 64 else 2 ^ 64 - 1
+  | _ => 2 ^ 64 - 1
+
+theorem maskOf_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (t : STerm) : wval (t.ev V A C O) ≤ maskOf t := by
+  have := wval_lt (t.ev V A C O)
+  unfold maskOf
+  split
+  · split
+    · rename_i w n hw
+      subst hw
+      simp [wval, STerm.ev, castW]
+    · omega
+  · omega
+
+/-- An immediate operand `y` of a conjunction is at most `maskOf y` at width `64`. -/
+theorem extW_maskOf_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (y : STerm) : (extW (y.ev V A C O) 64).toNat ≤ maskOf y := by
+  have := (extW (y.ev V A C O) 64).isLt
+  unfold maskOf
+  split
+  · split
+    · rename_i w n hw
+      subst hw
+      simp [STerm.ev, extW_of_eq, castW]
+    · omega
+  · omega
+
+/-- An upper bound on the value of a term by its structure: an immediate at width `64` is its
+    value, and a conjunction `AND x y` is at most the bound of `x` and at most an immediate
+    mask `y` (`maskOf`). -/
+def immHi : STerm → Nat
+  | .bin m x y => if m = "AND" then min (immHi x) (maskOf y) else 2 ^ 64 - 1
+  | t => maskOf t
+
+/-- A conjunction `AND x y` is at most the values of `x` and of `y` at width `64`. -/
+theorem wval_and_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (x y : STerm) :
+    wval ((STerm.bin "AND" x y).ev V A C O) ≤ wval (x.ev V A C O) ∧
+      wval ((STerm.bin "AND" x y).ev V A C O) ≤ (extW (y.ev V A C O) 64).toNat := by
+  rw [wval_bin]
+  split
+  · rename_i hw
+    simp only [binW, show ("AND" = "MULXHI") = False by decide, if_false, applyOpnN,
+      Option.getD_some, BitVec.toNat_and]
+    exact ⟨Nat.and_le_left, Nat.and_le_right⟩
+  · exact ⟨Nat.zero_le _, Nat.zero_le _⟩
+
+theorem immHi_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    ∀ t : STerm, wval (t.ev V A C O) ≤ immHi t
+  | .bin m x y => by
+      have := wval_lt ((STerm.bin m x y).ev V A C O)
+      simp only [immHi]
+      split
+      · rename_i hm
+        subst hm
+        have h1 := wval_and_le V A C O x y
+        have h2 := immHi_le V A C O x
+        have h3 := extW_maskOf_le V A C O y
+        exact le_min (by omega) (by omega)
+      · omega
+  | .reg _ | .immW _ _ | .immAt _ _ | .un _ _ | .shImm _ _ _ | .aget _ _ _ _ | .cin _
+  | .aluF _ _ _ _ _ | .carryW _ _ _ _ | .carryF _ _ _ _ _ | .mulx _ _ _ | .cout _ _ _ _
+  | .sel _ _ _ | .ref _ => by
+      simp only [immHi]
+      exact maskOf_le V A C O _
+
 /-- An upper bound on the value of the term `t`: the least `b - lbSum F (ts.erase t)` over
-    the facts `.le ts b` of `G` with `t ∈ ts`, and `2 ^ 64 - 1` when there is none. -/
+    the facts `.le ts b` of `G` with `t ∈ ts`, and at most the bound `immHi t` of its
+    structure. -/
 def hiOf (F : List SFact) : List SFact → STerm → Nat
-  | [], _ => 2 ^ 64 - 1
+  | [], t => immHi t
   | .le ts b :: G, t =>
       if t ∈ ts then min (b - lbSum F (ts.erase t)) (hiOf F G t) else hiOf F G t
   | .ge _ _ :: G, t => hiOf F G t
   | .w64 _ :: G, t => hiOf F G t
+  | .ne _ _ :: G, t => hiOf F G t
 
 theorem hiOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
     ∀ (G : List SFact) (t : STerm), (∀ f ∈ G, f.holds V A C O) →
       wval (t.ev V A C O) ≤ hiOf F G t
-  | [], t, _ => by
-      have := wval_lt (t.ev V A C O)
-      simp only [hiOf]
-      omega
+  | [], t, _ => immHi_le V A C O t
   | .ge _ _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
   | .w64 _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+  | .ne _ _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
   | .le ts b :: G, t, hG => by
       have ih := hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
       simp only [hiOf]
@@ -918,14 +1003,90 @@ theorem affLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
   have h2 := affHi_sound hF (affOf F t).1
   omega
 
+/-- The sum of the bounds `hiOf` of a list of terms bounds the sum of their values. -/
+theorem tsum_le_hiOf {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ ts : List STerm, tsum V A C O ts ≤ (ts.map (hiOf F F)).sum
+  | [] => by simp [tsum]
+  | t :: ts => by
+      have h1 := hiOf_sound hF F t hF
+      have h2 := tsum_le_hiOf hF ts
+      simp only [tsum, List.map_cons, List.sum_cons] at h2 ⊢
+      omega
+
+/-- An upper bound on the value of the term `t`: the bound `hiOf` of `t`, and the bounds
+    `hiOf` of the atoms of its linear form `linOf` plus its constant. -/
+def termHi (F : List SFact) (t : STerm) : Nat :=
+  min (hiOf F F t) ((((linOf F t).1.map (hiOf F F)).sum : Int) + (linOf F t).2).toNat
+
+theorem termHi_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    wval (t.ev V A C O) ≤ termHi F t := by
+  have h1 := hiOf_sound hF F t hF
+  have h2 := linOf_sound hF t
+  have h3 := tsum_le_hiOf hF (linOf F t).1
+  unfold termHi
+  omega
+
+/-- The upper bound `termHi` of `t`, less one when a fact of `F` excludes the bound. -/
+def hiNe (F : List SFact) (t : STerm) : Nat :=
+  if SFact.ne t (termHi F t) ∈ F then termHi F t - 1 else termHi F t
+
+theorem hiNe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    wval (t.ev V A C O) ≤ hiNe F t := by
+  have h1 := termHi_sound hF t
+  unfold hiNe
+  split
+  · rename_i hm
+    have h2 : wval (t.ev V A C O) ≠ termHi F t := hF _ hm
+    omega
+  · exact h1
+
+/-- The lower bound `lbOf` of `t`, plus one when a fact of `F` excludes the bound. -/
+def lbNe (F : List SFact) (t : STerm) : Nat :=
+  if SFact.ne t (lbOf F t) ∈ F then lbOf F t + 1 else lbOf F t
+
+theorem lbNe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    lbNe F t ≤ wval (t.ev V A C O) := by
+  have h1 := lbOf_le F t hF
+  unfold lbNe
+  split
+  · rename_i hm
+    have h2 : wval (t.ev V A C O) ≠ lbOf F t := hF _ hm
+    omega
+  · exact h1
+
+/-- The sum of `ts` is at most `b'` by the sum of the upper bounds `hiNe` of its terms. -/
+def hiLe (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
+  decide ((ts.map (hiNe F)).sum ≤ b')
+
+theorem hiLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
+    (h : hiLe F ts b' = true) : tsum V A C O ts ≤ b' := by
+  simp only [hiLe, decide_eq_true_eq] at h
+  have key : ∀ ts : List STerm, tsum V A C O ts ≤ (ts.map (hiNe F)).sum := by
+    intro ts
+    induction ts with
+    | nil => simp [tsum]
+    | cons t ts ih =>
+        have := hiNe_sound hF t
+        simp only [tsum, List.map_cons, List.sum_cons] at ih ⊢
+        omega
+  exact (key ts).trans h
+
 /-- **Entailment**: an upper bound on a sum holds when its linear form is a constant within
-    the bound, when one fact bounds a sum containing its atoms (`leLin`), or when the form
-    is a product with an immediate whose other factor is bounded (`mulLe`); a lower bound
-    holds when a fact states it; a width holds by `widOk`. -/
+    the bound, when one fact bounds a sum containing its atoms (`leLin`), when the form is a
+    product with an immediate whose other factor is bounded (`mulLe`), or when the upper
+    bounds `hiNe` of its terms sum to within the bound (`hiLe`); a lower bound holds by
+    `lbNe`; a width holds by `widOk`; a value `c` is excluded when it lies outside the bounds
+    of the term or a fact excludes it. -/
 def entails (F : List SFact) : SFact → Bool
-  | .le ts b' => leLin F ts b' || mulLe F ts b'
-  | .ge t k => decide (k ≤ lbOf F t)
+  | .le ts b' => leLin F ts b' || mulLe F ts b' || hiLe F ts b'
+  | .ge t k => decide (k ≤ lbNe F t)
   | .w64 t => widOk F t
+  | .ne t c => decide (c < lbOf F t) || decide (hiNe F t < c) || decide (SFact.ne t c ∈ F)
 
 /-- **Entailment is sound.** -/
 theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
@@ -933,13 +1094,24 @@ theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
     ∀ g : SFact, entails F g = true → g.holds V A C O
   | .ge t k, h => by
       simp only [entails, decide_eq_true_eq] at h
-      exact le_trans h (lbOf_le F t hF)
+      exact le_trans h (lbNe_sound hF t)
   | .le ts b', h => by
       simp only [entails, Bool.or_eq_true] at h
-      rcases h with h | h
+      rcases h with (h | h) | h
       · exact leLin_sound hF h
       · exact mulLe_sound hF h
+      · exact hiLe_sound hF h
   | .w64 t, h => widOk_sound hF h
+  | .ne t c, h => by
+      simp only [entails, Bool.or_eq_true, decide_eq_true_eq] at h
+      have h1 := lbOf_le F t hF
+      have h2 := hiNe_sound hF t
+      rcases h with (h | h) | h
+      · show wval (t.ev V A C O) ≠ c
+        omega
+      · show wval (t.ev V A C O) ≠ c
+        omega
+      · exact hF _ h
 
 /-- The width facts a guard of a symbolic run gives: a term of width `64`, or a term whose
     width is that of a term of width `64`, each at its width base `STerm.wbase`. -/
@@ -989,13 +1161,48 @@ theorem guardW64_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} 
 
 /-! ## 3. Edge facts -/
 
+/-- The facts a comparison of the term `x` with the value `c` gives: on equality the bounds
+    `c` from above and below; otherwise `x ≠ c`, and the lower bound `1` when `c = 0`. -/
+def cmpFacts (x : STerm) (c : Nat) : Bool → List SFact
+  | true => [.le [x] c, .ge x c]
+  | false => [.ge x (if c = 0 then 1 else 0), .ne x c]
+
+theorem cmpFacts_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {x : STerm} {c : Nat} {e : Bool} (h : decide (wval (x.ev V A C O) = c) = e) :
+    ∀ f ∈ cmpFacts x c e, f.holds V A C O := by
+  cases e with
+  | true =>
+      simp only [decide_eq_true_eq] at h
+      simp [cmpFacts, SFact.holds, tsum, h]
+  | false =>
+      simp only [decide_eq_false_iff_not] at h
+      simp only [cmpFacts, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+        forall_eq, SFact.holds]
+      refine ⟨?_, h⟩
+      split <;> omega
+
+/-- The zero flag of a comparison with an immediate at width `64` is the equality of the value
+    of the other operand with the value of the immediate. -/
+theorem castW_beq_imm (x : Σ w, BitVec w) (n : Nat) :
+    (castW x 64 == BitVec.ofNat 64 n) = decide (wval x = n % 2 ^ 64) := by
+  rw [Bool.eq_iff_iff, beq_iff_eq, decide_eq_true_eq]
+  unfold wval
+  constructor
+  · intro h
+    rw [h]
+    simp
+  · intro h
+    exact BitVec.eq_of_toNat_eq (by simpa using h)
+
 /-- The facts the condition `d` gives on the edge it takes (`taken`) or falls through: a
-    branch on the zero flag of a comparison with `0` that the zero flag does not select, or
-    a taken branch on a non-zero register, gives the lower bound `1`. -/
+    branch on the zero flag of a comparison with an immediate at width `64` gives the facts
+    `cmpFacts` of the other operand, and a branch on a register gives the lower bound `1`
+    when taken and the upper bound `0` otherwise. -/
 def edgeFacts (d : SDec) (taken : Bool) : List SFact :=
   match d with
-  | .flag pol (.cmp x (.immW 64 0)) => if taken = pol then [] else [.ge x 1]
-  | .nz t => if taken then [.ge t 1] else []
+  | .flag pol (.cmp x (.immW 64 n)) => cmpFacts x (n % 2 ^ 64) (taken == pol)
+  | .flag pol (.cmp (.immW 64 n) y) => cmpFacts y (n % 2 ^ 64) (taken == pol)
+  | .nz t => if taken then [.ge t 1] else [.le [t] 0]
   | _ => []
 
 theorem one_le_wval {x : Σ w, BitVec w} (h : castW x 64 ≠ 0#64) : 1 ≤ wval x := by
@@ -1009,26 +1216,40 @@ theorem one_le_wval {x : Σ w, BitVec w} (h : castW x 64 ≠ 0#64) : 1 ≤ wval 
 theorem edgeFacts_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
     {d : SDec} {taken : Bool} (h : d.ev V A C O Z = taken) :
     ∀ f ∈ edgeFacts d taken, f.holds V A C O := by
+  have hpol : ∀ a pol : Bool, (a == pol) = taken → a = (taken == pol) := by
+    intro a pol h'
+    subst h'
+    cases a <;> cases pol <;> rfl
+  have hc : ∀ n : Nat, castW (⟨64, BitVec.ofNat 64 n⟩ : Σ w, BitVec w) 64 = BitVec.ofNat 64 n :=
+    fun n => by simp [castW]
   unfold edgeFacts
   split
-  · rename_i pol x
-    split
-    · simp
-    · rename_i hne
-      simp only [List.mem_singleton, forall_eq]
-      apply one_le_wval
-      simp only [SDec.ev, SFlag.ev, STerm.ev] at h
-      intro h0
-      have hc : castW (⟨64, BitVec.ofNat 64 0⟩ : Σ w, BitVec w) 64 = 0#64 := by simp [castW]
-      rw [h0, hc] at h
-      cases pol <;> cases taken <;> simp_all
+  · rename_i pol x n
+    apply cmpFacts_sound
+    simp only [SDec.ev, SFlag.ev, STerm.ev, hc] at h
+    rw [← castW_beq_imm]
+    exact hpol _ _ h
+  · rename_i pol n y _
+    apply cmpFacts_sound
+    simp only [SDec.ev, SFlag.ev, STerm.ev, hc] at h
+    rw [← castW_beq_imm, BEq.comm]
+    exact hpol _ _ h
   · rename_i t
     split
     · simp only [List.mem_singleton, forall_eq]
       apply one_le_wval
       simp only [SDec.ev] at h
       split at h <;> simp_all
-    · simp
+    · rename_i hn
+      simp only [List.mem_singleton, forall_eq, SFact.holds, tsum, List.map_cons, List.map_nil,
+        List.sum_cons, List.sum_nil, add_zero, Nat.le_zero]
+      simp only [SDec.ev] at h
+      unfold wval
+      split at h
+      · simp only [decide_eq_false_iff_not, not_not, hn] at h
+        simp [h]
+      · rename_i hw
+        simp [castW, hw]
   · simp
 
 /-! ## 4. The check -/
