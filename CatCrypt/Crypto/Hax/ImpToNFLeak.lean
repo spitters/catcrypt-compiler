@@ -1206,7 +1206,56 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
         · subst ht
           rw [dif_pos rfl] at h
           obtain ⟨ra, hra, h⟩ := Option.bind_eq_some_iff.mp h
-          obtain ⟨rb, hrb, rfl⟩ := Option.map_eq_some_iff.mp h
+          obtain ⟨rb, hrb, h⟩ := Option.map_eq_some_iff.mp h
+          by_cases hu : oa.t = NfTy.unit
+          · rw [if_pos hu] at h
+            subst h
+            have hU : ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') (X : Valuation Γ'),
+                PLeak bi C tf (bind1N none σ' .constUnit .nil).pre X =
+                  some (X.extend (show NfTy.unit.denote from ()), []) := fun σ' X =>
+              (PLeak_bind1N_quiet (C := C) bi tf none σ' .constUnit (fun _ => rfl) .nil X).trans
+                rfl
+            cases hk : resc.lookup W1 with
+            | true =>
+                have hrun' : (denote' bi fuel a).run e1 = (.val r, env') := by
+                  simpa [hk] using hrun
+                obtain ⟨W2, hW2, -, -⟩ := HA σc hoa e1 W1 r env' hrel1 hrun' tf
+                have harm : nfLeakRunE bi C tf (oa.pre.plug (.ret ra)) W1 =
+                    some (Expr.lookupArgs ra W2,
+                      nfTrace (srcLeakCl bi C.cl a fuel e1) ++ []) := by
+                  rw [nfLeakRunE_plug, hW2]; rfl
+                have hstep := PLeak_ifThenElse_some bi tf resc (oa.pre.plug (.ret ra))
+                  (preb.plug (.ret rb)) W1 (r := Expr.lookupArgs ra W2)
+                  (by
+                    have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = true := hk
+                    rw [if_pos this]; exact harm)
+                refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) ()
+                  (hvAppend (Expr.lookupArgs ra W2) W1),
+                  (PLeak_append_some (PLeak_append_some hW1 hstep) (hU _ _)).trans ?_⟩
+                simp only [srcLeakCl, h1, hk, enc, nfTrace, nfEv, List.append_nil]
+                rfl
+            | false =>
+                have hrun' : (denote' bi fuel b).run e1 = (.val r, env') := by
+                  simpa [hk] using hrun
+                obtain ⟨W2, hW2, -, -⟩ := HB σc hob e1 W1 r env' hrel1 hrun' tf
+                have harm : nfLeakRunE bi C tf (preb.plug (.ret rb)) W1 =
+                    some (Expr.lookupArgs rb W2,
+                      nfTrace (srcLeakCl bi C.cl b fuel e1) ++ []) := by
+                  rw [nfLeakRunE_plug]
+                  rw [show PLeak bi C tf preb W1 = _ from hW2]
+                  rfl
+                have hstep := PLeak_ifThenElse_some bi tf resc (oa.pre.plug (.ret ra))
+                  (preb.plug (.ret rb)) W1 (r := Expr.lookupArgs rb W2)
+                  (by
+                    have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = false := hk
+                    rw [if_neg (by rw [this]; exact Bool.false_ne_true)]; exact harm)
+                refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) ()
+                  (hvAppend (Expr.lookupArgs rb W2) W1),
+                  (PLeak_append_some (PLeak_append_some hW1 hstep) (hU _ _)).trans ?_⟩
+                simp only [srcLeakCl, h1, hk, enc, nfTrace, nfEv, List.append_nil]
+                rfl
+          rw [if_neg hu] at h
+          subst h
           cases hk : resc.lookup W1 with
           | true =>
               have hrun' : (denote' bi fuel a).run e1 = (.val r, env') := by

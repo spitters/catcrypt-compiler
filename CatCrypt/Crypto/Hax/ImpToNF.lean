@@ -99,8 +99,9 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
 * `loop_sound`, `loopRev_sound`, `ctrOut_sound`, `loopOut_sound`, `forFold_sound`,
   `forFoldRev_sound` — the counted loop: the trips of `denoteForLoop'` and of
   `denoteForLoopRev'` against the fold of `NFProg.forLoop`.
-* `condArm_sound`, `condOut_sound`, `cond_sound` — the conditional: the run of the arm the
-  condition selects against the region `NFPre.ifThenElse`.
+* `condArm_sound`, `condArmU_sound`, `enc_unit_eq`, `condOut_sound`, `cond_sound` — the
+  conditional: the run of the arm the condition selects against the region
+  `NFPre.ifThenElse`, followed on the unit type by the binding of the unit value.
 * `impToNF_cond_arms` — a translated conditional has a translated condition and arms.
 * `impToNF_sound` — the front simulates `denote'`.
 * `rbLoop_run` — the trips of a counted loop against the run of its readback.
@@ -460,8 +461,10 @@ def condFresh {Γc Δa Δb : Ctxt nfDialect} (σc : NfEnv Γc) (σa : NfEnv Δa)
     variables of the carried names: the names `xs`, at the types `cs`, followed by the names
     both arms bind and `σc` does not (`condFresh`). The value of the conditional is the
     first result, and the continuation reads the carried names from the other results
-    (`condEnv`). `none` when the result types of the arms differ, or an arm leaves a name of
-    `xs` unbound or at another type. -/
+    (`condEnv`). When the result type is the unit type, the arms return only the variables
+    of the carried names, and the continuation binds the unit value after the region, as
+    after a loop. `none` when the result types of the arms differ, or an arm leaves a name
+    of `xs` unbound or at another type. -/
 def condOut {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc) (σc : NfEnv Γc)
     (cV : Var Γc NfTy.bit) (xs : List String) (cs : List NfTy)
     (recA recB : Option (Out Γc)) : Option (Out Γ) :=
@@ -471,13 +474,26 @@ def condOut {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc) (σc : N
           (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))).bind fun ra =>
         (varsAt ob.σ (xs ++ (condFresh σc oa.σ ob.σ).map (·.1))
           (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))).map fun rb =>
-        Out.mk (oa.t :: (cs ++ (condFresh σc oa.σ ob.σ).map (·.2)) ++ Γc) oa.t
-          (pre₀.append
-            (.ifThenElse (rs := oa.t :: (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))) cV
-              (oa.pre.plug (.ret (.cons oa.res ra)))
-              (ob.pre.plug (.ret (.cons (h ▸ ob.res) rb))) .nil))
-          (condEnv σc (xs ++ (condFresh σc oa.σ ob.σ).map (·.1)) oa.t
-            (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))) .here
+        if oa.t = NfTy.unit then
+          let oU := bind1N none
+            (NfEnv.bindAll (xs ++ (condFresh σc oa.σ ob.σ).map (·.1))
+              (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))
+              (headVars (cs ++ (condFresh σc oa.σ ob.σ).map (·.2)))
+              (NfEnv.mapV (fun v => Var.shiftApp (d := nfDialect)
+                (cs ++ (condFresh σc oa.σ ob.σ).map (·.2)) v) σc)) .constUnit .nil
+          Out.mk oU.Δ oU.t
+            ((pre₀.append
+              (.ifThenElse (rs := cs ++ (condFresh σc oa.σ ob.σ).map (·.2)) cV
+                (oa.pre.plug (.ret ra)) (ob.pre.plug (.ret rb)) .nil)).append oU.pre)
+            oU.σ oU.res
+        else
+          Out.mk (oa.t :: (cs ++ (condFresh σc oa.σ ob.σ).map (·.2)) ++ Γc) oa.t
+            (pre₀.append
+              (.ifThenElse (rs := oa.t :: (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))) cV
+                (oa.pre.plug (.ret (.cons oa.res ra)))
+                (ob.pre.plug (.ret (.cons (h ▸ ob.res) rb))) .nil))
+            (condEnv σc (xs ++ (condFresh σc oa.σ ob.σ).map (·.1)) oa.t
+              (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))) .here
     else none
 
 mutual
@@ -505,7 +521,8 @@ mutual
     so a name bound in one arm returns its incoming variable in the other. A name absent
     from the environment before the conditional is a result when both arms bind it at one
     type (`condFresh`), as in `let x = if c {a} else {b}` with the binding moved into the
-    arms; a name only one arm binds is not. After
+    arms; a name only one arm binds is not. A conditional of the unit type has no value
+    among the results: its unit value is bound after the region. After
     the region the carried names read its results (`condEnv`). The source name `tgt` is not
     recorded on a conditional. -/
 def impToNF (sigOf : String → List NfTy → Option NfTy) :
@@ -2279,6 +2296,47 @@ theorem condArm_sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γc : Ctxt nfD
       (Var.lookup_shiftApp (o.t :: cs) (HVector.cons (f := fun t => ⟦t⟧) (o.res.lookup W2)
         (Expr.lookupArgs rets W2)) v0 Vc).symm
 
+/-- **One arm of a conditional of the unit type.** A sound output for the arm `e` from `σc`,
+    closed by the return of the current variables `rets` of the names `xs`, denotes results
+    from which the environment of names of the continuation of the region is related to the
+    final environment, and the value of the arm encodes a value of its type, when `e` binds
+    no name of `σc` outside `xs`. -/
+theorem condArmU_sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γc : Ctxt nfDialect}
+    (σc : NfEnv Γc) (xs : List String) (cs : List NfTy) (hlen : xs.length = cs.length)
+    {o : Out Γc} (rets : HVector (fun t => Var o.Δ t) cs) (hrets : varsAt o.σ xs cs = some rets)
+    (hS : Sound bi fuel e σc o)
+    (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) e = true)
+    (env : Env) (Vc : Valuation Γc) (tf : Nat) (hrel : EnvRel σc env Vc) (r : Value)
+    (env' : Env) (hrun : (denote' bi fuel e).run env = (.val r, env')) :
+    ∃ (acc : Valuation (d := nfDialect) cs) (x : o.t.denote),
+      PDenP bi tf (o.pre.plug (.ret rets)) Vc = some acc ∧
+      EnvRel (NfEnv.bindAll xs cs (headVars cs)
+        (NfEnv.mapV (fun v => Var.shiftApp (d := nfDialect) cs v) σc)) env'
+        (hvAppend acc Vc) ∧
+      r = enc o.t x := by
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := hS env Vc r env' hrel hrun tf
+  refine ⟨Expr.lookupArgs rets W2, o.res.lookup W2, PDenP_plug_ret bi tf _ rets Vc hW2, ?_, rfl⟩
+  intro y t v hl
+  refine EnvRel.bindAll xs cs _ _ hlen ?_ y ?_ t v hl
+  · rw [lookupArgs_headVars]
+    exact CarriedRel.of_varsAt hrel2 xs cs hrets
+  · intro hy t' v' hl'
+    rw [NfEnv.lookup_mapV, Option.map_eq_some_iff] at hl'
+    obtain ⟨⟨t0, v0⟩, h0, heq⟩ := hl'
+    simp only [Sigma.mk.injEq] at heq
+    obtain ⟨rfl, hv'⟩ := heq
+    rw [denote'_keeps bi e (hfr y hy _ h0) fuel env hrun (by rintro ⟨_, h⟩; cases h),
+      hrel y t0 v0 h0, ← eq_of_heq hv']
+    exact congrArg (fun z => some (enc t0 z))
+      (Var.lookup_shiftApp cs (Expr.lookupArgs rets W2) v0 Vc).symm
+
+/-- Two values of a type equal to the unit type have one encoding. -/
+theorem enc_unit_eq {t : NfTy} (h : t = NfTy.unit) (x : t.denote) :
+    enc t x = enc NfTy.unit () := by
+  subst h
+  rfl
+
 /-- **The conditional of the front is sound.** Let the prefix `pre₀` denote `Vc`, related
     by `σc` to `env`; let `recA` and `recB` be sound for the arms `a` and `b`, and every
     name of `σc` outside `xs` be one neither arm binds. A run to a value of the arm the
@@ -2306,7 +2364,7 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
   · subst ht
     rw [dif_pos rfl] at h₀
     obtain ⟨ra, hra, h₀⟩ := Option.bind_eq_some_iff.mp h₀
-    obtain ⟨rb, hrb, rfl⟩ := Option.map_eq_some_iff.mp h₀
+    obtain ⟨rb, hrb, h₀⟩ := Option.map_eq_some_iff.mp h₀
     have hlen' : (xs ++ (condFresh σc oa.σ σb).map (·.1)).length =
         (cs ++ (condFresh σc oa.σ σb).map (·.2)).length := by
       simp only [List.length_append, List.length_map, hlen]
@@ -2314,6 +2372,42 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
         frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a = true ∧
           frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b = true :=
       fun x hx q hq => hfr x (fun h => hx (List.mem_append_left _ h)) q hq
+    by_cases hu : oa.t = NfTy.unit
+    · rw [if_pos hu] at h₀
+      subst h₀
+      obtain ⟨acc, x, hrv, hrelv, hval⟩ :
+          ∃ (acc : Valuation (d := nfDialect) (cs ++ (condFresh σc oa.σ σb).map (·.2)))
+            (x : oa.t.denote),
+          PDenP bi tf (if HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) = true then
+            oa.pre.plug (.ret ra) else preb.plug (.ret rb)) Vc = some acc ∧
+          EnvRel (NfEnv.bindAll (xs ++ (condFresh σc oa.σ σb).map (·.1))
+            (cs ++ (condFresh σc oa.σ σb).map (·.2))
+            (headVars (cs ++ (condFresh σc oa.σ σb).map (·.2)))
+            (NfEnv.mapV (fun v => Var.shiftApp (d := nfDialect)
+              (cs ++ (condFresh σc oa.σ σb).map (·.2)) v) σc)) env' (hvAppend acc Vc) ∧
+          r = enc oa.t x := by
+        cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
+        | true =>
+            rw [hc, if_pos rfl] at hrun
+            rw [if_pos rfl]
+            obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel a σc _ _ hlen' ra hra
+              (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc tf hrel r env' hrun
+            exact ⟨acc, x, hrv, hrelv, hval⟩
+        | false =>
+            rw [hc, if_neg Bool.false_ne_true] at hrun
+            rw [if_neg Bool.false_ne_true]
+            obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel b σc _ _ hlen' rb hrb
+              (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc tf hrel r env' hrun
+            exact ⟨acc, x, hrv, hrelv, hval⟩
+      exact ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend acc Vc),
+        PDen_append_some bi tf (PDen_append_some bi tf hpre (PDen_ifThenElse_some bi tf hrv rfl))
+          ((PDen_bind1N bi tf none _ .constUnit .nil _).trans rfl),
+        hrelv.mapV (fun v => Var.there v)
+          (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend acc Vc))
+          fun _ _ => rfl,
+        hval.trans (enc_unit_eq hu x)⟩
+    rw [if_neg hu] at h₀
+    subst h₀
     cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
     | true =>
         rw [hc, if_pos rfl] at hrun
