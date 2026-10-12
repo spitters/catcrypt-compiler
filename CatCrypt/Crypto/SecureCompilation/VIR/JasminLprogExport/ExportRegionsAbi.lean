@@ -401,7 +401,13 @@ theorem spFreeB_opToLinstrR (op : JasminOp) (hop : OpPlain op) {dst : String}
       · obtain rfl := List.mem_singleton.mp ho
         exact hs _ (by simp)
     · exact spFreeB_lopn hd hs
-  all_goals exact spFreeB_lopn hd hs
+  all_goals first
+    | exact spFreeB_lopn hd hs
+    | exact spFreeB_lopn hd fun o ho => by
+        rcases List.mem_append.mp ho with h | h
+        · exact hs o h
+        · obtain rfl := List.mem_singleton.mp h
+          rfl
 
 /-- The structured shift instruction passes `spFreeB` when neither its destination nor
     its source names `RSP`. -/

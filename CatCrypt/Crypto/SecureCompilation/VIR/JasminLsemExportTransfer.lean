@@ -114,6 +114,7 @@ theorem renLinstrR_opToLinstrR (σ : String → String) (op : JasminOp) (hop : O
          (try cases a) <;> (try cases b) <;>
          simp [renLinstrR, renOperand]
        done)
+    | (simp [opToLinstrR, renLinstrR]; done)
     | (simp only [opToLinstrR]
        split <;>
        rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, rest⟩⟩⟩⟩ <;>
@@ -414,7 +415,17 @@ theorem immShiftExpand_opToLinstrR {op : JasminOp} (hop : OpPlain op) (dst : Str
     (srcs : List LOperand) (hsrc : ∀ o ∈ srcs, ∃ r, o = LOperand.reg r) :
     immShiftExpand (opToLinstrR op dst srcs, memTagOfOp op)
       = [(opToLinstrR op dst srcs, memTagOfOp op)] := by
-  cases op <;> first
+  cases op
+  case cmpImm c w k =>
+    rcases srcs with _ | ⟨a, _ | ⟨b, rest⟩⟩
+    · rfl
+    · obtain ⟨r, rfl⟩ := hsrc a (by simp)
+      exact immShiftExpand_of_not_shiftBase _ _ _ _
+        (by rw [JasminLsem.stripWidthTag_withWidthTag_cmpName]; cases c <;> rfl)
+    · obtain ⟨ra, rfl⟩ := hsrc a (by simp)
+      obtain ⟨rb, rfl⟩ := hsrc b (by simp)
+      cases rest <;> rfl
+  all_goals first
     | exact absurd hop id
     | exact immShiftExpand_of_regs _ _ _ _ hsrc
     | rfl

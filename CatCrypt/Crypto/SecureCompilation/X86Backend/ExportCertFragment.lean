@@ -47,7 +47,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
     constant at a positive width, an immediate shift by less than `2 ^ w`. -/
 def opMemB : JasminOp → Bool
   | .regArith _ _ | .select _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ => true
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => true
   | .regConst w _ => decide (0 < w)
   | .shrImm w m | .shlImm w m | .sarImm w m => decide (m < 2 ^ w)
   | _ => false
@@ -56,7 +56,7 @@ def opMemB : JasminOp → Bool
 def opPlainB : JasminOp → Bool
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
   | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ => true
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => true
   | _ => false
 
 theorem opPlainB_sound {op : JasminOp} (h : opPlainB op = true) : OpPlain op := by
@@ -92,8 +92,7 @@ theorem scalarMemNB_sound : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
       simp only [scalarMemNB, Bool.and_eq_true] at h
       obtain ⟨hop, hb⟩ := h
       have ih := scalarMemNB_sound body hb
-      cases op <;> simp only [opMemB, Bool.false_eq_true, Bool.or_eq_true, beq_iff_eq,
-        decide_eq_true_eq] at hop
+      cases op <;> simp only [opMemB, Bool.false_eq_true, decide_eq_true_eq] at hop
       all_goals first
         | cases heq; exact ScalarMemN.var _ rfl args ih
         | cases heq; exact ScalarMemN.const _ hop rfl args ih
@@ -107,6 +106,8 @@ theorem scalarMemNB_sound : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
         | cases heq; exact ScalarMemN.cast rfl args ih
         | cases heq; exact ScalarMemN.load rfl args ih
         | cases heq; exact ScalarMemN.store rfl args ih
+        | cases heq; exact ScalarMemN.cmp _ rfl args ih
+        | cases heq; exact ScalarMemN.cmpImm _ rfl args ih
 
 /-- A decision of `ArrMemN`: every binding's op is in `opMemB`; the return type is the
     array type of the index, so the return needs no check. -/

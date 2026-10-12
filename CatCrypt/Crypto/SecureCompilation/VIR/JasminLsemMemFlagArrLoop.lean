@@ -130,12 +130,13 @@ stack-memory fragment's op set: none of their mnemonics is the flag compare
 immediate source, which the register-copy recogniser rejects. -/
 
 /-- The op set of the stack-memory fragment: register arithmetic, constants,
-    select, the immediate shifts, the widening multiply and carry pair, the cast
-    and the runtime-indexed array load and store. -/
+    select, the immediate shifts, the widening multiply and carry pair, the cast,
+    the runtime-indexed array load and store, and the word compares `cmp`/`cmpImm`
+    (`SET<cc>`). -/
 def OpPlain : JasminOp → Prop
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
   | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ => True
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => True
   | _ => False
 
 /-- Every binding of a `Com` has an op in the stack-memory fragment's op set. -/
@@ -268,6 +269,18 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
   case stackStore w k =>
     simp only [opToLinstrR]
     split <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
+  case cmp c w =>
+    obtain ⟨t, ht⟩ : ∃ t, (cmpName c).toList = 'S' :: 'E' :: t := by
+      cases c <;> exact ⟨_, rfl⟩
+    obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w (cmpName c) 'S'
+      (by rw [ht]; rfl) (by decide) (by decide)
+    exact lopn_plain _ _ _ _ h1 h2 (copyQ_withWidthTag w ht (by decide))
+  case cmpImm c w k =>
+    obtain ⟨t, ht⟩ : ∃ t, (cmpName c).toList = 'S' :: 'E' :: t := by
+      cases c <;> exact ⟨_, rfl⟩
+    obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w (cmpName c) 'S'
+      (by rw [ht]; rfl) (by decide) (by decide)
+    exact lopn_plain _ _ _ _ h1 h2 (copyQ_withWidthTag w ht (by decide))
 
 /-- The structured shift instruction is plain under any descriptor. -/
 theorem shiftLinstr_plain (mnem : String) (hm : mnem = "SHR" ∨ mnem = "SHL" ∨ mnem = "SAR")

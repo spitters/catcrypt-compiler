@@ -1855,15 +1855,20 @@ theorem opToLinstrR_names (op : JasminOp) (hop : OpPlain op) (dst : String)
     (srcs : List LOperand) :
     ∀ n ∈ instrNames (opToLinstrR op dst srcs), n = dst ∨ n ∈ srcs.flatMap opNames := by
   cases op <;> simp only [OpPlain] at hop
-  all_goals
-    simp only [opToLinstrR]
-    try split
-    all_goals
-      intro n hn
-      simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
-        List.flatMap_nil, List.mem_cons, List.not_mem_nil, or_false,
-        List.append_nil] at hn ⊢
-      tauto
+  all_goals first
+    | (simp only [opToLinstrR]
+       try split
+       all_goals
+         intro n hn
+         simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+           List.flatMap_nil, List.mem_cons, List.not_mem_nil, or_false,
+           List.append_nil] at hn ⊢
+         tauto)
+    | (intro n hn
+       simp only [opToLinstrR, instrNames, opNames, List.cons_append, List.nil_append,
+         List.flatMap_cons, List.flatMap_append, List.flatMap_nil, List.mem_cons,
+         List.append_nil] at hn ⊢
+       tauto)
 
 /-- A name the body walk of a loop node can mention: the accumulator register, an
     invariant base register, or a loop-node name starting with `L`. -/

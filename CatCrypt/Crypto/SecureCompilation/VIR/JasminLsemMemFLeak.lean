@@ -655,6 +655,33 @@ theorem straightLeakF_straightOps (Pj : JLeakParams) {Γ : Ctxt jasminDialect}
       convert List.nil_append _ using 2
       simp only [opToLinstrR]
       split <;> exact instrLeakB_quiet _ _ _ _ _ (exprArgs_leak _ _ _ _)
+  | cmp c heq args hbody ih =>
+      intro nArgs d st V hlen harg hagree
+      have hstep := lsemStepMem_cmpOp (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+        c heq args hagree
+      have hagree' := StoreAgreesM.stepReg
+        ((⟨JasminOp.cmp c _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      rw [straightOpsMem_cmp, straightLeakF_cons_of_step hstep, comCtLeak_var,
+        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
+      convert List.nil_append _ using 2
+      exact instrLeakB_quiet _ _ _ _ _ (exprArgs_leak _ _ _ _)
+  | cmpImm c heq args hbody ih =>
+      intro nArgs d st V hlen harg hagree
+      have hstep := lsemStepMem_cmpImmOp (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+        c heq args hagree
+      have hagree' := StoreAgreesM.stepReg
+        ((⟨JasminOp.cmpImm c _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      rw [straightOpsMem_cmpImm, straightLeakF_cons_of_step hstep, comCtLeak_var,
+        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
+      convert List.nil_append _ using 2
+      exact instrLeakB_quiet _ _ _ _ _ (fun o ho => by
+        rcases List.mem_append.mp ho with h | h
+        · exact exprArgs_leak _ _ _ _ o h
+        · rw [List.mem_singleton] at h
+          subst h
+          rfl)
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
   (straightOpsMem_plain scalarMemN_comOpsPlain)

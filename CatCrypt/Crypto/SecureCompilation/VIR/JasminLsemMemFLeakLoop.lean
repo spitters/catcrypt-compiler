@@ -216,6 +216,10 @@ theorem opToLinstrR_arrOK (op : JasminOp) (hop : OpPlain op) (dst : String)
   cases op <;> simp only [OpPlain] at hop
   all_goals first
     | exact ⟨by simp, hna⟩
+    | exact ⟨by simp, fun o ho b k he => by
+        rcases List.mem_append.mp ho with h | h
+        · exact hna o h b k he
+        · simp_all⟩
     | skip
   all_goals simp only [opToLinstrR]
   all_goals first
