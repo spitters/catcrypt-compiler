@@ -56,7 +56,8 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64 write64)
 
 /-- The frame-word move of the cell access `i` at position `k` of `body`: the load
     `MOVQ D, memName A off` or the store `MOVQ memName A off, S`, with `A` the array whose
-    pointer the base register holds there (`accArr`); every other instruction itself. -/
+    pointer the base register holds there (`accArr`); every other instruction, the address
+    `LEA:64 d, mem.B.off` of a cell among them, itself. -/
 def cellMove (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (i : Linstr) :
     Linstr :=
   match cellA? i.li_i with
@@ -68,7 +69,7 @@ def cellMove (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
       match accArr slotArr body k B with
       | some (A, _) => ⟨i.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩
       | none => i
-  | none => i
+  | _ => i
 
 /-- **The cell body**: every cell access replaced by its frame-word move. -/
 def cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd) : Lcmd :=
@@ -86,21 +87,29 @@ theorem cellMove_of_none {slotArr : String → Option (String × Nat)} {body : L
     {i : Linstr} (h : cellA? i.li_i = none) : cellMove slotArr body k i = i := by
   simp [cellMove, h]
 
+theorem cellMove_of_lea {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {i : Linstr} {D B : String} {off : Nat} (h : cellA? i.li_i = some (.lea D B off)) :
+    cellMove slotArr body k i = i := by
+  simp [cellMove, h]
+
 theorem cellA_some {x : LinstrR} {c : CellOp} (h : cellA? x = some c) :
-    ∃ d o n, x = .Lopn [.reg d] o [.reg n] ∧ (o = "LOAD:64" ∨ o = "STORE:64") := by
+    ∃ d o n, x = .Lopn [.reg d] o [.reg n] ∧
+      (o = "LOAD:64" ∨ o = "STORE:64" ∨ o = "LEA:64") := by
   unfold cellA? at h
   split at h
   · rename_i d o n
     split at h
     · exact ⟨d, o, n, rfl, Or.inl (by assumption)⟩
     · split at h
-      · exact ⟨d, o, n, rfl, Or.inr (by assumption)⟩
-      · cases h
+      · exact ⟨d, o, n, rfl, Or.inr (Or.inl (by assumption))⟩
+      · split at h
+        · exact ⟨d, o, n, rfl, Or.inr (Or.inr (by assumption))⟩
+        · cases h
   · cases h
 
 theorem slotMov_cell {x : LinstrR} {c : CellOp} (h : cellA? x = some c) : slotMov? x = none := by
   obtain ⟨d, o, n, rfl, ho⟩ := cellA_some h
-  rcases ho with rfl | rfl <;> simp [slotMov?]
+  rcases ho with rfl | rfl | rfl <;> simp [slotMov?]
 
 /-- The slot moves of the cell body name no array slot: each frame-word move of a cell has
     no array-slot operand. -/
@@ -119,10 +128,9 @@ theorem cellA_ld {x : LinstrR} {D B : String} {off : Nat} (h : cellA? x = some (
       obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
       exact ⟨n, rfl, hp⟩
-    · split at h
-      · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
-        cases he
-      · cases h
+    · split_ifs at h
+      all_goals obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      all_goals cases he
   · cases h
 
 theorem cellA_st {x : LinstrR} {B S : String} {off : Nat} (h : cellA? x = some (.st B off S)) :
@@ -139,7 +147,26 @@ theorem cellA_st {x : LinstrR} {B S : String} {off : Nat} (h : cellA? x = some (
         obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
         cases he
         exact ⟨d, rfl, hp⟩
-      · cases h
+      · split_ifs at h
+        obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+        cases he
+  · cases h
+
+theorem cellA_lea {x : LinstrR} {D B : String} {off : Nat}
+    (h : cellA? x = some (.lea D B off)) :
+    ∃ n, x = .Lopn [.reg D] "LEA:64" [.reg n] ∧ cellParts? n = some (B, off) := by
+  unfold cellA? at h
+  split at h
+  · rename_i d o n
+    split_ifs at h with h1 h2 h3
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · subst h3
+      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+      exact ⟨n, rfl, hp⟩
   · cases h
 
 theorem hasPrefix_memName (A : String) (off : Nat) : hasPrefix (memName A off) "mem." = true := by
@@ -224,7 +251,7 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                         rw [hmv] at hb'
                         rw [reloadOf_succ_lopn hb' hm hxn]
                         simp only [List.any_cons, List.any_nil, Bool.or_false, dstHitB,
-                          hnd.2, beq_iff_eq, hnd.1, decide_false, Bool.false_or, if_false]
+                          hnd.2, beq_iff_eq, hnd.1, if_false]
                         exact hIH
                   | st B off S =>
                       obtain ⟨n, hxn, -⟩ := cellA_st hc
@@ -249,6 +276,10 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                         rw [hmv] at hb'
                         rw [reloadOf_succ_lopn hb' hm hx, hnd]
                         exact hIH
+                  | lea D B off =>
+                      rw [cellMove_of_lea hc] at hb'
+                      rw [reloadOf_succ_lopn hb' hm hx, hnd]
+                      exact hIH
 
 /-- The array of an access in the body, through a name that is no cell name, is its array in
     the cell body. -/
@@ -384,6 +415,7 @@ theorem cellMove_lret {slotArr : String → Option (String × Nat)} {body : Lcmd
       | st B off S =>
           simp only
           split <;> simp [hx]
+      | lea D B off => rfl
 
 theorem haltedA_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd)
     (sa : LstateA) : haltedA (cellBody slotArr body) sa = haltedA body sa := by
@@ -437,11 +469,29 @@ theorem loadSafeAt_cellBody (slotArr : String → Option (String × Nat)) (rsp :
                 split at he
                 · simp at he
                 · exact hn1 ii D B I he
+            | lea D' B' off => exact hn1 ii D B I he
           constructor
           · intro _ ii D B I h
             exact absurd (Option.some.inj h) (hn1 ii D B I)
           · intro _ ii D B I h
             exact absurd (Option.some.inj h) (hn2 ii D B I)
+
+/-- **An instruction that the cell body keeps steps alike in the body and the cell body**,
+    when it is no conditional branch. -/
+theorem stepA_cellBody_of_fix {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa : LstateA} {zf : Bool}
+    {b0 : Linstr} (hb0 : body[sa.reg.lpc]? = some b0)
+    (hfix : cellMove slotArr body sa.reg.lpc b0 = b0)
+    (hnc : ∀ cc l, b0.li_i ≠ .Lcond cc l) :
+    stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
+  have hbC : (cellBody slotArr body)[sa.reg.lpc]? = some b0 := by
+    rw [cellBody_getElem?, hb0, Option.map_some, hfix]
+  unfold stepA
+  rw [hbC, hb0]
+  obtain ⟨ii, li⟩ := b0
+  cases li with
+  | Lcond c l => exact absurd rfl (hnc c l)
+  | _ => simp only [tagAt_cellBody]
 
 /-! ## 2. One step of a straight body -/
 
@@ -671,6 +721,9 @@ theorem cell_step {frame : String → Option (BitVec 64)}
               (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc)) hacc) hBf
             rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
             exact hst
+        | lea D B off =>
+            rw [stepA_cellBody_of_fix hb0 (cellMove_of_lea hc) (hnc _ _ hb0)]
+            exact hst
 
 /-- **The image of the cell body simulated on the body.** For a straight body (no
     conditional branch) whose cell body passes the gate `imgGateB` and the class `physImgB`,
@@ -764,15 +817,16 @@ theorem classifyK_cellMove (slotArr : String → Option (String × Nat)) (body :
     obtain ⟨d, o, n, hx, ho⟩ := cellA_some hca
     have h0 : classifyK i.li_i = none := by
       rw [hx]
-      rcases ho with rfl | rfl <;>
+      rcases ho with rfl | rfl | rfl <;>
         simp [classifyK, show LprogBytes.castMovBits "LOAD:64" = none from by decide,
-          show LprogBytes.castMovBits "STORE:64" = none from by decide]
+          show LprogBytes.castMovBits "STORE:64" = none from by decide,
+          show LprogBytes.castMovBits "LEA:64" = none from by decide]
     have hm : ∀ a b : String, classifyK (.Lopn [.reg a] "MOVQ" [.reg b]) = none := fun a b => by
       simp [classifyK, show LprogBytes.castMovBits "MOVQ" = none from by decide]
     rw [h0]
     unfold cellMove
     rw [hca]
-    cases op <;> simp only <;> split <;> first | exact h0 | exact hm _ _
+    cases op <;> simp only <;> (try split) <;> first | exact h0 | exact hm _ _
 
 /-- The cast width analysis of the cell body is that of the body. -/
 theorem narrowIn_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd) :
@@ -885,6 +939,9 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               exact width_of_getW hp
             · exact hW' (Or.inr (Or.inr (Or.inr (List.mem_filterMap.mpr
                 ⟨.reg S, by simp, hab⟩)))) hg hcar hn'
+      | lea D B off =>
+          rw [cellMove_of_lea (i := ⟨ii, .Lopn ds o ss⟩) hca] at hbC
+          exact hW ii ds o ss hbC r hr hg hc hn'
 
 /-- **One step of a straight body with cells and carry chains through its cell body.** -/
 theorem cell_stepW {frame : String → Option (BitVec 64)}
@@ -959,6 +1016,9 @@ theorem cell_stepW {frame : String → Option (BitVec 64)}
             obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
               (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc)) hacc) hBf
             rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
+            exact hst
+        | lea D B off =>
+            rw [stepA_cellBody_of_fix hb0 (cellMove_of_lea hc) (hnc _ _ hb0)]
             exact hst
 
 /-- **The image of the cell body simulated on the body, with carry chains.**

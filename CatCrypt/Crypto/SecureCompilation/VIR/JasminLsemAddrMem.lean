@@ -35,6 +35,8 @@ pattern of the export.
   32 bits;
 * `LOADIDX dst, (base, idx, sc)` loads the word at `reg base + sc · reg idx`;
 * `STOREIDX _, (base, idx, sc), val` stores `val` at `reg base + sc · reg idx`;
+* `LOAD:64 d, mem.B.off` and `STORE:64 mem.B.off, v` load and store the word at
+  `reg B + off`, and `LEA:64 d, mem.B.off` writes `reg B + off` to `d`;
 * every other register-tagged instruction is `fstepF` on the register file.
 
 `runStraightA` and `runBoundedStraightA` are the folds `runStraightF` and
@@ -156,19 +158,23 @@ def cellParts? (n : String) : Option (String × Nat) :=
     | _ => none
   else none
 
-/-- A whole-word access of a cell `[B + off]`: a load into `d`, or a store of `v`. -/
+/-- An instruction on a cell name `mem.B.off`: a whole-word load of `[B + off]` into `d`, a
+    whole-word store of `v` to `[B + off]`, or the address `B + off` into `d`. -/
 inductive CellOp where
   /-- `LOAD:64 d, mem.B.off`: `d := [B + off]`. -/
   | ld (d b : String) (off : Nat)
   /-- `STORE:64 mem.B.off, v`: `[B + off] := v`. -/
   | st (b : String) (off : Nat) (v : String)
+  /-- `LEA:64 d, mem.B.off`: `d := B + off`. -/
+  | lea (d b : String) (off : Nat)
 
-/-- The wire forms `Lopn [.reg d] "LOAD:64" [.reg n]` and `Lopn [.reg n] "STORE:64" [.reg v]`
-    with `n` a cell name, as their cell access. -/
+/-- The wire forms `Lopn [.reg d] "LOAD:64" [.reg n]`, `Lopn [.reg n] "STORE:64" [.reg v]` and
+    `Lopn [.reg d] "LEA:64" [.reg n]` with `n` a cell name, as their cell operation. -/
 def cellA? : LinstrR → Option CellOp
   | .Lopn [.reg d] opn [.reg n] =>
       if opn = "LOAD:64" then (cellParts? n).map fun p => .ld d p.1 p.2
       else if opn = "STORE:64" then (cellParts? d).map fun p => .st p.1 p.2 n
+      else if opn = "LEA:64" then (cellParts? n).map fun p => .lea d p.1 p.2
       else none
   | _ => none
 
@@ -266,7 +272,8 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
 /-- One step of the address machine. `frame` maps a frame-slot name to its address. A move
     from or to a frame slot and a compare against one read or write the memory at the
     slot's address; a whole-word access of a cell `mem.B.off` reads or writes the memory at
-    the address in `B` plus `off`; a carry-chain add or carry-out binding with a frame-slot
+    the address in `B` plus `off`; the address of a cell `LEA:64 d, mem.B.off` writes
+    the address in `B` plus `off` to `d`, with no memory access; a carry-chain add or carry-out binding with a frame-slot
     operand reads its slot word sources and a slot carry-in (the low bit of the word) at the
     slot's address and writes a slot destination at the slot's address, the whole word for
     the add and the low byte (`setcWordA`) for the carry-out binding; an immediate move
@@ -327,6 +334,11 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                         reg := sa.reg.nextPc
                         mem := write64 sa.mem (p + BitVec.ofNat 64 off) x }, zf)
                   | _, _ => none
+              | some (.lea d b off) =>
+                  match sa.reg.getW b 64 with
+                  | some p => some ({ sa with reg := (sa.reg.setReg d
+                      (p + BitVec.ofNat 64 off)).nextPc }, zf)
+                  | none => none
               | none =>
                   match slotCarry? frame i.fst with
                   | some (lo, d, a, s, c) =>
@@ -463,6 +475,15 @@ theorem fstepA_stm (frame : String → Option (BitVec 64)) {n S B : String} {off
           reg := sa.reg.nextPc
           mem := write64 sa.mem (p + BitVec.ofNat 64 off) v }, zf) := by
   simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS]
+
+/-- **The address of a cell.** `LEA:64 D, n`, `n` the cell `[B + off]`, writes the address in
+    `B` plus `off` to `D`; the memory and the flags are unchanged. -/
+theorem fstepA_lea (frame : String → Option (BitVec 64)) {D n B : String} {off : Nat}
+    (hn : cellParts? n = some (B, off)) {sa : LstateA} {p : BitVec 64}
+    (hB : sa.reg.getW B 64 = some p) (zf : Bool) :
+    fstepA frame (.Lopn [.reg D] "LEA:64" [.reg n], .reg none) sa zf
+      = some ({ sa with reg := (sa.reg.setReg D (p + BitVec.ofNat 64 off)).nextPc }, zf) := by
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB]
 
 /-- **The immediate store into a frame slot.** `MOV:64 q, #v` with `q` a frame slot at `a`
     writes the 64-bit word of `v` at `a`. -/

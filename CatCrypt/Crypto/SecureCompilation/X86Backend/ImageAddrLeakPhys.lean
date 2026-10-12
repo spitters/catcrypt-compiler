@@ -97,7 +97,8 @@ def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
     destination. An indexed access reads or writes `base + sc · idx`, with the index the
     value `idxVal` of the index register (its 64-bit word when the access steps); a move
     from or to a frame slot, a compare against one and an immediate move into one access
-    the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`; a
+    the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`, and
+    the address `LEA:64 d, mem.B.off` of a cell accesses no memory; a
     carry-chain instruction accesses its frame-slot carry-in, its frame-slot word sources and
     its frame-slot destination; a select accesses its frame-slot values and its frame-slot
     destination, whatever the condition. Every other instruction emits nothing. -/
@@ -141,6 +142,7 @@ def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : Lsta
                   match sa.reg.getW b 64 with
                   | some p => [evA (p + BitVec.ofNat 64 off)]
                   | none => []
+              | some (.lea _ _ _) => []
               | none =>
                   match slotCarry? frame i.fst with
                   | some (_, d, a, s, c) =>
@@ -269,6 +271,12 @@ theorem instrLeakA_stm (frame : String → Option (BitVec 64)) {n S B : String} 
     instrLeakA frame (.Lopn [.reg n] "STORE:64" [.reg S], .reg none) sa
       = [evA (p + BitVec.ofNat 64 off)] := by
   simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
+
+/-- The address `LEA:64 D, n` of a cell `n` accesses no memory. -/
+theorem instrLeakA_lea (frame : String → Option (BitVec 64)) {D n B : String} {off : Nat}
+    (hn : cellParts? n = some (B, off)) (sa : LstateA) :
+    instrLeakA frame (.Lopn [.reg D] "LEA:64" [.reg n], .reg none) sa = [] := by
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn]
 
 /-- The indexed load `LOADIDX d, (b, idx, sc)` accesses `b + sc · idx`. -/
 theorem instrLeakA_ldx (frame : String → Option (BitVec 64)) (d b idx : String) (sc : Nat)

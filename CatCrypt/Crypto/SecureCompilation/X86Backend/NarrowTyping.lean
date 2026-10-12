@@ -102,13 +102,22 @@ theorem cellA?_dst {i : LinstrR} {d b : String} {off : Nat} (h : cellA? i = some
     d ∈ dstNames i := by
   unfold cellA? at h
   split at h
-  · split at h
-    · obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
-      cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames]
-    · split at h
-      · obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
-        cases hp
-      · cases h
+  · split_ifs at h
+    all_goals obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+    all_goals first
+      | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
+      | cases hp
+  · cases h
+
+theorem cellA?_lea_dst {i : LinstrR} {d b : String} {off : Nat}
+    (h : cellA? i = some (.lea d b off)) : d ∈ dstNames i := by
+  unfold cellA? at h
+  split at h
+  · split_ifs at h
+    all_goals obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+    all_goals first
+      | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
+      | cases hp
   · cases h
 
 theorem slotCarry?_dst {frame : String → Option (BitVec 64)} {i : LinstrR} {lo : Bool}
@@ -155,6 +164,7 @@ theorem fstepA_lvm_of_not_dst {frame : String → Option (BitVec 64)} {i : Linst
          | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ loadIdxA?_dst (by assumption)))
          | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ slotMov?_dst (by assumption)))
          | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ cellA?_dst (by assumption)))
+         | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ cellA?_lea_dst (by assumption)))
          | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ slotCarry?_dst (by assumption)))
          | exact setReg_nextPc_lvm _ (fun e => hr (e ▸ slotCmov?_dst (by assumption))))
     | simp at h

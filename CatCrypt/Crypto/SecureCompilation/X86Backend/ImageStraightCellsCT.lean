@@ -1617,7 +1617,8 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           (by rw [normA_castW hw, tagA_lopn h1 h2]) ?_ s₁ s₂
         have hl : o ≠ "LOAD:64" := by rintro rfl; simp [castTagW] at hw
         have hs : o ≠ "STORE:64" := by rintro rfl; simp [castTagW] at hw
-        simp [cellA?, hl, hs]
+        have hle : o ≠ "LEA:64" := by rintro rfl; simp [castTagW] at hw
+        simp [cellA?, hl, hs, hle]
       split at hok
       · rename_i D n hmv
         have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by

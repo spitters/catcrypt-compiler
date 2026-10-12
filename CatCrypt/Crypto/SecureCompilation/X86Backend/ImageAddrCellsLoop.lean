@@ -115,7 +115,7 @@ theorem llabel_of_cellMove {slotArr : String → Option (String × Nat)} {body :
       obtain ⟨d, o, n, hx, -⟩ := cellA_some hc
       unfold cellMove at h
       rw [hc] at h
-      cases c <;> simp only at h <;> split at h <;> simp [hx] at h
+      cases c <;> simp only at h <;> (try split at h) <;> simp [hx] at h
 
 /-- **The cell body keeps the position of a label.** -/
 theorem labelAt_cellBody (slotArr : String → Option (String × Nat)) (body : Lcmd)
@@ -182,6 +182,11 @@ theorem stepA_cellBody {frame : String → Option (BitVec 64)}
                 obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
                 exact stepA_cellBody_st hb0 hc hacc
                   (hptr B A m hacc (hF.stGp _ _ B off S hb0 hc) hBf) hfr hSf
+            | lea D B off =>
+                unfold stepA
+                rw [hbC, hb0, cellMove_of_lea hc]
+                obtain ⟨ii, li⟩ := b0
+                cases li <;> simp only [tagAt_cellBody, labelAt_cellBody]
 
 /-- A frame-word move that is a conditional branch is the frame-word move of that branch. -/
 theorem lcond_of_cellMove {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
@@ -194,7 +199,7 @@ theorem lcond_of_cellMove {slotArr : String → Option (String × Nat)} {body : 
       obtain ⟨d, o, n, hx, -⟩ := cellA_some hc
       unfold cellMove at h
       rw [hc] at h
-      cases c <;> simp only at h <;> split at h <;> simp [hx] at h
+      cases c <;> simp only at h <;> (try split at h) <;> simp [hx] at h
 
 /-! ## 2. The step at a conditional branch -/
 

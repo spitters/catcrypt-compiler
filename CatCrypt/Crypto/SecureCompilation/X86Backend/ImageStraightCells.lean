@@ -508,7 +508,8 @@ theorem runStraightF_argBind_empty {σ : AbiLayout} {nm : String → String} {R 
 
 /-- A decision of the cell frames of a body: the base of every cell access, and the stored
     register of every cell store, are general-purpose names; the base is reloaded from the
-    slot of an array `A`; the offset is `8 j` with `memName A (8 j)` a cell of `A`. -/
+    slot of an array `A`; the offset is `8 j` with `memName A (8 j)` a cell of `A`. The base
+    of the address `LEA:64 d, mem.B.off` of a cell is the stack pointer `RSP`. -/
 def cellAccB (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) : Bool :=
   (List.range body.length).all fun k =>
     match body[k]? with
@@ -520,6 +521,7 @@ def cellAccB (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) 
         match cellA? i.li_i with
         | some (.ld _ B off) => gpOk B && arrOk B off
         | some (.st B off S) => gpOk B && gpOk S && arrOk B off
+        | some (.lea _ B _) => B == "RSP"
         | none => true
     | none => true
 
@@ -563,6 +565,7 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
         | some (.st B off S) => gpOk B && gpOk S && (match accArr sl body k B with
             | some (A, _) => off % 8 == 0 && cellIdx R (memName A off) == some (A, off / 8)
             | none => false)
+        | some (.lea _ B _) => B == "RSP"
         | none => true) = true) := by
     intro k i hb
     have hk : k < body.length := (List.getElem?_eq_some_iff.mp hb).1

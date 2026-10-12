@@ -306,6 +306,9 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
           rw [instrLeakA_stm frame hn hp,
             instrLeakA_slotStore frame (q := memName A off) (S := S) (by simp [slotMov?]) hSf
               hfr]
+      | lea D B off =>
+          unfold stepLeakA
+          rw [hbC, hb0, cellMove_of_lea hc]
 
 /-- **The events of a step at the relation of the image simulation.** From an address state
     related by `ImgRel` to a state of the image of the cell body, under the gate `imgGateB`,
@@ -616,21 +619,23 @@ theorem cellA?_normA {x : LinstrR} (h : cellA? x = none) : cellA? (normA x) = no
           simp only [if_true, LinstrR.Lopn.injEq] at heq
           obtain ⟨-, ho, -⟩ := heq
           subst ho
-          rw [if_neg (by decide +kernel), if_neg (by decide +kernel)]
+          rw [if_neg (by decide +kernel), if_neg (by decide +kernel), if_neg (by decide +kernel)]
         · rfl
       · simpa [normA, hm] using h
   | _ => exact h
 
 /-- **The events of one step under the gate with carry chains.** From states related by
-    `ImgRelW`, at an instruction `bi` of a body that passes the gate `imgGateBW`, which
-    accesses no cell and is no conditional branch, a step of the address machine emits
-    `posTW` of the events of the image instruction, at every fixed state `s0`. -/
+    `ImgRelW`, at an instruction `bi` of a body that passes the gate `imgGateBW`, whose only
+    cell operation is the address `LEA:64` of a cell and which is no conditional branch, a
+    step of the address machine emits `posTW` of the events of the image instruction, at every
+    fixed state `s0`. -/
 theorem step_leakW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
     (hgate : imgGateBW frame slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRelW frame slotArr base body s sa zf) (hlt : sa.reg.lpc < body.length - 1)
-    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) (hcell : cellA? bi.li_i = none)
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi)
+    (hcell : ∀ c, cellA? bi.li_i = some c → ∃ D B off, c = .lea D B off)
     (hnc : ∀ c l, bi.li_i ≠ .Lcond c l) (s0 : LstateA) :
     stepLeakA frame body sa zf
       = posTW frame base s0 bi.li_i
@@ -688,19 +693,28 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                     simpa [normA] using hst
                   simp [instrLeakA, tagA, hs']
                 · rw [tagA_lopn h1 h2]
-                  exact instrLeakA_reg_indep (cellA?_normA hcell) _ sa s0
+                  cases hc : cellA? (.Lopn ds o ss) with
+                  | none => exact instrLeakA_reg_indep (cellA?_normA hc) _ sa s0
+                  | some c =>
+                      obtain ⟨D, B, off, rfl⟩ := hcell c hc
+                      obtain ⟨n, hx, hn⟩ := cellA_lea hc
+                      rw [hx]
+                      simp [normA, instrLeakA, slotMov?, slotCmp?, cellA?, hn]
   | Lcond c l => exact absurd rfl (hnc c l)
   | _ => simp [stepLeakA, hb, posTW, loadIdxA?, storeIdxA?]
 
-/-- No instruction of the cell body of a body with cell frames accesses a cell. -/
+/-- The only cell operation of an instruction of the cell body of a body with cell frames is
+    the address `LEA:64` of a cell. -/
 theorem cellA?_cellBody {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hF : CellFrames frame slotArr base rsp body) {k : Nat} {bi : Linstr}
-    (hb : (cellBody slotArr body)[k]? = some bi) : cellA? bi.li_i = none := by
+    (hb : (cellBody slotArr body)[k]? = some bi) :
+    ∀ c, cellA? bi.li_i = some c → ∃ D B off, c = .lea D B off := by
   rw [cellBody_getElem?] at hb
   obtain ⟨b0, hb0, rfl⟩ := Option.map_eq_some_iff.mp hb
+  intro c hc'
   cases hc : cellA? b0.li_i with
-  | none => rw [cellMove_of_none hc]; exact hc
+  | none => rw [cellMove_of_none hc, hc] at hc'; cases hc'
   | some op =>
       cases op with
       | ld D B off =>
@@ -708,15 +722,18 @@ theorem cellA?_cellBody {frame : String → Option (BitVec 64)}
           have hm : cellMove slotArr body k b0
               = ⟨b0.li_ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
             simp [cellMove, hc, hacc]
-          rw [hm]
-          simp [cellA?]
+          rw [hm] at hc'
+          simp [cellA?] at hc'
       | st B off S =>
           obtain ⟨A, m, hacc, -⟩ := hF.st _ _ B off S hb0 hc
           have hm : cellMove slotArr body k b0
               = ⟨b0.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
             simp [cellMove, hc, hacc]
-          rw [hm]
-          simp [cellA?]
+          rw [hm] at hc'
+          simp [cellA?] at hc'
+      | lea D B off =>
+          rw [cellMove_of_lea hc, hc] at hc'
+          exact ⟨D, B, off, (Option.some.inj hc').symm⟩
 
 /-- **The physical trace of the image simulation under the gate with carry chains** along
     the instructions `xs` of `body` from position `k`: at each instruction `x`, `posTW` of

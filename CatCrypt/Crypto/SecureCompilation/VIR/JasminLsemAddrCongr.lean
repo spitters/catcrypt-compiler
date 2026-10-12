@@ -717,6 +717,15 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
               split
               · exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
               · exact ORel.none
+            · obtain ⟨⟨b, off⟩, hp, he⟩ := Option.map_eq_some_iff.1 hcl
+              subst he
+              have hb : readsI (.Lopn [.reg d] o [.reg n]) b := cell_reads (by simp) hp
+              simp only
+              rw [getW_congr hN hb]
+              split
+              · exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1,
+                  h.2.2.2, rfl⟩
+              · exact ORel.none
           · cases hcl
       | some p =>
         obtain ⟨d, x, q⟩ := p
