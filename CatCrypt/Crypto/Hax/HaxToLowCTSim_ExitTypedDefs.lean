@@ -172,9 +172,11 @@ def WidthOp.sexpr (w : Nat) : WidthOp → SExpr → SExpr → SExpr
 
 /-- The `SExpr` of a scalar operation on the scalars `a` and `b`: the operations of
     `scalarOpExpr`, their capitalised forms, the checked additions and subtractions at the
-    tags `64` and `size` (`Add#64`, `Add#size`, `Sub#64`, `Sub#size`) as `Add` and `Sub`, the
+    unsigned tags `8`, `16`, `32`, `64` and `size` (`Add#w`, `Sub#w`) as `Add` and `Sub`, the
     Boolean connectives `&&`, `and` as `SAnd` and `||`, `or` as `orExprN` (exact on the
-    decodings `0` and `1` of two Booleans), and the width-tagged calls of `widthOpOf`. -/
+    decodings `0` and `1` of two Booleans), and the width-tagged calls of `widthOpOf`. A
+    checked operation at a tag is defined only where its result lies below `2 ^ w`, so its
+    value is the unmasked sum or difference. -/
 def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   match op with
   | "lt" | "Lt" => some (.SLt a b)
@@ -183,8 +185,8 @@ def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   | "ge" | "Ge" => some (.SSub (.SLit 1) (.SLt a b))
   | "eq" | "Eq" => some (.SSub (.SSub (.SLit 1) (.SLt a b)) (.SLt b a))
   | "ne" | "Ne" => some (.SAdd (.SLt a b) (.SLt b a))
-  | "add" | "Add" | "Add#64" | "Add#size" => some (.SAdd a b)
-  | "sub" | "Sub" | "Sub#64" | "Sub#size" => some (.SSub a b)
+  | "add" | "Add" | "Add#8" | "Add#16" | "Add#32" | "Add#64" | "Add#size" => some (.SAdd a b)
+  | "sub" | "Sub" | "Sub#8" | "Sub#16" | "Sub#32" | "Sub#64" | "Sub#size" => some (.SSub a b)
   | "&&" | "and" => some (.SAnd a b)
   | "||" | "or" => some (orExprN a b)
   | _ => (widthOpOf op).map fun p => p.2.sexpr p.1 a b

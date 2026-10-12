@@ -3998,8 +3998,9 @@ def ScalarCmp.val : ScalarCmp → Int → Int → Bool
 
 /-- The binary integer calls of `u64` code with their operation and width; the width `size`
     is `64`. The checked calls `Add`, `Sub`, `Mul` carry the tag of their unsigned integer
-    type and are defined where the operands and the result are below `2 ^ w`; the untagged
-    `Add` and `Sub` are the `64`-bit ones. -/
+    type (`8`, `16`, `32`, `64`, `size`) and are defined where the operands and the result are
+    below `2 ^ w`, where they are the operation on natural numbers; the untagged `Add` and
+    `Sub` are the `64`-bit ones. -/
 def hax64BinTable : List (String × ScalarBin × Nat) :=
   [("wrapping_add#8", .add, 8), ("wrapping_sub#8", .sub, 8), ("wrapping_mul#8", .mul, 8),
     ("BitAnd#8", .and, 8), ("BitOr#8", .or, 8), ("BitXor#8", .xor, 8), ("Shl#8", .shl, 8),
@@ -4024,7 +4025,10 @@ def hax64BinTable : List (String × ScalarBin × Nat) :=
     ("Sub", .subc, 64),
     ("Add#64", .addc, 64), ("Add#size", .addc, 64),
     ("Sub#64", .subc, 64), ("Sub#size", .subc, 64),
-    ("Mul#64", .mulc, 64), ("Mul#size", .mulc, 64)]
+    ("Mul#64", .mulc, 64), ("Mul#size", .mulc, 64),
+    ("Add#8", .addc, 8), ("Add#16", .addc, 16), ("Add#32", .addc, 32),
+    ("Sub#8", .subc, 8), ("Sub#16", .subc, 16), ("Sub#32", .subc, 32),
+    ("Mul#8", .mulc, 8), ("Mul#16", .mulc, 16), ("Mul#32", .mulc, 32)]
 
 /-- The unary integer calls of `u64` code with their operation and width. -/
 def hax64UnTable : List (String × ScalarUn × Nat) :=

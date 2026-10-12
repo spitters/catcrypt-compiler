@@ -421,12 +421,14 @@ theorem WidthOp.nat_lt {w : Nat} (hw : w ≤ 64) (o : WidthOp) (a b : Nat) :
     | exact Nat.xor_lt_two_pow (hmod _) (hmod _)
     | exact lt_of_le_of_lt (Nat.shiftRight_le _ _) (hmod _)
 
-/-- An operation of `scalarOpExprT` is one of its twenty named operations, one of the four
+/-- An operation of `scalarOpExprT` is one of its twenty-six named operations, one of the four
     Boolean connectives, or a name of `widthOpOf`. -/
 theorem scalarOpExprT_isSome_cases {op : String} {a b : SExpr}
     (h : (scalarOpExprT op a b).isSome = true) :
     op ∈ ["lt", "Lt", "gt", "Gt", "le", "Le", "ge", "Ge", "eq", "Eq", "ne", "Ne", "add", "Add",
-      "Add#64", "Add#size", "sub", "Sub", "Sub#64", "Sub#size"] ∨ op ∈ ["&&", "and", "||", "or"] ∨ ∃ p, widthOpOf op = some p := by
+      "Add#64", "Add#size", "Add#8", "Add#16", "Add#32", "sub", "Sub", "Sub#64", "Sub#size",
+      "Sub#8", "Sub#16", "Sub#32"] ∨ op ∈ ["&&", "and", "||", "or"] ∨
+      ∃ p, widthOpOf op = some p := by
   unfold scalarOpExprT at h
   split at h
   all_goals first | (left; simp; done) | (right; left; simp; done) | skip
@@ -543,6 +545,27 @@ theorem hax64Builtins_checked {f : String} {F : Nat → Nat → Nat} {P : Nat �
   cases hg
   exact ⟨rfl, hlt n m hn hm hP⟩
 
+/-- **A checked operation at a width of at most `64` bits is the `64`-bit operation.** Let the
+    arm of `f` in `hax64WordOps` be `g`, whose value on two natural numbers is `F n m` where
+    the guard `P n m` holds and undefined elsewhere, let `widthArrayOps` not define `f`, and
+    let the guard bound `F n m` below `2 ^ w` for a width `w ≤ 64`. Then a value of
+    `hax64Builtins f` is the word `F n m`, below `2 ^ 64`: no reduction modulo `2 ^ w`
+    occurs. -/
+theorem hax64Builtins_checkedAt {f : String} {g : Int → Int → Option Value}
+    {F : Nat → Nat → Nat} {P : Nat → Nat → Prop} [∀ n m, Decidable (P n m)] {w : Nat}
+    (hw : w ≤ 64) (harm : ∀ a b : Int, hax64WordOps f [.int a, .int b] = g a b)
+    (hg : ∀ n m : Nat, g n m = if P n m then some (.int (F n m : Nat)) else none)
+    (hA : ∀ a b : Int, widthArrayOps f [.int a, .int b] = none)
+    (hlt : ∀ n m, P n m → F n m < 2 ^ w)
+    (n m : Nat) (r : Value) (h : hax64Builtins f [.int n, .int m] = some r) :
+    r = .int (F n m) ∧ F n m < 2 ^ 64 := by
+  unfold hax64Builtins at h
+  rw [harm, hg, hA] at h
+  split_ifs at h with hP
+  · cases h
+    exact ⟨rfl, lt_of_lt_of_le (hlt n m hP) (Nat.pow_le_pow_right (by norm_num) hw)⟩
+  · cases h
+
 /-- A comparison `f` whose value in `hax64Builtins` on two integers is the Boolean `c a b`
     and whose template value on two naturals is `1` or `0` as `c` holds: the condition of
     `ScalarOpsSoundT` at `f` on two integer words. -/
@@ -558,20 +581,22 @@ theorem hax64_cmp_int {f : String} {c : Int → Int → Bool}
   obtain rfl : b = (nb : Int) := by omega
   exact hax64_bool_result (hc _ _) hbi (hexpr na nb)
 
-/-- The twenty named operations of `scalarOpExprT` in `hax64Builtins`: the condition of
+/-- The twenty-six named operations of `scalarOpExprT` in `hax64Builtins`: the condition of
     `ScalarOpsSoundT`.  The comparisons are defined on two integers (and `eq`, `Eq`, `ne`,
-    `Ne` on two Booleans), the checked additions `add`, `Add`, `Add#64`, `Add#size` and
-    subtractions `sub`, `Sub`, `Sub#64`, `Sub#size` on two integer words. -/
+    `Ne` on two Booleans), the checked additions `add`, `Add`, `Add#w` and subtractions
+    `sub`, `Sub`, `Sub#w` at the unsigned tags `w` of `8`, `16`, `32`, `64` and `size` on two
+    integer words. -/
 theorem hax64_named_sound {op : String} {va vb r : Value} {na nb : Nat}
     (hl : op ∈ ["lt", "Lt", "gt", "Gt", "le", "Le", "ge", "Ge", "eq", "Eq", "ne", "Ne", "add",
-      "Add", "Add#64", "Add#size", "sub", "Sub", "Sub#64", "Sub#size"])
+      "Add", "Add#64", "Add#size", "Add#8", "Add#16", "Add#32", "sub", "Sub", "Sub#64",
+      "Sub#size", "Sub#8", "Sub#16", "Sub#32"])
     (hva : ScalarValN va) (hvb : ScalarValN vb)
     (hna : valueToScalar va = some na) (hnb : valueToScalar vb = some nb)
     (hbi : hax64Builtins op [va, vb] = some r) :
     ScalarValN r ∧ valueToScalar r = some (scalarOpNatT op na nb) := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
   rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals
     rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | ⟨a, rfl, ha0, ha⟩ | rfl <;>
     rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | ⟨b, rfl, hb0, hb⟩ | rfl
@@ -642,6 +667,24 @@ theorem hax64_named_sound {op : String} {va vb r : Value} {na nb : Nat}
         (fun a b => (_root_.Hax.hax64WordOps_addSize_eq_Add (a := a) (b := b)).trans
           (_root_.Hax.hax64WordOps_add a b)) (fun _ _ => rfl)
         (fun _ _ _ _ h => h))
+  -- `Add#8`
+  · exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintAddOp 8) (P := fun x y => x + y < 2 ^ 8) (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintAddOp_natCast 8) (fun _ _ => rfl) (fun _ _ h => h)
+        n m r h)
+  -- `Add#16`
+  · exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintAddOp 16) (P := fun x y => x + y < 2 ^ 16) (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintAddOp_natCast 16) (fun _ _ => rfl) (fun _ _ h => h)
+        n m r h)
+  -- `Add#32`
+  · exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintAddOp 32) (P := fun x y => x + y < 2 ^ 32) (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintAddOp_natCast 32) (fun _ _ => rfl) (fun _ _ h => h)
+        n m r h)
   -- `sub`
   · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
       (fun _ _ => rfl) (hax64Builtins_checked (P := fun x y => y ≤ x)
@@ -664,6 +707,26 @@ theorem hax64_named_sound {op : String} {va vb r : Value} {na nb : Nat}
         (fun a b => (_root_.Hax.hax64WordOps_subSize_eq_Sub (a := a) (b := b)).trans
           (_root_.Hax.hax64WordOps_Sub a b)) (fun _ _ => rfl)
         (fun _ _ hn _ _ => by omega))
+  -- `Sub#8`
+  · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintSubOp 8) (P := fun x y => y ≤ x ∧ x < 2 ^ 8) (w := 8) (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintSubOp_natCast 8) (fun _ _ => rfl)
+        (fun _ _ h => by omega) n m r h)
+  -- `Sub#16`
+  · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintSubOp 16) (P := fun x y => y ≤ x ∧ x < 2 ^ 16) (w := 16)
+        (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintSubOp_natCast 16) (fun _ _ => rfl)
+        (fun _ _ h => by omega) n m r h)
+  -- `Sub#32`
+  · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (fun n m r _ _ h => hax64Builtins_checkedAt
+        (g := _root_.Hax.uintSubOp 32) (P := fun x y => y ≤ x ∧ x < 2 ^ 32) (w := 32)
+        (by norm_num)
+        (fun _ _ => rfl) (_root_.Hax.uintSubOp_natCast 32) (fun _ _ => rfl)
+        (fun _ _ h => by omega) n m r h)
 
 /-- The width-tagged operations of `widthOpOf` in `hax64Builtins`: the condition of
     `ScalarOpsSoundT`. -/
@@ -711,10 +774,10 @@ theorem hax64_conn_sound {op : String} {va vb r : Value} {na nb : Nat}
 /-- **hax-lean's `u64` table computes the scalar operations.**  Every operation of
     `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar value whose
     decoding is `scalarOpNatT`: the fifty width-tagged calls of `widthOpTable` (`Shl#w` and
-    `Shr#w` undefined for an amount of `w` or more); `Add`, `add`, `Add#64`, `Add#size`
-    (undefined when the sum reaches `2^64`); `Sub`, `sub`, `Sub#64`, `Sub#size` (undefined
-    when the subtrahend exceeds the minuend); the
-    twelve comparisons on two integer words and `Eq`, `eq`, `Ne`, `ne` on two Booleans, each
+    `Shr#w` undefined for an amount of `w` or more); `Add`, `add` and `Add#w` at the unsigned
+    tags `8`, `16`, `32`, `64`, `size` (undefined when the sum reaches `2^w`, `2^64` untagged);
+    `Sub`, `sub` and `Sub#w` (undefined when the subtrahend exceeds the minuend, and at a tag
+    when the minuend reaches `2^w`); the twelve comparisons on two integer words and `Eq`, `eq`, `Ne`, `ne` on two Booleans, each
     a Boolean decoding to `1` or `0`; the connectives `&&`, `and`, `||`, `or` on two
     Booleans, a Boolean decoding to `1` or `0`. -/
 theorem scalarOpsSoundT_hax64Builtins : ScalarOpsSoundT hax64Builtins := by
