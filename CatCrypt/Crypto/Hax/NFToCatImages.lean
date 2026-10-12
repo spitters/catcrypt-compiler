@@ -212,6 +212,12 @@ theorem rotChain_image {Δ : Ctxt catCryptDialect} (right : Bool) (w k : Nat)
   cases right <;>
     exact ⟨by image_op, by image_op, by image_op, by image_op, by image_op, by image_op⟩
 
+theorem rotVarChain_image {Δ : Ctxt catCryptDialect} (right : Bool) (w : Nat)
+    (a b : Var Δ (.sword 64)) : OpResImages (rotVarChain right w a b) := by
+  cases right <;>
+    exact ⟨by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+      by image_op, by image_op, by image_op, by image_op⟩
+
 theorem notChain_image {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword 64)) :
     OpResImages (notChain w a) := by
   unfold notChain
@@ -280,7 +286,7 @@ theorem scalarRes2_image {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy}
     split at h
     · split at h
       · exact withVar1_image (fun x res hx => by cases hx; exact rotChain_image _ _ _ _) h
-      · cases h
+      · exact withVar2_image (fun x y res hx => by cases hx; exact rotVarChain_image _ _ _ _) h
     · exact withVar2_image (fun x y res hx => binChain_image hx) h
   · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
     exact withVar2_image (fun x y res hx => by cases hx; exact cmpChain_image _ _ _) h

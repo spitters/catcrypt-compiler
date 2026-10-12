@@ -47,8 +47,8 @@ times.
 * `catTy`, `VRel`, `VRelL` — the type map and the relation of values.
 * `Rd`, `RdRel`, `TRd`, `TRd.lift`, `TRd.liftApp`, `TRd.Agree` — readings, their relation to
   source values, and the readings of a context.
-* `scalarRes?`, `binChain`, `rotChain`, `unChain`, `cmpChain` — the translation of the
-  scalar table on `64`-bit words.
+* `scalarRes?`, `binChain`, `rotChain`, `rotVarChain`, `unChain`, `cmpChain` — the translation
+  of the scalar table on `64`-bit words.
 * `asCount`, `Rd.toCount`, `uintLit?` — the reading of a loop bound as a word, and the
   translation of a literal of an unsigned integer type.
 * `ctrRes`, `satSubRes`, `tripSub` — the loop counter and the trip count on a lower bound
@@ -541,7 +541,8 @@ def Rd.toCount {Δ : Ctxt catCryptDialect} (t : NfTy) : Rd Δ t → Option (Rd �
 Every scalar of the fragment is a `64`-bit word of the target. An operation of the scalar
 table at a width `w` below `64` computes on `64`-bit words and reduces the result modulo
 `2 ^ w` by a conjunction with the mask `maskW w`; a logical right shift and a rotation reduce
-their operand first. A rotation is by a literal amount, as two immediate shifts. A complement
+their operand first. A rotation by a literal amount is two immediate shifts; a rotation by
+any other amount is two variable shifts by the amount modulo `w` and its complement. A complement
 is the exclusive or with the all-ones word or with the mask. A comparison is `bvEq` on two
 words, or the carry of `x + ~~~y + c`, which is `1` exactly when `y ≤ x` at `c = 1` and when
 `y < x` at `c = 0`: the sum (`bvAddCarryLo`) and its carry (`bvAddCarryHi`) are bound one
@@ -627,6 +628,31 @@ def rotChain {Δ : Ctxt catCryptDialect} (right : Bool) (w k : Nat) (a : Var Δ 
         (.bind _ ⟨.bvOr 64, rfl, .cons (Var.there .here) (.cons .here .nil)⟩
           (.expr (andE .here (Var.there (Var.there (Var.there (Var.there .here))))))))))
 
+/-- The translation of a rotation of the scalar table at the width `w` by the amount in the
+    word `b`: the operand reduced modulo `2 ^ w`; the amount `j`, the conjunction of `b` with
+    `w - 1`, which is `b` modulo `w` at a width that is a power of two; the complement amount
+    `w - j`; the operand shifted by `j` and by `w - j` (`bvShiftRV`, `bvShiftLV`), the
+    disjunction, reduced modulo `2 ^ w`. -/
+def rotVarChain {Δ : Ctxt catCryptDialect} (right : Bool) (w : Nat)
+    (a b : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
+  .bind _ (cstE (maskW w)) (.bind _ (andE a.there .here)
+    (.bind _ (cstE (BitVec.ofNat 64 (w - 1))) (.bind _ (andE b.there.there.there .here)
+      (.bind _ (cstE (BitVec.ofNat 64 w))
+        (.bind _ ⟨.bvSub 64, rfl, .cons .here (.cons (Var.there .here) .nil)⟩
+          (.bind _ (if right then
+                ⟨.bvShiftRV 64, rfl, .cons (Var.there (Var.there (Var.there (Var.there .here))))
+                  (.cons (Var.there (Var.there .here)) .nil)⟩
+              else ⟨.bvShiftLV 64, rfl, .cons (Var.there (Var.there (Var.there (Var.there
+                  .here)))) (.cons (Var.there (Var.there .here)) .nil)⟩)
+            (.bind _ (if right then
+                  ⟨.bvShiftLV 64, rfl, .cons (Var.there (Var.there (Var.there (Var.there
+                    (Var.there .here))))) (.cons (Var.there .here) .nil)⟩
+                else ⟨.bvShiftRV 64, rfl, .cons (Var.there (Var.there (Var.there (Var.there
+                    (Var.there .here))))) (.cons (Var.there .here) .nil)⟩)
+              (.bind _ ⟨.bvOr 64, rfl, .cons (Var.there .here) (.cons .here .nil)⟩
+                (.expr (andE .here (Var.there (Var.there (Var.there (Var.there (Var.there
+                  (Var.there (Var.there (Var.there .here))))))))))))))))))
+
 /-- The complement of a word reduced modulo `2 ^ w`: at `w = 64` the exclusive or with the
     all-ones word; otherwise the mask, the exclusive or with it and the conjunction with it. -/
 def notChain {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword 64)) :
@@ -711,8 +737,8 @@ def withVar2 {Δ : Ctxt catCryptDialect} {r : NfTy} (ta tb : NfTy) (ra : Rd Δ t
         fun res => .bind _ (cstE (BitVec.ofNat 64 n)) (.bind _ (cstE (BitVec.ofNat 64 m)) res)
 
 /-- The translation of a binary call of the scalar table on two readings, at the result type
-    `r`: an integer call by `binChain`, a rotation by a literal amount by `rotChain`, a
-    comparison by `cmpChain`. -/
+    `r`: an integer call by `binChain`, a rotation by a literal amount by `rotChain` and by any
+    other amount by `rotVarChain`, a comparison by `cmpChain`. -/
 def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd Δ ta)
     (rb : Rd Δ tb) : (r : NfTy) → Option (OpRes Δ r)
   | .word 64 =>
@@ -720,7 +746,7 @@ def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd 
         if o = .rotr ∨ o = .rotl then
           match rb with
           | .lit k _ => withVar1 ta ra fun x => some (rotChain (o == .rotr) w k x)
-          | .var _ => none
+          | .var _ => withVar2 ta tb ra rb fun x y => some (rotVarChain (o == .rotr) w x y)
         else withVar2 ta tb ra rb fun x y => binChain o w x y
   | .bit =>
       (ImpToNF.scalarCmpOf f).bind fun c =>
@@ -1668,6 +1694,49 @@ theorem rotChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Boo
       BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
       toNat_and_maskW _ hw64, Nat.or_mod_two_pow, Nat.or_mod_two_pow, mod64_mod _ hw64]
 
+/-- At a width `w` of `8`, `16`, `32` or `64`, the conjunction of a word with `w - 1` is the
+    word modulo `w`, and `w` minus it is `w` minus the word modulo `w`. -/
+theorem rotAmount_toNat {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (b : BitVec 64) :
+    (b &&& BitVec.ofNat 64 (w - 1)).toNat = b.toNat % w ∧
+      (BitVec.ofNat 64 w - (b &&& BitVec.ofNat 64 (w - 1))).toNat = w - b.toNat % w := by
+  have hj : (b &&& BitVec.ofNat 64 (w - 1)).toNat = b.toNat % w := by
+    rcases hw with rfl | rfl | rfl | rfl
+    · exact toNat_and_maskW b (w := 3) (by norm_num)
+    · exact toNat_and_maskW b (w := 4) (by norm_num)
+    · exact toNat_and_maskW b (w := 5) (by norm_num)
+    · exact toNat_and_maskW b (w := 6) (by norm_num)
+  refine ⟨hj, ?_⟩
+  have hlt : b.toNat % w < w := Nat.mod_lt _ (by omega)
+  rw [BitVec.toNat_sub, BitVec.toNat_ofNat, hj]
+  rcases hw with rfl | rfl | rfl | rfl <;> omega
+
+/-- **The translation of a rotation by a word amount is related to its value.** -/
+theorem rotVarChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Bool) {w : Nat}
+    (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (a b : Var Δ (.sword 64)) :
+    OpResRel W (.word 64)
+      (BitVec.ofNat 64 (if right then _root_.Hax.rotrNat w (a.lookup W).toNat (b.lookup W).toNat
+        else _root_.Hax.rotlNat w (a.lookup W).toNat (b.lookup W).toNat))
+      (rotVarChain right w a b) := by
+  obtain ⟨hj, hj'⟩ := rotAmount_toNat hw (b.lookup W)
+  have hr := rotChain_rel W right hw (b.lookup W).toNat a
+  cases right
+  · change BitVec.ofNat 64 (_root_.Hax.rotlNat w (a.lookup W).toNat (b.lookup W).toNat) =
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<<
+          ((show BitVec 64 from b.lookup W) &&& BitVec.ofNat 64 (w - 1)).toNat) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) >>>
+          (BitVec.ofNat 64 w - ((show BitVec 64 from b.lookup W) &&&
+            BitVec.ofNat 64 (w - 1))).toNat)) &&& maskW w
+    rw [hj, hj']
+    exact hr
+  · change BitVec.ofNat 64 (_root_.Hax.rotrNat w (a.lookup W).toNat (b.lookup W).toNat) =
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>>
+          ((show BitVec 64 from b.lookup W) &&& BitVec.ofNat 64 (w - 1)).toNat) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) <<<
+          (BitVec.ofNat 64 w - ((show BitVec 64 from b.lookup W) &&&
+            BitVec.ofNat 64 (w - 1))).toNat)) &&& maskW w
+    rw [hj, hj']
+    exact hr
+
 /-- The exclusive or with a word, restricted to that word, is the complement restricted to
     it. -/
 theorem xor_and_self_eq_not_and (x m : BitVec 64) : (x ^^^ m) &&& m = ~~~x &&& m := by
@@ -1911,7 +1980,17 @@ theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         · simp only [ImpToNF.ScalarBin.nat, Option.some.injEq] at hrn
           subst hrn
           exact rotChain_rel W' false hw k a
-      · cases h
+      · refine withVar2_sound W h1 h2 _ y h ?_
+        intro Δ' W' a b res' hres' he1 he2
+        cases hres'
+        obtain ⟨rn, hrn, rfl⟩ := key _ _ he1 he2
+        rcases hrot with rfl | rfl
+        · simp only [ImpToNF.ScalarBin.nat, Option.some.injEq] at hrn
+          subst hrn
+          exact rotVarChain_rel W' true hw a b
+        · simp only [ImpToNF.ScalarBin.nat, Option.some.injEq] at hrn
+          subst hrn
+          exact rotVarChain_rel W' false hw a b
     · rename_i hrot
       refine withVar2_sound W h1 h2 _ y h ?_
       intro Δ' W' a b res' hres' he1 he2

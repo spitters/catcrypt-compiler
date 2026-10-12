@@ -537,6 +537,11 @@ theorem rotChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
     (right : Bool) (w k : Nat) (a : Var Δ (.sword 64)) : (rotChain right w k a).Quiet P := by
   cases right <;> simp [rotChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
 
+/-- The translation of a rotation by a word amount is quiet. -/
+theorem rotVarChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (right : Bool) (w : Nat) (a b : Var Δ (.sword 64)) : (rotVarChain right w a b).Quiet P := by
+  cases right <;> simp [rotVarChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
+
 /-- The translation of a unary call is quiet. -/
 theorem unChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     (o : ImpToNF.ScalarUn) (w : Nat) (a : Var Δ (.sword 64)) : (unChain o w a).Quiet P := by
@@ -635,7 +640,8 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
         · split at h
           · exact withVar1_quiet hP (fun a res' h' => by
               cases h'; exact rotChain_quiet hP _ _ _ a) h
-          · cases h
+          · exact withVar2_quiet hP (fun a b res' h' => by
+              cases h'; exact rotVarChain_quiet hP _ _ a b) h
         · exact withVar2_quiet hP (fun a b res' h' => binChain_quiet hP h') h
       · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
         refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr

@@ -17,11 +17,11 @@ the constants, the integer literals in `[0, 2^64)` at an integer, a `64`-bit wor
 unsigned integer of at most `64` bits, the subtraction of `64`-bit words, the loop counter at
 any lower bound, the trip count at a bound of an integer, a `64`-bit word or an unsigned
 integer, the binary, unary and comparison calls of the scalar table on integers and `64`-bit
-words other than the rotations, and `index`, `array_update` and `select` at the types of
-arrays of `64`-bit words, integers and `64`-bit words. `rotOpOk` is the rotation of the scalar
-table by an amount bound to an integer literal in `[0, 2^64)` at an integer or a `64`-bit word;
-`NBL` tracks these bindings as a list of flags aligned with the context. `nfToCat` is `some` on
-every program of `NB` at every reading of its context.
+words, the rotations by any amount among them, and `index`, `array_update` and `select` at the
+types of arrays of `64`-bit words, integers and `64`-bit words. `rotOpOk` is the rotation of the
+scalar table by an amount bound to an integer literal in `[0, 2^64)` at an integer or a `64`-bit
+word, a subset of `nbOp`; `NBL` tracks these bindings as a list of flags aligned with the
+context. `nfToCat` is `some` on every program of `NB` at every reading of its context.
 
 ## Main definitions
 
@@ -300,13 +300,10 @@ theorem emitRes_isSome_of {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy} {L :
 /-! ## 3. The operations of the domain -/
 
 /-- The binary, unary and comparison calls of the scalar table on integers and `64`-bit
-    words, other than the rotations. -/
+    words. -/
 def scalarCallOk (f : String) : List NfTy → NfTy → Bool
   | [ta, tb], .word 64 =>
-      ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb &&
-        (match ImpToNF.scalarBinOf f with
-          | some (o, _) => !(decide (o = .rotr) || decide (o = .rotl))
-          | none => false)
+      ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarBinOf f).isSome
   | [ta, tb], .bit =>
       ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarCmpOf f).isSome
   | [ta], .word 64 => ImpToNF.hax64NFWordTy ta && (ImpToNF.scalarUnOf f).isSome
@@ -410,15 +407,15 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
     obtain ⟨⟨hta, htb⟩, ho⟩ := h
     rcases rs with _ | ⟨ra, _ | ⟨rb, _ | _⟩⟩
     change (scalarRes2 f ta tb ra rb (.word 64)).isSome
-    simp only [scalarRes2]
-    split at ho
-    · rename_i o w hof
-      simp only [Bool.not_eq_true', Bool.or_eq_false_iff, decide_eq_false_iff_not] at ho
-      rw [hof]
-      simp only [Option.bind_some]
-      rw [if_neg (by rintro (h | h) <;> simp_all)]
-      exact withVar2_isSome hta htb _ _ fun x y => binChain_isSome w ho x y
-    · cases ho
+    obtain ⟨⟨o, w⟩, hof⟩ := Option.isSome_iff_exists.mp ho
+    simp only [scalarRes2, hof, Option.bind_some]
+    split
+    · cases rb with
+      | lit k _ => exact withVar1_isSome hta _ fun _ => rfl
+      | var _ => exact withVar2_isSome hta htb _ _ fun _ _ => rfl
+    · rename_i hrot
+      exact withVar2_isSome hta htb _ _ fun x y =>
+        binChain_isSome w ⟨fun h => hrot (Or.inl h), fun h => hrot (Or.inr h)⟩ x y
   · rename_i ta tb
     simp only [Bool.and_eq_true] at h
     obtain ⟨⟨hta, htb⟩, hc⟩ := h
