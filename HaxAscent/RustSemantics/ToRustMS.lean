@@ -310,7 +310,12 @@ def appRt (f : String) : List AVal → RustM AVal
     | none =>
       match tagTyAt? "cast#" f with
       | some ty => appCast ty a
-      | none => .fail .undef
+      | none =>
+        if f = "range_incl_end" then
+          match a.toInt? with
+          | some k => .ok (.int (k + 1))
+          | none => .fail .undef
+        else .fail .undef
   | [a, b] =>
     match wordOpAt? f with
     | some (ty, o) => appWord ty o a b
@@ -527,7 +532,19 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
           rw [show AVal.toValues [AVal.w ty' x] = [.int (enc x)] from rfl, cast_leaf,
             rcompOk_lift.mp (cast_u_square ty x)]
         · cases h
-      · cases h
+      · by_cases hi : f = "range_incl_end"
+        · rw [if_pos hi] at h
+          subst hi
+          split at h
+          · rename_i k hk
+            cases h
+            rw [show AVal.toValues [a] = [.int k] from by
+              rw [AVal.toValues, AVal.toValues, AVal.toValue_of_toInt? hk],
+              Hax.Ascent.RuntimeOps.range_incl_end_int]
+            rfl
+          · cases h
+        · rw [if_neg hi] at h
+          cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty o ho
@@ -1095,7 +1112,7 @@ theorem appExt_ok (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn)
 
 /-- The names of arity `n` that `appRt` reads. -/
 def rtNameOk (f : String) : Nat → Bool
-  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome
+  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome || f == "range_incl_end"
   | 2 => (wordOpAt? f).isSome || (AOp.ofName f).isSome || f == "index" || f == "repeat"
   | 3 => f == "array_update"
   | _ => false
