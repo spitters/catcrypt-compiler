@@ -334,7 +334,12 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       unfold catOp at h
       split at h
       · cases h; trivial
-      · cases h
+      · unfold uintLit? at h
+        split at h
+        · split at h
+          · cases h; exact (by image_op : HasImage (.bvConst 64 _))
+          · cases h
+        · cases h
   | ctr =>
       unfold catOp at h
       split at h

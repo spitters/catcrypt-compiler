@@ -217,31 +217,37 @@ theorem noVT_owned : NoVT CatLeakParams.owned := fun _ => rfl
 
 /-! ## Related values have equal readings -/
 
-/-- Values related by `VRel` have equal readings. -/
-theorem nfValNat_vrel : (t : NfTy) → (x : t.denote) → (y : (catTy t).denote) → VRel t x y →
-    nfValNat t x = catValNat (catTy t) y
-  | .word _, _, _, h => by subst h; rfl
-  | .int, z, y, h => by
+/-- Values related by `VRel` at a type other than an unsigned integer of a width have equal
+    readings. -/
+theorem nfValNat_vrel : (t : NfTy) → (∀ W, t ≠ .uint W) → (x : t.denote) →
+    (y : (catTy t).denote) → VRel t x y → nfValNat t x = catValNat (catTy t) y
+  | .word _, _, _, _, h => by subst h; rfl
+  | .int, _, z, y, h => by
       change z.toNat = y.toNat
       rw [show z = (y.toNat : Int) from h, Int.toNat_natCast]
-  | .bit, b, b', h => by subst h; rfl
-  | .unit, _, _, _ => rfl
-  | .arr _ (.word _), _, _, _ => rfl
-  | .arr _ .bit, _, _, h | .arr _ .unit, _, _, h | .arr _ .int, _, _, h
-  | .arr _ (.arr _ _), _, _, h | .arr _ (.pair _ _), _, _, h | .arr _ (.uint _), _, _, h
-  | .arr _ (.sint _), _, _, h | .arr _ .tnil, _, _, h | .arr _ (.tcons _ _), _, _, h
-  | .arr _ (.slice _), _, _, h | .pair _ _, _, _, h | .uint _, _, _, h | .sint _, _, _, h
-  | .tnil, _, _, h | .tcons _ _, _, _, h | .slice _, _, _, h => h.elim
+  | .bit, _, b, b', h => by subst h; rfl
+  | .unit, _, _, _, _ => rfl
+  | .arr _ (.word _), _, _, _, _ => rfl
+  | .uint W, hu, _, _, _ => absurd rfl (hu W)
+  | .arr _ .bit, _, _, _, h | .arr _ .unit, _, _, _, h | .arr _ .int, _, _, _, h
+  | .arr _ (.arr _ _), _, _, _, h | .arr _ (.pair _ _), _, _, _, h
+  | .arr _ (.uint _), _, _, _, h
+  | .arr _ (.sint _), _, _, _, h | .arr _ .tnil, _, _, _, h | .arr _ (.tcons _ _), _, _, _, h
+  | .arr _ (.slice _), _, _, _, h | .pair _ _, _, _, _, h | .sint _, _, _, _, h
+  | .tnil, _, _, _, h | .tcons _ _, _, _, _, h | .slice _, _, _, _, h => h.elim
 
-/-- Vectors related by `VRelL` have equal readings. -/
+/-- Vectors related by `VRelL` at types other than unsigned integers of a width have equal
+    readings. -/
 theorem valsNat_vrelL (P : CatLeakParams) : (ts : List NfTy) →
+    (∀ t ∈ ts, ∀ W, t ≠ .uint W) →
     (xs : Valuation (d := nfDialect) ts) → (ys : Valuation (d := catCryptDialect) (ts.map catTy)) →
     VRelL ts xs ys → valsNat nfLeakModel xs = valsNat (catLeakModel P) ys
-  | [], .nil, .nil, _ => rfl
-  | t :: ts, .cons x xs, .cons y ys, h => by
+  | [], _, .nil, .nil, _ => rfl
+  | t :: ts, hu, .cons x xs, .cons y ys, h => by
       change nfValNat t x :: valsNat nfLeakModel xs = catValNat (catTy t) y ::
         valsNat (catLeakModel P) ys
-      rw [nfValNat_vrel t x y h.1, valsNat_vrelL P ts xs ys h.2]
+      rw [nfValNat_vrel t (hu t List.mem_cons_self) x y h.1,
+        valsNat_vrelL P ts (fun t' ht' => hu t' (List.mem_cons_of_mem _ ht')) xs ys h.2]
 
 /-! ## The events of an operation -/
 
@@ -679,7 +685,15 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       unfold catOp at h
       split at h
       · cases h; rfl
-      · cases h
+      · unfold uintLit? at h
+        split at h
+        · split at h
+          · cases h
+            change Expr.ctLeak (catLeakModel P) (cstE (BitVec.ofNat 64 _)) W = _
+            rw [ctLeak_quiet _ W (by simp [cstE, catKind, opVT_none hP])]
+            rfl
+          · cases h
+        · cases h
   | ctr =>
       intro args res h
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
@@ -693,7 +707,7 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       intro args res h
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map tripRes
+        | .lit 0 _ => (Rd.toCount t (σ hi)).map tripRes
         | _ => none) = some res at h
       split at h
       · obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h

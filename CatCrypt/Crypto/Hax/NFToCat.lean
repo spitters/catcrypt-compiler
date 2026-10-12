@@ -15,9 +15,10 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 
 `nfToCat` translates a program of `NFProg nfDialect` over the `u64` table into a program of
 `NFProg catCryptDialect`, which `NFProgCatToJasmin.nfToComLVia` lowers to `ComL`. The types
-map by `catTy`: a `64`-bit word and an integer to `sword 64`, an array of `n` elements to
-`memref n`. A value of the source and a value of the target are related by `VRel`: an integer
-is the natural number of the word, an array element by element. Each variable of the source
+map by `catTy`: a `64`-bit word, an integer and an unsigned integer of a width to `sword 64`,
+an array of `n` elements to `memref n`. A value of the source and a value of the target are
+related by `VRel`: an integer and an unsigned integer of a width are the natural number of the
+word, an array element by element. Each variable of the source
 has a reading `Rd`: a variable of the target, or a literal in `[0, 2^64)`. A literal has no
 target binding; an operation that reads one binds it by `bvConst` immediately before itself,
 so that a literal used in a loop body is bound inside the body. A return and a counted loop
@@ -25,15 +26,17 @@ read variables: `pinAll` binds each literal among the readings of a result, of a
 of the seeds by `bvConst` in front of the return or the loop.
 
 The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` and
-`array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)`, the subtraction
+`array_update` on arrays of `64`-bit words, integer literals in `[0, 2^64)`, literals of an
+unsigned integer type of at most `64` bits (`uintLit?`, bound by `bvConst`), the subtraction
 `bin .sub 64` of `64`-bit words (`binRes?`, by `binChain`), which computes the counter of a
 reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
 comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
 (`OpRes.bind`). A counted loop is translated when its lower bound reads as the literal `0`;
-`ctr 0 i` is then the reading of `i`, and `trip 0 hi` the reading of `hi`, or the binding of
-the literal `hi`.
+`ctr 0 i` is then the reading of `i`, and `trip 0 hi` the reading of `hi` (`Rd.toCount`, which
+also reads a variable of an unsigned integer type as its word), or the binding of the literal
+`hi`.
 
 ## Main definitions
 
@@ -42,6 +45,8 @@ the literal `hi`.
   source values, and the readings of a context.
 * `scalarRes?`, `binChain`, `rotChain`, `unChain`, `cmpChain` — the translation of the
   scalar table on `64`-bit words.
+* `asCount`, `Rd.toCount`, `uintLit?` — the reading of a loop bound as a word, and the
+  translation of a literal of an unsigned integer type.
 * `catCallRd`, `binRes?`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of a
   word subtraction, of an operation,
   of the bindings of a translated operation and of a program.
@@ -83,21 +88,24 @@ open Ctxt (Var Valuation)
 /-! ## 1. Types and values -/
 
 /-- The type of `catCryptDialect` a type of the fragment maps to: a word to a word, an
-    integer to a `64`-bit word, an array to a memref of its length, a bit and the unit to
-    themselves. -/
+    integer and an unsigned integer of a width to a `64`-bit word, an array to a memref of its
+    length, a bit and the unit to themselves. -/
 @[reducible] def catTy : NfTy → CryptoTy
   | .word w => .sword w
   | .int => .sword 64
+  | .uint _ => .sword 64
   | .arr n _ => .memref n
   | .bit => .bit
   | _ => .unit
 
 /-- The relation of a source value and a target value at a type of the fragment: equal
-    words and bits, an integer equal to the natural number of the word, an array of words
-    element by element, by the natural numbers of the elements. -/
+    words and bits, an integer equal to the natural number of the word, an unsigned integer
+    of a width with the natural number of the word, an array of words element by element, by
+    the natural numbers of the elements. -/
 def VRel : (t : NfTy) → t.denote → (catTy t).denote → Prop
   | .word _, x, y => x = y
   | .int, z, y => z = (y.toNat : Int)
+  | .uint _, x, y => x.toNat = y.toNat
   | .arr _ (.word _), f, g => ∀ i, (f i).toNat = (g i).toNat
   | .bit, b, b' => b = b'
   | .unit, _, _ => True
@@ -489,6 +497,19 @@ def Rd.toWord64 {Δ : Ctxt catCryptDialect} (t : NfTy) : Rd Δ t → Option (Rd 
   | .var w => (asWord t w).map .var
   | .lit k _ => some (.lit k rfl)
 
+/-- A variable of a type whose values are natural numbers in the target word: an unsigned
+    integer of a width, and a type of `asWord`. -/
+def asCount {Δ : Ctxt catCryptDialect} : (t : NfTy) → Var Δ (catTy t) →
+    Option (Var Δ (.sword 64))
+  | .uint _, v => some v
+  | t, v => asWord t v
+
+/-- A reading of a loop bound as a reading of a `64`-bit word: a variable by `asCount`, a
+    literal as itself. -/
+def Rd.toCount {Δ : Ctxt catCryptDialect} (t : NfTy) : Rd Δ t → Option (Rd Δ (.word 64))
+  | .var w => (asCount t w).map .var
+  | .lit k _ => some (.lit k rfl)
+
 /-! ### The scalar table on `64`-bit words
 
 Every scalar of the fragment is a `64`-bit word of the target. An operation of the scalar
@@ -722,10 +743,19 @@ def binRes? {Δ : Ctxt catCryptDialect} (o : NfBinOp) (w : Nat) (a b : Rd Δ (.w
     h.2 ▸ withVar2 (.word 64) (.word 64) (h.2 ▸ a) (h.2 ▸ b) fun x y => binChain .sub 64 x y
   else none
 
+/-- The translation of the literal `v` at an unsigned integer type of at most `64` bits: the
+    binding of its word by `bvConst`; `none` at every other type. -/
+def uintLit? {Δ : Ctxt catCryptDialect} : (t : NfTy) → Int → Option (OpRes Δ t)
+  | .uint W, v =>
+      if W.bits ≤ 64 ∧ 0 ≤ v ∧ v < 2 ^ 64 then some (.expr (cstE (BitVec.ofNat 64 v.toNat)))
+      else none
+  | _, _ => none
+
 /-- **The translation of an operation** of the fragment on the readings `σ` of its
-    arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading;
-    the subtraction of `64`-bit words by `binRes?`; `ctr` and `trip` on a lower bound that
-    reads as the literal `0` as the reading of the index and of the upper bound. -/
+    arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading,
+    and a literal of an unsigned integer type by `uintLit?`; the subtraction of `64`-bit words
+    by `binRes?`; `ctr` and `trip` on a lower bound that reads as the literal `0` as the
+    reading of the index and of the upper bound (`Rd.toCount`). -/
 def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (OpRes Δ op.ret)
   | .named _ op, args => catOp σ op args
@@ -734,14 +764,14 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
   | .ilit t v, _ =>
       if ht : ImpToNF.hax64NFWordTy t = true ∧ 0 ≤ v ∧ v < 2 ^ 64 then
         some (.rd (.lit v.toNat ht.1))
-      else none
+      else uintLit? t v
   | .ctr, args =>
       match σ args.head with
       | .lit 0 _ => some (.rd (σ args.tail.head))
       | _ => none
   | .trip t, args =>
       match σ args.head with
-      | .lit 0 _ => (Rd.toWord64 t (σ args.tail.head)).map tripRes
+      | .lit 0 _ => (Rd.toCount t (σ args.tail.head)).map tripRes
       | _ => none
   | _, _ => none
 
@@ -771,6 +801,26 @@ theorem asWord_enc {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)}
         rfl
     | _ => simp [ImpToNF.hax64NFWordTy] at ht
   · cases h
+
+/-- A value related to a variable `asCount` reads as a word has the natural number of the
+    word as its integer. -/
+theorem asCount_toInt {Δ : Ctxt catCryptDialect} {t : NfTy} {v : Var Δ (catTy t)}
+    {w : Var Δ (.sword 64)} (h : asCount t v = some w) (W : Valuation Δ) {x : t.denote}
+    (hx : VRel t x (v.lookup W)) : NfTy.toInt? t x = some ((w.lookup W).toNat : Int) := by
+  cases t with
+  | uint _ =>
+      cases h
+      change some (x.toNat : Int) = some _
+      rw [show x.toNat = _ from hx]
+  | int =>
+      have he := asWord_enc h W hx
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at he
+      exact congrArg some (_root_.Hax.Value.int.inj he)
+  | word n =>
+      have he := asWord_enc h W hx
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at he
+      exact congrArg some (_root_.Hax.Value.int.inj he)
+  | _ => simp [asCount, asWord, ImpToNF.hax64NFWordTy] at h
 
 /-- A value of the type of an array of `64`-bit words, related to a memref, encodes as the
     integers of a function related to the memref element by element. -/
@@ -1891,7 +1941,24 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
           refine ⟨?_, by omega⟩
           change some (((BitVec.ofNat 64 v.toNat).toNat : Nat) : Int) = some ((v.toNat : Nat) : Int)
           rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-      · cases h
+      · unfold uintLit? at h
+        split at h
+        · rename_i W' _
+          split at h
+          · rename_i hc
+            obtain ⟨-, h0, h1⟩ := hc
+            cases h
+            change (if 0 ≤ v ∧ v < 2 ^ W'.bits then some (BitVec.ofInt W'.bits v)
+              else none) = some y at hy
+            split at hy
+            · rename_i hv
+              cases hy
+              change (BitVec.ofInt W'.bits v).toNat = (BitVec.ofNat 64 v.toNat).toNat
+              rw [BitVec.toNat_ofInt, BitVec.toNat_ofNat, Int.emod_eq_of_lt h0 (by exact_mod_cast hv.2),
+                Nat.mod_eq_of_lt (by omega)]
+            · cases hy
+          · cases h
+        · cases h
   | ctr =>
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
@@ -1924,7 +1991,7 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
-        | .lit 0 _ => (Rd.toWord64 t (σ hi)).map tripRes
+        | .lit 0 _ => (Rd.toCount t (σ hi)).map tripRes
         | _ => none) = some res at h
       split at h
       · rename_i hz hlo
@@ -1943,19 +2010,7 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
         | var w =>
             intro hr hhi
             obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp hr
-            have he := asWord_enc hw' W hhi
-            have hwt : ImpToNF.hax64NFWordTy t = true := by
-              unfold asWord at hw'
-              split at hw'
-              · assumption
-              · cases hw'
-            have ht : NfTy.toInt? t (hi.lookup V) = some ((w'.lookup W).toNat : Int) := by
-              rcases wordTy_cases hwt with rfl | rfl
-              · change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at he
-                exact congrArg some (_root_.Hax.Value.int.inj he)
-              · change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at he
-                exact congrArg some (_root_.Hax.Value.int.inj he)
-            rw [ht, Option.map_some, h0'] at hy
+            rw [asCount_toInt hw' W hhi, Option.map_some, h0'] at hy
             obtain rfl := Option.some.inj hy
             change BitVec.ofNat 64 (((w'.lookup W).toNat : Int) - 0).toNat = w'.lookup W
             simp
@@ -2386,17 +2441,18 @@ def toCatVal : (t : NfTy) → t.denote → (catTy t).denote
   | .bit, b => b
   | .unit, _ => ()
   | .pair _ _, _ => ()
-  | .uint _, _ => ()
+  | .uint _, x => BitVec.ofNat 64 x.toNat
   | .sint _, _ => ()
   | .tnil, _ => ()
   | .tcons _ _, _ => ()
   | .slice _, _ => ()
 
-/-- A value of the fragment whose integers, and the natural numbers of whose array elements,
-    are in `[0, 2^64)`. -/
+/-- A value of the fragment whose integers, the natural numbers of whose unsigned integers
+    and the natural numbers of whose array elements are in `[0, 2^64)`. -/
 def InRange : (t : NfTy) → t.denote → Prop
   | .word _, _ => True
   | .int, z => 0 ≤ z ∧ z < 2 ^ 64
+  | .uint _, x => x.toNat < 2 ^ 64
   | .arr _ (.word _), f => ∀ k, (f k).toNat < 2 ^ 64
   | .bit, _ => True
   | .unit, _ => True
@@ -2413,6 +2469,9 @@ theorem int_eq_ofNat_toNat {z : Int} (h0 : 0 ≤ z) (h1 : z < 2 ^ 64) :
 theorem vrel_toCatVal : ∀ (t : NfTy) (x : t.denote), InRange t x → VRel t x (toCatVal t x)
   | .word _, _, _ => rfl
   | .int, _, ⟨h0, h1⟩ => int_eq_ofNat_toNat h0 h1
+  | .uint _, x, h => by
+      change x.toNat = (BitVec.ofNat 64 x.toNat).toNat
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
   | .arr _ (.word _), f, h => fun k => by
       change (f k).toNat = (BitVec.ofNat 64 (f k).toNat).toNat
       rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (h k)]
@@ -2421,7 +2480,7 @@ theorem vrel_toCatVal : ∀ (t : NfTy) (x : t.denote), InRange t x → VRel t x 
   | .arr _ .bit, _, h | .arr _ .unit, _, h | .arr _ .int, _, h | .arr _ (.arr _ _), _, h
   | .arr _ (.pair _ _), _, h | .arr _ (.uint _), _, h | .arr _ (.sint _), _, h
   | .arr _ .tnil, _, h | .arr _ (.tcons _ _), _, h | .arr _ (.slice _), _, h
-  | .pair _ _, _, h | .uint _, _, h | .sint _, _, h | .tnil, _, h | .tcons _ _, _, h
+  | .pair _ _, _, h | .sint _, _, h | .tnil, _, h | .tcons _ _, _, h
   | .slice _, _, h => h.elim
 
 /-- The renaming of a context to its mapped context. -/
