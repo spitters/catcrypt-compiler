@@ -598,6 +598,23 @@ theorem withVar2_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
           obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
           exact ⟨hc _, hc _, hk _ _ res' hres'⟩
 
+/-- The loop counter `ctrRes` is quiet. -/
+theorem ctrRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {rlo : Rd Δ .int} {ri : Rd Δ (.word 64)} {res : OpRes Δ (.word 64)}
+    (h : ctrRes rlo ri = some res) : res.Quiet P :=
+  withVar2_quiet hP (fun _ _ _ hk => by cases hk; simp [OpRes.Quiet, catKind, opVT_none hP]) h
+
+/-- The trip count `tripSub` is quiet. -/
+theorem tripSub_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {rlo : Rd Δ .int} {rhi : Rd Δ (.word 64)} {res : OpRes Δ (.word 64)}
+    (h : tripSub rlo rhi = some res) : res.Quiet P := by
+  unfold tripSub at h
+  split at h
+  · cases h
+    simp [OpRes.Quiet, cstE, catKind, opVT_none hP]
+  · exact withVar2_quiet hP (fun _ _ _ hk => by
+      cases hk; simp [satSubRes, OpRes.Quiet, cstE, catKind, opVT_none hP]) h
+
 /-- The translation of a call of the scalar table is quiet, and the call is one of the
     scalar calls. -/
 theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -703,16 +720,17 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
       change (match σ lo with
         | .lit 0 _ => some (OpRes.rd (σ i))
-        | _ => none) = some res at h
+        | rlo => ctrRes rlo (σ i)) = some res at h
       split at h
       · cases h; rfl
-      · cases h
+      · rw [resLeak_quiet W res (ctrRes_quiet hP h)]
+        rfl
   | trip t =>
       intro args res h
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
         | .lit 0 _ => (Rd.toCount t (σ hi)).map tripRes
-        | _ => none) = some res at h
+        | rlo => (Rd.toCount t (σ hi)).bind (tripSub rlo)) = some res at h
       split at h
       · obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
         cases r with
@@ -721,7 +739,9 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
             change Expr.ctLeak (catLeakModel P) (cstE (BitVec.ofNat 64 k)) W = _
             rw [ctLeak_quiet _ W (by simp [cstE, catKind, opVT_none hP])]
             rfl
-      · cases h
+      · obtain ⟨r, -, h⟩ := Option.bind_eq_some_iff.mp h
+        rw [resLeak_quiet W res (tripSub_quiet hP h)]
+        rfl
   | bin o w =>
       intro args res h
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩

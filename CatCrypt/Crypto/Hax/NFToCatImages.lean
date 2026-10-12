@@ -323,6 +323,23 @@ theorem tripRes_image {Δ : Ctxt catCryptDialect} (r : Rd Δ (.word 64)) :
   · trivial
   · exact (by image_op : HasImage (.bvConst 64 _))
 
+theorem ctrRes_image {Δ : Ctxt catCryptDialect} {rlo : Rd Δ .int} {ri : Rd Δ (.word 64)}
+    {res : OpRes Δ (.word 64)} (h : ctrRes rlo ri = some res) : OpResImages res :=
+  withVar2_image (fun _ _ _ hk => by cases hk; exact (by image_op : HasImage (.bvAdd 64))) h
+
+theorem satSubRes_image {Δ : Ctxt catCryptDialect} (x y : Var Δ (.sword 64)) :
+    OpResImages (satSubRes x y) :=
+  ⟨by image_op, by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+    by image_op, by image_op⟩
+
+theorem tripSub_image {Δ : Ctxt catCryptDialect} {rlo : Rd Δ .int} {rhi : Rd Δ (.word 64)}
+    {res : OpRes Δ (.word 64)} (h : tripSub rlo rhi = some res) : OpResImages res := by
+  unfold tripSub at h
+  split at h
+  · cases h
+    exact (by image_op : HasImage (.bvConst 64 _))
+  · exact withVar2_image (fun x y _ hk => by cases hk; exact satSubRes_image x y) h
+
 /-- Every expression of the translation `catOp` of an operation has an operation with an
     image. -/
 theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
@@ -345,13 +362,14 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       unfold catOp at h
       split at h
       · cases h; trivial
-      · cases h
+      · exact ctrRes_image h
   | trip t =>
       unfold catOp at h
       split at h
       · obtain ⟨r', -, rfl⟩ := Option.map_eq_some_iff.mp h
         exact tripRes_image r'
-      · cases h
+      · obtain ⟨r', -, h⟩ := Option.bind_eq_some_iff.mp h
+        exact tripSub_image h
   | bin o w =>
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
       change binRes? o w (σ a) (σ b) = some res at h

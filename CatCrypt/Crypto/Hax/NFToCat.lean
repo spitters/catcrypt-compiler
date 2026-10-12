@@ -34,10 +34,13 @@ reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
 comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
-(`OpRes.bind`). A counted loop is translated when its lower bound reads as the literal `0`;
-`ctr 0 i` is then the reading of `i`, and `trip 0 hi` the reading of `hi` (`Rd.toCount`, which
-also reads a variable of an unsigned integer type as its word), or the binding of the literal
-`hi`.
+(`OpRes.bind`). On a lower bound that reads as the literal `0`, `ctr 0 i` is the reading of `i`,
+and `trip 0 hi` the reading of `hi` (`Rd.toCount`, which also reads a variable of an unsigned
+integer type as its word), or the binding of the literal `hi`. On every other lower bound
+`lo`, `ctr lo i` is the sum `lo + i` (`ctrRes`), and `trip lo hi` is `hi - lo` truncated at `0`
+(`tripSub`): the literal difference of two literals, and otherwise the difference selected on
+the carry of `hi + ~~~lo + 1` (`satSubRes`), so that a range `lo..hi` with `hi < lo` runs zero
+times.
 
 ## Main definitions
 
@@ -48,6 +51,8 @@ also reads a variable of an unsigned integer type as its word), or the binding o
   scalar table on `64`-bit words.
 * `asCount`, `Rd.toCount`, `uintLit?` — the reading of a loop bound as a word, and the
   translation of a literal of an unsigned integer type.
+* `ctrRes`, `satSubRes`, `tripSub` — the loop counter and the trip count on a lower bound
+  other than the literal `0`.
 * `catCallRd`, `binRes?`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of a
   word subtraction, of an operation,
   of the bindings of a translated operation and of a program.
@@ -62,6 +67,8 @@ also reads a variable of an unsigned integer type as its word), or the binding o
 ## Main results
 
 * `scalarRes_sound` — a translated call of the scalar table is related to its value.
+* `satSub_eq`, `ctrRes_sound`, `tripSub_sound` — the loop counter and the trip count on any
+  lower bound simulate.
 * `catOp_sound` — a translated operation is related to the value of the source operation.
 * `emitRes_sound` — the bindings of a translated operation simulate.
 * `pinAll_of_pinVars`, `pinAll_elim`, `pinAll_sound` — `pinAll` binds nothing on readings
@@ -753,6 +760,43 @@ def tripRes {Δ : Ctxt catCryptDialect} : Rd Δ (.word 64) → OpRes Δ (.word 6
   | .var w => .rd (.var w)
   | .lit k _ => .expr (cstE (BitVec.ofNat 64 k))
 
+/-- The loop counter `lo + i` on the readings of the lower bound `lo` and of the trip index
+    `i`: the sum `bvAdd` of their word variables (`withVar2`). -/
+def ctrRes {Δ : Ctxt catCryptDialect} (rlo : Rd Δ .int) (ri : Rd Δ (.word 64)) :
+    Option (OpRes Δ (.word 64)) :=
+  withVar2 .int (.word 64) rlo ri fun x y =>
+    some (.expr ⟨.bvAdd 64, rfl, .cons x (.cons y .nil)⟩)
+
+/-- The truncated difference of two words `x` and `y`: the sum `x + ~~~y + 1` and its carry,
+    which is `1` exactly when `y ≤ x`, as two adjacent bindings on the same operands; the bit of
+    the carry, the constant `0`, and the selection `ite` of the sum on the bit and of `0`
+    otherwise. -/
+def satSubRes {Δ : Ctxt catCryptDialect} (x y : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
+  .bind _ (cstE (BitVec.allOnes 64))
+    (.bind _ ⟨.bvXor 64, rfl, .cons y.there (.cons .here .nil)⟩
+      (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
+        (.bind (.sword 64) ⟨.bvAddCarryLo 64, rfl,
+            .cons x.there.there.there (.cons (Var.there .here) (.cons .here .nil))⟩
+          (.bind (.sword 1) ⟨.bvAddCarryHi 64, rfl,
+              .cons x.there.there.there.there
+                (.cons (Var.there (Var.there .here)) (.cons (Var.there .here) .nil))⟩
+            (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
+              (.bind .bit ⟨.bvEq 1, rfl, .cons (Var.there .here) (.cons .here .nil)⟩
+                (.bind _ (cstE 0)
+                  (.expr ⟨.ite (.sword 64), rfl,
+                    .cons (Var.there .here)
+                      (.cons (Var.there (Var.there (Var.there (Var.there .here))))
+                        (.cons .here .nil))⟩))))))))
+
+/-- The trip count `hi - lo`, truncated at `0`, on the readings of the lower bound `lo` and of
+    the upper bound `hi`: the literal difference on two literals, and otherwise `satSubRes` on
+    their word variables (`withVar2`). -/
+def tripSub {Δ : Ctxt catCryptDialect} (rlo : Rd Δ .int) (rhi : Rd Δ (.word 64)) :
+    Option (OpRes Δ (.word 64)) :=
+  match rlo, rhi with
+  | .lit k _, .lit m _ => some (.expr (cstE (BitVec.ofNat 64 (m - k))))
+  | rlo, rhi => withVar2 (.word 64) .int rhi rlo fun x y => some (satSubRes x y)
+
 /-- The translation of a binary word operation of `nfDialect` on two readings: the
     subtraction of `64`-bit words by `binChain`, on word variables (`withVar2`); `none` on
     every other operation. -/
@@ -775,7 +819,8 @@ def uintLit? {Δ : Ctxt catCryptDialect} : (t : NfTy) → Int → Option (OpRes 
     and a literal of an unsigned integer type by `uintLit?`; a bit constant and the unit
     constant by `constBit` and `constUnit`; the subtraction of `64`-bit words
     by `binRes?`; `ctr` and `trip` on a lower bound that reads as the literal `0` as the
-    reading of the index and of the upper bound (`Rd.toCount`). -/
+    reading of the index and of the upper bound (`Rd.toCount`), and on every other lower
+    bound by `ctrRes` and `tripSub`. -/
 def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (OpRes Δ op.ret)
   | .named _ op, args => catOp σ op args
@@ -790,11 +835,11 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
   | .ctr, args =>
       match σ args.head with
       | .lit 0 _ => some (.rd (σ args.tail.head))
-      | _ => none
+      | rlo => ctrRes rlo (σ args.tail.head)
   | .trip t, args =>
       match σ args.head with
       | .lit 0 _ => (Rd.toCount t (σ args.tail.head)).map tripRes
-      | _ => none
+      | rlo => (Rd.toCount t (σ args.tail.head)).bind (tripSub rlo)
   | _, _ => none
 
 /-! ## 5. The operations simulate -/
@@ -1971,6 +2016,116 @@ theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     exact catCallRd0_sound hbi W f as r rs res xs y h₀ hx hy
   next => exact scalarRes_sound hbi W f as r rs res xs y h hx hy
 
+/-- The selection of the sum `a + ~~~b + 1` on its carry, and of `0` otherwise, is the word of
+    `a - b` truncated at `0`. -/
+theorem satSub_eq (a b : BitVec 64) :
+    (if decide (carryOutBitC a (b ^^^ BitVec.allOnes 64) (1 : BitVec 1) = 1) then
+      addCarryWordC a (b ^^^ BitVec.allOnes 64) (1 : BitVec 1) else 0) =
+      BitVec.ofNat 64 ((a.toNat : Int) - (b.toNat : Int)).toNat := by
+  have hc := carry_not_eq_one a b
+  rw [← BitVec.xor_allOnes] at hc
+  rw [hc]
+  have ha := a.isLt
+  have hb := b.isLt
+  by_cases h : b.toNat ≤ a.toNat
+  · rw [if_pos (by simpa using h)]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.xor_allOnes]
+    simp only [addCarryWordC, BitVec.toNat_add, BitVec.toNat_not, BitVec.toNat_ofNat]
+    simp
+    omega
+  · rw [if_neg (by simpa using h)]
+    apply BitVec.eq_of_toNat_eq
+    simp
+    omega
+
+/-- The truncated difference `satSubRes x y` is the word of `x - y` truncated at `0`. -/
+theorem satSubRes_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (x y : Var Δ (.sword 64)) :
+    OpResRel W (.word 64)
+      (BitVec.ofNat 64 (((x.lookup W).toNat : Int) - ((y.lookup W).toNat : Int)).toNat)
+      (satSubRes x y) := by
+  change BitVec.ofNat 64 (((x.lookup W).toNat : Int) - ((y.lookup W).toNat : Int)).toNat =
+    (if decide (carryOutBitC (show BitVec 64 from x.lookup W)
+        ((show BitVec 64 from y.lookup W) ^^^ BitVec.allOnes 64) (1 : BitVec 1) = 1) then
+      addCarryWordC (show BitVec 64 from x.lookup W)
+        ((show BitVec 64 from y.lookup W) ^^^ BitVec.allOnes 64) (1 : BitVec 1) else 0)
+  exact (satSub_eq _ _).symm
+
+/-- A loop bound `Rd.toCount` reads as a word is related, as a `64`-bit word, to the integer
+    of the bound, which lies in `[0, 2^64)`. -/
+theorem toCount_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {t : NfTy} {r : Rd Δ t}
+    {r' : Rd Δ (.word 64)} {x : t.denote} {z : Int} (h : Rd.toCount t r = some r')
+    (hx : RdRel W t x r) (hz : NfTy.toInt? t x = some z) :
+    RdRel W (.word 64) (BitVec.ofNat 64 z.toNat) r' ∧ 0 ≤ z ∧ z < 2 ^ 64 := by
+  cases r with
+  | var w =>
+      obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+      rw [asCount_toInt hw' W hx] at hz
+      obtain rfl := Option.some.inj hz
+      have hlt := (show BitVec 64 from w'.lookup W).isLt
+      refine ⟨?_, by omega, by omega⟩
+      change BitVec.ofNat 64 (((show BitVec 64 from w'.lookup W).toNat : Int)).toNat =
+        w'.lookup W
+      simp
+  | lit k hk =>
+      cases h
+      rw [hx.1] at hz
+      obtain rfl := Option.some.inj hz
+      have hk2 := hx.2
+      refine ⟨⟨?_, hk2⟩, by omega, by omega⟩
+      change some (((BitVec.ofNat 64 ((k : Int)).toNat).toNat : Nat) : Int) = some (k : Int)
+      rw [Int.toNat_natCast, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk2]
+
+/-- The trip count `tripSub` of a lower bound related to `lo` and an upper bound related to
+    `hv` is related to the word of `hv - lo` truncated at `0`. -/
+theorem tripSub_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {rlo : Rd Δ .int}
+    {rhi : Rd Δ (.word 64)} {lo : Int} {hv : BitVec 64} (h1 : RdRel W .int lo rlo)
+    (h2 : RdRel W (.word 64) hv rhi) {res : OpRes Δ (.word 64)}
+    (h : tripSub rlo rhi = some res) :
+    OpResRel W (.word 64) (BitVec.ofNat 64 ((hv.toNat : Int) - lo).toNat) res := by
+  unfold tripSub at h
+  split at h
+  · cases h
+    have hlo := Option.some.inj h1.1
+    have hhv := Option.some.inj h2.1
+    change BitVec.ofNat 64 ((hv.toNat : Int) - lo).toNat = BitVec.ofNat 64 (_ - _)
+    congr 1
+    omega
+  · refine withVar2_sound W h2 h1 _ _ h ?_
+    intro Δ' W' a b res' hk ha hb
+    cases hk
+    have ha' : (hv.toNat : Int) = ((a.lookup W').toNat : Int) := by
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at ha
+      exact _root_.Hax.Value.int.inj ha
+    have hb' : lo = ((b.lookup W').toNat : Int) := by
+      change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at hb
+      exact _root_.Hax.Value.int.inj hb
+    rw [ha', hb']
+    exact satSubRes_rel W' a b
+
+/-- The counter `ctrRes` of a lower bound related to `lo` and an index related to `i` is
+    related to the word of `lo + i` when `lo` is non-negative. -/
+theorem ctrRes_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {rlo : Rd Δ .int}
+    {ri : Rd Δ (.word 64)} {lo : Int} {i : BitVec 64} (h1 : RdRel W .int lo rlo)
+    (h2 : RdRel W (.word 64) i ri) (hlo : 0 ≤ lo)
+    {res : OpRes Δ (.word 64)} (h : ctrRes rlo ri = some res) :
+    OpResRel W (.word 64) (BitVec.ofNat 64 (lo + (i.toNat : Int)).toNat) res := by
+  refine withVar2_sound W h1 h2 _ _ h ?_
+  intro Δ' W' a b res' hk ha hb
+  cases hk
+  have ha' : lo = ((a.lookup W').toNat : Int) := by
+    change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at ha
+    exact _root_.Hax.Value.int.inj ha
+  have hb' : ((i.toNat : Nat) : Int) = ((b.lookup W').toNat : Int) := by
+    change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at hb
+    exact _root_.Hax.Value.int.inj hb
+  change BitVec.ofNat 64 (lo + (i.toNat : Int)).toNat =
+    @HAdd.hAdd (BitVec 64) (BitVec 64) (BitVec 64) _ (a.lookup W') (b.lookup W')
+  apply BitVec.eq_of_toNat_eq
+  have hadd := BitVec.toNat_add (w := 64) (a.lookup W') (b.lookup W')
+  simp only [BitVec.toNat_ofNat]
+  omega
+
 /-- **An operation of the fragment simulates.** Under `SubTable bi`, the result `catOp`
     builds from readings relating the valuations is related to the value of the
     operation. -/
@@ -2043,7 +2198,7 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
       rcases args with _ | ⟨lo, _ | ⟨i, _ | _⟩⟩
       change (match σ lo with
         | .lit 0 _ => some (OpRes.rd (σ i))
-        | _ => none) = some res at h
+        | rlo => ctrRes rlo (σ i)) = some res at h
       split at h
       · rename_i hz hlo
         cases h
@@ -2065,13 +2220,22 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
           subst hy'
           exact hi
         · cases hy
-      · cases h
+      · have hi := hag _ i
+        change (if 0 ≤ (show Int from lo.lookup V) ∧ (show Int from lo.lookup V) +
+            (((show BitVec 64 from i.lookup V)).toNat : Int) < 2 ^ 64 then
+          some (BitVec.ofNat 64 ((show Int from lo.lookup V) +
+            (((show BitVec 64 from i.lookup V)).toNat : Int)).toNat) else none) = some y at hy
+        split at hy
+        · rename_i hc
+          obtain rfl := Option.some.inj hy
+          exact ctrRes_sound W (hag _ lo) hi hc.1 h
+        · cases hy
   | trip t =>
       intro args res y h hy
       rcases args with _ | ⟨lo, _ | ⟨hi, _ | _⟩⟩
       change (match σ lo with
         | .lit 0 _ => (Rd.toCount t (σ hi)).map tripRes
-        | _ => none) = some res at h
+        | rlo => (Rd.toCount t (σ hi)).bind (tripSub rlo)) = some res at h
       split at h
       · rename_i hz hlo
         obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -2100,7 +2264,16 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
             obtain rfl := Option.some.inj hy
             change BitVec.ofNat 64 (((k : Int) - 0)).toNat = BitVec.ofNat 64 k
             simp only [sub_zero, Int.toNat_natCast]
-      · cases h
+      · obtain ⟨r, hr, h⟩ := Option.bind_eq_some_iff.mp h
+        change ((NfTy.toInt? t (hi.lookup V)).map fun hh =>
+          BitVec.ofNat 64 (hh - (show Int from lo.lookup V)).toNat) = some y at hy
+        obtain ⟨z, hz, rfl⟩ := Option.map_eq_some_iff.mp hy
+        obtain ⟨hrel, hz0, hz1⟩ := toCount_rel W hr (hag _ hi) hz
+        have hzz : (((BitVec.ofNat 64 z.toNat).toNat : Nat) : Int) = z := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+          omega
+        have hres := tripSub_sound W (hag _ lo) hrel h
+        rwa [hzz] at hres
   | bin o w =>
       intro args res y h hy
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
