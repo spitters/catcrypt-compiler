@@ -171,9 +171,10 @@ def WidthOp.sexpr (w : Nat) : WidthOp → SExpr → SExpr → SExpr
       (.SShr (widthMask w a) (.SSub (.SLit w) (widthAmt w b))))
 
 /-- The `SExpr` of a scalar operation on the scalars `a` and `b`: the operations of
-    `scalarOpExpr`, their capitalised forms, the Boolean connectives `&&`, `and` as
-    `SAnd` and `||`, `or` as `orExprN` (exact on the decodings `0` and `1` of two
-    Booleans), and the width-tagged calls of `widthOpOf`. -/
+    `scalarOpExpr`, their capitalised forms, the checked additions and subtractions at the
+    tags `64` and `size` (`Add#64`, `Add#size`, `Sub#64`, `Sub#size`) as `Add` and `Sub`, the
+    Boolean connectives `&&`, `and` as `SAnd` and `||`, `or` as `orExprN` (exact on the
+    decodings `0` and `1` of two Booleans), and the width-tagged calls of `widthOpOf`. -/
 def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   match op with
   | "lt" | "Lt" => some (.SLt a b)
@@ -182,8 +183,8 @@ def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   | "ge" | "Ge" => some (.SSub (.SLit 1) (.SLt a b))
   | "eq" | "Eq" => some (.SSub (.SSub (.SLit 1) (.SLt a b)) (.SLt b a))
   | "ne" | "Ne" => some (.SAdd (.SLt a b) (.SLt b a))
-  | "add" | "Add" => some (.SAdd a b)
-  | "sub" | "Sub" => some (.SSub a b)
+  | "add" | "Add" | "Add#64" | "Add#size" => some (.SAdd a b)
+  | "sub" | "Sub" | "Sub#64" | "Sub#size" => some (.SSub a b)
   | "&&" | "and" => some (.SAnd a b)
   | "||" | "or" => some (orExprN a b)
   | _ => (widthOpOf op).map fun p => p.2.sexpr p.1 a b
