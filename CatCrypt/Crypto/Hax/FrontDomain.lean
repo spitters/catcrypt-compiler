@@ -26,7 +26,8 @@ the bounds of a loop before its body, the arguments of a call before the typing 
   types concerned.
 * `ModuleRefusal` — a refusal of the translation of a module: a callee with the name of an
   array operation, a function failing a shape condition, a linked function with a reserved
-  name, a refusal of the entry, or calls left after the rounds of inlining.
+  name or a signature other than words and word arrays, a callee with an integer-slice type,
+  a refusal of the entry, or calls left after the rounds of inlining.
 * `frontOut`, `frontArgs` — `impToNF` and `impArgsNF` with the refusal.
 * `frontRefusal?` — the refusal of `frontOut`, if any.
 
@@ -154,6 +155,12 @@ inductive ModuleRefusal where
   | calleeShape (f : String) (cond : String)
   /-- A linked function has a name the base table answers or the translation reads. -/
   | linkedName (f : String)
+  /-- A linked function has a parameter or a result whose type is neither the `64`-bit word
+      nor an array of `64`-bit words. -/
+  | linkedSig (f : String)
+  /-- A parameter or the result of the callee `f` has a type containing an integer slice
+      (`.slice .int`). -/
+  | intSlice (f : String)
   /-- The extraction of the entry fails the shape condition `cond` of the front. -/
   | entryShape (cond : String)
   /-- The first construct of the entry `impToNF` does not accept. -/
@@ -167,6 +174,8 @@ def ModuleRefusal.toString : ModuleRefusal → String
   | .arrayOpName f => s!"callee {f} has the name of an array operation"
   | .calleeShape f c => s!"callee {f}: {c}"
   | .linkedName f => s!"linked function {f} has a reserved name"
+  | .linkedSig f => s!"linked function {f} has a signature other than words and word arrays"
+  | .intSlice f => s!"callee {f} has an integer-slice type"
   | .entryShape c => c
   | .entry r => r.toString
   | .inline n => s!"a call of a callee is left after {n} rounds of inlining"
@@ -180,6 +189,8 @@ def ModuleRefusal.stage : ModuleRefusal → String
   | .arrayOpName _ => "module"
   | .calleeShape _ _ => "module"
   | .linkedName _ => "module"
+  | .linkedSig _ => "module"
+  | .intSlice _ => "module"
   | .entryShape _ => "front"
   | .entry _ => "impToNF"
   | .inline _ => "inline"
