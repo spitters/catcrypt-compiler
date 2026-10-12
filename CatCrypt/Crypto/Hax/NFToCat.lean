@@ -666,14 +666,16 @@ def notChain {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword 64)) :
         (.expr (andE .here (Var.there .here))))
 
 /-- The translation of a unary operation of the scalar table at the width `w` on a word: the
-    complement by `notChain`, the negation as `0 - x`, and the truncation as the conjunction
-    with the mask. -/
+    complement by `notChain`, the negation as `0 - x`, the truncation as the conjunction
+    with the mask, and the increment as `x + 1`, exact on a value of the increment that
+    decodes as a `64`-bit word. -/
 def unChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
     (a : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
   match o with
   | .not => notChain w a
   | .neg => .bind _ (cstE 0) (.expr ⟨.bvSub 64, rfl, .cons .here (.cons a.there .nil)⟩)
   | .cast => .bind _ (cstE (maskW w)) (.expr (andE a.there .here))
+  | .incc => .bind _ (cstE 1) (.expr ⟨.bvAdd 64, rfl, .cons a.there (.cons .here .nil)⟩)
 
 /-- The bit of an ordering of two words: the complement of `y` as the exclusive or with the
     all-ones word, the carry-in `c`, the sum `x + ~~~y + c` and its carry as two adjacent
@@ -1805,6 +1807,12 @@ theorem unChain_rel{Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.S
     have hlt : (a.lookup W).toNat % 2 ^ w < 2 ^ 64 :=
       lt_of_lt_of_le (Nat.mod_lt _ (by positivity)) hp
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt, toNat_and_maskW _ hw64]
+  · simp only [ImpToNF.ScalarUn.val, Option.some.injEq] at hv
+    subst hv
+    refine ⟨(a.lookup W).toNat + 1, by push_cast; rfl, ?_⟩
+    change BitVec.ofNat 64 _ = (show BitVec 64 from a.lookup W) + BitVec.ofNat 64 1
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_ofNat, BitVec.toNat_add]
 
 /-- The carry of `x + ~~~y + 1` is `1` exactly when `y ≤ x`. -/
 theorem carry_not_eq_one (x y : BitVec 64) :

@@ -195,7 +195,8 @@ def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
 def exitScalarCalls : List String :=
   ["len", "lt", "gt", "le", "ge", "eq", "ne", "add", "sub",
    "Lt", "Gt", "Le", "Ge", "Eq", "Ne", "Add", "Sub", "Mul", "Div", "Rem",
-   "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg", "&&", "||", "and", "or"]
+   "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg", "&&", "||", "and", "or",
+   "range_incl_end"]
 
 /-- A call whose result is held in the scalar heap: a name of `exitScalarCalls` or a
     width-tagged name (containing `#`). -/

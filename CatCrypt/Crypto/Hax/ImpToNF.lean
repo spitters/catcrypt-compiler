@@ -112,8 +112,10 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   typed at the parameters (`EntryTyped`).
 * `hax64BinTable_sem`, `hax64UnTable_sem`, `hax64CmpTable_sem` — the scalar calls compute
   their operation.
+* `hax64BuiltinsR` — `Hax.hax64Builtins` with the results of `range_incl_end` outside
+  `[0, 2 ^ 64)` refused.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
-  `Hax.hax64Builtins`.
+  `hax64BuiltinsR`.
 * `withSelect_typedCalls` — the call typing `hax64SigOf` is sound for builtins with `select`
   when it is sound for the builtins.
 * `crateBi_typedCalls` — the call typing with a crate is sound for the builtins with the
@@ -3942,7 +3944,8 @@ def ScalarBin.nat : ScalarBin → Nat → Nat → Nat → Option Nat
   | .mulc, w, x, y => if x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w then some (x * y) else none
 
 /-- The unary integer operations of `u64` code: the complement at a width, the wrapping
-    negation of a `64`-bit word, and the truncation to a width. -/
+    negation of a `64`-bit word, the truncation to a width, and the increment, the end of an
+    inclusive range. -/
 inductive ScalarUn where
   /-- Complement. -/
   | not
@@ -3950,6 +3953,8 @@ inductive ScalarUn where
   | neg
   /-- Truncation. -/
   | cast
+  /-- Increment on the integers, the exclusive end `range_incl_end` of an inclusive range. -/
+  | incc
   deriving DecidableEq, Repr
 
 /-- The value of a unary operation at the width `w` on an integer, as `Hax.hax64WordOps`
@@ -3958,6 +3963,7 @@ def ScalarUn.val : ScalarUn → Nat → Int → Option Value
   | .not, w, a => _root_.Hax.u64UnOp a fun x => 2 ^ w - 1 - x % 2 ^ w
   | .neg, _, a => _root_.Hax.u64UnOp a fun x => (2 ^ 64 - x % 2 ^ 64) % 2 ^ 64
   | .cast, w, a => if 0 ≤ a then some (.int (a.toNat % 2 ^ w : Nat)) else none
+  | .incc, _, a => some (.int (a + 1))
 
 /-- The comparisons of `u64` code, with a Boolean result. -/
 inductive ScalarCmp where
@@ -4023,7 +4029,7 @@ def hax64UnTable : List (String × ScalarUn × Nat) :=
   [("Not#8", .not, 8), ("Not#16", .not, 16), ("Not#32", .not, 32), ("Not#64", .not, 64),
     ("Not#size", .not, 64), ("wrapping_neg#64", .neg, 64), ("cast#8", .cast, 8),
     ("cast#16", .cast, 16), ("cast#32", .cast, 32), ("cast#64", .cast, 64),
-    ("cast#size", .cast, 64)]
+    ("cast#size", .cast, 64), ("range_incl_end", .incc, 64)]
 
 /-- The comparison calls of `u64` code with their comparison. -/
 def hax64CmpTable : List (String × ScalarCmp) :=
@@ -4401,13 +4407,15 @@ theorem ScalarBin.nat_lt (o : ScalarBin) {w x y r : Nat} (hw : w ≤ 64) (hx : x
       exact lt_of_lt_of_le hs.2.2 hp
     · cases h
 
-/-- A value of a unary integer operation at a width of at most `64` is the integer of a
-    natural number below `2 ^ 64`. -/
-theorem ScalarUn.val_int (o : ScalarUn) {w : Nat} (hw : w ≤ 64) {a : Int} {v : Value}
-    (h : o.val w a = some v) : ∃ r : Nat, v = .int r ∧ r < 2 ^ 64 := by
+/-- A value of a unary integer operation other than the increment, at a width of at most
+    `64`, is the integer of a natural number below `2 ^ 64`. -/
+theorem ScalarUn.val_int (o : ScalarUn) (ho : o ≠ .incc) {w : Nat} (hw : w ≤ 64) {a : Int}
+    {v : Value} (h : o.val w a = some v) : ∃ r : Nat, v = .int r ∧ r < 2 ^ 64 := by
   have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
   have h0 : 0 < 2 ^ w := by positivity
-  cases o <;> simp only [ScalarUn.val, _root_.Hax.u64UnOp] at h <;> split at h
+  cases o
+  case incc => exact absurd rfl ho
+  all_goals (simp only [ScalarUn.val, _root_.Hax.u64UnOp] at h; split at h)
   all_goals cases h
   · exact ⟨_, rfl, by omega⟩
   · exact ⟨_, rfl, Nat.mod_lt _ (by positivity)⟩
@@ -4420,6 +4428,48 @@ theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :
   refine ⟨BitVec.ofNat 64 r, ?_, ?_⟩
   · simp only [dec, Int.natCast_nonneg, hr', and_self, if_true, Int.toNat_natCast]
   · simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr]
+
+/-- A value in the range of the `64`-bit words: an integer in `[0, 2 ^ 64)`, or a value that
+    is no integer. -/
+def wordRangeB : Value → Bool
+  | .int n => decide (0 ≤ n) && decide (n < 2 ^ 64)
+  | _ => true
+
+/-- **The `u64` table at the call typing `hax64SigOf`**: `Hax.hax64Builtins`, with a result of
+    `range_incl_end` outside `wordRangeB` refused. The call `range_incl_end` is typed as a
+    `64`-bit word, so the end `2 ^ 64` of `0..=u64::MAX` has no value in this table. -/
+def hax64BuiltinsR : Builtins := fun f vals =>
+  match _root_.Hax.hax64Builtins f vals with
+  | some r => if f = "range_incl_end" ∧ wordRangeB r = false then none else some r
+  | none => none
+
+/-- A value of `hax64BuiltinsR` is a value of `Hax.hax64Builtins`, in `wordRangeB` at
+    `range_incl_end`. -/
+theorem hax64BuiltinsR_some {f : String} {vals : List Value} {v : Value}
+    (h : hax64BuiltinsR f vals = some v) :
+    _root_.Hax.hax64Builtins f vals = some v ∧ (f = "range_incl_end" → wordRangeB v = true) := by
+  unfold hax64BuiltinsR at h
+  rcases hb : _root_.Hax.hax64Builtins f vals with _ | r
+  · rw [hb] at h
+    cases h
+  · rw [hb] at h
+    simp only at h
+    split_ifs at h with hc
+    cases h
+    exact ⟨rfl, fun hf => by simpa [hf] using hc⟩
+
+/-- A value of `Hax.hax64Builtins`, in `wordRangeB` at `range_incl_end`, is a value of
+    `hax64BuiltinsR`. -/
+theorem hax64BuiltinsR_of {f : String} {vals : List Value} {v : Value}
+    (h : _root_.Hax.hax64Builtins f vals = some v)
+    (hr : f = "range_incl_end" → wordRangeB v = true) : hax64BuiltinsR f vals = some v := by
+  unfold hax64BuiltinsR
+  rw [h]
+  simp only
+  rw [if_neg]
+  rintro ⟨hf, hw⟩
+  rw [hr hf] at hw
+  cases hw
 
 /-- **The typing of `select` is sound for `selectOp`.** At a call `hax64ScalarSig` types, a
     value of `selectOp` on the encodings of the arguments is the encoding of a value of the
@@ -4457,11 +4507,22 @@ theorem selectOp_typed {f : String} {as : List NfTy} {r : NfTy}
   | _ :: _ :: _ :: _ :: _, .cons _ (.cons _ (.cons _ (.cons _ _))), _, hv =>
     simp [encAll, selectOp] at hv
 
-/-- **The scalar call typing is sound for `Hax.hax64Builtins`.** -/
+/-- The increment of the unary table is the call `range_incl_end`. -/
+theorem hax64UnTable_incc : ∀ e ∈ hax64UnTable, e.2.1 = .incc → e.1 = "range_incl_end" := by
+  decide
+
+/-- An integer in `wordRangeB` is the integer of a natural number below `2 ^ 64`. -/
+theorem wordRangeB_int {n : Int} (h : wordRangeB (.int n) = true) :
+    ∃ r : Nat, (n : Int) = r ∧ r < 2 ^ 64 := by
+  simp only [wordRangeB, Bool.and_eq_true, decide_eq_true_eq] at h
+  exact ⟨n.toNat, by omega, by omega⟩
+
+/-- **The scalar call typing is sound for `hax64BuiltinsR`.** -/
 theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
     (hr : hax64ScalarSig f as = some r) (xs : HVector NfTy.denote as) (v : Value)
-    (hv : _root_.Hax.hax64Builtins f (encAll as xs) = some v) :
+    (hv : hax64BuiltinsR f (encAll as xs) = some v) :
     ∃ y, dec r v = some y ∧ v = enc r y := by
+  obtain ⟨hv, hvr⟩ := hax64BuiltinsR_some hv
   match as, xs, hr with
   | [ta, tb], .cons x₁ (.cons x₂ .nil), hr =>
     simp only [hax64ScalarSig] at hr
@@ -4501,7 +4562,15 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
       obtain ⟨⟨o, w⟩, hp⟩ := Option.isSome_iff_exists.mp hab.2
       have hmem := mem_of_find?_map hp
       rw [hax64UnTable_sem _ hmem, orElse_none_eq] at hv
-      obtain ⟨r', rfl, hr'⟩ := ScalarUn.val_int o (hax64UnTable_w _ hmem) hv
+      by_cases ho : o = .incc
+      · subst ho
+        have hf : f = "range_incl_end" := hax64UnTable_incc _ hmem rfl
+        simp only [ScalarUn.val, Option.some.injEq] at hv
+        subst hv
+        obtain ⟨r', hr'e, hr'⟩ := wordRangeB_int (hvr hf)
+        rw [hr'e]
+        exact dec_word64_nat hr'
+      obtain ⟨r', rfl, hr'⟩ := ScalarUn.val_int o ho (hax64UnTable_w _ hmem) hv
       exact dec_word64_nat hr'
     · cases hr
   | [], _, hr => simp [hax64ScalarSig] at hr
@@ -4701,9 +4770,10 @@ theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
     · cases hr
   · cases hr
 
-/-- **The call typing of `u64` code is sound for `Hax.hax64Builtins`.** -/
-theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigOf := by
-  intro f as r hr xs v hv
+/-- **The call typing of `u64` code is sound for `hax64BuiltinsR`.** -/
+theorem hax64Builtins_typedCalls : TypedCalls hax64BuiltinsR hax64SigOf := by
+  intro f as r hr xs v hvR
+  obtain ⟨hv, -⟩ := hax64BuiltinsR_some hvR
   unfold hax64SigOf at hr
   rcases hfs : fieldTagSig f as with _ | r'
   swap
@@ -4722,7 +4792,7 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
   split at hr
   · rename_i hs
     cases hr
-    exact hax64ScalarSig_typed f as _ hs xs v hv
+    exact hax64ScalarSig_typed f as _ hs xs v hvR
   · split at hr
     · rename_i ti _
       split at hr

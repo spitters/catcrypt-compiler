@@ -231,6 +231,7 @@ theorem unChain_image {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Na
   · exact notChain_image w a
   · exact ⟨by image_op, by image_op⟩
   · exact ⟨by image_op, by image_op⟩
+  · exact ⟨by image_op, by image_op⟩
 
 theorem geChain_image {Δ : Ctxt catCryptDialect} (c : BitVec 1) (x y : Var Δ (.sword 64)) :
     OpResImages (geChain c x y) :=

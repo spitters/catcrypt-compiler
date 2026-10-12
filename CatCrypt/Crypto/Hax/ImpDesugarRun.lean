@@ -450,7 +450,8 @@ theorem desugarIte_runs {bi : Builtins} {fuel : Nat} {ρ : String → Option Str
 /-- **The signature of the calls of `u64` code that are defined on all words**: the
     wrapping sum, difference and product and the bitwise operations at a width take two
     words to a word, a comparison takes two words to a bit, and a complement, a wrapping
-    negation and a truncation take a word to a word. -/
+    negation and a truncation take a word to a word. The increment `range_incl_end` is
+    outside the signature: its value at `2 ^ 64 - 1` is no word. -/
 def hax64WordSig (g : String) : Option (List STy × STy) :=
   match scalarBinOf g with
   | some (op, _) =>
@@ -462,7 +463,7 @@ def hax64WordSig (g : String) : Option (List STy × STy) :=
       | some _ => some ([.word, .word], .bit)
       | none =>
           match scalarUnOf g with
-          | some _ => some ([.word], .word)
+          | some (uop, _) => if uop = .incc then none else some ([.word], .word)
           | none => none
 
 /-- A list of values of the types of two words is two integers below `2^64`. -/
@@ -502,6 +503,10 @@ theorem total_hax64Builtins {g : String} {τs : List STy} {τ : STy}
       rcases hu : scalarUnOf g with _ | ⟨uop, w⟩
       · rw [hu] at h; cases h
       · rw [hu] at h
+        dsimp only at h
+        split at h
+        · cases h
+        rename_i hinc
         cases h
         obtain ⟨a, ha, rfl⟩ := forall₂_word1 hv
         have hmem := mem_of_find?_map hu
@@ -523,6 +528,7 @@ theorem total_hax64Builtins {g : String} {τs : List STy} {τ : STy}
         | cast =>
           simp only [ScalarUn.val, if_pos ha'.1]
           exact ⟨_, rfl, _, lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos w)) hP, rfl⟩
+        | incc => exact absurd rfl hinc
     · rw [hc] at h
       cases h
       obtain ⟨a, b, -, -, rfl⟩ := forall₂_word2 hv
