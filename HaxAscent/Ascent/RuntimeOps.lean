@@ -72,6 +72,8 @@ generator (`corresB_proj`) and not by the table.
   reading the table
 * `RuntimeOps.index_int`, `RuntimeOps.index_slice_to`, `RuntimeOps.slice_update_enc`,
   `RuntimeOps.Ne_int`, … — the `corres_app` equation of each name
+* `RuntimeOps.range_incl_end_eq_widthArrayOps` — the table's `range_incl_end`, the
+  printed `Hax.range_incl_end`, is the builtin of the semantics
 * `RuntimeOps.tagged1`, `RuntimeOps.tagged2`, `RuntimeOps.cast_w` — the equation of a
   member of a width family, with `RuntimeOps.cast8`, `RuntimeOps.BitXor32`,
   `RuntimeOps.wrapping_add64`, `RuntimeOps.Not64` as instances
@@ -130,6 +132,13 @@ noncomputable def widthTable : List (String × (Nat → Leaf)) :=
 
 /-! ## The table of untagged names -/
 
+/-- The leaf of `range_incl_end`, the exclusive end of the inclusive range `lo..=hi`: on
+    a value denoting the integer `k` (unsigned, signed or unbounded) it is the integer
+    `Hax.range_incl_end k = k + 1`, computed in `Int`. -/
+def rangeInclEndLeaf : Leaf
+  | [v] => v.toInt.map fun k => .int (Hax.range_incl_end k)
+  | _ => none
+
 /-- The untagged runtime names, after the printer's `runtimeName` and its rewrites of
     `index`, `index_mut`, `collect`, `iter`, `array_lit`, `Not`, `new` and `panic`. -/
 noncomputable def runtimeTable : Table :=
@@ -160,6 +169,7 @@ noncomputable def runtimeTable : Table :=
    ("Div", intArrLeaf2 Hax.div Hax.div), ("div", intArrLeaf2 Hax.div Hax.div),
    ("Rem", intArrLeaf2 Hax.rem Hax.rem), ("rem", intArrLeaf2 Hax.rem Hax.rem),
    ("Neg", negLeaf), ("neg", negLeaf),
+   ("range_incl_end", rangeInclEndLeaf),
    -- comparison and logic
    ("Lt", leaf2 (Hax.lt : Int → Int → Bool)), ("lt", leaf2 (Hax.lt : Int → Int → Bool)),
    ("Le", leaf2 (Hax.le : Int → Int → Bool)), ("le", leaf2 (Hax.le : Int → Int → Bool)),
@@ -616,6 +626,28 @@ theorem rotate_right_int (x y : Int) :
 theorem cast_int (x : Int) :
     runtimeBuiltins base "cast" [.int x] = some (.int (Hax.castVal x)) :=
   (runtimeBuiltins_of_lookup rfl).trans (leaf1_apply _ x)
+
+theorem range_incl_end_int (x : Int) :
+    runtimeBuiltins base "range_incl_end" [.int x] = some (.int (Hax.range_incl_end x)) :=
+  (runtimeBuiltins_of_lookup rfl).trans rfl
+
+/-- **`range_incl_end` is the builtin of the semantics.** On every argument list the
+    runtime table's `range_incl_end` agrees with `Hax.widthArrayOps`, whose arm sends an
+    unsigned, signed or unbounded integer `n` to the integer `n + 1`. -/
+theorem range_incl_end_eq_widthArrayOps (vs : List Value) :
+    runtimeBuiltins base "range_incl_end" vs = Hax.widthArrayOps "range_incl_end" vs := by
+  rw [runtimeBuiltins_of_lookup rfl]
+  match vs with
+  | [] => rfl
+  | [v] => cases v <;> rfl
+  | _ :: _ :: _ => simp [widthArrayOps, rangeInclEndLeaf]
+
+/-- The runtime table's `range_incl_end` on a value denoting the integer `k` is the
+    integer `k + 1`. -/
+theorem range_incl_end_toInt {v : Value} {k : Int} (h : v.toInt = some k) :
+    runtimeBuiltins base "range_incl_end" [v] = some (.int (k + 1)) := by
+  rw [runtimeBuiltins_of_lookup rfl]
+  simp only [rangeInclEndLeaf, h, Option.map_some, Hax.range_incl_end]
 
 theorem min_int (x y : Int) :
     runtimeBuiltins base "min" [.int x, .int y] = some (.int (min x y)) :=
