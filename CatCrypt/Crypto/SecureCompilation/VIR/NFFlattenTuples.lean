@@ -47,6 +47,9 @@ of this module mentions it.
   of the arguments and of the result of another binding.
 * `flatProg` — the pass at a renaming; `flattenTuples` — the pass at the identity.
 * `flattenStep`, `flattenCert` — the pass as a chain step and its certificate.
+* `tyIsTuple`, `opIsTuple`, `opFlatOk`, `FlatOk` — the tuple types, the tuple operations,
+  and the programs the pass accepts.
+* `TupleFree` — the programs with no tuple operation and no tuple type at a binding.
 
 ## Main results
 
@@ -54,6 +57,8 @@ of this module mentions it.
   denotes the flattened results of the source program.
 * `flattenTuples_sound` — `flattenTuples p` denotes, at the flattened valuation, the
   flattened results of `p`, at every leaf table and every fuel.
+* `flatProg_isSome`, `flattenTuples_isSome` — the pass succeeds on the programs it accepts.
+* `flatProg_tupleFree`, `flattenTuples_tupleFree` — the output of the pass is tuple-free.
 -/
 
 @[expose] public section
@@ -535,5 +540,237 @@ def flattenCert (T : NfLeafTable) (fuel : Nat) (Γ : Ctxt nfDialect) (ts : List 
       (@NFProgPasses.nfSem fuel nfDialect _ _ _ _ (nfDenote T) _ (flatCtx Γ) (flatCtx ts)) :=
   PassChain.StepCert.ofTransport _ _ flatV flatV fun p _ V hf =>
     flattenTuples_sound T fuel p hf V
+
+/-! ## 6. Success and tuple-freedom -/
+
+/-- A type is a tuple type: `tnil` or `tcons`. -/
+def tyIsTuple : NfTy → Bool
+  | .tnil | .tcons _ _ => true
+  | .bit | .unit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ =>
+      false
+
+/-- An operation is a tuple operation: `tnilV`, `tconsV`, `thead` or `ttail`, also under
+    `named`. -/
+def opIsTuple : NfOp → Bool
+  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ => true
+  | .named _ op => opIsTuple op
+  | .const _ _ | .constBit _ | .constUnit | .bin _ _ | .un _ _ | .cast _ _ | .scast _ _
+  | .cmp _ _ | .andB | .orB | .xorB | .eqB | .notB | .index _ _ | .update _ _ | .arrLit _ _
+  | .arrRepeat _ _ | .mkPair _ _ | .fst _ _ | .snd _ _ | .call _ _ _ | .ilit _ _ | .ctr
+  | .trip _ => false
+
+/-- No type of a list is a tuple type. -/
+def NoTuple (ss : List NfTy) : Prop :=
+  ss.all (fun s => !tyIsTuple s) = true
+
+/-- An operation the pass accepts: a tuple operation, or an operation no argument type and
+    not the result type of which is a tuple type. -/
+def opFlatOk (op : NfOp) : Prop :=
+  opIsTuple op = true ∨ (NoTuple op.sig ∧ tyIsTuple op.ret = false)
+
+/-- The programs every let-bound operation of which the pass accepts, in every region. -/
+abbrev FlatOk {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) : Prop :=
+  NFProg.Covered (fun e => opFlatOk e.op) p
+
+/-- The programs with no tuple operation, no let-binding of a tuple type, and no tuple type
+    among the carried tuples, the results of the branches and the argument and result types
+    of the calls, in every region. -/
+def TupleFree : {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect Γ ts → Prop
+  | _, _, .ret _ => True
+  | _, _, .var (t := t) e k => opIsTuple e.op = false ∧ tyIsTuple t = false ∧ TupleFree k
+  | _, _, .forLoop (cs := cs) _ _ body k => NoTuple cs ∧ TupleFree body ∧ TupleFree k
+  | _, _, .ifThenElse (rs := rs) _ thn els k =>
+      NoTuple rs ∧ TupleFree thn ∧ TupleFree els ∧ TupleFree k
+  | _, _, .whileLoop (cs := cs) _ body k => NoTuple cs ∧ TupleFree body ∧ TupleFree k
+  | _, _, .call (as := as) (rs := rs) _ _ k => NoTuple as ∧ NoTuple rs ∧ TupleFree k
+
+/-- No component of a type is a tuple type. -/
+theorem noTuple_flatTy : ∀ t : NfTy, NoTuple (flatTy t)
+  | .tnil => rfl
+  | .tcons h t => by
+      simp only [NoTuple, flatTy, List.all_append, Bool.and_eq_true]
+      exact ⟨noTuple_flatTy h, noTuple_flatTy t⟩
+  | .bit | .unit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ => rfl
+
+/-- No type of a flattened context is a tuple type. -/
+theorem noTuple_flatCtx : ∀ Γ : Ctxt nfDialect, NoTuple (flatCtx Γ)
+  | [] => rfl
+  | t :: Γ => by
+      simp only [NoTuple, flatCtx, ctxFlat, List.all_append, Bool.and_eq_true]
+      exact ⟨noTuple_flatTy t, noTuple_flatCtx Γ⟩
+
+section Success
+
+variable {Γ Δ : Ctxt nfDialect} (ren : Ctxt.Hom (flatCtx Γ) Δ)
+
+/-- `tupleHom?` succeeds at a tuple operation. -/
+theorem tupleHom?_isSome : ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig),
+    opIsTuple op = true → (tupleHom? ren op args).isSome := by
+  intro op
+  induction op
+  case tnilV => intro _ _; rfl
+  case tconsV => intro args _; match args with | .cons _ (.cons _ .nil) => rfl
+  case thead => intro args _; match args with | .cons _ .nil => rfl
+  case ttail => intro args _; match args with | .cons _ .nil => rfl
+  case named n op ih => exact fun args h => ih args h
+  all_goals intro _ h; simp [opIsTuple] at h
+
+/-- `tupleHom?` fails at an operation that is not a tuple operation. -/
+theorem tupleHom?_eq_none : ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig),
+    opIsTuple op = false → tupleHom? ren op args = none := by
+  intro op
+  induction op
+  case named n op ih => exact fun args h => ih args h
+  all_goals intro _ h; first | rfl | simp [opIsTuple] at h
+
+/-- An operation at which `tupleHom?` fails is not a tuple operation. -/
+theorem opIsTuple_of_tupleHom?_eq_none (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig)
+    (h : tupleHom? ren op args = none) : opIsTuple op = false := by
+  cases hop : opIsTuple op with
+  | false => rfl
+  | true =>
+      have := tupleHom?_isSome ren op args hop
+      rw [h] at this
+      cases this
+
+omit ren in
+/-- `atomVar?` succeeds at a type that is not a tuple type. -/
+theorem atomVar?_isSome : ∀ (s : NfTy) (f : Ctxt.Hom (flatTy s) Δ),
+    tyIsTuple s = false → (atomVar? s f).isSome := by
+  intro s f h
+  cases s <;> first | rfl | simp [tyIsTuple] at h
+
+/-- `atomArgs?` succeeds when no argument type is a tuple type. -/
+theorem atomArgs?_isSome : ∀ {ss : List NfTy} (args : HVector (fun t => Var Γ t) ss),
+    NoTuple ss → (atomArgs? ren args).isSome
+  | [], .nil, _ => rfl
+  | s :: _, .cons x xs, h => by
+      simp only [NoTuple, List.all_cons, Bool.and_eq_true, Bool.not_eq_true'] at h
+      rw [atomArgs?]
+      obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp
+        (atomVar?_isSome s (fun w => ren (varHom flatTy x w)) h.1)
+      obtain ⟨ys, hys⟩ := Option.isSome_iff_exists.mp (atomArgs?_isSome xs h.2)
+      rw [hy, Option.bind_some, hys]
+      rfl
+
+omit ren in
+/-- `atomRet?` succeeds at a type that is not a tuple type. -/
+theorem atomRet?_isSome (r : NfTy) (h : tyIsTuple r = false) :
+    (atomRet? (Δ := Δ) r).isSome := by
+  cases r <;> first | rfl | simp [tyIsTuple] at h
+
+omit ren in
+/-- A type at which `atomRet?` succeeds is not a tuple type. -/
+theorem tyIsTuple_of_atomRet? (r : NfTy) (R : Ctxt.Hom (flatTy r) (r :: Δ))
+    (h : atomRet? r = some @R) : tyIsTuple r = false := by
+  cases r <;> first | rfl | simp [atomRet?] at h
+
+end Success
+
+/-- A bind of an option that succeeds into a function that succeeds everywhere succeeds. -/
+theorem isSome_bind_of {α β : Type} {o : Option α} {f : α → Option β} (h : o.isSome)
+    (hf : ∀ a, (f a).isSome) : (o.bind f).isSome := by
+  obtain ⟨a, rfl⟩ := Option.isSome_iff_exists.mp h
+  exact hf a
+
+/-- **The pass succeeds on accepted programs.** `flatProg` returns a program at every
+    renaming when every operation other than a tuple operation has no argument type and not
+    a result type that is a tuple type. -/
+theorem flatProg_isSome {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) :
+    FlatOk p → ∀ {Δ : Ctxt nfDialect} (ren : Ctxt.Hom (flatCtx Γ) Δ), (flatProg p ren).isSome := by
+  induction p with
+  | ret vs => intro _ _ _; rfl
+  | var e k ih =>
+      obtain ⟨op, rfl, args⟩ := e
+      intro hp Δ ren
+      rw [flatProg]
+      rcases hp.1 with ht | ⟨ha, hr⟩
+      · obtain ⟨R, hR⟩ := Option.isSome_iff_exists.mp (tupleHom?_isSome ren op args ht)
+        simp only [hR]
+        exact ih hp.2 _
+      · cases hT : tupleHom? ren op args with
+        | some R => exact ih hp.2 _
+        | none =>
+            exact isSome_bind_of (atomArgs?_isSome ren args ha) fun _ =>
+              isSome_bind_of (atomRet?_isSome op.ret hr) fun _ => by
+                rw [Option.isSome_map]; exact ih hp.2 _
+  | forLoop count inits body k ihb ihk =>
+      intro hp Δ ren
+      rw [flatProg]
+      exact isSome_bind_of (ihb hp.1 _) fun _ => by rw [Option.isSome_map]; exact ihk hp.2 _
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro hp Δ ren
+      rw [flatProg]
+      exact isSome_bind_of (iht hp.1 _) fun _ => isSome_bind_of (ihe hp.2.1 _) fun _ => by
+        rw [Option.isSome_map]; exact ihk hp.2.2 _
+  | whileLoop inits body k ihb ihk =>
+      intro hp Δ ren
+      rw [flatProg]
+      exact isSome_bind_of (ihb hp.1 _) fun _ => by rw [Option.isSome_map]; exact ihk hp.2 _
+  | call f args k ih =>
+      intro hp Δ ren
+      rw [flatProg, Option.isSome_map]
+      exact ih hp _
+
+/-- **Tuple flattening succeeds on accepted programs.** -/
+theorem flattenTuples_isSome {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts)
+    (hp : FlatOk p) : (flattenTuples p).isSome :=
+  flatProg_isSome p hp _
+
+/-- **The output of the pass is tuple-free.** A program `flatProg` returns has no tuple
+    operation and no tuple type at a let-binding, a carried tuple, the results of a branch or
+    the signature of a call. -/
+theorem flatProg_tupleFree {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) :
+    ∀ {Δ : Ctxt nfDialect} (ren : Ctxt.Hom (flatCtx Γ) Δ) (q : NFProg nfDialect Δ (flatCtx ts)),
+      flatProg p ren = some q → TupleFree q := by
+  induction p with
+  | ret vs =>
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      cases hq
+      trivial
+  | var e k ih =>
+      obtain ⟨op, rfl, args⟩ := e
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      cases hT : tupleHom? ren op args with
+      | some R =>
+          simp only [hT] at hq
+          exact ih _ q hq
+      | none =>
+          simp only [hT, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+          obtain ⟨args', _, R, hR, k', hk, rfl⟩ := hq
+          exact ⟨opIsTuple_of_tupleHom?_eq_none ren op args hT,
+            tyIsTuple_of_atomRet? op.ret R hR, ih _ k' hk⟩
+  | forLoop count inits body k ihb ihk =>
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨body', hb, k', hk, rfl⟩ := hq
+      exact ⟨noTuple_flatCtx _, ihb _ body' hb, ihk _ k' hk⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨thn', ht, els', he, k', hk, rfl⟩ := hq
+      exact ⟨noTuple_flatCtx _, iht _ thn' ht, ihe _ els' he, ihk _ k' hk⟩
+  | whileLoop inits body k ihb ihk =>
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
+      obtain ⟨body', hb, k', hk, rfl⟩ := hq
+      exact ⟨noTuple_flatCtx _, ihb _ body' hb, ihk _ k' hk⟩
+  | call f args k ih =>
+      intro Δ ren q hq
+      rw [flatProg] at hq
+      simp only [Option.map_eq_some_iff] at hq
+      obtain ⟨k', hk, rfl⟩ := hq
+      exact ⟨noTuple_flatCtx _, noTuple_flatCtx _, ih _ k' hk⟩
+
+/-- **Tuple flattening produces tuple-free programs.** -/
+theorem flattenTuples_tupleFree {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) {q : NFProg nfDialect (flatCtx Γ) (flatCtx ts)}
+    (hq : flattenTuples p = some q) : TupleFree q :=
+  flatProg_tupleFree p _ q hq
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NFFlattenTuples
