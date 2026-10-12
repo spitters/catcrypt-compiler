@@ -141,9 +141,27 @@ theorem tsum_append (V : String → Σ w, BitVec w) (A : String → ArrCell) (C 
 
 /-! ## 2. Entailment -/
 
-/-- The largest lower bound a list of facts states for the term `t`. -/
+/-- The value of an immediate at width `64`, and `0` for every other term: a lower bound on
+    the value of the term. -/
+def immLb : STerm → Nat
+  | .immW w n => if w = 64 then n % 2 ^ 64 else 0
+  | _ => 0
+
+theorem immLb_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (t : STerm) : immLb t ≤ wval (t.ev V A C O) := by
+  unfold immLb
+  split
+  · split
+    · rename_i w n hw
+      subst hw
+      simp [wval, STerm.ev, castW]
+    · exact Nat.zero_le _
+  · exact Nat.zero_le _
+
+/-- The largest lower bound a list of facts states for the term `t`, and at least the value
+    of `t` when it is an immediate at width `64` (`immLb`). -/
 def lbOf : List SFact → STerm → Nat
-  | [], _ => 0
+  | [], t => immLb t
   | .ge t' k :: F, t => if t' = t then max k (lbOf F t) else lbOf F t
   | .le _ _ :: F, t => lbOf F t
   | .w64 _ :: F, t => lbOf F t
@@ -151,7 +169,7 @@ def lbOf : List SFact → STerm → Nat
 theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
     ∀ (F : List SFact) (t : STerm), (∀ f ∈ F, f.holds V A C O) →
       lbOf F t ≤ wval (t.ev V A C O)
-  | [], _, _ => Nat.zero_le _
+  | [], t, _ => immLb_le V A C O t
   | .le _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .w64 _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .ge t' k :: F, t, h => by
