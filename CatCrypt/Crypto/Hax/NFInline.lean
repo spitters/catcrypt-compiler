@@ -32,18 +32,21 @@ environment and at an explicit one (`NFProg.denoteAt_inline?`). `NFProg.inlineIt
 pass, so that the calls of an inlined body are inlined by the next round; `inlineStep` is the
 repetition as a chain step and `inlineCert` its certificate.
 
-`crateLib fs` is the library of the functions `fs` of a crate over `nfDialect`: a leaf call
-`NfOp.call f as r` of a function of `fs` has the body `impToNF` produces from the function's
-body over its parameters, when the parameter types are `as` and the result type is `r`.
+`crateLib fs base` is the library of the functions `fs` of a crate over `nfDialect`: a leaf
+call `NfOp.call f as r` of a function of `fs` has the body `impToNF` produces from the
+function's body over its parameters, at the call typing `crateSigOf fs base`, when the
+parameter types are `as` and the result type is `r`. The typing `base` of the calls of other
+names is `hax64SigOf` unless given; a typing that also types the calls of linked functions
+lets the bodies call them.
 
 The builtins with the crate, `ImpToNF.crateBi fs bi fuelC m`, answer a call of a function of
 `fs` at the call depth `m + 1` by the run of its body at the depth `m`. The library is
 therefore sound from the depth `m + 1` to the depth `m` (`InlineLib.SoundStep`,
-`crateLib_soundStep`), under the typing `TypedCalls bi hax64SigOf` of the builtins `bi`: a
-round of inlining lowers the depth by one. A round keeps the runs of a program each of whose
-calls of a function of `fs` has a body in the library; `crateInlineOk fs n` checks this at
-each of `n` rounds and checks that no call of a function of `fs` is left (`noCrateCall`), so
-that the program after the rounds runs at `bi` (`denote_inlineIter_crate`).
+`crateLib_soundStep`), under a typing `TypedCalls bi base` of the builtins `bi`: a round of
+inlining lowers the depth by one. A round keeps the runs of a program each of whose calls of
+a function of `fs` has a body in the library; `crateInlineOk fs n` checks this at each of `n`
+rounds and checks that no call of a function of `fs` is left (`noCrateCall`), so that the
+program after the rounds runs at `bi` (`denote_inlineIter_crate`).
 
 ## Main definitions
 
@@ -1533,27 +1536,33 @@ open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf impToNF entryEnv
 
 /-- The body of the function `c` of the crate `fs` at the argument types `as` and the result
     type `r`: the program `impToNF` produces from its body over its parameters, at the call
-    typing `crateSigOf fs hax64SigOf`, when the parameter types are `as` and the result type is
-    `r`. -/
-def crateBody (fs : List CrateFn) (c : CrateFn) (as : List NfTy) (r : NfTy) :
+    typing `crateSigOf fs base`, when the parameter types are `as` and the result type is `r`.
+    The typing `base` of the calls of names of no function of `fs` is `hax64SigOf` unless
+    given. -/
+def crateBody (fs : List CrateFn) (c : CrateFn) (as : List NfTy) (r : NfTy)
+    (base : String → List NfTy → Option NfTy := hax64SigOf) :
     Option (NFProg nfDialect as [r]) :=
-  (impToNF (crateSigOf fs hax64SigOf) none (entryEnv c.params) c.body).bind fun o =>
+  (impToNF (crateSigOf fs base) none (entryEnv c.params) c.body).bind fun o =>
     if h : entryCtx c.params = as ∧ o.t = r then
       some (cast (congrArg₂ (NFProg nfDialect) h.1 (congrArg (fun x => [x]) h.2)) o.prog)
     else none
 
-/-- The body of an operation in the library of the functions `fs`: a leaf call
-    `NfOp.call f as r` of the first function of `fs` named `f` has the body `crateBody`, a
-    named operation the body of the operation, and no other operation has a body. -/
-def crateOp (fs : List CrateFn) : (o : NfOp) → Option (NFProg nfDialect o.sig [o.ret])
-  | .call f as r => (fs.find? (·.name == f)).bind fun c => crateBody fs c as r
-  | .named _ o => crateOp fs o
-  | _ => none
+/-- The body of an operation in the library of the functions `fs` at the typing `base` of the
+    other calls: a leaf call `NfOp.call f as r` of the first function of `fs` named `f` has the
+    body `crateBody`, a named operation the body of the operation, and no other operation has a
+    body. -/
+def crateOp (fs : List CrateFn) : (o : NfOp) →
+    (base : String → List NfTy → Option NfTy := hax64SigOf) →
+      Option (NFProg nfDialect o.sig [o.ret])
+  | .call f as r, base => (fs.find? (·.name == f)).bind fun c => crateBody fs c as r base
+  | .named _ o, base => crateOp fs o base
+  | _, _ => none
 
-/-- **The library of the functions `fs` of a crate**: the operations of `crateOp`; no `call`
-    node has a body. -/
-def crateLib (fs : List CrateFn) : InlineLib nfDialect where
-  op := crateOp fs
+/-- **The library of the functions `fs` of a crate** at the typing `base` of the other calls:
+    the operations of `crateOp`; no `call` node has a body. -/
+def crateLib (fs : List CrateFn) (base : String → List NfTy → Option NfTy := hax64SigOf) :
+    InlineLib nfDialect where
+  op o := crateOp fs o base
   call _ _ _ := none
 
 /-! ## 6. The library of a crate is sound along the call depth -/
@@ -1671,13 +1680,13 @@ theorem nfDenoteOp_crateBi (fs : List CrateFn) (bi : Builtins) (fuelC m : Nat) :
       rfl
 
 /-- **A call of a function of the crate at depth `m + 1` is a run of its body at depth `m`.**
-    Under the typing of the builtins `bi`, a successful run of an operation `crateOp fs` has a
-    body for, at the builtins with the crate to the call depth `m + 1`, is a run of the body
-    at the builtins with the crate to the call depth `m`, at every fuel `tf`, with the same
-    result. -/
-theorem crateOp_sound (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
-    (fuelC m tf : Nat) :
-    ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o = some b → ∀ x y,
+    Under a typing `base` of the builtins `bi`, a successful run of an operation `crateOp fs`
+    has a body for at the typing `base`, at the builtins with the crate to the call depth
+    `m + 1`, is a run of the body at the builtins with the crate to the call depth `m`, at
+    every fuel `tf`, with the same result. -/
+theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC m tf : Nat) :
+    ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o base = some b → ∀ x y,
       nfDenoteOp (tableOf (crateBi fs bi fuelC (m + 1))) o x = some y →
         PDenP (crateBi fs bi fuelC m) tf b x = some (.cons y .nil) := by
   intro o
@@ -1699,7 +1708,7 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi ha
           split at hv
           · cases hv
             obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (crateBi fs bi fuelC m)
-              (crateSigOf fs hax64SigOf) (crateBi_typedCalls fs bi hax64SigOf hT fuelC m) c.body
+              (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m) c.body
               none (entryEnv c.params) ho' fuelC _ x v _ (entryEnv_rel_paramsEnv c.params x)
               (Prod.ext hrun rfl) tf
             have hy' : y = o'.res.lookup W :=
@@ -1717,11 +1726,11 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi ha
       cases hb
 
 /-- **The library of a crate is sound from the call depth `m + 1` to the call depth `m`**,
-    for the operations that call no function of the crate, under the typing of the builtins
-    `bi` and at every fuel `tf`. -/
+    for the operations that call no function of the crate, under a typing `base` of the
+    builtins `bi` and at every fuel `tf`. -/
 theorem crateLib_soundStep (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC m tf : Nat) :
-    (crateLib fs).SoundStep (nfDenote (tableOf (crateBi fs bi fuelC (m + 1))))
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC m tf : Nat) :
+    (crateLib fs base).SoundStep (nfDenote (tableOf (crateBi fs bi fuelC (m + 1))))
       (nfDenote (tableOf (crateBi fs bi fuelC m))) (fun o => !crateCallOp fs o) tf where
   op := crateOp_sound fs bi hT fuelC m tf
   keep o ho x y h := by
@@ -1731,20 +1740,22 @@ theorem crateLib_soundStep (fs : List CrateFn) (bi : Builtins)
     rwa [nfDenoteOp_crateBi fs bi fuelC (m + 1) o ho] at h
   call _ _ _ _ hb := by cases hb
 
-/-- **The check of `n` rounds of inlining at the library of the crate `fs`**: at each round
-    every call of a function of `fs` in the program of the round has a body in `crateLib fs`
-    and the round does not refuse, and no call of a function of `fs` is in the program after
-    the `n` rounds. -/
+/-- **The check of `n` rounds of inlining at the library of the crate `fs`** at the typing
+    `base` of the other calls: at each round every call of a function of `fs` in the program of
+    the round has a body in `crateLib fs base` and the round does not refuse, and no call of a
+    function of `fs` is in the program after the `n` rounds. -/
 def crateInlineOk (fs : List CrateFn) (n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
-    (p : NFProg nfDialect Γ ts) : Bool :=
-  p.inlineIterOk (crateLib fs) (fun o => !crateCallOp fs o) n &&
-    noCrateCall fs (p.inlineIter (crateLib fs) n)
+    (p : NFProg nfDialect Γ ts) (base : String → List NfTy → Option NfTy := hax64SigOf) :
+    Bool :=
+  p.inlineIterOk (crateLib fs base) (fun o => !crateCallOp fs o) n &&
+    noCrateCall fs (p.inlineIter (crateLib fs base) n)
 
 /-- A program accepted by `crateInlineOk fs n` has no call of a function of `fs` after the
     `n` rounds. -/
 theorem crateInlineOk_noCrateCall {fs : List CrateFn} {n : Nat} {Γ : Ctxt nfDialect}
-    {ts : List NfTy} {p : NFProg nfDialect Γ ts} (h : crateInlineOk fs n p = true) :
-    noCrateCall fs (p.inlineIter (crateLib fs) n) = true :=
+    {ts : List NfTy} {p : NFProg nfDialect Γ ts} {base : String → List NfTy → Option NfTy}
+    (h : crateInlineOk fs n p base = true) :
+    noCrateCall fs (p.inlineIter (crateLib fs base) n) = true :=
   (Bool.and_eq_true_iff.mp h).2
 
 /-- **A program without calls of the crate denotes at the builtins with the crate as at the
@@ -1758,16 +1769,18 @@ theorem PDenP_crateBi_of_noCrateCall (fs : List CrateFn) (bi : Builtins) (fuelC 
     (fun o ho x => nfDenoteOp_crateBi fs bi fuelC m o (by simpa using ho) x) tf p hp V
 
 /-- **Inlining at the library of a crate keeps every successful run, from the builtins with
-    the crate to the builtins without it.** Under the typing of the builtins `bi`, on a
-    program accepted by `crateInlineOk fs n`, a successful run at the builtins with the crate
-    to the call depth `n` (the functions of `fs` run their bodies at the fuel `fuelC`) is a run
-    of the program after `n` rounds of inlining at the builtins `bi`, with the same result. -/
+    the crate to the builtins without it.** Under a typing `base` of the builtins `bi`, on a
+    program accepted by `crateInlineOk fs n` at `base`, a successful run at the builtins with
+    the crate to the call depth `n` (the functions of `fs` run their bodies at the fuel
+    `fuelC`) is a run of the program after `n` rounds of inlining at the builtins `bi`, with
+    the same result. -/
 theorem denote_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
-    (p : NFProg nfDialect Γ ts) (hok : crateInlineOk fs n p = true) {V : Valuation Γ}
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC tf n : Nat)
+    {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (hok : crateInlineOk fs n p base = true) {V : Valuation Γ}
     {out : Valuation (d := nfDialect) ts}
     (hp : PDenP (crateBi fs bi fuelC n) tf p V = some out) :
-    PDenP bi tf (p.inlineIter (crateLib fs) n) V = some out := by
+    PDenP bi tf (p.inlineIter (crateLib fs base) n) V = some out := by
   obtain ⟨hit, hno⟩ := Bool.and_eq_true_iff.mp hok
   rw [← PDenP_crateBi_of_noCrateCall fs bi fuelC 0 tf _ hno V]
   exact NFProg.denote_inlineIter_step
