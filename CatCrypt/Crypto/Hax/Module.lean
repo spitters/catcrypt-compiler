@@ -76,8 +76,9 @@ call of `f` at depth `0` fails, while the linked function answers it.
 
 The inlining at the library of a list of callees translates their bodies at a call typing over
 a typing `base` of the other calls (`hax64SigOf` unless given). At the call typing of the
-linked functions of a module, `HaxModule.linkSig`, a body may call a linked function, and the
-inlining keeps the runs from the table of the module to the table of its linked functions
+linked functions of a module, `HaxModule.linkSig`, a body may call a linked function. The
+inlining of a module, `HaxModule.inline?`, translates the bodies at that call typing, and it
+keeps the runs from the table of the module to the table of its linked functions
 (`HaxModule.denote_crateInline?_linkSig`).
 
 A family of tables along the call depth, `NFInline.CrateTables fs bi T`, states what the
@@ -786,6 +787,29 @@ theorem typedCalls_linkBi (ls : List LinkedFn) {bi : Builtins}
         exact ⟨y, hy, dec_sound _ _ _ hy⟩
       · cases hsig
 
+/-- **The table of the linked functions `ls` is typed by the call typing of their callees over
+    every typing `base` of the table**: a value of a call of a linked function is the value of
+    its meaning, which decodes at its result type (`LinkedFn.sem_res`). -/
+theorem typedCalls_linkBi_callees (ls : List LinkedFn) {bi : Builtins}
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls (linkBi ls bi) base) :
+    TypedCalls (linkBi ls bi) (crateSigOf (ls.map LinkedFn.callee) base) := by
+  intro f as r hsig xs v hb
+  unfold crateSigOf at hsig
+  rw [find?_callee] at hsig
+  cases hf : ls.find? (·.name == f) with
+  | none =>
+      rw [hf] at hsig
+      exact hT f as r hsig xs v hb
+  | some l =>
+      rw [hf] at hsig
+      simp only [Option.map_some] at hsig
+      split at hsig
+      · cases hsig
+        rw [linkBi_of_find_some ls bi hf] at hb
+        obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp (l.sem_res _ _ hb)
+        exact ⟨y, hy, dec_sound _ _ _ hy⟩
+      · cases hsig
+
 /-- **A module**: an entry function, the functions the entry may call, the depth to which
     their calls are inlined, and the linked functions, whose calls stay calls. A function is
     a `ModFn`: its name, its typed parameters, its result type and its extraction. A module
@@ -904,94 +928,6 @@ theorem runs_single (bi : Builtins) (σ : AbiLayout) (te : TExpr) (sa : AState) 
   ⟨fun ⟨env, fuel, _, env', h⟩ => ⟨env, fuel, env', h⟩,
     fun ⟨env, fuel, env', h⟩ => ⟨env, fuel, 0, env', h⟩⟩
 
-/-- **The inlining of the calls of a module** in a structured program, under the preparation
-    `P`: `crateInline?` at the prepared callees and the depth of the module. -/
-def inline? (P : TExpr → ImpExpr) (m : HaxModule) {Γ : Ctxt nfDialect} {ts : List NfTy}
-    (p : NFProg nfDialect Γ ts) : Option (NFProg nfDialect Γ ts) :=
-  crateInline? (m.prepared P) m.depth p
-
-/-- The inlining of the module of a single function returns its argument. -/
-theorem inline?_single (P : TExpr → ImpExpr) (te : TExpr) {Γ : Ctxt nfDialect}
-    {ts : List NfTy} (p : NFProg nfDialect Γ ts) : (single te).inline? P p = some p :=
-  crateInline?_nil_zero p
-
-/-- **The call typing of a module is sound for the table of the module**, under the typing
-    of the base table: the table of the linked functions is typed by the call typing of the
-    linked functions over `hax64SigOf` (`typedCalls_linkBi`), and the table of the module by
-    the call typing of the prepared callees over that (`typedCalls_refBi`). -/
-theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
-    (hT : TypedCalls bi hax64SigOf) (fuelC : Nat) :
-    TypedCalls (m.table bi fuelC) (m.sigOf P) := by
-  rw [sigOf, crateSigOf_append]
-  exact typedCalls_refBi P m.fns (typedCalls_linkBi m.linked hT) fuelC m.depth
-
-/-- **The inlining of the calls of a module keeps every successful run, from the table of the
-    module to the table of its linked functions**, under the typing `hax64SigOf` of the
-    table of the linked functions, when the preparation `P` keeps the runs of every function
-    at every depth of the reference table over it. For a module without linked functions the
-    table of the linked functions is the base table (`linkTable_of_linked_nil`). -/
-theorem denote_inline? (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
-    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
-    {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
-    (h : m.inline? P p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
-    (hp : PDenP (m.table bi fuelC) tf p V = some out) :
-    PDenP (m.linkTable bi) tf p' V = some out :=
-  (crateTables_refBi P m.fns _ fuelC hsim).denote_crateInline? hT tf m.depth h hp
-
-/-- The inlining of the calls of a module as a chain step. -/
-def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts : List NfTy) :
-    PassChain.Step (NFProg nfDialect Γ ts) (NFProg nfDialect Γ ts) :=
-  crateInlineStep (m.prepared P) m.depth Γ ts
-
-/-- **The certificate of the inlining of the calls of a module**: from the semantics of
-    structured programs at the leaf table of the module's table to the semantics at the leaf
-    table of the table of its linked functions, with equality as input and output relation,
-    when the preparation `P` keeps the runs of every function at every depth of the
-    reference table over the table of the linked functions. -/
-def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
-    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
-    (Γ : Ctxt nfDialect) (ts : List NfTy) :
-    PassChain.StepCert (m.inlineStep P Γ ts).run
-      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.table bi fuelC))) _ Γ ts)
-      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.linkTable bi))) _ Γ ts) where
-  relIn V W := V = W
-  relOut o o' := o = o'
-  sound := by
-    intro p q V W o hf hVW hd
-    subst hVW
-    exact ⟨o, m.denote_inline? P hT tf hsim hf hd, rfl⟩
-
-end HaxModule
-
-/-! ## 6. The bodies of the callees at the call typing of the linked functions -/
-
-/-- **The table of the linked functions `ls` is typed by the call typing of their callees over
-    every typing `base` of the table**: a value of a call of a linked function is the value of
-    its meaning, which decodes at its result type (`LinkedFn.sem_res`). -/
-theorem typedCalls_linkBi_callees (ls : List LinkedFn) {bi : Builtins}
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls (linkBi ls bi) base) :
-    TypedCalls (linkBi ls bi) (crateSigOf (ls.map LinkedFn.callee) base) := by
-  intro f as r hsig xs v hb
-  unfold crateSigOf at hsig
-  rw [find?_callee] at hsig
-  cases hf : ls.find? (·.name == f) with
-  | none =>
-      rw [hf] at hsig
-      exact hT f as r hsig xs v hb
-  | some l =>
-      rw [hf] at hsig
-      simp only [Option.map_some] at hsig
-      split at hsig
-      · cases hsig
-        rw [linkBi_of_find_some ls bi hf] at hb
-        obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp (l.sem_res _ _ hb)
-        exact ⟨y, hy, dec_sound _ _ _ hy⟩
-      · cases hsig
-
-namespace HaxModule
-
 /-- **The call typing of the linked functions of a module**: `crateSigOf` at their callees over
     `hax64SigOf`. A call of a linked function on arguments whose types fit its parameter types
     has its result type. -/
@@ -1015,11 +951,35 @@ theorem linkTable_typedCalls_linkSig (m : HaxModule) {bi : Builtins}
     (hT : TypedCalls (m.linkTable bi) hax64SigOf) : TypedCalls (m.linkTable bi) m.linkSig :=
   typedCalls_linkBi_callees m.linked hT
 
+/-- **The inlining of the calls of a module** in a structured program, under the preparation
+    `P`: `crateInline?` at the prepared callees and the depth of the module, with the bodies
+    of the callees translated over the call typing of the linked functions (`linkSig`). -/
+def inline? (P : TExpr → ImpExpr) (m : HaxModule) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Option (NFProg nfDialect Γ ts) :=
+  crateInline? (m.prepared P) m.depth p m.linkSig
+
+/-- The inlining of the module of a single function returns its argument. -/
+theorem inline?_single (P : TExpr → ImpExpr) (te : TExpr) {Γ : Ctxt nfDialect}
+    {ts : List NfTy} (p : NFProg nfDialect Γ ts) : (single te).inline? P p = some p := by
+  rw [inline?, linkSig_of_linked_nil rfl]
+  exact crateInline?_nil_zero p
+
+/-- **The call typing of a module is sound for the table of the module**, under the typing
+    of the base table: the table of the linked functions is typed by the call typing of the
+    linked functions over `hax64SigOf` (`typedCalls_linkBi`), and the table of the module by
+    the call typing of the prepared callees over that (`typedCalls_refBi`). -/
+theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
+    (hT : TypedCalls bi hax64SigOf) (fuelC : Nat) :
+    TypedCalls (m.table bi fuelC) (m.sigOf P) := by
+  rw [sigOf, crateSigOf_append]
+  exact typedCalls_refBi P m.fns (typedCalls_linkBi m.linked hT) fuelC m.depth
+
 /-- **The inlining whose callee bodies call the linked functions keeps every successful run,
     from the table of the module to the table of its linked functions.** The bodies of the
     prepared callees are translated at the call typing `crateSigOf (m.prepared P) m.linkSig`,
-    in which a call of a linked function has its result type; the hypotheses are those of
-    `denote_inline?`. -/
+    in which a call of a linked function has its result type, under the typing `hax64SigOf` of
+    the table of the linked functions, when the preparation `P` keeps the runs of every
+    function at every depth of the reference table over it. -/
 theorem denote_crateInline?_linkSig (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     {fuelC : Nat} (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
     (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
@@ -1031,9 +991,48 @@ theorem denote_crateInline?_linkSig (P : TExpr → ImpExpr) (m : HaxModule) {bi 
   (crateTables_refBi P m.fns _ fuelC hsim).denote_crateInline?
     (m.linkTable_typedCalls_linkSig hT) tf m.depth h hp
 
+/-- **The inlining of the calls of a module keeps every successful run, from the table of the
+    module to the table of its linked functions**, under the typing `hax64SigOf` of the
+    table of the linked functions, when the preparation `P` keeps the runs of every function
+    at every depth of the reference table over it (`denote_crateInline?_linkSig`). For a
+    module without linked functions the table of the linked functions is the base table
+    (`linkTable_of_linked_nil`). -/
+theorem denote_inline? (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
+    {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
+    (h : m.inline? P p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
+    (hp : PDenP (m.table bi fuelC) tf p V = some out) :
+    PDenP (m.linkTable bi) tf p' V = some out :=
+  m.denote_crateInline?_linkSig P hT tf hsim h hp
+
+/-- The inlining of the calls of a module as a chain step. -/
+def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts : List NfTy) :
+    PassChain.Step (NFProg nfDialect Γ ts) (NFProg nfDialect Γ ts) :=
+  crateInlineStep (m.prepared P) m.depth Γ ts m.linkSig
+
+/-- **The certificate of the inlining of the calls of a module**: from the semantics of
+    structured programs at the leaf table of the module's table to the semantics at the leaf
+    table of the table of its linked functions, with equality as input and output relation,
+    when the preparation `P` keeps the runs of every function at every depth of the
+    reference table over the table of the linked functions. -/
+def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
+    (Γ : Ctxt nfDialect) (ts : List NfTy) :
+    PassChain.StepCert (m.inlineStep P Γ ts).run
+      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.table bi fuelC))) _ Γ ts)
+      (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (m.linkTable bi))) _ Γ ts) where
+  relIn V W := V = W
+  relOut o o' := o = o'
+  sound := by
+    intro p q V W o hf hVW hd
+    subst hVW
+    exact ⟨o, m.denote_inline? P hT tf hsim hf hd, rfl⟩
+
 end HaxModule
 
-/-! ## 7. The reference reading over a larger table -/
+/-! ## 6. The reference reading over a larger table -/
 
 open _root_.Hax (Outcome ImpPat)
 open _root_.Hax.InlineLocalClosures (closureTable bindAll)
@@ -1154,7 +1153,7 @@ theorem denoteSpine_val_of_le (fuel : Nat) : ∀ (bi : Builtins) (e : ImpExpr) {
       rw [denoteSpine.eq_4 _ _ _ h1 h2 h3] at h ⊢
       exact denote'_val_of_le hsub h
 
-/-! ## 8. A function of a module as a linked function -/
+/-! ## 7. A function of a module as a linked function -/
 
 namespace ModFn
 
