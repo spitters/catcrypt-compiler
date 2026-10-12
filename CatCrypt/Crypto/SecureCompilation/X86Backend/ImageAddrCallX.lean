@@ -77,30 +77,30 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
       whose first instruction starts at byte offset `L`;
     * `prog` has one instruction for each item that decodes;
     * `prog` satisfies `LinkedProg` at the index `prog.length`. -/
-theorem callerPrefix_of_bytes (symBase : String → Option Int) {body : Lcmd} {ss : List Shape}
-    (hF : CallFacts body ss) (prog : List RInstr)
+theorem callerPrefix_of_bytes (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
+    (hF : CallFacts body ds) (prog : List RInstr)
     (hsaves : calleeSavedToSave body = [])
     (hF0 : frameSize body ≠ 0) (hFr : frameSize body < 2 ^ 31)
-    (hbr : branchOKReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+    (hbr : branchOKReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (encodeLfundefBytesReloc symBase body).length 0
-      (fundefItemsReloc symBase (Params.ofBody body) body ss) = true)
-    (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (encodeLfundefBytesReloc symBase body).length
-      (fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog) :
-    decodeAt (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss)) 0
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
+    decodeAt (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds)) 0
         (encodeLfundefBytesReloc symBase body)
-        = some (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss))
+        = some (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       ∧ (∀ e x tl, resolveAll
-          (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)
+          (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)
             ++ ((encodeLfundefBytesReloc symBase body).length, e, x) :: tl)
-          (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)) = some prog)
-      ∧ prog.length = decCount (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      ∧ LinkedProg body (ss.map DShape.one) prog.length (Params.ofBody body).frame prog := by
-  have hsh := relocShapeOK_of_shapes _ hF.shapes
-  have hbytes := encodeLfundefBytesReloc_eq_itemBytes symBase body ss hsaves hsh
-  have hok := fundefItemsReloc_ok symBase (Params.ofBody body) body ss hF0 hFr hsh
+          (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)) = some prog)
+      ∧ prog.length = decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      ∧ LinkedProg body ds prog.length (Params.ofBody body).frame prog := by
+  have hsh := relocDShapeOK_of_shapes _ hF.shapes
+  have hbytes := encodeLfundefBytesReloc_eq_itemBytesL symBase body ds hsaves hsh
+  have hok := fundefItemsRelocL_ok symBase (Params.ofBody body) body ds hF0 hFr hsh
   have hlen := expectedReloc_length _ _ _ _ prog hP
   refine ⟨?_, fun e x tl => ?_, hlen, ?_⟩
   · rw [hbytes]
@@ -110,12 +110,12 @@ theorem callerPrefix_of_bytes (symBase : String → Option Int) {body : Lcmd} {s
     rw [hbytes] at hbr' hP' ⊢
     rw [resolveAll_layout_reloc _ hok _ _ _ (fun q hq => ?_) _ 0 hbr']
     · exact hP'
-    · have hlt : ∀ z ∈ layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss),
-          z.1 < (itemBytes (fundefItemsReloc symBase (Params.ofBody body) body ss)).length :=
+    · have hlt : ∀ z ∈ layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds),
+          z.1 < (itemBytes (fundefItemsRelocL symBase (Params.ofBody body) body ds)).length :=
         fun z hz => by simpa using layoutAt_start_lt _ hok 0 z hz
-      have hnone : (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)).findIdx?
+      have hnone : (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)).findIdx?
           (fun z => decide (z.1
-            = (itemBytes (fundefItemsReloc symBase (Params.ofBody body) body ss)).length))
+            = (itemBytes (fundefItemsRelocL symBase (Params.ofBody body) body ds)).length))
           = none := by
         rw [List.findIdx?_eq_none_iff]
         intro z hz
@@ -144,19 +144,19 @@ theorem haltsO_of_linkedChecksX {frame : String → Option (BitVec 64)}
     {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
-    {ss : List Shape} (hcls : printedAddrCB G body = true)
+    {ds : List DShape} (hcls : printedAddrCB G body = true)
     (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
-      = some (ss.map PhysAbiShape.DShape.one))
+      = some ds)
     (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
     (symBase : String → Option Int) {prog : List RInstr}
-    (hbr : branchOKReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+    (hbr : branchOKReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (encodeLfundefBytesReloc symBase body).length 0
-      (fundefItemsReloc symBase (Params.ofBody body) body ss) = true)
-    (hP : expectedReloc (fundefItemsReloc symBase (Params.ofBody body) body ss)
-      (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss))
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (encodeLfundefBytesReloc symBase body).length
-      (fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
     (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
     (hcond : condLiveB D body = true)
@@ -174,15 +174,15 @@ theorem haltsO_of_linkedChecksX {frame : String → Option (BitVec 64)}
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
-    decodeAt (decCount (fundefItemsReloc symBase (Params.ofBody body) body ss)) 0
+    decodeAt (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds)) 0
         (encodeLfundefBytesReloc symBase body)
-        = some (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss))
+        = some (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds))
       ∧ (∀ e x tl, resolveAll
-          (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)
+          (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)
             ++ ((encodeLfundefBytesReloc symBase body).length, e, x) :: tl)
-          (layoutAt 0 (fundefItemsReloc symBase (Params.ofBody body) body ss)) = some prog)
+          (layoutAt 0 (fundefItemsRelocL symBase (Params.ofBody body) body ds)) = some prog)
       ∧ ∃ sA', HaltsO aMachine (oracleAt prog.length X) prog
-          (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' := by
   have hCF := callFacts_of_printedAddrCB hcls hshapes
   obtain ⟨hsaves, hF0, hFr⟩ := printedAddrCB_reloc hcls

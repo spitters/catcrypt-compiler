@@ -348,24 +348,24 @@ theorem haltsC_of_linkedChecks_arr {frame : String → Option (BitVec 64)}
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
       ∀ ret vs, LprogIsa.argsRead (insSummary l ins).arrArgs s.prog.base 0
         (args.map LOperand.reg) = some vs → readIns ins (entryOf ret sA) = vs)
-    {ss : List Shape} (hcls : printedAddrCB l.frame body = true)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB l.frame body = true)
     (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
-      = some (ss.map PhysAbiShape.DShape.one))
+      = some ds)
     (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
     (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
     (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
     (hbr : LprogBytesLinkReloc.branchOKReloc
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
       (LprogBytesDecode.decCount
-        (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss))
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = true)
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
     (hP : LprogBytesLinkReloc.expectedReloc
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss)
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
       (LprogBytesDecode.decCount
-        (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss))
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
     (hdead : callDeadInsB (insSig l ins res) res args D.dead body = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
@@ -388,7 +388,7 @@ theorem haltsC_of_linkedChecks_arr {frame : String → Option (BitVec 64)}
     LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
         = some (prog ++ LprogBytesLink.shiftProg prog.length q)
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
-          (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
   haltsC_of_linkedChecksS hsep hphys hgate hsites r hX hq hcls hshapes hfr symBase hcb hne hbr
     hP hflags hcond hI hD hfin hFin
@@ -420,14 +420,14 @@ theorem haltsO_of_linkedChecks_arr {frame : String → Option (BitVec 64)}
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
       ∀ ret vs, LprogIsa.argsRead (insSummary l ins).arrArgs s.prog.base 0
         (args.map LOperand.reg) = some vs → readIns ins (entryOf ret sA) = vs)
-    {ss : List Shape} (hcls : printedAddrCB l.frame body = true)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB l.frame body = true)
     (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
-      = some (ss.map PhysAbiShape.DShape.one))
+      = some ds)
     (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
     (symBase : String → Option Int) {prog : List RInstr} {tgt L : Nat}
     (hP : LprogBytesLinkReloc.expectedReloc
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) tgt L
-      (LprogBytesLinkReloc.fundefItemsReloc symBase (Params.ofBody body) body ss) = some prog)
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt L
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
     (hdead : callDeadInsB (insSig l ins res) res args D.dead body = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
@@ -448,7 +448,7 @@ theorem haltsO_of_linkedChecks_arr {frame : String → Option (BitVec 64)}
     (hL0 : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
-        (DecodePrintedCFG.posOf (ss.map PhysAbiShape.DShape.one) sa.reg.lpc) sA sA'
+        (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
   haltsO_of_linkedChecksS hsep hphys hgate hsites hX hcls hshapes hfr symBase hP hflags hcond
     hI hD hfin hFin
