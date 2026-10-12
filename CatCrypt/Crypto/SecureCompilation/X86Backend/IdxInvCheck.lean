@@ -484,6 +484,180 @@ theorem mulLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
     · cases h
   · cases h
 
+/-- The upper bound the first fact of `F` on the single term `t` states. -/
+def ubOf : List SFact → STerm → Option Nat
+  | [], _ => none
+  | .le [t'] b :: F, t => if t' = t then some b else ubOf F t
+  | _ :: F, t => ubOf F t
+
+theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
+    ∀ (F : List SFact) (t : STerm) (u : Nat), (∀ f ∈ F, f.holds V A C O) →
+      ubOf F t = some u → wval (t.ev V A C O) ≤ u
+  | [], _, _, _, h => by cases h
+  | .le [t'] b :: F, t, u, hF, h => by
+      simp only [ubOf] at h
+      split at h
+      · rename_i he
+        subst he
+        cases h
+        have := hF (.le [t'] b) List.mem_cons_self
+        simpa [SFact.holds, tsum] using this
+      · exact ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .le [] _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .le (_ :: _ :: _) _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .ge _ _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .w64 _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+
+/-- The sum of the upper bounds `ubOf` of a list of terms, when each has one. -/
+def ubSum (F : List SFact) : List STerm → Option Nat
+  | [] => some 0
+  | t :: ts =>
+      match ubOf F t, ubSum F ts with
+      | some u, some v => some (u + v)
+      | _, _ => none
+
+theorem ubSum_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ (ts : List STerm) (u : Nat), ubSum F ts = some u → tsum V A C O ts ≤ u
+  | [], u, h => by
+      simp only [ubSum, Option.some.injEq] at h
+      subst h
+      simp [tsum]
+  | t :: ts, u, h => by
+      simp only [ubSum] at h
+      split at h
+      · rename_i a b ha hb
+        cases h
+        have h1 := ubOf_sound F t a hF ha
+        have h2 := ubSum_sound hF ts b hb
+        simp only [tsum, List.map_cons, List.sum_cons] at h2 ⊢
+        omega
+      · cases h
+
+/-- The terms `ts` of a fact with the terms of `as` that occur in them removed, and the
+    terms of `as` that do not occur. -/
+def peel (ts : List STerm) : List STerm → List STerm × List STerm
+  | [] => (ts, [])
+  | a :: as => if a ∈ ts then peel (ts.erase a) as else ((peel ts as).1, a :: (peel ts as).2)
+
+theorem peel_sum (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    ∀ (as ts : List STerm),
+      tsum V A C O as + tsum V A C O (peel ts as).1 =
+        tsum V A C O ts + tsum V A C O (peel ts as).2
+  | [], ts => by simp [peel, tsum]
+  | a :: as, ts => by
+      simp only [peel]
+      split
+      · rename_i ha
+        have ih := peel_sum V A C O as (ts.erase a)
+        have hp := ((List.perm_cons_erase ha).map fun t => wval (t.ev V A C O)).sum_eq
+        simp only [tsum, List.map_cons, List.sum_cons] at hp ih ⊢
+        omega
+      · have ih := peel_sum V A C O as ts
+        simp only [tsum, List.map_cons, List.sum_cons] at ih ⊢
+        omega
+
+/-- A sum `ADD x y` of a term of width `64` is at most the sum of the values. -/
+theorem wval_addR_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (x y : STerm) (hy : (y.ev V A C O).1 = 64) :
+    wval ((STerm.bin "ADD" x y).ev V A C O) ≤ wval (x.ev V A C O) + wval (y.ev V A C O) := by
+  rw [wval_bin]
+  split
+  · simp only [binW, show ("ADD" = "MULXHI") = False by decide, if_false, applyOpnN,
+      Option.getD_some, BitVec.toNat_add, extW_of_eq hy]
+    unfold wval
+    exact Nat.mod_le _ _
+  · omega
+
+/-- An atom `ADD x y` with `y` of width `64` as the linear forms of `x` and `y`; every other
+    atom is itself. -/
+def splitAdd (F : List SFact) : STerm → List STerm × Int
+  | .bin m x y =>
+      if m = "ADD" ∧ widOk F y then
+        ((linOf F x).1 ++ (linOf F y).1, (linOf F x).2 + (linOf F y).2)
+      else ([.bin m x y], 0)
+  | t => ([t], 0)
+
+theorem splitAdd_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    (wval (t.ev V A C O) : Int) ≤ (tsum V A C O (splitAdd F t).1 : Int) + (splitAdd F t).2 := by
+  unfold splitAdd
+  split
+  · rename_i m x y
+    split
+    · rename_i h
+      obtain ⟨rfl, hw⟩ := h
+      have h0 := wval_addR_le V A C O x y (widOk_sound hF hw)
+      have h1 := linOf_sound hF x
+      have h2 := linOf_sound hF y
+      simp only [tsum_append, Nat.cast_add]
+      omega
+    · simp [tsum]
+  · simp [tsum]
+
+/-- `splitAdd` over a list of atoms. -/
+def splitAdds (F : List SFact) : List STerm → List STerm × Int
+  | [] => ([], 0)
+  | t :: ts => ((splitAdd F t).1 ++ (splitAdds F ts).1, (splitAdd F t).2 + (splitAdds F ts).2)
+
+theorem splitAdds_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ ts : List STerm,
+      (tsum V A C O ts : Int) ≤ (tsum V A C O (splitAdds F ts).1 : Int) + (splitAdds F ts).2
+  | [] => by simp [tsum, splitAdds]
+  | t :: ts => by
+      have h1 := splitAdd_sound hF t
+      have h2 := splitAdds_sound hF ts
+      have e1 : tsum V A C O (t :: ts) = wval (t.ev V A C O) + tsum V A C O ts := by
+        simp [tsum]
+      simp only [splitAdds, tsum_append, e1, Nat.cast_add]
+      omega
+
+/-- The fact `f` bounds the atoms `as` it contains, and single-term facts bound the atoms it
+    does not contain: the sum of `as` plus `K` is at most `b'`. -/
+def leMixBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Bool
+  | .le ts b =>
+      match ubSum F (peel ts as).2 with
+      | some u => decide ((b : Int) - (lbSum F (peel ts as).1 : Int) + u + K ≤ b')
+      | none => false
+  | .ge _ _ => false
+  | .w64 _ => false
+
+/-- The sum of `ts` is at most `b'` by its linear form, one fact for the atoms it contains and
+    single-term facts for the others (an index `off + i` with a bound on `off` and a loop
+    invariant on `i`). -/
+def leMix (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
+  F.any (leMixBy F (splitAdds F (sumLin F ts).1).1
+    ((sumLin F ts).2 + (splitAdds F (sumLin F ts).1).2) b')
+
+theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
+    (h : leMix F ts b' = true) : tsum V A C O ts ≤ b' := by
+  have hs0 := sumLin_sound hF ts
+  have hs1 := splitAdds_sound hF (sumLin F ts).1
+  have hs : (tsum V A C O ts : Int) ≤ (tsum V A C O (splitAdds F (sumLin F ts).1).1 : Int) +
+      ((sumLin F ts).2 + (splitAdds F (sumLin F ts).1).2) := by omega
+  simp only [leMix, List.any_eq_true] at h
+  obtain ⟨f, hf, hl⟩ := h
+  cases f with
+  | ge _ _ => simp [leMixBy] at hl
+  | w64 _ => simp [leMixBy] at hl
+  | le ts0 b =>
+      simp only [leMixBy] at hl
+      split at hl
+      · rename_i u hu
+        simp only [decide_eq_true_eq] at hl
+        have h0 : tsum V A C O ts0 ≤ b := hF _ hf
+        have h1 := peel_sum V A C O (splitAdds F (sumLin F ts).1).1 ts0
+        have h2 := lbSum_le hF (peel ts0 (splitAdds F (sumLin F ts).1).1).1
+        have h3 := ubSum_sound hF _ u hu
+        omega
+      · cases hl
+
 /-- **Entailment**: an upper bound on a sum holds when its linear form is a constant within
     the bound, when one fact bounds a sum containing its atoms (`leLin`), or when the form
     is a product with an immediate whose other factor is bounded (`mulLe`); a lower bound
@@ -628,9 +802,11 @@ theorem succOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   rw [he]
   exact this
 
-/-- Every index obligation follows from the facts `F`: its index is below the length. -/
+/-- Every index obligation follows from the facts `F`: its index is below the length, by
+    `entails` or by `leMix`. -/
 def oblsOk (F : List SFact) (os : List SObl) : Bool :=
-  os.all fun o => decide (0 < o.2) && entails F (.le [o.1] (o.2 - 1))
+  os.all fun o => decide (0 < o.2) &&
+    (entails F (.le [o.1] (o.2 - 1)) || leMix F [o.1] (o.2 - 1))
 
 theorem oblsOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} {os : List SObl} (h : oblsOk F os = true)
@@ -638,7 +814,10 @@ theorem oblsOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   intro o ho _
   simp only [oblsOk, List.all_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨hn, he⟩ := h o ho
-  have := entails_sound hF _ he
+  have : (SFact.le [o.1] (o.2 - 1)).holds V A C O := by
+    rcases Bool.or_eq_true_iff.mp he with he | he
+    · exact entails_sound hF _ he
+    · exact leMix_sound hF he
   simp only [SFact.holds, tsum, List.map_cons, List.map_nil, List.sum_cons,
     List.sum_nil, add_zero] at this
   unfold wval at this
