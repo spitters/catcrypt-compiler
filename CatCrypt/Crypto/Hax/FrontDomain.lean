@@ -165,6 +165,8 @@ inductive ModuleRefusal where
   | entryShape (cond : String)
   /-- The first construct of the entry `impToNF` does not accept. -/
   | entry (r : Refusal)
+  /-- The result of the entry has the type `t`: the unit type or a tuple. -/
+  | entryResult (t : String)
   /-- The inlining of the calls of the callees refuses: a round has no body for a call, or a
       call of a callee is left after the `rounds` rounds. -/
   | inline (rounds : Nat)
@@ -178,13 +180,15 @@ def ModuleRefusal.toString : ModuleRefusal → String
   | .intSlice f => s!"callee {f} has an integer-slice type"
   | .entryShape c => c
   | .entry r => r.toString
+  | .entryResult t => s!"entry result of type {t}"
   | .inline n => s!"a call of a callee is left after {n} rounds of inlining"
 
 instance : ToString ModuleRefusal := ⟨ModuleRefusal.toString⟩
 
 /-- The stage of `haxToNF` at which a refusal of a module arises: `module` for a condition
-    on the callees or the linked functions, `front` for the shape condition on the entry,
-    `impToNF` for a construct of the entry, `inline` for the inlining. -/
+    on the callees or the linked functions, `front` for the shape condition on the entry
+    and for its result type, `impToNF` for a construct of the entry, `inline` for the
+    inlining. -/
 def ModuleRefusal.stage : ModuleRefusal → String
   | .arrayOpName _ => "module"
   | .calleeShape _ _ => "module"
@@ -193,6 +197,7 @@ def ModuleRefusal.stage : ModuleRefusal → String
   | .intSlice _ => "module"
   | .entryShape _ => "front"
   | .entry _ => "impToNF"
+  | .entryResult _ => "front"
   | .inline _ => "inline"
 
 /-! ## 2. Results with a refusal -/
