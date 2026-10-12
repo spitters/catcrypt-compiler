@@ -241,7 +241,7 @@ def combSelectFoldCovers (N : Nat) : Option Bool :=
       let b := f.2.lfd_body
       let p := ConstIndexFold.bodyParams b
       ConstIndexFold.covers p [] b
-        && ConstIndexFold.bodyParams (ConstIndexFold.foldCore p [] b) == p))
+        && ConstIndexFold.bodyParams (ConstIndexFold.foldCore p [] [] b) == p))
 
 /-! ## 3. Names outside the front's temporary namespace -/
 

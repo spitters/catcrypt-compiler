@@ -61,12 +61,16 @@ theorem blockLeakCT_append' {w : Nat} (r : DoitRegime) (s : JState w)
 
 /-- A folded instruction lowers to a block with the leakage trace of the original
     block, from every state the environment describes. -/
-theorem foldInstr_lower_leak (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
-    {js js' : List (JInstr 64)} (h : lowerPrinted p.1 p.2.1 p.2.2 i = some js)
-    (h' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr env i) = some js') (r : DoitRegime)
+theorem foldInstr_lower_leak (p : Nat × Nat × Nat) {ex : List String} {env : KEnv}
+    {i : LinstrR} {js js' : List (JInstr 64)} (h : lowerPrinted p.1 p.2.1 p.2.2 i = some js)
+    (h' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr ex env i) = some js') (r : DoitRegime)
     (s : JState 64) (hs : KEnv.Holds s env) :
     blockLeakCT r s js' = blockLeakCT r s js := by
   unfold foldInstr at h'
+  split at h'
+  · rw [h] at h'
+    cases h'
+    rfl
   cases hf : foldTarget? env i with
   | none =>
       rw [hf] at h'
@@ -105,10 +109,10 @@ theorem foldInstr_lower_leak (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
 /-- **Leakage of the fold at fixed frame parameters.** From every state the
     environment describes, the gathered block of the folded body has the leakage
     trace of the gathered block of the body. -/
-theorem foldCore_leak (p : Nat × Nat × Nat) (r : DoitRegime) :
+theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime) :
     ∀ (body : Lcmd) (env : KEnv) (s : JState 64) (ls ls' : List (List (JInstr 64))),
       KEnv.Holds s env → gatherList p body = some ls →
-      gatherList p (foldCore p env body) = some ls' →
+      gatherList p (foldCore p ex env body) = some ls' →
       blockLeakCT r s ls'.flatten = blockLeakCT r s ls.flatten := by
   intro body
   induction body with
@@ -123,13 +127,13 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (r : DoitRegime) :
       rw [foldCore, gatherList_cons] at h'
       rw [gatherList_cons] at h
       by_cases hr : isLret i = true
-      · have hr' : isLret { i with li_i := foldInstr env i.li_i } = true := by
+      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
         rw [if_pos hr] at h
         rw [if_pos hr'] at h'
         exact ih (nextEnv p env i) s ls ls' (by
           simp only [nextEnv, hr, if_true]; exact KEnv.Holds.nil s) h h'
-      · have hr' : ¬ isLret { i with li_i := foldInstr env i.li_i } = true := by
+      · have hr' : ¬ isLret { i with li_i := foldInstr ex env i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
         rw [if_neg hr] at h
         rw [if_neg hr'] at h'
@@ -143,16 +147,16 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (r : DoitRegime) :
                 simp only [hi, hrest, Option.bind_some, Option.map_some,
                   Option.some.injEq] at h
                 subst h
-                cases hi' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr env i.li_i) with
+                cases hi' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr ex env i.li_i) with
                 | none => simp [hi'] at h'
                 | some js' =>
-                    cases hrest' : gatherList p (foldCore p (nextEnv p env i) is) with
+                    cases hrest' : gatherList p (foldCore p ex (nextEnv p env i) is) with
                     | none => simp [hi', hrest'] at h'
                     | some rest' =>
                         simp only [hi', hrest', Option.bind_some, Option.map_some,
                           Option.some.injEq] at h'
                         subst h'
-                        obtain ⟨js'', hj'', hrun⟩ := foldInstr_lower p (env := env) hi
+                        obtain ⟨js'', hj'', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
                         rw [hi'] at hj''
                         cases hj''
                         have henv : nextEnv p env i = stepKs env js := by
@@ -176,7 +180,7 @@ theorem gatherPrinted_constIndexFoldBody_leak {body : Lcmd} {g g' : List (JInstr
     obtain ⟨ls, hls, rfl⟩ := h
     obtain ⟨ls', hls', rfl⟩ := h'
     rw [hp] at hls'
-    exact foldCore_leak (bodyParams body) r body [] s ls ls' (KEnv.Holds.nil s) hls hls'
+    exact foldCore_leak (bodyParams body) _ r body [] s ls ls' (KEnv.Holds.nil s) hls hls'
   · rw [h] at h'
     cases h'
     rfl

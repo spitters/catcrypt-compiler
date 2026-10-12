@@ -245,9 +245,9 @@ theorem optimizeLprogBasicBlocks_lcmdDirect {p : Lprog}
 
 /-! ## 3. The constant-index fold stage -/
 
-theorem foldCore_lcmdDirect_of (p : Nat × Nat × Nat) :
+theorem foldCore_lcmdDirect_of (p : Nat × Nat × Nat) (ex : List String) :
     ∀ (body : Lcmd) (env : KEnv), lcmdDirect body = true →
-      lcmdDirect (foldCore p env body) = true := by
+      lcmdDirect (foldCore p ex env body) = true := by
   intro body
   induction body with
   | nil => intro _ _; rfl
@@ -257,6 +257,8 @@ theorem foldCore_lcmdDirect_of (p : Nat × Nat × Nat) :
       simp only [foldCore, lcmdDirect, List.all_cons, Bool.and_eq_true]
       refine ⟨?_, ih _ hb.2⟩
       unfold foldInstr
+      split
+      · exact hb.1
       cases hf : foldTarget? env i.li_i with
       | none => exact hb.1
       | some i' => exact foldTarget?_direct hf
@@ -266,7 +268,7 @@ theorem constIndexFoldBody_lcmdDirect_of {body : Lcmd} (h : lcmdDirect body = tr
   unfold constIndexFoldBody
   dsimp only
   split
-  · exact foldCore_lcmdDirect_of _ body [] h
+  · exact foldCore_lcmdDirect_of _ _ body [] h
   · exact h
 
 theorem dropDeadCore_sublist (p : Nat × Nat × Nat) :

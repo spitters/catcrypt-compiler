@@ -44,6 +44,12 @@ each instruction. Besides the indexed accesses, the fold rewrites a `MOV:64` cop
 known slot value into a general-purpose register as the immediate move of that value,
 which the dead-move elimination can then remove.
 
+The fold is decided per array. `runtimeBases` collects the base names of the
+register-indexed accesses the analysis cannot rewrite, and `constIndexFoldBody` leaves
+every register-indexed access through one of those bases unchanged: an array the body
+indexes at run time keeps the register-indexed form at its literal indices too, and an
+array accessed at known indices only is accessed at constant displacements.
+
 ## Main results
 
 * `evalInstr_loadMemIdx_const`, `evalInstr_storeMemIdx_const`: an indexed access
@@ -424,8 +430,27 @@ def foldTarget? (env : KEnv) : LinstrR → Option LinstrR
       | none => none
   | _ => none
 
-/-- Rewrite one instruction under `env`. -/
-def foldInstr (env : KEnv) (i : LinstrR) : LinstrR := (foldTarget? env i).getD i
+/-- The base names of the register-indexed operands of an `Lopn`; no name for any other
+    instruction. -/
+def idxBases : LinstrR → List String
+  | .Lopn dsts _ srcs => (dsts ++ srcs).filterMap fun o =>
+      match o with
+      | .arrIdx b _ _ => some b
+      | _ => none
+  | _ => []
+
+/-- The instruction has a register-indexed operand whose base is a name of `ex`. -/
+def skipB (ex : List String) (i : LinstrR) : Bool := (idxBases i).any ex.contains
+
+/-- Rewrite one instruction under `env`: the instruction itself when it accesses an array
+    of `ex` at a register index (`skipB`), and its direct form `foldTarget?` otherwise. -/
+def foldInstr (ex : List String) (env : KEnv) (i : LinstrR) : LinstrR :=
+  if skipB ex i then i else (foldTarget? env i).getD i
+
+/-- With no excluded base, `foldInstr` is the rewrite `foldTarget?`. -/
+theorem foldInstr_nil (env : KEnv) (i : LinstrR) :
+    foldInstr [] env i = (foldTarget? env i).getD i := by
+  simp [foldInstr, skipB]
 
 /-- The register names a destination operand names: a plain register, and the base
     and index of a SIB element. -/
@@ -448,37 +473,53 @@ def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
         | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
         | _ => []
 
-/-- The fold over a body at frame parameters `p`, from environment `env`. -/
-def foldCore (p : Nat × Nat × Nat) : KEnv → Lcmd → Lcmd
+/-- The fold over a body at frame parameters `p`, from environment `env`, leaving the
+    register-indexed accesses of the arrays `ex` unchanged. -/
+def foldCore (p : Nat × Nat × Nat) (ex : List String) : KEnv → Lcmd → Lcmd
   | _, [] => []
-  | env, i :: is => { i with li_i := foldInstr env i.li_i } :: foldCore p (nextEnv p env i) is
+  | env, i :: is =>
+      { i with li_i := foldInstr ex env i.li_i } :: foldCore p ex (nextEnv p env i) is
 
 /-- The tail-recursive image of `foldCore`, accumulating in reverse. -/
-def foldCoreTR (p : Nat × Nat × Nat) (acc : Lcmd) : KEnv → Lcmd → Lcmd
+def foldCoreTR (p : Nat × Nat × Nat) (ex : List String) (acc : Lcmd) : KEnv → Lcmd → Lcmd
   | _, [] => acc.reverse
   | env, i :: is =>
-      foldCoreTR p ({ i with li_i := foldInstr env i.li_i } :: acc) (nextEnv p env i) is
+      foldCoreTR p ex ({ i with li_i := foldInstr ex env i.li_i } :: acc) (nextEnv p env i) is
 
-theorem foldCoreTR_eq (p : Nat × Nat × Nat) (acc : Lcmd) (env : KEnv) (body : Lcmd) :
-    foldCoreTR p acc env body = acc.reverse ++ foldCore p env body := by
+theorem foldCoreTR_eq (p : Nat × Nat × Nat) (ex : List String) (acc : Lcmd) (env : KEnv)
+    (body : Lcmd) : foldCoreTR p ex acc env body = acc.reverse ++ foldCore p ex env body := by
   induction body generalizing acc env with
   | nil => simp [foldCoreTR, foldCore]
   | cons i is ih => simp [foldCoreTR, foldCore, ih]
 
 /-- `foldCore` from the empty accumulator, the form the compiler runs. -/
-def foldCoreFast (p : Nat × Nat × Nat) (env : KEnv) (body : Lcmd) : Lcmd :=
-  foldCoreTR p [] env body
+def foldCoreFast (p : Nat × Nat × Nat) (ex : List String) (env : KEnv) (body : Lcmd) : Lcmd :=
+  foldCoreTR p ex [] env body
 
 /-- Compiled code runs `foldCore` through its tail-recursive image, so a body of
     tens of thousands of instructions does not exhaust the stack. -/
 @[csimp] theorem foldCore_eq_fast : @foldCore = @foldCoreFast := by
-  funext p env body
+  funext p ex env body
   simp [foldCoreFast, foldCoreTR_eq]
 
+/-- **The arrays a body indexes at run time**: from `acc`, the base names of the
+    register-indexed operands of the instructions that `foldTarget?` does not rewrite
+    under the environment reaching them, each name once. The walk is tail-recursive. -/
+def runtimeBases (p : Nat × Nat × Nat) (acc : List String) : KEnv → Lcmd → List String
+  | _, [] => acc
+  | env, i :: is =>
+      runtimeBases p
+        (if (foldTarget? env i.li_i).isSome then acc
+          else (idxBases i.li_i).foldl (fun a b => a.insert b) acc)
+        (nextEnv p env i) is
+
 /-- The fold of a body: `foldCore` at the body's own frame parameters, kept only
-    when the folded body has the same frame parameters. -/
+    when the folded body has the same frame parameters. The fold leaves every
+    register-indexed access of an array that the body also indexes at run time
+    (`runtimeBases`) unchanged, so an array is accessed either at constant displacements
+    only or through register indices only. -/
 def constIndexFoldBody (body : Lcmd) : Lcmd :=
-  let b' := foldCore (bodyParams body) [] body
+  let b' := foldCore (bodyParams body) (runtimeBases (bodyParams body) [] [] body) [] body
   if bodyParams b' = bodyParams body then b' else body
 
 /-- The fold applied to every function of a program. -/
@@ -493,6 +534,39 @@ def covers (p : Nat × Nat × Nat) : KEnv → Lcmd → Bool
   | _, [] => true
   | env, i :: is =>
       (linstrRDirect i.li_i || (foldTarget? env i.li_i).isSome) && covers p (nextEnv p env i) is
+
+/-- An index-free instruction has no register-indexed base. -/
+theorem idxBases_of_direct {i : LinstrR} (h : linstrRDirect i = true) : idxBases i = [] := by
+  cases i with
+  | Lopn dsts _ srcs =>
+      simp only [linstrRDirect, Bool.and_eq_true, List.all_eq_true] at h
+      simp only [idxBases, List.filterMap_eq_nil_iff, List.mem_append]
+      intro o ho
+      have := ho.elim (h.1 o) (h.2 o)
+      cases o <;> simp_all [AllocCTPreservation.isIndexed]
+  | _ => rfl
+
+/-- On a body every register-indexed instruction of which is folded, the walk
+    `runtimeBases` adds no name. -/
+theorem runtimeBases_of_covers (p : Nat × Nat × Nat) :
+    ∀ (body : Lcmd) (acc : List String) (env : KEnv), covers p env body = true →
+      runtimeBases p acc env body = acc := by
+  intro body
+  induction body with
+  | nil => intro _ _ _; rfl
+  | cons i is ih =>
+      intro acc env h
+      simp only [covers, Bool.and_eq_true, Bool.or_eq_true] at h
+      obtain ⟨hi, hrest⟩ := h
+      have hacc : (if (foldTarget? env i.li_i).isSome then acc
+          else (idxBases i.li_i).foldl (fun a b => a.insert b) acc) = acc := by
+        split
+        · rfl
+        · rcases hi with hi | hi
+          · rw [idxBases_of_direct hi]; rfl
+          · simp_all
+      simp only [runtimeBases, hacc]
+      exact ih acc _ hrest
 
 theorem foldTarget?_spec {env : KEnv} {i i' : LinstrR} (h : foldTarget? env i = some i') :
     (∃ d B x sc v, i = .Lopn [.reg d] "LOADIDX" [.arrIdx B x sc]
@@ -533,9 +607,11 @@ theorem foldTarget?_direct {env : KEnv} {i i' : LinstrR} (h : foldTarget? env i 
       ⟨_, _, _, -, rfl, -⟩ <;>
     simp [linstrRDirect, AllocCTPreservation.isIndexed]
 
-theorem isLret_foldInstr (env : KEnv) (i : Linstr) :
-    isLret { i with li_i := foldInstr env i.li_i } = isLret i := by
+theorem isLret_foldInstr (ex : List String) (env : KEnv) (i : Linstr) :
+    isLret { i with li_i := foldInstr ex env i.li_i } = isLret i := by
   unfold foldInstr
+  split
+  · rfl
   cases h : foldTarget? env i.li_i with
   | none => rfl
   | some i' =>
@@ -545,11 +621,13 @@ theorem isLret_foldInstr (env : KEnv) (i : Linstr) :
 
 /-- A folded instruction lowers to a block that runs like the original block from
     every state the environment describes. -/
-theorem foldInstr_lower (p : Nat × Nat × Nat) {env : KEnv} {i : LinstrR}
+theorem foldInstr_lower (p : Nat × Nat × Nat) {ex : List String} {env : KEnv} {i : LinstrR}
     {js : List (JInstr 64)} (h : lowerPrinted p.1 p.2.1 p.2.2 i = some js) :
-    ∃ js', lowerPrinted p.1 p.2.1 p.2.2 (foldInstr env i) = some js'
+    ∃ js', lowerPrinted p.1 p.2.1 p.2.2 (foldInstr ex env i) = some js'
       ∧ ∀ s, KEnv.Holds s env → runBlock s js' = runBlock s js := by
   unfold foldInstr
+  split
+  · exact ⟨js, h, fun _ _ => rfl⟩
   cases hf : foldTarget? env i with
   | none => exact ⟨js, h, fun _ _ => rfl⟩
   | some i' =>
@@ -579,10 +657,10 @@ abbrev gatherList (p : Nat × Nat × Nat) (body : Lcmd) : Option (List (List (JI
 /-- **Block agreement at fixed frame parameters.** If the body gathers, the folded
     body gathers, and from every state the environment describes the two blocks
     run to the same machine state. -/
-theorem foldCore_gather (p : Nat × Nat × Nat) :
+theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
     ∀ (body : Lcmd) (env : KEnv) (s : JState 64) (ls : List (List (JInstr 64))),
       KEnv.Holds s env → gatherList p body = some ls →
-      ∃ ls', gatherList p (foldCore p env body) = some ls'
+      ∃ ls', gatherList p (foldCore p ex env body) = some ls'
         ∧ runBlock s ls'.flatten = runBlock s ls.flatten := by
   intro body
   induction body with
@@ -592,7 +670,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) :
   | cons i is ih =>
       intro env s ls hs h
       by_cases hr : isLret i = true
-      · have hr' : isLret { i with li_i := foldInstr env i.li_i } = true := by
+      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
         have h' : gatherList p is = some ls := by
           simpa [gatherList, List.filter_cons, hr] using h
@@ -600,7 +678,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) :
           simp only [nextEnv, hr, if_true]; exact KEnv.Holds.nil s) h'
         refine ⟨ls', ?_, h2⟩
         simpa [gatherList, foldCore, List.filter_cons, hr'] using h1
-      · have hr' : isLret { i with li_i := foldInstr env i.li_i } = false := by
+      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = false := by
           rw [isLret_foldInstr]; simpa using hr
         have hr0 : isLret i = false := by simpa using hr
         simp only [gatherList, List.filter_cons, hr0, Bool.not_false, if_true,
@@ -615,7 +693,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) :
                 simp only [hi, hrest, Option.bind_eq_bind, Option.bind_some,
                   Option.pure_def, Option.some.injEq] at h
                 subst h
-                obtain ⟨js', hj', hrun⟩ := foldInstr_lower p (env := env) hi
+                obtain ⟨js', hj', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
                 have henv : nextEnv p env i = stepKs env js := by
                   simp [nextEnv, hr0, hi]
                 obtain ⟨rest', h1, h2⟩ :=
@@ -630,7 +708,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) :
 
 theorem foldCore_lcmdDirect (p : Nat × Nat × Nat) :
     ∀ (body : Lcmd) (env : KEnv), covers p env body = true →
-      lcmdDirect (foldCore p env body) = true := by
+      lcmdDirect (foldCore p [] env body) = true := by
   intro body
   induction body with
   | nil => intro _ _; rfl
@@ -638,8 +716,8 @@ theorem foldCore_lcmdDirect (p : Nat × Nat × Nat) :
       intro env h
       simp only [covers, Bool.and_eq_true, Bool.or_eq_true] at h
       obtain ⟨hi, hrest⟩ := h
-      have hd : linstrRDirect (foldInstr env i.li_i) = true := by
-        unfold foldInstr
+      have hd : linstrRDirect (foldInstr [] env i.li_i) = true := by
+        rw [foldInstr_nil]
         cases hf : foldTarget? env i.li_i with
         | none =>
             rcases hi with hi | hi
@@ -667,13 +745,15 @@ theorem gatherPrinted_constIndexFoldBody {body : Lcmd} {g : List (JInstr 64)}
     obtain ⟨ls, hls, rfl⟩ := h
     have s0 : JState 64 := { regs := fun _ => 0 }
     obtain ⟨ls', h1, -⟩ :=
-      foldCore_gather (bodyParams body) body [] s0 ls (KEnv.Holds.nil s0) hls
+      foldCore_gather (bodyParams body) (runtimeBases (bodyParams body) [] [] body) body []
+        s0 ls (KEnv.Holds.nil s0) hls
     refine ⟨ls'.flatten, ?_, fun s => ?_⟩
     · simp only [gatherPrinted, hp]
       simp only [gatherList] at h1
       simp [h1]
     · obtain ⟨ls'', h2, h3⟩ :=
-        foldCore_gather (bodyParams body) body [] s ls (KEnv.Holds.nil s) hls
+        foldCore_gather (bodyParams body) (runtimeBases (bodyParams body) [] [] body) body []
+          s ls (KEnv.Holds.nil s) hls
       rw [h1] at h2
       cases h2
       exact h3
@@ -683,9 +763,9 @@ theorem gatherPrinted_constIndexFoldBody {body : Lcmd} {g : List (JInstr 64)}
     and the frame guard of `constIndexFoldBody` holds, the fold is index-free. -/
 theorem constIndexFoldBody_lcmdDirect {body : Lcmd}
     (hc : covers (bodyParams body) [] body = true)
-    (hg : bodyParams (foldCore (bodyParams body) [] body) = bodyParams body) :
+    (hg : bodyParams (foldCore (bodyParams body) [] [] body) = bodyParams body) :
     lcmdDirect (constIndexFoldBody body) = true := by
-  simp only [constIndexFoldBody, hg, if_true]
+  simp only [constIndexFoldBody, runtimeBases_of_covers _ body [] [] hc, hg, if_true]
   exact foldCore_lcmdDirect _ body [] hc
 
 /-- **Constant time.** Under the hypotheses of `constIndexFoldBody_lcmdDirect`,
@@ -694,7 +774,7 @@ theorem constIndexFoldBody_lcmdDirect {body : Lcmd}
 theorem gatherPrinted_constIndexFoldBody_constant_time {body : Lcmd}
     {g : List (JInstr 64)}
     (hc : covers (bodyParams body) [] body = true)
-    (hg : bodyParams (foldCore (bodyParams body) [] body) = bodyParams body)
+    (hg : bodyParams (foldCore (bodyParams body) [] [] body) = bodyParams body)
     (h : gatherPrinted (constIndexFoldBody body) = some g) (s₁ s₂ : JState 64) :
     MachineConstantTime.blockLeak s₁ g = MachineConstantTime.blockLeak s₂ g :=
   ConstantTimeCoverage.allDirect_constant_time g
