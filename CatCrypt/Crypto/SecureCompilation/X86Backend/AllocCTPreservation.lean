@@ -591,16 +591,32 @@ theorem linstrRDirect_Lopn_mk {dsts srcs : List LOperand} {opn : String}
   exact ⟨fun o ho => hd o ho, fun o ho => hs o ho⟩
 
 /-- `legalizeSpillDst` on operands none of which is register-indexed uses no
-    register-indexed operand: the scratch `R15` is a register. -/
+    register-indexed operand: the scratches `R15` and `R14` are registers. -/
 theorem legalizeSpillDst_direct {dsts srcs : List LOperand} {opn : String}
     (hd : ∀ o ∈ dsts, isIndexed o = false) (hs : ∀ o ∈ srcs, isIndexed o = false) :
     lcmdRDirect (legalizeSpillDst dsts opn srcs) = true := by
   rw [lcmdRDirect, List.all_eq_true]
   intro r hr
-  rcases legalizeSpillDst_mem hr with rfl | rfl | ⟨d, hdm, rfl⟩
-  · exact linstrRDirect_Lopn_mk hd hs
-  · exact linstrRDirect_Lopn_mk (by simp [isIndexed]) hs
-  · exact linstrRDirect_Lopn_mk (by simpa using hd d hdm) (by simp [isIndexed])
+  obtain ⟨ds, o, ss, rfl, hx⟩ := legalizeSpillDst_mem hr
+  have hx' : ∀ x ∈ ds ++ ss, isIndexed x = false := fun x hm => by
+    rcases hx x hm with h | h | rfl | rfl
+    · exact hd x h
+    · exact hs x h
+    · rfl
+    · rfl
+  exact linstrRDirect_Lopn_mk (fun x h => hx' x (List.mem_append_left _ h))
+    (fun x h => hx' x (List.mem_append_right _ h))
+
+/-- `legalizeOneSrc` on operands neither of which is register-indexed uses no
+    register-indexed operand. -/
+theorem legalizeOneSrc_direct {d s : LOperand} {u64 : Bool} {opn : String}
+    (hd : isIndexed d = false) (hs : isIndexed s = false) :
+    lcmdRDirect (legalizeOneSrc u64 opn d s) = true := by
+  unfold legalizeOneSrc
+  split
+  · exact legalizeMov_direct hd hs
+  · simp only [lcmdRDirect, List.all_cons, List.all_nil, Bool.and_true]
+    exact linstrRDirect_Lopn_mk (by simpa using hd) (by simpa using hs)
 
 theorem mem_of_mem_zipIdx {α : Type} {l : List α} {p : α × Nat} (h : p ∈ l.zipIdx) :
     p.1 ∈ l := by
@@ -669,15 +685,15 @@ theorem physBodyWithStores_lcmdDirect
             exact lcmdDirect_map (fun _ => rfl)
               (legalizeMemStoreK_direct ((hr _).trans (hD2 _ (by simp)))
                 ((hr _).trans (hS2 _ (by simp))) ((hr _).trans (hS2 _ (by simp))))
-          · simp only [lcmdDirect, List.all_cons, List.all_nil, Bool.and_true]
-            exact linstrRDirect_Lopn_mk
-              (by simpa using (hr _).trans (hD2 _ (by simp)))
-              (by
-                intro o ho
-                simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
-                rcases ho with rfl | rfl
-                · exact (hr _).trans (hS2 _ (by simp))
-                · exact (hr _).trans (hS2 _ (by simp)))
+          · exact lcmdDirect_map (fun _ => rfl)
+              (legalizeSpillDst_direct
+                (by simpa using (hr _).trans (hD2 _ (by simp)))
+                (by
+                  intro o ho
+                  simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+                  rcases ho with rfl | rfl
+                  · exact (hr _).trans (hS2 _ (by simp))
+                  · exact (hr _).trans (hS2 _ (by simp))))
         · rename_i heq2
           have h2 := hi
           rw [heq2] at h2
@@ -700,10 +716,9 @@ theorem physBodyWithStores_lcmdDirect
           exact lcmdDirect_map (fun _ => rfl)
             (legalizeMemLoad_direct ((hr _).trans (hD _ (by simp)))
               ((hr _).trans (hS _ (by simp))))
-        · simp only [lcmdDirect, List.all_cons, List.all_nil, Bool.and_true]
-          exact linstrRDirect_Lopn_mk
-            (by simpa using (hr _).trans (hD _ (by simp)))
-            (by simpa using (hr _).trans (hS _ (by simp)))
+        · exact lcmdDirect_map (fun _ => rfl)
+            (legalizeOneSrc_direct ((hr _).trans (hD _ (by simp)))
+              ((hr _).trans (hS _ (by simp))))
     · -- any other `Lopn` shape
       rename_i heq
       have h1 := hi

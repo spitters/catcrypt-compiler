@@ -535,6 +535,46 @@ theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
   · simp [h]
   · rfl
 
+/-- The instructions of a register-allocated one-source instruction `d := opn s`
+    under the move selection `spillImmMovMnem u64`: for a register copy (`MOV` or
+    `MOVQ` after the width tag is stripped) the copy legalized by `legalizeMov`, which
+    routes a copy between two spill slots through `R15`; the single instruction
+    otherwise. -/
+def legalizeOneSrc (u64 : Bool) (opn : String) (d s : LOperand) : List LinstrR :=
+  if stripWidthTag opn == "MOV" || stripWidthTag opn == "MOVQ" then
+    legalizeMov d s (spillImmMovMnem u64 opn d s)
+  else [.Lopn [d] (spillImmMovMnem u64 opn d s) [s]]
+
+/-- On a mnemonic that is not a register copy, `legalizeOneSrc` is the single
+    instruction under the mnemonic `opn`. -/
+theorem legalizeOneSrc_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
+    (h : stripWidthTag opn ≠ "MOV") (h' : stripWidthTag opn ≠ "MOVQ") :
+    legalizeOneSrc u64 opn d s = [.Lopn [d] opn [s]] := by
+  have hm : opn ≠ "MOV" := fun e => h (by rw [e]; decide)
+  simp [legalizeOneSrc, h, h', spillImmMovMnem_of_ne d s hm]
+
+/-- On operands of which at most one is a spill slot, `legalizeOneSrc` is the single
+    instruction under the move selection. -/
+theorem legalizeOneSrc_of_not_spill {u64 : Bool} {opn : String} {d s : LOperand}
+    (h : (d.isSpill && s.isSpill) = false) :
+    legalizeOneSrc u64 opn d s = [.Lopn [d] (spillImmMovMnem u64 opn d s) [s]] := by
+  unfold legalizeOneSrc legalizeMov
+  simp [h]
+
+/-- **The legalized copy between spill slots.** A register copy whose operands are both
+    spill slots is `MOV R15, s; MOV d, R15` under the mnemonic `opn`. -/
+theorem legalizeOneSrc_spill {u64 : Bool} {opn : String} {d s : LOperand}
+    (ho : (stripWidthTag opn == "MOV" || stripWidthTag opn == "MOVQ") = true)
+    (hd : d.isSpill = true) (hs : s.isSpill = true) :
+    legalizeOneSrc u64 opn d s
+      = [.Lopn [.reg reloadScratch] opn [s], .Lopn [d] opn [.reg reloadScratch]] := by
+  have hm : spillImmMovMnem u64 opn d s = opn := by
+    unfold spillImmMovMnem
+    split
+    · simp [LOperand.isSpill] at hs
+    · rfl
+  simp only [legalizeOneSrc, ho, if_true, hm, legalizeMov, hd, hs, Bool.and_self]
+
 /-- The constant the oracle `shiftImm` gives for the index name of a
     register-indexed address of the virtual body; `none` on every other operand. -/
 def idxConst (shiftImm : ShiftImmOracle) : LOperand → Option Nat
@@ -629,34 +669,75 @@ theorem legalizeMemStoreK_const {c : Nat} {b i : String} {val : LOperand} (dArr 
          .Lopn [.reg (memName b (8 * c))] "STORE:64" [.reg reloadScratch]] := by
   simp [legalizeMemStoreK, constIdxStore?, hb, hi, hv, hc]
 
-/-- The select of a spilled destination through the scratch register.
+/-- The select `opn d, [c, t, f]` with its spill slots routed through the scratch
+    registers: a condition `c` in a spill slot is first loaded by `MOV:64 R14, c` and
+    the select reads `R14`; a destination `d` in a spill slot is replaced by `R15`,
+    followed by the store `MOV:64 d, R15`. The select does not read its destination,
+    so the slot is not loaded. -/
+def cmovSpillSeq (opn : String) (d c t f : LOperand) : List LinstrR :=
+  (if c.isSpill then [.Lopn [.reg reloadScratch2] "MOV:64" [c]] else [])
+    ++ (if d.isSpill then
+          [.Lopn [.reg reloadScratch] opn
+              [if c.isSpill then .reg reloadScratch2 else c, t, f],
+           .Lopn [d] "MOV:64" [.reg reloadScratch]]
+        else [.Lopn [d] opn [if c.isSpill then .reg reloadScratch2 else c, t, f]])
 
-    For a single destination `d` that is a spill slot, the mnemonic `CMOV:64` and
-    three sources `c`, `t`, `f`, the select is
-    `CMOV:64 R15, [c, t, f]; MOV:64 d, R15`: the conditional move writes the
-    reserved scratch `reloadScratch` and a 64-bit move stores the scratch to the
-    slot. The select does not read its destination, so the slot is not loaded.
-    `none` in every other case. -/
+/-- The select with spilled operands through the scratch registers.
+
+    For a single destination `d`, the mnemonic `CMOV:64` and three sources `c`, `t`,
+    `f`, where the destination or the condition is a spill slot, the select is
+    `cmovSpillSeq opn d c t f`. `none` in every other case. -/
 def cmovSpillDst? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     Option (List LinstrR) :=
   match dsts, srcs with
   | [d], [c, t, f] =>
-      -- The spill test comes before the mnemonic, so a register destination
-      -- reduces without comparing strings.
-      if d.isSpill && opn == "CMOV:64" then
-        some [.Lopn [.reg reloadScratch] opn [c, t, f],
-              .Lopn [d] "MOV:64" [.reg reloadScratch]]
+      -- The spill tests come before the mnemonic, so register operands reduce
+      -- without comparing strings.
+      if (d.isSpill || c.isSpill) && opn == "CMOV:64" then
+        some (cmovSpillSeq opn d c t f)
+      else none
+  | _, _ => none
+
+/-- The mnemonics of the materialised comparison `SET<cc>`, after the width tag is
+    stripped. -/
+def isSetccMnem (opn : String) : Bool :=
+  ["SETE", "SETNE", "SETB", "SETBE", "SETA", "SETAE"].contains (stripWidthTag opn)
+
+/-- The move of the materialised comparison `opn`: `MOV:64` for a `:64`-tagged
+    mnemonic, `MOV` otherwise. -/
+def setccMov (opn : String) : String := if hasSuffix opn ":64" then "MOV:64" else "MOV"
+
+/-- The materialised comparison with spilled operands through the scratch registers.
+
+    For a single destination `d`, a comparison mnemonic `opn` (`isSetccMnem`) and two
+    register-named sources `a`, `b`, one of the three a spill slot, the comparison is
+    `MOV R15, a; MOV R14, b; opn R15, [R15, R14]; MOV d, R15`, the moves at the width
+    of the comparison (`setccMov`). `none` in every other case. -/
+def setccSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    Option (List LinstrR) :=
+  match dsts, srcs with
+  | [d], [.reg a, .reg b] =>
+      if (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill)
+          && isSetccMnem opn then
+        some [.Lopn [.reg reloadScratch] (setccMov opn) [.reg a],
+              .Lopn [.reg reloadScratch2] (setccMov opn) [.reg b],
+              .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
+              .Lopn [d] (setccMov opn) [.reg reloadScratch]]
       else none
   | _, _ => none
 
 /-- The instructions of a register-allocated `Lopn` with destinations `dsts`,
-    mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?` when it
-    is defined, and the single instruction `Lopn dsts opn srcs` otherwise. -/
+    mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?` or the
+    scratch comparison `setccSpill?` when one is defined, and the single instruction
+    `Lopn dsts opn srcs` otherwise. -/
 def legalizeSpillDst (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     List LinstrR :=
   match cmovSpillDst? dsts opn srcs with
   | some l => l
-  | none => [.Lopn dsts opn srcs]
+  | none =>
+      match setccSpill? dsts opn srcs with
+      | some l => l
+      | none => [.Lopn dsts opn srcs]
 
 /-- A mnemonic other than `CMOV:64` has no scratch select. -/
 theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
@@ -666,62 +747,151 @@ theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List L
   · simp [h]
   · rfl
 
-/-- Destinations none of which is a spill slot have no scratch select. -/
-theorem cmovSpillDst?_of_not_spill {dsts : List LOperand} (opn : String) (srcs : List LOperand)
-    (h : ∀ d ∈ dsts, d.isSpill = false) : cmovSpillDst? dsts opn srcs = none := by
-  unfold cmovSpillDst?
+/-- A mnemonic other than a comparison mnemonic has no scratch comparison. -/
+theorem setccSpill?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
+    (h : isSetccMnem opn = false) : setccSpill? dsts opn srcs = none := by
+  unfold setccSpill?
   split
-  · simp [h _ (List.mem_singleton_self _)]
+  · simp [h]
   · rfl
 
-/-- Where there is no scratch select, `legalizeSpillDst` is the single instruction. -/
+/-- Operands none of which is a spill slot have no scratch select. -/
+theorem cmovSpillDst?_of_not_spill {dsts : List LOperand} (opn : String)
+    {srcs : List LOperand} (h : ∀ d ∈ dsts, d.isSpill = false)
+    (hs : ∀ s ∈ srcs, s.isSpill = false) : cmovSpillDst? dsts opn srcs = none := by
+  unfold cmovSpillDst?
+  split
+  · simp [h _ (List.mem_singleton_self _), hs _ (List.mem_cons_self ..)]
+  · rfl
+
+/-- Operands none of which is a spill slot have no scratch comparison. -/
+theorem setccSpill?_of_not_spill {dsts : List LOperand} (opn : String)
+    {srcs : List LOperand} (h : ∀ d ∈ dsts, d.isSpill = false)
+    (hs : ∀ s ∈ srcs, s.isSpill = false) : setccSpill? dsts opn srcs = none := by
+  unfold setccSpill?
+  split
+  · rename_i a b
+    have ha := hs (.reg a) (by simp)
+    have hb := hs (.reg b) (by simp)
+    simp [h _ (List.mem_singleton_self _), ha, hb]
+  · rfl
+
+/-- Where there is neither a scratch select nor a scratch comparison,
+    `legalizeSpillDst` is the single instruction. -/
 theorem legalizeSpillDst_of_none {dsts : List LOperand} {opn : String} {srcs : List LOperand}
-    (h : cmovSpillDst? dsts opn srcs = none) :
+    (h : cmovSpillDst? dsts opn srcs = none) (h' : setccSpill? dsts opn srcs = none) :
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] := by
-  simp [legalizeSpillDst, h]
+  simp [legalizeSpillDst, h, h']
 
-/-- On a mnemonic other than `CMOV:64`, `legalizeSpillDst` is the single instruction. -/
+/-- On a mnemonic other than `CMOV:64` and the comparison mnemonics,
+    `legalizeSpillDst` is the single instruction. -/
 theorem legalizeSpillDst_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
-    (h : opn ≠ "CMOV:64") : legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
-  legalizeSpillDst_of_none (cmovSpillDst?_of_ne dsts srcs h)
+    (h : opn ≠ "CMOV:64") (h' : isSetccMnem opn = false) :
+    legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
+  legalizeSpillDst_of_none (cmovSpillDst?_of_ne dsts srcs h) (setccSpill?_of_ne dsts srcs h')
 
-/-- On destinations none of which is a spill slot, `legalizeSpillDst` is the single
+/-- On operands none of which is a spill slot, `legalizeSpillDst` is the single
     instruction. -/
 theorem legalizeSpillDst_of_not_spill {dsts : List LOperand} (opn : String)
-    (srcs : List LOperand) (h : ∀ d ∈ dsts, d.isSpill = false) :
+    {srcs : List LOperand} (h : ∀ d ∈ dsts, d.isSpill = false)
+    (hs : ∀ s ∈ srcs, s.isSpill = false) :
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
-  legalizeSpillDst_of_none (cmovSpillDst?_of_not_spill opn srcs h)
+  legalizeSpillDst_of_none (cmovSpillDst?_of_not_spill opn h hs)
+    (setccSpill?_of_not_spill opn h hs)
 
-/-- **The scratch select.** A `CMOV:64` whose destination `d` is a spill slot is
-    `CMOV:64 R15, [c, t, f]; MOV:64 d, R15`. -/
-theorem legalizeSpillDst_cmov {d : LOperand} (c t f : LOperand) (hd : d.isSpill = true) :
-    legalizeSpillDst [d] "CMOV:64" [c, t, f]
-      = [.Lopn [.reg reloadScratch] "CMOV:64" [c, t, f],
+/-- **The scratch select.** A `CMOV:64` whose destination or condition is a spill slot
+    is `cmovSpillSeq "CMOV:64" d c t f`. -/
+theorem legalizeSpillDst_cmov {d c : LOperand} (t f : LOperand)
+    (h : (d.isSpill || c.isSpill) = true) :
+    legalizeSpillDst [d] "CMOV:64" [c, t, f] = cmovSpillSeq "CMOV:64" d c t f := by
+  simp [legalizeSpillDst, cmovSpillDst?, h]
+
+/-- The select on a spilled condition into a register destination reloads the condition
+    into `R14`. -/
+theorem cmovSpillSeq_cond {d c : LOperand} (opn : String) (t f : LOperand)
+    (hd : d.isSpill = false) (hc : c.isSpill = true) :
+    cmovSpillSeq opn d c t f
+      = [.Lopn [.reg reloadScratch2] "MOV:64" [c],
+         .Lopn [d] opn [.reg reloadScratch2, t, f]] := by
+  simp [cmovSpillSeq, hd, hc]
+
+/-- The select on a spilled condition into a spilled destination reloads the condition
+    into `R14`, selects into `R15` and stores `R15` to the destination. -/
+theorem cmovSpillSeq_cond_dst {d c : LOperand} (opn : String) (t f : LOperand)
+    (hd : d.isSpill = true) (hc : c.isSpill = true) :
+    cmovSpillSeq opn d c t f
+      = [.Lopn [.reg reloadScratch2] "MOV:64" [c],
+         .Lopn [.reg reloadScratch] opn [.reg reloadScratch2, t, f],
          .Lopn [d] "MOV:64" [.reg reloadScratch]] := by
-  simp [legalizeSpillDst, cmovSpillDst?, hd]
+  simp [cmovSpillSeq, hd, hc]
 
-/-- Every instruction of `legalizeSpillDst dsts opn srcs` is the instruction
-    `Lopn dsts opn srcs`, the select `Lopn [R15] opn srcs` into the scratch, or the
-    store `MOV:64 d, R15` of the scratch to a destination `d ∈ dsts`. -/
+/-- The select on a register condition into a spilled destination selects into `R15` and
+    stores `R15` to the destination. -/
+theorem cmovSpillSeq_dst {d c : LOperand} (opn : String) (t f : LOperand)
+    (hd : d.isSpill = true) (hc : c.isSpill = false) :
+    cmovSpillSeq opn d c t f
+      = [.Lopn [.reg reloadScratch] opn [c, t, f],
+         .Lopn [d] "MOV:64" [.reg reloadScratch]] := by
+  simp [cmovSpillSeq, hd, hc]
+
+/-- The move of a materialised comparison is a `MOV` after its width tag is stripped. -/
+theorem stripWidthTag_setccMov (opn : String) : stripWidthTag (setccMov opn) = "MOV" := by
+  unfold setccMov
+  split <;> decide +kernel
+
+/-- **The scratch comparison.** A comparison `opn d, [a, b]` over register names, one
+    of the three a spill slot, is `MOV R15, a; MOV R14, b; opn R15, [R15, R14];
+    MOV d, R15`. -/
+theorem legalizeSpillDst_setcc {d : LOperand} {opn a b : String}
+    (h : (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill) = true)
+    (ho : isSetccMnem opn = true) :
+    legalizeSpillDst [d] opn [.reg a, .reg b]
+      = [.Lopn [.reg reloadScratch] (setccMov opn) [.reg a],
+         .Lopn [.reg reloadScratch2] (setccMov opn) [.reg b],
+         .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
+         .Lopn [d] (setccMov opn) [.reg reloadScratch]] := by
+  have hc : cmovSpillDst? [d] opn [.reg a, .reg b] = none := rfl
+  simp only [legalizeSpillDst, hc, setccSpill?, h, ho, Bool.and_self, if_true]
+
+/-- Every instruction of `legalizeSpillDst dsts opn srcs` is an `Lopn` each of whose
+    operands is a destination in `dsts`, a source in `srcs`, or one of the scratch
+    registers `R15` (`reloadScratch`) and `R14` (`reloadScratch2`). -/
 theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List LOperand}
     {r : LinstrR} (h : r ∈ legalizeSpillDst dsts opn srcs) :
-    r = .Lopn dsts opn srcs ∨ r = .Lopn [.reg reloadScratch] opn srcs
-      ∨ ∃ d ∈ dsts, r = .Lopn [d] "MOV:64" [.reg reloadScratch] := by
+    ∃ ds o ss, r = .Lopn ds o ss ∧ ∀ x ∈ ds ++ ss,
+      x ∈ dsts ∨ x ∈ srcs ∨ x = .reg reloadScratch ∨ x = .reg reloadScratch2 := by
   unfold legalizeSpillDst at h
   split at h
   · rename_i l hl
     unfold cmovSpillDst? at hl
     split at hl
-    · rename_i d c t f
-      split at hl
+    · split at hl
       · cases hl
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at h
-        rcases h with rfl | rfl
-        · exact Or.inr (Or.inl rfl)
-        · exact Or.inr (Or.inr ⟨d, List.mem_singleton_self _, rfl⟩)
+        unfold cmovSpillSeq at h
+        rename_i d c t f _
+        cases hc : c.isSpill <;> cases hd : d.isSpill <;>
+          simp only [hc, hd, Bool.false_eq_true, if_false, if_true, List.nil_append,
+            List.cons_append, List.mem_cons, List.not_mem_nil, or_false] at h <;>
+          rcases h with rfl | rfl | rfl <;>
+          exact ⟨_, _, _, rfl, by intro x hx; simp at hx ⊢; aesop⟩
       · cases hl
     · cases hl
-  · exact Or.inl (List.mem_singleton.mp h)
+  · split at h
+    · rename_i l _ hl
+      unfold setccSpill? at hl
+      split at hl
+      · split at hl
+        · cases hl
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+          rcases h with rfl | rfl | rfl | rfl <;>
+            exact ⟨_, _, _, rfl, by intro x hx; simp at hx; rcases hx with rfl | rfl <;> simp⟩
+        · cases hl
+      · cases hl
+    · obtain rfl := List.mem_singleton.mp h
+      exact ⟨_, _, _, rfl, fun x hx => by
+        rcases List.mem_append.mp hx with hx | hx
+        · exact Or.inl hx
+        · exact Or.inr (Or.inl hx)⟩
 
 
 /-- A `physBody` variant that:
@@ -906,9 +1076,12 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
                     (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                        (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                   else
-                    [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
-              -- A `CMOV:64` into a spill slot selects in `R15` and stores the
-              -- scratch to the slot (`legalizeSpillDst`).
+                    -- A comparison with a spilled operand runs on the scratch
+                    -- registers (`legalizeSpillDst`).
+                    (legalizeSpillDst [rmap d'] opn' [rmap addr, rmap val]).map
+                      (fun r => ⟨i.li_ii, r⟩)
+              -- A `CMOV:64` with a spilled destination or condition runs on the
+              -- scratch registers (`legalizeSpillDst`).
               | .Lopn dsts opn srcs =>
                   (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
                     (fun r => ⟨i.li_ii, r⟩)
@@ -928,8 +1101,8 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
               (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
                 (fun r => ⟨i.li_ii, r⟩)
             else
-              [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
-                [rmap s]⟩]
+              -- A copy between two spill slots goes through `R15` (`legalizeOneSrc`).
+              (legalizeOneSrc bodyIsU64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
         | .Lopn dsts opn srcs =>
             [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
         | other => [⟨i.li_ii, other⟩]
@@ -1104,7 +1277,8 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
                   (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                      (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                 else
-                  [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
+                  (legalizeSpillDst [rmap d'] opn' [rmap addr, rmap val]).map
+                    (fun r => ⟨i.li_ii, r⟩)
             | .Lopn dsts opn srcs =>
                 (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
                   (fun r => ⟨i.li_ii, r⟩)
@@ -1124,8 +1298,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
             (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
               (fun r => ⟨i.li_ii, r⟩)
           else
-            [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
-              [rmap s]⟩]
+            (legalizeOneSrc bodyIsU64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
       | .Lopn dsts opn srcs =>
           [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
       | other => [⟨i.li_ii, other⟩]
@@ -1272,7 +1445,8 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
                   (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                      (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
                 else
-                  [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
+                  (legalizeSpillDst [rmap d'] opn' [rmap addr, rmap val]).map
+                    (fun r => ⟨i.li_ii, r⟩)
             | .Lopn dsts opn srcs =>
                 (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
                   (fun r => ⟨i.li_ii, r⟩)
@@ -1287,8 +1461,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
             (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
               (fun r => ⟨i.li_ii, r⟩)
           else
-            [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem bodyIsU64 opn (rmap d) (rmap s))
-              [rmap s]⟩]
+            (legalizeOneSrc bodyIsU64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
       | .Lopn dsts opn srcs =>
           [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
       | other => [⟨i.li_ii, other⟩]

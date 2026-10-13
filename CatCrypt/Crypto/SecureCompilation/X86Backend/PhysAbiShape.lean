@@ -98,8 +98,9 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
     lowering of a binop, the base reload and legalization of a memory access, the
     lowering of a native shift, and the operand renaming of every other `Lopn`,
     with the 64-bit move `spillImmMovMnem` selects for a small immediate stored to a
-    spill slot of a body with 8-byte slots (`u64`), and with a `CMOV:64` into a spill
-    slot computed in the scratch `R15` and stored to the slot (`legalizeSpillDst`). -/
+    spill slot of a body with 8-byte slots (`u64`), a copy between two spill slots
+    through `R15` (`legalizeOneSrc`), and a `CMOV:64` or a comparison `SET<cc>` with
+    spilled operands computed on the scratch registers (`legalizeSpillDst`). -/
 def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
   let isBinop (opn : String) : Bool := isTwoAddrBinop opn
@@ -131,7 +132,8 @@ def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOp
               (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
                  (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
             else
-              [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
+              (legalizeSpillDst [rmap d'] opn' [rmap addr, rmap val]).map
+                (fun r => ⟨i.li_ii, r⟩)
         | .Lopn dsts opn srcs =>
             (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
               (fun r => ⟨i.li_ii, r⟩)
@@ -146,7 +148,7 @@ def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOp
         (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
           (fun r => ⟨i.li_ii, r⟩)
       else
-        [⟨i.li_ii, .Lopn [rmap d] (spillImmMovMnem u64 opn (rmap d) (rmap s)) [rmap s]⟩]
+        (legalizeOneSrc u64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
   | .Lopn dsts opn srcs =>
       [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
   | other => [⟨i.li_ii, other⟩]
@@ -419,16 +421,15 @@ theorem physExpand_livepin (shiftImm : ShiftImmOracle) (u64 : Bool)
     (rmap : LOperand → LOperand)
     (rl : String → Option String) (ii : Nat) (ds ss : List LOperand) :
     (physExpand shiftImm u64 rmap rl ⟨ii, .Lopn ds "LIVEPIN" ss⟩).filter notLivePin = [] := by
-  have hw : stripWidthTag "LIVEPIN" = "LIVEPIN" := by decide +kernel
   have hs : isMemStore "LIVEPIN" = false := by decide +kernel
   have hl : isMemLoad "LIVEPIN" = false := by decide +kernel
   have hb : isTwoAddrBinop "LIVEPIN" = false := by decide +kernel
-  have hm : ∀ d s, spillImmMovMnem u64 "LIVEPIN" d s = "LIVEPIN" := fun d s =>
-    spillImmMovMnem_of_ne d s (by decide +kernel)
+  have hm : ∀ d s, legalizeOneSrc u64 "LIVEPIN" d s = [.Lopn [d] "LIVEPIN" [s]] := fun d s =>
+    legalizeOneSrc_of_ne d s (by decide +kernel) (by decide +kernel)
   have hc : ∀ ds ss, legalizeSpillDst ds "LIVEPIN" ss = [.Lopn ds "LIVEPIN" ss] := fun ds ss =>
-    legalizeSpillDst_of_ne ds ss (by decide +kernel)
+    legalizeSpillDst_of_ne ds ss (by decide +kernel) (by decide +kernel)
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
-    simp [physExpand, hw, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
+    simp [physExpand, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
 
 /-- The expansions of the argument-liveness pin are all dropped by the pin filter. -/
 theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (u64 : Bool)

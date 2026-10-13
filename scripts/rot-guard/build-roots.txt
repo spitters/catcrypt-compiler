@@ -142,7 +142,10 @@ CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.Jasmin.VectorOps
 CatCrypt.Crypto.MLDSA.NttTemplate
 CatCrypt.Crypto.MLDSA.Spec.Rounding
+CatCrypt.Crypto.MLKEM.Compress
+CatCrypt.Crypto.MLKEM.Libcrux.RqAlgebra
 CatCrypt.Crypto.MLKEM.NttTemplate
+CatCrypt.Crypto.MLKEM.Spec.Coeffs
 CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.ComCanonical
@@ -152,9 +155,11 @@ CatCrypt.Crypto.Optimizer.InOrderCostModel
 CatCrypt.Crypto.Optimizer.KeccakPipeline
 CatCrypt.Crypto.Optimizer.Lattice.BitrevElimPass
 CatCrypt.Crypto.Optimizer.Lattice.CompPolyTest
+CatCrypt.Crypto.Optimizer.Lattice.DFTBijectionGeneric
 CatCrypt.Crypto.Optimizer.Lattice.NTT4PointPass
 CatCrypt.Crypto.Optimizer.Lattice.NTT8PointPass
 CatCrypt.Crypto.Optimizer.Lattice.NTTHoist_Model
+CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric
 CatCrypt.Crypto.Optimizer.Lattice.NTTLinearityGeneric
 CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_Smoke
 CatCrypt.Crypto.Optimizer.Lattice.NTTRoundTripPass
@@ -720,7 +725,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3KFrontArr
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmitMain
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleLeafEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttButterflyEmit
-CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerDenote
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerInlineEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchComFuse
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsCovered
