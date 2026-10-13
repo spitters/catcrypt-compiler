@@ -798,6 +798,7 @@ CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AesEcbBlockObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
+CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs
 CatCrypt.Crypto.SecureCompilation.X86Backend.Avx2YmmNttUnifiedEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.BackTranslation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2bGThirEmit
@@ -815,7 +816,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillEncodable
-CatCrypt.Crypto.SecureCompilation.X86Backend.CoalesceComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
@@ -850,7 +850,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyProbe
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttLoopEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheShoupEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
-CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
