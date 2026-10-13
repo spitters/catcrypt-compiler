@@ -412,33 +412,6 @@ def whileFrame (d n nCar : Nat) (initOps : List LOperand)
   ++ (parMoves bodyD car bodyOps
   ++ (I.loopGuard flag n).map guardI))))
 
-/-- The frame of a branch at depth `d` with the labels `n` (then), `n + 1` (else) and
-    `n + 2` (join) in the function `fn`, around the exported branches `thnC` and `elsC`
-    with the returned operands `thnOps` at depth `thnD` and `elsOps` at depth `elsD`. The
-    condition bit `condOp` is widened into `regName d`; each branch assigns its results to
-    the block `carriedRegs d nRes`, where the continuation reads them. The temporaries of
-    the assignment of a branch start `nRes` registers above the depth at its return, which
-    is above the block: a branch may return at the depth `d` itself. The then branch reaches
-    the join label by a conditional jump that every run takes: the register
-    `regName (d + nRes)`, the first one above the block, is set to `1` and the loop guard
-    `I.loopGuard` on it jumps to `n + 2`. The name `fn` of the function is not read. -/
-def ifFrame (_fn : String) (d n nRes : Nat) (condOp : LOperand)
-    (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
-    (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
-    (I : IsaData := x86Data) : List LinstrRM :=
-  let res := carriedRegs d nRes
-  flagWord I (regName d) (regName (d + 1)) condOp
-  ++ ((I.zeroTripGuard (regName d) n (n + 1)).map guardI
-  ++ (labelI n
-  :: (thnC
-  ++ (parMoves (thnD + nRes) res thnOps
-  ++ (movImmI (regName (d + nRes)) 1
-  :: ((I.loopGuard (regName (d + nRes)) (n + 2)).map guardI
-  ++ (labelI (n + 1)
-  :: (elsC
-  ++ (parMoves (elsD + nRes) res elsOps
-  ++ [labelI (n + 2)])))))))))
-
 /-- A type held in a register cell: every type other than a stack array. The store
     agreement constrains the register cell of a `reg` variable and the array carrier of a
     `stackArr` variable. -/
@@ -517,6 +490,54 @@ def arrParMoves (z t : String) (D : Nat) (mv : List ArrMove) : List LinstrRM :=
 def carriedPairs (cs : List JasminTy) (car : List String) (ops : List LOperand) :
     List (JasminTy × String × String) :=
   cs.zip (car.zip (ops.map operandName))
+
+/-- The typed pairs of the results of a branch: position `j` of the result types `rs`
+    with the name of the block `carriedRegs d rs.length` at `j` as the target and the name
+    of the returned operand `ops_j` as the source. -/
+def ifResPairs (rs : List JasminTy) (d : Nat) (ops : List LOperand) :
+    List (JasminTy × String × String) :=
+  carriedPairs rs (carriedRegs d rs.length) ops
+
+/-- The assignment of the results `ops` of a branch to the block `carriedRegs d rs.length`
+    with the temporaries from `regName D`. When some result type is a stack array, a move
+    of `0` into the index register `regName (D + 1)` precedes the parallel assignment of
+    the array pairs, with the scratch register `regName D` and the temporary array names
+    from `regName D`; the register pairs follow as a parallel assignment of register
+    cells. Without array pairs no instruction precedes the register assignment. -/
+def ifResMoves (rs : List JasminTy) (d D : Nat) (ops : List LOperand) : List LinstrRM :=
+  (if (arrPairs (ifResPairs rs d ops)).isEmpty then []
+    else movImmI (regName (D + 1)) 0
+      :: arrParMoves (regName (D + 1)) (regName D) D (arrPairs (ifResPairs rs d ops)))
+  ++ parMoves D ((regPairs (ifResPairs rs d ops)).map Prod.fst)
+    ((regPairs (ifResPairs rs d ops)).map fun p => .reg p.2)
+
+/-- The frame of a branch at depth `d` with the labels `n` (then), `n + 1` (else) and
+    `n + 2` (join) in the function `fn`, around the exported branches `thnC` and `elsC`
+    with the returned operands `thnOps` at depth `thnD` and `elsOps` at depth `elsD`. The
+    condition bit `condOp` is widened into `regName d`; each branch assigns its results of
+    the types `rs` to the block `carriedRegs d rs.length` by `ifResMoves`, where the
+    continuation reads them: a register type in the register cell and a stack array in the
+    array cell of its name. The temporaries of the assignment of a branch start
+    `rs.length` registers above the depth at its return, which is above the block: a
+    branch may return at the depth `d` itself. The then branch reaches the join label by a
+    conditional jump that every run takes: the register `regName (d + rs.length)`, the
+    first one above the block, is set to `1` and the loop guard `I.loopGuard` on it jumps
+    to `n + 2`. The name `fn` of the function is not read. -/
+def ifFrame (_fn : String) (d n : Nat) (rs : List JasminTy) (condOp : LOperand)
+    (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
+    (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
+    (I : IsaData := x86Data) : List LinstrRM :=
+  flagWord I (regName d) (regName (d + 1)) condOp
+  ++ ((I.zeroTripGuard (regName d) n (n + 1)).map guardI
+  ++ (labelI n
+  :: (thnC
+  ++ (ifResMoves rs d (thnD + rs.length) thnOps
+  ++ (movImmI (regName (d + rs.length)) 1
+  :: ((I.loopGuard (regName (d + rs.length)) (n + 2)).map guardI
+  ++ (labelI (n + 1)
+  :: (elsC
+  ++ (ifResMoves rs d (elsD + rs.length) elsOps
+  ++ [labelI (n + 2)])))))))))
 
 /-- The typed pairs of the shift of a carried block down one name: position `j` of the
     carried types `cs` with the name of the block from `regName d` as the target and the
@@ -673,7 +694,7 @@ def exportR (nArgs : Nat) (fn : String) :
       (exportR nArgs fn els d t.next I).bind fun e =>
       (exportR nArgs fn k (d + rs.length) e.next I).map
         (Exported.prepend
-          (ifFrame fn d n rs.length (resolveVar d nArgs argName (fun _ => none) cond)
+          (ifFrame fn d n rs (resolveVar d nArgs argName (fun _ => none) cond)
             t.code t.res t.depth e.code e.res e.depth I))
   | _, _, .whileLoop (cs := cs) inits body k, d, n, I =>
       (exportR nArgs fn body (d + cs.length) (n + 1) I).bind fun b =>
@@ -1014,6 +1035,25 @@ theorem isLopn_arrParMoves (z t : String) (D : Nat) (mv : List ArrMove) :
   · exact isLopn_arrMoves _ _ _ i hi
   · exact (List.mem_append.mp hi).elim (isLopn_arrMoves _ _ _ i) (isLopn_arrMoves _ _ _ i)
 
+theorem isLopn_ifResMoves (rs : List JasminTy) (d D : Nat) (ops : List LOperand) :
+    ∀ i ∈ ifResMoves rs d D ops, IsLopn i := by
+  intro i hi
+  unfold ifResMoves at hi
+  rcases List.mem_append.mp hi with hi | hi
+  · split at hi
+    · exact absurd hi List.not_mem_nil
+    · rcases List.mem_cons.mp hi with rfl | hi
+      · exact isLopn_movI _ _
+      · exact isLopn_arrParMoves _ _ _ _ i hi
+  · exact isLopn_parMoves _ _ _ i hi
+
+@[simp] theorem labelsOf_ifResMoves (rs : List JasminTy) (d D : Nat) (ops : List LOperand) :
+    labelsOf (ifResMoves rs d D ops) = [] := labelsOf_of_isLopn (isLopn_ifResMoves rs d D ops)
+
+@[simp] theorem targetsOf_ifResMoves (rs : List JasminTy) (d D : Nat) (ops : List LOperand) :
+    targetsOf (ifResMoves rs d D ops) = [] :=
+  targetsOf_of_isLopn (isLopn_ifResMoves rs d D ops)
+
 @[simp] theorem labelsOf_arrMoves (z t : String) (mv : List ArrMove) :
     labelsOf (arrMoves z t mv) = [] := labelsOf_of_isLopn (isLopn_arrMoves z t mv)
 
@@ -1083,23 +1123,25 @@ theorem targetsOf_whileFrame {I : IsaData} (hI : GuardsPlain I) (d n nCar : Nat)
   · exact Or.inl (hI.loop_targets _ _ l hl)
 
 /-- The branch frame declares its three labels and the labels of the two branches. -/
-theorem labelsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n nRes : Nat)
+theorem labelsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n : Nat)
+    (rs : List JasminTy)
     (condOp : LOperand) (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
     (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat) :
-    labelsOf (ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I)
+    labelsOf (ifFrame fn d n rs condOp thnC thnOps thnD elsC elsOps elsD I)
       = n :: (labelsOf thnC ++ (n + 1) :: (labelsOf elsC ++ [n + 2])) := by
   simp only [ifFrame, labelsOf_append, hI.zeroTrip_labels, hI.loop_labels,
-    labelsOf_cons_labelI, labelsOf_cons_movImmI, labelsOf_parMoves, labelsOf_flagWord,
+    labelsOf_cons_labelI, labelsOf_cons_movImmI, labelsOf_ifResMoves, labelsOf_flagWord,
     labelsOf_nil, List.nil_append]
 
 /-- The jumps of the branch frame name its three labels or are jumps of a branch. -/
-theorem targetsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n nRes : Nat)
+theorem targetsOf_ifFrame {I : IsaData} (hI : GuardsPlain I) (fn : String) (d n : Nat)
+    (rs : List JasminTy)
     (condOp : LOperand) (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
     (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat) :
-    ∀ l ∈ targetsOf (ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I),
+    ∀ l ∈ targetsOf (ifFrame fn d n rs condOp thnC thnOps thnD elsC elsOps elsD I),
       l = n ∨ l = n + 1 ∨ l = n + 2 ∨ l ∈ targetsOf thnC ∨ l ∈ targetsOf elsC := by
   intro l hl
-  simp only [ifFrame, targetsOf_append, targetsOf_parMoves, targetsOf_flagWord,
+  simp only [ifFrame, targetsOf_append, targetsOf_ifResMoves, targetsOf_flagWord,
     targetsOf_cons_labelI, targetsOf_cons_movImmI, targetsOf_nil, List.nil_append,
     List.append_nil, List.mem_append] at hl
   rcases hl with hl | hl | hl | hl
@@ -3268,6 +3310,34 @@ theorem joinJump_steps {P : LprogM} {r : String} {l : LLabel} {q : Nat}
   show t2.prog.base.reg.lvm x = s.prog.base.reg.lvm x
   rw [hm2, hm1, if_neg hx]
 
+/-- **The assignment of branch results held in register cells.** For result types held in
+    register cells and register operands, one for each result, `ifResMoves` is the
+    parallel assignment of the operands to the block `carriedRegs d rs.length`. -/
+theorem ifResMoves_of_regTys {rs : List JasminTy} (hrs : RegTys rs) (d D : Nat)
+    {ops : List LOperand} (hlen : ops.length = rs.length)
+    (hreg : ∀ o ∈ ops, o = .reg (operandName o)) :
+    ifResMoves rs d D ops = parMoves D (carriedRegs d rs.length) ops := by
+  have hA : arrPairs (ifResPairs rs d ops) = [] := by
+    rw [arrPairs, List.filterMap_eq_nil_iff]
+    rintro ⟨ty, dst, src⟩ hp
+    have hty := hrs ty (List.of_mem_zip hp).1
+    cases ty <;> simp_all [isRegTy]
+  have hR : regPairs (ifResPairs rs d ops)
+      = (carriedRegs d rs.length).zip (ops.map operandName) := by
+    rw [regPairs, ifResPairs, carriedPairs,
+      List.filter_eq_self.mpr (fun p hp => hrs p.1 (List.of_mem_zip hp).1), List.map_snd_zip]
+    simp only [List.length_zip, carriedRegs_length, List.length_map, hlen, Nat.min_self,
+      le_refl]
+  rw [ifResMoves, hA, hR, List.map_fst_zip (by simp only [carriedRegs_length,
+    List.length_map, hlen, le_refl])]
+  simp only [List.isEmpty_nil, if_true, List.nil_append]
+  congr 1
+  rw [show (fun p : String × String => LOperand.reg p.2) = LOperand.reg ∘ Prod.snd from rfl,
+    ← List.map_map, List.map_snd_zip (by simp only [carriedRegs_length, List.length_map,
+      hlen, le_refl]), List.map_map]
+  conv_rhs => rw [← List.map_id ops]
+  exact List.map_congr_left fun o ho => (hreg o ho).symm
+
 /-- **The frame rule of a branch.** For result types held in register cells, the statement
     for the two branches and for the continuation gives the statement for the branch. -/
 theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
@@ -3327,11 +3397,13 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       guardI (.Lopn [.reg (regName (d + rs.length))] (withWidthTag 64 "CMP")
         [.reg (regName (d + rs.length)), .imm 0]), condI (.reg "NZ") (n + 2)] := ⟨_, rfl⟩
   have hJlab : labelsOf J = [] := by rw [hJ]; rfl
-  have hF : ifFrame fn d n rs.length (.reg cn) t.code t.res t.depth e.code e.res e.depth
+  have hF : ifFrame fn d n rs (.reg cn) t.code t.res t.depth e.code e.res e.depth
       = movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov :: cmp
         :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
         ++ labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
-    rw [hcmov, hcmp, hTM, hEM, hJ]
+    rw [hcmov, hcmp, hTM, hEM, hJ,
+      ← ifResMoves_of_regTys hrs d _ htl (exportR_res_isReg nArgs fn thn _ _ _ ht),
+      ← ifResMoves_of_regTys hrs d _ hel (exportR_res_isReg nArgs fn els _ _ _ he)]
     rfl
   rw [show ∀ c, (Exported.prepend c rk).code = c ++ rk.code from fun _ => rfl, hcreg, hF]
     at hbody
@@ -3522,7 +3594,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         fun he => by have : (l : Nat) = n + 2 := he; omega⟩)
     fuel _ v mJ hkden
     (by rw [List.length_append, List.length_singleton]; exact hatJ) hagJ
-  have hlenEq : pre.length + (Exported.prepend (ifFrame fn d n rs.length
+  have hlenEq : pre.length + (Exported.prepend (ifFrame fn d n rs
       (resolveVar d nArgs argName (fun _ => none) cond) t.code t.res t.depth e.code e.res
       e.depth) rk).code.length = (X ++ [labelI (n + 2)]).length + rk.code.length := by
     have h1 := congrArg List.length hbody0
@@ -3840,11 +3912,12 @@ theorem whileFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (d n nCar : Nat)
   · exact hI.loop _ _ g hg
 
 /-- The frame of a branch around branches without a call contains no call. -/
-theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n nRes : Nat)
+theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n : Nat)
+    (rs : List JasminTy)
     (condOp : LOperand) (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
     (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
     (ht : ∀ i ∈ thnC, isCall i.fst = false) (he : ∀ i ∈ elsC, isCall i.fst = false) :
-    ∀ i ∈ ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I,
+    ∀ i ∈ ifFrame fn d n rs condOp thnC thnOps thnD elsC elsOps elsD I,
       isCall i.fst = false := by
   intro i hi
   simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
@@ -3854,12 +3927,12 @@ theorem ifFrame_noCall {I : IsaData} (hI : GuardsNoCall I) (fn : String) (d n nR
   · exact hI.zeroTrip _ _ _ g hg
   · rfl
   · exact ht i hi
-  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · exact isCall_of_isLopn (isLopn_ifResMoves _ _ _ _ i hi)
   · rfl
   · exact hI.loop _ _ g hg
   · rfl
   · exact he i hi
-  · exact isCall_of_isLopn (isLopn_parMoves _ _ _ i hi)
+  · exact isCall_of_isLopn (isLopn_ifResMoves _ _ _ _ i hi)
   · rfl
 
 /-- **The export contains neither a call nor a return** (`Lcall`, `Lret`), over an
@@ -4721,6 +4794,159 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     exact hlvm2 r hr
   · rw [hlarr5]
     exact ho1 r (fun p hp => hdstfr _ (of_mem_arrPairs hp) r hr) (fun k hk => hr k (by omega))
+
+/-- **The assignment of the results of a branch.** From a state that agrees with the
+    returned operands `ops` at the value `rv` at depth `D`, `ifResMoves` with the
+    temporaries from `regName (D + rs.length)` puts `rv` in the block
+    `carriedRegs d rs.length`: a register type in the register cell and a stack array in
+    the array cell of its name, within the frame of the depth `d` at every label. -/
+theorem ifResMoves_steps {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialect}
+    {ops : List LOperand} (pre post : List LinstrRM) (s : LstateMF)
+    {rv : Ctxt.Valuation rs}
+    (hbody : P.body = pre ++ ifResMoves rs d (D + rs.length) ops ++ post)
+    (hat : atPc P pre.length s) (hD : d ≤ D) (hres : ResAgrees nArgs D s.prog.base ops rv) :
+    ∃ t, Steps x86Isa P (ifResMoves rs d (D + rs.length) ops).length s t
+      ∧ atPc P (pre.length + (ifResMoves rs d (D + rs.length) ops).length) t
+      ∧ (∀ n, RegionFrame d n s.prog.base t.prog.base)
+      ∧ (∀ {w : Nat} (u : Ctxt.Var rs (.reg w)),
+          t.prog.base.reg.getW (regName (d + (rs.length - 1 - varIndex u))) w
+            = some (u.lookup rv))
+      ∧ (∀ {w m : Nat} (u : Ctxt.Var rs (.stackArr w m)),
+          t.prog.base.getArr (regName (d + (rs.length - 1 - varIndex u))) w m
+            = some (u.lookup rv)) := by
+  obtain ⟨Δ, W, vs, hΔ, hagW, hops, hrv⟩ := hres
+  have hlen : ops.length = rs.length := by rw [hops, exprArgsHV_length]
+  have hopsR : ∀ o ∈ ops, ∀ k, D ≤ k → operandName o ≠ regName k := fun o ho => by
+    rw [hops] at ho
+    exact (exprArgsHV_reg nArgs hΔ vs o ho).2
+  obtain ⟨tp, htp⟩ : ∃ tp, tp = ifResPairs rs d ops := ⟨_, rfl⟩
+  have hnames : ∀ p ∈ tp, (∃ j, j < rs.length ∧ p.2.1 = regName (d + (rs.length - 1 - j)))
+      ∧ ∃ o ∈ ops, p.2.2 = operandName o := fun p hp => by
+    rw [htp] at hp
+    exact carriedPairs_names hp
+  have hpwT : tp.Pairwise (fun p q => q.2.1 ≠ p.2.1) := by
+    rw [htp]
+    exact carriedPairs_pairwise rs d ops
+  have hndA : (arrPairs tp).Pairwise (fun p q => q.dst ≠ p.dst) := by
+    refine List.Pairwise.filterMap _ (fun a a' h b hb b' hb' => ?_) hpwT
+    obtain ⟨ty, dst, src⟩ := a
+    obtain ⟨ty', dst', src'⟩ := a'
+    cases ty <;> simp only [Option.some.injEq, reduceCtorEq] at hb
+    cases ty' <;> simp only [Option.some.injEq, reduceCtorEq] at hb'
+    subst hb hb'
+    exact h
+  have hndR : (regPairs tp).Pairwise (fun p q => q.1 ≠ p.1) :=
+    List.Pairwise.map _ (fun _ _ h => h) (List.Pairwise.filter _ hpwT)
+  have hdstlow : ∀ p ∈ tp, ∀ k, D + rs.length ≤ k → p.2.1 ≠ regName k := fun p hp k hk he => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    have := JasminLsemSimulation.regName_injective (hd.symm.trans he)
+    omega
+  have hsrclow : ∀ p ∈ tp, ∀ k, D + rs.length ≤ k → p.2.2 ≠ regName k := fun p hp k hk => by
+    obtain ⟨-, o, ho, hs⟩ := hnames p hp
+    rw [hs]
+    exact hopsR o ho k (by omega)
+  have hdstfr : ∀ p ∈ tp, ∀ r, (∀ k, d ≤ k → r ≠ regName k) → r ≠ p.2.1 := fun p hp r hr => by
+    obtain ⟨⟨j, hj, hd⟩, -⟩ := hnames p hp
+    rw [hd]
+    exact hr _ (by omega)
+  have hzt : regName (D + rs.length + 1) ≠ regName (D + rs.length) := fun he => by
+    have := JasminLsemSimulation.regName_injective he
+    omega
+  -- the arrays
+  obtain ⟨A, u1, hA, hs1, hat1, hm1, ho1, hr1⟩ : ∃ (A : List LinstrRM) (u1 : LstateMF),
+      ifResMoves rs d (D + rs.length) ops = A ++ parMoves (D + rs.length)
+        ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2)
+      ∧ Steps x86Isa P A.length s u1 ∧ atPc P (pre.length + A.length) u1
+      ∧ (∀ a ∈ arrPairs tp, u1.prog.base.larr a.dst = s.prog.base.larr a.src)
+      ∧ (∀ r, (∀ a ∈ arrPairs tp, r ≠ a.dst) → (∀ k, D + rs.length ≤ k → r ≠ regName k) →
+          u1.prog.base.larr r = s.prog.base.larr r)
+      ∧ (∀ r, r ≠ regName (D + rs.length) → r ≠ regName (D + rs.length + 1) →
+          u1.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
+    by_cases hemp : (arrPairs tp).isEmpty = true
+    · refine ⟨[], s, by rw [ifResMoves, ← htp, if_pos hemp], Steps.refl _ _ _,
+        by simpa using hat, fun a ha => ?_, fun _ _ _ => rfl, fun _ _ _ => rfl⟩
+      rw [List.isEmpty_iff.mp hemp] at ha
+      exact absurd ha List.not_mem_nil
+    · have hb' : P.body = pre ++ movImmI (regName (D + rs.length + 1)) 0
+          :: (arrParMoves (regName (D + rs.length + 1)) (regName (D + rs.length))
+            (D + rs.length) (arrPairs tp) ++ (parMoves (D + rs.length)
+              ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2) ++ post)) := by
+        rw [hbody, ifResMoves, ← htp, if_neg hemp]
+        simp only [List.append_assoc, List.cons_append]
+      obtain ⟨s0, hs0, hat0, ha0, hm0⟩ := steps_movImm (dst := regName (D + rs.length + 1))
+        (c := 0) hat (fetch_of_body hb' rfl)
+      obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrParMoves hzt (BitVec.ofNat 64 0)
+        (D + rs.length) (arrPairs tp) (pre ++ [movImmI (regName (D + rs.length + 1)) 0])
+        (parMoves (D + rs.length) ((regPairs tp).map Prod.fst)
+          ((regPairs tp).map fun p => .reg p.2) ++ post) s0
+        (by rw [hb']; simp only [List.append_assoc, List.cons_append, List.nil_append])
+        (by rw [List.length_append, List.length_singleton]; exact hat0)
+        (by rw [hm0, if_pos rfl]) hndA
+        (fun a ha => hsrclow _ (of_mem_arrPairs ha)) (fun a ha => hdstlow _ (of_mem_arrPairs ha))
+        (fun a ha => by
+          have hm := of_mem_arrPairs ha
+          rw [htp] at hm
+          obtain ⟨v, -, hsv⟩ := carriedPairs_var hm
+          rw [hsv, hops, exprArgsHV_getD]
+          exact ⟨_, (getArr_of_larr_eq _ _ (by rw [ha0])).trans (hagW.2 (hvToHom vs v))⟩)
+      rw [ha0] at hm1 ho1
+      refine ⟨movImmI (regName (D + rs.length + 1)) 0
+          :: arrParMoves (regName (D + rs.length + 1)) (regName (D + rs.length))
+            (D + rs.length) (arrPairs tp), u1,
+        by rw [ifResMoves, ← htp, if_neg hemp], ?_, ?_, hm1, ho1, fun r h1 h2 => ?_⟩
+      · rw [List.length_cons, Nat.add_comm]
+        exact hs0.trans hs1
+      · rw [List.length_append, List.length_singleton] at hat1
+        rw [List.length_cons, ← Nat.add_assoc, Nat.add_right_comm]
+        exact hat1
+      · rw [hr1 r h1, hm0, if_neg h2]
+  -- the registers
+  have hbody2 : P.body = (pre ++ A) ++ parMoves (D + rs.length) ((regPairs tp).map Prod.fst)
+      ((regPairs tp).map fun p => .reg p.2) ++ post := by
+    rw [hbody, hA]
+    simp only [List.append_assoc]
+  obtain ⟨u2, hs2, hat2, ha2, hm2, ho2⟩ := steps_parMoves_pairs (D + rs.length) (regPairs tp)
+    (pre ++ A) post u1 hbody2 (by rw [List.length_append]; exact hat1) hndR
+    (fun p hp k hk => by
+      obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+      exact ⟨hdstlow _ hq k hk, hsrclow _ hq k hk⟩)
+  have hlenM : (ifResMoves rs d (D + rs.length) ops).length
+      = A.length + 2 * (regPairs tp).length := by
+    rw [hA, List.length_append, parMoves_length, List.length_map, List.length_map]
+    omega
+  have hreg : ∀ r, (∀ k, d ≤ k → r ≠ regName k) →
+      u2.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r hr => by
+    rw [ho2 r (fun p hp => by
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact hdstfr _ hq r hr) (fun k hk => hr k (by omega))]
+    exact hr1 r (hr _ (by omega)) (hr _ (by omega))
+  have harr : ∀ r, (∀ k, d ≤ k → r ≠ regName k) →
+      u2.prog.base.larr r = s.prog.base.larr r := fun r hr => by
+    rw [ha2]
+    exact ho1 r (fun a ha => hdstfr _ (of_mem_arrPairs ha) r hr) (fun k hk => hr k (by omega))
+  refine ⟨u2, ?_, ?_, fun n => ⟨fun r w hr _ => getW_congr w (hreg r hr),
+      fun r w m hr _ => getArr_of_larr_eq w m (harr r hr)⟩, fun {w} u => ?_, fun {w m} u => ?_⟩
+  · rw [hlenM]
+    exact hs1.trans hs2
+  · rw [List.length_append] at hat2
+    rw [hlenM, ← Nat.add_assoc]
+    exact hat2
+  · have hmem : (JasminTy.reg w, regName (d + (rs.length - 1 - varIndex u)),
+        operandName (ops.getD (varIndex u) (.imm 0))) ∈ tp := by
+      rw [htp]
+      exact carriedPairs_mem u d ops hlen
+    have h1 := hm2 _ (mem_regPairs hmem rfl)
+    rw [hr1 _ (hsrclow _ hmem _ le_rfl) (hsrclow _ hmem _ (by omega))] at h1
+    rw [getW_of_lvm_eq w h1, hops, exprArgsHV_getD, ← evalOperandN_resolveVar, hrv,
+      lookup_lookupArgs]
+    exact hagW.1 (hvToHom vs u)
+  · have hmem : (JasminTy.stackArr w m, regName (d + (rs.length - 1 - varIndex u)),
+        operandName (ops.getD (varIndex u) (.imm 0))) ∈ tp := by
+      rw [htp]
+      exact carriedPairs_mem u d ops hlen
+    rw [getArr_of_larr_eq w m ((congrFun ha2 _).trans (hm1 _ (mem_arrPairs hmem))), hops,
+      exprArgsHV_getD, hrv, lookup_lookupArgs]
+    exact hagW.2 (hvToHom vs u)
 
 /-- **The head of a counted loop with carried arrays**: the seed of the trip index, which
     is the index register of the array moves, the seeds of the carried arrays and of the

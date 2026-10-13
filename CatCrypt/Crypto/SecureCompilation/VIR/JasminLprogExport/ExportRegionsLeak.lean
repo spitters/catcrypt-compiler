@@ -1709,11 +1709,13 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
       guardI (.Lopn [.reg (regName (d + rs.length))] (withWidthTag 64 "CMP")
         [.reg (regName (d + rs.length)), .imm 0]), condI (.reg "NZ") (n + 2)] := ⟨_, rfl⟩
   have hJlab : labelsOf J = [] := by rw [hJ]; rfl
-  have hF : ifFrame fn d n rs.length (.reg cn) t.code t.res t.depth e.code e.res e.depth
+  have hF : ifFrame fn d n rs (.reg cn) t.code t.res t.depth e.code e.res e.depth
       = movImmI (regName d) 1 :: movImmI (regName (d + 1)) 0 :: cmov :: cmp
         :: condI (.reg "Z") (n + 1) :: labelI n :: (t.code ++ (TM ++ (J
         ++ labelI (n + 1) :: (e.code ++ (EM ++ [labelI (n + 2)]))))) := by
-    rw [hcmov, hcmp, hTM, hEM, hJ]
+    rw [hcmov, hcmp, hTM, hEM, hJ,
+      ← ifResMoves_of_regTys hrs d _ htl (exportR_res_isReg nArgs fn thn _ _ _ ht),
+      ← ifResMoves_of_regTys hrs d _ hel (exportR_res_isReg nArgs fn els _ _ _ he)]
     rfl
   rw [show ∀ c, (Exported.prepend c rk).code = c ++ rk.code from fun _ => rfl, hcreg, hF]
     at hbody
@@ -1927,7 +1929,7 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
         fun he => by have : (l : Nat) = n + 2 := he; omega⟩)
     fuel _ v' ℓk mJ hkden
     (by rw [List.length_append, List.length_singleton]; exact hatJ) hagJ
-  have hlenEq : pre.length + (Exported.prepend (ifFrame fn d n rs.length
+  have hlenEq : pre.length + (Exported.prepend (ifFrame fn d n rs
       (resolveVar d nArgs argName (fun _ => none) cond) t.code t.res t.depth e.code e.res
       e.depth) rk).code.length = (X ++ [labelI (n + 2)]).length + rk.code.length := by
     have h1 := congrArg List.length hbody0

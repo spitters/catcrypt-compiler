@@ -686,14 +686,47 @@ theorem whileFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (d n nCar : Nat)
   · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) ho i h
   · exact hI.loop _ _ (opSpB_regName _) g hg
 
-/-- The frame of a branch does not name `RSP` when its branches and operands do not. -/
-theorem ifFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (fn : String) (d n nRes : Nat)
+/-- The assignment of the results of a branch does not name `RSP` when the registers of
+    its operands do not. -/
+theorem ifResMoves_spFree (rs : List JasminTy) (d D : Nat) {ops : List LOperand}
+    (ho : ∀ o ∈ ops, opSpB "RSP" (.reg (operandName o)) = false) :
+    ∀ i ∈ ifResMoves rs d D ops, spFreeB "RSP" i.fst = true := by
+  have hpairs : ∀ p ∈ ifResPairs rs d ops,
+      opSpB "RSP" (.reg p.2.1) = false ∧ opSpB "RSP" (.reg p.2.2) = false := fun p hp => by
+    have hp' : p ∈ carriedPairs rs (carriedRegs d rs.length) ops := hp
+    obtain ⟨⟨j, -, h1⟩, o, ho', h2⟩ := carriedPairs_names hp'
+    rw [h1, h2]
+    exact ⟨opSpB_regName _, ho o ho'⟩
+  intro i hi
+  unfold ifResMoves at hi
+  rcases List.mem_append.mp hi with hi | hi
+  · split at hi
+    · exact absurd hi List.not_mem_nil
+    · rcases List.mem_cons.mp hi with rfl | hi
+      · exact spFreeB_movI (opSpB_regName _) rfl
+      · exact arrParMoves_spFree _ (opSpB_regName _) (opSpB_regName _)
+          (fun a ha => hpairs _ (of_mem_arrPairs ha)) i hi
+  · exact parMoves_spFree _
+      (fun r hr => by
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hr
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact (hpairs _ hq).1)
+      (fun o ho' => by
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ho'
+        obtain ⟨ty, hq⟩ := of_mem_regPairs hp
+        exact (hpairs _ hq).2) i hi
+
+/-- The frame of a branch does not name `RSP` when its branches, its condition and the
+    registers of its returned operands do not. -/
+theorem ifFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (fn : String) (d n : Nat)
+    (rs : List JasminTy)
     {condOp : LOperand} {thnC : List LinstrRM} {thnOps : List LOperand} (thnD : Nat)
     {elsC : List LinstrRM} {elsOps : List LOperand} (elsD : Nat)
     (hc : opSpB "RSP" condOp = false) (ht : ∀ i ∈ thnC, spFreeB "RSP" i.fst = true)
-    (hto : ∀ o ∈ thnOps, opSpB "RSP" o = false) (he : ∀ i ∈ elsC, spFreeB "RSP" i.fst = true)
-    (heo : ∀ o ∈ elsOps, opSpB "RSP" o = false) :
-    ∀ i ∈ ifFrame fn d n nRes condOp thnC thnOps thnD elsC elsOps elsD I,
+    (hto : ∀ o ∈ thnOps, opSpB "RSP" (.reg (operandName o)) = false)
+    (he : ∀ i ∈ elsC, spFreeB "RSP" i.fst = true)
+    (heo : ∀ o ∈ elsOps, opSpB "RSP" (.reg (operandName o)) = false) :
+    ∀ i ∈ ifFrame fn d n rs condOp thnC thnOps thnD elsC elsOps elsD I,
       spFreeB "RSP" i.fst = true := by
   intro i hmem
   simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
@@ -703,12 +736,12 @@ theorem ifFrame_spFree {I : IsaData} (hI : GuardsSpFree I) (fn : String) (d n nR
   · exact hI.zeroTrip _ _ _ (opSpB_regName _) g hg
   · rfl
   · exact ht i h
-  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) hto i h
+  · exact ifResMoves_spFree _ _ _ hto i h
   · exact spFreeB_movI (opSpB_regName _) rfl
   · exact hI.loop _ _ (opSpB_regName _) g hg
   · rfl
   · exact he i h
-  · exact parMoves_spFree _ (fun r hr => opSpB_carriedRegs hr) heo i h
+  · exact ifResMoves_spFree _ _ _ heo i h
   · rfl
 
 /-- **Neither the code nor the returned operands of the export of a program of
@@ -757,7 +790,11 @@ theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpF
       obtain ⟨hc, hres⟩ := ihk hp.2.2.2 _ _ _ hk
       refine ⟨fun i hi => ?_, hres⟩
       rcases List.mem_append.mp hi with hi | hi
-      · exact ifFrame_spFree hI _ _ _ _ _ _ (opSpB_resolveVar cond) htc htr hec her i hi
+      · exact ifFrame_spFree hI _ _ _ _ _ _ (opSpB_resolveVar cond) htc
+          (fun o ho => opSpB_operandName (exportR_res_isReg nArgs fn thn _ _ _ ht o ho)
+            (htr o ho)) hec
+          (fun o ho => opSpB_operandName (exportR_res_isReg nArgs fn els _ _ _ he o ho)
+            (her o ho)) i hi
       · exact hc i hi
   | whileLoop inits body k ihb ihk =>
       intro d n r h
