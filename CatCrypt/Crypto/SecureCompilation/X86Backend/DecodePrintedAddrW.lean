@@ -3726,6 +3726,31 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
   funext body
   rfl
 
+/-- **The count-`0` shift of a general-purpose name in place is covered**: `instrOKWB`
+    accepts `SHL:64 R, R, #0`, the copy of `R` to itself, for every general-purpose name `R`,
+    every body and all body parameters. -/
+theorem instrOKWB_shl0 (body : Lcmd) (P : Params) {R : String} (hR : gpOk R = true) :
+    instrOKWB body P (.Lopn [.reg R] "SHL:64" [.reg R, .imm 0]) = true := by
+  have hm := mem_gpList hR
+  simp only [gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl <;> rfl
+
+/-- The instruction conjunct of `printedAddrWB`: it holds of a body each of whose
+    instructions before the last is a count-`0` shift `SHL:64 R, R, #0` of a general-purpose
+    name `R` in place or passes `instrOKWB`. -/
+theorem instrOKWB_all_of_shl0 {body : Lcmd}
+    (h : ∀ i ∈ body.dropLast, (∃ R, gpOk R = true
+        ∧ i.li_i = .Lopn [.reg R] "SHL:64" [.reg R, .imm 0])
+      ∨ instrOKWB body (Params.ofBody body) i.li_i = true) :
+    body.dropLast.all (fun i => instrOKWB body (Params.ofBody body) i.li_i) = true := by
+  rw [List.all_eq_true]
+  intro i hi
+  rcases h i hi with ⟨R, hR, he⟩ | hok
+  · rw [he]
+    exact instrOKWB_shl0 body _ hR
+  · exact hok
+
 /-- At the program counter of `s`, every general-purpose name the instruction reads, other
     than a carry-in and the source of a cast with an entry in the cast width analysis
     (`narrowSrc`), holds a 64-bit value. -/

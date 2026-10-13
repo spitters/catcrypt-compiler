@@ -650,7 +650,8 @@ def Arm.js (P : Params) (a : Arm) : List (JInstr 64) := (a.pieces P).map Prod.sn
     range; a frame word with an offset in `rel32` range, not a general-purpose name, whose
     word is disjoint from every other written frame word (store) or written before (load);
     an arithmetic or logic mnemonic of `aluArm`; a shift by a count `0 < k < 64` spelled
-    `SHR:k:64` or `SHL:k:64`. -/
+    `SHR:k:64` or `SHL:k:64`; an immediate-count shift `SHR:64` by `0 < k < 64` or `SHL:64`
+    by `k < 64`, the count `0` being a copy. -/
 def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
   | .movRR m D S => isMovM m && gpOk D && gpOk S
   | .movRI D v => gpOk D && decide (v < 2 ^ 64) && ScalarEncoder.fitsImm32S v
@@ -678,7 +679,7 @@ def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
         && (adxPrefix (stripWidthTag m)).isNone && tagShiftExt (stripWidthTag m) == some 4
         && LprogBytes.rexW (mnemWidth m) == 1 && tagShiftCount (stripWidthTag m) == 0
         && m == withWidthTag 64 ("SHL" ++ ":" ++ toString 0)
-  | .shI m D k => isShI m && gpOk D && decide (0 < k) && decide (k < 64)
+  | .shI m D k => isShI m && gpOk D && (decide (0 < k) || m == "SHL:64") && decide (k < 64)
   | .lea D B X sc => gpOk D && gpOk B && gpOk X && gpNumU X != 4 && ScalarEncoder.scaleOk sc
 
 /-- The frame words written after an arm. -/
@@ -1050,19 +1051,25 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
           = DecodeGenSim.shiftImmS "SHL" D D k := by
         simp [Arm.instr, DecodeGenSim.shiftImmS, withWidthTag]
       rw [hi]
+      have hw : ∀ v : BitVec 64, (x86_SHL v (BitVec.ofNat 64 k)).word = v <<< k := by
+        intro v
+        rcases Nat.eq_zero_or_pos k with rfl | hkp
+        · simp [x86_SHL, shiftCount, rflags_None]
+        · exact DecodeGenSim.x86_SHL_word_imm v k (by omega) hk
       exact DecSim.single fun sa b zf hc =>
         ⟨_, zf, (DecodeGenSim.fstepF_shiftImmS (Or.inr rfl) D D k b zf).trans
           (DecodeGenSim.fstepF_shlImmI D D k hk b zf _ (hc.regs D hD)),
           hc.write hD _ (fun r => by
               show (if r = phys D then (x86_SHL (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
                 else sa.regs r) = _
-              rw [DecodeGenSim.x86_SHL_word_imm _ k (by omega) hk]) rfl
+              rw [hw]) rfl
             (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
             (by rw [getW_setReg_nextPc, if_pos rfl])⟩
     · have hi : ((Arm.shI "SHR:64" D k).instr, MemTag.reg none)
           = DecodeGenSim.shiftImmS "SHR" D D k := by
         simp [Arm.instr, DecodeGenSim.shiftImmS, withWidthTag]
       rw [hi]
+      have hk0 : 0 < k := by simpa using hk0
       exact DecSim.single fun sa b zf hc =>
         ⟨_, zf, (DecodeGenSim.fstepF_shiftImmS (Or.inl rfl) D D k b zf).trans
           (fstepF_shrImmI D D k hk b zf _ (hc.regs D hD)),
