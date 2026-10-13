@@ -277,6 +277,32 @@ theorem withVar2_image {Δ : Ctxt catCryptDialect} {r ta tb : NfTy} {ra : Rd Δ 
   · obtain ⟨r', hr, rfl⟩ := Option.map_eq_some_iff.mp h
     exact ⟨by image_op, by image_op, hk _ _ _ hr⟩
 
+theorem bitRes2_image {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy} {ra : Rd Δ ta}
+    {rb : Rd Δ tb} {res : OpRes Δ .bit} (h : bitRes2 f ta tb ra rb = some res) :
+    OpResImages res := by
+  unfold bitRes2 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨o, -, h⟩ := Option.bind_eq_some_iff.mp h
+    cases o <;> cases h
+    · exact (by image_op : HasImage .and)
+    · exact (by image_op : HasImage .or)
+    · exact (by image_op : HasImage .eqBit)
+    · exact (by image_op : HasImage .xor)
+  · cases h
+
+theorem bitRes1_image {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {ra : Rd Δ ta}
+    {res : OpRes Δ .bit} (h : bitRes1 f ta ra = some res) : OpResImages res := by
+  unfold bitRes1 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    split at h
+    · cases h
+      exact (by image_op : HasImage .not)
+    · cases h
+  · cases h
+
 theorem scalarRes2_image {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy} {ra : Rd Δ ta}
     {rb : Rd Δ tb} {r : NfTy} {res : OpRes Δ r} (h : scalarRes2 f ta tb ra rb r = some res) :
     OpResImages res := by
@@ -289,7 +315,9 @@ theorem scalarRes2_image {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy}
       · exact withVar1_image (fun x res hx => by cases hx; exact rotChain_image _ _ _ _) h
       · exact withVar2_image (fun x y res hx => by cases hx; exact rotVarChain_image _ _ _ _) h
     · exact withVar2_image (fun x y res hx => binChain_image hx) h
-  · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
+  · split at h
+    · exact bitRes2_image h
+    obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
     exact withVar2_image (fun x y res hx => by cases hx; exact cmpChain_image _ _ _) h
   · cases h
 
@@ -303,6 +331,7 @@ theorem scalarRes1_image {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {r
     · obtain ⟨r', -, rfl⟩ := Option.map_eq_some_iff.mp h
       trivial
     · exact withVar1_image (fun x res hx => by cases hx; exact unChain_image _ _ _) h
+  · exact bitRes1_image h
   · cases h
 
 theorem scalarRes?_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}

@@ -24,8 +24,11 @@ tuples and the unit value.
 
 `appRt` is the reading of the runtime operations: the width-tagged word operations of
 `WordOp` at each of the six unsigned widths, `Not#w`, `cast#w`, the untagged checked
-operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, and the array operations `index`,
-`array_update` and `repeat` on the Aeneas `Array` model. An untyped integer literal is
+operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, the array operations `index`,
+`array_update` and `repeat` on the Aeneas `Array` model, the untagged negation `Not` of a
+Boolean, the strict connectives `&&` and `||` and the equality and disequality of two
+Booleans, and the comparisons `Lt`, `Le`, `Gt`, `Ge`, `Eq` and `Ne` of two integers or words
+(`appBNot`, `appBool2`). An untyped integer literal is
 read at the width of the operation that consumes it (`AVal.asW`). An untagged checked
 operation takes its width from a word operand, fails where the Aeneas operation at that
 width fails, and returns no value on two integer literals (`appArith_int_int`), so every
@@ -62,7 +65,8 @@ constructs it reads, and the call names `appRt` or a local function reads.
 
 * `AVal`, `AVal.toValue`, `AEnv`, `AEnv.upd`, `encEnv`, `AVal.asW`
 * `appRt`, `AppOk`, `loopS`, `loopRevS`, `toRustMS`, `callS`, `appExt`, `ExtNamesOk`,
-  `fragOk`
+  `fragOk`, `appBNot`, `boolRt?`, `cmpRt?`, `appBool2`
+* `appBNot_ok`, `appBool2_ok`, `appBool2_undef`
 * `appRt_ok`, `loopS_sim`, `loopRevS_sim`, `toRustMS_sim`, `appExt_ok`, `fnCorres_toRustMS`
 -/
 
@@ -302,6 +306,52 @@ def appNot (ty : UScalarTy) (a : AVal) : RustM AVal := do
   let x ← a.asW ty
   .ok (.w ty (~~~x))
 
+/-- The untagged negation `Not` of a Boolean. -/
+def appBNot : AVal → RustM AVal
+  | .bool x => .ok (.bool (Hax.Not x))
+  | _ => .fail .undef
+
+/-- The comparisons of two integers with a Boolean result, by name. -/
+def cmpRt? : String → Option (Int → Int → Bool)
+  | "Lt" => some Hax.lt
+  | "Le" => some Hax.le
+  | "Gt" => some Hax.gt
+  | "Ge" => some Hax.ge
+  | "Eq" => some Hax.beq
+  | "Ne" => some Hax.bne
+  | _ => none
+
+/-- The Boolean connectives and comparisons of two Booleans, by name: the strict `&&` and
+    `||`, the equality and the disequality. -/
+def boolRt? : String → Option (Bool → Bool → Bool)
+  | "&&" => some Hax.band
+  | "||" => some Hax.bor
+  | "Eq" => some Hax.beq
+  | "Ne" => some Hax.bne
+  | _ => none
+
+/-- A binary operation with a Boolean result: on two Booleans the operation `boolRt?` names,
+    on two integer literals or words the comparison `cmpRt?` names of the integers they
+    stand for. Both operands are values, so `&&` and `||` are read strictly. -/
+def appBool2 (f : String) (a b : AVal) : RustM AVal :=
+  match a, b with
+  | .bool x, .bool y =>
+    match boolRt? f with
+    | some g => .ok (.bool (g x y))
+    | none => .fail .undef
+  | _, _ =>
+    match cmpRt? f, a.toInt?, b.toInt? with
+    | some g, some x, some y => .ok (.bool (g x y))
+    | _, _, _ => .fail .undef
+
+/-- At a name neither `boolRt?` nor `cmpRt?` names, `appBool2` fails. -/
+theorem appBool2_undef {f : String} (hb : boolRt? f = none) (hc : cmpRt? f = none)
+    (a b : AVal) : appBool2 f a b = .fail .undef := by
+  unfold appBool2
+  split
+  · rw [hb]
+  · rw [hc]
+
 /-- **The reading of the runtime operations.** -/
 def appRt (f : String) : List AVal → RustM AVal
   | [a] =>
@@ -315,6 +365,7 @@ def appRt (f : String) : List AVal → RustM AVal
           match a.toInt? with
           | some k => .ok (.int (k + 1))
           | none => .fail .undef
+        else if f = "Not" then appBNot a
         else .fail .undef
   | [a, b] =>
     match wordOpAt? f with
@@ -325,7 +376,7 @@ def appRt (f : String) : List AVal → RustM AVal
       | none =>
         if f = "index" then appIndex a b
         else if f = "repeat" then appRepeat a b
-        else .fail .undef
+        else appBool2 f a b
   | [a, i, v] => if f = "array_update" then appUpdate a i v else .fail .undef
   | _ => .fail .undef
 
@@ -504,6 +555,48 @@ theorem appRepeat_ok {v m r : AVal} (h : appRepeat v m = .ok r) :
     simp [AVal.toValue, enc_uscalar, List.map_replicate]
   | _ => simp [appRepeat] at h
 
+/-- **The square of `Not` on a Boolean**: the negation `appBNot` reads the runtime's `Not`. -/
+theorem appBNot_ok (base : Hax.Builtins) {a r : AVal} (h : appBNot a = .ok r) :
+    Hax.Ascent.runtimeBuiltins base "Not" [a.toValue] = some r.toValue := by
+  cases a with
+  | bool x =>
+    cases h
+    exact Hax.Ascent.RuntimeOps.Not_bool x
+  | _ => cases h
+
+/-- **The squares of the Boolean connectives and the comparisons**: `appBool2` reads the
+    runtime's `&&`, `||`, `Eq` and `Ne` on two Booleans and `Lt`, `Le`, `Gt`, `Ge`, `Eq` and
+    `Ne` on two integers. -/
+theorem appBool2_ok (base : Hax.Builtins) {f : String} {a b r : AVal}
+    (h : appBool2 f a b = .ok r) :
+    Hax.Ascent.runtimeBuiltins base f [a.toValue, b.toValue] = some r.toValue := by
+  unfold appBool2 at h
+  split at h
+  · rename_i x y
+    split at h
+    · rename_i g hg
+      cases h
+      unfold boolRt? at hg
+      split at hg <;> cases hg
+      · exact Hax.Ascent.RuntimeOps.and_bool x y
+      · exact Hax.Ascent.RuntimeOps.or_bool x y
+      · exact Hax.Ascent.RuntimeOps.Eq_bool x y
+      · exact Hax.Ascent.RuntimeOps.Ne_bool x y
+    · cases h
+  · split at h
+    · rename_i g x y hg hx hy
+      cases h
+      rw [AVal.toValue_of_toInt? hx, AVal.toValue_of_toInt? hy]
+      unfold cmpRt? at hg
+      split at hg <;> cases hg
+      · exact Hax.Ascent.RuntimeOps.Lt_int x y
+      · exact Hax.Ascent.RuntimeOps.Le_int x y
+      · exact Hax.Ascent.RuntimeOps.Gt_int x y
+      · exact Hax.Ascent.RuntimeOps.Ge_int x y
+      · exact Hax.Ascent.RuntimeOps.Eq_int x y
+      · exact Hax.Ascent.RuntimeOps.Ne_int x y
+    · cases h
+
 /-- **The runtime operations are read by `appRt`**: `appRt` agrees with the runtime table
     over any base table. -/
 theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base) appRt := by
@@ -544,7 +637,12 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
             rfl
           · cases h
         · rw [if_neg hi] at h
-          cases h
+          by_cases hn : f = "Not"
+          · rw [if_pos hn] at h
+            subst hn
+            exact appBNot_ok base h
+          · rw [if_neg hn] at h
+            cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty o ho
@@ -572,7 +670,7 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
             rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
               simp only [AVal.toValues, hb], repeat_leaf, hr]
           · rw [if_neg hrep] at h
-            cases h
+            exact appBool2_ok base h
   · simp only [appRt] at h
     by_cases hu : f = "array_update"
     · rw [if_pos hu] at h
@@ -1112,8 +1210,10 @@ theorem appExt_ok (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn)
 
 /-- The names of arity `n` that `appRt` reads. -/
 def rtNameOk (f : String) : Nat → Bool
-  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome || f == "range_incl_end"
-  | 2 => (wordOpAt? f).isSome || (AOp.ofName f).isSome || f == "index" || f == "repeat"
+  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome || f == "range_incl_end" ||
+      f == "Not"
+  | 2 => (wordOpAt? f).isSome || (AOp.ofName f).isSome || f == "index" || f == "repeat" ||
+      (boolRt? f).isSome || (cmpRt? f).isSome
   | 3 => f == "array_update"
   | _ => false
 

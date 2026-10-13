@@ -83,8 +83,11 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
   function body and the route from them.
 * `ScalarBin`, `ScalarUn`, `ScalarCmp`, `hax64BinTable`, `hax64UnTable`, `hax64CmpTable` —
   the scalar calls of `u64` code at the widths `8`, `16`, `32`, `64`, with their operation.
+* `ScalarBit`, `hax64BitTable`, `scalarBitOf` — the Boolean connectives `&&`, `||`, `Eq`,
+  `Ne` and `Not` on bits.
 * `hax64ScalarSig`, `hax64SigOf` — the call typing of `u64` code: a `64`-bit word result for
-  an integer call, a bit for a comparison, the type `selTy` of its two values for `select`.
+  an integer call, a bit for a comparison and for a Boolean connective on bits, the type
+  `selTy` of its two values for `select`.
 * `fieldFoldsOk`, `fieldNarrowOk`, `fieldModOk`, `fieldTagSig` — the moduli with a field
   template, and the call typing of the tagged field calls at those moduli.
 * `hax64TerTable`, `selectOp`, `withSelect` — the call `select`, its value on a Boolean and
@@ -112,8 +115,8 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
 * `entryEnv_rel`, `entryRB_rel` — the environment of names
   and the reading of the parameters of a function body, related to a source environment
   typed at the parameters (`EntryTyped`).
-* `hax64BinTable_sem`, `hax64UnTable_sem`, `hax64CmpTable_sem` — the scalar calls compute
-  their operation.
+* `hax64BinTable_sem`, `hax64UnTable_sem`, `hax64CmpTable_sem`, `hax64BitTable_sem`,
+  `hax64Builtins_not_bool` — the scalar calls compute their operation.
 * `hax64BuiltinsR` — `Hax.hax64Builtins` with the results of `range_incl_end` outside
   `[0, 2 ^ 64)` refused.
 * `hax64Builtins_typedCalls` — the call typing `hax64SigOf` of `u64` code is sound for
@@ -4043,6 +4046,39 @@ def hax64CmpTable : List (String × ScalarCmp) :=
 /-- The ternary calls of `u64` code: `select`, the choice of one of two values by a bit. -/
 def hax64TerTable : List String := ["select"]
 
+/-- The Boolean connectives of `u64` code on bits. -/
+inductive ScalarBit where
+  /-- Conjunction. -/
+  | and
+  /-- Disjunction. -/
+  | or
+  /-- Equality. -/
+  | eq
+  /-- Disequality. -/
+  | ne
+  /-- Negation, the one connective with one operand. -/
+  | not
+  deriving DecidableEq, Repr
+
+/-- A connective with two operands: every connective other than the negation. -/
+def ScalarBit.binary : ScalarBit → Bool
+  | .not => false
+  | _ => true
+
+/-- The value of a connective on two Booleans, as `Hax.hax64WordOps` computes it; the
+    negation is the negation of the first operand. -/
+def ScalarBit.val : ScalarBit → Bool → Bool → Bool
+  | .and, a, b => a && b
+  | .or, a, b => a || b
+  | .eq, a, b => a == b
+  | .ne, a, b => a != b
+  | .not, a, _ => !a
+
+/-- The Boolean connective calls of `u64` code on bits: the strict `&&` and `||`, the
+    equality and disequality of two bits, and the untagged negation `Not`. -/
+def hax64BitTable : List (String × ScalarBit) :=
+  [("&&", .and), ("||", .or), ("Eq", .eq), ("Ne", .ne), ("Not", .not)]
+
 /-- The operation and the width of a binary integer call. -/
 def scalarBinOf (f : String) : Option (ScalarBin × Nat) :=
   (hax64BinTable.find? (·.1 == f)).map (·.2)
@@ -4055,10 +4091,15 @@ def scalarUnOf (f : String) : Option (ScalarUn × Nat) :=
 def scalarCmpOf (f : String) : Option ScalarCmp :=
   (hax64CmpTable.find? (·.1 == f)).map (·.2)
 
+/-- The connective of a Boolean connective call. -/
+def scalarBitOf (f : String) : Option ScalarBit :=
+  (hax64BitTable.find? (·.1 == f)).map (·.2)
+
 /-- The scalar calls of `u64` code the route through `NFProg` types: the binary and unary
-    integer calls, the comparisons and `select`. -/
+    integer calls, the comparisons, `select` and the Boolean connectives. -/
 def hax64NFScalar (_ : Unit) : List String :=
-  hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1) ++ hax64TerTable
+  hax64BinTable.map (·.1) ++ hax64UnTable.map (·.1) ++ hax64CmpTable.map (·.1) ++ hax64TerTable ++
+    hax64BitTable.map (·.1)
 
 /-- The types whose values encode as integers: `int` and the `64`-bit word. -/
 def hax64NFWordTy : NfTy → Bool
@@ -4081,17 +4122,22 @@ def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
 def selTy (a b : NfTy) : NfTy :=
   if a = .word 64 ∧ b = .word 64 then .word 64 else .int
 
-/-- The call typing of the scalar calls of `u64` code on operands of `hax64NFWordTy` types: a
+/-- The call typing of the scalar calls of `u64` code: on operands of `hax64NFWordTy` types a
     binary or unary integer call has a `64`-bit word result, a comparison a bit, and `select`
-    of a bit and two values has the type `selTy` of the two values. -/
+    of a bit and two values has the type `selTy` of the two values; on bits a Boolean
+    connective of `hax64BitTable` has a bit result. -/
 def hax64ScalarSig (f : String) : List NfTy → Option NfTy
   | [a, b] =>
       if hax64NFWordTy a && hax64NFWordTy b then
         if (scalarBinOf f).isSome then some (.word 64)
         else if (scalarCmpOf f).isSome then some .bit
         else none
+      else if a = .bit ∧ b = .bit ∧ (scalarBitOf f).any ScalarBit.binary = true then some .bit
       else none
-  | [a] => if hax64NFWordTy a && (scalarUnOf f).isSome then some (.word 64) else none
+  | [a] =>
+      if hax64NFWordTy a && (scalarUnOf f).isSome then some (.word 64)
+      else if a = .bit ∧ scalarBitOf f = some .not then some .bit
+      else none
   | [c, a, b] =>
       if f = "select" ∧ c = .bit ∧ hax64NFWordTy a = true ∧ hax64NFWordTy b = true then
         some (selTy a b)
@@ -4385,6 +4431,41 @@ theorem hax64CmpTable_sem :
     implies_true, and_true]
   and_intros <;> intro a b <;> rfl
 
+/-- The name of a binary integer call is a scalar call. -/
+theorem bin_mem_hax64NFScalar {e : String × ScalarBin × Nat} (h : e ∈ hax64BinTable) :
+    e.1 ∈ hax64NFScalar () :=
+  List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
+    (List.mem_append_left _ (List.mem_map_of_mem h))))
+
+/-- The name of a unary integer call is a scalar call. -/
+theorem un_mem_hax64NFScalar {e : String × ScalarUn × Nat} (h : e ∈ hax64UnTable) :
+    e.1 ∈ hax64NFScalar () :=
+  List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
+    (List.mem_append_right _ (List.mem_map_of_mem h))))
+
+/-- The name of a comparison call is a scalar call. -/
+theorem cmp_mem_hax64NFScalar {e : String × ScalarCmp} (h : e ∈ hax64CmpTable) :
+    e.1 ∈ hax64NFScalar () :=
+  List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _
+    (List.mem_map_of_mem h)))
+
+/-- The name of a Boolean connective call is a scalar call. -/
+theorem bit_mem_hax64NFScalar {e : String × ScalarBit} (h : e ∈ hax64BitTable) :
+    e.1 ∈ hax64NFScalar () :=
+  List.mem_append_right _ (List.mem_map_of_mem h)
+
+/-- The Boolean connective calls with two operands compute `ScalarBit.val` on two Booleans. -/
+theorem hax64BitTable_sem :
+    ∀ e ∈ hax64BitTable, e.2.binary = true → ∀ a b : Bool,
+      _root_.Hax.hax64Builtins e.1 [.bool a, .bool b] = some (.bool (e.2.val a b)) := by
+  simp only [hax64BitTable, List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff,
+    implies_true, and_true]
+  and_intros <;> intro hb a b <;> first | rfl | cases hb
+
+/-- The negation `Not` computes the negation of a Boolean. -/
+theorem hax64Builtins_not_bool (a : Bool) :
+    _root_.Hax.hax64Builtins "Not" [.bool a] = some (.bool !a) := rfl
+
 /-- The widths of the binary integer calls are at most `64`. -/
 theorem hax64BinTable_w : ∀ e ∈ hax64BinTable, e.2.2 ≤ 64 := by decide
 
@@ -4598,7 +4679,17 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
           cases hv
           exact ⟨_, rfl, rfl⟩
         · cases hr
-    · cases hr
+    · split at hr
+      · rename_i hab
+        obtain ⟨rfl, rfl, hany⟩ := hab
+        cases hr
+        obtain ⟨o, hp, hb⟩ := (Option.any_eq_true _ _).mp hany
+        have hs := hax64BitTable_sem _ (mem_of_find?_map hp) hb x₁ x₂
+        change _root_.Hax.hax64Builtins f [.bool x₁, .bool x₂] = some v at hv
+        rw [hs] at hv
+        cases hv
+        exact ⟨_, rfl, rfl⟩
+      · cases hr
   | [ta], .cons x₁ .nil, hr =>
     simp only [hax64ScalarSig] at hr
     split at hr
@@ -4621,7 +4712,20 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
         exact dec_word64_nat hr'
       obtain ⟨r', rfl, hr'⟩ := ScalarUn.val_int o ho (hax64UnTable_w _ hmem) hv
       exact dec_word64_nat hr'
-    · cases hr
+    · split at hr
+      · rename_i hab
+        obtain ⟨rfl, hp⟩ := hab
+        cases hr
+        have hf : f = "Not" := by
+          have hmem := mem_of_find?_map hp
+          simp only [hax64BitTable, List.mem_cons, Prod.mk.injEq, List.not_mem_nil] at hmem
+          rcases hmem with h | h | h | h | h | h <;> first | exact h.1 | (cases h.2) | cases h
+        subst hf
+        change _root_.Hax.hax64Builtins "Not" [.bool x₁] = some v at hv
+        rw [hax64Builtins_not_bool] at hv
+        cases hv
+        exact ⟨_, rfl, rfl⟩
+      · cases hr
   | [], _, hr => simp [hax64ScalarSig] at hr
   | [_, _, _], _, hr =>
     simp only [hax64ScalarSig] at hr
@@ -4643,22 +4747,29 @@ theorem hax64ScalarSig_name {f : String} {as : List NfTy} {r : NfTy}
     · split at h
       · rename_i hbin
         obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hbin
-        exact Or.inl (Or.inl (Or.inl ⟨_, mem_of_find?_map hp, rfl⟩))
+        exact Or.inl (Or.inl (Or.inl (Or.inl ⟨_, mem_of_find?_map hp, rfl⟩)))
       · split at h
         · rename_i hcmp
           obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hcmp
-          exact Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩)
+          exact Or.inl (Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩))
         · cases h
-    · cases h
+    · split at h
+      · rename_i hbit
+        obtain ⟨p, hp, -⟩ := (Option.any_eq_true _ _).mp hbit.2.2
+        exact Or.inr ⟨_, mem_of_find?_map hp, rfl⟩
+      · cases h
   · split at h
     · rename_i hun
       simp only [Bool.and_eq_true] at hun
       obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp hun.2
-      exact Or.inl (Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩))
-    · cases h
+      exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, mem_of_find?_map hp, rfl⟩)))
+    · split at h
+      · rename_i hbit
+        exact Or.inr ⟨_, mem_of_find?_map hbit.2, rfl⟩
+      · cases h
   · split at h
     · rename_i hsel
-      exact Or.inr (by rw [hsel.1]; decide)
+      exact Or.inl (Or.inr (by rw [hsel.1]; decide))
     · cases h
   · cases h
 

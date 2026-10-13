@@ -42,9 +42,10 @@ translated program from every valuation the readings relate to `V`, with the sam
 ## Main results
 
 * `nfValNat_vrel`, `valsNat_vrelL` — related values have equal readings.
-* `hax64SigOf_quietCall`, `quietCall_tables` — every call the call typing `hax64SigOf` of the
-  front types is a name of `quietCall`, `index` or `array_update`.
-* `scalarRes_quiet` — the translation of a call of the scalar table is quiet.
+* `hax64SigOf_quietCall`, `quietCall_tables`, `quietCall_bitTable` — every call the call
+  typing `hax64SigOf` of the front types is a name of `quietCall`, `index` or `array_update`.
+* `scalarRes_quiet`, `bitRes2_quiet`, `bitRes1_quiet` — the translation of a call of the
+  scalar table, and of a Boolean connective, is quiet.
 * `catOp_leak` — the events of an operation are the events of its translation.
 * `emitRes_leak` — the events of the bindings of a translated operation.
 * `nfToCat_leak` — the leakage transformer of `nfToCat` is the identity.
@@ -80,8 +81,8 @@ def nfBinKind : NfBinOp → LeakKind
   | .add | .sub | .mul | .and | .or | .xor | .shl | .lshr | .rotl | .rotr | .mulhi => .quiet
 
 /-- The calls with no event: the names of the scalar tables `ImpToNF.hax64BinTable`,
-    `ImpToNF.hax64UnTable` and `ImpToNF.hax64CmpTable` of the front, read through
-    `ImpToNF.hax64NFScalar`. -/
+    `ImpToNF.hax64UnTable`, `ImpToNF.hax64CmpTable` and `ImpToNF.hax64BitTable` of the front
+    and `select`, read through `ImpToNF.hax64NFScalar`. -/
 def quietCall (f : String) : Bool :=
   (ImpToNF.hax64NFScalar ()).contains f
 
@@ -167,11 +168,13 @@ theorem quietCall_tables :
     (∀ e ∈ ImpToNF.hax64BinTable, quietCall e.1 = true) ∧
     (∀ e ∈ ImpToNF.hax64UnTable, quietCall e.1 = true) ∧
     (∀ e ∈ ImpToNF.hax64CmpTable, quietCall e.1 = true) := by
-  refine ⟨fun e he => ?_, fun e he => ?_, fun e he => ?_⟩ <;>
-    simp only [quietCall_iff, ImpToNF.hax64NFScalar, List.mem_append, List.mem_map]
-  · exact Or.inl (Or.inl (Or.inl ⟨e, he, rfl⟩))
-  · exact Or.inl (Or.inl (Or.inr ⟨e, he, rfl⟩))
-  · exact Or.inl (Or.inr ⟨e, he, rfl⟩)
+  exact ⟨fun e he => quietCall_iff.mpr (ImpToNF.bin_mem_hax64NFScalar he),
+    fun e he => quietCall_iff.mpr (ImpToNF.un_mem_hax64NFScalar he),
+    fun e he => quietCall_iff.mpr (ImpToNF.cmp_mem_hax64NFScalar he)⟩
+
+/-- The names of the Boolean connective calls are names of `quietCall`. -/
+theorem quietCall_bitTable : ∀ e ∈ ImpToNF.hax64BitTable, quietCall e.1 = true :=
+  fun _ he => quietCall_iff.mpr (ImpToNF.bit_mem_hax64NFScalar he)
 
 /-- An unsigned division is variable time. -/
 @[simp] theorem nfKind_bin_udiv (w : Nat) : nfKind (.bin .udiv w) = .vt .div := rfl
@@ -621,6 +624,36 @@ theorem tripSub_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDiale
   · exact withVar2_quiet hP (fun _ _ _ hk => by
       cases hk; simp [satSubRes, OpRes.Quiet, cstE, catKind, opVT_none hP]) h
 
+/-- The translation of a Boolean connective with two operands is quiet, and the call is one
+    of the scalar calls. -/
+theorem bitRes2_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {f : String} {ta tb : NfTy} {ra : Rd Δ ta} {rb : Rd Δ tb} {res : OpRes Δ .bit}
+    (h : bitRes2 f ta tb ra rb = some res) : res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar () := by
+  unfold bitRes2 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨o, hp, h⟩ := Option.bind_eq_some_iff.mp h
+    refine ⟨?_, ImpToNF.bit_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
+    cases o <;> cases h <;> simp [OpRes.Quiet, catKind, opVT_none hP]
+  · cases h
+
+/-- The translation of the negation of a bit is quiet, and the call is one of the scalar
+    calls. -/
+theorem bitRes1_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {f : String} {ta : NfTy} {ra : Rd Δ ta} {res : OpRes Δ .bit}
+    (h : bitRes1 f ta ra = some res) : res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar () := by
+  unfold bitRes1 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    split at h
+    · rename_i hp
+      cases h
+      exact ⟨by simp [OpRes.Quiet, catKind, opVT_none hP],
+        ImpToNF.bit_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
+    · cases h
+  · cases h
+
 /-- The translation of a call of the scalar table is quiet, and the call is one of the
     scalar calls. -/
 theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -634,9 +667,7 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl
-          (List.mem_append.mpr (Or.inl (List.mem_map.mpr
-            ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))))⟩
+        refine ⟨?_, ImpToNF.bin_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
         split at h
         · split at h
           · exact withVar1_quiet hP (fun a res' h' => by
@@ -644,9 +675,10 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
           · exact withVar2_quiet hP (fun a b res' h' => by
               cases h'; exact rotVarChain_quiet hP _ _ a b) h
         · exact withVar2_quiet hP (fun a b res' h' => binChain_quiet hP h') h
-      · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
-        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr
-          (List.mem_map.mpr ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))⟩
+      · split at h
+        · exact bitRes2_quiet hP h
+        obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
+        refine ⟨?_, ImpToNF.cmp_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
         exact withVar2_quiet hP (fun a b res' h' => by
           cases h'; exact cmpChain_quiet hP c a b) h
       · cases h
@@ -656,14 +688,13 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl
-          (List.mem_append.mpr (Or.inr (List.mem_map.mpr
-            ⟨_, ImpToNF.mem_of_find?_map hp, rfl⟩))))))⟩
+        refine ⟨?_, ImpToNF.un_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
         split at h
         · obtain ⟨rr, -, rfl⟩ := Option.map_eq_some_iff.mp h
           trivial
         · exact withVar1_quiet hP (fun a res' h' => by
             cases h'; exact unChain_quiet hP o w a) h
+      · exact bitRes1_quiet hP h
       · cases h
   | [], .nil, h =>
       change none = some res at h

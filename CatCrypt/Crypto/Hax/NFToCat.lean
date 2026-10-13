@@ -34,7 +34,8 @@ reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
 comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
-(`OpRes.bind`). On a lower bound that reads as the literal `0`, `ctr 0 i` is the reading of `i`,
+(`OpRes.bind`). A Boolean connective on bits is one operation of the target: `&&`, `||`, `Eq`,
+`Ne` and `Not` are `and`, `or`, `eqBit`, `xor` and `not` (`bitRes2`, `bitRes1`). On a lower bound that reads as the literal `0`, `ctr 0 i` is the reading of `i`,
 and `trip 0 hi` the reading of `hi` (`Rd.toCount`, which also reads a variable of an unsigned
 integer type as its word), or the binding of the literal `hi`. On every other lower bound
 `lo`, `ctr lo i` is the sum `lo + i` (`ctrRes`), and `trip lo hi` is `hi - lo` truncated at `0`
@@ -49,6 +50,7 @@ times.
   source values, and the readings of a context.
 * `scalarRes?`, `binChain`, `rotChain`, `rotVarChain`, `unChain`, `cmpChain` — the translation
   of the scalar table on `64`-bit words.
+* `bitChain`, `bitRes2`, `bitRes1` — the translation of the Boolean connectives on bits.
 * `asCount`, `Rd.toCount`, `uintLit?` — the reading of a loop bound as a word, and the
   translation of a literal of an unsigned integer type.
 * `ctrRes`, `satSubRes`, `tripSub` — the loop counter and the trip count on a lower bound
@@ -67,6 +69,8 @@ times.
 ## Main results
 
 * `scalarRes_sound` — a translated call of the scalar table is related to its value.
+* `bitChain_rel`, `bitRes2_sound`, `bitRes1_sound` — a translated Boolean connective is
+  related to its value.
 * `satSub_eq`, `ctrRes_sound`, `tripSub_sound` — the loop counter and the trip count on any
   lower bound simulate.
 * `catOp_sound` — a translated operation is related to the value of the source operation.
@@ -738,9 +742,42 @@ def withVar2 {Δ : Ctxt catCryptDialect} {r : NfTy} (ta tb : NfTy) (ra : Rd Δ t
       (k (Δ' := CryptoTy.sword 64 :: CryptoTy.sword 64 :: Δ) (Var.there .here) .here).map
         fun res => .bind _ (cstE (BitVec.ofNat 64 n)) (.bind _ (cstE (BitVec.ofNat 64 m)) res)
 
+/-- The translation of a Boolean connective with two operands on two bits: the operation
+    `and`, `or`, `eqBit` or `xor` of `catCryptDialect`; `none` at the negation. -/
+def bitChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarBit) (x y : Var Δ .bit) :
+    Option (OpRes Δ .bit) :=
+  match o with
+  | .and => some (.expr ⟨.and, rfl, .cons x (.cons y .nil)⟩)
+  | .or => some (.expr ⟨.or, rfl, .cons x (.cons y .nil)⟩)
+  | .eq => some (.expr ⟨.eqBit, rfl, .cons x (.cons y .nil)⟩)
+  | .ne => some (.expr ⟨.xor, rfl, .cons x (.cons y .nil)⟩)
+  | .not => none
+
+/-- The translation of a Boolean connective call with two operands on the readings of two
+    bits, which are variables: `bitChain` of its connective. -/
+def bitRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd Δ ta)
+    (rb : Rd Δ tb) : Option (OpRes Δ .bit) :=
+  match ra, rb with
+  | .var a, .var b =>
+      (asBit ta a).bind fun x => (asBit tb b).bind fun y =>
+        (ImpToNF.scalarBitOf f).bind fun o => bitChain o x y
+  | _, _ => none
+
+/-- The translation of the negation `Not` on the reading of a bit, which is a variable: the
+    operation `not` of `catCryptDialect`. -/
+def bitRes1 {Δ : Ctxt catCryptDialect} (f : String) (ta : NfTy) (ra : Rd Δ ta) :
+    Option (OpRes Δ .bit) :=
+  match ra with
+  | .var a =>
+      (asBit ta a).bind fun x =>
+        if ImpToNF.scalarBitOf f = some .not then some (.expr ⟨.not, rfl, .cons x .nil⟩)
+        else none
+  | .lit _ _ => none
+
 /-- The translation of a binary call of the scalar table on two readings, at the result type
     `r`: an integer call by `binChain`, a rotation by a literal amount by `rotChain` and by any
-    other amount by `rotVarChain`, a comparison by `cmpChain`. -/
+    other amount by `rotVarChain`, a comparison of two words by `cmpChain`, a Boolean
+    connective of two bits by `bitRes2`. -/
 def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd Δ ta)
     (rb : Rd Δ tb) : (r : NfTy) → Option (OpRes Δ r)
   | .word 64 =>
@@ -751,19 +788,22 @@ def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd 
           | .var _ => withVar2 ta tb ra rb fun x y => some (rotVarChain (o == .rotr) w x y)
         else withVar2 ta tb ra rb fun x y => binChain o w x y
   | .bit =>
-      (ImpToNF.scalarCmpOf f).bind fun c =>
-        withVar2 ta tb ra rb fun x y => some (cmpChain c x y)
+      if ta = .bit then bitRes2 f ta tb ra rb
+      else
+        (ImpToNF.scalarCmpOf f).bind fun c =>
+          withVar2 ta tb ra rb fun x y => some (cmpChain c x y)
   | _ => none
 
 /-- The translation of a unary call of the scalar table on a reading, at the result type
-    `r`: the truncation to `64` bits as the reading of its operand, every other call by
-    `unChain`. -/
+    `r`: the truncation to `64` bits as the reading of its operand, every other integer call
+    by `unChain`, the negation of a bit by `bitRes1`. -/
 def scalarRes1 {Δ : Ctxt catCryptDialect} (f : String) (ta : NfTy) (ra : Rd Δ ta) :
     (r : NfTy) → Option (OpRes Δ r)
   | .word 64 =>
       (ImpToNF.scalarUnOf f).bind fun ⟨o, w⟩ =>
         if o = .cast ∧ w = 64 then (Rd.toWord64 ta ra).map .rd
         else withVar1 ta ra fun x => some (unChain o w x)
+  | .bit => bitRes1 f ta ra
   | _ => none
 
 /-- The translation of a call of the scalar table on readings at the result type `r`: a
@@ -1947,6 +1987,80 @@ theorem withVar2_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {r ta tb :
           exact HK _ (Var.there .here) .here res' hres' (lit_enc_word W h1)
             (lit_enc_word W h2)
 
+/-- **The translation of a Boolean connective is related to its value.** -/
+theorem bitChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarBit)
+    (a b : Var Δ .bit) {res : OpRes Δ .bit} (h : bitChain o a b = some res) :
+    OpResRel W .bit (o.val (a.lookup W) (b.lookup W)) res := by
+  cases o <;> cases h
+  · exact rfl
+  · exact rfl
+  · have key : ∀ x z : Bool, (x == z) = (Bool.xor x z).not := by decide
+    exact key (a.lookup W) (b.lookup W)
+  · have key : ∀ x z : Bool, (x != z) = Bool.xor x z := by decide
+    exact key (a.lookup W) (b.lookup W)
+
+/-- The names of the Boolean connective calls are not `select`. -/
+theorem bitTable_ne_select : ∀ e ∈ ImpToNF.hax64BitTable, e.1 ≠ "select" := by decide
+
+/-- A Boolean connective call with two operands on readings of two bits simulates. -/
+theorem bitRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (ta tb : NfTy)
+    (ra : Rd Δ ta) (rb : Rd Δ tb) (res : OpRes Δ .bit) (x₁ : ta.denote) (x₂ : tb.denote)
+    (y : Bool) (h : bitRes2 f ta tb ra rb = some res) (h1 : RdRel W ta x₁ ra)
+    (h2 : RdRel W tb x₂ rb)
+    (hy : (bi f [ImpToNF.enc ta x₁, ImpToNF.enc tb x₂]).bind (ImpToNF.dec .bit) = some y) :
+    OpResRel W .bit y res := by
+  unfold bitRes2 at h
+  split at h
+  · obtain ⟨c₁, hc₁, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨c₂, hc₂, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨o, hp, h⟩ := Option.bind_eq_some_iff.mp h
+    have hmem := ImpToNF.mem_of_find?_map hp
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hv := hbi.base _ _ _ (Or.inl (ImpToNF.bit_mem_hax64NFScalar hmem))
+      (bitTable_ne_select _ hmem) hbv
+    rw [asBit_enc hc₁ W h1, asBit_enc hc₂ W h2] at hv
+    have hb : o.binary = true := by cases o <;> first | rfl | cases h
+    have hs := ImpToNF.hax64BitTable_sem _ hmem hb (c₁.lookup W) (c₂.lookup W)
+    dsimp only at hs
+    rw [hs] at hv
+    cases hv
+    simp only [ImpToNF.dec, Option.some.injEq] at hdv
+    subst hdv
+    exact bitChain_rel W o c₁ c₂ h
+  · cases h
+
+/-- The negation `Not` on the reading of a bit simulates. -/
+theorem bitRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (ta : NfTy)
+    (ra : Rd Δ ta) (res : OpRes Δ .bit) (x₁ : ta.denote) (y : Bool)
+    (h : bitRes1 f ta ra = some res) (h1 : RdRel W ta x₁ ra)
+    (hy : (bi f [ImpToNF.enc ta x₁]).bind (ImpToNF.dec .bit) = some y) :
+    OpResRel W .bit y res := by
+  unfold bitRes1 at h
+  split at h
+  · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
+    split at h
+    · rename_i hp
+      cases h
+      have hmem := ImpToNF.mem_of_find?_map hp
+      obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+      have hv := hbi.base _ _ _ (Or.inl (ImpToNF.bit_mem_hax64NFScalar hmem))
+        (bitTable_ne_select _ hmem) hbv
+      have hf : f = "Not" := by
+        simp only [ImpToNF.hax64BitTable, List.mem_cons, Prod.mk.injEq,
+          List.not_mem_nil] at hmem
+        rcases hmem with h | h | h | h | h | h <;> first | exact h.1 | (cases h.2) | cases h
+      subst hf
+      rw [asBit_enc hc W h1, ImpToNF.hax64Builtins_not_bool] at hv
+      cases hv
+      simp only [ImpToNF.dec, Option.some.injEq] at hdv
+      subst hdv
+      change _ = !(c.lookup W)
+      rfl
+    · cases h
+  · cases h
+
 /-- A binary call of the scalar table on readings simulates. -/
 theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (ta tb r : NfTy)
@@ -1960,8 +2074,7 @@ theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
   · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h
     have hmem := ImpToNF.mem_of_find?_map hp
-    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
-      (Or.inl (List.mem_append.mpr (Or.inl (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))))
+    have hcat : CatName f := Or.inl (ImpToNF.bin_mem_hax64NFScalar hmem)
     obtain ⟨hw, h64⟩ := binTable_w _ hmem
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
     have hv := hbi.base _ _ _ hcat (tables_ne_select.1 _ hmem) hbv
@@ -2005,10 +2118,11 @@ theorem scalarRes2_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       obtain ⟨rn, hrn, rfl⟩ := key _ _ he1 he2
       exact binChain_rel W' o hw h64 ⟨fun h => hrot (Or.inl h), fun h => hrot (Or.inr h)⟩
         a b hres' hrn
-  · obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
+  · split at h
+    · exact bitRes2_sound hbi W f ta tb ra rb res x₁ x₂ y h h1 h2 hy
+    obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
     have hmem := ImpToNF.mem_of_find?_map hp
-    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr
-      (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))
+    have hcat : CatName f := Or.inl (ImpToNF.cmp_mem_hax64NFScalar hmem)
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
     have hv := hbi.base _ _ _ hcat (tables_ne_select.2.2 _ hmem) hbv
     refine withVar2_sound W h1 h2 _ y h ?_
@@ -2033,8 +2147,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
   · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h
     have hmem := ImpToNF.mem_of_find?_map hp
-    have hcat : CatName f := Or.inl (List.mem_append.mpr (Or.inl (List.mem_append.mpr
-      (Or.inl (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, hmem, rfl⟩)))))))
+    have hcat : CatName f := Or.inl (ImpToNF.un_mem_hax64NFScalar hmem)
     obtain ⟨hw, hneg⟩ := unTable_w _ hmem
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
     have hv := hbi.base _ _ _ hcat (tables_ne_select.2.1 _ hmem) hbv
@@ -2072,6 +2185,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       obtain ⟨rn, rfl, hrel⟩ := unChain_rel W' o hw hneg a hv
       rw [dec_word64_eq hdv]
       exact hrel
+  · exact bitRes1_sound hbi W f ta ra res x₁ y h h1 hy
   · cases h
 
 /-- **A call of the scalar table on readings simulates.** -/

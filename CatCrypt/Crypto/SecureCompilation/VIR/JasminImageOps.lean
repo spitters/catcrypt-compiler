@@ -161,14 +161,16 @@ end Generic
 
 /-- The operations of `catCryptDialect` whose blocks under `toJBlockD` have their operations
     in `opMemB` and their result types of positive width: the word arithmetic, the carries,
-    the equality, the selection of words, the dynamic memory accesses, the bit constants and
-    the negation of a bit, a constant, an immediate shift by less than `2 ^ w`, each with a
-    result type that `catToJasmin` maps to a type of positive width. -/
+    the equality, the selection of words, the dynamic memory accesses, the bit constants, the
+    negation, conjunction, disjunction, exclusive or and equality of bits, a constant, an
+    immediate shift by less than `2 ^ w`, each with a result type that `catToJasmin` maps to
+    a type of positive width. -/
 def catMemB (op : CatCryptOp) : Bool :=
   (match op with
     | .bvAdd _ | .bvSub _ | .bvMul _ | .bvAnd _ | .bvOr _ | .bvXor _ | .bvMulHi _
     | .bvShiftLV _ | .bvShiftRV _ | .bvAddCarryLo _ | .bvAddCarryHi _ | .bvEq _
-    | .memrefGetDyn _ | .memrefSetDyn _ | .not | .constBit _ | .ite (.sword _) => true
+    | .memrefGetDyn _ | .memrefSetDyn _ | .not | .and | .or | .xor | .eqBit | .constBit _
+    | .ite (.sword _) => true
     | .bvConst w _ => decide (0 < w)
     | .bvShiftL w k | .bvShiftR w k => decide (k < 2 ^ w)
     | _ => false) &&
@@ -455,6 +457,32 @@ theorem withVar2_mem {Δ : Ctxt catCryptDialect} {r ta tb : NfTy} {ra : Rd Δ ta
   · obtain ⟨r', hr, rfl⟩ := Option.map_eq_some_iff.mp h
     exact ⟨rfl, rfl, hk _ _ _ hr⟩
 
+theorem bitRes2_mem {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy} {ra : Rd Δ ta}
+    {rb : Rd Δ tb} {res : OpRes Δ .bit} (h : bitRes2 f ta tb ra rb = some res) :
+    OpResMem res := by
+  unfold bitRes2 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨o, -, h⟩ := Option.bind_eq_some_iff.mp h
+    cases o <;> cases h
+    · exact (rfl : catMemB .and = true)
+    · exact (rfl : catMemB .or = true)
+    · exact (rfl : catMemB .eqBit = true)
+    · exact (rfl : catMemB .xor = true)
+  · cases h
+
+theorem bitRes1_mem {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {ra : Rd Δ ta}
+    {res : OpRes Δ .bit} (h : bitRes1 f ta ra = some res) : OpResMem res := by
+  unfold bitRes1 at h
+  split at h
+  · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
+    split at h
+    · cases h
+      exact (rfl : catMemB .not = true)
+    · cases h
+  · cases h
+
 theorem scalarRes2_mem {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy} {ra : Rd Δ ta}
     {rb : Rd Δ tb} {r : NfTy} {res : OpRes Δ r} (h : scalarRes2 f ta tb ra rb r = some res) :
     OpResMem res := by
@@ -468,7 +496,9 @@ theorem scalarRes2_mem {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy} {
       · exact withVar1_mem (fun x res hx => by cases hx; exact rotChain_mem _ _ hw _) h
       · exact withVar2_mem (fun x y res hx => by cases hx; exact rotVarChain_mem _ _ _ _) h
     · exact withVar2_mem (fun x y res hx => binChain_mem hx) h
-  · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
+  · split at h
+    · exact bitRes2_mem h
+    obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
     exact withVar2_mem (fun x y res hx => by cases hx; exact cmpChain_mem _ _ _) h
   · cases h
 
@@ -482,6 +512,7 @@ theorem scalarRes1_mem {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {ra 
     · obtain ⟨r', -, rfl⟩ := Option.map_eq_some_iff.mp h
       trivial
     · exact withVar1_mem (fun x res hx => by cases hx; exact unChain_mem _ _ _) h
+  · exact bitRes1_mem h
   · cases h
 
 theorem scalarRes?_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}

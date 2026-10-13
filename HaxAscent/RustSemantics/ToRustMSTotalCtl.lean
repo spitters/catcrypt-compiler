@@ -686,10 +686,10 @@ are not routed and fail on every argument pair (`appRt_Shl_undef`, `appRt_Shr_un
 they have no total kind. -/
 
 theorem appRt_Shl_undef (a b : AVal) : appRt "Shl" [a, b] = .fail .undef := by
-  rfl
+  cases a <;> cases b <;> rfl
 
 theorem appRt_Shr_undef (a b : AVal) : appRt "Shr" [a, b] = .fail .undef := by
-  rfl
+  cases a <;> cases b <;> rfl
 
 theorem appRt_Shl_tag (ty : UScalarTy) (a b : AVal) :
     appRt ("Shl#" ++ uTag ty) [a, b] = appWord ty .shl a b := by

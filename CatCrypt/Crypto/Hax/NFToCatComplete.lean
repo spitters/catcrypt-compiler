@@ -18,7 +18,7 @@ the constants, the integer literals in `[0, 2^64)` at an integer, a `64`-bit wor
 unsigned integer of at most `64` bits, the subtraction of `64`-bit words, the loop counter at
 any lower bound, the trip count at a bound of an integer, a `64`-bit word or an unsigned
 integer, the binary, unary and comparison calls of the scalar table on integers and `64`-bit
-words, the rotations by any amount among them, and `index`, `array_update` and `select` at the
+words, the Boolean connectives `&&`, `||`, `Eq`, `Ne` and `Not` on bits, the rotations by any amount among them, and `index`, `array_update` and `select` at the
 types of arrays of `64`-bit words, integers and `64`-bit words. `rotOpOk` is the rotation of the
 scalar table by an amount bound to an integer literal in `[0, 2^64)` at an integer or a `64`-bit
 word, a subset of `nbOp`; `NBL` tracks these bindings as a list of flags aligned with the
@@ -310,13 +310,16 @@ theorem emitRes_isSome_of {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy} {L :
 /-! ## 3. The operations of the domain -/
 
 /-- The binary, unary and comparison calls of the scalar table on integers and `64`-bit
-    words. -/
+    words, and the Boolean connectives of `ImpToNF.hax64BitTable` on bits. -/
 def scalarCallOk (f : String) : List NfTy → NfTy → Bool
   | [ta, tb], .word 64 =>
       ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarBinOf f).isSome
   | [ta, tb], .bit =>
-      ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarCmpOf f).isSome
+      (ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarCmpOf f).isSome) ||
+        (decide (ta = .bit) && decide (tb = .bit) &&
+          (ImpToNF.scalarBitOf f).any ImpToNF.ScalarBit.binary)
   | [ta], .word 64 => ImpToNF.hax64NFWordTy ta && (ImpToNF.scalarUnOf f).isSome
+  | [ta], .bit => decide (ta = .bit) && decide (ImpToNF.scalarBitOf f = some .not)
   | _, _ => false
 
 /-- The calls `index` and `array_update` on an array of `64`-bit words, and `select` on a bit
@@ -427,13 +430,27 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
       exact withVar2_isSome hta htb _ _ fun x y =>
         binChain_isSome w ⟨fun h => hrot (Or.inl h), fun h => hrot (Or.inr h)⟩ x y
   · rename_i ta tb
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨⟨hta, htb⟩, hc⟩ := h
     rcases rs with _ | ⟨ra, _ | ⟨rb, _ | _⟩⟩
     change (scalarRes2 f ta tb ra rb .bit).isSome
-    obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hc
-    simp only [scalarRes2, hc, Option.bind_some]
-    exact withVar2_isSome hta htb _ _ fun _ _ => rfl
+    rcases Bool.or_eq_true_iff.mp h with h | h
+    · simp only [Bool.and_eq_true] at h
+      obtain ⟨⟨hta, htb⟩, hc⟩ := h
+      have hne : ta ≠ .bit := by rintro rfl; cases hta
+      obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hc
+      simp only [scalarRes2, if_neg hne, hc, Option.bind_some]
+      exact withVar2_isSome hta htb _ _ fun _ _ => rfl
+    · simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨⟨rfl, rfl⟩, hany⟩ := h
+      obtain ⟨o, hp, hb⟩ := (Option.any_eq_true _ _).mp hany
+      simp only [scalarRes2, if_pos]
+      cases ra with
+      | lit _ hk => cases hk
+      | var a =>
+          cases rb with
+          | lit _ hk => cases hk
+          | var b =>
+              simp only [bitRes2, asBit, Option.bind_some, hp]
+              cases o <;> first | rfl | cases hb
   · rename_i ta
     simp only [Bool.and_eq_true] at h
     obtain ⟨hta, hu⟩ := h
@@ -448,6 +465,14 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
           simp [Rd.toWord64, hx]
       | lit k _ => rfl
     · exact withVar1_isSome hta ra fun _ => rfl
+  · rename_i ta
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨rfl, hp⟩ := h
+    rcases rs with _ | ⟨ra, _ | _⟩
+    change (scalarRes1 f .bit ra .bit).isSome
+    cases ra with
+    | lit _ hk => cases hk
+    | var a => simp [scalarRes1, bitRes1, asBit, hp]
   · cases h
 
 /-- A call of `memCallOk` is translated by `catCall?` on every vector of variables. -/
