@@ -12,20 +12,21 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 /-!
 # Tuple flattening on structured programs of the normal form
 
-`flattenTuples` replaces every tuple of a program of `NFProg nfDialect` by its components.
-The type map `flatTy` sends the empty tuple `tnil` to no type, a tuple `tcons h t` to the
-components of `h` followed by those of `t`, and every other type `s` to `[s]`. A context
+`flattenTuples` replaces every tuple of a program of `NFProg nfDialect` by its components
+and erases every value of the unit type. The type map `flatTy` sends the empty tuple `tnil`
+and the unit type `unit` to no type, a tuple `tcons h t` to the components of `h` followed
+by those of `t`, and every other type `s` to `[s]`. A context
 `Γ` goes to `flatCtx Γ`, the flattening `ctxFlat flatTy Γ` of `VIR/MultiBlockLowering.lean`,
 and a value to its components (`flatEnc`; `flatV` on valuations).
 
 The pass `flatProg` threads a renaming `ren : Ctxt.Hom (flatCtx Γ) Δ` from the flattened
 source context into the target context, as `NFProg.mapM` (`VIR/NFProgMapMulti.lean`) does:
 
-* a binding of a tuple operation (`tnilV`, `tconsV`, `thead`, `ttail`, also under `named`)
-  emits no code: the components of its result are variables of the components of its
-  arguments (`tupleHom?`);
+* a binding of a tuple operation (`tnilV`, `tconsV`, `thead`, `ttail`, and the unit value
+  `constUnit`, also under `named`) emits no code: the components of its result are
+  variables of the components of its arguments (`tupleHom?`);
 * a binding of another operation is kept when no argument type and not the result type is
-  a tuple (`atomArgs?`, `atomRet?`), and refused otherwise;
+  a tuple type or `unit` (`atomArgs?`, `atomRet?`), and refused otherwise;
 * a return, and the carried tuple and the results of a counted loop, a branch, an exit-flag
   loop and a call, are flattened: a node carrying `cs` carries `flatCtx cs`, and the region
   over `cs ++ Γ` runs over `flatCtx cs ++ Δ` at the renaming `NFProg.appHomM flatTy cs ren`.
@@ -50,6 +51,8 @@ of this module mentions it.
 * `tyIsTuple`, `opIsTuple`, `opFlatOk`, `FlatOk` — the tuple types, the tuple operations,
   and the programs the pass accepts.
 * `TupleFree` — the programs with no tuple operation and no tuple type at a binding.
+* `UnitFree` — the programs with no binding of type `unit`, no binding of `constUnit`, and
+  no `unit` among the carried tuples, the branch results and the call signatures.
 
 ## Main results
 
@@ -59,6 +62,7 @@ of this module mentions it.
   flattened results of `p`, at every leaf table and every fuel.
 * `flatProg_isSome`, `flattenTuples_isSome` — the pass succeeds on the programs it accepts.
 * `flatProg_tupleFree`, `flattenTuples_tupleFree` — the output of the pass is tuple-free.
+* `unitFree_of_tupleFree`, `flattenTuples_unitFree` — the output of the pass is unit-free.
 -/
 
 @[expose] public section
@@ -76,13 +80,13 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Ctxt (Var Valuation)
 
 /-! ## 1. The components of a type and of a value -/
 
-/-- The components of a type: none for `tnil`, the components of `h` and then of `t` for
-    `tcons h t`, and the type itself otherwise. -/
+/-- The components of a type: none for `tnil` and for `unit`, the components of `h` and then
+    of `t` for `tcons h t`, and the type itself otherwise. -/
 def flatTy : nfDialect.Ty → Ctxt nfDialect
   | .tnil => []
   | .tcons h t => flatTy h ++ flatTy t
+  | .unit => []
   | .bit => [.bit]
-  | .unit => [.unit]
   | .word w => [.word w]
   | .arr n t => [.arr n t]
   | .pair a b => [.pair a b]
@@ -99,8 +103,8 @@ abbrev flatCtx (Γ : Ctxt nfDialect) : Ctxt nfDialect :=
 def flatEnc : {t : nfDialect.Ty} → ⟦t⟧ → Valuation (flatTy t)
   | .tnil, _ => .nil
   | .tcons _ _, x => hvAppend (flatEnc x.1) (flatEnc x.2)
+  | .unit, _ => .nil
   | .bit, x => .cons x .nil
-  | .unit, x => .cons x .nil
   | .word _, x => .cons x .nil
   | .arr _ _, x => .cons x .nil
   | .pair _ _, x => .cons x .nil
@@ -119,28 +123,28 @@ section Renamings
 
 variable {Γ Δ : Ctxt nfDialect}
 
-/-- The renaming of the components of the result of a tuple operation into `Δ`, from the
-    renaming `ren` of the components of its arguments; `none` on every other operation. -/
+/-- The renaming of the components of the result of a tuple operation or of `constUnit`
+    into `Δ`, from the renaming `ren` of the components of its arguments; `none` on every
+    other operation. -/
 def tupleHom? (ren : Ctxt.Hom (flatCtx Γ) Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (Ctxt.Hom (flatTy op.ret) Δ)
-  | .tnilV, _ => some (fun v => nomatch v)
+  | .tnilV, _ | .constUnit, _ => some (fun v => nomatch v)
   | .tconsV _ _, .cons x (.cons y .nil) =>
       some (appendHom (fun w => ren (varHom flatTy x w)) (fun w => ren (varHom flatTy y w)))
   | .thead _ b, .cons x .nil => some (fun w => ren (varHom flatTy x (inlHom (flatTy b) w)))
   | .ttail a _, .cons x .nil => some (fun w => ren (varHom flatTy x (inrHom (flatTy a) w)))
   | .named _ op, args => tupleHom? ren op args
-  | .const _ _, _ | .constBit _, _ | .constUnit, _ | .bin _ _, _ | .un _ _, _
+  | .const _ _, _ | .constBit _, _ | .bin _ _, _ | .un _ _, _
   | .cast _ _, _ | .scast _ _, _ | .cmp _ _, _ | .andB, _ | .orB, _ | .xorB, _ | .eqB, _
   | .notB, _ | .index _ _, _ | .update _ _, _ | .arrLit _ _, _ | .arrRepeat _ _, _
   | .mkPair _ _, _ | .fst _ _, _ | .snd _ _, _ | .call _ _ _, _ | .ilit _ _, _ | .ctr, _
   | .trip _, _ => none
 
-/-- The variable of a value of a type that is not a tuple, from the renaming of its one
-    component; `none` at a tuple type. -/
+/-- The variable of a value of a type that is neither a tuple type nor `unit`, from the
+    renaming of its one component; `none` at a tuple type and at `unit`. -/
 def atomVar? : (s : nfDialect.Ty) → Ctxt.Hom (flatTy s) Δ → Option (Var Δ s)
-  | .tnil, _ | .tcons _ _, _ => none
+  | .tnil, _ | .tcons _ _, _ | .unit, _ => none
   | .bit, f => some (f .here)
-  | .unit, f => some (f .here)
   | .word _, f => some (f .here)
   | .arr _ _, f => some (f .here)
   | .pair _ _, f => some (f .here)
@@ -157,12 +161,11 @@ def atomArgs? (ren : Ctxt.Hom (flatCtx Γ) Δ) :
       (atomVar? s (fun w => ren (varHom flatTy x w))).bind fun y =>
         (atomArgs? ren xs).map (.cons y)
 
-/-- The renaming of the one component of a result of a type that is not a tuple to the
-    head of `r :: Δ`; `none` at a tuple type. -/
+/-- The renaming of the one component of a result of a type that is neither a tuple type
+    nor `unit` to the head of `r :: Δ`; `none` at a tuple type and at `unit`. -/
 def atomRet? : (r : nfDialect.Ty) → Option (Ctxt.Hom (flatTy r) (r :: Δ))
-  | .tnil | .tcons _ _ => none
+  | .tnil | .tcons _ _ | .unit => none
   | .bit => some (inlHom Δ)
-  | .unit => some (inlHom Δ)
   | .word _ => some (inlHom Δ)
   | .arr _ _ => some (inlHom Δ)
   | .pair _ _ => some (inlHom Δ)
@@ -265,6 +268,7 @@ theorem tupleHom?_spec (T : NfLeafTable) :
   intro op
   induction op
   case tnilV => exact fun _ _ _ => ⟨(), rfl, rfl⟩
+  case constUnit => exact fun _ _ _ => ⟨(), rfl, rfl⟩
   case tconsV a b =>
     intro args R h
     match args with
@@ -543,23 +547,24 @@ def flattenCert (T : NfLeafTable) (fuel : Nat) (Γ : Ctxt nfDialect) (ts : List 
 
 /-! ## 6. Success and tuple-freedom -/
 
-/-- A type is a tuple type: `tnil` or `tcons`. -/
+/-- A type has no single component: `tnil`, `tcons` or `unit`. The pass erases the values of
+    these types. -/
 def tyIsTuple : NfTy → Bool
-  | .tnil | .tcons _ _ => true
-  | .bit | .unit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ =>
+  | .tnil | .tcons _ _ | .unit => true
+  | .bit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ =>
       false
 
-/-- An operation is a tuple operation: `tnilV`, `tconsV`, `thead` or `ttail`, also under
-    `named`. -/
+/-- An operation is a tuple operation: `tnilV`, `tconsV`, `thead`, `ttail` or the unit value
+    `constUnit`, also under `named`. -/
 def opIsTuple : NfOp → Bool
-  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ => true
+  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ | .constUnit => true
   | .named _ op => opIsTuple op
-  | .const _ _ | .constBit _ | .constUnit | .bin _ _ | .un _ _ | .cast _ _ | .scast _ _
+  | .const _ _ | .constBit _ | .bin _ _ | .un _ _ | .cast _ _ | .scast _ _
   | .cmp _ _ | .andB | .orB | .xorB | .eqB | .notB | .index _ _ | .update _ _ | .arrLit _ _
   | .arrRepeat _ _ | .mkPair _ _ | .fst _ _ | .snd _ _ | .call _ _ _ | .ilit _ _ | .ctr
   | .trip _ => false
 
-/-- No type of a list is a tuple type. -/
+/-- No type of a list is a tuple type or `unit` (`tyIsTuple`). -/
 def NoTuple (ss : List NfTy) : Prop :=
   ss.all (fun s => !tyIsTuple s) = true
 
@@ -586,11 +591,11 @@ def TupleFree : {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect 
 
 /-- No component of a type is a tuple type. -/
 theorem noTuple_flatTy : ∀ t : NfTy, NoTuple (flatTy t)
-  | .tnil => rfl
+  | .tnil | .unit => rfl
   | .tcons h t => by
       simp only [NoTuple, flatTy, List.all_append, Bool.and_eq_true]
       exact ⟨noTuple_flatTy h, noTuple_flatTy t⟩
-  | .bit | .unit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ => rfl
+  | .bit | .word _ | .arr _ _ | .pair _ _ | .uint _ | .sint _ | .int | .slice _ => rfl
 
 /-- No type of a flattened context is a tuple type. -/
 theorem noTuple_flatCtx : ∀ Γ : Ctxt nfDialect, NoTuple (flatCtx Γ)
@@ -609,6 +614,7 @@ theorem tupleHom?_isSome : ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) o
   intro op
   induction op
   case tnilV => intro _ _; rfl
+  case constUnit => intro _ _; rfl
   case tconsV => intro args _; match args with | .cons _ (.cons _ .nil) => rfl
   case thead => intro args _; match args with | .cons _ .nil => rfl
   case ttail => intro args _; match args with | .cons _ .nil => rfl
@@ -772,5 +778,54 @@ theorem flattenTuples_tupleFree {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) {q : NFProg nfDialect (flatCtx Γ) (flatCtx ts)}
     (hq : flattenTuples p = some q) : TupleFree q :=
   flatProg_tupleFree p _ q hq
+
+/-! ## 7. Unit-freedom -/
+
+/-- The programs with no let-binding of type `unit`, no binding of `constUnit` (also under
+    `named`), and no `unit` among the carried tuples, the results of the branches and the
+    argument and result types of the calls, in every region. -/
+def UnitFree : {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect Γ ts → Prop
+  | _, _, .ret _ => True
+  | _, _, .var (t := t) e k => t ≠ .unit ∧ e.op.ret ≠ .unit ∧ UnitFree k
+  | _, _, .forLoop (cs := cs) _ _ body k => .unit ∉ cs ∧ UnitFree body ∧ UnitFree k
+  | _, _, .ifThenElse (rs := rs) _ thn els k =>
+      .unit ∉ rs ∧ UnitFree thn ∧ UnitFree els ∧ UnitFree k
+  | _, _, .whileLoop (cs := cs) _ body k => .unit ∉ cs ∧ UnitFree body ∧ UnitFree k
+  | _, _, .call (as := as) (rs := rs) _ _ k => .unit ∉ as ∧ .unit ∉ rs ∧ UnitFree k
+
+/-- A list without a tuple type does not contain `unit`. -/
+theorem unit_not_mem_of_noTuple {ss : List NfTy} (h : NoTuple ss) : NfTy.unit ∉ ss := by
+  intro hm
+  have := List.all_eq_true.mp h _ hm
+  simp [tyIsTuple] at this
+
+/-- **A tuple-free program is unit-free.** -/
+theorem unitFree_of_tupleFree {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (q : NFProg nfDialect Γ ts) (h : TupleFree q) : UnitFree q := by
+  induction q with
+  | ret => trivial
+  | var e k ih =>
+      obtain ⟨op, rfl, args⟩ := e
+      obtain ⟨-, ht, hk⟩ := h
+      have hu : op.ret ≠ .unit := by
+        intro hu
+        have h2 : tyIsTuple (NfOp.ret op) = false := ht
+        rw [hu] at h2
+        simp [tyIsTuple] at h2
+      exact ⟨hu, hu, ih hk⟩
+  | forLoop _ _ _ _ ihb ihk => exact ⟨unit_not_mem_of_noTuple h.1, ihb h.2.1, ihk h.2.2⟩
+  | ifThenElse _ _ _ _ iht ihe ihk =>
+      exact ⟨unit_not_mem_of_noTuple h.1, iht h.2.1, ihe h.2.2.1, ihk h.2.2.2⟩
+  | whileLoop _ _ _ ihb ihk => exact ⟨unit_not_mem_of_noTuple h.1, ihb h.2.1, ihk h.2.2⟩
+  | call _ _ _ ih =>
+      exact ⟨unit_not_mem_of_noTuple h.1, unit_not_mem_of_noTuple h.2.1, ih h.2.2⟩
+
+/-- **Tuple flattening produces unit-free programs**: the output has no binding of type
+    `unit`, no binding of `constUnit`, and no `unit` in a carried tuple, the results of a
+    branch or the signature of a call. -/
+theorem flattenTuples_unitFree {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) {q : NFProg nfDialect (flatCtx Γ) (flatCtx ts)}
+    (hq : flattenTuples p = some q) : UnitFree q :=
+  unitFree_of_tupleFree q (flattenTuples_tupleFree p hq)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NFFlattenTuples
