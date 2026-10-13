@@ -96,8 +96,8 @@ def regionExportableB : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
   | _, _, .ret _ => true
   | _, _, .var e k => bindMemNB e && regionExportableB k
   | _, _, .forLoop _ _ body k => regionExportableB body && regionExportableB k
-  | _, _, .ifThenElse (rs := rs) _ thn els k =>
-      rs.all isRegTy && regionExportableB thn && regionExportableB els && regionExportableB k
+  | _, _, .ifThenElse _ thn els k =>
+      regionExportableB thn && regionExportableB els && regionExportableB k
   | _, _, .whileLoop (cs := cs) _ body k =>
       cs.all isRegTy && regionExportableB body && regionExportableB k
   | _, _, .call (as := as) (rs := rs) _ _ k => wordSig as rs && regionExportableB k
@@ -115,7 +115,7 @@ theorem regionExportableB_sound {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       exact ⟨ihb h.1, ihk h.2⟩
   | ifThenElse cond thn els k iht ihe ihk =>
       simp only [regionExportableB, Bool.and_eq_true] at h
-      exact ⟨fun t ht => List.all_eq_true.mp h.1.1.1 t ht, iht h.1.1.2, ihe h.1.2, ihk h.2⟩
+      exact ⟨iht h.1.1, ihe h.1.2, ihk h.2⟩
   | whileLoop inits body k ihb ihk =>
       simp only [regionExportableB, Bool.and_eq_true] at h
       exact ⟨fun t ht => List.all_eq_true.mp h.1.1 t ht, ihb h.1.2, ihk h.2⟩
@@ -785,9 +785,9 @@ theorem exportR_spFree (nArgs : Nat) (fn : String) {I : IsaData} (hI : GuardsSpF
       intro d n r h
       simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨t, ht, e, he, rk, hk, rfl⟩ := h
-      obtain ⟨htc, htr⟩ := iht hp.2.1 _ _ _ ht
-      obtain ⟨hec, her⟩ := ihe hp.2.2.1 _ _ _ he
-      obtain ⟨hc, hres⟩ := ihk hp.2.2.2 _ _ _ hk
+      obtain ⟨htc, htr⟩ := iht hp.1 _ _ _ ht
+      obtain ⟨hec, her⟩ := ihe hp.2.1 _ _ _ he
+      obtain ⟨hc, hres⟩ := ihk hp.2.2 _ _ _ hk
       refine ⟨fun i hi => ?_, hres⟩
       rcases List.mem_append.mp hi with hi | hi
       · exact ifFrame_spFree hI _ _ _ _ _ _ (opSpB_resolveVar cond) htc
