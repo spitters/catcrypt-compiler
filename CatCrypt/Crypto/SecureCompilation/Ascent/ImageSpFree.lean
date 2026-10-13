@@ -36,7 +36,7 @@ of which is a name that an instruction of the image reads.
 
 The class `printedAddrWB` of printed bodies with carry chains admits, besides the arms of
 `classifyA`, casts, immediate moves, carry arms and selects on general-purpose names and
-frame-slot names, and cell accesses whose base is a general-purpose name. A cell name
+frame-slot names, materialised comparisons on general-purpose names, and cell accesses whose base is a general-purpose name. A cell name
 `mem.<A>.<off>` is read with the characters of `A` before its first dot as its base, so the
 cell name of `A` is a cell name of the base `RSP` only if `A` begins with `RSP`. The
 predicate `rspFreeNameB`, a name that does not begin with `RSP` and is no cell name of the
@@ -102,7 +102,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (AArm classi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (notSlot_of_cell
   instrOKWB printedAddrWB classifyK classifyK_spec castOk imm32Ok classifyS classifyS_instr
   SArm classifyC classifyC_instr CArm classifyM classifyM_instr MArm classifyI classifyI_instr
-  iOk classifyL classifyL_instr lOk classifyV classifyV_instr vOk vtOk vfOk kOk)
+  iOk classifyL classifyL_instr lOk classifyV classifyV_instr vOk vtOk vfOk kOk classifyE
+  classifyE_instr eOk eInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB instrOKB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (isSpillOrQsave spillQsaveOff)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
@@ -593,6 +594,13 @@ theorem rspFree_of_instrOKWB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Para
           simp [rspFreeB, operandNames, srcNames, rspFreeNameB_gp h.1.1.1.1.1.1.1,
             rspFreeNameB_gp h.1.1.1.1.1.1.2, rspFreeNameB_kOk h.1.1.1.1.2,
             rspFreeNameB_kOk h.1.1.1.2]
+      split at h
+      · rename_i n d a b hs
+        rw [classifyE_instr hs]
+        simp only [eOk, Bool.and_eq_true] at h
+        left
+        simp [eInstr, rspFreeB, operandNames, srcNames, rspFreeNameB_gp h.1.1,
+          rspFreeNameB_gp h.1.2, rspFreeNameB_gp h.2]
       split at h
       · rename_i a hc
         exact rspFree_of_armOk hc h

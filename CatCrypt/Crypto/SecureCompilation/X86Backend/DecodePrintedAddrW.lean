@@ -79,6 +79,10 @@ arms to the bodies of `DecodePrintedCFG`.
   no carry constant is a 32-bit constant, held in a 32-bit cell (`NarrowCell`).
 * `vtBytes`, `sim_cmovSlot`, `vfBytes`, `sim_cmovSlotF`: the bytes and the simulations of the
   selects with a slot true value and with a slot false value.
+* `eBytes`, `fstepA_sete`, `runBlock_ePieces`, `sim_sete`, `instrOKWB_sete`: the materialised
+  comparison `SETE:64`/`SETNE:64 D, [A, B]` on general-purpose names is printed as `cmp`,
+  `mov $0` and `set<cc>`, whose run writes the zero-extended comparison bit the address step
+  writes at width `1`; `instrOKWB` accepts every such instruction.
 * `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
 * `run_simWN`, `run_simW`, `printedAddr_simW_noCall`, `printedAddr_simW`: the decoded bytes
   of a body in `printedAddrWB` simulate its run on the address machine, by a halting run
@@ -3642,11 +3646,156 @@ theorem narrowInv_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s 
     · cases hst
   · cases hst
 
+/-! ## 8i. The materialised comparison -/
+
+/-- The relation of the materialised comparison: `.ne` for `SETNE`, `.eq` for `SETE`. -/
+def eRel (n : Bool) : VIR.JasminDialect.JasminCmp := if n then .ne else .eq
+
+/-- The mnemonic of the materialised comparison: `SETNE:64` or `SETE:64`. -/
+def eMnem (n : Bool) : String := if n then "SETNE:64" else "SETE:64"
+
+/-- The second opcode byte of `SET<cc>`: `95` for `SETNE`, `94` for `SETE`. -/
+def eOpB (n : Bool) : Nat := if n then 0x95 else 0x94
+
+/-- The materialised comparison `SETE:64 D, [A, B]` (`n = false`) or `SETNE:64 D, [A, B]`
+    (`n = true`) over register names. -/
+def eInstr (n : Bool) (D A B : String) : LinstrR := .Lopn [.reg D] (eMnem n) [.reg A, .reg B]
+
+/-- The materialised comparison on register names, as `(n, D, A, B)` with `n` true for
+    `SETNE:64`. -/
+def classifyE : LinstrR → Option (Bool × String × String × String)
+  | .Lopn [.reg d] m [.reg a, .reg b] =>
+      if m = "SETE:64" then some (false, d, a, b)
+      else if m = "SETNE:64" then some (true, d, a, b) else none
+  | _ => none
+
+theorem classifyE_instr {i : LinstrR} {n : Bool} {D A B : String}
+    (h : classifyE i = some (n, D, A, B)) : i = eInstr n D A B := by
+  unfold classifyE at h
+  split at h
+  · split_ifs at h with h1 h2
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+      rw [h1]; rfl
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+      rw [h2]; rfl
+  · cases h
+
+/-- **The conditions of a materialised comparison** `SET<cc>:64 D, [A, B]`: general-purpose
+    operands. -/
+def eOk (D A B : String) : Bool := gpOk D && gpOk A && gpOk B
+
+/-- The byte pieces of a materialised comparison: `cmp B, A`, `mov $0, D` and `set<cc> D8`. -/
+def ePieces (n : Bool) (D A B : String) : List (List (BitVec 8) × JInstr 64) :=
+  [(encAluRRw 1 0x39 (gpNumU A) (gpNumU B), .cmp (phys A) (.reg (phys B))),
+    (encMovImmw 1 (gpNumU D) 0, .mov (phys D) (.imm 0)),
+    (encSetccReg (eOpB n) (gpNumU D), .setcc (if n then .ne else .e) (phys D))]
+
+/-- `mov $0, %r64` decodes to the move of `0` into the register. -/
+theorem pieceDec_movZero (D : String) :
+    PieceDec (encMovImmw 1 (gpNumU D) 0, .mov (phys D) (.imm 0)) :=
+  fun rest => decodeLinstr_movImm _ _ rest (gpNumU_lt_16 D) (by norm_num) (by decide)
+
+/-- `sete %r8` and `setne %r8` decode to `setcc` on the zero flag. -/
+theorem pieceDec_setccE (n : Bool) (D : String) :
+    PieceDec (encSetccReg (eOpB n) (gpNumU D), .setcc (if n then .ne else .e) (phys D)) := by
+  intro rest
+  have := decodeLinstr_setccReg (eOpB n) (gpNumU D) rest (by cases n <;> simp [eOpB])
+    (gpNumU_lt_16 D)
+  cases n <;> simpa [eOpB, phys] using this
+
+/-- **The bytes of a materialised comparison.** -/
+theorem eBytes (P : Params) (n : Bool) (D A B : String) (h : eOk D A B = true) :
+    encodeLopn P.frame P.spillW (eInstr n D A B) P.qsaveB = (ePieces n D A B).flatMap Prod.fst
+      ∧ ∀ p ∈ ePieces n D A B, PieceDec p := by
+  simp only [eOk, Bool.and_eq_true] at h
+  obtain ⟨⟨hD, hA⟩, hB⟩ := h
+  have fD := gpFacts hD
+  have fA := gpFacts hA
+  have fB := gpFacts hB
+  refine ⟨?_, ?_⟩
+  · cases n <;>
+      simp (config := { decide := true }) [eInstr, encodeLopn, eMnem, ePieces, eOpB, fD.isGp,
+        fA.isGp, fB.isGp, tagShiftExt, aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix,
+        LprogBytes.rexW, setccCmpOp, encSetccCmp]
+  · intro p hp
+    simp only [ePieces, List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl | rfl | rfl
+    · exact pieceDec_cmpR A B
+    · exact pieceDec_movZero D
+    · exact pieceDec_setccE n D
+
+/-- The address machine steps the materialised comparison on registers by writing the
+    comparison bit `cmpBit` of the 64-bit values of `A` and `B` to `D` at width `1`, keeping
+    the zero flag. -/
+theorem fstepA_sete (P : Params) (rsp : BitVec 64) (n : Bool) (D A B : String)
+    (s : LstateA) (zf : Bool)
+    {va vb : BitVec 64} (ha : s.reg.getW A 64 = some va) (hb : s.reg.getW B 64 = some vb) :
+    fstepA (frameP P rsp) (eInstr n D A B, .reg none) s zf
+      = some ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.cmpBit (eRel n) va vb)).nextPc },
+          zf) := by
+  cases n <;>
+    simp (config := { decide := true }) [eInstr, eMnem, eRel, fstepA, slotMov?, slotCmp?,
+      regStepA, fstepF, cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast,
+      castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?,
+      lsemStepN, readReg_of_getW ha, hb, withALUFlags, aluFlagOp?, cellA?, slotCarry?,
+      slotImm?, slotCmov?, evalOperandN, applyOpnN, cmpOfName?,
+      show stripWidthTag "SETE:64" = "SETE" from by decide +kernel,
+      show stripWidthTag "SETNE:64" = "SETNE" from by decide +kernel]
+
+/-- **The machine run of a materialised comparison.** The run writes to `D` the
+    zero-extension of the comparison bit of the registers of `A` and `B`, keeps every other
+    register, and keeps the memory. -/
+theorem runBlock_ePieces (sa : AState) (n : Bool) (D A B : String) :
+    (∀ r, (aMachine.runBlock sa ((ePieces n D A B).map Prod.snd)).regs r
+      = if r = phys D then
+          (VIR.JasminDialect.cmpBit (eRel n) (sa.regs (phys A)) (sa.regs (phys B))).setWidth 64
+        else sa.regs r)
+      ∧ (aMachine.runBlock sa ((ePieces n D A B).map Prod.snd)).mem = sa.mem := by
+  have hrun : aMachine.runBlock sa ((ePieces n D A B).map Prod.snd)
+      = evalInstrA (evalInstrA (evalInstrA sa (.cmp (phys A) (.reg (phys B))))
+          (.mov (phys D) (.imm 0))) (.setcc (if n then .ne else .e) (phys D)) := rfl
+  refine ⟨fun r => ?_, runBlock_mem_of_noWriteB _ sa (by simp [ePieces, noWriteB])⟩
+  rw [hrun]
+  by_cases hr : r = phys D
+  · subst hr
+    have hz := DecodedLsemStep.ZF_of_word_sub (sa.regs (phys A)) (sa.regs (phys B))
+    cases n <;> by_cases he : sa.regs (phys A) = sa.regs (phys B) <;>
+      simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.setRegMerge, JState.flagB,
+        JState.writeB5, JState.get, JState.condB, JOperand.eval, x86_SETcc, x86_CMP, x86_MOV,
+        VIR.JasminDialect.cmpBit, eRel, x86_SUB, x86_eval_cond, hz, he, wordExtendMerge,
+        VIR.JasminDialect.JasminCmp.holds] <;> decide
+  · cases n <;>
+      simp [evalInstrA, evalInstr, AState.view, JState.setReg, JState.setRegMerge,
+        JState.writeB5, x86_MOV, hr]
+
+/-- **The materialised comparison.** From `ACorrW`, with `A` and `B` at width `64`, the
+    address-machine step of `SET<cc>:64 D, [A, B]`, which writes the comparison bit to `D` at
+    width `1`, is matched by `cmp`, `mov $0` and `set<cc>`: the register of `D` holds the
+    zero-extension of the bit. -/
+theorem sim_sete (P : Params) (rsp : BitVec 64) (n : Bool) (D A B : String)
+    (h : eOk D A B = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hwA : (s.reg.lvm A).1 = 64) (hwB : (s.reg.lvm B).1 = 64) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (eInstr n D A B, .reg none) s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((ePieces n D A B).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [eOk, Bool.and_eq_true] at h
+  obtain ⟨⟨hD, hA⟩, hB⟩ := h
+  rw [fstepA_sete P rsp n D A B s zf (hc.wide hA hwA) (hc.wide hB hwB)] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  obtain ⟨hr, hm⟩ := runBlock_ePieces sa n D A B
+  refine ⟨hc.write hD _ hr (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_)
+    (Or.inr ⟨_, ?_, rfl⟩), rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr']
+  · simp [LstateN.nextPc, LstateN.setReg]
+
 /-- An instruction other than the closing return of a printed body with carry chains: an
     `Lopn` read into a width-carrying cast between general-purpose names, a carry constant, a
     slot carry arm, a carry arm, a cell arm, an immediate
     store into a frame slot, a wide immediate, a register select, a select with a slot true
-    value, a select with a slot false value or an arm of
+    value, a select with a slot false value, a materialised comparison or an arm of
     `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
@@ -3674,6 +3823,9 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
               | none =>
               match classifyV (.Lopn ds o ss) with
               | some (d, c, a, b) => vOk d c a b || (vtOk P d c a b || vfOk P d c a b)
+              | none =>
+              match classifyE (.Lopn ds o ss) with
+              | some (_, d, a, b) => eOk d a b
               | none =>
                   match classifyA (.Lopn ds o ss) with
                   | some a => a.ok P
@@ -3767,6 +3919,17 @@ theorem instrOKWB_all_of_shl0 {body : Lcmd}
   · rw [he]
     exact instrOKWB_shl0 body _ hR
   · exact hok
+
+/-- **The materialised comparison over general-purpose names is covered**: `instrOKWB`
+    accepts `SETE:64 R, [A, B]` and `SETNE:64 R, [A, B]` for all general-purpose names `R`,
+    `A`, `B`, every body and all body parameters. -/
+theorem instrOKWB_sete (body : Lcmd) (P : Params) (n : Bool) {R A B : String}
+    (hR : gpOk R = true) (hA : gpOk A = true) (hB : gpOk B = true) :
+    instrOKWB body P (eInstr n R A B) = true := by
+  cases n <;>
+    simp (config := { decide := true }) [instrOKWB, eInstr, eMnem, classifyK, movImmStruct?,
+      classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, eOk, hR, hA,
+      hB]
 
 /-- At the program counter of `s`, every general-purpose name the instruction reads, other
     than a carry-in and the source of a cast with an entry in the cast width analysis
@@ -4440,6 +4603,40 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
               exact reaches_block a b hks hshk hops hR
           rename_i hclV
+          split at hok
+          · -- a materialised comparison
+            rename_i n D A B hclE
+            have hia := classifyE_instr hclE
+            have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+                = (eInstr n D A B, MemTag.reg none) := by
+              rw [hia]; cases n <;> simp (config := { decide := true }) [eInstr, eMnem, normA, tagA]
+            rw [hli] at hst
+            rw [hia] at hws
+            have hok' := hok
+            simp only [eOk, Bool.and_eq_true] at hok'
+            obtain ⟨⟨-, hA⟩, hB⟩ := hok'
+            have hwA : (s.reg.lvm A).1 = 64 := hws A (reg_reads (by simp)) hA
+              (by simp [eInstr, carryIns])
+            have hwB : (s.reg.lvm B).1 = 64 := hws B (reg_reads (by simp)) hB
+              (by simp [eInstr, carryIns])
+            obtain ⟨hc', -⟩ := sim_sete P rsp n D A B hok sa s zf hc hwA hwB s' zf' hst
+            have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+            have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+                (aMachine.runBlock sa ((ePieces n D A B).map Prod.snd)).flags.zf.getD false
+                  = zf' := by
+              intro hcnd
+              have hcm := hcondNext hcnd
+              rw [hia] at hcm
+              cases n <;> simp [eInstr, eMnem, classifyA, classify] at hcm <;>
+                split_ifs at hcm <;> simp [cmpArmB] at hcm
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            obtain ⟨hb, hp⟩ := eBytes P n D A B hok
+            have hops : shs[k].ops' = (ePieces n D A B).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          rename_i hclE
           -- an arm of `DecodePrintedAddr`
           split at hok
           · rename_i ar hcl
