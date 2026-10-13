@@ -274,7 +274,7 @@ theorem encodeLopn_mulxS (F W : Nat) (H S : String) (qB : Nat) (hH : gpOk H = tr
   have fH := gpFacts hH
   have fS := gpFacts hS
   simp (config := { decide := true }) [encodeLopn, fH.notSlot, fH.notMem, fS.notSlot,
-    mulxSrcMem?_of_isGpName F W qB fS.isGp]
+    fS.notMem, mulxSrcMem?_of_isGpName F W qB fS.isGp]
 
 /-- The widening multiply `MULX L, H, S` with distinct destinations. -/
 theorem encodeLopn_mulx (F W : Nat) (L H S : String) (qB : Nat) (hne : (L == H) = false)
@@ -285,7 +285,7 @@ theorem encodeLopn_mulx (F W : Nat) (L H S : String) (qB : Nat) (hne : (L == H) 
   have fH := gpFacts hH
   have fS := gpFacts hS
   simp (config := { decide := true }) [encodeLopn, hne, fL.notSlot, fL.notMem, fH.notSlot,
-    fH.notMem, fS.notSlot, mulxSrcMem?_of_isGpName F W qB fS.isGp]
+    fH.notMem, fS.notSlot, fS.notMem, mulxSrcMem?_of_isGpName F W qB fS.isGp]
 
 /-- The frame-word compare `CMP:64 c, c, q` against the word at the frame offset of `q`. -/
 theorem encodeLopn_cmpM (F W : Nat) (c q : String) (qB : Nat) (off : Int)

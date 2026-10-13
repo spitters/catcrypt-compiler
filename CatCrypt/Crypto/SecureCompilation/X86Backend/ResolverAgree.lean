@@ -84,7 +84,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder (gpNum encodeJInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-  (gpNumU encTwoAddr spillQsaveOff parseMemName isSpillOrQsave isGpName memDstOp memSrcOp)
+  (gpNumU encTwoAddr spillQsaveOff parseMemName parseMemNameGp isSpillOrQsave isGpName
+    memDstOp memSrcOp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (gpReg64)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
@@ -284,13 +285,13 @@ is fixed by the Lprog operand `dn`/`sn` (which IS `"mem.<base>.<off>"`). -/
 /-- **`LOAD` bytes agree (resolver-unconditional).** The JInstr `loadMem d base off`
     encoding equals the Lprog reg←`mem.*` `encTwoAddr` byte function, with the
     destination-register resolution discharged. The Lprog source `sn` is the parsed
-    `mem.*` operand (`hsm`); `bb` is its base number. -/
+    `mem.*` operand with a general-purpose base (`hsm`); `bb` is its base number. -/
 theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (d base : String) (off : Int) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hdn : d ∈ names) (hdt : d ∈ stdRegNames) (hd : gpNumU dn = gpNumU d)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
+    (hdm : parseMemName dn = none) (hsm : parseMemNameGp sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hdg : isGpName dn = true)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memSrcOp op = 0x8b) :
@@ -302,13 +303,13 @@ theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
 /-- **`STORE` bytes agree (resolver-unconditional).** The JInstr `storeMem base off (reg r)`
     encoding equals the Lprog `mem.*`←reg `encTwoAddr` byte function, with the
     source-register resolution discharged. The Lprog destination `dn` is the parsed
-    `mem.*` operand (`hdm`); `bb` is its base number. -/
+    `mem.*` operand with a general-purpose base (`hdm`); `bb` is its base number. -/
 theorem store_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hrn : r ∈ names) (hrt : r ∈ stdRegNames) (hr : gpNumU sn = gpNumU r)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
+    (hdm : parseMemNameGp dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hsg : isGpName sn = true)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memDstOp op = 0x89) :

@@ -266,37 +266,40 @@ theorem encTwoAddr_regReg (frame spillW w op : Nat) (dn sn : String) (qsaveB : N
     (hdg : isGpName dn = true) (hsg : isGpName sn = true) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encAluRRw w op (gpNumU dn) (gpNumU sn) := by
-  simp only [encTwoAddr, hdk, hsk, hdm, hsm, hdg, hsg, Bool.and_self, if_true]
+  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, parseMemNameGp_eq_none hsm,
+    hdg, hsg, Bool.and_self, if_true]
 
 /-- **Store `encTwoAddr` reduces to `encMemMovw (memDstOp op)`.** When the destination
-    is a `mem.<base>.<off>` operand and the source is a plain register, the Lprog
-    byte function is `encMemMovw w (memDstOp op)` over the parsed base/offset: the
-    `MOV` store `0x89` for a move, the operation's own `r/m ← r` opcode otherwise. -/
+    is a `mem.<base>.<off>` operand with a general-purpose base and the source is a
+    plain register, the Lprog byte function is `encMemMovw w (memDstOp op)` over the
+    parsed base/offset: the `MOV` store `0x89` for a move, the operation's own
+    `r/m ← r` opcode otherwise. -/
 theorem encTwoAddr_store (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (off : Int)
     (qsaveB : Nat)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
+    (hdm : parseMemNameGp dn = some (bb, off)) (hsm : parseMemName sn = none)
     (_hdsp : isSpillOrQsave dn = false) (_hssp : isSpillOrQsave sn = false)
     (hsg : isGpName sn = true) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memDstOp op) (gpNumU sn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, hdm, hsm, hsg, if_true]
+  simp only [encTwoAddr, hdk, hsk, hdm, parseMemNameGp_eq_none hsm, hsg, if_true]
 
 /-- **Load `encTwoAddr` reduces to `encMemMovw (memSrcOp op)`.** When the source is a
-    `mem.<base>.<off>` operand and the destination is a plain register, the Lprog
-    byte function is `encMemMovw w (memSrcOp op)` over the parsed base/offset: the
-    `MOV` load `0x8b` for a move, the operation's `r ← r/m` opcode otherwise. -/
+    `mem.<base>.<off>` operand with a general-purpose base and the destination is a
+    plain register, the Lprog byte function is `encMemMovw w (memSrcOp op)` over the
+    parsed base/offset: the `MOV` load `0x8b` for a move, the operation's `r ← r/m`
+    opcode otherwise. -/
 theorem encTwoAddr_load (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (off : Int)
     (qsaveB : Nat)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
+    (hdm : parseMemName dn = none) (hsm : parseMemNameGp sn = some (bb, off))
     (_hdsp : isSpillOrQsave dn = false) (_hssp : isSpillOrQsave sn = false)
     (hdg : isGpName dn = true) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memSrcOp op) (gpNumU dn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, hdm, hsm, hdg, if_true]
+  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, if_true]
 
 /-! ### §2c. The byte agreement: equal register numbers ⇒ equal bytes
 
@@ -411,13 +414,13 @@ byte-identical to the Lprog `encTwoAddr` load/store bytes at the U64 width. -/
 
 /-- **`LOAD` bytes agree.** JInstr `loadMem` equals the Lprog reg←`mem.*` `encTwoAddr`
     byte function (`encMemMovw 1 0x8b`). The Lprog source operand `sn` parses to the
-    same base/offset (`hsm`), the destination register numbers agree (`hd`), and the
-    operation is a load (`hop`). -/
+    same base/offset with a general-purpose base (`hsm`), the destination register
+    numbers agree (`hd`), and the operation is a load (`hop`). -/
 theorem load_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
     (d base : String) (off : Int) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
+    (hdm : parseMemName dn = none) (hsm : parseMemNameGp sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hdg : isGpName dn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hb : gpNum (regOf alloc base) = bb)
@@ -430,13 +433,13 @@ theorem load_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
 
 /-- **`STORE` bytes agree.** JInstr `storeMem` (reg src) equals the Lprog `mem.*`←reg
     `encTwoAddr` byte function (`encMemMovw 1 0x89`). The Lprog destination operand
-    `dn` parses to the same base/offset (`hdm`), and the source register numbers agree
-    (`hr`), and the operation is a store (`hop`). -/
+    `dn` parses to the same base/offset with a general-purpose base (`hdm`), the source
+    register numbers agree (`hr`), and the operation is a store (`hop`). -/
 theorem store_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
     (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hdk : spillQsaveOff frame spillW dn qsaveB = none)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
-    (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
+    (hdm : parseMemNameGp dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hsg : isGpName sn = true)
     (hr : gpNum (regOf alloc r) = gpNumU sn) (hb : gpNum (regOf alloc base) = bb)

@@ -310,17 +310,45 @@ def isGpName (r : String) : Bool :=
   | "R8"  | "R9"  | "R10" | "R11" | "R12" | "R13" | "R14" | "R15" => true
   | _ => false
 
-/-- `parseMemName` restricted to a tabulated GP base: `none` when the base name is
-    off `gpNumU`'s table, so an unrecognised base is not addressed as `%rax`. -/
+/-- `parseMemName` restricted to a tabulated GP base: the same parse, and `none` when
+    the base name is off `gpNumU`'s table, so an unrecognised base is not addressed as
+    `%rax`. The encoder's memory forms resolve a `mem.<base>.<off>` name through this. -/
 def parseMemNameGp (n : String) : Option (Nat × Int) :=
-  if "mem.".isPrefixOf n then
-    match ((n.drop 4).toString).splitOn "." with
-    | [b, off] =>
-        match String.toNat? off with
-        | some o => if isGpName b then some (gpNumU b, Int.ofNat o) else none
+  if hasPrefix n "mem." then
+    match (n.toList.drop 4).span (· != '.') with
+    | (base, '.' :: off) =>
+        match natOfDigits? off with
+        | some o =>
+            if isGpName (String.ofList base) then some (gpNumU (String.ofList base), Int.ofNat o)
+            else none
         | none => none
     | _ => none
   else none
+
+/-- A name `parseMemNameGp` resolves is one `parseMemName` resolves, to the same base and
+    offset. -/
+theorem parseMemName_of_parseMemNameGp {n : String} {p : Nat × Int}
+    (h : parseMemNameGp n = some p) : parseMemName n = some p := by
+  unfold parseMemNameGp at h
+  unfold parseMemName
+  split at h
+  · rename_i hp
+    rw [if_pos hp]
+    split at h
+    · split at h
+      · split at h
+        · simp_all
+        · cases h
+      · cases h
+    · cases h
+  · cases h
+
+/-- A name that is no `mem.*` operand is not resolved by `parseMemNameGp`. -/
+@[simp] theorem parseMemNameGp_eq_none {n : String} (h : parseMemName n = none) :
+    parseMemNameGp n = none := by
+  cases hg : parseMemNameGp n with
+  | none => rfl
+  | some p => rw [parseMemName_of_parseMemNameGp hg] at h; cases h
 
 /-- A `%rsp`-relative spill (`k.N`) or ABI save (`qsave.X`) operand name. These ARE
     memory operands (`[%rsp + frameOffset]`). They are byte-encoded (the frame
@@ -450,7 +478,7 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
           if isGpName dn then encRspMem w (memSrcOp op) (gpNumU dn) off else []
       | some _, some _ => []
       | none, none =>
-          match parseMemName dn, parseMemName sn with
+          match parseMemNameGp dn, parseMemNameGp sn with
           | none, none =>
               if isGpName dn && isGpName sn then encAluRRw w op (gpNumU dn) (gpNumU sn)
               else []
@@ -882,18 +910,18 @@ def encMulxSameDstMem (h base : Nat) (off : Int) : List (BitVec 8) :=
     ++ encRspMem 1 0x8b scr cmovRedZone
 
 /-- The memory address of a `MULX` source: a frame slot (`k.N`, `qsave.X`) at its
-    `%rsp` offset (base number `4`), a `mem.<base>.<off>` cell at its parsed base and
-    offset, and `none` for a register name. -/
+    `%rsp` offset (base number `4`), a `mem.<base>.<off>` cell with a general-purpose
+    base at its parsed base and offset, and `none` otherwise. -/
 def mulxSrcMem? (frame spillW : Nat) (s : String) (qsaveB : Nat := qsaveBytes) :
     Option (Nat × Int) :=
   if isSpillOrQsave s then (spillQsaveOff frame spillW s qsaveB).map (fun off => (4, off))
-  else parseMemName s
+  else parseMemNameGp s
 
 /-- A general-purpose register name has no memory address as a `MULX` source. -/
 theorem mulxSrcMem?_of_isGpName (frame spillW : Nat) {s : String} (qsaveB : Nat)
     (h : isGpName s = true) : mulxSrcMem? frame spillW s qsaveB = none := by
   obtain ⟨h1, h2⟩ := notSlotMem_of_isGpName h
-  simp only [mulxSrcMem?, h1, h2, Bool.false_eq_true, if_false]
+  simp only [mulxSrcMem?, h1, parseMemNameGp_eq_none h2, Bool.false_eq_true, if_false]
 
 /-- The scratch register a spilled-destination select borrows: the first of
     `%rax`, `%rbx`, `%rcx`, `%rdx` that is none of the three sources, as the
@@ -1147,7 +1175,9 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                 if dlN == dhN then encMulxSameDstMem (gpNumU dhN) bb off
                 else encMulxMem (gpNumU dhN) (gpNumU dlN) bb off
             | none =>
-            if isSpillOrQsave s2 then []
+            -- An unparseable slot and a `mem.*` cell whose base is no general-purpose
+            -- name have no encoding.
+            if isSpillOrQsave s2 || (parseMemName s2).isSome then []
             else
             -- Coincident destinations: the low word of this shape is already
             -- computed by a separate multiply, so the high half is the one to
@@ -1160,7 +1190,7 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       else if base == "MULXMEM" then
         match dsts, srcs with
         | [.reg dlN, .reg dhN], [.reg memName] =>
-            match parseMemName memName with
+            match parseMemNameGp memName with
             | some (bb, off) => encMulxMem (gpNumU dhN) (gpNumU dlN) bb off
             | none => []
         | _, _ => []

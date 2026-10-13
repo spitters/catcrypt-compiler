@@ -28,7 +28,8 @@ instructions the spill legalisations of the physical-ABI allocation
 The allocation renames every operand of a one-source move, a select and a
 materialised comparison to a general-purpose register or a spill slot `k.N`
 (`AllocOp`). A name resolves when it is a general-purpose register, a frame slot whose
-offset `spillQsaveOff` parses, or a `mem.*` cell (`OpResolves`). The encoder addresses
+offset `spillQsaveOff` parses, or a `mem.*` cell whose base is a general-purpose
+register (`OpResolves`). The encoder addresses
 a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 
 ## Main results
@@ -83,9 +84,10 @@ theorem encSetccCmp_ne_nil (w op d a b : Nat) : encSetccCmp w op d a b ≠ [] :=
 /-! ## Operand classes -/
 
 /-- A name the two-address form resolves: a general-purpose register, a frame slot
-    (`k.N`, `qsave.X`) whose frame offset parses, or a `mem.*` cell. -/
+    (`k.N`, `qsave.X`) whose frame offset parses, or a `mem.*` cell whose base is a
+    general-purpose register. -/
 def OpResolves (F W Q : Nat) (n : String) : Prop :=
-  isGpName n = true ∨ (spillQsaveOff F W n Q).isSome = true ∨ (parseMemName n).isSome = true
+  isGpName n = true ∨ (spillQsaveOff F W n Q).isSome = true ∨ (parseMemNameGp n).isSome = true
 
 /-- A name the encoder addresses as memory: a frame slot or a `mem.*` cell. -/
 def encMemName (n : String) : Bool := isSpillOrQsave n || (parseMemName n).isSome
@@ -169,7 +171,8 @@ theorem isGpName_of_opResolves {F W Q : Nat} {n : String} (h : OpResolves F W Q 
   · exact hg
   · obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
     simp [encMemName, isSpillOrQsave_of_spillQsaveOff ho] at hm
-  · simp [encMemName, hp] at hm
+  · obtain ⟨p, hp⟩ := Option.isSome_iff_exists.1 hp
+    simp [encMemName, parseMemName_of_parseMemNameGp hp] at hm
 
 /-- An allocated name is a memory name exactly when it is a spill slot. -/
 theorem AllocOp.encMemName_eq {F W Q : Nat} {n : String} (h : AllocOp F W Q (.reg n)) :
@@ -195,7 +198,7 @@ theorem allocOp_gp {F W Q : Nat} {n : String} (h : isGpName n = true) :
 
 /-- **The two-address form has bytes exactly on the resolvable operand pairs**: one
     name is a general-purpose register and the other resolves (a register, a frame
-    slot whose offset parses, or a `mem.*` cell). -/
+    slot whose offset parses, or a `mem.*` cell with a general-purpose base). -/
 theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
     encTwoAddr F W w op (.reg d) (.reg s) Q ≠ [] ↔
       (isGpName d = true ∧ OpResolves F W Q s) ∨ (OpResolves F W Q d ∧ isGpName s = true) := by
@@ -214,21 +217,22 @@ theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
       have hgs := isGpName_of_spillQsaveOff hos
       cases hgd : isGpName d <;> simp [hod, hos, hgd, hgs, encRspMem_ne_nil]
     | none =>
-      cases hpd : parseMemName d with
+      cases hpd : parseMemNameGp d with
       | some pd =>
         obtain ⟨bd, od⟩ := pd
-        have hgd := isGpName_of_parseMemName hpd
-        cases hps : parseMemName s with
+        have hgd := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hpd)
+        cases hps : parseMemNameGp s with
         | some ps =>
           obtain ⟨bs, os⟩ := ps
-          simp [hod, hos, hpd, hps, hgd, isGpName_of_parseMemName hps]
+          simp [hod, hos, hpd, hps, hgd,
+            isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)]
         | none =>
           cases hgs : isGpName s <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
       | none =>
-        cases hps : parseMemName s with
+        cases hps : parseMemNameGp s with
         | some ps =>
           obtain ⟨bs, os⟩ := ps
-          have hgs := isGpName_of_parseMemName hps
+          have hgs := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)
           cases hgd : isGpName d <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
         | none =>
           cases hgd : isGpName d <;> cases hgs : isGpName s <;>

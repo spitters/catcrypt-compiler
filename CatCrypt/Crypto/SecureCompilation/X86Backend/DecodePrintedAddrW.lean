@@ -679,6 +679,23 @@ theorem parseMemName_cellParts (n : String) :
       · simp [hc]
   · rfl
 
+/-- The encoder's resolution of a `mem.<B>.<off>` name is the address machine's parse,
+    with the base read as a register number when it is a general-purpose name. -/
+theorem parseMemNameGp_cellParts (n : String) :
+    parseMemNameGp n = (cellParts? n).bind fun p =>
+      if isGpName p.1 then some (gpNumU p.1, Int.ofNat p.2) else none := by
+  unfold parseMemNameGp cellParts?
+  split
+  · generalize List.span (fun x => x != '.') (List.drop 4 n.toList) = p
+    rcases p with ⟨base, _ | ⟨c, off⟩⟩
+    · rfl
+    · by_cases hc : c = '.'
+      · subst hc
+        simp only
+        cases natOfDigits? off <;> rfl
+      · simp [hc]
+  · rfl
+
 /-- A whole-word access of a cell `[B + off]` of a physical body. -/
 inductive MArm where
   /-- `LOAD:64 D, n` with `n` the cell `[B + off]`. -/
@@ -766,27 +783,27 @@ theorem notSlot_of_cell {n : String} {p : String × Nat} (h : cellParts? n = som
     exact ⟨by simp [isSpillOrQsave, hk, hq], fun F W qB => by simp [spillQsaveOff, hk, hq]⟩
   · cases h
 
-/-- `LOAD:64 D, n` with `n` the cell `[B + off]` and `D` general-purpose. -/
+/-- `LOAD:64 D, n` with `n` the cell `[B + off]` and `D`, `B` general-purpose. -/
 theorem encodeLopn_ldm (F W : Nat) (D n B : String) (off : Nat) (qB : Nat)
-    (hn : cellParts? n = some (B, off)) (hD : gpOk D = true) :
+    (hn : cellParts? n = some (B, off)) (hD : gpOk D = true) (hB : gpOk B = true) :
     encodeLopn F W (.Lopn [.reg D] "LOAD:64" [.reg n]) qB
       = encMemMovw 1 0x8b (gpNumU D) (gpNumU B) (Int.ofNat off) := by
   have fD := gpFacts hD
   obtain ⟨-, hoff⟩ := notSlot_of_cell hn
-  have hpm : parseMemName n = some (gpNumU B, Int.ofNat off) := by
-    rw [parseMemName_cellParts, hn]; rfl
+  have hpm : parseMemNameGp n = some (gpNumU B, Int.ofNat off) := by
+    rw [parseMemNameGp_cellParts, hn]; simp [(gpFacts hB).isGp]
   simp (config := { decide := true }) [encodeLopn, encTwoAddr, fD.off, fD.notMem,
     fD.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memSrcOp, adxPrefix]
 
-/-- `STORE:64 n, S` with `n` the cell `[B + off]` and `S` general-purpose. -/
+/-- `STORE:64 n, S` with `n` the cell `[B + off]` and `S`, `B` general-purpose. -/
 theorem encodeLopn_stm (F W : Nat) (n B : String) (off : Nat) (S : String) (qB : Nat)
-    (hn : cellParts? n = some (B, off)) (hS : gpOk S = true) :
+    (hn : cellParts? n = some (B, off)) (hS : gpOk S = true) (hB : gpOk B = true) :
     encodeLopn F W (.Lopn [.reg n] "STORE:64" [.reg S]) qB
       = encMemMovw 1 0x89 (gpNumU S) (gpNumU B) (Int.ofNat off) := by
   have fS := gpFacts hS
   obtain ⟨-, hoff⟩ := notSlot_of_cell hn
-  have hpm : parseMemName n = some (gpNumU B, Int.ofNat off) := by
-    rw [parseMemName_cellParts, hn]; rfl
+  have hpm : parseMemNameGp n = some (gpNumU B, Int.ofNat off) := by
+    rw [parseMemNameGp_cellParts, hn]; simp [(gpFacts hB).isGp]
   simp (config := { decide := true }) [encodeLopn, encTwoAddr, fS.off, fS.notMem,
     fS.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memDstOp, adxPrefix]
 
@@ -798,7 +815,7 @@ theorem MArm.bytes (P : Params) (m : MArm) (h : m.ok = true) :
   | ldm D n B off =>
     simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨hn, hD⟩, hB⟩, hd⟩ := h
-    refine ⟨by simp [MArm.instr, MArm.pieces, encodeLopn_ldm _ _ _ _ _ _ _ hn hD], ?_⟩
+    refine ⟨by simp [MArm.instr, MArm.pieces, encodeLopn_ldm _ _ _ _ _ _ _ hn hD hB], ?_⟩
     intro q hq
     simp only [MArm.pieces, List.mem_singleton] at hq
     subst hq
@@ -806,7 +823,7 @@ theorem MArm.bytes (P : Params) (m : MArm) (h : m.ok = true) :
   | stm n B off S =>
     simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨hn, hS⟩, hB⟩, hd⟩ := h
-    refine ⟨by simp [MArm.instr, MArm.pieces, encodeLopn_stm _ _ _ _ _ _ _ hn hS], ?_⟩
+    refine ⟨by simp [MArm.instr, MArm.pieces, encodeLopn_stm _ _ _ _ _ _ _ hn hS hB], ?_⟩
     intro q hq
     simp only [MArm.pieces, List.mem_singleton] at hq
     subst hq

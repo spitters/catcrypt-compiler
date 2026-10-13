@@ -26,7 +26,7 @@ name carried in an `LOperand.reg`:
 `LprogBytes.encodeLopn` encodes both moves: the mnemonic dispatch resolves
 `STORE`/`LOAD` through `aluOpcode` to `0x89`/`0x8b` at `REX.W = 1` (the `:64`
 tag) and lands in `encTwoAddr`, whose memory arms parse the operand name with
-`parseMemName` and emit `encMemMovw`. The `JInstr` side has the matching
+`parseMemNameGp` and emit `encMemMovw`. The `JInstr` side has the matching
 constructors `storeMem` / `loadMem`, which `ScalarEncoder.encodeJInstr` encodes
 through `encMemMov` at a hardcoded `REX.W = 1` — the same bytes at `w = 1`.
 `LEA` is in none of the ALU, shift or `0F`-map tables, so it falls through the
@@ -82,7 +82,8 @@ neither its mnemonic nor its operand list nor its destination order matches what
 
 * `memNameParts` — the `mem.<base>.<off>` operand-name parse that keeps the base
   as a NAME (the form `JInstr.storeMem` / `JInstr.loadMem` take), with
-  `parseMemName_of_memNameParts` relating it to `LprogBytes.parseMemName`.
+  `parseMemName_of_memNameParts` and `parseMemNameGp_of_memNameParts` relating it
+  to `LprogBytes.parseMemName` and `LprogBytes.parseMemNameGp`.
 * `lowerMemOp` — the four gather arms, `none` on every other shape.
 * `lowerCov6` / `gatherJBlock6` — `SpillSlotEncode.lowerCov5` with `lowerMemOp`
   as the fallback, and the whole-body gather over it.
@@ -206,6 +207,23 @@ theorem parseMemName_of_memNameParts {n b : String} {off : Int}
     parseMemName n = some (gpNumU b, off) := by
   unfold memNameParts at h
   unfold parseMemName
+  split at h
+  · rename_i hp
+    rw [if_pos hp]
+    split at h
+    · split at h
+      · simp_all
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- On a general-purpose base, `memNameParts` and `LprogBytes.parseMemNameGp` split
+    the same name the same way. -/
+theorem parseMemNameGp_of_memNameParts {n b : String} {off : Int}
+    (h : memNameParts n = some (b, off)) (hb : isGpName b = true) :
+    parseMemNameGp n = some (gpNumU b, off) := by
+  unfold memNameParts at h
+  unfold parseMemNameGp
   split at h
   · rename_i hp
     rw [if_pos hp]
@@ -803,8 +821,8 @@ theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
       = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) := by
   obtain ⟨hl1, hl2⟩ := notSlotMem_of_isGpName hl
   obtain ⟨hh1, hh2⟩ := notSlotMem_of_isGpName hh
-  obtain ⟨hs1, -⟩ := notSlotMem_of_isGpName hs
-  simp only [encodeLopn, hbind, hstrip, hmulx, hne, hl1, hl2, hh1, hh2, hs1,
+  obtain ⟨hs1, hs2⟩ := notSlotMem_of_isGpName hs
+  simp only [encodeLopn, hbind, hstrip, hmulx, hne, hl1, hl2, hh1, hh2, hs1, hs2,
     mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
     Bool.false_eq_true, if_false, if_true]
 
@@ -819,8 +837,8 @@ theorem encodeLopn_mulx_same (frame spillW : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dN, .reg dN] mnem [.reg s2]) qsaveB
       = encMulxSameDst (gpNumU dN) (gpNumU s2) := by
   obtain ⟨hd1, hd2⟩ := notSlotMem_of_isGpName hd
-  obtain ⟨hs1, -⟩ := notSlotMem_of_isGpName hs
-  simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, hd1, hd2, hs1,
+  obtain ⟨hs1, hs2⟩ := notSlotMem_of_isGpName hs
+  simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, hd1, hd2, hs1, hs2,
     mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
     Bool.false_eq_true, if_false, if_true]
 
@@ -835,14 +853,15 @@ theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : N
 
 /-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
     above the ADX and ALU tables, on a two-destination `Lopn` with a single
-    `mem.*` source. The destination list is `[low, high]` and `encMulxMem` takes
-    the high word first, so the dispatch transposes them. -/
+    `mem.*` source whose base is a general-purpose register. The destination list is
+    `[low, high]` and `encMulxMem` takes the high word first, so the dispatch
+    transposes them. -/
 theorem dispatch_mulxmem (frame spillW : Nat) (mnem base : String)
     (dlN dhN mn : String) (bb : Nat) (off : Int) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
     (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = true)
-    (hmem : parseMemName mn = some (bb, off)) :
+    (hmem : parseMemNameGp mn = some (bb, off)) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg mn]) qsaveB
       = encMulxMem (gpNumU dhN) (gpNumU dlN) bb off := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hmem,
@@ -850,7 +869,7 @@ theorem dispatch_mulxmem (frame spillW : Nat) (mnem base : String)
 
 /-- `MULXMEM:64` dispatches to the VEX memory-form widening multiply. -/
 theorem encodeLopn_mulxmem64 (frame spillW : Nat) (dlN dhN mn : String) (bb : Nat)
-    (off : Int) (qsaveB : Nat) (hmem : parseMemName mn = some (bb, off)) :
+    (off : Int) (qsaveB : Nat) (hmem : parseMemNameGp mn = some (bb, off)) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn]) qsaveB
       = encMulxMem (gpNumU dhN) (gpNumU dlN) bb off :=
   dispatch_mulxmem frame spillW "MULXMEM:64" "MULXMEM" dlN dhN mn bb off qsaveB
@@ -948,7 +967,7 @@ theorem store64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_store frame spillW qsaveB dn sn b off hd hb hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_store64,
     store_bytes_agree alloc frame spillW 0x89 b off sn dn sn (gpNumU b) qsaveB
-      hdk hsk (parseMemName_of_memNameParts hd) hsm hdsp hssp hs hr hbr (by decide)]
+      hdk hsk (parseMemNameGp_of_memNameParts hd hb) hsm hdsp hssp hs hr hbr (by decide)]
 
 /-- **The `LOAD:64` byte agreement.** The gathered `loadMem` block encodes to the
     bytes `encodeLopn` gives for the array-ABI load. -/
@@ -968,25 +987,22 @@ theorem load64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_load frame spillW qsaveB dn sn b off hs hb hd, Option.map_some,
     encodeJBlock_singleton, encodeLopn_load64,
     load_bytes_agree alloc frame spillW 0x8b dn b off dn sn (gpNumU b) qsaveB
-      hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hd hr hbr (by decide)]
+      hdk hsk hdm (parseMemNameGp_of_memNameParts hs hb) hdsp hssp hd hr hbr (by decide)]
 
 /-- **The `LEA:64` byte agreement.** The gathered `lea` block encodes to the bytes
-    `encodeLopn` gives for the array-ABI address computation. The source name's
-    `parseMemNameGp` image is a hypothesis: `memNameParts` and `parseMemNameGp`
-    split a `mem.*` name by different string primitives (`String.span` against
-    `String.splitOn`), and the two parses are not related by a lemma here. -/
+    `encodeLopn` gives for the array-ABI address computation. -/
 theorem lea64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     (dn sn b : String) (off : Int) (qsaveB : Nat)
     (hs : memNameParts sn = some (b, off))
     (hb : isGpName b = true) (hd : isGpName dn = true)
-    (hgp : parseMemNameGp sn = some (gpNumU b, off))
     (hr : gpNum (regOf alloc dn) = gpNumU dn)
     (hbr : gpNum (regOf alloc b) = gpNumU b) :
     (lowerMemOp frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB).map
         (encodeJBlock alloc)
       = some (encodeLopn frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB) := by
   rw [lowerMemOp_lea frame spillW qsaveB dn sn b off hs hb hd, Option.map_some,
-    encodeJBlock_singleton, encodeLopn_lea64 frame spillW (gpNumU b) dn sn off qsaveB hd hgp]
+    encodeJBlock_singleton, encodeLopn_lea64 frame spillW (gpNumU b) dn sn off qsaveB hd
+      (parseMemNameGp_of_memNameParts hs hb)]
   simp [encodeJInstr, hr, hbr, encMemMovw_one]
 
 /-- `JInstr` `adc` over a register source reduces to `encAluRR 0x11`, the shape
@@ -1223,7 +1239,7 @@ theorem mulxmem64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_mulxmem frame spillW qsaveB dlN dhN mn b off h hb hl hh,
     Option.map_some, encodeJBlock_singleton,
     encodeLopn_mulxmem64 frame spillW dlN dhN mn (gpNumU b) off qsaveB
-      (parseMemName_of_memNameParts h),
+      (parseMemNameGp_of_memNameParts h hb),
     jinstr_mulxMem, hrh, hrl, hbr]
 
 /-- `JInstr` `sbb` over a register source reduces to `encAluRR 0x19`. -/
@@ -1424,13 +1440,9 @@ theorem lowerMemOp_sbbImm0 :
 
 /-! ### The `LEA:64` arm's bytes
 
-The `encodeLopn` side of this arm resolves its operand name with
-`LprogBytes.parseMemNameGp`, which is built on `String.splitOn` and `String.drop`,
-whose bodies the module system does not expose; the kernel reduces neither, so the
-`encodeLopn` side of a closed `LEA:64` does not reduce and the concrete agreement
-is out of reach by `decide +kernel`. The gathered side does reduce, and is pinned
-against its bytes here; `lea64_gather_bytes_agree` carries the agreement
-symbolically, with the `parseMemNameGp` value as a hypothesis. -/
+The gathered side of this arm is pinned against its bytes here;
+`lea64_gather_bytes_agree` carries the agreement with the `encodeLopn` side
+symbolically, through `parseMemNameGp_of_memNameParts`. -/
 
 /-- The gathered `leaq (%rsp), %rdi` bytes: `REX.W`, the `8D /r` opcode, a
     `mod = 00` ModRM with the `%rsp`-base SIB escape, and the `0x24` SIB byte. -/
