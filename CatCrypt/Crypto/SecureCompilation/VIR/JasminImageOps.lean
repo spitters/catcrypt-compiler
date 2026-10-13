@@ -15,17 +15,22 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment
 
 A unit-free program of the typed front, translated by `nfToCatExt D` and converted along
 `catToJasmin` by `NFProg.map?`, has every let-binding, in every region, at an operation of
-the stack-memory fragment `opMemB`. The translation binds only operations of `catMemB`:
-word arithmetic, carries, equalities, selections of words, dynamic memory accesses, bit
-constants, constants at positive widths and immediate shifts below the width; the unit
-constant, whose block is a constant at width `0`, is excluded by `UnitFree`. Every block
-`toJBlockD` gives an operation of `catMemB` has its operations in `opMemB`, and `map?`
-keeps the operations of the blocks it splices.
+the stack-memory fragment `opMemB` whose result type is of positive width. The translation
+binds only operations of `catMemB`: word arithmetic, carries, equalities, selections of
+words, dynamic memory accesses, bit constants, constants and immediate shifts below the
+width, each at a result type of positive width; the unit constant, whose block is a
+constant at width `0`, is excluded by `UnitFree`. Every block `toJBlockD` gives an
+operation of `catMemB` has its operations in `opMemB` and its result types of positive
+width, and `map?` keeps the operations of the blocks it splices.
 
 ## Main definitions
 
+* `widthPos`, `bindPosB` — the Jasmin types of positive width, and the Jasmin operations
+  whose result type is of positive width.
 * `catMemB` — the operations of `catCryptDialect` whose blocks have their operations in
-  `opMemB`.
+  `opMemB` and their result types of positive width.
+* `nfWidthPos`, `NFTysPos` — the types of the typed front of positive width, and the
+  programs all of whose types are of positive width.
 * `OpResMem` — every expression of the translation of an operation is at an operation of
   `catMemB`.
 
@@ -33,14 +38,15 @@ keeps the operations of the blocks it splices.
 
 * `coveredCom_rename`, `allOps_spliceNF?`, `allOps_map?` — renaming, splicing and `map?`
   keep an operation predicate that holds of every lowered block.
-* `catMemB_block` — the block of an operation of `catMemB` has its operations in `opMemB`.
+* `catMemB_block` — the block of an operation of `catMemB` has its operations in `opMemB`
+  and its result types of positive width.
 * `catToJasmin_allOps_of_catMemB` — the conversion of a program with operations in
-  `catMemB` has its operations in `opMemB`.
+  `catMemB` has its operations in `opMemB`, at result types of positive width.
 * `scalarBinOf_width` — the widths of the binary scalar calls lie in `(0, 64]`.
 * `nfToCatExt_allOps_catMemB` — the translation of a unit-free program has its operations
   in `catMemB`.
 * `catToJasmin_allOps_opMemB` — the conversion of the translation of a unit-free program
-  has its operations in `opMemB`.
+  has its operations in `opMemB`, at result types of positive width.
 -/
 
 @[expose] public section
@@ -58,6 +64,18 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom (toJBlockD toJExpr
 open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS (CoveredCom)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (opMemB)
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy Ctx)
+
+/-! ## 0. Positive widths -/
+
+/-- The Jasmin types of positive width: a register of a positive width, and every type other
+    than a register. -/
+def widthPos : JasminTy → Bool
+  | .reg w => decide (0 < w)
+  | _ => true
+
+/-- The Jasmin operations whose result type is of positive width. -/
+def bindPosB (op : JasminOp) : Bool :=
+  widthPos (DialectSignature.ret (d := jasminDialect) op)
 
 /-! ## 1. Operations through renaming, splicing and `map?` -/
 
@@ -142,30 +160,41 @@ end Generic
 /-! ## 2. The operations of `catCryptDialect` with blocks in `opMemB` -/
 
 /-- The operations of `catCryptDialect` whose blocks under `toJBlockD` have their operations
-    in `opMemB`: the word arithmetic, the carries, the equality, the selection of words, the
-    dynamic memory accesses, the bit constants and the negation of a bit, a constant at a
-    positive width, an immediate shift by less than `2 ^ w`. -/
-def catMemB : CatCryptOp → Bool
-  | .bvAdd _ | .bvSub _ | .bvMul _ | .bvAnd _ | .bvOr _ | .bvXor _ | .bvMulHi _
-  | .bvShiftLV _ | .bvShiftRV _ | .bvAddCarryLo _ | .bvAddCarryHi _ | .bvEq _
-  | .memrefGetDyn _ | .memrefSetDyn _ | .not | .constBit _ | .ite (.sword _) => true
-  | .bvConst w _ => decide (0 < w)
-  | .bvShiftL w k | .bvShiftR w k => decide (k < 2 ^ w)
-  | _ => false
+    in `opMemB` and their result types of positive width: the word arithmetic, the carries,
+    the equality, the selection of words, the dynamic memory accesses, the bit constants and
+    the negation of a bit, a constant, an immediate shift by less than `2 ^ w`, each with a
+    result type that `catToJasmin` maps to a type of positive width. -/
+def catMemB (op : CatCryptOp) : Bool :=
+  (match op with
+    | .bvAdd _ | .bvSub _ | .bvMul _ | .bvAnd _ | .bvOr _ | .bvXor _ | .bvMulHi _
+    | .bvShiftLV _ | .bvShiftRV _ | .bvAddCarryLo _ | .bvAddCarryHi _ | .bvEq _
+    | .memrefGetDyn _ | .memrefSetDyn _ | .not | .constBit _ | .ite (.sword _) => true
+    | .bvConst w _ => decide (0 < w)
+    | .bvShiftL w k | .bvShiftR w k => decide (k < 2 ^ w)
+    | _ => false) &&
+  widthPos (catToJasmin.mapTy (DialectSignature.ret (d := catCryptDialect) op))
 
-/-- **The block of an operation of `catMemB` has its operations in `opMemB`.** -/
+/-- **The block of an operation of `catMemB` has its operations in `opMemB` and its result
+    types of positive width.** -/
 theorem catMemB_block {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
     (he : catMemB e.op = true) (blk : Com jasminDialect _ _)
-    (hb : toJBlockD e = some blk) : CoveredCom (fun e' => opMemB e'.op = true) blk := by
+    (hb : toJBlockD e = some blk) :
+    CoveredCom (fun e' => (opMemB e'.op && bindPosB e'.op) = true) blk := by
   obtain ⟨op, hr, args⟩ := e
   subst hr
+  simp only [catMemB, Bool.and_eq_true] at he
+  obtain ⟨he, hw⟩ := he
   cases op
   case ite t =>
-    cases t <;> simp [catMemB] at he
+    cases t <;> simp at he
     cases hb
-    simp [CoveredCom, opMemB]
-  all_goals simp [catMemB] at he
-  all_goals (cases hb; simp [CoveredCom, opMemB, DialectToJasminCom.mkBin, *])
+    simp only [CoveredCom, and_true, Bool.and_eq_true]
+    exact ⟨rfl, hw⟩
+  all_goals simp at he
+  all_goals
+    cases hb
+    simp only [CoveredCom, and_true, Bool.and_eq_true]
+    exact ⟨by simp [opMemB, DialectToJasminCom.mkBin, *], hw⟩
 
 /-- A program whose operations satisfy `Q` is covered by the expressions whose operation
     satisfies `Q`. -/
@@ -189,14 +218,14 @@ theorem covered_of_allOps {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.
   | call _ _ _ ih => exact ih hp
 
 /-- **The conversion to the Jasmin dialect of a program with operations in `catMemB` has its
-    operations in `opMemB`.** -/
+    operations in `opMemB`, each with a result type of positive width.** -/
 theorem catToJasmin_allOps_of_catMemB {Γ : Ctxt catCryptDialect} {ts : List CryptoTy}
     (p : NFProg catCryptDialect Γ ts) (hp : p.allOps catMemB = true)
     {Δ : Ctxt jasminDialect} (ren : Ctxt.Hom (catToJasmin.mapCtx Γ) Δ)
     (q : NFProg jasminDialect Δ (ts.map catToJasmin.mapTy))
     (hq : NFProg.map? catToJasmin catToJasmin_regionTypes p ren = some q) :
-    q.allOps opMemB = true :=
-  allOps_map? catToJasmin catToJasmin_regionTypes opMemB p
+    q.allOps (fun op => opMemB op && bindPosB op) = true :=
+  allOps_map? catToJasmin catToJasmin_regionTypes (fun op => opMemB op && bindPosB op) p
     ((covered_of_allOps (d := catCryptDialect) catMemB p hp).mono fun e he blk hb => catMemB_block e he blk hb)
     ren q hq
 
@@ -206,6 +235,27 @@ section Front
 
 open CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.Hax.NFToCat
+
+/-- The types of the typed front of positive width: a word of a positive width, and every
+    type other than a word. -/
+def nfWidthPos : NfTy → Bool
+  | .word w => decide (0 < w)
+  | _ => true
+
+/-- The programs of the typed front whose types are of positive width: the types of the
+    let-bindings, the carried tuples, the results of the branches and the argument and result
+    types of the calls, in every region. -/
+def NFTysPos : {Γ : Ctxt nfDialect} → {ts : List NfTy} → NFProg nfDialect Γ ts → Prop
+  | _, _, .ret _ => True
+  | _, _, .var (t := t) _ k => nfWidthPos t = true ∧ NFTysPos k
+  | _, _, .forLoop (cs := cs) _ _ body k =>
+      cs.all nfWidthPos = true ∧ NFTysPos body ∧ NFTysPos k
+  | _, _, .ifThenElse (rs := rs) _ thn els k =>
+      rs.all nfWidthPos = true ∧ NFTysPos thn ∧ NFTysPos els ∧ NFTysPos k
+  | _, _, .whileLoop (cs := cs) _ body k =>
+      cs.all nfWidthPos = true ∧ NFTysPos body ∧ NFTysPos k
+  | _, _, .call (as := as) (rs := rs) _ _ k =>
+      as.all nfWidthPos = true ∧ rs.all nfWidthPos = true ∧ NFTysPos k
 
 /-- The widths of the binary calls of the scalar table lie in `(0, 64]`. -/
 theorem scalarBinOf_width {f : String} {o : ImpToNF.ScalarBin} {w : Nat}
@@ -278,9 +328,13 @@ theorem shiftImm?_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} 
       · rename_i k _ hk
         obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
         split at h
-        · cases h; simp only [catMemB, decide_eq_true_eq]; omega
+        · cases h
+          simp only [catMemB, Bool.and_eq_true, decide_eq_true_eq]
+          exact ⟨by omega, rfl⟩
         · split at h
-          · cases h; simp only [catMemB, decide_eq_true_eq]; omega
+          · cases h
+            simp only [catMemB, Bool.and_eq_true, decide_eq_true_eq]
+            exact ⟨by omega, rfl⟩
           · cases h
       · cases h
     · cases h
@@ -334,7 +388,9 @@ theorem rotChain_mem {Δ : Ctxt catCryptDialect} (right : Bool) {w : Nat} (k : N
     omega
   have hj' : w - k % w < 2 ^ 64 := by omega
   cases right <;>
-    exact ⟨rfl, rfl, by simpa [catMemB] using hj, by simpa [catMemB] using hj', rfl, rfl⟩
+    exact ⟨rfl, rfl,
+      (Bool.and_eq_true _ _).mpr ⟨by simpa using hj, rfl⟩,
+      (Bool.and_eq_true _ _).mpr ⟨by simpa using hj', rfl⟩, rfl, rfl⟩
 
 theorem rotVarChain_mem {Δ : Ctxt catCryptDialect} (right : Bool) (w : Nat)
     (a b : Ctxt.Var Δ (.sword 64)) : OpResMem (rotVarChain right w a b) := by
@@ -609,9 +665,10 @@ theorem nfToCatExt_allOps_catMemB (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts :
   | call => intro _ σ q h; cases h
 
 /-- **`catToJasmin_allOps_opMemB`: the Jasmin image of a translated unit-free program has
-    its operations in `opMemB`.** For a unit-free program `p`, a program `nfToCatExt D`
-    returns for `p`, and a program `map?` along `catToJasmin` returns for it, every
-    let-binding of the result, in every region, has an operation of `opMemB`. -/
+    its operations in `opMemB`, each with a result type of positive width.** For a unit-free
+    program `p`, a program `nfToCatExt D` returns for `p`, and a program `map?` along
+    `catToJasmin` returns for it, every let-binding of the result, in every region, has an
+    operation of `opMemB` whose result type is of positive width. -/
 theorem catToJasmin_allOps_opMemB (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (hu : NFFlattenTuples.UnitFree p)
     {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (q : NFProg catCryptDialect Δ (ts.map catTy))
@@ -619,7 +676,7 @@ theorem catToJasmin_allOps_opMemB (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts :
     (ren : Ctxt.Hom (catToJasmin.mapCtx Δ) Δ')
     (r : NFProg jasminDialect Δ' ((ts.map catTy).map catToJasmin.mapTy))
     (hr : NFProg.map? catToJasmin catToJasmin_regionTypes q ren = some r) :
-    r.allOps opMemB = true :=
+    r.allOps (fun op => opMemB op && bindPosB op) = true :=
   catToJasmin_allOps_of_catMemB q (nfToCatExt_allOps_catMemB D p hu σ q hq) ren r hr
 
 end Front
