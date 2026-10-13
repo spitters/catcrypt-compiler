@@ -27,15 +27,16 @@ instructions the spill legalisations of the physical-ABI allocation
 
 The allocation renames every operand of a one-source move, a select and a
 materialised comparison to a general-purpose register or a spill slot `k.N`
-(`AllocOp`). A slot name resolves to a frame offset when `spillQsaveOff` parses it
-(`SlotResolves`). The encoder addresses a name as memory when it is a frame slot or
-a `mem.*` cell (`encMemName`).
+(`AllocOp`). A name resolves when it is a general-purpose register, a frame slot whose
+offset `spillQsaveOff` parses, or a `mem.*` cell (`OpResolves`). The encoder addresses
+a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 
 ## Main results
 
-* `encTwoAddr_ne_nil`: the two-address form has bytes when both names resolve and at
-  most one is a memory name; `slotResolves_of_encTwoAddr`: a form with bytes has
-  resolving names.
+* `encTwoAddr_ne_nil_iff`: the two-address form has bytes exactly when one name is a
+  general-purpose register and the other resolves; `encTwoAddr_ne_nil`: so when both
+  names resolve and at most one is a memory name; `opResolves_of_encTwoAddr`: a form
+  with bytes has resolving names.
 * `encodableLinstrR_mov_iff`, `encodableLinstrR_mov`: a register move `MOV`, `MOV:64`
   or `MOVQ` is encodable exactly when its two-address form has bytes, so under the
   same conditions.
@@ -81,9 +82,10 @@ theorem encSetccCmp_ne_nil (w op d a b : Nat) : encSetccCmp w op d a b ≠ [] :=
 
 /-! ## Operand classes -/
 
-/-- A frame-slot name (`k.N`, `qsave.X`) parses to a frame offset. -/
-def SlotResolves (F W Q : Nat) (n : String) : Prop :=
-  isSpillOrQsave n = true → (spillQsaveOff F W n Q).isSome = true
+/-- A name the two-address form resolves: a general-purpose register, a frame slot
+    (`k.N`, `qsave.X`) whose frame offset parses, or a `mem.*` cell. -/
+def OpResolves (F W Q : Nat) (n : String) : Prop :=
+  isGpName n = true ∨ (spillQsaveOff F W n Q).isSome = true ∨ (parseMemName n).isSome = true
 
 /-- A name the encoder addresses as memory: a frame slot or a `mem.*` cell. -/
 def encMemName (n : String) : Bool := isSpillOrQsave n || (parseMemName n).isSome
@@ -117,9 +119,21 @@ theorem hasPrefix_mem_of_parseMemName {n : String} {p : Nat × Int}
   · exact hm
   · simp [hm] at h
 
-theorem slotResolves_of_isGpName {F W Q : Nat} {n : String} (h : isGpName n = true) :
-    SlotResolves F W Q n := fun hq => by
-  rw [(notSlotMem_of_isGpName h).1] at hq; cases hq
+theorem opResolves_of_isGpName {F W Q : Nat} {n : String} (h : isGpName n = true) :
+    OpResolves F W Q n := Or.inl h
+
+theorem isGpName_of_spillQsaveOff {F W Q : Nat} {n : String} {off : Int}
+    (h : spillQsaveOff F W n Q = some off) : isGpName n = false := by
+  cases hg : isGpName n
+  · rfl
+  · have hq := (notSlotMem_of_isGpName hg).1
+    rw [isSpillOrQsave_of_spillQsaveOff h] at hq; cases hq
+
+theorem isGpName_of_parseMemName {n : String} {p : Nat × Int} (h : parseMemName n = some p) :
+    isGpName n = false := by
+  cases hg : isGpName n
+  · rfl
+  · rw [(notSlotMem_of_isGpName hg).2] at h; cases h
 
 theorem encMemName_of_isGpName {n : String} (h : isGpName n = true) : encMemName n = false := by
   have := notSlotMem_of_isGpName h
@@ -138,14 +152,24 @@ theorem isSpillOrQsave_of_k {n : String} (hk : hasPrefix n "k." = true) :
   simp [isSpillOrQsave, hk]
 
 /-- An allocated name resolves. -/
-theorem AllocOp.slotResolves {F W Q : Nat} {n : String} (h : AllocOp F W Q (.reg n)) :
-    SlotResolves F W Q n := by
+theorem AllocOp.opResolves {F W Q : Nat} {n : String} (h : AllocOp F W Q (.reg n)) :
+    OpResolves F W Q n := by
   obtain ⟨m, hm, hc⟩ := h
   simp only [LOperand.reg.injEq] at hm
   subst hm
   rcases hc with hg | ⟨_, hs⟩
-  · exact slotResolves_of_isGpName hg
-  · exact fun _ => hs
+  · exact Or.inl hg
+  · exact Or.inr (Or.inl hs)
+
+/-- A resolving name the encoder does not address as memory is a general-purpose
+    register. -/
+theorem isGpName_of_opResolves {F W Q : Nat} {n : String} (h : OpResolves F W Q n)
+    (hm : encMemName n = false) : isGpName n = true := by
+  rcases h with hg | hs | hp
+  · exact hg
+  · obtain ⟨off, ho⟩ := Option.isSome_iff_exists.1 hs
+    simp [encMemName, isSpillOrQsave_of_spillQsaveOff ho] at hm
+  · simp [encMemName, hp] at hm
 
 /-- An allocated name is a memory name exactly when it is a spill slot. -/
 theorem AllocOp.encMemName_eq {F W Q : Nat} {n : String} (h : AllocOp F W Q (.reg n)) :
@@ -169,58 +193,66 @@ theorem allocOp_gp {F W Q : Nat} {n : String} (h : isGpName n = true) :
 
 /-! ## The two-address form -/
 
+/-- **The two-address form has bytes exactly on the resolvable operand pairs**: one
+    name is a general-purpose register and the other resolves (a register, a frame
+    slot whose offset parses, or a `mem.*` cell). -/
+theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
+    encTwoAddr F W w op (.reg d) (.reg s) Q ≠ [] ↔
+      (isGpName d = true ∧ OpResolves F W Q s) ∨ (OpResolves F W Q d ∧ isGpName s = true) := by
+  unfold encTwoAddr OpResolves
+  cases hod : spillQsaveOff F W d Q with
+  | some od =>
+    have hgd := isGpName_of_spillQsaveOff hod
+    cases hos : spillQsaveOff F W s Q with
+    | some os =>
+      simp [hod, hos, hgd, isGpName_of_spillQsaveOff hos]
+    | none =>
+      cases hgs : isGpName s <;> simp [hod, hos, hgd, hgs, encRspMem_ne_nil]
+  | none =>
+    cases hos : spillQsaveOff F W s Q with
+    | some os =>
+      have hgs := isGpName_of_spillQsaveOff hos
+      cases hgd : isGpName d <;> simp [hod, hos, hgd, hgs, encRspMem_ne_nil]
+    | none =>
+      cases hpd : parseMemName d with
+      | some pd =>
+        obtain ⟨bd, od⟩ := pd
+        have hgd := isGpName_of_parseMemName hpd
+        cases hps : parseMemName s with
+        | some ps =>
+          obtain ⟨bs, os⟩ := ps
+          simp [hod, hos, hpd, hps, hgd, isGpName_of_parseMemName hps]
+        | none =>
+          cases hgs : isGpName s <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
+      | none =>
+        cases hps : parseMemName s with
+        | some ps =>
+          obtain ⟨bs, os⟩ := ps
+          have hgs := isGpName_of_parseMemName hps
+          cases hgd : isGpName d <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
+        | none =>
+          cases hgd : isGpName d <;> cases hgs : isGpName s <;>
+            simp [hod, hos, hpd, hps, hgd, hgs, encAluRRw_ne_nil]
+
 /-- **The two-address form has bytes** when both names resolve and at most one is a
     memory name. -/
 theorem encTwoAddr_ne_nil {F W Q w op : Nat} {d s : String}
-    (hd : SlotResolves F W Q d) (hs : SlotResolves F W Q s)
+    (hd : OpResolves F W Q d) (hs : OpResolves F W Q s)
     (hm : (encMemName d && encMemName s) = false) :
     encTwoAddr F W w op (.reg d) (.reg s) Q ≠ [] := by
-  unfold encTwoAddr
-  cases hod : spillQsaveOff F W d Q with
-  | some od =>
-    have hqd := isSpillOrQsave_of_spillQsaveOff hod
-    have hqs : isSpillOrQsave s = false := by
-      cases hqs : isSpillOrQsave s
-      · rfl
-      · simp [encMemName, hqd, hqs] at hm
-    simp [hod, spillQsaveOff_of_not hqs (F := F) (W := W) (Q := Q), hqs, encRspMem_ne_nil]
-  | none =>
-    have hqd : isSpillOrQsave d = false := by
-      cases h : isSpillOrQsave d
-      · rfl
-      · have := hd h; rw [hod] at this; cases this
-    cases hos : spillQsaveOff F W s Q with
-    | some os =>
-      simp [hod, hos, hqd, encRspMem_ne_nil]
-    | none =>
-      have hqs : isSpillOrQsave s = false := by
-        cases h : isSpillOrQsave s
-        · rfl
-        · have := hs h; rw [hos] at this; cases this
-      simp only [hod, hos, hqd, hqs, Bool.or_self, Bool.false_eq_true, if_false]
-      cases hpd : parseMemName d <;> cases hps : parseMemName s
-      · simp [encAluRRw_ne_nil]
-      · simp [encMemMovw_ne_nil]
-      · simp [encMemMovw_ne_nil]
-      · simp [encMemName, hpd, hps] at hm
+  refine encTwoAddr_ne_nil_iff.2 ?_
+  cases hmd : encMemName d
+  · exact Or.inl ⟨isGpName_of_opResolves hd hmd, hs⟩
+  · rw [hmd, Bool.true_and] at hm
+    exact Or.inr ⟨hd, isGpName_of_opResolves hs hm⟩
 
 /-- **A two-address form with bytes has resolving names.** -/
-theorem slotResolves_of_encTwoAddr {F W Q w op : Nat} {d s : String}
+theorem opResolves_of_encTwoAddr {F W Q w op : Nat} {d s : String}
     (h : encTwoAddr F W w op (.reg d) (.reg s) Q ≠ []) :
-    SlotResolves F W Q d ∧ SlotResolves F W Q s := by
-  refine ⟨fun hq => ?_, fun hq => ?_⟩
-  · cases hod : spillQsaveOff F W d Q
-    · exfalso
-      apply h
-      unfold encTwoAddr
-      cases hos : spillQsaveOff F W s Q <;> simp [hod, hos, hq]
-    · rfl
-  · cases hos : spillQsaveOff F W s Q
-    · exfalso
-      apply h
-      unfold encTwoAddr
-      cases hod : spillQsaveOff F W d Q <;> simp [hod, hos, hq]
-    · rfl
+    OpResolves F W Q d ∧ OpResolves F W Q s := by
+  rcases encTwoAddr_ne_nil_iff.1 h with ⟨hd, hs⟩ | ⟨hd, hs⟩
+  · exact ⟨Or.inl hd, hs⟩
+  · exact ⟨hd, Or.inl hs⟩
 
 /-! ## Register moves -/
 
@@ -276,29 +308,29 @@ theorem encodableLinstrR_mov_iff {F W Q : Nat} {mn d s : String} (hm : isMovMnem
 /-- **A register move is encodable** when both names resolve and at most one is a
     memory name. -/
 theorem encodableLinstrR_mov {F W Q : Nat} {mn d s : String} (hm : isMovMnem mn = true)
-    (hd : SlotResolves F W Q d) (hs : SlotResolves F W Q s)
+    (hd : OpResolves F W Q d) (hs : OpResolves F W Q s)
     (hds : (encMemName d && encMemName s) = false) :
     encodableLinstrR F W (.Lopn [.reg d] mn [.reg s]) Q = true :=
   (encodableLinstrR_mov_iff hm).2 (encTwoAddr_ne_nil hd hs hds)
 
 /-- An encodable register move has resolving names. -/
-theorem slotResolves_of_encodableLinstrR_mov {F W Q : Nat} {mn d s : String}
+theorem opResolves_of_encodableLinstrR_mov {F W Q : Nat} {mn d s : String}
     (hm : isMovMnem mn = true) (h : encodableLinstrR F W (.Lopn [.reg d] mn [.reg s]) Q = true) :
-    SlotResolves F W Q d ∧ SlotResolves F W Q s :=
-  slotResolves_of_encTwoAddr ((encodableLinstrR_mov_iff hm).1 h)
+    OpResolves F W Q d ∧ OpResolves F W Q s :=
+  opResolves_of_encTwoAddr ((encodableLinstrR_mov_iff hm).1 h)
 
 /-- A move between an allocated operand and a general-purpose register is encodable,
     in either direction. -/
 theorem encodableLinstrR_mov_gp_left {F W Q : Nat} {mn r n : String} (hm : isMovMnem mn = true)
     (hr : isGpName r = true) (hn : AllocOp F W Q (.reg n)) :
     encodableLinstrR F W (.Lopn [.reg r] mn [.reg n]) Q = true :=
-  encodableLinstrR_mov hm (slotResolves_of_isGpName hr) hn.slotResolves
+  encodableLinstrR_mov hm (opResolves_of_isGpName hr) hn.opResolves
     (by simp [encMemName_of_isGpName hr])
 
 theorem encodableLinstrR_mov_gp_right {F W Q : Nat} {mn r n : String} (hm : isMovMnem mn = true)
     (hr : isGpName r = true) (hn : AllocOp F W Q (.reg n)) :
     encodableLinstrR F W (.Lopn [.reg n] mn [.reg r]) Q = true :=
-  encodableLinstrR_mov hm hn.slotResolves (slotResolves_of_isGpName hr)
+  encodableLinstrR_mov hm hn.opResolves (opResolves_of_isGpName hr)
     (by simp [encMemName_of_isGpName hr])
 
 /-! ## The legalised register copy -/
@@ -321,7 +353,7 @@ theorem legalizeMov_encodable {F W Q : Nat} {d s : LOperand} {mov : String}
     · exact encodableLinstrR_mov_gp_right hm isGpName_R15 hd
   · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     subst hi
-    refine encodableLinstrR_mov hm hd.slotResolves hs.slotResolves ?_
+    refine encodableLinstrR_mov hm hd.opResolves hs.opResolves ?_
     rw [hd.encMemName_eq, hs.encMemName_eq]
     simpa using hb
 
@@ -562,7 +594,7 @@ theorem isMovMnem_of_isMov64Mnem {mn : String} (h : isMov64Mnem mn = true) :
   rcases h with rfl | rfl <;> decide +kernel
 
 /-- The load environment holds only names that resolve. -/
-def EnvResolves (F W Q : Nat) (h : LoadEnv) : Prop := ∀ p ∈ h, SlotResolves F W Q p.2
+def EnvResolves (F W Q : Nat) (h : LoadEnv) : Prop := ∀ p ∈ h, OpResolves F W Q p.2
 
 /-- **One forwarding step keeps an encodable instruction encodable** and the
     environment resolving. -/
@@ -581,7 +613,7 @@ theorem stepLoad_encodable {F W Q : Nat} (h : LoadEnv) (i : Linstr) (hh : EnvRes
     obtain ⟨hli, hm⟩ := asWideReload_eq hr
     have hmv := isMovMnem_of_isMov64Mnem hm
     rw [hli] at hi
-    obtain ⟨hd, -⟩ := slotResolves_of_encodableLinstrR_mov hmv hi
+    obtain ⟨hd, -⟩ := opResolves_of_encodableLinstrR_mov hmv hi
     have henv : EnvResolves F W Q (((h.killReg d).killSlot d).set s d) := by
       intro p hp
       rcases CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_set hp with
@@ -593,7 +625,7 @@ theorem stepLoad_encodable {F W Q : Nat} (h : LoadEnv) (i : Linstr) (hh : EnvRes
       simp only [stepLoad, hr, hf]
       exact ⟨by rw [hli]; exact hi, henv⟩
     | some r =>
-      have hrr : SlotResolves F W Q r :=
+      have hrr : OpResolves F W Q r :=
         hh (s, r) (CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_of_find hf)
       by_cases hrd : r = d
       · simp only [stepLoad, hr, hf, hrd, if_true]

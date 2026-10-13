@@ -311,11 +311,12 @@ theorem demoFramedText_add_agrees (alloc : GpAlloc) (frame spillW : Nat) (dn sn 
     (hsk : LprogBytes.spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : LprogBytes.parseMemName dn = none) (hsm : LprogBytes.parseMemName sn = none)
     (hdsp : LprogBytes.isSpillOrQsave dn = false) (hssp : LprogBytes.isSpillOrQsave sn = false)
+    (hdg : LprogBytes.isGpName dn = true) (hsg : LprogBytes.isGpName sn = true)
     (hd : gpNum (regOf alloc "t") = LprogBytes.gpNumU dn)
     (hs : gpNum (regOf alloc "b") = LprogBytes.gpNumU sn) :
     encodeJInstr alloc (.add "t" (.reg "b"))
       = LprogBytes.encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
   LprogJInstrBytesAgree.add_bytes_agree alloc frame spillW "t" "b" dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp hd hs
+    hdk hsk hdm hsm hdsp hssp hdg hsg hd hs
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr

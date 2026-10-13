@@ -246,10 +246,11 @@ theorem add_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : S
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.add d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg sn]) qsaveB := by
-  rw [add_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [add_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_add]
 
 /-- **`SUB` end-to-end** (`native_decide`-free). -/
@@ -259,10 +260,11 @@ theorem sub_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : S
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.sub d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg sn]) qsaveB := by
-  rw [sub_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [sub_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_sub]
 
 /-- **`AND` end-to-end** (`native_decide`-free). -/
@@ -272,10 +274,11 @@ theorem and_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : S
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.and_ d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "AND:64" [.reg sn]) qsaveB := by
-  rw [and_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [and_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_and]
 
 /-- **`OR` end-to-end** (`native_decide`-free). -/
@@ -285,10 +288,11 @@ theorem or_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : St
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.or_ d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg sn]) qsaveB := by
-  rw [or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_or]
 
 /-- **`XOR` end-to-end** (`native_decide`-free). -/
@@ -298,10 +302,11 @@ theorem xor_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : S
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.xor_ d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg sn]) qsaveB := by
-  rw [xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_xor]
 
 /-- **`MOV` end-to-end** (`native_decide`-free). -/
@@ -311,10 +316,11 @@ theorem mov_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : S
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.mov d (.reg r))
       = encodeLopn frame spillW (.Lopn [.reg dn] "MOV:64" [.reg sn]) qsaveB := by
-  rw [mov_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
+  rw [mov_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg hd hs,
     encodeLopn_mov]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch

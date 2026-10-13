@@ -948,7 +948,7 @@ theorem store64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_store frame spillW qsaveB dn sn b off hd hb hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_store64,
     store_bytes_agree alloc frame spillW 0x89 b off sn dn sn (gpNumU b) qsaveB
-      hdk hsk (parseMemName_of_memNameParts hd) hsm hdsp hssp hr hbr (by decide)]
+      hdk hsk (parseMemName_of_memNameParts hd) hsm hdsp hssp hs hr hbr (by decide)]
 
 /-- **The `LOAD:64` byte agreement.** The gathered `loadMem` block encodes to the
     bytes `encodeLopn` gives for the array-ABI load. -/
@@ -968,7 +968,7 @@ theorem load64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_load frame spillW qsaveB dn sn b off hs hb hd, Option.map_some,
     encodeJBlock_singleton, encodeLopn_load64,
     load_bytes_agree alloc frame spillW 0x8b dn b off dn sn (gpNumU b) qsaveB
-      hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hr hbr (by decide)]
+      hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hd hr hbr (by decide)]
 
 /-- **The `LEA:64` byte agreement.** The gathered `lea` block encodes to the bytes
     `encodeLopn` gives for the array-ABI address computation. The source name's
@@ -1007,11 +1007,12 @@ theorem adc_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : Stri
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.adc d (.reg r))
       = encTwoAddr frame spillW 1 0x11 (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_adc,
-    encTwoAddr_regReg frame spillW 1 0x11 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
+    encTwoAddr_regReg frame spillW 1 0x11 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg,
     encAluRRw_one, hd, hs]
 
 /-- **The `ADC:64` byte agreement.** The gathered `adc` block encodes to the bytes
@@ -1032,7 +1033,7 @@ theorem adc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_adc frame spillW qsaveB dn sn hd hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_adc64₂,
     adc_bytes_agree alloc frame spillW dn sn dn sn qsaveB
-      hdk hsk hdm hsm hdsp hssp hr hsr]
+      hdk hsk hdm hsm hdsp hssp hd hs hr hsr]
 
 /-- `JInstr` `adcx` over a register source reduces to `encAdxCarry 0x66`. -/
 theorem jinstr_adcx (alloc : GpAlloc) (d r : String) :
@@ -1238,11 +1239,12 @@ theorem sbb_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : Stri
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.sbb d (.reg r))
       = encTwoAddr frame spillW 1 0x19 (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_sbb,
-    encTwoAddr_regReg frame spillW 1 0x19 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
+    encTwoAddr_regReg frame spillW 1 0x19 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg,
     encAluRRw_one, hd, hs]
 
 /-- **The `SBB:64` byte agreement.** The gathered `sbb` block encodes to the bytes
@@ -1263,7 +1265,7 @@ theorem sbb64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_sbb frame spillW qsaveB dn sn hd hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_sbb64₂,
     sbb_bytes_agree alloc frame spillW dn sn dn sn qsaveB
-      hdk hsk hdm hsm hdsp hssp hr hsr]
+      hdk hsk hdm hsm hdsp hssp hd hs hr hsr]
 
 /-! ### The immediate second source
 

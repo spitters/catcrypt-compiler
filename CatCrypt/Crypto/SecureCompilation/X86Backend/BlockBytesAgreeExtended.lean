@@ -225,13 +225,15 @@ theorem or64_block_eq_mov_prepend_lopn
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov (.Lopn [.reg d] "OR:64" [.reg s0, .reg r])).map (encodeJBlock alloc)
       = some (encodeJInstr alloc (JInstr.mov d (.reg s0))
                 ++ encodeLopn frame spillW
                     (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_or64, Option.map_some, encodeLopn_or₂,
-    ← or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
+    ← or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp
+      hdg hsg hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-- **`XOR:64` two-source byte isolation** — the dual of `or64_block_eq_mov_prepend_lopn`. -/
@@ -241,13 +243,15 @@ theorem xor64_block_eq_mov_prepend_lopn
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov (.Lopn [.reg d] "XOR:64" [.reg s0, .reg r])).map (encodeJBlock alloc)
       = some (encodeJInstr alloc (JInstr.mov d (.reg s0))
                 ++ encodeLopn frame spillW
                     (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_xor64, Option.map_some, encodeLopn_xor₂,
-    ← xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
+    ← xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp
+      hdg hsg hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-! ### §1d. The residual self-`mov` is non-empty (the divergence, made concrete)

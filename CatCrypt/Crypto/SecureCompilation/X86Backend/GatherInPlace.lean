@@ -368,12 +368,14 @@ theorem encJInPlace_or64_eq_lopn
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov3 (.Lopn [.reg d] "OR:64" [.reg d, .reg r])).map (encodeJBlock alloc)
       = some (encodeLopn frame spillW
                 (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_or64_inplace, Option.map_some, encodeLopn_or₂,
-    ← or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
+    ← or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp
+      hdg hsg hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-- **`XOR:64` in-place byte agreement** — the dual of `encJInPlace_or64_eq_lopn`. -/
@@ -383,12 +385,14 @@ theorem encJInPlace_xor64_eq_lopn
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true) (hsg : isGpName sn = true)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov3 (.Lopn [.reg d] "XOR:64" [.reg d, .reg r])).map (encodeJBlock alloc)
       = some (encodeLopn frame spillW
                 (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_xor64_inplace, Option.map_some, encodeLopn_xor₂,
-    ← xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
+    ← xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp
+      hdg hsg hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-! ### 3b. The residual self-`mov` is gone (the divergence closed, made concrete)

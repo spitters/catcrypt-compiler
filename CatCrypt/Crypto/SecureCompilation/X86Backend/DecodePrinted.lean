@@ -190,7 +190,7 @@ theorem encTwoAddr_rr (F W w op : Nat) (D S : String) (qB : Nat) (hD : gpOk D = 
     encTwoAddr F W w op (.reg D) (.reg S) qB = encAluRRw w op (gpNumU D) (gpNumU S) := by
   have fD := gpFacts hD
   have fS := gpFacts hS
-  simp [encTwoAddr, fD.off, fS.off, fD.notSlot, fS.notSlot, fD.notMem, fS.notMem]
+  simp [encTwoAddr, fD.off, fS.off, fD.notMem, fS.notMem, fD.isGp, fS.isGp]
 
 /-- The operation `op` of a general-purpose name into a frame word: for a move, the
     store `0x89`. -/
@@ -198,7 +198,7 @@ theorem encTwoAddr_store (F W w op : Nat) (q S : String) (qB : Nat) (off : Int)
     (hq : spillQsaveOff F W q qB = some off) (hS : gpOk S = true) :
     encTwoAddr F W w op (.reg q) (.reg S) qB = encRspMem w (memDstOp op) (gpNumU S) off := by
   have fS := gpFacts hS
-  simp [encTwoAddr, hq, fS.off, fS.notSlot]
+  simp [encTwoAddr, hq, fS.off, fS.isGp]
 
 /-- The operation `op` of a frame word into a general-purpose name: for a move, the
     load `0x8b`. -/
@@ -206,7 +206,7 @@ theorem encTwoAddr_load (F W w op : Nat) (D q : String) (qB : Nat) (off : Int)
     (hq : spillQsaveOff F W q qB = some off) (hD : gpOk D = true) :
     encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w (memSrcOp op) (gpNumU D) off := by
   have fD := gpFacts hD
-  simp [encTwoAddr, hq, fD.off, fD.notSlot]
+  simp [encTwoAddr, hq, fD.off, fD.isGp]
 
 /-- The register moves of a printed body: `MOV:64` and the whole-word `MOVQ`. -/
 def isMovM (m : String) : Bool := m == "MOV:64" || m == "MOVQ"

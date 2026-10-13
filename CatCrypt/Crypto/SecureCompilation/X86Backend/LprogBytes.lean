@@ -325,9 +325,9 @@ def parseMemNameGp (n : String) : Option (Nat × Int) :=
 /-- A `%rsp`-relative spill (`k.N`) or ABI save (`qsave.X`) operand name. These ARE
     memory operands (`[%rsp + frameOffset]`). They are byte-encoded (the frame
     size + body-uniform spill width are threaded through `encodeLcmd`), via
-    `spillQsaveOff` + the RSP-SIB memory encoder `encRspMem`. A name that is neither a
-    recognised spill/qsave NOR a `mem.*` NOR a bare GP register is NOT covered;
-    `encTwoAddr` keeps the visible-empty guard for those residual forms only. -/
+    `spillQsaveOff` + the RSP-SIB memory encoder `encRspMem`. `encTwoAddr` returns no
+    bytes for a name that is none of a recognised spill/qsave, a `mem.*` and a GP
+    register. -/
 def isSpillOrQsave (n : String) : Bool :=
   hasPrefix n "k." || hasPrefix n "qsave."
 
@@ -429,9 +429,11 @@ def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
     The owned looped bodies pair a register with at most one memory operand
     (`LOAD`/`STORE`/spill reload/spill store): a reg-reg pair uses `encAluRR`, a
     `mem.*` source/dest uses `encMemMov`, and a spill/qsave source/dest uses the
-    RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). An
-    uncovered shape (mem-mem, or a name that is neither reg / `mem.*` / spill / qsave)
-    returns `[]` (visible, KAT-catchable) rather than mis-resolving. A memory
+    RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). The register
+    operand of each form is one of the 16 general-purpose names (`isGpName`). Every
+    other shape returns `[]`: two memory operands (slot, `mem.*` or one of each), an
+    unparseable slot name, and a name that is none of register, `mem.*`, spill or
+    qsave, which `gpNumU` would otherwise read as `%rax`. A memory
     destination takes the `r/m ← r` opcode `memDstOp op` and a memory source the
     `r ← r/m` opcode `memSrcOp op`, so `adc k.N, %rN` encodes `ADC r64, r/m64` as the
     printer renders it, and a move (`op` = `0x89`/`0x8b`) the `MOV` store or load. -/
@@ -442,23 +444,23 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
       match spillQsaveOff frame spillW dn qsaveB, spillQsaveOff frame spillW sn qsaveB with
       -- store to a spill/qsave slot: dst is `%rsp`-relative, src is a register.
       | some off, none =>
-          if isSpillOrQsave sn then []  -- mem,mem (spill→spill) not emitted
-          else encRspMem w (memDstOp op) (gpNumU sn) off
+          if isGpName sn then encRspMem w (memDstOp op) (gpNumU sn) off else []
       -- reload from a spill/qsave slot: src is `%rsp`-relative, dst is a register.
       | none, some off =>
-          if isSpillOrQsave dn then []
-          else encRspMem w (memSrcOp op) (gpNumU dn) off
-      | some _, some _ => []  -- spill,spill not emitted (residual)
+          if isGpName dn then encRspMem w (memSrcOp op) (gpNumU dn) off else []
+      | some _, some _ => []
       | none, none =>
-          if isSpillOrQsave dn || isSpillOrQsave sn then []  -- unparseable spill name
-          else
-            match parseMemName dn, parseMemName sn with
-            | none, none => encAluRRw w op (gpNumU dn) (gpNumU sn)
-            -- store: dst is memory, op = 0x89 (MOV r/m←r). `reg`=src, base=dst mem.
-            | some (bb, off), none => encMemMovw w (memDstOp op) (gpNumU sn) bb off
-            -- load: src is memory, op = 0x8B (MOV r←r/m). `reg`=dst, base=src mem.
-            | none, some (bb, off) => encMemMovw w (memSrcOp op) (gpNumU dn) bb off
-            | some _, some _ => []  -- mem,mem not emitted (residual)
+          match parseMemName dn, parseMemName sn with
+          | none, none =>
+              if isGpName dn && isGpName sn then encAluRRw w op (gpNumU dn) (gpNumU sn)
+              else []
+          -- store: dst is memory, op = 0x89 (MOV r/m←r). `reg`=src, base=dst mem.
+          | some (bb, off), none =>
+              if isGpName sn then encMemMovw w (memDstOp op) (gpNumU sn) bb off else []
+          -- load: src is memory, op = 0x8B (MOV r←r/m). `reg`=dst, base=src mem.
+          | none, some (bb, off) =>
+              if isGpName dn then encMemMovw w (memSrcOp op) (gpNumU dn) bb off else []
+          | some _, some _ => []
   | _, _ => []
 
 /-- The group-1 opcode-extension `/digit` for an ALU mnemonic (ADD=/0 … CMP=/7),

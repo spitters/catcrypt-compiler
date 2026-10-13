@@ -772,11 +772,11 @@ theorem encodeLopn_ldm (F W : Nat) (D n B : String) (off : Nat) (qB : Nat)
     encodeLopn F W (.Lopn [.reg D] "LOAD:64" [.reg n]) qB
       = encMemMovw 1 0x8b (gpNumU D) (gpNumU B) (Int.ofNat off) := by
   have fD := gpFacts hD
-  obtain ⟨hs, hoff⟩ := notSlot_of_cell hn
+  obtain ⟨-, hoff⟩ := notSlot_of_cell hn
   have hpm : parseMemName n = some (gpNumU B, Int.ofNat off) := by
     rw [parseMemName_cellParts, hn]; rfl
-  simp (config := { decide := true }) [encodeLopn, encTwoAddr, fD.off, fD.notSlot, fD.notMem,
-    hs, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memSrcOp, adxPrefix]
+  simp (config := { decide := true }) [encodeLopn, encTwoAddr, fD.off, fD.notMem,
+    fD.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memSrcOp, adxPrefix]
 
 /-- `STORE:64 n, S` with `n` the cell `[B + off]` and `S` general-purpose. -/
 theorem encodeLopn_stm (F W : Nat) (n B : String) (off : Nat) (S : String) (qB : Nat)
@@ -784,11 +784,11 @@ theorem encodeLopn_stm (F W : Nat) (n B : String) (off : Nat) (S : String) (qB :
     encodeLopn F W (.Lopn [.reg n] "STORE:64" [.reg S]) qB
       = encMemMovw 1 0x89 (gpNumU S) (gpNumU B) (Int.ofNat off) := by
   have fS := gpFacts hS
-  obtain ⟨hs, hoff⟩ := notSlot_of_cell hn
+  obtain ⟨-, hoff⟩ := notSlot_of_cell hn
   have hpm : parseMemName n = some (gpNumU B, Int.ofNat off) := by
     rw [parseMemName_cellParts, hn]; rfl
-  simp (config := { decide := true }) [encodeLopn, encTwoAddr, fS.off, fS.notSlot, fS.notMem,
-    hs, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memDstOp, adxPrefix]
+  simp (config := { decide := true }) [encodeLopn, encTwoAddr, fS.off, fS.notMem,
+    fS.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memDstOp, adxPrefix]
 
 /-- **The bytes of a cell arm.** -/
 theorem MArm.bytes (P : Params) (m : MArm) (h : m.ok = true) :

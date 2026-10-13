@@ -84,7 +84,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder (gpNum encodeJInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-  (gpNumU encTwoAddr spillQsaveOff parseMemName isSpillOrQsave memDstOp memSrcOp)
+  (gpNumU encTwoAddr spillQsaveOff parseMemName isSpillOrQsave isGpName memDstOp memSrcOp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (gpReg64)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
@@ -130,6 +130,11 @@ theorem gpNum_gpReg64_R15 : gpNum (gpReg64 "R15") = gpNumU "R15" := rfl
     agree** — there is no naming/ordering mismatch; `%rax`-vs-`RAX` is cosmetic. -/
 theorem gpNum_gpReg64_eq_gpNumU (r : String) (h : r ∈ stdRegNames) :
     gpNum (gpReg64 r) = gpNumU r := by
+  fin_cases h <;> rfl
+
+/-- Every standard physical name is a general-purpose name of the Lprog encoder. -/
+theorem isGpName_of_mem_stdRegNames {r : String} (h : r ∈ stdRegNames) :
+    isGpName r = true := by
   fin_cases h <;> rfl
 
 /-! ## §2. The standard allocation and the resolver discharge
@@ -190,7 +195,8 @@ theorem add_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : 
     encodeJInstr (stdGpAlloc names) (.add dn (.reg sn))
       = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
   add_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`SUB` bytes agree (resolver-unconditional).** -/
@@ -204,7 +210,8 @@ theorem sub_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : 
     encodeJInstr (stdGpAlloc names) (.sub dn (.reg sn))
       = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) qsaveB :=
   sub_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`AND` bytes agree (resolver-unconditional).** -/
@@ -218,7 +225,8 @@ theorem and_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : 
     encodeJInstr (stdGpAlloc names) (.and_ dn (.reg sn))
       = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) qsaveB :=
   and_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`OR` bytes agree (resolver-unconditional).** -/
@@ -232,7 +240,8 @@ theorem or_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : S
     encodeJInstr (stdGpAlloc names) (.or_ dn (.reg sn))
       = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) qsaveB :=
   or_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`XOR` bytes agree (resolver-unconditional).** -/
@@ -246,7 +255,8 @@ theorem xor_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : 
     encodeJInstr (stdGpAlloc names) (.xor_ dn (.reg sn))
       = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) qsaveB :=
   xor_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`MOV` (reg-reg) bytes agree (resolver-unconditional).** -/
@@ -260,7 +270,8 @@ theorem mov_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : 
     encodeJInstr (stdGpAlloc names) (.mov dn (.reg sn))
       = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) qsaveB :=
   mov_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
-    hdk hsk hdm hsm hdsp hssp
+    hdk hsk hdm hsm hdsp hssp (isGpName_of_mem_stdRegNames hdt)
+    (isGpName_of_mem_stdRegNames hst)
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-! ### §3b. The const-offset memory arms (resolver-unconditional)
@@ -281,11 +292,12 @@ theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hdg : isGpName dn = true)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memSrcOp op = 0x8b) :
     encodeJInstr (stdGpAlloc names) (.loadMem d base off)
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
   load_bytes_agree (stdGpAlloc names) frame spillW op d base off dn sn bb qsaveB
-    hdk hsk hdm hsm hdsp hssp (hd ▸ resolver_agree names d hdn hdt) hb hop
+    hdk hsk hdm hsm hdsp hssp hdg (hd ▸ resolver_agree names d hdn hdt) hb hop
 
 /-- **`STORE` bytes agree (resolver-unconditional).** The JInstr `storeMem base off (reg r)`
     encoding equals the Lprog `mem.*`←reg `encTwoAddr` byte function, with the
@@ -298,10 +310,11 @@ theorem store_bytes_agree_std (names : List String) (frame spillW op : Nat)
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hsg : isGpName sn = true)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) (hop : memDstOp op = 0x89) :
     encodeJInstr (stdGpAlloc names) (.storeMem base off (.reg r))
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
   store_bytes_agree (stdGpAlloc names) frame spillW op base off r dn sn bb qsaveB
-    hdk hsk hdm hsm hdsp hssp (hr ▸ resolver_agree names r hrn hrt) hb hop
+    hdk hsk hdm hsm hdsp hssp hsg (hr ▸ resolver_agree names r hrn hrt) hb hop
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
