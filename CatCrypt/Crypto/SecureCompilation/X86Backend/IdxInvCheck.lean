@@ -833,7 +833,7 @@ theorem immHi_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O :
       · omega
   | .reg _ | .immW _ _ | .immAt _ _ | .un _ _ | .shImm _ _ _ | .aget _ _ _ _ | .cin _
   | .aluF _ _ _ _ _ | .carryW _ _ _ _ | .carryF _ _ _ _ _ | .mulx _ _ _ | .cout _ _ _ _
-  | .sel _ _ _ | .ref _ => by
+  | .sel _ _ _ | .setcc _ _ _ | .ref _ => by
       simp only [immHi]
       exact maskOf_le V A C O _
 

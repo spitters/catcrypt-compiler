@@ -89,6 +89,7 @@ def termArrFree : STerm → Bool
   | .carryW _ x y c => termArrFree x && termArrFree y && termArrFree c
   | .carryF _ _ x y c => termArrFree x && termArrFree y && termArrFree c
   | .mulx _ x y => termArrFree x && termArrFree y
+  | .setcc _ x y => termArrFree x && termArrFree y
   | .cout _ x y c => termArrFree x && termArrFree y && termArrFree c
   | .sel x y c => termArrFree x && termArrFree y && termArrFree c
   | .ref _ => true
@@ -122,6 +123,9 @@ theorem termArrFree_ev (V : String → Σ w, BitVec w) (A A' : String → ArrCel
       rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1.1,
         termArrFree_ev V A A' C O y h.1.2, termArrFree_ev V A A' C O c h.2]
   | .mulx _ x y, h => by
+      simp only [termArrFree, Bool.and_eq_true] at h
+      rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1, termArrFree_ev V A A' C O y h.2]
+  | .setcc _ x y, h => by
       simp only [termArrFree, Bool.and_eq_true] at h
       rw [STerm.ev, STerm.ev, termArrFree_ev V A A' C O x h.1, termArrFree_ev V A A' C O y h.2]
   | .cout _ x y c, h => by
