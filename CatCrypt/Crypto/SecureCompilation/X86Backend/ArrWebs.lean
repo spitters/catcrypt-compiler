@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CoalesceComplete
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaRelocX86
 
 @[expose] public section
 
@@ -55,6 +56,12 @@ read after the body.
   by a halting run of the renamed body from a related state, into a related state.
 * `lsemFuelMemF_webs_entry`: the same run from position `0`, with the arrays of the names
   live at entry and of the names read after the body at their own names.
+* `procStep_shiftPc`, `withProcs_stepRelocates_of`, `withProcs_stepRelocates`: the step of a
+  procedure summary commutes with the shift of the counter, so `StepRelocates` holds at
+  `I.withProcs T` when it holds at `I`, and at `x86Isa.withProcs T` for every table.
+* `lsemFuelMemF_webs_inContext`: the run from position `0` placed between `pre` and `post`,
+  as a segment of `pre ++ code ++ post` and a segment of `pre ++ webRen w ao code ++ post`
+  between the positions `pre.length` and `pre.length + code.length`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs
@@ -280,7 +287,8 @@ theorem step_webs {I : Isa} {aa : String → Nat → Option Nat}
     run of `I` on the renamed body `webRen w ao body` from every state `s'` that has the
     registers, word memory, flags and function name of `s` and whose arrays agree with those
     of `s` through `w k` on `L k`. The final states have equal registers, word memory and
-    flags, and their arrays agree through `w body.length` on `obs`. -/
+    flags, their arrays agree through `w body.length` on `obs`, and the run on `body` ends at
+    position `body.length`. -/
 theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
     {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {obs : List String}
@@ -290,7 +298,8 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
       s'.prog.lfn = s.prog.lfn → s'.zf = s.zf →
       I.lsemFuelMemF (singletonProgM fn body) fuel s = some t →
       ∃ t', I.lsemFuelMemF (singletonProgM fn (webRen w ao body)) fuel s' = some t'
-        ∧ CoRel (w body.length) obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
+        ∧ CoRel (w body.length) obs t.prog.base t'.prog.base ∧ t'.zf = t.zf
+        ∧ t.prog.base.lpc = body.length := by
   have hfetch : ∀ {s s' : LstateMF}, s.prog.lfn = fn →
       CoRel (w s.prog.base.lpc) (L s.prog.base.lpc) s.prog.base s'.prog.base →
       s'.prog.lfn = s.prog.lfn →
@@ -323,7 +332,8 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
       | none =>
           simp only [hb, Option.map_none, Option.some.injEq] at h ⊢
           subst h
-          exact ⟨_, rfl, hhalt hpc hR hb, hz⟩
+          exact ⟨_, rfl, hhalt hpc hR hb, hz,
+            by have := List.getElem?_eq_none_iff.mp hb; omega⟩
       | some i => simp [hb] at h
   | succ n ih =>
       intro s s' t hf hpc hR hfn hz h
@@ -335,7 +345,8 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
       | none =>
           simp only [hb, Option.map_none, Option.some.injEq] at h ⊢
           subst h
-          exact ⟨_, rfl, hhalt hpc hR hb, hz⟩
+          exact ⟨_, rfl, hhalt hpc hR hb, hz,
+            by have := List.getElem?_eq_none_iff.mp hb; omega⟩
       | some i =>
           simp only [hb, Option.map_some] at h ⊢
           cases he : I.step (singletonProgM fn body) i s with
@@ -352,7 +363,8 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
     matched with the same fuel by a halting run of `I` on `webRen w ao body` from every state
     `s'` that has the registers, word memory, flags and function name of `s` and the arrays
     of `s` at the names of `L 0`. The final states have equal registers, word memory and
-    flags, and equal arrays at the names of `obs`. -/
+    flags, and equal arrays at the names of `obs`, and the run on `body` ends at position
+    `body.length`. -/
 theorem lsemFuelMemF_webs_entry {I : Isa} {aa : String → Nat → Option Nat}
     {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {obs : List String}
@@ -361,15 +373,107 @@ theorem lsemFuelMemF_webs_entry {I : Isa} {aa : String → Nat → Option Nat}
     (hR : CoRel id (L 0) s.prog.base s'.prog.base) (hfn : s'.prog.lfn = s.prog.lfn)
     (hz : s'.zf = s.zf) (h : I.lsemFuelMemF (singletonProgM fn body) fuel s = some t) :
     ∃ t', I.lsemFuelMemF (singletonProgM fn (webRen w ao body)) fuel s' = some t'
-      ∧ CoRel id obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
+      ∧ CoRel id obs t.prog.base t'.prog.base ∧ t'.zf = t.zf
+      ∧ t.prog.base.lpc = body.length := by
   have hR0 : CoRel (w s.prog.base.lpc) (L s.prog.base.lpc) s.prog.base s'.prog.base := by
     rw [hpc]
     exact coRel_congr hR (fun r hr => (webB_entry hc r hr).symm)
-  obtain ⟨t', ht', hRt, hzt⟩ :=
+  obtain ⟨t', ht', hRt, hzt, hlt⟩ :=
     lsemFuelMemF_webs hle hcl hc fuel hf (by omega) hR0 hfn hz h
-  exact ⟨t', ht', coRel_congr hRt (webB_exit hc), hzt⟩
+  exact ⟨t', ht', coRel_congr hRt (webB_exit hc), hzt, hlt⟩
 
-/-! ## 5. The webs -/
+/-! ## 5. The renamed body in a larger program -/
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCall (StepRelocates shiftPc LabelsFresh
+  steps_relocate steps_of_lsemFuelMemF x86_stepRelocates)
+open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCfg (Steps)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (ProcSummary ProcTable procCall? procStep
+  argsRead_congr)
+
+/-- **The step of a procedure summary from a shifted state** is the step from the state,
+    followed by the shift: the arguments read the registers and the array carrier, and the
+    result advances the counter by one. -/
+theorem procStep_shiftPc (pr : ProcSummary) (dst : String) (srcs : List LOperand) (k : Nat)
+    (s : LstateMF) :
+    procStep pr dst srcs (shiftPc k s) = (procStep pr dst srcs s).map (shiftPc k) := by
+  have ha : LprogIsa.argsRead pr.arrArgs (shiftPc k s).prog.base 0 srcs
+      = LprogIsa.argsRead pr.arrArgs s.prog.base 0 srcs :=
+    argsRead_congr (b := s.prog.base) (b' := (shiftPc k s).prog.base) _ rfl 0 srcs (fun o _ => by cases o <;> rfl)
+  unfold procStep
+  rw [ha]
+  split
+  · cases LprogIsa.argsRead pr.arrArgs s.prog.base 0 srcs with
+    | none => rfl
+    | some vs =>
+        cases hr : pr.result vs with
+        | none => simp only [Option.bind_some, hr, Option.map_none]
+        | some x =>
+            simp only [Option.bind_some, hr, Option.map_some, Option.some.injEq]
+            cases x <;> rfl
+  · rfl
+
+/-- **Procedure summaries keep the relocation hypothesis.** When `StepRelocates I fn pre B
+    post` holds, it holds for `I.withProcs T`: the branch condition is that of `I`, and the
+    step of a shadow instruction of a call of a symbol of `T` is the step of its summary,
+    which commutes with the shift (`procStep_shiftPc`). -/
+theorem withProcs_stepRelocates_of {I : Isa} (T : ProcTable) {fn : String}
+    {pre B post : List LinstrRM} (h : StepRelocates I fn pre B post) :
+    StepRelocates (I.withProcs T) fn pre B post := by
+  refine ⟨fun s c => h.1 s c, fun i hi hc s u hs => ?_⟩
+  cases hq : procCall? T i.fst with
+  | none =>
+      rw [Isa.withProcs_step_of_none I T _ i _ hq] at hs ⊢
+      exact h.2 i hi hc s u hs
+  | some q =>
+      simp only [Isa.withProcs, hq] at hs ⊢
+      rw [procStep_shiftPc, hs]
+      rfl
+
+/-- **The steps of the x86 instruction set with procedure summaries relocate.**
+    `StepRelocates (x86Isa.withProcs T) fn pre B post` holds for every table `T`, function
+    name `fn` and lists `pre`, `B` and `post`. -/
+theorem withProcs_stepRelocates (T : ProcTable) (fn : String) (pre B post : List LinstrRM) :
+    StepRelocates (x86Isa.withProcs T) fn pre B post :=
+  withProcs_stepRelocates_of T (x86_stepRelocates fn pre B post)
+
+/-- **The renamed body in a larger program.** For a body `code` accepted by
+    `webB w code L obs aa ao`, at an instruction set `I` as in `lsemFuelMemF_webs` whose steps
+    relocate between `pre` and `post` for `code` and for `webRen w ao code`, and with no label
+    of `code` declared in `pre`: a halting run of `I` on `code` from a state `s` of `fn` at
+    position `0` to `t` is a segment of `pre ++ code ++ post` from `shiftPc pre.length s` to
+    `shiftPc pre.length t`, at position `pre.length + code.length`. For every state `s'` with
+    the registers, word memory, flags and function name of `s` and the arrays of `s` at the
+    names of `L 0`, there is a segment of `pre ++ webRen w ao code ++ post` from
+    `shiftPc pre.length s'` to `shiftPc pre.length t'`, at the same position, with `t'`
+    related to `t` at the names of `obs` and with the zero flag of `t`. -/
+theorem lsemFuelMemF_webs_inContext {I : Isa} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    {fn : String} {pre code post : List LinstrRM} {L : Nat → List String}
+    {obs : List String} {w : Nat → String → String} (hc : webB w code L obs aa ao = true)
+    (hreloc : StepRelocates I fn pre code post)
+    (hrelocW : StepRelocates I fn pre (webRen w ao code) post)
+    (hfresh : LabelsFresh pre code) (fuel : Nat) {s s' t : LstateMF} (hf : s.prog.lfn = fn)
+    (hpc : s.prog.base.lpc = 0) (hR : CoRel id (L 0) s.prog.base s'.prog.base)
+    (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
+    (h : I.lsemFuelMemF (singletonProgM fn code) fuel s = some t) :
+    (∃ n, Steps I (singletonProgM fn (pre ++ code ++ post)) n (shiftPc pre.length s)
+        (shiftPc pre.length t))
+      ∧ (shiftPc pre.length t).prog.base.lpc = pre.length + code.length
+      ∧ ∃ t', (∃ n, Steps I (singletonProgM fn (pre ++ webRen w ao code ++ post)) n
+          (shiftPc pre.length s') (shiftPc pre.length t'))
+        ∧ (shiftPc pre.length t').prog.base.lpc = pre.length + code.length
+        ∧ CoRel id obs t.prog.base t'.prog.base ∧ t'.zf = t.zf := by
+  obtain ⟨t', ht', hRt, hzt, hlt⟩ := lsemFuelMemF_webs_entry hle hcl hc fuel hf hpc hR hfn hz h
+  have hfreshW : LabelsFresh pre (webRen w ao code) := fun l q hl =>
+    hfresh l q (by rwa [findLabelMem_webRen] at hl)
+  obtain ⟨n, -, hn, -⟩ := steps_of_lsemFuelMemF I _ fuel s t h
+  obtain ⟨n', -, hn', -⟩ := steps_of_lsemFuelMemF I _ fuel s' t' ht'
+  refine ⟨⟨n, steps_relocate I fn post hreloc hfresh hn⟩, ?_, t',
+    ⟨n', steps_relocate I fn post hrelocW hfreshW hn'⟩, ?_, hRt, hzt⟩
+  · simp only [Ascent.IsaCall.shiftPc_lpc, hlt]
+  · rw [Ascent.IsaCall.shiftPc_lpc, coRel_lpc hRt, hlt]
+
+/-! ## 6. The webs -/
 
 /-- The state of the union-find over the occurrences of array names: the slot of each
     occurrence `(k, r)`, the parent and the rank of each slot. -/
