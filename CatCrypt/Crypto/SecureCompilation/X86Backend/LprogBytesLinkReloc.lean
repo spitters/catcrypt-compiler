@@ -29,19 +29,23 @@ is the run of items `PhysAbiShape.dItems` of its shape. `fundefItemsRelocL` adds
 
 Byte offsets become instruction indices in `LprogBytesDecode.resolveAll`: a call ending
 at byte offset `e` with displacement `d` receives the index of the first instruction of
-the whole stream that starts at byte `e + d`. `branchOKReloc all k L` requires of a call
-without target label that `e + d = L`, and of every other branch what
-`LprogBytesDecode.branchOK` requires. `expectedReloc all k L` is the program of an item
-list in which a call without target label is `call k`. With `L` the byte length of the
-items and `k` their instruction count, the first instruction of `cb` starts at byte `L`
-and has index `k` in the decoded stream.
+the whole stream that starts at byte `e + d`. A target map `tgt : Item → Option (Nat × Nat)`
+sends a call without target label to the index `j` and byte offset `t` of the entry of its
+callee block. `branchOKRelocMap all tgt` requires of such a call that `e + d = t`, and of
+every other branch what `LprogBytesDecode.branchOK` requires. `expectedRelocMap all tgt` is
+the program of an item list in which such a call is `call j`. `branchOKReloc all k L` and
+`expectedReloc all k L` are their instances at the constant map `fun _ => some (k, L)`.
+With `L` the byte length of the items and `k` their instruction count, the first
+instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
 
 ## Main results
 
-* `decodeLprog_items_linked`: the bytes of an item list followed by a nonempty block
-  that decodes to `q` decode to `prog ++ shiftProg prog.length q`, where `prog` is
-  `expectedReloc` of the items and each call without target label is
-  `call prog.length`.
+* `decodeLprog_items_linkedMap`: the bytes of an item list followed by a stream `cb` of
+  callee blocks that decodes to `q` decode to `prog ++ shiftProg prog.length q`, where
+  `prog` is `expectedRelocMap` of the items under a target map that sends each call
+  without target label to the entry of its block in `cb`.
+* `decodeLprog_items_linked`: its instance at one block, entered at the first instruction
+  of `cb`; each call without target label is `call prog.length`.
 * `decodeLprog_fundefRelocL_append`: the same for `encodeLfundefBytesReloc symBase body`,
   whose instructions are remote calls or have list-valued shapes;
   `decodeLprog_fundefReloc_append` is its form at single shapes.
@@ -344,41 +348,61 @@ theorem relocDisp_lands (symBase : String → Option Int) (f : String) (L pre of
     simp only [dispOk32, decide_eq_true_eq]; omega)]
   omega
 
-/-! ## 3. Resolution of an item list in front of a callee block -/
+/-! ## 3. Resolution of an item list in front of callee blocks
+
+A call without target label is resolved by a target map `tgt : Item → Option (Nat × Nat)`,
+which sends the call item to the instruction index and the byte offset of the first
+instruction of its callee block. The one-callee forms `callTgt`, `expectedReloc` and
+`branchOKReloc` are the instances at the constant map `fun _ => some (k, L)`. -/
+
+/-- The target of a call item under the target map `tgt`: `tgt it` for a call without
+    target label, the position of the label's definition in `all` otherwise. -/
+def callTgtMap (all : List Item) (tgt : Item → Option (Nat × Nat)) (it : Item) :
+    Option (Nat × Nat) :=
+  match it.target with
+  | none => tgt it
+  | some l => labelPos l 0 0 all
 
 /-- The target of a call item: the pair `(k, L)` for a call without target label, the
     position of the label's definition in `all` otherwise. -/
-def callTgt (all : List Item) (k L : Nat) (it : Item) : Option (Nat × Nat) :=
-  match it.target with
-  | none => some (k, L)
-  | some l => labelPos l 0 0 all
+abbrev callTgt (all : List Item) (k L : Nat) (it : Item) : Option (Nat × Nat) :=
+  callTgtMap all (fun _ => some (k, L)) it
+
+/-- The program an item list denotes in front of callee blocks under the target map
+    `tgt`: a call without target label is `call j` for the index `j` that `tgt` gives it;
+    every other branch carries the index of the instruction following its target label's
+    definition. -/
+def expectedRelocMap (all : List Item) (tgt : Item → Option (Nat × Nat)) :
+    List Item → Option (List RInstr)
+  | [] => some []
+  | it :: rest =>
+      match it.dec with
+      | none => expectedRelocMap all tgt rest
+      | some (.op i) => (expectedRelocMap all tgt rest).map (.op i :: ·)
+      | some .ret => (expectedRelocMap all tgt rest).map (.ret :: ·)
+      | some (.push r) => (expectedRelocMap all tgt rest).map (.push r :: ·)
+      | some (.pop r) => (expectedRelocMap all tgt rest).map (.pop r :: ·)
+      | some (.jcc cc _) =>
+          match it.target.bind (fun l => labelPos l 0 0 all) with
+          | some (j, _) => (expectedRelocMap all tgt rest).map (.jcc cc j :: ·)
+          | none => none
+      | some (.call _) =>
+          match callTgtMap all tgt it with
+          | some (j, _) => (expectedRelocMap all tgt rest).map (.call j :: ·)
+          | none => none
 
 /-- The program an item list denotes in front of a block whose first instruction has
     index `k`: a call without target label is `call k`; every other branch carries the
     index of the instruction following its target label's definition. -/
-def expectedReloc (all : List Item) (k L : Nat) : List Item → Option (List RInstr)
-  | [] => some []
-  | it :: rest =>
-      match it.dec with
-      | none => expectedReloc all k L rest
-      | some (.op i) => (expectedReloc all k L rest).map (.op i :: ·)
-      | some .ret => (expectedReloc all k L rest).map (.ret :: ·)
-      | some (.push r) => (expectedReloc all k L rest).map (.push r :: ·)
-      | some (.pop r) => (expectedReloc all k L rest).map (.pop r :: ·)
-      | some (.jcc cc _) =>
-          match it.target.bind (fun l => labelPos l 0 0 all) with
-          | some (j, _) => (expectedReloc all k L rest).map (.jcc cc j :: ·)
-          | none => none
-      | some (.call _) =>
-          match callTgt all k L it with
-          | some (j, _) => (expectedReloc all k L rest).map (.call j :: ·)
-          | none => none
+abbrev expectedReloc (all : List Item) (k L : Nat) : List Item → Option (List RInstr) :=
+  expectedRelocMap all (fun _ => some (k, L))
 
 /-- Well-formedness of the branches of `items`, laid out from offset `off` inside `all`,
-    in front of a block at byte offset `L`: a call without target label ends, with its
-    displacement added, on `L`; every other branch satisfies the condition of
-    `LprogBytesDecode.branchOK`. -/
-def branchOKReloc (all : List Item) (k L : Nat) : Nat → List Item → Bool
+    under the target map `tgt`: a call without target label ends, with its displacement
+    added, on the byte offset that `tgt` gives it; every other branch satisfies the
+    condition of `LprogBytesDecode.branchOK`. -/
+def branchOKRelocMap (all : List Item) (tgt : Item → Option (Nat × Nat)) :
+    Nat → List Item → Bool
   | _, [] => true
   | off, it :: rest =>
       (match it.dec with
@@ -389,13 +413,20 @@ def branchOKReloc (all : List Item) (k L : Nat) : Nat → List Item → Bool
                   && decide (j < decCount all)
             | none => false
         | some (.call d) =>
-            match callTgt all k L it with
+            match callTgtMap all tgt it with
             | some (j, t) =>
                 decide ((t : Int) = ((off + it.bytes.length : Nat) : Int) + d)
                   && (it.target.isNone || decide (j < decCount all))
             | none => false
         | _ => true)
-      && branchOKReloc all k L (off + it.bytes.length) rest
+      && branchOKRelocMap all tgt (off + it.bytes.length) rest
+
+/-- Well-formedness of the branches of `items`, laid out from offset `off` inside `all`,
+    in front of a block at byte offset `L`: a call without target label ends, with its
+    displacement added, on `L`; every other branch satisfies the condition of
+    `LprogBytesDecode.branchOK`. -/
+abbrev branchOKReloc (all : List Item) (k L : Nat) : Nat → List Item → Bool :=
+  branchOKRelocMap all (fun _ => some (k, L))
 
 /-- The definition of a label of `all` is found, in the layout of `all` followed by any
     layout, at the index of the instruction that follows it. -/
@@ -411,30 +442,32 @@ theorem findIdx?_label_append (all : List Item) (hok : ∀ it ∈ all, ItemOK it
   rw [hy1, hq] at hfind
   simp [List.findIdx?_append, hfind]
 
-/-- Resolving the layout of `items` inside the layout of `all` followed by a layout `ys`
-    in which byte offset `L` has index `k` yields the program `items` denotes. -/
-theorem resolveAll_layout_reloc (all : List Item) (hok : ∀ it ∈ all, ItemOK it)
-    (ys : List (Nat × Nat × DInstr)) (k L : Nat)
-    (hcross : ∀ q : Int, q = (L : Int) →
-      (layoutAt 0 all ++ ys).findIdx? (fun z => decide ((z.1 : Int) = q)) = some k) :
-    ∀ items off, branchOKReloc all k L off items = true →
-      resolveAll (layoutAt 0 all ++ ys) (layoutAt off items) = expectedReloc all k L items := by
+/-- Resolving the layout of `items` inside the layout of `all` followed by a layout `ys`,
+    in which the byte offset `t` that `tgt` gives a call without target label has the index
+    `j` it gives, yields the program `items` denotes under `tgt`. -/
+theorem resolveAll_layout_relocMap (all : List Item) (hok : ∀ it ∈ all, ItemOK it)
+    (ys : List (Nat × Nat × DInstr)) (tgt : Item → Option (Nat × Nat))
+    (hcross : ∀ it j t, it.target = none → tgt it = some (j, t) → ∀ q : Int, q = (t : Int) →
+      (layoutAt 0 all ++ ys).findIdx? (fun z => decide ((z.1 : Int) = q)) = some j) :
+    ∀ items off, branchOKRelocMap all tgt off items = true →
+      resolveAll (layoutAt 0 all ++ ys) (layoutAt off items)
+        = expectedRelocMap all tgt items := by
   intro items
   induction items with
   | nil => intro off _; rfl
   | cons it rest ih =>
     intro off hbr
-    simp only [branchOKReloc, Bool.and_eq_true] at hbr
+    simp only [branchOKRelocMap, Bool.and_eq_true] at hbr
     obtain ⟨hhead, htail⟩ := hbr
     have ih' := ih _ htail
     cases hdec : it.dec with
-    | none => simpa [layoutAt, expectedReloc, hdec] using ih'
+    | none => simpa [layoutAt, expectedRelocMap, hdec] using ih'
     | some x =>
       cases x with
-      | op i => simp [layoutAt, expectedReloc, hdec, resolveAll, ih']
-      | ret => simp [layoutAt, expectedReloc, hdec, resolveAll, ih']
-      | push r => simp [layoutAt, expectedReloc, hdec, resolveAll, ih']
-      | pop r => simp [layoutAt, expectedReloc, hdec, resolveAll, ih']
+      | op i => simp [layoutAt, expectedRelocMap, hdec, resolveAll, ih']
+      | ret => simp [layoutAt, expectedRelocMap, hdec, resolveAll, ih']
+      | push r => simp [layoutAt, expectedRelocMap, hdec, resolveAll, ih']
+      | pop r => simp [layoutAt, expectedRelocMap, hdec, resolveAll, ih']
       | jcc cc d =>
         rw [hdec] at hhead
         simp only at hhead
@@ -451,11 +484,11 @@ theorem resolveAll_layout_reloc (all : List Item) (hok : ∀ it ∈ all, ItemOK 
             | none => rw [htg] at htgt; simp at htgt
             | some l => exact ⟨l, rfl, by simpa [htg] using htgt⟩
           have hfind := findIdx?_label_append all hok ys l j t hl hj _ ht
-          simp only [layoutAt, expectedReloc, hdec, resolveAll, htgt, hfind, ih']
+          simp only [layoutAt, expectedRelocMap, hdec, resolveAll, htgt, hfind, ih']
       | call d =>
         rw [hdec] at hhead
         simp only at hhead
-        cases htgt : callTgt all k L it with
+        cases htgt : callTgtMap all tgt it with
         | none => rw [htgt] at hhead; simp at hhead
         | some p =>
           obtain ⟨j, t⟩ := p
@@ -467,14 +500,26 @@ theorem resolveAll_layout_reloc (all : List Item) (hok : ∀ it ∈ all, ItemOK 
                 = ((off + it.bytes.length : Nat) : Int) + d)) = some j := by
             cases htg : it.target with
             | none =>
-              simp only [callTgt, htg, Option.some.injEq, Prod.mk.injEq] at htgt
-              obtain ⟨rfl, rfl⟩ := htgt
-              exact hcross _ ht.symm
+              simp only [callTgtMap, htg] at htgt
+              exact hcross it j t htg htgt _ ht.symm
             | some l =>
-              simp only [callTgt, htg] at htgt
+              simp only [callTgtMap, htg] at htgt
               simp only [htg, Option.isNone_some, Bool.false_eq_true, false_or] at hj
               exact findIdx?_label_append all hok ys l j t htgt hj _ ht
-          simp only [layoutAt, expectedReloc, hdec, resolveAll, htgt, hfind, ih']
+          simp only [layoutAt, expectedRelocMap, hdec, resolveAll, htgt, hfind, ih']
+
+/-- Resolving the layout of `items` inside the layout of `all` followed by a layout `ys`
+    in which byte offset `L` has index `k` yields the program `items` denotes. -/
+theorem resolveAll_layout_reloc (all : List Item) (hok : ∀ it ∈ all, ItemOK it)
+    (ys : List (Nat × Nat × DInstr)) (k L : Nat)
+    (hcross : ∀ q : Int, q = (L : Int) →
+      (layoutAt 0 all ++ ys).findIdx? (fun z => decide ((z.1 : Int) = q)) = some k) :
+    ∀ items off, branchOKReloc all k L off items = true →
+      resolveAll (layoutAt 0 all ++ ys) (layoutAt off items) = expectedReloc all k L items :=
+  resolveAll_layout_relocMap all hok ys _ fun _ j t _ h q hq => by
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact hcross q hq
 
 /-- The layout of a nonempty stream starts with an instruction at the stream's start
     offset. -/
@@ -498,12 +543,52 @@ theorem decodeAt_head_start (n off : Nat) (bs : List (BitVec 8))
       obtain ⟨tl, _, rfl⟩ := h
       exact ⟨_, _, _, rfl⟩
 
+/-- **Decoding of an item list followed by its callee blocks.** Let `items` satisfy
+    `ItemOK`, and let the stream `cb` of the callee blocks decode to the layout `xs₂` and
+    the program `q`. Let the target map `tgt` send each call without target label to a
+    pair `(decCount items + k, (itemBytes items).length + o)`, where `o` is the byte offset
+    in `cb` of the first instruction of its callee block and `k` the index of that
+    instruction in `xs₂`. When the items satisfy `branchOKRelocMap` under `tgt` and denote
+    `prog`, the concatenated stream decodes to `prog` followed by `q` with its targets
+    raised by `prog.length`; each call without target label is `call (prog.length + k)`
+    in `prog`, the index of the entry of its block in the result. -/
+theorem decodeLprog_items_linkedMap (items : List Item) (hok : ∀ it ∈ items, ItemOK it)
+    (cb : List (BitVec 8)) (xs₂ : List (Nat × Nat × DInstr)) (q prog : List RInstr)
+    (tgt : Item → Option (Nat × Nat))
+    (hd : decodeAt cb.length 0 cb = some xs₂) (hr : resolveAll xs₂ xs₂ = some q)
+    (hentry : ∀ it j t, it.target = none → tgt it = some (j, t) →
+      ∃ o k, t = (itemBytes items).length + o ∧ j = decCount items + k
+        ∧ xs₂.findIdx? (fun z => decide (z.1 = o)) = some k)
+    (hbr : branchOKRelocMap items tgt 0 items = true)
+    (hP : expectedRelocMap items tgt items = some prog) :
+    prog.length = decCount items ∧
+      decodeLprog (itemBytes items ++ cb) = some (prog ++ shiftProg prog.length q) := by
+  have hlt : ∀ z ∈ layoutAt 0 items, z.1 < (itemBytes items).length := fun z hz => by
+    simpa using layoutAt_start_lt items hok 0 z hz
+  have h₁ : resolveAll
+      (layoutAt 0 items ++ offsetLayout (itemBytes items).length xs₂)
+      (layoutAt 0 items) = some prog := by
+    rw [resolveAll_layout_relocMap items hok _ tgt
+      (fun it j t htg hit q hq => ?_) items 0 hbr]
+    · exact hP
+    · obtain ⟨o, k, rfl, rfl, hk⟩ := hentry it j t htg hit
+      have := findIdx?_offset_append (layoutAt 0 items) xs₂
+        (itemBytes items).length o k q hlt (by simpa using hq) hk
+      simpa [layoutAt_length] using this
+  have hlen : prog.length = decCount items := by
+    rw [← layoutAt_length items 0]
+    exact ((resolveAll_eq_some_iff _ _ _).mp h₁).length_eq.symm
+  refine ⟨hlen, ?_⟩
+  rw [hlen]
+  exact decodeLprog_append_resolved items hok cb _ prog q hd hr h₁
+
 /-- **Decoding of an item list followed by its callee block.** Let `items` satisfy
     `ItemOK` and `branchOKReloc` at their own instruction count and byte length, and let
     the nonempty stream `cb` decode to `q`. The concatenated stream decodes to the
     program `prog` of the items followed by `q` with its targets raised by `prog.length`;
     a call without target label is `call prog.length` in `prog`, the index of the first
-    instruction of `q` in the result. -/
+    instruction of `q` in the result. This is `decodeLprog_items_linkedMap` at the
+    constant target map, whose one block starts at offset `0` of `cb`. -/
 theorem decodeLprog_items_linked (items : List Item) (hok : ∀ it ∈ items, ItemOK it)
     (cb : List (BitVec 8)) (q prog : List RInstr)
     (hcb : decodeLprog cb = some q) (hne : cb ≠ [])
@@ -513,24 +598,12 @@ theorem decodeLprog_items_linked (items : List Item) (hok : ∀ it ∈ items, It
       decodeLprog (itemBytes items ++ cb) = some (prog ++ shiftProg prog.length q) := by
   unfold decodeLprog at hcb
   obtain ⟨xs₂, hd, hr⟩ := Option.bind_eq_some_iff.mp hcb
-  obtain ⟨e, x, tl, rfl⟩ := decodeAt_head_start _ _ _ _ hne hd
-  have hlt : ∀ z ∈ layoutAt 0 items, z.1 < (itemBytes items).length := fun z hz => by
-    simpa using layoutAt_start_lt items hok 0 z hz
-  have h₁ : resolveAll
-      (layoutAt 0 items ++ offsetLayout (itemBytes items).length ((0, e, x) :: tl))
-      (layoutAt 0 items) = some prog := by
-    rw [resolveAll_layout_reloc items hok _ (decCount items) (itemBytes items).length
-      (fun q hq => ?_) items 0 hbr]
-    · exact hP
-    · have := findIdx?_offset_append (layoutAt 0 items) ((0, e, x) :: tl)
-        (itemBytes items).length 0 0 q hlt (by simpa using hq) (by simp [List.findIdx?_cons])
-      simpa [layoutAt_length] using this
-  have hlen : prog.length = decCount items := by
-    rw [← layoutAt_length items 0]
-    exact ((resolveAll_eq_some_iff _ _ _).mp h₁).length_eq.symm
-  refine ⟨hlen, ?_⟩
-  rw [hlen]
-  exact decodeLprog_append_resolved items hok cb _ prog q hd hr h₁
+  obtain ⟨e, x, tl, hxs⟩ := decodeAt_head_start _ _ _ _ hne hd
+  refine decodeLprog_items_linkedMap items hok cb xs₂ q prog _ hd hr
+    (fun _ j t _ h => ⟨0, 0, ?_⟩) hbr hP
+  simp only [Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  simp [hxs, List.findIdx?_cons]
 
 /-! ## 4. The relocating function encoder in front of its callee -/
 
@@ -628,32 +701,38 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (bodyNamesI ste
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (labelAt isLabelB condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 
+/-- The program of two item lists, one after the other, under a target map. -/
+theorem expectedRelocMap_append (all : List Item) (tgt : Item → Option (Nat × Nat)) :
+    ∀ (xs ys : List Item), expectedRelocMap all tgt (xs ++ ys)
+      = (expectedRelocMap all tgt xs).bind
+          fun a => (expectedRelocMap all tgt ys).map (a ++ ·) := by
+  intro xs
+  induction xs with
+  | nil => intro ys; cases h : expectedRelocMap all tgt ys <;> simp [expectedRelocMap, h]
+  | cons it xs ih =>
+    intro ys
+    rw [List.cons_append, expectedRelocMap, expectedRelocMap]
+    split
+    · exact ih ys
+    · rw [ih ys]; cases expectedRelocMap all tgt xs <;> cases expectedRelocMap all tgt ys <;> simp
+    · rw [ih ys]; cases expectedRelocMap all tgt xs <;> cases expectedRelocMap all tgt ys <;> simp
+    · rw [ih ys]; cases expectedRelocMap all tgt xs <;> cases expectedRelocMap all tgt ys <;> simp
+    · rw [ih ys]; cases expectedRelocMap all tgt xs <;> cases expectedRelocMap all tgt ys <;> simp
+    all_goals
+      split
+      · rw [ih ys]; cases expectedRelocMap all tgt xs <;> cases expectedRelocMap all tgt ys <;> simp
+      · rfl
+
 /-- The program of two item lists, one after the other, in front of a callee block. -/
 theorem expectedReloc_append (all : List Item) (k L : Nat) :
     ∀ (xs ys : List Item), expectedReloc all k L (xs ++ ys)
-      = (expectedReloc all k L xs).bind fun a => (expectedReloc all k L ys).map (a ++ ·) := by
-  intro xs
-  induction xs with
-  | nil => intro ys; cases h : expectedReloc all k L ys <;> simp [expectedReloc, h]
-  | cons it xs ih =>
-    intro ys
-    rw [List.cons_append, expectedReloc, expectedReloc]
-    split
-    · exact ih ys
-    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-    · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-    · split
-      · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-      · rfl
-    · split
-      · rw [ih ys]; cases expectedReloc all k L xs <;> cases expectedReloc all k L ys <;> simp
-      · rfl
+      = (expectedReloc all k L xs).bind fun a => (expectedReloc all k L ys).map (a ++ ·) :=
+  expectedRelocMap_append all _
 
-/-- The program of an item list has one instruction for each item that decodes. -/
-theorem expectedReloc_length (all : List Item) (k L : Nat) :
-    ∀ (xs : List Item) (A : List RInstr), expectedReloc all k L xs = some A →
+/-- The program of an item list under a target map has one instruction for each item that
+    decodes. -/
+theorem expectedRelocMap_length (all : List Item) (tgt : Item → Option (Nat × Nat)) :
+    ∀ (xs : List Item) (A : List RInstr), expectedRelocMap all tgt xs = some A →
       A.length = decCount xs := by
   intro xs
   induction xs with
@@ -663,7 +742,7 @@ theorem expectedReloc_length (all : List Item) (k L : Nat) :
     rfl
   | cons it xs ih =>
     intro A h
-    rw [expectedReloc] at h
+    rw [expectedRelocMap] at h
     split at h
     · rename_i hd
       rw [decCount, hd, ih A h]
@@ -680,19 +759,35 @@ theorem expectedReloc_length (all : List Item) (k L : Nat) :
              simp [Nat.add_comm]
            · cases h)
 
+/-- The program of an item list has one instruction for each item that decodes. -/
+theorem expectedReloc_length (all : List Item) (k L : Nat) :
+    ∀ (xs : List Item) (A : List RInstr), expectedReloc all k L xs = some A →
+      A.length = decCount xs :=
+  expectedRelocMap_length all _
+
+/-- **The program around a run of items, under a target map.** The program of
+    `xs ++ (ms ++ ys)` is the program of `xs`, of length `decCount xs`, the program of
+    `ms`, and the program of `ys`. -/
+theorem expectedRelocMap_mid (all : List Item) (tgt : Item → Option (Nat × Nat))
+    (xs ms ys : List Item) (prog : List RInstr)
+    (h : expectedRelocMap all tgt (xs ++ (ms ++ ys)) = some prog) :
+    ∃ A X B, expectedRelocMap all tgt ms = some X ∧ expectedRelocMap all tgt ys = some B
+      ∧ prog = A ++ X ++ B ∧ A.length = decCount xs := by
+  rw [expectedRelocMap_append, Option.bind_eq_some_iff] at h
+  obtain ⟨A, hA, h⟩ := h
+  obtain ⟨R, hR, rfl⟩ := Option.map_eq_some_iff.mp h
+  rw [expectedRelocMap_append, Option.bind_eq_some_iff] at hR
+  obtain ⟨X, hX, hR⟩ := hR
+  obtain ⟨B, hB, rfl⟩ := Option.map_eq_some_iff.mp hR
+  exact ⟨A, X, B, hX, hB, by rw [List.append_assoc], expectedRelocMap_length all tgt xs A hA⟩
+
 /-- **The program around a run of items.** The program of `xs ++ (ms ++ ys)` is the program
     of `xs`, of length `decCount xs`, the program of `ms`, and the program of `ys`. -/
 theorem expectedReloc_mid (all : List Item) (k L : Nat) (xs ms ys : List Item)
     (prog : List RInstr) (h : expectedReloc all k L (xs ++ (ms ++ ys)) = some prog) :
     ∃ A X B, expectedReloc all k L ms = some X ∧ expectedReloc all k L ys = some B
-      ∧ prog = A ++ X ++ B ∧ A.length = decCount xs := by
-  rw [expectedReloc_append, Option.bind_eq_some_iff] at h
-  obtain ⟨A, hA, h⟩ := h
-  obtain ⟨R, hR, rfl⟩ := Option.map_eq_some_iff.mp h
-  rw [expectedReloc_append, Option.bind_eq_some_iff] at hR
-  obtain ⟨X, hX, hR⟩ := hR
-  obtain ⟨B, hB, rfl⟩ := Option.map_eq_some_iff.mp hR
-  exact ⟨A, X, B, hX, hB, by rw [List.append_assoc], expectedReloc_length all k L xs A hA⟩
+      ∧ prog = A ++ X ++ B ∧ A.length = decCount xs :=
+  expectedRelocMap_mid all _ xs ms ys prog h
 
 /-- The shapes of a body are the shapes `shapeOf` of its instructions, instruction by
     instruction. -/
@@ -956,7 +1051,7 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
     intro all pcs
     induction pcs with
     | nil => rfl
-    | cons p pcs ih => simp [expectedReloc, ih]
+    | cons p pcs ih => simp [expectedReloc, expectedRelocMap, ih]
   refine ⟨fun k hk hs hok => ?_, fun k hk hr => ?_, ?_⟩
   · obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs
     have hsh := hshk k hk hs
@@ -971,8 +1066,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
       rcases shapeOfBytes_ok (bs := encodeLopn _ _ (.Lopn dsts o srcs) _) hsh with
         ⟨q, he, -, -⟩ | ⟨pcs, he, -, -⟩
       · rw [he] at hX ⊢
-        simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, expectedReloc,
-          Option.map_some, Option.some.injEq] at hX
+        simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec,
+          expectedRelocMap, Option.map_some, Option.some.injEq] at hX
         rw [← hX]
         simp [blkOf, DShape.ops']
       · rw [he] at hX ⊢
@@ -984,8 +1079,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
       intro _ hX hsh
       simp only [shapeOf, Option.some.injEq] at hsh
       rw [← hsh] at hX ⊢
-      simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, expectedReloc,
-        Option.some.injEq] at hX
+      simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec,
+        expectedRelocMap, Option.some.injEq] at hX
       rw [← hX]
       simp [blkOf, DShape.ops']
     | Lcond c l =>
@@ -998,7 +1093,7 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
         simp only [shapeOf, Option.some.injEq] at hsh
         rw [← hsh] at hX ⊢
         simp only [itemsFromReloc, remoteSym, dItems, List.append_nil, Shape.dec, Shape.target,
-          expectedReloc, Option.bind_some, ho, Option.map_some, Option.some.injEq] at hX
+          expectedRelocMap, Option.bind_some, ho, Option.map_some, Option.some.injEq] at hX
         rw [← hX]
         simp [blkOf, hp]
       | _ => intro hok; simp [instrOKB] at hok
@@ -1006,7 +1101,7 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
   · have hs' : k < ds.length := by omega
     obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs'
     obtain ⟨f, hf⟩ := Option.ne_none_iff_exists'.mp hr
-    simp only [itemsFromReloc, hf, expectedReloc, callTgt, Option.map_some,
+    simp only [itemsFromReloc, hf, expectedRelocMap, callTgtMap, Option.map_some,
       Option.some.injEq] at hX
     rw [hprog, ← hX, ← hA]
     simp
@@ -1034,7 +1129,7 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
       rw [← h2, hA, decCount, decCount_itemsFromReloc symBase _ hR]
       rw [posOf, List.take_of_length_le (by omega)]
       simp [mkLea]
-    simp only [expectedReloc, mkLea, mkRet, Option.map_some, Option.some.injEq] at hX hB
+    simp only [expectedRelocMap, mkLea, mkRet, Option.map_some, Option.some.injEq] at hX hB
     rw [hposL, hprog, ← hX, ← hB]
     simp [leaFrame]
 
