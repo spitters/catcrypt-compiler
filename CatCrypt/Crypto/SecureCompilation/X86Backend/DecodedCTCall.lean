@@ -64,10 +64,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak (runL_de
 
 /-- The public set the stack operations of a call must leave: `%rsp` and the registers
     `pubRegs`. -/
-def callPub (pubRegs : List String) : PubA := ⟨"%rsp" :: pubRegs, [], false⟩
+def callPub (pubRegs : List String) : PubA := ⟨"%rsp" :: pubRegs, [], false, []⟩
 
 /-- The public set of the stack register alone. -/
-def rspPub : PubA := ⟨["%rsp"], [], false⟩
+def rspPub : PubA := ⟨["%rsp"], [], false, []⟩
 
 /-- Under the regime `doitm` the stack operation of a return passes the block check from
     `rspPub`. -/
@@ -188,7 +188,7 @@ theorem segRun_certX_sound {r : DoitRegime} {F : List Int} {ext : Nat}
       obtain ⟨rfl, rfl⟩ := h'
       rw [hcc, Option.some.injEq] at hcc'
       subst hcc'
-      have hcb := condB_eq (hag.2.2 hfl) c
+      have hcb := condB_eq (hag.2.2.1 hfl) c
       by_cases hcnd : s₂.view.condB c = true
       · obtain ⟨b, hb, hle⟩ := succOk_spec hst
         simp only [hcb, hcnd, if_true] at ih hr'
@@ -387,7 +387,8 @@ theorem linkedRunX_trace_eq_out {r : DoitRegime} {F : List Int} {pubRegs R : Lis
       exact hpk.1 "%rsp" (by simp [callPub])
     have hra : rspPub.Agree sc₁ sc₂ :=
       ⟨fun y hy => by simp only [rspPub, List.mem_singleton] at hy; subst hy; exact hrsp,
-        fun o ho => by simp [rspPub] at ho, fun hf => by simp [rspPub] at hf⟩
+        fun o ho => by simp [rspPub] at ho, fun hf => by simp [rspPub] at hf,
+        fun q hq => by simp [rspPub] at hq⟩
     obtain ⟨hl, _⟩ := blockOkA_sound _ _ hbr hra (blockOk_frameSep_retOps F sc₁)
       (blockOk_frameSep_retOps F sc₂)
     have hkeep := keepA_agree hag (presPostO_of_calleeSpec hX hR hfoot hQ hQO hX₁.1 hX₁.2)

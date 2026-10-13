@@ -37,12 +37,16 @@ and `halts_runL` states the same for `RInstrSemantics.Halts`, which is `HaltsC`.
 ## The checker
 
 `PubA` is a set of public locations: registers, words `%rsp + o` of the frame given by
-their offsets `o`, and the flags. `stepA P i` is the public set after `i`: a register is
-public after a `mov` of a public operand, a `lea` of public registers, a two-address
-arithmetic, logical or shift operation of public operands, or a load of a public frame
-word; a frame word after a store of a public operand through `%rsp`, and at offset `o - k`
-after `lea k(%rsp), %rsp` when it was public at `o`; the flags after a `cmp` of public
-operands.
+their offsets `o`, the flags, and memory regions `(b, n)`, the `n` words at `b + 8 j`.
+`stepA P i` is the public set after `i`: a register is public after a `mov` of a public
+operand, a `lea` of public registers, a two-address arithmetic, logical or shift
+operation of public operands, or a load of a public frame word or of a word of a public
+region; a frame word after a store of a public operand through `%rsp`, and at offset
+`o - k` after `lea k(%rsp), %rsp` when it was public at `o`; the flags after a `cmp` of
+public operands. A region stays public across `i` when `i` writes neither its base
+register nor memory, or stores through its base register eight bytes apart from each of
+its words (`regionKeeps`); a call keeps no region (`keepA`). With no regions, `PubA.Agree`
+is agreement on registers, frame words and flags (`PubA.agree_iff_of_regions_nil`).
 
 `checkCert r F own X prog A` checks a certificate `A` (a public set per index, `none` for
 an index the analysis does not reach) under an owner map `own` (the entry of the function
@@ -265,8 +269,9 @@ theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {pro
 
 /-! ## 2. Public sets -/
 
-/-- A set of public locations: registers, words `%rsp + o` of the frame by offset, and
-    the flags. -/
+/-- A set of public locations: registers, words `%rsp + o` of the frame by offset, the
+    flags, and memory regions, each a base register `b` with a word count `n`, standing
+    for the words at `regs b + 8 j`, `j < n`. -/
 structure PubA where
   /-- The public registers. -/
   regs : List String
@@ -274,30 +279,45 @@ structure PubA where
   cells : List Int
   /-- Whether the flags are public. -/
   flags : Bool
+  /-- The public memory regions: a base register and a word count. -/
+  regions : List (String × Nat) := []
   deriving DecidableEq, Repr
 
 /-- The frame word at offset `o` from `%rsp`. -/
 def cellAt (sa : AState) (o : Int) : BitVec 64 :=
   read64 sa.mem (sa.regs "%rsp" + BitVec.ofInt 64 o)
 
+/-- The word `j` of the region with base register `b`: the word at `regs b + 8 j`. -/
+def wordAt (sa : AState) (b : String) (j : Nat) : BitVec 64 :=
+  read64 sa.mem (sa.regs b + BitVec.ofNat 64 (8 * j))
+
 /-- Two address states agree on every location of `P`. -/
 def PubA.Agree (P : PubA) (s₁ s₂ : AState) : Prop :=
   (∀ x ∈ P.regs, s₁.regs x = s₂.regs x) ∧ (∀ o ∈ P.cells, cellAt s₁ o = cellAt s₂ o) ∧
-    (P.flags = true → s₁.flags = s₂.flags)
+    (P.flags = true → s₁.flags = s₂.flags) ∧
+    (∀ q ∈ P.regions, ∀ j < q.2, wordAt s₁ q.1 j = wordAt s₂ q.1 j)
 
 /-- `A.le B`: every location of `A` is a location of `B`. -/
 def PubA.le (A B : PubA) : Bool :=
-  A.regs.all B.regs.contains && A.cells.all B.cells.contains && (!A.flags || B.flags)
+  A.regs.all B.regs.contains && A.cells.all B.cells.contains && (!A.flags || B.flags) &&
+    A.regions.all B.regions.contains
 
 theorem PubA.agree_of_le {A B : PubA} (h : A.le B = true) {s₁ s₂ : AState}
     (hB : B.Agree s₁ s₂) : A.Agree s₁ s₂ := by
   simp only [PubA.le, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem,
     Bool.or_eq_true, Bool.not_eq_true'] at h
-  obtain ⟨⟨hr, hc⟩, hf⟩ := h
-  refine ⟨fun x hx => hB.1 x (hr x hx), fun o ho => hB.2.1 o (hc o ho), fun ha => ?_⟩
+  obtain ⟨⟨⟨hr, hc⟩, hf⟩, hw⟩ := h
+  refine ⟨fun x hx => hB.1 x (hr x hx), fun o ho => hB.2.1 o (hc o ho), fun ha => ?_,
+    fun q hq => hB.2.2.2 q (hw q hq)⟩
   rcases hf with hf | hf
   · simp [hf] at ha
-  · exact hB.2.2 hf
+  · exact hB.2.2.1 hf
+
+/-- A public set without regions agrees as its registers, frame words and flags. -/
+theorem PubA.agree_iff_of_regions_nil {P : PubA} (h : P.regions = []) (s₁ s₂ : AState) :
+    P.Agree s₁ s₂ ↔ (∀ x ∈ P.regs, s₁.regs x = s₂.regs x) ∧
+      (∀ o ∈ P.cells, cellAt s₁ o = cellAt s₂ o) ∧ (P.flags = true → s₁.flags = s₂.flags) := by
+  simp [PubA.Agree, h]
 
 /-- An operand whose value is determined by `P`. -/
 def opPub (P : PubA) : JOperand → Bool
@@ -336,10 +356,25 @@ def sepWrite : JInstr 64 → Bool
 /-- The frame words at offsets `o` and `o'` do not overlap. -/
 def far (o o' : Int) : Bool := 8 ≤ (o - o').natAbs && (o - o').natAbs ≤ 2 ^ 64 - 8
 
+/-- The displacement `o` from the base register `b` is the word `o / 8` of a public region
+    `(b, n)` of `P`: `o` is a nonnegative multiple of `8` below `8 n`. -/
+def inRegion (P : PubA) (b : String) (o : Int) : Bool :=
+  P.regions.any fun q => q.1 == b && decide (0 ≤ o) && o % 8 == 0 && decide (o / 8 < q.2)
+
+theorem inRegion_spec {P : PubA} {b : String} {o : Int} (h : inRegion P b o = true) :
+    ∃ n j, (b, n) ∈ P.regions ∧ j < n ∧ BitVec.ofInt 64 o = BitVec.ofNat 64 (8 * j) := by
+  simp only [inRegion, List.any_eq_true, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
+  obtain ⟨⟨b', n⟩, hq, ⟨⟨rfl, h0⟩, h8⟩, hlt⟩ := h
+  refine ⟨n, (o / 8).toNat, hq, by omega, ?_⟩
+  rw [← BitVec.ofInt_natCast]
+  congr 1
+  omega
+
 /-- The registers `i` writes with a value determined by `P`. -/
 def newRegs (P : PubA) : JInstr 64 → List String
   | .mov d src => if opPub P src then [d] else []
-  | .loadMem d b o => if b == "%rsp" && P.cells.contains o then [d] else []
+  | .loadMem d b o =>
+      if (b == "%rsp" && P.cells.contains o) || inRegion P b o then [d] else []
   | .lea d b x _ _ => if P.regs.contains b && P.regs.contains x then [d] else []
   | .add d src | .sub d src | .and_ d src | .or_ d src | .xor_ d src
   | .shl d src | .shr d src | .sar d src | .imul d src =>
@@ -361,6 +396,17 @@ def rspShift : JInstr 64 → Option Int
   | .lea d b _ sc k => if d = "%rsp" ∧ b = "%rsp" ∧ sc = 0 then some k else none
   | _ => none
 
+/-- The region `q` keeps its words across `i`: `i` does not write the base register of
+    `q`, and either writes no memory or stores through that base register at a
+    displacement eight bytes apart from each word of `q`. -/
+def regionKeeps (i : JInstr 64) (q : String × Nat) : Bool :=
+  !(dstRegs i).contains q.1 &&
+    match i with
+    | .storeMem b o _ | .addToMem b o _ =>
+        b == q.1 && (List.range q.2).all fun j => far o ((8 * j : Nat) : Int)
+    | .storeMemIdx _ _ _ _ => false
+    | _ => true
+
 /-- The public set after `i`. -/
 def stepA (P : PubA) (i : JInstr 64) : PubA where
   regs := newRegs P i ++ P.regs.filter (fun x => !(dstRegs i).contains x)
@@ -371,6 +417,7 @@ def stepA (P : PubA) (i : JInstr 64) : PubA where
     | .cmp a o => P.regs.contains a && opPub P o
     | .cmpMem a b o => P.regs.contains a && b == "%rsp" && P.cells.contains o
     | _ => false
+  regions := P.regions.filter (regionKeeps i)
 
 /-- The separation hypothesis: every address `i` writes through a base other than `%rsp`
     is eight bytes apart from each frame word `%rsp + o`, `o ∈ F`. -/
@@ -397,6 +444,38 @@ theorem cellAt_preserved (sa : AState) (i : JInstr 64) (hrsp : "%rsp" ∉ dstReg
   · rename_i a ha
     exact read64_write64_of_disjoint _ _ _ _ (hsep a ha)
   · rfl
+
+/-- A region that `regionKeeps i` accepts keeps each of its words across `i`. -/
+theorem wordAt_preserved (sa : AState) (i : JInstr 64) {q : String × Nat}
+    (h : regionKeeps i q = true) {j : Nat} (hj : j < q.2) :
+    wordAt (evalInstrA sa i) q.1 j = wordAt sa q.1 j := by
+  have hnd : q.1 ∉ dstRegs i := by
+    simp only [regionKeeps, Bool.and_eq_true, Bool.not_eq_true'] at h
+    simpa using h.1
+  unfold wordAt
+  rw [evalInstrA_regs_of_not_dst sa i _ hnd]
+  simp only [regionKeeps, Bool.and_eq_true] at h
+  obtain ⟨-, h⟩ := h
+  have hfar : ∀ (b : String) (o : Int), b = q.1 →
+      (List.range q.2).all (fun j => far o ((8 * j : Nat) : Int)) = true →
+      Disjoint8 (sa.regs b + BitVec.ofInt 64 o) (sa.regs q.1 + BitVec.ofNat 64 (8 * j)) := by
+    intro b o hb ha
+    subst hb
+    have := List.all_eq_true.mp ha j (List.mem_range.mpr hj)
+    simp only [far, Bool.and_eq_true, decide_eq_true_eq] at this
+    rw [← BitVec.ofInt_natCast]
+    exact disjoint8_add_ofInt _ _ _ this.1 this.2
+  cases i with
+  | storeMem b o src =>
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    simp only [evalInstrA, writeAddr]
+    exact read64_write64_of_disjoint _ _ _ _ (hfar b o h.1 h.2)
+  | addToMem b o src =>
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    simp only [evalInstrA, writeAddr]
+    exact read64_write64_of_disjoint _ _ _ _ (hfar b o h.1 h.2)
+  | storeMemIdx => simp at h
+  | _ => rfl
 
 theorem rspShift_eq {i : JInstr 64} {k : Int} (h : rspShift i = some k) :
     ∃ x, i = .lea "%rsp" "%rsp" x 0 k := by
@@ -440,13 +519,17 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
     simp only [newRegs] at hx
     split at hx
     · rename_i h
-      simp only [Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem] at h
-      obtain ⟨rfl, h⟩ := h
       simp only [List.mem_singleton] at hx
       subst hx
-      have := hag.2.1 o h
-      simp only [cellAt] at this
-      simp [evalInstr, JState.setReg, AState.view, this]
+      have hm : read64 s₁.mem (s₁.regs b + BitVec.ofInt 64 o)
+          = read64 s₂.mem (s₂.regs b + BitVec.ofInt 64 o) := by
+        simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem] at h
+        rcases h with ⟨rfl, h⟩ | h
+        · simpa only [cellAt] using hag.2.1 o h
+        · obtain ⟨n, j, hq, hj, ho⟩ := inRegion_spec h
+          rw [ho]
+          exact hag.2.2.2 _ hq j hj
+      simp [evalInstr, JState.setReg, AState.view, hm]
     · simp at hx
   | lea d b y sc off =>
     simp only [newRegs] at hx
@@ -507,7 +590,11 @@ theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int}
     (hF : sepWrite i = true → ∀ o ∈ P.cells, o ∈ F)
     {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) (h₁ : FrameSep F s₁ i) (h₂ : FrameSep F s₂ i) :
     (stepA P i).Agree (evalInstrA s₁ i) (evalInstrA s₂ i) := by
-  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_⟩
+  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_, fun q hq j hj => ?_⟩
+  rotate_left 3
+  · simp only [stepA, List.mem_filter] at hq
+    rw [wordAt_preserved _ _ hq.2 hj, wordAt_preserved _ _ hq.2 hj]
+    exact hag.2.2.2 q hq.1 j hj
   · simp only [stepA, List.mem_append, List.mem_filter, Bool.not_eq_true'] at hx
     rcases hx with hx | ⟨hx, hnd⟩
     · exact newRegs_sound P i hag x hx
@@ -1100,17 +1187,24 @@ theorem presCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat}
 
 /-- The part of the caller's public set `a` a call keeps: `%rsp`, the registers the
     callee preserves (`R`), and the frame words at offsets `c` whose callee offset `c + 8`
-    the callee preserves (`Q`), apart from the return-address word. -/
+    the callee preserves (`Q`), apart from the return-address word. No memory region is
+    kept. -/
 def keepA (R : List String) (Q : List Int) (a : PubA) : PubA :=
   ⟨a.regs.filter (fun x => x == "%rsp" || R.contains x),
-    a.cells.filter (fun c => Q.contains (c + 8) && far (c + 8) 0), false⟩
+    a.cells.filter (fun c => Q.contains (c + 8) && far (c + 8) 0), false, []⟩
 
 /-- The union of two public sets. -/
-def joinA (a b : PubA) : PubA := ⟨a.regs ++ b.regs, a.cells ++ b.cells, a.flags || b.flags⟩
+def joinA (a b : PubA) : PubA :=
+  ⟨a.regs ++ b.regs, a.cells ++ b.cells, a.flags || b.flags, a.regions ++ b.regions⟩
 
 theorem joinA_agree {a b : PubA} {s₁ s₂ : AState} (ha : a.Agree s₁ s₂) (hb : b.Agree s₁ s₂) :
     (joinA a b).Agree s₁ s₂ := by
-  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_⟩
+  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_, fun q hq => ?_⟩
+  rotate_left 3
+  · simp only [joinA, List.mem_append] at hq
+    rcases hq with hq | hq
+    · exact ha.2.2.2 q hq
+    · exact hb.2.2.2 q hq
   · simp only [joinA, List.mem_append] at hx
     rcases hx with hx | hx
     · exact ha.1 x hx
@@ -1121,8 +1215,8 @@ theorem joinA_agree {a b : PubA} {s₁ s₂ : AState} (ha : a.Agree s₁ s₂) (
     · exact hb.2.1 o ho
   · simp only [joinA, Bool.or_eq_true] at hf
     rcases hf with hf | hf
-    · exact ha.2.2 hf
-    · exact hb.2.2 hf
+    · exact ha.2.2.1 hf
+    · exact hb.2.2.1 hf
 
 /-- The registers other than `%rsp` after `callOps`. -/
 theorem callOps_regs (s : AState) (n : Nat) {x : String} (hx : x ≠ "%rsp") :
@@ -1175,7 +1269,8 @@ theorem keepA_agree {R : List String} {Q : List Int} {a : PubA} {n : Nat}
     (keepA R Q a).Agree (runBlockA sc₁ retOps) (runBlockA sc₂ retOps) := by
   obtain ⟨r₁, g₁, c₁⟩ := h₁
   obtain ⟨r₂, g₂, c₂⟩ := h₂
-  refine ⟨fun x hx => ?_, fun c hc => ?_, fun hf => by simp [keepA] at hf⟩
+  refine ⟨fun x hx => ?_, fun c hc => ?_, fun hf => by simp [keepA] at hf,
+    fun q hq => by simp [keepA] at hq⟩
   · simp only [keepA, List.mem_filter, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem] at hx
     obtain ⟨hx, hk⟩ := hx
     by_cases hr : x = "%rsp"
@@ -1324,7 +1419,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
       obtain ⟨rfl, rfl⟩ := h'
       rw [hcc, Option.some.injEq] at hcc'
       subst hcc'
-      have hcb := condB_eq (hag.2.2 hfl) c
+      have hcb := condB_eq (hag.2.2.1 hfl) c
       by_cases hcnd : s₂.view.condB c = true
       · obtain ⟨b, hb, hle⟩ := succOk_spec hst
         simp only [hcb, hcnd, if_true] at ih hr'
@@ -1394,7 +1489,8 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
 
 /-- The meet of two public sets: the locations public in both. -/
 def meetA (a b : PubA) : PubA :=
-  ⟨a.regs.filter b.regs.contains, a.cells.filter b.cells.contains, a.flags && b.flags⟩
+  ⟨a.regs.filter b.regs.contains, a.cells.filter b.cells.contains, a.flags && b.flags,
+    a.regions.filter b.regions.contains⟩
 
 /-- The meet with an unreached index (`none`) is the other set. -/
 def meetO : Option PubA → PubA → Option PubA
@@ -1426,7 +1522,7 @@ def exitSet? (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA)) (
     no reached `ret`. -/
 def exitSet (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA)) (e : Nat) :
     PubA :=
-  (exitSet? prog own A e).getD ⟨[], [], false⟩
+  (exitSet? prog own A e).getD ⟨[], [], false, []⟩
 
 /-- The successors of index `pc` with the public set each receives from `a`, under the
     owner map `own` and the partial exit sets `X?`. A call's return edge is added once
@@ -1878,7 +1974,7 @@ def exitSetA? (prog : Array RInstr) (own : Nat → Nat) (A : Array (Option PubA)
 /-- `exitSet` on an array program and an array certificate. -/
 def exitSetA (prog : Array RInstr) (own : Nat → Nat) (A : Array (Option PubA)) (e : Nat) :
     PubA :=
-  (exitSetA? prog own A e).getD ⟨[], [], false⟩
+  (exitSetA? prog own A e).getD ⟨[], [], false, []⟩
 
 /-- The successors of index `pc` of an array program with the set each receives. -/
 def succsA (own : Nat → Nat) (X? : Nat → Option PubA) (K : PresCtx) (prog : Array RInstr)

@@ -44,7 +44,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
 /-- The public entry set of `mpn_mul_1`: the result pointer `%rdi`, the source pointer
     `%rsi`, the count `%rdx` and the stack pointer. The multiplier `%rcx`, the other
     registers, the memory and the flags are secret. -/
-def mul1PubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
+def mul1PubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false, []⟩
 
 /-- The frame words the analysis of `mpn_mul_1` keeps public: the saved pointers at `56`
     and `48`, the saved count at `-8` and the saved source pointer at `-128`. -/
@@ -59,14 +59,14 @@ theorem mul1Node_bytesCT :
 
 /-- With the count `%rdx` secret the checker rejects the node: the loop guard reads it. -/
 theorem mul1Node_secretCount_rejected :
-    bytesCTCheck .doitm mul1FrameCells ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
+    bytesCTCheck .doitm mul1FrameCells ⟨["%rdi", "%rsi", "%rsp"], [], false, []⟩
       (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
   decide +kernel
 
 /-- With the result pointer `%rdi` secret the checker rejects the node: the stores
     address through it. -/
 theorem mul1Node_secretPointer_rejected :
-    bytesCTCheck .doitm mul1FrameCells ⟨["%rsi", "%rdx", "%rsp"], [], false⟩
+    bytesCTCheck .doitm mul1FrameCells ⟨["%rsi", "%rdx", "%rsp"], [], false, []⟩
       (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
   decide +kernel
 
@@ -81,7 +81,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
 /-- The public entry set of the field kernels: the output pointer `%rdi`, the input
     pointers `%rsi` and `%rdx`, and the stack pointer. The limbs, the other registers
     and the flags are secret. -/
-def fePubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
+def fePubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false, []⟩
 
 /-- **The checker accepts the decoded `fe25519_add` bytes.** The encoding of the framed
     field addition decodes to a block `c`, and `c` followed by `ret` passes the checker
@@ -94,7 +94,7 @@ theorem feAddFramed_bytesCT :
 /-- With the input pointer `%rdx` secret the checker rejects the block: its loads address
     through it. -/
 theorem feAddFramed_secretPointer_rejected :
-    bytesCTCheck .doitm [] ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
+    bytesCTCheck .doitm [] ⟨["%rdi", "%rsi", "%rsp"], [], false, []⟩
       (feAddFramed.map .op ++ [.ret]) = false := by
   decide +kernel
 
