@@ -21,8 +21,8 @@ instruction it fetches (`RunIdxOk`). This module decides `RunIdxOk` of the halti
 body from an entry state satisfying a list of facts.
 
 A fact (`IdxFact`) bounds the sum of the `64`-bit values of a list of registers from above,
-the value of one register from below, or every element of a named array from above
-(`ArrLe`); a symbolic fact (`SFact`) may also exclude one value of a term. An annotation
+the value of one register from below, every element of a named array from above
+(`ArrLe`), or states that a register has width `64`; a symbolic fact (`SFact`) may also exclude one value of a term. An annotation
 assigns a list of facts to each
 block of the control-flow graph `cfgOf`; it is untrusted. `idxInvCheckB` checks, for every
 block, along its symbolic run `symRun` from the block entry:
@@ -155,12 +155,14 @@ theorem arrLe_stackSet {c : ArrCell} {b : Nat} (h : ArrLe c b) (w n k : Nat)
       · exact castA_le h w (m + 1) i
 
 /-- A fact over the registers and arrays at a block entry: the sum of the values of the
-    registers `rs` is at most `b`, the value of the register `r` is at least `k`, or every
-    element of the array `a` at width `64` is at most `b`. -/
+    registers `rs` is at most `b`, the value of the register `r` is at least `k`, every
+    element of the array `a` at width `64` is at most `b`, or the register `r` has width
+    `64`. -/
 inductive IdxFact where
   | le (rs : List String) (b : Nat)
   | ge (r : String) (k : Nat)
   | ale (a : String) (b : Nat)
+  | w64 (r : String)
   deriving DecidableEq, Repr, Inhabited
 
 /-- A fact over symbolic words: the sum of the values of the terms `ts` is at most `b`, the
@@ -197,12 +199,14 @@ def IdxFact.holds (V : String → Σ w, BitVec w) (A : String → ArrCell) : Idx
   | .le rs b => (rs.map fun r => wval (V r)).sum ≤ b
   | .ge r k => k ≤ wval (V r)
   | .ale a b => ArrLe (A a) b
+  | .w64 r => (V r).1 = 64
 
 /-- A fact read through the symbolic registers `R` and the symbolic arrays `Ar`. -/
 def IdxFact.toS (R : String → STerm) (Ar : String → SArr) : IdxFact → SFact
   | .le rs b => .le (rs.map R) b
   | .ge r k => .ge (R r) k
   | .ale a b => .ale (Ar a) b
+  | .w64 r => .w64 (R r)
 
 theorem IdxFact.toS_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     (R : String → STerm) (Ar : String → SArr) (f : IdxFact) :
@@ -1753,7 +1757,8 @@ theorem ownedCheckMC_sound_of_idxInv {outs : List String} {B B' : List LinstrRM}
 /-- The registers an index obligation, a branch condition or an entry fact of `B` reads:
     the candidates of the annotation. -/
 def annRegs (entry : List IdxFact) (B : List LinstrRM) (G : CFG) : List String :=
-  let fromEntry := entry.flatMap fun | .le rs _ => rs | .ge r _ => [r] | .ale _ _ => []
+  let fromEntry := entry.flatMap fun
+    | .le rs _ => rs | .ge r _ => [r] | .w64 r => [r] | .ale _ _ => []
   let fromBlocks := (List.range G.blocks.size).flatMap fun k =>
     match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
     | .ok ss _ =>
@@ -1765,11 +1770,12 @@ def annRegs (entry : List IdxFact) (B : List LinstrRM) (G : CFG) : List String :
   (fromEntry ++ fromBlocks).eraseDups
 
 /-- The candidate facts over the registers `rs` with the bounds `bs`: each register and each
-    pair of distinct registers bounded by each bound, and each register at least `1`. -/
+    pair of distinct registers bounded by each bound, each register at least `1`, and each
+    register of width `64`. -/
 def annCands (rs : List String) (bs : List Nat) : List IdxFact :=
   let pairs := rs.flatMap fun r => (rs.dropWhile (· ≠ r)).drop 1 |>.map fun r' => [r, r']
   (bs.flatMap fun b => (rs.map fun r => .le [r] b) ++ pairs.map fun p => .le p b)
-    ++ rs.map fun r => .ge r 1
+    ++ rs.map (fun r => .ge r 1) ++ rs.map .w64
 
 /-- One restriction pass: for every block in order, the facts of each successor that do not
     follow from the facts of the block (with the condition of the edge) are dropped. -/

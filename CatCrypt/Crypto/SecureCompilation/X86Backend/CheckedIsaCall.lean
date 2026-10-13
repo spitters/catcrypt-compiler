@@ -386,11 +386,12 @@ def factRegs : IdxFact → List String
   | .le rs _ => rs
   | .ge r _ => [r]
   | .ale _ _ => []
+  | .w64 r => [r]
 
 /-- A fact names only registers: it is not an element bound of an array. -/
 def regFact : IdxFact → Bool
   | .ale _ _ => false
-  | _ => true
+  | .le _ _ | .ge _ _ | .w64 _ => true
 
 /-- A register fact holds at two register files that agree on the registers it names, at
     any arrays. -/
@@ -405,6 +406,9 @@ theorem idxFact_holds_congr {V V' : String → Σ w, BitVec w} {A A' : String �
       simp only [IdxFact.holds] at hf ⊢
       rwa [← h r (by simp [factRegs])]
   | ale _ _ => simp [regFact] at hr
+  | w64 r =>
+      simp only [IdxFact.holds] at hf ⊢
+      rwa [← h r (by simp [factRegs])]
 
 /-- **The facts after a call** with destination `dst`, from the candidates `cs`: the register
     facts (`regFact`; the callee may write the arrays) that do not name `dst` and follow from
