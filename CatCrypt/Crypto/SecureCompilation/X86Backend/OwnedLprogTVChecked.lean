@@ -409,17 +409,32 @@ def FactsAt (fs : List CFact) (s : LstateMF) : Prop :=
     is the immediate of its first fact, every other register and every array name its start
     value; the registers with a fact count as written. -/
 def startC (fs : List CFact) : SSt :=
-  ⟨fun r =>
-      match fs.find? (fun f => f.1 == r) with
-      | some f => .immW f.2.1 f.2.2
-      | none => .reg r,
-    SArr.cell, .init, fs.map Prod.fst, [], .cin false, .cin true⟩
+  { rf := fs.foldr (fun f rf => rf.set f.1 (.immW f.2.1 f.2.2)) .empty, arrs := SArr.cell,
+    zf := .init, wr := fs.map Prod.fst, awr := [], cf := .cin false, of := .cin true }
 
 theorem startC_nil : startC [] = SSt.start := rfl
 
+theorem startC_regs (fs : List CFact) (r : String) :
+    (startC fs).regs r =
+      match fs.find? (fun f => f.1 == r) with
+      | some f => .immW f.2.1 f.2.2
+      | none => .reg r := by
+  induction fs with
+  | nil => rfl
+  | cons f fs ih =>
+      change ((fs.foldr (fun (f : CFact) (rf : RegFile) => rf.set f.1 (.immW f.2.1 f.2.2))
+        RegFile.empty).set f.1 (.immW f.2.1 f.2.2)).get r = _
+      rw [RegFile.get_set, List.find?_cons]
+      by_cases h : r = f.1
+      · have h' : (f.1 == r) = true := beq_iff_eq.mpr h.symm
+        rw [if_pos h, h']
+      · have h' : (f.1 == r) = false := beq_false_of_ne (Ne.symm h)
+        rw [if_neg h, h']
+        exact ih
+
 theorem startC_good (fs : List CFact) : (startC fs).Good := by
   refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
-  simp only [startC]
+  rw [startC_regs]
   cases h : fs.find? (fun f => f.1 == r) with
   | none => rfl
   | some f =>
@@ -428,14 +443,14 @@ theorem startC_good (fs : List CFact) : (startC fs).Good := by
 
 theorem startC_subst (σ : Nat → STerm) (fs : List CFact) :
     (startC fs).subst σ = startC fs := by
-  simp only [SSt.subst, startC, SArr.subst, SFlag.subst, STerm.subst, SSt.mk.injEq, and_true]
-  funext r
+  refine SSt.ext (fun r => ?_) rfl rfl rfl rfl rfl rfl
+  rw [SSt.subst_regs_apply, startC_regs]
   cases fs.find? (fun f => f.1 == r) <;> rfl
 
 theorem startC_regs_ev {fs : List CFact} {V : String → Σ w, BitVec w}
     (h : ∀ f ∈ fs, f.holds V) (A : String → ArrCell) (C O : Bool) (q : String) :
     ((startC fs).regs q).ev V A C O = V q := by
-  simp only [startC]
+  rw [startC_regs]
   cases hf : fs.find? (fun f => f.1 == q) with
   | none => rfl
   | some f =>

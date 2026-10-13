@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
 public import CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaDef
 public import Std.Data.HashMap.Basic
+public import Std.Data.TreeMap.Lemmas
 
 /-!
 # Value translation validation of a body rewrite under `lsemFuelMemF`
@@ -500,12 +501,57 @@ theorem allG_normG {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
 
 /-! ## 3. Symbolic states -/
 
-/-- A symbolic state: a symbolic word per register, a symbolic array per name, the
-    symbolic zero flag, the registers and names written, and the symbolic carry and
-    overflow flags as words of width `1`. -/
+/-- A finite map from register names to symbolic words. -/
+abbrev RegMap := Std.TreeMap String STerm compare
+
+/-- The symbolic word of register `r` in `m`: its entry, or `reg r` when it has none. -/
+def RegMap.rd (m : RegMap) (r : String) : STerm := m.getD r (.reg r)
+
+theorem RegMap.rd_insert (m : RegMap) (d r : String) (t : STerm) :
+    RegMap.rd (m.insert d t) r = if r = d then t else RegMap.rd m r := by
+  simp only [RegMap.rd, Std.TreeMap.getD_insert, Std.compare_eq_iff_eq]
+  by_cases h : r = d
+  · subst h; simp
+  · simp [h, Ne.symm h]
+
+/-- Two register maps are equivalent when they read the same word at every register. -/
+instance RegMap.setoid : Setoid RegMap where
+  r m₁ m₂ := ∀ r, RegMap.rd m₁ r = RegMap.rd m₂ r
+  iseqv := ⟨fun _ _ => rfl, fun h r => (h r).symm, fun h₁ h₂ r => (h₁ r).trans (h₂ r)⟩
+
+/-- A symbolic register file: a register map up to equality of reads. Equality of register
+    files is equality of their reads (`RegFile.ext`). -/
+def RegFile := Quotient RegMap.setoid
+
+/-- The register file reading `reg r` at every register `r`. -/
+def RegFile.empty : RegFile := Quotient.mk _ ∅
+
+/-- The symbolic word of register `r` in `f`. -/
+def RegFile.get (f : RegFile) (r : String) : STerm :=
+  Quotient.liftOn f (RegMap.rd · r) (fun _ _ h => h r)
+
+/-- `f` with register `d` set to `t`. -/
+def RegFile.set (f : RegFile) (d : String) (t : STerm) : RegFile :=
+  Quotient.liftOn f (fun m => Quotient.mk _ (m.insert d t)) (fun _ _ h =>
+    Quotient.sound fun r => by simp only [RegMap.rd_insert, h r])
+
+@[simp] theorem RegFile.get_empty (r : String) : RegFile.empty.get r = .reg r := rfl
+
+theorem RegFile.get_set (f : RegFile) (d r : String) (t : STerm) :
+    (f.set d t).get r = if r = d then t else f.get r :=
+  Quotient.inductionOn f fun m => RegMap.rd_insert m d r t
+
+theorem RegFile.ext {f g : RegFile} (h : ∀ r, f.get r = g.get r) : f = g := by
+  induction f using Quotient.inductionOn
+  induction g using Quotient.inductionOn
+  exact Quotient.sound h
+
+/-- A symbolic state: a symbolic register file, a symbolic array per name, the symbolic
+    zero flag, the registers and names written with the number of registers written, and
+    the symbolic carry and overflow flags as words of width `1`. -/
 structure SSt where
-  /-- The symbolic word of each register. -/
-  regs : String → STerm
+  /-- The symbolic register file. -/
+  rf : RegFile
   /-- The symbolic array of each name. -/
   arrs : String → SArr
   /-- The symbolic zero flag. -/
@@ -518,13 +564,63 @@ structure SSt where
   cf : STerm
   /-- The symbolic overflow flag. -/
   of : STerm
+  /-- The number of registers written. -/
+  nwr : Nat := wr.length
+  /-- `nwr` is the length of `wr`. -/
+  nwr_eq : nwr = wr.length := by rfl
+
+/-- The symbolic word of each register. -/
+def SSt.regs (ss : SSt) (r : String) : STerm := ss.rf.get r
 
 /-- The symbolic state at the start of a block. -/
-def SSt.start : SSt := ⟨STerm.reg, SArr.cell, .init, [], [], .cin false, .cin true⟩
+def SSt.start : SSt :=
+  { rf := .empty, arrs := SArr.cell, zf := .init, wr := [], awr := [], cf := .cin false,
+    of := .cin true }
 
 /-- `ss` with register `d` set to `t`. -/
 def SSt.setR (ss : SSt) (d : String) (t : STerm) : SSt :=
-  { ss with regs := fun r => if r = d then t else ss.regs r, wr := d :: ss.wr }
+  { ss with rf := ss.rf.set d t, wr := d :: ss.wr, nwr := ss.nwr + 1,
+            nwr_eq := by simp [ss.nwr_eq] }
+
+theorem SSt.setR_regs (ss : SSt) (d : String) (t : STerm) (r : String) :
+    (ss.setR d t).regs r = if r = d then t else ss.regs r :=
+  RegFile.get_set _ _ _ _
+
+/-- The registers `ss1` records as written beyond those `ss` records. -/
+def SSt.newWr (ss1 ss : SSt) : List String := ss1.wr.take (ss1.nwr - ss.nwr)
+
+theorem SSt.newWr_eq (ss1 ss : SSt) :
+    ss1.newWr ss = ss1.wr.take (ss1.wr.length - ss.wr.length) := by
+  rw [SSt.newWr, ss1.nwr_eq, ss.nwr_eq]
+
+/-- `ss` with register `d` set to `t`, the written registers unchanged. -/
+def SSt.putR (ss : SSt) (d : String) (t : STerm) : SSt := { ss with rf := ss.rf.set d t }
+
+theorem SSt.putR_regs (ss : SSt) (d : String) (t : STerm) (r : String) :
+    (ss.putR d t).regs r = if r = d then t else ss.regs r :=
+  RegFile.get_set _ _ _ _
+
+@[simp] theorem SSt.start_regs (r : String) : SSt.start.regs r = .reg r := rfl
+
+@[simp] theorem SSt.rf_get (ss : SSt) (r : String) : ss.rf.get r = ss.regs r := rfl
+
+@[simp] theorem SSt.regs_mk (f : RegFile) (a : String → SArr) (z : SFlag) (w aw : List String)
+    (c o : STerm) (n : Nat) (h : n = w.length) (r : String) :
+    (SSt.mk f a z w aw c o n h).regs r = f.get r := rfl
+
+attribute [simp] RegFile.get_set
+
+theorem SSt.ext {s t : SSt} (hr : ∀ r, s.regs r = t.regs r) (ha : s.arrs = t.arrs)
+    (hz : s.zf = t.zf) (hw : s.wr = t.wr) (haw : s.awr = t.awr) (hc : s.cf = t.cf)
+    (ho : s.of = t.of) : s = t := by
+  obtain ⟨rf, arrs, zf, wr, awr, cf, of, n, hn⟩ := s
+  obtain ⟨rf', arrs', zf', wr', awr', cf', of', n', hn'⟩ := t
+  have hrf : rf = rf' := RegFile.ext hr
+  simp only at ha hz hw haw hc ho
+  subst hrf ha hz hw haw hc ho
+  have : n = n' := hn.trans hn'.symm
+  subst this
+  rfl
 
 /-- `ss` with array name `d` set to `a`. -/
 def SSt.setA (ss : SSt) (d : String) (a : SArr) : SSt :=
@@ -539,8 +635,8 @@ theorem SSt.good_start : SSt.start.Good := ⟨fun _ _ => rfl, fun _ _ => rfl⟩
 theorem SSt.Good.setR {ss : SSt} (h : ss.Good) (d : String) (t : STerm) :
     (ss.setR d t).Good := by
   refine ⟨fun r hr => ?_, h.2⟩
-  simp only [SSt.setR, List.mem_cons, not_or] at hr ⊢
-  rw [if_neg hr.1]
+  simp only [SSt.setR, List.mem_cons, not_or] at hr
+  rw [SSt.setR_regs, if_neg hr.1]
   exact h.1 r hr.2
 
 theorem SSt.Good.setA {ss : SSt} (h : ss.Good) (d : String) (a : SArr) :
@@ -1232,7 +1328,7 @@ theorem HoldsM.setR {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
     {m : LstateM} (h : HoldsM V A C O ss m) (d : String) (t : STerm) :
     HoldsM V A C O (ss.setR d t) { m with reg := (m.reg.setReg d (t.ev V A C O).2).nextPc } := by
   refine ⟨fun q => ?_, h.2⟩
-  simp only [SSt.setR, LstateN.lvm_nextPc, LstateN.lvm_setReg]
+  simp only [SSt.setR_regs, LstateN.lvm_nextPc, LstateN.lvm_setReg]
   split_ifs
   · rfl
   · exact h.1 q
@@ -1662,7 +1758,7 @@ theorem symCarry_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} 
                  ⟨fun q => (hreg _ q).trans ?_, hs.2.1, hs.2.2.1, ?_, ?_⟩, rfl, rfl, rfl⟩
                all_goals first
                  | (by_cases hq : q = d <;>
-                     simp [hq, SSt.setR, STerm.ev, carryWord, hs.2.2.2.1, hs.2.2.2.2])
+                     simp [hq, SSt.setR_regs, STerm.ev, carryWord, hs.2.2.2.1, hs.2.2.2.2])
                  | simp [STerm.ev, carryBit, LstateM.setReg, LstateM.nextPc, SSt.setR,
                      hs.2.2.2.1, hs.2.2.2.2]
              · simp [c1, c2] at ht
@@ -1689,7 +1785,7 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
           subst ht
           refine ⟨g1.mpr c1, ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩,
             rfl, rfl, rfl⟩
-          simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+          simp only [SSt.setR_regs, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
             LstateN.lvm_setReg]
           split_ifs
           · exact sigma_of_castW c1
@@ -1717,7 +1813,7 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
               subst ht
               refine ⟨allG_append.mpr ⟨g0.mpr c0, g1.mpr c1⟩,
                 ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩, rfl, rfl, rfl⟩
-              simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+              simp only [SSt.setR_regs, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
                 LstateN.lvm_setReg]
               by_cases hq : q = hi
               · simp [hq, STerm.ev]
@@ -1779,7 +1875,7 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
       refine ⟨fun t ht => ?_, fun _ => rfl⟩
       cases ht
       refine ⟨allG_nil V A C O, ⟨fun q => ?_, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
-      simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+      simp only [SSt.setR_regs, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
         LstateN.lvm_setReg]
       split_ifs
       · exact hs.1 src
@@ -3431,10 +3527,33 @@ def SDec.subst (σ : Nat → STerm) : SDec → SDec
   | .nz t => .nz (t.subst σ)
   | .const b => .const b
 
+theorem RegMap.rd_map (σ : Nat → STerm) (m : RegMap) (r : String) :
+    RegMap.rd (m.map (fun _ t => t.subst σ)) r = (RegMap.rd m r).subst σ := by
+  simp only [RegMap.rd, Std.TreeMap.getD_eq_getD_getElem?, Std.TreeMap.getElem?_map]
+  cases m[r]? <;> rfl
+
+/-- The register file `f` under the substitution `σ`. -/
+def RegFile.subst (σ : Nat → STerm) (f : RegFile) : RegFile :=
+  Quotient.liftOn f (fun m => Quotient.mk _ (m.map (fun _ t => t.subst σ))) (fun _ _ h =>
+    Quotient.sound fun r => by simp only [RegMap.rd_map, h r])
+
+theorem RegFile.get_subst (σ : Nat → STerm) (f : RegFile) (r : String) :
+    (f.subst σ).get r = (f.get r).subst σ :=
+  Quotient.inductionOn f fun m => RegMap.rd_map σ m r
+
 /-- The symbolic state `ss` under the substitution `σ`. -/
 def SSt.subst (σ : Nat → STerm) (ss : SSt) : SSt :=
-  ⟨fun r => (ss.regs r).subst σ, fun r => (ss.arrs r).subst σ, ss.zf.subst σ, ss.wr, ss.awr,
-    ss.cf.subst σ, ss.of.subst σ⟩
+  { rf := ss.rf.subst σ, arrs := fun r => (ss.arrs r).subst σ, zf := ss.zf.subst σ,
+    wr := ss.wr, awr := ss.awr, cf := ss.cf.subst σ, of := ss.of.subst σ, nwr := ss.nwr,
+    nwr_eq := ss.nwr_eq }
+
+@[simp] theorem SSt.subst_regs_apply (σ : Nat → STerm) (ss : SSt) (r : String) :
+    (ss.subst σ).regs r = (ss.regs r).subst σ :=
+  RegFile.get_subst σ ss.rf r
+
+theorem SSt.subst_regs (σ : Nat → STerm) (ss : SSt) :
+    (ss.subst σ).regs = fun r => (ss.regs r).subst σ :=
+  funext (SSt.subst_regs_apply σ ss)
 
 /-- A register-file description under the substitution `σ`. -/
 def ROut.subst (σ : Nat → STerm) : ROut → ROut
@@ -3453,8 +3572,8 @@ theorem SSt.subst_start (σ : Nat → STerm) : SSt.start.subst σ = SSt.start :=
 
 theorem SSt.subst_setR (σ : Nat → STerm) (ss : SSt) (d : String) (t : STerm) :
     (ss.setR d t).subst σ = (ss.subst σ).setR d (t.subst σ) := by
-  simp only [SSt.subst, SSt.setR, SSt.mk.injEq, and_true]
-  funext r
+  refine SSt.ext (fun r => ?_) rfl rfl rfl rfl rfl rfl
+  rw [SSt.subst_regs_apply, SSt.setR_regs, SSt.setR_regs, SSt.subst_regs_apply]
   split <;> rfl
 
 theorem SSt.subst_setA (σ : Nat → STerm) (ss : SSt) (d : String) (a : SArr) :
@@ -3524,23 +3643,23 @@ theorem symMem_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
   split
   · split
     · simp only [SOut.subst, SSt.subst_setR, List.map_cons, List.map_nil,
-        SG.subst, STerm.subst]
+        SG.subst, STerm.subst, SSt.subst_regs_apply]
       rfl
-    · rw [← liftR_subst, ← symCast_subst]; rfl
+    · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
   · split
     · simp only [SOut.subst, SSt.subst_setA, List.map_cons, List.map_nil,
-        SG.subst, SArr.subst]
+        SG.subst, SArr.subst, SSt.subst_regs_apply]
       rfl
-    · rw [← liftR_subst, ← symCast_subst]; rfl
+    · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
   · rfl
   · rfl
-  · rw [← liftR_subst, ← symCast_subst]; rfl
+  · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
 
 theorem aluFlT_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (ofl : Bool) :
     aluFlT i (ss.subst σ) ofl = (aluFlT i ss ofl).subst σ := by
   unfold aluFlT
   split
-  · rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+  · rw [SSt.subst_regs σ ss, symOp64_subst,
       symOp64_subst]
     cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> cases ofl <;> dsimp only <;>
       (try split_ifs) <;> rfl
@@ -3556,7 +3675,7 @@ theorem aluFl_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (o : SOut) :
 theorem symCarry_subst (σ : Nat → STerm) (op : CarryOp) (d : String) (a b : LOperand)
     (ss : SSt) : symCarry op d a b (ss.subst σ) = (symCarry op d a b ss).subst σ := by
   unfold symCarry
-  rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+  rw [SSt.subst_regs σ ss, symOp64_subst,
     symOp64_subst]
   cases symOp64 ss.regs a with
   | none => rfl
@@ -3572,7 +3691,7 @@ theorem symCarry_subst (σ : Nat → STerm) (op : CarryOp) (d : String) (a b : L
 theorem symWide_subst (σ : Nat → STerm) (w : WideOp) (ss : SSt) :
     symWide w (ss.subst σ) = (symWide w ss).subst σ := by
   unfold symWide
-  rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl]
+  rw [SSt.subst_regs σ ss]
   cases w with
   | mov d b =>
       simp only [symOp64_subst]
@@ -3587,12 +3706,12 @@ theorem symStep_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
     symStep i (ss.subst σ) = (symStep i ss).subst σ := by
   unfold symStep
   split
-  · rw [show (ss.subst σ).regs = fun r => (ss.regs r).subst σ from rfl, symOp64_subst,
+  · rw [SSt.subst_regs σ ss, symOp64_subst,
       symOp64_subst]
     cases symOp64 ss.regs _ <;> cases symOp64 ss.regs _ <;> simp [SOut.subst, List.map_append]
     rfl
   · split
-    · simp only [SOut.subst, SSt.subst_setR, List.map_nil]; rfl
+    · simp only [SOut.subst, SSt.subst_setR, List.map_nil, SSt.subst_regs_apply]
     · split
       · rfl
       · split
@@ -4457,7 +4576,7 @@ def Tbl.internRegs (T : Tbl) (ss : SSt) : List String → Tbl × SSt
   | [] => (T, ss)
   | d :: ds =>
       let p := T.intern (ss.regs d)
-      p.1.internRegs { ss with regs := fun r => if r = d then p.2 else ss.regs r } ds
+      p.1.internRegs (ss.putR d p.2) ds
 
 /-- The registers `ds` and the carry and overflow flags of `ss` interned in `T`. -/
 def Tbl.internSt (T : Tbl) (ss : SSt) (ds : List String) : Tbl × SSt :=
@@ -4484,8 +4603,8 @@ theorem Tbl.internRegs_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ
       simp only [Tbl.internRegs] at hx ⊢
       rw [Tbl.internRegs_subst h _ _ ds hx]
       have hd := Tbl.intern_subst h T (ss.regs d) ((Tbl.internRegs_ext _ _ ds).trans hx)
-      simp only [SSt.subst, SSt.mk.injEq, and_true]
-      funext r
+      refine SSt.ext (fun r => ?_) rfl rfl rfl rfl rfl rfl
+      rw [SSt.subst_regs_apply, SSt.putR_regs, SSt.subst_regs_apply]
       split
       · subst r; exact hd
       · rfl
@@ -4518,7 +4637,7 @@ def tRun : List LinstrRM → SSt → Tbl → optParam (LinstrRM → SSt → SOut
   | i :: is, ss, T, sym =>
       match sym i ss with
       | .ok ss1 g1 =>
-          let p := T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
+          let p := T.internSt ss1 (ss1.newWr ss)
           let r := tRun is p.2 p.1 sym
           match r.2 with
           | .ok ss2 g2 => (r.1, .ok ss2 (g1 ++ g2))
@@ -4534,8 +4653,8 @@ theorem tRun_ext_at (sym : LinstrRM → SSt → SOut) :
       simp only [tRun]
       split
       · rename_i ss1 _ _
-        have := (Tbl.internSt_ext T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).trans
-          (tRun_ext_at sym is (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _)
+        have := (Tbl.internSt_ext T ss1 (ss1.newWr ss)).trans
+          (tRun_ext_at sym is (T.internSt ss1 (ss1.newWr ss)).2 _)
         split <;> exact this
       · exact TExt.refl _
       · exact TExt.refl _
@@ -4552,8 +4671,8 @@ theorem tRun_valid_at (sym : LinstrRM → SSt → SOut) :
       split
       · rename_i ss1 _ _
         have := tRun_valid_at sym is
-          (T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))).2 _
-          (Tbl.internSt_valid hv ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)))
+          (T.internSt ss1 (ss1.newWr ss)).2 _
+          (Tbl.internSt_valid hv ss1 (ss1.newWr ss))
         split <;> exact this
       · exact hv
       · exact hv
@@ -4578,10 +4697,10 @@ theorem tRun_subst_at {sym : LinstrRM → SSt → SOut}
       cases hs : sym i ss with
       | ok ss1 g1 =>
           simp only [hs] at hx ⊢
-          generalize hp : T.internSt ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length)) = p at hx ⊢
+          generalize hp : T.internSt ss1 (ss1.newWr ss) = p at hx ⊢
           have hx' : TExt (tRun is p.2 p.1 sym).1.ents E := by split at hx <;> exact hx
           have ih := tRun_subst_at hsub h is _ _ hx'
-          have e2 := Tbl.internSt_subst h T ss1 (ss1.wr.take (ss1.wr.length - ss.wr.length))
+          have e2 := Tbl.internSt_subst h T ss1 (ss1.newWr ss)
             (by rw [hp]; exact (tRun_ext_at sym is _ _).trans hx')
           rw [hp] at e2
           rw [e2] at ih
@@ -4805,7 +4924,7 @@ theorem symDec_subst (σ : Nat → STerm) (ss : SSt) (c : LOperand) :
   unfold symDec
   split
   · rfl
-  · split <;> rfl
+  · split <;> simp [SDec.subst]
 
 /-- The guard check of `blockOk` over the table `E`. -/
 def guardsT (E : Array TEnt) (n : List String × Bool) (gs gs' : List SG) : Bool :=
@@ -5020,7 +5139,8 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     Bool.not_eq_true']
   refine ⟨⟨fun j hj => ⟨fun r hr => ?_, ?_⟩, ?_⟩, fun q hq => ?_⟩
   · obtain ⟨e, o⟩ := (hs j hj).1 r hr
-    exact ⟨by simp only [SSt.subst, e], okInT_spec h o⟩
+    rw [SSt.subst_regs_apply, SSt.subst_regs_apply]
+    exact ⟨by rw [e], okInT_spec h o⟩
   · rcases (hs j hj).2 with h0 | ⟨⟨⟨⟨⟨z1, z2⟩, c1⟩, c2⟩, o1⟩, o2⟩
     · exact Or.inl h0
     · exact Or.inr ⟨⟨⟨⟨⟨by simp only [SSt.subst, z1], okInFT_spec h z2⟩,
@@ -5028,7 +5148,9 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
         okInT_spec h o2⟩
   · rcases hh with h0 | ho
     · exact Or.inl h0
-    · exact Or.inr fun r hr => ⟨by simp only [SSt.subst, (ho r hr).1], okInT_spec h (ho r hr).2⟩
+    · refine Or.inr fun r hr => ?_
+      rw [SSt.subst_regs_apply, SSt.subst_regs_apply]
+      exact ⟨by rw [(ho r hr).1], okInT_spec h (ho r hr).2⟩
   · have hq' : q ∈ ss.awr ++ ss'.awr := hq
     exact arrAgreeT_spec h (ha q hq')
 

@@ -166,14 +166,14 @@ theorem frameT_refl (ss : SSt) : FrameT ss ss := ⟨fun _ _ => rfl, fun _ _ => r
 
 theorem frameT_setR (ss : SSt) (d : String) (t : STerm) : FrameT ss (ss.setR d t) := by
   refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
-  simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr ⊢
-  exact if_neg hr.1
+  simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr
+  rw [SSt.setR_regs, if_neg hr.1]
 
 theorem frameT_setR_setR (ss : SSt) (d e : String) (t u : STerm) :
     FrameT ss ((ss.setR d t).setR e u) := by
   refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
-  simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr ⊢
-  rw [if_neg hr.1, if_neg hr.2.1]
+  simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr
+  rw [SSt.setR_regs, SSt.setR_regs, if_neg hr.1, if_neg hr.2.1]
 
 theorem frameT_setA (ss : SSt) (d : String) (a : SArr) : FrameT ss (ss.setA d a) := by
   refine ⟨fun _ _ => rfl, fun r hr => ?_⟩
@@ -257,11 +257,12 @@ theorem symStep_frame (i : LinstrRM) {ss : SSt} {ss' : SSt} {gs : List SG}
 
 /-! ## The hash-map state -/
 
-/-- A symbolic state whose registers and arrays are hash maps; an absent register or array
-    name holds its start value. The remaining fields are those of `SSt`. -/
+/-- A symbolic state whose registers are a register map and whose arrays are a hash map; an
+    absent register or array name holds its start value. The remaining fields are those of
+    `SSt`. -/
 structure FSt where
   /-- The symbolic words of the registers written. -/
-  regs : Std.HashMap String STerm
+  regs : RegMap
   /-- The symbolic arrays of the array names written. -/
   arrs : Std.HashMap String SArr
   /-- The symbolic zero flag. -/
@@ -277,8 +278,8 @@ structure FSt where
 
 /-- The symbolic state an `FSt` describes. -/
 def FSt.toSSt (F : FSt) : SSt :=
-  ⟨fun r => F.regs.getD r (.reg r), fun r => F.arrs.getD r (.cell r), F.zf, F.wr, F.awr,
-    F.cf, F.of⟩
+  { rf := Quotient.mk _ F.regs, arrs := fun r => F.arrs.getD r (.cell r), zf := F.zf,
+    wr := F.wr, awr := F.awr, cf := F.cf, of := F.of }
 
 /-- The hash-map state at the start of a block. -/
 def FSt.start : FSt := ⟨∅, ∅, .init, [], [], .cin false, .cin true⟩
@@ -291,7 +292,7 @@ def FSt.upd (F : FSt) (ss' : SSt) : FSt :=
     ss'.zf, ss'.wr, ss'.awr, ss'.cf, ss'.of⟩
 
 theorem FSt.toSSt_start : FSt.start.toSSt = SSt.start := by
-  simp only [FSt.toSSt, FSt.start, SSt.start, Std.HashMap.getD_empty]
+  refine SSt.ext (fun r => rfl) (funext fun r => Std.HashMap.getD_empty) rfl rfl rfl rfl rfl
 
 theorem getD_foldl_insert {β : Type} (f : String → β) (r : String) (dflt : β) :
     ∀ (l : List String) (m : Std.HashMap String β),
@@ -306,18 +307,32 @@ theorem getD_foldl_insert {β : Type} (f : String → β) (r : String) (dflt : �
         · subst hd; simp
         · simp [hr, hd, Ne.symm hd]
 
+theorem rd_foldl_insert (f : String → STerm) (r : String) :
+    ∀ (l : List String) (m : RegMap),
+      RegMap.rd (l.foldl (fun m d => m.insert d (f d)) m) r
+        = if r ∈ l then f r else RegMap.rd m r
+  | [], m => by simp
+  | d :: l, m => by
+      rw [List.foldl_cons, rd_foldl_insert f r l, RegMap.rd_insert]
+      by_cases hr : r ∈ l
+      · simp [hr]
+      · by_cases hd : r = d
+        · subst hd; simp
+        · simp [hr, hd]
+
 /-- **The hash-map state after a step describes the state the step returns.** -/
 theorem FSt.toSSt_upd {F : FSt} {ss' : SSt} (h : FrameT F.toSSt ss') :
     (F.upd ss').toSSt = ss' := by
   obtain ⟨hr, ha⟩ := h
-  obtain ⟨regs, arrs, zf, wr, awr, cf, of⟩ := ss'
-  simp only [FSt.toSSt, FSt.upd, SSt.mk.injEq, and_true, List.foldl_map]
-  refine ⟨funext fun r => ?_, funext fun r => ?_⟩
-  · rw [getD_foldl_insert]
+  refine SSt.ext (fun r => ?_) (funext fun r => ?_) rfl rfl rfl rfl rfl
+  · show RegMap.rd (((ss'.wr.take 2).map fun d => (d, ss'.regs d)).foldl
+      (fun m p => m.insert p.1 p.2) F.regs) r = ss'.regs r
+    rw [List.foldl_map, rd_foldl_insert]
     split
     · rfl
     · next hn => exact (hr r hn).symm
-  · rw [getD_foldl_insert]
+  · simp only [FSt.toSSt, FSt.upd, List.foldl_map]
+    rw [getD_foldl_insert]
     split
     · rfl
     · next hn => exact (ha r hn).symm
@@ -574,8 +589,8 @@ def posAtF (E : List String) (l : Option (Option String)) (ci : Option LinstrRM)
     which read the maps of `F`, are released before the inserts. -/
 def stepOut (E : List String) (F : FSt) (ss' : SSt) : FOut :=
   match F, ss' with
-  | ⟨mr, ma, _, _, _, _, _⟩, ⟨regs, arrs, zf, wr, awr, cf, of⟩ =>
-      let rv := (wr.take 2).map fun d => (d, regs d)
+  | ⟨mr, ma, _, _, _, _, _⟩, ⟨rf, arrs, zf, wr, awr, cf, of, _, _⟩ =>
+      let rv := (wr.take 2).map fun d => (d, rf.get d)
       let av := (awr.take 2).map fun d => (d, arrs d)
       .ok ⟨rv.foldl (fun m p => m.insert p.1 p.2) mr, av.foldl (fun m p => m.insert p.1 p.2) ma,
           zf, wr, awr, cf, of⟩
@@ -586,7 +601,7 @@ theorem stepOut_eq (E : List String) (F : FSt) (ss' : SSt) :
       (((ss'.wr.take 2).map fun d => (d, ss'.regs d)).all
         fun p => !E.contains p.1 || w64F E p.2) := by
   obtain ⟨_, _, _, _, _, _, _⟩ := F
-  obtain ⟨_, _, _, _, _, _, _⟩ := ss'
+  obtain ⟨_, _, _, _, _, _, _, _, _⟩ := ss'
   rfl
 
 /-- `nextS` over the hash-map state: the step runs `symStep` on the described state and
@@ -619,7 +634,7 @@ theorem posAtF_eq (E : List String) (l : Option (Option String)) (ci : Option Li
 
 /-- Every register of `E` has a word of width `64` in the start state. -/
 theorem all_w64_start (E : List String) : E.all (fun x => w64 E (SSt.start.regs x)) = true :=
-  List.all_eq_true.mpr fun x hx => by simp [SSt.start, w64, STerm.wbase, STerm.wknown, hx]
+  List.all_eq_true.mpr fun x hx => by simp [w64, STerm.wbase, STerm.wknown, hx]
 
 /-- After a step that passes the width check before it, the width check of every register of
     `E` is the check of the registers of `E` among the first two written registers. -/

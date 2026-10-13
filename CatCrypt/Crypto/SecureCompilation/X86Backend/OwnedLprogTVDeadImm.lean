@@ -355,7 +355,7 @@ theorem symWide_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM) {w : Wide
         symOp64_congr (R' := ss'.regs) fun q hq => hR q (hr.1 q hq)]
       split
       · refine ⟨rfl, ⟨hA, hZ, hC, hO⟩, [hi, lo], rfl, rfl, fun q hq => ?_⟩
-        simp only [SSt.setR]
+        simp only [SSt.setR_regs]
         split <;> simp_all
       · trivial
 
@@ -598,8 +598,7 @@ theorem Tbl.internRegs_keep : ∀ (T : Tbl) (ss : SSt) (ds : List String) (q : S
   | T, ss, d :: ds, q, hq => by
       simp only [List.mem_cons, not_or] at hq
       simp only [Tbl.internRegs]
-      rw [Tbl.internRegs_keep _ _ ds q hq.2]
-      simp [hq.1]
+      rw [Tbl.internRegs_keep _ _ ds q hq.2, SSt.putR_regs, if_neg hq.1]
 
 theorem Tbl.internRegs_on : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
     (∀ q ∈ ds, ss.regs q = ss'.regs q) →
@@ -611,10 +610,9 @@ theorem Tbl.internRegs_on : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
       have hd : ss'.regs d = ss.regs d := (h d (List.mem_cons_self ..)).symm
       rw [hd]
       have ih := Tbl.internRegs_on (T.intern (ss.regs d)).1
-        { ss with regs := fun r => if r = d then (T.intern (ss.regs d)).2 else ss.regs r }
-        { ss' with regs := fun r => if r = d then (T.intern (ss.regs d)).2 else ss'.regs r } ds
+        (ss.putR d (T.intern (ss.regs d)).2) (ss'.putR d (T.intern (ss.regs d)).2) ds
         (fun q hq => by
-          dsimp only
+          rw [SSt.putR_regs, SSt.putR_regs]
           split
           · rfl
           · exact h q (List.mem_cons_of_mem _ hq))
@@ -623,7 +621,7 @@ theorem Tbl.internRegs_on : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
       · exact ih.2 q hqs
       · rw [Tbl.internRegs_keep _ _ ds q hqs, Tbl.internRegs_keep _ _ ds q hqs]
         have hqd : q = d := by simpa [hqs] using hq
-        simp [hqd]
+        simp [hqd, SSt.putR_regs]
 
 theorem Tbl.internSt_keep (T : Tbl) (ss : SSt) (ds : List String) (q : String) (hq : q ∉ ds) :
     (T.internSt ss ds).2.regs q = ss.regs q :=
@@ -685,15 +683,14 @@ theorem tRun_immMov {ss : SSt} {T : Tbl} (hI : ss.Inv T.ents.size) (r : String) 
   have hc := Tbl.intern_atom T hI.2.2.1
   have ho := Tbl.intern_atom T hI.2.2.2
   have hi : T.intern (.immW w n) = (T, .immW w n) := Tbl.intern_atom T rfl
-  simp only [Tbl.internSt, Tbl.internRegs, SSt.setR, ↓reduceIte]
-  rw [hi]
-  dsimp only
-  rw [hc]
-  dsimp only
-  rw [ho]
-  simp only [SSt.mk.injEq, Prod.mk.injEq, true_and, and_true]
-  funext q
-  split <;> simp_all
+  have hp : (ss.setR r (.immW w n)).putR r (.immW w n) = ss.setR r (.immW w n) :=
+    SSt.ext (fun q => by
+      rw [SSt.putR_regs, SSt.setR_regs]
+      by_cases h : q = r <;> simp [h]) rfl rfl rfl rfl rfl rfl
+  simp only [Tbl.internSt, Tbl.internRegs, SSt.setR_regs, ↓reduceIte, hi, hp]
+  rw [show (ss.setR r (.immW w n)).cf = ss.cf from rfl,
+    show (ss.setR r (.immW w n)).of = ss.of from rfl, hc, ho]
+  rfl
 
 /-- **Runs without dead immediate moves.** From states that agree off the pending
     registers `D`, the run of a marked body and the run of its unmarked instructions, in
@@ -727,12 +724,12 @@ theorem tRun_drop : ∀ (B : List (LinstrRM × Bool)) (D : List String) (ss ss' 
           have e' : (ss.setR r (.immW w n)).EqvOn (r :: D) ss' := by
             refine ⟨e.1, fun q hq => ?_⟩
             simp only [List.mem_cons, not_or] at hq
-            simp only [SSt.setR, if_neg hq.1]
+            rw [SSt.setR_regs, if_neg hq.1]
             exact e.2 q hq.2
           have hI' : (ss.setR r (.immW w n)).Inv T.ents.size := by
             obtain ⟨⟨hr, ha, hz, hc, ho⟩, hat, hca, hoa⟩ := hI
             refine ⟨⟨fun q => ?_, ha, hz, hc, ho⟩, fun q => ?_, hca, hoa⟩ <;>
-              simp only [SSt.setR] <;> split
+              rw [SSt.setR_regs] <;> split
             · rfl
             · exact hr q
             · rfl
@@ -773,11 +770,15 @@ theorem tRun_drop : ∀ (B : List (LinstrRM × Bool)) (D : List String) (ss ss' 
               have hSub : (T.internSt s1 ds).1.Sub T' :=
                 (tRun_sub _ _ _).trans (by simpa [runAfter] using hS)
               obtain ⟨s0, h0, e0, -, -⟩ :=
-                Tbl.internSt_rerun (ss := s1) (ss' := { s1 with wr := s1'.wr, awr := s1'.awr })
+                Tbl.internSt_rerun (ss := s1)
+                  (ss' := { s1 with wr := s1'.wr, awr := s1'.awr, nwr := s1'.nwr,
+                                    nwr_eq := s1'.nwr_eq })
                   ⟨rfl, rfl, rfl, rfl, rfl⟩ ds hR1.1 hSub
               obtain ⟨ht1, hSm, hag, -⟩ :=
-                Tbl.internSt_on T' (ss := { s1 with wr := s1'.wr, awr := s1'.awr }) (ss' := s1')
-                  ds hSame hds
+                Tbl.internSt_on T'
+                  (ss := { s1 with wr := s1'.wr, awr := s1'.awr, nwr := s1'.nwr,
+                                   nwr_eq := s1'.nwr_eq })
+                  (ss' := s1') ds hSame hds
               rw [h0] at ht1 hSm hag
               dsimp only at ht1 hSm hag
               have eD : (T.internSt s1 ds).2.EqvOn (D.filter (fun q => !(wrOf i).contains q))
@@ -1216,11 +1217,15 @@ theorem tRun_dropW : ∀ (B : List (LinstrRM × Bool)) (D : List String) (ss ss'
               have hSub : (T.internSt s1 ds).1.Sub T' :=
                 (tRun_sub _ _ _).trans (by simpa [runAfter] using hS)
               obtain ⟨s0, h0, e0, -, -⟩ :=
-                Tbl.internSt_rerun (ss := s1) (ss' := { s1 with wr := s1'.wr, awr := s1'.awr })
+                Tbl.internSt_rerun (ss := s1)
+                  (ss' := { s1 with wr := s1'.wr, awr := s1'.awr, nwr := s1'.nwr,
+                                    nwr_eq := s1'.nwr_eq })
                   ⟨rfl, rfl, rfl, rfl, rfl⟩ ds hR1.1 hSub
               obtain ⟨ht1, hSm, hag, -⟩ :=
-                Tbl.internSt_on T' (ss := { s1 with wr := s1'.wr, awr := s1'.awr }) (ss' := s1')
-                  ds hSame hds
+                Tbl.internSt_on T'
+                  (ss := { s1 with wr := s1'.wr, awr := s1'.awr, nwr := s1'.nwr,
+                                   nwr_eq := s1'.nwr_eq })
+                  (ss' := s1') ds hSame hds
               rw [h0] at ht1 hSm hag
               dsimp only at ht1 hSm hag
               have eD : (T.internSt s1 ds).2.EqvOn (D.filter (fun q => !(wrOf i).contains q))

@@ -491,18 +491,32 @@ def ChunkOn (D : List String) (i : LinstrRM) (js : List LinstrRM) : Prop :=
 
 /-- The state `ss'` with the registers of `D` taken from `ss`. -/
 def SSt.takeOn (D : List String) (ss ss' : SSt) : SSt :=
-  { ss' with regs := fun q => if q ∈ D then ss.regs q else ss'.regs q }
+  { ss' with rf := D.foldr (fun q rf => rf.set q (ss.regs q)) ss'.rf }
+
+theorem SSt.takeOn_regs (D : List String) (ss ss' : SSt) (q : String) :
+    (SSt.takeOn D ss ss').regs q = if q ∈ D then ss.regs q else ss'.regs q := by
+  induction D with
+  | nil => simp only [List.not_mem_nil, if_false]; rfl
+  | cons a D ih =>
+      change ((D.foldr (fun q (rf : RegFile) => rf.set q (ss.regs q)) ss'.rf).set a
+        (ss.regs a)).get q = _
+      rw [RegFile.get_set]
+      by_cases h : q = a
+      · subst h; simp
+      · rw [if_neg h]
+        refine ih.trans ?_
+        simp [h]
 
 theorem SSt.EqvOn.eqv_takeOn {D : List String} {ss ss' : SSt} (e : ss.EqvOn D ss') :
     ss.Eqv (SSt.takeOn D ss ss') := by
   refine ⟨funext fun q => ?_, e.1.1, e.1.2.1, e.1.2.2.1, e.1.2.2.2⟩
   by_cases hq : q ∈ D
-  · simp [SSt.takeOn, hq]
-  · simp [SSt.takeOn, hq, e.2 q hq]
+  · simp [SSt.takeOn_regs, hq]
+  · simp [SSt.takeOn_regs, hq, e.2 q hq]
 
 theorem SSt.takeOn_eqvOn (D : List String) (ss ss' : SSt) :
     (SSt.takeOn D ss ss').EqvOn D ss' :=
-  ⟨⟨rfl, rfl, rfl, rfl⟩, fun q hq => by simp [SSt.takeOn, hq]⟩
+  ⟨⟨rfl, rfl, rfl, rfl⟩, fun q hq => by simp [SSt.takeOn_regs, hq]⟩
 
 /-- **A chunk that does not read `D` simulates off `D`.** -/
 theorem chunkOn_of_chunk {D : List String} {i : LinstrRM} {js : List LinstrRM}
@@ -700,6 +714,10 @@ theorem ownedCheckM_of_resOn (outs : List String) (D : List String) (hD : ∀ q 
 def SSt.wrF (ss : SSt) (n : String) (t c o : STerm) : SSt :=
   { ss.setR n t with cf := c, of := o }
 
+theorem SSt.wrF_regs (ss : SSt) (n : String) (t c o : STerm) (q : String) :
+    (ss.wrF n t c o).regs q = if q = n then t else ss.regs q :=
+  SSt.setR_regs ss n t q
+
 /-- The step descriptions `o` and `o'` from `ss` differ in their destination only: `o`
     writes a word to `d` where `o'` writes it to `r`, with equal flags and guards; or both
     fail, or both are outside the fragment. -/
@@ -835,12 +853,14 @@ theorem tRun_movReg {mv d x : String} (hmv : stripWidthTag mv = "MOV") (τ : Mem
     tRun [(.Lopn [.reg d] mv [.reg x], τ)] s T = (T, .ok (s.setR d (s.regs x)) []) := by
   rw [tRun_single_ok (ds := [d]) T (symStep_movReg hmv τ s) rfl]
   have hint : T.internSt (s.setR d (s.regs x)) [d] = (T, s.setR d (s.regs x)) := by
-    simp only [Tbl.internSt, Tbl.internRegs]
-    simp only [SSt.setR, ite_true, Tbl.intern_atom T hx, Tbl.intern_atom T hc,
-      Tbl.intern_atom T ho, Prod.mk.injEq, true_and]
-    congr 1
-    funext q
-    split <;> simp_all
+    have hp : (s.setR d (s.regs x)).putR d (s.regs x) = s.setR d (s.regs x) :=
+      SSt.ext (fun q => by
+        rw [SSt.putR_regs, SSt.setR_regs]
+        by_cases h : q = d <;> simp [h]) rfl rfl rfl rfl rfl rfl
+    simp only [Tbl.internSt, Tbl.internRegs, SSt.setR_regs, ite_true, Tbl.intern_atom T hx, hp]
+    rw [show (s.setR d (s.regs x)).cf = s.cf from rfl,
+      show (s.setR d (s.regs x)).of = s.of from rfl, Tbl.intern_atom T hc, Tbl.intern_atom T ho]
+    rfl
   rw [hint]
 
 /-- **The scratch chunk.** For a scratch register `r` that neither the first source `y`, the
@@ -862,10 +882,8 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
     intro rest
     have heq : (SSt.takeOn [r] ss ss').setR r ((SSt.takeOn [r] ss ss').regs y) =
         ss'.setR r (ss'.regs y) := by
-      simp only [SSt.setR, SSt.takeOn, List.mem_singleton, hyr, if_false]
-      congr 1
-      funext q
-      split <;> simp_all
+      refine SSt.ext (fun q => ?_) rfl rfl rfl rfl rfl rfl
+      by_cases hq : q = r <;> simp [SSt.setR_regs, SSt.takeOn_regs, hq, hyr]
     rw [tRun_cons, tRun_cons, symStep_movReg hmv, symStep_movReg hmv, heq]
     rfl
   rw [hfirst, show ((.Lopn [.reg r] m [.reg y], τ1) :: [(.Lopn [.reg r] opn [.reg r, b], τ),
@@ -883,33 +901,34 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
           obtain ⟨rfl, t, c, o, rfl, rfl⟩ := hren
           rw [tRun_single_ok (ds := [d]) T hsd rfl] at hS ⊢
           have hT : (T.internSt (ss.wrF r t c o) [r]).1 = (T.internSt (ss.wrF d t c o) [d]).1 := by
-            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR, SSt.putR]
           have hcp' := hcp hI (by rw [tRun_single_ok (ds := [r]) T hsr rfl, hT]; exact hS)
           rw [tRun_single_ok (ds := [r]) T hsr rfl] at hcp'
           have hInv : (T.internSt (ss.wrF d t c o) [d]).2.Inv
               (T.internSt (ss.wrF d t c o) [d]).1.ents.size :=
             Tbl.internSt_inv (T := T) [d] (symStep_refsLt _ hI.1 hsd).1 (fun q hq => by
               have hqd : q ≠ d := by simpa using hq
-              simp only [SSt.wrF, SSt.setR, hqd, if_false]
+              simp only [SSt.wrF_regs, hqd, if_false]
               exact hI.2.1 q)
           have hPr : ∀ q, (T.internSt (ss.wrF r t c o) [r]).2.regs q =
               if q = r then (T.internSt (ss.wrF d t c o) [d]).2.regs d else
                 if q = d then ss.regs d else (T.internSt (ss.wrF d t c o) [d]).2.regs q := by
             intro q
-            simp only [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp only [Tbl.internSt, Tbl.internRegs, SSt.regs_mk, SSt.rf_get, SSt.putR_regs,
+              SSt.wrF_regs]
             by_cases hqr : q = r <;> by_cases hqd : q = d <;> simp_all
           have hcf : (T.internSt (ss.wrF r t c o) [r]).2.cf =
               (T.internSt (ss.wrF d t c o) [d]).2.cf := by
-            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR, SSt.putR]
           have hof : (T.internSt (ss.wrF r t c o) [r]).2.of =
               (T.internSt (ss.wrF d t c o) [d]).2.of := by
-            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR, SSt.putR]
           have harr : (T.internSt (ss.wrF r t c o) [r]).2.arrs =
               (T.internSt (ss.wrF d t c o) [d]).2.arrs := by
-            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR, SSt.putR]
           have hzf : (T.internSt (ss.wrF r t c o) [r]).2.zf =
               (T.internSt (ss.wrF d t c o) [d]).2.zf := by
-            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR]
+            simp [Tbl.internSt, Tbl.internRegs, SSt.wrF, SSt.setR, SSt.putR]
           generalize tRun [(.Lopn [.reg r] m [.reg y], τ1), (.Lopn [.reg r] opn [.reg r, b], τ)]
             (SSt.takeOn [r] ss ss') T' = q at hcp' ⊢
           obtain ⟨Q, qo⟩ := q
@@ -929,8 +948,7 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
               · exact hcf.symm.trans e2.2.2.2.1
               · exact hof.symm.trans e2.2.2.2.2
               · have hqr : q ≠ r := by simpa using hq
-                simp only [SSt.setR]
-                rw [← congrFun e2.1 r, ← congrFun e2.1 q, hPr r, hPr q, if_pos rfl, if_neg hqr]
+                rw [SSt.setR_regs, ← congrFun e2.1 r, ← congrFun e2.1 q, hPr r, hPr q, if_pos rfl, if_neg hqr]
                 by_cases hqd : q = d
                 · subst hqd; simp
                 · simp [hqd]
@@ -996,16 +1014,16 @@ theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs
     refine ⟨⟨fun q => ?_, hI.1.2.1, hI.1.2.2.1, hI.1.2.2.2.1, hI.1.2.2.2.2⟩, fun q => ?_,
       hI.2.2.1, hI.2.2.2⟩
     · by_cases hq : q = S
-      · simp only [ssA, SSt.setR, hq, if_true]; exact hI.1.1 r
-      · simp only [ssA, SSt.setR, hq, if_false]; exact hI.1.1 q
+      · simp only [ssA, SSt.setR_regs, hq, if_true]; exact hI.1.1 r
+      · simp only [ssA, SSt.setR_regs, hq, if_false]; exact hI.1.1 q
     · by_cases hq : q = S
-      · simp only [ssA, SSt.setR, hq, if_true]; exact hI.2.1 r
-      · simp only [ssA, SSt.setR, hq, if_false]; exact hI.2.1 q
+      · simp only [ssA, SSt.setR_regs, hq, if_true]; exact hI.2.1 r
+      · simp only [ssA, SSt.setR_regs, hq, if_false]; exact hI.2.1 q
   have eA' : ssA.EqvOn [r] (ss'.setR S (ss'.regs r)) := by
     refine ⟨⟨e.1.1, e.1.2.1, e.1.2.2.1, e.1.2.2.2⟩, fun q hq => ?_⟩
     by_cases hqS : q = S
-    · simp only [ssA, SSt.setR, hqS, if_true]; exact e.2 r hrS'
-    · simp only [ssA, SSt.setR, hqS, if_false]; exact e.2 q (by simpa using hqS)
+    · simp only [ssA, SSt.setR_regs, hqS, if_true]; exact e.2 r hrS'
+    · simp only [ssA, SSt.setR_regs, hqS, if_false]; exact e.2 q (by simpa using hqS)
   have hsrc := tRun_on [S] [i] ss ssA T (fun j hj q hq hqS => by
     simp only [List.mem_singleton] at hj hqS
     subst hj hqS
@@ -1050,7 +1068,7 @@ theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs
               · exact eS.1.2.1.trans e2.1.2.1
               · exact eS.1.2.2.1.trans e2.1.2.2.1
               · exact eS.1.2.2.2.trans e2.1.2.2.2
-              · simp only [SSt.setR]
+              · rw [SSt.setR_regs]
                 by_cases hqr : q = r
                 · subst hqr
                   rw [if_pos rfl, hs2S, eS.2 q hq, hAr]

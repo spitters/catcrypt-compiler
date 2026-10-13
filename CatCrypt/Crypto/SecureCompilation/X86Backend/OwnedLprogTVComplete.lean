@@ -592,20 +592,28 @@ theorem SSt.RefsLt.subst {n : Nat} {ss : SSt} (h : ss.RefsLt n) : ss.subst (keep
         rw [e] at hz
         simp only [SFlag.refsLt, Bool.and_eq_true] at hz
         simp only [SFlag.subst, STerm.subst_keepBelow hz.1, STerm.subst_keepBelow hz.2]
-  simp only [SSt.subst, STerm.subst_keepBelow (hr _), SArr.subst_keepBelow (ha _), hz',
-    STerm.subst_keepBelow hc, STerm.subst_keepBelow ho]
+  refine SSt.ext (fun r => ?_) ?_ hz' rfl rfl (STerm.subst_keepBelow hc)
+    (STerm.subst_keepBelow ho)
+  · rw [SSt.subst_regs_apply, STerm.subst_keepBelow (hr r)]
+  · funext q
+    exact SArr.subst_keepBelow (ha q)
 
 theorem SSt.RefsLt.of_subst {n : Nat} {ss : SSt} (h : ss.subst (keepBelow n) = ss) :
     ss.RefsLt n := by
-  obtain ⟨R, A, Z, W, AW, C, O⟩ := ss
-  simp only [SSt.subst, SSt.mk.injEq] at h
-  obtain ⟨hR, hA, hZ, -, -, hC, hO⟩ := h
-  refine ⟨fun r => STerm.refsLt_of_subst _ (congrFun hR r),
-    fun q => SArr.refsLt_of_subst _ (congrFun hA q), ?_, STerm.refsLt_of_subst _ hC,
+  have hR : ∀ r, (ss.regs r).subst (keepBelow n) = ss.regs r := fun r => by
+    rw [← SSt.subst_regs_apply, h]
+  have hA : ∀ q, (ss.arrs q).subst (keepBelow n) = ss.arrs q := fun q =>
+    congrFun (congrArg SSt.arrs h) q
+  have hZ : ss.zf.subst (keepBelow n) = ss.zf := congrArg SSt.zf h
+  have hC : ss.cf.subst (keepBelow n) = ss.cf := congrArg SSt.cf h
+  have hO : ss.of.subst (keepBelow n) = ss.of := congrArg SSt.of h
+  refine ⟨fun r => STerm.refsLt_of_subst _ (hR r),
+    fun q => SArr.refsLt_of_subst _ (hA q), ?_, STerm.refsLt_of_subst _ hC,
     STerm.refsLt_of_subst _ hO⟩
-  cases Z with
+  cases e : ss.zf with
   | init => rfl
   | cmp x y =>
+      rw [e] at hZ
       simp only [SFlag.subst, SFlag.cmp.injEq] at hZ
       simp only [SFlag.refsLt, Bool.and_eq_true]
       exact ⟨STerm.refsLt_of_subst _ hZ.1, STerm.refsLt_of_subst _ hZ.2⟩
@@ -666,7 +674,8 @@ theorem liftR_eqv {ss ss' : SSt} (h : ss.Eqv ss') (o : ROut) :
   cases o with
   | set d t gs =>
       refine ⟨⟨?_, hA, hZ, hC, hO⟩, rfl, [d], rfl, rfl⟩
-      simp only [SSt.setR, hR]
+      funext r
+      simp only [SSt.setR_regs, hR]
   | nop => exact ⟨⟨hR, hA, hZ, hC, hO⟩, rfl, [], rfl, rfl⟩
   | fail => trivial
   | unk => trivial
@@ -682,7 +691,8 @@ theorem symMem_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) :
       dsimp only
       split
       · refine ⟨⟨?_, hA, hZ, hC, hO⟩, by rw [hR, hA], [_], rfl, rfl⟩
-        simp only [SSt.setR, hR, hA]
+        funext r
+        simp only [SSt.setR_regs, hR, hA]
       · rw [← hR]; exact liftR_eqv h _
   | store w n =>
       dsimp only
@@ -710,7 +720,8 @@ theorem symCarry_eqv {ss ss' : SSt} (h : ss.Eqv ss') (op : CarryOp) (d : String)
   rw [← hR]
   split
   · cases op <;>
-      exact ⟨⟨by simp only [SSt.setR, hR, hC, hO], by simp only [SSt.setR, hA],
+      exact ⟨⟨funext fun r => by simp only [SSt.regs_mk, SSt.rf_get, SSt.setR_regs, hR, hC, hO],
+        by simp only [SSt.setR, hA],
         by simp only [SSt.setR, hZ], by simp only [SSt.setR, hC, hO],
         by simp only [SSt.setR, hC, hO]⟩, rfl, [d], rfl, rfl⟩
   · trivial
@@ -723,13 +734,15 @@ theorem symWide_eqv {ss ss' : SSt} (h : ss.Eqv ss') (w : WideOp) :
       simp only [symWide]
       rw [← hR]
       split
-      · exact ⟨⟨by simp only [SSt.setR, hR], hA, hZ, hC, hO⟩, rfl, [d], rfl, rfl⟩
+      · exact ⟨⟨funext fun r => by simp only [SSt.setR_regs, hR], hA, hZ, hC, hO⟩, rfl, [d],
+          rfl, rfl⟩
       · trivial
   | mulx lo hi b =>
       simp only [symWide]
       rw [← hR]
       split
-      · exact ⟨⟨by simp only [SSt.setR, hR], hA, hZ, hC, hO⟩, rfl, [hi, lo], rfl, rfl⟩
+      · exact ⟨⟨funext fun r => by simp only [SSt.setR_regs, hR], hA, hZ, hC, hO⟩, rfl,
+          [hi, lo], rfl, rfl⟩
       · trivial
 
 /-- **A step ignores the write lists.** -/
@@ -741,10 +754,11 @@ theorem symStep_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) :
   rw [← hR]
   split
   · split
-    · exact ⟨⟨rfl, hA, rfl, hC, hO⟩, rfl, [], rfl, rfl⟩
+    · exact ⟨⟨hR, hA, rfl, hC, hO⟩, rfl, [], rfl, rfl⟩
     · trivial
   · split
-    · exact ⟨⟨by simp only [SSt.setR, hR], hA, hZ, hC, hO⟩, rfl, [_], rfl, rfl⟩
+    · exact ⟨⟨funext fun r => by simp only [SSt.setR_regs, hR], hA, hZ, hC, hO⟩, rfl, [_],
+        rfl, rfl⟩
     · split
       · trivial
       · split
@@ -769,7 +783,7 @@ theorem SSt.Frm.setR {ss s : SSt} (h : ss.Frm s) (d : String) (t : STerm) :
   obtain ⟨ds, hw, hr⟩ := h
   refine ⟨d :: ds, by simp [SSt.setR, hw], fun r hr' => ?_⟩
   simp only [List.mem_cons, not_or] at hr'
-  simp only [SSt.setR, if_neg hr'.1]
+  rw [SSt.setR_regs, if_neg hr'.1]
   exact hr r hr'.2
 
 theorem SSt.Frm.setA {ss s : SSt} (h : ss.Frm s) (d : String) (a : SArr) :
@@ -897,11 +911,12 @@ theorem Tbl.internRegs_size_le : ∀ (T : Tbl) (ss : SSt) (ds : List String),
   | T, ss, ds => (Tbl.internRegs_ext T ss ds).size_le
 
 theorem Tbl.internRegs_snd : ∀ (T : Tbl) (ss : SSt) (ds : List String),
-    (T.internRegs ss ds).2 = { ss with regs := (T.internRegs ss ds).2.regs }
+    (T.internRegs ss ds).2 = { ss with rf := (T.internRegs ss ds).2.rf }
   | T, ss, [] => rfl
   | T, ss, d :: ds => by
       simp only [Tbl.internRegs]
       rw [Tbl.internRegs_snd _ _ ds]
+      rfl
 
 /-- Interning registers leaves the words reading entries of the table, makes the interned
     registers atoms and keeps every other register. -/
@@ -915,9 +930,9 @@ theorem Tbl.internRegs_inv : ∀ (T : Tbl) (ss : SSt) (ds : List String),
       simp only [Tbl.internRegs]
       have hd := Tbl.intern_refsLt T (ss.regs d) (h d)
       have ih := Tbl.internRegs_inv (T.intern (ss.regs d)).1
-        { ss with regs := fun r => if r = d then (T.intern (ss.regs d)).2 else ss.regs r } ds
+        (ss.putR d (T.intern (ss.regs d)).2) ds
         (fun r => by
-          dsimp only
+          rw [SSt.putR_regs]
           split
           · exact hd.1
           · exact STerm.refsLt_mono (Tbl.intern_size_le _ _) _ (h r))
@@ -929,32 +944,32 @@ theorem Tbl.internRegs_inv : ∀ (T : Tbl) (ss : SSt) (ds : List String),
             rcases List.mem_cons.mp hr with h' | h'
             · exact h'
             · exact absurd h' hrs
-          simp only [this, ↓reduceIte]
+          simp only [this, SSt.putR_regs, ↓reduceIte]
           exact hd.2
       · simp only [List.mem_cons, not_or] at hr
-        rw [ih.2.2 r hr.2]
-        simp only [if_neg hr.1]
+        rw [ih.2.2 r hr.2, SSt.putR_regs, if_neg hr.1]
 
 theorem Tbl.internRegs_rerun : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
     ss'.regs = ss.regs → (∀ r, (ss.regs r).refsLt T.ents.size = true) → ∀ (T' : Tbl),
     (T.internRegs ss ds).1.Sub T' →
-      T'.internRegs ss' ds = (T', { ss' with regs := (T.internRegs ss ds).2.regs })
+      T'.internRegs ss' ds = (T', { ss' with rf := (T.internRegs ss ds).2.rf })
   | T, ss, ss', [], hR, _, T', _ => by
-      simp only [Tbl.internRegs, ← hR]
+      have e : ss'.rf = ss.rf := RegFile.ext fun r => congrFun hR r
+      simp only [Tbl.internRegs, ← e]
   | T, ss, ss', d :: ds, hR, h, T', hS => by
       simp only [Tbl.internRegs] at hS ⊢
       have hd := Tbl.intern_refsLt T (ss.regs d) (h d)
       rw [hR, Tbl.intern_rerun T (ss.regs d) (h d) T'
         ((Tbl.internRegs_sub _ _ ds).trans hS)]
       have := Tbl.internRegs_rerun (T.intern (ss.regs d)).1
-        { ss with regs := fun r => if r = d then (T.intern (ss.regs d)).2 else ss.regs r }
-        { ss' with regs := fun r => if r = d then (T.intern (ss.regs d)).2 else ss.regs r } ds
-        rfl (fun r => by
-          dsimp only
+        (ss.putR d (T.intern (ss.regs d)).2) (ss'.putR d (T.intern (ss.regs d)).2) ds
+        (funext fun r => by rw [SSt.putR_regs, SSt.putR_regs, hR]) (fun r => by
+          rw [SSt.putR_regs]
           split
           · exact hd.1
           · exact STerm.refsLt_mono (Tbl.intern_size_le _ _) _ (h r)) T' hS
       rw [this]
+      rfl
 
 theorem Tbl.internSt_sub (T : Tbl) (ss : SSt) (ds : List String) :
     T.Sub (T.internSt ss ds).1 :=
@@ -1017,7 +1032,8 @@ theorem Tbl.internSt_inv {T : Tbl} {ss : SSt} (ds : List String) (h : ss.RefsLt 
     exact (SSt.RefsLt.mono (hsz.trans (s1.trans s2)) h).2.2.1
   · by_cases hr : r ∈ ds
     · exact i2 r hr
-    · rw [i3 r hr]; exact ha r hr
+    · show (ps.regs r).atom = true
+      rw [i3 r hr]; exact ha r hr
 
 /-! ## 5. Runs in lockstep -/
 
@@ -1047,7 +1063,7 @@ theorem tRun_cons (i : LinstrRM) (is : List LinstrRM) (ss : SSt) (T : Tbl) :
       | .unk => (T, .unk) := by
   cases h : symStep i ss with
   | ok s1 g1 =>
-      simp only [tRun, h]
+      simp only [tRun, h, SSt.newWr_eq]
       generalize tRun is _ _ = r
       obtain ⟨T1, o⟩ := r
       cases o <;> rfl
@@ -1121,7 +1137,7 @@ theorem tRun_single_res {i j : LinstrRM} {ss ss1 : SSt} {T T' : Tbl}
           obtain ⟨e1, hg, ds, hw1, hw2⟩ := hrel
           subst hg
           rw [hs] at hS
-          simp only [SSt.Frm.ds_eq hw1, SSt.Frm.ds_eq hw2] at hS ⊢
+          simp only [SSt.newWr_eq, SSt.Frm.ds_eq hw1, SSt.Frm.ds_eq hw2] at hS ⊢
           obtain ⟨s'', hs'', e'', -, -⟩ :=
             Tbl.internSt_rerun e1 ds (symStep_refsLt i hI.1 hs).1 hS
           rw [hs'']
@@ -1245,8 +1261,8 @@ theorem SSt.Eqv.setR_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x : String) (t : ST
   obtain ⟨hR, hA, hZ, hC, hO⟩ := e
   refine ⟨?_, hA, hZ, hC, hO⟩
   funext r
-  simp only [SSt.setR, hR]
-  split <;> rfl
+  simp only [SSt.setR_regs, hR]
+  by_cases h : r = d <;> simp [h]
 
 theorem liftR_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x : String) {o : ROut}
     (ho : o.WritesOnly d) :
@@ -1263,7 +1279,7 @@ theorem liftR_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x : String) {o : ROut}
 theorem copyRegs_eq {ss ss' : SSt} (e : ss.Eqv ss') (d x : String) :
     (ss'.setR d (ss'.regs x)).regs = copyRegs ss.regs d x := by
   funext r
-  simp only [SSt.setR, copyRegs, e.1]
+  simp only [SSt.setR_regs, copyRegs, e.1]
 
 theorem symMem_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOperand)
     (tag : MemTag) (hb : avoidsReg d b) :
@@ -1372,12 +1388,16 @@ theorem chunk_copy (d x opn mv : String) (b : LOperand) (tag tagm : MemTag)
   have hm : symStep (.Lopn [.reg d] mv [.reg x], tagm) ss' = .ok (ss'.setR d (ss'.regs x)) [] := by
     simp [symStep, cmpArgs?, movRegArgs?, hmv]
   have hint : T'.internSt (ss'.setR d (ss'.regs x)) [d] = (T', ss'.setR d (ss'.regs x)) := by
-    simp only [Tbl.internSt, Tbl.internRegs]
-    simp only [SSt.setR, ite_true, Tbl.intern_atom T' (hI'.2.1 x), Tbl.intern_atom T' hI'.2.2.1,
-      Tbl.intern_atom T' hI'.2.2.2, Prod.mk.injEq, true_and]
-    congr 1
-    funext r
-    split <;> simp_all
+    have hp : (ss'.setR d (ss'.regs x)).putR d (ss'.regs x) = ss'.setR d (ss'.regs x) :=
+      SSt.ext (fun r => by
+        rw [SSt.putR_regs, SSt.setR_regs]
+        by_cases h : r = d <;> simp [h]) rfl rfl rfl rfl rfl rfl
+    simp only [Tbl.internSt, Tbl.internRegs, SSt.setR_regs, ite_true,
+      Tbl.intern_atom T' (hI'.2.1 x), hp]
+    rw [show (ss'.setR d (ss'.regs x)).cf = ss'.cf from rfl,
+      show (ss'.setR d (ss'.regs x)).of = ss'.of from rfl, Tbl.intern_atom T' hI'.2.2.1,
+      Tbl.intern_atom T' hI'.2.2.2]
+    rfl
   have hrun : tRun [(.Lopn [.reg d] mv [.reg x], tagm)] ss' T' =
       (T', .ok (ss'.setR d (ss'.regs x)) []) := by
     rw [tRun_cons, hm]
