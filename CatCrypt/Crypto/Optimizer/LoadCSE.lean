@@ -186,12 +186,25 @@ theorem applyOpn_of_isMov64Mnem {w : Nat} {mn : String} (hm : isMov64Mnem mn = t
   · rw [show stripWidthTag "MOV:64" = "MOV" from by decide +kernel]; rfl
   · rw [stripWidthTag_MOVQ]; rfl
 
+/-- A memory-class operand name: a spill slot `k.N`, an ABI save slot `qsave.X`,
+    or a frame reference `mem.<base>.<off>`, the names the printer renders as a
+    memory operand.  The same class as `X86Backend.LcmdReloadElim.isSlotName`. -/
+def isMemName (n : String) : Bool :=
+  "k.".isPrefixOf n || "qsave.".isPrefixOf n || "mem.".isPrefixOf n
+
+/-- A 64-bit move whose destination and source are both memory names. -/
+def isMemToMemMov (i : LinstrR) : Bool :=
+  match asWideReload i with
+  | some (d, s, _) => isMemName d && isMemName s
+  | none => false
+
 /-! ## 3. The forwarding scan
 
 `stepLoad held i` returns the (possibly rewritten) instruction together with the
 updated environment.  The only rewrite: a 64-bit reload `MOV R₂ ← K` whose slot
 `K` is held in a register `R₁ ≠ R₂` becomes `MOV R₂ ← R₁` under the same
-mnemonic.
+mnemonic, provided `R₂` and `R₁` are not both memory names (a memory-to-memory
+move has no x86 encoding).
 
 Environment update:
 * A recognized reload `MOV R ← K` (kept or rewritten): writing register `R` kills
@@ -204,8 +217,9 @@ Environment update:
   slot-binding whose key is a written name. -/
 
 /-- One step: `(rewrittenInstr, newEnv)`.  The instruction is returned unchanged
-    unless it is a cross-register redundant 64-bit load, in which case its source
-    operand is redirected to the holding register under the same mnemonic. -/
+    unless it is a cross-register redundant 64-bit load whose destination and
+    holding register are not both memory names, in which case its source operand
+    is redirected to the holding register under the same mnemonic. -/
 def stepLoad (h : LoadEnv) (i : Linstr) : Linstr × LoadEnv :=
   match asWideReload i.li_i with
   | some (d, s, mn) =>
@@ -213,6 +227,9 @@ def stepLoad (h : LoadEnv) (i : Linstr) : Linstr × LoadEnv :=
       | some r =>
           if r = d then
             -- the same-register case `elimReloads` drops; keep verbatim, refresh.
+            (i, ((h.killReg d).killSlot d).set s d)
+          else if isMemName d = true ∧ isMemName r = true then
+            -- the redirect would be memory-to-memory; keep verbatim, refresh.
             (i, ((h.killReg d).killSlot d).set s d)
           else
             -- cross-register hit: redirect the source onto the holding register.
@@ -294,11 +311,13 @@ theorem loadCSE_length (body : List Linstr) :
   rw [loadCSE_eq]; exact loadCSEAux_length [] body
 
 /-- A `stepLoad` either returns the instruction **verbatim**, or rewrites a
-    recognized 64-bit reload `MOV d ← s` (with `s` held in a register `r ≠ d`) to
-    the register move `MOV d ← r` under the reload's own mnemonic. -/
+    recognized 64-bit reload `MOV d ← s` (with `s` held in a register `r ≠ d`, `d`
+    and `r` not both memory names) to the move `MOV d ← r` under the reload's own
+    mnemonic. -/
 theorem stepLoad_cases (h : LoadEnv) (i : Linstr) :
     (stepLoad h i).1 = i ∨
-      ∃ d s r mn, asWideReload i.li_i = some (d, s, mn) ∧ h.find s = some r ∧ r ≠ d ∧
+      ∃ d s r mn, asWideReload i.li_i = some (d, s, mn) ∧ h.find s = some r ∧
+        (r ≠ d ∧ ¬ (isMemName d = true ∧ isMemName r = true)) ∧
         (stepLoad h i).1 = { i with li_i := .Lopn [.reg d] mn [.reg r] } := by
   cases hr : asWideReload i.li_i with
   | none => left; simp only [stepLoad, hr]
@@ -309,31 +328,35 @@ theorem stepLoad_cases (h : LoadEnv) (i : Linstr) :
     | some r =>
       by_cases hrd : r = d
       · subst hrd; left; simp only [stepLoad, hr, hf, if_pos]
-      · right
-        refine ⟨d, s, r, mn, rfl, hf, hrd, ?_⟩
-        simp only [stepLoad, hr, hf, hrd, if_false]
+      · by_cases hmm : isMemName d = true ∧ isMemName r = true
+        · left; simp only [stepLoad, hr, hf, hrd, if_false, if_pos hmm]
+        · right
+          refine ⟨d, s, r, mn, rfl, hf, ⟨hrd, hmm⟩, ?_⟩
+          simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm]
 
 /-- **Rewrite characterisation.**  Whenever `loadCSE` emits an instruction that
     differs from the input, that input was a 64-bit reload `MOV d ← s` whose slot
-    `s` the environment recorded as held in a *different* register `r`, and the
-    emitted instruction is the register move `MOV d ← r` under the same
-    mnemonic. -/
+    `s` the environment recorded as held in a *different* register `r`, `d` and
+    `r` are not both memory names, and the emitted instruction is the move
+    `MOV d ← r` under the same mnemonic. -/
 theorem stepLoad_rewrite_is_held_load (h : LoadEnv) (i : Linstr)
     (hne : (stepLoad h i).1 ≠ i) :
-    ∃ d s r mn, asWideReload i.li_i = some (d, s, mn) ∧ h.find s = some r ∧ r ≠ d ∧
+    ∃ d s r mn, asWideReload i.li_i = some (d, s, mn) ∧ h.find s = some r ∧
+      (r ≠ d ∧ ¬ (isMemName d = true ∧ isMemName r = true)) ∧
       (stepLoad h i).1 = { i with li_i := .Lopn [.reg d] mn [.reg r] } := by
   rcases stepLoad_cases h i with hid | hrw
   · exact absurd hid hne
   · exact hrw
 
-/-- An instruction outside the recognizer, or a recognized reload with no
-    cross-register hit, is emitted verbatim. -/
+/-- An instruction outside the recognizer, or a recognized reload whose every
+    cross-register hit is between two memory names, is emitted verbatim. -/
 theorem stepLoad_unchanged_of_no_cross (h : LoadEnv) (i : Linstr)
-    (hno : ∀ d s r mn, asWideReload i.li_i = some (d, s, mn) → h.find s = some r → r = d) :
+    (hno : ∀ d s r mn, asWideReload i.li_i = some (d, s, mn) → h.find s = some r →
+      r ≠ d → isMemName d = true ∧ isMemName r = true) :
     (stepLoad h i).1 = i := by
-  rcases stepLoad_cases h i with hid | ⟨d, s, r, mn, ha, hf, hrd, _⟩
+  rcases stepLoad_cases h i with hid | ⟨d, s, r, mn, ha, hf, ⟨hrd, hmm⟩, _⟩
   · exact hid
-  · exact absurd (hno d s r mn ha hf) hrd
+  · exact absurd (hno d s r mn ha hf hrd) hmm
 
 /-! ## 5. Width: the emitted mnemonic is the input's
 
@@ -419,13 +442,13 @@ theorem rewritten_asWideReload (d r mn : String) (ii : Nat)
     emitted instruction is either the original or a held-load register move.  In
     the rewrite case the original was a 64-bit reload `asWideReload = some
     (d, s, mn)`, the environment `h'` reaching that position recorded slot `s` as
-    held in `r ≠ d`, and the emitted instruction is `MOV d ← r` under the same
-    mnemonic `mn`. -/
+    held in `r ≠ d`, `d` and `r` are not both memory names, and the emitted
+    instruction is `MOV d ← r` under the same mnemonic `mn`. -/
 theorem loadCSEAux_pointwise (h : LoadEnv) (body : List Linstr) (n : Nat) :
     (loadCSEAux h body)[n]? = body[n]? ∨
       ∃ (i : Linstr) (d s r mn : String) (h' : LoadEnv),
         body[n]? = some i ∧ asWideReload i.li_i = some (d, s, mn) ∧
-        h'.find s = some r ∧ r ≠ d ∧
+        h'.find s = some r ∧ (r ≠ d ∧ ¬ (isMemName d = true ∧ isMemName r = true)) ∧
         (loadCSEAux h body)[n]? =
           some { li_ii := i.li_ii, li_i := .Lopn [.reg d] mn [.reg r] } := by
   induction body generalizing h n with
@@ -443,6 +466,35 @@ theorem loadCSEAux_pointwise (h : LoadEnv) (body : List Linstr) (n : Nat) :
       · left; simpa using hverb
       · right
         exact ⟨i', d, s, r, mn, h', by simpa using hb, ha, hf, hrd, by simpa using he⟩
+
+/-- A `stepLoad` emits a memory-to-memory move only where its input was one. -/
+theorem stepLoad_isMemToMemMov (h : LoadEnv) (i : Linstr)
+    (hi : isMemToMemMov i.li_i = false) : isMemToMemMov (stepLoad h i).1.li_i = false := by
+  rcases stepLoad_cases h i with hid | ⟨d, s, r, mn, ha, _, ⟨_, hmm⟩, heq⟩
+  · rw [hid]; exact hi
+  · obtain ⟨_, hm⟩ := asWideReload_eq ha
+    rw [heq]
+    have hw := rewritten_asWideReload d r mn i.li_ii hm
+    simp only [isMemToMemMov, hw, Bool.and_eq_false_iff]
+    cases hd : isMemName d <;> cases hr : isMemName r <;> simp_all
+
+/-- **No memory-to-memory moves introduced.**  If no instruction of the body is a
+    64-bit move between two memory names, no instruction of `loadCSE body` is. -/
+theorem loadCSE_noMemToMemMov (body : List Linstr)
+    (hb : ∀ i ∈ body, isMemToMemMov i.li_i = false) :
+    ∀ i ∈ loadCSE body, isMemToMemMov i.li_i = false := by
+  rw [loadCSE_eq]
+  suffices ∀ (h : LoadEnv) (b : List Linstr), (∀ i ∈ b, isMemToMemMov i.li_i = false) →
+      ∀ i ∈ loadCSEAux h b, isMemToMemMov i.li_i = false from this [] body hb
+  intro h b
+  induction b generalizing h with
+  | nil => intro _ i hi; simp at hi
+  | cons j js ih =>
+    intro hjs i hi
+    rw [loadCSEAux_cons, List.mem_cons] at hi
+    rcases hi with rfl | hi
+    · exact stepLoad_isMemToMemMov h j (hjs j List.mem_cons_self)
+    · exact ih _ (fun k hk => hjs k (List.mem_cons_of_mem j hk)) i hi
 
 /-! ## 7. Semantics: the rewritten body reaches the same state
 
@@ -471,7 +523,7 @@ theorem stepLoad_env_of_wideReload (h : LoadEnv) (i : Linstr) {d sn mn : String}
     (hr : asWideReload i.li_i = some (d, sn, mn)) :
     (stepLoad h i).2 = ((h.killReg d).killSlot d).set sn d := by
   simp only [stepLoad, hr]
-  split <;> (try split) <;> rfl
+  split <;> (try split) <;> (try split) <;> rfl
 
 /-- The environment after an instruction outside the recognizer. -/
 theorem stepLoad_env_of_not_wideReload (h : LoadEnv) (i : Linstr)
@@ -610,11 +662,12 @@ a body — the loads that become register moves, removing one memory load from t
 LSU per hit. -/
 
 /-- Was this step a cross-register rewrite? (`asWideReload` hit, slot held in a
-    different register.)  Mirrors the rewrite branch of `stepLoad`. -/
+    different register, the two not both memory names.)  Mirrors the rewrite
+    branch of `stepLoad`. -/
 def stepIsRewrite (h : LoadEnv) (i : Linstr) : Bool :=
   match asWideReload i.li_i with
   | some (d, s, _) => match h.find s with
-                      | some r => decide (r ≠ d)
+                      | some r => decide (r ≠ d) && !(isMemName d && isMemName r)
                       | none => false
   | none => false
 
