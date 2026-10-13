@@ -57,8 +57,8 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.LayeredNtt
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.BitReversalGeneric
 open CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
 
 variable {R : Type*} [CommRing R]

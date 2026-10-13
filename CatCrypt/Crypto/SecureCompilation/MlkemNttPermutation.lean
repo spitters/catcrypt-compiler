@@ -67,7 +67,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.MlkemNttPermutation
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
 
 /-! ## §1  The single-layer even/odd deinterleave permutation -/

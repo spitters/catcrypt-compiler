@@ -59,7 +59,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
 open Finset
 

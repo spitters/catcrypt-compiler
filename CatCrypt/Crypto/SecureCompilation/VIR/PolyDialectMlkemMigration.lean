@@ -72,7 +72,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
 open CompPoly.CPolynomial.NTT (Domain)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly)
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly)
 open CompPoly (CPolynomial)
 open Polynomial
 

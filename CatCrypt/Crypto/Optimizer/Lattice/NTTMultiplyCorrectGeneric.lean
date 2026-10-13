@@ -52,10 +52,10 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
-open CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTFullInversionGeneric
 open CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
 
 variable {R : Type*} [Field R]
 

@@ -61,7 +61,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
   (hvToHom homToHV pullV_hvToHom lookupVars_homToHV)
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldMultiReturn (F constE addE subE mulE)
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
+open CatCrypt.Crypto.Lattice.BitReversalGeneric
   (bitrev toBits fromBits fromBits_lt toBits_length)
 
 /-! ## 1. The inverse twiddle -/

@@ -71,7 +71,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR
 
 open Polynomial
 open scoped Function
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly quadPoly quadPoly_monic
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly quadPoly quadPoly_monic
   incompleteNTTOfModulus incompleteNTTOfModulus_map_mul)
 
 /-! ## 1. The concrete twiddle family and the primitive-root facts -/

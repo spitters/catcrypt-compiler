@@ -47,9 +47,9 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveInverse
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
-open CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
+open CatCrypt.Crypto.Lattice.NTTFullInversionGeneric
 
 variable {R : Type*} [Field R]
 

@@ -70,8 +70,8 @@ namespace CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 
 /-! ## §1  The single-leaf `nttMul 256 17` realization
 

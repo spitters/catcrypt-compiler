@@ -43,7 +43,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTLinearityGeneric
 
 open Finset
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 
 variable {R : Type*} [CommRing R]
 

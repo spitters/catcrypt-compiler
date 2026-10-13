@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCryptCore.Crypto.Lattice.ConcreteNttRoots
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.ConcreteNttRoots` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.ConcreteNttRoots` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots` resolves to the upstream library. -/
 
 @[expose] public section

@@ -90,7 +90,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
   (hvToHom homToHV pullV_hvToHom lookupVars_homToHV)
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldMultiReturn (F)
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
+open CatCrypt.Crypto.Lattice.BitReversalGeneric
   (bitrev toBits fromBits toBits_fromBits fromBits_toBits toBits_length)
 
 /-! ## 1. Bit reversal at every width -/
@@ -114,7 +114,7 @@ theorem bitrev_succ_low (w i : ℕ) :
 /-- Reversal at width `w + 1` from the low bit: the low bit becomes the top bit. -/
 theorem bitrev_succ_high (w i : ℕ) :
     bitrev (w + 1) i = bitrev w (i / 2) + (if i % 2 = 1 then 2 ^ w else 0) := by
-  rw [bitrev, CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric.toBits_succ,
+  rw [bitrev, CatCrypt.Crypto.Lattice.BitReversalGeneric.toBits_succ,
     List.reverse_cons, fromBits_append_single, List.length_reverse, toBits_length,
     Nat.testBit_zero]
   simp only [decide_eq_true_eq]

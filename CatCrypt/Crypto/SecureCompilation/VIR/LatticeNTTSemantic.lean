@@ -43,8 +43,8 @@ This file closes both gaps concretely for the ML-KEM-768 parameters
 ## What CompPoly already provides for the negacyclic side
 
 A full negacyclic / incomplete-NTT development already lives in CompPoly at
-`CatCrypt/Crypto/SecureCompilation/VIR/Negacyclic.lean`
-(`CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic`). The facts used:
+`CatCryptCore/Crypto/Lattice/Negacyclic.lean` (CatCrypt-core)
+(`CatCrypt.Crypto.Lattice.Negacyclic`). The facts used:
 
 * `Negacyclic.negacyclic_modByMonic_coeff` — for `p` of degree `< 2n`, the
   reduction `p %ₘ (X^n + 1)` has `(p %ₘ negaPoly n).coeff k = p.coeff k −
@@ -157,7 +157,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
 
 open CompPoly.CPolynomial.NTT (Domain)
 open CompPoly.CPolynomial.NTT.FastMul (fastMulImpl fastMulImpl_eq_mul)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly negacyclic_mul_coeff)
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly negacyclic_mul_coeff)
 open CompPoly (CPolynomial)
 open CatCrypt.Crypto.SecureCompilation.VIR (realNtt realBasemul realInvntt realNttMul
   realNttMul_eq_fastMulImpl)
@@ -404,7 +404,7 @@ the `CPolynomial (ZMod q)`, with the multiply ops backed by `realNttMul`.
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR (realNtt realBasemul realInvntt)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly)
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly)
 
 section RealDialect
 

@@ -95,7 +95,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.Ctxt (Var Valuation)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent (pullV pullV_id)
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrev)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrev)
 
 /-! ## 1. The signed Montgomery reduction on integers -/
 

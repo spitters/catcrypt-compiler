@@ -81,7 +81,7 @@ namespace CatCrypt.Crypto.SecureCompilation.ConcreteNttEmitRealization
 
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-! ## §1  ML-KEM (`ZMod 3329`, `n = 256`, `ω = 17`) — the end-to-end deliverable

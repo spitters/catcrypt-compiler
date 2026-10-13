@@ -1029,8 +1029,8 @@ theorem kFrontAt_denote (N T : ℕ) (l : List (ℕ × ℕ × ℕ)) (hl : PairsOk
 open CatCrypt.Crypto.Optimizer.Lattice.LayeredNtt
   (ctLayer layers bitrevInput nttPairs ctLayer_congr_lt foldl_layerPairs
    mem_nttPairs_bounds foldl_nttPairs foldl_bupd_congr_tw layers_congr layers_bitrev_eq_dft)
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass (dft)
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrevPerm)
+open CatCrypt.Crypto.Lattice.NTTRecursionPass (dft)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrevPerm)
 
 theorem layerPairs_eq_layer :
     layerPairs = CatCrypt.Crypto.Optimizer.Lattice.LayeredNtt.layerPairs 3 2 := by

@@ -76,7 +76,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
 open CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
 
 variable {R : Type*} [Field R]
 

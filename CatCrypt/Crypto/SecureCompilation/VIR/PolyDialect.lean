@@ -100,7 +100,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic (NttDomains enc en
   realNttMul_negacyclic_coeff enc_toPoly_degree_lt)
 open CompPoly.CPolynomial.NTT (Domain)
 open CompPoly.CPolynomial.NTT.Inverse (inverseImpl)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly)
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly)
 open CompPoly (CPolynomial)
 open Polynomial
 

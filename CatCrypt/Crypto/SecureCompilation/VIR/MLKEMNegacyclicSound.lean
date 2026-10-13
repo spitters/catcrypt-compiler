@@ -83,7 +83,7 @@ open Polynomial
 open scoped Function
 open CompPoly (CPolynomial)
 open CompPoly.CPolynomial (toPoly toPoly_mul coeff_toPoly)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly negaPoly_monic
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly negaPoly_monic
   negacyclic_modByMonic_coeff negacyclic_mul_coeff incompleteNTTOfModulus
   incompleteNTTOfModulus_map_mul quadPoly)
 open CatCrypt.Crypto.Jasmin.LowCT (RustVal)

@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+public import CatCryptCore.Crypto.Lattice.CyclicConvolutionGeneric
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.CyclicConvolutionGeneric` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric` resolves to the upstream library. -/
 
 @[expose] public section

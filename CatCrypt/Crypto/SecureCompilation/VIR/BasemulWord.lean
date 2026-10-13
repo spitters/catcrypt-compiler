@@ -80,7 +80,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral (Com.foldVarN
 open CatCrypt.Crypto.SecureCompilation.VIR.MergeComDenote (Com.concat2_denote)
 open CatCrypt.Crypto.SecureCompilation.VIR.RingDialect (Limbs basemulF basemulF_eq_mulF
   rowLanes)
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrev)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrev)
 
 /-! ## 1. The signed Montgomery reduction of a double-width word -/
 

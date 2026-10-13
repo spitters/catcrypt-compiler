@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+public import CatCryptCore.Crypto.Lattice.NegacyclicTransformGeneric
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.NegacyclicTransformGeneric` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric` resolves to the upstream library. -/
 
 @[expose] public section

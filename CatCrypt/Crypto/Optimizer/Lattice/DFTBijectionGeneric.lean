@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.DFTBijectionGeneric
+public import CatCryptCore.Crypto.Lattice.DFTBijectionGeneric
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.DFTBijectionGeneric` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.DFTBijectionGeneric` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.DFTBijectionGeneric` resolves to the upstream library. -/
 
 @[expose] public section

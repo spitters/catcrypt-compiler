@@ -42,7 +42,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate
 
 open Finset
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrev)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrev)
 
 variable {R : Type*} [CommRing R]
 
@@ -273,8 +273,8 @@ def finLanes {N : ℕ} (x : Fin N → R) (k : ℕ) : R := if h : k < N then x �
 /-- `negaMul` is the signed negacyclic convolution `signedNegaConv` on `Fin N`. -/
 theorem negaMul_eq_signedNegaConv {N : ℕ} [NeZero N] (x y : Fin N → R) (k : Fin N) :
     negaMul N (finLanes x) (finLanes y) k
-      = CatCrypt.Crypto.Optimizer.Lattice.SignedNegacyclicConv.signedNegaConv x y k := by
-  rw [negaMul, CatCrypt.Crypto.Optimizer.Lattice.SignedNegacyclicConv.signedNegaConv,
+      = CatCrypt.Crypto.Lattice.SignedNegacyclicConv.signedNegaConv x y k := by
+  rw [negaMul, CatCrypt.Crypto.Lattice.SignedNegacyclicConv.signedNegaConv,
     Finset.sum_range (fun i => ∑ j ∈ range N, finLanes x i * finLanes y j *
       (if i + j = k.val then 1 else if i + j = k.val + N then -1 else 0))]
   refine Finset.sum_congr rfl fun i _ => ?_

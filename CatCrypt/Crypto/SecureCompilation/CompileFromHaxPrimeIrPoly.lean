@@ -96,7 +96,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic (NttDomains enc)
 open CompPoly.CPolynomial.NTT (Domain)
 open CompPoly (CPolynomial)
-open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly)
+open CatCrypt.Crypto.Lattice.Negacyclic (negaPoly)
 open Polynomial
 
 /-! ## 1. The recognition table

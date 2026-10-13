@@ -67,7 +67,7 @@ namespace CatCrypt.Crypto.Optimizer.Lattice.NttEmitDenotationBridge
 
 open CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 open CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
 
 variable {R : Type*} [CommRing R]
@@ -142,9 +142,9 @@ theorem nttIter_succ_eq_ctMergeStage (e : ℕ) (ω : R) (hω : ω ^ (2 ^ e) = -1
 `17^128 ∈ {1, −1}`, and it is not `1`. -/
 theorem mlkem_omega_pow_128 : (17 : ZMod 3329) ^ 128 = -1 := by
   have hsq : (17 : ZMod 3329) ^ 128 * (17 : ZMod 3329) ^ 128 = 1 := by
-    rw [← pow_add]; exact ConcreteNttRoots.pow_256_17_eq_one
+    rw [← pow_add]; exact CatCrypt.Crypto.Lattice.ConcreteNttRoots.pow_256_17_eq_one
   rcases mul_self_eq_one_iff.mp hsq with h | h
-  · exact absurd h ConcreteNttRoots.pow_128_17_ne_one
+  · exact absurd h CatCrypt.Crypto.Lattice.ConcreteNttRoots.pow_128_17_ne_one
   · exact h
 
 open CatCrypt.Crypto.Optimizer.Lattice.MlkemNttLayout in
@@ -179,7 +179,7 @@ transform-order permutation; the storage layout is the identity
 (`MlkemNttLayout.mlkemNttStorageLayout_apply`). -/
 theorem mlkem_ntt_eq_polyEval (x : Fin (2 ^ 8) → ZMod 3329) (k : Fin (2 ^ 8)) :
     nttIter 8 (17 : ZMod 3329)
-        (fun j => x ((BitReversalGeneric.bitrevPerm 8) j)) k
+        (fun j => x ((CatCrypt.Crypto.Lattice.BitReversalGeneric.bitrevPerm 8) j)) k
       = ∑ j : Fin (2 ^ 8), x j * ((17 : ZMod 3329) ^ k.val) ^ j.val := by
   rw [mlkem_nttIter_eq_dft x k]
   exact dft_eq_polyEval (2 ^ 8) (17 : ZMod 3329) x k
@@ -195,11 +195,11 @@ modulo `X^256 + 1`; the owned ML-KEM NTT that passes the NIST KAT is a separate
 artifact not described by this theorem. -/
 theorem mlkemNttKernelSpec_eq_polyEval (x : Fin (2 ^ 8) → ZMod 3329)
     (k : Fin (2 ^ 8)) :
-    mlkemNttKernelSpec (fun j => x ((BitReversalGeneric.bitrevPerm 8) j)) k
+    mlkemNttKernelSpec (fun j => x ((CatCrypt.Crypto.Lattice.BitReversalGeneric.bitrevPerm 8) j)) k
       = ∑ j : Fin (2 ^ 8), x j * (mlkemOmega ^ k.val) ^ j.val := by
   have hω : mlkemOmega ^ (2 ^ 8) = 1 := by
     have h256 : (2 : ℕ) ^ 8 = 256 := by norm_num
-    rw [h256]; exact ConcreteNttRoots.pow_256_17_eq_one
+    rw [h256]; exact CatCrypt.Crypto.Lattice.ConcreteNttRoots.pow_256_17_eq_one
   rw [mlkemNttKernelSpec_bitrev_eq_dft x hω k]
   exact dft_eq_polyEval (2 ^ 8) mlkemOmega x k
 

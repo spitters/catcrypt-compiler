@@ -84,9 +84,9 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.MlkemNttConcreteRoots
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass (dft)
+open CatCrypt.Crypto.Lattice.NTTRecursionPass (dft)
 open CatCrypt.Crypto.SecureCompilation.MlkemNttFullAssembly (routedNtt routedNtt_eq_dft routedNtt256_eq_dft256)
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots (pow_256_17_eq_one isPrimitiveRoot_17_256)
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots (pow_256_17_eq_one isPrimitiveRoot_17_256)
 
 /-! ## §1  The headline: owned routed tree at the real ML-KEM root = ML-KEM `dft 256` -/
 

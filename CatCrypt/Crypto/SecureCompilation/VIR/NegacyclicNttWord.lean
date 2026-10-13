@@ -105,7 +105,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
 open CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral (Com.foldVarN Com.foldVarN_denote
   Com.denoteN)
 open CatCrypt.Crypto.Number (montgomeryReduce montgomeryReduce_correct)
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrev)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrev)
 
 /-! ## 1. Lanes in any dialect -/
 

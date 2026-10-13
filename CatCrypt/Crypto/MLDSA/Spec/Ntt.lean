@@ -20,7 +20,7 @@ with `ζ = 1753`. The ordering is externally observable, because FIPS 204 sample
 matrix `Â` directly in the NTT domain.
 
 The transform is the twisted transform `ndft` of
-`CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric` at the twist root
+`CatCrypt.Crypto.Lattice.NegacyclicTransformGeneric` at the twist root
 `ζ = 1753`, composed with the 8-bit bit-reversal permutation. Its properties are
 instantiations of the generic library at `isPrimitiveRoot_1753_512`.
 
@@ -53,16 +53,16 @@ namespace CatCrypt.Crypto.MLDSA.Spec.Ntt
 open Polynomial AdjoinRoot Finset
 open CatCrypt.Crypto.MLDSA.ConcreteParams
 open CatCrypt.Crypto.MLDSA.Spec.Coeffs
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass (dft)
-open CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric (ntt_orthogonality)
-open CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric (idft idft_dft)
-open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+open CatCrypt.Crypto.Lattice.NTTRecursionPass (dft)
+open CatCrypt.Crypto.Lattice.NTTInverseGeneric (ntt_orthogonality)
+open CatCrypt.Crypto.Lattice.NTTFullInversionGeneric (idft idft_dft)
+open CatCrypt.Crypto.Lattice.NegacyclicTransformGeneric
   (twist untwist twist_untwist untwist_twist ndft negaConv)
-open CatCrypt.Crypto.Optimizer.Lattice.SignedNegacyclicConv (signedNegaConv negaConv_eq_signed)
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots (isPrimitiveRoot_1753_512)
+open CatCrypt.Crypto.Lattice.SignedNegacyclicConv (signedNegaConv negaConv_eq_signed)
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots (isPrimitiveRoot_1753_512)
 open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
   (isPrimitiveRoot_1753sq_256 mldsa_ndft_negaConv)
-open CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric (bitrevFin bitrevFin_involutive)
+open CatCrypt.Crypto.Lattice.BitReversalGeneric (bitrevFin bitrevFin_involutive)
 
 /-! ## The inverse discrete transform is a two-sided inverse
 

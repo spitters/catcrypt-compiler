@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.BitReversalGeneric
+public import CatCryptCore.Crypto.Lattice.BitReversalGeneric
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.BitReversalGeneric` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.BitReversalGeneric` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric` resolves to the upstream library. -/
 
 @[expose] public section

@@ -66,10 +66,10 @@ namespace CatCrypt.Crypto.SecureCompilation.ConcreteNegacyclicRealizer
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.NegacyclicEmitRealization
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+open CatCrypt.Crypto.Lattice.NegacyclicTransformGeneric
 open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicMultiplyCorrect
 open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 
 /-! ## §1  The concrete, round-trip-verified 3-byte encoding over `.TPolyMod q n`
 

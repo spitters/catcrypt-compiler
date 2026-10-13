@@ -88,8 +88,8 @@ namespace CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 
 /-! ## §1  Concrete, round-trip-verified byte encoding over `.TPolyMod q n`
 

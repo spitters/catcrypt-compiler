@@ -44,9 +44,9 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.NegacyclicTransformGeneric
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 
 /-! ## ML-KEM (`ZMod 3329`, `n = 256`, `ω = 17`) — the cyclic statement -/
 

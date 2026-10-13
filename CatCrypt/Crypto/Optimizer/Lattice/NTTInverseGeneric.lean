@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.NTTInverseGeneric
+public import CatCryptCore.Crypto.Lattice.NTTInverseGeneric
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.NTTInverseGeneric` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.NTTInverseGeneric` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric` resolves to the upstream library. -/
 
 @[expose] public section

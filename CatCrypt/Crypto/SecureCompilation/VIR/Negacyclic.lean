@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.SecureCompilation.VIR.Negacyclic
+public import CatCryptCore.Crypto.Lattice.Negacyclic
 
-/-! Re-export of `CatCryptCore.Crypto.SecureCompilation.VIR.Negacyclic` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.Negacyclic` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic` resolves to the upstream library. -/
 
 @[expose] public section

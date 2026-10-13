@@ -140,7 +140,7 @@ open CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
 open CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 open CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
 open CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
 open CatCrypt.Crypto.Hash.Keccak
 
 /-! ## §1  MAYO / UOV central-map / oil–vinegar quadratic-form step — UNCONDITIONAL

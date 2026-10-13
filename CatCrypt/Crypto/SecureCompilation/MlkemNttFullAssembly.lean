@@ -98,7 +98,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.MlkemNttFullAssembly
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
 open CatCrypt.Crypto.SecureCompilation.MlkemNttPermutation
 

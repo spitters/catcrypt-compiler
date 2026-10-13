@@ -157,7 +157,7 @@ open CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
 open CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
 open CatCrypt.Crypto.SecureCompilation.ConcreteMontMulRealizer
 open CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+open CatCrypt.Crypto.Lattice.CyclicConvolutionGeneric
 open CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
 open CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
 

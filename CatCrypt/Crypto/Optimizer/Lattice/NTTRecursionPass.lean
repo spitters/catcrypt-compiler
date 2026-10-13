@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Crypto.Optimizer.Lattice.NTTRecursionPass
+public import CatCryptCore.Crypto.Lattice.NTTRecursionPass
 
-/-! Re-export of `CatCryptCore.Crypto.Optimizer.Lattice.NTTRecursionPass` from the CatCrypt-core package, so
+/-! Re-export of `CatCryptCore.Crypto.Lattice.NTTRecursionPass` from the CatCrypt-core package, so
 `import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass` resolves to the upstream library. -/
 
 @[expose] public section

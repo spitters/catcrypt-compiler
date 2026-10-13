@@ -35,7 +35,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Optimizer.Lattice.NegacyclicMultiplyCorrect
 
 open CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+open CatCrypt.Crypto.Lattice.NegacyclicTransformGeneric
 
 variable {R : Type*} [Field R] {ψ : R} {n : ℕ} [NeZero n]
 

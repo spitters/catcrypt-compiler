@@ -27,10 +27,10 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.ConcreteRecursiveNtt
 
-open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+open CatCrypt.Crypto.Lattice.NTTRecursionPass
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
 open CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveInverse
-open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+open CatCrypt.Crypto.Lattice.ConcreteNttRoots
 
 /-! ## ML-KEM (`ZMod 3329`, `e = 8`, `2⁸ = 256`, `ω = 17`) -/
 
