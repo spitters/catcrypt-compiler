@@ -39,8 +39,12 @@ and the runtime counts stay within stated bounds.
   `stackWF_of_regCarried`), decided by `regCarriedB` (`stackIn_of_regCarriedB`).
 * `ResultKind`, `ResultKind.read` — the read-back of a result from the entry and exit states.
 * `AbiLayout` — parameters, constants, result, count bounds and the stack frame.
-* `AbiLayout.argPub`, `AbiLayout.PubAgree` — the public parameters of a layout, and the
-  agreement of two entry states on the stack pointer and the public parameter registers.
+* `AbiLayout.argPub`, `AbiLayout.pubRegions`, `AbiLayout.PubAgree` — the public parameters
+  and the public array regions of a layout, and the agreement of two entry states on the
+  stack pointer, the public parameter registers and the words of the public arrays.
+* `AbiLayout.pubAgree_iff_of_pubWords_nil`, `AbiLayout.PubAgree.of_pubWords_nil` — without
+  public arrays, `PubAgree` is agreement on the stack pointer and the public registers.
+* `AbiLayout.PubAgree.wordsAt_eq` — equal words on each public array region.
 * `AbiLayout.Regions`, `AbiLayout.Regions.stackIn` — the count bounds, the separation of
   the pointer regions and the frame, and the stack parameters at an entry state.
 * `AbiLayout.EnvOf` — a hax environment binding each parameter to the value its register
@@ -166,6 +170,9 @@ structure AbiLayout where
   frameLo : Int
   /-- The highest stack offset from the entry `%rsp` the body uses. -/
   frameHi : Int
+  /-- The registers of the array parameters whose words are public data, such as a table of
+      public indices. -/
+  pubWords : List String := []
   deriving Repr, Inhabited
 
 namespace AbiLayout
@@ -181,11 +188,60 @@ def argPub (σ : AbiLayout) (a : AbiArg) : Bool :=
   | .words _ => true
   | .scalar => σ.bounds.any (·.1 == a.reg)
 
-/-- Two entry states agree on the public data of the layout: the stack pointer and the
+/-- The public array regions of a layout: register and length in words of each array
+    parameter whose register is in `pubWords`, in parameter order. -/
+def pubRegions (σ : AbiLayout) : List (String × Nat) :=
+  (σ.args.filter fun a => σ.pubWords.contains a.reg).filterMap AbiArg.region
+
+/-- Two entry states agree on the public data of the layout: the stack pointer, the
+    register of each public parameter, and the words of each public array, read at the
+    address its register holds in each state. -/
+structure PubAgree (σ : AbiLayout) (s₁ s₂ : AState) : Prop where
+  /-- The stack pointers are equal. -/
+  rsp : s₁.regs "%rsp" = s₂.regs "%rsp"
+  /-- The register of each public parameter is equal. -/
+  regs : ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg
+  /-- The words of each array parameter whose register is in `pubWords` are equal. -/
+  words : ∀ a ∈ σ.args, ∀ n, a.kind = .words n → a.reg ∈ σ.pubWords →
+    wordsAt s₁.mem (s₁.regs a.reg) n = wordsAt s₂.mem (s₂.regs a.reg) n
+
+/-- `PubAgree` as a conjunction. -/
+theorem pubAgree_iff (σ : AbiLayout) (s₁ s₂ : AState) :
+    σ.PubAgree s₁ s₂ ↔ s₁.regs "%rsp" = s₂.regs "%rsp" ∧
+      (∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg) ∧
+      ∀ a ∈ σ.args, ∀ n, a.kind = .words n → a.reg ∈ σ.pubWords →
+        wordsAt s₁.mem (s₁.regs a.reg) n = wordsAt s₂.mem (s₂.regs a.reg) n :=
+  ⟨fun h => ⟨h.rsp, h.regs, h.words⟩, fun h => ⟨h.1, h.2.1, h.2.2⟩⟩
+
+/-- A layout without public arrays: `PubAgree` is agreement on the stack pointer and the
     register of each public parameter. -/
-def PubAgree (σ : AbiLayout) (s₁ s₂ : AState) : Prop :=
-  s₁.regs "%rsp" = s₂.regs "%rsp" ∧
-    ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg
+theorem pubAgree_iff_of_pubWords_nil {σ : AbiLayout} (h : σ.pubWords = []) (s₁ s₂ : AState) :
+    σ.PubAgree s₁ s₂ ↔ s₁.regs "%rsp" = s₂.regs "%rsp" ∧
+      ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg :=
+  ⟨fun hp => ⟨hp.rsp, hp.regs⟩,
+    fun hp => ⟨hp.1, hp.2, fun _ _ _ _ hm => by simp [h] at hm⟩⟩
+
+/-- `PubAgree` at a layout without public arrays, from the stack pointer and the registers of
+    the public parameters. -/
+theorem PubAgree.of_pubWords_nil {σ : AbiLayout} (h : σ.pubWords = []) {s₁ s₂ : AState}
+    (hrsp : s₁.regs "%rsp" = s₂.regs "%rsp")
+    (hregs : ∀ a ∈ σ.args, σ.argPub a = true → s₁.regs a.reg = s₂.regs a.reg) :
+    σ.PubAgree s₁ s₂ :=
+  (pubAgree_iff_of_pubWords_nil h s₁ s₂).mpr ⟨hrsp, hregs⟩
+
+/-- Under `PubAgree`, each public array region holds equal words at the addresses its
+    register holds in the two states. -/
+theorem PubAgree.wordsAt_eq {σ : AbiLayout} {s₁ s₂ : AState} (h : σ.PubAgree s₁ s₂)
+    {p : String × Nat} (hp : p ∈ σ.pubRegions) :
+    wordsAt s₁.mem (s₁.regs p.1) p.2 = wordsAt s₂.mem (s₂.regs p.1) p.2 := by
+  obtain ⟨a, ha, hr⟩ := List.mem_filterMap.mp hp
+  obtain ⟨ha, hpub⟩ := List.mem_filter.mp ha
+  unfold AbiArg.region at hr
+  split at hr
+  · simp at hr
+  · rename_i n hk
+    cases hr
+    exact h.words a ha n hk (by simpa using hpub)
 
 /-- **The stack parameters at entry**: at the state `sa`, the carrier name `stackArgReg k` of
     every stack parameter holds the word at `%rsp + 8 k` of the memory. -/
