@@ -846,7 +846,7 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
       refine ⟨h1, h2, ?_⟩
       simp only [frameC, hgpN _ h1]
       exact h3
-  have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl hents _ hrunB
+  have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl (hents _) _ hrunB
   have hS0 := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
     (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
   have hword : ∀ q a, frameE body sa q = some a →

@@ -389,15 +389,15 @@ theorem argBind_entryV {σ : AbiLayout} {nm : String → String}
     have ha : σ.args[j]? = some σ.args[j] := List.getElem?_eq_getElem hj
     rw [entryV_argName ha (hF j hj) (hG j hj), entryV_srcOf hR (List.getElem_mem hj)]
 
-/-- The register bounds of `σ` hold at `entryV` at the names `nm`, when each bounded
-    register is named by a general-purpose name of that machine register without a frame
-    word. -/
+/-- The register bounds of `σ` hold at `entryV` at the names `nm`, at every array state,
+    when each bounded register is named by a general-purpose name of that machine register
+    without a frame word. -/
 theorem boundFacts_entryV {σ : AbiLayout} {nm : String → String}
     {fr : String → Option (BitVec 64)} {sa : AState} {un : String → String}
     (hreg : σ.Regions sa)
     (hB : ∀ b ∈ σ.bounds, gpOk (nm b.1) = true ∧ phys (nm b.1) = b.1 ∧ fr (nm b.1) = none) :
-    ∀ f ∈ boundFacts σ nm, f.holds (entryV σ fr sa un).reg.lvm :=
-  boundFacts_holds hreg fun b hb => by
+    ∀ (A : String → ArrCell), ∀ f ∈ boundFacts σ nm, f.holds (entryV σ fr sa un).reg.lvm A :=
+  fun _ => boundFacts_holds hreg fun b hb => by
     obtain ⟨h1, h2, h3⟩ := hB b hb
     simp only [entryV, entryA, h3, h1, if_true, h2]
 
@@ -1046,7 +1046,7 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
           fuel t hrun out hout hfuse.2 64 n
   -- the bounds invariant
   have hents := boundFacts_entryV (nm := nm) (fr := fr) (un := unren ps) hreg E.bnds
-  have hok := runIdxOk_of_idxInvCheckB hidx fn _ t' rfl rfl hents fuel' hrun'
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ t' rfl rfl (hents _) fuel' hrun'
   -- the image simulation
   have hgate' : imgGateB fr (slotRen (slotArrOf σ nm) (renOf ps)) body = true := by
     rw [hfrdef, ImageAddrFrame.imgGateB_frameMark]; exact hgate

@@ -821,7 +821,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
       simp only [frameC, hgpN _ h1]
       exact h3
   have hok := runIdxOk_of_idxInvCheckB hidx fn
-    { prog := { base := entryC σ sa ps body, lfn := fn }, zf := false } tB rfl rfl hents fuelB
+    { prog := { base := entryC σ sa ps body, lfn := fn }, zf := false } tB rfl rfl (hents _) fuelB
     hrunB
   have hS0 := imgSep_slotRen (ren := renOf ps)
     (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun

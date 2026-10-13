@@ -437,7 +437,7 @@ theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : L
   have hrun' := lsemFuelMemF_of_runStraightF fn _ hl _ b false z rfl hB
   have hents := boundFacts_entryV (nm := nm) (fr := frameE body sa) (un := fun x => x)
     hreg E.bnds
-  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrun'
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl (hents _) _ hrun'
   have hgate' : imgGateB (frameE body sa) (slotRen (slotArrOf σ nm) fun x => x) body
       = true := by
     rw [ImageAddrFrame.imgGateB_frameMark]
@@ -667,7 +667,7 @@ theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body
   have hrun' := lsemFuelMemF_of_runStraightF fn _ hl _ b false z rfl hB
   have hents := boundFacts_entryV (nm := nm) (fr := frameE body sa) (un := fun x => x)
     hreg E.bnds
-  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrun'
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl (hents _) _ hrun'
   have hgate' : imgGateB (frameE body sa) (slotRen (slotArrOf σ nm) fun x => x) body
       = true := by
     rw [ImageAddrFrame.imgGateB_frameMark]

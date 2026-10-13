@@ -20,9 +20,10 @@ of `lsemFuelMemF` is one exactly when every state it steps from is in bounds at 
 instruction it fetches (`RunIdxOk`). This module decides `RunIdxOk` of the halting runs of a
 body from an entry state satisfying a list of facts.
 
-A fact (`IdxFact`) bounds the sum of the `64`-bit values of a list of registers from above
-or the value of one register from below; a symbolic fact (`SFact`) may also exclude one value
-of a term. An annotation assigns a list of facts to each
+A fact (`IdxFact`) bounds the sum of the `64`-bit values of a list of registers from above,
+the value of one register from below, or every element of a named array from above
+(`ArrLe`); a symbolic fact (`SFact`) may also exclude one value of a term. An annotation
+assigns a list of facts to each
 block of the control-flow graph `cfgOf`; it is untrusted. `idxInvCheckB` checks, for every
 block, along its symbolic run `symRun` from the block entry:
 
@@ -37,8 +38,10 @@ block, along its symbolic run `symRun` from the block entry:
 Entailment (`entails`) is syntactic: an upper bound on a sum is read off one fact after
 normalising additions and subtractions of immediates (`linOf`), with the lower bounds of the
 remaining summands, or from the upper bounds of its terms (`hiLe`: the facts containing the
-term, a conjunction with an immediate mask, and an excluded bound); a lower bound is read off
-a fact on the same term. A sum whose linear
+term, a conjunction with an immediate mask, an element bound of the array a load reads,
+and an excluded bound); a lower bound is read off a fact on the same term. An element bound
+of an array holds by a fact on it, and across a store when the stored word is within the
+bound (`arrOk`). A sum whose linear
 form is one product with an immediate at width `64` plus a constant is bounded through a
 bound on the other factor (`mulLe`); with the immediate as the first factor the other factor
 must have width `64`, which a width fact states. The index obligations of a block are
@@ -72,6 +75,7 @@ bounds, which hold at every entry state satisfying `AbiLayout.Regions`.
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
 
 open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (stackGet stackSet)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
@@ -94,21 +98,81 @@ theorem wval_lt (x : Σ w, BitVec w) : wval x < 2 ^ 64 := (castW x 64).isLt
 theorem castW_ne {x : Σ w, BitVec w} (h : x.1 ≠ 64) : castW x 64 = 0 := by
   simp [castW, h]
 
-/-- A fact over the registers at a block entry: the sum of the values of the registers `rs`
-    is at most `b`, or the value of the register `r` is at least `k`. -/
+/-- Every element of the array cell `c`, read at width `64` (`wval`), is at most `b`. -/
+def ArrLe (c : ArrCell) (b : Nat) : Prop := ∀ i : Fin c.2.1, wval ⟨c.1, c.2.2 i⟩ ≤ b
+
+theorem ArrLe.mono {c : ArrCell} {b b' : Nat} (h : ArrLe c b) (hb : b ≤ b') : ArrLe c b' :=
+  fun i => (h i).trans hb
+
+/-- A word cast to its own width is at most its value at width `64`. -/
+theorem wval_castW_le (x : Σ w, BitVec w) (w : Nat) : wval ⟨w, castW x w⟩ ≤ wval x := by
+  by_cases hw : w = 64
+  · subst hw
+    exact le_refl _
+  · simp [wval, castW, hw]
+
+theorem wval_zero (w : Nat) : wval ⟨w, (0 : BitVec w)⟩ = 0 := by
+  by_cases hw : w = 64
+  · subst hw
+    simp [wval, castW]
+  · simp [wval, castW, hw]
+
+/-- Every element of an array cell cast to the shape `(w, n)` obeys the bound of the cell. -/
+theorem castA_le {c : ArrCell} {b : Nat} (h : ArrLe c b) (w n : Nat) (i : Fin n) :
+    wval ⟨w, castA c w n i⟩ ≤ b := by
+  obtain ⟨w', n', f⟩ := c
+  unfold castA
+  by_cases hw : w' = w
+  · subst hw
+    by_cases hn : n' = n
+    · subst hn
+      simpa using h i
+    · rw [dif_pos rfl, dif_neg hn]
+      exact (wval_zero _).trans_le (Nat.zero_le b)
+  · rw [dif_neg hw]
+    exact (wval_zero _).trans_le (Nat.zero_le b)
+
+/-- An element read by `stackGet` from an array cell cast to the shape `(w, n)` obeys the
+    bound of the cell. -/
+theorem stackGet_castA_le {c : ArrCell} {b : Nat} (h : ArrLe c b) (w n k : Nat) :
+    wval ⟨w, stackGet (castA c w n) k⟩ ≤ b := by
+  cases n with
+  | zero => exact (wval_zero _).trans_le (Nat.zero_le b)
+  | succ m => exact castA_le h w (m + 1) _
+
+/-- An array cell cast to the shape `(w, n)` with one element set to the word `v` obeys a
+    bound that the cell and the value of `v` obey. -/
+theorem arrLe_stackSet {c : ArrCell} {b : Nat} (h : ArrLe c b) (w n k : Nat)
+    (v : Σ w, BitVec w) (hv : wval v ≤ b) :
+    ArrLe ⟨w, n, stackSet (castA c w n) k (castW v w)⟩ b := by
+  intro i
+  cases n with
+  | zero => exact i.elim0
+  | succ m =>
+      simp only [stackSet]
+      split
+      · exact (wval_castW_le v w).trans hv
+      · exact castA_le h w (m + 1) i
+
+/-- A fact over the registers and arrays at a block entry: the sum of the values of the
+    registers `rs` is at most `b`, the value of the register `r` is at least `k`, or every
+    element of the array `a` at width `64` is at most `b`. -/
 inductive IdxFact where
   | le (rs : List String) (b : Nat)
   | ge (r : String) (k : Nat)
+  | ale (a : String) (b : Nat)
   deriving DecidableEq, Repr, Inhabited
 
 /-- A fact over symbolic words: the sum of the values of the terms `ts` is at most `b`, the
-    value of the term `t` is at least `k`, the term `t` has width `64`, or the value of the
-    term `t` is not `c`. -/
+    value of the term `t` is at least `k`, the term `t` has width `64`, the value of the
+    term `t` is not `c`, or every element of the symbolic array `a` at width `64` is at
+    most `b`. -/
 inductive SFact where
   | le (ts : List STerm) (b : Nat)
   | ge (t : STerm) (k : Nat)
   | w64 (t : STerm)
   | ne (t : STerm) (c : Nat)
+  | ale (a : SArr) (b : Nat)
   deriving DecidableEq
 
 section Eval
@@ -124,22 +188,26 @@ def SFact.holds : SFact → Prop
   | .ge t k => k ≤ wval (t.ev V A C O)
   | .w64 t => (t.ev V A C O).1 = 64
   | .ne t c => wval (t.ev V A C O) ≠ c
+  | .ale a b => ArrLe (a.ev V A C O) b
 
 end Eval
 
-/-- A fact holds at the registers `V`. -/
-def IdxFact.holds (V : String → Σ w, BitVec w) : IdxFact → Prop
+/-- A fact holds at the registers `V` and the arrays `A`. -/
+def IdxFact.holds (V : String → Σ w, BitVec w) (A : String → ArrCell) : IdxFact → Prop
   | .le rs b => (rs.map fun r => wval (V r)).sum ≤ b
   | .ge r k => k ≤ wval (V r)
+  | .ale a b => ArrLe (A a) b
 
-/-- A fact read through the symbolic registers `R`. -/
-def IdxFact.toS (R : String → STerm) : IdxFact → SFact
+/-- A fact read through the symbolic registers `R` and the symbolic arrays `Ar`. -/
+def IdxFact.toS (R : String → STerm) (Ar : String → SArr) : IdxFact → SFact
   | .le rs b => .le (rs.map R) b
   | .ge r k => .ge (R r) k
+  | .ale a b => .ale (Ar a) b
 
 theorem IdxFact.toS_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
-    (R : String → STerm) (f : IdxFact) :
-    (f.toS R).holds V A C O ↔ f.holds (fun r => (R r).ev V A C O) := by
+    (R : String → STerm) (Ar : String → SArr) (f : IdxFact) :
+    (f.toS R Ar).holds V A C O ↔
+      f.holds (fun r => (R r).ev V A C O) (fun a => (Ar a).ev V A C O) := by
   cases f <;> simp [IdxFact.toS, IdxFact.holds, SFact.holds, tsum, Function.comp_def]
 
 theorem tsum_append (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
@@ -173,6 +241,7 @@ def lbOf : List SFact → STerm → Nat
   | .le _ _ :: F, t => lbOf F t
   | .w64 _ :: F, t => lbOf F t
   | .ne _ _ :: F, t => lbOf F t
+  | .ale _ _ :: F, t => lbOf F t
 
 theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
     ∀ (F : List SFact) (t : STerm), (∀ f ∈ F, f.holds V A C O) →
@@ -181,6 +250,7 @@ theorem lbOf_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : 
   | .le _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .w64 _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .ne _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
+  | .ale _ _ :: F, t, h => lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
   | .ge t' k :: F, t, h => by
       have ih := lbOf_le F t (fun g hg => h g (List.mem_cons_of_mem _ hg))
       simp only [lbOf]
@@ -353,6 +423,7 @@ def leBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Boo
   | .ge _ _ => false
   | .w64 _ => false
   | .ne _ _ => false
+  | .ale _ _ => false
 
 /-- The sum of `ts` is at most `b'` by its linear form: the form is a constant within the
     bound, or one fact bounds a sum containing its atoms. -/
@@ -374,6 +445,7 @@ theorem leLin_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
     | ge _ _ => simp [leBy] at hl
     | w64 _ => simp [leBy] at hl
     | ne _ _ => simp [leBy] at hl
+    | ale _ _ => simp [leBy] at hl
     | le ts0 b =>
         simp only [leBy] at hl
         split at hl
@@ -542,6 +614,8 @@ theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
   | .ne _ _ :: F, t, u, hF, h =>
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
+  | .ale _ _ :: F, t, u, hF, h =>
+      ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
 
 /-- The sum of the upper bounds `ubOf` of a list of terms, when each has one. -/
 def ubSum (F : List SFact) : List STerm → Option Nat
@@ -658,6 +732,7 @@ def leMixBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → 
   | .ge _ _ => false
   | .w64 _ => false
   | .ne _ _ => false
+  | .ale _ _ => false
 
 /-- The sum of `ts` is at most `b'` by its linear form, one fact for the atoms it contains and
     single-term facts for the others (an index `off + i` with a bound on `off` and a loop
@@ -679,6 +754,7 @@ theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
   | ge _ _ => simp [leMixBy] at hl
   | w64 _ => simp [leMixBy] at hl
   | ne _ _ => simp [leMixBy] at hl
+  | ale _ _ => simp [leMixBy] at hl
   | le ts0 b =>
       simp only [leMixBy] at hl
       split at hl
@@ -761,8 +837,22 @@ theorem immHi_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O :
       simp only [immHi]
       exact maskOf_le V A C O _
 
+/-- The symbolic array a load term reads, and `none` for every other term. -/
+def loadArr : STerm → Option SArr
+  | .aget a _ _ _ => some a
+  | _ => none
+
+/-- A load from an array whose elements obey a bound obeys it. -/
+theorem wval_load_le {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {t : STerm} {a : SArr} {b : Nat} (ht : loadArr t = some a) (h : ArrLe (a.ev V A C O) b) :
+    wval (t.ev V A C O) ≤ b := by
+  cases t <;> simp only [loadArr, reduceCtorEq, Option.some.injEq] at ht
+  subst ht
+  exact stackGet_castA_le h _ _ _
+
 /-- An upper bound on the value of the term `t`: the least `b - lbSum F (ts.erase t)` over
-    the facts `.le ts b` of `G` with `t ∈ ts`, and at most the bound `immHi t` of its
+    the facts `.le ts b` of `G` with `t ∈ ts`, the least bound `b` of the facts `.ale a b`
+    of `G` on the array `a` that `t` loads from, and at most the bound `immHi t` of its
     structure. -/
 def hiOf (F : List SFact) : List SFact → STerm → Nat
   | [], t => immHi t
@@ -771,6 +861,7 @@ def hiOf (F : List SFact) : List SFact → STerm → Nat
   | .ge _ _ :: G, t => hiOf F G t
   | .w64 _ :: G, t => hiOf F G t
   | .ne _ _ :: G, t => hiOf F G t
+  | .ale a b :: G, t => if loadArr t = some a then min b (hiOf F G t) else hiOf F G t
 
 theorem hiOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
@@ -780,6 +871,13 @@ theorem hiOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
   | .ge _ _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
   | .w64 _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
   | .ne _ _ :: G, t, hG => hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+  | .ale a b :: G, t, hG => by
+      have ih := hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
+      simp only [hiOf]
+      split
+      · rename_i ht
+        exact le_min (wval_load_le ht (hG (.ale a b) List.mem_cons_self)) ih
+      · exact ih
   | .le ts b :: G, t, hG => by
       have ih := hiOf_sound hF G t (fun g hg => hG g (List.mem_cons_of_mem _ hg))
       simp only [hiOf]
@@ -1076,17 +1174,54 @@ theorem hiLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
         omega
   exact (key ts).trans h
 
+/-- A fact of `F` bounds the elements of the symbolic array `a` by at most `b`. -/
+def arrIn (F : List SFact) (a : SArr) (b : Nat) : Bool :=
+  F.any fun
+    | .ale a' b' => decide (a' = a) && decide (b' ≤ b)
+    | _ => false
+
+theorem arrIn_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {a : SArr} {b : Nat}
+    (h : arrIn F a b = true) : ArrLe (a.ev V A C O) b := by
+  simp only [arrIn, List.any_eq_true] at h
+  obtain ⟨g, hg, hb⟩ := h
+  cases g with
+  | ale a' b' =>
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hb
+      obtain ⟨rfl, hb⟩ := hb
+      exact (hF _ hg : ArrLe _ b').mono hb
+  | le _ _ | ge _ _ | w64 _ | ne _ _ => simp at hb
+
+/-- Every element of the symbolic array `a` is at most `b`: a fact of `F` states it
+    (`arrIn`), or `a` sets one element of an array that obeys the bound to a word whose
+    upper bound `hiNe` is within it. -/
+def arrOk (F : List SFact) (b : Nat) : SArr → Bool
+  | .cell r => arrIn F (.cell r) b
+  | .aset a w n i v => arrIn F (.aset a w n i v) b || (arrOk F b a && decide (hiNe F v ≤ b))
+
+theorem arrOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {b : Nat} :
+    ∀ a : SArr, arrOk F b a = true → ArrLe (a.ev V A C O) b
+  | .cell r, h => arrIn_sound hF h
+  | .aset a w n i v, h => by
+      simp only [arrOk, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+      rcases h with h | ⟨ha, hv⟩
+      · exact arrIn_sound hF h
+      · exact arrLe_stackSet (arrOk_sound hF a ha) w n _ _ ((hiNe_sound hF v).trans hv)
+
 /-- **Entailment**: an upper bound on a sum holds when its linear form is a constant within
     the bound, when one fact bounds a sum containing its atoms (`leLin`), when the form is a
     product with an immediate whose other factor is bounded (`mulLe`), or when the upper
     bounds `hiNe` of its terms sum to within the bound (`hiLe`); a lower bound holds by
     `lbNe`; a width holds by `widOk`; a value `c` is excluded when it lies outside the bounds
-    of the term or a fact excludes it. -/
+    of the term or a fact excludes it; a bound on the elements of an array holds by
+    `arrOk`. -/
 def entails (F : List SFact) : SFact → Bool
   | .le ts b' => leLin F ts b' || mulLe F ts b' || hiLe F ts b'
   | .ge t k => decide (k ≤ lbNe F t)
   | .w64 t => widOk F t
   | .ne t c => decide (c < lbOf F t) || decide (hiNe F t < c) || decide (SFact.ne t c ∈ F)
+  | .ale a b => arrOk F b a
 
 /-- **Entailment is sound.** -/
 theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
@@ -1112,6 +1247,7 @@ theorem entails_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
       · show wval (t.ev V A C O) ≠ c
         omega
       · exact hF _ h
+  | .ale a b, h => arrOk_sound hF a h
 
 /-- The width facts a guard of a symbolic run gives: a term of width `64`, or a term whose
     width is that of a term of width `64`, each at its width base `STerm.wbase`. -/
@@ -1257,30 +1393,32 @@ theorem edgeFacts_sound {V : String → Σ w, BitVec w} {A : String → ArrCell}
 /-- The facts of block `k` under the annotation `ann`. -/
 def annAt (ann : List (List IdxFact)) (k : Nat) : List IdxFact := ann.getD k []
 
-/-- Facts over the registers at a block entry, as symbolic facts at that entry. -/
-def startF (fs : List IdxFact) : List SFact := fs.map (IdxFact.toS STerm.reg)
+/-- Facts over the registers and arrays at a block entry, as symbolic facts at that
+    entry. -/
+def startF (fs : List IdxFact) : List SFact := fs.map (IdxFact.toS STerm.reg SArr.cell)
 
 theorem startF_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
-    {fs : List IdxFact} (h : ∀ f ∈ fs, f.holds V) : ∀ g ∈ startF fs, g.holds V A C O := by
+    {fs : List IdxFact} (h : ∀ f ∈ fs, f.holds V A) : ∀ g ∈ startF fs, g.holds V A C O := by
   intro g hg
   obtain ⟨f, hf, rfl⟩ := List.mem_map.mp hg
-  exact (IdxFact.toS_holds STerm.reg f).mpr (h f hf)
+  exact (IdxFact.toS_holds STerm.reg SArr.cell f).mpr (h f hf)
 
-/-- The facts `fs` of a successor follow, through the final symbolic registers of `ss`, from
-    the facts `F`. -/
+/-- The facts `fs` of a successor follow, through the final symbolic registers and arrays of
+    `ss`, from the facts `F`. -/
 def succOk (F : List SFact) (ss : SSt) (fs : List IdxFact) : Bool :=
-  fs.all fun f => entails F (f.toS ss.regs)
+  fs.all fun f => entails F (f.toS ss.regs ss.arrs)
 
 theorem succOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
     {F : List SFact} {ss : SSt} {fs : List IdxFact} (h : succOk F ss fs = true)
     (hF : ∀ f ∈ F, f.holds V A C O) {u : LstateMF} (hu : Holds V A C O Z ss u) :
-    ∀ f ∈ fs, f.holds u.prog.base.reg.lvm := by
+    ∀ f ∈ fs, f.holds u.prog.base.reg.lvm u.prog.base.larr := by
   intro f hf
   simp only [succOk, List.all_eq_true] at h
-  have := (IdxFact.toS_holds (V := V) (A := A) (C := C) (O := O) ss.regs f).mp
+  have := (IdxFact.toS_holds (V := V) (A := A) (C := C) (O := O) ss.regs ss.arrs f).mp
     (entails_sound hF _ (h f hf))
   have he : u.prog.base.reg.lvm = fun r => (ss.regs r).ev V A C O := funext hu.1
-  rw [he]
+  have ha : u.prog.base.larr = fun a => (ss.arrs a).ev V A C O := funext hu.2.1
+  rw [he, ha]
   exact this
 
 /-- Every index obligation follows from the facts `F`: its index is below the length, by
@@ -1348,7 +1486,7 @@ def idxInvCheckB (entry : List IdxFact) (ann : List (List IdxFact)) (B : List Li
   match cfgOf (B.map Prod.fst) with
   | some G =>
       (List.range G.blocks.size).all (blockInvOk ann B G) &&
-        (annAt ann 0).all fun f => entails (startF entry) (f.toS STerm.reg)
+        (annAt ann 0).all fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
   | none => false
 
 /-! ## 5. Soundness -/
@@ -1364,7 +1502,7 @@ def InvAt (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (fn : String
   ∀ (fuel k : Nat) (s t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     EntryAt B (G.blk k) s.prog.base.reg.lpc → s.prog.lfn = fn →
-    (∀ f ∈ annAt ann k, f.holds s.prog.base.reg.lvm) →
+    (∀ f ∈ annAt ann k, f.holds s.prog.base.reg.lvm s.prog.base.larr) →
     lsemFuelMemF (singletonProgM fn B) fuel s = some t →
     RunIdxOk (singletonProgM fn B) fuel s
 
@@ -1558,11 +1696,12 @@ end Sound
 
 /-- **Soundness of the bounds-invariant check.** If `idxInvCheckB entry ann B` accepts,
     every halting run of `lsemFuelMemF` on the singleton program over `B` from a state at
-    pc `0` of that function whose registers satisfy the entry facts is in bounds. -/
+    pc `0` of that function whose registers and arrays satisfy the entry facts is in
+    bounds. -/
 theorem runIdxOk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFact)}
     {B : List LinstrRM} (h : idxInvCheckB entry ann B = true) (fn : String) (s t : LstateMF)
     (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
-    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm) (fuel : Nat)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     RunIdxOk (singletonProgM fn B) fuel s := by
   unfold idxInvCheckB at h
@@ -1577,8 +1716,8 @@ theorem runIdxOk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFac
     obtain ⟨hpos, hs0⟩ := cfgOf_start_zero hG hB
     have hF := startF_holds (A := s.prog.base.larr) (C := s.prog.base.cf)
       (O := s.prog.base.of) hent
-    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm := fun f hf =>
-      (IdxFact.toS_holds STerm.reg f).mp (entails_sound hF _ (h0 f hf))
+    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm s.prog.base.larr :=
+      fun f hf => (IdxFact.toS_holds STerm.reg SArr.cell f).mp (entails_sound hF _ (h0 f hf))
     exact invAt_all hG hb _ fuel 0 s t (Nat.lt_succ_self _) hpos
       (Or.inl (hpc.trans hs0.symm)) hfn hinv hrun
   · cases h
@@ -1587,7 +1726,7 @@ theorem runIdxOk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFac
 theorem lsemFuelMemFk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFact)}
     {B : List LinstrRM} (h : idxInvCheckB entry ann B = true) (fn : String) (s t : LstateMF)
     (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
-    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm) (fuel : Nat)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     lsemFuelMemFk true (singletonProgM fn B) fuel s = some t :=
   lsemFuelMemFk_of_runIdxOk true _ fuel s t hrun
@@ -1595,14 +1734,14 @@ theorem lsemFuelMemFk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List I
 
 /-- **The checker on runs of an accepted source body.** If `ownedCheckMC outs B B'` and
     `idxInvCheckB entry ann B` accept, every halting run of `lsemFuelMemF` on `B` from a
-    state at pc `0` whose registers satisfy the entry facts is matched by a halting checked
-    run of `B'` from the same state, the end states agreeing on `outs`, the arrays and the
-    word memory. -/
+    state at pc `0` whose registers and arrays satisfy the entry facts is matched by a
+    halting checked run of `B'` from the same state, the end states agreeing on `outs`, the
+    arrays and the word memory. -/
 theorem ownedCheckMC_sound_of_idxInv {outs : List String} {B B' : List LinstrRM}
     {entry : List IdxFact} {ann : List (List IdxFact)} (h : ownedCheckMC outs B B' = true)
     (hi : idxInvCheckB entry ann B = true) (fn : String) (s t : LstateMF)
     (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
-    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm) (fuel : Nat)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', lsemFuelMemFk true (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' :=
@@ -1614,7 +1753,7 @@ theorem ownedCheckMC_sound_of_idxInv {outs : List String} {B B' : List LinstrRM}
 /-- The registers an index obligation, a branch condition or an entry fact of `B` reads:
     the candidates of the annotation. -/
 def annRegs (entry : List IdxFact) (B : List LinstrRM) (G : CFG) : List String :=
-  let fromEntry := entry.flatMap fun | .le rs _ => rs | .ge r _ => [r]
+  let fromEntry := entry.flatMap fun | .le rs _ => rs | .ge r _ => [r] | .ale _ _ => []
   let fromBlocks := (List.range G.blocks.size).flatMap fun k =>
     match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
     | .ok ss _ =>
@@ -1641,7 +1780,7 @@ def annPass (B : List LinstrRM) (G : CFG) (ann : List (List IdxFact)) :
     | .ok ss _ =>
         let F := startF (annAt ann k)
         let keep (F' : List SFact) (ann : List (List IdxFact)) (j : Nat) :=
-          ann.set j ((annAt ann j).filter fun f => entails F' (f.toS ss.regs))
+          ann.set j ((annAt ann j).filter fun f => entails F' (f.toS ss.regs ss.arrs))
         match (G.blk k).term with
         | .fall (some j) => keep F ann j
         | .goto tg => keep F ann tg
@@ -1657,20 +1796,19 @@ def annPass (B : List LinstrRM) (G : CFG) (ann : List (List IdxFact)) :
     | _ => ann) ann
 
 /-- The restriction edges of block `k` of `B`: each successor `j` with the facts its edge
-    condition adds and the final symbolic registers of the block, as `annPass` uses them. -/
-def annEdges (B : List LinstrRM) (G : CFG) (k : Nat) :
-    List (Nat × List SFact × (String → STerm)) :=
+    condition adds and the final symbolic state of the block, as `annPass` uses them. -/
+def annEdges (B : List LinstrRM) (G : CFG) (k : Nat) : List (Nat × List SFact × SSt) :=
   match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
   | .ok ss _ =>
       match (G.blk k).term with
-      | .fall (some j) => [(j, [], ss.regs)]
-      | .goto tg => [(tg, [], ss.regs)]
+      | .fall (some j) => [(j, [], ss)]
+      | .goto tg => [(tg, [], ss)]
       | .cond tg nx =>
           match B[(G.blk k).stop - 1]? with
           | some (.Lcond c _, _) =>
-              (tg, edgeFacts (symDec ss c) true, ss.regs) ::
+              (tg, edgeFacts (symDec ss c) true, ss) ::
                 match nx with
-                | some j => [(j, edgeFacts (symDec ss c) false, ss.regs)]
+                | some j => [(j, edgeFacts (symDec ss c) false, ss)]
                 | none => []
           | _ => []
       | _ => []
@@ -1679,12 +1817,12 @@ def annEdges (B : List LinstrRM) (G : CFG) (k : Nat) :
 /-- One worklist step of the restriction at block `k`: the facts of each successor that do
     not follow from the facts `F` of the block (with the condition of the edge) are dropped,
     and each successor whose facts shrank is queued unless it is pending. -/
-def annVisit (F : List SFact) (es : List (Nat × List SFact × (String → STerm)))
+def annVisit (F : List SFact) (es : List (Nat × List SFact × SSt))
     (st : Array (List IdxFact) × Array Bool × Std.Queue Nat) :
     Array (List IdxFact) × Array Bool × Std.Queue Nat :=
-  es.foldl (fun (a, pend, q) (j, ex, regs) =>
+  es.foldl (fun (a, pend, q) (j, ex, ss) =>
     let old := a.getD j []
-    let new := old.filter fun f => entails (F ++ ex) (f.toS regs)
+    let new := old.filter fun f => entails (F ++ ex) (f.toS ss.regs ss.arrs)
     if new.length < old.length then
       if pend.getD j false then (a.set! j new, pend, q)
       else (a.set! j new, pend.set! j true, q.enqueue j)
@@ -1692,7 +1830,7 @@ def annVisit (F : List SFact) (es : List (Nat × List SFact × (String → STerm
 
 /-- The restriction by a worklist, within `fuel` visits: a block is visited when it is
     dequeued, and queued again only when its facts shrank. -/
-def annWork (E : Array (List (Nat × List SFact × (String → STerm)))) :
+def annWork (E : Array (List (Nat × List SFact × SSt))) :
     Nat → Array (List IdxFact) × Array Bool × Std.Queue Nat → Array (List IdxFact)
   | 0, (a, _, _) => a
   | fuel + 1, (a, pend, q) =>
@@ -1725,17 +1863,19 @@ def seedImms (B : List LinstrRM) (G : CFG) (rs : List String) : List Nat :=
     of the candidates are the bounds of the entry facts, the array lengths `oblLens` of the
     index obligations and the immediates `seedImms` the blocks leave in the candidate
     registers, so a counter seeded with an immediate is bounded by that immediate and by
-    the length of the array its index reads. `idxInvCheckB` checks the result. -/
+    the length of the array its index reads. The element bounds `.ale` of the entry facts
+    are candidates as well. `idxInvCheckB` checks the result. -/
 def idxAnnot (entry : List IdxFact) (B : List LinstrRM) : List (List IdxFact) :=
   match cfgOf (B.map Prod.fst) with
   | some G =>
       let nb := G.blocks.size
       let rs := annRegs entry B G
-      let bs := ((entry.filterMap fun | .le _ b => some b | .ge _ _ => none)
+      let bs := ((entry.filterMap fun | .le _ b => some b | _ => none)
         ++ oblLens B G ++ seedImms B G rs).eraseDups
-      let cs := annCands rs bs
+      let cs := annCands rs bs ++ entry.filter fun | .ale _ _ => true | _ => false
       let a0 := (Array.range nb).map fun k =>
-        if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg) else cs
+        if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
+        else cs
       let E := (Array.range nb).map (annEdges B G)
       let q0 := (List.range nb).foldl (fun q k => q.enqueue k) Std.Queue.empty
       (annWork E (nb * (cs.length + 1) + 1) (a0, Array.replicate nb true, q0)).toList
@@ -1751,11 +1891,12 @@ def boundFacts (σ : AbiLayout) (nm : String → String) : List IdxFact :=
   σ.bounds.map fun b => .le [nm b.1] b.2
 
 /-- **The facts of a layout's register bounds hold** at registers `V` that hold each bounded
-    register of a separated entry state at width `64` under its name. -/
+    register of a separated entry state at width `64` under its name, and at every array
+    state `A`. -/
 theorem boundFacts_holds {σ : AbiLayout} {sa : AState} (hR : σ.Regions sa)
-    {nm : String → String} {V : String → Σ w, BitVec w}
+    {nm : String → String} {V : String → Σ w, BitVec w} {A : String → ArrCell}
     (hV : ∀ b ∈ σ.bounds, V (nm b.1) = ⟨64, sa.regs b.1⟩) :
-    ∀ f ∈ boundFacts σ nm, f.holds V := by
+    ∀ f ∈ boundFacts σ nm, f.holds V A := by
   intro f hf
   obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hf
   simp only [IdxFact.holds, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,

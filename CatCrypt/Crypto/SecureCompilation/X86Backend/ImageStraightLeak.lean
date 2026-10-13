@@ -252,7 +252,7 @@ theorem straightVirt_checked_run {σ : AbiLayout} {nm : String → String} {body
     rfl hB
   have hents := boundFacts_entryV (nm := nm) (fr := frameE body sa) (un := fun x => x)
     hreg E.bnds
-  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrun'
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl (hents _) _ hrun'
   exact ⟨_, _, lsemFuelMemFk_of_runIdxOk true _ _ _ _ hrun' hok⟩
 
 /-! ## 3. From the virtual body to the decoded bytes -/

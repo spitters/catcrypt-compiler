@@ -1215,7 +1215,7 @@ theorem cellVirt_checked_run {σ : AbiLayout} {nm : String → String} {body : L
       refine ⟨h1, h2, ?_⟩
       simp only [frameC, hgpN _ h1]
       exact h3
-  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl hents _ hrunB
+  have hok := runIdxOk_of_idxInvCheckB hidx fn _ _ rfl rfl (hents _) _ hrunB
   exact ⟨_, _, lsemFuelMemFk_of_runIdxOk true _ _ _ _ hrunB hok⟩
 
 /-- **The entry facts of the cell route.** For a folded chain that passes `cellRouteB` and

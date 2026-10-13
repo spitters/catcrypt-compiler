@@ -1171,7 +1171,7 @@ theorem virtBW_checked_run {σ : AbiLayout} {nm : String → String} {body : Lcm
       refine ⟨h1, h2, ?_⟩
       simp only [frameC, hgpN _ h1]
       exact h3
-  have hok := runIdxOk_of_idxInvCheckB hidx fn (routeEntryW σ body ps fn sa) t' rfl rfl hents
+  have hok := runIdxOk_of_idxInvCheckB hidx fn (routeEntryW σ body ps fn sa) t' rfl rfl (hents _)
     fuel' hrunB
   exact ⟨fuel', t', lsemFuelMemFk_of_runIdxOk true _ fuel' _ t' hrunB hok⟩
 

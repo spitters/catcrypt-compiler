@@ -385,10 +385,18 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel)
 def factRegs : IdxFact → List String
   | .le rs _ => rs
   | .ge r _ => [r]
+  | .ale _ _ => []
 
-/-- A fact holds at two register files that agree on the registers it names. -/
-theorem idxFact_holds_congr {V V' : String → Σ w, BitVec w} {f : IdxFact}
-    (h : ∀ r ∈ factRegs f, V r = V' r) (hf : f.holds V) : f.holds V' := by
+/-- A fact names only registers: it is not an element bound of an array. -/
+def regFact : IdxFact → Bool
+  | .ale _ _ => false
+  | _ => true
+
+/-- A register fact holds at two register files that agree on the registers it names, at
+    any arrays. -/
+theorem idxFact_holds_congr {V V' : String → Σ w, BitVec w} {A A' : String → ArrCell}
+    {f : IdxFact} (hr : regFact f = true) (h : ∀ r ∈ factRegs f, V r = V' r)
+    (hf : f.holds V A) : f.holds V' A' := by
   cases f with
   | le rs b =>
       simp only [IdxFact.holds, factRegs] at hf h ⊢
@@ -396,13 +404,15 @@ theorem idxFact_holds_congr {V V' : String → Σ w, BitVec w} {f : IdxFact}
   | ge r k =>
       simp only [IdxFact.holds] at hf ⊢
       rwa [← h r (by simp [factRegs])]
+  | ale _ _ => simp [regFact] at hr
 
-/-- **The facts after a call** with destination `dst`, from the candidates `cs`: those that
-    do not name `dst` and follow from the facts `F`, read through the symbolic registers
-    `ss` before the call. -/
+/-- **The facts after a call** with destination `dst`, from the candidates `cs`: the register
+    facts (`regFact`; the callee may write the arrays) that do not name `dst` and follow from
+    the facts `F`, read through the symbolic state `ss` before the call. -/
 def callFacts (cs : List IdxFact) (F : List SFact) (ss : SSt) (dst : String) :
     List IdxFact :=
-  cs.filter fun f => !(factRegs f).contains dst && entails F (f.toS ss.regs)
+  cs.filter fun f =>
+    regFact f && !(factRegs f).contains dst && entails F (f.toS ss.regs ss.arrs)
 
 /-- The facts after a call hold at every state that keeps the registers other than the
     destination of a state described by `ss`. -/
@@ -410,17 +420,17 @@ theorem callFacts_sound {cs : List IdxFact} {F : List SFact} {ss : SSt} {dst : S
     {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool} {s s1 : LstateMF}
     (hF : ∀ g ∈ F, g.holds V A C O) (hs : Holds V A C O Z ss s)
     (h1 : ∀ q, q ≠ dst → s1.prog.base.reg.lvm q = s.prog.base.reg.lvm q) :
-    ∀ f ∈ callFacts cs F ss dst, f.holds s1.prog.base.reg.lvm := by
+    ∀ f ∈ callFacts cs F ss dst, f.holds s1.prog.base.reg.lvm s1.prog.base.larr := by
   intro f hf
   simp only [callFacts, List.mem_filter, Bool.and_eq_true, Bool.not_eq_true'] at hf
-  obtain ⟨-, hd, he⟩ := hf
+  obtain ⟨-, ⟨hr, hd⟩, he⟩ := hf
   have hd' : dst ∉ factRegs f := by simpa using hd
-  have h2 := (IdxFact.toS_holds (V := V) (A := A) (C := C) (O := O) ss.regs f).mp
+  have h2 := (IdxFact.toS_holds (V := V) (A := A) (C := C) (O := O) ss.regs ss.arrs f).mp
     (entails_sound hF _ he)
   have e : (fun r => (ss.regs r).ev V A C O) = s.prog.base.reg.lvm :=
     funext fun q => (hs.1 q).symm
   rw [e] at h2
-  exact idxFact_holds_congr (fun r hr => (h1 r fun hrd => hd' (hrd ▸ hr)).symm) h2
+  exact idxFact_holds_congr hr (fun r hr => (h1 r fun hrd => hd' (hrd ▸ hr)).symm) h2
 
 /-- The result of a segmented symbolic walk: the facts at the start of the last segment with
     the symbolic state from that start; a walk through a step that always fails; or a walk
@@ -567,7 +577,7 @@ def idxInvCheckPB (T : ProcTable) (entry : List IdxFact) (ann : List (List IdxFa
   match cfgOf (B.map Prod.fst) with
   | some G =>
       (List.range G.blocks.size).all (blockInvOkP T ann B G) &&
-        (annAt ann 0).all fun f => entails (startF entry) (f.toS STerm.reg)
+        (annAt ann 0).all fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
   | none => false
 
 section Sound
@@ -582,7 +592,7 @@ def InvAtP (T : ProcTable) (ann : List (List IdxFact)) (B : List LinstrRM) (G : 
   ∀ (fuel k : Nat) (s t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     EntryAt B (G.blk k) s.prog.base.reg.lpc → s.prog.lfn = fn →
-    (∀ f ∈ annAt ann k, f.holds s.prog.base.reg.lvm) →
+    (∀ f ∈ annAt ann k, f.holds s.prog.base.reg.lvm s.prog.base.larr) →
     (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t →
     (x86Isa.withProcs T).RunIdxOk (singletonProgM fn B) fuel s
 
@@ -762,7 +772,7 @@ end Sound
 theorem runIdxOk_of_idxInvCheckPB {T : ProcTable} {entry : List IdxFact}
     {ann : List (List IdxFact)} {B : List LinstrRM} (h : idxInvCheckPB T entry ann B = true)
     (fn : String) (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
-    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm) (fuel : Nat)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     (x86Isa.withProcs T).RunIdxOk (singletonProgM fn B) fuel s := by
   unfold idxInvCheckPB at h
@@ -777,8 +787,8 @@ theorem runIdxOk_of_idxInvCheckPB {T : ProcTable} {entry : List IdxFact}
     obtain ⟨hpos, hs0⟩ := cfgOf_start_zero hG hB
     have hF := startF_holds (A := s.prog.base.larr) (C := s.prog.base.cf)
       (O := s.prog.base.of) hent
-    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm := fun f hf =>
-      (IdxFact.toS_holds STerm.reg f).mp (entails_sound hF _ (h0 f hf))
+    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm s.prog.base.larr :=
+      fun f hf => (IdxFact.toS_holds STerm.reg SArr.cell f).mp (entails_sound hF _ (h0 f hf))
     exact invAt_allP hG hb _ fuel 0 s t (Nat.lt_succ_self _) hpos
       (Or.inl (hpc.trans hs0.symm)) hfn hinv hrun
   · cases h
@@ -790,7 +800,7 @@ theorem runIdxOk_of_idxInvCheckPB {T : ProcTable} {entry : List IdxFact}
 theorem refRun_checked {T : ProcTable} {entry : List IdxFact} {ann : List (List IdxFact)}
     {B : List LinstrRM} (h : idxInvCheckPB T entry ann B = true) (fn : String)
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
-    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm) (fuel : Nat)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t := by
   rw [x86IsaK_withProcs_lsemFuelMemF]
@@ -857,7 +867,7 @@ def annPassP (T : ProcTable) (B : List LinstrRM) (G : CFG) (ann : List (List Idx
         (bodyAt B (G.blk k) (G.blk k).term) with
     | .ok F ss =>
         let keep (F' : List SFact) (ann : List (List IdxFact)) (j : Nat) :=
-          ann.set j ((annAt ann j).filter fun f => entails F' (f.toS ss.regs))
+          ann.set j ((annAt ann j).filter fun f => entails F' (f.toS ss.regs ss.arrs))
         match (G.blk k).term with
         | .fall (some j) => keep F ann j
         | .goto tg => keep F ann tg
@@ -880,11 +890,12 @@ def idxAnnotP (T : ProcTable) (entry : List IdxFact) (B : List LinstrRM) :
   match cfgOf (B.map Prod.fst) with
   | some G =>
       let rs := annRegsP T entry B G
-      let bs := ((entry.filterMap fun | .le _ b => some b | .ge _ _ => none)
+      let bs := ((entry.filterMap fun | .le _ b => some b | _ => none)
         ++ oblLensP T B G ++ seedImmsP T B G rs).eraseDups
       let cs := IdxInvCheck.annCands rs bs
       let a0 := (List.range G.blocks.size).map fun k =>
-        if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg) else cs
+        if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
+        else cs
       (List.range (G.blocks.size * cs.length + 1)).foldl (fun a _ => annPassP T B G a) a0
   | none => []
 

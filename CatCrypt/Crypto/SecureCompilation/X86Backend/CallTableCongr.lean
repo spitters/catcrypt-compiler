@@ -265,8 +265,8 @@ theorem calleeSegB_congr {res : String} {args : List String} {fn : String} {fin 
 theorem refRun_checked_of_domEq {T₀ : ProcTable} {entry : List IdxFact}
     {ann : List (List IdxFact)} {B : List LinstrRM} (h : idxInvCheckPB T₀ entry ann B = true)
     (hD : ProcTable.DomEq T₀ T B) (fn : String) (s t : LstateMF) (hfn : s.prog.lfn = fn)
-    (hpc : s.prog.base.reg.lpc = 0) (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm)
-    (fuel : Nat)
+    (hpc : s.prog.base.reg.lpc = 0)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t :=
   refRun_checked ((idxInvCheckPB_congr hD).symm.trans h) fn s t hfn hpc hent fuel hrun
