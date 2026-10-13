@@ -485,7 +485,7 @@ theorem shapeOf_ok (P : Params) (i : LinstrR) (sh : DShape) (h : shapeOf P i = s
     rcases shapeOfBytes_ok h with ⟨q, rfl, hb, hq⟩ | ⟨pcs, rfl, hb, hq⟩
     · intro d
       show ItemOK ⟨encodeLopn P.frame P.spillW (.Lopn ds o ss) P.qsaveB, some (.op q.2),
-        none, none⟩
+        none, none, none⟩
       rw [hb]
       exact ItemOK_of_decode hq
     · exact ⟨rfl, fun _ => hb.symm, fun q hq' => ItemOK_of_decode (hq q hq')⟩

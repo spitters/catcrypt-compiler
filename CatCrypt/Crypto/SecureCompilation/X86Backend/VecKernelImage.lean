@@ -93,7 +93,7 @@ open CatCrypt.Crypto.SecureCompilation.CT
 
 /-- The position of the scalar operation `i` with the bytes `enc i`. -/
 def scalarItem (enc : JInstr 64 → List (BitVec 8)) (i : JInstr 64) : Item :=
-  ⟨enc i, some (.op i), none, none⟩
+  ⟨enc i, some (.op i), none, none, none⟩
 
 /-- The positions of a block of operations followed by `ret`: the position `scalarItem` of
     each scalar operation, each vector instruction, and the position of `ret`. -/

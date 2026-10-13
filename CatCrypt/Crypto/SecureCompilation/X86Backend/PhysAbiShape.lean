@@ -968,7 +968,7 @@ def DShapeOK (P : Params) (i : LinstrR) : DShape → Prop
   | .one sh => ShapeOK P i sh
   | .ops pcs => labelOf i = none
       ∧ (∀ d, encodeLinstrR P.frame P.spillW d i P.qsaveB = pcs.flatMap Prod.fst)
-      ∧ ∀ p ∈ pcs, ItemOK ⟨p.1, some (.op p.2), none, none⟩
+      ∧ ∀ p ∈ pcs, ItemOK ⟨p.1, some (.op p.2), none, none, none⟩
 
 /-- The items of one instruction laid out at offset `off`. -/
 def dItems (P : Params) (off : Nat) (instr : Linstr) : DShape → List Item

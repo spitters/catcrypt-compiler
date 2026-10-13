@@ -1327,6 +1327,9 @@ structure Item where
   dec : Option DInstr
   label : Option LLabel := none
   target : Option LLabel := none
+  /-- The callee symbol of a call without target label; no decoding or well-formedness
+      condition reads it. -/
+  sym : Option String := none
 
 /-- A position without bytes decodes to nothing; a position with bytes decodes,
     in front of any continuation, to its instruction and that continuation. -/
@@ -1337,9 +1340,9 @@ def ItemOK (it : Item) : Prop :=
 
 /-- A position whose bytes decode to its instruction carries bytes. -/
 theorem ItemOK_of_decode {bytes : List (BitVec 8)} {x : DInstr}
-    {l t : Option LLabel}
+    {l t : Option LLabel} {s : Option String}
     (h : ∀ rest, decodeLinstr (bytes ++ rest) = some (x, rest)) :
-    ItemOK ⟨bytes, some x, l, t⟩ := by
+    ItemOK ⟨bytes, some x, l, t, s⟩ := by
   refine ⟨fun hb => ?_, h⟩
   have h0 := h []
   simp only [show bytes = [] from hb, List.append_nil] at h0
@@ -1831,7 +1834,7 @@ def labelOf : LinstrR → Option LLabel
 /-- Under every resolver the instruction's bytes decode to the shape. -/
 def ShapeOK (P : Params) (i : LinstrR) (sh : Shape) : Prop :=
   ∀ d : LLabel → Int,
-    ItemOK ⟨encodeLinstrR P.frame P.spillW d i P.qsaveB, sh.dec d, none, none⟩
+    ItemOK ⟨encodeLinstrR P.frame P.spillW d i P.qsaveB, sh.dec d, none, none, none⟩
 
 /-- The item list of a body laid out from offset `off`. -/
 def itemsFrom (P : Params) : Nat → Lcmd → List Shape → List Item
@@ -1908,7 +1911,7 @@ theorem shapeOK_call (P : Params) (ra : Option String) (f : String) (l : LLabel)
 theorem shapeOK_lopn (P : Params) (ds : List LOperand) (o : String) (ss : List LOperand)
     (bytes : List (BitVec 8)) (x : JInstr 64)
     (hb : encodeLopn P.frame P.spillW (.Lopn ds o ss) P.qsaveB = bytes)
-    (hok : ItemOK ⟨bytes, some (.op x), none, none⟩) :
+    (hok : ItemOK ⟨bytes, some (.op x), none, none, none⟩) :
     ShapeOK P (.Lopn ds o ss) (.op x) := by
   intro d
   have : encodeLinstrR P.frame P.spillW d (.Lopn ds o ss) P.qsaveB = bytes := hb
@@ -1987,43 +1990,43 @@ def binLoopBody (mid : List LinstrR) (cpy : String) : Lcmd :=
 
 /-- `MOV %r, off(%rsp)`. -/
 def mkStore (r : Nat) (off : Int) : Item :=
-  ⟨encRspMem 1 0x89 r off, some (.op (.storeMem "%rsp" off (.reg (regName r)))), none, none⟩
+  ⟨encRspMem 1 0x89 r off, some (.op (.storeMem "%rsp" off (.reg (regName r)))), none, none, none⟩
 /-- `MOV off(%rsp), %r`. -/
 def mkLoad (r : Nat) (off : Int) : Item :=
-  ⟨encRspMem 1 0x8b r off, some (.op (.loadMem (regName r) "%rsp" off)), none, none⟩
+  ⟨encRspMem 1 0x8b r off, some (.op (.loadMem (regName r) "%rsp" off)), none, none, none⟩
 /-- A reg-reg legacy ALU/`MOV` op `op %s, %d`. -/
 def mkAlu (op : Nat) (mk : String → JOperand → JInstr 64) (d s : Nat) : Item :=
-  ⟨encAluRRw 1 op d s, some (.op (mk (regName d) (.reg (regName s)))), none, none⟩
+  ⟨encAluRRw 1 op d s, some (.op (mk (regName d) (.reg (regName s)))), none, none, none⟩
 /-- `MOV %s, %d`. -/
 def mkMov (d s : Nat) : Item :=
-  ⟨encAluRRw 1 0x89 d s, some (.op (.mov (regName d) (.reg (regName s)))), none, none⟩
+  ⟨encAluRRw 1 0x89 d s, some (.op (.mov (regName d) (.reg (regName s)))), none, none, none⟩
 /-- `CMP %s, %d`. -/
 def mkCmp (d s : Nat) : Item :=
-  ⟨encAluRRw 1 0x39 d s, some (.op (.cmp (regName d) (.reg (regName s)))), none, none⟩
+  ⟨encAluRRw 1 0x39 d s, some (.op (.cmp (regName d) (.reg (regName s)))), none, none, none⟩
 /-- `MOV $v, %d`. -/
 def mkMovImm (d v : Nat) : Item :=
-  ⟨encMovImmw 1 d v, some (.op (.mov (regName d) (.imm v))), none, none⟩
+  ⟨encMovImmw 1 d v, some (.op (.mov (regName d) (.imm v))), none, none, none⟩
 /-- A group-1 op with a sign-extended `imm8`. -/
 def mkImm8 (digit : Nat) (mk : String → JOperand → JInstr 64) (d v : Nat) : Item :=
-  ⟨encAluImm8 1 digit d v, some (.op (mk (regName d) (.imm v))), none, none⟩
+  ⟨encAluImm8 1 digit d v, some (.op (mk (regName d) (.imm v))), none, none, none⟩
 /-- `MOV (%base,%idx,8), %r`. -/
 def mkLoadIdx (r base idx : Nat) : Item :=
   ⟨encMemMovSibw 1 0x8b r base idx 8,
-    some (.op (.loadMemIdx (regName r) (regName base) (regName idx) 8)), none, none⟩
+    some (.op (.loadMemIdx (regName r) (regName base) (regName idx) 8)), none, none, none⟩
 /-- `MOV %r, (%base,%idx,8)`. -/
 def mkStoreIdx (r base idx : Nat) : Item :=
   ⟨encMemMovSibw 1 0x89 r base idx 8,
-    some (.op (.storeMemIdx (regName base) (regName idx) 8 (.reg (regName r)))), none, none⟩
+    some (.op (.storeMemIdx (regName base) (regName idx) 8 (.reg (regName r)))), none, none, none⟩
 /-- `jcc rel8` to label `l`. -/
 def mkJcc8 (cc : String) (d : Int) (l : LLabel) : Item :=
-  ⟨encJcc8 cc d, some (.jcc (ccNibble cc) d), none, some l⟩
+  ⟨encJcc8 cc d, some (.jcc (ccNibble cc) d), none, some l, none⟩
 /-- The definition of label `l`. -/
-def mkLabel (l : LLabel) : Item := ⟨[], none, some l, none⟩
+def mkLabel (l : LLabel) : Item := ⟨[], none, some l, none, none⟩
 /-- The frame `leaq disp(%rsp), %rsp`. -/
 def mkLea (disp : Int) : Item :=
-  ⟨encLeaRspFrame disp, some (.op (.lea "%rsp" "%rsp" "%rsp" 0 disp)), none, none⟩
+  ⟨encLeaRspFrame disp, some (.op (.lea "%rsp" "%rsp" "%rsp" 0 disp)), none, none, none⟩
 /-- `ret`. -/
-def mkRet : Item := ⟨LeafBytes.encRet, some .ret, none, none⟩
+def mkRet : Item := ⟨LeafBytes.encRet, some .ret, none, none, none⟩
 
 theorem mkStore_ok (r : Nat) (off : Int) (hr : r < 16) (h : dispOk32 off = true) :
     ItemOK (mkStore r off) :=

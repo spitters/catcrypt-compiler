@@ -44,6 +44,9 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
   callee blocks that decodes to `q` decode to `prog ++ shiftProg prog.length q`, where
   `prog` is `expectedRelocMap` of the items under a target map that sends each call
   without target label to the entry of its block in `cb`.
+* `decodeLprog_items_linkedSym`: its instance at the target map `symTgt m`, which sends a
+  call to the block entry `m` gives its callee symbol `Item.sym`; the relocating item list
+  `itemsFromReloc` records each remote call's symbol there.
 * `decodeLprog_items_linked`: its instance at one block, entered at the first instruction
   of `cb`; each call without target label is `call prog.length`.
 * `decodeLprog_fundefRelocL_append`: the same for `encodeLfundefBytesReloc symBase body`,
@@ -210,7 +213,8 @@ theorem relocDShapeOK_forall₂_one (P : Params) {body : Lcmd} {ss : List Shape}
   List.forall₂_map_right_iff.mpr (h.imp fun _ _ hs => (relocShapeOK_iff P _ _).mp hs)
 
 /-- The item list of a body under the relocating encoder, laid out from body offset
-    `off`: a remote call is one item without target label, every other instruction the
+    `off`: a remote call is one item without target label whose callee symbol `sym` is
+    the call's symbol, every other instruction the
     items `dItems` of its list-valued shape. -/
 def itemsFromReloc (symBase : String → Option Int) (P : Params) :
     Nat → Lcmd → List DShape → List Item
@@ -219,7 +223,7 @@ def itemsFromReloc (symBase : String → Option Int) (P : Params) :
       | some f =>
           { bytes := encCall32 (relocDisp symBase off f),
             dec := some (.call (wrap32 (relocDisp symBase off f))),
-            label := none, target := none }
+            label := none, target := none, sym := some f }
             :: itemsFromReloc symBase P (off + 5) body shs
       | none =>
           dItems P off instr sh
@@ -604,6 +608,37 @@ theorem decodeLprog_items_linked (items : List Item) (hok : ∀ it ∈ items, It
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   simp [hxs, List.findIdx?_cons]
+
+/-- The target map of the callee symbols under `m`: an item goes to the pair `m` gives its
+    callee symbol `sym`, and an item without callee symbol to none. -/
+abbrev symTgt (m : String → Option (Nat × Nat)) (it : Item) : Option (Nat × Nat) :=
+  it.sym.bind m
+
+/-- **Decoding of an item list followed by the blocks of several callees.** Let `items`
+    satisfy `ItemOK`, and let the stream `cb` of the callee blocks decode to the layout `xs₂`
+    and the program `q`. Let `m` send each callee symbol it maps to a pair
+    `(decCount items + k, (itemBytes items).length + o)`, where `o` is the byte offset in `cb`
+    of the entry of that callee's block and `k` the index of that entry in `xs₂`. When the
+    items satisfy `branchOKRelocMap` under `symTgt m` and denote `prog`, the concatenated
+    stream decodes to `prog` followed by `q` with its targets raised by `prog.length`; a call
+    without target label to the symbol `f` is `call (prog.length + k)` in `prog` for the
+    index `k` of the entry of the block of `f`. This is `decodeLprog_items_linkedMap` at the
+    target map `symTgt m`. -/
+theorem decodeLprog_items_linkedSym (items : List Item) (hok : ∀ it ∈ items, ItemOK it)
+    (cb : List (BitVec 8)) (xs₂ : List (Nat × Nat × DInstr)) (q prog : List RInstr)
+    (m : String → Option (Nat × Nat))
+    (hd : decodeAt cb.length 0 cb = some xs₂) (hr : resolveAll xs₂ xs₂ = some q)
+    (hentry : ∀ f j t, m f = some (j, t) →
+      ∃ o k, t = (itemBytes items).length + o ∧ j = decCount items + k
+        ∧ xs₂.findIdx? (fun z => decide (z.1 = o)) = some k)
+    (hbr : branchOKRelocMap items (symTgt m) 0 items = true)
+    (hP : expectedRelocMap items (symTgt m) items = some prog) :
+    prog.length = decCount items ∧
+      decodeLprog (itemBytes items ++ cb) = some (prog ++ shiftProg prog.length q) :=
+  decodeLprog_items_linkedMap items hok cb xs₂ q prog (symTgt m) hd hr
+    (fun it j t _ h => by
+      obtain ⟨f, -, hf⟩ := Option.bind_eq_some_iff.mp h
+      exact hentry f j t hf) hbr hP
 
 /-! ## 4. The relocating function encoder in front of its callee -/
 
