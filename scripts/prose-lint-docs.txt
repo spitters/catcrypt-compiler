@@ -3,6 +3,7 @@
 # Every tracked Markdown file, the Verso manual and the blueprint source are
 # listed. `--docs` fails when a tracked document of these kinds is missing from
 # this list, so a new document joins the gate when it is added.
+PIPELINE.md
 README.md
 BUILDING.md
 GETTING_STARTED.md
