@@ -716,6 +716,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HonestProveFrontEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Plonky3KFrontArr
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmitMain
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleLeafEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttButterflyEmit
