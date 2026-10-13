@@ -165,7 +165,7 @@ is defined as the run of a chain, and the denotation theorem of the route is
 
 | Route (module) | Chain and its steps | Certificate and `Cert.sound` consumer | Route theorem |
 |---|---|---|---|
-| `extChain D` (`Haxc.NFChainCall`) | `extChain D`: output-type check, `dceStep`, `extCallStep D` (`nfToCatExt` at the declared procedures `D`), `aegraphStep catRules`, `mapStep catToJasmin`, `lowerSelectsStep`, `rangeNFStep`, `aegraphStep jasminRules`; at `D = []` it is `nfChainPre` (`extChain_nil`) | `extChainCert`, `extChain_denote` | `haxc_correct_auto` |
+| `extChain D` (`Haxc.NFChainCall`) | `extChain D`: tuple flattening `flatSameStep`, output-type check, `dceStep`, `extCallStep D` (`nfToCatExt` at the declared procedures `D`), `aegraphStep catRules`, `mapStep catToJasmin`, `montifyStep`, `fieldInlineStep`, `lowerSelectsStep`, `rangeNFStep`, `aegraphStep jasminRules`; on a program whose flattening `nfToCat` translates after `dceStep`, it returns what `nfChainPre` returns on the flattened program (`extChain_run_of_nfToCat`) | `extChainCert`, `extChain_denote` | `haxc_correct_auto` |
 | `compileField P` (`Haxc.FieldRoute`) | `fieldChainId P` = `limbChainVia (Step.id _) (GoodVB P) (fieldCom P)`: optimisation slot, limb step, identity, `straightStep` | `limbChainViaCert`, `limbChainVia_denote` | `compileField_denote` |
 | `compileFieldS S` (`Haxc.FieldRoute`) | `fieldChainSId S` = `limbChainVia (Step.id _) (GoodLB S) (fieldComOf (lowerOpL S))` | `limbChainViaCert`, `limbChainVia_denote` | `compileFieldS_denote` |
 | `jacAddRoute`, `jacDblRoute` (`Haxc.EcRoute`) | `.get` of the run of `fieldChainId P` on `jacAddProg`, `jacDblProg` | through `compileField_denote` | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc.EcBytes`), with the compile hypothesis |

@@ -12,8 +12,14 @@ The package builds with the Lean toolchain `v4.33.1` ([lean-toolchain](lean-tool
 
 ## The pipeline
 
-Each stage names the theorem that states its correctness; the table below gives the
-statements.
+The hax compiler `haxc` compiles along one line,
+`compileA = haxToNF → extChain → compileRegion`: a typed hax-lean module to a
+structured program of the Jasmin dialect, then export, checked register allocation,
+the leakage check and the checked x86-64 encoder. [PIPELINE.md](PIPELINE.md) draws it
+with the check and the theorem of each stage.
+
+The levels below are those of the dialect tower. Each stage names the theorem that
+states its correctness; the table below gives the statements.
 
 1. Rust to LowCT. hax exports Rust to the AST of hax-lean, and
    [`haxToLowCT`](CatCrypt/Crypto/Hax/HaxToLowCT.lean) translates it to the word-level command language
@@ -178,15 +184,24 @@ primitives). Each enters at its own level.
 
 ```mermaid
 flowchart TD
-    RUST["Rust source"] -->|hax| LOWCT["LowCT"]
-    SPEC["Lean specification"] -->|relational front| JAS
-    LOWCT --> IR["SSA IR (catCryptDialect)"]
-    ALG["PrimeIR algebra dialects"] -->|fieldDialect, single-word fields| JAS
-    IR --> JAS["Jasmin dialect"]
-    JAS --> X86["x86-64"]
-    JAS --> ARM["AArch64"]
-    JAS --> RV["RISC-V"]
+    RUST["Rust source"] -->|"hax, haxpipeT"| MOD["typed hax-lean module"]
+    MOD -->|"haxToNF"| NF["NFProg nfDialect"]
+    NF -->|"extChain (via catCryptDialect)"| JNF["NFProg jasminDialect"]
+    JNF -->|"compileRegion: export, checked allocation, leakage check, checked encoder"| BYTES["x86-64 bytes"]
+    RUST -.->|"haxToLowCT"| LOWCT["LowCT"]
+    LOWCT -.-> IR["SSA IR (catCryptDialect over Com)"]
+    SPEC["Lean specification"] -.->|relational front| JAS
+    ALG["PrimeIR algebra dialects"] -.->|fieldDialect, single-word fields| JAS
+    IR -.-> JAS["Jasmin dialect over Com"]
+    JAS -.-> X86["x86-64"]
+    JAS -.-> ARM["AArch64"]
+    JAS -.-> RV["RISC-V"]
 ```
+
+The solid line is the compile line `compileA` of `haxc` ([PIPELINE.md](PIPELINE.md)).
+The dashed edges are the dialect tower over `Com`, the level of the kernel producers,
+the `.jinc` importer, the relational front and the instruction selection to AArch64
+and RV64.
 
 - LowCT is the low-level constant-time command language
   ([LowCT.lean](CatCrypt/Crypto/Jasmin/LowCT.lean)), ported from AUCurves. hax-lean's AST
@@ -255,6 +270,7 @@ register; it is an instance of [`com_arm_e2e`](CatCrypt/Crypto/SecureCompilation
 | Document | Contents |
 |---|---|
 | [GETTING_STARTED.md](GETTING_STARTED.md) | the first example |
+| [PIPELINE.md](PIPELINE.md) | the compile line of `haxc` as a diagram, with the check and theorem of each stage |
 | [DEMO.md](DEMO.md), [EXAMPLES.md](EXAMPLES.md) | the two fronts on worked examples; buildable example modules |
 | [HEADLINES.md](HEADLINES.md) | the headline theorems with their hypotheses |
 | [NAVIGATION.md](NAVIGATION.md) | where each subsystem lives, and how to find a theorem |
