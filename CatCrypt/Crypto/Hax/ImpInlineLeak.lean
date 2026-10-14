@@ -69,7 +69,7 @@ open CatCrypt.Crypto.Hax (SrcLeak SrcEv contLeak boundsLeak forLeak forRevLeak t
   boundInt)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateBi paramsEnv crateBi_of_find_none srcLeakNF
   srcArgsLeakNF srcLeakCl srcArgsLeakCl nfCallLeak nfTrace nfEv callLeak CallLeak nfLeakRunE
-  impToNF_leakE impToNF TypedCalls Out NfEnv EnvRel enc encAll)
+  impToNF_leakE impToNF TypedCalls Out NfEnv EnvRel enc encAll RepeatCalls crateBi_repeatCalls)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open Ctxt (Valuation)
@@ -642,7 +642,7 @@ theorem bindParams_run_leak (bi : Builtins) (F n : Nat) (vals : List Value)
     when the inlined body has the events of the body at the depth `n` under every relation
     of the level `n`, for a fuel offset `D ≥ (n + 1) * fuelC`. -/
 theorem callBlock_leak {fs : List CrateFn} {bi : Builtins} {fuelC n : Nat} {c : CrateFn}
-    {g : String} (hc : fs.find? (·.name == g) = some c)
+    {g : String} (hc : fs.find? (·.name == g) = some c) (hg : g ≠ "repeat")
     {R : Env → Env → Prop} {args args' : List ImpExpr}
     (hlen : args.length = c.params.length) {D F : Nat} (hD : (n + 1) * fuelC ≤ D)
     (hargs : RefR R R (fun o => o = none) (denoteArgs' bi (F + D) args')
@@ -716,7 +716,7 @@ theorem callBlock_leak {fs : List CrateFn} {bi : Builtins} {fuelC n : Nat} {c : 
     (paramsEnv (c.params.map (·.1)) vals) hstart (by rw [hB]; exact hob)
   rw [hfe] at hbL
   rw [callBlock]
-  simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hT, contLeak]
+  simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hT, contLeak, hg, if_false]
   rw [hargsL e₁ e₂ hP (by rw [hA]; simp), hleakB, hbL]
   simp only [expLeak, hc]
 
@@ -725,8 +725,10 @@ theorem callBlock_leak {fs : List CrateFn} {bi : Builtins} {fuelC n : Nat} {c : 
     at the builtins `bi` and the fuel `F + D`, has the events `nfTrace` of its source leakage
     equal to those of the leakage of `e` with the expanded call leakage at the builtins with
     the crate `crateBi fs bi fuelC n` and the fuel `F`, from related environments on which the
-    source run does not end in an error, for every fuel offset `D ≥ n * fuelC`. -/
-theorem inl_leak (fs : List CrateFn) (bi : Builtins) (fuelC : Nat) :
+    source run does not end in an error, for every fuel offset `D ≥ n * fuelC`, when no
+    function of the crate is named `repeat`. -/
+theorem inl_leak (fs : List CrateFn) (bi : Builtins) (fuelC : Nat)
+    (hfR : fs.find? (·.name == "repeat") = none) :
     ∀ (n : Nat) (ρ : String → String) (R : Env → Env → Prop), InlRel n ρ R →
       ∀ e, inlOk fs n e = true → ∀ D, n * fuelC ≤ D → ∀ F,
         TraceEq R IsErr (srcLeakNF bi (inl fs n ρ e) (F + D))
@@ -766,22 +768,27 @@ theorem inl_leak (fs : List CrateFn) (bi : Builtins) (fuelC : Nat) :
         | some c =>
           simp only [hf, Bool.and_eq_true, beq_iff_eq] at hg
           simp only [Option.map_some, Option.getD_some]
-          exact callBlock_leak hf hg.1 hD hargs hargsL
+          have hne : g ≠ "repeat" := by
+            rintro rfl
+            rw [hfR] at hf
+            cases hf
+          exact callBlock_leak hf hne hg.1 hD hargs hargsL
             (fun R' hR' D' hD' F₀ =>
-              inl_leak fs bi fuelC n (lvlName n) R' hR' c.body hg.2 D' hD' F₀)
+              inl_leak fs bi fuelC hfR n (lvlName n) R' hR' c.body hg.2 D' hD' F₀)
 
 /-- **The source leakage of the inlining of a crate.** For a term `e` accepted by
     `inlOk fs n` and a run of `e` at the builtins with the crate `crateBi fs bi fuelC n` and
     the fuel `F` from `env` that does not end in an error, the events `nfTrace` of the source
     leakage of `inlineCrate fs n e` at the builtins `bi` and the fuel `F + D` from `env` are
     the events of `srcLeakX fs bi fuelC n e F env`, in which each call of a function of the
-    crate leaks the expanded leakage of its body, for every `D ≥ n * fuelC`. -/
+    crate leaks the expanded leakage of its body, for every `D ≥ n * fuelC`, when no function
+    of the crate is named `repeat`. -/
 theorem inlineCrate_srcLeak (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) {e : ImpExpr}
-    (he : inlOk fs n e = true) {F D : Nat} (hD : n * fuelC ≤ D) {env s : Env} {o : Outcome}
+    (hfR : fs.find? (·.name == "repeat") = none) (he : inlOk fs n e = true) {F D : Nat} (hD : n * fuelC ≤ D) {env s : Env} {o : Outcome}
     (hrun : (denote' (crateBi fs bi fuelC n) F e).run env = (o, s)) (ho : ¬ IsErr o) :
     nfTrace (srcLeakNF bi (inlineCrate fs n e) (F + D) env) =
       nfTrace (srcLeakX fs bi fuelC n e F env) :=
-  inl_leak fs bi fuelC n id _ (inlRel_srcAgree n) e he D hD F env env (fun _ _ _ h => h)
+  inl_leak fs bi fuelC hfR n id _ (inlRel_srcAgree n) e he D hD F env env (fun _ _ _ h => h)
     (by rw [hrun]; exact ho)
 
 /-! ## The program of the front with the expanded calls -/
@@ -800,7 +807,8 @@ theorem expCallLeak_agrees (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) (
 
 /-- **The program the front emits for a term of a crate, run with the expanded calls, has the
     events of the inlined term.** Let `impToNF` translate `e` from `σ` under typed builtins
-    with the crate `crateBi fs bi fuelC n`, `inlOk fs n` accept `e`, and `e` run at those
+    with the crate `crateBi fs bi fuelC n`, where `RepeatCalls bi` holds and no function of the
+    crate is named `repeat`, `inlOk fs n` accept `e`, and `e` run at those
     builtins and the fuel `F` from an environment related to `V` to a value. Then the leakage
     run of the emitted program at those builtins with the expanded call leakage
     `expCallLeak fs bi fuelC n` returns the encoding of the value and the events
@@ -808,7 +816,8 @@ theorem expCallLeak_agrees (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) (
     `F + D`, for every `D ≥ n * fuelC`. -/
 theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat)
     (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls (crateBi fs bi fuelC n) sigOf) {e : ImpExpr} (he : inlOk fs n e = true)
+    (hT : TypedCalls (crateBi fs bi fuelC n) sigOf) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) {e : ImpExpr} (he : inlOk fs n e = true)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
     (h : impToNF sigOf tgt σ e = some o) {F D : Nat} (hD : n * fuelC ≤ D) {env : Env}
     {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
@@ -818,9 +827,9 @@ theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : 
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil,
           nfTrace (srcLeakNF bi (inlineCrate fs n e) (F + D) env)) ∧
       v = enc o.t x := by
-  rw [inlineCrate_srcLeak fs bi fuelC n he hD hrun (by rintro ⟨m, hm⟩; cases hm)]
-  exact impToNF_leakE (crateBi fs bi fuelC n) sigOf hT (expCallLeak_agrees fs bi fuelC n _) h
-    hrel hrun tf
+  rw [inlineCrate_srcLeak fs bi fuelC n hfR he hD hrun (by rintro ⟨m, hm⟩; cases hm)]
+  exact impToNF_leakE (crateBi fs bi fuelC n) sigOf hT (crateBi_repeatCalls fs bi hR hfR fuelC n)
+    (expCallLeak_agrees fs bi fuelC n _) h hrel hrun tf
 
 /-! ## The rounds of the NF inlining keep the leakage run -/
 
@@ -837,9 +846,10 @@ open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
     crate to the call depth `m + 1`, is a leakage run of the body at the builtins with the
     crate to the call depth `m` with the expanded call leakage of the depth `m`, at every
     fuel `tf`, with the same result and the events of the operation under the expanded call
-    leakage of the depth `m + 1`. -/
+    leakage of the depth `m + 1`, under `RepeatCalls bi` and no function of the crate named
+    `repeat`. -/
 theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
-    (fuelC m tf : Nat) :
+    (hR : RepeatCalls bi) (hfR : fs.find? (·.name == "repeat") = none) (fuelC m tf : Nat) :
     ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o = some b → ∀ x y,
       nfDenoteOp (tableOf (crateBi fs bi fuelC (m + 1))) o x = some y →
         nfLeakRunE (crateBi fs bi fuelC m) (expCallLeak fs bi fuelC m) tf b x =
@@ -865,6 +875,7 @@ theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax
             obtain ⟨x', hx', hvx⟩ := impToNF_leakE (C := expCallLeak fs bi fuelC m)
               (crateBi fs bi fuelC m) (crateSigOf fs hax64SigOf)
               (crateBi_typedCalls fs bi hax64SigOf hT fuelC m)
+              (crateBi_repeatCalls fs bi hR hfR fuelC m)
               (expCallLeak_agrees fs bi fuelC m _) ho' (entryEnv_rel_paramsEnv c.params x)
               (Prod.ext hrun rfl) tf
             have hy' : y = x' := enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvx)
@@ -914,16 +925,17 @@ theorem expCallLeak_zero_opEv (fs : List CrateFn) (bi : Builtins) (fuelC : Nat) 
 
 /-- **The library of a crate is sound for the leakage run from the call depth `m + 1` to the
     call depth `m`**, with the expanded call leakage of each depth, for the operations that
-    call no function of the crate, under the typing of the builtins `bi` and at every fuel
-    `tf`. -/
+    call no function of the crate, under the typing of the builtins `bi`, `RepeatCalls bi`
+    and no function of the crate named `repeat`, at every fuel `tf`. -/
 theorem crateLib_leakSoundStep (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC m tf : Nat) :
+    (hT : TypedCalls bi hax64SigOf) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC m tf : Nat) :
     (crateLib fs).LeakSoundStep (nfDenote (tableOf (crateBi fs bi fuelC (m + 1))))
       (nfDenote (tableOf (crateBi fs bi fuelC m))) (expCallLeak fs bi fuelC (m + 1)).opEv
       (expCallLeak fs bi fuelC m).opEv CallEnv.empty (fun o => !crateCallOp fs o) tf where
   op o b hb x y h := by
     simp only [nfDenote_denoteM] at h
-    exact crateOp_leak fs bi hT fuelC m tf o b hb x y h
+    exact crateOp_leak fs bi hT hR hfR fuelC m tf o b hb x y h
   keep o ho x y h := by
     simp only [Bool.not_eq_true'] at ho
     simp only [nfDenote_denoteM] at h ⊢
@@ -933,14 +945,15 @@ theorem crateLib_leakSoundStep (fs : List CrateFn) (bi : Builtins)
   call _ _ _ _ hb := by cases hb
 
 /-- **One round of inlining at the library of a crate keeps the leakage run, from the call
-    depth `k + 1` to the call depth `k`.** Under the typing of the builtins `bi`, on a
-    program each of whose operations has a body in `crateLib fs` or calls no function of the
+    depth `k + 1` to the call depth `k`.** Under the typing of the builtins `bi`,
+    `RepeatCalls bi` and no function of the crate named `repeat`, on a program each of whose operations has a body in `crateLib fs` or calls no function of the
     crate, a leakage run at the builtins with the crate to the depth `k + 1` with the
     expanded call leakage of that depth is a leakage run of the program after one round at
     the depth `k` with the expanded call leakage of the depth `k`, with the same results and
     events. -/
 theorem nfLeakRunE_inline?_crate (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC k tf : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (hT : TypedCalls bi hax64SigOf) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC k tf : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     {p p' : NFProg nfDialect Γ ts}
     (ha : p.allOps (fun o => ((crateLib fs).op o).isSome || !crateCallOp fs o) = true)
     (hq : NFProg.inline? (crateLib fs) p = some p') {V : Valuation Γ}
@@ -948,15 +961,16 @@ theorem nfLeakRunE_inline?_crate (fs : List CrateFn) (bi : Builtins)
     (h : nfLeakRunE (crateBi fs bi fuelC (k + 1)) (expCallLeak fs bi fuelC (k + 1)) tf p V =
       some r) :
     nfLeakRunE (crateBi fs bi fuelC k) (expCallLeak fs bi fuelC k) tf p' V = some r :=
-  NFProg.leakRunMC_inline?_step (crateLib_leakSoundStep fs bi hT fuelC k tf) p ha hq h
+  NFProg.leakRunMC_inline?_step (crateLib_leakSoundStep fs bi hT hR hfR fuelC k tf) p ha hq h
 
 /-- **The rounds of inlining at the library of a crate keep the leakage run.** On a program
     accepted by `inlineIterOk` at `n` rounds, a leakage run at the builtins with the crate to
     the depth `n` with the expanded call leakage of that depth is a leakage run of the
     program after the `n` rounds at the depth `0` with the expanded call leakage of the
-    depth `0`. -/
+    depth `0`, under `RepeatCalls bi` and no function of the crate named `repeat`. -/
 theorem nfLeakRunE_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC tf : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy} :
+    (hT : TypedCalls bi hax64SigOf) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC tf : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy} :
     ∀ (n : Nat) (p : NFProg nfDialect Γ ts) {V : Valuation Γ}
       {r : Valuation (d := nfDialect) ts × List CTLeak},
       p.inlineIterOk (crateLib fs) (fun o => !crateCallOp fs o) n = true →
@@ -970,8 +984,8 @@ theorem nfLeakRunE_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
       simp only [NFProg.inlineIter]
       split at hok
       · rename_i q hq
-        exact nfLeakRunE_inlineIter_crate fs bi hT fuelC tf n q hok
-          (nfLeakRunE_inline?_crate fs bi hT fuelC n tf ha hq hp)
+        exact nfLeakRunE_inlineIter_crate fs bi hT hR hfR fuelC tf n q hok
+          (nfLeakRunE_inline?_crate fs bi hT hR hfR fuelC n tf ha hq hp)
       · cases hok
 
 /-- **A program without calls of the crate has, at the depth `0` with the expanded call
@@ -991,17 +1005,19 @@ theorem nfLeakRunE_crateBi_zero (fs : List CrateFn) (bi : Builtins) (fuelC tf : 
     CallEnv.empty tf p hp' V
 
 /-- **The leakage run of the inlined program of a crate.** Under the typing of the builtins
-    `bi`, on a program accepted by `crateInlineOk fs n`, a leakage run at the builtins with
+    `bi`, `RepeatCalls bi` and no function of the crate named `repeat`, on a program accepted
+    by `crateInlineOk fs n`, a leakage run at the builtins with
     the crate to the depth `n` with the expanded call leakage of that depth is the leakage run
     `nfLeakRun` at the builtins `bi` of the program after the `n` rounds of inlining. -/
 theorem nfLeakRun_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
-    (hT : TypedCalls bi hax64SigOf) (fuelC tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (hT : TypedCalls bi hax64SigOf) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (hok : crateInlineOk fs n p = true) {V : Valuation Γ}
     {r : Valuation (d := nfDialect) ts × List CTLeak}
     (hp : nfLeakRunE (crateBi fs bi fuelC n) (expCallLeak fs bi fuelC n) tf p V = some r) :
     nfLeakRun bi tf (p.inlineIter (crateLib fs) n) V = some r := by
   obtain ⟨hit, hno⟩ := Bool.and_eq_true_iff.mp hok
   rw [← nfLeakRunE_crateBi_zero fs bi fuelC tf _ hno V]
-  exact nfLeakRunE_inlineIter_crate fs bi hT fuelC tf n p hit hp
+  exact nfLeakRunE_inlineIter_crate fs bi hT hR hfR fuelC tf n p hit hp
 
 end CatCrypt.Crypto.Hax.ImpInline

@@ -38,14 +38,14 @@ open Ctxt (Var Valuation)
 
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in
 /-- **The typed exit lowering of the route through `NFProg` simulates the source.** Under
-    `TypedCalls bi sigOf` and the leaf conditions of `haxToLowCTFnT_simulates_exit`, for an
+    `TypedCalls bi sigOf`, `RepeatCalls bi` and the leaf conditions of `haxToLowCTFnT_simulates_exit`, for an
     expression `e` whose route through `NFProg` is in the fragment `exitSimOkT A R` and lowers
     to `c`, a run of `e` to a value from an environment related to a valuation by `σ` and
     `ρ`, and to a `RustState` by the placement `A`, is matched by a run of `c` to a state
     whose result slot agrees with the value. -/
 theorem nfRoute_simulates_exit (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-    (A : ExitTowers) (R : ExitRes)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (N : Nat) (leafSpec : LeafSpec)
+    (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
     (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {ρ : RBEnv Γ} {e e' : ImpExpr} {c : LowCT}
     (h : nfRoute sigOf σ ρ e = some e') (hok : exitSimOkT A R true true e' = true)
@@ -54,7 +54,7 @@ theorem nfRoute_simulates_exit (bi : Builtins) (sigOf : String → List NfTy →
     (hrun : (denote' bi fuel e).run env = (.val v, env')) (rs : RustState)
     (hag : envAgreesT br A env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeAgreesT br R (.val v) rs' := by
-  obtain ⟨fuel', env₂, hrun'⟩ := nfRoute_run bi sigOf hT h hσ hρ hrun
+  obtain ⟨fuel', env₂, hrun'⟩ := nfRoute_run bi sigOf hT hR h hσ hρ hrun
   exact haxToLowCTFnT_simulates_exit bi N leafSpec br A R hL e' c hok hK fuel' env env₂
     (.val v) rs hrun' ⟨v, rfl⟩ hag
 
@@ -63,8 +63,8 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec) in
     the source**, from every source environment holding at the parameters `ps` the encodings
     of values of their types (`EntryTyped`). -/
 theorem nfRouteEntry_simulates_exit (bi : Builtins)
-    (sigOf : String → List NfTy → Option NfTy) (hT : TypedCalls bi sigOf) (N : Nat)
-    (leafSpec : LeafSpec) (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
+    (sigOf : String → List NfTy → Option NfTy) (hT : TypedCalls bi sigOf)
+    (hR : RepeatCalls bi) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
     (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     {ps : List (String × NfTy)} {e e' : ImpExpr} {c : LowCT}
     (h : nfRouteEntry sigOf ps e = some e') (hok : exitSimOkT A R true true e' = true)
@@ -73,7 +73,7 @@ theorem nfRouteEntry_simulates_exit (bi : Builtins)
     (rs : RustState) (hag : envAgreesT br A env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeAgreesT br R (.val v) rs' := by
   obtain ⟨V, hV⟩ := entryVals_of_typed hent
-  exact nfRoute_simulates_exit bi sigOf hT N leafSpec br A R hL h hok hK (entryEnv_rel hV)
+  exact nfRoute_simulates_exit bi sigOf hT hR N leafSpec br A R hL h hok hK (entryEnv_rel hV)
     (entryRB_rel hV) hrun rs hag
 
 end CatCrypt.Crypto.Hax.ImpToNF

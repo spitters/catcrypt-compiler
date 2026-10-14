@@ -1569,7 +1569,7 @@ def crateLib (fs : List CrateFn) (base : String → List NfTy → Option NfTy :=
 
 open CatCrypt.Crypto.Hax.ImpToNF (enc dec encAll tailVals tableOf TypedCalls crateBi
   crateBi_of_find_none crateBi_typedCalls paramsEnv EnvRel NfEnv PDenP PDenP_plug_ret
-  impToNF_sound dec_sound Out)
+  impToNF_sound dec_sound Out RepeatCalls crateBi_repeatCalls)
 open _root_.Hax (Builtins Value Env denote')
 open Ctxt (Var Valuation)
 
@@ -1680,12 +1680,14 @@ theorem nfDenoteOp_crateBi (fs : List CrateFn) (bi : Builtins) (fuelC m : Nat) :
       rfl
 
 /-- **A call of a function of the crate at depth `m + 1` is a run of its body at depth `m`.**
-    Under a typing `base` of the builtins `bi`, a successful run of an operation `crateOp fs`
+    Under a typing `base` of the builtins `bi`, `RepeatCalls bi` and no function of the crate
+    named `repeat`, a successful run of an operation `crateOp fs`
     has a body for at the typing `base`, at the builtins with the crate to the call depth
     `m + 1`, is a run of the body at the builtins with the crate to the call depth `m`, at
     every fuel `tf`, with the same result. -/
 theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC m tf : Nat) :
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC m tf : Nat) :
     ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o base = some b → ∀ x y,
       nfDenoteOp (tableOf (crateBi fs bi fuelC (m + 1))) o x = some y →
         PDenP (crateBi fs bi fuelC m) tf b x = some (.cons y .nil) := by
@@ -1708,7 +1710,8 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
           split at hv
           · cases hv
             obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (crateBi fs bi fuelC m)
-              (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m) c.body
+              (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m)
+              (crateBi_repeatCalls fs bi hR hfR fuelC m) c.body
               none (entryEnv c.params) ho' fuelC _ x v _ (entryEnv_rel_paramsEnv c.params x)
               (Prod.ext hrun rfl) tf
             have hy' : y = o'.res.lookup W :=
@@ -1727,12 +1730,14 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
 
 /-- **The library of a crate is sound from the call depth `m + 1` to the call depth `m`**,
     for the operations that call no function of the crate, under a typing `base` of the
-    builtins `bi` and at every fuel `tf`. -/
+    builtins `bi` with `RepeatCalls bi`, no function of the crate named `repeat`, and at
+    every fuel `tf`. -/
 theorem crateLib_soundStep (fs : List CrateFn) (bi : Builtins)
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC m tf : Nat) :
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC m tf : Nat) :
     (crateLib fs base).SoundStep (nfDenote (tableOf (crateBi fs bi fuelC (m + 1))))
       (nfDenote (tableOf (crateBi fs bi fuelC m))) (fun o => !crateCallOp fs o) tf where
-  op := crateOp_sound fs bi hT fuelC m tf
+  op := crateOp_sound fs bi hT hR hfR fuelC m tf
   keep o ho x y h := by
     simp only [Bool.not_eq_true'] at ho
     simp only [nfDenote_denoteM] at h ⊢
@@ -1769,13 +1774,15 @@ theorem PDenP_crateBi_of_noCrateCall (fs : List CrateFn) (bi : Builtins) (fuelC 
     (fun o ho x => nfDenoteOp_crateBi fs bi fuelC m o (by simpa using ho) x) tf p hp V
 
 /-- **Inlining at the library of a crate keeps every successful run, from the builtins with
-    the crate to the builtins without it.** Under a typing `base` of the builtins `bi`, on a
+    the crate to the builtins without it.** Under a typing `base` of the builtins `bi`,
+    `RepeatCalls bi` and no function of the crate named `repeat`, on a
     program accepted by `crateInlineOk fs n` at `base`, a successful run at the builtins with
     the crate to the call depth `n` (the functions of `fs` run their bodies at the fuel
     `fuelC`) is a run of the program after `n` rounds of inlining at the builtins `bi`, with
     the same result. -/
 theorem denote_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC tf n : Nat)
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC tf n : Nat)
     {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (hok : crateInlineOk fs n p base = true) {V : Valuation Γ}
     {out : Valuation (d := nfDialect) ts}
@@ -1785,6 +1792,6 @@ theorem denote_inlineIter_crate (fs : List CrateFn) (bi : Builtins)
   rw [← PDenP_crateBi_of_noCrateCall fs bi fuelC 0 tf _ hno V]
   exact NFProg.denote_inlineIter_step
     (fun m => nfDenote (tableOf (crateBi fs bi fuelC m)))
-    (fun m => crateLib_soundStep fs bi hT fuelC m tf) n p hit hp
+    (fun m => crateLib_soundStep fs bi hT hR hfR fuelC m tf) n p hit hp
 
 end CatCrypt.Crypto.Hax.NFInline

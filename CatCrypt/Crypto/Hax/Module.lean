@@ -180,7 +180,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses (nfSem)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls crateBi
-  PDenP)
+  PDenP RepeatCalls)
 open _root_.Hax (Builtins)
 open Ctxt (Valuation)
 
@@ -260,18 +260,20 @@ theorem crateInline?_nil_zero {Γ : Ctxt nfDialect} {ts : List NfTy}
   simp [crateInline?, crateInlineOk_nil_zero, NFProg.inlineIter]
 
 /-- **The checked inlining keeps every successful run, from the builtins with the callees to
-    the base builtins.** Under a typing `base` of the builtins `bi`, a successful run of `p` at
+    the base builtins.** Under a typing `base` of the builtins `bi`, `RepeatCalls bi` and no
+    callee named `repeat`, a successful run of `p` at
     the builtins with the callees `fs` to the call depth `n` (the callees run their bodies at
     the fuel `fuelC`) is a run of a result of `crateInline? fs n p base` at `bi`, with the same
     result. -/
 theorem denote_crateInline? (fs : List CrateFn) (bi : Builtins)
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (fuelC tf n : Nat)
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC tf n : Nat)
     {Γ : Ctxt nfDialect} {ts : List NfTy}
     {p p' : NFProg nfDialect Γ ts} (h : crateInline? fs n p base = some p') {V : Valuation Γ}
     {out : Valuation (d := nfDialect) ts}
     (hp : PDenP (crateBi fs bi fuelC n) tf p V = some out) : PDenP bi tf p' V = some out := by
   obtain ⟨hok, rfl⟩ := crateInline?_eq_some h
-  exact denote_inlineIter_crate fs bi hT fuelC tf n p hok hp
+  exact denote_inlineIter_crate fs bi hT hR hfR fuelC tf n p hok hp
 
 /-- The checked inlining at the callees `fs` with `n` rounds, at the typing `base` of the
     other calls, as a chain step. -/
@@ -283,10 +285,11 @@ def crateInlineStep (fs : List CrateFn) (n : Nat) (Γ : Ctxt nfDialect) (ts : Li
 /-- **The certificate of the checked inlining**: from the semantics of structured programs of
     `nfDialect` at the leaf table of the builtins with the callees, `crateBi fs bi fuelC n`,
     to the semantics at the leaf table of `bi`, both at the fuel `tf`, with equality as input
-    and output relation, under a typing `base` of `bi`. It is `denote_crateInline?`. -/
+    and output relation, under a typing `base` of `bi`, `RepeatCalls bi` and no callee named
+    `repeat`. It is `denote_crateInline?`. -/
 def crateInlineCert (fs : List CrateFn) {bi : Builtins}
-    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base)
-    (fuelC tf n : Nat) (Γ : Ctxt nfDialect) (ts : List NfTy) :
+    {base : String → List NfTy → Option NfTy} (hT : TypedCalls bi base) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) (fuelC tf n : Nat) (Γ : Ctxt nfDialect) (ts : List NfTy) :
     PassChain.StepCert (crateInlineStep fs n Γ ts base).run
       (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf (crateBi fs bi fuelC n))) _ Γ ts)
       (@nfSem tf nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ Γ ts) where
@@ -295,7 +298,7 @@ def crateInlineCert (fs : List CrateFn) {bi : Builtins}
   sound := by
     intro p q V W o hf hVW hd
     subst hVW
-    exact ⟨o, denote_crateInline? fs bi hT fuelC tf n hf hd, rfl⟩
+    exact ⟨o, denote_crateInline? fs bi hT hR hfR fuelC tf n hf hd, rfl⟩
 
 end CatCrypt.Crypto.Hax.NFInline
 
@@ -306,7 +309,8 @@ namespace CatCrypt.Crypto.Hax.NFInline
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls crateBi
-  crateBi_of_find_none PDenP PDenP_plug_ret paramsEnv dec dec_sound impToNF_sound entryEnv)
+  crateBi_of_find_none PDenP PDenP_plug_ret paramsEnv dec dec_sound impToNF_sound entryEnv
+  RepeatCalls)
 open _root_.Hax (Builtins Value Env denote')
 open Ctxt (Valuation)
 
@@ -371,6 +375,11 @@ theorem typedCalls (h : CrateTables fs bi T) {base : String → List NfTy → Op
     rw [h.base n hf] at hb
     exact hT f as r hsig xs v hb
 
+/-- **Every table of a family keeps `RepeatCalls`** when no callee is named `repeat`. -/
+theorem repeatCalls (h : CrateTables fs bi T) (hR : RepeatCalls bi)
+    (hfR : fs.find? (·.name == "repeat") = none) : ∀ n, RepeatCalls (T n) :=
+  fun n x N v hN hv => hR x N v hN (by rwa [h.base n hfR] at hv)
+
 /-- An operation that calls no callee denotes at every table of a family as at `bi`. -/
 theorem nfDenoteOp_eq (h : CrateTables fs bi T) (m : Nat) :
     ∀ (o : NfOp), crateCallOp fs o = false → ∀ x,
@@ -389,9 +398,11 @@ theorem nfDenoteOp_eq (h : CrateTables fs bi T) (m : Nat) :
       rfl
 
 /-- **A call of a callee at depth `m + 1` is a run of its translated body at depth `m`**, at
-    every fuel `tf`, with the same result, under a typing `base` of `bi`. -/
+    every fuel `tf`, with the same result, under a typing `base` of `bi`, `RepeatCalls bi` and
+    no callee named `repeat`. -/
 theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy → Option NfTy}
-    (hT : TypedCalls bi base) (m tf : Nat) :
+    (hT : TypedCalls bi base) (hR : RepeatCalls bi) (hfR : fs.find? (·.name == "repeat") = none)
+    (m tf : Nat) :
     ∀ (o : NfOp) (b : NFProg nfDialect o.sig [o.ret]), crateOp fs o base = some b → ∀ x y,
       nfDenoteOp (tableOf (T (m + 1))) o x = some y →
         PDenP (T m) tf b x = some (.cons y .nil) := by
@@ -411,7 +422,7 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
         obtain ⟨v, hv, hd⟩ := hy
         obtain ⟨-, fuel, s, hrun⟩ := h.call m hc _ v hv
         obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (T m) (crateSigOf fs base)
-          (h.typedCalls hT m) c.body none (entryEnv c.params) ho' fuel _ x v s
+          (h.typedCalls hT m) (h.repeatCalls hR hfR m) c.body none (entryEnv c.params) ho' fuel _ x v s
           (entryEnv_rel_paramsEnv c.params x) hrun tf
         have hy' : y = o'.res.lookup W :=
           enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvW)
@@ -426,12 +437,14 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
       cases hb
 
 /-- **The library of the callees is sound from depth `m + 1` to depth `m` of a family**, for
-    the operations that call no callee, under a typing `base` of `bi`. -/
+    the operations that call no callee, under a typing `base` of `bi`, `RepeatCalls bi` and no
+    callee named `repeat`. -/
 theorem soundStep (h : CrateTables fs bi T) {base : String → List NfTy → Option NfTy}
-    (hT : TypedCalls bi base) (m tf : Nat) :
+    (hT : TypedCalls bi base) (hR : RepeatCalls bi) (hfR : fs.find? (·.name == "repeat") = none)
+    (m tf : Nat) :
     (crateLib fs base).SoundStep (nfDenote (tableOf (T (m + 1)))) (nfDenote (tableOf (T m)))
       (fun o => !crateCallOp fs o) tf where
-  op := h.crateOp_sound hT m tf
+  op := h.crateOp_sound hT hR hfR m tf
   keep o ho x y hy := by
     simp only [Bool.not_eq_true'] at ho
     simp only [nfDenote_denoteM] at hy ⊢
@@ -448,9 +461,11 @@ theorem PDenP_of_noCrateCall (h : CrateTables fs bi T) (m tf : Nat) {Γ : Ctxt n
     (fun o ho x => h.nfDenoteOp_eq m o (by simpa using ho) x) tf p hp V
 
 /-- **The checked inlining keeps every successful run, from the table of depth `n` of a family
-    to the base builtins**, under a typing `base` of `bi`. -/
+    to the base builtins**, under a typing `base` of `bi`, `RepeatCalls bi` and no callee named
+    `repeat`. -/
 theorem denote_crateInline? (h : CrateTables fs bi T) {base : String → List NfTy → Option NfTy}
-    (hT : TypedCalls bi base) (tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (hT : TypedCalls bi base) (hR : RepeatCalls bi) (hfR : fs.find? (·.name == "repeat") = none)
+    (tf n : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     {p p' : NFProg nfDialect Γ ts} (hi : crateInline? fs n p base = some p') {V : Valuation Γ}
     {out : Valuation (d := nfDialect) ts} (hp : PDenP (T n) tf p V = some out) :
     PDenP bi tf p' V = some out := by
@@ -458,7 +473,7 @@ theorem denote_crateInline? (h : CrateTables fs bi T) {base : String → List Nf
   obtain ⟨hit, hno⟩ := Bool.and_eq_true_iff.mp hok
   rw [← h.PDenP_of_noCrateCall 0 tf _ hno V]
   exact NFProg.denote_inlineIter_step (fun m => nfDenote (tableOf (T m)))
-    (fun m => h.soundStep hT m tf) n p hit hp
+    (fun m => h.soundStep hT hR hfR m tf) n p hit hp
 
 end CrateTables
 
@@ -474,7 +489,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses (nfSem)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout ArgKind)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf tableOf TypedCalls PDenP
-  paramsEnv dec dec_sound)
+  paramsEnv dec dec_sound RepeatCalls)
 open CatCrypt.Crypto.Hax.NFInline
 open _root_.Hax (TExpr ImpExpr Builtins Value Env denote')
 open _root_.Hax.InlineLocalClosures (denoteSpine)
@@ -554,6 +569,12 @@ theorem refBi_of_find_none (fs : List ModFn) (bi : Builtins) (fuel n : Nat) {g :
     (hg : fs.find? (·.name == g) = none) (vals : List Value) :
     refBi fs bi fuel n g vals = bi g vals := by
   cases n <;> simp only [refBi, hg]
+
+/-- The reference table keeps `RepeatCalls` when no function of `fs` is named `repeat`. -/
+theorem refBi_repeatCalls (fs : List ModFn) {bi : Builtins} (hR : RepeatCalls bi)
+    (hf : fs.find? (·.name == "repeat") = none) (fuel n : Nat) :
+    RepeatCalls (refBi fs bi fuel n) :=
+  fun x N v hN hv => hR x N v hN (by rwa [refBi_of_find_none fs bi fuel n hf] at hv)
 
 /-- The reference table with no function is the base table, at every fuel and call depth. -/
 theorem refBi_nil (bi : Builtins) (fuel n : Nat) : refBi [] bi fuel n = bi := by
@@ -745,6 +766,12 @@ def linkBi (ls : List LinkedFn) (bi : Builtins) : Builtins := fun g vals =>
 theorem linkBi_of_find_none (ls : List LinkedFn) (bi : Builtins) {g : String}
     (hg : ls.find? (·.name == g) = none) (vals : List Value) : linkBi ls bi g vals = bi g vals :=
   by simp only [linkBi, hg]
+
+/-- The table of the linked functions keeps `RepeatCalls` when no linked function is named
+    `repeat`. -/
+theorem linkBi_repeatCalls (ls : List LinkedFn) {bi : Builtins} (hR : RepeatCalls bi)
+    (hf : ls.find? (·.name == "repeat") = none) : RepeatCalls (linkBi ls bi) :=
+  fun x N v hN hv => hR x N v hN (by rwa [linkBi_of_find_none ls bi hf] at hv)
 
 /-- At the name of a linked function the table of the linked functions is its meaning. -/
 theorem linkBi_of_find_some (ls : List LinkedFn) (bi : Builtins) {g : String} {l : LinkedFn}
@@ -979,9 +1006,12 @@ theorem table_typedCalls (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
     prepared callees are translated at the call typing `crateSigOf (m.prepared P) m.linkSig`,
     in which a call of a linked function has its result type, under the typing `hax64SigOf` of
     the table of the linked functions, when the preparation `P` keeps the runs of every
-    function at every depth of the reference table over it. -/
+    function at every depth of the reference table over it, `RepeatCalls` holds of the table of
+    the linked functions, and no function of the module is named `repeat`. -/
 theorem denote_crateInline?_linkSig (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins}
-    {fuelC : Nat} (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    {fuelC : Nat} (hT : TypedCalls (m.linkTable bi) hax64SigOf)
+    (hR : RepeatCalls (m.linkTable bi)) (hfR : m.fns.find? (·.name == "repeat") = none)
+    (tf : Nat)
     (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
     {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
     (h : crateInline? (m.prepared P) m.depth p m.linkSig = some p') {V : Valuation Γ}
@@ -989,22 +1019,25 @@ theorem denote_crateInline?_linkSig (P : TExpr → ImpExpr) (m : HaxModule) {bi 
     (hp : PDenP (m.table bi fuelC) tf p V = some out) :
     PDenP (m.linkTable bi) tf p' V = some out :=
   (crateTables_refBi P m.fns _ fuelC hsim).denote_crateInline?
-    (m.linkTable_typedCalls_linkSig hT) tf m.depth h hp
+    (m.linkTable_typedCalls_linkSig hT) hR (by rw [find?_prep, hfR]; rfl) tf m.depth h hp
 
 /-- **The inlining of the calls of a module keeps every successful run, from the table of the
     module to the table of its linked functions**, under the typing `hax64SigOf` of the
     table of the linked functions, when the preparation `P` keeps the runs of every function
-    at every depth of the reference table over it (`denote_crateInline?_linkSig`). For a
+    at every depth of the reference table over it, `RepeatCalls` holds of the table of the
+    linked functions and no function of the module is named `repeat`
+    (`denote_crateInline?_linkSig`). For a
     module without linked functions the table of the linked functions is the base table
     (`linkTable_of_linked_nil`). -/
 theorem denote_inline? (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (hR : RepeatCalls (m.linkTable bi))
+    (hfR : m.fns.find? (·.name == "repeat") = none) (tf : Nat)
     (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
     {Γ : Ctxt nfDialect} {ts : List NfTy} {p p' : NFProg nfDialect Γ ts}
     (h : m.inline? P p = some p') {V : Valuation Γ} {out : Valuation (d := nfDialect) ts}
     (hp : PDenP (m.table bi fuelC) tf p V = some out) :
     PDenP (m.linkTable bi) tf p' V = some out :=
-  m.denote_crateInline?_linkSig P hT tf hsim h hp
+  m.denote_crateInline?_linkSig P hT hR hfR tf hsim h hp
 
 /-- The inlining of the calls of a module as a chain step. -/
 def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts : List NfTy) :
@@ -1015,9 +1048,11 @@ def inlineStep (P : TExpr → ImpExpr) (m : HaxModule) (Γ : Ctxt nfDialect) (ts
     structured programs at the leaf table of the module's table to the semantics at the leaf
     table of the table of its linked functions, with equality as input and output relation,
     when the preparation `P` keeps the runs of every function at every depth of the
-    reference table over the table of the linked functions. -/
+    reference table over the table of the linked functions, `RepeatCalls` holds of the table
+    of the linked functions, and no function of the module is named `repeat`. -/
 def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : Nat}
-    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (tf : Nat)
+    (hT : TypedCalls (m.linkTable bi) hax64SigOf) (hR : RepeatCalls (m.linkTable bi))
+    (hfR : m.fns.find? (·.name == "repeat") = none) (tf : Nat)
     (hsim : ∀ n, ∀ f ∈ m.fns, f.PrepSim P (refBi m.fns (m.linkTable bi) fuelC n))
     (Γ : Ctxt nfDialect) (ts : List NfTy) :
     PassChain.StepCert (m.inlineStep P Γ ts).run
@@ -1028,7 +1063,7 @@ def inlineCert (P : TExpr → ImpExpr) (m : HaxModule) {bi : Builtins} {fuelC : 
   sound := by
     intro p q V W o hf hVW hd
     subst hVW
-    exact ⟨o, m.denote_inline? P hT tf hsim hf hd, rfl⟩
+    exact ⟨o, m.denote_inline? P hT hR hfR tf hsim hf hd, rfl⟩
 
 end HaxModule
 

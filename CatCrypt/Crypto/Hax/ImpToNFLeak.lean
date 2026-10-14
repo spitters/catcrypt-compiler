@@ -22,7 +22,9 @@ The front `ImpToNF.impToNF` as a pass of the structured-leakage pattern: the lea
 tree of the events `SrcEv` of `srcLeak` with the shape of the evaluation. It differs from
 `srcLeak` on the constructs that `srcLeak` leaves opaque: a call `app f args` leaves the
 leakages of its arguments, left to right, and then the call leakage `cl f vals` of the call on
-the argument values `vals`; an assignment leaves the leakage of its right-hand side; a tuple
+the argument values `vals`, except a call of `repeat`, which leaves only the leakages of its
+arguments (`ImpToNF.impToNF_app_repeat_refused`: the front refuses it); an
+assignment leaves the leakage of its right-hand side; a tuple
 the leakages of its components. The source leakage of the front `srcLeakNF` has the call
 leakage `nfCallLeak`, the event `op (callLeak f vals)`; `callLeak f vals` is the event list of
 the leakage model `nfLeakModel` for a call of `f`, read on the source values (`valNatOf`).
@@ -84,7 +86,7 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * `NFPre.leakRunE_plug`, `NFPre.leakRunE_append`, `NFPre.leakRunE_fst`
 * `CallLeak.nf_agrees`, `CallLeak.nf_opEv`, `nfLeakRunE_nf` — the call leakage of the front
 * the case lemmas `lsound_lit`, `lsound_atom`, `lsound_seq`, `lsound_letBind`,
-  `lsound_assign`, `lsound_args`, `lsound_app`, `lsound_tuple`, `lsound_cond`,
+  `lsound_assign`, `lsound_args`, `lsound_repeat`, `lsound_app`, `lsound_tuple`, `lsound_cond`,
   `loop_leak`, `forRevLeak_ge`, `loopRev_leak`, `quietPre_ctrOut`, `loopOut_leak`,
   `lsound_forFold`, `lsound_forFoldRev`
 * `forIterLeak_filter`, `whileIterLeak_filter`, `NFProg.leakRunM_filter`,
@@ -627,7 +629,8 @@ def srcLeakCl (bi : Builtins) (cl : String → List Value → SrcLeak) :
   | .assign _ r, fuel, env => srcLeakCl bi cl r fuel env
   | .app f args, fuel, env =>
     .cat (srcArgsLeakCl bi cl args fuel env)
-      (match (denoteArgs' bi fuel args).run env with
+      (if f = "repeat" then .nil else
+       match (denoteArgs' bi fuel args).run env with
        | (some vals, _) => cl f vals
        | _ => .nil)
   | .tuple es, fuel, env => srcArgsLeakCl bi cl es fuel env
@@ -1066,17 +1069,53 @@ theorem lsound_args (bi : Builtins) (sigOf : String → List NfTy → Option NfT
           rw [args_cons_run, h1] at hr
           cases hr
 
+/-- A call `repeat [x, N]` with a literal count `N ≥ 0` is sound with leakage under
+    `RepeatCalls`, with no event: its argument is an atom and `arrRepeat` is quiet. -/
+theorem lsound_repeat (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : Option String)
+    (x : ImpExpr) {N : Int} (hN : 0 ≤ N) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (h : repeatOut tgt σ x N = some o) :
+    LSound bi C fuel (.app "repeat" [x, .lit (.int N)]) σ o := by
+  have hs := repeat_sound bi hR fuel tgt x hN σ h
+  simp only [repeatOut, Option.bind_eq_some_iff] at h
+  obtain ⟨ox, hox, h⟩ := h
+  split at h
+  · cases h
+    intro env V v env' hrel hrun tf
+    obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+    refine ⟨W, ?_, hr, hv⟩
+    have hx : ∀ env, nfTrace (srcLeakCl bi C.cl x fuel env) = [] := by
+      intro env
+      cases x with
+      | var _ => rfl
+      | lit _ => rfl
+      | _ => simp [atomOut] at hox
+    have hl : nfTrace (srcLeakCl bi C.cl (.app "repeat" [x, .lit (.int N)]) fuel env) = [] := by
+      simp only [srcLeakCl, if_true, nfTrace, List.append_nil, srcArgsLeakCl, hx,
+        List.nil_append]
+      exact nfTrace_contLeak_nil _ _ fun _ _ => nfTrace_contLeak_nil _ _ fun _ _ => rfl
+    rw [hl]
+    refine ((QuietPre.append (quietPre_atomOut bi tf σ x hox)
+      (QuietPre.var bi tf tgt _ (fun _ => rfl) _)) V).trans ?_
+    exact congrArg (Option.map fun W => (W, ([] : List CTLeak))) hW
+  · cases h
+
 /-- A call of a builtin is sound with leakage under `TypedCalls`, for a call leakage that
     agrees with the builtins, when the front is sound with leakage for each argument: its
     events are those of the arguments followed by the events of the call leakage of the call
     on the argument values. -/
 theorem lsound_app (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (hC : C.Agrees bi) (fuel : Nat) (tgt : Option String) (f : String)
+    (hT : TypedCalls bi sigOf) (_hR : RepeatCalls bi) (hC : C.Agrees bi) (fuel : Nat)
+    (tgt : Option String) (f : String)
     (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
       impToNF sigOf none σ' e = some o' → LSound bi C fuel e σ' o')
     (h : impToNF sigOf tgt σ (.app f args) = some o) : LSound bi C fuel (.app f args) σ o := by
-  simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  by_cases hf : f = "repeat"
+  · subst hf
+    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
+    cases h
+  rw [impToNF_app_call sigOf tgt σ hf] at h
+  simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h
   intro env V v env' hrel hrun tf
   obtain ⟨m, e1, h1⟩ := run_val_split (denoteArgs' bi fuel args) env
@@ -1109,7 +1148,7 @@ theorem lsound_app (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
               simp only [hcall, Option.bind_some, Option.map_some, List.append_nil]
           show PLeak bi C tf (oa.pre.append _) V = _
           rw [PLeak_append_some hW hstep, hC f oa.as r _ y hcall]
-          simp only [srcLeakCl, h1, nfTrace]
+          simp only [srcLeakCl, hf, if_false, h1, nfTrace]
 
 /-- A tuple of atoms is sound with leakage, with no event. -/
 theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
@@ -1884,15 +1923,16 @@ theorem lsound_forFoldRev (bi : Builtins) (sigOf : String → List NfTy → Opti
 
 /-! ## The leakage transformer of the front -/
 
-/-- **The front simulates `denote'` with leakage.** Under `TypedCalls bi sigOf` and a call
-    leakage `C` that agrees with `bi`, for every expression `e` the front translates from
+/-- **The front simulates `denote'` with leakage.** Under `TypedCalls bi sigOf`,
+    `RepeatCalls bi` and a call leakage `C` that agrees with `bi`, for every expression `e`
+    the front translates from
     `σ`, a run of `denote' bi fuel e` from an environment related to `V` to a value is
     matched, at every target fuel, by the leakage run of the prefix with the events of `C`,
     whose events are the transformed source leakage `nfTrace (srcLeakCl bi C.cl e fuel env)`.
     At `C = CallLeak.nf` the events are those of `nfLeakModel` and the source leakage is
     `srcLeakNF`. -/
 theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (hC : C.Agrees bi) (e : ImpExpr) :
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (hC : C.Agrees bi) (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
       impToNF sigOf tgt σ e = some o → ∀ fuel, LSound bi C fuel e σ o := by
   induction e using ImpExpr.ind
@@ -1915,7 +1955,7 @@ theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option 
     exact lsound_assign bi fuel x tgt (ih _ σ ho' fuel)
   case app f args iha =>
     intro tgt Γ σ o h fuel
-    exact lsound_app bi sigOf hT hC fuel tgt f args σ
+    exact lsound_app bi sigOf hT hR hC fuel tgt f args σ
       (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
   case tuple es _ => intro tgt Γ σ o h fuel; exact lsound_tuple bi sigOf fuel tgt es σ h
   case unitVal =>
@@ -1951,13 +1991,14 @@ theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option 
   all_goals intro tgt Γ σ o h; simp [impToNF] at h
 
 /-- **The leakage transformer of `impToNF` under a call leakage.** Under
-    `TypedCalls bi sigOf` and a call leakage `C` that agrees with `bi`, a run of
-    `denote' bi fuel e` from an environment related to `V` by `σ` to a value is matched, at
-    every target fuel, by the leakage run `nfLeakRunE bi C` of the program `impToNF` emits,
-    which returns the encoding of the value and the events
+    `TypedCalls bi sigOf`, `RepeatCalls bi` and a call leakage `C` that agrees with `bi`, a
+    run of `denote' bi fuel e` from an environment related to `V` by `σ` to a value is
+    matched, at every target fuel, by the leakage run `nfLeakRunE bi C` of the program
+    `impToNF` emits, which returns the encoding of the value and the events
     `nfTrace (srcLeakCl bi C.cl e fuel env)`. -/
 theorem impToNF_leakE (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (hC : C.Agrees bi) {e : ImpExpr} {tgt : Option String}
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (hC : C.Agrees bi) {e : ImpExpr}
+    {tgt : Option String}
     {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o)
     {fuel : Nat} {env : Env} {V : Valuation Γ} {v : Value} {env' : Env}
     (hrel : EnvRel σ env V) (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
@@ -1965,21 +2006,21 @@ theorem impToNF_leakE (bi : Builtins) (sigOf : String → List NfTy → Option N
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakCl bi C.cl e fuel env)) ∧
       v = enc o.t x := by
   obtain ⟨W, hW, -, rfl⟩ :=
-    impToNF_lsound bi sigOf hT hC e tgt σ h fuel env V v env' hrel hrun tf
+    impToNF_lsound bi sigOf hT hR hC e tgt σ h fuel env V v env' hrel hrun tf
   refine ⟨o.res.lookup W, ?_, rfl⟩
   rw [Out.prog, nfLeakRunE_plug, hW, Option.bind_some]
   show Option.map _ (some (Expr.lookupArgs (HVector.cons o.res .nil) W, ([] : List CTLeak))) = _
   simp only [Option.map_some, List.append_nil]
   rfl
 
-/-- **The leakage transformer of `impToNF`.** Under `TypedCalls bi sigOf`, a run of
-    `denote' bi fuel e` from an environment related to `V` by `σ` to a value is matched, at
-    every target fuel, by the leakage run `nfLeakRun` of the program `impToNF` emits, which
-    returns the encoding of the value and the events `nfTrace (srcLeakNF bi e fuel env)`, a
-    function of the source leakage alone: `impToNF_leakE` at the call leakage `CallLeak.nf`
-    of the front. -/
+/-- **The leakage transformer of `impToNF`.** Under `TypedCalls bi sigOf` and
+    `RepeatCalls bi`, a run of `denote' bi fuel e` from an environment related to `V` by `σ`
+    to a value is matched, at every target fuel, by the leakage run `nfLeakRun` of the
+    program `impToNF` emits, which returns the encoding of the value and the events
+    `nfTrace (srcLeakNF bi e fuel env)`, a function of the source leakage alone:
+    `impToNF_leakE` at the call leakage `CallLeak.nf` of the front. -/
 theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) {e : ImpExpr} {tgt : Option String} {Γ : Ctxt nfDialect}
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {e : ImpExpr} {tgt : Option String} {Γ : Ctxt nfDialect}
     {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env : Env}
     {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
     (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
@@ -1987,7 +2028,7 @@ theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option Nf
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakNF bi e fuel env)) ∧
       v = enc o.t x := by
   rw [← nfLeakRunE_nf]
-  exact impToNF_leakE bi sigOf hT (CallLeak.nf_agrees bi) h hrel hrun tf
+  exact impToNF_leakE bi sigOf hT hR (CallLeak.nf_agrees bi) h hrel hrun tf
 
 /-! ## The leakage model with quiet field calls -/
 
@@ -2053,13 +2094,13 @@ def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
     stripField (nfTrace (srcLeakNF bi e fuel env₁)) =
       stripField (nfTrace (srcLeakNF bi e fuel env₂))
 
-/-- **Two runs through the front.** Under `TypedCalls bi sigOf` and source constant time
-    modulo the field calls, the leakage runs of the program `impToNF` emits from two
-    valuations related by `σ` to environments agreeing on the public variables, from which the
-    source runs to values, emit equal events once the leaf calls of tagged field heads are
+/-- **Two runs through the front.** Under `TypedCalls bi sigOf`, `RepeatCalls bi` and source
+    constant time modulo the field calls, the leakage runs of the program `impToNF` emits from
+    two valuations related by `σ` to environments agreeing on the public variables, from which
+    the source runs to values, emit equal events once the leaf calls of tagged field heads are
     removed. -/
 theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
     (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env₁ env₂ env₁' env₂' : Env}
     {V₁ V₂ : Valuation Γ} {v₁ v₂ : Value} (hr₁ : EnvRel σ env₁ V₁) (hr₂ : EnvRel σ env₂ V₂)
@@ -2069,8 +2110,8 @@ theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option
     {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
     (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
     q₁.2 = q₂.2 := by
-  obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT h hr₁ hrun₁ tf
-  obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT h hr₂ hrun₂ tf
+  obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT hR h hr₁ hrun₁ tf
+  obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT hR h hr₂ hrun₂ tf
   rw [nfLeakRunQ_eq, h₁, Option.map_some, Option.some.injEq] at hq₁
   rw [nfLeakRunQ_eq, h₂, Option.map_some, Option.some.injEq] at hq₂
   rw [← hq₁, ← hq₂]
@@ -2131,15 +2172,16 @@ theorem pubEqEnv_entryEnvOf (lt : LevelTable) : ∀ (ps : List (String × NfTy))
         exact pubEqEnv_entryEnvOf lt ps V₁ V₂
           (fun t' v hv => h t' (Var.there v) hv) z hz
 
-/-- **Constant time through the front.** Under `TypedCalls bi sigOf`, let `e` be constant
-    time at the source modulo the field calls for the level table `lt` (`SourceCTNF`), and
+/-- **Constant time through the front.** Under `TypedCalls bi sigOf` and `RepeatCalls bi`,
+    let `e` be constant time at the source modulo the field calls for the level table `lt` (`SourceCTNF`), and
     let the source run of `e` at the fuel `fuel` end in a value from the source environment of
     every valuation of the parameters `ps`. Then the program `impToNF` emits from the
     parameters is constant time in the leakage model `nfLeakModelQ` with quiet field calls,
     relative to the runs that succeed, for the labels `entryLabels lt ps` of the parameters,
     at every target fuel. -/
 theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (lt : LevelTable) (ps : List (String × NfTy)) {e : ImpExpr}
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (lt : LevelTable)
+    (ps : List (String × NfTy)) {e : ImpExpr}
     (hct : SourceCTNF bi lt e) {tgt : Option String} {o : Out (entryCtx ps)}
     (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
@@ -2149,7 +2191,7 @@ theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
   obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
   obtain ⟨v₂, env₂', hrun₂⟩ := hterm V₂
-  exact impToNF_ct_runs bi sigOf hT hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
+  exact impToNF_ct_runs bi sigOf hT hR hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
     (pubEqEnv_entryEnvOf lt ps V₁ V₂ hpub) hrun₁ hrun₂ tf hq₁ hq₂
 
 /-! ## The labels of a secrecy record -/
@@ -2217,8 +2259,8 @@ theorem pubEqV_entryLabels_levelsOf (s : FnSecrecy) :
     `impToNF_nfCTRel` at the level table `levelsOf s`, stated for the labels `paramLevelOf s`
     of the parameters, each of which `s` lists. -/
 theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (s : FnSecrecy) (ps : List (String × NfTy))
-    (hps : ∀ p ∈ ps, ∃ b, (p.1, b) ∈ s.params) {e : ImpExpr}
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (s : FnSecrecy)
+    (ps : List (String × NfTy)) (hps : ∀ p ∈ ps, ∃ b, (p.1, b) ∈ s.params) {e : ImpExpr}
     (hct : SourceCTNF bi (levelsOf s) e) {tgt : Option String} {o : Out (entryCtx ps)}
     (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
@@ -2226,7 +2268,7 @@ theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy →
     @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ _ _
       (entryLabels (paramLevelOf s) ps) tf o.prog := by
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
-  exact impToNF_nfCTRel bi sigOf hT (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
+  exact impToNF_nfCTRel bi sigOf hT hR (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
     (pubEqV_entryLabels_levelsOf s ps hps V₁ V₂ hpub) hq₁ hq₂
 
 end CatCrypt.Crypto.Hax.ImpToNF

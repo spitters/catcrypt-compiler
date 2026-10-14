@@ -320,6 +320,29 @@ def argsOut {Γ : Ctxt nfDialect} (σ : NfEnv Γ) : List ImpExpr → Option (Arg
   | e :: es => (atomOut σ e).bind fun o => (argsOut o.σ es).map fun os =>
       ⟨os.Δ, o.t :: os.as, o.pre.append os.pre, os.σ, .cons (os.pre.wk o.res) os.vs⟩
 
+/-- The element and the count of a call `repeat [x, N]` whose count is an integer literal
+    in `[0, 2 ^ 64)`; `none` at every other call. -/
+def repeatArgs? (f : String) (args : List ImpExpr) : Option (ImpExpr × Int) :=
+  match f, args with
+  | "repeat", [x, .lit (.int N)] => if 0 ≤ N ∧ N < 2 ^ 64 then some (x, N) else none
+  | _, _ => none
+
+/-- The output of `impToNF` on a call `repeat [x, N]` with a literal count: the atom `x` at
+    the type of `64`-bit words, then `arrRepeat`, with the source name `tgt`. -/
+def repeatOut {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (x : ImpExpr) (N : Int) :
+    Option (Out Γ) :=
+  (atomOut σ x).bind fun ox =>
+    if h : ox.t = .word 64 then
+      some (ox.comp (bind1N tgt ox.σ (.arrRepeat N.toNat (.word 64)) (.cons (h ▸ ox.res) .nil)))
+    else none
+
+/-- **The builtin `repeat` on words.** Whenever `bi` answers `repeat` on an integer `x` and a
+    count `N ≥ 0`, its value is the array of `N` copies of `x`. A table without a `repeat`
+    row satisfies it. -/
+def RepeatCalls (bi : Builtins) : Prop :=
+  ∀ (x N : Int) (v : Value), 0 ≤ N → bi "repeat" [.int x, .int N] = some v →
+    v = .array (List.replicate N.toNat (.int x))
+
 /-- The tuple type of the component types `as`. -/
 def tupTy : List NfTy → NfTy
   | [] => .tnil
@@ -543,6 +566,8 @@ mutual
     an upper bound. An integer literal outside `[0, 2 ^ 64)`, a literal of a signed
     width and a literal of a width above `64` bits are `none`.
 
+    A call of `repeat` is `none`, and a call of any other name is typed by `sigOf`.
+
     The lower bound of a counted loop is bound as an integer first (`loOut`, `loBind`): a
     literal by `ilit`, a variable by `boundInt`.
 
@@ -575,10 +600,11 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
       (impToNF sigOf tgt ((x, ⟨ov.t, ov.res⟩) :: ov.σ) b).map ov.comp
   | tgt, _, σ, .assign x r => (impToNF sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
-  | tgt, _, σ, .app f args => (impArgsNF sigOf σ args).bind fun oa =>
-      (sigOf f oa.as).map fun r =>
-      ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
-        oa.σ.mapV .there, .here⟩
+  | tgt, _, σ, .app f args =>
+      if f = "repeat" then none else (impArgsNF sigOf σ args).bind fun oa =>
+        (sigOf f oa.as).map fun r =>
+        ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
+          oa.σ.mapV .there, .here⟩
   | tgt, _, σ, .tuple es => (argsOut σ es).map fun oa =>
       let r := tupleOut tgt oa.as oa.vs
       Out.mk r.fst (tupTy oa.as) (oa.pre.append r.snd.fst) (oa.σ.mapV r.snd.fst.wk) r.snd.snd
@@ -1224,15 +1250,126 @@ theorem impArgsNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option
           rw [args_cons_run, h1] at hr
           cases hr
 
-/-- A call of a builtin is sound under `TypedCalls`, when the front is sound for each
-    argument. -/
+/-- A call `repeatArgs?` accepts is `repeat` on an element and a literal count in
+    `[0, 2 ^ 64)`. -/
+theorem repeatArgs?_eq_some {f : String} {args : List ImpExpr} {x : ImpExpr} {N : Int}
+    (h : repeatArgs? f args = some (x, N)) :
+    f = "repeat" ∧ args = [x, .lit (.int N)] ∧ 0 ≤ N ∧ N < 2 ^ 64 := by
+  unfold repeatArgs? at h
+  split at h
+  · split at h
+    · cases h
+      exact ⟨rfl, rfl, by assumption⟩
+    · cases h
+  · cases h
+
+/-- `impToNF` refuses every call of `repeat`. -/
+theorem impToNF_app_repeat_refused (sigOf : String → List NfTy → Option NfTy)
+    (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (args : List ImpExpr) :
+    impToNF sigOf tgt σ (.app "repeat" args) = none := by
+  simp only [impToNF, if_true]
+
+/-- `repeatArgs?` accepts only calls of `repeat`. -/
+theorem repeatArgs?_of_ne {f : String} (hf : f ≠ "repeat") (args : List ImpExpr) :
+    repeatArgs? f args = none := by
+  unfold repeatArgs?
+  split
+  · exact absurd rfl hf
+  · rfl
+
+/-- `impToNF` on a call of a name other than `repeat` is the typed call. -/
+theorem impToNF_app_call (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {f : String} {args : List ImpExpr}
+    (hf : f ≠ "repeat") :
+    impToNF sigOf tgt σ (.app f args) = (impArgsNF sigOf σ args).bind fun oa =>
+      (sigOf f oa.as).map fun r =>
+      ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
+        oa.σ.mapV .there, .here⟩ := by
+  simp only [impToNF, hf, if_false]
+
+/-- **The forms of a call `impToNF` translates**: a call `repeatArgs?` accepts, translated by
+    `repeatOut`, or a call of a name other than `repeat`, translated as the typed call of its
+    arguments. `impToNF` refuses every call of `repeat` (`impToNF_app_repeat_refused`), so a
+    translated call has the second form. -/
+theorem impToNF_app_cases (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {f : String} {args : List ImpExpr} {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.app f args) = some o) :
+    (∃ x N, repeatArgs? f args = some (x, N) ∧ repeatOut tgt σ x N = some o) ∨
+      (f ≠ "repeat" ∧ ∃ oa, impArgsNF sigOf σ args = some oa ∧ ∃ r, sigOf f oa.as = some r ∧
+        ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
+          oa.σ.mapV .there, .here⟩ = o) := by
+  by_cases hf : f = "repeat"
+  · subst hf
+    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
+    cases h
+  · rw [impToNF_app_call sigOf tgt σ hf] at h
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    exact Or.inr ⟨hf, h⟩
+
+/-- The constant array of `n` copies of a word encodes as `n` copies of its integer. -/
+theorem enc_arr_const (n : Nat) (y : BitVec 64) :
+    enc (.arr n (.word 64)) (fun _ => y) = .array (List.replicate n (.int y.toNat)) := by
+  simp only [enc, List.ofFn_const]
+
+/-- A call `repeat [x, N]` with a literal count `N ≥ 0` is sound under `RepeatCalls`. -/
+theorem repeat_sound (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : Option String)
+    (x : ImpExpr) {N : Int} (hN : 0 ≤ N) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (h : repeatOut tgt σ x N = some o) :
+    Sound bi fuel (.app "repeat" [x, .lit (.int N)]) σ o := by
+  simp only [repeatOut, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨Δ, t, pre, σ₁, res⟩, hox, h⟩ := h
+  split at h
+  · rename_i ht
+    dsimp only at ht
+    subst ht
+    cases h
+    intro env V v env' hrel hrun tf
+    obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel x) env
+    have he1 : e1 = env := by
+      have := atomOut_env bi fuel σ x hox env
+      rw [h1] at this
+      exact this
+    rw [he1] at h1
+    rw [app_run] at hrun
+    cases a with
+    | val w =>
+        obtain ⟨W1, hW1, hrel1, rfl⟩ := atomOut_sound bi fuel σ x hox env V w env hrel h1 tf
+        rw [args_cons_run_val bi fuel _ h1 (enc_ne_controlFlow _ _), args_cons_run, lit_run]
+          at hrun
+        simp only [Value.ofLit, args_nil_run, Option.map_some] at hrun
+        cases hb : bi "repeat" [enc (.word 64) (res.lookup W1), .int N] with
+        | none => rw [hb] at hrun; cases hrun
+        | some w' =>
+            rw [hb] at hrun
+            cases hrun
+            have hw := hR _ N _ hN hb
+            subst hw
+            refine ⟨W1.extend (show (NfTy.arr N.toNat (.word 64)).denote from
+              fun _ => res.lookup W1), ?_,
+              hrel1.mapV (fun v => Var.there v) fun _ _ => rfl, ?_⟩
+            · refine (PDen_append bi tf _ _ V).trans ?_
+              rw [hW1, Option.bind_some]
+              exact PDen_bind1N bi tf tgt σ₁ (.arrRepeat N.toNat (.word 64)) (.cons res .nil) W1
+            · exact (enc_arr_const N.toNat (res.lookup W1)).symm
+    | _ =>
+        rw [args_cons_run, h1] at hrun
+        cases hrun
+  · cases h
+
+/-- A call of a builtin is sound under `TypedCalls` and `RepeatCalls`, when the front is sound
+    for each argument. -/
 theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (fuel : Nat) (tgt : Option String) (f : String)
-    (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
+    (hT : TypedCalls bi sigOf) (_hR : RepeatCalls bi) (fuel : Nat) (tgt : Option String)
+    (f : String) (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
       impToNF sigOf none σ' e = some o' → Sound bi fuel e σ' o')
     (h : impToNF sigOf tgt σ (.app f args) = some o) : Sound bi fuel (.app f args) σ o := by
-  simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  by_cases hf : f = "repeat"
+  · subst hf
+    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
+    cases h
+  rw [impToNF_app_call sigOf tgt σ hf] at h
+  simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h
   intro env V v env' hrel hrun tf
   obtain ⟨m, e1, h1⟩ := run_val_split (denoteArgs' bi fuel args) env
@@ -2618,13 +2755,13 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
 
 /-! ## 11. The front simulates `denote'` -/
 
-/-- **The front simulates `denote'`.** Under the typing hypothesis `TypedCalls bi sigOf`,
-    for every expression `e` the front translates from `σ`, and every source fuel, a run of
+/-- **The front simulates `denote'`.** Under the typing hypothesis `TypedCalls bi sigOf`
+    and `RepeatCalls bi`, for every expression `e` the front translates from `σ`, and every source fuel, a run of
     `denote' bi fuel e` from an environment related to a valuation `V` to a value is
     matched, at every target fuel, by the prefix: it denotes a valuation of its hole related
     to the final environment, and the variable of the value encodes the value. -/
 theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (e : ImpExpr) :
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
       impToNF sigOf tgt σ e = some o → ∀ fuel, Sound bi fuel e σ o := by
   induction e using ImpExpr.ind
@@ -2647,7 +2784,7 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     exact assign_sound bi fuel x tgt (ih _ σ ho' fuel)
   case app f args iha =>
     intro tgt Γ σ o h fuel
-    exact app_sound bi sigOf hT fuel tgt f args σ
+    exact app_sound bi sigOf hT hR fuel tgt f args σ
       (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
   case tuple es _ => intro tgt Γ σ o h fuel; exact tuple_sound bi sigOf fuel tgt es σ h
   case unitVal =>
@@ -3927,18 +4064,19 @@ def nfRoute (sigOf : String → List NfTy → Option NfTy) {Γ : Ctxt nfDialect}
     (ρ : RBEnv Γ) (e : ImpExpr) : Option ImpExpr :=
   (impToNF sigOf none σ e).bind fun o => nfToImp (NFProg.dce o.prog) ρ
 
-/-- **The route through `NFProg` keeps the value.** Under `TypedCalls bi sigOf`, from an
+/-- **The route through `NFProg` keeps the value.** Under `TypedCalls bi sigOf` and
+    `RepeatCalls bi`, from an
     environment related to a valuation `V` by both `σ` and `ρ`, a run of `e` to a value is
     matched by a run, at some fuel, of its route through `NFProg` to the same value. -/
 theorem nfRoute_run (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {ρ : RBEnv Γ}
-    {e e' : ImpExpr} (h : nfRoute sigOf σ ρ e = some e') {env : Env} {V : Valuation Γ}
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {Γ : Ctxt nfDialect} {σ : NfEnv Γ}
+    {ρ : RBEnv Γ} {e e' : ImpExpr} (h : nfRoute sigOf σ ρ e = some e') {env : Env} {V : Valuation Γ}
     (hσ : EnvRel σ env V) (hρ : RBRel ρ env V) {fuel : Nat} {v : Value} {env' : Env}
     (hrun : (denote' bi fuel e).run env = (.val v, env')) :
     ∃ fuel' env₂, (denote' bi fuel' e').run env = (.val v, env₂) := by
   simp only [nfRoute, Option.bind_eq_some_iff] at h
   obtain ⟨o, ho, hnf⟩ := h
-  obtain ⟨W, hpre, -, rfl⟩ := impToNF_sound bi sigOf hT e none σ ho fuel env V v env' hσ hrun 0
+  obtain ⟨W, hpre, -, rfl⟩ := impToNF_sound bi sigOf hT hR e none σ ho fuel env V v env' hσ hrun 0
   have hp : PDenP bi 0 o.prog V = some (.cons (o.res.lookup W) .nil) :=
     PDenP_plug_ret bi 0 o.pre (.cons o.res .nil) V hpre
   have hd : PDenP bi 0 (NFProg.dce o.prog) V = some (.cons (o.res.lookup W) .nil) :=
@@ -5212,6 +5350,22 @@ theorem withSelect_typedCalls {bi : Builtins} (hT : TypedCalls bi hax64SigOf) :
   · rw [withSelect_of_ne bi hf] at hv
     exact hT f as r hr xs v hv
 
+/-- `Hax.hax64Builtins` answers `repeat` on an integer and a count `N ≥ 0` by `N` copies. -/
+theorem repeatCalls_hax64Builtins : RepeatCalls _root_.Hax.hax64Builtins := by
+  intro x N v hN h
+  simp only [_root_.Hax.hax64Builtins, _root_.Hax.hax64WordOps_repeat,
+    _root_.Hax.widthArrayOps, if_pos hN] at h
+  exact (Option.some.inj h).symm
+
+/-- `hax64BuiltinsR` satisfies `RepeatCalls`. -/
+theorem repeatCalls_hax64BuiltinsR : RepeatCalls hax64BuiltinsR :=
+  fun x N v hN h => repeatCalls_hax64Builtins x N v hN (hax64BuiltinsR_some h).1
+
+/-- Adding `select` keeps `RepeatCalls`. -/
+theorem repeatCalls_withSelect {bi : Builtins} (hR : RepeatCalls bi) :
+    RepeatCalls (withSelect bi) := fun x N v hN h =>
+  hR x N v hN (by rwa [withSelect_of_ne bi (by decide)] at h)
+
 /-! ## 17. Calls of the functions of a crate -/
 
 /-- A function of a crate as a callee: its name, its parameters with their types, its result
@@ -5302,5 +5456,12 @@ theorem crateBi_typedCalls (fs : List CrateFn) (bi : Builtins)
   · rename_i hf
     rw [crateBi_of_find_none fs bi fuel n hf] at hb
     exact hT f as r hsig xs v hb
+
+/-- **The builtins with a crate keep `RepeatCalls`** when no function of the crate is named
+    `repeat`. -/
+theorem crateBi_repeatCalls (fs : List CrateFn) (bi : Builtins) (hR : RepeatCalls bi)
+    (hf : fs.find? (·.name == "repeat") = none) (fuel n : Nat) :
+    RepeatCalls (crateBi fs bi fuel n) := fun x N v hN h =>
+  hR x N v hN (by rwa [crateBi_of_find_none fs bi fuel n hf] at h)
 
 end CatCrypt.Crypto.Hax.ImpToNF

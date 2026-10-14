@@ -141,6 +141,9 @@ inductive Refusal where
   | armTypes (a b : NfTy)
   /-- A name a conditional carries that an arm leaves unbound or at another type. -/
   | armCarried (x : String)
+  /-- A call of `repeat`, the array of copies of one element; `impToNF` translates no call of
+      `repeat`. -/
+  | arrayFill
 
 /-- The rendering of a refusal. -/
 def Refusal.toString : Refusal → String
@@ -161,6 +164,7 @@ def Refusal.toString : Refusal → String
   | .condType t => s!"condition of type {tyName t}"
   | .armTypes a b => s!"arms of types {tyName a} and {tyName b}"
   | .armCarried x => s!"name {x} changes type in an arm"
+  | .arrayFill => "array fill (call repeat)"
 
 instance : ToString Refusal := ⟨Refusal.toString⟩
 
@@ -353,6 +357,22 @@ theorem toOption_condE {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γ
       | error r => rfl
       | ok ob => exact toOption_orRefuse _ _
 
+/-- `repeatOut` with the refusal: the refusal of the atom `x`, and `Refusal.call "repeat"` at
+    the type of `x` when it is not the type of `64`-bit words. -/
+def repeatE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (x : ImpExpr) (N : Int) :
+    Except Refusal (Out Γ) :=
+  (atomE σ x).bind fun ox =>
+    if h : ox.t = .word 64 then
+      .ok (ox.comp (bind1N tgt ox.σ (.arrRepeat N.toNat (.word 64)) (.cons (h ▸ ox.res) .nil)))
+    else .error (.call "repeat" [ox.t, .int])
+
+theorem toOption_repeatE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ)
+    (x : ImpExpr) (N : Int) : (repeatE tgt σ x N).toOption = repeatOut tgt σ x N := by
+  simp only [repeatE, repeatOut, atomE, toOption_bind, toOption_orRefuse]
+  congr 1
+  funext ox
+  split <;> rfl
+
 mutual
 /-- **The front with the refusal**: the recursion of `impToNF`, returning in place of `none`
     the first construct the translation does not accept. -/
@@ -368,10 +388,12 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
       (frontOut sigOf tgt ((x, ⟨ov.t, ov.res⟩) :: ov.σ) b).map ov.comp
   | tgt, _, σ, .assign x r => (frontOut sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
-  | tgt, _, σ, .app f args => (frontArgs sigOf σ args).bind fun oa =>
-      orRefuse (callRefusal f oa.as) <| (sigOf f oa.as).map fun r =>
-      ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
-        oa.σ.mapV .there, .here⟩
+  | tgt, _, σ, .app f args =>
+      if f = "repeat" then .error .arrayFill else
+        (frontArgs sigOf σ args).bind fun oa =>
+        orRefuse (callRefusal f oa.as) <| (sigOf f oa.as).map fun r =>
+        ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
+          oa.σ.mapV .there, .here⟩
   | tgt, _, σ, .tuple es => (atomsE σ es).map fun oa =>
       let r := tupleOut tgt oa.as oa.vs
       Out.mk r.fst (tupTy oa.as) (oa.pre.append r.snd.fst) (oa.σ.mapV r.snd.fst.wk) r.snd.snd
@@ -459,8 +481,12 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
     simp only [frontOut, impToNF, ih]
   case app f args iha =>
     intro tgt Γ σ
-    simp only [frontOut, impToNF, toOption_bind, toOption_orRefuse,
-      toOption_frontArgs sigOf args iha]
+    by_cases hf : f = "repeat"
+    · subst hf
+      simp only [frontOut, impToNF_app_repeat_refused sigOf tgt σ args, if_true]
+      rfl
+    · simp only [frontOut, hf, if_false, impToNF_app_call sigOf tgt σ hf,
+        toOption_bind, toOption_orRefuse, toOption_frontArgs sigOf args iha]
   case tuple es _ =>
     intro tgt Γ σ
     simp only [frontOut, impToNF, toOption_map, toOption_atomsE]
@@ -822,10 +848,16 @@ theorem impToNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (e : Imp
     exact ih _ _ _ h
   case app f args iha =>
     intro tgt Γ σ o h
-    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
-    obtain ⟨oa, hoa, r, -, rfl⟩ := h
-    simp [opsPre_append, opsPre, impArgsNF_ilitWord sigOf args iha _ _ hoa, ilitWordOp_mkEN,
-      ilitWordOp]
+    rcases impToNF_app_cases sigOf tgt σ h with ⟨x, N, -, h⟩ | ⟨-, oa, hoa, r, -, rfl⟩
+    · simp only [repeatOut, Option.bind_eq_some_iff] at h
+      obtain ⟨ox, hox, h⟩ := h
+      split at h
+      · cases h
+        simp [Out.comp, bind1N, opsPre_append, opsPre, atomOut_ilitWord σ x hox,
+          ilitWordOp_mkEN, ilitWordOp]
+      · cases h
+    · simp [opsPre_append, opsPre, impArgsNF_ilitWord sigOf args iha _ _ hoa, ilitWordOp_mkEN,
+        ilitWordOp]
   case tuple es _ =>
     intro tgt Γ σ o h
     simp only [impToNF, Option.map_eq_some_iff] at h
