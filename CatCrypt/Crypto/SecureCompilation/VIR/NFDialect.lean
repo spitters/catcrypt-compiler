@@ -24,7 +24,8 @@ The types `uint W`, `sint W`, `int`, `tnil`/`tcons` and `slice` are the types of
 values of the source semantics of `HaxLean` (`.uint`, `.sint`, `.int`, `.tuple`,
 `.array`); the front `impToNF` (`Hax/ImpToNF.lean`) types its bindings with them,
 reads every call as a leaf, and uses the operations `ilit` (a typed integer literal),
-`ctr` and `trip` (the counter and the trip count of a counted loop) and `tnilV`,
+`ctr`, `trip` and `boundInt` (the counter, the trip count and the integer lower bound of
+a counted loop) and `tnilV`,
 `tconsV`, `thead`, `ttail` (tuples).
 
 The structured programs over the dialect are `NFProg nfDialect` (`VIR/NFProg.lean`);
@@ -179,6 +180,9 @@ inductive NfOp where
   /-- The trip count `hi - lo` of a counted loop from the lower bound `lo` and the
       upper bound `hi` of type `t`, as a 64-bit word. -/
   | trip (t : NfTy)
+  /-- The integer `NfTy.toInt? t x` that a value `x` of type `t` denotes, the lower bound of a
+      counted loop read from a variable. -/
+  | boundInt (t : NfTy)
   /-- The empty tuple. -/
   | tnilV
   /-- The tuple of a first component and a tuple of the remaining components. -/
@@ -209,6 +213,7 @@ inductive NfOp where
   | .ilit _ _ | .tnilV => []
   | .ctr => [.int, .word 64]
   | .trip t => [.int, t]
+  | .boundInt t => [t]
   | .tconsV h t => [h, t]
   | .thead h t | .ttail h t => [.tcons h t]
   | .named _ op => op.sig
@@ -228,6 +233,7 @@ inductive NfOp where
   | .call _ _ r => r
   | .ilit t _ => t
   | .ctr | .trip _ => .word 64
+  | .boundInt _ => .int
   | .tnilV => .tnil
   | .tconsV h t => .tcons h t
   | .thead h _ => h
@@ -375,6 +381,7 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) â†’ HVector NfTy.denote op.sig â†
   | .trip t, args =>
       let lo : Int := args.head
       (NfTy.toInt? t args.tail.head).map fun hi => BitVec.ofNat 64 (hi - lo).toNat
+  | .boundInt t, args => NfTy.toInt? t args.head
   | .tnilV, _ => some ()
   | .tconsV _ _, args => some (args.head, args.tail.head)
   | .thead _ _, args => some args.head.1

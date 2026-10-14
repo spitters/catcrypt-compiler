@@ -888,8 +888,9 @@ def uintLit? {Δ : Ctxt catCryptDialect} : (t : NfTy) → Int → Option (OpRes 
     constant by `constBit` and `constUnit`; the subtraction of `64`-bit words
     by `binRes?`; `ctr` and `trip` on a lower bound that reads as the literal `0` as the
     reading of the index and of the upper bound (`Rd.toCount`), and on every other lower
-    bound by `ctrRes` and `tripSub`. -/
-def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
+    bound by `ctrRes` and `tripSub`; `boundInt` as the reading of its argument as a
+    `64`-bit word (`Rd.toCount`). -/
+def catOp{Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (OpRes Δ op.ret)
   | .named _ op, args => catOp σ op args
   | .call f as r, args => catCallRd f as r (σ.rds args)
@@ -908,6 +909,7 @@ def catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
       match σ args.head with
       | .lit 0 _ => (Rd.toCount t (σ args.tail.head)).map tripRes
       | rlo => (Rd.toCount t (σ args.tail.head)).bind (tripSub rlo)
+  | .boundInt t, args => (Rd.toCount t (σ args.head)).map (.rd ∘ Rd.ofWord)
   | _, _ => none
 
 /-! ## 5. The operations simulate -/
@@ -2475,6 +2477,27 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
           omega
         have hres := tripSub_sound W (hag _ lo) hrel h
         rwa [hzz] at hres
+  | boundInt t =>
+      intro args res y h hy
+      rcases args with _ | ⟨a, _ | _⟩
+      change (Rd.toCount t (σ a)).map (OpRes.rd ∘ Rd.ofWord) = some res at h
+      change NfTy.toInt? t (a.lookup V) = some y at hy
+      obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨hrel, hz0, hz1⟩ := toCount_rel W hr (hag _ a) hy
+      have hzz : (((BitVec.ofNat 64 y.toNat).toNat : Nat) : Int) = y := by
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+        omega
+      cases r with
+      | var w =>
+          change y = ((w.lookup W).toNat : Int)
+          change BitVec.ofNat 64 y.toNat = w.lookup W at hrel
+          rw [← hrel, hzz]
+      | lit k hk =>
+          refine ⟨?_, hrel.2⟩
+          have h1 := hrel.1
+          change some (((BitVec.ofNat 64 y.toNat).toNat : Nat) : Int) = some (k : Int) at h1
+          rw [hzz] at h1
+          exact h1
   | bin o w =>
       intro args res y h hy
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩

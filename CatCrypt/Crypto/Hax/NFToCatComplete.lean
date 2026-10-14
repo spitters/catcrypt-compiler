@@ -356,7 +356,7 @@ def nbOp : NfOp → Bool
   | .bin o w => decide (o = .sub) && decide (w = 64)
   | .ilit t v => ilitOk t v
   | .constBit _ | .constUnit | .ctr => true
-  | .trip t => tripOk t
+  | .trip t | .boundInt t => tripOk t
   | _ => false
 
 /-- A variable of a type whose values encode as integers has a word variable. -/
@@ -603,6 +603,12 @@ theorem catOp_isSome_of_nbOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (
       split
       · simp [hr]
       · simpa [hr] using tripSub_isSome _ r'
+  | boundInt t =>
+      intro h args
+      simp only [nbOp] at h
+      rcases args with _ | ⟨a, _ | _⟩
+      change ((Rd.toCount t (σ a)).map (OpRes.rd ∘ Rd.ofWord)).isSome
+      simpa using toCount_isSome h (σ a)
   | _ => intro h; simp [nbOp] at h
 
 /-- The rotations of the scalar table on an integer or a `64`-bit word by a second operand

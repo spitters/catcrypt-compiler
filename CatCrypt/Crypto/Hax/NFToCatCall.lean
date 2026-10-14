@@ -1056,6 +1056,7 @@ theorem stripField_opLeak_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDial
     | ilit t v => intro g hg; cases hg
     | ctr => intro g hg; cases hg
     | trip t => intro g hg; cases hg
+    | boundInt t => intro g hg; cases hg
     | bin o w => intro g hg; cases o <;> cases hg
     | constBit b => intro g hg; cases hg
     | constUnit => intro g hg; cases hg
@@ -1174,6 +1175,7 @@ theorem nfKind_ne_vtCall_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDiale
   | ilit t v => intro _ _ _ g hg; cases hg
   | ctr => intro _ _ _ g hg; cases hg
   | trip t => intro _ _ _ g hg; cases hg
+  | boundInt t => intro _ _ _ g hg; cases hg
   | bin o w => intro _ _ _ g hg; cases o <;> cases hg
   | constBit b => intro _ _ _ g hg; cases hg
   | constUnit => intro _ _ _ g hg; cases hg

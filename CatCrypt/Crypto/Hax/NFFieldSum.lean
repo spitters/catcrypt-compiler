@@ -398,7 +398,7 @@ theorem opArm_sound (T : OpTable) (hT : T.ok = true) {bi : _root_.Hax.Builtins}
   | .mkPair _ _, _, _, h, _, _ | .fst _ _, _, _, h, _, _ | .snd _ _, _, _, h, _, _
   | .ilit _ _, _, _, h, _, _ | .ctr, _, _, h, _, _ | .trip _, _, _, h, _, _
   | .tnilV, _, _, h, _, _ | .tconsV _ _, _, _, h, _, _ | .thead _ _, _, _, h, _, _
-  | .ttail _ _, _, _, h, _, _ => nomatch h
+  | .ttail _ _, _, _, h, _, _ | .boundInt _, _, _, h, _, _ => nomatch h
 
 /-! ## 4. The translation -/
 

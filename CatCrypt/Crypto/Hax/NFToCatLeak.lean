@@ -111,7 +111,7 @@ def nfKind : NfOp → LeakKind
   | .bin o _ => nfBinKind o
   | .const _ _ | .constBit _ | .constUnit | .un _ _ | .cast _ _ | .scast _ _ | .cmp _ _
   | .andB | .orB | .xorB | .eqB | .notB | .arrLit _ _ | .arrRepeat _ _
-  | .mkPair _ _ | .fst _ _ | .snd _ _ | .ilit _ _ | .ctr | .trip _
+  | .mkPair _ _ | .fst _ _ | .snd _ _ | .ilit _ _ | .ctr | .trip _ | .boundInt _
   | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ => .quiet
 
 /-- The call `index` leaks its index argument. -/
@@ -780,6 +780,12 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       · obtain ⟨r, -, h⟩ := Option.bind_eq_some_iff.mp h
         rw [resLeak_quiet W res (tripSub_quiet hP h)]
         rfl
+  | boundInt t =>
+      intro args res h
+      rcases args with _ | ⟨a, _ | _⟩
+      change (Rd.toCount t (σ a)).map (OpRes.rd ∘ Rd.ofWord) = some res at h
+      obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h
+      cases r <;> rfl
   | bin o w =>
       intro args res h
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩

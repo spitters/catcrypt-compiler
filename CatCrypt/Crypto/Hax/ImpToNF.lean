@@ -3088,7 +3088,7 @@ theorem rbRhs_sound (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ρ : RBE
   | .update _ _, _, _, _, h, _ | .arrLit _ _, _, _, _, h, _ | .arrRepeat _ _, _, _, _, h, _
   | .mkPair _ _, _, _, _, h, _ | .fst _ _, _, _, _, h, _ | .snd _ _, _, _, _, h, _
   | .ctr, _, _, _, h, _ | .trip _, _, _, _, h, _ | .thead _ _, _, _, _, h, _
-  | .ttail _ _, _, _, _, h, _ | .named _ _, _, _, _, h, _ => by
+  | .ttail _ _, _, _, _, h, _ | .named _ _, _, _, _, h, _ | .boundInt _, _, _, _, h, _ => by
       simp [rbRhs] at h
 
 /-- What the readback of a binding states about the value `w` of the binding: an emitted
@@ -3207,7 +3207,8 @@ theorem rbBind_sound (bi : Builtins) {Γ : Ctxt nfDialect} {ρ : RBEnv Γ} {env 
   | .eqB, _, _, _, h, _ | .notB, _, _, _, h, _ | .index _ _, _, _, _, h, _
   | .update _ _, _, _, _, h, _ | .arrLit _ _, _, _, _, h, _ | .arrRepeat _ _, _, _, _, h, _
   | .mkPair _ _, _, _, _, h, _ | .fst _ _, _, _, _, h, _ | .snd _ _, _, _, _, h, _
-  | .ctr, _, _, _, h, _ | .thead _ _, _, _, _, h, _ | .ttail _ _, _, _, _, h, _ => by
+  | .ctr, _, _, _, h, _ | .thead _ _, _, _, _, h, _ | .ttail _ _, _, _, _, h, _
+  | .boundInt _, _, _, _, h, _ => by
       simp [rbBind] at h
 
 /-- The names `ns` hold the values `ws` in `env`. -/

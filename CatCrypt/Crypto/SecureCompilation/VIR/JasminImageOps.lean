@@ -590,6 +590,10 @@ theorem catOp_mem {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ
         exact tripRes_mem r'
       · obtain ⟨r', -, h⟩ := Option.bind_eq_some_iff.mp h
         exact tripSub_mem h
+  | boundInt t =>
+      change (Rd.toCount t (σ args.head)).map (OpRes.rd ∘ Rd.ofWord) = some res at h
+      obtain ⟨r', -, rfl⟩ := Option.map_eq_some_iff.mp h
+      trivial
   | bin o w =>
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
       change binRes? o w (σ a) (σ b) = some res at h
