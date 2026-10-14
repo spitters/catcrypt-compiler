@@ -1358,9 +1358,11 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     two-address form by `TwoAddrLegalize.twoAddrBody` on every function body, which
     is the identity on a body that already satisfies it
     (`TwoAddrLegalize.twoAddrBody_of_bodyTiedOk`) and preserves the straight-line
-    semantics off the scratch register (`TwoAddrLegalize.twoAddrBody_lsemStraight`). -/
-def ownedLprog (p : Lprog) : Lprog :=
-  mapBodies TwoAddrLegalize.twoAddrBody
+    semantics off the scratch register (`TwoAddrLegalize.twoAddrBody_lsemStraight`). The
+    legalisation reads the instruction-set data `I`, by default `TwoAddrLegalize.x86Data`. -/
+def ownedLprog (p : Lprog)
+    (I : VIR.LprogIsa.IsaData := TwoAddrLegalize.x86Data) : Lprog :=
+  mapBodies (fun b => TwoAddrLegalize.twoAddrBody b I)
     (LprogGpRealloc.reallocLprog (ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p)))
 
 /-- **The one optimizing compiler back-end.** Every owned emit driver renders its

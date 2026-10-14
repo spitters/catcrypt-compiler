@@ -30,6 +30,7 @@ the bounds of a loop before its body, the arguments of a call before the typing 
   a refusal of the entry, or calls left after the rounds of inlining.
 * `callRefusal` — the refusal of an untyped call: a tagged field head at a modulus without a
   template (`ImpToNF.fieldModOk`), or a call the call typing does not type.
+* `loRefusal`, `loE` — the refusal of a lower bound of a counted loop, and `loOut` with it.
 * `frontOut`, `frontArgs` — `impToNF` and `impArgsNF` with the refusal.
 * `frontRefusal?` — the refusal of `frontOut`, if any.
 * `ilitWordOp`, `opsProg`, `opsPre` — an operation that is not an integer literal or is one in
@@ -126,11 +127,12 @@ inductive Refusal where
   | fieldModulus (f : String) (p : Nat)
   /-- A component of a tuple or an upper bound of a loop that is not a name or a literal. -/
   | operand (head : String)
-  /-- A `forFold` or `forFoldRev` whose lower bound is not an integer literal. -/
+  /-- A `forFold` or `forFoldRev` whose lower bound is neither an integer literal nor a name of
+      a type `loTyOk` accepts, with its head or with the name and its type. -/
   | loopLower (head : String)
-  /-- A `forFold` whose bounds pass neither `boundOk` nor `litBoundOk` (a lower bound outside
-      `[0, 2 ^ 64)` among them), with the type of the upper bound. -/
-  | loopBound (t : NfTy)
+  /-- A `forFold` or `forFoldRev` whose upper bound passes neither `boundOk` nor `litBoundOk`,
+      with the type of the lower bound (`int` for a literal) and that of the upper bound. -/
+  | loopBound (lo t : NfTy)
   /-- A name a loop carries that its body leaves unbound or at another type. -/
   | loopCarried (x : String)
   /-- A conditional whose condition does not have the bit type. -/
@@ -153,8 +155,8 @@ def Refusal.toString : Refusal → String
   | .call f as => s!"call {f}({", ".intercalate (as.map tyName)})"
   | .fieldModulus f p => s!"field call {f} at the modulus {p} without a template"
   | .operand h => s!"non-atom operand ({h})"
-  | .loopLower h => s!"forFold with a non-literal lower bound ({h})"
-  | .loopBound t => s!"loop bound of type {tyName t}"
+  | .loopLower h => s!"loop lower bound ({h}) neither a literal nor a word or unsigned name"
+  | .loopBound lo t => s!"loop bounds of types {tyName lo} and {tyName t}"
   | .loopCarried x => s!"loop-carried {x} changes type"
   | .condType t => s!"condition of type {tyName t}"
   | .armTypes a b => s!"arms of types {tyName a} and {tyName b}"
@@ -252,6 +254,27 @@ def atomRefusal : ImpExpr → Refusal
 /-- `atomOut` with the refusal. -/
 def atomE {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (e : ImpExpr) : Except Refusal (Out Γ) :=
   orRefuse (atomRefusal e) (atomOut σ e)
+
+/-- The refusal of a lower bound of a counted loop that `loOut` does not accept: an integer
+    literal outside `[0, 2 ^ 64)`, a name the environment of names does not bind, a name of a
+    type `loTyOk` refuses, and a lower bound that is neither an integer literal nor a name. -/
+def loRefusal {Γ : Ctxt nfDialect} (σ : NfEnv Γ) : ImpExpr → Refusal
+  | .lit (.int n) => .literal (.int n)
+  | .var x =>
+      match σ.lookup x with
+      | some p => .loopLower s!"{x} : {tyName p.1}"
+      | none => .unbound x
+  | e => .loopLower (exprHead e)
+
+/-- The type of a lower bound of a counted loop: the type of a name, `int` otherwise. -/
+def loTy {Γ : Ctxt nfDialect} (σ : NfEnv Γ) : ImpExpr → NfTy
+  | .var x => ((σ.lookup x).map (·.1)).getD .int
+  | _ => .int
+
+/-- `loOut` with the refusal. -/
+def loE {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (lo : ImpExpr) :
+    Except Refusal (Expr nfDialect Γ NfTy.int) :=
+  orRefuse (loRefusal σ lo) (loOut σ lo)
 
 /-- `argsOut` with the refusal. -/
 def atomsE {Γ : Ctxt nfDialect} (σ : NfEnv Γ) : List ImpExpr → Except Refusal (ArgsOut Γ)
@@ -352,21 +375,21 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .tuple es => (atomsE σ es).map fun oa =>
       let r := tupleOut tgt oa.as oa.vs
       Out.mk r.fst (tupTy oa.as) (oa.pre.append r.snd.fst) (oa.σ.mapV r.snd.fst.wk) r.snd.snd
-  | tgt, _, σ, .forFold i (.lit (.int lo)) hi body =>
-      let oLo := bind1 σ (.ilit .int lo) .nil
+  | tgt, _, σ, .forFold i lo hi body => (loE σ lo).bind fun eLo =>
+      let oLo := loBind σ eLo
       (atomE oLo.σ hi).bind fun oHi =>
-        if boundOk lo oHi.t || litBoundOk lo hi then
+        if boundOk 0 oHi.t || litBoundOk 0 hi then
           let oT := bind1 oHi.σ (.trip oHi.t) (.cons (oHi.pre.wk oLo.res) (.cons oHi.res .nil))
           let W := carried oT.σ i body
           loopE tgt ((oLo.pre.append oHi.pre).append oT.pre) oT.σ
             (oT.pre.wk (oHi.pre.wk oLo.res))
             oT.res none i (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
             (fun σB => frontOut sigOf none σB body)
-        else .error (.loopBound oHi.t)
-  | tgt, _, σ, .forFoldRev i (.lit (.int lo)) hi body =>
-      let oLo := bind1 σ (.ilit .int lo) .nil
+        else .error (.loopBound (loTy σ lo) oHi.t)
+  | tgt, _, σ, .forFoldRev i lo hi body => (loE σ lo).bind fun eLo =>
+      let oLo := loBind σ eLo
       (atomE oLo.σ hi).bind fun oHi =>
-        if boundOk lo oHi.t || litBoundOk lo hi then
+        if boundOk 0 oHi.t || litBoundOk 0 hi then
           let oT := bind1 oHi.σ (.trip oHi.t) (.cons (oHi.pre.wk oLo.res) (.cons oHi.res .nil))
           let oOne := bind1 oT.σ (.ilit (.word 64) 1) .nil
           let oM := bind1 oOne.σ (.bin .sub 64) (.cons (oOne.pre.wk oT.res) (.cons oOne.res .nil))
@@ -375,15 +398,13 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
             oM.σ (oM.pre.wk (oOne.pre.wk (oT.pre.wk (oHi.pre.wk oLo.res))))
             (oM.pre.wk (oOne.pre.wk oT.res)) (some oM.res) i (W.map (·.1)) (entriesVars W).1
             (entriesVars W).2 (fun σB => frontOut sigOf none σB body)
-        else .error (.loopBound oHi.t)
+        else .error (.loopBound (loTy σ lo) oHi.t)
   | _, _, σ, .ifThenElse c a b => (frontOut sigOf none σ c).bind fun oc =>
       if h : oc.t = NfTy.bit then
         let W := condCarried oc.σ a b
         condE oc.pre oc.σ (h ▸ oc.res) (W.map (·.1)) (entriesVars W).1
           (frontOut sigOf none oc.σ a) (frontOut sigOf none oc.σ b)
       else .error (.condType oc.t)
-  | _, _, _, .forFold _ lo _ _ => .error (.loopLower (exprHead lo))
-  | _, _, _, .forFoldRev _ lo _ _ => .error (.loopLower (exprHead lo))
   | _, _, _, e => .error (.construct (exprHead e))
 
 /-- `impArgsNF` with the refusal. -/
@@ -445,38 +466,30 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
     simp only [frontOut, impToNF, toOption_map, toOption_atomsE]
   case forFold i lo hi body _ _ ihb =>
     intro tgt Γ σ
-    cases lo with
-    | lit l =>
-      cases l with
-      | int n =>
-        simp only [frontOut, impToNF, toOption_bind, atomE, toOption_orRefuse]
-        congr 1
-        funext oHi
-        split
-        · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
-          congr 1
-          funext Δ σB
-          exact ihb _ _
-        · rfl
-      | _ => rfl
-    | _ => rfl
+    simp only [frontOut, impToNF, toOption_bind, loE, atomE, toOption_orRefuse]
+    congr 1
+    funext eLo
+    congr 1
+    funext oHi
+    split
+    · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
+      congr 1
+      funext Δ σB
+      exact ihb _ _
+    · rfl
   case forFoldRev i lo hi body _ _ ihb =>
     intro tgt Γ σ
-    cases lo with
-    | lit l =>
-      cases l with
-      | int n =>
-        simp only [frontOut, impToNF, toOption_bind, atomE, toOption_orRefuse]
-        congr 1
-        funext oHi
-        split
-        · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
-          congr 1
-          funext Δ σB
-          exact ihb _ _
-        · rfl
-      | _ => rfl
-    | _ => rfl
+    simp only [frontOut, impToNF, toOption_bind, loE, atomE, toOption_orRefuse]
+    congr 1
+    funext eLo
+    congr 1
+    funext oHi
+    split
+    · refine (toOption_loopE _ _ _ _ _ _ _ _ _ _ _).trans ?_
+      congr 1
+      funext Δ σB
+      exact ihb _ _
+    · rfl
   case ifThenElse c a b ihc iha ihb =>
     intro tgt Γ σ
     simp only [frontOut, impToNF, toOption_bind, ihc]
@@ -727,6 +740,29 @@ theorem lo_range_of_bound {lo : Int} {t : NfTy} {hi : ImpExpr}
         simp only [litBoundOk, Bool.and_eq_true, decide_eq_true_eq] at hb
         exact hb.1
 
+/-- The binding of a lower bound `loOut` accepts satisfies `ilitWordOp`: an integer literal
+    in `[0, 2 ^ 64)` at the integer type, or `boundInt`. -/
+theorem loOut_ilitWord {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (lo : ImpExpr)
+    {e : Expr nfDialect Γ NfTy.int} (h : loOut σ lo = some e) :
+    opsPre ilitWordOp (loBind σ e).pre = true := by
+  match lo, h with
+  | .lit (.int n), h =>
+      simp only [loOut] at h
+      split at h
+      · rename_i hn
+        cases h
+        have h1 : n < 2 ^ 64 := hn.2
+        simp [loBind, opsPre, mkE, ilitWordOp, hax64NFWordTy, hn.1]
+        omega
+      · cases h
+  | .var x, h =>
+      simp only [loOut, Option.bind_eq_some_iff] at h
+      obtain ⟨p, -, h⟩ := h
+      split at h
+      · cases h
+        simp [loBind, opsPre, mkE, ilitWordOp]
+      · cases h
+
 /-- The prefix of `impArgsNF` satisfies `ilitWordOp` when the prefix of `impToNF` on each
     argument does. -/
 theorem impArgsNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (args : List ImpExpr)
@@ -797,39 +833,23 @@ theorem impToNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (e : Imp
     simp only [opsPre_append, argsOut_ilitWord es σ hoa, tupleOut_ilitWord, Bool.and_self]
   case forFold i lo hi body _ _ ihb =>
     intro tgt Γ σ o h
-    cases lo with
-    | lit l =>
-      cases l with
-      | int lo =>
-        simp only [impToNF, Option.bind_eq_some_iff] at h
-        obtain ⟨oHi, hHi, h⟩ := h
-        split at h
-        · rename_i hb
-          obtain ⟨h0, h1⟩ := lo_range_of_bound hb
-          refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
-          simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, ilitWordOp,
-            hax64NFWordTy, h0, h1, decide_true, Bool.true_or, Bool.and_self]
-        · cases h
-      | _ => simp [impToNF] at h
-    | _ => simp [impToNF] at h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
+    split at h
+    · refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
+      simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, loOut_ilitWord σ lo hLo,
+        ilitWordOp, Bool.and_self]
+    · cases h
   case forFoldRev i lo hi body _ _ ihb =>
     intro tgt Γ σ o h
-    cases lo with
-    | lit l =>
-      cases l with
-      | int lo =>
-        simp only [impToNF, Option.bind_eq_some_iff] at h
-        obtain ⟨oHi, hHi, h⟩ := h
-        split at h
-        · rename_i hb
-          obtain ⟨h0, h1⟩ := lo_range_of_bound hb
-          refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
-          simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, ilitWordOp,
-            hax64NFWordTy, h0, h1, decide_true, Bool.true_or, Bool.and_self]
-          decide
-        · cases h
-      | _ => simp [impToNF] at h
-    | _ => simp [impToNF] at h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
+    split at h
+    · refine loopOut_ilitWord _ _ _ _ _ _ _ _ _ _ _ ?_ (fun σB o' ho' => ihb _ σB o' ho') h
+      simp only [opsPre_append, opsPre_bind1, atomOut_ilitWord _ _ hHi, loOut_ilitWord σ lo hLo,
+        ilitWordOp, hax64NFWordTy, Bool.and_self]
+      decide
+    · cases h
   case ifThenElse c a b ihc iha ihb =>
     intro tgt Γ σ o h
     simp only [impToNF, Option.bind_eq_some_iff] at h

@@ -43,6 +43,10 @@ is kept, `bodyTiedOk` reports it, and the printer refuses it.
   identity on an instruction and on a body that satisfy the precondition.
 * `legalizeInstr_tiedOk`: every instruction `legalizeInstr` emits satisfies the
   precondition or is the input instruction.
+* `legalizeInstr_eq_or_tiedOk`, `bodyTiedOk_twoAddrBody`: legalisation returns the input
+  instruction alone or instructions that all satisfy the precondition, so a body each of
+  whose instructions satisfies the precondition or is rewritten legalises to a body that
+  satisfies it.
 * `scratchRoute_lsem`: the scratch route computes the operation and restores the
   scratch register.
 * `legalizeInstr_lsem`: one instruction and its legalisation, run from states that
@@ -195,8 +199,8 @@ theorem twoAddrBody_of_bodyTiedOk (body : Lcmd) (h : bodyTiedOk body = true) :
 
 /-- Every instruction `legalizeInstr` emits satisfies the printer's precondition or
     is the input instruction. -/
-theorem legalizeInstr_tiedOk (ok : Bool) (i : Linstr) :
-    ∀ j ∈ legalizeInstr ok i, tiedOk j.li_i = true ∨ j = i := by
+theorem legalizeInstr_tiedOk (ok : Bool) (i : Linstr) (I : IsaData := x86Data) :
+    ∀ j ∈ legalizeInstr ok i I, tiedOk j.li_i I = true ∨ j = i := by
   intro j hj
   unfold legalizeInstr at hj
   split at hj
@@ -220,6 +224,36 @@ theorem legalizeInstr_tiedOk (ok : Bool) (i : Linstr) :
                 · simp at hj; exact Or.inr hj
     · simp at hj; exact Or.inr hj
   · simp at hj; exact Or.inr hj
+
+/-- Legalisation of one instruction returns the instruction alone, or instructions that all
+    satisfy the printer's precondition. -/
+theorem legalizeInstr_eq_or_tiedOk (ok : Bool) (i : Linstr) (I : IsaData := x86Data) :
+    legalizeInstr ok i I = [i] ∨ ∀ j ∈ legalizeInstr ok i I, tiedOk j.li_i I = true := by
+  generalize hL : legalizeInstr ok i I = L
+  unfold legalizeInstr at hL
+  repeat' split at hL
+  all_goals subst hL
+  all_goals first
+    | exact Or.inl rfl
+    | (right; intro j hj
+       simp only [scratchRoute, List.mem_cons, List.not_mem_nil, or_false] at hj
+       rcases hj with rfl | rfl | rfl | rfl | rfl <;> simp [tiedOk])
+
+/-- **Legalisation of a body satisfies the printer's precondition** when every instruction
+    satisfies it or is rewritten by `legalizeInstr` at the scratch flag `bodyAvoids body I`. -/
+theorem bodyTiedOk_twoAddrBody (body : Lcmd) (I : IsaData := x86Data)
+    (h : ∀ i ∈ body, tiedOk i.li_i I = true ∨ legalizeInstr (bodyAvoids body I) i I ≠ [i]) :
+    bodyTiedOk (twoAddrBody body I) I = true := by
+  simp only [bodyTiedOk, twoAddrBody, LegalizeShiftImm.legalizeBody, List.all_eq_true,
+    List.mem_flatMap]
+  rintro j ⟨i, hi, hj⟩
+  rcases legalizeInstr_eq_or_tiedOk (bodyAvoids body I) i I with he | hall
+  · rw [he, List.mem_singleton] at hj
+    subst hj
+    rcases h _ hi with ht | hne
+    · exact ht
+    · exact absurd he hne
+  · exact hall j hj
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
   (isIndexed linstrRDirect lcmdDirect lcmdDirect_iff) in
