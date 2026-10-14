@@ -111,8 +111,14 @@ def sha512SmallSigma1Cat : Com catCryptDialect [T64] T64 :=
   (Com.var (Expr.mk (CatCryptOp.bvXor 64) rfl (.cons .here (.cons (.there .here) .nil)))
   (Com.ret .here)))))
 
-/-- `bvShiftR` waist: the dialect logical-right-shift denotation. -/
-def shShrW (k : Nat) (a : BitVec 64) : BitVec 64 := BitVec.ushiftRight a k
+/-- `bvShiftR 64 k` waist: the dialect denotation, a logical right shift by
+    `shiftMask 64 k`. -/
+def shShrW (k : Nat) (a : BitVec 64) : BitVec 64 := BitVec.ushiftRight a (shiftMask 64 k)
+
+/-- At a count below `64` the `bvShiftR 64 k` waist is the plain logical right shift. -/
+theorem shShrW_of_lt {k : Nat} (hk : k < 64) (a : BitVec 64) :
+    shShrW k a = BitVec.ushiftRight a k := by
+  rw [shShrW, shiftMask_of_lt hk]
 
 /-- Peel one `bvShiftR 64 k` binding. -/
 theorem denote_var_bvShiftR {Γ : Ctxt catCryptDialect} {k : Nat} {s : CryptoTy}

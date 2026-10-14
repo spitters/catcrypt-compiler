@@ -228,14 +228,14 @@ abbrev gf256StepAccCom (k : Nat) : Com catCryptDialect stepΓ T8 :=
 /-- **One bit-serial GF(2⁸) step denotes to `gf256StepW`'s accumulator update.**
     The committed GF(2⁸) capability — the masked conditional-add — realised on the
     high dialect, proved by the AES `bvShiftR`/`bvAnd`/`bvSub`/`bvXor` peel lemmas
-    plus the lookup resolvers. -/
-theorem gf256StepAccCom_denote (k : Nat) (acc a b : BitVec 8) :
+    plus the lookup resolvers, at a bit index `k < 8`. -/
+theorem gf256StepAccCom_denote {k : Nat} (hk : k < 8) (acc a b : BitVec 8) :
     (gf256StepAccCom k).denote (stepInV acc a b) = (gf256StepW k acc a b).1 := by
   rw [gf256StepAccCom,
      denote_var_bvShiftR, denote_var_bvAnd, denote_var_bvSub,
      denote_var_bvAnd, denote_var_bvXor]
   simp only [Com.denote, lookup_here_extend, lookup_there_extend]
-  simp only [gf256StepW, shrW, andW, subW, xorW]
+  simp only [gf256StepW, shrW_of_lt hk, andW, subW, xorW]
   rfl
 
 /-! ## 4. The MAC kernel: accumulate over the GF(2⁸) product
