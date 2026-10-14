@@ -72,9 +72,11 @@ extension (SHA/Keccak/ChaCha/bignum); the immediate-shift and bignum-ALU
 (`mulhi`/`addCarry*`) rows complete the word-native scalar op set, lowering
 instead of surviving as opaque leaves; the `bvEq`/`ite` rows carry the word
 select as a comparison feeding a conditional move; the bit rows carry a bit as a
-1-bit register. Every other `CatCryptOp` returns `none`:
+1-bit register. `toJExprD` returns `none` for every other `CatCryptOp`:
 `bvNot`/`bvAdd64`/`bvAdc`/`ite` at a type other than a word or a bit/`bitToSword`/the
-pair/sum ops/the static-index memref ops/`sampleBit`/`sampleBv`.
+pair/sum ops/the static-index memref ops/`sampleBit`/`sampleBv`. Of these, `toJMultiD`
+lowers `bvNot` and `bitToSword` to multi-binding blocks, and `catToJasmin` goes through
+`toJBlockD`, which tries `toJMultiD` first.
 
 ## Relation to `catToJasmin`
 

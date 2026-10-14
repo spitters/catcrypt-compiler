@@ -72,8 +72,8 @@ inductive CatCryptOp where
   -- `bvRor w n` / `bvRol w n`: rotate by a compile-time immediate `n`. `bvRor`
   -- denotes `BitVec.rotateRight` (SHA-512 Σ/σ, Keccak ρ, ChaCha diagonal
   -- rotates) and lowers to jasmin `rorImm w n`. `bvRol` denotes
-  -- `BitVec.rotateLeft`; jasmin has no native scalar left-rotate op, so it is
-  -- denote-only in the seam (see `DialectToJasminCom`).
+  -- `BitVec.rotateLeft`; jasmin has no native scalar left-rotate op, so
+  -- `DialectToJasminCom` lowers it to the right rotate `rorImm w ((w - n % w) % w)`.
   | bvRor (w : Nat) (n : Nat)
   | bvRol (w : Nat) (n : Nat)
   -- `bvShiftRA w n`: arithmetic (sign-extending) right shift by a compile-time
