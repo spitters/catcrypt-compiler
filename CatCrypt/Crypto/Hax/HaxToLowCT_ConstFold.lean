@@ -7,6 +7,7 @@ module
 
 public meta import HaxLean.AST
 public import HaxLean.AST
+public import HaxLean.Semantics
 
 
 @[expose] public section
@@ -152,16 +153,40 @@ in ML-KEM and ML-DSA bounds (`N`, `K`, `Q`, `L`, `ETA`, `D`, etc.) are
 all positive, so no semantic divergence arises in practice.
 -/
 
+/-- The base names of the checked arithmetic operators that the extraction
+    tags with a width (`Add#64`, `Div#size`, `Sub#i32`). -/
+def taggedArithBases : List String := ["Add", "Sub", "Mul", "Div", "Rem"]
+
+/-- The width tags of the checked arithmetic operators: the unsigned widths
+    `8` to `128` and `size`, and the signed widths `i8` to `i128`, `isize`,
+    `u128`. -/
+def arithWidthTags : List String :=
+  ["8", "16", "32", "64", "128", "size",
+   "i8", "i16", "i32", "i64", "i128", "isize", "u128"]
+
+/-- Whether `f` is a checked arithmetic operator with a width tag: a base of
+    `taggedArithBases`, `#`, and a tag of `arithWidthTags`. -/
+def isTaggedArith (f : String) : Bool :=
+  taggedArithBases.any fun b => arithWidthTags.any fun t => f == b ++ "#" ++ t
+
 /-- Try to reduce a single `.app` of an arithmetic operator on two
     integer literals. Returns `.lit (.int v)` on success; `none` if the
     args aren't both `.lit (.int _)` or the op isn't recognized.
 
-    Division and remainder by zero are deliberately *not* folded —
-    leaving the original `.app` in place is safer than introducing a
-    fold that would change behaviour at runtime. -/
+    A width-tagged operator (`isTaggedArith`) is folded to the value that the
+    builtin table `Hax.hax64WordOps` gives it on the two literals, and is left
+    in place where the table has no integer value: an operand or the result
+    outside the range of the width, or a zero divisor, where Rust panics.
+
+    Untagged division and remainder by zero are *not* folded. -/
 def tryArithFold (f : String) (args : List ImpExpr) : Option ImpExpr :=
   match args with
   | [.lit (.int a), .lit (.int b)] =>
+      if isTaggedArith f then
+        match Hax.hax64WordOps f [.int a, .int b] with
+        | some (.int v) => some (.lit (.int v))
+        | _ => none
+      else
       match f with
       | "Add" | "add" => some (.lit (.int (a + b)))
       | "Sub" | "sub" => some (.lit (.int (a - b)))
@@ -170,6 +195,44 @@ def tryArithFold (f : String) (args : List ImpExpr) : Option ImpExpr :=
       | "Rem" | "rem" => if b = 0 then none else some (.lit (.int (a % b)))
       | _ => none
   | _ => none
+
+/-- **Soundness of the tagged fold**: a fold of a width-tagged operator on two
+    literals is a literal whose value the builtin table `Hax.hax64Builtins`
+    gives the operator on the two integers. -/
+theorem tryArithFold_tagged_sound {f : String} {a b : Int} {e : ImpExpr}
+    (hf : isTaggedArith f = true)
+    (h : tryArithFold f [.lit (.int a), .lit (.int b)] = some e) :
+    ∃ v : Int, e = .lit (.int v) ∧ Hax.hax64Builtins f [.int a, .int b] = some (.int v) := by
+  simp only [tryArithFold, hf, if_true] at h
+  split at h
+  · rename_i v hv
+    exact ⟨v, (Option.some.inj h).symm, by simp [Hax.hax64Builtins, hv]⟩
+  · simp at h
+
+/-- **Completeness of the tagged fold**: a width-tagged operator to which the
+    builtin table `Hax.hax64WordOps` gives an integer value on two literals is
+    folded to that value. -/
+theorem tryArithFold_tagged_complete {f : String} {a b v : Int}
+    (hf : isTaggedArith f = true)
+    (hv : Hax.hax64WordOps f [.int a, .int b] = some (.int v)) :
+    tryArithFold f [.lit (.int a), .lit (.int b)] = some (.lit (.int v)) := by
+  simp [tryArithFold, hf, hv]
+
+/-- `Div#size` on a dividend in `[0, 2^64)` and a divisor in `(0, 2^64)` is
+    folded to the quotient. -/
+theorem tryArithFold_divSize {a b : Int} (ha : 0 ≤ a) (ha' : a < 2 ^ 64) (hb : 0 < b)
+    (hb' : b < 2 ^ 64) :
+    tryArithFold "Div#size" [.lit (.int a), .lit (.int b)] = some (.lit (.int (a / b))) :=
+  tryArithFold_tagged_complete (by simp [isTaggedArith, taggedArithBases, arithWidthTags]) (by
+    rw [Hax.hax64WordOps_divSize, Hax.uintDivOp, if_pos ⟨ha, ha', hb, hb'⟩])
+
+/-- `Div#32` on a dividend in `[0, 2^32)` and a divisor in `(0, 2^32)` is
+    folded to the quotient. -/
+theorem tryArithFold_div32 {a b : Int} (ha : 0 ≤ a) (ha' : a < 2 ^ 32) (hb : 0 < b)
+    (hb' : b < 2 ^ 32) :
+    tryArithFold "Div#32" [.lit (.int a), .lit (.int b)] = some (.lit (.int (a / b))) :=
+  tryArithFold_tagged_complete (by simp [isTaggedArith, taggedArithBases, arithWidthTags]) (by
+    rw [Hax.hax64WordOps_div32, Hax.uintDivOp, if_pos ⟨ha, ha', hb, hb'⟩])
 
 /-- Apply `foldArith` recursively over an ImpExpr.  Bottom-up: reduce
     children first, then attempt to fold the current node.
