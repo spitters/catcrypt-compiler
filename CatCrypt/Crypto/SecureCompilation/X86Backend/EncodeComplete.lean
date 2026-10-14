@@ -59,6 +59,8 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
   unlegalised instruction as the hypothesis of the fall-through arm.
 * `loadCSE_encodable`: `loadCSE` maps a body of encodable instructions to a body of
   encodable instructions, at the same frame size, spill width and save block.
+* `encodable_of_legal_x86`, `encodable_of_legalized_x86`: a body of instructions with legal
+  forms (`LegalForm`) is encodable, and so is its forwarding by `loadCSE`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeComplete
@@ -67,7 +69,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (isMovMnem IsaEncoder AllocOpI
-  EncoderComplete)
+  EncoderComplete LegalForm)
 
 /-! ## Non-empty byte forms -/
 
@@ -599,6 +601,21 @@ theorem loadCSE_encodable {F W Q : Nat} (body : List Linstr)
     (hb : ∀ i ∈ body, encodableLinstrR F W i.li_i Q = true) :
     ∀ i ∈ loadCSE body, encodableLinstrR F W i.li_i Q = true :=
   x86Enc_complete.loadCSE_encodableI (c := (F, W, Q)) body hb
+
+/-- **A body whose instructions have legal forms is encodable** at the x86 back end, in the
+    context of the body under the x86 encoder. -/
+theorem encodable_of_legal_x86 {body : Lcmd}
+    (hb : ∀ i ∈ body, LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx body) i.li_i) :
+    encodableLcmd body = true :=
+  x86Enc_complete.encodable_of_legal hb
+
+/-- **The legalised body after load forwarding is encodable** at the x86 back end: a body of
+    instructions with legal forms in the x86 context of its forwarded body is forwarded by
+    `loadCSE` to a body accepted by `encodableLcmd`. -/
+theorem encodable_of_legalized_x86 (body : List Linstr)
+    (hb : ∀ i ∈ body, LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx (loadCSE body)) i.li_i) :
+    encodableLcmd (loadCSE body) = true :=
+  x86Enc_complete.encodable_of_legalized body hb
 
 end LoadCSE
 
