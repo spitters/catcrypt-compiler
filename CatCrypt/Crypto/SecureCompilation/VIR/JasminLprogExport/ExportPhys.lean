@@ -122,7 +122,7 @@ def numVecRegs : Nat := vectorRegNames.length
     vector spill on overflow). A GP spill index `numGPRegs + cell` reaches it at
     `cell ≥ vectorBase - numGPRegs`; `physRegNameC` renders such an index by the
     class of its slot. -/
-def vectorBase : Nat := 1000
+def vectorBase : Nat := 4294967296
 
 /-- Render a physical slot index as an operand name over the allocation pool
     `abi.allocPool` (at `x86Abi`, `gpRegNames`, `numGPRegs = 13`).

@@ -436,7 +436,7 @@ theorem mixedClassBody_vecSlots :
     vector slots land in `vectorBase + 0/1/2` (→ `XMM0`,`XMM1`,`XMM2`). No GP slot
     reaches `vectorBase`, no vector slot stays below it — disjoint pools. -/
 theorem mixedClassBody_table :
-    (bodyPhysTable (mixedClassBody ())).toList = [0, 1, 2, 2, 1000, 1001, 1002, 1002] := by
+    (bodyPhysTable (mixedClassBody ())).toList = [0, 1, 2, 2, 4294967296, 4294967297, 4294967298, 4294967298] := by
   native_decide
 
 -- `mixedClassBody_expected` moved out of Lean: the instruction text is pinned by
