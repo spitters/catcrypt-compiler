@@ -266,7 +266,7 @@ theorem tiedInstr_parseAgrees (i : Linstr) (h : tiedInstr i = true) :
 
 theorem shiftCount_ofNat_lt {n : Nat} (h : n < 64) : shiftCount (BitVec.ofNat 64 n) = n := by
   have h64 : n < 2 ^ 64 := by omega
-  simp only [shiftCount, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h64, Nat.mod_eq_of_lt h]
+  simp only [shiftCount, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h64, VIR.shiftMask_of_lt h]
 
 /-- The data word of an immediate-count `shl`/`shr`/`sar` at a count below `64`
     is the plain shift. -/
@@ -305,8 +305,8 @@ theorem mov_mem (t : JState 64) (d : String) (o : JOperand) :
 /-! ## 5. The `lsem` value of a count-in-mnemonic shift -/
 
 /-- `applyOpn` on a one-source mnemonic outside the named one-source opcodes is
-    the shift or rotate `parseImmShiftMnem` decodes. -/
-theorem applyOpn_one_of_parse (opn att : String) (k wd : Nat)
+    the shift or rotate `parseImmShiftMnem` decodes, at a count below `64`. -/
+theorem applyOpn_one_of_parse (opn att : String) (k wd : Nat) (hk : k < 64)
     (hne : opn ∉ ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX"])
     (hp : parseImmShiftMnem opn = some (att, k, wd)) (a : BitVec 64) :
     applyOpn opn [a]
@@ -318,7 +318,7 @@ theorem applyOpn_one_of_parse (opn att : String) (k wd : Nat)
   simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hne
   obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hne
   unfold applyOpn
-  split <;> simp_all
+  split <;> simp_all [Nat.mod_eq_of_lt hk]
 
 /-- A mnemonic `parseShiftMnem` reads begins, after the tag strip, with `SHL:` or
     `SHR:`, so its stripped form is none of the named one-source opcodes. -/
@@ -367,10 +367,10 @@ theorem strip_not_unary_of_immShiftOf {m : String} {k : ShiftKind} {n : Nat}
 /-- The `lsem` value of a tied shift mnemonic on one source word, under the parse
     hypothesis. -/
 theorem applyOpn_immShift {m : String} {k : ShiftKind} {n : Nat}
-    (h : immShiftOf m = some (k, n)) (hpa : ShiftParseAgrees m) (a : BitVec 64) :
+    (h : immShiftOf m = some (k, n)) (hn : n < 64) (hpa : ShiftParseAgrees m) (a : BitVec 64) :
     applyOpn (stripWidthTag m) [a] = some (k.word n a) := by
   obtain ⟨wd, hp⟩ := hpa k n h
-  rw [applyOpn_one_of_parse _ _ _ _ (strip_not_unary_of_immShiftOf h) hp]
+  rw [applyOpn_one_of_parse _ _ _ _ hn (strip_not_unary_of_immShiftOf h) hp]
   cases k <;> simp [ShiftKind.att, ShiftKind.word]
 
 /-- `lsemStep` on a one-source `Lopn` over a register or immediate is the word-op
@@ -519,7 +519,7 @@ theorem setcc_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
     `SAR:<n>:64` through `movShift_case`). -/
 theorem shift_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
     (hc : LJCorrM ls s) (d m : String) (src : LOperand) (k : ShiftKind) (n : Nat)
-    (hsrc : tiedOperand src = true) (hk : immShiftOf m = some (k, n))
+    (hsrc : tiedOperand src = true) (hk : immShiftOf m = some (k, n)) (hn : n < 64)
     (hpa : ShiftParseAgrees m) (g : List (JInstr 64))
     (hlow : lowerCov6 frame spillW (.Lopn [.reg d] m [src]) qsaveB = some g)
     (hg : ∀ r, (runBlock s g).regs r
@@ -529,7 +529,7 @@ theorem shift_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
       lsemStep (.Lopn [.reg d] m [src]) ls = some ls' ∧ LJCorrM ls' (runBlock s g) := by
   have hstep : lsemStep (.Lopn [.reg d] m [src]) ls
       = some ((ls.setReg d (k.word n (evalOperand ls src))).nextPc) := by
-    exact lsemStep_one d m src hsrc ls _ (applyOpn_immShift hk hpa _)
+    exact lsemStep_one d m src hsrc ls _ (applyOpn_immShift hk hn hpa _)
   refine ⟨g, _, hlow, hstep, ?_⟩
   rw [evalOperand_agree hc.1 src hsrc]
   exact LJCorrM_write hc d _ _ hg hgm
@@ -551,11 +551,11 @@ theorem immShift_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 6
     cases Option.some.inj hk'
     cases src with
     | reg s0 =>
-      exact shift_case frame spillW qsaveB hc d m (.reg s0) .shl n hsrc hk hpa _
+      exact shift_case frame spillW qsaveB hc d m (.reg s0) .shl n hsrc hk hn hpa _
         (by simpa using lower_shift_reg frame spillW qsaveB d m s0 true n hp hsar h1 h2)
         (fun r => by rw [shiftBlockReg_regs .shl hn]; rfl) (shiftBlockReg_mem _ _ _ _ _)
     | imm v =>
-      exact shift_case frame spillW qsaveB hc d m (.imm v) .shl n hsrc hk hpa _
+      exact shift_case frame spillW qsaveB hc d m (.imm v) .shl n hsrc hk hn hpa _
         (by simpa using lower_shift_imm frame spillW qsaveB d m v true n hp hsar h1 h2)
         (fun r => by rw [movShiftBlock_regs .shl hn]; rfl) (movShiftBlock_mem _ _ _ _ _)
     | arr _ _ => simp [tiedOperand] at hsrc
@@ -565,11 +565,11 @@ theorem immShift_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 6
     cases Option.some.inj hk'
     cases src with
     | reg s0 =>
-      exact shift_case frame spillW qsaveB hc d m (.reg s0) .shr n hsrc hk hpa _
+      exact shift_case frame spillW qsaveB hc d m (.reg s0) .shr n hsrc hk hn hpa _
         (by simpa using lower_shift_reg frame spillW qsaveB d m s0 false n hp hsar h1 h2)
         (fun r => by rw [shiftBlockReg_regs .shr hn]; rfl) (shiftBlockReg_mem _ _ _ _ _)
     | imm v =>
-      exact shift_case frame spillW qsaveB hc d m (.imm v) .shr n hsrc hk hpa _
+      exact shift_case frame spillW qsaveB hc d m (.imm v) .shr n hsrc hk hn hpa _
         (by simpa using lower_shift_imm frame spillW qsaveB d m v false n hp hsar h1 h2)
         (fun r => by rw [movShiftBlock_regs .shr hn]; rfl) (movShiftBlock_mem _ _ _ _ _)
     | arr _ _ => simp [tiedOperand] at hsrc
@@ -577,7 +577,7 @@ theorem immShift_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 6
   · -- SAR:<n>:64
     rename_i hp hsar
     cases Option.some.inj hk'
-    exact shift_case frame spillW qsaveB hc d m src .sar n hsrc hk hpa _
+    exact shift_case frame spillW qsaveB hc d m src .sar n hsrc hk hn hpa _
       (lower_sar frame spillW qsaveB d m src n hsrc hp hsar h1 h2)
       (fun r => by rw [movShiftBlock_regs .sar hn]) (movShiftBlock_mem _ _ _ _ _)
   · exact absurd hk' (by simp)

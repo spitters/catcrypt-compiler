@@ -184,6 +184,16 @@ def eqLitIdiomCom {w : Nat} {Γ : Ctxt jasminDialect}
     synthesis (the `TyDenote` unfold is not reducible). -/
 theorem eqLitIdiom_denote {w : Nat} {Γ : Ctxt jasminDialect}
     (a : Ctxt.Var Γ (.reg w)) (k : Nat) (V : Ctxt.Valuation Γ) :
-    (eqLitIdiomCom a k).denote V = isEqLitIdiom (Ctxt.Var.lookup a V) k := rfl
+    (eqLitIdiomCom a k).denote V = isEqLitIdiom (Ctxt.Var.lookup a V) k := by
+  have hm : shiftMask w (w - 1) = w - 1 := by
+    rcases Nat.eq_zero_or_pos w with rfl | hw
+    · rfl
+    · exact shiftMask_of_lt (by omega)
+  have hL : (eqLitIdiomCom a k).denote V =
+      (fun y : BitVec w => 1#w - (((y ^^^ BitVec.ofNat w k) |||
+        (0#w - (y ^^^ BitVec.ofNat w k))) >>> shiftMask w (w - 1)))
+        (Ctxt.Var.lookup a V) := rfl
+  rw [hL, hm]
+  rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR

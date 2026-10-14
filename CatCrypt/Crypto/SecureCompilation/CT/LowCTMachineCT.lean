@@ -1176,13 +1176,13 @@ theorem x86_SARX_ofNat (a c : Nat) (hc : c < 64) :
       BitVec.ofNat 64 (sexprOfSignedInt64 (sexprToSignedInt64 a >>> c)) := by
   simp only [x86_SARX, wsar, shiftCount, BitVec.toNat_ofNat, sexprOfSignedInt64,
     sexprToSignedInt64, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), Nat.mod_eq_of_lt hc,
+  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), VIR.shiftMask_of_lt hc,
     show min 64 c = c by omega, ← BitVec.toInt_sshiftRight, BitVec.ofInt_toInt]
 
 theorem x86_SHRX_ofNat (a c : Nat) (ha : a < 2 ^ 64) (hc : c < 64) :
     x86_SHRX (BitVec.ofNat 64 a) (BitVec.ofNat 64 c) = BitVec.ofNat 64 (a >>> c) := by
   simp only [x86_SHRX, wshr, shiftCount, BitVec.toNat_ofNat]
-  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), Nat.mod_eq_of_lt hc,
+  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), VIR.shiftMask_of_lt hc,
     show min 64 c = c by omega]
   apply BitVec.eq_of_toNat_eq
   simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.mod_eq_of_lt ha]
@@ -1191,7 +1191,7 @@ theorem x86_SHRX_ofNat (a c : Nat) (ha : a < 2 ^ 64) (hc : c < 64) :
 theorem x86_SHLX_ofNat (a c : Nat) (hc : c < 64) :
     x86_SHLX (BitVec.ofNat 64 a) (BitVec.ofNat 64 c) = BitVec.ofNat 64 (a <<< c) := by
   simp only [x86_SHLX, wshl, shiftCount, BitVec.toNat_ofNat]
-  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), Nat.mod_eq_of_lt hc,
+  rw [Nat.mod_eq_of_lt (by omega : c < 2 ^ 64), VIR.shiftMask_of_lt hc,
     show min 64 c = c by omega]
   apply BitVec.eq_of_toNat_eq
   simp [Nat.shiftLeft_eq, Nat.mul_mod]

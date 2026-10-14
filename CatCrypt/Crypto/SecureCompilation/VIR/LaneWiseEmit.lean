@@ -76,8 +76,8 @@ inductive LBin where
 inductive LStmt where
   /-- `dst := a op b`. -/
   | bin (op : LBin) (dst a b : String)
-  /-- `dst := a >>> k`, the logical shift right by the immediate `k`. -/
-  | shr (dst a : String) (k : Nat)
+  /-- `dst := a >>> k`, the logical shift right by the immediate `k < 32`. -/
+  | shr (dst a : String) (k : Fin 32)
   /-- `dst := a >>ₛ k`, the arithmetic shift right by the immediate `k`. -/
   | sar (dst a : String) (k : Nat)
   deriving Repr
@@ -95,7 +95,7 @@ def LStmt.rhs : LStmt → SExpr
   | .bin .mul _ a b => .SMul (.SVar a) (.SVar b)
   | .bin .and _ a b => .SAnd (.SVar a) (.SVar b)
   | .bin .xor _ a b => .SXor (.SVar a) (.SVar b)
-  | .shr _ a k => .SShr (.SVar a) (.SLit k)
+  | .shr _ a k => .SShr (.SVar a) (.SLit k.val)
   | .sar _ a k => .SAsr (.SVar a) (.SLit k)
 
 /-- A statement as an entry of the sequencer's statement list. -/
@@ -238,7 +238,7 @@ theorem stmt_lower (s : LStmt) {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) (hv : Tot
       obtain ⟨va, ha⟩ := hv.lookupUW a
       simp only [LStmt.rhs, Dialects.ScalarSExprWidth32Prototype.lowerSExprW, ha]
       exact ⟨_, _, _, rfl, hv.bind _,
-        ContB8.comp ContB8.id (ContB8.varBind _ (by exact ⟨_, rfl, rfl⟩))⟩
+        ContB8.comp ContB8.id (ContB8.varBind _ (by exact ⟨_, rfl, rfl, k.isLt⟩))⟩
   | sar dst a k =>
       obtain ⟨va, ha⟩ := hv.lookupUW a
       simp only [LStmt.rhs, Dialects.ScalarSExprWidth32Prototype.lowerSExprW, ha]
