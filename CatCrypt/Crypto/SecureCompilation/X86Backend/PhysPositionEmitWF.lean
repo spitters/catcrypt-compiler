@@ -50,6 +50,13 @@ or index into a scratch register.
   values of the operand map and of the ABI names.
 * `physNameForBody_resolved_of_fit`, `physNameForBody_sibArgOk_of_fit`: below the bound
   `vectorBase`, `physNameForBody` names a physical register or a spill slot.
+* `physBodyWithStores_allocOut_resolved`, `physBodyWithStores_allocOut_resolved_abi`: the
+  whole stored body.
+* `comToLfundefPhysAbiFromVirt_allocOut_resolved`, `lfundefPhysAbiOfVirt_allocOut_resolved`:
+  every instruction of the two ABI exports at the x86 register file (prologue, argument
+  saves and materialisation, stored body, return move, callee-saved restore) has operands
+  resolved over `x86Data`, given the naming hypotheses on the allocated body
+  (`fromVirtAllocBody`, `ofVirtAllocBody`).
 -/
 
 @[expose] public section
@@ -686,14 +693,17 @@ theorem abiSaveOfExt_resolved {reg q : String} (h : abiSaveOfExt reg = some q) :
   · next s hs => cases h; exact abiSaveOf_resolved hs
   · split_ifs at h <;> cases h <;> decide
 
-/-- A frame slot of `abiSlotOfExt` is resolved for an argument that is not passed in a stack
-    word (`abiStackOff? reg = none`). -/
-theorem abiSlotOfExt_resolved {reg q : String} (h : abiSlotOfExt reg = some q)
-    (hst : abiStackOff? reg = none) : opResolved (.reg q) = true := by
+/-- A frame slot of `abiSlotOfExt` is resolved: the save slot of an argument register, or
+    the slot `qsave.RSP+off` of an argument passed in a stack word. -/
+theorem abiSlotOfExt_resolved {reg q : String} (h : abiSlotOfExt reg = some q) :
+    opResolved (.reg q) = true := by
   unfold abiSlotOfExt at h
   split at h
   · next s hs => cases h; exact abiSaveOfExt_resolved hs
-  · simp [hst] at h
+  · obtain ⟨off, hoff, rfl⟩ := Option.map_eq_some_iff.mp h
+    have hq : qsaveNameResolved ("qsave." ++ reg) = true := by
+      simp [qsaveNameResolved, JasminLprogExport.hasPrefix, String.toList_append, hoff]
+    simp [opResolved, regNameResolved, hq]
 
 /-- An allocatable caller-saved general-purpose register is resolved. -/
 theorem opResolved_of_isCallerSavedAllocGPR {n : String} (h : isCallerSavedAllocGPR n = true) :
@@ -732,12 +742,12 @@ theorem memrefBaseReload_saveExt_resolved (argAbi : List (String × String))
   · next s hs => cases hf; exact abiSaveOfExt_resolved hs
   · cases hf
 
-/-- **The `memrefBaseReload` map of `comToLfundefPhysAbiFromVirt` reads resolved slots** when
-    no argument is passed in a stack word. For any naming `P` of the argument positions, the
-    map keyed on `P j` with value the frame slot `abiSlotOfExt abiReg` of an argument not
-    covered by `inLoadMap` satisfies `hmbr`. -/
+/-- **The `memrefBaseReload` map of `comToLfundefPhysAbiFromVirt` reads resolved slots.** For
+    any naming `P` of the argument positions, the map keyed on `P j` with value the frame slot
+    `abiSlotOfExt abiReg` of an argument not covered by `inLoadMap` (a save slot or the
+    caller's stack word) satisfies `hmbr`. -/
 theorem memrefBaseReload_slotExt_resolved (abiArgs : List String) (inLoadMap : InLoadMap)
-    (P : Nat → String) (hst : ∀ r ∈ abiArgs, abiStackOff? r = none) :
+    (P : Nat → String) :
     ∀ b q, ((abiArgs.zipIdx.filterMap (fun (abiReg, j) =>
         match inLoadMap j with
         | some _ => none
@@ -748,14 +758,14 @@ theorem memrefBaseReload_slotExt_resolved (abiArgs : List String) (inLoadMap : I
       opResolved (.reg q) = true := by
   refine findSnd_resolved _ ?_
   intro p hp
-  obtain ⟨⟨abiReg, j⟩, hmem, hf⟩ := List.mem_filterMap.mp hp
+  obtain ⟨⟨abiReg, j⟩, -, hf⟩ := List.mem_filterMap.mp hp
   simp only at hf
   split at hf
   · cases hf
   · split at hf
     · next s hs =>
       cases hf
-      exact abiSlotOfExt_resolved hs (hst abiReg (List.fst_mem_of_mem_zipIdx hmem))
+      exact abiSlotOfExt_resolved hs
     · cases hf
 
 /-- **The `callArgBaseReload` list of `lfundefPhysAbiOfVirt` is resolved.** For any naming `P`
@@ -850,5 +860,306 @@ theorem physBodyWithStores_allocOut_resolved_abi (shiftImm : ShiftImmOracle) (bo
   physBodyWithStores_allocOut_resolved shiftImm body inLoadMap reloadScratch2 outStoreMap
     reloadScratch2 abiW memrefBaseReload callArgBaseReload reservedVec rm hrm hsib hdir haddr
     hmbr hargs memName_reloadScratch2_resolved memName_reloadScratch2_resolved hcall
+
+/-! ## 8. The whole function -/
+
+/-- A well-formed instruction has resolved operands. -/
+theorem opsResolved_of_wfLinstr {x : LinstrR} (h : wfLinstr x = true) : OpsResolved x := by
+  obtain ⟨-, hres⟩ := wfLinstr_sound x h
+  intro o ho
+  unfold lopnOperands at ho
+  split at ho
+  · exact hres o ho
+  · simp at ho
+
+/-- An argument register with a save slot of `abiSaveOfExt` is resolved. -/
+theorem reg_resolved_of_abiSaveOfExt {reg q : String} (h : abiSaveOfExt reg = some q) :
+    opResolved (.reg reg) = true := by
+  unfold abiSaveOfExt abiSaveOf at h
+  split at h
+  · next s hs =>
+    split_ifs at hs with h1 h2
+    · rw [beq_iff_eq] at h1; subst h1; decide
+    · rw [beq_iff_eq] at h2; subst h2; decide
+  · split_ifs at h with h1 h2 h3 h4 <;> simp only [beq_iff_eq] at * <;> subst_vars <;> decide
+
+/-- The prologue saves of the arguments after the first two are resolved. -/
+theorem extraInputSaves_resolved (abiArgs : List String) :
+    ∀ r ∈ (abiArgs.drop 2).filterMap (fun abiReg =>
+      match abiSaveOfExt abiReg with
+      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
+      | none => none), OpsResolved r.li_i := by
+  intro r hr
+  obtain ⟨abiReg, -, hf⟩ := List.mem_filterMap.mp hr
+  split at hf
+  · next s hs =>
+    cases hf
+    intro o ho
+    simp only [lopnOperands, List.cons_append, List.nil_append, List.mem_cons,
+      List.not_mem_nil, or_false] at ho
+    rcases ho with rfl | rfl
+    · exact abiSaveOfExt_resolved hs
+    · exact reg_resolved_of_abiSaveOfExt hs
+  · cases hf
+
+/-- **The argument materialisation is resolved.** Every instruction of
+    `buildArgPtrMaterialize` has resolved operands when the names of the arguments are
+    resolved (`hphys`) and every argument register read directly, one without a frame slot,
+    is resolved (`habi`). -/
+theorem buildArgPtrMaterialize_resolved (virt : Lfundef) (tbl : Array Nat)
+    (abiArgs : List String) (inLoadMap : InLoadMap)
+    (hphys : ∀ j, opResolved (.reg (physNameForBody virt.lfd_body tbl (argName j))) = true)
+    (habi : ∀ r ∈ abiArgs, abiSlotOfExt r = none → opResolved (.reg r) = true) :
+    ∀ r ∈ buildArgPtrMaterialize virt tbl abiArgs inLoadMap, OpsResolved r.li_i := by
+  intro r hr
+  unfold buildArgPtrMaterialize at hr
+  obtain ⟨⟨abiReg, j⟩, hmem, hr⟩ := List.mem_flatMap.mp hr
+  have hreg := List.fst_mem_of_mem_zipIdx hmem
+  have hR : opResolved (.reg reloadScratch) = true := by decide
+  have hP := hphys j
+  simp only at hr
+  split at hr
+  · simp at hr
+  · split_ifs at hr <;>
+      rcases hs : abiSlotOfExt abiReg with _ | s <;>
+      simp only [hs, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+      (try rcases hr with rfl | rfl) <;>
+      intro o ho <;>
+      simp only [lopnOperands, List.cons_append, List.nil_append, List.mem_cons,
+        List.not_mem_nil, or_false] at ho <;>
+      rcases ho with rfl | rfl <;>
+      first | assumption | exact habi abiReg hreg hs | exact abiSlotOfExt_resolved hs
+
+/-- `insertEpilogue` keeps resolvedness: the body without its last instruction, the
+    epilogue and the final return. -/
+theorem insertEpilogue_resolved (body epi : Lcmd)
+    (hb : ∀ r ∈ body, OpsResolved r.li_i) (he : ∀ r ∈ epi, OpsResolved r.li_i) :
+    ∀ r ∈ insertEpilogue body epi, OpsResolved r.li_i := by
+  intro r hr
+  unfold insertEpilogue at hr
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with (h | h) | rfl
+  · exact hb r (List.dropLast_subset _ h)
+  · exact he r h
+  · intro o ho; simp [lopnOperands] at ho
+
+/-- The body the allocation of `comToLfundefPhysAbiFromVirt` runs on: the virtual body with
+    its call shadows expanded, renamed onto the residence slots when `residence` is given,
+    with the argument-liveness pin in front for three or more arguments or `forceLivePin`,
+    and its memref threads canonicalised. -/
+def fromVirtAllocBody (virt0 : Lfundef) (residence : Option (Array Nat))
+    (forceLivePin : Bool) : Lcmd :=
+  let virt0 := { virt0 with lfd_body := expandCallShadows virt0.lfd_body }
+  let virtR :=
+    match residence with
+    | none => virt0
+    | some slots =>
+        { virt0 with
+          lfd_body := residenceRenameBody virt0.lfd_arg.length (residenceArraySlotOf slots)
+                        (materializeShiftCountImms virt0.lfd_body) }
+  let nArgs := virtR.lfd_arg.length
+  (if nArgs ≥ 3 || forceLivePin then
+      [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
+            ((List.range nArgs).map (fun j => (.reg (argName j) : LOperand)))⟩]
+    else []) ++ canonicalizeMemrefThread virtR.lfd_body
+
+/-- Without residence slots the allocated body is the pinned, canonicalised body with its call
+    shadows expanded. -/
+theorem fromVirtAllocBody_none (virt0 : Lfundef) (forceLivePin : Bool) :
+    fromVirtAllocBody virt0 none forceLivePin =
+      (if virt0.lfd_arg.length ≥ 3 || forceLivePin then
+          [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
+                ((List.range virt0.lfd_arg.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
+        else []) ++ canonicalizeMemrefThread (expandCallShadows virt0.lfd_body) := rfl
+
+/-- With residence slots the allocated body is renamed onto the slots before it is pinned and
+    canonicalised. -/
+theorem fromVirtAllocBody_some (virt0 : Lfundef) (slots : Array Nat) (forceLivePin : Bool) :
+    fromVirtAllocBody virt0 (some slots) forceLivePin =
+      (if virt0.lfd_arg.length ≥ 3 || forceLivePin then
+          [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
+                ((List.range virt0.lfd_arg.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
+        else []) ++ canonicalizeMemrefThread
+          (residenceRenameBody virt0.lfd_arg.length (residenceArraySlotOf slots)
+            (materializeShiftCountImms (expandCallShadows virt0.lfd_body))) := rfl
+
+/-- The return move of `comToLfundefPhysAbiFromVirt` is resolved when the name of the
+    returned value is. -/
+theorem retMat_resolved (B : Lcmd) (tbl : Array Nat) (res : Option String) (c : Bool)
+    (hret : ∀ rn ∈ res, opResolved (.reg (physNameForBody B tbl rn)) = true) :
+    ∀ r ∈ (if c = true then
+        match res with
+        | some rn =>
+            if nameSlot B rn < (bodyNames B).length then
+              if (physNameForBody B tbl rn == sysvRetReg) = true then []
+              else [(⟨0, .Lopn [.reg sysvRetReg] "MOVQ" [.reg (physNameForBody B tbl rn)]⟩ :
+                Linstr)]
+            else []
+        | none => []
+      else []), OpsResolved r.li_i := by
+  intro r hr
+  cases res with
+  | none => simp at hr
+  | some rn =>
+    split at hr
+    · simp only at hr
+      split_ifs at hr <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+      subst hr
+      intro o ho
+      simp only [lopnOperands, List.cons_append, List.nil_append, List.mem_cons,
+        List.not_mem_nil, or_false] at ho
+      rcases ho with rfl | rfl
+      · decide
+      · exact hret rn rfl
+    · simp at hr
+
+/-- **Every operation of `comToLfundefPhysAbiFromVirt` is resolved over x86.** On the x86
+    register file and without a forwarder body, let `B` be the allocated body
+    (`fromVirtAllocBody`) and `tbl` its allocation table. Under the naming hypotheses of
+    `physBodyWithStores_allocOut_resolved_abi` on `B` (`hsib`, `hdir`, `haddr`, `hargs`), a
+    resolved name for the returned value (`hret`) and resolved argument registers read
+    directly (`habi`), every instruction of the function body satisfies the `resolved` field
+    of `AllocOutInstr x86Data`. The prologue, the saves of further arguments, the argument
+    materialisation, the inline loads and stores with their memref base reloads (from a save
+    slot or the caller's stack word), the return move and the callee-saved restore are each
+    resolved. -/
+theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
+    (shiftImm : ShiftImmOracle) (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap)
+    (abiArgs : List String) (abiTyin : List Nat) (residence : Option (Array Nat))
+    (abiW : Nat) (forceLivePin reserveVecScratch retToRax : Bool)
+    (rm : LOperand → LOperand)
+    (hrm : rm =
+      let B := fromVirtAllocBody virt0 residence forceLivePin
+      let tbl := straightCallComposeTable B (physTableOut B outStoreMap
+        (if reserveVecScratch then [numVecRegs - 1] else []))
+      if bodyHasCall B then remapOperandCalleeSave B tbl else remapOperand B tbl)
+    (hsib : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin, SibAtAddr i.li_i)
+    (hdir : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin,
+      ∀ o ∈ lopnOperands i.li_i, (∀ b y s, o ≠ .arrIdx b y s) → opResolved (rm o) = true)
+    (haddr : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin, ∀ b y s,
+      .arrIdx b y s ∈ lopnOperands i.li_i → AddrOk (rm (.arrIdx b y s)))
+    (hargs : ∀ s,
+      let B := fromVirtAllocBody virt0 residence forceLivePin
+      opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
+        outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) (argName s))) = true)
+    (hret : ∀ rn ∈ virt0.lfd_res.head?,
+      let B := fromVirtAllocBody virt0 residence forceLivePin
+      opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
+        outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) rn)) = true)
+    (habi : ∀ r ∈ abiArgs, abiSlotOfExt r = none → opResolved (.reg r) = true) :
+    ∀ r ∈ (comToLfundefPhysAbiFromVirt virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
+        residence abiW forceLivePin none reserveVecScratch retToRax).lfd_body,
+      ∀ o ∈ lopnOperands r.li_i, opResolvedI TwoAddrLegalize.x86Data o = true := by
+  intro r hr
+  refine (opsResolved_iff_allocOut_x86 _).mp ?_
+  cases residence <;>
+  · simp only [comToLfundefPhysAbiFromVirt, Option.getD_none, List.mem_append,
+      ← fromVirtAllocBody_none, ← fromVirtAllocBody_some] at hr
+    rcases hr with ((hp | hx) | ha) | hb
+    · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
+    · exact extraInputSaves_resolved abiArgs r hx
+    · refine buildArgPtrMaterialize_resolved _ _ abiArgs inLoadMap ?_ habi r ha
+      exact hargs
+    · refine insertEpilogue_resolved _ _ ?_ ?_ r hb
+      · intro r' hr'
+        have hmem := (List.mem_filter.mp hr').1
+        refine (opsResolved_iff_allocOut_x86 _).mpr
+          (physBodyWithStores_allocOut_resolved_abi _ (fromVirtAllocBody virt0 _ forceLivePin)
+            inLoadMap outStoreMap abiW _ [] (if reserveVecScratch then [numVecRegs - 1] else [])
+            rm hrm hsib hdir haddr ?_ hargs (by simp) r' hmem)
+        refine findSnd_resolved _ ?_
+        intro p hp
+        obtain ⟨⟨abiReg, j⟩, -, hf⟩ := List.mem_filterMap.mp hp
+        simp only at hf
+        split at hf
+        · cases hf
+        · split at hf
+          · next s hs => cases hf; exact abiSlotOfExt_resolved hs
+          · cases hf
+      · intro r' hr'
+        rcases List.mem_append.mp hr' with hm | hm
+        · exact retMat_resolved _ _ _ _ hret r' hm
+        · exact opsResolved_of_wfLinstr (calleeSaveRestoreEpilogue_wf r' hm)
+
+/-- The body the allocation of `lfundefPhysAbiOfVirt` runs on: the virtual body with the
+    accumulator registers aliased onto the output argument, its memref threads canonicalised,
+    and the argument-liveness pin in front for four or more arguments. -/
+def ofVirtAllocBody (virt0 : Lfundef) (outArg' : String) (accRegs abiArgs : List String) :
+    Lcmd :=
+  (if abiArgs.length ≥ 4 then
+      [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
+            ((List.range abiArgs.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
+    else []) ++
+    canonicalizeMemrefThread (accRegs.foldl (fun b r => aliasRegBody r outArg' b) virt0.lfd_body)
+
+/-- **Every operation of `lfundefPhysAbiOfVirt` is resolved over x86.** On the x86 register
+    file, let `B` be the allocated body (`ofVirtAllocBody`). Under the naming hypotheses of
+    `physBodyWithStores_allocOut_resolved_abi` on `B` (`hsib`, `hdir`, `haddr`, `hargs`, over
+    the composed allocation table), resolved argument names in the plain allocation table that
+    the argument materialisation reads (`hphys`) and resolved argument registers read directly
+    (`habi`), every instruction of the function body satisfies the `resolved` field of
+    `AllocOutInstr x86Data`. -/
+theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs : List String) (shiftImm : ShiftImmOracle) (abiArgs : List String)
+    (abiTyin : List Nat) (posBind : Bool) (rm : LOperand → LOperand)
+    (hrm : rm =
+      let B := ofVirtAllocBody virt0 outArg' accRegs abiArgs
+      let tbl := straightCallComposeTable B (physTableOut B [] [])
+      if bodyHasCall B then remapOperandCalleeSave B tbl else remapOperand B tbl)
+    (hsib : ∀ i ∈ ofVirtAllocBody virt0 outArg' accRegs abiArgs, SibAtAddr i.li_i)
+    (hdir : ∀ i ∈ ofVirtAllocBody virt0 outArg' accRegs abiArgs,
+      ∀ o ∈ lopnOperands i.li_i, (∀ b y s, o ≠ .arrIdx b y s) → opResolved (rm o) = true)
+    (haddr : ∀ i ∈ ofVirtAllocBody virt0 outArg' accRegs abiArgs, ∀ b y s,
+      .arrIdx b y s ∈ lopnOperands i.li_i → AddrOk (rm (.arrIdx b y s)))
+    (hargs : ∀ s,
+      let B := ofVirtAllocBody virt0 outArg' accRegs abiArgs
+      opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B [] []))
+        (argName s))) = true)
+    (hphys : ∀ s,
+      let B := ofVirtAllocBody virt0 outArg' accRegs abiArgs
+      opResolved (.reg (physNameForBody B (physTableOut B []) (argName s))) = true)
+    (habi : ∀ r ∈ abiArgs, abiSlotOfExt r = none → opResolved (.reg r) = true) :
+    ∀ r ∈ (lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
+        (posBind := posBind)).lfd_body,
+      ∀ o ∈ lopnOperands r.li_i, opResolvedI TwoAddrLegalize.x86Data o = true := by
+  intro r hr
+  refine (opsResolved_iff_allocOut_x86 _).mp ?_
+  have hB : ∀ (abiArgs : List String),
+      (if abiArgs.length ≥ 4 then
+        [(⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
+              ((List.range abiArgs.length).map (fun j => (.reg (argName j) : LOperand)))⟩ :
+          Linstr)]
+      else []) ++
+      canonicalizeMemrefThread (accRegs.foldl (fun b r => aliasRegBody r outArg' b)
+        virt0.lfd_body) = ofVirtAllocBody virt0 outArg' accRegs abiArgs := fun _ => rfl
+  simp only [lfundefPhysAbiOfVirt, List.mem_append, hB] at hr
+  rcases hr with ((hp | hx) | ha) | hb
+  · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
+  · exact extraInputSaves_resolved abiArgs r hx
+  · refine buildArgPtrMaterialize_resolved _ _ abiArgs _ ?_ habi r ha
+    exact hphys
+  · refine insertEpilogue_resolved _ _ ?_ ?_ r hb
+    · intro r' hr'
+      have hmem := (List.mem_filter.mp hr').1
+      refine (opsResolved_iff_allocOut_x86 _).mpr
+        (physBodyWithStores_allocOut_resolved_abi _ (ofVirtAllocBody virt0 outArg' accRegs abiArgs)
+          _ [] 0 _ _ [] rm hrm hsib hdir haddr ?_ hargs ?_ r' hmem)
+      · refine findSnd_resolved _ ?_
+        intro p hp
+        obtain ⟨⟨argNm, abiReg⟩, -, hf⟩ := List.mem_filterMap.mp hp
+        simp only at hf
+        split at hf
+        · next s hs => cases hf; exact abiSaveOfExt_resolved hs
+        · cases hf
+      · intro p hp
+        obtain ⟨⟨abiReg, j⟩, -, hf⟩ := List.mem_filterMap.mp hp
+        simp only at hf
+        split at hf
+        · next s hs =>
+          split_ifs at hf with hc
+          cases hf
+          exact ⟨opResolved_of_isCallerSavedAllocGPR hc, abiSaveOfExt_resolved hs⟩
+        · cases hf
+    · exact fun r' hm => opsResolved_of_wfLinstr (calleeSaveRestoreEpilogue_wf r' hm)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF

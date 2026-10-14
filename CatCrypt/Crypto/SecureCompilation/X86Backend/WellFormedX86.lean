@@ -212,11 +212,14 @@ def spillNameResolved (n : String) : Bool :=
 def x86SaveRegNames : List String :=
   ["RDI", "RSI", "RBX", "RBP", "R12", "R13", "R14", "R15", "RDX", "RCX", "R8", "R9"]
 
-/-- An ABI save-slot name `qsave.<reg>` is resolved iff `<reg>` is one of the
-    save registers the printer's `qsaveSlot` map knows (`x86SaveRegNames`). -/
+/-- A frame-slot name `qsave.<reg>` is resolved iff `<reg>` is one of the save registers
+    the printer's `qsaveSlot` map knows (`x86SaveRegNames`), or a stack argument
+    `RSP+<off>` (`abiStackOff?`), the caller's stack word that the printer's
+    `qsaveFrameOff` places above the frame. -/
 def qsaveNameResolved (n : String) : Bool :=
   JasminLprogExport.hasPrefix n "qsave." &&
-    (n.toList.drop 6 ∈ x86SaveRegNames.map String.toList)
+    ((n.toList.drop 6 ∈ x86SaveRegNames.map String.toList) ||
+      (JasminLprogExport.abiStackOff? (String.ofList (n.toList.drop 6))).isSome)
 
 /-- A base+offset memory name `mem.<base>.<off>` is resolved iff the text after
     `mem.` is `<base>.<off>` with `base` a resolvable physical register (which
@@ -261,11 +264,17 @@ scales read from the instruction-set data `I`; `opResolvedI_x86` identifies the 
     scratch registers and the stack pointer. -/
 def physRegNamesI (I : IsaData) : List String := I.allocPool ++ I.scratch ++ [I.sp]
 
-/-- A save-slot name `qsave.<reg>` is resolved over `I` iff `<reg>` has a frame save slot
-    (`I.saveSlot`). -/
+/-- A stack-argument name of `I`: the stack pointer `I.sp`, a `+` and a nonempty decimal
+    offset, the name of an argument the caller passes in the stack word at that offset. -/
+def stackArgNameI (I : IsaData) (L : List Char) : Bool :=
+  (I.sp ++ "+").toList.isPrefixOf L &&
+    (!(L.drop (I.sp.length + 1)).isEmpty && (L.drop (I.sp.length + 1)).all Char.isDigit)
+
+/-- A frame-slot name `qsave.<reg>` is resolved over `I` iff `<reg>` has a frame save slot
+    (`I.saveSlot`) or is a stack-argument name of `I` (`stackArgNameI`). -/
 def qsaveNameResolvedI (I : IsaData) (n : String) : Bool :=
   JasminLprogExport.hasPrefix n "qsave." &&
-    (I.saveSlot (String.ofList (n.toList.drop 6))).isSome
+    ((I.saveSlot (String.ofList (n.toList.drop 6))).isSome || stackArgNameI I (n.toList.drop 6))
 
 /-- A base+offset memory name `mem.<base>.<off>` is resolved over `I` iff `base` is a
     physical register of `I` and `off` a natural number. -/
@@ -312,6 +321,30 @@ theorem qsaveSlot_isSome_iff (L : List Char) :
     | (rw [hof] at h; subst h; decide)
     | simp_all [x86SaveRegNames]
 
+/-- The stack-argument names of `x86Data` are those with a stack offset (`abiStackOff?`). -/
+theorem stackArgNameI_x86 (L : List Char) :
+    stackArgNameI TwoAddrLegalize.x86Data L =
+      (JasminLprogExport.abiStackOff? (String.ofList L)).isSome := by
+  have hsp : (TwoAddrLegalize.x86Data.sp ++ "+").toList = ['R', 'S', 'P', '+'] := by decide
+  have hlen : TwoAddrLegalize.x86Data.sp.length + 1 = 4 := by decide
+  unfold stackArgNameI JasminLprogExport.abiStackOff?
+  rw [hsp, hlen, String.toList_ofList]
+  split
+  · rename_i ds
+    by_cases h : (!ds.isEmpty && ds.all Char.isDigit) = true
+    · simp only [h, if_true, Option.isSome_some]
+      simpa using h
+    · simp only [Bool.not_eq_true] at h
+      simp only [h, Bool.false_eq_true, if_false, Option.isSome_none]
+      simpa using h
+  · rename_i hne
+    have hp : ['R', 'S', 'P', '+'].isPrefixOf L = false := by
+      rw [Bool.eq_false_iff]
+      intro h
+      obtain ⟨t, rfl⟩ := List.isPrefixOf_iff_prefix.mp h
+      exact hne t rfl
+    simp only [hp, Bool.false_and, Option.isSome_none]
+
 /-- **`opResolved` is the x86 instance of `opResolvedI`.** -/
 theorem opResolvedI_x86 : opResolvedI TwoAddrLegalize.x86Data = opResolved := by
   have h1 : ∀ n, decide (n ∈ physRegNamesI TwoAddrLegalize.x86Data) =
@@ -328,7 +361,8 @@ theorem opResolvedI_x86 : opResolvedI TwoAddrLegalize.x86Data = opResolved := by
   funext o
   cases o <;>
     simp only [opResolvedI, opResolved, regNameResolvedI, regNameResolved,
-      qsaveNameResolvedI, qsaveNameResolved, memNameResolvedI, memNameResolved, h1, h2, h3]
+      qsaveNameResolvedI, qsaveNameResolved, memNameResolvedI, memNameResolved, h1, h2, h3,
+      stackArgNameI_x86]
 
 /-! ## 2. Memory-operand class (bug classes 1, 2: `mem → mem` mov) -/
 
