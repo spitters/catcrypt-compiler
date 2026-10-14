@@ -593,6 +593,8 @@ CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectGrothendieck
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
+CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionDenoteMonoidal
+CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionFunctorMonoidal
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelLoop
 CatCrypt.Crypto.SecureCompilation.VIR.EcConvertToFieldLowering
