@@ -769,6 +769,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Sha2ShaniVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.Sha512CompressCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.ShaSigmaAbstractCom
 CatCrypt.Crypto.SecureCompilation.VIR.Shake256Covered
+CatCrypt.Crypto.SecureCompilation.VIR.SharedDialect
 CatCrypt.Crypto.SecureCompilation.VIR.SimdAvx2IntFrontPrototype
 CatCrypt.Crypto.SecureCompilation.VIR.SimdFrontPilot
 CatCrypt.Crypto.SecureCompilation.VIR.SlhdsaWotsChainCatCryptEmit

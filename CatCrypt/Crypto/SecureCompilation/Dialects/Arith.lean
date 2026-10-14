@@ -170,7 +170,104 @@ theorem toJasmin_sig (op : ArithOp) :
       = (DialectSignature.sig (d := arithDialect) op).map ArithTy.toJasmin := by
   cases op <;> rfl
 
-/-! ## 6. Smoke test — the dialect denotes -/
+/-! ## 6. The range restriction on constants -/
+
+/-- An `arith` op whose constant, if any, is below `2 ^ w`: `constant w n` with
+    `n < 2 ^ w`, and every other op. On these ops `constant w n` is determined by its
+    value `BitVec.ofNat w n`. -/
+def ArithOp.InRange : ArithOp → Prop
+  | .constant w n => n < 2 ^ w
+  | _ => True
+
+instance (op : ArithOp) : Decidable op.InRange := by
+  cases op <;> unfold ArithOp.InRange <;> infer_instance
+
+/-! ## 7. The extension ops
+
+`ArithExtOp` holds the integer operations beside `ArithOp` that the scalar fragments
+of `catCryptDialect` and `jasminDialect` share: and-not, variable-amount shifts, the
+arithmetic right shift by an immediate, equality comparison and select (upstream
+`arith.cmpi eq` and `arith.select`). The boolean is the 1-bit integer `int 1`, read
+as `1#1` for true. The denotations are those of the `jasminDialect` images. -/
+
+/-- The extension ops of the `arith` dialect. -/
+inductive ArithExtOp where
+  /-- And-not `(~~~a) &&& b`. -/
+  | andni (w : Nat)
+  /-- Left shift by the masked count `shiftMask w b` of a variable amount `b`. -/
+  | shli (w : Nat)
+  /-- Logical right shift by the masked count `shiftMask w b` of a variable amount
+      `b`. -/
+  | shrui (w : Nat)
+  /-- Arithmetic right shift by the immediate `n` (unmasked `sshiftRight`). -/
+  | shrsi_imm (w n : Nat)
+  /-- Equality comparison `[int w, int w] → int 1` (`arith.cmpi eq`). -/
+  | cmpi_eq (w : Nat)
+  /-- Select `[int 1, int w, int w] → int w` (`arith.select`). -/
+  | select (w : Nat)
+  deriving DecidableEq
+
+/-- The extension dialect over the `arith` type alphabet. -/
+@[reducible] def arithExtDialect : Dialect := { Op := ArithExtOp, Ty := ArithTy }
+
+instance : DialectSignature arithExtDialect where
+  sig op := match op with
+    | .andni w => [.int w, .int w]
+    | .shli w => [.int w, .int w]
+    | .shrui w => [.int w, .int w]
+    | .shrsi_imm w _ => [.int w]
+    | .cmpi_eq w => [.int w, .int w]
+    | .select w => [.int 1, .int w, .int w]
+  ret op := match op with
+    | .andni w => .int w
+    | .shli w => .int w
+    | .shrui w => .int w
+    | .shrsi_imm w _ => .int w
+    | .cmpi_eq _ => .int 1
+    | .select w => .int w
+
+instance arithExtDenote : DialectDenote arithExtDialect where
+  denote op := match op with
+    | .andni w => fun args =>
+        let a : BitVec w := args.head; let b : BitVec w := args.tail.head
+        JasminBinOp.andn.apply a b
+    | .shli w => fun args =>
+        let a : BitVec w := args.head; let b : BitVec w := args.tail.head
+        JasminBinOp.shl.apply a b
+    | .shrui w => fun args =>
+        let a : BitVec w := args.head; let b : BitVec w := args.tail.head
+        JasminBinOp.shr.apply a b
+    | .shrsi_imm w n => fun args => let a : BitVec w := args.head; BitVec.sshiftRight a n
+    | .cmpi_eq w => fun args =>
+        let a : BitVec w := args.head; let b : BitVec w := args.tail.head
+        cmpBit .eq a b
+    | .select w => fun args =>
+        let c : BitVec 1 := args.head; let a : BitVec w := args.tail.head
+        let b : BitVec w := args.tail.tail.head
+        selectW c a b
+
+/-- Op image of the extension ops into `jasminDialect`. -/
+def ArithExtOp.toJasmin : ArithExtOp → JasminOp
+  | .andni w => .regArith .andn w
+  | .shli w => .regArith .shl w
+  | .shrui w => .regArith .shr w
+  | .shrsi_imm w n => .sarImm w n
+  | .cmpi_eq w => .cmp .eq w
+  | .select w => .select w
+
+/-- The image of an extension op has the mapped return type. -/
+theorem ArithExtOp.toJasmin_ret (op : ArithExtOp) :
+    DialectSignature.ret (d := jasminDialect) op.toJasmin
+      = (DialectSignature.ret (d := arithExtDialect) op).toJasmin := by
+  cases op <;> rfl
+
+/-- The image of an extension op has the mapped argument types. -/
+theorem ArithExtOp.toJasmin_sig (op : ArithExtOp) :
+    DialectSignature.sig (d := jasminDialect) op.toJasmin
+      = (DialectSignature.sig (d := arithExtDialect) op).map ArithTy.toJasmin := by
+  cases op <;> rfl
+
+/-! ## 8. Smoke test — the dialect denotes -/
 
 /-- Two-op smoke program `(a + b)` over `[i32, i32]`, mirroring the jasmin smoke test. -/
 def smokeProg : Com arithDialect [.int 32, .int 32] (.int 32) :=
