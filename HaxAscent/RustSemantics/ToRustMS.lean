@@ -25,7 +25,8 @@ tuples and the unit value.
 `appRt` is the reading of the runtime operations: the width-tagged word operations of
 `WordOp` at each of the six unsigned widths, `Not#w`, `cast#w`, the untagged checked
 operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, the array operations `index`,
-`array_update` and `repeat` on the Aeneas `Array` model, the untagged negation `Not` of a
+`array_update`, `repeat`, `len` and `array_lit` on the Aeneas `Array` model (`array_lit` at
+every number of arguments, `appArrayLit`), the untagged negation `Not` of a
 Boolean, the strict connectives `&&` and `||` and the equality and disequality of two
 Booleans, and the comparisons `Lt`, `Le`, `Gt`, `Ge`, `Eq` and `Ne` of two integers or words
 (`appBNot`, `appBool2`). An untyped integer literal is
@@ -296,6 +297,25 @@ def appRepeat : AVal → AVal → RustM AVal
     .ok (.arr ty m (Aeneas.Std.Array.repeat m x))
   | _, _ => .fail .undef
 
+/-- `len` of an array: its length, an integer literal. -/
+def appLen : AVal → RustM AVal
+  | .arr _ _ a => .ok (.int a.val.length)
+  | _ => .fail .undef
+
+/-- The words of the width `ty` the values of a list stand for (`AVal.asW`). -/
+def AVal.asWList (ty : UScalarTy) : List AVal → RustM (List (UScalar ty))
+  | [] => .ok []
+  | a :: as => a.asW ty >>= fun x => AVal.asWList ty as >>= fun xs => .ok (x :: xs)
+
+/-- `array_lit` of values: the array of the words they stand for at the width of the first,
+    a word, with its length as a `usize` word. -/
+def appArrayLit : List AVal → RustM AVal
+  | .w ty x :: as => AVal.asWList ty (.w ty x :: as) >>= fun xs =>
+    (AVal.int xs.length).asW .Usize >>= fun n =>
+      if h : xs.length = n.val then .ok (.arr ty n (Aeneas.Std.Array.make n xs h))
+      else .fail .undef
+  | _ => .fail .undef
+
 /-- `cast#w` of a word to the width `ty`. -/
 def appCast (ty : UScalarTy) : AVal → RustM AVal
   | .w _ x => .ok (.w ty (UScalar.cast ty x))
@@ -366,6 +386,8 @@ def appRt (f : String) : List AVal → RustM AVal
           | some k => .ok (.int (k + 1))
           | none => .fail .undef
         else if f = "Not" then appBNot a
+        else if f = "len" then appLen a
+        else if f = "array_lit" then appArrayLit [a]
         else .fail .undef
   | [a, b] =>
     match wordOpAt? f with
@@ -376,9 +398,13 @@ def appRt (f : String) : List AVal → RustM AVal
       | none =>
         if f = "index" then appIndex a b
         else if f = "repeat" then appRepeat a b
+        else if f = "array_lit" then appArrayLit [a, b]
         else appBool2 f a b
-  | [a, i, v] => if f = "array_update" then appUpdate a i v else .fail .undef
-  | _ => .fail .undef
+  | [a, i, v] =>
+    if f = "array_update" then appUpdate a i v
+    else if f = "array_lit" then appArrayLit [a, i, v]
+    else .fail .undef
+  | vs => if f = "array_lit" then appArrayLit vs else .fail .undef
 
 /-- The reading of the calls agrees with the builtin table `bi`: every value `app f vs`
     returns is, encoded, the value `bi f` returns on the encoded arguments. -/
@@ -452,6 +478,14 @@ theorem array_update_leaf (vs : List Hax.Value) (i : Int) (v : Hax.Value) :
 theorem repeat_leaf (v : Hax.Value) (n : Int) :
     runtimeBuiltins base "repeat" [v, .int n] = some (.array (List.replicate n.toNat v)) := by
   rw [runtimeBuiltins_of_lookup (g := repeatLeaf) rfl]; unfold repeatLeaf; rfl
+
+theorem len_leaf (vs : List Hax.Value) :
+    runtimeBuiltins base "len" [.array vs] = some (.int vs.length) := by
+  rw [runtimeBuiltins_of_lookup (g := lenLeaf) rfl]; unfold lenLeaf; rfl
+
+theorem arrayLit_leaf (vs : List Hax.Value) :
+    runtimeBuiltins base "array_lit" vs = some (.array vs) := by
+  rw [runtimeBuiltins_of_lookup (g := arrayLitLeaf) rfl]; unfold arrayLitLeaf; rfl
 
 end Leaves
 
@@ -555,6 +589,49 @@ theorem appRepeat_ok {v m r : AVal} (h : appRepeat v m = .ok r) :
     simp [AVal.toValue, enc_uscalar, List.map_replicate]
   | _ => simp [appRepeat] at h
 
+theorem appLen_ok {a r : AVal} (h : appLen a = .ok r) :
+    ∃ vs, a.toValue = .array vs ∧ r.toValue = .int vs.length := by
+  cases a with
+  | arr ty n arr =>
+    simp only [appLen] at h
+    cases h
+    exact ⟨_, rfl, by simp [AVal.toValue]⟩
+  | _ => simp [appLen] at h
+
+theorem AVal.asWList_ok {ty : UScalarTy} (vs : List AVal) {xs : List (UScalar ty)}
+    (h : AVal.asWList ty vs = .ok xs) :
+    AVal.toValues vs = xs.map fun x => .int (x.val : Int) := by
+  induction vs generalizing xs with
+  | nil =>
+    simp only [AVal.asWList] at h
+    cases h
+    rfl
+  | cons a as ih =>
+    simp only [AVal.asWList] at h
+    obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+    obtain ⟨ys, hys, h⟩ := rustM_bind_ok h
+    cases h
+    simp [AVal.toValues, AVal.asW_ok hx, ih hys, enc_uscalar]
+
+theorem appArrayLit_ok {vs : List AVal} {r : AVal} (h : appArrayLit vs = .ok r) :
+    r.toValue = .array (AVal.toValues vs) := by
+  unfold appArrayLit at h
+  split at h
+  · obtain ⟨xs, hxs, h⟩ := rustM_bind_ok h
+    obtain ⟨n, -, h⟩ := rustM_bind_ok h
+    split at h
+    · cases h
+      rw [AVal.asWList_ok _ hxs]
+      rfl
+    · cases h
+  · cases h
+
+/-- **The square of `array_lit`**: `appArrayLit` reads the runtime's `array_lit`. -/
+theorem appArrayLit_rt (base : Hax.Builtins) {vs : List AVal} {r : AVal}
+    (h : appArrayLit vs = .ok r) :
+    Hax.Ascent.runtimeBuiltins base "array_lit" (AVal.toValues vs) = some r.toValue := by
+  rw [arrayLit_leaf, appArrayLit_ok h]
+
 /-- **The square of `Not` on a Boolean**: the negation `appBNot` reads the runtime's `Not`. -/
 theorem appBNot_ok (base : Hax.Builtins) {a r : AVal} (h : appBNot a = .ok r) :
     Hax.Ascent.runtimeBuiltins base "Not" [a.toValue] = some r.toValue := by
@@ -602,7 +679,14 @@ theorem appBool2_ok (base : Hax.Builtins) {f : String} {a b r : AVal}
 theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base) appRt := by
   intro f vs r h
   rcases vs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨d, rest⟩⟩⟩⟩
-  · simp [appRt] at h
+  · rw [show appRt f [] = if f = "array_lit" then appArrayLit [] else .fail .undef from rfl]
+      at h
+    by_cases hal : f = "array_lit"
+    · rw [if_pos hal] at h
+      subst hal
+      exact appArrayLit_rt base h
+    · rw [if_neg hal] at h
+      cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty hty
@@ -642,7 +726,19 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
             subst hn
             exact appBNot_ok base h
           · rw [if_neg hn] at h
-            cases h
+            by_cases hl : f = "len"
+            · rw [if_pos hl] at h
+              subst hl
+              obtain ⟨vs, ha, hr⟩ := appLen_ok h
+              rw [show AVal.toValues [a] = [.array vs] from by simp only [AVal.toValues, ha],
+                len_leaf, hr]
+            · rw [if_neg hl] at h
+              by_cases hal : f = "array_lit"
+              · rw [if_pos hal] at h
+                subst hal
+                exact appArrayLit_rt base h
+              · rw [if_neg hal] at h
+                cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty o ho
@@ -670,7 +766,12 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
             rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
               simp only [AVal.toValues, hb], repeat_leaf, hr]
           · rw [if_neg hrep] at h
-            exact appBool2_ok base h
+            by_cases hal : f = "array_lit"
+            · rw [if_pos hal] at h
+              subst hal
+              exact appArrayLit_rt base h
+            · rw [if_neg hal] at h
+              exact appBool2_ok base h
   · simp only [appRt] at h
     by_cases hu : f = "array_update"
     · rw [if_pos hu] at h
@@ -679,8 +780,21 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
       rw [show AVal.toValues [a, b, c] = [.array vs, .int j, c.toValue] from by
         simp only [AVal.toValues, ha, hb], array_update_leaf, hr]
     · rw [if_neg hu] at h
+      by_cases hal : f = "array_lit"
+      · rw [if_pos hal] at h
+        subst hal
+        exact appArrayLit_rt base h
+      · rw [if_neg hal] at h
+        cases h
+  · rw [show appRt f (a :: b :: c :: d :: rest) =
+      if f = "array_lit" then appArrayLit (a :: b :: c :: d :: rest) else .fail .undef
+      from rfl] at h
+    by_cases hal : f = "array_lit"
+    · rw [if_pos hal] at h
+      subst hal
+      exact appArrayLit_rt base h
+    · rw [if_neg hal] at h
       cases h
-  · simp [appRt] at h
 
 /-! ## The reading -/
 
@@ -1211,11 +1325,11 @@ theorem appExt_ok (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn)
 /-- The names of arity `n` that `appRt` reads. -/
 def rtNameOk (f : String) : Nat → Bool
   | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome || f == "range_incl_end" ||
-      f == "Not"
+      f == "Not" || f == "len" || f == "array_lit"
   | 2 => (wordOpAt? f).isSome || (AOp.ofName f).isSome || f == "index" || f == "repeat" ||
-      (boolRt? f).isSome || (cmpRt? f).isSome
-  | 3 => f == "array_update"
-  | _ => false
+      (boolRt? f).isSome || (cmpRt? f).isSome || f == "array_lit"
+  | 3 => f == "array_update" || f == "array_lit"
+  | _ => f == "array_lit"
 
 /-- The constructs `toRustMS` reads, with every call to a runtime operation `appRt` reads
     or to one of the functions `locals`. A literal outside this fragment has no value
