@@ -169,12 +169,13 @@ theorem emitRotLNative_value_eq_emitRotL_value {Γ : Ctxt jasminDialect}
   rw [hImmN, hImm64N]
   -- `shl`/`shr` apply at the `.toNat` of the (literal) immediate.
   show x.rotateRight (64 - n)
-      = (x <<< (BitVec.ofNat 64 n).toNat) ||| (x >>> (BitVec.ofNat 64 (64 - n)).toNat)
+      = (x <<< shiftMask 64 (BitVec.ofNat 64 n).toNat)
+        ||| (x >>> shiftMask 64 (BitVec.ofNat 64 (64 - n)).toNat)
   have hnt : (BitVec.ofNat 64 n).toNat = n := by
     simp [BitVec.toNat_ofNat]; omega
   have hnt' : (BitVec.ofNat 64 (64 - n)).toNat = 64 - n := by
     simp [BitVec.toNat_ofNat]; omega
-  rw [hnt, hnt']
+  rw [hnt, hnt', shiftMask_of_lt hn64, shiftMask_of_lt (by omega : 64 - n < 64)]
   exact (shiftOr_eq_rotateRight n hn hn64 x).symm
 
 /-! ## 5. Native-rotate Keccak permutation `Com` (the emitted artifact)

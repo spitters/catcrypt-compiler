@@ -248,7 +248,8 @@ theorem evalBV_rorExpr (β : String → BitVec 64) (n : Nat) (e : SExpr) :
       simp only [BitVec.toNat_ofNat]; omega
     have h2 : (BitVec.ofNat 64 (64 - n % 64)).toNat = 64 - n % 64 := by
       simp only [BitVec.toNat_ofNat]; omega
-    rw [h1, h2]
+    rw [h1, h2, SecureCompilation.VIR.shiftMask_of_lt hk,
+      SecureCompilation.VIR.shiftMask_of_lt (by omega : 64 - n % 64 < 64)]
     generalize e.evalBV β = x
     congr 1
     generalize x <<< (64 - n % 64) = y

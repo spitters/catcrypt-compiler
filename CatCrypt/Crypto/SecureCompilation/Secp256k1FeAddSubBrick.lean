@@ -218,9 +218,11 @@ theorem selLeft {x y : BitVec 64} (hx : x.toNat < 2 ^ 32) :
   rw [bvAdd_toNat (by rw [bvAnd_zero, bvAnd_mask_lt hx]; omega), bvAnd_zero, bvAnd_mask_lt hx]
   omega
 
+/-- A logical right shift by the masked count `32` divides by `2 ^ 32`. -/
 theorem bvShr32 (a : BitVec 64) :
-    (a >>> (BitVec.ofNat 64 32).toNat).toNat = a.toNat / 2 ^ 32 := by
-  rw [ofNat_toNat (by norm_num), BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+    (a >>> VIR.shiftMask 64 (BitVec.ofNat 64 32).toNat).toNat = a.toNat / 2 ^ 32 := by
+  rw [ofNat_toNat (by norm_num), VIR.shiftMask_of_lt (by decide), BitVec.toNat_ushiftRight,
+    Nat.shiftRight_eq_div_pow]
 
 /-! ## 7. Reading back one emitted assignment -/
 

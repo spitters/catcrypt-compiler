@@ -239,21 +239,23 @@ theorem cSlot_eq_iff (x x' : Nat) : cSlot x = cSlot x' ↔ x % 5 = x' % 5 := by
 /-! ## 3. `emitRotL` -/
 
 /-- Left rotation by `r` as the emitter realizes it: a shift pair combined with
-    `|||`, with both shift amounts read from the immediate map, and the identity
-    for `r = 0`. -/
+    `|||`, with both shift amounts read from the immediate map and masked by
+    `shiftMask 64`, and the identity for `r = 0`. -/
 def rotModel (a : BitVec 64) (ι : IV) (r : Nat) : BitVec 64 :=
   if r = 0 then a
-  else (a <<< (ι (immIdx r)).toNat) ||| (a >>> (ι (immIdx (64 - r))).toNat)
+  else (a <<< shiftMask 64 (ι (immIdx r)).toNat)
+    ||| (a >>> shiftMask 64 (ι (immIdx (64 - r))).toNat)
 
 /-- Slot-map model of `emitRotL dst n`: for `n ≠ 0` the scratch slot receives
     `σ dst >>> (64 - n)` and `dst` receives `rotModel (σ dst) ι n`, with both
-    shift amounts read from the immediate map. -/
+    shift amounts read from the immediate map and masked by `shiftMask 64`. -/
 def rotLM (dst : Fin numSlots) (n : Nat) (σ : SV) (ι : IV) : SV :=
   if n = 0 then σ
   else
     Function.update
-      (Function.update σ rotScr ((σ dst) >>> (ι (immIdx (64 - n))).toNat))
-      dst (((σ dst) <<< (ι (immIdx n)).toNat) ||| ((σ dst) >>> (ι (immIdx (64 - n))).toNat))
+      (Function.update σ rotScr ((σ dst) >>> shiftMask 64 (ι (immIdx (64 - n))).toNat))
+      dst (((σ dst) <<< shiftMask 64 (ι (immIdx n)).toNat)
+        ||| ((σ dst) >>> shiftMask 64 (ι (immIdx (64 - n))).toNat))
 
 theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     (k : Cont t) (f : SV → IV → ⟦t⟧) (hk : Respects k f) (hDst : dst ≠ rotScr) :
@@ -439,7 +441,7 @@ def thetaDW (σ : SV) (ι : IV) (x : Nat) : BitVec 64 :=
 def thetaDColM (x : Nat) (σ : SV) (ι : IV) : SV :=
   Function.update (Function.update (Function.update (Function.update (Function.update
     (Function.update
-      (Function.update σ rotScr ((σ (cSlot (x + 1))) >>> (ι (immIdx 63)).toNat))
+      (Function.update σ rotScr ((σ (cSlot (x + 1))) >>> shiftMask 64 (ι (immIdx 63)).toNat))
         chiScr (thetaDW σ ι x))
       (aSlot x 0) (σ (aSlot x 0) ^^^ thetaDW σ ι x))
       (aSlot x 1) (σ (aSlot x 1) ^^^ thetaDW σ ι x))
@@ -495,7 +497,7 @@ def rhoPiLaneM (x y : Nat) (σ : SV) (ι : IV) : SV :=
   else
     Function.update
       (Function.update σ rotScr
-        ((σ (aSlot x y)) >>> (ι (immIdx (64 - rhoOffset (x + 5 * y)))).toNat))
+        ((σ (aSlot x y)) >>> shiftMask 64 (ι (immIdx (64 - rhoOffset (x + 5 * y)))).toNat))
       (bSlot y (2 * x + 3 * y))
       (rotModel (σ (aSlot x y)) ι (rhoOffset (x + 5 * y)))
 
@@ -671,7 +673,7 @@ theorem rotModel_rho {ι : IV} (h : ImmOK ι) (a : BitVec 64) (s : Nat) (hs : s 
       rotModel a ι r = crotl a r := by
     intro r hr hr0 hm1 hm2
     rw [rotModel, if_neg hr0, crotl, h.toNat_of hm1 hr,
-      h.toNat_of hm2 (by omega)]
+      h.toNat_of hm2 (by omega), shiftMask_of_lt hr, shiftMask_of_lt (by omega : 64 - r < 64)]
   interval_cases s
   · show rotModel a ι 0 = crotl a 0
     rw [rotModel, if_pos rfl, crotl]

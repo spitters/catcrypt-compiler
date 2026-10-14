@@ -144,16 +144,18 @@ theorem csubStmts_run (q : Nat) (dst src : String) (β : String → BitVec 64) :
   simp [scalarRunBV, csubStmts, SExpr.evalBV, csubW]
 
 /-- The Barrett multiply statements leave `barrettW q μ k (a · β b)` in `dst`, for a
-    shift amount `k < 2^64`. -/
-theorem mulModStmtsE_run (q μ k : Nat) (hk : k < 2 ^ 64) (dst : String) (a : SExpr)
+    shift amount `k < 64`. -/
+theorem mulModStmtsE_run (q μ k : Nat) (hk : k < 64) (dst : String) (a : SExpr)
     (b : String) (β : String → BitVec 64) :
     (scalarRunBV (mulModStmtsE q μ k dst a b) β).map (· dst)
       = some (barrettW q μ k (a.evalBV β * β b)) := by
-  have hk' : k % 18446744073709551616 = k := Nat.mod_eq_of_lt hk
-  simp [scalarRunBV, mulModStmtsE, csubStmts, SExpr.evalBV, barrettW, csubW, hk']
+  have hk' : k % 18446744073709551616 = k := Nat.mod_eq_of_lt (by omega)
+  have hk64 : k % 64 = k := Nat.mod_eq_of_lt hk
+  simp [scalarRunBV, mulModStmtsE, csubStmts, SExpr.evalBV, barrettW, csubW, hk', hk64]
 
-/-- `mulModStmts` leaves `barrettW q μ k (β a · β b)` in `dst`. -/
-theorem mulModStmts_run (q μ k : Nat) (hk : k < 2 ^ 64) (dst a b : String)
+/-- `mulModStmts` leaves `barrettW q μ k (β a · β b)` in `dst`, for a shift amount
+    `k < 64`. -/
+theorem mulModStmts_run (q μ k : Nat) (hk : k < 64) (dst a b : String)
     (β : String → BitVec 64) :
     (scalarRunBV (mulModStmts q μ k dst a b) β).map (· dst)
       = some (barrettW q μ k (β a * β b)) :=

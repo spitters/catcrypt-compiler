@@ -543,7 +543,7 @@ theorem PF_of_word_eq_sdmPF (r : BitVec 64) : PF_of_word r = sdmPF r := by
 
 /-- The model's shift count of an immediate `k` is `k mod 64`. -/
 theorem shiftCount_ofNat_64 (k : Nat) : shiftCount (BitVec.ofNat 64 k) = k % 64 := by
-  simp only [shiftCount, BitVec.toNat_ofNat]; omega
+  simp only [shiftCount, BitVec.toNat_ofNat, VIR.shiftMask_64]; omega
 
 /-- The model's `SHL` carry, the top bit of `v` shifted by `n - 1`, is bit
     `64 - n` of `v`. -/

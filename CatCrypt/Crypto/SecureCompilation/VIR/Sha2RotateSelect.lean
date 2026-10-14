@@ -121,13 +121,14 @@ theorem emitRotrNative_value_eq_emitRotr_value {w : Nat} {Γ : Ctxt jasminDialec
           (JasminBinOp.shl.apply x (readInp e V (amtIdx (w - n))))
   rw [hAmtN, hAmtWN]
   show x.rotateRight n
-      = (x >>> (BitVec.ofNat w n).toNat) ||| (x <<< (BitVec.ofNat w (w - n)).toNat)
+      = (x >>> shiftMask w (BitVec.ofNat w n).toNat)
+        ||| (x <<< shiftMask w (BitVec.ofNat w (w - n)).toNat)
   have hw2 : w < 2 ^ w := Nat.lt_two_pow_self
   have hnt : (BitVec.ofNat w n).toNat = n := by
     simp only [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
   have hnt' : (BitVec.ofNat w (w - n)).toNat = w - n := by
     simp only [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
-  rw [hnt, hnt']
+  rw [hnt, hnt', shiftMask_of_lt hnw, shiftMask_of_lt (by omega : w - n < w)]
   exact (shiftOr_eq_rotateRight n hnw x).symm
 
 /-! ## 5. Native-rotate SHA-2 compression `Com` (the emitted artifact)

@@ -260,8 +260,9 @@ theorem GuardedOp.toJInstr_get_other (ρ : RegMap) (op : GuardedOp) (dst : Strin
     `x86_SHL`. -/
 theorem x86_SHL_word_lt (v : BitVec 64) (b : Nat) (hb : b < 64) :
     (x86_SHL v (BitVec.ofNat 64 b)).word = v <<< b := by
-  simp only [x86_SHL, shiftCount, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb,
-             Nat.mod_eq_of_lt (lt_of_lt_of_le hb (by norm_num : (64 : Nat) ≤ 2 ^ 64))]
+  simp only [x86_SHL, shiftCount, BitVec.toNat_ofNat,
+             Nat.mod_eq_of_lt (lt_of_lt_of_le hb (by norm_num : (64 : Nat) ≤ 2 ^ 64)),
+             VIR.shiftMask_of_lt hb]
   by_cases h0 : b = 0
   · subst h0; simp [rflags_None]
   · simp only [h0, if_false, rflags_OF, wshl, min_eq_right (le_of_lt hb)]
@@ -270,8 +271,9 @@ theorem x86_SHL_word_lt (v : BitVec 64) (b : Nat) (hb : b < 64) :
     count is `< 64`. -/
 theorem x86_SHR_word_lt (v : BitVec 64) (b : Nat) (hb : b < 64) :
     (x86_SHR v (BitVec.ofNat 64 b)).word = v >>> b := by
-  simp only [x86_SHR, shiftCount, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb,
-             Nat.mod_eq_of_lt (lt_of_lt_of_le hb (by norm_num : (64 : Nat) ≤ 2 ^ 64))]
+  simp only [x86_SHR, shiftCount, BitVec.toNat_ofNat,
+             Nat.mod_eq_of_lt (lt_of_lt_of_le hb (by norm_num : (64 : Nat) ≤ 2 ^ 64)),
+             VIR.shiftMask_of_lt hb]
   by_cases h0 : b = 0
   · subst h0; simp [rflags_None]
   · simp only [h0, if_false, rflags_OF, wshr, min_eq_right (le_of_lt hb)]

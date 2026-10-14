@@ -211,7 +211,8 @@ theorem speckYCom_denote (x y k : BitVec 64) :
       Expr.lookupArgs (.cons vv rest) V = .cons (vv.lookup V) (Expr.lookupArgs rest V) :=
     fun _ _ _ => rfl
   simp only [speckYCom, Com.denote, Expr.denote, Ctxt.Valuation.extend,
-    DialectDenote.denote, JasminBinOp.apply, HVector.head, HVector.tail, hla0, hla1, hh, ht]
+    DialectDenote.denote, JasminBinOp.apply, HVector.head, HVector.tail, hla0, hla1, hh, ht,
+    VIR.shiftMask_64, Nat.reduceMod]
 
 /-- **The recognizable SPECK128 `y'` spec**: the emitted source computes
     `(y.rotateLeft 3) ^^^ (((x.rotateRight 8) + y) ^^^ k)` — `ROTL(y, 3)` xored with the

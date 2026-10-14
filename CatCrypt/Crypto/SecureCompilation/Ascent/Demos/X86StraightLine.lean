@@ -97,7 +97,7 @@ theorem compiled_refines :
 #guard_msgs (whitespace := lax) in
 #print axioms mulx_adcx_refines
 
-/-- info: 'CatCrypt.Crypto.SecureCompilation.Ascent.Demos.alu_refines' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'CatCrypt.Crypto.SecureCompilation.Ascent.Demos.alu_refines' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms alu_refines
 

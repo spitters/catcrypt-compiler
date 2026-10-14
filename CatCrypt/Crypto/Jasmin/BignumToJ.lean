@@ -543,11 +543,11 @@ theorem shl64_eq (a k : BitVec 64) : shl64 a k = (x86_SHL a k).word := by
   simp only [x86_SHL]
   by_cases h : shiftCount k = 0
   · rw [if_pos h]
-    simp only [shiftCount] at h
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp [rflags_None, shl64, h]
   · rw [if_neg h]
-    simp only [shiftCount] at h
-    simp only [rflags_OF, shl64, wshl, shiftCount]
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
+    simp only [rflags_OF, shl64, wshl, shiftCount, SecureCompilation.VIR.shiftMask_64]
     congr 1
     omega
 
@@ -555,11 +555,11 @@ theorem shr64_eq (a k : BitVec 64) : shr64 a k = (x86_SHR a k).word := by
   simp only [x86_SHR]
   by_cases h : shiftCount k = 0
   · rw [if_pos h]
-    simp only [shiftCount] at h
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp [rflags_None, shr64, h]
   · rw [if_neg h]
-    simp only [shiftCount] at h
-    simp only [rflags_OF, shr64, wshr, shiftCount]
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
+    simp only [rflags_OF, shr64, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     congr 1
     omega
 
@@ -567,24 +567,24 @@ theorem shld64_eq (a b k : BitVec 64) : shld64 a b k = (x86_SHLD a b k).word := 
   simp only [x86_SHLD]
   by_cases h : shiftCount k = 0
   · rw [if_pos h]
-    simp only [shiftCount] at h
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_None, shld64, h, Nat.sub_zero, BitVec.shiftLeft_zero]
     rw [BitVec.ushiftRight_eq_zero (by omega), BitVec.or_zero]
   · rw [if_neg h]
-    simp only [shiftCount] at h
-    simp only [rflags_OF, shld64, wshl, wshr, shiftCount]
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
+    simp only [rflags_OF, shld64, wshl, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
 
 theorem shrd64_eq (a b k : BitVec 64) : shrd64 a b k = (x86_SHRD a b k).word := by
   simp only [x86_SHRD]
   by_cases h : shiftCount k = 0
   · rw [if_pos h]
-    simp only [shiftCount] at h
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_None, shrd64, h, Nat.sub_zero, BitVec.ushiftRight_zero]
     rw [BitVec.shiftLeft_eq_zero (by omega), BitVec.or_zero]
   · rw [if_neg h]
-    simp only [shiftCount] at h
-    simp only [rflags_OF, shrd64, wshl, wshr, shiftCount]
+    simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
+    simp only [rflags_OF, shrd64, wshl, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
 
 /-! ## Operands -/

@@ -113,10 +113,19 @@ peels one `Com.var` binding to `body.denote (V.extend (waist …))`, the waist a
 `BitVec 8`-valued function so `Ctxt.Valuation.extend` infers the bound type. The
 ops used are `bvShiftL`, `bvShiftR`, `bvAnd`, `bvSub`, `bvXor`, `bvConst`. -/
 
-/-- `bvShiftL 8 k` waist. -/
-def shlW (k : Nat) (a : BitVec 8) : BitVec 8 := a <<< k
-/-- `bvShiftR 8 k` waist (logical right shift). -/
-def shrW (k : Nat) (a : BitVec 8) : BitVec 8 := BitVec.ushiftRight a k
+/-- `bvShiftL 8 k` waist: the dialect denotation, shifting by `shiftMask 8 k`. -/
+def shlW (k : Nat) (a : BitVec 8) : BitVec 8 := a <<< shiftMask 8 k
+/-- `bvShiftR 8 k` waist (logical right shift by `shiftMask 8 k`). -/
+def shrW (k : Nat) (a : BitVec 8) : BitVec 8 := BitVec.ushiftRight a (shiftMask 8 k)
+
+/-- At a count below `8` the `bvShiftL 8 k` waist is the plain left shift. -/
+theorem shlW_of_lt {k : Nat} (hk : k < 8) (a : BitVec 8) : shlW k a = a <<< k := by
+  rw [shlW, shiftMask_of_lt hk]
+
+/-- At a count below `8` the `bvShiftR 8 k` waist is the plain logical right shift. -/
+theorem shrW_of_lt {k : Nat} (hk : k < 8) (a : BitVec 8) :
+    shrW k a = BitVec.ushiftRight a k := by
+  rw [shrW, shiftMask_of_lt hk]
 /-- `bvAnd 8` waist. -/
 def andW (a b : BitVec 8) : BitVec 8 := a &&& b
 /-- `bvSub 8` waist. -/

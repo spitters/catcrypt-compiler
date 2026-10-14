@@ -126,12 +126,14 @@ theorem rotl_shiftAmt (k : Nat) (hk : k < 2 ^ 64) : (BitVec.ofNat 64 k).toNat = 
     rotate `rotlWord (a x) n` (in the `BitVec 64` word algebra), the scratch slots
     `lo`/`hi` hold the two shifted halves, and every other source name is untouched.
     Built by `corres_seq` over three `corres_setExprBitwise` leaves; the destination
-    value collapses to `rotlWord` by `rotl_or_eq_xor`. Requires an in-range count
-    (`n < 64`), non-temp source names, and the scratch slots distinct from `x`/each
-    other (`x ≠ lo`, `lo ≠ hi`) so the halves are read before being overwritten. -/
+    value collapses to `rotlWord` by `rotl_or_eq_xor`. Requires a nonzero in-range
+    count (`0 < n < 64`: both shift counts `n` and `64 - n` lie below the width, so
+    the masked shifts are the plain ones), non-temp source names, and the scratch
+    slots distinct from `x`/each other (`x ≠ lo`, `lo ≠ hi`) so the halves are read
+    before being overwritten. -/
 theorem corres_rotl (dst lo hi x : String) (n : Nat)
     (hn : n < 64) (hxt : ¬ isTmpName x) (hlot : ¬ isTmpName lo) (hhit : ¬ isTmpName hi)
-    (hxlo : x ≠ lo) (hlohi : lo ≠ hi) :
+    (hxlo : x ≠ lo) (hlohi : lo ≠ hi) (hn0 : 0 < n := by omega) :
     Corres SRwordBV (fun _ => True)
       (fun a s =>
         if s = dst then rotlWord (a x) n
@@ -151,7 +153,8 @@ theorem corres_rotl (dst lo hi x : String) (n : Nat)
         (fun _ _ => trivial))
       (fun _ _ => trivial))
   funext a s
-  simp only [SExpr.evalBV, hshn, hshm]
+  simp only [SExpr.evalBV, hshn, hshm, VIR.shiftMask_of_lt hn,
+    VIR.shiftMask_of_lt (by omega : 64 - n < 64)]
   split_ifs <;> simp_all [rotl_or_eq_xor]
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
