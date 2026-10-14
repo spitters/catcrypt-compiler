@@ -153,7 +153,8 @@ theorem apply_shr_eq_evalBV (β : String → BitVec 64) (sa : SExpr) {n : Nat}
     (h : n < 2 ^ 64) :
     ShiftKind.apply .shr (SExpr.evalBV β sa) n
       = SExpr.evalBV β (.SShr sa (.SLit n)) := by
-  show (SExpr.evalBV β sa) >>> n = (SExpr.evalBV β sa) >>> (SExpr.evalBV β (.SLit n)).toNat
+  show (SExpr.evalBV β sa) >>> VIR.shiftMask 64 n
+      = (SExpr.evalBV β sa) >>> VIR.shiftMask 64 (SExpr.evalBV β (.SLit n)).toNat
   rw [ofNat_toNat_of_lt β h]
 
 /-- **`shl` apply-agreement.** Under `n < 2 ^ 64`, Path A's `ShiftKind.apply .shl
@@ -164,7 +165,8 @@ theorem apply_shl_eq_evalBV (β : String → BitVec 64) (sa : SExpr) {n : Nat}
     (h : n < 2 ^ 64) :
     ShiftKind.apply .shl (SExpr.evalBV β sa) n
       = SExpr.evalBV β (.SShl sa (.SLit n)) := by
-  show (SExpr.evalBV β sa) <<< n = (SExpr.evalBV β sa) <<< (SExpr.evalBV β (.SLit n)).toNat
+  show (SExpr.evalBV β sa) <<< VIR.shiftMask 64 n
+      = (SExpr.evalBV β sa) <<< VIR.shiftMask 64 (SExpr.evalBV β (.SLit n)).toNat
   rw [ofNat_toNat_of_lt β h]
 
 /-- The shift apply-agreement bundled for `shiftSExpr`'s covered set: if
