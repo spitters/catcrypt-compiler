@@ -10,6 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+public import CatCrypt.Crypto.SecureCompilation.VIR.IsaEncodeComplete
 
 @[expose] public section
 
@@ -32,8 +33,15 @@ offset `spillQsaveOff` parses, or a `mem.*` cell whose base is a general-purpose
 register (`OpResolves`). The encoder addresses
 a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 
+## Main definitions
+
+* `x86Enc`: the x86 instance of the instruction-level encoder `IsaEncoder`.
+
 ## Main results
 
+* `x86Enc_complete`: the x86 encoder satisfies the completeness law `EncoderComplete` for
+  the x86 back end; the results on the legalisations and on `loadCSE` below are its
+  instances through the generic theorems of `IsaEncodeComplete`.
 * `encTwoAddr_ne_nil_iff`: the two-address form has bytes exactly when one name is a
   general-purpose register and the other resolves; `encTwoAddr_ne_nil`: so when both
   names resolve and at most one is a memory name; `opResolves_of_encTwoAddr`: a form
@@ -58,6 +66,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeComplete
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (isMovMnem IsaEncoder AllocOpI
+  EncoderComplete)
 
 /-! ## Non-empty byte forms -/
 
@@ -260,9 +270,6 @@ theorem opResolves_of_encTwoAddr {F W Q w op : Nat} {d s : String}
 
 /-! ## Register moves -/
 
-/-- The register-move mnemonics of the exporter and its legalisations. -/
-def isMovMnem (mn : String) : Bool := mn == "MOV" || mn == "MOV:64" || mn == "MOVQ"
-
 /-- The one-source dispatch of a two-address mnemonic at the width of its tag. -/
 theorem dispatch_alu_one_w
     (frame spillW op : Nat) (mnem base : String) (dn sn : String) (qsaveB : Nat)
@@ -337,47 +344,6 @@ theorem encodableLinstrR_mov_gp_right {F W Q : Nat} {mn r n : String} (hm : isMo
   encodableLinstrR_mov hm hn.opResolves (opResolves_of_isGpName hr)
     (by simp [encMemName_of_isGpName hr])
 
-/-! ## The legalised register copy -/
-
-/-- **Every instruction of a legalised register copy over allocated operands is
-    encodable.** -/
-theorem legalizeMov_encodable {F W Q : Nat} {d s : LOperand} {mov : String}
-    (hm : isMovMnem mov = true) (hd : AllocOp F W Q d) (hs : AllocOp F W Q s) :
-    ∀ i ∈ legalizeMov d s mov, encodableLinstrR F W i Q = true := by
-  obtain ⟨dn, rfl, hd'⟩ := hd
-  obtain ⟨sn, rfl, hs'⟩ := hs
-  have hd : AllocOp F W Q (.reg dn) := ⟨dn, rfl, hd'⟩
-  have hs : AllocOp F W Q (.reg sn) := ⟨sn, rfl, hs'⟩
-  intro i hi
-  unfold legalizeMov at hi
-  split_ifs at hi with hb
-  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
-    rcases hi with rfl | rfl
-    · exact encodableLinstrR_mov_gp_left hm isGpName_R15 hs
-    · exact encodableLinstrR_mov_gp_right hm isGpName_R15 hd
-  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
-    subst hi
-    refine encodableLinstrR_mov hm hd.opResolves hs.opResolves ?_
-    rw [hd.encMemName_eq, hs.encMemName_eq]
-    simpa using hb
-
-theorem stripWidthTag_of_isMovMnem {mn : String} (hm : isMovMnem mn = true) :
-    (stripWidthTag mn == "MOV" || stripWidthTag mn == "MOVQ") = true := by
-  simp only [isMovMnem, Bool.or_eq_true, beq_iff_eq] at hm
-  rcases hm with (rfl | rfl) | rfl <;> decide +kernel
-
-/-- **Every instruction of the one-source arm of the allocation on a register move
-    over allocated operands is encodable.** -/
-theorem legalizeOneSrc_encodable {F W Q : Nat} {u64 : Bool} {opn : String} {d s : LOperand}
-    (hm : isMovMnem opn = true) (hd : AllocOp F W Q d) (hs : AllocOp F W Q s) :
-    ∀ i ∈ legalizeOneSrc u64 opn d s, encodableLinstrR F W i Q = true := by
-  have hsm : spillImmMovMnem u64 opn d s = opn := by
-    obtain ⟨sn, rfl, -⟩ := hs
-    rfl
-  unfold legalizeOneSrc
-  rw [if_pos (stripWidthTag_of_isMovMnem hm), hsm]
-  exact legalizeMov_encodable hm hd hs
-
 /-! ## The scratch select -/
 
 theorem carriesNoBytes_cmov64 (dn cn tn fn : String) :
@@ -402,37 +368,6 @@ theorem isGpName_of_allocOp_not_spill {F W Q : Nat} {n : String} (h : AllocOp F 
   rcases hc with hg | ⟨hk, _⟩
   · exact hg
   · rw [isSpill_reg, hk] at hs; cases hs
-
-/-- **Every instruction of the scratch select is encodable** when the destination and
-    the condition are allocated and the selected values are general-purpose
-    registers. -/
-theorem cmovSpillSeq_encodable {F W Q : Nat} {d c : LOperand} {tn fn : String}
-    (hd : AllocOp F W Q d) (hc : AllocOp F W Q c) (ht : isGpName tn = true)
-    (hf : isGpName fn = true) :
-    ∀ i ∈ cmovSpillSeq "CMOV:64" d c (.reg tn) (.reg fn), encodableLinstrR F W i Q = true := by
-  have hm64 : isMovMnem "MOV:64" = true := by decide +kernel
-  obtain ⟨dn, rfl, hd'⟩ := hd
-  obtain ⟨cn, rfl, hc'⟩ := hc
-  have hd : AllocOp F W Q (.reg dn) := ⟨dn, rfl, hd'⟩
-  have hc : AllocOp F W Q (.reg cn) := ⟨cn, rfl, hc'⟩
-  intro i hi
-  unfold cmovSpillSeq at hi
-  cases hcs : (LOperand.reg cn).isSpill <;> cases hds : (LOperand.reg dn).isSpill <;>
-    simp only [hcs, hds, if_true, if_false, Bool.false_eq_true, List.nil_append,
-      List.cons_append, List.mem_cons, List.not_mem_nil, or_false] at hi
-  · subst hi
-    exact encodableLinstrR_cmov64_gp (isGpName_of_allocOp_not_spill hd hds)
-      (isGpName_of_allocOp_not_spill hc hcs) ht hf
-  · rcases hi with rfl | rfl
-    · exact encodableLinstrR_cmov64_gp isGpName_R15 (isGpName_of_allocOp_not_spill hc hcs) ht hf
-    · exact encodableLinstrR_mov_gp_right hm64 isGpName_R15 hd
-  · rcases hi with rfl | rfl
-    · exact encodableLinstrR_mov_gp_left hm64 isGpName_R14 hc
-    · exact encodableLinstrR_cmov64_gp (isGpName_of_allocOp_not_spill hd hds) isGpName_R14 ht hf
-  · rcases hi with rfl | rfl | rfl
-    · exact encodableLinstrR_mov_gp_left hm64 isGpName_R14 hc
-    · exact encodableLinstrR_cmov64_gp isGpName_R15 isGpName_R14 ht hf
-    · exact encodableLinstrR_mov_gp_right hm64 isGpName_R15 hd
 
 /-! ## The scratch comparison -/
 
@@ -498,83 +433,6 @@ theorem encodableLinstrR_setcc_gp {F W Q : Nat} {opn dn an sn : String}
   have he := encodeLopn_setcc_ne_nil (F := F) (W := W) (Q := Q) ho hd ha hs
   simp [encodableLinstrR, encodeLinstrR, he]
 
-theorem isMovMnem_setccMov (opn : String) : isMovMnem (setccMov opn) = true := by
-  unfold setccMov
-  split <;> decide +kernel
-
-/-- **Every instruction of the scratch comparison is encodable** for the comparisons
-    `SETE` and `SETNE` over allocated operands. -/
-theorem setccSpill?_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
-    {srcs : List LOperand} {l : List LinstrR} (h : setccSpill? dsts opn srcs = some l)
-    (ho : isSetccEncMnem opn = true) (hd : ∀ o ∈ dsts, AllocOp F W Q o)
-    (hs : ∀ o ∈ srcs, AllocOp F W Q o) :
-    ∀ i ∈ l, encodableLinstrR F W i Q = true := by
-  unfold setccSpill? at h
-  split at h
-  · rename_i d a b
-    split_ifs at h
-    cases h
-    have hdd := hd d (by simp)
-    have ha := hs (.reg a) (by simp)
-    have hb := hs (.reg b) (by simp)
-    obtain ⟨dn, rfl, -⟩ := hdd
-    have hm := isMovMnem_setccMov opn
-    intro i hi
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
-    rcases hi with rfl | rfl | rfl | rfl
-    · exact encodableLinstrR_mov_gp_left hm isGpName_R15 ha
-    · exact encodableLinstrR_mov_gp_left hm isGpName_R14 hb
-    · exact encodableLinstrR_setcc_gp ho isGpName_R15 isGpName_R15 isGpName_R14
-    · exact encodableLinstrR_mov_gp_right hm isGpName_R15 (hd _ (by simp))
-  · cases h
-
-/-! ## The spill legalisation of a general instruction -/
-
-/-- **Every instruction of `legalizeSpillDst` is encodable**, for allocated operands:
-    the scratch select when its selected values are registers, the scratch comparison
-    when it is `SETE` or `SETNE`, and the single instruction when it is itself
-    encodable. -/
-theorem legalizeSpillDst_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
-    {srcs : List LOperand}
-    (hd : ∀ o ∈ dsts, AllocOp F W Q o) (hs : ∀ o ∈ srcs, AllocOp F W Q o)
-    (hsel : ∀ c t f, srcs = [c, t, f] → opn = "CMOV:64" →
-      ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ isGpName tn = true ∧ isGpName fn = true)
-    (hcmp : isSetccMnem opn = true → isSetccEncMnem opn = true)
-    (hone : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
-      encodableLinstrR F W (.Lopn dsts opn srcs) Q = true) :
-    ∀ i ∈ legalizeSpillDst dsts opn srcs, encodableLinstrR F W i Q = true := by
-  unfold legalizeSpillDst
-  cases hc : cmovSpillDst? dsts opn srcs with
-  | some l =>
-    simp only
-    unfold cmovSpillDst? at hc
-    split at hc
-    · rename_i d c t f
-      split_ifs at hc with hb
-      cases hc
-      have hop : opn = "CMOV:64" := by
-        simp only [Bool.and_eq_true, beq_iff_eq] at hb
-        exact hb.2
-      obtain ⟨tn, fn, rfl, rfl, ht, hf⟩ := hsel c t f rfl hop
-      subst hop
-      exact cmovSpillSeq_encodable (hd d (by simp)) (hs c (by simp)) ht hf
-    · cases hc
-  | none =>
-    cases hs' : setccSpill? dsts opn srcs with
-    | some l =>
-      simp only
-      have hset : isSetccMnem opn = true := by
-        unfold setccSpill? at hs'
-        split at hs'
-        · split_ifs at hs' with hb
-          · exact (Bool.and_eq_true _ _ ▸ hb).2
-        · cases hs'
-      exact setccSpill?_encodable hs' (hcmp hset) hd hs
-    | none =>
-      simp only [List.mem_cons, List.not_mem_nil, or_false]
-      rintro i rfl
-      exact hone hc hs'
-
 /-! ## Load forwarding -/
 
 section LoadCSE
@@ -592,79 +450,155 @@ theorem isMemName_of_encMemName {n : String} (h : encMemName n = true) : isMemNa
     · exact Or.inl (Or.inr hq)
   · exact Or.inr (hasPrefix_mem_of_parseMemName hp)
 
-theorem isMovMnem_of_isMov64Mnem {mn : String} (h : isMov64Mnem mn = true) :
-    isMovMnem mn = true := by
-  simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at h
-  rcases h with rfl | rfl <;> decide +kernel
-
 /-- The load environment holds only names that resolve. -/
 def EnvResolves (F W Q : Nat) (h : LoadEnv) : Prop := ∀ p ∈ h, OpResolves F W Q p.2
+
+end LoadCSE
+
+/-! ## The x86 encoder -/
+
+/-- **The x86 encoder**: the context of a body is its frame size, spill width and save
+    block; an instruction is encodable in a context when `encodableLinstrR` holds there;
+    the encoder registers are the general-purpose registers; a name resolves when
+    `OpResolves` holds; a spill slot has a frame offset when `spillQsaveOff` parses; the
+    memory names are `encMemName`; the materialised comparisons are `isSetccEncMnem`. -/
+def x86Enc : IsaEncoder where
+  Ctx := Nat × Nat × Nat
+  ctx body := (frameSize body, if bodyIsU64 body then 64 else 32, qsaveBytesFor body)
+  instr c i := encodableLinstrR c.1 c.2.1 i c.2.2
+  reg := isGpName
+  resolves c n := OpResolves c.1 c.2.1 c.2.2 n
+  slot c n := (spillQsaveOff c.1 c.2.1 n c.2.2).isSome = true
+  memName := encMemName
+  setcc := isSetccEncMnem
+
+/-- An operand is allocated at a frame size, spill width and save block exactly when it is
+    an allocated operand of the x86 encoder in that context. -/
+theorem allocOp_iff_allocOpI {F W Q : Nat} {o : LOperand} :
+    AllocOp F W Q o ↔ AllocOpI x86Enc (F, W, Q) o := by
+  simp only [AllocOp, AllocOpI, x86Enc, isSpill_reg]
+
+/-- **The x86 encoder is complete for the x86 back end.** -/
+theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
+  encodable_eq _ := rfl
+  pool_reg := by decide +kernel
+  reload_reg := by decide +kernel
+  reloadSnd_reg := by decide +kernel
+  reg_resolves _ _ h := Or.inl h
+  slot_resolves _ _ h := Or.inr (Or.inl h)
+  reg_not_spill n h := by
+    rw [isSpill_reg]
+    cases hk : hasPrefix n "k."
+    · rfl
+    · change isGpName n = true at h
+      rw [isGpName_of_hasPrefix_k hk] at h; cases h
+  reg_not_mem _ h := encMemName_of_isGpName h
+  spill_mem n h := by
+    rw [isSpill_reg] at h
+    simp [x86Enc, encMemName, isSpillOrQsave_of_k h]
+  mem_loadCSE _ h := isMemName_of_encMemName h
+  mov_iff c mn d s hm := by
+    refine (encodableLinstrR_mov_iff hm).trans ⟨fun h => ?_, fun ⟨hd, hs, hds⟩ =>
+      encTwoAddr_ne_nil hd hs hds⟩
+    obtain ⟨hd, hs⟩ := opResolves_of_encTwoAddr h
+    refine ⟨hd, hs, ?_⟩
+    rcases encTwoAddr_ne_nil_iff.1 h with ⟨hg, -⟩ | ⟨-, hg⟩
+    · show (encMemName d && encMemName s) = false
+      simp [encMemName_of_isGpName hg]
+    · show (encMemName d && encMemName s) = false
+      simp [encMemName_of_isGpName hg]
+  select_reg m hm c dn cn tn fn hd hc ht hf := by
+    have hm' : m = "CMOV" := (Option.some.inj hm).symm
+    subst hm'
+    exact encodableLinstrR_cmov64_gp hd hc ht hf
+  setcc_reg c opn dn an sn ho hd ha hs := encodableLinstrR_setcc_gp ho hd ha hs
+
+/-- The select mnemonic of the x86 instruction set is `CMOV`. -/
+theorem x86Isa_selectMnemonic : X86Isa.x86Isa.selectMnemonic = some "CMOV" := rfl
+
+/-! ## The legalised register copy -/
+
+/-- **Every instruction of a legalised register copy over allocated operands is
+    encodable.** -/
+theorem legalizeMov_encodable {F W Q : Nat} {d s : LOperand} {mov : String}
+    (hm : isMovMnem mov = true) (hd : AllocOp F W Q d) (hs : AllocOp F W Q s) :
+    ∀ i ∈ legalizeMov d s mov, encodableLinstrR F W i Q = true :=
+  x86Enc_complete.legalizeMovI_encodable (c := (F, W, Q)) hm (allocOp_iff_allocOpI.1 hd)
+    (allocOp_iff_allocOpI.1 hs)
+
+/-- **Every instruction of the one-source arm of the allocation on a register move
+    over allocated operands is encodable.** -/
+theorem legalizeOneSrc_encodable {F W Q : Nat} {u64 : Bool} {opn : String} {d s : LOperand}
+    (hm : isMovMnem opn = true) (hd : AllocOp F W Q d) (hs : AllocOp F W Q s) :
+    ∀ i ∈ legalizeOneSrc u64 opn d s, encodableLinstrR F W i Q = true :=
+  x86Enc_complete.legalizeOneSrcI_encodable (c := (F, W, Q)) hm (allocOp_iff_allocOpI.1 hd)
+    (allocOp_iff_allocOpI.1 hs)
+
+/-! ## The scratch select -/
+
+/-- **Every instruction of the scratch select is encodable** when the destination and
+    the condition are allocated and the selected values are general-purpose
+    registers. -/
+theorem cmovSpillSeq_encodable {F W Q : Nat} {d c : LOperand} {tn fn : String}
+    (hd : AllocOp F W Q d) (hc : AllocOp F W Q c) (ht : isGpName tn = true)
+    (hf : isGpName fn = true) :
+    ∀ i ∈ cmovSpillSeq "CMOV:64" d c (.reg tn) (.reg fn), encodableLinstrR F W i Q = true :=
+  x86Enc_complete.cmovSpillSeqI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic
+    (allocOp_iff_allocOpI.1 hd)
+    (allocOp_iff_allocOpI.1 hc) ht hf
+
+/-! ## The scratch comparison -/
+
+/-- **Every instruction of the scratch comparison is encodable** for the comparisons
+    `SETE` and `SETNE` over allocated operands. -/
+theorem setccSpill?_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
+    {srcs : List LOperand} {l : List LinstrR} (h : setccSpill? dsts opn srcs = some l)
+    (ho : isSetccEncMnem opn = true) (hd : ∀ o ∈ dsts, AllocOp F W Q o)
+    (hs : ∀ o ∈ srcs, AllocOp F W Q o) :
+    ∀ i ∈ l, encodableLinstrR F W i Q = true :=
+  x86Enc_complete.setccSpillI?_encodable (c := (F, W, Q)) h ho
+    (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
+
+/-! ## The spill legalisation of a general instruction -/
+
+/-- **Every instruction of `legalizeSpillDst` is encodable**, for allocated operands:
+    the scratch select when its selected values are registers, the scratch comparison
+    when it is `SETE` or `SETNE`, and the single instruction when it is itself
+    encodable. -/
+theorem legalizeSpillDst_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
+    {srcs : List LOperand}
+    (hd : ∀ o ∈ dsts, AllocOp F W Q o) (hs : ∀ o ∈ srcs, AllocOp F W Q o)
+    (hsel : ∀ c t f, srcs = [c, t, f] → opn = "CMOV:64" →
+      ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ isGpName tn = true ∧ isGpName fn = true)
+    (hcmp : isSetccMnem opn = true → isSetccEncMnem opn = true)
+    (hone : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
+      encodableLinstrR F W (.Lopn dsts opn srcs) Q = true) :
+    ∀ i ∈ legalizeSpillDst dsts opn srcs, encodableLinstrR F W i Q = true :=
+  x86Enc_complete.legalizeSpillDstI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic
+    (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
+    hsel hcmp hone
+
+/-! ## Load forwarding -/
+
+section LoadCSE
+
+open CatCrypt.Crypto.Optimizer.LoadCSE
 
 /-- **One forwarding step keeps an encodable instruction encodable** and the
     environment resolving. -/
 theorem stepLoad_encodable {F W Q : Nat} (h : LoadEnv) (i : Linstr) (hh : EnvResolves F W Q h)
     (hi : encodableLinstrR F W i.li_i Q = true) :
     encodableLinstrR F W (stepLoad h i).1.li_i Q = true ∧
-      EnvResolves F W Q (stepLoad h i).2 := by
-  cases hr : asWideReload i.li_i with
-  | none =>
-    refine ⟨by simp only [stepLoad, hr]; exact hi, ?_⟩
-    simp only [stepLoad, hr]
-    intro p hp
-    exact hh p ((mem_foldl_killReg _ _ p (mem_foldl_killSlot _ _ p hp).1).1)
-  | some dsm =>
-    obtain ⟨d, s, mn⟩ := dsm
-    obtain ⟨hli, hm⟩ := asWideReload_eq hr
-    have hmv := isMovMnem_of_isMov64Mnem hm
-    rw [hli] at hi
-    obtain ⟨hd, -⟩ := opResolves_of_encodableLinstrR_mov hmv hi
-    have henv : EnvResolves F W Q (((h.killReg d).killSlot d).set s d) := by
-      intro p hp
-      rcases CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_set hp with
-        ⟨hp', _⟩ | rfl
-      · exact hh p (mem_killReg (mem_killSlot hp').1).1
-      · exact hd
-    cases hf : h.find s with
-    | none =>
-      simp only [stepLoad, hr, hf]
-      exact ⟨by rw [hli]; exact hi, henv⟩
-    | some r =>
-      have hrr : OpResolves F W Q r :=
-        hh (s, r) (CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_of_find hf)
-      by_cases hrd : r = d
-      · simp only [stepLoad, hr, hf, hrd, if_true]
-        exact ⟨by rw [hli]; exact hi, by simpa [hrd] using henv⟩
-      · by_cases hmm : isMemName d = true ∧ isMemName r = true
-        · simp only [stepLoad, hr, hf, hrd, if_false, if_pos hmm]
-          exact ⟨by rw [hli]; exact hi, henv⟩
-        · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm]
-          refine ⟨encodableLinstrR_mov hmv hd hrr ?_, henv⟩
-          cases hed : encMemName d <;> cases her : encMemName r
-          all_goals first
-            | rfl
-            | exact absurd ⟨isMemName_of_encMemName hed, isMemName_of_encMemName her⟩ hmm
+      EnvResolves F W Q (stepLoad h i).2 :=
+  x86Enc_complete.stepLoad_encodableI (c := (F, W, Q)) h i hh hi
 
 /-- **`loadCSE` preserves encodability**: at a fixed frame size, spill width and save
     block, a body of encodable instructions is forwarded to a body of encodable
     instructions. -/
 theorem loadCSE_encodable {F W Q : Nat} (body : List Linstr)
     (hb : ∀ i ∈ body, encodableLinstrR F W i.li_i Q = true) :
-    ∀ i ∈ loadCSE body, encodableLinstrR F W i.li_i Q = true := by
-  rw [loadCSE_eq]
-  suffices ∀ (h : LoadEnv) (b : List Linstr), EnvResolves F W Q h →
-      (∀ i ∈ b, encodableLinstrR F W i.li_i Q = true) →
-      ∀ i ∈ loadCSEAux h b, encodableLinstrR F W i.li_i Q = true from
-    this [] body (fun _ hp => by simp at hp) hb
-  intro h b
-  induction b generalizing h with
-  | nil => intro _ _ i hi; simp at hi
-  | cons j js ih =>
-    intro hh hjs i hi
-    rw [loadCSEAux_cons, List.mem_cons] at hi
-    have hstep := stepLoad_encodable h j hh (hjs j List.mem_cons_self)
-    rcases hi with rfl | hi
-    · exact hstep.1
-    · exact ih _ hstep.2 (fun k hk => hjs k (List.mem_cons_of_mem j hk)) i hi
+    ∀ i ∈ loadCSE body, encodableLinstrR F W i.li_i Q = true :=
+  x86Enc_complete.loadCSE_encodableI (c := (F, W, Q)) body hb
 
 end LoadCSE
 
