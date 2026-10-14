@@ -70,6 +70,13 @@ bounds, which hold at every entry state satisfying `AbiLayout.Regions`.
   halting run of `lsemFuelMemF` on the source to a halting checked run of the rewritten
   body.
 * `boundFacts_holds`: the facts of a layout's register bounds hold at a separated entry.
+* `SymLaws.runIdxOk_of_idxInvCheckB`, `SymLaws.lsemFuelMemFk_of_idxInvCheckB`,
+  `SymLaws.ownedCheckMC_sound_of_idxInv`: the three soundness theorems at an instruction set
+  `I` and a symbolic step and branch condition satisfying `SymLaws`; the x86 statements are
+  their instances at `symLaws_x86`.
+
+The check takes the symbolic step `sym` and the symbolic branch condition `dec` as
+parameters, by default the x86 ones `symStep` and `symDec`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
@@ -86,6 +93,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
+  (x86Isa x86Isa_lsemFuelMemF x86Isa_RunIdxOk x86Isa_lsemFuelMemFk)
 
 /-! ## 1. Facts -/
 
@@ -1449,9 +1459,10 @@ theorem oblsOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   omega
 
 /-- The successor facts of a block with terminator `T`, last instruction `z` and final
-    symbolic state `ss` follow from the facts `F` of the block. -/
+    symbolic state `ss` follow from the facts `F` of the block, the condition of a branch
+    read by the symbolic branch condition `dec` (by default the x86 one, `symDec`). -/
 def termInvOk (ann : List (List IdxFact)) (F : List SFact) (ss : SSt) (T : Term)
-    (z : Option LinstrRM) : Bool :=
+    (z : Option LinstrRM) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .fall (some j) => succOk F ss (annAt ann j)
   | .fall none => true
@@ -1459,37 +1470,42 @@ def termInvOk (ann : List (List IdxFact)) (F : List SFact) (ss : SSt) (T : Term)
   | .cond tg nx =>
       match z with
       | some (.Lcond c _, _) =>
-          succOk (F ++ edgeFacts (symDec ss c) true) ss (annAt ann tg) &&
+          succOk (F ++ edgeFacts (dec ss c) true) ss (annAt ann tg) &&
             match nx with
-            | some j => succOk (F ++ edgeFacts (symDec ss c) false) ss (annAt ann j)
+            | some j => succOk (F ++ edgeFacts (dec ss c) false) ss (annAt ann j)
             | none => true
       | _ => false
   | .ret => true
 
-/-- **The check of block `k`**: a block ending in `Lret`, or whose symbolic run fails, is
-    accepted; otherwise its symbolic run is in the fragment, its index obligations follow
-    from its facts and the width facts `guardW64` of the guards of the run, and the facts of
-    its successors follow. -/
-def blockInvOk (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (k : Nat) : Bool :=
+/-- **The check of block `k`** under the symbolic step `sym` and the symbolic branch
+    condition `dec` (by default the x86 ones, `symStep` and `symDec`): a block ending in
+    `Lret`, or whose symbolic run fails, is accepted; otherwise its symbolic run is in the
+    fragment, its index obligations follow from its facts and the width facts `guardW64` of
+    the guards of the run, and the facts of its successors follow. -/
+def blockInvOk (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (k : Nat)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) :
+    Bool :=
   match (G.blk k).term with
   | .ret => true
   | T =>
-      match symRun (bodyAt B (G.blk k) T) SSt.start with
+      match symRun (bodyAt B (G.blk k) T) SSt.start sym with
       | .fail => true
       | .unk => false
       | .ok ss gs =>
           oblsOk (startF (annAt ann k) ++ gs.flatMap guardW64)
-              (symObl (bodyAt B (G.blk k) T) SSt.start) &&
-            termInvOk ann (startF (annAt ann k)) ss T B[(G.blk k).stop - 1]?
+              (symObl (bodyAt B (G.blk k) T) SSt.start sym) &&
+            termInvOk ann (startF (annAt ann k)) ss T B[(G.blk k).stop - 1]? dec
 
 /-- **The bounds-invariant check** of the body `B` under the annotation `ann`, from the
-    entry facts `entry`: the body has a control-flow graph, every block passes
+    entry facts `entry`, under the symbolic step `sym` and the symbolic branch condition
+    `dec` (by default the x86 ones): the body has a control-flow graph, every block passes
     `blockInvOk`, and the entry facts give the facts of block `0`. -/
-def idxInvCheckB (entry : List IdxFact) (ann : List (List IdxFact)) (B : List LinstrRM) :
+def idxInvCheckB (entry : List IdxFact) (ann : List (List IdxFact)) (B : List LinstrRM)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) :
     Bool :=
   match cfgOf (B.map Prod.fst) with
   | some G =>
-      (List.range G.blocks.size).all (blockInvOk ann B G) &&
+      (List.range G.blocks.size).all (fun k => blockInvOk ann B G k sym dec) &&
         (annAt ann 0).all fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
   | none => false
 
@@ -1497,29 +1513,30 @@ def idxInvCheckB (entry : List IdxFact) (ann : List (List IdxFact)) (B : List Li
 
 section Sound
 
+variable {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
 variable {ann : List (List IdxFact)} {B : List LinstrRM} {G : CFG} {fn : String}
 
-/-- The invariant up to the measure `N`: a halting run from a block entry at which the
-    facts of the block hold is in bounds. -/
-def InvAt (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (fn : String) (N : Nat) :
-    Prop :=
+/-- The invariant up to the measure `N` for the instruction set `I`: a halting run from a
+    block entry at which the facts of the block hold is in bounds. -/
+def InvAt (I : Isa) (ann : List (List IdxFact)) (B : List LinstrRM) (G : CFG) (fn : String)
+    (N : Nat) : Prop :=
   ∀ (fuel k : Nat) (s t : LstateMF),
     fuel * (G.blocks.size + 1) + (G.blocks.size - k) < N → k < G.blocks.size →
     EntryAt B (G.blk k) s.prog.base.reg.lpc → s.prog.lfn = fn →
     (∀ f ∈ annAt ann k, f.holds s.prog.base.reg.lvm s.prog.base.larr) →
-    lsemFuelMemF (singletonProgM fn B) fuel s = some t →
-    RunIdxOk (singletonProgM fn B) fuel s
+    I.lsemFuelMemF (singletonProgM fn B) fuel s = some t →
+    I.RunIdxOk (singletonProgM fn B) fuel s
 
-theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
-    (hb : ∀ k < G.blocks.size, blockInvOk ann B G k = true) {N : Nat}
-    (ih : InvAt ann B G fn N) : InvAt ann B G fn (N + 1) := by
+theorem inv_step (hL : SymLaws I sym dec) (hG : cfgOf (B.map Prod.fst) = some G)
+    (hb : ∀ k < G.blocks.size, blockInvOk ann B G k sym dec = true) {N : Nat}
+    (ih : InvAt I ann B G fn N) : InvAt I ann B G fn (N + 1) := by
   intro fuel k s t hN hk hE hfn hinv hrun
   have F := blockFacts hG hk
   obtain ⟨hs1, hle⟩ := entry_le hG hk hE
   have hplain := body_plain hG hk hs1
   obtain ⟨u, f, hf, hu, hru⟩ :=
-    fuel_runL _ _ s t fuel hfn (drop_split B hle) hplain hrun
-  obtain ⟨hul, hup⟩ := runL_frame _ s u hplain hu
+    fuel_runL_at hL.plain _ _ s t fuel hfn (drop_split B hle) hplain hrun
+  obtain ⟨hul, hup⟩ := runL_frame_at hL.plain _ s u hplain hu
   have hbstop : bstopOf (G.blk k).term (G.blk k) ≤ B.length := by
     unfold bstopOf; split <;> have := F.le <;> simp at this <;> omega
   simp only [List.length_take, List.length_drop] at hup hf
@@ -1538,32 +1555,33 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
     have hupc2 : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by
       rw [hupc]; simp [bstopOf, hret]
     obtain ⟨_, _, _, he, _⟩ :=
-      run_inv hru (by rw [findInstrMem_single hul', hupc2, hz])
+      run_inv_at hru (by rw [findInstrMem_single hul', hupc2, hz])
     obtain ⟨zi, zt⟩ := z
     simp only at hzr
     subst hzr
-    rw [evalInstrPMemF_ret] at he
+    rw [hL.ret] at he
     cases he
   -- the symbolic run of the block body
-  have hD := symRun_sound (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
+  have hD := symRun_sound_at hL.step_sound (singletonProgM fn B)
+    ((B.drop s.prog.base.reg.lpc).take
+      (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
     (holds_start s)
-  rw [symRun_entry hE hle] at hD
+  rw [symRun_entry_at hL.label hE hle] at hD
   have hbk := hb k hk
   unfold blockInvOk at hbk
-  have hbk' : (match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+  have hbk' : (match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start sym with
       | .fail => true
       | .unk => false
       | .ok ss gs =>
           oblsOk (startF (annAt ann k) ++ gs.flatMap guardW64)
-              (symObl (bodyAt B (G.blk k) (G.blk k).term) SSt.start) &&
+              (symObl (bodyAt B (G.blk k) (G.blk k).term) SSt.start sym) &&
             termInvOk ann (startF (annAt ann k)) ss (G.blk k).term
-              B[(G.blk k).stop - 1]?) = true := by
+              B[(G.blk k).stop - 1]? dec) = true := by
     revert hbk
     cases hT : (G.blk k).term with
     | ret => exact absurd hT hret
     | _ => exact id
-  cases hS : symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+  cases hS : symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start sym with
   | fail =>
       rw [hS] at hD
       simp only [SOut.DescN] at hD
@@ -1585,15 +1603,17 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
     · exact guardW64_holds hgs g hg
   -- the stretch is in bounds
   have hlS : RunLOk (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
-      (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) s := by
-    refine (symObl_sound (singletonProgM fn B) _ SSt.start _ _ _ _ _ s u (holds_start s)
-      ⟨ss, gs, by rw [symRun_entry hE hle]; exact hS⟩ hu).mpr fun o ho => ?_
-    rw [symObl_entry hE hle] at ho
+      (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) s I := by
+    refine (symObl_sound_at hL.step_sound (singletonProgM fn B) _ SSt.start _ _ _ _ _ s u
+      (holds_start s) ⟨ss, gs, by rw [symRun_entry_at hL.label hE hle]; exact hS⟩ hu).mpr
+      fun o ho => ?_
+    rw [symObl_entry_at hL.label hE hle] at ho
     exact oblsOk_sound hobl hF1 o ho
-  have hokJ : ∀ f0, RunIdxOk (singletonProgM fn B) f0 u →
-      RunIdxOk (singletonProgM fn B) (((B.drop s.prog.base.reg.lpc).take
+  have hokJ : ∀ f0, I.RunIdxOk (singletonProgM fn B) f0 u →
+      I.RunIdxOk (singletonProgM fn B) (((B.drop s.prog.base.reg.lpc).take
         (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)).length + f0) s :=
-    fun f0 h0 => runIdxOk_of_runL _ _ s u f0 hfn (drop_split B hle) hplain hu hlS h0
+    fun f0 h0 =>
+      runIdxOk_of_runL_at hL.plain _ _ s u f0 hfn (drop_split B hle) hplain hu hlS h0
   simp only [List.length_take, List.length_drop] at hokJ
   rw [hf]
   have hlen : min (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)
@@ -1614,7 +1634,7 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
     cases nx with
     | none =>
         have e1 := (stop_next hG hk).1 hnx.symm
-        exact runIdxOk_halt (by rw [findInstrMem_single hul', hw, e1]; simp) f
+        exact runIdxOk_halt_at I (by rw [findInstrMem_single hul', hw, e1]; simp) f
     | some j =>
         obtain ⟨hj, hjlt, e1⟩ := (stop_next hG hk).2 j hnx.symm
         subst hj
@@ -1626,15 +1646,15 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
     have hw : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by rw [hupc, hT]; rfl
     have hfetch : findInstrMem (singletonProgM fn B) u.prog = some (.Lgoto (x, l), zt) := by
       rw [findInstrMem_single hul', hw, hz]
-    obtain ⟨f1, u1, hf1, he, hr1⟩ := run_inv hru hfetch
+    obtain ⟨f1, u1, hf1, he, hr1⟩ := run_inv_at hru hfetch
     have he0 := he
-    rw [evalInstrPMemF_goto] at he
+    rw [I.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
     · rw [if_pos hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       subst hf1
-      exact runIdxOk_step hfetch (idxOkB_goto _ _ _ _) he0
+      exact runIdxOk_step_at hfetch (idxOkB_goto _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound hti hF0 hH) hr1)
     · rw [if_neg hx] at he
@@ -1647,40 +1667,40 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
     have hw : u.prog.base.reg.lpc = (G.blk k).stop - 1 := by rw [hupc, hT]; rfl
     have hfetch : findInstrMem (singletonProgM fn B) u.prog = some (.Lcond c l, zt) := by
       rw [findInstrMem_single hul', hw, hz]
-    obtain ⟨f1, u1, hf1, he, hr1⟩ := run_inv hru hfetch
+    obtain ⟨f1, u1, hf1, he, hr1⟩ := run_inv_at hru hfetch
     have he0 := he
     subst hf1
-    have hdec := decC_eq hH c
-    rw [evalInstrPMemF_cond] at he
+    have hdec := hL.dec_sound hH c
+    rw [I.step_cond] at he
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
-    by_cases hd : decC u c = true
+    by_cases hd : I.condEval u c = true
     · rw [if_pos hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
-      have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (symDec ss c) true,
+      have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (dec ss c) true,
           g.holds s.prog.base.reg.lvm s.prog.base.larr s.prog.base.cf s.prog.base.of := by
         intro g hg
         rcases List.mem_append.mp hg with hg | hg
         · exact hF0 g hg
         · exact edgeFacts_sound (hdec.symm.trans hd) g hg
-      exact runIdxOk_step hfetch (idxOkB_cond _ _ _ _) he0
+      exact runIdxOk_step_at hfetch (idxOkB_cond _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound htk hE' hH) hr1)
     · rw [if_neg hd] at he
       simp only [Option.some.injEq] at he
       subst he
-      have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (symDec ss c) false,
+      have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (dec ss c) false,
           g.holds s.prog.base.reg.lvm s.prog.base.larr s.prog.base.cf s.prog.base.of := by
         intro g hg
         rcases List.mem_append.mp hg with hg | hg
         · exact hF0 g hg
         · exact edgeFacts_sound (by rw [← hdec]; simpa using hd) g hg
-      refine runIdxOk_step hfetch (idxOkB_cond _ _ _ _) he0 ?_
+      refine runIdxOk_step_at hfetch (idxOkB_cond _ _ _ _) he0 ?_
       have hw1 : u.prog.base.reg.lpc + 1 = (G.blk k).stop := by omega
       cases nx with
       | none =>
           have e1 := (stop_next hG hk).1 hnx.symm
-          exact runIdxOk_halt (by
+          exact runIdxOk_halt_at I (by
             rw [findInstrMem_single (s := ⟨⟨u.prog.base.nextPc, u.prog.lfn⟩, u.zf⟩) hul']
             show B[u.prog.base.reg.lpc + 1]? = none
             rw [hw1, e1]; simp) f1
@@ -1691,12 +1711,77 @@ theorem inv_step (hG : cfgOf (B.map Prod.fst) = some G)
             (Or.inl (hw1.trans e1)) hul' (succOk_sound hnt hE' hH) hr1
   · exact absurd hT hret
 
-theorem invAt_all (hG : cfgOf (B.map Prod.fst) = some G)
-    (hb : ∀ k < G.blocks.size, blockInvOk ann B G k = true) : ∀ N, InvAt ann B G fn N
+theorem invAt_all (hL : SymLaws I sym dec) (hG : cfgOf (B.map Prod.fst) = some G)
+    (hb : ∀ k < G.blocks.size, blockInvOk ann B G k sym dec = true) :
+    ∀ N, InvAt I ann B G fn N
   | 0 => fun _ _ _ _ hN => absurd hN (Nat.not_lt_zero _)
-  | N + 1 => inv_step hG hb (invAt_all hG hb N)
+  | N + 1 => inv_step hL hG hb (invAt_all hL hG hb N)
 
 end Sound
+
+/-- **Soundness of the bounds-invariant check over an instruction set.** If the symbolic
+    step `sym` and the symbolic branch condition `dec` satisfy `SymLaws I sym dec` and
+    `idxInvCheckB entry ann B sym dec` accepts, every halting run of `I` on the singleton
+    program over `B` from a state at pc `0` of that function whose registers and arrays
+    satisfy the entry facts is in bounds. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV.SymLaws.runIdxOk_of_idxInvCheckB
+    {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hL : SymLaws I sym dec) {entry : List IdxFact} {ann : List (List IdxFact)}
+    {B : List LinstrRM} (h : idxInvCheckB entry ann B sym dec = true) (fn : String)
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    I.RunIdxOk (singletonProgM fn B) fuel s := by
+  unfold idxInvCheckB at h
+  split at h
+  · rename_i G hG
+    simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+    obtain ⟨hb, h0⟩ := h
+    by_cases hB : B.map Prod.fst = []
+    · have hBn : B = [] := by simpa using hB
+      subst hBn
+      exact runIdxOk_halt_at I (by rw [findInstrMem_single hfn]; simp) fuel
+    obtain ⟨hpos, hs0⟩ := cfgOf_start_zero hG hB
+    have hF := startF_holds (A := s.prog.base.larr) (C := s.prog.base.cf)
+      (O := s.prog.base.of) hent
+    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm s.prog.base.larr :=
+      fun f hf => (IdxFact.toS_holds STerm.reg SArr.cell f).mp (entails_sound hF _ (h0 f hf))
+    exact invAt_all hL hG hb _ fuel 0 s t (Nat.lt_succ_self _) hpos
+      (Or.inl (hpc.trans hs0.symm)) hfn hinv hrun
+  · cases h
+
+/-- **A halting run of an accepted body over an instruction set is a halting checked
+    run.** -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV.SymLaws.lsemFuelMemFk_of_idxInvCheckB
+    {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hL : SymLaws I sym dec) {entry : List IdxFact} {ann : List (List IdxFact)}
+    {B : List LinstrRM} (h : idxInvCheckB entry ann B sym dec = true) (fn : String)
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    I.lsemFuelMemFk true (singletonProgM fn B) fuel s = some t :=
+  I.lsemFuelMemFk_of_runIdxOk true _ fuel s t hrun
+    (hL.runIdxOk_of_idxInvCheckB h fn s t hfn hpc hent fuel hrun)
+
+/-- **The checker on runs of an accepted source body, over an instruction set.** If the
+    symbolic step `sym` and the symbolic branch condition `dec` satisfy `SymLaws I sym dec`
+    and `SymSubst sym dec`, and `ownedCheckMC outs B B' sym dec` and
+    `idxInvCheckB entry ann B sym dec` accept, every halting run of `I` on `B` from a state
+    at pc `0` whose registers and arrays satisfy the entry facts is matched by a halting
+    checked run of `I` on `B'` from the same state, the end states agreeing on `outs`, the
+    arrays and the word memory. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV.SymLaws.ownedCheckMC_sound_of_idxInv
+    {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    (hL : SymLaws I sym dec) (hS : SymSubst sym dec) {outs : List String}
+    {B B' : List LinstrRM} {entry : List IdxFact} {ann : List (List IdxFact)}
+    (h : ownedCheckMC outs B B' sym dec = true) (hi : idxInvCheckB entry ann B sym dec = true)
+    (fn : String) (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
+    (hrun : I.lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemFk true (singletonProgM fn B') fuel' s = some t' ∧
+      Obs outs t t' :=
+  ownedCheckMC_sound_at hL hS h fn s t hfn hpc fuel
+    (hL.lsemFuelMemFk_of_idxInvCheckB hi fn s t hfn hpc hent fuel hrun)
 
 /-- **Soundness of the bounds-invariant check.** If `idxInvCheckB entry ann B` accepts,
     every halting run of `lsemFuelMemF` on the singleton program over `B` from a state at
@@ -1708,23 +1793,9 @@ theorem runIdxOk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFac
     (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     RunIdxOk (singletonProgM fn B) fuel s := by
-  unfold idxInvCheckB at h
-  split at h
-  · rename_i G hG
-    simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
-    obtain ⟨hb, h0⟩ := h
-    by_cases hB : B.map Prod.fst = []
-    · have hBn : B = [] := by simpa using hB
-      subst hBn
-      exact runIdxOk_halt (by rw [findInstrMem_single hfn]; simp) fuel
-    obtain ⟨hpos, hs0⟩ := cfgOf_start_zero hG hB
-    have hF := startF_holds (A := s.prog.base.larr) (C := s.prog.base.cf)
-      (O := s.prog.base.of) hent
-    have hinv : ∀ f ∈ annAt ann 0, f.holds s.prog.base.reg.lvm s.prog.base.larr :=
-      fun f hf => (IdxFact.toS_holds STerm.reg SArr.cell f).mp (entails_sound hF _ (h0 f hf))
-    exact invAt_all hG hb _ fuel 0 s t (Nat.lt_succ_self _) hpos
-      (Or.inl (hpc.trans hs0.symm)) hfn hinv hrun
-  · cases h
+  rw [← x86Isa_lsemFuelMemF] at hrun
+  rw [← x86Isa_RunIdxOk]
+  exact symLaws_x86.runIdxOk_of_idxInvCheckB h fn s t hfn hpc hent fuel hrun
 
 /-- **A halting run of an accepted body is a halting checked run.** -/
 theorem lsemFuelMemFk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List IdxFact)}
@@ -1732,9 +1803,10 @@ theorem lsemFuelMemFk_of_idxInvCheckB {entry : List IdxFact} {ann : List (List I
     (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
     (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
-    lsemFuelMemFk true (singletonProgM fn B) fuel s = some t :=
-  lsemFuelMemFk_of_runIdxOk true _ fuel s t hrun
-    (runIdxOk_of_idxInvCheckB h fn s t hfn hpc hent fuel hrun)
+    lsemFuelMemFk true (singletonProgM fn B) fuel s = some t := by
+  rw [← x86Isa_lsemFuelMemF] at hrun
+  rw [← x86Isa_lsemFuelMemFk]
+  exact symLaws_x86.lsemFuelMemFk_of_idxInvCheckB h fn s t hfn hpc hent fuel hrun
 
 /-- **The checker on runs of an accepted source body.** If `ownedCheckMC outs B B'` and
     `idxInvCheckB entry ann B` accept, every halting run of `lsemFuelMemF` on `B` from a
@@ -1748,9 +1820,10 @@ theorem ownedCheckMC_sound_of_idxInv {outs : List String} {B B' : List LinstrRM}
     (hent : ∀ f ∈ entry, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
     ∃ fuel' t', lsemFuelMemFk true (singletonProgM fn B') fuel' s = some t' ∧
-      Obs outs t t' :=
-  ownedCheckMC_sound h fn s t hfn hpc fuel
-    (lsemFuelMemFk_of_idxInvCheckB hi fn s t hfn hpc hent fuel hrun)
+      Obs outs t t' := by
+  rw [← x86Isa_lsemFuelMemF] at hrun
+  simpa only [x86Isa_lsemFuelMemFk] using
+    symLaws_x86.ownedCheckMC_sound_of_idxInv symSubst_x86 h hi fn s t hfn hpc hent fuel hrun
 
 /-! ## 6. Annotation by restriction to a fixed point -/
 
