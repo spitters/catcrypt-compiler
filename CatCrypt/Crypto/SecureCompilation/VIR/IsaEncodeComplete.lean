@@ -29,14 +29,16 @@ forwarding `loadCSE` preserves encodability.
 * `isMovMnem`: the register-move mnemonics `MOV`, `MOV:64` and `MOVQ`.
 * `IsaEncoder`: the context of a body, the encodability of an instruction in a context, the
   encoder registers, the resolving names, the spill slots with a frame offset, the memory
-  names and the materialised comparisons the encoder builds.
+  names and the materialised comparisons the encoder builds, against a register and against
+  an immediate.
 * `AllocOpI`: an operand of the allocated body: an encoder register, or a spill slot with a
   frame offset.
 * `EncoderComplete`: the encodability of a body is that of its instructions in the context
   of the body, and the operand laws of the encoder.
 * `LegalForm`: the instruction forms the spill legalisations emit: register moves over
   resolving names with at most one memory name, the select over encoder registers, and the
-  materialised comparisons the encoder builds over encoder registers.
+  materialised comparisons the encoder builds over encoder registers, against a register or
+  an immediate.
 
 ## Main results
 
@@ -92,7 +94,8 @@ theorem isMovMnem_of_isMov64Mnem {mn : String}
     `instr c i` of an instruction in a context, the names `reg` encoded as registers, the
     names `resolves c` an operand form resolves in a context, the spill slots `slot c` with
     a frame offset in a context, the names `memName` encoded as memory operands, and the
-    materialised comparisons `setcc` the encoder builds. -/
+    materialised comparisons the encoder builds, `setcc` against a register and `setccImm`
+    against an immediate. -/
 structure IsaEncoder : Type 1 where
   /-- The context of a body. -/
   Ctx : Type
@@ -110,6 +113,9 @@ structure IsaEncoder : Type 1 where
   memName : String → Bool
   /-- Whether the encoder builds the materialised comparison with this mnemonic. -/
   setcc : String → Bool
+  /-- Whether the encoder builds the materialised comparison with this mnemonic against this
+      immediate. -/
+  setccImm : String → Nat → Bool
 
 /-- **An operand of the allocated body**: a name that is an encoder register, or a spill slot
     with a frame offset in the context `c`. -/
@@ -124,7 +130,8 @@ def AllocOpI (E : IsaEncoder) (c : E.Ctx) (o : LOperand) : Prop :=
     load forwarding; a register move is encodable exactly when both names resolve and at
     most one is a memory name; the select at the select mnemonic of `I`, at width 64, over
     four encoder registers is encodable; and a materialised comparison the encoder builds
-    over three encoder registers is encodable. -/
+    over three encoder registers, or over two encoder registers and an immediate, is
+    encodable. -/
 structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop where
   /-- The encodability of a body is that of its instructions in the context of the body. -/
   encodable_eq : ∀ body : Lcmd,
@@ -162,11 +169,17 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   setcc_reg : ∀ (c : E.Ctx) (opn dn an sn : String), E.setcc opn = true →
     E.reg dn = true → E.reg an = true → E.reg sn = true →
     E.instr c (.Lopn [.reg dn] opn [.reg an, .reg sn]) = true
+  /-- A materialised comparison the encoder builds against an immediate, over two encoder
+      registers, is encodable. -/
+  setccImm_reg : ∀ (c : E.Ctx) (opn dn an : String) (v : Nat), E.setccImm opn v = true →
+    E.reg dn = true → E.reg an = true →
+    E.instr c (.Lopn [.reg dn] opn [.reg an, .imm v]) = true
 
 /-- **The legal forms of the spill legalisations** at the instruction set `I`, the encoder `E`
     and the context `c`: a register move whose two names resolve in `c` and of which at most
     one is a memory name; the 64-bit select at the select mnemonic of `I` over four encoder
-    registers; and a materialised comparison the encoder builds over three encoder
+    registers; a materialised comparison the encoder builds over three encoder registers; and
+    a materialised comparison the encoder builds against an immediate over two encoder
     registers. -/
 def LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) (i : LinstrR) : Prop :=
   (∃ mn d s, isMovMnem mn = true ∧ i = .Lopn [.reg d] mn [.reg s] ∧
@@ -175,7 +188,9 @@ def LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) (i : LinstrR) : Prop :=
       i = .Lopn [.reg dn] (withWidthTag 64 m) [.reg cn, .reg tn, .reg fn] ∧
       E.reg dn = true ∧ E.reg cn = true ∧ E.reg tn = true ∧ E.reg fn = true) ∨
   (∃ opn dn an sn, E.setcc opn = true ∧ i = .Lopn [.reg dn] opn [.reg an, .reg sn] ∧
-      E.reg dn = true ∧ E.reg an = true ∧ E.reg sn = true)
+      E.reg dn = true ∧ E.reg an = true ∧ E.reg sn = true) ∨
+  (∃ opn dn an v, E.setccImm opn v = true ∧ i = .Lopn [.reg dn] opn [.reg an, .imm v] ∧
+      E.reg dn = true ∧ E.reg an = true)
 
 namespace EncoderComplete
 
@@ -194,10 +209,12 @@ theorem encodable_of_instr {body : Lcmd}
 theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
     E.instr c i = true := by
   rcases hi with ⟨mn, d, s, hm, rfl, hd, hs, hds⟩ |
-    ⟨m, dn, cn, tn, fn, hsel, rfl, h1, h2, h3, h4⟩ | ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩
+    ⟨m, dn, cn, tn, fn, hsel, rfl, h1, h2, h3, h4⟩ | ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩ |
+    ⟨opn, dn, an, v, ho, rfl, h1, h2⟩
   · exact (h.mov_iff c mn d s hm).2 ⟨hd, hs, hds⟩
   · exact h.select_reg m hsel c dn cn tn fn h1 h2 h3 h4
   · exact h.setcc_reg c opn dn an sn ho h1 h2 h3
+  · exact h.setccImm_reg c opn dn an v ho h1 h2
 
 /-- **A body whose instructions have legal forms in its context is encodable.** -/
 theorem encodable_of_legal {body : Lcmd}
@@ -384,8 +401,8 @@ theorem setccSpillI?_legal {c : E.Ctx} {dsts : List LOperand} {opn : String}
     rcases hi with rfl | rfl | rfl | rfl
     · exact h.legalForm_mov_left hm h.reload_reg ha
     · exact h.legalForm_mov_left hm h.reloadSnd_reg hb
-    · exact Or.inr (Or.inr ⟨opn, _, _, _, ho, rfl, h.reload_reg, h.reload_reg,
-        h.reloadSnd_reg⟩)
+    · exact Or.inr (Or.inr (Or.inl ⟨opn, _, _, _, ho, rfl, h.reload_reg, h.reload_reg,
+        h.reloadSnd_reg⟩))
     · obtain ⟨dn, rfl, hd'⟩ := hd d (by simp)
       exact h.legalForm_mov_right hm h.reload_reg ⟨dn, rfl, hd'⟩
   · cases hl

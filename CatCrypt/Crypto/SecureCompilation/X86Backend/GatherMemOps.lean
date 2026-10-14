@@ -885,10 +885,11 @@ theorem dispatch_alu_imm₂ (frame spillW : Nat) (mnem base : String)
     (hstrip : stripWidthTag mnem = base)
     (hw : rexW (mnemWidth mnem) = 1)
     (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
-    (hadx : adxPrefix base = none) :
+    (hadx : adxPrefix base = none)
+    (hcc : (base == "SETE" || base == "SETNE") = false) :
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .imm v]) qsaveB
       = encImmOp 1 base (.reg dn) v := by
-  simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx,
+  simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, hcc,
     Bool.false_eq_true, if_false]
 
 /-- **The group-1 immediate byte function.** Outside the sign-extended-imm8 range
@@ -918,7 +919,7 @@ theorem encodeLopn_adcImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
       = encAluImmw 1 2 (gpNumU dn) v := by
   rw [dispatch_alu_imm₂ frame spillW "ADC:64" "ADC" dn an v qsaveB
       (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide +kernel) (by decide +kernel),
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel),
     encImmOp_aluImm32 1 2 "ADC" dn v hsp (by decide) (by decide) (by decide)
       (by decide +kernel) (by decide +kernel) hfit (by rw [imm32Fits_one]; exact h32)]
 
@@ -931,7 +932,7 @@ theorem encodeLopn_sbbImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
       = encAluImmw 1 3 (gpNumU dn) v := by
   rw [dispatch_alu_imm₂ frame spillW "SBB:64" "SBB" dn an v qsaveB
       (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide +kernel) (by decide +kernel),
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel),
     encImmOp_aluImm32 1 3 "SBB" dn v hsp (by decide) (by decide) (by decide)
       (by decide +kernel) (by decide +kernel) hfit (by rw [imm32Fits_one]; exact h32)]
 

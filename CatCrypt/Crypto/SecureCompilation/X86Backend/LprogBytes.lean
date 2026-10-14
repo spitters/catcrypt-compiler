@@ -741,6 +741,15 @@ def setccCmpOp : String → Option Nat
   | "SETE" => some 0x94 | "SETNE" => some 0x95
   | _ => none
 
+/-- The materialised comparison `SET<cc>:<w> [d] [a, $v]` with an immediate compared operand:
+    the byte image of `LprogAsmPrinter.renderSetcc`'s three lines `cmp<sz> $v, %a`,
+    `mov<sz> $0, %d`, `set<cc> %d8`. The compare is the group-1 `/7` immediate form gas
+    selects: `83 /7 ib` when `v` fits a sign-extended byte at the width (`fitsImm8S`), else
+    `81 /7 id`. -/
+def encSetccCmpImm (w op d a v : Nat) : List (BitVec 8) :=
+  (if fitsImm8S w v then encAluImm8 w 7 a v else encAluImmw w 7 a v)
+    ++ encMovImmw w d 0 ++ encSetccReg op d
+
 /-- `BT $imm8, %reg` (group-8 `0F BA /4 ib`): copy bit `imm` of the register into
     `CF`. The carry-in materialisation of the three-source ADX data arm
     (`bt $0, cin` — the IR passes the carry-in as a VALUE, `renderLopn` prints the
@@ -1470,7 +1479,19 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                     | _, _, _ => []
       | [d], [a, s] =>
           match s with
-          | .imm v => encImmOp w base d v
+          | .imm v =>
+            -- Materialised comparison `SETE`/`SETNE:<w> [d] [a, $v]` over registers:
+            -- `renderSetcc`'s `cmp $v, %a ; mov $0, %d ; set<cc> %d8`
+            -- (`encSetccCmpImm`). The printer declines a 64-bit immediate at or above
+            -- `2^31`, and so does this arm.
+            if base == "SETE" || base == "SETNE" then
+              match d, a with
+              | .reg dn, .reg an =>
+                  if isGpName dn && isGpName an && !(w == 1 && decide (2 ^ 31 ≤ v)) then
+                    encSetccCmpImm w ((setccCmpOp base).getD 0x94) (gpNumU dn) (gpNumU an) v
+                  else []
+              | _, _ => []
+            else encImmOp w base d v
           | _ =>
             match tagShiftExt base, d with
             | some ext, .reg dn => encTagShift w ext (gpNumU dn) base
@@ -2087,6 +2108,11 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "SETNE:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "k.0"], false)
+  -- with an immediate compared operand, `cmp $v, %a` (`encSetccCmpImm`); a 64-bit
+  -- immediate at or above `2^31` is declined, as by the printer.
+  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .imm 0], true)
+  , (.Lopn [.reg "R8"] "SETNE:64" [.reg "RAX", .imm 1000], true)
+  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .imm 2147483648], false)
   -- the register-count shifts (`regArith .shr`/`.shl`/`.sar` with a runtime
   -- count), the BMI2 `shrx`/`shlx`/`sarx` that `LprogAsmPrinter.renderLopn`
   -- renders (`ScalarEncoder.encShiftX`); U64 only, since the VEX encoder

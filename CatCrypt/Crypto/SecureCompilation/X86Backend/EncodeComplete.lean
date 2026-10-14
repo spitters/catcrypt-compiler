@@ -100,6 +100,9 @@ theorem encCmovSelect_ne_nil (w dn cn tn fn : Nat) : encCmovSelect w dn cn tn fn
 theorem encSetccCmp_ne_nil (w op d a b : Nat) : encSetccCmp w op d a b ≠ [] := by
   simp [encSetccCmp, encAluRRw]
 
+theorem encSetccCmpImm_ne_nil (w op d a v : Nat) : encSetccCmpImm w op d a v ≠ [] := by
+  simp [encSetccCmpImm, encSetccReg]
+
 /-! ## Operand classes -/
 
 /-- A name the two-address form resolves: a general-purpose register, a frame slot
@@ -442,6 +445,62 @@ theorem encodableLinstrR_setcc_gp {F W Q : Nat} {opn dn an sn : String}
   have he := encodeLopn_setcc_ne_nil (F := F) (W := W) (Q := Q) ho hd ha hs
   simp [encodableLinstrR, encodeLinstrR, he]
 
+/-- The materialised comparisons against an immediate the encoder builds: a mnemonic of
+    `isSetccEncMnem` and an immediate that is not a 64-bit immediate at or above `2^31`,
+    which `LprogAsmPrinter.renderSetcc` declines. -/
+def isSetccImmEnc (opn : String) (v : Nat) : Bool :=
+  isSetccEncMnem opn && !(rexW (mnemWidth opn) == 1 && decide (2 ^ 31 ≤ v))
+
+/-- The immediate materialised-comparison dispatch: on `Lopn [.reg dn] mnem [.reg an, .imm v]`
+    with base `SETE` or `SETNE`, two general-purpose registers and an immediate the printer
+    renders, `encodeLopn` reaches `encSetccCmpImm`. -/
+theorem dispatch_setccImm (frame spillW : Nat) (mnem base : String) (dn an : String)
+    (v qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = none)
+    (hcc : (base == "SETE" || base == "SETNE") = true)
+    (hok : (isGpName dn && isGpName an && !(rexW (mnemWidth mnem) == 1 && decide (2 ^ 31 ≤ v)))
+      = true) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .imm v]) qsaveB
+      = encSetccCmpImm (rexW (mnemWidth mnem)) ((setccCmpOp base).getD 0x94) (gpNumU dn)
+          (gpNumU an) v := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hcc, hok,
+    Bool.false_eq_true, if_false, if_true]
+
+theorem encodeLopn_setccImm_ne_nil {F W Q : Nat} {opn dn an : String} {v : Nat}
+    (ho : isSetccImmEnc opn v = true) (hd : isGpName dn = true) (ha : isGpName an = true) :
+    encodeLopn F W (.Lopn [.reg dn] opn [.reg an, .imm v]) Q ≠ [] := by
+  simp only [isSetccImmEnc, Bool.and_eq_true] at ho
+  obtain ⟨hm, hv⟩ := ho
+  have hok : (isGpName dn && isGpName an && !(rexW (mnemWidth opn) == 1 && decide (2 ^ 31 ≤ v)))
+      = true := by rw [hd, ha, hv]; rfl
+  simp only [isSetccEncMnem, Bool.or_eq_true, beq_iff_eq] at hm
+  rcases hm with ((rfl | rfl) | rfl) | rfl
+  · rw [dispatch_setccImm F W "SETE" "SETE" dn an v Q (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hok]
+    exact encSetccCmpImm_ne_nil _ _ _ _ _
+  · rw [dispatch_setccImm F W "SETNE" "SETNE" dn an v Q (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hok]
+    exact encSetccCmpImm_ne_nil _ _ _ _ _
+  · rw [dispatch_setccImm F W "SETE:64" "SETE" dn an v Q (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) hok]
+    exact encSetccCmpImm_ne_nil _ _ _ _ _
+  · rw [dispatch_setccImm F W "SETNE:64" "SETNE" dn an v Q (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) hok]
+    exact encSetccCmpImm_ne_nil _ _ _ _ _
+
+/-- A materialised comparison `SETE`/`SETNE` of a general-purpose register against an
+    immediate the printer renders, into a general-purpose register, is encodable. -/
+theorem encodableLinstrR_setccImm_gp {F W Q : Nat} {opn dn an : String} {v : Nat}
+    (ho : isSetccImmEnc opn v = true) (hd : isGpName dn = true) (ha : isGpName an = true) :
+    encodableLinstrR F W (.Lopn [.reg dn] opn [.reg an, .imm v]) Q = true := by
+  have he := encodeLopn_setccImm_ne_nil (F := F) (W := W) (Q := Q) ho hd ha
+  simp [encodableLinstrR, encodeLinstrR, he]
+
 /-! ## Load forwarding -/
 
 section LoadCSE
@@ -470,7 +529,8 @@ end LoadCSE
     block; an instruction is encodable in a context when `encodableLinstrR` holds there;
     the encoder registers are the general-purpose registers; a name resolves when
     `OpResolves` holds; a spill slot has a frame offset when `spillQsaveOff` parses; the
-    memory names are `encMemName`; the materialised comparisons are `isSetccEncMnem`. -/
+    memory names are `encMemName`; the materialised comparisons are `isSetccEncMnem` against
+    a register and `isSetccImmEnc` against an immediate. -/
 def x86Enc : IsaEncoder where
   Ctx := Nat × Nat × Nat
   ctx body := (frameSize body, if bodyIsU64 body then 64 else 32, qsaveBytesFor body)
@@ -480,6 +540,7 @@ def x86Enc : IsaEncoder where
   slot c n := (spillQsaveOff c.1 c.2.1 n c.2.2).isSome = true
   memName := encMemName
   setcc := isSetccEncMnem
+  setccImm := isSetccImmEnc
 
 /-- The decision of `OpResolves` at a frame size, spill width and save block. -/
 def opResolvesB (F W Q : Nat) (n : String) : Bool :=
@@ -491,8 +552,9 @@ theorem opResolvesB_iff {F W Q : Nat} {n : String} :
 
 /-- **The legal forms of the x86 encoder** in the context `c`, as a decision: a register move
     over resolving names of which at most one is a memory name; the 64-bit `CMOV` select over
-    four general-purpose registers; and a materialised comparison `isSetccEncMnem` over three
-    general-purpose registers. -/
+    four general-purpose registers; a materialised comparison `isSetccEncMnem` over three
+    general-purpose registers; and a materialised comparison `isSetccImmEnc` against an
+    immediate over two general-purpose registers. -/
 def x86LegalB (c : Nat × Nat × Nat) : LinstrR → Bool
   | .Lopn [.reg d] mn [.reg s] =>
       isMovMnem mn && opResolvesB c.1 c.2.1 c.2.2 d && opResolvesB c.1 c.2.1 c.2.2 s &&
@@ -501,6 +563,8 @@ def x86LegalB (c : Nat × Nat × Nat) : LinstrR → Bool
       m == withWidthTag 64 "CMOV" && isGpName dn && isGpName cn && isGpName tn && isGpName fn
   | .Lopn [.reg dn] opn [.reg an, .reg sn] =>
       isSetccEncMnem opn && isGpName dn && isGpName an && isGpName sn
+  | .Lopn [.reg dn] opn [.reg an, .imm v] =>
+      isSetccImmEnc opn v && isGpName dn && isGpName an
   | _ => false
 
 /-- **`x86LegalB` decides the legal forms** `LegalForm` of the x86 instruction set at the x86
@@ -519,10 +583,13 @@ theorem x86LegalB_iff {c : Nat × Nat × Nat} {i : LinstrR} :
       exact Or.inr (Or.inl ⟨"CMOV", _, _, _, _, rfl, rfl, h1, h2, h3, h4⟩)
     · simp only [Bool.and_eq_true] at h
       obtain ⟨⟨⟨ho, h1⟩, h2⟩, h3⟩ := h
-      exact Or.inr (Or.inr ⟨_, _, _, _, ho, rfl, h1, h2, h3⟩)
+      exact Or.inr (Or.inr (Or.inl ⟨_, _, _, _, ho, rfl, h1, h2, h3⟩))
+    · simp only [Bool.and_eq_true] at h
+      obtain ⟨⟨ho, h1⟩, h2⟩ := h
+      exact Or.inr (Or.inr (Or.inr ⟨_, _, _, _, ho, rfl, h1, h2⟩))
     · cases h
   · rintro (⟨mn, d, s, hm, rfl, hd, hs, hds⟩ | ⟨m, dn, cn, tn, fn, hsel, rfl, h1, h2, h3, h4⟩ |
-      ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩)
+      ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩ | ⟨opn, dn, an, v, ho, rfl, h1, h2⟩)
     · have hd' := opResolvesB_iff.2 hd
       have hs' := opResolvesB_iff.2 hs
       change (encMemName d && encMemName s) = false at hds
@@ -539,6 +606,10 @@ theorem x86LegalB_iff {c : Nat × Nat × Nat} {i : LinstrR} :
       change isGpName an = true at h2
       change isGpName sn = true at h3
       simp [x86LegalB, ho, h1, h2, h3]
+    · change isSetccImmEnc opn v = true at ho
+      change isGpName dn = true at h1
+      change isGpName an = true at h2
+      simp [x86LegalB, ho, h1, h2]
 
 /-- **The x86 back end**: the machine `x86Mach` and the assembly simulation `x86AsmSim` of
     the class `printedAddrWB` at the regime `doitm`, on the address semantics of printed
@@ -612,6 +683,7 @@ theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
     subst hm'
     exact encodableLinstrR_cmov64_gp hd hc ht hf
   setcc_reg c opn dn an sn ho hd ha hs := encodableLinstrR_setcc_gp ho hd ha hs
+  setccImm_reg c opn dn an v ho hd ha := encodableLinstrR_setccImm_gp ho hd ha
 
 /-- The select mnemonic of the x86 instruction set is `CMOV`. -/
 theorem x86Isa_selectMnemonic : X86Isa.x86Isa.selectMnemonic = some "CMOV" := rfl
