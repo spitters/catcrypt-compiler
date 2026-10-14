@@ -664,4 +664,191 @@ theorem physNameForBody_resolved_of_fit (body : Lcmd) (tbl : Array Nat) (n : Str
     opResolved (.reg (physNameForBody body tbl n)) = true :=
   opResolved_of_sibArgOk (physNameForBody_sibArgOk_of_fit body tbl n hframe hhw hfit)
 
+/-! ## 6. The memory bases, the save slots and the post-call reloads -/
+
+/-- The base+offset names over the reload scratch `R14`, the input and output memory base
+    of the ABI exports, are resolved. -/
+theorem memName_reloadScratch2_resolved (off : Nat) :
+    opResolved (.reg (memName reloadScratch2 off)) = true :=
+  memName_resolved_of_phys (by decide) off
+
+/-- A save slot of `abiSaveOf` is resolved. -/
+theorem abiSaveOf_resolved {reg q : String} (h : abiSaveOf reg = some q) :
+    opResolved (.reg q) = true := by
+  unfold abiSaveOf at h
+  split_ifs at h <;> cases h <;> decide
+
+/-- A save slot of `abiSaveOfExt` is resolved. -/
+theorem abiSaveOfExt_resolved {reg q : String} (h : abiSaveOfExt reg = some q) :
+    opResolved (.reg q) = true := by
+  unfold abiSaveOfExt at h
+  split at h
+  · next s hs => cases h; exact abiSaveOf_resolved hs
+  · split_ifs at h <;> cases h <;> decide
+
+/-- A frame slot of `abiSlotOfExt` is resolved for an argument that is not passed in a stack
+    word (`abiStackOff? reg = none`). -/
+theorem abiSlotOfExt_resolved {reg q : String} (h : abiSlotOfExt reg = some q)
+    (hst : abiStackOff? reg = none) : opResolved (.reg q) = true := by
+  unfold abiSlotOfExt at h
+  split at h
+  · next s hs => cases h; exact abiSaveOfExt_resolved hs
+  · simp [hst] at h
+
+/-- An allocatable caller-saved general-purpose register is resolved. -/
+theorem opResolved_of_isCallerSavedAllocGPR {n : String} (h : isCallerSavedAllocGPR n = true) :
+    opResolved (.reg n) = true := by
+  simp only [isCallerSavedAllocGPR, callerSavedAllocGPRs, List.contains_iff_mem,
+    List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> decide
+
+/-- **A lookup map over a pair list reads resolved slots.** If every pair of `pairs` carries a
+    resolved second component, the map `b ↦ snd (find (fst = b) pairs)`, the shape of the
+    `memrefBaseReload` maps of the ABI exports, satisfies the hypothesis `hmbr` of
+    `physPositionEmit_resolved`. -/
+theorem findSnd_resolved (pairs : List (String × String))
+    (h : ∀ p ∈ pairs, opResolved (.reg p.2) = true) :
+    ∀ b q, (pairs.find? (fun p => p.1 == b)).map Prod.snd = some q →
+      opResolved (.reg q) = true := by
+  intro b q hq
+  obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp hq
+  exact h p (List.mem_of_find?_eq_some hp)
+
+/-- **The `memrefBaseReload` map of `lfundefPhysAbiOfVirt` reads resolved slots.** For any
+    naming `P` of the arguments, the map keyed on `P argNm` with value the save slot
+    `abiSaveOfExt abiReg` satisfies `hmbr`. -/
+theorem memrefBaseReload_saveExt_resolved (argAbi : List (String × String))
+    (P : String → String) :
+    ∀ b q, ((argAbi.filterMap (fun (argNm, abiReg) =>
+        match abiSaveOfExt abiReg with
+        | some saveName => some (P argNm, saveName)
+        | none => none)).find? (fun p => p.1 == b)).map Prod.snd = some q →
+      opResolved (.reg q) = true := by
+  refine findSnd_resolved _ ?_
+  intro p hp
+  obtain ⟨⟨argNm, abiReg⟩, -, hf⟩ := List.mem_filterMap.mp hp
+  simp only at hf
+  split at hf
+  · next s hs => cases hf; exact abiSaveOfExt_resolved hs
+  · cases hf
+
+/-- **The `memrefBaseReload` map of `comToLfundefPhysAbiFromVirt` reads resolved slots** when
+    no argument is passed in a stack word. For any naming `P` of the argument positions, the
+    map keyed on `P j` with value the frame slot `abiSlotOfExt abiReg` of an argument not
+    covered by `inLoadMap` satisfies `hmbr`. -/
+theorem memrefBaseReload_slotExt_resolved (abiArgs : List String) (inLoadMap : InLoadMap)
+    (P : Nat → String) (hst : ∀ r ∈ abiArgs, abiStackOff? r = none) :
+    ∀ b q, ((abiArgs.zipIdx.filterMap (fun (abiReg, j) =>
+        match inLoadMap j with
+        | some _ => none
+        | none =>
+            match abiSlotOfExt abiReg with
+            | some saveName => some (P j, saveName)
+            | none => none)).find? (fun p => p.1 == b)).map Prod.snd = some q →
+      opResolved (.reg q) = true := by
+  refine findSnd_resolved _ ?_
+  intro p hp
+  obtain ⟨⟨abiReg, j⟩, hmem, hf⟩ := List.mem_filterMap.mp hp
+  simp only at hf
+  split at hf
+  · cases hf
+  · split at hf
+    · next s hs =>
+      cases hf
+      exact abiSlotOfExt_resolved hs (hst abiReg (List.fst_mem_of_mem_zipIdx hmem))
+    · cases hf
+
+/-- **The `callArgBaseReload` list of `lfundefPhysAbiOfVirt` is resolved.** For any naming `P`
+    of the argument positions, each pair keeps a caller-saved register `P j` with the save slot
+    `abiSaveOfExt abiReg`; both are resolved, the hypothesis `hcall` of
+    `physPositionEmit_resolved`. -/
+theorem callArgBaseReload_resolved (abiArgs : List String) (P : Nat → String) :
+    ∀ p ∈ abiArgs.zipIdx.filterMap (fun (abiReg, j) =>
+        match abiSaveOfExt abiReg with
+        | some saveName => if isCallerSavedAllocGPR (P j) then some (P j, saveName) else none
+        | none => none),
+      opResolved (.reg p.1) = true ∧ opResolved (.reg p.2) = true := by
+  intro p hp
+  obtain ⟨⟨abiReg, j⟩, -, hf⟩ := List.mem_filterMap.mp hp
+  simp only at hf
+  split at hf
+  · next s hs =>
+    split_ifs at hf with hc
+    cases hf
+    exact ⟨opResolved_of_isCallerSavedAllocGPR hc, abiSaveOfExt_resolved hs⟩
+  · cases hf
+
+/-! ## 7. The whole body -/
+
+/-- **Every operation of `physBodyWithStores` is resolved over x86.** Suppose every virtual
+    instruction of `body` carries register-indexed operands only at addresses (`SibAtAddr`),
+    the operand map `rm` resolves its other operands (`hdir`) and maps its register-indexed
+    operands to `AddrOk` addresses (`haddr`), and the save slots, argument names, memory bases
+    and post-call reloads are resolved (`hmbr`, `hargs`, `hloadBase`, `hstoreBase`, `hcall`).
+    Then every instruction of `physBodyWithStores` satisfies the `resolved` field of
+    `AllocOutInstr x86Data`. -/
+theorem physBodyWithStores_allocOut_resolved (shiftImm : ShiftImmOracle) (body : Lcmd)
+    (inLoadMap : InLoadMap) (loadBase : String) (outStoreMap : OutStoreMap)
+    (storeBase : String) (abiW : Nat) (memrefBaseReload : String → Option String)
+    (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
+    (rm : LOperand → LOperand)
+    (hrm : rm =
+      let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
+      if bodyHasCall body then remapOperandCalleeSave body tbl else remapOperand body tbl)
+    (hsib : ∀ i ∈ body, SibAtAddr i.li_i)
+    (hdir : ∀ i ∈ body, ∀ o ∈ lopnOperands i.li_i, (∀ b y s, o ≠ .arrIdx b y s) →
+      opResolved (rm o) = true)
+    (haddr : ∀ i ∈ body, ∀ b y s, .arrIdx b y s ∈ lopnOperands i.li_i →
+      AddrOk (rm (.arrIdx b y s)))
+    (hmbr : ∀ b q, memrefBaseReload b = some q → opResolved (.reg q) = true)
+    (hargs : ∀ s, opResolved (.reg (physNameForBody body
+      (straightCallComposeTable body (physTableOut body outStoreMap reservedVec))
+      (argName s))) = true)
+    (hloadBase : ∀ off, opResolved (.reg (memName loadBase off)) = true)
+    (hstoreBase : ∀ off, opResolved (.reg (memName storeBase off)) = true)
+    (hcall : ∀ p ∈ callArgBaseReload,
+      opResolved (.reg p.1) = true ∧ opResolved (.reg p.2) = true) :
+    ∀ r ∈ physBodyWithStores shiftImm body inLoadMap loadBase outStoreMap storeBase abiW
+      memrefBaseReload callArgBaseReload reservedVec,
+      ∀ o ∈ lopnOperands r.li_i, opResolvedI TwoAddrLegalize.x86Data o = true := by
+  intro r hr
+  rw [physBodyWithStores_eq_flatMap, List.mem_flatMap] at hr
+  obtain ⟨⟨i, k⟩, hik, hr⟩ := hr
+  have hi : i ∈ body := List.fst_mem_of_mem_zipIdx hik
+  exact physPositionEmit_allocOut_resolved shiftImm body inLoadMap loadBase outStoreMap
+    storeBase abiW memrefBaseReload callArgBaseReload reservedVec i k rm hrm (hsib i hi)
+    (hdir i hi) (haddr i hi) hmbr hargs hloadBase hstoreBase hcall r hr
+
+/-- **`physBodyWithStores` at the ABI exports' bases is resolved over x86.** With the reload
+    scratch `R14` as input and output memory base, a `memrefBaseReload` map that reads resolved
+    slots (`memrefBaseReload_saveExt_resolved`, `memrefBaseReload_slotExt_resolved`) and a
+    resolved `callArgBaseReload` list (`callArgBaseReload_resolved`), every instruction of
+    `physBodyWithStores` satisfies the `resolved` field of `AllocOutInstr x86Data` under the
+    body-shape hypothesis `SibAtAddr` and the naming hypotheses `hdir`, `haddr`, `hargs`. -/
+theorem physBodyWithStores_allocOut_resolved_abi (shiftImm : ShiftImmOracle) (body : Lcmd)
+    (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap) (abiW : Nat)
+    (memrefBaseReload : String → Option String)
+    (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
+    (rm : LOperand → LOperand)
+    (hrm : rm =
+      let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
+      if bodyHasCall body then remapOperandCalleeSave body tbl else remapOperand body tbl)
+    (hsib : ∀ i ∈ body, SibAtAddr i.li_i)
+    (hdir : ∀ i ∈ body, ∀ o ∈ lopnOperands i.li_i, (∀ b y s, o ≠ .arrIdx b y s) →
+      opResolved (rm o) = true)
+    (haddr : ∀ i ∈ body, ∀ b y s, .arrIdx b y s ∈ lopnOperands i.li_i →
+      AddrOk (rm (.arrIdx b y s)))
+    (hmbr : ∀ b q, memrefBaseReload b = some q → opResolved (.reg q) = true)
+    (hargs : ∀ s, opResolved (.reg (physNameForBody body
+      (straightCallComposeTable body (physTableOut body outStoreMap reservedVec))
+      (argName s))) = true)
+    (hcall : ∀ p ∈ callArgBaseReload,
+      opResolved (.reg p.1) = true ∧ opResolved (.reg p.2) = true) :
+    ∀ r ∈ physBodyWithStores shiftImm body inLoadMap reloadScratch2 outStoreMap reloadScratch2
+      abiW memrefBaseReload callArgBaseReload reservedVec,
+      ∀ o ∈ lopnOperands r.li_i, opResolvedI TwoAddrLegalize.x86Data o = true :=
+  physBodyWithStores_allocOut_resolved shiftImm body inLoadMap reloadScratch2 outStoreMap
+    reloadScratch2 abiW memrefBaseReload callArgBaseReload reservedVec rm hrm hsib hdir haddr
+    hmbr hargs memName_reloadScratch2_resolved memName_reloadScratch2_resolved hcall
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF
