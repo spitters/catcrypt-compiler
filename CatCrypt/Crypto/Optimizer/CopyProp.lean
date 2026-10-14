@@ -242,6 +242,7 @@ theorem isCopy_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
   | callN name argTys retTys => simp only [isCopy] at he; exact absurd he (by simp)
   | cmp c w => simp only [isCopy] at he; exact absurd he (by simp)
   | cmpImm c w n => simp only [isCopy] at he; exact absurd he (by simp)
+  | stackZero w n => simp only [isCopy] at he; exact absurd he (by simp)
 
 /-! ## 3. The redirecting renaming
 

@@ -198,6 +198,9 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- `reg 1` boolean; the predicate is the condition code.
   | .cmp _ _ => .arith .cmpi
   | .cmpImm _ _ _ => .catcrypt .unknown
+  -- Fresh zero array: a value, while `memref.alloc` yields an uninitialised
+  -- buffer, so no single registered op matches.
+  | .stackZero _ _ => .catcrypt .unknown
 
 /-! Per-op `rfl` coverage that the mapping function evaluates to the named
     `Veir.OpCode` constructor for each case. Semantic equivalence with the

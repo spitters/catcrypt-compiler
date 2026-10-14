@@ -316,6 +316,8 @@ def opToInstrR (op : JasminOp) (dst : String) (srcs : List UOperand) : InstrR :=
       .Copn [.var dst] .none (cmpName c) srcs
   | .cmpImm c _ n =>
       .Copn [.var dst] .none (cmpName c) (srcs ++ [.imm n])
+  | .stackZero w n =>
+      .Copn [.var dst] .none "ZEROARR" [.imm n, .imm w]
 
 /-! ## 3. Walking the `Com` term
 

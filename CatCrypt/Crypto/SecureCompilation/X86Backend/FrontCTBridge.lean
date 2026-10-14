@@ -126,6 +126,7 @@ theorem opToLinstrR_direct {op : JasminOp} {dst : String} {srcs : List LOperand}
       dsimp only
       split <;> exact linstrRDirect_Lopn_mk (by simp) hs
   | regConst w n => exact linstrRDirect_Lopn_mk (by simp) (by simp)
+  | stackZero w n => exact linstrRDirect_Lopn_mk (by simp) (by simp)
   | cmpImm c w n =>
       refine linstrRDirect_Lopn_mk (by simp) (fun o ho => ?_)
       rcases List.mem_append.mp ho with h | h

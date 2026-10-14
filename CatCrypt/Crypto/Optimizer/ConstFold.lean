@@ -268,6 +268,7 @@ theorem foldExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | callN name argTys retTys => simp [foldExpr]
   | cmp c w => simp [foldExpr]
   | cmpImm c w n => simp [foldExpr]
+  | stackZero w n => simp [foldExpr]
 
 /-! ## 4. The constant-folding pass over `Com`
 

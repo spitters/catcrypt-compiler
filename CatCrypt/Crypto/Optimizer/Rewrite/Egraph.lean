@@ -326,6 +326,7 @@ theorem rewriteExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | callN name argTys retTys => simp [rewriteExpr]
   | cmp c w => simp [rewriteExpr]
   | cmpImm c w n => simp [rewriteExpr]
+  | stackZero w n => simp [rewriteExpr]
 
 /-! ## 7. Cost-non-increase of `rewriteExpr`
 
@@ -384,6 +385,7 @@ theorem rewriteExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | callN name argTys retTys => simp [rewriteExpr]
   | cmp c w => simp [rewriteExpr]
   | cmpImm c w n => simp [rewriteExpr]
+  | stackZero w n => simp [rewriteExpr]
 
 /-! ## 8. The bounded equality-saturation engine over `Com`
 

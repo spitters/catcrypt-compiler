@@ -13,7 +13,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 
 The record `jasminTraits : OpTraits jasminDialect` and the predicates it is built from:
 the cost `Egraph.opCost` (a multiply weighs four, every other operation one), the merge
-predicate `ComGVN.gvnPure` (every operation other than the stack accesses, the calls and
+predicate `ComGVN.gvnPure` (every operation other than the stack accesses, the fresh zero
+arrays `stackZero`, the calls and
 the operations of the instruction pairs of the x86 lowering, `ComGVN.pairedOp`), the
 speculation predicate `jasminSpeculatable` (every operation other than the calls), and
 the constant predicate `jasminConstLike` (the constants `regConst`).
@@ -64,10 +65,12 @@ def pairedOp : JasminOp → Bool
   | op => pairLowOp op
 
 /-- The operations whose bindings the pass may merge: every operation other than a stack
-    load or store, an external call, a multi-result call and an operation of an
-    instruction pair of the x86 lowering (`pairedOp`). -/
+    load or store, a fresh zero array, an external call, a multi-result call and an
+    operation of an instruction pair of the x86 lowering (`pairedOp`). Two `stackZero`
+    bindings denote equal values but name two distinct arrays, so merging them would make
+    two temporaries share one root. -/
 def gvnPure : JasminOp → Bool
-  | .stackLoad _ _ | .stackStore _ _ | .extCall _ _ _ | .callN _ _ _ => false
+  | .stackLoad _ _ | .stackStore _ _ | .stackZero _ _ | .extCall _ _ _ | .callN _ _ _ => false
   | op => !pairedOp op
 
 end CatCrypt.Crypto.Optimizer.Rewrite.ComGVN

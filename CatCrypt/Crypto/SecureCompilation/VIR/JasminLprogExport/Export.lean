@@ -412,6 +412,11 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
   -- mnemonic family and one machine-model arm.
   | .cmp c w => .Lopn [.reg dst] (withWidthTag w (cmpName c)) srcs
   | .cmpImm c w n => .Lopn [.reg dst] (withWidthTag w (cmpName c)) (srcs ++ [.imm n])
+  -- Fresh zero array: the single pseudo-instruction `ZEROARR` whose two immediate
+  -- sources are the element count `n` and the element width `w`. The nullary
+  -- operation has no other source. The printer and the encoder have no `ZEROARR`
+  -- arm and refuse it.
+  | .stackZero w n => .Lopn [.reg dst] "ZEROARR" [.imm n, .imm w]
 
 /-! ### The operand widths of a general-purpose operation
 

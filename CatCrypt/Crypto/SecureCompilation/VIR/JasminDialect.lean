@@ -902,6 +902,10 @@ inductive JasminOp where
       `[reg w] → reg 1`, `out = cmpBit c a (BitVec.ofNat w n)`. The data effect
       of x86 `cmp $n, a ; set<cc> out`. -/
   | cmpImm (c : JasminCmp) (w n : Nat)
+  /-- Nullary fresh stack array of `n` zero words of width `w`: `[] → stackArr w n`,
+      `out = JasminTy.default (.stackArr w n)`. The Jasmin image of the catCrypt
+      `memrefZero n`; the export maps it to the single pseudo-instruction `ZEROARR`. -/
+  | stackZero (w n : Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -1036,6 +1040,7 @@ instance : DialectSignature jasminDialect where
     | .callN _ argTys _ => argTys
     | .cmp _ w => [.reg w, .reg w]
     | .cmpImm _ w _ => [.reg w]
+    | .stackZero _ _ => []
   ret op := match op with
     | .regArith _ w => .reg w
     | .stackLoad w _ => .reg w
@@ -1061,6 +1066,7 @@ instance : DialectSignature jasminDialect where
     | .callN _ _ retTys => callNRet retTys
     | .cmp _ _ => .reg 1
     | .cmpImm _ _ _ => .reg 1
+    | .stackZero w n => .stackArr w n
 
 /-! ## 6. Op denotation -/
 
@@ -1203,6 +1209,12 @@ instance jasminDenote : DialectDenote jasminDialect where
     | .cmpImm c w n => fun args =>
         let a : BitVec w := args.head
         cmpBit c a (BitVec.ofNat w n)
+    | .stackZero w n => fun _ => JasminTy.default (.stackArr w n)
+
+/-- `stackZero w n` denotes the zero array `JasminTy.default (.stackArr w n)`. -/
+theorem jasminDenote_stackZero (w n : Nat) :
+    jasminDenote.denote (.stackZero w n) = fun _ => JasminTy.default (.stackArr w n) :=
+  rfl
 
 /-- Leaf-parametric denotation: identical to `jasminDenote` except opaque `extCall`
     leaves consult `leafSem` instead of the fixed default-returning `jasminExtSem`;

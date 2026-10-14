@@ -1043,6 +1043,14 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
+      | .stackZero _ n =>
+          -- Fresh zero array: one constant-index store `dst[k] = 0;` per element,
+          -- bound to the slot `dstName next`.
+          let dst := dstName next
+          let lines := (List.range n).map (fun k => dst ++ "[" ++ toString k ++ "] = 0;")
+          let (names, stmts, cnt) :=
+            emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
+          (dst :: names, lines ++ stmts, cnt)
 
 /-- Build a `VarMap` for a `reg w`-homogeneous context using a per-input name
     function `inName` (input `i` head-first ↦ `inName i`). Generalises

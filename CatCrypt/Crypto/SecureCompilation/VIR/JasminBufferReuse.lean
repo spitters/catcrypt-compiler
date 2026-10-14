@@ -344,6 +344,7 @@ theorem expr_denote_agreeOff {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
   | select w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | cmp c w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | cmpImm c w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | stackZero w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | callN name argTys retTys =>
       -- Multi-result opaque call: under `jasminDenote` its denotation is the
       -- constant `callNDefaults` tuple projected to the head slot, so it does not

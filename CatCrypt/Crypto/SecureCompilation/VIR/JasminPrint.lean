@@ -451,6 +451,12 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       .Ccall .DoInline [.Lvar (mkVarI dst (.reg 1))]
         { name := cmpCallName c }
         [pvarOf a (.reg w), .Pconst (Int.ofNat n)]
+  | .stackZero w n =>
+      -- Fresh zero array: Jasmin's array initialiser `Parr_init` over the byte
+      -- size of `stackArr w n`, assigned to the destination array.
+      let sty := styOfTy (.stackArr w n)
+      .Cassgn (.Lvar (mkVarI dst (.stackArr w n))) .AT_none sty
+        (.Parr_init (n * (wsizeOfNat w).bytes))
 
 /-- The SSA name a `Com.var` binding should use for the result of `e`.
     For `stackStore` the result *array* keeps the source array's name
