@@ -79,8 +79,13 @@ pair/sum ops/the static-index memref ops/`sampleBit`/`sampleBv`.
 ## Relation to `catToJasmin`
 
 `NFProgCatToJasmin.catToJasmin` is the partial block lowering whose block of an
-expression is `toJBlockD`: the one-binding block of the same op-level map `toJExprD`,
-and for `bvNot` and `bitToSword` the block of several bindings `toJMultiD`. It is
+expression is `toJBlockD`: for `bvNot`, `bitToSword` and the bit operations `and`,
+`or`, `xor`, `eqBit` and `not` the block of several bindings `toJMultiD`, and for
+every other operation the one-binding block of the same op-level map `toJExprD`.
+`toJMultiD` computes a bit operation on 64-bit words (`bitBin64`, `bitEq64`,
+`bitNot64`), so the blocks of `catToJasmin` hold no arithmetic or comparison at
+width `1`; the rows of the table above for the bit operations are the map
+`toJExprD` of `cryptoDialectToJasminCom`. It is
 applied by `NFProg.map?` to programs in the linear normal form.
 `cryptoDialectToJasminCom` is the structural recursion over `Com`: it is the second
 step of the `LowCT → Com jasminDialect` descent, and the `Com`-level theorems
@@ -585,18 +590,179 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
   -- ops.
   | _ => none
 
-/-! ## 3a. Block images
+/-! ## 3a. Bit operations on 64-bit words
 
-An operation with no single Jasmin expression lowers to a straight-line block of
-several bindings. `toJMultiD` gives these blocks, and `toJBlockD` is the block of
-an expression: the one-binding block of `toJExprD` where that exists, and the
-block of `toJMultiD` otherwise. -/
+A bit is a `reg 1` value of the Jasmin dialect. The blocks below compute the bit
+operations on 64-bit words: each bit operand is widened to the word `1` or `0` by
+`select 64` of the constants `1` and `0`, the operation is the 64-bit `regArith` or
+`cmp .eq 64` on these words, and a word result is read back as a bit by
+`cmp .ne 64` with `0`. A word `1` or `0` stays `1` or `0` under `and`, `or` and
+`xor` (`and_bitWord`, `or_bitWord`, `xor_bitWord`), so every block denotes the bit
+operation on its operands (`bitBin64_and_denote`, `bitBin64_or_denote`,
+`bitBin64_xor_denote`, `bitEq64_denote`, `bitNot64_denote`). -/
+
+/-- The 64-bit word of a bit: `1` for `true` and `0` for `false`. -/
+abbrev bitWord (x : Bool) : BitVec 64 := BitVec.ofNat 64 x.toNat
+
+/-- The select of the constants `1` and `0` at width 64 on a bit is the word of the bit. -/
+theorem selectW_ofBool_bitWord (x : Bool) :
+    selectW (BitVec.ofBool x) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0) = bitWord x := by
+  cases x <;> rfl
+
+/-- The conjunction of two bit words is the word of the conjunction. -/
+theorem and_bitWord (x y : Bool) :
+    JasminBinOp.and.apply (bitWord x) (bitWord y) = bitWord (x && y) := by
+  cases x <;> cases y <;> rfl
+
+/-- The disjunction of two bit words is the word of the disjunction. -/
+theorem or_bitWord (x y : Bool) :
+    JasminBinOp.or.apply (bitWord x) (bitWord y) = bitWord (x || y) := by
+  cases x <;> cases y <;> rfl
+
+/-- The exclusive or of two bit words is the word of the exclusive or. -/
+theorem xor_bitWord (x y : Bool) :
+    JasminBinOp.xor.apply (bitWord x) (bitWord y) = bitWord (Bool.xor x y) := by
+  cases x <;> cases y <;> rfl
+
+/-- The comparison `cmp .ne 64` of a bit word with `0` is the bit. -/
+theorem cmpBit_ne_bitWord (x : Bool) :
+    cmpBit .ne (bitWord x) (BitVec.ofNat 64 0) = BitVec.ofBool x := by
+  cases x <;> rfl
+
+/-- The comparison `cmp .eq 64` of two bit words is the equality of the bits. -/
+theorem cmpBit_eq_bitWord (x y : Bool) :
+    cmpBit .eq (bitWord x) (bitWord y) = BitVec.ofBool (Bool.xor x y).not := by
+  cases x <;> cases y <;> rfl
+
+/-- The block of a bitwise operation `bop` of two bits on 64-bit words: the constants
+    `1` and `0` at width 64, the select of the two constants on each bit, the
+    operation `regArith bop 64` of the two words, and the comparison `cmp .ne 64` of
+    its result with `0`. -/
+def bitBin64 {Δ : Ctxt jasminDialect} (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg 1)) :
+    Com jasminDialect Δ (.reg 1) :=
+  Com.var (d := jasminDialect) { op := .regConst 64 1, retTy_eq := rfl, args := .nil }
+    (Com.var { op := .regConst 64 0, retTy_eq := rfl, args := .nil }
+      (Com.var
+        { op := .select 64, retTy_eq := rfl,
+          args := .cons (.there (.there a)) (.cons (.there .here) (.cons .here .nil)) }
+        (Com.var
+          { op := .select 64, retTy_eq := rfl,
+            args := .cons (.there (.there (.there b)))
+              (.cons (.there (.there .here)) (.cons (.there .here) .nil)) }
+          (Com.var
+            { op := .regArith bop 64, retTy_eq := rfl,
+              args := .cons (.there .here) (.cons .here .nil) }
+            (Com.var
+              { op := .cmp .ne 64, retTy_eq := rfl,
+                args := .cons .here (.cons (.there (.there (.there .here))) .nil) }
+              (.ret .here))))))
+
+/-- The block of the equality of two bits on 64-bit words: the constants `1` and `0`
+    at width 64, the select of the two constants on each bit, and the comparison
+    `cmp .eq 64` of the two words. -/
+def bitEq64 {Δ : Ctxt jasminDialect} (a b : Ctxt.Var Δ (.reg 1)) :
+    Com jasminDialect Δ (.reg 1) :=
+  Com.var (d := jasminDialect) { op := .regConst 64 1, retTy_eq := rfl, args := .nil }
+    (Com.var { op := .regConst 64 0, retTy_eq := rfl, args := .nil }
+      (Com.var
+        { op := .select 64, retTy_eq := rfl,
+          args := .cons (.there (.there a)) (.cons (.there .here) (.cons .here .nil)) }
+        (Com.var
+          { op := .select 64, retTy_eq := rfl,
+            args := .cons (.there (.there (.there b)))
+              (.cons (.there (.there .here)) (.cons (.there .here) .nil)) }
+          (Com.var
+            { op := .cmp .eq 64, retTy_eq := rfl,
+              args := .cons (.there .here) (.cons .here .nil) }
+            (.ret .here)))))
+
+/-- The block of the negation of a bit on 64-bit words: the constants `1` and `0` at
+    width 64, the select of the two constants on the bit, the exclusive or
+    `regArith .xor 64` of the word with `1`, and the comparison `cmp .ne 64` of its
+    result with `0`. -/
+def bitNot64 {Δ : Ctxt jasminDialect} (a : Ctxt.Var Δ (.reg 1)) :
+    Com jasminDialect Δ (.reg 1) :=
+  Com.var (d := jasminDialect) { op := .regConst 64 1, retTy_eq := rfl, args := .nil }
+    (Com.var { op := .regConst 64 0, retTy_eq := rfl, args := .nil }
+      (Com.var
+        { op := .select 64, retTy_eq := rfl,
+          args := .cons (.there (.there a)) (.cons (.there .here) (.cons .here .nil)) }
+        (Com.var
+          { op := .regArith .xor 64, retTy_eq := rfl,
+            args := .cons .here (.cons (.there (.there .here)) .nil) }
+          (Com.var
+            { op := .cmp .ne 64, retTy_eq := rfl,
+              args := .cons .here (.cons (.there (.there .here)) .nil) }
+            (.ret .here)))))
+
+/-- The value of `bitBin64 bop a b`: the comparison with `0` of `bop` of the selects of
+    the constants `1` and `0` on the two bits. -/
+theorem bitBin64_denote {Δ : Ctxt jasminDialect} (bop : JasminBinOp)
+    (a b : Ctxt.Var Δ (.reg 1)) (W : Ctxt.Valuation Δ) :
+    (bitBin64 bop a b).denote W =
+      cmpBit .ne
+        (bop.apply (selectW (a.lookup W) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0))
+          (selectW (b.lookup W) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0)))
+        (BitVec.ofNat 64 0) :=
+  rfl
+
+/-- `bitBin64 .and` denotes the conjunction of two bits. -/
+theorem bitBin64_and_denote {Δ : Ctxt jasminDialect} (a b : Ctxt.Var Δ (.reg 1))
+    (W : Ctxt.Valuation Δ) (x y : Bool) (ha : a.lookup W = BitVec.ofBool x)
+    (hb : b.lookup W = BitVec.ofBool y) :
+    (bitBin64 .and a b).denote W = BitVec.ofBool (x && y) := by
+  rw [bitBin64_denote, ha, hb, selectW_ofBool_bitWord, selectW_ofBool_bitWord, and_bitWord,
+    cmpBit_ne_bitWord]
+
+/-- `bitBin64 .or` denotes the disjunction of two bits. -/
+theorem bitBin64_or_denote {Δ : Ctxt jasminDialect} (a b : Ctxt.Var Δ (.reg 1))
+    (W : Ctxt.Valuation Δ) (x y : Bool) (ha : a.lookup W = BitVec.ofBool x)
+    (hb : b.lookup W = BitVec.ofBool y) :
+    (bitBin64 .or a b).denote W = BitVec.ofBool (x || y) := by
+  rw [bitBin64_denote, ha, hb, selectW_ofBool_bitWord, selectW_ofBool_bitWord, or_bitWord,
+    cmpBit_ne_bitWord]
+
+/-- `bitBin64 .xor` denotes the exclusive or of two bits. -/
+theorem bitBin64_xor_denote {Δ : Ctxt jasminDialect} (a b : Ctxt.Var Δ (.reg 1))
+    (W : Ctxt.Valuation Δ) (x y : Bool) (ha : a.lookup W = BitVec.ofBool x)
+    (hb : b.lookup W = BitVec.ofBool y) :
+    (bitBin64 .xor a b).denote W = BitVec.ofBool (Bool.xor x y) := by
+  rw [bitBin64_denote, ha, hb, selectW_ofBool_bitWord, selectW_ofBool_bitWord, xor_bitWord,
+    cmpBit_ne_bitWord]
+
+/-- `bitEq64` denotes the equality of two bits. -/
+theorem bitEq64_denote {Δ : Ctxt jasminDialect} (a b : Ctxt.Var Δ (.reg 1))
+    (W : Ctxt.Valuation Δ) (x y : Bool) (ha : a.lookup W = BitVec.ofBool x)
+    (hb : b.lookup W = BitVec.ofBool y) :
+    (bitEq64 a b).denote W = BitVec.ofBool (Bool.xor x y).not := by
+  show cmpBit .eq (selectW (a.lookup W) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0))
+    (selectW (b.lookup W) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0)) = _
+  rw [ha, hb, selectW_ofBool_bitWord, selectW_ofBool_bitWord, cmpBit_eq_bitWord]
+
+/-- `bitNot64` denotes the negation of a bit. -/
+theorem bitNot64_denote {Δ : Ctxt jasminDialect} (a : Ctxt.Var Δ (.reg 1))
+    (W : Ctxt.Valuation Δ) (x : Bool) (ha : a.lookup W = BitVec.ofBool x) :
+    (bitNot64 a).denote W = BitVec.ofBool (!x) := by
+  show cmpBit .ne (JasminBinOp.xor.apply
+      (selectW (a.lookup W) (BitVec.ofNat 64 1) (BitVec.ofNat 64 0)) (BitVec.ofNat 64 1))
+    (BitVec.ofNat 64 0) = _
+  rw [ha, selectW_ofBool_bitWord, show BitVec.ofNat 64 1 = bitWord true from rfl, xor_bitWord,
+    cmpBit_ne_bitWord, Bool.xor_true]
+
+/-! ## 3b. Block images
+
+An operation with no single Jasmin expression, or whose image is computed on 64-bit
+words, lowers to a straight-line block of several bindings. `toJMultiD` gives these
+blocks, and `toJBlockD` is the block of an expression: the block of `toJMultiD`
+where that exists, and the one-binding block of `toJExprD` otherwise. -/
 
 /-- The block of an operation whose image is several Jasmin bindings, `none` on
     every other operation. `bvNot w` is the constant of all ones at width `w`
     followed by `regArith .xor w` of the operand and the constant. `bitToSword n`
     is the constant of all ones at width `n`, the constant `0`, and `select n` of
-    the bit and the two constants. -/
+    the bit and the two constants. The bit operations `and`, `or`, `xor`, `eqBit`
+    and `not` are the blocks `bitBin64`, `bitEq64` and `bitNot64` on 64-bit
+    words. -/
 def toJMultiD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
     Option (Com jasminDialect (mapCtx Γ) (mapTy t)) :=
   match h : e.op with
@@ -627,15 +793,48 @@ def toJMultiD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
                 args := .cons (.there (.there (toJVarD args.head)))
                   (.cons (.there .here) (.cons .here .nil)) }
               (.ret .here))))
+  | .and =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸ bitBin64 .and (toJVarD args.head) (toJVarD args.tail.head))
+  | .or =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸ bitBin64 .or (toJVarD args.head) (toJVarD args.tail.head))
+  | .xor =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸ bitBin64 .xor (toJVarD args.head) (toJVarD args.tail.head))
+  | .eqBit =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸ bitEq64 (toJVarD args.head) (toJVarD args.tail.head))
+  | .not =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸ bitNot64 (toJVarD args.head))
   | _ => none
 
-/-- The block of an expression: the one-binding block of `toJExprD e` where
-    `toJExprD` accepts `e`, and the block `toJMultiD e` otherwise. -/
+/-- The block of an expression: the block `toJMultiD e` where `toJMultiD` accepts `e`,
+    and the one-binding block of `toJExprD e` otherwise. -/
 def toJBlockD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
     Option (Com jasminDialect (mapCtx Γ) (mapTy t)) :=
-  match toJExprD e with
-  | some e' => some (.var e' (.ret .here))
-  | none => toJMultiD e
+  match toJMultiD e with
+  | some blk => some blk
+  | none =>
+      match toJExprD e with
+      | some e' => some (.var e' (.ret .here))
+      | none => none
 
 /-! ## 4. Program translation -/
 

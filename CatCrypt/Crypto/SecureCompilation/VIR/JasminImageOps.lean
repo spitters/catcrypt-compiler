@@ -195,8 +195,12 @@ theorem catMemB_block {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t)
   all_goals simp at he
   all_goals
     cases hb
-    simp only [CoveredCom, and_true, Bool.and_eq_true]
-    exact ⟨by simp [opMemB, DialectToJasminCom.mkBin, *], hw⟩
+    first
+    | (simp only [CoveredCom, and_true, Bool.and_eq_true]
+       exact ⟨by simp [opMemB, DialectToJasminCom.mkBin, *], hw⟩)
+    | (simp only [CoveredCom, DialectToJasminCom.bitBin64, DialectToJasminCom.bitEq64,
+         DialectToJasminCom.bitNot64]
+       decide)
 
 /-- A program whose operations satisfy `Q` is covered by the expressions whose operation
     satisfies `Q`. -/

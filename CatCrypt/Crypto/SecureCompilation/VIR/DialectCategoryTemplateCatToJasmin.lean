@@ -125,8 +125,12 @@ theorem toJMultiD_rename {Γ Δ : Ctxt catCryptDialect} {t : CryptoTy} (f : Ctxt
   all_goals first
     | rfl
     | (rcases args with _ | ⟨a, _ | _⟩
-       dsimp only [toJMultiD, Expr.rename, Com.rename, Option.map]
+       dsimp only [toJMultiD, bitNot64, Expr.rename, Com.rename, Option.map]
        erw [← catFrame_mapHom_toJVarD f a]
+       rfl)
+    | (rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+       dsimp only [toJMultiD, bitBin64, bitEq64, Expr.rename, Com.rename, Option.map]
+       erw [← catFrame_mapHom_toJVarD f a, ← catFrame_mapHom_toJVarD f b]
        rfl)
 
 /-- **`toJBlockD` commutes with renaming**: the block of a renamed expression is the
@@ -135,10 +139,13 @@ theorem toJBlockD_rename {Γ Δ : Ctxt catCryptDialect} {t : CryptoTy} (f : Ctxt
     (e : Expr catCryptDialect Γ t) :
     toJBlockD (e.rename f) = (toJBlockD e).map (Com.rename (catFrame.mapHom f)) := by
   unfold toJBlockD
-  rw [toJExprD_rename]
-  cases toJExprD e with
-  | some e' => rfl
-  | none => exact toJMultiD_rename f e
+  rw [toJMultiD_rename, toJExprD_rename]
+  cases toJMultiD e with
+  | some b => rfl
+  | none =>
+      cases toJExprD e with
+      | some e' => rfl
+      | none => rfl
 
 /-- On every expression, the block of `catToJasmin` is the instance of `catTemplate`. -/
 theorem catToJasmin_lowerExprBlock? {Γ : Ctxt catCryptDialect} {t : CryptoTy}

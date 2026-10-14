@@ -838,6 +838,35 @@ theorem toJMultiD_denote {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ 
       rw [ctMapValD_lookup, ctTransTy_bit, ctTransTy_sword, selectW_ofBool, BitVec.ofNat_toNat,
         BitVec.setWidth_eq]
       cases args with | cons a t => rfl
+  | and =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      rw [bitBin64_and_denote _ _ _ _ _ ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))
+        ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | or =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      rw [bitBin64_or_denote _ _ _ _ _ ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))
+        ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | xor =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      rw [bitBin64_xor_denote _ _ _ _ _ ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))
+        ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | eqBit =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      rw [bitEq64_denote _ _ _ _ _ ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))
+        ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | not =>
+      cases hop
+      simp only [toJMultiD] at h; cases h
+      rw [bitNot64_denote _ _ _ ((ctMapValD_lookup _ V).trans (ctTransTy_bit _))]
+      cases args with | cons a t => rfl
   | _ => simp only [toJMultiD, reduceCtorEq] at h
 
 /-- A block `toJBlockD` gives an expression denotes, on the transported valuation, the
@@ -848,10 +877,14 @@ theorem toJBlockD_denote {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ 
     blk.denote (ctMapValD V) = ctTransTy (e.denote V) := by
   unfold toJBlockD at h
   split at h
-  · next e' he =>
+  · next b hm =>
       cases h
-      exact dialectJasminLeafAgrees_holds e V e' he
-  · exact toJMultiD_denote e V blk h
+      exact toJMultiD_denote e V _ hm
+  · split at h
+    · next e' he =>
+        cases h
+        exact dialectJasminLeafAgrees_holds e V e' he
+    · cases h
 
 /-- **Preservation, unconditional.** `cryptoDialectToJasminCom_denote_eq` with the
     leaf-agreement hypothesis discharged by `dialectJasminLeafAgrees_holds`.

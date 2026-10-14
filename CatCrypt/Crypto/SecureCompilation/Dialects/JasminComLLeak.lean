@@ -363,11 +363,15 @@ theorem toJBlockD_ctLeak {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCompat
     Com.ctLeak (jLeakModel Pj) blk (ctMapValD V) = Expr.ctLeak (catLeakModel P) e V := by
   unfold toJBlockD at h
   split at h
-  · next e' he =>
+  · next b hm =>
       cases h
-      show Expr.ctLeak (jLeakModel Pj) e' (ctMapValD V) ++ [] = _
-      rw [List.append_nil, toJExprD_ctLeak hc e e' he V]
-  · exact hc.2.2 e blk h V
+      exact hc.2.2 e _ hm V
+  · split at h
+    · next e' he =>
+        cases h
+        show Expr.ctLeak (jLeakModel Pj) e' (ctMapValD V) ++ [] = _
+        rw [List.append_nil, toJExprD_ctLeak hc e e' he V]
+    · cases h
 
 /-- **The leakage transformer of the lowering.** A program `cryptoDialectToJasminCom` lowers
     to `jc` leaks, on the transported valuation, the trace of the source program. -/
