@@ -28,15 +28,18 @@ records, and the export data in a third.
   `leaksOperands` (which mnemonic bases make their data operands observable), the accepted
   mnemonic bases `supports`, the implicit register reads `implicitReads`, the loop back
   edge `loopGuard`, the guard `zeroTripGuard` that skips a loop whose runtime count is
-  zero, and the instruction `invTouch` that reads a loop-invariant register at the foot of a
-  loop.
+  zero, the instruction `invTouch` that reads a loop-invariant register at the foot of a
+  loop, and the operand forms: the operand positions that may be memory `memOperand`, the
+  accepted immediates `immFits`, the operands bound to one register `fixedOperand`, the
+  scales of an indexed address `indexScales` and the fused high multiply `mulHiFuse`.
 * `keepTouch`, the keep marker: an `Lopn` with the reserved mnemonic `KEEP` and the operand
   footprint of a compare, which an instruction set steps as a no-op; `isKeep` recognises
   it.
 * `IsaExportData`, the data the physical export, the printer and the encoder read beside the
   two records: the instruction pointer, the vector register file with its calling convention
   and copy mnemonic, and the sizes of the frame layout (the word, the stack alignment, the
-  bytes a call pushes, the save cells of a leaf and of a calling body, the vector spill cell).
+  bytes a call pushes, the save cells of a leaf and of a calling body, the vector spill cell),
+  and the reach of a relative call.
 
 The module also defines the quantities the export derives from an `IsaAbi`: the two reload
 scratches, the scalar return register, the save slot name of a register, the callee-saved
@@ -59,6 +62,8 @@ first two.
 * `IsaAbi.calleeFirstOrder`, `IsaAbi.callerSavedPool`, `IsaAbi.calleeSavedPoolIdx`,
   `IsaAbi.callScratchPoolIdx`: derived orders and pools of the allocation pool.
 * `IsaAbi.entrySaves`, `IsaAbi.calleeRestores`: the entry save and exit restore sequences.
+* `IsaAbi.WF`, `IsaData.WF`, `IsaData.TieWF`: the well-formedness of the register file, of
+  the implicit reads and of the tied form.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -150,6 +155,24 @@ structure IsaData extends IsaAbi where
       not change a register. An instruction set with a compare uses `CMP ctr, r`; one
       without uses the keep marker `keepTouch ctr r`. -/
   invTouch : String → String → LinstrR
+  /-- Whether the operand at position `k` of an instruction with this mnemonic base may be a
+      frame slot or a `mem.*` cell. The positions number the operands of
+      `Lopn dsts opn srcs` in the order `dsts ++ srcs`, from `0`. The default `false` at
+      every position is a load-store instruction set. -/
+  memOperand : String → Nat → Bool := fun _ _ => false
+  /-- Whether the immediate `v`, read as a signed integer, is accepted at operand position
+      `k` of an instruction with this mnemonic base, the positions as in `memOperand`. The
+      default accepts no immediate. -/
+  immFits : String → Nat → Int → Bool := fun _ _ _ => false
+  /-- The register that a register operand at position `k` of an instruction with this
+      mnemonic base must be, the positions as in `memOperand`; `none` at a position without
+      such a register. -/
+  fixedOperand : String → Nat → Option String := fun _ _ => none
+  /-- The scales a register-indexed address `arrIdx b i scale` may carry. -/
+  indexScales : List Nat := []
+  /-- The mnemonic base of the fused high multiply, `none` when the instruction set has
+      none. -/
+  mulHiFuse : Option String := none
 
 /-- **The export data of an instruction set** beside `IsaAbi` and `IsaData`: the instruction
     pointer, the vector register file with its calling convention and copy mnemonic, and the
@@ -178,6 +201,9 @@ structure IsaExportData : Type where
   saveCellsCall : Nat
   /-- The size in bytes of a vector spill cell. -/
   vecCellBytes : Nat
+  /-- The reach in bytes of a relative call: a call reaches a target whose displacement
+      from the call has absolute value below `callRange`. -/
+  callRange : Nat
 
 namespace IsaAbi
 
@@ -229,6 +255,46 @@ def entrySaves (args : List String) : Lcmd :=
 def calleeRestores : Lcmd :=
   abi.calleeSaved.map (fun r => ⟨0, .Lopn [.reg r] "MOVQ" [.reg (saveName r)]⟩)
 
+/-- **The well-formedness of a register file and calling convention**: the allocation pool,
+    the scratch registers and the stack pointer are pairwise distinct; the argument registers
+    are in the allocation pool; distinct callee-saved registers have distinct save slots; the
+    return registers are caller-saved. -/
+structure WF : Prop where
+  /-- The allocation pool, the scratch registers and the stack pointer are pairwise
+      distinct. -/
+  nodup : (abi.allocPool ++ abi.scratch ++ [abi.sp]).Nodup
+  /-- The argument registers are in the allocation pool. -/
+  args_sub : ∀ r ∈ abi.argRegs, r ∈ abi.allocPool
+  /-- The save slot is injective on the callee-saved registers. -/
+  saveSlot_inj : ∀ r ∈ abi.calleeSaved, ∀ r' ∈ abi.calleeSaved,
+    abi.saveSlot r = abi.saveSlot r' → r = r'
+  /-- The return registers are caller-saved. -/
+  ret_sub : ∀ r ∈ abi.retRegs, r ∈ abi.callerSaved
+
 end IsaAbi
+
+namespace IsaData
+
+variable (I : IsaData)
+
+/-- **The well-formedness of an instruction set's register data**: its register file is
+    well-formed (`IsaAbi.WF`), and the registers an instruction reads without naming them
+    are allocatable or scratch registers. -/
+structure WF : Prop extends I.toIsaAbi.WF where
+  /-- The implicit reads of every mnemonic are in the allocation pool or the scratch
+      registers. -/
+  implicit_sub : ∀ (opn r : String), r ∈ I.implicitReads opn → r ∈ I.allocPool ++ I.scratch
+
+/-- **The well-formedness of the tied form**: the scratch register of the legaliser is not
+    allocatable, and every mnemonic printed in tied form has a copy mnemonic. Both hold
+    when `tied` is constantly `false` and `tieScratch` is a scratch register. -/
+structure TieWF : Prop where
+  /-- The scratch register of the legaliser is not in the allocation pool. -/
+  tieScratch_not_mem : I.tieScratch ∉ I.allocPool
+  /-- A mnemonic printed in tied form has a copy mnemonic. -/
+  copy_of_tied : ∀ (opn : String) (b : LOperand), I.tied opn b = true →
+    (I.copyMnemonic opn).isSome
+
+end IsaData
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa

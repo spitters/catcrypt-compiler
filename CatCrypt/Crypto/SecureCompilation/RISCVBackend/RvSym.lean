@@ -170,7 +170,7 @@ theorem rvSymStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
           refine ⟨fun t ht => ?_, fun _ => rfl⟩
           cases ht
           refine ⟨allG_nil V A C O, ⟨fun q => ?_, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
-          simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+          simp only [SSt.setR_regs, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
             LstateN.lvm_setReg]
           split_ifs
           · exact hs.1 src
@@ -273,13 +273,15 @@ theorem rvSym_lawful : rvSym.Lawful where
     · rfl
     · rfl
     · cases movRegArgs? i with
-      | some p => simp only [SOut.subst, SSt.subst_setR, List.map_nil]; rfl
+      | some p => simp only [SOut.subst, SSt.subst_setR, SSt.subst_regs_apply, List.map_nil]
       | none => exact symMem_subst σ i ss
     · rfl
     · rfl
   dec_subst := by
     intro σ ss c
-    cases c <;> rfl
+    cases c <;> first
+      | rfl
+      | exact congrArg SDec.nz (SSt.subst_regs_apply σ ss _)
 
 /-- **Soundness of the checker on RV64 runs.** If `ownedCheckM outs B B'` accepts under the
     RV64 symbolic step `rvSymStep` and branch condition `rvSymDec`, every halting run of

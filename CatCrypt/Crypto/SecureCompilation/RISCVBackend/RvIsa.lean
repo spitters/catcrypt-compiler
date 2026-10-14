@@ -133,6 +133,15 @@ def rvCallerSaved : List String :=
   ["ra", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "a0", "a1", "a2", "a3", "a4", "a5", "a6",
    "a7"]
 
+/-- The RV64 immediates, read as signed integers: a signed 32-bit value as the source of a
+    copy `MOV`/`MOVQ` (position `1`, by `LUI` and `ADDI`); a signed 12-bit value as the
+    second source of `ADD`, `AND`, `OR` or `XOR` (position `2`); no immediate elsewhere. -/
+def rvImmFits (base : String) (k : Nat) (v : Int) : Bool :=
+  if (base == "MOV" || base == "MOVQ") && k == 1 then decide (-2 ^ 31 ≤ v ∧ v < 2 ^ 31)
+  else if (base == "ADD" || base == "AND" || base == "OR" || base == "XOR") && k == 2 then
+    decide (-2 ^ 11 ≤ v ∧ v < 2 ^ 11)
+  else false
+
 /-- **The RV64 data**: the psABI register file with `t5`, `t6` as scratch, the save slot of a
     callee-saved register at its index, the stack pointer `sp`, the return registers `a0`,
     `a1`, the caller-saved registers and no red zone, the three-address legaliser data (no
@@ -141,7 +150,9 @@ def rvCallerSaved : List String :=
     leakage regime `rvLeaksOperands`, the alphabet `rvBases` with the keep marker `KEEP`, no
     implicit reads, the register loop guard `bnez ctr, top`, the flagless zero-trip guard
     `bnez ctr, top` followed by the branch on the non-zero immediate `1` to `endL`, which is
-    always taken, and the keep marker `keepTouch ctr r` as invariant touch. -/
+    always taken, the keep marker `keepTouch ctr r` as invariant touch, no memory operand
+    (load-store), the immediates `rvImmFits`, no operand bound to one register, no indexed
+    address and no fused high multiply. -/
 def rvData : IsaData where
   allocPool := ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4"]
   scratch := ["t5", "t6"]
@@ -164,6 +175,11 @@ def rvData : IsaData where
   loopGuard := fun ctr top => [.Lcond (.reg ctr) top]
   zeroTripGuard := fun ctr top endL => [.Lcond (.reg ctr) top, .Lcond (.imm 1) endL]
   invTouch := keepTouch
+  memOperand := fun _ _ => false
+  immFits := rvImmFits
+  fixedOperand := fun _ _ => none
+  indexScales := []
+  mulHiFuse := none
 
 /-! ## The step -/
 

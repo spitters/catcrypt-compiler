@@ -193,14 +193,42 @@ def movFor (opn : String) : Option String :=
   else if opn == tieBase opn ++ ":64" then some "MOV:64"
   else none
 
+/-- The x86 operand positions that may be a frame slot or a `mem.*` cell, by mnemonic base,
+    the positions numbering `dsts ++ srcs`: the address of a load or `LEA` (position `1`);
+    the destination and the address of a store (positions `0` and `1`), whose value the
+    legaliser routes through `R15`; no operand of a `SET<cc>`, whose operands the legaliser
+    routes through `R15` and `R14`; the sources after the first of a `CMOV` (positions from
+    `2`), whose destination and condition are registers; every position of any other
+    base. -/
+def x86MemOperand (base : String) (k : Nat) : Bool :=
+  if base == "LOAD" || base == "LOADIDX" || base == "LEA" then k == 1
+  else if base == "STORE" || base == "STOREIDX" then decide (k ≤ 1)
+  else if "SET".toList.isPrefixOf base.toList then false
+  else if "CMOV".toList.isPrefixOf base.toList then decide (2 ≤ k)
+  else true
+
+/-- The x86 immediates, read as signed integers: any 64-bit value as the source of a copy
+    `MOV`/`MOVQ` (position `1`, `movabs` into a register), a sign-extended 32-bit value at
+    every other position. -/
+def x86ImmFits (base : String) (k : Nat) (v : Int) : Bool :=
+  if (base == "MOV" || base == "MOVQ") && k == 1 then decide (-2 ^ 63 ≤ v ∧ v < 2 ^ 64)
+  else decide (-2 ^ 31 ≤ v ∧ v < 2 ^ 31)
+
+/-- The x86 operands bound to one register: the count of a shift `SHL`, `SHR`, `SAR`
+    (position `2`), when it is a register, is `RCX`. -/
+def x86FixedOperand (base : String) (k : Nat) : Option String :=
+  if (base == "SHL" || base == "SHR" || base == "SAR") && k == 2 then some "RCX" else none
+
 /-- **The x86 instruction-set data**: the register file and calling convention
     `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
     `commBases`, the scratch register `reloadScratch`, the copies `movFor`, the flag-only
     bases `CMP` and `TEST`, the flag select `CMOV`, the implicit read
     of `RDX` by the `MULX` family, the flag loop guard `CMP ctr, 0; jne top`, the flag
-    zero-trip guard `CMP ctr, 0; je endL` and the invariant touch `CMP ctr, r`. The legaliser
-    reads its mnemonic data and scratch register from it, the loop exporter its two guards
-    and its invariant touch. -/
+    zero-trip guard `CMP ctr, 0; je endL`, the invariant touch `CMP ctr, r`, the memory
+    operands `x86MemOperand`, the immediates `x86ImmFits`, the shift count at `RCX`
+    (`x86FixedOperand`), the index scales `1`, `2`, `4`, `8` and the fused high multiply
+    `MULX`. The legaliser reads its mnemonic data and scratch register from it, the loop
+    exporter its two guards and its invariant touch. -/
 @[reducible] def x86Data : VIR.LprogIsa.IsaData :=
   { LprogAsmPrinter.x86Abi with
     tied := needsTie
@@ -216,7 +244,22 @@ def movFor (opn : String) : Option String :=
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "NZ") top]
     zeroTripGuard := fun ctr _ endL =>
       [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL]
-    invTouch := fun ctr r => .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r] }
+    invTouch := fun ctr r => .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]
+    memOperand := x86MemOperand
+    immFits := x86ImmFits
+    fixedOperand := x86FixedOperand
+    indexScales := [1, 2, 4, 8]
+    mulHiFuse := some "MULX" }
+
+theorem x86Data_memOperand : x86Data.memOperand = x86MemOperand := rfl
+
+theorem x86Data_immFits : x86Data.immFits = x86ImmFits := rfl
+
+theorem x86Data_fixedOperand : x86Data.fixedOperand = x86FixedOperand := rfl
+
+theorem x86Data_indexScales : x86Data.indexScales = [1, 2, 4, 8] := rfl
+
+theorem x86Data_mulHiFuse : x86Data.mulHiFuse = some "MULX" := rfl
 
 /-- The x86 loop guard is the flag guard `CMP ctr, 0; jne top`. -/
 theorem x86Data_loopGuard (ctr : String) (top : LLabel) :
@@ -246,8 +289,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 /-- **The x86 export data**: the instruction pointer `RIP`, the vector registers
     `XMM0`–`XMM15` with the System V vector arguments `XMM0`–`XMM7` and result `XMM0`, the
     copy `VMOVDQU`, 8-byte words, 16-byte stack alignment at a call, the 8-byte return
-    address a call pushes, eight save cells for a leaf and twelve for a calling body, and
-    32-byte vector spill cells. -/
+    address a call pushes, eight save cells for a leaf and twelve for a calling body,
+    32-byte vector spill cells, and the reach `2^31` of a `rel32` call. -/
 @[reducible] def x86ExportData : IsaExportData where
   ip := "RIP"
   vecPool := ["XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", "XMM6", "XMM7",
@@ -261,5 +304,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   saveCells := 8
   saveCellsCall := 12
   vecCellBytes := 32
+  callRange := 2 ^ 31
+
+theorem x86ExportData_callRange : x86ExportData.callRange = 2 ^ 31 := rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa

@@ -125,13 +125,40 @@ def armBases : List String :=
     register `x30`. The platform register `x18` is excluded. -/
 def armCallerSaved : List String := armRegs ++ ["x30"]
 
+/-- Whether the 64-bit word `w` is an AArch64 logical (bitmask) immediate: for an element
+    size `e` among `2, 4, …, 64`, `w` repeats its low `e` bits `x`, and `x` is a rotation
+    within `e` bits of a run of low ones, neither empty nor all `e` bits. -/
+def armLogicalImm (w : Nat) : Bool :=
+  decide (w < 2 ^ 64) && [2, 4, 8, 16, 32, 64].any fun e =>
+    let x := w % 2 ^ e
+    x != 0 && x != 2 ^ e - 1
+      && (List.range (64 / e)).all (fun j => (w >>> (e * j)) % 2 ^ e == x)
+      && (List.range e).any fun r =>
+        let y := (x >>> r) ||| ((x <<< (e - r)) % 2 ^ e)
+        y &&& (y + 1) == 0
+
+/-- The AArch64 immediates, read as signed integers: any 64-bit value as the source of a
+    copy `MOV`/`MOVQ` (position `1`, by `MOVZ` and `MOVK`); an unsigned 12-bit value,
+    optionally shifted left by `12`, as the second source of `ADD`, `SUB` or `CMP`
+    (position `2`); a logical immediate (`armLogicalImm`) as the second source of `AND`,
+    `OR` or `XOR`; no immediate elsewhere. -/
+def armImmFits (base : String) (k : Nat) (v : Int) : Bool :=
+  if (base == "MOV" || base == "MOVQ") && k == 1 then decide (-2 ^ 63 ≤ v ∧ v < 2 ^ 64)
+  else if (base == "ADD" || base == "SUB" || base == "CMP") && k == 2 then
+    decide (0 ≤ v ∧ (v < 2 ^ 12 ∨ (v % 2 ^ 12 = 0 ∧ v < 2 ^ 24)))
+  else if (base == "AND" || base == "OR" || base == "XOR") && k == 2 then
+    armLogicalImm (v % 2 ^ 64).toNat
+  else false
+
 /-- **The AArch64 data**: the AAPCS64 register file with the intra-procedure-call registers
     `x16`, `x17` as scratch, the save slot of a callee-saved register at its index, the stack
     pointer `sp`, the return registers `x0`, `x1`, the caller-saved registers and no red zone,
     the three-address legaliser data (no tied form, the commutative bases, the copy `MOV` at
-    the width of the operation, the flag-only base `CMP`), the leakage regime `armLeaksOperands`, the alphabet
-    `armBases`, no implicit reads, the register loop guard `cbnz ctr, top`, the flag
-    zero-trip guard `cmp ctr, 0; b.eq endL`, and the invariant touch `cmp ctr, r`. -/
+    the width of the operation, the flag-only base `CMP`), the leakage regime
+    `armLeaksOperands`, the alphabet `armBases`, no implicit reads, the register loop guard
+    `cbnz ctr, top`, the flag zero-trip guard `cmp ctr, 0; b.eq endL`, the invariant touch
+    `cmp ctr, r`, no memory operand (load-store), the immediates `armImmFits`, no operand
+    bound to one register, the index scales `1` and `8` and no fused high multiply. -/
 def armData : IsaData where
   allocPool := armAllocPool
   scratch := ["x16", "x17"]
@@ -155,6 +182,11 @@ def armData : IsaData where
   zeroTripGuard := fun ctr _ endL =>
     [.Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0], .Lcond (.reg "Z") endL]
   invTouch := fun ctr r => .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]
+  memOperand := fun _ _ => false
+  immFits := armImmFits
+  fixedOperand := fun _ _ => none
+  indexScales := [1, 8]
+  mulHiFuse := none
 
 /-! ## The step -/
 

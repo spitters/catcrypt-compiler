@@ -626,6 +626,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.HgcongrDialectLeaves
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelect
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
+CatCrypt.Crypto.SecureCompilation.VIR.IsaBackend
 CatCrypt.Crypto.SecureCompilation.VIR.IsaExportData
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminImageOps
