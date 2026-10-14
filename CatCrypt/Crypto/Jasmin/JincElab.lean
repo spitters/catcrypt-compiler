@@ -963,9 +963,7 @@ def callSafeTable (body : Lcmd) (tbl : Array Nat) : Array Nat := Id.run do
       some (s, st, en)
   let callee := straightCallCalleeSavedPool
   let mut t := tbl
-  let mut nextSpill := numGPRegs
-  for v in tbl do
-    if numGPRegs ≤ v && v < vectorBase then nextSpill := Nat.max nextSpill (v + 1)
+  let mut nextSpill := gpSpillBase (bodyVecSlots body) tbl
   for (s, st, en) in items do
     let raw := physMapTabled t s
     let crossing := calls.any (fun p => st < p && p ≤ en + callMarshalWindow)
@@ -981,10 +979,13 @@ def callSafeTable (body : Lcmd) (tbl : Array Nat) : Array Nat := Id.run do
   return t
 
 /-- The physical name of `n` under `callSafeTable`: a frame cell and a hardware
-    register name are themselves. -/
+    register name are themselves; any other name renders its physical index in
+    the register class of its slot (`physRegNameC`). -/
 def callSafeName (body : Lcmd) (tbl : Array Nat) (n : String) : String :=
   if isFrameSlotName n || isHwRegName n then n
-  else physRegName (physMapTabled tbl (nameSlot body n))
+  else
+    let s := nameSlot body n
+    physRegNameC (slotIsVec (bodyVecSlots body) s) (physMapTabled tbl s)
 
 /-- An operand renamed by `callSafeName`. -/
 def callSafeOperand (body : Lcmd) (tbl : Array Nat) : LOperand → LOperand

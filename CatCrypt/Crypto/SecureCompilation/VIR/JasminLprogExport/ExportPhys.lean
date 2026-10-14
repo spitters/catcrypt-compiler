@@ -93,11 +93,15 @@ starts with `V` — `VPADDQ`, `VPXOR`, `VPACK8u64:…`, `VPROR D:…`, …) need
 a GP register, and a scalar value never in a vector register.
 
 The vector physical indices are carried in the SAME `Nat`-valued slot map as the
-GP indices, offset by `vectorBase` so `physRegName` can recover the class from
-the index alone (`phys ≥ vectorBase` ⇒ vector). This keeps every downstream
-type (`physTable : Array Nat`, `physMapTabled`, `remapOperand`) unchanged, and —
-because a pure-scalar body never produces a `phys ≥ vectorBase` — leaves the
-GP-only rendering byte-identical. -/
+GP indices, offset by `vectorBase`. `physRegName` reads the class from the index
+(`phys ≥ vectorBase` ⇒ vector). A GP spill index reaches `vectorBase` at
+`vectorBase - numGPRegs` spill cells, so the index alone does not determine the
+class; `physRegNameC` takes the class as an argument (the slot's class,
+`slotIsVec`) and renders a GP-class index as a GP register or `k.N` and a
+vector-class index as a vector register or `kv.N` at every index
+(`physRegNameC_false_resolved`, `physRegNameC_true_resolved`). Where the slot's
+class is the class the threshold reads, the two renderings agree
+(`physRegNameC_decide`). -/
 
 /-- The 16 allocatable x86 vector register names (`%xmm0 … %xmm15`), indexed by
     the per-class physical slot `0 … 15`. The textual name is width-agnostic
@@ -115,9 +119,9 @@ def numVecRegs : Nat := vectorRegNames.length
     `Nat` slot map, so the class is recoverable from the index alone: a physical
     index `< vectorBase` is GP (allocatable register or `k.N` GP spill); an index
     `≥ vectorBase` is vector (`vectorRegNames[phys - vectorBase]`, or a `kv.N`
-    vector spill on overflow). Chosen large enough that no realistic GP slot
-    universe + spill count reaches it (a body would need >1000 distinct live GP
-    slots), so the two index spaces never alias. -/
+    vector spill on overflow). A GP spill index `numGPRegs + cell` reaches it at
+    `cell ≥ vectorBase - numGPRegs`; `physRegNameC` renders such an index by the
+    class of its slot. -/
 def vectorBase : Nat := 1000
 
 /-- Render a physical slot index as an operand name over the allocation pool
@@ -144,6 +148,131 @@ def physRegName (phys : Nat) (abi : IsaAbi := x86Abi) : String :=
     match abi.allocPool[phys]? with
     | some r => r
     | none => "k." ++ toString (phys - abi.allocPool.length)
+
+/-- Render physical index `phys` of register class `vec` (`true`: vector,
+    `false`: GP) as an operand name over `abi.allocPool`.
+
+    * vector class: the vector rendering of `physRegName` at
+      `max phys vectorBase` (`vectorRegNames[phys - vectorBase]`, else
+      `kv.{phys - vectorBase - numVecRegs}`);
+    * GP class below `vectorBase`: `physRegName phys` (an `allocPool` register,
+      else `k.{phys - |allocPool|}`);
+    * GP class at or above `vectorBase`: the GP spill `k.{phys - |allocPool|}`.
+
+    A GP-class index never renders as a vector name and a vector-class index
+    never as a GP name, whatever its value. -/
+def physRegNameC (vec : Bool) (phys : Nat) (abi : IsaAbi := x86Abi) : String :=
+  if vec then physRegName (max phys vectorBase) abi
+  else if phys < vectorBase then physRegName phys abi
+  else "k." ++ toString (phys - abi.allocPool.length)
+
+/-- At the class the index threshold reads, `physRegNameC` is `physRegName`. -/
+theorem physRegNameC_decide (p : Nat) (abi : IsaAbi) :
+    physRegNameC (decide (vectorBase ≤ p)) p abi = physRegName p abi := by
+  unfold physRegNameC
+  by_cases h : vectorBase ≤ p
+  · simp [h]
+  · simp [h, Nat.lt_of_not_le h]
+
+/-- A GP-class index below `vectorBase` renders as `physRegName` does. -/
+theorem physRegNameC_false_of_lt {p : Nat} (abi : IsaAbi) (hv : p < vectorBase) :
+    physRegNameC false p abi = physRegName p abi := by
+  simp [physRegNameC, hv]
+
+/-- A vector-class index at or above `vectorBase` renders as `physRegName` does. -/
+theorem physRegNameC_true_of_le {p : Nat} (abi : IsaAbi) (hv : vectorBase ≤ p) :
+    physRegNameC true p abi = physRegName p abi := by
+  simp [physRegNameC, Nat.max_eq_left hv]
+
+/-- A GP-class index renders as a register of `abi.allocPool` or a GP spill
+    slot `k.N`, at every index. -/
+theorem physRegNameC_false_resolved (p : Nat) (abi : IsaAbi) :
+    physRegNameC false p abi ∈ abi.allocPool ∨
+      ∃ n : Nat, physRegNameC false p abi = "k." ++ toString n := by
+  unfold physRegNameC
+  simp only [Bool.false_eq_true, if_false]
+  split
+  · unfold physRegName
+    rw [if_neg (by omega)]
+    split
+    · next r hr => exact Or.inl (List.mem_of_getElem? hr)
+    · exact Or.inr ⟨_, rfl⟩
+  · exact Or.inr ⟨_, rfl⟩
+
+/-- A vector-class index renders as a register of `vectorRegNames` or a vector
+    spill slot `kv.N`, at every index. -/
+theorem physRegNameC_true_resolved (p : Nat) (abi : IsaAbi) :
+    physRegNameC true p abi ∈ vectorRegNames ∨
+      ∃ n : Nat, physRegNameC true p abi = "kv." ++ toString n := by
+  unfold physRegNameC physRegName
+  simp only [if_true]
+  rw [if_pos (Nat.le_max_right _ _)]
+  split
+  · next r hr => exact Or.inl (List.mem_of_getElem? hr)
+  · exact Or.inr ⟨_, rfl⟩
+
+/-- The first character of a `k.N` spill name. -/
+theorem kSpill_head (n : Nat) : ("k." ++ toString n).toList.head? = some 'k' := by
+  simp [String.toList_append, show "k.".toList = ['k', '.'] from rfl]
+
+/-- A GP spill name `k.N` is never a vector spill name `kv.M`. -/
+theorem kSpill_ne_kvSpill (n m : Nat) : "k." ++ toString n ≠ "kv." ++ toString m := by
+  intro h
+  have hd := congrArg String.toList h
+  simp [String.toList_append, show "k.".toList = ['k', '.'] from rfl,
+    show "kv.".toList = ['k', 'v', '.'] from rfl] at hd
+
+/-- Every vector register name starts with `X`. -/
+theorem vectorRegNames_head : ∀ r ∈ vectorRegNames, r.toList.head? = some 'X' := by
+  decide
+
+/-- A GP spill name `k.N` is not a vector register name. -/
+theorem kSpill_not_mem_vectorRegNames (n : Nat) : "k." ++ toString n ∉ vectorRegNames := by
+  intro h
+  have := vectorRegNames_head _ h
+  rw [kSpill_head] at this
+  exact absurd (Option.some.inj this) (by decide)
+
+/-- The allocation pool of `abi` is disjoint from the vector names: no pool
+    register is a vector register or a vector spill name `kv.N`. -/
+def PoolVecFree (abi : IsaAbi) : Prop :=
+  ∀ r ∈ abi.allocPool, r ∉ vectorRegNames ∧ ∀ n : Nat, r ≠ "kv." ++ toString n
+
+/-- **GP class names no vector name.** Over a pool disjoint from the vector
+    names, a GP-class index never renders as a vector register or a `kv.N`
+    vector spill slot. -/
+theorem physRegNameC_false_not_vec {abi : IsaAbi} (hpool : PoolVecFree abi) (p : Nat) :
+    physRegNameC false p abi ∉ vectorRegNames ∧
+      ∀ n : Nat, physRegNameC false p abi ≠ "kv." ++ toString n := by
+  rcases physRegNameC_false_resolved p abi with h | ⟨m, h⟩
+  · exact hpool _ h
+  · rw [h]
+    exact ⟨kSpill_not_mem_vectorRegNames m, kSpill_ne_kvSpill m⟩
+
+/-- **Vector class names no GP name.** Over a pool disjoint from the vector
+    names, a vector-class index never renders as a register of the pool or a
+    `k.N` GP spill slot. -/
+theorem physRegNameC_true_not_gp {abi : IsaAbi} (hpool : PoolVecFree abi) (p : Nat) :
+    physRegNameC true p abi ∉ abi.allocPool ∧
+      ∀ n : Nat, physRegNameC true p abi ≠ "k." ++ toString n := by
+  rcases physRegNameC_true_resolved p abi with h | ⟨m, h⟩
+  · refine ⟨fun hm => (hpool _ hm).1 h, fun n hn => ?_⟩
+    rw [hn] at h
+    exact kSpill_not_mem_vectorRegNames n h
+  · rw [h]
+    exact ⟨fun hm => (hpool _ hm).2 m rfl, fun n hn => kSpill_ne_kvSpill n m hn.symm⟩
+
+/-- The x86 allocation pool is disjoint from the vector names. -/
+theorem x86Abi_poolVecFree : PoolVecFree x86Abi := by
+  have hR : ∀ r ∈ x86Abi.allocPool, r.toList.head? = some 'R' := by decide
+  intro r hr
+  refine ⟨fun hv => ?_, fun n hn => ?_⟩
+  · have h1 := hR r hr
+    rw [vectorRegNames_head r hv] at h1
+    exact absurd (Option.some.inj h1) (by decide)
+  · have h1 := hR r hr
+    rw [hn] at h1
+    simp [String.toList_append, show "kv.".toList = ['k', 'v', '.'] from rfl] at h1
 
 /-! ### 7b. Per-binding slot events
 
@@ -1349,6 +1478,54 @@ def straightCallCalleeSavedPool : List Nat := [1, 6, 11, 12]
     `call` is safe there. -/
 def straightCallScratchPool : List Nat := [9, 10]
 
+/-- The first fresh GP frame-spill index of an allocation table `tbl`: one more
+    than the largest entry `v ≥ numGPRegs` whose slot `s` is of GP class
+    (`slotIsVec vecArr s = false`), and `numGPRegs` when there is none. The class
+    of an entry is the class of its slot, so a GP spill index at or above
+    `vectorBase` counts and a vector-class index does not. -/
+def gpSpillBase (vecArr : Array Bool) (tbl : Array Nat) : Nat :=
+  tbl.toList.zipIdx.foldl
+    (fun b e => if !slotIsVec vecArr e.2 && numGPRegs ≤ e.1 then Nat.max b (e.1 + 1) else b)
+    numGPRegs
+
+/-- The list form of `gpSpillBase_eq_of_fit`, from slot `k` on. -/
+theorem gpSpillBase_foldl_eq_of_fit (vecArr : Array Bool) :
+    ∀ (l : List Nat) (k b : Nat),
+      (∀ (i : Nat) (h : i < l.length), slotIsVec vecArr (k + i) = decide (vectorBase ≤ l[i])) →
+      (l.zipIdx k).foldl
+          (fun b e => if !slotIsVec vecArr e.2 && numGPRegs ≤ e.1 then Nat.max b (e.1 + 1)
+            else b) b =
+        l.foldl (fun b v => if numGPRegs ≤ v && v < vectorBase then Nat.max b (v + 1) else b) b
+  | [], _, _, _ => rfl
+  | v :: vs, k, b, hfit => by
+    have h0 : slotIsVec vecArr k = decide (vectorBase ≤ v) := by
+      exact hfit 0 (by simp)
+    simp only [List.zipIdx_cons, List.foldl_cons]
+    rw [h0]
+    have hstep : (if (!decide (vectorBase ≤ v) && decide (numGPRegs ≤ v)) = true then
+          Nat.max b (v + 1) else b) =
+        (if (decide (numGPRegs ≤ v) && decide (v < vectorBase)) = true then
+          Nat.max b (v + 1) else b) := by
+      by_cases h1 : vectorBase ≤ v <;> by_cases h2 : numGPRegs ≤ v <;> simp [h1, h2]
+    rw [hstep]
+    exact gpSpillBase_foldl_eq_of_fit vecArr vs (k + 1) _ fun i hi => by
+      have := hfit (i + 1) (by simp; omega)
+      simpa [Nat.add_assoc, Nat.add_comm 1 i] using this
+
+/-- **Fresh spill base under the fit.** When the class of every slot is the
+    class the index threshold reads (every GP-class entry is `< vectorBase`,
+    every vector-class entry `≥ vectorBase`), `gpSpillBase` is the threshold
+    scan over the entries `numGPRegs ≤ v < vectorBase`. -/
+theorem gpSpillBase_eq_of_fit (vecArr : Array Bool) (tbl : Array Nat)
+    (hfit : ∀ (s : Nat) (h : s < tbl.size), slotIsVec vecArr s = decide (vectorBase ≤ tbl[s])) :
+    gpSpillBase vecArr tbl =
+      tbl.foldl (fun b v => if numGPRegs ≤ v && v < vectorBase then Nat.max b (v + 1) else b)
+        numGPRegs := by
+  unfold gpSpillBase
+  rw [← Array.foldl_toList]
+  exact gpSpillBase_foldl_eq_of_fit vecArr tbl.toList 0 numGPRegs fun i hi => by
+    simpa using hfit i (by simpa using hi)
+
 /-- The straight-line call barrier's relocation of **raw** allocated GP indices
     (the `physScan` output, `< numGPRegs`) onto call-safe homes. For each raw
     index actually used by a non-hardware-named slot:
@@ -1399,9 +1576,7 @@ def straightCallRelocTableCore (body : Lcmd) (tbl : Array Nat) : Array Nat :=
                             || !(isRead[s]?.getD true)
           if crossing then crossRaw := crossRaw.set! raw true
     -- Fresh spill indices start above every spill the scan already assigned.
-    let mut spillBase := numGPRegs
-    for v in tbl do
-      if numGPRegs ≤ v && v < vectorBase then spillBase := Nat.max spillBase (v + 1)
+    let spillBase := gpSpillBase (bodyVecSlots body) tbl
     let mut reloc : Array Nat := Array.range numGPRegs
     let mut crossPool := straightCallCalleeSavedPool
     let mut nonCrossPool := straightCallScratchPool
