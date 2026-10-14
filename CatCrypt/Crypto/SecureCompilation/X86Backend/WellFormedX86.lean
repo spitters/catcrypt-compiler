@@ -9,6 +9,7 @@ import all Init.Data.Repr
 import all Init.Data.String.TakeDrop
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
 
 /-!
 # `WellFormedX86`: a decidable ISA-legality invariant for the owned x86 backend
@@ -99,16 +100,16 @@ bypass the helper's routing.
   ABI wrapper preservation is assembled (`abiWrap_wf`, `toLprogPhysAbi_wf`):
   given the body's per-instruction WF, the full `Com.toLprogPhysAbi` export is
   `wfLprog`.
-* **Residuals carried as named hypotheses (not admitted proofs, not axioms)**: two
-  String-API round-trip facts the toolchain ships no lemma for — `SpillNameWF`
-  (`("k." ++ toString k)` is a parseable spill) and `MemNameWF`
-  (`mem.R14.<off>` resolves) — bundled and threaded; and the verified
-  two-address body's direct-emit no-two-spill obligation (the post-RA Phase-2
-  content, the same territory as `LprogJasminWellFormed`'s residuals), carried
-  as the `hbws : wfLcmd bodyWithInlineStores` hypothesis of `toLprogPhysAbi_wf`.
-  `toLprogPhysAbi_wf_goal` names the unconditional obligation. The decidable
-  `wfLprog` checker runs the catch today; the assembled preservation theorem
-  makes the catch structural once the three residuals are discharged.
+* **Proved (rendered names)**: the decimal round trip `natOfDigitsSep?_toString`, so a
+  rendered spill name `"k." ++ toString k` is a parseable spill (`spill_name_round_trip :
+  SpillNameWF`) and `mem.R14.<off>` resolves (`mem_name_round_trip : MemNameWF`).
+* **Hypothesis of `toLprogPhysAbi_wf`**: the verified two-address body's direct-emit
+  no-two-spill obligation (the post-RA Phase-2 content, the same territory as
+  `LprogJasminWellFormed`'s residuals), carried as `hbws : wfLcmd bodyWithInlineStores`.
+  `toLprogPhysAbi_wf_goal` names the unconditional obligation.
+* **Over an instruction set** (§1b): `opResolvedI I` reads the register file, the save
+  slots and the index scales from `I : IsaData`; `opResolvedI_x86` identifies
+  `opResolvedI x86Data` with `opResolved`.
 -/
 
 @[expose] public section
@@ -120,6 +121,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
 
 /-! ## 1. Resolvable physical operands (bug class 3: the `%<UNKNOWN>` sentinel) -/
 
@@ -157,18 +159,64 @@ def natOfDigitsSep? (cs : List Char) : Option Nat :=
   if digitSepOk cs false then JasminLprogExport.natOfDigits? (cs.filter (fun c => c != '_'))
   else none
 
+/-- A decimal digit is not the separator `_` and lies between `'0'` and `'9'`. -/
+theorem digit_sep_bounds {c : Char} (h : c.isDigit = true) :
+    c ≠ '_' ∧ ('0' ≤ c && c ≤ '9') = true := by
+  simp only [Char.isDigit, Bool.and_eq_true, decide_eq_true_eq] at h
+  refine ⟨fun e => ?_, ?_⟩
+  · subst e; revert h; decide
+  · simp only [Bool.and_eq_true, decide_eq_true_eq, Char.le_def]; exact ⟨h.1, h.2⟩
+
+/-- A non-empty run of decimal digits passes `digitSepOk` from either state. -/
+theorem digitSepOk_cons_digits (c : Char) (rest : List Char)
+    (hd : ∀ x ∈ c :: rest, x.isDigit = true) (b : Bool) :
+    digitSepOk (c :: rest) b = true := by
+  induction rest generalizing c b with
+  | nil =>
+      obtain ⟨hne, hb⟩ := digit_sep_bounds (hd c List.mem_cons_self)
+      simp [digitSepOk, hne, hb]
+  | cons d rest ih =>
+      obtain ⟨hne, hb⟩ := digit_sep_bounds (hd c List.mem_cons_self)
+      rw [digitSepOk, if_neg hne, hb, Bool.true_and]
+      exact ih d (fun x hx => hd x (List.mem_cons_of_mem _ hx)) true
+
+/-- **The decimal round trip of `natOfDigitsSep?`**: the character list of
+    `toString k` parses to `k`. -/
+theorem natOfDigitsSep?_toString (k : Nat) :
+    natOfDigitsSep? (toString k).toList = some k := by
+  have hl : (toString k).toList = Nat.toDigits 10 k := by
+    show (String.ofList (Nat.toDigits 10 k)).toList = _
+    rw [String.toList_ofList]
+  have hd := JasminImmShiftMnem.toDigits_isDigit k
+  have hok : digitSepOk (toString k).toList false = true := by
+    rw [hl]
+    obtain ⟨c, rest, hcr⟩ := List.exists_cons_of_ne_nil (JasminImmShiftMnem.toDigits_ne_nil k)
+    rw [hcr] at hd ⊢
+    exact digitSepOk_cons_digits c rest hd false
+  have hf : (toString k).toList.filter (fun c => c != '_') = (toString k).toList := by
+    rw [List.filter_eq_self]
+    intro c hc
+    rw [hl] at hc
+    simp [(digit_sep_bounds (hd c hc)).1]
+  unfold natOfDigitsSep?
+  rw [if_pos hok, hf]
+  exact JasminImmShiftMnem.natOfDigits?_toString k
+
 /-- A spill-slot name `k.<n>` is resolved iff `<n>` parses as a natural number
     (`natOfDigitsSep?`, the list form of `String.toNat?`). -/
 def spillNameResolved (n : String) : Bool :=
   JasminLprogExport.hasPrefix n "k." && (natOfDigitsSep? (n.toList.drop 2)).isSome
 
+/-- The twelve registers with a frame save slot: the domain of the printer's
+    `LprogAsmPrinter.qsaveSlot` map. -/
+def x86SaveRegNames : List String :=
+  ["RDI", "RSI", "RBX", "RBP", "R12", "R13", "R14", "R15", "RDX", "RCX", "R8", "R9"]
+
 /-- An ABI save-slot name `qsave.<reg>` is resolved iff `<reg>` is one of the
-    eight save registers the printer's `qsaveSlot` map knows. -/
+    save registers the printer's `qsaveSlot` map knows (`x86SaveRegNames`). -/
 def qsaveNameResolved (n : String) : Bool :=
   JasminLprogExport.hasPrefix n "qsave." &&
-    (n.toList.drop 6 ∈
-      (["RDI", "RSI", "RBX", "RBP", "R12", "R13", "R14", "R15"] : List String).map
-        String.toList)
+    (n.toList.drop 6 ∈ x86SaveRegNames.map String.toList)
 
 /-- A base+offset memory name `mem.<base>.<off>` is resolved iff the text after
     `mem.` is `<base>.<off>` with `base` a resolvable physical register (which
@@ -202,6 +250,85 @@ def opResolved : LOperand → Bool
   | .arrIdx base idx scale =>
       (base ∈ x86PhysRegNames) && (idx ∈ x86PhysRegNames) &&
         (scale ∈ ([1, 2, 4, 8] : List Nat))
+
+/-! ## 1b. Resolved operands over the data of an instruction set
+
+`opResolvedI I` is `opResolved` with the register file, the save slots and the index
+scales read from the instruction-set data `I`; `opResolvedI_x86` identifies the two at
+`x86Data`. -/
+
+/-- The physical register names of an instruction set: the allocation pool, the reserved
+    scratch registers and the stack pointer. -/
+def physRegNamesI (I : IsaData) : List String := I.allocPool ++ I.scratch ++ [I.sp]
+
+/-- A save-slot name `qsave.<reg>` is resolved over `I` iff `<reg>` has a frame save slot
+    (`I.saveSlot`). -/
+def qsaveNameResolvedI (I : IsaData) (n : String) : Bool :=
+  JasminLprogExport.hasPrefix n "qsave." &&
+    (I.saveSlot (String.ofList (n.toList.drop 6))).isSome
+
+/-- A base+offset memory name `mem.<base>.<off>` is resolved over `I` iff `base` is a
+    physical register of `I` and `off` a natural number. -/
+def memNameResolvedI (I : IsaData) (n : String) : Bool :=
+  JasminLprogExport.hasPrefix n "mem." &&
+    (match (n.toList.drop 4).span (· ≠ '.') with
+     | (base, '.' :: off) =>
+         (base ∈ (physRegNamesI I).map String.toList) && (natOfDigitsSep? off).isSome
+     | _ => false)
+
+/-- A register name is resolved over `I` iff it is a physical register of `I`, a
+    parseable spill slot, a save slot of `I` or a base+offset memory name over `I`. -/
+def regNameResolvedI (I : IsaData) (n : String) : Bool :=
+  (n ∈ physRegNamesI I) || spillNameResolved n || qsaveNameResolvedI I n ||
+    memNameResolvedI I n
+
+/-- **An operand resolved over the instruction set `I`**: a register with a name resolved
+    over `I`, an immediate, or a register-indexed address whose base and index are
+    physical registers of `I` and whose scale is in `I.indexScales`. -/
+def opResolvedI (I : IsaData) : LOperand → Bool
+  | .reg n => regNameResolvedI I n
+  | .imm _ => true
+  | .arr _ _ => false
+  | .arrIdx base idx scale =>
+      (base ∈ physRegNamesI I) && (idx ∈ physRegNamesI I) && (scale ∈ I.indexScales)
+
+/-- The physical registers of `x86Data` are those of `x86PhysRegNames`. -/
+theorem mem_physRegNamesI_x86 (n : String) :
+    n ∈ physRegNamesI TwoAddrLegalize.x86Data ↔ n ∈ x86PhysRegNames := by
+  simp only [physRegNamesI, x86PhysRegNames, JasminLprogExport.gpRegNames,
+    JasminLprogExport.reloadScratch, JasminLprogExport.reloadScratch2,
+    List.mem_append, List.mem_cons, List.not_mem_nil, or_false]
+  tauto
+
+/-- The save slots of `x86Data` are those of `x86SaveRegNames`. -/
+theorem qsaveSlot_isSome_iff (L : List Char) :
+    (LprogAsmPrinter.qsaveSlot (String.ofList L)).isSome = true ↔
+      L ∈ x86SaveRegNames.map String.toList := by
+  have hof : ∀ s : String, String.ofList L = s ↔ L = s.toList := fun s =>
+    ⟨fun h => by rw [← h, String.toList_ofList], fun h => by rw [h, String.ofList_toList]⟩
+  unfold LprogAsmPrinter.qsaveSlot
+  split <;> rename_i h <;>
+    first
+    | (rw [hof] at h; subst h; decide)
+    | simp_all [x86SaveRegNames]
+
+/-- **`opResolved` is the x86 instance of `opResolvedI`.** -/
+theorem opResolvedI_x86 : opResolvedI TwoAddrLegalize.x86Data = opResolved := by
+  have h1 : ∀ n, decide (n ∈ physRegNamesI TwoAddrLegalize.x86Data) =
+      decide (n ∈ x86PhysRegNames) := fun n => decide_eq_decide.mpr (mem_physRegNamesI_x86 n)
+  have h2 : ∀ L : List Char,
+      decide (L ∈ (physRegNamesI TwoAddrLegalize.x86Data).map String.toList) =
+        decide (L ∈ x86PhysRegNames.map String.toList) := fun L =>
+    decide_eq_decide.mpr (by simp only [List.mem_map, mem_physRegNamesI_x86])
+  have h3 : ∀ L : List Char,
+      (TwoAddrLegalize.x86Data.saveSlot (String.ofList L)).isSome =
+        decide (L ∈ x86SaveRegNames.map String.toList) := fun L => by
+    rw [Bool.eq_iff_iff, decide_eq_true_iff]
+    exact qsaveSlot_isSome_iff L
+  funext o
+  cases o <;>
+    simp only [opResolvedI, opResolved, regNameResolvedI, regNameResolved,
+      qsaveNameResolvedI, qsaveNameResolved, memNameResolvedI, memNameResolved, h1, h2, h3]
 
 /-! ## 2. Memory-operand class (bug classes 1, 2: `mem → mem` mov) -/
 
@@ -864,25 +991,29 @@ operand is `opResolved`, its memory status coincides with its spill status
 (`memCoincidesSpill` — a `physRegName` name carries no `qsave.`/`mem.` prefix,
 only `k.` or none), and as a SIB base/index it is `sibArgOk`.
 
-The GP-block facts are decidable. The spill-block facts reduce to the single
-String round-trip predicate `SpillNameWF` below: that a `"k." ++ toString k`
-name is a parseable spill (`spillNameResolved`) and carries the `k.` prefix.
-This is the `(toString n).toNat?` decimal round-trip the toolchain ships **no**
-library lemma for (documented in `JasminLsemShift`/`JasminLsemScalar`: *"no
-Lean/Mathlib round-trip lemma … not closable by `decide` for symbolic `n`"*).
-It is isolated here as one named hypothesis and threaded through the body
-preservation theorem — every other step is proved on top. -/
+The GP-block facts are decidable. The spill-block facts rest on `SpillNameWF`
+below: a `"k." ++ toString k` name is a parseable spill (`spillNameResolved`) and
+carries the `k.` prefix. It holds by the decimal round trip
+`natOfDigitsSep?_toString` (`spill_name_round_trip`). -/
 
-/-- The single String-round-trip fact `physRegName`'s spill block rests on: a
-    rendered spill name `"k." ++ toString k` parses as a `spillNameResolved`
-    slot, and carries the `"k."` prefix (so `isMemX86`/`isSpill` see it). The
-    decimal round-trip `natOfDigitsSep? (toString k).toList = some k` has no
-    library lemma in this toolchain (see the module docstring), so it is carried
-    as a hypothesis rather than proved by `decide` (which cannot reduce it for
-    symbolic `k`). -/
+/-- The String fact `physRegName`'s spill block rests on: a rendered spill name
+    `"k." ++ toString k` parses as a `spillNameResolved` slot, and carries the
+    `"k."` prefix (so `isMemX86`/`isSpill` see it). -/
 def SpillNameWF : Prop := ∀ k : Nat,
   spillNameResolved ("k." ++ toString k) = true ∧
   "k.".isPrefixOf ("k." ++ toString k) = true
+
+/-- **Every rendered spill name is resolved**: `SpillNameWF` holds, by the decimal round
+    trip `natOfDigitsSep?_toString`. -/
+theorem spill_name_round_trip : SpillNameWF := by
+  intro k
+  have hp : JasminLprogExport.hasPrefix ("k." ++ toString k) "k." = true := by
+    simp [JasminLprogExport.hasPrefix, String.toList_append]
+  refine ⟨?_, by rw [isPrefixOf_eq_hasPrefix]; exact hp⟩
+  unfold spillNameResolved
+  rw [hp, Bool.true_and, String.toList_append]
+  simp only [show "k.".toList = ['k', '.'] from rfl, List.cons_append, List.nil_append,
+    List.drop_succ_cons, List.drop_zero, natOfDigitsSep?_toString, Option.isSome_some]
 
 /-- Every `gpRegNames` entry is an `x86PhysRegNames` entry (decidable). -/
 theorem gpRegNames_subset_phys :
@@ -909,7 +1040,7 @@ theorem physRegName_spill_eq {a : Nat} (ha : JasminLprogExport.numGPRegs ≤ a)
 /-- **`physRegName` always renders a resolved operand name.** GP block: the name
     is in `x86PhysRegNames`. Spill block: it is a `spillNameResolved` slot (via
     `SpillNameWF`). -/
-theorem physRegName_resolved (hspill : SpillNameWF) (p : Nat)
+theorem physRegName_resolved (p : Nat)
     (hv : p < JasminLprogExport.vectorBase) :
     regNameResolved (JasminLprogExport.physRegName p) = true := by
   rcases Nat.lt_or_ge p JasminLprogExport.numGPRegs with hp | hp
@@ -926,7 +1057,7 @@ theorem physRegName_resolved (hspill : SpillNameWF) (p : Nat)
     simp [hmem]
   · rw [physRegName_spill_eq hp hv]
     unfold regNameResolved
-    rw [(hspill (p - JasminLprogExport.numGPRegs)).1]
+    rw [(spill_name_round_trip (p - JasminLprogExport.numGPRegs)).1]
     simp
 
 /-- **`physRegName`'s name has coinciding memory/spill status.** A `physRegName`
@@ -935,7 +1066,7 @@ theorem physRegName_resolved (hspill : SpillNameWF) (p : Nat)
     name (which would be memory but not a spill). So `memCoincidesSpill` holds for
     every remapped register operand, the producer invariant the `legalize*_wf`
     helpers require. -/
-theorem physRegName_memCoincides (hspill : SpillNameWF) (p : Nat)
+theorem physRegName_memCoincides (p : Nat)
     (hv : p < JasminLprogExport.vectorBase) :
     isMemX86 (.reg (JasminLprogExport.physRegName p)) =
       LOperand.isSpill (.reg (JasminLprogExport.physRegName p)) := by
@@ -950,13 +1081,14 @@ theorem physRegName_memCoincides (hspill : SpillNameWF) (p : Nat)
     obtain ⟨hk, hq, hm⟩ := gp_not_spillPrefix _ hg
     simp only [isMemX86, LOperand.isSpill, hk, hq, hm, Bool.or_self]
   · rw [physRegName_spill_eq hp hv]
-    simp only [isMemX86, LOperand.isSpill, (hspill (p - JasminLprogExport.numGPRegs)).2,
+    simp only [isMemX86, LOperand.isSpill,
+      (spill_name_round_trip (p - JasminLprogExport.numGPRegs)).2,
       Bool.true_or]
 
 /-- **`physRegName`'s name is `sibArgOk`** (a physical register or a parseable
     spill) — so a remapped SIB base/index always satisfies the producer invariant
     `legalizeSibElem_*` / `legalizeMem*_sib_wf` need. -/
-theorem physRegName_sibArgOk (hspill : SpillNameWF) (p : Nat)
+theorem physRegName_sibArgOk (p : Nat)
     (hv : p < JasminLprogExport.vectorBase) :
     sibArgOk (JasminLprogExport.physRegName p) := by
   rcases Nat.lt_or_ge p JasminLprogExport.numGPRegs with hp | hp
@@ -971,7 +1103,7 @@ theorem physRegName_sibArgOk (hspill : SpillNameWF) (p : Nat)
     exact gpRegNames_subset_phys _ hg
   · right
     rw [physRegName_spill_eq hp hv]
-    exact (hspill (p - JasminLprogExport.numGPRegs)).1
+    exact (spill_name_round_trip (p - JasminLprogExport.numGPRegs)).1
 
 /-! ## 6e. The injected lowering passes all produce WF output
 
@@ -1101,21 +1233,20 @@ theorem lowerTwoAddr_wf (dst s0 s1 : LOperand) (opn mov : String)
 `remapOperand` always produces a resolved, spill-coinciding `.reg` (§6d), so the
 direct body arms over `.reg`/`.imm` operands are resolved. The inline ABI
 load/store legs and the epilogue's restore use `memName reloadScratch2 off`
-(`mem.R14.<off>`) memory operands, whose resolution is the second String-API
-residual bundled in `MemNameWF`. The prologue, callee-save restore epilogue, and
+(`mem.R14.<off>`) memory operands, which resolve by `mem_name_round_trip`. The prologue, callee-save restore epilogue, and
 the `wfLcmd`-over-`flatMap` recursion shape are proved here. -/
 
 /-- A remapped `.reg` operand is resolved (§6d, lifted through `remapOperand`). -/
-theorem remap_reg_resolved (hspill : SpillNameWF) (body : Lcmd) (tbl : Array Nat)
+theorem remap_reg_resolved (body : Lcmd) (tbl : Array Nat)
     (n : String)
     (hv : JasminLprogExport.physMapTabled tbl (JasminLprogExport.nameSlot body n)
       < JasminLprogExport.vectorBase) :
     opResolved (JasminLprogExport.remapOperand body tbl (.reg n)) = true := by
   unfold JasminLprogExport.remapOperand opResolved
-  exact physRegName_resolved hspill _ hv
+  exact physRegName_resolved _ hv
 
 /-- A remapped `.reg` operand has coinciding memory/spill status (§6d). -/
-theorem remap_reg_coincides (hspill : SpillNameWF) (body : Lcmd) (tbl : Array Nat)
+theorem remap_reg_coincides (body : Lcmd) (tbl : Array Nat)
     (n : String)
     (hv : JasminLprogExport.physMapTabled tbl (JasminLprogExport.nameSlot body n)
       < JasminLprogExport.vectorBase) :
@@ -1123,26 +1254,46 @@ theorem remap_reg_coincides (hspill : SpillNameWF) (body : Lcmd) (tbl : Array Na
   show isMemX86 (JasminLprogExport.remapOperand body tbl (.reg n)) =
     LOperand.isSpill (JasminLprogExport.remapOperand body tbl (.reg n))
   unfold JasminLprogExport.remapOperand
-  exact physRegName_memCoincides hspill _ hv
+  exact physRegName_memCoincides _ hv
 
-/-- The second String-API residual: the inline ABI load/store / epilogue memory
+/-- The String fact of the memory names: the inline ABI load/store / epilogue memory
     operand `mem.R14.<off>` resolves (`memNameResolved`) and carries the `mem.`
-    prefix (so `isMemX86` sees it). The same decimal round-trip
-    (`natOfDigitsSep? (toString off).toList`) as `SpillNameWF`; carried as a
-    hypothesis. -/
+    prefix (so `isMemX86` sees it). -/
 def MemNameWF : Prop := ∀ off : Nat,
   memNameResolved (JasminLprogExport.memName reloadScratch2 off) = true ∧
   "mem.".isPrefixOf (JasminLprogExport.memName reloadScratch2 off) = true
 
+/-- **Every `mem.R14.<off>` name is resolved**: `MemNameWF` holds, by the decimal round
+    trip `natOfDigitsSep?_toString` and the absence of `.` in a decimal rendering. -/
+theorem mem_name_round_trip : MemNameWF := by
+  intro off
+  have hl : (JasminLprogExport.memName reloadScratch2 off).toList =
+      ['m', 'e', 'm', '.', 'R', '1', '4', '.'] ++ (toString off).toList := by
+    simp [JasminLprogExport.memName, reloadScratch2, String.toList_append]
+  have hp : JasminLprogExport.hasPrefix (JasminLprogExport.memName reloadScratch2 off)
+      "mem." = true := by
+    simp [JasminLprogExport.hasPrefix, hl]
+  refine ⟨?_, by rw [isPrefixOf_eq_hasPrefix]; exact hp⟩
+  have hn := natOfDigitsSep?_toString off
+  unfold memNameResolved
+  rw [hp, Bool.true_and, hl]
+  generalize (toString off).toList = l at hn ⊢
+  have hs : List.span (fun x => decide (x ≠ '.'))
+      (List.drop 4 (['m', 'e', 'm', '.', 'R', '1', '4', '.'] ++ l)) =
+        (['R', '1', '4'], '.' :: l) := rfl
+  rw [hs]
+  simp only [hn, Option.isSome_some, Bool.and_true]
+  decide
+
 /-- A `mem.R14.<off>` memory operand is resolved (via `MemNameWF`). -/
-theorem memDst_resolved (hmem : MemNameWF) (off : Nat) :
+theorem memDst_resolved (off : Nat) :
     opResolved (.reg (JasminLprogExport.memName reloadScratch2 off)) = true := by
-  simp only [opResolved, regNameResolved, (hmem off).1, Bool.or_true]
+  simp only [opResolved, regNameResolved, (mem_name_round_trip off).1, Bool.or_true]
 
 /-- A `mem.R14.<off>` operand is a memory operand (`isMemX86`, via `MemNameWF`). -/
-theorem memDst_isMem (hmem : MemNameWF) (off : Nat) :
+theorem memDst_isMem (off : Nat) :
     isMemX86 (.reg (JasminLprogExport.memName reloadScratch2 off)) = true := by
-  simp only [isMemX86, (hmem off).2, Bool.or_true]
+  simp only [isMemX86, (mem_name_round_trip off).2, Bool.or_true]
 
 /-- **The `wfLcmd`-over-`flatMap` recursion.** A `flatMap`-built body is WF iff
     every emitted chunk of every source instruction is WF — the structural shape
@@ -1212,7 +1363,6 @@ WF hypothesis composed with the proved prologue/epilogue wrappers. -/
     physical destination — routed through `R15` when the destination is a spill.
     Each `Lopn` carries ≤ 1 memory operand. -/
 theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
-    (hmem : MemNameWF)
     (hdst : opResolved dst = true) (hcdst : memCoincidesSpill dst) :
     ∀ o ∈ (if dst.isSpill then
       [(⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg JasminLprogExport.abiSaveRsiName]⟩ : Linstr),
@@ -1227,7 +1377,7 @@ theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       [.reg JasminLprogExport.abiSaveRsiName]) = true := by
     simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
       isPrefixOf_eq_hasPrefix]
-  have hmd := memDst_resolved hmem off
+  have hmd := memDst_resolved off
   by_cases hsp : dst.isSpill = true
   · rw [if_pos hsp] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
@@ -1251,7 +1401,6 @@ theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
     `[R14+off]` — routed through `R15` when the source is a spill. Each `Lopn`
     carries ≤ 1 memory operand. -/
 theorem storeLeg_wf (src : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
-    (hmem : MemNameWF)
     (hsrc : opResolved src = true) (hcsrc : memCoincidesSpill src) :
     ∀ o ∈ (if src.isSpill then
       [(⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩ : Linstr),
@@ -1266,7 +1415,7 @@ theorem storeLeg_wf (src : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       [.reg JasminLprogExport.abiSaveRdiName]) = true := by
     simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
       isPrefixOf_eq_hasPrefix]
-  have hmd := memDst_resolved hmem off
+  have hmd := memDst_resolved off
   by_cases hsp : src.isSpill = true
   · rw [if_pos hsp] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
@@ -1341,8 +1490,7 @@ def toLprogPhysAbi_wf_goal : Prop :=
 /-- **The whole-program WF assembly (modulo the body's per-instruction WF).**
     Every `Com.toLprogPhysAbi` export is one function whose body is
     `prologue ++ insertEpilogue bodyWithInlineStores calleeSaveRestoreEpilogue`.
-    Given the two String-API residual bundles (`SpillNameWF`, `MemNameWF`) and
-    the per-instruction WF of the inline-store body `bodyWithInlineStores`
+    Given the per-instruction WF of the inline-store body `bodyWithInlineStores`
     (`hbody` — the documented post-RA Phase-2 obligation, whose self-legalizing
     legs are discharged by `loadLeg_wf`/`storeLeg_wf`/the §6 `legalize*_wf` and
     §6e `lower*_wf` lemmas), the full program is `wfLprog`.
