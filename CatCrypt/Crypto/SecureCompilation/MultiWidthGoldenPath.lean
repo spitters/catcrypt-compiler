@@ -132,11 +132,17 @@ theorem add32_denote (a b : BitVec 32) :
 theorem xor32_denote (a b : BitVec 32) :
     Com.denote xor32 (.cons a (.cons b .nil)) = a ^^^ b := rfl
 
-/-- **`rotr32 k` denotes the shift-or form** `(a >>> k) ||| (a <<< (32 - k))`, by
-    `rfl` (structural reduction of the three-op chain). This is the raw idiom; the
+/-- **`rotr32 k` denotes the shift-or form** `(a >>> k) ||| (a <<< (32 - k))` for an
+    amount `k < 32`, at which the masked counts `shiftMask 32 k` and
+    `shiftMask 32 (32 - k)` shift as the unmasked ones. This is the raw idiom; the
     `= a.rotateRight k` characterisation is `rotr32_eq_rotateRight` below. -/
-theorem rotr32_denote (k : Nat) (a : BitVec 32) :
-    Com.denote (rotr32 k) (.cons a .nil) = (a >>> k) ||| (a <<< (32 - k)) := rfl
+theorem rotr32_denote (k : Nat) (hk : k < 32) (a : BitVec 32) :
+    Com.denote (rotr32 k) (.cons a .nil) = (a >>> k) ||| (a <<< (32 - k)) := by
+  show (a >>> shiftMask 32 k) ||| (a <<< shiftMask 32 (32 - k)) = _
+  rw [shiftMask_of_lt hk]
+  rcases Nat.eq_zero_or_pos k with rfl | hk0
+  · simp [shiftMask]
+  · rw [shiftMask_of_lt (by omega)]
 
 /-- **`rotr32 k` computes a 32-bit right-rotate** for an in-range amount
     `0 < k < 32`: `Com.denote (rotr32 k) ⟨a⟩ = a.rotateRight k`. The width-32
@@ -144,7 +150,7 @@ theorem rotr32_denote (k : Nat) (a : BitVec 32) :
     `rotateRight_def` specialised to `k % 32 = k`). -/
 theorem rotr32_eq_rotateRight (k : Nat) (hk : k < 32) (a : BitVec 32) :
     Com.denote (rotr32 k) (.cons a .nil) = a.rotateRight k := by
-  rw [rotr32_denote, BitVec.rotateRight_def, Nat.mod_eq_of_lt hk]
+  rw [rotr32_denote k hk, BitVec.rotateRight_def, Nat.mod_eq_of_lt hk]
 
 /-- **ChaCha20 quarter-round rotates, concretely.** The four amounts ChaCha20
     uses (`16, 12, 8, 7`) each denote the corresponding `BitVec 32` rotate, by

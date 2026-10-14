@@ -135,7 +135,7 @@ def X86FaithfulStmt : RegStmt → Prop
   | .orr d a b | .eor d a b | .umulh d a b =>
       d ≠ "xzr" ∧ a ≠ "xzr" ∧ b ≠ "xzr" ∧ d ≠ a ∧ d ≠ b
   | .shrI d a i | .shlI d a i =>
-      d ≠ "xzr" ∧ a ≠ "xzr" ∧ d ≠ a ∧ i < 2 ^ 64
+      d ≠ "xzr" ∧ a ≠ "xzr" ∧ d ≠ a ∧ i < 64
   | .mov d a => d ≠ "xzr" ∧ a ≠ "xzr" ∧ d ≠ a
   | .loadImm d _ => d ≠ "xzr"
   -- `movz`/`movk` are ARM-specific constant-load primitives the front never emits
@@ -178,10 +178,10 @@ theorem hstep_x86_on (s : XState) (stmt : RegStmt) (h : X86FaithfulStmt stmt) :
                       funext r'; by_cases hr : r' = d <;>
                         simp_all
   case shrI d a i => obtain ⟨hd, ha, _, hi⟩ := h
-                     rw [Nat.mod_eq_of_lt hi]
+                     rw [Nat.mod_eq_of_lt (by omega : i < 2 ^ 64), shiftMask_of_lt hi]
                      funext r'; by_cases hr : r' = d <;> simp_all
   case shlI d a i => obtain ⟨hd, ha, _, hi⟩ := h
-                     rw [Nat.mod_eq_of_lt hi]
+                     rw [Nat.mod_eq_of_lt (by omega : i < 2 ^ 64), shiftMask_of_lt hi]
                      funext r'; by_cases hr : r' = d <;> simp_all
   case mov d a => obtain ⟨hd, ha, _⟩ := h
                   funext r'; by_cases hr : r' = d <;> simp_all
@@ -221,11 +221,11 @@ theorem exprSrcs_props {Γ : Ctxt jasminDialect} {τ : JasminTy}
         · exact ih r h
   exact hgo e.args
 
-/-- The shift-count side condition the x86 model needs: an immediate shift by `i`
-    matches the neutral `>>> i` only when `i < 2^64` (else the x86 operand wraps
-    `i` modulo `2^64`). The Model header records this as the shift-count caveat;
-    every shift the front emits is a small compile-time constant, so it holds. The
-    other statement forms are unconstrained (`True`). -/
+/-- The shift-count range of the x86 immediate operand: an immediate shift by `i`
+    has `i < 2^64` (else the operand wraps `i` modulo `2^64`). `X86FaithfulStmt`
+    requires the stronger `i < 64`, which every count the front emits
+    (`shiftMask 64 n`) satisfies. The other statement forms are unconstrained
+    (`True`). -/
 def ShiftAmtOK : RegStmt → Prop
   | .shrI _ _ i | .shlI _ _ i => i < 2 ^ 64
   | _ => True
@@ -274,8 +274,7 @@ theorem opToStmts_X86Faithful {Γ : Ctxt jasminDialect} {τ : JasminTy}
         first
         | (have ha := srcFact a (by rw [hs]; simp)
            simp only [opToStmts, List.mem_singleton] at hstmt
-           have hn : n < 2 ^ 64 := by rw [hstmt] at hshStmt; simpa [ShiftAmtOK] using hshStmt
-           rw [hstmt]; exact ⟨hd, ha.1, ha.2, hn⟩)
+           rw [hstmt]; exact ⟨hd, ha.1, ha.2, Nat.mod_lt n (by decide)⟩)
         | simp_all [opToStmts]
   | shlImm w n =>
       rw [hop] at hstmt
@@ -284,8 +283,7 @@ theorem opToStmts_X86Faithful {Γ : Ctxt jasminDialect} {τ : JasminTy}
         first
         | (have ha := srcFact a (by rw [hs]; simp)
            simp only [opToStmts, List.mem_singleton] at hstmt
-           have hn : n < 2 ^ 64 := by rw [hstmt] at hshStmt; simpa [ShiftAmtOK] using hshStmt
-           rw [hstmt]; exact ⟨hd, ha.1, ha.2, hn⟩)
+           rw [hstmt]; exact ⟨hd, ha.1, ha.2, Nat.mod_lt n (by decide)⟩)
         | simp_all [opToStmts]
   | regConst w n =>
       rw [hop] at hstmt

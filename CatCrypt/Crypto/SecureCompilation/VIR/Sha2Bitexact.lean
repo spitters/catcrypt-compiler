@@ -98,8 +98,8 @@ abbrev AccTy : JasminTy := .reg 64
 
 A real word-level `regArith` mixing of the round accumulator — the fixed
 (round-independent) Σ/Ch/Maj-plus-shift part of a SHA-2 round. We model it as
-`acc ↦ (acc <<< acc.toNat) + acc`, the denotation of a `regArith shl` then a
-`regArith add`. It is the SAME map every round, as the Σ/Ch/Maj structure is. -/
+`acc ↦ (acc <<< (acc.toNat % 64)) + acc`, the denotation of a `regArith shl` (whose
+count is the x86 masked count `shiftMask 64 acc.toNat`) then a `regArith add`. It is the SAME map every round, as the Σ/Ch/Maj structure is. -/
 
 /-- A `regArith op 64` binding over the accumulator context, reading two in-scope
     variables and continuing over the extended context. -/
@@ -110,19 +110,19 @@ def wEmit {Γ : Ctxt jasminDialect}
   .var (.mk (.regArith op 64) rfl (.cons a (.cons b .nil))) (k .here)
 
 /-- The round-constant-independent core as a mathematical map on the round word:
-    `acc ↦ (acc <<< acc.toNat) + acc`. A word-level mixing (the modeled
+    `acc ↦ (acc <<< (acc.toNat % 64)) + acc`. A word-level mixing (the modeled
     Σ/Ch/Maj + shift), realized by a `regArith shl` then a `regArith add` — fixed
     across all rounds. The shift amount is the accumulator itself (a self-shift),
     since the dialect has no in-body literal-constant op (the gap documented in
     `Sha2Emit.lean`); the main theorem is agnostic to the core's exact arithmetic. -/
-def shaDiffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) + acc
+def shaDiffuse (acc : BitVec 64) : BitVec 64 := (acc <<< (acc.toNat % 64)) + acc
 
 /-! ## 3. The round body over `[acc, idx, rc]`, parametric in the round count
 
 `acc : reg 64` (the round word), `idx : reg 64` (the loop counter `t`),
 `rc : stackArr 64 rounds` (the `K[t]` table). The body:
 
-1. `s0 = acc <<< acc.toNat`   (a `regArith shl`, modeled core);
+1. `s0 = acc <<< (acc.toNat % 64)`   (a `regArith shl`, modeled core);
 2. `s1 = s0 + acc`            (a `regArith add`, → `shaDiffuse acc`);
 3. `k = stackLoad rc idx`     (the per-round constant `K[idx]`);
 4. `s2 = s1 + k`              (the round-constant add: `shaDiffuse acc + K[t]`).
@@ -137,7 +137,7 @@ abbrev rctx (rounds : Nat) : Ctxt jasminDialect := tabCtxt AccTy rounds
 /-- The SHA-2 compression round body (round count `rounds`): the modeled core then
     the `K[t]` add. -/
 def shaRoundBody (rounds : Nat) : Com jasminDialect (rctx rounds) AccTy :=
-  -- s0 = acc <<< acc.toNat
+  -- s0 = acc <<< (acc.toNat % 64)
   wEmit (Γ := rctx rounds) .shl .here .here fun _ =>
   -- s1 = s0 + acc      (acc is at `.there .here`)
   .var (.mk (.regArith .add 64) rfl (.cons .here (.cons (.there .here) .nil)))
@@ -180,8 +180,8 @@ theorem shaRoundStep_eq {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
         (.cons acc (.cons (BitVec.ofNat 64 t) (.cons kConst .nil)))
       = shaDiffuse acc + kConst ⟨t, h⟩
   -- The body's `Com.denote` reduces definitionally to: the core
-  -- `(acc <<< acc.toNat) + acc`, then `+ stackGet kConst idx`.
-  show ((acc <<< acc.toNat) + acc) + stackGet kConst ((BitVec.ofNat 64 t).toNat)
+  -- `(acc <<< shiftMask 64 acc.toNat) + acc`, then `+ stackGet kConst idx`.
+  show ((acc <<< shiftMask 64 acc.toNat) + acc) + stackGet kConst ((BitVec.ofNat 64 t).toNat)
       = shaDiffuse acc + kConst ⟨t, h⟩
   -- `t < rounds ≤ 2^64`, so `(ofNat 64 t).toNat = t` and `stackGet` reads `kConst t`.
   rw [show (BitVec.ofNat 64 t).toNat = t from by

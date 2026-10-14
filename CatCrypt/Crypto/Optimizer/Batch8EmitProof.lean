@@ -102,11 +102,15 @@ theorem size_lowerExprBlock {Γ : Ctxt jasminDialect} {t : JasminTy}
   case shlImm w n =>
     cases args with
     | cons a rest => cases rest with
-      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+      | nil =>
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw; rfl
   case shrImm w n =>
     cases args with
     | cons a rest => cases rest with
-      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+      | nil =>
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw; rfl
   case sarImm w n =>
     cases args with
     | cons a rest => cases rest with
@@ -462,11 +466,15 @@ theorem spliceHom_lowerExprBlock_here {Γ Δ : Ctxt jasminDialect} {t : JasminTy
   case shlImm w n =>
     cases args with
     | cons a rest => cases rest with
-      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+      | nil =>
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw; rfl
   case shrImm w n =>
     cases args with
     | cons a rest => cases rest with
-      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+      | nil =>
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw; rfl
   case sarImm w n =>
     cases args with
     | cons a rest => cases rest with
@@ -669,14 +677,13 @@ theorem blockBody_eq (nA sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot
           case sub => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsubd
           case mul => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpmulld
           case andn => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpandn
-          case shl => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsllvd
-          case shr => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsrlvd
           all_goals (simp only [CoveredExpr] at hcov)
   case shlImm w n =>
     cases args with
     | cons a rest => cases rest with
       | nil =>
-        simp only [CoveredExpr] at hcov; subst hcov
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw
         show [(⟨0, opToLinstrR (.vymm (.vpslld n)) (regName wDepth)
                 [operandOfVar nA sDepth immSlotMap endSlot a]⟩ : Linstr)]
           = [(⟨0, opToLinstrR (.vymm (.vpslld n)) (regName wDepth)
@@ -686,7 +693,8 @@ theorem blockBody_eq (nA sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot
     cases args with
     | cons a rest => cases rest with
       | nil =>
-        simp only [CoveredExpr] at hcov; subst hcov
+        obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := hcov
+        subst hw
         show [(⟨0, opToLinstrR (.vymm (.vpsrld n)) (regName wDepth)
                 [operandOfVar nA sDepth immSlotMap endSlot a]⟩ : Linstr)]
           = [(⟨0, opToLinstrR (.vymm (.vpsrld n)) (regName wDepth)

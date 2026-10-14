@@ -76,7 +76,9 @@ def loadConstStmts (dst : String) (n : Nat) : List RegStmt :=
 
 /-- Select the `RegStmt`(s) for an op with destination `dst` and source names
     `srcs`, over the `regArith` fragment. Unsupported ops yield no statement
-    (the flattening front is partial, like the x86 `opToLinstrR` dispatch). -/
+    (the flattening front is partial, like the x86 `opToLinstrR` dispatch). An
+    immediate shift by `n` selects the count `shiftMask 64 n`, the count the
+    source denotation applies. -/
 def opToStmts (dst : String) (srcs : List String) : JasminOp → List RegStmt
   | .regArith .add _ => match srcs with | [a, b] => [.add dst a b] | _ => []
   | .regArith .sub _ => match srcs with | [a, b] => [.sub dst a b] | _ => []
@@ -85,8 +87,8 @@ def opToStmts (dst : String) (srcs : List String) : JasminOp → List RegStmt
   | .regArith .or _  => match srcs with | [a, b] => [.orr dst a b] | _ => []
   | .regArith .xor _ => match srcs with | [a, b] => [.eor dst a b] | _ => []
   | .mulhi _ => match srcs with | [a, b] => [.umulh dst a b] | _ => []
-  | .shrImm _ n => match srcs with | [a] => [.shrI dst a n] | _ => []
-  | .shlImm _ n => match srcs with | [a] => [.shlI dst a n] | _ => []
+  | .shrImm _ n => match srcs with | [a] => [.shrI dst a (shiftMask 64 n)] | _ => []
+  | .shlImm _ n => match srcs with | [a] => [.shlI dst a (shiftMask 64 n)] | _ => []
   | .regConst _ n => loadConstStmts dst n
   | _ => []
 

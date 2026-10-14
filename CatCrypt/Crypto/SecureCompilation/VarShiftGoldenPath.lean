@@ -14,12 +14,13 @@ public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 A *variable-distance* shift shifts a register by **another register's value**
 (`a >>> b.toNat` / `a <<< b.toNat`), not by a compile-time immediate. The
 `jasminDialect` already models it: `JasminBinOp.shr` / `.shl` are the logical
-shifts by `b.toNat` (`JasminDialect.lean`, lines 122–130), denoted as the
+shifts by the x86 masked count `shiftMask 64 b.toNat = b.toNat % 64`
+(`JasminDialect.lean`, `JasminBinOp.apply`), denoted as the
 `regArith .shr 64` / `regArith .shl 64` ops over two register operands `[a, b]`.
 
 So at the **dialect-semantics level** the variable shift is fully available, and
 this file proves it: the one-op `Com`s `varShrCom` / `varShlCom` denote exactly
-`a >>> b.toNat` / `a <<< b.toNat` by `rfl` (§1): the dialect's
+`a >>> (b.toNat % 64)` / `a <<< (b.toNat % 64)` by `rfl` (§1): the dialect's
 `JasminBinOp.apply` reduces structurally to the BitVec shift.
 
 ## What is NOT yet available: the emit path (§2, documented gap)
@@ -80,7 +81,7 @@ full register-amount op (§2) is only needed for an unbounded public amount.
 ## Summary of what is proven here
 
 * `varShrCom_denote` / `varShlCom_denote` — the dialect-level variable shift
-  denotes `a >>> b.toNat` / `a <<< b.toNat` (`rfl`).
+  denotes `a >>> (b.toNat % 64)` / `a <<< (b.toNat % 64)` (`rfl`).
 * `varShr_not_supported` / `varShl_not_supported` — the variable-shift op is **not**
   `SupportedOp` (so the emit gap is a theorem, not a comment).
 * `boundedVarShr_denote` — the bounded-public variable right shift (amount `< 4`)
@@ -104,7 +105,7 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 /-! ## 1. The variable-distance shift at the dialect level (semantics)
 
 The register-amount shift exists in the dialect: `regArith .shr 64` /
-`regArith .shl 64` over two register operands `[a, b]` shift `a` by `b.toNat`.
+`regArith .shl 64` over two register operands `[a, b]` shift `a` by `b.toNat % 64`.
 The one-op `Com`s below denote exactly that, by `rfl`. -/
 
 /-- **Variable right shift.** `a >>> b.toNat` as a one-op `Com jasminDialect` over
@@ -124,16 +125,17 @@ def varShlCom : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
     (.ret .here)
 
 /-- **Dialect-level value, cheap `rfl`.** The variable right-shift source denotes
-    `a >>> b.toNat` — `JasminBinOp.apply .shr` reduces structurally to `>>> .toNat`.
+    `a >>> (b.toNat % 64)` — `JasminBinOp.apply .shr` reduces structurally to a shift
+    by the x86 masked count `shiftMask 64 b.toNat = b.toNat % 64`.
     (`x0` is the second arg `b`, `x1` the first arg `a`, by the de-Bruijn order, so
-    the value is `x1 >>> x0.toNat`.) -/
+    the value is `x1 >>> (x0.toNat % 64)`.) -/
 theorem varShrCom_denote (x0 x1 : BitVec 64) :
-    Com.denote varShrCom (.cons x0 (.cons x1 .nil)) = x1 >>> x0.toNat := rfl
+    Com.denote varShrCom (.cons x0 (.cons x1 .nil)) = x1 >>> (x0.toNat % 64) := rfl
 
 /-- **Dialect-level value, cheap `rfl`.** The variable left-shift source denotes
-    `a <<< b.toNat`. -/
+    `a <<< (b.toNat % 64)`, the shift by the x86 masked count. -/
 theorem varShlCom_denote (x0 x1 : BitVec 64) :
-    Com.denote varShlCom (.cons x0 (.cons x1 .nil)) = x1 <<< x0.toNat := rfl
+    Com.denote varShlCom (.cons x0 (.cons x1 .nil)) = x1 <<< (x0.toNat % 64) := rfl
 
 /-! ## 2. The emit gap: variable shift is *not* `SupportedOp`
 

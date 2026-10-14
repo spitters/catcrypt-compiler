@@ -511,6 +511,7 @@ theorem maskCmds_run {N : Nat} {T : Fin (4 * N) → BitVec 64} {D : BitVec 64}
   · rw [v5, ← maskChain_eq]
     simp only [SExpr.evalBV, reader_of v4, reader_of v3, reader_of v2, reader_of q2,
       reader_of v1, reader_of h.d]
+    rw [shiftMask_of_lt (by decide)]
 
 theorem candName_ne {j k : Fin 4} (h : j ≠ k) : candName j ≠ candName k := by
   match j, k with
