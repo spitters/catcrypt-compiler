@@ -451,15 +451,16 @@ theorem shiftZeroApply_sound {Δ : Ctxt catCryptDialect} (V : Ctxt.Valuation Δ)
     | .cons a .nil, _ =>
       intro alt halt
       simp only [shiftZeroApply, HVector.head] at halt
-      exact zeroAmtAlts_sound (fun x n => x <<< n) BitVec.shiftLeft_zero V k a alt halt
+      exact zeroAmtAlts_sound (fun x n => x <<< shiftMask w n)
+        (fun x => by simp only [shiftMask_zero, BitVec.shiftLeft_zero]) V k a alt halt
   case bvShiftR w k =>
     subst hop
     match args, (rfl : args = args) with
     | .cons a .nil, _ =>
       intro alt halt
       simp only [shiftZeroApply, HVector.head] at halt
-      exact zeroAmtAlts_sound (fun x n => BitVec.ushiftRight x n) BitVec.ushiftRight_zero
-        V k a alt halt
+      exact zeroAmtAlts_sound (fun x n => BitVec.ushiftRight x (shiftMask w n))
+        (fun x => by rw [shiftMask_zero]; exact BitVec.ushiftRight_zero x) V k a alt halt
   case bvShiftRA w k =>
     subst hop
     match args, (rfl : args = args) with

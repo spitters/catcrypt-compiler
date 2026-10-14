@@ -166,7 +166,7 @@ theorem fstepF_shlImmI (d a : String) (k : Nat) (hk : k < 64) (b : LstateM) (zf 
       b.reg,
     lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SHL]; decide))]
   simp only [lsemStepN, readReg_of_getW hva, evalOperandN, stripWidthTag_withWidthTag_SHL,
-    applyOpnN, Option.map_some, hkn]
+    applyOpnN, Option.map_some, hkn, shiftMask_of_lt hk]
   rfl
 
 /-- The data word of `shl $k` for a count `0 < k < 64`. -/
@@ -174,7 +174,7 @@ theorem x86_SHL_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64)
     (x86_SHL v (BitVec.ofNat 64 k)).word = v <<< k := by
   have hkn : (BitVec.ofNat 64 k).toNat = k := by
     rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
-  simp only [x86_SHL, shiftCount, hkn, Nat.mod_eq_of_lt hk, if_neg hk0, rflags_OF, wshl,
+  simp only [x86_SHL, shiftCount, hkn, shiftMask_of_lt hk, if_neg hk0, rflags_OF, wshl,
     Nat.min_eq_right hk.le]
 
 /-- **The immediate-operand shifts.** `SHL:64 d, a, #0` against `mov %a, %d` or, with `d` and

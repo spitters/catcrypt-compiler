@@ -285,7 +285,7 @@ def rightRules (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg w)) (c : BitVec w) :
   | .mul => (if c = 0 then [.var b] else []) ++ (if c = 1 then [.var a] else []) ++
       pow2Rule a c
   | .shl | .shr => (if c = 0 then [.var a] else []) ++
-      (if w ≤ c.toNat then [.const 0] else [])
+      (if w ≤ shiftMask w c.toNat then [.const 0] else [])
   | .andn => if c = 0 then [.var b] else []
 
 /-- The rules for a node `bop a b` whose first operand holds the constant `c`, for the
@@ -356,6 +356,11 @@ theorem pow2Rule_sound (a : Ctxt.Var Δ (.reg w)) (c : BitVec w) (V : Ctxt.Valua
   · rename_i k hk
     simp only [List.mem_singleton] at ht
     subst ht
+    have hkw : (BitVec.ofNat w k).toNat < w := by
+      have hk' := (asPow2_spec hk).1
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (Nat.lt_trans hk' Nat.lt_two_pow_self)]
+      exact hk'
+    simp only [Term.denote, JasminBinOp.apply, shiftMask_of_lt hkw]
     exact (mul_eq_shl_of_asPow2 (a.lookup V) c hk).symm
   · simp at ht
 
@@ -394,13 +399,13 @@ theorem rightRules_sound (bop : JasminBinOp) (a b : Ctxt.Var Δ (.reg w))
       simp [ha, JasminBinOp.apply]
     · obtain ⟨hw, rfl⟩ := mem_ite ht
       rw [h0]
-      exact (BitVec.shiftLeft_eq_zero hw).symm
+      exact (BitVec.shiftLeft_eq_zero (x := a.lookup V) hw).symm
   · rcases ht with ht | ht
     · obtain ⟨rfl, rfl⟩ := mem_ite ht
       simp [ha, JasminBinOp.apply]
     · obtain ⟨hw, rfl⟩ := mem_ite ht
       rw [h0]
-      exact (BitVec.ushiftRight_eq_zero hw).symm
+      exact (BitVec.ushiftRight_eq_zero (x := a.lookup V) hw).symm
   · obtain ⟨rfl, rfl⟩ := mem_ite ht
     simp [hb, JasminBinOp.apply]
 

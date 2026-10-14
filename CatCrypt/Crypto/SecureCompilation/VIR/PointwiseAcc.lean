@@ -110,9 +110,8 @@ theorem macK_denote {t : jasminDialect.Ty} (w : ℕ) :
   | _, n + 1, u, v, acc, k, V, uv, vv, av, r, hu, hv, hacc, hk => by
     refine macK_denote w n _ _ _ _ _ (fun j => uv (j + 1)) (fun j => vv (j + 1))
       (av + sextW (uv 0) * sextW (vv 0)) r (fun j => hu (j + 1)) (fun j => hv (j + 1)) ?_ ?_
-    · show (show BitVec (2 * w) from acc.lookup V) + sextW (show BitVec w from (u 0).lookup V)
-          * sextW (show BitVec w from (v 0).lookup V) = _
-      rw [hacc, hu 0, hv 0]
+    · rw [← hacc, ← hu 0, ← hv 0, sextW_eq_masked, sextW_eq_masked]
+      rfl
     · intro Γ' h a V' hh ha
       exact hk _ a V' (fun x => hh (upMac x)) ha
 
@@ -166,13 +165,12 @@ theorem acc0K_denote {Γ : Ctxt jasminDialect} (w q qinv z n : ℕ)
     (sextW (smontAccW w q qinv (macW w n (fun j => (a1 j).lookup V)
       (fun j => (b1 j).lookup V) 0)) * BitVec.ofNat (2 * w) z) _
     (fun j => hh (.there (a0 j))) (fun j => hh (.there (b0 j))) ?_ ?_
-  · show sextW (smontAccW w q qinv (show BitVec (2 * w) from a.lookup V')) * _ = _
-    rw [ha]
+  · rw [← ha]
+    simp only [smontAccW, sextW_eq_masked]
     rfl
   · intro Γ'' h' s V'' _ hs
-    rw [redK_denote]
-    show smontAccW w q qinv (show BitVec (2 * w) from s.lookup V'') = _
-    rw [hs]
+    rw [redK_denote, acc0W, ← hs]
+    simp only [smontAccW, sextW_eq_masked]
     rfl
 
 theorem acc1K_denote {Γ : Ctxt jasminDialect} (w q qinv n : ℕ)
@@ -186,9 +184,8 @@ theorem acc1K_denote {Γ : Ctxt jasminDialect} (w q qinv n : ℕ)
   refine macK_denote w n _ _ _ _ _ (fun j => (a1 j).lookup V) (fun j => (b0 j).lookup V)
     _ _ (fun j => hh (.there (a1 j))) (fun j => hh (.there (b0 j))) ha ?_
   intro Γ'' h' s V'' _ hs
-  rw [redK_denote]
-  show smontAccW w q qinv (show BitVec (2 * w) from s.lookup V'') = _
-  rw [hs]
+  rw [redK_denote, acc1W, ← hs]
+  simp only [smontAccW, sextW_eq_masked]
   rfl
 
 /-! ## 3. Exact accumulation -/

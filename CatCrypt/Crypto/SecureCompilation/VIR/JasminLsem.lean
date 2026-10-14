@@ -200,8 +200,8 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "AND", [a, b] => some (a &&& b)
   | "OR",  [a, b] => some (a ||| b)
   | "XOR", [a, b] => some (a ^^^ b)
-  | "SHL", [a, b] => some (a <<< b.toNat)
-  | "SHR", [a, b] => some (a >>> b.toNat)
+  | "SHL", [a, b] => some (a <<< shiftMask w b.toNat)
+  | "SHR", [a, b] => some (a >>> shiftMask w b.toNat)
   | "ANDN", [a, b] => some ((~~~a) &&& b)
   -- `SET<cc>`: the materialised comparison, the image of the dialect's `cmp` and
   -- `cmpImm` under `opToLinstrR`. The result is the dialect's `cmpBit` at the
@@ -276,11 +276,11 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | opn, [a] =>
       match parseImmShiftMnem opn with
       | some (att, k, _) =>
-          some (if att = "shl" then a <<< k
+          some (if att = "shl" then a <<< shiftMask w k
                 else if att = "sar" then BitVec.sshiftRight a k
                 else if att = "rol" then a.rotateLeft k
                 else if att = "ror" then a.rotateRight k
-                else a >>> k)
+                else a >>> shiftMask w k)
       | none => none
   | _, _ => none
 

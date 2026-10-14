@@ -328,7 +328,8 @@ theorem bmTail_denote {Γ : Ctxt jasminDialect} (w q qinv z : ℕ) (p0 : Var Γ 
     (r : Var Γ (Rw w)) (V : Valuation Γ) :
     (bmTail w q qinv z p0 r).denote V
       = smontAccW w q qinv ((show BitVec (2 * w) from p0.lookup V)
-          + sextW (show BitVec w from r.lookup V) * BitVec.ofNat (2 * w) z) := rfl
+          + sextW (show BitVec w from r.lookup V) * BitVec.ofNat (2 * w) z) := by
+  simp only [smontAccW, sextW_eq_masked]; rfl
 
 /-- The first output of a pair: `R(a₀ b₀ + sext R(a₁ b₁) · z)`, `z` a `2 w`-bit
 constant. -/
@@ -372,18 +373,20 @@ theorem bm0K_denote {Γ : Ctxt jasminDialect} (w q qinv z : ℕ) (a0 a1 b0 b1 : 
       = bm0W w q qinv z (show BitVec w from a0.lookup V) (show BitVec w from a1.lookup V)
           (show BitVec w from b0.lookup V) (show BitVec w from b1.lookup V) := by
   rw [bm0K, prodK_denote, prodK_denote, redK_denote, bmTail_denote]
-  rfl
+  simp only [bm0W, smontAccW, sextW_eq_masked]; rfl
 
 theorem bm1K_denote {Γ : Ctxt jasminDialect} (w q qinv : ℕ) (a0 a1 b0 b1 : Var Γ (Rw w))
     (V : Valuation Γ) :
     (bm1K w q qinv a0 a1 b0 b1).denote V
       = bm1W w q qinv (show BitVec w from a0.lookup V) (show BitVec w from a1.lookup V)
-          (show BitVec w from b0.lookup V) (show BitVec w from b1.lookup V) := rfl
+          (show BitVec w from b0.lookup V) (show BitVec w from b1.lookup V) := by
+  simp only [bm1W, smontAccW, sextW_eq_masked]; rfl
 
 theorem pwK_denote {Γ : Ctxt jasminDialect} (w q qinv : ℕ) (a b : Var Γ (Rw w))
     (V : Valuation Γ) :
     (pwK w q qinv a b).denote V
-      = pwW w q qinv (show BitVec w from a.lookup V) (show BitVec w from b.lookup V) := rfl
+      = pwW w q qinv (show BitVec w from a.lookup V) (show BitVec w from b.lookup V) := by
+  simp only [pwW, smontAccW, sextW_eq_masked]; rfl
 
 /-! ## 5. The word theorems -/
 

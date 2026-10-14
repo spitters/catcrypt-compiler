@@ -112,7 +112,7 @@ theorem vpslld_uniform_lane (a : BitVec 128) (c : BitVec 32) (k : Fin 4) :
     BitVec.extractLsb' (32 * k.val) 32 (v128PackLanesW 32 .shl a (bcast32 c))
       = (BitVec.extractLsb' (32 * k.val) 32 a) <<< c := by
   fin_cases k <;>
-    simp only [v128PackLanesW, bcast32, List.range, List.range.loop, List.foldl, JasminBinOp.apply] <;>
+    simp only [v128PackLanesW, bcast32, List.range, List.range.loop, List.foldl, JasminBinOp.applyLane] <;>
     bv_decide
 
 /-- A uniform packed right shift via the real `v128PackLanesW 32 .shr` op with a
@@ -121,7 +121,7 @@ theorem vpsrld_uniform_lane (a : BitVec 128) (c : BitVec 32) (k : Fin 4) :
     BitVec.extractLsb' (32 * k.val) 32 (v128PackLanesW 32 .shr a (bcast32 c))
       = (BitVec.extractLsb' (32 * k.val) 32 a) >>> c := by
   fin_cases k <;>
-    simp only [v128PackLanesW, bcast32, List.range, List.range.loop, List.foldl, JasminBinOp.apply] <;>
+    simp only [v128PackLanesW, bcast32, List.range, List.range.loop, List.foldl, JasminBinOp.applyLane] <;>
     bv_decide
 
 /-- **Packed rotate realized over the existing `vsimd` op set.** Lane `k` of the

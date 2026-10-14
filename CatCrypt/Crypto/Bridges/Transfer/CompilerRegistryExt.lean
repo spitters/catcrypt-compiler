@@ -50,10 +50,14 @@ variable {w : Nat}
 The shift's natural abstract form `a <<< b.toNat` has no head-constant binary
 operator for `Related`-resolution to key on; these named wrappers supply one. -/
 
-/-- Abstract logical left shift by `b.toNat` — head-constant form of `· <<< ·.toNat`. -/
-def abstractShl (a b : BitVec w) : BitVec w := a <<< b.toNat
-/-- Abstract logical right shift by `b.toNat` — head-constant form of `· >>> ·.toNat`. -/
-def abstractShr (a b : BitVec w) : BitVec w := a >>> b.toNat
+/-- Abstract logical left shift by the masked count `shiftMask w b.toNat` —
+    head-constant form of `· <<< shiftMask w ·.toNat`. -/
+def abstractShl (a b : BitVec w) : BitVec w :=
+  a <<< CatCrypt.Crypto.SecureCompilation.VIR.shiftMask w b.toNat
+/-- Abstract logical right shift by the masked count `shiftMask w b.toNat` —
+    head-constant form of `· >>> shiftMask w ·.toNat`. -/
+def abstractShr (a b : BitVec w) : BitVec w :=
+  a >>> CatCrypt.Crypto.SecureCompilation.VIR.shiftMask w b.toNat
 
 /-! ## Per-instruction preservation in pure binary-function form -/
 

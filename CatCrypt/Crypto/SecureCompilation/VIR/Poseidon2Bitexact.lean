@@ -101,7 +101,7 @@ def rcIntTable : Fin nPartial → BitVec 64 := fun r =>
 
 A real word-level `regArith` mixing of the round accumulator — the fixed
 (round-independent) S-box+MDS part of an internal round. Modeled as
-`acc ↦ (acc <<< acc.toNat) * acc`, the denotation of a `regArith shl` then a
+`acc ↦ (acc <<< shiftMask 64 acc.toNat) * acc`, the denotation of a `regArith shl` then a
 `regArith mul`. It is the SAME map every round, as the S-box+MDS structure is. -/
 
 /-- A `regArith op 64` binding over the accumulator context. -/
@@ -112,13 +112,13 @@ def wEmit {Γ : Ctxt jasminDialect}
   .var (.mk (.regArith op 64) rfl (.cons a (.cons b .nil))) (k .here)
 
 /-- The round-constant-independent core as a mathematical map on the round word:
-    `acc ↦ (acc <<< acc.toNat) * acc`. A word-level mixing (the modeled
+    `acc ↦ (acc <<< shiftMask 64 acc.toNat) * acc`. A word-level mixing (the modeled
     lane-0 S-box `x^7` + internal MDS), realized by a `regArith shl` then a
     `regArith mul` — fixed across all rounds. The shift amount is the accumulator
     itself (a self-shift), since the dialect has no in-body literal-constant op
     (the gap documented in `Poseidon2Emit.lean`); the main theorem is agnostic to the
     core's exact field arithmetic. -/
-def pos2Diffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) * acc
+def pos2Diffuse (acc : BitVec 64) : BitVec 64 := (acc <<< shiftMask 64 acc.toNat) * acc
 
 /-! ## 3. The round body over `[acc, idx, rc]`
 
@@ -149,7 +149,7 @@ def pos2RoundBody : Com jasminDialect rctx AccTy :=
   .var (.mk (.stackLoad 64 nPartial) rfl (.cons vRc (.cons vIdx .nil)))
     -- s0 = acc + k     (acc is now `.there .here`, k is `.here`)
     (.var (.mk (.regArith .add 64) rfl (.cons (.there vAcc) (.cons .here .nil)))
-      -- s1 = s0 <<< s0.toNat   (s0 is `.here`)
+      -- s1 = s0 <<< shiftMask 64 s0.toNat   (s0 is `.here`)
       (.var (.mk (.regArith .shl 64) rfl (.cons .here (.cons .here .nil)))
         -- s2 = s1 * s0     (s1 is `.here`, s0 is `.there .here`)
         (.var (.mk (.regArith .mul 64) rfl (.cons .here (.cons (.there .here) .nil)))
@@ -182,9 +182,10 @@ theorem pos2RoundStep_eq {r : Nat} (h : r < nPartial) (acc : BitVec 64) :
         (.cons acc (.cons (BitVec.ofNat 64 r) (.cons rcIntTable .nil)))
       = pos2Diffuse (acc + rcIntTable ⟨r, h⟩)
   -- The body's `Com.denote` reduces definitionally to:
-  -- `let k = stackGet rcIntTable idx; let s0 = acc + k; (s0 <<< s0.toNat) * s0`.
+  -- `let k = stackGet rcIntTable idx; let s0 = acc + k;`
+  -- `(s0 <<< shiftMask 64 s0.toNat) * s0`.
   show (let s0 := acc + stackGet rcIntTable ((BitVec.ofNat 64 r).toNat)
-        (s0 <<< s0.toNat) * s0)
+        (s0 <<< shiftMask 64 s0.toNat) * s0)
       = pos2Diffuse (acc + rcIntTable ⟨r, h⟩)
   have hr64 : r < 2 ^ 64 := by have : r < 13 := h; omega
   rw [show (BitVec.ofNat 64 r).toNat = r from by

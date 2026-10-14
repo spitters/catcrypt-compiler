@@ -35,9 +35,9 @@ now over the verified `Com jasminDialect` `zmmPackQ` denotation.
 
 ## The pattern (established by the pilot)
 
-`zmmPackQ_lane` + `JasminBinOp.apply` bridge any packed `Com` denotation to the
+`zmmPackQ_lane` + `JasminBinOp.applyLane` bridge any packed `Com` denotation to the
 bespoke scalar lane math: lane `k` of `zmmPackQ bop a b` is
-`bop.apply (zmmLane a k) (zmmLane b k)`, and `JasminBinOp.apply` unfolds `.mul` to
+`bop.applyLane (zmmLane a k) (zmmLane b k)`, and `JasminBinOp.applyLane` unfolds `.mul` to
 `a * b`, `.and` to `a &&& b`, `.add` to `a + b`, `.shr` to `a >>> b.toNat`. So the
 unified packed REDC lane is **definitionally** the bespoke `BitVec 64` lane
 expression — *except* that the unified `.mul` is the FULL 64-bit product `a * b`,
@@ -210,7 +210,7 @@ theorem montDigitCom_lane (t np mask : BitVec 512) (k : Fin 8) :
     zmmLane (montDigitCom.denote (.cons t (.cons np (.cons mask .nil)))) k
       = (zmmLane t k * zmmLane np k) &&& zmmLane mask k := by
   rw [montDigitCom_denote, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-- **Fold lane.** Lane `k` of `montFoldCom`'s denotation on `⟨t, m, nn, sh⟩` is
     the bespoke `BitVec 64` fold lane `(t_k + m_k * nn_k) >>> (sh_k).toNat`. -/
@@ -218,7 +218,7 @@ theorem montFoldCom_lane (t m nn sh : BitVec 512) (k : Fin 8) :
     zmmLane (montFoldCom.denote (.cons t (.cons m (.cons nn (.cons sh .nil))))) k
       = (zmmLane t k + zmmLane m k * zmmLane nn k) >>> (zmmLane sh k).toNat := by
   rw [montFoldCom_denote, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-! ## 3. The central REDC identity, re-anchored
 

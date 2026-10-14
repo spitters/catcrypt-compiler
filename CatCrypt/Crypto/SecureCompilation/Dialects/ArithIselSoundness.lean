@@ -153,7 +153,7 @@ theorem rorImm_eq_shiftOr (w n : Nat) (hn : n < w) (a : BitVec w) :
     `rorImm` value equals `(rotrProg w n).denote ⟨a⟩`. -/
 theorem rorImm_eq_rotrProg_denote (w n : Nat) (hn : n < w) (a : BitVec w) :
     a.rotateRight n = (rotrProg w n).denote (.cons a .nil) := by
-  rw [rotrProg_denote, rorImm_eq_shiftOr w n hn a]
+  rw [rotrProg_denote w n hn, rorImm_eq_shiftOr w n hn a]
 
 /-- Conformance-width corollary at `w = 64`, `n = 8` (cf.
     `rotrProg_denote_rotateRight_64`): the native `rorImm 64 8` value equals the

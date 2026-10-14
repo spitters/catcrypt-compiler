@@ -86,7 +86,7 @@ theorem zmmOfLanes_zmmLane' (f : Fin 8 → BitVec 64) (k : Fin 8) :
 /-- Lane `k` of `zmmPackQ bop a b` is the scalar `bop` of the two lanes: the
     per-lane meaning of `vpaddq`/`vpsubq`/… on the `BitVec 512` denotation. -/
 theorem zmmPackQ_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 8) :
-    zmmLane (zmmPackQ bop a b) k = bop.apply (zmmLane a k) (zmmLane b k) := by
+    zmmLane (zmmPackQ bop a b) k = bop.applyLane (zmmLane a k) (zmmLane b k) := by
   unfold zmmPackQ
   rw [zmmOfLanes_zmmLane']
 
@@ -290,5 +290,5 @@ theorem m4Zmm_lanes (x : BitVec 512) :
         p3) k)
       = m4Lane (lanesOf x) := by
   funext k
-  simp only [zmmPackQ_lane, JasminBinOp.apply, m4Lane, permP, lanesOf,
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane, m4Lane, permP, lanesOf,
     zmmPerm_lane, vshuffle_apply]

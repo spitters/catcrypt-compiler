@@ -98,11 +98,10 @@ Each `#guard` checks a numeric output of `step` against the Jasmin value.
   `add_carry`/`sub_borrow = wrepr (x±y±c)` is argued by reading the Rocq
   definitions (quoted below); there is no ported all-inputs Lean theorem against
   a Lean model of `wrepr`.
-* **Shift-count precondition (not papered over):** Jasmin `x86_SHL/SHR/SAR`
-  mask the count by `& 63` (`U64`) before shifting; our `step` shifts by the
-  raw `(src.eval).toNat`. They agree **iff count `< w`** — the only case our
-  compiler emits. Counterexample at count `68`: Jasmin `SHL 1 68 = 16`, our
-  model `1 <<< 68 = 0` (recorded in `shl_count_ge_width_differs`).
+* **Shift-count mask:** Jasmin `x86_SHL/SHR` mask the count by `& 63`
+  (`U64`) before shifting, and `step` shifts `SHL`/`SHR` by
+  `VIR.shiftMask w (src.eval).toNat`, the same mask. At count `68` both give
+  `SHL 1 68 = 16` (`shl_count_ge_width_masked`).
 * **Sail-x86 / ACL2 cross-check:** the owned model is also
   differentially validated against the *second, independent* authoritative
   semantics `rems-project/sail-x86-from-acl2` (the ACL2 `x86isa` model in Sail)
@@ -244,17 +243,15 @@ def stCF (v : BitVec 64) (c : Bool) : State 64 :=
              flags := { zf := false } } (.cmov .e "a" (.imm 111))).get "a").toNat
       == 222
 
-/-! ## The shift-count correspondence caveat, made explicit
+/-! ## The shift-count mask
 
-Jasmin masks the shift count (`& 63` at U64); our `step` does not. For a count
-`< w` they agree (validated above). For a count `≥ w` they differ — recorded
-here so the gap is in the artifact, not just prose. -/
+Jasmin masks the shift count (`& 63` at U64), and so does `step`
+(`VIR.shiftMask`). -/
 
-/-- Jasmin `x86_SHL 1 68 = 16` (count `68 & 63 = 4`), but our unmasked model
-    gives `1 <<< 68 = 0`. The two disagree above the word width; our compiler
-    only emits counts `< w`, where they agree. -/
-theorem shl_count_ge_width_differs :
-    ((step (st 1) (.shl "a" (.imm 68))).get "a").toNat = 0 := by native_decide
+/-- `step` reproduces Jasmin `x86_SHL 1 68 = 16`: the count is masked to
+    `68 & 63 = 4`. -/
+theorem shl_count_ge_width_masked :
+    ((step (st 1) (.shl "a" (.imm 68))).get "a").toNat = 16 := by native_decide
 
 /-! ## Carry-flag effect: matching Jasmin's `rflags_of_aluop` CF, in general
 
@@ -806,13 +803,10 @@ and flag — the `runBlock` analogue of jasmin's sequential `eval_instr`. -/
 /-! ## Shift-count mask, made explicit (faithful side)
 
 The transcription's `shiftCount` applies Jasmin's `& (w-1)` mask (`x86_shift_mask
-U64 = 63`); `Model.lean`'s `step` shifts by the raw count. For a count `< w` they
-agree; above the width the transcription wraps (`68 & 63 = 4`) where the prior
-model gave `0`. The transcription is the one that matches Jasmin. -/
+U64 = 63`), as does `Model.lean`'s `step` (`shl_count_ge_width_masked`). -/
 
 -- Jasmin `x86_SHL 1 68 = 16` (`68 & 63 = 4`): the faithful transcription
--- reproduces the mask, where `Model.step` (`shl_count_ge_width_differs`) gave
--- `0`.
+-- reproduces the mask.
 #guard ((evalInstr (jst 1) (.shl "a" (.imm 68))).get "a").toNat == 16
 
 /-! ## Reconciliation with the prior hand-authored model

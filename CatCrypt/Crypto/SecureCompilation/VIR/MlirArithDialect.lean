@@ -36,8 +36,8 @@ lives in), with the *standard MLIR `arith` integer semantics*:
 | `xori w`    | BitVec `^^^`              |
 | `andi w`    | BitVec `&&&`              |
 | `ori  w`    | BitVec `|||`              |
-| `shli w k`  | `· <<< k`                 |
-| `shrui w k` | `BitVec.ushiftRight · k`  |
+| `shli w k`  | `· <<< shiftMask w k`     |
+| `shrui w k` | `BitVec.ushiftRight · (shiftMask w k)` |
 | `cmpi w`    | `decide (· = ·)` (eq pred) |
 | `select t`  | `if · then · else ·`      |
 | `constant`  | the literal               |
@@ -174,10 +174,10 @@ instance mlirArithDenote : DialectDenote mlirArithDialect where
         show BitVec w from ~~~(args.head : BitVec w)
     | .shli w k => fun args =>
         let a : BitVec w := args.head
-        a <<< k
+        a <<< shiftMask w k
     | .shrui w k => fun args =>
         let a : BitVec w := args.head
-        BitVec.ushiftRight a k
+        BitVec.ushiftRight a (shiftMask w k)
     | .cmpi w => fun args =>
         let a : BitVec w := args.head
         let b : BitVec w := args.tail.head

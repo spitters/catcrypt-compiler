@@ -71,16 +71,19 @@ def jWordOr  {w : Nat} (a b : BitVec w) : BitVec w := a ||| b   -- mirrors `wor`
 def jWordXor {w : Nat} (a b : BitVec w) : BitVec w := a ^^^ b   -- mirrors `wxor` (`Olxor`)
 
 /-- jasmin `Olsl (Op_w s)` (logical left shift, `sem_op_typed.v`): `wshl a (b mod
-    s)` = `a *%w 2^b`, the bit-shift `wshl` (`word/word.v`). For our emitter the
-    shift amount is `b.toNat` and width truncation is `BitVec`'s `<<<`, which is
+    s)` = `a *%w 2^b`, the bit-shift `wshl` (`word/word.v`), the count masked by
+    `x86_shift_mask s` (`sem_shift`). The shift amount is the masked count
+    `shiftMask w b.toNat` and width truncation is `BitVec`'s `<<<`, which is
     exactly `wshl` on a `word w` (low-`w` bits of the shifted value). -/
-def jWordShl {w : Nat} (a b : BitVec w) : BitVec w := a <<< b.toNat  -- mirrors `wshl` (`Olsl`)
+def jWordShl {w : Nat} (a b : BitVec w) : BitVec w :=
+  a <<< shiftMask w b.toNat  -- mirrors `wshl` (`Olsl`)
 
 /-- jasmin `Olsr (Op_w s)` (logical right shift, `sem_op_typed.v`): `wshr a (b mod
     s)`, the logical bit-shift `wshr` (`word/word.v`) that fills with `0` (no sign
-    extension). Our emitter's `>>>` on `BitVec w` is the same zero-filling logical
-    right shift. -/
-def jWordShr {w : Nat} (a b : BitVec w) : BitVec w := a >>> b.toNat  -- mirrors `wshr` (`Olsr`)
+    extension), the count masked as for `jWordShl`. Our emitter's `>>>` on
+    `BitVec w` is the same zero-filling logical right shift. -/
+def jWordShr {w : Nat} (a b : BitVec w) : BitVec w :=
+  a >>> shiftMask w b.toNat  -- mirrors `wshr` (`Olsr`)
 
 /-- BMI1 `andn`: `(¬a) ∧ b`. Not a jasmin `sem_sop2_typed` operator (jasmin
     surfaces `andn` as the `Copn`/`#ANDN_w` intrinsic, not an `SOp2`), but the
@@ -95,7 +98,7 @@ def jWordOp {w : Nat} : JasminBinOp → BitVec w → BitVec w → BitVec w
   | .and, a, b => jWordAnd a b | .or, a, b => jWordOr a b   | .xor, a, b => jWordXor a b
   -- Logical shifts: jasmin `Olsl`/`Olsr` = `wshl`/`wshr` (`sem_op_typed.v`,
   -- `word/word.v`), transcribed as `jWordShl`/`jWordShr` above. These align with
-  -- `JasminBinOp.apply`'s `.shl`/`.shr` arms (`a <<< b.toNat` / `a >>> b.toNat`),
+  -- `JasminBinOp.apply`'s `.shl`/`.shr` arms (the masked count `shiftMask w b.toNat`),
   -- so `binop_agrees_jasmin`'s `cases bop <;> rfl` closes every arm of
   -- `JasminBinOp`.
   | .shl, a, b => jWordShl a b | .shr, a, b => jWordShr a b
@@ -485,7 +488,7 @@ theorem vpsub_byte_agrees_jasmin (a b : BitVec 8) :
     width 16) for a constant immediate shift `k`. -/
 theorem vpsrl_lane_agrees_jasmin (a : BitVec 16) (k : Nat) :
     jVPSRL_lane a k = jWordShr a (BitVec.ofNat 16 k) →
-    a >>> k = a >>> (BitVec.ofNat 16 k).toNat := fun h => h
+    a >>> k = a >>> shiftMask 16 (BitVec.ofNat 16 k).toNat := fun h => h
 
 /-- The XOR-accumulate that combines GF(16) lane products is jasmin's per-byte
     `wxor` (the GF(16) additive XOR group operation), the same `^^^` as
@@ -570,7 +573,7 @@ theorem vpand16_lane_agrees_jasmin (a b : BitVec 16) :
     constant. -/
 theorem vpsll16_lane_agrees_jasmin (a : BitVec 16) (k : Nat) :
     a <<< k = jWordShl a (BitVec.ofNat 16 k) →
-    a <<< k = a <<< (BitVec.ofNat 16 k).toNat := fun h => h
+    a <<< k = a <<< shiftMask 16 (BitVec.ofNat 16 k).toNat := fun h => h
 
 /-- The `#VPCMPEQ_16u16` lane is the per-word equality indicator (`0x0000/0xffff`)
     — the `p == 127` test the conditional subtract masks on. -/
@@ -722,11 +725,11 @@ theorem gf16Tab_stackLoad_agrees_jasmin
 theorem gf16_tab_agrees_jasmin :
     (∀ {w n : Nat} (a : Fin n → BitVec w) (k : Nat),
         stackGet a k = jArrGetEl a k)
-    ∧ (∀ a b : BitVec 64, a <<< b.toNat = jWordShl a b)
+    ∧ (∀ a b : BitVec 64, a <<< shiftMask 64 b.toNat = jWordShl a b)
     ∧ (∀ a b : BitVec 64, a ||| b = jWordOr a b)
     ∧ (∀ a b : BitVec 8, a ^^^ b = jWordXor a b) :=
   ⟨fun a k => stackLoad_agrees_jasmin a k,
-   apply_shl_eq_jasmin,
+   fun a b => apply_shl_eq_jasmin a b,
    apply_or_eq_jasmin,
    gf16_xoracc_agrees_jasmin⟩
 
@@ -1041,8 +1044,8 @@ theorem aes_bitslice_agrees_jasmin :
     (∀ a b : BitVec 64, a ^^^ b = jWordXor a b)
     ∧ (∀ a b : BitVec 64, a &&& b = jWordAnd a b)
     ∧ (∀ a b : BitVec 64, a + b = jWordAdd a b)
-    ∧ (∀ (a : BitVec 64) (k : BitVec 64), a <<< k.toNat = jWordShl a k)
-    ∧ (∀ (a : BitVec 64) (k : BitVec 64), a >>> k.toNat = jWordShr a k) :=
+    ∧ (∀ (a : BitVec 64) (k : BitVec 64), a <<< shiftMask 64 k.toNat = jWordShl a k)
+    ∧ (∀ (a : BitVec 64) (k : BitVec 64), a >>> shiftMask 64 k.toNat = jWordShr a k) :=
   ⟨fun _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl,
    fun _ _ => rfl, fun _ _ => rfl⟩
 

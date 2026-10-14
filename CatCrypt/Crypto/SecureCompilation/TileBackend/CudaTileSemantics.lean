@@ -1175,8 +1175,8 @@ theorem print_injective {f g : Func} (hf : f.name.toList.all isIdChar = true)
 /-! ## 8. The BabyBear multiply -/
 
 open CatCrypt.Crypto.SecureCompilation.TileBackend.TileDialectLower
-  (lowerCom lowerExpr binE constE varLevel bbName bbName_injective bbMulTileCom bbMulTileComIR
-    bbMulTileCom_lowered_denote)
+  (lowerCom lowerComK lowerExpr constOf countOk binE constE varLevel bbName bbName_injective
+    bbMulTileCom bbMulTileComIR bbMulTileCom_lowered_denote)
 open CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie (toTileOp)
 
 theorem bbName_beq (i j : Nat) : (bbName i == bbName j) = decide (i = j) := by
@@ -1198,7 +1198,8 @@ def bbMulBlk : List TileOp :=
 
 theorem lowerCom_bbMulTileCom :
     lowerCom 8 64 bbName (bbMulTileCom 8) = some (bbMulBlk, bbName 18) := by
-  simp [lowerCom, lowerExpr, bbMulTileCom, binE, constE, varLevel, toTileOp, bbMulBlk]
+  simp [lowerCom, lowerComK, lowerExpr, constOf, countOk, Function.update, bbMulTileCom, binE,
+    constE, varLevel, toTileOp, bbMulBlk]
 
 /-- The AST of `bbMulTileComIR`. -/
 def bbMulAst : Func := toAst 8 64 "bb_mul_tile_com" bbMulBlk (bbName 18)

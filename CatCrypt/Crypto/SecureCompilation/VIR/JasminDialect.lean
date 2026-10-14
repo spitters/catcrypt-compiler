@@ -99,10 +99,11 @@ inductive JasminTy where
     `shl`/`shr` are the **logical** left / right shifts:
     they let the dialect express the ARX rotate `(x <<< n) ||| (x >>> (w-n))`
     needed by ChaCha20 and other shift-using ciphers. The shift *amount* is the
-    `.toNat` of the second register operand (jasmin's `<<` / `>>` over words).
+    x86 scalar mask `shiftMask w` of the `.toNat` of the second register operand
+    in the register operation `JasminBinOp.apply`, and the unmasked `.toNat` in
+    the lane operation `JasminBinOp.applyLane` of the packed SIMD denotations.
     Width truncation is handled by `BitVec`'s `<<<` / `>>>` (logical, keeps the
-    operand width). All pre-existing arms (`add/sub/mul/and/or/xor`) are
-    unchanged. -/
+    operand width). -/
 inductive JasminBinOp where
   | add
   | sub
@@ -110,9 +111,9 @@ inductive JasminBinOp where
   | and
   | or
   | xor
-  /-- Logical left shift by `b.toNat` (additive). -/
+  /-- Logical left shift by the masked count `shiftMask w b.toNat`. -/
   | shl
-  /-- Logical right shift by `b.toNat` (additive). -/
+  /-- Logical right shift by the masked count `shiftMask w b.toNat`. -/
   | shr
   /-- BMI1 `andn`: `(¬a) ∧ b` in ONE op (no separate `NOT`). This is the
       first source complemented and AND-ed with the second, matching the
@@ -122,10 +123,24 @@ inductive JasminBinOp where
   | andn
   deriving DecidableEq, Repr
 
-/-- Apply a `JasminBinOp` at a fixed width. The `shl`/`shr` arms are the logical
-    shifts by the `.toNat` of the second operand (additive; pre-existing arms
-    unchanged). -/
+/-- Apply a `JasminBinOp` to two registers of width `w`. The `shl`/`shr` arms are
+    the logical shifts by the count `shiftMask w b.toNat` of x86 scalar shifts. -/
 def JasminBinOp.apply : JasminBinOp → {w : Nat} → BitVec w → BitVec w → BitVec w
+  | .add, _, a, b => a + b
+  | .sub, _, a, b => a - b
+  | .mul, _, a, b => a * b
+  | .and, _, a, b => a &&& b
+  | .or,  _, a, b => a ||| b
+  | .xor, _, a, b => a ^^^ b
+  | .shl, w, a, b => a <<< shiftMask w b.toNat
+  | .shr, w, a, b => a >>> shiftMask w b.toNat
+  | .andn, _, a, b => (~~~a) &&& b
+
+/-- Apply a `JasminBinOp` to one lane of width `w` of a packed SIMD register. The
+    `shl`/`shr` arms are the logical shifts by the unmasked `b.toNat`, which give `0`
+    at counts at least the width, as the x86 vector shifts do; every other arm is the
+    arm of `JasminBinOp.apply`. -/
+def JasminBinOp.applyLane : JasminBinOp → {w : Nat} → BitVec w → BitVec w → BitVec w
   | .add, _, a, b => a + b
   | .sub, _, a, b => a - b
   | .mul, _, a, b => a * b
@@ -162,7 +177,7 @@ def zmmOfLanes (f : Fin 8 → BitVec 64) : BitVec 512 :=
     This is the verified-dialect semantics of `#VPADD_8u64` (`.add`),
     `#VPSUB_8u64` (`.sub`), `#VPMULL_8u64` (`.mul`), `#VPSRL_8u64` (`.shr`), etc. -/
 def zmmPackQ (bop : JasminBinOp) (a b : BitVec 512) : BitVec 512 :=
-  zmmOfLanes (fun k => bop.apply (zmmLane a k) (zmmLane b k))
+  zmmOfLanes (fun k => bop.applyLane (zmmLane a k) (zmmLane b k))
 
 /-- Read lane `k` (a 32-bit dword) of a 512-bit ZMM register (16×u32 view). -/
 def zmmLane32 (v : BitVec 512) (k : Fin 16) : BitVec 32 :=
@@ -176,7 +191,7 @@ def zmmOfLanes32 (f : Fin 16 → BitVec 32) : BitVec 512 :=
 /-- The 16×u32 packed-lane denotation of a `JasminBinOp` over two ZMM registers
     (`#VPADDD`/`#VPSUBD`/`#VPXORD`/`#VPANDD`/`#VPORD`). Dword analogue of `zmmPackQ`. -/
 def zmmPackD (bop : JasminBinOp) (a b : BitVec 512) : BitVec 512 :=
-  zmmOfLanes32 (fun k => bop.apply (zmmLane32 a k) (zmmLane32 b k))
+  zmmOfLanes32 (fun k => bop.applyLane (zmmLane32 a k) (zmmLane32 b k))
 
 /-- The 16×u32 packed right-rotate-by-immediate (`#VPRORD`; `#VPROLD m` = `zmmRorD (32-m)`).
     Mirrors `Avx512DwordModel.laneRorD = (a>>>n)|||(a<<<(32-n)) = BitVec.rotateRight a n`. -/
@@ -296,7 +311,7 @@ def v128PackLanesW (laneW : Nat) (bop : JasminBinOp) (a b : BitVec 128) : BitVec
   (List.range (128 / laneW)).foldl
     (fun acc k =>
       acc |||
-        ((bop.apply (BitVec.extractLsb' (laneW * k) laneW a)
+        ((bop.applyLane (BitVec.extractLsb' (laneW * k) laneW a)
                     (BitVec.extractLsb' (laneW * k) laneW b)).setWidth 128 <<< (laneW * k)))
     0
 
@@ -477,7 +492,7 @@ inductive SimdOp where
   /-- `GF2P8AFFINEQB a, A, imm8`: byte-wise GF(2) affine transform (AES SubBytes /
       bit-matrix maps). The `imm8` constant is baked into the op. -/
   | affineqb (imm : BitVec 8)
-  /-- A carry-free 128-bit bitwise op (`VPAND`/`VPOR`/`VPXOR`): `bop.apply` at the
+  /-- A carry-free 128-bit bitwise op (`VPAND`/`VPOR`/`VPXOR`): `bop.applyLane` at the
       whole 128-bit width. Sound ONLY for `and`/`or`/`xor` (no cross-lane carry, so
       whole-register = lane-wise at any lane width). Packed ARITHMETIC (add/sub at a
       lane width) is the `packed` op below. -/
@@ -591,7 +606,7 @@ def SimdOp.denote : SimdOp → BitVec 128 → BitVec 128 → BitVec 128
   | .vpshufb => vpshufbW
   | .clmul imm => fun a b => clmul128W a b imm
   | .affineqb imm => fun a A => gf2p8affineqbW a A imm
-  | .bitwise bop => fun a b => bop.apply a b
+  | .bitwise bop => fun a b => bop.applyLane a b
   | .packed bop laneW => fun a b => v128PackLanesW laneW bop a b
   -- `packedImm` is unary (the count is the baked immediate); the second operand is
   -- ignored.
@@ -832,7 +847,8 @@ inductive JasminOp where
       there is no shift-amount input word. -/
   | rorImm (w n : Nat)
   /-- Native logical right-shift by a compile-time immediate `n`: `[reg w] → reg
-      w`, `out = src >>> n`. Single-input (the shift amount is a dialect
+      w`, `out = src >>> shiftMask w n` (x86 masks an immediate count as it masks a
+      register count). Single-input (the shift amount is a dialect
       immediate, **not** a register-file read), so it threads in a data-flow
       chain like `rorImm`. The data effect of x86 `SHR r, imm`. With it
       a constant shift (SHA-256/BLAKE2 `x >> 3` etc.) emits as an immediate-count
@@ -850,7 +866,7 @@ inductive JasminOp where
       linearizes — instead of a variable shift `regArith` reads from a register. -/
   | sarImm (w n : Nat)
   /-- Native logical left-shift by a compile-time immediate `n`: `[reg w] → reg
-      w`, `out = src <<< n`. The left-shift counterpart of `shrImm`. -/
+      w`, `out = src <<< shiftMask w n`. The left-shift counterpart of `shrImm`. -/
   | shlImm (w n : Nat)
   /-- Constant-time SELECT / conditional move: `[reg 1, reg w, reg w] → reg w`,
       `out = if cond = 1 then a else b` (`selectW`). The condition is a 1-bit
@@ -1167,13 +1183,13 @@ instance jasminDenote : DialectDenote jasminDialect where
         a.rotateRight n
     | .shrImm w n => fun args =>
         let a : BitVec w := args.head
-        a >>> n
+        a >>> shiftMask w n
     | .sarImm w n => fun args =>
         let a : BitVec w := args.head
         BitVec.sshiftRight a n
     | .shlImm w n => fun args =>
         let a : BitVec w := args.head
-        a <<< n
+        a <<< shiftMask w n
     | .select w => fun args =>
         let cond : BitVec 1 := args.head
         let a : BitVec w := args.tail.head

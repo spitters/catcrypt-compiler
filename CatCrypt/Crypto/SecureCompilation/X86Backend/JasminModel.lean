@@ -230,14 +230,14 @@ def rflags_OF {w : Nat} (i : Nat) (r : BitVec w) (rc ofv : Bool) : B5W w :=
 
 /-! ## 5. The shift-count mask (`x86_shift_mask`, l.1042)
 
-`x86_shift_mask U64 = 63`, `U32/U16/U8 = 31`, `U128 = 127`, `U256 = 255`. For a
-generic width `w` (a power-of-two word) this is `w - 1`; we expose the value our
-emitted subset uses (`w = 64 → 63`). The count is masked by `& (w-1)` before
-shifting. -/
+`x86_shift_mask U64 = 63`, `U32/U16/U8 = 31`, `U128 = 127`, `U256 = 255`. The
+count is masked by `& x86_shift_mask sz` before shifting. At the scalar widths
+(8, 16, 32, 64) the masked count is `VIR.shiftMask w`, the count every shift
+interpreter of the compiler applies. -/
 
-/-- `x86_shift_mask` reduced to a count modulus: `i & (w-1)` keeps the low
-    `log2 w` bits of the count, i.e. `i % w`. -/
-def shiftCount {w : Nat} (i : BitVec w) : Nat := i.toNat % w
+/-- `x86_shift_mask` as a count: `VIR.shiftMask w` of the count, `i % 64` at width
+    64 and `i % 32` at widths up to 32. -/
+def shiftCount {w : Nat} (i : BitVec w) : Nat := VIR.shiftMask w i.toNat
 
 /-! ## 6. Per-instruction semantic functions (`x86_instr_decl.v`)
 
@@ -598,8 +598,9 @@ def x86_IMUL {w : Nat} (v1 v2 : BitVec w) : B5W2 w :=
 /-- `x86_SHLD sz v1 v2 i` (l.1163): mask `i`; if `0`, `rflags_None_w v1`; else
     with `j = wsize_bits sz - i`, `rc = msb (wshl v1 (i-1))` and
     `r = wor (wshl v1 i) (wshr v2 j)`, `rflags_OF i r rc (msb r ⊕ rc)`.
-    Jasmin's `ErrArith` branch is taken when `j < 0`; the count `shiftCount`
-    returns is below `w`, so `j` is positive and the branch is unreachable
+    Jasmin's `ErrArith` branch is taken when `j < 0`; at widths 32 and 64 the
+    count `shiftCount` returns is below `w`, so `j` is positive and the branch is
+    unreachable there. At widths 8 and 16 a count of at least `w` gives `j = 0`
     here. -/
 def x86_SHLD {w : Nat} (v1 v2 : BitVec w) (icount : BitVec w) : B5W w :=
   let i := shiftCount icount
@@ -633,9 +634,8 @@ def x86_SHRD {w : Nat} (v1 v2 : BitVec w) (icount : BitVec w) : B5W w :=
     rotate it by `i`; the new `CF` is its bit 0 and the new word its bits `1..w`;
     `OF = ovf r CF` at a count of one and undefined otherwise. `CF` is written even
     at a count of zero, where it keeps the value `cf`. Jasmin further reduces the
-    count modulo 9 at `U8` and modulo 17 at `U16`; those widths lie outside the
-    widths at which `shiftCount` agrees with `x86_shift_mask` (32, 64, 128, 256),
-    where the reduced count is the masked count. -/
+    count modulo 9 at `U8` and modulo 17 at `U16`, a reduction this definition
+    does not apply; at widths 32 and 64 the reduced count is the masked count. -/
 def x86_rotate_with_carry {w : Nat} (rot : BitVec (w + 1) → Nat → BitVec (w + 1))
     (ovf : BitVec w → Bool → Bool) (v : BitVec w) (icount : BitVec w) (cf : Bool) :
     B2W w :=

@@ -289,13 +289,13 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         a.rotateRight n
     | .shrImm w n, args =>
         let a : BitVec w := s.get (vm _ args.head) (.reg w)
-        a >>> n
+        a >>> shiftMask w n
     | .sarImm w n, args =>
         let a : BitVec w := s.get (vm _ args.head) (.reg w)
         BitVec.sshiftRight a n
     | .shlImm w n, args =>
         let a : BitVec w := s.get (vm _ args.head) (.reg w)
-        a <<< n
+        a <<< shiftMask w n
     | .callN _ _ retTys, _ =>
         -- Multi-result external call: opaque default of its head result slot,
         -- mirroring the `jasminDenote.callN` arm. The full `k`-result
@@ -627,12 +627,12 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           = (a.lookup V).rotateRight n
         rw [hS _ a]
   | shrImm w n =>
-      -- Native immediate right-shift: both sides are `>>> n` on the single
-      -- looked-up `reg w` source.
+      -- Native immediate right-shift: both sides are `>>> shiftMask w n` on the
+      -- single looked-up `reg w` source.
       cases args with
       | cons a rest =>
-        show (BitVec.ushiftRight (s.get (vm _ a) (.reg w)) n)
-          = BitVec.ushiftRight (a.lookup V) n
+        show (BitVec.ushiftRight (s.get (vm _ a) (.reg w)) (shiftMask w n))
+          = BitVec.ushiftRight (a.lookup V) (shiftMask w n)
         rw [hS _ a]
   | sarImm w n =>
       -- Native immediate arithmetic right-shift: both sides are
@@ -643,12 +643,12 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           = BitVec.sshiftRight (a.lookup V) n
         rw [hS _ a]
   | shlImm w n =>
-      -- Native immediate left-shift: both sides are `<<< n` on the single
-      -- looked-up `reg w` source.
+      -- Native immediate left-shift: both sides are `<<< shiftMask w n` on the
+      -- single looked-up `reg w` source.
       cases args with
       | cons a rest =>
-        show (BitVec.shiftLeft (s.get (vm _ a) (.reg w)) n)
-          = BitVec.shiftLeft (a.lookup V) n
+        show (BitVec.shiftLeft (s.get (vm _ a) (.reg w)) (shiftMask w n))
+          = BitVec.shiftLeft (a.lookup V) (shiftMask w n)
         rw [hS _ a]
   | cmp c w =>
       cases args with

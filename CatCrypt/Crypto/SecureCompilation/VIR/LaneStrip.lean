@@ -871,12 +871,13 @@ def stripProg {p : NFProg jasminDialect Γ ts} (E : Elemwise (2 ^ l) w p (loopRe
 
 /-- **Strip-mining.** A counted loop whose body `elemwise?` recognises at `2 ^ l` lanes of
     `w` bits becomes a loop over blocks of `2 ^ l` iterations that runs the lane form of the
-    body, a loop over the remaining iterations that runs the body, and the continuation;
-    `none` for every other program. -/
+    body, a loop over the remaining iterations that runs the body, and the continuation, when
+    the index shift `l` is below the 64-bit word width; `none` for every other program and for
+    `l ≥ 64`. -/
 def stripMine (p : NFProg jasminDialect Γ ts) :
     Option (NFProg jasminTileMem (Γ.map (Sum.inl (β := TileTy)))
       (ts.map (Sum.inl (β := TileTy)))) :=
-  (elemwise? (2 ^ l) w (loopRen Γ) p).map (stripProg l w)
+  if l < 64 then (elemwise? (2 ^ l) w (loopRen Γ) p).map (stripProg l w) else none
 
 end Program
 
@@ -928,7 +929,7 @@ abbrev loopVal (W : Valuation (d := jasminTileDialect) (Γ.map (Sum.inl (β := T
     with the same results and the events of `stripLoops` equal to `stripEv` of the events of
     the loop. -/
 theorem loops_run (M : LeakModel jasminDialect) (hM : LaneQuiet w M) (hA : ArrAddr M)
-    (hI : IdxQuiet l M) (fuel : Nat) (cs : List JasminTy) (count : Var Γ (JasminTy.reg 64))
+    (hI : IdxQuiet l M) (hl : l < 64) (fuel : Nat) (cs : List JasminTy) (count : Var Γ (JasminTy.reg 64))
     (inits : HVector (fun t => Var Γ t) cs)
     (body : NFProg jasminDialect (cs ++ JasminTy.reg 64 :: Γ) cs)
     (k : NFProg jasminDialect (cs ++ Γ) ts)
@@ -995,8 +996,8 @@ theorem loops_run (M : LeakModel jasminDialect) (hM : LaneQuiet w M) (hA : ArrAd
           (t := Sum.inl (JasminTy.reg 64))))).lookup (d := jasminTileMem)
         (hvAppend (d := jasminTileDialect) a'
           (Valuation.extend (d := jasminTileDialect) (t := Sum.inl (JasminTy.reg 64))
-            (loopVal W qv qLv rv) (BitVec.ofNat 64 b)))) l = _
-    rw [hval]
+            (loopVal W qv qLv rv) (BitVec.ofNat 64 b)))) (shiftMask 64 l) = _
+    rw [hval, shiftMask_of_lt hl]
     exact shl_ofNat l b
   have htgt := leakRunM_forLoop_of (d := jasminTileMem) (tileMemLeak jasminDialect M) fuel
     (Γ := loopCtx Γ) (cs := cs.map (Sum.inl (β := TileTy))) (.there (.there .here))
@@ -1233,6 +1234,10 @@ theorem stripMine_leakRun (M : LeakModel jasminDialect) (hM : LaneQuiet w M) (hA
       (NFProg.leakRunM M fuel p (unmapInl (d := jasminDialect) (e := tileDialect) W))
       (tileMemLeakRun jasminDialect (instDialectDenoteMOptionOfPure jasminDialect) M fuel q
         W) := by
+  have hl : l < 64 := by
+    by_contra hl
+    simp only [stripMine, hl, if_false, reduceCtorEq] at h
+  simp only [stripMine, hl, if_true] at h
   obtain ⟨E, -, rfl⟩ := Option.map_eq_some_iff.mp h
   obtain ⟨cs, count, inits, body, k, vbody, rfl, hv⟩ := E
   have hc : (memVar (inlVar count)).lookup (d := jasminTileMem) W =
@@ -1263,21 +1268,23 @@ theorem stripMine_leakRun (M : LeakModel jasminDialect) (hM : LaneQuiet w M) (hA
           (stripLoops l cs inits body k vbody)))) W)
   rw [leakRun_opE _ _ _ _ _ _ hI.1, leakRun_opE _ _ _ _ _ _ hI.2.1,
     leakRun_opE _ _ _ _ _ _ hI.2.2.1]
-  refine loops_run M hM hA hI fuel cs count inits body k vbody hv W _ rfl cnt.toNat
+  refine loops_run M hM hA hI hl fuel cs count inits body k vbody hv W _ rfl cnt.toNat
     (congrArg BitVec.toNat hcnt) _ _ _ ?_ ?_ ?_
   · show (BitVec.ushiftRight (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W)
-      l).toNat = _
-    rw [hc]
+      (shiftMask 64 l)).toNat = _
+    rw [hc, shiftMask_of_lt hl]
     exact hX1
   · show BitVec.shiftLeft
-      (BitVec.ushiftRight (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W) l) l = _
-    rw [hc]
+      (BitVec.ushiftRight (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W)
+        (shiftMask 64 l)) (shiftMask 64 l) = _
+    rw [hc, shiftMask_of_lt hl]
     exact hX2
   · show (BitVec.sub (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W)
       (BitVec.shiftLeft
-        (BitVec.ushiftRight (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W) l)
-        l)).toNat = _
-    rw [hc]
+        (BitVec.ushiftRight (Var.lookup (d := jasminTileMem) (memVar (inlVar count)) W)
+          (shiftMask 64 l))
+        (shiftMask 64 l))).toNat = _
+    rw [hc, shiftMask_of_lt hl]
     exact hX3
 
 /-- **The events of a strip-mined run** are `stripEv` of the events of the scalar run. -/

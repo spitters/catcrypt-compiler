@@ -32,7 +32,7 @@ the 16×u32 packed ops `zmmPackD` / `zmmRorD` of `Sha256DwordRoundCom`) — and
 prove **every 32-bit lane** equals the same abstract `UInt32` round word.
 
 The proof is a lane projection: `ZmmDwordLane`'s `zmmPackD_lane` / `zmmRorD_lane`
-push `zmmLane32` through each packed op to the per-lane `JasminBinOp.apply` /
+push `zmmLane32` through each packed op to the per-lane `JasminBinOp.applyLane` /
 `rotateRight`, and `Sha256DwordLane`'s `*_dword_bitExact` ties identify the
 per-lane round-function bodies with the abstract `Primitives.SHA256`
 `ch` / `maj` / `bigSigma0` / `bigSigma1`. No `native_decide` over `BitVec 512`,
@@ -167,7 +167,7 @@ theorem aPrimePacked_lane (wa wb wc we wf wg wh kt wt : BitVec 512) (k : Fin 16)
   rw [zmmPackD_lane, t1Packed_lane_eq_SHA we wf wg wh kt wt k e f g h ktw wtw
         he hf hg hh hkt hwt, zmmPackD_lane, sig0Packed_lane, majPacked_lane,
       ha, hb, hc, bigSigma0_dword_bitExact, maj_dword_bitExact]
-  simp only [aPrimeWord, JasminBinOp.apply, UInt32.toBitVec_add]
+  simp only [aPrimeWord, JasminBinOp.applyLane, UInt32.toBitVec_add]
 
 /-- **Packed `e'` lane tie.** Lane `k` of the unified-packed `ePrimePacked` equals
     the bit-vector of the abstract `UInt32` SHA-256 round word `ePrimeWord` — the
@@ -184,7 +184,7 @@ theorem ePrimePacked_lane (wd we wf wg wh kt wt : BitVec 512) (k : Fin 16)
   unfold ePrimePacked
   rw [zmmPackD_lane, t1Packed_lane_eq_SHA we wf wg wh kt wt k e f g h ktw wtw
         he hf hg hh hkt hwt, hd]
-  simp only [ePrimeWord, JasminBinOp.apply, UInt32.toBitVec_add]
+  simp only [ePrimeWord, JasminBinOp.applyLane, UInt32.toBitVec_add]
 
 /-! ## 4. The packaged abstract tie (equal-strength successor)
 

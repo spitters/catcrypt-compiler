@@ -117,7 +117,7 @@ theorem sigma0Packed_lane (x : BitVec 512) (k : Fin 16) :
   unfold sigma0Packed smallSigma0D
   rw [zmmPackD_lane, zmmPackD_lane, zmmRorD_lane, zmmRorD_lane, zmmPackD_lane,
     bcastD_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
   rw [rorD_eq_rotateRight _ 7 (by norm_num), rorD_eq_rotateRight _ 18 (by norm_num),
     show ((3 : BitVec 32)).toNat = 3 from by decide]
 
@@ -127,7 +127,7 @@ theorem sigma1Packed_lane (x : BitVec 512) (k : Fin 16) :
   unfold sigma1Packed smallSigma1D
   rw [zmmPackD_lane, zmmPackD_lane, zmmRorD_lane, zmmRorD_lane, zmmPackD_lane,
     bcastD_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
   rw [rorD_eq_rotateRight _ 17 (by norm_num), rorD_eq_rotateRight _ 19 (by norm_num),
     show ((10 : BitVec 32)).toNat = 10 from by decide]
 
@@ -161,7 +161,7 @@ theorem newScheduleWordPacked_lane (w2 w7 w15 w16 : BitVec 512) (k : Fin 16) :
   unfold newScheduleWordPacked newScheduleWordLane
   rw [zmmPackD_lane, zmmPackD_lane, zmmPackD_lane, sigma1Packed_lane,
     sigma0Packed_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-- **The packed schedule word is BIT-EXACT to the abstract FIPS-180-4 recurrence.**
     With the four window words held as `UInt32`-bit-vectors in lane `k` of the four

@@ -31,8 +31,8 @@ a straight-line list of lane-wise and lane-moving ops over named tiles.
   proves `bbMulWord a b = (a · b) mod p`; `bbMulTile_kat` checks it on four lanes.
 * **Lowering**: `lowerRegBlock_denote` proves that the `RegInstr → TileOp`
   lowering preserves the `TileState` semantics for every block and every shape
-  `(n, w)`. The source semantics `evalRegInstr` is defined lane-wise with
-  `JasminBinOp.apply`; no theorem here relates it to `Com.denote` or to an
+  `(n, w)`. The source semantics `evalRegInstr` is defined lane-wise with the
+  unmasked lane operation `JasminBinOp.applyLane`; no theorem here relates it to `Com.denote` or to an
   x86/ARM/RISC-V vector model (the bridges for those are `ZmmArithBridge` and
   `VectorBackendBridge`).
 
@@ -156,7 +156,7 @@ inductive TileOp where
   deriving Repr, DecidableEq
 
 /-- The per-element semantics of one tile op at shape `n×w` (each a per-lane
-    `BitVec w` op, matching `JasminBinOp.apply` for the two-operand arms). -/
+    `BitVec w` op, matching `JasminBinOp.applyLane` for the two-operand arms). -/
 def evalTileOp {n w : Nat} (s : TileState n w) : TileOp → TileState n w
   | .add d a b => s.set d (fun i => s.get a i + s.get b i)
   | .sub d a b => s.set d (fun i => s.get a i - s.get b i)
@@ -347,7 +347,8 @@ A lowering from a **source `regArith` alphabet** (`RegInstr`: `JasminBinOp`
 two-address register arithmetic, constant loads and `mulhs`) into tile ops, with
 a proof that it preserves the `TileState` semantics for every op and every
 straight-line block. The source semantics `evalRegInstr` is defined here, lane
-by lane, with `JasminBinOp.apply` at width `w`; no theorem in this module relates
+by lane, with the lane operation `JasminBinOp.applyLane` at width `w` (shift
+counts unmasked, as in the vector shifts); no theorem in this module relates
 `RegInstr` programs to `Com jasminDialect` programs or their denotation.
 
 Unlike `bbMulTile` (a hand-written tile program proved for that one kernel), the
@@ -368,10 +369,10 @@ inductive RegInstr where
   deriving DecidableEq
 
 /-- The source per-lane semantics at shape `n×w`: each `bin` op applies
-    `JasminBinOp.apply` to every lane; `const` broadcasts; `mulhs` takes the
+    `JasminBinOp.applyLane` to every lane; `const` broadcasts; `mulhs` takes the
     signed high half. The reference semantics the lowering preserves. -/
 def evalRegInstr {n w : Nat} (s : TileState n w) : RegInstr → TileState n w
-  | .bin op d a b => s.set d (fun i => op.apply (s.get a i) (s.get b i))
+  | .bin op d a b => s.set d (fun i => op.applyLane (s.get a i) (s.get b i))
   | .const d k => s.set d (fun _ => BitVec.ofNat w k)
   | .mulhs d a b =>
       s.set d (fun i =>
@@ -453,7 +454,7 @@ theorem bbMulReg_lowered_denote {n : Nat} (a b : Tile n 64) :
   rw [lowerRegBlock_denote]
   funext i
   simp only [bbMulReg, runRegBlock, List.foldl_cons, List.foldl_nil, evalRegInstr,
-    TileState.set, TileState.get, bbMulInit, bbMulWord, JasminBinOp.apply,
+    TileState.set, TileState.get, bbMulInit, bbMulWord, JasminBinOp.applyLane,
     String.reduceEq, if_true, if_false, BitVec.toNat_ofNat]
 
 /-- **KAT for the lowered `bbMul`** — the worked vector of `bbMulTile_kat`,

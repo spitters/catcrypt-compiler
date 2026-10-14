@@ -281,8 +281,10 @@ def SExpr.evalStateBV (rs : RustState) : SExpr → BitVec 64
   | .SAdd a b => a.evalStateBV rs + b.evalStateBV rs
   | .SSub a b => a.evalStateBV rs - b.evalStateBV rs
   | .SMul a b => a.evalStateBV rs * b.evalStateBV rs
-  | .SShr a b => (a.evalStateBV rs) >>> (b.evalStateBV rs).toNat
-  | .SShl a b => (a.evalStateBV rs) <<< (b.evalStateBV rs).toNat
+  | .SShr a b =>
+      (a.evalStateBV rs) >>> SecureCompilation.VIR.shiftMask 64 (b.evalStateBV rs).toNat
+  | .SShl a b =>
+      (a.evalStateBV rs) <<< SecureCompilation.VIR.shiftMask 64 (b.evalStateBV rs).toNat
   | .SAnd a b => a.evalStateBV rs &&& b.evalStateBV rs
   | .SXor a b => a.evalStateBV rs ^^^ b.evalStateBV rs
   | .SLt  a b => if (a.evalStateBV rs).toNat < (b.evalStateBV rs).toNat then 1 else 0
@@ -377,10 +379,12 @@ theorem SExpr.toNat_evalStateBV_of_inRangeState (rs : RustState) :
       exact Nat.mod_eq_of_lt h.2.2
   | SShr a b iha ihb =>
       intro h
-      rw [SExpr.evalStateBV, SExpr.evalState, BitVec.toNat_ushiftRight, iha h.1, ihb h.2.1]
+      rw [SExpr.evalStateBV, SExpr.evalState, BitVec.toNat_ushiftRight, iha h.1, ihb h.2.1,
+        SecureCompilation.VIR.shiftMask_of_lt h.2.2]
   | SShl a b iha ihb =>
       intro h
-      rw [SExpr.evalStateBV, SExpr.evalState, BitVec.toNat_shiftLeft, iha h.1, ihb h.2.1]
+      rw [SExpr.evalStateBV, SExpr.evalState, BitVec.toNat_shiftLeft, iha h.1, ihb h.2.1,
+        SecureCompilation.VIR.shiftMask_of_lt h.2.2.1]
       exact Nat.mod_eq_of_lt h.2.2.2
   | SAnd a b iha ihb =>
       intro h

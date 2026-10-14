@@ -315,8 +315,10 @@ def evalIE (σ : VEnv) : IE → Option (BitVec 64)
   | .mul a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y => x * y
   | .and a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y => x &&& y
   | .xor a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y => x ^^^ y
-  | .shl a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y => x <<< y.toNat
-  | .shr a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y => x >>> y.toNat
+  | .shl a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y =>
+      x <<< VIR.shiftMask 64 y.toNat
+  | .shr a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y =>
+      x >>> VIR.shiftMask 64 y.toNat
   | .mulHiU a b => (evalIE σ a).bind fun x => (evalIE σ b).map fun y =>
       BitVec.ofNat 64 (sexprMulHiU x.toNat y.toNat)
 

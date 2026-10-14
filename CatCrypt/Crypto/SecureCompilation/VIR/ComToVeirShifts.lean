@@ -25,7 +25,7 @@ it is the table of the `ToVeirOp jasminDialect` instance.
 |---|---|---|
 | `regArith shl w`, `regArith shr w` | `bare = false`: `shiftSelectExpansion`; `bare = true`: one `arith.shli` or `arith.shrui` | `veirShiftSel`; `veirBinInt` |
 | `regArith andn w` | constant all ones, `arith.xori`, `arith.andi` | `veirAndn` |
-| `shlImm w n`, `shrImm w n` | constant `n` and the shift for `n < w`; constant `0` otherwise | `veirShlImm`, `veirShrImm` |
+| `shlImm w n`, `shrImm w n` | constant `shiftMask w n` and the shift when it is below `w`; constant `0` otherwise | `veirShlImm`, `veirShrImm` |
 | `sarImm w n` | constant `min n (w - 1)` and `arith.shrsi` | `veirSarImm` |
 | `rorImm w n` | `arith.shrui` by `n % w`, `arith.shli` by `w - n % w`, `arith.ori`; no operation for `n % w = 0` | `veirRorImm` |
 | `castW w w'` | `arith.extui`, `arith.trunci`, or no operation at equal widths | `veirCastW` |
@@ -139,48 +139,50 @@ theorem veirAndn_refines {w : Nat} {x y : LLVM.Int w} {a b : BitVec w} (hx : x �
   llvmInt_refines₂ veirAndn (veirAndn_val a b) (fun _ => rfl) (fun x => by cases x <;> rfl)
     hx hy
 
-/-- The value of the lowering of `shlImm w n`: `arith.shli` by the constant `n` when
-`n < w`, and the constant `0` otherwise. -/
+/-- The value of the lowering of `shlImm w n`: `arith.shli` by the constant
+`shiftMask w n` when it is below `w`, and the constant `0` otherwise. -/
 def veirShlImm (w n : Nat) (x : LLVM.Int w) : LLVM.Int w :=
-  if n < w then veirBinInt .shl x (.val (BitVec.ofNat w n)) else .val 0
+  if shiftMask w n < w then veirBinInt .shl x (.val (BitVec.ofNat w (shiftMask w n)))
+  else .val 0
 
-/-- The value of the lowering of `shrImm w n`: `arith.shrui` by the constant `n` when
-`n < w`, and the constant `0` otherwise. -/
+/-- The value of the lowering of `shrImm w n`: `arith.shrui` by the constant
+`shiftMask w n` when it is below `w`, and the constant `0` otherwise. -/
 def veirShrImm (w n : Nat) (x : LLVM.Int w) : LLVM.Int w :=
-  if n < w then veirBinInt .shr x (.val (BitVec.ofNat w n)) else .val 0
+  if shiftMask w n < w then veirBinInt .shr x (.val (BitVec.ofNat w (shiftMask w n)))
+  else .val 0
 
 /-- A constant below the width is its own value at that width. -/
 theorem toNat_ofNat_of_lt_width {w n : Nat} (h : n < w) : (BitVec.ofNat w n).toNat = n := by
   rw [BitVec.toNat_ofNat]
   exact Nat.mod_eq_of_lt (Nat.lt_trans h Nat.lt_two_pow_self)
 
-/-- On a defined operand the lowering of `shlImm w n` is `a <<< n`. -/
+/-- On a defined operand the lowering of `shlImm w n` is `a <<< shiftMask w n`. -/
 theorem veirShlImm_val (w n : Nat) (a : BitVec w) :
-    veirShlImm w n (.val a) = .val (a <<< n) := by
+    veirShlImm w n (.val a) = .val (a <<< shiftMask w n) := by
   unfold veirShlImm
   split
   · rename_i h
     rw [veirBinInt_val .shl (by decide) a _ (fun _ => by rw [toNat_ofNat_of_lt_width h]; exact h)]
-    simp only [JasminBinOp.apply, toNat_ofNat_of_lt_width h]
+    simp only [JasminBinOp.apply, toNat_ofNat_of_lt_width h, shiftMask_shiftMask]
   · rename_i h
     rw [BitVec.shiftLeft_eq_zero (Nat.le_of_not_lt h)]
     rfl
 
-/-- On a defined operand the lowering of `shrImm w n` is `a >>> n`. -/
+/-- On a defined operand the lowering of `shrImm w n` is `a >>> shiftMask w n`. -/
 theorem veirShrImm_val (w n : Nat) (a : BitVec w) :
-    veirShrImm w n (.val a) = .val (a >>> n) := by
+    veirShrImm w n (.val a) = .val (a >>> shiftMask w n) := by
   unfold veirShrImm
   split
   · rename_i h
     rw [veirBinInt_val .shr (by decide) a _ (fun _ => by rw [toNat_ofNat_of_lt_width h]; exact h)]
-    simp only [JasminBinOp.apply, toNat_ofNat_of_lt_width h]
+    simp only [JasminBinOp.apply, toNat_ofNat_of_lt_width h, shiftMask_shiftMask]
   · rename_i h
     rw [BitVec.ushiftRight_eq_zero (Nat.le_of_not_lt h)]
     rfl
 
 /-- The lowering of `shlImm w n` is monotone for VeIR's refinement. -/
 theorem veirShlImm_refines (w n : Nat) {x : LLVM.Int w} {a : BitVec w} (hx : x ⊒ .val a) :
-    veirShlImm w n x ⊒ .val (a <<< n) :=
+    veirShlImm w n x ⊒ .val (a <<< shiftMask w n) :=
   llvmInt_refines₁ (veirShlImm w n) (veirShlImm_val w n a)
     (by rw [← veirShlImm_val w n a]; unfold veirShlImm; split
         · exact llvmInt_poison_isRefinedBy _
@@ -188,7 +190,7 @@ theorem veirShlImm_refines (w n : Nat) {x : LLVM.Int w} {a : BitVec w} (hx : x �
 
 /-- The lowering of `shrImm w n` is monotone for VeIR's refinement. -/
 theorem veirShrImm_refines (w n : Nat) {x : LLVM.Int w} {a : BitVec w} (hx : x ⊒ .val a) :
-    veirShrImm w n x ⊒ .val (a >>> n) :=
+    veirShrImm w n x ⊒ .val (a >>> shiftMask w n) :=
   llvmInt_refines₁ (veirShrImm w n) (veirShrImm_val w n a)
     (by rw [← veirShrImm_val w n a]; unfold veirShrImm; split
         · exact llvmInt_poison_isRefinedBy _
@@ -268,7 +270,7 @@ theorem veirRorImm_val (w n : Nat) (a : BitVec w) :
     rw [veirBinInt_val .shr (by decide) a _ (fun _ => by rw [toNat_ofNat_of_lt_width hr]; exact hr),
       veirBinInt_val .shl (by decide) a _ (fun _ => by rw [toNat_ofNat_of_lt_width hl]; exact hl)]
     simp only [JasminBinOp.apply, toNat_ofNat_of_lt_width hr, toNat_ofNat_of_lt_width hl,
-      BitVec.rotateRight_def]
+      shiftMask_of_lt hr, shiftMask_of_lt hl, BitVec.rotateRight_def]
     simp [LLVM.Int.or, Id.run]
 
 /-- The lowering of `rorImm w n` is monotone for VeIR's refinement. -/
@@ -597,7 +599,7 @@ theorem veirRunExpansion_shlImm (w n : Nat) (x : LLVM.Int w) (resTy : TypeAttr)
     (mem : MemoryState) :
     veirRunExpansion (JasminOp.shlImmExpansion w n) resTy [.int w x] mem =
       .ok (.int w (veirShlImm w n x), mem) := by
-  by_cases h : n < w
+  by_cases h : shiftMask w n < w
   · simp only [JasminOp.shlImmExpansion, veirShlImm, h, ↓reduceIte]
     veir_run_simp [veirBinInt]
     rfl
@@ -610,7 +612,7 @@ theorem veirRunExpansion_shrImm (w n : Nat) (x : LLVM.Int w) (resTy : TypeAttr)
     (mem : MemoryState) :
     veirRunExpansion (JasminOp.shrImmExpansion w n) resTy [.int w x] mem =
       .ok (.int w (veirShrImm w n x), mem) := by
-  by_cases h : n < w
+  by_cases h : shiftMask w n < w
   · simp only [JasminOp.shrImmExpansion, veirShrImm, h, ↓reduceIte]
     veir_run_simp [veirBinInt]
     rfl
@@ -993,7 +995,7 @@ theorem veirRunBindingWith_bridge_square {Γ : Ctxt jasminDialect} {t : JasminTy
       cases args with
       | cons x rest =>
         cases rest
-        obtain ⟨s, h₁, hr, he⟩ := int_square₁ (veirShlImm w n) (fun a => a <<< n)
+        obtain ⟨s, h₁, hr, he⟩ := int_square₁ (veirShlImm w n) (fun a => a <<< shiftMask w n)
           (veirShlImm_val w n) (fun _ _ => veirShlImm_refines w n) (hρ _ x)
         refine ⟨_, ?_, hr, fun hρe _ => he (hρe _ x)⟩
         show veirRunExpansion (JasminOp.shlImmExpansion w n) _ [ρ _ x] mem = _
@@ -1004,7 +1006,7 @@ theorem veirRunBindingWith_bridge_square {Γ : Ctxt jasminDialect} {t : JasminTy
       cases args with
       | cons x rest =>
         cases rest
-        obtain ⟨s, h₁, hr, he⟩ := int_square₁ (veirShrImm w n) (fun a => a >>> n)
+        obtain ⟨s, h₁, hr, he⟩ := int_square₁ (veirShrImm w n) (fun a => a >>> shiftMask w n)
           (veirShrImm_val w n) (fun _ _ => veirShrImm_refines w n) (hρ _ x)
         refine ⟨_, ?_, hr, fun hρe _ => he (hρe _ x)⟩
         show veirRunExpansion (JasminOp.shrImmExpansion w n) _ [ρ _ x] mem = _

@@ -68,11 +68,11 @@ theorem zmmRorD_lane (n : Nat) (a : BitVec 512) (k : Fin 16) :
   unfold zmmRorD
   rw [zmmOfLanes32_zmmLane32]
 
-/-- Lane `k` of `zmmPackD bop a b` is `bop.apply (zmmLane32 a k) (zmmLane32 b k)`:
+/-- Lane `k` of `zmmPackD bop a b` is `bop.applyLane (zmmLane32 a k) (zmmLane32 b k)`:
     each packed dword op (`#VPADDD`/`#VPSUBD`/`#VPXORD`/`#VPANDD`/`#VPORD`) acts on
     lane `k` of the two inputs independently. -/
 theorem zmmPackD_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 16) :
-    zmmLane32 (zmmPackD bop a b) k = bop.apply (zmmLane32 a k) (zmmLane32 b k) := by
+    zmmLane32 (zmmPackD bop a b) k = bop.applyLane (zmmLane32 a k) (zmmLane32 b k) := by
   unfold zmmPackD
   rw [zmmOfLanes32_zmmLane32]
 

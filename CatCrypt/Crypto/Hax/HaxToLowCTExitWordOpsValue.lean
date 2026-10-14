@@ -778,6 +778,16 @@ def isMask64 : SExpr → Bool
   | .SLit m => m == 2 ^ 64 - 1
   | _ => false
 
+/-- A right-shift count the check accepts: a literal below 64. The word shift masks its count
+    (`shiftMask 64`) while the natural-number shift does not, so the two agree only below 64. -/
+def shrCountOk : SExpr → Bool
+  | .SLit k => decide (k < 64)
+  | _ => false
+
+theorem eval_lt_of_shrCountOk {σ : String → Nat} : ∀ {b : SExpr}, shrCountOk b = true →
+    b.eval σ < 64
+  | .SLit k, h => by simpa [shrCountOk, SExpr.eval] using h
+
 /-- The expressions that agree at every heap of words (`agreeAllB_sound`): variables,
     literals below `2^64`, limb reads, a sum or product of variables and literals masked to
     `64` bits, the wrapping difference `((a + (2^64 - 1) - b) + 1) &&& (2^64 - 1)` of agreeing
@@ -792,7 +802,7 @@ def agreeAllB : SExpr → Bool
   | .SLimb _ _ => true
   | .SAnd a b => (homB a && isMask64 b) || (agreeAllB a && agreeAllB b)
   | .SXor a b => agreeAllB a && agreeAllB b
-  | .SShr a b => agreeAllB a && agreeAllB b
+  | .SShr a b => agreeAllB a && agreeAllB b && shrCountOk b
   | .SLt a b => agreeAllB a && agreeAllB b
   | .SSub (.SLit 1) (.SLt a b) => agreeAllB a && agreeAllB b
   | .SAdd (.SLt a b) (.SLt c d) => agreeAllB a && agreeAllB b && agreeAllB c && agreeAllB d
@@ -836,14 +846,15 @@ theorem exprAgreeAt_wrapSub {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeA
 
 /-- The right shift of agreeing expressions agrees. -/
 theorem exprAgreeAt_shr {σ : String → Nat} {a b : SExpr} (ha : ExprAgreeAt σ a)
-    (hb : ExprAgreeAt σ b) : ExprAgreeAt σ (.SShr a b) := by
+    (hb : ExprAgreeAt σ b) (hb64 : b.eval σ < 64) : ExprAgreeAt σ (.SShr a b) := by
   obtain ⟨ha, ha2⟩ := ha
   obtain ⟨hb, hb2⟩ := hb
   have hlt : a.eval σ >>> b.eval σ < 2 ^ 64 := lt_of_le_of_lt (Nat.shiftRight_le _ _) ha
   refine ⟨hlt, ?_⟩
   apply BitVec.eq_of_toNat_eq
   simp only [SExpr.evalBV, SExpr.eval, ha2, hb2, BitVec.toNat_ushiftRight, BitVec.toNat_ofNat,
-    Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb, Nat.mod_eq_of_lt hlt]
+    Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb, Nat.mod_eq_of_lt hlt,
+    SecureCompilation.VIR.shiftMask_of_lt hb64]
 
 /-- **Agreement at every heap of words.** -/
 theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
@@ -899,7 +910,7 @@ theorem agreeAllB_sound : ∀ e : SExpr, agreeAllB e = true →
   | case7 a b iha ihb =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h
-      exact exprAgreeAt_shr (iha h.1 σ hσ) (ihb h.2 σ hσ)
+      exact exprAgreeAt_shr (iha h.1.1 σ hσ) (ihb h.1.2 σ hσ) (eval_lt_of_shrCountOk h.2)
   | case8 a b iha ihb =>
       intro h σ hσ
       simp only [Bool.and_eq_true] at h

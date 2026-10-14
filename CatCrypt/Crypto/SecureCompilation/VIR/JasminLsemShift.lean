@@ -69,9 +69,10 @@ not the bytes. The SAR path is the byte-equivalent structured twin of the
 ## Trocq (`Related`) where it helps
 
 The shift wire-format change is a **representation change**: the abstract shift
-value (e.g. `a >>> n`, the dialect denotation) is *realized* by the structured
-linear step `structShr w n a := a >>> (BitVec.ofNat w n).toNat`. This is a
-`Trocq.Related`-style commuting square `Related id (a >>> n) (structShr w n a)`
+value (e.g. `a >>> shiftMask w n`, the dialect denotation) is *realized* by the
+structured linear step `structShr w n a := a >>> shiftMask w (BitVec.ofNat w n).toNat`.
+This is a `Trocq.Related`-style commuting square
+`Related id (a >>> shiftMask w n) (structShr w n a)`
 over the identity encoding on `BitVec w` — registered here as the engine
 witnesses `relatedStructShr`/`Shl`/`Sar`, the increment's analogue of
 `CompilerRegistry`'s `relatedX86Shr` and of `ParamDialectTransport`'s op-leaf
@@ -104,17 +105,19 @@ open Transfer (Related transferRel)
 /-! ## 1. The structured shift realizers and their `Trocq.Related` squares
 
 A structured shift instruction reads its count from the `.imm` operand, so the
-linear step computes `a >>> (BitVec.ofNat w n).toNat`. For an in-range count
-`n < 2^w` (every emitted shift count is `< w ≤ 64`) the modular reduction is
-vacuous, so this equals the dialect denotation `a >>> n`. We package each
-realizer and register it as a `Trocq.Related` representation-change witness. -/
+linear step computes `a >>> shiftMask w (BitVec.ofNat w n).toNat`. For an in-range
+count `n < 2^w` (every emitted shift count is `< w ≤ 64`) the modular reduction is
+vacuous, so this equals the dialect denotation `a >>> shiftMask w n`. Each realizer
+is registered as a `Trocq.Related` representation-change witness. -/
 
 /-- The structured **logical right shift** realizer: the value the structured
     linear step `applyOpnN w "SHR" [a, BitVec.ofNat w n]` computes. -/
-def structShr (w n : Nat) (a : BitVec w) : BitVec w := a >>> (BitVec.ofNat w n).toNat
+def structShr (w n : Nat) (a : BitVec w) : BitVec w :=
+  a >>> shiftMask w (BitVec.ofNat w n).toNat
 
 /-- The structured **left shift** realizer. -/
-def structShl (w n : Nat) (a : BitVec w) : BitVec w := a <<< (BitVec.ofNat w n).toNat
+def structShl (w n : Nat) (a : BitVec w) : BitVec w :=
+  a <<< shiftMask w (BitVec.ofNat w n).toNat
 
 /-- The structured **arithmetic right shift** realizer (`SAR`, sign-extending). -/
 def structSar (w n : Nat) (a : BitVec w) : BitVec w :=
@@ -127,16 +130,17 @@ def structSar (w n : Nat) (a : BitVec w) : BitVec w :=
 theorem ofNat_toNat_of_lt {w n : Nat} (h : n < 2 ^ w) : (BitVec.ofNat w n).toNat = n := by
   rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
 
-/-- **Representation square (SHR).** For an in-range count, the structured shift
-    realizer equals the dialect's logical-right-shift denotation `a >>> n`. The
-    `Related`-style commuting equation the wire-format change must preserve. -/
+/-- **Representation square (SHR).** For a count `n < 2^w`, the structured shift
+    realizer is the logical right shift by the masked count `shiftMask w n`, the
+    dialect's denotation of `shrImm w n`. -/
 theorem structShr_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    structShr w n a = a >>> n := by
+    structShr w n a = a >>> shiftMask w n := by
   unfold structShr; rw [ofNat_toNat_of_lt h]
 
-/-- **Representation square (SHL).** -/
+/-- **Representation square (SHL).** For a count `n < 2^w`, the structured shift
+    realizer is the left shift by the masked count `shiftMask w n`. -/
 theorem structShl_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    structShl w n a = a <<< n := by
+    structShl w n a = a <<< shiftMask w n := by
   unfold structShl; rw [ofNat_toNat_of_lt h]
 
 /-- **Representation square (SAR).** -/
@@ -146,15 +150,15 @@ theorem structSar_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
 
 /-- The structured SHR realizer registered as a `Trocq.Related` representation
     change (identity encoding on `BitVec w`): the emitted structured value
-    `structShr w n a` realizes the abstract shift `a >>> n`. The increment's
+    `structShr w n a` realizes the abstract shift `a >>> shiftMask w n`. The
     analogue of `CompilerRegistry.relatedX86Shr`; its `.rel` is `structShr_eq`. -/
 def relatedStructShr {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    Related (id : BitVec w → BitVec w) (a >>> n) (structShr w n a) where
+    Related (id : BitVec w → BitVec w) (a >>> shiftMask w n) (structShr w n a) where
   rel := by simpa using (structShr_eq h a).symm
 
 /-- The structured SHL realizer as a `Trocq.Related` square. -/
 def relatedStructShl {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    Related (id : BitVec w → BitVec w) (a <<< n) (structShl w n a) where
+    Related (id : BitVec w → BitVec w) (a <<< shiftMask w n) (structShl w n a) where
   rel := by simpa using (structShl_eq h a).symm
 
 /-- The structured SAR realizer as a `Trocq.Related` square. -/
@@ -428,9 +432,9 @@ theorem lsemStepSh_shr {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     simp only [shiftLinstr, lsemStepN, readReg_resolveVar s hagree, evalOperandN,
       stripWidthTag_withWidthTag_SHR, applyOpnN]
     -- the structured value `structShr w n (s.lookup V)` equals the denotation
-    -- `(shrImm w n).denote V = s.lookup V >>> n` by the `Related` square.
+    -- `(shrImm w n).denote V = s.lookup V >>> shiftMask w n` by the `Related` square.
     show some ((st.setReg (regName curDepth) (structShr w n (s.lookup V))).nextPc) = _
-    -- `structShr w n a = a >>> n = (shrImm w n).denote` via the `Related` square
+    -- `structShr w n a = a >>> shiftMask w n = (shrImm w n).denote` via the square
     -- `structShr_eq` (equivalently `(transferRel (relatedStructShr hn a)).symm`).
     rw [structShr_eq hn (s.lookup V)]; rfl
 

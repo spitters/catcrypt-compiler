@@ -172,13 +172,17 @@ theorem asr_word (v n : BitVec 64) :
   bv_decide
 
 /-- `asrSExpr a k` evaluates to the arithmetic shift of the value of `a` by the value of
-    `k`. -/
+    `k` masked by `VIR.shiftMask 64`. -/
 theorem evalBV_asrSExpr (β : String → BitVec 64) (a k : SExpr) :
-    (asrSExpr a k).evalBV β = (a.evalBV β).sshiftRight (k.evalBV β).toNat := by
+    (asrSExpr a k).evalBV β
+      = (a.evalBV β).sshiftRight (VIR.shiftMask 64 (k.evalBV β).toNat) := by
   simp only [asrSExpr, signMaskSExpr, SExpr.evalBV]
   rw [show BitVec.ofNat 64 0 = (0 : BitVec 64) from rfl,
-    show (BitVec.ofNat 64 63).toNat = 63 from rfl]
-  exact asr_word _ _
+    show (BitVec.ofNat 64 63).toNat = 63 from rfl,
+    VIR.shiftMask_of_lt (by decide : 63 < 64)]
+  have h := asr_word (a.evalBV β) (BitVec.ofNat 64 (VIR.shiftMask 64 (k.evalBV β).toNat))
+  rwa [BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt (lt_trans (VIR.shiftMask_lt_64 _) (by decide))] at h
 
 /-- The arithmetic shift of the two's complement of an `i64` value `z` is the two's
     complement of `z` shifted right as an integer. -/

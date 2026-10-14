@@ -140,13 +140,10 @@ deliberately **out of scope** of this model.
 * `SAR` (arithmetic right shift) is *modeled but its `lprog` preservation is
   not proved* — the source `JasminBinOp` only has logical `shr`. It is
   included for completeness and flagged modeled-only.
-* **Shift-count correspondence caveat:** Jasmin's `x86_SHL`/`SHR`/`SAR` mask
-  the count by `x86_shift_mask sz` (`& 63` at `U64`) before shifting; our
-  `step` shifts by the raw `(src.eval).toNat`. The two agree **iff the count
-  is `< w`** (the only case our compiler emits — shift amounts are
-  compile-time bounded). For counts `≥ w` they differ (e.g. `SHL 1 by 68`:
-  Jasmin → `16`, our model → `0`). This precondition is recorded in
-  `TranslationValidation.lean` rather than papered over.
+* Shift counts: `step` shifts `SHL`/`SHR` by `VIR.shiftMask w (src.eval).toNat`,
+  the count Jasmin's `x86_SHL`/`SHR` apply after masking by `x86_shift_mask sz`
+  (`& 63` at `U64`, `& 31` at `U32`, `U16` and `U8`). `SAR` shifts by the raw
+  count.
 -/
 
 @[expose] public section
@@ -377,9 +374,9 @@ inductive Instr (w : Nat) where
   | or_ (dst : Reg) (src : Operand)
   /-- `XOR dst, src`. -/
   | xor_ (dst : Reg) (src : Operand)
-  /-- `SHL dst, src` : logical left shift by `src.toNat`. -/
+  /-- `SHL dst, src` : logical left shift by the masked count `shiftMask w src.toNat`. -/
   | shl (dst : Reg) (src : Operand)
-  /-- `SHR dst, src` : logical right shift by `src.toNat`. -/
+  /-- `SHR dst, src` : logical right shift by the masked count `shiftMask w src.toNat`. -/
   | shr (dst : Reg) (src : Operand)
   /-- `SAR dst, src` : arithmetic right shift by `src.toNat`. Modeled only;
       preservation not proved (no logical-`shr` source counterpart). -/
@@ -456,8 +453,8 @@ def step {w : Nat} (s : State w) : Instr w → State w
   | .and_ dst src => s.set dst (s.get dst &&& src.eval s)
   | .or_ dst src  => s.set dst (s.get dst ||| src.eval s)
   | .xor_ dst src => s.set dst (s.get dst ^^^ src.eval s)
-  | .shl dst src  => s.set dst (s.get dst <<< (src.eval s).toNat)
-  | .shr dst src  => s.set dst (s.get dst >>> (src.eval s).toNat)
+  | .shl dst src  => s.set dst (s.get dst <<< VIR.shiftMask w (src.eval s).toNat)
+  | .shr dst src  => s.set dst (s.get dst >>> VIR.shiftMask w (src.eval s).toNat)
   | .sar dst src  => s.set dst (BitVec.sshiftRight (s.get dst) (src.eval s).toNat)
   | .cmov cc dst src =>
       s.set dst (if cc.eval s.flags then src.eval s else s.get dst)

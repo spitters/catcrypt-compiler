@@ -311,11 +311,11 @@ def binIv (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
   | .and => ivAnd w (hget A a).1 (hget A b).1
   | .shr =>
     match ivSingle? (ivLane w (hget A b).1) with
-    | some k => ivShr w (hget A a).1 k
+    | some k => ivShr w (hget A a).1 (shiftMask w k)
     | none => ivTop w
   | .shl =>
     match ivSingle? (ivLane w (hget A b).1) with
-    | some k => ivShl w (hget A a).1 k
+    | some k => ivShl w (hget A a).1 (shiftMask w k)
     | none => ivTop w
   | _ => ivTop w
 
@@ -356,7 +356,7 @@ def binSym (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
     | _, _ => .none
   | .shr =>
     match ivSingle? (ivLane w (hget A b).1) with
-    | some k => shrSym A a k len
+    | some k => shrSym A a (shiftMask w k) len
     | none => .none
   | _ => .none
 
@@ -386,8 +386,9 @@ def opAbs (op : JasminOp)
   | .regArith bop w, .cons a (.cons b .nil) => (binIv A w bop a b len, binSym A w bop a b len)
   | .regConst w n, _ => (ivConst w n, .none)
   | .mulhi w, .cons a (.cons b .nil) => (ivMulhi w (hget A a).1 (hget A b).1, .none)
-  | .shrImm w n, .cons a .nil => (ivShr w (hget A a).1 n, shrSym A a n len)
-  | .shlImm _ n, .cons a .nil => (shlIv A a n, .none)
+  | .shrImm w n, .cons a .nil =>
+    (ivShr w (hget A a).1 (shiftMask w n), shrSym A a (shiftMask w n) len)
+  | .shlImm w n, .cons a .nil => (shlIv A a (shiftMask w n), .none)
   | .sarImm w n, .cons a .nil => (ivSar w (hget A a).1 n, .none)
   | .castW w w', .cons a .nil => (castIv w w' (hget A a).1, castSym A w' a len)
   | .select _, .cons _ (.cons a (.cons b .nil)) => (ivHull (hget A a).1 (hget A b).1, .none)
@@ -458,14 +459,14 @@ theorem binIv_sound (hA : EnvOK A V) {w : Nat} (bop : JasminBinOp) (a b : Ctxt.V
     split
     · rename_i k hk
       rw [Iv.toNat_eq_of_single hb hk]
-      exact Iv.mem_shr ha k
+      exact Iv.mem_shr ha (shiftMask w k)
     · exact Iv.mem_top _
   | shl =>
     simp only [binIv, JasminBinOp.apply]
     split
     · rename_i k hk
       rw [Iv.toNat_eq_of_single hb hk]
-      exact Iv.mem_shl ha k
+      exact Iv.mem_shl ha (shiftMask w k)
     · exact Iv.mem_top _
   | or => exact Iv.mem_top _
   | xor => exact Iv.mem_top _
@@ -580,7 +581,7 @@ theorem binSym_sound (hA : EnvOK A V) {w : Nat} (bop : JasminBinOp) (a b : Ctxt.
     split
     · rename_i k hk
       rw [Iv.toNat_eq_of_single (hA.reg b).1 hk]
-      exact shrSym_sound hA a k
+      exact shrSym_sound hA a (shiftMask w k)
     · exact SymOK.none _ _ _
   | add => exact SymOK.none _ _ _
   | or => exact SymOK.none _ _ _
@@ -641,10 +642,11 @@ theorem opAbs_sound (hA : EnvOK A V) (op : JasminOp)
       exact ⟨Iv.mem_mulhi (hA.reg a).1 (hA.reg b).1, SymOK.none _ _ _⟩
   | shrImm w n =>
     match args with
-    | .cons a .nil => exact ⟨Iv.mem_shr (hA.reg a).1 n, shrSym_sound hA a n⟩
+    | .cons a .nil =>
+      exact ⟨Iv.mem_shr (hA.reg a).1 (shiftMask w n), shrSym_sound hA a (shiftMask w n)⟩
   | shlImm w n =>
     match args with
-    | .cons a .nil => exact ⟨shlIv_sound hA a n, SymOK.none _ _ _⟩
+    | .cons a .nil => exact ⟨shlIv_sound hA a (shiftMask w n), SymOK.none _ _ _⟩
   | sarImm w n =>
     match args with
     | .cons a .nil => exact ⟨Iv.mem_sar (hA.reg a).1 n, SymOK.none _ _ _⟩

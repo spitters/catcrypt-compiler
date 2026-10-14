@@ -83,8 +83,8 @@ deriving DecidableEq
 /-- The scalar meaning of an immediate-count op at count `n`, as `jasminDenote` gives
     it. -/
 def ImmOp.apply {w : Nat} : ImmOp → Nat → BitVec w → BitVec w
-  | .shl, n, a => a <<< n
-  | .shr, n, a => a >>> n
+  | .shl, n, a => a <<< shiftMask w n
+  | .shr, n, a => a >>> shiftMask w n
   | .sar, n, a => BitVec.sshiftRight a n
   | .ror, n, a => a.rotateRight n
 

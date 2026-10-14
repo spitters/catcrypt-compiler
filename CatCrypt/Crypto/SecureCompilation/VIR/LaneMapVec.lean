@@ -176,6 +176,8 @@ theorem laneMapZmmCovered_of_qwordYmm : {Γ : Ctxt jasminDialect} → {t : Jasmi
       have he := hc.1
       obtain ⟨op, rfl, args⟩ := e
       cases op <;> simp_all [LaneShape.CoveredExpr, qwordYmm, qwordZmm]
+      rename_i bop _
+      cases bop <;> simp_all [ymmCovers]
 
 /-- **The 256-bit map is the low half of the 512-bit map.** For a program covered by
     `qwordYmm` returning `reg 64`, if qword lane `k < 4` of the ZMM inputs `W` agrees
@@ -210,11 +212,12 @@ def ymmQImmBlock : ImmOp → Option (Nat → UnaryBuilder 256)
         (Com.var ⟨.vymm (.vpsrlq n), rfl, .cons a.there .nil⟩
           (Com.var ⟨.vymm .vpor, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)))
 
-/-- The counts at which `ymmQImmBlock` is lane-correct: every count for the shifts, and
-    `0 < n < 64` for the rotate. -/
+/-- The counts at which `ymmQImmBlock` is lane-correct: counts below the lane width 64
+    for the shifts (the vector shifts give `0` at larger counts, the masked scalar shift
+    does not), and `0 < n < 64` for the rotate. -/
 def ymmQImmCovers : ImmOp → Nat → Bool
   | .ror, n => decide (0 < n ∧ n < 64)
-  | _, _ => true
+  | _, n => decide (n < 64)
 
 /-- Qword lane `k` of `vpsllqW a n` is lane `k` of `a` shifted left by `n`. -/
 theorem yQwordW_vpsllqW (a : BitVec 256) (n : Nat) (k : Fin 4) :
@@ -244,8 +247,14 @@ def qwordYmmImm : LaneShape :=
     imm_lane := by
       intro _ op f hf n hc _ a V k
       cases op <;> cases hf
-      case shl => exact yQwordW_vpsllqW (a.lookup V) n k
-      case shr => exact yQwordW_vpsrlqW (a.lookup V) n k
+      case shl =>
+        exact (yQwordW_vpsllqW (a.lookup V) n k).trans
+          (congrArg (fun m => yQwordW (a.lookup V) k.val <<< m)
+            (shiftMask_of_lt (w := 64) (of_decide_eq_true hc)).symm)
+      case shr =>
+        exact (yQwordW_vpsrlqW (a.lookup V) n k).trans
+          (congrArg (fun m => yQwordW (a.lookup V) k.val >>> m)
+            (shiftMask_of_lt (w := 64) (of_decide_eq_true hc)).symm)
       case ror =>
         have hn : n < 64 := (of_decide_eq_true hc).2
         exact yQwordW_ror_synth (a.lookup V) n hn k }
@@ -266,14 +275,15 @@ theorem laneMapYmmImm_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
 
 open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect (vpsllvqW vpsrlvqW)
 
-/-- A scalar left shift by a register count of at least the word width is zero. -/
-theorem apply_shl_eq_zero_of_le {w : Nat} (a b : BitVec w) (h : w ≤ b.toNat) :
+/-- A scalar left shift by a register count whose masked value is at least the word
+    width is zero. -/
+theorem apply_shl_eq_zero_of_le {w : Nat} (a b : BitVec w) (h : w ≤ shiftMask w b.toNat) :
     JasminBinOp.apply .shl a b = 0 :=
   BitVec.shiftLeft_eq_zero h
 
-/-- A scalar logical right shift by a register count of at least the word width is
-    zero. -/
-theorem apply_shr_eq_zero_of_le {w : Nat} (a b : BitVec w) (h : w ≤ b.toNat) :
+/-- A scalar logical right shift by a register count whose masked value is at least the
+    word width is zero. -/
+theorem apply_shr_eq_zero_of_le {w : Nat} (a b : BitVec w) (h : w ≤ shiftMask w b.toNat) :
     JasminBinOp.apply .shr a b = 0 :=
   BitVec.ushiftRight_eq_zero h
 
@@ -296,23 +306,20 @@ def ymmVPackExpr : JasminBinOp → PackBuilder 256
   | .shr => fun _ a b => ⟨.vymm .vpsrlvq, rfl, .cons a (.cons b .nil)⟩
   | bop => ymmPackExpr bop
 
-/-- Four 64-bit lanes in a YMM register: `qwordYmmImm` with the register-count shifts
-    `shl` and `shr` lowered to `vpsllvq` / `vpsrlvq`, so every `JasminBinOp` is
-    covered. -/
+/-- Four 64-bit lanes in a YMM register: `qwordYmmImm` with the packed expression
+    `ymmVPackExpr`. The register-count shifts `shl` and `shr` are not covered: `vpsllvq`
+    / `vpsrlvq` give `0` at counts of at least 64, where the scalar shift masks the
+    count. -/
 def qwordYmmV : LaneShape :=
   { qwordYmmImm with
-    covers := fun _ => true
+    covers := ymmCovers
     packExpr := ymmVPackExpr
     fallbackName := "laneMapYmmV_uncovered"
     pack_lane := by
-      intro leafSem bop _ Γ a b V k
+      intro leafSem bop hc Γ a b V k
       cases bop
-      case shl =>
-        show yQwordW (vpsllvqW (a.lookup V) (b.lookup V)) k.val = _
-        exact yQwordW_vpsllvqW _ _ k
-      case shr =>
-        show yQwordW (vpsrlvqW (a.lookup V) (b.lookup V)) k.val = _
-        exact yQwordW_vpsrlvqW _ _ k
+      case shl => exact absurd hc (by decide)
+      case shr => exact absurd hc (by decide)
       case add => exact qwordYmm.pack_lane leafSem .add rfl Γ a b V k
       case sub => exact qwordYmm.pack_lane leafSem .sub rfl Γ a b V k
       case mul => exact qwordYmm.pack_lane leafSem .mul rfl Γ a b V k

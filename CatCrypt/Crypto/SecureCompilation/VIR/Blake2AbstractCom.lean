@@ -246,12 +246,12 @@ theorem blake2GLine1Com_lane
             (.cons k1 .nil)))))))))))))) ) k
       = zmmLane a k + zmmLane b k + zmmLane x k := by
   rw [blake2GLine1Com_denote, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-! ## 2. The per-lane characterization of the packed `G` specs
 
 Pushing the lane reader `zmmLane · k` through each `gSpec{A,B,C,D}` by
-`zmmPackQ_lane` and `JasminBinOp.apply`, with the rotate decompositions collapsed
+`zmmPackQ_lane` and `JasminBinOp.applyLane`, with the rotate decompositions collapsed
 to `BitVec.rotateRight` by `rotateRight_shiftor` at the BLAKE2b amounts and the
 broadcast shift constants read off by `constZmm_lane`, lane `k` of each output is
 exactly the corresponding component of the abstract `blake2bGSpec` on lane `k`. -/
@@ -263,7 +263,7 @@ theorem gSpecA_lane (a b c d x y : BitVec 512) (k : Fin 8) :
       = (blake2bGSpec (zmmLane a k) (zmmLane b k) (zmmLane c k) (zmmLane d k)
           (zmmLane x k) (zmmLane y k)).1 := by
   unfold gSpecA blake2bGSpec
-  simp only [zmmPackQ_lane, JasminBinOp.apply, constZmm_lane]
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane, constZmm_lane]
   simp only [rotateRight_shiftor_ofNat _ 32 (by norm_num),
     rotateRight_shiftor_ofNat _ 24 (by norm_num)]
 
@@ -274,7 +274,7 @@ theorem gSpecD_lane (a b c d x y : BitVec 512) (k : Fin 8) :
       = (blake2bGSpec (zmmLane a k) (zmmLane b k) (zmmLane c k) (zmmLane d k)
           (zmmLane x k) (zmmLane y k)).2.2.2 := by
   unfold gSpecD blake2bGSpec
-  simp only [zmmPackQ_lane, JasminBinOp.apply, constZmm_lane]
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane, constZmm_lane]
   simp only [rotateRight_shiftor_ofNat _ 32 (by norm_num),
     rotateRight_shiftor_ofNat _ 24 (by norm_num),
     rotateRight_shiftor_ofNat _ 16 (by norm_num)]
@@ -286,7 +286,7 @@ theorem gSpecC_lane (a b c d x y : BitVec 512) (k : Fin 8) :
       = (blake2bGSpec (zmmLane a k) (zmmLane b k) (zmmLane c k) (zmmLane d k)
           (zmmLane x k) (zmmLane y k)).2.2.1 := by
   unfold gSpecC blake2bGSpec
-  simp only [zmmPackQ_lane, JasminBinOp.apply, constZmm_lane]
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane, constZmm_lane]
   simp only [rotateRight_shiftor_ofNat _ 32 (by norm_num),
     rotateRight_shiftor_ofNat _ 24 (by norm_num),
     rotateRight_shiftor_ofNat _ 16 (by norm_num)]
@@ -298,7 +298,7 @@ theorem gSpecB_lane (a b c d x y : BitVec 512) (k : Fin 8) :
       = (blake2bGSpec (zmmLane a k) (zmmLane b k) (zmmLane c k) (zmmLane d k)
           (zmmLane x k) (zmmLane y k)).2.1 := by
   unfold gSpecB blake2bGSpec
-  simp only [zmmPackQ_lane, JasminBinOp.apply, constZmm_lane]
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane, constZmm_lane]
   simp only [rotateRight_shiftor_ofNat _ 32 (by norm_num),
     rotateRight_shiftor_ofNat _ 24 (by norm_num),
     rotateRight_shiftor_ofNat _ 16 (by norm_num),

@@ -257,10 +257,12 @@ theorem ofNat_toNat_256 (x : BitVec 256) : BitVec.ofNat 256 x.toNat = x := by
 /-! ## 4. The covered fragment -/
 
 /-- The scalar ops `batch8` widens lane-preservingly: `add/sub/mul/xor/or/and/andn`
-    at width 32, `shl/shr` at width 32, the immediate shifts including the
-    arithmetic `sarImm`, and rotate-right `rorImm 32 n` with `0 < n < 32`. The
-    subtract, low product, and-not and arithmetic shift are what per-coefficient
-    lattice arithmetic needs on top of the SHA fragment. -/
+    at width 32, the logical immediate shifts at counts below 32, the arithmetic
+    `sarImm`, and rotate-right `rorImm 32 n` with `0 < n < 32`. The register-count
+    shifts `shl/shr` are not covered: `vpsllvd`/`vpsrlvd` give `0` at counts of at
+    least 32, where the scalar shift masks the count. The subtract, low product,
+    and-not and arithmetic shift are what per-coefficient lattice arithmetic needs on
+    top of the SHA fragment. -/
 def CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) : Prop :=
   match e.op with
@@ -271,10 +273,8 @@ def CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
   | .regArith .or w => w = 32
   | .regArith .and w => w = 32
   | .regArith .andn w => w = 32
-  | .regArith .shl w => w = 32
-  | .regArith .shr w => w = 32
-  | .shlImm w _ => w = 32
-  | .shrImm w _ => w = 32
+  | .shlImm w n => w = 32 ∧ n < 32
+  | .shrImm w n => w = 32 ∧ n < 32
   | .sarImm w _ => w = 32
   | .rorImm w n => w = 32 ∧ 0 < n ∧ n < 32
   | .regConst w _ => w = 32
@@ -331,11 +331,15 @@ def ymmDImmBlock : ImmOp → Option (Nat → UnaryBuilder 256)
         (Com.var ⟨.vymm (.vpsrld n), rfl, .cons a.there .nil⟩
           (Com.var ⟨.vymm .vpor, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)))
 
-/-- The counts at which `ymmDImmBlock` is lane-correct: every count for the shifts, and
-    `0 < n < 32` for the rotate. -/
+/-- The counts at which `ymmDImmBlock` is lane-correct: counts below the lane width 32
+    for the logical shifts (the vector shifts give `0` at larger counts, the masked
+    scalar shift does not), every count for the arithmetic shift, and `0 < n < 32` for
+    the rotate. -/
 def ymmDImmCovers : ImmOp → Nat → Bool
   | .ror, n => decide (0 < n ∧ n < 32)
-  | _, _ => true
+  | .shl, n => decide (n < 32)
+  | .shr, n => decide (n < 32)
+  | .sar, _ => true
 
 /-- Eight 32-bit lanes in a YMM register, on the `vymm` dword ops, with the message
     array widened to an array of packed slots (the `batch8` shape). -/
@@ -345,7 +349,7 @@ def dwordYmm : LaneShape where
   regBits := 256
   regBits_eq := rfl
   lane := fun v k => BitVec.extractLsb' (32 * k.val) 32 v
-  covers := fun _ => true
+  covers := fun | .shl => false | .shr => false | _ => true
   packExpr := ymmDPackExpr
   bcast := fun kk => (Optimizer.Batch8.bcast256 kk).toNat
   mulhiExpr := none
@@ -354,7 +358,7 @@ def dwordYmm : LaneShape where
   arrWiden := true
   fallbackName := "batch8_uncovered"
   pack_lane := by
-    intro _ bop _ _ a b V k
+    intro _ bop hc _ a b V k
     cases bop
     case add => exact vpadddW_lane (a.lookup V) (b.lookup V) k
     case sub => exact vpsubdW_lane (a.lookup V) (b.lookup V) k
@@ -363,8 +367,8 @@ def dwordYmm : LaneShape where
     case or => exact vporW_lane (a.lookup V) (b.lookup V) k
     case xor => exact vpxorW_lane (a.lookup V) (b.lookup V) k
     case andn => exact vpandnW_lane (a.lookup V) (b.lookup V) k
-    case shl => exact vpsllvdW_lane (a.lookup V) (b.lookup V) k
-    case shr => exact vpsrlvdW_lane (a.lookup V) (b.lookup V) k
+    case shl => exact absurd hc (by decide)
+    case shr => exact absurd hc (by decide)
   const_lane := by
     intro kk k
     show BitVec.extractLsb' (32 * k.val) 32
@@ -373,8 +377,12 @@ def dwordYmm : LaneShape where
   imm_lane := by
     intro _ op f hf n hc _ a V k
     cases op <;> cases hf
-    case shl => exact vpslldW_uniform_lane (a.lookup V) n k
-    case shr => exact vpsrldW_uniform_lane (a.lookup V) n k
+    case shl =>
+      rw [ImmOp.apply, shiftMask_of_lt (of_decide_eq_true hc)]
+      exact vpslldW_uniform_lane (a.lookup V) n k
+    case shr =>
+      rw [ImmOp.apply, shiftMask_of_lt (of_decide_eq_true hc)]
+      exact vpsrldW_uniform_lane (a.lookup V) n k
     case sar => exact vpsradW_uniform_lane (a.lookup V) n k
     case ror =>
       have hn : n < 32 := (of_decide_eq_true hc).2
@@ -415,14 +423,16 @@ theorem lowerExprBlock_dwordYmm {Γ : Ctxt jasminDialect} {t : JasminTy}
   obtain ⟨op, rfl, args⟩ := e
   cases op <;> try (simp only [CoveredExpr] at he; done)
   case regArith bop w =>
-    cases bop <;>
-      (simp only [CoveredExpr] at he; subst he
+    cases bop <;> simp only [CoveredExpr] at he <;>
+      (subst he
        cases args; rename_i a rest; cases rest; rename_i b rest2; cases rest2; rfl)
   case shlImm w n =>
-    simp only [CoveredExpr] at he; subst he
+    obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := he
+    subst hw
     cases args; rename_i a rest; cases rest; rfl
   case shrImm w n =>
-    simp only [CoveredExpr] at he; subst he
+    obtain ⟨hw, _⟩ : w = 32 ∧ n < 32 := he
+    subst hw
     cases args; rename_i a rest; cases rest; rfl
   case sarImm w n =>
     simp only [CoveredExpr] at he; subst he

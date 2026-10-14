@@ -45,8 +45,8 @@ both sides to the common `BitVec` operation.
 | `andi w`     | `· &&& ·`                | `andi w`               | `andi w`                   |
 | `ori  w`     | `· ||| ·`                | `ori w`                | `ori w`                    |
 | `xori w`     | `· ^^^ ·`                | `xori w`               | `xori w`                   |
-| `· <<< n`    | `BitVec.shiftLeft`       | `shli_imm w n`         | `shli w n`                 |
-| `· >>> n`    | `BitVec.ushiftRight`     | `shrui_imm w n`        | `shrui w n`                |
+| `· <<< shiftMask w n` | `BitVec.shiftLeft` | `shli_imm w n`        | `shli w n`                 |
+| `· >>> shiftMask w n` | `BitVec.ushiftRight` | `shrui_imm w n`     | `shrui w n`                |
 | `constant`   | the literal `BitVec`     | `constant w v.toNat`   | `constant w v`             |
 
 The two right-shift denotations (`a >>> n` back vs `BitVec.ushiftRight a n`
@@ -177,10 +177,12 @@ Unary ops (one `BitVec w` argument). Note the name difference: the back op is
 /-! ### `shli` / `shli_imm` -/
 
 theorem arith_shli_apply (w n : Nat) (a : BitVec w) :
-    DialectDenote.denote (d := arithDialect) (.shli_imm w n) (.cons a .nil) = a <<< n := rfl
+    DialectDenote.denote (d := arithDialect) (.shli_imm w n) (.cons a .nil)
+      = a <<< shiftMask w n := rfl
 
 theorem mlirArith_shli_apply (w n : Nat) (a : BitVec w) :
-    DialectDenote.denote (d := mlirArithDialect) (.shli w n) (.cons a .nil) = a <<< n := rfl
+    DialectDenote.denote (d := mlirArithDialect) (.shli w n) (.cons a .nil)
+      = a <<< shiftMask w n := rfl
 
 /-- The front `shli` and back `shli_imm` compute the same `BitVec` left shift. -/
 theorem shli_agree (w n : Nat) (a : BitVec w) :
@@ -197,11 +199,11 @@ lemma is required**. -/
 
 theorem arith_shrui_apply (w n : Nat) (a : BitVec w) :
     DialectDenote.denote (d := arithDialect) (.shrui_imm w n) (.cons a .nil)
-      = BitVec.ushiftRight a n := rfl
+      = BitVec.ushiftRight a (shiftMask w n) := rfl
 
 theorem mlirArith_shrui_apply (w n : Nat) (a : BitVec w) :
     DialectDenote.denote (d := mlirArithDialect) (.shrui w n) (.cons a .nil)
-      = BitVec.ushiftRight a n := rfl
+      = BitVec.ushiftRight a (shiftMask w n) := rfl
 
 /-- The front `shrui` and back `shrui_imm` compute the same `BitVec` logical
     right shift (the back `· >>> ·` is definitionally `BitVec.ushiftRight`). -/

@@ -43,6 +43,9 @@ A lowering between dialects is a `LoweringData`, `BlockLoweringData` or
 over a shared type universe are combined by `Dialect.opSum`
 (`VIR/DialectOpSum.lean`).
 
+The module also holds `shiftMask`, the shift-count mask every shift interpreter of
+the compiler applies; it sits here because every interpreter imports this module.
+
 ## References
 
 * opencompl/lean-mlir (`LeanMLIR/Framework/Basic.lean`, `ErasedContext.lean`,
@@ -196,5 +199,35 @@ def denote {d : Dialect} [TyDenote d.Ty] [DialectSignature d] [DialectDenote d] 
   | _, _, .var e body, V => body.denote (V.extend (e.denote V))
 
 end Com
+
+/-! ## 7. The shift-count mask
+
+Every interpreter of a logical shift by a count, at every level of the pipeline,
+shifts by `shiftMask w k`: the count an x86 scalar `SHL`/`SHR` of a width-`w`
+register applies. -/
+
+/-- The count an x86 scalar `SHL`/`SHR` of a width-`w` register applies for the
+    requested count `k`: `k % 64` at width 64 and `k % 32` at widths up to 32 (the
+    count register is masked to six, respectively five, bits), `k % 128` and
+    `k % 256` at widths 128 and 256 (Jasmin's `sem_shift` mask), and `k` at every
+    other width. -/
+def shiftMask (w k : Nat) : Nat :=
+  if w = 64 then k % 64 else if w ≤ 32 then k % 32
+  else if w = 128 then k % 128 else if w = 256 then k % 256 else k
+
+/-- A count below the width is not changed by the mask. -/
+theorem shiftMask_of_lt {w k : Nat} (h : k < w) : shiftMask w k = k := by
+  unfold shiftMask
+  split <;> (try split) <;> (try split) <;> (try split) <;>
+    first | rfl | (apply Nat.mod_eq_of_lt; omega)
+
+@[simp] theorem shiftMask_64 (k : Nat) : shiftMask 64 k = k % 64 := rfl
+
+theorem shiftMask_lt_64 (k : Nat) : shiftMask 64 k < 64 := by
+  rw [shiftMask_64]; exact Nat.mod_lt _ (by decide)
+
+@[simp] theorem shiftMask_zero (w : Nat) : shiftMask w 0 = 0 := by
+  unfold shiftMask
+  split <;> (try split) <;> (try split) <;> (try split) <;> rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR

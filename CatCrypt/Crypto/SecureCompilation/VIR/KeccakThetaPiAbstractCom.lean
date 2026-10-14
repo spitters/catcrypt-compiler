@@ -45,7 +45,7 @@ denotation equality becomes a FIPS-202 equality on each of the 8 sub-lanes.
 
 * `zmmOfLanes_zmmLane'` / `zmmPackQ_lane` — the 8×u64 lane round-trip and the
   per-lane characterization of `zmmPackQ` (lane `k` of a packed op is the scalar
-  `JasminBinOp.apply` of the input lanes). The qword analogues of `ZmmDwordLane`'s
+  `JasminBinOp.applyLane` of the input lanes). The qword analogues of `ZmmDwordLane`'s
   dword lemmas; reproved locally so this file imports no AVX-512 model.
 * `parityCom_lane_eq_abstract_C` — lane `k` of `parityCom`'s denotation equals the
   abstract θ column parity `C[x] = a[x,0] ⊕ … ⊕ a[x,4]` of `stateAt reg k`.
@@ -100,11 +100,11 @@ theorem zmmOfLanes_zmmLane' (f : Fin 8 → BitVec 64) (k : Fin 8) :
        BitVec.extractLsb'_append_eq_left]) <;>
     rfl
 
-/-- Lane `k` of `zmmPackQ bop a b` is `bop.apply (zmmLane a k) (zmmLane b k)`: each
-    packed qword op acts on lane `k` of the two inputs independently. (Qword
+/-- Lane `k` of `zmmPackQ bop a b` is `bop.applyLane (zmmLane a k) (zmmLane b k)`:
+    each packed qword op acts on lane `k` of the two inputs independently. (Qword
     analogue of `zmmPackD_lane`.) -/
 theorem zmmPackQ_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 8) :
-    zmmLane (zmmPackQ bop a b) k = bop.apply (zmmLane a k) (zmmLane b k) := by
+    zmmLane (zmmPackQ bop a b) k = bop.applyLane (zmmLane a k) (zmmLane b k) := by
   unfold zmmPackQ
   rw [zmmOfLanes_zmmLane']
 
@@ -135,7 +135,7 @@ theorem parityCom_lane_eq_abstract_C
       = (stateAt reg k) x 0 ^^^ (stateAt reg k) x 1 ^^^ (stateAt reg k) x 2
           ^^^ (stateAt reg k) x 3 ^^^ (stateAt reg k) x 4 := by
   rw [parityCom_denote, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply, stateAt]
+  simp only [JasminBinOp.applyLane, stateAt]
 
 /-! ## 3. θ diffusion tie -/
 
@@ -157,7 +157,7 @@ theorem dCom_lane_eq_abstract_D (cm cp : BitVec 512) (k : Fin 8) :
     unfold constZmm; rw [zmmOfLanes_zmmLane']
   have h63 : zmmLane (constZmm 63) k = BitVec.ofNat 64 63 := by
     unfold constZmm; rw [zmmOfLanes_zmmLane']
-  simp only [JasminBinOp.apply, hone, h63]
+  simp only [JasminBinOp.applyLane, hone, h63]
   have h1 : (BitVec.ofNat 64 1).toNat = 1 := by decide
   have h63' : (BitVec.ofNat 64 63).toNat = 63 := by decide
   rw [h1, h63']

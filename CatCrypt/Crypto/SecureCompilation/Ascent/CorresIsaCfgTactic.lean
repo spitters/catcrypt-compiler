@@ -230,7 +230,7 @@ macro "isa_opn_proof " i:ident : tactic => `(tactic|
 theorem lsemStepMem_shrI (d a : String) (k : Nat) (s : LstateM) (va : BitVec 64)
     (h : s.reg.lvm a = ⟨64, va⟩) :
     lsemStepMem (shrI d a k) s =
-      some (s.setReg d (va >>> (BitVec.ofNat 64 k).toNat)).nextPc := by
+      some (s.setReg d (va >>> shiftMask 64 (BitVec.ofNat 64 k).toNat)).nextPc := by
   isa_opn_proof shrI
 
 theorem lsemStepMem_addI (d a : String) (k : Nat) (s : LstateM) (va : BitVec 64)

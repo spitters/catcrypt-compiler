@@ -141,7 +141,7 @@ theorem veirBinInt_val (bop : JasminBinOp) (hb : bop ≠ .andn) {w : Nat} (a b :
     | rfl
     | (have hlt := hs trivial
        simp only [veirBinInt, LLVM.Int.shl, LLVM.Int.lshr, Id.run, bitVec_ge_natCast_self_iff,
-         JasminBinOp.apply, BitVec.shiftLeft_eq', BitVec.ushiftRight_eq']
+         JasminBinOp.apply, BitVec.shiftLeft_eq', BitVec.ushiftRight_eq', shiftMask_of_lt hlt]
        simp [Nat.not_le.2 hlt])
 
 /-- Every op of `veirBinInt` returns poison on a poison operand. -/
@@ -184,12 +184,14 @@ theorem veirBinInt_refines (bop : JasminBinOp) (hb : bop ≠ .andn) {w : Nat}
 
 /-! ## The shift expansion -/
 
-/-- The value of `shiftSelectExpansion bop w` on LLVM integers: `arith.select` of
-the constant `0` when `arith.cmpi uge` finds the amount `y` at least `w`, and of
-`veirBinInt bop x y` otherwise. -/
+/-- The value of `shiftSelectExpansion bop w` on LLVM integers: with `m` the
+`arith.andi` of the amount `y` with the constant `shiftMask w (2 ^ w - 1)`,
+`arith.select` of the constant `0` when `arith.cmpi uge` finds `m` at least `w`, and
+of `veirBinInt bop x m` otherwise. -/
 def veirShiftSel (bop : JasminBinOp) {w : Nat} (x y : LLVM.Int w) : LLVM.Int w :=
-  LLVM.Int.select (LLVM.Int.icmp y (.val (BitVec.ofNat w w)) .uge) (.val 0)
-    (veirBinInt bop x y)
+  let m := LLVM.Int.and y (.val (BitVec.ofNat w (shiftMask w (2 ^ w - 1))))
+  LLVM.Int.select (LLVM.Int.icmp m (.val (BitVec.ofNat w w)) .uge) (.val 0)
+    (veirBinInt bop x m)
 
 /-- The `arith.cmpi uge` of a defined amount `b` against the width constant. -/
 theorem icmp_uge_width {w : Nat} (b : BitVec w) :
@@ -198,20 +200,80 @@ theorem icmp_uge_width {w : Nat} (b : BitVec w) :
   simp [LLVM.Int.icmp, Id.run, LLVM.IntPred.eval, BitVec.ule, BitVec.toNat_ofNat,
     Nat.mod_eq_of_lt Nat.lt_two_pow_self]
 
+/-- The shift-count mask is idempotent. -/
+theorem shiftMask_shiftMask (w k : Nat) : shiftMask w (shiftMask w k) = shiftMask w k := by
+  unfold shiftMask
+  split_ifs <;> simp
+
+/-- The `arith.andi` of an amount `b` with the constant `shiftMask w (2 ^ w - 1)` is
+the masked count `shiftMask w b.toNat`. -/
+theorem toNat_and_ofNat_shiftMask {w : Nat} (b : BitVec w) :
+    (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1))).toNat = shiftMask w b.toNat := by
+  have hb := b.isLt
+  have hp : 0 < 2 ^ w := Nat.two_pow_pos w
+  rw [BitVec.toNat_and, BitVec.toNat_ofNat]
+  unfold shiftMask
+  by_cases h64 : w = 64
+  · subst h64
+    rw [if_pos rfl, if_pos rfl,
+      (by decide : (2 ^ 64 - 1) % 64 % 2 ^ 64 = 2 ^ 6 - 1), Nat.and_two_pow_sub_one_eq_mod]
+  rw [if_neg h64, if_neg h64]
+  by_cases h32 : w ≤ 32
+  · rw [if_pos h32, if_pos h32]
+    by_cases h5 : 5 ≤ w
+    · have hpow : 2 ^ w = 2 ^ 5 * 2 ^ (w - 5) := by
+        rw [← Nat.pow_add, Nat.add_sub_cancel' h5]
+      have ht : 1 ≤ 2 ^ (w - 5) := Nat.one_le_two_pow
+      have h31 : (2 ^ w - 1) % 32 % 2 ^ w = 2 ^ 5 - 1 := by
+        have h1 : (2 ^ w - 1) % 32 = 31 := by
+          rw [hpow]; generalize 2 ^ (w - 5) = t at ht ⊢; omega
+        rw [h1, Nat.mod_eq_of_lt (by omega)]
+      rw [h31, Nat.and_two_pow_sub_one_eq_mod]
+    · have h16 : 2 ^ w ≤ 2 ^ 4 := Nat.pow_le_pow_right (by decide) (by omega)
+      rw [Nat.mod_eq_of_lt (show 2 ^ w - 1 < 32 by omega),
+        Nat.mod_eq_of_lt (show 2 ^ w - 1 < 2 ^ w by omega), Nat.and_two_pow_sub_one_eq_mod,
+        Nat.mod_eq_of_lt hb, Nat.mod_eq_of_lt (by omega)]
+  rw [if_neg h32, if_neg h32]
+  by_cases h128 : w = 128
+  · subst h128
+    rw [if_pos rfl, if_pos rfl,
+      (by decide : (2 ^ 128 - 1) % 128 % 2 ^ 128 = 2 ^ 7 - 1), Nat.and_two_pow_sub_one_eq_mod]
+  rw [if_neg h128, if_neg h128]
+  by_cases h256 : w = 256
+  · subst h256
+    rw [if_pos rfl, if_pos rfl,
+      (by decide : (2 ^ 256 - 1) % 256 % 2 ^ 256 = 2 ^ 8 - 1), Nat.and_two_pow_sub_one_eq_mod]
+  rw [if_neg h256, if_neg h256, Nat.mod_eq_of_lt (show 2 ^ w - 1 < 2 ^ w by omega),
+    Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt hb]
+
+/-- A shift by the masked amount `b &&& shiftMask w (2 ^ w - 1)` is the shift by `b`. -/
+theorem JasminBinOp.apply_and_shiftMask (bop : JasminBinOp) (hb : bop.IsShift) {w : Nat}
+    (a b : BitVec w) :
+    bop.apply a (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1))) = bop.apply a b := by
+  cases bop <;> simp only [JasminBinOp.IsShift] at hb <;>
+    simp only [JasminBinOp.apply, toNat_and_ofNat_shiftMask, shiftMask_shiftMask]
+
 /-- On defined operands, the shift expansion is the value of `JasminBinOp.apply`
-for every shift amount: `0` when the amount is at least the width, where the
+for every shift amount: `0` when the masked amount is at least the width, where the
 shift alone is poison. -/
 theorem veirShiftSel_val (bop : JasminBinOp) (hb : bop.IsShift) {w : Nat} (a b : BitVec w) :
     veirShiftSel bop (.val a) (.val b) = .val (bop.apply a b) := by
-  simp only [veirShiftSel, icmp_uge_width]
-  by_cases h : w ≤ b.toNat
-  · cases bop <;> simp only [JasminBinOp.IsShift] at hb
-    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.shiftLeft_eq_zero h]
-    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.ushiftRight_eq_zero h]
-  · have hlt : b.toNat < w := Nat.lt_of_not_le h
+  have hm : LLVM.Int.and (.val b) (.val (BitVec.ofNat w (shiftMask w (2 ^ w - 1)))) =
+      .val (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1))) := rfl
+  simp only [veirShiftSel, hm, icmp_uge_width]
+  rw [← JasminBinOp.apply_and_shiftMask bop hb a b]
+  generalize hmd : b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1)) = m
+  have hmm : shiftMask w m.toNat = m.toNat := by
+    rw [← hmd, toNat_and_ofNat_shiftMask, shiftMask_shiftMask]
+  by_cases h : w ≤ m.toNat
+  · have h' : w ≤ shiftMask w m.toNat := by rw [hmm]; exact h
+    cases bop <;> simp only [JasminBinOp.IsShift] at hb
+    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.shiftLeft_eq_zero h']
+    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.ushiftRight_eq_zero h']
+  · have hlt : m.toNat < w := Nat.lt_of_not_le h
     have hne : bop ≠ .andn := by rintro rfl; exact hb
     simp only [LLVM.Int.select, Id.run, h, decide_false, BitVec.ofBool_false]
-    exact veirBinInt_val bop hne a b (fun _ => hlt)
+    exact veirBinInt_val bop hne a m (fun _ => hlt)
 
 /-- The shift expansion is monotone for VeIR's refinement: operands refined by `a`
 and `b` give a result refined by `JasminBinOp.apply bop a b`, for every shift
@@ -222,16 +284,23 @@ theorem veirShiftSel_refines (bop : JasminBinOp) (hb : bop.IsShift) {w : Nat}
   have hne : bop ≠ .andn := by rintro rfl; exact hb
   rcases (llvmInt_isRefinedBy_val_iff y b).1 hy with rfl | rfl
   · exact llvmInt_poison_isRefinedBy _
-  by_cases h : w ≤ b.toNat
+  have hm : LLVM.Int.and (.val b) (.val (BitVec.ofNat w (shiftMask w (2 ^ w - 1)))) =
+      .val (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1))) := rfl
+  by_cases h : w ≤ (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1))).toNat
   · have hv : ∀ z : LLVM.Int w, veirShiftSel bop z (.val b) = .val 0 := by
       intro z
-      simp [veirShiftSel, icmp_uge_width, LLVM.Int.select, Id.run, h]
+      simp only [veirShiftSel, hm, icmp_uge_width]
+      generalize b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1)) = m at h ⊢
+      simp [LLVM.Int.select, Id.run, h]
     rw [hv, ← hv (.val a), veirShiftSel_val bop hb a b]
     exact isRefinedBy_refl _
-  · have hv : veirShiftSel bop x (.val b) = veirBinInt bop x (.val b) := by
-      simp [veirShiftSel, icmp_uge_width, LLVM.Int.select, Id.run, h]
-    rw [hv]
-    exact veirBinInt_refines bop hne hx hy
+  · have hv : veirShiftSel bop x (.val b) =
+        veirBinInt bop x (.val (b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1)))) := by
+      simp only [veirShiftSel, hm, icmp_uge_width]
+      generalize b &&& BitVec.ofNat w (shiftMask w (2 ^ w - 1)) = m at h ⊢
+      simp [LLVM.Int.select, Id.run, h]
+    rw [hv, ← JasminBinOp.apply_and_shiftMask bop hb a b]
+    exact veirBinInt_refines bop hne hx (isRefinedBy_refl _)
 
 /-! ## Runtime values -/
 
@@ -415,8 +484,10 @@ theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
       BitVec.ofInt_natCast, Interp.pure_eq, Interp.bind_ok, List.nil_append, List.mapM_cons,
       VeirSrc.resolveVal, Nat.reduceAdd, Nat.lt_add_one, List.getElem_cons_succ,
       Option.bind_some, Option.bind_eq_bind, ne_eq, Interp.liftOption_none, dite_not,
-      List.cons_append, Nat.zero_lt_succ, not_true_eq_false, ↓reduceDIte, LLVM.Int.cast_self,
+      List.cons_append, Nat.zero_lt_succ, ↓reduceDIte, LLVM.Int.cast_self,
       BitVec.ofInt_ofNat, Nat.reduceLT, veirShiftSel, BitVec.ofNat_eq_ofNat, veirBinInt]
+    rw [show BitVec.ofNat w (shiftMask w (2 ^ w - 1) % 2 ^ w) =
+        BitVec.ofNat w (shiftMask w (2 ^ w - 1)) from BitVec.eq_of_toNat_eq (by simp)]
     rfl
 
 /-- An op that is not a shift has no expansion in the table `JasminOp.expandVeir?` of

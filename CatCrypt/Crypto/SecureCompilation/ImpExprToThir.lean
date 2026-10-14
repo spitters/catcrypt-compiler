@@ -171,12 +171,13 @@ def indexAtom? (params : List String) : ImpExpr → Option Nat
   | .app "index" [(.var P), (.lit l)] => if P ∈ params then litNat? l else none
   | _ => none
 
-/-- Apply a recognised shift/rotate kind to a value and a compile-time count. -/
+/-- Apply a recognised shift/rotate kind to a value and a compile-time count; the
+    logical shifts shift by the masked count `VIR.shiftMask w n`. -/
 def ShiftKind.apply {w : Nat} : ShiftKind → BitVec w → Nat → BitVec w
   | .ror, av, n => av.rotateRight n
-  | .shr, av, n => av >>> n
+  | .shr, av, n => av >>> VIR.shiftMask w n
   | .sar, av, n => BitVec.sshiftRight av n
-  | .shl, av, n => av <<< n
+  | .shl, av, n => av <<< VIR.shiftMask w n
 
 /-! ## §2  Source semantics of the scalar subset
 
@@ -1153,7 +1154,7 @@ theorem sigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     (r : ImpExpr) (v : BitVec 32)
     (hr : ∀ ρ', (∀ y, y ≠ "sa" → y ≠ "sb" → ρ' y = ρ y) →
         denoteAtomExpr ["w"] I r ρ' = some v)
-    (cont : ImpExpr) :
+    (hsh : sh < 32) (cont : ImpExpr) :
     ImpExpr.denoteScalar ["w"] I (sigBlock rot1 rot2 sh nout r cont) ρ
       = ImpExpr.denoteScalar ["w"] I cont
           (fun y => if y = nout then some (sigmaGen rot1 rot2 sh v)
@@ -1175,7 +1176,8 @@ theorem sigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   simp only [sigBlock, ImpExpr.denoteScalar, recogBin, recogShift,
     litNat?, ShiftKind.apply, JasminBinOp.apply, reduceIte,
     String.reduceEq, Int.toNat, or_self, or_false,
-    e0, e1, e2, hsa, hsb, hsc, Option.bind_some, Option.map_some, sigmaGen, if_true]
+    e0, e1, e2, hsa, hsb, hsc, Option.bind_some, Option.map_some, sigmaGen, if_true,
+    VIR.shiftMask_of_lt hsh]
   congr 1
   funext y
   by_cases h : y = "sa" <;> simp [h]
@@ -1336,7 +1338,8 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
   -- σ₁ block over W[i-2]
   rw [schedStepBody, sigBlock_denote I ρ 17 19 10 "s1"
       (wReadExpr "w" 16 (i - 2)) v1
-      (fun ρ' hag => wReadExpr_denoteSched_scratch I (i - 2) cnt (by omega) ρ ρ' hag hρ')]
+      (fun ρ' hag => wReadExpr_denoteSched_scratch I (i - 2) cnt (by omega) ρ ρ' hag hρ')
+      (by decide)]
   -- the σ₁-extended env (base for the σ₀ block) agrees with ρ on every `wName` slot.
   set ρ1 : String → Option (BitVec 32) :=
     (fun y => if y = "s1" then some (sigmaGen 17 19 10 v1)
@@ -1354,7 +1357,8 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
   -- σ₀ block over W[i-15]
   rw [sigBlock_denote I ρ1 7 18 3 "s0"
       (wReadExpr "w" 16 (i - 15)) v0
-      (fun ρ' hag => wReadExpr_denoteSched_scratch I (i - 15) cnt (by omega) ρ1 ρ' hag hρ1)]
+      (fun ρ' hag => wReadExpr_denoteSched_scratch I (i - 15) cnt (by omega) ρ1 ρ' hag hρ1)
+      (by decide)]
   -- the σ₀-extended env (base for the three adds): name it and record its `wName`
   -- invariant, the `s1`/`s0` lookups, and the two remaining `W[j]` reads.
   set ρ2 : String → Option (BitVec 32) :=

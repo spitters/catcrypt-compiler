@@ -151,8 +151,11 @@ def shrR : {Γ Δ : Ctxt jasminDialect} → {ts : List JasminTy} → Ctxt.Hom Γ
       shrR (fun v => r₃ (r₂ (r₁ (ren v)))) (r₃ (r₂ (r₁ sa))) (r₃ (r₂ (r₁ sb))) (y :: ys)
         fun r₄ out => k (fun v => r₄ (r₃ (r₂ (r₁ v)))) (r₄ o :: out)
 
+/-- `shrR` at a shift `0 < s < 64` hands its continuation limbs denoting `xs / 2^s`. The
+    bound `0 < s` keeps the left-shift count `64 - s` below the width, where the count
+    mask `shiftMask 64` is the identity. -/
 theorem shrR_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (W : Valuation Γ)
-    (s : Nat) (hs : s < 64) : ∀ (xs : List (Var Γ w64)) {Δ : Ctxt jasminDialect}
+    (s : Nat) (hs0 : 0 < s) (hs : s < 64) : ∀ (xs : List (Var Γ w64)) {Δ : Ctxt jasminDialect}
     (ren : Ctxt.Hom Γ Δ) (sa sb : Var Δ w64)
     (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → List (Var Δ' w64) → MC Δ' ts)
     (W₀ : Valuation Δ) (G : ListDenote ts),
@@ -175,8 +178,8 @@ theorem shrR_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (W : Valuatio
       refine bindK_denote _ _ _ _ fun r₁ o W₁ h₁ ho => hk r₁ [o] W₁ h₁ rfl ?_
       have eo : lk o W₁ = lk x W >>> s := by
         rw [show lk o W₁ = _ from ho, eBin_denote, show lk (ren x) W₀ = lk x W from hren x]
-        show lk x W >>> (lk sa W₀).toNat = _
-        rw [hsa]
+        show lk x W >>> shiftMask 64 (lk sa W₀).toNat = _
+        rw [hsa, shiftMask_of_lt hs]
       simp only [nv_cons, nv_nil, Nat.mul_zero, Nat.add_zero, eo, BitVec.toNat_ushiftRight,
         Nat.shiftRight_eq_div_pow]
     | cons y ys =>
@@ -190,11 +193,12 @@ theorem shrR_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (W : Valuatio
         show (lk (r₂ lo) W₂ + lk hi W₂).toNat = _
         rw [show lk (r₂ lo) W₂ = lk lo W₁ from h₂ lo, show lk lo W₁ = _ from hlo,
           show lk hi W₂ = _ from hhi, eBin_denote, eBin_denote]
-        show (lk (ren x) W₀ >>> (lk sa W₀).toNat
-          + lk (r₁ (ren y)) W₁ <<< (lk (r₁ sb) W₁).toNat).toNat = _
+        show (lk (ren x) W₀ >>> shiftMask 64 (lk sa W₀).toNat
+          + lk (r₁ (ren y)) W₁ <<< shiftMask 64 (lk (r₁ sb) W₁).toNat).toNat = _
         rw [show lk (ren x) W₀ = lk x W from hren x,
           show lk (r₁ (ren y)) W₁ = lk y W from (h₁ _).trans (hren y),
-          show lk (r₁ sb) W₁ = lk sb W₀ from h₁ sb, hsa, hsb]
+          show lk (r₁ sb) W₁ = lk sb W₀ from h₁ sb, hsa, hsb, shiftMask_of_lt hs,
+          shiftMask_of_lt (by omega : 64 - s < 64)]
         exact funnel_toNat _ _ s hs
       have h123 : Pres (fun v => r₃ (r₂ (r₁ v))) W₀ W₃ := Pres.comp (Pres.comp h₁ h₂) h₃
       refine ih _ _ _ _ W₃ G (Pres.comp hren h123)
@@ -270,7 +274,7 @@ theorem splitK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (k : Nat)
       rw [show lk (r₃ (r₂ (r₁ d))) W₃ = lk d W from h123 d, show lk mk W₃ = _ from hmk,
         eConst_denote]
       exact mask_toNat _ _ hs64
-    refine shrR_denote W (k % 64) hs64 _ _ _ _ _ W₄ G h1234 ?_ ?_
+    refine shrR_denote W (k % 64) (Nat.pos_of_ne_zero hs) hs64 _ _ _ _ _ W₄ G h1234 ?_ ?_
       fun r₅ hi W₅ h₅ hhi hhiv => ?_
     · rw [show lk (r₄ (r₃ (r₂ sa))) W₄ = lk sa W₁ from (h₄ _).trans ((h₃ _).trans (h₂ sa)),
         show lk sa W₁ = _ from hsa, eConst_denote, BitVec.toNat_ofNat]

@@ -242,6 +242,7 @@ theorem wordOpSExpr_evalBV {f : String} {ea eb se : SExpr} {r : Nat}
       BitVec.toNat_and, BitVec.toNat_xor, BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft,
       BitVec.toNat_ofNat, Nat.mod_eq_of_lt hA, Nat.mod_eq_of_lt hB,
       Nat.mod_eq_of_lt (sexprMulHiU_lt _ _)]
+    try simp only [SecureCompilation.VIR.shiftMask_of_lt ‹(eb.evalBV β).toNat < 64›]
     try omega
 
 /-! ### The lowering pass -/
@@ -450,7 +451,14 @@ theorem narrowRotr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64
   rw [narrowRotSExpr, narrowMask_evalBV (by omega), SecureCompilation.Ascent.evalBV_sOrExpr,
     BitVec.toNat_or]
   simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft]
-  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd]
+  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd,
+    SecureCompilation.VIR.shiftMask_of_lt (show (k.evalBV β).toNat < 64 by omega)]
+  rcases Nat.lt_or_ge (w - (k.evalBV β).toNat) 64 with h | h
+  · rw [SecureCompilation.VIR.shiftMask_of_lt h]
+  · have hw' : w = 64 := by omega
+    have h0 : (k.evalBV β).toNat = 0 := by omega
+    subst hw'
+    simp [h0, Nat.shiftLeft_eq]
 
 /-- The left rotation of a `w`-bit word `x` by `k < w` evaluates to the
     disjunction of `x <<< k` and `x >>> (w - k)` modulo `2^w`. -/
@@ -465,7 +473,14 @@ theorem narrowRotl_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64
   rw [narrowRotSExpr, narrowMask_evalBV (by omega), SecureCompilation.Ascent.evalBV_sOrExpr,
     BitVec.toNat_or]
   simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft]
-  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd]
+  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd,
+    SecureCompilation.VIR.shiftMask_of_lt (show (k.evalBV β).toNat < 64 by omega)]
+  rcases Nat.lt_or_ge (w - (k.evalBV β).toNat) 64 with h | h
+  · rw [SecureCompilation.VIR.shiftMask_of_lt h]
+  · have hw' : w = 64 := by omega
+    have h0 : (k.evalBV β).toNat = 0 := by omega
+    subst hw'
+    simp [h0, Nat.shiftRight_eq_div_pow, Nat.div_eq_of_lt (x.evalBV β).isLt]
 
 /-- The scalar expression of a narrow operation evaluates, in the wrapping `u64`
     semantics `SExpr.evalBV`, to the natural-number operation on the values of
@@ -497,11 +512,13 @@ theorem NarrowOp.sexpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w 
       rw [narrowMask_evalBV hw64, ← hr]
       simp only [SExpr.evalBV, BitVec.toNat_shiftLeft, Nat.mod_mod_of_dvd _ hdvd,
         Nat.shiftLeft_eq, Nat.mod_mul_mod]
+      rw [SecureCompilation.VIR.shiftMask_of_lt (by omega : (eb.evalBV β).toNat < 64)]
     · cases hr
   · split at hr
     · simp only [Option.some.injEq] at hr
       rw [← hr]
       simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, narrowMask_evalBV hw64]
+      rw [SecureCompilation.VIR.shiftMask_of_lt (by omega : (eb.evalBV β).toNat < 64)]
     · cases hr
   · rw [← hr, narrowRotr_evalBV hw β _ _ (narrowAmt_lt hw β eb), narrowMask_evalBV hw64,
       narrowAmt_evalBV hw]
@@ -593,7 +610,8 @@ theorem barrettRedSExpr_evalBV {p : Nat} (hp1 : 1 < p) (hp : p < 2 ^ 32)
     BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, hX, Nat.mod_eq_of_lt hmu, hmulhi,
     Nat.mod_eq_of_lt hq64]
   rw [Nat.mod_eq_of_lt (show p < 2 ^ 64 by omega), Nat.mod_eq_of_lt (show q * p < 2 ^ 64 by omega),
-    show (63 : Nat) % 2 ^ 64 = 63 from rfl, Nat.shiftRight_eq_div_pow, hXmod]
+    show (63 : Nat) % 2 ^ 64 = 63 from rfl,
+    SecureCompilation.VIR.shiftMask_of_lt (by decide : 63 < 64), Nat.shiftRight_eq_div_pow, hXmod]
   generalize q * p = QP at hqp hlt ⊢
   have ht : (2 ^ 64 - QP + X) % 2 ^ 64 = X - QP := by omega
   rw [ht]

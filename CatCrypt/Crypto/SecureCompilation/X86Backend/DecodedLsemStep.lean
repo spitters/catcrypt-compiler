@@ -424,7 +424,7 @@ theorem fstepF_shrImmI (d a : String) (k : Nat) (hk : k < 64) (b : LstateM) (zf 
     JasminLsemExportTransfer.lsemStepN_immShiftCount (Or.inl rfl) 64 k d a (Or.inl rfl) b.reg,
     lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SHR]; decide))]
   simp only [lsemStepN, readReg_of_getW hva, evalOperandN, stripWidthTag_withWidthTag_SHR,
-    applyOpnN, Option.map_some, hkn]
+    applyOpnN, Option.map_some, hkn, shiftMask_of_lt hk]
   rfl
 
 open JasminLsemShift in
@@ -437,7 +437,8 @@ theorem fstepF_shl0I (d a : String) (b : LstateM) (zf : Bool)
       b.reg,
     lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SHL]; decide))]
   simp only [lsemStepN, readReg_of_getW hva, evalOperandN, stripWidthTag_withWidthTag_SHL,
-    applyOpnN, Option.map_some, BitVec.toNat_ofNat, Nat.zero_mod, BitVec.shiftLeft_zero]
+    applyOpnN, Option.map_some, BitVec.toNat_ofNat, Nat.zero_mod, shiftMask_zero,
+    BitVec.shiftLeft_zero]
   rfl
 
 /-- The data word of `shr $k` for a count `0 < k < 64`. -/
@@ -445,7 +446,7 @@ theorem x86_SHR_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64)
     (x86_SHR v (BitVec.ofNat 64 k)).word = v >>> k := by
   have hkn : (BitVec.ofNat 64 k).toNat = k := by
     rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
-  simp only [x86_SHR, shiftCount, hkn, Nat.mod_eq_of_lt hk, if_neg hk0, rflags_OF, wshr,
+  simp only [x86_SHR, shiftCount, hkn, shiftMask_of_lt hk, if_neg hk0, rflags_OF, wshr,
     Nat.min_eq_right hk.le]
 
 /-- `SHR:k:64 d, a` against `shr $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/

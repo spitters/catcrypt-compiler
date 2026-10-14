@@ -125,12 +125,12 @@ theorem x86_SAR_word_ofNat {n : Nat} (h : n < 64) (v : BitVec 64) :
 /-- The `applyOpnN` value of the structured `SHL` wire at an in-range count. -/
 theorem applyOpnN_SHL_ofNat {n : Nat} (h : n < 64) (a : BitVec 64) :
     applyOpnN 64 "SHL" [a, BitVec.ofNat 64 n] = some (a <<< n) := by
-  rw [applyOpnN_SHL, structShl_eq (lt_two_pow_64_of_lt h)]
+  rw [applyOpnN_SHL, structShl_eq (lt_two_pow_64_of_lt h), shiftMask_of_lt h]
 
 /-- The `applyOpnN` value of the structured `SHR` wire at an in-range count. -/
 theorem applyOpnN_SHR_ofNat {n : Nat} (h : n < 64) (a : BitVec 64) :
     applyOpnN 64 "SHR" [a, BitVec.ofNat 64 n] = some (a >>> n) := by
-  rw [applyOpnN_SHR, structShr_eq (lt_two_pow_64_of_lt h)]
+  rw [applyOpnN_SHR, structShr_eq (lt_two_pow_64_of_lt h), shiftMask_of_lt h]
 
 /-- **The lsem twin of a structured `SAR` wire.** The `.reg none`-tagged
     `shiftLinstr "SAR"` instruction reads its source at width 64, writes

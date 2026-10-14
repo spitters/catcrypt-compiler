@@ -576,11 +576,11 @@ def tileOp? {Γ : Ctxt jasminDialect} {Δ : Ctxt jasminTileDialect} (ρ : Env n 
           ⟨.inr (.tileMulhu n w), rfl, .cons a (.cons b .nil)⟩
       else none
   | .shlImm w' c, args =>
-      if w' = w then
+      if w' = w ∧ c < w then
         (ρ _ args.head).ln.map fun a => ⟨.inr (.tileShiftImm .shl n w c), rfl, .cons a .nil⟩
       else none
   | .shrImm w' c, args =>
-      if w' = w then
+      if w' = w ∧ c < w then
         (ρ _ args.head).ln.map fun a => ⟨.inr (.tileShiftImm .lshr n w c), rfl, .cons a .nil⟩
       else none
   | .sarImm w' c, args =>
@@ -1018,7 +1018,7 @@ theorem tileOp?_sound (M : LeakModel jasminDialect) (hρ : EnvRel j ρ V W) (op 
   all_goals
     split at h
     · rename_i hw
-      subst hw
+      first | subst hw | (obtain ⟨hw, hcw⟩ := hw; subst hw; have hcw' := shiftMask_of_lt hcw)
       obtain ⟨a, ha, rfl⟩ := Option.map_eq_some_iff.mp h
       cases args with
       | cons x rest =>
@@ -1034,7 +1034,10 @@ theorem tileOp?_sound (M : LeakModel jasminDialect) (hρ : EnvRel j ρ V W) (op 
           rw [h1]
           rfl
         rw [h3]
-        rfl
+        first
+          | rfl
+          | exact (congrArg (fun m => a.lookup W j <<< m) hcw').symm
+          | exact (congrArg (fun m => a.lookup W j >>> m) hcw').symm
     · cases h
 
 theorem constOf?_lane (j : Fin n) (op : JasminOp) (c : Nat) (h : constOf? w op = some c)

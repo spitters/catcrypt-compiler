@@ -234,13 +234,14 @@ def vMulU (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (rf : Std.HashMa
   | _ => false
 
 /-- `shi L left imm ta` computes the shift `n = a << kc` or `n = a >> kc` by the constant
-    `kc`, every active lane of which is `imm`. -/
+    `kc`, every active lane of which is `imm`, a count below the lane width. -/
 def vShi (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (n : String) (L : Nat)
     (left : Bool) (imm : Nat) (ta : Term) : Bool :=
   match D[n]? with
   | some (.pack w' bop d a kc) =>
     decide (w' = w) && decide (d = n) && decide (L = w.bits) &&
       decide (bop = if left then .shl else .shr) && opMatch D ta a &&
+      decide (imm < w.bits) &&
       (match D[kc]? with
        | some (.const kc' v) => decide (kc' = kc) &&
            (List.range (m.act / w.bits)).all
@@ -364,7 +365,7 @@ theorem vShi_sound (hf : Facts m w D rf E) {n : String} {L : Nat} {left : Bool} 
   split at h
   · rename_i w' bop d a kc hd
     simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-    obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, ha⟩, hc⟩ := h
+    obtain ⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, ha⟩, hlt⟩, hc⟩ := h
     subst h1 h2 h3 h4
     split at hc
     · rename_i kc' v hkc
@@ -377,7 +378,9 @@ theorem vShi_sound (hf : Facts m w D rf E) {n : String} {L : Nat} {left : Bool} 
       have hkv : E k kc' = lane _ (BitVec.ofNat 512 v) k := hf.sat _ _ hkc k hk
       have himm : (E k kc').toNat = imm := by rw [hkv]; exact hl k ((active_iff m _ k).1 hk)
       rw [hs]
-      cases left <;> simp [JasminBinOp.apply, himm]
+      cases left <;>
+        simp [JasminBinOp.apply, himm,
+          CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_of_lt hlt]
     · cases hc
   · cases h
 
@@ -915,7 +918,10 @@ theorem vMinu_sound (hf : Facts m w D rf E) {n : String} {wit : List String} {t 
           simp only [decide_eq_true_eq] at this
           rw [constVal_lane hf hkk hk]; exact this
         have hsv : E k s = E k dn >>> (w.bits - 1) := by
-          rw [isPack_sat hf hs hk]; simp [JasminBinOp.apply, hkv]
+          rw [isPack_sat hf hs hk]
+          simp [JasminBinOp.apply, hkv,
+            CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_of_lt
+              (show w.bits - 1 < w.bits by omega)]
         have hmv : E k mm = 0 - (E k dn >>> (w.bits - 1)) := by
           rw [isPack_sat hf hmm hk, hzv, hsv]; rfl
         have htv : E k tn = (0 - (E k dn >>> (w.bits - 1))) &&& E k cC := by

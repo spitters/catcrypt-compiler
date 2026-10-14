@@ -105,9 +105,9 @@ theorem zmmOfLanes_zmmLane' (f : Fin 8 → BitVec 64) (k : Fin 8) :
        BitVec.extractLsb'_append_eq_left]) <;>
     rfl
 
-/-- Lane `k` of `zmmPackQ bop a b` is `bop.apply (zmmLane a k) (zmmLane b k)`. -/
+/-- Lane `k` of `zmmPackQ bop a b` is `bop.applyLane (zmmLane a k) (zmmLane b k)`. -/
 theorem zmmPackQ_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 8) :
-    zmmLane (zmmPackQ bop a b) k = bop.apply (zmmLane a k) (zmmLane b k) := by
+    zmmLane (zmmPackQ bop a b) k = bop.applyLane (zmmLane a k) (zmmLane b k) := by
   unfold zmmPackQ
   rw [zmmOfLanes_zmmLane']
 
@@ -123,7 +123,7 @@ theorem butterflyHiCom_lane (w a b : BitVec 512) (k : Fin 8) :
     zmmLane (butterflyHiCom.denote (.cons w (.cons a (.cons b .nil)))) k
       = zmmLane a k + zmmLane w k * zmmLane b k := by
   rw [butterflyHiCom_denote, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-- **`lo` lane characterization.** Lane `k` of `butterflyLoCom`'s denotation on
     `⟨w, a, b⟩` is the scalar 64-bit butterfly value `(a_k) − (w_k)·(b_k)`. -/
@@ -131,7 +131,7 @@ theorem butterflyLoCom_lane (w a b : BitVec 512) (k : Fin 8) :
     zmmLane (butterflyLoCom.denote (.cons w (.cons a (.cons b .nil)))) k
       = zmmLane a k - zmmLane w k * zmmLane b k := by
   rw [butterflyLoCom_denote, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply]
+  simp only [JasminBinOp.applyLane]
 
 /-! ## 2. The abstract FIPS-203 ZMod-q butterfly value tie
 

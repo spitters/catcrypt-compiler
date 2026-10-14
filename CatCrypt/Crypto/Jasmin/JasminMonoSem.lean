@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.Jasmin.JasminAST
 
 /-!
@@ -131,8 +132,10 @@ def pureEvalMonoExpr (n : Nat) (env : Var → BitVec n) : PExpr → BitVec n
   | .Papp2 (.Osub _) (.Pvar x) (.Pvar y) => env x.gv.var - env y.gv.var
   | .Papp2 (.Omul _) (.Pvar x) (.Pvar y) => env x.gv.var * env y.gv.var
   | .Papp1 (.Olnot _) (.Pvar x) => ~~~(env x.gv.var)
-  | .Papp2 (.Olsl _) (.Pvar x) (.Pconst k) => env x.gv.var <<< k.toNat
-  | .Papp2 (.Olsr _) (.Pvar x) (.Pconst k) => BitVec.ushiftRight (env x.gv.var) k.toNat
+  | .Papp2 (.Olsl _) (.Pvar x) (.Pconst k) =>
+      env x.gv.var <<< SecureCompilation.VIR.shiftMask n k.toNat
+  | .Papp2 (.Olsr _) (.Pvar x) (.Pconst k) =>
+      BitVec.ushiftRight (env x.gv.var) (SecureCompilation.VIR.shiftMask n k.toNat)
   | _ => 0
 
 /-- Pack a `Bool` into a `BitVec n`: `true ↦ 1`, `false ↦ 0`. -/

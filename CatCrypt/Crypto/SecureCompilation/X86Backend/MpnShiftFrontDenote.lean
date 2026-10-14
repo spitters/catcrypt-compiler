@@ -173,12 +173,13 @@ theorem shiftEnv_sh (up : Fin NUS → BitVec 64) (sh : BitVec 64)
 /-! ## 4. The per-trip run of the funnel body -/
 
 /-- **The funnel body computes one `shiftFoldStep`.** From the canonical entry
-    state at trip `t`, with a shift amount at most `64`, the source body's
-    `semScalar` run terminates and leaves exactly the word-model step's array in
-    `rp`: the merged output word at cell `t` and the spill-out at cell `t + 1`.
+    state at trip `t`, with a shift amount strictly between `0` and `64`, the source
+    body's `semScalar` run terminates and leaves exactly the word-model step's array
+    in `rp`: the merged output word at cell `t` and the spill-out at cell `t + 1`.
     The per-command check of the seam, stepped through the nine commands. -/
 theorem shiftLimbBody_run (up : Fin NUS → BitVec 64) (shVal : BitVec 64)
-    (acc : Fin NRS → BitVec 64) (t : Nat) (hsh : shVal.toNat ≤ 64) (ht : t + 1 < 2 ^ 64) :
+    (acc : Fin NRS → BitVec 64) (t : Nat) (hsh : 0 < shVal.toNat ∧ shVal.toNat < 64)
+    (ht : t + 1 < 2 ^ 64) :
     ∃ env', semScalar shiftBodyLowCT (shiftEnv up shVal acc (BitVec.ofNat 64 t)) = some env'
       ∧ env' "rp" = some ⟨.memref NRS, shiftFoldStep up shVal.toNat acc t⟩ := by
   set iv : BitVec 64 := BitVec.ofNat 64 t with hivdef
@@ -188,7 +189,8 @@ theorem shiftLimbBody_run (up : Fin NUS → BitVec 64) (shVal : BitVec 64)
   have hiv1N : (iv + BitVec.ofNat 64 1).toNat = t + 1 := by
     simp only [BitVec.toNat_add, hivN, BitVec.toNat_ofNat]
     omega
-  have hshbN : (BitVec.ofNat 64 64 - shVal).toNat = 64 - shVal.toNat := shb_toNat shVal hsh
+  have hshbN : (BitVec.ofNat 64 64 - shVal).toNat = 64 - shVal.toNat :=
+    shb_toNat shVal (by omega)
   have hbody : shiftBodyLowCT = seqAll
     [ .RArrLoad ⟨"cy", .TU64⟩ ⟨"rp", .TBytes (8 * NRS)⟩ "idx"
     , .RArrLoad ⟨"t", .TU64⟩ ⟨"up", .TBytes (8 * NUS)⟩ "idx"
@@ -271,7 +273,8 @@ theorem shiftLimbBody_run (up : Fin NUS → BitVec 64) (shVal : BitVec 64)
       seqAll_step hs5, seqAll_step hs6, seqAll_step hs7, seqAll_step hs8]
     exact hs9
   · rw [h9rp]
-    simp only [shiftFoldStep, shiftLimb]
+    simp only [shiftFoldStep, shiftLimb, shiftMask_of_lt hsh.2,
+      shiftMask_of_lt (show 64 - shVal.toNat < 64 by omega)]
     rfl
 
 /-! ## 5. Coverage -/
@@ -328,9 +331,10 @@ abbrev shVar : Ctxt.Var Gouter r64 := .here
 /-- **The runtime-trip funnel-shift program denotes the word-model fold.** The
     compiled program's denotation at any valuation is `shiftFold` of the argument
     registers — the trip count read from `n`, the source array and shift amount
-    threaded as invariants, the output array as the accumulator seed. No
-    front-compilation hypothesis remains. -/
-theorem shiftRtProg_fold (V : Ctxt.Valuation Gouter) (hsh : (shVar.lookup V).toNat ≤ 64) :
+    threaded as invariants, the output array as the accumulator seed, for a shift
+    amount strictly between `0` and `64`. No front-compilation hypothesis remains. -/
+theorem shiftRtProg_fold (V : Ctxt.Valuation Gouter)
+    (hsh : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64) :
     shiftRtProgOpt.map (fun c => ComL.denote c V)
       = some (shiftFold (upVar.lookup V) (shVar.lookup V).toNat
           (shiftCount.lookup V).toNat (shiftInit.lookup V)) := by
@@ -351,12 +355,12 @@ theorem shiftRtProg_fold (V : Ctxt.Valuation Gouter) (hsh : (shVar.lookup V).toN
     shiftUpdate_eq (shiftInit.lookup V)
 
 /-- **The compiled funnel shift computes the scaled value.** For a trip count
-    within the model's output array and a spill-in below `2 ^ sh`, the compiled
-    program's output cells `0, …, n` recombine via `bignumVal` to
-    `up[0..n) · 2^sh + rp[0]` — the model-level `shiftFold_val`, read on the
-    machine-level denotation through the seam. -/
+    within the model's output array, a shift amount strictly between `0` and `64`
+    and a spill-in below `2 ^ sh`, the compiled program's output cells `0, …, n`
+    recombine via `bignumVal` to `up[0..n) · 2^sh + rp[0]` — the model-level
+    `shiftFold_val`, read on the machine-level denotation through the seam. -/
 theorem shiftRtProg_val (V : Ctxt.Valuation Gouter)
-    (hsh : (shVar.lookup V).toNat ≤ 64)
+    (hsh : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64)
     (hn : (shiftCount.lookup V).toNat < NRS)
     (h0 : (memGetDyn (shiftInit.lookup V) 0).toNat < 2 ^ (shVar.lookup V).toNat) :
     ∃ out : Fin NRS → BitVec 64,
@@ -365,14 +369,15 @@ theorem shiftRtProg_val (V : Ctxt.Valuation Gouter)
           = bignumVal (cells (upVar.lookup V) (shiftCount.lookup V).toNat)
               * 2 ^ (shVar.lookup V).toNat + (memGetDyn (shiftInit.lookup V) 0).toNat :=
   ⟨_, shiftRtProg_fold V hsh,
-    shiftFold_val (upVar.lookup V) (shVar.lookup V).toNat hsh (shiftInit.lookup V) h0
+    shiftFold_val (upVar.lookup V) (shVar.lookup V).toNat (by omega) (shiftInit.lookup V) h0
       (shiftCount.lookup V).toNat hn⟩
 
-/-- **The compiled `mpn_lshift` reading.** With `sh = cnt` and cell `0` seeded to
-    zero, the output cells `0, …, n` are the shifted limbs and cell `n` the word
-    shifted off the top — `lshiftFold_val` on the machine-level denotation. -/
+/-- **The compiled `mpn_lshift` reading.** With `sh = cnt`, `0 < cnt < 64`, and
+    cell `0` seeded to zero, the output cells `0, …, n` are the shifted limbs and
+    cell `n` the word shifted off the top — `lshiftFold_val` on the machine-level
+    denotation. -/
 theorem lshiftRtProg_val (V : Ctxt.Valuation Gouter)
-    (hcnt : (shVar.lookup V).toNat ≤ 64)
+    (hcnt : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64)
     (hn : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0) :
     ∃ out : Fin NRS → BitVec 64,
@@ -381,13 +386,13 @@ theorem lshiftRtProg_val (V : Ctxt.Valuation Gouter)
           = bignumVal (cells (upVar.lookup V) (shiftCount.lookup V).toNat)
               * 2 ^ (shVar.lookup V).toNat :=
   ⟨_, shiftRtProg_fold V hcnt,
-    lshiftFold_val (upVar.lookup V) (shVar.lookup V).toNat hcnt (shiftInit.lookup V) h0
+    lshiftFold_val (upVar.lookup V) (shVar.lookup V).toNat (by omega) (shiftInit.lookup V) h0
       (shiftCount.lookup V).toNat hn⟩
 
 /-- **The compiled `mpn_rshift` reading.** With `sh = 64 - cnt` and cell `0`
     seeded to zero, `value (rp[0..n+1)) · 2^cnt = value (up[0..n)) · 2^64` —
-    `rshiftFold_val` on the machine-level denotation, for a `cnt ≤ 64`. -/
-theorem rshiftRtProg_val (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : cnt ≤ 64)
+    `rshiftFold_val` on the machine-level denotation, for `0 < cnt < 64`. -/
+theorem rshiftRtProg_val (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : 0 < cnt ∧ cnt < 64)
     (hsheq : (shVar.lookup V).toNat = 64 - cnt)
     (hn : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0) :
@@ -397,7 +402,7 @@ theorem rshiftRtProg_val (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : cnt ≤
           = bignumVal (cells (upVar.lookup V) (shiftCount.lookup V).toNat) * 2 ^ 64 := by
   refine ⟨_, shiftRtProg_fold V (by omega), ?_⟩
   rw [hsheq]
-  exact rshiftFold_val (upVar.lookup V) cnt hcnt (shiftInit.lookup V) h0
+  exact rshiftFold_val (upVar.lookup V) cnt (by omega) (shiftInit.lookup V) h0
     (shiftCount.lookup V).toNat hn
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontDenote

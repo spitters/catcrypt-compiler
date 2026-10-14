@@ -143,10 +143,9 @@ vendored here.)
 * **`CMOVcc`:** the ACL2 model treats it as a predicated `MOV` (no dedicated
   spec function); its data selection is the move semantics, anchored to Jasmin.
 * **Shift-count masking:** Sail's `sal_shl_spec_64` takes a `bits(6)` count
-  (already `< 64`); the count-`≥ w` divergence between the raw-count `step` and
-  the masked Jasmin/Sail semantics is the same precondition recorded in
-  `TranslationValidation` (`shl_count_ge_width_differs`). Our compiler only
-  emits counts `< w`, where all three agree.
+  (already `< 64`). `step` masks `SHL`/`SHR` counts by `VIR.shiftMask w`, the
+  Jasmin `& 63` mask, so the three semantics agree on every count
+  (`TranslationValidation.shl_count_ge_width_masked`: `SHL 1 68 = 16`).
 
 This module wires the Sail-x86 cross-checks into the build; the verified
 `JInstr → bytes` encoder is a candidate for validation against Sail-x86's

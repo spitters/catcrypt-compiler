@@ -218,8 +218,8 @@ def scalarSem : String → BitVec 64 → BitVec 64 → BitVec 64
   | "wrapping_sub#64", x, y => x - y
   | "wrapping_mul#64", x, y => x * y
   | "mulhi#64", x, y => mulHiC x y
-  | "Shr#64", x, y => x >>> y.toNat
-  | "Shl#64", x, y => x <<< y.toNat
+  | "Shr#64", x, y => x >>> shiftMask 64 y.toNat
+  | "Shl#64", x, y => x <<< shiftMask 64 y.toNat
   | "Add", x, y => x + y
   | _, _, _ => 0
 
@@ -270,13 +270,15 @@ theorem scalarSem_sound {Δ : Ctxt catCryptDialect} {f : String}
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt, Nat.shiftRight_eq_div_pow]
   · rw [_root_.Hax.hax64WordOps_shr, _root_.Hax.u64BinOp_natCast hx hy] at hv
     split at hv
-    · obtain rfl : _ = v := Option.some.inj hv
-      simp [scalarSem, Nat.mod_eq_of_lt hx, BitVec.toNat_ushiftRight]
+    · rename_i hlt
+      obtain rfl : _ = v := Option.some.inj hv
+      simp [scalarSem, Nat.mod_eq_of_lt hx, BitVec.toNat_ushiftRight, Nat.mod_eq_of_lt hlt]
     · simp [_root_.Hax.widthArrayOps] at hv
   · rw [_root_.Hax.hax64WordOps_shl, _root_.Hax.u64BinOp_natCast hx hy] at hv
     split at hv
-    · obtain rfl : _ = v := Option.some.inj hv
-      simp [scalarSem, Nat.mod_eq_of_lt hx, BitVec.toNat_shiftLeft]
+    · rename_i hlt
+      obtain rfl : _ = v := Option.some.inj hv
+      simp [scalarSem, Nat.mod_eq_of_lt hx, BitVec.toNat_shiftLeft, Nat.mod_eq_of_lt hlt]
     · simp [_root_.Hax.widthArrayOps] at hv
   · rw [_root_.Hax.hax64WordOps_add, _root_.Hax.u64BinOp_natCast hx hy] at hv
     split at hv
@@ -592,8 +594,8 @@ def binBV : ImpToNF.ScalarBin → BitVec 64 → BitVec 64 → BitVec 64
   | .and, x, y => x &&& y
   | .or, x, y => x ||| y
   | .xor, x, y => x ^^^ y
-  | .shl, x, y => x <<< y.toNat
-  | .shr, x, y => x >>> y.toNat
+  | .shl, x, y => x <<< shiftMask 64 y.toNat
+  | .shr, x, y => x >>> shiftMask 64 y.toNat
   | .mulhi, x, y => mulHiC x y
   | .addc, x, y => x + y
   | .subc, x, y => x - y
@@ -1498,10 +1500,10 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
           have hn : (y : BitVec 64).toNat =
               (scalarSem "Shr#64" (x.lookup W) (BitVec.ofNat 64 k)).toNat := by
             exact_mod_cast (_root_.Hax.Value.int.inj hyv).symm
-          change (y : BitVec 64) = BitVec.ushiftRight (x.lookup W) k
+          change (y : BitVec 64) = BitVec.ushiftRight (x.lookup W) (shiftMask 64 k)
           apply BitVec.eq_of_toNat_eq
           rw [hn]
-          simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3]
+          simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3, Nat.mod_eq_of_lt hk64]
         · split at h
           · rename_i _ hf
             subst hf
@@ -1517,10 +1519,10 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
             have hn : (y : BitVec 64).toNat =
                 (scalarSem "Shl#64" (x.lookup W) (BitVec.ofNat 64 k)).toNat := by
               exact_mod_cast (_root_.Hax.Value.int.inj hyv).symm
-            change (y : BitVec 64) = (show BitVec 64 from x.lookup W) <<< k
+            change (y : BitVec 64) = (show BitVec 64 from x.lookup W) <<< shiftMask 64 k
             apply BitVec.eq_of_toNat_eq
             rw [hn]
-            simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3]
+            simp [scalarSem, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk3, Nat.mod_eq_of_lt hk64]
           · cases h
       · cases h
     · cases h
@@ -1620,16 +1622,19 @@ theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w
     simp only [binBV, BitVec.toNat_xor, Nat.xor_mod_two_pow]
   case shl =>
     split at h
-    · obtain rfl := Option.some.inj h
-      simp only [binBV, BitVec.toNat_shiftLeft, mod64_mod _ hw64, Nat.shiftLeft_eq]
+    · rename_i hlt
+      obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_shiftLeft, mod64_mod _ hw64, Nat.shiftLeft_eq,
+        shiftMask_of_lt (show y.toNat < 64 by omega)]
       conv_rhs => rw [Nat.mul_mod]
       rw [Nat.mul_mod, Nat.mod_mod]
     · cases h
   case shr =>
     obtain rfl := h64 (Or.inl rfl)
     split at h
-    · obtain rfl := Option.some.inj h
-      simp only [binBV, BitVec.toNat_ushiftRight, Nat.mod_eq_of_lt hx]
+    · rename_i hlt
+      obtain rfl := Option.some.inj h
+      simp only [binBV, BitVec.toNat_ushiftRight, Nat.mod_eq_of_lt hx, shiftMask_of_lt hlt]
       exact Nat.mod_eq_of_lt (lt_of_le_of_lt (Nat.shiftRight_le _ _) hx)
     · cases h
   case mulhi =>
@@ -1695,12 +1700,13 @@ theorem binChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF
     cases h
     simp only [ImpToNF.ScalarBin.nat] at hr
     split at hr
-    · obtain rfl := Option.some.inj hr
+    · rename_i hlt
+      obtain rfl := Option.some.inj hr
       change BitVec.ofNat 64 _ =
-        ((show BitVec 64 from a.lookup W) &&& maskW w) >>> (b.lookup W).toNat
+        ((show BitVec 64 from a.lookup W) &&& maskW w) >>> shiftMask 64 (b.lookup W).toNat
       apply BitVec.eq_of_toNat_eq
       rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr64, BitVec.toNat_ushiftRight,
-        toNat_and_maskW _ hw64]
+        toNat_and_maskW _ hw64, shiftMask_of_lt (by omega : (b.lookup W).toNat < 64)]
     · cases hr
   · rename_i hs
     obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.mp h
@@ -1722,17 +1728,29 @@ theorem rotChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : Boo
   have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw64
   have hm : ∀ n, n % 2 ^ w < 2 ^ 64 := fun n =>
     lt_of_lt_of_le (Nat.mod_lt _ (by positivity)) hp
+  have hj : k % w < w := Nat.mod_lt _ (by omega)
+  have hsl : shiftMask 64 (k % w) = k % w := shiftMask_of_lt (by omega)
+  have hor : ∀ (A : BitVec 64) (j : Nat), j < w →
+      (A <<< j ||| A >>> shiftMask 64 (w - j)) = (A <<< j ||| A >>> (w - j)) ∧
+      (A >>> j ||| A <<< shiftMask 64 (w - j)) = (A >>> j ||| A <<< (w - j)) := by
+    intro A j hjw
+    by_cases hz : w - j < 64
+    · rw [shiftMask_of_lt hz]; exact ⟨rfl, rfl⟩
+    · obtain ⟨rfl, rfl⟩ : w = 64 ∧ j = 0 := by omega
+      simp [BitVec.ushiftRight_eq_zero]
   cases right
   · change BitVec.ofNat 64 (_root_.Hax.rotlNat w (a.lookup W).toNat k) =
-      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<< (k % w)) |||
-        (((show BitVec 64 from a.lookup W) &&& maskW w) >>> (w - k % w))) &&& maskW w
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<< shiftMask 64 (k % w)) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) >>> shiftMask 64 (w - k % w))) &&& maskW w
+    rw [hsl, (hor _ _ hj).1]
     apply BitVec.eq_of_toNat_eq
     rw [BitVec.toNat_ofNat, _root_.Hax.rotlNat, Nat.mod_eq_of_lt (hm _), toNat_and_maskW _ hw64,
       BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
       toNat_and_maskW _ hw64, Nat.or_mod_two_pow, Nat.or_mod_two_pow, mod64_mod _ hw64]
   · change BitVec.ofNat 64 (_root_.Hax.rotrNat w (a.lookup W).toNat k) =
-      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>> (k % w)) |||
-        (((show BitVec 64 from a.lookup W) &&& maskW w) <<< (w - k % w))) &&& maskW w
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>> shiftMask 64 (k % w)) |||
+        (((show BitVec 64 from a.lookup W) &&& maskW w) <<< shiftMask 64 (w - k % w))) &&& maskW w
+    rw [hsl, (hor _ _ hj).2]
     apply BitVec.eq_of_toNat_eq
     rw [BitVec.toNat_ofNat, _root_.Hax.rotrNat, Nat.mod_eq_of_lt (hm _), toNat_and_maskW _ hw64,
       BitVec.toNat_or, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
@@ -1765,17 +1783,17 @@ theorem rotVarChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (right : 
   have hr := rotChain_rel W right hw (b.lookup W).toNat a
   cases right
   · change BitVec.ofNat 64 (_root_.Hax.rotlNat w (a.lookup W).toNat (b.lookup W).toNat) =
-      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<<
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) <<< shiftMask 64
           ((show BitVec 64 from b.lookup W) &&& BitVec.ofNat 64 (w - 1)).toNat) |||
-        (((show BitVec 64 from a.lookup W) &&& maskW w) >>>
+        (((show BitVec 64 from a.lookup W) &&& maskW w) >>> shiftMask 64
           (BitVec.ofNat 64 w - ((show BitVec 64 from b.lookup W) &&&
             BitVec.ofNat 64 (w - 1))).toNat)) &&& maskW w
     rw [hj, hj']
     exact hr
   · change BitVec.ofNat 64 (_root_.Hax.rotrNat w (a.lookup W).toNat (b.lookup W).toNat) =
-      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>>
+      ((((show BitVec 64 from a.lookup W) &&& maskW w) >>> shiftMask 64
           ((show BitVec 64 from b.lookup W) &&& BitVec.ofNat 64 (w - 1)).toNat) |||
-        (((show BitVec 64 from a.lookup W) &&& maskW w) <<<
+        (((show BitVec 64 from a.lookup W) &&& maskW w) <<< shiftMask 64
           (BitVec.ofNat 64 w - ((show BitVec 64 from b.lookup W) &&&
             BitVec.ofNat 64 (w - 1))).toNat)) &&& maskW w
     rw [hj, hj']

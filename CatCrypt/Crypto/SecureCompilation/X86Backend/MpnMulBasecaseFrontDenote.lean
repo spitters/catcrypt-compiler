@@ -616,7 +616,8 @@ theorem bcRowBody_run (up : Fin NU → BitVec 64) (vp : Fin NV → BitVec 64)
   obtain ⟨e3, hs3, h3_kb, hf3⟩ := semScalar_setExpr_run (y := "kb")
     (lower_orshr 63 (envReadU64_of_bound h2_kbq) (envReadU64_of_bound h2_kbr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h2_kbq, envReader_of_bound h2_kbr] at h3_kb
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h3_kb
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h3_kb
   have h3_rp := (hf3 "rp" nt_rp (by decide)).trans h2_rp
   have h3_t := (hf3 "t" nt_t (by decide)).trans h2_t
   have h3_jd := (hf3 "jd" nt_jd (by decide)).trans h2_jd
@@ -754,7 +755,8 @@ theorem bcRowBody_run (up : Fin NU → BitVec 64) (vp : Fin NV → BitVec 64)
   obtain ⟨e16, hs16, h16_k1, hf16⟩ := semScalar_setExpr_run (y := "k1")
     (lower_orshr 63 (envReadU64_of_bound h15_k1q) (envReadU64_of_bound h15_k1r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h15_k1q, envReader_of_bound h15_k1r] at h16_k1
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h16_k1
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h16_k1
   have h16_rp := (hf16 "rp" nt_rp (by decide)).trans h15_rp
   have h16_t := (hf16 "t" nt_t (by decide)).trans h15_t
   have h16_jd := (hf16 "jd" nt_jd (by decide)).trans h15_jd
@@ -816,7 +818,8 @@ theorem bcRowBody_run (up : Fin NU → BitVec 64) (vp : Fin NV → BitVec 64)
   obtain ⟨e22, hs22, h22_k2, hf22⟩ := semScalar_setExpr_run (y := "k2")
     (lower_orshr 63 (envReadU64_of_bound h21_k2q) (envReadU64_of_bound h21_k2r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h21_k2q, envReader_of_bound h21_k2r] at h22_k2
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h22_k2
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h22_k2
   have h22_rp := (hf22 "rp" nt_rp (by decide)).trans h21_rp
   have h22_hi := (hf22 "hi" nt_hi (by decide)).trans h21_hi
   have h22_nc := (hf22 "nc" nt_nc (by decide)).trans h21_nc

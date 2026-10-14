@@ -751,8 +751,8 @@ def InlineBop.apply : InlineBop → BitVec 64 → BitVec 64 → BitVec 64
   | .and, a, b => a &&& b
   | .or, a, b => a ||| b
   | .xor, a, b => a ^^^ b
-  | .shl, a, b => a <<< b.toNat
-  | .shr, a, b => a >>> b.toNat
+  | .shl, a, b => a <<< shiftMask 64 b.toNat
+  | .shr, a, b => a >>> shiftMask 64 b.toNat
 
 /-- The dialect expression of an inline operation on two word slots. -/
 def InlineBop.expr {Γ : Ctx} : InlineBop → CVar Γ (.sword 64) → CVar Γ (.sword 64) →

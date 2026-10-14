@@ -24,9 +24,10 @@ operational model's per-lane semantics. Concretely:
 
 * `tileBin_denote_eq_apply` — the `Com`-dialect op denotes to the bare per-lane
   function `fun i => op.apply (a i) (b i)` (the `tileBinApply` carrier).
-* `tileBin_eq_evalTileOp` — for every two-operand `JasminBinOp`, that lane
-  function is *the same function* the matching operational `evalTileOp` arm
-  writes (e.g. `.add` writes `fun i => a i + b i = fun i => op.apply (a i) (b i)`).
+* `tileBin_eq_evalTileOp` — for every two-operand `JasminBinOp`, the operational
+  `evalTileOp` arm writes the lane function `fun i => op.applyLane (a i) (b i)`;
+  `tileBin_denote_eq_evalTileOp` equates it with the dialect's lane function for
+  every operation other than the register-count shifts `shl`/`shr`.
   This makes the `Com`-dialect tile binop and the operational tile binop
   provably one and the same function — so the verified
   `lowerRegBlock_denote` theorem (stated over the operational model)
@@ -72,11 +73,10 @@ theorem tileBin_denote_eq_apply {n w : Nat} (op : JasminBinOp)
 
 /-! ## 2. The dialect↔model tie: same function as `evalTileOp`'s arm
 
-For each two-operand `JasminBinOp`, the dialect's per-lane function
-`fun i => op.apply (a i) (b i)` equals the lane function the operational
-`evalTileOp` writes for the matching tile op (`.add`/`.sub`/…). Both sides
-reduce to the bare `BitVec w` op, so `cases op <;> rfl` closes it after
-`funext`. -/
+For each two-operand `JasminBinOp`, the operational `evalTileOp` writes the lane
+function `fun i => op.applyLane (a i) (b i)` for the matching tile op
+(`.add`/`.sub`/…). Away from `shl`/`shr`, `applyLane` is `apply`, so this is the
+dialect's per-lane function `fun i => op.apply (a i) (b i)`. -/
 
 /-- The operational tile op `evalTileOp` writes for source `JasminBinOp` `op`
     (the same table as `TileModel.lowerRegInstr`, inlined here so the tie is
@@ -94,32 +94,32 @@ def toTileOp (op : JasminBinOp) (d a b : String) :
   | .shl  => .shll d a b
   | .shr  => .shrr d a b
 
-/-- **The dialect↔model bridge.** For any two-operand `JasminBinOp` `op`, the
-    `Com`-dialect tile op's per-lane function `fun i => op.apply (a i) (b i)`
-    equals the lane function the operational `evalTileOp (toTileOp op d a b)`
-    writes into `d`, when `a`/`b` are the named operand tiles. Both sides are the
-    bare per-lane `BitVec w` op, so they are the SAME function — the `Com`-dialect
-    binop and the operational binop coincide. -/
+/-- **The operational binop is the lane operation.** For any two-operand
+    `JasminBinOp` `op`, the lane function the operational
+    `evalTileOp (toTileOp op d a b)` writes into `d` is
+    `fun i => op.applyLane (a i) (b i)`, where `a`/`b` are the named operand tiles. -/
 theorem tileBin_eq_evalTileOp {n w : Nat}
     (op : JasminBinOp) (s : TileState n w) (d a b : String) :
     (evalTileOp s (toTileOp op d a b)).get d
-      = (fun i => op.apply (s.get a i) (s.get b i)) := by
+      = (fun i => op.applyLane (s.get a i) (s.get b i)) := by
   cases op <;>
     (funext i
-     simp only [toTileOp, evalTileOp, JasminBinOp.apply,
+     simp only [toTileOp, evalTileOp, JasminBinOp.applyLane,
        CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
        CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get,
        if_true])
 
 /-- **Direct form: the `Com`-dialect denotation equals the operational lane
-    function.** The `tileDenote` of `tileBin op` on `a`/`b` equals the lane
-    function `evalTileOp` writes — the two paths produce one function. -/
+    function.** For `op` other than `shl`/`shr`, the `tileDenote` of `tileBin op`
+    on `a`/`b` equals the lane function `evalTileOp` writes. -/
 theorem tileBin_denote_eq_evalTileOp {n w : Nat}
-    (op : JasminBinOp) (s : TileState n w) (d a b : String) :
+    (op : JasminBinOp) (hop : op ≠ .shl ∧ op ≠ .shr) (s : TileState n w) (d a b : String) :
     (tileDenote.denote (TileOp.tileBin op n w)
         (.cons (s.get a) (.cons (s.get b) .nil)))
       = (evalTileOp s (toTileOp op d a b)).get d := by
   rw [tileBin_denote_eq_apply, tileBin_eq_evalTileOp]
+  funext i
+  cases op <;> first | rfl | simp at hop
 
 /-! ## 3. Smoke: a one-op `Com tileDialect` add ties to the operational path
 

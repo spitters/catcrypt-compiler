@@ -339,6 +339,18 @@ theorem sextW_toInt {w : ℕ} (x : BitVec w) : (sextW x).toInt = x.toInt := by
   rw [e, Int.add_mul_bmod_self_left, Int.bmod_eq_of_le_mul_two (by rw [hRR]; nlinarith)
     (by rw [hRR]; nlinarith), Int.mul_ediv_cancel _ (by omega)]
 
+/-- The x86 count mask at width `2 w` fixes the count `w`. -/
+theorem shiftMask_two_mul_self (w : ℕ) : shiftMask (2 * w) w = w := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · exact shiftMask_zero _
+  · exact shiftMask_of_lt (by omega)
+
+/-- `sextW` with the left shift by the masked count `shiftMask (2 w) w`, the form
+`shlImm (2 w) w` denotes. -/
+theorem sextW_eq_masked {w : ℕ} (x : BitVec w) :
+    sextW x = BitVec.sshiftRight (x.zeroExtend (2 * w) <<< shiftMask (2 * w) w) w := by
+  rw [shiftMask_two_mul_self]; rfl
+
 /-- Truncating a `2 w`-bit word to `w` bits takes its signed value to the balanced
 residue modulo `2 ^ w`. -/
 theorem toInt_zeroExtend_half {w : ℕ} (y : BitVec (2 * w)) :
@@ -449,7 +461,7 @@ theorem sLaneProg_denote (w q qinv z n ia ib : ℕ) (up : Bool) (V : Valuation (
           + smontW w q qinv z ((laneVarG (Rw w) n ib).lookup V)
         else (show BitVec w from (laneVarG (Rw w) n ia).lookup V)
           - smontW w q qinv z ((laneVarG (Rw w) n ib).lookup V) := by
-  cases up <;> rfl
+  cases up <;> (simp only [smontW, sextW_eq_masked]; rfl)
 
 /-! ## 5. One signed layer on word lanes and the transform program -/
 
@@ -1058,7 +1070,8 @@ def smontTail (w q qinv z : ℕ) {Γ : Ctxt jasminDialect} (v : Var Γ (Rw w)) :
 
 theorem smontTail_denote (w q qinv z : ℕ) {Γ : Ctxt jasminDialect} (v : Var Γ (Rw w))
     (V : Valuation Γ) :
-    (smontTail w q qinv z v).denote V = smontW w q qinv z (show BitVec w from v.lookup V) := rfl
+    (smontTail w q qinv z v).denote V = smontW w q qinv z (show BitVec w from v.lookup V) := by
+  simp only [smontW, sextW_eq_masked]; rfl
 
 /-- The signed Barrett reduction of the word variable `v`, as the `jasminDialect`
 schedule of `sbarrettW`. -/
@@ -1080,7 +1093,8 @@ def sbarrettTail (w s q v : ℕ) {Γ : Ctxt jasminDialect} (x : Var Γ (Rw w)) :
 
 theorem sbarrettTail_denote (w s q v : ℕ) {Γ : Ctxt jasminDialect} (x : Var Γ (Rw w))
     (V : Valuation Γ) :
-    (sbarrettTail w s q v x).denote V = sbarrettW w s q v (show BitVec w from x.lookup V) := rfl
+    (sbarrettTail w s q v x).denote V = sbarrettW w s q v (show BitVec w from x.lookup V) := by
+  simp only [sbarrettW, sextW_eq_masked]; rfl
 
 /-- One signed Gentleman–Sande lane on `w`-bit words: `a[ia] + a[ib]`,
 Barrett-reduced when `red`, when `up`; the signed Montgomery product of
@@ -1106,7 +1120,7 @@ theorem sInvLaneProg_denote (w q qinv bs bv z : ℕ) (red : Bool) (n ia ib : ℕ
             + (laneVarG (Rw w) n ib).lookup V)
         else smontW w q qinv z
           ((show BitVec w from (laneVarG (Rw w) n ia).lookup V) - (laneVarG (Rw w) n ib).lookup V) := by
-  cases up <;> cases red <;> rfl
+  cases up <;> cases red <;> (simp only [smontW, sbarrettW, sextW_eq_masked]; rfl)
 
 /-- One signed scaling lane on `w`-bit words: the signed Montgomery product of
 `a[i]` by the constant `z`. -/

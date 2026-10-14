@@ -176,11 +176,18 @@ def rotrProg (w n : Nat) : Com arithDialect [.int w] (.int w) :=
       (.var (.mk (.ori w) rfl (.cons (.there .here) (.cons .here .nil)))
         (.ret .here)))
 
-/-- Correctness of the rotate-right shift-or emulation (the shift-or form, valid
-    for any `n`), at fully symbolic width `w`. -/
-theorem rotrProg_denote (w n : Nat) (a : BitVec w) :
+/-- Correctness of the rotate-right shift-or emulation (the shift-or form) for a
+    rotation amount `n < w`, at fully symbolic width `w`. -/
+theorem rotrProg_denote (w n : Nat) (hn : n < w) (a : BitVec w) :
     (rotrProg w n).denote (.cons a .nil) = (a >>> n) ||| (a <<< (w - n)) := by
   simp only [rotrProg]; arith_denote
+  rw [shiftMask_of_lt hn]
+  rcases Nat.eq_zero_or_pos n with rfl | hpos
+  · have hw : shiftMask w w = 0 ∨ shiftMask w w = w := by
+      unfold shiftMask
+      split <;> (try split) <;> (try split) <;> (try split) <;> omega
+    rcases hw with h | h <;> simp [h]
+  · rw [shiftMask_of_lt (by omega : w - n < w)]
 
 /-- Conformance-width corollary: at `w = 64` with a fixed shift amount, the
     shift-or form computed by `rotrProg` agrees with `BitVec.rotateRight`. Stated
@@ -190,6 +197,6 @@ theorem rotrProg_denote (w n : Nat) (a : BitVec w) :
     definitionally against `rotrProg`'s shift-or form. -/
 theorem rotrProg_denote_rotateRight_64 (a : BitVec 64) :
     (rotrProg 64 8).denote (.cons a .nil) = BitVec.rotateRight a 8 := by
-  rw [rotrProg_denote, BitVec.rotateRight_def]
+  rw [rotrProg_denote 64 8 (by decide), BitVec.rotateRight_def]
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations

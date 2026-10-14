@@ -262,9 +262,9 @@ def Rhs.denote {w nIn : Nat} (I : Fin nIn → BitVec w) (ρ : LEnv w) :
   | .mulHi a b => (a.denote I ρ).bind fun av => (b.denote I ρ).map (fun bv => mulHiW av bv)
   | .bin op a b => (a.denote I ρ).bind fun av => (b.denote I ρ).map (fun bv => op.apply av bv)
   | .ror n a => (a.denote I ρ).map (fun av => av.rotateRight n)
-  | .shrImm n a => (a.denote I ρ).map (fun (av : BitVec w) => av >>> n)
+  | .shrImm n a => (a.denote I ρ).map (fun (av : BitVec w) => av >>> shiftMask w n)
   | .sarImm n a => (a.denote I ρ).map (fun (av : BitVec w) => BitVec.sshiftRight av n)
-  | .shlImm n a => (a.denote I ρ).map (fun (av : BitVec w) => av <<< n)
+  | .shlImm n a => (a.denote I ρ).map (fun (av : BitVec w) => av <<< shiftMask w n)
   | .cast a => (a.denote I ρ).map (fun (av : BitVec w) => av.zeroExtend w)
   | .call name args =>
       (atomsHV I ρ args).map fun avs =>
@@ -996,7 +996,7 @@ theorem sigma0Thir_denote (I : Fin 1 → BitVec 32) :
   have h0 : inpGet I 0 = I 0 := by simp [inpGet]
   simp only [sigma0Thir, sigma0Spec, Thir.denote, Rhs.denote, Atom.denote,
     h0, LEnv.set, LEnv.empty, JasminBinOp.apply, Option.bind_some,
-    Option.map_some, reduceIte, String.reduceEq]
+    Option.map_some, reduceIte, String.reduceEq, shiftMask_of_lt (by decide : 3 < 32)]
 
 /-- The σ₀ input context: `1` `rW 32` word. -/
 abbrev ctxtSigma0 : Ctxt jasminDialect := frontCtxt 32 1 []
@@ -1412,7 +1412,7 @@ theorem smallSigma1Thir_denote (I : Fin 1 → BitVec 32) :
   have h0 : inpGet I 0 = I 0 := by simp [inpGet]
   simp only [smallSigma1Thir, smallSigma1Spec, Thir.denote, Rhs.denote, Atom.denote,
     h0, LEnv.set, LEnv.empty, JasminBinOp.apply, Option.bind_some,
-    Option.map_some, reduceIte, String.reduceEq]
+    Option.map_some, reduceIte, String.reduceEq, shiftMask_of_lt (by decide : 10 < 32)]
 
 /-- Ch THIR computes the FIPS Ch spec (with NOT-via-xor) for any input vector. -/
 theorem chThir_denote (I : Fin 3 → BitVec 32) :
@@ -1445,7 +1445,8 @@ theorem msgSchedThir_denote (I : Fin 4 → BitVec 32) :
   simp only [msgSchedThir, msgSchedSpec, smallSigma1Spec, sigma0Spec,
     Thir.denote, Rhs.denote, Atom.denote, h0, h1, h2, h3, LEnv.set, LEnv.empty,
     JasminBinOp.apply, Option.bind_some, Option.map_some, reduceIte,
-    String.reduceEq]
+    String.reduceEq, shiftMask_of_lt (by decide : 10 < 32),
+    shiftMask_of_lt (by decide : 3 < 32)]
 
 /-- The `a'` round THIR computes the FIPS round output `a' = T₁+T₂`. -/
 theorem sha256RoundAThir_denote (I : Fin 10 → BitVec 32) :

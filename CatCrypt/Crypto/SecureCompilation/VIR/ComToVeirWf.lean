@@ -749,9 +749,16 @@ theorem veirRunStepsC_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat) (x 
     simp [veirRunStepsC, JasminOp.shiftSelectExpansion, VeirSrc.resolveVal, stepResTys,
       conformsB, interpretOp', Arith.interpretOp', JasminOp.toMlirOpCode,
       JasminBinOp.toArithOpCode, JasminTy.toVeirTy]
-    exact ⟨⟨conforms_int_integerType _ _, conforms_int_integerType _ _,
-      conforms_int_integerType _ _, conforms_int_integerType _ _,
-      conforms_int_integerType _ _⟩, rfl⟩
+    have hc : BitVec.ofInt w ((shiftMask w (2 ^ w - 1) : Int) % 2 ^ w)
+        = BitVec.ofNat w (shiftMask w (2 ^ w - 1)) := by
+      rw [show ((shiftMask w (2 ^ w - 1) : Int) % 2 ^ w)
+          = ((shiftMask w (2 ^ w - 1) % 2 ^ w : Nat) : Int) by push_cast; rfl,
+        BitVec.ofInt_natCast]
+      exact BitVec.eq_of_toNat_eq (by simp)
+    simp only [hc]
+    refine ⟨?_, rfl⟩
+    repeat' apply And.intro
+    all_goals exact conforms_int_integerType _ _
 
 theorem argPtrs_length {Γ : Ctxt jasminDialect} (vm : VarMap Γ) (ρ : VEnv Γ) :
     ∀ {tys : List JasminTy} (xs : HVector (fun ty => Var Γ ty) tys),

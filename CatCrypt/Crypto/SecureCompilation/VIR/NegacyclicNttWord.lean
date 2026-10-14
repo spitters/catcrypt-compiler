@@ -220,10 +220,13 @@ end Lanes
 /-! ## 2. The Montgomery multiply on words -/
 
 /-- The Montgomery multiply of `y` by the constant `z` on 64-bit words:
-`(T + ((T · qinv) & (R − 1)) · q) >> logR` with `T = y · z`. -/
+`(T + ((T · qinv) & (R − 1)) · q) >> logR` with `T = y · z`, where the right
+shift is the 64-bit register shift, by the count `shiftMask 64` of the register
+holding `logR`. -/
 def montW (q R qinv logR z : ℕ) (y : BitVec 64) : BitVec 64 :=
   (y * BitVec.ofNat 64 z + ((y * BitVec.ofNat 64 z * BitVec.ofNat 64 qinv)
-    &&& BitVec.ofNat 64 (R - 1)) * BitVec.ofNat 64 q) >>> (BitVec.ofNat 64 logR).toNat
+    &&& BitVec.ofNat 64 (R - 1)) * BitVec.ofNat 64 q) >>>
+      shiftMask 64 (BitVec.ofNat 64 logR).toNat
 
 /-- On in-range operands the Montgomery word multiply is `montgomeryReduce`. -/
 theorem montW_toNat (q R qinv logR z : ℕ) (y : BitVec 64) (hR : R = 2 ^ logR)
@@ -260,7 +263,12 @@ theorem montW_toNat (q R qinv logR z : ℕ) (y : BitVec 64) (hR : R = 2 ^ logR)
       = y.toNat * z + (y.toNat * z * qinv) % R * q := by
     rw [BitVec.toNat_add, hTw, hmqw]
     exact Nat.mod_eq_of_lt (by omega)
-  rw [montW, BitVec.toNat_ushiftRight, hsum, hlogw, Nat.shiftRight_eq_div_pow, ← hR,
+  have hlt : logR < 64 := by
+    by_contra h
+    have : 2 ^ 64 ≤ R := hR ▸ Nat.pow_le_pow_right (by norm_num) (by omega)
+    nlinarith
+  rw [montW, BitVec.toNat_ushiftRight, hsum, hlogw, shiftMask_of_lt hlt,
+    Nat.shiftRight_eq_div_pow, ← hR,
     montgomeryReduce, Nat.mul_comm z]
 
 /-! ## 3. The butterfly lane schedule -/
@@ -830,11 +838,13 @@ abbrev Ctxs (w n : ℕ) : Ctxt jasminDialect := List.replicate n (Rw w)
 
 /-- The Montgomery multiply of `y` by the constant `z` on `w`-bit words, with the
 product and the reduction at `2 w` bits: `T = zext y · z`, then
-`(T + ((T · qinv) & (R − 1)) · q) >> logR` truncated to `w` bits. -/
+`(T + ((T · qinv) & (R − 1)) · q) >> logR` truncated to `w` bits, the shift by the
+count `shiftMask (2 w) logR` of `shrImm (2 w) logR`. -/
 def umontW (w q R qinv logR z : ℕ) (y : BitVec w) : BitVec w :=
   ((y.zeroExtend (2 * w) * BitVec.ofNat (2 * w) z
     + ((y.zeroExtend (2 * w) * BitVec.ofNat (2 * w) z * BitVec.ofNat (2 * w) qinv)
-      &&& BitVec.ofNat (2 * w) (R - 1)) * BitVec.ofNat (2 * w) q) >>> logR).zeroExtend w
+      &&& BitVec.ofNat (2 * w) (R - 1)) * BitVec.ofNat (2 * w) q) >>>
+        shiftMask (2 * w) logR).zeroExtend w
 
 /-- On in-range operands whose reduction fits a word, the Montgomery word multiply
 at `2 w` bits is `montgomeryReduce`. -/
@@ -881,8 +891,12 @@ theorem umontW_toNat (w q R qinv logR z : ℕ) (y : BitVec w) (hR : R = 2 ^ logR
   have hmr : montgomeryReduce q R qinv (z * y.toNat)
       = (y.toNat * z + (y.toNat * z * qinv) % R * q) / 2 ^ logR := by
     rw [montgomeryReduce, ← hR, Nat.mul_comm z]
+  have hlt : logR < 2 * w := by
+    by_contra h
+    have : 2 ^ (2 * w) ≤ R := hR ▸ Nat.pow_le_pow_right (by norm_num) (by omega)
+    nlinarith
   rw [umontW, BitVec.zeroExtend_eq_setWidth, BitVec.toNat_setWidth, BitVec.toNat_ushiftRight,
-    hsum, Nat.shiftRight_eq_div_pow, ← hmr, Nat.mod_eq_of_lt hfit]
+    hsum, Nat.shiftRight_eq_div_pow, shiftMask_of_lt hlt, ← hmr, Nat.mod_eq_of_lt hfit]
 
 /-- **Exact division by a constant.** For `D ≤ m · q` and `V · (m · q − D) ≤ D`, the
 quotient `⌊x · m / D⌋` of every `x < V` is `⌊x / q⌋`. -/
@@ -912,17 +926,19 @@ theorem mul_div_eq_div_of_lt (q D m x V : ℕ) (hq : 0 < q) (hD : 0 < D) (hm : D
       _ = q * ((x / q + 1) * D) := by ring
 
 /-- The unsigned Barrett reduction of `x` on `w`-bit words, with products at `2 w`
-bits: `a = zext x`, `t = (a · m) >> k`, and `a − t · q` truncated to `w` bits. -/
+bits: `a = zext x`, `t = (a · m) >> k`, and `a − t · q` truncated to `w` bits, the
+shift by the count `shiftMask (2 w) k` of `shrImm (2 w) k`. -/
 def ubarW (w q k m : ℕ) (x : BitVec w) : BitVec w :=
-  (x.zeroExtend (2 * w) - ((x.zeroExtend (2 * w) * BitVec.ofNat (2 * w) m) >>> k)
+  (x.zeroExtend (2 * w) -
+    ((x.zeroExtend (2 * w) * BitVec.ofNat (2 * w) m) >>> shiftMask (2 * w) k)
     * BitVec.ofNat (2 * w) q).zeroExtend w
 
-/-- For a word below `V` with `V · m ≤ 2 ^ (2 w)`, `2 ^ k ≤ m · q` and
-`V · (m · q − 2 ^ k) ≤ 2 ^ k`, the Barrett word reduction is the remainder modulo
-`q`. -/
+/-- For a word below `V` with `V · m ≤ 2 ^ (2 w)`, `2 ^ k ≤ m · q`,
+`V · (m · q − 2 ^ k) ≤ 2 ^ k` and a shift `k < 2 w`, the Barrett word reduction is the
+remainder modulo `q`. -/
 theorem ubarW_toNat (w q k m V : ℕ) (x : BitVec w) (hq : 0 < q) (hqw : q ≤ 2 ^ w)
     (hx : x.toNat < V) (hVm : V * m ≤ 2 ^ (2 * w)) (hm : 2 ^ k ≤ m * q)
-    (he : V * (m * q - 2 ^ k) ≤ 2 ^ k) :
+    (he : V * (m * q - 2 ^ k) ≤ 2 ^ k) (hk2 : k < 2 * w) :
     (ubarW w q k m x).toNat = x.toNat % q := by
   have hw2 : (2 : ℕ) ^ w ≤ 2 ^ (2 * w) := Nat.pow_le_pow_right (by norm_num) (by omega)
   have hxw := x.isLt
@@ -948,7 +964,7 @@ theorem ubarW_toNat (w q k m V : ℕ) (x : BitVec w) (hq : 0 < q) (hqw : q ≤ 2
       Nat.mod_eq_of_lt (by omega)]
   have hdm := Nat.div_add_mod x.toNat q
   have hr := Nat.mod_lt x.toNat hq
-  rw [ubarW, BitVec.zeroExtend_eq_setWidth, BitVec.toNat_setWidth,
+  rw [ubarW, shiftMask_of_lt hk2, BitVec.zeroExtend_eq_setWidth, BitVec.toNat_setWidth,
     BitVec.toNat_sub_of_le (by rw [BitVec.le_def, htq, hyz]; exact hdq), htq, hyz,
     Nat.mod_eq_of_lt (by rw [Nat.mul_comm] at hdm; omega)]
   rw [Nat.mul_comm] at hdm
@@ -1109,9 +1125,16 @@ theorem redW_layer (hS : SchedOk P S) (hW : UWordOk P S logR) (hq : 0 < P.q) (�
   · simp only [redW, Bool.false_eq_true, if_false, BitVec.toNat_ofNat]
     rw [hWv, Nat.mod_eq_of_lt (a := v) (by omega)]
   · obtain ⟨hVm, he⟩ := hW.2.2 ℓ hl hr
+    have hk2 : barK P S < 2 * S.w := by
+      have hq2 : P.q < 2 ^ S.w := by
+        have : 2 * P.q ≤ S.off * P.q := Nat.mul_le_mul_right _ hS.1
+        omega
+      have := (Nat.log2_lt hq.ne').2 hq2
+      unfold barK
+      omega
     simp only [redW, if_true, BitVec.toNat_ofNat]
     rw [ubarW_toNat S.w P.q (barK P S) (barM P S) _ W hq hqw (by rw [hWv]; exact hv) hVm
-      (barM_mul_ge P S hq) he, hWv,
+      (barM_mul_ge P S hq) he hk2, hWv,
       Nat.mod_eq_of_lt (a := v % P.q) (by have := Nat.mod_lt v hq; omega)]
 
 /-- On representatives below `bnd ℓ`, one word layer at the schedule's width is

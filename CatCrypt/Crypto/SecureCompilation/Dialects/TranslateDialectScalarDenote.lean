@@ -92,7 +92,7 @@ injectivity — proved here via a decimal digit round-trip, §2b — plus the
 `OnlyTmpBelow` / `ResultOK` bookkeeping). The shift arms case the front's
 immediate-vs-variable amount selection (`bvShiftL 64 k` on a literal `SLit k`,
 `bvShiftLV 64` otherwise), reconciled with `evalBV`'s uniform
-`<<< (amount).toNat` through `srcClean`'s `k < 2^64` literal bound; `SMulHiU`
+`<<< shiftMask 64 (amount).toNat` through `srcClean`'s `k < 2^64` literal bound; `SMulHiU`
 closes through the `mulHiC`↔`sexprMulHiU` bridge (`mulHiC_eq_sexprMulHiU`). The
 remaining `SExpr` nodes (the signed `SAsr` / `SMulS` / `SMulHiS`, the tower read
 `SLimb`, `SLt`) stay excluded from `srcClean` (no jasmin lowering or signed
@@ -407,7 +407,8 @@ def binNode (envAB : SEnvScalar) (na nb : String) (cnt : Nat)
     op denotes (`bvConst`/`bvAdd`/… — front-faithful, so the preservation
     homomorphism `translateDialectFull_denote` ties them via `ConsistentS` with NO
     freshness reasoning). The shift arms use `SExpr.evalBV`'s uniform
-    variable-amount convention (`va <<< vb.toNat` / `va >>> vb.toNat`); when the
+    masked variable-amount convention (`va <<< shiftMask 64 vb.toNat` /
+    `va >>> shiftMask 64 vb.toNat`); when the
     amount is a literal `SLit k` the front instead emits the immediate op
     `bvShiftL 64 k` / `bvShiftR 64 k`, and the two agree exactly under
     `srcClean`'s `k < 2^64` literal bound (`(BitVec.ofNat 64 k).toNat = k`).
@@ -459,14 +460,16 @@ def semLowerSExpr (env : SEnvScalar) (cnt : Nat) : SExpr → Option (SEnvScalar 
       match semLowerSExpr env cnt a with
       | some (e1, na, c1) =>
           match semLowerSExpr e1 c1 b with
-          | some (e2, nb, c2) => binNode e2 na nb c2 (fun va vb => va <<< vb.toNat)
+          | some (e2, nb, c2) =>
+              binNode e2 na nb c2 (fun va vb => va <<< shiftMask 64 vb.toNat)
           | none => none
       | none => none
   | .SShr a b =>
       match semLowerSExpr env cnt a with
       | some (e1, na, c1) =>
           match semLowerSExpr e1 c1 b with
-          | some (e2, nb, c2) => binNode e2 na nb c2 (fun va vb => va >>> vb.toNat)
+          | some (e2, nb, c2) =>
+              binNode e2 na nb c2 (fun va vb => va >>> shiftMask 64 vb.toNat)
           | none => none
       | none => none
   | .SMulHiU a b =>
@@ -2121,9 +2124,10 @@ theorem lowerSExpr_denoteWith (ls : SemLeafSpec) (e : SExpr) :
                         omega
                       have hden : eOp.denote V₂
                           = SExpr.evalBV (envReader env) a
-                              >>> (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
+                              >>> shiftMask 64
+                                (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
                         rw [hk, ← hva_ev]; rfl
-                      have hbin : binNode env2 na nb c2 (fun x y => x >>> y.toNat)
+                      have hbin : binNode env2 na nb c2 (fun x y => x >>> shiftMask 64 y.toNat)
                           = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
                               (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
                         simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
@@ -2178,9 +2182,9 @@ theorem lowerSExpr_denoteWith (ls : SemLeafSpec) (e : SExpr) :
                         rw [hvb] at h1; exact Option.some.inj h1
                       have hden : eOp.denote V₂
                           = SExpr.evalBV (envReader env) a
-                              >>> (SExpr.evalBV (envReader env) b).toNat := by
+                              >>> shiftMask 64 (SExpr.evalBV (envReader env) b).toNat := by
                         rw [← hva_ev, ← hvb_ev]; rfl
-                      have hbin : binNode env2 na nb c2 (fun x y => x >>> y.toNat)
+                      have hbin : binNode env2 na nb c2 (fun x y => x >>> shiftMask 64 y.toNat)
                           = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
                               (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
                         simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
@@ -2248,9 +2252,10 @@ theorem lowerSExpr_denoteWith (ls : SemLeafSpec) (e : SExpr) :
                         omega
                       have hden : eOp.denote V₂
                           = SExpr.evalBV (envReader env) a
-                              <<< (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
+                              <<< shiftMask 64
+                                (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
                         rw [hk, ← hva_ev]; rfl
-                      have hbin : binNode env2 na nb c2 (fun x y => x <<< y.toNat)
+                      have hbin : binNode env2 na nb c2 (fun x y => x <<< shiftMask 64 y.toNat)
                           = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
                               (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
                         simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
@@ -2305,9 +2310,9 @@ theorem lowerSExpr_denoteWith (ls : SemLeafSpec) (e : SExpr) :
                         rw [hvb] at h1; exact Option.some.inj h1
                       have hden : eOp.denote V₂
                           = SExpr.evalBV (envReader env) a
-                              <<< (SExpr.evalBV (envReader env) b).toNat := by
+                              <<< shiftMask 64 (SExpr.evalBV (envReader env) b).toNat := by
                         rw [← hva_ev, ← hvb_ev]; rfl
-                      have hbin : binNode env2 na nb c2 (fun x y => x <<< y.toNat)
+                      have hbin : binNode env2 na nb c2 (fun x y => x <<< shiftMask 64 y.toNat)
                           = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
                               (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
                         simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]

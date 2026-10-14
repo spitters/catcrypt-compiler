@@ -70,7 +70,7 @@ The four half-kernel `Com jasminDialect` producers and their `*_denote` pins
 AT&T `.s` through `VpackZmmAsmPrint.renderVpackZmmComAutoZmm`.
 
 The lane proofs are pure `zmmPackQ_lane` peels: each packed op's lane is the
-scalar `JasminBinOp.apply` of the input lanes, so the whole body's lane function
+scalar `JasminBinOp.applyLane` of the input lanes, so the whole body's lane function
 is the scalar BabyBear reference by construction — no numeric reasoning, no
 `Avx512Model`, no `native_decide`.
 
@@ -111,9 +111,9 @@ theorem zmmOfLanes_zmmLane' (f : Fin 8 → BitVec 64) (k : Fin 8) :
        BitVec.extractLsb'_append_eq_left]) <;>
     rfl
 
-/-- Lane `k` of `zmmPackQ bop a b` is `bop.apply (zmmLane a k) (zmmLane b k)`. -/
+/-- Lane `k` of `zmmPackQ bop a b` is `bop.applyLane (zmmLane a k) (zmmLane b k)`. -/
 theorem packQ_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 8) :
-    zmmLane (zmmPackQ bop a b) k = bop.apply (zmmLane a k) (zmmLane b k) := by
+    zmmLane (zmmPackQ bop a b) k = bop.applyLane (zmmLane a k) (zmmLane b k) := by
   unfold zmmPackQ
   rw [zmmOfLanes_zmmLane']
 
@@ -227,33 +227,33 @@ def intdiagVec (d v sum NPI P MASK c32 c63 zero : BitVec 512) : BitVec 512 :=
 
 Lane `k` of each packed body is the scalar BabyBear reference of lane `k` of the
 inputs — each `zmmPackQ_lane` peel turns a packed op's lane into the scalar
-`JasminBinOp.apply` of the input lanes. -/
+`JasminBinOp.applyLane` of the input lanes. -/
 
 /-- Lane `k` of `csubVec` is `csubL` of the lanes. -/
 theorem csubVec_lane (y P c63 zero : BitVec 512) (k : Fin 8) :
     zmmLane (csubVec y P c63 zero) k
       = csubL (zmmLane y k) (zmmLane P k) (zmmLane c63 k).toNat (zmmLane zero k) := by
-  simp only [csubVec, csubL, packQ_lane, JasminBinOp.apply]
+  simp only [csubVec, csubL, packQ_lane, JasminBinOp.applyLane]
 
 /-- Lane `k` of `montReduceVec` is `montReduceL` of the lanes. -/
 theorem montReduceVec_lane (t NPI P MASK c32 c63 zero : BitVec 512) (k : Fin 8) :
     zmmLane (montReduceVec t NPI P MASK c32 c63 zero) k
       = montReduceL (zmmLane t k) (zmmLane NPI k) (zmmLane P k) (zmmLane MASK k)
           (zmmLane c32 k).toNat (zmmLane c63 k).toNat (zmmLane zero k) := by
-  simp only [montReduceVec, montReduceL, csubVec_lane, csubL, packQ_lane, JasminBinOp.apply]
+  simp only [montReduceVec, montReduceL, csubVec_lane, csubL, packQ_lane, JasminBinOp.applyLane]
 
 /-- Lane `k` of `montMulVec` is `montMulL` of the lanes. -/
 theorem montMulVec_lane (a b NPI P MASK c32 c63 zero : BitVec 512) (k : Fin 8) :
     zmmLane (montMulVec a b NPI P MASK c32 c63 zero) k
       = montMulL (zmmLane a k) (zmmLane b k) (zmmLane NPI k) (zmmLane P k) (zmmLane MASK k)
           (zmmLane c32 k).toNat (zmmLane c63 k).toNat (zmmLane zero k) := by
-  simp only [montMulVec, montMulL, montReduceVec_lane, packQ_lane, JasminBinOp.apply]
+  simp only [montMulVec, montMulL, montReduceVec_lane, packQ_lane, JasminBinOp.applyLane]
 
 /-- Lane `k` of `faddVec` is `faddL` of the lanes. -/
 theorem faddVec_lane (a b P c63 zero : BitVec 512) (k : Fin 8) :
     zmmLane (faddVec a b P c63 zero) k
       = faddL (zmmLane a k) (zmmLane b k) (zmmLane P k) (zmmLane c63 k).toNat (zmmLane zero k) := by
-  simp only [faddVec, faddL, csubVec_lane, packQ_lane, JasminBinOp.apply]
+  simp only [faddVec, faddL, csubVec_lane, packQ_lane, JasminBinOp.applyLane]
 
 /-- Lane `k` of `sboxVec` is `sboxL` of the lane. -/
 theorem sboxVec_lane (x NPI P MASK c32 c63 zero : BitVec 512) (k : Fin 8) :

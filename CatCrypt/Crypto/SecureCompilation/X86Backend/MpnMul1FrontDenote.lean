@@ -343,7 +343,8 @@ theorem limbBody_run (up : Fin NU → BitVec 64) (b : BitVec 64)
     (lower_orshr 63 (envReadU64_of_bound h7cq) (envReadU64_of_bound h7cr)
       (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h7cq, envReader_of_bound h7cr] at h8c
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h8c
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h8c
   have h8rp := (hf8 "rp" (nt_rp) (by decide)).trans h7rp
   have h8idx := (hf8 "idx" (nt_idx) (by decide)).trans h7idx
   have h8hi := (hf8 "hi" (nt_hi) (by decide)).trans h7hi

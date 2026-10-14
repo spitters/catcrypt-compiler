@@ -199,12 +199,13 @@ def litNatT? : Hax.ImpLit → Option Nat
   | .int n => some n.toNat
   | _ => none
 
-/-- Apply a recognised shift/rotate kind to a value and a compile-time count. -/
+/-- Apply a recognised shift/rotate kind to a value and a compile-time count; the
+    logical shifts shift by the masked count `VIR.shiftMask w n`. -/
 def ShiftKind.apply {w : Nat} : ShiftKind → BitVec w → Nat → BitVec w
   | .ror, av, n => av.rotateRight n
-  | .shr, av, n => av >>> n
+  | .shr, av, n => av >>> VIR.shiftMask w n
   | .sar, av, n => BitVec.sshiftRight av n
-  | .shl, av, n => av <<< n
+  | .shl, av, n => av <<< VIR.shiftMask w n
 
 /-! ## §2  Source semantics of the typed scalar subset
 

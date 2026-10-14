@@ -153,8 +153,8 @@ inductive ArithUn where
     denotation of `shlImm 64` / `shrImm 64`. -/
 def ArithUn.apply : ArithUn → BitVec 64 → BitVec 64
   | .copy, a => a
-  | .shl k, a => a <<< k
-  | .shr k, a => a >>> k
+  | .shl k, a => a <<< shiftMask 64 k
+  | .shr k, a => a >>> shiftMask 64 k
 
 /-- **The covered one-input operations.** A copy is always covered; a shift is
     covered when the immediate is below the word width, which is where the
@@ -232,12 +232,12 @@ theorem lowerUn_get_dst (uop : ArithUn) (huop : IsScalarUn uop) (ra dst : String
       have hk : k < 64 := huop
       simp [ArithUn.toJInstr, ArithUn.apply, runBlock_cons, runBlock_nil, evalInstr,
         x86_MOV, JOperand.eval, JState.setReg, JState.writeB5W, JState.get,
-        x86_SHL_imm_word hk]
+        x86_SHL_imm_word hk, Nat.mod_eq_of_lt hk]
   | shr k =>
       have hk : k < 64 := huop
       simp [ArithUn.toJInstr, ArithUn.apply, runBlock_cons, runBlock_nil, evalInstr,
         x86_MOV, JOperand.eval, JState.setReg, JState.writeB5W, JState.get,
-        x86_SHR_imm_word hk]
+        x86_SHR_imm_word hk, Nat.mod_eq_of_lt hk]
 
 /-- **Per-operation frame (one input).** The lowered one-input block writes only
     `dst`; reading any other register `r ≠ dst` falls through unchanged. -/
@@ -433,8 +433,9 @@ def unOfShl : Nat → ArithUn
   | 0 => .copy
   | k + 1 => .shl (k + 1)
 
-/-- The operation of a `shlImm 64 k` binder computes `a <<< k`. -/
-theorem unOfShl_apply (k : Nat) (a : BitVec 64) : (unOfShl k).apply a = a <<< k := by
+/-- The operation of a `shlImm 64 k` binder computes `a <<< shiftMask 64 k`. -/
+theorem unOfShl_apply (k : Nat) (a : BitVec 64) :
+    (unOfShl k).apply a = a <<< shiftMask 64 k := by
   cases k with
   | zero => simp [unOfShl, ArithUn.apply]
   | succ k => rfl

@@ -404,7 +404,8 @@ theorem addmulLimbBody_run (up : Fin NU → BitVec 64) (b nv : BitVec 64)
     (lower_orshr 63 (envReadU64_of_bound h8cq) (envReadU64_of_bound h8cr)
       (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h8cq, envReader_of_bound h8cr] at h9c
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h9c
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h9c
   have h9rp := (hf9 "rp" (nt_rp) (by decide)).trans h8rp
   have h9idx := (hf9 "idx" (nt_idx) (by decide)).trans h8idx
   have h9nlimbs := (hf9 "nlimbs" notTmp_nlimbs (by decide)).trans h8nlimbs
@@ -450,7 +451,8 @@ theorem addmulLimbBody_run (up : Fin NU → BitVec 64) (b nv : BitVec 64)
     (lower_orshr 63 (envReadU64_of_bound h12dq) (envReadU64_of_bound h12dr)
       (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h12dq, envReader_of_bound h12dr] at h13d
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h13d
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h13d
   have h13rp := (hf13 "rp" (nt_rp) (by decide)).trans h12rp
   have h13idx := (hf13 "idx" (nt_idx) (by decide)).trans h12idx
   have h13nlimbs := (hf13 "nlimbs" notTmp_nlimbs (by decide)).trans h12nlimbs
@@ -608,7 +610,8 @@ theorem submulLimbBody_run (up : Fin NU → BitVec 64) (b nv : BitVec 64)
     (lower_orshr 63 (envReadU64_of_bound h8cq) (envReadU64_of_bound h8cr)
       (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h8cq, envReader_of_bound h8cr] at h9c
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h9c
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h9c
   have h9rp := (hf9 "rp" (nt_rp) (by decide)).trans h8rp
   have h9idx := (hf9 "idx" (nt_idx) (by decide)).trans h8idx
   have h9nlimbs := (hf9 "nlimbs" notTmp_nlimbs (by decide)).trans h8nlimbs
@@ -656,7 +659,8 @@ theorem submulLimbBody_run (up : Fin NU → BitVec 64) (b nv : BitVec 64)
     (lower_orshr 63 (envReadU64_of_bound h12dq) (envReadU64_of_bound h12dr)
       (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h12dq, envReader_of_bound h12dr] at h13d
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h13d
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h13d
   have h13rp := (hf13 "rp" (nt_rp) (by decide)).trans h12rp
   have h13idx := (hf13 "idx" (nt_idx) (by decide)).trans h12idx
   have h13nlimbs := (hf13 "nlimbs" notTmp_nlimbs (by decide)).trans h12nlimbs

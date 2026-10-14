@@ -161,7 +161,7 @@ theorem rhoCom_lane_eq_abstract_rho
     unfold constZmm; rw [zmmOfLanes_zmmLane']
   have hck : zmmLane (constZmm (64 - s)) k = BitVec.ofNat 64 (64 - s) := by
     unfold constZmm; rw [zmmOfLanes_zmmLane']
-  simp only [JasminBinOp.apply, hsk, hck]
+  simp only [JasminBinOp.applyLane, hsk, hck]
   have hsn : (BitVec.ofNat 64 s).toNat = s := by
     rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
   have hcn : (BitVec.ofNat 64 (64 - s)).toNat = 64 - s := by
@@ -215,7 +215,7 @@ theorem chiCom_lane_eq_abstract_chi
               (.cons (reg ⟨(x.val + 2) % 5, by omega⟩ y) .nil)))) k
       = chi (stateAt reg k) x y := by
   rw [chiCom_denote, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply, chi, stateAt]
+  simp only [JasminBinOp.applyLane, chi, stateAt]
 
 /-! ## 3. ι round-constant xor `iota = a ⊕ RC` (at the (0,0) lane)
 
@@ -269,7 +269,7 @@ theorem iotaCom_lane_eq_abstract_iota
     unfold constZmm; rw [zmmOfLanes_zmmLane']; simp
   have hz : zmmLane (constZmm 0) k = 0 := by
     unfold constZmm; rw [zmmOfLanes_zmmLane']; rfl
-  simp only [JasminBinOp.apply, iota, stateAt, iotaOperand]
+  simp only [JasminBinOp.applyLane, iota, stateAt, iotaOperand]
   by_cases h : (x.val == 0 && y.val == 0) = true
   · rw [h]; simp only [if_true, hrc]
   · rw [Bool.not_eq_true] at h

@@ -164,7 +164,7 @@ theorem sigma1Com_lane (x : BitVec 512) (k : Fin 8) :
   rw [sigma1Com_denote]
   rw [zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply, constZmm_lane]
+  simp only [JasminBinOp.applyLane, constZmm_lane]
   norm_num
 
 /-- **THE ABSTRACT TIE — σ₁.** Lane `k` of the unified `sigma1Com` denotation
@@ -281,7 +281,7 @@ theorem bigSigma0Com_lane (x : BitVec 512) (k : Fin 8) :
   rw [zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane]
-  simp only [JasminBinOp.apply, constZmm_lane]
+  simp only [JasminBinOp.applyLane, constZmm_lane]
   norm_num
 
 /-- **THE ABSTRACT TIE — Σ₀.** Lane `k` of the unified `bigSigma0Com` denotation
@@ -371,7 +371,7 @@ theorem bigSigma1Com_lane (x : BitVec 512) (k : Fin 8) :
   rw [zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane]
-  simp only [JasminBinOp.apply, constZmm_lane]
+  simp only [JasminBinOp.applyLane, constZmm_lane]
   norm_num
 
 /-- **THE ABSTRACT TIE — Σ₁.** Lane `k` of the unified `bigSigma1Com` denotation

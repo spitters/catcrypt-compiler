@@ -168,10 +168,11 @@ structure VecKit (n w : Nat) where
   lane_inj : ∀ x y, (∀ k, lane x k = lane y k) → x = y
   /-- The packed expression of a scalar operation. -/
   pk : JasminBinOp → PackBuilder (w * n)
-  /-- Lane `k` of a packed expression is the scalar operation on lane `k`. -/
+  /-- Lane `k` of a packed expression is the lane operation `JasminBinOp.applyLane` on
+      lane `k`: the scalar operation, with the shifts by the unmasked count. -/
   pk_lane : ∀ (bop : JasminBinOp) (Γ : Ctxt jasminDialect) (a b : Ctxt.Var Γ (.reg (w * n)))
     (V : Ctxt.Valuation Γ) (k : Fin n),
-    lane ((pk bop Γ a b).denote V) k = bop.apply (lane (a.lookup V) k) (lane (b.lookup V) k)
+    lane ((pk bop Γ a b).denote V) k = bop.applyLane (lane (a.lookup V) k) (lane (b.lookup V) k)
   /-- A packed expression is an operation of `isVecOp`. -/
   pk_vec : ∀ (bop : JasminBinOp) (Γ : Ctxt jasminDialect) (a b : Ctxt.Var Γ (.reg (w * n))),
     isVecOp (pk bop Γ a b).op = true
@@ -218,12 +219,19 @@ def constBlk (c : Nat) : Com jasminDialect [] (.reg (w * n)) :=
 def binBlk (bop : JasminBinOp) : Blk2 n w :=
   .var (K.pk bop _ .here (.there .here)) (.ret .here)
 
-theorem binBlk_lane (bop : JasminBinOp) (x y : BitVec (w * n)) (k : Fin n) :
+omit K in
+/-- Away from the register-count shifts, the lane operation is the scalar operation. -/
+theorem applyLane_eq_apply {bop : JasminBinOp} (hb : bop ≠ .shl ∧ bop ≠ .shr) {v : Nat}
+    (a b : BitVec v) : bop.applyLane a b = bop.apply a b := by
+  cases bop <;> first | rfl | simp at hb
+
+theorem binBlk_lane (bop : JasminBinOp) (hb : bop ≠ .shl ∧ bop ≠ .shr) (x y : BitVec (w * n))
+    (k : Fin n) :
     K.lane ((K.binBlk bop).denote (.cons x (.cons y .nil))) k =
       bop.apply (K.lane x k) (K.lane y k) := by
   show K.lane ((K.pk bop _ .here (.there .here)).denote _) k = _
   rw [K.pk_lane]
-  rfl
+  exact applyLane_eq_apply hb _ _
 
 /-- The block of a binary operation against the broadcast constant `c`. -/
 def shBlk (bop : JasminBinOp) (c : Nat) : Blk1 n w :=
@@ -231,10 +239,10 @@ def shBlk (bop : JasminBinOp) (c : Nat) : Blk1 n w :=
 
 theorem shBlk_lane (bop : JasminBinOp) (c : Nat) (x : BitVec (w * n)) (k : Fin n) :
     K.lane ((K.shBlk bop c).denote (.cons x .nil)) k =
-      bop.apply (K.lane x k) (BitVec.ofNat w c) := by
+      bop.applyLane (K.lane x k) (BitVec.ofNat w c) := by
   show K.lane ((K.pk bop _ (.there .here) .here).denote _) k = _
   rw [K.pk_lane]
-  show bop.apply (K.lane x k) (K.lane ((K.cst _).denote _) k) = _
+  show bop.applyLane (K.lane x k) (K.lane ((K.cst _).denote _) k) = _
   rw [K.cst_lane]
 
 /-- The block that combines by `or` two binary operations of the operand against the
@@ -249,13 +257,14 @@ def rotBlk (b1 : JasminBinOp) (c1 : Nat) (b2 : JasminBinOp) (c2 : Nat) : Blk1 n 
 theorem rotBlk_lane (b1 : JasminBinOp) (c1 : Nat) (b2 : JasminBinOp) (c2 : Nat)
     (x : BitVec (w * n)) (k : Fin n) :
     K.lane ((K.rotBlk b1 c1 b2 c2).denote (.cons x .nil)) k =
-      b1.apply (K.lane x k) (BitVec.ofNat w c1) ||| b2.apply (K.lane x k) (BitVec.ofNat w c2) := by
+      b1.applyLane (K.lane x k) (BitVec.ofNat w c1) |||
+        b2.applyLane (K.lane x k) (BitVec.ofNat w c2) := by
   show K.lane ((K.pk .or _ (.there (.there .here)) .here).denote _) k = _
   rw [K.pk_lane]
   show (K.lane ((K.pk b1 _ _ _).denote _) k) ||| (K.lane ((K.pk b2 _ _ _).denote _) k) = _
   rw [K.pk_lane, K.pk_lane]
-  show b1.apply (K.lane x k) (K.lane ((K.cst _).denote _) k) |||
-    b2.apply (K.lane x k) (K.lane ((K.cst _).denote _) k) = _
+  show b1.applyLane (K.lane x k) (K.lane ((K.cst _).denote _) k) |||
+    b2.applyLane (K.lane x k) (K.lane ((K.cst _).denote _) k) = _
   rw [K.cst_lane, K.cst_lane]
 
 theorem rotBlk_allVec (b1 : JasminBinOp) (c1 : Nat) (b2 : JasminBinOp) (c2 : Nat) :
@@ -304,9 +313,13 @@ def un : UnOp → Option (Blk1 n w)
   | .shiftImm .rotr c => if c < w then some (K.rotBlk .shr c .shl (w - c)) else none
   | _ => none
 
-/-- The two-operand blocks every kit has: the elementwise binary operations and the blend
-    by a constant mask. -/
+/-- The two-operand blocks every kit has: the elementwise binary operations other than the
+    register-count shifts `shl` and `shr`, and the blend by a constant mask. The packed
+    shifts give `0` at counts of at least the lane width, where the scalar shift masks the
+    count, so the register-count shifts have no block. -/
 def bn : BinOp → Option (Blk2 n w)
+  | .bin .shl => none
+  | .bin .shr => none
   | .bin bop => some (K.binBlk bop)
   | .blend mask => some (K.blendCom (fun i => mask.getD i.val false) .here (.there .here))
   | _ => none
@@ -369,8 +382,10 @@ theorem un_spec (o : UnOp) (blk : Blk1 n w) (h : K.un o = some blk) : UnarySpec 
 theorem bn_spec (o : BinOp) (blk : Blk2 n w) (h : K.bn o = some blk) : BinarySpec K.lane o blk := by
   cases o with
   | bin bop =>
-      cases h
-      exact ⟨fun x y k => K.binBlk_lane _ x y k, K.pk_vec _ _ _ _, trivial⟩
+      cases bop <;> first
+        | (cases h; done)
+        | (cases h
+           exact ⟨fun x y k => K.binBlk_lane _ (by decide) x y k, K.pk_vec _ _ _ _, trivial⟩)
   | blend mask =>
       cases h
       exact ⟨fun x y k => K.blendCom_lane _ _ _ _ k, K.blendCom_allVec _ _ _⟩
@@ -451,10 +466,8 @@ def kitZmmQ : VecKit 8 64 where
   lane_ofLanes := KeccakThetaPiAbstractCom.zmmOfLanes_zmmLane'
   lane_inj := fun x y h => extract_inj 8 64 x y h
   pk := fun bop _ a b => ⟨.vpackZMM bop, rfl, .cons a (.cons b .nil)⟩
-  pk_lane := fun bop Γ a b V k => by
-    have h := qwordZmm.pack_lane jasminExtSem bop rfl Γ a b V k
-    rw [denoteWith_extSem] at h
-    exact h
+  pk_lane := fun bop _ a b V k =>
+    KeccakThetaPiAbstractCom.zmmPackQ_lane bop (a.lookup V) (b.lookup V) k
   pk_vec := fun _ _ _ _ => rfl
 
 /-- Sixteen 32-bit lanes in a ZMM register, on `vpackZMMd`. -/
@@ -464,10 +477,8 @@ def kitZmmD : VecKit 16 32 where
   lane_ofLanes := ZmmDwordLane.zmmOfLanes32_zmmLane32
   lane_inj := fun x y h => extract_inj 16 32 x y h
   pk := fun bop _ a b => ⟨.vpackZMMd bop, rfl, .cons a (.cons b .nil)⟩
-  pk_lane := fun bop Γ a b V k => by
-    have h := dwordZmm.pack_lane jasminExtSem bop rfl Γ a b V k
-    rw [denoteWith_extSem] at h
-    exact h
+  pk_lane := fun bop _ a b V k =>
+    ZmmDwordLane.zmmPackD_lane bop (a.lookup V) (b.lookup V) k
   pk_vec := fun _ _ _ _ => rfl
 
 /-- Four 64-bit lanes in a YMM register, on the `vymm` operations of `ymmVPackExpr`. -/
@@ -478,9 +489,15 @@ def kitYmmQ : VecKit 4 64 where
   lane_inj := fun x y h => extract_inj 4 64 x y h
   pk := ymmVPackExpr
   pk_lane := fun bop Γ a b V k => by
-    have h := qwordYmmV.pack_lane jasminExtSem bop rfl Γ a b V k
-    rw [denoteWith_extSem] at h
-    exact h
+    by_cases hs : bop = .shl ∨ bop = .shr
+    · rcases hs with rfl | rfl
+      · exact yQwordW_vpsllvqW (a.lookup V) (b.lookup V) k
+      · exact yQwordW_vpsrlvqW (a.lookup V) (b.lookup V) k
+    · have hb : bop ≠ .shl ∧ bop ≠ .shr := not_or.mp hs
+      have h := qwordYmmV.pack_lane jasminExtSem bop
+        (by cases bop <;> first | rfl | simp at hb) Γ a b V k
+      rw [denoteWith_extSem, ← VecKit.applyLane_eq_apply hb] at h
+      exact h
   pk_vec := fun bop _ _ _ => by cases bop <;> rfl
 
 /-! ## 4. The ZMM targets -/
@@ -676,12 +693,21 @@ theorem mulhu_refused :
     zmmQ.binary? .mulhu = none ∧ zmmD.binary? .mulhu = none ∧ ymmQ.binary? .mulhu = none :=
   ⟨rfl, rfl, rfl⟩
 
-/-- Every elementwise binary operation and every constant-mask blend is accepted at the
-    three shapes. -/
-theorem bin_legal (bop : JasminBinOp) (mask : List Bool) :
+/-- Every elementwise binary operation other than the register-count shifts, and every
+    constant-mask blend, is accepted at the three shapes. -/
+theorem bin_legal (bop : JasminBinOp) (mask : List Bool)
+    (hb : bop ≠ .shl ∧ bop ≠ .shr := by decide) :
     (zmmQ.binary? (.bin bop)).isSome = true ∧ (zmmD.binary? (.bin bop)).isSome = true ∧
       (ymmQ.binary? (.bin bop)).isSome = true ∧ (zmmQ.binary? (.blend mask)).isSome = true ∧
-      (zmmD.binary? (.blend mask)).isSome = true ∧ (ymmQ.binary? (.blend mask)).isSome = true :=
+      (zmmD.binary? (.blend mask)).isSome = true ∧ (ymmQ.binary? (.blend mask)).isSome = true := by
+  cases bop <;> first | exact absurd hb (by decide) | exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- The register-count shifts are refused at the three shapes: the packed shifts give `0`
+    at counts of at least the lane width, where the scalar shift masks the count. -/
+theorem regShift_refused :
+    zmmQ.binary? (.bin .shl) = none ∧ zmmD.binary? (.bin .shl) = none ∧
+      ymmQ.binary? (.bin .shl) = none ∧ zmmQ.binary? (.bin .shr) = none ∧
+      zmmD.binary? (.bin .shr) = none ∧ ymmQ.binary? (.bin .shr) = none :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- The operations refused at the two ZMM shapes: the arithmetic shift right, the gather,

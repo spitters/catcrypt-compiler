@@ -130,7 +130,8 @@ theorem shiftLoop_export_faithful_denote
 /-! ## 3. The unconditional flagship value theorems -/
 
 /-- **The compiled `mpn_lshift` computes the scaled value, unconditionally.** For
-    a trip count within the model's output array, a shift amount at most `64` and
+    a trip count within the model's output array, a shift amount strictly between
+    `0` and `64` and
     cell `0` seeded to zero, the emitted machine loop — run under `lsemFuelMemL`
     from a start state with the counter schedule, the seed and the counter-name
     hygiene — halts with output cells `0, …, n` that recombine via `bignumVal` to
@@ -138,7 +139,7 @@ theorem shiftLoop_export_faithful_denote
     `shiftUpdate_arrMemN`, so no faithfulness hypothesis remains. -/
 theorem lshift_emitted_machine_val_closed
     (V : Ctxt.Valuation Gouter)
-    (hcnt : (shVar.lookup V).toNat ≤ 64)
+    (hcnt : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64)
     (hnr' : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0)
     (fn : String) (top : LLabel) (nReg : String)
@@ -175,10 +176,10 @@ theorem lshift_emitted_machine_val_closed
 /-- **The compiled `mpn_rshift` computes the scaled value, unconditionally.** With
     `sh = 64 - cnt` and cell `0` seeded to zero, the emitted machine loop halts
     with output cells that recombine via `bignumVal` to
-    `value (rp[0..n+1)) · 2^cnt = value (up[0..n)) · 2^64`, for a `cnt ≤ 64`, with
+    `value (rp[0..n+1)) · 2^cnt = value (up[0..n)) · 2^64`, for `0 < cnt < 64`, with
     no faithfulness hypothesis. -/
 theorem rshift_emitted_machine_val_closed
-    (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : cnt ≤ 64)
+    (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : 0 < cnt ∧ cnt < 64)
     (hsheq : (shVar.lookup V).toNat = 64 - cnt)
     (hnr' : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0)

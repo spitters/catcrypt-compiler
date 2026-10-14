@@ -235,7 +235,7 @@ theorem butterfly_words (a b w : BitVec 64) :
     initState, JState.load, JState.store, JState.setReg, JState.get, JState.writeB5W,
     x86_MOV, x86_IMULt, x86_SHR, x86_SUB, x86_NEG, x86_AND, x86_ADD,
     JOperand.eval, rflags_of_aluop, rflags_of_bwop, rflags_of_mul, rflags_OF,
-    shiftCount, wshr, B5W.word, wreprN, BitVec.ofNat_eq_ofNat,
+    shiftCount, shiftMask_64, wshr, B5W.word, wreprN, BitVec.ofNat_eq_ofNat,
     BitVec.toNat_ofNat, Nat.reduceMod, Nat.reducePow, Nat.reduceSub,
     Nat.min_def, Nat.reduceLeDiff,
     kCsub, kSubReduce, kBarrett, bbMU, bbP, muN, pN,

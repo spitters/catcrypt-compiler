@@ -98,7 +98,7 @@ def dwordZmm : LaneShape where
   regBits := 512
   regBits_eq := rfl
   lane := zmmLane32
-  covers := fun _ => true
+  covers := fun | .shl => false | .shr => false | _ => true
   packExpr := fun bop _ a b => ⟨.vpackZMMd bop, rfl, .cons a (.cons b .nil)⟩
   bcast := fun kk => (bcastD (BitVec.ofNat 32 kk)).toNat
   mulhiExpr := some fun _ a b =>
@@ -108,7 +108,9 @@ def dwordZmm : LaneShape where
   immCovers := fun _ _ => false
   arrWiden := false
   fallbackName := "laneMapZmmD_uncovered"
-  pack_lane := fun _ bop _ _ a b V k => zmmPackD_lane bop (a.lookup V) (b.lookup V) k
+  pack_lane := fun _ bop hc _ a b V k => by
+    refine (zmmPackD_lane bop (a.lookup V) (b.lookup V) k).trans ?_
+    cases bop <;> first | rfl | exact absurd hc (by decide)
   const_lane := LaneMapZmmD.constD_lane
   imm_lane := by intro _ _ _ hf; cases hf
   arr_index := fun h => Bool.noConfusion h

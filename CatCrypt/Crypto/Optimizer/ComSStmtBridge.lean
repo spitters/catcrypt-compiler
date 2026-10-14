@@ -260,9 +260,9 @@ def laneOpOf : JasminBinOp → Option LaneOp
   | _    => none
 
 /-- `laneOpOf` is denotation-faithful: a mapped lane op applies exactly as the
-    source `JasminBinOp` at width 32. -/
+    lane operation of the source `JasminBinOp` at width 32. -/
 theorem laneOpOf_faithful {bop : JasminBinOp} {lop : LaneOp}
-    (h : laneOpOf bop = some lop) (a b : BitVec 32) : lop.apply a b = bop.apply a b := by
+    (h : laneOpOf bop = some lop) (a b : BitVec 32) : lop.apply a b = bop.applyLane a b := by
   cases bop with
   | add => simp only [laneOpOf, Option.some.injEq] at h; subst h; rfl
   | xor => simp only [laneOpOf, Option.some.injEq] at h; subst h; rfl
@@ -318,7 +318,7 @@ theorem exprToSStmt_step {Γ : Ctxt jasminDialect} {t : JasminTy}
                 · subst hn
                   rw [Function.update_self, if_pos rfl,
                       embed_lookup a, embed_lookup b, laneOpOf_faithful hlan]
-                  rfl
+                  cases bop <;> first | rfl | simp [laneOpOf] at hlan
                 · rw [Function.update_of_ne hn, if_neg hn]
       · simp [exprToSStmt, hw] at h
   | stackLoad w n => simp [exprToSStmt] at h
@@ -523,7 +523,7 @@ def shlE {Γ' : Ctxt jasminDialect} (n : Nat) (v : Ctxt.Var Γ' (.reg 128)) :
 /-- `shlE` denotes the immediate left-shift. -/
 theorem shlE_denote {Γ' : Ctxt jasminDialect} (n : Nat) (v : Ctxt.Var Γ' (.reg 128))
     (V' : Ctxt.Valuation Γ') :
-    (shlE n v).denote V' = (show BitVec 128 from v.lookup V') <<< n := rfl
+    (shlE n v).denote V' = (show BitVec 128 from v.lookup V') <<< shiftMask 128 n := rfl
 
 /-- Bitwise-or of two `reg 128` bindings. -/
 def orE {Γ' : Ctxt jasminDialect} (a b : Ctxt.Var Γ' (.reg 128)) :
@@ -562,7 +562,7 @@ theorem gatherGo_denote {Γ : Ctxt jasminDialect}
       (gatherGo acc hom lanes).denote V'
         = List.foldl
             (fun (a : BitVec 128) p =>
-              a ||| ((valOf (p.2.map hom) V').setWidth 128 <<< p.1))
+              a ||| ((valOf (p.2.map hom) V').setWidth 128 <<< shiftMask 128 p.1))
             (acc.lookup V') lanes := by
   induction lanes with
   | nil => intro Γ' acc hom V'; rfl
@@ -666,7 +666,7 @@ def shrE {Γ' : Ctxt jasminDialect} (n : Nat) (v : Ctxt.Var Γ' (.reg 128)) :
 /-- `shrE` denotes the immediate right-shift. -/
 theorem shrE_denote {Γ' : Ctxt jasminDialect} (n : Nat) (v : Ctxt.Var Γ' (.reg 128))
     (V' : Ctxt.Valuation Γ') :
-    (shrE n v).denote V' = (show BitVec 128 from v.lookup V') >>> n := rfl
+    (shrE n v).denote V' = (show BitVec 128 from v.lookup V') >>> shiftMask 128 n := rfl
 
 /-- Truncate a `reg 128` binding to `reg 32`. -/
 def castE {Γ' : Ctxt jasminDialect} (v : Ctxt.Var Γ' (.reg 128)) :
@@ -711,6 +711,7 @@ theorem rebuildLaneCom_denote {Γ : Ctxt jasminDialect} (bop : JasminBinOp)
   simp only [rebuildLaneCom, Zipper.denote_toCom, Zipper.denote, Com.denote,
     Lets.denote, Lets.denote_addComToEnd, Com.denote_toLets, Ctxt.Valuation.extend,
     castE_denote, shrE_denote, vsimdE_denote, hvA, hvB]
+  rw [shiftMask_of_lt (by omega)]
   rfl
 
 /-! ## 6. The `Com → Com` vectorizing pass

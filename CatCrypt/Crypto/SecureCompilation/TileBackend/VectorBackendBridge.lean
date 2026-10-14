@@ -32,7 +32,7 @@ For the **x86 leg** the packed ALU is re-homed onto the unified
 `vsimd (.packed bop 32)` op (denote `v128PackLanesW 32 bop`,
 `VectorBackendBridgeCom.packAvx2Com_denote`), in the PACKED-`BitVec 128` carrier.
 `v128Pack32_lane` is the packed↔lane round-trip (lane `k` of the packed result is
-`bop.apply` of the input lanes), and `vpadd32_com_is_tile_lowering` ties the
+`bop.applyLane` of the input lanes), and `vpadd32_com_is_tile_lowering` ties the
 unified op, transported to a `TileState 4 32` via `v128BvToTile`, to the
 shape-generic `evalTileOp ∘ lowerRegInstr` of the matching `regArith` op. The
 x86 leg is stated over the unified packed op, not over a separate XMM machine
@@ -81,15 +81,16 @@ verified-dialect packed-lane op `v128PackLanesW 32 bop` over the PACKED-`BitVec
 `v128BvToTile` of a packed `BitVec 128` into the lane-function tile. -/
 
 /-- **Packed↔lane round-trip.** Lane `k` (the `[32k, 32k+32)` slice) of the
-    packed 4×u32 op `v128PackLanesW 32 bop a b` is `bop.apply` of the matching
+    packed 4×u32 op `v128PackLanesW 32 bop a b` is `bop.applyLane` of the matching
     lanes of `a` and `b` — the carrier bridge between the unified op's
     packed-`BitVec 128` result and a `Tile 4 32` lane function. Proved per lane
     (`fin_cases`) per op (`cases bop`) by `bv_decide` over the foldl-OR pack. -/
 theorem v128Pack32_lane (bop : JasminBinOp) (a b : BitVec 128) (k : Fin 4) :
     BitVec.extractLsb' (32 * k.val) 32 (v128PackLanesW 32 bop a b)
-      = bop.apply (BitVec.extractLsb' (32 * k.val) 32 a) (BitVec.extractLsb' (32 * k.val) 32 b) := by
+      = bop.applyLane (BitVec.extractLsb' (32 * k.val) 32 a)
+          (BitVec.extractLsb' (32 * k.val) 32 b) := by
   fin_cases k <;> cases bop <;>
-    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl, JasminBinOp.apply] <;>
+    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl, JasminBinOp.applyLane] <;>
     bv_decide
 
 /-- Transport a packed XMM register (`BitVec 128`) to the shape-generic
@@ -110,8 +111,8 @@ theorem vpadd32_com_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 128) :
   funext k
   cases bop <;>
     simp only [v128BvToTile, TileState.get, TileState.set, evalRegInstr,
-      String.reduceEq, if_true, if_false, JasminBinOp.apply] <;>
-    rw [v128Pack32_lane] <;> simp [JasminBinOp.apply]
+      String.reduceEq, if_true, if_false, JasminBinOp.applyLane] <;>
+    rw [v128Pack32_lane] <;> simp [JasminBinOp.applyLane]
 
 /-- **The unified-op form of the x86 leg.** The `Com jasminDialect` program
     `packAvx2Com bop` (its denotation `v128PackLanesW 32 bop a b` by

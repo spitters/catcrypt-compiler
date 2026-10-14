@@ -246,15 +246,20 @@ theorem SignedOp.sexpr_evalBV {w : Nat} (hw : w = 32 ∨ w = 64) (op : SignedOp)
     · rename_i hc
       cases hr
       refine evalBV_sextSExpr_ofInt hw' β ?_
-      simp only [SExpr.evalBV, ha, hb, toNat_ofInt_amount hc.2.2.1 (by omega), ofInt_shiftLeft]
+      have hs : SecureCompilation.VIR.shiftMask 64 zb.toNat = zb.toNat :=
+        SecureCompilation.VIR.shiftMask_of_lt (by omega)
+      simp only [SExpr.evalBV, ha, hb, toNat_ofInt_amount hc.2.2.1 (by omega), hs,
+        ofInt_shiftLeft]
     · cases hr
   case shr =>
     split at hr
     · rename_i hc
       cases hr
       have hwp : (2 : Int) ^ (w - 1) ≤ 2 ^ 63 := pow_le_pow_right₀ (by decide) (by omega)
+      have hs : SecureCompilation.VIR.shiftMask 64 zb.toNat = zb.toNat :=
+        SecureCompilation.VIR.shiftMask_of_lt (by omega)
       simp only [SignedOp.sexpr, evalBV_asrSExpr, ha, hb,
-        toNat_ofInt_amount hc.2.2.1 (by omega)]
+        toNat_ofInt_amount hc.2.2.1 (by omega), hs]
       exact sshiftRight_ofInt (by omega) (by omega) _
     · cases hr
   case addC =>

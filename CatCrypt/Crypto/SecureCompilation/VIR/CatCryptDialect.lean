@@ -86,10 +86,10 @@ inductive CatCryptOp where
   -- `regArith .andn w`.
   | andn (w : Nat)
   -- `bvShiftLV w` / `bvShiftRV w`: *variable*-amount logical shifts — the shift
-  -- count is the `.toNat` of a *second* `sword w` register operand (not a
-  -- compile-time immediate like `bvShiftL`/`bvShiftR`). They lower to jasmin
-  -- `regArith .shl w` / `regArith .shr w`, whose `JasminBinOp.apply` reads the
-  -- shift amount from `b.toNat`.
+  -- count is `shiftMask w b.toNat` for a *second* `sword w` register operand `b`
+  -- (not a compile-time immediate like `bvShiftL`/`bvShiftR`, which shift by
+  -- `shiftMask w k`). They lower to jasmin `regArith .shl w` / `regArith .shr w`,
+  -- whose `JasminBinOp.apply` applies the same count.
   | bvShiftLV (w : Nat)
   | bvShiftRV (w : Nat)
   -- Add-with-carry-out (multi-output ADD/ADC). `bvAdd64 w` takes `(a, b)`
@@ -532,10 +532,10 @@ instance catCryptDenote : DialectDenote catCryptDialect where
         decide (a = b)
     | .bvShiftL w k => fun args =>
         let a : BitVec w := args.head
-        a <<< k
+        a <<< shiftMask w k
     | .bvShiftR w k => fun args =>
         let a : BitVec w := args.head
-        BitVec.ushiftRight a k
+        BitVec.ushiftRight a (shiftMask w k)
     | .bvRor w n => fun args =>
         let a : BitVec w := args.head
         a.rotateRight n
@@ -552,11 +552,11 @@ instance catCryptDenote : DialectDenote catCryptDialect where
     | .bvShiftLV w => fun args =>
         let a : BitVec w := args.head
         let b : BitVec w := args.tail.head
-        a <<< b.toNat
+        a <<< shiftMask w b.toNat
     | .bvShiftRV w => fun args =>
         let a : BitVec w := args.head
         let b : BitVec w := args.tail.head
-        a >>> b.toNat
+        a >>> shiftMask w b.toNat
     | .bvAdd64 w => fun args =>
         let a : BitVec w := args.head
         let b : BitVec w := args.tail.head

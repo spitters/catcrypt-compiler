@@ -307,7 +307,8 @@ theorem semScalar_halfSplitList {uN hN : Nat → String} {w : Nat → BitVec 64}
       have hhigh : env' (hN (2 * j + 1))
           = some ⟨.sword 64, w j >>> (BitVec.ofNat 64 32).toNat⟩ := by
         rw [hfr _ (hhT (2 * j + 1)) hkeyHi, hv2]
-        simp only [SExpr.evalBV, sv, envReader_of_bound hu1]
+        simp only [SExpr.evalBV, sv, envReader_of_bound hu1,
+          VIR.shiftMask_of_lt (by decide : (BitVec.ofNat 64 32).toNat < 64)]
       refine ⟨env', ?_, ?_, ?_, ?_⟩
       · simp only [List.flatMap_cons, List.cons_append, List.nil_append]
         rw [seqAll_step hs1, seqAll_step hs2]
@@ -364,7 +365,8 @@ theorem semScalar_recombineStoreList {fw : Nat} {outN : String}
           A j + B j <<< (BitVec.ofNat 64 32).toNat⟩ := by
         rw [hv1]
         simp only [SExpr.evalBV, sv, envReader_of_bound (hAv j (.head _)),
-          envReader_of_bound (hBv j (.head _))]
+          envReader_of_bound (hBv j (.head _)),
+          VIR.shiftMask_of_lt (by decide : (BitVec.ofNat 64 32).toNat < 64)]
       obtain ⟨e2, hs2, hb2, hf2'⟩ := semScalar_arrStore (fw := fw) hb1 hg1 hval
       have hf2 : ∀ s, ¬ isTmpName s → s ≠ oN j → s ≠ outN → e2 s = env s := by
         intro s hsT h1 h2

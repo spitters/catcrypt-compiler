@@ -116,9 +116,9 @@ theorem zmmOfLanes_zmmLane' (f : Fin 8 → BitVec 64) (k : Fin 8) :
        BitVec.extractLsb'_append_eq_left]) <;>
     rfl
 
-/-- Lane `k` of `zmmPackQ bop a b` is `bop.apply (zmmLane a k) (zmmLane b k)`. -/
+/-- Lane `k` of `zmmPackQ bop a b` is `bop.applyLane (zmmLane a k) (zmmLane b k)`. -/
 theorem zmmPackQ_lane (bop : JasminBinOp) (a b : BitVec 512) (k : Fin 8) :
-    zmmLane (zmmPackQ bop a b) k = bop.apply (zmmLane a k) (zmmLane b k) := by
+    zmmLane (zmmPackQ bop a b) k = bop.applyLane (zmmLane a k) (zmmLane b k) := by
   unfold zmmPackQ
   rw [zmmOfLanes_zmmLane']
 
@@ -188,7 +188,7 @@ theorem sigma0Com_lane (x : BitVec 512) (k : Fin 8) :
   rw [Sha512X8VpackZmmEmit.sigma0Com_denote]
   rw [zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane,
     zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane, zmmPackQ_lane]
-  simp only [JasminBinOp.apply, constZmm_lane]
+  simp only [JasminBinOp.applyLane, constZmm_lane]
   norm_num
 
 /-! ## 4. The abstract FIPS-180-4 σ₀ tie

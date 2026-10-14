@@ -142,12 +142,15 @@ def ymmWImmBlock : ImmOp → Option (Nat → UnaryBuilder 256)
         (Com.var ⟨.vymm (.vpsrlw n), rfl, .cons a.there .nil⟩
           (Com.var ⟨.vymm .vpor, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)))
 
-/-- The counts at which `ymmWImmBlock` is lowered: the `imm8` range `n < 256` for the
-    shifts, whose encoding keeps the count's low eight bits, and `0 < n < 16` for the
-    rotate. -/
+/-- The counts at which `ymmWImmBlock` is lowered: counts below the lane width 16 for
+    the logical shifts (the vector shifts give `0` at larger counts, the masked scalar
+    shift does not), the `imm8` range `n < 256` for the arithmetic shift, whose encoding
+    keeps the count's low eight bits, and `0 < n < 16` for the rotate. -/
 def ymmWImmCovers : ImmOp → Nat → Bool
   | .ror, n => decide (0 < n ∧ n < 16)
-  | _, n => decide (n < 256)
+  | .shl, n => decide (n < 16)
+  | .shr, n => decide (n < 16)
+  | .sar, n => decide (n < 256)
 
 /-- Sixteen 16-bit lanes in a YMM register, on the `vymm` word ops, with `u16` stack
     arrays widened to arrays of packed slots. -/
@@ -184,8 +187,12 @@ def wordYmm : LaneShape where
   imm_lane := by
     intro _ op f hf n hc _ a V k
     cases op <;> cases hf
-    case shl => exact vpsllwW_lane (a.lookup V) n k
-    case shr => exact vpsrlwW_lane (a.lookup V) n k
+    case shl =>
+      rw [ImmOp.apply, shiftMask_of_lt (of_decide_eq_true hc)]
+      exact vpsllwW_lane (a.lookup V) n k
+    case shr =>
+      rw [ImmOp.apply, shiftMask_of_lt (of_decide_eq_true hc)]
+      exact vpsrlwW_lane (a.lookup V) n k
     case sar => exact vpsrawW_lane (a.lookup V) n k
     case ror =>
       have hn : n < 16 := (of_decide_eq_true hc).2

@@ -88,7 +88,8 @@ theorem evalBV_ltExpr (β : String → BitVec 64) (a b : SExpr) :
   have h1 : (BitVec.ofNat 64 1).toNat = 1 := rfl
   have h63 : (BitVec.ofNat 64 63).toNat = 63 := rfl
   rw [h1, h63]
-  rw [carry_word]
+  rw [VIR.shiftMask_of_lt (by decide : 1 < 64), VIR.shiftMask_of_lt (by decide : 63 < 64),
+    carry_word]
   have hx := (a.evalBV β).isLt
   have hsub : (BitVec.ofNat 64 wordMax - a.evalBV β).toNat = wordMax - (a.evalBV β).toNat := by
     rw [BitVec.toNat_sub, BitVec.toNat_ofNat]

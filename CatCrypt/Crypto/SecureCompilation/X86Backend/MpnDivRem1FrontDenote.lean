@@ -551,7 +551,8 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
   obtain ⟨e11, hs11, h11c0, hf11⟩ := semScalar_setExpr_run (y := "c0")
     (lower_orshr 63 (envReadU64_of_bound h10c0q) (envReadU64_of_bound h10c0r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h10c0q, envReader_of_bound h10c0r] at h11c0
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h11c0
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h11c0
   have h11qp := (hf11 "qp" (nt_qp) (by decide)).trans h10qp
   have h11j := (hf11 "j" (nt_j) (by decide)).trans h10j
   have h11rs := (hf11 "rs" (nt_rs) (by decide)).trans h10rs
@@ -631,7 +632,8 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
   obtain ⟨e18, hs18, h18c1, hf18⟩ := semScalar_setExpr_run (y := "c1")
     (lower_orshr 63 (envReadU64_of_bound h17c1q) (envReadU64_of_bound h17c1r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h17c1q, envReader_of_bound h17c1r] at h18c1
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h18c1
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h18c1
   have h18qp := (hf18 "qp" (nt_qp) (by decide)).trans h17qp
   have h18j := (hf18 "j" (nt_j) (by decide)).trans h17j
   have h18rs := (hf18 "rs" (nt_rs) (by decide)).trans h17rs
@@ -695,7 +697,8 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
   obtain ⟨e24, hs24, h24c2, hf24⟩ := semScalar_setExpr_run (y := "c2")
     (lower_orshr 63 (envReadU64_of_bound h23c2q) (envReadU64_of_bound h23c2r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h23c2q, envReader_of_bound h23c2r] at h24c2
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h24c2
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h24c2
   have h24qp := (hf24 "qp" (nt_qp) (by decide)).trans h23qp
   have h24j := (hf24 "j" (nt_j) (by decide)).trans h23j
   have h24rs := (hf24 "rs" (nt_rs) (by decide)).trans h23rs

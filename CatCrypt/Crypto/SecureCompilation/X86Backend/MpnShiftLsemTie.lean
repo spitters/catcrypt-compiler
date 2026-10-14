@@ -63,9 +63,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontDenote
 
 /-- The word-model fold reached by the emitted funnel-shift loop's denotation:
     the front node's `ComL.denote` equals `shiftFold` of the argument registers,
-    for a shift amount at most `64`. -/
+    for a shift amount strictly between `0` and `64`. -/
 theorem shift_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter)
-    (hsh : (shVar.lookup V).toNat ≤ 64) :
+    (hsh : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64) :
     (ComL.forLoopNRt shiftUpdate shiftCount shiftInit shiftInvs (.ret .here)).denote V
       = shiftFold (upVar.lookup V) (shVar.lookup V).toNat
           (shiftCount.lookup V).toNat (shiftInit.lookup V) := by
@@ -81,13 +81,13 @@ theorem shift_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter)
     machine loop `body` run by `lsemFuelMemL` from a start state `s` decodes at
     the accumulator slot `arrSlot` to the source fold
     `JLoopBodyN.denote ⟨n, shiftUpdate⟩` (the shape
-    `loopMemArr_export_faithful_denote` produces) — for a shift amount at most
-    `64` and cell `0` seeded to zero, the halt state's output cells `0, …, n`
-    recombine via `bignumVal` to `up[0..n) · 2^cnt`. The composition of the
-    backend-faithfulness tie with `lshiftFold_val`. -/
+    `loopMemArr_export_faithful_denote` produces) — for a shift amount strictly
+    between `0` and `64` and cell `0` seeded to zero, the halt state's output cells
+    `0, …, n` recombine via `bignumVal` to `up[0..n) · 2^cnt`. The composition of
+    the backend-faithfulness tie with `lshiftFold_val`. -/
 theorem lshift_emitted_machine_val
     (V : Ctxt.Valuation Gouter)
-    (hcnt : (shVar.lookup V).toNat ≤ 64)
+    (hcnt : 0 < (shVar.lookup V).toNat ∧ (shVar.lookup V).toNat < 64)
     (hn : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0)
     (fn : String) (top : LLabel) (nReg : String)
@@ -115,16 +115,17 @@ theorem lshift_emitted_machine_val
     Option.some.inj (hd.symm.trans hf)
   refine ⟨t, _, hrun, hdec, ?_⟩
   rw [heq]
-  exact lshiftFold_val (upVar.lookup V) (shVar.lookup V).toNat hcnt (shiftInit.lookup V) h0
+  exact lshiftFold_val (upVar.lookup V) (shVar.lookup V).toNat (by omega) (shiftInit.lookup V)
+    h0
     (shiftCount.lookup V).toNat hn
 
 /-- **The machine execution computes the `mpn_rshift` value.** With
     `sh = 64 - cnt` and cell `0` seeded to zero, the halt state's output cells
     recombine via `bignumVal` to
-    `value (rp[0..n+1)) · 2^cnt = value (up[0..n)) · 2^64`, for a `cnt ≤ 64`. The
-    composition of the backend-faithfulness tie with `rshiftFold_val`. -/
+    `value (rp[0..n+1)) · 2^cnt = value (up[0..n)) · 2^64`, for `0 < cnt < 64`.
+    The composition of the backend-faithfulness tie with `rshiftFold_val`. -/
 theorem rshift_emitted_machine_val
-    (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : cnt ≤ 64)
+    (V : Ctxt.Valuation Gouter) (cnt : Nat) (hcnt : 0 < cnt ∧ cnt < 64)
     (hsheq : (shVar.lookup V).toNat = 64 - cnt)
     (hn : (shiftCount.lookup V).toNat < NRS)
     (h0 : memGetDyn (shiftInit.lookup V) 0 = 0)
@@ -152,7 +153,7 @@ theorem rshift_emitted_machine_val
     Option.some.inj (hd.symm.trans hf)
   refine ⟨t, _, hrun, hdec, ?_⟩
   rw [heq, hsheq]
-  exact rshiftFold_val (upVar.lookup V) cnt hcnt (shiftInit.lookup V) h0
+  exact rshiftFold_val (upVar.lookup V) cnt (by omega) (shiftInit.lookup V) h0
     (shiftCount.lookup V).toNat hn
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftLsemTie

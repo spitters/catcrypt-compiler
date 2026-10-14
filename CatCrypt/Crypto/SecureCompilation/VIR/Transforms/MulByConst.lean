@@ -160,7 +160,7 @@ is what every concrete strength-reduction call site needs. -/
 /-- **Main correctness.** For `body = .ret .here` (the "return mul result"
     use case), the source and target chains have equal denotations. -/
 theorem progMulConst_ret_denote_eq_progShiftSub_ret {Γ : Ctxt catCryptDialect}
-    {w a : Nat} (ha : a ≤ w) (k : BitVec w)
+    {w a : Nat} (ha : a < w) (k : BitVec w)
     (hk : k = BitVec.ofNat w (2^a - 1))
     (x : Ctxt.Var (d := catCryptDialect) Γ (CryptoTy.sword w))
     (V : Ctxt.Valuation Γ) :
@@ -175,9 +175,9 @@ theorem progMulConst_ret_denote_eq_progShiftSub_ret {Γ : Ctxt catCryptDialect}
   -- arithmetic identity `xv * k = (xv <<< a) - xv`.
   set xv : BitVec w := x.lookup V
   -- Both sides definitionally reduce to a single BitVec expression.
-  show xv * k = (xv <<< a) - xv
-  rw [hk]
-  exact bitvec_mul_mersenne_eq ha xv
+  show xv * k = (xv <<< shiftMask w a) - xv
+  rw [shiftMask_of_lt ha, hk]
+  exact bitvec_mul_mersenne_eq ha.le xv
 
 /-! ## 4. Smoke tests at `w = 64, a = 17, k = 131071` -/
 

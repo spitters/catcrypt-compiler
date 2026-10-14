@@ -138,7 +138,7 @@ theorem qrSpecZ_lane (a b c d : BitVec 512) (k : Fin 16) :
             (zmmLane32 c k) (zmmLane32 d k)).2.2.2 := by
   unfold qrSpecZ quarterRound pAdd pXor
   refine ⟨?_, ?_, ?_, ?_⟩ <;>
-    simp only [zmmRorD_lane, zmmPackD_lane, JasminBinOp.apply,
+    simp only [zmmRorD_lane, zmmPackD_lane, JasminBinOp.applyLane,
       rotateRight16_eq_rotL32, rotateRight20_eq_rotL32, rotateRight24_eq_rotL32,
       rotateRight25_eq_rotL32]
 

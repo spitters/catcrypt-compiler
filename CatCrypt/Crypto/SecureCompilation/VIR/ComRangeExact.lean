@@ -334,8 +334,9 @@ variable (A : AEnv Γ)
 
 /-- The image under `binZ bop` of the intervals of `a` and `b`, when the operator is in
     the exact fragment for them: `and` and `shr` need nonnegative operands, the shift
-    counts a one-point interval, and a Barrett remainder (`barrettRule?`) takes the
-    Barrett interval. -/
+    counts a one-point interval below the width `w` (where the masked count
+    `shiftMask w` of `JasminBinOp.apply` is the count itself), and a Barrett remainder
+    (`barrettRule?`) takes the Barrett interval. -/
 def binExact? (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Option Iv :=
   match bop with
   | .add => some ((hget A a).1.1 + (hget A b).1.1, (hget A a).1.2 + (hget A b).1.2)
@@ -352,18 +353,23 @@ def binExact? (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Optio
     else none
   | .shl =>
     match ivSingle? (hget A b).1 with
-    | some k => some ((hget A a).1.1 * 2 ^ k, (hget A a).1.2 * 2 ^ k)
+    | some k =>
+      if k < w then some ((hget A a).1.1 * 2 ^ k, (hget A a).1.2 * 2 ^ k)
+      else none
     | none => none
   | .shr =>
     match ivSingle? (hget A b).1 with
     | some k =>
-      if 0 ≤ (hget A a).1.1 then some ((hget A a).1.1 / 2 ^ k, (hget A a).1.2 / 2 ^ k)
+      if k < w then
+        if 0 ≤ (hget A a).1.1 then some ((hget A a).1.1 / 2 ^ k, (hget A a).1.2 / 2 ^ k)
+        else none
       else none
     | none => none
   | _ => none
 
 /-- The image under `opZ` of the intervals of the operands, when the operation is in the
-    exact fragment for them; `none` otherwise. -/
+    exact fragment for them (an immediate logical shift count below the width); `none`
+    otherwise. -/
 def exactIv? (op : JasminOp)
     (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op)) :
     Option Iv :=
@@ -374,15 +380,15 @@ def exactIv? (op : JasminOp)
     let ia := (hget A args.head).1
     let ib := (hget A args.tail.head).1
     if 0 ≤ ia.1 ∧ 0 ≤ ib.1 then some (ia.1 * ib.1 / 2 ^ w, ia.2 * ib.2 / 2 ^ w) else none
-  | .shrImm _ n, args =>
+  | .shrImm w n, args =>
     let ia := (hget A args.head).1
-    if 0 ≤ ia.1 then some (ia.1 / 2 ^ n, ia.2 / 2 ^ n) else none
+    if n < w ∧ 0 ≤ ia.1 then some (ia.1 / 2 ^ n, ia.2 / 2 ^ n) else none
   | .sarImm w n, args =>
     let ia := (hget A args.head).1
     if fitsLane true w ia then some (ia.1 / 2 ^ n, ia.2 / 2 ^ n) else none
-  | .shlImm _ n, args =>
+  | .shlImm w n, args =>
     let ia := (hget A args.head).1
-    some (ia.1 * 2 ^ n, ia.2 * 2 ^ n)
+    if n < w then some (ia.1 * 2 ^ n, ia.2 * 2 ^ n) else none
   | .castW w w', args =>
     let ia := (hget A args.head).1
     if 0 ≤ ia.1 ∨ w' ≤ w then some ia else none
@@ -446,6 +452,25 @@ theorem barrett_exact (hA : EnvOK A V) (hZ : ZOK A s V Z) {w : Nat}
       · cases h
     · cases h
   · cases h
+
+theorem shl_cong {w : Nat} (x : BitVec w) (k : Nat) :
+    (rd s x * 2 ^ k) % 2 ^ w = ((x <<< k).toNat : ℤ) := by
+  rw [← ofInt_eq_iff, BitVec.ofInt_mul, ofInt_rd, BitVec.shiftLeft_eq_mul_twoPow]
+  congr 1
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ofInt, BitVec.toNat_twoPow]
+  push_cast
+  rw [Int.toNat_emod (by positivity) (by positivity)]
+  norm_cast
+
+theorem shr_cong {w : Nat} (x : BitVec w) (k : Nat) :
+    ((x.toNat : ℤ) / 2 ^ k) % 2 ^ w = ((x >>> k).toNat : ℤ) := by
+  rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+  have hlt := x.isLt
+  push_cast
+  refine Int.emod_eq_of_lt (by positivity) ?_
+  have : x.toNat / 2 ^ k < 2 ^ w := lt_of_le_of_lt (Nat.div_le_self _ _) hlt
+  exact_mod_cast this
 
 theorem binExact_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) {w : Nat} (bop : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg w)) {r : Iv} (h : binExact? A w bop a b = some r) :
@@ -514,32 +539,8 @@ theorem binExact_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) {w : Nat} (bop : Jasm
     simp only [binExact?] at h
     split at h
     · rename_i k hk
-      cases h
-      unfold ivSingle? at hk
-      split at hk
-      · rename_i hc
-        cases hk
-        have hyk : rd s (regVal V b) = (hget A b).1.1 := by omega
-        have hyb := rd_of_nonneg (s := s) (x := regVal V b) (by omega)
-        have hn : (regVal V b).toNat = (hget A b).1.1.toNat := by omega
-        have hp : (0 : ℤ) ≤ 2 ^ (hget A b).1.1.toNat := by positivity
-        simp only [binZ, JasminBinOp.apply, hyk, hn]
-        refine ⟨mul_le_mul_of_nonneg_right ha1 hp, mul_le_mul_of_nonneg_right ha2 hp, ?_⟩
-        rw [← ofInt_eq_iff, BitVec.ofInt_mul, ofInt_rd, BitVec.shiftLeft_eq_mul_twoPow]
-        congr 1
-        apply BitVec.eq_of_toNat_eq
-        rw [BitVec.toNat_ofInt, BitVec.toNat_twoPow]
-        push_cast
-        rw [Int.toNat_emod (by positivity) (by positivity)]
-        norm_cast
-      · cases hk
-    · cases h
-  | shr =>
-    simp only [binExact?] at h
-    split at h
-    · rename_i k hk
       split at h
-      · rename_i ha0
+      · rename_i hkw
         cases h
         unfold ivSingle? at hk
         split at hk
@@ -548,42 +549,42 @@ theorem binExact_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) {w : Nat} (bop : Jasm
           have hyk : rd s (regVal V b) = (hget A b).1.1 := by omega
           have hyb := rd_of_nonneg (s := s) (x := regVal V b) (by omega)
           have hn : (regVal V b).toNat = (hget A b).1.1.toNat := by omega
-          have hxa := rd_of_nonneg (le_trans ha0 ha1)
-          have hp : (0 : ℤ) < 2 ^ (hget A b).1.1.toNat := by positivity
-          simp only [binZ, JasminBinOp.apply, hyk, hn]
-          refine ⟨Int.ediv_le_ediv hp ha1, Int.ediv_le_ediv hp ha2, ?_⟩
-          rw [hxa, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
-          have hlt := (regVal V a).isLt
-          push_cast
-          refine Int.emod_eq_of_lt (by positivity) ?_
-          have : (regVal V a).toNat / 2 ^ (hget A b).1.1.toNat < 2 ^ w :=
-            lt_of_le_of_lt (Nat.div_le_self _ _) hlt
-          exact_mod_cast this
+          have hp : (0 : ℤ) ≤ 2 ^ (hget A b).1.1.toNat := by positivity
+          simp only [binZ, JasminBinOp.apply, hyk, hn, shiftMask_of_lt hkw]
+          exact ⟨mul_le_mul_of_nonneg_right ha1 hp, mul_le_mul_of_nonneg_right ha2 hp,
+            shl_cong _ _⟩
         · cases hk
+      · cases h
+    · cases h
+  | shr =>
+    simp only [binExact?] at h
+    split at h
+    · rename_i k hk
+      split at h
+      · rename_i hkw
+        split at h
+        · rename_i ha0
+          cases h
+          unfold ivSingle? at hk
+          split at hk
+          · rename_i hc
+            cases hk
+            have hyk : rd s (regVal V b) = (hget A b).1.1 := by omega
+            have hyb := rd_of_nonneg (s := s) (x := regVal V b) (by omega)
+            have hn : (regVal V b).toNat = (hget A b).1.1.toNat := by omega
+            have hxa := rd_of_nonneg (le_trans ha0 ha1)
+            have hp : (0 : ℤ) < 2 ^ (hget A b).1.1.toNat := by positivity
+            simp only [binZ, JasminBinOp.apply, hyk, hn, shiftMask_of_lt hkw]
+            refine ⟨Int.ediv_le_ediv hp ha1, Int.ediv_le_ediv hp ha2, ?_⟩
+            rw [hxa]
+            exact shr_cong _ _
+          · cases hk
+        · cases h
       · cases h
     · cases h
   | or => cases h
   | xor => cases h
   | andn => cases h
-
-theorem shl_cong {w : Nat} (x : BitVec w) (k : Nat) :
-    (rd s x * 2 ^ k) % 2 ^ w = ((x <<< k).toNat : ℤ) := by
-  rw [← ofInt_eq_iff, BitVec.ofInt_mul, ofInt_rd, BitVec.shiftLeft_eq_mul_twoPow]
-  congr 1
-  apply BitVec.eq_of_toNat_eq
-  rw [BitVec.toNat_ofInt, BitVec.toNat_twoPow]
-  push_cast
-  rw [Int.toNat_emod (by positivity) (by positivity)]
-  norm_cast
-
-theorem shr_cong {w : Nat} (x : BitVec w) (k : Nat) :
-    ((x.toNat : ℤ) / 2 ^ k) % 2 ^ w = ((x >>> k).toNat : ℤ) := by
-  rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
-  have hlt := x.isLt
-  push_cast
-  refine Int.emod_eq_of_lt (by positivity) ?_
-  have : x.toNat / 2 ^ k < 2 ^ w := lt_of_le_of_lt (Nat.div_le_self _ _) hlt
-  exact_mod_cast this
 
 /-- **Soundness of the exact image.** When `exactIv?` gives `r`, the integer semantics of
     the operation on the readings lies in `r` and is congruent to the word it computes. -/
@@ -634,10 +635,11 @@ theorem exactIv_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) (op : JasminOp)
       split at h
       · rename_i hc
         cases h
-        have hxa := rd_of_nonneg (le_trans hc ha1)
+        have hxa := rd_of_nonneg (le_trans hc.2 ha1)
         have hp : (0 : ℤ) < 2 ^ n := by positivity
         show _ ≤ hget Z a / 2 ^ n ∧ hget Z a / 2 ^ n ≤ _ ∧
-          hget Z a / 2 ^ n % 2 ^ w = ((regVal V a >>> n).toNat : ℤ)
+          hget Z a / 2 ^ n % 2 ^ w = ((regVal V a >>> shiftMask w n).toNat : ℤ)
+        rw [shiftMask_of_lt hc.1]
         rw [hza]
         refine ⟨Int.ediv_le_ediv hp ha1, Int.ediv_le_ediv hp ha2, ?_⟩
         rw [hxa]
@@ -675,14 +677,17 @@ theorem exactIv_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) (op : JasminOp)
     match args with
     | .cons a .nil =>
       obtain ⟨hza, ha1, ha2⟩ := hZ.reg a
-      simp only [exactIv?, Option.some.injEq] at h
-      subst h
-      have hp : (0 : ℤ) ≤ 2 ^ n := by positivity
-      show _ ≤ hget Z a * 2 ^ n ∧ hget Z a * 2 ^ n ≤ _ ∧
-        hget Z a * 2 ^ n % 2 ^ w = ((regVal V a <<< n).toNat : ℤ)
-      rw [hza]
-      exact ⟨mul_le_mul_of_nonneg_right ha1 hp, mul_le_mul_of_nonneg_right ha2 hp,
-        shl_cong _ n⟩
+      simp only [exactIv?, HVector.head] at h
+      split at h
+      · rename_i hc
+        cases h
+        have hp : (0 : ℤ) ≤ 2 ^ n := by positivity
+        show _ ≤ hget Z a * 2 ^ n ∧ hget Z a * 2 ^ n ≤ _ ∧
+          hget Z a * 2 ^ n % 2 ^ w = ((regVal V a <<< shiftMask w n).toNat : ℤ)
+        rw [hza, shiftMask_of_lt hc]
+        exact ⟨mul_le_mul_of_nonneg_right ha1 hp, mul_le_mul_of_nonneg_right ha2 hp,
+          shl_cong _ n⟩
+      · cases h
   | castW w w' =>
     match args with
     | .cons a .nil =>

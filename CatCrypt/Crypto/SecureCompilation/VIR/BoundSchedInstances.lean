@@ -195,6 +195,7 @@ theorem smontBlock_sound (w q qinv A M : ℕ) (hok : decide (smontOk w q qinv A 
     have hd : (smontProg w q qinv).denote (.cons a .nil)
         = .cons (smontAccW w q qinv a) .nil := by
       rw [smontProg, Com.denote_toMulti]
+      simp only [smontAccW, sextW_eq_masked]
       rfl
     rw [hd]
     refine ⟨⟨?_, trivial⟩, ?_⟩

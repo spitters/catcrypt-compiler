@@ -78,9 +78,11 @@ inductive ArithOp where
   /-- The high half of the widening multiply (`arith.mului_extended` hi). The low
       half is `muli`; jasmin image is `mulhi`. -/
   | mului_extended_hi (w : Nat)
-  /-- Logical right shift by a compile-time immediate (`arith.shrui` const-amount). -/
+  /-- Logical right shift by a compile-time immediate (`arith.shrui` const-amount),
+      by the masked count `shiftMask w n`. -/
   | shrui_imm (w n : Nat)
-  /-- Logical left shift by a compile-time immediate (`arith.shli` const-amount). -/
+  /-- Logical left shift by a compile-time immediate (`arith.shli` const-amount),
+      by the masked count `shiftMask w n`. -/
   | shli_imm (w n : Nat)
   /-- Materialised compile-time constant (`arith.constant`). -/
   | constant (w n : Nat)
@@ -126,8 +128,8 @@ instance arithDenote : DialectDenote arithDialect where
     | .ori  w => fun args => let a : BitVec w := args.head; let b : BitVec w := args.tail.head; a ||| b
     | .xori w => fun args => let a : BitVec w := args.head; let b : BitVec w := args.tail.head; a ^^^ b
     | .mului_extended_hi w => fun args => let a : BitVec w := args.head; let b : BitVec w := args.tail.head; mulHiW a b
-    | .shrui_imm w n => fun args => let a : BitVec w := args.head; a >>> n
-    | .shli_imm w n => fun args => let a : BitVec w := args.head; a <<< n
+    | .shrui_imm w n => fun args => let a : BitVec w := args.head; a >>> shiftMask w n
+    | .shli_imm w n => fun args => let a : BitVec w := args.head; a <<< shiftMask w n
     | .constant w n => fun _ => BitVec.ofNat w n
 
 /-! ## 5. The lowering image into `jasminDialect` (the D0 template's op/type maps)

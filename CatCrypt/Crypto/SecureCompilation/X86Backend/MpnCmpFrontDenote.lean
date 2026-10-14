@@ -414,7 +414,8 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
   obtain ⟨e9, hs9, h9lt, hf9⟩ := semScalar_setExpr_run (y := "lt")
     (lower_orshr 63 (envReadU64_of_bound h8ltq) (envReadU64_of_bound h8ltr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h8ltq, envReader_of_bound h8ltr] at h9lt
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h9lt
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h9lt
   have h9rp := (hf9 "rp" (nt_rp) (by decide)).trans h8rp
   have h9z := (hf9 "z" (nt_z) (by decide)).trans h8z
   have h9x := (hf9 "x" (nt_x) (by decide)).trans h8x
@@ -443,7 +444,8 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
   obtain ⟨e12, hs12, h12gt, hf12⟩ := semScalar_setExpr_run (y := "gt")
     (lower_orshr 63 (envReadU64_of_bound h11gtq) (envReadU64_of_bound h11gtr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h11gtq, envReader_of_bound h11gtr] at h12gt
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h12gt
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h12gt
   have h12rp := (hf12 "rp" (nt_rp) (by decide)).trans h11rp
   have h12z := (hf12 "z" (nt_z) (by decide)).trans h11z
   have h12prev := (hf12 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h11prev
@@ -476,7 +478,8 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
   obtain ⟨e16, hs16, h16nz, hf16⟩ := semScalar_setExpr_run (y := "nz")
     (lower_orshr 63 (envReadU64_of_bound h15nzq) (envReadU64_of_bound h15nzr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h15nzq, envReader_of_bound h15nzr] at h16nz
-  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h16nz
+  rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, shiftMask_of_lt (by decide : 63 < 64),
+    ltu_chain] at h16nz
   have h16rp := (hf16 "rp" (nt_rp) (by decide)).trans h15rp
   have h16z := (hf16 "z" (nt_z) (by decide)).trans h15z
   have h16prev := (hf16 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h15prev

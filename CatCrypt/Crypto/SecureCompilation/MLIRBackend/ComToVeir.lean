@@ -349,8 +349,8 @@ def Expr.eval {Γ : List Nat} {w : Nat} (V : Valuation Γ) :
   | .andi  _ _ a b ha hb => V a w ha &&& V b w hb
   | .ori   _ _ a b ha hb => V a w ha ||| V b w hb
   | .xori  _ _ a b ha hb => V a w ha ^^^ V b w hb
-  | .shli  _ _ a k ha    => V a w ha <<< k
-  | .shrui _ _ a k ha    => BitVec.ushiftRight (V a w ha) k
+  | .shli  _ _ a k ha    => V a w ha <<< VIR.shiftMask w k
+  | .shrui _ _ a k ha    => BitVec.ushiftRight (V a w ha) (VIR.shiftMask w k)
 
 /-- Evaluate a DSL `Prog` against a valuation. -/
 def Prog.eval {Γ : List Nat} {w : Nat} (V : Valuation Γ) :
@@ -586,10 +586,12 @@ theorem compileExpr_denote {Γ : List Nat} {w : Nat} (V : ScalarDSL.Valuation Γ
         ((liftVar Γ b w hb).lookup (cryptoCtxtValuation Γ V)) = _
       rw [liftVar_lookup, liftVar_lookup]; rfl
   | shli a k ha =>
-      change BitVec.shiftLeft ((liftVar Γ a w ha).lookup (cryptoCtxtValuation Γ V)) k = _
+      change BitVec.shiftLeft ((liftVar Γ a w ha).lookup (cryptoCtxtValuation Γ V))
+        (VIR.shiftMask w k) = _
       rw [liftVar_lookup]; rfl
   | shrui a k ha =>
-      change BitVec.ushiftRight ((liftVar Γ a w ha).lookup (cryptoCtxtValuation Γ V)) k = _
+      change BitVec.ushiftRight ((liftVar Γ a w ha).lookup (cryptoCtxtValuation Γ V))
+        (VIR.shiftMask w k) = _
       rw [liftVar_lookup]; rfl
 
 /-- Auxiliary: extending the bridged valuation with a new BitVec

@@ -77,15 +77,15 @@ inductive ThirOp where
   /-- Native right-rotate by a compile-time `n`, `[reg w] → reg w`. Lowers 1:1
       to `rorImm w n`. -/
   | thRor (w n : Nat)
-  /-- Native logical right-shift by a compile-time `n`, `[reg w] → reg w`.
-      Lowers 1:1 to `shrImm w n`. -/
+  /-- Native logical right-shift by a compile-time `n`, `[reg w] → reg w`,
+      denoting `a >>> shiftMask w n`. Lowers 1:1 to `shrImm w n`. -/
   | thShrImm (w n : Nat)
   /-- Native **arithmetic** right-shift by a compile-time `n`, `[reg w] → reg w`,
       denoting `BitVec.sshiftRight`. Lowers 1:1 to `sarImm w n`. The signed twin
       of `thShrImm`. -/
   | thSarImm (w n : Nat)
-  /-- Native logical left-shift by a compile-time `n`, `[reg w] → reg w`. Lowers
-      1:1 to `shlImm w n`. -/
+  /-- Native logical left-shift by a compile-time `n`, `[reg w] → reg w`,
+      denoting `a <<< shiftMask w n`. Lowers 1:1 to `shlImm w n`. -/
   | thShlImm (w n : Nat)
   /-- Width cast `reg w → reg w'`. Lowers 1:1 to `castW w w'`. -/
   | thCast (w w' : Nat)
@@ -209,13 +209,13 @@ instance thirDenote : DialectDenote thirDialect where
         a.rotateRight n
     | .thShrImm w n => fun args =>
         let a : BitVec w := args.head
-        a >>> n
+        a >>> shiftMask w n
     | .thSarImm w n => fun args =>
         let a : BitVec w := args.head
         BitVec.sshiftRight a n
     | .thShlImm w n => fun args =>
         let a : BitVec w := args.head
-        a <<< n
+        a <<< shiftMask w n
     | .thCast _ w' => fun args =>
         show BitVec w' from (args.head : BitVec _).zeroExtend w'
     | .thConst w n => fun _ => (BitVec.ofNat w n)

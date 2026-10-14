@@ -153,7 +153,7 @@ theorem qrSpecZ_lane (a b c d : BitVec 512) (k : Fin 16) :
      zmmLane32 (qrSpecZ a b c d).2.2.2 k)
     = qrScalarLane (zmmLane32 a k) (zmmLane32 b k) (zmmLane32 c k) (zmmLane32 d k) := by
   simp only [qrSpecZ, pAdd, pXor, qrScalarLane, zmmPackD_lane, zmmRorD_lane,
-    JasminBinOp.apply]
+    JasminBinOp.applyLane]
 
 /-- The lane-`k` scalar slice of a packed state. -/
 def laneState (st : PState) (k : Fin 16) : Fin 16 → BitVec 32 :=

@@ -18,7 +18,10 @@ A straight-line `Com tileDialect Γ (.tile n w)` program lowers to a block of
 `TileModel.TileOp`s over named registers. The binding made in context `Γ` writes
 the register `nm Γ.length`, where `nm : Nat → String` names de Bruijn levels, so
 a variable keeps its register when later bindings extend the context. An op whose
-shape is not `(n, w)` makes the lowering `none`.
+shape is not `(n, w)` makes the lowering `none`, and so does a register-count
+`shl`/`shr` whose count variable is not bound to a `tileConst` below `w`: the
+lowering carries a constant environment (`lowerComK`) filled at `tileConst`
+bindings.
 
 ## Main results
 
@@ -77,13 +80,29 @@ theorem varLevel_lt {Γ : Ctxt tileDialect} {t : TileTy} (v : Var Γ t) :
 
 /-! ## 2. The lowering -/
 
+/-- The count check of a two-operand op whose count operand sits at level `l`,
+    against the constant environment `K` (level ↦ lane-uniform constant). The
+    register-count shifts `shl`/`shr` pass only when `K l = some k` with `k < w`;
+    every other op passes. -/
+def countOk (w : Nat) (K : Nat → Option Nat) (op : JasminBinOp) (l : Nat) : Bool :=
+  match op with
+  | .shl | .shr =>
+      match K l with
+      | some k => decide (k < w)
+      | none => false
+  | _ => true
+
 /-- Lower one `tileDialect` expression at shape `n × w` to one model op writing
     register `d`; an operand variable `v` is read from register `nm (varLevel v)`.
-    `none` when the op's shape is not `(n, w)`. -/
-def lowerExpr (n w : Nat) (nm : Nat → String) (d : String) {Γ : Ctxt tileDialect}
-    {t : TileTy} : Expr tileDialect Γ t → Option TileModel.TileOp
+    `none` when the op's shape is not `(n, w)`, and for a `shl`/`shr` whose count
+    variable is not a constant below `w` in the environment `K` (`countOk`). -/
+def lowerExpr (n w : Nat) (nm : Nat → String) (K : Nat → Option Nat) (d : String)
+    {Γ : Ctxt tileDialect} {t : TileTy} : Expr tileDialect Γ t → Option TileModel.TileOp
   | ⟨.tileBin op n' w', _, .cons x (.cons y .nil)⟩ =>
-      if n' = n ∧ w' = w then some (toTileOp op d (nm (varLevel x)) (nm (varLevel y)))
+      if n' = n ∧ w' = w then
+        if countOk w K op (varLevel y) then
+          some (toTileOp op d (nm (varLevel x)) (nm (varLevel y)))
+        else none
       else none
   | ⟨.tilePermute n' w', _, .cons idx (.cons a .nil)⟩ =>
       if n' = n ∧ w' = w then some (.permxv d (nm (varLevel idx)) (nm (varLevel a)))
@@ -105,16 +124,31 @@ def lowerExpr (n w : Nat) (nm : Nat → String) (d : String) {Γ : Ctxt tileDial
       if n' = n ∧ w' = w then some (.blend d (nm (varLevel x)) (nm (varLevel y)) mask)
       else none
 
-/-- Lower a straight-line `tileDialect` program at shape `n × w`: the binding made
-    in context `Γ` writes register `nm Γ.length`, and the result is the register
+/-- The constant a `tileConst` expression of shape `n × w` binds; `none` for every
+    other expression. -/
+def constOf (n w : Nat) {Γ : Ctxt tileDialect} {t : TileTy} :
+    Expr tileDialect Γ t → Option Nat
+  | ⟨.tileConst n' w' k, _, .nil⟩ => if n' = n ∧ w' = w then some k else none
+  | _ => none
+
+/-- Lower a straight-line `tileDialect` program at shape `n × w` under the constant
+    environment `K`: the binding made in context `Γ` writes register `nm Γ.length`
+    and records `constOf n w e` at level `Γ.length`, and the result is the register
     of the returned variable. -/
-def lowerCom (n w : Nat) (nm : Nat → String) :
-    {Γ : Ctxt tileDialect} → {t : TileTy} → Com tileDialect Γ t →
+def lowerComK (n w : Nat) (nm : Nat → String) :
+    {Γ : Ctxt tileDialect} → {t : TileTy} → (Nat → Option Nat) → Com tileDialect Γ t →
       Option (List TileModel.TileOp × String)
-  | _, _, .ret v => some ([], nm (varLevel v))
-  | Γ, _, .var e body =>
-      (lowerExpr n w nm (nm Γ.length) e).bind fun op =>
-        (lowerCom n w nm body).map fun p => (op :: p.1, p.2)
+  | _, _, _, .ret v => some ([], nm (varLevel v))
+  | Γ, _, K, .var e body =>
+      (lowerExpr n w nm K (nm Γ.length) e).bind fun op =>
+        (lowerComK n w nm (Function.update K Γ.length (constOf n w e)) body).map
+          fun p => (op :: p.1, p.2)
+
+/-- Lower a straight-line `tileDialect` program at shape `n × w`, from the empty
+    constant environment. -/
+def lowerCom (n w : Nat) (nm : Nat → String) {Γ : Ctxt tileDialect} {t : TileTy}
+    (c : Com tileDialect Γ t) : Option (List TileModel.TileOp × String) :=
+  lowerComK n w nm (fun _ => none) c
 
 /-! ## 3. Correctness -/
 
@@ -125,9 +159,9 @@ def Holds {n w : Nat} (nm : Nat → String) (s : TileState n w) {Γ : Ctxt tileD
   ∀ v : Var Γ (.tile n w), s.get (nm (varLevel v)) = v.lookup V
 
 /-- An expression that lowers at shape `(n, w)` has type `tile n w`. -/
-theorem lowerExpr_ty {n w : Nat} {nm : Nat → String} {d : String} {Γ : Ctxt tileDialect}
-    {t : TileTy} {e : Expr tileDialect Γ t} {op : TileModel.TileOp}
-    (h : lowerExpr n w nm d e = some op) : t = .tile n w := by
+theorem lowerExpr_ty {n w : Nat} {nm : Nat → String} {K : Nat → Option Nat} {d : String}
+    {Γ : Ctxt tileDialect} {t : TileTy} {e : Expr tileDialect Γ t} {op : TileModel.TileOp}
+    (h : lowerExpr n w nm K d e = some op) : t = .tile n w := by
   obtain ⟨op', hret, args⟩ := e
   subst hret
   cases op' <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
@@ -135,37 +169,71 @@ theorem lowerExpr_ty {n w : Nat} {nm : Nat → String} {d : String} {Γ : Ctxt t
     (split_ifs at h with hc; obtain ⟨rfl, rfl⟩ := hc; rfl)
 
 /-- The op a lowered expression produces writes only its destination register. -/
-theorem lowerExpr_frame {n w : Nat} {nm : Nat → String} {d : String} {Γ : Ctxt tileDialect}
-    {t : TileTy} {e : Expr tileDialect Γ t} {op : TileModel.TileOp}
-    (h : lowerExpr n w nm d e = some op) (s : TileState n w) (r : String) (hr : r ≠ d) :
+theorem lowerExpr_frame {n w : Nat} {nm : Nat → String} {K : Nat → Option Nat} {d : String}
+    {Γ : Ctxt tileDialect} {t : TileTy} {e : Expr tileDialect Γ t} {op : TileModel.TileOp}
+    (h : lowerExpr n w nm K d e = some op) (s : TileState n w) (r : String) (hr : r ≠ d) :
     (evalTileOp s op).get r = s.get r := by
   obtain ⟨op', hret, args⟩ := e
   subst hret
   cases op' <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
     simp only [lowerExpr] at h <;>
-    (split_ifs at h with hc; cases h)
+    (split_ifs at h; cases h)
   all_goals first
     | (simp [evalTileOp, TileModel.TileState.set, TileModel.TileState.get, hr]; done)
-    | (rename_i iop _ _ _
-       cases (iop : TileImmOp) <;> simp [evalTileOp, toImmTileOp, TileModel.TileState.set,
+    | (cases ‹TileImmOp› <;> simp [evalTileOp, toImmTileOp, TileModel.TileState.set,
          TileModel.TileState.get, hr])
-    | (rename_i bop _ _
-       cases (bop : JasminBinOp) <;> simp [evalTileOp, toTileOp, TileModel.TileState.set,
+    | (cases ‹JasminBinOp› <;> simp [evalTileOp, toTileOp, TileModel.TileState.set,
          TileModel.TileState.get, hr])
 
-/-- **One lowered expression.** From a state holding `V`, the op a `tile n w`
-    expression lowers to writes the expression's denotation into its destination
-    register. Each arm is a tie of `TileDialectModelTie`. -/
-theorem lowerExpr_correct {n w : Nat} {nm : Nat → String} {d : String} {Γ : Ctxt tileDialect}
-    (s : TileState n w) (V : Ctxt.Valuation Γ) (hs : Holds nm s V)
+/-- The constant environment `K` matches the valuation `V`: every variable of type
+    `tile n w` whose level `K` maps to `some k` holds the lane-uniform constant
+    `BitVec.ofNat w k`. -/
+def KHolds {n w : Nat} (K : Nat → Option Nat) {Γ : Ctxt tileDialect}
+    (V : Ctxt.Valuation Γ) : Prop :=
+  ∀ (v : Var Γ (.tile n w)) (k : Nat), K (varLevel v) = some k →
+    v.lookup V = fun _ => BitVec.ofNat w k
+
+/-- Under a constant count below the width, the lane operation of `op` is its
+    masked scalar operation. -/
+theorem applyLane_ofNat_eq_apply {w k : Nat} (op : JasminBinOp) (hk : k < w)
+    (a : BitVec w) : op.applyLane a (BitVec.ofNat w k) = op.apply a (BitVec.ofNat w k) := by
+  have hpow : k < 2 ^ w := Nat.lt_trans hk (Nat.lt_two_pow_self)
+  cases op <;>
+    simp only [JasminBinOp.applyLane, JasminBinOp.apply, BitVec.toNat_ofNat,
+      Nat.mod_eq_of_lt hpow, shiftMask_of_lt hk]
+
+/-- **One lowered expression.** From a state holding `V`, and a constant
+    environment `K` matching `V`, the op a `tile n w` expression lowers to writes
+    the expression's denotation into its destination register. Each arm is a tie of
+    `TileDialectModelTie`; the `shl`/`shr` arm uses the constant count below `w`
+    that `countOk` requires. -/
+theorem lowerExpr_correct {n w : Nat} {nm : Nat → String} {K : Nat → Option Nat}
+    {d : String} {Γ : Ctxt tileDialect}
+    (s : TileState n w) (V : Ctxt.Valuation Γ) (hs : Holds nm s V) (hK : KHolds (n := n) (w := w) K V)
     (e : Expr tileDialect Γ (.tile n w)) {op : TileModel.TileOp}
-    (h : lowerExpr n w nm d e = some op) :
+    (h : lowerExpr n w nm K d e = some op) :
     (evalTileOp s op).get d = e.denote V := by
   obtain ⟨op', hret, args⟩ := e
   cases op' <;> cases hret <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
-    simp only [lowerExpr, and_self, if_true, Option.some.injEq] at h <;> subst h
+    simp only [lowerExpr, and_self, if_true, Option.some.injEq,
+      Option.ite_none_right_eq_some] at h
   all_goals first
-    | (rw [TileDialectModelTie.tileBin_eq_evalTileOp, hs x, hs y]; rfl)
+    | subst h
+    | obtain ⟨hc, rfl⟩ := h
+  all_goals first
+    | (rename_i bop
+       rw [TileDialectModelTie.tileBin_eq_evalTileOp, hs x, hs y]
+       funext i
+       show bop.applyLane (x.lookup V i) (y.lookup V i) = bop.apply (x.lookup V i) (y.lookup V i)
+       cases bop
+       all_goals first
+         | rfl
+         | (simp only [countOk] at hc
+            split at hc
+            · rename_i k hk
+              rw [hK y k hk]
+              exact applyLane_ofNat_eq_apply _ (of_decide_eq_true hc) _
+            · exact absurd hc (by decide)))
     | (rw [← TileDialectModelTie.tilePermute_denote_eq_evalTileOp, hs x, hs y]; rfl)
     | (rw [← TileDialectModelTie.tileBroadcast_denote_eq_evalTileOp, hs x]; rfl)
     | (rw [← TileDialectModelTie.tileReduce_denote_eq_evalTileOp, hs x]; rfl)
@@ -191,34 +259,76 @@ theorem Holds.cons {n w : Nat} {nm : Nat → String} (hnm : Function.Injective n
     rw [hfr _ (fun h => absurd (hnm h) (Nat.ne_of_lt (varLevel_lt v)))]
     exact hs v
 
+/-- An expression whose `constOf` is `some k` denotes the lane-uniform constant
+    `BitVec.ofNat w k`. -/
+theorem constOf_denote {n w : Nat} {Γ : Ctxt tileDialect} (e : Expr tileDialect Γ (.tile n w))
+    (V : Ctxt.Valuation Γ) {k : Nat} (h : constOf n w e = some k) :
+    e.denote V = fun _ => BitVec.ofNat w k := by
+  obtain ⟨op', hret, args⟩ := e
+  cases op' <;> cases hret <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
+    simp only [constOf, and_self, if_true, Option.some.injEq, reduceCtorEq] at h
+  subst h
+  rfl
+
+/-- Extending the valuation by `x` and recording `c` at level `Γ.length`: the
+    environment still matches, provided `x` is the constant `c` names. -/
+theorem KHolds.cons {n w : Nat} {Γ : Ctxt tileDialect} {K : Nat → Option Nat}
+    {V : Ctxt.Valuation Γ} (hK : KHolds (n := n) (w := w) K V) (x : Tile n w)
+    (c : Option Nat) (hx : ∀ k, c = some k → x = fun _ => BitVec.ofNat w k) :
+    KHolds (n := n) (w := w) (Function.update K Γ.length c)
+      (V.extend x : Ctxt.Valuation (TileTy.tile n w :: Γ)) := by
+  intro v k hk
+  cases v with
+  | here =>
+    simp only [varLevel, Function.update_self] at hk
+    exact hx k hk
+  | there v =>
+    simp only [varLevel] at hk
+    rw [Function.update_of_ne (Nat.ne_of_lt (varLevel_lt v))] at hk
+    exact hK v k hk
+
+/-- **Correctness of the lowering under a constant environment.** For an injective
+    register naming `nm`, every straight-line program `c : Com tileDialect Γ
+    (.tile n w)` whose lowering under `K` is `some (blk, r)`, every state `s`
+    holding the valuation `V`, and every `K` matching `V`, running `blk` from `s`
+    leaves `c.denote V` in register `r`. -/
+theorem lowerComK_correct {n w : Nat} {nm : Nat → String} (hnm : Function.Injective nm) :
+    ∀ {Γ : Ctxt tileDialect} (K : Nat → Option Nat) (c : Com tileDialect Γ (.tile n w))
+      (s : TileState n w) (V : Ctxt.Valuation Γ), Holds nm s V →
+      KHolds (n := n) (w := w) K V →
+      ∀ {blk : List TileModel.TileOp} {r : String}, lowerComK n w nm K c = some (blk, r) →
+      (runTileBlock s blk).get r = c.denote V
+  | _, _, .ret v, s, V, hs, _, blk, r, h => by
+    simp only [lowerComK, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact hs v
+  | Γ, K, .var e body, s, V, hs, hK, blk, r, h => by
+    cases he : lowerExpr n w nm K (nm Γ.length) e with
+    | none => simp [lowerComK, he] at h
+    | some op =>
+      have ht := lowerExpr_ty he
+      subst ht
+      cases hb : lowerComK n w nm (Function.update K Γ.length (constOf n w e)) body with
+      | none => simp [lowerComK, he, hb] at h
+      | some p =>
+        simp only [lowerComK, he, hb, Option.bind_some, Option.map_some,
+          Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact lowerComK_correct hnm _ body (evalTileOp s op) (V.extend (e.denote V))
+          (Holds.cons hnm hs _ (lowerExpr_correct s V hs hK e he)
+            (fun r hr => lowerExpr_frame he s r hr))
+          (KHolds.cons hK _ _ (fun _ hk => constOf_denote e V hk)) hb
+
 /-- **Correctness of the lowering.** For an injective register naming `nm`, every
     straight-line program `c : Com tileDialect Γ (.tile n w)` whose lowering is
     `some (blk, r)`, and every state `s` holding the valuation `V`, running `blk`
     from `s` leaves `c.denote V` in register `r`. -/
-theorem lowerCom_correct {n w : Nat} {nm : Nat → String} (hnm : Function.Injective nm) :
-    ∀ {Γ : Ctxt tileDialect} (c : Com tileDialect Γ (.tile n w)) (s : TileState n w)
-      (V : Ctxt.Valuation Γ), Holds nm s V →
-      ∀ {blk : List TileModel.TileOp} {r : String}, lowerCom n w nm c = some (blk, r) →
-      (runTileBlock s blk).get r = c.denote V
-  | _, .ret v, s, V, hs, blk, r, h => by
-    simp only [lowerCom, Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h
-    exact hs v
-  | Γ, .var e body, s, V, hs, blk, r, h => by
-    cases he : lowerExpr n w nm (nm Γ.length) e with
-    | none => simp [lowerCom, he] at h
-    | some op =>
-      have ht := lowerExpr_ty he
-      subst ht
-      cases hb : lowerCom n w nm body with
-      | none => simp [lowerCom, he, hb] at h
-      | some p =>
-        simp only [lowerCom, he, hb, Option.bind_some, Option.map_some,
-          Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact lowerCom_correct hnm body (evalTileOp s op) (V.extend (e.denote V))
-          (Holds.cons hnm hs _ (lowerExpr_correct s V hs e he)
-            (fun r hr => lowerExpr_frame he s r hr)) hb
+theorem lowerCom_correct {n w : Nat} {nm : Nat → String} (hnm : Function.Injective nm)
+    {Γ : Ctxt tileDialect} (c : Com tileDialect Γ (.tile n w)) (s : TileState n w)
+    (V : Ctxt.Valuation Γ) (hs : Holds nm s V)
+    {blk : List TileModel.TileOp} {r : String} (h : lowerCom n w nm c = some (blk, r)) :
+    (runTileBlock s blk).get r = c.denote V :=
+  lowerComK_correct hnm _ c s V hs (fun _ _ hk => absurd hk (by simp)) h
 
 /-! ## 4. The BabyBear multiply through the dialect -/
 
@@ -323,7 +433,7 @@ theorem bbMulTileCom_denote {n : Nat} (a b : Tile n 64) :
   funext i
   simp only [bbMulTileCom, denote_var, denote_ret, binE_denote, constE_denote, lookup_here,
     lookup_there, JasminBinOp.apply, BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod,
-    bbMulWord]
+    shiftMask_64, bbMulWord]
 
 /-- Register names for the lowering of `bbMulTileCom`: level `1` (input `a`) is
     `"a"`, level `0` (input `b`) is `"b"`, and level `k + 2` is `"t" ++ toString k`.
@@ -370,7 +480,8 @@ theorem holds_bbMulInit {n : Nat} (a b : Tile n 64) :
 /-- The lowering of `bbMulTileCom` succeeds at every lane count. -/
 theorem bbMulTileCom_lower_isSome (n : Nat) :
     (lowerCom n 64 bbName (bbMulTileCom n)).isSome = true := by
-  simp [lowerCom, lowerExpr, bbMulTileCom, binE, constE]
+  simp [lowerCom, lowerComK, lowerExpr, constOf, countOk, Function.update, bbMulTileCom, binE,
+    constE, varLevel]
 
 /-- **The lowered BabyBear multiply computes `bbMulWord` on every lane.** Running
     the block the lowering produces for `bbMulTileCom n` from the state holding

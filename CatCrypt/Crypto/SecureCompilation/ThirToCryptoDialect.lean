@@ -529,6 +529,22 @@ def lowerThirToCrypto : {Γ : Ctxt thirDialect} → {t : JasminTy} →
 
 /-! ## 6. Denotation preservation -/
 
+/-- The shift-or form of a rotate right by `n % w` is unchanged when both shift
+    counts are masked by `shiftMask w`. -/
+theorem rotr_shiftOr_shiftMask {w : Nat} (z : BitVec w) (n : Nat) :
+    z >>> shiftMask w (n % w) ||| z <<< shiftMask w (w - n % w)
+      = z >>> (n % w) ||| z <<< (w - n % w) := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · simp [BitVec.of_length_zero]
+  rw [shiftMask_of_lt (Nat.mod_lt n hw)]
+  rcases Nat.eq_zero_or_pos (n % w) with h0 | hpos
+  · have hww : shiftMask w w = 0 ∨ shiftMask w w = w := by
+      unfold shiftMask
+      split <;> (try split) <;> (try split) <;> (try split) <;> omega
+    rw [h0, Nat.sub_zero]
+    rcases hww with h | h <;> simp [h]
+  · rw [shiftMask_of_lt (by omega : w - n % w < w)]
+
 /-- **Per-binding soundness.** Whenever `lowerVarStepC op args bodyC` succeeds
     with `comC`, the lowered block denotes (under the transported valuation
     `mapVal V`) to `bodyC` evaluated with its first binding set to the *transport
@@ -629,6 +645,7 @@ theorem lowerVarStepC_denote {Γ : Ctxt thirDialect} {s : JasminTy}
     -- lookup transported by `vC_lookup_reg`.
     rw [Generic.pullV_lift_weaken2, BitVec.rotateRight_def, BitVec.ushiftRight_eq]
     generalize hz : (Expr.lookupArgs (HVector.cons a r) V).head = z
+    rw [← rotr_shiftOr_shiftMask z n]
     have hg : (Expr.lookupArgs (HVector.cons (vC ((HVector.cons a r).head)) HVector.nil)
         (mapVal V)).head = z := hz ▸ vC_lookup_reg a V
     congr 1

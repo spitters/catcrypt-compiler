@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Jasmin.JasminTypes
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import Mathlib.Data.List.Basic
 
 /-!
@@ -214,15 +215,16 @@ sound for the hardware on those inputs. -/
     `SExpr.evalBV_eq_ofNat_eval` (under `SExpr.inRange`) and
     `SExpr.evalStateBV_eq_ofNat_evalState` (under `SExpr.inRangeState`). `SSub`
     wraps here and saturates in `SExpr.eval`; the two agree on `SSub a b` only when
-    `b ≤ a`. -/
+    `b ≤ a`. The logical shifts `SShr`/`SShl` shift by the count
+    `SecureCompilation.VIR.shiftMask 64` of an x86 64-bit `SHR`/`SHL`. -/
 def SExpr.evalBV (β : String → BitVec 64) : SExpr → BitVec 64
   | .SVar x   => β x
   | .SLit n   => BitVec.ofNat 64 n
   | .SAdd a b => a.evalBV β + b.evalBV β
   | .SSub a b => a.evalBV β - b.evalBV β
   | .SMul a b => a.evalBV β * b.evalBV β
-  | .SShr a b => (a.evalBV β) >>> (b.evalBV β).toNat
-  | .SShl a b => (a.evalBV β) <<< (b.evalBV β).toNat
+  | .SShr a b => (a.evalBV β) >>> SecureCompilation.VIR.shiftMask 64 (b.evalBV β).toNat
+  | .SShl a b => (a.evalBV β) <<< SecureCompilation.VIR.shiftMask 64 (b.evalBV β).toNat
   | .SAnd a b => a.evalBV β &&& b.evalBV β
   | .SXor a b => a.evalBV β ^^^ b.evalBV β
   | .SLt  a b => if (a.evalBV β).toNat < (b.evalBV β).toNat then 1 else 0
@@ -368,10 +370,12 @@ theorem SExpr.toNat_evalBV_of_inRange (σ : String → Nat) :
       exact Nat.mod_eq_of_lt h.2.2
   | SShr a b iha ihb =>
       intro h
-      rw [SExpr.evalBV, SExpr.eval, BitVec.toNat_ushiftRight, iha h.1, ihb h.2.1]
+      rw [SExpr.evalBV, SExpr.eval, BitVec.toNat_ushiftRight, iha h.1, ihb h.2.1,
+        SecureCompilation.VIR.shiftMask_of_lt h.2.2]
   | SShl a b iha ihb =>
       intro h
-      rw [SExpr.evalBV, SExpr.eval, BitVec.toNat_shiftLeft, iha h.1, ihb h.2.1]
+      rw [SExpr.evalBV, SExpr.eval, BitVec.toNat_shiftLeft, iha h.1, ihb h.2.1,
+        SecureCompilation.VIR.shiftMask_of_lt h.2.2.1]
       exact Nat.mod_eq_of_lt h.2.2.2
   | SAnd a b iha ihb =>
       intro h

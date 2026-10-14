@@ -556,19 +556,21 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
         | cons a t => cases t with | cons i t2 => cases t2 with | cons v t3 => rfl
   | bvShiftL w k =>
       -- Immediate logical left shift lowers to `shlImm w k`; the jasmin
-      -- denotation `a <<< k` is definitionally the dialect denotation.
+      -- denotation `a <<< shiftMask w k` is definitionally the dialect denotation.
       cases hop
       simp only [toJExprD] at he; cases he
-      show BitVec.shiftLeft ((toJVarD args.head).lookup (ctMapValD V) : BitVec w) k = _
+      show BitVec.shiftLeft ((toJVarD args.head).lookup (ctMapValD V) : BitVec w)
+        (shiftMask w k) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | bvShiftR w k =>
       -- Immediate logical right shift lowers to `shrImm w k`; the jasmin
-      -- denotation `a >>> k` is definitionally the dialect denotation
-      -- `BitVec.ushiftRight a k`.
+      -- denotation `a >>> shiftMask w k` is definitionally the dialect denotation
+      -- `BitVec.ushiftRight a (shiftMask w k)`.
       cases hop
       simp only [toJExprD] at he; cases he
-      show BitVec.ushiftRight ((toJVarD args.head).lookup (ctMapValD V) : BitVec w) k = _
+      show BitVec.ushiftRight ((toJVarD args.head).lookup (ctMapValD V) : BitVec w)
+        (shiftMask w k) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | bvMulHi w =>

@@ -176,7 +176,7 @@ theorem sboxCom_lane_eq_x5 (x : BitVec 512) (k : Fin 8) :
     zmmLane (sboxCom.denote (.cons x .nil)) k
       = (let a := zmmLane x k; a * a * a * a * a) := by
   rw [sboxCom_denote]
-  simp only [zmmPackQ_lane, JasminBinOp.apply]
+  simp only [zmmPackQ_lane, JasminBinOp.applyLane]
   -- the chain is `(x·x)·(x·x)·x`; the abstract S-box is `x·x·x·x·x` — same up to
   -- associativity of the lane multiply.
   simp only [mul_assoc]
