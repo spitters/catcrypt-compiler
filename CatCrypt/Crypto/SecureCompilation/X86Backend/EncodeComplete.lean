@@ -36,6 +36,10 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 ## Main definitions
 
 * `x86Enc`: the x86 instance of the instruction-level encoder `IsaEncoder`.
+* `opResolvesB`, `x86LegalB`: the decisions of `OpResolves` and of the legal forms
+  `LegalForm` at the x86 encoder.
+* `VIR.LprogIsa.x86Backend`: the x86 back end, whose legal instructions are those of a legal
+  form of the x86 encoder in the context of the body.
 
 ## Main results
 
@@ -61,6 +65,9 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
   encodable instructions, at the same frame size, spill width and save block.
 * `encodable_of_legal_x86`, `encodable_of_legalized_x86`: a body of instructions with legal
   forms (`LegalForm`) is encodable, and so is its forwarding by `loadCSE`.
+* `x86LegalB_iff`, `VIR.LprogIsa.x86Backend_legal`: `x86LegalB` decides `LegalForm`.
+* `VIR.LprogIsa.x86Backend_encodable_of_legal`: the law `IsaBackend.Laws.encodable_of_legal`
+  at the x86 back end.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeComplete
@@ -474,6 +481,97 @@ def x86Enc : IsaEncoder where
   memName := encMemName
   setcc := isSetccEncMnem
 
+/-- The decision of `OpResolves` at a frame size, spill width and save block. -/
+def opResolvesB (F W Q : Nat) (n : String) : Bool :=
+  isGpName n || (spillQsaveOff F W n Q).isSome || (parseMemNameGp n).isSome
+
+theorem opResolvesB_iff {F W Q : Nat} {n : String} :
+    opResolvesB F W Q n = true ↔ OpResolves F W Q n := by
+  simp [opResolvesB, OpResolves, or_assoc]
+
+/-- **The legal forms of the x86 encoder** in the context `c`, as a decision: a register move
+    over resolving names of which at most one is a memory name; the 64-bit `CMOV` select over
+    four general-purpose registers; and a materialised comparison `isSetccEncMnem` over three
+    general-purpose registers. -/
+def x86LegalB (c : Nat × Nat × Nat) : LinstrR → Bool
+  | .Lopn [.reg d] mn [.reg s] =>
+      isMovMnem mn && opResolvesB c.1 c.2.1 c.2.2 d && opResolvesB c.1 c.2.1 c.2.2 s &&
+        !(encMemName d && encMemName s)
+  | .Lopn [.reg dn] m [.reg cn, .reg tn, .reg fn] =>
+      m == withWidthTag 64 "CMOV" && isGpName dn && isGpName cn && isGpName tn && isGpName fn
+  | .Lopn [.reg dn] opn [.reg an, .reg sn] =>
+      isSetccEncMnem opn && isGpName dn && isGpName an && isGpName sn
+  | _ => false
+
+/-- **`x86LegalB` decides the legal forms** `LegalForm` of the x86 instruction set at the x86
+    encoder. -/
+theorem x86LegalB_iff {c : Nat × Nat × Nat} {i : LinstrR} :
+    x86LegalB c i = true ↔ LegalForm X86Isa.x86Isa x86Enc c i := by
+  constructor
+  · intro h
+    unfold x86LegalB at h
+    split at h
+    · simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
+      obtain ⟨⟨⟨hm, hd⟩, hs⟩, hds⟩ := h
+      exact Or.inl ⟨_, _, _, hm, rfl, opResolvesB_iff.1 hd, opResolvesB_iff.1 hs, hds⟩
+    · simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨⟨⟨rfl, h1⟩, h2⟩, h3⟩, h4⟩ := h
+      exact Or.inr (Or.inl ⟨"CMOV", _, _, _, _, rfl, rfl, h1, h2, h3, h4⟩)
+    · simp only [Bool.and_eq_true] at h
+      obtain ⟨⟨⟨ho, h1⟩, h2⟩, h3⟩ := h
+      exact Or.inr (Or.inr ⟨_, _, _, _, ho, rfl, h1, h2, h3⟩)
+    · cases h
+  · rintro (⟨mn, d, s, hm, rfl, hd, hs, hds⟩ | ⟨m, dn, cn, tn, fn, hsel, rfl, h1, h2, h3, h4⟩ |
+      ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩)
+    · have hd' := opResolvesB_iff.2 hd
+      have hs' := opResolvesB_iff.2 hs
+      change (encMemName d && encMemName s) = false at hds
+      simp [x86LegalB, hm, hd', hs', hds]
+    · have hm : m = "CMOV" := (Option.some.inj hsel).symm
+      subst hm
+      change isGpName dn = true at h1
+      change isGpName cn = true at h2
+      change isGpName tn = true at h3
+      change isGpName fn = true at h4
+      simp [x86LegalB, h1, h2, h3, h4]
+    · change isSetccEncMnem opn = true at ho
+      change isGpName dn = true at h1
+      change isGpName an = true at h2
+      change isGpName sn = true at h3
+      simp [x86LegalB, ho, h1, h2, h3]
+
+/-- **The x86 back end**: the machine `x86Mach` and the assembly simulation `x86AsmSim` of
+    the class `printedAddrWB` at the regime `doitm`, on the address semantics of printed
+    bodies; the legal forms `LegalForm` of the x86 encoder in the context of the body,
+    decided by `x86LegalB`; the encodability `encodableLcmd`; a callee as its symbol and
+    code, the checks `x86LinkB`, and the byte length of the function of the caller as call
+    distance. -/
+def _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Backend :
+    VIR.LprogIsa.IsaBackend X86Isa.x86Isa where
+  M := X86Isa.x86Mach .doitm
+  src := X86AsmSim.x86AddrSem DecodePrintedAddrW.SafeW
+  toBody := id
+  asm := X86AsmSim.x86AsmSim .doitm
+  legal := fun body i => x86LegalB (x86Enc.ctx body) i
+  encodable := encodableLcmd
+  Callee := String × List (BitVec 8)
+  link := fun c b => VIR.LprogIsa.x86LinkB c.1 c.2 b
+  callDist := fun c b => (encodeLfundefBytesReloc (VIR.LprogIsa.x86LinkSym c.1 b) b).length
+
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Backend_asm :
+    VIR.LprogIsa.x86Backend.asm = X86AsmSim.x86AsmSim .doitm := rfl
+
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Backend_encodable :
+    VIR.LprogIsa.x86Backend.encodable = encodableLcmd := rfl
+
+/-- **An instruction of a body is legal at the x86 back end exactly when it has a legal form**
+    of the x86 encoder in the context of the body. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Backend_legal
+    (body : Lcmd) (i : LinstrR) :
+    VIR.LprogIsa.x86Backend.legal body i = true ↔
+      LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx body) i :=
+  x86LegalB_iff
+
 /-- An operand is allocated at a frame size, spill width and save block exactly when it is
     an allocated operand of the x86 encoder in that context. -/
 theorem allocOp_iff_allocOpI {F W Q : Nat} {o : LOperand} :
@@ -616,6 +714,13 @@ theorem encodable_of_legalized_x86 (body : List Linstr)
     (hb : ∀ i ∈ body, LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx (loadCSE body)) i.li_i) :
     encodableLcmd (loadCSE body) = true :=
   x86Enc_complete.encodable_of_legalized body hb
+
+/-- **The encodability law of the x86 back end**: a body whose instructions are legal at
+    `x86Backend` is encodable (the field `IsaBackend.Laws.encodable_of_legal`). -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Backend_encodable_of_legal
+    (body : Lcmd) (hb : ∀ i ∈ body, VIR.LprogIsa.x86Backend.legal body i.li_i = true) :
+    VIR.LprogIsa.x86Backend.encodable body = true :=
+  encodable_of_legal_x86 fun i hi => x86LegalB_iff.1 (hb i hi)
 
 end LoadCSE
 

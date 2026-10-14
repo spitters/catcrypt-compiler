@@ -43,8 +43,8 @@ laws of the step and of a symbolic companion are `Prop` structures over an insta
   gate of the assembly simulation; encodable bodies within `callRange` pass the link check.
 * `IsaBackend.CtSim`: the decoded bytes of a gated body that passes a leak check are
   constant time.
-* `x86LinkSym`, `x86LinkB`: the symbol map and the checks of the x86 relocating encoder.
-* `x86Backend`: the x86 back end.
+* `x86LinkSym`, `x86LinkB`: the symbol map and the checks of the x86 relocating encoder;
+  the x86 back end `x86Backend` that uses them is in `X86Backend/EncodeComplete.lean`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
@@ -236,7 +236,7 @@ structure CtSim (ok : B.M.MState → B.M.Op → Prop) (LeakOk : Lcmd → Prop)
 
 end IsaBackend
 
-/-! ## The x86 back end -/
+/-! ## The x86 link checks -/
 
 /-- The symbol map of the x86 relocating encoder for a call of the function `name` from
     the printed body `b`: `name` sits at the byte after the function of `b`, at that length
@@ -265,30 +265,5 @@ def x86LinkB (name : String) (code : List (BitVec 8)) (b : Lcmd) : Bool :=
             (X86Backend.LprogBytesDecode.decCount items) L 0 items
           && (X86Backend.LprogBytesLinkReloc.expectedReloc items
             (X86Backend.LprogBytesDecode.decCount items) L items).isSome
-
-/-- **The x86 back end**: the machine `x86Mach` and the assembly simulation `x86AsmSim` of
-    the class `printedAddrWB` at the regime `doitm`, on the address semantics of printed
-    bodies; the operand forms `operandsOK` at the x86 data; the encodability
-    `encodableLcmd`; a callee as its symbol and code, the checks `x86LinkB`, and the byte
-    length of the function of the caller as call distance. -/
-def x86Backend : IsaBackend X86Backend.X86Isa.x86Isa where
-  M := X86Backend.X86Isa.x86Mach .doitm
-  src := X86Backend.X86AsmSim.x86AddrSem X86Backend.DecodePrintedAddrW.SafeW
-  toBody := id
-  asm := X86Backend.X86AsmSim.x86AsmSim .doitm
-  legal := fun _ i => X86Backend.X86Isa.x86Isa.toIsaData.operandsOK i
-  encodable := X86Backend.LprogBytes.encodableLcmd
-  Callee := String × List (BitVec 8)
-  link := fun c b => x86LinkB c.1 c.2 b
-  callDist := fun c b =>
-    (X86Backend.LprogBytes.encodeLfundefBytesReloc (x86LinkSym c.1 b) b).length
-
-theorem x86Backend_asm : x86Backend.asm = X86Backend.X86AsmSim.x86AsmSim .doitm := rfl
-
-theorem x86Backend_encodable : x86Backend.encodable = X86Backend.LprogBytes.encodableLcmd :=
-  rfl
-
-theorem x86Backend_legal (body : Lcmd) (i : LinstrR) :
-    x86Backend.legal body i = X86Backend.X86Isa.x86Isa.toIsaData.operandsOK i := rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
