@@ -572,7 +572,15 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
       | none =>
         rw [hl] at hcp
         have h64 := hsafe.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
-          (by simp [carryIns]) (by rw [hpc]; simp [narrowSrc, hbk?, hclK, hl])
+          (by simp [carryIns]) (by
+            have hsm : slotMov? (.Lopn [.reg D] o [.reg A]) = none := by
+              simp only [slotMov?]
+              split_ifs with ho
+              · rcases ho with rfl | rfl <;> simp [castTagW] at hw
+              · rfl
+            rw [hpc]
+            simp only [narrowSrc, hbk?, hclK, hl, List.mem_append, not_or]
+            exact ⟨by simp, not_mem_bitSrc hget hsm A⟩)
         rw [h64]
         simpa using hcp
       | some w0 =>
@@ -604,9 +612,68 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
       simp only [gW, hclK]
     exact ⟨_, hops, hpc', hc', hz', hnoadd hna _ _, hlk⟩
   rename_i hclK
+  by_cases h1b : bitSrc body s = []
+  swap
+  · -- a frame-word store of a one-bit name
+    obtain ⟨S, hS1⟩ := List.exists_mem_of_ne_nil _ h1b
+    obtain ⟨i, q, bS, hi, hmv, hq, -, hbS⟩ := bitSrc_spec hS1
+    rw [hget] at hi
+    cases hi
+    obtain ⟨m, hia, hm⟩ : ∃ m, LinstrR.Lopn ds o ss = .Lopn [.reg q] m [.reg S]
+        ∧ (m = "MOVQ" ∨ m = "MOV:64") := by
+      unfold slotMov? at hmv
+      split at hmv
+      · next dst opn src heq =>
+        split_ifs at hmv with hm0
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hmv)
+        exact ⟨_, heq, hm0⟩
+      · cases hmv
+    simp only [LinstrR.Lopn.injEq] at hia
+    obtain ⟨rfl, rfl, rfl⟩ := hia
+    have hcl : classifyA (.Lopn [.reg q] o [.reg S]) = some (.st o q S) := by
+      rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hq]
+    have hok' : (AArm.st o q S).ok P = true := by
+      rcases hm with rfl | rfl <;>
+        simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
+          classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+          using hok
+    have hli := AArm.li_eq hok'
+    have hgw : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
+        = instrLeakA frame (AArm.st o q S).li s ++ redLeak rsp (.st o q S) := by
+      have h1 : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
+          = stepLeakA frame body s zf ++ redLeak rsp (.st o q S) := by
+        rcases hm with rfl | rfl <;>
+          simp (config := { decide := true }) [gW, hclK, movImmStruct?, classifyS, classifyC,
+            classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+      rw [h1, hGl, show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli]
+    rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
+    rw [show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli] at hst
+    have hc' := AArm.simW_st1 P rsp o q S hok' sa s zf hc hbS s' zf' hst
+    have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+    have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+        (aMachine.runBlock sa ((AArm.st o q S).js P)).flags.zf.getD false = zf' := by
+      intro hcnd
+      have hcm := hcondNext hcnd
+      rw [hcl] at hcm
+      simp [cmpArmB] at hcm
+    have hna : ∀ ii' d a s c, body[k]? ≠
+        some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+      intro ii' d a s c h
+      rw [hbk?] at h
+      simp only [Option.some.injEq, Linstr.mk.injEq, LinstrR.Lopn.injEq] at h
+      rcases hm with rfl | rfl <;> simp at h
+    have hcell : cellA? (AArm.st o q S).instr = none := by
+      rcases hm with rfl | rfl <;> simp [AArm.instr, cellA?]
+    have hlk : blockLeakA .doitm sa ((AArm.st o q S).js P)
+        = gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf) := by
+      rw [hgw, AArm.leak P rsp _ hok' sa (widenS sa s) hc.widen]
+      congr 1
+      simp only [AArm.li]
+      exact instrLeakA_reg_indep hcell none _ _
+    exact ⟨_, AArm.shape_ops hok' hshk, hpc', hc', hz', hnoadd hna _ _, hlk⟩
   have hws : ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true →
       r ∉ carryIns (.Lopn ds o ss) → (s.reg.lvm r).1 = 64 := fun r h1 h2 h3 =>
-    hsafe.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK])
+    hsafe.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK, h1b])
   split at hok
   · -- an untagged immediate move: a carry constant or a 32-bit constant
     rename_i D n hmv

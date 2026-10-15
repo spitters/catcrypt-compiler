@@ -29,17 +29,20 @@ constant (`JasminLsemAddrImage.bitStore?`, a one-bit write on the image) and a n
 instruction writes with a word of the fixed width `1` (`STerm.wknown`, for instance the result of
 `SET<cc>`) enter it, and a name written at width `64` leaves it. `ImgRelW` is `ImgRel` with the width condition restricted to the
 general-purpose names outside `oneBitAt` at the program counter, and with a frame-slot name of
-`oneBitAt` allowed to hold the low bit of its frame word (`SlotVal`). `imgGateBW` is the gate
+`oneBitAt` allowed to hold the low bit of its frame word (`SlotVal`), and with every
+general-purpose name outside `castDsts` at width `64` or `1`. `imgGateBW` is the gate
 of `ImageAddrSim.imgGateB` over the analysis: a carry-chain instruction
 `ADCX:64`/`ADCXHI:64` on three sources is accepted with register or frame-slot word sources,
 carry-in and destination, a carry constant into a register or a frame word, a register
 instruction writes width-`64` words from names outside the analysis, a store into a frame word
-stores a name outside it, an immediate move into a frame word writes a word that holds no
-array pointer, a select `CMOV:64` reads a frame-word value or writes a frame-word destination
+stores a name outside it or a name that no cast of the body writes at a narrow width
+(`castDsts`), whose frame word then enters the analysis, an immediate move into a frame word
+writes a word that holds no array pointer, a select `CMOV:64` reads a frame-word value or writes a frame-word destination
 at its frame word, a branch is taken only where every name of the analysis is in the analysis
 one past its label, every name an
-instruction reads, other than a carry-in or the condition of a `CMOV:64` select
-(`DecodePrintedAddrW.carryIns`), lies outside the analysis. `retOutsB` is the check that no
+instruction reads, other than a carry-in, the condition of a `CMOV:64` select
+(`DecodePrintedAddrW.carryIns`) and the stored name of a frame-word store (`gateReadSet`), lies
+outside the analysis. `retOutsB` is the check that no
 name of a list of observed names lies in the analysis at the return.
 
 The destination of a width-carrying cast `CASTW_<w>_<w'>` (`DecodePrintedAddrW.classifyK`)
@@ -110,7 +113,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBas
   readsRdx)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
   (carryIns WideSafeAt fstepA_adcx3 fstepA_adcxhi classifyK classifyK_spec narrowIn narrowSrc
-  fstepA_castW lsemStepCast_castW castStruct?_of_castMovBits)
+  fstepA_castW lsemStepCast_castW castStruct?_of_castMovBits bitSrc)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
 
 /-! ## 1. The carry-chain instructions on both machines -/
@@ -192,7 +195,8 @@ def castOut (W : List String) (x : LinstrR) : List String :=
 /-- **One step of the width analysis.** The carry-out of `ADCXHI:64` and the destination of
     an untagged immediate move (a carry constant where the gate accepts it) enter the names
     possibly holding a one-bit value; the destination of `ADCX:64`, of an indexed load and
-    of a load of a frame word, and the names a register instruction writes, leave it. -/
+    of a load of a frame word, and the names a register instruction writes, leave it; the
+    frame word of a store of a name of the analysis enters it. -/
 def oneBitStep (frame : String → Option (BitVec 64)) (W : List String) (x : LinstrR) :
     List String :=
   match carryI? x with
@@ -202,6 +206,7 @@ def oneBitStep (frame : String → Option (BitVec 64)) (W : List String) (x : Li
       match icase frame x with
       | .ldx d _ _ => W.filter (· != d)
       | .sload d _ => W.filter (· != d)
+      | .sstore q S => if W.contains S then q :: W else W
       | .reg =>
           match movImmStruct? x with
           | some (d, _) => d :: W
@@ -410,6 +415,45 @@ theorem readOkB_spec {W : List String} {x : LinstrR} (h : readOkB W x = true) {r
   · exact absurd (by simpa using h1) hc
   · simpa using h1
 
+/-- The names `readOkB` checks against at an instruction: `W` without the stored name of a
+    frame-word store, all of `W` at every other instruction. -/
+def gateReadSet (frame : String → Option (BitVec 64)) (W : List String) (x : LinstrR) :
+    List String :=
+  match icase frame x with
+  | .sstore _ S => W.filter (· != S)
+  | _ => W
+
+/-- Under `readOkB` at `gateReadSet`, a name read other than a carry-in and the stored name of a
+    frame-word store lies outside `W`. -/
+theorem readOkB_gateReadSet_spec {frame : String → Option (BitVec 64)} {W : List String}
+    {x : LinstrR} (h : readOkB (gateReadSet frame W x) x = true) {r : String}
+    (hr : r ∈ readNames x) (hc : r ∉ carryIns x) (hs : ∀ q, icase frame x ≠ .sstore q r) :
+    r ∉ W := by
+  have h1 := readOkB_spec h hr hc
+  unfold gateReadSet at h1
+  split at h1
+  · rename_i q S heq
+    have hne : r ≠ S := fun e => hs q (by rw [heq, e])
+    intro hm
+    exact h1 (List.mem_filter.2 ⟨hm, by simpa using hne⟩)
+  · exact h1
+
+/-- The destinations of the width-carrying casts of a body to a width other than `64`. -/
+def castDsts (body : Lcmd) : List String :=
+  body.filterMap fun i =>
+    match classifyK i.li_i with
+    | some (d, _, _, w) => if w = 64 then none else some d
+    | none => none
+
+/-- The destination of a cast to a width other than `64` at an instruction of the body is a
+    name of `castDsts`. -/
+theorem mem_castDsts {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi)
+    {d a : String} {m w : Nat} (hk : classifyK bi.li_i = some (d, a, m, w)) (hw : w ≠ 64) :
+    d ∈ castDsts body := by
+  unfold castDsts
+  rw [List.mem_filterMap]
+  exact ⟨bi, List.mem_of_getElem? hb, by simp [hk, hw]⟩
+
 /-- An immediate move `MOV:64 q, #v` into a frame word `q` that holds no array pointer. -/
 def sImmB (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat)) :
     LinstrR → Bool
@@ -471,20 +515,23 @@ def castGateB (frame : String → Option (BitVec 64)) (x : LinstrR) : Bool :=
   | some (d, a, _, _) => gpOk d && gpOk a && (frame d).isNone && (frame a).isNone
   | none => false
 
-/-- **The gate of instruction `k` at the analysis `W`**: the names read lie outside `W`
-    (`readOkB`) or the instruction is a cast whose source has an entry in the cast width
-    analysis (`castReadB`), and the instruction is a width-carrying cast between
-    general-purpose names (`castGateB`), a carry-chain instruction passing `carryOkB`, a label,
-    a branch on a condition code with a polarity to a label of the body one past which the
-    width analysis includes every name of `W`, an indexed access, a frame-word move or compare as in
-    `instrGateB`, a carry constant (`bitMovB`) into a general-purpose name without a frame
+/-- **The gate of instruction `k` at the analysis `W`**: the names read, other than the stored
+    name of a frame-word store, lie outside `W` (`readOkB` at `gateReadSet`) or the instruction is a
+    cast whose source has an entry in the cast width analysis (`castReadB`), and the
+    instruction is a width-carrying cast between general-purpose names (`castGateB`), a
+    carry-chain instruction passing `carryOkB`, a label, a branch on a condition code with a
+    polarity to a label of the body one past which the width analysis includes every name of
+    `W`, an indexed access, a frame-word move or compare as in `instrGateB`, where a frame-word
+    store `q := S` stores a general-purpose name `S` outside `W`, or one that no cast of the
+    body writes at a narrow width (`castDsts`) into a frame word `q` that is neither a
+    general-purpose name nor a cell name `mem.B.off`, a carry constant (`bitMovB`) into a general-purpose name without a frame
     word or into a frame word without an array pointer, an immediate move into a frame word
     without an array pointer (`sImmB`), which is the only form a stored carry constant
     (`bitStore?`) takes, a select with a frame-word value or destination (`sCmovB`), or a
     register instruction other than an untagged immediate move passing `regGateBW`. -/
 def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) (k : Nat) (W : List String) (x : LinstrR) : Bool :=
-  (readOkB W x || castReadB body k x) &&
+  (readOkB (gateReadSet frame W x) x || castReadB body k x) &&
     match carryI? x with
     | some (_, d, a, s, c) => carryOkB frame slotArr d a s c
     | none =>
@@ -497,7 +544,9 @@ def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option
         | .stx _ b idx v => (accArr slotArr body k b).isSome && (frame idx).isNone
             && (frame b).isNone && (frame v).isNone
         | .sload d _ => gpOk d
-        | .sstore _ S => gpOk S
+        | .sstore q S => gpOk S
+            && (!W.contains S
+              || (!(castDsts body).contains S && !gpOk q && !hasPrefix q "mem."))
         | .scmp _ y _ => (frame y).isNone
         | .reg =>
             match movImmStruct? x with
@@ -658,8 +707,9 @@ theorem SlotVal.getW64 {W : List String} {q : String} {r : LstateN} {m : BitVec 
 
 /-- **The relation of the image simulation with carry chains**: `ImgRel` with the width
     condition on the general-purpose names outside the width analysis at the program
-    counter, and a frame-slot name of the width analysis holding the low bit of its frame
-    word. -/
+    counter, a frame-slot name of the width analysis holding the low bit of its frame
+    word, and a general-purpose name that no cast of the body writes at a narrow width
+    (`castDsts`) holding a value of width `64` or `1`. -/
 structure ImgRelW (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (body : Lcmd)
     (s : LstateMF) (sa : LstateA) (zf : Bool) : Prop where
@@ -681,6 +731,8 @@ structure ImgRelW (frame : String → Option (BitVec 64))
     slotArr q = some (A, n) → frame q = some a → frame b = none →
       sa.reg.lvm b = ⟨64, read64 sa.mem a⟩
   held : HeldAt frame slotArr base sa.mem
+  bits : ∀ r, gpOk r = true → r ∉ castDsts body →
+    (sa.reg.lvm r).1 = 64 ∨ (sa.reg.lvm r).1 = 1
 
 /-- `ImgRel` is `ImgRelW` where the width analysis is empty. -/
 theorem imgRelW_of {frame : String → Option (BitVec 64)}
@@ -688,7 +740,21 @@ theorem imgRelW_of {frame : String → Option (BitVec 64)}
     {s : LstateMF} {sa : LstateA} {zf : Bool} (h : ImgRel frame slotArr base body s sa zf) :
     ImgRelW frame slotArr base body s sa zf :=
   ⟨h.pc, h.regs, fun q a ha => Or.inl (h.slots q a ha), h.zf, h.cf, h.of,
-    fun r hr _ => h.wid r hr, h.cells, h.saved, h.reload, h.held⟩
+    fun r hr _ => h.wid r hr, h.cells, h.saved, h.reload, h.held,
+    fun r hr _ => Or.inl (h.wid r hr)⟩
+
+/-- The width condition of `ImgRelW.bits` after a write of a value of width `64` or `1` and an
+    advance of the program counter. -/
+theorem bits_setReg {body : Lcmd} {r0 : LstateN}
+    (h : ∀ r, gpOk r = true → r ∉ castDsts body → (r0.lvm r).1 = 64 ∨ (r0.lvm r).1 = 1)
+    (D : String) {w : Nat} (v : BitVec w) (hw : w = 64 ∨ w = 1) :
+    ∀ r, gpOk r = true → r ∉ castDsts body →
+      ((r0.setReg D v).nextPc.lvm r).1 = 64 ∨ ((r0.setReg D v).nextPc.lvm r).1 = 1 := by
+  intro r hr hc
+  by_cases e : r = D
+  · subst e
+    simpa [LstateN.setReg, LstateN.nextPc] using hw
+  · simpa [LstateN.setReg, LstateN.nextPc, e] using h r hr hc
 
 /-- `ImgRelW` is `ImgRel` where the width analysis is empty. -/
 theorem imgRel_of_W {frame : String → Option (BitVec 64)}
@@ -1005,7 +1071,9 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
       ∧ sa'.cf = t.prog.base.cf ∧ sa'.of = t.prog.base.of
       ∧ sa'.reg.lpc = sa.reg.lpc + 1 ∧ t.prog.base.reg.lpc = s.prog.base.reg.lpc + 1
       ∧ t.prog.base.larr = s.prog.base.larr
-      ∧ (∀ r, gpOk r = true → r ∉ regOut W x → (sa'.reg.lvm r).1 = 64) := by
+      ∧ (∀ r, gpOk r = true → r ∉ regOut W x → (sa'.reg.lvm r).1 = 64)
+      ∧ (∀ r, gpOk r = true → ((sa.reg.lvm r).1 = 64 ∨ (sa.reg.lvm r).1 = 1) →
+          (sa'.reg.lvm r).1 = 64 ∨ (sa'.reg.lvm r).1 = 1) := by
   simp only [regGateBW, Bool.and_eq_true] at hgate
   obtain ⟨hok, hwg⟩ := hgate
   have hsi' : slotImm? frame (x, MemTag.reg none).fst = none := slotImm?_none_of_regOkB hok
@@ -1040,7 +1108,7 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
     rw [evalInstrPMemF_isLopn P _ sMF hx] at ht'
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
-      fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr hrW => ?_⟩
+      fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr hrW => ?_, fun r hr h01 => ?_⟩
     · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi' hsv']
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
@@ -1070,12 +1138,26 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
         refine hwid r hr fun hm => hrW ?_
         simp only [regOut, hS, List.mem_append, List.mem_filter, hm, true_and]
         exact Or.inl (by simpa using hw)
+    · show (b.reg.lvm r).1 = 64 ∨ (b.reg.lvm r).1 = 1
+      by_cases hw : r ∈ ss.wr
+      · have e := hval r
+        simp only at e
+        rw [e]
+        rcases hwg r hw with (h1 | h1) | h1
+        · rw [hr] at h1; cases h1
+        · exact Or.inl (wid64WB_ev h1 _ _ _ hwid)
+        · exact Or.inr (STerm.wknown_ev _ _ _ _ (by simpa using h1))
+      · have e := hkeep' r hw
+        simp only at e
+        rw [e]
+        exact h01
 
 theorem oneBitStep_noCarry {frame : String → Option (BitVec 64)} {W : List String}
     {x : LinstrR} (hci : carryI? x = none) :
     oneBitStep frame W x = match icase frame x with
       | .ldx d _ _ => W.filter (· != d)
       | .sload d _ => W.filter (· != d)
+      | .sstore q S => if W.contains S then q :: W else W
       | .reg =>
           match movImmStruct? x with
           | some (d, _) => d :: W
@@ -1100,12 +1182,12 @@ theorem rel_regW {frame : String → Option (BitVec 64)}
   obtain ⟨ds, o, ss, hx, -, -⟩ := icase_reg hc
   have hl : IsLopn (normA bi.li_i, MemTag.reg none) := by
     rw [hx]; exact ⟨ds, _, ss, rfl⟩
-  obtain ⟨sa', hst, hmem, hregs', hkeepF, hcf, hof, hlpcA, hlpcI, hlarr, hwid'⟩ :=
+  obtain ⟨sa', hst, hmem, hregs', hkeepF, hcf, hof, hlpcA, hlpcI, hlarr, hwid', hbits'⟩ :=
     reg_stepW hl hg P s t sa zf hrel.regs hrel.zf hrel.cf hrel.of hrel.wid hs
   have hmovF : ∀ d src, slotMov? bi.li_i = some (d, src) → frame d = none ∧ frame src = none :=
     fun d src hm => regGateBW_slotMov hg (by rw [slotMov?_normA]; exact hm)
   refine ⟨sa', hst, ⟨?_, hregs', ?_, rfl, hcf, hof, fun r hr hW => hwid' r hr ?_, ?_, ?_, ?_,
-    by rw [hmem]; exact hrel.held⟩⟩
+    by rw [hmem]; exact hrel.held, fun r hr hc => hbits' r hr (hrel.bits r hr hc)⟩⟩
   · rw [hlpcA, hlpcI, hrel.pc]
   · intro q a ha
     refine (hrel.slots q a ha).of_eq (hkeepF q (by rw [ha]; simp)) (by rw [hmem]) fun h => ?_
@@ -1193,7 +1275,8 @@ theorem rel_bmovW {frame : String → Option (BitVec 64)}
   obtain rfl := Option.some.inj hs
   have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
   refine ⟨{ sa with reg := (sa.reg.setReg D (BitVec.ofNat 1 n)).nextPc }, ?_, ⟨?_, ?_, ?_, ?_,
-    hrel.cf, hrel.of, ?_, ?_, ?_, ?_, hrel.held⟩⟩
+    hrel.cf, hrel.of, ?_, ?_, ?_, ?_, hrel.held,
+    bits_setReg hrel.bits D (BitVec.ofNat 1 n) (Or.inr rfl)⟩⟩
   · rw [hx, CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun.fstepA_bitMov _ D n sa zf hD,
       hrel.zf]
   · simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hrel.pc]
@@ -1320,7 +1403,15 @@ theorem rel_castW {frame : String → Option (BitVec 64)}
   have hpc : (sa.reg.setReg D ((sa.reg.lvm A).2.zeroExtend w)).nextPc.lpc = sa.reg.lpc + 1 := by
     simp [LstateN.setReg, LstateN.nextPc]
   refine ⟨{ sa with reg := (sa.reg.setReg D ((sa.reg.lvm A).2.zeroExtend w)).nextPc }, ?_, ⟨?_,
-    ?_, ?_, ?_, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, hrel.held⟩⟩
+    ?_, ?_, ?_, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, hrel.held, fun r hr hc => ?_⟩⟩
+  rotate_right
+  · by_cases e : r = D
+    · subst e
+      by_cases hw64 : w = 64
+      · left
+        simp [LstateN.setReg, LstateN.nextPc, hw64]
+      · exact absurd (mem_castDsts hb hk hw64) hc
+    · simpa [LstateN.setReg, LstateN.nextPc, e] using hrel.bits r hr hc
   · rw [hx, fstepA_castW _ D A o w hcs, lsemStepCast_castW D A o w hcs, hrel.zf]
     rfl
   · simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, hrel.pc]
@@ -1413,7 +1504,7 @@ theorem rel_sloadW {frame : String → Option (BitVec 64)}
   have hsq := (hrel.slots q a ha).word hqW
   refine ⟨{ sa with reg := (sa.reg.setReg d (read64 sa.mem a)).nextPc },
     fstepA_slotLoad frame hm ha sa _, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_,
-      hrel.held⟩⟩
+      hrel.held, bits_setReg hrel.bits d _ (Or.inl rfl)⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     by_cases e : r = d
@@ -1472,7 +1563,9 @@ theorem rel_sloadW {frame : String → Option (BitVec 64)}
       simp [hbd]
 
 /-- **A store into a frame word keeps `ImgRelW`**, for a stored name outside the width
-    analysis. -/
+    analysis, or one that no cast of the body writes at a narrow width (`castDsts`): such a
+    name holds a 64-bit word, stored whole, or a bit, stored zero-extended, and the frame word
+    then enters the width analysis. -/
 theorem rel_sstoreW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -1480,7 +1573,7 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
     {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {q S : String} (hc : icase frame bi.li_i = .sstore q S)
     (hci : carryI? bi.li_i = none) (hgS : gpOk S = true)
-    (hSW : S ∉ oneBitAt frame body sa.reg.lpc)
+    (hSW : S ∉ oneBitAt frame body sa.reg.lpc ∨ S ∉ castDsts body)
     (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
     ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
       ∧ ImgRelW frame slotArr base body t sa' t.zf := by
@@ -1489,18 +1582,54 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
   have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_slotMov hm)
     (seedAt_of_slotMov hm)
   rw [oneBitStep_noCarry hci, hc] at hW1
+  simp only at hW1
+  have hWsub : ∀ r, r ∈ oneBitAt frame body sa.reg.lpc →
+      r ∈ oneBitAt frame body (sa.reg.lpc + 1) := by
+    intro r hr
+    rw [hW1]
+    split <;> simp [hr]
   rw [normA_of_slotMov hm] at hs ⊢
   rw [eval_slotMov P hm] at hs
   cases hs
   have hz := hrel.zf
   subst hz
-  have hw := hrel.wid S hgS hSW
-  have hv : sa.reg.getW S 64 = some (castW (sa.reg.lvm S) 64) := by rw [getW_eq, if_pos hw]
-  have hSv : s.prog.base.reg.lvm S = ⟨64, castW (sa.reg.lvm S) 64⟩ := by
-    rw [hrel.regs S hS, sigma_of_castW hw]
-  refine ⟨{ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (castW (sa.reg.lvm S) 64) },
-    fstepA_slotStore frame hm hS ha sa _ hv,
-    ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, ?_⟩⟩
+  have hw01 : (sa.reg.lvm S).1 = 64 ∨ (sa.reg.lvm S).1 = 1 := by
+    rcases hSW with h | h
+    · exact Or.inl (hrel.wid S hgS h)
+    · exact hrel.bits S hgS h
+  obtain ⟨v, hst, hslot, hsav⟩ : ∃ v : BitVec 64,
+      fstepA frame (bi.li_i, .reg none) sa s.zf
+        = some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, s.zf)
+      ∧ SlotVal (oneBitAt frame body (sa.reg.lpc + 1)) q (s.prog.base.reg.lvm S) v
+      ∧ ∀ p, sa.reg.getW S 64 = some p → v = p := by
+    rcases hw01 with hw | hw
+    · have hv : sa.reg.getW S 64 = some (castW (sa.reg.lvm S) 64) := by
+        rw [getW_eq, if_pos hw]
+      refine ⟨castW (sa.reg.lvm S) 64, fstepA_slotStore frame hm hS ha sa _ hv, Or.inl ?_,
+        fun p hp => by rw [hv] at hp; exact Option.some.inj hp⟩
+      rw [hrel.regs S hS, sigma_of_castW hw]
+    · generalize hc1 : sa.reg.lvm S = c at hw
+      obtain ⟨w, b⟩ := c
+      simp only at hw
+      subst hw
+      have hSW' : S ∈ oneBitAt frame body sa.reg.lpc := by
+        by_contra hn
+        have := hrel.wid S hgS hn
+        rw [hc1] at this
+        cases this
+      refine ⟨b.setWidth 64, fstepA_slotStore1 frame hm hS ha sa _ hc1, Or.inr ⟨?_, ?_⟩,
+        fun p hp => by rw [getW_eq_some_iff, hc1] at hp; cases hp⟩
+      · rw [hW1]
+        simp [hSW']
+      · rw [hrel.regs S hS, hc1]
+        congr 1
+        apply BitVec.eq_of_getElem_eq
+        intro i hi
+        obtain rfl : i = 0 := by omega
+        simp
+  refine ⟨{ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, hst,
+    ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, ?_,
+      fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     have e : r ≠ q := fun e => by rw [e, ha] at hr; cases hr
@@ -1511,16 +1640,15 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
       rw [ha] at ha'
       cases ha'
       simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, if_true,
-        read64_write64_same]
-      rw [hSv]
-      exact Or.inl rfl
+        read64_write64_same, LstateN.lpc_nextPc]
+      exact hslot
     · simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, e,
         if_false]
       rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' (Ne.symm e))]
-      exact (hrel.slots q' a' ha').of_eq rfl rfl fun h => by simpa [hW1] using h
+      exact (hrel.slots q' a' ha').of_eq rfl rfl fun h => by simpa using hWsub q' h
   · intro r hr hW
-    simp only [LstateN.lpc_nextPc, hW1] at hW
-    simpa using hrel.wid r hr hW
+    simp only [LstateN.lpc_nextPc] at hW
+    simpa using hrel.wid r hr fun h => hW (hWsub r h)
   · intro q' A n hq'
     obtain ⟨arr, h1, h2⟩ := hrel.cells q' A n hq'
     refine ⟨arr, by simpa using h1, fun j hj => ?_⟩
@@ -1537,9 +1665,7 @@ theorem rel_sstoreW {frame : String → Option (BitVec 64)}
         obtain ⟨hqS, -⟩ := physImgB_slotStore hphys hb hm (by rw [hA]; rfl)
         have hRS := slotOfReg_inj hqS
         subst hRS
-        have := (hrel.saved sa.reg.lpc R A n a ⟨bi, hb, hm⟩ hA ha).2 (le_refl _)
-        rw [hv] at this
-        exact Option.some.inj this
+        exact hsav _ ((hrel.saved sa.reg.lpc R A n a ⟨bi, hb, hm⟩ hA ha).2 (le_refl _))
       · rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' ha ha' (Ne.symm hqR))]
         rcases Nat.lt_succ_iff_lt_or_eq.mp hk with hk | rfl
         · exact (hrel.saved k R A n a' hS' hA ha').1 hk
@@ -1613,7 +1739,8 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
         have hqR : slotOfReg R ≠ q := fun e => by rw [e, hA] at hA'; cases hA'
         show read64 (write64 sa.mem a _) a' = base A'
         rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' hq ha' (Ne.symm hqR))]
-        exact hrel.held R A' n' a' hR hA' ha'⟩⟩
+        exact hrel.held R A' n' a' hR hA' ha',
+      fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     have e : r ≠ q := fun e => by rw [e, hq] at hr; cases hr
@@ -1711,7 +1838,8 @@ theorem rel_bmovSlotW {frame : String → Option (BitVec 64)}
         have hqR : slotOfReg R ≠ q := fun e => by rw [e, hA] at hA'; cases hA'
         show read64 (write64 sa.mem a _) a' = base A'
         rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' hq ha' (Ne.symm hqR))]
-        exact hrel.held R A' n' a' hR hA' ha'⟩⟩
+        exact hrel.held R A' n' a' hR hA' ha',
+      fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · rw [hx, fstepA_slotBit frame hq n (some 1) sa s.zf, hw]
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
@@ -1802,7 +1930,8 @@ theorem rel_bstoreW {frame : String → Option (BitVec 64)}
         have hqR : slotOfReg R ≠ q := fun e => by rw [e, hA] at hA'; cases hA'
         show read64 (write64 sa.mem a _) a' = base A'
         rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q _ a a' hq ha' (Ne.symm hqR))]
-        exact hrel.held R A' n' a' hR hA' ha'⟩⟩
+        exact hrel.held R A' n' a' hR hA' ha',
+      fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · rw [hnA, fstepA_slotImm frame hq n none sa s.zf]
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
@@ -1959,7 +2088,8 @@ theorem rel_scmovW {frame : String → Option (BitVec 64)}
   have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_eq hx (by simp))
     (seedAt_of_eq hx (by simp))
   have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
-  refine ⟨_, hstA, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, ?_⟩⟩
+  refine ⟨_, hstA, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_, ?_,
+    bits_setReg hrel.bits D _ (Or.inl rfl)⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     by_cases e : r = D
@@ -2084,7 +2214,8 @@ theorem rel_scmovDstW {frame : String → Option (BitVec 64)}
     hphys hrel hb hnm rfl (fun q a hq ha => read64_write64_of_disjoint _ _ _ _
       (hsep.frames D q aD a hD ha (fun e => by rw [← e, hDs] at hq; cases hq)))
     (fun _ _ _ => rfl)
-  refine ⟨_, hstA, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, hsv, hrl, hhd⟩⟩
+  refine ⟨_, hstA, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, hsv, hrl, hhd,
+    fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · simp [LstateM.setReg, LstateM.nextPc, hrel.pc]
   · intro r hr
     have e : r ≠ D := fun e => by rw [e, hD] at hr; cases hr
@@ -2153,7 +2284,8 @@ theorem rel_scmpW {frame : String → Option (BitVec 64)}
       fun q' a' ha' => (hrel.slots q' a' ha').of_eq (by simp [LstateM.nextPc]) rfl
         (fun h => by simpa [hW1] using h), rfl, hrel.cf,
       hrel.of, fun r hr hW => ?_,
-      fun q' A n hq' => by simpa using hrel.cells q' A n hq', hsv, hrl, hhd⟩⟩
+      fun q' A n hq' => by simpa using hrel.cells q' A n hq', hsv, hrl, hhd,
+      fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
     simp only [LstateN.lpc_nextPc, hW1] at hW
     simpa using hrel.wid r hr hW
 
@@ -2216,7 +2348,8 @@ theorem rel_ldxW {frame : String → Option (BitVec 64)}
       have hrd : r ≠ d := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
       simp [LstateN.setReg, LstateN.nextPc, hrd])
   refine ⟨_, rfl, ⟨by simp [LstateM.setReg, LstateM.nextPc, hrel.pc], ?_, ?_, rfl, hrel.cf,
-    hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl, hhd⟩⟩
+    hrel.of, ?_, fun q' A' n' hq' => by simpa using hrel.cells q' A' n' hq', hsv, hrl, hhd,
+    bits_setReg hrel.bits d _ (Or.inl rfl)⟩⟩
   · intro r hr
     by_cases e : r = d
     · subst e
@@ -2283,7 +2416,8 @@ theorem rel_stxW {frame : String → Option (BitVec 64)}
       (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
-    hrel.cf, hrel.of, fun r hr hW => ?_, ?_, hsv, hrl, hhd⟩⟩
+    hrel.cf, hrel.of, fun r hr hW => ?_, ?_, hsv, hrl, hhd,
+    fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
     rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)]
@@ -2326,7 +2460,7 @@ theorem rel_labelW {frame : String → Option (BitVec 64)}
     fun q a ha => (hrel.slots q a ha).of_eq (by simp [LstateM.nextPc]) rfl fun h => by
       simp only [LstateA.setLpc]; rw [hW1]; exact List.mem_append_left _ h,
     hrel.zf, hrel.cf, hrel.of, fun r hr hW => ?_,
-    fun q A n hq => hrel.cells q A n hq, hsv, hrl, hhd⟩
+    fun q A n hq => hrel.cells q A n hq, hsv, hrl, hhd, fun r hr hc => hrel.bits r hr hc⟩
   simp only [LstateA.setLpc] at hW ⊢
   rw [hW1] at hW
   exact hrel.wid r hr fun h => hW (List.mem_append_left _ h)
@@ -2352,7 +2486,7 @@ theorem rel_condFallW {frame : String → Option (BitVec 64)}
     fun q a ha => (hrel.slots q a ha).of_eq (by simp [LstateM.nextPc]) rfl fun h => by
       simp only [LstateA.setLpc]; rw [hW1]; exact h,
     hrel.zf, hrel.cf, hrel.of, fun r hr hW => ?_,
-    fun q A n hq => hrel.cells q A n hq, hsv, hrl, hhd⟩
+    fun q A n hq => hrel.cells q A n hq, hsv, hrl, hhd, fun r hr hc => hrel.bits r hr hc⟩
   simp only [LstateA.setLpc] at hW ⊢
   rw [hW1] at hW
   exact hrel.wid r hr hW
@@ -2375,7 +2509,7 @@ theorem rel_condJumpW {frame : String → Option (BitVec 64)}
     fun q a ha => (hrel.slots q a ha).of_eq rfl rfl (hW q), hrel.zf, hrel.cf, hrel.of,
     fun r hr hn => hrel.wid r hr (fun h => hn (hW r h)), fun q A n hq => hrel.cells q A n hq,
     fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩, fun b q a A n hbi _ _ _ => ?_,
-    hrel.held⟩
+    hrel.held, fun r hr hc => hrel.bits r hr hc⟩
   · have hk' : k < sa.reg.lpc := by
       by_contra hc
       obtain ⟨i', hi', hm'⟩ := hS
@@ -2546,7 +2680,7 @@ theorem rel_adcxW {frame : String → Option (BitVec 64)}
       (fun _ _ _ => rfl)
     refine ⟨by simp [hrel.pc], fun r hr => ?_,
       fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv,
-      hrl, hhd⟩
+      hrl, hhd, fun r hr hc => by simpa using hrel.bits r hr hc⟩
     · have e : r ≠ D := fun e => by rw [e, hfD] at hr; cases hr
       simp [e, hrel.regs r hr]
     · by_cases e : q = D
@@ -2584,7 +2718,8 @@ theorem rel_adcxW {frame : String → Option (BitVec 64)}
         have hrD : r ≠ D := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
         simp [LstateN.setReg, LstateN.nextPc, hrD])
     refine ⟨by simp [hrel.pc], fun r hr => ?_,
-      fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl, hhd⟩
+      fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl, hhd,
+      bits_setReg hrel.bits D _ (Or.inl rfl)⟩
     · by_cases e : r = D
       · subst e; simp
       · simp [e, hrel.regs r hr]
@@ -2674,7 +2809,7 @@ theorem rel_adcxhiW {frame : String → Option (BitVec 64)}
       (fun _ _ _ => rfl)
     refine ⟨by simp [hrel.pc], fun r hr => ?_,
       fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv,
-      hrl, hhd⟩
+      hrl, hhd, fun r hr hc => by simpa using hrel.bits r hr hc⟩
     · have e : r ≠ O := fun e => by rw [e, hfO] at hr; cases hr
       simp [e, hrel.regs r hr]
     · by_cases e : q = O
@@ -2709,7 +2844,8 @@ theorem rel_adcxhiW {frame : String → Option (BitVec 64)}
       have hrO : r ≠ O := fun e => hr (by simp [e, dstNames, JasminLsemExportRewrites.opNames])
       simp [LstateN.setReg, LstateN.nextPc, hrO])
   refine ⟨by simp [hrel.pc], fun r hr => ?_,
-    fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl, hhd⟩
+    fun q a ha => ?_, rfl, hrel.cf, hrel.of, fun r hr hW => ?_, fun q A' n hq => ?_, hsv, hrl, hhd,
+    bits_setReg hrel.bits O _ (Or.inr rfl)⟩
   · by_cases e : r = O
     · subst e; simp
     · simp [e, hrel.regs r hr]
@@ -2765,7 +2901,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
     refine ⟨haltedA_of hb (by rw [hx]; simp),
       loadSafe_of hb (by intro D' B I e; rw [hx] at e; simp at e), sa', ?_, hr⟩
     rw [stepA_lopn frame hb hx, ← hst, hx, normA_castW hw, tagAt_castW _ _ hw]
-  have hrd : readOkB (oneBitAt frame c sa.reg.lpc) bi.li_i = true := by
+  have hrd : readOkB (gateReadSet frame (oneBitAt frame c sa.reg.lpc) bi.li_i) bi.li_i = true := by
     simpa [castReadB, hkc] using hrd0
   cases hci : carryI? bi.li_i with
   | some p =>
@@ -2777,10 +2913,17 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
     obtain ⟨⟨-, hac⟩, hsc⟩ := hok
     have hcI : carryIns bi.li_i = [cc] := by
       rw [hx0]; cases hi <;> simp [carryIns]
+    have hns : ∀ q r, icase frame bi.li_i ≠ .sstore q r := by
+      intro q r h
+      have h1 := (icase_sstore h).1
+      rw [hx0] at h1
+      cases hi <;> simp [slotMov?] at h1
     have hAW : a ∉ oneBitAt frame c sa.reg.lpc :=
-      readOkB_spec hrd (by rw [hx0]; simp [readNames, srcNames]) (by rw [hcI]; simpa using hac)
+      readOkB_gateReadSet_spec hrd (by rw [hx0]; simp [readNames, srcNames])
+        (by rw [hcI]; simpa using hac) (fun q => hns q a)
     have hSW : s' ∉ oneBitAt frame c sa.reg.lpc :=
-      readOkB_spec hrd (by rw [hx0]; simp [readNames, srcNames]) (by rw [hcI]; simpa using hsc)
+      readOkB_gateReadSet_spec hrd (by rw [hx0]; simp [readNames, srcNames])
+        (by rw [hcI]; simpa using hsc) (fun q => hns q s')
     have hld : (if hi then "ADCXHI:64" else "ADCX:64") ≠ "LOADIDX" := by cases hi <;> decide
     have hsd : (if hi then "ADCXHI:64" else "ADCX:64") ≠ "STOREIDX" := by cases hi <;> decide
     have hkd : castTagW (if hi then "ADCXHI:64" else "ADCX:64") = none := by
@@ -2846,6 +2989,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         rfl
     | sload d q =>
         rw [hc] at hg
+        simp only [gateReadSet, hc] at hrd
         have hm := (icase_sload hc).1
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -2867,17 +3011,21 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
         have h3 : bitMovB c sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
         have h4 : bitStore? c sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
+        simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
+          decide_eq_false_iff_not] at hg
+        obtain ⟨hgS, hSW⟩ := hg
+        have hSW' : S ∉ oneBitAt frame c sa.reg.lpc ∨ S ∉ castDsts c :=
+          hSW.imp id fun h => h.1.1
         rcases slotMov?_cases hm with hx | hx <;>
-        · have hSW := readOkB_spec (r := S) hrd (by rw [hx]; simp [readNames, srcNames])
-            (by rw [hx]; simp [carryIns])
-          rw [hx] at h3 h4
+        · rw [hx] at h3 h4
           rw [hx, imgInstr_reg slotArr c _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
             ← hx] at hstep
-          obtain ⟨sa', hst, hr⟩ := rel_sstoreW hsep hphys P hrel hb hc hci hg hSW hstep
+          obtain ⟨sa', hst, hr⟩ := rel_sstoreW hsep hphys P hrel hb hc hci hgS hSW' hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
           rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
     | scmp d y q =>
         rw [hc] at hg
+        simp only [gateReadSet, hc] at hrd
         have hx := slotCmp?_eq (icase_scmp hc).1
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -2892,6 +3040,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
     | reg =>
         rw [hc] at hg
+        simp only [gateReadSet, hc] at hrd
         obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -3009,9 +3158,10 @@ theorem haltedA_of_imgW {frame : String → Option (BitVec 64)}
     rfl
   · rw [List.getElem?_eq_none (by omega)]
 
-/-- **The read widths.** Under `ImgRelW` at a body passing `imgGateBW`, no general-purpose
-    name the instruction at the program counter reads, other than a carry-in, holds a one-bit
-    value. -/
+/-- **The read widths.** Under `ImgRelW` at a body passing `imgGateBW`, every general-purpose
+    name the instruction at the program counter reads, other than a carry-in, the source of a
+    cast with an entry in the cast width analysis and the one-bit source of a frame-word store
+    (`bitSrc`), holds a 64-bit value. -/
 theorem wideSafe_of_gateW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
     (hgate : imgGateBW frame slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
@@ -3019,7 +3169,8 @@ theorem wideSafe_of_gateW {frame : String → Option (BitVec 64)}
   intro ii ds o ss hb r hr hg hc hn
   obtain ⟨-, hgk⟩ := imgGateBW_at hgate hb (by simp)
   simp only [instrGateBW, gateAtW, Bool.and_eq_true, Bool.or_eq_true] at hgk
-  have hro : readOkB (oneBitAt frame body sa.reg.lpc) (.Lopn ds o ss) = true := by
+  have hro : readOkB (gateReadSet frame (oneBitAt frame body sa.reg.lpc) (.Lopn ds o ss))
+      (.Lopn ds o ss) = true := by
     rcases hgk.1 with h | hcr
     · exact h
     · exfalso
@@ -3050,8 +3201,29 @@ theorem wideSafe_of_gateW {frame : String → Option (BitVec 64)}
     · simp [readNames, hx]
     · exact List.mem_append_right _ (List.mem_append_left _ hr')
     · exact List.mem_append_right _ (List.mem_append_right _ hr')
-  have := hrel.wid r hg (readOkB_spec hro hmem hc)
-  omega
+  by_cases hst : ∃ q, icase frame (.Lopn ds o ss) = .sstore q r
+  · obtain ⟨q, hq⟩ := hst
+    have hm := (icase_sstore hq).1
+    have hcn : carryI? (.Lopn ds o ss) = none := by
+      rcases slotMov?_cases hm with hx | hx <;> rw [hx] <;> rfl
+    have hG := hgk.2
+    rw [hcn, hq] at hG
+    simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
+      decide_eq_false_iff_not] at hG
+    rcases hG.2 with h | ⟨⟨hcd, hgq⟩, hcp⟩
+    · exact hrel.wid r hg h
+    · rcases hrel.bits r hg hcd with h | h
+      · exact h
+      · exfalso
+        apply hn
+        apply List.mem_append_right
+        unfold bitSrc
+        rw [hb]
+        simp only
+        rw [hm]
+        simp [hgq, hcp, h]
+  · push Not at hst
+    exact hrel.wid r hg (readOkB_gateReadSet_spec hro hmem hc hst)
 
 section Congr
 
@@ -3074,6 +3246,10 @@ theorem seedAt_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : L
 theorem oneBitAt_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
     (k : Nat) : oneBitAt frame body k = oneBitAt frame' body k := by
   simp only [oneBitAt, oneBitStepAt, oneBitStep_congr h, seedAt_congr h]
+
+theorem gateReadSet_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (W : List String)
+    (x : LinstrR) : gateReadSet frame W x = gateReadSet frame' W x := by
+  simp only [gateReadSet, icase_congr h]
 
 theorem regGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (W : List String)
     (x : LinstrR) : regGateBW frame W x = regGateBW frame' W x := by
@@ -3102,7 +3278,7 @@ theorem imgGateBW_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome)
   have hi : ∀ k x, instrGateBW frame slotArr body k x = instrGateBW frame' slotArr body k x := by
     intro k x
     have hcg : castGateB frame x = castGateB frame' x := by simp only [castGateB, hn]
-    simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h, icase_congr h,
+    simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h, icase_congr h, gateReadSet_congr h,
       regGateBW_congr h, sImmB_congr h, sCmovB_congr h, hcg, hn, h]
   simp only [imgGateBW, hi]
 

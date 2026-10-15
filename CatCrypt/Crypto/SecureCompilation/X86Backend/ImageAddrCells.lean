@@ -187,6 +187,14 @@ theorem hasPrefix_gpName {r : String} (h : JasminLsemAddrImage.gpNameB r = true)
   rcases h with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl <;> decide
 
+/-- A general-purpose name of `DecodePrinted.gpOk` is no cell name. -/
+theorem hasPrefix_of_gpOk {r : String} (h : DecodePrinted.gpOk r = true) :
+    hasPrefix r "mem." = false := by
+  have hm := DecodePrinted.mem_gpList h
+  simp only [DecodePrinted.gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl <;> decide
+
 /-- A reload that the body shows, of a name that is no cell name, is one the cell body
     shows: the scan passes the frame-word move of a cell access exactly where it passes the
     access, since the move writes the access's destination register or a cell name that is
@@ -399,7 +407,8 @@ theorem stepA_cellBody_st {frame : String → Option (BitVec 64)}
   | some v =>
       rw [fstepA_stm frame hn hp hv, fstepA_slotStore frame (by simp [slotMov?]) hS hfr sa zf hv]
   | none =>
-      simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hp, hv, hfr, hS]
+      cases h1 : sa.reg.getW S 1 <;>
+        simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hp, hv, h1, hfr, hS]
 
 theorem cellMove_lret {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {i : Linstr} : (cellMove slotArr body k i).li_i = .Lret ↔ i.li_i = .Lret := by
@@ -619,7 +628,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (RunSafe)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (redW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (SafeW WideSafeAt
-  CellSafeAt)
+  CellSafeAt bitSrc bitSrc_spec)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (Disjoint8)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked (lsemFuelMemFk)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (findInstrMem_single)
@@ -873,14 +882,30 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
     WideSafeAt body sa := by
   have hW := wideSafe_of_gateW hgate hrel
   intro ii ds o ss hb r hr hg hc hn
-  have hn' : r ∉ narrowSrc (cellBody slotArr body) sa.reg.lpc := by
-    rw [narrowSrc_cellBody]; exact hn
+  have hnN : r ∉ narrowSrc (cellBody slotArr body) sa.reg.lpc := by
+    rw [narrowSrc_cellBody]; exact fun h => hn (List.mem_append_left _ h)
+  have hnB : r ∉ bitSrc body sa := fun h => hn (List.mem_append_right _ h)
+  have hn' : r ∉ bitSrc (cellBody slotArr body) sa →
+      r ∉ narrowSrc (cellBody slotArr body) sa.reg.lpc ++ bitSrc (cellBody slotArr body) sa :=
+    fun h1 h => (List.mem_append.mp h).elim hnN h1
+  have hsame : (cellBody slotArr body)[sa.reg.lpc]? = some ⟨ii, .Lopn ds o ss⟩ →
+      r ∉ bitSrc (cellBody slotArr body) sa := by
+    intro hbC h
+    obtain ⟨i, q, b, hi, hm, hgq, hpq, hb1⟩ := bitSrc_spec h
+    rw [hbC] at hi
+    cases hi
+    apply hnB
+    unfold bitSrc
+    rw [hb]
+    simp only
+    rw [hm]
+    simp [hgq, hpq, hb1]
   have hbC := cellBody_getElem? slotArr body sa.reg.lpc
   rw [hb, Option.map_some] at hbC
   cases hca : cellA? (LinstrR.Lopn ds o ss) with
   | none =>
       rw [cellMove_of_none (i := ⟨ii, .Lopn ds o ss⟩) hca] at hbC
-      exact hW ii ds o ss hbC r hr hg hc hn'
+      exact hW ii ds o ss hbC r hr hg hc (hn' (hsame hbC))
   | some op =>
       cases op with
       | ld D B off =>
@@ -890,6 +915,17 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               = ⟨ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
             simp only [cellMove, hca, hacc]
           rw [hmv] at hbC
+          have hn' := hn' (by
+            intro h
+            obtain ⟨i, q, b, hi, hm, -, -, -⟩ := bitSrc_spec h
+            rw [hbC] at hi
+            cases hi
+            simp [slotMov?] at hm
+            obtain ⟨-, hr'⟩ := hm
+            subst hr'
+            have h0 := hasPrefix_of_gpOk hg
+            rw [hasPrefix_memName] at h0
+            cases h0)
           have hW' := hW ii _ _ _ hbC r
           have hcar : r ∉ carryIns (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) := by
             simp [carryIns]
@@ -920,6 +956,16 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
               = ⟨ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
             simp only [cellMove, hca, hacc]
           rw [hmv] at hbC
+          have hn' := hn' (by
+            intro h
+            obtain ⟨i, q, b, hi, hm, -, hpq, -⟩ := bitSrc_spec h
+            rw [hbC] at hi
+            cases hi
+            simp [slotMov?] at hm
+            obtain ⟨hq', -⟩ := hm
+            subst hq'
+            rw [hasPrefix_memName] at hpq
+            cases hpq)
           have hW' := hW ii _ _ _ hbC r
           have hcar : r ∉ carryIns (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) := by
             simp [carryIns]
@@ -941,7 +987,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
                 ⟨.reg S, by simp, hab⟩)))) hg hcar hn'
       | lea D B off =>
           rw [cellMove_of_lea (i := ⟨ii, .Lopn ds o ss⟩) hca] at hbC
-          exact hW ii ds o ss hbC r hr hg hc hn'
+          exact hW ii ds o ss hbC r hr hg hc (hn' (hsame hbC))
 
 /-- **One step of a straight body with cells and carry chains through its cell body.** -/
 theorem cell_stepW {frame : String → Option (BitVec 64)}

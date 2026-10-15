@@ -27,7 +27,9 @@ to the zero-extension of its bit. A width cast leaves a name at width `32` or `1
 An arm of `DecodePrintedAddr` reads every general-purpose name at width `64` (`WideAt`). Its
 step from a state related by `ACorrW` is the step from the state with every general-purpose
 name at a narrow width replaced by its machine register (`widenS`), which `ACorr` relates, up to the congruence `JasminLsemAddrCongr.fstepA_congr`
-in the names the instruction reads (`AArm.simW`).
+in the names the instruction reads (`AArm.simW`). The frame-word store of a one-bit name
+(`bitSrc`) stores the zero-extension of the bit, which the machine register holds
+(`AArm.simW_st1`).
 
 The carry arms (`CArm`) are the add `ADCX:64 D, A, S, C`, printed `bt $0, C; adcx S, D` after
 the copy of `A` into `D`, and its carry-out binding `ADCXHI:64 O, A, S, C`, printed `setc O`;
@@ -67,6 +69,8 @@ arms to the bodies of `DecodePrintedCFG`.
 * `castBytes`, `sim_castW_bytes`: the bytes of a width-carrying cast `CASTW_<w>_<w'>` are
   one piece that decodes to `movzx`, and its decoded instruction simulates the cast step.
 * `AArm.simW`: an arm of `DecodePrintedAddr` steps from `ACorrW` to `ACorrW`.
+* `AArm.simW_of`, `AArm.simW_st1`: the same from steps on the state and on the widened state
+  that agree up to `AStep`, and the frame-word store of a one-bit name.
 * `SArm.bytes`, `sim_sadcx`, `sim_sadcxhi`, `sim_sadcxc`: the bytes and the simulations of the
   carry arms with frame-slot operands; an add whose carry-in is a frame slot is printed as the
   save of a scratch in the red-zone word, the reload of the carry-in word, `bt $0` of the
@@ -207,33 +211,21 @@ theorem getW_widen {sa : AState} {s : LstateA} {i : LinstrR} (hw : WideAt s i) {
     (hr : readsI i r) (w : Nat) : (widenS sa s).reg.getW r w = s.reg.getW r w :=
   ((getW_congr (aagree_widen hw).1 hr w)).symm
 
-/-- **An arm of `DecodePrintedAddr` on the correspondence with narrow names.** From
-    `ACorrW`, an arm that reads its names at width `64` and whose indexed load is safe steps, if the
-    address machine steps, to a state that `ACorrW` relates to the machine run of the arm's
-    decoded instructions; after a compare the machine zero flag is the flag of the address
-    machine. -/
-theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
-    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hw : WideAt s a.li.fst)
-    (hsafe : a.LoadSafe rsp s) (s' : LstateA) (zf' : Bool)
-    (hst : fstepA (frameP P rsp) a.li s zf = some (s', zf')) :
+/-- **An arm of `DecodePrintedAddr` on the correspondence with narrow names, from a step on
+    the widened state.** From `ACorrW`, an arm whose indexed load is safe on the widened state
+    `widenS` and whose address step from the state and from the widened state agree up to
+    `AStep` steps, if the address machine steps, to a state that `ACorrW` relates to the
+    machine run of the arm's decoded instructions; after a compare the machine zero flag is
+    the flag of the address machine. -/
+theorem AArm.simW_of (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hsafe' : a.LoadSafe rsp (widenS sa s)) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) a.li s zf = some (s', zf'))
+    (hcg : ORel (AStep s (widenS sa s)) (fstepA (frameP P rsp) a.li s zf)
+      (fstepA (frameP P rsp) a.li (widenS sa s) zf)) :
     ACorrW rsp (aMachine.runBlock sa (a.js P)) s'
       ∧ (cmpArmB a = true → (aMachine.runBlock sa (a.js P)).flags.zf.getD false = zf') := by
-  have hsafe' : a.LoadSafe rsp (widenS sa s) := by
-    cases a with
-    | ldx D B I =>
-      intro p vi hp hvi
-      have hB : readsI (AArm.ldx D B I).li.fst B := by
-        show readsI (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]) B
-        exact base_reads (List.mem_singleton_self _)
-      have hI : readsI (AArm.ldx D B I).li.fst I := by
-        show readsI (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]) I
-        exact idx_reads (List.mem_singleton_self _)
-      rw [getW_widen hw hB] at hp
-      rw [getW_widen hw hI] at hvi
-      exact hsafe p vi hp hvi
-    | _ => trivial
   obtain ⟨t', zt, h1, h2, h3⟩ := AArm.sim P rsp a h sa (widenS sa s) zf hc.widen hsafe'
-  have hcg := fstepA_congr (frameP P rsp) a.li (aagree_widen (sa := sa) hw) zf
   rw [hst, h1] at hcg
   cases hcg with
   | some hs =>
@@ -259,6 +251,81 @@ theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
       · left
         rw [getW_eq_some_iff, he1]
         simpa [widenCell, hnw] using hreg
+
+/-- **An arm of `DecodePrintedAddr` on the correspondence with narrow names.** From
+    `ACorrW`, an arm that reads its names at width `64` and whose indexed load is safe steps, if the
+    address machine steps, to a state that `ACorrW` relates to the machine run of the arm's
+    decoded instructions; after a compare the machine zero flag is the flag of the address
+    machine. -/
+theorem AArm.simW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hw : WideAt s a.li.fst)
+    (hsafe : a.LoadSafe rsp s) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) a.li s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa (a.js P)) s'
+      ∧ (cmpArmB a = true → (aMachine.runBlock sa (a.js P)).flags.zf.getD false = zf') := by
+  have hsafe' : a.LoadSafe rsp (widenS sa s) := by
+    cases a with
+    | ldx D B I =>
+      intro p vi hp hvi
+      have hB : readsI (AArm.ldx D B I).li.fst B := by
+        show readsI (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]) B
+        exact base_reads (List.mem_singleton_self _)
+      have hI : readsI (AArm.ldx D B I).li.fst I := by
+        show readsI (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]) I
+        exact idx_reads (List.mem_singleton_self _)
+      rw [getW_widen hw hB] at hp
+      rw [getW_widen hw hI] at hvi
+      exact hsafe p vi hp hvi
+    | _ => trivial
+  exact AArm.simW_of P rsp a h sa s zf hc hsafe' s' zf' hst
+    (fstepA_congr (frameP P rsp) a.li (aagree_widen (sa := sa) hw) zf)
+
+/-- **The frame-word store of a one-bit name on the correspondence with narrow names.** The
+    store arm `m q, S` with `S` holding a bit steps, if the address machine steps, to a state
+    that `ACorrW` relates to the machine run of the arm: the machine register of `S` holds the
+    zero-extension of the bit, which the address machine stores. -/
+theorem AArm.simW_st1 (P : Params) (rsp : BitVec 64) (m q S : String)
+    (h : (AArm.st m q S).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorrW rsp sa s) {b : BitVec 1} (hb : s.reg.lvm S = ⟨1, b⟩) (s' : LstateA)
+    (zf' : Bool) (hst : fstepA (frameP P rsp) (AArm.st m q S).li s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((AArm.st m q S).js P)) s' := by
+  have hok := h
+  simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at hok
+  obtain ⟨⟨⟨⟨hS, -⟩, hsome⟩, -⟩, hm⟩ := hok
+  have hm' : m = "MOVQ" ∨ m = "MOV:64" := by
+    simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at hm; exact hm.symm
+  obtain ⟨off, hoff⟩ := Option.isSome_iff_exists.mp hsome
+  have hfq : frameP P rsp q = some (rsp + BitVec.ofInt 64 off) := by simp [frameP, hoff]
+  have hmv : slotMov? (AArm.st m q S).li.fst = some (q, S) := by
+    rcases hm' with rfl | rfl <;>
+      simp (config := { decide := true }) [AArm.li, AArm.instr, slotMov?]
+  have htag : (AArm.st m q S).li = ((AArm.st m q S).li.fst, .reg none) := by
+    rcases hm' with rfl | rfl <;> rfl
+  have hphys : sa.regs (phys S) = b.setWidth 64 := by
+    rcases hc.regs S hS with h1 | ⟨b', h1, h2⟩ | h1
+    · rw [getW_eq_some_iff, hb] at h1; cases h1
+    · rw [hb] at h1
+      obtain ⟨-, h1⟩ := Sigma.mk.inj_iff.mp h1
+      rw [h2, eq_of_heq h1]
+    · have := h1.width; rw [hb] at this; simp at this
+  have hwS : (widenS sa s).reg.lvm S = ⟨64, b.setWidth 64⟩ := by
+    show widenCell S (sa.regs (phys S)) (s.reg.lvm S) = _
+    simp [widenCell, hb, hS, narrowW, hphys]
+  have hs1 : fstepA (frameP P rsp) ((AArm.st m q S).li.fst, .reg none) s zf
+      = some (⟨s.reg.nextPc, write64 s.mem (rsp + BitVec.ofInt 64 off) (b.setWidth 64), s.cf,
+          s.of⟩, zf) :=
+    fstepA_slotStore1 (frameP P rsp) hmv (frameP_gp hS) hfq s zf hb
+  have ht1 : fstepA (frameP P rsp) ((AArm.st m q S).li.fst, .reg none) (widenS sa s) zf
+      = some (⟨(widenS sa s).reg.nextPc, write64 s.mem (rsp + BitVec.ofInt 64 off)
+          (b.setWidth 64), s.cf, s.of⟩, zf) := by
+    have hgw : (widenS sa s).reg.getW S 64 = some (b.setWidth 64) := getW_eq_some_iff.mpr hwS
+    simp only [fstepA, hmv, hfq, frameP_gp hS, hgw]
+    rfl
+  rw [htag] at hst
+  refine (AArm.simW_of P rsp (AArm.st m q S) h sa s zf hc trivial s' zf' (by rw [htag]; exact hst)
+    ?_).1
+  rw [htag, hs1, ht1]
+  exact .some ⟨⟨rfl, fun _ => Or.inr ⟨rfl, rfl⟩⟩, rfl, rfl, rfl, rfl⟩
 
 /-! ## 3. The bytes of the carry chain -/
 
@@ -4383,13 +4450,61 @@ theorem instrOKWB_seteImm (body : Lcmd) (P : Params) (n : Bool) {R A : String} {
       classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
       classifyEI, eiOk, hR, hA, hv2]
 
+/-- The source of a frame-word store `m q, S` at the program counter of `s` (`slotMov?`, `q`
+    neither a general-purpose name nor a cell name `mem.B.off`) when `S` holds a one-bit value
+    in `s`. -/
+def bitSrc (body : Lcmd) (s : LstateA) : List String :=
+  match body[s.reg.lpc]? with
+  | some i =>
+      match slotMov? i.li_i with
+      | some (q, S) =>
+          if !gpOk q && !hasPrefix q "mem." && (s.reg.lvm S).1 == 1 then [S] else []
+      | none => []
+  | none => []
+
+/-- A name of `bitSrc` is the one-bit source of a frame-word store at the program counter. -/
+theorem bitSrc_spec {body : Lcmd} {s : LstateA} {r : String} (h : r ∈ bitSrc body s) :
+    ∃ i q b, body[s.reg.lpc]? = some i ∧ slotMov? i.li_i = some (q, r) ∧ gpOk q = false
+      ∧ hasPrefix q "mem." = false ∧ s.reg.lvm r = ⟨1, b⟩ := by
+  unfold bitSrc at h
+  split at h
+  · rename_i i hi
+    split at h
+    · rename_i q S hm
+      split at h
+      · rename_i hc
+        simp only [List.mem_singleton] at h
+        subst h
+        simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hc
+        obtain ⟨⟨hq, hcp⟩, hw⟩ := hc
+        generalize hr : s.reg.lvm r = c at hw
+        obtain ⟨w, v⟩ := c
+        simp only at hw
+        subst hw
+        exact ⟨i, q, v, hi, hm, hq, hcp, rfl⟩
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- At an instruction that is no frame-word move, `bitSrc` is empty. -/
+theorem not_mem_bitSrc {body : Lcmd} {s : LstateA} {i : Linstr}
+    (hi : body[s.reg.lpc]? = some i) (hm : slotMov? i.li_i = none) (r : String) :
+    r ∉ bitSrc body s := by
+  intro h
+  obtain ⟨i', q, b, hi', hm', -⟩ := bitSrc_spec h
+  rw [hi] at hi'
+  cases hi'
+  rw [hm] at hm'
+  cases hm'
+
 /-- At the program counter of `s`, every general-purpose name the instruction reads, other
-    than a carry-in and the source of a cast with an entry in the cast width analysis
-    (`narrowSrc`), holds a 64-bit value. -/
+    than a carry-in, the source of a cast with an entry in the cast width analysis
+    (`narrowSrc`) and the one-bit source of a frame-word store (`bitSrc`), holds a 64-bit
+    value. -/
 def WideSafeAt (body : Lcmd) (s : LstateA) : Prop :=
   ∀ ii ds o ss, body[s.reg.lpc]? = some ⟨ii, .Lopn ds o ss⟩ →
     ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true → r ∉ carryIns (.Lopn ds o ss) →
-      r ∉ narrowSrc body s.reg.lpc → (s.reg.lvm r).1 = 64
+      r ∉ narrowSrc body s.reg.lpc ++ bitSrc body s → (s.reg.lvm r).1 = 64
 
 /-- At the program counter of `s`, a cell load reads eight bytes disjoint from the red-zone
     word at `rsp`. -/
@@ -4642,7 +4757,15 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           | none =>
             rw [hl] at hcp
             have h64 := hsafe.1.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
-              (by simp [carryIns]) (by rw [hpc]; simp [narrowSrc, hbk?, hclK, hl])
+              (by simp [carryIns]) (by
+                have hsm : slotMov? (.Lopn [.reg D] o [.reg A]) = none := by
+                  simp only [slotMov?]
+                  split_ifs with ho
+                  · rcases ho with rfl | rfl <;> simp [castTagW] at hw
+                  · rfl
+                rw [hpc]
+                simp only [narrowSrc, hbk?, hclK, hl, List.mem_append, not_or]
+                exact ⟨by simp, not_mem_bitSrc hget hsm A⟩)
             rw [h64]
             simpa using hcp
           | some w0 =>
@@ -4673,9 +4796,56 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           shapeOf_lopn_ops _ hb hp hshk
         exact reaches_block a b hks hshk hops hR
       rename_i hclK
+      by_cases h1b : bitSrc body s = []
+      swap
+      · -- a frame-word store of a one-bit name
+        obtain ⟨S, hS1⟩ := List.exists_mem_of_ne_nil _ h1b
+        obtain ⟨i, q, bS, hi, hmv, hq, -, hbS⟩ := bitSrc_spec hS1
+        rw [hget] at hi
+        cases hi
+        obtain ⟨m, hia, hm⟩ : ∃ m, LinstrR.Lopn ds o ss = .Lopn [.reg q] m [.reg S]
+            ∧ (m = "MOVQ" ∨ m = "MOV:64") := by
+          unfold slotMov? at hmv
+          split at hmv
+          · next dst opn src heq =>
+            split_ifs at hmv with hm0
+            obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hmv)
+            exact ⟨_, heq, hm0⟩
+          · cases hmv
+        simp only [LinstrR.Lopn.injEq] at hia
+        obtain ⟨rfl, rfl, rfl⟩ := hia
+        have hcl : classifyA (.Lopn [.reg q] o [.reg S]) = some (.st o q S) := by
+          rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hq]
+        have hok' : (AArm.st o q S).ok P = true := by
+          rcases hm with rfl | rfl <;>
+            simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
+              classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+              using hok
+        have hli := AArm.li_eq hok'
+        rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
+        rw [show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli] at hst
+        have hc' := AArm.simW_st1 P rsp o q S hok' sa s zf hc hbS s' zf' hst
+        have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+            (aMachine.runBlock sa ((AArm.st o q S).js P)).flags.zf.getD false = zf' := by
+          intro hcnd
+          have hcm := hcondNext hcnd
+          rw [hcl] at hcm
+          simp [cmpArmB] at hcm
+        have hna : ∀ ii' d a s c, body[k]? ≠
+            some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+          intro ii' d a s c h
+          rw [hbk?] at h
+          simp only [Option.some.injEq, Linstr.mk.injEq, LinstrR.Lopn.injEq] at h
+          rcases hm with rfl | rfl <;> simp at h
+        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
+          hsafe'
+        refine ⟨sa', ?_, hC⟩
+        have hops : shs[k].ops' = (AArm.st o q S).js P := AArm.shape_ops hok' hshk
+        exact reaches_block a b hks hshk hops hR
       have hws : ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true →
           r ∉ carryIns (.Lopn ds o ss) → (s.reg.lvm r).1 = 64 := fun r h1 h2 h3 =>
-        hsafe.1.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK])
+        hsafe.1.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK, h1b])
       split at hok
       · -- an untagged immediate move: a carry constant or a 32-bit constant
         rename_i D n hmv

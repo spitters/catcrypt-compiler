@@ -25,7 +25,8 @@ pattern of the export.
 `fstepA frame` is the extended straight step `fstepF` with memory read at addresses:
 
 * `MOVQ dst, q` or `MOV:64 dst, q` with `frame q = some a` loads the word at `a` into `dst`;
-* `MOVQ q, src` or `MOV:64 q, src` with `frame q = some a` stores `src` at `a`;
+* `MOVQ q, src` or `MOV:64 q, src` with `frame q = some a` stores `src` at `a`, a one-bit
+  `src` zero-extended to 64 bits;
 * `CMP:64 d, x, q` with `frame q = some a` compares `x` with the word at `a`;
 * `CMOV:64 d, [c, x, y]` with a frame slot among `x`, `y`, `d` selects between the words of
   `x` and `y` into the register `d` or the frame word of `d`;
@@ -36,7 +37,7 @@ pattern of the export.
 * `LOADIDX dst, (base, idx, sc)` loads the word at `reg base + sc · reg idx`;
 * `STOREIDX _, (base, idx, sc), val` stores `val` at `reg base + sc · reg idx`;
 * `LOAD:64 d, mem.B.off` and `STORE:64 mem.B.off, v` load and store the word at
-  `reg B + off`, and `LEA:64 d, mem.B.off` writes `reg B + off` to `d`;
+  `reg B + off`, a one-bit `v` zero-extended to 64 bits, and `LEA:64 d, mem.B.off` writes `reg B + off` to `d`;
 * every other register-tagged instruction is `fstepF` on the register file.
 
 `runStraightA` and `runBoundedStraightA` are the folds `runStraightF` and
@@ -271,8 +272,10 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
 
 /-- One step of the address machine. `frame` maps a frame-slot name to its address. A move
     from or to a frame slot and a compare against one read or write the memory at the
-    slot's address; a whole-word access of a cell `mem.B.off` reads or writes the memory at
-    the address in `B` plus `off`; the address of a cell `LEA:64 d, mem.B.off` writes
+    slot's address, a store of a one-bit register writing its zero-extension (the word of
+    `mov $0, r; set<cc> r8b; mov r, off(%rsp)`); a whole-word access of a cell `mem.B.off`
+    reads or writes the memory at the address in `B` plus `off`, a store of a one-bit
+    register writing its zero-extension; the address of a cell `LEA:64 d, mem.B.off` writes
     the address in `B` plus `off` to `d`, with no memory access; a carry-chain add or carry-out binding with a frame-slot
     operand reads its slot word sources and a slot carry-in (the low bit of the word) at the
     slot's address and writes a slot destination at the slot's address, the whole word for
@@ -310,7 +313,12 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
           | none, some a =>
               match sa.reg.getW src 64 with
               | some v => some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
-              | none => none
+              | none =>
+                  match sa.reg.getW src 1 with
+                  | some b => some ({ sa with
+                      reg := sa.reg.nextPc
+                      mem := write64 sa.mem a (b.setWidth 64) }, zf)
+                  | none => none
           | none, none => regStepA i sa zf
       | none =>
           match slotCmp? i.fst with
@@ -333,7 +341,14 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                       some ({ sa with
                         reg := sa.reg.nextPc
                         mem := write64 sa.mem (p + BitVec.ofNat 64 off) x }, zf)
-                  | _, _ => none
+                  | some p, none =>
+                      match sa.reg.getW v 1 with
+                      | some c =>
+                          some ({ sa with
+                            reg := sa.reg.nextPc
+                            mem := write64 sa.mem (p + BitVec.ofNat 64 off) (c.setWidth 64) }, zf)
+                      | none => none
+                  | none, _ => none
               | some (.lea d b off) =>
                   match sa.reg.getW b 64 with
                   | some p => some ({ sa with reg := (sa.reg.setReg d
@@ -386,6 +401,18 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                               | _, _, _ => none
                           | none => regStepA i sa zf
   | _ => none
+
+/-- **A frame-word store of a one-bit register.** `MOVQ q, S` or `MOV:64 q, S`, `q` a frame
+    slot and `S` a register holding the bit `b`, writes the zero-extension of `b` at the
+    address of `q`. -/
+theorem fstepA_slotStore1 (frame : String → Option (BitVec 64)) {x : LinstrR} {q S : String}
+    (h : slotMov? x = some (q, S)) (hS : frame S = none) {a : BitVec 64} (ha : frame q = some a)
+    (sa : LstateA) (zf : Bool) {b : BitVec 1} (hb : sa.reg.lvm S = ⟨1, b⟩) :
+    fstepA frame (x, .reg none) sa zf
+      = some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (b.setWidth 64) }, zf) := by
+  have h64 : sa.reg.getW S 64 = none := by simp [LstateN.getW, hb]
+  have h1 : sa.reg.getW S 1 = some b := getW_eq_some_iff.mpr hb
+  simp [fstepA, h, ha, hS, h64, h1]
 
 /-- **The carry-chain add with a frame-slot operand.** `ADCX:64 D, A, S, C`, one of `D`,
     `A`, `S`, `C` a frame slot, writes `addCarryWord` of the words of `A`, `S` and the carry-in
