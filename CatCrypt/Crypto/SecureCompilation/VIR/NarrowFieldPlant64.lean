@@ -94,7 +94,12 @@ def plantW (w p pinv : ℕ) (x y : BitVec w) : BitVec w :=
     + BitVec.ofNat (2 * w) 1) * BitVec.ofNat (2 * w) p) >>> w).zeroExtend w
 
 theorem plantWrapBlk_denote (w p pinv : ℕ) (x y : BitVec w) :
-    run2 (plantWrapBlk w p pinv) x y = plantW w p pinv x y := rfl
+    run2 (plantWrapBlk w p pinv) x y = plantW w p pinv x y := by
+  show ((((x.zeroExtend (2 * w) * y.zeroExtend (2 * w) * BitVec.ofNat (2 * w) pinv)
+      >>> shiftMask (2 * w) w + BitVec.ofNat (2 * w) 1) * BitVec.ofNat (2 * w) p)
+      >>> shiftMask (2 * w) w).zeroExtend w = _
+  rw [NegacyclicNttTemplate.shiftMask_two_mul_self]
+  rfl
 
 theorem plantBlk64_denote (p pinv : ℕ) (x y : BitVec 32) :
     run2 (plantBlk64 p pinv) x y = plantW 32 p pinv x y := rfl

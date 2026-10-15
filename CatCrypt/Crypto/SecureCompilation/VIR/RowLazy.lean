@@ -334,7 +334,8 @@ theorem rowOutW_denote (w q qinv : ℕ) {Γ : Ctxt jasminDialect} (s01 : Var Γ 
     (rowOutW w q qinv s01).denote fuel (.cons u V)
       = some (.cons (smontAccW w q qinv u : BitVec w)
           (.cons (smontAccW w q qinv (show BitVec (2 * w) from s01.lookup V) : BitVec w)
-            .nil)) := rfl
+            .nil)) := by
+  simp only [smontAccW, sextW_eq_masked]; rfl
 
 /-- The context after the loop: the three accumulators, the zero word, the trip count and
 the four arrays. -/
@@ -357,19 +358,21 @@ theorem rowTailIn_denote (w k z q qinv fuel : ℕ) (V : Valuation (X3 w (X11 w (
               + (show BitVec (2 * w) from (Var.here).lookup V) * BitVec.ofNat (2 * w) z) :
             BitVec w)
           (.cons (smontAccW w q qinv (show BitVec (2 * w) from
-            (up3 (w := w) (up11 (w := w) (.there (.there .here)))).lookup V) : BitVec w) .nil)) :=
-  rfl
+            (up3 (w := w) (up11 (w := w) (.there (.there .here)))).lookup V) : BitVec w) .nil)) := by
+  simp only [smontAccW, sextW_eq_masked]; rfl
 
 theorem sextVal_here {Γ : Ctxt jasminDialect} (w : ℕ) (v : Var Γ (Rw w)) (V : Valuation Γ) :
     (Var.here : Var (X3 w Γ) (Rd w)).lookup (sextVal w v V)
-      = sextW (show BitVec w from v.lookup V) := rfl
+      = sextW (show BitVec w from v.lookup V) := by
+  simp only [sextW_eq_masked]; rfl
 
 theorem sextVal_up3 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (w : ℕ) (v : Var Γ (Rw w))
     (x : Var Γ t) (V : Valuation Γ) : (up3 (w := w) x).lookup (sextVal w v V) = x.lookup V := rfl
 
 theorem redVal_here {Γ : Ctxt jasminDialect} (w q qinv : ℕ) (a : Var Γ (Rd w))
     (V : Valuation Γ) : (Var.here : Var (X11 w Γ) (Rw w)).lookup (redVal w q qinv a V)
-      = smontAccW w q qinv (show BitVec (2 * w) from a.lookup V) := rfl
+      = smontAccW w q qinv (show BitVec (2 * w) from a.lookup V) := by
+  simp only [smontAccW, sextW_eq_masked]; rfl
 
 theorem redVal_up11 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (w q qinv : ℕ)
     (a : Var Γ (Rd w)) (x : Var Γ t) (V : Valuation Γ) :
@@ -405,7 +408,8 @@ theorem rowBodyW_denote (w k fuel : ℕ) (s00 s11 s01 z : BitVec (2 * w)) (i n :
             BitVec (2 * w))
           (.cons (s01 + sextW (stackGet A0 i.toNat) * sextW (stackGet B1 i.toNat)
               + sextW (stackGet A1 i.toNat) * sextW (stackGet B0 i.toNat) : BitVec (2 * w))
-            .nil))) := rfl
+            .nil))) := by
+  simp only [sextW_eq_masked]; rfl
 
 theorem sextN_denote {Γ : Ctxt jasminDialect} {ts : List jasminDialect.Ty} (w : ℕ)
     (v : Var Γ (Rw w)) (k : NFProg jasminDialect (X3 w Γ) ts) (fuel : ℕ) (V : Valuation Γ) :

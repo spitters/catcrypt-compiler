@@ -132,21 +132,30 @@ theorem mkRorOp_denote {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat)
     (body : Com jasminDialect (.reg w :: .reg w :: .reg w :: Γ) s)
     (V : Ctxt.Valuation Γ) :
     (mkRorOp w n src body).denote V = (mkRotrSubtree w n src body).denote V := by
-  -- Both `Com`s run `body` on a 3-extended valuation; the `hi := src >>> n` and
-  -- `lo := src <<< (w-n)` carriers are identical, and only the head (`out`)
-  -- differs: `rorImm`'s `rotateRight n` vs `or`'s `(src >>> n) ||| (src <<< (w-n))`.
-  -- State that body equality over a generic `a : BitVec w` (so the shift/rotate
-  -- notation lands on `BitVec`), close it by `rorImm_eq_shiftOr`, then instantiate
-  -- at `a := src.lookup V`; the `Com.denote` reduction to the 3-extended form is
-  -- definitional.
+  -- Both `Com`s run `body` on a 3-extended valuation; the `hi := src >>> shiftMask w n`
+  -- and `lo := src <<< shiftMask w (w-n)` carriers are identical, and only the head
+  -- (`out`) differs: `rorImm`'s `rotateRight n` vs `or`'s `hi ||| lo`. For `n < w` the
+  -- masked counts give the unmasked shift-or form (at `n = 0` the left count `w`
+  -- masks to `0` or `w`, and both give `src`), which `rorImm_eq_shiftOr` equates
+  -- with `rotateRight n`. The equality is stated over a generic `a : BitVec w` and
+  -- instantiated at `a := src.lookup V`; the `Com.denote` reduction to the
+  -- 3-extended form is definitional.
   have h : ∀ a : BitVec w,
       body.denote
-          (.cons (a.rotateRight n) (.cons (a <<< (w - n)) (.cons (a >>> n) V)))
+          (.cons (a.rotateRight n) (.cons (a <<< VIR.shiftMask w (w - n))
+            (.cons (a >>> VIR.shiftMask w n) V)))
         = body.denote
-          (.cons ((a >>> n) ||| (a <<< (w - n)))
-            (.cons (a <<< (w - n)) (.cons (a >>> n) V))) := by
+          (.cons ((a >>> VIR.shiftMask w n) ||| (a <<< VIR.shiftMask w (w - n)))
+            (.cons (a <<< VIR.shiftMask w (w - n)) (.cons (a >>> VIR.shiftMask w n) V))) := by
     intro a
-    rw [rorImm_eq_shiftOr w n hlt]
+    congr 2
+    rw [rorImm_eq_shiftOr w n hlt, VIR.shiftMask_of_lt hlt]
+    rcases Nat.eq_zero_or_pos n with rfl | hpos
+    · have hself : VIR.shiftMask w w = 0 ∨ VIR.shiftMask w w = w := by
+        unfold VIR.shiftMask
+        split <;> (try split) <;> (try split) <;> (try split) <;> omega
+      rcases hself with h | h <;> simp [h]
+    · rw [VIR.shiftMask_of_lt (by omega : w - n < w)]
   exact h (src.lookup V)
 
 /-! ## 3. The peephole pass `rorImmSelect`
