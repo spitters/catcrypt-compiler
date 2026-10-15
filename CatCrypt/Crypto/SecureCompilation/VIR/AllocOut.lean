@@ -320,6 +320,8 @@ theorem opToLinstrR_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (op : Jasm
   | cmpImm c w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w
       (cmpName_colonFree c))
   | stackZero w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+  | stackStoreImm w n i =>
+      exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
 
 /-- The resolution of an argument vector has one operand for each argument. -/
 theorem exprArgs_go_length (d nArgs : Nat) (argNames : Nat → String)

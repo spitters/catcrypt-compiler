@@ -345,6 +345,7 @@ theorem exprToSStmt_step {Γ : Ctxt jasminDialect} {t : JasminTy}
   | cmp c w => simp [exprToSStmt] at h
   | cmpImm c w n => simp [exprToSStmt] at h
   | stackZero w n => simp [exprToSStmt] at h
+  | stackStoreImm w n i => simp [exprToSStmt] at h
 
 /-! ## 4. Straight-line extraction and the denotation agreement -/
 

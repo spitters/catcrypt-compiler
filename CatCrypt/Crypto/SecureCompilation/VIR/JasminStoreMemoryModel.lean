@@ -245,18 +245,19 @@ theorem ShapeDisjoint.there {Γ : Ctxt jasminDialect} {wX nX w n : Nat}
 
 /-- **Load-source disjoint from a target buffer.** Given a stack buffer
     `X : Var Γ (stackArr wX nX)`, this expresses the non-aliasing requirement on
-    a single expression `e` in the same context: *if* `e` is a `stackLoad`, its
-    source buffer (the head of its args) must be `ShapeDisjoint` from `X` —
-    automatically satisfied when the load's buffer shape differs from `X`'s
-    (different dialect types cannot alias), and `BufDisjoint` when shapes
-    coincide. Any non-`stackLoad` op carries no obligation (`True`). Matching on
-    `e.op` (and the correspondingly-shaped `e.args`) extracts the source without a
-    transport cast. -/
+    a single expression `e` in the same context: *if* `e` is a `stackLoad` or a
+    constant-index store `stackStoreImm`, its source buffer (the head of its args)
+    must be `ShapeDisjoint` from `X` — automatically satisfied when the source's
+    buffer shape differs from `X`'s (different dialect types cannot alias), and
+    `BufDisjoint` when shapes coincide. Every other op carries no obligation
+    (`True`). Matching on `e.op` (and the correspondingly-shaped `e.args`) extracts
+    the source without a transport cast. -/
 def LoadDisjointFrom {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     {wX nX : Nat} (X : Ctxt.Var Γ (.stackArr wX nX))
     (e : Expr jasminDialect Γ t) : Prop :=
   match e.op, e.args with
   | .stackLoad _ _, .cons src _ => ShapeDisjoint X src
+  | .stackStoreImm _ _ _, .cons src _ => ShapeDisjoint X src
   | _, _ => True
 
 /-- **Every later load in the body is disjoint from the store target.** Walks

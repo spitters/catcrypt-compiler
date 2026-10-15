@@ -269,6 +269,7 @@ theorem foldExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | cmp c w => simp [foldExpr]
   | cmpImm c w n => simp [foldExpr]
   | stackZero w n => simp [foldExpr]
+  | stackStoreImm w n i => simp [foldExpr]
 
 /-! ## 4. The constant-folding pass over `Com`
 

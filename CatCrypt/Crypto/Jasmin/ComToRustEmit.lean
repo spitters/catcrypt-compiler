@@ -208,6 +208,7 @@ def opName : JasminOp → String
   | .cmp _ w => s!"cmp {w}"
   | .cmpImm _ w n => s!"cmpImm {w} {n}"
   | .stackZero w n => s!"stackZero {w} {n}"
+  | .stackStoreImm w n i => s!"stackStoreImm {w} {n} {i}"
 
 /-! ## 3. One binding -/
 

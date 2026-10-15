@@ -417,6 +417,11 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
   -- operation has no other source. The printer and the encoder have no `ZEROARR`
   -- arm and refuse it.
   | .stackZero w n => .Lopn [.reg dst] "ZEROARR" [.imm n, .imm w]
+  -- Constant-index store: the single pseudo-instruction `STOREIMM` whose sources are
+  -- the array operand, the stored value and the immediate index `i`. The
+  -- destination register `dst` names the updated array, as for `STOREIDX`. The
+  -- printer and the encoder have no `STOREIMM` arm and refuse it.
+  | .stackStoreImm _ _ i => .Lopn [.reg dst] "STOREIMM" (srcs ++ [.imm i])
 
 /-! ### The operand widths of a general-purpose operation
 

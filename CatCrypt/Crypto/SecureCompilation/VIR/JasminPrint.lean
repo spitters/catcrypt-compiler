@@ -457,6 +457,15 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       let sty := styOfTy (.stackArr w n)
       .Cassgn (.Lvar (mkVarI dst (.stackArr w n))) .AT_none sty
         (.Parr_init (n * (wsizeOfNat w).bytes))
+  | .stackStoreImm w n i =>
+      -- Constant-index store: an inline call `STOREIMM` of the array operand, the
+      -- stored value and the index `i`, whose result is the updated array bound to
+      -- the fresh destination.
+      let arr := argName vm e.args 0
+      let v := argName vm e.args 1
+      .Ccall .DoInline [.Lvar (mkVarI dst (.stackArr w n))]
+        { name := "STOREIMM" }
+        [pvarOf arr (.stackArr w n), pvarOf v (.reg w), .Pconst (Int.ofNat i)]
 
 /-- The SSA name a `Com.var` binding should use for the result of `e`.
     For `stackStore` the result *array* keeps the source array's name

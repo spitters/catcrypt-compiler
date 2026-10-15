@@ -119,10 +119,11 @@ theorem srcsOf_opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand)
     ∀ o ∈ srcsOf (opToLinstrR op dst srcs), isArrIdx o = false := by
   cases op <;> simp only [opToLinstrR] <;> (repeat' split) <;>
     simp_all [srcsOf, isArrIdx]
-  intro o ho
-  rcases ho with ho | rfl
-  · exact h o ho
-  · rfl
+  all_goals
+    intro o ho
+    rcases ho with ho | rfl
+    · exact h o ho
+    · rfl
 
 /-- The model-chain instruction `straightOpsMem` emits for a binding of `op` at depth `cd`
     over the resolved operands `src`. -/

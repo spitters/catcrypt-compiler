@@ -41,6 +41,8 @@ become *dialect types*, so they are checked rather than re-discovered.
 * `stackLoad` / `stackStore` — scalar-indexed element load / store on a stack
                          array (index is a `reg 64`, mirroring Jasmin's
                          `reg u64` array indices)
+* `stackStoreImm`      — element store on a stack array at a compile-time index
+* `stackZero`          — a fresh stack array of zero words
 * `castW`              — width cast via `BitVec.zeroExtend` / truncate
 * `extCall`            — external leaf, mirrors `CatCryptDialect.extCall`. The
                          16-bit stack-array leaves emitted by the lattice→jasmin
@@ -906,6 +908,11 @@ inductive JasminOp where
       `out = JasminTy.default (.stackArr w n)`. The Jasmin image of the catCrypt
       `memrefZero n`; the export maps it to the single pseudo-instruction `ZEROARR`. -/
   | stackZero (w n : Nat)
+  /-- Store into a stack array at the compile-time index `i`:
+      `[stackArr w n, reg w] → stackArr w n`, `out = stackSet arr i v`. The Jasmin
+      image of the catCrypt `memrefSet n i`; the export maps it to the single
+      pseudo-instruction `STOREIMM`. -/
+  | stackStoreImm (w n i : Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -966,6 +973,16 @@ theorem stackGet_id {w n : Nat} (arr : Fin n → BitVec w) (j : Fin n) :
       simp only [stackGet]
       congr 1
       exact Fin.ext (Nat.mod_eq_of_lt j.isLt)
+
+/-- On an in-range index `j : Fin n`, the total `stackSet` updates exactly the
+    entry `j`. -/
+theorem stackSet_fin {w n : Nat} (arr : Fin n → BitVec w) (j : Fin n) (v : BitVec w) :
+    stackSet arr j.val v = fun k => if k = j then v else arr k := by
+  cases n with
+  | zero => exact absurd j.isLt (by omega)
+  | succ m =>
+      funext k
+      simp only [stackSet, Nat.mod_eq_of_lt j.isLt]
 
 /-! ### Leaf semantics for lattice-lowered `extCall`s
 
@@ -1041,6 +1058,7 @@ instance : DialectSignature jasminDialect where
     | .cmp _ w => [.reg w, .reg w]
     | .cmpImm _ w _ => [.reg w]
     | .stackZero _ _ => []
+    | .stackStoreImm w n _ => [.stackArr w n, .reg w]
   ret op := match op with
     | .regArith _ w => .reg w
     | .stackLoad w _ => .reg w
@@ -1067,6 +1085,7 @@ instance : DialectSignature jasminDialect where
     | .cmp _ _ => .reg 1
     | .cmpImm _ _ _ => .reg 1
     | .stackZero w n => .stackArr w n
+    | .stackStoreImm w n _ => .stackArr w n
 
 /-! ## 6. Op denotation -/
 
@@ -1210,10 +1229,22 @@ instance jasminDenote : DialectDenote jasminDialect where
         let a : BitVec w := args.head
         cmpBit c a (BitVec.ofNat w n)
     | .stackZero w n => fun _ => JasminTy.default (.stackArr w n)
+    | .stackStoreImm w n i => fun args =>
+        let arr : Fin n → BitVec w := args.head
+        let v : BitVec w := args.tail.head
+        stackSet arr i v
 
 /-- `stackZero w n` denotes the zero array `JasminTy.default (.stackArr w n)`. -/
 theorem jasminDenote_stackZero (w n : Nat) :
     jasminDenote.denote (.stackZero w n) = fun _ => JasminTy.default (.stackArr w n) :=
+  rfl
+
+/-- `stackStoreImm w n i` denotes the update `stackSet arr i v` of its array operand at
+    the index `i` by its value operand. -/
+theorem jasminDenote_stackStoreImm (w n i : Nat) (arr : Fin n → BitVec w) (v : BitVec w) :
+    jasminDenote.denote (.stackStoreImm w n i)
+        (.cons arr (.cons v .nil) : HVector (fun t => ⟦t⟧) [JasminTy.stackArr w n, JasminTy.reg w]) =
+      stackSet arr i v :=
   rfl
 
 /-- Leaf-parametric denotation: identical to `jasminDenote` except opaque `extCall`

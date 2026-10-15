@@ -30,8 +30,8 @@ LOW       target       jasminDialect → Lprog → x86 / ELF bytes;  scf, memref
 
 `nfDialect` (`VIR/NFDialect.lean`) is the value-semantic dialect of the hax normal
 form; its programs are `NFProg nfDialect` and reach bytes through the structured
-layer (next section). `nfFieldDialect` (`CatCrypt/Crypto/Hax/NFFieldSum.lean`,
-unbuilt) is `Dialect.sum nfDialect fieldDialect`, the normal form with field
+layer (next section). `nfFieldDialect` (`CatCrypt/Crypto/Hax/NFFieldSum.lean`)
+is `Dialect.sum nfDialect fieldDialect`, the normal form with field
 operations in their own summand. Four HIGH-tier dialects reach jasmin at the `Com`
 level, each on a fragment: `fieldDialect`, through `lowerK`
 (`Algebraic/FieldToJasminWord.lean`) on the `GoodW p` fragment at a
@@ -139,7 +139,7 @@ of the pipeline consumes them.
 | hax `ImpExpr` → `NFProg nfDialect` | `impToNF` (`CatCrypt/Crypto/Hax/ImpToNF.lean`) | `impToNF_sound` | front |
 | `NFProg nfDialect` → `NFProg catCryptDialect` | `nfToCat` (`CatCrypt/Crypto/Hax/NFToCat.lean`); refuses `ifThenElse`, `whileLoop` and literal trip counts | `nfToCat_sound` | yes, through the next rows |
 | `NFProg catCryptDialect` → `NFProg jasminDialect` → `ComL` | `catToJasmin : PartialBlockLowering catCryptDialect jasminDialect` under `NFProg.map?`, then `nfToComLVia` (`VIR/NFProgCatToJasmin.lean`) | `catToJasmin_map?_denote`, `nfToComLVia_denote` | yes, through `ComL.toLprogPhysAbi` |
-| `NFProg nfDialect` → `NFProg nfFieldDialect` → `Com fieldDialect` (unbuilt) | `nfToSum`, a retyping post-pass after `impToNF`; `sumToField`; their composite `fieldOfNF` (`CatCrypt/Crypto/Hax/NFFieldSum.lean`); `nfToSum` refuses `ifThenElse` and `whileLoop` | `nfToSum_sound`, `sumToField_sound`, `fieldOfNF_sound` | no: no route consumes `nfFieldDialect` |
+| `NFProg nfDialect` → `NFProg nfFieldDialect` → `Com fieldDialect` | `nfToSum`, a retyping post-pass after `impToNF`; `sumToField`; their composite `fieldOfNF` (`CatCrypt/Crypto/Hax/NFFieldSum.lean`); `nfToSum` refuses `ifThenElse` and `whileLoop` | `nfToSum_sound`, `sumToField_sound`, `fieldOfNF_sound` | through the dev `lowerF` (`Haxc/FieldLower.lean`), which lowers `NFProg nfFieldDialect` to `NFProg jasminDialect` |
 | `NFProg nfDialect` → `Com jasminDialect` or `ComL` | `nfChain` (dev `Haxc/NFChain.lean`): `nfToCat`, `NFProg.map?` at `catToJasmin`, `lowerSelects`, `exportNF`; `nfChain_run` equates its run with the stages of `nfToRouteProgVia` (dev `Haxc/NFToRouteVia.lean`) | `nfChain_denote` | yes: `backend_correct` (dev `Haxc/BackHalf.lean`) on the programs `compileJ` accepts; `haxc_correct_auto` (dev `Haxc/ComposeV1.lean`) end to end |
 
 ## One dialect per program
@@ -171,7 +171,7 @@ dialects: `VIR/MlirArithScfSum.lean` for `arith ⊕ scf`, which share `CryptoTy`
 `FieldCmpTy` built for the pair. `VIR/DialectCoproduct.lean` gives the disjoint sum
 `Dialect.sum`, in which values do not flow between the summands. Its one consumer is
 `nfFieldDialect := Dialect.sum nfDialect fieldDialect`
-(`CatCrypt/Crypto/Hax/NFFieldSum.lean`, unbuilt). `nfToSum T p` runs after `impToNF`
+(`CatCrypt/Crypto/Hax/NFFieldSum.lean`). `nfToSum T p` runs after `impToNF`
 and moves the field-entry calls of the operation table `T` on field-kinded variables
 into the `fieldDialect` summand (`nfToSum_sound` for returns, variables and counted
 loops); `sumToField` reads a program with a field result as `Com fieldDialect`
@@ -410,7 +410,7 @@ below gives the edges this table rests on.
 | `towerDialect` | yes, on a fragment | `towerToLimbs P` on `TowerAt P.p`, or `towerToField` and then `fieldDialect`; the dev `towerRoute` runs `towerChain` to a route program (unbuilt), which the back half refuses (see `CORRECTNESS.md`) |
 | `gf2Dialect` | yes | `gf2ToJasmin` |
 | `laneDialect` | yes, relationally | `laneLowering`, graded by a bound per lane |
-| `nfFieldDialect` | on programs `sumToField` accepts, as `fieldDialect` | `sumToField` (unbuilt); no route uses it |
+| `nfFieldDialect` | on programs `sumToField` accepts, as `fieldDialect` | `sumToField`; the dev `lowerF` (`Haxc/FieldLower.lean`) lowers `NFProg nfFieldDialect` to `NFProg jasminDialect` |
 | `rowDialect` | no | ring level only; the word-level loop `rowLoopW` is a `jasminDialect` program, not a lowering of `rowDialect` |
 | `ringDialect` | no | none |
 | `ladderDialect` (dev) | no | none |

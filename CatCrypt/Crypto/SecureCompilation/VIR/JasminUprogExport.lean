@@ -318,6 +318,8 @@ def opToInstrR (op : JasminOp) (dst : String) (srcs : List UOperand) : InstrR :=
       .Copn [.var dst] .none (cmpName c) (srcs ++ [.imm n])
   | .stackZero w n =>
       .Copn [.var dst] .none "ZEROARR" [.imm n, .imm w]
+  | .stackStoreImm _ _ i =>
+      .Copn [.var dst] .none "STOREIMM" (srcs ++ [.imm i])
 
 /-! ## 3. Walking the `Com` term
 

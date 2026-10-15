@@ -201,6 +201,9 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- Fresh zero array: a value, while `memref.alloc` yields an uninitialised
   -- buffer, so no single registered op matches.
   | .stackZero _ _ => .catcrypt .unknown
+  -- Constant-index store: a value-level update of the array operand, while
+  -- `memref.store` updates a buffer in place and returns nothing.
+  | .stackStoreImm _ _ _ => .catcrypt .unknown
 
 /-! Per-op `rfl` coverage that the mapping function evaluates to the named
     `Veir.OpCode` constructor for each case. Semantic equivalence with the

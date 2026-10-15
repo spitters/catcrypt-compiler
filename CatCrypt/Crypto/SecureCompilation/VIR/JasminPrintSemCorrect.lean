@@ -310,7 +310,11 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         cmpBit c a (BitVec.ofNat w n)
     | .stackZero w n, _ =>
         -- Fresh zero array: the zero `stackArr w n`, independent of the store.
-        JasminTy.default (.stackArr w n))
+        JasminTy.default (.stackArr w n)
+    | .stackStoreImm w n i, args =>
+        let arr : Fin n → BitVec w := s.get (vm _ args.head) (.stackArr w n)
+        let v : BitVec w := s.get (vm _ args.tail.head) (.reg w)
+        stackSet arr i v)
 
 /-! ## 3. Store-agrees-with-valuation invariant -/
 
@@ -670,6 +674,14 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
   | stackZero w n =>
       -- Nullary zero array: both sides are `JasminTy.default (.stackArr w n)`.
       rfl
+  | stackStoreImm w n i =>
+      cases args with
+      | cons arr rest =>
+        cases rest with
+        | cons v rest' =>
+          show stackSet (s.get (vm _ arr) (.stackArr w n)) i (s.get (vm _ v) (.reg w))
+            = stackSet (arr.lookup V) i (v.lookup V)
+          rw [hS _ arr, hS _ v]
 
 /-! ## 5. Threading the lowered instruction list through the store
 

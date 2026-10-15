@@ -345,6 +345,20 @@ theorem expr_denote_agreeOff {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
   | cmp c w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | cmpImm c w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | stackZero w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | stackStoreImm w n i =>
+      -- args : [stackArr w n, reg w]; source from LoadDisjointFrom, value reg.
+      match args with
+      | .cons src (.cons v .nil) =>
+          have hsrc : NotBuffer B src := by
+            have : ShapeDisjoint B src := hLD
+            exact NotBuffer.of_shapeDisjoint this
+          have hs := hag src hsrc
+          have hv := hag v (NotBuffer.of_ne_ty B v (by simp))
+          simp only [Expr.denote]
+          congr 2
+          show HVector.cons (src.lookup V₁) (HVector.cons (v.lookup V₁) .nil)
+            = HVector.cons (src.lookup V₂) (HVector.cons (v.lookup V₂) .nil)
+          rw [hs, hv]
   | callN name argTys retTys =>
       -- Multi-result opaque call: under `jasminDenote` its denotation is the
       -- constant `callNDefaults` tuple projected to the head slot, so it does not

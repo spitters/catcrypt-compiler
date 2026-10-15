@@ -1051,6 +1051,15 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
+      | .stackStoreImm _ _ i =>
+          -- Constant-index store: `arr[i] = val;` in place, as for `stackStore`;
+          -- the binding is named by the array operand `arr` (arg0).
+          let arr := argName vm e.args 0
+          let val := argName vm e.args 1
+          let lines := ["w0 = " ++ val ++ ";", arr ++ "[" ++ toString i ++ "] = w0;"]
+          let (names, stmts, cnt) :=
+            emitBodyReg dstName (vm.extend (t := tEx) arr) (next + 1) body
+          (arr :: names, lines ++ stmts, cnt)
 
 /-- Build a `VarMap` for a `reg w`-homogeneous context using a per-input name
     function `inName` (input `i` head-first ↦ `inName i`). Generalises

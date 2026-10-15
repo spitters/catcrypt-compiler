@@ -49,6 +49,7 @@ structural `Com` recursion.
 | `extCall name argTys retTy`  | `extCall name …`       |
 | `memrefGetDyn/SetDyn n`      | `stackLoad/stackStore` |
 | `memrefZero n`               | `stackZero 64 n`       |
+| `memrefSet n i`              | `stackStoreImm 64 n i` |
 | `bvRor w n`                  | `rorImm w n`           |
 | `bvShiftRA w n`              | `sarImm w n`           |
 | `andn w`                     | `regArith andn`        |
@@ -282,6 +283,18 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
       have hr : mapTy t = JasminTy.stackArr 64 n := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
       some (hr ▸ { op := .stackZero 64 n, retTy_eq := rfl, args := .nil })
+  -- **Constant-index memref store.** `memrefSet n i` ↦ jasmin `stackStoreImm 64 n i`.
+  -- The dialect op's `[.memref n, .sword 64]` (array, value) maps to
+  -- `[.stackArr 64 n, .reg 64]`, the jasmin `stackStoreImm` signature;
+  -- `ret t = .memref n`, so `mapTy t = .stackArr 64 n`.
+  | .memrefSet n i =>
+      have hr : mapTy t = JasminTy.stackArr 64 n := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.memref n, .sword 64] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .stackStoreImm 64 n i.val, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
   -- **Width-carrying dynamic-index memref load.** `memrefWGetDyn w n` ↦ jasmin
   -- `stackLoad w n`. The dialect op's `[.memrefW w n, .sword 64]` operands map
   -- pointwise to `[.stackArr w n, .reg 64]`, the jasmin `stackLoad` signature.

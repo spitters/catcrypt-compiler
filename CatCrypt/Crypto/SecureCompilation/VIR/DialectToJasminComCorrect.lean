@@ -538,6 +538,21 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases hop
       simp only [toJExprD] at he; cases he
       rfl
+  | memrefSet n i =>
+      -- The constant-index store lowers to `stackStoreImm 64 n i.val`, whose jasmin
+      -- denotation `stackSet arr i.val v` updates exactly the entry `i`
+      -- (`stackSet_fin`), the dialect denotation; `ctTransTy` is the identity on
+      -- `.memref n` and `.sword 64`.
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminDialect.stackSet
+          ((toJVarD args.head).lookup (ctMapValD V)) i.val
+          ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_memref, ctTransTy_sword,
+        ctTransTy_memref]
+      cases args with
+        | cons a t => cases t with | cons v t2 =>
+          rw [JasminDialect.stackSet_fin]; rfl
   | memrefWGetDyn w n =>
       -- The width-carrying load lowers to `stackLoad w n`, whose jasmin
       -- denotation is the same definitional match as the dialect's.
