@@ -1227,17 +1227,27 @@ def globalsS (app : String → List AVal → RustM AVal) :
   | [] => .ok []
   | g :: gs => app g [] >>= fun v => globalsS app gs >>= fun rest => .ok ((g, v) :: rest)
 
+/-- A successful reading of the constants `gs` reads, at each constant, a value that `bi`
+    defines on no arguments. -/
 theorem globalsS_ok {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
     (happ : AppOk bi app) : ∀ (gs : List String) (l : List (String × AVal)),
       globalsS app gs = .ok l →
-      l.map (fun p => (p.1, p.2.toValue)) = gs.map fun g => (g, (bi g []).getD .unit)
+      l.map (fun p => (p.1, some p.2.toValue)) = gs.map fun g => (g, bi g [])
   | [], l, h => by cases h; rfl
   | g :: gs, l, h => by
     obtain ⟨v, hv, h⟩ := rustM_bind_ok h
     obtain ⟨rest, hrest, h⟩ := rustM_bind_ok h
     cases h
     have hb : bi g [] = some v.toValue := happ g [] v hv
-    simp only [List.map_cons, hb, Option.getD_some, globalsS_ok happ gs rest hrest]
+    simp only [List.map_cons, hb, globalsS_ok happ gs rest hrest]
+
+private theorem globalsS_ok_getD {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
+    (happ : AppOk bi app) (gs : List String) (l : List (String × AVal))
+    (h : globalsS app gs = .ok l) :
+    l.map (fun p => (p.1, p.2.toValue)) = gs.map fun g => (g, (bi g []).getD .unit) := by
+  have := congrArg (List.map fun p : String × Option Hax.Value => (p.1, p.2.getD .unit))
+    (globalsS_ok happ gs l h)
+  simpa only [List.map_map, Function.comp_def, Option.getD_some] using this
 
 /-- **The reading of a call to a function of an extraction**: its literal read from the
     environment binding the parameters to the arguments over its constants. -/
@@ -1260,7 +1270,7 @@ theorem callS_ok {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
   cases h
   obtain ⟨F, hF⟩ := toRustMS_sim happ fn.body _ p.1 p.2 hp
   have hentry : fn.entry bi (AVal.toValues vs) = encEnv (bindA (fn.params.zip vs ++ gs)) := by
-    rw [encEnv_bindA, List.map_append, globalsS_ok happ fn.globals gs hgs, AVal.toValues_eq_map,
+    rw [encEnv_bindA, List.map_append, globalsS_ok_getD happ fn.globals gs hgs, AVal.toValues_eq_map,
       Hax.Ascent.ExtFn.entry, Hax.Ascent.ExtFn.globalVals, List.zip_map_right]
     rfl
   have hlen' : (AVal.toValues vs).length = fn.params.length := by

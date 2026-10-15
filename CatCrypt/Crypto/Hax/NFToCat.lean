@@ -224,7 +224,7 @@ def scalarSem : String → BitVec 64 → BitVec 64 → BitVec 64
   | _, _, _ => 0
 
 /-- The expression of a scalar call denotes the word of `scalarSem`. -/
-theorem scalarCatExpr_denote {Δ : Ctxt catCryptDialect} {f : String}
+private theorem scalarCatExpr_denote {Δ : Ctxt catCryptDialect} {f : String}
     {a b : Var Δ (.sword 64)} {e : Expr catCryptDialect Δ (.sword 64)}
     (h : scalarCatExpr f a b = some e) (W : Valuation Δ) :
     e.denote W = scalarSem f (a.lookup W) (b.lookup W) := by
@@ -286,6 +286,18 @@ theorem scalarSem_sound {Δ : Ctxt catCryptDialect} {f : String}
       obtain rfl : _ = v := Option.some.inj hv
       simp [scalarSem, BitVec.toNat_add, Nat.mod_eq_of_lt hxy]
     · simp [_root_.Hax.widthArrayOps] at hv
+
+/-- **A scalar call refines `hax64Builtins`**: where `hax64Builtins` defines the call on the
+    integers of the two argument words, its value is the integer of the word the expression
+    of the call denotes. -/
+theorem scalarCatExpr_sound {Δ : Ctxt catCryptDialect} {f : String}
+    {a b : Var Δ (.sword 64)} {e : Expr catCryptDialect Δ (.sword 64)}
+    (h : scalarCatExpr f a b = some e) (W : Valuation Δ) {v : _root_.Hax.Value}
+    (hv : _root_.Hax.hax64Builtins f
+      [.int ((a.lookup W).toNat : Int), .int ((b.lookup W).toNat : Int)] = some v) :
+    v = .int ((e.denote W).toNat : Int) := by
+  rw [scalarCatExpr_denote h W]
+  exact scalarSem_sound h _ _ hv
 
 /-! ## 4. The operations -/
 
@@ -1198,13 +1210,9 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       obtain ⟨w, hw, h⟩ := Option.bind_eq_some_iff.mp h
       have hv := hbi.base _ _ _ (Or.inl (scalarCatExpr_name h)) (scalarCatExpr_ne_select h) hbv
       rw [asWord_enc hxa W hx₁, asWord_enc hw W hx₂] at hv
-      have := scalarSem_sound h _ _ hv
-      rw [this] at hyv
-      have hd : (e.denote W : BitVec 64) = scalarSem f (x.lookup W) (w.lookup W) :=
-        scalarCatExpr_denote h W
+      rw [scalarCatExpr_sound h W hv] at hyv
       change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
       change y = (e.denote W : BitVec 64)
-      rw [hd]
       exact (BitVec.eq_of_toNat_eq (by exact_mod_cast (_root_.Hax.Value.int.inj hyv))).symm
   · rename_i ta ti tv n' args
     rcases args with _ | ⟨m₀, _ | ⟨i₀, _ | ⟨x₀, _ | _⟩⟩⟩
