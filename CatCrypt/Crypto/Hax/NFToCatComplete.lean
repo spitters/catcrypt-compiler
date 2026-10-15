@@ -322,8 +322,10 @@ def scalarCallOk (f : String) : List NfTy → NfTy → Bool
   | [ta], .bit => decide (ta = .bit) && decide (ImpToNF.scalarBitOf f = some .not)
   | _, _ => false
 
-/-- The calls `index` and `array_update` on an array of `64`-bit words, and `select` on a bit
-    and two integers or `64`-bit words, at a `64`-bit word or an integer. -/
+/-- The calls `index` and `array_update` on an array of `64`-bit words, `select` on a bit
+    and two integers or `64`-bit words, at a `64`-bit word or an integer, `len` of an array of
+    `64`-bit words, and `array_lit` of `n` `64`-bit words at an array of `n` `64`-bit
+    words. -/
 def memCallOk (f : String) : List NfTy → NfTy → Bool
   | [.arr _ (.word 64), tb], .word 64 => f == "index" && ImpToNF.hax64NFWordTy tb
   | [.arr n (.word 64), ti, tv], .arr n' (.word 64) =>
@@ -332,6 +334,8 @@ def memCallOk (f : String) : List NfTy → NfTy → Bool
       f == "select" && ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb
   | [.bit, ta, tb], .int =>
       f == "select" && ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb
+  | [.arr _ (.word 64)], .word 64 => f == "len"
+  | as, .arr n (.word 64) => f == "array_lit" && decide (as = List.replicate n (.word 64))
   | _, _ => false
 
 /-- The integer literals in `[0, 2^64)` at an integer, a `64`-bit word or an unsigned integer
@@ -357,6 +361,7 @@ def nbOp : NfOp → Bool
   | .ilit t v => ilitOk t v
   | .constBit _ | .constUnit | .ctr => true
   | .trip t | .boundInt t => tripOk t
+  | .arrRepeat _ t => decide (t = .word 64)
   | _ => false
 
 /-- A variable of a type whose values encode as integers has a word variable. -/
@@ -475,9 +480,41 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
     | var a => simp [scalarRes1, bitRes1, asBit, hp]
   · cases h
 
-/-- A call of `memCallOk` is translated by `catCall?` on every vector of variables. -/
+/-- A call `array_lit` of `memCallOk` is at an array of `n` `64`-bit words on `n` `64`-bit
+    words. -/
+theorem memCallOk_arrayLit {as : List NfTy} {r : NfTy} (h : memCallOk "array_lit" as r = true) :
+    ∃ n, r = .arr n (.word 64) ∧ as = List.replicate n (.word 64) := by
+  unfold memCallOk at h
+  split at h <;> simp_all
+
+/-- The readings of `n` `64`-bit words are `n` readings of `64`-bit words. -/
+theorem rdWords_isSome {Δ : Ctxt catCryptDialect} :
+    ∀ {as : List NfTy} (n : Nat) (rs : HVector (fun t => Rd Δ t) as),
+      as = List.replicate n (.word 64) → ∃ l, rdWords rs = some l ∧ l.length = n
+  | [], n, .nil, h => ⟨[], rfl, by cases n <;> simp_all⟩
+  | _ :: _, 0, .cons _ _, h => by simp at h
+  | _ :: _, n + 1, .cons r rs, h => by
+      simp only [List.replicate_succ, List.cons.injEq] at h
+      obtain ⟨rfl, h⟩ := h
+      obtain ⟨l, hl, hlen⟩ := rdWords_isSome n rs h
+      obtain ⟨r', hr'⟩ := Option.isSome_iff_exists.mp
+        (show (Rd.toWord64 (.word 64) r).isSome by
+          cases r <;> simp [Rd.toWord64, asWord, ImpToNF.hax64NFWordTy])
+      exact ⟨r' :: l, by simp [rdWords, hr', hl], by simp [hlen]⟩
+
+/-- `arrLitRes?` is defined on `array_lit` of `n` `64`-bit words at an array of `n` `64`-bit
+    words. -/
+theorem arrLitRes_isSome {Δ : Ctxt catCryptDialect} {as : List NfTy} {n : Nat}
+    (h : as = List.replicate n (.word 64)) (rs : HVector (fun t => Rd Δ t) as) :
+    (arrLitRes? "array_lit" (.arr n (.word 64)) rs).isSome := by
+  obtain ⟨l, hl, hlen⟩ := rdWords_isSome n rs h
+  simp [arrLitRes?, hl, hlen]
+
+/-- A call of `memCallOk` other than `array_lit` is translated by `catCall?` on every vector
+    of variables. -/
 theorem catCall_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
-    (h : memCallOk f as r = true) (ws : HVector (fun t => Var Δ t) (as.map catTy)) :
+    (h : memCallOk f as r = true) (hf : f ≠ "array_lit")
+    (ws : HVector (fun t => Var Δ t) (as.map catTy)) :
     (catCall? f as r ws).isSome := by
   unfold memCallOk at h
   split at h
@@ -500,6 +537,11 @@ theorem catCall_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
     obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (asWord_isSome hta ws.tail.head)
     obtain ⟨y, hy⟩ := Option.isSome_iff_exists.mp (asWord_isSome htb ws.tail.tail.head)
     simp [catCall?, selectCat, asBit, hx, hy]
+  · simp only [beq_iff_eq] at h
+    subst h
+    simp [catCall?, lenCat]
+  · simp only [Bool.and_eq_true, beq_iff_eq] at h
+    exact absurd h.1 hf
   · cases h
 
 /-- `catCallRd0` is defined when `catCall?` is defined on every vector of variables. -/
@@ -522,11 +564,20 @@ theorem catCallRd_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
   split
   · rfl
   · rename_i h0
-    rcases Bool.or_eq_true_iff.mp h with hs | hm
-    · exact scalarRes_isSome hs rs
-    · have := catCallRd0_isSome (fun ws => catCall_isSome hm ws) rs
-      rw [h0] at this
-      cases this
+    split
+    · rfl
+    · rename_i h1
+      rcases Bool.or_eq_true_iff.mp h with hs | hm
+      · have := scalarRes_isSome hs rs
+        rw [h1] at this
+        cases this
+      · by_cases hf : f = "array_lit"
+        · subst hf
+          obtain ⟨n, rfl, has⟩ := memCallOk_arrayLit hm
+          exact arrLitRes_isSome has rs
+        · have := catCallRd0_isSome (fun ws => catCall_isSome hm hf ws) rs
+          rw [h0] at this
+          cases this
 
 /-- The trip count `tripSub` is defined. -/
 theorem tripSub_isSome {Δ : Ctxt catCryptDialect} (rlo : Rd Δ .int) (rhi : Rd Δ (.word 64)) :
@@ -609,6 +660,12 @@ theorem catOp_isSome_of_nbOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (
       rcases args with _ | ⟨a, _ | _⟩
       change ((Rd.toCount t (σ a)).map (OpRes.rd ∘ Rd.ofWord)).isSome
       simpa using toCount_isSome h (σ a)
+  | arrRepeat n t =>
+      intro h args
+      simp only [nbOp, decide_eq_true_eq] at h
+      subst h
+      rcases args with _ | ⟨a, _ | _⟩
+      rfl
   | _ => intro h; simp [nbOp] at h
 
 /-- The rotations of the scalar table on an integer or a `64`-bit word by a second operand
@@ -667,13 +724,18 @@ theorem catCallRd_isSome_of_rot {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect
     unfold catCallRd
     split
     · rfl
-    · change (scalarRes2 f ta tb (σ a) (σ b) (.word 64)).isSome
-      split at ho
-      · rename_i o w hof
-        simp only [scalarRes2, hof, Option.bind_some]
-        rw [if_pos (by simpa using ho), hbk]
-        exact withVar1_isSome hta _ fun _ => rfl
-      · cases ho
+    · have hs : (scalarRes2 f ta tb (σ a) (σ b) (.word 64)).isSome := by
+        split at ho
+        · rename_i o w hof
+          simp only [scalarRes2, hof, Option.bind_some]
+          rw [if_pos (by simpa using ho), hbk]
+          exact withVar1_isSome hta _ fun _ => rfl
+        · cases ho
+      obtain ⟨res, hres⟩ := Option.isSome_iff_exists.mp hs
+      have hres' : scalarRes? f [ta, tb] (.word 64)
+          (σ.rds (HVector.cons a (HVector.cons b HVector.nil))) = some res := hres
+      rw [hres']
+      rfl
   · cases h
 
 /-- **`catOp` is defined on every operation of `nbOp` and of `rotOpOk`** at every reading of

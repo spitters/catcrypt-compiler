@@ -34,7 +34,8 @@ translated program from every valuation the readings relate to `V`, with the sam
 ## Main definitions
 
 * `nfBinKind`, `nfKind`, `nfValNat`, `nfLeakModel` — the leakage model of `nfDialect`.
-* `quietCall` — the call names with no event: the names of the scalar tables of the front.
+* `quietCall` — the call names with no event: the names of the scalar tables of the front,
+  `len` and `array_lit`.
 * `nfLeakRun` — the leakage run of a program of `nfDialect` over the leaf table of a builtin
   table.
 * `NoVT` — parameters of `catCryptDialect` with no variable-time operation.
@@ -82,19 +83,29 @@ def nfBinKind : NfBinOp → LeakKind
 
 /-- The calls with no event: the names of the scalar tables `ImpToNF.hax64BinTable`,
     `ImpToNF.hax64UnTable`, `ImpToNF.hax64CmpTable` and `ImpToNF.hax64BitTable` of the front
-    and `select`, read through `ImpToNF.hax64NFScalar`. -/
+    and `select`, read through `ImpToNF.hax64NFScalar`, and the array calls `len` and
+    `array_lit`. -/
 def quietCall (f : String) : Bool :=
-  (ImpToNF.hax64NFScalar ()).contains f
+  (ImpToNF.hax64NFScalar ()).contains f || f == "len" || f == "array_lit"
+
+/-- `quietCall` holds of the names of `ImpToNF.hax64NFScalar`, `len` and `array_lit`. -/
+theorem quietCall_iff {f : String} :
+    quietCall f = true ↔ f ∈ ImpToNF.hax64NFScalar () ∨ f = "len" ∨ f = "array_lit" := by
+  simp [quietCall, or_assoc]
 
 /-- `quietCall` holds of the names of `ImpToNF.hax64NFScalar`. -/
-theorem quietCall_iff {f : String} : quietCall f = true ↔ f ∈ ImpToNF.hax64NFScalar () := by
-  simp [quietCall]
+theorem quietCall_of_mem {f : String} (h : f ∈ ImpToNF.hax64NFScalar ()) :
+    quietCall f = true :=
+  quietCall_iff.mpr (Or.inl h)
 
 /-- A name with no event is neither `index` nor `array_update`. -/
 theorem quietCall_ne {f : String} (h : quietCall f = true) :
     f ≠ "index" ∧ f ≠ "array_update" := by
   have hn : ∀ g ∈ ImpToNF.hax64NFScalar (), g ≠ "index" ∧ g ≠ "array_update" := by decide
-  exact hn f (quietCall_iff.mp h)
+  rcases quietCall_iff.mp h with h | rfl | rfl
+  · exact hn f h
+  · decide
+  · decide
 
 /-- The event class of an operation of `nfDialect`: the index argument of an array access is
     a memory offset, a binary word operation has the class `nfBinKind`, a call of a name of
@@ -133,7 +144,7 @@ def nfKind : NfOp → LeakKind
 /-- A call of a name of the scalar tables is quiet. -/
 theorem nfKind_call_scalar {f : String} (h : f ∈ ImpToNF.hax64NFScalar ()) (as : List NfTy)
     (r : NfTy) : nfKind (.call f as r) = .quiet :=
-  nfKind_call_quiet (quietCall_iff.mpr h) as r
+  nfKind_call_quiet (quietCall_of_mem h) as r
 
 /-- A call of a name that is not `index`, not `array_update` and not of `quietCall` is a
     variable-time leaf call. -/
@@ -148,8 +159,14 @@ theorem nfKind_call_scalar {f : String} (h : f ∈ ImpToNF.hax64NFScalar ()) (as
 theorem hax64SigOf_quietCall {f : String} {as : List NfTy} {r : NfTy}
     (h : ImpToNF.hax64SigOf f as = some r) :
     quietCall f = true ∨ f = "index" ∨ f = "array_update" ∨
-      (_root_.Hax.FieldTag.fieldTag? f).isSome :=
-  (ImpToNF.hax64SigOf_name h).imp_left quietCall_iff.mpr
+      (_root_.Hax.FieldTag.fieldTag? f).isSome := by
+  rcases ImpToNF.hax64SigOf_name h with hm | rfl | rfl | rfl | rfl | ht
+  · exact Or.inl (quietCall_of_mem hm)
+  · exact Or.inr (Or.inl rfl)
+  · exact Or.inr (Or.inr (Or.inl rfl))
+  · exact Or.inl rfl
+  · exact Or.inl rfl
+  · exact Or.inr (Or.inr (Or.inr ht))
 
 /-- A call `ImpToNF.hax64SigOf` types is not a variable-time leaf call, or has a tagged field
     head. -/
@@ -168,13 +185,13 @@ theorem quietCall_tables :
     (∀ e ∈ ImpToNF.hax64BinTable, quietCall e.1 = true) ∧
     (∀ e ∈ ImpToNF.hax64UnTable, quietCall e.1 = true) ∧
     (∀ e ∈ ImpToNF.hax64CmpTable, quietCall e.1 = true) := by
-  exact ⟨fun e he => quietCall_iff.mpr (ImpToNF.bin_mem_hax64NFScalar he),
-    fun e he => quietCall_iff.mpr (ImpToNF.un_mem_hax64NFScalar he),
-    fun e he => quietCall_iff.mpr (ImpToNF.cmp_mem_hax64NFScalar he)⟩
+  exact ⟨fun e he => quietCall_of_mem (ImpToNF.bin_mem_hax64NFScalar he),
+    fun e he => quietCall_of_mem (ImpToNF.un_mem_hax64NFScalar he),
+    fun e he => quietCall_of_mem (ImpToNF.cmp_mem_hax64NFScalar he)⟩
 
 /-- The names of the Boolean connective calls are names of `quietCall`. -/
 theorem quietCall_bitTable : ∀ e ∈ ImpToNF.hax64BitTable, quietCall e.1 = true :=
-  fun _ he => quietCall_iff.mpr (ImpToNF.bit_mem_hax64NFScalar he)
+  fun _ he => quietCall_of_mem (ImpToNF.bit_mem_hax64NFScalar he)
 
 /-- An unsigned division is variable time. -/
 @[simp] theorem nfKind_bin_udiv (w : Nat) : nfKind (.bin .udiv w) = .vt .div := rfl
@@ -288,6 +305,22 @@ theorem selectCat_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
     rw [hP]
   · cases h
 
+/-- A call `lenCat` translates is `len`, and its `bvConst` is quiet at parameters with no
+    variable-time operation. -/
+theorem lenCat_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect} {f : String}
+    {ta : NfTy} {e : Expr catCryptDialect Δ (.sword 64)} (h : lenCat f ta = some e) :
+    f = "len" ∧ catKind P e.op = .quiet := by
+  unfold lenCat at h
+  split at h
+  · split at h
+    · rename_i hf
+      cases h
+      refine ⟨hf, ?_⟩
+      simp only [catKind]
+      rw [hP]
+    · cases h
+  · cases h
+
 /-- The call `catCall?` builds has the event class of the source call, at parameters with no
     variable-time operation. -/
 theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -316,6 +349,8 @@ theorem catCall_kind {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
     · cases h
   · rw [selectCat_kind hP h, nfKind_call_scalar (selectCat_name h)]
   · rw [selectCat_kind hP h, nfKind_call_scalar (selectCat_name h)]
+  · obtain ⟨rfl, hq⟩ := lenCat_kind hP h
+    rw [hq, nfKind_call_quiet (by decide)]
   · cases h
 
 /-- The reading of a value related to a variable `asWord` reads as a word is the number of
@@ -410,6 +445,14 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
     rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
       show nfLeakModel.kind (.call f [tc, ta, tb] .int) =
         nfKind (.call f [tc, ta, tb] .int) from rfl, hq]
+  · rename_i ta args
+    have hq : nfKind (.call f [ta] (.word 64)) = .quiet := by
+      obtain ⟨rfl, -⟩ := lenCat_kind hP h
+      exact nfKind_call_quiet (by decide) _ _
+    unfold Expr.ctLeak opLeak
+    rw [show (catLeakModel P).kind e.op = catKind P e.op from rfl, hk,
+      show nfLeakModel.kind (.call f [ta] (.word 64)) =
+        nfKind (.call f [ta] (.word 64)) from rfl, hq]
   · cases h
 
 /-- The events of the translation of an operation at the valuation `W` of the target: none
@@ -703,6 +746,51 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       change none = some res at h
       cases h
 
+/-- The stores of `storeChain` are quiet. -/
+theorem storeChain_quiet {P : CatLeakParams} (hP : NoVT P) {n : Nat} :
+    ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (m : Var Δ (.memref n)) (idx : Fin k → Fin n)
+      (ρ : Fin k → Rd Δ (.word 64)), OpRes.Quiet P (storeChain k m idx ρ)
+  | 0, _, _, _, _ => trivial
+  | k + 1, _, m, idx, ρ => by
+      unfold storeChain
+      split
+      · exact ⟨by simp only [catKind]; rw [hP], storeChain_quiet hP k _ _ _⟩
+      · exact ⟨by simp only [catKind]; rw [hP], by simp only [catKind]; rw [hP],
+          storeChain_quiet hP k _ _ _⟩
+
+/-- The stores of a memref filled from zero (`fillRes`) are quiet. -/
+theorem fillRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (n k : Nat) (idx : Fin k → Fin n) (ρ : Fin k → Rd Δ (.word 64)) :
+    OpRes.Quiet P (fillRes n k idx ρ) :=
+  ⟨by simp only [catKind]; rw [hP], storeChain_quiet hP k _ _ _⟩
+
+/-- The translation `repeatRes` of `arrRepeat` is quiet. -/
+theorem repeatRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    (n : Nat) (r : Rd Δ (.word 64)) : OpRes.Quiet P (repeatRes n r) := by
+  unfold repeatRes
+  split
+  · change catKind P (.memrefZero n) = .quiet
+    simp only [catKind]
+    rw [hP]
+  · exact fillRes_quiet hP _ _ _ _
+
+/-- The translation `arrLitRes?` is a translation of `array_lit` and is quiet. -/
+theorem arrLitRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
+    {f : String} {as : List NfTy} {r : NfTy} {rs : HVector (fun t => Rd Δ t) as}
+    {res : OpRes Δ r} (h : arrLitRes? f r rs = some res) :
+    OpRes.Quiet P res ∧ f = "array_lit" := by
+  unfold arrLitRes? at h
+  split at h
+  · split at h
+    · rename_i hf
+      obtain ⟨l, -, h⟩ := Option.bind_eq_some_iff.mp h
+      split at h
+      · cases h
+        exact ⟨fillRes_quiet hP _ _ _ _, hf⟩
+      · cases h
+    · cases h
+  · cases h
+
 /-- **The events of a translated call.** The translation `catCallRd` of a call on readings
     related to the arguments `xs` emits the events of the source call on `xs`. -/
 theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
@@ -716,11 +804,20 @@ theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
     cases h
     exact catCallRd0_leak hP W f as r rs res xs h₀ hx
   next =>
-    obtain ⟨hq, hf⟩ := scalarRes_quiet hP h
-    rw [resLeak_quiet W res hq]
-    unfold opLeak
-    rw [show nfLeakModel.kind (.call f as r) = nfKind (.call f as r) from rfl,
-      nfKind_call_scalar hf]
+    split at h
+    next h₁ =>
+      cases h
+      obtain ⟨hq, hf⟩ := scalarRes_quiet hP h₁
+      rw [resLeak_quiet W res hq]
+      unfold opLeak
+      rw [show nfLeakModel.kind (.call f as r) = nfKind (.call f as r) from rfl,
+        nfKind_call_scalar hf]
+    next =>
+      obtain ⟨hq, rfl⟩ := arrLitRes_quiet hP h
+      rw [resLeak_quiet W res hq]
+      unfold opLeak
+      rw [show nfLeakModel.kind (.call "array_lit" as r) = nfKind (.call "array_lit" as r)
+        from rfl, nfKind_call_quiet (by decide)]
 
 /-- **The events of a translated operation.** Under readings that relate `V` to `W`, the
     translation `catOp` of an operation emits the events of the operation. -/
@@ -804,6 +901,19 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       intro args res h
       cases h
       exact ctLeak_quiet _ W (by simp [catKind, opVT_none hP])
+  | arrRepeat n t =>
+      intro args res h
+      rcases args with _ | ⟨a, _ | _⟩
+      cases t
+      all_goals try cases h
+      rename_i w
+      by_cases hw : w = 64
+      · subst hw
+        change some (repeatRes n (σ a)) = some res at h
+        cases h
+        rw [resLeak_quiet W _ (repeatRes_quiet hP n _)]
+        rfl
+      · simp [catOp, hw] at h
   | _ =>
       intro args res h
       cases h

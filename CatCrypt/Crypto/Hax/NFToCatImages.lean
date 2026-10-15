@@ -152,6 +152,13 @@ theorem catCall?_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
     · cases h
   · exact selectCat_image h
   · exact selectCat_image h
+  · unfold lenCat at h
+    split at h
+    · split at h
+      · cases h
+        exact (by image_op : HasImage (.bvConst 64 _))
+      · cases h
+    · cases h
   · cases h
 
 theorem shiftImm?_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
@@ -347,6 +354,46 @@ theorem scalarRes?_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
   · exact scalarRes2_image h
   · cases h
 
+/-- A constant-index store has an image: `toJBlockD` lowers `memrefSet n i` to the one
+    binding `stackStoreImm 64 n i`. -/
+theorem memrefSet_image (n : Nat) (i : Fin n) : HasImage (.memrefSet n i) := by image_op
+
+theorem storeChain_image {n : Nat} :
+    ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (m : Var Δ (.memref n)) (idx : Fin k → Fin n)
+      (ρ : Fin k → Rd Δ (.word 64)), OpResImages (storeChain k m idx ρ)
+  | 0, _, _, _, _ => trivial
+  | k + 1, _, m, idx, ρ => by
+      unfold storeChain
+      split
+      · exact ⟨memrefSet_image n _, storeChain_image k _ _ _⟩
+      · exact ⟨(by image_op : HasImage (.bvConst 64 _)), memrefSet_image n _,
+          storeChain_image k _ _ _⟩
+
+theorem fillRes_image {Δ : Ctxt catCryptDialect} (n k : Nat) (idx : Fin k → Fin n)
+    (ρ : Fin k → Rd Δ (.word 64)) : OpResImages (fillRes n k idx ρ) :=
+  ⟨memrefZero_image n, storeChain_image k _ _ _⟩
+
+theorem repeatRes_image {Δ : Ctxt catCryptDialect} (n : Nat) (r : Rd Δ (.word 64)) :
+    OpResImages (repeatRes n r) := by
+  unfold repeatRes
+  split
+  · exact memrefZero_image n
+  · exact fillRes_image _ _ _ _
+
+theorem arrLitRes_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
+    {rs : HVector (fun t => Rd Δ t) as} {res : OpRes Δ r} (h : arrLitRes? f r rs = some res) :
+    OpResImages res := by
+  unfold arrLitRes? at h
+  split at h
+  · split at h
+    · obtain ⟨l, -, h⟩ := Option.bind_eq_some_iff.mp h
+      split at h
+      · cases h
+        exact fillRes_image _ _ _ _
+      · cases h
+    · cases h
+  · cases h
+
 theorem catCallRd_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
     {rs : HVector (fun t => Rd Δ t) as} {res : OpRes Δ r}
     (h : catCallRd f as r rs = some res) : OpResImages res := by
@@ -355,7 +402,11 @@ theorem catCallRd_image {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy
   · rename_i res' h0
     cases h
     exact catCallRd0_image h0
-  · exact scalarRes?_image h
+  · split at h
+    · rename_i res' h1
+      cases h
+      exact scalarRes?_image h1
+    · exact arrLitRes_image h
 
 theorem tripRes_image {Δ : Ctxt catCryptDialect} (r : Rd Δ (.word 64)) :
     OpResImages (tripRes r) := by
@@ -428,6 +479,17 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
   | constUnit =>
       cases h
       exact (by image_op : HasImage .constUnit)
+  | arrRepeat n t =>
+      rcases args with _ | ⟨a, _ | _⟩
+      cases t
+      all_goals try cases h
+      rename_i w
+      by_cases hw : w = 64
+      · subst hw
+        change some (repeatRes n (σ a)) = some res at h
+        cases h
+        exact repeatRes_image n _
+      · simp [catOp, hw] at h
   | _ => cases h
 
 /-- The bindings `emitRes` gives a translation whose operations have images, in front of a

@@ -47,7 +47,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
     constant at a positive width, an immediate shift by less than `2 ^ w`. -/
 def opMemB : JasminOp → Bool
   | .regArith _ _ | .select _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => true
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
+  | .stackZero _ _ | .stackStoreImm _ _ _ => true
   | .regConst w _ => decide (0 < w)
   | .shrImm w m | .shlImm w m | .sarImm w m => decide (m < 2 ^ w)
   | _ => false
@@ -56,7 +57,8 @@ def opMemB : JasminOp → Bool
 def opPlainB : JasminOp → Bool
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
   | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => true
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
+  | .stackZero _ _ | .stackStoreImm _ _ _ => true
   | _ => false
 
 theorem opPlainB_sound {op : JasminOp} (h : opPlainB op = true) : OpPlain op := by
@@ -108,6 +110,8 @@ theorem scalarMemNB_sound : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
         | cases heq; exact ScalarMemN.store rfl args ih
         | cases heq; exact ScalarMemN.cmp _ rfl args ih
         | cases heq; exact ScalarMemN.cmpImm _ rfl args ih
+        | cases heq; exact ScalarMemN.zero rfl args ih
+        | cases heq; exact ScalarMemN.storeImm rfl args ih
 
 /-- A decision of `ArrMemN`: every binding's op is in `opMemB`; the return type is the
     array type of the index, so the return needs no check. -/
@@ -133,6 +137,12 @@ theorem arrMemNB_sound {w n : Nat} : {Γ : Ctxt jasminDialect} →
       case stackStore w' n' =>
         cases heq
         exact ArrMemN.store rfl args ih
+      case stackZero w' n' =>
+        cases heq
+        exact ArrMemN.zero rfl args ih
+      case stackStoreImm w' n' i =>
+        cases heq
+        exact ArrMemN.storeImm rfl args ih
       all_goals
         cases heq
         exact ArrMemN.reg (w' := _) _ (regHeadMemN_of_opMemB _ (by simp [opMemB, hop])) ih

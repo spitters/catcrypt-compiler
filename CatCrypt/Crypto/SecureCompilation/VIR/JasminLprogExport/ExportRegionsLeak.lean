@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame
 public import CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
 
@@ -837,13 +838,19 @@ theorem bindOps_leak (Pj : JLeakParams) {nArgs d : Nat} {Γ : Ctxt jasminDialect
     (hag : StoreAgreesM nArgs d st V) (hi : bindOps nArgs e d = [i])
     (hstep : lsemStepMem i st = some st') :
     instrLeakB st.reg i = bindLeak Pj nArgs e d V := by
-  obtain ⟨w, v0, hmem⟩ := he
-  have h := straightLeakF_straightOps Pj hmem hlen harg hag
-  have hops : straightOpsMem nArgs (Com.var e (Com.ret v0)) d = [i] := hi
-  rw [hops, straightLeakF_cons_of_step hstep, comCtLeak_var] at h
-  have hret : Com.ctLeak (jLeakModel Pj) (Com.ret v0) (V.extend (e.denote V)) = [] := rfl
-  rw [hret, straightT_var Pj nArgs d e (Com.ret v0) [] (exprCtLeak_length Pj e V)] at h
-  simpa [straightLeakF, straightT, bindLeak] using h
+  rcases he with ⟨w, v0, hmem⟩ | ⟨w, n, v0, hmem⟩
+  · have h := straightLeakF_straightOps Pj hmem hlen harg hag
+    have hops : straightOpsMem nArgs (Com.var e (Com.ret v0)) d = [i] := hi
+    rw [hops, straightLeakF_cons_of_step hstep, comCtLeak_var] at h
+    have hret : Com.ctLeak (jLeakModel Pj) (Com.ret v0) (V.extend (e.denote V)) = [] := rfl
+    rw [hret, straightT_var Pj nArgs d e (Com.ret v0) [] (exprCtLeak_length Pj e V)] at h
+    simpa [straightLeakF, straightT, bindLeak] using h
+  · have h := JasminLsemMemFLeakLoop.straightLeakF_straightOps_arr Pj hmem hlen harg hag
+    have hops : straightOpsMem nArgs (Com.var e (Com.ret v0)) d = [i] := hi
+    rw [hops, straightLeakF_cons_of_step hstep, comCtLeak_var] at h
+    have hret : Com.ctLeak (jLeakModel Pj) (Com.ret v0) (V.extend (e.denote V)) = [] := rfl
+    rw [hret, straightT_var Pj nArgs d e (Com.ret v0) [] (exprCtLeak_length Pj e V)] at h
+    simpa [straightLeakF, straightT, bindLeak] using h
 
 /-- **The rule of a binding.** The statement for the continuation gives the statement for
     a binding of the stack-memory fragment in front of it, with the events of the binding
@@ -858,11 +865,10 @@ theorem exportRLeakSim_var (Pj : JLeakParams) (nArgs : Nat) (fn : String)
   simp only [machRun, Option.map_eq_some_iff, Prod.mk.injEq] at hrun
   obtain ⟨⟨v', ℓk⟩, hkrun, rfl, rfl⟩ := hrun
   have he' := he
-  obtain ⟨w, v0, hmem⟩ := he
-  obtain ⟨st', hrun, hAg, hFr⟩ :=
-    lsemStraightMem_straightOps_store (nArgs := nArgs) hmem hlen harg hag
+  obtain ⟨st', hrun, hAg, hFr⟩ := he.step (nArgs := nArgs) hlen harg hag
   have hplain : PlainLopnBody (bindOps nArgs e d) :=
-    straightOpsMem_plain nArgs _ (scalarMemN_comOpsPlain hmem) d
+    straightOpsMem_plain nArgs (Com.var e (Com.ret Ctxt.Var.here))
+      (show JasminLsemMemFlagArrLoop.OpPlain e.op ∧ True from ⟨he.opPlain, trivial⟩) d
   obtain ⟨i, hi⟩ := bindOps_eq_singleton nArgs e d
   have hrun' : lsemStraightMem [i] m.prog.base = some st' := hi ▸ hrun
   have hstep : lsemStepMem i m.prog.base = some st' := by

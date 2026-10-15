@@ -133,6 +133,24 @@ inductive ArrMemN {w n : Nat} :
       {body : Com jasminDialect (JasminTy.stackArr w' n' :: Γ) (JasminTy.stackArr w n)}
       (hbody : ArrMemN body) :
       ArrMemN (Com.var ⟨JasminOp.stackStore w' n', heq, args⟩ body)
+  /-- A fresh stack array of zero words. -/
+  | zero {Γ : Ctxt jasminDialect} {w' n' : Nat}
+      (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.stackZero w' n')
+        = .stackArr w' n')
+      (args : HVector (fun ty => Ctxt.Var Γ ty)
+        (DialectSignature.sig (d := jasminDialect) (JasminOp.stackZero w' n')))
+      {body : Com jasminDialect (JasminTy.stackArr w' n' :: Γ) (JasminTy.stackArr w n)}
+      (hbody : ArrMemN body) :
+      ArrMemN (Com.var ⟨JasminOp.stackZero w' n', heq, args⟩ body)
+  /-- A store at a compile-time index. -/
+  | storeImm {Γ : Ctxt jasminDialect} {w' n' i : Nat}
+      (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.stackStoreImm w' n' i)
+        = .stackArr w' n')
+      (args : HVector (fun ty => Ctxt.Var Γ ty)
+        (DialectSignature.sig (d := jasminDialect) (JasminOp.stackStoreImm w' n' i)))
+      {body : Com jasminDialect (JasminTy.stackArr w' n' :: Γ) (JasminTy.stackArr w n)}
+      (hbody : ArrMemN body) :
+      ArrMemN (Com.var ⟨JasminOp.stackStoreImm w' n' i, heq, args⟩ body)
 
 /-! ## 3. The emitted chain of an `ArrMemN` update -/
 
@@ -185,6 +203,36 @@ theorem ArrMemN.straightOps_full {w n : Nat} {Γ : Ctxt jasminDialect}
           (by omega) hagree'
       refine ⟨st2, ?_, WriteFrame.stepArr _ hFr2, ?_⟩
       · rw [straightOpsMem_store, lsemStraightMem_cons, hstep]
+        exact hrun2
+      · simp only [comRetReg, Com.denote]
+        exact hret2
+  | zero heq args hbody ih =>
+      intro nArgs curDepth st V hlen harg hagree
+      have hstep := lsemStepMem_zeroOp (V := V) (st := st) (nArgs := nArgs)
+        (curDepth := curDepth) heq args
+      have hagree' := StoreAgreesM.stepArr
+        ((⟨JasminOp.stackZero _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      obtain ⟨st2, hrun2, hFr2, hret2⟩ :=
+        ih (nArgs := nArgs) (curDepth := curDepth + 1) (by simp [List.length_cons, hlen])
+          (by omega) hagree'
+      refine ⟨st2, ?_, WriteFrame.stepArr _ hFr2, ?_⟩
+      · rw [straightOpsMem_zero, lsemStraightMem_cons, hstep]
+        exact hrun2
+      · simp only [comRetReg, Com.denote]
+        exact hret2
+  | storeImm heq args hbody ih =>
+      intro nArgs curDepth st V hlen harg hagree
+      have hstep := lsemStepMem_storeImmOp (V := V) (st := st) (nArgs := nArgs)
+        (curDepth := curDepth) heq args hagree
+      have hagree' := StoreAgreesM.stepArr
+        ((⟨JasminOp.stackStoreImm _ _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      obtain ⟨st2, hrun2, hFr2, hret2⟩ :=
+        ih (nArgs := nArgs) (curDepth := curDepth + 1) (by simp [List.length_cons, hlen])
+          (by omega) hagree'
+      refine ⟨st2, ?_, WriteFrame.stepArr _ hFr2, ?_⟩
+      · rw [straightOpsMem_storeImm, lsemStraightMem_cons, hstep]
         exact hrun2
       · simp only [comRetReg, Com.denote]
         exact hret2

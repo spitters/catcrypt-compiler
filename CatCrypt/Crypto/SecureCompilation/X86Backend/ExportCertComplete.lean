@@ -104,7 +104,8 @@ theorem nameAt_head? (nArgs s : Nat) : (nameAt nArgs s).toList.head? ≠ some 'L
 /-- A register binding of the fragment's op set writes its slot register, reads only names of
     its operands, and is neither a store nor an array read. -/
 theorem chainElem_reg {op : JasminOp} (hop : opMemB op = true)
-    (hs : ∀ w n, op ≠ .stackStore w n) (hl : ∀ w n, op ≠ .stackLoad w n) (cd : Nat)
+    (hs : ∀ w n, op ≠ .stackStore w n) (hl : ∀ w n, op ≠ .stackLoad w n)
+    (hz : ∀ w n, op ≠ .stackZero w n) (hi : ∀ w n i, op ≠ .stackStoreImm w n i) (cd : Nat)
     (src : List LOperand) :
     storeHit? (chainElem op cd src) = none ∧ arrUse? (chainElem op cd src) = none
       ∧ defNames (chainElem op cd src).1 = [regName cd]
@@ -113,6 +114,8 @@ theorem chainElem_reg {op : JasminOp} (hop : opMemB op = true)
   all_goals first
     | exact absurd rfl (hs _ _)
     | exact absurd rfl (hl _ _)
+    | exact absurd rfl (hz _ _)
+    | exact absurd rfl (hi _ _ _)
     | skip
   all_goals
     simp only [chainElem, storeHit?, arrUse?]
@@ -208,7 +211,9 @@ theorem resolvedB_nameAt {nArgs cd s : Nat} (hs : s < cd) :
 /-- **The linear store thread of a body**, from depth `cd` with the thread head at slot `h`
     and `nInv` invariants (slots below `nInv`): every binding's op lies in `opMemB`; an array
     load reads the head or an invariant; an array store writes into the head and its result
-    becomes the head; the body returns the head. -/
+    becomes the head; the body returns the head. A fresh array (`stackZero`) or a
+    constant-index store (`stackStoreImm`) inside the thread is refused: the loop-body alias
+    walk follows `STOREIDX` only (C4-34 E). -/
 def threadLinB (nInv : Nat) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     Com jasminDialect Γ t → (cd h : Nat) → Bool
   | _, _, .ret v, cd, h => slotOf cd v == h
@@ -217,6 +222,7 @@ def threadLinB (nInv : Nat) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
         | .stackLoad _ _ => (firstSlot? cd e.args == some h
               || (firstSlot? cd e.args).any (· < nInv)) && threadLinB nInv body (cd + 1) h
         | .stackStore _ _ => firstSlot? cd e.args == some h && threadLinB nInv body (cd + 1) cd
+        | .stackZero _ _ | .stackStoreImm _ _ _ => false
         | _ => threadLinB nInv body (cd + 1) h
 
 /-- The store-slot list seen from one instruction further. -/
@@ -244,12 +250,13 @@ theorem storeSlots_step {i : LinstrRM} {rest : List LinstrRM} {cd : Nat} {Sl : L
 /-- A register binding passes one step of the thread certificate. -/
 theorem threadCertB_cons_reg (tauC : String → Option String) (nArgs : Nat) (out : String)
     {op : JasminOp} (hop : opMemB op = true) (hs : ∀ w n, op ≠ .stackStore w n)
-    (hl : ∀ w n, op ≠ .stackLoad w n) {cd : Nat} {src : List LOperand}
+    (hl : ∀ w n, op ≠ .stackLoad w n) (hz : ∀ w n, op ≠ .stackZero w n)
+    (hi : ∀ w n i, op ≠ .stackStoreImm w n i) {cd : Nat} {src : List LOperand}
     (hsrc : ∀ o ∈ src, ∃ s, s < cd ∧ o = .reg (nameAt nArgs s)) {Sl : List Nat}
     (hcd : Sl.contains cd = false) (rest : List LinstrRM) (h hE : String) :
     threadCertB tauC nArgs Sl out (chainElem op cd src :: rest) cd h hE
       = threadCertB tauC nArgs Sl out rest (cd + 1) h hE := by
-  obtain ⟨h1, h2, h3, h4⟩ := chainElem_reg hop hs hl cd src
+  obtain ⟨h1, h2, h3, h4⟩ := chainElem_reg hop hs hl hz hi cd src
   have hall : (useNames (chainElem op cd src).1).all (resolvedB nArgs cd) = true := by
     refine List.all_eq_true.mpr fun x hx => ?_
     obtain ⟨o, ho, hx⟩ := h4 x hx
@@ -288,6 +295,8 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
       simp only [threadLinB, Bool.and_eq_true] at hl
       obtain ⟨hop, hl⟩ := hl
       cases op <;> simp only [opMemB, Bool.false_eq_true] at hop
+      case stackZero w n => simp at hl
+      case stackStoreImm w n i => simp at hl
       case stackLoad w n =>
         obtain ⟨a, b, hargs, hfa⟩ := exprArgs_load cd nArgs heq args
         simp only [hfa, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, Option.some.injEq,
@@ -356,7 +365,7 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
           Bool.and_true, beq_self_eq_true, Bool.true_or]
       all_goals
         rw [threadCertB_cons_reg tauC nArgs out (by simp_all [opMemB]) (by simp)
-          (by simp) hsrc (by simpa [storeHit?, chainElem] using hcont)]
+          (by simp) (by simp) (by simp) hsrc (by simpa [storeHit?, chainElem] using hcont)]
         exact threadCertB_of_threadLinB tauC nArgs nInv out hpos hinv htau body (cd + 1) h Sl
           hl (by omega) hSl'
 
@@ -400,6 +409,8 @@ theorem storeOnHeadB_of_threadLinB (nArgs nInv : Nat) (hpos : 0 < nArgs) :
           List.nil_append]
         exact ih2
       cases op <;> simp only [opMemB, Bool.false_eq_true] at hop
+      case stackZero w n => simp at hl
+      case stackStoreImm w n i => simp at hl
       case stackLoad w n =>
         obtain ⟨a, b, hargs, hfa⟩ := exprArgs_load cd nArgs heq args
         simp only [Bool.and_eq_true] at hl
@@ -427,7 +438,8 @@ theorem storeOnHeadB_of_threadLinB (nArgs nInv : Nat) (hpos : 0 < nArgs) :
             Option.isSome_some, List.singleton_append, List.mem_cons]
           exact ih2
       all_goals
-        exact hreg hl (chainElem_reg (by simp_all [opMemB]) (by simp) (by simp) cd _).1
+        exact hreg hl (chainElem_reg (by simp_all [opMemB]) (by simp) (by simp) (by simp)
+          (by simp) cd _).1
 
 /-- The export's name of the returned slot is the returned name. -/
 theorem comRetReg_eq_nameAt (nArgs : Nat) :

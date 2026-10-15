@@ -1482,9 +1482,55 @@ def ResAgrees (nArgs D : Nat) (s : LstateM) {ts : List JasminTy} (ops : List LOp
       ∧ ops = exprArgsHV D nArgs argName (fun _ => none) vs ∧ v = Expr.lookupArgs vs W
 
 /-- The binding `e` is in the stack-memory fragment: the program that binds `e` and
-    returns some register is a `ScalarMemN` program. -/
+    returns some register is a `ScalarMemN` program, or the program that binds `e` and
+    returns some stack array is an `ArrMemN` program. The second form covers an
+    array-valued binding (`stackZero` above all) in a context with no register variable. -/
 def BindMemN {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t) : Prop :=
-  ∃ (w : Nat) (v : Ctxt.Var (t :: Γ) (.reg w)), ScalarMemN (Com.var e (Com.ret v))
+  (∃ (w : Nat) (v : Ctxt.Var (t :: Γ) (.reg w)), ScalarMemN (Com.var e (Com.ret v))) ∨
+    ∃ (w n : Nat) (v : Ctxt.Var (t :: Γ) (.stackArr w n)),
+      JasminLsemMemSourceTieArrUncond.ArrMemN (Com.var e (Com.ret v))
+
+/-- The operation of a binding of the fragment is in the fragment's op set. -/
+theorem BindMemN.opPlain {Γ : Ctxt jasminDialect} {t : JasminTy} {e : Expr jasminDialect Γ t}
+    (he : BindMemN e) : JasminLsemMemFlagArrLoop.OpPlain e.op := by
+  rcases he with ⟨_, _, hmem⟩ | ⟨_, _, _, hmem⟩
+  · exact (scalarMemN_comOpsPlain hmem).1
+  · exact (JasminLsemMemFlagArrLoop.arrMemN_comOpsPlain hmem).1
+
+/-- **The step of a binding of the fragment.** From a state agreeing with `V`, the
+    instruction of the binding runs to a state agreeing with the extended valuation, and
+    writes only the fresh slot `regName d`. -/
+theorem BindMemN.step {Γ : Ctxt jasminDialect} {t : JasminTy} {e : Expr jasminDialect Γ t}
+    (he : BindMemN e) {nArgs d : Nat} {st : LstateM} {V : Ctxt.Valuation Γ}
+    (hlen : Γ.length = d) (harg : nArgs ≤ d) (hag : StoreAgreesM nArgs d st V) :
+    ∃ st', lsemStraightMem (straightOpsMem nArgs (Com.var e (Com.ret Ctxt.Var.here)) d) st
+        = some st' ∧ StoreAgreesM nArgs (d + 1) st' (V.extend (e.denote V)) ∧
+      WriteFrame d st st' := by
+  rcases he with ⟨_, _, hmem⟩ | ⟨_, _, _, hmem⟩
+  · exact lsemStraightMem_straightOps_store hmem hlen harg hag
+  · cases hmem with
+    | reg e he' _ => exact lsemStraightMem_straightOps_store he' hlen harg hag
+    | store heq args _ =>
+        have hstep := lsemStepMem_store (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+          heq args hag
+        refine ⟨_, ?_, StoreAgreesM.stepArr _ hlen harg hag,
+          WriteFrame.stepArr _ (WriteFrame.refl _ _)⟩
+        rw [straightOpsMem_store, lsemStraightMem_cons, hstep]
+        rfl
+    | zero heq args _ =>
+        have hstep := lsemStepMem_zeroOp (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+          heq args
+        refine ⟨_, ?_, StoreAgreesM.stepArr _ hlen harg hag,
+          WriteFrame.stepArr _ (WriteFrame.refl _ _)⟩
+        rw [straightOpsMem_zero, lsemStraightMem_cons, hstep]
+        rfl
+    | storeImm heq args _ =>
+        have hstep := lsemStepMem_storeImmOp (V := V) (st := st) (nArgs := nArgs)
+          (curDepth := d) heq args hag
+        refine ⟨_, ?_, StoreAgreesM.stepArr _ hlen harg hag,
+          WriteFrame.stepArr _ (WriteFrame.refl _ _)⟩
+        rw [straightOpsMem_storeImm, lsemStraightMem_cons, hstep]
+        rfl
 
 /-- **The trip factor of a program at the denotation fuel `fuel`**: a number of times
     that bounds how often a run of the export of `p` executes an instruction of the
@@ -1714,11 +1760,10 @@ theorem exportRSim_var (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
   obtain ⟨rk, hrk, rfl⟩ := h
   simp only [NFProg.denote, Expr.denoteM_option_eq_some, Option.bind_eq_bind,
     Option.bind_some] at hden
-  obtain ⟨w, v0, hmem⟩ := he
-  obtain ⟨st', hrun, hAg, hFr⟩ :=
-    lsemStraightMem_straightOps_store (nArgs := nArgs) hmem hlen harg hag
+  obtain ⟨st', hrun, hAg, hFr⟩ := he.step (nArgs := nArgs) hlen harg hag
   have hplain : PlainLopnBody (bindOps nArgs e d) :=
-    straightOpsMem_plain nArgs _ (scalarMemN_comOpsPlain hmem) d
+    straightOpsMem_plain nArgs (Com.var e (Com.ret Ctxt.Var.here))
+      (show JasminLsemMemFlagArrLoop.OpPlain e.op ∧ True from ⟨he.opPlain, trivial⟩) d
   obtain ⟨i, hi⟩ := bindOps_eq_singleton nArgs e d
   have hrun' : lsemStraightMem [i] m.prog.base = some st' := hi ▸ hrun
   have hstep : lsemStepMem i m.prog.base = some st' := by

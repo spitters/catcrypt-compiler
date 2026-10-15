@@ -991,13 +991,15 @@ theorem catCallRd_name {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
         exact Or.inl hf
       · obtain ⟨x, -, h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨y, -, h⟩ := Option.bind_eq_some_iff.mp h
-        exact Or.inr (Or.inr (quietCall_iff.mpr (scalarCatExpr_name h)))
+        exact Or.inr (Or.inr (quietCall_of_mem (scalarCatExpr_name h)))
     · split at h
       · rename_i hf
         exact Or.inr (Or.inl hf)
       · cases h
-    · exact Or.inr (Or.inr (quietCall_iff.mpr (selectCat_name h)))
-    · exact Or.inr (Or.inr (quietCall_iff.mpr (selectCat_name h)))
+    · exact Or.inr (Or.inr (quietCall_of_mem (selectCat_name h)))
+    · exact Or.inr (Or.inr (quietCall_of_mem (selectCat_name h)))
+    · obtain ⟨rfl, -⟩ := lenCat_kind (P := CatLeakParams.owned) noVT_owned h
+      exact Or.inr (Or.inr (by decide))
     · cases h
   unfold catCallRd at h
   split at h
@@ -1028,8 +1030,13 @@ theorem catCallRd_name {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
       · exact pinRes_elim (M := fun _ _ => f = "index" ∨ f = "array_update" ∨
           quietCall f = true) (fun _ ws e _ he => hcall ws e he) (fun _ _ _ _ ih => ih) _ _ _ h₀
   next =>
-    exact Or.inr (Or.inr (quietCall_iff.mpr
-      (scalarRes_quiet (P := CatLeakParams.owned) noVT_owned h).2))
+    split at h
+    next h₁ =>
+      exact Or.inr (Or.inr (quietCall_of_mem
+        (scalarRes_quiet (P := CatLeakParams.owned) noVT_owned h₁).2))
+    next =>
+      obtain ⟨-, rfl⟩ := arrLitRes_quiet (P := CatLeakParams.owned) noVT_owned h
+      exact Or.inr (Or.inr (by decide))
 
 /-- The events of an operation `catOp` translates have no variable-time leaf call of a tagged
     field head. -/
@@ -1060,6 +1067,7 @@ theorem stripField_opLeak_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDial
     | bin o w => intro g hg; cases o <;> cases hg
     | constBit b => intro g hg; cases hg
     | constUnit => intro g hg; cases hg
+    | arrRepeat n t => intro g hg; cases hg
     | _ => cases h
   unfold opLeak
   split
@@ -1179,6 +1187,7 @@ theorem nfKind_ne_vtCall_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDiale
   | bin o w => intro _ _ _ g hg; cases o <;> cases hg
   | constBit b => intro _ _ _ g hg; cases hg
   | constUnit => intro _ _ _ g hg; cases hg
+  | arrRepeat n t => intro _ _ _ g hg; cases hg
   | _ => intro _ _ h; cases h
 
 /-- The events of an operation `catOp` translates are kept by `stripDecl D`. -/

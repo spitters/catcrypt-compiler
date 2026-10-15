@@ -58,7 +58,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData isCall)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (scalarMemNB
-  scalarMemNB_sound)
+  scalarMemNB_sound arrMemNB arrMemNB_sound opMemB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (AbiValOf AbiEntryM
   storeAgreesM_of_abi)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout)
@@ -74,21 +74,21 @@ def regVar? : (Γ : Ctxt jasminDialect) → Option (Σ w : Nat, Ctxt.Var Γ (Jas
   | .reg w :: _ => some ⟨w, .here⟩
   | _ :: Γ => (regVar? Γ).map fun p => ⟨p.1, .there p.2⟩
 
-/-- A Boolean test of `BindMemN`: the program that binds `e` and returns the first register
-    variable in scope passes `scalarMemNB`. -/
+/-- A Boolean test of `BindMemN`: the operation of the binding is in `opMemB`. -/
 def bindMemNB {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t) : Bool :=
-  match regVar? (t :: Γ) with
-  | some p => scalarMemNB (Com.var e (Com.ret p.2))
-  | none => false
+  opMemB e.op
 
-/-- The test `bindMemNB` is sound for `BindMemN`. -/
+/-- The test `bindMemNB` is sound for `BindMemN`: a binding at a register type is a
+    `ScalarMemN` program with the return of its own value, and one at an array type an
+    `ArrMemN` program. -/
 theorem bindMemNB_sound {Γ : Ctxt jasminDialect} {t : JasminTy} {e : Expr jasminDialect Γ t}
     (h : bindMemNB e = true) : BindMemN e := by
+  obtain ⟨op, heq, args⟩ := e
   unfold bindMemNB at h
-  split at h
-  · rename_i p _
-    exact ⟨p.1, p.2, scalarMemNB_sound _ h⟩
-  · cases h
+  cases op <;> simp only [opMemB, Bool.false_eq_true, decide_eq_true_eq] at h <;> subst heq
+  all_goals first
+    | exact Or.inl ⟨_, .here, scalarMemNB_sound _ (by simp [scalarMemNB, opMemB, *])⟩
+    | exact Or.inr ⟨_, _, .here, arrMemNB_sound _ (by simp [arrMemNB, opMemB, *])⟩
 
 /-- A Boolean test of `RegionExportable`, by the same recursion. -/
 def regionExportableB : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
@@ -401,6 +401,11 @@ theorem spFreeB_opToLinstrR (op : JasminOp) (hop : OpPlain op) {dst : String}
       · obtain rfl := List.mem_singleton.mp ho
         exact hs _ (by simp)
     · exact spFreeB_lopn hd hs
+  case stackZero w k =>
+    simp only [opToLinstrR]
+    refine spFreeB_lopn hd fun o ho => ?_
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+    rcases ho with rfl | rfl <;> rfl
   all_goals first
     | exact spFreeB_lopn hd hs
     | exact spFreeB_lopn hd fun o ho => by
@@ -424,8 +429,7 @@ theorem spFreeB_shiftLinstr (mn : String) (w : Nat) {dst : String} {s : LOperand
 theorem bindOps_spFree (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
     {e : Expr jasminDialect Γ t} (he : BindMemN e) (d : Nat) :
     ∀ i ∈ bindOps nArgs e d, spFreeB "RSP" i.fst = true := by
-  obtain ⟨w, v, h⟩ := he
-  have hop : OpPlain e.op := (scalarMemN_comOpsPlain h).1
+  have hop : OpPlain e.op := he.opPlain
   have hs := opSpB_exprArgs (curDepth := d) (nArgs := nArgs) e
   intro i hi
   simp only [bindOps, straightOpsMem, List.mem_cons, List.not_mem_nil, or_false] at hi

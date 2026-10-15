@@ -162,15 +162,16 @@ end Generic
 /-- The operations of `catCryptDialect` whose blocks under `toJBlockD` have their operations
     in `opMemB` and their result types of positive width: the word arithmetic, the carries,
     the equality, the selection of words, the dynamic memory accesses, the bit constants, the
-    negation, conjunction, disjunction, exclusive or and equality of bits, a constant, an
-    immediate shift by less than `2 ^ w`, each with a result type that `catToJasmin` maps to
+    negation, conjunction, disjunction, exclusive or and equality of bits, a fresh zero memref
+    and a constant-index store, a constant, an immediate shift by less than `2 ^ w`, each with
+    a result type that `catToJasmin` maps to
     a type of positive width. -/
 def catMemB (op : CatCryptOp) : Bool :=
   (match op with
     | .bvAdd _ | .bvSub _ | .bvMul _ | .bvAnd _ | .bvOr _ | .bvXor _ | .bvMulHi _
     | .bvShiftLV _ | .bvShiftRV _ | .bvAddCarryLo _ | .bvAddCarryHi _ | .bvEq _
-    | .memrefGetDyn _ | .memrefSetDyn _ | .not | .and | .or | .xor | .eqBit | .constBit _
-    | .ite (.sword _) => true
+    | .memrefGetDyn _ | .memrefSetDyn _ | .memrefZero _ | .memrefSet _ _ | .not | .and | .or
+    | .xor | .eqBit | .constBit _ | .ite (.sword _) => true
     | .bvConst w _ => decide (0 < w)
     | .bvShiftL w k | .bvShiftR w k => decide (k < 2 ^ w)
     | _ => false) &&
@@ -322,6 +323,13 @@ theorem catCall?_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {
     · cases h
   · exact selectCat_mem h
   · exact selectCat_mem h
+  · unfold lenCat at h
+    split at h
+    · split at h
+      · cases h
+        rfl
+      · cases h
+    · cases h
   · cases h
 
 theorem shiftImm?_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
@@ -528,6 +536,41 @@ theorem scalarRes?_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
   · exact scalarRes2_mem h
   · cases h
 
+theorem storeChain_mem {n : Nat} :
+    ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (m : Ctxt.Var Δ (.memref n)) (idx : Fin k → Fin n)
+      (ρ : Fin k → Rd Δ (.word 64)), OpResMem (storeChain k m idx ρ)
+  | 0, _, _, _, _ => trivial
+  | k + 1, _, m, idx, ρ => by
+      unfold storeChain
+      split
+      · exact ⟨rfl, storeChain_mem k _ _ _⟩
+      · exact ⟨rfl, rfl, storeChain_mem k _ _ _⟩
+
+theorem fillRes_mem {Δ : Ctxt catCryptDialect} (n k : Nat) (idx : Fin k → Fin n)
+    (ρ : Fin k → Rd Δ (.word 64)) : OpResMem (fillRes n k idx ρ) :=
+  ⟨rfl, storeChain_mem k _ _ _⟩
+
+theorem repeatRes_mem {Δ : Ctxt catCryptDialect} (n : Nat) (r : Rd Δ (.word 64)) :
+    OpResMem (repeatRes n r) := by
+  unfold repeatRes
+  split
+  · exact (rfl : catMemB (.memrefZero n) = true)
+  · exact fillRes_mem _ _ _ _
+
+theorem arrLitRes_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
+    {rs : HVector (fun t => Rd Δ t) as} {res : OpRes Δ r} (h : arrLitRes? f r rs = some res) :
+    OpResMem res := by
+  unfold arrLitRes? at h
+  split at h
+  · split at h
+    · obtain ⟨l, -, h⟩ := Option.bind_eq_some_iff.mp h
+      split at h
+      · cases h
+        exact fillRes_mem _ _ _ _
+      · cases h
+    · cases h
+  · cases h
+
 theorem catCallRd_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} {r : NfTy}
     {rs : HVector (fun t => Rd Δ t) as} {res : OpRes Δ r}
     (h : catCallRd f as r rs = some res) : OpResMem res := by
@@ -536,7 +579,11 @@ theorem catCallRd_mem {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy} 
   · rename_i res' h0
     cases h
     exact catCallRd0_mem h0
-  · exact scalarRes?_mem h
+  · split at h
+    · rename_i res' h1
+      cases h
+      exact scalarRes?_mem h1
+    · exact arrLitRes_mem h
 
 theorem tripRes_mem {Δ : Ctxt catCryptDialect} (r : Rd Δ (.word 64)) :
     OpResMem (tripRes r) := by
@@ -606,6 +653,17 @@ theorem catOp_mem {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ
       cases h
       exact (rfl : catMemB (.constBit b) = true)
   | constUnit => exact absurd rfl hu
+  | arrRepeat n t =>
+      rcases args with _ | ⟨a, _ | _⟩
+      cases t
+      all_goals try cases h
+      rename_i w
+      by_cases hw : w = 64
+      · subst hw
+        change some (repeatRes n (σ a)) = some res at h
+        cases h
+        exact repeatRes_mem n _
+      · simp [catOp, hw] at h
   | _ => cases h
 
 /-- The bindings `emitRes` gives a translation with operations in `catMemB`, in front of a

@@ -150,6 +150,34 @@ theorem straightLeakF_straightOps_arr (Pj : JLeakParams) {w n : Nat} {Γ : Ctxt 
         simp [memOpB, opToLinstrR, instrLeakB, opLeakF, idxVal_of_getW hidx, siteOf,
           addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind]
         exact Or.inl rfl
+  | zero heq args hbody ih =>
+      intro nArgs d st V hlen harg hagree
+      have hstep := lsemStepMem_zeroOp (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+        heq args
+      have hagree' := StoreAgreesM.stepArr
+        ((⟨JasminOp.stackZero _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      rw [straightOpsMem_zero, straightLeakF_cons_of_step hstep, comCtLeak_var,
+        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
+      convert List.nil_append _ using 2
+      simp only [opToLinstrR]
+      exact instrLeakB_quiet _ _ _ _ _ (by simp [opLeakF])
+  | storeImm heq args hbody ih =>
+      intro nArgs d st V hlen harg hagree
+      have hstep := lsemStepMem_storeImmOp (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+        heq args hagree
+      have hagree' := StoreAgreesM.stepArr
+        ((⟨JasminOp.stackStoreImm _ _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      rw [straightOpsMem_storeImm, straightLeakF_cons_of_step hstep, comCtLeak_var,
+        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
+      convert List.nil_append _ using 2
+      simp only [opToLinstrR]
+      refine instrLeakB_quiet _ _ _ _ _ fun o ho => ?_
+      rcases List.mem_append.mp ho with h | h
+      · exact exprArgs_leak _ _ _ _ o h
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
 
 /-! ## 2. Renaming -/
 

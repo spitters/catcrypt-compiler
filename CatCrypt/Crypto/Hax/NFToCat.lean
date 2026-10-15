@@ -339,10 +339,17 @@ def selectCat {Δ : Ctxt catCryptDialect} (f : String) (tc ta tb : NfTy)
         ⟨.ite (.sword 64), rfl, .cons c (.cons x (.cons y .nil))⟩
   else none
 
+/-- The expression of the call `len` on an array of `n` `64`-bit words: the constant `n`. -/
+def lenCat {Δ : Ctxt catCryptDialect} (f : String) :
+    NfTy → Option (Expr catCryptDialect Δ (.sword 64))
+  | .arr n (.word 64) =>
+      if f = "len" then some ⟨.bvConst 64 (BitVec.ofNat 64 n), rfl, .nil⟩ else none
+  | _ => none
+
 /-- The expression of a call `f` of the `u64` table on the renamed arguments `args`: a scalar
     call of `hax64NFScalar`, `index` of an array of `64`-bit words, `array_update` of an
     array of `64`-bit words, `select` of two values of types whose values encode as
-    integers. -/
+    integers, `len` of an array of `64`-bit words (`lenCat`). -/
 def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
     (as : List NfTy) → (r : NfTy) → HVector (fun t => Var Δ t) (as.map catTy) →
       Option (Expr catCryptDialect Δ (catTy r))
@@ -363,6 +370,7 @@ def catCall? {Δ : Ctxt catCryptDialect} (f : String) :
       else none
   | [tc, ta, tb], .word 64, args => selectCat f tc ta tb args
   | [tc, ta, tb], .int, args => selectCat f tc ta tb args
+  | [ta], .word 64, _ => lenCat f ta
   | _, _, _ => none
 
 /-! ## 4. Readings and the translation of an operation -/
@@ -828,13 +836,65 @@ def scalarRes? {Δ : Ctxt catCryptDialect} (f : String) :
   | [ta], r, .cons ra .nil => scalarRes1 f ta ra r
   | _, _, _ => none
 
-/-- **The translation of a call** of the `u64` table on readings: `catCallRd0`, and else the
-    scalar table by `scalarRes?`. -/
+/-- The stores of `k` words into the memref `m` of length `n`: the word read by `ρ j` at the
+    index `idx j`, for `j = 0, …, k - 1` in turn, each by a constant-index `memrefSet`
+    behind a `bvConst` binding when the reading is a literal; the result is the last memref. -/
+def storeChain {n : Nat} : (k : Nat) → {Δ : Ctxt catCryptDialect} → Var Δ (.memref n) →
+    (Fin k → Fin n) → (Fin k → Rd Δ (.word 64)) → OpRes Δ (.arr n (.word 64))
+  | 0, _, m, _, _ => .rd (.var m)
+  | k + 1, _, m, idx, ρ =>
+      match ρ 0 with
+      | .var x => .bind (.memref n) ⟨.memrefSet n (idx 0), rfl, .cons m (.cons x .nil)⟩
+          (storeChain k .here (fun j => idx j.succ) (fun j => (ρ j.succ).wk))
+      | .lit c _ => .bind (.sword 64) ⟨.bvConst 64 (BitVec.ofNat 64 c), rfl, .nil⟩
+          (.bind (.memref n) ⟨.memrefSet n (idx 0), rfl, .cons m.there (.cons .here .nil)⟩
+            (storeChain k .here (fun j => idx j.succ) (fun j => (ρ j.succ).wk.wk)))
+
+/-- A memref of length `n` built from a fresh zero memref (`memrefZero`) by the stores
+    `storeChain` of the words read by `ρ` at the indices `idx`. -/
+def fillRes {Δ : Ctxt catCryptDialect} (n k : Nat) (idx : Fin k → Fin n)
+    (ρ : Fin k → Rd Δ (.word 64)) : OpRes Δ (.arr n (.word 64)) :=
+  .bind (.memref n) ⟨.memrefZero n, rfl, .nil⟩ (storeChain k .here idx (fun j => (ρ j).wk))
+
+/-- The translation of `arrRepeat n` on a reading of a `64`-bit word: the fresh zero memref
+    on the literal `0`, and otherwise the zero memref with the word stored at every index
+    (`fillRes`). -/
+def repeatRes {Δ : Ctxt catCryptDialect} (n : Nat) (r : Rd Δ (.word 64)) :
+    OpRes Δ (.arr n (.word 64)) :=
+  match r with
+  | .lit 0 _ => .expr ⟨.memrefZero n, rfl, .nil⟩
+  | r => fillRes n n id (fun _ => r)
+
+/-- The readings of a vector of readings of types whose values encode as integers, as
+    readings of `64`-bit words (`Rd.toWord64`). -/
+def rdWords {Δ : Ctxt catCryptDialect} :
+    {as : List NfTy} → HVector (fun t => Rd Δ t) as → Option (List (Rd Δ (.word 64)))
+  | [], .nil => some []
+  | t :: _, .cons r rs => (Rd.toWord64 t r).bind fun r' => (rdWords rs).map (r' :: ·)
+
+/-- The translation of the call `array_lit` on readings of `n` `64`-bit words at the result
+    type of an array of `n` `64`-bit words: the zero memref with the `j`-th word stored at
+    index `j` (`fillRes`). -/
+def arrLitRes? {Δ : Ctxt catCryptDialect} (f : String) {as : List NfTy} :
+    (r : NfTy) → HVector (fun t => Rd Δ t) as → Option (OpRes Δ r)
+  | .arr n (.word 64), rs =>
+      if f = "array_lit" then
+        (rdWords rs).bind fun l =>
+          if h : l.length = n then some (fillRes n l.length (Fin.cast h) (fun j => l[j]))
+          else none
+      else none
+  | _, _ => none
+
+/-- **The translation of a call** of the `u64` table on readings: `catCallRd0`, else the
+    scalar table by `scalarRes?`, else the array construction `arrLitRes?`. -/
 def catCallRd {Δ : Ctxt catCryptDialect} (f : String) (as : List NfTy) (r : NfTy)
     (rs : HVector (fun t => Rd Δ t) as) : Option (OpRes Δ r) :=
   match catCallRd0 f as r rs with
   | some res => some res
-  | none => scalarRes? f as r rs
+  | none =>
+    match scalarRes? f as r rs with
+    | some res => some res
+    | none => arrLitRes? f r rs
 
 /-- The translation of a trip count read by `r`: the reading of a variable, and the binding
     of a literal by `bvConst`, so that the count of a counted loop is a variable. -/
@@ -924,6 +984,7 @@ def catOp{Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
       | .lit 0 _ => (Rd.toCount t (σ args.tail.head)).map tripRes
       | rlo => (Rd.toCount t (σ args.tail.head)).bind (tripSub rlo)
   | .boundInt t, args => (Rd.toCount t (σ args.head)).map (.rd ∘ Rd.ofWord)
+  | .arrRepeat n (.word 64), args => some (repeatRes n (σ args.head))
   | _, _ => none
 
 /-! ## 5. The operations simulate -/
@@ -1062,9 +1123,10 @@ theorem dec_arr_ofFn {n : Nat} {g : Fin n → Int} {y : Fin n → BitVec 64}
   simpa using this
 
 /-- The names of the calls the fragment translates: the scalar calls `hax64NFScalar`,
-    `index` and `array_update`. -/
+    `index`, `array_update`, `len` and `array_lit`. -/
 def CatName (f : String) : Prop :=
-  f ∈ ImpToNF.hax64NFScalar () ∨ f = "index" ∨ f = "array_update"
+  f ∈ ImpToNF.hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨ f = "len" ∨
+    f = "array_lit"
 
 /-- The table `bi` agrees with the `u64` table with `select` at the names of the calls the
     fragment translates. -/
@@ -1224,7 +1286,7 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     split at h
     · rename_i hf
       subst hf
-      have hv := hbi.base _ _ _ (Or.inr (Or.inr rfl)) (by decide) hbv
+      have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inl rfl))) (by decide) hbv
       obtain ⟨⟨n, m⟩, ha, h⟩ := Option.bind_eq_some_iff.mp h
       dsimp only at h
       split at h
@@ -1258,6 +1320,29 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     rw [selectCat_sound hbi W h hx hbv] at hyv
     change y = (((e.denote W : BitVec 64)).toNat : Int)
     exact (_root_.Hax.Value.int.inj hyv).symm
+  · rename_i ta args
+    rcases xs with _ | ⟨x₁, _ | _⟩
+    change (bi f [ImpToNF.enc ta x₁]).bind (ImpToNF.dec (.word 64)) = some y at hy
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hyv := ImpToNF.dec_sound (.word 64) v y hdv
+    unfold lenCat at h
+    split at h
+    · rename_i n
+      split at h
+      · rename_i hf
+        subst hf
+        cases h
+        have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inl rfl)))) (by decide) hbv
+        change _root_.Hax.hax64Builtins "len"
+          [.array (List.ofFn fun k => ImpToNF.enc (.word 64) (x₁ k))] = some v at hv
+        rw [_root_.Hax.hax64Builtins_arrayLen, List.length_ofFn] at hv
+        cases hv
+        change _root_.Hax.Value.int _ = _root_.Hax.Value.int ((y : BitVec 64).toNat : Int) at hyv
+        have hn : n = (y : BitVec 64).toNat := by exact_mod_cast _root_.Hax.Value.int.inj hyv
+        change y = BitVec.ofNat 64 n
+        rw [hn, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+      · cases h
+    · cases h
   · cases h
 
 /-! ### Readings relate values -/
@@ -2231,6 +2316,151 @@ theorem scalarRes_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
   | [], .nil, _, _, _, h => by cases h
   | _ :: _ :: _ :: _, .cons _ (.cons _ (.cons _ _)), _, _, _, h => by cases h
 
+/-- **The stores of `storeChain` simulate.** When every word read by `ρ j` is the value of
+    `y` at `idx j`, and `y` agrees with the memref `m` at every index no store writes, the
+    result of the stores is related to `y`. -/
+theorem storeChain_rel {n : Nat} : ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (W : Valuation Δ)
+    (m : Var Δ (.memref n)) (idx : Fin k → Fin n) (ρ : Fin k → Rd Δ (.word 64))
+    (y : Fin n → BitVec 64),
+    (∀ j, RdRel W (.word 64) (y (idx j)) (ρ j)) →
+    (∀ i, (∀ j, idx j ≠ i) → (y i).toNat = ((m.lookup W : Fin n → BitVec 64) i).toNat) →
+    OpResRel W (.arr n (.word 64)) y (storeChain k m idx ρ)
+  | 0, _, W, m, _, _, y, _, h2 => fun i => h2 i fun j => j.elim0
+  | k + 1, _, W, m, idx, ρ, y, h1, h2 => by
+      have h10 := h1 0
+      unfold storeChain
+      split
+      · rename_i x hρ
+        rw [hρ] at h10
+        change y (idx 0) = x.lookup W at h10
+        refine storeChain_rel k _ .here _ _ y (fun j => rdRel_wk W _ _ _ (h1 j.succ)) ?_
+        intro i hi
+        change (y i).toNat =
+          ((if i = idx 0 then x.lookup W else (m.lookup W : Fin n → BitVec 64) i :
+            BitVec 64)).toNat
+        by_cases hi0 : i = idx 0
+        · rw [if_pos hi0, hi0, h10]
+        · rw [if_neg hi0]
+          exact h2 i fun j => Fin.cases (fun h => hi0 h.symm) (fun j' => hi j') j
+      · rename_i c hc hρ
+        rw [hρ] at h10
+        obtain ⟨h10, hc64⟩ := h10
+        change some ((y (idx 0)).toNat : Int) = some (c : Int) at h10
+        have hyc : (y (idx 0)).toNat = c := by exact_mod_cast Option.some.inj h10
+        refine storeChain_rel k _ .here _ _ y
+          (fun j => rdRel_wk _ _ _ _ (rdRel_wk W _ _ _ (h1 j.succ))) ?_
+        intro i hi
+        change (y i).toNat =
+          ((if i = idx 0 then BitVec.ofNat 64 c else (m.lookup W : Fin n → BitVec 64) i :
+            BitVec 64)).toNat
+        by_cases hi0 : i = idx 0
+        · rw [if_pos hi0, hi0, hyc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hc64]
+        · rw [if_neg hi0]
+          exact h2 i fun j => Fin.cases (fun h => hi0 h.symm) (fun j' => hi j') j
+
+/-- **A memref filled from zero simulates.** When every word read by `ρ j` is the value of
+    `y` at `idx j`, and `y` is `0` at every index no store writes, `fillRes` is related to
+    `y`. -/
+theorem fillRes_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (n k : Nat)
+    (idx : Fin k → Fin n) (ρ : Fin k → Rd Δ (.word 64)) (y : Fin n → BitVec 64)
+    (h1 : ∀ j, RdRel W (.word 64) (y (idx j)) (ρ j))
+    (h2 : ∀ i, (∀ j, idx j ≠ i) → (y i).toNat = 0) :
+    OpResRel W (.arr n (.word 64)) y (fillRes n k idx ρ) :=
+  storeChain_rel k _ .here idx _ y (fun j => rdRel_wk W _ _ _ (h1 j)) h2
+
+/-- **`arrRepeat` simulates.** The translation `repeatRes` of a reading of a word `x` is
+    related to the array of copies of `x`. -/
+theorem repeatRes_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (n : Nat)
+    {r : Rd Δ (.word 64)} {x : BitVec 64} (hx : RdRel W (.word 64) x r) :
+    OpResRel W (.arr n (.word 64)) (fun _ => x) (repeatRes n r) := by
+  unfold repeatRes
+  split
+  · rename_i h0
+    obtain ⟨hx0, -⟩ := hx
+    change some (x.toNat : Int) = some ((0 : Nat) : Int) at hx0
+    intro i
+    change x.toNat = (0 : BitVec 64).toNat
+    exact_mod_cast Option.some.inj hx0
+  · exact fillRes_rel W n n id _ _ (fun _ => hx) fun i hi => absurd rfl (hi i)
+
+/-- An array of `n` `64`-bit words a list of values decodes as has at index `j` the integer of
+    its `j`-th element. -/
+theorem dec_arr_word_get {n : Nat} {vs : List _root_.Hax.Value}
+    {y : (NfTy.arr n (.word 64)).denote} (h : ImpToNF.dec (.arr n (.word 64)) (.array vs) = some y)
+    (j : Fin n) : vs[j.1]? = some (.int (((y j : BitVec 64)).toNat : Int)) := by
+  have he := ImpToNF.dec_sound _ _ _ h
+  change _root_.Hax.Value.array vs =
+    _root_.Hax.Value.array (List.ofFn fun k => ImpToNF.enc (.word 64) (y k)) at he
+  simp only [_root_.Hax.Value.array.injEq] at he
+  subst he
+  simp [ImpToNF.enc]
+
+/-- The readings `rdWords` gives relate, as `64`-bit words, the words whose integers are the
+    encodings of the source values. -/
+theorem rdWords_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) :
+    ∀ {as : List NfTy} (rs : HVector (fun t => Rd Δ t) as) (xs : Valuation (d := nfDialect) as)
+      (l : List (Rd Δ (.word 64))), rdWords rs = some l → RdRelL W as xs rs →
+      ∀ (j : Nat) (hj : j < l.length) (z : BitVec 64),
+        (ImpToNF.encAll as xs)[j]? = some (.int (z.toNat : Int)) → RdRel W (.word 64) z l[j]
+  | [], .nil, .nil, l, h, _, j, hj, z, _ => by
+      cases h
+      exact absurd hj (Nat.not_lt_zero _)
+  | t :: _, .cons r rs, .cons x xs, l, h, hx, j, hj, z, hz => by
+      obtain ⟨r', hr', h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨l', hl', rfl⟩ := Option.map_eq_some_iff.mp h
+      cases j with
+      | zero =>
+          change some (ImpToNF.enc t x) = some _ at hz
+          have hz' := Option.some.inj hz
+          change RdRel W (.word 64) z r'
+          cases r with
+          | var w =>
+              obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp hr'
+              rw [asWord_enc hw' W hx.1] at hz'
+              have hzz : z.toNat = (w'.lookup W).toNat := by
+                exact_mod_cast (_root_.Hax.Value.int.inj hz').symm
+              exact (BitVec.eq_of_toNat_eq hzz)
+          | lit k hk =>
+              cases hr'
+              obtain ⟨hk1, hk2⟩ := hx.1
+              rw [enc_of_toInt hk hk1] at hz'
+              refine ⟨?_, hk2⟩
+              change some (z.toNat : Int) = some (k : Int)
+              rw [_root_.Hax.Value.int.inj hz']
+      | succ j =>
+          change (ImpToNF.encAll _ xs)[j]? = _ at hz
+          exact rdWords_rel W rs xs l' hl' hx.2 j (by simpa using hj) z hz
+
+/-- **`array_lit` simulates.** Under `SubTable bi`, the translation `arrLitRes?` of the call
+    on readings related to the arguments is related to the value of the call. -/
+theorem arrLitRes_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
+    (rs : HVector (fun t => Rd Δ t) as) (res : OpRes Δ r) (xs : Valuation (d := nfDialect) as)
+    (y : r.denote) (h : arrLitRes? f r rs = some res) (hx : RdRelL W as xs rs)
+    (hy : (bi f (ImpToNF.encAll as xs)).bind (ImpToNF.dec r) = some y) :
+    OpResRel W r y res := by
+  unfold arrLitRes? at h
+  split at h
+  · split at h
+    · rename_i hf
+      subst hf
+      obtain ⟨l, hl, h⟩ := Option.bind_eq_some_iff.mp h
+      split at h
+      · rename_i hln
+        cases h
+        obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+        have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inr rfl)))) (by decide) hbv
+        change (_root_.Hax.hax64WordOps "array_lit" (ImpToNF.encAll as xs) <|>
+          _root_.Hax.widthArrayOps "array_lit" (ImpToNF.encAll as xs)) = some v at hv
+        rw [_root_.Hax.hax64WordOps_arrayLit, ImpToNF.widthArrayOps_arrayLit] at hv
+        cases hv
+        refine fillRes_rel W _ l.length (Fin.cast hln) _ y (fun j => ?_)
+          fun i hi => absurd (Fin.ext rfl) (hi (Fin.cast hln.symm i))
+        exact rdWords_rel W rs xs l hl hx j.1 j.2 _ (dec_arr_word_get hdv (Fin.cast hln j))
+      · cases h
+    · cases h
+  · cases h
+
 /-- **A call on readings simulates.** -/
 theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (f : String) (as : List NfTy) (r : NfTy)
@@ -2243,7 +2473,12 @@ theorem catCallRd_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
   next res₀ h₀ =>
     cases h
     exact catCallRd0_sound hbi W f as r rs res xs y h₀ hx hy
-  next => exact scalarRes_sound hbi W f as r rs res xs y h hx hy
+  next =>
+    split at h
+    next res₁ h₁ =>
+      cases h
+      exact scalarRes_sound hbi W f as r rs res xs y h₁ hx hy
+    next => exact arrLitRes_sound hbi W f as r rs res xs y h hx hy
 
 /-- The selection of the sum `a + ~~~b + 1` on its carry, and of `0` otherwise, is the word of
     `a - b` truncated at `0`. -/
@@ -2551,6 +2786,20 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
         simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
         omega
       · cases h
+  | arrRepeat n t =>
+      intro args res y h hy
+      rcases args with _ | ⟨a, _ | _⟩
+      cases t
+      all_goals try cases h
+      rename_i w
+      by_cases hw : w = 64
+      · subst hw
+        change some (repeatRes n (σ a)) = some res at h
+        cases h
+        change some (fun _ => a.lookup V) = some y at hy
+        cases hy
+        exact repeatRes_rel W n (hag _ a)
+      · simp [catOp, hw] at h
   | _ =>
       intro args res y h hy
       cases h

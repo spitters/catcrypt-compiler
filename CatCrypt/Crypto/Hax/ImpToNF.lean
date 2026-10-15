@@ -4379,12 +4379,18 @@ def hax64NFWordTy : NfTy → Bool
 
 /-- The call typing of `u64` code on arrays of `64`-bit words of a fixed length `n`, at an
     index of a `hax64NFWordTy` type: `index` of an array is a `64`-bit word; `array_update` of
-    an array with a `64`-bit word is an array of the same length. -/
+    an array with a `64`-bit word is an array of the same length; `len` of an array of a
+    length below `2 ^ 64` is a `64`-bit word; `array_lit` of `k` `64`-bit words is an array of
+    length `k`. -/
 def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
   match f, as with
   | "index", [.arr _ (.word 64), ti] => if hax64NFWordTy ti then some (.word 64) else none
   | "array_update", [.arr n (.word 64), ti, .word 64] =>
       if hax64NFWordTy ti then some (.arr n (.word 64)) else none
+  | "len", [.arr n (.word 64)] => if n < 2 ^ 64 then some (.word 64) else none
+  | "array_lit", as =>
+      if as = List.replicate as.length (.word 64) then some (.arr as.length (.word 64))
+      else none
   | _, _ => none
 
 /-- The result type of `select` on two values of `hax64NFWordTy` types: a `64`-bit word when
@@ -5060,28 +5066,40 @@ theorem dec_slice_int : ∀ (vs : List Value), (∀ v ∈ vs, ∃ z : Int, v = .
         rw [List.map_cons, ← he]
         rfl
 
+/-- The calls `hax64SigOfArr` types are `index`, `array_update`, `len` and `array_lit`. -/
+theorem hax64SigOfArr_name {f : String} {as : List NfTy} {r : NfTy}
+    (h : hax64SigOfArr f as = some r) :
+    f = "index" ∨ f = "array_update" ∨ f = "len" ∨ f = "array_lit" := by
+  unfold hax64SigOfArr at h
+  split at h
+  · exact Or.inl rfl
+  · exact Or.inr (Or.inl rfl)
+  · exact Or.inr (Or.inr (Or.inl rfl))
+  · exact Or.inr (Or.inr (Or.inr rfl))
+  · cases h
+
 /-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index`,
-    `array_update` and the tagged field calls. -/
+    `array_update`, `len`, `array_lit` and the tagged field calls. -/
 theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
     (h : hax64SigOf f as = some r) :
-    f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨
-      (_root_.Hax.FieldTag.fieldTag? f).isSome := by
+    f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨ f = "len" ∨
+      f = "array_lit" ∨ (_root_.Hax.FieldTag.fieldTag? f).isSome := by
   unfold hax64SigOf at h
   split at h
   · rename_i hs
     obtain ⟨m, p, hmp, -, -⟩ := fieldTagSig_some hs
-    exact Or.inr (Or.inr (Or.inr (by rw [hmp]; rfl)))
+    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by rw [hmp]; rfl)))))
   · split at h
     · rename_i hs
       exact Or.inl (hax64ScalarSig_name hs)
     · split at h
       · exact Or.inr (Or.inl rfl)
       · exact Or.inr (Or.inr (Or.inl rfl))
-      · unfold hax64SigOfArr at h
-        split at h
+      · rcases hax64SigOfArr_name h with rfl | rfl | rfl | rfl
         · exact Or.inr (Or.inl rfl)
         · exact Or.inr (Or.inr (Or.inl rfl))
-        · cases h
+        · exact Or.inr (Or.inr (Or.inr (Or.inl rfl)))
+        · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))
 
 /-- No scalar call of `u64` code has a tagged field head. -/
 theorem fieldTag?_of_mem_hax64NFScalar {f : String} (hf : f ∈ hax64NFScalar ()) :
@@ -5110,11 +5128,9 @@ theorem hax64SigOf_eq_none_of_fieldModOk {f : String} {m : _root_.Hax.FieldTag.F
   · split
     · exact absurd rfl (hne _ rfl)
     · exact absurd rfl (hne _ rfl)
-    · unfold hax64SigOfArr
-      split
-      · exact absurd rfl (hne _ rfl)
-      · exact absurd rfl (hne _ rfl)
+    · rcases hq : hax64SigOfArr f as with _ | r
       · rfl
+      · rcases hax64SigOfArr_name hq with rfl | rfl | rfl | rfl <;> exact absurd rfl (hne _ rfl)
 
 /-- A list of `n` integers decodes as an integer array of length `n`. -/
 theorem dec_arr_int {n : Nat} (vs : List Value) (hvs : ∀ v ∈ vs, ∃ z : Int, v = .int z)
@@ -5165,6 +5181,28 @@ theorem dec_arr_word {n : Nat} (vs : List Value)
   · simp only [dec, hd, Option.bind_some, dite_true]
   · simp only [enc, he, Value.array.injEq]
     apply List.ext_getElem <;> simp
+
+/-- `Hax.widthArrayOps` answers `array_lit` on a list of values by the array of the list. -/
+theorem widthArrayOps_arrayLit (vs : List Value) :
+    _root_.Hax.widthArrayOps "array_lit" vs = some (.array vs) := by
+  simp [_root_.Hax.widthArrayOps]
+
+/-- The encodings of a vector of `64`-bit words are integers in `[0, 2 ^ 64)`, one for each
+    word. -/
+theorem encAll_word64 : ∀ (as : List NfTy) (xs : HVector NfTy.denote as),
+    as = List.replicate as.length (.word 64) →
+    (∀ w ∈ encAll as xs, ∃ r : Nat, w = .int r ∧ r < 2 ^ 64) ∧
+      (encAll as xs).length = as.length
+  | [], .nil, _ => ⟨by simp [encAll], rfl⟩
+  | a :: as, .cons x xs, h => by
+      simp only [List.length_cons, List.replicate_succ, List.cons.injEq] at h
+      obtain ⟨rfl, h⟩ := h
+      obtain ⟨hw, hl⟩ := encAll_word64 as xs h
+      refine ⟨fun w hw' => ?_, by simp [encAll, hl]⟩
+      simp only [encAll, List.mem_cons] at hw'
+      rcases hw' with rfl | hw'
+      · exact ⟨x.toNat, rfl, x.isLt⟩
+      · exact hw w hw'
 
 /-- The call typing of `u64` code on fixed-length arrays of `64`-bit words is sound for
     `Hax.hax64Builtins`. -/
@@ -5230,6 +5268,30 @@ theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
             exact ⟨(g k).toNat, rfl, (g k).isLt⟩
           · exact ⟨x.toNat, rfl, x.isLt⟩
         · cases hv
+    · cases hr
+  · rename_i n
+    split at hr
+    · rename_i hn
+      simp only [Option.some.injEq] at hr
+      subst hr
+      match xs with
+      | .cons g .nil =>
+        change _root_.Hax.hax64Builtins "len"
+          [.array (List.ofFn fun k => enc (.word 64) (g k))] = some v at hv
+        rw [_root_.Hax.hax64Builtins_arrayLen, List.length_ofFn] at hv
+        cases hv
+        exact dec_word64_nat hn
+    · cases hr
+  · split at hr
+    · rename_i has
+      simp only [Option.some.injEq] at hr
+      subst hr
+      change (_root_.Hax.hax64WordOps "array_lit" (encAll as xs) <|>
+        _root_.Hax.widthArrayOps "array_lit" (encAll as xs)) = some v at hv
+      rw [_root_.Hax.hax64WordOps_arrayLit, widthArrayOps_arrayLit] at hv
+      cases hv
+      obtain ⟨hw, hl⟩ := encAll_word64 as xs has
+      exact dec_arr_word _ hw hl
     · cases hr
   · cases hr
 
@@ -5331,11 +5393,8 @@ theorem hax64SigOf_select {f : String} {as : List NfTy} {r : NfTy} (hf : f = "se
   · split at h
     · exact absurd hf (by decide)
     · exact absurd hf (by decide)
-    · unfold hax64SigOfArr at h
-      split at h
-      · exact absurd hf (by decide)
-      · exact absurd hf (by decide)
-      · cases h
+    · subst hf
+      rcases hax64SigOfArr_name h with hf | hf | hf | hf <;> exact absurd hf (by decide)
 
 /-- **The call typing of `u64` code is sound for builtins with `select`**, when it is sound
     for the builtins. -/

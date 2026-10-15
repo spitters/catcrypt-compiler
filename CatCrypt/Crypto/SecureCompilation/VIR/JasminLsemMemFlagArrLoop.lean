@@ -136,7 +136,8 @@ immediate source, which the register-copy recogniser rejects. -/
 def OpPlain : JasminOp → Prop
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
   | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
-  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _ => True
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
+  | .stackZero _ _ | .stackStoreImm _ _ _ => True
   | _ => False
 
 /-- Every binding of a `Com` has an op in the stack-memory fragment's op set. -/
@@ -269,6 +270,12 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
   case stackStore w k =>
     simp only [opToLinstrR]
     split <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
+  case stackZero w k =>
+    simp only [opToLinstrR]
+    exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
+  case stackStoreImm w k i =>
+    simp only [opToLinstrR]
+    exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
   case cmp c w =>
     obtain ⟨t, ht⟩ : ∃ t, (cmpName c).toList = 'S' :: 'E' :: t := by
       cases c <;> exact ⟨_, rfl⟩
@@ -309,8 +316,8 @@ theorem straightOpsMem_plain (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
       · split
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
-        · simp_all [OpPlain]
-        · simp_all [OpPlain]
+        · exact opToLinstrR_plain _ (by simp_all) _ _ _
+        · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · exact opToLinstrR_plain _ (by simp_all) _ _ _
         · split
@@ -333,6 +340,8 @@ theorem arrMemN_comOpsPlain {w n : Nat} {Γ : Ctxt jasminDialect}
   | ret v => trivial
   | reg e he _ ih => exact ⟨(scalarMemN_comOpsPlain he).1, ih⟩
   | store heq args _ ih => exact ⟨trivial, ih⟩
+  | zero heq args _ ih => exact ⟨trivial, ih⟩
+  | storeImm heq args _ ih => exact ⟨trivial, ih⟩
 
 /-- **The chain of an `ArrMemN` update is plain**, so the flag-machine array
     theorems need no per-instance chain side condition. -/
