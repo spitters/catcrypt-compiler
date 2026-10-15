@@ -562,10 +562,47 @@ def webMap (ao : String → Option Nat) (L : Nat → List String) (obs : List St
         else r
     | none => r
 
+/-- The tables of the position map of the webs: the union-find state after the unions of
+    `webStep`, the roots of the classes of the names live at entry or read after the body,
+    and the roots of the classes of the occurrences after a write. -/
+def webTab (ao : String → Option Nat) (L : Nat → List String) (obs : List String)
+    (body : List LinstrRM) : WebSt × Std.HashSet Nat × Std.HashSet Nat :=
+  let st0 : WebSt := (L 0).foldl (fun st r => (st.slot (0, r)).1) {}
+  let st0 := obs.foldl (fun st r => (st.slot (body.length, r)).1) st0
+  let st := body.zipIdx.foldl (fun st (i, k) => webStep body L ao st k i) st0
+  let fixed : Std.HashSet Nat :=
+    ((L 0).filterMap fun r => (st.slots[(0, r)]?).map st.find).foldl (·.insert ·)
+      (((obs.filterMap fun r => (st.slots[(body.length, r)]?).map st.find)).foldl
+        (·.insert ·) {})
+  let defs : Std.HashSet Nat :=
+    body.zipIdx.foldl (fun acc (i, k) =>
+      match wrArr ao i with
+      | some d => match st.slots[(k + 1, d)]? with
+        | some n => acc.insert (st.find n)
+        | none => acc
+      | none => acc) {}
+  (st, fixed, defs)
+
+/-- The lookup of the position map of the webs in the tables `tab` of `webTab`. -/
+def webLook (tab : WebSt × Std.HashSet Nat × Std.HashSet Nat) (k : Nat) (r : String) :
+    String :=
+  match tab.1.slots[(k, r)]? with
+  | some n =>
+      let root := tab.1.find n
+      if tab.2.2.contains root && !tab.2.1.contains root then "a#" ++ toString root ++ "#" ++ r
+      else r
+  | none => r
+
+/-- The position map of the webs is the lookup in its tables. Code that renames many
+    positions computes `webTab` once. -/
+theorem webMap_eq_webLook (ao : String → Option Nat) (L : Nat → List String)
+    (obs : List String) (body : List LinstrRM) :
+    webMap ao L obs body = webLook (webTab ao L obs body) := rfl
+
 /-- **The webs pass**: the body with its array positions renamed by the position map of its
     webs. -/
 def arrWebs (ao : String → Option Nat) (L : Nat → List String) (obs : List String)
     (body : List LinstrRM) : List LinstrRM :=
-  webRen (webMap ao L obs body) ao body
+  webRen (webLook (webTab ao L obs body)) ao body
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs

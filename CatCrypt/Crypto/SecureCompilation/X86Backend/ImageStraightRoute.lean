@@ -495,9 +495,23 @@ def aliasStepO (outs : List (String × Nat)) (m : Std.HashMap String String) (i 
     physical-ABI export, and the destination of every call of a symbol of `outs` to the
     root of its operand at the destination position the symbol is paired with, the array
     the called function writes in place. Instructions are processed in order, each base
-    resolved through the aliases before it. -/
-def chainAliasO (outs : List (String × Nat)) (is : List LinstrRM) : String → String :=
+    resolved through the aliases before it. The definition is reducible, so that a
+    statement about `chainAliasO outs is` matches its table form
+    `canonMemrefName (aliasTab outs is)`. -/
+@[reducible] def chainAliasO (outs : List (String × Nat)) (is : List LinstrRM) :
+    String → String :=
   canonMemrefName (is.foldl (aliasStepO outs) {})
+
+/-- The alias table of a chain at the out symbols `outs`: the map that `chainAliasO outs is`
+    looks names up in. Code that renames many names computes it once and looks names up
+    with `canonMemrefName`. -/
+@[reducible] def aliasTab (outs : List (String × Nat)) (is : List LinstrRM) :
+    Std.HashMap String String :=
+  is.foldl (aliasStepO outs) {}
+
+/-- The coalescing renaming is the lookup in the alias table. -/
+theorem chainAliasO_eq_aliasTab (outs : List (String × Nat)) (is : List LinstrRM) :
+    chainAliasO outs is = canonMemrefName (aliasTab outs is) := rfl
 
 /-- The coalescing renaming of a chain without out symbols: the destination of every store
     is sent to the root of its base. -/

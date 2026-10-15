@@ -407,6 +407,7 @@ theorem rotl32ArithCom_16_denote (a : BitVec 64) :
           ||| ((a &&& BitVec.ofNat 64 4294967295) >>> 16))
           &&& BitVec.ofNat 64 4294967295 := by
   simp only [rotl32ArithCom_16]; arith_denote
+  simp only [CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_64, Nat.reduceMod]
 
 /-- **Recognizable u32 `_spec`.** The masked shift-or equals 32-bit `rotateLeft 16`. -/
 theorem rotl32ArithCom_16_spec (a : BitVec 64) :
@@ -463,6 +464,7 @@ theorem rotl32ArithCom_12_denote (a : BitVec 64) :
           ||| ((a &&& BitVec.ofNat 64 4294967295) >>> 20))
           &&& BitVec.ofNat 64 4294967295 := by
   simp only [rotl32ArithCom_12]; arith_denote
+  simp only [CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_64, Nat.reduceMod]
 
 /-- **Recognizable u32 `_spec`.** The masked shift-or equals 32-bit `rotateLeft 12`. -/
 theorem rotl32ArithCom_12_spec (a : BitVec 64) :
@@ -521,6 +523,7 @@ theorem chachaQuarterStepArithCom_denote (d a : BitVec 64) :
           ||| (((d ^^^ a) &&& BitVec.ofNat 64 4294967295) >>> 16))
           &&& BitVec.ofNat 64 4294967295 := by
   simp only [chachaQuarterStepArithCom]; arith_denote
+  simp only [CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_64, Nat.reduceMod]
 
 /-- **Recognizable u32 `_spec`.** The whole step equals `rotateLeft 16` of the 32-bit
     xor `d ^ a`, zero-extended back to 64 bits — a real ChaCha20 component. -/
