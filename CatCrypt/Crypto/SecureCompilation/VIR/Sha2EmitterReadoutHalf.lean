@@ -116,6 +116,23 @@ theorem sha512_bounds : Sha2SpecBounds sha512Spec where
   bigSig0_le := by decide
   bigSig1_le := by decide
 
+/-- The mask of a count equal to the width is `0` or the width. -/
+theorem shiftMask_self_cases (w : Nat) : shiftMask w w = 0 ∨ shiftMask w w = w := by
+  unfold shiftMask
+  split <;> (try split) <;> (try split) <;> (try split) <;> omega
+
+/-- The shift-or rotation with masked counts equals the unmasked one for every
+    amount `k ≤ w`. -/
+theorem rotr_masked_eq {w k : Nat} (hk : k ≤ w) (x : BitVec w) :
+    (x >>> shiftMask w k ||| x <<< shiftMask w (w - k)) = (x >>> k ||| x <<< (w - k)) := by
+  rcases Nat.eq_zero_or_pos k with rfl | hpos
+  · rcases shiftMask_self_cases w with h | h <;> simp [h]
+  · rcases Nat.lt_or_ge k w with hlt | hge
+    · rw [shiftMask_of_lt hlt, shiftMask_of_lt (by omega : w - k < w)]
+    · obtain rfl : k = w := by omega
+      rcases shiftMask_self_cases k with h | h <;>
+        simp [h, BitVec.ushiftRight_eq_zero (Nat.le_refl k)]
+
 theorem EmitRoundDenotesClosedFormFaithful_holds
     (sp : Sha2Spec) (rt : Nat) (hrt : rt < wkA) (hSp : Sha2SpecBounds sp)
     {Γ : Ctxt jasminDialect}
@@ -183,6 +200,8 @@ theorem EmitRoundDenotesClosedFormFaithful_holds
   have hSub5 : sp.w - sp.bigSig0.2.1 ≤ sp.w := Nat.sub_le _ _
   have hSub6 : sp.w - sp.bigSig0.2.2 ≤ sp.w := Nat.sub_le _ _
   simp only [JasminBinOp.apply, cBigSigma, cCh, cMaj, crotr, hAllOnes,
+    rotr_masked_eq hB01, rotr_masked_eq hB02, rotr_masked_eq hB03,
+    rotr_masked_eq hB11, rotr_masked_eq hB12, rotr_masked_eq hB13,
     hAmt _ hB01, hAmt _ hB02, hAmt _ hB03,
     hAmt _ hB11, hAmt _ hB12, hAmt _ hB13,
     hAmt _ hSub1, hAmt _ hSub2, hAmt _ hSub3,
