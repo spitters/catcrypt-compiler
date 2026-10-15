@@ -25,8 +25,9 @@ relates the image and the address machine at mixed width.
 `oneBitAt frame body k` is a decided over-approximation of the names that may hold a one-bit
 value at instruction `k`: the carry-out of `ADCXHI:64`, the destination of a carry constant
 (`JasminLsemAddrRun.bitMovB`, stepped at the one-bit tag) and the destination of a stored carry
-constant (`JasminLsemAddrImage.bitStore?`, a one-bit write on the image) enter it, and a name
-written at width `64` leaves it. `ImgRelW` is `ImgRel` with the width condition restricted to the
+constant (`JasminLsemAddrImage.bitStore?`, a one-bit write on the image) and a name a register
+instruction writes with a word of the fixed width `1` (`STerm.wknown`, for instance the result of
+`SET<cc>`) enter it, and a name written at width `64` leaves it. `ImgRelW` is `ImgRel` with the width condition restricted to the
 general-purpose names outside `oneBitAt` at the program counter, and with a frame-slot name of
 `oneBitAt` allowed to hold the low bit of its frame word (`SlotVal`). `imgGateBW` is the gate
 of `ImageAddrSim.imgGateB` over the analysis: a carry-chain instruction
@@ -171,10 +172,13 @@ def readNames : LinstrR → List String
   | _ => []
 
 /-- The names possibly holding a one-bit value after a register instruction: those of `W`
-    the symbolic description of the instruction does not write. -/
+    the symbolic description of the instruction does not write, and the names it writes with
+    a word whose outermost constructor fixes the width `1` (`STerm.wknown`), such as the
+    result of a materialised comparison `SET<cc>`. -/
 def regOut (W : List String) (x : LinstrR) : List String :=
   match symStep (x, .reg none) SSt.start with
-  | .ok ss _ => W.filter fun r => !ss.wr.contains r
+  | .ok ss _ => W.filter (fun r => !ss.wr.contains r)
+      ++ ss.wr.filter fun r => (ss.regs r).wknown == some 1
   | _ => W
 
 /-- The names possibly holding a value of a width other than `64` after a width-carrying cast
@@ -374,11 +378,13 @@ theorem wid64WB_ev {W : List String} {t : STerm} (h : wid64WB W t = true)
   · exact STerm.wknown_ev V A C O (by simpa using h)
 
 /-- `regOkB`, and every general-purpose name the instruction writes receives a word of width
-    `64` when the names outside `W` have width `64`. -/
+    `64` when the names outside `W` have width `64`, or a word whose outermost constructor
+    fixes the width `1` (such a name enters the width analysis through `regOut`). -/
 def regGateBW (frame : String → Option (BitVec 64)) (W : List String) (x : LinstrR) : Bool :=
   regOkB frame x &&
     match symStep (x, .reg none) SSt.start with
-    | .ok ss _ => ss.wr.all (fun r => !gpOk r || wid64WB W (ss.regs r))
+    | .ok ss _ => ss.wr.all (fun r => !gpOk r || wid64WB W (ss.regs r)
+        || (ss.regs r).wknown == some 1)
     | _ => false
 
 /-- The conditions of a carry-chain instruction `ADCX:64 d, a, s, c` or
@@ -818,13 +824,6 @@ theorem imgGateBW_of_old {frame : String → Option (BitVec 64)}
       rw [instrGateBW, he]
       exact this.1
 
-theorem mem_of_mem_regOut {W : List String} {x : LinstrR} {r : String}
-    (h : r ∈ regOut W x) : r ∈ W := by
-  unfold regOut at h
-  split at h
-  · exact (List.mem_filter.1 h).1
-  · exact h
-
 /-- A register instruction passing `regOkB` keeps every name with a frame word in the width
     analysis. -/
 theorem mem_regOut_of_frame {frame : String → Option (BitVec 64)} {W : List String}
@@ -834,7 +833,7 @@ theorem mem_regOut_of_frame {frame : String → Option (BitVec 64)} {W : List St
   split
   · rename_i ss gs hS
     simp only [regOkB, hS, Bool.and_eq_true, List.all_eq_true] at hok
-    refine List.mem_filter.2 ⟨h, ?_⟩
+    refine List.mem_append_left _ (List.mem_filter.2 ⟨h, ?_⟩)
     cases hw : ss.wr.contains q
     · rfl
     · have := hok.2.2 q (by simpa using hw)
@@ -1059,15 +1058,18 @@ theorem reg_stepW {frame : String → Option (BitVec 64)} {W : List String} {x :
       · have e := hval r
         simp only at e
         rw [e]
-        rcases hwg r hw with h1 | h1
+        rcases hwg r hw with (h1 | h1) | h1
         · rw [hr] at h1; cases h1
         · exact wid64WB_ev h1 _ _ _ hwid
+        · refine absurd ?_ hrW
+          simp only [regOut, hS, List.mem_append, List.mem_filter]
+          exact Or.inr ⟨hw, h1⟩
       · have e := hkeep' r hw
         simp only at e
         rw [e]
         refine hwid r hr fun hm => hrW ?_
-        simp only [regOut, hS, List.mem_filter, hm, true_and]
-        simpa using hw
+        simp only [regOut, hS, List.mem_append, List.mem_filter, hm, true_and]
+        exact Or.inl (by simpa using hw)
 
 theorem oneBitStep_noCarry {frame : String → Option (BitVec 64)} {W : List String}
     {x : LinstrR} (hci : carryI? x = none) :
