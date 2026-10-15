@@ -636,8 +636,8 @@ theorem physBodyWithStores_lcmdDirect
   unfold physBodyWithStores
   simp only []
   generalize hRg : (if bodyHasCall body = true then
-      remapOperandCalleeSave body (straightCallComposeTable body (physTableOut body outStoreMap))
-    else remapOperand body (straightCallComposeTable body (physTableOut body outStoreMap))) = R
+      remapOperandCalleeSave body (physAllocTbl body outStoreMap)
+    else remapOperand body (physAllocTbl body outStoreMap)) = R
   have hr : ∀ o : LOperand, isIndexed (R o) = isIndexed o := by
     rw [← hRg]
     intro o

@@ -893,6 +893,59 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
         · exact Or.inl hx
         · exact Or.inr (Or.inl hx)⟩
 
+/-! ### The allocator's decision -/
+
+/-- **The allocation table of `physBodyWithStores`**: the linear scan `physTableOut` of
+    `body` at the output stores `outStoreMap` and the reserved vector indices
+    `reservedVec`, with the straight-line call relocation composed in
+    (`straightCallComposeTable`). -/
+def physAllocTbl (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat := [])
+    (abi : IsaAbi := x86Abi) : Array Nat :=
+  straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
+
+/-- **The allocator's renaming** of a register name `n` of `body` over the table `tbl`:
+    the name of the register operand `physBodyWithStores` writes for `.reg n`, that is
+    the `.reg` arm of `remapOperandCalleeSave` (`physNameForBody`) on a body with an
+    `Lcall` and of `remapOperand` otherwise. It is one location per name over the whole
+    body and is not injective: names with disjoint live ranges share a register or a
+    frame cell. -/
+def allocName (body : Lcmd) (tbl : Array Nat) (n : String) (abi : IsaAbi := x86Abi) :
+    String :=
+  if bodyHasCall body then physNameForBody body tbl n abi
+  else physRegName (physMapTabled tbl (nameSlot body n)) abi
+
+/-- The names of `body` that the allocation certificate covers: every name of
+    `bodyNames body` other than the liveness pseudo-name `%livepin`, a hardware register
+    name and a frame-slot name. -/
+def allocCertNames (body : Lcmd) : List String :=
+  (bodyNames body).filter fun n => n != "%livepin" && !isHwRegName n && !isFrameSlotName n
+
+/-- **The allocation certificate over a table**: each name of `allocCertNames body`
+    paired with its image `allocName body tbl n`. -/
+def allocCertOf (body : Lcmd) (tbl : Array Nat) (abi : IsaAbi := x86Abi) :
+    List (String × String) :=
+  (allocCertNames body).map fun n => (n, allocName body tbl n abi)
+
+/-- **The allocation certificate of `physBodyWithStores`**: `allocCertOf` over the table
+    `physAllocTbl`, the pairs `(n, allocName body tbl n)` of the names the allocator
+    renames. -/
+def allocCert (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat := [])
+    (abi : IsaAbi := x86Abi) : List (String × String) :=
+  allocCertOf body (physAllocTbl body outStoreMap reservedVec abi) abi
+
+/-- A pair of the certificate over `tbl` is a covered name and its image under
+    `allocName`. -/
+theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : String} :
+    (n, m) ∈ allocCertOf body tbl abi
+      ↔ n ∈ allocCertNames body ∧ allocName body tbl n abi = m := by
+  unfold allocCertOf
+  simp only [List.mem_map, Prod.mk.injEq]
+  constructor
+  · rintro ⟨x, hx, rfl, rfl⟩
+    exact ⟨hx, rfl⟩
+  · rintro ⟨hx, rfl⟩
+    exact ⟨n, hx, rfl, rfl⟩
+
 
 /-- A `physBody` variant that:
 
@@ -945,7 +998,7 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
   -- Output-liveness-extended allocation: the `n` designated output slots are kept
   -- in `n` distinct physical registers across the epilogue stores (see
   -- `bodyTraceOut`). Reduces to `physTable (bodyTrace body)` for `outStoreMap=[]`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
+  let tbl := physAllocTbl body outStoreMap reservedVec abi
   -- Caller-save clobber barrier (matches the spec `physBodyWithStores`): a body
   -- carrying a real `Lcall` renames through `remapOperandCalleeSave`; a call-free
   -- body keeps `remapOperand` (byte-identical).
@@ -1158,7 +1211,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Lcmd :=
   -- Output-liveness-extended allocation (multi-output store fix): see
   -- `bodyTraceOut`. `physTableOut body []` = `physTable (bodyTrace body)`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
+  let tbl := physAllocTbl body outStoreMap reservedVec abi
   -- Caller-save clobber barrier: a body carrying a real `Lcall` (an expanded
   -- `CALL:`/`CALLN:` leaf-call shadow, `expandCallShadows`) renames through
   -- `remapOperandCalleeSave` — the SysV hardware marshalling names (`RDI…`,`RAX`)
@@ -1338,6 +1391,17 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
             (⟨0, .Lopn [.reg physReg] "MOVQ" [.reg qsave]⟩ : Linstr))
       | _ => []
     loads ++ expanded ++ callReload ++ store))
+
+/-- **The register arm of the renaming of `physBodyWithStores` is `allocName`**: the
+    operand renaming `rmap` of `physBodyWithStores` over a table `tbl` sends the register
+    operand `.reg n` to `.reg (allocName body tbl n)`. -/
+theorem physBodyWithStores_allocName (body : Lcmd) (tbl : Array Nat) (n : String)
+    (abi : IsaAbi) :
+    (if bodyHasCall body then remapOperandCalleeSave body tbl (.reg n) (abi := abi)
+      else remapOperand body tbl (.reg n) (abi := abi))
+      = .reg (allocName body tbl n abi) := by
+  unfold allocName
+  split <;> rfl
 
 /-- The per-position emitter of `physBodyWithStores`: the instructions that one
     virtual position `(i, virtIdx)` of `body` contributes, as the concatenation
@@ -1726,21 +1790,12 @@ def degenerateForwarderSym? {Γ : Ctxt jasminDialect} {t : JasminTy}
       | _, _ => none
   | _ => none
 
-/-- The ABI-wrapping tail of `comToLfundefPhysAbi`, over an already-built virtual
-    `Lfundef` (`comToLfundef`'s output). Everything here operates on the flat,
-    string-named body, so an emit path that produces the virtual body by other
-    means — a fused lowering that avoids a quadratic intermediate `Com` — calls
-    this directly. `forwarderBody?` supplies the degenerate zero-marshalling
-    forwarder body when applicable (`none` on the general path).
-
-    * `shiftImm` — legacy SSA-name-keyed shift-count oracle.
-    * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
-      which reproduces `comToLfundefPhys`'s register-only behaviour).
-    * `outStoreMap` — list of output store targets (default: empty — no stores).
-    * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
-    * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
--/
-def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
+/-- **The ABI-wrapping tail of `comToLfundefPhysAbi` with its allocation certificate**:
+    the physical `lfundef` of an already-built virtual `Lfundef` and the certificate
+    `allocCertOf` of the allocator input body over the table that `physBodyWithStores`
+    reads (`physAllocTbl` at the output stores and the reserved vector indices),
+    computed with that table. `comToLfundefPhysAbiFromVirt` is its first component. -/
+def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (inLoadMap : InLoadMap := fun _ => none)
     (outStoreMap : OutStoreMap := [])
@@ -1752,7 +1807,7 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
     (forwarderBody? : Option Lcmd := none)
     (reserveVecScratch : Bool := false)
     (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
-    Lfundef :=
+    Lfundef × List (String × String) :=
   -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
   -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
   -- scratch so its bounce needs no per-op save/restore. `false` (every existing
@@ -1923,12 +1978,53 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
   -- `prologue`/`argMat`/marshalling above. Only the `lfd_body` field is
   -- affected; every other field is the same structure literal as the general
   -- path. `none` yields `prologue ++ argMat ++ bodyWithRestore` byte-for-byte.
-  { virt with
+  ({ virt with
     lfd_body := forwarderBody?.getD (prologue ++ argMat ++ bodyWithRestore)
     lfd_arg := abiArgs
     lfd_tyin := abiTyin
     lfd_res := []
-    lfd_tyout := [] }
+    lfd_tyout := [] }, allocCertOf virt.lfd_body tbl abi)
+
+/-- The ABI-wrapping tail of `comToLfundefPhysAbi`, over an already-built virtual
+    `Lfundef` (`comToLfundef`'s output): the function of
+    `comToLfundefPhysAbiFromVirtCert`. Everything here operates on the flat,
+    string-named body, so an emit path that produces the virtual body by other
+    means — a fused lowering that avoids a quadratic intermediate `Com` — calls
+    this directly. `forwarderBody?` supplies the degenerate zero-marshalling
+    forwarder body when applicable (`none` on the general path).
+
+    * `shiftImm` — legacy SSA-name-keyed shift-count oracle.
+    * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
+      which reproduces `comToLfundefPhys`'s register-only behaviour).
+    * `outStoreMap` — list of output store targets (default: empty — no stores).
+    * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
+    * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
+-/
+def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
+    (shiftImm : ShiftImmOracle := fun _ => none)
+    (inLoadMap : InLoadMap := fun _ => none)
+    (outStoreMap : OutStoreMap := [])
+    (abiArgs : List String := ["RDI", "RSI"])
+    (abiTyin : List Nat := [64, 64])
+    (residence : Option (Array Nat) := none)
+    (abiW : Nat := 0)
+    (forceLivePin : Bool := false)
+    (forwarderBody? : Option Lcmd := none)
+    (reserveVecScratch : Bool := false)
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
+    Lfundef :=
+  (comToLfundefPhysAbiFromVirtCert virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
+    residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi).1
+
+/-- The function of `comToLfundefPhysAbiFromVirtCert` is `comToLfundefPhysAbiFromVirt`. -/
+theorem comToLfundefPhysAbiFromVirtCert_fst (virt0 : Lfundef) (shiftImm : ShiftImmOracle)
+    (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap) (abiArgs : List String)
+    (abiTyin : List Nat) (residence : Option (Array Nat)) (abiW : Nat) (forceLivePin : Bool)
+    (forwarderBody? : Option Lcmd) (reserveVecScratch retToRax : Bool) (abi : IsaAbi) :
+    (comToLfundefPhysAbiFromVirtCert virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
+        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi).1
+      = comToLfundefPhysAbiFromVirt virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
+        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi := rfl
 
 /-- The ABI-wrapped physical `lfundef` for a `Com`: same args/types as the
     underlying physical export, but `lfd_arg` is reset to a fixed 2-pointer
@@ -2522,31 +2618,18 @@ theorem argBasePairs_false (outArg' : String) (inArgs' abiArgs : List String) :
     argBasePairs false outArg' inArgs' abiArgs
       = (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1)) := rfl
 
-/-- The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` `virt0`: the
-    part of `ComL.toLfundefPhysAbi` after the virtual export.
-
-    `outArg'` is the canonical out-array base name, `inArgs'` the array-typed input
-    base names in ABI order, and `accRegs` the register names of the loop
-    accumulators that carry the output array. Each accumulator is aliased onto
-    `outArg'` and the in-place `STOREIDX`-result thread is collapsed onto its SIB
-    base, so every `STOREIDX` base is `outArg'` and every `LOADIDX` base is an
-    `inArgs'` name, all covered by the qsave-reload map. Every loop on the
-    continuation spine carries the same output array, so every accumulator is
-    aliased: a later loop of a chain left unaliased would hold the root-counted seed
-    `resolveVar` gives it (the invariant pointer), and an 8-layer NTT rendered that
-    way stores into its read-only zeta table.
-
-    `ComL.toLfundefPhysAbi_eq_ofVirt` states that `ComL.toLfundefPhysAbi` is this
-    function at `ComL.toLfundef`; the carried-register loop language `ComLJ` uses it
-    at its own virtual export. `posBind` selects the pairing of array bases with
-    argument registers (`argBasePairs`): by role at `false`, by slot at `true`. -/
-def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List String)
+/-- **The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` with its
+    allocation certificate**: the physical `lfundef` of `lfundefPhysAbiOfVirt` and the
+    certificate `allocCertOf` of the allocator input body over the table that
+    `physBodyWithStores` reads (`physAllocTbl` with no output store), computed from the
+    scan table of the function. `lfundefPhysAbiOfVirt` is its first component. -/
+def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : List String)
     (accRegs : List String)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
     (posBind : Bool := false) :
-    Lfundef :=
+    Lfundef × List (String × String) :=
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
   -- head). Without the pin the linear-scan RA sees each scalar bound as "born
@@ -2657,12 +2740,50 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   -- Restore the callee-saved registers before the final `Lret`.
   let bodyWithRestore := insertEpilogue bodyWithReload calleeSaveRestoreEpilogue
-  { virt with
+  ({ virt with
     lfd_body := prologue ++ argMat ++ bodyWithRestore
     lfd_arg := abiArgs
     lfd_tyin := abiTyin
     lfd_res := []
-    lfd_tyout := [] }
+    lfd_tyout := [] }, allocCertOf virt.lfd_body (straightCallComposeTable virt.lfd_body tbl) abi)
+
+/-- The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` `virt0`: the
+    part of `ComL.toLfundefPhysAbi` after the virtual export, the function of
+    `lfundefPhysAbiOfVirtCert`.
+
+    `outArg'` is the canonical out-array base name, `inArgs'` the array-typed input
+    base names in ABI order, and `accRegs` the register names of the loop
+    accumulators that carry the output array. Each accumulator is aliased onto
+    `outArg'` and the in-place `STOREIDX`-result thread is collapsed onto its SIB
+    base, so every `STOREIDX` base is `outArg'` and every `LOADIDX` base is an
+    `inArgs'` name, all covered by the qsave-reload map. Every loop on the
+    continuation spine carries the same output array, so every accumulator is
+    aliased: a later loop of a chain left unaliased would hold the root-counted seed
+    `resolveVar` gives it (the invariant pointer), and an 8-layer NTT rendered that
+    way stores into its read-only zeta table.
+
+    `ComL.toLfundefPhysAbi_eq_ofVirt` states that `ComL.toLfundefPhysAbi` is this
+    function at `ComL.toLfundef`; the carried-register loop language `ComLJ` uses it
+    at its own virtual export. `posBind` selects the pairing of array bases with
+    argument registers (`argBasePairs`): by role at `false`, by slot at `true`. -/
+def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List String)
+    (accRegs : List String)
+    (shiftImm : ShiftImmOracle := fun _ => none)
+    (abiArgs : List String := ["RDI", "RSI"])
+    (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
+    (posBind : Bool := false) :
+    Lfundef :=
+  (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi
+    posBind).1
+
+/-- The function of `lfundefPhysAbiOfVirtCert` is `lfundefPhysAbiOfVirt`. -/
+theorem lfundefPhysAbiOfVirtCert_fst (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs : List String) (shiftImm : ShiftImmOracle) (abiArgs : List String)
+    (abiTyin : List Nat) (abi : IsaAbi) (posBind : Bool) :
+    (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi
+        posBind).1
+      = lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi
+        posBind := rfl
 
 /-- `lfundefPhysAbiOfVirt` depends on `posBind` only through the pairs
     `argBasePairs` of its base names: two settings with the same pairs give the same
@@ -2673,7 +2794,7 @@ theorem lfundefPhysAbiOfVirt_congr_pairs (virt0 : Lfundef) (outArg' : String)
     (h : argBasePairs b₁ outArg' inArgs' abiArgs = argBasePairs b₂ outArg' inArgs' abiArgs) :
     lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi b₁
       = lfundefPhysAbiOfVirt virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi b₂ := by
-  unfold lfundefPhysAbiOfVirt
+  unfold lfundefPhysAbiOfVirt lfundefPhysAbiOfVirtCert
   rw [h]
 
 /-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel

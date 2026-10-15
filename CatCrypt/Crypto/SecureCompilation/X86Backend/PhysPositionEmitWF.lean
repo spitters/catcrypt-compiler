@@ -1053,7 +1053,7 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
   intro r hr
   refine (opsResolved_iff_allocOut_x86 _).mp ?_
   cases residence <;>
-  · simp only [comToLfundefPhysAbiFromVirt, Option.getD_none, List.mem_append,
+  · simp only [comToLfundefPhysAbiFromVirt, comToLfundefPhysAbiFromVirtCert, Option.getD_none, List.mem_append,
       ← fromVirtAllocBody_none, ← fromVirtAllocBody_some] at hr
     rcases hr with ((hp | hx) | ha) | hb
     · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
@@ -1132,7 +1132,7 @@ theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : Stri
       else []) ++
       canonicalizeMemrefThread (accRegs.foldl (fun b r => aliasRegBody r outArg' b)
         virt0.lfd_body) = ofVirtAllocBody virt0 outArg' accRegs abiArgs := fun _ => rfl
-  simp only [lfundefPhysAbiOfVirt, List.mem_append, hB] at hr
+  simp only [lfundefPhysAbiOfVirt, lfundefPhysAbiOfVirtCert, List.mem_append, hB] at hr
   rcases hr with ((hp | hx) | ha) | hb
   · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
   · exact extraInputSaves_resolved abiArgs r hx

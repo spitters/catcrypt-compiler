@@ -13,8 +13,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInte
 # Location injectivity of the allocator's renaming on overlapping hulls
 
 `physBodyWithStores` renames every register operand through
-`rmap (.reg n) = .reg (allocRegName body tbl n)` over the table
-`tbl = straightCallComposeTable body (physTableOut body outStoreMap reservedVec)`.
+`rmap (.reg n) = .reg (allocName body tbl n)` (`physBodyWithStores_allocName`) over the
+table `tbl = physAllocTbl body outStoreMap reservedVec`.
 The renaming is global over the body and reuses registers and frame cells across
 names whose live ranges are disjoint. This module proves that it separates names
 whose live ranges overlap.
@@ -23,7 +23,7 @@ whose live ranges overlap.
 
 * `allocName_injOn_overlap`: two distinct body names (no hardware, frame-slot or
   `%livepin` name) whose live ranges over `bodyTraceOut` overlap get distinct images
-  under the allocator's renaming `allocRegName`.
+  under the allocator's renaming `allocName`.
 * `allocName_injOn_liveAt`: the same for two names live at one position of
   `bodyTraceOut`.
 
@@ -630,23 +630,6 @@ theorem straightCallComposeTable_ne {body : Lcmd} {T : Array Nat} {a b : String}
 
 /-! ## The allocator's renaming -/
 
-/-- The allocator's renaming of a register name `n` over the table `tbl`: the name
-    inside `rmap (.reg n)` of `physBodyWithStores`, that is the `.reg` arm of
-    `remapOperandCalleeSave` on a body with an `Lcall` and of `remapOperand`
-    otherwise. G5-1a moves this definition to `ExportPhysAbi` as `allocName`. -/
-abbrev allocRegName (body : Lcmd) (tbl : Array Nat) (n : String)
-    (abi : IsaAbi := x86Abi) : String :=
-  if bodyHasCall body then physNameForBody body tbl n abi
-  else physRegName (physMapTabled tbl (nameSlot body n)) abi
-
-/-- `rmap` of `physBodyWithStores` renames a register operand to `allocRegName`. -/
-theorem rmap_reg (body : Lcmd) (tbl : Array Nat) (n : String) (abi : IsaAbi) :
-    (if bodyHasCall body then remapOperandCalleeSave body tbl (.reg n) (abi := abi)
-      else remapOperand body tbl (.reg n) (abi := abi))
-      = .reg (allocRegName body tbl n abi) := by
-  unfold allocRegName
-  split <;> rfl
-
 /-- **Location injectivity on overlapping hulls.** Two distinct names of the body,
     neither a hardware register name, a frame-slot name nor `%livepin`, whose live
     ranges over `bodyTraceOut` overlap, have distinct images under the allocator's
@@ -673,9 +656,9 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
     (hfa : isFrameSlotName a = false) (hfb : isFrameSlotName b = false)
     (hov : physRangesOverlap (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body a))
       (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body b))) :
-    allocRegName body
+    allocName body
         (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) a
-      ≠ allocRegName body
+      ≠ allocName body
         (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) b := by
   have hT := physTableOut_no_collision (reservedVec := reservedVec) hfit ha hb hne hov
   have hsize : ∀ n, n ∈ bodyNames body →
@@ -684,7 +667,7 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
     unfold physTableOut
     rw [physTableClassed_size]
     exact (live_out_of_mem_bodyNames hn).1
-  unfold allocRegName
+  unfold allocName
   by_cases hc : bodyHasCall body = true
   · rw [if_pos hc, if_pos hc]
     unfold physNameForBody
@@ -731,9 +714,9 @@ theorem allocName_injOn_liveAt {body : Lcmd} {outStoreMap : OutStoreMap}
     (hfa : isFrameSlotName a = false) (hfb : isFrameSlotName b = false)
     (hla : LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body a))
     (hlb : LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body b)) :
-    allocRegName body
+    allocName body
         (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) a
-      ≠ allocRegName body
+      ≠ allocName body
         (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) b :=
   allocName_injOn_overlap hfit hcls hsp ha hb hne hpa hpb hwa hwb hfa hfb
     (overlap_of_liveAt hla hlb)

@@ -128,8 +128,9 @@ after a call (`ImageCallProbe.reloadOf_call`).
   frame.
 * `keepPoolB_clobN`: a name of a checked allocation pool is not set by the summary step
   and is not exempted after a call.
-* `lfundefPhysAbiOfVirtC`: the allocation of a caller of `c` at the pool `keepPool c`, with
-  the shadow instructions expanded after the allocation.
+* `lfundefPhysAbiOfVirtCCert`, `lfundefPhysAbiOfVirtC`: the allocation of a caller of `c`
+  at the pool `keepPool c`, with the shadow instructions expanded after the allocation,
+  with and without its allocation certificate.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
@@ -2535,12 +2536,41 @@ theorem keepPoolB_clobN {c : CalleeSig} {pool : List String} (h : keepPoolB c po
   refine ⟨by simp [clobN, hk], fun hm => ?_⟩
   simp [exemptC, hk] at hm
 
-/-- **The allocation of a virtual function that calls `c`**: `lfundefPhysAbiOfVirtAt` at
-    the pool `keepPool c` of the names kept across a call of `c`, with the out symbols
-    `outs`, whose calls copy no result register. -/
+/-- **The allocation of a virtual function that calls `c`, with its allocation
+    certificate**: the allocation `lfundefPhysAbiOfVirtCert` at the register file
+    `poolAbi (keepPool c)` of the names kept across a call of `c`, with the shadow
+    instructions expanded on the allocated body at the out symbols `outs`, whose calls copy
+    no result register, and the certificate of that allocation. -/
+def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String := []) : Lfundef × List (String × String) :=
+  let fc := lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
+    (abiTyin := abiTyin) (abi := VIR.LprogCallCut.poolAbi (keepPool c)) (posBind := posBind)
+  ({ fc.1 with lfd_body := expandCallShadows fc.1.lfd_body outs }, fc.2)
+
+/-- **The allocation of a virtual function that calls `c`**: the function of
+    `lfundefPhysAbiOfVirtCCert`, which is `lfundefPhysAbiOfVirtAt` at the pool `keepPool c`
+    (`lfundefPhysAbiOfVirtC_eq_at`). -/
 def lfundefPhysAbiOfVirtC (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String := []) : Lfundef :=
-  lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
+  (lfundefPhysAbiOfVirtCCert c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs).1
+
+/-- The function of `lfundefPhysAbiOfVirtCCert` is `lfundefPhysAbiOfVirtC`. -/
+theorem lfundefPhysAbiOfVirtCCert_fst (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String) :
+    (lfundefPhysAbiOfVirtCCert c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs).1
+      = lfundefPhysAbiOfVirtC c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs :=
+  rfl
+
+/-- The allocation of a caller of `c` is `lfundefPhysAbiOfVirtAt` at the pool
+    `keepPool c`. -/
+theorem lfundefPhysAbiOfVirtC_eq_at (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String) :
+    lfundefPhysAbiOfVirtC c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
+      = lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin
+        posBind outs := rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall

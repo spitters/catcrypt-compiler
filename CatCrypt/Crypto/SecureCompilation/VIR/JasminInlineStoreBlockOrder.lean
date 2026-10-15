@@ -121,7 +121,7 @@ theorem physPositionEmit_inlineStoreOps
         = pre ++ atTagZero (inlineStoreOps (physAbiMovBuf body abiW) storeBase off
             (physRmap body outStoreMap reservedVec d)) ++ post := by
   simp only [bindingIndexAt] at hlo hhi hout
-  simp only [physRmap] at hnospill
+  simp only [physRmap, physAllocTbl] at hnospill
   unfold physPositionEmit
   simp only []
   simp only [hi]

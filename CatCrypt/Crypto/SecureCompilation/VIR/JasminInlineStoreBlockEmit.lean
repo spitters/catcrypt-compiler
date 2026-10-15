@@ -98,11 +98,9 @@ theorem split_refl {β : Type} (B : List β) : ∃ pre post, B = pre ++ B ++ pos
 def physRmap (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat) :
     LOperand → LOperand :=
   if bodyHasCall body then
-    remapOperandCalleeSave body
-      (straightCallComposeTable body (physTableOut body outStoreMap reservedVec))
+    remapOperandCalleeSave body (physAllocTbl body outStoreMap reservedVec)
   else
-    remapOperand body
-      (straightCallComposeTable body (physTableOut body outStoreMap reservedVec))
+    remapOperand body (physAllocTbl body outStoreMap reservedVec)
 
 /-- The body carries a `:64`-tagged `Lopn`. -/
 def physBodyIsU64 (body : Lcmd) : Bool :=
