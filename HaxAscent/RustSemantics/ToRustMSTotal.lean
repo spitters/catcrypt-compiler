@@ -15,8 +15,8 @@ public import HaxAscent.RustSemantics.ToRustMSTotalCtl
 
 `toRustMS_total` states that the reading `toRustMS app e ρ` returns a value on the
 straight-line fragment `straightOk names bound e`: integer literals, variables in `bound` or
-bound by an enclosing `let`, `let`, sequencing, type ascriptions and calls of arity one to
-three to the names of `names`. The hypotheses are a class of values `P` containing the
+bound by an enclosing `let`, `let`, sequencing, type ascriptions and calls of every arity
+to the names of `names`. The hypotheses are a class of values `P` containing the
 integer literals, a reading of the calls total on `P` at the names and arities of `names`
 (`AppTotalOn`), and an environment binding every name of `bound` to a value in `P`
 (`EnvOk`). The returned value is in `P` and the final environment again satisfies
@@ -50,6 +50,7 @@ instances of `toRustMS_total_kindL` and `fnCorres_toRustMS_triple_of_kindOfL`.
 ## Main definitions
 
 * `AppTotalOn`, `EnvOk`, `straightOk`, `straightSig`, `straightΓ`
+* `StraightKindOk`, `StraightArgsKindOk`
 
 ## Main results
 
@@ -80,21 +81,22 @@ def EnvOk (P : AVal → Prop) (bound : List String) (ρ : AEnv) : Prop :=
   ∀ x ∈ bound, ∃ v, ρ x = some v ∧ P v
 
 /-- The straight-line fragment: integer literals, variables in `bound` or bound by an
-    enclosing `let`, `let`, sequencing, type ascriptions, and calls of arity one to three
-    whose name and arity are in `names`. -/
+    enclosing `let`, `let`, sequencing, type ascriptions, and calls of every arity whose
+    name and arity are in `names` and whose arguments are in the fragment. -/
 def straightOk (names : List (String × Nat)) : List String → Hax.ImpExpr → Bool
   | _, .lit (.int _) => true
   | bound, .var x => bound.contains x
   | bound, .letBind x v b => straightOk names bound v && straightOk names (x :: bound) b
   | bound, .seq a b => straightOk names bound a && straightOk names bound b
   | bound, .typeAscription e _ => straightOk names bound e
-  | bound, .app f [a] => names.contains (f, 1) && straightOk names bound a
-  | bound, .app f [a, b] =>
-    names.contains (f, 2) && straightOk names bound a && straightOk names bound b
-  | bound, .app f [a, b, c] =>
-    names.contains (f, 3) && straightOk names bound a && straightOk names bound b &&
-      straightOk names bound c
+  | bound, .app f args =>
+    names.contains (f, args.length) && straightOk.list names bound args
   | _, _ => false
+where
+  /-- Every argument of a call is in the straight-line fragment under `bound`. -/
+  list (names : List (String × Nat)) (bound : List String) : List Hax.ImpExpr → Bool
+    | [] => true
+    | a :: as => straightOk names bound a && list names bound as
 
 /-! ## The fragment as an instance of the kinded fragment -/
 
@@ -170,22 +172,36 @@ theorem envTy_straightΓ_iff {P : AVal → Prop} {bound : List String} {ρ : AEn
       exact h x hx
     · cases hk
 
+/-- When `r` is `true`, the literal `e` has the base kind under `straightSig names` and
+    `straightΓ bound`; `r` is instantiated at `straightOk names bound e`. -/
+def StraightKindOk (names : List (String × Nat)) (bound : List String) (e : Hax.ImpExpr)
+    (r : Bool) : Prop :=
+  r = true → kindOfL (straightSig names) (.base ()) (straightΓ bound) e = some (.base ())
+
+/-- When `r` is `true`, each argument of `args` has the base kind under `straightSig names`
+    and `straightΓ bound`; `r` is instantiated at `straightOk.list names bound args`. -/
+def StraightArgsKindOk (names : List (String × Nat)) (bound : List String)
+    (args : List Hax.ImpExpr) (r : Bool) : Prop :=
+  r = true → kindOfL.argsK (straightSig names) (.base ()) (straightΓ bound) args =
+    some (List.replicate args.length (.base ()))
+
 /-- A literal of the straight-line fragment has the base kind under the kind checker with
     integer literals at the base kind, the signatures `straightSig names` and the names of
     `bound` at the base kind. -/
 theorem kindOfL_of_straightOk {names : List (String × Nat)} (bound : List String)
     (e : Hax.ImpExpr) : straightOk names bound e = true →
       kindOfL (straightSig names) (.base ()) (straightΓ bound) e = some (.base ()) := by
-  fun_induction straightOk names bound e with
-  | case1 =>
-    intro _
-    rfl
-  | case2 bound x =>
-    intro h
+  suffices HS : ∀ bound e, StraightKindOk names bound e (straightOk names bound e) from
+    HS bound e
+  apply straightOk.induct_unfolding names (StraightArgsKindOk names) (StraightKindOk names)
+  all_goals intros
+  all_goals intro h
+  all_goals try (simp at h; done)
+  case case1 => rfl
+  case case2 bound x =>
     simp only [List.contains_iff_mem] at h
     simp [kindOfL, lookup_straightΓ, h]
-  | case3 bound x v b ihv ihb =>
-    intro h
+  case case3 bound x v b ihv ihb =>
     simp only [Bool.and_eq_true] at h
     have hfit : fits (straightΓ bound) x (.base ()) = true := by
       unfold fits
@@ -193,33 +209,21 @@ theorem kindOfL_of_straightOk {names : List (String × Nat)} (bound : List Strin
       split <;> simp
     simp only [kindOfL, ihv h.1, hfit, if_true]
     exact ihb h.2
-  | case4 bound a b iha ihb =>
-    intro h
+  case case4 bound a b iha ihb =>
     simp only [Bool.and_eq_true] at h
     simp only [kindOfL, iha h.1]
     exact ihb h.2
-  | case5 bound e ty ih =>
-    intro h
+  case case5 bound e ty ih =>
     simp only [kindOfL]
     exact ih h
-  | case6 bound f a iha =>
-    intro h
+  case case6 bound f args ih =>
     simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    simp only [kindOfL, iha h.2]
-    exact sigFind_straightSig (n := 1) h.1
-  | case7 bound f a b iha ihb =>
-    intro h
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    simp only [kindOfL, iha h.1.2, ihb h.2]
-    exact sigFind_straightSig (n := 2) h.1.1
-  | case8 bound f a b c iha ihb ihc =>
-    intro h
-    simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-    simp only [kindOfL, iha h.1.1.2, ihb h.1.2, ihc h.2]
-    exact sigFind_straightSig (n := 3) h.1.1.1
-  | case9 =>
-    intro h
-    simp at h
+    simp only [kindOfL, ih h.2]
+    exact sigFind_straightSig h.1
+  case case8 bound => rfl
+  case case9 bound a as iha ihas =>
+    simp only [Bool.and_eq_true] at h
+    simp only [kindOfL.argsK, iha h.1, ihas h.2, List.length_cons, List.replicate_succ]
 
 /-! ## Termination -/
 

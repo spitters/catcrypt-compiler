@@ -21,8 +21,9 @@ values are given by a predicate `H : κ → AVal → Prop`. The fragment is:
 * integer and Boolean literals, the unit value, variables bound in `Γ`;
 * `letBind x v b`, where a name already bound in `Γ` is rebound only at its kind, and
   `seq`, `typeAscription`;
-* calls `.app f args` of arity one to three, whose name and argument kinds have the result
-  kind `k` in the signature list `sig`;
+* calls `.app f args` of every arity, whose arguments are in the fragment under `Γ`
+  (`kindOfL.argsK`) and whose name and argument kinds have the result kind `k` in the
+  signature list `sig`;
 * `ifThenElse c t e` with `c` of kind `bool` and `t`, `e` of one kind;
 * `forFold var lo hi body` whose bounds are integer literals or expressions of an index kind
   `idx l h` with `h ≤ 2 ^ 32`; with `[a, _]` the static range of `lo` and `[_, b]` that of
@@ -75,7 +76,7 @@ reading.
 ## Main definitions
 
 * `Kd`, `Kd.Has`, `EnvTy`, `AppTyped`, `sigFind`, `fits`, `boundRange`, `kindOfL`, `kindOf`,
-  `WB`, `WI`
+  `TotOk`, `TotArgsOk`, `WB`, `WI`
 
 ## Main results
 
@@ -175,18 +176,10 @@ def kindOfL {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × 
     | some _ => kindOfL sig ki Γ b
     | none => none
   | Γ, .typeAscription e _ => kindOfL sig ki Γ e
-  | Γ, .app f [a] =>
-    match kindOfL sig ki Γ a with
-    | some k1 => sigFind sig f [k1]
+  | Γ, .app f args =>
+    match kindOfL.argsK sig ki Γ args with
+    | some ks => sigFind sig f ks
     | none => none
-  | Γ, .app f [a, b] =>
-    match kindOfL sig ki Γ a, kindOfL sig ki Γ b with
-    | some k1, some k2 => sigFind sig f [k1, k2]
-    | _, _ => none
-  | Γ, .app f [a, b, c] =>
-    match kindOfL sig ki Γ a, kindOfL sig ki Γ b, kindOfL sig ki Γ c with
-    | some k1, some k2, some k3 => sigFind sig f [k1, k2, k3]
-    | _, _, _ => none
   | Γ, .ifThenElse c t e =>
     match kindOfL sig ki Γ c, kindOfL sig ki Γ t, kindOfL sig ki Γ e with
     | some .bool, some k1, some k2 => if k1 = k2 then some k1 else none
@@ -204,6 +197,15 @@ def kindOfL {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × 
       | _, _ => none
     | _, _ => none
   | _, _ => none
+where
+  /-- The kinds of the arguments of a call, each checked under `Γ`. -/
+  argsK {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ)) (ki : Kd κ)
+      (Γ : List (String × Kd κ)) : List Hax.ImpExpr → Option (List (Kd κ))
+    | [] => some []
+    | a :: as =>
+      match kindOfL sig ki Γ a, argsK sig ki Γ as with
+      | some k, some ks => some (k :: ks)
+      | _, _ => none
 
 /-- **The kind checker of the fragment**, with integer literals at the kind `int`. -/
 def kindOf {κ : Type} [DecidableEq κ] (sig : List (String × List (Kd κ) × Kd κ))
@@ -298,6 +300,25 @@ theorem loopS_total {Q : AEnv → Prop} {step : Nat → AEnv → RustM AEnv} {lo
     obtain ⟨ρ2, h2, hρ2⟩ := loopS_total hstep n (i + 1) ρ1 (by omega) (by omega) hρ1
     exact ⟨ρ2, by simp [loopS, h1, h2], hρ2⟩
 
+/-- A kind `r` that the checker returns on `e` under `Γ` is the kind of a value the reading
+    of `e` returns from every environment binding each name of `Γ` to a value of its kind,
+    whose final environment again binds each name of `Γ` to a value of its kind. -/
+def TotOk {κ : Type} (H : κ → AVal → Prop) (app : String → List AVal → RustM AVal)
+    (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) (r : Option (Kd κ)) : Prop :=
+  ∀ k, r = some k → ∀ ρ, EnvTy H Γ ρ →
+    ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ Kd.Has H k v ∧ EnvTy H Γ ρ'
+
+/-- A list of kinds `r` that the checker returns on the arguments `args` under `Γ` is the
+    list of kinds of the values the reading of `args` returns from every environment binding
+    each name of `Γ` to a value of its kind, whose final environment again binds each name
+    of `Γ` to a value of its kind. -/
+def TotArgsOk {κ : Type} (H : κ → AVal → Prop) (app : String → List AVal → RustM AVal)
+    (Γ : List (String × Kd κ)) (args : List Hax.ImpExpr) (r : Option (List (Kd κ))) :
+    Prop :=
+  ∀ ks, r = some ks → ∀ ρ, EnvTy H Γ ρ →
+    ∃ vs ρ', toRustMS.argsS app args ρ = .ok (vs, ρ') ∧ List.Forall₂ (Kd.Has H) ks vs ∧
+      EnvTy H Γ ρ'
+
 /-- **The reading returns a value on the fragment with integer literals at the kind `ki`.**
     When every integer literal has the kind `ki`, from an environment binding each name of
     `Γ` to a value of its kind, the reading of a literal of kind `k` under a reading of the
@@ -309,7 +330,9 @@ theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → P
     (happ : AppTyped H sig app) (Γ : List (String × Kd κ)) (e : Hax.ImpExpr) :
     ∀ k, kindOfL sig ki Γ e = some k → ∀ ρ, EnvTy H Γ ρ →
       ∃ v ρ', toRustMS app e ρ = .ok (v, ρ') ∧ Kd.Has H k v ∧ EnvTy H Γ ρ' := by
-  fun_induction kindOfL sig ki Γ e
+  suffices HT : ∀ Γ e, TotOk H app Γ e (kindOfL sig ki Γ e) from HT Γ e
+  apply kindOfL.induct_unfolding sig ki (TotArgsOk H app) (TotOk H app)
+  all_goals intros
   all_goals intro k hk ρ hρ
   all_goals try (cases hk; done)
   case case1 =>
@@ -335,24 +358,19 @@ theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → P
   case case10 Γ e ty ih =>
     obtain ⟨r, ρ1, h1, hr, hρ1⟩ := ih k hk ρ hρ
     exact ⟨r, ρ1, by simp [toRustMS, h1], hr, hρ1⟩
-  case case11 Γ f a k1 ha iha =>
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
-    obtain ⟨r, hr, hk'⟩ := happ f [k1] k [u] (sigFind_mem hk) (.cons hu .nil)
-    exact ⟨r, ρ1, by simp [toRustMS, h1, hr], hk', hρ1⟩
-  case case13 Γ f a b k1 k2 hb ha iha ihb =>
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
-    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb _ hb ρ1 hρ1
-    obtain ⟨r, hr, hk'⟩ := happ f [k1, k2] k [u, w] (sigFind_mem hk)
-      (.cons hu (.cons hw .nil))
-    exact ⟨r, ρ2, by simp [toRustMS, h1, h2, hr], hk', hρ2⟩
-  case case15 Γ f a b c k1 k2 k3 hc hb ha iha ihb ihc =>
-    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ ha ρ hρ
-    obtain ⟨w, ρ2, h2, hw, hρ2⟩ := ihb _ hb ρ1 hρ1
-    obtain ⟨z, ρ3, h3, hz, hρ3⟩ := ihc _ hc ρ2 hρ2
-    obtain ⟨r, hr, hk'⟩ := happ f [k1, k2, k3] k [u, w, z] (sigFind_mem hk)
-      (.cons hu (.cons hw (.cons hz .nil)))
-    exact ⟨r, ρ3, by simp [toRustMS, h1, h2, h3, hr], hk', hρ3⟩
-  case case17 Γ c t e k2 he hc ht ihc iht ihe =>
+  case case11 Γ f args ks hks ih =>
+    obtain ⟨vs, ρ1, h1, hvs, hρ1⟩ := ih ks hks ρ hρ
+    obtain ⟨r, hr, hk'⟩ := happ f ks k vs (sigFind_mem hk) hvs
+    exact ⟨r, ρ1, by simp [toRustMS_app_eq, h1, hr], hk', hρ1⟩
+  case case22 Γ =>
+    cases hk
+    exact ⟨[], ρ, rfl, .nil, hρ⟩
+  case case23 Γ a as k1 ks hks hk1 iha ihas =>
+    cases hk
+    obtain ⟨u, ρ1, h1, hu, hρ1⟩ := iha _ hk1 ρ hρ
+    obtain ⟨us, ρ2, h2, hus, hρ2⟩ := ihas _ hks ρ1 hρ1
+    exact ⟨u :: us, ρ2, by simp [toRustMS.argsS, h1, h2], .cons hu hus, hρ2⟩
+  case case13 Γ c t e k2 he hc ht ihc iht ihe =>
     cases hk
     obtain ⟨cv, ρ1, h1, hcv, hρ1⟩ := ihc _ hc ρ hρ
     obtain ⟨b, rfl⟩ := hcv
@@ -361,7 +379,7 @@ theorem toRustMS_total_kindL {κ : Type} [DecidableEq κ] {H : κ → AVal → P
       exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
     · obtain ⟨r, ρ2, h2, hr, hρ2⟩ := iht _ ht ρ1 hρ1
       exact ⟨r, ρ2, by simp [toRustMS, h1, h2], hr, hρ2⟩
-  case case20 Γ var lo hi body k1 k2 hk2 hk1 a _ _ b hb2 hb1 hcond kb hbody ihlo ihhi ih =>
+  case case16 Γ var lo hi body k1 k2 hk2 hk1 a _ _ b hb2 hb1 hcond kb hbody ihlo ihhi ih =>
     cases hk
     obtain ⟨hlo, hhi, hfit⟩ := hcond
     obtain ⟨p, ρ1, h1, hp, hρ1⟩ := ihlo _ hk1 ρ hρ
