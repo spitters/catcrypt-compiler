@@ -58,8 +58,9 @@ computed rather than materialised.
 
 ## Main results
 
-* `simdVarShift64_lane` — lane `k` of `v128PackLanesW 64 bop a b` is `bop.apply`
-  of lane `k` of `a` and lane `k` of `b`: each lane shifts by its own count.
+* `simdVarShift64_lane` — lane `k` of `v128PackLanesW 64 bop a b` is
+  `bop.applyLane` of lane `k` of `a` and lane `k` of `b`: each lane shifts by its own
+  count.
 * `vpsllvqXmmCom_denote` / `vpsrlvqXmmCom_denote` — the one-op `Com`s denote
   `v128PackLanesW 64 .shl` / `v128PackLanesW 64 .shr`.
 * `vpsllvqXmmCom_lane` / `vpsrlvqXmmCom_lane` — lane `k` of the kernel's
@@ -105,17 +106,17 @@ theorem below is the extraction law: reading lane `k` back off the packed result
 gives exactly the lane-wise operation. -/
 
 /-- **Per-lane law.** Lane `k` (the `[64k, 64k+64)` slice) of the 128-bit
-    two-lane variable shift `v128PackLanesW 64 bop a b` is `bop.apply` of lane `k`
-    of `a` and lane `k` of `b`. For `bop = .shl` / `.shr` this says each 64-bit
-    lane is shifted by its own count, which is what distinguishes `VPSLLVQ` /
+    two-lane variable shift `v128PackLanesW 64 bop a b` is `bop.applyLane` of lane
+    `k` of `a` and lane `k` of `b`. For `bop = .shl` / `.shr` this says each 64-bit
+    lane is shifted by its own unmasked count, which is what distinguishes `VPSLLVQ` /
     `VPSRLVQ` from the uniform-count packed shift. The lane operation is left
     abstract, so the OR-of-shifted-chunks packing is the only thing reduced. -/
 theorem simdVarShift64_lane (bop : JasminBinOp) (a b : BitVec 128) (k : Fin 2) :
     BitVec.extractLsb' (64 * k.val) 64 (v128PackLanesW 64 bop a b)
-      = bop.apply (BitVec.extractLsb' (64 * k.val) 64 a)
-                  (BitVec.extractLsb' (64 * k.val) 64 b) := by
+      = bop.applyLane (BitVec.extractLsb' (64 * k.val) 64 a)
+                      (BitVec.extractLsb' (64 * k.val) 64 b) := by
   fin_cases k <;> cases bop <;>
-    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl, JasminBinOp.apply] <;>
+    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl, JasminBinOp.applyLane] <;>
     bv_decide
 
 /-- Lane `k` of `VPSLLVQ`: lane `k` of the data shifted left by the `.toNat` of
@@ -329,17 +330,18 @@ four lanes, each shifted by its own count. The encoder selects this arm with
 distinguishing the lane width — and the printer emits `vpsllvd` / `vpsrlvd`. -/
 
 /-- **Per-lane law, 32-bit lane.** Lane `k` (the `[32k, 32k+32)` slice) of the
-    four-lane variable shift `v128PackLanesW 32 bop a b` is `bop.apply` of lane
-    `k` of `a` and lane `k` of `b`. For `bop = .shl` / `.shr` each 32-bit lane is
-    shifted by its own count, which is what distinguishes `VPSLLVD` / `VPSRLVD`
+    four-lane variable shift `v128PackLanesW 32 bop a b` is `bop.applyLane` of
+    lane `k` of `a` and lane `k` of `b`. For `bop = .shl` / `.shr` each 32-bit lane
+    is shifted by its own unmasked count, which is what distinguishes `VPSLLVD` / `VPSRLVD`
     from the uniform-count packed shift. The four-lane counterpart of
     `simdVarShift64_lane`. -/
 theorem simdVarShift32_lane (bop : JasminBinOp) (a b : BitVec 128) (k : Fin 4) :
     BitVec.extractLsb' (32 * k.val) 32 (v128PackLanesW 32 bop a b)
-      = bop.apply (BitVec.extractLsb' (32 * k.val) 32 a)
-                  (BitVec.extractLsb' (32 * k.val) 32 b) := by
+      = bop.applyLane (BitVec.extractLsb' (32 * k.val) 32 a)
+                      (BitVec.extractLsb' (32 * k.val) 32 b) := by
   fin_cases k <;> cases bop <;>
-    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl, JasminBinOp.apply] <;>
+    simp only [v128PackLanesW, List.range, List.range.loop, List.foldl,
+      JasminBinOp.applyLane] <;>
     bv_decide
 
 /-- The AT&T mnemonic of the 32-bit-lane per-lane left shift is `vpsllvd`. -/
