@@ -326,6 +326,9 @@ inductive MemTag where
       register value into `lmem` at the compile-time offset carried by the wire's
       `.arr base off` destination operand. -/
   | storeC
+  /-- A `stackZero w n` binding: write the zero array of shape `(w, n)` to the
+      destination array slot. -/
+  | zero (w n : Nat)
   deriving DecidableEq
 
 /-- A typed linear instruction: the emitted `LinstrR` paired with a `MemTag`. -/
@@ -369,6 +372,13 @@ def storeCStruct? : LinstrR → Option (String × Nat × String)
       if opn = "MOVQ" then some (base, off, src) else none
   | _ => none
 
+/-- Recognise the **array-zeroing** wire form `Lopn [.reg dst] "ZEROARR" _` (the
+    `stackZero` image) and return the destination array name `dst`; `none`
+    otherwise. The shape `(w, n)` is read from the `MemTag`, as for `stackStore`. -/
+def zeroStruct? : LinstrR → Option String
+  | .Lopn [.reg dst] opn _ => if opn = "ZEROARR" then some dst else none
+  | _ => none
+
 /-- The typed single-step semantics for the stack-memory fragment. On a
     load-tagged instruction (`loadStruct?` recognises `"LOADIDX"` *and* the tag is
     `.load w n`) it reads the source array `base` at shape `(w, n)`, the index
@@ -376,7 +386,9 @@ def storeCStruct? : LinstrR → Option (String × Nat × String)
     n).denote …` to the destination register `dst`. On a store-tagged instruction
     (`storeStruct?` + `.store w n`) it reads `base` at `(w, n)`, `idx` at 64, the
     value `val` at width `w`, and writes the **new array** `stackSet arr idx.toNat
-    v = (stackStore w n).denote …` to the destination array slot `dst`. On every
+    v = (stackStore w n).denote …` to the destination array slot `dst`. On a
+    zero-tagged instruction (`zeroStruct?` + `.zero w n`) it writes the zero array
+    `(stackZero w n).denote []` to the destination array slot. On every
     register binding (`.reg castDescr`) it delegates the wire to increment 8's
     `lsemStepCast` over the register half, leaving the array carrier unchanged.
 
@@ -414,6 +426,10 @@ def lsemStepMem (i : LinstrRM) (s : LstateM) : Option LstateM :=
           match s.reg.getW src 64 with
           | some v => some ((s.storeMemC base (Int.ofNat off) v).nextPc)
           | none => none
+      | none => none
+  | .zero w n =>
+      match zeroStruct? i.fst with
+      | some dst => some ((s.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc)
       | none => none
   | .reg castDescr =>
       (lsemStepCast (i.fst, castDescr) s.reg).map (fun r => { s with reg := r })
@@ -483,6 +499,21 @@ theorem lsemStepMem_storeC (base : String) (off : Nat) (src : String) (s : Lstat
       = some ((s.storeMemC base (Int.ofNat off) v).nextPc) := by
   simp only [lsemStepMem, storeCStruct?, if_true, hv]
 
+/-- **Array-zeroing step.** `lsemStepMem` of a `.zero w n`-tagged
+    `Lopn [.reg dst] "ZEROARR" ss` writes the zero array of shape `(w, n)`, the value
+    `jasminDenote_stackZero` gives, to the array slot `dst` and advances the pc. It
+    reads no register and never fails. -/
+theorem lsemStepMem_zeroC (dst : String) (ss : List LOperand) (w n : Nat) (s : LstateM) :
+    lsemStepMem (.Lopn [.reg dst] "ZEROARR" ss, .zero w n) s
+      = some ((s.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc) := by
+  simp only [lsemStepMem, zeroStruct?, if_true]
+
+/-- `zeroStruct?` recognises the real `stackZero` wire form
+    `Lopn [.reg dst] "ZEROARR" [.imm n, .imm w]`. -/
+theorem zeroStruct?_stackZero {w n : Nat} (dst : String) (src : List LOperand) :
+    zeroStruct? (opToLinstrR (JasminOp.stackZero w n) dst src) = some dst := by
+  simp only [opToLinstrR, zeroStruct?, if_true]
+
 /-! ## 4. The typed emission `straightOpsMem` and the wire/byte tie
 
 `straightOpsMem` mirrors increment 8's `straightOpsCast`, but emits the typed
@@ -499,7 +530,8 @@ def MemTag.ofCast : Option Nat → MemTag := MemTag.reg
 /-- The typed straight-line `LinstrRM` chain a `Com` emits in the stack-memory
     fragment. A `stackLoad w n` / `stackStore w n` binding emits its **real**
     `opToLinstrR` instruction (bare `"LOADIDX"`/`"STOREIDX"`) paired with the
-    array-shape descriptor; every other binding reuses `straightOpsCast`'s
+    array-shape descriptor, and a `stackZero w n` binding emits its `"ZEROARR"`
+    instruction tagged `.zero w n`; every other binding reuses `straightOpsCast`'s
     emission (its wire and cast descriptor), retagged as a `.reg` binding. -/
 def straightOpsMem (nArgs : Nat) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} →
@@ -511,6 +543,7 @@ def straightOpsMem (nArgs : Nat) :
         match e.op with
         | .stackLoad w n => (opToLinstrR e.op (regName curDepth) src, .load w n)
         | .stackStore w n => (opToLinstrR e.op (regName curDepth) src, .store w n)
+        | .stackZero w n => (opToLinstrR e.op (regName curDepth) src, .zero w n)
         | .castW _ w' => (opToLinstrR e.op (regName curDepth) src, .reg (some w'))
         | .regConst w _ => (opToLinstrR e.op (regName curDepth) src, .reg (regConstDescr w))
         | _ =>

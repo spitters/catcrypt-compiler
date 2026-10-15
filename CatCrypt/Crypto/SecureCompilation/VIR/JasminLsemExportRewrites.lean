@@ -363,6 +363,21 @@ theorem storeCStruct?_ren (i : LinstrR) :
       = (storeCStruct? i).map (fun p => (p.1, p.2.1, σ p.2.2)) := by
   unfold storeCStruct?; ren_recog
 
+/-- An `Lopn` whose mnemonic is not `ZEROARR` is no array zeroing. -/
+theorem zeroStruct?_of_ne {ds : List LOperand} {opn : String} {ss : List LOperand}
+    (h : opn ≠ "ZEROARR") : zeroStruct? (.Lopn ds opn ss) = none := by
+  unfold zeroStruct?
+  split
+  · rename_i heq
+    simp only [LinstrR.Lopn.injEq] at heq
+    obtain ⟨-, rfl, -⟩ := heq
+    exact if_neg h
+  · rfl
+
+theorem zeroStruct?_ren (i : LinstrR) :
+    zeroStruct? (renLinstrR σ i) = (zeroStruct? i).map σ := by
+  unfold zeroStruct?; ren_recog
+
 theorem cmpArgs?_ren (i : LinstrRM) :
     cmpArgs? (renRM σ i) = (cmpArgs? i).map (fun p => (renOperand σ p.1, renOperand σ p.2)) := by
   obtain ⟨w, t⟩ := i
@@ -464,6 +479,10 @@ theorem loadCStruct?_names {i : LinstrR} {p : String × String × Nat}
 theorem storeCStruct?_names {i : LinstrR} {p : String × Nat × String}
     (h : storeCStruct? i = some p) : p.2.2 ∈ instrNames i := by
   unfold storeCStruct? at h; recog_names
+
+theorem zeroStruct?_names {i : LinstrR} {d : String}
+    (h : zeroStruct? i = some d) : d ∈ instrNames i := by
+  unfold zeroStruct? at h; recog_names
 
 /-! ## 7. The shift, carry and cast steps under a renaming -/
 
@@ -688,6 +707,16 @@ theorem lsemStepMem_ren (hσ : RenOn σ N) (i : LinstrRM) (hi : ∀ n ∈ instrN
           have hsrc := storeCStruct?_names h1
           simp only [h1, Option.map_some, hR.1.getW (hi _ hsrc)] at h ⊢
           ren_close_with (RelM.storeMemC hR _ _ _)
+  | zero w n =>
+      dsimp only [renRM] at h ⊢
+      rw [zeroStruct?_ren]
+      cases h1 : zeroStruct? wire with
+      | none => simp [h1] at h
+      | some d =>
+          have hd := zeroStruct?_names h1
+          simp only [h1, Option.map_some] at h ⊢
+          cases h
+          exact ⟨_, rfl, RelM.setArr hσ hR (hi _ hd) _⟩
 
 /-! ## 9. The flag machine under a renaming -/
 
@@ -814,7 +843,10 @@ theorem lsemStepMem_of_carryArgs {i : LinstrRM} {p : CarryOp × String × LOpera
         subst he
         rcases hm with h | h | h | h <;> revert h <;> decide +kernel
       · rfl
-    cases tag <;> simp [lsemStepMem, loadStruct?, hst, loadCStruct?, storeCStruct?,
+    have hz : zeroStruct? (.Lopn [.reg d] opn [a, b]) = none := zeroStruct?_of_ne (by
+      rintro rfl
+      rcases hm with h | h | h | h <;> revert h <;> decide +kernel)
+    cases tag <;> simp [lsemStepMem, loadStruct?, hst, hz, loadCStruct?, storeCStruct?,
       lsemStepCast_carry d opn a b hm]
   · cases h
 
@@ -895,9 +927,13 @@ theorem lsemStepMem_of_wideArgs {i : LinstrRM} {w : WideOp} (h : wideArgs? i = s
         subst he
         revert hm; decide +kernel
       · rfl
-    cases tag <;> simp [lsemStepMem, loadStruct?, hst, loadCStruct?, storeCStruct?,
+    have hz : zeroStruct? (.Lopn [.reg d] opn [a, b]) = none := zeroStruct?_of_ne (by
+      rintro rfl
+      revert hm; decide +kernel)
+    cases tag <;> simp [lsemStepMem, loadStruct?, hst, hz, loadCStruct?, storeCStruct?,
       lsemStepCast_mov2 d opn a b hm]
-  · cases tag <;> simp [lsemStepMem, loadStruct?, storeStruct?, loadCStruct?, storeCStruct?,
+  · cases tag <;> simp [lsemStepMem, loadStruct?, storeStruct?, zeroStruct?, loadCStruct?,
+      storeCStruct?,
       lsemStepCast, castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?,
       adcxhiStruct?, sbbStruct?, sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN]
   · cases h

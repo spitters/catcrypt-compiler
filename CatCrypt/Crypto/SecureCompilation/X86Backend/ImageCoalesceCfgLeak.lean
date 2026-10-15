@@ -143,6 +143,20 @@ theorem instrLeakB_renArr {i : LinstrRM} (hsh : arrShapeB i = true) (r : LstateN
           simp [instrLeakB, renArr, renStore, opLeakF, renEv]
         · simp at hsh
       · simp at hsh
+  | zero a n =>
+      have hop : ∀ o, opLeakF r (renOpA σ o) = (opLeakF r o).map (renEv σ) := by
+        intro o; cases o <;> rfl
+      simp only [arrShapeB] at hsh
+      unfold zeroStruct? at hsh
+      split at hsh
+      · split at hsh
+        · next ho =>
+          subst ho
+          have hne : stripWidthTag "ZEROARR" ≠ "LEA" := by decide +kernel
+          have hreg : ∀ x, opLeakF r (.reg x) = [] := fun _ => rfl
+          simp [instrLeakB, renArr, renZero, hne, hreg, List.flatMap_map, hop, List.map_flatMap]
+        · simp at hsh
+      · simp at hsh
   | _ => simp [arrShapeB] at hsh
 
 /-- An instruction with an array position is an `Lopn`, and so is its renaming. -/
@@ -168,6 +182,16 @@ theorem flagCondCC?_of_arrShape {i : LinstrRM} (hsh : arrShapeB i = true) :
         · next ho =>
           subst ho
           simp [flagCondCC?, renArr, renStore]
+        · simp at hsh
+      · simp at hsh
+  | zero a n =>
+      simp only [arrShapeB] at hsh
+      unfold zeroStruct? at hsh
+      split at hsh
+      · split at hsh
+        · next ho =>
+          subst ho
+          simp [flagCondCC?, renArr, renZero]
         · simp at hsh
       · simp at hsh
   | _ => simp [arrShapeB] at hsh

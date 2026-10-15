@@ -113,11 +113,12 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW
 
 /-! ## 1. Steps that do not read the array carrier -/
 
-/-- The tag of the instruction is no array load and no array store. -/
+/-- The tag of the instruction is no array load, no array store and no array zeroing. -/
 def noArrB (i : LinstrRM) : Bool :=
   match i.2 with
   | .load _ _ => false
   | .store _ _ => false
+  | .zero _ _ => false
   | _ => true
 
 theorem noStoreB_of_noArrB {i : LinstrRM} (h : noArrB i = true) : noStoreB i = true := by
@@ -158,6 +159,7 @@ theorem lsemStepMem_setL {i : LinstrRM} (hi : noArrB i = true) (L : String → A
   cases tag with
   | load _ _ => cases hi
   | store _ _ => cases hi
+  | zero _ _ => cases hi
   | loadC => dsimp only [setL]; split <;> rfl
   | storeC =>
       dsimp only [setL]

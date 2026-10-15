@@ -162,6 +162,7 @@ theorem instrLeakB_coStep {σ : String → String} {i : LinstrRM} {after : List 
           simp [instrLeakB, renRM, renLinstrR, renOperand, opLeakF, renEv, hc.1.1]
   | loadC => simp [coStepB] at hc
   | storeC => simp [coStepB] at hc
+  | zero _ _ => simp [coStepB] at hc
 
 /-- **The events of a coalesced chain.** For a chain `is` of `ArrOK` `Lopn`s accepted by
     `coalesceB σ is obs` that runs from `s`, the coalesced chain `is.map (renRM σ)` emits,

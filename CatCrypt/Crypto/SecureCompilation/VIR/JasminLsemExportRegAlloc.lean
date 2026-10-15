@@ -438,10 +438,11 @@ different instructions, so the relation carries one name set for each. -/
 def RelM2 (σ : String → String) (Nr Na : String → Prop) (s s' : LstateM) : Prop :=
   RelN σ Nr s.reg s'.reg ∧ (∀ r, Na r → s'.larr (σ r) = s.larr r) ∧ s'.lmem = s.lmem
 
-/-- The array name a store-tagged `STOREIDX` writes. -/
+/-- The array name a store-tagged `STOREIDX` or a zero-tagged `ZEROARR` writes. -/
 def storeHit? (i : LinstrRM) : Option String :=
   match i.2 with
   | .store _ _ => (storeStruct? i.1).map (fun p => p.1)
+  | .zero _ _ => zeroStruct? i.1
   | _ => none
 
 /-- The array name a load-tagged `LOADIDX` or a store-tagged `STOREIDX` reads. -/
@@ -589,6 +590,19 @@ theorem lsemStepMem_live (hemp : Nr "") (hfix : σ "" = "") (i : LinstrRM)
           rw [hd] at hKr'
           simp only [h1, Option.map_some, hR.1.getW (hu _ hsrc)] at h ⊢
           live_close_with (RelM2.storeMemC hR hKr'.sub hA _ _ _)
+  | zero w n =>
+      dsimp only [renRM] at h ⊢
+      rw [zeroStruct?_ren]
+      cases h1 : zeroStruct? wire with
+      | none => simp [h1] at h
+      | some d =>
+          have hKa' : Keeps σ Na Ma [d] := by simpa [memArrDefs, storeHit?, h1] using hKa
+          have hRg : ∀ r, Mr r → Nr r := by
+            have : Keeps σ Nr Mr [] := by simpa [memRegDefs, storeHit?, h1] using hKr
+            exact this.sub
+          simp only [h1, Option.map_some] at h ⊢
+          cases h
+          exact ⟨_, rfl, RelM2.setArr_keeps hR hKa' hRg _⟩
 
 /-! ## 6. The flag machine under a liveness certificate -/
 
@@ -651,6 +665,8 @@ theorem carryArgs?_shape {i : LinstrRM} {p : CarryOp × String × LOperand × LO
   · rename_i d opn a b
     have hm : opn ≠ "STOREIDX" := by
       split_ifs at h <;> subst_vars <;> decide +kernel
+    have hmz : opn ≠ "ZEROARR" := by
+      split_ifs at h <;> subst_vars <;> decide +kernel
     have hst : storeStruct? (.Lopn [.reg d] opn [a, b]) = none := by
       unfold storeStruct?
       split
@@ -661,7 +677,7 @@ theorem carryArgs?_shape {i : LinstrRM} {p : CarryOp × String × LOperand × LO
       · rfl
     have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
       unfold storeHit?
-      cases tag <;> simp [hst]
+      cases tag <;> simp [hst, zeroStruct?, hmz]
     split_ifs at h <;> cases h <;>
       exact ⟨by simp [memRegDefs, hsh, defNames, opNames], by simp [memArrDefs, hsh],
         fun n hn => by simp only [useNames, List.mem_flatMap]; exact ⟨_, by simp, hn⟩,
@@ -724,9 +740,10 @@ theorem wideArgs?_shape_mov {i : LinstrRM} {d : String} {b : LOperand}
         obtain ⟨-, rfl, -⟩ := heq
         rw [if_neg (by subst ho; decide +kernel)]
       · rfl
+    have hmz : opn ≠ "ZEROARR" := by subst ho; decide +kernel
     have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
       unfold storeHit?
-      cases tag <;> simp [hst]
+      cases tag <;> simp [hst, zeroStruct?, hmz]
     exact ⟨by simp [memRegDefs, hsh, defNames, opNames], by simp [memArrDefs, hsh],
       fun n hn => by simp only [useNames, List.mem_flatMap]; exact ⟨_, by simp, hn⟩⟩
   · split_ifs at h
@@ -801,7 +818,7 @@ theorem memDefs_nil_of_not_lopn {i : LinstrRM} (h : ∀ d o s, i.1 ≠ LinstrR.L
   obtain ⟨wire, tag⟩ := i
   cases wire with
   | Lopn d o s => exact absurd rfl (h d o s)
-  | _ => cases tag <;> simp [memRegDefs, memArrDefs, storeHit?, storeStruct?, defNames]
+  | _ => cases tag <;> simp [memRegDefs, memArrDefs, storeHit?, storeStruct?, zeroStruct?, defNames]
 
 /-- A liveness certificate for a program `P`, a renaming `σ` and the program `P'`
     that holds the renamed instructions from index `k0` on. `Lr k` and `La k` are
@@ -1083,11 +1100,17 @@ theorem cmpArgs?_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTa
       exact if_neg (callMnem_ne (by decide))
   · rfl
 
+/-- A shadow instruction of a call is no array zeroing. -/
+theorem zeroStruct?_callShadow (dst f : String) (srcs : List LOperand) :
+    zeroStruct? (callShadow dst f srcs) = none := by
+  simp only [callShadow, zeroStruct?]
+  exact if_neg (callMnem_ne (by decide))
+
 /-- A shadow instruction of a call writes its destination register. -/
 theorem regDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
     regDefs (callShadow dst f srcs, tag) = [dst] := by
   have hs : storeHit? (callShadow dst f srcs, tag) = none := by
-    cases tag <;> simp [storeHit?, storeStruct?_callShadow]
+    cases tag <;> simp [storeHit?, storeStruct?_callShadow, zeroStruct?_callShadow]
   unfold regDefs memRegDefs
   rw [cmpArgs?_callShadow, hs]
   simp only [Option.isSome_none, Bool.false_eq_true, if_false, ite_self]
@@ -1097,7 +1120,7 @@ theorem regDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag
 theorem arrDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag) :
     arrDefs (callShadow dst f srcs, tag) = [] := by
   have hs : storeHit? (callShadow dst f srcs, tag) = none := by
-    cases tag <;> simp [storeHit?, storeStruct?_callShadow]
+    cases tag <;> simp [storeHit?, storeStruct?_callShadow, zeroStruct?_callShadow]
   unfold arrDefs memArrDefs
   rw [cmpArgs?_callShadow, hs]
   simp only [Option.isSome_none, Bool.false_eq_true, Option.toList_none, ite_self]

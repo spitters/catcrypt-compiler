@@ -730,6 +730,7 @@ theorem symMem_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) :
       · rw [← hR]; exact liftR_eqv h _
   | loadC => trivial
   | storeC => trivial
+  | zero _ _ => trivial
   | reg cd => dsimp only; rw [← hR]; exact liftR_eqv h _
 
 theorem aluFl_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) {o o' : SOut}
@@ -840,6 +841,7 @@ theorem symMem_frm (i : LinstrRM) {ss s : SSt} {gs : List SG}
       · exact liftR_frm h
   | loadC => cases h
   | storeC => cases h
+  | zero _ _ => cases h
   | reg cd => exact liftR_frm h
 
 theorem symCarry_frm {op : CarryOp} {d : String} {a b : LOperand} {ss s : SSt} {gs : List SG}
@@ -1332,6 +1334,7 @@ theorem symMem_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOpe
       exact liftR_copy e d x (symCast_writesOnly _ _ _ _ _ _)
   | loadC => trivial
   | storeC => trivial
+  | zero _ _ => trivial
   | reg cd =>
       simp only [symMem, hc]
       exact liftR_copy e d x (symCast_writesOnly _ _ _ _ _ _)

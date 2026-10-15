@@ -242,6 +242,11 @@ theorem loadCStruct?_mapI (i : LinstrR) : loadCStruct? (mapI g i) = loadCStruct?
         first | rfl | simp [mapI, loadCStruct?]
   | _ => rfl
 
+theorem zeroStruct?_mapI (i : LinstrR) : zeroStruct? (mapI g i) = zeroStruct? i := by
+  cases i with
+  | Lopn d o srcs => rcases d with _ | ⟨d0, _ | ⟨d1, dr⟩⟩ <;> (try cases d0) <;> rfl
+  | _ => rfl
+
 theorem storeStruct?_mapI (i : LinstrR) :
     storeStruct? (mapI g i) = (storeStruct? i).map (fun p => (p.1, p.2.1, p.2.2.1, g p.2.2.2)) := by
   cases i with
@@ -353,6 +358,7 @@ theorem lsemStepMem_mapI (i : LinstrR) (tg : MemTag) :
       cases storeCStruct? i with
       | none => rfl
       | some p => simp only [Option.map_some, getW_map hg]
+  | zero w n => simp only [lsemStepMem, zeroStruct?_mapI]
   | reg cd => simp only [lsemStepMem, hC]
 
 theorem carryStep_mapReg (op : CarryOp) (d : String) (a b : LOperand) :
@@ -968,10 +974,12 @@ theorem setRegM_setReg_same {w' : Nat} (v : BitVec w') :
   simp only [LstateM.setReg, setReg_setReg_same]
 
 /-- The memory step of an instruction with the one register destination `d` that no source
-    names and that is not an indexed store does not depend on the cell of `d`. -/
+    names and that is neither an indexed store nor an array zeroing does not depend on the
+    cell of `d`. -/
 theorem lsemStepMem_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
     (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
-    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none) :
+    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
+    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none) :
     lsemStepMem (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
       = lsemStepMem (.Lopn [.reg d] o srcs, tg) s := by
   have hC := fun cd => lsemStepCast_setReg_dst (s := s.reg) c hd0 o srcs cd hs
@@ -1003,6 +1011,7 @@ theorem lsemStepMem_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOpera
           simp only [lsemStepMem, hl]
           exact congrArg (fun x => some (LstateM.nextPc x)) (setRegM_setReg_same c _)
   | storeC => simp only [lsemStepMem, storeCStruct?_reg_dst]
+  | zero w' n => simp only [lsemStepMem, hz]
   | reg cd =>
       simp only [lsemStepMem, hreg, hC]
       rfl
@@ -1017,16 +1026,17 @@ theorem carryStep_setReg_dst (op : CarryOp) {a b : LOperand} (ha : d ∉ srcName
     first | rfl | (cases op <;> simp only [setRegM_setReg_same] <;> rfl)
 
 /-- The straight-line step of the flag machine of an instruction with the one register
-    destination `d` that no source names and that is not an indexed store does not depend
-    on the cell of `d`. -/
+    destination `d` that no source names and that is neither an indexed store nor an array
+    zeroing does not depend on the cell of `d`. -/
 theorem stepMemF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
     (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
-    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none) :
+    (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
+    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none) :
     stepMemF (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
       = stepMemF (.Lopn [.reg d] o srcs, tg) s := by
   have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
   unfold stepMemF
-  rw [lsemStepMem_setReg_dst c hd0 o srcs tg hs hst]
+  rw [lsemStepMem_setReg_dst c hd0 o srcs tg hs hst hz]
   cases lsemStepMem (.Lopn [.reg d] o srcs, tg) s with
   | some b =>
       simp only [withALUFlags]
@@ -1055,11 +1065,12 @@ theorem stepMemF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
 
 /-- **A written destination does not depend on its earlier cell.** The extended straight
     step of an instruction with the one register destination `d`, that no source names,
-    that is neither the flag compare nor an indexed store, is the same from a state and
-    from that state with any cell at `d`. -/
+    that is neither the flag compare nor an indexed store nor an array zeroing, is the same
+    from a state and from that state with any cell at `d`. -/
 theorem fstepF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand) (tg : MemTag)
     (zf : Bool) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
     (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
+    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none)
     (hcmp : cmpArgs? (.Lopn [.reg d] o srcs, tg) = none) :
     fstepF (.Lopn [.reg d] o srcs, tg) (s.setReg d c) zf
       = fstepF (.Lopn [.reg d] o srcs, tg) s zf := by
@@ -1074,7 +1085,7 @@ theorem fstepF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand) (
       simp only [hreg, readReg_setReg_ne c (hs (.reg src) (by simp)), setRegM_setReg_same]
   | none =>
       simp only
-      rw [stepMemF_setReg_dst c hd0 o srcs tg hs hst]
+      rw [stepMemF_setReg_dst c hd0 o srcs tg hs hst hz]
 
 end OverwriteM
 
@@ -1302,7 +1313,14 @@ theorem liveAgreeM_keep {Lr : List String} {i : Linstr} {dsts : List LOperand} {
         injection heq with _ ho _
         rw [if_neg (ho ▸ hnc)]
       · rfl
-    have hset := fstepF_setReg_dst (s := t) (s.reg.lvm r).2 hd0 opn srcs tg zf hs hst hcmp
+    have hz : zeroStruct? (.Lopn [.reg r] opn srcs) = none := by
+      simp only [zeroStruct?]
+      split_ifs with ho
+      · subst ho
+        have hw : isDstWriteOnly "ZEROARR" = false := by decide +kernel
+        simp [fullDefsOf, hw] at hmem
+      · rfl
+    have hset := fstepF_setReg_dst (s := t) (s.reg.lvm r).2 hd0 opn srcs tg zf hs hst hz hcmp
     have hreg' : ∀ q, readsI (.Lopn [.reg r] opn srcs) q →
         s.reg.lvm q = (t.setReg r (s.reg.lvm r).2).reg.lvm q := by
       intro q hq

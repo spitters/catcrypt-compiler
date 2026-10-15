@@ -239,8 +239,10 @@ theorem lsemStepMem_fresh (h : FreshMnem opn) (tag : MemTag) (s : LstateM) :
   have e4 : storeCStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold storeCStruct?
     split <;> first | rfl | (rename_i heq; cases heq)
+  have e5 : zeroStruct? (.Lopn [.reg dst] opn srcs) = none := by
+    simp only [zeroStruct?, if_neg (h.ne "ZEROARR" (by decide))]
   cases tag <;>
-    simp only [lsemStepMem, e1, e2, e3, e4, lsemStepCast_fresh h, Option.map_none]
+    simp only [lsemStepMem, e1, e2, e3, e4, e5, lsemStepCast_fresh h, Option.map_none]
 
 /-- **The flag machine has no step on an `Lopn` with a mnemonic of `FreshMnem`**, at every
     memory tag, in every program and from every state. -/

@@ -238,8 +238,10 @@ theorem lsemStepMem_callMnem (h : CallMnem opn) (tag : MemTag) (s : LstateM) :
   have e4 : storeCStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold storeCStruct?
     split <;> first | rfl | (rename_i heq; cases heq)
+  have e5 : zeroStruct? (.Lopn [.reg dst] opn srcs) = none := by
+    simp only [zeroStruct?, if_neg (h.ne "ZEROARR" (by decide))]
   cases tag <;>
-    simp only [lsemStepMem, e1, e2, e3, e4, lsemStepCast_callMnem h, Option.map_none]
+    simp only [lsemStepMem, e1, e2, e3, e4, e5, lsemStepCast_callMnem h, Option.map_none]
 
 /-! ## 3. The flag machine -/
 

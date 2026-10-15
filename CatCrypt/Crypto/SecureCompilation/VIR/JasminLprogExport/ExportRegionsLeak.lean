@@ -365,6 +365,15 @@ theorem quietLopn_movImm (dst : String) (c : Nat) : QuietLopn (movImmI dst c) :=
   quietLopn_regs _ _ _ _ fun o ho => by
     rw [List.mem_singleton.mp ho]; exact Or.inr ⟨_, rfl⟩
 
+/-- The array zeroing of a `stackZero w n` binding is quiet: its operands are its
+    destination and two immediates, so it emits no address event at any register file,
+    the leakage `jKind_stackZero` gives the source operation. -/
+theorem quietLopn_stackZero (dst : String) (src : List LOperand) (w n : Nat) :
+    QuietLopn (opToLinstrR (JasminOp.stackZero w n) dst src, MemTag.zero w n) :=
+  quietLopn_regs _ _ _ _ fun o ho => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+    rcases ho with rfl | rfl <;> exact Or.inr ⟨_, rfl⟩
+
 /-- The compare of a register with zero is quiet. -/
 theorem quietLopn_cmp (r : String) :
     QuietLopn (guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])) :=

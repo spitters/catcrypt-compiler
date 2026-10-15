@@ -114,6 +114,7 @@ theorem symMem_flags (i : LinstrRM) (ss : SSt) :
       · exact liftR_flags ss _ ss' gs h
   | loadC => cases h
   | storeC => cases h
+  | zero _ _ => cases h
   | reg cd => exact liftR_flags ss _ ss' gs h
 
 /-- A description of a memref step that keeps the symbolic flags describes the step on the

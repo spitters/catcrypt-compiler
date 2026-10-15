@@ -784,6 +784,7 @@ theorem symMem_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
       exact liftR_ren ss d r (symCast_writesOnly _ _ _ _ _ _)
   | loadC => trivial
   | storeC => trivial
+  | zero _ _ => trivial
   | reg cd =>
       simp only [symMem, hc]
       exact liftR_ren ss d r (symCast_writesOnly _ _ _ _ _ _)

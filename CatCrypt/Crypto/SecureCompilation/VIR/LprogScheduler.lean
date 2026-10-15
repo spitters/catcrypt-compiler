@@ -133,14 +133,15 @@ def opIsArrIdx : LOperand → Bool
   | .arrIdx _ _ _ => true
   | _             => false
 
-/-- Whether a linstr contains a runtime-indexed (`arrIdx`) operand. Such an op
-    touches an unknown array element through a runtime index register, which the
-    per-element footprint model cannot track precisely (and, as a destination,
-    also *reads* the index register the token model would mis-classify as a write).
-    `indep` therefore treats any `arrIdx`-bearing op as a scheduling barrier: it is
+/-- Whether a linstr contains a runtime-indexed (`arrIdx`) operand or is the array
+    zeroing `ZEROARR`. An `arrIdx` op touches an unknown array element through a
+    runtime index register, which the per-element footprint model cannot track
+    precisely (and, as a destination, also *reads* the index register the token model
+    would mis-classify as a write); `ZEROARR` writes a whole array, which the token model
+    does not track. `indep` therefore treats every such op as a scheduling barrier: it is
     never swapped, so nothing is reordered across it. -/
 def hasArrIdx : LinstrR → Bool
-  | .Lopn dsts _ srcs => dsts.any opIsArrIdx || srcs.any opIsArrIdx
+  | .Lopn dsts opn srcs => opn == "ZEROARR" || dsts.any opIsArrIdx || srcs.any opIsArrIdx
   | _                 => false
 
 /-! ## 1b. Mnemonic keys and the cells no operand names
@@ -426,7 +427,7 @@ theorem indep_eq_footprint_and_hazards (i1 i2 : LinstrR)
     Bool.and_true, Bool.true_and]
   apply Bool.eq_iff_iff.mpr
   simp only [Bool.and_eq_true, Bool.not_eq_true']
-  tauto
+  with_reducible tauto
 
 /-- Component projections of `indep`. -/
 theorem indep_ww {i1 i2 : LinstrR} (h : indep i1 i2 = true) :

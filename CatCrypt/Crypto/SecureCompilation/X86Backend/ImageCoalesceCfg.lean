@@ -115,6 +115,21 @@ def renStore (σ : String → String) : LinstrR → LinstrR
       else .Lopn [.reg d] opn [.arrIdx b x sc, .reg v]
   | i => i
 
+/-- The operand `o` with the base of an array element renamed by `σ`; the index register
+    and every other operand unchanged. -/
+def renOpA (σ : String → String) : LOperand → LOperand
+  | .arr b k => .arr (σ b) k
+  | .arrIdx b x sc => .arrIdx (σ b) x sc
+  | o => o
+
+/-- The wire of a `ZEROARR` with its destination and the array bases of its sources
+    renamed by `σ`; every other wire unchanged. -/
+def renZero (σ : String → String) : LinstrR → LinstrR
+  | .Lopn [.reg d] opn ss =>
+      if opn = "ZEROARR" then .Lopn [.reg (σ d)] opn (ss.map (renOpA σ))
+      else .Lopn [.reg d] opn ss
+  | i => i
+
 /-- The operand `o` with the name of a register operand renamed by `σ`. -/
 def renOpR (σ : String → String) : LOperand → LOperand
   | .reg x => .reg (σ x)
@@ -138,14 +153,16 @@ def renArr (σ : String → String) (i : LinstrRM) : LinstrRM :=
   match i.2 with
   | .load _ _ => (renLoad σ i.1, i.2)
   | .store _ _ => (renStore σ i.1, i.2)
+  | .zero _ _ => (renZero σ i.1, i.2)
   | _ => (renCallW σ i.1, i.2)
 
-/-- An instruction with an array position: a load-tagged `LOADIDX` or a store-tagged
-    `STOREIDX`. -/
+/-- An instruction with an array position: a load-tagged `LOADIDX`, a store-tagged
+    `STOREIDX` or a zero-tagged `ZEROARR`. -/
 def arrShapeB (i : LinstrRM) : Bool :=
   match i.2 with
   | .load _ _ => (loadStruct? i.1).isSome
   | .store _ _ => (storeStruct? i.1).isSome
+  | .zero _ _ => (zeroStruct? i.1).isSome
   | _ => false
 
 /-- An operation that none of the recognisers of the flag machine reads: no compare, no
@@ -155,13 +172,25 @@ def plainArrB (i : LinstrRM) : Bool :=
   isLopnB i && (cmpArgs? i).isNone && (movRegArgs? i).isNone && (carryArgs? i).isNone
     && (wideArgs? i).isNone && (aluFlagOp? i).isNone
 
+/-- An array zeroing is read by no recogniser of the flag machine. -/
+theorem plainArrB_zero (d : String) (ss : List LOperand) (tag : MemTag) :
+    plainArrB (.Lopn [.reg d] "ZEROARR" ss, tag) = true := by
+  have hm : stripWidthTag "ZEROARR" ≠ "MOV" := by decide +kernel
+  unfold plainArrB
+  rcases ss with _ | ⟨a, _ | ⟨b, _ | ⟨c, rest⟩⟩⟩ <;> (try cases a) <;>
+    simp [isLopnB, cmpArgs?, movRegArgs?, carryArgs?, wideArgs?, aluFlagOp?, withWidthTag, hm]
+
 /-- **The check of one operation** followed by reads of the array names `after`, for a
-    renaming of array positions: the destination `d` of a store has an image under `σ` that
-    no later-read name `r ≠ d` shares; never a compile-time-offset memory access. -/
+    renaming of array positions: the destination `d` of a store or of an array zeroing has
+    an image under `σ` that no later-read name `r ≠ d` shares; never a compile-time-offset
+    memory access. -/
 def coArrStepB (σ : String → String) (i : LinstrRM) (after : List String) : Bool :=
   match i.2 with
   | .store _ _ => match storeStruct? i.1 with
     | some (d, _, _, _) => after.all fun r => r == d || σ r != σ d
+    | none => true
+  | .zero _ _ => match zeroStruct? i.1 with
+    | some d => after.all fun r => r == d || σ r != σ d
     | none => true
   | .loadC | .storeC => false
   | _ => true
@@ -179,9 +208,9 @@ def callOpsB (σ : String → String) (a : Nat → Option Nat) (live : List Stri
         | _ => true)
       && callOpsB σ a live (j + 1) os
 
-/-- A tag other than a load or a store tag, at which `renArr` renames a call. -/
+/-- A tag other than a load, a store or a zero tag, at which `renArr` renames a call. -/
 def callTagB : MemTag → Bool
-  | .load _ _ | .store _ _ => false
+  | .load _ _ | .store _ _ | .zero _ _ => false
   | _ => true
 
 /-- **The check of a shadow instruction of a call** `callShadow dst f srcs` with the tag
@@ -388,6 +417,29 @@ theorem storeStruct?_renStore (w : LinstrR) :
     rw [this]
     rfl
 
+theorem renZero_of_none {w : LinstrR} (h : zeroStruct? w = none) : renZero σ w = w := by
+  unfold renZero
+  split
+  · split
+    · next ho => simp [zeroStruct?, ho] at h
+    · rfl
+  · rfl
+
+/-- The renamed wire of a `ZEROARR` zeroes the renamed destination. -/
+theorem zeroStruct?_renZero (w : LinstrR) :
+    zeroStruct? (renZero σ w) = (zeroStruct? w).map σ := by
+  unfold renZero
+  split
+  · split <;> simp [zeroStruct?, *]
+  · next hne =>
+    have : zeroStruct? w = none := by
+      unfold zeroStruct?
+      split
+      · next d o ss => exact absurd rfl (hne d o ss)
+      · rfl
+    rw [this]
+    rfl
+
 theorem renCallW_of_none {w : LinstrR} (h : shadowCall? w = none) : renCallW σ w = w := by
   unfold renCallW
   rw [h]
@@ -411,6 +463,9 @@ theorem renArr_of_not_shape {i : LinstrRM} (h : arrShapeB i = false)
   | store a n =>
       simp only [arrShapeB, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at h
       simp only [renArr, renStore_of_none h]
+  | zero a n =>
+      simp only [arrShapeB, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at h
+      simp only [renArr, renZero_of_none h]
   | _ => simp only [renArr, renCallW_of_none hn]
 
 /-- The renaming of a shadow instruction of a call keeps its kind: a wire is a label
@@ -443,6 +498,12 @@ theorem isLabel_renArr (l : LLabel) (i : LinstrRM) :
   | store a n =>
       show JasminLsemLabeled.isLabel l (renStore σ w) = _
       unfold renStore
+      split
+      · split <;> rfl
+      · rfl
+  | zero a n =>
+      show JasminLsemLabeled.isLabel l (renZero σ w) = _
+      unfold renZero
       split
       · split <;> rfl
       · rfl
@@ -480,6 +541,14 @@ theorem ctlOK_renArr (σ : String → String) {i : LinstrRM} (h : CtlOK i) :
     cases tag with
     | load a n => exact Or.inl (hL w ⟨d, o, s, hd⟩)
     | store a n => exact Or.inl (hS w ⟨d, o, s, hd⟩)
+    | zero a n =>
+        refine Or.inl ?_
+        show ∃ d o s, renZero σ w = LinstrR.Lopn d o s
+        subst hd
+        unfold renZero
+        split
+        · split <;> exact ⟨_, _, _, rfl⟩
+        · exact ⟨_, _, _, rfl⟩
     | _ => exact Or.inl (renCallW_lopn ⟨d, o, s, hd⟩)
   · simp only at hw
     subst hw
@@ -589,6 +658,31 @@ theorem lsemStepMem_coArr {i : LinstrRM} {after : List String}
                       (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
   | loadC => simp [coArrStepB] at hc
   | storeC => simp [coArrStepB] at hc
+  | zero w n =>
+      simp only [coArrStepB] at hc
+      unfold lsemStepMem at h ⊢
+      simp only [renArr] at h ⊢
+      rw [zeroStruct?_renZero]
+      cases hl : zeroStruct? wire with
+      | none => rw [hl] at h; cases h
+      | some d =>
+          rw [hl] at hc h
+          simp only [List.all_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hc
+          simp only [Option.map_some, Option.some.injEq] at h ⊢
+          subst h
+          refine ⟨_, rfl, ⟨?_, hR.mem, hR.cf, hR.of, fun r hr => ?_⟩⟩
+          · simp only [LstateM.nextPc, LstateM.setArr, hR.reg]
+          · simp only [LstateM.nextPc, LstateM.setArr]
+            by_cases hrd : r = d
+            · subst hrd
+              simp
+            · have hne : σ r ≠ σ d := by
+                rcases hc r hr with h' | h'
+                · exact absurd h' hrd
+                · exact h'
+              simp only [hne, hrd, if_false]
+              exact hR.arr r (List.mem_append_right _
+                (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
 
 /-! ## 4. The step -/
 
@@ -857,6 +951,7 @@ theorem renArr_callShadow (dst f : String) (srcs : List LOperand) {tag : MemTag}
   cases tag with
   | load a n => cases ht
   | store a n => cases ht
+  | zero a n => cases ht
   | _ => simp only [renArr, renCallW_callShadow]
 
 /-- **The argument words of the renamed operands.** For operands accepted by `callOpsB` at

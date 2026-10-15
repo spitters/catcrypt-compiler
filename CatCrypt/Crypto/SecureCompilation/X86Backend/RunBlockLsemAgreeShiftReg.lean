@@ -84,7 +84,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
     identity: `shiftCount c = c.toNat`. -/
 theorem shiftCount_of_toNat_lt {c : BitVec 64} (h : c.toNat < 64) :
     shiftCount c = c.toNat := by
-  simp only [shiftCount, Nat.mod_eq_of_lt h]
+  simp only [shiftCount, VIR.shiftMask_64, Nat.mod_eq_of_lt h]
 
 /-! ## 2. The `JState` shift data words at an in-range register count -/
 
@@ -190,7 +190,8 @@ theorem shlReg_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
     exact lsemStepMem_regArith dst "SHL" (.reg c) ls (stripWidthTag_withWidthTag_SHL 64)
       (by decide) (by decide) (by decide) (by decide)
       (s.get dst) (s.get c) _ (hcorr.regAgree dst)
-      (evalOperandN_toLOp s ls hcorr (.reg c)) rfl
+      (evalOperandN_toLOp s ls hcorr (.reg c))
+      (by rw [← VIR.shiftMask_of_lt (w := 64) h]; rfl)
   · intro r
     simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W, JOperand.eval,
       x86_SHL_word_reg h]
@@ -208,7 +209,8 @@ theorem shrReg_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
     exact lsemStepMem_regArith dst "SHR" (.reg c) ls (stripWidthTag_withWidthTag_SHR 64)
       (by decide) (by decide) (by decide) (by decide)
       (s.get dst) (s.get c) _ (hcorr.regAgree dst)
-      (evalOperandN_toLOp s ls hcorr (.reg c)) rfl
+      (evalOperandN_toLOp s ls hcorr (.reg c))
+      (by rw [← VIR.shiftMask_of_lt (w := 64) h]; rfl)
   · intro r
     simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W, JOperand.eval,
       x86_SHR_word_reg h]
@@ -228,7 +230,8 @@ theorem shlxReg_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
     exact lsemStepMem_regArith3 dst src (.reg c) ls "SHL" (stripWidthTag_withWidthTag_SHL 64)
       (by decide) (by decide) (by decide) (by decide)
       (s.get src) (s.get c) _ (hcorr.regAgree src)
-      (evalOperandN_toLOp s ls hcorr (.reg c)) rfl
+      (evalOperandN_toLOp s ls hcorr (.reg c))
+      (by rw [← VIR.shiftMask_of_lt (w := 64) h]; rfl)
   · intro r
     simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, x86_SHLX_reg h]
   · intro b o; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg]
@@ -246,7 +249,8 @@ theorem shrxReg_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
     exact lsemStepMem_regArith3 dst src (.reg c) ls "SHR" (stripWidthTag_withWidthTag_SHR 64)
       (by decide) (by decide) (by decide) (by decide)
       (s.get src) (s.get c) _ (hcorr.regAgree src)
-      (evalOperandN_toLOp s ls hcorr (.reg c)) rfl
+      (evalOperandN_toLOp s ls hcorr (.reg c))
+      (by rw [← VIR.shiftMask_of_lt (w := 64) h]; rfl)
   · intro r
     simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, x86_SHRX_reg h]
   · intro b o; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg]
@@ -360,14 +364,14 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 theorem x86_SHRX_mask (v c : BitVec 64) : x86_SHRX v c = v >>> (c.toNat % 64) := by
   have hmin : min 64 (c.toNat % 64) = c.toNat % 64 :=
     Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide)))
-  simp only [x86_SHRX, shiftCount, wshr, hmin]
+  simp only [x86_SHRX, shiftCount, wshr, VIR.shiftMask_64, hmin]
 
 /-- The `x86_SHLX` word at every count: the shift by the count masked to six
     bits. -/
 theorem x86_SHLX_mask (v c : BitVec 64) : x86_SHLX v c = v <<< (c.toNat % 64) := by
   have hmin : min 64 (c.toNat % 64) = c.toNat % 64 :=
     Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide)))
-  simp only [x86_SHLX, shiftCount, wshl, hmin]
+  simp only [x86_SHLX, shiftCount, wshl, VIR.shiftMask_64, hmin]
 
 /-- `runBlock` of the lowered `shrx` block writes the masked shift to `dst`. -/
 theorem runBlock_shrx (s : JState 64) (dst v c : String) :

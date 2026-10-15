@@ -437,6 +437,17 @@ theorem lsemStepMem_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t 
   | load wd n => simp only [loadStruct?_none hai]; exact hreg none
   | store wd n => simp only [storeStruct?_none hai]; exact hreg none
   | reg c => exact hreg c
+  | zero wd n =>
+    have hz : zeroStruct? w = none := by
+      cases w with
+      | Lopn ds opn srcs =>
+          have hne : (opn == "ZEROARR") = false := by
+            simp only [hasArrIdx, Bool.or_eq_false_iff] at hai
+            exact hai.1.1
+          unfold zeroStruct?
+          split <;> simp_all
+      | _ => rfl
+    simp only [hz, Option.map_none]
   | loadC =>
     simp only
     cases hx : loadCStruct? w with

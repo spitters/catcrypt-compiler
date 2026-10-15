@@ -96,10 +96,12 @@ def arrReads (i : LinstrRM) : List String :=
     | none => []
   | _ => []
 
-/-- The array name an instruction writes: the destination of a runtime-indexed store. -/
+/-- The array name an instruction writes: the destination of a runtime-indexed store or of
+    an array zeroing. -/
 def arrWrite (i : LinstrRM) : Option String :=
   match i.2 with
   | .store _ _ => (storeStruct? i.1).map (·.1)
+  | .zero _ _ => zeroStruct? i.1
   | _ => none
 
 /-- The array names live before the chain `is` when the names `obs` are read after it:
@@ -116,7 +118,7 @@ def fixB (σ : String → String) (i : LinstrR) : Bool := (instrNames i).all fun
     whose destination and index `σ` fixes; a store whose index and value `σ` fixes and
     whose destination `d` has an image under `σ` that no later-read name `r ≠ d` shares;
     a register instruction whose names `σ` fixes; never a compile-time-offset memory
-    access. -/
+    access and never an array zeroing. -/
 def coStepB (σ : String → String) (i : LinstrRM) (after : List String) : Bool :=
   match i.2 with
   | .load _ _ => match loadStruct? i.1 with
@@ -126,7 +128,7 @@ def coStepB (σ : String → String) (i : LinstrRM) (after : List String) : Bool
     | some (d, _, x, v) => σ x == x && σ v == v && after.all fun r => r == d || σ r != σ d
     | none => fixB σ i.1
   | .reg _ => fixB σ i.1
-  | .loadC | .storeC => false
+  | .loadC | .storeC | .zero _ _ => false
 
 /-- **The coalescing check** of the chain `is` with the names `obs` read after it. -/
 def coalesceB (σ : String → String) : List LinstrRM → List String → Bool
@@ -276,6 +278,7 @@ theorem lsemStepMem_coalesce {σ : String → String} {i : LinstrRM} {after : Li
                       (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
   | loadC => simp [coStepB] at hc
   | storeC => simp [coStepB] at hc
+  | zero _ _ => simp [coStepB] at hc
 
 /-! ## 3. The chain -/
 
