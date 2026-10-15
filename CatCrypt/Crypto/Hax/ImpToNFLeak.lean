@@ -23,7 +23,7 @@ tree of the events `SrcEv` of `srcLeak` with the shape of the evaluation. It dif
 `srcLeak` on the constructs that `srcLeak` leaves opaque: a call `app f args` leaves the
 leakages of its arguments, left to right, and then the call leakage `cl f vals` of the call on
 the argument values `vals`, except a call of `repeat`, which leaves only the leakages of its
-arguments (`ImpToNF.impToNF_app_repeat_refused`: the front refuses it); an
+arguments (`lsound_repeat`: the front translates it to the quiet `arrRepeat`); an
 assignment leaves the leakage of its right-hand side; a tuple
 the leakages of its components. The source leakage of the front `srcLeakNF` has the call
 leakage `nfCallLeak`, the event `op (callLeak f vals)`; `callLeak f vals` is the event list of
@@ -1104,16 +1104,17 @@ theorem lsound_repeat (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : 
     events are those of the arguments followed by the events of the call leakage of the call
     on the argument values. -/
 theorem lsound_app (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (_hR : RepeatCalls bi) (hC : C.Agrees bi) (fuel : Nat)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (hC : C.Agrees bi) (fuel : Nat)
     (tgt : Option String) (f : String)
     (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
       impToNF sigOf none σ' e = some o' → LSound bi C fuel e σ' o')
     (h : impToNF sigOf tgt σ (.app f args) = some o) : LSound bi C fuel (.app f args) σ o := by
   by_cases hf : f = "repeat"
-  · subst hf
-    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
-    cases h
+  · rcases impToNF_app_cases sigOf tgt σ h with ⟨x, N, hr, hro⟩ | ⟨hf', -⟩
+    · obtain ⟨rfl, rfl, hN, -⟩ := repeatArgs?_eq_some hr
+      exact lsound_repeat bi hR fuel tgt x hN σ hro
+    · exact absurd hf hf'
   rw [impToNF_app_call sigOf tgt σ hf] at h
   simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h

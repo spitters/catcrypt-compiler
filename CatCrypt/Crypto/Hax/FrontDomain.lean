@@ -141,8 +141,8 @@ inductive Refusal where
   | armTypes (a b : NfTy)
   /-- A name a conditional carries that an arm leaves unbound or at another type. -/
   | armCarried (x : String)
-  /-- A call of `repeat`, the array of copies of one element; `impToNF` translates no call of
-      `repeat`. -/
+  /-- A call of `repeat` whose count is not an integer literal in `[0, 2 ^ 64)`; `impToNF`
+      translates a call of `repeat` only at such a count (`repeatArgs?`). -/
   | arrayFill
 
 /-- The rendering of a refusal. -/
@@ -389,8 +389,9 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .assign x r => (frontOut sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
   | tgt, _, σ, .app f args =>
-      if f = "repeat" then .error .arrayFill else
-        (frontArgs sigOf σ args).bind fun oa =>
+      if f = "repeat" then
+        (orRefuse .arrayFill (repeatArgs? f args)).bind fun p => repeatE tgt σ p.1 p.2
+      else (frontArgs sigOf σ args).bind fun oa =>
         orRefuse (callRefusal f oa.as) <| (sigOf f oa.as).map fun r =>
         ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
           oa.σ.mapV .there, .here⟩
@@ -483,8 +484,7 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
     intro tgt Γ σ
     by_cases hf : f = "repeat"
     · subst hf
-      simp only [frontOut, impToNF_app_repeat_refused sigOf tgt σ args, if_true]
-      rfl
+      simp only [frontOut, impToNF, if_true, toOption_bind, toOption_orRefuse, toOption_repeatE]
     · simp only [frontOut, hf, if_false, impToNF_app_call sigOf tgt σ hf,
         toOption_bind, toOption_orRefuse, toOption_frontArgs sigOf args iha]
   case tuple es _ =>

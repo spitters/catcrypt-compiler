@@ -601,7 +601,8 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .assign x r => (impToNF sigOf (some x) σ r).map fun o =>
       o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)
   | tgt, _, σ, .app f args =>
-      if f = "repeat" then none else (impArgsNF sigOf σ args).bind fun oa =>
+      if f = "repeat" then (repeatArgs? f args).bind fun p => repeatOut tgt σ p.1 p.2
+      else (impArgsNF sigOf σ args).bind fun oa =>
         (sigOf f oa.as).map fun r =>
         ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
           oa.σ.mapV .there, .here⟩
@@ -1263,11 +1264,21 @@ theorem repeatArgs?_eq_some {f : String} {args : List ImpExpr} {x : ImpExpr} {N 
     · cases h
   · cases h
 
-/-- `impToNF` refuses every call of `repeat`. -/
+/-- `impToNF` refuses a call of `repeat` that `repeatArgs?` does not accept: a count other
+    than an integer literal in `[0, 2 ^ 64)`, or a number of arguments other than two. -/
 theorem impToNF_app_repeat_refused (sigOf : String → List NfTy → Option NfTy)
-    (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (args : List ImpExpr) :
+    (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {args : List ImpExpr}
+    (h : repeatArgs? "repeat" args = none) :
     impToNF sigOf tgt σ (.app "repeat" args) = none := by
-  simp only [impToNF, if_true]
+  simp only [impToNF, if_true, h, Option.bind_none]
+
+/-- `impToNF` translates a call `repeatArgs?` accepts by `repeatOut`. -/
+theorem impToNF_app_repeat (sigOf : String → List NfTy → Option NfTy)
+    (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {f : String}
+    {args : List ImpExpr} {x : ImpExpr} {N : Int} (h : repeatArgs? f args = some (x, N)) :
+    impToNF sigOf tgt σ (.app f args) = repeatOut tgt σ x N := by
+  obtain ⟨rfl, -, -⟩ := repeatArgs?_eq_some h
+  simp only [impToNF, if_true, h, Option.bind_some]
 
 /-- `repeatArgs?` accepts only calls of `repeat`. -/
 theorem repeatArgs?_of_ne {f : String} (hf : f ≠ "repeat") (args : List ImpExpr) :
@@ -1289,8 +1300,7 @@ theorem impToNF_app_call (sigOf : String → List NfTy → Option NfTy) (tgt : O
 
 /-- **The forms of a call `impToNF` translates**: a call `repeatArgs?` accepts, translated by
     `repeatOut`, or a call of a name other than `repeat`, translated as the typed call of its
-    arguments. `impToNF` refuses every call of `repeat` (`impToNF_app_repeat_refused`), so a
-    translated call has the second form. -/
+    arguments. -/
 theorem impToNF_app_cases (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
     {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {f : String} {args : List ImpExpr} {o : Out Γ}
     (h : impToNF sigOf tgt σ (.app f args) = some o) :
@@ -1300,8 +1310,13 @@ theorem impToNF_app_cases (sigOf : String → List NfTy → Option NfTy) (tgt : 
           oa.σ.mapV .there, .here⟩ = o) := by
   by_cases hf : f = "repeat"
   · subst hf
-    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
-    cases h
+    cases hr : repeatArgs? "repeat" args with
+    | none =>
+        rw [impToNF_app_repeat_refused sigOf tgt σ hr] at h
+        cases h
+    | some p =>
+        obtain ⟨x, N⟩ := p
+        exact Or.inl ⟨x, N, rfl, (impToNF_app_repeat sigOf tgt σ hr).symm.trans h⟩
   · rw [impToNF_app_call sigOf tgt σ hf] at h
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     exact Or.inr ⟨hf, h⟩
@@ -1359,15 +1374,16 @@ theorem repeat_sound (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : O
 /-- A call of a builtin is sound under `TypedCalls` and `RepeatCalls`, when the front is sound
     for each argument. -/
 theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
-    (hT : TypedCalls bi sigOf) (_hR : RepeatCalls bi) (fuel : Nat) (tgt : Option String)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (fuel : Nat) (tgt : Option String)
     (f : String) (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
       impToNF sigOf none σ' e = some o' → Sound bi fuel e σ' o')
     (h : impToNF sigOf tgt σ (.app f args) = some o) : Sound bi fuel (.app f args) σ o := by
   by_cases hf : f = "repeat"
-  · subst hf
-    rw [impToNF_app_repeat_refused sigOf tgt σ args] at h
-    cases h
+  · rcases impToNF_app_cases sigOf tgt σ h with ⟨x, N, hr, hro⟩ | ⟨hf', -⟩
+    · obtain ⟨rfl, rfl, hN, -⟩ := repeatArgs?_eq_some hr
+      exact repeat_sound bi hR fuel tgt x hN σ hro
+    · exact absurd hf hf'
   rw [impToNF_app_call sigOf tgt σ hf] at h
   simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h
