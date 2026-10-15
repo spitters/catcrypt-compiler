@@ -40,7 +40,6 @@ CatCrypt.Crypto.Hax.HaxToLowCTWordOpsCT
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
 CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
-CatCrypt.Crypto.Hax.HaxWideMulFuse
 CatCrypt.Crypto.Hax.ImpDesugarRun
 CatCrypt.Crypto.Hax.ImpDesugarWide
 CatCrypt.Crypto.Hax.ImpInlineLeak

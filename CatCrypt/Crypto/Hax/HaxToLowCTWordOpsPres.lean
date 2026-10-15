@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsLoop
+public import CatCrypt.Crypto.Hax.HaxWideMulFuse
 
 /-!
 # The multiply-high fusion and A-normalisation of `mpn_mul_1` in `denote'`
@@ -14,7 +15,10 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsLoop
 fused, A-normalised `mpn_mul_1` program `mul1ProgHax` in `denote'` with the output
 of the compiled loop. This module transfers that statement to the extracted
 program `mul1ProgSrc`, in which the multiply-high idiom is the call chain
-`mulHiChain` and the call arguments are nested calls.
+`mulHiChainM "Mul#128"`, the index successor is the checked `Add#size`, and the call
+arguments are nested calls. The width-tagged calls are evaluated by
+`TaggedMul1Builtins`, whose facts `Hax.hax64Builtins` meets
+(`hax64Builtins_taggedMul1Builtins`).
 
 The transfer is a backward simulation (`RunBack`): every run of the target to a
 value is matched by a run of the source to the same value, in environments that
@@ -36,6 +40,8 @@ the word `v`.
 * `RunBack` — backward simulation of a target run by a source run.
 * `mul1BodySrc`, `mul1ProgSrc` — the extracted `mpn_mul_1` body and program.
 * `mul1FreshNames`, `mul1Fresh` — the fresh names of `mul1BodyHax`.
+* `TaggedMul1Builtins` — the facts of `Mul#128` and `Add#size` the extraction
+  evaluates by.
 
 ## Main results
 
@@ -45,6 +51,9 @@ the word `v`.
   `RunBack.unitVal` — the simulation rules.
 * `treeVal_mulHiChain`, `denote'_mulHiChain`, `denote'_letBind_fuseMulHiRhs` — the
   multiply-high idiom on two words and its fused form have the same value.
+* `treeVal_mulHiChain128`, `treeVal_addSize_one` — the width-tagged multiply-high
+  idiom and index successor have the values of their untagged forms.
+* `hax64Builtins_taggedMul1Builtins` — `TaggedMul1Builtins Hax.hax64Builtins`.
 * `mul1_src_trip_back` — one trip of `mul1BodyHax` is simulated by one trip of
   `mul1BodySrc`.
 * `mul1_src_loop` — the loop over `mul1BodySrc` ends in an environment that agrees
@@ -60,6 +69,7 @@ namespace CatCrypt.Crypto.Hax.WordOpsSim
 
 open _root_.Hax (ImpExpr ImpLit Value Env Builtins Outcome denote' denoteArgs')
 open CatCrypt.Crypto.Jasmin.LowCT (sexprMulHiU)
+open CatCrypt.Crypto.Hax.WideMul (mulHiChainM)
 
 /-! ### Call trees -/
 
@@ -541,6 +551,74 @@ theorem denote'_letBind_fuseMulHiRhs (hbi : MulHiBuiltins bi) (fuel : Nat) {env 
 
 end TreeValues
 
+/-! ### The width-tagged builtins of the extraction -/
+
+/-- The width-tagged builtin facts the extracted `mpn_mul_1` evaluates by, with the
+    meaning `Hax.hax64WordOps` gives them: the checked `u128` product `Mul#128` on two
+    words below `2^64`, and the checked `usize` sum `Add#size` below `2^64`. -/
+structure TaggedMul1Builtins (bi : Builtins) : Prop where
+  mul128 : ∀ n m : Nat, n < 2 ^ 64 → m < 2 ^ 64 →
+    bi "Mul#128" [.int n, .int m] = some (.int ((n * m : Nat) : Int))
+  addSize : ∀ n m : Nat, n + m < 2 ^ 64 →
+    bi "Add#size" [.int n, .int m] = some (.int ((n + m : Nat) : Int))
+
+/-- hax-lean's `u64` table meets `TaggedMul1Builtins`. -/
+theorem hax64Builtins_taggedMul1Builtins : TaggedMul1Builtins _root_.Hax.hax64Builtins where
+  mul128 n m hn hm := by
+    have h := Nat.mul_lt_mul'' hn hm
+    rw [← Nat.pow_add] at h
+    have hb : n * m < 2 ^ 128 := h
+    unfold _root_.Hax.hax64Builtins
+    rw [_root_.Hax.hax64WordOps_mul128, _root_.Hax.uintMulOp, if_pos (by omega)]
+    rfl
+  addSize n m h := by
+    unfold _root_.Hax.hax64Builtins
+    rw [_root_.Hax.hax64WordOps_addSize, _root_.Hax.uintAddOp, if_pos (by omega)]
+    rfl
+
+section TaggedTreeValues
+
+variable {bi : Builtins}
+
+/-- Under `MulHiBuiltins` and `TaggedMul1Builtins`, the multiply-high idiom with the
+    width-tagged product `Mul#128` on two variables holding words below `2^64` has the
+    call-tree value of `mulhi#64` on them. -/
+theorem treeVal_mulHiChain128 (hbi : MulHiBuiltins bi) (htg : TaggedMul1Builtins bi)
+    {env : Env} {a b : String} {n m : Nat} (hn : n < 2 ^ 64) (hm : m < 2 ^ 64)
+    (ha : env a = some (.int n)) (hb : env b = some (.int m)) :
+    treeVal bi env (mulHiChainM "Mul#128" (.var a) (.var b)) =
+      treeVal bi env (.app mulHiCallName [.var a, .var b]) := by
+  have hnm : n * m < 2 ^ 128 := by
+    have h := Nat.mul_lt_mul'' hn hm
+    rwa [← Nat.pow_add] at h
+  have hhi : (n * m) >>> 64 < 2 ^ 64 := by
+    rw [Nat.shiftRight_eq_div_pow]
+    exact Nat.div_lt_of_lt_mul (by rw [← Nat.pow_add]; exact hnm)
+  have hI : ∀ z : Int, (some (Value.int z)).filter (fun v => !v.isControlFlow) =
+      some (Value.int z) := fun _ => rfl
+  simp only [mulHiChainM, treeVal, treeVals, ha, hb, hI, Option.bind, Option.map_some,
+    Value.ofLit, hbi.cast128 n hn, hbi.cast128 m hm, htg.mul128 n m hn hm, hbi.shr128 _ hnm,
+    hbi.cast64 _ hhi, hbi.mulhi n m hn hm, sexprMulHiU_of_lt hn hm]
+
+/-- Under `WordBuiltins'` and `TaggedMul1Builtins`, the checked successor
+    `Add#size i 1` of an index `j` with `j + 1 < 2^64` has the call-tree value of the
+    call `Add` on `i` and a variable holding `1`. -/
+theorem treeVal_addSize_one (hwb : WordBuiltins' bi) (htg : TaggedMul1Builtins bi)
+    {env₁ env₂ : Env} {y : String} {j : Nat} (hj : j + 1 < 2 ^ 64)
+    (h₁ : env₁ "i" = some (.int j)) (h₂ : env₂ "i" = some (.int j))
+    (hy : env₂ y = some (.int 1)) :
+    treeVal bi env₁ (.app "Add#size" [.var "i", .lit (.int 1)]) =
+      treeVal bi env₂ (.app "Add" [.var "i", .var y]) := by
+  have hA : bi "Add" [.int j, .int 1] = some (.int ((j + 1 : Nat) : Int)) :=
+    hwb.word "Add" (by simp [wordOpNames]) j 1 (j + 1) (by omega) (by norm_num) rfl hj
+  have hS : bi "Add#size" [.int j, .int ((1 : Nat) : Int)] =
+      some (.int ((j + 1 : Nat) : Int)) := htg.addSize j 1 hj
+  rw [treeVal_app_vars2 h₂ hy rfl rfl]
+  simp only [treeVal, treeVals, h₁, Value.ofLit, Option.bind, Option.map_some]
+  exact congrArg (Option.filter _) (hS.trans hA.symm)
+
+end TaggedTreeValues
+
 /-! ### The extracted `mpn_mul_1` -/
 
 /-- The loop body of the extracted `mpn_mul_1`: the multiply-high idiom unfused
@@ -549,7 +627,7 @@ def mul1BodySrc : ImpExpr :=
   .letBind "cy" (.app "index" [.var "rp", .var "i"])
   (.letBind "t" (.app "index" [.var "up", .var "i"])
   (.letBind "lo" (.app "wrapping_mul#64" [.var "t", .var "v"])
-  (.letBind "hi" (mulHiChain (.var "t") (.var "v"))
+  (.letBind "hi" (mulHiChainM "Mul#128" (.var "t") (.var "v"))
   (.letBind "s" (.app "wrapping_add#64" [.var "lo", .var "cy"])
   (.letBind "cq" (.app "BitAnd#64" [.app "BitXor#64" [.var "s", .var "ONES"], .var "lo"])
   (.letBind "cr" (.app "BitAnd#64" [.app "BitXor#64" [.app "BitXor#64" [.var "s", .var "lo"],
@@ -560,7 +638,7 @@ def mul1BodySrc : ImpExpr :=
   (.seq (.seq (.letBind "rp" (.app "array_update" [.var "rp", .var "i", .var "s"]) (.var "rp"))
       .unitVal)
     (.seq (.seq (.letBind "rp" (.app "array_update" [.var "rp",
-        .app "Add" [.var "i", .lit (.int 1)], .var "cyo"]) (.var "rp")) .unitVal) .unitVal))))))))))
+        .app "Add#size" [.var "i", .lit (.int 1)], .var "cyo"]) (.var "rp")) .unitVal) .unitVal))))))))))
 
 /-- The extracted `mpn_mul_1`: the argument rebindings, the loop over
     `mul1BodySrc`, and the return of `rp` with the carry `rp[n]`. -/
@@ -584,9 +662,10 @@ abbrev mul1Fresh (y : String) : Prop := y ∈ mul1FreshNames
     `c`, at `i` the index `j`, and at `v` a word: every run of the target body
     `mul1BodyHax` to a value is matched by a run of the source body `mul1BodySrc` to
     the same value, in environments that agree off the fresh names. -/
-theorem mul1_src_trip_back {bi : Builtins} (hbi : MulHiBuiltins bi) (fuel : Nat) {E₁ E₂ : Env}
+theorem mul1_src_trip_back {bi : Builtins} (hwb : WordBuiltins' bi) (hbi : MulHiBuiltins bi)
+    (htg : TaggedMul1Builtins bi) (fuel : Nat) {E₁ E₂ : Env}
     (hA : EnvAgreeExcept mul1Fresh E₁ E₂) {vs : List Value} {j c m : Nat}
-    (hup : E₂ "up" = some (.array vs)) (hi : E₂ "i" = some (.int j))
+    (hup : E₂ "up" = some (.array vs)) (hi : E₂ "i" = some (.int j)) (hj : j + 1 < 2 ^ 64)
     (hidx : bi "index" [.array vs, .int j] = some (.int c)) (hc : c < 2 ^ 64)
     (hv : E₂ "v" = some (.int m)) (hm : m < 2 ^ 64) :
     RunBack bi fuel mul1BodySrc E₁ mul1BodyHax E₂ (EnvAgreeExcept mul1Fresh) := by
@@ -609,7 +688,7 @@ theorem mul1_src_trip_back {bi : Builtins} (hbi : MulHiBuiltins bi) (fuel : Nat)
         some (.int m) := by
       rw [extend_ne _ (by decide), extend_ne _ (by decide), extend_ne _ (by decide),
         hA "v" (by decide), hv]
-    rw [treeVal_mulHiChain hbi hc hm ht hv']
+    rw [treeVal_mulHiChain128 hbi htg hc hm ht hv']
     exact treeVal_flat_congr hA3 _ rfl (by decide)
   have hA4 := hA3.extend "hi" whi
   refine RunBack.letBind rfl (treeVal_flat_congr hA4 _ rfl (by decide)) fun ws _ => ?_
@@ -682,10 +761,10 @@ theorem mul1_src_trip_back {bi : Builtins} (hbi : MulHiBuiltins bi) (fuel : Nat)
     (treeVals_cons_congr ?_ (treeVals_cons_congr (treeVal_var_congr (hD9 "cyo" (by decide)))
       (treeVals_nil_congr _ _))))
   rw [treeVal_var_of (extend_self _) (treeVal_isControlFlow hw9), ← hw9]
-  refine treeVal_app_congr _ (treeVals_cons_congr (treeVal_var_congr (hD8 "i" (by decide)))
-    (treeVals_cons_congr ?_ (treeVals_nil_congr _ _)))
-  rw [treeVal_var_of (extend_self _) (treeVal_isControlFlow hw8), ← hw8]
-  rfl
+  have h8 : w8 = .int 1 := (Option.some.inj hw8).symm
+  subst h8
+  refine treeVal_addSize_one hwb htg hj ((hD8 "i" (by decide)).trans ?_) ?_ (extend_self _)
+  all_goals simp (disch := decide) only [extend_ne, hi]
 
 /-- `n` trips leave `up`, `v`, `ONES` and `n` unchanged. -/
 theorem mul1Trips_frame (R : Nat) (env : Env) {y : String}
@@ -705,7 +784,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (SEnvScal
     `forFold i 0 n` over `mul1BodySrc` returns `()` at every fuel `≥ N`, in an
     environment that agrees with `mul1Trips R env N` off the fresh names. -/
 theorem mul1_src_loop {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : MulHiBuiltins bi)
-    {R U N L : Nat} (hR : N + 1 ≤ R) (hU : N ≤ U) (h64 : N + 1 < 2 ^ 64) {env : Env}
+    (htg : TaggedMul1Builtins bi) {R U N L : Nat} (hR : N + 1 ≤ R) (hU : N ≤ U) (h64 : N + 1 < 2 ^ 64) {env : Env}
     {σ : SEnvScalar} (h : EnvRelW env σ ["v", "ONES", "n"] [("rp", R), ("up", U)])
     (hn : natOf env "n" = N) (up : Fin L → BitVec 64)
     (hup : env "up" = some (.array (intCells up U))) {env₁ : Env}
@@ -722,9 +801,10 @@ theorem mul1_src_loop {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : MulHiBuilt
       EnvRelW (mul1Trips R env j) s ["v", "ONES", "n"] [("rp", R), ("up", U)])
     (fun j hj e s ⟨he, hrel⟩ => by
       obtain ⟨σ', h1, h2, h3⟩ := mul1_trip hbi (j := j) (by omega) (by omega) (by omega) hrel
-      have hback := mul1_src_trip_back hmh 0 (he.extend "i" (.int j)) (vs := intCells up U)
-        (j := j) (c := (memGetDyn up j).toNat) (m := m)
+      have hback := mul1_src_trip_back hbi hmh htg 0 (he.extend "i" (.int j))
+        (vs := intCells up U) (j := j) (c := (memGetDyn up j).toNat) (m := m)
         (by rw [extend_ne _ (by decide), mul1Trips_frame R env (by simp) j, hup]) (extend_self _)
+        (by omega)
         (hbi.index _ _ _ (intCells_getElem? up (by omega))) (BitVec.isLt _)
         (by rw [extend_ne _ (by decide), mul1Trips_frame R env (by simp) j, hvE]) hm
       obtain ⟨E', hE', hAg⟩ := hback _ _ (h1 0) rfl
@@ -741,9 +821,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (ComL)
 
 /-- **The extracted `mpn_mul_1` and the compiled loop return the same words.** The
     statement of `mul1_hax_eq_compiled` for the source program `mul1ProgSrc`, under
-    `WordBuiltins'` and `MulHiBuiltins`. -/
+    `WordBuiltins'`, `MulHiBuiltins` and `TaggedMul1Builtins`. -/
 theorem mul1_src_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : MulHiBuiltins bi)
-    (V : Ctxt.Valuation Gouter) {R U : Nat} (hR9 : R ≤ NR) (hU8 : U ≤ NU)
+    (htg : TaggedMul1Builtins bi) (V : Ctxt.Valuation Gouter) {R U : Nat} (hR9 : R ≤ NR) (hU8 : U ≤ NU)
     (hNR : (mul1Count.lookup V).toNat + 1 ≤ R) (hNU : (mul1Count.lookup V).toNat ≤ U)
     {env : Env} (hup : env "up" = some (.array (intCells (upVar.lookup V) U)))
     (hrp : env "rp" = some (.array (intCells (mul1Init.lookup V) R)))
@@ -762,7 +842,7 @@ theorem mul1_src_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : Mul
     env hR9 hU8 hup hrp hv hO _ hNR hNU
   have hrel := mul1Sigma_rel R U (upVar.lookup V) (vVar.lookup V) (mul1Init.lookup V)
     (N := (mul1Count.lookup V).toNat) (by omega) hup hrp hv hO hn
-  obtain ⟨E, hloop, hE⟩ := mul1_src_loop hbi hmh hNR hNU (by omega) hrel (by simp [natOf, hn])
+  obtain ⟨E, hloop, hE⟩ := mul1_src_loop hbi hmh htg hNR hNU (by omega) hrel (by simp [natOf, hn])
     (upVar.lookup V) hup (fun _ _ => rfl)
   have hvrE := (hE "rp" (by decide)).trans hvr
   have hnN : E "n" = some (.int (mul1Count.lookup V).toNat) := by
