@@ -799,6 +799,7 @@ CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AesEcbBlockObjectEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCertInj
 CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs
 CatCrypt.Crypto.SecureCompilation.X86Backend.Avx2YmmNttUnifiedEmit
