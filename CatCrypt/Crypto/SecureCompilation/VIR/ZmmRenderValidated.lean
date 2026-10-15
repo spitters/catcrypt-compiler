@@ -536,6 +536,32 @@ theorem exprZBindScalar_sound : BindSound .q exprZBindScalar := by
       rw [hd _ (regAs_reg 64 _)]
       exact (lane_constZmm n k (by simpa [LaneW.bits] using hk)).symm
     · simp [exprZBindScalar, hw, SatB]
+  | shlImm w' n =>
+    by_cases hw : w' = 64 ∧ n < 64
+    · obtain ⟨rfl, hn⟩ := hw
+      match args with
+      | .cons a .nil =>
+        simp only [exprZBindScalar, hn, and_self, if_true, SatB, if_true]
+        intro _
+        rw [hd _ (regAs_reg 64 _)]
+        change _ = E k (vm (JasminTy.reg 64) a) <<< n
+        rw [ha _ a _ (regAs_reg 64 _)]
+        exact congrArg (fun m : Nat => (show BitVec 64 from a.lookup V) <<< m)
+          (shiftMask_of_lt (w := 64) hn)
+    · simp [exprZBindScalar, hw, SatB]
+  | shrImm w' n =>
+    by_cases hw : w' = 64 ∧ n < 64
+    · obtain ⟨rfl, hn⟩ := hw
+      match args with
+      | .cons a .nil =>
+        simp only [exprZBindScalar, hn, and_self, if_true, SatB, if_false]
+        intro _
+        rw [hd _ (regAs_reg 64 _)]
+        change _ = E k (vm (JasminTy.reg 64) a) >>> n
+        rw [ha _ a _ (regAs_reg 64 _)]
+        exact congrArg (fun m : Nat => (show BitVec 64 from a.lookup V) >>> m)
+          (shiftMask_of_lt (w := 64) hn)
+    · simp [exprZBindScalar, hw, SatB]
   | _ => exact True.intro
 
 theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by

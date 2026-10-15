@@ -120,7 +120,9 @@ def LaneW.bits : LaneW → Nat
     rejects). `montsub d a b mu p` is the sixteen-lane Montgomery difference
     `d = mulhi(a, b) - mulhi((a·b)·mu, p)` of the constants `mu`, `p`. `rol w d a n` is the
     lane-wise rotate of `a` left by `n`, and `tern w imm d a b c` the bitwise function of
-    truth table `imm` (`ZmmTextModel.semTern`) of `a`, `b`, `c`. -/
+    truth table `imm` (`ZmmTextModel.semTern`) of `a`, `b`, `c`. `shi w left d a n` is the
+    lane-wise shift of `a` by the immediate `n`, left when `left` holds and logical right
+    otherwise (`ZmmTextModel.semShImm`). -/
 inductive ZBind where
   | pack (w : LaneW) (bop : JasminBinOp) (dst a b : String)
   | mulhi (dst a b : String)
@@ -132,6 +134,7 @@ inductive ZBind where
   | other (dst : String)
   | rol (w : LaneW) (dst a : String) (n : Nat)
   | tern (w : LaneW) (imm : Nat) (dst a b c : String)
+  | shi (w : LaneW) (left : Bool) (dst a : String) (n : Nat)
 
 /-- The name a binding defines. -/
 def ZBind.dst : ZBind → String
@@ -145,6 +148,7 @@ def ZBind.dst : ZBind → String
   | .other d => d
   | .rol _ d _ _ => d
   | .tern _ _ d _ _ _ => d
+  | .shi _ _ d _ _ => d
 
 /-- Whether a binding lies outside the renderer's fragment. -/
 def ZBind.isOther : ZBind → Bool
@@ -161,6 +165,7 @@ def ZBind.srcs : ZBind → List String
   | .montsub _ a b _ _ => [a, b]
   | .rol _ _ a _ => [a]
   | .tern _ _ _ a b c => [a, b, c]
+  | .shi _ _ _ a _ => [a]
   | _ => []
 
 /-- The name of the sixteen-lane high-multiply leaf. -/
@@ -188,8 +193,8 @@ def bcast512d (w : Nat) : Nat :=
 
 /-- The binding the 64-bit lane map `LaneMapZmm.laneMapZmm` gives the scalar
     expression `e` defining `dst`: `regArith bop 64` is `vpackZMM bop`, `regConst 64 k`
-    is the broadcast constant `constZmm k`, and every other operation is outside the
-    fragment. -/
+    is the broadcast constant `constZmm k`, `shlImm 64 n` and `shrImm 64 n` with `n < 64`
+    are the immediate shifts by `n`, and every other operation is outside the fragment. -/
 def exprZBindScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
     (e : Expr jasminDialect Γ t) (dst : String) : ZBind :=
   match e.op with
@@ -198,6 +203,10 @@ def exprZBindScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMa
       else .other dst
   | .regConst w k =>
       if w = 64 then .const dst (KeccakThetaPiAbstractCom.constZmm k).toNat else .other dst
+  | .shlImm w n =>
+      if w = 64 ∧ n < 64 then .shi .q true dst (argName vm e.args 0) n else .other dst
+  | .shrImm w n =>
+      if w = 64 ∧ n < 64 then .shi .q false dst (argName vm e.args 0) n else .other dst
   | _ => .other dst
 
 /-- The binding the 32-bit lane map `LaneMapZmmD` gives the scalar expression `e`
@@ -349,6 +358,7 @@ def bindRW (consts : Std.HashMap String (String × Nat)) : ZBind → List String
   | .mulhilo h l a b => (([a, b].filter (!consts.contains ·)).eraseDups, [h, l])
   | .montsub d a b _ _ => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
   | .rol _ d a _ => (([a].filter (!consts.contains ·)), [d])
+  | .shi _ _ d a _ => (([a].filter (!consts.contains ·)), [d])
   | .tern _ _ d a b c => (([a, b, c].filter (!consts.contains ·)).eraseDups, [d])
   | _ => ([], [])
 
@@ -541,6 +551,14 @@ def bindLines (md : Mode) (consts : Std.HashMap String (String × Nat))
         pure ["\t" ++ (match w with | .q => "vprolq" | .d => "vprold") ++ " $" ++ toString n
           ++ ", " ++ ra ++ ", " ++ rd]
       | _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
+  | .shi w left d a n =>
+      let smn := (shiftImmMnemonic w (if left then .shl else .shr)).getD ""
+      let line (src rd : String) : String :=
+        "\t" ++ smn ++ " $" ++ toString n ++ ", " ++ src ++ ", " ++ rd
+      match alloc.get? d, alloc.get? a, consts.get? a with
+      | some rd, some ra, _ => pure [line ra rd]
+      | some rd, none, some ca => pure [constLoad md w ca, line (scratchReg md) rd]
+      | _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
   | .tern w imm d a b c =>
       match alloc.get? d, alloc.get? a, alloc.get? b, alloc.get? c with
       | some rd, some ra, some rb, some rc =>
@@ -822,7 +840,7 @@ def bcastLane (consts : Std.HashMap String (String × Nat)) (w : LaneW) (n : Str
   (consts.get? n).bind (fun c => if isBcast w c.2 then some (c.2 % 2 ^ w.bits) else none)
 
 /-- The rotate `d = (a << n) | (a >> (L - n))`, `0 < n < L`, at lane width `L`, with the
-    shift counts broadcast constants, `a` not a constant and the two shifts each read once
+    shift counts broadcast constants or immediates, `a` not a constant and the two shifts each read once
     and outside `keep`: the three bindings are rewritten to `rol w d a n` (`vprolq`) at
     the position of `d`. The value of `d` is unchanged
     (`ZmmTextModel.rotateLeft_eq_or_shifts`). -/
@@ -833,11 +851,17 @@ def fuseRol (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet St
     bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
   let used (n : String) : Nat := uses.getD n 0
   -- `x = a << n` and `y = a >> (L - n)`
+  -- a shift by a broadcast constant or by an immediate: its source and count
+  let shiftOf (w : LaneW) (left : Bool) (x : String) : Option (LaneW × String × Nat) :=
+    match defs.get? x with
+    | some (.pack w1 bop _ a k) =>
+      if bop == (if left then .shl else .shr) then (bcastLane consts w k).map (w1, a, ·)
+      else none
+    | some (.shi w1 l _ a n) => if l == left then some (w1, a, n) else none
+    | _ => none
   let hit (w : LaneW) (x y : String) : Option (String × Nat) := do
-    let .pack w1 .shl _ a k1 ← defs.get? x | none
-    let .pack w2 .shr _ a2 k2 ← defs.get? y | none
-    let n ← bcastLane consts w k1
-    let n2 ← bcastLane consts w k2
+    let (w1, a, n) ← shiftOf w true x
+    let (w2, a2, n2) ← shiftOf w false y
     guard (w1 == w && w2 == w && a == a2 && 0 < n && n < w.bits && n + n2 == w.bits)
     guard (!consts.contains a && x != y)
     guard (used x == 1 && used y == 1 && !keep.contains x && !keep.contains y)
@@ -1002,7 +1026,8 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
       ++ ["\t.size " ++ sym ++ ", .-" ++ sym] ++ pool.sectionLines
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
   let body := String.intercalate "\n" text ++ "\n"
-  if ymm && (hasMulhi || bs.any (fun b => match b with | .pack .d _ _ _ _ => true | _ => false))
+  if ymm && (hasMulhi || bs.any (fun b =>
+      match b with | .pack .d _ _ _ _ => true | .shi .d _ _ _ _ => true | _ => false))
   then throw "vpackZMM linear render: the 256-bit form covers 64-bit-lane programs only"
   pure body
 

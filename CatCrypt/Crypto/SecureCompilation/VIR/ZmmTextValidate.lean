@@ -82,6 +82,7 @@ def SatB (w : LaneW) (E : Nat → String → BitVec w.bits) (k : Nat) : ZBind �
   | .pack w' bop d a b => w' = w → E k d = bop.apply (E k a) (E k b)
   | .mulhi d a b => E k d = mulHiW (E k a) (E k b)
   | .const d v => E k d = lane w.bits (BitVec.ofNat 512 v) k
+  | .shi w' l d a n => w' = w → E k d = if l then E k a <<< n else E k a >>> n
   | _ => True
 
 /-- The packed reference: lane `k` of `pack E n` is `E k n`. -/
@@ -234,7 +235,8 @@ def vMulU (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (rf : Std.HashMa
   | _ => false
 
 /-- `shi L left imm ta` computes the shift `n = a << kc` or `n = a >> kc` by the constant
-    `kc`, every active lane of which is `imm`, a count below the lane width. -/
+    `kc`, every active lane of which is `imm`, a count below the lane width, or `n` is the
+    immediate shift of `a` by `imm` in the same direction. -/
 def vShi (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (n : String) (L : Nat)
     (left : Bool) (imm : Nat) (ta : Term) : Bool :=
   match D[n]? with
@@ -247,6 +249,9 @@ def vShi (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (n : String) (L :
            (List.range (m.act / w.bits)).all
              (fun k => decide ((lane w.bits (BitVec.ofNat 512 v) k).toNat = imm))
        | _ => false)
+  | some (.shi w' l d a i) =>
+    decide (w' = w) && decide (d = n) && decide (L = w.bits) && decide (l = left) &&
+      decide (i = imm) && opMatch D ta a
   | _ => false
 
 /-- The odd factor `Bo` of the odd products holds the odd dwords of `B` in its even
@@ -382,6 +387,14 @@ theorem vShi_sound (hf : Facts m w D rf E) {n : String} {L : Nat} {left : Bool} 
         simp [JasminBinOp.apply, himm,
           CatCrypt.Crypto.SecureCompilation.VIR.shiftMask_of_lt hlt]
     · cases hc
+  · rename_i w' l d a i hd
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, ha⟩ := h
+    subst h1 h2 h3 h4 h5
+    apply eval_eq_var
+    intro k hk
+    rw [lane_semShImm _ _ _ (laneBits_pos _) hk.le512, opMatch_lane hf ha hk]
+    exact (hf.sat _ _ hd k hk rfl).symm
   · cases h
 
 /-- The dwords of the even products `vpmuludq x, y` and of the odd products
@@ -1116,6 +1129,9 @@ def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
     let ka := leafKey D a
     let kb := leafKey D b2
     [("h|" ++ ka ++ "|" ++ kb, (d, [])), ("h|" ++ kb ++ "|" ++ ka, (d, []))]
+  | .shi w' l d a i =>
+    if w' = w then [("s|" ++ toString l ++ "|" ++ toString i ++ "|" ++ leafKey D a, (d, []))]
+    else []
   | _ => []
 
 /-- The candidate table of a binding list: each key names the first binding that has it. -/
