@@ -60,11 +60,17 @@ theorem gpOk_iff_isReg (r : String) : gpOk r = true ↔ x86Abi.IsReg r ∧ r ≠
 theorem gpOk_iff_isGp (r : String) : gpOk r = true ↔ x86Abi.IsGp r := gpOk_iff_isReg r
 
 /-- **The x86 printed-class gate is complete**: `instrOKWB` accepts the materialised
-    comparison and the count-`0` shift over general-purpose registers of `x86Abi`, in every
-    body and for all body parameters. -/
+    comparisons against a register and an immediate, the register-count shift and the
+    count-`0` shift over general-purpose registers of `x86Abi`, in every body and for all body
+    parameters. -/
 theorem x86_printedComplete : PrintedComplete x86Abi Params instrOKWB where
   setcc body P n R A B hR hA hB :=
     instrOKWB_sete body P n ((gpOk_iff_isGp R).2 hR) ((gpOk_iff_isGp A).2 hA)
+      ((gpOk_iff_isGp B).2 hB)
+  setccImm body P n R A _v hR hA hv :=
+    instrOKWB_seteImm body P n ((gpOk_iff_isGp R).2 hR) ((gpOk_iff_isGp A).2 hA) hv
+  shiftReg body P l R A B hR hA hB :=
+    instrOKWB_shrReg body P l ((gpOk_iff_isGp R).2 hR) ((gpOk_iff_isGp A).2 hA)
       ((gpOk_iff_isGp B).2 hB)
   shl0 body P R hR := instrOKWB_shl0 body P ((gpOk_iff_isGp R).2 hR)
 

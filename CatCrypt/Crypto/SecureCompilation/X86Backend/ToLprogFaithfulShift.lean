@@ -130,10 +130,11 @@ def ShiftKind.mnem : ShiftKind → String
   | .sar => "SAR"
   | .ror => "ROR"
 
-/-- The word function of a kind at count `n`: the dialect's shift or rotate. -/
+/-- The word function of a kind at count `n`: the dialect's shift or rotate (logical
+    shifts by the masked count `shiftMask w n`). -/
 def ShiftKind.val {w : Nat} : ShiftKind → Nat → BitVec w → BitVec w
-  | .shl, n, a => a <<< n
-  | .shr, n, a => a >>> n
+  | .shl, n, a => a <<< shiftMask w n
+  | .shr, n, a => a >>> shiftMask w n
   | .sar, n, a => BitVec.sshiftRight a n
   | .ror, n, a => a.rotateRight n
 
@@ -238,11 +239,11 @@ theorem applyOpn_unary_of_parse {w : Nat} (opn : String) (att : String) (k wd : 
     (hne : opn ∉ ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX"])
     (hp : parseImmShiftMnem opn = some (att, k, wd)) (a : BitVec w) :
     applyOpn opn [a]
-      = some (if att = "shl" then a <<< k
+      = some (if att = "shl" then a <<< shiftMask w k
           else if att = "sar" then BitVec.sshiftRight a k
           else if att = "rol" then a.rotateLeft k
           else if att = "ror" then a.rotateRight k
-          else a >>> k) := by
+          else a >>> shiftMask w k) := by
   simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hne
   obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hne
   unfold applyOpn
@@ -278,11 +279,11 @@ theorem applyOpn_countTag_of_parse {w : Nat} {m : String} (hm : ShiftBase m) (wO
     {n : Nat} (hn : n ≠ 64) (att : String) (k wd : Nat)
     (hp : parseImmShiftMnem (m ++ ":" ++ toString n) = some (att, k, wd)) (a : BitVec w) :
     applyOpn (stripWidthTag (withWidthTag wOp (m ++ ":" ++ toString n))) [a]
-      = some (if att = "shl" then a <<< k
+      = some (if att = "shl" then a <<< shiftMask w k
           else if att = "sar" then BitVec.sshiftRight a k
           else if att = "rol" then a.rotateLeft k
           else if att = "ror" then a.rotateRight k
-          else a >>> k) := by
+          else a >>> shiftMask w k) := by
   rw [stripWidthTag_countTag hm wOp hn]
   exact applyOpn_unary_of_parse _ att k wd (countTag_ne_unary hm n) hp a
 

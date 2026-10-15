@@ -214,10 +214,10 @@ def x86ImmFits (base : String) (k : Nat) (v : Int) : Bool :=
   if (base == "MOV" || base == "MOVQ") && k == 1 then decide (-2 ^ 63 ≤ v ∧ v < 2 ^ 64)
   else decide (-2 ^ 31 ≤ v ∧ v < 2 ^ 31)
 
-/-- The x86 operands bound to one register: the count of a shift `SHL`, `SHR`, `SAR`
-    (position `2`), when it is a register, is `RCX`. -/
-def x86FixedOperand (base : String) (k : Nat) : Option String :=
-  if (base == "SHL" || base == "SHR" || base == "SAR") && k == 2 then some "RCX" else none
+/-- The x86 operands bound to one register: none. A shift `SHL`, `SHR`, `SAR` with a
+    register count is printed as the BMI2 `shlx`, `shrx`, `sarx`, which take the count in any
+    general-purpose register. -/
+def x86FixedOperand (_base : String) (_k : Nat) : Option String := none
 
 /-- **The x86 instruction-set data**: the register file and calling convention
     `LprogAsmPrinter.x86Abi`, the tied mnemonics `needsTie`, the commutative bases
@@ -225,7 +225,7 @@ def x86FixedOperand (base : String) (k : Nat) : Option String :=
     bases `CMP` and `TEST`, the flag select `CMOV`, the implicit read
     of `RDX` by the `MULX` family, the flag loop guard `CMP ctr, 0; jne top`, the flag
     zero-trip guard `CMP ctr, 0; je endL`, the invariant touch `CMP ctr, r`, the memory
-    operands `x86MemOperand`, the immediates `x86ImmFits`, the shift count at `RCX`
+    operands `x86MemOperand`, the immediates `x86ImmFits`, no operand bound to one register
     (`x86FixedOperand`), the index scales `1`, `2`, `4`, `8` and the fused high multiply
     `MULX`. The legaliser reads its mnemonic data and scratch register from it, the loop
     exporter its two guards and its invariant touch. -/
