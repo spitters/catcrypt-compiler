@@ -443,6 +443,20 @@ def stepGW (rsp : BitVec 64) (body : Lcmd) (k : Nat) (ℓ : List CTLeak) : List 
   | some ⟨_, .Lopn ds o ss⟩ => gW (Params.ofBody body) rsp (.Lopn ds o ss) ℓ
   | _ => ℓ
 
+/-- **The events of the decoded instructions of the select with a slot false value whose true
+    value is the destination.** Under `doitm`, from a machine state whose stack register holds
+    `rsp`: the access of the frame word of the false value. -/
+theorem leak_cmovSlotFE (P : Params) (rsp : BitVec 64) (D C B : String)
+    (h : vfOk P D C D B = true) (sa : AState) (hsp : sa.regs "%rsp" = rsp) :
+    blockLeakA .doitm sa ((vePieces P D C B).map Prod.snd) = fEv P rsp B ++ fEv P rsp D := by
+  simp only [vfOk, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hD, -⟩, hBs⟩, hBk⟩, -⟩, -⟩, -⟩, -⟩ := h
+  have hsp1 : (evalInstrA sa (.test (phys C) (.reg (phys C)))).regs "%rsp" = rsp := by
+    simpa [evalInstrA, evalInstr, AState.view, JState.writeB5] using hsp
+  rw [fEv_slot hBk hBs, fEv_gp hD]
+  simp [vePieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,
+    DoitRegime.leaksOperands, X86Mnem.timing, evA, hsp1]
+
 /-- **The events of the decoded instructions of the arms** of the class with carry chains at
     the parameters `P` and the frame address `rsp`, under the regime `doitm`, one statement
     per arm: the carry constant and the 32-bit constant (`zmov`), the carry arms with
@@ -453,7 +467,7 @@ def stepGW (rsp : BitVec 64) (body : Lcmd) (k : Nat) (ℓ : List CTLeak) : List 
     register-count shift (`shrx`), and
     the arms of `DecodePrintedAddr` on the correspondence with narrow names (`aarm`). The
     width cast and the select with a slot false value are
-    `DecodePrintedAddrWLeak.leak_castW` and `leak_cmovSlotF`. -/
+    `DecodePrintedAddrWLeak.leak_castW`, `leak_cmovSlotF` and `leak_cmovSlotFE`. -/
 structure ArmLeaksW (P : Params) (rsp : BitVec 64) : Prop where
   zmov : ∀ (D : String) (n : Nat) (sa : AState),
     blockLeakA .doitm sa ((zPieces D n).map Prod.snd) = []
@@ -966,11 +980,19 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         · -- a select with a slot false value
           have hok' := hok
           simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
-          obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hAC⟩, -⟩ := hok'
+          obtain ⟨⟨⟨⟨⟨⟨⟨hDg, -⟩, -⟩, -⟩, -⟩, -⟩, hAC⟩, -⟩ := hok'
           have hwA : gpOk A = true → (s.reg.lvm A).1 = 64 := fun hA =>
             hws A (reg_reads (by simp)) hA (by simp [carryIns, hAC])
-          obtain ⟨hc', -⟩ := sim_cmovSlotF P rsp D C A B hok sa s zf hc hwA s' zf' hst
-          obtain ⟨hb, hp⟩ := vfBytes P D C A B hok
+          by_cases hAD : A = D
+          · subst hAD
+            obtain ⟨hc', -⟩ := sim_cmovSlotFE P rsp A C B hok sa s zf hc (hwA hDg) s' zf' hst
+            obtain ⟨hb, hp⟩ := veBytes P A C B hok
+            have hops : shs[k].ops' = (vePieces P A C B).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+            exact ⟨_, hops, hpc', hc', hz' _, hnoadd hnotadd _ _,
+              (leak_cmovSlotFE P rsp A C B hok sa hc.sp).trans hgw.symm⟩
+          obtain ⟨hc', -⟩ := sim_cmovSlotF P rsp D C A B hok hAD sa s zf hc hwA s' zf' hst
+          obtain ⟨hb, hp⟩ := vfBytes P D C A B hok hAD
           have hops : shs[k].ops' = (vfPieces P D C A B).map Prod.snd :=
             shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
           exact ⟨_, hops, hpc', hc', hz' _, hnoadd hnotadd _ _,

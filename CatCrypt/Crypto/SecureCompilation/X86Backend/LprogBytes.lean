@@ -984,6 +984,14 @@ def encCmovSelectSlotT (w dn cn fn : Nat) (off : Int) : List (BitVec 8) :=
 def encCmovSelectSlotF (w dn cn tn : Nat) (offF : Int) : List (BitVec 8) :=
   encRspMem w 0x8b dn offF ++ encAluRRw w 0x85 cn cn ++ enc0FRRw w 0x45 dn tn
 
+/-- The bytes of a branchless select whose false value is a `%rsp`-relative slot at `offF` and
+    whose destination equals the true value, with a register condition: `test c, c`,
+    `cmove offF(%rsp), d`. This is `LprogAsmPrinter.renderLopn`'s CMOV arm on these operands:
+    the destination text equals the true-value text, so the printer keeps the true value in
+    `d` and takes its `cmove` branch from the slot. -/
+def encCmovSelectSlotFE (w dn cn : Nat) (offF : Int) : List (BitVec 8) :=
+  encAluRRw w 0x85 cn cn ++ encCmovRspMem w 0x44 dn offF
+
 /-- The bytes of a branchless select whose true and false values are `%rsp`-relative slots at
     `offT` and `offF`, with register destination and condition: `mov offF(%rsp), d`,
     `test c, c`, `cmovne offT(%rsp), d`, the printer's CMOV arm on these operands. -/
@@ -1581,12 +1589,10 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       -- of which source defaults into `d` and which condition the `CMOVcc`
       -- carries. The forms built are register operands, a slot destination with
       -- register sources, and, with register destination and condition, a slot true
-      -- value, a slot false value (the destination other than a register true value)
-      -- or both values in slots; any other spill/qsave/`mem.*` operand denotes a
+      -- value, a slot false value or both values in slots; any other spill/qsave/`mem.*` operand denotes a
       -- memory form this arm does not build, and is left as the visible empty byte
       -- list rather than addressed as `%rax`. A slot false value with the destination
-      -- equal to the true value is printed as `cmove` from the slot, which is left
-      -- unencoded.
+      -- equal to the true value is printed as `cmove` from the slot.
       | [d], [a, s, cin] =>
           if base == "CMOV" then
             match d, a, s, cin with
@@ -1610,7 +1616,8 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                             -- true value other than the destination, or a slot true
                             -- value.
                             if isGpName tn then
-                              if gpNumU dn == gpNumU tn then []
+                              if gpNumU dn == gpNumU tn then
+                                encCmovSelectSlotFE w (gpNumU dn) (gpNumU cn) offF
                               else encCmovSelectSlotF w (gpNumU dn) (gpNumU cn) (gpNumU tn) offF
                             else
                               match spillQsaveOff frame spillW tn qsaveB with

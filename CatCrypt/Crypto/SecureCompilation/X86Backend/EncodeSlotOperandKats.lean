@@ -250,8 +250,9 @@ def cmovSlotTF : LinstrR := .Lopn [.reg "RBX"] "CMOV:64" [.reg "R10", .reg "k.0"
 #kat shapeJs cmovSlotTF == reprStr ([.loadMem "%rbx" "%rsp" 48, .test "%r10" (.reg "%r10"),
     .cmovccMem .ne "%rbx" "%rsp" 56] : List (JInstr 64))
 
--- a slot false value with the destination equal to the true value is printed as `cmove` from
--- the slot, which has no encoding
-#kat enc (.Lopn [.reg "RAX"] "CMOV:64" [.reg "R10", .reg "RAX", .reg "k.1"]) == []
+-- a slot false value with the destination equal to the true value is printed as `test` and
+-- `cmove` from the slot, and encoded as the same two instructions
+#kat enc (.Lopn [.reg "RAX"] "CMOV:64" [.reg "R10", .reg "RAX", .reg "k.1"])
+  == encAluRRw 1 0x85 10 10 ++ encCmovRspMem 1 0x44 0 48
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeSlotOperandKats
