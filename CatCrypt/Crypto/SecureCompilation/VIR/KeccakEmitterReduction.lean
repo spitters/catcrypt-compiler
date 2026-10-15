@@ -244,6 +244,19 @@ theorem emitMov_denote' {Γ : Ctxt jasminDialect} {t : JasminTy}
           (V.extend (readSlot bs V src)) := by
   rw [emitMov_denote, or_self_apply]
 
+/-- **`emitShImm` denotation rewrite.** One immediate-count shift binding: the
+    new value at `dst` is the value of slot `src` shifted left (`left`) or right
+    by the masked literal count `shiftMask 64 n`. -/
+theorem emitShImm_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (bs : BState Γ) (immVar : Nat → Ctxt.Var Γ r64)
+    (left : Bool) (dst src : Fin numSlots) (n : Nat) (k : Cont t)
+    (V : Ctxt.Valuation Γ) :
+    (emitShImm bs immVar left dst src n k).denote V
+      = (k (bsAfterOp bs dst) (immVarAfter immVar)).denote
+          (V.extend (cond left (readSlot bs V src <<< shiftMask 64 n)
+                               (readSlot bs V src >>> shiftMask 64 n))) := by
+  cases left <;> rfl
+
 /-! ## 3. `emitRotL` denotation as the three-binding `(x <<< n) ||| (x >>> (64 - n))`
 
 `emitRotL bs immV dst n k` for `n ≠ 0` is the chain `rotScr = dst >>> (64-n);
@@ -294,8 +307,8 @@ theorem emitRotL_denote_pos {Γ : Ctxt jasminDialect} {t : JasminTy}
     (emitRotL bs immVar dst n k).denote V
       = (k (bsAfterRotLPos bs dst) (immVarAfter (immVarAfter (immVarAfter immVar)))).denote
           (let dstVal := readSlot bs V dst
-           let scrVal := JasminBinOp.shr.apply dstVal (readImm immVar V (immIdx (64 - n)))
-           let dstShl := JasminBinOp.shl.apply dstVal (readImm immVar V (immIdx n))
+           let scrVal := dstVal >>> shiftMask 64 (64 - n)
+           let dstShl := dstVal <<< shiftMask 64 n
            let dstOut := JasminBinOp.or.apply dstShl scrVal
            ((V.extend scrVal).extend dstShl).extend dstOut) := by
   unfold emitRotL bsAfterRotLPos
@@ -305,18 +318,16 @@ theorem emitRotL_denote_pos {Γ : Ctxt jasminDialect} {t : JasminTy}
     · exact absurd rfl hn
     · rfl
   simp only [hbeq, Bool.false_eq_true, ↓reduceIte]
-  rw [emitOp_denote, emitOp_denote, emitOp_denote]
-  -- Rewrite the source reads after each `bsAfterOp`. The chain of `bsAfterOp`s
-  -- writes rotScr (first), then dst (second binding), then dst (third). Reads
-  -- of `dst` after the rotScr write go through `_ne` (since `dst ≠ rotScr`)
-  -- back to the original `bs.st dst`. Reads of `rotScr` after the second-layer
-  -- `dst` write go through `_ne` (since `rotScr ≠ dst`) to the first layer
-  -- where `_eq` fires.
-  simp only [readSrc_st, readSrc_imm,
+  rw [emitShImm_denote, emitShImm_denote, emitOp_denote]
+  -- The chain of `bsAfterOp`s writes rotScr (first), then dst (second binding),
+  -- then dst (third). Reads of `dst` after the rotScr write go through `_ne`
+  -- (since `dst ≠ rotScr`) back to the original `bs.st dst`. Reads of `rotScr`
+  -- after the second-layer `dst` write go through `_ne` (since `rotScr ≠ dst`)
+  -- to the first layer where `_eq` fires.
+  simp only [readSrc_st, cond_true, cond_false,
     readSlot_bsAfterOp_eq,
     readSlot_bsAfterOp_ne _ _ _ _ _ hDst,
-    readSlot_bsAfterOp_ne _ _ _ _ _ hDst.symm,
-    readImm_immVarAfter]
+    readSlot_bsAfterOp_ne _ _ _ _ _ hDst.symm]
 
 /-! ## 4. The structural residual: composing helpers through `emitRound`
 

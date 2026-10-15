@@ -26,11 +26,12 @@ each of those from "verified to the Keccak leaf" toward "verified to x86".
 Keccak-p has **no** sub-primitive — it is pure 64-bit bit-arithmetic over the
 25-lane state (`A[x,y]`, `x,y ∈ {0..4}`, each lane `u64`), so this is a FULLY
 emitted kernel (no `extCall` leaves, no `LeafAgrees`). The five step mappings
-(FIPS 202 §3.2) are all expressible with the existing dialect `regArith` ops:
+(FIPS 202 §3.2) are expressed with the dialect `regArith` ops and the
+immediate-count shifts `shlImm` / `shrImm`:
 
 * **θ** — column parities `C[x] = ⊕_y A[x,y]`, then
-  `D[x] = C[x-1] ⊕ rotl64(C[x+1], 1)` and `A[x,y] ⊕= D[x]`  (`xor`, `shl`/`shr`/`or` for the rotate);
-* **ρ** — per-lane left-rotate by the fixed offset table `r[x,y]` (`shl`/`shr`/`or`);
+  `D[x] = C[x-1] ⊕ rotl64(C[x+1], 1)` and `A[x,y] ⊕= D[x]`  (`xor`, `shlImm`/`shrImm`/`or` for the rotate);
+* **ρ** — per-lane left-rotate by the fixed offset table `r[x,y]` (`shlImm`/`shrImm`/`or`);
 * **π** — lane permutation `B[y, 2x+3y] = A[x,y]`  (a pure rename of slots, no op);
 * **χ** — `A[x,y] = B[x,y] ⊕ ((¬B[x+1,y]) ∧ B[x+2,y])`  (`xor`, `and`, NOT = `xor` with all-ones);
 * **ι** — `A[0,0] ⊕= RC[round]`  (`xor` of the per-round constant immediate).
@@ -156,6 +157,11 @@ def rhoOffset : Nat → Nat
   | 15 => 41 | 16 => 45 | 17 => 15 | 18 => 21 | 19 =>  8
   | 20 => 18 | 21 =>  2 | 22 => 61 | 23 => 56 | 24 => 14
   |  _ =>  0
+
+/-- Every ρ offset is below the lane width 64. -/
+theorem rhoOffset_lt_64 (i : Nat) : rhoOffset i < 64 := by
+  unfold rhoOffset
+  split <;> decide
 
 /-! ## 1. Slot file and builder state (the `AsconEmit` CPS shape)
 
@@ -284,16 +290,33 @@ def rotScr : Fin numSlots := ⟨55, by decide⟩
 /-- The χ NOT/AND scratch slot (`56`). -/
 def chiScr : Fin numSlots := ⟨56, by decide⟩
 
+/-- Emit one immediate-count shift binding writing slot `dst` from slot `src`:
+    `shlImm 64 n` (`dst = src << n`) when `left`, `shrImm 64 n` (`dst = src >> n`)
+    otherwise. The count `n` is a literal of the op, not an input word. -/
+def emitShImm {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (bs : BState Γ) (immVar : Nat → Ctxt.Var Γ r64)
+    (left : Bool) (dst src : Fin numSlots) (n : Nat) (k : Cont t) :
+    Com jasminDialect Γ t :=
+  let e : Expr jasminDialect Γ r64 :=
+    match left with
+    | true => { op := .shlImm 64 n, retTy_eq := rfl, args := .cons (bs.st src) .nil }
+    | false => { op := .shrImm 64 n, retTy_eq := rfl, args := .cons (bs.st src) .nil }
+  let bs' : BState (r64 :: Γ) :=
+    { st := fun i => if i = dst then headVar Γ else (bs.st i).there }
+  let immVar' : Nat → Ctxt.Var (r64 :: Γ) r64 := fun m => (immVar m).there
+  .var e (k bs' immVar')
+
 /-- Left-rotate slot `dst` by `n` in place, `n ∈ (0,64)`:
-    `scr = dst >> (64-n);  dst = dst << n;  dst = dst | scr`. For `n = 0` it is a
+    `scr = dst >> (64-n);  dst = dst << n;  dst = dst | scr`, the two shifts
+    immediate-count (`shrImm 64 (64-n)`, `shlImm 64 n`). For `n = 0` it is a
     no-op (the identity rotate). Uses the rotate scratch slot. -/
 def emitRotL {t : JasminTy} {Γ : Ctxt jasminDialect}
     (bs : BState Γ) (immVar : Nat → Ctxt.Var Γ r64)
     (dst : Fin numSlots) (n : Nat) (k : Cont t) : Com jasminDialect Γ t :=
   if n == 0 then k bs immVar
   else
-    emitOp bs immVar .shr rotScr (.st dst) (.imm (64 - n)) fun b immV =>
-    emitOp b immV .shl dst (.st dst) (.imm n) fun b immV =>
+    emitShImm bs immVar false rotScr dst (64 - n) fun b immV =>
+    emitShImm b immV true dst dst n fun b immV =>
     emitOp b immV .or dst (.st dst) (.st rotScr) k
 
 /-! ### θ

@@ -153,22 +153,29 @@ theorem covered_specialize {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (s : Spec
   covered_bindConsts S _ _ _ (Spec.allOps_ops _ s hs) (covered_rename S _ c hc)
 
 /-- **Coverage of the specialised permutation.** A lane shape of 64-bit lanes covering
-    every `JasminBinOp` covers `keccakF1600Com25`. -/
+    every `JasminBinOp` other than the register-count shifts, and lowering the
+    immediate-count shifts at every count below 64, covers `keccakF1600Com25`. -/
 theorem covered_keccakF1600Com25 (h64 : S.laneBits = 64)
-    (hcov : ∀ bop, S.covers bop = true) : S.Covered keccakF1600Com25 :=
+    (hcov : ∀ bop, bop ≠ .shl → bop ≠ .shr → S.covers bop = true)
+    (himm : ∀ n, n < 64 → (S.immBlock .shl).isSome = true ∧ S.immCovers .shl n = true ∧
+      (S.immBlock .shr).isSome = true ∧ S.immCovers .shr n = true) :
+    S.Covered keccakF1600Com25 :=
   covered_specialize S keccakSpec keccakF1600Com
     (Spec.allOps_keepN _ r64 _ (allOps_fixRegs _ 64 (fun _ {_} => h64.symm) _ _) 25)
-    (KeccakLaneMapYmm.covered_keccakF1600Com S h64 hcov)
+    (KeccakLaneMapYmm.covered_keccakF1600Com S h64 hcov himm)
 
 end Coverage
 
 /-- `qwordYmmV` covers `keccakF1600Com25`. -/
 theorem covered_qwordYmmV_keccakF1600Com25 : qwordYmmV.Covered keccakF1600Com25 :=
-  covered_keccakF1600Com25 qwordYmmV rfl (fun _ => rfl)
+  covered_keccakF1600Com25 qwordYmmV rfl (fun bop hl hr => by cases bop <;> simp_all <;> rfl)
+    (fun n hn => ⟨rfl, decide_eq_true hn, rfl, decide_eq_true hn⟩)
 
-/-- `qwordZmm` covers `keccakF1600Com25`. -/
+/-- `qwordZmm` covers `keccakF1600Com25`: its immediate block (`zmmQImmBlock`) lowers
+    the rotates' immediate-count shifts. -/
 theorem covered_qwordZmm_keccakF1600Com25 : qwordZmm.Covered keccakF1600Com25 :=
-  covered_keccakF1600Com25 qwordZmm rfl (fun _ => rfl)
+  covered_keccakF1600Com25 qwordZmm rfl (fun bop hl hr => by cases bop <;> simp_all <;> rfl)
+    (fun n hn => ⟨rfl, decide_eq_true hn, rfl, decide_eq_true hn⟩)
 
 /-! ## 4. Several permutations per vector register -/
 

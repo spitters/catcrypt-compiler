@@ -24,12 +24,15 @@ the generic ones in `LaneMapVecCore`.
 
 ## Covered scalar ops
 
-All nine `JasminBinOp`s at width 64 (`add`, `sub`, `mul`, `and`, `or`, `xor`, `andn`,
-`shl`, `shr`) and `regConst 64 k`. `vpackZMM bop` denotes `zmmPackQ bop`, which
-applies `bop.apply` at width 64 in each lane, reading the shift count of `shl` / `shr`
-from the same lane of the second operand; so each packed op is the scalar op lane by
-lane. Every other op takes the opaque nullary `extCall` fallback
-`laneMapZmm_uncovered`, outside the `LaneMapZmmCovered` fragment.
+The seven `JasminBinOp`s `add`, `sub`, `mul`, `and`, `or`, `xor`, `andn` at width 64,
+`regConst 64 k`, and the immediate-count shifts `shlImm 64 n` / `shrImm 64 n` at counts
+`n < 64`. `vpackZMM bop` denotes `zmmPackQ bop`, which applies `bop.applyLane` in each
+lane, so each covered packed op is the scalar op lane by lane. The register-count
+shifts `shl` / `shr` are not covered: the packed shift gives `0` at counts of at least
+64, where the scalar shift masks the count. An immediate-count shift lowers to the
+broadcast of its count followed by the packed shift (`zmmQImmBlock`). Every other op
+takes the opaque nullary `extCall` fallback `laneMapZmm_uncovered`, outside the
+`LaneMapZmmCovered` fragment.
 
 ## Main definitions
 
@@ -67,9 +70,44 @@ theorem constZmm_lane (kk : Nat) (k : Fin 8) :
     zmmLane (BitVec.ofNat 512 (constZmm kk).toNat) k = BitVec.ofNat 64 kk := by
   rw [BitVec.ofNat_toNat, BitVec.setWidth_eq, constZmm, zmmOfLanes_zmmLane']
 
+/-- Lane `k` of the packed shift `vpackZMM bop` (`bop = shl` or `shr`) of `a` by the
+    broadcast count `n < 64` is lane `k` of `a` shifted by `n`, masked as the scalar
+    immediate-count shift masks it. -/
+theorem zmmPackQ_shift_bcast_lane (a : BitVec 512) (n : Nat) (hn : n < 64) (k : Fin 8) :
+    zmmLane (zmmPackQ .shl a (BitVec.ofNat 512 (constZmm n).toNat)) k
+        = zmmLane a k <<< shiftMask 64 n ∧
+      zmmLane (zmmPackQ .shr a (BitVec.ofNat 512 (constZmm n).toNat)) k
+        = zmmLane a k >>> shiftMask 64 n := by
+  have ht : (BitVec.ofNat 64 n).toNat = n := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+  rw [zmmPackQ_lane, zmmPackQ_lane, constZmm_lane, shiftMask_of_lt hn]
+  exact ⟨by rw [JasminBinOp.applyLane, ht], by rw [JasminBinOp.applyLane, ht]⟩
+
 end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmm
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+/-- The 512-bit packed block of an immediate-count shift on eight 64-bit lanes: the
+    count broadcast to every lane (`regConst 512`), then the packed shift
+    `vpackZMM shl` / `vpackZMM shr` by that register. The rotate and the arithmetic
+    right shift have no block. -/
+def zmmQImmBlock : ImmOp → Option (Nat → UnaryBuilder 512)
+  | .shl => some fun n _ a =>
+      Com.var ⟨.regConst 512 (constZmm n).toNat, rfl, .nil⟩
+        (Com.var ⟨.vpackZMM .shl, rfl, .cons a.there (.cons .here .nil)⟩ (.ret .here))
+  | .shr => some fun n _ a =>
+      Com.var ⟨.regConst 512 (constZmm n).toNat, rfl, .nil⟩
+        (Com.var ⟨.vpackZMM .shr, rfl, .cons a.there (.cons .here .nil)⟩ (.ret .here))
+  | .sar => none
+  | .ror => none
+
+/-- The counts at which `zmmQImmBlock` is lane-correct: counts below the lane width
+    64 (the packed shift gives `0` at larger counts, the masked scalar shift does
+    not). -/
+def zmmQImmCovers : ImmOp → Nat → Bool
+  | .shl, n => decide (n < 64)
+  | .shr, n => decide (n < 64)
+  | _, _ => false
 
 /-- Eight 64-bit lanes in a ZMM register, on the packed ops `vpackZMM`. -/
 def qwordZmm : LaneShape where
@@ -82,15 +120,21 @@ def qwordZmm : LaneShape where
   packExpr := fun bop _ a b => ⟨.vpackZMM bop, rfl, .cons a (.cons b .nil)⟩
   bcast := fun kk => (constZmm kk).toNat
   mulhiExpr := none
-  immBlock := fun _ => none
-  immCovers := fun _ _ => false
+  immBlock := zmmQImmBlock
+  immCovers := zmmQImmCovers
   arrWiden := false
   fallbackName := "laneMapZmm_uncovered"
   pack_lane := fun _ bop hc _ a b V k => by
     refine (zmmPackQ_lane bop (a.lookup V) (b.lookup V) k).trans ?_
     cases bop <;> first | rfl | exact absurd hc (by decide)
   const_lane := LaneMapZmm.constZmm_lane
-  imm_lane := by intro _ _ _ hf; cases hf
+  imm_lane := by
+    intro _ op f hf n hc _ a V k
+    cases op <;> cases hf
+    case shl =>
+      exact (LaneMapZmm.zmmPackQ_shift_bcast_lane (a.lookup V) n (of_decide_eq_true hc) k).1
+    case shr =>
+      exact (LaneMapZmm.zmmPackQ_shift_bcast_lane (a.lookup V) n (of_decide_eq_true hc) k).2
   arr_index := fun h => Bool.noConfusion h
   lane_zero := fun h => Bool.noConfusion h
 
@@ -151,8 +195,9 @@ theorem laneOf_lookup {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Ctxt.Var Γ 
 
 /-! ## 4. The covered fragment -/
 
-/-- The scalar ops `laneMapZmm` maps lane-preservingly: every `regArith bop 64` and
-    every `regConst 64 k`. -/
+/-- The scalar ops `laneMapZmm` maps lane-preservingly: every `regArith bop 64` other
+    than `shl` / `shr`, every `regConst 64 k`, and `shlImm 64 n` / `shrImm 64 n` for
+    `n < 64`. -/
 abbrev CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) : Prop :=
   qwordZmm.CoveredExpr e

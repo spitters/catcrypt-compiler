@@ -14,7 +14,8 @@ public import CatCryptCore.Tactics.WordBound
 # The emitted Keccak-p[1600,24] permutation computes the FIPS 202 permutation
 
 `KeccakEmit.keccakF1600Com` is the Keccak-p[1600,24] permutation as a
-straight-line `Com jasminDialect` chain of `regArith` bindings (24 rounds of
+straight-line `Com jasminDialect` chain of `regArith` and immediate-count shift
+bindings (24 rounds of
 θ, ρ∘π, χ, ι over a 57-slot stack file, then the 25-lane output staging). This
 module ascends that chain to a pure slot-map computation and identifies its
 25-lane view with the FIPS 202 round iteration.
@@ -33,9 +34,10 @@ module ascends that chain to a pure slot-map computation and identifies its
 A builder state `bs` together with a valuation `V` is described by the pair
 `(slotMap bs V, immMap immV V) : SV × IV` — the 57 stack-slot values and the
 immediate words. `Respects k f` says the denotation of a continuation `k`
-factors through that pair as `f`. The Jasmin dialect denotation is used exactly
-once, in `respects_emitOp`: one `regArith` binding is one `Function.update` of
-one slot. Every subsequent step is `BitVec`/`Function.update` algebra.
+factors through that pair as `f`. The Jasmin dialect denotation is used only in
+`respects_emitOp` and `respects_emitShImm`: one `regArith` or immediate-shift
+binding is one `Function.update` of one slot. Every subsequent step is
+`BitVec`/`Function.update` algebra.
 
 Each emit helper gets a slot-map model (`thetaCColM`, `thetaDColM`,
 `rhoPiLaneM`, `chiLaneM`, `iotaM`) and a `Respects` lifting lemma; the models
@@ -121,6 +123,18 @@ theorem respects_emitOp {t : JasminTy} (op : JasminBinOp) (dst : Fin numSlots)
   show (emitOp bs immV op dst a b k).denote V = _
   rw [emitOp_denote, hk, slotMap_bsAfterOp, immMap_immVarAfter,
     readSrc_eq_srcVal, readSrc_eq_srcVal]
+
+/-- One immediate-count shift binding performs a single functional slot update;
+    the immediate map is unchanged. -/
+theorem respects_emitShImm {t : JasminTy} (left : Bool) (dst src : Fin numSlots) (n : Nat)
+    (k : Cont t) (f : SV → IV → ⟦t⟧) (hk : Respects k f) :
+    Respects (fun bs immV => emitShImm bs immV left dst src n k)
+      (fun σ ι => f (Function.update σ dst
+        (cond left (σ src <<< shiftMask 64 n) (σ src >>> shiftMask 64 n))) ι) := by
+  intro Γ bs immV V
+  show (emitShImm bs immV left dst src n k).denote V = _
+  rw [emitShImm_denote, hk, slotMap_bsAfterOp, immMap_immVarAfter]
+  rfl
 
 /-- `emitMov` copies one slot (`x ||| x = x`). -/
 theorem respects_emitMov {t : JasminTy} (dst src : Fin numSlots)
@@ -238,24 +252,23 @@ theorem cSlot_eq_iff (x x' : Nat) : cSlot x = cSlot x' ↔ x % 5 = x' % 5 := by
 
 /-! ## 3. `emitRotL` -/
 
-/-- Left rotation by `r` as the emitter realizes it: a shift pair combined with
-    `|||`, with both shift amounts read from the immediate map and masked by
-    `shiftMask 64`, and the identity for `r = 0`. -/
-def rotModel (a : BitVec 64) (ι : IV) (r : Nat) : BitVec 64 :=
+/-- Left rotation by `r` as the emitter realizes it: a pair of immediate-count
+    shifts by the literal counts `r` and `64 - r`, masked by `shiftMask 64`,
+    combined with `|||`, and the identity for `r = 0`. The immediate map `ι` is
+    not read. -/
+def rotModel (a : BitVec 64) (_ι : IV) (r : Nat) : BitVec 64 :=
   if r = 0 then a
-  else (a <<< shiftMask 64 (ι (immIdx r)).toNat)
-    ||| (a >>> shiftMask 64 (ι (immIdx (64 - r))).toNat)
+  else (a <<< shiftMask 64 r) ||| (a >>> shiftMask 64 (64 - r))
 
 /-- Slot-map model of `emitRotL dst n`: for `n ≠ 0` the scratch slot receives
-    `σ dst >>> (64 - n)` and `dst` receives `rotModel (σ dst) ι n`, with both
-    shift amounts read from the immediate map and masked by `shiftMask 64`. -/
-def rotLM (dst : Fin numSlots) (n : Nat) (σ : SV) (ι : IV) : SV :=
+    `σ dst >>> shiftMask 64 (64 - n)` and `dst` receives `rotModel (σ dst) ι n`.
+    The immediate map `ι` is not read. -/
+def rotLM (dst : Fin numSlots) (n : Nat) (σ : SV) (_ι : IV) : SV :=
   if n = 0 then σ
   else
     Function.update
-      (Function.update σ rotScr ((σ dst) >>> shiftMask 64 (ι (immIdx (64 - n))).toNat))
-      dst (((σ dst) <<< shiftMask 64 (ι (immIdx n)).toNat)
-        ||| ((σ dst) >>> shiftMask 64 (ι (immIdx (64 - n))).toNat))
+      (Function.update σ rotScr ((σ dst) >>> shiftMask 64 (64 - n)))
+      dst (((σ dst) <<< shiftMask 64 n) ||| ((σ dst) >>> shiftMask 64 (64 - n)))
 
 theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     (k : Cont t) (f : SV → IV → ⟦t⟧) (hk : Respects k f) (hDst : dst ≠ rotScr) :
@@ -268,12 +281,12 @@ theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     · intro Γ bs immV; simp [emitRotL]
   · have hbeq : (n == 0) = false := by simp [hn]
     have h3 := respects_emitOp (t := t) .or dst (.st dst) (.st rotScr) k f hk
-    have h2 := respects_emitOp (t := t) .shl dst (.st dst) (.imm n) _ _ h3
-    have h1 := respects_emitOp (t := t) .shr rotScr (.st dst) (.imm (64 - n)) _ _ h2
+    have h2 := respects_emitShImm (t := t) true dst dst n _ _ h3
+    have h1 := respects_emitShImm (t := t) false rotScr dst (64 - n) _ _ h2
     refine Respects.of_eq (h1.congr ?_) ?_
     · intro σ ι
       congr 1
-      simp only [srcVal, JasminBinOp.apply, rotLM, if_neg hn,
+      simp only [srcVal, JasminBinOp.apply, rotLM, if_neg hn, cond_true, cond_false,
         Function.update_of_ne hDst, Function.update_self,
         Function.update_of_ne (Ne.symm hDst), Function.update_idem]
     · intro Γ bs immV
@@ -430,8 +443,8 @@ theorem respects_emitTheta_C {t : JasminTy} (k : Cont t) (f : SV → IV → ⟦t
 
 /-! ## 5. θ: the per-column fold `A[x,y] ⊕= D[x]` -/
 
-/-- The θ word `D[x] = rotl(C[x+1], 1) ⊕ C[x-1]` in the slot map, with both
-    shift amounts read from the immediate map. -/
+/-- The θ word `D[x] = rotl(C[x+1], 1) ⊕ C[x-1]` in the slot map, the rotation
+    as the emitter's immediate-count shift pair (`rotModel`). -/
 def thetaDW (σ : SV) (ι : IV) (x : Nat) : BitVec 64 :=
   rotModel (σ (cSlot (x + 1))) ι 1 ^^^ σ (cSlot (x + 4))
 
@@ -441,7 +454,7 @@ def thetaDW (σ : SV) (ι : IV) (x : Nat) : BitVec 64 :=
 def thetaDColM (x : Nat) (σ : SV) (ι : IV) : SV :=
   Function.update (Function.update (Function.update (Function.update (Function.update
     (Function.update
-      (Function.update σ rotScr ((σ (cSlot (x + 1))) >>> shiftMask 64 (ι (immIdx 63)).toNat))
+      (Function.update σ rotScr ((σ (cSlot (x + 1))) >>> shiftMask 64 63))
         chiScr (thetaDW σ ι x))
       (aSlot x 0) (σ (aSlot x 0) ^^^ thetaDW σ ι x))
       (aSlot x 1) (σ (aSlot x 1) ^^^ thetaDW σ ι x))
@@ -497,7 +510,7 @@ def rhoPiLaneM (x y : Nat) (σ : SV) (ι : IV) : SV :=
   else
     Function.update
       (Function.update σ rotScr
-        ((σ (aSlot x y)) >>> shiftMask 64 (ι (immIdx (64 - rhoOffset (x + 5 * y)))).toNat))
+        ((σ (aSlot x y)) >>> shiftMask 64 (64 - rhoOffset (x + 5 * y))))
       (bSlot y (2 * x + 3 * y))
       (rotModel (σ (aSlot x y)) ι (rhoOffset (x + 5 * y)))
 
@@ -667,23 +680,19 @@ theorem ImmOK.rc {ι : IV} (h : ImmOK ι) (round : Nat) (hr : round < 24) :
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact in
 /-- `rotModel` at a ρ offset is the closed-form left rotation `crotl`. -/
-theorem rotModel_rho {ι : IV} (h : ImmOK ι) (a : BitVec 64) (s : Nat) (hs : s < 25) :
+theorem rotModel_rho (ι : IV) (a : BitVec 64) (s : Nat) :
     rotModel a ι (rhoOffset s) = crotl a (rhoOffset s) := by
-  have key : ∀ r : Nat, r < 64 → r ≠ 0 → r ∈ immList → 64 - r ∈ immList →
-      rotModel a ι r = crotl a r := by
-    intro r hr hr0 hm1 hm2
-    rw [rotModel, if_neg hr0, crotl, h.toNat_of hm1 hr,
-      h.toNat_of hm2 (by omega), shiftMask_of_lt hr, shiftMask_of_lt (by omega : 64 - r < 64)]
-  interval_cases s
-  · show rotModel a ι 0 = crotl a 0
-    rw [rotModel, if_pos rfl, crotl]
+  by_cases hr0 : rhoOffset s = 0
+  · rw [hr0, rotModel, if_pos rfl, crotl]
     bv_decide
-  all_goals (apply key <;> decide)
+  · have hr := rhoOffset_lt_64 s
+    rw [rotModel, if_neg hr0, crotl, shiftMask_of_lt hr,
+      shiftMask_of_lt (by omega : 64 - rhoOffset s < 64)]
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact in
 /-- The θ rotation by one is the closed-form left rotation. -/
-theorem rotModel_one {ι : IV} (h : ImmOK ι) (a : BitVec 64) :
-    rotModel a ι 1 = crotl a 1 := rotModel_rho h a 1 (by decide)
+theorem rotModel_one (ι : IV) (a : BitVec 64) :
+    rotModel a ι 1 = crotl a 1 := rotModel_rho ι a 1
 
 /-! ## 10. Reading the stage models -/
 
@@ -812,23 +821,23 @@ theorem parityM_eq (σ : SV) (x : Nat) (hx : x < 5) :
     lanesOf_laneIdx σ x 2 hx (by norm_num), lanesOf_laneIdx σ x 3 hx (by norm_num),
     lanesOf_laneIdx σ x 4 hx (by norm_num)]
 
-theorem thetaDW_eq (σ : SV) (ι : IV) (h : ImmOK ι) (x : Nat) :
+theorem thetaDW_eq (σ : SV) (ι : IV) (x : Nat) :
     thetaDW (thetaCM 5 0 σ) ι x = cThetaD (lanesOf σ) x := by
-  rw [thetaDW, thetaCM5_cSlot, thetaCM5_cSlot, rotModel_one h,
+  rw [thetaDW, thetaCM5_cSlot, thetaCM5_cSlot, rotModel_one,
     parityM_eq σ _ (Nat.mod_lt _ (by decide)), parityM_eq σ _ (Nat.mod_lt _ (by decide)),
     cThetaD]
   exact BitVec.xor_comm _ _
 
-theorem lanes_theta (σ : SV) (ι : IV) (h : ImmOK ι) :
+theorem lanes_theta (σ : SV) (ι : IV) :
     lanesOf (thetaDM 5 0 (thetaCM 5 0 σ) ι) = cThetaClean (lanesOf σ) := by
   funext i
   have hx : i.val % 5 < 5 := by word_bound
   have hy : i.val / 5 < 5 := by word_bound
   show thetaDM 5 0 (thetaCM 5 0 σ) ι (aSlot (i.val % 5) (i.val / 5)) = _
-  rw [thetaDM5_aSlot _ _ _ _ hx hy, thetaCM5_aSlot, thetaDW_eq σ ι h]
+  rw [thetaDM5_aSlot _ _ _ _ hx hy, thetaCM5_aSlot, thetaDW_eq σ ι]
   rfl
 
-theorem lanes_rhopi (τ : SV) (ι : IV) (h : ImmOK ι) :
+theorem lanes_rhopi (τ : SV) (ι : IV) :
     bLanesOf (rhoPiM 25 0 τ ι) = cPi (cRho (lanesOf τ)) := by
   funext i
   have hx : i.val % 5 < 5 := by word_bound
@@ -836,7 +845,7 @@ theorem lanes_rhopi (τ : SV) (ι : IV) (h : ImmOK ι) :
   have hm : (i.val % 5 + 3 * (i.val / 5)) % 5 < 5 := by word_bound
   have hlt : (i.val % 5 + 3 * (i.val / 5)) % 5 + 5 * (i.val % 5) < 25 := by omega
   show rhoPiM 25 0 τ ι (bSlot (i.val % 5) (i.val / 5)) = _
-  rw [rhoPiM25_bSlot _ _ _ _ hx hy, rotModel_rho h _ _ hlt]
+  rw [rhoPiM25_bSlot _ _ _ _ hx hy, rotModel_rho]
   show _ = cRho (lanesOf τ) (laneIdx ((i.val % 5 + 3 * (i.val / 5)) % 5) (i.val % 5))
   rw [cRho, lanesOf_laneIdx _ _ _ hm hx, rhoAmt, laneIdx_val _ _ hlt]
 
@@ -871,8 +880,8 @@ theorem lanes_iota (γ : SV) (ι : IV) (h : ImmOK ι) (round : Nat) (hr : round 
 theorem roundM_lanes (σ : SV) (ι : IV) (h : ImmOK ι) (round : Nat) (hr : round < 24) :
     lanesOf (roundM round σ ι)
       = keccakFullRound (lanesOf σ) (BitVec.ofNat 64 (roundConst round)) := by
-  rw [roundM, lanes_iota _ _ h round hr, lanes_chi _ _ h, lanes_rhopi _ _ h,
-    lanes_theta _ _ h]
+  rw [roundM, lanes_iota _ _ h round hr, lanes_chi _ _ h, lanes_rhopi _ _,
+    lanes_theta _ _]
   rw [← keccakClosedForm, ← keccakClosedFullRound, keccak_round_bitexact]
 
 /-! ## 12. The 24-round permutation -/

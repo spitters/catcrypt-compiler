@@ -40,13 +40,14 @@ Those live (once) inside `KRefines.arith` in `RelationalCompile.lean`.
 
 ## Op alphabet (FIPS 202 θρπχι) vs the framework
 
-Keccak's round is xor-heavy with the χ AND-NOT and fixed rotations: `xor`,
-`and`, `shl`, `shr`, `or` — all standard `JasminBinOp`, NOT being `xor` with
-the all-ones mask immediate. So **no new operator** is needed; the framework's
-single Keccak compilation lemma `KRefines.arith` (over `KeccakEmit.emitOp`)
-covers every binding. The `emitMov` (idempotent-or copy) and `emitRotL`
-(3-binding rotate, or skip at `n = 0`) wrappers are collapsed by the driver's
-whnf to their bare `emitOp`s; the leaf-spec lemmas `KRefines.mov`/`.rotL_pos`/
+Keccak's round is xor-heavy with the χ AND-NOT and fixed rotations: the
+`JasminBinOp`s `xor`, `and`, `or` (NOT being `xor` with the all-ones mask
+immediate) and the immediate-count shifts `shlImm` / `shrImm` of the rotates.
+The framework's Keccak compilation lemmas `KRefines.arith` (over
+`KeccakEmit.emitOp`) and `KRefines.shImm` (over `KeccakEmit.emitShImm`) cover
+every binding. The `emitMov` (idempotent-or copy) and `emitRotL` (3-binding
+rotate, or skip at `n = 0`) wrappers are collapsed by the driver's whnf to their
+bare `emitOp`s and `emitShImm`s; the leaf-spec lemmas `KRefines.mov`/`.rotL_pos`/
 `.rotL_zero` (in `RelationalCompile.lean`) document them.
 
 ## The re-derivation

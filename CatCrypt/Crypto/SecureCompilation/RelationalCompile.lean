@@ -573,6 +573,13 @@ abbrev KStateStep := KView → KView
 def kArithStep (op : JasminBinOp) (dst : Fin numSlots) (a b : KeccakEmit.Src) : KStateStep :=
   fun vw => { vw with slot := fun i => if i = dst then op.apply (vw.readSrc a) (vw.readSrc b) else vw.slot i }
 
+/-- The Keccak immediate-count shift step: write slot `src` shifted left (`left`)
+    or right by the masked literal count `shiftMask 64 n` to slot `dst`. -/
+def kShiftImmStep (left : Bool) (dst src : Fin numSlots) (n : Nat) : KStateStep :=
+  fun vw => { vw with slot := (fun i =>
+      if i = dst then cond left (vw.slot src <<< shiftMask 64 n) (vw.slot src >>> shiftMask 64 n)
+      else vw.slot i) }
+
 /-- `KRefines spec frag`: the emitted Keccak CPS fragment `frag` denotes its
     spec `KStateStep`. `frag` takes a builder state, an immediate resolver, and
     a `Cont`. (The Keccak analogue of §2's `Refines`, over the
@@ -611,8 +618,7 @@ theorem KRefines.arith {t : JasminTy}
     by_cases h : i = dst
     · subst h
       cases a <;> cases b <;>
-        simp [readSlot_bsAfterOp_eq, readImm_immVarAfter,
-          KeccakEmitterReduction.readSrc]
+        simp [readSlot_bsAfterOp_eq, KeccakEmitterReduction.readSrc]
     · rw [readSlot_bsAfterOp_ne _ _ _ _ _ h]
       simp [h]
   · funext n
@@ -655,13 +661,51 @@ theorem KRefines.consOp {t : JasminTy}
         emitOp bs immVar op dst a b (fun b' iv' => tail b' iv' k)) :=
   KRefines.seq (KRefines.arith op dst a b) htail
 
+/-- **Keccak immediate-shift compilation lemma.** One `emitShImm` refines
+    `kShiftImmStep`. -/
+theorem KRefines.shImm {t : JasminTy}
+    (left : Bool) (dst src : Fin numSlots) (n : Nat) :
+    KRefines (t := t) (kShiftImmStep left dst src n)
+      (fun {Γ} (bs : BState Γ) immVar k => emitShImm bs immVar left dst src n k) := by
+  intro Γ bs immVar V k
+  refine ⟨_, bsAfterOp bs dst, immVarAfter immVar,
+    V.extend (cond left (KeccakEmitterReduction.readSlot bs V src <<< shiftMask 64 n)
+      (KeccakEmitterReduction.readSlot bs V src >>> shiftMask 64 n)), ?_, ?_⟩
+  · show (emitShImm bs immVar left dst src n k).denote V = _
+    exact KeccakEmitterReduction.emitShImm_denote bs immVar left dst src n k V
+  unfold kreadView kShiftImmStep
+  ext1
+  · funext i
+    dsimp only
+    by_cases h : i = dst
+    · subst h
+      simp [readSlot_bsAfterOp_eq]
+    · rw [readSlot_bsAfterOp_ne _ _ _ _ _ h]
+      simp [h]
+  · funext m
+    dsimp only
+    simp [readImm_immVarAfter]
+
+/-- Peel one `emitShImm` head: if the tail refines `specTail`, the chain refines
+    `specTail ∘ kShiftImmStep left dst src n`. -/
+theorem KRefines.consShImm {t : JasminTy}
+    (left : Bool) (dst src : Fin numSlots) (n : Nat) {specTail : KStateStep}
+    {tail : {Γ : Ctxt jasminDialect} → BState Γ → (Nat → Ctxt.Var Γ r64) →
+              Cont t → Com jasminDialect Γ t}
+    (htail : KRefines specTail tail) :
+    KRefines (fun vw => specTail (kShiftImmStep left dst src n vw))
+      (fun {Γ} (bs : BState Γ) immVar k =>
+        emitShImm bs immVar left dst src n (fun b' iv' => tail b' iv' k)) :=
+  KRefines.seq (KRefines.shImm left dst src n) htail
+
 /-! ### Derived Keccak leaves (`emitMov`, `emitRotL`)
 
-`emitMov` and the `n ≠ 0` branch of `emitRotL` are sequences of `emitOp`s, so
-their `KRefines` facts are *assembled* from `KRefines.arith` + `KRefines.seq` —
-no new `Com.denote` reasoning. The `n = 0` branch of `emitRotL` is the identity
-(`KRefines.skip`). The driver below collapses these wrappers via whnf, so it
-reaches the bare `emitOp`s directly; these derived lemmas document the leaf
+`emitMov` is one `emitOp` and the `n ≠ 0` branch of `emitRotL` is two
+`emitShImm`s and one `emitOp`, so their `KRefines` facts are *assembled* from
+`KRefines.arith`, `KRefines.shImm` and `KRefines.seq`. The `n = 0` branch of
+`emitRotL` is the identity (`KRefines.skip`). The driver below collapses these
+wrappers via whnf, so it reaches the bare `emitOp`s and `emitShImm`s directly;
+these derived lemmas document the leaf
 specs and are the assembled-leaf evidence (the Keccak analogue of §4's
 `Refines.leafRotr`). -/
 
@@ -680,46 +724,46 @@ theorem KRefines.rotL_zero {t : JasminTy} (dst : Fin numSlots) :
   exact ⟨Γ, bs, immVar, V, rfl, rfl⟩
 
 /-- The `n ≠ 0` `emitRotL` leaf. The driver collapses `emitRotL` through whnf
-    to its three bare `emitOp`s and peels them with `KRefines.consOp`. This
-    leaf lemma records the composite spec — the three `kArithStep`s
-    `rotScr = dst >>> (64-n); dst = dst <<< n; dst = dst | rotScr` — and is
-    discharged directly through the substrate denotation lemma
-    `emitRotL_denote_pos` (the slot-disjointness side condition `dst ≠ rotScr`
-    is the same one the substrate carries; the *driver* never needs this leaf,
-    peeling the three `emitOp`s with `KRefines.consOp` instead). -/
+    to its two `emitShImm`s and one `emitOp` and peels them with
+    `KRefines.consShImm` / `KRefines.consOp`. This leaf lemma records the
+    composite spec — `rotScr = dst >>> (64-n); dst = dst <<< n; dst = dst | rotScr`
+    as two `kShiftImmStep`s and one `kArithStep` — and is discharged directly
+    through the substrate denotation lemma `emitRotL_denote_pos` (the
+    slot-disjointness side condition `dst ≠ rotScr` is the same one the
+    substrate carries). -/
 theorem KRefines.rotL_pos {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     (hn : n ≠ 0) (hDst : dst ≠ rotScr) :
     KRefines (t := t)
       (fun vw =>
         (kArithStep .or dst (.st dst) (.st rotScr))
-          ((kArithStep .shl dst (.st dst) (.imm n))
-            ((kArithStep .shr rotScr (.st dst) (.imm (64 - n))) vw)))
+          ((kShiftImmStep true dst dst n)
+            ((kShiftImmStep false rotScr dst (64 - n)) vw)))
       (fun {Γ} (bs : BState Γ) immVar k => emitRotL bs immVar dst n k) := by
   intro Γ bs immVar V k
   refine ⟨_, bsAfterRotLPos bs dst, immVarAfter (immVarAfter (immVarAfter immVar)),
     (let dstVal := KeccakEmitterReduction.readSlot bs V dst
-     let scrVal := JasminBinOp.shr.apply dstVal (KeccakEmitterReduction.readImm immVar V (immIdx (64 - n)))
-     let dstShl := JasminBinOp.shl.apply dstVal (KeccakEmitterReduction.readImm immVar V (immIdx n))
+     let scrVal := dstVal >>> shiftMask 64 (64 - n)
+     let dstShl := dstVal <<< shiftMask 64 n
      let dstOut := JasminBinOp.or.apply dstShl scrVal
      ((V.extend scrVal).extend dstShl).extend dstOut), ?_, ?_⟩
   · show (emitRotL bs immVar dst n k).denote V = _
     exact emitRotL_denote_pos bs immVar dst n k V hn hDst
-  · -- The final read view: `rotScr ← shr (slot dst) (imm (64-n))`,
-    -- `dst ← or (shl (slot dst) (imm n)) (that scrVal)` — exactly the composite
-    -- `kArithStep` triple. All reads of unmodified slots pass through `bsAfterOp`.
-    unfold kreadView kArithStep KView.readSrc bsAfterRotLPos
+  · -- The final read view: `rotScr ← (slot dst) >>> (64-n)`,
+    -- `dst ← or ((slot dst) <<< n) (that scrVal)` — exactly the composite
+    -- step triple. All reads of unmodified slots pass through `bsAfterOp`.
+    unfold kreadView kArithStep kShiftImmStep KView.readSrc bsAfterRotLPos
     have hRD : rotScr ≠ dst := fun h => hDst h.symm
     ext1
     · funext i
       dsimp only
       by_cases h1 : i = dst
       · subst h1
-        simp only [readSlot_bsAfterOp_eq, readSlot_bsAfterOp_ne _ _ _ _ _ hDst,
-          if_neg hDst, if_neg hRD, if_pos rfl, ite_true, KeccakEmitterReduction.readSrc]
+        simp only [readSlot_bsAfterOp_eq,
+          if_neg hDst, if_neg hRD, ite_true, cond_true, cond_false]
       · by_cases h2 : i = rotScr
         · subst h2
           simp only [readSlot_bsAfterOp_ne _ _ _ _ _ hRD, readSlot_bsAfterOp_eq,
-            if_neg h1, if_pos rfl, ite_true, ite_false, KeccakEmitterReduction.readSrc]
+            if_neg h1, ite_true, cond_false]
         · simp only [readSlot_bsAfterOp_ne _ _ _ _ _ h1,
             readSlot_bsAfterOp_ne _ _ _ _ _ h2, if_neg h1, if_neg h2]
     · funext m
@@ -733,14 +777,16 @@ theorem KRefines.rotL_pos {t : JasminTy} (dst : Fin numSlots) (n : Nat)
 after collapsing the `emitMov`/`emitRotL`/`emitThetaCCol`/`emitRhoPiLane`/
 `emitChiLane`/`emitIota`/`emit{Theta_C,Theta_D,RhoPi,Chi,Rounds}` wrappers and
 the `if n == 0` rotate guard, is a bare `KeccakEmit.emitOp bs immVar op dst a b
-cont` (10 args) or the base continuation `k bs immVar`. The splitter mirrors
-§6 exactly but for this shape: it re-abstracts the outer `k` as the tail's own
-continuation and refines `KRefines.consOp` by `isDefEq` (no HO unification). -/
+cont` or `KeccakEmit.emitShImm bs immVar left dst src n cont` (9 args each), or
+the base continuation `k bs immVar`. The splitter mirrors §6 exactly but for this
+shape: it re-abstracts the outer `k` as the tail's own continuation and refines
+`KRefines.consOp` or `KRefines.consShImm` by `isDefEq` (no HO unification). -/
 
 open Lean Elab Tactic Meta in
-/-- Peel one Keccak `emitOp` head off a `KRefines ?spec frag` goal by explicit
-    tail construction. Collapses the CPS wrappers + the rotate `if`, splits the
-    continuation, re-abstracts the outer `k`, and refines `KRefines.consOp`.
+/-- Peel one Keccak `emitOp` or `emitShImm` head off a `KRefines ?spec frag` goal
+    by explicit tail construction. Collapses the CPS wrappers + the rotate `if`,
+    splits the continuation, re-abstracts the outer `k`, and refines
+    `KRefines.consOp` or `KRefines.consShImm`.
     Closes a `fun bs immVar k => k bs immVar` base case with `KRefines.skip`. -/
 elab "scont_peel_keccak" : tactic => do
   let g ← getMainGoal
@@ -750,6 +796,7 @@ elab "scont_peel_keccak" : tactic => do
   let tyArgs := ty.getAppArgs
   let frag := tyArgs[2]!
   let emitOpName := ``CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit.emitOp
+  let emitShImmName := ``CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit.emitShImm
   -- η-expand the fragment to its full `{Γ} → BState → immVar → Cont → Com` arity
   -- (4 binders), so `{Γ} bs immVar k` are literal lambdas.
   let frag ← forallBoundedTelescope (← inferType frag) (some 4) fun xs _ =>
@@ -759,10 +806,10 @@ elab "scont_peel_keccak" : tactic => do
       throwError "scont_peel_keccak: fragment is not `fun \{Γ} bs immVar k => …`"
     let kFVar := fragArgs[3]!
     -- Reduce the body head through the CPS wrapper definitions + the rotate `if`,
-    -- stopping at a bare `emitOp` or the continuation `k`.
+    -- stopping at a bare `emitOp`, a bare `emitShImm` or the continuation `k`.
     let body ← whnfHeadPred body fun e => do
       let h := e.getAppFn
-      pure <| !(h.isConstOf emitOpName || h == kFVar)
+      pure <| !(h.isConstOf emitOpName || h.isConstOf emitShImmName || h == kFVar)
     let fn := body.getAppFn
     let args := body.getAppArgs
     -- Base case: `fun {Γ} bs immVar k => k bs immVar`. Close with `skip`.
@@ -773,10 +820,12 @@ elab "scont_peel_keccak" : tactic => do
         throwError "scont_peel_keccak: skip conclusion does not match goal{indentExpr ty}"
       g.assign (mkAppN skipPrf skMVars)
       return
-    -- Head case: `emitOp {Γ}{t} bs immVar op dst a b cont` (9 args: 2 implicit
-    -- `{Γ}{t}` + 7 explicit).
-    unless fn.isConstOf emitOpName && args.size == 9 do
-      throwError "scont_peel_keccak: head is not `emitOp _ _ _ _ _ _ _ cont` after whnf (got {fn}, {args.size} args)"
+    -- Head case: `emitOp {Γ}{t} bs immVar op dst a b cont` or
+    -- `emitShImm {Γ}{t} bs immVar left dst src n cont` (9 args: 2 implicit
+    -- `{Γ}{t}` + 7 explicit). The four step arguments sit at positions 4..7.
+    unless (fn.isConstOf emitOpName || fn.isConstOf emitShImmName) && args.size == 9 do
+      throwError "scont_peel_keccak: head is not `emitOp`/`emitShImm` with a continuation after whnf (got {fn}, {args.size} args)"
+    let consName := if fn.isConstOf emitShImmName then ``KRefines.consShImm else ``KRefines.consOp
     let op := args[4]!; let dst := args[5]!; let a := args[6]!; let b := args[7]!
     -- η-expand the continuation to its full `{Γ'} → BState → immVar → Com` arity
     -- (3 binders). The last emitter in a chain passes the bare `k` (not a lambda);
@@ -794,11 +843,12 @@ elab "scont_peel_keccak" : tactic => do
         | .lam _ _ _ bi => if bi.isImplicit then return .done e.eta else return .done e
         | _ => return .done e)
       let tail ← mkLambdaFVars (contArgs ++ #[kFVar]) restEta
-      let consConst ← mkConstWithFreshMVarLevels ``KRefines.consOp
+      let consConst ← mkConstWithFreshMVarLevels consName
       let (mvars, _, concl) ← forallMetaTelescope (← inferType consConst)
       unless mvars.size == 8 do
-        throwError "scont_peel_keccak: unexpected KRefines.consOp arity {mvars.size}"
-      -- mvars = [t, op, dst, a, b, specTail, tail, htail]
+        throwError "scont_peel_keccak: unexpected {consName} arity {mvars.size}"
+      -- mvars = [t, op, dst, a, b, specTail, tail, htail] for `consOp` and
+      -- [t, left, dst, src, n, specTail, tail, htail] for `consShImm`.
       let assign (m v : Expr) : MetaM Unit := do
         unless ← isDefEq m v do throwError "scont_peel_keccak: could not set consOp argument"
       assign mvars[1]! op; assign mvars[2]! dst; assign mvars[3]! a

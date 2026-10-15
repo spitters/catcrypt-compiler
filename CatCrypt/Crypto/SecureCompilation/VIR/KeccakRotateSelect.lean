@@ -27,16 +27,12 @@ of the three-op chain, and `emitRotLNative_denote_eq_value` proves the value it
 writes to slot `dst` is **bit-for-bit** the value `emitRotL` writes — so the
 rewrite is denotation-preserving and the Keccak KAT is unchanged.
 
-## What is verified, and the side condition
+## What is verified
 
 The native rewrite is unconditionally a `rotateRight` (`emitRotLNative_denote`).
-Agreement with the three-op `emitRotL` form needs one fact about the *immediate
-resolver*: the input words holding the rotate amounts `n` and `64-n` carry the
-literals `n` and `64-n` (`BitVec.ofNat 64 ·`). This is exactly what the emit's
-input resolver `keccakInName` renders, and it is the standard "immediate input
-holds its literal" hypothesis carried by the Keccak reduction substrate. We make
-it explicit (`hImmN`, `hImm64N`) rather than bake it in, so the theorem is honest
-about the resolver contract.
+The two shifts of the three-op `emitRotL` form are immediate-count shifts
+(`shrImm 64 (64-n)`, `shlImm 64 n`) at literal counts, so agreement with it holds
+for every `0 < n < 64` with no hypothesis on the input context.
 
 The bit-for-bit core is `JasminDialect.rorImm_denote_eq_shiftOr` plus the
 commutativity of `|||` (the shift-or idiom and `rotateRight` list the two shifted
@@ -113,11 +109,10 @@ theorem emitRotLNative_denote_zero {Γ : Ctxt jasminDialect} {t : JasminTy}
 The value `emitRotL` writes to `dst` (for `n ≠ 0`, `dst ≠ rotScr`) is, after the
 three-op chain, the `BitVec` `dstShl ||| scrVal` with
 
-    scrVal = dst >>> (64-n)   (the immediate `64-n`)
-    dstShl = dst <<< n        (the immediate `n`)
+    scrVal = dst >>> (64-n)   (`shrImm 64 (64-n)`)
+    dstShl = dst <<< n        (`shlImm 64 n`)
 
-read off the immediate resolver. When those immediates carry their literals,
-this equals `dst.rotateRight (64-n)` — the value `emitRotLNative` writes. -/
+This equals `dst.rotateRight (64-n)` — the value `emitRotLNative` writes. -/
 
 /-- **The shift-or value equals `rotateRight (64-n)`.** For `0 < n < 64`, the
     three-op idiom's output `(x <<< n) ||| (x >>> (64-n))` equals
@@ -140,43 +135,23 @@ the same program *up to the context-depth bookkeeping* (`emitRotL` extends by 3,
 denotation-preservation of the ρ rewrite consumes: every downstream read of slot
 `dst` sees the identical `BitVec`. -/
 
-/-- **Insn-selection soundness (value level).** Under the resolver contract that
-    the rotate-amount input words hold their literals (`hImm64N`), the native
-    single-op emitter writes the **same value** to slot `dst` as the three-op
-    `emitRotL` chain: both equal `(readSlot bs V dst).rotateRight (64-n)` =
+/-- **Insn-selection soundness (value level).** The native single-op emitter
+    writes the **same value** to slot `dst` as the three-op `emitRotL` chain: both
+    equal `(readSlot bs V dst).rotateRight (64-n)` =
     `(dst <<< n) ||| (dst >>> (64-n))`. This is the bit-for-bit guarantee that
     the rotate insn-selection does not change the Keccak ρ output. -/
 theorem emitRotLNative_value_eq_emitRotL_value {Γ : Ctxt jasminDialect}
-    (bs : BState Γ) (immVar : Nat → Ctxt.Var Γ r64)
-    (dst : Fin numSlots) (n : Nat) (V : Ctxt.Valuation Γ)
-    (hn : 0 < n) (hn64 : n < 64)
-    (hImmN : readImm immVar V (immIdx n) = BitVec.ofNat 64 n)
-    (hImm64N : readImm immVar V (immIdx (64 - n)) = BitVec.ofNat 64 (64 - n)) :
+    (bs : BState Γ) (dst : Fin numSlots) (n : Nat) (V : Ctxt.Valuation Γ)
+    (hn : 0 < n) (hn64 : n < 64) :
     -- the native emitter's written value …
     (readSlot bs V dst).rotateRight (64 - n)
       -- … equals the three-op idiom's written value (the `dstOut` of
-      -- `emitRotL_denote_pos`), read through the immediate resolver.
+      -- `emitRotL_denote_pos`).
       = JasminBinOp.or.apply
-          (JasminBinOp.shl.apply (readSlot bs V dst)
-            (readImm immVar V (immIdx n)))
-          (JasminBinOp.shr.apply (readSlot bs V dst)
-            (readImm immVar V (immIdx (64 - n)))) := by
-  set x := readSlot bs V dst with hx
-  show x.rotateRight (64 - n)
-      = JasminBinOp.or.apply
-          (JasminBinOp.shl.apply x (readImm immVar V (immIdx n)))
-          (JasminBinOp.shr.apply x (readImm immVar V (immIdx (64 - n))))
-  rw [hImmN, hImm64N]
-  -- `shl`/`shr` apply at the `.toNat` of the (literal) immediate.
-  show x.rotateRight (64 - n)
-      = (x <<< shiftMask 64 (BitVec.ofNat 64 n).toNat)
-        ||| (x >>> shiftMask 64 (BitVec.ofNat 64 (64 - n)).toNat)
-  have hnt : (BitVec.ofNat 64 n).toNat = n := by
-    simp [BitVec.toNat_ofNat]; omega
-  have hnt' : (BitVec.ofNat 64 (64 - n)).toNat = 64 - n := by
-    simp [BitVec.toNat_ofNat]; omega
-  rw [hnt, hnt', shiftMask_of_lt hn64, shiftMask_of_lt (by omega : 64 - n < 64)]
-  exact (shiftOr_eq_rotateRight n hn hn64 x).symm
+          (readSlot bs V dst <<< shiftMask 64 n)
+          (readSlot bs V dst >>> shiftMask 64 (64 - n)) := by
+  rw [shiftMask_of_lt hn64, shiftMask_of_lt (by omega : 64 - n < 64)]
+  exact (shiftOr_eq_rotateRight n hn hn64 (readSlot bs V dst)).symm
 
 /-! ## 5. Native-rotate Keccak permutation `Com` (the emitted artifact)
 
