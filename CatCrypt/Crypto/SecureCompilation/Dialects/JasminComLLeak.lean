@@ -87,10 +87,11 @@ structure JLeakParams where
 def JLeakParams.owned : JLeakParams := { leafQuiet := ownedQuietLeaf }
 
 /-- The event class of an operation of `jasminDialect`. The match lists every constructor of
-    `JasminOp`: a stack access leaks its index, a fresh zero array is quiet, a leaf call is quiet when `Pj.leafQuiet`
-    lists its name and variable time otherwise, and each remaining operation is classed by
-    `Pj.opVT`. The dialect has no division and no arithmetic shift right by a register
-    count; `sarImm` shifts by an immediate. -/
+    `JasminOp`: a stack access leaks its index, a leaf call is quiet when `Pj.leafQuiet`
+    lists its name and variable time otherwise, and each remaining operation, the fresh
+    zero array `stackZero` among them, is classed by `Pj.opVT`, as its catCrypt source
+    operation is classed by `CatLeakParams.opVT`. The dialect has no division and no
+    arithmetic shift right by a register count; `sarImm` shifts by an immediate. -/
 def jKind (Pj : JLeakParams) (op : JasminOp) : LeakKind :=
   match op with
   | .stackLoad _ _ | .stackStore _ _ => .addrAt 1
@@ -101,16 +102,17 @@ def jKind (Pj : JLeakParams) (op : JasminOp) : LeakKind :=
   | .regArith _ _ | .castW _ _ | .regConst _ _ | .vpackZMM _ | .vpackZMMd _ | .vprordZMM _
   | .vpslldq _ | .vpsrldq _ | .vsimd _ | .mulhi _ | .addCarryLo _ | .addCarryHi _
   | .rorImm _ _ | .shrImm _ _ | .sarImm _ _ | .shlImm _ _ | .select _ | .callN _ _ _
-  | .vymm _ | .cmp _ _ | .cmpImm _ _ _ =>
+  | .vymm _ | .cmp _ _ | .cmpImm _ _ _ | .stackZero _ _ =>
       match Pj.opVT op with
       | some m => .vt m
       | none => .quiet
-  | .stackZero _ _ => .quiet
 
 /-- A fresh zero array writes `n` words at constant offsets of a fresh base and reads no
-    operand, so it emits no secret-dependent event. -/
-@[simp] theorem jKind_stackZero (Pj : JLeakParams) (w n : Nat) :
-    jKind Pj (.stackZero w n) = .quiet := rfl
+    operand; when `Pj` does not class it as a variable-time instruction it emits no event. -/
+@[simp] theorem jKind_stackZero (Pj : JLeakParams) (w n : Nat)
+    (h : Pj.opVT (.stackZero w n) = none) :
+    jKind Pj (.stackZero w n) = .quiet := by
+  simp only [jKind, h]
 
 /-- The array leaf `arrLoadDyn` leaks its last argument. -/
 @[simp] theorem jKind_extCall_arrLoadDyn (Pj : JLeakParams) (argTys : List JasminTy)

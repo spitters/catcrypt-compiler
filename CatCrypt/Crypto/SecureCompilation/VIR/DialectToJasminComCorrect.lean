@@ -531,6 +531,13 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with
         | cons a t => cases t with | cons i t2 => cases t2 with | cons v t3 =>
           rw [stackSet_eq_memSetDyn]; rfl
+  | memrefZero n =>
+      -- The zero memref lowers to `stackZero 64 n`, whose jasmin denotation
+      -- `JasminTy.default (.stackArr 64 n)` is the zero array, the dialect
+      -- denotation; `ctTransTy` is the identity on `.memref n`.
+      cases hop
+      simp only [toJExprD] at he; cases he
+      rfl
   | memrefWGetDyn w n =>
       -- The width-carrying load lowers to `stackLoad w n`, whose jasmin
       -- denotation is the same definitional match as the dialect's.

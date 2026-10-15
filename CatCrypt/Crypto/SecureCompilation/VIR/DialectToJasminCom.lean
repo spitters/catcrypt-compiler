@@ -48,6 +48,7 @@ structural `Com` recursion.
 | `bvConst w v`                | `regConst w v.toNat`   |
 | `extCall name argTys retTy`  | `extCall name …`       |
 | `memrefGetDyn/SetDyn n`      | `stackLoad/stackStore` |
+| `memrefZero n`               | `stackZero 64 n`       |
 | `bvRor w n`                  | `rorImm w n`           |
 | `bvShiftRA w n`              | `sarImm w n`           |
 | `andn w`                     | `regArith andn`        |
@@ -274,6 +275,13 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
         { op := .stackStore 64 n, retTy_eq := rfl,
           args := .cons (toJVarD args.head)
             (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
+  -- **Zero memref.** `memrefZero n` (a fresh array of `n` zero limbs) ↦ jasmin
+  -- `stackZero 64 n`. Both are nullary; `ret t = .memref n`, so
+  -- `mapTy t = .stackArr 64 n`.
+  | .memrefZero n =>
+      have hr : mapTy t = JasminTy.stackArr 64 n := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      some (hr ▸ { op := .stackZero 64 n, retTy_eq := rfl, args := .nil })
   -- **Width-carrying dynamic-index memref load.** `memrefWGetDyn w n` ↦ jasmin
   -- `stackLoad w n`. The dialect op's `[.memrefW w n, .sword 64]` operands map
   -- pointwise to `[.stackArr w n, .reg 64]`, the jasmin `stackLoad` signature.

@@ -98,6 +98,10 @@ theorem OpsHaveImages.convertible {Γ : Ctxt catCryptDialect} {ts : List CryptoT
 local macro "image_op" : tactic =>
   `(tactic| (intro _ _ e h; obtain ⟨op, hr, args⟩ := e; dsimp only at h; subst h; rfl))
 
+/-- A fresh zero memref has an image: `toJBlockD` lowers `memrefZero n` to the one binding
+    `stackZero 64 n`. -/
+theorem memrefZero_image (n : Nat) : HasImage (.memrefZero n) := by image_op
+
 /-! ## 2. The operations of the typed front -/
 
 /-- Every expression of the translation of an operation has an operation with an image. -/

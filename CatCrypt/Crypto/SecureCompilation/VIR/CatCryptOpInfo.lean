@@ -13,8 +13,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.OpInfo
 
 The record `catTraits : OpTraits catCryptDialect` and the predicates it is built from:
 the cost `AegraphCat.catCost` (in units of a bit-vector addition), the merge predicate
-`AegraphCat.catPure` (every operation other than the sampling leaves and the external
-call), every operation speculatable (the denotation of `catCryptDialect` is a total
+`AegraphCat.catPure` (every operation other than the sampling leaves, the external
+call and the fresh zero array), every operation speculatable (the denotation of `catCryptDialect` is a total
 function), and the constant predicate `catConstLike` (`bvConst`, `constBit`,
 `constUnit`).
 
@@ -43,9 +43,11 @@ def catCost : CatCryptOp → Nat
   | _ => 1
 
 /-- The catCrypt operations whose bindings the node table may merge: every operation other
-    than the sampling leaves `sampleBit`, `sampleBv` and the external call `extCall`. -/
+    than the sampling leaves `sampleBit`, `sampleBv`, the external call `extCall` and the
+    fresh zero array `memrefZero`. Two `memrefZero n` bindings lower to two `stackZero`
+    arrays, each a separate root of the array coalescing, so the table keeps them apart. -/
 def catPure : CatCryptOp → Bool
-  | .sampleBit | .sampleBv _ | .extCall _ _ _ => false
+  | .sampleBit | .sampleBv _ | .extCall _ _ _ | .memrefZero _ => false
   | _ => true
 
 end CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat
