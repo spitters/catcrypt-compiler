@@ -129,6 +129,21 @@ theorem loopRevS_ok_of_inv {Inv : AVal → Prop} {step step' : Nat → AEnv → 
     rw [h1', rustM_ok_bind]
     exact h2'
 
+/-- The conclusion of `toRustMS_ok_of_inv` for a computation `r` that reads `e` from `ρ`. -/
+private def InvOk (Inv : AVal → Prop) (ok : String → Bool)
+    (app' : String → List AVal → RustM AVal) (e : Hax.ImpExpr) (ρ : AEnv)
+    (r : RustM (AVal × AEnv)) : Prop :=
+  ∀ res, callsOK ok e = true → EnvInv Inv ρ → r = .ok res →
+    toRustMS app' e ρ = .ok res ∧ Inv res.1 ∧ EnvInv Inv res.2
+
+/-- The conclusion of `toRustMS_ok_of_inv` for a computation `r` that reads the arguments
+    `args` from `ρ`. -/
+private def InvArgsOk (Inv : AVal → Prop) (ok : String → Bool)
+    (app' : String → List AVal → RustM AVal) (args : List Hax.ImpExpr) (ρ : AEnv)
+    (r : RustM (List AVal × AEnv)) : Prop :=
+  ∀ res, callsOK.callsOKList ok args = true → EnvInv Inv ρ → r = .ok res →
+    toRustMS.argsS app' args ρ = .ok res ∧ (∀ v ∈ res.1, Inv v) ∧ EnvInv Inv res.2
+
 /-- **Congruence of the reading along invariant values.** Let `Inv` hold of the values the
     reading makes, let a value of `app` on arguments satisfying `Inv` be the value of `app'`
     and satisfy `Inv` at every name accepted by `ok`, and let every call of `e` be to such
@@ -140,7 +155,9 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
     (hag : AppInv Inv ok app app') (e : Hax.ImpExpr) (ρ : AEnv) :
     ∀ r, callsOK ok e = true → EnvInv Inv ρ → toRustMS app e ρ = .ok r →
       toRustMS app' e ρ = .ok r ∧ Inv r.1 ∧ EnvInv Inv r.2 := by
-  fun_induction toRustMS app e ρ
+  suffices H : ∀ e ρ, InvOk Inv ok app' e ρ (toRustMS app e ρ) from H e ρ
+  apply toRustMS.induct_unfolding app (InvArgsOk Inv ok app') (InvOk Inv ok app')
+  all_goals intros
   case case1 n ρ =>
     intro r hc hρ h
     cases h
@@ -337,9 +354,37 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         refine ⟨?_, hI.proj vs w ht (List.mem_of_getElem? hvi), hρ1⟩
         simp only [toRustMS, hp', rustM_ok_bind, hvi]
     | _ => cases h
-  case case18 =>
+  case case18 f args ρ _ _ _ ih =>
+    intro r hc hρ h
+    simp only [callsOK, Bool.and_eq_true] at hc
+    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨v, hv, h⟩ := rustM_bind_ok h
+    cases h
+    obtain ⟨hp', hp1, hp2⟩ := ih p hc.2 hρ hp
+    obtain ⟨hv', hv1⟩ := hag f hc.1 p.1 v hp1 hv
+    refine ⟨?_, hv1, hp2⟩
+    rw [toRustMS_app_eq, hp', rustM_ok_bind, hv', rustM_ok_bind]
+  case case19 =>
     intro r hc hρ h
     cases h
+  case case20 ρ =>
+    intro r hc hρ h
+    cases h
+    exact ⟨by simp only [toRustMS.argsS], by simp, hρ⟩
+  case case21 a as ρ ih2 ih1 =>
+    intro r hc hρ h
+    simp only [callsOK.callsOKList, Bool.and_eq_true] at hc
+    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
+    cases h
+    obtain ⟨hp', hp1, hp2⟩ := ih2 p hc.1 hρ hp
+    obtain ⟨hq', hq1, hq2⟩ := ih1 p q hc.2 hp2 hq
+    refine ⟨?_, ?_, hq2⟩
+    · simp only [toRustMS.argsS, hp', hq', rustM_ok_bind]
+    · intro v hv
+      rcases List.mem_cons.1 hv with rfl | hv
+      · exact hp1
+      · exact hq1 v hv
 
 /-- **A total triple of the reading along invariant values.** Under the hypotheses of
     `toRustMS_ok_of_inv`, a total triple of the reading of `e` under `app` from an

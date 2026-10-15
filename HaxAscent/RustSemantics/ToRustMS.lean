@@ -867,7 +867,17 @@ def toRustMS (app : String → List AVal → RustM AVal) :
         | some v => .ok (v, p.2)
         | none => .fail .undef
       | _ => .fail .undef
+  | .app f args, ρ =>
+    toRustMS.argsS app args ρ >>= fun p => app f p.1 >>= fun r => .ok (r, p.2)
   | _, _ => .fail .undef
+where
+  /-- The arguments of a call read left to right: their values and the environment after
+      the last of them. -/
+  argsS (app : String → List AVal → RustM AVal) :
+      List Hax.ImpExpr → AEnv → RustM (List AVal × AEnv)
+    | [], ρ => .ok ([], ρ)
+    | a :: as, ρ => toRustMS app a ρ >>= fun p => argsS app as p.2 >>= fun q =>
+      .ok (p.1 :: q.1, q.2)
 
 /-! ## Pasting -/
 
@@ -970,10 +980,31 @@ theorem loopRevS_sim {bi : Hax.Builtins} {var : String} {body : Hax.ImpExpr}
       (AVal.toValue_ne_break v)]
     exact hF2 (fuel - 1) (by omega)
 
+/-- The run of the arguments `args` from the encoding of `ρ` returns the encodings of `vs`
+    and ends in the encoding of `ρ'`, at every fuel from some fuel on. -/
+def SimArgs (bi : Hax.Builtins) (args : List Hax.ImpExpr) (ρ ρ' : AEnv) (vs : List AVal) :
+    Prop :=
+  ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
+    Hax.denoteArgs' bi fuel args (encEnv ρ) = (some (AVal.toValues vs), encEnv ρ')
+
+/-- Every value and environment that the computation `r` returns are simulated by the run
+    of `e` from `ρ`. -/
+def SimOk (bi : Hax.Builtins) (e : Hax.ImpExpr) (ρ : AEnv) (r : RustM (AVal × AEnv)) :
+    Prop :=
+  ∀ v ρ', r = .ok (v, ρ') → Sim bi e ρ ρ' v
+
+/-- Every list of values and environment that the computation `r` returns are simulated by
+    the run of the arguments `args` from `ρ`. -/
+def SimArgsOk (bi : Hax.Builtins) (args : List Hax.ImpExpr) (ρ : AEnv)
+    (r : RustM (List AVal × AEnv)) : Prop :=
+  ∀ vs ρ', r = .ok (vs, ρ') → SimArgs bi args ρ ρ' vs
+
 theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM AVal}
     (happ : AppOk bi app) (e : Hax.ImpExpr) (ρ : AEnv) :
     ∀ v ρ', toRustMS app e ρ = .ok (v, ρ') → Sim bi e ρ ρ' v := by
-  fun_induction toRustMS app e ρ
+  suffices H : ∀ e ρ, SimOk bi e ρ (toRustMS app e ρ) from H e ρ
+  apply toRustMS.induct_unfolding app (SimArgsOk bi) (SimOk bi)
+  all_goals intros
   case case1 n ρ =>
     intro v ρ' h
     cases h
@@ -1192,9 +1223,40 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         simp only [AVal.toValue, Hax.Value.projIdx, AVal.toValues_eq_map, List.getElem?_map,
           hvi, Option.map_some]
     | _ => cases h
-  case case18 =>
+  case case18 f args ρ _ _ _ ih =>
+    intro v ρ' h
+    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨r, hr, h⟩ := rustM_bind_ok h
+    cases h
+    obtain ⟨F, hF⟩ := ih p.1 p.2 hp
+    exact ⟨F, fun fuel hf => Hax.Ascent.denote'_app bi fuel (hF fuel hf) (happ f p.1 _ hr)⟩
+  case case19 =>
     intro v ρ' h
     cases h
+  case case20 ρ =>
+    intro vs ρ' h
+    cases h
+    exact ⟨0, fun fuel _ => Hax.Ascent.denoteArgs'_nil bi fuel _⟩
+  case case21 a as ρ ih2 ih1 =>
+    intro vs ρ' h
+    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
+    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
+    cases h
+    obtain ⟨F1, h1⟩ := ih2 p.1 p.2 hp
+    obtain ⟨F2, h2⟩ := ih1 p q.1 q.2 hq
+    exact ⟨max F1 F2, fun fuel hf => Hax.Ascent.denoteArgs'_cons bi fuel (h1 fuel (by omega))
+      (AVal.toValue_isControlFlow _) (h2 fuel (by omega))⟩
+
+/-- **The reading of a call of any arity.** The arguments are read left to right by
+    `toRustMS.argsS`, then `app f` is applied to their values. -/
+theorem toRustMS_app_eq (app : String → List AVal → RustM AVal) (f : String)
+    (args : List Hax.ImpExpr) (ρ : AEnv) :
+    toRustMS app (.app f args) ρ =
+      (toRustMS.argsS app args ρ >>= fun p => app f p.1 >>= fun r => .ok (r, p.2)) := by
+  match args with
+  | [] => simp only [toRustMS]
+  | [_] | [_, _] | [_, _, _] => simp only [toRustMS, toRustMS.argsS, bind_assoc]; rfl
+  | _ :: _ :: _ :: _ :: _ => simp only [toRustMS]
 
 /-- `appRt` reads the runtime operations of the table of every extraction. -/
 theorem appRt_ok_extBuiltins (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn) :
@@ -1361,7 +1423,13 @@ def fragOk (locals : List String) : Hax.ImpExpr → Bool
   | .forFold _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
   | .forFoldRev _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
   | .proj e _ => fragOk locals e
+  | .app f args => (rtNameOk f args.length || locals.contains f) && fragOk.list locals args
   | _ => false
+where
+  /-- Every expression of the list is in the fragment. -/
+  list (locals : List String) : List Hax.ImpExpr → Bool
+    | [] => true
+    | e :: es => fragOk locals e && list locals es
 
 /-! ## Composition with the ascent -/
 

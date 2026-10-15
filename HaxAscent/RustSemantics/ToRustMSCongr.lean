@@ -37,13 +37,39 @@ namespace CatCrypt.Hax.RustSemantics
 
 open Aeneas.Std Aeneas.Std.WP Std.Do Hax.Ascent
 
+/-- The conclusion of `toRustMS_congr` for a computation `r` that reads `e` from `ρ`. -/
+private def CongrOk (ok : String → Bool) (app' : String → List AVal → RustM AVal)
+    (e : Hax.ImpExpr) (ρ : AEnv) (r : RustM (AVal × AEnv)) : Prop :=
+  callsOK ok e = true → r = toRustMS app' e ρ
+
+/-- The conclusion of `toRustMS_congr` for a computation `r` that reads the arguments `args`
+    from `ρ`. -/
+private def CongrArgsOk (ok : String → Bool) (app' : String → List AVal → RustM AVal)
+    (args : List Hax.ImpExpr) (ρ : AEnv) (r : RustM (List AVal × AEnv)) : Prop :=
+  callsOK.callsOKList ok args = true → r = toRustMS.argsS app' args ρ
+
 /-- **Congruence of the reading in the reading of the calls.** If `app` and `app'` are the
     same function at every name accepted by `ok` and every call of `e` is to such a name,
     the readings of `e` under `app` and under `app'` are equal from every environment. -/
 theorem toRustMS_congr {app app' : String → List AVal → RustM AVal} {ok : String → Bool}
     (hag : ∀ f, ok f = true → app f = app' f) (e : Hax.ImpExpr) (ρ : AEnv)
     (hc : callsOK ok e = true) : toRustMS app e ρ = toRustMS app' e ρ := by
-  fun_induction toRustMS app e ρ
+  suffices H : ∀ e ρ, CongrOk ok app' e ρ (toRustMS app e ρ) from H e ρ hc
+  apply toRustMS.induct_unfolding app (CongrArgsOk ok app') (CongrOk ok app')
+  all_goals intros
+  case case18 f args ρ _ _ _ ih =>
+    intro hc
+    simp only [callsOK, Bool.and_eq_true] at hc
+    rw [toRustMS_app_eq, ← ih hc.2, hag f hc.1]
+  case case20 ρ =>
+    intro _
+    simp only [toRustMS.argsS]
+  case case21 a as ρ ih2 ih1 =>
+    intro hc
+    simp only [callsOK.callsOKList, Bool.and_eq_true] at hc
+    simp only [toRustMS.argsS, ← ih2 hc.1, fun p => (ih1 p hc.2).symm]
+  all_goals intro hc
+  all_goals try simp only [CongrOk] at *
   all_goals try simp only [callsOK, callsOK.callsOKList, Bool.and_eq_true, Bool.and_true] at hc
   all_goals try simp only [toRustMS]
   all_goals try simp_all
