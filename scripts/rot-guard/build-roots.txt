@@ -116,6 +116,7 @@ CatCrypt.Crypto.Jasmin.MVCGenSmoke
 CatCrypt.Crypto.Jasmin.MarlinKZGProverReflect
 CatCrypt.Crypto.Jasmin.MemAbiReflect
 CatCrypt.Crypto.Jasmin.MldsaJincEmit
+CatCrypt.Crypto.Jasmin.MldsaJincImport
 CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
 CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound
@@ -145,6 +146,7 @@ CatCrypt.Crypto.MLKEM.NttTemplate
 CatCrypt.Crypto.MLKEM.Spec.Coeffs
 CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
+CatCrypt.Crypto.Optimizer.BarrettReduce
 CatCrypt.Crypto.Optimizer.ComCanonical
 CatCrypt.Crypto.Optimizer.ComSStmtBridge
 CatCrypt.Crypto.Optimizer.FootprintSpill
@@ -164,7 +166,10 @@ CatCrypt.Crypto.Optimizer.Lattice.NegacyclicNTTGeneric
 CatCrypt.Crypto.Optimizer.Lattice.NttEmitDenotationBridge
 CatCrypt.Crypto.Optimizer.Lattice.NttMultiplyGeneric
 CatCrypt.Crypto.Optimizer.LoopInvariantMotion
+CatCrypt.Crypto.Optimizer.MontgomeryReduce
 CatCrypt.Crypto.Optimizer.PackedRotateVsimd
+CatCrypt.Crypto.Optimizer.Pipeline
+CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
 CatCrypt.Crypto.Optimizer.Rewrite.AegraphSum
 CatCrypt.Crypto.Optimizer.Rewrite.BarrettMulGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.BatchInverseGeneric
@@ -524,6 +529,9 @@ CatCrypt.Crypto.SecureCompilation.RelationalFrontVestaEC
 CatCrypt.Crypto.SecureCompilation.ReprTransferAsym
 CatCrypt.Crypto.SecureCompilation.RupicolaFieldExt
 CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFrontMain
+CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
+CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontValue
+CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpJasminValue
 CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpLoopBody
 CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
@@ -567,6 +575,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.CarrierTransferDom
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties
 CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrintCorrect
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20AbstractCom
+CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockResidentComEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockResidentEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordBlockCom
@@ -576,12 +585,15 @@ CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrBlock
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrWord
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeSelfContained
 CatCrypt.Crypto.SecureCompilation.VIR.ComParamDerive
+CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElim
 CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.CompileCorrectAllGenuine
 CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectAndRobust
 CatCrypt.Crypto.SecureCompilation.VIR.CoordinateRingNormal
 CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyReclassify
+CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll
 CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
+CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectGrothendieck
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
@@ -715,6 +727,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HonestProveFrontEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3KFrontArr
+CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleLeafEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttButterflyEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerInlineEmit
@@ -765,6 +778,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.SimdFrontPilot
 CatCrypt.Crypto.SecureCompilation.VIR.SlhdsaWotsChainCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.SoftwarePipelining
 CatCrypt.Crypto.SecureCompilation.VIR.SoftwarePipeliningReal
+CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduce
 CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduceReal
 CatCrypt.Crypto.SecureCompilation.VIR.TensorExtDialect
 CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
@@ -814,6 +828,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
+CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarryKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
@@ -900,6 +915,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NarrowTyping
+CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel
