@@ -163,6 +163,7 @@ def noStoreB (i : LinstrRM) : Bool :=
   match i.2 with
   | .store _ _ => false
   | .zero _ _ => false
+  | .storeImm _ _ => false
   | _ => true
 
 theorem fstepF_larr {i : LinstrRM} (hi : noStoreB i = true) {s b : LstateM} {zf z : Bool}
@@ -200,6 +201,7 @@ theorem fstepF_larr {i : LinstrRM} (hi : noStoreB i = true) {s b : LstateM} {zf 
             · obtain rfl := Option.some.inj h1; rfl
             · cases h1
           · cases h1
+        · rename_i heq; rw [heq] at hi; cases hi
         · rename_i heq; rw [heq] at hi; cases hi
         · obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.mp h1; rfl
       · split at hb'

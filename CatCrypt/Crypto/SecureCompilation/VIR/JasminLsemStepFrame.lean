@@ -112,6 +112,10 @@ theorem zeroStruct?_dst {i : LinstrR} {d : String}
     (h : JasminLsemMem.zeroStruct? i = some d) : d ∈ dstNames i := by
   unfold JasminLsemMem.zeroStruct? at h; recog_dst
 
+theorem storeImmStruct?_dst {i : LinstrR} {p : String × String × String × Nat}
+    (h : JasminLsemMem.storeImmStruct? i = some p) : p.1 ∈ dstNames i := by
+  unfold JasminLsemMem.storeImmStruct? at h; recog_dst
+
 theorem lsemStepN_lvm_dst {i : LinstrR} {s t : LstateN} (h : lsemStepN i s = some t)
     {r : String} (hr : r ∉ dstNames i) : t.lvm r = s.lvm r := by
   unfold lsemStepN at h
@@ -263,6 +267,19 @@ theorem lsemStepMem_frame_dst {i : JasminLsemMem.LinstrRM} {s t : JasminLsemMem.
         cases h
         have hne : r ≠ dst := fun he => hr (he ▸ hd)
         exact ⟨rfl, by simp [JasminLsemMem.LstateM.nextPc, JasminLsemMem.LstateM.setArr, hne]⟩
+      · cases h
+  | storeImm w n =>
+      simp only at h
+      split at h
+      · rename_i dst base val k heq
+        have hd := storeImmStruct?_dst heq
+        repeat' split at h
+        all_goals first
+          | (cases h
+             have hne : r ≠ dst := fun he => hr (he ▸ hd)
+             exact ⟨rfl, by simp [JasminLsemMem.LstateM.nextPc, JasminLsemMem.LstateM.setArr,
+               hne]⟩)
+          | cases h
       · cases h
 
 /-- A step of `lsemStepMem` leaves every register and every array its instruction does

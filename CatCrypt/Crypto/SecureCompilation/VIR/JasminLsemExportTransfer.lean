@@ -221,6 +221,7 @@ theorem loopBodyWalkNM_eq_ren {σ : String → String} {d nInv : Nat} {accReg : 
       · next w n h =>
           rw [h] at hop; simp [h, renRM, renLinstrR_opToLinstrR σ _ hop, memTagOfOp]
       · next w n h => rw [h] at hop; exact absurd hop id
+      · next w n k h => rw [h] at hop; exact absurd hop id
       · next w w' h =>
           rw [h] at hop; simp [h, renRM, renLinstrR_opToLinstrR σ _ hop, memTagOfOp]
       · next w n h =>
@@ -595,6 +596,7 @@ theorem loopBodyWalkNM_eq_expand {σ : String → String} {d nInv : Nat} {accReg
           simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
           exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
       · next w n h => rw [h] at hop; exact absurd hop id
+      · next w n k h => rw [h] at hop; exact absurd hop id
       · next w w' h =>
           rw [h] at hop ⊢
           simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
@@ -734,30 +736,47 @@ destination names it. The export's feedback `MOV acc, ret` is a register copy,
 so no instruction of the exported loop node writes the accumulator's array. -/
 
 /-- A typed instruction does not write the array named `r`: it is neither a
-    `STOREIDX` nor a `ZEROARR` with destination `r`. -/
+    `STOREIDX`, a `ZEROARR` nor a `STOREIMM` with destination `r`. -/
 def NoArrWriteAt (r : String) (i : LinstrRM) : Prop :=
   (∀ dst base idx val, storeStruct? i.1 = some (dst, base, idx, val) → dst ≠ r)
-    ∧ ∀ dst, zeroStruct? i.1 = some dst → dst ≠ r
+    ∧ (∀ dst, zeroStruct? i.1 = some dst → dst ≠ r)
+    ∧ ∀ dst base val k, storeImmStruct? i.1 = some (dst, base, val, k) → dst ≠ r
 
-/-- An instruction that is neither a `STOREIDX` nor a `ZEROARR` writes no array. -/
+/-- An instruction that is neither a `STOREIDX`, a `ZEROARR` nor a `STOREIMM` writes no
+    array. -/
 theorem noArrWriteAt_of_storeStruct_none (r : String) (i : LinstrRM)
-    (h : storeStruct? i.1 = none) (hz : zeroStruct? i.1 = none) : NoArrWriteAt r i := by
-  refine ⟨fun dst base idx val h' => ?_, fun dst h' => ?_⟩
+    (h : storeStruct? i.1 = none) (hz : zeroStruct? i.1 = none)
+    (hs : storeImmStruct? i.1 = none) : NoArrWriteAt r i := by
+  refine ⟨fun dst base idx val h' => ?_, fun dst h' => ?_, fun dst base val k h' => ?_⟩
   · rw [h] at h'
     exact absurd h' (by simp)
   · rw [hz] at h'
+    exact absurd h' (by simp)
+  · rw [hs] at h'
     exact absurd h' (by simp)
 
 /-- An `Lopn` with the single register destination `dst ≠ r` writes no array
     named `r`. -/
 theorem noArrWriteAt_of_dst (r dst opn : String) (srcs : List LOperand) (tag : MemTag)
     (h : dst ≠ r) : NoArrWriteAt r (LinstrR.Lopn [.reg dst] opn srcs, tag) := by
-  refine ⟨?_, fun d hd => ?_⟩
-  swap
+  refine ⟨?_, fun d hd => ?_, fun d b v k hd => ?_⟩
+  rotate_left
   · simp only [zeroStruct?] at hd
     split at hd
     · cases hd; exact h
     · cases hd
+  · simp only [storeImmStruct?] at hd
+    split at hd
+    · next hmatch =>
+        split at hd
+        · cases hd
+          injection hmatch with h1
+          injection h1 with h2
+          injection h2 with h3
+          rw [← h3]
+          exact h
+        · exact absurd hd (by simp)
+    · exact absurd hd (by simp)
   intro dst' base idx val h'
   simp only [storeStruct?] at h'
   split at h'
@@ -786,7 +805,10 @@ theorem lsemStepMem_larr (r : String) (i : LinstrRM) (s s' : LstateM)
        rw [if_neg (Ne.symm (hi.1 _ _ _ _ (by assumption)))])
     | (cases h
        simp only [LstateM.nextPc, LstateM.setArr]
-       rw [if_neg (Ne.symm (hi.2 _ (by assumption)))])
+       rw [if_neg (Ne.symm (hi.2.1 _ (by assumption)))])
+    | (cases h
+       simp only [LstateM.nextPc, LstateM.setArr]
+       rw [if_neg (Ne.symm (hi.2.2 _ _ _ _ (by assumption)))])
     | (simp at h)
 
 /-- A jump leaves the array carrier unchanged. -/
@@ -951,13 +973,17 @@ theorem forLoopLcmdNRtRM_noArrWrite (d : Nat) (accReg : String) (initOp countOp 
           exact noArrWriteAt_of_dst _ _ _ _ _ (hacc cd)
         · exact ih (cd + 1) invRegs i hi
   have hop : ∀ (ds : List LOperand) (opn : String) (ss : List LOperand) (tag : MemTag),
-      opn ≠ "STOREIDX" → opn ≠ "ZEROARR" → NoArrWriteAt accReg (LinstrR.Lopn ds opn ss, tag) :=
-    fun ds opn ss tag h hz => noArrWriteAt_of_storeStruct_none _ _ (by
+      opn ≠ "STOREIDX" → opn ≠ "ZEROARR" → opn ≠ "STOREIMM" →
+        NoArrWriteAt accReg (LinstrR.Lopn ds opn ss, tag) :=
+    fun ds opn ss tag h hz hs => noArrWriteAt_of_storeStruct_none _ _ (by
       show storeStruct? (LinstrR.Lopn ds opn ss) = none
       unfold storeStruct?
       split <;> simp_all) (by
       show zeroStruct? (LinstrR.Lopn ds opn ss) = none
       unfold zeroStruct?
+      split <;> simp_all) (by
+      show storeImmStruct? (LinstrR.Lopn ds opn ss) = none
+      unfold storeImmStruct?
       split <;> simp_all)
   intro i hi
   rw [forLoopLcmdNRtRM_split, List.mem_append, List.mem_append] at hi
@@ -965,12 +991,12 @@ theorem forLoopLcmdNRtRM_noArrWrite (d : Nat) (accReg : String) (initOp countOp 
   · simp only [loopSeedsRM, List.cons_append, List.nil_append, List.mem_cons,
       List.not_mem_nil, or_false] at hi
     rcases hi with rfl | rfl | rfl | rfl | rfl | rfl
-    · exact hop _ _ _ _ (by decide) (by decide)
-    · exact hop _ _ _ _ (by decide) (by decide)
-    · exact hop _ _ _ _ (by decide) (by decide)
-    · exact hop _ _ _ _ (by decide) (by decide)
-    · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl
-    · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl
+    · exact hop _ _ _ _ (by decide) (by decide) (by decide)
+    · exact hop _ _ _ _ (by decide) (by decide) (by decide)
+    · exact hop _ _ _ _ (by decide) (by decide) (by decide)
+    · exact hop _ _ _ _ (by decide) (by decide) (by decide)
+    · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl rfl
+    · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl rfl
   · exact hwalk _ _ _ i hi
   · simp only [List.mem_append] at hi
     rcases hi with (((hi | hi) | hi) | hi) | hi
@@ -979,19 +1005,19 @@ theorem forLoopLcmdNRtRM_noArrWrite (d : Nat) (accReg : String) (initOp countOp 
       · simp at hi
       · simp only [List.mem_singleton] at hi
         subst hi
-        exact hop _ _ _ _ (by decide) (by decide)
+        exact hop _ _ _ _ (by decide) (by decide) (by decide)
     · simp only [loopAdvanceRM, List.mem_cons, List.not_mem_nil, or_false] at hi
-      rcases hi with rfl | rfl <;> exact hop _ _ _ _ (by decide) (by decide)
+      rcases hi with rfl | rfl <;> exact hop _ _ _ _ (by decide) (by decide) (by decide)
     · simp only [loopTouchRM, List.mem_map] at hi
       obtain ⟨r, _, rfl⟩ := hi
-      exact hop _ _ _ _ (by decide) (by decide)
+      exact hop _ _ _ _ (by decide) (by decide) (by decide)
     · simp only [flagBackedge, List.mem_cons, List.not_mem_nil, or_false] at hi
       rcases hi with rfl | rfl
-      · exact hop _ _ _ _ (by decide) (by decide)
-      · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl
+      · exact hop _ _ _ _ (by decide) (by decide) (by decide)
+      · exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl rfl
     · simp only [List.mem_singleton] at hi
       subst hi
-      exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl
+      exact noArrWriteAt_of_storeStruct_none _ _ rfl rfl rfl
 
 /-- **The exported array-accumulator loop leaves the accumulator's array at its
     entry value.** Every halting flag-machine run of the typed loop node, when the

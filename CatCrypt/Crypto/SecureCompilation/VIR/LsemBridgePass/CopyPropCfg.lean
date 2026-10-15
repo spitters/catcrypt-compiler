@@ -247,6 +247,21 @@ theorem zeroStruct?_mapI (i : LinstrR) : zeroStruct? (mapI g i) = zeroStruct? i 
   | Lopn d o srcs => rcases d with _ | ⟨d0, _ | ⟨d1, dr⟩⟩ <;> (try cases d0) <;> rfl
   | _ => rfl
 
+/-- `mapI` keeps an instruction that is no constant-index store one. The copy
+    propagation pass never rewrites a `STOREIMM` (`isRecognizedOpn` rejects it), so only
+    this direction is needed. -/
+theorem storeImmStruct?_mapI_none {i : LinstrR} (h : storeImmStruct? i = none) :
+    storeImmStruct? (mapI g i) = none := by
+  cases i with
+  | Lopn d o srcs =>
+      simp only [mapI]
+      rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, r⟩⟩⟩⟩
+      all_goals first
+        | (simp [storeImmStruct?]; done)
+        | (cases a <;> cases b <;> cases c <;> rcases d with _ | ⟨d0, _ | ⟨d1, dr⟩⟩ <;>
+            (try cases d0) <;> simp_all [storeImmStruct?, mapReg])
+  | _ => rfl
+
 theorem storeStruct?_mapI (i : LinstrR) :
     storeStruct? (mapI g i) = (storeStruct? i).map (fun p => (p.1, p.2.1, p.2.2.1, g p.2.2.2)) := by
   cases i with
@@ -342,7 +357,7 @@ variable {g : String → String} {s : LstateM} (hg : ∀ n, s.reg.lvm (g n) = s.
 include hg
 
 /-- The memory step under a renaming of register sources. -/
-theorem lsemStepMem_mapI (i : LinstrR) (tg : MemTag) :
+theorem lsemStepMem_mapI (i : LinstrR) (tg : MemTag) (hnr : storeImmStruct? i = none) :
     lsemStepMem (mapI g i, tg) s = lsemStepMem (i, tg) s := by
   have hC := fun cd => lsemStepCast_mapI hg i cd
   cases tg with
@@ -359,6 +374,7 @@ theorem lsemStepMem_mapI (i : LinstrR) (tg : MemTag) :
       | none => rfl
       | some p => simp only [Option.map_some, getW_map hg]
   | zero w n => simp only [lsemStepMem, zeroStruct?_mapI]
+  | storeImm w n => simp only [lsemStepMem, storeImmStruct?_mapI_none (g := g) hnr, hnr]
   | reg cd => simp only [lsemStepMem, hC]
 
 theorem carryStep_mapReg (op : CarryOp) (d : String) (a b : LOperand) :
@@ -380,10 +396,10 @@ theorem withALUFlags_mapI (i : LinstrR) (tg : MemTag) (b : LstateM) :
   | some p => simp only [Option.map_some, evalOperandN_mapReg hg]
 
 /-- The straight-line step of the flag machine under a renaming of register sources. -/
-theorem stepMemF_mapI (i : LinstrR) (tg : MemTag) :
+theorem stepMemF_mapI (i : LinstrR) (tg : MemTag) (hnr : storeImmStruct? i = none) :
     stepMemF (mapI g i, tg) s = stepMemF (i, tg) s := by
   unfold stepMemF
-  rw [lsemStepMem_mapI hg, carryArgs?_mapI, wideArgs?_mapI]
+  rw [lsemStepMem_mapI hg i tg hnr, carryArgs?_mapI, wideArgs?_mapI]
   cases lsemStepMem (i, tg) s with
   | some b => simp only [withALUFlags_mapI hg]
   | none =>
@@ -399,10 +415,10 @@ theorem stepMemF_mapI (i : LinstrR) (tg : MemTag) :
 /-- **The extended straight step under a renaming of register sources.** When every
     register `g n` holds the cell of `n`, the step of the instruction with its register
     sources renamed by `g` is the step of the instruction, under the same tag. -/
-theorem fstepF_mapI (i : LinstrR) (tg : MemTag) (zf : Bool) :
+theorem fstepF_mapI (i : LinstrR) (tg : MemTag) (zf : Bool) (hnr : storeImmStruct? i = none) :
     fstepF (mapI g i, tg) s zf = fstepF (i, tg) s zf := by
   unfold fstepF
-  rw [cmpArgs?_mapI, movRegArgs?_mapI, stepMemF_mapI hg]
+  rw [cmpArgs?_mapI, movRegArgs?_mapI, stepMemF_mapI hg i tg hnr]
   cases cmpArgs? (i, tg) with
   | some p => simp only [Option.map_some, evalOperandN_mapReg hg]
   | none =>
@@ -449,10 +465,27 @@ theorem rewriteOperand_reg_cases {facts : List MoveFact} {s : LstateM}
         · exact Or.inl rfl
   · exact Or.inl rfl
 
+/-- A mnemonic the copy propagation pass recognizes is no constant-index store. -/
+theorem storeImmStruct?_none_of_recognized {ds : List LOperand} {opn : String}
+    {ss : List LOperand} (h : isRecognizedOpn opn = true) :
+    storeImmStruct? (.Lopn ds opn ss) = none := by
+  unfold storeImmStruct?
+  split
+  · rename_i heq
+    simp only [LinstrR.Lopn.injEq] at heq
+    obtain ⟨-, rfl, -⟩ := heq
+    rw [if_neg]
+    rintro rfl
+    exact absurd h (by
+      simp (config := {decide := true}) [isRecognizedOpn, implicitReads, parseImmShiftMnem,
+        X86Backend.LprogAsmPrinter.stripAbiTag])
+  · rfl
+
 /-- **The step of a rewritten instruction, for register facts.** -/
 theorem fstepF_rewrite {facts : List MoveFact} {s : LstateM} (hok : FactsOkM facts s)
     (dsts : List LOperand) (opn : String) (srcs : List LOperand) (ew : Nat) (ai : Bool)
-    (ds : Option String) (tg : MemTag) (zf : Bool) :
+    (ds : Option String) (tg : MemTag) (zf : Bool)
+    (hnr : storeImmStruct? (.Lopn dsts opn srcs) = none) :
     fstepF (.Lopn dsts opn (srcs.map (rewriteOperand facts ew ai ds)), tg) s zf
       = fstepF (.Lopn dsts opn srcs, tg) s zf := by
   let g : String → String := fun u =>
@@ -473,7 +506,7 @@ theorem fstepF_rewrite {facts : List MoveFact} {s : LstateM} (hok : FactsOkM fac
           simp only [mapReg_reg, g, h]
     | _ => rfl
   rw [List.map_congr_left (fun o _ => h1 o)]
-  exact fstepF_mapI hg (.Lopn dsts opn srcs) tg zf
+  exact fstepF_mapI hg (.Lopn dsts opn srcs) tg zf hnr
 
 theorem mem_foldl_killFacts {rs : List String} {facts : List MoveFact} {f : MoveFact}
     (h : f ∈ rs.foldl killFacts facts) :
@@ -640,8 +673,11 @@ theorem propagateAux_runStraightF (tag : LinstrR → MemTag) (hT : TagShape tag)
     split
     · rename_i dsts opn srcs hi
       split
-      · simp only [List.map_cons, runStraightF_cons]
-        rw [hi, hT dsts opn _ srcs, fstepF_rewrite hok]
+      · rename_i hrec
+        have hnr : storeImmStruct? (.Lopn dsts opn srcs) = none :=
+          storeImmStruct?_none_of_recognized hrec
+        simp only [List.map_cons, runStraightF_cons]
+        rw [hi, hT dsts opn _ srcs, fstepF_rewrite hok _ _ _ _ _ _ _ _ hnr]
         cases hst : fstepF (.Lopn dsts opn srcs, tag (.Lopn dsts opn srcs)) s zf with
         | none => rfl
         | some bz =>
@@ -653,7 +689,7 @@ theorem propagateAux_runStraightF (tag : LinstrR → MemTag) (hT : TagShape tag)
           · have hd := hci
             simp only [cpRegOKB, hi, Bool.and_eq_true] at hd
             exact hd.1
-          · rw [fstepF_rewrite hok]
+          · rw [fstepF_rewrite hok _ _ _ _ _ _ _ _ hnr]
             exact hst
       · simp only [List.map_cons, runStraightF_cons]
         cases hst : fstepF (i.li_i, tag i.li_i) s zf with
@@ -979,7 +1015,8 @@ theorem setRegM_setReg_same {w' : Nat} (v : BitVec w') :
 theorem lsemStepMem_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
     (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
     (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
-    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none) :
+    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none)
+    (hsi : storeImmStruct? (.Lopn [.reg d] o srcs) = none) :
     lsemStepMem (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
       = lsemStepMem (.Lopn [.reg d] o srcs, tg) s := by
   have hC := fun cd => lsemStepCast_setReg_dst (s := s.reg) c hd0 o srcs cd hs
@@ -1012,6 +1049,7 @@ theorem lsemStepMem_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOpera
           exact congrArg (fun x => some (LstateM.nextPc x)) (setRegM_setReg_same c _)
   | storeC => simp only [lsemStepMem, storeCStruct?_reg_dst]
   | zero w' n => simp only [lsemStepMem, hz]
+  | storeImm w' n => simp only [lsemStepMem, hsi]
   | reg cd =>
       simp only [lsemStepMem, hreg, hC]
       rfl
@@ -1031,12 +1069,13 @@ theorem carryStep_setReg_dst (op : CarryOp) {a b : LOperand} (ha : d ∉ srcName
 theorem stepMemF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
     (tg : MemTag) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
     (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
-    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none) :
+    (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none)
+    (hsi : storeImmStruct? (.Lopn [.reg d] o srcs) = none) :
     stepMemF (.Lopn [.reg d] o srcs, tg) (s.setReg d c)
       = stepMemF (.Lopn [.reg d] o srcs, tg) s := by
   have hreg : (s.setReg d c).reg = s.reg.setReg d c := rfl
   unfold stepMemF
-  rw [lsemStepMem_setReg_dst c hd0 o srcs tg hs hst hz]
+  rw [lsemStepMem_setReg_dst c hd0 o srcs tg hs hst hz hsi]
   cases lsemStepMem (.Lopn [.reg d] o srcs, tg) s with
   | some b =>
       simp only [withALUFlags]
@@ -1071,6 +1110,7 @@ theorem fstepF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand) (
     (zf : Bool) (hs : ∀ x ∈ srcs, d ∉ srcNames x)
     (hst : storeStruct? (.Lopn [.reg d] o srcs) = none)
     (hz : zeroStruct? (.Lopn [.reg d] o srcs) = none)
+    (hsi : storeImmStruct? (.Lopn [.reg d] o srcs) = none)
     (hcmp : cmpArgs? (.Lopn [.reg d] o srcs, tg) = none) :
     fstepF (.Lopn [.reg d] o srcs, tg) (s.setReg d c) zf
       = fstepF (.Lopn [.reg d] o srcs, tg) s zf := by
@@ -1085,7 +1125,7 @@ theorem fstepF_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand) (
       simp only [hreg, readReg_setReg_ne c (hs (.reg src) (by simp)), setRegM_setReg_same]
   | none =>
       simp only
-      rw [stepMemF_setReg_dst c hd0 o srcs tg hs hst hz]
+      rw [stepMemF_setReg_dst c hd0 o srcs tg hs hst hz hsi]
 
 end OverwriteM
 
@@ -1320,7 +1360,20 @@ theorem liveAgreeM_keep {Lr : List String} {i : Linstr} {dsts : List LOperand} {
         have hw : isDstWriteOnly "ZEROARR" = false := by decide +kernel
         simp [fullDefsOf, hw] at hmem
       · rfl
-    have hset := fstepF_setReg_dst (s := t) (s.reg.lvm r).2 hd0 opn srcs tg zf hs hst hz hcmp
+    have hsi : storeImmStruct? (.Lopn [.reg r] opn srcs) = none := by
+      unfold storeImmStruct?
+      split
+      · rename_i heq
+        simp only [LinstrR.Lopn.injEq] at heq
+        obtain ⟨-, rfl, -⟩ := heq
+        split_ifs with ho
+        · subst ho
+          have hw : isDstWriteOnly "STOREIMM" = false := by decide +kernel
+          simp [fullDefsOf, hw] at hmem
+        · rfl
+      · rfl
+    have hset :=
+      fstepF_setReg_dst (s := t) (s.reg.lvm r).2 hd0 opn srcs tg zf hs hst hz hsi hcmp
     have hreg' : ∀ q, readsI (.Lopn [.reg r] opn srcs) q →
         s.reg.lvm q = (t.setReg r (s.reg.lvm r).2).reg.lvm q := by
       intro q hq

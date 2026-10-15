@@ -450,6 +450,15 @@ theorem lsemStepMem_congr (i : LinstrRM) {s t : LstateM} (h : MAgree (readsI i.f
     cases hx : zeroStruct? w with
     | some d => exact ORel.some ((MStep.refl h).setArr _ _ |>.nextPc)
     | none => exact ORel.none
+  | storeImm wd n =>
+    simp only
+    cases hx : storeImmStruct? w with
+    | some p =>
+      obtain ⟨_, _, _, _⟩ := p
+      unfold storeImmStruct? at hx
+      recog hx
+      all_goals morel_loop h hN hA hM
+    | none => exact ORel.none
   | reg c =>
     exact ORel.map (fun a b hab => MStep.ofReg h hab) (lsemStepCast_congr w c hN)
 

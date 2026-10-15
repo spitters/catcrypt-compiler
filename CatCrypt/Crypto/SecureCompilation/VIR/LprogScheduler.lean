@@ -133,15 +133,17 @@ def opIsArrIdx : LOperand → Bool
   | .arrIdx _ _ _ => true
   | _             => false
 
-/-- Whether a linstr contains a runtime-indexed (`arrIdx`) operand or is the array
-    zeroing `ZEROARR`. An `arrIdx` op touches an unknown array element through a
-    runtime index register, which the per-element footprint model cannot track
-    precisely (and, as a destination, also *reads* the index register the token model
-    would mis-classify as a write); `ZEROARR` writes a whole array, which the token model
-    does not track. `indep` therefore treats every such op as a scheduling barrier: it is
-    never swapped, so nothing is reordered across it. -/
+/-- Whether a linstr contains a runtime-indexed (`arrIdx`) operand, or is the array
+    zeroing `ZEROARR` or the constant-index array store `STOREIMM`. An `arrIdx` op touches
+    an unknown array element through a runtime index register, which the per-element
+    footprint model cannot track precisely (and, as a destination, also *reads* the index
+    register the token model would mis-classify as a write); `ZEROARR` writes a whole
+    array and `STOREIMM` writes a new array value from an array operand, which the token
+    model does not track. `indep` therefore treats every such op as a scheduling barrier:
+    it is never swapped, so nothing is reordered across it. -/
 def hasArrIdx : LinstrR → Bool
-  | .Lopn dsts opn srcs => opn == "ZEROARR" || dsts.any opIsArrIdx || srcs.any opIsArrIdx
+  | .Lopn dsts opn srcs =>
+      opn == "ZEROARR" || opn == "STOREIMM" || dsts.any opIsArrIdx || srcs.any opIsArrIdx
   | _                 => false
 
 /-! ## 1b. Mnemonic keys and the cells no operand names

@@ -59,7 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer (ne_of_head?
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
   (argName_injective regName_injective regName_ne_argName)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (opMemB)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopBody (chainElem storeOnHeadB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopBody (chainElem storeOnHeadB isStoreTagB)
 
 /-! ## 1. Slots and their names -/
 
@@ -418,7 +418,7 @@ theorem storeOnHeadB_of_threadLinB (nArgs nInv : Nat) (hpos : 0 < nArgs) :
         · show storeOnHeadB ((.Lopn [.reg (regName cd)] "STOREIDX" [.arrIdx (nameAt nArgs a)
             (nameAt nArgs b) (w / 8), .reg (nameAt nArgs c)], .store w n) :: _) _ = true
           simp only [storeOnHeadB, storeHit?, arrUse?, JasminLsemMem.storeStruct?, if_true,
-            Option.map_some, beq_self_eq_true, Bool.true_and]
+            Option.map_some, beq_self_eq_true, Bool.true_and, isStoreTagB, Bool.and_true]
           exact ih1
         · refine Or.inr ?_
           show _ ∈ storeSlots ((.Lopn [.reg (regName cd)] "STOREIDX" [.arrIdx (nameAt nArgs a)

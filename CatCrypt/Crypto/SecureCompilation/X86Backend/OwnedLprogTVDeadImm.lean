@@ -232,6 +232,7 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
   | loadC => trivial
   | storeC => trivial
   | zero _ _ => trivial
+  | storeImm _ _ => trivial
   | reg cd => dsimp only; rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
 
 theorem aluFlagOp?_reads {i : LinstrRM} {op : AluOp} {a c : LOperand}
@@ -486,6 +487,7 @@ theorem symStep_sh (i : LinstrRM) (ss ss' : SSt) :
                 | loadC => trivial
                 | storeC => trivial
                 | zero _ _ => trivial
+                | storeImm _ _ => trivial
                 | reg cd => exact liftR_sh ss ss' (symCast_sh _ _ _)
               generalize symMem i ss = o at hm
               generalize symMem i ss' = o' at hm
@@ -519,6 +521,7 @@ def tagPlain : MemTag → Bool
   | .loadC => false
   | .storeC => false
   | .zero _ _ => false
+  | .storeImm _ _ => false
   | _ => true
 
 /-- The register an immediate move `MOV d, $n` sets, for a plain tag. -/
@@ -587,6 +590,7 @@ theorem symStep_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) :
     | loadC => cases ht
     | storeC => cases ht
     | zero _ _ => cases ht
+    | storeImm _ _ => cases ht
     | reg cd =>
         obtain ⟨w, hw⟩ := hc cd
         exact ⟨w, fun ss => by simp [symMem, hw, liftR]⟩
@@ -1032,6 +1036,7 @@ theorem symMem_same (i : LinstrRM) (ha : arrQuiet i = true) {ss s : SSt} {gs : L
   | loadC => cases h
   | storeC => cases h
   | zero _ _ => cases h
+  | storeImm _ _ => cases h
   | reg cd => exact liftR_same h
 
 /-- **A flag-quiet step keeps the flags and the arrays.** -/

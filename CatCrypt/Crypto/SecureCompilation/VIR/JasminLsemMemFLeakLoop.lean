@@ -270,6 +270,7 @@ theorem straightOpsMem_arrOK (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
         · exact opToLinstrR_arrOK _ (by simp_all) _ _ hs
         · exact opToLinstrR_arrOK _ (by simp_all) _ _ hs
         · exact opToLinstrR_arrOK _ (by simp_all) _ _ hs
+        · exact opToLinstrR_arrOK _ (by simp_all) _ _ hs
         · split
           all_goals first
             | exact opToLinstrR_arrOK _ hop _ _ hs

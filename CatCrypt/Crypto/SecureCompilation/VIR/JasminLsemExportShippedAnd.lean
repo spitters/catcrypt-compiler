@@ -333,6 +333,7 @@ theorem straightOpsMem_instrOK (τ : String → String) (nArgs : Nat)
             exact instrOK_renRM_of_fixed τ (isLopn_opToLinstrR _ _ _ _)
               (immShiftExpand_opToLinstrR hop _ _ hreg)
         · next w n h => rw [h] at hop; exact absurd hop id
+        · next w n k h => rw [h] at hop; exact absurd hop id
         · next w w' h =>
             rw [h] at hop ⊢
             exact instrOK_renRM_of_fixed τ (isLopn_opToLinstrR _ _ _ _)

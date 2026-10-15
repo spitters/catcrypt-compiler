@@ -60,14 +60,21 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop
 
 /-! ## 1. Stores on the thread head -/
 
+/-- A runtime-indexed store tag. -/
+def isStoreTagB : MemTag → Bool
+  | .store _ _ => true
+  | _ => false
+
 /-- Every store of a chain reads the current thread head `h`; a store's result becomes the
-    head. -/
+    head. Every array write of the chain is a runtime-indexed store (`isStoreTagB`): the
+    alias walk `aliasStepL` follows `STOREIDX` only, so a constant-index `STOREIMM` is
+    refused (C4-34 row E extends the walk). -/
 def storeOnHeadB : List LinstrRM → String → Bool
   | [], _ => true
   | i :: is, h =>
       match storeHit? i with
       | none => storeOnHeadB is h
-      | some x => arrUse? i == some h && storeOnHeadB is x
+      | some x => arrUse? i == some h && storeOnHeadB is x && isStoreTagB i.2
 
 /-! ## 2. One binding of the walk under the alias map -/
 
@@ -132,6 +139,7 @@ def chainElem (op : JasminOp) (cd : Nat) (src : List LOperand) : LinstrRM :=
   | .stackLoad w n => (opToLinstrR op (regName cd) src, .load w n)
   | .stackStore w n => (opToLinstrR op (regName cd) src, .store w n)
   | .stackZero w n => (opToLinstrR op (regName cd) src, .zero w n)
+  | .stackStoreImm w n _ => (opToLinstrR op (regName cd) src, .storeImm w n)
   | .castW _ w' => (opToLinstrR op (regName cd) src, .reg (some w'))
   | .regConst w _ => (opToLinstrR op (regName cd) src, .reg (VIR.JasminLsemCast.regConstDescr w))
   | _ =>
@@ -152,7 +160,8 @@ theorem straightOpsMem_var (nArgs cd : Nat) {Γ : Ctxt jasminDialect} {t s : Jas
 /-- **One binding.** For register operands `src`, the binding either is no store of the
     model chain and leaves the alias list of the renamed walk instruction, or is the store
     of slot `cd` reading `b`, and the walk instruction binds its body temporary to the
-    resolution of the renamed `b`, or is an array write that reads no array. -/
+    resolution of the renamed `b`, or is an array write that reads no array or is no
+    runtime-indexed store. -/
 theorem aliasStepL_binding (σ α : String → String) (d cd : Nat) (op : JasminOp)
     (src : List LOperand) (hsrc : ∀ o ∈ src, ∃ r, o = .reg r) (l : List (String × String)) :
     (storeHit? (chainElem op cd src) = none
@@ -163,7 +172,8 @@ theorem aliasStepL_binding (σ α : String → String) (d cd : Nat) (op : Jasmin
       ∧ aliasStepL l (renLinstr α ⟨0, opToLinstrR op (loopReg d cd)
           (src.map (renOperand σ))⟩)
         = (α (loopReg d cd), lookupD l (α (σ b))) :: l)
-    ∨ ((storeHit? (chainElem op cd src)).isSome ∧ arrUse? (chainElem op cd src) = none) := by
+    ∨ ((storeHit? (chainElem op cd src)).isSome ∧ (arrUse? (chainElem op cd src) = none
+        ∨ isStoreTagB (chainElem op cd src).2 = false)) := by
   have hreg : ∀ o ∈ src.map (renOperand σ), isArrIdx o = false := by
     intro o ho
     obtain ⟨o', ho', rfl⟩ := List.mem_map.mp ho
@@ -172,7 +182,18 @@ theorem aliasStepL_binding (σ α : String → String) (d cd : Nat) (op : Jasmin
   by_cases hz : ∃ w n, op = .stackZero w n
   · obtain ⟨w, n, rfl⟩ := hz
     right; right
-    exact ⟨by simp [chainElem, storeHit?, JasminLsemMem.zeroStruct?_stackZero], rfl⟩
+    exact ⟨by simp [chainElem, storeHit?, JasminLsemMem.zeroStruct?_stackZero], Or.inl rfl⟩
+  by_cases hsi : ∃ w n k, op = .stackStoreImm w n k
+  · obtain ⟨w, n, k, rfl⟩ := hsi
+    cases hh : storeHit? (chainElem (.stackStoreImm w n k) cd src) with
+    | some x => exact Or.inr (Or.inr ⟨by simp only [hh, Option.isSome_some], Or.inr rfl⟩)
+    | none =>
+        refine Or.inl ⟨rfl, ?_⟩
+        exact aliasStepL_ren_of_srcs α l 0 _ (by
+          simp only [opToLinstrR, srcsOf, List.mem_append, List.mem_map, List.mem_singleton]
+          rintro o (⟨a, ha, rfl⟩ | rfl)
+          · exact hreg _ (List.mem_map_of_mem ha)
+          · rfl)
   by_cases hst : ∃ w n, op = .stackStore w n
   · obtain ⟨w, n, rfl⟩ := hst
     rcases src with _ | ⟨o1, _ | ⟨o2, _ | ⟨o3, _ | ⟨o4, rest⟩⟩⟩⟩
@@ -195,7 +216,11 @@ theorem aliasStepL_binding (σ α : String → String) (d cd : Nat) (op : Jasmin
       exact ⟨rfl, rfl⟩
   · left
     refine ⟨?_, ?_⟩
-    · cases op <;> first | rfl | exact absurd ⟨_, _, rfl⟩ hst | exact absurd ⟨_, _, rfl⟩ hz
+    · cases op <;> first
+        | rfl
+        | exact absurd ⟨_, _, rfl⟩ hst
+        | exact absurd ⟨_, _, rfl⟩ hz
+        | exact absurd ⟨_, _, _, rfl⟩ hsi
     · by_cases hld : ∃ w n, op = .stackLoad w n
       · obtain ⟨w, n, rfl⟩ := hld
         simp only [opToLinstrR]
@@ -297,7 +322,7 @@ theorem foldl_aliasStepL_walk {d nInv : Nat} {invRegs : List String} {σ : Strin
       · rw [ha]
         simp only [storeOnHeadB, hn, hb, Bool.and_eq_true, beq_iff_eq, Option.some.injEq]
           at hs
-        obtain ⟨rfl, hs⟩ := hs
+        obtain ⟨⟨rfl, hs⟩, -⟩ := hs
         have hres : lookupD l (aliasRegName (regName d) out (σ b)) = out := by
           rcases hh with rfl | ⟨k, hk, rfl⟩
           · rw [hσ.acc]
@@ -311,7 +336,7 @@ theorem foldl_aliasStepL_walk {d nInv : Nat} {invRegs : List String} {σ : Strin
         simpa [storeSlots, hn, renLcmd, List.append_assoc] using this
       · exfalso
         obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hn
-        simp [storeOnHeadB, hx, hb] at hs
+        rcases hb with hb | hb <;> simp [storeOnHeadB, hx, hb] at hs
 
 /-! ## 4. The loop node -/
 

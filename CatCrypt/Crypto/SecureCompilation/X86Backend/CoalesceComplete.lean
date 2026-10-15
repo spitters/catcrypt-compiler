@@ -325,6 +325,21 @@ theorem coArrStepB_iff (σ : String → String) (i : LinstrRM) (after : List Str
       · simp [hrd]
       · simpa [hrd] using h d rfl r hr hrd
   · simp_all
+  split
+  · rename_i d a b c hs
+    rw [hs]
+    constructor
+    · intro h d' x y z hd r hr hne
+      simp only [Option.some.injEq, Prod.mk.injEq] at hd
+      obtain ⟨rfl, -, -, -⟩ := hd
+      have := List.all_eq_true.mp h r hr
+      simp_all
+    · intro h
+      refine List.all_eq_true.mpr fun r hr => ?_
+      by_cases hrd : r = d
+      · simp [hrd]
+      · simpa [hrd] using h d a b c rfl r hr hrd
+  · simp_all
 
 theorem jumpB_iff (body : List LinstrRM) (L : Nat → List String) (k : Nat) (lbl : LLabel) :
     jumpB body L k lbl = true ↔

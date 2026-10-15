@@ -329,6 +329,10 @@ inductive MemTag where
   /-- A `stackZero w n` binding: write the zero array of shape `(w, n)` to the
       destination array slot. -/
   | zero (w n : Nat)
+  /-- A `stackStoreImm w n i` binding: write the value register into the array of
+      shape `(w, n)` at the compile-time index carried by the wire's `.imm i`
+      operand, giving the destination array. -/
+  | storeImm (w n : Nat)
   deriving DecidableEq
 
 /-- A typed linear instruction: the emitted `LinstrR` paired with a `MemTag`. -/
@@ -379,6 +383,15 @@ def zeroStruct? : LinstrR → Option String
   | .Lopn [.reg dst] opn _ => if opn = "ZEROARR" then some dst else none
   | _ => none
 
+/-- Recognise the **constant-index store** wire form
+    `Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm i]` (the `stackStoreImm`
+    image) and return `(dst, base, val, i)`; `none` otherwise. The shape `(w, n)` is
+    read from the `MemTag`, the index from the wire. -/
+def storeImmStruct? : LinstrR → Option (String × String × String × Nat)
+  | .Lopn [.reg dst] opn [.reg base, .reg val, .imm k] =>
+      if opn = "STOREIMM" then some (dst, base, val, k) else none
+  | _ => none
+
 /-- The typed single-step semantics for the stack-memory fragment. On a
     load-tagged instruction (`loadStruct?` recognises `"LOADIDX"` *and* the tag is
     `.load w n`) it reads the source array `base` at shape `(w, n)`, the index
@@ -388,7 +401,9 @@ def zeroStruct? : LinstrR → Option String
     value `val` at width `w`, and writes the **new array** `stackSet arr idx.toNat
     v = (stackStore w n).denote …` to the destination array slot `dst`. On a
     zero-tagged instruction (`zeroStruct?` + `.zero w n`) it writes the zero array
-    `(stackZero w n).denote []` to the destination array slot. On every
+    `(stackZero w n).denote []` to the destination array slot. On a constant-index
+    store (`storeImmStruct?` + `.storeImm w n`) it reads `base` at `(w, n)` and `val`
+    at width `w`, and writes `stackSet arr k v` with the wire's immediate `k`. On every
     register binding (`.reg castDescr`) it delegates the wire to increment 8's
     `lsemStepCast` over the register half, leaving the array carrier unchanged.
 
@@ -430,6 +445,13 @@ def lsemStepMem (i : LinstrRM) (s : LstateM) : Option LstateM :=
   | .zero w n =>
       match zeroStruct? i.fst with
       | some dst => some ((s.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc)
+      | none => none
+  | .storeImm w n =>
+      match storeImmStruct? i.fst with
+      | some (dst, base, val, k) =>
+          match s.getArr base w n, s.reg.getW val w with
+          | some arr, some vv => some ((s.setArr dst (stackSet arr k vv)).nextPc)
+          | _, _ => none
       | none => none
   | .reg castDescr =>
       (lsemStepCast (i.fst, castDescr) s.reg).map (fun r => { s with reg := r })
@@ -514,6 +536,25 @@ theorem zeroStruct?_stackZero {w n : Nat} (dst : String) (src : List LOperand) :
     zeroStruct? (opToLinstrR (JasminOp.stackZero w n) dst src) = some dst := by
   simp only [opToLinstrR, zeroStruct?, if_true]
 
+/-- **Constant-index store step.** Given the source array `base` at shape `(w, n)`
+    and the value register `val` at width `w`, `lsemStepMem` of a `.storeImm w n`-tagged
+    `Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k]` writes
+    `stackSet arr k v`, the value `jasminDenote_stackStoreImm` gives, to the array slot
+    `dst` and advances the pc. -/
+theorem lsemStepMem_storeImmC (dst base val : String) (k w n : Nat) (s : LstateM)
+    {arr : Fin n → BitVec w} {v : BitVec w}
+    (ha : s.getArr base w n = some arr) (hv : s.reg.getW val w = some v) :
+    lsemStepMem (.Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k], .storeImm w n) s
+      = some ((s.setArr dst (stackSet arr k v)).nextPc) := by
+  simp only [lsemStepMem, storeImmStruct?, if_true, ha, hv]
+
+/-- `storeImmStruct?` recognises the real `stackStoreImm` wire form
+    `Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k]`. -/
+theorem storeImmStruct?_stackStoreImm {w n k : Nat} (dst base val : String) :
+    storeImmStruct? (opToLinstrR (JasminOp.stackStoreImm w n k) dst [.reg base, .reg val])
+      = some (dst, base, val, k) := by
+  simp only [opToLinstrR, List.cons_append, List.nil_append, storeImmStruct?, if_true]
+
 /-! ## 4. The typed emission `straightOpsMem` and the wire/byte tie
 
 `straightOpsMem` mirrors increment 8's `straightOpsCast`, but emits the typed
@@ -544,6 +585,7 @@ def straightOpsMem (nArgs : Nat) :
         | .stackLoad w n => (opToLinstrR e.op (regName curDepth) src, .load w n)
         | .stackStore w n => (opToLinstrR e.op (regName curDepth) src, .store w n)
         | .stackZero w n => (opToLinstrR e.op (regName curDepth) src, .zero w n)
+        | .stackStoreImm w n _ => (opToLinstrR e.op (regName curDepth) src, .storeImm w n)
         | .castW _ w' => (opToLinstrR e.op (regName curDepth) src, .reg (some w'))
         | .regConst w _ => (opToLinstrR e.op (regName curDepth) src, .reg (regConstDescr w))
         | _ =>

@@ -495,6 +495,7 @@ theorem straightOpsMem_isLopn {Γ : Ctxt jasminDialect} {t : JasminTy}
         · exact opToLinstrR_isLopn _ _ _
         · exact opToLinstrR_isLopn _ _ _
         · exact opToLinstrR_isLopn _ _ _
+        · exact opToLinstrR_isLopn _ _ _
         · split
           · exact shiftLinstr_isLopn _ _ _ _ _
           · exact shiftLinstr_isLopn _ _ _ _ _

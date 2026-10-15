@@ -119,6 +119,7 @@ def noArrB (i : LinstrRM) : Bool :=
   | .load _ _ => false
   | .store _ _ => false
   | .zero _ _ => false
+  | .storeImm _ _ => false
   | _ => true
 
 theorem noStoreB_of_noArrB {i : LinstrRM} (h : noArrB i = true) : noStoreB i = true := by
@@ -160,6 +161,7 @@ theorem lsemStepMem_setL {i : LinstrRM} (hi : noArrB i = true) (L : String → A
   | load _ _ => cases hi
   | store _ _ => cases hi
   | zero _ _ => cases hi
+  | storeImm _ _ => cases hi
   | loadC => dsimp only [setL]; split <;> rfl
   | storeC =>
       dsimp only [setL]

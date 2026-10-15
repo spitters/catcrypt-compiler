@@ -354,6 +354,7 @@ theorem bindOps_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (nArgs : Nat)
   · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
   · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
   · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
+  · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
   · dsimp only
     split
     · exact hshift _ _ _ _ (by decide)

@@ -437,6 +437,7 @@ theorem bindOps_spFree (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
   · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
   · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
   · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
+  · exact spFreeB_opToLinstrR _ hop (opSpB_regName _) hs
   · split
     · exact spFreeB_shiftLinstr _ _ _ (opSpB_regName _) (hs _ (by simp))
     · exact spFreeB_shiftLinstr _ _ _ (opSpB_regName _) (hs _ (by simp))

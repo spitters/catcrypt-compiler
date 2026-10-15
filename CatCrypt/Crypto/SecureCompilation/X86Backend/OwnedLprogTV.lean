@@ -1432,6 +1432,7 @@ def symMem (i : LinstrRM) (ss : SSt) : SOut :=
   | .loadC => .unk
   | .storeC => .unk
   | .zero _ _ => .unk
+  | .storeImm _ _ => .unk
   | .reg cd => liftR ss (symCast (i.1, cd) ss.regs)
 
 theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
@@ -1500,6 +1501,7 @@ theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
   | loadC => trivial
   | storeC => trivial
   | zero _ _ => trivial
+  | storeImm _ _ => trivial
   | reg cd => exact liftR_sound (symCast_sound (x, cd) ss.regs) V A C O m hm
 
 /-- The symbolic word of an operand read at width `64`, with the guards of the read;
@@ -1766,6 +1768,7 @@ theorem symMem_zf (i : LinstrRM) (ss : SSt) :
   | loadC => cases h
   | storeC => cases h
   | zero _ _ => cases h
+  | storeImm _ _ => cases h
   | reg cd => exact liftR_zf ss _ ss' gs h
 
 /-- The carry-family step is described by `symCarry`. -/
@@ -2182,6 +2185,7 @@ theorem symMem_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : L
   | loadC => cases h
   | storeC => cases h
   | zero _ _ => cases h
+  | storeImm _ _ => cases h
   | reg cd => exact liftR_good hg h
 
 theorem symCarry_good {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt} (hg : ss.Good)
@@ -3711,6 +3715,7 @@ theorem symMem_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
         SG.subst, SArr.subst, SSt.subst_regs_apply]
       rfl
     · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
+  · rfl
   · rfl
   · rfl
   · rfl

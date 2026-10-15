@@ -204,6 +204,7 @@ theorem symMem_frame (i : LinstrRM) {ss : SSt} {ss' : SSt} {gs : List SG}
   | loadC => cases h
   | storeC => cases h
   | zero _ _ => cases h
+  | storeImm _ _ => cases h
   | reg cd => exact liftR_frame h
 
 theorem symCarry_frame {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt}
