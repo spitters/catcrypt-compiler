@@ -46,7 +46,16 @@ staged="$(git diff --cached --name-only -- "${lists[@]}")"
 [ -z "$staged" ] || { echo "commit-own: a module list is staged in the shared index ($staged); another commit is in preparation. Retry after it lands." >&2; exit 1; }
 
 work="$(mktemp -d)"; idx="$work/index"
-restore() { for l in "${lists[@]}"; do [ -f "$work/$(printf '%s' "$l" | tr / _)" ] && cp "$work/$(printf '%s' "$l" | tr / _)" "$l"; done; rm -rf "$work"; }
+# The old working-tree lists are put back (they carry the other sessions' unfinished
+# modules and the hand-appended dev manifest). After a commit the generated lists are then
+# regenerated against the shared index, so the working tree also carries this commit's new
+# module lines and rot-guard roots; otherwise the working tree lags HEAD and the next
+# session's pre-commit check sees them dropped.
+committed=0
+restore() {
+  for l in "${lists[@]}"; do [ -f "$work/$(printf '%s' "$l" | tr / _)" ] && cp "$work/$(printf '%s' "$l" | tr / _)" "$l"; done; rm -rf "$work"
+  [ "$committed" = 1 ] && { generate || echo "commit-own: regenerating the working-tree lists failed; run the list generators by hand." >&2; }
+}
 trap restore EXIT
 for l in "${lists[@]}"; do [ -f "$l" ] && cp "$l" "$work/$(printf '%s' "$l" | tr / _)"; done
 
@@ -82,4 +91,5 @@ changed=()
 for l in "${lists[@]}"; do git diff --quiet HEAD -- "$l" 2>/dev/null || changed+=("$l"); done
 git commit "${msgargs[@]}" -- "${paths[@]}" "${changed[@]}"
 rc=$?
+[ "$rc" = 0 ] && committed=1
 exit $rc
