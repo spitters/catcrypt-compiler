@@ -532,7 +532,6 @@ CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpLoopBody
 CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
 CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
-CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe
 CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
 CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
 CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
@@ -865,6 +864,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW

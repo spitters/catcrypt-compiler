@@ -37,6 +37,8 @@ at a conditional branch is a parameter, `ImgStepWCond`.
 * `img_step_cond`: `CondStep` at the relation `ImageAddrSim.ImgRel`, for a body that passes
   `imgGateB`.
 * `cell_step'`, `cell_stepW'`: one step of the image of the cell body on the body.
+* `runA_of_steps_pred`, `runA_of_steps`: a run of the address machine from its steps, every
+  state it steps from satisfying a state predicate.
 * `image_addr_simB'`, `image_addr_simBW'`: the run of the image of the cell body on the body.
 * `virt_bytesC'`: a virtual body on the decoded bytes of a body with cells, labels and
   conditional branches.
@@ -445,26 +447,26 @@ theorem cell_stepW' {frame : String → Option (BitVec 64)}
 
 /-! ## 4. The run of a body with cells -/
 
-/-- **A run of the address machine from steps.** Let every checked step of the program `P`
-    from a state related by `R` to an address state be matched by one or two steps of the
-    address machine on `body` that re-establish `R`, from states that are not halted and are
-    safe in the sense of `SafeW`, and let the address machine have halted where `P` has no
-    instruction. Then a halting checked run of `P` is matched by a halting, safe run of the
-    address machine that ends in related states. -/
-theorem runA_of_steps {frame : String → Option (BitVec 64)} {rsp : BitVec 64} {body : Lcmd}
-    {P : LprogM} {R : LstateMF → LstateA → Bool → Prop}
+/-- **A run of the address machine from steps, for a state predicate `Q`.** Let every checked
+    step of the program `P` from a state related by `R` to an address state be matched by one
+    or two steps of the address machine on `body` that re-establish `R`, from states that are
+    not halted and satisfy `Q`, and let the address machine have halted where `P` has no
+    instruction. Then a halting checked run of `P` is matched by a halting run of the address
+    machine that ends in related states, every state of which it steps from satisfies `Q`. -/
+theorem runA_of_steps_pred {frame : String → Option (BitVec 64)} {body : Lcmd}
+    {P : LprogM} {R : LstateMF → LstateA → Bool → Prop} {Q : LstateA → Prop}
     (hhalt : ∀ s sa zf, R s sa zf → findInstrMem P s.prog = none → haltedA body sa = true)
     (hstep : ∀ s t sa zf i, R s sa zf → findInstrMem P s.prog = some i →
       evalInstrPMemFk true P i s = some t →
-      haltedA body sa = false ∧ SafeW rsp body sa
+      haltedA body sa = false ∧ Q sa
         ∧ ∃ sa1 z1, stepA frame body sa zf = some (sa1, z1)
           ∧ (R t sa1 z1
-            ∨ (haltedA body sa1 = false ∧ SafeW rsp body sa1
+            ∨ (haltedA body sa1 = false ∧ Q sa1
               ∧ ∃ sa2 z2, stepA frame body sa1 z1 = some (sa2, z2) ∧ R t sa2 z2))) :
     ∀ (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool), R s sa zf →
       lsemFuelMemFk true P fuel s = some t →
       ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf') ∧ R t sa' zf'
-        ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf := by
+        ∧ RunSafe frame body Q fuel' sa zf := by
   intro fuel
   induction fuel with
   | zero =>
@@ -509,6 +511,25 @@ theorem runA_of_steps {frame : String → Option (BitVec 64)} {rsp : BitVec 64} 
                   rw [hst2] at hs''
                   cases hs''
                   exact hsafe'
+
+/-- **A run of the address machine from steps.** `runA_of_steps_pred` at the predicate
+    `SafeW`: a halting checked run of `P` is matched by a halting, safe run of the address
+    machine that ends in related states. -/
+theorem runA_of_steps {frame : String → Option (BitVec 64)} {rsp : BitVec 64} {body : Lcmd}
+    {P : LprogM} {R : LstateMF → LstateA → Bool → Prop}
+    (hhalt : ∀ s sa zf, R s sa zf → findInstrMem P s.prog = none → haltedA body sa = true)
+    (hstep : ∀ s t sa zf i, R s sa zf → findInstrMem P s.prog = some i →
+      evalInstrPMemFk true P i s = some t →
+      haltedA body sa = false ∧ SafeW rsp body sa
+        ∧ ∃ sa1 z1, stepA frame body sa zf = some (sa1, z1)
+          ∧ (R t sa1 z1
+            ∨ (haltedA body sa1 = false ∧ SafeW rsp body sa1
+              ∧ ∃ sa2 z2, stepA frame body sa1 z1 = some (sa2, z2) ∧ R t sa2 z2))) :
+    ∀ (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool), R s sa zf →
+      lsemFuelMemFk true P fuel s = some t →
+      ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf') ∧ R t sa' zf'
+        ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf :=
+  runA_of_steps_pred hhalt hstep
 
 /-- **The image of the cell body simulated on the body.** `ImageAddrCells.image_addr_simB`
     for a body with labels and conditional branches. -/
