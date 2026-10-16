@@ -23,7 +23,9 @@ public import CatCrypt.Crypto.SecureCompilation.SepLogic.Core
 * `arrAt_nil`, `arrAt_cons`: the empty array, and an array as its first cell and the rest.
 * `arrAt_append`: an array of `xs ++ ys` splits into, and merges from, the arrays of `xs`
   and of `ys`.
-* `arrAt_cell`: an array is its prefix, the cell `j`, and its suffix.
+* `arrAt_cell`: an array is its prefix, the cell `j`, and its suffix; registered with
+  `@[sep_cancel_rule]`, so that `sep_cancel` splits an array hypothesis at a goal cell `xs[j]`
+  or at a goal prefix or suffix, with the side condition `j < xs.length`.
 * `ptsLE_le_arrAt`, `arrAt_cells_disj`, `arrAt_sep_disj`: the footprint of a cell lies in that
   of its array; two cells of an array, and two cells of separated arrays, have disjoint
   ranges.
@@ -84,6 +86,8 @@ theorem arrAt_cell (n : Nat) (a : BitVec A) (xs : List (BitVec (8 * n))) (j : Na
   rw [ea]
   exact h
 
+attribute [sep_cancel_rule] arrAt_cell
+
 /-- The footprint of a cell lies in the footprint of its array. -/
 theorem ptsLE_le_arrAt (n : Nat) (a : BitVec A) (xs : List (BitVec (8 * n))) (j : Nat)
     (hj : j < xs.length) :
@@ -108,5 +112,22 @@ theorem arrAt_sep_disj {n k : Nat} {a b : BitVec A} {xs : List (BitVec (8 * n))}
     (⟨a + BitVec.ofNat A (n * i), n⟩ : Rng A).Disj ⟨b + BitVec.ofNat A (k * j), k⟩ :=
   Rng.disj_of_disjoint hn hk
     ((h.1.mono_left (ptsLE_le_arrAt n a xs i hi)).mono_right (ptsLE_le_arrAt k b ys j hj))
+
+/-! ## Examples of the array-cell rule of `sep_cancel` -/
+
+section Examples
+
+example (a b : BitVec 64) (y : BitVec 64) (xs : List (BitVec 64)) (j : Nat)
+    (hj : j < xs.length) :
+    bigSep [arrAt 8 a xs, ptsLE 8 b y] ⊢ₛ
+      bigSep [ptsLE 8 b y, ptsLE 8 (a + BitVec.ofNat 64 (8 * j)) xs[j],
+        arrAt 8 a (xs.take j), arrAt 8 (a + BitVec.ofNat 64 (8 * (j + 1))) (xs.drop (j + 1))] := by
+  sep_cancel
+
+example (a : BitVec 64) (xs : List (BitVec 64)) (j : Nat) (hj : j + 1 < xs.length) :
+    arrAt 8 a xs ⊢ₛ arrAt 8 a (xs.take (j + 1)) := by
+  sep_cancel
+
+end Examples
 
 end CatCrypt.Crypto.SecureCompilation.SepLogic

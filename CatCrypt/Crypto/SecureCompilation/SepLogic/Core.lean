@@ -615,6 +615,108 @@ meta partial def flattenRight (g : MVarId) : TacticM MVarId := do
 meta def sameHead (a b : Expr) : Bool :=
   a.getAppFn.isConst && a.getAppFn == b.getAppFn && a.getAppNumArgs == b.getAppNumArgs
 
+/-! ### Registered rules
+
+A rule is a theorem whose conclusion is an entailment `X ⊢ₛ R` or an equivalence `X ⊣⊢ₛ R`
+(used forwards) with `X` an application of a constant. When a goal atom matches no hypothesis
+atom, `sep_cancel` looks for a hypothesis atom `h` with the head of `X` and a rule whose `X`
+unifies with `h` and one of whose atoms of `R` (through `∗` and `bigSep` literals) unifies with
+the goal atom, both up to reducible unfolding. The hypothesis atom is then replaced by `R`;
+the rule's remaining hypotheses are closed by the side-goal closer or left as goals. -/
+
+/-- A rule registered with `@[sep_cancel_rule]`: the declaration, the head constant of the
+    left side of its conclusion, and whether the conclusion is an equivalence. -/
+structure Rule where
+  /-- The registered theorem. -/
+  decl : Name
+  /-- The head constant of the left side `X` of the conclusion. -/
+  head : Name
+  /-- The conclusion is `X ⊣⊢ₛ R` (otherwise `X ⊢ₛ R`). -/
+  equiv : Bool
+  deriving Inhabited
+
+/-- The rules registered with `@[sep_cancel_rule]`. -/
+meta initialize ruleExt : SimpleScopedEnvExtension Rule (Array Rule) ←
+  registerSimpleScopedEnvExtension { addEntry := Array.push, initial := #[] }
+
+/-- Read a theorem as a rule, or fail with the accepted shapes. -/
+meta def classifyRule (decl : Name) : MetaM Rule := do
+  let info ← getConstInfo decl
+  forallTelescope info.type fun _ concl => do
+    let concl ← instantiateMVars concl
+    let equiv ←
+      if concl.isAppOfArity ``SAssert.Entails 5 then pure false
+      else if concl.isAppOfArity ``SAssert.Equiv 5 then pure true
+      else throwError "sep_cancel_rule: the conclusion of `{decl}` is not `_ ⊢ₛ _` or `_ ⊣⊢ₛ _`"
+    let .const head _ := concl.appFn!.appArg!.getAppFn
+      | throwError "sep_cancel_rule: the left side of `{decl}` is not an application of a \
+          constant"
+    return { decl, head, equiv }
+
+/-- `@[sep_cancel_rule]` registers an entailment `X ⊢ₛ R` or an equivalence `X ⊣⊢ₛ R` for
+    `sep_cancel`, which replaces a hypothesis atom `X` by `R` when an atom of `R` matches a
+    goal atom. -/
+meta initialize registerBuiltinAttribute {
+  name := `sep_cancel_rule
+  descr := "Register an entailment `X ⊢ₛ R` for `sep_cancel`"
+  add := fun decl _ kind => MetaM.run' do
+    ruleExt.add (← classifyRule decl) kind
+  applicationTime := .afterTypeChecking
+}
+
+/-- The registered rules. The registry is initialized when this module is imported; in this
+    module itself the rule set is empty. -/
+meta def registeredRules : CoreM (Array Rule) := do
+  let env ← getEnv
+  if (env.getModuleIdxFor? ``ruleExt).isNone then
+    return #[]
+  return ruleExt.getState env
+
+/-- The atoms of an assertion through `∗` and `bigSep` list literals. -/
+meta partial def sepAtoms (e : Expr) : MetaM (List Expr) := do
+  let e ← instantiateMVars e
+  if e.isAppOfArity ``SAssert.sep 5 then
+    return (← sepAtoms e.appFn!.appArg!) ++ (← sepAtoms e.appArg!)
+  if e.isAppOfArity ``SAssert.bigSep 4 then
+    if let some l ← listLit? e.appArg! then
+      let mut out := []
+      for y in l do
+        out := out ++ (← sepAtoms y)
+      return out
+  return [e]
+
+/-- Instantiate the rule `r` at the hypothesis atom `h` so that an atom of its right side is the
+    goal atom `x`. Returns a proof of `h ⊢ₛ R`, the right side `R`, and the hypotheses of the
+    rule that unification left open; fails (restoring the state) when a non-proposition
+    argument stays open. -/
+meta def instRule (r : Rule) (h x : Expr) : MetaM (Option (Expr × Expr × List MVarId)) := do
+  let s ← saveState
+  let c ← mkConstWithFreshMVarLevels r.decl
+  let (mvs, _, ty) ← forallMetaTelescope (← inferType c)
+  let ty ← instantiateMVars ty
+  unless ← withReducible (isDefEq ty.appFn!.appArg! h) do
+    s.restore
+    return none
+  let mut found := false
+  for y in ← sepAtoms ty.appArg! do
+    if ← commitWhen (withReducible (isDefEq y x)) then
+      found := true
+      break
+  unless found do
+    s.restore
+    return none
+  let mut open_ := []
+  for m in mvs do
+    let m := m.mvarId!
+    if ← m.isAssigned then continue
+    unless ← isProp (← m.getType) do
+      s.restore
+      return none
+    open_ := open_ ++ [m]
+  let pf := mkAppN c mvs
+  let pf ← if r.equiv then mkAppM ``And.left #[pf] else pure pf
+  return some (← instantiateMVars pf, ← instantiateMVars ty.appArg!, open_)
+
 /-- Cancel the goal atoms one by one; `skipped` counts the unmatched atoms rotated to the end
     of the goal list. Returns the residual entailment, if any, followed by the side goals. -/
 meta partial def cancelLoop (g : MVarId) (skipped : Nat) (side : Array MVarId) :
@@ -652,6 +754,27 @@ meta partial def cancelLoop (g : MVarId) (skipped : Nat) (side : Array MVarId) :
       if ← closeSide hg then
         return ← cancelLoop k skipped side
       s.restore
+  let rules ← registeredRules
+  for i in [0:hs.length] do
+    let hi := hs[i]!
+    let .const hd _ := hi.getAppFn | continue
+    for r in rules do
+      if r.head != hd then continue
+      let some (pf, R, opens) ← instRule r hi x | continue
+      let hX ← mkAppM ``SAssert.Entails.trans #[pf, ← mkAppM ``SAssert.sep_emp #[R]]
+      let l₁ ← mkListLit T (hs.take i)
+      let l₂ ← mkListLit T (hs.drop (i + 1))
+      let rest ← mkListLit T (hs.take i ++ R :: hs.drop (i + 1))
+      let mut side := side
+      for m in opens do
+        unless ← m.isAssigned do
+          unless ← closeSide m do
+            side := side.push m
+      let ks ← applyStep g
+          (← mkAppM ``SAssert.flatten_left_at #[l₁, l₂, rest, hi, ← mkListLit T [R], hX])
+      let [k] := ks.filter fun k => !opens.contains k
+        | throwError "sep_cancel: unexpected goals after `flatten_left_at`"
+      return ← cancelLoop (← flattenLeft k) skipped side
   let rest ← mkListLit T (gs.tail! ++ [x])
   let [k] ← applyStep g (← mkAppM ``SAssert.rot_right #[gsT, rest, x])
     | throwError "sep_cancel: unexpected goals after `rot_right`"
@@ -683,9 +806,10 @@ open Lean Elab Tactic in
     `bigSep` list literals or single assertions. Nested `∗`, `bigSep` and `emp` atoms are
     flattened, pure hypotheses are introduced, each goal atom is cancelled against a
     hypothesis atom equal to it up to reducible unfolding, or with the same head and argument
-    equalities closed by `rfl`, `assumption`, `bv_omega` or `omega`; leftover hypothesis
-    atoms are dropped. Unproved pure facts and the entailment of unmatched goal atoms remain
-    as goals. -/
+    equalities closed by `rfl`, `assumption`, `bv_omega` or `omega`, or, failing both, against
+    an atom of the right side of a `@[sep_cancel_rule]` rule instantiated at a hypothesis
+    atom; leftover hypothesis atoms are dropped. Unproved pure facts, unproved hypotheses of
+    rules and the entailment of unmatched goal atoms remain as goals. -/
 elab "sep_cancel" : tactic => do
   let g :: others ← getGoals | throwError "sep_cancel: no goals"
   let g ← SepCancel.normalizeGoal g
