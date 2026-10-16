@@ -672,7 +672,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoistReal
 CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres
 CatCrypt.Crypto.SecureCompilation.VIR.LoweringDataComp
 CatCrypt.Crypto.SecureCompilation.VIR.LprogJasminWellFormed
-CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyPropCfg
 CatCrypt.Crypto.SecureCompilation.VIR.LsemPortAll
 CatCrypt.Crypto.SecureCompilation.VIR.MLKEMFactorization
 CatCrypt.Crypto.SecureCompilation.VIR.MLKem768MatvecLoop
@@ -818,6 +817,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillEncodable
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
+CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldFuelMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
@@ -883,6 +883,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowerLegal
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCfg
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
@@ -912,7 +913,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogDirect
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVCompleteKats
-CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVTwoAddr
 CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
@@ -952,6 +952,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrFuelMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelOutFacts
