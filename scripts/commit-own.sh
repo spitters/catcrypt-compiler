@@ -50,11 +50,24 @@ work="$(mktemp -d)"; idx="$work/index"
 # modules and the hand-appended dev manifest). After a commit the generated lists are then
 # regenerated against the shared index, so the working tree also carries this commit's new
 # module lines and rot-guard roots; otherwise the working tree lags HEAD and the next
-# session's pre-commit check sees them dropped.
+# session's pre-commit check sees them dropped. The regeneration reads a copy of the shared
+# index to which the modules that the restored lakefile names, that exist on disk and that
+# are not tracked are added: those are other sessions' unregistered modules in progress,
+# and a generator reading `git ls-files` alone would drop their lines.
 committed=0
 restore() {
-  for l in "${lists[@]}"; do [ -f "$work/$(printf '%s' "$l" | tr / _)" ] && cp "$work/$(printf '%s' "$l" | tr / _)" "$l"; done; rm -rf "$work"
-  [ "$committed" = 1 ] && { generate || echo "commit-own: regenerating the working-tree lists failed; run the list generators by hand." >&2; }
+  for l in "${lists[@]}"; do [ -f "$work/$(printf '%s' "$l" | tr / _)" ] && cp "$work/$(printf '%s' "$l" | tr / _)" "$l"; done
+  if [ "$committed" = 1 ]; then
+    idx2="$work/index-wt"; cp "$(git rev-parse --git-path index)" "$idx2"
+    grep -o 'Glob.one `[A-Za-z0-9_.]*' lakefile.lean | sed 's/^Glob.one `//' | while read -r m; do
+      f="$(printf '%s' "$m" | tr . /).lean"
+      [ -f "$f" ] && ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 \
+        && GIT_INDEX_FILE="$idx2" git update-index --add -- "$f"
+    done
+    GIT_INDEX_FILE="$idx2" generate \
+      || echo "commit-own: regenerating the working-tree lists failed; run the list generators by hand." >&2
+  fi
+  rm -rf "$work"
 }
 trap restore EXIT
 for l in "${lists[@]}"; do [ -f "$l" ] && cp "$l" "$work/$(printf '%s' "$l" | tr / _)"; done
