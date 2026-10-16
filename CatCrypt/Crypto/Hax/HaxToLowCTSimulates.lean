@@ -105,16 +105,6 @@ def nameAgreesScalar (env : Env) (rs : RustState) (name : String) : Prop :=
 def envAgreesRust (env : Env) (rs : RustState) : Prop :=
   ∀ name, nameAgreesScalar env rs name
 
-/-! ### §1.1  Agreement-preservation lemmas
-
-These let the per-case proofs extend agreement across state updates.
-The full set is populated as phases close. -/
-
-/-- Identity preservation: `var` and `unitVal` cases leave both env
-    and rs unchanged, so agreement carries trivially. -/
-theorem envAgreesRust_refl (env : Env) (rs : RustState) :
-    envAgreesRust env rs → envAgreesRust env rs := id
-
 /-! ## §2  Source-side evaluation alias
 
 The Hax-side big-step semantics `denote : Builtins → Nat → ImpExpr →
