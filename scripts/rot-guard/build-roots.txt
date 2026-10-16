@@ -851,6 +851,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.FheShoupEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
+CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
@@ -877,6 +878,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LadderStepFrontOkProof
 CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
+CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
@@ -907,6 +909,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
+CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel

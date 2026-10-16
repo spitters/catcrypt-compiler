@@ -38,8 +38,11 @@ stages of `optRunBody` on the fragment with flags `LsemBridge.fragFB`.
 * `copyPropagateBody_segOK`, `optRunBody_segOK` — the per-segment condition of copy
   propagation and of the five stages on the fragment with flags;
   `copyPropagateBody_lsemFuelMemF` — copy propagation on whole bodies.
-* `optBlocksOKB`, `optBlocksOKB_sound` — the decidable check of the optimiser on a body and
-  its soundness.
+* `optRunBody_segOK_of_idxFree`, `optRunBody_segOK_of_cmp` — the five stages on a segment of
+  the fragment with flags without indexed access in its optimised form, and on a compare
+  segment. The decidable check of the optimiser on a body, `optBlocksOKB`, and its soundness
+  `optBlocksOKB_sound` are in `X86Backend.OptBlocksComplete`, after the proof of copy
+  propagation for register facts (`CopyPropCfg`) that its register-copy disjunct uses.
 * `fstepF_transport`, `fstepF_swap`, `scheduleBody_runStraightF` — the scheduler over the
   extended straight fold `runStraightF`, on every body, with no condition on widths.
 * `fstepF_reload`, `heldSoundM_step`, `elimAux_runStraightF` — store-to-load forwarding over
@@ -408,7 +411,7 @@ theorem copyPropagateBody_lsemFuelMemF {A : String → Option Nat} (tag : Linstr
     (fun seg hs hsl => copyPropagateBody_segOK tag seg (hfrag seg hs hsl).1
       (hfrag seg hs hsl).2.1 (hfrag seg hs hsl).2.2) fn h0 hInv h
 
-/-! ## 6. The decidable check of the optimiser on a body -/
+/-! ## 6. Segments without indexed access and compare segments -/
 
 /-- On a body with no indexed access the in-bounds run is the run with flags. -/
 theorem runIBF_eq_of_noArrIdx :
@@ -480,53 +483,6 @@ theorem optRunBody_segOK_of_cmp {A : String → Option Nat} (tag : LinstrR → M
   segOK_of_eq tag optRunBody seg (by simp [optRunBody, hm])
     (fun i hi => isLopn_of_cmpArgs (hc i hi))
     (fun i hi _ _ _ _ hI h => relInv_fstepF_cmp (hc i hi) hI h)
-
-/-- The check of the optimiser on one straight segment: a segment of flag-`CMP`
-    instructions outside the modelled bodies, or a segment of the fragment with flags whose
-    scheduled and copy-propagated form is in the fragment and has no indexed access. -/
-def optSegOKB (A : String → Option Nat) (tag : LinstrR → MemTag) (seg : List Linstr) : Bool :=
-  (!bodyAllModeled seg && seg.all fun i => (cmpArgs? (i.li_i, tag i.li_i)).isSome)
-    || (seg.all (fun i => fragFB A (i.li_i, tag i.li_i))
-        && (copyPropagateBody (scheduleBody seg)).all
-            (fun i => fragFB A (i.li_i, tag i.li_i) && !LprogScheduler.hasArrIdx i.li_i))
-
-/-- **The check of the optimiser on a body**: every instruction passes `keepOKB` and every
-    straight segment of the partition passes `optSegOKB`. -/
-def optBlocksOKB (A : String → Option Nat) (tag : LinstrR → MemTag) (body : List Linstr) :
-    Bool :=
-  body.all (fun i => keepOKB (i.li_i, tag i.li_i))
-    && (splitStraightRuns body).all
-        (fun seg => !bodyIsStraightLine seg || optSegOKB A tag seg)
-
-theorem optSegOKB_sound {A : String → Option Nat} {tag : LinstrR → MemTag}
-    {seg : List Linstr} (h : optSegOKB A tag seg = true) :
-    SegOK true (RelInv A) tag optRunBody seg := by
-  unfold optSegOKB at h
-  rw [Bool.or_eq_true] at h
-  rcases h with h1 | h2
-  · simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true] at h1
-    exact optRunBody_segOK_of_cmp tag seg h1.1 h1.2
-  · simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true] at h2
-    exact optRunBody_segOK_of_idxFree tag seg h2.1 (fun i hi => (h2.2 i hi).1)
-      (fun i hi => (h2.2 i hi).2)
-
-/-- **Soundness of the check: the basic-block optimiser on a checked body.** For a body
-    that passes `optBlocksOKB`, every halting run of the checked machine on the tagged body
-    from program counter `0` and a state of `RelInv A` is matched by a halting run of the
-    tagged optimised body from the same state with at most the same fuel, to a state with
-    the same function name and zero flag and a base equal up to the program counter. -/
-theorem optBlocksOKB_sound {A : String → Option Nat} {tag : LinstrR → MemTag}
-    {body : List Linstr} (h : optBlocksOKB A tag body = true) (fn : String) :
-    WholeBodySim true (RelInv A) fn (body.map fun i => (i.li_i, tag i.li_i))
-      ((optimizeBasicBlocks body).map fun i => (i.li_i, tag i.li_i)) := by
-  simp only [optBlocksOKB, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
-    Bool.not_eq_true'] at h
-  refine optimizeBasicBlocks_lsemFuelMemF tag body relInv_setLpc h.1
-    (fun seg hs hsl => optSegOKB_sound ?_) fn
-  rcases h.2 seg hs with h' | h'
-  · rw [hsl] at h'
-    cases h'
-  · exact h'
 
 /-! ## 7. The scheduler over the extended straight fold -/
 

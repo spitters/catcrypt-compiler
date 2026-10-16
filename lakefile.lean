@@ -2429,6 +2429,7 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimWCond,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrcFuel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe,
@@ -2511,6 +2512,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFrame,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LoopExporterCTBridge,
@@ -2633,6 +2635,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NarrowTyping,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NttBflyThirEmit,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksComplete,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksMemF,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf,
@@ -2659,11 +2662,11 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape,
+  ]
+def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF,
-  ]
-def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86,
@@ -2861,11 +2864,11 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Ed25519LPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.Falcon512Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Gf128Verified,
+  ]
+def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Gf16,
     Lake.Glob.one `CatCrypt.Crypto.Util.Gf16MatRing,
     Lake.Glob.one `CatCrypt.Crypto.Util.Gf256,
-  ]
-def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.MsmToyVerified,
     Lake.Glob.one `CatCrypt.Crypto.Util.P25519PrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256NPrimeCert,
