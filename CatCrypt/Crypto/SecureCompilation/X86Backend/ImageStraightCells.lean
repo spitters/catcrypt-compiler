@@ -748,15 +748,13 @@ theorem cellBody_save {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   unfold cellMove at hm
   split at hm
   · split at hm
-    · simp only [JasminLsemAddrMem.slotMov?, Option.ite_none_right_eq_some, Option.some.injEq,
-        Prod.mk.injEq] at hm
-      obtain ⟨-, -, rfl⟩ := hm
+    · simp [JasminLsemAddrMem.slotMov?] at hm
+      obtain ⟨-, rfl⟩ := hm
       exact abiStackOff?_of_ne (by simp [memName])
     · exact hb ⟨i, hi, hm⟩
   · split at hm
-    · simp only [JasminLsemAddrMem.slotMov?, Option.ite_none_right_eq_some, Option.some.injEq,
-        Prod.mk.injEq] at hm
-      have := congrArg (fun s : String => s.toList.head?) hm.2.1
+    · simp [JasminLsemAddrMem.slotMov?] at hm
+      have := congrArg (fun s : String => s.toList.head?) hm.1
       simp [JasminLsemAddrImage.slotOfReg, memName] at this
     · exact hb ⟨i, hi, hm⟩
   · exact hb ⟨i, hi, hm⟩

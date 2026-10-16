@@ -97,7 +97,8 @@ def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
     destination. An indexed access reads or writes `base + sc · idx`, with the index the
     value `idxVal` of the index register (its 64-bit word when the access steps); a move
     from or to a frame slot, a compare against one and an immediate move into one access
-    the slot's address; a cell access `[B + off]` accesses the address in `B` plus `off`, and
+    the slot's address; a cell access `[B + off]` (`cellA?`, a 64-bit move into or out of a
+    cell among them) accesses the address in `B` plus `off`, and
     the address `LEA:64 d, mem.B.off` of a cell accesses no memory; a
     carry-chain instruction accesses its frame-slot carry-in, its frame-slot word sources and
     its frame-slot destination; a select accesses its frame-slot values and its frame-slot
@@ -269,6 +270,15 @@ theorem instrLeakA_stm (frame : String → Option (BitVec 64)) {n S B : String} 
     (hn : cellParts? n = some (B, off)) {sa : LstateA} {p : BitVec 64}
     (hB : sa.reg.getW B 64 = some p) :
     instrLeakA frame (.Lopn [.reg n] "STORE:64" [.reg S], .reg none) sa
+      = [evA (p + BitVec.ofNat 64 off)] := by
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
+
+/-- The move `MOV:64 n, S` into the cell `n = [B + off]` accesses the address in `B` plus
+    `off`. -/
+theorem instrLeakA_stv (frame : String → Option (BitVec 64)) {n S B : String} {off : Nat}
+    (hn : cellParts? n = some (B, off)) {sa : LstateA} {p : BitVec 64}
+    (hB : sa.reg.getW B 64 = some p) :
+    instrLeakA frame (.Lopn [.reg n] "MOV:64" [.reg S], .reg none) sa
       = [evA (p + BitVec.ofNat 64 off)] := by
   simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
 
@@ -489,12 +499,12 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       obtain ⟨hm, -, hq⟩ := icase_sload hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       rcases slotMov?_cases hm with rfl | rfl <;>
-        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, ha]
+        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, hm, ha]
   | sstore q S =>
       obtain ⟨hm, hS, hq⟩ := icase_sstore hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       rcases slotMov?_cases hm with rfl | rfl <;>
-        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, ha, hS]
+        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, hm, ha, hS]
   | scmp d y q =>
       obtain ⟨hm, hq⟩ := icase_scmp hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq

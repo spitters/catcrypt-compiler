@@ -187,25 +187,25 @@ theorem isCall_of_instrOKWB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Param
 theorem cellMove_cases (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : Linstr) :
     cellMove slotArr body k i = i
-    ∨ (∃ D n B A m off, i.li_i = .Lopn [.reg D] "LOAD:64" [.reg n]
+    ∨ (∃ D n mm B A m off, i.li_i = .Lopn [.reg D] mm [.reg n]
         ∧ accArr slotArr body k B = some (A, m)
         ∧ (cellMove slotArr body k i).li_i = .Lopn [.reg D] "MOVQ" [.reg (memName A off)])
-    ∨ ∃ n S B A m off, i.li_i = .Lopn [.reg n] "STORE:64" [.reg S]
+    ∨ ∃ n S mm B A m off, i.li_i = .Lopn [.reg n] mm [.reg S]
         ∧ accArr slotArr body k B = some (A, m)
         ∧ (cellMove slotArr body k i).li_i = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by
   unfold cellMove
   split
   · rename_i D B off hc
-    obtain ⟨n, hx, -⟩ := cellA_ld hc
+    obtain ⟨mm, n, hx, -, -⟩ := cellA_ld hc
     split
     · rename_i A m hA
-      exact Or.inr (Or.inl ⟨D, n, B, A, m, off, hx, hA, rfl⟩)
+      exact Or.inr (Or.inl ⟨D, n, mm, B, A, m, off, hx, hA, rfl⟩)
     · exact Or.inl rfl
   · rename_i B off S hc
-    obtain ⟨n, hx, -⟩ := cellA_st hc
+    obtain ⟨mm, n, hx, -, -⟩ := cellA_st hc
     split
     · rename_i A m hA
-      exact Or.inr (Or.inr ⟨n, S, B, A, m, off, hx, hA, rfl⟩)
+      exact Or.inr (Or.inr ⟨n, S, mm, B, A, m, off, hx, hA, rfl⟩)
     · exact Or.inl rfl
   · exact Or.inl rfl
 
@@ -221,8 +221,8 @@ theorem rspFree_cellMove {slotArr : String → Option (String × Nat)} {body : L
     intro b A n h
     obtain ⟨q, -, hq, -⟩ := accArr_spec h
     exact hsl q A n hq
-  rcases cellMove_cases slotArr body k i with h | ⟨D, n, B, A, m, off, hi, hA, h⟩ |
-    ⟨n, S, B, A, m, off, hi, hA, h⟩
+  rcases cellMove_cases slotArr body k i with h | ⟨D, n, mm, B, A, m, off, hi, hA, h⟩ |
+    ⟨n, S, mm, B, A, m, off, hi, hA, h⟩
   · rw [h]
     exact hx
   · rw [h]
@@ -245,8 +245,8 @@ theorem rspFree_cellMove {slotArr : String → Option (String × Nat)} {body : L
 theorem isCall_cellMove {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {i : Linstr} (hx : isCall i.li_i = false) :
     isCall (cellMove slotArr body k i).li_i = false := by
-  rcases cellMove_cases slotArr body k i with h | ⟨_, _, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩
+  rcases cellMove_cases slotArr body k i with h | ⟨_, _, _, _, _, _, _, -, -, h⟩ |
+    ⟨_, _, _, _, _, _, _, -, -, h⟩
   · rw [h]
     exact hx
   · rw [h]; rfl

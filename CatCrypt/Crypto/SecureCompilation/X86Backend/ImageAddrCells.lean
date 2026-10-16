@@ -94,7 +94,7 @@ theorem cellMove_of_lea {slotArr : String → Option (String × Nat)} {body : Lc
 
 theorem cellA_some {x : LinstrR} {c : CellOp} (h : cellA? x = some c) :
     ∃ d o n, x = .Lopn [.reg d] o [.reg n] ∧
-      (o = "LOAD:64" ∨ o = "STORE:64" ∨ o = "LEA:64") := by
+      (o = "LOAD:64" ∨ o = "STORE:64" ∨ o = "LEA:64" ∨ o = "MOV:64") := by
   unfold cellA? at h
   split at h
   · rename_i d o n
@@ -103,13 +103,25 @@ theorem cellA_some {x : LinstrR} {c : CellOp} (h : cellA? x = some c) :
     · split at h
       · exact ⟨d, o, n, rfl, Or.inr (Or.inl (by assumption))⟩
       · split at h
-        · exact ⟨d, o, n, rfl, Or.inr (Or.inr (by assumption))⟩
-        · cases h
+        · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inl (by assumption)))⟩
+        · split at h
+          · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inr (by assumption)))⟩
+          · cases h
   · cases h
+
+/-- A 64-bit move that `cellA?` reads as a cell access has a cell name among its operands. -/
+theorem cellA_mov64 {d n : String} {c : CellOp}
+    (h : cellA? (.Lopn [.reg d] "MOV:64" [.reg n]) = some c) :
+    ((cellParts? d).isSome || (cellParts? n).isSome) = true := by
+  cases hd : cellParts? d <;> cases hn : cellParts? n <;> simp_all [cellA?]
 
 theorem slotMov_cell {x : LinstrR} {c : CellOp} (h : cellA? x = some c) : slotMov? x = none := by
   obtain ⟨d, o, n, rfl, ho⟩ := cellA_some h
-  rcases ho with rfl | rfl | rfl <;> simp [slotMov?]
+  rcases ho with rfl | rfl | rfl | rfl
+  · simp [slotMov?]
+  · simp [slotMov?]
+  · simp [slotMov?]
+  · simp [slotMov?, cellA_mov64 h]
 
 /-- The slot moves of the cell body name no array slot: each frame-word move of a cell has
     no array-slot operand. -/
@@ -118,39 +130,70 @@ def CellNoSlot (slotArr : String → Option (String × Nat)) (body : Lcmd) : Pro
     cellA? i.li_i ≠ none → slotArr d = none ∧ slotArr q = none
 
 theorem cellA_ld {x : LinstrR} {D B : String} {off : Nat} (h : cellA? x = some (.ld D B off)) :
-    ∃ n, x = .Lopn [.reg D] "LOAD:64" [.reg n] ∧ cellParts? n = some (B, off) := by
+    ∃ m n, x = .Lopn [.reg D] m [.reg n] ∧ (m = "LOAD:64" ∨ m = "MOV:64")
+      ∧ cellParts? n = some (B, off) := by
   unfold cellA? at h
   split at h
   · rename_i d o n
-    split at h
-    · rename_i ho
-      subst ho
+    split_ifs at h with h1 h2 h3 h4
+    · subst h1
       obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-      exact ⟨n, rfl, hp⟩
-    · split_ifs at h
-      all_goals obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
-      all_goals cases he
+      exact ⟨_, n, rfl, Or.inl rfl, hp⟩
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · subst h4
+      split at h
+      · cases h
+      · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+        cases he
+        exact ⟨_, n, rfl, Or.inr rfl, hp⟩
   · cases h
 
 theorem cellA_st {x : LinstrR} {B S : String} {off : Nat} (h : cellA? x = some (.st B off S)) :
-    ∃ n, x = .Lopn [.reg n] "STORE:64" [.reg S] ∧ cellParts? n = some (B, off) := by
+    ∃ m n, x = .Lopn [.reg n] m [.reg S] ∧ (m = "STORE:64" ∨ m = "MOV:64")
+      ∧ cellParts? n = some (B, off) := by
   unfold cellA? at h
   split at h
   · rename_i d o n
-    split at h
+    split_ifs at h with h1 h2 h3 h4
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-    · split at h
-      · rename_i _ ho
-        subst ho
-        obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
-        cases he
-        exact ⟨d, rfl, hp⟩
-      · split_ifs at h
-        obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+    · subst h2
+      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+      exact ⟨_, d, rfl, Or.inl rfl, hp⟩
+    · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+    · subst h4
+      split at h
+      · rename_i p hp
+        cases h
+        exact ⟨_, d, rfl, Or.inr rfl, hp⟩
+      · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
         cases he
   · cases h
+
+/-- **A cell load steps on the address machine** to the word at the address in its base plus
+    its offset, whichever of `LOAD:64` and `MOV:64` reads it. -/
+theorem fstepA_cellLd (frame : String → Option (BitVec 64)) {x : LinstrR} {D B : String}
+    {off : Nat} (hc : cellA? x = some (.ld D B off)) {sa : LstateA} {p : BitVec 64}
+    (hB : sa.reg.getW B 64 = some p) (zf : Bool) :
+    fstepA frame (x, .reg none) sa zf
+      = some ({ sa with reg := (sa.reg.setReg D
+          (read64 sa.mem (p + BitVec.ofNat 64 off))).nextPc }, zf) := by
+  have hm := slotMov_cell hc
+  obtain ⟨m, n, rfl, -, -⟩ := cellA_ld hc
+  simp [fstepA, hm, slotCmp?, hc, hB]
+
+/-- **A 64-bit move into a cell steps on the address machine as the cell store.** -/
+theorem fstepA_mov64_store (frame : String → Option (BitVec 64)) {n S : String}
+    {p : String × Nat} (hn : cellParts? n = some p) (sa : LstateA) (zf : Bool) :
+    fstepA frame (.Lopn [.reg n] "MOV:64" [.reg S], .reg none) sa zf
+      = fstepA frame (.Lopn [.reg n] "STORE:64" [.reg S], .reg none) sa zf := by
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn]
 
 theorem cellA_lea {x : LinstrR} {D B : String} {off : Nat}
     (h : cellA? x = some (.lea D B off)) :
@@ -167,6 +210,10 @@ theorem cellA_lea {x : LinstrR} {D B : String} {off : Nat}
       obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
       exact ⟨n, rfl, hp⟩
+    · split at h
+      · cases h
+      · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
+        cases he
   · cases h
 
 theorem hasPrefix_memName (A : String) (off : Nat) : hasPrefix (memName A off) "mem." = true := by
@@ -236,7 +283,7 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
               | some c =>
                   cases c with
                   | ld D B off =>
-                      obtain ⟨n, hxn, -⟩ := cellA_ld hc
+                      obtain ⟨_, n, hxn, -, -⟩ := cellA_ld hc
                       rw [hxn] at hx
                       obtain ⟨rfl, -, -⟩ := LinstrR.Lopn.inj hx
                       simp only [List.any_cons, List.any_nil, Bool.or_false, dstHitB,
@@ -262,7 +309,7 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                           hnd.2, beq_iff_eq, hnd.1, if_false]
                         exact hIH
                   | st B off S =>
-                      obtain ⟨n, hxn, -⟩ := cellA_st hc
+                      obtain ⟨_, n, hxn, -, -⟩ := cellA_st hc
                       cases hacc : accArr slotArr body k B with
                       | some Am =>
                         obtain ⟨A, m⟩ := Am
@@ -309,7 +356,7 @@ theorem cellMove_names (slotArr : String → Option (String × Nat)) (body : Lcm
   unfold cellMove
   split
   · rename_i D B off hc
-    obtain ⟨nm, hx, hn⟩ := cellA_ld hc
+    obtain ⟨_, nm, hx, -, hn⟩ := cellA_ld hc
     have hnd : nm ≠ d := fun e => by rw [← e, hasPrefix_of_cellParts hn] at hd; cases hd
     split
     · rename_i A _ _
@@ -318,7 +365,7 @@ theorem cellMove_names (slotArr : String → Option (String × Nat)) (body : Lcm
         beq_eq_false_iff_ne.2 hmd]
     · exact ⟨rfl, rfl⟩
   · rename_i B off S hc
-    obtain ⟨nm, hx, hn⟩ := cellA_st hc
+    obtain ⟨_, nm, hx, -, hn⟩ := cellA_st hc
     have hnd : nm ≠ d := fun e => by rw [← e, hasPrefix_of_cellParts hn] at hd; cases hd
     split
     · rename_i A _ _
@@ -358,22 +405,25 @@ theorem stepA_cellBody_ld {frame : String → Option (BitVec 64)}
     (hp : sa.reg.getW B 64 = some p)
     (hfr : frame (memName A off) = some (p + BitVec.ofNat 64 off)) :
     stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
-  obtain ⟨nm, hx, hn⟩ := cellA_ld hc
+  obtain ⟨mm, nm, hx, hmm, hn⟩ := cellA_ld hc
   have hb2 : (cellBody slotArr body)[sa.reg.lpc]?
       = some ⟨bi.li_ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
     rw [cellBody_getElem?, hb]
     simp [cellMove, hc, hacc]
+  have hc' := hc
+  rw [hx] at hc'
   rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
-  have h1 : normA (.Lopn [.reg D] "LOAD:64" [.reg nm]) = .Lopn [.reg D] "LOAD:64" [.reg nm] := by
-    simp [normA]
-  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg D] "LOAD:64" [.reg nm]) = .reg none := by
-    rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
+  have h1 : normA (.Lopn [.reg D] mm [.reg nm]) = .Lopn [.reg D] mm [.reg nm] := by
+    rcases hmm with rfl | rfl <;> simp [normA]
+  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg D] mm [.reg nm]) = .reg none := by
+    rcases hmm with rfl | rfl <;>
+      (rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA])
   have h3 : normA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)])
       = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] := by simp [normA]
   have h4 : tagAt (cellBody slotArr body) sa.reg.lpc
       (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) = .reg none := by
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
-  rw [h1, h2, h3, h4, fstepA_ldm frame hn hp,
+  rw [h1, h2, h3, h4, fstepA_cellLd frame hc' hp,
     fstepA_slotLoad frame (d := D) (q := memName A off) (by simp [slotMov?]) hfr]
 
 /-- **A cell store on the address machine is its frame-word move** when its base holds the
@@ -387,22 +437,28 @@ theorem stepA_cellBody_st {frame : String → Option (BitVec 64)}
     (hp : sa.reg.getW B 64 = some p)
     (hfr : frame (memName A off) = some (p + BitVec.ofNat 64 off)) (hS : frame S = none) :
     stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
-  obtain ⟨nm, hx, hn⟩ := cellA_st hc
+  obtain ⟨mm, nm, hx, hmm, hn⟩ := cellA_st hc
   have hb2 : (cellBody slotArr body)[sa.reg.lpc]?
       = some ⟨bi.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
     rw [cellBody_getElem?, hb]
     simp [cellMove, hc, hacc]
   rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
-  have h1 : normA (.Lopn [.reg nm] "STORE:64" [.reg S]) = .Lopn [.reg nm] "STORE:64" [.reg S] := by
-    simp [normA]
-  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg nm] "STORE:64" [.reg S]) = .reg none := by
-    rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
+  have h1 : normA (.Lopn [.reg nm] mm [.reg S]) = .Lopn [.reg nm] mm [.reg S] := by
+    rcases hmm with rfl | rfl <;> simp [normA]
+  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg nm] mm [.reg S]) = .reg none := by
+    rcases hmm with rfl | rfl <;>
+      (rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA])
+  have h0 : fstepA frame (.Lopn [.reg nm] mm [.reg S], .reg none) sa zf
+      = fstepA frame (.Lopn [.reg nm] "STORE:64" [.reg S], .reg none) sa zf := by
+    rcases hmm with rfl | rfl
+    · rfl
+    · exact fstepA_mov64_store frame hn sa zf
   have h3 : normA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S])
       = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by simp [normA]
   have h4 : tagAt (cellBody slotArr body) sa.reg.lpc
       (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) = .reg none := by
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
-  rw [h1, h2, h3, h4]
+  rw [h1, h2, h3, h4, h0]
   cases hv : sa.reg.getW S 64 with
   | some v =>
       rw [fstepA_stm frame hn hp hv, fstepA_slotStore frame (by simp [slotMov?]) hS hfr sa zf hv]
@@ -826,10 +882,11 @@ theorem classifyK_cellMove (slotArr : String → Option (String × Nat)) (body :
     obtain ⟨d, o, n, hx, ho⟩ := cellA_some hca
     have h0 : classifyK i.li_i = none := by
       rw [hx]
-      rcases ho with rfl | rfl | rfl <;>
+      rcases ho with rfl | rfl | rfl | rfl <;>
         simp [classifyK, show LprogBytes.castMovBits "LOAD:64" = none from by decide,
           show LprogBytes.castMovBits "STORE:64" = none from by decide,
-          show LprogBytes.castMovBits "LEA:64" = none from by decide]
+          show LprogBytes.castMovBits "LEA:64" = none from by decide,
+          show LprogBytes.castMovBits "MOV:64" = none from by decide]
     have hm : ∀ a b : String, classifyK (.Lopn [.reg a] "MOVQ" [.reg b]) = none := fun a b => by
       simp [classifyK, show LprogBytes.castMovBits "MOVQ" = none from by decide]
     rw [h0]
@@ -909,7 +966,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
   | some op =>
       cases op with
       | ld D B off =>
-          obtain ⟨n, hx, hn⟩ := cellA_ld hca
+          obtain ⟨_, n, hx, -, hn⟩ := cellA_ld hca
           obtain ⟨A, m, hacc, hBf, -, -⟩ := hF.ld _ _ D B off hb hca
           have hmv : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn ds o ss⟩
               = ⟨ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
@@ -950,7 +1007,7 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
                 (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb hca)) hacc) hBf
               exact width_of_getW hp
       | st B off S =>
-          obtain ⟨n, hx, hn⟩ := cellA_st hca
+          obtain ⟨_, n, hx, -, hn⟩ := cellA_st hca
           obtain ⟨A, m, hacc, hBf, -, -⟩ := hF.st _ _ B off S hb hca
           have hmv : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn ds o ss⟩
               = ⟨ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by

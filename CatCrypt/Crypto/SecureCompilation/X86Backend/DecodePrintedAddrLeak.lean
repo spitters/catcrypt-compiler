@@ -272,7 +272,8 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     rcases hm' with rfl | rfl <;>
       simp [AArm.js, AArm.pieces, Arm.pieces, hso, blockLeakA, opLeak, instrLeak, resolveEv,
         JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr,
-        instrLeakA, slotMov?, frameP, (gpFacts hS).off, hoff, hc.sp, evA, redLeak]
+        instrLeakA, slotMov?, frameP, (gpFacts hS).off, hoff, hc.sp, evA, redLeak,
+        cellParts?_of_spillOff hsome, cellParts?_gp hS]
   | ld m D q =>
     simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
     obtain ⟨⟨⟨⟨⟨hD, -⟩, hsome⟩, -⟩, -⟩, hm⟩ := h
@@ -283,7 +284,8 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     rcases hm' with rfl | rfl <;>
       simp [AArm.js, AArm.pieces, Arm.pieces, hso, blockLeakA, opLeak, instrLeak, resolveEv,
         JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr,
-        instrLeakA, slotMov?, frameP, hoff, hc.sp, evA, redLeak]
+        instrLeakA, slotMov?, frameP, hoff, hc.sp, evA, redLeak,
+        cellParts?_of_spillOff hsome, cellParts?_gp hD]
   | cmpR c r =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
@@ -888,7 +890,8 @@ theorem AArm.leak_length {P : Params} {a : AArm} (hok : a.ok P = true)
     have hm' : m = "MOVQ" ∨ m = "MOV:64" := by
       simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at hok; exact hok.2.symm
     have hcell : cellA? (AArm.st m q S).instr = none := by
-      rcases hm' with rfl | rfl <;> simp [AArm.instr, cellA?]
+      rcases hm' with rfl | rfl <;>
+        simp [AArm.instr, cellA?, cellParts?_of_spillOff hok.1.1.2, cellParts?_gp hok.1.1.1.1]
     simp only [AArm.li]
     rw [instrLeakA_reg_indep hcell none s₁ s₂]
   | ld m D q =>
@@ -896,7 +899,8 @@ theorem AArm.leak_length {P : Params} {a : AArm} (hok : a.ok P = true)
     have hm' : m = "MOVQ" ∨ m = "MOV:64" := by
       simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at hok; exact hok.2.symm
     have hcell : cellA? (AArm.ld m D q).instr = none := by
-      rcases hm' with rfl | rfl <;> simp [AArm.instr, cellA?]
+      rcases hm' with rfl | rfl <;>
+        simp [AArm.instr, cellA?, cellParts?_of_spillOff hok.1.1.1.2, cellParts?_gp hok.1.1.1.1.1]
     simp only [AArm.li]
     rw [instrLeakA_reg_indep hcell none s₁ s₂]
   | cmpR c r =>

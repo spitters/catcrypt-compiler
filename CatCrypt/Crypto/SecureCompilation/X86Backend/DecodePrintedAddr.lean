@@ -660,9 +660,8 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
     simp only [Arm.ok, Bool.and_eq_true] at h
     refine ⟨by simp [Arm.js, Arm.pieces, noWriteB], fun d s hs => ?_, rfl⟩
     simp only [Arm.instr, slotMov?] at hs
-    split at hs
-    · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨h.1.2, h.2⟩
-    · cases hs
+    split_ifs at hs; cases hs
+    exact ⟨h.1.2, h.2⟩
   | movRI D v => exact ⟨by simp [Arm.js, Arm.pieces, noWriteB], fun d s hs => by
       simp [Arm.instr, slotMov?] at hs, rfl⟩
   | store => simp [regArmB] at hr
@@ -684,18 +683,16 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
     · by_cases hDS : D = S <;> by_cases hl : tagShl m = true <;>
         simp [Arm.js, Arm.pieces, tagShMk, hDS, hl, noWriteB]
     · simp only [Arm.instr, slotMov?] at hs
-      split at hs
-      · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨hD, hS⟩
-      · cases hs
+      split_ifs at hs; cases hs
+      exact ⟨hD, hS⟩
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
     refine ⟨?_, fun d s hs => ?_, rfl⟩
     · by_cases hDS : D = S <;> simp [Arm.js, Arm.pieces, hDS, noWriteB]
     · simp only [Arm.instr, slotMov?] at hs
-      split at hs
-      · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hs); exact ⟨hD, hS⟩
-      · cases hs
+      split_ifs at hs; cases hs
+      exact ⟨hD, hS⟩
   | shI m D k =>
     refine ⟨?_, fun d s hs => by simp [Arm.instr, slotMov?] at hs, rfl⟩
     simp only [Arm.js, Arm.pieces, shIMk, List.map_cons, List.map_nil, List.all_cons,
@@ -721,6 +718,22 @@ theorem cellParts?_gp {r : String} (h : gpOk r = true) : cellParts? r = none := 
   simp only [gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
   rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl <;> rfl
+
+/-- A name with a frame offset is no cell name. -/
+theorem cellParts?_of_spillOff {F W qB : Nat} {q : String}
+    (h : (spillQsaveOff F W q qB).isSome = true) : cellParts? q = none := by
+  unfold cellParts?
+  split
+  · rename_i hp
+    unfold hasPrefix at hp
+    rw [List.isPrefixOf_iff_prefix] at hp
+    obtain ⟨t, ht⟩ := hp
+    have hk : hasPrefix q "k." = false := by
+      unfold hasPrefix; rw [← ht]; simp [List.isPrefixOf]
+    have hq : hasPrefix q "qsave." = false := by
+      unfold hasPrefix; rw [← ht]; simp [List.isPrefixOf]
+    simp [spillQsaveOff, hk, hq] at h
+  · rfl
 
 /-- A register arm of `DecodePrintedAddr` accesses no cell. -/
 theorem regArm_cell {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P [] = true) :
@@ -820,8 +833,9 @@ theorem sim_st (P : Params) (rsp : BitVec 64) (m q S : String)
       s.of⟩, zf, ?_,
     hc.keep (sa' := evalInstrA sa _) hregs (fun r => LstateN.getW_nextPc _ _ _)
     (fun x hx => ?_)⟩
-  · simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, (gpFacts hS).off, hoff,
-      hc.regs S hS]
+  · have hcq : cellParts? q = none := cellParts?_of_spillOff hsome
+    simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, (gpFacts hS).off, hoff,
+      hc.regs S hS, hcq, cellParts?_gp hS]
   · show write64 s.mem (rsp + BitVec.ofInt 64 off) (sa.regs (phys S)) x = _
     rw [hmem, hc.sp]
     exact agree_write64 hc.mem _ _ x hx
@@ -852,7 +866,8 @@ theorem sim_ld (P : Params) (rsp : BitVec 64) (m D q : String)
       (fun r => by rw [hregs, hc.sp]) (fun x hx => by rw [hmem]; exact hc.mem x hx)
       (fun r hr => by rw [getW_setReg_nextPcN, if_neg hr])
       (by rw [getW_setReg_nextPcN, if_pos rfl, hrd])⟩
-  simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, hoff]
+  have hcq : cellParts? q = none := cellParts?_of_spillOff hsome
+  simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, hoff, hcq, cellParts?_gp hD]
 
 /-- The machine compare writes no register and no memory, and sets the zero flag to the
     equality of its operands. -/
@@ -1269,7 +1284,8 @@ def classifyA : LinstrR → Option AArm
       else if isMovM m && !gpOk s then some (.ld m d s)
       else (classify (.Lopn [.reg d] m [.reg s])).map .reg
   | .Lopn [.reg d] m [.arrIdx b i sc] =>
-      if m == "LOADIDX" && sc == 8 then some (.ldx d b i) else none
+      if m == "LOADIDX" && sc == 8 then some (.ldx d b i)
+      else (classify (.Lopn [.reg d] m [.arrIdx b i sc])).map .reg
   | .Lopn [.reg d] m [.arrIdx b i sc, .reg v] =>
       if m == "STOREIDX" && sc == 8 then some (.stx d b i v) else none
   | .Lopn [.reg d] m [.reg a, .reg s] =>
@@ -1301,6 +1317,7 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
     · obtain rfl := Option.some.inj h
       simp only [Bool.and_eq_true, beq_iff_eq] at h1
       obtain ⟨rfl, rfl⟩ := h1; rfl
+    · exact hm h
   · split_ifs at h with h1
     · obtain rfl := Option.some.inj h
       simp only [Bool.and_eq_true, beq_iff_eq] at h1

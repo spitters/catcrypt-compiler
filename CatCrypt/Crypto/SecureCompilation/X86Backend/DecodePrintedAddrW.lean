@@ -34,8 +34,8 @@ in the names the instruction reads (`AArm.simW`). The frame-word store of a one-
 The carry arms (`CArm`) are the add `ADCX:64 D, A, S, C`, printed `bt $0, C; adcx S, D` after
 the copy of `A` into `D`, and its carry-out binding `ADCXHI:64 O, A, S, C`, printed `setc O`;
 the binding reads the carry flag the add leaves, which the run threads to it (`CarryAt`). The
-cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off`, printed
-`mov off(%B)`. The carry constant, an untagged `MOV D, #n` with `n < 2` that the address
+cell arms (`MArm`) are the whole-word load and store of a cell `mem.B.off` and the 64-bit move
+`MOV:64 mem.B.off, S` into a cell, printed `mov off(%B)`. The carry constant, an untagged `MOV D, #n` with `n < 2` that the address
 machine steps at the one-bit tag (`JasminLsemAddrRun.tagAt`), is printed `mov $n, %r32`, which
 leaves the zero-extension of the bit in the register. The wide immediate, `MOV:64 D, #v` with
 `v` outside the sign-extended `imm32` range, is printed `movabs $v, %r64`; into a frame slot it
@@ -302,7 +302,8 @@ theorem AArm.simW_st1 (P : Params) (rsp : BitVec 64) (m q S : String)
   have hfq : frameP P rsp q = some (rsp + BitVec.ofInt 64 off) := by simp [frameP, hoff]
   have hmv : slotMov? (AArm.st m q S).li.fst = some (q, S) := by
     rcases hm' with rfl | rfl <;>
-      simp (config := { decide := true }) [AArm.li, AArm.instr, slotMov?]
+      simp (config := { decide := true }) [AArm.li, AArm.instr, slotMov?,
+        cellParts?_of_spillOff hsome, cellParts?_gp hS]
   have htag : (AArm.st m q S).li = ((AArm.st m q S).li.fst, .reg none) := by
     rcases hm' with rfl | rfl <;> rfl
   have hphys : sa.regs (phys S) = b.setWidth 64 := by
@@ -820,17 +821,22 @@ inductive MArm where
   | ldm (D n B : String) (off : Nat)
   /-- `STORE:64 n, S` with `n` the cell `[B + off]`. -/
   | stm (n B : String) (off : Nat) (S : String)
+  /-- `MOV:64 n, S` with `n` the cell `[B + off]`. -/
+  | stv (n B : String) (off : Nat) (S : String)
 
 /-- The instruction of a cell arm. -/
 def MArm.instr : MArm → LinstrR
   | .ldm D n _ _ => .Lopn [.reg D] "LOAD:64" [.reg n]
   | .stm n _ _ S => .Lopn [.reg n] "STORE:64" [.reg S]
+  | .stv n _ _ S => .Lopn [.reg n] "MOV:64" [.reg S]
 
 /-- The byte pieces of a cell arm: `mov off(%B), %D` and `mov %S, off(%B)`. -/
 def MArm.pieces : MArm → List (List (BitVec 8) × JInstr 64)
   | .ldm D _ B off => [(encMemMovw 1 0x8b (gpNumU D) (gpNumU B) (Int.ofNat off),
       .loadMem (phys D) (phys B) (Int.ofNat off))]
   | .stm _ B off S => [(encMemMovw 1 0x89 (gpNumU S) (gpNumU B) (Int.ofNat off),
+      .storeMem (phys B) (Int.ofNat off) (.reg (phys S)))]
+  | .stv _ B off S => [(encMemMovw 1 0x89 (gpNumU S) (gpNumU B) (Int.ofNat off),
       .storeMem (phys B) (Int.ofNat off) (.reg (phys S)))]
 
 /-- The machine instructions of a cell arm. -/
@@ -843,21 +849,25 @@ def MArm.ok : MArm → Bool
       && dispOk32 (Int.ofNat off)
   | .stm n B off S => cellParts? n == some (B, off) && gpOk S && gpOk B
       && dispOk32 (Int.ofNat off)
+  | .stv n B off S => cellParts? n == some (B, off) && gpOk S && gpOk B
+      && dispOk32 (Int.ofNat off)
 
 /-- The cell arm of an instruction. -/
 def classifyM : LinstrR → Option MArm
   | .Lopn [.reg d] o [.reg n] =>
       if o = "LOAD:64" then (cellParts? n).map fun p => .ldm d n p.1 p.2
       else if o = "STORE:64" then (cellParts? d).map fun p => .stm d p.1 p.2 n
+      else if o = "MOV:64" then (cellParts? d).map fun p => .stv d p.1 p.2 n
       else none
   | _ => none
 
 theorem classifyM_instr {i : LinstrR} {m : MArm} (h : classifyM i = some m) : m.instr = i := by
   unfold classifyM at h
   split at h
-  · split_ifs at h with h1 h2
+  · split_ifs at h with h1 h2 h3
     · obtain ⟨p, -, rfl⟩ := Option.map_eq_some_iff.1 h; subst h1; rfl
     · obtain ⟨p, -, rfl⟩ := Option.map_eq_some_iff.1 h; subst h2; rfl
+    · obtain ⟨p, -, rfl⟩ := Option.map_eq_some_iff.1 h; subst h3; rfl
   · cases h
 
 /-- `mov off(%b), %d` with a signed 32-bit displacement. -/
@@ -925,6 +935,19 @@ theorem encodeLopn_stm (F W : Nat) (n B : String) (off : Nat) (S : String) (qB :
   simp (config := { decide := true }) [encodeLopn, encTwoAddr, fS.off, fS.notMem,
     fS.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memDstOp, adxPrefix]
 
+/-- `MOV:64 n, S` with `n` the cell `[B + off]` and `S`, `B` general-purpose: the bytes of
+    `STORE:64 n, S`. -/
+theorem encodeLopn_stv (F W : Nat) (n B : String) (off : Nat) (S : String) (qB : Nat)
+    (hn : cellParts? n = some (B, off)) (hS : gpOk S = true) (hB : gpOk B = true) :
+    encodeLopn F W (.Lopn [.reg n] "MOV:64" [.reg S]) qB
+      = encMemMovw 1 0x89 (gpNumU S) (gpNumU B) (Int.ofNat off) := by
+  have fS := gpFacts hS
+  obtain ⟨-, hoff⟩ := notSlot_of_cell hn
+  have hpm : parseMemNameGp n = some (gpNumU B, Int.ofNat off) := by
+    rw [parseMemNameGp_cellParts, hn]; simp [(gpFacts hB).isGp]
+  simp (config := { decide := true }) [encodeLopn, encTwoAddr, fS.off, fS.notMem,
+    fS.isGp, hoff, hpm, tagShiftExt, aluOpcode, stripWidthTag, LprogBytes.rexW, memDstOp, adxPrefix]
+
 /-- **The bytes of a cell arm.** -/
 theorem MArm.bytes (P : Params) (m : MArm) (h : m.ok = true) :
     encodeLopn P.frame P.spillW m.instr P.qsaveB = m.pieces.flatMap Prod.fst
@@ -946,12 +969,33 @@ theorem MArm.bytes (P : Params) (m : MArm) (h : m.ok = true) :
     simp only [MArm.pieces, List.mem_singleton] at hq
     subst hq
     exact pieceDec_storeMem _ _ _ (gpNumU_lt_16 S) (gpNumU_lt_16 B) hd
+  | stv n B off S =>
+    simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨⟨⟨hn, hS⟩, hB⟩, hd⟩ := h
+    refine ⟨by simp [MArm.instr, MArm.pieces, encodeLopn_stv _ _ _ _ _ _ _ hn hS hB], ?_⟩
+    intro q hq
+    simp only [MArm.pieces, List.mem_singleton] at hq
+    subst hq
+    exact pieceDec_storeMem _ _ _ (gpNumU_lt_16 S) (gpNumU_lt_16 B) hd
 
 /-- The computed shape of a cell arm's instruction decodes to its machine instruction. -/
 theorem MArm.shape_ops {P : Params} {m : MArm} (h : m.ok = true) {sh : DShape}
     (hs : shapeOf P m.instr = some sh) : sh.ops' = m.js := by
   obtain ⟨hb, hp⟩ := m.bytes P h
   cases m <;> exact shapeOf_lopn_ops _ hb hp hs
+
+/-- A cell arm is no compare arm of `DecodePrintedAddr`. -/
+theorem MArm.cmpArm_false {m : MArm} (h : m.ok = true) :
+    (classifyA m.instr).any cmpArmB = false := by
+  cases m with
+  | stv n B off S =>
+    simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
+    have hn : gpOk n = false := by
+      cases hg : gpOk n
+      · rfl
+      · rw [cellParts?_gp hg] at h; simp at h
+    simp [MArm.instr, classifyA, cmpArmB, isMovM, hn]
+  | _ => simp [MArm.instr, classifyA, cmpArmB, Option.any_map, isMovM]
 
 /-- **The cell load.** From `ACorrW`, with the base `B` at width `64` and the eight bytes at
     the cell address disjoint from the red-zone word, the address-machine step of
@@ -1012,6 +1056,24 @@ theorem sim_stm (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : S
   · show write64 s.mem _ _ x = _
     rw [hmem, hofs]
     exact agree_write64 hc.mem _ _ x hx
+
+/-- **The move into a cell.** From `ACorrW`, with the base `B` and the source `S` at width
+    `64`, the address-machine step of `MOV:64 n, S` is matched by `mov %S, off(%B)`. -/
+theorem sim_stv (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : String)
+    (h : (MArm.stv n B off S).ok = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 = 64) (hwS : (s.reg.lvm S).1 = 64)
+    (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) ((MArm.stv n B off S).instr, .reg none) s zf
+      = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa (MArm.stv n B off S).js) s' ∧ zf' = zf := by
+  have hok := h
+  simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨⟨hn, hS⟩, hB⟩, -⟩ := h
+  rw [MArm.instr, fstepA_movStm _ hn (hc.wide hB hwB) (hc.wide hS hwS)] at hst
+  have hst' : fstepA (frameP P rsp) ((MArm.stm n B off S).instr, .reg none) s zf
+      = some (s', zf') := by
+    rw [MArm.instr, fstepA_stm _ hn (hc.wide hB hwB) (hc.wide hS hwS)]; exact hst
+  exact sim_stm P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst'
 
 /-! ## 8. The carry arms with frame-slot operands -/
 
@@ -4962,10 +5024,9 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have h64 := hsafe.1.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
               (by simp [carryIns]) (by
                 have hsm : slotMov? (.Lopn [.reg D] o [.reg A]) = none := by
-                  simp only [slotMov?]
-                  split_ifs with ho
-                  · rcases ho with rfl | rfl <;> simp [castTagW] at hw
-                  · rfl
+                  have ho : ¬(o = "MOVQ" ∨ o = "MOV:64") := by
+                    rintro (rfl | rfl) <;> simp [castTagW] at hw
+                  simp only [slotMov?, if_neg ho]
                 rw [hpc]
                 simp only [narrowSrc, hbk?, hclK, hl, List.mem_append, not_or]
                 exact ⟨by simp, not_mem_bitSrc hget hsm A⟩)
@@ -5003,7 +5064,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
       swap
       · -- a frame-word store of a one-bit name
         obtain ⟨S, hS1⟩ := List.exists_mem_of_ne_nil _ h1b
-        obtain ⟨i, q, bS, hi, hmv, hq, -, hbS⟩ := bitSrc_spec hS1
+        obtain ⟨i, q, bS, hi, hmv, hq, hpre, hbS⟩ := bitSrc_spec hS1
+        have hcq : cellParts? q = none := by simp [cellParts?, hpre]
         rw [hget] at hi
         cases hi
         obtain ⟨m, hia, hm⟩ : ∃ m, LinstrR.Lopn ds o ss = .Lopn [.reg q] m [.reg S]
@@ -5023,7 +5085,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           rcases hm with rfl | rfl <;>
             simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
               classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
-              classifyR, hcl]
+              classifyR, hcl, hcq]
               using hok
         have hli := AArm.li_eq hok'
         rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
@@ -5284,8 +5346,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               sa'.flags.zf.getD false = zf' := by
             intro sa' hcnd
             have hcm := hcondNext hcnd
-            rw [← hia] at hcm
-            cases m <;> simp [MArm.instr, classifyA, cmpArmB, Option.any_map, isMovM] at hcm
+            rw [← hia, MArm.cmpArm_false hok] at hcm
+            cases hcm
           have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
           cases m with
           | ldm D n B off =>
@@ -5314,6 +5376,21 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hwS : (s.reg.lvm S).1 = 64 := hws S (by rw [← hia]; exact reg_reads (by simp))
               hS (by rw [← hia]; simp [carryIns])
             obtain ⟨hc', -⟩ := sim_stm P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          | stv n B off S =>
+            have hok' := hok
+            simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
+            obtain ⟨⟨⟨hn, hS⟩, hB⟩, -⟩ := hok'
+            simp only [MArm.instr] at hia
+            have hwB : (s.reg.lvm B).1 = 64 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
+              hB (by rw [← hia]; simp [carryIns])
+            have hwS : (s.reg.lvm S).1 = 64 := hws S (by rw [← hia]; exact reg_reads (by simp))
+              hS (by rw [← hia]; simp [carryIns])
+            obtain ⟨hc', -⟩ := sim_stv P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
               (hnoadd hnotadd _ _) hrun hsafe'
             refine ⟨sa', ?_, hC⟩

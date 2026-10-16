@@ -18,7 +18,8 @@ and for a table with `select` (`ImpToNF.withSelect`).
 
 ## Main results
 
-* `selectSpec_withSelect` — a table with `select` satisfies `SelectSpec`.
+* `selectSpec_withSelect`, `selectSpec_hax64Builtins` — a table with `select` and
+  `Hax.hax64Builtins` satisfy `SelectSpec`.
 * `refines_hax64Builtins` — on `Hax.hax64Builtins`, the checked `Sub` and `Add`, where
   defined, agree with the wrapping operations at `64` bits (`Refines` at `hax64Spec`).
 * `refines_mono`, `refines_withSelect` — `Refines` passes to a table whose values are
@@ -26,7 +27,7 @@ and for a table with `select` (`ImpToNF.withSelect`).
   `select`.
 * `wordSpec_hax64Builtins`, `wordSpec_mono`, `wordSpec_withSelect` — the same for
   `WordSpec`.
-* `desugar_hax64Builtins` — the three hypotheses at `withSelect Hax.hax64Builtins`.
+* `desugar_hax64Builtins` — the three hypotheses at `Hax.hax64Builtins`.
 -/
 
 @[expose] public section
@@ -45,6 +46,10 @@ open CatCrypt.Crypto.Hax.ImpToNF (withSelect withSelect_select_bool withSelect_o
 /-- A table with `select` satisfies `SelectSpec`. -/
 theorem selectSpec_withSelect (bi : Builtins) : SelectSpec (withSelect bi) :=
   fun k x y => withSelect_select_bool bi k x y
+
+/-- `Hax.hax64Builtins` satisfies `SelectSpec`. -/
+theorem selectSpec_hax64Builtins : SelectSpec _root_.Hax.hax64Builtins :=
+  _root_.Hax.hax64Builtins_select_bool
 
 /-! ## 2. The renaming of the checked operations -/
 
@@ -177,15 +182,14 @@ theorem wordSpec_withSelect {bi : Builtins} (h : WordSpec bi) : WordSpec (withSe
   rem := fun a p v ha hp0 hp hv =>
     h.rem a p v ha hp0 hp (by rwa [withSelect_of_ne bi (by decide)] at hv)
 
-/-! ## 4. The `u64` table with `select` -/
+/-! ## 4. The `u64` table -/
 
-/-- **The hypotheses of the desugaring passes at the `u64` table with `select`**:
-    `SelectSpec`, `Refines` at `hax64Spec`, and `WordSpec`. -/
+/-- **The hypotheses of the desugaring passes at the `u64` table**: `SelectSpec`, `Refines` at
+    `hax64Spec`, and `WordSpec`. -/
 theorem desugar_hax64Builtins :
-    SelectSpec (withSelect _root_.Hax.hax64Builtins) ∧
-    Refines (withSelect _root_.Hax.hax64Builtins) hax64Spec ∧
-    WordSpec (withSelect _root_.Hax.hax64Builtins) :=
-  ⟨selectSpec_withSelect _, refines_withSelect refines_hax64Builtins hax64Spec_ne_select,
-    wordSpec_withSelect wordSpec_hax64Builtins⟩
+    SelectSpec _root_.Hax.hax64Builtins ∧
+    Refines _root_.Hax.hax64Builtins hax64Spec ∧
+    WordSpec _root_.Hax.hax64Builtins :=
+  ⟨selectSpec_hax64Builtins, refines_hax64Builtins, wordSpec_hax64Builtins⟩
 
 end CatCrypt.Crypto.Hax.ImpDesugarTable

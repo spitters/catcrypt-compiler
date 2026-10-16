@@ -239,7 +239,25 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (ImgRelW imgGate
   ptr_of_reloadW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeakPhys (stepLeakA instrLeakA
-  instrLeakA_ldm instrLeakA_stm instrLeakA_slotLoad instrLeakA_slotStore)
+  instrLeakA_ldm instrLeakA_stm instrLeakA_slotLoad instrLeakA_slotStore evA)
+
+/-- A cell load, `LOAD:64` or `MOV:64`, accesses the address in its base plus its offset. -/
+theorem instrLeakA_cellLd (frame : String → Option (BitVec 64)) {x : LinstrR} {D B : String}
+    {off : Nat} (hc : cellA? x = some (.ld D B off)) {sa : LstateA} {p : BitVec 64}
+    (hB : sa.reg.getW B 64 = some p) :
+    instrLeakA frame (x, .reg none) sa = [evA (p + BitVec.ofNat 64 off)] := by
+  have hm := slotMov_cell hc
+  obtain ⟨_, n, rfl, -, -⟩ := cellA_ld hc
+  simp [instrLeakA, hm, slotCmp?, hc, hB]
+
+/-- A cell store, `STORE:64` or `MOV:64`, accesses the address in its base plus its offset. -/
+theorem instrLeakA_cellSt (frame : String → Option (BitVec 64)) {x : LinstrR} {B S : String}
+    {off : Nat} (hc : cellA? x = some (.st B off S)) {sa : LstateA} {p : BitVec 64}
+    (hB : sa.reg.getW B 64 = some p) :
+    instrLeakA frame (x, .reg none) sa = [evA (p + BitVec.ofNat 64 off)] := by
+  have hm := slotMov_cell hc
+  obtain ⟨_, n, rfl, -, -⟩ := cellA_st hc
+  simp [instrLeakA, hm, slotCmp?, hc, hB]
 
 /-- **A step of the address machine emits the same events on a body and on its cell body**,
     at a state in which the base register of every cell access at the program counter holds
@@ -264,16 +282,17 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
       | ld D B off =>
           obtain ⟨A, m, hacc, hBf, hfr, -⟩ := hF.ld _ _ D B off hb0 hc
           have hp := hptr B A m hacc hBf (hF.ldGp _ _ D B off hb0 hc)
-          obtain ⟨nm, hx, hn⟩ := cellA_ld hc
+          obtain ⟨mm, nm, hx, hmm, hn⟩ := cellA_ld hc
           obtain ⟨ii, li⟩ := b0
           simp only at hx
           subst hx
-          have hm : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn [.reg D] "LOAD:64" [.reg nm]⟩
+          have hm : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn [.reg D] mm [.reg nm]⟩
               = ⟨ii, .Lopn [.reg D] "MOVQ" [.reg (memName A off)]⟩ := by
             simp [cellMove, hc, hacc]
-          have h1 : normA (.Lopn [.reg D] "LOAD:64" [.reg nm])
-              = .Lopn [.reg D] "LOAD:64" [.reg nm] := by simp [normA]
-          have h2 : tagA (.Lopn [.reg D] "LOAD:64" [.reg nm]) = .reg none := by simp [tagA]
+          have h1 : normA (.Lopn [.reg D] mm [.reg nm])
+              = .Lopn [.reg D] mm [.reg nm] := by rcases hmm with rfl | rfl <;> simp [normA]
+          have h2 : tagA (.Lopn [.reg D] mm [.reg nm]) = .reg none := by
+            rcases hmm with rfl | rfl <;> simp [tagA]
           have h3 : normA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)])
               = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] := by simp [normA]
           have h4 : tagA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) = .reg none := by
@@ -281,21 +300,22 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
           unfold stepLeakA
           rw [hbC, hb0, hm]
           simp only [h1, h2, h3, h4]
-          rw [instrLeakA_ldm frame hn hp,
+          rw [instrLeakA_cellLd frame hc hp,
             instrLeakA_slotLoad frame (d := D) (q := memName A off) (by simp [slotMov?]) hfr]
       | st B off S =>
           obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
           have hp := hptr B A m hacc hBf (hF.stGp _ _ B off S hb0 hc)
-          obtain ⟨nm, hx, hn⟩ := cellA_st hc
+          obtain ⟨mm, nm, hx, hmm, hn⟩ := cellA_st hc
           obtain ⟨ii, li⟩ := b0
           simp only at hx
           subst hx
-          have hm : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn [.reg nm] "STORE:64" [.reg S]⟩
+          have hm : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn [.reg nm] mm [.reg S]⟩
               = ⟨ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
             simp [cellMove, hc, hacc]
-          have h1 : normA (.Lopn [.reg nm] "STORE:64" [.reg S])
-              = .Lopn [.reg nm] "STORE:64" [.reg S] := by simp [normA]
-          have h2 : tagA (.Lopn [.reg nm] "STORE:64" [.reg S]) = .reg none := by simp [tagA]
+          have h1 : normA (.Lopn [.reg nm] mm [.reg S])
+              = .Lopn [.reg nm] mm [.reg S] := by rcases hmm with rfl | rfl <;> simp [normA]
+          have h2 : tagA (.Lopn [.reg nm] mm [.reg S]) = .reg none := by
+            rcases hmm with rfl | rfl <;> simp [tagA]
           have h3 : normA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S])
               = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by simp [normA]
           have h4 : tagA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) = .reg none := by
@@ -303,7 +323,7 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
           unfold stepLeakA
           rw [hbC, hb0, hm]
           simp only [h1, h2, h3, h4]
-          rw [instrLeakA_stm frame hn hp,
+          rw [instrLeakA_cellSt frame hc hp,
             instrLeakA_slotStore frame (q := memName A off) (S := S) (by simp [slotMov?]) hSf
               hfr]
       | lea D B off =>
@@ -619,7 +639,8 @@ theorem cellA?_normA {x : LinstrR} (h : cellA? x = none) : cellA? (normA x) = no
           simp only [if_true, LinstrR.Lopn.injEq] at heq
           obtain ⟨-, ho, -⟩ := heq
           subst ho
-          rw [if_neg (by decide +kernel), if_neg (by decide +kernel), if_neg (by decide +kernel)]
+          rw [if_neg (by decide +kernel), if_neg (by decide +kernel), if_neg (by decide +kernel),
+            if_neg (by decide +kernel)]
         · rfl
       · simpa [normA, hm] using h
   | _ => exact h

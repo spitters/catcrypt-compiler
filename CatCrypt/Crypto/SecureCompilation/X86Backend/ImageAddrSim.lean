@@ -1243,9 +1243,15 @@ theorem save_frame {frame : String → Option (BitVec 64)}
   | none => rfl
   | some a' =>
       exfalso
-      rcases slotMov?_cases hm with hx | hx <;>
+      rcases slotMov?_cases hm with hx | hx
       · rw [hx] at hg
         simp [instrGateB, icase, slotMov?, ha, hR] at hg
+      · rw [hx] at hg hm
+        have hc : (cellParts? (slotOfReg R)).isSome = false ∧ (cellParts? R).isSome = false := by
+          simp only [slotMov?] at hm
+          split_ifs at hm with h1 h2
+          simp_all
+        simp [instrGateB, icase, slotMov?, ha, hR, hc] at hg
 
 theorem regGateB_slotMov {frame : String → Option (BitVec 64)} {x : LinstrR}
     (h : regGateB frame x = true) {d src : String} (hm : slotMov? x = some (d, src)) :

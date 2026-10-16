@@ -1105,10 +1105,17 @@ theorem save_frameW {frame : String → Option (BitVec 64)}
   | none => rfl
   | some a' =>
       exfalso
-      rcases slotMov?_cases hm with hx | hx <;>
+      rcases slotMov?_cases hm with hx | hx
       · rw [hx] at hg
         simp [instrGateBW, gateAtW, carryI?, icase, slotMov?, ha, hR, castGateB, classifyK,
           castTagW] at hg
+      · rw [hx] at hg hm
+        have hc : (cellParts? (slotOfReg R)).isSome = false ∧ (cellParts? R).isSome = false := by
+          simp only [slotMov?] at hm
+          split_ifs at hm with h1 h2
+          simp_all
+        simp [instrGateBW, gateAtW, carryI?, icase, slotMov?, ha, hR, castGateB, classifyK,
+          castTagW, hc] at hg
 
 /-- At an indexed access whose pointer register was reloaded from the frame word of an
     array, the pointer register holds the base of the array. -/

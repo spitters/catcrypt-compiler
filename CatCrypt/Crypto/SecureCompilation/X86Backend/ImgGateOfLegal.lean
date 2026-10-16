@@ -422,15 +422,15 @@ theorem gate_movRR {frame : String → Option (BitVec 64)}
     {m d s : String} (hm : m ∈ ["MOV:64", "MOVQ"]) (hd : gpOk d = true) (hs : gpOk s = true)
     (hfd : frame d = none) (hfs : frame s = none) (hsW : s ∉ W) :
     gateAtW frame slotArr body k W (.Lopn [.reg d] m [.reg s]) = true := by
-  have := cellParts?_of_gpOk hd
-  have := cellParts?_of_gpOk hs
+  have hcd := cellParts?_of_gpOk hd
+  have hcs := cellParts?_of_gpOk hs
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
   rcases hm with rfl | rfl <;>
   · apply gateAtW_reg
     · img_reads
     · rfl
     · img_icase
-      simp [hfd, hfs]
+      simp [hfd, hfs, hcd, hcs]
     · exact movImmStruct?_ne (by decide)
     · rfl
     · img_sym; img_fin
@@ -444,13 +444,13 @@ theorem gate_movLoad {frame : String → Option (BitVec 64)}
     (hq : LprogBytes.isSpillOrQsave q = true) (hfd : frame d = none)
     (hfq : (frame q).isSome = true) (hqW : q ∈ W → q ∉ movlNames body) :
     gateAtW frame slotArr body k W (.Lopn [.reg d] m [.reg q]) = true := by
-  have := cellParts?_of_gpOk hd
-  have := cellParts?_of_slot hq
+  have hcd := cellParts?_of_gpOk hd
+  have hcq := cellParts?_of_slot hq
   have hqg := not_gpOk_of_slot hq
   obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hfq
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
   have hi : icase frame (.Lopn [.reg d] m [.reg q]) = .sload d q := by
-    rcases hm with rfl | rfl <;> (img_icase; simp [hfd, ha])
+    rcases hm with rfl | rfl <;> (img_icase; simp [hfd, ha, hcd, hcq])
   simp only [gateAtW, carryI?, hi, gateReadSet]
   rcases hm with rfl | rfl <;>
   · by_cases hW : q ∈ W
@@ -466,14 +466,14 @@ theorem gate_movStore {frame : String → Option (BitVec 64)}
     (hq : LprogBytes.isSpillOrQsave q = true) (hfq : (frame q).isSome = true)
     (hfs : frame s = none) (hsW : s ∈ W → s ∉ castDsts body) :
     gateAtW frame slotArr body k W (.Lopn [.reg q] m [.reg s]) = true := by
-  have := cellParts?_of_gpOk hs
-  have := cellParts?_of_slot hq
+  have hcs := cellParts?_of_gpOk hs
+  have hcq := cellParts?_of_slot hq
   have := hasPrefix_mem_of_slot hq
   have hqg := not_gpOk_of_slot hq
   obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hfq
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
   have hi : icase frame (.Lopn [.reg q] m [.reg s]) = .sstore q s := by
-    rcases hm with rfl | rfl <;> (img_icase; simp [hfs, ha])
+    rcases hm with rfl | rfl <;> (img_icase; simp [hfs, ha, hcs, hcq])
   simp only [gateAtW, carryI?, hi, gateReadSet]
   rcases hm with rfl | rfl <;>
   · by_cases hW : s ∈ W
@@ -1125,7 +1125,8 @@ theorem slotMov?_of_saveOf {j : Linstr} (h : SaveOf j) :
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
   refine ⟨R, hR, ?_⟩
   rw [hj]
-  rcases hm with rfl | rfl <;> simp [slotMov?]
+  rcases hm with rfl | rfl <;>
+    simp [slotMov?, cellParts?_of_slot (isSpillOrQsave_slotOfReg R), cellParts?_of_gpOk hR]
 
 /-- **The class `physImgB` of a body with a save prefix**: let every instruction of the prefix
     `pre` be the save of a general-purpose register (`SaveOf`), let no instruction of `rest`
@@ -1163,7 +1164,9 @@ theorem physImgB_of_savePrefix {slotArr : String → Option (String × Nat)} {pr
         simp [hs, hne]
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
       rw [hj]
-      rcases hm with rfl | rfl <;> simp [accOkB, slotWriteB, slotMov?, hent]
+      rcases hm with rfl | rfl <;>
+        simp [accOkB, slotWriteB, slotMov?, hent,
+          cellParts?_of_slot (isSpillOrQsave_slotOfReg R), cellParts?_of_gpOk hR]
     · refine ⟨hacc k i (by omega) hb, ?_⟩
       rw [List.getElem?_append_right (by omega)] at hb
       have hi := List.mem_of_getElem? hb

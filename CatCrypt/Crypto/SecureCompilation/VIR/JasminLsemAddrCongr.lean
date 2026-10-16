@@ -760,7 +760,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
           unfold cellA? at hcl
           split at hcl
           · rename_i d o n
-            split_ifs at hcl with h1 h2
+            split_ifs at hcl with h1 h2 h3 h4
             · obtain ⟨⟨b, off⟩, hp, he⟩ := Option.map_eq_some_iff.1 hcl
               subst he
               have hb : readsI (.Lopn [.reg d] o [.reg n]) b := cell_reads (by simp) hp
@@ -792,6 +792,31 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
               · exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1,
                   h.2.2.2, rfl⟩
               · exact ORel.none
+            · subst h4
+              split at hcl
+              · rename_i p hp
+                obtain ⟨b, off⟩ := p
+                cases hcl
+                have hb : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) b := cell_reads (by simp) hp
+                have hv : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) n := reg_reads (by simp)
+                simp only
+                rw [getW_congr hN hb, getW_congr hN hv, hM]
+                split
+                · exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
+                · simp only [getW_congr hN hv]
+                  split
+                  · exact ORel.some ⟨(NStep.refl hN.1).nextPc, rfl, h.2.2.1, h.2.2.2, rfl⟩
+                  · exact ORel.none
+                · exact ORel.none
+              · obtain ⟨⟨b, off⟩, hp, he⟩ := Option.map_eq_some_iff.1 hcl
+                subst he
+                have hb : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) b := cell_reads (by simp) hp
+                simp only
+                rw [getW_congr hN hb, hM]
+                split
+                · exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, rfl, h.2.2.1,
+                    h.2.2.2, rfl⟩
+                · exact ORel.none
           · cases hcl
       | some p =>
         obtain ⟨d, x, q⟩ := p

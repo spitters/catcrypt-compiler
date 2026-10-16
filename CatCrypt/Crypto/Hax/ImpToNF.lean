@@ -136,7 +136,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax.ImpToNF
 
-open _root_.Hax (ImpExpr ImpLit Value Env Outcome Builtins IntWidth denote' denoteArgs')
+open _root_.Hax (ImpExpr ImpLit Value Env Outcome Builtins IntWidth denote' denoteArgs' selectOp)
 open _root_.Hax.InlineLocalClosures (frameOk)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
@@ -4436,12 +4436,6 @@ def hax64ScalarSig (f : String) : List NfTy → Option NfTy
       else none
   | _ => none
 
-/-- The value of `select` on a Boolean and two values: the first value at `true`, the second
-    at `false`; undefined on every other list of arguments. -/
-def selectOp : List Value → Option Value
-  | [.bool k, x, y] => some (if k then x else y)
-  | _ => none
-
 /-- **The builtins `bi` with `select`**: the call `select` is `selectOp`, and every other
     call is a call of `bi`. -/
 def withSelect (bi : Builtins) : Builtins := fun f vals =>
@@ -4461,19 +4455,21 @@ theorem withSelect_of_ne (bi : Builtins) {f : String} (hf : f ≠ "select") (val
     withSelect bi f vals = bi f vals := by
   simp only [withSelect, hf, if_false]
 
-/-- `Hax.hax64Builtins` has no call `select`. -/
-theorem hax64Builtins_select (vals : List Value) :
-    _root_.Hax.hax64Builtins "select" vals = none := rfl
+/-- **`Hax.hax64Builtins` with `select` is `Hax.hax64Builtins`**: the table answers `select`
+    by `selectOp`. -/
+theorem withSelect_hax64Builtins : withSelect _root_.Hax.hax64Builtins = _root_.Hax.hax64Builtins := by
+  funext f vals
+  by_cases hf : f = "select"
+  · subst hf
+    rw [withSelect_select, _root_.Hax.hax64Builtins_select]
+  · rw [withSelect_of_ne _ hf]
 
 /-- A value of `Hax.hax64Builtins` is a value of `Hax.hax64Builtins` with `select`. -/
 theorem withSelect_hax64Builtins_of_base {f : String} {vals : List Value} {v : Value}
     (h : _root_.Hax.hax64Builtins f vals = some v) :
     withSelect _root_.Hax.hax64Builtins f vals = some v := by
-  by_cases hf : f = "select"
-  · subst hf
-    rw [hax64Builtins_select] at h
-    cases h
-  · rw [withSelect_of_ne _ hf, h]
+  rw [withSelect_hax64Builtins]
+  exact h
 
 /-- The argument types of a method of the prime-field interface: two `64`-bit words for a
     method with two arguments, one for a method with one. -/
@@ -5019,13 +5015,14 @@ theorem hax64ScalarSig_typed (f : String) (as : List NfTy) (r : NfTy)
         exact ⟨_, rfl, rfl⟩
       · cases hr
   | [], _, hr => simp [hax64ScalarSig] at hr
-  | [_, _, _], _, hr =>
+  | [_, _, _], xs₃, hr =>
+    have hr' := hr
     simp only [hax64ScalarSig] at hr
     split at hr
     · rename_i h
       obtain ⟨rfl, -⟩ := h
-      rw [hax64Builtins_select] at hv
-      cases hv
+      rw [_root_.Hax.hax64Builtins_select] at hv
+      exact selectOp_typed hr' xs₃ v hv
     · cases hr
   | _ :: _ :: _ :: _ :: _, _, hr => simp [hax64ScalarSig] at hr
 

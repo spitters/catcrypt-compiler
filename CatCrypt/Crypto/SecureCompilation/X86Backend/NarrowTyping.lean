@@ -75,9 +75,8 @@ theorem slotMov?_dst {i : LinstrR} {d a : String} (h : slotMov? i = some (d, a))
     d ∈ dstNames i := by
   unfold slotMov? at h
   split at h
-  · split at h
-    · cases h; simp [dstNames, VIR.JasminLsemExportRewrites.opNames]
-    · cases h
+  · split_ifs at h
+    cases h; simp [dstNames, VIR.JasminLsemExportRewrites.opNames]
   · cases h
 
 theorem slotCmp?_dst {i : LinstrR} {d x q : String} (h : slotCmp? i = some (d, x, q)) :
@@ -103,10 +102,13 @@ theorem cellA?_dst {i : LinstrR} {d b : String} {off : Nat} (h : cellA? i = some
   unfold cellA? at h
   split at h
   · split_ifs at h
-    all_goals obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+    all_goals try split at h
     all_goals first
-      | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
-      | cases hp
+      | cases h
+      | (obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+         first
+           | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
+           | cases hp)
   · cases h
 
 theorem cellA?_lea_dst {i : LinstrR} {d b : String} {off : Nat}
@@ -114,10 +116,13 @@ theorem cellA?_lea_dst {i : LinstrR} {d b : String} {off : Nat}
   unfold cellA? at h
   split at h
   · split_ifs at h
-    all_goals obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+    all_goals try split at h
     all_goals first
-      | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
-      | cases hp
+      | cases h
+      | (obtain ⟨p, -, hp⟩ := Option.map_eq_some_iff.mp h
+         first
+           | (cases hp; simp [dstNames, VIR.JasminLsemExportRewrites.opNames])
+           | cases hp)
   · cases h
 
 theorem slotCarry?_dst {frame : String → Option (BitVec 64)} {i : LinstrR} {lo : Bool}
