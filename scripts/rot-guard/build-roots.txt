@@ -532,7 +532,7 @@ CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpLoopBody
 CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
 CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
-CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRun
+CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe
 CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
 CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
 CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
