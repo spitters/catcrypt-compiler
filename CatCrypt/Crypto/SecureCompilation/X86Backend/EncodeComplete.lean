@@ -36,8 +36,8 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 ## Main definitions
 
 * `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Unary`, `x86MemMov`, `x86SibLoad`,
-  `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul`, `x86SlotImm`, `x86Fixed`: the
-  instruction families the x86 encoder builds beyond the register moves, the select and the
+  `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul`, `x86StoreImm`, `x86ZeroArr`,
+  `x86SlotImm`, `x86Fixed`: the instruction families the x86 encoder builds beyond the register moves, the select and the
   materialised comparisons.
 * `x86Enc`: the x86 instance of the instruction-level encoder `IsaEncoder`.
 * `opResolvesB`, `x86LegalB`: the decisions of `OpResolves` and of the legal forms
@@ -69,7 +69,7 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
   `encodableLinstrR_aluImm`, `encodableLinstrR_shiftReg`, `encodableLinstrR_unary`,
   `encodableLinstrR_memMov`, `encodableLinstrR_sibLoad`, `encodableLinstrR_sibStore`,
   `encodableLinstrR_carry3`, `encodableLinstrR_flagOut`, `encodableLinstrR_wideMul`,
-  `encodableLinstrR_fixed`: each family is encodable over general-purpose registers (and,
+  `encodableLinstrR_storeImm`, `encodableLinstrR_zeroArr`, `encodableLinstrR_fixed`: each family is encodable over general-purpose registers (and,
   for the immediate move and the loads and stores, over resolving names).
 * `loadCSE_encodable`: `loadCSE` maps a body of encodable instructions to a body of
   encodable instructions, at the same frame size, spill width and save block.
@@ -571,6 +571,14 @@ def x86FlagOut (opn : String) (srcs : List LOperand) : Bool :=
 /-- The widening multiplications the encoder builds into two registers: `MULX`. -/
 def x86WideMul (opn : String) : Bool := stripWidthTag opn == "MULX"
 
+/-- The element indices of the constant-index stack-array store the encoder builds: those
+    whose byte offset `stackDispOk` admits. -/
+def x86StoreImm (k : Nat) : Bool := stackDispOk k
+
+/-- The stack-array zeroings the encoder builds: a positive count of 64-bit words whose last
+    byte offset `stackDispOk` admits. -/
+def x86ZeroArr (n w : Nat) : Bool := w == 64 && decide (0 < n) && stackDispOk (n - 1)
+
 /-- The immediates the encoder moves into a spill slot under a move mnemonic: an immediate
     that fits the sign-extended `imm32` field, or any immediate at the 64-bit width. -/
 def x86SlotImm (mn : String) (v : Nat) : Bool :=
@@ -899,6 +907,26 @@ theorem encodableLinstrR_fixed {F W Q : Nat} {i : LinstrR} (hi : x86Fixed i = tr
     split_ifs <;> simp [encJcc8, encJcc32]
   · simp [encodableLinstrR, hi]
 
+/-- **A constant-index stack-array store of `x86StoreImm` over a general-purpose base and
+    value is encodable**, whatever its array destination. -/
+theorem encodableLinstrR_storeImm {F W Q : Nat} {a : LOperand} {bn vn : String} {k : Nat}
+    (hk : x86StoreImm k = true) (hb : isGpName bn = true) (hv : isGpName vn = true) :
+    encodableLinstrR F W (.Lopn [a] "STOREIMM" [.reg bn, .reg vn, .imm k]) Q = true := by
+  apply encodable_lopn_of_ne_nil
+  rw [encodeLopn_storeImm F W a bn vn k Q hb hv hk]
+  simp [encMemMovw]
+
+/-- **A stack-array zeroing of `x86ZeroArr` into a general-purpose register is
+    encodable.** -/
+theorem encodableLinstrR_zeroArr {F W Q : Nat} {dn : String} {n w : Nat}
+    (ho : x86ZeroArr n w = true) (hd : isGpName dn = true) :
+    encodableLinstrR F W (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm w]) Q = true := by
+  simp only [x86ZeroArr, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at ho
+  obtain ⟨⟨rfl, hn⟩, hk⟩ := ho
+  apply encodable_lopn_of_ne_nil
+  rw [encodeLopn_zeroArr F W dn n Q hd hn hk]
+  exact encZeroArr_ne_nil _ hn
+
 /-! ## Load forwarding -/
 
 section LoadCSE
@@ -930,7 +958,8 @@ end LoadCSE
     memory names are `encMemName`; the materialised comparisons are `isSetccEncMnem` against
     a register and `isSetccImmEnc` against an immediate; the further families are decided by
     `x86SlotImm`, `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Unary`, `x86MemMov`,
-    `x86SibLoad`, `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul` and `x86Fixed`. -/
+    `x86SibLoad`, `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul`, `x86StoreImm`,
+    `x86ZeroArr` and `x86Fixed`. -/
 def x86Enc : IsaEncoder where
   Ctx := Nat × Nat × Nat
   ctx body := (frameSize body, if bodyIsU64 body then 64 else 32, qsaveBytesFor body)
@@ -952,6 +981,8 @@ def x86Enc : IsaEncoder where
   carry3 := x86Carry3
   flagOut := x86FlagOut
   wideMul := x86WideMul
+  storeImm := x86StoreImm
+  zeroArr := x86ZeroArr
   fixed := x86Fixed
 
 /-- The decision of `OpResolves` at a frame size, spill width and save block. -/
@@ -1056,22 +1087,44 @@ def x86WideMulB : LinstrR → Bool
       x86WideMul opn && isGpName ln && isGpName hn && isGpName sn
   | _ => false
 
+/-- The decision of the constant-index stack-array stores of `LegalForm` at the x86
+    encoder. -/
+def x86StoreImmB : LinstrR → Bool
+  | .Lopn [_] opn [.reg bn, .reg vn, .imm k] =>
+      opn == "STOREIMM" && x86StoreImm k && isGpName bn && isGpName vn
+  | _ => false
+
+/-- The decision of the stack-array zeroings of `LegalForm` at the x86 encoder. -/
+def x86ZeroArrB : LinstrR → Bool
+  | .Lopn [.reg dn] opn [.imm n, .imm w] => opn == "ZEROARR" && x86ZeroArr n w && isGpName dn
+  | _ => false
+
 /-- **The legal forms of the x86 encoder** in the context `c`, as a decision: the disjunction
     of the decisions of the families of `LegalForm`. -/
 def x86LegalB (c : Nat × Nat × Nat) (i : LinstrR) : Bool :=
   x86MovB c i || x86SelectB i || x86SetccB i || x86SetccImmB i || x86MovImmB c i ||
     x86AluB i || x86AluImmB i || x86ShiftRegB i || x86UnaryB i || x86MemMovB c i ||
     x86SibLoadB i || x86SibStoreB i || x86Carry3B i || x86FlagOutB i || x86WideMulB i ||
-    x86Fixed i
+    x86Fixed i || x86StoreImmB i || x86ZeroArrB i
 
 /-- A decision of a family of `x86LegalB` gives a legal form. -/
 theorem legalForm_of_x86LegalB {c : Nat × Nat × Nat} {i : LinstrR} (h : x86LegalB c i = true) :
     LegalForm X86Isa.x86Isa x86Enc c i := by
   simp only [x86LegalB, Bool.or_eq_true] at h
-  rcases h with ((((((((((((((h | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) |
-    h) | h) | h
+  rcases h with ((((((((((((((((h | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) |
+    h) | h) | h) | h) | h
   rotate_left 15
   · exact .fixed i h
+  · unfold x86StoreImmB at h; split at h
+    · simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨⟨rfl, ho⟩, h1⟩, h2⟩ := h
+      exact .storeImm _ _ _ _ ho h1 h2
+    · cases h
+  · unfold x86ZeroArrB at h; split at h
+    · simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨rfl, ho⟩, h1⟩ := h
+      exact .zeroArr _ _ _ ho h1
+    · cases h
   · unfold x86MovB at h; split at h
     · simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
       obtain ⟨⟨⟨hm, hd⟩, hs⟩, hds⟩ := h
@@ -1239,6 +1292,15 @@ theorem x86LegalB_of_legalForm {c : Nat × Nat × Nat} {i : LinstrR}
     change isGpName hn = true at h2
     change isGpName sn = true at h3
     simp [x86WideMulB, ho, h1, h2, h3]
+  | storeImm a bn vn k ho h1 h2 =>
+    change x86StoreImm k = true at ho
+    change isGpName bn = true at h1
+    change isGpName vn = true at h2
+    simp [x86StoreImmB, ho, h1, h2]
+  | zeroArr dn n w ho h1 =>
+    change x86ZeroArr n w = true at ho
+    change isGpName dn = true at h1
+    simp [x86ZeroArrB, ho, h1]
   | fixed i hi =>
     change x86Fixed i = true at hi
     simp [hi]
@@ -1334,6 +1396,8 @@ theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
   carry3_reg _ _ _ _ _ _ ho hd ha hs hk := encodableLinstrR_carry3 ho hd ha hs hk
   flagOut_reg _ _ _ _ ho hd := encodableLinstrR_flagOut ho hd
   wideMul_reg _ _ _ _ _ ho hl hh hs := encodableLinstrR_wideMul ho hl hh hs
+  storeImm_reg _ _ _ _ _ ho hb hv := encodableLinstrR_storeImm ho hb hv
+  zeroArr_reg _ _ _ _ ho hd := encodableLinstrR_zeroArr ho hd
   fixed_instr _ _ hi := encodableLinstrR_fixed hi
 
 /-- The select mnemonic of the x86 instruction set is `CMOV`. -/

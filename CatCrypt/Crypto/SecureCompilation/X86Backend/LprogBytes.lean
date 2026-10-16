@@ -1116,6 +1116,39 @@ def encStoreIdx (vn bn idxn scale : Nat) : List (BitVec 8) :=
   else if scale = 1 then encMovbSib vn bn idxn 1
   else []
 
+/-- The element offsets of a stack array of 64-bit words that a signed 32-bit displacement
+    reaches: the byte offset `8 k` of the element `k` is below `2 ^ 31`. -/
+def stackDispOk (k : Nat) : Bool := decide (8 * k < 2 ^ 31)
+
+/-- The bytes of the zeroing of `n` 64-bit words from the address in the register numbered
+    `b`: `movq $0, 8i(%b)` (`REX.W C7 /0 id`) for `i = 0, …, n - 1` in order. The sequence is
+    straight-line and its addresses depend only on `b` and `n`. -/
+def encZeroArr (b n : Nat) : List (BitVec 8) :=
+  (List.range n).flatMap fun i => ScalarEncoder.encMemMovImm b (Int.ofNat (8 * i)) 0
+
+/-- The bytes of the array zeroing `ZEROARR [d] <- [imm n; imm v]`: for a general-purpose
+    destination, a positive count `n` whose last element offset `stackDispOk` admits, and the
+    element width `v = 64`, the stores `encZeroArr` from the destination register; no bytes
+    for every other operand form. -/
+def encZeroArrOp (d a : LOperand) (v : Nat) : List (BitVec 8) :=
+  match d, a with
+  | .reg dn, .imm n =>
+      if isGpName dn && v == 64 && 0 < n && stackDispOk (n - 1) then encZeroArr (gpNumU dn) n
+      else []
+  | _, _ => []
+
+/-- The bytes of the constant-index store `STOREIMM [d] <- [base; val; imm k]`: for a
+    general-purpose base and value and an offset `stackDispOk` admits, `movq %val, 8k(%base)`;
+    no bytes for every other operand form. The destination names the updated array and is no
+    x86 operand. -/
+def encStoreImmOp (a s k : LOperand) : List (BitVec 8) :=
+  match a, s, k with
+  | .reg bn, .reg vn, .imm k =>
+      if isGpName bn && isGpName vn && stackDispOk k then
+        encMemMovw 1 0x89 (gpNumU vn) (gpNumU bn) (Int.ofNat (8 * k))
+      else []
+  | _, _, _ => []
+
 /-! ## 4. `encodeLinstrR` — the per-instruction byte encoder
 
 One `LinstrR` → its bytes. The straight-line `Lopn` arms reuse the `ScalarEncoder`
@@ -1499,6 +1532,8 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                     encSetccCmpImm w ((setccCmpOp base).getD 0x94) (gpNumU dn) (gpNumU an) v
                   else []
               | _, _ => []
+            -- Array zeroing `ZEROARR [d] <- [imm n; imm 64]`: one `movq $0` per word.
+            else if base == "ZEROARR" then encZeroArrOp d a v
             else encImmOp w base d v
           | _ =>
             match tagShiftExt base, d with
@@ -1635,6 +1670,8 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                             else []
                       else []
             | _, _, _, _ => []
+          -- Constant-index store `STOREIMM [d] <- [base; val; imm k]`: `movq %val, 8k(%base)`.
+          else if base == "STOREIMM" then encStoreImmOp a s cin
           else []
       | _, _ => []
   | _ => []
@@ -2909,6 +2946,51 @@ theorem encodeLopn_storeidx (frame spillW : Nat) :
     show gpNumU "RAX" = 0 from by decide +kernel,
     show gpNumU "RDI" = 7 from by decide +kernel,
     show gpNumU "RSI" = 6 from by decide +kernel]
+
+/-- **The array zeroing encodes to its word stores.** `ZEROARR [d] <- [imm n; imm 64]` over a
+    general-purpose destination, a positive count and a last element offset `stackDispOk`
+    admits encodes to `encZeroArr` from the destination register. -/
+theorem encodeLopn_zeroArr (frame spillW : Nat) (dn : String) (n qsaveB : Nat)
+    (hd : isGpName dn = true) (hn : 0 < n) (hk : stackDispOk (n - 1) = true) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm 64]) qsaveB
+      = encZeroArr (gpNumU dn) n := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "ZEROARR" || isMulHiBinding "ZEROARR") = false from by
+      decide +kernel,
+    show stripWidthTag "ZEROARR" = "ZEROARR" from by decide +kernel,
+    show ("ZEROARR" == "MULX") = false from by decide +kernel,
+    show ("ZEROARR" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "ZEROARR" = none from by decide +kernel,
+    show ("ZEROARR" == "SETE" || "ZEROARR" == "SETNE") = false from by decide +kernel,
+    show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
+    Bool.false_eq_true, if_false, if_true]
+  simp [encZeroArrOp, hd, hn, hk]
+
+/-- **The constant-index store encodes to one word store.**
+    `STOREIMM [d] <- [base; val; imm k]` over a general-purpose base and value and an offset
+    `stackDispOk` admits encodes to `movq %val, 8k(%base)`, whatever the destination. -/
+theorem encodeLopn_storeImm (frame spillW : Nat) (a : LOperand) (bn vn : String)
+    (k qsaveB : Nat) (hb : isGpName bn = true) (hv : isGpName vn = true)
+    (hk : stackDispOk k = true) :
+    encodeLopn frame spillW (.Lopn [a] "STOREIMM" [.reg bn, .reg vn, .imm k]) qsaveB
+      = encMemMovw 1 0x89 (gpNumU vn) (gpNumU bn) (Int.ofNat (8 * k)) := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "STOREIMM" || isMulHiBinding "STOREIMM") = false from by
+      decide +kernel,
+    show stripWidthTag "STOREIMM" = "STOREIMM" from by decide +kernel,
+    show ("STOREIMM" == "MULX") = false from by decide +kernel,
+    show ("STOREIMM" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "STOREIMM" = none from by decide +kernel,
+    show ("STOREIMM" == "CMOV") = false from by decide +kernel,
+    show ("STOREIMM" == "STOREIMM") = true from by decide +kernel,
+    Bool.false_eq_true, if_false, if_true]
+  simp [encStoreImmOp, hb, hv, hk]
+
+/-- The word stores of a positive count carry bytes. -/
+theorem encZeroArr_ne_nil (b : Nat) {n : Nat} (hn : 0 < n) : encZeroArr b n ≠ [] := by
+  obtain ⟨m, rfl⟩ := Nat.exists_eq_add_of_lt hn
+  simp [encZeroArr, List.range_succ_eq_map, ScalarEncoder.encMemMovImm,
+    ScalarEncoder.encMemMov]
 
 /-! ### The gate on a body carrying indexed accesses
 

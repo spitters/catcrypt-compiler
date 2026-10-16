@@ -891,6 +891,12 @@ theorem dispatch_alu_imm₂ (frame spillW : Nat) (mnem base : String)
       = encImmOp 1 base (.reg dn) v := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, hcc,
     Bool.false_eq_true, if_false]
+  split
+  · next hz =>
+    rw [beq_iff_eq] at hz
+    subst hz
+    simp (config := { decide := true }) [encZeroArrOp, encImmOp, shiftImmExt, aluImmDigit]
+  · rfl
 
 /-- **The group-1 immediate byte function.** Outside the sign-extended-imm8 range
     and inside the sign-extended-imm32 one, `encImmOp` emits the `81 /digit id`

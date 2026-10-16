@@ -50,6 +50,8 @@ them in its one-instruction body:
   `ADOXHI:64`, a carry-out binding with two sources, and the flag materialisation `SETC`;
 * the widening multiplication at the tag `MULX:64`, the high-word binding `MULXHI`, the keep
   marker `KEEP` and the frame directive `FRAMEADD`;
+* the constant-index stack-array store `STOREIMM` and the stack-array zeroing `ZEROARR`, at
+  whose tags the address machine `fstepA` has no step;
 * `Lgoto`, `Lcall`, `Lalign`, a conditional branch on a condition other than the zero flag,
   and a conditional branch to a label the body does not define.
 

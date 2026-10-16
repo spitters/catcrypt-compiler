@@ -952,6 +952,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Sm2MontMulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sm3PermThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTIndirect
 CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTPreservation
+CatCrypt.Crypto.SecureCompilation.X86Backend.StackArrDecode
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift

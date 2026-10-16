@@ -33,7 +33,8 @@ forwarding `loadCSE` preserves encodability.
   names, the materialised comparisons the encoder builds, against a register and against
   an immediate, and the further instruction families it builds (immediate moves into a
   slot, two-address operations, three-register shifts, one-source operations, loads and
-  stores, register-indexed accesses, carry chains, flag materialisations, widening
+  stores, register-indexed accesses, stack-array stores at a constant index and stack-array
+  zeroings, carry chains, flag materialisations, widening
   multiplications, and the forms it accepts whatever their operands).
 * `AllocOpI`: an operand of the allocated body: an encoder register, or a spill slot with a
   frame offset.
@@ -43,7 +44,8 @@ forwarding `loadCSE` preserves encodability.
   encoder builds: register moves over resolving names with at most one memory name, the
   select over encoder registers, the materialised comparisons, immediate moves, two-address
   operations against a register or an immediate, three-register shifts, one-source
-  operations, loads and stores, register-indexed loads and stores, three-source carry
+  operations, loads and stores, register-indexed loads and stores, constant-index
+  stack-array stores and stack-array zeroings, three-source carry
   chains, flag materialisations, widening multiplications, and the forms the encoder accepts
   whatever their operands.
 
@@ -154,6 +156,12 @@ structure IsaEncoder : Type 1 where
   /-- Whether the encoder builds the two-destination widening multiplication with this
       mnemonic. -/
   wideMul : String → Bool
+  /-- Whether the encoder builds the constant-index stack-array store `STOREIMM` at this
+      element index. -/
+  storeImm : Nat → Bool
+  /-- Whether the encoder builds the stack-array zeroing `ZEROARR` of this element count at
+      this element width. -/
+  zeroArr : Nat → Nat → Bool
   /-- Whether the encoder accepts the instruction whatever its operands resolve to: the forms
       without bytes and the control transfers. -/
   fixed : LinstrR → Bool
@@ -252,6 +260,14 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   sibStore_reg : ∀ (c : E.Ctx) (a : LOperand) (opn bn xn vn : String) (sc : Nat),
     E.sibStore opn sc = true → E.reg bn = true → E.reg xn = true → E.reg vn = true →
     E.instr c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn]) = true
+  /-- A constant-index stack-array store the encoder builds, with base and value encoder
+      registers, is encodable, whatever its array destination. -/
+  storeImm_reg : ∀ (c : E.Ctx) (a : LOperand) (bn vn : String) (k : Nat),
+    E.storeImm k = true → E.reg bn = true → E.reg vn = true →
+    E.instr c (.Lopn [a] "STOREIMM" [.reg bn, .reg vn, .imm k]) = true
+  /-- A stack-array zeroing the encoder builds into an encoder register is encodable. -/
+  zeroArr_reg : ∀ (c : E.Ctx) (dn : String) (n w : Nat), E.zeroArr n w = true →
+    E.reg dn = true → E.instr c (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm w]) = true
   /-- A three-source carry-chain addition the encoder builds over encoder registers is
       encodable. -/
   carry3_reg : ∀ (c : E.Ctx) (opn dn an sn kn : String), E.carry3 opn = true →
@@ -278,7 +294,8 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
     over two encoder registers, or against an immediate; a three-register shift; a one-source
     register operation; a load or store between resolving names of which at most one is a
     memory name; a register-indexed load or address computation and a register-indexed
-    store over encoder registers; a three-source carry-chain addition; a flag
+    store over encoder registers; a constant-index stack-array store and a stack-array
+    zeroing over encoder registers; a three-source carry-chain addition; a flag
     materialisation into an encoder register; a widening multiplication into two encoder
     registers; and an instruction the encoder accepts whatever its operands. -/
 inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
@@ -323,6 +340,13 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   | sibStore (a : LOperand) (opn bn xn vn : String) (sc : Nat) : E.sibStore opn sc = true →
       E.reg bn = true → E.reg xn = true → E.reg vn = true →
       LegalForm I E c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn])
+  /-- A constant-index stack-array store with base and value encoder registers. -/
+  | storeImm (a : LOperand) (bn vn : String) (k : Nat) : E.storeImm k = true →
+      E.reg bn = true → E.reg vn = true →
+      LegalForm I E c (.Lopn [a] "STOREIMM" [.reg bn, .reg vn, .imm k])
+  /-- A stack-array zeroing into an encoder register. -/
+  | zeroArr (dn : String) (n w : Nat) : E.zeroArr n w = true → E.reg dn = true →
+      LegalForm I E c (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm w])
   /-- A three-source carry-chain addition over encoder registers. -/
   | carry3 (opn dn an sn kn : String) : E.carry3 opn = true → E.reg dn = true →
       E.reg an = true → E.reg sn = true → E.reg kn = true →
@@ -366,6 +390,8 @@ theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
   | memMov mn d s hm hd hs hds => exact h.memMov_res c mn d s hm hd hs hds
   | sibLoad opn dn bn xn sc ho h1 h2 h3 => exact h.sibLoad_reg c opn dn bn xn sc ho h1 h2 h3
   | sibStore a opn bn xn vn sc ho h1 h2 h3 => exact h.sibStore_reg c a opn bn xn vn sc ho h1 h2 h3
+  | storeImm a bn vn k ho h1 h2 => exact h.storeImm_reg c a bn vn k ho h1 h2
+  | zeroArr dn n w ho h1 => exact h.zeroArr_reg c dn n w ho h1
   | carry3 opn dn an sn kn ho h1 h2 h3 h4 => exact h.carry3_reg c opn dn an sn kn ho h1 h2 h3 h4
   | flagOut opn dn srcs ho h1 => exact h.flagOut_reg c opn dn srcs ho h1
   | wideMul opn ln hn sn ho h1 h2 h3 => exact h.wideMul_reg c opn ln hn sn ho h1 h2 h3

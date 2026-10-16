@@ -63,6 +63,9 @@ there the legal form of the remapped instruction is a hypothesis (`PosOk`).
   `lowerTwoAddrShiftImm_legal`, `lowerNativeShiftRotate_legal`, `legalizeMemLoad_legal`,
   `legalizeMemStoreK_legal`, `legalizeOneSrc_legal`, `legalizeSpillDst_legal`: the
   lowerers and legalisers emit legal forms.
+* `spillDstOk_storeImm`, `spillDstOk_zeroArr`: the constant-index stack-array store and the
+  stack-array zeroing over general-purpose registers meet the hypotheses of the arm
+  `legalizeSpillDst`.
 * `lower_legal`: every instruction of one position of `physPositionEmit` has a legal form.
 * `physBodyWithStores_legal`: every instruction of `physBodyWithStores` has a legal form.
 * `lower_legal_loadCSE`: so does every instruction of its forwarding by `loadCSE`;
@@ -633,6 +636,29 @@ theorem legalizeSpillDst_legal {dsts : List LOperand} {opn : String} {srcs : Lis
       subst hi
       exact h.one hc hs
 
+/-- **The constant-index stack-array store meets `SpillDstOk`** over a general-purpose base
+    and value and an index of `x86StoreImm`, whatever its array destination: it has neither a
+    scratch select nor a scratch comparison, and the single instruction has a legal form. -/
+theorem spillDstOk_storeImm {a : LOperand} {bn vn : String} {k : Nat}
+    (hk : x86StoreImm k = true) (hb : isGpName bn = true) (hv : isGpName vn = true) :
+    SpillDstOk F W Q [a] "STOREIMM" [.reg bn, .reg vn, .imm k] where
+  sel l hl := by
+    rw [cmovSpillDst?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
+  cmp l hl := by
+    rw [setccSpill?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
+  one _ _ := .storeImm a bn vn k hk hb hv
+
+/-- **The stack-array zeroing meets `SpillDstOk`** into a general-purpose register at a count
+    and width of `x86ZeroArr`: it has neither a scratch select nor a scratch comparison, and
+    the single instruction has a legal form. -/
+theorem spillDstOk_zeroArr {dn : String} {n w : Nat} (ho : x86ZeroArr n w = true)
+    (hd : isGpName dn = true) :
+    SpillDstOk F W Q [.reg dn] "ZEROARR" [.imm n, .imm w] where
+  sel l hl := by
+    rw [cmovSpillDst?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
+  cmp l hl := by
+    rw [setccSpill?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
+  one _ _ := .zeroArr dn n w ho hd
 
 /-! ## One position of `physPositionEmit` -/
 
