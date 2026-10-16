@@ -177,13 +177,6 @@ theorem shake128_capacity : shake128_params.capacity = 256 := rfl
 /-- SHAKE-256 capacity is 512 bits. -/
 theorem shake256_capacity : shake256_params.capacity = 512 := rfl
 
-/-- Any SHAKE params satisfy rate + capacity = 1600. -/
-theorem shake_params_wf (p : SHAKEParams) : p.rate + p.capacity = 1600 := p.wf
-
-/-- The security level of any SHAKE params is bounded by half the capacity. -/
-theorem shake_security_sound (p : SHAKEParams) :
-    p.security_level ≤ p.capacity / 2 := p.security_bound
-
 /-- SHAKE-128 and SHAKE-256 have different rates. -/
 theorem shake128_neq_shake256 : shake128_params ≠ shake256_params := by
   intro h
