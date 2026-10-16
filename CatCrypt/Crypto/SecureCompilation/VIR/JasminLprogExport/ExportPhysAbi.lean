@@ -1790,6 +1790,19 @@ def degenerateForwarderSym? {Γ : Ctxt jasminDialect} {t : JasminTy}
       | _, _ => none
   | _ => none
 
+/-- **The result-liveness pin** of a register result returned in `RAX`: when `retToRax` is
+    set and there are no output stores, the liveness instruction reading the first result
+    name of `res`, placed after the body in the input of the allocation. The return move
+    reads the register of that name after the body, so the trace of the allocation reads it
+    at its last position and its live range extends to the end of the body. The allocated
+    body drops the instruction with the argument-liveness pin. Empty otherwise. -/
+def resLivePin (retToRax : Bool) (outStoreMap : OutStoreMap) (res : List String) : Lcmd :=
+  if retToRax && outStoreMap.isEmpty then
+    match res.head? with
+    | some rn => [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN" [.reg rn]⟩]
+    | none => []
+  else []
+
 /-- **The ABI-wrapping tail of `comToLfundefPhysAbi` with its allocation certificate**:
     the physical `lfundef` of an already-built virtual `Lfundef` and the certificate
     `allocCertOf` of the allocator input body over the table that `physBodyWithStores`
@@ -1862,7 +1875,8 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
             ((List.range nArgs).map (fun j => (.reg (argName j) : LOperand)))⟩]
     else []
   let virt := { virtR with
-    lfd_body := livePin ++ canonicalizeMemrefThread virtR.lfd_body }
+    lfd_body := livePin ++ canonicalizeMemrefThread virtR.lfd_body
+      ++ resLivePin retToRax outStoreMap virtR.lfd_res }
   -- Output-liveness-extended allocation table (multi-output store fix): the `n`
   -- designated outputs occupy `n` DISTINCT physical registers across the epilogue
   -- stores (see `bodyTraceOut`). EVERY consumer of `tbl` here (prologue,

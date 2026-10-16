@@ -946,9 +946,9 @@ theorem insertEpilogue_resolved (body epi : Lcmd)
 /-- The body the allocation of `comToLfundefPhysAbiFromVirt` runs on: the virtual body with
     its call shadows expanded, renamed onto the residence slots when `residence` is given,
     with the argument-liveness pin in front for three or more arguments or `forceLivePin`,
-    and its memref threads canonicalised. -/
+    its memref threads canonicalised, and the result-liveness pin `resLivePin` behind. -/
 def fromVirtAllocBody (virt0 : Lfundef) (residence : Option (Array Nat))
-    (forceLivePin : Bool) : Lcmd :=
+    (forceLivePin retToRax : Bool) (outStoreMap : OutStoreMap) : Lcmd :=
   let virt0 := { virt0 with lfd_body := expandCallShadows virt0.lfd_body }
   let virtR :=
     match residence with
@@ -962,26 +962,31 @@ def fromVirtAllocBody (virt0 : Lfundef) (residence : Option (Array Nat))
       [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
             ((List.range nArgs).map (fun j => (.reg (argName j) : LOperand)))⟩]
     else []) ++ canonicalizeMemrefThread virtR.lfd_body
+      ++ resLivePin retToRax outStoreMap virt0.lfd_res
 
 /-- Without residence slots the allocated body is the pinned, canonicalised body with its call
     shadows expanded. -/
-theorem fromVirtAllocBody_none (virt0 : Lfundef) (forceLivePin : Bool) :
-    fromVirtAllocBody virt0 none forceLivePin =
+theorem fromVirtAllocBody_none (virt0 : Lfundef) (forceLivePin retToRax : Bool)
+    (outStoreMap : OutStoreMap) :
+    fromVirtAllocBody virt0 none forceLivePin retToRax outStoreMap =
       (if virt0.lfd_arg.length ≥ 3 || forceLivePin then
           [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
                 ((List.range virt0.lfd_arg.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
-        else []) ++ canonicalizeMemrefThread (expandCallShadows virt0.lfd_body) := rfl
+        else []) ++ canonicalizeMemrefThread (expandCallShadows virt0.lfd_body)
+        ++ resLivePin retToRax outStoreMap virt0.lfd_res := rfl
 
 /-- With residence slots the allocated body is renamed onto the slots before it is pinned and
     canonicalised. -/
-theorem fromVirtAllocBody_some (virt0 : Lfundef) (slots : Array Nat) (forceLivePin : Bool) :
-    fromVirtAllocBody virt0 (some slots) forceLivePin =
+theorem fromVirtAllocBody_some (virt0 : Lfundef) (slots : Array Nat)
+    (forceLivePin retToRax : Bool) (outStoreMap : OutStoreMap) :
+    fromVirtAllocBody virt0 (some slots) forceLivePin retToRax outStoreMap =
       (if virt0.lfd_arg.length ≥ 3 || forceLivePin then
           [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN"
                 ((List.range virt0.lfd_arg.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
         else []) ++ canonicalizeMemrefThread
           (residenceRenameBody virt0.lfd_arg.length (residenceArraySlotOf slots)
-            (materializeShiftCountImms (expandCallShadows virt0.lfd_body))) := rfl
+            (materializeShiftCountImms (expandCallShadows virt0.lfd_body)))
+        ++ resLivePin retToRax outStoreMap virt0.lfd_res := rfl
 
 /-- The return move of `comToLfundefPhysAbiFromVirt` is resolved when the name of the
     returned value is. -/
@@ -1029,21 +1034,22 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
     (abiW : Nat) (forceLivePin reserveVecScratch retToRax : Bool)
     (rm : LOperand → LOperand)
     (hrm : rm =
-      let B := fromVirtAllocBody virt0 residence forceLivePin
+      let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
       let tbl := straightCallComposeTable B (physTableOut B outStoreMap
         (if reserveVecScratch then [numVecRegs - 1] else []))
       if bodyHasCall B then remapOperandCalleeSave B tbl else remapOperand B tbl)
-    (hsib : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin, SibAtAddr i.li_i)
-    (hdir : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin,
+    (hsib : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap,
+      SibAtAddr i.li_i)
+    (hdir : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap,
       ∀ o ∈ lopnOperands i.li_i, (∀ b y s, o ≠ .arrIdx b y s) → opResolved (rm o) = true)
-    (haddr : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin, ∀ b y s,
-      .arrIdx b y s ∈ lopnOperands i.li_i → AddrOk (rm (.arrIdx b y s)))
+    (haddr : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap,
+      ∀ b y s, .arrIdx b y s ∈ lopnOperands i.li_i → AddrOk (rm (.arrIdx b y s)))
     (hargs : ∀ s,
-      let B := fromVirtAllocBody virt0 residence forceLivePin
+      let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
       opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
         outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) (argName s))) = true)
     (hret : ∀ rn ∈ virt0.lfd_res.head?,
-      let B := fromVirtAllocBody virt0 residence forceLivePin
+      let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
       opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
         outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) rn)) = true)
     (habi : ∀ r ∈ abiArgs, abiSlotOfExt r = none → opResolved (.reg r) = true) :
@@ -1064,8 +1070,8 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
       · intro r' hr'
         have hmem := (List.mem_filter.mp hr').1
         refine (opsResolved_iff_allocOut_x86 _).mpr
-          (physBodyWithStores_allocOut_resolved_abi _ (fromVirtAllocBody virt0 _ forceLivePin)
-            inLoadMap outStoreMap abiW _ [] (if reserveVecScratch then [numVecRegs - 1] else [])
+          (physBodyWithStores_allocOut_resolved_abi _
+            (fromVirtAllocBody virt0 _ forceLivePin retToRax outStoreMap) inLoadMap outStoreMap abiW _ [] (if reserveVecScratch then [numVecRegs - 1] else [])
             rm hrm hsib hdir haddr ?_ hargs (by simp) r' hmem)
         refine findSnd_resolved _ ?_
         intro p hp

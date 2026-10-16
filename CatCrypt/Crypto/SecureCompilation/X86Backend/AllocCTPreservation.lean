@@ -947,6 +947,14 @@ theorem physAbiWrap_lcmdDirect (virt : Lfundef) (tbl : Array Nat)
   · simp only [lcmdDirect_append, Bool.and_eq_true]
     exact ⟨hret, calleeSaveRestoreEpilogue_lcmdDirect⟩
 
+/-- The result-liveness pin reads a register operand only. -/
+theorem resLivePin_lcmdDirect (retToRax : Bool) (outStoreMap : OutStoreMap)
+    (res : List String) : lcmdDirect (resLivePin retToRax outStoreMap res) = true := by
+  unfold resLivePin
+  split
+  · split <;> rfl
+  · rfl
+
 /-- **The deployed physical-register export preserves direct addressing.** When
     the virtual body a `Com` lowers to uses no register-indexed (SIB) operand,
     neither does the body of the ABI-wrapped, register-allocated, spill-legalized
@@ -977,7 +985,7 @@ theorem comToLfundefPhysAbi_lcmdDirect {Γ : Ctxt jasminDialect} {t : JasminTy}
       | rfl
       | (simp only []; split <;> rfl)
   · simp only [lcmdDirect_append, Bool.and_eq_true]
-    refine ⟨?_, canonicalizeMemrefThread_lcmdDirect ?_⟩
+    refine ⟨⟨?_, canonicalizeMemrefThread_lcmdDirect ?_⟩, resLivePin_lcmdDirect _ _ _⟩
     · refine lcmdDirect_of_mem ?_
       intro z hz
       have key : ∀ (n : Nat) (c : Bool), z ∈ (if c = true then
