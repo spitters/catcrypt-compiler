@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
+public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemWord
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CallFrame
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Rng
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
@@ -30,7 +31,7 @@ that the memory predicate `R` depends only on the bytes of the ranges `S`, and
 
 The points-to assertion of an `n`-limb little-endian buffer is `MachineMem64.ArrAt`; the
 byte memories and the word accesses of `AddrMem` and `MachineMem64` coincide
-(`read64_eq`, `write64_eq`), and `ArrAt m base n arr` is supported on the range
+(`read64_eq`, `write64_eq` in `Ascent/AddrMemWord.lean`), and `ArrAt m base n arr` is supported on the range
 `⟨base, 8 * n⟩` (`arrAt_supported`).
 
 ## The footprint of a run
@@ -54,7 +55,8 @@ checks the discipline and a predicate on every accessed cell.
 ## Main results
 
 * `separated_of_pairwise`: pairwise disjoint cell ranges give `AddrMem.Separated`.
-* `read64_eq`, `write64_eq`, `arrAt_supported`: the two byte-memory models agree.
+* `arrAt_iff`, `arrAt_supported`: the points-to assertion of `MachineMem64` in terms of
+  `AddrMem`, and its support.
 * `writes_sound`: a byte outside every written range keeps its value.
 * `runBlockA_local`: two states with equal registers and flags that agree on the read
   ranges run to equal registers and flags, to memories that agree wherever the entry
@@ -120,37 +122,6 @@ theorem read64_congr_word (m m' : AMem) (a : BitVec 64)
   CallFrame.read64_congr m m' a fun i hi => h _ (by
     rw [Rng.mem_word, InRange8, toNat_add_sub_self a i hi]
     exact hi)
-
-theorem or_shift8 (a b : Nat) (h : b < 2 ^ 8) : a <<< 8 ||| b = a * 2 ^ 8 + b := by
-  rw [← Nat.shiftLeft_add_eq_or_of_lt h, Nat.shiftLeft_eq]
-
-/-- The little-endian word of `AddrMem` is the doubleword of `MachineMem64`. -/
-theorem read64_eq (m : AMem) (a : BitVec 64) : read64 m a = MachineMem64.read64 m a := by
-  apply BitVec.eq_of_toNat_eq
-  simp only [read64, MachineMem64.read64, BitVec.toNat_cast, BitVec.toNat_append,
-    BitVec.toNat_ofNat, or_shift8 _ _ (BitVec.isLt _)]
-  have h0 := (m a).isLt
-  have h1 := (m (a + 1)).isLt
-  have h2 := (m (a + 2)).isLt
-  have h3 := (m (a + 3)).isLt
-  have h4 := (m (a + 4)).isLt
-  have h5 := (m (a + 5)).isLt
-  have h6 := (m (a + 6)).isLt
-  have h7 := (m (a + 7)).isLt
-  simp only [BitVec.ofNat_eq_ofNat] at *
-  omega
-
-/-- The little-endian store of `AddrMem` is the store of `MachineMem64`. -/
-theorem write64_eq (m : AMem) (a v : BitVec 64) :
-    write64 m a v = MachineMem64.write64 m a v := by
-  funext x
-  by_cases h : (x - a).toNat < 8
-  · have h' : InRange8 a x := h
-    simp only [write64, MachineMem64.write64, if_pos h, if_pos h']
-    apply BitVec.eq_of_toNat_eq
-    simp only [BitVec.toNat_ofNat, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow]
-  · rw [write64_of_not_inRange _ _ _ _ h]
-    simp only [MachineMem64.write64, if_neg h]
 
 /-- `MachineMem64.ArrAt` in terms of the word read of `AddrMem`. -/
 theorem arrAt_iff (m : AMem) (base : BitVec 64) (n : Nat) (arr : Fin n → BitVec 64) :

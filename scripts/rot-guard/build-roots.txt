@@ -531,7 +531,7 @@ CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
 CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpLoopBody
 CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
-CatCrypt.Crypto.SecureCompilation.SepLogic.Core
+CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
 CatCrypt.Crypto.SecureCompilation.SignatureProtocolKernels
 CatCrypt.Crypto.SecureCompilation.SipHashRoundGoldenPath
 CatCrypt.Crypto.SecureCompilation.Speck128GoldenPath
