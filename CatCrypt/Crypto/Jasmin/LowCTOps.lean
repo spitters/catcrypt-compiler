@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Jasmin.LowCTSExpr
 public import HaxLean.ScalarOp
+public import HaxLean.Refinement
 
 /-!
 # Semantics of the typed scalar operators
@@ -15,10 +16,17 @@ The meanings of the operators `Hax.ScalarOp` that the front's builtin tables
 give by string, as total functions of the operator:
 
 * `ScalarOp.natSem` — the operation on natural-number arguments: the untagged
-  arithmetic of the hax runtime on non-negative arguments (`Sub` undefined
-  below zero), and the Rust unsigned operation of the tagged width on the
-  arguments modulo `2^w` (shifts defined for an amount below `w`, rotations by
-  the amount modulo `w`);
+  arithmetic `Add`, `Mul`, `Div`, `Rem` of the hax reference semantics
+  `hax64WordOps`, undefined where Rust panics (`Sub` undefined below zero), the
+  untagged bitwise operations on `Nat`, and the Rust unsigned operation of the
+  tagged width on the arguments modulo `2^w` (shifts defined for an amount
+  below `w`, rotations by the amount modulo `w`);
+* `ScalarOp.natSem_hax64WordOps` — on `add`, `mul`, `div`, `rem`, `natSem` is
+  the arm of `hax64WordOps` at the operator's name on non-negative `int`
+  arguments, and `ScalarOp.natSem_lessDef_hax64Builtins` its refinement into
+  `hax64Builtins`;
+* `ScalarOp.natSem_add_lessDef` and the analogues for `mul`, `div`, `rem` —
+  where `natSem` is defined it is the operation on `Nat`;
 * `ScalarCallOp.toSExpr` and `ScalarOp.toSExpr?` — the scalar expression of a
   `scalar#` call, and `ScalarCallOp.toSExpr_eval`, its value under
   `SExpr.eval`.
@@ -96,9 +104,13 @@ def natTer (g : Nat → Nat → Nat → Option Nat) : List Nat → Option Nat
 
 /-- The operation of an operator on natural-number arguments. With `n` the bit
     width of the tag (`64` for `size`):
-    * `add`, `mul`, `div`, `rem` and the untagged bitwise operators are the
-      operations on `Nat`; `sub` is undefined when the result would be
-      negative;
+    * `add`, `mul`, `div`, `rem` are the arms `Add`, `Mul`, `Div`, `Rem` of
+      the hax reference semantics `hax64WordOps`: `add` is defined when the sum
+      is below `2^64`, `mul` when the product is below `2^128`, and `div`,
+      `rem` when the dividend is below `2^128` and the divisor is positive and
+      below `2^128`, the operation on `Nat` where defined;
+    * the untagged bitwise operators are the operations on `Nat`; `sub` is
+      undefined when the result would be negative;
     * a tagged bitwise operator, wrapping arithmetic and `cast` act on the
       arguments modulo `2^n`; `not` at a width is the complement below `2^n`;
     * `shl`, `shr` at a width and the trait methods `shlM`, `shrM` are defined
@@ -109,11 +121,13 @@ def natTer (g : Nat → Nat → Nat → Option Nat) : List Nat → Option Nat
       `2^n`, and `mulmod` the product modulo a positive third argument;
     * `scalar s` is `ScalarCallOp.natSem s`. -/
 def natSem : ScalarOp → List Nat → Option Nat
-  | .add => natBin fun a b => some (a + b)
+  | .add => natBin fun a b => if a + b < 2 ^ 64 then some (a + b) else none
   | .sub => natBin fun a b => if b ≤ a then some (a - b) else none
-  | .mul => natBin fun a b => some (a * b)
-  | .div => natBin fun a b => some (a / b)
-  | .rem => natBin fun a b => some (a % b)
+  | .mul => natBin fun a b => if a * b < 2 ^ 128 then some (a * b) else none
+  | .div => natBin fun a b =>
+      if a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128 then some (a / b) else none
+  | .rem => natBin fun a b =>
+      if a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128 then some (a % b) else none
   | .bitAnd none => natBin fun a b => some (a &&& b)
   | .bitAnd (some w) => natBin fun a b => some ((a % 2 ^ w.bits) &&& (b % 2 ^ w.bits))
   | .bitOr none => natBin fun a b => some (a ||| b)
@@ -147,6 +161,85 @@ def natSem : ScalarOp → List Nat → Option Nat
       if 0 < p then some (((a % 2 ^ w.bits) * (b % 2 ^ w.bits)) % p) else none
   | .cast w => natUn fun a => a % 2 ^ w.bits
   | .scalar s => natBin fun a b => some (s.natSem a b)
+
+/-- On non-negative `int` arguments, `natSem` of `add`, `mul`, `div` and `rem`
+    is the arm of the hax reference semantics `hax64WordOps` at the operator's
+    name: both are undefined at the same arguments, and agree where defined. -/
+theorem natSem_hax64WordOps (o : ScalarOp)
+    (ho : o = .add ∨ o = .mul ∨ o = .div ∨ o = .rem) (a b : Nat) :
+    hax64WordOps o.name [.int a, .int b] = (o.natSem [a, b]).map fun r => Value.int r := by
+  rcases ho with rfl | rfl | rfl | rfl
+  · rw [show ScalarOp.name .add = "Add" from rfl, hax64WordOps_add]
+    simp only [u64BinOp, natSem, natBin, Int.toNat_natCast]
+    by_cases h : a + b < 2 ^ 64
+    · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 64 ∧ (0 : Int) ≤ b ∧ (b : Int) < 2 ^ 64 := by
+        omega
+      rw [if_pos hc]
+    · rw [if_neg h]
+      split <;> rfl
+  · rw [show ScalarOp.name .mul = "Mul" from rfl, hax64WordOps_mul]
+    simp only [natSem, natBin, Int.toNat_natCast, Int.natCast_nonneg, true_and]
+    split <;> rfl
+  · rw [show ScalarOp.name .div = "Div" from rfl, hax64WordOps_div]
+    simp only [natSem, natBin, Int.toNat_natCast]
+    by_cases h : a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128
+    · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128 := by
+        omega
+      rw [if_pos hc, if_pos h]
+      rfl
+    · have hc : ¬((0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128) := by
+        omega
+      rw [if_neg hc, if_neg h]
+      rfl
+  · rw [show ScalarOp.name .rem = "Rem" from rfl, hax64WordOps_rem]
+    simp only [natSem, natBin, Int.toNat_natCast]
+    by_cases h : a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128
+    · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128 := by
+        omega
+      rw [if_pos hc, if_pos h]
+      rfl
+    · have hc : ¬((0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128) := by
+        omega
+      rw [if_neg hc, if_neg h]
+      rfl
+
+/-- On non-negative `int` arguments, `natSem` of `add`, `mul`, `div` and `rem`
+    is refined by the builtin table `hax64Builtins` at the operator's name:
+    every value `natSem` defines is the value of the reference call. -/
+theorem natSem_lessDef_hax64Builtins (o : ScalarOp)
+    (ho : o = .add ∨ o = .mul ∨ o = .div ∨ o = .rem) (a b : Nat) :
+    LessDef ((o.natSem [a, b]).map fun r => Value.int r)
+      (hax64Builtins o.name [.int a, .int b]) := by
+  rw [← natSem_hax64WordOps o ho a b]
+  exact hax64Builtins_lessDef_hax64WordOps _ _
+
+/-- Where `natSem` of `add` is defined, it is the sum. -/
+theorem natSem_add_lessDef (a b : Nat) : LessDef (ScalarOp.add.natSem [a, b]) (some (a + b)) := by
+  intro v h
+  simp only [natSem, natBin] at h
+  split_ifs at h with h1
+  exact h
+
+/-- Where `natSem` of `mul` is defined, it is the product. -/
+theorem natSem_mul_lessDef (a b : Nat) : LessDef (ScalarOp.mul.natSem [a, b]) (some (a * b)) := by
+  intro v h
+  simp only [natSem, natBin] at h
+  split_ifs at h with h1
+  exact h
+
+/-- Where `natSem` of `div` is defined, it is the quotient on `Nat`. -/
+theorem natSem_div_lessDef (a b : Nat) : LessDef (ScalarOp.div.natSem [a, b]) (some (a / b)) := by
+  intro v h
+  simp only [natSem, natBin] at h
+  split_ifs at h with h1
+  exact h
+
+/-- Where `natSem` of `rem` is defined, it is the remainder on `Nat`. -/
+theorem natSem_rem_lessDef (a b : Nat) : LessDef (ScalarOp.rem.natSem [a, b]) (some (a % b)) := by
+  intro v h
+  simp only [natSem, natBin] at h
+  split_ifs at h with h1
+  exact h
 
 /-- The scalar expression of an operator on the operands `a` and `b`: the
     `scalar#` operations by `ScalarCallOp.toSExpr`, and `none` for every other

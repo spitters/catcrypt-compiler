@@ -584,6 +584,57 @@ theorem regStepA_congr (i : LinstrRM) {s t : LstateA} (h : AAgree (readsI i.fst)
   obtain ⟨⟨h1, -, -, h4, h5⟩, h6⟩ := hpq
   exact ⟨h1, h.2.1, h4, h5, h6⟩
 
+/-- The bit of a carry-in or condition `x` (`bitA`) agrees on states agreeing on `x` and on
+    the memory. -/
+theorem bitA_congr (frame : String → Option (BitVec 64)) {R : String → Prop} {s t : LstateA}
+    (hN : NAgree R s.reg t.reg) (hM : s.mem = t.mem) {x : String} (hx : R x) :
+    bitA frame s x = bitA frame t x := by
+  unfold bitA
+  split
+  · rw [hM]
+  · simp only [regBit, getW_congr hN hx 1, getW_congr hN hx 64]
+
+/-- The word of a source `x` (`wordA`) agrees on states agreeing on `x` and on the memory. -/
+theorem wordA_congr (frame : String → Option (BitVec 64)) {R : String → Prop} {s t : LstateA}
+    (hN : NAgree R s.reg t.reg) (hM : s.mem = t.mem) {x : String} (hx : R x) :
+    wordA frame s x = wordA frame t x := by
+  unfold wordA
+  split
+  · rw [hM]
+  · exact getW_congr hN hx 64
+
+theorem bitStepA_congr (frame : String → Option (BitVec 64)) (w : LinstrR) {s t : LstateA}
+    (h : AAgree (readsI w) s t) (zf : Bool) :
+    ORel (AStep s t) (bitStepA frame w s zf) (bitStepA frame w t zf) := by
+  have hN : NAgree (readsI w) s.reg t.reg := h.1
+  have hM := h.2.1
+  unfold bitStepA
+  split
+  · rename_i d o a s' c
+    rw [wordA_congr frame hN hM (reg_reads (by simp)), wordA_congr frame hN hM (s := s)
+      (reg_reads (by simp)), bitA_congr frame hN hM (s := s) (reg_reads (by simp)),
+      bitA_congr frame hN hM (s := s) (x := a) (reg_reads (by simp)),
+      wordA_congr frame hN hM (s := s) (x := c) (reg_reads (by simp))]
+    repeat' split
+    all_goals first
+      | exact ORel.none
+      | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1, h.2.2.2, rfl⟩
+  · exact ORel.none
+
+/-- The register-file step, and where it is undefined `bitStepA`, agree on agreeing states. -/
+theorem regStepA_bit_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t : LstateA}
+    (h : AAgree (readsI i.fst) s t) (zf : Bool) :
+    ORel (AStep s t)
+      ((regStepA i s zf).orElse fun _ => bitStepA frame i.fst s zf)
+      ((regStepA i t zf).orElse fun _ => bitStepA frame i.fst t zf) := by
+  have hc := regStepA_congr i h zf
+  revert hc
+  cases regStepA i s zf <;> cases regStepA i t zf <;> intro hc
+  · exact bitStepA_congr frame i.fst h zf
+  · cases hc
+  · cases hc
+  · exact hc
+
 /-- Close the goals of an address-machine step. -/
 macro "a_close" h:ident hN:ident zf:ident : tactic =>
   `(tactic| first
@@ -645,7 +696,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
             | none =>
               simp only
               cases hsv : slotCmov? frame w with
-              | none => exact regStepA_congr _ h zf
+              | none => exact regStepA_bit_congr frame _ h zf
               | some q =>
                 obtain ⟨d, c', a, b⟩ := q
                 unfold slotCmov? at hsv
@@ -663,7 +714,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
                     · rw [hM]
                     · exact getW_congr hN (reg_reads (by simp)) 64
                   simp only
-                  rw [getW_congr hN (reg_reads (by simp)) 1, hwa, hwb]
+                  rw [bitA_congr frame hN hM (reg_reads (by simp)), hwa, hwb]
                   try simp only [hM]
                   repeat' split
                   all_goals first
@@ -694,11 +745,8 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
                 split
                 · rw [hM]
                 · exact getW_congr hN (reg_reads (by simp)) 64
-              have hbc : bitA frame s c' = bitA frame t c' := by
-                unfold bitA
-                split
-                · rw [hM]
-                · exact getW_congr hN (reg_reads (by simp)) 1
+              have hbc : bitA frame s c' = bitA frame t c' :=
+                bitA_congr frame hN hM (reg_reads (by simp))
               simp only
               rw [hwa, hws, hbc, hM]
               repeat' split

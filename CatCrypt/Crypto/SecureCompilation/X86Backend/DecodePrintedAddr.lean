@@ -168,15 +168,46 @@ theorem runBlock_mem_of_noWriteB :
 
 /-- A register-tagged instruction that moves no frame slot, compares against no frame slot,
     accesses no cell, is no carry-chain instruction with a frame-slot operand, no immediate
-    move into a frame slot and no select with a frame-slot value is stepped by the flag machine
-    on the register file. -/
+    move into a frame slot and no select with a frame-slot value, and whose `bitStepA` is
+    undefined, is stepped by the flag machine on the register file. -/
 theorem fstepA_of_reg (frame : String → Option (BitVec 64)) {i : LinstrRM} {c : Option Nat}
     (ht : i.snd = .reg c)
     (hs : ∀ d s, slotMov? i.fst = some (d, s) → frame s = none ∧ frame d = none)
     (hq : ∀ d x q, slotCmp? i.fst = some (d, x, q) → frame q = none)
     (hcl : cellA? i.fst = none) (hsc : slotCarry? frame i.fst = none)
     (hsi : slotImm? frame i.fst = none) (hsv : slotCmov? frame i.fst = none)
-    (s : LstateA) (zf : Bool) : fstepA frame i s zf = regStepA i s zf := by
+    (s : LstateA) (zf : Bool) (hbs : bitStepA frame i.fst s zf = none) :
+    fstepA frame i s zf = regStepA i s zf := by
+  obtain ⟨w, t⟩ := i
+  simp only at ht hcl hsc hsi hsv hbs
+  subst ht
+  unfold fstepA
+  simp only
+  cases h : slotMov? w with
+  | none =>
+    simp only
+    cases hk : slotCmp? w with
+    | none =>
+      simp only [hcl, hsc, hsi, hsv]
+      cases regStepA (w, MemTag.reg c) s zf <;> simp [hbs]
+    | some dxq =>
+      obtain ⟨d, x, q⟩ := dxq
+      simp only [hq d x q hk]
+  | some ds =>
+    obtain ⟨d, s'⟩ := ds
+    obtain ⟨h1, h2⟩ := hs d s' h
+    simp only [h1, h2]
+
+/-- A register-tagged instruction as in `fstepA_of_reg` whose register-file step is defined
+    takes that step on the address machine. -/
+theorem fstepA_of_reg_some (frame : String → Option (BitVec 64)) {i : LinstrRM} {c : Option Nat}
+    (ht : i.snd = .reg c)
+    (hs : ∀ d s, slotMov? i.fst = some (d, s) → frame s = none ∧ frame d = none)
+    (hq : ∀ d x q, slotCmp? i.fst = some (d, x, q) → frame q = none)
+    (hcl : cellA? i.fst = none) (hsc : slotCarry? frame i.fst = none)
+    (hsi : slotImm? frame i.fst = none) (hsv : slotCmov? frame i.fst = none)
+    {s : LstateA} {zf : Bool} {r : LstateA × Bool} (hr : regStepA i s zf = some r) :
+    fstepA frame i s zf = some r := by
   obtain ⟨w, t⟩ := i
   simp only at ht hcl hsc hsi hsv
   subst ht
@@ -186,14 +217,14 @@ theorem fstepA_of_reg (frame : String → Option (BitVec 64)) {i : LinstrRM} {c 
   | none =>
     simp only
     cases hk : slotCmp? w with
-    | none => simp only [hcl, hsc, hsi, hsv]
+    | none => simp only [hcl, hsc, hsi, hsv, hr]; rfl
     | some dxq =>
       obtain ⟨d, x, q⟩ := dxq
-      simp only [hq d x q hk]
+      simp only [hq d x q hk, hr]
   | some ds =>
     obtain ⟨d, s'⟩ := ds
     obtain ⟨h1, h2⟩ := hs d s' h
-    simp only [h1, h2]
+    simp only [h1, h2, hr]
 
 /-- **A register instruction.** A `DecodePrinted` simulation of a register instruction that
     the address machine steps on the register file, by machine instructions that write no
@@ -608,6 +639,9 @@ theorem fstepA_lpc (frame : String → Option (BitVec 64)) (i : LinstrRM) (s s' 
   all_goals first
     | (obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h); rfl)
     | exact hreg _ h
+    | (rcases orElse_some h with h | ⟨-, h⟩
+       · exact hreg _ h
+       · exact bitStepA_lpc h)
     | simp at h
 
 theorem aluArm_noWrite {m : String} {op : Nat} {mk : String → JOperand → JInstr 64}
@@ -730,7 +764,7 @@ theorem sim_reg (P : Params) (rsp : BitVec 64) (a : Arm) (hr : regArmB a = true)
       (fun d x hs => ⟨frameP_gp (hslot d x hs).2, frameP_gp (hslot d x hs).1⟩)
       (fun d x q hk => frameP_gp (regArm_slotCmp h hk)) (regArm_cell hr h)
       (by cases a <;> simp [Arm.instr, slotCarry?]) (regArm_slotImm rsp h)
-      (by cases a <;> simp [Arm.instr, slotCmov?]) s zf)
+      (by cases a <;> simp [Arm.instr, slotCmov?]) s zf (by cases a <;> simp [Arm.instr, bitStepA]))
     hjs hsim sa s zf hc
   exact ⟨s', zf', h1, h2⟩
 
@@ -852,7 +886,7 @@ theorem sim_cmp (P : Params) (rsp : BitVec 64) (c : String) (o : LOperand) (o' :
       exact hq r rfl
     | _ => simp [cmpRI, slotCmp?] at hk) (by cases o <;> simp [cmpRI, cellA?, hw])
     (by cases o <;> simp [cmpRI, slotCarry?]) (by cases o <;> simp [cmpRI, slotImm?])
-    (by cases o <;> simp [cmpRI, slotCmov?]) s zf]
+    (by cases o <;> simp [cmpRI, slotCmov?]) s zf (by cases o <;> simp [cmpRI, bitStepA])]
   have hf := fstepF_cmpRI c o (baseOf s) zf _ _ (hc.regs c hcg) ho
   obtain ⟨e1, e2, e3⟩ := evalInstrA_cmp sa (phys c) o'
   refine ⟨⟨s.reg.nextPc, s.mem, s.cf, s.of⟩, sa.regs (phys c) == o'.eval sa.view, ?_, ?_, ?_⟩
@@ -1006,7 +1040,7 @@ theorem sim_mul (P : Params) (rsp : BitVec 64) (D S : String)
     (fun s zf => fstepA_of_reg (frameP P rsp) rfl (fun d x hs => by
       simp [binRegI, slotMov?] at hs) (fun d x q hk => by simp [binRegI, slotCmp?] at hk)
       (by simp [binRegI, cellA?]) (by simp [binRegI, slotCarry?]) (by simp [binRegI, slotImm?])
-      (by simp [binRegI, slotCmov?]) s zf)
+      (by simp [binRegI, slotCmov?]) s zf (by simp [binRegI, bitStepA]))
     rfl (decSim_mulP rsp D S h.1 h.2) sa s zf hc
   exact ⟨s', zf', h1, h2⟩
 
@@ -1101,7 +1135,7 @@ theorem sim_mulxS (P : Params) (rsp : BitVec 64) (H S : String)
         = (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) from rfl,
       fstepA_of_reg (frameP P rsp) rfl (fun d x hs => by simp [slotMov?] at hs)
         (fun d x q hk => by simp [slotCmp?] at hk) (by simp [cellA?]) (by simp [slotCarry?])
-        (by simp [slotImm?]) (by simp [slotCmov?]) s zf]
+        (by simp [slotImm?]) (by simp [slotCmov?]) s zf (by simp [bitStepA])]
     show (fstepF _ (baseOf s) zf).map _ = _
     rw [fstepF_mulxS]
     simp [wideStep, evalOperandN, mulxSrc, baseOf, hxs, hys, ← hhi, ← hlo, LstateM.setReg,
@@ -1146,7 +1180,7 @@ theorem sim_mulx (P : Params) (rsp : BitVec 64) (L H S : String)
         = (.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none) from rfl,
       fstepA_of_reg (frameP P rsp) rfl (fun _ _ hs => by simp [slotMov?] at hs)
         (fun _ _ _ hk => by simp [slotCmp?] at hk) (by simp [cellA?]) (by simp [slotCarry?])
-        (by simp [slotImm?]) (by simp [slotCmov?]) s zf]
+        (by simp [slotImm?]) (by simp [slotCmov?]) s zf (by simp [bitStepA])]
     show (fstepF _ (baseOf s) zf).map _ = _
     rw [fstepF_mulx]
     simp [wideStep, evalOperandN, mulxSrc, baseOf, hxs, hys, ← hhi, ← hlo, LstateM.setReg,

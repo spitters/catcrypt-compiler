@@ -400,37 +400,61 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
 
 /-- The address machine steps `ADCX:64 D, A, S, C` on registers by writing `addCarryWord` of
-    the 64-bit values of `A`, `S` and the one-bit value of `C` to `D`. -/
+    the 64-bit values of `A`, `S` and the bit of `C` (`regBit`) to `D`. -/
 theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) (s : LstateA)
     (zf : Bool) (hfD : frame D = none) (hfA : frame A = none) (hfS : frame S = none)
     (hfC : frame C = none)
     {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C], .reg none) s zf
-      = (s.reg.getW C 1).map fun vc =>
+      = (regBit s.reg C).map fun vc =>
           ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc },
             zf) := by
-  cases hc : s.reg.getW C 1 <;>
+  cases hc : s.reg.getW C 1 with
+  | some vc =>
+    rw [regBit_of_getW1 hc]
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
       aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
       hfS, hfC]
+  | none =>
+    have hw : wordA frame s A = some va := by simp [wordA, hfA, hA]
+    have hw' : wordA frame s S = some vb := by simp [wordA, hfS, hS]
+    have hb : bitA frame s C = regBit s.reg C := bitA_of_none hfC s
+    cases hr : regBit s.reg C <;>
+    simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
+      cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
+      lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
+      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
+      hfS, hfC, bitStepA, hw, hw', hb, hr]
 
 /-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
-    `carryOutBit` of the 64-bit values of `A`, `S` and the one-bit value of `C` to `O`. -/
+    `carryOutBit` of the 64-bit values of `A`, `S` and the bit of `C` (`regBit`) to `O`. -/
 theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String) (s : LstateA)
     (zf : Bool) (hfO : frame O = none) (hfA : frame A = none) (hfS : frame S = none)
     (hfC : frame C = none) {va vb : BitVec 64} (hA : s.reg.getW A 64 = some va) (hS : s.reg.getW S 64 = some vb) :
     fstepA frame (.Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C], .reg none) s zf
-      = (s.reg.getW C 1).map fun vc =>
+      = (regBit s.reg C).map fun vc =>
           ({ s with reg := (s.reg.setReg O (VIR.JasminDialect.carryOutBit va vb vc)).nextPc },
             zf) := by
-  cases hc : s.reg.getW C 1 <;>
+  cases hc : s.reg.getW C 1 with
+  | some vc =>
+    rw [regBit_of_getW1 hc]
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
       withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
       hfO, hfA, hfS, hfC]
+  | none =>
+    have hw : wordA frame s A = some va := by simp [wordA, hfA, hA]
+    have hw' : wordA frame s S = some vb := by simp [wordA, hfS, hS]
+    have hb : bitA frame s C = regBit s.reg C := bitA_of_none hfC s
+    cases hr : regBit s.reg C <;>
+    simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
+      cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
+      lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
+      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
+      hfO, hfA, hfS, hfC, bitStepA, hw, hw', hb, hr]
 
 /-! ## 5. The machine steps of the carry chain -/
 
@@ -612,6 +636,17 @@ theorem ACorrW.bit {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp
     rw [hl] at hw
     simp at hw
 
+/-- A name whose bit (`regBit`) is `vc` under `ACorrW` holds the zero-extension of `vc` in its
+    machine register. -/
+theorem ACorrW.bitR {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
+    {r : String} (hr : gpOk r = true) {vc : BitVec 1} (hc : regBit s.reg r = some vc) :
+    sa.regs (phys r) = vc.setWidth 64 := by
+  rcases regBit_some hc with hl | hl
+  · exact h.bit hr (getW_eq_some_iff.2 hl)
+  · have e := h.wide hr (by rw [hl])
+    rw [getW_eq_some_iff.2 hl] at e
+    exact (Option.some.inj e).symm
+
 /-- **The carry-chain add.** From `ACorrW`, with `A` and `S` at width `64`, the address-machine
     step of `ADCX:64 D, A, S, C` is matched by `bt $0, C; adcx S, D` (after the copy of `A`
     into `D`): the registers end related by `ACorrW`, the zero flag is kept, and, when `D` is
@@ -633,13 +668,13 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
   have hgS := hc.wide hS hwS
   rw [CArm.instr, fstepA_adcx3 _ D A S C s zf (frameP_gp hD) (frameP_gp hA) (frameP_gp hS)
     (frameP_gp hC) hgA hgS] at hst
-  cases hgc : s.reg.getW C 1 with
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   set bit := vc.getLsbD 0 with hbit
   -- the machine run, up to the copy of `A` into `D`
   obtain ⟨sa1, hrun, h1D, h1S, h1C, h1r, h1f, h1m⟩ : ∃ sa1 : AState,
@@ -688,9 +723,10 @@ theorem sim_adcx (P : Params) (rsp : BitVec 64) (D A S C : String)
         = some va := by rw [getW_setReg_nextPcN, if_neg (Ne.symm hDA)]; exact hgA
     have eS : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW S 64
         = some vb := by rw [getW_setReg_nextPcN, if_neg (Ne.symm hDS)]; exact hgS
-    have eC : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW C 1
+    have eC : regBit (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc C
         = some vc := by
-      rw [LstateN.getW_nextPc, LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hDC)]; exact hgc
+      rw [regBit_of_lvm (r' := s.reg) (by simp [LstateN.nextPc, LstateN.setReg, Ne.symm hDC])]
+      exact hgc
     have := ha.symm.trans eA
     have := hb.symm.trans eS
     have := hcc.symm.trans eC
@@ -715,7 +751,7 @@ theorem sim_adcxhi (P : Params) (rsp : BitVec 64) (O A S C : String)
   have hgS := hc.wide hS hwS
   rw [CArm.instr, fstepA_adcxhi _ O A S C s zf (frameP_gp hO) (frameP_gp hA) (frameP_gp hS)
     (frameP_gp hC) hgA hgS] at hst
-  cases hgc : s.reg.getW C 1 with
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
@@ -1527,13 +1563,13 @@ theorem sim_sadcx_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
   have hS' := wordA_valM hc hS hwS
   rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (slot_seen hD hA hS (by simp_all) rsp) hA' hS'
     (frameP_gp hC)] at hst
-  cases hgc : s.reg.getW C 1 with
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, hfD, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   set bit := vc.getLsbD 0 with hbit
   have hCD : C ≠ D := by
     intro e; subst e
@@ -1605,9 +1641,10 @@ theorem sim_sadcx_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
   · rw [wordA_setReg (Ne.symm hDA)] at ha
     rw [wordA_setReg (Ne.symm hDS)] at hb
     rw [bitA_of_none (frameP_gp hC)] at hcc
-    have eC : (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc.getW C 1
+    have eC : regBit (s.reg.setReg D (VIR.JasminDialect.addCarryWord va vb vc)).nextPc C
         = some vc := by
-      rw [LstateN.getW_nextPc, LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hDC)]; exact hgc
+      rw [regBit_of_lvm (r' := s.reg) (by simp [LstateN.nextPc, LstateN.setReg, Ne.symm hDC])]
+      exact hgc
     have e1 := ha.symm.trans hA'
     have e2 := hb.symm.trans hS'
     have e3 := hcc.symm.trans eC
@@ -1677,13 +1714,13 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
   have hA' := wordA_valM hc hA hwA
   have hS' := wordA_valM hc hS hwS
   rw [SArm.instr, fstepA_adcxSlot _ D A S C s zf (by simp [hfD]) hA' hS' (frameP_gp hC)] at hst
-  cases hgc : s.reg.getW C 1 with
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, hfD, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   set bit := vc.getLsbD 0 with hbit
   have hsp := hc.sp
   obtain ⟨hRg, hRA, hRS, hRC⟩ := scratchS_spec A S C
@@ -1820,7 +1857,8 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     rw [wordA_write hdisA] at ha
     rw [wordA_write hdisS] at hb
     rw [bitA_of_none (frameP_gp hC)] at hcc
-    have eC : s.reg.nextPc.getW C 1 = some vc := by rw [LstateN.getW_nextPc]; exact hgc
+    have eC : regBit s.reg.nextPc C = some vc := by
+      rw [regBit_of_lvm (r' := s.reg) (by simp [LstateN.nextPc])]; exact hgc
     have e1 := ha.symm.trans hA'
     have e2 := hb.symm.trans hS'
     have e3 := hcc.symm.trans eC
@@ -2292,7 +2330,7 @@ theorem sim_sadcxc_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
       · rename_i ax hax
         simp only [Option.some.injEq]
         rw [read64_write64_of_disjoint _ _ _ _ (hdC ax hax)]
-      · exact LstateN.getW_nextPc _ _ _
+      · exact regBit_of_lvm (by simp [LstateN.nextPc])
     rw [hbC] at hcc
     have e1 := ha.symm.trans hA'
     have e2 := hb.symm.trans hS'
@@ -2785,7 +2823,7 @@ theorem fstepA_movImm64 (P : Params) (rsp : BitVec 64) (D : String) (v : Nat)
   rw [fstepA_of_reg (frameP P rsp) (i := (.Lopn [.reg D] "MOV:64" [.imm v], .reg none)) rfl
     (fun d x hs => by simp [slotMov?] at hs) (fun d x q hk => by simp [slotCmp?] at hk)
     (by simp [cellA?]) (by simp [slotCarry?]) (by simp [slotImm?, frameP_gp hD])
-    (by simp [slotCmov?])]
+    (by simp [slotCmov?]) s zf (by simp [bitStepA])]
   have e := CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.fstepF_movII D v
     { reg := s.reg, cf := s.cf, of := s.of } zf
   rw [show CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep.movII D v
@@ -2916,23 +2954,48 @@ theorem vBytes (P : Params) (D C A B : String) (h : vOk D C A B = true) :
       · exact pieceDec_test C
       · exact pieceDec_cmovne D A
 
-/-- The address machine steps `CMOV:64 D, [C, A, B]` on registers by writing the select of the
-    one-bit value of `C` between the 64-bit values of `A` and `B` to `D`. -/
-theorem fstepA_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (hD : gpOk D = true)
-    (hC : gpOk C = true) (hA : gpOk A = true) (hB : gpOk B = true) (s : LstateA) (zf : Bool)
+/-- The address machine steps `CMOV:64 D, [C, A, B]` on names without a frame word by writing
+    the select of the bit of `C` (`regBit`) between the 64-bit values of `A` and `B` to `D`. -/
+theorem fstepA_cmovF (frame : String → Option (BitVec 64)) (D C A B : String)
+    (hfD : frame D = none) (hfC : frame C = none) (hfA : frame A = none) (hfB : frame B = none)
+    (s : LstateA) (zf : Bool)
     {va vb : BitVec 64} (ha : s.reg.getW A 64 = some va) (hb : s.reg.getW B 64 = some vb) :
-    fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s zf
-      = (s.reg.getW C 1).map fun vc =>
+    fstepA frame (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s zf
+      = (regBit s.reg C).map fun vc =>
           ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.selectW vc va vb)).nextPc },
             zf) := by
-  cases hc : s.reg.getW C 1 <;>
+  cases hc : s.reg.getW C 1 with
+  | some vc =>
+    rw [regBit_of_getW1 hc]
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
       VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
       readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
-      slotCarry?, slotImm?, slotCmov?, frameP_gp hD, frameP_gp hC, frameP_gp hA,
-      frameP_gp hB, evalOperandN, operandName]
+      slotCarry?, slotImm?, slotCmov?, hfD, hfC, hfA, hfB, evalOperandN, operandName]
+  | none =>
+    have hw : wordA frame s A = some va := by simp [wordA, hfA, ha]
+    have hw' : wordA frame s B = some vb := by simp [wordA, hfB, hb]
+    have hbC : bitA frame s C = regBit s.reg C := bitA_of_none hfC s
+    cases hr : regBit s.reg C <;>
+    simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
+      cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
+      lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
+      VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
+      readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
+      slotCarry?, slotImm?, slotCmov?, hfD, hfC, hfA, hfB, evalOperandN, operandName, bitStepA,
+      hw, hw', hbC, hr]
+
+/-- The address machine steps `CMOV:64 D, [C, A, B]` on registers by writing the select of the
+    bit of `C` (`regBit`) between the 64-bit values of `A` and `B` to `D`. -/
+theorem fstepA_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (hD : gpOk D = true)
+    (hC : gpOk C = true) (hA : gpOk A = true) (hB : gpOk B = true) (s : LstateA) (zf : Bool)
+    {va vb : BitVec 64} (ha : s.reg.getW A 64 = some va) (hb : s.reg.getW B 64 = some vb) :
+    fstepA (frameP P rsp) (.Lopn [.reg D] "CMOV:64" [.reg C, .reg A, .reg B], .reg none) s zf
+      = (regBit s.reg C).map fun vc =>
+          ({ s with reg := (s.reg.setReg D (VIR.JasminDialect.selectW vc va vb)).nextPc },
+            zf) :=
+  fstepA_cmovF _ D C A B (frameP_gp hD) (frameP_gp hC) (frameP_gp hA) (frameP_gp hB) s zf ha hb
 
 /-- **The machine run of a register select.** With the condition register other than the
     destination, the run writes to `D` the value of `B` on a zero condition and the value of `A`
@@ -2999,13 +3062,13 @@ theorem sim_cmov (P : Params) (rsp : BitVec 64) (D C A B : String) (h : vOk D C 
   have hgA := hc.wide hA hwA
   have hgB := hc.wide hB hwB
   rw [fstepA_cmov P rsp D C A B hD hC hA hB s zf hgA hgB] at hst
-  cases hgc : s.reg.getW C 1 with
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   obtain ⟨hr, hm⟩ := runBlock_vPieces sa D C A B hD hA (fun e => hDC (phys_inj hD hC e.symm))
   refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (sa.regs (phys A)) (sa.regs (phys B)))
     (fun r => ?_) (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_) (Or.inl ?_), rfl⟩
@@ -3145,13 +3208,14 @@ theorem sim_cmovSlot (P : Params) (rsp : BitVec 64) (D C A B : String)
   have hwb := wordA_valM (P := P) hc (show kOk P B = true by simp [kOk, hB]) (fun _ => hwB)
   rw [fstepA_slotCmov (frameP P rsp) (frameP_gp hD) (by simp [kOk_frame hAk hAs rsp]) none s zf
     hwa hwb] at hst
-  cases hgc : s.reg.getW C 1 with
+  rw [bitA_of_none (frameP_gp hC)] at hst
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   obtain ⟨hr, hm⟩ := runBlock_vtPieces P sa D C A B hD (fun e => hDC (phys_inj hD hC e.symm))
   refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (valM P rsp sa A) (valM P rsp sa B))
     (fun r => ?_) (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_) (Or.inl ?_), rfl⟩
@@ -3316,13 +3380,14 @@ theorem sim_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
   have hwb := wordA_valM hc hBk (fun hg => by rw [hBg] at hg; cases hg)
   rw [fstepA_slotCmov (frameP P rsp) (frameP_gp hD) (by simp [kOk_frame hBk hBs rsp]) none s zf
     hwa hwb] at hst
-  cases hgc : s.reg.getW C 1 with
+  rw [bitA_of_none (frameP_gp hC)] at hst
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   obtain ⟨hr, hm⟩ := runBlock_vfPieces P sa D C A B hD (fun e => hDC (phys_inj hD hC e.symm))
     (fun hAs e => hAD (phys_inj (kOk_gp hAk hAs) hD e))
   refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (valM P rsp sa A) (valM P rsp sa B))
@@ -3431,13 +3496,14 @@ theorem sim_cmovSlotFE (P : Params) (rsp : BitVec 64) (D C B : String)
   have hwb := wordA_valM hc hBk (fun hg => by rw [hBg] at hg; cases hg)
   rw [fstepA_slotCmov (frameP P rsp) (frameP_gp hD) (by simp [kOk_frame hBk hBs rsp]) none s zf
     hwa hwb] at hst
-  cases hgc : s.reg.getW C 1 with
+  rw [bitA_of_none (frameP_gp hC)] at hst
+  cases hgc : regBit s.reg C with
   | none => rw [hgc] at hst; cases hst
   | some vc =>
   rw [hgc] at hst
   simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hst
   obtain ⟨rfl, rfl⟩ := hst
-  have hmC := hc.bit hC hgc
+  have hmC := hc.bitR hC hgc
   obtain ⟨hr, hm⟩ := runBlock_vePieces P sa D C B
   refine ⟨hc.write hD (VIR.JasminDialect.selectW vc (valM P rsp sa D) (valM P rsp sa B))
     (fun r => ?_) (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_) (Or.inl ?_), rfl⟩

@@ -97,6 +97,19 @@ theorem slotCmov?_congr {frame frame' : String → Option (BitVec 64)} {x : Lins
       h _ (by simp [instrNames, JasminLsemExportRewrites.opNames])]
   · rfl
 
+/-- `bitStepA` reads the frame only at the names of the instruction. -/
+theorem bitStepA_frame_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
+    (h : ∀ q ∈ instrNames x, frame q = frame' q) (sa : LstateA) (zf : Bool) :
+    bitStepA frame x sa zf = bitStepA frame' x sa zf := by
+  unfold bitStepA
+  split
+  · rename_i d o a s c
+    have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
+    have hs := h s (by simp [instrNames, JasminLsemExportRewrites.opNames])
+    have hc := h c (by simp [instrNames, JasminLsemExportRewrites.opNames])
+    simp only [wordA, bitA, ha, hs, hc]
+  · rfl
+
 /-- The address machine reads the frame only at the names of the instruction it steps. -/
 theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR}
     (h : ∀ q ∈ instrNames x, frame q = frame' q) (tag : MemTag) (sa : LstateA) (zf : Bool) :
@@ -127,7 +140,7 @@ theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR
               rw [← slotCarry?_congr h, ← slotImm?_congr h, ← slotCmov?_congr h]
               rcases hsc : slotCarry? frame x with _ | ⟨lo, d, a, s, c⟩
               · rcases hsv : slotCmov? frame x with _ | ⟨d, c, a, b⟩
-                · rfl
+                · simp only [bitStepA_frame_congr h]
                 · unfold slotCmov? at hsv
                   split at hsv
                   · split_ifs at hsv
@@ -135,7 +148,8 @@ theorem fstepA_congr {frame frame' : String → Option (BitVec 64)} {x : LinstrR
                     have hd := h d (by simp [instrNames, JasminLsemExportRewrites.opNames])
                     have ha := h a (by simp [instrNames, JasminLsemExportRewrites.opNames])
                     have hb := h b (by simp [instrNames, JasminLsemExportRewrites.opNames])
-                    simp only [wordA, hd, ha, hb]
+                    have hc := h c (by simp [instrNames, JasminLsemExportRewrites.opNames])
+                    simp only [wordA, bitA, hd, ha, hb, hc]
                   · cases hsv
               · unfold slotCarry? at hsc
                 split at hsc

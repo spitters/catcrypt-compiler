@@ -154,9 +154,11 @@ theorem virt_bytesC_reg {frame : String → Option (BitVec 64)}
       have hh : haltedA (cellBody slotArr body) sA = true := by
         rw [haltedA_cellBody]
         exact JasminLsemAddrRun.haltedA_of_runA frame body fA s zf (sA, zA) h1
-      exact ⟨fA, sA, zA, h1, fun q hq hgp hf => ⟨h2.regs q hf, h2.wid q hgp
-        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
-          (ImageAddrSimW.not_mem_of_retOutsB hro hq))⟩, h3⟩
+      have hnW : ∀ q, q ∈ outs → q ∉ ImageAddrSimW.oneBitAt frame (cellBody slotArr body)
+          sA.reg.lpc := fun q hq => ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
+            (ImageAddrSimW.not_mem_of_retOutsB hro hq)
+      exact ⟨fA, sA, zA, h1, fun q hq hgp hf => ⟨h2.regsEq hf (hnW q hq), h2.wid q hgp
+        (hnW q hq)⟩, h3⟩
   obtain ⟨fA, sA, zA, hrA, hregs, hsafe⟩ := hsim
   rw [runA_congr hfr] at hrA
   rw [runSafe_congr hfr] at hsafe

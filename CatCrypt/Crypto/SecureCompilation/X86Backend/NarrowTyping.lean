@@ -153,6 +153,12 @@ theorem fstepA_lvm_of_not_dst {frame : String → Option (BitVec 64)} {i : Linst
   repeat' split at h
   all_goals first
     | exact hreg _ (fun _ hx => hx) h
+    | (rcases orElse_some h with h | ⟨-, h⟩
+       · exact hreg _ (fun _ hx => hx) h
+       · obtain ⟨d, o, ss, w, v, hx, rfl, rfl⟩ := bitStepA_eq h
+         exact setReg_nextPc_lvm _ (fun e => hr (by
+           rw [hx, e]
+           simp [dstNames, VIR.JasminLsemExportRewrites.opNames])))
     | (refine hreg _ (fun x hx => ?_) h
        simp only [dstNames, VIR.JasminLsemExportRewrites.opNames, List.flatMap_cons,
          List.flatMap_nil, List.append_nil, List.mem_singleton] at hx
@@ -210,7 +216,8 @@ theorem fstepA_arithWidth (frame : String → Option (BitVec 64)) (D A o : Strin
       VIR.JasminLsemMemFlagGuard.aluFlagOp?, lsemStepMC, mulhiStruct?, adcxStruct?,
       adcxhiStruct?, sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh,
       VIR.JasminLsemShift.sarStruct?, lsemStepN, readReg,
-      VIR.JasminLsemMemFlagGuard.carryArgs?, VIR.JasminLsemMemFlagGuard.wideArgs?] at h
+      VIR.JasminLsemMemFlagGuard.carryArgs?, VIR.JasminLsemMemFlagGuard.wideArgs?,
+      bitStepA] at h
   all_goals
     obtain ⟨t, ht, rfl, -⟩ := h
     split at ht

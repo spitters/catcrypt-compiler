@@ -20,7 +20,8 @@ The encodability `B.encodable` of a back end `B : IsaBackend I` is read instruct
 instruction through an encoder `E : IsaEncoder`: a context of a body (for x86 the frame
 size, the spill width and the save block), the encodability of an instruction in a context,
 and the operand classes the encoder distinguishes. The law `EncoderComplete B E` ties the
-two and states the operand facts the spill legalisations need. From it, every instruction
+two, states the operand facts the spill legalisations need, and states the encodability of
+each further instruction family over encoder registers. From it, every instruction
 the legalisations of `LegalizeIsa` emit over allocated operands is encodable, and the load
 forwarding `loadCSE` preserves encodability.
 
@@ -29,21 +30,28 @@ forwarding `loadCSE` preserves encodability.
 * `isMovMnem`: the register-move mnemonics `MOV`, `MOV:64` and `MOVQ`.
 * `IsaEncoder`: the context of a body, the encodability of an instruction in a context, the
   encoder registers, the resolving names, the spill slots with a frame offset, the memory
-  names and the materialised comparisons the encoder builds, against a register and against
-  an immediate.
+  names, the materialised comparisons the encoder builds, against a register and against
+  an immediate, and the further instruction families it builds (immediate moves into a
+  slot, two-address operations, three-register shifts, one-source operations, loads and
+  stores, register-indexed accesses, carry chains, flag materialisations, widening
+  multiplications, and the forms it accepts whatever their operands).
 * `AllocOpI`: an operand of the allocated body: an encoder register, or a spill slot with a
   frame offset.
 * `EncoderComplete`: the encodability of a body is that of its instructions in the context
   of the body, and the operand laws of the encoder.
-* `LegalForm`: the instruction forms the spill legalisations emit: register moves over
-  resolving names with at most one memory name, the select over encoder registers, and the
-  materialised comparisons the encoder builds over encoder registers, against a register or
-  an immediate.
+* `LegalForm`: the instruction forms the lowering emits, one constructor per family the
+  encoder builds: register moves over resolving names with at most one memory name, the
+  select over encoder registers, the materialised comparisons, immediate moves, two-address
+  operations against a register or an immediate, three-register shifts, one-source
+  operations, loads and stores, register-indexed loads and stores, three-source carry
+  chains, flag materialisations, widening multiplications, and the forms the encoder accepts
+  whatever their operands.
 
 ## Main results
 
 * `EncoderComplete.encodable_of_instr`: a body whose instructions are encodable in its
   context is encodable.
+* `EncoderComplete.instr_of_legalForm`: an instruction of a legal form is encodable.
 * `EncoderComplete.encodable_of_legal`: a body whose instructions have legal forms in its
   context is encodable.
 * `EncoderComplete.legalizeMovI_legal`, `legalizeOneSrcI_legal`, `cmovSpillSeqI_legal`,
@@ -116,6 +124,39 @@ structure IsaEncoder : Type 1 where
   /-- Whether the encoder builds the materialised comparison with this mnemonic against this
       immediate. -/
   setccImm : String → Nat → Bool
+  /-- Whether the encoder builds the move of this immediate into a spill slot under this
+      move mnemonic. -/
+  slotImm : String → Nat → Bool
+  /-- Whether the encoder builds the two-address operation with this mnemonic over two
+      registers. -/
+  alu : String → Bool
+  /-- Whether the encoder builds the two-address operation with this mnemonic against this
+      immediate. -/
+  aluImm : String → Nat → Bool
+  /-- Whether the encoder builds the three-register shift with this mnemonic (the count in a
+      register). -/
+  shiftReg : String → Bool
+  /-- Whether the encoder builds the one-source register operation with this mnemonic. -/
+  unary : String → Bool
+  /-- Whether the encoder builds the one-source move with this mnemonic between a register and
+      a resolving name (a load or a store). -/
+  memMov : String → Bool
+  /-- Whether the encoder builds the register-indexed load or address computation with this
+      mnemonic, index register and scale. -/
+  sibLoad : String → String → Nat → Bool
+  /-- Whether the encoder builds the register-indexed store with this mnemonic and scale. -/
+  sibStore : String → Nat → Bool
+  /-- Whether the encoder builds the three-source carry-chain addition with this mnemonic. -/
+  carry3 : String → Bool
+  /-- Whether the encoder builds the flag materialisation with this mnemonic and these sources
+      into a register. -/
+  flagOut : String → List LOperand → Bool
+  /-- Whether the encoder builds the two-destination widening multiplication with this
+      mnemonic. -/
+  wideMul : String → Bool
+  /-- Whether the encoder accepts the instruction whatever its operands resolve to: the forms
+      without bytes and the control transfers. -/
+  fixed : LinstrR → Bool
 
 /-- **An operand of the allocated body**: a name that is an encoder register, or a spill slot
     with a frame offset in the context `c`. -/
@@ -174,23 +215,126 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   setccImm_reg : ∀ (c : E.Ctx) (opn dn an : String) (v : Nat), E.setccImm opn v = true →
     E.reg dn = true → E.reg an = true →
     E.instr c (.Lopn [.reg dn] opn [.reg an, .imm v]) = true
+  /-- A move of an immediate into an encoder register is encodable. -/
+  movImm_reg : ∀ (c : E.Ctx) (mn dn : String) (v : Nat), isMovMnem mn = true →
+    E.reg dn = true → E.instr c (.Lopn [.reg dn] mn [.imm v]) = true
+  /-- A move of an immediate the encoder builds into a spill slot with a frame offset is
+      encodable. -/
+  movImm_slot : ∀ (c : E.Ctx) (mn dn : String) (v : Nat), isMovMnem mn = true →
+    E.slot c dn → E.slotImm mn v = true → E.instr c (.Lopn [.reg dn] mn [.imm v]) = true
+  /-- A two-address operation the encoder builds over two encoder registers is encodable. -/
+  alu_reg : ∀ (c : E.Ctx) (opn dn sn : String), E.alu opn = true → E.reg dn = true →
+    E.reg sn = true → E.instr c (.Lopn [.reg dn] opn [.reg dn, .reg sn]) = true
+  /-- A two-address operation the encoder builds against an immediate, over an encoder
+      register, is encodable. -/
+  alu_imm : ∀ (c : E.Ctx) (opn dn : String) (v : Nat), E.aluImm opn v = true →
+    E.reg dn = true → E.instr c (.Lopn [.reg dn] opn [.reg dn, .imm v]) = true
+  /-- A three-register shift the encoder builds over encoder registers is encodable. -/
+  shift_reg : ∀ (c : E.Ctx) (opn dn an sn : String), E.shiftReg opn = true →
+    E.reg dn = true → E.reg an = true → E.reg sn = true →
+    E.instr c (.Lopn [.reg dn] opn [.reg an, .reg sn]) = true
+  /-- A one-source register operation the encoder builds over encoder registers is
+      encodable. -/
+  unary_reg : ∀ (c : E.Ctx) (opn dn sn : String), E.unary opn = true → E.reg dn = true →
+    E.reg sn = true → E.instr c (.Lopn [.reg dn] opn [.reg sn]) = true
+  /-- A load or store the encoder builds between two resolving names, at most one of them a
+      memory name, is encodable. -/
+  memMov_res : ∀ (c : E.Ctx) (mn d s : String), E.memMov mn = true → E.resolves c d →
+    E.resolves c s → (E.memName d && E.memName s) = false →
+    E.instr c (.Lopn [.reg d] mn [.reg s]) = true
+  /-- A register-indexed load or address computation the encoder builds over encoder
+      registers is encodable. -/
+  sibLoad_reg : ∀ (c : E.Ctx) (opn dn bn xn : String) (sc : Nat), E.sibLoad opn xn sc = true →
+    E.reg dn = true → E.reg bn = true → E.reg xn = true →
+    E.instr c (.Lopn [.reg dn] opn [.arrIdx bn xn sc]) = true
+  /-- A register-indexed store the encoder builds over encoder registers is encodable,
+      whatever its array destination. -/
+  sibStore_reg : ∀ (c : E.Ctx) (a : LOperand) (opn bn xn vn : String) (sc : Nat),
+    E.sibStore opn sc = true → E.reg bn = true → E.reg xn = true → E.reg vn = true →
+    E.instr c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn]) = true
+  /-- A three-source carry-chain addition the encoder builds over encoder registers is
+      encodable. -/
+  carry3_reg : ∀ (c : E.Ctx) (opn dn an sn kn : String), E.carry3 opn = true →
+    E.reg dn = true → E.reg an = true → E.reg sn = true → E.reg kn = true →
+    E.instr c (.Lopn [.reg dn] opn [.reg an, .reg sn, .reg kn]) = true
+  /-- A flag materialisation the encoder builds into an encoder register is encodable. -/
+  flagOut_reg : ∀ (c : E.Ctx) (opn dn : String) (srcs : List LOperand),
+    E.flagOut opn srcs = true → E.reg dn = true →
+    E.instr c (.Lopn [.reg dn] opn srcs) = true
+  /-- A widening multiplication the encoder builds over encoder registers is encodable. -/
+  wideMul_reg : ∀ (c : E.Ctx) (opn ln hn sn : String), E.wideMul opn = true →
+    E.reg ln = true → E.reg hn = true → E.reg sn = true →
+    E.instr c (.Lopn [.reg ln, .reg hn] opn [.reg sn]) = true
+  /-- An instruction the encoder accepts whatever its operands is encodable. -/
+  fixed_instr : ∀ (c : E.Ctx) (i : LinstrR), E.fixed i = true → E.instr c i = true
 
-/-- **The legal forms of the spill legalisations** at the instruction set `I`, the encoder `E`
-    and the context `c`: a register move whose two names resolve in `c` and of which at most
-    one is a memory name; the 64-bit select at the select mnemonic of `I` over four encoder
-    registers; a materialised comparison the encoder builds over three encoder registers; and
-    a materialised comparison the encoder builds against an immediate over two encoder
-    registers. -/
-def LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) (i : LinstrR) : Prop :=
-  (∃ mn d s, isMovMnem mn = true ∧ i = .Lopn [.reg d] mn [.reg s] ∧
-      E.resolves c d ∧ E.resolves c s ∧ (E.memName d && E.memName s) = false) ∨
-  (∃ m dn cn tn fn, I.selectMnemonic = some m ∧
-      i = .Lopn [.reg dn] (withWidthTag 64 m) [.reg cn, .reg tn, .reg fn] ∧
-      E.reg dn = true ∧ E.reg cn = true ∧ E.reg tn = true ∧ E.reg fn = true) ∨
-  (∃ opn dn an sn, E.setcc opn = true ∧ i = .Lopn [.reg dn] opn [.reg an, .reg sn] ∧
-      E.reg dn = true ∧ E.reg an = true ∧ E.reg sn = true) ∨
-  (∃ opn dn an v, E.setccImm opn v = true ∧ i = .Lopn [.reg dn] opn [.reg an, .imm v] ∧
-      E.reg dn = true ∧ E.reg an = true)
+/-- **The legal forms of the lowering** at the instruction set `I`, the encoder `E` and the
+    context `c`, one constructor per instruction family the encoder builds: a register move
+    whose two names resolve in `c` and of which at most one is a memory name; the 64-bit
+    select at the select mnemonic of `I` over four encoder registers; a materialised
+    comparison the encoder builds over three encoder registers, or against an immediate over
+    two; a move of an immediate into an encoder register, or of an immediate the encoder
+    builds into a spill slot with a frame offset; a two-address operation the encoder builds
+    over two encoder registers, or against an immediate; a three-register shift; a one-source
+    register operation; a load or store between resolving names of which at most one is a
+    memory name; a register-indexed load or address computation and a register-indexed
+    store over encoder registers; a three-source carry-chain addition; a flag
+    materialisation into an encoder register; a widening multiplication into two encoder
+    registers; and an instruction the encoder accepts whatever its operands. -/
+inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
+  /-- A register move between resolving names, at most one a memory name. -/
+  | mov (mn d s : String) : isMovMnem mn = true → E.resolves c d → E.resolves c s →
+      (E.memName d && E.memName s) = false → LegalForm I E c (.Lopn [.reg d] mn [.reg s])
+  /-- The 64-bit select at the select mnemonic over four encoder registers. -/
+  | select (m dn cn tn fn : String) : I.selectMnemonic = some m → E.reg dn = true →
+      E.reg cn = true → E.reg tn = true → E.reg fn = true →
+      LegalForm I E c (.Lopn [.reg dn] (withWidthTag 64 m) [.reg cn, .reg tn, .reg fn])
+  /-- A materialised comparison over three encoder registers. -/
+  | setcc (opn dn an sn : String) : E.setcc opn = true → E.reg dn = true → E.reg an = true →
+      E.reg sn = true → LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn])
+  /-- A materialised comparison against an immediate over two encoder registers. -/
+  | setccImm (opn dn an : String) (v : Nat) : E.setccImm opn v = true → E.reg dn = true →
+      E.reg an = true → LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .imm v])
+  /-- A move of an immediate into an encoder register. -/
+  | movImmReg (mn dn : String) (v : Nat) : isMovMnem mn = true → E.reg dn = true →
+      LegalForm I E c (.Lopn [.reg dn] mn [.imm v])
+  /-- A move of an immediate the encoder builds into a spill slot with a frame offset. -/
+  | movImmSlot (mn dn : String) (v : Nat) : isMovMnem mn = true → E.slot c dn →
+      E.slotImm mn v = true → LegalForm I E c (.Lopn [.reg dn] mn [.imm v])
+  /-- A two-address operation over two encoder registers. -/
+  | alu (opn dn sn : String) : E.alu opn = true → E.reg dn = true → E.reg sn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg dn, .reg sn])
+  /-- A two-address operation against an immediate over an encoder register. -/
+  | aluImm (opn dn : String) (v : Nat) : E.aluImm opn v = true → E.reg dn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg dn, .imm v])
+  /-- A three-register shift. -/
+  | shiftReg (opn dn an sn : String) : E.shiftReg opn = true → E.reg dn = true →
+      E.reg an = true → E.reg sn = true → LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn])
+  /-- A one-source register operation. -/
+  | unary (opn dn sn : String) : E.unary opn = true → E.reg dn = true → E.reg sn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg sn])
+  /-- A load or store between resolving names, at most one a memory name. -/
+  | memMov (mn d s : String) : E.memMov mn = true → E.resolves c d → E.resolves c s →
+      (E.memName d && E.memName s) = false → LegalForm I E c (.Lopn [.reg d] mn [.reg s])
+  /-- A register-indexed load or address computation over encoder registers. -/
+  | sibLoad (opn dn bn xn : String) (sc : Nat) : E.sibLoad opn xn sc = true → E.reg dn = true →
+      E.reg bn = true → E.reg xn = true → LegalForm I E c (.Lopn [.reg dn] opn [.arrIdx bn xn sc])
+  /-- A register-indexed store over encoder registers. -/
+  | sibStore (a : LOperand) (opn bn xn vn : String) (sc : Nat) : E.sibStore opn sc = true →
+      E.reg bn = true → E.reg xn = true → E.reg vn = true →
+      LegalForm I E c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn])
+  /-- A three-source carry-chain addition over encoder registers. -/
+  | carry3 (opn dn an sn kn : String) : E.carry3 opn = true → E.reg dn = true →
+      E.reg an = true → E.reg sn = true → E.reg kn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn, .reg kn])
+  /-- A flag materialisation into an encoder register. -/
+  | flagOut (opn dn : String) (srcs : List LOperand) : E.flagOut opn srcs = true →
+      E.reg dn = true → LegalForm I E c (.Lopn [.reg dn] opn srcs)
+  /-- A widening multiplication into two encoder registers. -/
+  | wideMul (opn ln hn sn : String) : E.wideMul opn = true → E.reg ln = true →
+      E.reg hn = true → E.reg sn = true → LegalForm I E c (.Lopn [.reg ln, .reg hn] opn [.reg sn])
+  /-- An instruction the encoder accepts whatever its operands. -/
+  | fixed (i : LinstrR) : E.fixed i = true → LegalForm I E c i
 
 namespace EncoderComplete
 
@@ -208,13 +352,24 @@ theorem encodable_of_instr {body : Lcmd}
 /-- **An instruction of a legal form is encodable.** -/
 theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
     E.instr c i = true := by
-  rcases hi with ⟨mn, d, s, hm, rfl, hd, hs, hds⟩ |
-    ⟨m, dn, cn, tn, fn, hsel, rfl, h1, h2, h3, h4⟩ | ⟨opn, dn, an, sn, ho, rfl, h1, h2, h3⟩ |
-    ⟨opn, dn, an, v, ho, rfl, h1, h2⟩
-  · exact (h.mov_iff c mn d s hm).2 ⟨hd, hs, hds⟩
-  · exact h.select_reg m hsel c dn cn tn fn h1 h2 h3 h4
-  · exact h.setcc_reg c opn dn an sn ho h1 h2 h3
-  · exact h.setccImm_reg c opn dn an v ho h1 h2
+  cases hi with
+  | mov mn d s hm hd hs hds => exact (h.mov_iff c mn d s hm).2 ⟨hd, hs, hds⟩
+  | select m dn cn tn fn hsel h1 h2 h3 h4 => exact h.select_reg m hsel c dn cn tn fn h1 h2 h3 h4
+  | setcc opn dn an sn ho h1 h2 h3 => exact h.setcc_reg c opn dn an sn ho h1 h2 h3
+  | setccImm opn dn an v ho h1 h2 => exact h.setccImm_reg c opn dn an v ho h1 h2
+  | movImmReg mn dn v hm h1 => exact h.movImm_reg c mn dn v hm h1
+  | movImmSlot mn dn v hm h1 h2 => exact h.movImm_slot c mn dn v hm h1 h2
+  | alu opn dn sn ho h1 h2 => exact h.alu_reg c opn dn sn ho h1 h2
+  | aluImm opn dn v ho h1 => exact h.alu_imm c opn dn v ho h1
+  | shiftReg opn dn an sn ho h1 h2 h3 => exact h.shift_reg c opn dn an sn ho h1 h2 h3
+  | unary opn dn sn ho h1 h2 => exact h.unary_reg c opn dn sn ho h1 h2
+  | memMov mn d s hm hd hs hds => exact h.memMov_res c mn d s hm hd hs hds
+  | sibLoad opn dn bn xn sc ho h1 h2 h3 => exact h.sibLoad_reg c opn dn bn xn sc ho h1 h2 h3
+  | sibStore a opn bn xn vn sc ho h1 h2 h3 => exact h.sibStore_reg c a opn bn xn vn sc ho h1 h2 h3
+  | carry3 opn dn an sn kn ho h1 h2 h3 h4 => exact h.carry3_reg c opn dn an sn kn ho h1 h2 h3 h4
+  | flagOut opn dn srcs ho h1 => exact h.flagOut_reg c opn dn srcs ho h1
+  | wideMul opn ln hn sn ho h1 h2 h3 => exact h.wideMul_reg c opn ln hn sn ho h1 h2 h3
+  | fixed i hi => exact h.fixed_instr c i hi
 
 /-- **A body whose instructions have legal forms in its context is encodable.** -/
 theorem encodable_of_legal {body : Lcmd}
@@ -258,15 +413,15 @@ theorem reg_of_allocOp_not_spill {c : E.Ctx} {n : String} (ha : AllocOpI E c (.r
 theorem legalForm_mov_left {c : E.Ctx} {mn r n : String} (hm : isMovMnem mn = true)
     (hr : E.reg r = true) (hn : AllocOpI E c (.reg n)) :
     LegalForm I E c (.Lopn [.reg r] mn [.reg n]) :=
-  Or.inl ⟨mn, r, n, hm, rfl, h.reg_resolves c r hr, h.allocOp_resolves hn,
-    by simp [h.reg_not_mem r hr]⟩
+  .mov mn r n hm (h.reg_resolves c r hr) (h.allocOp_resolves hn)
+    (by simp [h.reg_not_mem r hr])
 
 /-- A move from an encoder register to an allocated operand has a legal form. -/
 theorem legalForm_mov_right {c : E.Ctx} {mn r n : String} (hm : isMovMnem mn = true)
     (hr : E.reg r = true) (hn : AllocOpI E c (.reg n)) :
     LegalForm I E c (.Lopn [.reg n] mn [.reg r]) :=
-  Or.inl ⟨mn, n, r, hm, rfl, h.allocOp_resolves hn, h.reg_resolves c r hr,
-    by simp [h.reg_not_mem r hr]⟩
+  .mov mn n r hm (h.allocOp_resolves hn) (h.reg_resolves c r hr)
+    (by simp [h.reg_not_mem r hr])
 
 /-- A move from an allocated operand to an encoder register is encodable. -/
 theorem mov_reg_left {c : E.Ctx} {mn r n : String} (hm : isMovMnem mn = true)
@@ -300,7 +455,7 @@ theorem legalizeMovI_legal {c : E.Ctx} {d s : LOperand} {mov : String}
     · exact h.legalForm_mov_right hm h.reload_reg hd
   · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     subst hi
-    refine Or.inl ⟨mov, dn, sn, hm, rfl, h.allocOp_resolves hd, h.allocOp_resolves hs, ?_⟩
+    refine .mov mov dn sn hm (h.allocOp_resolves hd) (h.allocOp_resolves hs) ?_
     rw [h.allocOp_memName hd, h.allocOp_memName hs]
     simpa using hb
 
@@ -344,8 +499,7 @@ theorem cmovSpillSeqI_legal (hsel : I.selectMnemonic = some "CMOV") {c : E.Ctx}
   have hm64 : isMovMnem "MOV:64" = true := by decide +kernel
   have hsel' : ∀ dn cn : String, E.reg dn = true → E.reg cn = true →
       LegalForm I E c (.Lopn [.reg dn] "CMOV:64" [.reg cn, .reg tn, .reg fn]) :=
-    fun dn cn hdn hcn =>
-      Or.inr (Or.inl ⟨"CMOV", dn, cn, tn, fn, hsel, rfl, hdn, hcn, ht, hf⟩)
+    fun dn cn hdn hcn => .select "CMOV" dn cn tn fn hsel hdn hcn ht hf
   obtain ⟨dn, rfl, hd'⟩ := hd
   obtain ⟨cn, rfl, hc'⟩ := hc
   have hd : AllocOpI E c (.reg dn) := ⟨dn, rfl, hd'⟩
@@ -401,8 +555,7 @@ theorem setccSpillI?_legal {c : E.Ctx} {dsts : List LOperand} {opn : String}
     rcases hi with rfl | rfl | rfl | rfl
     · exact h.legalForm_mov_left hm h.reload_reg ha
     · exact h.legalForm_mov_left hm h.reloadSnd_reg hb
-    · exact Or.inr (Or.inr (Or.inl ⟨opn, _, _, _, ho, rfl, h.reload_reg, h.reload_reg,
-        h.reloadSnd_reg⟩))
+    · exact .setcc opn _ _ _ ho h.reload_reg h.reload_reg h.reloadSnd_reg
     · obtain ⟨dn, rfl, hd'⟩ := hd d (by simp)
       exact h.legalForm_mov_right hm h.reload_reg ⟨dn, rfl, hd'⟩
   · cases hl
@@ -611,7 +764,7 @@ theorem loadCSE_legalI {c : E.Ctx} (body : List Linstr)
     ∀ i ∈ loadCSE body, LegalForm I E c i.li_i :=
   h.loadCSE_preservesI (LegalForm I E c)
     (fun mn d s hm hi => ((h.mov_iff c mn d s hm).1 (h.instr_of_legalForm hi)).1)
-    (fun mn d s hm hd hs hds => Or.inl ⟨mn, d, s, hm, rfl, hd, hs, hds⟩) body hb
+    (fun mn d s hm hd hs hds => .mov mn d s hm hd hs hds) body hb
 
 /-- **The legalised body after load forwarding is encodable**: a body of instructions with
     legal forms in the context of its forwarded body is forwarded by `loadCSE` to an

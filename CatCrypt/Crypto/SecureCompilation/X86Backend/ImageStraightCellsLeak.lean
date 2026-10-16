@@ -494,7 +494,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (icase icase_ldx 
   icase_label icase_cond icase_sload icase_sstore icase_scmp icase_reg slotMov?_cases
   slotCmp?_eq imgInstr_ldx imgInstr_stx)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (gateAtW instrGateBW carryI?
-  castGateB)
+  castGateB gateAtW_notW readNames)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (classifyK)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak (instrLeakA_reg_indep)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeakPhys (phiEv evA)
@@ -657,9 +657,14 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
           rw [hx] at hg hb ⊢
           obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_loadIdx hg
           obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+          have hidxW := gateAtW_notW hg rfl (r := idx)
+            (by simp [readNames, JasminLsemAddrCongr.srcNames])
+            (by simp [DecodePrintedAddrW.carryIns])
+            (fun q h => by simp (config := { decide := true }) [icase] at h)
+            (fun q h => by simp (config := { decide := true }) [icase] at h)
           have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
             unfold idxVal
-            rw [hrel.regs idx hidx]
+            rw [hrel.regsEq hidx hidxW]
           rw [imgInstr_ldx slotArr body _ hacc]
           simp [stepLeakA, hb, posTW, instrLeakA, normA, tagA, loadIdxA?, hp, instrLeakF,
             flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]
@@ -672,9 +677,14 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
               rw [hx] at hg hb ⊢
               obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_storeIdx hg
               obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+              have hidxW := gateAtW_notW hg rfl (r := idx)
+                (by simp [readNames, JasminLsemAddrCongr.srcNames])
+                (by simp [DecodePrintedAddrW.carryIns])
+                (fun q h => by simp (config := { decide := true }) [icase] at h)
+                (fun q h => by simp (config := { decide := true }) [icase] at h)
               have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
                 unfold idxVal
-                rw [hrel.regs idx hidx]
+                rw [hrel.regsEq hidx hidxW]
               rw [imgInstr_stx slotArr body _ hacc]
               simp [stepLeakA, hb, posTW, instrLeakA, normA, tagA, storeIdxA?, loadIdxA?, hp,
                 instrLeakF, flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]

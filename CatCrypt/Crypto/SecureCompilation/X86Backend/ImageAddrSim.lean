@@ -261,7 +261,7 @@ theorem step_congr (P P' : LprogM) (i : LinstrRM) {ss : SSt} {gs : List SG}
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin (fstepF evalInstrPMemF_isLopn)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (baseOf fstepA_of_reg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (baseOf fstepA_of_reg fstepA_of_reg_some)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
   (read64 write64 read64_write64_same read64_write64_of_disjoint)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (stackGet stackSet stackGet_id)
@@ -436,7 +436,7 @@ theorem reg_step {frame : String → Option (BitVec 64)} {x : LinstrR}
     obtain ⟨⟨b, z⟩, hb, rfl⟩ := Option.map_eq_some_iff.mp ht'
     refine ⟨{ sa with reg := b.reg, cf := b.cf, of := b.of }, ?_, rfl, fun r hr => ?_,
       fun r hr => ?_, hcf, hof, ?_, hlpc, ?_, fun r hr => ?_⟩
-    · rw [fstepA_of_reg frame rfl hmov' hcmp' hcell' hsc' hsi' hsv']
+    · refine fstepA_of_reg_some frame rfl hmov' hcmp' hcell' hsc' hsi' hsv' ?_
       simp only [regStepA]
       rw [show ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM) = baseOf sa from rfl, hb]
       simp only [Option.map_some]
