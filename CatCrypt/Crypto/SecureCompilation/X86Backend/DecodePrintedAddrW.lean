@@ -95,6 +95,10 @@ arms to the bodies of `DecodePrintedCFG`.
 * `eiBytes`, `fstepA_seteImm`, `runBlock_eiPieces`, `sim_seteImm`, `instrOKWB_seteImm`: the
   materialised comparison `SETE:64`/`SETNE:64 D, [A, $v]` with an immediate `v < 2^31` is
   printed as `cmp $v`, `mov $0` and `set<cc>`; `instrOKWB` accepts every such instruction.
+* `rBytes_encode`, `fstepA_sarImm`, `runBlock_rPieces`, `sim_sarImm`, `instrOKWB_sarImm`: the
+  arithmetic right shift `SAR:64 D, [D, #k]` of a general-purpose name in place by
+  `0 < k < 64` is printed as `sar $k`, whose run writes the arithmetic shift the address step
+  writes; `instrOKWB` accepts every such instruction.
 * `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
 * `run_simWN`, `run_simW`, `printedAddr_simW_noCall`, `printedAddr_simW`: the decoded bytes
   of a body in `printedAddrWB` simulate its run on the address machine, by a halting run
@@ -415,8 +419,7 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
-      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
-      hfS, hfC]
+      aluFlagOp?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA, hfS, hfC]
   | none =>
     have hw : wordA frame s A = some va := by simp [wordA, hfA, hA]
     have hw' : wordA frame s S = some vb := by simp [wordA, hfS, hS]
@@ -424,8 +427,8 @@ theorem fstepA_adcx3 (frame : String → Option (BitVec 64)) (D A S C : String) 
     cases hr : regBit s.reg C <;>
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
-      lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc, withALUFlags,
-      aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
+      lsemStepMC, mulhiStruct?, adcxStruct?, readReg_of_getW hA, hS, hc,
+      carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?, hfD, hfA,
       hfS, hfC, bitStepA, hw, hw', hb, hr]
 
 /-- The address machine steps `ADCXHI:64 O, A, S, C` on registers by writing the one-bit
@@ -443,7 +446,7 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
-      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
+      withALUFlags, aluFlagOp?, cellA?, slotCarry?, slotImm?, slotCmov?,
       hfO, hfA, hfS, hfC]
   | none =>
     have hw : wordA frame s A = some va := by simp [wordA, hfA, hA]
@@ -453,7 +456,7 @@ theorem fstepA_adcxhi (frame : String → Option (BitVec 64)) (O A S C : String)
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, regStepA, fstepF,
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, readReg_of_getW hA, hS, hc,
-      withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
+      carryArgs?, wideArgs?, cellA?, slotCarry?, slotImm?, slotCmov?,
       hfO, hfA, hfS, hfC, bitStepA, hw, hw', hb, hr]
 
 /-! ## 5. The machine steps of the carry chain -/
@@ -2971,7 +2974,7 @@ theorem fstepA_cmovF (frame : String → Option (BitVec 64)) (D C A B : String)
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
       VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
-      readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
+      readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, cellA?,
       slotCarry?, slotImm?, slotCmov?, hfD, hfC, hfA, hfB, evalOperandN, operandName]
   | none =>
     have hw : wordA frame s A = some va := by simp [wordA, hfA, ha]
@@ -2982,8 +2985,8 @@ theorem fstepA_cmovF (frame : String → Option (BitVec 64)) (D C A B : String)
       cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast, castStruct?, movImmStruct?,
       lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
       VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN,
-      readReg_of_getW ha, hb, hc, withALUFlags, aluFlagOp?, carryArgs?, wideArgs?, cellA?,
-      slotCarry?, slotImm?, slotCmov?, hfD, hfC, hfA, hfB, evalOperandN, operandName, bitStepA,
+      readReg_of_getW ha, hc, carryArgs?, wideArgs?, cellA?,
+      slotCarry?, slotImm?, slotCmov?, hfD, hfC, hfA, hfB, operandName, bitStepA,
       hw, hw', hbC, hr]
 
 /-- The address machine steps `CMOV:64 D, [C, A, B]` on registers by writing the select of the
@@ -4346,12 +4349,133 @@ theorem sim_seteImm (P : Params) (rsp : BitVec 64) (n : Bool) (D A : String) (v 
     simp [LstateN.nextPc, LstateN.setReg, hr']
   · simp [LstateN.nextPc, LstateN.setReg]
 
+/-! ## 8l. The arithmetic right shift by an immediate -/
+
+/-- The arithmetic right shift `SAR:64 D, [D, #k]` of `D` in place by the count `k`. -/
+def rInstr (D : String) (k : Nat) : LinstrR := .Lopn [.reg D] "SAR:64" [.reg D, .imm k]
+
+/-- The arithmetic right shift of a register name in place by an immediate, as `(D, k)`. -/
+def classifyR : LinstrR → Option (String × Nat)
+  | .Lopn [.reg d] m [.reg a, .imm k] => if m = "SAR:64" ∧ d = a then some (d, k) else none
+  | _ => none
+
+theorem classifyR_instr {i : LinstrR} {D : String} {k : Nat}
+    (h : classifyR i = some (D, k)) : i = rInstr D k := by
+  unfold classifyR at h
+  split at h
+  · split_ifs at h with h1
+    obtain ⟨rfl, rfl⟩ := h1
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    rfl
+  · cases h
+
+/-- **The conditions of an arithmetic right shift by an immediate** `SAR:64 D, [D, #k]`: a
+    general-purpose name and a count `0 < k < 64`. -/
+def rOk (D : String) (k : Nat) : Bool := gpOk D && decide (0 < k) && decide (k < 64)
+
+/-- The bytes of `sar $k, %D` on the register numbered `n`: the shift-by-one form `D1 /7`
+    for `k = 1`, the shift-by-`imm8` form `C1 /7 ib` otherwise. -/
+def rBytes (n k : Nat) : List (BitVec 8) :=
+  if k = 1 then encShift1 1 7 n else encShiftImmw 1 7 n k
+
+/-- The byte piece of an arithmetic right shift by an immediate: `sar $k, %D`. -/
+def rPieces (D : String) (k : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(rBytes (gpNumU D) k, .sar (phys D) (.imm k))]
+
+/-- `sar $k, %D` with `k < 64` decodes to the arithmetic shift of the register of `D`. -/
+theorem pieceDec_sarImm (D : String) (k : Nat) (hk : k < 64) :
+    PieceDec (rBytes (gpNumU D) k, .sar (phys D) (.imm k)) := by
+  intro rest
+  by_cases h1 : k = 1
+  · subst h1
+    simpa [phys, rBytes] using
+      decodeLinstr_shift1 7 (gpNumU D) rest (Or.inr (Or.inr rfl)) (gpNumU_lt_16 D)
+  · simpa [phys, rBytes, h1] using
+      decodeLinstr_shiftImm8 7 (gpNumU D) k rest (Or.inr (Or.inr rfl)) (gpNumU_lt_16 D)
+        (by omega)
+
+/-- **The bytes of an arithmetic right shift by an immediate.** -/
+theorem rBytes_encode (P : Params) (D : String) (k : Nat) (h : rOk D k = true) :
+    encodeLopn P.frame P.spillW (rInstr D k) P.qsaveB = (rPieces D k).flatMap Prod.fst
+      ∧ ∀ p ∈ rPieces D k, PieceDec p := by
+  simp only [rOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨hD, -⟩, hk⟩ := h
+  have fD := gpFacts hD
+  refine ⟨?_, ?_⟩
+  · simp only [rInstr, encodeLopn, LprogAsmPrinter.isCarryOutBinding,
+      LprogAsmPrinter.isMulHiBinding, stripWidthTag, LprogAsmPrinter.mnemWidth, adxPrefix,
+      hasSuffix, LprogBytes.rexW]
+    simp (config := { decide := true }) [encImmOp, fD.notSlot, shiftImmExt, rPieces, rBytes]
+  · intro p hp
+    simp only [rPieces, List.mem_cons, List.not_mem_nil, or_false] at hp
+    subst hp
+    exact pieceDec_sarImm D k hk
+
+/-- The address machine steps the arithmetic right shift by an immediate by writing the
+    arithmetic shift of the 64-bit value of `D` by `k` to `D`, keeping the zero flag. -/
+theorem fstepA_sarImm (P : Params) (rsp : BitVec 64) (D : String) (k : Nat)
+    (s : LstateA) (zf : Bool) {v : BitVec 64} (hv : s.reg.getW D 64 = some v) :
+    fstepA (frameP P rsp) (rInstr D k, .reg none) s zf
+      = some ({ s with reg := (s.reg.setReg D (BitVec.sshiftRight v k)).nextPc }, zf) := by
+  simp (config := { decide := true }) [rInstr, fstepA, slotMov?, slotCmp?,
+    regStepA, fstepF, cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast,
+    castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+    sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?,
+    readReg_of_getW hv, withALUFlags, aluFlagOp?, cellA?, slotCarry?,
+    slotImm?, slotCmov?]
+
+/-- The data word of `x86_SAR` by an immediate count `0 < k < 64` is the arithmetic shift
+    by `k`. -/
+theorem x86_SAR_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) :
+    (x86_SAR v (BitVec.ofNat 64 k)).word = BitVec.sshiftRight v k := by
+  have hkn : (BitVec.ofNat 64 k).toNat = k := by
+    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
+  simp only [x86_SAR, shiftCount, hkn, VIR.shiftMask_of_lt hk, if_neg hk0, rflags_OF, wsar,
+    Nat.min_eq_right hk.le]
+
+/-- **The machine run of an arithmetic right shift by an immediate.** The run writes to `D`
+    the arithmetic shift of its register by `k`, keeps every other register, and keeps the
+    memory. -/
+theorem runBlock_rPieces (sa : AState) (D : String) (k : Nat) (hk0 : 0 < k) (hk : k < 64) :
+    (∀ r, (aMachine.runBlock sa ((rPieces D k).map Prod.snd)).regs r
+      = if r = phys D then BitVec.sshiftRight (sa.regs (phys D)) k else sa.regs r)
+      ∧ (aMachine.runBlock sa ((rPieces D k).map Prod.snd)).mem = sa.mem := by
+  have hrun : aMachine.runBlock sa ((rPieces D k).map Prod.snd)
+      = evalInstrA sa (.sar (phys D) (.imm k)) := rfl
+  refine ⟨fun r => ?_, runBlock_mem_of_noWriteB _ sa (by simp [rPieces, noWriteB])⟩
+  rw [hrun]
+  by_cases hr : r = phys D
+  · subst hr
+    simp [evalInstrA, evalInstr, AState.view, JState.writeB5W, JState.get, JOperand.eval,
+      x86_SAR_word_imm _ k (by omega) hk]
+  · simp [evalInstrA, evalInstr, AState.view, JState.writeB5W, hr]
+
+/-- **The arithmetic right shift by an immediate.** From `ACorrW`, with `D` at width `64`,
+    the address-machine step of `SAR:64 D, [D, #k]` is matched by `sar $k`: the register of
+    `D` holds the shifted word. -/
+theorem sim_sarImm (P : Params) (rsp : BitVec 64) (D : String) (k : Nat)
+    (h : rOk D k = true) (sa : AState) (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s)
+    (hwD : (s.reg.lvm D).1 = 64) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) (rInstr D k, .reg none) s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa ((rPieces D k).map Prod.snd)) s' ∧ zf' = zf := by
+  simp only [rOk, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨hD, hk0⟩, hk⟩ := h
+  rw [fstepA_sarImm P rsp D k s zf (hc.wide hD hwD)] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  obtain ⟨hr, hm⟩ := runBlock_rPieces sa D k hk0 hk
+  refine ⟨hc.write hD _ hr (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_)
+    (Or.inl ?_), rfl⟩
+  · show (s.reg.setReg D _).nextPc.lvm r = _
+    simp [LstateN.nextPc, LstateN.setReg, hr']
+  · exact (getW_setReg_nextPcN _ D D _).trans (if_pos rfl)
+
 /-- An instruction other than the closing return of a printed body with carry chains: an
     `Lopn` read into a width-carrying cast between general-purpose names, a carry constant, a
     slot carry arm, a carry arm, a cell arm, an immediate
     store into a frame slot, a wide immediate, a register select, a select with a slot true
     value, a select with a slot false value, a materialised comparison against a register or
-    an immediate, a register-count shift or an arm of
+    an immediate, a register-count shift, an arithmetic right shift by an immediate or an arm of
     `DecodePrintedAddr` whose conditions hold, a label, or a conditional branch on the zero
     flag to a label the body defines. -/
 def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
@@ -4388,6 +4512,9 @@ def instrOKWB (body : Lcmd) (P : Params) : LinstrR → Bool
               | none =>
               match classifyEI (.Lopn ds o ss) with
               | some (_, d, a, v) => eiOk d a v
+              | none =>
+              match classifyR (.Lopn ds o ss) with
+              | some (d, k) => rOk d k
               | none =>
                   match classifyA (.Lopn ds o ss) with
                   | some a => a.ok P
@@ -4515,6 +4642,16 @@ theorem instrOKWB_seteImm (body : Lcmd) (P : Params) (n : Bool) {R A : String} {
     simp (config := { decide := true }) [instrOKWB, eiInstr, eMnem, classifyK, movImmStruct?,
       classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
       classifyEI, eiOk, hR, hA, hv2]
+
+/-- **The arithmetic right shift by an immediate is covered**: `instrOKWB` accepts
+    `SAR:64 R, [R, #k]` for every general-purpose name `R`, every count `0 < k < 64`, every
+    body and all body parameters. -/
+theorem instrOKWB_sarImm (body : Lcmd) (P : Params) {R : String} {k : Nat}
+    (hR : gpOk R = true) (hk0 : 0 < k) (hk : k < 64) :
+    instrOKWB body P (rInstr R k) = true := by
+  simp (config := { decide := true }) [instrOKWB, rInstr, classifyK, movImmStruct?,
+    classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
+    classifyEI, classifyR, rOk, hR, hk0, hk]
 
 /-- The source of a frame-word store `m q, S` at the program counter of `s` (`slotMov?`, `q`
     neither a general-purpose name nor a cell name `mem.B.off`) when `S` holds a one-bit value
@@ -4885,7 +5022,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
         have hok' : (AArm.st o q S).ok P = true := by
           rcases hm with rfl | rfl <;>
             simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
-              classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+              classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
+              classifyR, hcl]
               using hok
         have hli := AArm.li_eq hok'
         rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
@@ -5401,6 +5539,38 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
             exact reaches_block a b hks hshk hops hR
           rename_i hclEI
+          split at hok
+          · -- an arithmetic right shift by an immediate
+            rename_i D kc hclR
+            have hia := classifyR_instr hclR
+            have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+                = (rInstr D kc, MemTag.reg none) := by
+              rw [hia]; simp (config := { decide := true }) [rInstr, normA, tagA]
+            rw [hli] at hst
+            rw [hia] at hws
+            have hok' := hok
+            simp only [rOk, Bool.and_eq_true] at hok'
+            obtain ⟨⟨hD, -⟩, -⟩ := hok'
+            have hwD : (s.reg.lvm D).1 = 64 := hws D (reg_reads (by simp)) hD
+              (by simp [rInstr, carryIns])
+            obtain ⟨hc', -⟩ := sim_sarImm P rsp D kc hok sa s zf hc hwD s' zf' hst
+            have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+            have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+                (aMachine.runBlock sa ((rPieces D kc).map Prod.snd)).flags.zf.getD false
+                  = zf' := by
+              intro hcnd
+              have hcm := hcondNext hcnd
+              rw [hia] at hcm
+              simp [rInstr, classifyA, classify] at hcm
+              split_ifs at hcm <;> simp [cmpArmB] at hcm
+            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
+              (hnoadd hnotadd _ _) hrun hsafe'
+            refine ⟨sa', ?_, hC⟩
+            obtain ⟨hb, hp⟩ := rBytes_encode P D kc hok
+            have hops : shs[k].ops' = (rPieces D kc).map Prod.snd :=
+              shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
+            exact reaches_block a b hks hshk hops hR
+          rename_i hclR
           -- an arm of `DecodePrintedAddr`
           split at hok
           · rename_i ar hcl

@@ -28,15 +28,32 @@ accepted shape. Each constructor carries the hypotheses of the matching construc
 `GateOfLegal.GateForm`, so every sub-form is a legal form, together with the conditions the
 gate reads off the frame map, the array map and the width analysis: general-purpose names
 without a frame word, frame slots with one, read names outside the analysis, and the base of
-an indexed access holding an array pointer (`accArr`). The theorems `refusedImg_*` give, for
-families of legal forms outside `ImgForm`, a legal instruction the gate refuses, evaluated in
-its one-instruction body.
+an indexed access holding an array pointer (`accArr`).
+
+## The legal forms the gate refuses
+
+`instrGateBW` at the frame map and the array map without entries refuses the following legal
+forms in their one-instruction body, each for want of a simulation case:
+
+* a whole-word load `LOAD:64` of a cell `mem.B.off` and a whole-word store `STORE:64` into one
+  (`regOkB` requires `cellA? = none`): the carry-chain simulation reads a cell only after the
+  cell rewriting `cellBody` that the region back end applies before the gate;
+* an untagged immediate move that is no carry constant (`bitMovB` requires a value below `2`
+  whose next use is a carry-in): the simulation reads an untagged immediate move only as a
+  one-bit carry constant;
+* `Lgoto`, `Lcall` and `Lalign`: the gate has no arm for them, and the carry-chain step
+  lemmas have no case for them;
+* an indexed load at a stride other than `8`, and the width-tagged `LOADIDX:64`: the image
+  `imgInstr` resolves untagged indexed accesses at stride `8` only;
+* a branch on a condition code without a zero-flag polarity (`condPol`): the simulation reads
+  branches on the zero flag only;
+* the overflow-chain carry-out `ADOXHI:64`: the carry-chain simulation covers `ADCX:64` and
+  `ADCXHI:64` only (`carryI?`).
 
 ## Main definitions
 
 * `ImgForm frame slotArr body k W` — the legal forms the gate accepts at instruction `k` of
   `body` at the width analysis `W`.
-* `ImgRefused i` — `i` is a legal form in its one-instruction body that `instrGateBW` refuses.
 * `SaveOf j` — `j` saves a general-purpose register into its slot `qsave.R`.
 
 ## Main results
@@ -44,7 +61,6 @@ its one-instruction body.
 * `gate_*`: the gate `gateAtW` on each accepted shape.
 * `gateForm_of_imgForm`, `gateAtW_of_imgForm`, `instrGateBW_of_legalForm`: every sub-form of
   `ImgForm` is a sub-form of `GateForm`, hence a legal form, and passes the gate.
-* `refusedImg_*`: the legal forms the gate refuses, one witness per family.
 * `reloadSavedB_of_savePrefix`, `imgGateBW_of_legal`: a body of sub-forms of `ImgForm` that
   ends with the return and opens with the saves of its array slots passes `imgGateBW`.
 * `physImgB_of_savePrefix`: a body that opens with saves of general-purpose registers, writes
@@ -174,6 +190,40 @@ theorem symN_shift0 (dst opn ra : String) (R : String → STerm)
     symN (.Lopn [.reg dst] opn [.reg ra, .imm 0]) R = .set dst (R ra) [] := by
   dsimp only [symN]
   rw [if_pos hb, if_pos ⟨h0, rfl⟩]
+
+/-- The register description of a materialised comparison of a register against an immediate
+    that fits its width. -/
+theorem symN_setccRI (dst opn ra : String) (n : Nat) (R : String → STerm)
+    (hb : binOk (stripWidthTag opn) = false)
+    (hc : (VIR.JasminLsemWidthN.cmpOfName? (stripWidthTag opn)).isSome = true)
+    (hn : n < 2 ^ VIR.JasminLsemWidthN.widthFromTag opn) :
+    symN (.Lopn [.reg dst] opn [.reg ra, .imm n]) R =
+      .set dst (.setcc ((VIR.JasminLsemWidthN.cmpOfName? (stripWidthTag opn)).getD .eq) (R ra)
+        (.immW (VIR.JasminLsemWidthN.widthFromTag opn) n)) [] := by
+  dsimp only [symN]
+  rw [if_neg (by simp [hb]), if_pos hc, if_pos hn]
+
+/-- The register description of a count-in-mnemonic left or logical right shift by
+    `1 … 63`. -/
+theorem symN_tagShift {b : String} (hb : b ∈ ["SHL", "SHR"]) {n : Nat} (hn0 : 0 < n)
+    (hn : n < 64) (dst a : String) (R : String → STerm) :
+    symN (.Lopn [.reg dst] (tagMnem b n) [.reg a]) R = .set dst (.bin b (R a) (.immW 64 n)) [] := by
+  have hb' : b = "SHL" ∨ b = "SHR" := by simpa using hb
+  have hs : VIR.JasminImmShiftMnem.immShiftMnem? (tagMnem b n) = some (b, n) :=
+    VIR.JasminImmShiftMnem.immShiftMnem?_withWidthTag64
+      (by rcases hb' with h | h <;> simp [h]) n
+  have hw : VIR.JasminLsemWidthN.widthFromTag (tagMnem b n) = 64 :=
+    width_64 _ (VIR.JasminImmShiftMnem.hasSuffix_append _ _)
+  have hneg : stripWidthTag (tagMnem b n) ≠ "NEG" := by
+    rw [stripWidthTag_tagMnem]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
+  have hmov : stripWidthTag (tagMnem b n) ≠ "MOV" := by
+    rw [stripWidthTag_tagMnem]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
+  have hsh : shOk b = true := by rcases hb' with rfl | rfl <;> rfl
+  have hlt : n < 2 ^ 64 := lt_trans hn (by decide)
+  dsimp only [symN]
+  rw [if_neg hneg, if_neg hmov, hs]
+  simp only [hsh, if_true, if_neg (Nat.pos_iff_ne_zero.1 hn0), hw]
+  rw [if_pos ⟨hb', hlt⟩]
 
 /-- The sources of an operation of a non-commutative base are not exchanged. -/
 theorem commSwap_of_not_comm (o d a b : String)
@@ -691,6 +741,107 @@ theorem gate_shiftImm {frame : String → Option (BitVec 64)}
         img_fin
       · rfl
 
+/-- **A materialised comparison of a general-purpose name against an immediate passes the
+    gate** when its names hold no frame word and its source lies outside the analysis. -/
+theorem gate_setccImm {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
+    {m d a : String} {v : Nat} (hm : m ∈ ["SETE:64", "SETNE:64"]) (hd : gpOk d = true)
+    (ha : gpOk a = true) (hv : v < 2 ^ 31) (hfd : frame d = none) (hfa : frame a = none)
+    (haW : a ∉ W) :
+    gateAtW frame slotArr body k W (.Lopn [.reg d] m [.reg a, .imm v]) = true := by
+  have := cellParts?_of_gpOk hd
+  have := cellParts?_of_gpOk ha
+  have hv' : v < 2 ^ VIR.JasminLsemWidthN.widthFromTag "SETE:64" := by
+    rw [width_64 _ (by decide +kernel)]; omega
+  have hv'' : v < 2 ^ VIR.JasminLsemWidthN.widthFromTag "SETNE:64" := by
+    rw [width_64 _ (by decide +kernel)]; omega
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl
+  · have hsym := fun R => symN_setccRI d "SETE:64" a v R (by rw [strip_SETE]; exact binOk_SETE)
+      (by rw [strip_SETE]; exact cmp_SETE) hv'
+    apply gateAtW_reg
+    · img_reads
+    · rfl
+    · img_icase
+    · exact movImmStruct?_ne (by decide)
+    · rfl
+    · img_sym
+      simp only [hsym]
+      img_fin
+    · rfl
+  · have hsym := fun R => symN_setccRI d "SETNE:64" a v R (by rw [strip_SETNE]; exact binOk_SETNE)
+      (by rw [strip_SETNE]; exact cmp_SETNE) hv''
+    apply gateAtW_reg
+    · img_reads
+    · rfl
+    · img_icase
+    · exact movImmStruct?_ne (by decide)
+    · rfl
+    · img_sym
+      simp only [hsym]
+      img_fin
+    · rfl
+
+/-- **A width cast between general-purpose names passes the gate** when its names hold no
+    frame word and its source lies outside the analysis. -/
+theorem gate_cast {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
+    {o d a : String} (ho : o ∈ castMnems) (hd : gpOk d = true) (ha : gpOk a = true)
+    (hfd : frame d = none) (hfa : frame a = none) (haW : a ∉ W) :
+    gateAtW frame slotArr body k W (.Lopn [.reg d] o [.reg a]) = true := by
+  have hcd := cellParts?_of_gpOk hd
+  have hca := cellParts?_of_gpOk ha
+  simp only [castMnems, List.mem_cons, List.not_mem_nil, or_false] at ho
+  rcases ho with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+    simp (config := { decide := true }) [gateAtW, carryI?, icase, castGateB, gateReadSet,
+      readOkB, carryIns, readNames, readsRdx, VIR.JasminLsemAddrCongr.rdxOp, srcNames, cellBase,
+      DecodePrintedAddrW.classifyK, LprogBytes.castMovBits, VIR.JasminLsemAddrRun.castTagW, hd,
+      ha, hfd, hfa, haW, hcd, hca]
+
+/-- **A count-in-mnemonic left or logical right shift by `1 … 63` passes the gate** when its
+    names hold no frame word and its source lies outside the analysis. -/
+theorem gate_tagShift {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
+    {b : String} {n : Nat} {d s : String} (hb : b ∈ ["SHL", "SHR"]) (hn0 : 0 < n) (hn : n < 64)
+    (hd : gpOk d = true) (hs : gpOk s = true) (hfd : frame d = none) (hfs : frame s = none)
+    (hsW : s ∉ W) :
+    gateAtW frame slotArr body k W (.Lopn [.reg d] (tagMnem b n) [.reg s]) = true := by
+  have := cellParts?_of_gpOk hd
+  have := cellParts?_of_gpOk hs
+  have e1 : tagMnem b n ≠ "MULX" := by tag_ne hb
+  have e2 : tagMnem b n ≠ "MULX:64" := by tag_ne hb
+  have e3 : tagMnem b n ≠ "MULXMEM:64" := by tag_ne hb
+  have e4 : tagMnem b n ≠ "LOADIDX" := by tag_ne hb
+  have e5 : tagMnem b n ≠ "STOREIDX" := by tag_ne hb
+  have e6 : tagMnem b n ≠ "MOVQ" := by tag_ne hb
+  have e7 : tagMnem b n ≠ "MOV:64" := by tag_ne hb
+  have e8 : tagMnem b n ≠ "MOV" := by tag_ne hb
+  have hcast := (tagMnem_facts hb hn0 hn (Params.ofBody body) [] d s).2.1
+  have hsym := fun R => symN_tagShift hb hn0 hn d s R
+  apply gateAtW_reg
+  · img_reads
+  · simp [carryI?]
+  · simp [icase, hcast, e4, e5, e6, e7, slotMov?, slotCmp?]
+  · exact movImmStruct?_ne e8
+  · rfl
+  · have hne : ∀ t : String, t.toList.take 2 ≠ ['S', 'H'] → (tagMnem b n = t) = False :=
+      fun t ht => eq_false (ne_of_take 2 (by rw [take2_tagMnem hb]; exact fun h => ht h.symm))
+    have hneM : (b ++ ":" ++ toString n = "MOV") = False :=
+      eq_false (ne_of_take 2 (by rw [take2_tagBase hb]; decide))
+    have hmi := movImmStruct?_ne (ds := [.reg d]) (ss := [.reg s]) e8
+    img_sym
+    simp only [if_neg e1, stripWidthTag_tagMnem, hneM, if_false, copyQ, beq_iff_eq,
+      Bool.or_eq_true, hmi]
+    simp only [hne "LOAD:64" (by decide), hne "STORE:64" (by decide), hne "LEA:64" (by decide),
+      hne "MOVQ" (by decide), hne "MOV:64" (by decide), hne "ZEROEXT" (by decide),
+      hne "TRUNC" (by decide), hne "CASTW_32_32" (by decide), hne "CASTW_32_64" (by decide),
+      hne "CASTW_64_32" (by decide), hne "CASTW_64_64" (by decide),
+      hne "CASTW_64_16" (by decide), hne "CASTW_16_64" (by decide),
+      hne "CASTW_16_16" (by decide), hne "CASTW_16_32" (by decide),
+      hne "CASTW_32_16" (by decide), or_self, if_false, hsym]
+    img_fin
+  · simp [cmovCondOkB]
+
 /-! ## 3. The accepted sub-family of the legal forms -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (LegalForm)
@@ -751,6 +902,17 @@ inductive ImgForm (frame : String → Option (BitVec 64)) (slotArr : String → 
   | setcc (m d a b : String) : m ∈ ["SETE:64", "SETNE:64"] → gpOk d = true → gpOk a = true →
       gpOk b = true → frame d = none → frame a = none → frame b = none → a ∉ W → b ∉ W →
       ImgForm frame slotArr body k W (.Lopn [.reg d] m [.reg a, .reg b])
+  /-- A 64-bit materialised comparison against an immediate below `2^31`. -/
+  | setccImm (m d a : String) (v : Nat) : m ∈ ["SETE:64", "SETNE:64"] → gpOk d = true →
+      gpOk a = true → v < 2 ^ 31 → frame d = none → frame a = none → a ∉ W →
+      ImgForm frame slotArr body k W (.Lopn [.reg d] m [.reg a, .imm v])
+  /-- A width cast between general-purpose names. -/
+  | cast (o d a : String) : o ∈ castMnems → gpOk d = true → gpOk a = true → frame d = none →
+      frame a = none → a ∉ W → ImgForm frame slotArr body k W (.Lopn [.reg d] o [.reg a])
+  /-- A 64-bit count-in-mnemonic left or logical right shift by `1 … 63`. -/
+  | tagShift (b : String) (n : Nat) (d s : String) : b ∈ ["SHL", "SHR"] → 0 < n → n < 64 →
+      gpOk d = true → gpOk s = true → frame d = none → frame s = none → s ∉ W →
+      ImgForm frame slotArr body k W (.Lopn [.reg d] (tagMnem b n) [.reg s])
   /-- A 64-bit two-address operation over general-purpose names. -/
   | alu (m d s : String) :
       m ∈ ["ADD:64", "SUB:64", "AND:64", "OR:64", "XOR:64", "MUL:64", "CMP:64"] →
@@ -812,6 +974,9 @@ theorem gateForm_of_imgForm {frame : String → Option (BitVec 64)}
   | movImmSlot q v hq h1 h2 hv hor => exact .movImmSlot q v hq h1 h2 hv hor
   | select d c a b hd hc ha hb h1 h2 h3 => exact .select d c a b hd hc ha hb h1 h2 h3
   | setcc m d a b hm hd ha hb => exact .setcc m d a b hm hd ha hb
+  | setccImm m d a v hm hd ha hv => exact .setccImm m d a v hm hd ha hv
+  | cast o d a ho hd ha => exact .cast o d a ho hd ha
+  | tagShift b n d s hb hn0 hn hd hs => exact .tagShift b n d s hb hn0 hn hd hs
   | alu m d s hm hd hs => exact .alu m d s hm hd hs
   | aluImm m d v hm hd hv hf => exact .aluImm m d v hm hd hv hf
   | cmpImm d v hd hv => exact .cmpImm d v hd hv
@@ -840,6 +1005,10 @@ theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
     exact gate_select hd hc ha hb hac hbc hfd hfc hfa hfb haW hbW
   | setcc m d a b hm hd ha hb hfd hfa hfb haW hbW =>
     exact gate_setcc hm hd ha hb hfd hfa hfb haW hbW
+  | setccImm m d a v hm hd ha hv hfd hfa haW => exact gate_setccImm hm hd ha hv hfd hfa haW
+  | cast o d a ho hd ha hfd hfa haW => exact gate_cast ho hd ha hfd hfa haW
+  | tagShift b n d s hb hn0 hn hd hs hfd hfs hsW =>
+    exact gate_tagShift hb hn0 hn hd hs hfd hfs hsW
   | alu m d s hm hd hs hfd hfs hdW hsW =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     rcases hm with h | h | h | h | h | h | rfl
@@ -871,73 +1040,7 @@ theorem instrGateBW_of_legalForm {frame : String → Option (BitVec 64)}
       ∧ instrGateBW frame slotArr body k i = true :=
   ⟨legalForm_of_gateForm (gateForm_of_imgForm h), gateAtW_of_imgForm h⟩
 
-/-! ## 4. The legal forms the gate refuses -/
-
-/-- The instruction `i` is a legal form in its one-instruction body `wb i`, which `instrGateBW`
-    refuses at position `0` at the frame map and the array map without entries. -/
-def ImgRefused (i : LinstrR) : Prop :=
-  x86LegalB (x86Enc.ctx (wb i)) i = true
-    ∧ instrGateBW (fun _ => none) (fun _ => none) (wb i) 0 i = false
-
-/-- A whole-word load of a cell `mem.B.off` is a legal form the gate refuses (`regOkB` requires
-    `cellA? = none`). Missing simulation case: the carry-chain simulation reads a cell only
-    after the cell rewriting `cellBody` that the region back end applies before the gate. -/
-theorem refusedImg_loadCell : ImgRefused (.Lopn [.reg "RAX"] "LOAD:64" [.reg "mem.RBX.8"]) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- A whole-word store into a cell is a legal form the gate refuses. Missing simulation case,
-    as for `refusedImg_loadCell`. -/
-theorem refusedImg_storeCell :
-    ImgRefused (.Lopn [.reg "mem.RBX.8"] "STORE:64" [.reg "RAX"]) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- An untagged immediate move that is no carry constant (`bitMovB` requires a value below `2`
-    whose next use is a carry-in) is a legal form the gate refuses. Missing simulation case: the
-    simulation reads an untagged immediate move only as a one-bit carry constant. -/
-theorem refusedImg_movImm32 : ImgRefused (.Lopn [.reg "RAX"] "MOV" [.imm 5]) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- An unconditional jump is a legal form the gate refuses. Missing simulation case: the gate
-    has no arm for `Lgoto`, and the carry-chain step lemmas have no case for it. -/
-theorem refusedImg_goto : ImgRefused (.Lgoto ("", 1)) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- A call is a legal form the gate refuses. Missing simulation case of the carry-chain
-    simulation, which has no call arm. -/
-theorem refusedImg_call : ImgRefused (.Lcall none ("f", 1)) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- An indexed load at stride `4` is a legal form the gate refuses. Missing simulation case:
-    the image `imgInstr` resolves indexed accesses at stride `8` only. -/
-theorem refusedImg_loadIdx4 :
-    ImgRefused (.Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RBX" "RCX" 4]) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- An alignment directive is a legal form the gate refuses. Missing simulation case: the gate
-    has no arm for `Lalign`. -/
-theorem refusedImg_align : ImgRefused LinstrR.Lalign := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- A branch on a condition code without a zero-flag polarity (`condPol`) is a legal form the
-    gate refuses. Missing simulation case: the simulation reads branches on the zero flag
-    only. -/
-theorem refusedImg_condCarry : ImgRefused (.Lcond (.reg "C") 1) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- The overflow-chain carry-out `ADOXHI:64` is a legal form the gate refuses. Missing
-    simulation case: the carry-chain simulation covers `ADCX:64` and `ADCXHI:64` only
-    (`carryI?`). -/
-theorem refusedImg_adoxhi :
-    ImgRefused (.Lopn [.reg "RAX"] "ADOXHI:64" [.reg "RAX", .reg "RCX", .reg "RDX"]) := by
-  unfold ImgRefused; constructor <;> rfl
-
-/-- The width-tagged indexed load `LOADIDX:64` is a legal form the gate refuses. Missing
-    simulation case: the image `imgInstr` and the gate read the untagged `LOADIDX` only. -/
-theorem refusedImg_loadIdx64 :
-    ImgRefused (.Lopn [.reg "RAX"] "LOADIDX:64" [.arrIdx "RBX" "RCX" 8]) := by
-  unfold ImgRefused; constructor <;> decide +kernel
-
-/-! ## 5. The gate of a body -/
+/-! ## 4. The gate of a body -/
 
 /-- **A body that opens with the saves of its array slots reloads every array pointer after a
     save**: if every instruction of the prefix `pre` is a save `MOVQ qsave.R, R` whose source
@@ -1005,7 +1108,7 @@ theorem imgGateBW_of_legal {frame : String → Option (BitVec 64)}
   | some i =>
     simpa using (instrGateBW_of_legalForm (hform k i (by omega) hi)).2
 
-/-! ## 6. The class of the image of a body -/
+/-! ## 5. The class of the image of a body -/
 
 /-- The slot `qsave.R` of a register is a frame-slot name. -/
 theorem isSpillOrQsave_slotOfReg (R : String) : isSpillOrQsave (slotOfReg R) = true := by

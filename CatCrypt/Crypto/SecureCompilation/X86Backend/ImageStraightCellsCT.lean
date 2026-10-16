@@ -432,6 +432,9 @@ def gW (P : Params) (rsp : BitVec 64) (i : LinstrR) (ℓ : List CTLeak) : List C
   match classifyEI i with
   | some _ => []
   | none =>
+  match classifyR i with
+  | some _ => []
+  | none =>
   match classifyA i with
   | some a => ℓ ++ redLeak rsp a
   | none => ℓ
@@ -464,7 +467,7 @@ theorem leak_cmovSlotFE (P : Params) (rsp : BitVec 64) (D C B : String)
     store (`ldm`, `stm`), the immediate store into a slot (`imm`), the wide immediate
     (`lmov`), the register select and the select with a slot true value (`vreg`, `vt`), the
     materialised comparison against a register and an immediate (`sete`, `seteImm`), the
-    register-count shift (`shrx`), and
+    register-count shift (`shrx`), the arithmetic right shift by an immediate (`sarImm`), and
     the arms of `DecodePrintedAddr` on the correspondence with narrow names (`aarm`). The
     width cast and the select with a slot false value are
     `DecodePrintedAddrWLeak.leak_castW`, `leak_cmovSlotF` and `leak_cmovSlotFE`. -/
@@ -496,6 +499,8 @@ structure ArmLeaksW (P : Params) (rsp : BitVec 64) : Prop where
     blockLeakA .doitm sa ((eiPieces n D A v).map Prod.snd) = []
   shrx : ∀ (l : Bool) (D A B : String) (sa : AState),
     blockLeakA .doitm sa ((xPieces l D A B).map Prod.snd) = []
+  sarImm : ∀ (D : String) (k : Nat) (sa : AState),
+    blockLeakA .doitm sa ((rPieces D k).map Prod.snd) = []
   aarm : ∀ a : AArm, a.ok P = true → ∀ (sa : AState) (s : LstateA), ACorrW rsp sa s →
     WideAt s a.li.fst →
       blockLeakA .doitm sa (a.js P) = instrLeakA (frameP P rsp) a.li s ++ redLeak rsp a
@@ -635,7 +640,8 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
     have hok' : (AArm.st o q S).ok P = true := by
       rcases hm with rfl | rfl <;>
         simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
-          classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+          classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
+          classifyR, hcl]
           using hok
     have hli := AArm.li_eq hok'
     have hgw : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
@@ -644,7 +650,8 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           = stepLeakA frame body s zf ++ redLeak rsp (.st o q S) := by
         rcases hm with rfl | rfl <;>
           simp (config := { decide := true }) [gW, hclK, movImmStruct?, classifyS, classifyC,
-            classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI, hcl]
+            classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
+            classifyR, hcl]
       rw [h1, hGl, show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli]
     rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
     rw [show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli] at hst
@@ -1165,6 +1172,38 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         exact ⟨_, hops, hpc', hc', hz', hnoadd hnotadd _ _,
           (hAL.seteImm n D A v sa).trans hgw.symm⟩
       rename_i hclEI
+      split at hok
+      · -- an arithmetic right shift by an immediate
+        rename_i D kc hclR
+        have hia := classifyR_instr hclR
+        have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+            = (rInstr D kc, MemTag.reg none) := by
+          rw [hia]; simp (config := { decide := true }) [rInstr, normA, tagA]
+        rw [hli] at hst
+        have hgw : gW P rsp (.Lopn ds o ss) (stepLeakA frame body s zf) = [] := by
+          simp only [gW, hclK, hmv, hclS, hclC, hclM, hclI, hclL, hclV, hclE, hclX, hclEI, hclR]
+        rw [hia] at hws
+        have hok' := hok
+        simp only [rOk, Bool.and_eq_true] at hok'
+        obtain ⟨⟨hD, -⟩, -⟩ := hok'
+        have hwD : (s.reg.lvm D).1 = 64 := hws D (reg_reads (by simp)) hD
+          (by simp [rInstr, carryIns])
+        obtain ⟨hc', -⟩ := sim_sarImm P rsp D kc hok sa s zf hc hwD s' zf' hst
+        have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+        have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+            (aMachine.runBlock sa ((rPieces D kc).map Prod.snd)).flags.zf.getD false
+              = zf' := by
+          intro hcnd
+          have hcm := hcondNext hcnd
+          rw [hia] at hcm
+          simp [rInstr, classifyA, classify] at hcm
+          split_ifs at hcm <;> simp [cmpArmB] at hcm
+        obtain ⟨hb, hp⟩ := rBytes_encode P D kc hok
+        have hops : shs[k].ops' = (rPieces D kc).map Prod.snd :=
+          shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
+        exact ⟨_, hops, hpc', hc', hz', hnoadd hnotadd _ _,
+          (hAL.sarImm D kc sa).trans hgw.symm⟩
+      rename_i hclR
       -- an arm of `DecodePrintedAddr`
       split at hok
       · rename_i ar hcl
@@ -1175,7 +1214,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           have h1 : gW P rsp (.Lopn ds o ss) (stepLeakA frame body s zf)
               = stepLeakA frame body s zf ++ redLeak rsp ar := by
             simp only [gW, hclK, hmv, hclS, hclC, hclM, hclI, hclL, hclV, hclE, hclX, hclEI,
-              hcl]
+              hclR, hcl]
           rw [h1, hGl, ← hia, hli]
         rw [← hia, hli] at hst
         have hsafeA : ar.LoadSafe rsp s := by
@@ -1527,6 +1566,12 @@ theorem leak_shrx (l : Bool) (D A B : String) (sa : AState) :
     simp [xPieces, xJ, blockLeakA, opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands,
       X86Mnem.timing]
 
+/-- The arithmetic right shift by an immediate `sar $k` emits no event. -/
+theorem leak_sarImm (D : String) (k : Nat) (sa : AState) :
+    blockLeakA .doitm sa ((rPieces D k).map Prod.snd) = [] := by
+  simp [rPieces, blockLeakA, opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands,
+    X86Mnem.timing]
+
 /-- A carry arm on registers emits no event. -/
 theorem leak_carm (c : CArm) (sa : AState) : blockLeakA .doitm sa c.js = [] := by
   cases c with
@@ -1799,6 +1844,7 @@ theorem armLeaksW (P : Params) (rsp : BitVec 64) : ArmLeaksW P rsp where
   sete := leak_sete
   seteImm := leak_seteImm
   shrx := leak_shrx
+  sarImm := leak_sarImm
   aarm := leak_aarmW P rsp
 
 /-! ## 8. The lengths of the step events and the decoded bytes -/
@@ -1945,6 +1991,13 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         exact instrLeakA_length_reg (y := eiInstr n D A v) (t := none)
           (by cases n <;> simp (config := { decide := true }) [eiInstr, eMnem, normA, tagA])
           (by cases n <;> simp [eiInstr, eMnem, cellA?]) s₁ s₂
+      split at hok
+      · rename_i D kc hclR
+        have hia := classifyR_instr hclR
+        rw [hia]
+        exact instrLeakA_length_reg (y := rInstr D kc) (t := none)
+          (by simp (config := { decide := true }) [rInstr, normA, tagA])
+          (by simp [rInstr, cellA?]) s₁ s₂
       split at hok
       · rename_i ar hcl
         have hia := classifyA_instr hcl

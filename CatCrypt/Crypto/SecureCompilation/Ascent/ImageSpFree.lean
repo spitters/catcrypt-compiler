@@ -105,7 +105,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (notSlot_of
   SArm classifyC classifyC_instr CArm classifyM classifyM_instr MArm classifyI classifyI_instr
   iOk classifyL classifyL_instr lOk classifyV classifyV_instr vOk vtOk vfOk kOk classifyE
   classifyE_instr eOk eInstr classifyX classifyX_instr xOk xInstr classifyEI classifyEI_instr
-  eiOk eiInstr)
+  eiOk eiInstr classifyR classifyR_instr rOk rInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB instrOKB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (isSpillOrQsave spillQsaveOff)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
@@ -617,6 +617,12 @@ theorem rspFree_of_instrOKWB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Para
         left
         simp [eiInstr, rspFreeB, operandNames, srcNames, rspFreeNameB_gp h.1.1,
           rspFreeNameB_gp h.1.2]
+      split at h
+      · rename_i d k hs
+        rw [classifyR_instr hs]
+        simp only [rOk, Bool.and_eq_true] at h
+        left
+        simp [rInstr, rspFreeB, operandNames, srcNames, rspFreeNameB_gp h.1.1]
       split at h
       · rename_i a hc
         exact rspFree_of_armOk hc h

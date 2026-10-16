@@ -23,19 +23,48 @@ has a legal form `LegalForm` of the x86 encoder. This module compares the two pe
 `instrOKWB` is narrower than `LegalForm`. The gate reads 64-bit instructions over the
 general-purpose names other than `RSP` (`gpOk`), and among those only the arms of the address
 simulation. `GateForm` lists the sub-forms of the legal forms that the gate accepts, one
-constructor per accepted shape; the theorems `refused_*` give, for every family of legal forms
-outside `GateForm`, a legal instruction the gate refuses, evaluated in its one-instruction body.
+constructor per accepted shape.
+
+## The legal forms outside `GateForm`
+
+The following families of legal forms lie outside `GateForm`, and `instrOKWB` refuses each of
+them in its one-instruction body:
+
+* untagged (32-bit) forms: two-address operations (`ADD`), register moves (`MOV`), the
+  materialised comparison (`SETE`), the carry-chain add (`ADCX`), the load `LOAD` from a cell,
+  the count-in-mnemonic shift `SHR:k`, and the immediate move `MOV` of a value at or above
+  `2^31`;
+* a 64-bit operation reading `RSP` as a data register;
+* `MOV:64` from or into a cell `mem.B.off` (a cell is read only by `LOAD:64` and written only
+  by `STORE:64`), and `LOAD:64` from a register. The address machine `fstepA` steps
+  `MOV:64 mem.B.off, S` as a register move into a name `mem.B.off` and leaves the memory
+  unchanged, while the printed `mov %S, off(%B)` stores to memory; the store
+  `legalizeMemStore` emits after `LEA:64` when both index and value are spilled is of this
+  form;
+* the immediate move `MOVQ` of an immediate and `MOV:64` of a value at or above `2^64`;
+* a select whose condition is its destination;
+* the three-register arithmetic right shift `SAR:64 D, [A, B]`, the count-in-mnemonic `SAR:k:64`
+  and the negation `NEG:64`;
+* `MUL:64` by an immediate, `CMP:64` against an immediate outside the sign-extended `imm8`
+  range, a shift by an immediate of at least `64`, and `SHR:64` by `0`;
+* the indexed address `LEA:64 D, [B + X · 8]`, an indexed load at a stride other than `8`,
+  with base `RBP`, or at the tag `LOADIDX:64`, and an indexed store whose array operand is no
+  register name;
+* a carry-chain add whose carry-in is one of its word sources, the overflow-chain binding
+  `ADOXHI:64`, a carry-out binding with two sources, and the flag materialisation `SETC`;
+* the widening multiplication at the tag `MULX:64`, the high-word binding `MULXHI`, the keep
+  marker `KEEP` and the frame directive `FRAMEADD`;
+* `Lgoto`, `Lcall`, `Lalign`, a conditional branch on a condition other than the zero flag,
+  and a conditional branch to a label the body does not define.
 
 ## Main definitions
 
 * `GateForm body` — the legal forms the gate accepts in the body `body`.
-* `Refused i` — `i` is a legal form in its one-instruction body `wb i` and `instrOKWB` refuses it.
 
 ## Main results
 
 * `instrOKWB_of_gateForm`, `legalForm_of_gateForm`, `instrOKWB_of_legalForm`: every sub-form of
   `GateForm` is a legal form and passes `instrOKWB`.
-* `refused_*`: the legal forms the gate refuses, one witness per family.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal
@@ -118,6 +147,9 @@ inductive GateForm (body : Lcmd) : LinstrR → Prop
   /-- A 64-bit two-address shift by an immediate below `64`, nonzero for `SHR:64`. -/
   | shiftImm (m d : String) (k : Nat) : m ∈ ["SHL:64", "SHR:64"] → gpOk d = true → k < 64 →
       (0 < k ∨ m = "SHL:64") → GateForm body (.Lopn [.reg d] m [.reg d, .imm k])
+  /-- A 64-bit two-address arithmetic right shift by an immediate `0 < k < 64`. -/
+  | sarImm (d : String) (k : Nat) : gpOk d = true → 0 < k → k < 64 →
+      GateForm body (.Lopn [.reg d] "SAR:64" [.reg d, .imm k])
   /-- A 64-bit three-register left or logical right shift. -/
   | shiftReg (m d a b : String) : m ∈ ["SHL:64", "SHR:64"] → gpOk d = true → gpOk a = true →
       gpOk b = true → GateForm body (.Lopn [.reg d] m [.reg a, .reg b])
@@ -356,8 +388,9 @@ theorem tagMnem_facts {b : String} (hb : b ∈ ["SHL", "SHR"]) {k : Nat} (hk0 : 
 macro "gate_simp" : tactic => `(tactic|
   simp (config := { decide := true }) [instrOKWB, classifyK, movImmStruct?, classifyS,
     classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
-    classifyA, classify, AArm.ok, Arm.ok, Arm.instr, regArmB, plainB, isMovM, castMovBits,
-    castTagW, CArm.ok, SArm.ok, MArm.ok, imm32Ok, lOk, iOk, vOk, eOk, xOk, eiOk, castOk, isShI,
+    classifyR, classifyA, classify, AArm.ok, Arm.ok, Arm.instr, regArmB, plainB, isMovM,
+    castMovBits, castTagW, CArm.ok, SArm.ok, MArm.ok, imm32Ok, lOk, iOk, vOk, eOk, xOk, eiOk,
+    rOk, castOk, isShI,
     aluArm, gpOk_not_slot, withWidthTag_shl0, repr_zero_eq, withWidthTag, arm_shl0_ok, *] <;>
     first | omega | tauto | (intro h; exact ⟨by omega, h⟩))
 
@@ -407,6 +440,7 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     revert h0
     rcases hm with rfl | rfl <;> gate_simp
+  | sarImm d k hd hk0 hk => exact instrOKWB_sarImm body _ hd hk0 hk
   | shiftReg m d a b hm hd ha hb =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     rcases hm with rfl | rfl <;> gate_simp
@@ -418,7 +452,7 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
       tagMnem_facts hb hk0 hk (Params.ofBody body) [] d s
     simp (config := { decide := true }) only [instrOKWB, classifyK, h1, h2, movImmStruct?,
       classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
-      classifyEI, classifyA, classify, AArm.ok, regArmB, plainB, h3, h5, h6,
+      classifyEI, classifyR, classifyA, classify, AArm.ok, regArmB, plainB, h3, h5, h6,
       withWidthTag_shl0, h11, hd, hs, Option.map_some, if_false, Bool.false_and, Bool.true_and,
       beq_iff_eq, h7, Bool.and_self]
     simp [Arm.instr, h8, h9, h10, h2]
@@ -533,6 +567,7 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     have := isGp_of_gpOk hd
     rcases hm with rfl | rfl <;> legal_simp
+  | sarImm d k hd hk0 hk => have := isGp_of_gpOk hd; legal_simp
   | shiftReg m d a b hm hd ha hb =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     have := isGp_of_gpOk hd; have := isGp_of_gpOk ha; have := isGp_of_gpOk hb
@@ -590,174 +625,5 @@ theorem instrOKWB_of_legalForm {body : Lcmd} {i : LinstrR} (h : GateForm body i)
     LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx body) i
       ∧ instrOKWB body (Params.ofBody body) i = true :=
   ⟨legalForm_of_gateForm h, instrOKWB_of_gateForm h⟩
-
-/-! ## 3. The legal forms the gate refuses -/
-
-/-- The body of one instruction followed by the return. -/
-def wb (i : LinstrR) : Lcmd := [⟨0, i⟩, ⟨0, .Lret⟩]
-
-/-- The instruction `i` is a legal form in its one-instruction body, which the gate refuses. -/
-def Refused (i : LinstrR) : Prop :=
-  x86LegalB (x86Enc.ctx (wb i)) i = true ∧ instrOKWB (wb i) (Params.ofBody (wb i)) i = false
-
-/-- An untagged (32-bit) two-address operation is a legal form the gate refuses. -/
-theorem refused_alu32 : Refused (.Lopn [.reg "RAX"] "ADD" [.reg "RAX", .reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged (32-bit) register move is a legal form the gate refuses. -/
-theorem refused_mov32 : Refused (.Lopn [.reg "RAX"] "MOV" [.reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged (32-bit) materialised comparison is a legal form the gate refuses. -/
-theorem refused_setcc32 : Refused (.Lopn [.reg "RAX"] "SETE" [.reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A 64-bit operation reading `RSP` as a data register is a legal form the gate refuses. -/
-theorem refused_rsp : Refused (.Lopn [.reg "RAX"] "ADD:64" [.reg "RAX", .reg "RSP"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A 64-bit move from a cell `mem.B.off` (the cell is read only by `LOAD:64`) is a legal form the gate refuses. -/
-theorem refused_movCell : Refused (.Lopn [.reg "RAX"] "MOV:64" [.reg "mem.RBX.8"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A 64-bit move into a cell `mem.B.off` (the cell is written only by `STORE:64`) is a legal form the gate refuses. -/
-theorem refused_movToCell : Refused (.Lopn [.reg "mem.RBX.8"] "MOV:64" [.reg "RAX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A `LOAD:64` from a register is a legal form the gate refuses. -/
-theorem refused_loadReg : Refused (.Lopn [.reg "RAX"] "LOAD:64" [.reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged `LOAD` from a cell is a legal form the gate refuses. -/
-theorem refused_load32 : Refused (.Lopn [.reg "RAX"] "LOAD" [.reg "mem.RBX.8"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A `MOVQ` of an immediate is a legal form the gate refuses. -/
-theorem refused_movqImm : Refused (.Lopn [.reg "RAX"] "MOVQ" [.imm 1]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A 64-bit immediate move of a value at or above `2^64` is a legal form the gate refuses. -/
-theorem refused_movImmWide : Refused (.Lopn [.reg "RAX"] "MOV:64" [.imm (2 ^ 64)]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged immediate move of a value at or above `2^31` is a legal form the gate refuses. -/
-theorem refused_mov32Imm : Refused (.Lopn [.reg "RAX"] "MOV" [.imm (2 ^ 31)]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A select whose condition is its destination is a legal form the gate refuses. -/
-theorem refused_selectCond : Refused (.Lopn [.reg "RAX"] "CMOV:64" [.reg "RAX", .reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The three-register arithmetic right shift `SAR:64` is a legal form the gate refuses. -/
-theorem refused_sarReg : Refused (.Lopn [.reg "RAX"] "SAR:64" [.reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The arithmetic right shift `SAR:64` by an immediate is a legal form the gate refuses. -/
-theorem refused_sarImm : Refused (.Lopn [.reg "RAX"] "SAR:64" [.reg "RAX", .imm 3]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The multiplication `MUL:64` by an immediate is a legal form the gate refuses. -/
-theorem refused_mulImm : Refused (.Lopn [.reg "RAX"] "MUL:64" [.reg "RAX", .imm 3]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The compare `CMP:64` against an immediate outside the sign-extended `imm8` range is a legal form the gate refuses. -/
-theorem refused_cmpImm32 : Refused (.Lopn [.reg "RAX"] "CMP:64" [.reg "RAX", .imm 1000]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A 64-bit shift by an immediate of at least `64` is a legal form the gate refuses. -/
-theorem refused_shiftImm64 : Refused (.Lopn [.reg "RAX"] "SHL:64" [.reg "RAX", .imm 64]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The logical right shift `SHR:64` by `0` is a legal form the gate refuses. -/
-theorem refused_shrImm0 : Refused (.Lopn [.reg "RAX"] "SHR:64" [.reg "RAX", .imm 0]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The negation `NEG:64` is a legal form the gate refuses. -/
-theorem refused_neg : Refused (.Lopn [.reg "RAX"] "NEG:64" [.reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The count-in-mnemonic arithmetic shift `SAR:k:64` is a legal form the gate refuses. -/
-theorem refused_sarTag : Refused (.Lopn [.reg "RAX"] "SAR:7:64" [.reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged count-in-mnemonic shift `SHR:k` is a legal form the gate refuses. -/
-theorem refused_shrTag32 : Refused (.Lopn [.reg "RAX"] "SHR:5" [.reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The indexed address computation `LEA:64` is a legal form the gate refuses. -/
-theorem refused_lea : Refused (.Lopn [.reg "RAX"] "LEA:64" [.arrIdx "RBX" "RCX" 8]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An indexed load at stride `4` is a legal form the gate refuses. -/
-theorem refused_loadIdx4 : Refused (.Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RBX" "RCX" 4]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An indexed load with base `RBP` is a legal form the gate refuses. -/
-theorem refused_loadIdxRbp : Refused (.Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RBP" "RCX" 8]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An indexed load at the `:64` tag is a legal form the gate refuses. -/
-theorem refused_loadIdx64 : Refused (.Lopn [.reg "RAX"] "LOADIDX:64" [.arrIdx "RBX" "RCX" 8]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An indexed store whose array operand is no register name is a legal form the gate refuses. -/
-theorem refused_storeIdxImm : Refused (.Lopn [.imm 0] "STOREIDX" [.arrIdx "RBX" "RCX" 8, .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A carry-chain add whose carry-in is one of its word sources is a legal form the gate refuses. -/
-theorem refused_adcxAlias : Refused (.Lopn [.reg "RAX"] "ADCX:64" [.reg "RAX", .reg "RCX", .reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An untagged carry-chain add is a legal form the gate refuses. -/
-theorem refused_adcx32 : Refused (.Lopn [.reg "RAX"] "ADCX" [.reg "RAX", .reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The overflow-chain carry-out binding `ADOXHI:64` is a legal form the gate refuses. -/
-theorem refused_adoxhi : Refused (.Lopn [.reg "RAX"] "ADOXHI:64" [.reg "RAX", .reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A carry-out binding with two sources is a legal form the gate refuses. -/
-theorem refused_adcxhi2 : Refused (.Lopn [.reg "RAX"] "ADCXHI:64" [.reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The flag materialisation `SETC` is a legal form the gate refuses. -/
-theorem refused_setc : Refused (.Lopn [.reg "RAX"] "SETC" []) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The widening multiplication at the `:64` tag is a legal form the gate refuses. -/
-theorem refused_mulx64 : Refused (.Lopn [.reg "RAX", .reg "RCX"] "MULX:64" [.reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The keep marker `KEEP` is a legal form the gate refuses. -/
-theorem refused_keep : Refused (.Lopn [.reg "RAX"] "KEEP" [.reg "RAX", .reg "RCX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The multiplication high-word binding `MULXHI` is a legal form the gate refuses. -/
-theorem refused_mulxhi : Refused (.Lopn [.reg "RAX"] "MULXHI" [.reg "RCX", .reg "RDX"]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- The frame directive `FRAMEADD` is a legal form the gate refuses. -/
-theorem refused_frameadd : Refused (.Lopn [] "FRAMEADD" [.imm 8]) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An unconditional jump `Lgoto` is a legal form the gate refuses. -/
-theorem refused_goto : Refused (.Lgoto ("", 1)) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A call `Lcall` is a legal form the gate refuses. -/
-theorem refused_call : Refused (.Lcall none ("f", 1)) := by
-  unfold Refused; constructor <;> rfl
-
-/-- An alignment directive `Lalign` is a legal form the gate refuses. -/
-theorem refused_align : Refused (LinstrR.Lalign) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A conditional branch on a condition other than the zero flag is a legal form the gate refuses. -/
-theorem refused_condCarry : Refused (.Lcond (.reg "C") 1) := by
-  unfold Refused; constructor <;> rfl
-
-/-- A conditional branch to a label the body does not define is a legal form the gate refuses. -/
-theorem refused_condNoLabel : Refused (.Lcond (.reg "NZ") 1) := by
-  unfold Refused; constructor <;> rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal
