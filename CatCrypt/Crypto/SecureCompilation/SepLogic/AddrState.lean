@@ -22,8 +22,8 @@ bytes; two states agree on a set of locations when they hold equal values there
 ## Write footprint and read locality of one step
 
 `storeA? frame i r` is the address of the eight-byte store of a step of `i` from the
-registers `r`: an indexed store `STOREIDX`, a store into a cell (`STORE:64` or `MOV:64` into
-`mem.B.off`), and a store into a frame slot (a move, a carry-chain destination, an immediate
+registers `r`: an indexed store `STOREIDX`, a constant-index store `STOREIMM`, a store into
+a cell (`STORE:64` or `MOV:64` into `mem.B.off`), and a store into a frame slot (a move, a carry-chain destination, an immediate
 move, a select destination). `writesA frame i s` holds the destination registers of `i`
 (`JasminLsemStepFrame.dstNames`), the program counter, the three flags and the eight bytes at
 the store address. `loadsA frame i r` lists the word addresses a step may read: the frame
@@ -196,7 +196,8 @@ def loadsA (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN) 
 /-- The address of the eight-byte store of one step of `i` from the registers `r`, in the
     order of the arms of `fstepA`: an indexed store, a move into a frame slot from a name that
     is no frame slot, a store into a cell, a carry-chain destination in a frame slot, an
-    immediate move into a frame slot, and a select destination in a frame slot. -/
+    immediate move into a frame slot, a select destination in a frame slot, and the address
+    `storeImmAddr?` of a constant-index store at the 64-bit tag. -/
 def storeA? (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN) :
     Option (BitVec 64) :=
   match i.2 with
@@ -230,6 +231,12 @@ def storeA? (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN)
                           match slotCmov? frame i.1 with
                           | some (d, _, _, _) => frame d
                           | none => none
+  | .storeImm w n =>
+      if w = 64 then
+        match storeImmStruct? i.1 with
+        | some (_, base, _, k) => (r.getW base 64).bind fun p => storeImmAddr? p n k
+        | none => none
+      else none
   | _ => none
 
 /-- The locations one step of `i` from `s` may write: the destination registers, the program
@@ -592,6 +599,29 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
                 · cases h1
                 · cases h1
                 · exact h1.mono fun p q h => memStep_of_regRes hst h
+  | storeImm wd n =>
+    simp only
+    split
+    · next hw =>
+      cases hx : storeImmStruct? w with
+      | none => exact ORel.none
+      | some p =>
+        obtain ⟨d, base, val, k⟩ := p
+        simp only
+        cases hb : r.getW base 64 with
+        | none => exact ORel.none
+        | some pb =>
+          cases hv : r.getW val 64 with
+          | none => exact ORel.none
+          | some v =>
+            simp only
+            cases ha : storeImmAddr? pb n k with
+            | some a =>
+              exact ORel.some (memStep_store (by simp [storeA?, hw, hx, hb, ha]) v zf)
+            | none =>
+              exact ORel.some (memStep_of_regRes (by simp [storeA?, hw, hx, hb, ha])
+                ⟨rfl, rfl, rfl, rfl, fun x _ => rfl, rfl, rfl⟩)
+    · exact ORel.none
   | _ => exact ORel.none
 
 /-! ## The write footprint of one step -/
@@ -649,6 +679,18 @@ theorem storeA?_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {r 
             rw [getW_congr h (cellA?_st_reads hcl)]
           | _ => rfl
         | none => rfl
+  | storeImm wd n =>
+    simp only
+    split
+    · cases hx : storeImmStruct? w with
+      | none => rfl
+      | some p =>
+        obtain ⟨d, base, val, k⟩ := p
+        unfold storeImmStruct? at hx
+        recog hx
+        simp only
+        reads_rw h
+    · rfl
   | _ => rfl
 
 /-- **The write footprint of one step.** A successful step of `fstepA` agrees with its start

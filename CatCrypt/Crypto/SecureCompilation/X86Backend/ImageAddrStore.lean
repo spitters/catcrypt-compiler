@@ -38,7 +38,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM MemTag storeStruct?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM MemTag storeStruct?
+  storeImmStruct?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN (LstateN)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
@@ -100,15 +101,18 @@ theorem storeIdxA?_normA_eq (x : LinstrR) : storeIdxA? (normA x) = storeIdxA? x 
   | _ => rfl
 
 /-- **The address of the store of one step**: a frame word, the word of an indexed store
-    `p + sc * vi` with `p` and `vi` in the base and the index register, or the word of a cell
-    store `p + off` with `p` in the base register. -/
+    `p + sc * vi` with `p` and `vi` in the base and the index register, the word of a cell
+    store `p + off` with `p` in the base register, or, at a constant-index store tag, the word
+    `storeImmAddr? p n k` with `p` in the base register. -/
 theorem storeA?_cases {frame : String → Option (BitVec 64)} {x : LinstrR} {tag : MemTag}
     {r : LstateN} {a : BitVec 64} (h : storeA? frame (x, tag) r = some a) :
     (∃ q, frame q = some a)
       ∨ (∃ b idx sc v p vi, storeIdxA? x = some (b, idx, sc, v) ∧ r.getW b 64 = some p
           ∧ r.getW idx 64 = some vi ∧ a = p + BitVec.ofNat 64 (sc * vi.toNat))
       ∨ (∃ b off v p, cellA? x = some (.st b off v) ∧ r.getW b 64 = some p
-          ∧ a = p + BitVec.ofNat 64 off) := by
+          ∧ a = p + BitVec.ofNat 64 off)
+      ∨ (∃ n d b v k p, tag = .storeImm 64 n ∧ storeImmStruct? x = some (d, b, v, k)
+          ∧ r.getW b 64 = some p ∧ storeImmAddr? p n k = some a) := by
   unfold storeA? at h
   cases tag with
   | store w n =>
@@ -153,7 +157,7 @@ theorem storeA?_cases {frame : String → Option (BitVec 64)} {x : LinstrR} {tag
           | st b off v =>
             simp only at h
             obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
-            exact Or.inr (Or.inr ⟨b, off, v, p, rfl, hp, rfl⟩)
+            exact Or.inr (Or.inr (Or.inl ⟨b, off, v, p, rfl, hp, rfl⟩))
           | _ => simp at h
         | none =>
           rw [hc] at h
@@ -182,6 +186,19 @@ theorem storeA?_cases {frame : String → Option (BitVec 64)} {x : LinstrR} {tag
                 rw [hv] at h
                 exact Or.inl ⟨d, h⟩
               | none => rw [hv] at h; cases h
+  | storeImm w n =>
+    simp only at h
+    split at h
+    · next hw =>
+      subst hw
+      cases hs : storeImmStruct? x with
+      | none => rw [hs] at h; cases h
+      | some t =>
+        obtain ⟨d, b, v, k⟩ := t
+        rw [hs] at h
+        obtain ⟨p, hp, ha⟩ := Option.bind_eq_some_iff.mp h
+        exact Or.inr (Or.inr (Or.inr ⟨n, d, b, v, k, p, rfl, rfl, hp, ha⟩))
+    · cases h
   | _ => simp at h
 
 /-- **`StoreIn` at an instruction from its indexed and cell stores.** The step at the program
@@ -203,7 +220,7 @@ theorem storeIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitVe
     rw [storeIn_lopn_iff hb]
     intro a ha x hx
     rcases storeA?_cases ha with ⟨q, hq⟩ | ⟨b, idx, sc, v, p, vi, hs, hp, hvi, rfl⟩
-      | ⟨b, off, v, p, hcl, hp, rfl⟩
+      | ⟨b, off, v, p, hcl, hp, rfl⟩ | ⟨n, -, -, -, -, -, ht, -⟩
     · exact hF q a hq x hx
     · rw [storeIdxA?_normA_eq] at hs
       unfold storeIdxA? at hs
@@ -217,6 +234,7 @@ theorem storeIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitVe
       · cases hs
     · rw [cellA?_normA_eq] at hcl
       exact hC b off v p hcl hp x hx
+    · exact absurd ht (tagAt_ne_storeImm _ _ _ _ _)
   | _ =>
     intro x hx
     simp [stepWrites, hb] at hx

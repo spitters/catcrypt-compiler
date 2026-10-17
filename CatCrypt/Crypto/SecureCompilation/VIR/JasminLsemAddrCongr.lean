@@ -842,6 +842,17 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
               · exact Or.inr (Or.inl rfl)
               · simp [cellBase] at hfa
           · exact regStepA_congr _ h zf
+  | storeImm wd n =>
+    simp only
+    split
+    · cases hx : storeImmStruct? w with
+      | none => exact ORel.none
+      | some p =>
+        obtain ⟨_, _, _, _⟩ := p
+        unfold storeImmStruct? at hx
+        recog hx
+        all_goals a_loop h hN hM zf
+    · exact ORel.none
   | _ => exact ORel.none
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr

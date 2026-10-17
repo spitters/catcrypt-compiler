@@ -34,6 +34,8 @@ The addresses the zeroing writes are a function of the destination register and 
 * `stPieces_bytes`, `zPieces_bytes`: the bytes of the instructions are their pieces, and each
   piece decodes to its machine instruction.
 * `run_stPieces`, `run_zPieces`: the runs of the decoded instructions on the address machine.
+* `sim_storeImm`: from `ACorrW`, the step of the address semantics `fstepA` at the tag
+  `.storeImm 64 n` with `k < n` is matched by the run of the decoded store.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.StackArrDecode
@@ -48,6 +50,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 
 /-! ## 1. The constant-index store -/
 
@@ -91,6 +95,27 @@ theorem run_stPieces (sa : AState) (B V : String) (k : Nat) :
       := by
   simp [stPieces, CatCrypt.Crypto.SecureCompilation.Ascent.CallFrame.evalInstrA_storeMem,
     JOperand.eval, AState.view, ofInt_eight_mul]
+
+/-- **The simulation of the constant-index store.** From `ACorrW`, with the base `B` and the
+    value `V` general-purpose names at width `64` and `k < n`, the step of the address
+    semantics of `STOREIMM d, [B, V, #k]` at the tag `.storeImm 64 n` is matched by the run of
+    the decoded store `movq %V, 8k(%B)`. -/
+theorem sim_storeImm (frame : String → Option (BitVec 64)) (rsp : BitVec 64) (d B V : String)
+    {k n : Nat} (hk : k < n) (hB : gpOk B = true) (hV : gpOk V = true) (sa : AState)
+    (s : LstateA) (zf : Bool) (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 = 64)
+    (hwV : (s.reg.lvm V).1 = 64) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA frame (.Lopn [.reg d] "STOREIMM" [.reg B, .reg V, .imm k], .storeImm 64 n)
+      s zf = some (s', zf')) :
+    ACorrW rsp (runBlockA sa ((stPieces B V k).map Prod.snd)) s' ∧ zf' = zf := by
+  rw [fstepA_storeImm _ hk (hc.wide hB hwB) (hc.wide hV hwV)] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  rw [run_stPieces]
+  refine ⟨⟨fun r hr => ?_, hc.sp, fun x hx => ?_⟩, rfl⟩
+  · have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
+    rw [hg]
+    exact hc.regs r hr
+  · exact agree_write64 hc.mem _ _ x hx
 
 /-! ## 2. The zeroing -/
 

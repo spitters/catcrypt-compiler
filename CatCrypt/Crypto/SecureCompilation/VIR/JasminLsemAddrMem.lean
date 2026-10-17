@@ -40,6 +40,9 @@ pattern of the export.
   32 bits;
 * `LOADIDX dst, (base, idx, sc)` loads the word at `reg base + sc · reg idx`;
 * `STOREIDX _, (base, idx, sc), val` stores `val` at `reg base + sc · reg idx`;
+* `STOREIMM _, [base, val, #k]` at the tag `.storeImm 64 n` stores `val` at
+  `reg base + 8 (k mod n)`, the element `stackSet` writes, and stores nothing for `n = 0`
+  (`storeImmAddr?`); at any other width it has no step;
 * `LOAD:64 d, mem.B.off` and `STORE:64 mem.B.off, v` load and store the word at
   `reg B + off`, a one-bit `v` zero-extended to 64 bits, and `LEA:64 d, mem.B.off` writes
   `reg B + off` to `d`; a 64-bit move `MOV:64 mem.B.off, v` or `MOV:64 d, mem.B.off` is that
@@ -414,6 +417,17 @@ theorem bitStepA_some {frame : String → Option (BitVec 64)} {x : LinstrR} {sa 
     | (obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h); simp)
     | simp at h
 
+/-- The address of the constant-index store into the array of `n` words at `p`: the word
+    `k mod n`, the element `stackSet` writes; no address for `n = 0`, where `stackSet` writes
+    no element. -/
+def storeImmAddr? (p : BitVec 64) (n k : Nat) : Option (BitVec 64) :=
+  if n = 0 then none else some (p + BitVec.ofNat 64 (8 * (k % n)))
+
+/-- An index below the word count is stored at `p + 8 k`. -/
+theorem storeImmAddr?_of_lt (p : BitVec 64) {n k : Nat} (hk : k < n) :
+    storeImmAddr? p n k = some (p + BitVec.ofNat 64 (8 * k)) := by
+  simp [storeImmAddr?, Nat.mod_eq_of_lt hk, Nat.ne_zero_of_lt hk]
+
 /-- The register-file step: `fstepF` on a state with the given registers and flags. -/
 def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool) :=
   (fstepF i { reg := sa.reg, cf := sa.cf, of := sa.of } zf).map fun bz =>
@@ -436,7 +450,9 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
     value and writes that destination at the slot's address and reads its condition through
     `bitA`; where the register-file step of a register instruction is undefined, a carry-chain
     instruction or a select on registers reads its carry-in or condition through `bitA`
-    (`bitStepA`). -/
+    (`bitStepA`). At the tag `.storeImm 64 n` the constant-index store
+    `STOREIMM _, [base, val, #k]` writes the word of `val` at the address `storeImmAddr?` of the
+    base register; at a tag `.storeImm w n` with `w ≠ 64` it has no step. -/
 def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) (zf : Bool) :
     Option (LstateA × Bool) :=
   match i.snd with
@@ -555,6 +571,18 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                               | _, _, _ => none
                           | none =>
                               (regStepA i sa zf).orElse fun _ => bitStepA frame i.fst sa zf
+  | .storeImm w n =>
+      if w = 64 then
+        match storeImmStruct? i.fst with
+        | some (_, base, val, k) =>
+            match sa.reg.getW base 64, sa.reg.getW val 64 with
+            | some p, some v =>
+                match storeImmAddr? p n k with
+                | some a => some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
+                | none => some ({ sa with reg := sa.reg.nextPc }, zf)
+            | _, _ => none
+        | none => none
+      else none
   | _ => none
 
 /-- **A frame-word store of a one-bit register.** `MOVQ q, S` or `MOV:64 q, S`, `q` a frame
@@ -688,6 +716,23 @@ theorem fstepA_movStm (frame : String → Option (BitVec 64)) {n S B : String} {
           reg := sa.reg.nextPc
           mem := write64 sa.mem (p + BitVec.ofNat 64 off) v }, zf) := by
   simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS]
+
+/-- **The constant-index store.** `STOREIMM d, [B, V, #k]` at the tag `.storeImm 64 n` with
+    `k < n` writes the value of `V` to the address in `B` plus `8 k`. -/
+theorem fstepA_storeImm (frame : String → Option (BitVec 64)) {d B V : String} {k n : Nat}
+    (hk : k < n) {sa : LstateA} {p v : BitVec 64} (hB : sa.reg.getW B 64 = some p)
+    (hV : sa.reg.getW V 64 = some v) (zf : Bool) :
+    fstepA frame (.Lopn [.reg d] "STOREIMM" [.reg B, .reg V, .imm k], .storeImm 64 n) sa zf
+      = some ({ sa with
+          reg := sa.reg.nextPc
+          mem := write64 sa.mem (p + BitVec.ofNat 64 (8 * k)) v }, zf) := by
+  simp [fstepA, storeImmStruct?, hB, hV, storeImmAddr?_of_lt p hk]
+
+/-- The constant-index store has no step at a width other than `64`. -/
+theorem fstepA_storeImm_ne64 (frame : String → Option (BitVec 64)) (x : LinstrR) {w : Nat}
+    (hw : w ≠ 64) (n : Nat) (sa : LstateA) (zf : Bool) :
+    fstepA frame (x, .storeImm w n) sa zf = none := by
+  simp [fstepA, hw]
 
 /-- **The immediate store into a frame slot.** `MOV:64 q, #v` with `q` a frame slot at `a`
     writes the 64-bit word of `v` at `a`. -/

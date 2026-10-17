@@ -163,6 +163,12 @@ theorem tagAt_of_ne {body : Lcmd} {k : Nat} {i : LinstrR} (h : movImmStruct? i =
     tagAt body k i = tagA i :=
   tagAt_of_not (bitMovB_of_ne h)
 
+/-- The tag of an instruction at a position is no constant-index store tag. -/
+theorem tagAt_ne_storeImm (body : Lcmd) (k : Nat) (i : LinstrR) (w n : Nat) :
+    tagAt body k i ≠ .storeImm w n := by
+  unfold tagAt tagA
+  split_ifs <;> (try split) <;> (try split_ifs) <;> simp
+
 /-- A width-carrying cast `o D, A` between register names is tagged at any position with the
     register tag at its destination width. -/
 theorem tagAt_castW (body : Lcmd) (k : Nat) {D A o : String} {w : Nat}
