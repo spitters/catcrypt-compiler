@@ -13,25 +13,30 @@ public import CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe
 set_option autoImplicit false
 
 /-!
-# The stores of the address machine in the image simulations
+# The stores and loads of the address machine in the image simulations
 
 `imgStores frame slotArr base` is the set of the bytes of the frame words and of the array
 words `cellAt (base A) j`, `j < n`, of the arrays `(A, n)` of `slotArr`. A step of the address
 machine stores to a frame word, to the word of an indexed store or to the word of a cell store
-(`storeA?_cases`). Under the relation of an image simulation, at an instruction that passes
-the gate and whose checked image step succeeds, the indexed store writes an array word (the
-base register holds the base of the array, the index is below its length) and a cell store of
-a body with cells writes a frame word, so the step stores in `imgStores` (`StoreIn`).
+(`storeA?_cases`), and loads from frame words, from the word of an indexed load and from the
+word of a cell load (`loadsA`). Under the relation of an image simulation, at an instruction
+that passes the gate and whose checked image step succeeds, an indexed store or load accesses
+an array word (the base register holds the base of the array, the index is below its length)
+and a cell store or load of a body with cells accesses a frame word, so the step stores in and
+loads from `imgStores` (`AccessIn`).
 
 ## Main results
 
 * `storeA?_cases`: the address of the store of one step.
-* `storeIn_of_cases`: `StoreIn` from the indexed and the cell stores of an instruction.
-* `storeIn_of_imgStep`, `storeIn_of_imgStepW`: a checked image step under `ImgRel`, `ImgRelW`
-  stores in `imgStores`.
-* `image_addr_sim_store`: `ImageAddrSim.image_addr_sim` with the stores in `imgStores`.
-* `image_addr_simB'_store`, `image_addr_simBW'_store`: `ImageAddrCellsLoop.image_addr_simB'`
-  and `ImageAddrCellsLoop.image_addr_simBW'` with the stores in `imgStores`.
+* `accessIn_of_cases`: `AccessIn` from the indexed and the cell accesses of an instruction.
+* `idx_mem_of_imgStep`, `idx_mem_of_imgStepW`: the indexed access of a checked image step
+  under `ImgRel`, `ImgRelW` accesses an array word.
+* `image_addr_sim_access`: `ImageAddrSim.image_addr_sim` with the accesses in `imgStores`.
+* `image_addr_simB'_access`, `image_addr_simBW'_access`:
+  `ImageAddrCellsLoop.image_addr_simB'` and `ImageAddrCellsLoop.image_addr_simBW'` with the
+  accesses in `imgStores`.
+* `image_addr_sim_store`, `image_addr_simB'_store`, `image_addr_simBW'_store`: the stores of
+  the three runs in `imgStores`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
@@ -39,7 +44,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM MemTag storeStruct?
-  storeImmStruct?)
+  loadStruct? storeImmStruct?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN (LstateN)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
@@ -61,8 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (SafeW carr
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (findInstrMem_single)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
 open CatCrypt.Crypto.SecureCompilation.SepLogic (Rng)
-open CatCrypt.Crypto.SecureCompilation.SepLogic.Addr (StoreIn storeIn_lopn_iff stepWrites
-  storeA?)
+open CatCrypt.Crypto.SecureCompilation.SepLogic.Addr (StoreIn AccessIn storeIn_lopn_iff
+  stepWrites stepReads storeA? loadsA idxAddr? cellLdAddr?)
 
 /-- The bytes of the frame words of `frame` and of the words `cellAt (base A) j`, `j < n`, of
     the arrays `(A, n)` of `slotArr`. -/
@@ -99,6 +104,56 @@ theorem storeIdxA?_normA_eq (x : LinstrR) : storeIdxA? (normA x) = storeIdxA? x 
         split <;> split <;> simp_all [eq_comm (a := "MULX:64"), eq_comm (a := "MULX")]
       · rfl
   | _ => rfl
+
+/-- `normA` keeps the indexed load of an instruction. -/
+theorem loadIdxA?_normA_eq (x : LinstrR) : loadIdxA? (normA x) = loadIdxA? x := by
+  cases x with
+  | Lopn ds o ss =>
+      simp only [normA]
+      split_ifs with hm
+      · subst hm
+        rw [show withWidthTag 64 "MULX" = "MULX:64" by decide +kernel]
+        unfold loadIdxA?
+        split <;> split <;> simp_all [eq_comm (a := "MULX:64"), eq_comm (a := "MULX")]
+      · rfl
+  | _ => rfl
+
+/-- The address of an indexed load: the instruction is `LOADIDX d, (b, idx, sc)` and the
+    address is `p + sc * vi` with `p` and `vi` in the base and the index register. -/
+theorem idxAddr?_eq_some {x : LinstrR} {r : LstateN} {a : BitVec 64}
+    (h : idxAddr? x r = some a) :
+    ∃ d b idx sc p vi, x = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]
+      ∧ r.getW b 64 = some p ∧ r.getW idx 64 = some vi
+      ∧ a = p + BitVec.ofNat 64 (sc * vi.toNat) := by
+  unfold idxAddr? at h
+  split at h
+  · rename_i d b idx sc hl
+    split at h
+    · rename_i p vi hp hvi
+      cases h
+      unfold loadIdxA? at hl
+      split at hl
+      · split_ifs at hl with ho
+        subst ho
+        simp only [Option.some.injEq, Prod.mk.injEq] at hl
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hl
+        exact ⟨_, _, _, _, p, vi, rfl, hp, hvi, rfl⟩
+      · cases hl
+    · cases h
+  · cases h
+
+/-- The address of a cell load: the instruction loads from the cell `mem.b.off` and the
+    address is `p + off` with `p` in the base register. -/
+theorem cellLdAddr?_eq_some {x : LinstrR} {r : LstateN} {a : BitVec 64}
+    (h : cellLdAddr? x r = some a) :
+    ∃ d b off p, cellA? x = some (.ld d b off) ∧ r.getW b 64 = some p
+      ∧ a = p + BitVec.ofNat 64 off := by
+  unfold cellLdAddr? at h
+  split at h
+  · rename_i d b off hc
+    obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
+    exact ⟨d, b, off, p, hc, hp, rfl⟩
+  · cases h
 
 /-- **The address of the store of one step**: a frame word, the word of an indexed store
     `p + sc * vi` with `p` and `vi` in the base and the index register, the word of a cell
@@ -201,53 +256,77 @@ theorem storeA?_cases {frame : String → Option (BitVec 64)} {x : LinstrR} {tag
     · cases h
   | _ => simp at h
 
-/-- **`StoreIn` at an instruction from its indexed and cell stores.** The step at the program
-    counter of `s` stores in `M` when `M` holds the bytes of every frame word, of the word of
-    an indexed store of the instruction and of the word of a cell store of the instruction. -/
-theorem storeIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
+/-- **`AccessIn` at an instruction from its indexed and cell accesses.** The step at the
+    program counter of `s` stores in and loads from `M` when `M` holds the bytes of every frame
+    word, of the word of an indexed store or load of the instruction and of the word of a cell
+    store or load of the instruction. -/
+theorem accessIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
     {c : Lcmd} {s : LstateA} {bi : Linstr} (hb : c[s.reg.lpc]? = some bi)
     (hF : ∀ q a, frame q = some a → ∀ x ∈ (⟨a, 8⟩ : Rng 64), x ∈ M)
-    (hS : ∀ d b idx sc v p vi,
-      bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v] →
+    (hI : ∀ b idx sc p vi,
+      ((∃ d v, bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+        ∨ ∃ d, bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) →
       s.reg.getW b 64 = some p → s.reg.getW idx 64 = some vi →
       ∀ x ∈ (⟨p + BitVec.ofNat 64 (sc * vi.toNat), 8⟩ : Rng 64), x ∈ M)
-    (hC : ∀ b off v p, cellA? bi.li_i = some (.st b off v) → s.reg.getW b 64 = some p →
+    (hC : ∀ b off p, ((∃ v, cellA? bi.li_i = some (.st b off v))
+        ∨ ∃ d, cellA? bi.li_i = some (.ld d b off)) → s.reg.getW b 64 = some p →
       ∀ x ∈ (⟨p + BitVec.ofNat 64 off, 8⟩ : Rng 64), x ∈ M) :
-    StoreIn M frame c s := by
+    AccessIn M frame c s := by
   obtain ⟨ii, li⟩ := bi
   cases li with
   | Lopn ds o ss =>
-    rw [storeIn_lopn_iff hb]
-    intro a ha x hx
-    rcases storeA?_cases ha with ⟨q, hq⟩ | ⟨b, idx, sc, v, p, vi, hs, hp, hvi, rfl⟩
-      | ⟨b, off, v, p, hcl, hp, rfl⟩ | ⟨n, -, -, -, -, -, ht, -⟩
-    · exact hF q a hq x hx
-    · rw [storeIdxA?_normA_eq] at hs
-      unfold storeIdxA? at hs
-      split at hs
-      · split_ifs at hs with ho
-        subst ho
-        rename_i he
-        simp only [Option.some.injEq, Prod.mk.injEq] at hs
-        obtain ⟨rfl, rfl, rfl, rfl⟩ := hs
-        exact hS _ _ _ _ _ p vi he hp hvi x hx
-      · cases hs
-    · rw [cellA?_normA_eq] at hcl
-      exact hC b off v p hcl hp x hx
-    · exact absurd ht (tagAt_ne_storeImm _ _ _ _ _)
+    refine ⟨?_, ?_⟩
+    · rw [storeIn_lopn_iff hb]
+      intro a ha x hx
+      rcases storeA?_cases ha with ⟨q, hq⟩ | ⟨b, idx, sc, v, p, vi, hs, hp, hvi, rfl⟩
+        | ⟨b, off, v, p, hcl, hp, rfl⟩ | ⟨n, -, -, -, -, -, ht, -⟩
+      · exact hF q a hq x hx
+      · rw [storeIdxA?_normA_eq] at hs
+        unfold storeIdxA? at hs
+        split at hs
+        · split_ifs at hs with ho
+          subst ho
+          rename_i he
+          simp only [Option.some.injEq, Prod.mk.injEq] at hs
+          obtain ⟨rfl, rfl, rfl, rfl⟩ := hs
+          exact hI _ _ _ p vi (.inl ⟨_, _, he⟩) hp hvi x hx
+        · cases hs
+      · rw [cellA?_normA_eq] at hcl
+        exact hC b off p (.inl ⟨v, hcl⟩) hp x hx
+      · exact absurd ht (tagAt_ne_storeImm _ _ _ _ _)
+    · intro x hx
+      unfold stepReads at hx
+      rw [hb] at hx
+      obtain ⟨a, ha, hx⟩ := hx
+      simp only [loadsA, List.mem_append, List.mem_filterMap, Option.mem_toList] at ha
+      rcases ha with (⟨q, -, hq⟩ | ha) | ha
+      · exact hF q a hq x hx
+      · have he : idxAddr? (normA (.Lopn ds o ss)) s.reg = idxAddr? (.Lopn ds o ss) s.reg := by
+          simp only [idxAddr?, loadIdxA?_normA_eq]
+        rw [he] at ha
+        obtain ⟨d, b, idx, sc, p, vi, hl, hp, hvi, rfl⟩ := idxAddr?_eq_some ha
+        exact hI b idx sc p vi (.inr ⟨d, hl⟩) hp hvi x hx
+      · have he : cellLdAddr? (normA (.Lopn ds o ss)) s.reg
+            = cellLdAddr? (.Lopn ds o ss) s.reg := by
+          simp only [cellLdAddr?, cellA?_normA_eq]
+        rw [he] at ha
+        obtain ⟨d, b, off, p, hcl, hp, rfl⟩ := cellLdAddr?_eq_some ha
+        exact hC b off p (.inr ⟨d, hcl⟩) hp x hx
   | _ =>
-    intro x hx
-    simp [stepWrites, hb] at hx
+    refine ⟨fun x hx => ?_, fun x hx => ?_⟩
+    · simp [stepWrites, hb] at hx
+    · simp [stepReads, hb] at hx
 
-/-- A step at a label stores nothing. -/
-theorem storeIn_of_label {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
+/-- A step at a label stores and loads nothing. -/
+theorem accessIn_of_label {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
     {c : Lcmd} {s : LstateA} {bi : Linstr} (hb : c[s.reg.lpc]? = some bi) {ii : _} {l : LLabel}
-    (hl : bi.li_i = .Llabel ii l) : StoreIn M frame c s := by
-  intro x hx
+    (hl : bi.li_i = .Llabel ii l) : AccessIn M frame c s := by
   obtain ⟨ii', li⟩ := bi
   simp only at hl
   subst hl
-  simp [stepWrites, hb] at hx
+  refine ⟨fun x hx => ?_, fun x hx => ?_⟩
+  · simp [stepWrites, hb] at hx
+  · simp [stepReads, hb] at hx
 
 /-- The bytes of a frame word lie in `imgStores`. -/
 theorem frame_mem_imgStores {frame : String → Option (BitVec 64)}
@@ -263,22 +342,30 @@ theorem cell_mem_imgStores {frame : String → Option (BitVec 64)}
     ∀ x ∈ (⟨cellAt (base A) j, 8⟩ : Rng 64), x ∈ imgStores frame slotArr base :=
   fun _ hx => ⟨_, Or.inr ⟨q, A, n, j, hq, hj, rfl⟩, hx⟩
 
-/-- The index of a checked indexed store of the image is below the length of its array. -/
-theorem idx_lt_of_checked {P : LprogM} {A idx v : String} {n : Nat} {s t : LstateMF}
-    (hs : evalInstrPMemFk true P
-      (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n) s = some t)
+/-- The index of a checked indexed store tagged `.store w n` or of a checked indexed load
+    tagged `.load w n` is below `n`. -/
+theorem idx_lt_of_checked {P : LprogM} {i : LinstrRM} {idx : String} {n : Nat}
+    {s t : LstateMF} (hs : evalInstrPMemFk true P i s = some t)
+    (hi : (∃ w d b v, i.2 = .store w n ∧ storeStruct? i.1 = some (d, b, idx, v))
+      ∨ ∃ w d b, i.2 = .load w n ∧ loadStruct? i.1 = some (d, b, idx))
     {vi : BitVec 64} (hvi : s.prog.base.reg.getW idx 64 = some vi) : vi.toNat < n := by
   have hok := idxOkB_of_checked hs
-  simp only [idxOkB, storeStruct?, if_true, idxBelowB, hvi] at hok
-  simpa using hok
+  obtain ⟨i1, i2⟩ := i
+  rcases hi with ⟨w, d, b, v, h2, h1⟩ | ⟨w, d, b, h2, h1⟩
+  all_goals
+    simp only at h2 h1
+    subst h2
+    simp only [idxOkB, h1, idxBelowB, hvi] at hok
+    simpa using hok
 
 /-! ## 2. The plain route -/
 
-/-- No instruction that passes `instrGateB` is a cell store. -/
-theorem cellA_ne_st_of_instrGateB {frame : String → Option (BitVec 64)}
+/-- No instruction that passes `instrGateB` is a cell access. -/
+theorem cellA_none_of_instrGateB {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {c : Lcmd} {k : Nat} {x : LinstrR}
-    (hg : instrGateB frame slotArr c k x = true) {b : String} {off : Nat} {v : String}
-    (hcl : cellA? x = some (.st b off v)) : False := by
+    (hg : instrGateB frame slotArr c k x = true) : cellA? x = none := by
+  by_contra hne
+  obtain ⟨op, hcl⟩ := Option.ne_none_iff_exists'.mp hne
   unfold instrGateB at hg
   cases hc : icase frame x with
   | label => obtain ⟨_, _, rfl⟩ := icase_label hc; simp [cellA?] at hcl
@@ -310,35 +397,40 @@ theorem instrGateB_of_imgGateB {frame : String → Option (BitVec 64)}
   rw [hb] at this
   simpa using this
 
-/-- `icase` classifies an indexed store with a scale other than `8` as `other`. -/
-theorem icase_storeIdx_ne {frame : String → Option (BitVec 64)} {d b idx v : String} {sc : Nat}
-    (hsc : sc ≠ 8) :
-    icase frame (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = .other := by
-  unfold icase
-  split <;> simp_all
+/-- `icase` classifies an indexed store or load with a scale other than `8` as `other`. -/
+theorem icase_idx_ne {frame : String → Option (BitVec 64)} {x : LinstrR} {b idx : String}
+    {sc : Nat} (hsc : sc ≠ 8)
+    (hx : (∃ d v, x = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+      ∨ ∃ d, x = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) :
+    icase frame x = .other := by
+  rcases hx with ⟨d, v, rfl⟩ | ⟨d, rfl⟩ <;> unfold icase <;> split <;> simp_all
 
-/-- **The indexed store of a checked image step on the plain route** writes an array word:
-    under `ImgRel`, at an indexed store before the last instruction of a body that passes
-    `imgGateB`, whose checked image step succeeds, the base register holds `base A` and the
-    index is below the length `n` of the array. -/
-theorem stx_mem_of_imgStep {frame : String → Option (BitVec 64)}
+/-- **The indexed access of a checked image step on the plain route** accesses an array word:
+    under `ImgRel`, at an indexed store or load before the last instruction of a body that
+    passes `imgGateB`, whose checked image step succeeds, the base register holds `base A` and
+    the index is below the length `n` of the array. -/
+theorem idx_mem_of_imgStep {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hgate : imgGateB frame slotArr c = true)
     (P : LprogM) {s t : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base c s sa zf) {bi : Linstr}
     (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1)
     (hstep : evalInstrPMemFk true P (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t)
-    {d b idx : String} {sc : Nat} {v : String} {p vi : BitVec 64}
-    (hx : bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+    {b idx : String} {sc : Nat} {p vi : BitVec 64}
+    (hx : (∃ d v, bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+      ∨ ∃ d, bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc])
     (hp : sa.reg.getW b 64 = some p) (hvi : sa.reg.getW idx 64 = some vi) :
     ∀ x ∈ (⟨p + BitVec.ofNat 64 (sc * vi.toNat), 8⟩ : Rng 64),
       x ∈ imgStores frame slotArr base := by
   have hg := instrGateB_of_imgGateB hgate hb hlt
   unfold instrGateB at hg
-  rw [hx] at hg hstep
   by_cases hsc : sc = 8
-  · subst hsc
-    simp only [icase, if_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
+  swap
+  · rw [icase_idx_ne hsc hx] at hg
+    cases hg
+  subst hsc
+  rcases hx with ⟨d, v, hx⟩ | ⟨d, hx⟩ <;> rw [hx] at hg hstep
+  · simp only [icase, if_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
       Option.isSome_iff_exists] at hg
     obtain ⟨⟨⟨⟨⟨A, n⟩, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
     obtain ⟨q, hq, hpb⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf
@@ -346,40 +438,51 @@ theorem stx_mem_of_imgStep {frame : String → Option (BitVec 64)}
     cases hpb
     rw [imgInstr_stx slotArr c _ hacc] at hstep
     have hidxe := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regs idx hidx) 64
-    exact cell_mem_imgStores hq (idx_lt_of_checked hstep (hidxe.trans hvi))
-  · rw [icase_storeIdx_ne hsc] at hg
-    cases hg
+    exact cell_mem_imgStores hq (idx_lt_of_checked hstep
+      (.inl ⟨_, A, A, v, rfl, by simp [storeStruct?]⟩) (hidxe.trans hvi))
+  · simp only [icase, if_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
+      Option.isSome_iff_exists] at hg
+    obtain ⟨⟨⟨⟨⟨⟨A, n⟩, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
+    obtain ⟨q, hq, hpb⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf
+    rw [hp] at hpb
+    cases hpb
+    rw [imgInstr_ldx slotArr c _ hacc] at hstep
+    have hidxe := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regs idx hidx) 64
+    exact cell_mem_imgStores hq (idx_lt_of_checked hstep
+      (.inr ⟨_, d, A, rfl, by simp [loadStruct?]⟩) (hidxe.trans hvi))
 
-/-- **The store of a checked image step on the plain route.** Under `ImgRel`, at an
+/-- **The accesses of a checked image step on the plain route.** Under `ImgRel`, at an
     instruction before the last of a body that passes `imgGateB`, a successful checked step of
-    the image stores in `imgStores`: to a frame word, or by an indexed store to the word
-    `cellAt (base A) vi` of its array. -/
-theorem storeIn_of_imgStep {frame : String → Option (BitVec 64)}
+    the image stores in and loads from `imgStores`: a frame word, or by an indexed store or
+    load the word `cellAt (base A) vi` of its array. -/
+theorem accessIn_of_imgStep {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hgate : imgGateB frame slotArr c = true)
     (P : LprogM) {s t : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base c s sa zf) {bi : Linstr}
     (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1)
     (hstep : evalInstrPMemFk true P (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
-    StoreIn (imgStores frame slotArr base) frame c sa :=
-  storeIn_of_cases hb frame_mem_imgStores
-    (fun _ _ _ _ _ _ _ hx hp hvi => stx_mem_of_imgStep hsep hgate P hrel hb hlt hstep hx hp hvi)
-    (fun _ _ _ _ hcl _ => (cellA_ne_st_of_instrGateB (instrGateB_of_imgGateB hgate hb hlt)
-      hcl).elim)
+    AccessIn (imgStores frame slotArr base) frame c sa :=
+  accessIn_of_cases hb frame_mem_imgStores
+    (fun _ _ _ _ _ hx hp hvi => idx_mem_of_imgStep hsep hgate P hrel hb hlt hstep hx hp hvi)
+    (fun _ _ _ hcl _ => by
+      have h0 := cellA_none_of_instrGateB (instrGateB_of_imgGateB hgate hb hlt)
+      rcases hcl with ⟨_, h⟩ | ⟨_, h⟩ <;> rw [h0] at h <;> cases h)
 
 /-! ## 3. The route with carry chains -/
 
-/-- **The indexed store of a checked image step with carry chains** writes an array word:
-    `stx_mem_of_imgStep` under `ImgRelW` and `imgGateBW`. -/
-theorem stx_mem_of_imgStepW {frame : String → Option (BitVec 64)}
+/-- **The indexed access of a checked image step with carry chains** accesses an array word:
+    `idx_mem_of_imgStep` under `ImgRelW` and `imgGateBW`. -/
+theorem idx_mem_of_imgStepW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hgate : imgGateBW frame slotArr c = true)
     (P : LprogM) {s t : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRelW frame slotArr base c s sa zf) {bi : Linstr}
     (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1)
     (hstep : evalInstrPMemFk true P (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t)
-    {d b idx : String} {sc : Nat} {v : String} {p vi : BitVec 64}
-    (hx : bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+    {b idx : String} {sc : Nat} {p vi : BitVec 64}
+    (hx : (∃ d v, bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+      ∨ ∃ d, bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc])
     (hp : sa.reg.getW b 64 = some p) (hvi : sa.reg.getW idx 64 = some vi) :
     ∀ x ∈ (⟨p + BitVec.ofNat 64 (sc * vi.toNat), 8⟩ : Rng 64),
       x ∈ imgStores frame slotArr base := by
@@ -390,65 +493,88 @@ theorem stx_mem_of_imgStepW {frame : String → Option (BitVec 64)}
     simpa using this
   simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hg
   obtain ⟨hrd0, hg⟩ := hg
-  rw [hx] at hg hrd0 hstep
-  have hkc : classifyK (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = none := by
-    simp [classifyK]
-  have hci : carryI? (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = none := by
-    simp [carryI?]
+  have hkc : classifyK bi.li_i = none := by
+    rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [classifyK]
+  have hci : carryI? bi.li_i = none := by
+    rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [carryI?]
+  have hcI : idx ∉ carryIns bi.li_i := by
+    rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [carryIns]
+  have hiR : idx ∈ readNames bi.li_i := by
+    rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [readNames, srcNames]
   rw [hci] at hg
   by_cases hsc : sc = 8
-  · subst hsc
-    have hc : icase frame (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v])
-        = .stx d b idx v := by
-      simp [icase]
+  swap
+  · rw [icase_idx_ne hsc hx] at hg
+    simp [castGateB, hkc] at hg
+  subst hsc
+  have hrd : readOkB (gateReadSet frame (oneBitAt frame c sa.reg.lpc) bi.li_i) bi.li_i
+      = true := by
+    simpa [castReadB, hkc] using hrd0
+  rcases hx with ⟨d, v, hx⟩ | ⟨d, hx⟩
+  · have hc : icase frame bi.li_i = .stx d b idx v := by rw [hx]; simp [icase]
     simp only [hc, Bool.and_eq_true, Option.isNone_iff_eq_none,
       Option.isSome_iff_exists] at hg
     obtain ⟨⟨⟨⟨⟨A, n⟩, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
-    have hrd : readOkB (gateReadSet frame (oneBitAt frame c sa.reg.lpc)
-        (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v]))
-        (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v]) = true := by
-      simpa [castReadB, hkc] using hrd0
     simp only [gateReadSet, hc] at hrd
-    have hidxW : idx ∉ oneBitAt frame c sa.reg.lpc :=
-      readOkB_spec hrd (by simp [readNames, srcNames]) (by simp [carryIns])
+    have hidxW : idx ∉ oneBitAt frame c sa.reg.lpc := readOkB_spec hrd hiR hcI
     obtain ⟨q, hq, hpb⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
     rw [hp] at hpb
     cases hpb
-    rw [imgInstr_stx slotArr c _ hacc] at hstep
+    rw [hx, imgInstr_stx slotArr c _ hacc] at hstep
     have hidxe := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regsEq hidx hidxW) 64
-    exact cell_mem_imgStores hq (idx_lt_of_checked hstep (hidxe.trans hvi))
-  · rw [icase_storeIdx_ne hsc] at hg
-    simp [castGateB, hkc] at hg
+    exact cell_mem_imgStores hq (idx_lt_of_checked hstep
+      (.inl ⟨_, A, A, v, rfl, by simp [storeStruct?]⟩) (hidxe.trans hvi))
+  · have hc : icase frame bi.li_i = .ldx d b idx := by rw [hx]; simp [icase]
+    simp only [hc, Bool.and_eq_true, Option.isNone_iff_eq_none,
+      Option.isSome_iff_exists] at hg
+    obtain ⟨⟨⟨⟨⟨⟨A, n⟩, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
+    simp only [gateReadSet, hc] at hrd
+    have hidxW : idx ∉ oneBitAt frame c sa.reg.lpc := readOkB_spec hrd hiR hcI
+    obtain ⟨q, hq, hpb⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+    rw [hp] at hpb
+    cases hpb
+    rw [hx, imgInstr_ldx slotArr c _ hacc] at hstep
+    have hidxe := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regsEq hidx hidxW) 64
+    exact cell_mem_imgStores hq (idx_lt_of_checked hstep
+      (.inr ⟨_, d, A, rfl, by simp [loadStruct?]⟩) (hidxe.trans hvi))
 
 /-! ## 4. Bodies with cells -/
 
-/-- **The store of a step of a body with cells.** Where the base register of every cell access
-    holds the pointer of its array, a cell store of the body writes the frame word of its cell
-    name (`CellFrames`); so the step stores in `imgStores` when its indexed store does. -/
-theorem storeIn_cellBody {frame : String → Option (BitVec 64)}
+/-- **The accesses of a step of a body with cells.** Where the base register of every cell
+    access holds the pointer of its array, a cell store or load of the body accesses the frame
+    word of its cell name (`CellFrames`); so the step stores in and loads from `imgStores` when
+    its indexed access does. -/
+theorem accessIn_cellBody {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hF : CellFrames frame slotArr base rsp body) {sa : LstateA}
     (hptr : ∀ B A m, accArr slotArr body sa.reg.lpc B = some (A, m) →
       DecodePrinted.gpOk B = true → frame B = none → sa.reg.getW B 64 = some (base A))
     {b0 : Linstr} (hb0 : body[sa.reg.lpc]? = some b0)
-    (hS : ∀ d b idx sc v p vi,
-      b0.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v] →
+    (hI : ∀ b idx sc p vi,
+      ((∃ d v, b0.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v])
+        ∨ ∃ d, b0.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) →
       sa.reg.getW b 64 = some p → sa.reg.getW idx 64 = some vi →
       ∀ x ∈ (⟨p + BitVec.ofNat 64 (sc * vi.toNat), 8⟩ : Rng 64),
         x ∈ imgStores frame slotArr base) :
-    StoreIn (imgStores frame slotArr base) frame body sa :=
-  storeIn_of_cases hb0 frame_mem_imgStores hS (fun B off S p hcl hp => by
-    obtain ⟨A, n, hacc, hBf, -, hfr⟩ := hF.st _ _ B off S hb0 hcl
-    have hpA := hptr B A n hacc (hF.stGp _ _ B off S hb0 hcl) hBf
-    rw [hp] at hpA
-    cases hpA
-    exact frame_mem_imgStores _ _ hfr)
+    AccessIn (imgStores frame slotArr base) frame body sa :=
+  accessIn_of_cases hb0 frame_mem_imgStores hI (fun B off p hcl hp => by
+    rcases hcl with ⟨S, hcl⟩ | ⟨D, hcl⟩
+    · obtain ⟨A, n, hacc, hBf, -, hfr⟩ := hF.st _ _ B off S hb0 hcl
+      have hpA := hptr B A n hacc (hF.stGp _ _ B off S hb0 hcl) hBf
+      rw [hp] at hpA
+      cases hpA
+      exact frame_mem_imgStores _ _ hfr
+    · obtain ⟨A, n, hacc, hBf, hfr, -⟩ := hF.ld _ _ D B off hb0 hcl
+      have hpA := hptr B A n hacc (hF.ldGp _ _ D B off hb0 hcl) hBf
+      rw [hp] at hpA
+      cases hpA
+      exact frame_mem_imgStores _ _ hfr)
 
 /-! ## 5. The state after the first of two steps -/
 
 /-- **The state after one step of the address machine on the plain route** is related to the
-    image state, or stands at a label and stores nothing. -/
-theorem rel_or_storeIn_plain {frame : String → Option (BitVec 64)}
+    image state, or stands at a label and stores and loads nothing. -/
+theorem rel_or_accessIn_plain {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr c = true)
     (hgate : imgGateB frame slotArr c = true) (fn : String) {M : Set (BitVec 64)}
@@ -457,7 +583,7 @@ theorem rel_or_storeIn_plain {frame : String → Option (BitVec 64)}
     (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
       (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t)
     {sa1 : LstateA} {z1 : Bool} (hst : stepA frame c sa s.zf = some (sa1, z1)) :
-    ImgRel frame slotArr base c t sa1 z1 ∨ StoreIn M frame c sa1 := by
+    ImgRel frame slotArr base c t sa1 z1 ∨ AccessIn M frame c sa1 := by
   by_cases hcnd : ∃ cc l, bi.li_i = .Lcond cc l
   · obtain ⟨cc, l, hx⟩ := hcnd
     obtain ⟨-, -, sa1', hst', hc⟩ := img_step_cond rsp hphys hgate fn s t sa bi cc l hrel hb hlt
@@ -467,7 +593,7 @@ theorem rel_or_storeIn_plain {frame : String → Option (BitVec 64)}
     obtain ⟨rfl, rfl⟩ := hst
     rcases hc with h | ⟨⟨bl, ii, l', hbl, hli⟩, -⟩
     · exact Or.inl h
-    · exact Or.inr (storeIn_of_label hbl hli)
+    · exact Or.inr (accessIn_of_label hbl hli)
   · obtain ⟨-, -, sa1', hst', hr⟩ :=
       img_stepStraight hsep hphys hgate _ hrel hb hlt (fun cc l e => hcnd ⟨cc, l, e⟩) hstep
     rw [hst'] at hst
@@ -476,9 +602,9 @@ theorem rel_or_storeIn_plain {frame : String → Option (BitVec 64)}
     exact Or.inl hr
 
 /-- **The state after one step of the address machine on a body with cells** is related to
-    the image state by `R`, or stands at a label and stores nothing; from the step of the
-    image at a conditional branch (`CondStep`) and at any other instruction. -/
-theorem rel_or_storeIn_cells {R : LstateMF → LstateA → Bool → Prop}
+    the image state by `R`, or stands at a label and stores and loads nothing; from the step of
+    the image at a conditional branch (`CondStep`) and at any other instruction. -/
+theorem rel_or_accessIn_cells {R : LstateMF → LstateA → Bool → Prop}
     {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
     {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd} {fn : String}
     {M : Set (BitVec 64)} (hcond : CondStep R frame slotArr rsp (cellBody slotArr body) fn)
@@ -493,7 +619,7 @@ theorem rel_or_storeIn_cells {R : LstateMF → LstateA → Bool → Prop}
     (hstr : (∀ cc l, bi.li_i ≠ .Lcond cc l) →
       ∃ sa1, stepA frame (cellBody slotArr body) sa s.zf = some (sa1, t.zf) ∧ R t sa1 t.zf)
     {sa1 : LstateA} {z1 : Bool} (hst : stepA frame body sa s.zf = some (sa1, z1)) :
-    R t sa1 z1 ∨ StoreIn M frame body sa1 := by
+    R t sa1 z1 ∨ AccessIn M frame body sa1 := by
   by_cases hcnd : ∃ cc l, bi.li_i = .Lcond cc l
   · obtain ⟨cc, l, hx⟩ := hcnd
     obtain ⟨-, -, sa1', hst', hc⟩ := hcond s t sa bi cc l hrel hb hlt hx hstep
@@ -517,7 +643,7 @@ theorem rel_or_storeIn_cells {R : LstateMF → LstateA → Bool → Prop}
     · exact Or.inl h
     · rw [cellBody_getElem?] at hbl
       obtain ⟨b1, hb1, rfl⟩ := Option.map_eq_some_iff.mp hbl
-      exact Or.inr (storeIn_of_label hb1 (llabel_of_cellMove hli))
+      exact Or.inr (accessIn_of_label hb1 (llabel_of_cellMove hli))
   · obtain ⟨sa1', hst', hr⟩ := hstr (fun cc l e => hcnd ⟨cc, l, e⟩)
     obtain ⟨-, he⟩ := stepA_cellBody hF hptr s.zf
     rw [he, hst'] at hst
@@ -527,10 +653,11 @@ theorem rel_or_storeIn_cells {R : LstateMF → LstateA → Bool → Prop}
 
 /-! ## 6. The runs -/
 
-/-- **The image simulated by the address machine, with its stores.**
-    `ImageAddrSim.image_addr_sim` with the stores of the run in `imgStores`: every step of the
-    address machine stores to a frame word or to an array word `cellAt (base A) j`, `j < n`. -/
-theorem image_addr_sim_store {frame : String → Option (BitVec 64)}
+/-- **The image simulated by the address machine, with its accesses.**
+    `ImageAddrSim.image_addr_sim` with the stores and loads of the run in `imgStores`: every
+    step of the address machine stores to and loads from frame words and array words
+    `cellAt (base A) j`, `j < n`. -/
+theorem image_addr_sim_access {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
     (hgate : imgGateB frame slotArr body = true) (fn : String) :
@@ -540,12 +667,12 @@ theorem image_addr_sim_store {frame : String → Option (BitVec 64)}
       ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
         ∧ ImgRel frame slotArr base body t sa' zf'
         ∧ RunSafe frame body (LoadSafeAt rsp body) fuel' sa zf
-        ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
+        ∧ RunSafe frame body (AccessIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
   intro fuel s t sa zf hfn hrel hrun
   obtain ⟨f, sa', zf', h1, ⟨-, h2⟩, h3⟩ := runA_of_steps_pred (frame := frame) (body := body)
     (P := singletonProgM fn (virtImg slotArr body))
     (R := fun s sa zf => s.prog.lfn = fn ∧ ImgRel frame slotArr base body s sa zf)
-    (Q := fun x => LoadSafeAt rsp body x ∧ StoreIn (imgStores frame slotArr base) frame body x)
+    (Q := fun x => LoadSafeAt rsp body x ∧ AccessIn (imgStores frame slotArr base) frame body x)
     (fun s sa zf h hf => haltedA_of_img (.of_imgGateB hgate) fn h.1 h.2.pc hf)
     (fun s s1 sa zf i h hf he => by
       obtain ⟨hfn, hrel⟩ := h
@@ -558,20 +685,20 @@ theorem image_addr_sim_store {frame : String → Option (BitVec 64)}
       case isFalse => cases hf
       rename_i hlt
       obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hf
-      refine ⟨hh, ⟨hsafe, storeIn_of_imgStep hsep hgate _ hrel hb hlt he⟩, sa1, z1, hst1, ?_⟩
+      refine ⟨hh, ⟨hsafe, accessIn_of_imgStep hsep hgate _ hrel hb hlt he⟩, sa1, z1, hst1, ?_⟩
       rcases hc with hr | ⟨hh1, hsafe1, sa2, z2, hst2, hr⟩
       · exact Or.inl ⟨hlfn, hr⟩
-      · rcases rel_or_storeIn_plain hsep hphys hgate fn hrel hb hlt he hst1 with hr1 | hs1
+      · rcases rel_or_accessIn_plain hsep hphys hgate fn hrel hb hlt he hst1 with hr1 | hs1
         · exact Or.inl ⟨hlfn, hr1⟩
         · exact Or.inr ⟨hh1, ⟨hsafe1, hs1⟩, sa2, z2, hst2, hlfn, hr⟩)
     fuel s t sa zf ⟨hfn, hrel⟩ hrun
   exact ⟨f, sa', zf', h1, h2, h3.mono fun _ h => h.1, h3.mono fun _ h => h.2⟩
 
-/-- **The image of the cell body simulated on the body, with its stores.**
-    `ImageAddrCellsLoop.image_addr_simB'` with the stores of the run in `imgStores`: an indexed
-    store writes an array word and a cell store `mem.B.off` writes the frame word of its cell
-    name. -/
-theorem image_addr_simB'_store {frame : String → Option (BitVec 64)}
+/-- **The image of the cell body simulated on the body, with its accesses.**
+    `ImageAddrCellsLoop.image_addr_simB'` with the stores and loads of the run in `imgStores`:
+    an indexed store or load accesses an array word and a cell store or load `mem.B.off`
+    accesses the frame word of its cell name. -/
+theorem image_addr_simB'_access {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
     (hphys : physImgB slotArr (cellBody slotArr body) = true)
@@ -585,12 +712,12 @@ theorem image_addr_simB'_store {frame : String → Option (BitVec 64)}
     ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
       ∧ ImgRel frame slotArr base (cellBody slotArr body) t sa' zf'
       ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf
-      ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
+      ∧ RunSafe frame body (AccessIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
   obtain ⟨f, sa', zf', h1, ⟨-, h2⟩, h3⟩ := runA_of_steps_pred (frame := frame)
     (body := body) (P := singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
     (R := fun s sa zf => s.prog.lfn = fn
       ∧ ImgRel frame slotArr base (cellBody slotArr body) s sa zf)
-    (Q := fun x => SafeW rsp body x ∧ StoreIn (imgStores frame slotArr base) frame body x)
+    (Q := fun x => SafeW rsp body x ∧ AccessIn (imgStores frame slotArr base) frame body x)
     (fun s sa zf h hf => by
       have hh := haltedA_of_img (.of_imgGateB hgate) fn h.1 h.2.pc hf
       rwa [haltedA_cellBody] at hh)
@@ -612,20 +739,21 @@ theorem image_addr_simB'_store {frame : String → Option (BitVec 64)}
         obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
           (accArr_cellBody hN (hasPrefix_gpName hg) hacc) hBf
         exact hpA
-      have hS : StoreIn (imgStores frame slotArr base) frame body sa := by
+      have hS : AccessIn (imgStores frame slotArr base) frame body sa := by
         have hb' := hb
         rw [cellBody_getElem?] at hb'
         obtain ⟨b0, hb0, he0⟩ := Option.map_eq_some_iff.mp hb'
-        refine storeIn_cellBody hF hptr hb0 fun d b idx sc v p vi hx hp hvi => ?_
-        have hc0 : cellA? b0.li_i = none := by rw [hx]; simp [cellA?]
+        refine accessIn_cellBody hF hptr hb0 fun b idx sc p vi hx hp hvi => ?_
+        have hc0 : cellA? b0.li_i = none := by
+          rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [cellA?]
         rw [cellMove_of_none hc0] at he0
         subst he0
-        exact stx_mem_of_imgStep hsep hgate _ hrel hb hlt he hx hp hvi
+        exact idx_mem_of_imgStep hsep hgate _ hrel hb hlt he hx hp hvi
       obtain ⟨hh, hsafe, sa1, hst, hc⟩ := cell_step' hsep hphys hgate hN hF fn hrel hb hlt he
       refine ⟨hh, ⟨hsafe, hS⟩, sa1, s1.zf, hst, ?_⟩
       rcases hc with hr | ⟨hh1, hsafe1, sa2, hst2, hr⟩
       · exact Or.inl ⟨hlfn, hr⟩
-      · rcases rel_or_storeIn_cells (img_step_cond rsp hphys hgate fn) hF hrel hptr hb hlt he
+      · rcases rel_or_accessIn_cells (img_step_cond rsp hphys hgate fn) hF hrel hptr hb hlt he
           (fun hnc => (img_stepStraight hsep hphys hgate _ hrel hb hlt hnc he).2.2) hst
           with hr1 | hs1
         · exact Or.inl ⟨hlfn, hr1⟩
@@ -634,11 +762,11 @@ theorem image_addr_simB'_store {frame : String → Option (BitVec 64)}
   exact ⟨f, sa', zf', h1, h2, h3.mono fun _ h => h.1, h3.mono fun _ h => h.2⟩
 
 /-- **The image of the cell body simulated on the body, with carry chains and with its
-    stores.** `ImageAddrCellsLoop.image_addr_simBW'` with the stores of the run in
-    `imgStores`: an indexed store writes an array word, a cell store `mem.B.off` writes the
-    frame word of its cell name, and a carry-chain destination, an immediate move and a
-    select destination in a frame slot write their frame words. -/
-theorem image_addr_simBW'_store {frame : String → Option (BitVec 64)}
+    accesses.** `ImageAddrCellsLoop.image_addr_simBW'` with the stores and loads of the run in
+    `imgStores`: an indexed store or load accesses an array word, a cell store or load
+    `mem.B.off` accesses the frame word of its cell name, and a carry-chain destination, an
+    immediate move and a select destination in a frame slot write their frame words. -/
+theorem image_addr_simBW'_access {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
     (hphys : physImgB slotArr (cellBody slotArr body) = true)
@@ -652,12 +780,12 @@ theorem image_addr_simBW'_store {frame : String → Option (BitVec 64)}
     ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
       ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa' zf'
       ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf
-      ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
+      ∧ RunSafe frame body (AccessIn (imgStores frame slotArr base) frame body) fuel' sa zf := by
   obtain ⟨f, sa', zf', h1, ⟨-, h2⟩, h3⟩ := runA_of_steps_pred (frame := frame)
     (body := body) (P := singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
     (R := fun s sa zf => s.prog.lfn = fn
       ∧ ImgRelW frame slotArr base (cellBody slotArr body) s sa zf)
-    (Q := fun x => SafeW rsp body x ∧ StoreIn (imgStores frame slotArr base) frame body x)
+    (Q := fun x => SafeW rsp body x ∧ AccessIn (imgStores frame slotArr base) frame body x)
     (fun s sa zf h hf => by
       have hh := haltedA_of_imgW hgate fn h.1 h.2.pc hf
       rwa [haltedA_cellBody] at hh)
@@ -679,26 +807,91 @@ theorem image_addr_simBW'_store {frame : String → Option (BitVec 64)}
         obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
           (accArr_cellBody hN (hasPrefix_gpName hg) hacc) hBf
         exact hpA
-      have hS : StoreIn (imgStores frame slotArr base) frame body sa := by
+      have hS : AccessIn (imgStores frame slotArr base) frame body sa := by
         have hb' := hb
         rw [cellBody_getElem?] at hb'
         obtain ⟨b0, hb0, he0⟩ := Option.map_eq_some_iff.mp hb'
-        refine storeIn_cellBody hF hptr hb0 fun d b idx sc v p vi hx hp hvi => ?_
-        have hc0 : cellA? b0.li_i = none := by rw [hx]; simp [cellA?]
+        refine accessIn_cellBody hF hptr hb0 fun b idx sc p vi hx hp hvi => ?_
+        have hc0 : cellA? b0.li_i = none := by
+          rcases hx with ⟨_, _, hx⟩ | ⟨_, hx⟩ <;> rw [hx] <;> simp [cellA?]
         rw [cellMove_of_none hc0] at he0
         subst he0
-        exact stx_mem_of_imgStepW hsep hgate _ hrel hb hlt he hx hp hvi
+        exact idx_mem_of_imgStepW hsep hgate _ hrel hb hlt he hx hp hvi
       obtain ⟨hh, hsafe, sa1, hst, hc⟩ :=
         cell_stepW' hsep hphys hgate hN hF fn hcond hrel hb hlt he
       refine ⟨hh, ⟨hsafe, hS⟩, sa1, s1.zf, hst, ?_⟩
       rcases hc with hr | ⟨hh1, hsafe1, sa2, hst2, hr⟩
       · exact Or.inl ⟨hlfn, hr⟩
-      · rcases rel_or_storeIn_cells hcond hF hrel hptr hb hlt he
+      · rcases rel_or_accessIn_cells hcond hF hrel hptr hb hlt he
           (fun hnc => (img_stepW hsep hphys hgate _ hrel hb hlt hnc he).2.2) hst
           with hr1 | hs1
         · exact Or.inl ⟨hlfn, hr1⟩
         · exact Or.inr ⟨hh1, ⟨hsafe1, hs1⟩, sa2, s1.zf, hst2, hlfn, hr⟩)
     fuel s t sa zf ⟨hfn, hrel⟩ hrun
   exact ⟨f, sa', zf', h1, h2, h3.mono fun _ h => h.1, h3.mono fun _ h => h.2⟩
+
+/-! ## 7. The stores of the runs -/
+
+/-- **The image simulated by the address machine, with its stores**: the stores of
+    `image_addr_sim_access`. -/
+theorem image_addr_sim_store {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateB frame slotArr body = true) (fn : String) :
+    ∀ (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool), s.prog.lfn = fn →
+      ImgRel frame slotArr base body s sa zf →
+      lsemFuelMemFk true (singletonProgM fn (virtImg slotArr body)) fuel s = some t →
+      ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
+        ∧ ImgRel frame slotArr base body t sa' zf'
+        ∧ RunSafe frame body (LoadSafeAt rsp body) fuel' sa zf
+        ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf :=
+  fun fuel s t sa zf hfn hrel hrun => by
+    obtain ⟨f, sa', zf', h1, h2, h3, h4⟩ :=
+      image_addr_sim_access hsep hphys hgate fn fuel s t sa zf hfn hrel hrun
+    exact ⟨f, sa', zf', h1, h2, h3, h4.mono fun _ h => h.1⟩
+
+/-- **The image of the cell body simulated on the body, with its stores**: the stores of
+    `image_addr_simB'_access`. -/
+theorem image_addr_simB'_store {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateB frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (fn : String) (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool)
+    (hfn : s.prog.lfn = fn)
+    (hrel : ImgRel frame slotArr base (cellBody slotArr body) s sa zf)
+    (hrun : lsemFuelMemFk true (singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
+      fuel s = some t) :
+    ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
+      ∧ ImgRel frame slotArr base (cellBody slotArr body) t sa' zf'
+      ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf
+      ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf :=
+  by
+  obtain ⟨f, sa', zf', h1, h2, h3, h4⟩ :=
+    image_addr_simB'_access hsep hphys hgate hN hF fn fuel s t sa zf hfn hrel hrun
+  exact ⟨f, sa', zf', h1, h2, h3, h4.mono fun _ h => h.1⟩
+
+/-- **The image of the cell body simulated on the body, with carry chains and with its
+    stores**: the stores of `image_addr_simBW'_access`. -/
+theorem image_addr_simBW'_store {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateBW frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (fn : String) (hcond : ImgStepWCond frame slotArr base rsp (cellBody slotArr body) fn)
+    (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool) (hfn : s.prog.lfn = fn)
+    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf)
+    (hrun : lsemFuelMemFk true (singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
+      fuel s = some t) :
+    ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
+      ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa' zf'
+      ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf
+      ∧ RunSafe frame body (StoreIn (imgStores frame slotArr base) frame body) fuel' sa zf :=
+  by
+  obtain ⟨f, sa', zf', h1, h2, h3, h4⟩ :=
+    image_addr_simBW'_access hsep hphys hgate hN hF fn hcond fuel s t sa zf hfn hrel hrun
+  exact ⟨f, sa', zf', h1, h2, h3, h4.mono fun _ h => h.1⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
