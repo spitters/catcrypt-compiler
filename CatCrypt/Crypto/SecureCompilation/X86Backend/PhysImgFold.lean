@@ -332,14 +332,6 @@ theorem memName_prefix (B : String) (off : Nat) :
 
 end Names
 
-/-- Under the slot hypothesis, a name with no `qsave.` prefix is no array slot. -/
-theorem slotArr_none_of_prefix
-    (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {d : String}
-    (hd : hasPrefix d "qsave." = false) : slotArr d = none := by
-  cases h : slotArr d with
-  | none => rfl
-  | some _ => have := hq d (by simp [h]); rw [hd] at this; cases this
-
 /-! ## 4. The constant-index fold -/
 
 section Fold

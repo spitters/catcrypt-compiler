@@ -91,7 +91,7 @@ theorem physImgB_cellBody
   have hS : ∀ q, gpNameB q = true → hasPrefix q "mem." = false := fun q hq' =>
     (gpNameB_prefix hq').2
   have hmem : ∀ A off, slotArr (memName A off) = none := fun A off =>
-    PhysImgFold.slotArr_none_of_prefix hq (memName_prefix A off).2
+    PhysImgEmit.slotArr_none_of_prefix hq (memName_prefix A off).2
   have hget : ∀ k i i', b[k]? = some i → (cellBody slotArr b)[k]? = some i' →
       i' = cellMove slotArr b k i := by
     intro k i i' hb hb'

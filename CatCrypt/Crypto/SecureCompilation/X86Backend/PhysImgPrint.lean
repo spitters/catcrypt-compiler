@@ -348,7 +348,7 @@ theorem physImgB_twoAddrBody
     (hsave : slotArr scratchSave = none) (hflag : flagTiedB b = true)
     (h : physImgB slotArr b = true) : physImgB slotArr (twoAddrBody b) = true := by
   have hR : slotArr x86Data.tieScratch = none :=
-    PhysImgFold.slotArr_none_of_prefix hq (gpNameB_prefix (d := x86Data.tieScratch) (by decide)).1
+    PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := x86Data.tieScratch) (by decide)).1
   show physImgB slotArr (b.flatMap fun i => legalizeInstr (bodyAvoids b) i) = true
   refine physImgB_flatMap_of_dom (S := fun _ => True) (fun _ _ => trivial) h
     (fun _ _ _ _ _ _ _ _ => trivial) fun A i C hb => ?_
@@ -444,7 +444,7 @@ theorem physImgB_cmpReload
     (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true) :
     physImgB slotArr (cmpReload b) = true := by
   have hR : slotArr reloadScratch = none :=
-    PhysImgFold.slotArr_none_of_prefix hq (gpNameB_prefix (d := reloadScratch) (by decide)).1
+    PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := reloadScratch) (by decide)).1
   show physImgB slotArr (b.flatMap fun i => cmpReloadI i) = true
   refine physImgB_flatMap_of_dom (S := fun _ => True) (fun _ _ => trivial) h
     (fun _ _ _ _ _ _ _ _ => trivial) fun A i C hb => ?_
