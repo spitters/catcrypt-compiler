@@ -249,12 +249,10 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
 CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
-CatCrypt.Crypto.SecureCompilation.Ascent.BlockHalts
 CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
-CatCrypt.Crypto.SecureCompilation.Ascent.ContractOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
@@ -270,10 +268,10 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectFrontSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CorresAsSpecDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CorresX86MemGuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519BytesLeafCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExecPacked
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddContract
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519GuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FieldWordAddCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FootprintDemo
@@ -533,7 +531,6 @@ CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpLoopBody
 CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
 CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
-CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
 CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
 CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
 CatCrypt.Crypto.SecureCompilation.SignatureProtocolKernels
@@ -833,7 +830,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTCall
-CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulReduceComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Bls
