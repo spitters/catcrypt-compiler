@@ -338,17 +338,17 @@ theorem pieceDec_cmpI (c : String) (k : Nat) (hk : fitsImm8S 1 k = true) :
     PieceDec (encAluImm8 1 7 (gpNumU c) k, .cmp (phys c) (.imm k)) :=
   fun rest => decodeLinstr_aluImm8 7 JInstr.cmp _ _ rest (by decide) (gpNumU_lt_16 c) hk rfl
 
-theorem pieceDec_ldx (D B I : String) (hb5 : gpNumU B &&& 7 ≠ 5) (hi4 : gpNumU I ≠ 4) :
+theorem pieceDec_ldx (D B I : String) (hi4 : gpNumU I ≠ 4) :
     PieceDec (encMemMovSibw 1 0x8b (gpNumU D) (gpNumU B) (gpNumU I) 8,
       .loadMemIdx (phys D) (phys B) (phys I) 8) :=
-  fun rest => decodeLinstr_loadIdx8 _ _ _ rest (gpNumU_lt_16 D) (gpNumU_lt_16 B)
-    (gpNumU_lt_16 I) hb5 hi4
+  fun rest => decodeLinstr_loadIdx8_sib _ _ _ rest (gpNumU_lt_16 D) (gpNumU_lt_16 B)
+    (gpNumU_lt_16 I) hi4
 
-theorem pieceDec_stx (V B I : String) (hb5 : gpNumU B &&& 7 ≠ 5) (hi4 : gpNumU I ≠ 4) :
+theorem pieceDec_stx (V B I : String) (hi4 : gpNumU I ≠ 4) :
     PieceDec (encMemMovSibw 1 0x89 (gpNumU V) (gpNumU B) (gpNumU I) 8,
       .storeMemIdx (phys B) (phys I) 8 (.reg (phys V))) :=
-  fun rest => decodeLinstr_storeIdx8 _ _ _ rest (gpNumU_lt_16 V) (gpNumU_lt_16 B)
-    (gpNumU_lt_16 I) hb5 hi4
+  fun rest => decodeLinstr_storeIdx8_sib _ _ _ rest (gpNumU_lt_16 V) (gpNumU_lt_16 B)
+    (gpNumU_lt_16 I) hi4
 
 theorem pieceDec_imul (D S : String) (hD : gpOk D = true) (hS : gpOk S = true) :
     PieceDec (enc0FRRw 1 0xaf (gpNumU D) (gpNumU S), .imul (phys D) (.reg (phys S))) := by
@@ -503,8 +503,8 @@ def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.
 /-- **The conditions of an arm** under the body parameters `P`: general-purpose operands; a
     frame word with an offset in `rel32` range, whose word a load or compare reads disjoint
     from the red-zone word; a frame-word move at `MOVQ` or `MOV:64`; an immediate compare in
-    the sign-extended `imm8` range; an indexed access whose base and index registers have a
-    SIB encoding; distinct destinations of the widening multiply `mulx`. -/
+    the sign-extended `imm8` range; an indexed access whose index register is not
+    `%rsp`; distinct destinations of the widening multiply `mulx`. -/
 def AArm.ok (P : Params) : AArm → Bool
   | .reg a => regArmB a && a.ok P [] && plainB a.instr
   | .st m q S => gpOk S && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
@@ -516,8 +516,8 @@ def AArm.ok (P : Params) : AArm → Bool
   | .cmpM c q => gpOk c && !isGpName q && isSpillOrQsave q
       && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome && dispOk32 (slotOff P q)
       && sepB cmovRedZone (slotOff P q)
-  | .ldx D B I => gpOk D && gpOk B && gpOk I && (gpNumU B &&& 7 != 5) && (gpNumU I != 4)
-  | .stx _ B I V => gpOk B && gpOk I && gpOk V && (gpNumU B &&& 7 != 5) && (gpNumU I != 4)
+  | .ldx D B I => gpOk D && gpOk B && gpOk I && (gpNumU I != 4)
+  | .stx _ B I V => gpOk B && gpOk I && gpOk V && (gpNumU I != 4)
   | .mul D S => gpOk D && gpOk S
   | .mulxS H S => gpOk H && gpOk S
   | .mulx L H S => gpOk L && gpOk H && gpOk S && L != H
@@ -575,14 +575,14 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
       exact decodeLinstr_rspCmp _ _ rest (gpNumU_lt_16 c) hd
   | ldx D B I =>
     simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
-    obtain ⟨⟨⟨⟨hD, hB⟩, hI⟩, hb5⟩, hi4⟩ := h
+    obtain ⟨⟨⟨hD, hB⟩, hI⟩, hi4⟩ := h
     exact ⟨by simp [AArm.instr, AArm.pieces, encodeLopn_ldx _ _ _ _ _ _ hD hB hI],
-      pieceDec_single (pieceDec_ldx D B I hb5 hi4)⟩
+      pieceDec_single (pieceDec_ldx D B I hi4)⟩
   | stx d B I V =>
     simp only [AArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
-    obtain ⟨⟨⟨⟨hB, hI⟩, hV⟩, hb5⟩, hi4⟩ := h
+    obtain ⟨⟨⟨hB, hI⟩, hV⟩, hi4⟩ := h
     exact ⟨by simp [AArm.instr, AArm.pieces, encodeLopn_stx _ _ _ _ _ _ _ hB hI hV],
-      pieceDec_single (pieceDec_stx V B I hb5 hi4)⟩
+      pieceDec_single (pieceDec_stx V B I hi4)⟩
   | mul D S =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     exact ⟨by simp [AArm.instr, AArm.pieces, encodeLopn_mul],
@@ -993,7 +993,7 @@ theorem sim_ldx (P : Params) (rsp : BitVec 64) (D B I : String)
     ∃ s' zf', fstepA (frameP P rsp) (AArm.ldx D B I).li s zf = some (s', zf')
       ∧ ACorr rsp (aMachine.runBlock sa ((AArm.ldx D B I).js P)) s' := by
   simp only [AArm.ok, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨⟨hD, hB⟩, hI⟩, -⟩, -⟩ := h
+  obtain ⟨⟨⟨hD, hB⟩, hI⟩, -⟩ := h
   have hjs : (AArm.ldx D B I).js P = [.loadMemIdx (phys D) (phys B) (phys I) 8] := rfl
   rw [hjs]
   obtain ⟨hregs, hmem⟩ := evalInstrA_loadMemIdx_eq sa (phys D) (phys B) (phys I)
@@ -1013,7 +1013,7 @@ theorem sim_stx (P : Params) (rsp : BitVec 64) (d B I V : String)
     ∃ s' zf', fstepA (frameP P rsp) (AArm.stx d B I V).li s zf = some (s', zf')
       ∧ ACorr rsp (aMachine.runBlock sa ((AArm.stx d B I V).js P)) s' := by
   simp only [AArm.ok, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨⟨hB, hI⟩, hV⟩, -⟩, -⟩ := h
+  obtain ⟨⟨⟨hB, hI⟩, hV⟩, -⟩ := h
   have hjs : (AArm.stx d B I V).js P = [.storeMemIdx (phys B) (phys I) 8 (.reg (phys V))] := rfl
   rw [hjs]
   obtain ⟨hregs, hmem⟩ := evalInstrA_storeMemIdx_eq sa (phys B) (phys I) (phys V)

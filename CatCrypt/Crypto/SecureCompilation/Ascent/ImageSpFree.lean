@@ -484,11 +484,11 @@ theorem rspFree_of_armOk {P : X86Backend.LprogBytesDecode.Params} {x : LinstrR} 
       simp only [AArm.ok, Bool.and_eq_true] at h
       left
       simp [rspFreeB, operandNames, srcNames, AArm.instr,
-        rspFreeNameB_gp h.1.1.1.1, rspFreeNameB_gp h.1.1.1.2, rspFreeNameB_gp h.1.1.2]
+        rspFreeNameB_gp h.1.1.1, rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.1.2]
   | stx d B I V =>
       simp only [AArm.ok, Bool.and_eq_true] at h
-      exact Or.inr ⟨d, B, I, V, rfl, rspFreeNameB_gp h.1.1.1.1,
-        rspFreeNameB_gp h.1.1.1.2, rspFreeNameB_gp h.1.1.2⟩
+      exact Or.inr ⟨d, B, I, V, rfl, rspFreeNameB_gp h.1.1.1,
+        rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.1.2⟩
   | mul D S =>
       simp only [AArm.ok, Bool.and_eq_true] at h
       left

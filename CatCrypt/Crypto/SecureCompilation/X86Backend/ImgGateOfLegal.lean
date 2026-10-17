@@ -935,12 +935,12 @@ inductive ImgForm (frame : String → Option (BitVec 64)) (slotArr : String → 
       ImgForm frame slotArr body k W (.Lopn [.reg d] m [.reg a, .reg b])
   /-- The indexed load at stride `8` through a base holding an array pointer. -/
   | loadIdx (d b x : String) : gpOk d = true → gpOk b = true → gpOk x = true →
-      gpNumU b % 8 ≠ 5 → (accArr slotArr body k b).isSome = true → frame d = none →
+      (accArr slotArr body k b).isSome = true → frame d = none →
       frame b = none → frame x = none → b ∉ W → x ∉ W →
       ImgForm frame slotArr body k W (.Lopn [.reg d] "LOADIDX" [.arrIdx b x 8])
   /-- The indexed store at stride `8` through a base holding an array pointer. -/
   | storeIdx (a b x v : String) : gpOk b = true → gpOk x = true → gpOk v = true →
-      gpNumU b % 8 ≠ 5 → cellParts? a = none → (accArr slotArr body k b).isSome = true →
+      cellParts? a = none → (accArr slotArr body k b).isSome = true →
       frame b = none → frame x = none → frame v = none → b ∉ W → x ∉ W → v ∉ W →
       ImgForm frame slotArr body k W (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
   /-- The 64-bit carry-chain add over general-purpose names. -/
@@ -982,8 +982,8 @@ theorem gateForm_of_imgForm {frame : String → Option (BitVec 64)}
   | cmpImm d v hd hv => exact .cmpImm d v hd hv
   | shiftImm m d n hm hd hn h0 => exact .shiftImm m d n hm hd hn h0
   | shiftReg m d a b hm hd ha hb => exact .shiftReg m d a b hm hd ha hb
-  | loadIdx d b x hd hb hx h5 => exact .loadIdx d b x hd hb hx h5
-  | storeIdx a b x v hb hx hv h5 => exact .storeIdx a b x v hb hx hv h5
+  | loadIdx d b x hd hb hx => exact .loadIdx d b x hd hb hx
+  | storeIdx a b x v hb hx hv => exact .storeIdx a b x v hb hx hv
   | adcx d a s c hd ha hs hc h1 h2 h3 => exact .adcx d a s c hd ha hs hc h1 h2 h3
   | adcxhi o a s c ho ha hs hc h1 h2 => exact .adcxhi o a s c ho ha hs hc h1 h2
   | label kd l => exact .label kd l
@@ -1020,9 +1020,9 @@ theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
   | shiftImm m d n hm hd hn _ hfd hdW => exact gate_shiftImm hm hd hfd hdW hn
   | shiftReg m d a b hm hd ha hb hfd hfa hfb haW hbW =>
     exact gate_shiftReg hm hd ha hb hfd hfa hfb haW hbW
-  | loadIdx d b x hd _ _ _ hacc hfd hfb hfx hbW hxW =>
+  | loadIdx d b x hd _ _ hacc hfd hfb hfx hbW hxW =>
     exact gate_loadIdx hd hacc hfd hfb hfx hbW hxW
-  | storeIdx a b x v _ _ hv _ ha hacc hfb hfx hfv hbW hxW hvW =>
+  | storeIdx a b x v _ _ hv ha hacc hfb hfx hfv hbW hxW hvW =>
     exact gate_storeIdx ha hv hacc hfb hfx hfv hbW hxW hvW
   | adcx d a s c hd ha hs hc hac hsc _ haW hsW => exact gate_adcx hd ha hs hc hac hsc haW hsW
   | adcxhi o a s c ho ha hs hc hac hsc hfa hfs hfc haW hsW =>

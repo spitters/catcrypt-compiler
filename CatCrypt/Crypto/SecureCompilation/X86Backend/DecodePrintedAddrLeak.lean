@@ -305,7 +305,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       slotCmp?, frameP, hoff, hc.sp, evA, redLeak]
   | ldx D B I =>
     simp only [AArm.ok, Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨-, hB⟩, hI⟩, -⟩, -⟩ := h
+    obtain ⟨⟨⟨-, hB⟩, hI⟩, -⟩ := h
     rw [show (AArm.ldx D B I).li = (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8], .load 64 0)
       from rfl, instrLeakA_ldx _ D B I 8 64 0 (hc.regs B hB) (hc.regs I hI)]
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,
@@ -313,7 +313,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     omega
   | stx d B I V =>
     simp only [AArm.ok, Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨hB, hI⟩, -⟩, -⟩, -⟩ := h
+    obtain ⟨⟨⟨hB, hI⟩, -⟩, -⟩ := h
     rw [show (AArm.stx d B I V).li = (.Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V],
       .store 64 0) from rfl, instrLeakA_stx _ d B I V 8 64 0 (hc.regs B hB) (hc.regs I hI)]
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,

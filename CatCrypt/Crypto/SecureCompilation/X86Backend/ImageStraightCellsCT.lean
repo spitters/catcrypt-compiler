@@ -1735,7 +1735,7 @@ theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
       show readsI (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]) I
       exact idx_reads (List.mem_singleton_self _)
     simp only [AArm.ok, Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨-, hBg⟩, hIg⟩, -⟩, -⟩ := h
+    obtain ⟨⟨⟨-, hBg⟩, hIg⟩, -⟩ := h
     rw [show (AArm.ldx D B I).li = (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8], .load 64 0)
       from rfl, instrLeakA_ldx _ D B I 8 64 0 (hc.widen.regs B hBg) (hc.widen.regs I hIg),
       instrLeakA_ldx _ D B I 8 64 0 (hc.wide hBg (hw B hB hBg)) (hc.wide hIg (hw I hI hIg))]
@@ -1747,7 +1747,7 @@ theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
       show readsI (.Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V]) I
       exact idx_reads (List.Mem.head _)
     simp only [AArm.ok, Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨hBg, hIg⟩, -⟩, -⟩, -⟩ := h
+    obtain ⟨⟨⟨hBg, hIg⟩, -⟩, -⟩ := h
     rw [show (AArm.stx d B I V).li = (.Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V],
       .store 64 0) from rfl,
       instrLeakA_stx _ d B I V 8 64 0 (hc.widen.regs B hBg) (hc.widen.regs I hIg),

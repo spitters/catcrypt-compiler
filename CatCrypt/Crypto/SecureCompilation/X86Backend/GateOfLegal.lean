@@ -42,9 +42,8 @@ them in its one-instruction body:
   and the negation `NEG:64`;
 * `MUL:64` by an immediate, `CMP:64` against an immediate outside the sign-extended `imm8`
   range, a shift by an immediate of at least `64`, and `SHR:64` by `0`;
-* an indexed load at a stride other than `8`,
-  with base `RBP`, or at the tag `LOADIDX:64`, and an indexed store whose array operand is no
-  register name;
+* an indexed load at a stride other than `8` or at the tag `LOADIDX:64`, and an indexed store
+  whose array operand is no register name;
 * a carry-chain add whose carry-in is one of its word sources, the overflow-chain binding
   `ADOXHI:64`, a carry-out binding with two sources, and the flag materialisation `SETC`;
 * the widening multiplication at the tag `MULX:64`, the high-word binding `MULXHI`, the keep
@@ -184,14 +183,12 @@ inductive GateForm (body : Lcmd) : LinstrR → Prop
       `1`, `2`, `4` or `8`. -/
   | leaIdx (d b x : String) (sc : Nat) : gpOk d = true → gpOk b = true → gpOk x = true →
       sc ∈ [1, 2, 4, 8] → GateForm body (.Lopn [.reg d] "LEA:64" [.arrIdx b x sc])
-  /-- The indexed load at stride `8` over general-purpose names, the base neither `RBP` nor
-      `R13`. -/
+  /-- The indexed load at stride `8` over general-purpose names. -/
   | loadIdx (d b x : String) : gpOk d = true → gpOk b = true → gpOk x = true →
-      gpNumU b % 8 ≠ 5 → GateForm body (.Lopn [.reg d] "LOADIDX" [.arrIdx b x 8])
-  /-- The indexed store at stride `8` over general-purpose names into a named array, the base
-      neither `RBP` nor `R13`. -/
+      GateForm body (.Lopn [.reg d] "LOADIDX" [.arrIdx b x 8])
+  /-- The indexed store at stride `8` over general-purpose names into a named array. -/
   | storeIdx (a b x v : String) : gpOk b = true → gpOk x = true → gpOk v = true →
-      gpNumU b % 8 ≠ 5 → GateForm body (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
+      GateForm body (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
   /-- The 64-bit carry-chain add over general-purpose names whose carry-in is none of the word
       sources, and whose destination is the first source or none of the other sources. -/
   | adcx (d a s c : String) : gpOk d = true → gpOk a = true → gpOk s = true → gpOk c = true →
@@ -486,17 +483,11 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     have h4 := (gpFacts hx).ne4
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hsc
     rcases hsc with rfl | rfl | rfl | rfl <;> gate_simp
-  | loadIdx d b x hd hb hx h5 =>
+  | loadIdx d b x hd hb hx =>
     have h4 := (gpFacts hx).ne4
-    have h5' : (gpNumU b &&& 7 != 5) = true := by
-      rw [show (7 : Nat) = 2 ^ 3 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod]
-      simpa using h5
     gate_simp
-  | storeIdx a b x v hb hx hv h5 =>
+  | storeIdx a b x v hb hx hv =>
     have h4 := (gpFacts hx).ne4
-    have h5' : (gpNumU b &&& 7 != 5) = true := by
-      rw [show (7 : Nat) = 2 ^ 3 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod]
-      simpa using h5
     gate_simp
   | adcx d a s c hd ha hs hc h1 h2 h3 =>
     have hd' := gpOk_not_slot hd
@@ -647,12 +638,12 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
           simp (config := { decide := true }) [x86SibLoad, x86SibScale, (gpFacts hx).ne4])
       (isGp_of_gpOk hd)
       (isGp_of_gpOk hb) (isGp_of_gpOk hx)
-  | loadIdx d b x hd hb hx h5 =>
+  | loadIdx d b x hd hb hx =>
     exact .sibLoad _ d b x 8
       (show x86SibLoad "LOADIDX" x 8 = true by
         simp (config := { decide := true }) [x86SibLoad, x86SibScale]) (isGp_of_gpOk hd) (isGp_of_gpOk hb)
       (isGp_of_gpOk hx)
-  | storeIdx a b x v hb hx hv h5 =>
+  | storeIdx a b x v hb hx hv =>
     exact .sibStore _ _ b x v 8 (by decide +kernel) (isGp_of_gpOk hb) (isGp_of_gpOk hx)
       (isGp_of_gpOk hv)
   | adcx d a s c hd ha hs hc h1 h2 h3 =>

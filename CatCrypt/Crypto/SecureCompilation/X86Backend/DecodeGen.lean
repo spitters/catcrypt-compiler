@@ -131,7 +131,7 @@ def tmplRsp (r : Nat) (off : Int) : List (List (BitVec 8) × JInstr 64) :=
 
 /-- The indexed-move templates at scale `8`: register `r`, base `b`, index `i`. -/
 def tmplIdx (r b i : Nat) : List (List (BitVec 8) × JInstr 64) :=
-  if b &&& 7 != 5 && i != 4 then
+  if i != 4 then
     [(encMemMovSibw 1 0x8b r b i 8, .loadMemIdx (regName r) (regName b) (regName i) 8),
      (encMemMovSibw 1 0x89 r b i 8, .storeMemIdx (regName b) (regName i) 8 (.reg (regName r)))]
   else []
@@ -303,17 +303,65 @@ theorem tmplRsp_sound (r : Nat) (off : Int) (hr : r < 16) :
     · exact decodeLinstr_rspCmov .ne r off rest hr hoff
   · simp at hq
 
+/-- The stride-8 register-indexed load `MOV (%base,%idx,8), %r` (`REX.W 8B /r` with a SIB
+    byte) decodes to `loadMemIdx` for every base register, `%rbp` and `%r13` (encoded with a
+    zero `disp8`) included, and every index register but `%rsp`. -/
+theorem decodeLinstr_loadIdx8_sib (r base idx : Nat) (rest : List (BitVec 8))
+    (hr : r < 16) (hbase : base < 16) (hidx : idx < 16) (hi4 : idx ≠ 4) :
+    decodeLinstr (encMemMovSibw 1 0x8b r base idx 8 ++ rest)
+      = some (.op (.loadMemIdx (regName r) (regName base) (regName idx) 8), rest) := by
+  by_cases h5 : base &&& 7 = 5
+  · apply decodeLinstr_of_decodeJ1
+    have hd := decodeMemTail_sibTail r base idx 8 1 rest hidx hi4 (by decide) (Or.inr rfl)
+    simp only [if_true, List.cons_append, List.nil_append] at hd
+    simp only [encMemMovSibw_w1, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append,
+      show 1 * 64 + ((r &&& 7) * 8) + 4 = modRMMem 1 r 4 from rfl,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, if_true]
+  · exact decodeLinstr_loadIdx8 r base idx rest hr hbase hidx h5 hi4
+
+/-- The stride-8 register-indexed store `MOV %r, (%base,%idx,8)` (`REX.W 89 /r` with a SIB
+    byte) decodes to `storeMemIdx` for every base register, `%rbp` and `%r13` (encoded with a
+    zero `disp8`) included, and every index register but `%rsp`. -/
+theorem decodeLinstr_storeIdx8_sib (r base idx : Nat) (rest : List (BitVec 8))
+    (hr : r < 16) (hbase : base < 16) (hidx : idx < 16) (hi4 : idx ≠ 4) :
+    decodeLinstr (encMemMovSibw 1 0x89 r base idx 8 ++ rest)
+      = some (.op (.storeMemIdx (regName base) (regName idx) 8 (.reg (regName r))), rest) := by
+  by_cases h5 : base &&& 7 = 5
+  · apply decodeLinstr_of_decodeJ1
+    have hd := decodeMemTail_sibTail r base idx 8 1 rest hidx hi4 (by decide) (Or.inr rfl)
+    simp only [if_true, List.cons_append, List.nil_append] at hd
+    simp only [encMemMovSibw_w1, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append,
+      show 1 * 64 + ((r &&& 7) * 8) + 4 = modRMMem 1 r 4 from rfl,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      modField_modRMMem _ _ _ (by decide : 1 < 4), if_neg (show ¬((1 : Nat) = 3) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, if_true]
+  · exact decodeLinstr_storeIdx8 r base idx rest hr hbase hidx h5 hi4
+
 theorem tmplIdx_sound (r b i : Nat) (hr : r < 16) (hb : b < 16) (hi : i < 16) :
     ∀ q ∈ tmplIdx r b i, PieceDec q := by
   intro q hq rest
   simp only [tmplIdx] at hq
   split at hq
   · rename_i hc
-    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+    simp only [bne_iff_ne, ne_eq] at hc
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hq
     rcases hq with rfl | rfl
-    · exact decodeLinstr_loadIdx8 r b i rest hr hb hi hc.1 hc.2
-    · exact decodeLinstr_storeIdx8 r b i rest hr hb hi hc.1 hc.2
+    · exact decodeLinstr_loadIdx8_sib r b i rest hr hb hi hc
+    · exact decodeLinstr_storeIdx8_sib r b i rest hr hb hi hc
   · simp at hq
 
 theorem tmpl3_sound (d s c : Nat) (hd : d < 16) (hs : s < 16) (hc : c < 16) :

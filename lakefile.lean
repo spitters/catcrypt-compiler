@@ -2459,9 +2459,10 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.HawkPointwiseEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.IdxBaseGateKats,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Events,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Invariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Model,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ServerAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Tactic,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TimedLabel,
