@@ -148,7 +148,7 @@ theorem stepA_cellBody {frame : String → Option (BitVec 64)}
       ∧ stepA frame body sa zf = stepA frame (cellBody slotArr body) sa zf := by
   cases hb0 : body[sa.reg.lpc]? with
   | none =>
-      refine ⟨fun ii D n B off p hbi => ?_, ?_⟩
+      refine ⟨fun ii x D B off p hbi => ?_, ?_⟩
       · rw [hb0] at hbi; cases hbi
       · unfold stepA
         rw [cellBody_getElem?, hb0]
@@ -158,11 +158,9 @@ theorem stepA_cellBody {frame : String → Option (BitVec 64)}
           = some (cellMove slotArr body sa.reg.lpc b0) := by
         rw [cellBody_getElem?, hb0]; rfl
       refine ⟨?_, ?_⟩
-      · intro ii D n B off p hbi hn hp
+      · intro ii x D B off p hbi hc hp
         rw [hb0] at hbi
         cases hbi
-        have hc : cellA? (.Lopn [.reg D] "LOAD:64" [.reg n]) = some (.ld D B off) := by
-          simp [cellA?, hn]
         obtain ⟨A, m, hacc, hBf, -, hred⟩ := hF.ld _ _ D B off hb0 hc
         have hpA := hptr B A m hacc (hF.ldGp _ _ D B off hb0 hc) hBf
         rw [hp] at hpA
@@ -318,9 +316,11 @@ theorem cell_cond {R : LstateMF → LstateA → Bool → Prop}
       (∀ ds o ss, bx.li_i ≠ .Lopn ds o ss) → SafeW rsp body sx := by
     intro sx bx hbx hno
     refine ⟨loadSafe_of hbx (fun D B I => hno _ _ _), fun ii ds o ss hb => ?_,
-      fun ii D n B off p hb => ?_⟩
+      fun ii x D B off p hb hc => ?_⟩
     · rw [hbx] at hb; cases hb; exact absurd rfl (hno ds o ss)
-    · rw [hbx] at hb; cases hb; exact absurd rfl (hno _ _ _)
+    · rw [hbx] at hb; cases hb
+      obtain ⟨_, _, _, rfl, -⟩ := cellA_some hc
+      exact absurd rfl (hno _ _ _)
   have he : stepA frame body sa s.zf = stepA frame (cellBody slotArr body) sa s.zf := by
     unfold stepA
     rw [hbC, hb0]

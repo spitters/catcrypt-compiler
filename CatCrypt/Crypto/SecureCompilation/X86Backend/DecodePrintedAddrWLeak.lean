@@ -277,11 +277,11 @@ theorem leak_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
 /-- **A width-carrying cast between general-purpose names emits no event on the address
     machine.** -/
 theorem instrLeakA_castW (P : Params) (rsp : BitVec 64) (o D A : String) (m w : Nat)
-    (hk : castMovBits o = some m) (hD : gpOk D = true) (hA : gpOk A = true) (s : LstateA) :
+    (hk : castMovBits o = some m) (_hD : gpOk D = true) (_hA : gpOk A = true) (s : LstateA) :
     instrLeakA (frameP P rsp) (.Lopn [.reg D] o [.reg A], .reg (some w)) s = [] := by
   rcases castMovBits_cases hk with ⟨-, rfl | rfl | rfl | rfl | rfl⟩ | ⟨-, rfl | rfl | rfl⟩ <;>
     simp (config := { decide := true }) [instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?,
-      slotImm?, slotCmov?, frameP_gp hD, frameP_gp hA]
+      slotImm?, slotCmov?]
 
 /-- **The decoded instructions of a width-carrying cast emit no event** under `doitm`: the
     zero-extending register move accesses no memory and is no operand-leaking mnemonic. -/

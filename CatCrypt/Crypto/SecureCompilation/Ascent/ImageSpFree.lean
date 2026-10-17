@@ -567,6 +567,7 @@ theorem rspFree_of_instrOKWB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Para
         · exact ⟨rspFreeNameB_gp h.1.1.2, rspFreeNameB_cell h.1.1.1 h.1.2⟩
         · exact ⟨rspFreeNameB_cell h.1.1.1 h.1.2, rspFreeNameB_gp h.1.1.2⟩
         · exact ⟨rspFreeNameB_cell h.1.1.1 h.1.2, rspFreeNameB_gp h.1.1.2⟩
+        · exact ⟨rspFreeNameB_gp h.1.1.2, rspFreeNameB_cell h.1.1.1 h.1.2⟩
       split at h
       · rename_i q v hs
         rw [classifyI_instr hs]

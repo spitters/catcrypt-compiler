@@ -749,11 +749,9 @@ theorem cell_step {frame : String → Option (BitVec 64)}
     exact hrel.wid r hr
   refine ⟨by rw [← haltedA_cellBody slotArr]; exact hh, ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
     hwide, ?_⟩, sa1, ?_, hr⟩
-  · intro ii D n B off p hbi hn hp
+  · intro ii x D B off p hbi hc hp
     rw [hb0] at hbi
     cases hbi
-    have hc : cellA? (.Lopn [.reg D] "LOAD:64" [.reg n]) = some (.ld D B off) := by
-      simp [cellA?, hn]
     obtain ⟨A, m, hacc, hBf, -, hred⟩ := hF.ld _ _ D B off hb0 hc
     obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
       (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb0 hc)) hacc) hBf
@@ -1083,11 +1081,9 @@ theorem cell_stepW {frame : String → Option (BitVec 64)}
     img_stepW hsep hphys hgate P hrel hbC hlt hnc' hstep
   refine ⟨by rw [← haltedA_cellBody slotArr]; exact hh, ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
     hwide, ?_⟩, sa1, ?_, hr⟩
-  · intro ii D n B off p hbi hn hp
+  · intro ii x D B off p hbi hc hp
     rw [hb0] at hbi
     cases hbi
-    have hc : cellA? (.Lopn [.reg D] "LOAD:64" [.reg n]) = some (.ld D B off) := by
-      simp [cellA?, hn]
     obtain ⟨A, m, hacc, hBf, -, hred⟩ := hF.ld _ _ D B off hb0 hc
     obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
       (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb0 hc)) hacc) hBf

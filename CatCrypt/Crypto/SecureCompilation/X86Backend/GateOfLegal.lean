@@ -35,8 +35,7 @@ them in its one-instruction body:
   the count-in-mnemonic shift `SHR:k`, and the immediate move `MOV` of a value at or above
   `2^31`;
 * a 64-bit operation reading `RSP` as a data register;
-* `MOV:64` out of a cell `mem.B.off` (a cell is read only by `LOAD:64`), and `LOAD:64` from a
-  register;
+* `LOAD:64` from a register;
 * the immediate move `MOVQ` of an immediate and `MOV:64` of a value at or above `2^64`;
 * a select whose condition is its destination;
 * the three-register arithmetic right shift `SAR:64 D, [A, B]`, the count-in-mnemonic `SAR:k:64`
@@ -176,6 +175,11 @@ inductive GateForm (body : Lcmd) : LinstrR → Prop
   | storeMov (n b : String) (off : Nat) (s : String) : cellParts? n = some (b, off) →
       gpOk s = true → gpOk b = true → dispOk32 (Int.ofNat off) = true →
       GateForm body (.Lopn [.reg n] "MOV:64" [.reg s])
+  /-- The 64-bit move out of a cell `mem.B.off` into a general-purpose name, with a
+      general-purpose base and a `rel32` offset. -/
+  | loadMov (d n b : String) (off : Nat) : cellParts? n = some (b, off) → gpOk d = true →
+      gpOk b = true → dispOk32 (Int.ofNat off) = true →
+      GateForm body (.Lopn [.reg d] "MOV:64" [.reg n])
   /-- The indexed address `LEA:64 D, [B + X · sc]` over general-purpose names at a stride of
       `1`, `2`, `4` or `8`. -/
   | leaIdx (d b x : String) (sc : Nat) : gpOk d = true → gpOk b = true → gpOk x = true →
@@ -409,17 +413,20 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | movRR m d s hm hd hs =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     have hcd := cellParts?_gp hd
+    have hcs := cellParts?_gp hs
     rcases hm with rfl | rfl <;> gate_simp
   | movStore m q s hm hq hsome hdisp hs =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     have hq' := not_gpOk_of_slot hq
     have hcq := cellParts?_of_spillOff hsome
+    have hcs := cellParts?_gp hs
     rcases hm with rfl | rfl <;> gate_simp
   | movLoad m d q hm hd hq hk =>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     have hq' := not_gpOk_of_slot hq
     have hcd := cellParts?_gp hd
     obtain ⟨h1, h2, h3⟩ := kOk_slot hk hq
+    have hcq := cellParts?_of_spillOff h1
     rcases hm with rfl | rfl <;> gate_simp
   | movImm32 d n hd hn => gate_simp
   | movImm64 d v hd hv =>
@@ -472,6 +479,9 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | load d n b off hn hd hb hoff => gate_simp
   | store n b off s hn hs hb hoff => gate_simp
   | storeMov n b off s hn hs hb hoff => gate_simp
+  | loadMov d n b off hn hd hb hoff =>
+    have hcd := cellParts?_gp hd
+    gate_simp
   | leaIdx d b x sc hd hb hx hsc =>
     have h4 := (gpFacts hx).ne4
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hsc
@@ -622,6 +632,13 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
       (Or.inl (isGp_of_gpOk hs)) ?_
     show (encMemName n && encMemName s) = false
     simp [encMemName_of_isGpName (isGp_of_gpOk hs)]
+  | loadMov d n b off hn hd hb hoff =>
+    have hpm : parseMemNameGp n = some (gpNumU b, Int.ofNat off) := by
+      rw [parseMemNameGp_cellParts, hn]; simp [isGp_of_gpOk hb]
+    refine .mov _ d n (by decide +kernel) (Or.inl (isGp_of_gpOk hd))
+      (Or.inr (Or.inr (by simp [hpm]))) ?_
+    show (encMemName d && encMemName n) = false
+    simp [encMemName_of_isGpName (isGp_of_gpOk hd)]
   | leaIdx d b x sc hd hb hx hsc =>
     exact .sibLoad _ d b x sc
       (show x86SibLoad "LEA:64" x sc = true by

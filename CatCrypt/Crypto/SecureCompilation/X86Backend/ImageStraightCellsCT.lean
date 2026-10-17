@@ -366,7 +366,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT (RunL blockLeakA opLeak resolveEv)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (instrLeak)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeakPhys
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak (BytesTraceW)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak (BytesTraceW
+  instrLeakA_cellLd)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTimeRel DoitRegime X86Mnem)
 
 /-! ## 4. The step maps of the class with carry chains -/
@@ -464,7 +465,8 @@ theorem leak_cmovSlotFE (P : Params) (rsp : BitVec 64) (D C B : String)
     the parameters `P` and the frame address `rsp`, under the regime `doitm`, one statement
     per arm: the carry constant and the 32-bit constant (`zmov`), the carry arms with
     frame-slot operands (`sarm`), the carry arms on registers (`carm`), the cell load, store
-    and move into a cell (`ldm`, `stm`, `stv`), the immediate store into a slot (`imm`), the wide immediate
+    and moves into and out of a cell (`ldm`, `stm`, `stv`, `ldv`), the immediate store into a
+    slot (`imm`), the wide immediate
     (`lmov`), the register select and the select with a slot true value (`vreg`, `vt`), the
     materialised comparison against a register and an immediate (`sete`, `seteImm`), the
     register-count shift (`shrx`), the arithmetic right shift by an immediate (`sarImm`), and
@@ -489,6 +491,10 @@ structure ArmLeaksW (P : Params) (rsp : BitVec 64) : Prop where
     ∀ (sa : AState) (s : LstateA), ACorrW rsp sa s → (s.reg.lvm B).1 = 64 →
       blockLeakA .doitm sa (MArm.stv n B off S).js
         = instrLeakA (frameP P rsp) ((MArm.stv n B off S).instr, .reg none) s
+  ldv : ∀ (D n B : String) (off : Nat), (MArm.ldv D n B off).ok = true →
+    ∀ (sa : AState) (s : LstateA), ACorrW rsp sa s → (s.reg.lvm B).1 = 64 →
+      blockLeakA .doitm sa (MArm.ldv D n B off).js
+        = instrLeakA (frameP P rsp) ((MArm.ldv D n B off).instr, .reg none) s
   imm : ∀ (q : String) (v : Nat), iOk P q v = true → ∀ sa : AState, sa.regs "%rsp" = rsp →
     blockLeakA .doitm sa ((iPieces P q v).map Prod.snd) = iLeakW P rsp q v
   lmov : ∀ (D : String) (v : Nat) (sa : AState),
@@ -641,11 +647,16 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
     obtain ⟨rfl, rfl, rfl⟩ := hia
     have hcl : classifyA (.Lopn [.reg q] o [.reg S]) = some (.st o q S) := by
       rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hq]
+    have hcS : o = "MOV:64" → cellParts? S = none := by
+      rintro rfl
+      cases h : cellParts? S with
+      | none => rfl
+      | some p => simp [slotMov?, h] at hmv
     have hok' : (AArm.st o q S).ok P = true := by
       rcases hm with rfl | rfl <;>
         simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
           classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
-          classifyR, hcl, hcq]
+          classifyR, hcl, hcq, hcS]
           using hok
     have hli := AArm.li_eq hok'
     have hgw : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
@@ -655,7 +666,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         rcases hm with rfl | rfl <;>
           simp (config := { decide := true }) [gW, hclK, movImmStruct?, classifyS, classifyC,
             classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
-            classifyR, hcl, hcq]
+            classifyR, hcl, hcq, hcS]
       rw [h1, hGl, show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli]
     rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl))] at hst
     rw [show LinstrR.Lopn [.reg q] o [.reg S] = (AArm.st o q S).instr from rfl, hli] at hst
@@ -942,7 +953,8 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           hB (by rw [← hia]; simp [carryIns])
         have hsafeM : ∀ p, s.reg.getW B 64 = some p →
             Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
-          hsafe.2.2.1 ii D n B off p (by rw [hget, ← hia]) hn hp
+          hsafe.2.2.1 ii (.Lopn [.reg D] "LOAD:64" [.reg n]) D B off p
+            (by rw [hget, ← hia]) (by simp [cellA?, hn]) hp
         obtain ⟨hc', -⟩ := sim_ldm P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
         have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
         exact ⟨_, hops, hpc', hc', hz' _, hnoadd hnotadd _ _,
@@ -973,6 +985,21 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
         exact ⟨_, hops, hpc', hc', hz' _, hnoadd hnotadd _ _,
           (hAL.stv n B off S hok sa s hc hwB).trans hgw.symm⟩
+      | ldv D n B off =>
+        have hok' := hok
+        simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
+        obtain ⟨⟨⟨hn, hD⟩, hB⟩, -⟩ := hok'
+        simp only [MArm.instr] at hia
+        have hwB : (s.reg.lvm B).1 = 64 := hws B (by rw [← hia]; exact cell_reads (by simp) hn)
+          hB (by rw [← hia]; simp [carryIns])
+        have hsafeM : ∀ p, s.reg.getW B 64 = some p →
+            Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
+          hsafe.2.2.1 ii (.Lopn [.reg D] "MOV:64" [.reg n]) D B off p
+            (by rw [hget, ← hia]) (by simp [cellA?, hn, cellParts?_gp hD]) hp
+        obtain ⟨hc', -⟩ := sim_ldv P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
+        have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
+        exact ⟨_, hops, hpc', hc', hz' _, hnoadd hnotadd _ _,
+          (hAL.ldv D n B off hok sa s hc hwB).trans hgw.symm⟩
     · rename_i hclM
       split at hok
       · -- an immediate store into a frame slot
@@ -1673,6 +1700,25 @@ theorem leak_stv (P : Params) (rsp : BitVec 64) (n B : String) (off : Nat) (S : 
   simp [MArm.js, MArm.pieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,
     DoitRegime.leaksOperands, X86Mnem.timing, evA, BitVec.ofInt_natCast]
 
+/-- The move out of a cell accesses the address of the cell. -/
+theorem leak_ldv (P : Params) (rsp : BitVec 64) (D n B : String) (off : Nat)
+    (h : (MArm.ldv D n B off).ok = true) (sa : AState) (s : LstateA) (hc : ACorrW rsp sa s)
+    (hw : (s.reg.lvm B).1 = 64) :
+    blockLeakA .doitm sa (MArm.ldv D n B off).js
+      = instrLeakA (frameP P rsp) ((MArm.ldv D n B off).instr, .reg none) s := by
+  have hok : (MArm.ldm D n B off).ok = true := h
+  simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨⟨hn, hD⟩, hB⟩, -⟩ := h
+  have hcl : cellA? (.Lopn [.reg D] "MOV:64" [.reg n]) = some (.ld D B off) := by
+    simp [cellA?, hn, cellParts?_gp hD]
+  have e : instrLeakA (frameP P rsp) ((MArm.ldv D n B off).instr, .reg none) s
+      = instrLeakA (frameP P rsp) ((MArm.ldm D n B off).instr, .reg none) s := by
+    rw [show (MArm.ldv D n B off).instr = .Lopn [.reg D] "MOV:64" [.reg n] from rfl,
+      show (MArm.ldm D n B off).instr = .Lopn [.reg D] "LOAD:64" [.reg n] from rfl,
+      instrLeakA_ldm _ hn (hc.wide hB hw), instrLeakA_cellLd _ hcl (hc.wide hB hw)]
+  rw [e]
+  exact leak_ldm P rsp D n B off hok sa s hc hw
+
 /-- **The events of an arm of `DecodePrintedAddr` on the correspondence with narrow
     names**: `AArm.leak` from `ACorrW`, for an arm that reads its names at width `64`. -/
 theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
@@ -1874,6 +1920,7 @@ theorem armLeaksW (P : Params) (rsp : BitVec 64) : ArmLeaksW P rsp where
   ldm := leak_ldm P rsp
   stm := leak_stm P rsp
   stv := leak_stv P rsp
+  ldv := leak_ldv P rsp
   imm := leak_imm P rsp
   lmov := leak_lmov
   vreg := leak_vreg P rsp
@@ -1999,6 +2046,17 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
             | none => simp [MArm.instr, fstepA, slotMov?, slotCmp?, cellA?, hn, hB₂] at h₂
             | some p₂ =>
               simp [MArm.instr, instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB₁, hB₂]
+        | ldv D n B off =>
+          simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok
+          obtain ⟨⟨⟨hn, hD⟩, -⟩, -⟩ := hok
+          have hcD := cellParts?_gp hD
+          cases hB₁ : s₁.reg.getW B 64 with
+          | none => simp [MArm.instr, fstepA, slotMov?, slotCmp?, cellA?, hn, hcD, hB₁] at h₁
+          | some p₁ =>
+            cases hB₂ : s₂.reg.getW B 64 with
+            | none => simp [MArm.instr, fstepA, slotMov?, slotCmp?, cellA?, hn, hcD, hB₂] at h₂
+            | some p₂ =>
+              simp [MArm.instr, instrLeakA, slotMov?, slotCmp?, cellA?, hn, hcD, hB₁, hB₂]
       split at hok
       · rename_i q v hclI
         have hia := classifyI_instr hclI
