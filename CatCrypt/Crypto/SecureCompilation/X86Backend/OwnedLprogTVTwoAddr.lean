@@ -1181,20 +1181,14 @@ theorem not_symReads_of_mentions {n : String} (hn : mentionsScratch n = true)
     · cases x with
       | Lopn ds opn ss =>
           simp only [instrAvoids, Bool.and_eq_true, List.all_eq_true] at h
-          unfold leaReads at hq
-          split at hq
-          · rename_i b i sc heq
-            injection heq with _ _ hs
-            subst hs
-            split_ifs at hq
-            · simp only [List.mem_singleton] at hq
-              have ha := h.2 _ (List.mem_singleton_self _)
-              subst hq
-              simp only [TwoAddrLegalize.opAvoids, hn, Bool.not_true] at ha
-              cases ha
-            · cases hq
-          · cases hq
-      | _ => simp [leaReads] at hq
+          simp only [ConstIndexFold.idxBases, List.mem_filterMap] at hq
+          obtain ⟨o, ho, hqo⟩ := hq
+          have ha : TwoAddrLegalize.opAvoids o = true := by
+            rcases List.mem_append.mp ho with ho | ho
+            · exact h.1 o ho
+            · exact h.2 o ho
+          cases o <;> simp_all [TwoAddrLegalize.opAvoids]
+      | _ => simp [ConstIndexFold.idxBases] at hq
     · cases x with
       | Lopn ds opn ss =>
           dsimp only at hq
