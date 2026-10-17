@@ -888,7 +888,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
-CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCfg
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
@@ -923,6 +922,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
+CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFold
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86
