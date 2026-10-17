@@ -254,6 +254,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
+CatCrypt.Crypto.SecureCompilation.Ascent.ContractOfCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
