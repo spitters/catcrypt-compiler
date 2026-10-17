@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.ByteMem
+public import Mathlib.Order.SetNotation
 public import Lean
 
 /-!
@@ -38,6 +39,9 @@ little-endian points-to assertion on the range `⟨a, n⟩`.
 
 * `Footprinted`, `SAssert`, `SAssert.Entails` (`⊢ₛ`), `SAssert.sep` (`∗`), `SAssert.pure`
   (`⌜φ⌝`), `SAssert.emp`, `SAssert.own`, `SAssert.sexists`, `SAssert.bigSep`.
+* `SAssert.conj`: the conjunction of two assertions, with the union of the footprints and
+  no disjointness.
+* `SAssert.iSep`: the separating conjunction of a family over any index type.
 * `WritesIn`, `iterWrites`, `whileFuel`, `Triple`.
 * `ptsLE`: the points-to assertion of `MemW A`.
 * `sep_cancel`: the entailment tactic.
@@ -48,6 +52,8 @@ little-endian points-to assertion on the range `⟨a, n⟩`.
   `SAssert.sep_disj`, `SAssert.sep_elim_left`, `SAssert.sep_elim_right`.
 * `SAssert.holds_bigSep`, `SAssert.bigSep_perm`, `SAssert.bigSep_append`: the big separating
   conjunction, its permutation invariance, and split/merge along `++`.
+* `SAssert.holds_conj`, `SAssert.holds_iSep`, `SAssert.iSep_disj`: the predicates of the
+  conjunction and of the family separation; members at distinct indices are disjoint.
 * `WritesIn.comp`, `WritesIn.iterate`, `WritesIn.whileFuel`: write sets of sequencing and
   of fuel-bounded iteration.
 * `Triple.frame`: the frame rule.
@@ -300,6 +306,44 @@ theorem bigSep_collapse_at (l₁ l₂ : List (SAssert σ L)) (X : SAssert σ L)
         simpa [List.append_assoc] using List.perm_append_comm_assoc l₁ Y l₂)).trans <|
     (bigSep_append _ _).1.trans <| (sep_mono h (Entails.refl _)).trans <|
       bigSep_perm List.perm_middle.symm
+
+/-! ## Conjunction and the separating conjunction of a family -/
+
+/-- The conjunction of two assertions: the union of the footprints and both predicates,
+    with no disjointness. -/
+def conj (P Q : SAssert σ L) : SAssert σ L where
+  fp := P.fp ∪ Q.fp
+  holds s := P.holds s ∧ Q.holds s
+  supp s t h := fun ⟨hp, hq⟩ =>
+    ⟨P.supp s t (agreeOn_anti Set.subset_union_left h) hp,
+      Q.supp s t (agreeOn_anti Set.subset_union_right h) hq⟩
+
+@[simp] theorem fp_conj (P Q : SAssert σ L) : (conj P Q).fp = P.fp ∪ Q.fp := rfl
+
+@[simp] theorem holds_conj (P Q : SAssert σ L) (s : σ) :
+    (conj P Q).holds s ↔ P.holds s ∧ Q.holds s := Iff.rfl
+
+/-- The separating conjunction of a family: the union of the footprints, which are
+    pairwise disjoint at distinct indices, and every member. -/
+def iSep {ι : Type w} (P : ι → SAssert σ L) : SAssert σ L where
+  fp := ⋃ i, (P i).fp
+  holds s := (∀ i j, i ≠ j → Disjoint (P i).fp (P j).fp) ∧ ∀ i, (P i).holds s
+  supp s t h := fun ⟨hd, hp⟩ =>
+    ⟨hd, fun i => (P i).supp s t
+      (agreeOn_anti (fun _ hx => Set.mem_iUnion.2 ⟨i, hx⟩) h) (hp i)⟩
+
+@[simp] theorem fp_iSep {ι : Type w} (P : ι → SAssert σ L) : (iSep P).fp = ⋃ i, (P i).fp :=
+  rfl
+
+@[simp] theorem holds_iSep {ι : Type w} (P : ι → SAssert σ L) (s : σ) :
+    (iSep P).holds s ↔ (∀ i j, i ≠ j → Disjoint (P i).fp (P j).fp) ∧ ∀ i, (P i).holds s :=
+  Iff.rfl
+
+/-- Two members of a satisfied family separation at distinct indices have disjoint
+    footprints. -/
+theorem iSep_disj {ι : Type w} {P : ι → SAssert σ L} {s : σ} (h : (iSep P).holds s) {i j : ι}
+    (hij : i ≠ j) : Disjoint (P i).fp (P j).fp :=
+  h.1 i j hij
 
 /-! ## Steps of the cancellation procedure
 

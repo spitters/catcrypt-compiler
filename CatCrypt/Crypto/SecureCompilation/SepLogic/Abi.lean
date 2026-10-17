@@ -31,8 +31,6 @@ the length, general-purpose and slot conditions of `ImgSep` are pure.
 
 ## Main definitions
 
-* `SAssert.conj`, `SAssert.iSep`: the conjunction of two assertions and the separating
-  conjunction of a family.
 * `X86.wordLocs`, `X86.wordsLocs`: the memory locations of a word and of a set of words.
 * `X86.regsAt`, `X86.stackAt`, `X86.abiPre`: the precondition of a layout.
 * `X86.valAt`: the read-back of a result value as an assertion on the exit state.
@@ -57,50 +55,6 @@ the length, general-purpose and slot conditions of `ImgSep` are pure.
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.SepLogic
-
-namespace SAssert
-
-universe u v w
-
-variable {σ : Type u} {L : Type v} [Footprinted σ L]
-
-/-- The conjunction of two assertions: the union of the footprints and both predicates,
-    with no disjointness. -/
-def conj (P Q : SAssert σ L) : SAssert σ L where
-  fp := P.fp ∪ Q.fp
-  holds s := P.holds s ∧ Q.holds s
-  supp s t h := fun ⟨hp, hq⟩ =>
-    ⟨P.supp s t (Footprinted.agreeOn_anti Set.subset_union_left h) hp,
-      Q.supp s t (Footprinted.agreeOn_anti Set.subset_union_right h) hq⟩
-
-@[simp] theorem fp_conj (P Q : SAssert σ L) : (conj P Q).fp = P.fp ∪ Q.fp := rfl
-
-@[simp] theorem holds_conj (P Q : SAssert σ L) (s : σ) :
-    (conj P Q).holds s ↔ P.holds s ∧ Q.holds s := Iff.rfl
-
-/-- The separating conjunction of a family: the union of the footprints, which are
-    pairwise disjoint at distinct indices, and every member. -/
-def iSep {ι : Type w} (P : ι → SAssert σ L) : SAssert σ L where
-  fp := ⋃ i, (P i).fp
-  holds s := (∀ i j, i ≠ j → Disjoint (P i).fp (P j).fp) ∧ ∀ i, (P i).holds s
-  supp s t h := fun ⟨hd, hp⟩ =>
-    ⟨hd, fun i => (P i).supp s t
-      (Footprinted.agreeOn_anti (Set.subset_iUnion (fun i => (P i).fp) i) h) (hp i)⟩
-
-@[simp] theorem fp_iSep {ι : Type w} (P : ι → SAssert σ L) : (iSep P).fp = ⋃ i, (P i).fp :=
-  rfl
-
-@[simp] theorem holds_iSep {ι : Type w} (P : ι → SAssert σ L) (s : σ) :
-    (iSep P).holds s ↔ (∀ i j, i ≠ j → Disjoint (P i).fp (P j).fp) ∧ ∀ i, (P i).holds s :=
-  Iff.rfl
-
-/-- Two members of a satisfied family separation at distinct indices have disjoint
-    footprints. -/
-theorem iSep_disj {ι : Type w} {P : ι → SAssert σ L} {s : σ} (h : (iSep P).holds s) {i j : ι}
-    (hij : i ≠ j) : Disjoint (P i).fp (P j).fp :=
-  h.1 i j hij
-
-end SAssert
 
 namespace X86
 
