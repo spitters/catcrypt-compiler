@@ -42,7 +42,8 @@ Structurally:
    between **footprint-disjoint** `Lopn`s (`indep = true`): distinct write
    targets (no WAW), neither reads what the other writes (no RAW / WAR) —
    including the condition flags and the implicit `%rdx` read of `mulx` — and
-   neither is a binding marker or a call (`indep_eq_footprint_and_hazards`).
+   neither is a binding marker, a call or a write of a frame slot `qsave.R`
+   (`indep_eq_footprint_and_hazards`).
 
 Semantically, against both linear machines:
 
@@ -166,10 +167,11 @@ than silently schedulable.
 A rendered instruction can also touch a register no operand names — `mulx` takes
 its first multiplicand from `%rdx`. `implicitReads` adds those registers, under
 their physical names so they alias the explicit operands, to the read footprint.
-Two further shapes are not hazards between named cells at all and are handled by
+Three further shapes are not hazards between named cells at all and are handled by
 refusing to move them: a binding marker, whose value is the side effect of its
-producer and which must stay adjacent to it, and a call, whose clobber set no
-operand names (`isBarrierOp`). -/
+producer and which must stay adjacent to it, a call, whose clobber set no
+operand names, and a write of a frame slot `qsave.R`, which the image check
+requires to follow only moves (`isBarrierOp`). -/
 
 /-- The mnemonic key a recogniser matches: the width tag removed and the
     remaining letters upper-cased. -/
@@ -220,7 +222,12 @@ def implicitReads : LinstrR → List String
   | .Lopn _ opn _ => if keyStartsWith "MULX" opn then ["RDX"] else []
   | _             => []
 
-/-- Mnemonics that are never reordered at all.
+/-- The destination operand is a frame slot `qsave.R`. -/
+def isSlotDst : LOperand → Bool
+  | .reg q => hasPrefix q "qsave."
+  | _ => false
+
+/-- Instructions that are never reordered at all.
 
     `MULXHI`, `ADCXHI` and `ADOXHI` are *binding markers*: they name a value that
     is the side effect of the adjacent producer (`LprogAsmPrinter.isMulHiBinding`
@@ -229,12 +236,25 @@ def implicitReads : LinstrR → List String
     loses the value rather than reordering it.
 
     A call clobbers every caller-saved register, which no operand of the
-    `CALL:` / `CALLN:` / `CALLW:` shadow names. -/
+    `CALL:` / `CALLN:` / `CALLW:` shadow names.
+
+    A write of a frame slot `qsave.R` (`isSlotDst`) is the save of a register at
+    its entry value: the image check `JasminLsemAddrImage.physImgB` requires every
+    instruction in front of such a save to be a move, so no instruction is
+    reordered across it. -/
 def isBarrierOp : LinstrR → Bool
-  | .Lopn _ opn _ =>
+  | .Lopn ds opn _ =>
       keyStartsWith "MULXHI" opn || keyStartsWith "ADCXHI" opn
         || keyStartsWith "ADOXHI" opn || keyStartsWith "CALL" opn
+        || ds.any isSlotDst
   | _ => false
+
+/-- An `Lopn` that is no barrier writes no frame slot `qsave.R`. -/
+theorem slotDst_of_not_isBarrierOp {ds : List LOperand} {opn : String} {srcs : List LOperand}
+    (h : isBarrierOp (.Lopn ds opn srcs) = false) {q : String} (hq : LOperand.reg q ∈ ds) :
+    hasPrefix q "qsave." = false := by
+  simp only [isBarrierOp, Bool.or_eq_false_iff, List.any_eq_false] at h
+  simpa [isSlotDst] using h.2 _ hq
 
 /-- The hazard read footprint: every store key the instruction reads, its
     implicit register reads, and the flags cell when it touches the flags. -/
@@ -270,7 +290,7 @@ def indep (i1 i2 : LinstrR) : Bool :=
   isOpn i1 && isOpn i2 &&
   -- runtime-indexed accesses are scheduling barriers (footprint model can't track them)
   !hasArrIdx i1 && !hasArrIdx i2 &&
-  -- binding markers and calls are never moved
+  -- binding markers, calls and frame-slot writes are never moved
   !isBarrierOp i1 && !isBarrierOp i2 &&
   -- WAW: no shared write target
   disjointL (hazardWrites i1) (hazardWrites i2) &&
