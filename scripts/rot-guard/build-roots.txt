@@ -923,7 +923,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
-CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
+CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86
 CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
