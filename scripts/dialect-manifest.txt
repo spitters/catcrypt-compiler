@@ -105,7 +105,6 @@ theory nfTileDialect
 # ---- test / example ----
 test toyDialect
 test smokeDialect
-test pilot
 test D
 # Scaffolding (DIALECTS.md): BlockLoweringExtendWitness, DialectOpSum examples.
 test srcDialect
