@@ -111,8 +111,8 @@ Buffer sizes (FIPS-203 ML-KEM-768):
 
 ## Trust delta (what we trust ABOVE CatCrypt's normal axiom set)
 
-By adopting this leaf we additionally trust six axioms — three
-denotation axioms (one per KEM operation) and three CT axioms.
+By adopting this leaf we additionally trust three opaque denotations (one
+per KEM operation) and assume three constant-time propositions.
 
 1. **Vale_libcrux_mlkem768_keygen_denote** /
    **Vale_libcrux_mlkem768_encaps_denote** /
@@ -208,14 +208,16 @@ noncomputable opaque MlKem768EncapsRand.default : MlKem768EncapsRand
 noncomputable instance : Inhabited MlKem768EncapsRand :=
   ⟨MlKem768EncapsRand.default⟩
 
-/-! ## §2. Vale-leaf axioms (the trust delta)
+/-! ## §2. Vale leaves: denotations, leakage, constant-time propositions
 
-These are the six axioms we add to CatCrypt's axiom budget when we
-permit libcrux's HACL\*/Vale-backed ML-KEM-768 leaves. Each is
-sourced from libcrux's F\* proof composed over the Vale-verified
-Keccak / AVX2 NTT-basemul sub-primitives. -/
+The leaves' denotations and leakage are opaque constants. Their constant-time
+properties are the propositions `Vale_libcrux_mlkem768_keygen_CT`,
+`Vale_libcrux_mlkem768_encaps_CT` and `Vale_libcrux_mlkem768_decaps_CT`, which
+a theorem about the leaves takes as hypotheses. All are sourced from libcrux's
+F\* proof composed over the Vale-verified Keccak / AVX2 NTT-basemul
+sub-primitives. -/
 
-/-- **Denotation axiom — keygen**: the libcrux AVX2 leaf
+/-- **Denotation — keygen**: the libcrux AVX2 leaf
     `libcrux_ml_kem_mlkem768_avx2_generate_key_pair` computes
     FIPS-203 ML-KEM-768 key generation under its 64-byte randomness
     input. Discharged by libcrux's F\* functional-correctness proof
@@ -224,7 +226,7 @@ Keccak / AVX2 NTT-basemul sub-primitives. -/
 noncomputable opaque Vale_libcrux_mlkem768_keygen_denote
     (randomness : MlKem768KeygenRand) : MlKem768PubKey
 
-/-- **Denotation axiom — keygen secret half**: same leaf produces
+/-- **Denotation — keygen secret half**: same leaf produces
     the corresponding ML-KEM-768 private key. (Modeled as a separate
     denotation projection because the surface uses opaque buffer
     types per output, mirroring the libcrux `MlKem768KeyPair` struct
@@ -232,7 +234,7 @@ noncomputable opaque Vale_libcrux_mlkem768_keygen_denote
 noncomputable opaque Vale_libcrux_mlkem768_keygen_sk_denote
     (randomness : MlKem768KeygenRand) : MlKem768PrivKey
 
-/-- **Denotation axiom — encapsulate**: the libcrux AVX2 leaf
+/-- **Denotation — encapsulate**: the libcrux AVX2 leaf
     `libcrux_ml_kem_mlkem768_avx2_encapsulate` computes the
     FIPS-203 ML-KEM-768 ciphertext under the public key and the
     32-byte encaps randomness. -/
@@ -240,13 +242,13 @@ noncomputable opaque Vale_libcrux_mlkem768_encaps_denote
     (pk : MlKem768PubKey) (randomness : MlKem768EncapsRand) :
     MlKem768Ct
 
-/-- **Denotation axiom — encapsulate shared-secret half**: same
+/-- **Denotation — encapsulate shared-secret half**: same
     leaf produces the corresponding 32-byte shared secret. -/
 noncomputable opaque Vale_libcrux_mlkem768_encaps_ss_denote
     (pk : MlKem768PubKey) (randomness : MlKem768EncapsRand) :
     MlKem768Ss
 
-/-- **Denotation axiom — decapsulate**: the libcrux AVX2 leaf
+/-- **Denotation — decapsulate**: the libcrux AVX2 leaf
     `libcrux_ml_kem_mlkem768_avx2_decapsulate` computes the FIPS-203
     ML-KEM-768 shared secret from the private key and ciphertext
     (including the FO implicit-reject path on rejection). -/
@@ -268,23 +270,23 @@ noncomputable opaque Vale_libcrux_mlkem768_encaps_leak
 noncomputable opaque Vale_libcrux_mlkem768_decaps_leak
     (ct : MlKem768Ct) (sk : MlKem768PrivKey) : LeafLeak
 
-/-- **Constant-time axiom — keygen**: the leakage trace of the libcrux AVX2
-    key-generation leaf is the same at every 64-byte randomness input. -/
-axiom Vale_libcrux_mlkem768_keygen_CT :
+/-- **Constant-time proposition — keygen**: the leakage trace of the libcrux
+    AVX2 key-generation leaf is the same at every 64-byte randomness input. -/
+def Vale_libcrux_mlkem768_keygen_CT : Prop :=
     SecretIndependent Vale_libcrux_mlkem768_keygen_leak
 
-/-- **Constant-time axiom — encapsulate**: at each fixed public key, the
+/-- **Constant-time proposition — encapsulate**: at each fixed public key, the
     leakage trace of the libcrux AVX2 encapsulation leaf is the same at every
     32-byte randomness input.  The public key is the public parameter; the
     randomness is the secret one. -/
-axiom Vale_libcrux_mlkem768_encaps_CT (pk : MlKem768PubKey) :
+def Vale_libcrux_mlkem768_encaps_CT (pk : MlKem768PubKey) : Prop :=
     SecretIndependent (Vale_libcrux_mlkem768_encaps_leak pk)
 
-/-- **Constant-time axiom — decapsulate**: at each fixed ciphertext, the
+/-- **Constant-time proposition — decapsulate**: at each fixed ciphertext, the
     leakage trace of the libcrux AVX2 decapsulation leaf is the same at every
     private key, including across the FO implicit-reject path.  The ciphertext
     is the public parameter; the private key is the secret one. -/
-axiom Vale_libcrux_mlkem768_decaps_CT (ct : MlKem768Ct) :
+def Vale_libcrux_mlkem768_decaps_CT (ct : MlKem768Ct) : Prop :=
     SecretIndependent (Vale_libcrux_mlkem768_decaps_leak ct)
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

@@ -141,13 +141,14 @@ noncomputable opaque P384FieldElt.default : P384FieldElt
 noncomputable instance : Inhabited P384FieldElt :=
   ⟨P384FieldElt.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves BY/safegcd P-384 leaf into the pipeline. Each is
-sourced from AUCurves' `safegcd_p384.rs` upstream. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `AUCurves_safegcd_p384_invert_CT`, which a
+theorem about the leaf takes as a hypothesis. Both are sourced from AUCurves'
+`safegcd_p384.rs` upstream. -/
 
-/-- **Denotation axiom**: the AUCurves verified-CT
+/-- **Denotation**: the AUCurves verified-CT
     `p384_invert_divstep_sat` leaf computes the modular inverse of
     its input over the NIST P-384 base prime
     `p = 2^384 − 2^128 − 2^96 + 2^32 − 1`. Discharged by
@@ -163,13 +164,13 @@ noncomputable opaque AUCurves_safegcd_p384_invert_denote
     `p384_invert_divstep_sat` leaf emits on operand `x`. -/
 noncomputable opaque AUCurves_safegcd_p384_invert_leak (x : P384FieldElt) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     `p384_invert_divstep_sat` leaf is the same at every operand `x`. The
     Bernstein-Yang divstep loop has a compile-time-fixed iteration count and
     the per-step update is conditional-multiplexed adds and shifts with no
     operand-dependent branch or memory access, so no execution of the leaf
     distinguishes two field elements. Cited in `ValeCoqAxioms.lean`. -/
-axiom AUCurves_safegcd_p384_invert_CT :
+def AUCurves_safegcd_p384_invert_CT : Prop :=
     SecretIndependent AUCurves_safegcd_p384_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

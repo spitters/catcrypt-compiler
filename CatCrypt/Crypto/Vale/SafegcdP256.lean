@@ -145,13 +145,14 @@ noncomputable opaque P256FieldElt.default : P256FieldElt
 noncomputable instance : Inhabited P256FieldElt :=
   ⟨P256FieldElt.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves BY/safegcd P-256 leaf into the pipeline. Each is
-sourced from AUCurves' `safegcd_p256.rs` upstream. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `AUCurves_safegcd_p256_invert_CT`, which a
+theorem about the leaf takes as a hypothesis. Both are sourced from AUCurves'
+`safegcd_p256.rs` upstream. -/
 
-/-- **Denotation axiom**: the AUCurves verified-CT
+/-- **Denotation**: the AUCurves verified-CT
     `p256_invert_divstep_sat` leaf computes the modular inverse of
     its input over the NIST P-256 base prime
     `p = 2^256 − 2^224 + 2^192 + 2^96 − 1`. Discharged by
@@ -168,14 +169,14 @@ noncomputable opaque AUCurves_safegcd_p256_invert_denote
     `p256_invert_divstep_sat` leaf emits on operand `x`. -/
 noncomputable opaque AUCurves_safegcd_p256_invert_leak (x : P256FieldElt) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     `p256_invert_divstep_sat` leaf is the same at every operand `x`. The
     Bernstein-Yang divstep loop runs 10 outer × 59 inner iterations fixed at
     compile time, and the per-step update is conditional-multiplexed adds and
     shifts with no operand-dependent branch or memory access, so no execution
     of the leaf distinguishes two field elements. Cited in
     `ValeCoqAxioms.lean`. -/
-axiom AUCurves_safegcd_p256_invert_CT :
+def AUCurves_safegcd_p256_invert_CT : Prop :=
     SecretIndependent AUCurves_safegcd_p256_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

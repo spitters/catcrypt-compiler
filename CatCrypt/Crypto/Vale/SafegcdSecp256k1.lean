@@ -136,13 +136,14 @@ noncomputable opaque Secp256k1FieldElt.default : Secp256k1FieldElt
 noncomputable instance : Inhabited Secp256k1FieldElt :=
   ⟨Secp256k1FieldElt.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves safegcd-secp256k1 leaf. Each is sourced from
-AUCurves' upstream machine-checked Coq proofs. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `AUCurves_safegcd_secp256k1_invert_CT`, which a
+theorem about the leaf takes as a hypothesis. Both are sourced from AUCurves'
+upstream machine-checked Coq proofs. -/
 
-/-- **Denotation axiom**: the AUCurves
+/-- **Denotation**: the AUCurves
     `safegcd_secp256k1::secp_invert_divstep_sat` leaf computes
     `x^{-1} mod p` where `p = 2^256 − 2^32 − 977` is the secp256k1
     base prime. Discharged by the Coq-verified
@@ -158,13 +159,13 @@ noncomputable opaque AUCurves_safegcd_secp256k1_invert_denote
     `x`. -/
 noncomputable opaque AUCurves_safegcd_secp256k1_invert_leak (x : Secp256k1FieldElt) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     `secp256k1_invert_divstep_sat` leaf is the same at every operand `x`. The
     Bernstein-Yang divstep loop has a compile-time-fixed iteration count and
     the per-step update is conditional-multiplexed adds and shifts with no
     operand-dependent branch or memory access, so no execution of the leaf
     distinguishes two field elements. Cited in `ValeCoqAxioms.lean`. -/
-axiom AUCurves_safegcd_secp256k1_invert_CT :
+def AUCurves_safegcd_secp256k1_invert_CT : Prop :=
     SecretIndependent AUCurves_safegcd_secp256k1_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

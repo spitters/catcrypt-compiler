@@ -69,7 +69,7 @@ production, heavily-reviewed Bitcoin reference whose constant-time
 discipline is the de-facto standard for the curve. This is weaker than
 the BY/safegcd-secp256k1 inversion leaf, which cites an AUCurves
 machine-checked convergence certificate. We do **not** overstate the
-trust delta: the denotation axioms below are *specifications matched
+trust delta: the denotations below are *specifications matched
 against libsecp256k1*, not consequences of a CatCrypt/AUCurves
 machine-checked proof.
 
@@ -143,16 +143,18 @@ noncomputable opaque Secp256k1Point.default : Secp256k1Point
 noncomputable instance : Inhabited Secp256k1Point :=
   ⟨Secp256k1Point.default⟩
 
-/-! ## §2. Scalar-mult leaf axioms (the trust delta)
+/-! ## §2. Scalar-mult leaves: denotations, leakage, constant-time proposition
 
-These are the denotation + CT axioms we add to CatCrypt's axiom budget
-when we permit the libsecp256k1 scalar-mult leaves. Unlike the
-BY/safegcd inversion leaf, these are *specifications matched against
+The leaves' denotations and leakage are opaque constants. The constant-time
+property of the single-scalar leaf is the proposition
+`Secp256k1Ecmult_const_CT`, which a theorem about the leaf takes as a
+hypothesis. Unlike the BY/safegcd inversion leaf, these are *specifications
+matched against
 libsecp256k1's reviewed implementation*, not consequences of a
 machine-checked certificate (no verified-CT secp256k1 scalar-mult
 exists upstream — see the module docstring). -/
 
-/-- **Single-scalar denotation axiom**: the libsecp256k1
+/-- **Single-scalar denotation**: the libsecp256k1
     `secp256k1_ecmult_const` leaf computes `k · P` on the secp256k1
     curve (`y² = x³ + 7` over `F_p`, `p = 2^256 − 2^32 − 977`), with
     `k` reduced mod the group order `n`. Matched against
@@ -161,7 +163,7 @@ exists upstream — see the module docstring). -/
 noncomputable opaque Secp256k1Ecmult_const_denote
     (k : Secp256k1Scalar) (P : Secp256k1Point) : Secp256k1Point
 
-/-- **Double-scalar denotation axiom**: the libsecp256k1
+/-- **Double-scalar denotation**: the libsecp256k1
     `secp256k1_ecmult` leaf computes `u1 · G + u2 · Q`, where `G` is
     the fixed SEC2 generator (consumed via the static precomputed
     table `secp256k1_pre_g`) and `Q` is the public key point. This is
@@ -171,9 +173,9 @@ noncomputable opaque Secp256k1Ecmult_const_denote
 noncomputable opaque Secp256k1Ecmult_double_denote
     (u1 u2 : Secp256k1Scalar) (Q : Secp256k1Point) : Secp256k1Point
 
-/-- **Constant-time axiom (single-scalar only)**: the libsecp256k1
-    `secp256k1_ecmult_const` leaf is constant-time in the secret
-    scalar `k`. Sourced from the libsecp256k1 CT discipline: a fixed
+/-- **Leakage function (single-scalar)**: the observable trace the
+    libsecp256k1 `secp256k1_ecmult_const` leaf emits on the base point `P`
+    and the secret scalar `k`. Its constant-time property is sourced from the libsecp256k1 CT discipline: a fixed
     signed-digit ladder over a precomputed window, with constant-time
     conditional table sweeps (`secp256k1_ecmult_const_table_get_ge`)
     and no secret-dependent branches or memory indices. This is the
@@ -187,13 +189,13 @@ noncomputable opaque Secp256k1Ecmult_double_denote
 noncomputable opaque Secp256k1Ecmult_const_leak
     (P : Secp256k1Point) (k : Secp256k1Scalar) : LeafLeak
 
-/-- **Constant-time axiom (single-scalar only)**: at each fixed base point
+/-- **Constant-time proposition (single-scalar only)**: at each fixed base point
     `P`, the leakage trace of the `secp256k1_ecmult_const` leaf is the same at
     every scalar `k`. The point is the public parameter; the scalar is the
     secret one. The companion `Secp256k1Ecmult_double_denote` leaf is
-    variable-time and carries no such axiom. `ValeCoqAxioms.lean` records that
-    no upstream proof of this was located. -/
-axiom Secp256k1Ecmult_const_CT (P : Secp256k1Point) :
+    variable-time and has no such proposition. `ValeCoqAxioms.lean` records
+    that no upstream proof of this was located. -/
+def Secp256k1Ecmult_const_CT (P : Secp256k1Point) : Prop :=
     SecretIndependent (Secp256k1Ecmult_const_leak P)
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

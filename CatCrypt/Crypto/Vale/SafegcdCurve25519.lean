@@ -181,13 +181,14 @@ noncomputable opaque SafegcdFe25519Buf.default : SafegcdFe25519Buf
 noncomputable instance : Inhabited SafegcdFe25519Buf :=
   ⟨SafegcdFe25519Buf.default⟩
 
-/-! ## §2. AUCurves leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves-verified safegcd25519 leaf. Each is sourced
-from AUCurves' upstream certificates. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `Vale_safegcd25519_fe25519_inv_CT`, which a
+theorem about the leaf takes as a hypothesis. Both are sourced from AUCurves'
+upstream certificates. -/
 
-/-- **Denotation axiom**: the AUCurves-verified `safegcd25519`
+/-- **Denotation**: the AUCurves-verified `safegcd25519`
     leaf computes the modular inverse mod p25519 = 2^255 − 19 of
     its 4-limb input. Discharged by the `divsteps_25519_half`
     convergence certificate (the 10×59-divstep structure terminates
@@ -200,13 +201,13 @@ noncomputable opaque Vale_safegcd25519_fe25519_inv_denote
     `fe25519` inverter emits on operand `x`. -/
 noncomputable opaque Vale_safegcd25519_fe25519_inv_leak (x : SafegcdFe25519Buf) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves-verified
+/-- **Constant-time proposition**: the leakage trace of the AUCurves-verified
     `safegcd25519` `fe25519` inverter is the same at every operand `x`. The
     Bernstein-Yang divstep loop has a compile-time-fixed iteration count and
     the per-step update is conditional-multiplexed adds and shifts with no
     operand-dependent branch or memory access, so no execution of the leaf
     distinguishes two field elements. Cited in `ValeCoqAxioms.lean`. -/
-axiom Vale_safegcd25519_fe25519_inv_CT :
+def Vale_safegcd25519_fe25519_inv_CT : Prop :=
     SecretIndependent Vale_safegcd25519_fe25519_inv_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

@@ -7,25 +7,28 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# Adopted-leaf constant-time axiom index
+# Adopted-leaf constant-time citation index
 
-Citation table for the `_CT` axioms of `CatCrypt/Crypto/Vale/`. Each names a
+Citation table for the `_CT` statements of `CatCrypt/Crypto/Vale/`. Each names a
 leaf's leakage function (`<leaf>_leak`, in the `LeafLeak` alphabet of
-`Vale/LeafLeakage.lean`) and asserts `SecretIndependent` of it: the leaf's
-observable trace does not vary with the argument the row calls secret. The
-upstream result that each cites is recorded here with its file and line.
+`Vale/LeafLeakage.lean`) and states `SecretIndependent` of it: the leaf's
+observable trace does not vary with the argument the row calls secret. Every
+row except `MpnInvert_Safegcd_CT` is a proposition (`def … : Prop`) that a
+theorem about the leaf takes as a hypothesis; `MpnInvert_Safegcd_CT` is an
+axiom. The upstream result that each cites is recorded here with its file and
+line.
 
 Parallel to `P256FieldMulCoqAxioms.lean` and the other per-leaf value tables in
-this directory, which cover the `_denote` axioms. This file covers the leakage
-axioms only.
+this directory, which cover the `_denote` constants. This file covers the
+leakage statements only.
 
 ## Main definitions
 
-This module declares nothing. It is the citation index for the `_CT` axioms
-declared in the sibling `Vale/*.lean` modules; the axioms themselves, and the
+This module declares nothing. It is the citation index for the `_CT` statements
+declared in the sibling `Vale/*.lean` modules; the statements themselves, and the
 `SecretIndependent` predicate they are stated against, live in those files and in
 `Vale/LeafLeakage.lean`. Read a row here to find what upstream result a given
-`_CT` axiom rests on and how far that result was checked.
+`_CT` statement rests on and how far that result was checked.
 
 ## Status legend
 
@@ -81,7 +84,7 @@ side-channel leaks in the compiled code."
 
 ## Vale-verified assembly
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `AESGCM.Vale_AES128_GCM_encrypt_CT` | 🚧 phase1 | `hacl-star/vale/code/crypto/aes/x64/Main.ml`:10 registers `gcm128_encrypt_opt` into the list the analysis at `CmdLineParser.ml`:71 checks. Source procedure `hacl-star/vale/code/crypto/aes/x64/Vale.AES.X64.GCMencryptOpt.vaf`:1562 (`procedure Gcm_blocks_stdcall`); `Secret` taint on the key and plaintext buffers at `hacl-star/vale/code/arch/x64/interop/Vale.Stdcalls.X64.GCMencryptOpt.fst`:37. Emitted symbol `hacl-star/dist/vale/aesgcm-x86_64-linux.S`:2889. |
 | `GHASH.Vale_aes128_keyhash_init_CT` | 🚧 phase1 | `hacl-star/vale/code/crypto/aes/x64/Main.ml`:4 registers `aes128_keyhash_init`. Source procedure `hacl-star/vale/code/crypto/aes/x64/Vale.AES.X64.GF128_Init.vaf`:219, with `Secret` taint preconditions at :243 and :244; interop taint at `hacl-star/vale/code/arch/x64/interop/Vale.Stdcalls.X64.AesHash.fst`:34. Emitted symbol `hacl-star/dist/vale/aesgcm-x86_64-linux.S`:112. |
@@ -89,7 +92,7 @@ side-channel leaks in the compiled code."
 
 ## HACL\* F\*-verified C
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `ChaCha20Vec256.Vale_Hacl_Chacha20_Vec256_CT` | 📌 cite-only | Typing discipline. `hacl-star/code/chacha20/Hacl.Chacha20.Vec256.fst`:15; signature carrying the secret types at `hacl-star/code/chacha20/Hacl.Impl.Chacha20.Vec.fst`:220-224, `val` at :235. Emitted symbol `hacl-star/dist/gcc-compatible/Hacl_Chacha20_Vec256.h`:39. No leakage theorem in `code/chacha20/`. |
 | `SHA256.Vale_Hacl_Hash_SHA2_sha256_update_nblocks_CT` | 📌 cite-only | Typing discipline for the C leaf we link. Declaration `hacl-star/dist/gcc-compatible/internal/Hacl_Hash_SHA2.h`:116; F\* source `hacl-star/code/sha2-mb/Hacl.SHA2.Scalar32.fst`:23; secret-typed signature `hacl-star/code/sha2-mb/Hacl.Impl.SHA2.Generic.fst`:296. A Vale SHA-256 exists and *is* leakage-checked (`hacl-star/vale/code/crypto/sha/ShaMain.ml`:3, source `hacl-star/vale/code/thirdPartyPorts/OpenSSL/sha/Vale.SHA.X64.vaf`:737, symbol `hacl-star/dist/vale/sha256-x86_64-linux.S`:2), but it is a different symbol from the one this leaf binds. |
@@ -99,7 +102,7 @@ side-channel leaks in the compiled code."
 
 ## libcrux ML-KEM-768
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `MLKEM768.Vale_libcrux_mlkem768_keygen_CT` | 📌 cite-only | **No upstream checkout available.** libcrux is not among the local repositories, so nothing was located and nothing is cited. The claim rests on libcrux's secret-independence audit as described in its own documentation, unverified here. |
 | `MLKEM768.Vale_libcrux_mlkem768_encaps_CT` | 📌 cite-only | As above. |
@@ -125,7 +128,7 @@ convergence certificate is `Qed`-closed
 (`AUCurves/src/Arithmetic/safegcd/divsteps590.v`:36-41); every other per-curve
 certificate is an `Axiom` with an OCaml re-check driver beside it.
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `SafegcdCurve25519.Vale_safegcd25519_fe25519_inv_CT` | 📌 cite-only | Certificate `AUCurves/src/Arithmetic/safegcd/divsteps590.v`:36 (`Lemma p25519_certificate_590`, `Qed` at :41), count at :43 (590). Inversion instantiation `AUCurves/src/Bedrock/Field/Synthesis/Examples/Fe25519_FpInv.v`:83, top theorem at :446. |
 | `SafegcdBLS12_381.Safegcd_BLS12_381_invert_CT` | 📌 cite-only | Certificate `AUCurves/src/Arithmetic/safegcd/divsteps_bls12.v`:20 (`Axiom bls12_certificate`), count at :23 (1078). Instantiation `AUCurves/src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv.v`:77-80. |
@@ -140,7 +143,7 @@ certificate is an `Axiom` with an OCaml re-check driver beside it.
 
 ## AUCurves pairing base-field arithmetic
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `BN254.Vale_AUCurves_BN254_Fp_CT` | 📌 cite-only | 4×u64 word-by-word Montgomery at `AUCurves/src/Bedrock/Field/Synthesis/Examples/bn254_prime.v`:31, synthesised through `Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery` (imported at :7). The generated code is straight-line: `fiat-crypto/fiat-c/src/p256_64.c` (the same generator at a different prime) has no `if`/`for`/`while` in code, and conditional selection is masked — `fiat-crypto/fiat-c/src/p256_64.c`:152 inside `fiat_p256_cmovznz_u64` at :146, with the compiler barrier at :47. |
 | `BN254.Vale_AUCurves_BN254_Fp12_CT` | 📌 cite-only | Tower instances `AUCurves/src/Bedrock/Field/Synthesis/Examples/bn254_instances.v`:46-48, `…/bn254_Fp2.v`; the `Fp12` operation list at `AUCurves/src/Bedrock/Field/Synthesis/Examples/BN254_Pairing.v`:315. A fixed sequence over the Fp leaves above. |
@@ -154,7 +157,7 @@ certificate is an `Axiom` with an OCaml re-check driver beside it.
 
 ## No upstream located
 
-| Lean axiom | Status | Citation |
+| Lean declaration | Status | Citation |
 |---|---|---|
 | `Secp256k1Ecmult.Secp256k1Ecmult_const_CT` | 📌 cite-only | **Nothing was found.** `ecmult` appears nowhere in AUCurves, libjade or formosa-25519, and no libsecp256k1 source is vendored. AUCurves has secp256k1 field arithmetic and point addition only (`AUCurves/src/Bedrock/Curve/Secp256k1_G1_Add_Spec.v`:136, :666), no scalar multiplication. libsecp256k1 itself is not formally verified; the axiom cites its authors' constant-time design intent, nothing machine-checked. |
 
@@ -196,10 +199,10 @@ above cites them.
 
 * `CatCrypt/Crypto/Vale/LeafLeakage.lean` — `LeafLeak` and `SecretIndependent`.
 * `CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean` — `cmdCT` and `LeafCTTable`,
-  the program-level analysis whose per-leaf side condition these axioms carry.
+  the program-level analysis whose per-leaf side condition these statements carry.
 
-This file is intentionally declaration-free (markdown only). Every axiom named
-above is declared in the module its row's prefix names.
+This file is intentionally declaration-free (markdown only). Every statement
+named above is declared in the module its row's prefix names.
 -/
 
 @[expose] public section

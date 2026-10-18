@@ -19,6 +19,8 @@ is denoted by `Bn254Emit.eip197VerifyCom_denote` against a leaf oracle
 `jasminDenote`). This module supplies the oracles that parameter is instantiated
 at.
 
+## Main results
+
 * `pairingOracle prims` — a concrete leaf oracle realising the BN254 pairing-side
   primitives (`prims.pairing` on the pairing signature, `prims.fp12Mul` on the
   `fp12_mul` signature), with `pairingOracle_agrees` proving it satisfies the
@@ -28,8 +30,8 @@ at.
   deployed primitives, defined as `pairingOracle deployedPrims`, and its
   agreement, a theorem that holds by construction of the oracle. It relates the
   oracle to the primitives and says nothing about the emitted leaf code;
-  `Bn254PairingTransport` relates the deployed pairing and `fp12_mul` byte leaves
-  to the AUCurves specs through two named Rocq transport axioms.
+  `Bn254PairingTransport` derives the verifier's field value for any `prims`
+  satisfying the AUCurves specs, stated as the hypothesis `RocqTransport prims`.
 * `eip197VerifyCom_denote` — the deployed verifier at the deployed oracle.
 
 The bespoke evaluator `eip197DenoteWith` (+ `eip197DenoteWith_eq`) gives the same

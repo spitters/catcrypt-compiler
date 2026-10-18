@@ -209,13 +209,15 @@ noncomputable opaque Ed25519Msg.default : Ed25519Msg
 noncomputable instance : Inhabited Ed25519Msg :=
   ⟨Ed25519Msg.default⟩
 
-/-! ## §2. Vale-leaf axioms (the trust delta)
+/-! ## §2. Vale leaves: denotations, leakage, timing propositions
 
-The four axioms we add to CatCrypt's axiom budget when we permit
-the Vale-verified Ed25519 sign / verify leaves.  Each is sourced
-from HACL\* / Vale's upstream F\* proofs against `Spec.Ed25519`. -/
+The sign and verify leaves' denotations and leakage are opaque constants.
+Their timing properties are the propositions `Vale_Hacl_Ed25519_sign_CT` and
+`Vale_Hacl_Ed25519_verify_not_CT`, which a theorem about the leaves takes as
+hypotheses. All are sourced from HACL\* / Vale's upstream F\* proofs against
+`Spec.Ed25519`. -/
 
-/-- **Denotation axiom (sign)**: the Vale-verified `Hacl_Ed25519_sign`
+/-- **Denotation (sign)**: the Vale-verified `Hacl_Ed25519_sign`
     leaf computes the RFC 8032 §5.1.6 Ed25519 signature of `msg`
     under `priv`.  Discharged by the F\* functional-correctness proof
     in `Hacl.Ed25519.fst` against `Spec.Ed25519.sign`, composed with
@@ -229,17 +231,17 @@ noncomputable opaque Vale_Hacl_Ed25519_sign_denote
 noncomputable opaque Vale_Hacl_Ed25519_sign_leak
     (priv : Ed25519Priv) (msg : Ed25519Msg) : LeafLeak
 
-/-- **Constant-time axiom (sign)**: the leakage trace of the
+/-- **Constant-time proposition (sign)**: the leakage trace of the
     `Hacl_Ed25519_sign` leaf is the same at every seed and message.  Both
     buffers carry HACL\*'s secret integer types, and the signing path takes no
     declassification, so no branch or memory index reads either.  The message
     length is a separate public ABI parameter and is not an argument of this
     leaf.  Cited in `ValeCoqAxioms.lean`. -/
-axiom Vale_Hacl_Ed25519_sign_CT :
+def Vale_Hacl_Ed25519_sign_CT : Prop :=
     SecretIndependent (fun q : Ed25519Priv × Ed25519Msg =>
       Vale_Hacl_Ed25519_sign_leak q.1 q.2)
 
-/-- **Denotation axiom (verify)**: the Vale-verified `Hacl_Ed25519_verify`
+/-- **Denotation (verify)**: the Vale-verified `Hacl_Ed25519_verify`
     leaf returns the RFC 8032 §5.1.7 verification result — `Bool`
     encoded into a single-byte buffer at the C ABI; we model it as
     an `Ed25519Sig`-shaped opaque output (the leaf writes a one-byte
@@ -254,7 +256,7 @@ noncomputable opaque Vale_Hacl_Ed25519_verify_denote
 noncomputable opaque Vale_Hacl_Ed25519_verify_leak
     (pk : Ed25519Pub) (msg : Ed25519Msg) (sig : Ed25519Sig) : LeafLeak
 
-/-- **Variable-time verify**: the leakage trace of the `Hacl_Ed25519_verify`
+/-- **Variable-time proposition (verify)**: the leakage trace of the `Hacl_Ed25519_verify`
     leaf varies with its arguments.  The scalar range check and the point
     equality test declassify limbs through `Lib.RawIntTypes` and branch on the
     results, so two argument triples can produce different traces.  All three
@@ -262,7 +264,7 @@ noncomputable opaque Vale_Hacl_Ed25519_verify_leak
     policy; the leaf must not be applied to secret data.  This is the reject
     side of the same predicate the sign leaf satisfies.  Cited in
     `ValeCoqAxioms.lean`. -/
-axiom Vale_Hacl_Ed25519_verify_not_CT :
+def Vale_Hacl_Ed25519_verify_not_CT : Prop :=
     ¬ SecretIndependent (fun q : Ed25519Pub × Ed25519Msg × Ed25519Sig =>
       Vale_Hacl_Ed25519_verify_leak q.1 q.2.1 q.2.2)
 

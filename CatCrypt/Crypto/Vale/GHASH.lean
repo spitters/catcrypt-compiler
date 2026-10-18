@@ -191,13 +191,13 @@ noncomputable def Vale_aes128_keyhash_init_denote
     schedule `keys`. -/
 noncomputable opaque Vale_aes128_keyhash_init_leak (keys : ValeGhashAesKeys) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the Vale-verified
+/-- **Constant-time proposition**: the leakage trace of the Vale-verified
     `aes128_keyhash_init` leaf is the same at every expanded round-key
     schedule `keys`. The body is PCLMULQDQ and AES-NI register arithmetic with
     no table lookup and no key-dependent branch, and the schedule buffer
     carries `Secret` taint in the Vale interop signature. Cited in
-    `ValeCoqAxioms.lean`. -/
-axiom Vale_aes128_keyhash_init_CT :
+    `ValeCoqAxioms.lean`. A theorem about the leaf takes it as a hypothesis. -/
+def Vale_aes128_keyhash_init_CT : Prop :=
     SecretIndependent Vale_aes128_keyhash_init_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

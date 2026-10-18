@@ -127,13 +127,14 @@ noncomputable opaque Curve25519Buf.default : Curve25519Buf
 noncomputable instance : Inhabited Curve25519Buf :=
   ⟨Curve25519Buf.default⟩
 
-/-! ## §2. Vale-leaf axioms (the trust delta)
+/-! ## §2. Vale leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit Vale-verified leaves. Each is sourced from HACL\* / Vale's
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `Vale_Hacl_Curve25519_64_CT`, which a theorem
+about the leaf takes as a hypothesis. Both are sourced from HACL\* / Vale's
 upstream F\* proofs. -/
 
-/-- **Denotation axiom**: the Vale-verified `Hacl_Curve25519_64`
+/-- **Denotation**: the Vale-verified `Hacl_Curve25519_64`
     leaf computes the RFC 7748 X25519 scalar multiplication (with
     clamping) of its `priv` scalar and `pub` base point. Discharged
     by the F\* functional-correctness proof in
@@ -147,13 +148,13 @@ noncomputable opaque Vale_Hacl_Curve25519_64_denote
 noncomputable opaque Vale_Hacl_Curve25519_64_leak
     (priv : Curve25519Buf) (pub : Curve25519Buf) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the `Hacl_Curve25519_64`
+/-- **Constant-time proposition**: the leakage trace of the `Hacl_Curve25519_64`
     leaf is the same at every pair of arguments. Both the scalar and the point
     carry HACL\*'s secret integer types, so no branch or memory index in the
     Montgomery ladder reads either; the ladder swap is a `cswap2` mask. Cited
     in `ValeCoqAxioms.lean`, which also records that the inline-assembly build
     of this leaf is not re-checked by Vale's taint analyser. -/
-axiom Vale_Hacl_Curve25519_64_CT :
+def Vale_Hacl_Curve25519_64_CT : Prop :=
     SecretIndependent (fun q : Curve25519Buf × Curve25519Buf =>
       Vale_Hacl_Curve25519_64_leak q.1 q.2)
 

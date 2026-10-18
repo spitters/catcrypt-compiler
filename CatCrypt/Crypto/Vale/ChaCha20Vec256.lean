@@ -152,14 +152,15 @@ noncomputable opaque Vale_Hacl_Chacha20_Vec256_leak
     (nonce counter : ChaCha20Vec256Block)
     (secrets : ChaCha20Vec256Block × ChaCha20Vec256Block) : LeafLeak
 
-/-- **Constant-time axiom**: at each fixed nonce and block counter, the
+/-- **Constant-time proposition**: at each fixed nonce and block counter, the
     leakage trace of the `Hacl_Chacha20_Vec256` leaf is the same at every key
     and plaintext. The lane-parallel round function is add / xor / rotate on
     vector registers with no data-dependent branch or memory access. The nonce
     and the counter are the public parameters; the key and the text are the
-    secret ones. Cited in `ValeCoqAxioms.lean`. -/
-axiom Vale_Hacl_Chacha20_Vec256_CT
-    (nonce counter : ChaCha20Vec256Block) :
+    secret ones. Cited in `ValeCoqAxioms.lean`. A theorem about the leaf takes
+    it as a hypothesis. -/
+def Vale_Hacl_Chacha20_Vec256_CT
+    (nonce counter : ChaCha20Vec256Block) : Prop :=
     SecretIndependent (Vale_Hacl_Chacha20_Vec256_leak nonce counter)
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

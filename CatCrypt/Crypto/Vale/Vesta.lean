@@ -161,14 +161,14 @@ noncomputable opaque VestaFp.default : VestaFp
 noncomputable instance : Inhabited VestaFp :=
   ⟨VestaFp.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves BY/safegcd leaf into the pipeline for the Vesta
-base prime. Each is sourced from AUCurves's `safegcd_vesta.rs`
-upstream. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `Safegcd_Vesta_invert_CT`, which a theorem about
+the leaf takes as a hypothesis. Both are sourced from AUCurves's
+`safegcd_vesta.rs` upstream. -/
 
-/-- **Denotation axiom**: the AUCurves verified-CT
+/-- **Denotation**: the AUCurves verified-CT
     `vesta_invert_divstep_sat` leaf computes the modular inverse of
     its input over the Vesta base prime
     `p = 0x40000000…00000001 = 2^254 + 45560315531506369815346746415080538113`.
@@ -184,13 +184,13 @@ noncomputable opaque Safegcd_Vesta_invert_denote
     `vesta_invert_divstep_sat` leaf emits on operand `x`. -/
 noncomputable opaque Safegcd_Vesta_invert_leak (x : VestaFp) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     Vesta `Fp` inverter is the same at every operand `x`. The Bernstein-Yang
     divstep loop has a compile-time-fixed iteration count and the per-step
     update is conditional-multiplexed adds and shifts with no
     operand-dependent branch or memory access, so no execution of the leaf
     distinguishes two field elements. Cited in `ValeCoqAxioms.lean`. -/
-axiom Safegcd_Vesta_invert_CT :
+def Safegcd_Vesta_invert_CT : Prop :=
     SecretIndependent Safegcd_Vesta_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

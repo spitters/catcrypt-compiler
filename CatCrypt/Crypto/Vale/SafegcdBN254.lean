@@ -149,13 +149,14 @@ noncomputable opaque BN254SafegcdFieldElt.default : BN254SafegcdFieldElt
 noncomputable instance : Inhabited BN254SafegcdFieldElt :=
   ⟨BN254SafegcdFieldElt.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves BY/safegcd BN254 leaf into the pipeline. Each is
-sourced from AUCurves' `safegcd_bn254.rs` upstream. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `AUCurves_safegcd_bn254_invert_CT`, which a
+theorem about the leaf takes as a hypothesis. Both are sourced from AUCurves'
+`safegcd_bn254.rs` upstream. -/
 
-/-- **Denotation axiom**: the AUCurves verified-CT
+/-- **Denotation**: the AUCurves verified-CT
     `bn254_invert_divstep_sat` leaf computes the modular inverse of its
     input over the BN254 base prime
     `p = 21888242871839275222246405745257275088696311157297823662689037894645226208583`.
@@ -171,14 +172,14 @@ noncomputable opaque AUCurves_safegcd_bn254_invert_denote
     `bn254_invert_divstep_sat` leaf emits on operand `x`. -/
 noncomputable opaque AUCurves_safegcd_bn254_invert_leak (x : BN254SafegcdFieldElt) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     `bn254_invert_divstep_sat` leaf is the same at every operand `x`. The
     Bernstein-Yang divstep loop runs 10 outer × 59 inner iterations fixed at
     compile time, and the per-step update is conditional-multiplexed adds and
     shifts with no operand-dependent branch or memory access, so no execution
     of the leaf distinguishes two field elements. Cited in
     `ValeCoqAxioms.lean`. -/
-axiom AUCurves_safegcd_bn254_invert_CT :
+def AUCurves_safegcd_bn254_invert_CT : Prop :=
     SecretIndependent AUCurves_safegcd_bn254_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

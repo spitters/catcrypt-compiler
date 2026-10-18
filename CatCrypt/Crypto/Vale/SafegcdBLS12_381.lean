@@ -150,13 +150,14 @@ noncomputable opaque BLS12_381_Fp.default : BLS12_381_Fp
 noncomputable instance : Inhabited BLS12_381_Fp :=
   ⟨BLS12_381_Fp.default⟩
 
-/-! ## §2. AUCurves-leaf axioms (the trust delta)
+/-! ## §2. AUCurves leaf: denotation, leakage, constant-time proposition
 
-These are the two axioms we add to CatCrypt's axiom budget when we
-permit the AUCurves BY/safegcd leaf into the pipeline. Each is
-sourced from AUCurves's `safegcd_bls12_381.rs` upstream. -/
+The leaf's denotation and leakage are opaque constants. Its constant-time
+property is the proposition `Safegcd_BLS12_381_invert_CT`, which a theorem
+about the leaf takes as a hypothesis. Both are sourced from AUCurves's
+`safegcd_bls12_381.rs` upstream. -/
 
-/-- **Denotation axiom**: the AUCurves verified-CT
+/-- **Denotation**: the AUCurves verified-CT
     `bls12_invert_divstep_sat` leaf computes the modular inverse of
     its input over the BLS12-381 base prime
     `p = 0x1A0111EA…AAAB`. Discharged by Bernstein-Yang's divstep
@@ -171,13 +172,13 @@ noncomputable opaque Safegcd_BLS12_381_invert_denote
     `bls12_invert_divstep_sat` leaf emits on operand `x`. -/
 noncomputable opaque Safegcd_BLS12_381_invert_leak (x : BLS12_381_Fp) : LeafLeak
 
-/-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
+/-- **Constant-time proposition**: the leakage trace of the AUCurves verified-CT
     BLS12-381 `Fp` inverter is the same at every operand `x`. The
     Bernstein-Yang divstep loop has a compile-time-fixed iteration count and
     the per-step update is conditional-multiplexed adds and shifts with no
     operand-dependent branch or memory access, so no execution of the leaf
     distinguishes two field elements. Cited in `ValeCoqAxioms.lean`. -/
-axiom Safegcd_BLS12_381_invert_CT :
+def Safegcd_BLS12_381_invert_CT : Prop :=
     SecretIndependent Safegcd_BLS12_381_invert_leak
 
 /-! ## §3. `@[rust_cmd_pattern]` registration
