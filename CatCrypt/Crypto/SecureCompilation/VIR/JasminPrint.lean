@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
@@ -421,13 +423,13 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       .Cassgn (.Lvar (mkVarI dst (.reg w))) .AT_none (.sword ws)
         (.Papp2 (.Olsr ws) (pvarOf src (.reg w)) (.Pconst (Int.ofNat n)))
   | .sarImm w n =>
-      -- Native immediate arithmetic right-shift: the count `n` is a
-      -- compile-time `Pconst`. `Oasr` (sign-extending) op-code — the
-      -- arithmetic twin of `shrImm`'s `Olsr`; same literal-immediate shape.
+      -- Native immediate arithmetic right-shift: the clamped count
+      -- `sarCount w n < w` is a compile-time `Pconst`. `Oasr` (sign-extending)
+      -- op-code — the arithmetic twin of `shrImm`'s `Olsr`; same literal-immediate shape.
       let ws := wsizeOfNat w
       let src := argName vm e.args 0
       .Cassgn (.Lvar (mkVarI dst (.reg w))) .AT_none (.sword ws)
-        (.Papp2 (.Oasr ws) (pvarOf src (.reg w)) (.Pconst (Int.ofNat n)))
+        (.Papp2 (.Oasr ws) (pvarOf src (.reg w)) (.Pconst (Int.ofNat (sarCount w n))))
   | .shlImm w n =>
       -- Native immediate logical left-shift; see `shrImm`.
       let ws := wsizeOfNat w

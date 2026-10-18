@@ -431,12 +431,14 @@ theorem immShiftWire?_shlImm (k : Nat) (dst src : String) :
   simp only [opToLinstrR, immShiftWire?, shl_mnem,
     immShiftMnem?_withWidthTag64 (m := "SHL") (Or.inl rfl) k, Option.map_some]
 
-/-- **The recogniser reads back a width-64 `sarImm` export.** -/
+/-- **The recogniser reads back a width-64 `sarImm` export**, whose count is the
+    clamped `sarCount 64 k`. -/
 theorem immShiftWire?_sarImm (k : Nat) (dst src : String) :
     immShiftWire? (opToLinstrR (JasminOp.sarImm 64 k) dst [.reg src])
-      = some (dst, src, "SAR", k) := by
+      = some (dst, src, "SAR", sarCount 64 k) := by
   simp only [opToLinstrR, immShiftWire?, sar_mnem,
-    immShiftMnem?_withWidthTag64 (m := "SAR") (Or.inr (Or.inr rfl)) k, Option.map_some]
+    immShiftMnem?_withWidthTag64 (m := "SAR") (Or.inr (Or.inr rfl)) (sarCount 64 k),
+    Option.map_some]
 
 /-- The recogniser declines an instruction that is not a one-source register
     `Lopn`. -/

@@ -130,12 +130,12 @@ def ShiftKind.mnem : ShiftKind → String
   | .sar => "SAR"
   | .ror => "ROR"
 
-/-- The word function of a kind at count `n`: the dialect's shift or rotate (logical
-    shifts by the masked count `shiftMask w n`). -/
+/-- The word function of a kind at count `n`: the shift or rotate the `lsem` model
+    applies (shifts by the masked count `shiftMask w n`). -/
 def ShiftKind.val {w : Nat} : ShiftKind → Nat → BitVec w → BitVec w
   | .shl, n, a => a <<< shiftMask w n
   | .shr, n, a => a >>> shiftMask w n
-  | .sar, n, a => BitVec.sshiftRight a n
+  | .sar, n, a => BitVec.sshiftRight a (shiftMask w n)
   | .ror, n, a => a.rotateRight n
 
 /-- The AT&T direction `parseImmShiftMnem` returns for a kind's base. -/
@@ -240,7 +240,7 @@ theorem applyOpn_unary_of_parse {w : Nat} (opn : String) (att : String) (k wd : 
     (hp : parseImmShiftMnem opn = some (att, k, wd)) (a : BitVec w) :
     applyOpn opn [a]
       = some (if att = "shl" then a <<< shiftMask w k
-          else if att = "sar" then BitVec.sshiftRight a k
+          else if att = "sar" then BitVec.sshiftRight a (shiftMask w k)
           else if att = "rol" then a.rotateLeft k
           else if att = "ror" then a.rotateRight k
           else a >>> shiftMask w k) := by
@@ -280,7 +280,7 @@ theorem applyOpn_countTag_of_parse {w : Nat} {m : String} (hm : ShiftBase m) (wO
     (hp : parseImmShiftMnem (m ++ ":" ++ toString n) = some (att, k, wd)) (a : BitVec w) :
     applyOpn (stripWidthTag (withWidthTag wOp (m ++ ":" ++ toString n))) [a]
       = some (if att = "shl" then a <<< shiftMask w k
-          else if att = "sar" then BitVec.sshiftRight a k
+          else if att = "sar" then BitVec.sshiftRight a (shiftMask w k)
           else if att = "rol" then a.rotateLeft k
           else if att = "ror" then a.rotateRight k
           else a >>> shiftMask w k) := by
@@ -552,7 +552,7 @@ inductive UniformRegArithShift : {Γ : Ctxt jasminDialect} → {t : JasminTy} �
   | sarImm {Γ s} {w n : Nat}
       (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.sarImm w n) = .reg w)
       (a0 : Ctxt.Var Γ (JasminTy.reg w)) (body : Com jasminDialect (JasminTy.reg w :: Γ) s)
-      (hn : n ≠ 64) (hbody : UniformRegArithShift body) :
+      (hn : sarCount w n ≠ 64) (hbody : UniformRegArithShift body) :
       UniformRegArithShift (.var ⟨JasminOp.sarImm w n, heq, .cons a0 .nil⟩ body)
   | rorImm {Γ s} {w n : Nat}
       (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w n) = .reg w)
@@ -732,7 +732,7 @@ inductive CoverDataShift {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat)
       (hdst : u.nDst = regName d)
       (hsrc : u.nSrc = resolveVarName d nArgs a0)
       (hkind : u.kind = .sar)
-      (hcount : u.count = n)
+      (hcount : u.count = sarCount w n)
       (htail : CoverDataShift body tbl nArgs bdy (d + 1) bs) :
       CoverDataShift body tbl nArgs
         (.var ⟨JasminOp.sarImm w n, heq, .cons a0 .nil⟩ bdy) d (.unaryImm u :: bs)
@@ -824,7 +824,7 @@ theorem bindingHeads_shrImm_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
   rw [resolveVar_eq_reg]
 
 /-- The `bindingHeads` head of a `sarImm w n` binding at depth `curDepth` is
-    `SAR:n[:64] regName curDepth, a0`. -/
+    `SAR:k[:64] regName curDepth, a0` at the clamped count `k = sarCount w n`. -/
 theorem bindingHeads_sarImm_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
     (nArgs w n : Nat)
     (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.sarImm w n) = .reg w)
@@ -832,10 +832,11 @@ theorem bindingHeads_sarImm_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
     (body : Com jasminDialect (JasminTy.reg w :: Γ) s) (curDepth : Nat) :
     bindingHeads nArgs argName (fun _ => none)
       (.var ⟨JasminOp.sarImm w n, heq, .cons a0 .nil⟩ body) curDepth
-      = (⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w ("SAR:" ++ toString n))
+      = (⟨0, .Lopn [.reg (regName curDepth)]
+          (withWidthTag w ("SAR:" ++ toString (sarCount w n)))
           [.reg (resolveVarName curDepth nArgs a0)]⟩ : Linstr)
         :: bindingHeads nArgs argName (fun _ => none) body (curDepth + 1) := by
-  show (⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w ("SAR:" ++ toString n))
+  show (⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w ("SAR:" ++ toString (sarCount w n)))
       [resolveVar curDepth nArgs argName (fun _ => none) a0]⟩ : Linstr) :: _ = _
   rw [resolveVar_eq_reg]
 

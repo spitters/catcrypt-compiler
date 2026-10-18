@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 
 /-!
 # Jasmin source `Expr._uprog` value-level producer
@@ -290,8 +291,8 @@ def opToInstrR (op : JasminOp) (dst : String) (srcs : List UOperand) : InstrR :=
       .Copn [.var dst] .none ("ROR:" ++ toString n) srcs
   | .shrImm _ n =>
       .Copn [.var dst] .none ("SHR:" ++ toString n) srcs
-  | .sarImm _ n =>
-      .Copn [.var dst] .none ("SAR:" ++ toString n) srcs
+  | .sarImm w n =>
+      .Copn [.var dst] .none ("SAR:" ++ toString (sarCount w n)) srcs
   | .shlImm _ n =>
       .Copn [.var dst] .none ("SHL:" ++ toString n) srcs
   | .addCarryLo _ =>

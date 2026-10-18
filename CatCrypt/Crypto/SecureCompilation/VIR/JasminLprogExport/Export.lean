@@ -10,6 +10,8 @@ import all Init.Data.List.Sort.Basic
 import all Init.Data.String.Slice
 import all Init.Data.String.Search
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import Std.Data.HashMap
@@ -390,9 +392,9 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
   -- shift amount in the mnemonic; the single source is the shifted register.
   -- `read_linear` maps each to the x86 `SHR`/`SHL r, imm` sopn (one linstr).
   | .shrImm w n => .Lopn [.reg dst] (withWidthTag w ("SHR:" ++ toString n)) srcs
-  -- Native immediate arithmetic right-shift: `SAR:<n>` carries the
-  -- compile-time shift amount; `read_linear` maps it to the x86 `SAR r, imm`.
-  | .sarImm w n => .Lopn [.reg dst] (withWidthTag w ("SAR:" ++ toString n)) srcs
+  -- Native immediate arithmetic right-shift: `SAR:<k>` carries the clamped
+  -- count `k = sarCount w n < w`; `read_linear` maps it to the x86 `SAR r, imm`.
+  | .sarImm w n => .Lopn [.reg dst] (withWidthTag w ("SAR:" ++ toString (sarCount w n))) srcs
   | .shlImm w n => .Lopn [.reg dst] (withWidthTag w ("SHL:" ++ toString n)) srcs
   -- Multi-result external call (`func.call` lowering target). At this
   -- single-output linstr layer it names its head result slot, mirroring the

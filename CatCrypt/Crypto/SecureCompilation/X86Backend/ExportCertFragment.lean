@@ -68,7 +68,7 @@ theorem opPlainB_sound {op : JasminOp} (h : opPlainB op = true) : OpPlain op := 
 def immShiftWireOKB : JasminOp → Bool
   | .shrImm w n => w == 64 || !hasSuffix ("SHR" ++ ":" ++ toString n) ":64"
   | .shlImm w n => w == 64 || !hasSuffix ("SHL" ++ ":" ++ toString n) ":64"
-  | .sarImm w n => w == 64 || !hasSuffix ("SAR" ++ ":" ++ toString n) ":64"
+  | .sarImm w n => w == 64 || !hasSuffix ("SAR" ++ ":" ++ toString (sarCount w n)) ":64"
   | _ => true
 
 theorem immShiftWireOKB_sound {op : JasminOp} (h : immShiftWireOKB op = true) :

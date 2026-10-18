@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 public import Transfer.Base.Related
 
 /-!
@@ -128,9 +129,10 @@ def structShr (w n : Nat) (a : BitVec w) : BitVec w :=
 def structShl (w n : Nat) (a : BitVec w) : BitVec w :=
   a <<< shiftMask w (BitVec.ofNat w n).toNat
 
-/-- The structured **arithmetic right shift** realizer (`SAR`, sign-extending). -/
+/-- The structured **arithmetic right shift** realizer (`SAR`, sign-extending), by the
+    masked count. -/
 def structSar (w n : Nat) (a : BitVec w) : BitVec w :=
-  BitVec.sshiftRight a (BitVec.ofNat w n).toNat
+  BitVec.sshiftRight a (shiftMask w (BitVec.ofNat w n).toNat)
 
 /-- For an in-range count `n < 2^w`, the `BitVec.ofNat` count round-trips: its
     `toNat` is `n`. The single arithmetic fact behind every structured-shift
@@ -152,10 +154,14 @@ theorem structShl_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
     structShl w n a = a <<< shiftMask w n := by
   unfold structShl; rw [ofNat_toNat_of_lt h]
 
-/-- **Representation square (SAR).** -/
+/-- **Representation square (SAR).** For a count `n < 2^w`, the structured shift
+    realizer at the emitted count `sarCount w n` is the arithmetic right shift by `n`,
+    the dialect's denotation of `sarImm w n`. -/
 theorem structSar_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    structSar w n a = BitVec.sshiftRight a n := by
-  unfold structSar; rw [ofNat_toNat_of_lt h]
+    structSar w (sarCount w n) a = BitVec.sshiftRight a n := by
+  unfold structSar
+  rw [ofNat_toNat_of_lt (lt_of_le_of_lt (Nat.min_le_left n (w - 1)) h : sarCount w n < 2 ^ w),
+    sshiftRight_shiftMask_sarCount]
 
 /-- The structured SHR realizer registered as a `Trocq.Related` representation
     change (identity encoding on `BitVec w`): the emitted structured value
@@ -172,7 +178,8 @@ def relatedStructShl {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
 
 /-- The structured SAR realizer as a `Trocq.Related` square. -/
 def relatedStructSar {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
-    Related (id : BitVec w → BitVec w) (BitVec.sshiftRight a n) (structSar w n a) where
+    Related (id : BitVec w → BitVec w) (BitVec.sshiftRight a n)
+      (structSar w (sarCount w n) a) where
   rel := by simpa using (structSar_eq h a).symm
 
 /-! ## 2. The structured shift mnemonics and the `applyOpnN` agreement
@@ -218,10 +225,11 @@ consumes for the shift fragment (the post-`legalizeShiftImmLprog` form). -/
 
 /-- The single structured shift linear instruction for a unary shift binding
     writing `dst` from source operand `src`, base mnemonic `mnem` (`"SHR"` /
-    `"SHL"` / `"SAR"`), width `w`, count `n`. -/
+    `"SHL"` / `"SAR"`), width `w`, requested count `n`. The logical shifts carry `n`;
+    the arithmetic right shift carries the clamped count `sarCount w n < w`. -/
 def shiftLinstr (mnem : String) (w : Nat) (dst : String) (src : LOperand) (n : Nat) :
     LinstrR :=
-  .Lopn [.reg dst] (withWidthTag w mnem) [src, .imm n]
+  .Lopn [.reg dst] (withWidthTag w mnem) [src, .imm (if mnem = "SAR" then sarCount w n else n)]
 
 /-- The straight-line `LinstrR` chain a `Com` emits in the shift fragment: like
     increment 5's `straightOps`, but each `shrImm`/`shlImm`/`sarImm` binding
@@ -331,14 +339,15 @@ def sarStruct? : LinstrR → Option (String × String × Nat)
   | _ => none
 
 /-- The shift-aware single-step semantics: a structured `SAR` writes
-    `BitVec.sshiftRight (read s) n` reading `n` from the operand; every other
+    `BitVec.sshiftRight (read s) (shiftMask w n)` reading `n` from the operand and
+    masking it at the source width `w`, as the hardware does; every other
     instruction (including the structured `SHR`/`SHL`, handled by `applyOpnN`)
     delegates to increment 5's `lsemStepN`. Faithful to `eval_instr`'s `Lopn`. -/
 def lsemStepSh (i : LinstrR) (s : LstateN) : Option LstateN :=
   match sarStruct? i with
   | some (dst, src, n) =>
       match readReg s (.reg src) with
-      | some ⟨_, va⟩ => some ((s.setReg dst (BitVec.sshiftRight va n)).nextPc)
+      | some ⟨w, va⟩ => some ((s.setReg dst (BitVec.sshiftRight va (shiftMask w n))).nextPc)
       | none => none
   | none => lsemStepN i s
 
@@ -409,9 +418,10 @@ theorem sarStruct?_shiftLinstr_SHL {w : Nat} (dst : String) (src : LOperand) (n 
   cases src <;> simp only []
   · rw [if_neg]; rw [stripWidthTag_withWidthTag_SHL]; decide
 
-/-- `sarStruct?` recognises a structured `SAR` instruction with a `.reg` source. -/
+/-- `sarStruct?` recognises a structured `SAR` instruction with a `.reg` source, whose
+    count is the clamped `sarCount w n`. -/
 theorem sarStruct?_shiftLinstr_SAR {w : Nat} (dst src : String) (n : Nat) :
-    sarStruct? (shiftLinstr "SAR" w dst (.reg src) n) = some (dst, src, n) := by
+    sarStruct? (shiftLinstr "SAR" w dst (.reg src) n) = some (dst, src, sarCount w n) := by
   simp only [shiftLinstr, sarStruct?, stripWidthTag_withWidthTag_SAR, if_pos]
 
 /-- **Structured `SHR` per-binding step.** From a store agreeing with `V`, the
@@ -504,14 +514,13 @@ theorem lsemStepSh_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     rw [evalOperandN_resolveVar] at hs
     rw [hargs]
     -- the `SAR` instruction has a `.reg` source, so `lsemStepSh` takes its SAR
-    -- arm, which reads the count `n` *directly* as the `.imm` operand's literal
-    -- (a `Nat`), so — unlike `SHR`/`SHL` routed through `applyOpnN`'s `toNat` of a
-    -- `BitVec` count — no `ofNat`-round-trip (`structSar_eq`) is needed: the step
-    -- value `BitVec.sshiftRight (s.lookup V) n` is *definitionally* `(sarImm w
-    -- n).denote V`. (`structSar`/`relatedStructSar` are the representation-square
-    -- analogue, retained for symmetry with `SHR`/`SHL` and the in-range fact.)
+    -- arm, which reads the clamped count `sarCount w n` as the `.imm` operand's
+    -- literal (a `Nat`) and masks it at width `w`; `sshiftRight_shiftMask_sarCount`
+    -- turns the step value into `BitVec.sshiftRight (s.lookup V) n`, which is
+    -- definitionally `(sarImm w n).denote V`.
     rw [hres, lsemStepSh, sarStruct?_shiftLinstr_SAR]
     simp only [readReg_of_getW hs]
+    rw [sshiftRight_shiftMask_sarCount]
     rfl
 
 /-! ## 7. `straightOpsShift` unfolding on each binding head

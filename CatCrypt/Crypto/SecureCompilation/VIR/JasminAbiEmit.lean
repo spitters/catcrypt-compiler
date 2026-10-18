@@ -15,6 +15,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 public meta import CatCrypt.Crypto.Primitives.AES128
 public import CatCrypt.Crypto.Primitives.AES128
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 
 /-!
 # ABI-faithful `.jazz` emission for the lattice→jasmin orchestration
@@ -824,13 +826,13 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
-      | .sarImm _ n =>
-          -- Native immediate arithmetic right-shift: one `w0 = w0 >>s n;`
-          -- (literal count, signed). jasmin's `>>s` is the sign-extending shift,
-          -- the textual twin of `shrImm`'s `>>`.
+      | .sarImm w n =>
+          -- Native immediate arithmetic right-shift: one `w0 = w0 >>s k;` at the
+          -- clamped literal count `k = sarCount w n < w` (signed). jasmin's `>>s` is
+          -- the sign-extending shift, the textual twin of `shrImm`'s `>>`.
           let a := argName vm e.args 0
           let dst := dstName next
-          let lines := renderShiftImm ">>s" n dst a
+          let lines := renderShiftImm ">>s" (sarCount w n) dst a
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)

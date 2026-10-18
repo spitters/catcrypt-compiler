@@ -4540,12 +4540,13 @@ theorem rBytes_encode (P : Params) (D : String) (k : Nat) (h : rOk D k = true) :
     exact pieceDec_sarImm D k hk
 
 /-- The address machine steps the arithmetic right shift by an immediate by writing the
-    arithmetic shift of the 64-bit value of `D` by `k` to `D`, keeping the zero flag. -/
-theorem fstepA_sarImm (P : Params) (rsp : BitVec 64) (D : String) (k : Nat)
+    arithmetic shift of the 64-bit value of `D` by a count `k < 64` to `D`, keeping the
+    zero flag. -/
+theorem fstepA_sarImm (P : Params) (rsp : BitVec 64) (D : String) (k : Nat) (hk : k < 64)
     (s : LstateA) (zf : Bool) {v : BitVec 64} (hv : s.reg.getW D 64 = some v) :
     fstepA (frameP P rsp) (rInstr D k, .reg none) s zf
       = some ({ s with reg := (s.reg.setReg D (BitVec.sshiftRight v k)).nextPc }, zf) := by
-  simp (config := { decide := true }) [rInstr, fstepA, slotMov?, slotCmp?,
+  simp (config := { decide := true }) [Nat.mod_eq_of_lt hk, rInstr, fstepA, slotMov?, slotCmp?,
     regStepA, fstepF, cmpArgs?, movRegArgs?, stepMemF, lsemStepMem, lsemStepCast,
     castStruct?, movImmStruct?, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
     sbbStruct?, sbbhiStruct?, VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?,
@@ -4588,7 +4589,7 @@ theorem sim_sarImm (P : Params) (rsp : BitVec 64) (D : String) (k : Nat)
     ACorrW rsp (aMachine.runBlock sa ((rPieces D k).map Prod.snd)) s' ∧ zf' = zf := by
   simp only [rOk, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨hD, hk0⟩, hk⟩ := h
-  rw [fstepA_sarImm P rsp D k s zf (hc.wide hD hwD)] at hst
+  rw [fstepA_sarImm P rsp D k hk s zf (hc.wide hD hwD)] at hst
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
   obtain ⟨hr, hm⟩ := runBlock_rPieces sa D k hk0 hk
   refine ⟨hc.write hD _ hr (fun x hx => by rw [hm]; exact hc.mem x hx) (fun r hr' => ?_)

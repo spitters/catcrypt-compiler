@@ -1155,7 +1155,7 @@ theorem symSh_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepSh x)
   split
   · rename_i d s n h
     have hstep : lsemStepSh x r
-        = some ((r.setReg d (BitVec.sshiftRight (r.lvm s).2 n)).nextPc) := by
+        = some ((r.setReg d (BitVec.sshiftRight (r.lvm s).2 (shiftMask (r.lvm s).1 n))).nextPc) := by
       simp only [lsemStepSh, h, readReg_reg]
     refine ⟨fun r' h' => ?_, fun _ => by simp [hstep]⟩
     rw [hstep] at h'

@@ -378,7 +378,8 @@ inductive Instr (w : Nat) where
   | shl (dst : Reg) (src : Operand)
   /-- `SHR dst, src` : logical right shift by the masked count `shiftMask w src.toNat`. -/
   | shr (dst : Reg) (src : Operand)
-  /-- `SAR dst, src` : arithmetic right shift by `src.toNat`. Modeled only;
+  /-- `SAR dst, src` : arithmetic right shift by the masked count
+      `shiftMask w src.toNat`. Modeled only;
       preservation not proved (no logical-`shr` source counterpart). -/
   | sar (dst : Reg) (src : Operand)
   /-- `CMOVcc dst, src` : `dst := if cc(flags) then src else dst`. -/
@@ -455,7 +456,8 @@ def step {w : Nat} (s : State w) : Instr w → State w
   | .xor_ dst src => s.set dst (s.get dst ^^^ src.eval s)
   | .shl dst src  => s.set dst (s.get dst <<< VIR.shiftMask w (src.eval s).toNat)
   | .shr dst src  => s.set dst (s.get dst >>> VIR.shiftMask w (src.eval s).toNat)
-  | .sar dst src  => s.set dst (BitVec.sshiftRight (s.get dst) (src.eval s).toNat)
+  | .sar dst src  =>
+      s.set dst (BitVec.sshiftRight (s.get dst) (VIR.shiftMask w (src.eval s).toNat))
   | .cmov cc dst src =>
       s.set dst (if cc.eval s.flags then src.eval s else s.get dst)
   | .mulx dstHi dstLo a b =>

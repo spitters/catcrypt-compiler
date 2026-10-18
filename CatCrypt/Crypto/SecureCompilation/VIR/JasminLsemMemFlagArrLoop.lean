@@ -245,7 +245,7 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
     exact lopn_plain _ _ _ _ h1 h2
       (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case sarImm w k =>
-    obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SAR:" ++ toString k) 'S'
+    obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SAR:" ++ toString (sarCount w k)) 'S'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
     exact lopn_plain _ _ _ _ h1 h2
       (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))

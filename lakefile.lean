@@ -2119,6 +2119,7 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SLHDSAEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SailX86SimdDecoderVsimd,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SarCount,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SelDialect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SelLegal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SelectIdiom,

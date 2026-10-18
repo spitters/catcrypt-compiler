@@ -361,10 +361,10 @@ def movImmLinstr (w : Nat) (dst : String) (n : Nat) : LinstrR :=
 /-- The width-`w` word an immediate shift with base mnemonic `m` (`"SHL"`,
     `"SHR"` or `"SAR"`) and compile-time count `k` writes. `"SHL"` and `"SHR"`
     are the `applyOpnN` shifts at the count materialised as a width-`w` word;
-    `"SAR"` is the arithmetic right shift, which `applyOpnN` does not carry. Any
-    other mnemonic is `none`. -/
+    `"SAR"` is the arithmetic right shift by the masked count `shiftMask w k`, which
+    `applyOpnN` does not carry. Any other mnemonic is `none`. -/
 def applyImmShiftN (w : Nat) (m : String) (k : Nat) (a : BitVec w) : Option (BitVec w) :=
-  if m = "SAR" then some (BitVec.sshiftRight a k)
+  if m = "SAR" then some (BitVec.sshiftRight a (shiftMask w k))
   else if m = "SHL" || m = "SHR" then applyOpnN w m [a, BitVec.ofNat w k]
   else none
 

@@ -270,12 +270,12 @@ theorem forLoopLcmdNRtRM_map_eq_canonNodeRM_expand {invTys : Ctxt jasminDialect}
 /-! ## 4. The per-instruction condition on the canonicalised node -/
 
 /-- An immediate shift whose count-in-mnemonic wire the decoder reads back: at
-    width `64`, or with a count whose rendering does not end in `:64`. Every other
-    op satisfies it. -/
+    width `64`, or with an emitted count (`sarCount w n` for an arithmetic shift)
+    whose rendering does not end in `:64`. Every other op satisfies it. -/
 def ImmShiftWireOK : JasminOp → Prop
   | .shrImm w n => w = 64 ∨ hasSuffix ("SHR" ++ ":" ++ toString n) ":64" = false
   | .shlImm w n => w = 64 ∨ hasSuffix ("SHL" ++ ":" ++ toString n) ":64" = false
-  | .sarImm w n => w = 64 ∨ hasSuffix ("SAR" ++ ":" ++ toString n) ":64" = false
+  | .sarImm w n => w = 64 ∨ hasSuffix ("SAR" ++ ":" ++ toString (sarCount w n)) ":64" = false
   | _ => True
 
 /-- Every binding of a `Com` has an op in the fragment's op set whose immediate
@@ -360,7 +360,7 @@ theorem straightOpsMem_instrOK (τ : String → String) (nArgs : Nat)
           · next w n s h hs =>
               obtain ⟨r, rfl⟩ := exprArgs_isReg e s (by rw [hs]; simp)
               rw [h] at hsh
-              exact instrOK_immShiftExpand_struct (Or.inr (Or.inr rfl)) w n _ _ hsh
+              exact instrOK_immShiftExpand_struct (Or.inr (Or.inr rfl)) w (sarCount w n) _ _ hsh
           · have htag : memTagOfOp e.op = MemTag.reg none := by
               unfold memTagOfOp; split <;> simp_all
             rw [← htag]

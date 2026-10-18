@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin
+public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 
 /-!
 # Straight-line `Com jasminDialect` to Rust source
@@ -430,7 +431,7 @@ def emitExprScalar (op : JasminOp) (args : List Nat) (s : PState) : PState × RV
       if let some p := sx? then
         s.bindWord w s!"(({p.src} as i{p.w0}) as i{w}) as {contTy w}"
       else if contBits w = w then
-        s.bindWord w s!"(({e 0} as i{w}) >> {min n (w - 1)}) as {contTy w}"
+        s.bindWord w s!"(({e 0} as i{w}) >> {sarCount w n}) as {contTy w}"
       else s.unsupported (opName op)
   | .rorImm w n =>
       if contBits w = w then s.bindWord w s!"{e 0}.rotate_right({n % w})"
