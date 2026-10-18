@@ -52,6 +52,7 @@ lowers laneDialect
 # ymmQ (VIR/TileLegalX86) maps it to NFProg jasminDialect on the operations each gate
 # accepts; tileLegal_denote, tileLegal_laneLift_denote (VIR/TileLegalLaneMap). No pass
 # of the pipeline calls legalise.
+theory arithExtDialect
 theory jasminTileDialect
 
 # ---- theory (correspondence / MLIR-mirror / optimizer-playground; no lowering out) ----
