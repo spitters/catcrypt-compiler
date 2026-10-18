@@ -145,8 +145,8 @@ Each row states one result; the Lean name links to its source file.
 - x86-64, structured control flow, on a model IR. [`owned_ct_control_flow`](CatCrypt/Crypto/SecureCompilation/X86Backend/MachineConstantTime.lean): a block of
   the model IR [`OwnedCF`](CatCrypt/Crypto/SecureCompilation/X86Backend/MachineConstantTime.lean) built from conditionals with public guards and loops with
   literal trip counts leaks the same trace from any two states that agree on the public
-  registers. `OwnedCF` is not tied to the emitted [`Lcmd`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/Types.lean) or to bytes, so no emitted
-  branch is covered.
+  registers. `OwnedCF` is not tied to the emitted [`Lcmd`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/Types.lean) or to bytes, so
+  no emitted branch is covered.
 - x86-64, decoded bytes. [`bytesCTCheck_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodedCT.lean): for a decoded
   program that the checker `bytesCTCheck` accepts, two runs from index `0` whose steps
   respect the frame separation, from states that agree on the public set, have equal
