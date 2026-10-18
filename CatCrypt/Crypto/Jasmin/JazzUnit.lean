@@ -26,7 +26,7 @@ surface information and the units built from it.
 * `FnKind`, `Decl`, `ExternSig`: function kinds, local declarations and extern signatures.
 * `JazzFn`, `JazzUnit`: a function with its surface information, and a list of such
   functions with the extern signatures they call.
-* `exprVars`, `lvalVars`, `instrVars`, `cmdVars`, `cmdCalls`: the variables occurring in,
+* `pexprVars`, `lvalVars`, `instrVars`, `cmdVars`, `cmdCalls`: the variables occurring in,
   and the function names called by, expressions, l-values, instructions and commands.
 * `JazzUnit.WellFormed`: parameter and result types agree with the `FunDecl`, every
   variable of a body is a parameter or a declared name at its type, each name is declared
@@ -116,30 +116,30 @@ structure JazzUnit where
 
 mutual
 /-- The variables occurring in an expression. -/
-def exprVars : PExpr → List Var
+def pexprVars : PExpr → List Var
   | .Pconst _ | .Pbool _ | .Parr_init _ => []
   | .Pvar x => [x.gv.var]
-  | .Pget _ _ x i => x.gv.var :: exprVars i
-  | .Psub _ _ _ x i => x.gv.var :: exprVars i
-  | .Pload _ x o => x.var :: exprVars o
-  | .Papp1 _ e => exprVars e
-  | .Papp2 _ a b => exprVars a ++ exprVars b
-  | .PappN _ es => exprsVars es
-  | .Pif _ c a b => exprVars c ++ exprVars a ++ exprVars b
+  | .Pget _ _ x i => x.gv.var :: pexprVars i
+  | .Psub _ _ _ x i => x.gv.var :: pexprVars i
+  | .Pload _ x o => x.var :: pexprVars o
+  | .Papp1 _ e => pexprVars e
+  | .Papp2 _ a b => pexprVars a ++ pexprVars b
+  | .PappN _ es => pexprsVars es
+  | .Pif _ c a b => pexprVars c ++ pexprVars a ++ pexprVars b
 
 /-- The variables occurring in a list of expressions. -/
-def exprsVars : List PExpr → List Var
+def pexprsVars : List PExpr → List Var
   | [] => []
-  | e :: es => exprVars e ++ exprsVars es
+  | e :: es => pexprVars e ++ pexprsVars es
 end
 
 /-- The variables occurring in an l-value, written or read in an index. -/
 def lvalVars : LVal → List Var
   | .Lnone _ _ => []
   | .Lvar x => [x.var]
-  | .Lmem _ x o => x.var :: exprVars o
-  | .Laset _ _ x i => x.var :: exprVars i
-  | .Lasub _ _ _ x i => x.var :: exprVars i
+  | .Lmem _ x o => x.var :: pexprVars o
+  | .Laset _ _ x i => x.var :: pexprVars i
+  | .Lasub _ _ _ x i => x.var :: pexprVars i
 
 /-- The variables occurring in a list of l-values. -/
 def lvalsVars (lvs : List LVal) : List Var := lvs.flatMap lvalVars
@@ -147,12 +147,12 @@ def lvalsVars (lvs : List LVal) : List Var := lvs.flatMap lvalVars
 mutual
 /-- The variables occurring in an instruction, the loop counter of a `for` included. -/
 def instrVars : InstrR → List Var
-  | .Cassgn lv _ _ e => lvalVars lv ++ exprVars e
-  | .Copn lvs _ _ es => lvalsVars lvs ++ exprsVars es
-  | .Cif c t e => exprVars c ++ cmdVars t ++ cmdVars e
+  | .Cassgn lv _ _ e => lvalVars lv ++ pexprVars e
+  | .Copn lvs _ _ es => lvalsVars lvs ++ pexprsVars es
+  | .Cif c t e => pexprVars c ++ cmdVars t ++ cmdVars e
   | .Cfor v _ b => v.var :: cmdVars b
-  | .Cwhile b c a => cmdVars b ++ exprVars c ++ cmdVars a
-  | .Ccall _ lvs _ args => lvalsVars lvs ++ exprsVars args
+  | .Cwhile b c a => cmdVars b ++ pexprVars c ++ cmdVars a
+  | .Ccall _ lvs _ args => lvalsVars lvs ++ pexprsVars args
 
 /-- The variables occurring in a command. -/
 def cmdVars : List InstrR → List Var

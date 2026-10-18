@@ -461,7 +461,7 @@ def printCheckedWhy (u : JazzUnit) : Option String :=
 
 /-! ## Round trips -/
 
-namespace RoundTrip
+namespace UnitRoundTrip
 
 /-- The unit of the `bignum_add_4` port with the banner line `Emit.emitFunDecl` prints. -/
 def bignumAdd4Unit : JazzUnit where
@@ -560,6 +560,6 @@ def xyDecl : Decl := { storage := .reg, ty := .word .U64, names := ["x", "y"] }
   (printCheckedWhy (oneFn .exportFn [] [] [xyDecl]
     [asg "x" (.Papp1 (.Oneg .U64) (pv (u "k")))])).isSome
 
-end RoundTrip
+end UnitRoundTrip
 
 end CatCrypt.Crypto.Jasmin.Jazz

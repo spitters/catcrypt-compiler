@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Jasmin.JazzUnit
 # The Jasmin printer of compilation units
 
 `print` renders a `JazzUnit` as `.jazz` text in the surface syntax of `Emit.emitFunDecl`:
-for every instruction shape that printer renders, `printInstr` renders the same text,
+for every instruction shape that printer renders, `printJazzInstr` renders the same text,
 and a function is laid out as there (preamble lines, `require` lines and a blank line,
 the kind prefix, the signature, the declarations, a blank line, the body, the `return`
 statement). The printer is pure and total. An AST form without surface syntax
@@ -30,7 +30,7 @@ and `regPtr true` prints `reg mut ptr`.
 ## Main definitions
 
 * `printExpr`, `printLval`: expressions and l-values.
-* `printInstr`, `printCmd`: an instruction at an indentation, and the lines of a command.
+* `printJazzInstr`, `printCmd`: an instruction at an indentation, and the lines of a command.
 * `printFn`: a function with its preamble, `require` lines and declarations.
 * `print`: a unit, the concatenation of its functions.
 -/
@@ -145,7 +145,7 @@ def printAssign (ind : String) (lv : LVal) (e : PExpr) : String :=
   | _, _ => general
 
 /-- A comma-separated list of expressions. -/
-def printArgs (es : List PExpr) : String := String.intercalate ", " (es.map printExpr)
+def printJazzArgs (es : List PExpr) : String := String.intercalate ", " (es.map printExpr)
 
 /-- `lhs = rhs;`, or `rhs;` when there is no output. -/
 def printOutputs (ind : String) (lvs : List LVal) (rhs : String) : String :=
@@ -157,9 +157,9 @@ def printOutputs (ind : String) (lvs : List LVal) (rhs : String) : String :=
 mutual
 /-- An instruction at the indentation `ind`; a block's body is indented two more
 spaces. -/
-def printInstr (ind : String) : InstrR → String
+def printJazzInstr (ind : String) : InstrR → String
   | .Cassgn lv _ _ e => printAssign ind lv e
-  | .Copn lvs _ (.Oasm op) es => printOutputs ind lvs ("#" ++ op.name ++ "(" ++ printArgs es ++ ")")
+  | .Copn lvs _ (.Oasm op) es => printOutputs ind lvs ("#" ++ op.name ++ "(" ++ printJazzArgs es ++ ")")
   | .Cif c th el =>
     ind ++ "if " ++ printExpr c ++ " {\n" ++
       String.intercalate "\n" (printCmd (ind ++ "  ") th) ++ "\n" ++ ind ++ "} else {\n" ++
@@ -176,12 +176,12 @@ def printInstr (ind : String) : InstrR → String
         ind ++ "} "
     head ++ printExpr c ++ " {\n" ++
       String.intercalate "\n" (printCmd (ind ++ "  ") post) ++ "\n" ++ ind ++ "}"
-  | .Ccall _ lvs fn args => printOutputs ind lvs (fn.name ++ "(" ++ printArgs args ++ ")")
+  | .Ccall _ lvs fn args => printOutputs ind lvs (fn.name ++ "(" ++ printJazzArgs args ++ ")")
 
 /-- The lines of a command at the indentation `ind`. -/
 def printCmd (ind : String) : List InstrR → List String
   | [] => []
-  | i :: is => printInstr ind i :: printCmd ind is
+  | i :: is => printJazzInstr ind i :: printCmd ind is
 end
 
 /-! ## Functions and units -/
