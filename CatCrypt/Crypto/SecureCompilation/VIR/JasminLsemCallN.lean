@@ -10,14 +10,12 @@ import all Init.Data.String.Defs
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 
 /-!
-# Faithful `lsem` for the multi-result external-call `callN`
-# — increment 10 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the multi-result external call `callN`
 
-Increment 9 (`JasminLsemLeaf.lean`) brought the **single-result** opaque external
-leaf `extCall name [.reg w] (.reg w')` into the unconditional functional ∧
-constant-time `lsem` simulation, carrying the leaf-agreement hypothesis
-`LeafAgreesN`. It deferred the **multi-result external call** `callN` as "needs
-multiple destination registers".
+`JasminLsemLeaf.lean` covers the single-result opaque external leaf
+`extCall name [.reg w] (.reg w')` in the `lsem` functional simulation, carrying
+the leaf-agreement hypothesis `LeafAgreesN`, and lists the multi-result
+external call `callN` as needing multiple destination registers.
 
 This module **adds the `callN` arm**. The decisive structural finding — established
 by reading the dialect (`JasminDialect.lean`) and the emit path
@@ -94,17 +92,27 @@ discharges `LeafAgreesCN` from its KAT, exactly as `LeafAgreesN` /
 `latticeLeafAgrees`. Nothing here *proves* the external call correct — its
 correctness is its own KAT, stated as `LeafAgreesCN`.
 
-## Leakage (constant-time): the ABI, never values
+## Leakage
 
 The leak of `Lopn [.reg dst] ("CALLN:" ++ name) [.reg a]` is, by `linstrLeak`,
-the single event over the opcode (`"CALLN:" ++ name` = the call name) plus the
-destination/argument register **names** (the ABI structure), and **no register
-value**. Identical CT behaviour to the `extCall` leaf — automatic, since the
-wire is an `Lopn` and `lsemLeakLeaf` leaks `linstrLeak i.fst`.
+the single event over the opcode (`"CALLN:" ++ name`, the call name) and the
+destination/argument register names, with no register value. Since no
+instruction's leak reads a value, the state-independence of the leak trace holds
+for every program of the fragment and is not constant-time evidence; constant
+time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`, no emit-path edit.** The `lsem→bytes` encoder and Sail
-tables remain the declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_callN`, `owned_lsem_correct_callN` — under
+  `LeafAgreesN` and `LeafAgreesCN`, running `straightOpsCallN` on `encodeN V`
+  and decoding the result register at width `w` equals `Com.denote`, for
+  `ScalarCallN`.
+* `owned_lsem_correct_callN_of_scalarLeafN` — the opaque-leaf fragment as a
+  special case.
+* `lsemLeakCallN_straightOps_state_independent` — the leakage of
+  `straightOpsCallN` is the same from any two states agreeing with a valuation.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1090,7 +1098,7 @@ theorem lsemStraightCallN_straightOps {leaf : LeafEnvCN}
         rw [hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 7. Faithfulness, leak state-independence, and the capstone -/
+/-! ## 7. Faithfulness and leak state-independence -/
 
 /-- **Straight-line linearizer simulation, multi-result-call fragment.** Running
     the multi-result-call-fragment `.var`-chain `straightOpsCallN` (under both
@@ -1121,14 +1129,15 @@ theorem comToLprog_faithful_callN {leaf : LeafEnvCN}
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemCallN hleafN hleafCN hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, multi-result-call fragment (unconditional in the
-    input valuations).** The leakage trace of the multi-result-call-fragment
-    `.var`-chain is the **same from any two initial states agreeing with the same
-    valuation**: every head has a `linstrLeak` reading only the wire syntax — for
-    `callN`, the call *name* and the source/destination register *names* (the
-    ABI), never a register value, the descriptor width, nor the leaf result — and
-    `lsemStepCallN`s successfully, so both states take the `some` branch and the
-    tails close by the IH. -/
+/-- **Leak state-independence, multi-result-call fragment.** The leakage trace
+    of the multi-result-call-fragment `.var`-chain is the same from any two
+    initial states agreeing with the same valuation: every head has a
+    `linstrLeak` reading only the wire syntax — for `callN`, the call name and
+    the source/destination register names, never a register value, the
+    descriptor width, nor the leaf result — and `lsemStepCallN`s successfully, so
+    both states run the same tail. Since `linstrLeak` reads no value, the
+    statement holds for every program of the fragment and is not constant-time
+    evidence. -/
 theorem lsemLeakCallN_straightOps_state_independent {leaf : LeafEnvCN}
     (hleafN : JasminLsemLeaf.LeafAgreesN leaf) (hleafCN : LeafAgreesCN leaf)
     {Γ : Ctxt jasminDialect}
@@ -1252,76 +1261,41 @@ theorem lsemLeakCallN_straightOps_state_independent {leaf : LeafEnvCN}
         (StoreAgreesN.stepReg (t := callNRet retTys) (w' := w') hr _ hlen harg hag1)
         (StoreAgreesN.stepReg (t := callNRet retTys) (w' := w') hr _ hlen harg hag2)
 
-/-! ## 8. The unconditional multi-result-call capstone: `correct ∧ robust` -/
+/-! ## 8. Functional correctness of `straightOpsCallN` -/
 
-/-- **`correct ∧ robust` for the multi-result-call fragment
+/-- **Functional correctness for the multi-result-call fragment
     (`ScalarLeafN ∪ callN`), under the carried leaf agreements.** For a
     multi-result-call-fragment scalar straight-line `Com` with return type `.reg w`
     and a leaf environment `leaf` whose external primitives agree with the dialect
-    (`LeafAgreesN leaf` for `extCall`, `LeafAgreesCN leaf` for the `callN` head):
-
-    1. *(correct, §7)* running the linearizer-emitted `.var`-chain
-       `straightOpsCallN` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §7)* the leakage trace `lsemLeakCallN
-       (straightOpsCallN …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view is a function of the emitted instruction
-       list alone, never of a register value, the descriptor width, or the leaf
-       result. For a `callN` it leaks the call **name** + argument-register
-       **structure** (the ABI), never argument values.
-
-    This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
-    hypothesis, no `jasminc_preserves_ct`. The **only** carried hypotheses are the
-    leaf agreements — the external primitives' own KATs, *documented* (a `callN` is a
-    external multi-result leaf, exactly like `JasminLeafAgrees`). Both
-    conjuncts concern one and the same object — the linearizer-emitted straight-line
-    body run by `lsemStraightCallN` (functional) and observed by `lsemLeakCallN`
-    (CT). The call is read over the REAL bare `"CALLN:name"` `opToLinstrR` already
-    emits (`straightOpsCallN_wire`: the `.fst`-projection is exactly `straightOpsMC`),
-    so the emitted **bytes are unchanged**; the head-result width `w'` is the
-    typed-step descriptor, never a wire annotation. The `lsem→bytes` encoder and
-    Sail tables remain the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_callN {leaf : LeafEnvCN}
+    (`LeafAgreesN leaf` for `extCall`, `LeafAgreesCN leaf` for the `callN` head),
+    running the linearizer-emitted `.var`-chain `straightOpsCallN` on the encoded
+    argument valuation and decoding the result register at width `w` yields
+    exactly `com.denote V`. The call runs over the bare `"CALLN:name"` that
+    `opToLinstrR` emits (`straightOpsCallN_wire`); the head-result width `w'` is
+    the typed-step descriptor. This is `comToLprog_faithful_callN`, stated at this
+    module's entry point. -/
+theorem owned_lsem_correct_callN {leaf : LeafEnvCN}
     (hleafN : JasminLsemLeaf.LeafAgreesN leaf) (hleafCN : LeafAgreesCN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarCallN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§7), under the carried leaf agreements
-    ((lsemStraightCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§7)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_callN hleafN hleafCN hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakCallN_straightOps_state_independent hleafN hleafCN hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_callN hleafN hleafCN hcom hw V
 
-/-! ## 9. Tie-back: the increment-9 opaque-leaf fragment is subsumed -/
+/-! ## 9. The opaque-leaf fragment is a special case -/
 
-/-- Every increment-9 opaque-leaf-fragment program satisfies the multi-result-call
-    capstone (for any agreeing leaf): the increment-9 results are special cases of
-    the increment-10 ones. -/
-theorem owned_lsem_correct_and_robust_callN_of_scalarLeafN {leaf : LeafEnvCN}
+/-- Every opaque-leaf-fragment program is in the multi-result-call fragment; the
+    conclusion is `owned_lsem_correct_callN` at `ScalarCallN.of_scalarLeafN`, for
+    any agreeing leaf. -/
+theorem owned_lsem_correct_callN_of_scalarLeafN {leaf : LeafEnvCN}
     (hleafN : JasminLsemLeaf.LeafAgreesN leaf) (hleafCN : LeafAgreesCN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy} {com : Com jasminDialect Γ t}
     (hcom : ScalarLeafN com) {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakCallN leaf (straightOpsCallN Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_callN hleafN hleafCN (ScalarCallN.of_scalarLeafN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_callN hleafN hleafCN (ScalarCallN.of_scalarLeafN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCallN

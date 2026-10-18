@@ -484,9 +484,10 @@ Both hold *only* under the public-control-flow discipline: a **secret** trip cou
 or a **secret** guard is not constant-time
 (`nonCT_secretGuard_leaks_value` below witnesses the guard case).
 
-Unlike the emitted `LinstrR`/`lsem` control flow (`Lcond`/`Lgoto`, whose CT is
-`FrontControlLsem.front_control_lsem_correct_and_robust` /
-`JasminLsemLoop.loopLR_lsemLeak_state_independent`), the owned *machine* block
+Unlike the emitted `LinstrR`/`lsem` control flow (`Lcond`/`Lgoto`, whose leak
+`LLeak.branch` records no branch direction, so its state-independence
+`JasminLsemLoop.loopLR_lsemLeak_state_independent` is not CT evidence), the owned
+*machine* block
 `List (JInstr w)` carries no branch instruction. So here we model the structured
 control flow explicitly over the machine leakage `blockLeak`, threading the same
 `JState` and reusing §8's `blockLeak_pub_determined` / `agreePub` public-register

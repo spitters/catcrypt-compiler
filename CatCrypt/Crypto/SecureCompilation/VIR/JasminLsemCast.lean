@@ -10,14 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
 public import Transfer.Base.Related
 
 /-!
-# Faithful `lsem` for the width-cast fragment
-# — increment 8 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the width-cast fragment
 
-Increments 1–7 brought `regArith`, `regConst`, the width-mixing `select`, the
-immediate shifts (`shrImm`/`shlImm`/`sarImm`) and the widening-multiply /
-carry-chain trio (`mulhi`/`addCarryLo`/`addCarryHi`) into the unconditional
-functional ∧ constant-time `lsem` simulation. Each of those increments named
-`castW` on its deferral list, with the same concrete obstruction:
+The `lsem` functional simulation covers `regArith`, `regConst`, the
+width-mixing `select`, the immediate shifts (`shrImm`/`shlImm`/`sarImm`) and the
+widening-multiply / carry-chain trio (`mulhi`/`addCarryLo`/`addCarryHi`). The
+width cast `castW` carries this obstruction:
 
 > **`castW w w'` (`w ≠ w'`)** — lowers to `Lopn [.reg dst] ("ZEROEXT"/"TRUNC")
 > [src]`. The **output width `w'` is not recoverable** from the emitted
@@ -82,9 +80,20 @@ reasons as increments 5–7: `regConst` (string-baked width on the wire),
 `stackLoad`/`stackStore` (the memory/array carrier, an orthogonal state axis),
 `vpackZMM`/`extCall`/`callN` (SIMD / opaque-leaf axes).
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_cast`, `owned_lsem_correct_cast` — running
+  `straightOpsCast` on `encodeN V` and decoding the result register at width `w`
+  equals `Com.denote`, for `ScalarCastN`.
+* `owned_lsem_correct_cast_of_scalarMulCarryN` — the mul/carry fragment as a
+  special case.
+* `lsemLeakCast_straightOps_state_independent` — the leakage of
+  `straightOpsCast` is the same from any two states agreeing with a valuation.
+  `linstrLeak` reads no register value, so this holds for every program of the
+  fragment and is not constant-time evidence; constant time of the shipped bytes
+  is `DecodedCT.bytesCTCheck_sound`.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -946,7 +955,7 @@ theorem lsemStraightCast_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
       · rw [straightOpsCast_cast, lsemStraightCast_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 8. Faithfulness, leak state-independence, and the capstone -/
+/-! ## 8. Faithfulness and leak state-independence -/
 
 /-- **Straight-line linearizer simulation, width-cast fragment.** Running the
     width-cast-fragment `.var`-chain `straightOpsCast` from the encoded argument
@@ -973,14 +982,14 @@ theorem comToLprog_faithful_cast {Γ : Ctxt jasminDialect} {t : JasminTy}
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemCast hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, width-cast fragment (unconditional).** The leakage
-    trace of the width-cast-fragment `.var`-chain is the **same from any two
-    initial states agreeing with the same valuation**: every head (`regArith`,
-    `select`, a shift, one of the trio, or a `castW`) has a `linstrLeak` reading
-    only the wire syntax — for `castW`, the source register *name*, never a
-    register value nor the descriptor width — and `lsemStepCast`s successfully, so
-    both states take the `some` branch and the tails (still agreeing with the
-    extended valuation) close by the IH. -/
+/-- **Leak state-independence, width-cast fragment.** The leakage trace of the
+    width-cast-fragment `.var`-chain is the same from any two initial states
+    agreeing with the same valuation: every head (`regArith`, `select`, a shift,
+    one of the trio, or a `castW`) has a `linstrLeak` reading only the wire
+    syntax — for `castW`, the source register name, never a register value nor
+    the descriptor width — and `lsemStepCast`s successfully, so both states run
+    the same tail. Since `linstrLeak` reads no value, the statement holds for
+    every program of the fragment and is not constant-time evidence. -/
 theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarCastN com) :
     ∀ {nArgs curDepth : Nat} {V₁ V₂ : Ctxt.Valuation Γ} (s₁ s₂ : LstateN),
@@ -1081,76 +1090,38 @@ theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 9. The unconditional width-cast capstone: `correct ∧ robust` -/
+/-! ## 9. Functional correctness of `straightOpsCast` -/
 
-/-- **Unconditional `correct ∧ robust` for the width-cast fragment
+/-- **Functional correctness for the width-cast fragment
     (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
     addCarryHi ∪ castW`).** For a width-cast-fragment scalar straight-line `Com`
-    with return type `.reg w`:
-
-    1. *(correct, §8)* running the linearizer-emitted `.var`-chain
-       `straightOpsCast` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §8)* the leakage trace `lsemLeakCast
-       (straightOpsCast …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view is a function of the emitted instruction
-       list alone, never of a register value (and never of the cast descriptor
-       width `w'`, which lives only in the typed `.snd` component).
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. Both conjuncts concern one and the same object — the
-    width-cast linearizer-emitted straight-line body run by `lsemStraightCast`
-    (functional) and observed by `lsemLeakCast` (CT). The width cast is read over
-    the REAL bare role mnemonic `"ZEROEXT"/"TRUNC"` `opToLinstrR` already emits
-    (`straightOpsCast_wire`: the `.fst`-projection is exactly `straightOpsMC`), so
-    the emitted **bytes are unchanged**; the target width `w'` is the typed-step
-    descriptor (the `ws'` jasmin's `exec_sopn` reads from the `Ozeroext` sopn),
-    never a wire annotation. The first capstone covering `castW` — the **third**
-    width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
-    output `BitVec w'` (in general `w ≠ w'`) in one instruction. The `lsem→bytes`
-    encoder and Sail tables remain the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_cast {Γ : Ctxt jasminDialect} {t : JasminTy}
+    with return type `.reg w`, running the linearizer-emitted `.var`-chain
+    `straightOpsCast` on the encoded argument valuation and decoding the result
+    register at width `w` yields exactly `com.denote V`. The cast runs over the
+    bare mnemonic `"ZEROEXT"/"TRUNC"` that `opToLinstrR` emits
+    (`straightOpsCast_wire`); the target width `w'` is the typed-step descriptor.
+    This is `comToLprog_faithful_cast`, stated at this module's entry point. -/
+theorem owned_lsem_correct_cast {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarCastN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§8)
-    ((lsemStraightCast (straightOpsCast Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightCast (straightOpsCast Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§8)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakCast (straightOpsCast Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakCast (straightOpsCast Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_cast hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakCast_straightOps_state_independent hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_cast hcom hw V
 
-/-! ## 10. Tie-back: the increment-7 mul/carry fragment is subsumed
+/-! ## 10. The mul/carry fragment is a special case
 
 `ScalarCastN.of_scalarMulCarryN` shows every `ScalarMulCarryN` program is a
-`ScalarCastN` program. The width-cast capstone therefore specialises to the
-mul/carry fragment (and, transitively, to the shift / width-mixed / `regArith`
-fragments of increments 2–6). -/
+`ScalarCastN` program. -/
 
-/-- Every increment-7 mul/carry-fragment program satisfies the width-cast
-    capstone: the increment-7 results are special cases of the increment-8 ones. -/
-theorem owned_lsem_correct_and_robust_cast_of_scalarMulCarryN {Γ : Ctxt jasminDialect}
+/-- Every mul/carry-fragment program is in the width-cast fragment; the
+    conclusion is `owned_lsem_correct_cast` at `ScalarCastN.of_scalarMulCarryN`. -/
+theorem owned_lsem_correct_cast_of_scalarMulCarryN {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarMulCarryN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightCast (straightOpsCast Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightCast (straightOpsCast Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakCast (straightOpsCast Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakCast (straightOpsCast Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_cast (ScalarCastN.of_scalarMulCarryN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_cast (ScalarCastN.of_scalarMulCarryN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast

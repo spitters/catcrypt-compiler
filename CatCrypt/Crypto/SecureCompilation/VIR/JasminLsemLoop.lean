@@ -21,7 +21,7 @@ the `Lgoto`/`Lcond`/`Llabel` arms, and the conservative-extension bridge
 `lsemFuel_straightline`). This module proves the *loop*
 simulation — the program-level `lsem` trace of the **real emitted looped form**
 (`X86Backend.LprogControlFlow.loopLcmd`) equals the source loop's `n`-fold
-denotation, plus the loop's constant-time property.
+denotation, plus the state-independence of the loop's leakage trace.
 
 ## Fidelity: routing through the real `loopLcmd`
 
@@ -54,7 +54,7 @@ model extension orthogonal to the loop control flow proved here; see §6.
 
 ## The `n`-fold induction + back-edge `Lcond`
 
-The simulation (`loopLR_lsem_iterate`, §3) is by induction on the public trip
+The simulation (`loop_lsem_iterate`, §5) is by induction on the public trip
 count `n`. The loop program is the singleton-function program whose body is
 `loopLR`. From the loop entry (pc 0 = the `Llabel`), one iteration:
 
@@ -75,23 +75,30 @@ exactly `n` body runs the test fails and the loop halts at `bodyStep^[n]` of the
 entry state — the `n`-fold fold the source loop `JForProg.denote` /
 `runBoundedLoop` computes (§4, via `JForProgCT.denote_eq_foldl`).
 
-## Constant-time: the back-edge leak is public
+## Leakage of the back-edge
 
-The back-edge `Lcond (.reg nReg) top` is the **only** control-flow instruction in
+The back-edge `Lcond (.reg nReg) top` is the only control-flow instruction in
 `loopLR`; its leak (`JasminLsemRobust.linstrLeak`) is the constant `LLeak.branch`,
-and `evalOperand … nReg` never appears in the *leak* (the leak reads only the
-instruction's syntax, never `s.lvm`). So `lsemLeak` over `loopLR` is a function
-of the instruction list — i.e. of the public body and the public trip count —
-alone, hence **state-independent** (`loopLR_lsemLeak_state_independent`, §5),
-provided the body is. We reuse `JForProgCT.RobustlyCTSafeJForProg` for the
-source-level CT fact that the back-edge tests a public counter.
+which records neither the counter value nor the branch direction. `lsemLeak` over
+`loopLR` is therefore the same from any two states whenever the body completes
+(`loopLR_lsemLeak_state_independent`, §6). The statement holds for every
+completing body and every trip count, so it is not constant-time evidence;
+constant time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
+
+## Main results
+
+* `loop_lsem_iterate`, `loop_lsem_correct` — the program-level `lsem` trace of
+  `loopProg` halts at the `(c+1)`-fold body fold.
+* `dec_loop_correct` — the simulation instantiated at the counter-decrement body
+  `decBodySpec`, so its hypotheses are satisfiable.
+* `loopLR_lsemLeak_state_independent` — the leakage of `loopLR` is the same from
+  any two states when the body completes.
 
 ## Scope
 
 * **Covered**: the concrete `loopLcmd` shape (`loopLR`) with a *straight-line*
   body characterised by a counter-decrementing per-iteration transformer
-  `bodyStep`. The `n`-fold loop simulation and the CT property are
-  unconditional in `n`.
+  `bodyStep`. The `n`-fold loop simulation is unconditional in `n`.
 * **Gaps of the straight-line model** (§6):
   1. the literal-`CMP` back-edge needs a `CMP`/flag arm in `applyOpn` +
      `Lstate` (supplied by `JasminLsemLoopFlag`);
@@ -99,7 +106,7 @@ source-level CT fact that the back-edge tests a public counter.
      `Lstate`) needs the functional value bridge
      (`JasminLsemSimulation`) threaded *through* `bodyStep`, i.e. the per-body
      edge `bodyStep acc = JForProg.step acc` under the encoding — exactly the
-     `StepAgrees` edge `JForProgCT.loopRun_eq` carries (discharged in §10 for
+     `StepAgrees` edge `JForProgCT.loopRun_eq` carries (discharged in §8 for
      `UniformRegArith` bodies).
 
 **All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
@@ -536,7 +543,7 @@ theorem reentry_succ_data {w : Nat} {body : List LinstrR} (spec : LoopBodySpec w
     (reentry spec sb (k + 1)).base
       = { spec.bodyStep ((reentry spec sb k).base) with lpc := 1 } := rfl
 
-/-! ### Constant-time: the back-edge leak is public -/
+/-! ### State-independence of the back-edge leak -/
 
 /-- The leak of a concatenation splits (the first list runs, then the second runs
     from the resulting state — or `none`, which contributes `[]`). The `lsemLeak`
@@ -558,17 +565,13 @@ theorem lsemLeak_append {w : Nat} (xs ys : List LinstrR) (s : Lstate w) :
                 (match lsemStraight is s' with | some s'' => lsemLeak ys s'' | none => [])
           rw [ih s', List.append_assoc]
 
-/-- **CONSTANT-TIME: the back-edge leak is public.** The leak trace `lsemLeak`
-    over the real emitted loop `loopLR` is the **same from any two states**, given
-    the body's leak is: every body instruction's leak reads only syntax
+/-- **State-independence of the loop leak.** The leak trace `lsemLeak` over the
+    emitted loop `loopLR` is the same from any two states, given the body's leak
+    is and the body completes: every body instruction's leak reads only syntax
     (`JasminLsemRobust.linstrLeak`, never `s.lvm`) and the back-edge `Lcond` leaks
-    the constant `LLeak.branch` — so the whole leak is a function of the (public)
-    instruction list and the public trip count, never of a register value. The
-    trip count `c+1` is the public static loop bound (vartime policy), so
-    the back-edge decision leaks nothing beyond the public count. The body-leak
-    hypothesis is exactly `JasminLsemRobust.lsemLeak_straightOps_state_independent`
-    for a straight-line `regArith` body; the source-level CT fact (no secret-indexed
-    access under any accumulator labelling) is `JForProgCT.RobustlyCTSafeJForProg`. -/
+    the constant `LLeak.branch`, which records neither the counter value nor the
+    branch direction. The statement therefore holds for every completing body and
+    is not constant-time evidence. -/
 theorem loopLR_lsemLeak_state_independent {w : Nat} (top : LLabel) (body : List LinstrR)
     (hbody : ∀ (sb₁ sb₂ : Lstate w), lsemLeak body sb₁ = lsemLeak body sb₂)
     (hsucc : ∀ s : Lstate w, (lsemStraight body s).isSome)
@@ -591,53 +594,13 @@ theorem loopLR_lsemLeak_state_independent {w : Nat} (top : LLabel) (body : List 
   cases lsemStep (.Lcond (.reg "NZ") top) t1 <;>
     cases lsemStep (.Lcond (.reg "NZ") top) t2 <;> rfl
 
-/-! ## 7. The capstone: `correct ∧ robust` for the real emitted counted loop -/
-
-/-- **Counted-loop `correct ∧ robust` capstone.** For the **real emitted loop**
-    `loopProg = singletonProg fn (loopLR …)` — the `loopLcmd` back-edge shape
-    (`loopLR_eq_loopLcmd_dropCmp`) — with a straight-line counter-decrementing body
-    that always completes (`hsucc`) and a leak-independent body (`hbody`), running
-    over a public trip count `c + 1` (`hterm`):
-
-    1. *(correct)* the program-level `lsemFuel` trace from the loop entry halts at
-       the `(c+1)`-fold body fold — the source loop's `n`-fold denotation
-       (`JForProgCT.denote_eq_foldl`; the per-iteration `bodyStep ↔ JForProg.step`
-       edge is the functional value bridge / `StepAgrees`); and
-    2. *(robust / constant-time)* the loop's leak `lsemLeak` is the **same from any
-       two states** — the back-edge `Lcond` tests only the public counter, leaking
-       a state-independent `branch`, and the body leaks only syntax. The public
-       trip count `c + 1` is the loop bound (vartime policy); the
-       source-level CT is `JForProgCT.RobustlyCTSafeJForProg`.
-
-    **No `JasminIRToX86` edge, no `jasminc_preserves_ct`**: both conjuncts concern
-    the one `loopLR` instruction list, run by `lsemFuel` and observed by
-    `lsemLeak`. The `lsem→bytes` encoder + Sail tables remain the trusted base, and
-    the literal flag-`CMP` (the single instruction `loopLR` drops vs `loopLcmd`)
-    needs a `CMP`/flag model arm (§ scope, gap 1). -/
-theorem loop_lsem_correct_and_robust (fn : String) {w : Nat} (top : LLabel)
-    {body : List LinstrR} (spec : LoopBodySpec w body) (sb : Lstate w) (c : Nat)
-    (hterm : LoopTerminatesIn spec sb c)
-    (hbody : ∀ (sb₁ sb₂ : Lstate w), lsemLeak body sb₁ = lsemLeak body sb₂)
-    (hsucc : ∀ s : Lstate w, (lsemStraight body s).isSome) :
-    -- (1) functional correctness: the lsem trace halts at the (c+1)-fold body fold
-    (lsemFuel (loopProg fn top body) ((c + 1) * (body.length + 1) + 1)
-        { base := { sb with lpc := 0 }, lfn := fn }
-      = some { base := { (spec.bodyStep ((reentry spec sb c).base)) with
-          lpc := 2 + body.length }, lfn := fn })
-    ∧
-    -- (2) robustness / constant-time: the loop's leak is state-independent
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (loopLR "NZ" top body) s₁ = lsemLeak (loopLR "NZ" top body) s₂) :=
-  ⟨loop_lsem_correct fn top spec sb c hterm,
-   fun s₁ s₂ => loopLR_lsemLeak_state_independent top body hbody hsucc s₁ s₂⟩
-
-/-! ## 8. Non-vacuity: a concrete one-instruction counter-loop body
+/-! ## 7. Non-vacuity: a concrete one-instruction counter-loop body
 
 A loop body that is just the counter decrement `SUB "NZ", "NZ", #1` (the trailing
 `n -= 1` every `loopLcmd` body performs). It is straight-line, always completes,
-leaks only its syntax, and decrements the public counter — so it instantiates the
-capstone, witnessing that `LoopBodySpec` / `LoopTerminatesIn` are inhabited (not
-vacuous). The trip count is concretely the initial `"NZ"`. -/
+and decrements the public counter — so it instantiates `loop_lsem_correct`,
+witnessing that `LoopBodySpec` / `LoopTerminatesIn` are inhabited. The trip count
+is concretely the initial `"NZ"`. -/
 
 /-- A minimal loop body: the public counter decrement `SUB "NZ", "NZ", #1` (U64).
     This is the trailing `n -= 1` of every `loopLcmd` body, in isolation. -/
@@ -665,48 +628,20 @@ theorem decBodySpec_succ (s : Lstate 64) : (lsemStraight decBody s).isSome := by
   simp only [decBody, lsemStraight_singleton, lsemStep, stripWidthTag_withWidthTag_SUB,
     List.map_cons, List.map_nil, evalOperand, applyOpn, Option.isSome_some]
 
-/-- `decBody`'s leak is state-independent (one `Lopn` whose leak is its syntax). -/
-theorem decBodySpec_leak (sb₁ sb₂ : Lstate 64) :
-    lsemLeak decBody sb₁ = lsemLeak decBody sb₂ := by
-  simp only [decBody, lsemLeak_cons, lsemLeak_nil, linstrLeak]
-  cases lsemStep (.Lopn [.reg "NZ"] (withWidthTag 64 "SUB") [.reg "NZ", .imm 1]) sb₁ <;>
-    cases lsemStep (.Lopn [.reg "NZ"] (withWidthTag 64 "SUB") [.reg "NZ", .imm 1]) sb₂ <;> rfl
-
-/-- A concrete instance of the capstone over `decBodySpec` (the counter-decrement
-    body): for any initial state `sb` whose public counter `"NZ"` yields a `c+1`
-    trip count, the real emitted loop's `lsem` trace halts correctly and is
-    constant-time. Witnesses the capstone is non-vacuous. -/
-theorem dec_loop_correct_and_robust (fn : String) (top : LLabel) (sb : Lstate 64)
+/-- The counter-decrement body instantiates `loop_lsem_correct`: for any initial
+    state `sb` whose counter `"NZ"` yields a `c+1` trip count, the emitted loop's
+    `lsem` trace halts at the `(c+1)`-fold body fold. -/
+theorem dec_loop_correct (fn : String) (top : LLabel) (sb : Lstate 64)
     (c : Nat) (hterm : LoopTerminatesIn decBodySpec sb c) :
-    (lsemFuel (loopProg fn top decBody) ((c + 1) * (decBody.length + 1) + 1)
+    lsemFuel (loopProg fn top decBody) ((c + 1) * (decBody.length + 1) + 1)
         { base := { sb with lpc := 0 }, lfn := fn }
       = some { base := { (decBodySpec.bodyStep ((reentry decBodySpec sb c).base)) with
-          lpc := 2 + decBody.length }, lfn := fn })
-    ∧ (∀ s₁ s₂ : Lstate 64,
-        lsemLeak (loopLR "NZ" top decBody) s₁ = lsemLeak (loopLR "NZ" top decBody) s₂) :=
-  loop_lsem_correct_and_robust fn top decBodySpec sb c hterm decBodySpec_leak decBodySpec_succ
+          lpc := 2 + decBody.length }, lfn := fn } :=
+  loop_lsem_correct fn top decBodySpec sb c hterm
 
-/-! ## 9. Source-level tie: the public-counter back-edge is `RobustlyCTSafeJForProg`
+/-! ## 8. General `Com` loop bodies: threading the value bridge through `bodyStep`
 
-The source loop `JForProg`'s public-counter CT fact is `JForProgCT`'s
-`RobustlyCTSafeJForProg` — the loop performs no secret-indexed access under *any*
-accumulator labelling (the trip count is a static `Nat`, the counter public). The
-`lsem`-level `loopLR_lsemLeak_state_independent` above is its program-level
-realisation: the back-edge leak is a state-independent `branch`. We record the
-reuse with `doubleLoop` (the `acc := acc + acc` example), whose body is robustly
-CT-safe — so the looped emission of `doubleLoop` is constant-time at both levels. -/
-
-/-- The reuse of `JForProgCT`'s source-level public-loop CT fact: `doubleLoop`
-    (`acc := acc + acc`) is `RobustlyCTSafeJForProg` — its `lsem`-level looped
-    emission is therefore constant-time (state-independent leak) by
-    `loopLR_lsemLeak_state_independent`. -/
-theorem doubleLoop_robustlyCTSafe_reuse :
-    JForProgCT.RobustlyCTSafeJForProg JasminPrint.doubleLoop :=
-  JForProgCT.doubleLoop_robustlyCTSafe
-
-/-! ## 10. General `Com` loop bodies: threading the value bridge through `bodyStep`
-
-Sections 1–9 proved the loop simulation for a **straight-line** body characterised
+Sections 1–7 proved the loop simulation for a **straight-line** body characterised
 by a hand-specified per-iteration transformer `bodyStep` (`LoopBodySpec`). This
 section discharges **gap 2** (§"Scope"): a fully general `JForProg (.reg w)` whose
 body `update` is an arbitrary straight-line-provable `Com` — the uniform-width
@@ -827,7 +762,7 @@ theorem lsemBodyRunner_stepAgrees {w : Nat} (p : JForProg (.reg w))
     decoding the return register — equals `p.denote init`, the source loop's
     `n`-fold denotation.
 
-    This lifts §1–9's loop simulation from a hand-specified straight-line
+    This lifts §1–7's loop simulation from a hand-specified straight-line
     `bodyStep` (`LoopBodySpec`) to a **general `Com` loop body**: the per-iteration
     commutation edge `encode (Com.denote body v) = bodyStep (encode v)` (gap 2) is
     discharged by `lsemBodyRunner_stepAgrees` — the functional value bridge

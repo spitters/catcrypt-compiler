@@ -11,26 +11,23 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
 
 /-!
-# A non-uniform-width linear machine and the widened `correct ∧ robust`
-# simulation — increment 5 of porting jasmin's `lsem`
+# A non-uniform-width linear machine and its `lsem` functional simulation
 
-Increments 1–4 (`JasminLsem`/`JasminLsemSimulation`/`JasminLsemRobust`/
-`JasminLsemScalar`) built the straight-line linear machine **at a single uniform
-word width** (`Lstate w`, `lvm : String → BitVec w`) and proved, unconditionally,
-a functional ∧ constant-time simulation for the uniform-width scalar fragment
-(`owned_lsem_correct_and_robust_scalar`, over `regArith ∪ regConst`). The single
+`JasminLsem`, `JasminLsemSimulation`, `JasminLsemRobust` and `JasminLsemScalar`
+define the straight-line linear machine at a single uniform word width
+(`Lstate w`, `lvm : String → BitVec w`) and prove the functional simulation for
+the uniform-width scalar fragment (`owned_lsem_correct_scalar`, over
+`regArith ∪ regConst`). The single
 remaining coverage axis the uniform machine *cannot* express is **width
 mixing**: a binding whose operands or result live at different widths. Increment
 4's deferral list names exactly these — `select` (cond `.reg 1`, data `.reg w`),
 the stack array ops, `castW`, the carry/widening trio — and notes that they
 "break the single-width store, so they need the *next* (multi-width) increment".
 
-This module is **increment 5**: a **non-uniform-width** linear state `LstateN`
-(a width-tagged store, `lvm : String → Σ w, BitVec w`), a faithful step
-`lsemStepN` over it, and the widened functional ∧ CT simulation + unconditional
-capstone over a width-mixed source fragment that includes the first
-width-mixing op, `select`. Increments 1–4 are left intact (additive: new file,
-new names).
+This module defines a non-uniform-width linear state `LstateN` (a width-tagged
+store, `lvm : String → Σ w, BitVec w`), a step `lsemStepN` over it, and the
+functional simulation over a width-mixed source fragment that includes the
+width-mixing op `select`.
 
 ## What is in scope (and why), at non-uniform width
 
@@ -50,14 +47,12 @@ possibly non-uniform) context:
   `Lopn [.reg dst] (CMOV-tagged) [cond, a, b]` with three `.reg` sources.
   `lsemStepN` reads `cond` at width 1 and `a`, `b` at width `w` out of the
   width-tagged store and writes `selectW cond a b = (select w).denote …`.
-  Constant-time: `linstrLeak` leaks the cond register **name** (`regShape`),
-  never its 1-bit value — exactly the CT story the task wants for a branch-free
-  cmov.
+  `linstrLeak` leaks the cond register name (`regShape`), never its 1-bit
+  value.
 
-This is a *width-mixing* widening of the unconditional simulation: the
-first op whose operands do not all share one width brought into the functional ∧
-constant-time `lsem` simulation, with no new hypothesis and no `jasminc`/IR→x86
-edge. The uniform-width `regArith` fragment of increments 2–4 is recovered as a
+`select` is the first op whose operands do not all share one width; the
+simulation covers it with no new hypothesis and no `jasminc`/IR→x86 edge. The
+uniform-width `regArith` fragment is recovered as a
 special case of the non-uniform `regArith` arm (the uniform context is a
 non-uniform context all of whose registers happen to share `w`).
 
@@ -78,8 +73,8 @@ byte-KATs):
   the width-tagged store there is no such global `w`. Recovering it needs a
   width-carrying constant mnemonic — a wire-format change — so `regConst` is
   deferred here by the same frozen-wire constraint as `castW`, *not* by a missing
-  proof. (The increment-4 uniform-width capstone still covers `regConst` at any
-  fixed `w`; this increment covers the orthogonal width-mixing axis.)
+  proof. (`owned_lsem_correct_scalar` covers `regConst` at any fixed `w`; this
+  module covers the orthogonal width-mixing axis.)
 * **`castW w w'` (`w ≠ w'`)** — lowers to `Lopn [.reg dst] ("ZEROEXT"/"TRUNC")
   [src]`. The **output width `w'` is not recoverable** from the emitted
   `LinstrR`: the mnemonic carries no width tag (`opToLinstrR` does *not* apply
@@ -124,11 +119,22 @@ byte-KATs):
 * `linstrLeak` is increment 3's, unchanged — it reads only the `LinstrR` syntax
   (opcode + operand *register names / immediates*), never a stored value. For
   `select` this means the cond's **register name** leaks, never the 1-bit secret
-  it holds: the branch-free CT property the task requires.
+  it holds. `linstrLeak` reads no value for any instruction, so the
+  state-independence of the leak holds for every program of the fragment and is
+  not constant-time evidence; constant time of the shipped bytes is
+  `DecodedCT.bytesCTCheck_sound`.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_widthN`, `owned_lsem_correct_widthN` — running
+  `straightOps` on `encodeN V` under `lsemStraightN` and decoding the result
+  register at width `w` equals `Com.denote`, for `ScalarArithN`.
+* `owned_lsem_correct_widthN_of_regArith` — the uniform `regArith` fragment as a
+  special case.
+* `lsemLeakN_straightOps_state_independent` — the leakage of `straightOps` is
+  the same from any two states agreeing with a valuation.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1132,7 +1138,7 @@ theorem lsemStepN_sel_succeeds {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       = some st' :=
   ⟨_, lsemStepN_sel heq args hagree⟩
 
-/-- **Robustness / constant-time capstone (unconditional), width-mixed.** The
+/-- **Leak state-independence, width-mixed.** The
     linear-IR leakage trace of the width-mixed linearizer-emitted `.var`-chain
     `straightOps` is the **same from any two initial states that agree with the
     same valuation** — every head (`regArith` or the width-mixing `select`) has a
@@ -1144,9 +1150,9 @@ theorem lsemStepN_sel_succeeds {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     The agreement hypotheses are present because the width-mixed step recovers the
     data width *from the store*: to know that the step *succeeds* (and the leak's
     `some` branch is taken) we need the sources present at the expected widths,
-    which is exactly `StoreAgreesN`. For an attacker, the conclusion is the CT
-    guarantee: the leak is a function of the emitted instruction list, not of any
-    register value. -/
+    which is exactly `StoreAgreesN`. Since `linstrLeak` reads no value, the
+    statement holds for every program of the fragment and is not constant-time
+    evidence. -/
 theorem lsemLeakN_straightOps_state_independent {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarArithN com) :
     ∀ {nArgs curDepth : Nat} {V₁ V₂ : Ctxt.Valuation Γ} (s₁ s₂ : LstateN),
@@ -1175,73 +1181,39 @@ theorem lsemLeakN_straightOps_state_independent {Γ : Ctxt jasminDialect}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 12. The unconditional width-mixed capstone: `correct ∧ robust` -/
+/-! ## 12. Functional correctness of `straightOps` over the width-mixed fragment -/
 
-/-- **Unconditional `correct ∧ robust` for the width-mixed scalar fragment
+/-- **Functional correctness for the width-mixed scalar fragment
     (`regArith ∪ select`).** For a width-mixed scalar straight-line `Com` with
-    return type `.reg w`:
-
-    1. *(correct, §10)* running the linearizer-emitted `.var`-chain `straightOps`
-       on the encoded argument valuation and decoding the result register at width
-       `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §11)* the linear-IR leakage trace
-       `lsemLeakN (straightOps …)` is the **same from the encodings of any two
-       input valuations** — the attacker's control-flow + operand-structure view
-       (including, for `select`, the cond's register *name*) is a function of the
-       emitted instruction list alone, never of a register value.
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. Both conjuncts concern one and the same object — the
-    width-mixed linearizer-emitted straight-line body run by `lsemStraightN`
-    (functional) and observed by `lsemLeakN` (CT). The `lsem→bytes` encoder and
-    Sail tables remain the declared trusted base. The first capstone covering a
-    **width-mixing** op (`select`: cond `BitVec 1`, data `BitVec w`).
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_widthN {Γ : Ctxt jasminDialect} {t : JasminTy}
+    return type `.reg w`, running the linearizer-emitted `.var`-chain
+    `straightOps` on the encoded argument valuation and decoding the result
+    register at width `w` yields exactly `com.denote V`. This is
+    `comToLprog_faithful_widthN`, stated at this module's entry point. -/
+theorem owned_lsem_correct_widthN {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarArithN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§10)
-    ((lsemStraightN (straightOps Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightN (straightOps Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§11)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakN (straightOps Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakN (straightOps Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_widthN hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakN_straightOps_state_independent hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_widthN hcom hw V
 
-/-! ## 13. Tie-back: the uniform-width `regArith` fragment is subsumed
+/-! ## 13. The uniform-width `regArith` fragment is a special case
 
-`ScalarArithN.of_regArith` already shows every `UniformRegArith` program is a
-`ScalarArithN` program, so the increment-2/3 *functional* `regArith` simulation
-is the `regArith`-only restriction of the width-mixed one. The increment-4
-uniform capstone additionally covers `regConst` (at one fixed `w`, where the
-uniform store pins the width); the width-mixed capstone covers the *orthogonal*
-width-mixing axis (`select`). The two are complementary specialisations of the
-same straight-line `lsem` foundation, not nested. -/
+`ScalarArithN.of_regArith` shows every `UniformRegArith` program is a
+`ScalarArithN` program, so the functional `regArith` simulation is the
+`regArith`-only restriction of the width-mixed one. `owned_lsem_correct_scalar`
+additionally covers `regConst` at one fixed `w`; the width-mixed simulation
+covers `select`. -/
 
 /-- Every uniform-`regArith` straight-line program is in the width-mixed
-    fragment, with return width the uniform `w`. The bridge that makes the
-    increment-2/3 `regArith` results special cases of the increment-5 ones. -/
-theorem owned_lsem_correct_and_robust_widthN_of_regArith {w : Nat}
+    fragment, with return width the uniform `w`; the conclusion is
+    `owned_lsem_correct_widthN` at `ScalarArithN.of_regArith`. -/
+theorem owned_lsem_correct_widthN_of_regArith {w : Nat}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {com : Com jasminDialect Γ t}
     (hcom : UniformRegArith w com) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightN (straightOps Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightN (straightOps Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakN (straightOps Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakN (straightOps Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_widthN (ScalarArithN.of_regArith hcom) hcom.ret_ty V
+      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_widthN (ScalarArithN.of_regArith hcom) hcom.ret_ty V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN

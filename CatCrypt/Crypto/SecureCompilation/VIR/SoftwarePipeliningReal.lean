@@ -97,6 +97,14 @@ CT-safe body, so it introduces no secret-dependent branch.
   the epilogue (cool-down) is the symmetric back-peel via `List.range_succ`
   + `List.foldl_append`. Both reuse the same `foldl` decomposition; the
   one-iteration peel carries the non-`rfl` proof cleanly.
+
+## Main results
+
+* `loopDenote_peel`, `peelFirst_denote` — the prologue peel preserves the
+  dialect-general loop denotation.
+* `peel_preserves_JForProg_denote` — the same for `JForProg.denote`.
+* `steady_preserves_CT`, `steady_preserves_CTSafeAllLabels` — the steady-state
+  loop passes the label checker exactly when the original does.
 -/
 
 @[expose] public section
@@ -237,15 +245,13 @@ theorem steady_preserves_CT {accTy : JasminTy} (m : Nat)
     ctSafeJForProg (steadyJForProg m p) accL = ctSafeJForProg p accL := by
   simp only [ctSafeJForProg_eq, steadyJForProg]
 
-/-- **Robust CT preservation for the prologue peel.** A robustly CT-safe loop
-stays robustly CT-safe after the peel — the steady-state loop has the same
-body. -/
-theorem steady_preserves_RobustlyCTSafe {accTy : JasminTy} (m : Nat)
-    (p : JForProg accTy) (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (steadyJForProg m p) := by
-  intro accL
-  rw [steady_preserves_CT]
-  exact h accL
+/-- **CT preservation under every accumulator label for the prologue peel.** A
+loop CT-safe under every accumulator label stays so after the peel — the
+steady-state loop has the same body. -/
+theorem steady_preserves_CTSafeAllLabels {accTy : JasminTy} (m : Nat)
+    (p : JForProg accTy) (h : CTSafeJForProgAllLabels p) :
+    CTSafeJForProgAllLabels (steadyJForProg m p) :=
+  fun accL => (steady_preserves_CT m p accL).trans (h accL)
 
 /-- **End-to-end: the prologue peel preserves the `JForProg` denotation.** For
 `n = m + 1`, running the body once (prologue) then the `m`-trip steady-state

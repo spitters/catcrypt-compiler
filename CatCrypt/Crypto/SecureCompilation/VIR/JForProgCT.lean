@@ -13,7 +13,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 
 /-!
-# Constant-time / robust-safety theory for bounded for-loops (`JForProg`)
+# The constant-time label checker for bounded for-loops (`JForProg`)
 
 This file is the **additive bounded-for-loop layer** for the Com / Jasmin
 constant-time pipeline. It extends the straight-line label checker
@@ -35,7 +35,7 @@ extended IRs layered on top, exactly as in this repo's existing precedent:
   one is never CT-safe.
 * This file mirrors that precedent for **bounded loops**: `JForProg` wraps a
   core-`Com` loop body with a *static* iteration count `n : Nat`, and we build
-  the CT / robust-CT theory over `JForProg` here.
+  the label-checker theory over `JForProg` here.
 
 So the layering is: core `Com` (straight-line) ⊂ `ComR` (`+ ifBit`, branches)
 and core `Com` ⊂ `JForProg` (`+ static n`, bounded loops). Each layer is
@@ -77,10 +77,10 @@ data-independence above.
    instance: a bounded loop is CT-safe iff its body is CT-safe under a public
    accumulator). Plus a non-vacuity smoke test (a secret-indexed `stackLoad`
    body is flagged).
-2. **Robust CT-safety** (§4): `RobustlyCTSafeJForProg p` (CT against every
-   attacker labelling of the accumulator), reduced to robust CT-safety of the
-   body via `RobustlyCTSafeJForProg_iff_body` — the loop construct is robustly
-   CT-safe iff its body is.
+2. **CT-safety under every accumulator label** (§4): `CTSafeJForProgAllLabels p`
+   (`ctSafeJForProg p accL` for every `accL`), reduced to the body via
+   `CTSafeJForProgAllLabels_iff_body`. The predicate is not vacuous:
+   `secretLoop_not_ctSafeAllLabels` exhibits a loop that fails it.
 3. **Loop-emission consistency** (§5): the emitted `Cfor`
    (`JForProg.toCfor` / `toProg`) is structurally a single `UpTo` loop over
    `0..n` whose body lowers `update`; and the `n`-fold denotation
@@ -184,49 +184,45 @@ theorem ctSafeJForProg_eq {accTy : JasminTy} (p : JForProg accTy)
     (accL : SecretLevel) :
     ctSafeJForProg p accL = ctSafeJasmin p.update (bodyLabelCtxt accL) := rfl
 
-/-! ## 4. Robust CT-safety of a bounded loop
+/-! ## 4. CT-safety of a bounded loop under every accumulator label
 
-A bounded loop **robustly** satisfies
-CT iff it is CT-safe against *every* attacker labelling of the accumulator.
-Because the loop predicate is exactly the body predicate, robust loop CT-safety
-reduces to robust CT-safety of the body — the loop construct is robustly
-CT-safe iff its body is. -/
+A loop is CT-safe under every accumulator label when `ctSafeJForProg p accL`
+holds for each `accL`. Because the loop predicate is exactly the body
+predicate, this reduces to the body under every label. -/
 
-/-- **Robust CT-safety of a bounded for-loop.** A `JForProg` is robustly
-    constant-time iff it is `ctSafeJForProg` under *every* accumulator secrecy
-    label — i.e. no matter how the attacker classifies the loop-carried
-    accumulator, the loop never performs a secret-indexed access. -/
-def RobustlyCTSafeJForProg {accTy : JasminTy} (p : JForProg accTy) : Prop :=
+/-- **CT-safety of a bounded for-loop under every accumulator label.** The loop
+    is `ctSafeJForProg` for every secrecy label of the loop-carried accumulator:
+    whichever label the accumulator carries, the label checker finds no
+    secret-indexed access. -/
+def CTSafeJForProgAllLabels {accTy : JasminTy} (p : JForProg accTy) : Prop :=
   ∀ accL : SecretLevel, ctSafeJForProg p accL = true
 
-/-- A robustly CT-safe loop is CT-safe under any *given* accumulator label —
-    the elimination form. -/
-theorem RobustlyCTSafeJForProg.atLabel {accTy : JasminTy} {p : JForProg accTy}
-    (h : RobustlyCTSafeJForProg p) (accL : SecretLevel) :
+/-- A loop CT-safe under every accumulator label is CT-safe under any given
+    label — the elimination form. -/
+theorem CTSafeJForProgAllLabels.atLabel {accTy : JasminTy} {p : JForProg accTy}
+    (h : CTSafeJForProgAllLabels p) (accL : SecretLevel) :
     ctSafeJForProg p accL = true := h accL
 
-/-- **Headline (robust).** A bounded for-loop is robustly CT-safe **iff** its
-    body is CT-safe under *every* accumulator labelling. The loop construct is
-    robustly CT-safe against every attacker classification of the accumulator
-    iff its body is — the loop adds no robust-CT obligation beyond its body. -/
-theorem RobustlyCTSafeJForProg_iff_body {accTy : JasminTy} (p : JForProg accTy) :
-    RobustlyCTSafeJForProg p
+/-- A bounded for-loop is CT-safe under every accumulator label **iff** its body
+    is CT-safe under every accumulator label. -/
+theorem CTSafeJForProgAllLabels_iff_body {accTy : JasminTy} (p : JForProg accTy) :
+    CTSafeJForProgAllLabels p
       ↔ ∀ accL : SecretLevel, ctSafeJasmin p.update (bodyLabelCtxt accL) = true :=
   Iff.rfl
 
-/-- A loop whose body is CT-safe under *every* accumulator labelling is robustly
-    CT-safe (the introduction form of the headline iff). -/
-theorem robustlyCTSafeJForProg_of_body {accTy : JasminTy} {p : JForProg accTy}
+/-- A loop whose body is CT-safe under every accumulator label is
+    `CTSafeJForProgAllLabels` (the introduction form of the iff). -/
+theorem ctSafeJForProgAllLabels_of_body {accTy : JasminTy} {p : JForProg accTy}
     (h : ∀ accL : SecretLevel, ctSafeJasmin p.update (bodyLabelCtxt accL) = true) :
-    RobustlyCTSafeJForProg p := h
+    CTSafeJForProgAllLabels p := h
 
 /-! ## 5. Non-vacuity: a secret-indexed loop body IS flagged
 
-To confirm `ctSafeJForProg` / `RobustlyCTSafeJForProg` are
+To confirm `ctSafeJForProg` / `CTSafeJForProgAllLabels` are
 restrictive (not vacuously `true`), we exhibit a one-iteration loop whose body
 performs a `stackLoad` at the accumulator-as-index: when the accumulator is
-labelled `.Secret` the loop is flagged non-CT, and it is *not* robustly
-CT-safe. This is the loop analogue of `JasminCTPredicate.loadProg`'s smoke
+labelled `.Secret` the loop is flagged non-CT, and it is not CT-safe under
+every label. This is the loop analogue of `JasminCTPredicate.loadProg`'s smoke
 test. -/
 
 /-- A loop body over a `reg 64` accumulator that uses the accumulator itself as
@@ -263,23 +259,22 @@ theorem secretLoop_public_ctSafe :
     ctSafeJForProg secretLoop SecretLevel.Public = true := by
   native_decide
 
-/-- The secret-index loop is **not** robustly CT-safe: the `.Secret` accumulator
-    labelling is a valid attacker choice that breaks CT. Confirms
-    `RobustlyCTSafeJForProg` is non-vacuous. -/
-theorem secretLoop_not_robustlyCTSafe :
-    ¬ RobustlyCTSafeJForProg secretLoop := by
+/-- The secret-index loop is not CT-safe under every accumulator label: under
+    the `.Secret` label it is flagged. `CTSafeJForProgAllLabels` is therefore not
+    vacuous. -/
+theorem secretLoop_not_ctSafeAllLabels :
+    ¬ CTSafeJForProgAllLabels secretLoop := by
   intro h
   have hbad := h SecretLevel.Secret
   rw [secretLoop_secret_not_ctSafe] at hbad
   exact Bool.noConfusion hbad
 
-/-! ## 6. The straight-`update` loop is robustly CT-safe by construction
+/-! ## 6. A loop without addressed access is CT-safe under every label
 
 If the loop body is a straight-line whole-poly / `extCall` body (no addressed
-load/store), it is CT-safe under every accumulator labelling, hence the loop is
-robustly CT-safe. We capture this as: whenever the body is CT-safe under *all*
-accumulator labels, the loop is robustly CT-safe. The `doubleLoop` example
-(`acc := acc + acc`, a `regArith` body) instantiates it. -/
+load/store), it is CT-safe under every accumulator label, hence so is the loop.
+The `doubleLoop` example (`acc := acc + acc`, a `regArith` body) instantiates
+it. -/
 
 /-- The `doubleLoop` example (`acc := acc + acc`) body is CT-safe under any
     accumulator labelling: a `regArith add` op has no addressed access. -/
@@ -287,12 +282,11 @@ theorem doubleLoop_body_ctSafe (accL : SecretLevel) :
     ctSafeJasmin (JasminPrint.doubleLoop.update) (bodyLabelCtxt accL) = true := by
   cases accL <;> rfl
 
-/-- The `doubleLoop` example is robustly CT-safe: its `regArith` body performs
-    no addressed memory access, so it is CT-safe under every accumulator
-    labelling. -/
-theorem doubleLoop_robustlyCTSafe :
-    RobustlyCTSafeJForProg JasminPrint.doubleLoop :=
-  robustlyCTSafeJForProg_of_body doubleLoop_body_ctSafe
+/-- The `doubleLoop` example is CT-safe under every accumulator label: its
+    `regArith` body performs no addressed memory access. -/
+theorem doubleLoop_ctSafeAllLabels :
+    CTSafeJForProgAllLabels JasminPrint.doubleLoop :=
+  ctSafeJForProgAllLabels_of_body doubleLoop_body_ctSafe
 
 /-! ## 7. Loop-emission consistency (structural + `n`-fold semantics)
 
@@ -449,16 +443,16 @@ The headline results above establish, *additively over the unchanged core
 `Com`*:
 
 * (`ctSafeJForProg_iff_body`) a bounded loop is CT-safe iff its body is;
-* (`RobustlyCTSafeJForProg_iff_body`) a bounded loop is robustly CT-safe iff its
-  body is robustly CT-safe;
+* (`CTSafeJForProgAllLabels_iff_body`) a bounded loop passes the label checker
+  under every accumulator label iff its body does;
 * (`loopRun_eq`) the emitted `Cfor`'s `n`-fold run agrees with the loop's
   `n`-fold denotation, modulo the explicit per-iteration body edge `StepAgrees`.
 
 Together these are the loop gateway to fixed-iteration crypto (X25519's
 255-round ladder, Keccak's 24 rounds): each is a bounded loop whose *body* is a
-straight-line CT-safe core `Com`, so its CT / robust-CT guarantee follows from
-the body's by the iffs above, with the straight-line theory
-(`JasminCTPredicate` / `RobustSafety`) reused unchanged.
+straight-line CT-safe core `Com`, so the loop passes the label checker exactly
+when its body does (the iffs above), with `JasminCTPredicate.ctSafeJasmin`
+applied to the body.
 
 ### Scope note (single-accumulator shape)
 

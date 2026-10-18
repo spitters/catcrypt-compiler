@@ -10,14 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 public import Transfer.Base.Related
 
 /-!
-# Faithful `lsem` for the immediate-shift fragment via the structured wire form
-# — increment 6 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the immediate-shift fragment
 
-Increments 1–5 brought `regArith`, `regConst`, and the width-mixing `select`
-into the unconditional functional ∧ constant-time `lsem` simulation. Increment
-4's deferral list singled out the **immediate shifts** `shrImm`/`shlImm`/
-`sarImm`/`rorImm` with a precise obstruction (`JasminLsemScalar.lean §"Immediate
-baked into the opcode mnemonic"`):
+The `lsem` functional simulation covers `regArith`, `regConst` and the
+width-mixing `select` (`JasminLsemScalar`, `JasminLsemWidthN`). The immediate
+shifts `shrImm`/`shlImm`/`sarImm`/`rorImm` carry an obstruction recorded in
+`JasminLsemScalar.lean §"Immediate baked into the opcode mnemonic"`:
 
 > `opToLinstrR` encodes the shift amount **in the opcode string**
 > (`withWidthTag w ("SHR:" ++ toString n)`), *not* in an operand. A faithful
@@ -82,9 +80,20 @@ descent of `lsemStepN` (an `Option` match on the `LinstrR` syntax, not an op-tre
 over a single carrier) and the de-Bruijn `StoreAgreesN` bookkeeping — those reuse
 increment 5's machinery directly, as noted at each use.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base.
+## Main results
+
+* `comToLprog_faithful_shift`, `owned_lsem_correct_shift` — running
+  `straightOpsShift` on the encoded valuation and decoding the result register
+  equals `Com.denote`, for `ScalarShiftN`.
+* `owned_lsem_correct_shift_of_scalarArithN` — the `ScalarArithN` fragment as a
+  special case.
+* `lsemLeakSh_straightOps_state_independent` — the leakage of `straightOpsShift`
+  is the same from any two states agreeing with a valuation. `lsemLeakSh` reads
+  no register value, so this holds for every program of the fragment and is not
+  constant-time evidence; constant time of the shipped bytes is
+  `DecodedCT.bytesCTCheck_sound`.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -774,7 +783,7 @@ theorem lsemStraightShift_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
       · rw [straightOpsShift_sar, lsemStraightSh_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 10. Faithfulness, leak state-independence, and the capstone
+/-! ## 10. Faithfulness and leak state-independence
 
 `encodeN`/`decodeN`/`encodeN_StoreAgreesN` are reused verbatim from increment 5
 (the start-state encoding is op-agnostic). The leak induction reuses the same
@@ -805,13 +814,14 @@ theorem comToLprog_faithful_shift {Γ : Ctxt jasminDialect} {t : JasminTy}
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemShift hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, shift fragment (unconditional).** The leakage
-    trace of the shift-fragment `.var`-chain is the **same from any two initial
-    states agreeing with the same valuation**: every head (`regArith`, `select`,
-    or an immediate shift) has a `linstrLeak` reading only syntax — for a shift,
-    the source register *name* and the public count `.imm`, never a value — and
-    `lsemStepSh`s successfully, so both states take the `some` branch and the
-    tails (still agreeing with the extended valuation) close by the IH. -/
+/-- **Leak state-independence, shift fragment.** The leakage trace of the
+    shift-fragment `.var`-chain is the same from any two initial states agreeing
+    with the same valuation: every head (`regArith`, `select`, or an immediate
+    shift) has a `linstrLeak` reading only syntax — for a shift, the source
+    register name and the count `.imm`, never a value — and `lsemStepSh`s
+    successfully, so both states run the same tail. Since `linstrLeak` reads no
+    value, the statement holds for every program of the fragment and is not
+    constant-time evidence. -/
 theorem lsemLeakSh_straightOps_state_independent {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarShiftN com) :
     ∀ {nArgs curDepth : Nat} {V₁ V₂ : Ctxt.Valuation Γ} (s₁ s₂ : LstateN),
@@ -867,65 +877,32 @@ theorem lsemLeakSh_straightOps_state_independent {Γ : Ctxt jasminDialect}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 11. The unconditional shift-fragment capstone: `correct ∧ robust` -/
+/-! ## 11. Functional correctness of `straightOpsShift` -/
 
-/-- **Unconditional `correct ∧ robust` for the shift fragment (`regArith ∪ select
-    ∪ shrImm ∪ shlImm ∪ sarImm`).** For a shift-fragment scalar straight-line
-    `Com` with return type `.reg w`:
-
-    1. *(correct, §10)* running the linearizer-emitted **structured** `.var`-chain
-       `straightOpsShift` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §10)* the leakage trace `lsemLeakSh
-       (straightOpsShift …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view (including, for a shift, the source
-       register *name* and the public compile-time count) is a function of the
-       emitted instruction list alone, never of a register value.
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. The shift counts are read **structurally** from the
-    `.imm` operand of the structured form `[d] SHR:64 [d, #n]` the byte renderer
-    consumes (the post-`legalizeShiftImmLprog` form), so the obstruction increment
-    4 hit (recovering `n` by parsing `toString n` out of the mnemonic) is gone, and
-    the emitted **bytes are unchanged** (the structured form is the one the
-    renderer always rendered). The `lsem→bytes` encoder and Sail tables remain the
-    declared trusted base. First capstone covering the immediate shifts.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_shift {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- **Functional correctness for the shift fragment (`regArith ∪ select ∪ shrImm
+    ∪ shlImm ∪ sarImm`).** For a shift-fragment scalar straight-line `Com` with
+    return type `.reg w`, running the structured `.var`-chain `straightOpsShift`
+    on the encoded argument valuation and decoding the result register at width
+    `w` yields exactly `com.denote V`. The shift counts are read from the `.imm`
+    operand of the structured form `[d] SHR:64 [d, #n]` the byte renderer
+    consumes. This is `comToLprog_faithful_shift`, stated at this module's entry
+    point. -/
+theorem owned_lsem_correct_shift {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarShiftN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§10)
-    ((lsemStraightSh (straightOpsShift Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightSh (straightOpsShift Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§10)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakSh (straightOpsShift Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakSh (straightOpsShift Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_shift hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakSh_straightOps_state_independent hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_shift hcom hw V
 
-/-- The increment-5 width-mixed capstone is subsumed: every `ScalarArithN` program
-    satisfies the shift-fragment capstone (with `straightOpsShift` agreeing with
-    `straightOps` on the shift-free fragment). -/
-theorem owned_lsem_correct_and_robust_shift_of_scalarArithN {Γ : Ctxt jasminDialect}
+/-- The `ScalarArithN` fragment is a special case of the shift fragment: the
+    conclusion is `owned_lsem_correct_shift` at `ScalarShiftN.of_scalarArithN`. -/
+theorem owned_lsem_correct_shift_of_scalarArithN {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarArithN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightSh (straightOpsShift Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightSh (straightOpsShift Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakSh (straightOpsShift Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakSh (straightOpsShift Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_shift (ScalarShiftN.of_scalarArithN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_shift (ScalarShiftN.of_scalarArithN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift

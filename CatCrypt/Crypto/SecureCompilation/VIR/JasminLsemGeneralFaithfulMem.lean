@@ -19,8 +19,8 @@ set_option autoImplicit false
 `JasminLsemMem` brought the `stackLoad`/`stackStore` memory ops — the aliasing
 array carrier, an orthogonal state axis — into the **body-fold** simulation
 `lsemStraightMem` over the bundled state `LstateM` (register file + array
-carrier), with the full faithfulness `comToLprog_faithful_mem` and the
-unconditional `correct ∧ robust` capstone `owned_lsem_correct_and_robust_mem`.
+carrier), with the full faithfulness `comToLprog_faithful_mem` and its entry
+point `owned_lsem_correct_mem`.
 That fragment covers a *runtime-indexed* (SIB) load/store: the index is read
 from a register and used as `stackGet arr idx.toNat` / `stackSet arr idx.toNat v`,
 so the aliasing core — `stackStore n i v` then `stackLoad n i` reads back `v`,
@@ -54,9 +54,15 @@ predicate, in the same labeled `lsem` shape as the other fragments, and
 addCarryLo ∪ addCarryHi ∪ castW ∪ stackLoad ∪ stackStore`) — assembled from
 `comToLprog_lsemMem` + the bridge.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}.** The `lsem→bytes`
-encoder and Sail tables remain the declared trusted base, as for every verified
-compiler.
+## Main results
+
+* `lsemFuelMem_straightline`, `lsemFuelMem_straightline_suffix` — the labeled
+  memory-fragment run agrees with the body-fold `lsemStraightMem`.
+* `comLsemExportFaithfulMem_of_mem`, `comLsemExportFaithfulMem_of_scalarCastN` —
+  `ComLsemExportFaithfulMem` holds for every `ScalarMemN` (resp. `ScalarCastN`)
+  program.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 /-! ## 1. The program counter on the bundled state -/

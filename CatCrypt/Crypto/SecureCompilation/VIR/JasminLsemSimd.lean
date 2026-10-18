@@ -9,15 +9,12 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 
 /-!
-# Faithful `lsem` for the AVX-512 packed-lane SIMD fragment
-# — increment 10 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the AVX-512 packed-lane SIMD fragment
 
-Increments 1–9 brought `regArith`, `regConst`, the width-mixing `select`, the
-immediate shifts, the widening-multiply / carry-chain trio, the width cast
-`castW`, and the opaque external leaf `extCall` into the unconditional
-functional ∧ constant-time `lsem` simulation. Each of those increments named
-`vpackZMM` on its deferral list as one of the remaining "SIMD axes", with the
-same concrete obstruction:
+The `lsem` functional simulation covers `regArith`, `regConst`, the
+width-mixing `select`, the immediate shifts, the widening-multiply / carry-chain
+trio, the width cast `castW`, and the opaque external leaf `extCall`
+(`JasminLsemLeaf`). The packed-lane op `vpackZMM` carries this obstruction:
 
 > **`vpackZMM bop` (`[.reg 512, .reg 512] → .reg 512`)** — needs the SIMD lane
 > model: its denotation `zmmPackQ bop a b` is the per-64-bit-lane `bop` over
@@ -75,18 +72,16 @@ the value the typed SIMD step computes (read the two sources at width 512, run
 `Trocq.Related` identity-encoding witness (`relatedZmmPackQ`) for symmetry with
 `relatedMulHi` / `relatedCastW`.
 
-## Leakage (constant-time): the ABI, never values, and lane-obliviousness
+## Leakage
 
 The leak of the vpack wire `Lopn [.reg dst] ("VPACK8u64:" ++ binOpName bop)
 [.reg a, .reg b]` is, by `linstrLeak`, the single event `LLeak.opn
 ("VPACK8u64:" ++ binOpName bop) [regShape dst] [regShape a, regShape b]` — the
-opcode (which *names* the lane op `bop`, a compile-time constant) plus the
-destination/source register **names** (the ABI structure), and **no register
-value**. The packed-lane op `zmmPackQ bop` is **data-oblivious**: it applies the
-same `bop` to every lane with no data-dependent control or addressing, so the
-leak depends only on the emitted instruction (operand structure), never on a
-lane value. This is automatic — `lsemLeakSimd` leaks `linstrLeak i.fst`, and the
-vpack wire is an `Lopn`.
+opcode (which names the lane op `bop`, a compile-time constant) and the
+destination/source register names, with no register value. Since no
+instruction's leak reads a value, the state-independence of the leak trace holds
+for every program of the fragment and is not constant-time evidence; constant
+time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
 
 ## Op set now covered
 
@@ -96,9 +91,18 @@ subsumes increment 9's `ScalarLeafN` (`ScalarSimdN.of_scalarLeafN`). `vpackZMM`
 is the **first SIMD / packed-lane op**: input two `BitVec 512`, output a
 `BitVec 512`, the lane op selected by `bop`.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_simd`, `owned_lsem_correct_simd` — under `LeafAgreesN`,
+  running `straightOpsSimd` on `encodeN V` and decoding the result register at
+  width `w` equals `Com.denote`, for `ScalarSimdN`.
+* `owned_lsem_correct_simd_of_scalarLeafN` — the opaque-leaf fragment as a
+  special case.
+* `lsemLeakSimd_straightOps_state_independent` — the leakage of
+  `straightOpsSimd` is the same from any two states agreeing with a valuation
+  (see "Leakage").
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1028,7 +1032,7 @@ theorem lsemStraightSimd_straightOps {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf
       · rw [straightOpsSimd_vpack, lsemStraightSimd_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 8. Faithfulness, leak state-independence, and the capstone -/
+/-! ## 8. Faithfulness and leak state-independence -/
 
 /-- **Straight-line linearizer simulation, SIMD fragment.** -/
 theorem comToLprog_lsemSimd {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
@@ -1054,15 +1058,15 @@ theorem comToLprog_faithful_simd {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemSimd hleaf hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, SIMD fragment (unconditional in the input
-    valuations).** The leakage trace of the SIMD-fragment `.var`-chain is the
-    **same from any two initial states agreeing with the same valuation**: every
-    head (the increment-9 heads, or a `vpackZMM`) has a `linstrLeak` reading only
-    the wire syntax — for `vpackZMM`, the opcode (which names the lane op `bop`)
-    and the source/destination register *names* (the ABI), never a lane value, the
-    descriptor, nor the packed result — and `lsemStepSimd`s successfully, so both
-    states take the `some` branch and the tails (still agreeing with the extended
-    valuation) close by the IH. The packed-lane op is data-oblivious. -/
+/-- **Leak state-independence, SIMD fragment.** The leakage trace of the
+    SIMD-fragment `.var`-chain is the same from any two initial states agreeing
+    with the same valuation: every head (an opaque-leaf-fragment head, or a
+    `vpackZMM`) has a `linstrLeak` reading only the wire syntax — for `vpackZMM`,
+    the opcode (which names the lane op `bop`) and the source/destination
+    register names, never a lane value, the descriptor, nor the packed result —
+    and `lsemStepSimd`s successfully, so both states run the same tail. Since
+    `linstrLeak` reads no value, the statement holds for every program of the
+    fragment and is not constant-time evidence. -/
 theorem lsemLeakSimd_straightOps_state_independent {leaf : LeafEnvN}
     (hleaf : LeafAgreesN leaf) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarSimdN com) :
@@ -1182,78 +1186,40 @@ theorem lsemLeakSimd_straightOps_state_independent {leaf : LeafEnvN}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 9. The unconditional SIMD capstone: `correct ∧ robust` -/
+/-! ## 9. Functional correctness of `straightOpsSimd` -/
 
-/-- **`correct ∧ robust` for the SIMD fragment
+/-- **Functional correctness for the SIMD fragment
     (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
     addCarryHi ∪ castW ∪ extCall ∪ vpackZMM`), under the carried leaf agreement.**
     For a SIMD-fragment scalar straight-line `Com` with return type `.reg w` and a
     leaf environment `leaf` whose external primitives agree with the dialect
-    (`LeafAgreesN leaf`):
-
-    1. *(correct, §7/8)* running the linearizer-emitted `.var`-chain
-       `straightOpsSimd` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §8)* the leakage trace `lsemLeakSimd
-       (straightOpsSimd …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view is a function of the emitted instruction
-       list alone, never of a register value, the descriptor, or the packed-lane
-       result. For a `vpackZMM` it leaks the opcode (which names the lane op `bop`)
-       + source-register **structure** (the ABI), never lane values; the packed-
-       lane op is data-oblivious.
-
-    This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
-    hypothesis, no `jasminc_preserves_ct`. The **only** carried hypothesis is
-    `LeafAgreesN leaf` — the external primitive's own KAT (carried since increment
-    9 for `extCall`; `vpackZMM` adds no new hypothesis: its lane op is a verified
-    dialect denotation). Both conjuncts concern one and the same object — the
-    SIMD linearizer-emitted straight-line body run by `lsemStraightSimd`
-    (functional) and observed by `lsemLeakSimd` (CT). The packed op is read over
-    the REAL bare `"VPACK8u64:bop"` `opToLinstrR` already emits
-    (`straightOpsSimd_wire`: the `.fst`-projection is exactly `straightOpsMC`), so
-    the emitted **bytes are unchanged**; the lane op `bop` is the typed-step
-    descriptor, never a wire annotation. The `lsem→bytes` encoder and Sail tables
-    remain the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_simd {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
+    (`LeafAgreesN leaf`), running the linearizer-emitted `.var`-chain
+    `straightOpsSimd` on the encoded argument valuation and decoding the result
+    register at width `w` yields exactly `com.denote V`. The packed op runs over
+    the bare `"VPACK8u64:bop"` that `opToLinstrR` emits (`straightOpsSimd_wire`);
+    the lane op `bop` is the typed-step descriptor. This is
+    `comToLprog_faithful_simd`, stated at this module's entry point. -/
+theorem owned_lsem_correct_simd {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarSimdN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§7/8), under the carried leaf agreement
-    ((lsemStraightSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§8)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_simd hleaf hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakSimd_straightOps_state_independent hleaf hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_simd hleaf hcom hw V
 
-/-! ## 10. Tie-back: the increment-9 opaque-leaf fragment is subsumed -/
+/-! ## 10. The opaque-leaf fragment is a special case -/
 
-/-- Every increment-9 opaque-leaf-fragment program satisfies the SIMD capstone
-    (for any agreeing leaf): the increment-9 results are special cases of the
-    increment-10 ones. -/
-theorem owned_lsem_correct_and_robust_simd_of_scalarLeafN {leaf : LeafEnvN}
+/-- Every opaque-leaf-fragment program is in the SIMD fragment; the conclusion is
+    `owned_lsem_correct_simd` at `ScalarSimdN.of_scalarLeafN`, for any agreeing
+    leaf. -/
+theorem owned_lsem_correct_simd_of_scalarLeafN {leaf : LeafEnvN}
     (hleaf : LeafAgreesN leaf) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarLeafN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakSimd leaf (straightOpsSimd Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_simd hleaf (ScalarSimdN.of_scalarLeafN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_simd hleaf (ScalarSimdN.of_scalarLeafN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd

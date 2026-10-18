@@ -37,6 +37,14 @@ exists to provide. The field-op-level body (inlining the verified single step,
 `X25519Program.ladderStepX2`, over the bundle's sub-fields) needs a dialect
 sub-array-slice op to pass slices to the field leaves — the one remaining
 framework piece for a field-granular emitted ladder.
+
+## Main results
+
+* `x25519Ladder_ctSafe_secret`, `x25519Ladder_ctSafe_public`,
+  `x25519Ladder_ctSafeAllLabels` — the ladder passes the label checker under
+  either accumulator label.
+* `x25519Ladder_loop_denote_eq` — the emitted loop's run agrees with the
+  `JForProg` denotation under `LeafAgrees`.
 -/
 
 @[expose] public section
@@ -79,12 +87,10 @@ theorem x25519Ladder_ctSafe_secret :
 theorem x25519Ladder_ctSafe_public :
     ctSafeJForProg x25519Ladder SecretLevel.Public = true := by native_decide
 
-/-- Stronger: the ladder is **robustly** CT-safe — CT under *every* attacker
-    labelling of the accumulator (the loop adds no timing channel regardless of
-    how the state is classified). -/
-theorem x25519Ladder_robustlyCTSafe : RobustlyCTSafeJForProg x25519Ladder := by
-  intro accL
-  cases accL <;> native_decide
+/-- The ladder is CT-safe under every accumulator label. -/
+theorem x25519Ladder_ctSafeAllLabels : CTSafeJForProgAllLabels x25519Ladder
+  | .Public => x25519Ladder_ctSafe_public
+  | .Secret => x25519Ladder_ctSafe_secret
 
 /-! ## Emission
 

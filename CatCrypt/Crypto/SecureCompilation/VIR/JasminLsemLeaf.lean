@@ -10,17 +10,12 @@ import all Init.Data.String.Defs
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 
 /-!
-# Faithful `lsem` for the opaque external-leaf fragment
-# — increment 9 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the opaque external-leaf fragment
 
-Increments 1–8 brought `regArith`, `regConst`, the width-mixing `select`, the
-immediate shifts, the widening-multiply / carry-chain trio and the width cast
-`castW` into the unconditional functional ∧ constant-time `lsem` simulation.
-Each named `extCall`, `vpackZMM` and `callN` on its deferral list as the
-remaining "SIMD / opaque-leaf axes".
-
-This module **adds the `extCall` arm** — the *opaque external-leaf* op — to the
-simulation. `extCall` is an external primitive: its meaning is a
+The `lsem` functional simulation covers `regArith`, `regConst`, the
+width-mixing `select`, the immediate shifts, the widening-multiply /
+carry-chain trio and the width cast `castW` (`JasminLsemCast`). This module adds
+the `extCall` arm — the opaque external-leaf op — to the simulation. `extCall` is an external primitive: its meaning is a
 **carried leaf** (an external function keyed by `name`), exactly like the
 existing opaque-leaf edge `JasminPrintSemCorrect.LeafAgrees` /
 `CryptoToJasminComCorrect.JasminLeafAgrees`. Its correctness is the leaf's own
@@ -72,17 +67,16 @@ own `leaf`, and `LeafAgreesN` is then the obligation discharged by the
 intrinsic's KAT, exactly as `latticeLeafAgrees` discharges the lattice NTT
 leaves.)
 
-## Leakage (constant-time): the ABI, never values
+## Leakage
 
 The leak of the extCall wire `Lopn [.reg dst] mnem [.reg a]` (with `mnem` the
 `"CALL:name"` or `"CALLW:<retW>;<argWs>;name"` shadow) is, by `linstrLeak`, the
-single event `LLeak.opn mnem [regShape dst] [regShape a]` — the opcode (= the
-**call name**, plus the marshal **widths** in the `CALLW:` case) plus the
-destination/argument register **names** (the ABI structure), and **no register
-value**. So an opaque
-CT leaf leaks via its own ABI exactly as required: name + argument-register
-structure, never argument values. This is automatic — `lsemLeakCast` already
-leaks `linstrLeak i.fst`, and the extCall wire is an `Lopn`.
+single event `LLeak.opn mnem [regShape dst] [regShape a]` — the opcode (the call
+name, plus the marshal widths in the `CALLW:` case) and the destination/argument
+register names, with no register value. Since no instruction's leak reads a
+value, the state-independence of the leak trace holds for every program of the
+fragment and is not constant-time evidence; constant time of the shipped bytes
+is `DecodedCT.bytesCTCheck_sound`.
 
 ## Op set now covered
 
@@ -116,9 +110,18 @@ denotation but supplied by the carried leaf and tied back by `LeafAgreesN`.
   faked); the single-head projection it exposes is already an `extCall`-shaped
   opaque leaf, so the *head slot* is covered in spirit by this increment.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_leaf`, `owned_lsem_correct_leaf` — under `LeafAgreesN`,
+  running `straightOpsLeaf` on `encodeN V` and decoding the result register at
+  width `w` equals `Com.denote`, for `ScalarLeafN`.
+* `owned_lsem_correct_leaf_of_scalarCastN` — the width-cast fragment as a
+  special case.
+* `lsemLeakLeaf_straightOps_state_independent` — the leakage of
+  `straightOpsLeaf` is the same from any two states agreeing with a valuation
+  (see "Leakage").
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1050,7 +1053,7 @@ theorem lsemStraightLeaf_straightOps {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf
       · rw [straightOpsLeaf_ext, lsemStraightLeaf_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 7. Faithfulness, leak state-independence, and the capstone -/
+/-! ## 7. Faithfulness and leak state-independence -/
 
 /-- **Straight-line linearizer simulation, opaque-leaf fragment.** Running the
     opaque-leaf-fragment `.var`-chain `straightOpsLeaf` (under `LeafAgreesN`) from
@@ -1079,15 +1082,15 @@ theorem comToLprog_faithful_leaf {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemLeaf hleaf hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, opaque-leaf fragment (unconditional in the input
-    valuations).** The leakage trace of the opaque-leaf-fragment `.var`-chain is
-    the **same from any two initial states agreeing with the same valuation**:
-    every head (`regArith`, `select`, a shift, one of the trio, a `castW`, or an
-    `extCall`) has a `linstrLeak` reading only the wire syntax — for `extCall`,
-    the call *name* and the source/destination register *names* (the ABI), never
-    a register value, the descriptor width, nor the leaf result — and
-    `lsemStepLeaf`s successfully, so both states take the `some` branch and the
-    tails (still agreeing with the extended valuation) close by the IH. -/
+/-- **Leak state-independence, opaque-leaf fragment.** The leakage trace of the
+    opaque-leaf-fragment `.var`-chain is the same from any two initial states
+    agreeing with the same valuation: every head (`regArith`, `select`, a shift,
+    one of the trio, a `castW`, or an `extCall`) has a `linstrLeak` reading only
+    the wire syntax — for `extCall`, the call name and the source/destination
+    register names, never a register value, the descriptor width, nor the leaf
+    result — and `lsemStepLeaf`s successfully, so both states run the same tail.
+    Since `linstrLeak` reads no value, the statement holds for every program of
+    the fragment and is not constant-time evidence. -/
 theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
     (hleaf : LeafAgreesN leaf) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarLeafN com) :
@@ -1198,77 +1201,40 @@ theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 8. The unconditional opaque-leaf capstone: `correct ∧ robust` -/
+/-! ## 8. Functional correctness of `straightOpsLeaf` -/
 
-/-- **`correct ∧ robust` for the opaque-leaf fragment
+/-- **Functional correctness for the opaque-leaf fragment
     (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
     addCarryHi ∪ castW ∪ extCall`), under the carried leaf agreement.** For an
     opaque-leaf-fragment scalar straight-line `Com` with return type `.reg w` and
     a leaf environment `leaf` whose external primitives agree with the dialect
-    (`LeafAgreesN leaf`):
-
-    1. *(correct, §7)* running the linearizer-emitted `.var`-chain
-       `straightOpsLeaf` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §7)* the leakage trace `lsemLeakLeaf
-       (straightOpsLeaf …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view is a function of the emitted instruction
-       list alone, never of a register value, the descriptor width, or the leaf
-       result. For an `extCall` it leaks the call **name** + argument-register
-       **structure** (the ABI), never argument values.
-
-    This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
-    hypothesis, no `jasminc_preserves_ct`. The **only** carried hypothesis is
-    `LeafAgreesN leaf` — the external primitive's own KAT: an
-    `extCall` is an external leaf, exactly like `JasminLeafAgrees`. Both
-    conjuncts concern one and the same object — the opaque-leaf linearizer-emitted
-    straight-line body run by `lsemStraightLeaf` (functional) and observed by
-    `lsemLeakLeaf` (CT). The external call is read over the REAL `"CALL:name"` /
-    `"CALLW:…;name"` wire `opToLinstrR` already emits (`straightOpsLeaf_wire`: the
-    `.fst`-projection is exactly `straightOpsMC`), so the emitted **bytes are
-    unchanged**; the result
-    width `w'` is the typed-step descriptor, never a wire annotation. The
-    `lsem→bytes` encoder and Sail tables remain the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_leaf {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
+    (`LeafAgreesN leaf`), running the linearizer-emitted `.var`-chain
+    `straightOpsLeaf` on the encoded argument valuation and decoding the result
+    register at width `w` yields exactly `com.denote V`. The external call runs
+    over the `"CALL:name"` / `"CALLW:…;name"` wire that `opToLinstrR` emits
+    (`straightOpsLeaf_wire`). This is `comToLprog_faithful_leaf`, stated at this
+    module's entry point. -/
+theorem owned_lsem_correct_leaf {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarLeafN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§7), under the carried leaf agreement
-    ((lsemStraightLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§7)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_leaf hleaf hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakLeaf_straightOps_state_independent hleaf hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_leaf hleaf hcom hw V
 
-/-! ## 9. Tie-back: the increment-8 width-cast fragment is subsumed -/
+/-! ## 9. The width-cast fragment is a special case -/
 
-/-- Every increment-8 width-cast-fragment program satisfies the opaque-leaf
-    capstone (for any agreeing leaf): the increment-8 results are special cases of
-    the increment-9 ones. -/
-theorem owned_lsem_correct_and_robust_leaf_of_scalarCastN {leaf : LeafEnvN}
+/-- Every width-cast-fragment program is in the opaque-leaf fragment; the
+    conclusion is `owned_lsem_correct_leaf` at `ScalarLeafN.of_scalarCastN`, for
+    any agreeing leaf. -/
+theorem owned_lsem_correct_leaf_of_scalarCastN {leaf : LeafEnvN}
     (hleaf : LeafAgreesN leaf) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarCastN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakLeaf leaf (straightOpsLeaf Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_leaf hleaf (ScalarLeafN.of_scalarCastN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_leaf hleaf (ScalarLeafN.of_scalarCastN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf

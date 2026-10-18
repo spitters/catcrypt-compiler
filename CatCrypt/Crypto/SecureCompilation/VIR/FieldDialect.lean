@@ -439,12 +439,13 @@ instance fieldDenote : DialectDenote fieldDialect where
     | .fieldDouble _ => fun args => fDoubleF args.head
     | .fieldSquare _ => fun args => fSquareF args.head
 
-/-! ## 8. Constant-time predicate (L3 instance of `CTPredicate.lean`)
+/-! ## 8. Per-op CT flag (L3 instance of `CTPredicate.lean`)
 
-Every Field op is data-oblivious (no `ite` on data, no data-dependent index). So
-`ctSafe` is `true` for all ops, mirroring `ModArithOp.ctSafe`. -/
+No Field op has an `ite` on data or a data-dependent index, so `ctSafe` is the
+constant `true`. A constant predicate holds for every program and is not
+constant-time evidence. -/
 
-/-- Per-op CT predicate: every Field op is constant-time. -/
+/-- Per-op CT flag: the constant `true` on every Field op. -/
 def FieldOp.ctSafe : FieldOp → Bool
   | _ => true
 

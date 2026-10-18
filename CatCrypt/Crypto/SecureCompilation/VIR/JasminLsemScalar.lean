@@ -9,25 +9,31 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 
 /-!
-# Widening the unconditional `correct ∧ robust` simulation to the uniform-width
-# scalar op set — increment 4 of porting jasmin's `lsem`
+# The `lsem` functional simulation over the uniform-width scalar op set
 
-Increments 1–3 (`JasminLsem`/`JasminLsemSimulation`/`JasminLsemRobust`) built the
-straight-line linear machine and proved, **unconditionally**, a functional ∧
-constant-time simulation for the `regArith`-only straight-line fragment
-(`owned_lsem_correct_and_robust_straightline`). `Com jasminDialect` is
-straight-line SSA (no control flow), so the remaining coverage axis at fixed
-width is the **op set**: which `JasminOp`s of one binding the linear machine
-models faithfully.
+`JasminLsem`, `JasminLsemSimulation` and `JasminLsemRobust` define the
+straight-line linear machine and prove the functional simulation for the
+`regArith`-only straight-line fragment (`owned_lsem_correct_straightline`).
+`Com jasminDialect` is straight-line SSA (no control flow), so the coverage axis
+at fixed width is the op set: which `JasminOp`s of one binding the linear machine
+models.
 
-This module is **increment 4**: it widens that fragment from `regArith`-only to
-the **uniform-width scalar op set** `regArith ∪ regConst`, and re-proves the
-functional simulation, the leak state-independence, and the unconditional
-capstone over the widened fragment
-(`owned_lsem_correct_and_robust_scalar`). Increments 1–3 are left intact; the
-widened predicate `UniformScalarArith` *subsumes* `UniformRegArith`
-(`UniformScalarArith.of_regArith`), so every increment-3 result remains a
-special case.
+This module covers the uniform-width scalar op set `regArith ∪ regConst`. The
+predicate `UniformScalarArith` subsumes `UniformRegArith`
+(`UniformScalarArith.of_regArith`). `lsemLeak` reads no register value, so its
+state-independence holds for every program of the fragment and is not
+constant-time evidence; constant time of the shipped bytes is
+`DecodedCT.bytesCTCheck_sound`.
+
+## Main results
+
+* `comToLprog_faithful_scalar`, `owned_lsem_correct_scalar` — running
+  `straightOps` on the encoded valuation and decoding the result register equals
+  `Com.denote`, for `UniformScalarArith`.
+* `owned_lsem_correct_scalar_of_regArith` — the `regArith` fragment as a special
+  case.
+* `lsemLeak_straightOps_state_independent_scalar` — the leakage of `straightOps`
+  is the same from any two states.
 
 ## What is in scope (and why), at uniform single width
 
@@ -48,10 +54,8 @@ control flow and no value-dependent addressing.
   width, value-deterministic, and its leak (`LLeak.opn "MOV" [reg dst]
   [imm n]`) carries only the public constant — never a register value.
 
-This widens the op set of the unconditional simulation: `regConst` is the first
-non-`regArith` op (a nullary constant materialiser) in the functional ∧
-constant-time `lsem` simulation, with no new hypothesis and no `jasminc`/IR→x86
-edge.
+`regConst` is a nullary constant materialiser; the simulation covers it with no
+new hypothesis and no `jasminc`/IR→x86 edge.
 
 ## Deferred ops and the technical reason for each
 
@@ -62,9 +66,8 @@ obstruction against the single-width `Lstate w` model:
   multi-width store model:
   - `select w`   — its condition operand is `.reg 1` (a 1-bit register), while
     the data operands/result are `.reg w`. A single-width store cannot hold a
-    `BitVec 1` cond and a `BitVec w` datum at once. (The intended CT leak
-    — leak the cond *register name*, never its value — is exactly what the
-    multi-width leak arm will do; `linstrLeak` already leaks only `regShape`.)
+    `BitVec 1` cond and a `BitVec w` datum at once. (`linstrLeak` leaks the
+    cond register's name, never its value.)
   - `stackLoad w n` / `stackStore w n` — operate on `.stackArr w n` (a function
     type, not `BitVec w`) with a `.reg 64` index; `stackStore` even *returns* a
     `.stackArr w n`. The single-`BitVec w` store has no array cell, and the
@@ -329,13 +332,12 @@ theorem lsemStep_const_succeeds {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialec
     stripWidthTag_withWidthTag_MOV, evalOperand, applyOpn]
   exact ⟨_, rfl⟩
 
-/-- **Robustness / constant-time main theorem (unconditional), widened.** The
-    linear-IR leakage trace of the widened linearizer-emitted `.var`-chain
-    `straightOps` is the **same from any two initial states**: every head is an
-    `Lopn` whose `linstrLeak` reads only syntax (never `s.lvm`) and `lsemStep`s
-    successfully from any state, so both states take the `some` branch and the
-    tails are run on the same instruction list — closed by the unconditional IH.
-    Widens `lsemLeak_straightOps_state_independent` to `regArith ∪ regConst`. -/
+/-- The leakage trace of `straightOps` over `regArith ∪ regConst` is the same
+    from any two initial states: every head is an `Lopn` whose `linstrLeak`
+    reads only syntax (never `s.lvm`) and `lsemStep`s successfully from any
+    state, so both states run the same tail. Since `linstrLeak` reads no value,
+    the statement holds for every program of the fragment and is not
+    constant-time evidence. -/
 theorem lsemLeak_straightOps_state_independent_scalar {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : UniformScalarArith w com) :
     ∀ {nArgs curDepth : Nat} (s₁ s₂ : Lstate w),
@@ -364,62 +366,31 @@ theorem lsemLeak_straightOps_state_independent_scalar {w : Nat} {Γ : Ctxt jasmi
       refine congrArg (linstrLeak _ ++ ·) ?_
       exact ih t₁ t₂
 
-/-! ## 7. The unconditional widened capstone: `correct ∧ robust` -/
+/-! ## 7. Functional correctness of `straightOps` over the scalar op set -/
 
-/-- **Unconditional `correct ∧ robust` for the uniform-width scalar fragment
-    (`regArith ∪ regConst`).** For a uniform-width scalar straight-line `Com`:
-
-    1. *(correct)* running the linearizer-emitted `.var`-chain `straightOps` on
-       the encoded argument valuation and decoding the result register yields
-       exactly `com.denote V`; and
-    2. *(robust, syntactic leak model)* the linear-IR leakage trace
-       `lsemLeak (straightOps …)` is the **same from any two initial states** —
-       the attacker's control-flow + operand-structure view is a function of the
-       emitted instruction list alone, never of a register value.
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. Both conjuncts concern one and the same object — the
-    widened linearizer-emitted straight-line body run by `lsemStraight`
-    (functional) and observed by `lsemLeak` (CT). The `lsem→bytes` encoder and
-    Sail encode/decode tables remain the declared trusted base. Widens
-    `owned_lsem_correct_and_robust_straightline` to the scalar op set.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_scalar {w : Nat} {Γ : Ctxt jasminDialect}
+/-- **Functional correctness for the uniform-width scalar fragment
+    (`regArith ∪ regConst`).** For a uniform-width scalar straight-line `Com`,
+    running the linearizer-emitted `.var`-chain `straightOps` on the encoded
+    argument valuation and decoding the result register yields exactly
+    `com.denote V`. This is `comToLprog_faithful_scalar`, stated at this module's
+    entry point. -/
+theorem owned_lsem_correct_scalar {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : UniformScalarArith w com)
     (hu : UniformCtxt w Γ) (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§5)
-    ((lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
+    (lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
         (fun st' => decode st' (comRetReg Γ.length argName com Γ.length)) =
-      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§6)
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (straightOps Γ.length com Γ.length) s₁ =
-        lsemLeak (straightOps Γ.length com Γ.length) s₂) := by
-  refine ⟨comToLprog_faithful_scalar hcom hu V, ?_⟩
-  intro s₁ s₂
-  exact lsemLeak_straightOps_state_independent_scalar hcom s₁ s₂
+      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_scalar hcom hu V
 
-/-- The increment-3 capstone is a special case of the widened one: every
-    `regArith`-only fragment satisfies the scalar capstone. (Sanity tie between
-    the two increments; the conclusions coincide because `straightOps`,
-    `lsemStraight`, `lsemLeak`, `encode`, `decode` are all op-agnostic.) -/
-theorem owned_lsem_correct_and_robust_scalar_of_regArith {w : Nat}
+/-- The `regArith`-only fragment is a special case of the scalar one: the
+    conclusion is `owned_lsem_correct_scalar` at `UniformScalarArith.of_regArith`. -/
+theorem owned_lsem_correct_scalar_of_regArith {w : Nat}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {com : Com jasminDialect Γ t}
     (hcom : UniformRegArith w com) (hu : UniformCtxt w Γ) (V : Ctxt.Valuation Γ) :
-    ((lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
+    (lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
         (fun st' => decode st' (comRetReg Γ.length argName com Γ.length)) =
       some ((UniformScalarArith.of_regArith hcom).ret_ty ▸ com.denote V :
-        ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (straightOps Γ.length com Γ.length) s₁ =
-        lsemLeak (straightOps Γ.length com Γ.length) s₂) :=
-  owned_lsem_correct_and_robust_scalar (UniformScalarArith.of_regArith hcom) hu V
+        ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_scalar (UniformScalarArith.of_regArith hcom) hu V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar

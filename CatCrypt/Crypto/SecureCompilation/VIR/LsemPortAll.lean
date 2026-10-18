@@ -10,7 +10,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
--- Scalar op-set widening (unconditional functional ∧ robust, no carried edge):
+-- Scalar op-set widening of the functional simulation (no carried edge):
 -- regConst → non-uniform width + select → imm-shifts → mulhi/addCarry → castW → extCall leaf.
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
@@ -23,25 +23,23 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 -- Control-flow foundation (labeled, program-indexed, fuel-bounded lsem — for loops/branches).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 -- Single counted-loop simulation: the loop control-flow structure (back-edge Lcond, n-fold
--- iteration, halt-on-fallthrough, public-counter CT) over loopLR = the real loopLcmd MINUS the explicit CMP
+-- iteration, halt-on-fallthrough) over loopLR = the real loopLcmd MINUS the explicit CMP
 -- (loopLR_eq_loopLcmd_dropCmp).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
 -- Front control-flow bridge: FrontControlLsem ties the LowCT front RFor/RIfNz RustExec denotations to
--- the REAL emitted loop (loopLcmd shape) / Lcond branch (labeled lsem). front_control_lsem_correct_and_robust:
--- (loop) front n-fold = emitted loop lsem run + state-independent leak; (branch) front two-branch = emitted Lcond
--- decision + constant [branch] leak. The front↔emitted body tie is the named FrontLoopEncodes.comm edge (carried,
--- like JasminLsemLoop's bodyStep). Public-control-flow CT hypotheses explicit (public trip count / public
--- scrutinee).
+-- the REAL emitted loop (loopLcmd shape) / Lcond branch (labeled lsem). front_control_lsem_correct:
+-- (loop) front n-fold = emitted loop lsem run; (branch) front two-branch = emitted Lcond decision. The
+-- front↔emitted body tie is the named FrontLoopEncodes.comm edge (carried, like JasminLsemLoop's bodyStep).
 public import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
 -- SIMD ops (vpackZMM): JasminLsemSimd — a .reg 512 = BitVec 512 lane value; lsemStepSimd applies zmmPackQ
 -- (per-64-bit-lane bop over 8 lanes) as a pure data effect (no new state axis). straightOpsSimd_wire = real
--- "VPACK8u64:bop" emit; the lane op rides the typed .snd SimdDesc, never the wire. owned_lsem_correct_and_robust_simd
--- (ScalarSimdN superset ScalarLeafN); leak = operand structure only (lane op data-oblivious). Trocq relatedZmmPackQ (rfl).
+-- "VPACK8u64:bop" emit; the lane op rides the typed .snd SimdDesc, never the wire. owned_lsem_correct_simd
+-- (ScalarSimdN superset ScalarLeafN). Trocq relatedZmmPackQ (rfl).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
 -- Multi-result call (callN): JasminLsemCallN — callN is structurally SINGLE-result inside Com/Expr
 -- (callNRet = head slot; the k-tuple is consumed only by func.call, a different path than comToBody). So it is an
 -- extCall-shaped head leaf: lsemStepCallN over the real "CALLN:name" wire (straightOpsCallN_wire = real emit),
--- carried LeafAgreesCN. owned_lsem_correct_and_robust_callN (ScalarCallN). ABI-only leak.
+-- carried LeafAgreesCN. owned_lsem_correct_callN (ScalarCallN).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCallN
 -- Internal call/return (Lcall/Lret): JasminLsemCall. LstateC = LstateP + a return-address
 -- stack (the control-flow content of jasmin's RASP/encode_label, as (funname, resume-pc)
@@ -85,8 +83,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulSim
 # `lsem` port — rot-guard aggregator
 
 A dedicated import manifest for the faithful Lean port of jasmin's linear
-semantics (`linear_sem.v`) and the unconditional functional ∧ robust
-compiler-correctness it discharges (the `LprogExportFaithful` gate). Kept
+semantics (`linear_sem.v`) and the functional compiler-correctness it
+discharges (the `LprogExportFaithful` gate). Kept
 separate from `SecureCompilationAll` so the `lsem`-port rot-guard is not subject
 to concurrent edits of that shared manifest.
 

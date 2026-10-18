@@ -18,8 +18,7 @@ with the `Lgoto`/`Lcond`/`Llabel` arms). `JasminLsemLoop.lean` gives
 the *counted-loop* program-level `lsem` simulation: the real emitted loop
 form `loopLR` (= `LprogControlFlow.loopLcmd` modulo the dropped flag-`CMP`,
 `loopLR_eq_loopLcmd_dropCmp`) runs in `n`-fold lockstep with a per-iteration body
-transformer `bodyStep`, with a public trip count, and its leak is
-state-independent (constant-time).
+transformer `bodyStep`, with a public trip count.
 
 This module ties the **`LowCT` FRONT** control-flow
 constructs — `RFor`/`RWhileNz` (the counted loops) and `RIfNz` (the branch) — to
@@ -47,8 +46,8 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 * **Counted loops** — the emitted backend form is `loopLR` / `loopProg`
   (`JasminLsemLoop`), the `loopLcmd` shape (`loopLR_eq_loopLcmd_dropCmp`) that
   `LprogControlFlow.cforToLcmd` produces from a `JForProg`
-  (`cforToLcmd_eq_loopLcmd`). We **reuse `loop_lsem_correct` /
-  `loop_lsem_correct_and_robust` unchanged** — the program-level `lsem` run is the
+  (`cforToLcmd_eq_loopLcmd`). We reuse `loop_lsem_correct` unchanged — the
+  program-level `lsem` run is the
   real `loopLR` driven by `lsemFuel`. The front tie is the structural
   correspondence: the front loop's `RustExec` post-state is the *same* `n`-fold
   body fold the `lsem` halt data is (the per-iteration body edge — one front
@@ -60,21 +59,25 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 * **Branch** — the emitted form is the labeled `Lcond`-branch
   `ifLR cond Lthen Lend cf ct` run by **`evalInstrP`/`lsemFuel`** (the real
   `Lcond` arm: nonzero scrutinee ⇒ `evalJump` to the taken label, zero ⇒ fall
-  through). The `Lcond` reads the SAME scrutinee register the front `RIfNz` tests;
-  its leak is the constant `LLeak.branch` (`linstrLeak (.Lcond …) = [.branch]`) —
-  state-independent given a public scrutinee, exactly `cmdCT_RIfNz`'s requirement.
+  through). The `Lcond` reads the SAME scrutinee register the front `RIfNz` tests.
 
-## Public-control-flow CT hypotheses (stated, not hidden)
+## Leakage
 
-* Loop: `LoopTerminatesIn spec sb c` — the back-edge counter `"NZ"` is the public
-  static trip count (vartime policy). Note: a secret trip count is not
-  CT.
-* Branch: `lt cond = .Public` — `RIfNz`'s scrutinee must be public-classified
-  (`cmdCT_RIfNz`). A secret-dependent branch is not CT, and
-  the `Lcond`'s `branch` leak would then depend on a secret.
+The `Lcond` leak is the constant `LLeak.branch` (`linstrLeak (.Lcond …) =
+[.branch]`), which records neither the scrutinee value nor the branch direction,
+and `lsemLeak` stops at it. Its state-independence (`ifLR_decision_leak`,
+`ifLR_lsemLeak_state_independent`) therefore holds for a secret scrutinee as well
+and is not constant-time evidence. Source-level constant time of the front is
+`LowCTCTAnalysis.cmdCT` (`cmdCT_RIfNz` requires a public scrutinee,
+`cmdCT_RWhileNz` a public guard).
 
-**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
-`jasminc_preserves_ct`, no `JasminIRToX86` edge.**
+## Main results
+
+* `front_loop_lsem_correct` — the front `RFor`'s `RustExec` post-state is the
+  `n`-fold front fold, and the emitted loop's `lsem` run halts at its encoding.
+* `front_if_lsem_correct`, `front_if_RustExec_corresponds` — the emitted `Lcond`
+  enters the block the front `RIfNz` takes.
+* `front_control_lsem_correct` — both, in one statement.
 -/
 
 @[expose] public section
@@ -186,8 +189,7 @@ theorem enc_frontForRun_eq_reentry {w : Nat} {body : List LinstrR}
   | succ m ih =>
       rw [frontForRun_succ, E.comm, ih, reentry_succ_data]
 
-/-! ## 4. Capstone (loop): the front `RFor`'s lsem run = its `RustExec` denotation
-+ constant-time
+/-! ## 4. The front `RFor`'s lsem run = its `RustExec` denotation
 
 We combine three pieces — each the REAL artifact, none reconstructed:
 
@@ -248,27 +250,6 @@ theorem front_loop_lsem_correct {N : Nat} {leafSpec : LeafSpec}
   · -- encode (front post-state) = reentry (c+1); its data = bodyStep (reentry c).base
     rw [enc_frontForRun_eq_reentry E sb rs hstart (c + 1), reentry_succ_data]
   · rw [enc_frontForRun_eq_reentry E sb rs hstart (c + 1), reentry_succ_data]
-
-/-! ### Loop CT (robust): the front loop's emitted leak is state-independent
-
-`loopLR_lsemLeak_state_independent` is the loop's constant-time statement: the
-back-edge `Lcond` tests only the public counter `"NZ"` (its leak is a constant
-`branch`), and the body leaks only syntax — so the whole `loopLR` leak is the same
-from any two states. The front `RFor`'s public counter (`cmdCT (.RFor …)` adds no
-guard) is exactly the source-level fact this realises. -/
-
-/-- **`front_loop_lsem_robust`.** The front counted loop's emitted leak is
-    state-independent (constant-time): the real emitted loop `loopLR` leaks the
-    same trace from any two `lsem` states, given the body's leak is
-    state-independent (`hbody`) and always completes (`hsucc`). This is
-    `loopLR_lsemLeak_state_independent` — the back-edge tests only the public
-    static trip count. -/
-theorem front_loop_lsem_robust {w : Nat} (top : LLabel) (lbody : List LinstrR)
-    (hbody : ∀ (sb₁ sb₂ : Lstate w), lsemLeak lbody sb₁ = lsemLeak lbody sb₂)
-    (hsucc : ∀ s : Lstate w, (lsemStraight lbody s).isSome) :
-    ∀ s₁ s₂ : Lstate w,
-      lsemLeak (loopLR "NZ" top lbody) s₁ = lsemLeak (loopLR "NZ" top lbody) s₂ :=
-  fun s₁ s₂ => loopLR_lsemLeak_state_independent top lbody hbody hsucc s₁ s₂
 
 /-! ## 5. The front branch `RIfNz` → the emitted `Lcond` branch under the labeled `lsem`
 
@@ -419,28 +400,18 @@ theorem ifEntry_fallthrough (fn : String) {w : Nat} (cond : String) (lThen lEnd 
   -- fall through: `s.nextPc` bumps pc 0 → 1.
   simp only [LstateP.nextPc, Lstate.nextPc]
 
-/-! ### Branch CT: the `Lcond` decision leak is the constant `branch`
+/-! ### The `Lcond` decision leak is the constant `branch`
 
 The branch's leading control-flow instruction is the `Lcond (.reg cond) lThen`,
-whose leak (`linstrLeak`) is the constant `[LLeak.branch]` — it reads the
-instruction *syntax*, never `s.lvm`. So the **branch-decision leak is
-state-independent**: the conditional jump leaks nothing about the scrutinee value
-beyond the (public) fact that a branch occurs. This is the CT content of a
-branch and is constant-time **precisely when the scrutinee is public**
-(`cmdCT_RIfNz`'s `lt cond = .Public`): the public-vs-secret classification of
-`cond` is what makes "a branch happened here" a public, rather than secret,
-observation. (Scope: the *arms'* leaks are a separate obligation — each arm
-`cf` / `ct` is a straight-line block whose own leak is state-independent by the
-straight-line theory `JasminLsemRobust`; the labeled `lsemLeak` does not thread
-*through* the `Lcond`/`Lgoto` control transfers, so the arm leaks are not folded in
-here.) -/
+whose leak (`linstrLeak`) is the constant `[LLeak.branch]`: it reads the
+instruction syntax, never `s.lvm`, and records neither the scrutinee value nor
+the branch direction. `lsemLeak` stops at the `Lcond`, so the arms' leaks are not
+included. The resulting state-independence holds for every scrutinee, secret or
+public, and is not constant-time evidence. -/
 
-/-- **Branch-decision constant-time.** The leak `lsemLeak` of the emitted branch
-    `ifLR`, observed at the `Lcond` decision, is the constant `[LLeak.branch]` —
-    the **same from any two states**. The conditional jump leaks only the syntactic
-    fact "a branch", never the scrutinee value. CT requires the scrutinee public
-    (`cmdCT_RIfNz`): a secret scrutinee would make this `branch` observation
-    secret-dependent in the surrounding program. -/
+/-- The leak `lsemLeak` of the emitted branch `ifLR` is the constant
+    `[LLeak.branch]` from any state: the trace stops at the `Lcond` and records
+    neither the scrutinee value nor the branch direction. -/
 theorem ifLR_decision_leak {w : Nat} (fn : String) (cond : String)
     (lThen lEnd : LLabel) (cf ct : List LinstrR) (s : Lstate w) :
     lsemLeak (ifLR fn cond lThen lEnd cf ct) s = [LLeak.branch] := by
@@ -465,8 +436,7 @@ theorem ifLR_lsemLeak_state_independent {w : Nat} (fn : String) (cond : String)
       = lsemLeak (ifLR fn cond lThen lEnd cf ct) s₂ := by
   rw [ifLR_decision_leak, ifLR_decision_leak]
 
-/-! ## 6. Capstone (branch): the front `RIfNz`'s emitted `Lcond` realises the
-source decision, and is constant-time for a public scrutinee -/
+/-! ## 6. The front `RIfNz`'s emitted `Lcond` realises the source decision -/
 
 /-- **`front_if_lsem_correct`.** The **real emitted** labeled-`Lcond` branch
     `ifProg cond` (run by `evalInstrP`/`lsemFuel`) realises the source
@@ -479,11 +449,8 @@ source decision, and is constant-time for a public scrutinee -/
     * (fall-through — the `lsem` image of `RustExec.ifFalse`) when `d.lvm cond = 0`,
       the `Lcond` falls through to the ELSE block `cf` (pc `1`).
 
-    Constant-time when the scrutinee is public (`cmdCT_RIfNz`'s requirement, stated
-    by construction): the `Lcond` leaks the constant `branch` regardless of `d.lvm cond`
-    (`ifLR_decision_leak`). `cf` is label-free (the realistic straight-line emitted
-    arm). No `JasminIRToX86` edge, no `jasminc_preserves_ct`. The explicit tie to
-    the front `RustExec` two-branch is `front_if_RustExec_corresponds` below. -/
+    `cf` is label-free (the straight-line emitted arm). The explicit tie to the
+    front `RustExec` two-branch is `front_if_RustExec_corresponds` below. -/
 theorem front_if_lsem_correct (fn : String) {w : Nat} (cond : String)
     (lThen lEnd : LLabel) (cf ct : List LinstrR) (d : Lstate w) (fuel : Nat)
     (hcf : ∀ i ∈ cf, LabelFree i) :
@@ -538,35 +505,26 @@ theorem front_if_RustExec_corresponds (fn : String) {w : Nat} (cond : String)
   by_contra hd
   exact (hscr.mpr hd) (by rw [hz])
 
-/-! ## 7. Combined capstone: front control flow — correct AND robust (constant-time)
+/-! ## 7. Front control flow: loop and branch together
 
 A single statement packaging the counted-loop tie (§4) and the branch tie (§5–6):
-the front `RFor` / `RIfNz` constructs' emitted control flow, run by the real
-labeled `lsem`, realises their `RustExec` source meaning AND is constant-time
-under the public-control-flow hypotheses (public trip count / public scrutinee),
-with no `JasminIRToX86` edge and no `jasminc_preserves_ct`. -/
+the front `RFor` / `RIfNz` constructs' emitted control flow, run by the labeled
+`lsem`, realises their `RustExec` source meaning. -/
 
-/-- **`front_control_lsem_correct_and_robust`.** The front control-flow capstone:
+/-- **`front_control_lsem_correct`.** The front control-flow simulation:
 
-    1. *(loop, correct)* the front `RFor x (c+1) body`'s `RustExec` post-state is
-       the `(c+1)`-fold front fold, and the real emitted loop `loopProg`'s `lsem`
-       run halts at the `lsem` data encoding it (`front_loop_lsem_correct`);
-    2. *(loop, robust / CT)* the emitted loop's leak is state-independent over a
-       public trip count (`front_loop_lsem_robust`);
-    3. *(branch, correct)* the front `RIfNz cond ct cf`'s decision is realised by
-       the real emitted `Lcond` branch — THEN on nonzero, ELSE on zero
-       (`front_if_lsem_correct`);
-    4. *(branch, robust / CT)* the emitted branch's **decision leak** is the
-       constant `branch`, state-independent (`ifLR_lsemLeak_state_independent`) —
-       constant-time for a public scrutinee (`cmdCT_RIfNz`).
+    1. *(loop)* the front `RFor x (c+1) body`'s `RustExec` post-state is the
+       `(c+1)`-fold front fold, and the emitted loop `loopProg`'s `lsem` run halts
+       at the `lsem` data encoding it (`front_loop_lsem_correct`);
+    2. *(branch)* the front `RIfNz cond ct cf`'s decision is realised by the
+       emitted `Lcond` branch — THEN on nonzero, ELSE on zero
+       (`front_if_lsem_correct`).
 
-    All four reuse the REAL emitted forms (`loopLR`/`loopProg` = `loopLcmd` modulo
-    the dropped `CMP`; the labeled `Lcond` branch run by `evalInstrP`). Public
-    control-flow hypotheses (stated, not hidden): `LoopTerminatesIn` (public trip
-    count) and label-freedom of the straight-line else arm; the branch-decision CT
-    is the public-scrutinee `cmdCT_RIfNz` shape (a secret scrutinee makes the
-    `branch` observation secret-dependent). -/
-theorem front_control_lsem_correct_and_robust
+    Both use the emitted forms (`loopLR`/`loopProg` = `loopLcmd` modulo the
+    dropped `CMP`; the labeled `Lcond` branch run by `evalInstrP`). Hypotheses:
+    `LoopTerminatesIn` (the trip count) and label-freedom of the straight-line
+    else arm. -/
+theorem front_control_lsem_correct
     {N : Nat} {leafSpec : LeafSpec}
     -- loop data:
     (x : String) (lpBody : LowCT) (frontStep : Nat → RustState → RustState)
@@ -577,12 +535,10 @@ theorem front_control_lsem_correct_and_robust
     (htermL : LoopTerminatesIn spec sb c)
     (E : FrontLoopEncodes spec frontStep) (rs : RustState)
     (hstartL : E.enc rs = { sb with lpc := 1 })
-    (hbodyLeak : ∀ (sb₁ sb₂ : Lstate w), lsemLeak llBody sb₁ = lsemLeak llBody sb₂)
-    (hbodySucc : ∀ s : Lstate w, (lsemStraight llBody s).isSome)
     -- branch data:
     (fnB : String) (cond : String) (lThen lEnd : LLabel) (cf ct : List LinstrR)
     (d : Lstate w) (fuel : Nat) (hcf : ∀ i ∈ cf, LabelFree i) :
-    -- (1) loop correct
+    -- (1) loop
     (RustExec N leafSpec (.RFor x (c + 1) lpBody) rs (frontForRun frontStep (c + 1) rs)
       ∧ ∃ t : Lstate w,
           lsemFuel (loopProg fnL topL llBody) ((c + 1) * (llBody.length + 1) + 1)
@@ -591,11 +547,7 @@ theorem front_control_lsem_correct_and_robust
         ∧ t.lvm = (E.enc (frontForRun frontStep (c + 1) rs)).lvm
         ∧ t.lmem = (E.enc (frontForRun frontStep (c + 1) rs)).lmem)
     ∧
-    -- (2) loop robust / CT
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (loopLR "NZ" topL llBody) s₁ = lsemLeak (loopLR "NZ" topL llBody) s₂)
-    ∧
-    -- (3) branch correct (taken / fall-through)
+    -- (2) branch (taken / fall-through)
     ((d.lvm cond ≠ 0 →
         lsemFuel (ifProg fnB cond lThen lEnd cf ct) (fuel + 1)
             { base := { d with lpc := 0 }, lfn := fnB }
@@ -605,16 +557,8 @@ theorem front_control_lsem_correct_and_robust
         lsemFuel (ifProg fnB cond lThen lEnd cf ct) (fuel + 1)
             { base := { d with lpc := 0 }, lfn := fnB }
           = lsemFuel (ifProg fnB cond lThen lEnd cf ct) fuel
-              { base := { d with lpc := 1 }, lfn := fnB }))
-    ∧
-    -- (4) branch robust / CT
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (ifLR fnB cond lThen lEnd cf ct) s₁
-        = lsemLeak (ifLR fnB cond lThen lEnd cf ct) s₂) :=
+              { base := { d with lpc := 1 }, lfn := fnB })) :=
   ⟨front_loop_lsem_correct x lpBody frontStep hbody fnL topL spec sb c htermL E rs hstartL,
-   front_loop_lsem_robust topL llBody hbodyLeak hbodySucc,
-   front_if_lsem_correct fnB cond lThen lEnd cf ct d fuel hcf,
-   fun s₁ s₂ =>
-     ifLR_lsemLeak_state_independent fnB cond lThen lEnd cf ct s₁ s₂⟩
+   front_if_lsem_correct fnB cond lThen lEnd cf ct d fuel hcf⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem

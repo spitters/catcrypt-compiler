@@ -13,10 +13,9 @@ public import Transfer.Base.Related
 # Faithful `lsem` for the widening-multiply / carry-chain fragment
 
 The modules `JasminLsemSimulation`, `JasminLsemRobust`, `JasminLsemWidthN` and
-`JasminLsemShift` bring `regArith`, `regConst`, the width-mixing `select`, and the
-immediate shifts (`shrImm`/`shlImm`/`sarImm`) into the unconditional functional ∧
-constant-time `lsem` simulation. This module adds the widening-multiply /
-carry-chain trio:
+`JasminLsemShift` cover `regArith`, `regConst`, the width-mixing `select`, and the
+immediate shifts (`shrImm`/`shlImm`/`sarImm`) in the `lsem` functional
+simulation. This module adds the widening-multiply / carry-chain trio:
 
 * **`mulhi w`** — `[reg w, reg w] → reg w`: uniform width, expressible in the
   single-width store;
@@ -84,9 +83,20 @@ the wire), `stackLoad`/`stackStore`
 (the memory/array carrier, an orthogonal state axis), `vpackZMM`/`extCall`/`callN`
 (SIMD / opaque-leaf axes).
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_mulcarry`, `owned_lsem_correct_mulcarry` — running
+  `straightOpsMC` on `encodeN V` and decoding the result register at width `w`
+  equals `Com.denote`, for `ScalarMulCarryN`.
+* `owned_lsem_correct_mulcarry_of_scalarShiftN` — the shift fragment as a
+  special case.
+* `lsemLeakMC_straightOps_state_independent` — the leakage of `straightOpsMC`
+  is the same from any two states agreeing with a valuation. `linstrLeak` reads
+  no register value, so this holds for every program of the fragment and is not
+  constant-time evidence; constant time of the shipped bytes is
+  `DecodedCT.bytesCTCheck_sound`.
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1219,7 +1229,7 @@ theorem lsemStraightMC_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
       · rw [straightOpsMC_addHi, lsemStraightMC_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
 
-/-! ## 10. Faithfulness, leak state-independence, and the capstone
+/-! ## 10. Faithfulness and leak state-independence
 
 `encodeN`/`decodeN`/`encodeN_StoreAgreesN` are reused verbatim from `JasminLsemWidthN`
 (the start-state encoding is op-agnostic). -/
@@ -1249,14 +1259,14 @@ theorem comToLprog_faithful_mulcarry {Γ : Ctxt jasminDialect} {t : JasminTy}
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemMC hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, mul/carry fragment (unconditional).** The leakage
-    trace of the mul/carry-fragment `.var`-chain is the **same from any two initial
-    states agreeing with the same valuation**: every head (`regArith`, `select`, a
-    shift, or one of the trio) has a `linstrLeak` reading only syntax — for the
-    trio, the source register *names* (including the carry-in's *name*), never a
-    register value — and `lsemStepMC`s successfully, so both states take the `some`
-    branch and the tails (still agreeing with the extended valuation) close by the
-    IH. -/
+/-- **Leak state-independence, mul/carry fragment.** The leakage trace of the
+    mul/carry-fragment `.var`-chain is the same from any two initial states
+    agreeing with the same valuation: every head (`regArith`, `select`, a shift,
+    or one of the trio) has a `linstrLeak` reading only syntax — for the trio,
+    the source register names (including the carry-in's name), never a register
+    value — and `lsemStepMC`s successfully, so both states run the same tail.
+    Since `linstrLeak` reads no value, the statement holds for every program of
+    the fragment and is not constant-time evidence. -/
 theorem lsemLeakMC_straightOps_state_independent {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarMulCarryN com) :
     ∀ {nArgs curDepth : Nat} {V₁ V₂ : Ctxt.Valuation Γ} (s₁ s₂ : LstateN),
@@ -1348,75 +1358,38 @@ theorem lsemLeakMC_straightOps_state_independent {Γ : Ctxt jasminDialect}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesN.step _ hlen harg hag1) (StoreAgreesN.step _ hlen harg hag2)
 
-/-! ## 11. The unconditional mul/carry capstone: `correct ∧ robust` -/
+/-! ## 11. Functional correctness of `straightOpsMC` -/
 
-/-- **Unconditional `correct ∧ robust` for the widening-multiply / carry-chain
-    fragment (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
-    addCarryHi`).** For a mul/carry-fragment scalar straight-line `Com` with return
-    type `.reg w`:
-
-    1. *(correct, §10)* running the linearizer-emitted `.var`-chain `straightOpsMC`
-       on the encoded argument valuation and decoding the result register at width
-       `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §10)* the leakage trace `lsemLeakMC
-       (straightOpsMC …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view (including, for the carry chain, the
-       carry register *name* threaded between limbs) is a function of the emitted
-       instruction list alone, never of a register value.
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. Both conjuncts concern one and the same object — the
-    mul/carry linearizer-emitted straight-line body run by `lsemStraightMC`
-    (functional) and observed by `lsemLeakMC` (CT). The widening multiply and carry
-    adds are read **structurally** from the role mnemonics `MULXHI`/`ADCX`/`ADCXHI`
-    and their `.reg` operands the byte renderer consumes (no wire change),
-    so the emitted **bytes are unchanged**. The first capstone covering the
-    widening-multiply / carry-chain trio — `addCarryHi` being the second
-    **width-mixing** op (after `select`): `BitVec w` data words and a `BitVec 1`
-    carry-out in one instruction. The `lsem→bytes` encoder and Sail tables remain
-    the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_mulcarry {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- **Functional correctness for the widening-multiply / carry-chain fragment
+    (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
+    addCarryHi`).** For a mul/carry-fragment scalar straight-line `Com` with
+    return type `.reg w`, running the linearizer-emitted `.var`-chain
+    `straightOpsMC` on the encoded argument valuation and decoding the result
+    register at width `w` yields exactly `com.denote V`. The widening multiply and
+    carry adds are read from the role mnemonics `MULXHI`/`ADCX`/`ADCXHI` and their
+    `.reg` operands. This is `comToLprog_faithful_mulcarry`, stated at this
+    module's entry point. -/
+theorem owned_lsem_correct_mulcarry {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarMulCarryN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§10)
-    ((lsemStraightMC (straightOpsMC Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightMC (straightOpsMC Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§10)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakMC (straightOpsMC Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakMC (straightOpsMC Γ.length com Γ.length) (encodeN V₂)) := by
-  refine ⟨comToLprog_faithful_mulcarry hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakMC_straightOps_state_independent hcom (encodeN V₁) (encodeN V₂)
-    rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_mulcarry hcom hw V
 
-/-! ## 12. Tie-back: the shift fragment is subsumed
+/-! ## 12. The shift fragment is a special case
 
 `ScalarMulCarryN.of_scalarShiftN` shows every `ScalarShiftN` program is a
-`ScalarMulCarryN` program. The mul/carry capstone therefore specialises to the
-shift fragment (and, transitively via `ScalarShiftN.of_scalarArithN`, to the
-`JasminLsemWidthN` width-mixed and `JasminLsemSimulation` `regArith` fragments). -/
+`ScalarMulCarryN` program. -/
 
-/-- Every shift-fragment program satisfies the mul/carry capstone:
-    the `JasminLsemShift` results are special cases of the ones proved here. -/
-theorem owned_lsem_correct_and_robust_mulcarry_of_scalarShiftN {Γ : Ctxt jasminDialect}
+/-- Every shift-fragment program is in the mul/carry fragment; the conclusion is
+    `owned_lsem_correct_mulcarry` at `ScalarMulCarryN.of_scalarShiftN`. -/
+theorem owned_lsem_correct_mulcarry_of_scalarShiftN {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarShiftN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightMC (straightOpsMC Γ.length com Γ.length) (encodeN V)).bind
+    (lsemStraightMC (straightOpsMC Γ.length com Γ.length) (encodeN V)).bind
         (fun st' => decodeN st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakMC (straightOpsMC Γ.length com Γ.length) (encodeN V₁) =
-        lsemLeakMC (straightOpsMC Γ.length com Γ.length) (encodeN V₂)) :=
-  owned_lsem_correct_and_robust_mulcarry (ScalarMulCarryN.of_scalarShiftN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_mulcarry (ScalarMulCarryN.of_scalarShiftN hcom) hw V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry

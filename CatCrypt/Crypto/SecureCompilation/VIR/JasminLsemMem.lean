@@ -9,16 +9,13 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 
 /-!
-# Faithful `lsem` for the stack-memory fragment
-# — increment 9 of porting jasmin's `lsem`
+# The `lsem` functional simulation for the stack-memory fragment
 
-Increments 1–8 (`JasminLsemCast.lean` and predecessors) brought the whole
-register fragment — `regArith`, the width-mixing `select`, the immediate shifts,
-the widening-multiply / carry-chain trio and the width cast `castW` — into the
-unconditional functional ∧ constant-time `lsem` simulation, all over the
-register-only state `LstateN`. Each of those increments named
-`stackLoad`/`stackStore` on its deferral list, with the same concrete
-obstruction:
+`JasminLsemCast.lean` and the modules it imports cover the register fragment —
+`regArith`, the width-mixing `select`, the immediate shifts, the
+widening-multiply / carry-chain trio and the width cast `castW` — in the `lsem`
+functional simulation over the register-only state `LstateN`. The stack ops
+`stackLoad`/`stackStore` carry this obstruction:
 
 > **`stackLoad`/`stackStore`** — the memory/array carrier, an orthogonal state
 > axis. `LstateN` is a pure register file (`lvm : String → Σ w, BitVec w`); it
@@ -68,27 +65,16 @@ register binding). The step `lsemStepMem` runs the `LOADIDX`/`STOREIDX` arm over
 the array carrier, and delegates every other typed instruction to increment 8's
 `lsemStepCast` over the register half.
 
-## Constant-time: addresses leak, values don't; the index is public
+## Leakage
 
-The leak of each typed instruction is the leak of its **wire** (`linstrLeak
+The leak of each typed instruction is the leak of its wire (`linstrLeak
 i.fst`). For a `LOADIDX`/`STOREIDX` the wire's `.arrIdx base idx scale` leaks the
-**address structure** (base name, index-register *name*, stride) via
-`OperandShape.idxShape`, exactly the crypto constant-time model — *addresses
-leak, values don't*. The loaded/stored **value never enters the leak**, and the
-array length `n` (the typed `.snd` descriptor) never enters the wire.
-
-This makes the leak trace state-independent **unconditionally** (the per-
-instruction leak is syntactic), as for `castW`. The constant-time
-*discipline* the model encodes is the **public-index** requirement: the index
-register names a `BitVec 64` whose value is data-independent and in range
-(`idx.toNat < n`). A **secret-dependent** index would make the leaked address
-`(base, idx, scale)` depend on a secret through `idx`'s *runtime value* — but
-note the leak here is over the index *register name* (syntactic), not its value,
-so the wire-level state-independence holds regardless; the public-index
-hypothesis is stated on the functional side (it is what makes the cell
-addressed by `stackGet`/`stackSet` the intended one). Secret-indexed loads are
-*not* constant-time on real silicon (cache/timing) — that residual is
-out of scope of this syntactic leak model and is flagged, not hidden.
+base name, the index register's name and the stride via `OperandShape.idxShape`;
+the index value, the loaded/stored value and the array length `n` never enter
+the leak. A secret-indexed access and a public-indexed one with the same index
+register therefore leak the same event, so the state-independence of the leak
+trace holds for every program of the fragment and is not constant-time evidence.
+Constant time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
 
 ## Op set now covered
 
@@ -98,7 +84,7 @@ subsumes increment 8's `ScalarCastN` (`ScalarMemN.of_scalarCastN`).
 `stackLoad`/`stackStore` are the **first memory ops**: they read/write the array
 carrier, the orthogonal state axis. Still deferred, for the same reasons:
 `regConst` (string-baked width on the wire), `vpackZMM`/`extCall`/`callN` (SIMD /
-opaque-leaf axes), the secret-index address-leak residual (above).
+opaque-leaf axes).
 
 ## Compile-time-offset word memory (`loadC` / `storeC`)
 
@@ -116,9 +102,19 @@ This is what closes the memory axis of the `runBlock`↔`lsem` machine-model bri
 **additive** (defaulted), so the whole increment-1–9 register/array chain — none
 of which touch `lmem` — is unchanged.
 
-**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
-`jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
-declared trusted base, as for every verified compiler.
+## Main results
+
+* `comToLprog_faithful_mem`, `owned_lsem_correct_mem` — running
+  `straightOpsMem` on `encodeM V` and decoding the result register at width `w`
+  equals `Com.denote`, for `ScalarMemN`.
+* `owned_lsem_correct_mem_of_scalarCastN` — the width-cast fragment as a special
+  case.
+* `lsemStraightMem_straightOps_store`, `lsemStraightMem_straightOps_full` — the
+  simulation with the final store agreement and the write frame.
+* `lsemLeakMem_straightOps_state_independent` — the leakage of `straightOpsMem`
+  is the same from any two states agreeing with a valuation (see "Leakage").
+
+The `lsem→bytes` encoder and Sail tables are the declared trusted base.
 -/
 
 @[expose] public section
@@ -1961,7 +1957,7 @@ theorem encodeM_StoreAgreesM {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ) :
     simp only [resolveVar, hslot, if_true, operandName, encodeM]
     exact encodeArrAuxM_lookup V _ v rfl
 
-/-! ## 12. Faithfulness, leak state-independence, and the capstone -/
+/-! ## 12. Faithfulness and leak state-independence -/
 
 /-- **Straight-line linearizer simulation, stack-memory fragment.** Running the
     stack-memory-fragment `.var`-chain `straightOpsMem` from the encoded argument
@@ -1988,16 +1984,16 @@ theorem comToLprog_faithful_mem {Γ : Ctxt jasminDialect} {t : JasminTy}
   obtain ⟨st', hrun, hdec⟩ := comToLprog_lsemMem hcom hw V
   rw [hrun, Option.bind_some, hdec]
 
-/-- **Leak state-independence, stack-memory fragment (unconditional).** The
-    leakage trace of the stack-memory-fragment `.var`-chain is the **same from any
-    two initial states agreeing with the same valuation**: every head — register
+/-- **Leak state-independence, stack-memory fragment.** The leakage trace of the
+    stack-memory-fragment `.var`-chain is the same from any two initial states
+    agreeing with the same valuation: every head — register
     (`regArith`/`select`/shifts/the trio/`castW`) or memory
     (`stackLoad`/`stackStore`) — has a `linstrLeak` reading only the wire syntax.
-    For a memory op that is the address structure `.arrIdx base idx scale` (base
-    name + index-register *name* + stride), never a register value nor the array
-    length `n`; the loaded/stored value never appears. Both states take the
-    `some` branch (the step succeeds from any agreeing store) and the tails (still
-    agreeing with the extended valuation) close by the IH. -/
+    For a memory op that is `.arrIdx base idx scale` (base name, index-register
+    name, stride), never the index value. A secret-indexed and a public-indexed
+    access with the same index register therefore leak the same event, so the
+    statement holds for every program of the fragment and is not constant-time
+    evidence. -/
 theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarMemN com) :
     ∀ {nArgs curDepth : Nat} {V₁ V₂ : Ctxt.Valuation Γ} (s₁ s₂ : LstateM),
@@ -2154,92 +2150,42 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesM.stepArr _ hlen harg hag1) (StoreAgreesM.stepArr _ hlen harg hag2)
 
-/-! ## 13. The unconditional stack-memory capstone: `correct ∧ robust` -/
+/-! ## 13. Functional correctness of `straightOpsMem` -/
 
-/-- **Unconditional `correct ∧ robust` for the stack-memory fragment
+/-- **Functional correctness for the stack-memory fragment
     (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
     addCarryHi ∪ castW ∪ stackLoad ∪ stackStore`).** For a stack-memory-fragment
-    scalar straight-line `Com` with return type `.reg w`:
-
-    1. *(correct, §12)* running the linearizer-emitted `.var`-chain
-       `straightOpsMem` on the encoded argument valuation and decoding the result
-       register at width `w` yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, §12)* the leakage trace `lsemLeakMem
-       (straightOpsMem …)` is the **same from the encodings of any two input
-       valuations** — the attacker's view is a function of the emitted instruction
-       list alone, never of a register value, never of a loaded/stored memory
-       value, and never of the array length `n` (which lives only in the typed
-       `MemTag` `.snd` component).
-
-    This is **unconditional**: no IR→x86 faithfulness hypothesis, no
-    `jasminc_preserves_ct`. Both conjuncts concern one and the same object — the
-    stack-memory linearizer-emitted straight-line body run by `lsemStraightMem`
-    (functional) and observed by `lsemLeakMem` (CT). The memory ops are read over
-    the REAL bare role mnemonics `"LOADIDX"/"STOREIDX"` `opToLinstrR` already
-    emits (`straightOpsMem_wire`: the `.fst`-projection is exactly
-    `(straightOpsCast …).map Prod.fst = straightOpsMC`), so the emitted **bytes are
-    unchanged**; the array shape `(w, n)` is the typed-step descriptor (the
-    `sarr len` jasmin's `read_linear` reconstructs), never a wire annotation. The
-    first capstone covering `stackLoad`/`stackStore` — the **first memory ops**:
-    they read/write the array carrier, an orthogonal state axis.
-
-    **Constant-time discipline (the public-index requirement).** This is the
-    *syntactic* CT model: the wire's `.arrIdx base idx scale` leaks the **address
-    structure** (base name, index-register *name*, stride) via `idxShape`, never
-    the value — *addresses leak, values don't*. So the leak trace is
-    state-independent unconditionally. The CT discipline the model encodes
-    is that the index register's *value* be **public** (data-independent, in
-    range): a SECRET-dependent index would, on real silicon, leak the addressed
-    cell through cache/timing — secret-indexed loads are **not**
-    constant-time. That residual is outside this syntactic leak model and is
-    flagged here, not hidden; the in-range/total addressing (`stackGet`/`stackSet`
-    reduce `% n`) makes the functional placement sound for any index. The
-    `lsem→bytes` encoder and Sail tables remain the declared trusted base.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_mem {Γ : Ctxt jasminDialect} {t : JasminTy}
+    scalar straight-line `Com` with return type `.reg w`, running the
+    linearizer-emitted `.var`-chain `straightOpsMem` on the encoded argument
+    valuation and decoding the result register at width `w` yields exactly
+    `com.denote V`. The memory ops run over the bare mnemonics
+    `"LOADIDX"/"STOREIDX"` that `opToLinstrR` emits (`straightOpsMem_wire`); the
+    array shape `(w, n)` is the typed-step descriptor. `stackGet`/`stackSet`
+    reduce the index `% n`, so the statement holds for any index value. This is
+    `comToLprog_faithful_mem`, stated at this module's entry point. -/
+theorem owned_lsem_correct_mem {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarMemN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (§12)
-    ((lsemStraightMem (straightOpsMem Γ.length com Γ.length) (encodeM V)).bind
+    (lsemStraightMem (straightOpsMem Γ.length com Γ.length) (encodeM V)).bind
         (fun st' => decodeM st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§12)
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakMem (straightOpsMem Γ.length com Γ.length) (encodeM V₁) =
-        lsemLeakMem (straightOpsMem Γ.length com Γ.length) (encodeM V₂)) := by
-  refine ⟨comToLprog_faithful_mem hcom hw V, ?_⟩
-  intro V₁ V₂
-  exact lsemLeakMem_straightOps_state_independent hcom (encodeM V₁) (encodeM V₂)
-    rfl le_rfl (encodeM_StoreAgreesM V₁) (encodeM_StoreAgreesM V₂)
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_mem hcom hw V
 
-/-! ## 14. Tie-back: the increment-8 width-cast fragment is subsumed
+/-! ## 14. The width-cast fragment is a special case
 
 `ScalarMemN.of_scalarCastN` shows every `ScalarCastN` program is a `ScalarMemN`
-program. The stack-memory capstone therefore specialises to the width-cast
-fragment (and, transitively, to the mul/carry / shift / width-mixed / `regArith`
-fragments of increments 2–8). -/
+program. -/
 
-/-- Every increment-8 width-cast-fragment program satisfies the stack-memory
-    capstone: the increment-8 results are special cases of the increment-9 ones.
-    (Bridged through `LstateM`'s register half; the array carrier is inert for a
-    register-only program.) -/
-theorem owned_lsem_correct_and_robust_mem_of_scalarCastN {Γ : Ctxt jasminDialect}
+/-- Every width-cast-fragment program is in the stack-memory fragment; the
+    conclusion is `owned_lsem_correct_mem` at `ScalarMemN.of_scalarCastN` (the
+    array carrier is inert for a register-only program). -/
+theorem owned_lsem_correct_mem_of_scalarCastN {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarCastN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :
-    ((lsemStraightMem (straightOpsMem Γ.length com Γ.length) (encodeM V)).bind
+    (lsemStraightMem (straightOpsMem Γ.length com Γ.length) (encodeM V)).bind
         (fun st' => decodeM st' (comRetReg Γ.length argName com Γ.length) w) =
-      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    (∀ V₁ V₂ : Ctxt.Valuation Γ,
-      lsemLeakMem (straightOpsMem Γ.length com Γ.length) (encodeM V₁) =
-        lsemLeakMem (straightOpsMem Γ.length com Γ.length) (encodeM V₂)) :=
-  owned_lsem_correct_and_robust_mem (ScalarMemN.of_scalarCastN hcom) hw V
+      some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  owned_lsem_correct_mem (ScalarMemN.of_scalarCastN hcom) hw V
 
 /-! ## 15. Strengthened simulation: the final store agreement + the write frame
 
