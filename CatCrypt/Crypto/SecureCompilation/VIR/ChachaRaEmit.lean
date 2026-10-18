@@ -17,9 +17,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 # ChaCha20 4-way XMM-resident with live-range-aware register allocation
 
 A `RegisterAllocation` (`RegisterAllocation.lean`) is a slot remap (`slotOf`)
-plus a sequencing hint (`seqOf`). `applyRA` is the identity, so
-`applyRA_denote_preserves` holds for every allocation and says nothing about
-the emitted text; the allocator with a semantic theorem is `physScanSpill`
+plus a sequencing hint (`seqOf`). No theorem in that module relates an
+allocation to the emitted text; the allocator with a semantic theorem is
+`physScanSpill`
 (`toLprogPhysAbi_faithful_uniform`). `Sha2RaEmit.lean` and `KeccakRaEmit.lean`
 read `seqOf` when naming destinations of the SHA-2 and Keccak round bodies; this
 module does the same for the ChaCha20 4-way XMM-resident kernel.
@@ -54,6 +54,12 @@ picks any pair from the light class (e.g. slots 10, 11) spills only ~160
 ops per block — a ~240-op saving per block, which is exactly the
 slip-difference vs HACL*'s gcc-allocated body.
 
+## Main results
+
+* `chachaXmmRA_WellFormed` — `slotOf` is injective.
+* `chacha_xmm_ra_emit_denotation_preserves` — the 4-way lane map of the
+  ChaCha20 block function is the per-lane block function.
+
 ## Contents
 
 * `chachaXmmSlotTrace` — per-double-round read/write trace per slot 0..15,
@@ -66,15 +72,13 @@ slip-difference vs HACL*'s gcc-allocated body.
   stack) and shifts whatever was at 14/15 into the freed positions.
 * `chachaXmmRA` — the `RegisterAllocation` packing the remap as
   `slotOf := id`, `seqOf := pickSpillVictims …`.
-* `chachaXmmRA_WellFormed` — well-formedness (slotOf injective + applyRA
-  preserves denotation by rfl).
+* `chachaXmmRA_WellFormed` — well-formedness (`slotOf` injective).
 * `emitChacha4wayXmmRaJazz` — the RA-driven XMM-resident emit. Takes a
   `RegisterAllocation`, applies its `seqOf` to relabel slots before they
   enter `chacha4wayXmmSlotName`; the rest of the rendering is unchanged.
-* `chacha_xmm_ra_emit_denotation_preserves` — the headline denotation
-  theorem: for any well-formed RA, the RA-applied 4-way XMM kernel
-  has the same denotation as the canonical 4-way (composes
-  `LaneMap.chacha4way_lane_map`).
+* `chacha_xmm_ra_emit_denotation_preserves` — `LaneMap.chacha4way_lane_map`
+  at the ChaCha20 block function; its statement does not mention the
+  emitted text or the allocation.
 
 ## Axiom budget
 
@@ -210,11 +214,9 @@ def chachaXmmRA : RegisterAllocation where
   slotOf := id
   seqOf  := chachaXmmSeqOf
 
-/-- The ChaCha XMM RA is well-formed (slotOf is the identity injection;
-`applyRA p ra = p` definitionally, so `preserves` is `rfl`). -/
+/-- The ChaCha XMM RA is well-formed: `slotOf` is the identity injection. -/
 theorem chachaXmmRA_WellFormed : WellFormed chachaXmmRA where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
 /-! ## 4. RA-driven XMM-resident emit text
 

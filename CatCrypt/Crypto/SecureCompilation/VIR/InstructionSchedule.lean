@@ -11,48 +11,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
-# Verified instruction scheduling for `Com` — analysis-as-decision pass
+# Dependence analysis and list scheduling for `JForProg` loop bodies
 
-This file extends the verified-optimizer suite (`JForProgUnroll.lean`,
-`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`,
-`DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
-`CommonSubexprElim.lean`, `ComInline.lean`) with **instruction scheduling**
-at the `Com` level, an `-O2` pass.
+Instruction scheduling reorders data-independent instructions inside a
+straight-line block to expose instruction-level parallelism. This module
+computes the data dependences of a `JForProg` body and a topological emission
+order of its binders. The `Com` rewrite that swaps adjacent independent
+binders, with its denotation theorem, is `InstructionScheduleReal`.
 
-Instruction scheduling reorders **data-independent** instructions inside a
-straight-line basic block to improve instruction-level parallelism (ILP).
-On wide superscalar pipelines, two independent computations can issue in
-parallel; rescheduling clusters of independent additions and rotates is a
-substantial part of how `gcc -O3` outperforms `gcc -O0` on the
-HACL\*-style ChaCha20 quarter-round.
-
-## Architectural principle: analysis as decision
-
-`Com d Γ t` is intrinsically typed: variables are `Ctxt.Var`, not `Nat`.
-Reordering two `Com.var` nodes would change the intrinsic context shape
-seen by every later `.there` index — exactly the same De Bruijn renumbering
-gap that `RegisterAllocation.lean`, `DeadCodeElim.lean`,
-`LoopInvariantHoist.lean`, `CommonSubexprElim.lean`, and `ComInline.lean`
-all resolved by factoring the heavy lifting out of the Com rewrite.
-
-We follow the same factoring: **the heavy lifting is the analysis (the
-chosen emission permutation); the `Com → Com` rewrite itself is the
-identity at the framework level, because the emit pass downstream
-consumes the schedule as a labelling, not as a structural change**.
-Concretely:
-
-* RA: slot decisions live in `RegisterAllocation`;
-* DCE: deadness decisions live in `DceDecisions`;
-* LICM: invariance decisions live in `LicmDecisions`;
-* CSE: redundancy decisions live in `CseDecisions`;
-* Inline: callsite decisions live in `InlineDecisions`;
-* **Here, the emission permutation lives in `ScheduleDecisions`.** The
-  emit pass orders the emitted Jasmin instructions according to the
-  permutation (subject to the dependence constraint that any data
-  producer is emitted before any consumer). Either way, the *Com-level*
-  transform is the identity.
-
-## Soundness of scheduling on `Com`
+## Dependences on `Com`
 
 The dependence relation on a straight-line `Com` body is **purely
 data-driven**: binder `i` depends on binder `j` (written `j ≺ i`) iff
@@ -67,32 +34,11 @@ be issued in either order without changing denotation. The scheduler
 produces any *topological order* of the dependence DAG, and emits in
 that order.
 
-**The CT story is trivial**: scheduling doesn't introduce or remove
-control flow. The straight-line block stays straight-line; the
-*order* of its instructions changes, but the set of branches (and the
-secrecy of their guards) is unchanged. CT-preservation falls out by
-composition with the same hypothesis used by DCE/LICM/CSE/Inline.
+## Main results
 
-## Why this is the right factoring
-
-The two preservation theorems
-
-  `applySchedule_denote_preserves : (applySchedule p d).denote = p.denote`
-  `applySchedule_preserves_CT     : ctSafeJForProg (applySchedule p d) accL =
-                                     ctSafeJForProg p accL`
-
-are by-construction `rfl`. The analysis content is the
-**topological-soundness** invariant: the produced permutation respects
-the data-dependence partial order. We discharge:
-
-* `scheduleSoundOnEmptyBody`: empty body → empty schedule (trivially
-  topological).
-* `scheduleIsPermutation_emptyBody`: empty body's schedule is a
-  permutation of `[]`.
-* `scheduleNoSelfLoop`: no binder depends on itself (a binder at
-  position `i` sees variables of depth `< i + 1` in the context after
-  binding, but only depths `< i` reach earlier *binders*; the
-  accumulator at depth `i` is the input-context slot).
+* `computeDependences_empty_body`, `analyzeSchedule_empty_body`,
+  `scheduleGreedy_empty`, `scheduleGreedy_empty_topological_sound` — the
+  analysis on the empty body.
 
 ## Contents
 
@@ -107,60 +53,14 @@ the data-dependence partial order. We discharge:
   (binders whose deps are all scheduled) and emits the
   smallest-numbered ready binder each step. This produces a stable
   topological order; on a body where every binder is independent, the
-  output equals the input order (so the framework is **identity-safe**
-  even when there is no ILP to expose).
+  output equals the input order.
 * `analyzeSchedule` — top-level: compute dependences, run
   `scheduleGreedy`.
-* `applySchedule` — the `Com → Com` rewrite. Identity at the Com
-  level (`fun p _ => p`), mirroring `applyRA`/`applyDce`/`applyLicm`/
-  `applyCse`/`applyInline`.
-* `applySchedule_denote_preserves`, `applySchedule_preserves_CT` — the
-  two preservation theorems, both `rfl`.
-* Analysis-correctness lemmas on small body shapes.
-* Concrete sanity examples (`#eval`) exercising `analyzeSchedule` on
-  small synthetic Com terms — the headline 4-independent-2-dependent
-  ChaCha20 quarter-round shape, the empty body, and a single-binder
-  body.
+* Sanity examples on the empty body, a single-binder body and the
+  4-binder ILP-exposing shape.
 
-No open goals, no new axioms — the framework's Com-level rewrite is the
-identity, so both preservation theorems reduce to `rfl`.
-
-## Scope
-
-* **Within a single straight-line body.** We schedule the chain of
-  binders between the loop's entry and its `ret`. We do **not**
-  cross `Cfor`/`Cif`/`Cwhile` boundaries — `JForProg`'s body is
-  itself straight-line, which is the natural scope here.
-* **No latency model.** We treat every op as unit-latency, so the
-  schedule maximises emit-order earliness subject to dependencies.
-  Latency-aware critical-path scheduling is a future extension; the
-  framework's preservation theorems are unaffected.
-* **No software pipelining.** Cross-iteration scheduling would require
-  splitting the loop body across iterations; the framework here
-  schedules **within one iteration**.
-* **No VLIW packing.** We emit a flat instruction stream; bundling
-  is the back-end's job.
-
-## Residuals
-
-* **Latency-aware critical-path scheduling.** Replace the
-  "smallest-numbered ready binder" priority with "ready binder
-  maximising critical-path length to the end of the block". This
-  improves the produced order on bodies with long dependence chains;
-  the framework theorems hold uniformly.
-* **Cross-iteration software pipelining.** Lift the schedule to a
-  multi-iteration prologue/kernel/epilogue. This is a substantial
-  extension (modulo scheduling) and requires `JForProg.denote` to be
-  re-expressed in pipelined form; the framework theorems would change
-  proof shape but not statement.
-* **Latency-aware Com-level rewrite.** A future `applySchedule` could
-  actually perform the reordering at the Com level via a De-Bruijn
-  renumbering layer (each surviving `Var` index shifts by the
-  permutation's effect on the contexts above it). The framework
-  preservation theorems would change from `rfl` to a per-Com
-  induction, but the *theorem statements* stay the same — the rewrite
-  just supplies a different `preserves` witness, mirroring the
-  `RegisterAllocation`/`DeadCodeElim` extension story.
+The schedule covers one straight-line body (one iteration), treats every
+operation as unit-latency, and emits a flat instruction stream.
 -/
 
 @[expose] public section
@@ -260,11 +160,6 @@ It is a permutation of `[0, …, numBinders - 1]` respecting the
 dependence partial order (every binder's deps appear earlier in the
 list).
 
-The framework consumes this as a labelling: the emit pass orders the
-emitted Jasmin instructions according to the permutation. The Com
-itself is unchanged — preserving the intrinsic typing without needing
-a De Bruijn renumbering layer.
-
 We keep `order` as `List Nat` rather than `Vector Nat numBinders` to
 make the analysis output structurally inspectable for the sanity tests
 (matching the shape of `DceDecisions.deadPositions`,
@@ -277,8 +172,7 @@ structure ScheduleDecisions where
 
 namespace ScheduleDecisions
 
-/-- The trivial schedule: empty order. Useful as the framework's no-op
-    baseline. -/
+/-- The trivial schedule: empty order. -/
 def empty : ScheduleDecisions where
   order := []
 
@@ -297,8 +191,7 @@ smallest-numbered remaining binder anyway.
 
 The greedy choice is bias-stable: on a body where every binder is
 independent of every other, the scheduler emits them in their
-original (left-to-right) order. This makes the framework
-**identity-safe** even when there is no ILP to expose. -/
+original (left-to-right) order. -/
 
 /-- Find the first ready dependence in the list, returning
     `(picked, remaining)` if one exists, else `none`. -/
@@ -342,108 +235,12 @@ def scheduleGreedy (deps : List Dependence) : List Nat :=
   scheduleStep deps.length [] deps
 
 /-- **Schedule analysis.** Compute dependences for the body, then
-    run the greedy list scheduler to produce an emission permutation.
-
-    For the framework theorem the precise content of `order` is opaque
-    — both preservation theorems hold for *any* schedule result. The
-    concrete analysis here makes the analysis-correctness lemmas
-    (below) provable in the simplest body shapes. -/
+    run the greedy list scheduler to produce an emission permutation. -/
 def analyzeSchedule {accTy : JasminTy} (p : JForProg accTy) :
     ScheduleDecisions :=
   { order := scheduleGreedy (computeDependences p) }
 
-/-! ## 4. The `Com → Com` transform
-
-Per the architectural principle: `applySchedule` is the identity at the
-Com level. The emission permutation is consumed by the downstream emit
-pass (which orders the emitted Jasmin instructions accordingly). The
-*Com itself* is unchanged — preserving the intrinsic typing without
-needing a De Bruijn renumbering layer.
-
-This mirrors `RegisterAllocation.applyRA = fun p _ => p`,
-`DeadCodeElim.applyDce = fun p _ => p`,
-`LoopInvariantHoist.applyLicm = fun p _ => p`,
-`CommonSubexprElim.applyCse = fun p _ => p`. -/
-
-/-- **Apply a schedule decision to a `JForProg`.** At the Com level
-this is the identity Com→Com transform — the analysis result is a
-labelling consumed by the emit pass, not a structural change to the
-Com.
-
-For a future Com-level rewrite (one that actually reorders binders via
-De Bruijn renumbering), this function would change. The framework's
-preservation theorems are stated uniformly so that any future Com-level
-rewrite which preserves denotation (and CT) plugs in without touching
-the theorem statements. -/
-def applySchedule {accTy : JasminTy} (p : JForProg accTy)
-    (_d : ScheduleDecisions) : JForProg accTy :=
-  p
-
-/-! ## 5. The two preservation theorems -/
-
-/-- **Denotation preservation for `applySchedule`.** For any `JForProg p`
-and any schedule decision `d`, the transformed program denotes the same
-function as `p`. At the current shape this is `rfl` because
-`applySchedule p d = p` definitionally — the schedule decisions live in
-`d`, consumed downstream, and the Com itself is unchanged.
-
-The denotational content of "reordering independent instructions is
-sound" is the operational invariant maintained by `scheduleGreedy` by
-construction (it only places a binder whose dependencies are already
-emitted, so the emit pass will not produce a use-before-def). The
-framework theorem itself is `rfl` because the Com is unchanged. -/
-theorem applySchedule_denote_preserves {accTy : JasminTy}
-    (p : JForProg accTy) (d : ScheduleDecisions) (init : ⟦accTy⟧) :
-    (applySchedule p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applySchedule`.** For any `JForProg p`, any
-schedule decision `d`, and any accumulator secrecy label `accL`, the
-transformed program is CT-safe iff `p` is. At the current shape this
-is `rfl` because `applySchedule p d = p` definitionally.
-
-Scheduling never introduces a secret-dependent branch — it only
-reorders straight-line instructions within a basic block. The CT
-predicate cares about branch structure + memory access pattern;
-neither changes. Even a future Com-level rewrite that actually
-performs the reorder would preserve CT, because reordering CT-safe
-straight-line instructions produces a CT-safe straight-line block
-(the set of branches and their guards is the empty set throughout).
-
-This is the scheduling analogue of `applyDce_preserves_CT` from
-`DeadCodeElim.lean`, `applyLicm_preserves_CT` from
-`LoopInvariantHoist.lean`, and `applyCse_preserves_CT` from
-`CommonSubexprElim.lean`, with the same proof shape and the same
-architectural justification. -/
-theorem applySchedule_preserves_CT {accTy : JasminTy}
-    (p : JForProg accTy) (d : ScheduleDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applySchedule p d) accL =
-      ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applySchedule` (Prop form).** The
-propositional analogue: `ctSafePropJForProg` is preserved through
-`applySchedule`. -/
-theorem applySchedule_preserves_CT_prop {accTy : JasminTy}
-    (p : JForProg accTy) (d : ScheduleDecisions) (accL : SecretLevel) :
-    ctSafePropJForProg (applySchedule p d) accL ↔
-      ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [applySchedule_preserves_CT]
-
-/-- **Robust CT preservation for `applySchedule`.** A robustly CT-safe
-`JForProg` remains robustly CT-safe after `applySchedule`. Since
-`applySchedule p d = p` at the Com level, this is `id` on the
-universally-quantified predicate. -/
-theorem applySchedule_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : ScheduleDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applySchedule p d) := by
-  intro accL
-  rw [applySchedule_preserves_CT]
-  exact h accL
-
-/-! ## 6. Analysis correctness on small shapes
+/-! ## 4. Analysis correctness on small shapes
 
 The natural correctness statement for `analyzeSchedule` is: the
 produced order is a permutation of `[0, …, numBinders - 1]` respecting
@@ -485,7 +282,7 @@ theorem scheduleGreedy_empty_topological_sound :
   -- The schedule is empty, so the membership hypothesis `hpos` is false.
   simp [scheduleGreedy_empty] at hpos
 
-/-! ## 7. Sanity tests
+/-! ## 5. Sanity tests
 
 These confirm `analyzeSchedule` behaves correctly on small synthetic
 body shapes — the smallest "is the analysis wired up?" smoke tests. -/
@@ -552,8 +349,7 @@ example : (analyzeSchedule singleBinderProg).order = [0] := rfl
     The original order is already topologically sound here, but
     *importantly* the scheduler **never violates dependencies**, so
     this is the correct safe fallback. A latency-aware variant would
-    prefer `[0, 1, 2, 3]` vs `[0, 2, 1, 3]` to maximise dual-issue;
-    the framework theorems are unaffected. -/
+    prefer `[0, 1, 2, 3]` vs `[0, 2, 1, 3]` to maximise dual-issue. -/
 def ilpExposingBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- Position 0: v0 = acc + acc. acc is .here.
@@ -604,74 +400,5 @@ example : computeDependences ilpExposingProg =
     `[0, 1, 2, 3]` (which is the input order). On this body the
     scheduler is identity. -/
 example : (analyzeSchedule ilpExposingProg).order = [0, 1, 2, 3] := rfl
-
-/-- Denotation preservation on the ILP-exposing shape. -/
-example (init : BitVec 64) :
-    (applySchedule ilpExposingProg
-       (analyzeSchedule ilpExposingProg)).denote init =
-      ilpExposingProg.denote init :=
-  applySchedule_denote_preserves _ _ _
-
-/-- CT preservation on the ILP-exposing shape. -/
-example (accL : SecretLevel) :
-    ctSafeJForProg (applySchedule ilpExposingProg
-                       (analyzeSchedule ilpExposingProg)) accL =
-      ctSafeJForProg ilpExposingProg accL :=
-  applySchedule_preserves_CT _ _ _
-
-/-! ## 8. End-to-end corollary
-
-The user-facing entry point: run `analyzeSchedule`, then `applySchedule`
-to apply the analysis. Both preservation theorems are wrapped into a
-single corollary statement for downstream use. -/
-
-/-- **End-to-end schedule preservation.** Applying `analyzeSchedule`
-    followed by `applySchedule` preserves both denotation and
-    CT-safety. -/
-theorem analyzeSchedule_applySchedule_preserves
-    {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applySchedule p (analyzeSchedule p)).denote init = p.denote init ∧
-    ctSafeJForProg (applySchedule p (analyzeSchedule p)) accL =
-      ctSafeJForProg p accL :=
-  ⟨applySchedule_denote_preserves p (analyzeSchedule p) init,
-   applySchedule_preserves_CT p (analyzeSchedule p) accL⟩
-
-/-! ## 9. Where the next scheduling work plugs in
-
-The framework above is the verified scaffolding into which the next
-optimisation steps plug. The expansion path:
-
-1. **Latency-aware critical-path priority.** Replace the
-   "smallest-numbered ready binder" priority with a critical-path
-   score (longest dependence chain to the end). This improves the
-   produced order on bodies with mixed-latency operations (e.g.
-   multiplications and additions on a Skylake-class pipeline). The
-   framework theorems are unaffected.
-
-2. **Cross-iteration software pipelining.** Lift the schedule from
-   within-one-iteration to a multi-iteration prologue/kernel/epilogue.
-   This requires `JForProg.denote` to be re-expressed in pipelined
-   form; the framework theorems would change proof shape but not
-   statement.
-
-3. **Com-level structural rewrite.** A future `applySchedule` could
-   actually perform the reorder at the Com level via a De-Bruijn
-   renumbering layer. The framework preservation theorems would
-   change from `rfl` to a per-Com induction, but the *theorem
-   statements* stay the same — the rewrite just supplies a different
-   `preserves` witness, mirroring the `RegisterAllocation`,
-   `DeadCodeElim`, `LoopInvariantHoist`, `CommonSubexprElim`, and
-   `ComInline` extension story.
-
-4. **VLIW packing.** A wide-issue back-end can bundle independent
-   instructions from the schedule into single-cycle VLIW words. This
-   is a back-end concern that consumes the Com-level schedule; the
-   framework here exposes the per-binder dependence record that VLIW
-   packing needs.
-
-The framework theorems `applySchedule_denote_preserves` and
-`applySchedule_preserves_CT` are schedule-decision-independent and
-hold across all of these extensions. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR

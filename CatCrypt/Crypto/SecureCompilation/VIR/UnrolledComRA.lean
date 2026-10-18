@@ -15,12 +15,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 /-!
 # Unrolled-Com-domain register allocation — the winning RA consumer
 
-`RegisterAllocation.lean` ships the verified linear-scan RA
-framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
-hint (`seqOf`), well-formed when `slotOf` is injective and the Com→Com
-transform `applyRA` preserves `JForProg.denote`. The central theorem
-`applyRA_denote_preserves` is RA-agnostic: it holds for **any** well-formed
-RA via the `preserves` witness.
+In `RegisterAllocation.lean` a `RegisterAllocation` is a slot remap (`slotOf`)
+plus a sequencing map (`seqOf`), well-formed when `slotOf` is injective.
 
 `Sha2RaEmit.lean` / `KeccakRaEmit.lean` wire the framework into the
 SHA-2 / Keccak emit through `raDstName` / `keccakRaDstName`: binding `k`'s
@@ -46,10 +42,8 @@ operates on the **slot-index domain of the unrolled Com**. It
    never simultaneously live onto one physical slot.
 
 The resulting `seqOf : Nat → Nat` is the logical→physical map; `slotOf := id`
-keeps the framework's `Function.Injective` discharge trivial (the same packing
-`linearScanRA` uses — see `RegisterAllocation.lean` §8). The headline
-denotation theorems `sha2_ra_emit_denotation_preserves` /
-`keccak_ra_emit_denotation_preserves` fire unchanged: they are RA-agnostic.
+keeps the `Function.Injective` discharge trivial (the same packing
+`linearScanRA` uses — see `RegisterAllocation.lean` §6).
 
 ## Why the emit stays correct under a non-trivial `seqOf`
 
@@ -63,6 +57,13 @@ to the same physical name. The only way to corrupt the computation is to map two
 hazard). `unrolledSlotRA_no_collision` proves the linear-scan assignment never
 does this, the property that the naive `linearScanRA` wiring violates.
 
+## Main results
+
+* `unrolledSlotRA_no_collision` — simultaneously-live logical slots get distinct
+  physical slots.
+* `unrolledSlotRAof_WellFormed`, `unrolledSlotRAofIters_WellFormed`,
+  `unrolledSlotRAofItersCoalesce_WellFormed` — `slotOf` is injective.
+
 ## Contents
 
 * `(slotTrace ())*` — the per-binding read/write slot trace for the unrolled SHA-2 /
@@ -70,16 +71,8 @@ does this, the property that the naive `linearScanRA` wiring violates.
 * `slotLiveRanges` — first-write / last-use interval per logical slot.
 * `scanAssign` / `physMap` — linear-scan lowest-free-slot physical assignment.
 * `unrolledSlotRA` — the `RegisterAllocation` (`slotOf := id`, `seqOf := physMap`).
-* `unrolledSlotRA_WellFormed` — well-formedness (so `applyRA_denote_preserves`
-  fires).
-* `unrolledSlotRA_no_collision` — simultaneously-live logical slots get distinct
-  physical slots.
 
-## Axiom budget
-
-`[propext, Quot.sound]` only. The well-formedness witness is the same `rfl`
-shape `linearScanRA` uses (`slotOf := id` injective, `applyRA p ra = p`); the
-no-collision theorem is a finite check (`decide`/`native_decide`) over the
+The no-collision theorem is a finite check (`decide`/`native_decide`) over the
 concrete trace. The trace mirrors and live-range / assignment functions are
 plain computations that do not enter the theorem statements.
 -/
@@ -426,11 +419,10 @@ def physMapTabled (tbl : Array Nat) (s : Nat) : Nat :=
 
 /-! ## 4. The `RegisterAllocation`
 
-Following the framework's `linearScanRA` packing (`RegisterAllocation.lean` §8):
+Following the `linearScanRA` packing (`RegisterAllocation.lean` §6):
 the *real* slot decision lives in `seqOf` (consumed by the emit pass via
 `raDstName` / `keccakRaDstName`), while `slotOf := id` keeps the framework's
-`Function.Injective` discharge trivial and `applyRA p ra = p` keeps `preserves`
-a `rfl`. -/
+`Function.Injective` discharge trivial. -/
 
 /-- **The unrolled-Com-domain register allocation** for a slot trace `tr`.
 `seqOf` is the linear-scan logical→physical slot map over `tr`, computed via the
@@ -463,20 +455,16 @@ unrolled body's slot trace; SHA-2 and Keccak use `unrolledSlotRASha` /
 `unrolledSlotRAKeccak`. -/
 abbrev unrolledSlotRA := unrolledSlotRAof
 
-/-! ## 5. Well-formedness: `applyRA_denote_preserves` fires
+/-! ## 5. Well-formedness
 
-The framework's `WellFormed` requires `slotOf` injective and `applyRA p ra = p`.
-Both are immediate for the `slotOf := id` packing — exactly as for the
-framework's own `linearScanRA`. So the headline denotation theorems
-`sha2_ra_emit_denotation_preserves` / `keccak_ra_emit_denotation_preserves` fire
-for `unrolledSlotRA` with no re-proof. -/
+`WellFormed` requires `slotOf` injective, which is immediate for the
+`slotOf := id` packing, as for `linearScanRA`. -/
 
-/-- **`unrolledSlotRAof tr` is well-formed for every trace `tr`.**
-`slotOf = id` (injective); `applyRA p ra = p` (so `preserves` is `rfl`). -/
+/-- **`unrolledSlotRAof tr` is well-formed for every trace `tr`**: `slotOf = id`
+is injective. -/
 theorem unrolledSlotRAof_WellFormed (tr : List SlotEvent) :
     WellFormed (unrolledSlotRAof tr) where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
 /-- The SHA-2 unrolled RA is well-formed. -/
 theorem unrolledSlotRASha_WellFormed (sp : Sha2Emit.Sha2Spec) :
@@ -712,22 +700,17 @@ def physMapCrossIterTabled (tbl : Array Nat) (s : Nat) : Nat :=
 `tr` (for live ranges and seed pinning) and the per-iteration chunking
 `iters` (for the carry analysis). Carried slots get the lowest physical
 slots; non-carried slots fill the remainder by linear scan. `slotOf := id`
-keeps the framework's `Function.Injective` discharge trivial and
-`applyRA p ra = p` keeps `preserves` a `rfl`, so the headline denotation
-theorems fire unchanged. -/
+keeps the `Function.Injective` discharge trivial. -/
 def unrolledSlotRAofIters (tr : List SlotEvent) (iters : List (List SlotEvent)) :
     RegisterAllocation where
   slotOf := id
   seqOf  := physMapCrossIterTabled (physTableCrossIter tr iters)
 
-/-- **The cross-iteration RA is well-formed.** Same proof shape as
-`unrolledSlotRAof_WellFormed`: `slotOf = id` is injective and `applyRA p ra =
-p` definitionally. -/
+/-- **The cross-iteration RA is well-formed**: `slotOf = id` is injective. -/
 theorem unrolledSlotRAofIters_WellFormed (tr : List SlotEvent)
     (iters : List (List SlotEvent)) :
     WellFormed (unrolledSlotRAofIters tr iters) where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
 /-- The memoised cross-iteration `seqOf` agrees with `physMapCrossIter` on the
 slot universe. Same memoisation argument as `physMapTabled_physTable_eq`. -/
@@ -943,23 +926,18 @@ def physMapCoalesceTabled (tbl : Array Nat) (s : Nat) : Nat :=
 /-- **The coalesce-aware unrolled-Com-domain RA (Phase B+).** Same shape
 as `unrolledSlotRAofIters`, with an additional two-address coalescing
 pass post-linear-scan. `slotOf := id` keeps the framework's
-`Function.Injective` discharge trivial; `applyRA p ra = p` keeps
-`preserves` a `rfl`. -/
+`Function.Injective` discharge trivial. -/
 def unrolledSlotRAofItersCoalesce
     (tr : List SlotEvent) (iters : List (List SlotEvent)) :
     RegisterAllocation where
   slotOf := id
   seqOf  := physMapCoalesceTabled (physTableCoalesce tr iters)
 
-/-- **The coalesce-aware RA is well-formed.** Same `slotOf := id` shape;
-denotation preservation is by the framework's plug-in interface (the
-`applyRA` transform is the identity, and the seqOf data is consumed only
-by the downstream emit pass). -/
+/-- **The coalesce-aware RA is well-formed**: `slotOf = id` is injective. -/
 theorem unrolledSlotRAofItersCoalesce_WellFormed (tr : List SlotEvent)
     (iters : List (List SlotEvent)) :
     WellFormed (unrolledSlotRAofItersCoalesce tr iters) where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
 /-- The memoised coalesce-aware `seqOf` agrees with `physMapCoalesce` on
 the slot universe. Same memoisation argument as

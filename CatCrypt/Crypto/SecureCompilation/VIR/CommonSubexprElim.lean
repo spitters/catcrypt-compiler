@@ -11,36 +11,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
-# Verified common-subexpression elimination (CSE) for `Com` — analysis-as-decision pass
+# Common-subexpression analysis for `JForProg` loop bodies
 
-This file extends the verified-optimizer suite
-(`JForProgUnroll.lean`, `RegisterAllocation.lean`,
-`CtPreservationNewTransforms.lean`, `DeadCodeElim.lean`) with a
-**common-subexpression-elimination** pass at the `Com` level.
+This module computes which binders of a straight-line `Com` body recompute an
+expression bound at an earlier position. The `Com` rewrite that replaces a
+redundant binder by the earlier one, with its denotation theorem, is
+`CommonSubexprElimReal`.
 
-## Architectural principle: analysis as decision
-
-`Com d Γ t` is intrinsically typed. Replacing one binder's `Expr` with a
-`Pvar`-style reference to an earlier binder would change the *expression
-syntax* at that position; the binder itself, and the intrinsic De-Bruijn
-indexing of every later use, must remain — otherwise the typing fails.
-
-Following the same architectural pattern as `RegisterAllocation.lean`
-and `DeadCodeElim.lean`, the heavy lifting is the **analysis** (which binders
-recompute an expression already bound earlier); the `Com → Com` rewrite
-itself is the identity at the framework level, because the emit pass
-downstream consumes the analysis as a labelling, not as a structural change:
-
-* The slot decisions of the linear-scan RA live in a separate
-  `RegisterAllocation` value;
-* The deadness decisions of the DCE live in a separate `DceDecisions` value;
-* Likewise here, the CSE decisions live in a separate `CseDecisions` value.
-  The emit pass can rewrite a flagged binder's `Pexpr` to a `Pvar`
-  referencing the canonical earlier binder — or, equivalently, leave the
-  duplicate computation in place and let an optimising back-end (jasminc,
-  LLVM) CSE it. Either way, the *Com-level* transform is the identity.
-
-## Why CSE is sound on `Com` without a kill-set
+## Why syntactic equality suffices on `Com`
 
 The crucial simplification: `Com d Γ t` is **single-static-assignment by
 construction** (every let-binder introduces a *fresh* `Ctxt.Var`; binders
@@ -51,60 +29,24 @@ scope.
 
 Therefore the simple criterion — "two binders bear syntactically identical
 expressions (same op, same `args` `HVector`)" — is **already** sufficient
-for CSE soundness on `Com`. The analysis here implements exactly this
-criterion as a position-based labelling consumed by the emit pass.
+for CSE soundness on `Com`. The analysis implements this criterion as a
+position-based labelling.
 
-## Why this is the right factoring
+## Main results
 
-The two preservation theorems
-
-  `applyCse_denote_preserves : (applyCse p d).denote = p.denote`
-  `applyCse_preserves_CT     : ctSafeJForProg (applyCse p d) accL =
-                                ctSafeJForProg p accL`
-
-are by-construction `rfl`. The analysis content is the
-no-false-positives statement: a binder flagged "CSE-redundant via slot k"
-indeed bears the same expression-syntax as the binder at position k.
-We discharge a single-shape instance of this here (the trivial body
-`Com.ret v` has no binders, hence no positions can be flagged); the full
-"two flagged positions bear syntactically equal `Expr`s" statement is the
-operational invariant maintained by `analyzeCse` by construction.
+* `analyzeCse_empty_body`, `analyzeCse_empty_body_positions` — a body with
+  no binders has no flagged positions.
 
 ## Contents
 
 * `CseDecisions` — the analysis result. Each `CseEntry` records a
   redundant-binder position together with the canonical position whose
   value it duplicates.
-* `analyzeCse` — the analysis: walks the body, hashes each binder's
-  expression (op + arg-slot list), and flags the binder as redundant when
-  its hash is already present in the table.
-* `applyCse` — the `Com → Com` rewrite. By the architectural principle
-  above this is the identity (`fun p _ => p`).
-* `applyCse_denote_preserves`, `applyCse_preserves_CT` — the two
-  preservation theorems, both `rfl`.
-* `analyzeCse_empty_body` — base-case correctness: the trivial body has
-  no flagged positions.
-* Concrete sanity examples (`#eval`) exercising `analyzeCse` on small
-  synthetic Com terms, including the headline duplicate-expression
-  shape `v0 = acc + acc; v1 = acc + acc; ret v1`.
-
-No open goals, no new axioms — the framework's Com-level rewrite is the
-identity, so both preservation theorems reduce to `rfl`.
-
-## Residuals
-
-A future `applyCse` could perform the substitution at the Com level: walk
-the body, and for each `.var e body` where the analysis flags this binder
-redundant via canonical position `k`, rebind the body's `.here` reference
-through the canonical-position `Ctxt.Var`. This requires a De-Bruijn
-renumbering layer (the canonical-position `Var` must be `.there`-shifted
-up to the binder's depth); the architectural shape used here defers that
-shift work to the emit pass, which writes textual Jasmin / LLVM where the
-slot-name substitution is direct.
-
-The framework theorems `applyCse_denote_preserves` and
-`applyCse_preserves_CT` are CSE-decision-independent and hold across all
-of these extensions.
+* `analyzeCse` — walks the body, hashes each binder's expression (op and
+  argument-slot list), and flags the binder as redundant when its hash is
+  already in the table.
+* Sanity examples on small synthetic bodies, including the
+  duplicate-expression shape `v0 = acc + acc; v1 = acc + acc; ret v1`.
 -/
 
 @[expose] public section
@@ -293,86 +235,7 @@ def analyzeCseAux {Γ : Ctxt jasminDialect} {t : JasminTy}
 def analyzeCse {accTy : JasminTy} (p : JForProg accTy) : CseDecisions :=
   { entries := analyzeCseAux 0 [] [] p.update }
 
-/-! ## 4. The `Com → Com` transform
-
-Per the architectural principle: `applyCse` is the identity at the Com
-level. The CSE decisions are consumed by the downstream emit pass (which
-can rewrite a flagged binder's emitted `Pexpr` to a `Pvar` referencing
-the canonical slot, or omit the redundant binder altogether and rewrite
-downstream `Var` references). The *Com itself* is unchanged — preserving
-the intrinsic typing without needing a De-Bruijn renumbering layer.
-
-This mirrors `RegisterAllocation.applyRA = fun p _ => p` and
-`DeadCodeElim.applyDce = fun p _ => p`. -/
-
-/-- **Apply a CSE decision to a `JForProg`.** At the Com level this is
-the identity Com→Com transform — the analysis result is a labelling
-consumed by the emit pass, not a structural change to the Com.
-
-For a future Com-level rewrite (one that actually substitutes the
-redundant binder's expression with a `Pvar`-equivalent reference via
-De-Bruijn renumbering), this function would change. The framework's
-preservation theorems are stated uniformly so that any future Com-level
-rewrite which preserves denotation (and CT) plugs in without touching
-the theorem statements. -/
-def applyCse {accTy : JasminTy} (p : JForProg accTy)
-    (_d : CseDecisions) : JForProg accTy :=
-  p
-
-/-! ## 5. The two preservation theorems -/
-
-/-- **Denotation preservation for `applyCse`.** For any `JForProg p`
-and any CSE decision `d`, the transformed program denotes the same
-function as `p`. At the current shape this is `rfl` because
-`applyCse p d = p` definitionally — the CSE decisions live in `d`,
-consumed downstream, and the Com itself is unchanged. -/
-theorem applyCse_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (d : CseDecisions) (init : ⟦accTy⟧) :
-    (applyCse p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applyCse`.** For any `JForProg p`, any CSE
-decision `d`, and any accumulator secrecy label `accL`, the transformed
-program is CT-safe iff `p` is. At the current shape this is `rfl`
-because `applyCse p d = p` definitionally.
-
-CSE never introduces a secret-dependent branch — it only eliminates
-re-computation of an already-bound value. The CT predicate cares about
-branch structure + memory access pattern; neither changes. Even a future
-Com-level rewrite that actually performs the substitution would preserve
-CT, because replacing an `Expr` with a `Pvar` to the canonical slot
-reads the same SSA value (so the access pattern is unchanged).
-
-This is the CSE analogue of `applyRA_preserves_CT` from
-`CtPreservationNewTransforms.lean` and `applyDce_preserves_CT` from
-`DeadCodeElim.lean`, with the same proof shape and the same
-architectural justification. -/
-theorem applyCse_preserves_CT {accTy : JasminTy} (p : JForProg accTy)
-    (d : CseDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applyCse p d) accL = ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applyCse` (Prop form).** The propositional
-analogue: `ctSafePropJForProg` is preserved through `applyCse`. -/
-theorem applyCse_preserves_CT_prop {accTy : JasminTy} (p : JForProg accTy)
-    (d : CseDecisions) (accL : SecretLevel) :
-    ctSafePropJForProg (applyCse p d) accL ↔ ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [applyCse_preserves_CT]
-
-/-- **Robust CT preservation for `applyCse`.** A robustly CT-safe
-`JForProg` remains robustly CT-safe after `applyCse`. Since
-`applyCse p d = p` at the Com level, this is `id` on the
-universally-quantified predicate. -/
-theorem applyCse_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : CseDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applyCse p d) := by
-  intro accL
-  rw [applyCse_preserves_CT]
-  exact h accL
-
-/-! ## 6. Analysis correctness: no-false-positives on empty body
+/-! ## 4. Analysis correctness: no-false-positives on empty body
 
 The natural correctness statement for `analyzeCse` is: every entry
 flagged redundant has the same expression-hash as the canonical-position
@@ -407,7 +270,7 @@ theorem analyzeCse_empty_body_positions {accTy : JasminTy} (n : Nat)
   rw [analyzeCse_empty_body]
   rfl
 
-/-! ## 7. Sanity tests
+/-! ## 5. Sanity tests
 
 These confirm `analyzeCse` behaves correctly on small synthetic body
 shapes — the smallest "is the analysis wired up?" smoke tests. -/
@@ -580,54 +443,5 @@ example : (analyzeCse
             (accTy := .reg 64)
             { n := 1, update := mixedConstsBody }).entries =
           [{ canonicalPos := 0, redundantPos := 2 }] := rfl
-
-/-! ## 8. End-to-end corollary -/
-
-/-- **End-to-end CSE preservation.** Applying `analyzeCse` followed by
-    `applyCse` preserves both denotation and CT-safety. -/
-theorem analyzeCse_applyCse_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applyCse p (analyzeCse p)).denote init = p.denote init ∧
-    ctSafeJForProg (applyCse p (analyzeCse p)) accL = ctSafeJForProg p accL :=
-  ⟨applyCse_denote_preserves p (analyzeCse p) init,
-   applyCse_preserves_CT p (analyzeCse p) accL⟩
-
-/-! ## 9. Where the next CSE work plugs in
-
-The framework above is the verified scaffolding into which the next
-optimisation steps plug. The expansion path:
-
-1. **GVN-style canonicalisation.** Constant folding, commutative-op
-   normalisation (`a + b → b + a` for commutative ops, sorted), and
-   algebraic simplification before hashing. This catches further
-   redundancies. The hash function changes; the framework is unchanged.
-
-2. **Com-level substitution.** A future `applyCse` could actually
-   substitute the redundant binder's expression with a `Pvar`-equivalent
-   reference to the canonical slot via a De-Bruijn renumbering layer.
-   The framework's preservation theorems would change from `rfl` to a
-   per-Com induction, but the *theorem statements* stay the same — the
-   rewrite just supplies a different `preserves` witness, mirroring the
-   `RegisterAllocation` / `DeadCodeElim` extension story.
-
-3. **Cross-loop / cross-function CSE.** Hoisting an invariant expression
-   from a loop body to before the loop. This is the natural
-   continuation but requires interaction with the `JForProg` framework
-   as well as the body Com.
-
-4. **Soundness extension to non-SSA aliasing ops.** The current hash
-   assumes single-static-assignment: a `Ctxt.Var` reliably names one
-   defining slot. For dialects whose ops have aliasing side effects
-   (`stackStore` is the relevant Jasmin case), the hash would need to
-   conservatively *not* fire across an intervening store to a slot the
-   expression reads through. Currently the Com IR's `stackStore` is
-   a functional update that produces a *new* `Ctxt.Var` (preserving
-   SSA), so this is not an issue at the Com level — only at later IR
-   levels (textual Jasmin `Cassgn` / `Copn`) does the kill-set
-   matter.
-
-The framework theorems `applyCse_denote_preserves` and
-`applyCse_preserves_CT` are CSE-decision-independent and hold across all
-of these extensions. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR

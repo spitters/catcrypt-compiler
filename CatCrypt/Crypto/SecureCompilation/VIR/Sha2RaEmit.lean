@@ -22,30 +22,26 @@ destination slots rerouted through a `RegisterAllocation`: where
 `Sha2Emit.dstName sp k = "st[" ++ toString (slotSeq sp).getD k 0 ++ "]"`, the
 RA-driven version uses `"st[" ++ toString (ra.seqOf ((slotSeq sp).getD k 0)) ++ "]"`.
 For `RegisterAllocation.identity` the destination names agree pointwise with
-`Sha2Emit.dstName` (§4).
+`Sha2Emit.dstName` (§3).
 
-`RegisterAllocation.applyRA` is the identity, so the denotation theorems of §3
-hold for every allocation (`RegisterAllocation.applyRA_denote_preserves_of_any`).
-They are stated over the schedule loop `sha2RoundJForProg`, not over the
-`compressCom` text that `emitSha2RoundRaJazz` renders, and they state nothing
-about the `ra.seqOf`-routed rendering. No theorem here relates the emitted text
-to the unrenamed emit. The register allocator with a semantic theorem is
-`physScanSpill` (`toLprogPhysAbi_faithful_uniform`).
+No theorem here relates the `ra.seqOf`-routed text to the unrenamed emit or to
+the semantics of `compressCom`. The register allocator with a semantic theorem
+is `physScanSpill` (`toLprogPhysAbi_faithful_uniform`).
+
+## Main results
+
+* `raDstName_identity_eq` (§3) — for the identity allocation, destination names
+  agree with `Sha2Emit.dstName` pointwise.
+* `sha2RA_iters_WellFormed`, `sha2RA_coalesce_WellFormed` — the cross-iteration
+  and coalescing allocations have injective `slotOf`.
+* `sha256_working_state_carried` — the 8 working-state words are carried
+  across every round boundary.
 
 ## Contents
 
 * `sha2RoundJForProg` — the SHA-2 schedule loop `schedLoop` as a `JForProg`.
 * `emitSha2RoundRaJazz` — the `.jazz` text of `compressCom` with destination
   slot names rewritten through `ra.seqOf`.
-* `sha2_ra_emit_denotation_preserves` and its `_linearScan`, `_identity` and
-  `_unrolled` corollaries — `applyRA (sha2RoundJForProg sp) ra` denotes
-  `sha2RoundJForProg sp`; true for every `ra` because `applyRA` is the identity.
-* `raDstName_identity_eq` (§4) — for the identity allocation, destination names
-  agree with `Sha2Emit.dstName` pointwise.
-
-## Axioms
-
-`[propext, Quot.sound]`.
 
 ## Allocations used by the bench emit
 
@@ -114,53 +110,7 @@ def emitSha256RaJazz (ra : RegisterAllocation) : String :=
 def emitSha512RaJazz (ra : RegisterAllocation) : String :=
   emitSha2RoundRaJazz sha512Spec ra "sha512_compress_ra"
 
-/-! ## 3. Denotation of `applyRA` on the schedule loop
-
-`RegisterAllocation.applyRA` is the identity, so each theorem below holds for
-every allocation (`RegisterAllocation.applyRA_denote_preserves_of_any`). The
-theorems are stated over `sha2RoundJForProg`, not over the text
-`emitSha2RoundRaJazz` renders; the allocator with a semantic theorem is
-`physScanSpill` (`toLprogPhysAbi_faithful_uniform`). -/
-
-/-- `applyRA (sha2RoundJForProg sp) ra` denotes the same function as
-`sha2RoundJForProg sp`. It holds for every `ra` because `applyRA` is the
-identity; the `WellFormed` hypothesis is not needed, and the statement says
-nothing about the `ra.seqOf`-routed rendering of `emitSha2RoundRaJazz`. -/
-theorem sha2_ra_emit_denotation_preserves (sp : Sha2Spec) (ra : RegisterAllocation)
-    (hwf : WellFormed ra) (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) ra).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  applyRA_denote_preserves (sha2RoundJForProg sp) ra hwf init
-
-/-- **Concrete corollary for the linear-scan RA.** -/
-theorem sha2_ra_emit_denotation_preserves_linearScan (sp : Sha2Spec)
-    (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) (linearScanRA (sha2RoundJForProg sp))).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  sha2_ra_emit_denotation_preserves sp _
-    (linearScanRA_WellFormed (sha2RoundJForProg sp)) init
-
-/-- **Concrete corollary for the identity RA.** -/
-theorem sha2_ra_emit_denotation_preserves_identity (sp : Sha2Spec)
-    (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) RegisterAllocation.identity).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  sha2_ra_emit_denotation_preserves sp _ identity_WellFormed init
-
-/-- **Concrete corollary for the unrolled-Com-domain RA.**
-`UnrolledComRA.unrolledSlotRASha sp` is the linear-scan allocation over the
-slot-index domain of `compressCom sp` (the unrolled body), not over the binder
-domain of the JForProg wrapper, and the allocation the bench emit passes. Its
-live-range non-overlap is `UnrolledComRA.unrolledSlotRA_no_collision_sha256/512`.
-The denotation statement holds because `applyRA` is the identity. -/
-theorem sha2_ra_emit_denotation_preserves_unrolled (sp : Sha2Spec)
-    (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) (UnrolledComRA.unrolledSlotRASha sp)).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  sha2_ra_emit_denotation_preserves sp _
-    (UnrolledComRA.unrolledSlotRASha_WellFormed sp) init
-
-/-! ## 4. Identity-RA per-binding destination name equals the current emit
+/-! ## 3. Identity-RA per-binding destination name equals the current emit
 
 For `RegisterAllocation.identity` (`seqOf k = k`), the RA-driven per-binding
 destination name reduces pointwise to `Sha2Emit.dstName`. The full-text
@@ -175,7 +125,7 @@ theorem raDstName_identity_eq (sp : Sha2Spec) (k : Nat) :
     raDstName sp RegisterAllocation.identity k = dstName sp k := by
   simp [raDstName, dstName, RegisterAllocation.identity]
 
-/-! ## 5. Cross-iteration-aware RA via `UnrolledComRA.unrolledSlotRAofIters`
+/-! ## 4. Cross-iteration-aware RA via `UnrolledComRA.unrolledSlotRAofIters`
 
 `UnrolledComRA.lean` §7 ships `unrolledSlotRAofIters tr iters`: a
 `RegisterAllocation` derived from a per-iteration `SlotEvent` chunking with a
@@ -222,14 +172,6 @@ def sha2RA_iters (sp : Sha2Spec) : RegisterAllocation :=
 theorem sha2RA_iters_WellFormed (sp : Sha2Spec) : WellFormed (sha2RA_iters sp) :=
   UnrolledComRA.unrolledSlotRAofIters_WellFormed _ _
 
-/-- `sha2_ra_emit_denotation_preserves` at `sha2RA_iters`; holds because
-`applyRA` is the identity. -/
-theorem sha2_ra_emit_denotation_preserves_iters (sp : Sha2Spec)
-    (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) (sha2RA_iters sp)).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  sha2_ra_emit_denotation_preserves sp _ (sha2RA_iters_WellFormed sp) init
-
 /-- The 8 SHA-2 working-state words `a..h` are carried across every round
 boundary. -/
 theorem sha256_working_state_carried :
@@ -238,7 +180,7 @@ theorem sha256_working_state_carried :
         (sha2Iters sha256Spec)) = true := by
   native_decide
 
-/-! ## 6. Two-address coalescing
+/-! ## 5. Two-address coalescing
 
 `UnrolledComRA.lean` §8 ships `unrolledSlotRAofItersCoalesce`: a
 coalesce-aware variant of the cross-iter RA that fuses `dst` and `src1`
@@ -281,10 +223,7 @@ Concretely:
 For SHA-2, candidate detection finds 12 raw candidates, 2 of which survive
 the seed filter, and the no-collision recheck rejects both merges. Coalescing
 on SHA-2 would need live ranges tighter than `[firstTouch, lastTouch]` in the
-trace encoding, for example `SlotEvent`s with explicit kill-points.
-
-`sha2_ra_emit_denotation_preserves_coalesce` holds because `applyRA` is the
-identity; it states nothing about the coalesced slots. -/
+trace encoding, for example `SlotEvent`s with explicit kill-points. -/
 
 /-- The cross-iter + coalesce-aware SHA-2 register allocation. Fuses
 `dst` and `src1` for events where `src1` dies post-event and the merge
@@ -297,14 +236,6 @@ def sha2RA_coalesce (sp : Sha2Spec) : RegisterAllocation :=
 theorem sha2RA_coalesce_WellFormed (sp : Sha2Spec) :
     WellFormed (sha2RA_coalesce sp) :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce_WellFormed _ _
-
-/-- `sha2_ra_emit_denotation_preserves` at `sha2RA_coalesce`; holds because
-`applyRA` is the identity. -/
-theorem sha2_ra_emit_denotation_preserves_coalesce (sp : Sha2Spec)
-    (init : ⟦WinAcc sp.w⟧) :
-    (applyRA (sha2RoundJForProg sp) (sha2RA_coalesce sp)).denote init
-      = (sha2RoundJForProg sp).denote init :=
-  sha2_ra_emit_denotation_preserves sp _ (sha2RA_coalesce_WellFormed sp) init
 
 /-- **SHA-256 has two coalesce candidates surviving seed filtering.**
 Unlike ChaCha20 / Poseidon2 (which see zero candidates because their

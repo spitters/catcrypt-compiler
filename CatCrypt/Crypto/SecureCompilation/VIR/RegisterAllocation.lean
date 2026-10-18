@@ -21,30 +21,27 @@ a slot map `slotOf : Nat → Nat` and a sequencing map `seqOf : Nat → Nat`. Th
 file computes such decisions with a linear scan over live ranges and proves
 that the scan gives simultaneously live binders distinct slots.
 
-`applyRA` returns its program argument and ignores the allocation. Every
-theorem here that is stated over `applyRA` (`applyRA_denote_preserves`,
-`linearScanRA_denote_preserves`) therefore holds for every allocation
-(`applyRA_denote_preserves_of_any`) and states no property of the slot map.
 Emit modules that read `seqOf` to name slots carry no theorem from this file
 about the text they render. The register allocator with a semantic theorem is
 `physScanSpill` (`toLprogPhysAbi_faithful_uniform`).
 
+## Main results
+
+* `linearScanRA_real_slotOfInjectiveOnLive` — the linear scan gives
+  simultaneously live binders distinct slots.
+* `identity_WellFormed`, `linearScanRA_WellFormed` — injectivity of `slotOf`
+  for the identity and linear-scan allocations.
+
 ## Contents
 
 * `RegisterAllocation` — the decision data (slot map and sequencing map).
-* `RegisterAllocation.WellFormed` — injectivity of `slotOf` together with
-  denotation preservation of `applyRA`; the second field holds by `rfl` for
-  every allocation.
-* `applyRA` — the identity on `JForProg`.
-* `applyRA_denote_preserves` — denotation preservation under `WellFormed`;
-  `applyRA_denote_preserves_of_any` is the same statement without the
-  hypothesis.
+* `RegisterAllocation.WellFormed` — injectivity of `slotOf`.
 * `RegisterAllocation.identity` and `identity_WellFormed` — the identity
   allocation.
 * `linearScanRA_real` — the linear-scan allocation: live ranges from
   `computeLastUse`, lowest-free-slot assignment from `linearScanAssign`.
 * `SlotOfInjectiveOnLive` and `linearScanRA_real_slotOfInjectiveOnLive` — the
-  linear scan's guarantee, from the walker invariant in §7b: `busy` holds the
+  linear scan's guarantee, from the walker invariant in §5b: `busy` holds the
   pair of every allocated binder still live at the current position, and
   `linearScanStep` picks a slot outside it.
 * `linearScanRA` and `linearScanRA_WellFormed` — the allocation with
@@ -87,57 +84,21 @@ def identity : RegisterAllocation where
   slotOf k := k
   seqOf k := k
 
-/-! ## 2. `applyRA` -/
+/-! ## 2. Well-formedness -/
 
-/-- **`applyRA p ra` is `p`.** The allocation argument is not read, so
-`applyRA_denote_preserves` holds for every allocation
-(`applyRA_denote_preserves_of_any`) and states no property of the slot map. -/
-def applyRA {accTy : JasminTy} (p : JForProg accTy)
-    (_ra : RegisterAllocation) : JForProg accTy :=
-  p
-
-/-- **Well-formedness predicate for a register allocation.**
-
-The hypothesis of `applyRA_denote_preserves`. Its fields:
-
-* `injOnLive`: global injectivity of `slotOf`. `linearScanRA` discharges it
-  with `slotOf := id`; the live-range property of the linear scan is the
-  separate `SlotOfInjectiveOnLive`.
-* `preserves`: `applyRA p ra` denotes the same function as `p`; since
-  `applyRA` is the identity, this holds by `rfl` for every allocation. -/
+/-- **Well-formedness of a register allocation**: `slotOf` is globally
+injective. `linearScanRA` discharges it with `slotOf := id`; the live-range
+property of the linear scan is the separate `SlotOfInjectiveOnLive`. -/
 structure WellFormed (ra : RegisterAllocation) : Prop where
   /-- `slotOf` is globally injective. -/
   injOnLive : Function.Injective ra.slotOf
-  /-- `applyRA` preserves `JForProg.denote` for any `JForProg` and initial
-      accumulator; `rfl` for every allocation. -/
-  preserves : ∀ {accTy : JasminTy} (p : JForProg accTy) (init : ⟦accTy⟧),
-      (applyRA p ra).denote init = p.denote init
 
-/-! ## 3. Denotation preservation of `applyRA` -/
-
-/-- **Denotation preservation for a well-formed register allocation.**
-
-For any `JForProg accTy` `p` and any `WellFormed` allocation `ra`,
-`applyRA p ra` denotes the same function as `p`. The proof invokes the
-`preserves` field. Because `applyRA` is the identity, the statement holds
-without the hypothesis (`applyRA_denote_preserves_of_any`). -/
-theorem applyRA_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (ra : RegisterAllocation) (hwf : WellFormed ra) (init : ⟦accTy⟧) :
-    (applyRA p ra).denote init = p.denote init :=
-  hwf.preserves p init
-
-/-! ## 4. Identity RA: well-formedness witness -/
-
-/-- **The identity register allocation is well-formed.**
-
-`slotOf k = k` is the identity function, hence injective. The
-denotation-preservation witness is `rfl`, because `applyRA p identity = p`
-definitionally. -/
+/-- **The identity register allocation is well-formed**: `slotOf k = k` is
+injective. -/
 theorem identity_WellFormed : WellFormed identity where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
-/-! ## 5. Live-range analysis on the Com body
+/-! ## 3. Live-range analysis on the Com body
 
 We model the loop body as a straight-line sequence of let-bindings (the
 `Com.var … (Com.var … (Com.ret …))` chain). Each binder is identified by
@@ -244,7 +205,7 @@ def liveRange {accTy : JasminTy} (p : Com jasminDialect [accTy] accTy)
   let lus := computeLastUse p
   lus[i]?.map (fun lu => (i, lu))
 
-/-! ## 6. Concrete RA construction: `linearScanRA_real`
+/-! ## 4. Concrete RA construction: `linearScanRA_real`
 
 We run the classical linear-scan algorithm:
 
@@ -324,24 +285,12 @@ def linearScanRA_real {accTy : JasminTy} (p : JForProg accTy) :
   { slotOf := fun k => slots.getD k (slots.length + k)
     seqOf := fun k => k }
 
-/-! ## 7. The allocation's own property
+/-! ## 5. The allocation's own property
 
-`applyRA` and `applyRA_real` are the identity, so no theorem about them
-constrains an allocation. No theorem in this file relates an emit pass that
-reads `slotOf` or `seqOf` to the program it renders. -/
-
-/-- **`applyRA_real p ra` is `p`**, on a single `Com` body; the allocation
-    argument is not read. -/
-def applyRA_real {accTy : JasminTy} (p : Com jasminDialect [accTy] accTy)
-    (_ra : RegisterAllocation) : Com jasminDialect [accTy] accTy :=
-  p
-
-/-! ### The allocator's own obligation
-
-`WellFormed` receives the injectivity of `id` (see `linearScanRA` in §8), and
-its `preserves` field is `rfl` because `applyRA` is the identity. The `Prop`
-below is the property that carries the allocator's
-content; §7b proves it of `linearScanRA_real`. -/
+No theorem in this file relates an emit pass that reads `slotOf` or `seqOf`
+to the program it renders. `WellFormed` receives the injectivity of `id` (see
+`linearScanRA` in §6). The `Prop` below carries the allocator's content; §5b
+proves it of `linearScanRA_real`. -/
 
 /-- Two binders that are simultaneously live -- each still live at the other's
     position -- get distinct slots under the real allocation.
@@ -352,14 +301,7 @@ def SlotOfInjectiveOnLive {accTy : JasminTy} (p : JForProg accTy) : Prop :=
     k₁ ≤ (computeLastUse p.update).getD k₂ 0 →
     (linearScanRA_real p).slotOf k₁ ≠ (linearScanRA_real p).slotOf k₂
 
-/-- `applyRA` is the identity, so denotation preservation holds for every
-    allocation, well-formed or not; the `WellFormed` argument of
-    `applyRA_denote_preserves` is not needed. -/
-theorem applyRA_denote_preserves_of_any {accTy : JasminTy} (p : JForProg accTy)
-    (ra : RegisterAllocation) (init : ⟦accTy⟧) :
-    (applyRA p ra).denote init = p.denote init := rfl
-
-/-! ### 7b. The linear scan gives simultaneously-live binders distinct slots
+/-! ### 5b.The linear scan gives simultaneously-live binders distinct slots
 
 `linearScanAssignAux` walks the binder positions in increasing order. The
 invariant carried below is that `busy` holds the `(slot, lastUse)` pair of every
@@ -678,7 +620,7 @@ theorem linearScanRA_real_slotOfInjectiveOnLive {accTy : JasminTy}
   fun k₁ k₂ hne h₁ h₂ =>
     linearScanAssign_getD_ne_of_live (computeLastUse p.update) k₁ k₂ hne h₁ h₂
 
-/-! ## 8. `linearScanRA`
+/-! ## 6. `linearScanRA`
 
 `linearScanRA` packages `linearScanRA_real` with `slotOf := id`, which
 discharges `WellFormed.injOnLive`, and places the linear-scan slots in
@@ -693,21 +635,11 @@ def linearScanRA {accTy : JasminTy} (p : JForProg accTy) :
   { slotOf := id
     seqOf  := fun k => real.slotOf k }
 
-/-- **`linearScanRA` is well-formed.** `injOnLive` is the injectivity of `id`;
-`preserves` holds by `rfl` because `applyRA` is the identity (see
-`linearScanRA_slotOf_eq_id`). -/
+/-- **`linearScanRA` is well-formed**: `injOnLive` is the injectivity of `id`
+(see `linearScanRA_slotOf_eq_id`). -/
 theorem linearScanRA_WellFormed {accTy : JasminTy} (p : JForProg accTy) :
     WellFormed (linearScanRA p) where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
-
-/-- **`applyRA p (linearScanRA p)` denotes the same function as `p`.** It holds
-because `applyRA` is the identity (`applyRA_denote_preserves_of_any`); it
-states no property of the linear-scan slots. -/
-theorem linearScanRA_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) :
-    (applyRA p (linearScanRA p)).denote init = p.denote init :=
-  applyRA_denote_preserves p (linearScanRA p) (linearScanRA_WellFormed p) init
 
 /-- The `slotOf` of `linearScanRA` is the identity, so
     `linearScanRA_WellFormed`'s `injOnLive` is the injectivity of `id` and says
@@ -717,7 +649,7 @@ theorem linearScanRA_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
 theorem linearScanRA_slotOf_eq_id {accTy : JasminTy} (p : JForProg accTy) :
     (linearScanRA p).slotOf = id := rfl
 
-/-! ## 9. Sanity tests for the live-range / slot-assignment infrastructure
+/-! ## 7. Sanity tests for the live-range / slot-assignment infrastructure
 
 These are `example` decls that confirm `computeLastUse` and
 `linearScanAssign` behave correctly on simple synthetic patterns. -/

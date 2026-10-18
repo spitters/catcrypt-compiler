@@ -17,9 +17,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 # Poseidon2 BabyBear with live-range-aware register allocation
 
 A `RegisterAllocation` (`RegisterAllocation.lean`) is a slot map (`slotOf`) and
-a sequencing map (`seqOf`). `RegisterAllocation.applyRA` is the identity, so
-`applyRA_denote_preserves` holds for every allocation and states no property of
-either map. The register allocator with a semantic theorem is `physScanSpill`
+a sequencing map (`seqOf`). No theorem in this module relates either map to the
+emitted text. The register allocator with a semantic theorem is `physScanSpill`
 (`toLprogPhysAbi_faithful_uniform`).
 
 `Sha2RaEmit.lean`, `KeccakRaEmit.lean` and `ChachaRaEmit.lean` render the SHA-2,
@@ -95,6 +94,12 @@ This is the same shape as `ChachaRaEmit`'s `lightestPair`: we compute a
 ratio), sort, and pick the slots with the LOWEST partial-round weight as
 spill victims.
 
+## Main results
+
+* `poseidonRA_WellFormed` — `slotOf` is injective.
+* `poseidon2_ra_emit_denotation_preserves` — the Montgomery-form permutation,
+  converted in and out of Montgomery form, equals `poseidon2BabyBearPermute`.
+
 ## Contents
 
 * `Poseidon2Slot` — index of the 13 scratch YMM names.
@@ -104,8 +109,7 @@ spill victims.
 * `phaseDeadSlots` — slots with zero partial-round uses.
 * `poseidonRA` — the `RegisterAllocation` packing the phase-dead-spill
   decision as `slotOf := id`, `seqOf := poseidonSeqOf`.
-* `poseidonRA_WellFormed` — well-formedness (`preserves := rfl`, because
-  `applyRA` is the identity).
+* `poseidonRA_WellFormed` — well-formedness (`slotOf` injective).
 * `emitPoseidon2ResidentPartialRaJazz` — the RA-driven emit. Same body
   text as the TWENTIETH ABI mode emit, with scratch declarations rerouted
   through `ra.seqOf` (phase-dead scratches declared as `stack u256`
@@ -272,8 +276,7 @@ identity" packing. -/
 
 /-- The Poseidon2 RA's seq mapping. For non-phase-dead slots, the
 identity. For phase-dead slots, the same index (the actual storage-class
-decision lives in `isPhaseDead` and is read by the renderer). `preserves` is
-`rfl` because `applyRA` is the identity. -/
+decision lives in `isPhaseDead` and is read by the renderer). -/
 def poseidonSeqOf (j : Nat) : Nat := j
 
 /-- **The Poseidon2 register allocation.** `seqOf := id`, `slotOf := id`;
@@ -286,11 +289,9 @@ def poseidonRA : RegisterAllocation where
   slotOf := id
   seqOf  := poseidonSeqOf
 
-/-- The Poseidon2 RA is well-formed.  `slotOf` is the identity injection;
-`applyRA p ra = p` definitionally, so `preserves` is `rfl`. -/
+/-- The Poseidon2 RA is well-formed: `slotOf` is the identity injection. -/
 theorem poseidonRA_WellFormed : WellFormed poseidonRA where
   injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
 
 /-! ## 5. RA-driven emit text
 

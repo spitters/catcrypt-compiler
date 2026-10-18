@@ -13,14 +13,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
-# Verified cross-block residency unroll — Phase E2
+# Cross-block residency analysis for unrolled loops
 
-This file is the **Phase E2** verified Com→Com pass closing the
-documented HACL\* Vec256 residual on ChaCha20 (and the analogous
-inter-iteration spill pattern on Poseidon2 partial rounds, Keccak
-state lanes, and SHA-2 working words).
+This module computes which slots of an unrolled loop stay register-resident
+across the iteration boundary, so that their per-iteration pin and unpin
+moves can be hoisted out of the loop (the inter-iteration spill pattern of
+ChaCha20, Poseidon2 partial rounds, Keccak state lanes and SHA-2 working
+words).
 
-## The diagnosis recap
+## Per-iteration residency
 
 The Phase-A per-iteration RA in `UnrolledComRA.lean` (§7) detects
 *per-iter* slot residency: which slots, within ONE round body, deserve
@@ -72,18 +73,14 @@ consumes), the analysis:
    bulk — the prologue pins ONCE before the loop; the epilogue unpins
    ONCE after.
 
-The pass result is a `CrossBlockResidencyDecisions` record listing
+The analysis result is a `CrossBlockResidencyDecisions` record listing
 `carriedSlots`, `prologuePins`, `epilogueUnpins`, and a Boolean
 `fullCarry` flag indicating whether the bulk-hoist is licensed.
-Downstream emit consumes this; the Com-level rewrite is the identity.
 
-## Architectural principle: analysis-as-decision
+## Consumers
 
-Same factoring as `RegisterAllocation` / `DeadCodeElim` /
-`LoopInvariantHoist` / `InstructionSchedule`: the heavy lifting is the
-**analysis** (which slots carry, which pins hoist); the `Com → Com`
-rewrite at the framework level is the identity. The decision is
-consumed by the downstream emit (per-protocol `*RaEmit.lean`) to:
+The decision is a physical-level residency labelling; it does not change
+the `Com` program. A per-protocol emit (`*RaEmit.lean`) can use it to:
 
 * emit the prologue pin sequence ONCE before `Cfor`;
 * emit the steady-state body WITHOUT the per-iter pin/unpin;
@@ -115,6 +112,11 @@ The carry analysis shows
 (see `chachaCarriedSlots` below). This pass supplies the lifted
 prologue/epilogue framing as a decision.
 
+## Main results
+
+None: the module defines the analysis and its per-protocol outputs, audited
+by `#eval` in §5.
+
 ## Contents
 
 * `CrossBlockResidencyDecisions` — the analysis result. Lists carried
@@ -125,32 +127,15 @@ prologue/epilogue framing as a decision.
 * `analyzeCrossBlockResidency` — the per-iteration analysis: walks
   the iteration chunking, computes the carried set, and emits a
   decision record.
-* `applyCrossBlockResidency` — the Com→Com rewrite. Identity at the
-  Com level (`fun p _ => p`), mirroring `applyLicm` / `applyRA` /
-  `applySchedule`.
-* `crossBlockResidency_preserves_denote` — denotation preservation;
-  `rfl` by the identity-at-Com architectural choice.
-* `crossBlockResidency_preserves_CT` — CT preservation; `rfl` by the
-  same identity-at-Com argument.
-* `crossBlockResidency_via_RA` — instantiation against the
-  `RegisterAllocation` framework: the decision can be packaged as a
-  `RegisterAllocation` whose `seqOf` is the identity on non-carried
-  slots and resolves carried slots through `chosenPhysOf`; the
-  framework's `applyRA_denote_preserves` fires unchanged.
 * Per-protocol carry sets — `chachaCarriedSlots` (the ChaCha 4-way
-  10-double-round carry set, predicted to be all 16 state words),
-  `poseidon2CarriedSlots` (lane-resident state), `keccakCarriedSlots`
-  (full 25-lane state — reuses `UnrolledComRA.keccakCarriedSet`),
-  `sha2CarriedSlots` (the 8 working words `a..h`).
+  10-double-round carry set), `keccakCarriedSlots` (full 25-lane state,
+  from `UnrolledComRA.keccakCarriedSet`), `sha2CarriedSlots` (the 8
+  working words `a..h`).
+* `#eval` audits: the carried sets contain the protocols' state slots.
 
-## Axiom budget
-
-`[propext, Quot.sound]` only. The Com-level rewrite is the identity, so
-`crossBlockResidency_preserves_denote` and
-`crossBlockResidency_preserves_CT` reduce to `rfl`. The analysis is a
-plain computation: `iterLiveIn` / `iterLiveOut` are list folds over the
-`SlotEvent` data; `analyzeCrossBlockResidency` runs them and packages
-the result. No `native_decide` in any theorem statement.
+The correctness of a lowering that consumes the decision is a
+physical-level (`Lstate`) statement; this module states none
+(see `CrossBlockResidencyReclassify`).
 -/
 
 @[expose] public section
@@ -207,8 +192,8 @@ structure CrossBlockResidencyDecisions where
 
 namespace CrossBlockResidencyDecisions
 
-/-- The trivial decision: nothing carried, no hoist. The framework's
-    no-op baseline (consumers leave the per-iter pin/unpin in place). -/
+/-- The trivial decision: nothing carried, no hoist (consumers leave the
+    per-iter pin/unpin in place). -/
 def empty : CrossBlockResidencyDecisions where
   carriedSlots := []
   prologuePins := []
@@ -318,168 +303,22 @@ def analyzeCrossBlockResidency (iters : List (List SlotEvent)) :
   let prologuePins := iterLiveIn firstIter
   -- Epilogue unpins: slots written in the last iter that need to
   -- survive past the loop. Conservatively the same as `prologuePins`
-  -- under full-carry — they are the slots the framework promised to
-  -- carry, and the same set is the loop's exit residency.
+  -- under full-carry — they are the carried slots, and the same set is
+  -- the loop's exit residency.
   let epilogueUnpins := prologuePins
   { carriedSlots := carried,
     prologuePins := prologuePins,
     epilogueUnpins := epilogueUnpins,
     fullCarry := fullCarryCondition iters }
 
-/-! ## 4. The Com→Com transform (identity at the framework level)
-
-Per the architectural principle (`LoopInvariantHoist` / `RegisterAllocation`
-/ `InstructionSchedule`): the Com-level transform is the identity. The
-heavy lifting is the **analysis**; the rewrite is consumed by the
-downstream emit pass which emits the lifted prologue + steady-state
-body + lifted epilogue.
-
-This keeps the intrinsic-typed `Com d Γ t` shape stable (no De Bruijn
-renumbering layer in the framework) while still delivering the
-per-protocol speedup at the emit layer. The denotation and CT
-preservation theorems are `rfl`. -/
-
-/-- **Apply a cross-block residency decision to a `JForProg`.** At the
-Com level this is the identity Com→Com transform — the decision is a
-labelling consumed by the downstream emit pass which emits the lifted
-prologue + steady-state body + lifted epilogue.
-
-A future Com-level rewrite that actually splits `Cfor body` into
-`prologue ++ Cfor body' ++ epilogue` would replace this. The framework
-preservation theorems are stated uniformly so any future rewrite that
-preserves denotation plugs in without touching the theorem statements.
-
-Mirrors `applyLicm` / `applyRA` / `applySchedule`. -/
-def applyCrossBlockResidency {accTy : JasminTy} (p : JForProg accTy)
-    (_d : CrossBlockResidencyDecisions) : JForProg accTy :=
-  p
-
-/-! ## 5. The two preservation theorems -/
-
-/-- **Denotation preservation for `applyCrossBlockResidency`.** For any
-`JForProg p` and any decision `d`, the transformed program denotes the
-same function as `p`. At the current shape this is `rfl` because
-`applyCrossBlockResidency p d = p` definitionally — the decision lives
-in `d`, consumed by the downstream emit pass, and the Com itself is
-unchanged.
-
-The semantic argument for the eventual full Com-level rewrite: the
-per-iter "pin slot s" sequence is a no-op data move (`move stack[s] →
-reg[j]; … work with reg[j] …; move reg[j] → stack[s]`). Removing matched
-pin/unpin pairs at iter boundaries preserves the computed values
-because the boundary's "epilogue unpin then prologue re-pin" sequence
-is `move reg → stack → reg`, which is the identity composition. The
-framework's `rfl` for the identity-at-Com rewrite covers the current
-shape; a future Com-level rewrite would supply its own equational
-witness in this slot. -/
-theorem crossBlockResidency_preserves_denote {accTy : JasminTy}
-    (p : JForProg accTy) (d : CrossBlockResidencyDecisions)
-    (init : ⟦accTy⟧) :
-    (applyCrossBlockResidency p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applyCrossBlockResidency`.** For any
-`JForProg p`, any decision `d`, and any accumulator secrecy label
-`accL`, the transformed program is CT-safe iff `p` is. At the current
-shape this is `rfl` because `applyCrossBlockResidency p d = p`
-definitionally.
-
-The semantic argument for the eventual full Com-level rewrite: pin and
-unpin instructions are CT (data moves at fixed register/stack
-addresses, no secret-dependent paths). Removing matched pairs at iter
-boundaries stays CT — the surviving steady-state body has FEWER
-constant-address moves, not more, and no new branches are introduced.
-Per protocol-level analysis this also matches the
-`m14s`/`m15s` spill cells in ChaCha20 4-way XMM-resident, whose
-addresses are constants. -/
-theorem crossBlockResidency_preserves_CT {accTy : JasminTy}
-    (p : JForProg accTy) (d : CrossBlockResidencyDecisions)
-    (accL : SecretLevel) :
-    ctSafeJForProg (applyCrossBlockResidency p d) accL
-      = ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applyCrossBlockResidency` (Prop form).** The
-propositional analogue: `ctSafePropJForProg` is preserved. -/
-theorem crossBlockResidency_preserves_CT_prop {accTy : JasminTy}
-    (p : JForProg accTy) (d : CrossBlockResidencyDecisions)
-    (accL : SecretLevel) :
-    ctSafePropJForProg (applyCrossBlockResidency p d) accL
-      ↔ ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [crossBlockResidency_preserves_CT]
-
-/-- **Robust CT preservation for `applyCrossBlockResidency`.** A
-robustly CT-safe `JForProg` remains robustly CT-safe after the pass.
-Since `applyCrossBlockResidency p d = p` at the Com level, this is `id`
-on the universally-quantified predicate. -/
-theorem crossBlockResidency_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : CrossBlockResidencyDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applyCrossBlockResidency p d) := by
-  intro accL
-  rw [crossBlockResidency_preserves_CT]
-  exact h accL
-
-/-! ## 6. RA-framework instantiation
-
-The pass is compatible with the `RegisterAllocation` framework. Given
-a decision `d`, we can package it as a `RegisterAllocation` whose
-`slotOf := id` (the framework's standard "id is injective" packing)
-and `seqOf` is the identity on non-carried slots — carried slots can
-optionally route through a per-protocol `chosenPhysOf` function (e.g.
-`ChachaRaEmit.chachaXmmSeqOf`). The framework's `applyRA p ra = p`
-identity covers the Com-level preservation; the `WellFormed` witness
-is the same `injOnLive := id-injective + preserves := rfl` shape used
-by `linearScanRA` and `unrolledSlotRAof`. -/
-
-/-- **The cross-block residency decision as a `RegisterAllocation`.**
-Packaged with `slotOf := id` (the framework's standard packing). The
-`seqOf` field is `id` here — per-protocol consumers can wrap with their
-own `seqOf` (e.g. `ChachaRaEmit.chachaXmmRA`) without changing the
-denotation preservation, which is `rfl` at the Com level. -/
-def crossBlockResidencyRA (_d : CrossBlockResidencyDecisions) :
-    RegisterAllocation where
-  slotOf := id
-  seqOf  := id
-
-/-- **The cross-block residency RA is well-formed.** Same proof shape
-as `unrolledSlotRAof_WellFormed` and `chachaXmmRA_WellFormed`. -/
-theorem crossBlockResidencyRA_WellFormed (d : CrossBlockResidencyDecisions) :
-    WellFormed (crossBlockResidencyRA d) where
-  injOnLive := fun _ _ h => h
-  preserves := fun _ _ => rfl
-
-/-- **The pass composes with the RA framework.** Applying the pass and
-then the RA framework yields the same denotation as the original
-program. This is the formal statement of "the cross-block residency
-pass plugs into the existing verified-RA emit chain unchanged". -/
-theorem crossBlockResidency_via_RA {accTy : JasminTy} (p : JForProg accTy)
-    (d : CrossBlockResidencyDecisions) (init : ⟦accTy⟧) :
-    (RegisterAllocation.applyRA (applyCrossBlockResidency p d)
-      (crossBlockResidencyRA d)).denote init = p.denote init := by
-  rw [RegisterAllocation.applyRA_denote_preserves _ _
-        (crossBlockResidencyRA_WellFormed d)]
-  exact crossBlockResidency_preserves_denote p d init
-
-/-- **CT preservation composes with RA.** -/
-theorem crossBlockResidency_via_RA_preserves_CT {accTy : JasminTy}
-    (p : JForProg accTy) (d : CrossBlockResidencyDecisions)
-    (accL : SecretLevel) :
-    ctSafeJForProg
-        (RegisterAllocation.applyRA (applyCrossBlockResidency p d)
-          (crossBlockResidencyRA d)) accL
-      = ctSafeJForProg p accL := by
-  rfl
-
-/-! ## 7. Per-protocol carry sets
+/-! ## 4. Per-protocol carry sets
 
 The downstream consumers' iteration chunkings produce concrete carry
 sets via `analyzeCrossBlockResidency`. We compute and expose them for
 the smoke and for downstream consumers that want to audit the analysis
 output. -/
 
-/-! ### 7a. Keccak (24-round permutation, 25-lane state)
+/-! ### 4a. Keccak (24-round permutation, 25-lane state)
 
 Every Keccak round reads and writes every state lane. The full
 25-lane state is carried across every boundary; `fullCarry` is `true`. -/
@@ -492,7 +331,7 @@ def keccakCarriedSlots : List Nat :=
 def keccakFullCarry : Bool :=
   (analyzeCrossBlockResidency kIterChunks).fullCarry
 
-/-! ### 7b. SHA-2 (64-round compression, 8 working words)
+/-! ### 4b. SHA-2 (64-round compression, 8 working words)
 
 The 8 working words `a..h` (slots `wkA..wkA+7`) are written and read
 every round. Plus the message-schedule chain `W[t]` carries from
@@ -506,7 +345,7 @@ def sha2CarriedSlots (sp : Sha2Emit.Sha2Spec) : List Nat :=
 def sha2FullCarry (sp : Sha2Emit.Sha2Spec) : Bool :=
   (analyzeCrossBlockResidency (shaIterChunks sp)).fullCarry
 
-/-! ### 7c. ChaCha20 4-way (10 double-rounds, 16 state words)
+/-! ### 4c. ChaCha20 4-way (10 double-rounds, 16 state words)
 
 The 16 state words are written and read in every double-round (each
 quarter-round touches 4 of them; the 8 QRs of column+diagonal hit each
@@ -592,7 +431,7 @@ def chachaProloguePins : List Nat :=
 def chachaEpilogueUnpins : List Nat :=
   (analyzeCrossBlockResidency chachaIterChunks).epilogueUnpins
 
-/-! ## 8. Sanity: the carried sets contain the protocols' state slots
+/-! ## 5. Sanity: the carried sets contain the protocols' state slots
 
 These executable equalities document the analysis output. They are
 NOT theorems — the per-protocol carry-set verification proper lives

@@ -11,82 +11,30 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
-# Verified dead-code elimination (DCE) for `Com` — analysis-as-decision pass
+# Dead-code analysis for `JForProg` loop bodies
 
-This module adds to the verified-optimizer suite (`JForProgUnroll.lean`,
-`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`) a
-**dead-code-elimination** pass at the `Com` level.
+A binder of a straight-line `Com` body is dead when its value is read by no
+later binder and not by the terminal `ret`. This module computes the dead
+binder positions of a `JForProg` body from the last-use table of
+`RegisterAllocation.computeLastUse`. The `Com` rewrite that removes dead
+binders, with its denotation theorem, is `DeadCodeElimReal`.
 
-## Architectural principle: analysis as decision
+## Main results
 
-`Com d Γ t` is intrinsically typed (variables are `Ctxt.Var`, not `Nat`). A
-"dead let-binding" is one whose bound value is never read by any later binder
-or the terminal `ret`. Removing the binding entirely would change the
-intrinsic type of the body — every subsequent `.there` index would need to
-shift. Doing that in a type-safe `Com → Com` rewrite is possible but
-requires a substantial De Bruijn renumbering layer.
-
-The architectural shape mirrors `RegisterAllocation.lean`:
-**the substance is the analysis (which variables are
-dead); the `Com → Com` rewrite itself is the identity at the framework
-level, because the emit pass downstream consumes the analysis as a
-labelling, not as a structural change**. Concretely:
-
-* The slot decisions of the linear-scan RA live in a separate
-  `RegisterAllocation` value, not in the `Com`;
-* Likewise here, the deadness decisions live in a separate `DceDecisions`
-  value, not in the `Com`. The emit pass can omit emitted instructions
-  for binders flagged dead — or, equivalently, leave them in place and
-  let an optimizing back-end (jasminc, LLVM) DCE them. Either way, the
-  *Com-level* transform is the identity.
-
-## Why this is the right factoring
-
-The two preservation theorems
-
-  `applyDce_denote_preserves : (applyDce p d).denote = p.denote`
-  `applyDce_preserves_CT     : ctSafeJForProg (applyDce p d) accL =
-                                ctSafeJForProg p accL`
-
-are by-construction `rfl`. The analysis correctness theorem
-(`dceDeadVars_no_false_positives`) is the actual content — it says that a
-variable flagged dead by `analyzeDce` is indeed unused. We discharge a
-weaker single-pattern instance of this here (the `assign-then-overwrite`
-shape: a binder whose value never appears as a `Ctxt.Var` argument in any
-later binder is correctly flagged dead by the position-based criterion);
-the full intrinsic-De-Bruijn correctness statement is the documented
-residual.
+* `analyzeDce_flagged_iff_last_use_self` — position `i` is flagged exactly
+  when its last use is `i` and `i` is in range.
+* `analyzeDce_empty_body` — a body with no binders has no dead positions.
 
 ## Contents
 
-* `DceDecisions` — the analysis result. A list of binder positions marked
-  dead, indexed by position into the body's straight-line let-chain.
-* `analyzeDce` — the analysis: walks the body, computes the last-use
-  position per binder, flags any binder whose last use equals its own
-  position (i.e. it is never read after being bound).
-* `applyDce` — the `Com → Com` rewrite. By the architectural principle
-  above this is the identity (`fun p _ => p`).
-* `applyDce_denote_preserves`, `applyDce_preserves_CT` — the two
-  preservation theorems, both `rfl`.
-* `dceDeadVars_no_false_positives_singleton` — the analysis-correctness
-  lemma: when the body is the trivial `Com.ret v` shape (no binders), the
-  set of dead variables is empty (so no false positives are possible).
-* Concrete sanity examples (`#eval`) exercising `analyzeDce` on small
-  synthetic Com terms.
+* `DceDecisions` — the list of binder positions flagged dead.
+* `analyzeDce` — flags position `i` when `computeLastUse` gives `i` itself as
+  its last use.
+* Sanity examples on small synthetic bodies.
 
-No open goals, no new axioms — the framework's Com-level rewrite is the
-identity, so both preservation theorems reduce to `rfl`.
-
-## Residuals
-
-The intrinsic-De-Bruijn correctness statement
-`∀ p v, v ∈ deadVars (analyzeDce p) → ¬ <Com uses v>` requires a `Com`
-walker that decides "does any `Expr.args` `HVector` in `p` contain `v`?"
-This walker is straightforward but non-trivial (it must reason through
-the `.there` shifts as the analysis descends past binders). The
-position-based formulation we ship here is the *operational* version
-used by the emit pass; the intrinsic version is the documented
-extension point.
+The last-use table over-approximates reads (every depth up to the deepest
+argument counts as a use), so `analyzeDce` flags no live binder and may miss
+dead ones (see `deadFirstBody`).
 -/
 
 @[expose] public section
@@ -159,78 +107,7 @@ def analyzeDce {accTy : JasminTy} (p : JForProg accTy) : DceDecisions :=
               | none    => false)
   { deadPositions := positions }
 
-/-! ## 3. The `Com → Com` transform
-
-Per the architectural principle: `applyDce` is the identity at the Com
-level. The deadness decisions are consumed by the downstream emit pass
-(which can omit dead-flagged binders from its emitted asm). The
-*Com itself* is unchanged — preserving the intrinsic typing without
-needing a De Bruijn renumbering layer.
-
-This mirrors `RegisterAllocation.applyRA = fun p _ => p`. -/
-
-/-- **Apply a DCE decision to a `JForProg`.** At the Com level this is
-the identity Com→Com transform — the analysis result is a labelling
-consumed by the emit pass, not a structural change to the Com.
-
-For a future Com-level rewrite (one that actually removes dead let-
-bindings via De Bruijn renumbering), this function would change. The
-framework's preservation theorems are stated uniformly so that any
-future Com-level rewrite which preserves denotation (and CT) plugs in
-without touching the theorem statements. -/
-def applyDce {accTy : JasminTy} (p : JForProg accTy)
-    (_d : DceDecisions) : JForProg accTy :=
-  p
-
-/-! ## 4. The two preservation theorems -/
-
-/-- **Denotation preservation for `applyDce`.** For any `JForProg p`
-and any DCE decision `d`, the transformed program denotes the same
-function as `p`. At the current shape this is `rfl` because
-`applyDce p d = p` definitionally — the deadness decisions live in
-`d`, consumed downstream, and the Com itself is unchanged. -/
-theorem applyDce_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (d : DceDecisions) (init : ⟦accTy⟧) :
-    (applyDce p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applyDce`.** For any `JForProg p`, any DCE
-decision `d`, and any accumulator secrecy label `accL`, the transformed
-program is CT-safe iff `p` is. At the current shape this is `rfl`
-because `applyDce p d = p` definitionally (the Com-level transform is
-identity; deadness decisions are consumed by the downstream emit pass,
-which can omit emitted instructions for dead binders without changing
-the CT story — the omitted instructions would also have been CT-safe).
-
-This is the DCE analogue of `applyRA_preserves_CT` from
-`CtPreservationNewTransforms.lean`, with the same proof shape and the
-same architectural justification. -/
-theorem applyDce_preserves_CT {accTy : JasminTy} (p : JForProg accTy)
-    (d : DceDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applyDce p d) accL = ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applyDce` (Prop form).** The propositional
-analogue: `ctSafePropJForProg` is preserved through `applyDce`. -/
-theorem applyDce_preserves_CT_prop {accTy : JasminTy} (p : JForProg accTy)
-    (d : DceDecisions) (accL : SecretLevel) :
-    ctSafePropJForProg (applyDce p d) accL ↔ ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [applyDce_preserves_CT]
-
-/-- **Robust CT preservation for `applyDce`.** A robustly CT-safe
-`JForProg` remains robustly CT-safe after `applyDce`. Since
-`applyDce p d = p` at the Com level, this is `id` on the
-universally-quantified predicate. -/
-theorem applyDce_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : DceDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applyDce p d) := by
-  intro accL
-  rw [applyDce_preserves_CT]
-  exact h accL
-
-/-! ## 5. Analysis correctness: no-false-positives
+/-! ## 3. Analysis correctness: no-false-positives
 
 The natural correctness statement for `analyzeDce` is: every position
 flagged dead is indeed never read in the Com. We discharge a
@@ -295,7 +172,7 @@ theorem analyzeDce_flagged_iff_last_use_self {accTy : JasminTy}
     rw [hlu]
     simp [heq]
 
-/-! ## 6. Sanity tests
+/-! ## 4. Sanity tests
 
 These confirm `analyzeDce` behaves correctly on small synthetic body
 shapes — the smallest "is the analysis wired up?" smoke tests.
@@ -391,51 +268,5 @@ example : Com.numBinders singleLiveBinderBody = 1 := rfl
 #eval (analyzeDce
         (accTy := .reg 64)
         { n := 1, update := singleLiveBinderBody }).deadPositions
-
-/-! ## 7. End-to-end corollary
-
-The user-facing entry point: run `analyzeDce`, then `applyDce` to apply
-the analysis. Both preservation theorems are wrapped into a single
-corollary statement for downstream use. -/
-
-/-- **End-to-end DCE preservation.** Applying `analyzeDce` followed by
-    `applyDce` preserves both denotation and CT-safety. -/
-theorem analyzeDce_applyDce_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applyDce p (analyzeDce p)).denote init = p.denote init ∧
-    ctSafeJForProg (applyDce p (analyzeDce p)) accL = ctSafeJForProg p accL :=
-  ⟨applyDce_denote_preserves p (analyzeDce p) init,
-   applyDce_preserves_CT p (analyzeDce p) accL⟩
-
-/-! ## 8. Where the next DCE work plugs in
-
-The framework above is the verified scaffolding into which the next
-optimisation steps plug. The expansion path:
-
-1. **Intrinsic-De-Bruijn correctness.** Add a syntactic `Com`-walker
-   `comUsesVar : Com d Γ t → Ctxt.Var Γ s → Bool` that decides whether
-   any `Expr.args` `HVector` in the body contains the given variable.
-   Then prove the full correctness theorem: every position flagged dead
-   corresponds to a `Ctxt.Var` for which `comUsesVar` returns `false`.
-   This is the documented residual; the framework theorems hold
-   independently.
-
-2. **Com-level structural rewrite.** A future `applyDce` could actually
-   remove dead let-bindings via a De Bruijn renumbering layer
-   (`shiftVarsDown` on each surviving binder's argument indices). The
-   framework's preservation theorems would change from `rfl` to a
-   per-Com induction, but the *theorem statements* stay the same — the
-   rewrite just supplies a different `preserves` witness, mirroring
-   the `RegisterAllocation` extension story.
-
-3. **Cross-binder DCE (dead-store elimination).** If a binder writes a
-   value that is later overwritten before any read (a dead store), DCE
-   can remove the first write. This requires alias analysis on the
-   accumulator type for `stackArr` accumulators; the framework
-   theorems are unaffected.
-
-The framework theorems `applyDce_denote_preserves` and
-`applyDce_preserves_CT` are DCE-decision-independent and hold across
-all of these extensions. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR

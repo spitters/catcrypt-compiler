@@ -9,14 +9,12 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
 public import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
 
 /-!
-# Verified software pipelining for `JForProg` — analysis-as-decision pass
+# Software-pipelining schedule for `JForProg` loop bodies
 
-This module extends the verified-optimiser suite (`JForProgUnroll.lean`,
-`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`,
-`DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
-`CommonSubexprElim.lean`, `ComInline.lean`, `InstructionSchedule.lean`) with
-**software pipelining** at the `Com` level — the
-inter-iteration ILP-exposing pass.
+This module computes a 2-stage modulo schedule (stage assignment,
+initiation interval, prologue / kernel / epilogue partition) for a
+`JForProg` body. The `Com` transform that peels the first iteration, with its
+denotation and CT theorems, is `SoftwarePipeliningReal`.
 
 Software pipelining overlaps execution of consecutive loop iterations so
 that operations from iter `N+1` issue concurrently with later
@@ -39,36 +37,7 @@ loops similarly benefit from a 2-stage pipeline that overlaps the
 add-rotate-add-rotate dependence chain with the next quarter-round's
 initial adds.
 
-## Architectural principle: analysis as decision
-
-`Com d Γ t` is intrinsically typed: variables are `Ctxt.Var`, not `Nat`.
-Splitting a loop body across prologue / steady-state / epilogue at the
-`Com` level would require restructuring the `Com.var` chain in three
-ways simultaneously — exactly the same De Bruijn renumbering gap that
-`RegisterAllocation.lean`, `DeadCodeElim.lean`,
-`LoopInvariantHoist.lean`, `CommonSubexprElim.lean`, `ComInline.lean`,
-and `InstructionSchedule.lean` all resolve by factoring the
-substantive work out of the `Com` rewrite.
-
-We follow the same factoring: **the substantive work is the analysis (the
-chosen pipeline schedule: II, per-binder stage assignment, and the
-prologue / steady / epilogue partition); the `Com → Com` rewrite itself
-is the identity at the framework level, because the emit pass downstream
-consumes the schedule as a labelling, not as a structural change**.
-Concretely:
-
-* RA: slot decisions live in `RegisterAllocation`;
-* DCE: deadness decisions live in `DceDecisions`;
-* LICM: invariance decisions live in `LicmDecisions`;
-* CSE: redundancy decisions live in `CseDecisions`;
-* Inline: callsite decisions live in `InlineDecisions`;
-* Schedule: emission permutation lives in `ScheduleDecisions`;
-* **Here, the modulo schedule lives in `SoftwarePipelineDecisions`.** The
-  emit pass produces the three-phase code (prologue + kernel + epilogue)
-  driven by the stage assignment. Either way, the *Com-level* transform
-  is the identity.
-
-## Soundness of software pipelining on `Com`
+## Dependences and stages on `Com`
 
 The dependence relation on a straight-line `Com` body is **purely
 data-driven** (same as `InstructionSchedule`): binder `i` depends on
@@ -106,32 +75,18 @@ load on either stage — equivalently, `max(|stage 0 binders|,
 `II ≤ ceil(|body| / S)` cycles per iteration, vs `|body|` cycles for
 the un-pipelined loop.
 
-**The CT story is trivial**: software pipelining doesn't introduce or
-remove control flow. The three phases (prologue, kernel, epilogue) are
-each straight-line; the *order* of instructions changes across
-iterations, but the set of branches (and the secrecy of their guards)
-is unchanged. CT-preservation falls out by composition with the same
-hypothesis used by DCE/LICM/CSE/Inline/Schedule.
+## Main results
 
-## Why this is the right factoring
-
-The two preservation theorems
-
-  `applySwp_denote_preserves  : (applySwp p d).denote = p.denote`
-  `applySwp_preserves_CT      : ctSafeJForProg (applySwp p d) accL =
-                                  ctSafeJForProg p accL`
-
-are by-construction `rfl`. The analysis content is the
-**topological-soundness** invariant: the stage assignment respects the
-data-dependence partial order (a consumer is never at a strictly
-earlier stage than its producer). We discharge the small-shape
-correctness lemmas; the full topological-soundness statement is the
-operational invariant maintained by `analyzeSwp` by construction.
+* `analyzeSwp_order_eq_scheduleGreedy`,
+  `analyzeSchedule_analyzeSwp_order_agree` — the pipelining order is the
+  `InstructionSchedule` order.
+* `analyzeSwp_empty_body`, `assignStages2_empty`, `assignStages2_singleton`,
+  `assignStages2_three`, `assignStages2_four` — the schedule on small shapes.
 
 ## Contents
 
-* `Stage` — abbreviation for the stage index (`Nat` in the framework;
-  capped at `1` in the 2-stage pipeline).
+* `Stage` — abbreviation for the stage index (`Nat`; at most `1` in the
+  2-stage pipeline).
 * `StageAssignment` — the per-binder stage map: `(pos, stage)`.
 * `assignStages2` — a simple 2-stage assignment heuristic: bisect the
   topological order at its midpoint. Identity-safe on bodies with no
@@ -142,59 +97,11 @@ operational invariant maintained by `analyzeSwp` by construction.
   `InstructionSchedule.computeDependences`), run the greedy schedule
   (via `InstructionSchedule.scheduleGreedy`), bisect for stages,
   compute II.
-* `applySwp` — the `Com → Com` rewrite. Identity at the Com level
-  (`fun p _ => p`), mirroring `applyRA`/`applyDce`/`applyLicm`/
-  `applyCse`/`applyInline`/`applySchedule`.
-* `applySwp_denote_preserves`, `applySwp_preserves_CT` — the two
-  preservation theorems, both `rfl`.
-* `applySwp_preserves_CT_prop`, `applySwp_preserves_RobustlyCTSafe` —
-  Prop-form and robust variants.
-* Analysis-correctness lemmas on small body shapes.
-* Concrete sanity examples (`#eval`) exercising `analyzeSwp` on small
-  synthetic Com terms — the empty body, single-binder body, and the
-  canonical 3-stage linear-chain shape (`b = a + 5; c = b * 2;
-  d = c + 1`).
+* Sanity examples on the empty body, a single-binder body, the 3-binder
+  linear chain and a 4-binder ILP-exposing body.
 
-All goals closed, no new axioms — the framework's Com-level rewrite is the
-identity, so both preservation theorems reduce to `rfl`.
-
-## Scope
-
-* **2-stage pipelining only.** Prologue + steady-state + epilogue, max
-  2 iterations in flight. Higher-degree modulo scheduling (3+ stages,
-  rotating registers, MVE-style pipelining) is outside this module; the
-  framework theorems carry over uniformly.
-* **Within a single `JForProg` body.** We pipeline iterations of one
-  bounded `Cfor`. We do **not** pipeline across nested loops here —
-  that requires loop fusion or coalescing first.
-* **Composes with `InstructionSchedule`.** Stage assignment
-  starts from `scheduleGreedy`'s topological order — so an
-  intra-iteration scheduling pass already runs before stages are
-  assigned. The two passes compose cleanly because both are identities
-  at the `Com` level.
-* **Unit-latency model.** We assume single-cycle scheduling within each
-  iter (every op is 1 cycle); the pipelining decision is then purely
-  about overlapping iterations, not about reordering within an iter.
-
-## Residuals
-
-* **Higher-degree modulo scheduling.** Lift the stage cap from `1` to a
-  computed bound based on resource pressure and recurrence MII (RecMII).
-  The framework theorems hold uniformly (they don't depend on the stage
-  count); only the analysis content grows.
-* **Rotating register file.** When a binder's value is live across
-  multiple iterations (e.g. stage-`0` output consumed by stage-`1` of
-  the next iter), the emit pass needs a register-rotation layer. This
-  is downstream of the framework — the analysis only needs to record
-  the cross-iter liveness; the emit pass consumes it.
-* **Com-level structural rewrite.** A future `applySwp` could actually
-  perform the prologue / kernel / epilogue split at the `Com` level via
-  a `Com → Com × Com × Com` triple. The framework's preservation
-  theorems would change from `rfl` to a per-`Com` induction, but the
-  *theorem statements* stay the same — the rewrite just supplies a
-  different `preserves` witness, mirroring the
-  `RegisterAllocation`/`DeadCodeElim`/`InstructionSchedule` extension
-  story.
+The schedule has at most 2 iterations in flight, covers one bounded `Cfor`,
+and assumes unit latency per operation.
 -/
 
 @[expose] public section
@@ -224,9 +131,7 @@ binder in stage 0, a body with 3 binders has positions 0,1 in stage 0
 and position 2 in stage 1, a body with 4 binders has positions 0,1 in
 stage 0 and 2,3 in stage 1). -/
 
-/-- Stage index. In a 2-stage pipeline, this is `0` or `1`. We keep
-    `Nat` here to allow the framework to lift to higher-degree
-    modulo scheduling later. -/
+/-- Stage index, a `Nat`; in a 2-stage pipeline it is `0` or `1`. -/
 abbrev Stage : Type := Nat
 
 /-- The per-binder stage assignment: position → stage. -/
@@ -275,21 +180,15 @@ Records:
   `InstructionSchedule` intra-iteration scheduler);
 * `stages` — the per-binder stage assignment;
 * `numStages` — the total number of stages in the pipeline (capped at
-  `2`; the framework supports lifting this);
+  `2`);
 * `initiationInterval` — the steady-state cycle count per iteration:
   `max (#stage-0 binders) (#stage-1 binders)`. The un-pipelined loop's
   per-iter cost is `numBinders`; the pipelined kernel's is II, so the
   expected speedup is `numBinders / II` (capped at `numStages`).
 
-The framework consumes this as a labelling: the emit pass produces the
-prologue (stage `0` of iter `0`), the kernel (interleaved stages `0`
-of iter `N+1` and `1` of iter `N`), and the epilogue (stage `1` of the
-last iter), driven by the stage assignment. The `Com` itself is
-unchanged — preserving the intrinsic typing without needing a De
-Bruijn renumbering layer.
-
-The shape mirrors `DceDecisions`, `LicmDecisions`, `CseDecisions`,
-`InlineDecisions`, `ScheduleDecisions`. -/
+The prologue is stage `0` of iteration `0`, the kernel interleaves stage `0`
+of iteration `N+1` with stage `1` of iteration `N`, and the epilogue is
+stage `1` of the last iteration. -/
 structure SoftwarePipelineDecisions where
   /-- The topological order of binder positions chosen by
       `scheduleGreedy` (composes cleanly with `InstructionSchedule`). -/
@@ -333,21 +232,12 @@ end SoftwarePipelineDecisions
 
 Top-level pipelining analysis: compute dependences, run the greedy
 list scheduler (composing with `InstructionSchedule`), bisect for stages,
-derive II.
-
-This is the entry point of the verified
-software-pipelining scaffolding into which the emit-pass extensions
-plug. -/
+derive II. -/
 
 /-- **Software-pipelining analysis.** Reuses `computeDependences` and
     `scheduleGreedy` from `InstructionSchedule.lean` to obtain a
     topological order; then bisects for the 2-stage assignment and
-    computes II.
-
-    The analysis is capped at 2 stages; higher-degree pipelining would
-    reuse the same framework (the analysis output
-    grows; the preservation theorems remain `rfl` because the `Com`
-    rewrite is identity at the framework level). -/
+    computes II. The analysis is capped at 2 stages. -/
 def analyzeSwp {accTy : JasminTy} (p : JForProg accTy) :
     SoftwarePipelineDecisions :=
   let deps := computeDependences p
@@ -360,108 +250,7 @@ def analyzeSwp {accTy : JasminTy} (p : JForProg accTy) :
   , numStages := 2
   , initiationInterval := max s0 s1 }
 
-/-! ## 4. The `Com → Com` transform
-
-Per the architectural principle: `applySwp` is the identity at the
-`Com` level. The pipeline schedule is consumed by the downstream emit
-pass (which produces the prologue / kernel / epilogue accordingly).
-The *`Com` itself* is unchanged — preserving the intrinsic typing
-without needing a De Bruijn renumbering layer.
-
-This mirrors `RegisterAllocation.applyRA = fun p _ => p`,
-`DeadCodeElim.applyDce = fun p _ => p`,
-`LoopInvariantHoist.applyLicm = fun p _ => p`,
-`CommonSubexprElim.applyCse = fun p _ => p`,
-`ComInline.applyInline = fun p _ => p`,
-`InstructionSchedule.applySchedule = fun p _ => p`. -/
-
-/-- **Apply a software-pipelining decision to a `JForProg`.** At the
-    `Com` level this is the identity Com→Com transform — the analysis
-    result is a labelling consumed by the emit pass, not a structural
-    change to the `Com`.
-
-    For a future Com-level rewrite (one that actually splits the body
-    into prologue / kernel / epilogue via a De Bruijn renumbering
-    layer), this function would change. The framework's preservation
-    theorems are stated uniformly so that any future Com-level rewrite
-    which preserves denotation (and CT) plugs in without touching the
-    theorem statements. -/
-def applySwp {accTy : JasminTy} (p : JForProg accTy)
-    (_d : SoftwarePipelineDecisions) : JForProg accTy :=
-  p
-
-/-! ## 5. The two preservation theorems -/
-
-/-- **Denotation preservation for `applySwp`.** For any `JForProg p` and
-    any pipelining decision `d`, the transformed program denotes the
-    same function as `p`. At the current shape this is `rfl` because
-    `applySwp p d = p` definitionally — the pipelining decisions live
-    in `d`, consumed downstream, and the `Com` itself is unchanged.
-
-    The denotational content of "the pipelined three-phase code
-    computes the same accumulator value after `N` iterations as the
-    original loop" is the operational invariant maintained by
-    `analyzeSwp` by construction (it only assigns a binder to a stage
-    such that all its dependencies are at stages `≤` its own stage, so
-    the emit pass will not produce a use-before-def, and the
-    cumulative effect of the three phases is exactly the sequential
-    `N`-iteration foldl). The framework theorem itself is `rfl`
-    because the `Com` is unchanged. -/
-theorem applySwp_denote_preserves {accTy : JasminTy}
-    (p : JForProg accTy) (d : SoftwarePipelineDecisions) (init : ⟦accTy⟧) :
-    (applySwp p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applySwp`.** For any `JForProg p`, any
-    pipelining decision `d`, and any accumulator secrecy label `accL`,
-    the transformed program is CT-safe iff `p` is. At the current
-    shape this is `rfl` because `applySwp p d = p` definitionally.
-
-    Software pipelining never introduces a secret-dependent branch —
-    it only reorders straight-line instructions *across* iterations of
-    a `Cfor` whose trip-count is **static** (so the trip-count never
-    depends on secret data, by construction of `JForProg.n : Nat`).
-    The CT predicate cares about branch structure + memory access
-    pattern; neither changes. Even a future `Com`-level rewrite that
-    actually performs the prologue / kernel / epilogue split would
-    preserve CT, because each phase is a CT-safe straight-line block
-    (the set of branches is the empty set throughout each phase, and
-    the kernel's iteration count is the static `n - (numStages - 1)`).
-
-    This is the software-pipelining analogue of `applyDce_preserves_CT`
-    from `DeadCodeElim.lean`, `applyLicm_preserves_CT` from
-    `LoopInvariantHoist.lean`, `applyCse_preserves_CT` from
-    `CommonSubexprElim.lean`, and `applySchedule_preserves_CT` from
-    `InstructionSchedule.lean`, with the same proof shape and the same
-    architectural justification. -/
-theorem applySwp_preserves_CT {accTy : JasminTy}
-    (p : JForProg accTy) (d : SoftwarePipelineDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applySwp p d) accL =
-      ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applySwp` (Prop form).** The propositional
-    analogue: `ctSafePropJForProg` is preserved through `applySwp`. -/
-theorem applySwp_preserves_CT_prop {accTy : JasminTy}
-    (p : JForProg accTy) (d : SoftwarePipelineDecisions) (accL : SecretLevel) :
-    ctSafePropJForProg (applySwp p d) accL ↔
-      ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [applySwp_preserves_CT]
-
-/-- **Robust CT preservation for `applySwp`.** A robustly CT-safe
-    `JForProg` remains robustly CT-safe after `applySwp`. Since
-    `applySwp p d = p` at the `Com` level, this is `id` on the
-    universally-quantified predicate. -/
-theorem applySwp_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : SoftwarePipelineDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applySwp p d) := by
-  intro accL
-  rw [applySwp_preserves_CT]
-  exact h accL
-
-/-! ## 6. Analysis correctness on small shapes
+/-! ## 4. Analysis correctness on small shapes
 
 The natural correctness statement for `analyzeSwp` is: the produced
 stage assignment respects the data-dependence partial order (a
@@ -509,7 +298,7 @@ theorem assignStages2_three :
     assignStages2 [0, 1, 2] =
       { entries := [(0, 0), (1, 0), (2, 1)] } := by decide
 
-/-! ## 7. Sanity tests
+/-! ## 5. Sanity tests
 
 These confirm `analyzeSwp` behaves correctly on small synthetic body
 shapes — the smallest "is the pipelining analysis wired up?" smoke
@@ -599,23 +388,6 @@ example : (analyzeSwp chain3Prog).epilogue = [2] := rfl
 /-- The steady-state kernel contains every binder. -/
 example : (analyzeSwp chain3Prog).kernel = [0, 1, 2] := rfl
 
-/-- Denotation preservation on the 3-stage chain. -/
-example (init : BitVec 64) :
-    (applySwp chain3Prog (analyzeSwp chain3Prog)).denote init =
-      chain3Prog.denote init :=
-  applySwp_denote_preserves _ _ _
-
-/-- CT preservation on the 3-stage chain. -/
-example (accL : SecretLevel) :
-    ctSafeJForProg (applySwp chain3Prog (analyzeSwp chain3Prog)) accL =
-      ctSafeJForProg chain3Prog accL :=
-  applySwp_preserves_CT _ _ _
-
-/-- Robust CT preservation on the 3-stage chain. -/
-example (h : RobustlyCTSafeJForProg chain3Prog) :
-    RobustlyCTSafeJForProg (applySwp chain3Prog (analyzeSwp chain3Prog)) :=
-  applySwp_preserves_RobustlyCTSafe _ _ h
-
 /-- **4-binder ILP-exposing shape** (the headline shape from
     `InstructionSchedule`):
 
@@ -654,33 +426,10 @@ example : (analyzeSwp ilpProg).initiationInterval = 2 := rfl
 example : (analyzeSwp ilpProg).prologue = [0, 1] := rfl
 example : (analyzeSwp ilpProg).epilogue = [2, 3] := rfl
 
-/-! ## 8. End-to-end corollary
+/-! ## 6. Agreement with `InstructionSchedule`
 
-The user-facing entry point: run `analyzeSwp`, then `applySwp` to
-apply the analysis. Both preservation theorems are wrapped into a
-single corollary statement for downstream use. -/
-
-/-- **End-to-end software-pipelining preservation.** Applying
-    `analyzeSwp` followed by `applySwp` preserves both denotation
-    and CT-safety. -/
-theorem analyzeSwp_applySwp_preserves
-    {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applySwp p (analyzeSwp p)).denote init = p.denote init ∧
-    ctSafeJForProg (applySwp p (analyzeSwp p)) accL =
-      ctSafeJForProg p accL :=
-  ⟨applySwp_denote_preserves p (analyzeSwp p) init,
-   applySwp_preserves_CT p (analyzeSwp p) accL⟩
-
-/-! ## 9. Composition with `InstructionSchedule`
-
-Instruction scheduling and software pipelining compose: `analyzeSwp`
-internally runs `scheduleGreedy` (the `InstructionSchedule` scheduler), so the
-pipelining decision is computed from the *scheduled* topological
-order. At the framework level, both `applySchedule` and `applySwp` are
-identities, so the order in which they are applied doesn't matter — but
-the analyser's stage assignment is consistent with the scheduler's
-intra-iteration emission order. -/
+`analyzeSwp` runs `scheduleGreedy` (the `InstructionSchedule` scheduler), so
+the pipelining decision is computed from the scheduled topological order. -/
 
 /-- **`analyzeSwp`'s order is exactly `scheduleGreedy`'s.** A direct
     consequence of the definition, recording the scheduling / pipelining
@@ -696,57 +445,5 @@ theorem analyzeSchedule_analyzeSwp_order_agree {accTy : JasminTy}
     (p : JForProg accTy) :
     (analyzeSchedule p).order = (analyzeSwp p).order :=
   rfl
-
-/-- **Sequential application of scheduling then pipelining preserves
-    denotation and CT.** A direct corollary of both passes being
-    `Com`-level identities. -/
-theorem applySwp_after_applySchedule_preserves {accTy : JasminTy}
-    (p : JForProg accTy)
-    (dS : ScheduleDecisions)
-    (dP : SoftwarePipelineDecisions)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applySwp (applySchedule p dS) dP).denote init = p.denote init ∧
-    ctSafeJForProg (applySwp (applySchedule p dS) dP) accL =
-      ctSafeJForProg p accL :=
-  ⟨by rw [applySwp_denote_preserves, applySchedule_denote_preserves],
-   by rw [applySwp_preserves_CT, applySchedule_preserves_CT]⟩
-
-/-! ## 10. Where the next pipelining work plugs in
-
-The framework above is the verified scaffolding into which the next
-optimisation steps plug. The expansion path:
-
-1. **Higher-degree modulo scheduling.** Lift the stage cap from `1` to
-   a computed bound based on resource pressure and recurrence MII
-   (RecMII). The framework theorems are unaffected; only `analyzeSwp`'s
-   stage assignment grows.
-
-2. **Critical-path-aware stage assignment.** Replace the bisection
-   heuristic with a critical-path scheduler that minimises II subject
-   to dep constraints. The framework theorems hold uniformly.
-
-3. **Rotating register file.** When a binder's value is live across
-   multiple iterations (e.g. stage-`0` output consumed by stage-`1` of
-   the next iter), the emit pass needs a register-rotation layer. This
-   is downstream of the framework — the analysis only needs to record
-   the cross-iter liveness; the emit pass consumes it.
-
-4. **Com-level structural rewrite.** A future `applySwp` could
-   actually perform the prologue / kernel / epilogue split at the
-   `Com` level via a `Com → Com × Com × Com` triple. The framework's
-   preservation theorems would change from `rfl` to a per-`Com`
-   induction, but the *theorem statements* stay the same — the
-   rewrite just supplies a different `preserves` witness, mirroring
-   the `RegisterAllocation`/`DeadCodeElim`/`InstructionSchedule`
-   extension story.
-
-5. **Nested-loop pipelining.** For doubly-nested `Cfor` (e.g. NTT
-   butterfly stages over multiple layers), the framework lifts by
-   recursion on `JForProg.update`'s body. That case is outside this
-   module, which covers single-loop pipelining.
-
-The framework theorems `applySwp_denote_preserves` and
-`applySwp_preserves_CT` are pipeline-decision-independent and hold
-across all of these extensions. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR

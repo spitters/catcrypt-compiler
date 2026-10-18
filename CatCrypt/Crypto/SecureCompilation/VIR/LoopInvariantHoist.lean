@@ -9,90 +9,39 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
-public import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
 
 /-!
-# Verified loop-invariant code motion (LICM) for `JForProg` — analysis-as-decision pass
+# Loop-invariance analysis for `JForProg` loop bodies
 
-This module extends the verified-optimizer suite (`JForProgUnroll.lean`,
-`RegisterAllocation.lean`, `DeadCodeElim.lean`) with
-**loop-invariant code motion (LICM)** at the `Com` level.
+A binder of a loop body is loop-invariant when its value does not depend on
+the loop-carried accumulator, so it can be computed once before the loop.
+This module computes the invariant binder positions of a `JForProg` body. The
+`Com` rewrite that hoists a binder out of the loop, with its denotation
+theorem, is `LoopInvariantHoistReal`.
 
-LICM hoists computations whose result does not depend on the loop-carried
-accumulator out of the loop body, so they execute once before the loop rather
-than `n` times inside it. It is a standard `-O2` pass: crypto loops frequently re-derive round
-constants, twiddle factors, or other invariants every iteration, and LICM
-moves them out.
+## Main results
 
-## Architectural principle: analysis as decision
-
-`Com d Γ t` is intrinsically typed (variables are `Ctxt.Var`, not `Nat`).
-Removing a let-binding from the body and re-binding it before the loop would
-change the intrinsic type of the body — every subsequent `.there` index would
-need to shift, *and* the new pre-loop binder would need to land in a wider
-outer context. Doing that in a type-safe `Com → Com` rewrite is possible but
-requires substantial De Bruijn renumbering — exactly the same architectural
-gap `RegisterAllocation.lean` and `DeadCodeElim.lean`
-resolve by factoring the heavy lifting out of the Com rewrite.
-
-We follow the same factoring: **the heavy lifting is the analysis (which
-binders are loop-invariant); the `Com → Com` rewrite itself is the identity
-at the framework level, because the emit pass downstream consumes the
-analysis as a labelling, not as a structural change**. Concretely:
-
-* The slot decisions of the linear-scan RA live in a separate
-  `RegisterAllocation` value;
-* The deadness decisions of DCE live in a separate `DceDecisions` value;
-* Here, the invariance decisions live in a separate `LicmDecisions` value.
-  The emit pass can hoist emitted instructions for binders flagged invariant
-  to the function prelude — or leave them in place and let an optimizing
-  back-end (jasminc, LLVM) hoist them itself. Either way, the *Com-level*
-  transform is the identity.
-
-## Why this is the right factoring
-
-The two preservation theorems
-
-  `applyLicm_denote_preserves : (applyLicm p d).denote = p.denote`
-  `applyLicm_preserves_CT     : ctSafeJForProg (applyLicm p d) accL =
-                                 ctSafeJForProg p accL`
-
-are by-construction `rfl`. The analysis correctness theorem
-(`licmInvariantPositions_sound`) is the actual content — it says that a
-binder flagged invariant by `analyzeLicm` is loop-invariant
-(its computed value does not change across iterations because none of
-its inputs reads the loop-carried accumulator).
+* `analyzeLicm_empty_body` — a body with no binders has no flagged
+  positions.
+* `analyzeLicm_nullary_at_zero` — a nullary op (e.g. `regConst`) at
+  position 0 is flagged invariant.
 
 ## Contents
 
 * `LicmDecisions` — the analysis result. A list of binder positions marked
   loop-invariant, indexed by position into the body's straight-line
   let-chain.
-* `isInvariantAtDepth` / `isInvariantExpr` — the per-position criterion: a
+* `allArgsInvariant` / `isInvariantExpr` — the per-position criterion: a
   binder at position `pos` is invariant iff every argument variable in its
   expression points to a strictly-earlier binder also flagged invariant
   (never to `acc`, which sits at depth `pos`).
 * `analyzeLicm` — the analysis: walks the body, threading the set of
   already-flagged-invariant positions, and emits a position when its
   expression's argument depths all fall into the invariant set.
-* `applyLicm` — the `Com → Com` rewrite. Identity at the Com level
-  (`fun p _ => p`), mirroring `applyDce` and `applyRA`.
-* `applyLicm_denote_preserves`, `applyLicm_preserves_CT` — the two
-  preservation theorems, both `rfl`.
-* `analyzeLicm_empty_body` — the analysis-correctness sanity lemma on the
-  trivial body (no binders ⇒ no positions flagged).
-* `nullary_binder_is_invariant` — the analysis correctness on the smallest
-  non-trivial body shape: a nullary op (e.g. `regConst`) at any position is
-  flagged invariant, because it has no args and so cannot read `acc`.
-* Concrete sanity examples (`#eval`) exercising `analyzeLicm` on small
-  synthetic Com terms (a `regConst` round constant in a body whose other
-  binders compute `acc + acc`).
+* Sanity examples on small synthetic bodies (a `regConst` round constant in a
+  body whose other binders compute `acc + acc`).
 
-No open goals, no new axioms — the framework's Com-level rewrite is the
-identity, so both preservation theorems reduce to `rfl`.
-
-## Scope
+## Eligible binders
 
 * Only **scalar** binders (`Com.var`/`Expr.regArith`/`Expr.regConst`/
   `Expr.castW`) are eligible. `stackLoad`/`stackStore` may alias across
@@ -102,26 +51,7 @@ identity, so both preservation theorems reduce to `rfl`.
   opaque (the default value of the return type for non-lattice leaves),
   but its **effect on side channels** is not guaranteed to be hoistable;
   some leaves may be denotation-opaque-but-effect-bearing, and hoisting
-  them would change the program's leak profile. A future extension can
-  add a per-leaf "pure-and-side-channel-free" predicate that, when set,
-  unlocks invariant flagging for `extCall`.
-
-## Residuals
-
-The intrinsic-De-Bruijn correctness statement
-`∀ p i, i ∈ invariantPositions (analyzeLicm p) → <binder i is
-loop-invariant in p>` is partially discharged here (on the empty-body and
-nullary-op shapes). The full statement requires reasoning about closed-
-under-substitution argument resolution across iterations; the framework
-theorems hold uniformly regardless.
-
-A future `applyLicm` could perform the actual Com-level hoist via a
-De Bruijn renumbering layer (shift invariant binders to a pre-loop
-prelude Com, decrement remaining argument depths). The framework
-preservation theorems would change from `rfl` to a per-Com induction,
-but the *theorem statements* stay the same — the rewrite just supplies
-a different `preserves` witness, mirroring the `RegisterAllocation`
-and `DeadCodeElim` extension story.
+  them would change the program's leak profile.
 -/
 
 @[expose] public section
@@ -253,81 +183,7 @@ The concrete analysis here makes the analysis-correctness lemmas
 def analyzeLicm {accTy : JasminTy} (p : JForProg accTy) : LicmDecisions :=
   { invariantPositions := analyzeLicmAux 0 [] p.update }
 
-/-! ## 3. The `Com → Com` transform
-
-Per the architectural principle: `applyLicm` is the identity at the Com
-level. The invariance decisions are consumed by the downstream emit pass
-(which can hoist invariant-flagged binders to the function prelude). The
-*Com itself* is unchanged — preserving the intrinsic typing without needing
-a De Bruijn renumbering layer.
-
-This mirrors `RegisterAllocation.applyRA = fun p _ => p` and
-`DeadCodeElim.applyDce = fun p _ => p`. -/
-
-/-- **Apply a LICM decision to a `JForProg`.** At the Com level this is
-the identity Com→Com transform — the analysis result is a labelling
-consumed by the emit pass, not a structural change to the Com.
-
-For a future Com-level rewrite (one that actually shifts invariant
-binders to a pre-loop prelude via De Bruijn renumbering), this function
-would change. The framework's preservation theorems are stated uniformly
-so that any future Com-level rewrite which preserves denotation (and CT)
-plugs in without touching the theorem statements. -/
-def applyLicm {accTy : JasminTy} (p : JForProg accTy)
-    (_d : LicmDecisions) : JForProg accTy :=
-  p
-
-/-! ## 4. The two preservation theorems -/
-
-/-- **Denotation preservation for `applyLicm`.** For any `JForProg p`
-and any LICM decision `d`, the transformed program denotes the same
-function as `p`. At the current shape this is `rfl` because
-`applyLicm p d = p` definitionally — the invariance decisions live in
-`d`, consumed downstream, and the Com itself is unchanged. -/
-theorem applyLicm_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (d : LicmDecisions) (init : ⟦accTy⟧) :
-    (applyLicm p d).denote init = p.denote init :=
-  rfl
-
-/-- **CT preservation for `applyLicm`.** For any `JForProg p`, any LICM
-decision `d`, and any accumulator secrecy label `accL`, the transformed
-program is CT-safe iff `p` is. At the current shape this is `rfl`
-because `applyLicm p d = p` definitionally (the Com-level transform is
-identity; invariance decisions are consumed by the downstream emit pass,
-which can hoist emitted instructions to the prelude without changing the
-CT story — the hoisted instructions would also have been CT-safe, and
-moving CT-safe straight-line code does not introduce branches).
-
-This is the LICM analogue of `applyDce_preserves_CT` from
-`DeadCodeElim.lean` and `applyRA_preserves_CT` from
-`CtPreservationNewTransforms.lean`, with the same proof shape and the
-same architectural justification. -/
-theorem applyLicm_preserves_CT {accTy : JasminTy} (p : JForProg accTy)
-    (d : LicmDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applyLicm p d) accL = ctSafeJForProg p accL :=
-  rfl
-
-/-- **CT preservation for `applyLicm` (Prop form).** The propositional
-analogue: `ctSafePropJForProg` is preserved through `applyLicm`. -/
-theorem applyLicm_preserves_CT_prop {accTy : JasminTy} (p : JForProg accTy)
-    (d : LicmDecisions) (accL : SecretLevel) :
-    ctSafePropJForProg (applyLicm p d) accL ↔ ctSafePropJForProg p accL := by
-  unfold ctSafePropJForProg
-  rw [applyLicm_preserves_CT]
-
-/-- **Robust CT preservation for `applyLicm`.** A robustly CT-safe
-`JForProg` remains robustly CT-safe after `applyLicm`. Since
-`applyLicm p d = p` at the Com level, this is `id` on the
-universally-quantified predicate. -/
-theorem applyLicm_preserves_RobustlyCTSafe {accTy : JasminTy}
-    (p : JForProg accTy) (d : LicmDecisions)
-    (h : RobustlyCTSafeJForProg p) :
-    RobustlyCTSafeJForProg (applyLicm p d) := by
-  intro accL
-  rw [applyLicm_preserves_CT]
-  exact h accL
-
-/-! ## 5. Analysis correctness on canonical shapes
+/-! ## 3. Analysis correctness on canonical shapes
 
 The natural correctness statement for `analyzeLicm` is: every position
 flagged invariant is indeed loop-invariant. We discharge two
@@ -372,7 +228,7 @@ theorem analyzeLicm_nullary_at_zero {accTy : JasminTy} (w : Nat) (k : Nat) :
     (analyzeLicm { n := 1, update := body }).invariantPositions = [0] := by
   rfl
 
-/-! ## 6. Sanity tests
+/-! ## 4. Sanity tests
 
 These confirm `analyzeLicm` behaves correctly on small synthetic body
 shapes — the smallest "is the analysis wired up?" smoke tests.
@@ -462,105 +318,5 @@ def licmNoneBody :
 #eval (analyzeLicm
         (accTy := .reg 64)
         { n := 16, update := licmNoneBody }).invariantPositions
-
-/-! ## 7. End-to-end corollary
-
-The user-facing entry point: run `analyzeLicm`, then `applyLicm` to apply
-the analysis. Both preservation theorems are wrapped into a single
-corollary statement for downstream use. -/
-
-/-- **End-to-end LICM preservation.** Applying `analyzeLicm` followed by
-    `applyLicm` preserves both denotation and CT-safety. -/
-theorem analyzeLicm_applyLicm_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) (accL : SecretLevel) :
-    (applyLicm p (analyzeLicm p)).denote init = p.denote init ∧
-    ctSafeJForProg (applyLicm p (analyzeLicm p)) accL = ctSafeJForProg p accL :=
-  ⟨applyLicm_denote_preserves p (analyzeLicm p) init,
-   applyLicm_preserves_CT p (analyzeLicm p) accL⟩
-
-/-! ## 8. Composition with the existing optimisation passes
-
-LICM composes with `JForProgUnroll.lean` and `RegisterAllocation.lean`
-cleanly: each pass is the identity at the Com level (or, for
-unrolling, produces a new Com whose denotation matches), and their
-denotation- and CT-preservation theorems compose. The canonical Com-level
-optimisation order is:
-
-  LICM (hoist invariants to prelude)
-  → loop unrolling (replicate body by factor `N`)
-  → register allocation (assign slots to surviving binders)
-  → DCE (drop dead binders identified by liveness)
-
-All four are identity-at-Com (loop unrolling produces a *new* Com via the
-`UnrolledBy` contract, the other three rewrite to `p`), so the composed
-pipeline's denotation-preservation is the conjunction of individual
-preservation theorems, and CT-preservation likewise. -/
-
-/-- **LICM composes with DCE: both preserve denotation.** Applying LICM
-    then DCE (in either order — both are identity at the Com level)
-    preserves the original denotation. -/
-theorem licm_then_dce_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (lD : LicmDecisions) (dD : DceDecisions) (init : ⟦accTy⟧) :
-    (applyDce (applyLicm p lD) dD).denote init = p.denote init := by
-  rw [applyDce_denote_preserves, applyLicm_denote_preserves]
-
-/-- **LICM composes with DCE: both preserve CT.** -/
-theorem licm_then_dce_preserves_CT {accTy : JasminTy} (p : JForProg accTy)
-    (lD : LicmDecisions) (dD : DceDecisions) (accL : SecretLevel) :
-    ctSafeJForProg (applyDce (applyLicm p lD) dD) accL
-      = ctSafeJForProg p accL := by
-  rw [applyDce_preserves_CT, applyLicm_preserves_CT]
-
-/-- **LICM composes with RA: both preserve denotation.** Given a well-formed
-    register allocation, applying LICM then RA preserves the original
-    denotation. The `WellFormed` hypothesis is the per-RA semantic witness
-    `applyRA_denote_preserves` consumes; it is `identity_WellFormed` for the
-    trivial RA, and `linearScanRA_WellFormed` for the concrete linear-scan RA. -/
-theorem licm_then_ra_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
-    (lD : LicmDecisions) (ra : RegisterAllocation)
-    (hwf : RegisterAllocation.WellFormed ra) (init : ⟦accTy⟧) :
-    (RegisterAllocation.applyRA (applyLicm p lD) ra).denote init = p.denote init := by
-  rw [RegisterAllocation.applyRA_denote_preserves _ _ hwf, applyLicm_denote_preserves]
-
-/-! ## 9. Where the next LICM work plugs in
-
-The framework above is the verified scaffolding into which the next
-optimisation steps plug. The expansion path:
-
-1. **Intrinsic-De-Bruijn correctness.** Add a denotational closure lemma
-   asserting that a binder flagged invariant by `analyzeLicm` yields the
-   same value in every iteration: under the body's denotation, the
-   expression's evaluation in the singleton context `[accTy]` extended
-   with prior invariant binders does not depend on the value of `acc`.
-   This is straightforward for nullary ops (the value is literally
-   independent of the valuation); the general case extends by induction
-   over the argument structure. The framework theorems hold uniformly.
-
-2. **Com-level structural hoist.** A future `applyLicm` could perform
-   the actual Com-level hoist via a De Bruijn renumbering layer: split
-   the Com into a "prelude" Com (running over `[accTy]`, computing all
-   invariant binders) and a "loop body" Com (running over
-   `[invariantBinders..., accTy]`, executing only the non-invariant
-   binders). The framework's preservation theorems would change from
-   `rfl` to a per-Com induction, but the *theorem statements* stay the
-   same — the rewrite just supplies a different `preserves` witness,
-   mirroring the `RegisterAllocation` and `DeadCodeElim` extension
-   stories.
-
-3. **Cross-binder LICM with `extCall`.** If an `extCall` leaf is marked
-   "pure and side-channel-free" (a per-leaf predicate, similar to the
-   `lattice` family handled in `jasminExtSem`), LICM could flag it as
-   invariant. The framework theorems are unaffected; the analysis
-   extends by widening `isInvariantExpr` to consult the per-leaf
-   predicate.
-
-4. **Loop-nest LICM.** For nested loops (`Cfor` inside `Cfor`), an outer
-   invariant analysis could hoist outer-loop-invariants into the
-   function prelude. The current framework only operates on a single
-   bounded loop; multi-level LICM is the documented extension point.
-
-The framework theorems `applyLicm_denote_preserves` and
-`applyLicm_preserves_CT` are LICM-decision-independent and hold across
-all of these extensions. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR

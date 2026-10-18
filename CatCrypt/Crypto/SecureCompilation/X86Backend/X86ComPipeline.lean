@@ -21,7 +21,7 @@ The owned x86 backend has several verified `List (JInstr 64) → List (JInstr 64
 passes, each with its own translation-validation theorem.  This module is the
 single `optimize : List (JInstr 64) → List (JInstr 64)` that chains them behind
 **one** composed denotation-equality theorem — the `x86Dialect` analogue of the
-LowCT / `JForProg` driver `Optimizer.Pipeline.optPipelineJ`.
+LowCT pipeline `Optimizer.Pipeline.applyPipeline`.
 
 Every owned-emit kernel routes its block through `optimizeX86Block` and gets its
 `runBlock`/lowered-`Com` semantics back unchanged, plus its constant-time class
@@ -358,7 +358,7 @@ def optimizeX86Block (blk : List (JInstr 64)) : List (JInstr 64) :=
 /-- **The composed driver translation-validation theorem.**  For every
     block and every state, the optimized block has the same `runBlock` final state
     as the input.  This is the `x86Dialect` analogue of
-    `Optimizer.Pipeline.optPipelineJ_denote`: every owned-emit kernel calls *this*
+    `Optimizer.Pipeline.applyPipeline_denote_eq`: every owned-emit kernel calls *this*
     one theorem to certify the optimizer preserved its semantics. -/
 theorem optimizeX86Block_runBlock (blk : List (JInstr 64)) (s : JState 64) :
     runBlock s (optimizeX86Block blk) = runBlock s blk :=

@@ -37,8 +37,7 @@ Two complementary levels:
   `ComInline.inline` preserves its denotation. The `jasminExtSem` arm for
   `[stackArr 16 _] → stackArr 16 _` returns its argument whatever the leaf
   name, so the registry consistency this rests on holds by `rfl`.
-  `RegisterAllocation.applyRA` is the identity (`inlinedRAProg_eq_inlinedProg`);
-  the allocation content at this level is `inlinedRA_slotOfInjectiveOnLive`.
+  The allocation content at this level is `inlinedRA_slotOfInjectiveOnLive`.
   This program is not the Part B blocks, which are written as `JInstr` lists.
 
 * **`List (JInstr 64)` level.** Two concrete butterfly blocks chained through
@@ -49,15 +48,12 @@ Two complementary levels:
   `abi_eq_inlined_outputs_kat2`). `emitMain` writes both to `.s` for the bench
   harness, which compares their outputs and reports cyc/op for each.
 
-## Contents
+## Main results
 
 * `inline_denote_eq_boundary` — the inlined program denotes the boundary
   program on every initial accumulator, under `nttRegistry_consistent`.
-* `inlinedRAProg_eq_inlinedProg` — `applyRA` returns the inlined program.
 * `inlinedRA_slotOfInjectiveOnLive` — the linear scan assigns distinct slots to
   simultaneously live binders of the inlined body.
-* `inlineThenRA_denote_preserves` — the RA-applied inlined program denotes the
-  boundary program; the RA component is the identity.
 * `abi_boundary_lowering_correct` / `inlined_merged_lowering_correct` — both
   JInstr blocks lower denotation-preservingly through the x86 backend
   (instances of `lowerBlock_denote_closed`).
@@ -68,9 +64,8 @@ Two complementary levels:
 * `allocations_complete` — `livenessAllocGp` assigns every name of both blocks
   a pool register. No theorem relates `livenessAllocGp` to `runBlock`.
 
-Axioms: `[propext, Quot.sound]` for `inlineThenRA_denote_preserves`;
-`inlinedRA_slotOfInjectiveOnLive` adds `Classical.choice`; the `native_decide`
-numeric pins add `Lean.ofReduceBool`.
+Axioms: `inlinedRA_slotOfInjectiveOnLive` uses `Classical.choice`; the
+`native_decide` numeric pins add `Lean.ofReduceBool`.
 -/
 
 @[expose] public section
@@ -97,8 +92,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
 The call boundary between two composed leaves is an `extCall`. The composition
 is modelled as a single accumulator-update body that calls one registered
 NTT-layer wrapper leaf. Inlining replaces the call with the wrapper's body, and
-`ComInline.inline_preserves_denote` gives denotation preservation.
-`RegisterAllocation.applyRA` returns its argument and ignores `inlinedRA`; Part C
+`ComInline.inline_preserves_denote` gives denotation preservation. Part C
 allocates registers independently with `livenessAllocGp` over the `JInstr`
 block. -/
 
@@ -165,15 +159,10 @@ def inlinedUpdate : Com jasminDialect [nttAcc] nttAcc :=
 def inlinedProg : JForProg nttAcc := { n := 1, update := inlinedUpdate }
 
 /-- The `linearScanRA` allocation of the inlined program. Its `slotOf` is the
-    identity (`RegisterAllocation.linearScanRA_slotOf_eq_id`); only `applyRA`
-    reads it, and `applyRA` ignores it. -/
+    identity (`RegisterAllocation.linearScanRA_slotOf_eq_id`); its linear-scan
+    slots are in `seqOf`. -/
 def inlinedRA : RegisterAllocation :=
   RegisterAllocation.linearScanRA inlinedProg
-
-/-- `applyRA` of the inlined program under `inlinedRA`; equal to `inlinedProg`
-    (`inlinedRAProg_eq_inlinedProg`). -/
-def inlinedRAProg : JForProg nttAcc :=
-  RegisterAllocation.applyRA inlinedProg inlinedRA
 
 /-- Inlining the wrapper leaf preserves the denotation: the inlined program
     denotes the boundary program on every initial accumulator
@@ -185,24 +174,11 @@ theorem inline_denote_eq_boundary (init : ⟦nttAcc⟧) :
   exact inline_preserves_denote nttRegistry nttRegistry_consistent boundaryUpdate
     (.cons init .nil)
 
-/-- `applyRA` returns its argument, so the RA-applied program is the inlined
-    program. -/
-theorem inlinedRAProg_eq_inlinedProg : inlinedRAProg = inlinedProg := rfl
-
 /-- Simultaneously live binders of the inlined body receive distinct slots under
     the linear scan (`linearScanRA_real_slotOfInjectiveOnLive`). -/
 theorem inlinedRA_slotOfInjectiveOnLive :
     RegisterAllocation.SlotOfInjectiveOnLive inlinedProg :=
   RegisterAllocation.linearScanRA_real_slotOfInjectiveOnLive inlinedProg
-
-/-- The RA-applied inlined program denotes the boundary program on every initial
-    accumulator. The RA component is the identity
-    (`inlinedRAProg_eq_inlinedProg`), so the statement is
-    `inline_denote_eq_boundary`. -/
-theorem inlineThenRA_denote_preserves (init : ⟦nttAcc⟧) :
-    inlinedRAProg.denote init = boundaryProg.denote init := by
-  rw [inlinedRAProg_eq_inlinedProg]
-  exact inline_denote_eq_boundary init
 
 /-- The inlined body is not syntactically the boundary body: the pass
     eliminates the boundary `extCall name = wrapperName` and splices in the
