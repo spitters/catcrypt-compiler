@@ -142,7 +142,8 @@ theorem lsemStepMem_sarImm (dst src : String) (n : Nat) (ls : LstateM) (va : Bit
   obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_shiftLinstr (w := 64) "SAR" dst (.reg src) n
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
-  simp only [lsemStepSh, sarStruct?_shiftLinstr_SAR, readReg_of_getW hva, Option.map_some]
+  simp only [lsemStepSh, sarStruct?_shiftLinstr_SAR, readReg_of_getW hva, Option.map_some,
+    VIR.sshiftRight_shiftMask_sarCount]
 
 /-! ## 4. The lowering and the per-opcode agreement -/
 
@@ -181,6 +182,10 @@ theorem shiftImm_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
       JLstateCorr (runBlock s [jinstr]) ls' := by
   refine ⟨_, ?_, JLstateCorr_setReg s _ ls hcorr dst v hrun hmemrun⟩
   rw [lsemStraightMem_single]
+  have hl : shiftLinstr base 64 dst (.reg dst) n
+      = .Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, .imm n] := by
+    simp [shiftLinstr, h4]
+  rw [hl]
   exact lsemStepMem_regArith dst base (.imm n) ls hstrip h1 h2 h3 h4
     (s.get dst) (BitVec.ofNat 64 n) v (hcorr.regAgree dst) rfl hop
 
