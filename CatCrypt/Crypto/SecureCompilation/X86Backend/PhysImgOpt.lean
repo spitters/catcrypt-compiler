@@ -857,13 +857,13 @@ def goodHoldB (slotArr : String → Option (String × Nat)) (s r : String) : Boo
   (gpNameB r && (slotArr r).isNone) || (slotArr r).isSome || (!gpNameB s && (slotArr s).isNone)
 
 /-- The rewrite of `i` into `i'` by `loadCSE` is a redirect `d ← s` to `d ← r` that keeps the
-    reload scan (`goodHoldB`), into a destination that is no array slot, of a move `slotMov?`
-    into a move `slotMov?`. -/
+    reload scan (`goodHoldB`), into a destination that is no array slot, of a 64-bit move that
+    is no move `slotMov?`, or of a move `slotMov?` into a move `slotMov?`. -/
 def loadRewriteOkB (slotArr : String → Option (String × Nat)) (i i' : Linstr) : Bool :=
   match asWideReload i.li_i, i'.li_i with
   | some (d, s, _), .Lopn [.reg _] _ [.reg r] =>
       r == s || ((slotArr d).isNone && goodHoldB slotArr s r &&
-        slotMov? i'.li_i == some (d, r))
+        ((slotMov? i.li_i).isNone || slotMov? i'.li_i == some (d, r)))
   | _, _ => true
 
 /-- `loadRewriteOkB` at every position of the forward scan of `loadCSE`. -/
@@ -885,11 +885,16 @@ def slotAfterSlotLoadFreeB (slotArr : String → Option (String × Nat)) : Bool 
       (!seen || (writtenNames i.li_i).all fun q => (slotArr q).isNone) &&
         slotAfterSlotLoadFreeB slotArr (seen || slotLoadB slotArr i) is
 
-/-- Every 64-bit move is a move of `slotMov?`: no 64-bit move names a cell. -/
+/-- Every 64-bit move into a general-purpose name is a move of `slotMov?`: no 64-bit move into
+    a general-purpose name reads a cell. -/
 def wideMovB (b : Lcmd) : Bool :=
-  b.all fun j => (asWideReload j.li_i).isNone || (slotMov? j.li_i).isSome
+  b.all fun j =>
+    match asWideReload j.li_i with
+    | some (d, _, _) => !gpNameB d || (slotMov? j.li_i).isSome
+    | none => true
 
-/-- **The side condition of `loadCSE`.** The body is modeled, its 64-bit moves name no cell,
+/-- **The side condition of `loadCSE`.** The body is modeled, its 64-bit moves into
+    general-purpose names read no cell,
     every redirect keeps the reload scan (`loadChkB`), a move into an array slot reads no array
     slot, and no instruction writes an array slot after a 64-bit move from an array slot. -/
 def loadSideB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
@@ -972,6 +977,39 @@ theorem movDom_surv (hW : W[N]? = some i) (hW' : W'[N]? = some i')
       rw [hsn] at hqs
       cases hqs
 
+/-- Behind an operation into `d`, a move from `s` resolves to no array slot when `s ↦ d` keeps
+    the reload scan (`goodHoldB`), `d` is no general-purpose name that is no array slot, and
+    one of `d` and `s` is no array slot. -/
+theorem movScan_succ_noSlot (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
+    {s : String} (hsv : ((slotArr d).isNone || (slotArr s).isNone) = true)
+    (hg : goodHoldB slotArr s d = true) (hcd : ¬ ((slotArr d).isNone && gpNameB d) = true)
+    {q : String} (hq : movScan slotArr W (N + 1) s = some q)
+    (hqs : (slotArr q).isSome = true) : False := by
+  unfold movScan at hq
+  simp only [goodHoldB, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at hg
+  rcases hg with ⟨⟨hgp, hgn⟩ | hds⟩ | ⟨hgs, hsn⟩
+  · exact hcd (by simp [hgp, hgn])
+  · have hdn' : ¬ (slotArr d).isNone = true := by
+      rw [Option.isNone_iff_eq_none]; exact Option.isSome_iff_ne_none.mp hds
+    have hsn : (slotArr s).isNone = true := by
+      simp only [Bool.or_eq_true] at hsv
+      exact hsv.resolve_left hdn'
+    have hne : s ≠ d := by
+      rintro rfl
+      rw [Option.isNone_iff_eq_none] at hsn
+      rw [hsn] at hds
+      cases hds
+    split_ifs at hq with hc
+    · rw [reloadOf_succ_single hW hj hne, if_neg hdn'] at hq
+      cases hq
+    · cases hq
+      simp only [Option.isNone_iff_eq_none] at hsn
+      rw [hsn] at hqs; cases hqs
+  · rw [if_neg (by simp [hgs])] at hq
+    cases hq
+    simp only [Option.isNone_iff_eq_none] at hsn
+    rw [hsn] at hqs; cases hqs
+
 /-- The output instruction of one step of `loadCSE`: the input, or the redirect of a 64-bit
     move onto the holder of its source. -/
 theorem stepLoad_out (env : LoadEnv) {s mn : String} (har : asWideReload i.li_i = some (d, s, mn)) :
@@ -1030,14 +1068,59 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
     obtain ⟨hi, hmn⟩ := asWideReload_eq har
     have hd' : d' = d := by rw [hj] at hi; cases hi; rfl
     subst hd'
-    have hsm : slotMov? i.li_i = some (d', s) := by
-      have := List.all_eq_true.mp hwide i hib
-      rw [har] at this
-      obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp (by simpa using this)
-      have := asReload_of_slotMov hp
+    have hsv : ((slotArr d').isNone || (slotArr s).isNone) = true := by
+      have := List.all_eq_true.mp hsave i hib
       rw [asReload_of_asWideReload har] at this
-      rw [hp, Option.some.inj this]
+      exact this
     obtain ⟨hout, henv⟩ := stepLoad_out (d := d') env har
+    cases hsm0 : slotMov? i.li_i
+    case none =>
+      have hgd : gpNameB d' = false := by
+        have := List.all_eq_true.mp hwide i hib
+        simpa [har, hsm0] using this
+      have hT : ∃ o' ss', (stepLoad env i).1.li_i = .Lopn [.reg d'] o' ss' ∧
+          ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧
+            DstOk slotArr (stepLoad env i).1.li_i)) := by
+        rcases hout with heq | ⟨r, hf, heq⟩
+        · rw [heq]; exact ⟨o, ss, hj, Or.inl rfl⟩
+        · rw [heq] at hchk ⊢
+          simp only [loadRewriteOkB, har] at hchk
+          by_cases hrs : r = s
+          · subst hrs
+            have hii : ({ i with li_i := .Lopn [.reg d'] mn [.reg r] } : Linstr) = i := by
+              cases i; simp only at hi ⊢; rw [hi]
+            rw [hii]
+            exact ⟨o, ss, hj, Or.inl rfl⟩
+          · have hrs' : (r == s) = false := beq_eq_false_iff_ne.mpr hrs
+            simp only [hrs', Bool.false_or, Bool.and_eq_true] at hchk
+            obtain ⟨⟨hdn, -⟩, -⟩ := hchk
+            refine ⟨mn, [.reg r], rfl, Or.inr ⟨?_, dstOk_single (by simpa using hdn)⟩⟩
+            simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+            simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn
+            rcases hmn with rfl | rfl <;> exact ⟨by decide, by decide⟩
+      obtain ⟨o', ss', hj', hpt⟩ := hT
+      rw [henv]
+      refine ⟨⟨fun x _ q hf hq => ?_, fun s' r' hm => ?_⟩, ?_⟩
+      · simp only at hf ⊢
+        by_cases hx : x = d'
+        · subst hx
+          rw [reloadOf_succ_noMov hW hj hsm0] at hf
+          cases hf
+        · exact dom_succ_ne hW hW' hj hj' hdom hx hf hq
+      · simp only [LoadEnv.set, LoadEnv.killReg, LoadEnv.killSlot, List.mem_append,
+          List.mem_filter, List.mem_singleton, Prod.mk.injEq, decide_eq_true_eq] at hm
+        rcases hm with ⟨⟨⟨hm, hr⟩, hs⟩, -⟩ | ⟨rfl, rfl⟩
+        · exact ⟨horig s' r' hm, fun hg =>
+            movDom_surv hW hW' hj hj' hs hr (hslotd s' r' hm) ((hall s' r' hm).2 hg)⟩
+        · exact ⟨⟨i, by simp, mn, har⟩, fun hg q hq hqs =>
+            (movScan_succ_noSlot hW hj hsv hg (by simp [hgd]) hq hqs).elim⟩
+      · rcases hpt with h1 | ⟨h1, h2⟩
+        · exact Or.inl h1
+        · exact Or.inr ⟨h1, h2, fun d'' s'' h => by cases h⟩
+    have hsm : slotMov? i.li_i = some (d', s) := by
+      have := asReload_of_slotMov hsm0
+      rw [asReload_of_asWideReload har] at this
+      rw [hsm0, Option.some.inj this]
     -- the output's move and the binding it reads
     have hT : ∃ t, slotMov? (stepLoad env i).1.li_i = some (d', t) ∧
         (stepLoad env i).1.li_i = .Lopn [.reg d'] mn [.reg t] ∧
@@ -1055,7 +1138,8 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
           rw [hii]
           exact ⟨r, hsm, hi, movDom_of_dom hdom r, Or.inl rfl⟩
         · have hrs' : (r == s) = false := beq_eq_false_iff_ne.mpr hrs
-          simp only [hrs', Bool.false_or, Bool.and_eq_true, beq_iff_eq] at hchk
+          simp only [hrs', hsm, Option.isNone_some, Bool.false_or, Bool.and_eq_true,
+            beq_iff_eq] at hchk
           obtain ⟨⟨hdn, hg⟩, hm'⟩ := hchk
           refine ⟨r, by simpa using hm', rfl, (hall s r (mem_of_lookup env s r hf)).2 hg,
             Or.inr ⟨?_, ?_⟩⟩
@@ -1079,9 +1163,9 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
       · exact ⟨horig s' r' hm, fun hg =>
           movDom_surv hW hW' hj hj' hs hr (hslotd s' r' hm) ((hall s' r' hm).2 hg)⟩
       · refine ⟨⟨i, by simp, mn, har⟩, fun hg q hq hqs => ?_⟩
-        unfold movScan at hq
         by_cases hcd : ((slotArr r').isNone && gpNameB r') = true
         · -- the destination is a general-purpose name: the output scan reads the moved source
+          unfold movScan at hq
           have hrn : (slotArr r').isNone = true := by
             simp only [Bool.and_eq_true] at hcd; exact hcd.1
           unfold movScan
@@ -1095,36 +1179,11 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
             split_ifs at hq ⊢ with hc
             · rwa [reloadOf_succ_ne hW hj hsd hrn] at hq
             · exact hq
-        · exfalso
-          simp only [goodHoldB, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at hg
-          rcases hg with ⟨⟨hgp, hgn⟩ | hds⟩ | ⟨hgs, hsn⟩
-          · exact hcd (by simp [hgp, hgn])
-          · have hdn' : ¬ (slotArr r').isNone = true := by
-              rw [Option.isNone_iff_eq_none]; exact Option.isSome_iff_ne_none.mp hds
-            have hsn : (slotArr s').isNone = true := by
-              have := List.all_eq_true.mp hsave i hib
-              rw [asReload_of_asWideReload har] at this
-              simp only [Bool.or_eq_true] at this
-              exact this.resolve_left hdn'
-            have hne : s' ≠ r' := by
-              rintro rfl
-              rw [Option.isNone_iff_eq_none] at hsn
-              rw [hsn] at hds
-              cases hds
-            split_ifs at hq with hc
-            · rw [reloadOf_succ_single hW hj hne, if_neg hdn'] at hq
-              cases hq
-            · cases hq
-              simp only [Option.isNone_iff_eq_none] at hsn
-              rw [hsn] at hqs; cases hqs
-          · rw [if_neg (by simp [hgs])] at hq
-            cases hq
-            simp only [Option.isNone_iff_eq_none] at hsn
-            rw [hsn] at hqs; cases hqs
+        · exact (movScan_succ_noSlot hW hj hsv hg hcd hq hqs).elim
     · rcases hpt with h1 | ⟨h1, h2⟩
       · exact Or.inl h1
       · exact Or.inr ⟨h1, h2, fun d'' s'' h => by
-          rw [hsm] at h
+          rw [← hsm0, hsm] at h
           cases h
           exact ⟨t, hmt⟩⟩
 

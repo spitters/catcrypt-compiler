@@ -10,11 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideOpt
 /-!
 # The 64-bit moves of the allocator output
 
-The side condition `PhysImgOpt.loadSideB` of the load CSE asks that every 64-bit move is a
-move of `slotMov?` (`wideMovB`), and the load-CSE comparison of gate 22 asks that no 64-bit
-move is between two memory names (`PhysImgSidePass.memMovFreeB`). Both follow from one
-property of every instruction, `WideOk`: a 64-bit move has a general-purpose or memory
-destination, is no move between two memory names and is a move of `slotMov?`.
+The side condition `PhysImgOpt.loadSideB` of the load CSE asks that every 64-bit move into a
+general-purpose name is a move of `slotMov?` (`wideMovB`), and the load-CSE comparison of
+gate 22 asks that no 64-bit move is between two memory names (`PhysImgSidePass.memMovFreeB`).
+Both follow from one property of every instruction, `WideOk`: a 64-bit move has a
+general-purpose or memory destination, is no move between two memory names and, into a
+general-purpose name, is a move of `slotMov?`.
 
 `WideOk` is closed under the source rewrites of the copy propagation, which write a
 general-purpose register or an immediate. The fusion of the high products writes moves
@@ -23,9 +24,8 @@ between `RDX`, `R14`, `R15`, a source of the `MULXHI` and a spilled destination,
 `physExpand` writes moves between names of the operand map, the scratch registers and the
 save slots, with a copy between two spill slots routed through `R15`, so it keeps `WideOk`
 when the operand map renders every register as a general-purpose register or a spill slot
-`k.N`. One arm is excluded by a hypothesis (`StoreOk`): a register-indexed store of a
-spilled value at an index in `R15`, or at a spilled index without a constant below `2^28` at
-stride `8`, writes through `MOV:64 mem.R14.0, R15`, a move into a cell name.
+`k.N`. A register-indexed store of a spilled value at an index in `R15` writes through
+`MOV:64 mem.R14.0, R15`, a move into a cell name from a general-purpose name.
 
 ## Main results
 
@@ -63,32 +63,44 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit (extraSaves mem_ex
 /-! ## 1. The predicate -/
 
 /-- A 64-bit move `MOV d ← s` of the instruction has a general-purpose or memory destination,
-    is no move between two memory names and is a move of `slotMov?`. -/
+    is no move between two memory names and, into a general-purpose name, is a move of
+    `slotMov?`. -/
 def WideOkR (i : LinstrR) : Prop :=
   ∀ d s mn, asWideReload i = some (d, s, mn) →
     (gpNameB d = true ∨ isMemName d = true) ∧ isMemToMemMov i = false ∧
-      (slotMov? i).isSome = true
+      (gpNameB d = true → (slotMov? i).isSome = true)
 
 /-- `WideOkR` of the instruction. -/
 def WideOk (j : Linstr) : Prop := WideOkR j.li_i
 
-/-- `WideOkR` of an operation from the condition on its 64-bit move shape. -/
-theorem wideOkR_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
+/-- `WideOkR` of an operation from the condition on its 64-bit move shape, with a source that
+    is no cell name for a `MOV:64` into a general-purpose name. -/
+theorem wideOkR_lopn_gp {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : ∀ d s, ds = [.reg d] → ss = [.reg s] → isMov64Mnem o = true →
       (gpNameB d = true ∨ isMemName d = true) ∧ (isMemName d && isMemName s) = false ∧
-        (o = "MOV:64" → cellParts? d = none ∧ cellParts? s = none)) :
+        (o = "MOV:64" → gpNameB d = true → cellParts? s = none)) :
     WideOkR (.Lopn ds o ss) := by
   intro d s mn hw
   obtain ⟨he, hm⟩ := asWideReload_eq hw
   simp only [LinstrR.Lopn.injEq] at he
   obtain ⟨rfl, rfl, rfl⟩ := he
   obtain ⟨h1, h2, h3⟩ := h d s rfl rfl hm
-  refine ⟨h1, by simp [isMemToMemMov, hw, h2], ?_⟩
+  refine ⟨h1, by simp [isMemToMemMov, hw, h2], fun hgp => ?_⟩
   simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hm
   rcases hm with rfl | rfl
-  · obtain ⟨c1, c2⟩ := h3 rfl
-    simp [slotMov?, c1, c2]
+  · have c1 : cellParts? d = none :=
+      PhysImgOpt.cellParts?_physGP (by rwa [PhysImgFold.isPhysGP_eq_gpNameB])
+    simp [slotMov?, c1, h3 rfl hgp]
   · simp [slotMov?]
+
+/-- `WideOkR` of an operation from the condition on its 64-bit move shape. -/
+theorem wideOkR_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : ∀ d s, ds = [.reg d] → ss = [.reg s] → isMov64Mnem o = true →
+      (gpNameB d = true ∨ isMemName d = true) ∧ (isMemName d && isMemName s) = false ∧
+        (o = "MOV:64" → cellParts? d = none ∧ cellParts? s = none)) :
+    WideOkR (.Lopn ds o ss) :=
+  wideOkR_lopn_gp fun d s h1 h2 hm =>
+    (h d s h1 h2 hm).imp_right fun k => k.imp_right fun k3 ho _ => (k3 ho).2
 
 /-- An instruction that is no operation has no 64-bit move. -/
 theorem wideOkR_of_not_lopn {i : LinstrR} (h : ∀ ds o ss, i ≠ .Lopn ds o ss) : WideOkR i := by
@@ -191,18 +203,20 @@ theorem wideOkR_movq_mem {d s : String} (hd : isMemName d = true) (hs : gpNameB 
 theorem WideOkR.mov {d s o : String} (h : WideOkR (.Lopn [.reg d] o [.reg s]))
     (hm : isMov64Mnem o = true) :
     (gpNameB d = true ∨ isMemName d = true) ∧ (isMemName d && isMemName s) = false ∧
-      (o = "MOV:64" → cellParts? d = none ∧ cellParts? s = none) := by
+      (o = "MOV:64" → gpNameB d = true → cellParts? s = none) := by
   have hw : asWideReload (.Lopn [.reg d] o [.reg s]) = some (d, s, o) := by
     simp [asWideReload, hm]
   obtain ⟨h1, h2, h3⟩ := h d s o hw
-  refine ⟨h1, by simpa [isMemToMemMov, hw] using h2, fun ho => ?_⟩
+  refine ⟨h1, by simpa [isMemToMemMov, hw] using h2, fun ho hgp => ?_⟩
   subst ho
+  have h3 := h3 hgp
   revert h3
   simp only [slotMov?]
   split_ifs with hc hc'
   · simp
   · intro _
-    simpa [Option.isSome_iff_ne_none] using hc'
+    exact (by simpa [Option.isSome_iff_ne_none] using hc' :
+      cellParts? d = none ∧ cellParts? s = none).2
   · simp at hc
 
 /-- **`WideOk` is closed under the source rewrites of the copy propagation**: a rewritten
@@ -212,7 +226,7 @@ theorem wideOk_rwClosed : RwClosed WideOk := by
   show WideOkR _
   unfold WideOk at hi
   rw [he] at hi
-  refine wideOkR_lopn fun d s h1 h2 hm => ?_
+  refine wideOkR_lopn_gp fun d s h1 h2 hm => ?_
   subst h1
   rcases srcs with _ | ⟨a, _ | ⟨_, _⟩⟩ <;>
     simp only [List.map_cons, List.map_nil, List.cons.injEq, reduceCtorEq, and_false,
@@ -223,9 +237,9 @@ theorem wideOk_rwClosed : RwClosed WideOk := by
     exact hi.mov hm
   · rw [h2] at hf
     have hgp : LcmdCopyPropagate.isPhysGP s = true := by simpa [LcmdCopyPropagate.isFactSrc] using hf
-    obtain ⟨k1, -, k3⟩ := hi.mov hm
+    obtain ⟨k1, -, -⟩ := hi.mov hm
     refine ⟨k1, by rw [PhysImgSidePass.isMemName_of_isPhysGP hgp]; simp,
-      fun ho => ⟨(k3 ho).1, PhysImgOpt.cellParts?_physGP hgp⟩⟩
+      fun _ _ => PhysImgOpt.cellParts?_physGP hgp⟩
 
 theorem memMovFreeB_of_wideOk {b : Lcmd} (h : ∀ j ∈ b, WideOk j) : memMovFreeB b = true := by
   refine memMovFreeB_iff.mpr fun j hj => ?_
@@ -241,7 +255,9 @@ theorem wideMovB_of_wideOk {b : Lcmd} (h : ∀ j ∈ b, WideOk j) : wideMovB b =
   | none => simp
   | some p =>
     obtain ⟨d, s, mn⟩ := p
-    simp [(h j hj d s mn hw).2.2]
+    cases hg : gpNameB d with
+    | false => simp [hg]
+    | true => simp [hg, (h j hj d s mn hw).2.2 hg]
 
 /-! ## 4. The high-product fusion -/
 
@@ -629,17 +645,21 @@ theorem wide_legalizeSpillDst {dsts srcs : List LOperand} (opn : String)
       subst hr
       exact wideOkR_multiSrc hn
 
-/-- The register-indexed store of a spilled value at the address `addr` with index constant
-    `k` is a displacement store or has an index other than `R15`: an index other than `R15`,
-    and at a spilled index the stride `8` and a constant below `2^28`. The store
-    `legalizeMemStore` writes otherwise through the cell `mem.R14.0`, a `MOV:64` into a cell
-    name, which is no move of `slotMov?`. -/
-def StoreOk (k : Option Nat) (addr val : LOperand) : Prop :=
-  val.isSpill = true → ∀ b y sc, addr = .arrIdx b y sc →
-    y ≠ reloadScratch ∧ (sibNameSpill y = true → sc = 8 ∧ ∃ c, k = some c ∧ c < 2 ^ 28)
+/-- The store of `R15` into the cell `mem.R14.0`: a move into a memory name that is no
+    general-purpose name, from a general-purpose name. -/
+theorem wideOkR_cellR14 (o : String) :
+    WideOkR (.Lopn [.reg ("mem." ++ reloadScratch2 ++ ".0")] o [.reg reloadScratch]) := by
+  intro d s mn hw
+  obtain ⟨he, -⟩ := asWideReload_eq hw
+  simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at he
+  obtain ⟨rfl, -, rfl⟩ := he
+  refine ⟨Or.inr ?_, by simp [isMemToMemMov, hw, isMemName_of_gp (show gpNameB reloadScratch = true by decide +kernel)], fun h =>
+    absurd h (by decide +kernel)⟩
+  rw [isMemName_eq_hasPrefix]
+  simp [hasPrefix, List.isPrefixOf, reloadScratch2]
 
 theorem wide_legalizeMemStoreK (k : Option Nat) (dArr : LOperand) {addr val : LOperand}
-    (opn mov : String) (ha : OpOk addr) (hv : OpOk val) (hk : StoreOk k addr val) :
+    (opn mov : String) (ha : OpOk addr) (hv : OpOk val) :
     ∀ r ∈ legalizeMemStoreK k dArr addr val opn mov, WideOkR r := by
   unfold legalizeMemStoreK
   split
@@ -650,57 +670,30 @@ theorem wide_legalizeMemStoreK (k : Option Nat) (dArr : LOperand) {addr val : LO
       obtain ⟨-, -, rfl⟩ := hc
       split_ifs <;> w_fin
     · cases hc
-  · next hc =>
-    have hni : ∀ b i scale, (legalizeSibElem addr).2 = .arrIdx b i scale →
-        val.isSpill = true → i ≠ reloadScratch := by
-      intro b i scale he hvs
-      cases addr with
-      | arrIdx b0 y0 sc0 =>
-        obtain ⟨hy, hsp⟩ := hk hvs _ _ _ rfl
-        simp only [legalizeSibElem, LOperand.arrIdx.injEq] at he
-        obtain ⟨-, rfl, rfl⟩ := he
-        by_cases hs : sibNameSpill y0 = true
-        · obtain ⟨rfl, c, rfl, hc'⟩ := hsp hs
-          simp [constIdxStore?, hs, hvs] at hc
-          exfalso
-          omega
-        · simp only [hs, if_false, Bool.false_eq_true]
-          exact hy
-      | _ => simp [legalizeSibElem] at he
-    unfold legalizeMemStore
+  · unfold legalizeMemStore
     obtain ⟨h1, h2⟩ := wide_legalizeSibElem ha
     rcases he : legalizeSibElem addr with ⟨pre, a'⟩
-    rw [he] at h1 h2 hni
-    simp only at h1 h2 hni ⊢
+    rw [he] at h1 h2
+    simp only at h1 h2 ⊢
     split
-    · rename_i b i scale hvs
-      rw [if_neg (by simpa using hni b i scale rfl hvs)]
-      rw [List.forall_mem_append]
-      exact ⟨h1, by w_fin⟩
+    · split_ifs
+      · rw [List.forall_mem_append]
+        refine ⟨h1, ?_⟩
+        simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
+          and_true]
+        refine ⟨wideOkR_nonmov (by decide +kernel), ?_, wideOkR_cellR14 _⟩
+        w_one
+      · rw [List.forall_mem_append]; exact ⟨h1, by w_fin⟩
     · rw [List.forall_mem_append]; exact ⟨h1, by w_fin⟩
     · rw [List.forall_mem_append]; exact ⟨h1, by w_fin⟩
-
-/-- The memref base reload keeps the index and the stride of an address. -/
-theorem storeOk_reloadMemrefBase (mbr : String → Option String) {k : Option Nat}
-    {a v : LOperand} (h : StoreOk k a v) : StoreOk k (reloadMemrefBase mbr a).2 v := by
-  intro hv b y sc he
-  cases a with
-  | arrIdx b0 y0 sc0 =>
-    simp only [reloadMemrefBase] at he
-    split at he <;> simp only [LOperand.arrIdx.injEq] at he <;> obtain ⟨-, rfl, rfl⟩ := he <;>
-      exact h hv _ _ _ rfl
-  | _ => simp [reloadMemrefBase] at he
 
 /-- **`WideOk` of every instruction of one expansion.** When the operand map sends every
     register to a general-purpose register or a spill slot `k.N` and the base and index of
-    every indexed operand to names without the prefix `mem.`, and every register-indexed
-    store of a spilled value satisfies `StoreOk`, every 64-bit move of `physExpand` has a
-    general-purpose or memory destination, is no move between two memory names and is a
-    move of `slotMov?`. -/
+    every indexed operand to names without the prefix `mem.`, every 64-bit move of
+    `physExpand` has a general-purpose or memory destination, is no move between two memory
+    names and, into a general-purpose name, is a move of `slotMov?`. -/
 theorem physExpand_wideOk (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperand → LOperand)
-    (mbr : String → Option String) (i : Linstr) (hg : ∀ x, OpOk (rm x))
-    (hst : ∀ d' opn' addr val, i.li_i = .Lopn [d'] opn' [addr, val] →
-      isMemStore opn' = true → StoreOk (idxConst shiftImm addr) (rm addr) (rm val)) :
+    (mbr : String → Option String) (i : Linstr) (hg : ∀ x, OpOk (rm x)) :
     ∀ r ∈ physExpand shiftImm u64 rm mbr i, WideOk r := by
   obtain ⟨ii, w⟩ := i
   have hmap : ∀ (l : List LinstrR), (∀ r ∈ l, WideOkR r) →
@@ -726,13 +719,11 @@ theorem physExpand_wideOk (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperan
         · rename_i d' opn' addr val heq
           cases heq
           split
-          · rename_i hms
-            obtain ⟨k1, k2⟩ := wide_reloadMemrefBase mbr h0
-            have hk := storeOk_reloadMemrefBase mbr (hst d o s0 s1 rfl hms)
+          · obtain ⟨k1, k2⟩ := wide_reloadMemrefBase mbr h0
             intro r hr
             rcases List.mem_append.mp hr with hr | hr
             · exact hmap _ k1 r hr
-            · exact hmap _ (wide_legalizeMemStoreK _ _ _ _ k2 h1 hk) r hr
+            · exact hmap _ (wide_legalizeMemStoreK _ _ _ _ k2 h1) r hr
           · exact hmap _ (wide_legalizeSpillDst _ (by simp [hd]) (by simp [h0, h1])
               (by simp))
         · rename_i heq
@@ -900,10 +891,9 @@ theorem epilogue_loadGpOk : ∀ j ∈ calleeSaveRestoreEpilogue, LoadGpOk j := b
 /-- **`WideOk` on the fused export body.** Under the hypotheses of
     `PhysImgSideAlloc.lfundefPhysAbiOfVirtCert_body`, when every name the allocation table
     renders for the body is a general-purpose register or a spill slot `k.N` (`hname`), so is
-    every materialized argument name (`hmat`), and every register-indexed store of a spilled
-    value satisfies `StoreOk` (`hst`), every 64-bit move of the looped-body fusion of the
-    export body has a general-purpose or memory destination, is no move between two memory
-    names and is a move of `slotMov?`. -/
+    every materialized argument name (`hmat`), every 64-bit move of the looped-body fusion of
+    the export body has a general-purpose or memory destination, is no move between two memory
+    names and, into a general-purpose name, is a move of `slotMov?`. -/
 theorem wideOk_lfundefPhysAbiOfVirtCert
     (virt0 : Lfundef) (outArg' : String) (inArgs' accRegs : List String)
     (shiftImm : ShiftImmOracle) (abiArgs : List String) (abiTyin : List Nat)
@@ -922,11 +912,7 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
     (hcf : bodyHasCall body1 = false)
     (hname : ∀ n, NameOk (physRegName (physMapTabled
       (straightCallComposeTable body1 (physTableOut body1 [] [])) (nameSlot body1 n))))
-    (hmat : ∀ j, NameOk (physNameForBody body1 (physTableOut body1 []) (argName j)))
-    (hst : ∀ i ∈ body1, ∀ d' opn' addr val, i.li_i = .Lopn [d'] opn' [addr, val] →
-      isMemStore opn' = true →
-        StoreOk (idxConst (PhysImgSideAlloc.certShiftImm shiftImm body1) addr)
-          (physRmap body1 [] addr) (physRmap body1 [] val)) :
+    (hmat : ∀ j, NameOk (physNameForBody body1 (physTableOut body1 []) (argName j))) :
     let b0 := (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs
       abiTyin x86Abi posBind).1.lfd_body
     ∀ j ∈ FheMontMulEmit.fuseMulHiBody b0 true, WideOk j := by
@@ -961,9 +947,9 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
         · unfold insertEpilogue at hj
           simp only [List.mem_append, List.mem_singleton] at hj
           rcases hj with (hj | hj) | rfl
-          · obtain ⟨i, hi, hj⟩ := List.mem_flatMap.mp
+          · obtain ⟨i, -, hj⟩ := List.mem_flatMap.mp
               (List.mem_of_mem_filter (List.dropLast_subset _ hj))
-            exact ⟨physExpand_wideOk _ _ _ mbr i hg (hst i hi) j hj,
+            exact ⟨physExpand_wideOk _ _ _ mbr i hg j hj,
               physExpand_noCell _ _ _ mbr i hg j hj⟩
           · exact epilogue_loadGpOk j hj
           · exact ⟨wideOkR_of_not_lopn (by intro ds o ss h; cases h),

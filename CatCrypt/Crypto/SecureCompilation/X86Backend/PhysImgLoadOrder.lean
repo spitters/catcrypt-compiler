@@ -38,7 +38,7 @@ no array slot whenever `RSI` is a parameter register at index two or more: the p
   `elimSideB`.
 * `saveFreshB_lfundefPhysAbiOfVirtCert`: the condition on the fused export body.
 * `loadChkB_of_fresh`: `loadChkB` from `saveFreshB`, on a body with no move between two memory
-  names whose 64-bit moves name no cell and move into general-purpose or memory names.
+  names whose 64-bit moves move into general-purpose or memory names.
 -/
 
 @[expose] public section
@@ -833,20 +833,16 @@ theorem loadChkB_scan (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qs
       saveFreshB slotArr seen b = true → memMovFreeB b = true →
       (∀ j ∈ b, ∀ d s mn, asWideReload j.li_i = some (d, s, mn) →
         gpNameB d = true ∨ isMemName d = true) →
-      wideMovB b = true → MemHolderRegKey env →
+      MemHolderRegKey env →
       (∀ k r, (k, r) ∈ env → gpNameB r = true ∨ isMemName r = true) →
       (∀ k r, (k, r) ∈ env → k ∈ seen ∨ (slotArr r).isSome = true) →
       loadChkB slotArr env b = true
-  | [], _, _, _, _, _, _, _, _, _ => rfl
-  | i :: is, seen, env, hf, hm, hd, hw, hh, hg, hk => by
+  | [], _, _, _, _, _, _, _, _ => rfl
+  | i :: is, seen, env, hf, hm, hd, hh, hg, hk => by
     simp only [loadChkB, Bool.and_eq_true]
     have hmi : isMemToMemMov i.li_i = false := memMovFreeB_iff.mp hm i List.mem_cons_self
     have hm' : memMovFreeB is = true :=
       memMovFreeB_iff.mpr fun j hj => memMovFreeB_iff.mp hm j (List.mem_cons_of_mem _ hj)
-    have hwi : ((asWideReload i.li_i).isNone || (slotMov? i.li_i).isSome) = true :=
-      List.all_eq_true.mp hw i List.mem_cons_self
-    have hw' : wideMovB is = true :=
-      List.all_eq_true.mpr fun j hj => List.all_eq_true.mp hw j (List.mem_cons_of_mem _ hj)
     have hd' : ∀ j ∈ is, ∀ d s mn, asWideReload j.li_i = some (d, s, mn) →
         gpNameB d = true ∨ isMemName d = true := fun j hj => hd j (List.mem_cons_of_mem _ hj)
     have hg' : ∀ k r, (k, r) ∈ (stepLoad env i).2 → gpNameB r = true ∨ isMemName r = true := by
@@ -874,17 +870,19 @@ theorem loadChkB_scan (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qs
             rcases hk s r hmem with hk | hk
             · exact hs hk
             · rw [hrs] at hk; cases hk
-        have hsm : slotMov? i.li_i = some (d, s) := by
-          rw [hi] at hwi ⊢
-          simp only [CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload, hmn, if_true,
-            Option.isNone_some, Bool.false_or] at hwi
-          exact slotMov?_of_isSome hwi
-        rw [hi] at hsm
-        have hsm' := slotMov?_resrc hsm
-          (cellParts?_physGP (by rwa [PhysImgFold.isPhysGP_eq_gpNameB]))
         unfold loadRewriteOkB
         rw [hr]
-        simp [hds, goodHoldB, hrg, hrs, hsm']
+        cases hsm0 : slotMov? i.li_i with
+        | none => simp [hds, goodHoldB, hrg, hrs]
+        | some p =>
+          have hsm : slotMov? i.li_i = some (d, s) := by
+            have := asReload_of_slotMov hsm0
+            rw [asReload_of_asWideReload hr] at this
+            rw [hsm0, Option.some.inj this]
+          rw [hi] at hsm
+          have hsm' := slotMov?_resrc hsm
+            (cellParts?_physGP (by rwa [PhysImgFold.isPhysGP_eq_gpNameB]))
+          simp [hds, goodHoldB, hrg, hrs, hsm']
     · have hh' := stepLoad_memHolderRegKey env i hh hmi
       cases ha : slotSaveSrc? slotArr i with
       | some X =>
@@ -892,7 +890,7 @@ theorem loadChkB_scan (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qs
         obtain ⟨q, mn, hi, hmn, hqs⟩ := slotSaveSrc?_eq_some ha
         have hr : asWideReload i.li_i = some (q, X, mn) := by
           simp [hi, CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload, hmn]
-        refine loadChkB_scan hq is seen _ hf.2 hm' hd' hw' hh' hg' fun k r hkr => ?_
+        refine loadChkB_scan hq is seen _ hf.2 hm' hd' hh' hg' fun k r hkr => ?_
         rcases mem_stepLoad hkr with hkr | ⟨mn', hr'⟩
         · exact hk k r hkr
         · rw [hr] at hr'
@@ -901,7 +899,7 @@ theorem loadChkB_scan (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qs
           exact Or.inr hqs
       | none =>
         rw [saveFreshB_cons_none ha] at hf
-        refine loadChkB_scan hq is _ _ hf hm' hd' hw' hh' hg' fun k r hkr => ?_
+        refine loadChkB_scan hq is _ _ hf hm' hd' hh' hg' fun k r hkr => ?_
         rcases mem_stepLoad hkr with hkr | ⟨mn', hr'⟩
         · exact (hk k r hkr).imp_left (List.mem_append_left _)
         · obtain ⟨hi, -⟩ := asWideReload_eq hr'
@@ -910,18 +908,17 @@ theorem loadChkB_scan (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qs
           simp [hi, instrNames, opNames]
 
 /-- **`loadChkB` from `saveFreshB`.** On a body with no 64-bit move between two memory names,
-    whose 64-bit moves name no cell and move into general-purpose or memory names, and in which
-    no array-slot move reads a name met before, every redirect of the load CSE passes the
-    rewrite check: a redirect onto a holder of the source of an array-slot move is declined,
-    since the holder is an array slot, and every other holder is a general-purpose name that
-    is no array slot. -/
+    whose 64-bit moves move into general-purpose or memory names, and in which no array-slot
+    move reads a name met before, every redirect of the load CSE passes the rewrite check: a
+    redirect onto a holder of the source of an array-slot move is declined, since the holder
+    is an array slot, and every other holder is a general-purpose name that is no array
+    slot. -/
 theorem loadChkB_of_fresh {b : Lcmd}
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true)
     (hf : saveFreshB slotArr [] b = true) (hm : memMovFreeB b = true)
     (hd : ∀ j ∈ b, ∀ d s mn, asWideReload j.li_i = some (d, s, mn) →
-      gpNameB d = true ∨ isMemName d = true)
-    (hw : wideMovB b = true) : loadChkB slotArr [] b = true :=
-  loadChkB_scan hq b [] [] hf hm hd hw Optimizer.LoadCSE.memHolderRegKey_nil
+      gpNameB d = true ∨ isMemName d = true) : loadChkB slotArr [] b = true :=
+  loadChkB_scan hq b [] [] hf hm hd Optimizer.LoadCSE.memHolderRegKey_nil
     (fun _ _ h => by cases h) (fun _ _ h => by cases h)
 
 end LoadChk
