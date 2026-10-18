@@ -377,7 +377,6 @@ mathematical Tate or Weil pairing.
   composite `thirToJasminViaCatCrypt` (`VIR/ThirToJasminViaCatCrypt.lean`,
   `thirToJasminViaCatCrypt_denote`) and its fallback form
   `compileThirViaCatCryptOrFlat` (`VIR/ThirToJasminViaCatCryptOrFlat.lean`).
-  `ThirFrontProbe.lean` is a one-op instance of the same edge.
 
 Multi-op `fieldDialect` and `polyDialect` programs are written in Lean or produced
 by the relational fronts (`RelationalCompileHigh.lean`,

@@ -34,7 +34,6 @@
 1	CatCrypt/Crypto/Jasmin/Mpn/MLIRBackend.lean
 5	CatCrypt/Crypto/Jasmin/Mpn/QhatBound.lean
 1	CatCrypt/Crypto/Jasmin/P256/EvalChain.lean
-8	CatCrypt/Crypto/Jasmin/VectorOps.lean
 3	CatCrypt/Crypto/Optimizer/FootprintSpill.lean
 5	CatCrypt/Crypto/Optimizer/GraphColoringCoalesce.lean
 6	CatCrypt/Crypto/Optimizer/GraphColoringRegAlloc.lean
@@ -49,7 +48,6 @@
 2	CatCrypt/Crypto/Optimizer/UncomputePass.lean
 2	CatCrypt/Crypto/Pairing/Fp2TowerImport.lean
 4	CatCrypt/Crypto/Pairing/Fp6Fp12TowerImport.lean
-1	CatCrypt/Crypto/Pairing/ZModPolyReflect.lean
 1	CatCrypt/Crypto/Primitives/BLAKE2s.lean
 1	CatCrypt/Crypto/Primitives/HMAC.lean
 1	CatCrypt/Crypto/Primitives/HMAC_SHA512.lean
@@ -236,7 +234,6 @@
 1	CatCrypt/Crypto/SecureCompilation/VIR/CommonSubexprElimReal.lean
 5	CatCrypt/Crypto/SecureCompilation/VIR/CrossLaneSimdEmit.lean
 2	CatCrypt/Crypto/SecureCompilation/VIR/DataDependentControlFlow.lean
-8	CatCrypt/Crypto/SecureCompilation/VIR/DeadCodeElimReal.lean
 3	CatCrypt/Crypto/SecureCompilation/VIR/DialectToJasminCom.lean
 2	CatCrypt/Crypto/SecureCompilation/VIR/ExtCallVeirSmoke.lean
 9	CatCrypt/Crypto/SecureCompilation/VIR/FaestByteCombineVsimdCovered.lean

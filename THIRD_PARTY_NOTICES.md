@@ -350,13 +350,10 @@ repository states it. Paths are relative to the root of this package.
 - Upstream: <https://github.com/coq-community/coqeal>
 - Licence: MIT, "Copyright (c) 2014 Guillaume Cano, Cyril Cohen, Maxime Dénès,
   Anders Mörtberg and Vincent Siles".
-- Derived material: the `binnat`, `seqpoly` and `seqmatrix` refinements and the
-  Karatsuba multiplication refinement.
+- Derived material: the `seqpoly` refinement and the Karatsuba multiplication
+  refinement.
 - Files:
-  - `CatCrypt/Crypto/Bridges/CoqEAL/BinNat.lean`
   - `CatCrypt/Crypto/Bridges/CoqEAL/SeqPoly.lean`
-  - `CatCrypt/Crypto/Bridges/CoqEAL/SeqMatrix.lean`
-  - `CatCrypt/Crypto/Bridges/CoqEAL/SeqMatrixMul.lean`
   - `CatCrypt/Crypto/Bridges/CoqEAL/Karatsuba.lean`
 
 ### lean-mlir and Veir

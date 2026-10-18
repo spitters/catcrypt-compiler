@@ -54,9 +54,9 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
   (`LoweringDataComp.compileVia_comp_correct`), `DialectLoweringTransport.lean`,
   `ParamDialectTransport.lean`, `ComParametricityTransport.lean`,
   `ComParamDerive.lean`, `CompilerLoweringRegistry.lean`.
-- Control-flow lowerings over the emit substrate: `BranchLowering.lean`,
-  `CifLowering.lean`, `CallLowering.lean`, `LoopLowering.lean`,
-  `NestedLoopLowering.lean`, `WhileLowering.lean`, `StructuredControlFlow.lean`,
+- Control-flow lowerings over the emit substrate: `CifLowering.lean`,
+  `CallLowering.lean`, `LoopLowering.lean`, `WhileLowering.lean`,
+  `StructuredControlFlow.lean`,
   `WholeFnLowering.lean`, `OpSemCoverage.lean`.
 
 ## From `Com jasminDialect` to Jasmin programs
@@ -81,9 +81,8 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
 - `JasminLsem.lean`: `lsemStraight` and `lsemRun`. `JasminLsemLabeled.lean`: the
   labeled, program-indexed, fuel-bounded `lsem`.
   `JasminLsemSimulation.lean`: the straight-line linearizer simulation.
-- `JasminLsemGeneralFaithful*.lean`: export faithfulness for general `Com`;
-  `JasminLsemGeneralFaithfulAll.general_com_lsem_faithful` is the combined statement
-  on `ScalarLeafN` programs under `LeafAgreesN`.
+- `JasminLsemGeneralFaithful*.lean`: export faithfulness for general `Com`, one
+  module per fragment.
 - `JasminLsemMem*.lean`, `JasminLsemLoop*.lean`, `JasminLsemCall*.lean`,
   `JasminLsemShift.lean`, `JasminLsemMulCarry.lean`, `JasminLsemSimd.lean`,
   `JasminLsemWidthN.lean`: further fragments. `LsemPortAll.lean` imports them for the
@@ -91,7 +90,7 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
   `JasminLsemRobust.lean`: `owned_lsem_correct_straightline` (functional correctness
   of the straight-line linearizer) and the syntactic leak model `lsemLeak`.
 - `JasmincSemAlignment.lean`, `JasmincWArrayAlignment.lean`: alignment with Jasmin's
-  Coq `psem`. `FrontControlLsem.lean`, `FrontWhileLsem.lean`,
+  Coq `psem`. `FrontControlLsem.lean`,
   `GoldenPathLsemFaithful.lean`: front control flow and golden-path exports against
   `lsem`.
 
@@ -103,17 +102,15 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
 | `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional` | `IsCoveredSCtl`; success of the front, of `RustExec` and of `semScalar`, entry `RustStateInterp` and `ConsistentS`, the output name resolved to the slot `w`, `com` the front continuation closed at `w`, lowering success. Conclusion: a valuation related to the final `RustExec` state exists, and the Jasmin denotation is the `semScalar` output value. `rustToJasminCom_endToEnd_topLevel_unconditional` discharges both entry hypotheses at the empty context | same |
 | `RustToJasminComWhile.transU_to_jasminCom_endToEnd` | `IsCoveredSU`; success of `transU fuel`, of `semU fuel` and of the lowering, entry `ConsistentS`, output tracking as above. Conclusion: the Jasmin denotation is the `semU fuel` output value; no `RustExec` conjunct | `RustToJasminComWhile.lean` |
 | `CompilerCorrectness.latticeNttMul_compile_correct` | No hypothesis: for all `q`, `n` and `V`, `lowerLatticeToJasmin (tgtCom q n)` denotes the transport of the denotation of `srcCom q n` | `CompilerCorrectness.lean` |
-| `Compiler.compile_correct_all` | A `ModelChoice` (x86, RISC-V, ARM); `hVal` (the model's `validated` proposition, returned unchanged as the first conjunct), `LeafAgrees leafSem`, injectivity of `freshName` and of the parameter map, `compile q n (.lattice q n) = some m`. The model's `exec`, `encodeIn` and `decodeOut` are identities | `Compiler.lean` |
-| `Compiler.compile_correct_front` | The hypotheses of `rustToJasminCom_endToEnd`, including `hAdequacy`; it is that theorem restated | same |
 | `CompileCorrectBaseAlu.compile_correct_riscv`, `CompileCorrectBaseAlu.compile_correct_arm` | `ComBaseAlu com` and `AllReg64 Γ` for `com : Com jasminDialect Γ (.reg 64)`. Conclusion: reading the result register after `runRBlock64` (RISC-V) or `runBBlock` (ARM) on the compiled block gives `Com.denote com V`, and every instruction of the block is base-ALU (`IsBaseAlu`) or general-purpose ALU (`IsGpAlu`) | `CompileCorrectBaseAlu.lean` |
 | `CompileCorrectAllGenuine.compile_correct_all_genuine` | `ComBaseAlu com` and `AllReg64 Γ`; `GenuineModelChoice` ranges over RISC-V and ARM only. The first conjunct of the previous row, by case on the choice | `CompileCorrectAllGenuine.lean` |
-| `CompilerCorrectAndRobust.compiler_correct_and_robust` | `LeafAgrees leafSem`; an edge `JasminIRToX86 leafSem X86Obs x86Behaviour` whose observable type and behaviour are free parameters; `StraightLine c`. Conclusion: `x86Behaviour c V = edge.obsOf (c.denote V)`, the edge field `semRefine` composed with `WholeFnLowering.lowerComToProg_sem_eq'`; the statement contains no x86 instruction semantics and no constant-time property (byte-level constant time is `X86Backend.DecodedCT.bytesCTCheck_sound`) | `CompilerCorrectAndRobust.lean` |
 
-README.md, section "The guarantees", discusses the first four rows.
+README.md, section "The guarantees", discusses the first four rows. The compiler
+`compileA` and its theorems (`haxc_correct_auto`, `haxc_ct_proved_all`) are in the
+development repository's `Haxc/` directory.
 `RustExecSimulatesUnified.lean` gives the `RustExec` leg for the unified front;
 `ExecAdequacy.lean` and `ExecCompleteness.lean` relate the fuel-bounded executor to
-the relational semantics; `EndToEndTransport.lean` composes the lowering chain with
-an x86 instruction step.
+the relational semantics.
 
 Over the `psem.v` mirror: `ComJasminBridgeProgram.lean` states the correspondence
 `CorresSem` with sequencing (`corresSem_append`, `corresSem_exec`), `Copn` over
@@ -145,7 +142,7 @@ literal limb stores, selections within one tower type and admitted calls; it exc
   `X86Backend.DecodedCT.bytesCTCheck_sound`.
   `OwnedX86RobustInstance.lean`: `ownedJasminVerifiedCompiler`.
 - `CTPredicate.lean`, `JasminCTPredicate.lean`, `MaskingPredicate.lean`,
-  `CtPreservationNewTransforms.lean`, `ThirCTSafe.lean`, `JForProgCT.lean`.
+  `ThirCTSafe.lean`, `JForProgCT.lean`.
 
 ## Optimization passes on `Com` and `JForProg`
 

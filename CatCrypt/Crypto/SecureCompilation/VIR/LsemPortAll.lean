@@ -24,8 +24,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 -- Single counted-loop simulation: the loop control-flow structure (back-edge Lcond, n-fold
 -- iteration, halt-on-fallthrough, public-counter CT) over loopLR = the real loopLcmd MINUS the explicit CMP
--- (loopLR_eq_loopLcmd_dropCmp). The literal-CMP/flag arm and the general JForProg value bridge are in
--- JasminLsemLoopFlag.
+-- (loopLR_eq_loopLcmd_dropCmp).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
 -- Front control-flow bridge: FrontControlLsem ties the LowCT front RFor/RIfNz RustExec denotations to
 -- the REAL emitted loop (loopLcmd shape) / Lcond branch (labeled lsem). front_control_lsem_correct_and_robust:
@@ -34,17 +33,6 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
 -- like JasminLsemLoop's bodyStep). Public-control-flow CT hypotheses explicit (public trip count / public
 -- scrutinee).
 public import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
--- Loop fidelity: JasminLsemLoopFlag. LstateF (additive flag-state
--- wrapping LstateP) + a CMP arm runs the LITERAL loopLcmd (with its explicit CMP, loopProgF/loopLcmdLR), not the
--- CMP-elided loopLR. jforprog_literal_loop_correct_and_robust: the halt accumulator decodes to JForProg.denote
--- (the value tie, via valBodyStep + JForProgCT.StepAgrees) over the REAL emitted loop, AND the flag-threaded leak
--- (which steps CMP + back-edge) is state-independent — carrying RobustlyCTSafeJForProg. Loops are functionally
--- correct + robust over the literal emit.
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoopFlag
--- Front while-loop bridge: FrontWhileLsem ties RWhileNz (PUBLIC guard) to the loop lsem,
--- fuel = the public guard trajectory length (frontStep^[n], whileTrue/whileFalse). front_while_lsem_correct_and_robust.
--- A secret guard leaks the iteration count and is NOT CT — excluded (cmdCT_RWhileNz lt e = .Public).
-public import CatCrypt.Crypto.SecureCompilation.VIR.FrontWhileLsem
 -- SIMD ops (vpackZMM): JasminLsemSimd — a .reg 512 = BitVec 512 lane value; lsemStepSimd applies zmmPackQ
 -- (per-64-bit-lane bop over 8 lanes) as a pure data effect (no new state axis). straightOpsSimd_wire = real
 -- "VPACK8u64:bop" emit; the lane op rides the typed .snd SimdDesc, never the wire. owned_lsem_correct_and_robust_simd
@@ -92,10 +80,6 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFullExportFaithful
 -- lsem to their decoded Com.denote — the last two parallel-to-leaf straight-line fragments.
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulCallN
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulSimd
--- The unified general-Com headline (JasminLsemGeneralFaithfulAll): general_com_lsem_faithful —
--- any Com in the maximal fragment ScalarLeafN runs under the program-indexed lsem to its decoded
--- Com.denote, with sub-fragment corollaries (mul/carry, cast) via the subsumption tower.
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulAll
 
 /-!
 # `lsem` port — rot-guard aggregator
