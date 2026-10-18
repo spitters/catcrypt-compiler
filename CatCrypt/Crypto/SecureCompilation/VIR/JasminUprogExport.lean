@@ -95,6 +95,12 @@ available Lean-side.
 The value-level obligations that *are* discharged here: the export is total,
 structurally well-formed (`Com.toUprog_wf`), and round-trips through the
 textual serializer (`Com.toUprogText_magic`).
+
+## Status
+
+This export is bench-only and frozen: it feeds one bench
+(`bench/jasmin_uprog_compare`), and Jasmin source is produced by the single printer
+`Jazz.print`.
 -/
 
 @[expose] public section

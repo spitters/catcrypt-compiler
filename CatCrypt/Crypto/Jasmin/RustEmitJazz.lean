@@ -61,6 +61,12 @@ caller is expected to `include` the appropriate `.jinc` files
 (formosa's `poly.jinc`, `polyvec.jinc`, `gen_matrix.jinc`, etc.)
 that provide the leaf bodies.  A from-scratch compile of the emitted
 `.jazz` against a stub `.jinc` is the natural next step.
+
+## Replacement
+
+This module will be removed; Jasmin text is produced by the single printer
+`Jazz.print` (`Jasmin/JazzPrint.lean`), and its polynomial typing becomes storage
+inference over `toJasminCmd`.
 -/
 
 @[expose] public section

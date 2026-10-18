@@ -45,6 +45,13 @@ whenever it can reuse the source register.
 | `Cassgn x _ _ (Papp2 op (Pvar y) (Pconst k))`  | `x = y; x OP= k;`              |
 
 Any other shape produces `none`, and `emitFunDecl` propagates failure.
+
+## Replacement
+
+This printer will be replaced by the single Jasmin printer `Jazz.print`
+(`Jasmin/JazzPrint.lean`), whose output is accepted only when it parses back to the
+printed unit. `emitFunDecl` and its variants keep their names and their output;
+`optimize` and `expandFlagCaptures` run before that printer as explicit passes.
 -/
 
 @[expose] public section
