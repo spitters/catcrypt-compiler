@@ -857,6 +857,31 @@ theorem prologue_loadGpOk (virt : Lfundef) (tbl : Array Nat) (abiArgs : List Str
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
     rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
 
+/-- The materialization of one argument into the name `p`: `MOVQ` moves into `p`, through
+    `R15` when `p` is a spill slot, sourced from the save slot of `abiReg` or from `abiReg`. -/
+theorem materializeArg_loadGpOk {p abiReg : String} (hk : NameOk p) :
+    ∀ j ∈ (match abiSlotOfExt abiReg with
+      | some saveName =>
+          if (LOperand.reg p).isSpill then
+            [(⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg saveName]⟩ : Linstr),
+             ⟨0, .Lopn [.reg p] "MOVQ" [.reg reloadScratch]⟩]
+          else if p == abiReg then [] else [⟨0, .Lopn [.reg p] "MOVQ" [.reg saveName]⟩]
+      | none =>
+          if p == abiReg then []
+          else if (LOperand.reg p).isSpill then
+            [⟨0, .Lopn [.reg reloadScratch] "MOVQ" [.reg abiReg]⟩,
+             ⟨0, .Lopn [.reg p] "MOVQ" [.reg reloadScratch]⟩]
+          else [⟨0, .Lopn [.reg p] "MOVQ" [.reg abiReg]⟩]), LoadGpOk j := by
+  intro j hj
+  split at hj <;> split_ifs at hj <;>
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+  all_goals rcases hj with rfl | rfl
+  all_goals refine loadGpOk_movq rfl ?_
+  all_goals first
+    | apply wideOkR_movq_gp gp_R15
+    | apply wideOkR_movq_name hk (fun _ => gp_R15)
+    | apply wideOkR_movq_name hk (fun h => absurd h (by assumption))
+
 /-- The argument materialization: `MOVQ` moves into a materialized argument name, through
     `R15` when the name is a spill slot. -/
 theorem materialize_loadGpOk (virt : Lfundef) (tbl : Array Nat) (abiArgs : List String)
@@ -865,20 +890,10 @@ theorem materialize_loadGpOk (virt : Lfundef) (tbl : Array Nat) (abiArgs : List 
   intro j hj
   unfold buildArgPtrMaterialize at hj
   obtain ⟨⟨abiReg, k⟩, -, hj⟩ := List.mem_flatMap.mp hj
-  have hk := hmat k
   simp only at hj
   split at hj
   · simp at hj
-  · generalize physNameForBody virt.lfd_body tbl (argName k) = p at hj hk
-    split_ifs at hj <;>
-      rcases hs : abiSlotOfExt abiReg with _ | s <;>
-      simp only [hs, List.mem_cons, List.not_mem_nil, or_false] at hj
-    all_goals rcases hj with rfl | rfl
-    all_goals refine loadGpOk_movq rfl ?_
-    all_goals first
-      | exact wideOkR_movq_gp gp_R15
-      | exact wideOkR_movq_name hk (fun _ => gp_R15)
-      | exact wideOkR_movq_name hk (fun h => absurd h (by assumption))
+  · exact materializeArg_loadGpOk (hmat k) j hj
 
 /-- The callee-saved restores: `MOVQ` moves of a save slot into a general-purpose
     register. -/
