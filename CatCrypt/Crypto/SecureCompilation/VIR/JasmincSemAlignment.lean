@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.SelectIdiom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # Aligning our Lean jasmin semantics with jasmin's Coq `psem` (TCB narrowing)
@@ -23,16 +25,31 @@ gives `Com.denote ⟹ x86` — but the composition rests on one assumption: our 
 This file turns that vague assumption into a **finite, per-opcode list**, each
 discharged down to "a Lean `BitVec`/array primitive mirrors the corresponding Coq
 `word`/`WArray` primitive" — an eyeball-checkable equation on primitives, not a
-whole-model trust. `JasminOp` has 22 constructors. The rows below cover five of
-them: `regArith` over the nine `JasminBinOp` operators (add/sub/mul/and/or/xor/
-shl/shr/andn), `stackLoad`, `stackStore` and `castW`, summarised in
-`opcode_alignment_total` (the four `rfl`-closed shapes), plus `extCall`, whose
-row is the named leaf edge `ExtCallAgrees`. The other constructors (`regConst`,
-the packed-vector operations, `mulhi`, the carry, immediate-shift and rotate
-operations, `select`, `callN`) have no row in `opcode_alignment_total`; later
-sections of this module give rows for some vector operations. The dialect has no
+whole-model trust. `JasminOp` has 26 constructors, and the stack-memory fragment
+`opMemB` (`X86Backend.ExportCertFragment`) admits 16 of them. Every op of `opMemB` has
+a row: `regArith` over the nine `JasminBinOp` operators (add/sub/mul/and/or/xor/
+shl/shr/andn), `stackLoad`, `stackStore` and `castW` (§2–§4, summarised in
+`opcode_alignment_total`), and `regConst`, the three immediate shifts, `select`,
+`mulhi`, the two carry ops, `cmp`, `cmpImm`, `stackZero` and `stackStoreImm` (§4d,
+stated against the `x86_instr_decl.v` transcriptions of `X86Backend.JasminModel`);
+`opcode_alignment_opMemB` collects them. `extCall` has the named leaf edge
+`ExtCallAgrees`. The packed-vector operations, `rorImm` and `callN` are outside
+`opMemB`; later sections give rows for some vector operations. The dialect has no
 loop constructor; bounded loops are a separate layer, and the `Com` that
 `lowerComToProg_sem_eq` ranges over is loop-free.
+
+## Main results
+
+* `binop_agrees_jasmin`, `castW_agrees_jasmin`, `stackLoad_agrees_jasmin`,
+  `stackStore_agrees_jasmin`, `opcode_alignment_total` — the rows of §2–§4.
+* `regConst_agrees_jasmin`, `shrImm_agrees_jasmin`, `shlImm_agrees_jasmin`,
+  `sarImm_agrees_jasmin`, `select_agrees_jasmin`, `mulhi_agrees_jasmin`,
+  `addCarryLo_agrees_jasmin`, `addCarryHi_agrees_jasmin`, `cmp_agrees_jasmin`,
+  `cmpImm_agrees_jasmin`, `stackZero_agrees_jasmin`, `stackStoreImm_agrees_jasmin` —
+  the rows of §4d.
+* `OpAligned` — the row of each op of `opMemB`; `JasmincSemAlignmentOpMem.opcode_alignment_opMemB`
+  proves it for every op that `opMemB` admits.
+* `ExtCallAgrees` — the leaf edge of `extCall`.
 
 | our shape (`execExpr`)            | jasmin `psem` primitive (Coq)                               | row |
 |-----------------------------------|-------------------------------------------------------------|-----|
@@ -261,9 +278,9 @@ def ExtCallAgrees
 
 /-! ## 4c. The per-opcode alignment rows
 
-`regArith` ranges over the nine-element `JasminBinOp`. The rows below cover
-`regArith`, `castW`, `stackLoad`, `stackStore` and `extCall`, five of the 22
-constructors of `JasminOp`; the other constructors have no row here:
+`regArith` ranges over the nine-element `JasminBinOp`. The table lists the rows of
+`regArith`, `castW`, `stackLoad`, `stackStore` and `extCall`; the other ops of `opMemB`
+have their rows in §4d:
 
 | op constructor                | alignment row(s)                                  | status |
 |-------------------------------|---------------------------------------------------|--------|
@@ -304,6 +321,297 @@ theorem opcode_alignment_total :
    fun src => castW_agrees_jasmin src,
    fun a k => stackLoad_agrees_jasmin a k,
    fun a k v => stackStore_agrees_jasmin a k v⟩
+
+/-! ## 4d. The other ops of the stack-memory fragment `opMemB`
+
+Each row below states the denotation of an op equal to the jasmin text the
+register-arithmetic lowering (`JasminAbiEmit.emitBodyReg`) prints for it, evaluated
+with the transcriptions of `x86_instr_decl.v` in `X86Backend.JasminModel`. A `reg 1`
+value is carried as the `0`/`1` word `jBitWord` of the register width. A flag read by a
+later instruction is `Option Bool` in the transcription (`none` is an undefined flag);
+an idiom that reads a flag is therefore `Option`-valued, and its row states that every
+flag it reads is defined.
+
+| op                    | printed jasmin                                              | row |
+|-----------------------|-------------------------------------------------------------|-----|
+| `regConst w n`        | `x = n` (`wrepr`)                                           | `regConst_agrees_jasmin` |
+| `shrImm w n`          | `x = x >> n` (`x86_SHR`)                                    | `shrImm_agrees_jasmin` |
+| `shlImm w n`          | `x = x << n` (`x86_SHL`)                                    | `shlImm_agrees_jasmin` |
+| `sarImm w n`          | `x = x >>s n` (`x86_SAR`), for `n < w`                      | `sarImm_agrees_jasmin` |
+| `select w`            | `b ^ ((a ^ b) & -c)`                                        | `select_agrees_jasmin` |
+| `mulhi w`             | the high word of `#MULX` (`x86_MULX_lo_hi`)                 | `mulhi_agrees_jasmin` |
+| `addCarryLo w`        | `#ADD_w(c, -1)`; `#ADC_w(a, b, cf)`                         | `addCarryLo_agrees_jasmin` |
+| `addCarryHi w`        | the same, then `#ADC_w(0, 0, cf)`                           | `addCarryHi_agrees_jasmin` |
+| `cmp c w`             | `#NEG_w(a ^ b)` or `#CMP_w`, `#ADC_w(0, 0, cf)`, `^ 1`      | `cmp_agrees_jasmin` |
+| `cmpImm c w n`        | as `cmp`, second operand the literal `n`                    | `cmpImm_agrees_jasmin` |
+| `stackZero w n`       | `for j = 0 to n { A[j] = 0 }`                               | `stackZero_agrees_jasmin` |
+| `stackStoreImm w n i` | `A[i] = v`                                                  | `stackStoreImm_agrees_jasmin` |
+
+`OpAligned op` collects the row of `op`; `JasmincSemAlignmentOpMem.opcode_alignment_opMemB`
+proves it for every op of `opMemB`. -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+  (wreprN B5W x86_ADD x86_ADC x86_NEG x86_CMP x86_SHR x86_SHL x86_SAR x86_MULX_lo_hi)
+
+/-- A `reg 1` value as the `0`/`1` word of width `w` that holds it in a register. -/
+def jBitWord {w : Nat} (v : BitVec 1) : BitVec w := BitVec.ofNat w v.toNat
+
+/-- The mask select `b ^ ((a ^ b) & -c)` over jasmin's `Olxor`, `Oland` and `Oneg`,
+    with the condition `c` held as the word `jBitWord c`. -/
+def jSelectMask {w : Nat} (c : BitVec 1) (a b : BitVec w) : BitVec w :=
+  jWordXor (jWordAnd (jWordXor a b) (0 - jBitWord c)) b
+
+/-- The carry flag set from a `0`/`1` carry word `c` by `#ADD_w(c, -1)`. -/
+def jCarryIn {w : Nat} (c : BitVec 1) : Option Bool :=
+  (x86_ADD (jBitWord (w := w) c) (-1)).cf
+
+/-- The data word of `#ADD_w(c, -1); #ADC_w(a, b, cf)`. -/
+def jAddCarryLo {w : Nat} (a b : BitVec w) (c : BitVec 1) : Option (BitVec w) :=
+  (jCarryIn (w := w) c).map fun cf => (x86_ADC a b cf).word
+
+/-- A carry flag materialised as a `0`/`1` word by `#ADC_w(0, 0, cf)`. -/
+def jMatCarry {w : Nat} (cf : Bool) : BitVec w := (x86_ADC (0 : BitVec w) 0 cf).word
+
+/-- The carry-out word of `#ADD_w(c, -1); #ADC_w(a, b, cf); #ADC_w(0, 0, cf)`. -/
+def jAddCarryHi {w : Nat} (a b : BitVec w) (c : BitVec 1) : Option (BitVec w) :=
+  (jCarryIn (w := w) c).bind fun cf => (x86_ADC a b cf).cf.map jMatCarry
+
+/-- The comparison idiom: the carry of `#NEG_w(a ^ b)` (set when `a ≠ b`) or of
+    `#CMP_w` (the unsigned borrow of its first operand minus its second), materialised
+    by `#ADC_w(0, 0, cf)`, with `^ 1` for the complemented conditions. -/
+def jCmp {w : Nat} : JasminCmp → BitVec w → BitVec w → Option (BitVec w)
+  | .ne, a, b => (x86_NEG (a ^^^ b)).cf.map jMatCarry
+  | .eq, a, b => (x86_NEG (a ^^^ b)).cf.map fun cf => jWordXor (jMatCarry cf) (wreprN 1)
+  | .ult, a, b => (x86_CMP a b).cf.map jMatCarry
+  | .uge, a, b => (x86_CMP a b).cf.map fun cf => jWordXor (jMatCarry cf) (wreprN 1)
+  | .ugt, a, b => (x86_CMP b a).cf.map jMatCarry
+  | .ule, a, b => (x86_CMP b a).cf.map fun cf => jWordXor (jMatCarry cf) (wreprN 1)
+
+/-- The loop `for j = 0 to n { A[j] = 0 }` over jasmin's element-layer `WArray.set`,
+    from any initial content of `A`. -/
+def jArrZeroLoop {w n : Nat} (arr : Fin n → BitVec w) : Fin n → BitVec w :=
+  (List.range n).foldl (fun A j => jArrSetEl A j 0) arr
+
+private theorem bitVec_zero_eq (x y : BitVec 0) : x = y :=
+  BitVec.eq_of_toNat_eq (by have := x.isLt; have := y.isLt; simp at *; omega)
+
+/-- At a positive width, `#ADD_w(c, -1)` sets the carry flag exactly when `c = 1`. -/
+theorem jCarryIn_eq {w : Nat} (hw : 0 < w) (c : BitVec 1) :
+    jCarryIn (w := w) c = some (decide (c = 1#1)) := by
+  have h2 : 2 ≤ 2 ^ w := by
+    calc 2 = 2 ^ 1 := rfl
+      _ ≤ 2 ^ w := Nat.pow_le_pow_right (by omega) hw
+  rcases bitVec1_eq c with rfl | rfl
+  · simp [jCarryIn, x86_ADD, X86Backend.Jasmin.rflags_of_aluop, jBitWord]
+  · simp only [jCarryIn, x86_ADD, X86Backend.Jasmin.rflags_of_aluop, jBitWord]
+    simp
+    rw [Nat.mod_eq_of_lt (by omega : 1 < 2 ^ w), Nat.mod_eq_of_lt (by omega : 2 ^ w - 1 < 2 ^ w)]
+    omega
+
+/-- The carry flag of `x86_SUB a b` is set exactly on an unsigned borrow. -/
+private theorem sub_cf_iff {w : Nat} (a b : BitVec w) :
+    ((X86Backend.Jasmin.wunsigned (a - b) : Nat) : Int) ≠ (a.toNat : Int) - b.toNat ↔
+      a.toNat < b.toNat := by
+  simp only [X86Backend.Jasmin.wunsigned]
+  by_cases h : b.toNat ≤ a.toNat
+  · have := BitVec.toNat_sub_of_le (x := a) (y := b) (by simpa [BitVec.le_def] using h)
+    omega
+  · omega
+
+/-- Two words differ exactly when their exclusive or is nonzero. -/
+private theorem xor_ne_zero_iff {w : Nat} (a b : BitVec w) : a ^^^ b ≠ 0 ↔ a ≠ b := by
+  constructor
+  · rintro h rfl
+    simp at h
+  · intro h hx
+    apply h
+    have := congrArg (· ^^^ b) hx
+    simpa [BitVec.xor_assoc] using this
+
+/-- **`regConst` row.** The constant `BitVec.ofNat w n` is jasmin's `wrepr` of the
+    literal `n`. -/
+theorem regConst_agrees_jasmin (w n : Nat) : BitVec.ofNat w n = wreprN (w := w) n := rfl
+
+/-- **`shrImm` row.** For a count `n < 2 ^ w`, the shift by `shiftMask w n` is the word
+    of `x86_SHR` (jasmin's `Olsr`) at the count `n`. -/
+theorem shrImm_agrees_jasmin {w n : Nat} (hn : n < 2 ^ w) (a : BitVec w) :
+    a >>> shiftMask w n = (x86_SHR a (BitVec.ofNat w n)).word := by
+  have h0 : (BitVec.ofNat w n).toNat = n := by simp [Nat.mod_eq_of_lt hn]
+  simp only [x86_SHR, X86Backend.Jasmin.shiftCount, h0]
+  split_ifs with h
+  · simp [h, X86Backend.Jasmin.rflags_None]
+  · simp only [X86Backend.Jasmin.rflags_OF, X86Backend.Jasmin.wshr]
+    rcases Nat.le_total (shiftMask w n) w with hle | hle
+    · rw [Nat.min_eq_right hle]
+    · rw [Nat.min_eq_left hle]
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+      rw [Nat.div_eq_of_lt a.isLt,
+        Nat.div_eq_of_lt (lt_of_lt_of_le a.isLt (Nat.pow_le_pow_right (by omega) hle))]
+
+/-- **`shlImm` row.** For a count `n < 2 ^ w`, the shift by `shiftMask w n` is the word
+    of `x86_SHL` (jasmin's `Olsl`) at the count `n`. -/
+theorem shlImm_agrees_jasmin {w n : Nat} (hn : n < 2 ^ w) (a : BitVec w) :
+    a <<< shiftMask w n = (x86_SHL a (BitVec.ofNat w n)).word := by
+  have h0 : (BitVec.ofNat w n).toNat = n := by simp [Nat.mod_eq_of_lt hn]
+  simp only [x86_SHL, X86Backend.Jasmin.shiftCount, h0]
+  split_ifs with h
+  · simp [h, X86Backend.Jasmin.rflags_None]
+  · simp only [X86Backend.Jasmin.rflags_OF, X86Backend.Jasmin.wshl]
+    rcases Nat.le_total (shiftMask w n) w with hle | hle
+    · rw [Nat.min_eq_right hle]
+    · rw [Nat.min_eq_left hle]
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+      obtain ⟨k, hk⟩ := Nat.exists_eq_add_of_le hle
+      rw [hk, Nat.pow_add, ← Nat.mul_assoc, Nat.mul_mod_left, Nat.mul_right_comm,
+        Nat.mul_mod_left]
+
+/-- **`sarImm` row.** For a count `n < w`, the arithmetic shift by `n` is the word of
+    `x86_SAR` (jasmin's `Oasr`) at the count `n`. -/
+theorem sarImm_agrees_jasmin {w n : Nat} (hn : n < w) (a : BitVec w) :
+    BitVec.sshiftRight a n = (x86_SAR a (BitVec.ofNat w n)).word := by
+  have h0 : (BitVec.ofNat w n).toNat = n := by
+    simp [Nat.mod_eq_of_lt (lt_trans hn (Nat.lt_two_pow_self))]
+  simp only [x86_SAR, X86Backend.Jasmin.shiftCount, h0, shiftMask_of_lt hn]
+  split_ifs with h
+  · simp [h, X86Backend.Jasmin.rflags_None]
+  · simp only [X86Backend.Jasmin.rflags_OF, X86Backend.Jasmin.wsar,
+      Nat.min_eq_right (Nat.le_of_lt hn)]
+
+/-- **`select` row.** `selectW` is the mask select `b ^ ((a ^ b) & -c)`. -/
+theorem select_agrees_jasmin {w : Nat} (c : BitVec 1) (a b : BitVec w) :
+    selectW c a b = jSelectMask c a b :=
+  selectW_eq_maskBlend c a b
+
+/-- **`mulhi` row.** `mulHiW` is the high word of `x86_MULX_lo_hi`, the second
+    component of its `(lo, hi)` result. -/
+theorem mulhi_agrees_jasmin {w : Nat} (a b : BitVec w) :
+    mulHiW a b = (x86_MULX_lo_hi a b).2 := rfl
+
+/-- **`addCarryLo` row.** `addCarryWord` is the data word of
+    `#ADD_w(c, -1); #ADC_w(a, b, cf)`, whose carry flag is defined. -/
+theorem addCarryLo_agrees_jasmin {w : Nat} (a b : BitVec w) (c : BitVec 1) :
+    some (addCarryWord a b c) = jAddCarryLo a b c := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · exact congrArg some (bitVec_zero_eq _ _)
+  · rw [jAddCarryLo, jCarryIn_eq hw]
+    simp only [Option.map_some, x86_ADC, X86Backend.Jasmin.rflags_of_aluop,
+      X86Backend.Jasmin.add_carry, addCarryWord]
+    congr 1
+    apply BitVec.eq_of_toNat_eq
+    rcases bitVec1_eq c with rfl | rfl <;> simp [BitVec.toNat_add]
+
+/-- **`addCarryHi` row.** `carryOutBit`, as a `0`/`1` word, is the word of
+    `#ADD_w(c, -1); #ADC_w(a, b, cf); #ADC_w(0, 0, cf)`, whose flags are defined. -/
+theorem addCarryHi_agrees_jasmin {w : Nat} (a b : BitVec w) (c : BitVec 1) :
+    some (jBitWord (carryOutBit a b c)) = jAddCarryHi a b c := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · simp only [jAddCarryHi, jCarryIn, x86_ADD, X86Backend.Jasmin.rflags_of_aluop,
+      Option.bind_some, x86_ADC, Option.map_some]
+    exact congrArg some (bitVec_zero_eq _ _)
+  · rw [jAddCarryHi, jCarryIn_eq hw]
+    simp only [Option.bind_some, x86_ADC, X86Backend.Jasmin.rflags_of_aluop, Option.map_some,
+      jMatCarry, X86Backend.Jasmin.add_carry, jBitWord, carryOutBit]
+    congr 1
+    have ha := a.isLt
+    have hb := b.isLt
+    have hp : 0 < 2 ^ w := Nat.two_pow_pos w
+    rcases bitVec1_eq c with rfl | rfl <;> simp <;> split_ifs <;>
+      first
+      | (exfalso; have := Nat.mod_lt (a.toNat + b.toNat) hp
+         have := Nat.mod_lt (a.toNat + b.toNat + 1) hp; omega)
+      | (exfalso; apply ‹¬_ % 2 ^ w = _›; exact Nat.mod_eq_of_lt (by omega))
+      | (apply BitVec.eq_of_toNat_eq; simp)
+
+/-- **`cmp` row.** `cmpBit c a b`, as a `0`/`1` word, is the word of the comparison
+    idiom `jCmp c a b`, whose flags are defined. -/
+theorem cmp_agrees_jasmin {w : Nat} (c : JasminCmp) (a b : BitVec w) :
+    some (jBitWord (cmpBit c a b)) = jCmp c a b := by
+  rcases Nat.eq_zero_or_pos w with rfl | hw
+  · cases c <;> exact congrArg some (bitVec_zero_eq _ _)
+  · have h1 : 1 < 2 ^ w := Nat.one_lt_two_pow (by omega)
+    cases c <;>
+      simp only [jCmp, x86_NEG, x86_CMP, X86Backend.Jasmin.x86_SUB, Option.map_some, jMatCarry,
+        x86_ADC, X86Backend.Jasmin.rflags_of_aluop, X86Backend.Jasmin.add_carry, cmpBit,
+        JasminCmp.holds, jBitWord, jWordXor, wreprN] <;>
+      congr 1 <;> simp only [sub_cf_iff, xor_ne_zero_iff]
+    · by_cases h : a = b <;> simp [h]
+    · by_cases h : a = b <;> simp [h]
+    · by_cases h : a.toNat < b.toNat <;> simp [h, BitVec.ult]
+    · by_cases h : b.toNat < a.toNat <;> simp [h, BitVec.ule] <;> split_ifs <;>
+        first | omega | (apply BitVec.eq_of_toNat_eq; simp [Nat.mod_eq_of_lt h1])
+    · by_cases h : b.toNat < a.toNat <;> simp [h, BitVec.ult]
+    · by_cases h : a.toNat < b.toNat <;> simp [h, BitVec.ule] <;> split_ifs <;>
+        first | omega | (apply BitVec.eq_of_toNat_eq; simp [Nat.mod_eq_of_lt h1])
+
+/-- **`cmpImm` row.** The comparison against the immediate `n` is the comparison idiom
+    with second operand jasmin's `wrepr` of the literal `n`. -/
+theorem cmpImm_agrees_jasmin {w : Nat} (c : JasminCmp) (n : Nat) (a : BitVec w) :
+    some (jBitWord (cmpBit c a (BitVec.ofNat w n))) = jCmp c a (wreprN n) :=
+  cmp_agrees_jasmin c a _
+
+/-- **`stackZero` row.** The zero array `JasminTy.default (.stackArr w n)` is the
+    result of the loop `for j = 0 to n { A[j] = 0 }` from any initial content. -/
+theorem stackZero_agrees_jasmin {w n : Nat} (arr : Fin n → BitVec w) :
+    (JasminTy.default (.stackArr w n) : Fin n → BitVec w) = jArrZeroLoop arr := by
+  cases n with
+  | zero => funext j; exact j.elim0
+  | succ m =>
+    have key : ∀ i, i ≤ m + 1 → ∀ j : Fin (m + 1),
+        ((List.range i).foldl (fun A k => jArrSetEl A k 0) arr) j
+          = if j.val < i then 0 else arr j := by
+      intro i
+      induction i with
+      | zero => intro _ j; simp
+      | succ i ih =>
+        intro hi j
+        rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+        have hj := ih (by omega) j
+        revert hj
+        generalize List.foldl (fun A k => jArrSetEl A k 0) arr (List.range i) = X
+        intro hj
+        simp only [jArrSetEl, stackSet, Fin.ext_iff, Nat.mod_eq_of_lt (show i < m + 1 by omega)]
+        rw [hj]
+        split_ifs <;> first | rfl | omega
+    funext j
+    rw [jArrZeroLoop, key (m + 1) le_rfl j, if_pos j.isLt]
+    rfl
+
+/-- **`stackStoreImm` row.** The store at the immediate index `i` is jasmin's
+    element-layer `WArray.set` at `i`. -/
+theorem stackStoreImm_agrees_jasmin {w n : Nat} (arr : Fin n → BitVec w) (i : Nat)
+    (v : BitVec w) :
+    stackSet arr i v = jArrSetEl arr i v := rfl
+
+/-- The alignment row of an op of the stack-memory fragment `opMemB`: its denotation
+    equals the jasmin text the lowering prints for it, as in §2–§4 and §4d. The ops
+    outside `opMemB` have no row and are sent to `False`. -/
+def OpAligned : JasminOp → Prop
+  | .regArith bop w => ∀ a b : BitVec w, JasminBinOp.apply bop a b = jWordOp bop a b
+  | .castW w w' => ∀ src : BitVec w, src.zeroExtend w' = jZeroExt w' src
+  | .stackLoad w n => ∀ (a : Fin n → BitVec w) (k : Nat), stackGet a k = jArrGetEl a k
+  | .stackStore w n => ∀ (a : Fin n → BitVec w) (k : Nat) (v : BitVec w),
+      stackSet a k v = jArrSetEl a k v
+  | .regConst w n => BitVec.ofNat w n = wreprN (w := w) n
+  | .shrImm w n => ∀ a : BitVec w, a >>> shiftMask w n = (x86_SHR a (BitVec.ofNat w n)).word
+  | .shlImm w n => ∀ a : BitVec w, a <<< shiftMask w n = (x86_SHL a (BitVec.ofNat w n)).word
+  | .sarImm w n => n < w → ∀ a : BitVec w,
+      BitVec.sshiftRight a n = (x86_SAR a (BitVec.ofNat w n)).word
+  | .select w => ∀ (c : BitVec 1) (a b : BitVec w), selectW c a b = jSelectMask c a b
+  | .mulhi w => ∀ a b : BitVec w, mulHiW a b = (x86_MULX_lo_hi a b).2
+  | .addCarryLo w => ∀ (a b : BitVec w) (c : BitVec 1),
+      some (addCarryWord a b c) = jAddCarryLo a b c
+  | .addCarryHi w => ∀ (a b : BitVec w) (c : BitVec 1),
+      some (jBitWord (carryOutBit a b c)) = jAddCarryHi a b c
+  | .cmp c w => ∀ a b : BitVec w, some (jBitWord (cmpBit c a b)) = jCmp c a b
+  | .cmpImm c w n => ∀ a : BitVec w,
+      some (jBitWord (cmpBit c a (BitVec.ofNat w n))) = jCmp c a (wreprN n)
+  | .stackZero w n => ∀ arr : Fin n → BitVec w,
+      (JasminTy.default (.stackArr w n) : Fin n → BitVec w) = jArrZeroLoop arr
+  | .stackStoreImm w n i => ∀ (arr : Fin n → BitVec w) (v : BitVec w),
+      stackSet arr i v = jArrSetEl arr i v
+  | _ => False
 
 /-! ## 5. Packed-`u16` AVX2 vector ops (the VV emit mode)
 
