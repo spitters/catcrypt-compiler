@@ -14,9 +14,11 @@ below differ in what their theorems state, and each entry names the theorem.
   Each theorem states denotation equality for every valuation; the constant-folding
   and saturation stages assume a known-constant environment consistent with the
   valuation (`KEnv.Consistent`).
-- Reduction selection on `LowCT`: `BarrettReduce` (`barrettReduce_denote_eq`, under
-  the leaf hypothesis `barrettAgreesModQ`), `MontgomeryReduce`, `ModReduceSelect`,
-  `SolinasFoldChain`.
+- Reduction selection on `LowCT`: `BarrettReduce` (`rustExec_barrettReduce_iff`) and
+  `MontgomeryReduce` (`rustExec_montgomeryReduce_iff`), both instances of the call
+  renaming of `RenameCalls` (`rustExec_renameCalls_iff`, under `CallsAgree`: the
+  leaf specification gives each renamed leaf and its original the same result),
+  `ModReduceSelect`, `SolinasFoldChain`.
 - Rewrite saturation (no union-find e-graph): the `Rewrite/` subtree, indexed in
   [Rewrite/AGENTS.md](Rewrite/AGENTS.md).
 - Translation validation: `TranslationValidation`, `TranslationValidationEgraph`
@@ -53,15 +55,9 @@ below differ in what their theorems state, and each entry names the theorem.
   butterfly-stage sequence, as a value model, to `dft` and polynomial evaluation.
 - Orchestration and bridges: `Pipeline`, `ComSStmtBridge`, `PipelineSmokeKat`.
 
-## Identity stages
+## Register allocation
 
-`Pipeline.optPipelineJ` composes `applyCse`, `applyStrengthReduce`, `applyDce` and
-`RegisterAllocation.applyRA` over `JForProg`. Each of the four returns its input
-program, so `optPipelineJ` is the identity, and its denotation and constant-time
-theorems hold for every program and every analysis result. In
-`../SecureCompilation/VIR/RegisterAllocation.lean`, `applyRA_denote_preserves_of_any`
-holds for every allocation, so `linearScanRA_denote_preserves` states nothing about
-the linear scan, and `linearScanRA_slotOf_eq_id` states that its `slotOf` map is the
-identity. The content of the linear scan is
-`linearScanRA_real_slotOfInjectiveOnLive`: simultaneously live binders receive
+In `../SecureCompilation/VIR/RegisterAllocation.lean`, `linearScanRA_slotOf_eq_id`
+states that the `slotOf` map of the linear scan is the identity, and
+`linearScanRA_real_slotOfInjectiveOnLive` that simultaneously live binders receive
 distinct slots.

@@ -130,9 +130,7 @@ denotation-preservation theorems: common-subexpression elimination, dead-code
 elimination, copy propagation and constant folding (`comCSE_denote`,
 `comDCE_denote`, `copyProp_denote`, `foldCom_denote`). The constant-folding and saturation
 stages assume a known-constant environment consistent with the valuation.
-`Pipeline.optPipelineJ` composes four stages that each return their input program,
-so its theorems hold for every program. `CatCrypt/Crypto/Optimizer/README.md`
-indexes the passes.
+`CatCrypt/Crypto/Optimizer/README.md` indexes the passes.
 
 No emit driver calls a `Com` pass. The owned emit drivers render an `Lprog` through
 `LprogOptPipeline.renderOwned`, which is `renderLprogAtt ∘ optimizeLprogBasicBlocks`.

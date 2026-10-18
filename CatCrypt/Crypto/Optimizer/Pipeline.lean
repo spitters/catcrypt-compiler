@@ -13,17 +13,11 @@ public import CatCrypt.Crypto.Optimizer.MontgomeryReduce
 public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 public import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
 public import CatCrypt.Crypto.Optimizer.SchedulerPass
-public import CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElim
-public import CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduce
-public import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
-public import CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
-public import CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
 # Pass Pipeline Orchestrator
-Scope: at this level the passes act as the identity on the CT predicate, so `optPipelineJ_isCT` holds by `rfl`; a per-pass leakage transformer is plan row CTP-5.
-
 
 Composes per-pass denotational-equivalence theorems into a single
 `pipeline_denote_eq` meta-theorem.  Lets passes compose without
@@ -234,16 +228,16 @@ Wraps `BarrettReduce.barrettReduce q` and its agreement precondition
 `barrettAgreesModQ leafSpec q`.  Two protocol-specific specialisations
 land: ML-KEM (`q = 3329`) and ML-DSA-65 (`q = 8380417`).
 
-The `denote_eq` field unfolds `BarrettReduce.barrettReduce_denote_eq`
-under the supplied agreement hypothesis. -/
+The `denote_eq` field is `BarrettReduce.rustExec_barrettReduce_iff`, the
+congruence of the leaf renaming under the supplied agreement hypothesis. -/
 
 open CatCrypt.Crypto.Optimizer.BarrettReduce in
-/-- Barrett-reduction pass parameterised by the modulus `q`. -/
+/-- Barrett leaf-renaming pass parameterised by the modulus `q`. -/
 def barrettPass (q : Nat) : OptimizerPassWithPrecond where
   rewrite := barrettReduce q
   precond leafSpec := barrettAgreesModQ leafSpec q
   denote_eq N leafSpec hAgree c rs rs' :=
-    barrettReduce_denote_eq q N leafSpec hAgree c rs rs'
+    rustExec_barrettReduce_iff q N leafSpec hAgree c rs rs'
 
 /-- Barrett pass specialised for ML-KEM-768 (`q = 3329`). -/
 def barrettMlkemPass : OptimizerPassWithPrecond := barrettPass 3329
@@ -257,12 +251,12 @@ Wraps `MontgomeryReduce.montgomeryReduce q R` and its agreement
 precondition `montAgreesMulModQ leafSpec q R`. -/
 
 open CatCrypt.Crypto.Optimizer.MontgomeryReduce in
-/-- Montgomery-reduction pass parameterised by modulus `q` and radix `R`. -/
+/-- Montgomery leaf-renaming pass parameterised by modulus `q` and radix `R`. -/
 def montgomeryPass (q R : Nat) : OptimizerPassWithPrecond where
   rewrite := montgomeryReduce q R
   precond leafSpec := montAgreesMulModQ leafSpec q R
   denote_eq N leafSpec hAgree c rs rs' :=
-    montgomeryReduce_denote_eq q R N leafSpec hAgree c rs rs'
+    rustExec_montgomeryReduce_iff q R N leafSpec hAgree c rs rs'
 
 /-- Montgomery pass specialised for ML-KEM-768 (`q = 3329`, `R = 2^16`). -/
 def montgomeryMlkemPass : OptimizerPassWithPrecond := montgomeryPass 3329 65536
@@ -510,138 +504,24 @@ theorem scheduled_ct_eq (lt : LevelTable) (leafCT : LeafCTTable)
   = cmdCT (blockToCmd b) lt leafCT :=
   scheduleBlock_isCT_eq lt leafCT b
 
-/-! ## §7.6  Default `JForProg`-level optimisation pipeline
+/-! ## §7.6  Algebraic canonicalisation of a `Com` body
 
-The composition for the typed VIR IR (`JForProg accTy`, a bounded for-loop
-whose body is a `Com jasminDialect [accTy] accTy`). `optPipelineJ` sequences
-four `JForProg → JForProg` analysis-then-apply stages. Each `apply*` function
-(`applyCse`, `applyStrengthReduce`, `applyDce`, `RegisterAllocation.applyRA`)
-returns its program argument and ignores the analysis result, so
-`optPipelineJ p` is `p` definitionally, and `optPipelineJ_denote` and
-`optPipelineJ_isCT` hold by rewriting with identity lemmas. They state no
-property of any analysis. The program-changing passes are the `*Real.lean`
-transforms (`DeadCodeElimReal`, `CommonSubexprElimReal`, …); the register
-allocator with a semantic theorem is `physScanSpill`
-(`toLprogPhysAbi_faithful_uniform`).
-
-### Stages of `optPipelineJ` (each `apply*` is the identity)
-
-Applied left-to-right:
-
-1. **CSE / GVN** — `analyzeCse` then `applyCse`
-   (`CommonSubexprElim.lean`); denote: `applyCse_denote_preserves`,
-   CT: `applyCse_preserves_CT`.
-2. **Strength reduction** — `analyzeStrengthReduce` then
-   `applyStrengthReduce` (`StrengthReduce.lean`); denote:
-   `applyStrengthReduce_denote_preserves`, CT:
-   `applyStrengthReduce_preserves_CT`.
-3. **Dead-code elimination** — `analyzeDce` then `applyDce`
-   (`DeadCodeElim.lean`); denote: `applyDce_denote_preserves`, CT:
-   `applyDce_preserves_CT`.
-4. **Register allocation** — `linearScanRA` then
-   `RegisterAllocation.applyRA` (`RegisterAllocation.lean`); denote:
-   `linearScanRA_denote_preserves`, CT: `applyRA_preserves_CT`. Both hold for
-   every allocation because `applyRA` is the identity.
-
-`optPipelineJ_denote` and `optPipelineJ_isCT` carry no extra hypotheses,
-because each stage is the identity.
-
-### Passes composed elsewhere / deferred (and why)
-
-* **Egraph equality-saturation + peephole** — composed in
-  `Optimizer.Rewrite.ComPipeline.comAlgebraicPipeline`, over a bare
-  `Com jasminDialect Γ t` (not `JForProg`).  Its preservation theorem
-  `comAlgebraicPipeline_denote` is **conditional** on a known-constant
-  environment consistent with the valuation (`KEnv.Consistent k V`), so it
-  does not slot into the unconditional `JForProg → JForProg` chain.  It is
-  the algebraic-canonicalisation stage that runs on the body `Com` before
-  this loop-level pipeline; we re-export it as `optComAlgebraic` below for
-  callers that have a `KEnv`, and chain it in `optPipelineJ_withAlgebraic`.
-* **Loop unrolling** — `JForProgUnroll.lean` packages unrolling as a
-  *witness* (`UnrolledBy p N` carrying the unrolled program + a
-  `step_eq`/`factor_correct` proof), not as a total `JForProg → JForProg`
-  function: the unrolled body Com is produced by the emit pass, not
-  prescribed.  Its denotation lemma `UnrolledBy.denote_eq` therefore takes
-  the witness; its CT lemma `unrollN_preserves_CT` additionally needs the
-  emit-pass obligation `ctSafeJasmin u.unrolled.update … = true`.  We expose
-  `optPipelineJ_afterUnroll` that chains the unroll witness in front of the
-  core pipeline, taking the unroll witness as a hypothesis.
-* **Verified vectorizer** — the lane-ring `scalarFold`
-  construction (`LaneMap.lean`, `VectorReduce.lean`) is, like unrolling, a
-  per-kernel construction with a `scalarFold_eq_hsum`-style equality rather
-  than a uniform `JForProg → JForProg` rewrite; deferred for the same
-  structural reason.
-* **Instruction scheduler** — composed at the `LowCT` block level
-  in `scheduleThenPipeline` / `scheduledThenPipeline_denote_eq` above
-  (§7.5).  It reorders a `List BBStmt`, one IR down from `JForProg`, so it
-  belongs to that entry point, not this one. -/
+The algebraic-canonicalisation stage (egraph equality saturation and
+peephole) is `Optimizer.Rewrite.ComPipeline.comAlgebraicPipeline`, over a
+bare `Com jasminDialect Γ t`. Its denotation theorem
+`comAlgebraicPipeline_denote` is conditional on a known-constant environment
+consistent with the valuation (`KEnv.Consistent k V`). It is re-exported here
+as `optComAlgebraic`. The program-changing `JForProg` passes are the
+`*Real.lean` transforms (`DeadCodeElimReal`, `CommonSubexprElimReal`, …); the
+register allocator with a semantic theorem is `physScanSpill`
+(`toLprogPhysAbi_faithful_uniform`). -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 open CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-open CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
-open CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduce
-open CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-open CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
 open CatCrypt.Crypto.Jasmin.LowCT (SecretLevel)
 open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
-
-/-- **The default `JForProg`-level optimisation pipeline.**
-
-    Sequences four analysis-then-apply stages: CSE → strength reduction →
-    dead-code elimination → register allocation. Each `apply*` function
-    returns its program argument, so `optPipelineJ p` is `p`
-    definitionally; the analyses are computed and discarded. -/
-def optPipelineJ {accTy : JasminTy} (p : JForProg accTy) : JForProg accTy :=
-  let p₁ := applyCse p (analyzeCse p)
-  let p₂ := applyStrengthReduce p₁ (analyzeStrengthReduce p₁)
-  let p₃ := applyDce p₂ (analyzeDce p₂)
-  RegisterAllocation.applyRA p₃ (linearScanRA p₃)
-
-/-- **End-to-end denotation preservation of `optPipelineJ`.**  The optimised
-    program denotes exactly the same accumulator function as the input, for
-    every initial accumulator.  Chains, in pipeline order,
-    `applyCse_denote_preserves`, `applyStrengthReduce_denote_preserves`,
-    `applyDce_denote_preserves`, and `linearScanRA_denote_preserves`.
-
-    Carries no extra hypotheses: every stage is the identity, so the statement
-    holds by `rfl` and constrains no analysis. -/
-theorem optPipelineJ_denote {accTy : JasminTy} (p : JForProg accTy)
-    (init : ⟦accTy⟧) :
-    (optPipelineJ p).denote init = p.denote init := by
-  unfold optPipelineJ
-  -- peel passes from the outside in: RA, then DCE, then SR, then CSE
-  rw [linearScanRA_denote_preserves, applyDce_denote_preserves,
-      applyStrengthReduce_denote_preserves, applyCse_denote_preserves]
-
-/-- **End-to-end constant-time preservation of `optPipelineJ`.**  The
-    optimised program is CT-safe (under accumulator secrecy label `accL`)
-    iff the input is — in particular if the input is CT-safe so is the
-    output.  Chains the four per-pass CT-preservation lemmas
-    (`applyRA_preserves_CT`, `applyDce_preserves_CT`,
-    `applyStrengthReduce_preserves_CT`, `applyCse_preserves_CT`).
-
-    Carries no extra hypotheses: every stage is the identity. -/
-theorem optPipelineJ_isCT {accTy : JasminTy} (p : JForProg accTy)
-    (accL : SecretLevel) :
-    ctSafeJForProg (optPipelineJ p) accL = ctSafeJForProg p accL := by
-  unfold optPipelineJ
-  rw [applyRA_preserves_CT, applyDce_preserves_CT,
-      applyStrengthReduce_preserves_CT, applyCse_preserves_CT]
-
-/-- **CT-in ⇒ CT-out corollary.**  If the input loop is CT-safe, so is the
-    optimised one.  Direct consequence of `optPipelineJ_isCT`. -/
-theorem optPipelineJ_isCT_of {accTy : JasminTy} (p : JForProg accTy)
-    (accL : SecretLevel) (h : ctSafeJForProg p accL = true) :
-    ctSafeJForProg (optPipelineJ p) accL = true := by
-  rw [optPipelineJ_isCT]; exact h
-
-/-! ### §7.6.1  Composing the conditional stages
-
-The algebraic-canonicalisation stage (egraph + peephole) and loop unrolling
-are conditional and are exposed as chainable corollaries that thread their
-hypotheses explicitly. -/
 
 /-- Re-export of the algebraic-canonicalisation transform (peephole then
     bounded equality-saturation) on a body `Com`, from
@@ -661,38 +541,14 @@ theorem optComAlgebraic_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (optComAlgebraic fuel c k).denote V = c.denote V :=
   CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline.comAlgebraicPipeline_denote fuel c k V hk
 
-/-- **Unroll then core pipeline — denotation preservation.**  Given an
-    `UnrolledBy p N` witness `u`, optimising the unrolled program with the
-    core pipeline denotes the same function as the *original* (un-unrolled)
-    program.  Chains `optPipelineJ_denote` on `u.unrolled` with the unroll
-    witness's `UnrolledBy.denote_eq`.  The unroll witness is the explicit
-    hypothesis (loop unrolling is a relation, not a total function — see the
-    §7.6 deferral note). -/
-theorem optPipelineJ_afterUnroll {accTy : JasminTy} {p : JForProg accTy}
-    {N : Nat} (u : UnrolledBy p N) (init : ⟦accTy⟧) :
-    (optPipelineJ u.unrolled).denote init = p.denote init := by
-  rw [optPipelineJ_denote]
-  exact u.denote_eq init
+/-! ## §7.7  `JForProg`-level pass record
 
-/-! ## §7.7  `JForProg`-level pass record (DCE packaged as a composable pass)
-
-The §1 `OptimizerPass` record is `LowCT → LowCT`; the §7.6 pipeline
-(`optPipelineJ`) instead composes the four unconditional analysis-and-rewrite
-passes at the *typed VIR* level (`JForProg accTy`).  Those passes —
-`applyCse`, `applyStrengthReduce`, `applyDce`, `applyRA` — are
-`JForProg accTy → JForProg accTy` (modulo their analysis-decision argument),
-not `LowCT → LowCT`, so they cannot inhabit `OptimizerPass`.
-
-`JForProgPass` is the `JForProg`-level analogue of `OptimizerPass`: it bundles a
-`rewrite : JForProg accTy → JForProg accTy` with the **same two obligations**
-the §7.6 pipeline discharges per pass — a denotation-equivalence and a
-constant-time-equivalence theorem.  Packaging `applyDce` (composed with its
-analysis `analyzeDce`) as a `JForProgPass` value (`dcePass`) makes DCE a
-*composable list element* of `applyJForProgPipeline`, whose
-`applyJForProgPipeline_denote_eq` / `applyJForProgPipeline_ct_eq` meta-theorems
-are the `JForProg`-level counterpart of `applyPipeline_denote_eq` (§3).  The
-two obligations are discharged directly from `DeadCodeElim.applyDce`'s proved
-`applyDce_denote_preserves` / `applyDce_preserves_CT`. -/
+The §1 `OptimizerPass` record is `LowCT → LowCT`. `JForProgPass` is its
+analogue at the typed VIR level: it bundles a
+`rewrite : JForProg accTy → JForProg accTy` with a denotation-equivalence and
+a constant-time-equivalence theorem. `applyJForProgPipeline_denote_eq` and
+`applyJForProgPipeline_ct_eq` are the `JForProg`-level counterparts of
+`applyPipeline_denote_eq` (§3). -/
 
 /-- A `JForProg`-level optimisation pass: a self-contained
     `JForProg accTy → JForProg accTy` rewrite (analysis already folded in)
@@ -711,17 +567,6 @@ structure JForProgPass (accTy : JasminTy) where
   ct_eq :
     ∀ (p : JForProg accTy) (accL : SecretLevel),
       ctSafeJForProg (rewrite p) accL = ctSafeJForProg p accL
-
-/-- **Dead-code elimination as a composable `JForProgPass`.**  Folds the
-    analysis `analyzeDce` into the rewrite `applyDce`, discharging the
-    record's denotation/CT obligations from `DeadCodeElim`'s proved
-    `applyDce_denote_preserves` / `applyDce_preserves_CT`.  This is the pass
-    `optPipelineJ` runs as its third stage, exposed as a stand-alone list
-    element feeding `applyJForProgPipeline`. -/
-def dcePass (accTy : JasminTy) : JForProgPass accTy where
-  rewrite p := applyDce p (analyzeDce p)
-  denote_eq p init := applyDce_denote_preserves p (analyzeDce p) init
-  ct_eq p accL := applyDce_preserves_CT p (analyzeDce p) accL
 
 /-- Apply a list of `JForProgPass` passes left-to-right.  The `JForProg`-level
     analogue of `applyPipeline` (§3). -/

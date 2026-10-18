@@ -421,6 +421,7 @@ def pkgModules2 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.RedundantReloadElim,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.RegAllocLeakTrace,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.RegMachineToSim,
+    Lake.Glob.one `CatCrypt.Crypto.Optimizer.RenameCalls,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.Aegraph,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat,
@@ -439,9 +440,9 @@ def pkgModules2 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.CrtGeneric,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.Egraph,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.EgraphGlobalMin,
-    Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.FermatInverseGeneric,
   ]
 def pkgModules3 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.FermatInverseGeneric,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.FieldHornerPass,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.FieldSqrtGeneric,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Rewrite.FieldStrengthReducePass,
@@ -641,9 +642,9 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.ArrayLoopCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx,
   ]
 def pkgModules4 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemWord,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf,
@@ -843,9 +844,9 @@ def pkgModules4 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.XrunRunBlockTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AsconLinearGoldenPath,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AsconSboxGoldenPath,
   ]
 def pkgModules5 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AsconSboxGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.BarrettCompress10Exact,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.BarrettReduceEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue,
@@ -1045,9 +1046,9 @@ def pkgModules5 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakFactoring,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRelCompile,
   ]
 def pkgModules6 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRelCompile,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurity,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative,
@@ -1247,9 +1248,9 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KaratsubaRingCore,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KdfMacProtocolKernels,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KeccakBitGoldenPath,
   ]
 def pkgModules7 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KeccakBitGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KemProtocolKernels,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.KernelRealizesClass,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.LoadU32LeCompiles,
@@ -1449,9 +1450,9 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRun,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.AddrState,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Array,
   ]
 def pkgModules8 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Array,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.ByteMem,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Contract,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86,
@@ -1625,7 +1626,6 @@ def pkgModules8 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectCoproductElim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectCoproductLeak,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectGrothendieck,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectOpSum,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionCategory,
@@ -2662,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCheckFuel,
@@ -2864,11 +2864,11 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.TreeTypes,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Properties,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Auth,
+  ]
+def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Events,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Invariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Linking,
-  ]
-def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Model,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.SigningDiscipline,
@@ -3066,6 +3066,8 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Sync,
     Lake.Glob.one `CatCrypt.Tactics.Triangle,
     Lake.Glob.one `CatCrypt.Tactics.TryBij2,
+  ]
+def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.UpToBad,
     Lake.Glob.one `CatCrypt.Tactics.VC,
     Lake.Glob.one `CatCrypt.Tactics.WP,
@@ -3254,7 +3256,7 @@ def veirModules1 : Array Lake.Glob := #[
 
 @[default_target]
 lean_lib CatCryptCompiler where
-  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14 ++ pkgModules15
+  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14 ++ pkgModules15 ++ pkgModules16
 
 -- Demos, probes, tests and benchmark drivers. Nothing in `CatCryptCompiler`
 -- imports a module of this library.
