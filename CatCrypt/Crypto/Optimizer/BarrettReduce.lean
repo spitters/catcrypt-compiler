@@ -25,7 +25,7 @@ same executions. The Barrett arithmetic of the leaf is proved in
 
 * `barrettReduce q` — the renaming pass, `renameCalls (barrettSubst q)`.
 * `barrettAgreesModQ leafSpec q` — the leaf-agreement hypothesis.
-* `callsAgree_barrettSubst` — `barrettAgreesModQ` gives `CallsAgree` for the
+* `renamedCallsAgree_barrettSubst` — `barrettAgreesModQ` gives `RenamedCallsAgree` for the
   renaming.
 * `rustExec_barrettReduce_iff` — under `barrettAgreesModQ`, `barrettReduce q c`
   and `c` have the same executions.
@@ -84,11 +84,11 @@ def barrettAgreesModQ (leafSpec : LeafSpec) (q : Nat) : Prop :=
     leafSpec.call (barrettName q) dt argTs oldV args =
       leafSpec.call f dt argTs oldV args
 
-/-- `barrettAgreesModQ` is the `CallsAgree` hypothesis of the renaming
+/-- `barrettAgreesModQ` is the `RenamedCallsAgree` hypothesis of the renaming
     `barrettSubst q`. -/
-theorem callsAgree_barrettSubst {leafSpec : LeafSpec} {q : Nat}
+theorem renamedCallsAgree_barrettSubst {leafSpec : LeafSpec} {q : Nat}
     (hAgree : barrettAgreesModQ leafSpec q) :
-    CallsAgree leafSpec (barrettSubst q) := by
+    RenamedCallsAgree leafSpec (barrettSubst q) := by
   intro f dt argTs oldV args
   unfold barrettSubst
   split
@@ -107,6 +107,6 @@ theorem rustExec_barrettReduce_iff
     (c : LowCT) (rs rs' : RustState) :
     RustExec N leafSpec (barrettReduce q c) rs rs' ↔
       RustExec N leafSpec c rs rs' :=
-  rustExec_renameCalls_iff (callsAgree_barrettSubst hAgree) c rs rs'
+  rustExec_renameCalls_iff (renamedCallsAgree_barrettSubst hAgree) c rs rs'
 
 end CatCrypt.Crypto.Optimizer.BarrettReduce

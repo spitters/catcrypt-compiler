@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+public import CatCrypt.Crypto.Optimizer.RenameCalls
 
 /-!
 # NTT-backed Polynomial Multiplication
@@ -58,6 +59,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 
 open CatCrypt.Crypto.Jasmin.LowCT
+open CatCrypt.Crypto.Optimizer.RenameCalls (rfor_spine_reverse)
 
 /-! ## §1  Pattern recognition
 
@@ -388,40 +390,6 @@ theorem nttPolyMul_denote_forward
 
 For the reverse direction, we induct on the source command `c` and
 invert the `RustExec` derivation on the rewritten side. -/
-
-/-- Reversal along the `RFor` spine: when every `RustExec` of `body'` lifts to
-    one of `body`, every `RustExec` of `RFor x k body'` lifts to one of
-    `RFor x k body`.
-
-    The command is carried as a variable `c0` with a defining equation so that
-    the induction on the derivation has a uniform motive, and the trip count
-    `k0` is quantified inside that motive so the `forSucc` step can specialise
-    it to the shorter count.  Every `RustExec` rule is listed: the rules other
-    than `forZero`/`forSucc` are at commands whose head constructor is not
-    `RFor`, so the defining equation refutes them, and listing them makes a
-    change to the rule set a build error. -/
-theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
-    {x : String} {body body' : LowCT}
-    (ih : ∀ (rs rs' : RustState),
-      RustExec N leafSpec body' rs rs' → RustExec N leafSpec body rs rs') :
-    ∀ (c0 : LowCT) (rs0 rs0' : RustState),
-      RustExec N leafSpec c0 rs0 rs0' →
-      ∀ (k0 : Nat), c0 = .RFor x k0 body' →
-      RustExec N leafSpec (.RFor x k0 body) rs0 rs0' := by
-  intro c0 rs0 rs0' h0
-  induction h0 with
-  | forZero x' b rs =>
-      intro k0 hEq; cases hEq; exact RustExec.forZero x body rs
-  | forSucc x' k b rs r1 rs' _ hBody ihInner _ =>
-      intro k0 hEq
-      cases hEq
-      exact RustExec.forSucc x k body rs r1 rs' (ihInner k rfl) (ih _ _ hBody)
-  | skip | seq | letZero | letU64Zero | scalarSet | ifTrue | ifFalse
-  | whileFalse | whileTrue | forRuntime | call | cloneCall | callSwap
-  | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
-  | assert | block | tupleLoad | arrStore
-  | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
-  | callDstThreaded | copy => intro k0 hEq; cases hEq
 
 /-- Reverse direction: any `RustExec` of the rewritten command lifts
     to one on the source command. -/

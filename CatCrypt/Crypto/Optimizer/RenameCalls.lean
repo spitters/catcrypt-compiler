@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTExec
 `renameCalls σ` replaces the leaf name `f` of every leaf call (`RCall`,
 `RCallSwap`, the inner call of `RCloneCall`, `RCallDstThreaded`) by `σ f` and
 traverses every nested command. When the leaf specification gives `σ f` and `f`
-the same result on every input (`CallsAgree leafSpec σ`), the renamed command
+the same result on every input (`RenamedCallsAgree leafSpec σ`), the renamed command
 has the same big-step executions as the original.
 
 The optimizer passes `BarrettReduce.barrettReduce` and
@@ -25,8 +25,8 @@ about the renaming only.
 ## Main results
 
 * `renameCalls σ` — the call-renaming pass.
-* `CallsAgree leafSpec σ` — the leaf specification agrees at `σ f` and `f`.
-* `rustExec_renameCalls_iff` — under `CallsAgree leafSpec σ`, `RustExec` of
+* `RenamedCallsAgree leafSpec σ` — the leaf specification agrees at `σ f` and `f`.
+* `rustExec_renameCalls_iff` — under `RenamedCallsAgree leafSpec σ`, `RustExec` of
   `renameCalls σ c` holds iff `RustExec` of `c` holds.
 * `rfor_spine_reverse` — reversal of an execution along the `RFor` spine.
 -/
@@ -76,16 +76,16 @@ def renameCalls (σ : String → String) : LowCT → LowCT
 
 /-- The leaf specification gives the renamed leaf `σ f` and the leaf `f` the
     same result on every input. -/
-def CallsAgree (leafSpec : LeafSpec) (σ : String → String) : Prop :=
+def RenamedCallsAgree (leafSpec : LeafSpec) (σ : String → String) : Prop :=
   ∀ (f : String) (dt : TowerType) (argTs : List TowerType)
     (oldV : RustVal dt) (args : List (Σ t : TowerType, RustVal t)),
     leafSpec.call (σ f) dt argTs oldV args = leafSpec.call f dt argTs oldV args
 
-/-- Under `CallsAgree`, every execution of `c` is an execution of
+/-- Under `RenamedCallsAgree`, every execution of `c` is an execution of
     `renameCalls σ c`. -/
 theorem rustExec_renameCalls_of_rustExec
     {σ : String → String} {N : Nat} {leafSpec : LeafSpec}
-    (hAgree : CallsAgree leafSpec σ)
+    (hAgree : RenamedCallsAgree leafSpec σ)
     {c : LowCT} {rs rs' : RustState}
     (h : RustExec N leafSpec c rs rs') :
     RustExec N leafSpec (renameCalls σ c) rs rs' := by
@@ -132,11 +132,11 @@ theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
   | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
   | callDstThreaded | copy => intro n0 hEq; cases hEq
 
-/-- Under `CallsAgree`, a leaf-call execution at the renamed name `σ f` is one
+/-- Under `RenamedCallsAgree`, a leaf-call execution at the renamed name `σ f` is one
     at `f`. -/
 theorem rustExec_call_of_renamed
     {σ : String → String} {N : Nat} {leafSpec : LeafSpec}
-    (hAgree : CallsAgree leafSpec σ) {f : String} {dst : Located} {args : List Located}
+    (hAgree : RenamedCallsAgree leafSpec σ) {f : String} {dst : Located} {args : List Located}
     {rs rs' : RustState}
     (h : RustExec N leafSpec (.RCall (σ f) dst args) rs rs') :
     RustExec N leafSpec (.RCall f dst args) rs rs' := by
@@ -144,11 +144,11 @@ theorem rustExec_call_of_renamed
   rw [hAgree]
   constructor <;> assumption
 
-/-- Under `CallsAgree`, every execution of `renameCalls σ c` is an execution
+/-- Under `RenamedCallsAgree`, every execution of `renameCalls σ c` is an execution
     of `c`. -/
 theorem rustExec_of_rustExec_renameCalls
     {σ : String → String} {N : Nat} {leafSpec : LeafSpec}
-    (hAgree : CallsAgree leafSpec σ) :
+    (hAgree : RenamedCallsAgree leafSpec σ) :
     ∀ {c : LowCT} {rs rs' : RustState},
       RustExec N leafSpec (renameCalls σ c) rs rs' →
       RustExec N leafSpec c rs rs' := by
@@ -236,11 +236,11 @@ theorem rustExec_of_rustExec_renameCalls
   | RFnCall | RTupleLoad | RArrStore | RArrLoad | RScalarSetExpr | RArrStoreLit
   | RArrLoadLit | RCopy => intro rs rs' h; exact h
 
-/-- Under `CallsAgree leafSpec σ`, renaming leaf calls by `σ` preserves the
+/-- Under `RenamedCallsAgree leafSpec σ`, renaming leaf calls by `σ` preserves the
     big-step semantics: `renameCalls σ c` and `c` have the same executions. -/
 theorem rustExec_renameCalls_iff
     {σ : String → String} {N : Nat} {leafSpec : LeafSpec}
-    (hAgree : CallsAgree leafSpec σ) (c : LowCT) (rs rs' : RustState) :
+    (hAgree : RenamedCallsAgree leafSpec σ) (c : LowCT) (rs rs' : RustState) :
     RustExec N leafSpec (renameCalls σ c) rs rs' ↔ RustExec N leafSpec c rs rs' :=
   ⟨rustExec_of_rustExec_renameCalls hAgree, rustExec_renameCalls_of_rustExec hAgree⟩
 

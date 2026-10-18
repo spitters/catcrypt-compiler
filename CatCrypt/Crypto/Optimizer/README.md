@@ -16,7 +16,7 @@ below differ in what their theorems state, and each entry names the theorem.
   valuation (`KEnv.Consistent`).
 - Reduction selection on `LowCT`: `BarrettReduce` (`rustExec_barrettReduce_iff`) and
   `MontgomeryReduce` (`rustExec_montgomeryReduce_iff`), both instances of the call
-  renaming of `RenameCalls` (`rustExec_renameCalls_iff`, under `CallsAgree`: the
+  renaming of `RenameCalls` (`rustExec_renameCalls_iff`, under `RenamedCallsAgree`: the
   leaf specification gives each renamed leaf and its original the same result),
   `ModReduceSelect`, `SolinasFoldChain`.
 - Rewrite saturation (no union-find e-graph): the `Rewrite/` subtree, indexed in

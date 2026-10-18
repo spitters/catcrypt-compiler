@@ -10,11 +10,11 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
 
 /-!
-# `Com → AArch64`: a block-execution `MachineModel` and value preservation
+# `Com → AArch64`: a block-execution `IsaModel` and value preservation
 
 This module is the AArch64 counterpart of `RISCVBackend/ComToRiscvLsem.lean`,
-which defines the structure `MachineModel`. This module defines a
-`MachineModel` whose `exec` is the `ArmModel.runBBlock` block fold and whose
+which defines the structure `IsaModel`. This module defines a
+`IsaModel` whose `exec` is the `ArmModel.runBBlock` block fold and whose
 `validated` field is the value-preservation statement for the base-ALU (GP-ALU)
 fragment of `Com → AArch64`.
 
@@ -51,7 +51,7 @@ fragment of `Com → AArch64`.
    `runBBlock` execution of the compiled-and-lowered block, read at the result
    register, equals `Com.denote com V`, and every executed `BInst` is in the
    GP-ALU subset (`armBlock_all_gpAlu`).
-2. **`armBaseAluModel`** — a `MachineModel` with
+2. **`armBaseAluModel`** — a `IsaModel` with
    `exec := fun code s => runBBlock s code` and `validated := ArmBaseAluGrounded`,
    the proposition stated by `comToArmLsem_correct`; the AArch64 counterpart of
    `riscvBaseAluModel`.
@@ -104,7 +104,7 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
 open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
 open CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
-  (RegBaseAlu BaseAluOp ComBaseAlu comToRegProg_RegBaseAlu MachineModel)
+  (RegBaseAlu BaseAluOp ComBaseAlu comToRegProg_RegBaseAlu IsaModel)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
@@ -286,10 +286,10 @@ theorem comToArmLsem_correct {Γ : Ctxt jasminDialect}
   rw [runBBlock_regToBOp_base_pure _ (comToRegProg_RegBaseAlu hba Γ.length), hs,
       ← comToReg_faithful (ComBaseAlu.toComOK hba) hΓ V]
 
-/-! ## 5. An AArch64 `MachineModel` with `exec := runBBlock` -/
+/-! ## 5. An AArch64 `IsaModel` with `exec := runBBlock` -/
 
 /-- The statement of `comToArmLsem_correct` as a proposition, used as the
-    `MachineModel.validated` field. The AArch64 counterpart of RISC-V's
+    `IsaModel.validated` field. The AArch64 counterpart of RISC-V's
     `RiscvBaseAluGrounded`, at the value-preservation level: for every `Com` with
     `ComBaseAlu com` over an `AllReg64` context, run from a state with
     `s.regs = envOf Γ.length V`, the `runBBlock` execution holds `Com.denote com V`
@@ -318,7 +318,7 @@ def ArmBaseAluGrounded : Prop :=
 theorem armBaseAluGrounded_proof : ArmBaseAluGrounded :=
   fun hba hΓ V s hs => comToArmLsem_correct hba hΓ V s hs
 
-/-- **The AArch64 base-ALU `MachineModel`.** Its `exec` is the `runBBlock` block
+/-- **The AArch64 base-ALU `IsaModel`.** Its `exec` is the `runBBlock` block
     fold over `BState`, and its `validated` field is `ArmBaseAluGrounded`
     (proved by `armBaseAluGrounded_proof`). `Code` is the executed `BInst` list;
     `State` and `Value` are `BState`; `encodeIn` and `decodeOut` are `id`. The
@@ -328,7 +328,7 @@ theorem armBaseAluGrounded_proof : ArmBaseAluGrounded :=
     Sail-execute refinement. RISC-V has such a refinement against an in-file
     excerpt of the sail-riscv-lean generated output; ARM's `SailArm64Refinement`
     is a hand transcription and no theorem relates it to `runBBlock`. -/
-def armBaseAluModel : MachineModel where
+def armBaseAluModel : IsaModel where
   Code := List BInst
   State := BState
   Value := BState

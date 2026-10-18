@@ -81,7 +81,7 @@ modules declare into `ARMBackend.<ModuleName>`. Exceptions: `ArmModel.lean`,
   `bbMul_machine_eq_denote` for `bbMulReg`.
 - `ComToArmLoop.lean`: `loop_waist_denote`, `unrolled_waist_denote`.
 - `ComToArmLsem.lean`: `comToArmLsem_correct`, the proposition `ArmBaseAluGrounded`
-  and the `MachineModel` `armBaseAluModel` with `exec` the `runBBlock` fold. It
+  and the `IsaModel` `armBaseAluModel` with `exec` the `runBBlock` fold. It
   reuses `ComBaseAlu` from `../RISCVBackend/ComToRiscvLsem.lean`.
 - `SailArm64Refinement.lean`: `armStep_transcription_matches_model` equates a
   hand-transcribed execute clause over its own register file with the `ArmModel` op

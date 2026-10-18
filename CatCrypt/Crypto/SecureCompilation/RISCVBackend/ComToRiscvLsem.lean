@@ -12,9 +12,9 @@ public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
 /-!
 # `Com → RISC-V`: a Sail-related block-execution model and value preservation
 
-This module defines the target-model structure `MachineModel`, used by the
+This module defines the target-model structure `IsaModel`, used by the
 RISC-V and AArch64 backends. For the RV64 base-ALU fragment, it defines a
-`MachineModel` whose `exec` is the `runRBlock64` block fold and relates each
+`IsaModel` whose `exec` is the `runRBlock64` block fold and relates each
 base-ALU step of that fold to the `execute_RTYPE` clause of an in-file excerpt
 of the sail-riscv-lean generated model (`SailRiscv64Refinement`).
 
@@ -38,7 +38,7 @@ of the sail-riscv-lean generated model (`SailRiscv64Refinement`).
 
 ## Main results
 
-`MachineModel` is the target-model structure that `riscvBaseAluModel`,
+`IsaModel` is the target-model structure that `riscvBaseAluModel`,
 `ComToRiscvMulLsem.riscvArithMulModel` and `ComToArmLsem.armBaseAluModel`
 instantiate.
 
@@ -58,7 +58,7 @@ via `runRd`). This module relates the two for the five ops ADD/SUB/AND/OR/XOR:
    instruction it runs is base-ALU (`riscvBlock_all_baseAlu`). The per-step Sail
    relation of item 1 applies to these instructions under its own hypotheses; it
    is not a conjunct of this theorem.
-3. **`riscvBaseAluModel`** — a `MachineModel` with `exec := runRBlock64` and
+3. **`riscvBaseAluModel`** — a `IsaModel` with `exec := runRBlock64` and
    `validated := RiscvBaseAluGrounded` (the statement of item 1), proved by
    `riscvBaseAluGrounded_proof`.
 
@@ -94,7 +94,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
     `Code`, the machine state `State`, the value carrier `Value` with the maps
     `encodeIn` and `decodeOut`, the execution semantics `exec`, and the
     proposition `validated` that the model's execution satisfies. -/
-structure MachineModel where
+structure IsaModel where
   /-- The emitted artifact for this ISA (e.g. an ARM or RISC-V instruction
       list). -/
   Code : Type
@@ -310,10 +310,10 @@ theorem comToRiscvLsem_correct {Γ : Ctxt jasminDialect}
     ∧ (∀ i ∈ lowerRBlock64 (regToROp (comToRegProg com Γ.length)), IsBaseAlu i) :=
   ⟨com_riscv_e2e hba.toComOK hΓ V s hs, riscvBlock_all_baseAlu hba⟩
 
-/-! ## 5. A RISC-V `MachineModel` with `exec := runRBlock64` -/
+/-! ## 5. A RISC-V `IsaModel` with `exec := runRBlock64` -/
 
 /-- The statement of `riscvStep64_sail_grounded` as a proposition, used as the
-    `MachineModel.validated` field. It is value-level: for
+    `IsaModel.validated` field. It is value-level: for
     every base-ALU `RInst64` with destination other than `"zero"`/`"x0"`, under
     `RegAlign s rf nm` and `(nm (rinstD i)).toNat ≠ 0`, the value `evalRInst64`
     writes to the destination equals the value the `execute_RTYPE` excerpt
@@ -330,11 +330,11 @@ def RiscvBaseAluGrounded : Prop :=
 theorem riscvBaseAluGrounded_proof : RiscvBaseAluGrounded :=
   fun s rf nm i hbase hdst halign hrd => riscvStep64_sail_grounded s rf nm i hbase hdst halign hrd
 
-/-- **The RISC-V base-ALU `MachineModel`.** Its `exec` is the `runRBlock64` block
+/-- **The RISC-V base-ALU `IsaModel`.** Its `exec` is the `runRBlock64` block
     fold over `RState64`, and its `validated` field is `RiscvBaseAluGrounded`
     (proved by `riscvBaseAluGrounded_proof`). `Code` is the executed `RInst64`
     list; `State` and `Value` are `RState64`; `encodeIn` and `decodeOut` are `id`. -/
-def riscvBaseAluModel : MachineModel where
+def riscvBaseAluModel : IsaModel where
   Code := List RInst64
   State := RState64
   Value := RState64

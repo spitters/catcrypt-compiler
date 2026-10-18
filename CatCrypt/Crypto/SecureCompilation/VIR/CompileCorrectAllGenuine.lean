@@ -70,10 +70,10 @@ inductive GenuineModelChoice where
   /-- ARM (AArch64) — `exec = runBBlock`, decode-round-trip grounding. -/
   | arm : GenuineModelChoice
 
-/-- The `MachineModel` for a choice —`riscvBaseAluModel` /
+/-- The `IsaModel` for a choice —`riscvBaseAluModel` /
     `armBaseAluModel`, each with a block-fold `exec` (`runRBlock64` /
     `runBBlock`). -/
-def genuineModel : GenuineModelChoice → MachineModel
+def genuineModel : GenuineModelChoice → IsaModel
   | .riscv => riscvBaseAluModel
   | .arm => armBaseAluModel
 

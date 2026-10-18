@@ -30,7 +30,7 @@ In `Optimizer/Pipeline.lean` this pass is `montgomeryPass`.
 
 * `montgomeryReduce q R` — the renaming pass, `renameCalls (montSubst q R)`.
 * `montAgreesMulModQ leafSpec q R` — the leaf-agreement hypothesis.
-* `callsAgree_montSubst` — `montAgreesMulModQ` gives `CallsAgree` for the
+* `renamedCallsAgree_montSubst` — `montAgreesMulModQ` gives `RenamedCallsAgree` for the
   renaming.
 * `rustExec_montgomeryReduce_iff` — under `montAgreesMulModQ`,
   `montgomeryReduce q R c` and `c` have the same executions; its ML-KEM
@@ -91,11 +91,11 @@ def montAgreesMulModQ (leafSpec : LeafSpec) (q R : Nat) : Prop :=
     leafSpec.call (montMulName q R) dt argTs oldV args =
       leafSpec.call f dt argTs oldV args
 
-/-- `montAgreesMulModQ` is the `CallsAgree` hypothesis of the renaming
+/-- `montAgreesMulModQ` is the `RenamedCallsAgree` hypothesis of the renaming
     `montSubst q R`. -/
-theorem callsAgree_montSubst {leafSpec : LeafSpec} {q R : Nat}
+theorem renamedCallsAgree_montSubst {leafSpec : LeafSpec} {q R : Nat}
     (hAgree : montAgreesMulModQ leafSpec q R) :
-    CallsAgree leafSpec (montSubst q R) := by
+    RenamedCallsAgree leafSpec (montSubst q R) := by
   intro f dt argTs oldV args
   unfold montSubst
   split
@@ -114,7 +114,7 @@ theorem rustExec_montgomeryReduce_iff
     (c : LowCT) (rs rs' : RustState) :
     RustExec N leafSpec (montgomeryReduce q R c) rs rs' ↔
       RustExec N leafSpec c rs rs' :=
-  rustExec_renameCalls_iff (callsAgree_montSubst hAgree) c rs rs'
+  rustExec_renameCalls_iff (renamedCallsAgree_montSubst hAgree) c rs rs'
 
 /-! ## §5  ML-KEM specialisation
 

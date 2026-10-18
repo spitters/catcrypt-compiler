@@ -17,7 +17,7 @@ block-execution semantics: `runRBlock64` for RISC-V and `runBBlock` for ARM.
 
 ## Main results
 
-* `compile_correct_baseAlu` — the equation for a `MachineModel` whose value
+* `compile_correct_baseAlu` — the equation for a `IsaModel` whose value
   carrier is its state.
 * `compile_correct_riscv`, `compile_correct_arm` — the equation for
   `riscvBaseAluModel` and `armBaseAluModel` on the base-ALU fragment.
@@ -171,9 +171,9 @@ theorem compile_correct_arm {Γ : Ctxt jasminDialect}
     ∧ (∀ i ∈ armBlockOf (comToRegProg com Γ.length), IsGpAlu i)
   exact comToArmLsem_correct hba hΓ V (encodeArmState V) rfl
 
-/-! ## 4. The parametric `MachineModel`-level statement
+/-! ## 4. The parametric `IsaModel`-level statement
 
-Both per-architecture results above are instances of one `MachineModel`-level
+Both per-architecture results above are instances of one `IsaModel`-level
 CompCert shape: given a model `M` whose `State = Value` (the register state) with
 `decodeOut`/`encodeIn` reducing to `id` on the carrier, an input state, and a
 value fact about `M.exec` on that state, the equation
@@ -182,8 +182,8 @@ holds, and its left-hand side runs `M.exec`. `compile_correct_baseAlu` states
 this generically; it is instantiated at `riscvBaseAluModel`/`armBaseAluModel`
 below, where `M.exec` is `runRBlock64`/`runBBlock`. -/
 
-/-- **`compile_correct_baseAlu` — the `MachineModel`-parametric CompCert shape.**
-    Stated for a `MachineModel M` whose value carrier is its state
+/-- **`compile_correct_baseAlu` — the `IsaModel`-parametric CompCert shape.**
+    Stated for a `IsaModel M` whose value carrier is its state
     (`hVal : Value = State`, as in the base-ALU models, where
     `encodeIn = decodeOut = id`). Given the carrier-identity facts
     (`hEnc`/`hDec`), a register read-back `readReg`, the compiled block `code`,
@@ -198,7 +198,7 @@ below, where `M.exec` is `runRBlock64`/`runBBlock`. -/
     `comToRiscvLsem_correct`) and `armBaseAluModel` (`M.exec = runBBlock`, `hKey`
     from `comToArmLsem_correct`); see `compile_correct_baseAlu_riscv`/`_arm`. -/
 theorem compile_correct_baseAlu
-    (M : MachineModel) (hVal : M.Value = M.State)
+    (M : IsaModel) (hVal : M.Value = M.State)
     (hEnc : ∀ s : M.State, M.encodeIn (hVal ▸ s) = s)
     (hDec : ∀ s : M.State, (hVal ▸ M.decodeOut s : M.State) = s)
     (readReg : M.State → String → BitVec 64)

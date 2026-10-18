@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 # `Com → RISC-V`: value preservation and per-step Sail agreement with `MUL`/`MULHU`
 
 `ComToRiscvLsem.lean` relates the RV64 base-ALU fragment (ADD/SUB/AND/OR/XOR) to
-the sail-riscv `execute_RTYPE` clause and builds a `MachineModel`
+the sail-riscv `execute_RTYPE` clause and builds a `IsaModel`
 (`riscvBaseAluModel`, `exec := runRBlock64`) whose `validated` field is the per-op
 Sail agreement. `MUL`/`MULHU` go through a different Sail clause (`execute_MUL`,
 the M-extension `mult_to_bits_half` path), which that module does not cover.
@@ -59,7 +59,7 @@ This module extends the fragment to the **arith+mul** subset — base-ALU ∪
    `IsArithMul`. The theorem does not apply the step agreement of item 2 along the
    run; the block execution is the `RiscvModel64` fold, not the Sail semantics.
 4. **`riscvArithMulModel`** (the widened 5c) — the non-`id`
-   `MachineModel` (`exec := runRBlock64`) whose `validated` field is the widened
+   `IsaModel` (`exec := runRBlock64`) whose `validated` field is the widened
    grounding `RiscvArithMulGrounded`, inhabited by the proved step lemma.
 
 ## Scope
@@ -333,7 +333,7 @@ theorem comToRiscvLsem_correct_mul {Γ : Ctxt jasminDialect}
 /-! ## 5. (5c widened) A non-`id` `exec` for the arith+mul model -/
 
 /-- The proposition recording the per-op Sail grounding (widened 5a), to inhabit
-    the `MachineModel.validated` field at value depth: every arith+mul step of
+    the `IsaModel.validated` field at value depth: every arith+mul step of
     the execution semantics is the sail-riscv step (`execute_RTYPE` for base-ALU,
     `execute_MUL` for `MUL`/`MULHU`), via the `sailClause` selector. -/
 def RiscvArithMulGrounded : Prop :=
@@ -348,13 +348,13 @@ theorem riscvArithMulGrounded_proof : RiscvArithMulGrounded :=
   fun s rf nm i ham hdst halign hrd =>
     riscvStepArithMul_sail_grounded s rf nm i ham hdst halign hrd
 
-/-- **5c (widened) — the RISC-V arith+mul `MachineModel`.**
+/-- **5c (widened) — the RISC-V arith+mul `IsaModel`.**
     Like `ComToRiscvLsem.riscvBaseAluModel`, its `exec` is the
     `runRBlock64` block fold, and its
     `validated` field is the widened Sail-grounding `RiscvArithMulGrounded`
     (inhabited by `riscvArithMulGrounded_proof`), covering the M-extension
     ops `MUL`/`MULHU` in addition to the base ALU. -/
-def riscvArithMulModel : MachineModel where
+def riscvArithMulModel : IsaModel where
   Code := List RInst64
   State := RState64
   Value := RState64
