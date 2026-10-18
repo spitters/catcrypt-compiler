@@ -13,6 +13,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToEl
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+import all Init.Data.String.TakeDrop
 
 /-!
 # Redundant spill-reload elimination on the owned-RA `Lcmd`, and the optimized render
@@ -93,6 +94,15 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
     register. -/
 def isSlotName (n : String) : Bool :=
   "k.".isPrefixOf n || "qsave.".isPrefixOf n || "mem.".isPrefixOf n
+
+/-- `isSlotName` through the character-list prefix test `hasPrefix`, which `decide` evaluates
+    on literals. -/
+theorem isSlotName_eq_hasPrefix (n : String) :
+    isSlotName n = (hasPrefix n "k." || hasPrefix n "qsave." || hasPrefix n "mem.") := by
+  have h : ∀ p : String, p.isPrefixOf n = hasPrefix n p := fun p => by
+    show n.startsWith p = _
+    exact Bool.eq_iff_iff.mpr (by simp [hasPrefix, List.isPrefixOf_iff_prefix])
+  simp only [isSlotName, h]
 
 /-- An operand name the printer resolves to a bare register: any name outside the
     memory class. -/
