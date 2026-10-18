@@ -323,6 +323,30 @@ def abiSaveOfExt (reg : String) : Option String :=
       else if reg == "R9"  then some "qsave.R9"
       else none
 
+/-- **The argument registers the looped prologue saves after its fixed part**: the
+    arguments of `abiArgs` after the first two, without `RDI` and `RSI`, which
+    `buildPrologue` saves in every prologue, so the prologue of `lfundefPhysAbiOfVirtCert`
+    saves neither of them a second time. On a System V layout, whose argument registers are a
+    prefix of `RDI, RSI, RDX, RCX, R8, R9`, this list is `abiArgs.drop 2`. -/
+def extraSaveRegs (abiArgs : List String) : List String :=
+  (abiArgs.drop 2).filter fun r => !(r == "RDI" || r == "RSI")
+
+/-- `extraSaveRegs` contains neither `RDI` nor `RSI`. -/
+theorem not_mem_extraSaveRegs {abiArgs : List String} {r : String}
+    (h : r ∈ extraSaveRegs abiArgs) : r ≠ "RDI" ∧ r ≠ "RSI" := by
+  simp only [extraSaveRegs, List.mem_filter, Bool.not_eq_true', Bool.or_eq_false_iff,
+    beq_eq_false_iff_ne] at h
+  exact h.2
+
+/-- **`extraSaveRegs` skips nothing on a layout without `RDI` and `RSI` after the first two
+    arguments**, among them every prefix of the System V argument registers. -/
+theorem extraSaveRegs_eq_drop {abiArgs : List String}
+    (h : ∀ r ∈ abiArgs.drop 2, r ≠ "RDI" ∧ r ≠ "RSI") :
+    extraSaveRegs abiArgs = abiArgs.drop 2 := by
+  refine List.filter_eq_self.mpr fun r hr => ?_
+  obtain ⟨h1, h2⟩ := h r hr
+  simp [h1, h2]
+
 /-- **The stack offset of an argument name**: `off` for the export name `RSP+off` of a
     parameter that the caller passes in the stack word `[RSP + off]` (the seventh and later
     System V integer arguments), and `none` for every other name, among them every
@@ -2676,8 +2700,9 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- after the `RSI→R14` park), so the single-input / 2-pointer prologue bytes
   -- are unchanged. The save sources the live ABI register directly (it is still
   -- live at entry; `buildArgPtrMaterialize` only clobbers it afterwards).
+  -- `RDI` and `RSI`, which the fixed prologue saves, are skipped (`extraSaveRegs`).
   let extraInputSaves : Lcmd :=
-    (abiArgs.drop 2).filterMap (fun abiReg =>
+    (extraSaveRegs abiArgs).filterMap (fun abiReg =>
       match abiSaveOfExt abiReg with
       | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
       | none => none)

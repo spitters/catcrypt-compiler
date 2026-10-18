@@ -268,9 +268,10 @@ def abiCallReload : List (String × String) :=
         if isCallerSavedAllocGPR phys then some (phys, saveName) else none
     | none => none)
 
-/-- The saves of the third and later argument registers to their red-zone slots. -/
+/-- The saves of the third and later argument registers other than `RDI` and `RSI` to their
+    red-zone slots (`extraSaveRegs`). -/
 def abiExtraSaves : Lcmd :=
-  (abiArgs.drop 2).filterMap (fun abiReg =>
+  (extraSaveRegs abiArgs).filterMap (fun abiReg =>
     match abiSaveOfExt abiReg with
     | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
     | none => none)

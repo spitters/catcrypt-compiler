@@ -23,10 +23,9 @@ keeps it because the names of every fact are names of the output in front of the
 source of an array-slot move is rewritten. The condition `slotAfterSlotReloadFreeB` is kept by
 the same two passes.
 
-The fused export body of `lfundefPhysAbiOfVirtCert` satisfies `saveFreshB` when `qsave.RSI` is
-no array slot whenever `RSI` is a parameter register at index two or more: the prologue parks
-`RSI` in `R14` before the saves of `extraSaves`, and such a parameter adds a second save
-`MOVQ qsave.RSI, RSI` behind the park.
+The fused export body of `lfundefPhysAbiOfVirtCert` satisfies `saveFreshB`: the prologue parks
+`RSI` in `R14` before the saves of `extraSaves`, and these save no register the fixed prologue
+saves (`mem_extraSaves_ne`), so no array-slot save behind the park reads `RSI`.
 
 ## Main results
 
@@ -685,14 +684,14 @@ theorem prologueTail_names :
   decide +kernel
 
 /-- **The prologue and its saves satisfy `saveFreshB`** in front of a body that writes no array
-    slot, when every array slot is a frame slot and `qsave.RSI` is no array slot whenever `RSI`
-    is a parameter of `extraSaves`. -/
+    slot, when every array slot is a frame slot. -/
 theorem saveFreshB_prologue (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true)
     (virt : Lfundef) (tbl : Array Nat) (abiArgs : List String) {Y : Lcmd}
-    (hrsi : "RSI" ∈ abiArgs.drop 2 → slotArr "qsave.RSI" = none)
     (hY : ∀ j ∈ Y, noSlotWriteB slotArr j = true) :
     saveFreshB slotArr [] ((buildPrologue virt tbl (fun _ => none) ++ extraSaves abiArgs) ++ Y)
       = true := by
+  have hrsi : "RSI" ∈ extraSaveRegs abiArgs → slotArr "qsave.RSI" = none :=
+    fun h => absurd rfl (not_mem_extraSaveRegs h).2
   have hT : ∀ R ∈ (buildPrologue {} #[] (fun _ => none)).tail.flatMap (fun j => instrNames j.li_i),
       ∀ s, abiSaveOfExt R = some s → R = "RSI" := by
     intro R hR s hs
@@ -705,7 +704,8 @@ theorem saveFreshB_prologue (hq : ∀ q, (slotArr q).isSome = true → hasPrefix
     rw [saveFreshB_cons_some (slotSaveSrc?_of_shape rfl (by decide +kernel) hrdi)]
     simp only [List.contains_nil, Bool.not_false, Bool.true_and]
     refine saveFreshB_append_of_max hq _ (fun _ hx => hx) prologueTail_max_nil fun S' hS => ?_
-    refine saveFreshB_extraSaves _ (fun R hR s hs _ => hT R (by simpa using hS hR) s hs) hrsi hY
+    refine saveFreshB_extraSaves (extraSaveRegs abiArgs)
+      (fun R hR s hs _ => hT R (by simpa using hS hR) s hs) hrsi hY
   | false =>
     have hn : slotSaveSrc? slotArr prologueHead = none := by
       simp [slotSaveSrc?, CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload, hrdi, isMov64Mnem_MOVQ]
@@ -713,7 +713,7 @@ theorem saveFreshB_prologue (hq : ∀ q, (slotArr q).isSome = true → hasPrefix
     have hnm : instrNames prologueHead.li_i = ["qsave.RDI", "RDI"] := rfl
     rw [hnm]
     refine saveFreshB_append_of_max hq _ (fun _ hx => hx) prologueTail_max_head fun S' hS => ?_
-    refine saveFreshB_extraSaves _ (fun R hR s hs hss => ?_) hrsi hY
+    refine saveFreshB_extraSaves (extraSaveRegs abiArgs) (fun R hR s hs hss => ?_) hrsi hY
     rcases List.mem_append.mp (hS hR) with hR | hR
     · simp only [List.nil_append, List.mem_cons, List.not_mem_nil, or_false] at hR
       rcases hR with rfl | rfl
@@ -727,12 +727,10 @@ theorem saveFreshB_prologue (hq : ∀ q, (slotArr q).isSome = true → hasPrefix
     · exact hT R hR s hs
 
 /-- **The array-slot saves of the fused export body read fresh names.** Under the hypotheses of
-    `order_lfundefPhysAbiOfVirtCert`, and when `qsave.RSI` is no array slot whenever `RSI` is a
-    parameter register at index two or more, the fusion of the export body of
-    `lfundefPhysAbiOfVirtCert` satisfies `saveFreshB`. The second condition excludes the
-    duplicate save of `extraSaves` (`PhysImgEmit.extraSaves`): for such a parameter the
-    prologue parks `RSI` in `R14` by `MOVQ R14, RSI` and `extraSaves` then emits a second
-    `MOVQ qsave.RSI, RSI`, an array-slot move that reads the name `RSI` of the park. -/
+    `order_lfundefPhysAbiOfVirtCert`, the fusion of the export body of
+    `lfundefPhysAbiOfVirtCert` satisfies `saveFreshB`. The prologue parks `RSI` in `R14` by
+    `MOVQ R14, RSI`, and no save of `extraSaves` behind the park reads `RSI`
+    (`mem_extraSaves_ne`). -/
 theorem saveFreshB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × Nat)}
     (virt0 : Lfundef) (outArg' : String) (inArgs' accRegs : List String)
     (shiftImm : ShiftImmOracle) (abiArgs : List String) (abiTyin : List Nat)
@@ -754,8 +752,7 @@ theorem saveFreshB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
       mbr i.li_i)
     (harr : ∀ i ∈ body1, ∀ q n, LOperand.arr q n ∈ lopnOperands i.li_i → slotArr q = none)
     (hidx : ∀ i ∈ body1, isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true)
-    (hslot : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true)
-    (hrsi : "RSI" ∈ abiArgs.drop 2 → slotArr "qsave.RSI" = none) :
+    (hslot : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) :
     let b0 := (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs
       abiTyin x86Abi posBind).1.lfd_body
     saveFreshB slotArr [] (fuseMulHiBody b0 true) = true := by
@@ -770,7 +767,7 @@ theorem saveFreshB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
       posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
     obtain ⟨-, -, -, hD⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
       hshape harr hidx hslot
-    refine saveFreshB_prologue hslot _ _ abiArgs hrsi fun j hj => ?_
+    refine saveFreshB_prologue hslot _ _ abiArgs fun j hj => ?_
     rcases List.mem_append.mp hj with hj | hj
     · exact noWrite_of_dstOkB (dstOkB_of_dstOk
         (buildArgPtrMaterialize_dstOk hslot _ _ _ _ j hj))

@@ -314,7 +314,9 @@ def condSub64 : List Step :=
    .bin .sub 0 1, .bin .shr 4 2, .bin .sub 3 5, .bin .and 6 1, .bin .add 4 7]
 
 /- On `x` in `[p, 2p - 1]` the subtract always applies: the stage leaves the constant `p`
-   and `x - p`. -/
+   and `x - p`. The first check of the file also pays for compiling the stage, so its budget
+   is larger. -/
+set_option kat.ms 1000 in
 #kat (build 64 [.reg 64] condSub64).map (fun c =>
     UncomputePass.comLen (rangeFoldStage 0 (.cons (2013265921, 4026531841) .nil) c))
   == some 2

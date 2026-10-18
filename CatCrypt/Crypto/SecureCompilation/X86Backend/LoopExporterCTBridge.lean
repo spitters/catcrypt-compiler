@@ -920,10 +920,10 @@ theorem aliasRegBody_lcmdDirect (from_ to_ : String) {body : Lcmd}
     lcmdDirect (aliasRegBody from_ to_ body) = true :=
   lcmdDirect_mapOperands (aliasRegOperand_isIndexed from_ to_) h
 
-/-- The extra pointer-argument saves the multi-input prologue appends use register
-    operands only. -/
-theorem extraInputSaves_lcmdDirect (abiArgs : List String) :
-    lcmdDirect ((abiArgs.drop 2).filterMap (fun abiReg =>
+/-- The saves of a list of argument registers to their save slots, which the multi-input
+    prologue appends, use register operands only. -/
+theorem extraInputSaves_lcmdDirect (regs : List String) :
+    lcmdDirect (regs.filterMap (fun abiReg =>
       match abiSaveOfExt abiReg with
       | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
       | none => none)) = true := by
@@ -990,7 +990,7 @@ theorem ComL_toLfundefPhysAbi_lcmdDirect {Γ : Ctxt jasminDialect} {t : JasminTy
     lcmdDirect (ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs
       abiTyin).lfd_body = true := by
   refine physAbiLoopWrap_lcmdDirect _ _ _ _ _ _ _ _
-    (extraInputSaves_lcmdDirect abiArgs) ?_
+    (extraInputSaves_lcmdDirect (extraSaveRegs abiArgs)) ?_
   exact lcmdDirect_append_of (livePin_lcmdDirect abiArgs)
     (canonicalizeMemrefThread_lcmdDirect
       (foldl_lcmdDirect_of _ (fun _ _ hb => aliasRegBody_lcmdDirect _ _ hb) _ _

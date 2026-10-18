@@ -1093,13 +1093,25 @@ theorem abiSaveOfExt_spec {r s : String} (h : abiSaveOfExt r = some s) :
   split_ifs at h with h1 h2 h3 h4 h5 h6 <;> simp only [beq_iff_eq] at * <;> cases h <;>
     subst_vars <;> exact ⟨by decide +kernel, by simp⟩
 
-/-- The saves of the arguments after the first two (the prologue tail of
-    `lfundefPhysAbiOfVirtCert`). -/
+/-- The saves of the arguments after the first two other than `RDI` and `RSI` (the prologue
+    tail of `lfundefPhysAbiOfVirtCert`, over `extraSaveRegs`). -/
 abbrev extraSaves (abiArgs : List String) : Lcmd :=
-  (abiArgs.drop 2).filterMap (fun abiReg =>
+  (extraSaveRegs abiArgs).filterMap (fun abiReg =>
     match abiSaveOfExt abiReg with
     | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
     | none => none)
+
+/-- **The saves of `extraSaves` repeat no save of the fixed prologue**: a save of `extraSaves`
+    reads an argument register other than `RDI` and `RSI`, the two argument registers
+    `buildPrologue` saves. -/
+theorem mem_extraSaves_ne {abiArgs : List String} {j : Linstr} (h : j ∈ extraSaves abiArgs) :
+    ∃ r s, abiSaveOfExt r = some s ∧ r ≠ "RDI" ∧ r ≠ "RSI" ∧
+      j = ⟨0, .Lopn [.reg s] "MOVQ" [.reg r]⟩ := by
+  obtain ⟨r, hr, hf⟩ := List.mem_filterMap.mp h
+  obtain ⟨h1, h2⟩ := not_mem_extraSaveRegs hr
+  split at hf
+  · next s hs => cases hf; exact ⟨r, s, hs, h1, h2, rfl⟩
+  · cases hf
 
 theorem mem_extraSaves {abiArgs : List String} {j : Linstr} (h : j ∈ extraSaves abiArgs) :
     ∃ r s, abiSaveOfExt r = some s ∧ j = ⟨0, .Lopn [.reg s] "MOVQ" [.reg r]⟩ := by

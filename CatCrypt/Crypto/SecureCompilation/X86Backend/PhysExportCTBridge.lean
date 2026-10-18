@@ -158,10 +158,10 @@ theorem buildArgPtrMaterialize_straight (virt : Lfundef) (tbl : Array Nat)
   all_goals simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
   all_goals (rcases hmem with rfl | rfl) <;> rfl
 
-/-- The extra pointer-argument saves of a multi-input prologue are
-    straight-line. -/
-theorem extraInputSaves_straight (abiArgs : List String) :
-    ∀ i ∈ (abiArgs.drop 2).filterMap (fun abiReg =>
+/-- The saves of a list of argument registers to their save slots, which a multi-input
+    prologue appends, are straight-line. -/
+theorem extraInputSaves_straight (regs : List String) :
+    ∀ i ∈ regs.filterMap (fun abiReg =>
       match abiSaveOfExt abiReg with
       | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
       | none => none), isStraightL i = true := by

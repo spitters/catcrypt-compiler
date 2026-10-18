@@ -883,9 +883,9 @@ theorem reg_resolved_of_abiSaveOfExt {reg q : String} (h : abiSaveOfExt reg = so
     · rw [beq_iff_eq] at h2; subst h2; decide
   · split_ifs at h with h1 h2 h3 h4 <;> simp only [beq_iff_eq] at * <;> subst_vars <;> decide
 
-/-- The prologue saves of the arguments after the first two are resolved. -/
-theorem extraInputSaves_resolved (abiArgs : List String) :
-    ∀ r ∈ (abiArgs.drop 2).filterMap (fun abiReg =>
+/-- The prologue saves of a list of argument registers to their save slots are resolved. -/
+theorem extraInputSaves_resolved (regs : List String) :
+    ∀ r ∈ regs.filterMap (fun abiReg =>
       match abiSaveOfExt abiReg with
       | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
       | none => none), OpsResolved r.li_i := by
@@ -1063,7 +1063,7 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
       ← fromVirtAllocBody_none, ← fromVirtAllocBody_some] at hr
     rcases hr with ((hp | hx) | ha) | hb
     · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
-    · exact extraInputSaves_resolved abiArgs r hx
+    · exact extraInputSaves_resolved _ r hx
     · refine buildArgPtrMaterialize_resolved _ _ abiArgs inLoadMap ?_ habi r ha
       exact hargs
     · refine insertEpilogue_resolved _ _ ?_ ?_ r hb
@@ -1141,7 +1141,7 @@ theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : Stri
   simp only [lfundefPhysAbiOfVirt, lfundefPhysAbiOfVirtCert, List.mem_append, hB] at hr
   rcases hr with ((hp | hx) | ha) | hb
   · exact opsResolved_of_wfLinstr (buildPrologue_wf _ _ _ r hp)
-  · exact extraInputSaves_resolved abiArgs r hx
+  · exact extraInputSaves_resolved _ r hx
   · refine buildArgPtrMaterialize_resolved _ _ abiArgs _ ?_ habi r ha
     exact hphys
   · refine insertEpilogue_resolved _ _ ?_ ?_ r hb
