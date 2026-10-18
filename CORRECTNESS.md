@@ -124,9 +124,12 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`regionChain_bytes_ct`): the chain passes (`haxToNFCT_of_haxToNFCTB`), the export
   (`regionRef_memFCT`), allocation and printing by translation validation
   (`regionImage_memFCT`) and the bytes (`regionChain_bytes_ct`); `compileRegion` returns
-  bytes only if the leakage checks `regionCtB` accept the printed body, and the theorems
-  take `m.linked = []`.
-  `haxc_rc_proved_all` adds robust compilation under the same hypotheses; UC preservation
+  bytes only if the leakage checks `regionCtB` accept the printed body.
+  `haxc_ct_proved_all` covers modules whose linked functions are linked word kernels
+  (`LinkedWordKernel`), through the leakage check `calleeCtB` of the calling body and
+  `ctCheckRX_sound`; the joint statements `haxc_correct_auto_ct_proved_all`,
+  `haxc_gate_proved_all` and `haxc_rc_proved_all` take `m.linked = []`.
+  `haxc_rc_proved_all` adds robust compilation under the hypotheses of the joint statement; UC preservation
   follows from its gate conclusion by `uc_of_gate`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
   `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
   For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
