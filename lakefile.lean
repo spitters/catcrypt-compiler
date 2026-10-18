@@ -2696,6 +2696,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSched,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideCmp,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation,
@@ -2863,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Invariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Linking,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Model,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.SigningDiscipline,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Soundness.CoinductiveAttacker,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Soundness.Fixpoints,
