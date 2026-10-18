@@ -7,6 +7,8 @@ module
 
 public import CatCrypt.Crypto.Jasmin.JasminAST
 public meta import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JazzUnit
+public meta import CatCrypt.Crypto.Jasmin.JazzUnit
 public import CatCryptCore.Tactics.KatGuard
 
 @[expose] public section
@@ -16,54 +18,65 @@ set_option autoImplicit false
 # `.jazz` text → `InstrR` parser
 
 A recursive-descent parser from Jasmin surface syntax to the `JasminAST` types
-(`FunDecl`, `InstrR`, `PExpr`, `LVal`) interpreted by `bignumExec`. The accepted
-subset is the one the `S2NBignumSSA` ports and their printer
-`Emit.emitFunDecl` use. Every function is total: recursion is bounded by a fuel
-argument proportional to the input length, so the parser also reduces in the
-kernel.
+(`FunDecl`, `InstrR`, `PExpr`, `LVal`) interpreted by `bignumExec`, and to the
+compilation units `Jazz.JazzUnit` that carry the surface information of a text.
+The accepted subset is the one the `S2NBignumSSA` ports, their printer
+`Emit.emitFunDecl` and the unit printer `Jazz.print` use. Every function is
+total: recursion is bounded by a fuel argument proportional to the input length,
+so the parser also reduces in the kernel.
 
 ## Accepted subset
 
-* Top level: function declarations `[#[…]] [export | inline] fn f(params)
-  [-> types] { body }`. Annotations `#[…]` and the return-type list are read and
-  discarded; the results are the names of the final `return x, y;`.
-* Parameters and declarations: `reg | stack | inline`, an optional `ptr`,
-  `mut` or `const` qualifier, and a type `uNN`, `uNN[k]`, `bool` or `int`; a
-  declaration lists one or more names, separated by spaces or commas. A type
-  `uNN[k]` is the array type `sarr (k * bytes uNN)` with element width `uNN`.
+* Top level: function declarations `[#[…]]… [export | inline] fn f(params)
+  [-> types] { body }`, each preceded by any number of `//` comment lines and
+  `require "path"` lines. The annotations, the function kind, the comment lines
+  (the preamble of the next function), the `require` paths and the storage and
+  type of each result are recorded in the `JazzFn` of `parseUnit`; the results
+  are the names of the final `return x, y;`.
+* Parameters and declarations: `reg | stack | inline`, the qualifiers `ptr`,
+  `mut` and `const`, and a type `uNN`, `uNN[k]`, `bool` or `int`; a declaration
+  lists one or more names, separated by spaces or commas. A type `uNN[k]` is the
+  array type `sarr (k * bytes uNN)` with element width `uNN`. The storage class is
+  `reg`, `reg ptr` (`regPtr false`, also for `reg const ptr`), `reg mut ptr`
+  (`regPtr true`), `stack`, `stack ptr` or `inline`.
 * Statements:
   - `lv = e;` (`Cassgn`, tag `AT_none`, type the declared type of `lv`);
   - `lv OP= e;` for `OP` in `+ - * & | ^ << >> >>s`, read as `lv = lv OP e`;
   - `lv₁, …, lvₙ = #OP(args);` (`Copn` with `Oasm ⟨OP⟩`), and `#OP(args);`;
   - `lv₁, …, lvₙ = f(args);` and `f(args);` (`Ccall .DoNotInline`);
   - `if e { … } else { … }` (the `else` part optional);
-  - `for i = lo to hi { … }` with numeral bounds;
+  - `for i = lo to hi { … }` and `for i = hi downto lo { … }` with numeral bounds;
   - `while e { … }`, `while { … } e { … }` and `while { … } e`.
-* L-values: `x`, `_` (`Lnone {} (.sword .U64)`), `x[e]` (`Laset .AAscale`)
-  and `[:uNN x + e]` or `[x + e]` (`Lmem`, width `U64` when omitted).
+* L-values: `x`, `_` (`Lnone {} (.sword .U64)`; `parseUnit` types the `_` outputs
+  of an intrinsic by `asmOutTys`), `x[e]` (`Laset .AAscale`) and `[:uNN x + e]` or
+  `[x + e]` (`Lmem`, width `U64` when omitted).
 * Expressions: decimal and `0x` numerals (`Pconst`), `-k` (`Pconst (-k)`),
   `true`, `false`, variables, `x[e]` (`Pget .AAscale`), memory reads
   `[:uNN x + e]` (`Pload`), `-e` (`0 - e`), `!e` (`Olnot`), the cast `(NNu) e`
-  (`Ozeroext`), parentheses, and the binary operators
+  (`Ozeroext`), parentheses, the conditional `c ? a : b` (`Pif`, at the type
+  `uNN` of the width of `a`, else of the target), and the binary operators
   `|| && | ^ & == != < <= > >= <s <=s >s >=s << >> >>s + - *` with C precedence
   and left associativity. The width of a binary operator is the width of its
   left operand when that is a word-typed variable, load, array read or cast, and
   otherwise the width of the assignment target.
-* Comments `// …` and `/* … */`.
+* Comments `// …` and `/* … */`; a `//` line outside every function body is a
+  preamble line, any other comment is whitespace.
 
-Any other construct (`require`, `param`, globals, string literals, `downto`
-loops, `else if`, calls or intrinsics inside an expression, undeclared
-variables) is a parse error naming the construct.
+Any other construct (`param`, globals, `else if`, calls or intrinsics inside an
+expression, undeclared variables) is a parse error naming the construct.
 
 ## Main definitions
 
 * `tokenize`: the lexer.
+* `asmOutTys`, `retypeOpnLvs`: the output types of an intrinsic and the typing of
+  the `_` outputs of an intrinsic call by them.
+* `parseUnit`: `.jazz` text → `Jazz.JazzUnit`.
 * `parseJazz`: `.jazz` text → `List FunDecl`.
 * `parseJazzProg`: `.jazz` text → `JasminProg`.
 * `parseJazzBody`: a statement sequence under a given declaration environment
   → `List InstrR`.
-* `instrsBEq`, `funDeclBEq`, `parsesTo`: structural equality of the AST and the
-  check that a text parses to given declarations.
+* `pexprBEq`, `instrsBEq`, `funDeclBEq`, `parsesTo`: structural equality of the AST
+  and the check that a text parses to given declarations.
 
 The `RoundTrip` section checks, by `#kat`, that the text `Emit.emitFunDecl`
 prints for the `bignum_add_4` port parses to that port's `FunDecl` (with the
@@ -99,6 +112,11 @@ inductive Token where
   | binEq (o : BinTok)
   | cmp (c : CmpTok)
   | andAnd | orOr
+  | question
+  /-- A string literal, without its quotes. -/
+  | str (s : String)
+  /-- A `//` comment line outside every brace pair, `//` included. -/
+  | lcomment (s : String)
   deriving Repr, DecidableEq, Inhabited
 
 /-! ## Lexer -/
@@ -136,92 +154,108 @@ def dropBlockComment : List Char → Option (List Char)
   | _ :: rest => dropBlockComment rest
   | [] => none
 
-/-- The lexer loop. Each step consumes at least one character, so fuel
+/-- The lexer loop; `d` is the brace depth, and a `//` line at depth `0` is an
+    `lcomment` token. Each step consumes at least one character, so fuel
     `cs.length + 1` suffices. -/
-def lexF : Nat → List Char → List Token → Except String (List Token)
-  | 0, _, _ => .error "JazzToInstrR.lex: fuel exhausted"
-  | _ + 1, [], acc => .ok acc.reverse
-  | f + 1, c :: cs, acc =>
-    if c.isWhitespace then lexF f cs acc else
+def lexF : Nat → Nat → List Char → List Token → Except String (List Token)
+  | 0, _, _, _ => .error "JazzToInstrR.lex: fuel exhausted"
+  | _ + 1, _, [], acc => .ok acc.reverse
+  | f + 1, d, c :: cs, acc =>
+    if c.isWhitespace then lexF f d cs acc else
     match c, cs with
-    | '/', '/' :: rest => lexF f (rest.dropWhile (· ≠ '\n')) acc
+    | '/', '/' :: rest =>
+        let rest' := rest.dropWhile (· ≠ '\n')
+        if d = 0 then
+          lexF f d rest' (.lcomment ("//" ++ String.ofList (rest.takeWhile (· ≠ '\n'))) :: acc)
+        else lexF f d rest' acc
     | '/', '*' :: rest =>
         match dropBlockComment rest with
-        | some r => lexF f r acc
+        | some r => lexF f d r acc
         | none => .error "JazzToInstrR.lex: unterminated block comment"
-    | '>', '>' :: 's' :: '=' :: rest => lexF f rest (.binEq .sar :: acc)
-    | '>', '>' :: '=' :: rest => lexF f rest (.binEq .shr :: acc)
-    | '<', '<' :: '=' :: rest => lexF f rest (.binEq .shl :: acc)
-    | '>', '>' :: 's' :: rest => lexF f rest (.bin .sar :: acc)
-    | '>', '>' :: rest => lexF f rest (.bin .shr :: acc)
-    | '<', '<' :: rest => lexF f rest (.bin .shl :: acc)
-    | '<', '=' :: 's' :: rest => lexF f rest (.cmp .les :: acc)
-    | '>', '=' :: 's' :: rest => lexF f rest (.cmp .ges :: acc)
-    | '<', '=' :: rest => lexF f rest (.cmp .le :: acc)
-    | '>', '=' :: rest => lexF f rest (.cmp .ge :: acc)
-    | '<', 's' :: rest => lexF f rest (.cmp .lts :: acc)
-    | '>', 's' :: rest => lexF f rest (.cmp .gts :: acc)
-    | '<', rest => lexF f rest (.cmp .lt :: acc)
-    | '>', rest => lexF f rest (.cmp .gt :: acc)
-    | '=', '=' :: rest => lexF f rest (.cmp .eq :: acc)
-    | '!', '=' :: rest => lexF f rest (.cmp .ne :: acc)
-    | '&', '&' :: rest => lexF f rest (.andAnd :: acc)
-    | '|', '|' :: rest => lexF f rest (.orOr :: acc)
-    | '+', '=' :: rest => lexF f rest (.binEq .add :: acc)
-    | '-', '=' :: rest => lexF f rest (.binEq .sub :: acc)
-    | '*', '=' :: rest => lexF f rest (.binEq .mul :: acc)
-    | '&', '=' :: rest => lexF f rest (.binEq .land :: acc)
-    | '|', '=' :: rest => lexF f rest (.binEq .lor :: acc)
-    | '^', '=' :: rest => lexF f rest (.binEq .lxor :: acc)
-    | '-', '>' :: rest => lexF f rest (.arrow :: acc)
-    | '+', rest => lexF f rest (.bin .add :: acc)
-    | '-', rest => lexF f rest (.bin .sub :: acc)
-    | '*', rest => lexF f rest (.bin .mul :: acc)
-    | '&', rest => lexF f rest (.bin .land :: acc)
-    | '|', rest => lexF f rest (.bin .lor :: acc)
-    | '^', rest => lexF f rest (.bin .lxor :: acc)
-    | '(', rest => lexF f rest (.lparen :: acc)
-    | ')', rest => lexF f rest (.rparen :: acc)
-    | '{', rest => lexF f rest (.lbrace :: acc)
-    | '}', rest => lexF f rest (.rbrace :: acc)
-    | '[', rest => lexF f rest (.lbrack :: acc)
-    | ']', rest => lexF f rest (.rbrack :: acc)
-    | ';', rest => lexF f rest (.semi :: acc)
-    | ',', rest => lexF f rest (.comma :: acc)
-    | ':', rest => lexF f rest (.colon :: acc)
-    | '=', rest => lexF f rest (.assign :: acc)
-    | '#', rest => lexF f rest (.hash :: acc)
-    | '!', rest => lexF f rest (.bang :: acc)
-    | '"', _ => .error "JazzToInstrR.lex: string literals (require, param) are not in the subset"
+    | '>', '>' :: 's' :: '=' :: rest => lexF f d rest (.binEq .sar :: acc)
+    | '>', '>' :: '=' :: rest => lexF f d rest (.binEq .shr :: acc)
+    | '<', '<' :: '=' :: rest => lexF f d rest (.binEq .shl :: acc)
+    | '>', '>' :: 's' :: rest => lexF f d rest (.bin .sar :: acc)
+    | '>', '>' :: rest => lexF f d rest (.bin .shr :: acc)
+    | '<', '<' :: rest => lexF f d rest (.bin .shl :: acc)
+    | '<', '=' :: 's' :: rest => lexF f d rest (.cmp .les :: acc)
+    | '>', '=' :: 's' :: rest => lexF f d rest (.cmp .ges :: acc)
+    | '<', '=' :: rest => lexF f d rest (.cmp .le :: acc)
+    | '>', '=' :: rest => lexF f d rest (.cmp .ge :: acc)
+    | '<', 's' :: rest => lexF f d rest (.cmp .lts :: acc)
+    | '>', 's' :: rest => lexF f d rest (.cmp .gts :: acc)
+    | '<', rest => lexF f d rest (.cmp .lt :: acc)
+    | '>', rest => lexF f d rest (.cmp .gt :: acc)
+    | '=', '=' :: rest => lexF f d rest (.cmp .eq :: acc)
+    | '!', '=' :: rest => lexF f d rest (.cmp .ne :: acc)
+    | '&', '&' :: rest => lexF f d rest (.andAnd :: acc)
+    | '|', '|' :: rest => lexF f d rest (.orOr :: acc)
+    | '+', '=' :: rest => lexF f d rest (.binEq .add :: acc)
+    | '-', '=' :: rest => lexF f d rest (.binEq .sub :: acc)
+    | '*', '=' :: rest => lexF f d rest (.binEq .mul :: acc)
+    | '&', '=' :: rest => lexF f d rest (.binEq .land :: acc)
+    | '|', '=' :: rest => lexF f d rest (.binEq .lor :: acc)
+    | '^', '=' :: rest => lexF f d rest (.binEq .lxor :: acc)
+    | '-', '>' :: rest => lexF f d rest (.arrow :: acc)
+    | '+', rest => lexF f d rest (.bin .add :: acc)
+    | '-', rest => lexF f d rest (.bin .sub :: acc)
+    | '*', rest => lexF f d rest (.bin .mul :: acc)
+    | '&', rest => lexF f d rest (.bin .land :: acc)
+    | '|', rest => lexF f d rest (.bin .lor :: acc)
+    | '^', rest => lexF f d rest (.bin .lxor :: acc)
+    | '(', rest => lexF f d rest (.lparen :: acc)
+    | ')', rest => lexF f d rest (.rparen :: acc)
+    | '{', rest => lexF f (d + 1) rest (.lbrace :: acc)
+    | '}', rest => lexF f (d - 1) rest (.rbrace :: acc)
+    | '?', rest => lexF f d rest (.question :: acc)
+    | '[', rest => lexF f d rest (.lbrack :: acc)
+    | ']', rest => lexF f d rest (.rbrack :: acc)
+    | ';', rest => lexF f d rest (.semi :: acc)
+    | ',', rest => lexF f d rest (.comma :: acc)
+    | ':', rest => lexF f d rest (.colon :: acc)
+    | '=', rest => lexF f d rest (.assign :: acc)
+    | '#', rest => lexF f d rest (.hash :: acc)
+    | '!', rest => lexF f d rest (.bang :: acc)
+    | '"', rest =>
+        match rest.dropWhile (· ≠ '"') with
+        | _ :: rest' => lexF f d rest' (.str (String.ofList (rest.takeWhile (· ≠ '"'))) :: acc)
+        | [] => .error "JazzToInstrR.lex: unterminated string literal"
     | c, rest =>
         if c.isAlpha || c == '_' then
           let (id, rest') := readIdent (c :: rest)
-          lexF f rest' (.ident id :: acc)
+          lexF f d rest' (.ident id :: acc)
         else if c.isDigit then
           let (n, rest') := readNumber (c :: rest)
-          lexF f rest' (.num n :: acc)
+          lexF f d rest' (.num n :: acc)
         else .error s!"JazzToInstrR.lex: unexpected character '{c}'"
 
 /-- Tokenize a `.jazz` text. -/
 def tokenize (s : String) : Except String (List Token) :=
   let cs := s.toList
-  lexF (cs.length + 1) cs []
+  lexF (cs.length + 1) 0 cs []
 
 /-! ## Parser state -/
 
-/-- A declared variable: its name, its type, and its word width (the element
-    width for an array, `U64` for `bool` and `int`). -/
+/-- A declared variable: its name, its type, its word width (the element
+    width for an array, `U64` for `bool` and `int`), and the storage class and
+    surface type of its declaration. -/
 structure VDecl where
   name : String
   ty : SType
   ews : WSize
+  storage : Jazz.Storage := .reg
+  pty : Jazz.PType := .word .U64
   deriving Inhabited
 
-/-- Parser state: remaining tokens, the declarations in scope, and the fuel
-    bound given to every recursive parsing function. -/
+/-- Parser state: remaining tokens, the declarations in scope, the local
+    declarations of the current function (last first), whether the `_` outputs of
+    an intrinsic are typed by `asmOutTys`, and the fuel bound given to every
+    recursive parsing function. -/
 structure St where
   toks : List Token
   env : List VDecl := []
+  decls : List Jazz.Decl := []
+  retype : Bool := false
   fuel : Nat
   deriving Inhabited
 
@@ -286,13 +320,57 @@ def wsizeOfBits : Nat → Option WSize
   | 8 => some .U8 | 16 => some .U16 | 32 => some .U32 | 64 => some .U64
   | 128 => some .U128 | 256 => some .U256 | 512 => some .U512 | _ => none
 
-/-- Parse a type `uNN`, `uNN[k]`, `bool` or `int`, returning the type and its
-    word width. -/
-def parseType : P (SType × WSize) := do
+/-! ## Output types of intrinsics -/
+
+/-- The output types of the intrinsic `OP_NN` (`NN` the bit width), flags first, for
+    the x86 intrinsics whose flag outputs a `.jazz` text discards with `_`: the
+    five flags `of cf sf pf zf` and the result of `ADD`, `SUB`, `ADC`, `SBB`, `NEG`,
+    `AND`, `ANDN`, `OR`, `XOR`, `SHL`, `SHR`, `SAR`, `LZCNT`, `TZCNT`, `POPCNT`; the
+    flags `of sf pf zf` and the result of `INC`, `DEC`; the five flags of `CMP`,
+    `TEST`; the five flags, the high and the low word of `MUL`, `IMUL`; the carry
+    and the result of `ADCX`, `ADOX`; `of cf` and the result of `ROL`, `ROR`. -/
+def asmOutTys (op : String) : Option (List SType) :=
+  match op.splitOn "_" with
+  | [nm, bits] =>
+    match bits.toNat?.bind wsizeOfBits with
+    | none => none
+    | some w =>
+      let fl (n : Nat) : List SType := List.replicate n .sbool
+      match nm with
+      | "ADD" | "SUB" | "ADC" | "SBB" | "NEG" | "AND" | "ANDN" | "OR" | "XOR"
+      | "SHL" | "SHR" | "SAR" | "LZCNT" | "TZCNT" | "POPCNT" => some (fl 5 ++ [.sword w])
+      | "INC" | "DEC" => some (fl 4 ++ [.sword w])
+      | "CMP" | "TEST" => some (fl 5)
+      | "MUL" | "IMUL" => some (fl 5 ++ [.sword w, .sword w])
+      | "ADCX" | "ADOX" => some [.sbool, .sword w]
+      | "ROL" | "ROR" => some [.sbool, .sbool, .sword w]
+      | _ => none
+  | _ => none
+
+/-- The types of the `_` outputs of an `n`-output call of `op`: `asmOutTys op` when
+    it lists `n` types, else none. -/
+def opnNoneTys (op : String) (n : Nat) : List SType :=
+  match asmOutTys op with
+  | some tys => if tys.length = n then tys else []
+  | none => []
+
+/-- Type the `_` output at position `k`, `k + 1`, … by `tys` (`u64` past its end). -/
+def retypeGo (tys : List SType) : Nat → List LVal → List LVal
+  | _, [] => []
+  | k, .Lnone _ _ :: lvs => .Lnone {} ((tys[k]?).getD (.sword .U64)) :: retypeGo tys (k + 1) lvs
+  | k, lv :: lvs => lv :: retypeGo tys (k + 1) lvs
+
+/-- The outputs of a call of the intrinsic `op` with each `_` typed by `asmOutTys`
+    (`u64` when the table has no entry of that length). -/
+def retypeOpnLvs (op : String) (lvs : List LVal) : List LVal :=
+  retypeGo (opnNoneTys op lvs.length) 0 lvs
+
+/-- The surface type `uNN`, `uNN[k]`, `bool` or `int`. -/
+def parsePType : P Jazz.PType := do
   let s ← expectIdent
   match s with
-  | "bool" => return (.sbool, .U64)
-  | "int" => return (.sint, .U64)
+  | "bool" => return .bool
+  | "int" => return .int
   | _ =>
     match wsizeOfName s with
     | none => fail s!"unsupported type '{s}'"
@@ -301,43 +379,75 @@ def parseType : P (SType × WSize) := do
         advance
         let k ← expectNum
         expect .rbrack
-        return (.sarr (k * ws.bytes), ws)
-      else return (.sword ws, ws)
+        return .arr ws k
+      else return .word ws
 
-/-- Skip the storage qualifiers `ptr`, `mut` and `const` (at most two). -/
-def skipQualifiers : P Unit := do
-  for _ in [0, 1] do
-    match ← peek with
-    | some (.ident "ptr") | some (.ident "mut") | some (.ident "const") => advance
-    | _ => pure ()
+/-- The word width of a surface type: the element width of an array, `U64` for
+    `bool` and `int`. -/
+def ptypeWs : Jazz.PType → WSize
+  | .word ws => ws
+  | .arr ws _ => ws
+  | _ => .U64
+
+/-- Parse a type `uNN`, `uNN[k]`, `bool` or `int`, returning the type and its
+    word width. -/
+def parseType : P (SType × WSize) := do
+  let t ← parsePType
+  return (t.toSType, ptypeWs t)
+
+/-- Read one qualifier `ptr`, `mut` or `const`, recording whether `ptr` and `mut`
+    were read. -/
+def qualStep (q : Bool × Bool) : P (Bool × Bool) := do
+  match ← peek with
+  | some (.ident "ptr") => advance; return (true, q.2)
+  | some (.ident "mut") => advance; return (q.1, true)
+  | some (.ident "const") => advance; return q
+  | _ => return q
+
+/-- Parse a storage class `reg | stack | inline` with at most two qualifiers among
+    `ptr`, `mut` and `const`. -/
+def parseStorage : P Jazz.Storage := do
+  let kw ← expectIdent
+  let q ← qualStep (false, false)
+  let (ptr, mutbl) ← qualStep q
+  match kw with
+  | "reg" => return if ptr then .regPtr mutbl else .reg
+  | "stack" => return if ptr then .stackPtr else .stack
+  | "inline" => return .inlineVar
+  | _ => fail s!"unknown storage class '{kw}'"
+
+/-- The declaration of a name with a storage class and a surface type. -/
+def mkVDecl (x : String) (sto : Jazz.Storage) (t : Jazz.PType) : VDecl :=
+  { name := x, ty := t.toSType, ews := ptypeWs t, storage := sto, pty := t }
 
 /-- Parse the names of a declaration up to its `;`, declaring each. -/
-def parseDeclNamesF : Nat → SType → WSize → P Unit
+def parseDeclNamesF : Nat → Jazz.Storage → Jazz.PType → P (List String)
   | 0, _, _ => fail "fuel exhausted in a declaration"
-  | f + 1, ty, ws => do
+  | f + 1, sto, t => do
     let x ← expectIdent
-    declare { name := x, ty := ty, ews := ws }
+    declare (mkVDecl x sto t)
     match ← peek with
-    | some .semi => advance
-    | some .comma => advance; parseDeclNamesF f ty ws
-    | some (.ident _) => parseDeclNamesF f ty ws
+    | some .semi => advance; return [x]
+    | some .comma => advance; return x :: (← parseDeclNamesF f sto t)
+    | some (.ident _) => return x :: (← parseDeclNamesF f sto t)
     | some t => fail s!"expected ',' or ';' in a declaration, found {repr t}"
     | none => fail "unterminated declaration"
 
-/-- Parse a declaration `reg|stack|inline [ptr] type names;` (the storage
-    keyword is the next token). -/
+/-- Parse a declaration `reg|stack|inline [qualifiers] type names;` and record it
+    among the local declarations. -/
 def parseDecl : P Unit := do
-  advance
-  skipQualifiers
-  let (ty, ws) ← parseType
-  parseDeclNamesF (← get).fuel ty ws
+  let sto ← parseStorage
+  let t ← parsePType
+  let names ← parseDeclNamesF (← get).fuel sto t
+  modify fun st => { st with decls := { storage := sto, ty := t, names := names } :: st.decls }
 
 /-! ## Expressions -/
 
-/-- What `parseExprF` parses: an expression at precedence level `n`, the
-    continuation of a level-`n` expression after its left operand `lhs`, or an
-    atom. -/
+/-- What `parseExprF` parses: an expression with an optional conditional
+    `? a : b`, an expression at precedence level `n`, the continuation of a
+    level-`n` expression after its left operand `lhs`, or an atom. -/
 inductive EGoal where
+  | top
   | lvl (n : Nat)
   | rest (n : Nat) (lhs : PExpr)
   | atom
@@ -386,6 +496,15 @@ def exprWidth : PExpr → Option WSize
     operators whose left operand has no evident width. -/
 def parseExprF : Nat → WSize → EGoal → P PExpr
   | 0, _, _ => fail "fuel exhausted in an expression"
+  | f + 1, ctx, .top => do
+    let c ← parseExprF f ctx (.lvl 0)
+    if (← peek) = some .question then
+      advance
+      let a ← parseExprF f ctx .top
+      expect .colon
+      let b ← parseExprF f ctx .top
+      return .Pif (.sword ((exprWidth a).getD ctx)) c a b
+    else return c
   | f + 1, ctx, .lvl n =>
     if n ≥ nLevels then parseExprF f ctx .atom
     else do
@@ -426,7 +545,7 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
           let e ← parseExprF f ctx .atom
           return .Papp1 (.Ozeroext wso ((exprWidth e).getD ctx)) e
       | _ =>
-        let e ← parseExprF f ctx (.lvl 0)
+        let e ← parseExprF f ctx .top
         expect .rparen
         return e
     | some .lbrack =>
@@ -442,7 +561,7 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
       let d ← lookupVar (← expectIdent)
       let off ← (do
         match ← peek with
-        | some (.bin .add) => advance; parseExprF f .U64 (.lvl 0)
+        | some (.bin .add) => advance; parseExprF f .U64 .top
         | _ => return PExpr.Pconst 0)
       expect .rbrack
       return .Pload ws d.varI off
@@ -454,7 +573,7 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
       | some .lbrack =>
         advance
         let d ← lookupVar x
-        let idx ← parseExprF f .U64 (.lvl 0)
+        let idx ← parseExprF f .U64 .top
         expect .rbrack
         return .Pget .AAscale d.ews { gv := d.varI, gs := false } idx
       | some .lparen => fail s!"call of '{x}' inside an expression is not in the subset"
@@ -465,7 +584,7 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
 
 /-- Parse an expression with target width `ctx`. -/
 def parseExpr (ctx : WSize) : P PExpr := do
-  parseExprF (← get).fuel ctx (.lvl 0)
+  parseExprF (← get).fuel ctx .top
 
 /-- Parse the arguments of a call after its `(`, through the closing `)`. -/
 def parseArgsF : Nat → P (List PExpr)
@@ -544,6 +663,7 @@ def parseStmtsF : Nat → P (List InstrR)
   | f + 1 => do
     match ← peek with
     | none | some .rbrace | some (.ident "return") => return []
+    | some (.lcomment _) => advance; parseStmtsF f
     | some (.ident "reg") | some (.ident "stack") | some (.ident "inline") =>
       parseDecl
       parseStmtsF f
@@ -571,14 +691,17 @@ def parseStmtsF : Nat → P (List InstrR)
         | some d => d.varI
         | none => { var := { vname := x, vtype := .sint } }
       expect .assign
-      let lo ← expectNum
+      let start ← expectNum
       let dir ← expectIdent
-      if dir ≠ "to" then fail s!"loop direction '{dir}' is not in the subset"
-      let hi ← expectNum
+      let range ← (do
+        match dir with
+        | "to" => return Range.mk .UpTo start (← expectNum)
+        | "downto" => return Range.mk .DownTo (← expectNum) start
+        | _ => fail s!"loop direction '{dir}' is not in the subset")
       expect .lbrace
       let body ← parseStmtsF f
       expect .rbrace
-      return .Cfor v { dir := .UpTo, lo := lo, hi := hi } body :: (← parseStmtsF f)
+      return .Cfor v range body :: (← parseStmtsF f)
     | some (.ident "while") =>
       advance
       let pre ← (do
@@ -639,7 +762,8 @@ where
         let op ← expectIdent
         let args ← parseArgs
         expect .semi
-        return .Copn lvs .AT_none (.Oasm ⟨op⟩) args
+        let lvs' := if (← get).retype then retypeOpnLvs op lvs else lvs
+        return .Copn lvs' .AT_none (.Oasm ⟨op⟩) args
       | some (.ident g) =>
         if (← peek2) = some .lparen then
           advance
@@ -662,43 +786,63 @@ where
 /-! ## Functions -/
 
 /-- Parse the parameters of a function after its `(`, through the `)`,
-    declaring each. -/
-def parseParamsF : Nat → P (List FunParam)
+    declaring each; each parameter comes with its storage class and surface type. -/
+def parseParamsF : Nat → P (List (FunParam × (Jazz.Storage × Jazz.PType)))
   | 0 => fail "fuel exhausted in a parameter list"
   | f + 1 => do
     if (← peek) = some .rparen then advance; return []
-    match ← peek with
-    | some (.ident "reg") | some (.ident "stack") => advance
-    | some t => fail s!"expected 'reg' or 'stack' in a parameter, found {repr t}"
-    | none => fail "unterminated parameter list"
-    skipQualifiers
-    let (ty, ws) ← parseType
+    let sto ← parseStorage
+    let t ← parsePType
     let x ← expectIdent
-    let d : VDecl := { name := x, ty := ty, ews := ws }
+    let d := mkVDecl x sto t
     declare d
     match ← peek with
-    | some .comma => advance; return ⟨d.varI⟩ :: (← parseParamsF f)
-    | some .rparen => advance; return [⟨d.varI⟩]
+    | some .comma => advance; return (⟨d.varI⟩, (sto, t)) :: (← parseParamsF f)
+    | some .rparen => advance; return [(⟨d.varI⟩, (sto, t))]
     | some t => fail s!"expected ',' or ')' in a parameter list, found {repr t}"
     | none => fail "unterminated parameter list"
 
-/-- Skip tokens up to (not including) the next `{`. -/
-def skipToBraceF : Nat → P Unit
+/-- Parse the result types `storage type, …` after `->`, up to the `{`. -/
+def parseResultTysF : Nat → P (List (Jazz.Storage × Jazz.PType))
   | 0 => fail "fuel exhausted in a return-type list"
   | f + 1 => do
-    match ← peek with
-    | some .lbrace => pure ()
-    | some _ => advance; skipToBraceF f
-    | none => fail "missing function body"
+    let sto ← parseStorage
+    let t ← parsePType
+    if (← peek) = some .comma then
+      advance
+      return (sto, t) :: (← parseResultTysF f)
+    else return [(sto, t)]
 
-/-- Skip an annotation body up to and including its `]`. -/
-def skipAnnotF : Nat → P Unit
+/-- The text of an annotation token. -/
+def annotTokText : Token → Option String
+  | .ident s => some s
+  | .num n => some (toString n)
+  | .assign => some "="
+  | .comma => some ","
+  | .colon => some ":"
+  | .str s => some ("\"" ++ s ++ "\"")
+  | _ => none
+
+/-- Read an annotation body up to and including its `]`, returning its tokens'
+    text without separators. -/
+def parseAnnotF : Nat → P String
   | 0 => fail "fuel exhausted in an annotation"
   | f + 1 => do
     match ← peek with
-    | some .rbrack => advance
-    | some _ => advance; skipAnnotF f
+    | some .rbrack => advance; return ""
+    | some t =>
+      match annotTokText t with
+      | some s => advance; return s ++ (← parseAnnotF f)
+      | none => fail s!"unsupported token {repr t} in an annotation"
     | none => fail "unterminated annotation"
+
+/-- Read the string literals of a `require` line. -/
+def parseRequireF : Nat → P (List String)
+  | 0 => fail "fuel exhausted in a require line"
+  | f + 1 => do
+    match ← peek with
+    | some (.str s) => advance; return s :: (← parseRequireF f)
+    | _ => return []
 
 /-- Parse the names of a `return` statement through its `;`. -/
 def parseReturnF : Nat → P (List VarI)
@@ -711,48 +855,87 @@ def parseReturnF : Nat → P (List VarI)
     | some t => fail s!"expected ',' or ';' in a return statement, found {repr t}"
     | none => fail "unterminated return statement"
 
-/-- Parse the function declarations up to the end of the input. -/
-def parseFunsF : Nat → P (List FunDecl)
-  | 0 => fail "fuel exhausted at top level"
-  | f + 1 => do
+/-- Parse a function after its `fn` keyword: its name, parameters, result types,
+    body and `return` statement, with the preamble lines `pre`, the `require`
+    paths `reqs` and the kind `kind` read before it. -/
+def parseFn (f : Nat) (pre reqs : List String) (kind : Jazz.FnKind) : P Jazz.JazzFn := do
+  let name ← expectIdent
+  modify fun st => { st with env := [], decls := [] }
+  expect .lparen
+  let params ← parseParamsF f
+  let resultTys ← (do
+    if (← peek) = some .arrow then
+      advance
+      parseResultTysF f
+    else return [])
+  expect .lbrace
+  let body ← parseStmtsF f
+  let results ← (do
+    if (← peek) = some (.ident "return") then
+      advance
+      parseReturnF f
+    else return [])
+  expect .rbrace
+  let decls := (← get).decls.reverse
+  return { preamble := pre, requires := reqs, kind := kind,
+           fd := { name := { name := name }, params := params.map (·.1), body := body,
+                   results := results },
+           paramTys := params.map (·.2), resultTys := resultTys, decls := decls }
+
+/-- Parse the functions up to the end of the input; `pre`, `reqs` and `annots` are
+    the preamble lines, `require` paths and annotations read so far for the next
+    function, last first. Comment lines after the last function are dropped. -/
+def parseFnsF : Nat → List String → List String → List String → P (List Jazz.JazzFn)
+  | 0, _, _, _ => fail "fuel exhausted at top level"
+  | f + 1, pre, reqs, annots => do
     match ← peek with
-    | none => return []
+    | none =>
+      if reqs.isEmpty && annots.isEmpty then return []
+      else fail "a require line or an annotation without a function"
+    | some (.lcomment s) => advance; parseFnsF f (s :: pre) reqs annots
+    | some (.ident "require") =>
+      advance
+      let ps ← parseRequireF f
+      if ps.isEmpty then fail "a require line without a path"
+      parseFnsF f pre (ps.reverse ++ reqs) annots
     | some .hash =>
       advance
       expect .lbrack
-      skipAnnotF f
-      parseFunsF f
-    | some (.ident "export") | some (.ident "inline") =>
-      advance
-      parseFunsF f
-    | some (.ident "fn") =>
-      advance
-      let name ← expectIdent
-      modify fun st => { st with env := [] }
-      expect .lparen
-      let params ← parseParamsF f
-      if (← peek) = some .arrow then skipToBraceF f
-      expect .lbrace
-      let body ← parseStmtsF f
-      let results ← (do
-        if (← peek) = some (.ident "return") then
-          advance
-          parseReturnF f
-        else return [])
-      expect .rbrace
-      let fd : FunDecl := { name := { name := name }, params := params, body := body,
-                            results := results }
-      return fd :: (← parseFunsF f)
+      let a ← parseAnnotF f
+      parseFnsF f pre reqs (a :: annots)
+    | some (.ident "export") | some (.ident "inline") | some (.ident "fn") =>
+      let kind ← (do
+        match ← peek with
+        | some (.ident "export") => advance; expect (.ident "fn"); return Jazz.FnKind.exportFn
+        | some (.ident "inline") => advance; expect (.ident "fn"); return .inlineFn
+        | _ => advance; return .localFn annots.reverse)
+      if !annots.isEmpty && !(kind matches .localFn _) then
+        fail "an annotation on an export or inline function"
+      let fn ← parseFn f pre.reverse reqs.reverse kind
+      return fn :: (← parseFnsF f [] [] [])
     | some t => fail s!"unsupported top-level construct starting with {repr t}"
 
 /-! ## Entry points -/
 
-/-- Parse a `.jazz` text into its function declarations. -/
-def parseJazz (s : String) : Except String (List FunDecl) := do
+/-- Parse a `.jazz` text into a unit; `retype` types the `_` outputs of an
+    intrinsic by `asmOutTys`. -/
+def parseUnitWith (retype : Bool) (s : String) : Except String Jazz.JazzUnit := do
   let toks ← tokenize s
   let fuel := 16 * (toks.length + 1)
-  let (fds, _) ← (parseFunsF fuel).run { toks := toks, fuel := fuel }
-  return fds
+  let (fns, _) ← (parseFnsF fuel [] [] []).run { toks := toks, fuel := fuel, retype := retype }
+  return { fns := fns }
+
+/-- Parse a `.jazz` text into a compilation unit: per function its preamble lines,
+    `require` paths, kind, `FunDecl`, the storage class and surface type of each
+    parameter and result, and its local declarations in text order. The `_` outputs
+    of an intrinsic are typed by `asmOutTys`; the unit has no extern signatures. -/
+def parseUnit (s : String) : Except String Jazz.JazzUnit :=
+  parseUnitWith true s
+
+/-- Parse a `.jazz` text into its function declarations. -/
+def parseJazz (s : String) : Except String (List FunDecl) := do
+  let u ← parseUnitWith false s
+  return u.fns.map (·.fd)
 
 /-- Parse a `.jazz` text into a `JasminProg`. -/
 def parseJazzProg (s : String) : Except String JasminProg :=

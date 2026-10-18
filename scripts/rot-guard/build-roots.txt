@@ -99,6 +99,7 @@ CatCrypt.Crypto.Jasmin.InfoFlow
 CatCrypt.Crypto.Jasmin.JasminEmitBridge
 CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
 CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
+CatCrypt.Crypto.Jasmin.JazzRoundTrip
 CatCrypt.Crypto.Jasmin.JazzUnit
 CatCrypt.Crypto.Jasmin.JoltProverReflect
 CatCrypt.Crypto.Jasmin.KeccakJincEmit
