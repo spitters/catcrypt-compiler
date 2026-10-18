@@ -734,12 +734,15 @@ theorem stepLoad_preservesI {c : E.Ctx} (P : LinstrR → Prop)
       · by_cases hmm : isMemName d = true ∧ isMemName r = true
         · simp only [stepLoad, hr, hf, hrd, if_false, if_pos hmm]
           exact ⟨by rw [hli]; exact hi, henv⟩
-        · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm]
-          refine ⟨hmov mn d r hmv hd hrr ?_, henv⟩
-          cases hed : E.memName d <;> cases her : E.memName r
-          all_goals first
-            | rfl
-            | exact absurd ⟨h.mem_loadCSE d hed, h.mem_loadCSE r her⟩ hmm
+        · by_cases hsr : isMemName s = false ∧ isMemName r = true
+          · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_pos hsr]
+            exact ⟨by rw [hli]; exact hi, henv⟩
+          · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_neg hsr]
+            refine ⟨hmov mn d r hmv hd hrr ?_, henv⟩
+            cases hed : E.memName d <;> cases her : E.memName r
+            all_goals first
+              | rfl
+              | exact absurd ⟨h.mem_loadCSE d hed, h.mem_loadCSE r her⟩ hmm
 
 /-- **`loadCSE` preserves a predicate `P` on instructions** under the hypotheses of
     `stepLoad_preservesI`: a body of instructions satisfying `P` is forwarded to a body of

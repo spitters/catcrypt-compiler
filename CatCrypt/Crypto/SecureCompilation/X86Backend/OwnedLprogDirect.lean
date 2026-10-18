@@ -178,8 +178,10 @@ theorem stepLoad_mem (h : CatCrypt.Crypto.Optimizer.LoadCSE.LoadEnv) (i : Linstr
       · exact Or.inl rfl
       · split
         · exact Or.inl rfl
-        · right
-          simp [linstrRDirect, isIndexed]
+        · split
+          · exact Or.inl rfl
+          · right
+            simp [linstrRDirect, isIndexed]
     · exact Or.inl rfl
   · exact Or.inl rfl
 

@@ -859,7 +859,7 @@ theorem isLbl_of_isLabel (lbl : LLabel) (i : LinstrR) (h : isLabel lbl i = true)
 theorem stepLoad_li_i_cases (h : LoadEnv) (i : Linstr) :
     (stepLoad h i).1.li_i = i.li_i ∨ ∃ a b c, (stepLoad h i).1.li_i = .Lopn a b c := by
   unfold stepLoad
-  split <;> (try split) <;> (try split) <;> (try split) <;>
+  split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
     first | exact Or.inl rfl | exact Or.inr ⟨_, _, _, rfl⟩
 
 theorem loadCSEAux_noLabel (h : LoadEnv) (body : List Linstr)

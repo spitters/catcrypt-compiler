@@ -31,7 +31,9 @@ the fusion writes is a `MOVQ`, `MOV:64` or `MULX` with one register source among
 operands of its `MULXHI`, `RDX` and the reload scratches (`FuseOut`). A flag-only compare
 has the fixed printer shape in the re-allocation, so the re-allocation keeps its names.
 The redirect of a 64-bit copy by the load CSE onto a holder is the one rewrite that can read
-an array slot; `loadHoldB` is the check that no such holder is an array slot.
+an array slot. On a body with no 64-bit move between two memory names (`memMovFreeB`) every
+holder of a redirect is a register name (`LoadCSE.loadCSEAux_pointwise_reg`), and an array
+slot, a `qsave.` slot, is a memory name.
 
 ## Main results
 
@@ -49,7 +51,7 @@ an array slot; `loadHoldB` is the check that no such holder is an array slot.
 * `copyNoSlotB_fuseMulHiBody`, `copyNoSlotB_elimReloads`, `copyNoSlotB_reloadElimBody`,
   `copyNoSlotB_scheduleBody`, `copyNoSlotB_copyPropagateBody`, `copyNoSlotB_loadCSE`,
   `copyNoSlotB_optimizeBasicBlocks`: the fusion keeps `copyNoSlotB` when no operand of a
-  `MULXHI` is an array slot (`mulHiNoSlotB`), and the load CSE under `loadHoldB`.
+  `MULXHI` is an array slot (`mulHiNoSlotB`), and the load CSE under `memMovFreeB`.
 * `cellBaseFreeB_sublist`, `flagTiedB_sublist`, `copyNoSlotB_sublist`: every sublist keeps the
   predicates.
 * `copyNoSlotB_postOpt`, `cellBaseFreeB_postOpt`, `flagTiedB_reallocStage`,
@@ -592,45 +594,90 @@ theorem copyOk_rwClosed (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "
   · rw [hs] at hf
     exact slotArr_physGP hq hf
 
-/-- The redirects of the load CSE whose target is a 64-bit copy into a register read no
-    array slot: along the forward scan of `loadCSE` from the environment `h`, at every
-    `MOV:64 d, [s]`, the register the environment holds for `s` is no array slot. -/
-def loadHoldB (slotArr : String → Option (String × Nat)) :
-    CatCrypt.Crypto.Optimizer.LoadCSE.LoadEnv → Lcmd → Bool
-  | _, [] => true
-  | h, i :: is =>
-      (match i.li_i with
-        | .Lopn [.reg _] "MOV:64" [.reg s] =>
-            match h.find s with
-            | some r => (slotArr r).isNone
-            | none => true
-        | _ => true) &&
-        loadHoldB slotArr (CatCrypt.Crypto.Optimizer.LoadCSE.stepLoad h i).2 is
+/-- No 64-bit move of the body is between two memory names. -/
+def memMovFreeB (b : Lcmd) : Bool :=
+  b.all fun j => !CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i
 
-theorem copyOk_loadCSEAux :
-    ∀ (b : Lcmd) (h : CatCrypt.Crypto.Optimizer.LoadCSE.LoadEnv),
-      (∀ j ∈ b, CopyOk slotArr j) →
-      loadHoldB slotArr h b = true →
-      ∀ j ∈ CatCrypt.Crypto.Optimizer.LoadCSE.loadCSEAux h b, CopyOk slotArr j
-  | [], _, _, _, j, hj => by simp at hj
-  | i :: is, h, hb, hh, j, hj => by
-    rw [CatCrypt.Crypto.Optimizer.LoadCSE.loadCSEAux_cons] at hj
-    simp only [loadHoldB, Bool.and_eq_true] at hh
-    rcases List.mem_cons.mp hj with rfl | hj
-    · rcases CatCrypt.Crypto.Optimizer.LoadCSE.stepLoad_cases h i with
-        he | ⟨d, s, r, mn, hw, hf, -, he⟩
-      · rw [he]; exact hb i (by simp)
-      · rw [he]
-        intro d' x hx
-        dsimp only at hx
-        simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at hx
-        obtain ⟨rfl, rfl, rfl⟩ := hx
-        have hi := (CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload_eq hw).1
-        have h1 := hh.1
-        rw [hi] at h1
-        simp only [CatCrypt.Crypto.Optimizer.LoadCSE.LoadEnv.find] at hf
-        simpa [CatCrypt.Crypto.Optimizer.LoadCSE.LoadEnv.find, hf] using h1
-    · exact copyOk_loadCSEAux is _ (fun j hj => hb j (by simp [hj])) hh.2 j hj
+theorem memMovFreeB_iff {b : Lcmd} :
+    memMovFreeB b = true ↔
+      ∀ j ∈ b, CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i = false := by
+  simp [memMovFreeB, List.all_eq_true]
+
+/-- A slot name is no general-purpose name. -/
+theorem gpNameB_of_isSlotName {n : String}
+    (h : CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim.isSlotName n = true) :
+    JasminLsemAddrImage.gpNameB n = false := by
+  rw [CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim.isSlotName_eq_hasPrefix] at h
+  cases hg : JasminLsemAddrImage.gpNameB n with
+  | false => rfl
+  | true =>
+    simp only [JasminLsemAddrImage.gpNameB, List.contains_iff_mem, List.mem_cons,
+      List.not_mem_nil, or_false] at hg
+    rcases hg with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+      rfl | rfl <;> revert h <;> decide +kernel
+
+/-- A physical general-purpose register is no memory name. -/
+theorem isMemName_of_isPhysGP {n : String} (h : isPhysGP n = true) :
+    CatCrypt.Crypto.Optimizer.LoadCSE.isMemName n = false := by
+  cases hm : CatCrypt.Crypto.Optimizer.LoadCSE.isMemName n with
+  | false => rfl
+  | true =>
+    have hg := gpNameB_of_isSlotName (n := n) hm
+    rw [← PhysImgFold.isPhysGP_eq_gpNameB, h] at hg
+    cases hg
+
+theorem memMov_rwClosed :
+    RwClosed (fun j => CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i = false) := by
+  intro i dsts opn srcs g hi he hg
+  dsimp only
+  cases hw : CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload (.Lopn dsts opn (srcs.map g)) with
+  | none => simp [CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov, hw]
+  | some p =>
+    obtain ⟨d, s', mn⟩ := p
+    have hl := (CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload_eq hw).1
+    simp only [LinstrR.Lopn.injEq] at hl
+    obtain ⟨rfl, rfl, hs⟩ := hl
+    rcases srcs with _ | ⟨a, _ | ⟨_, _⟩⟩ <;>
+      simp only [List.map_cons, List.map_nil, List.cons.injEq, reduceCtorEq, and_false,
+        and_true] at hs
+    rcases hg a with ha | ⟨u, rfl, hf, -⟩
+    · rw [ha] at hs
+      subst hs
+      rw [he] at hi
+      simpa [List.map_cons, List.map_nil, ha] using hi
+    · rw [hs] at hf
+      simp only [CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov, hw,
+        isMemName_of_isPhysGP (by simpa [isFactSrc] using hf), Bool.and_false]
+
+/-- The redirects of the load CSE keep `CopyOk` on a body with no 64-bit move between two
+    memory names, when every array slot is a `qsave.` slot: every holder of a redirect is a
+    register name. -/
+theorem copyOk_loadCSE
+    (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
+    (h : ∀ j ∈ b, CopyOk slotArr j)
+    (hm : ∀ j ∈ b, CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i = false) :
+    ∀ j ∈ CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE b, CopyOk slotArr j := by
+  intro j hj
+  obtain ⟨n, hn⟩ := List.mem_iff_getElem?.mp hj
+  rw [CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE_eq] at hn
+  rcases CatCrypt.Crypto.Optimizer.LoadCSE.loadCSEAux_pointwise_reg [] b
+      CatCrypt.Crypto.Optimizer.LoadCSE.memHolderRegKey_nil hm n with
+    he | ⟨i, d, s, r, mn, -, -, -, hr, he⟩
+  · rw [he] at hn
+    exact h j (List.mem_of_getElem? hn)
+  · rw [he, Option.some.injEq] at hn
+    subst hn
+    intro d' x hx
+    dsimp only at hx
+    simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at hx
+    rw [← hx.2.2]
+    refine slotArr_none_of_prefix hq ?_
+    have hs := CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim.isSlotName_eq_hasPrefix r
+    rw [show CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim.isSlotName r =
+      CatCrypt.Crypto.Optimizer.LoadCSE.isMemName r from rfl, hr] at hs
+    cases hk : hasPrefix r "qsave." with
+    | false => rfl
+    | true => simp [hk] at hs
 
 /-- **`copyNoSlotB_elimReloads`**: the redundant-reload elimination keeps `copyNoSlotB`. -/
 theorem copyNoSlotB_elimReloads {b : Lcmd} (h : copyNoSlotB slotArr b = true) :
@@ -654,29 +701,34 @@ theorem copyNoSlotB_copyPropagateBody
     (h : copyNoSlotB slotArr b = true) : copyNoSlotB slotArr (copyPropagateBody b) = true :=
   copyNoSlotB_iff.mpr (forall_copyPropagateBody (copyOk_rwClosed hq) (copyNoSlotB_iff.mp h))
 
-/-- **`copyNoSlotB_loadCSE`**: the load CSE keeps `copyNoSlotB` when no redirect of a
-    64-bit copy targets an array slot (`loadHoldB`). -/
-theorem copyNoSlotB_loadCSE {b : Lcmd} (h : copyNoSlotB slotArr b = true)
-    (hh : loadHoldB slotArr [] b = true) :
-    copyNoSlotB slotArr (CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE b) = true := by
-  rw [CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE_eq]
-  exact copyNoSlotB_iff.mpr (copyOk_loadCSEAux b [] (copyNoSlotB_iff.mp h) hh)
+/-- **`copyNoSlotB_loadCSE`**: the load CSE keeps `copyNoSlotB` when every array slot is a
+    `qsave.` slot and no 64-bit move is between two memory names (`memMovFreeB`). -/
+theorem copyNoSlotB_loadCSE
+    (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
+    (h : copyNoSlotB slotArr b = true) (hm : memMovFreeB b = true) :
+    copyNoSlotB slotArr (CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE b) = true :=
+  copyNoSlotB_iff.mpr (copyOk_loadCSE hq (copyNoSlotB_iff.mp h) (memMovFreeB_iff.mp hm))
 
 /-- **`copyNoSlotB_optimizeBasicBlocks`**: the basic-block optimiser keeps `copyNoSlotB` when
-    every array slot is a `qsave.` slot and, on every modeled run, no redirect of the load
-    CSE of a 64-bit copy targets an array slot. -/
+    every array slot is a `qsave.` slot and no 64-bit move is between two memory names. -/
 theorem copyNoSlotB_optimizeBasicBlocks
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
-    (h : copyNoSlotB slotArr b = true)
-    (hh : (splitStraightRuns b).all
-      (fun seg => !bodyAllModeled seg || loadHoldB slotArr [] (preLoad seg)) = true) :
+    (h : copyNoSlotB slotArr b = true) (hm : memMovFreeB b = true) :
     copyNoSlotB slotArr (optimizeBasicBlocks b) = true := by
-  refine copyNoSlotB_iff.mpr (forall_optimizeBasicBlocks (copyNoSlotB_iff.mp h) ?_)
-  intro seg hseg hm hs
-  have hl := List.all_eq_true.mp hh seg hseg
-  rw [hm, Bool.not_true, Bool.false_or] at hl
-  rw [CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE_eq]
-  exact copyOk_loadCSEAux _ [] (forall_preLoad (copyOk_rwClosed hq) hs) hl
+  have hP : ∀ j ∈ b, CopyOk slotArr j ∧
+      CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i = false :=
+    fun j hj => ⟨copyNoSlotB_iff.mp h j hj, memMovFreeB_iff.mp hm j hj⟩
+  have hrw : RwClosed (fun j => CopyOk slotArr j ∧
+      CatCrypt.Crypto.Optimizer.LoadCSE.isMemToMemMov j.li_i = false) :=
+    fun i dsts opn srcs g hi he hg =>
+      ⟨copyOk_rwClosed hq i dsts opn srcs g hi.1 he hg,
+        memMov_rwClosed i dsts opn srcs g hi.2 he hg⟩
+  refine copyNoSlotB_iff.mpr fun j hj => (forall_optimizeBasicBlocks hP ?_ j hj).1
+  intro seg _ _ hs
+  have hpre := forall_preLoad hrw hs
+  intro k hk
+  exact ⟨copyOk_loadCSE hq (fun j hj => (hpre j hj).1) (fun j hj => (hpre j hj).2) k hk,
+    CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE_noMemToMemMov _ (fun j hj => (hpre j hj).2) k hk⟩
 
 end Opt
 
@@ -1060,15 +1112,12 @@ theorem copyNoSlotB_sublist {b b' : Lcmd} (hs : b'.Sublist b)
 /-- **Conjunct 4 of the side conditions.** When every array slot is a `qsave.` slot, no 64-bit
     copy of the allocated body `b0` reads an array slot, no operand of a `MULXHI` of `b0` is an
     array slot, `b1` is a sublist of the fusion of `b0` (the dead-write elimination
-    `deadWriteRet` gives one), and on every modeled run of `b1` no redirect of the load CSE
-    of a 64-bit copy targets an array slot, no 64-bit copy of the optimised `b1` reads an
-    array slot. -/
+    `deadWriteRet` gives one), and no 64-bit move of `b1` is between two memory names, no
+    64-bit copy of the optimised `b1` reads an array slot. -/
 theorem copyNoSlotB_postOpt
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b0 b1 : Lcmd}
     (h : copyNoSlotB slotArr b0 = true) (hm : mulHiNoSlotB slotArr b0 = true)
-    (hs : b1.Sublist (fuseMulHiBody b0 true))
-    (hh : (splitStraightRuns b1).all
-      (fun seg => !bodyAllModeled seg || loadHoldB slotArr [] (preLoad seg)) = true) :
+    (hs : b1.Sublist (fuseMulHiBody b0 true)) (hh : memMovFreeB b1 = true) :
     copyNoSlotB slotArr (optimizeBasicBlocks b1) = true :=
   copyNoSlotB_optimizeBasicBlocks hq
     (copyNoSlotB_sublist hs (copyNoSlotB_fuseMulHiBody true hq h hm)) hh

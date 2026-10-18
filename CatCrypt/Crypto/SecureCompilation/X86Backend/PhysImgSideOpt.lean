@@ -70,6 +70,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap notLivePin)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgOpt
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass (gpNameB_of_isSlotName)
 
 variable {slotArr : String → Option (String × Nat)}
 
@@ -683,17 +684,6 @@ theorem ne_slotOfReg {s : String} (h : hasPrefix s "qsave." = false) (x : String
 def StoreSelf (slotArr : String → Option (String × Nat)) (j : Linstr) : Prop :=
   ∀ slot r mn, spillStoreKey j = some (slot, r, mn) → (slotArr slot).isSome = true →
     slot = slotOfReg r
-
-/-- A slot name is no general-purpose name. -/
-theorem gpNameB_of_isSlotName {n : String} (h : isSlotName n = true) : gpNameB n = false := by
-  rw [isSlotName_eq_hasPrefix] at h
-  cases hg : gpNameB n with
-  | false => rfl
-  | true =>
-    simp only [gpNameB, List.contains_iff_mem, List.mem_cons, List.not_mem_nil,
-      or_false] at hg
-    rcases hg with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-      rfl | rfl <;> revert h <;> decide +kernel
 
 /-- **`reloadPairSideB` from the spill pairs.** When every spill into an array slot is a save
     into the slot of its register and no move reads the array slot of its destination
