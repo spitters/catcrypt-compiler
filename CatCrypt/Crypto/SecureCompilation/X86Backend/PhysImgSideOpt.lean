@@ -404,7 +404,7 @@ theorem sublist_of_mem_splitStraightRuns {b seg : Lcmd} (h : seg ∈ splitStraig
 theorem elimSideB_of_run {Z b1 seg : Lcmd}
     (hZ : slotAfterSlotReloadFreeB slotArr false Z = true ∧ saveSrcB slotArr Z = true)
     (hs : b1.Sublist Z) (hseg : seg ∈ splitStraightRuns b1) (hm : bodyAllModeled seg = true)
-    (hpair : elimPairB seg = true) :
+    (hpair : elimPairB slotArr seg = true) :
     elimSideB slotArr seg = true := by
   have hsub := (sublist_of_mem_splitStraightRuns hseg).trans hs
   simp only [elimSideB, hm, hpair, Bool.true_and,
@@ -939,7 +939,7 @@ theorem optSideB_runs {Z b1 : Lcmd}
     (hP : (∀ i ∈ Z, StoreSelf slotArr i) ∧ ∀ j ∈ Z, LoadOk slotArr j)
     (hs : b1.Sublist Z)
     (hrest : ∀ seg ∈ splitStraightRuns b1, bodyAllModeled seg = true →
-      elimPairB seg = true ∧
+      elimPairB slotArr seg = true ∧
       loadSideB slotArr (LcmdCopyPropagate.copyPropagateBody (LprogScheduler.scheduleBody
         (LcmdReloadElim.reloadElimBody (elimReloads seg)))) = true) :
     (splitStraightRuns b1).all (optSideB slotArr) = true := by

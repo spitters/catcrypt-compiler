@@ -203,12 +203,17 @@ theorem elimMarks_kept : ∀ (h : Held) (b : Lcmd),
     cases hk : (stepReload h i.li_i).1 <;>
       simp [elimMarks, hk, elimMarks_kept _ is]
 
-/-- A reload of the body that `slotMov?` does not read as a move has no destination and source
-    of a move `slotMov?` of the body. -/
-def elimPairB (b : Lcmd) : Bool :=
+/-- A reload of the body that `slotMov?` does not read as a move, from a general-purpose name or
+    an array slot, has no destination and source of a move `slotMov?` of the body. A reload from
+    any other source is unconstrained: a move from such a source, a spill slot, gives the reload
+    scan the source itself, which is no array slot. The allocator places the 32-bit spill reload
+    `MOV R15, k.N` and the 64-bit spill reload `MOV:64 R15, k.N` of one slot in one run, and only
+    the second is a move of `slotMov?`. -/
+def elimPairB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
   b.all fun j =>
     match asReload j.li_i, slotMov? j.li_i with
-    | some p, none => b.all fun j' => slotMov? j'.li_i != some p
+    | some p, none =>
+        !(gpNameB p.2 || (slotArr p.2).isSome) || b.all fun j' => slotMov? j'.li_i != some p
     | _, _ => true
 
 /-- A reload whose source is an array slot. -/
@@ -237,11 +242,11 @@ def saveSrcB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
     | none => true
 
 /-- **The side condition of `elimReloads`.** The body is modeled, a reload outside `slotMov?`
-    shares no destination and source with a move of `slotMov?`, no instruction writes an array
-    slot after a reload from an array slot, and a reload into an array slot reads no array
-    slot. -/
+    from a general-purpose name or an array slot shares no destination and source with a move
+    of `slotMov?`, no instruction writes an array slot after a reload from an array slot, and a
+    reload into an array slot reads no array slot. -/
 def elimSideB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
-  bodyAllModeled b && elimPairB b && slotAfterSlotReloadFreeB slotArr false b &&
+  bodyAllModeled b && elimPairB slotArr b && slotAfterSlotReloadFreeB slotArr false b &&
     saveSrcB slotArr b
 
 theorem mem_of_lookup : ∀ (h : List (String × String)) (r k : String),
@@ -385,9 +390,10 @@ theorem elim_transp {b : Lcmd} (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg 
     · exact hy
     · simp at hy
 
-/-- A reload that shares its destination and source with a move of `slotMov?` of the body is
-    that move. -/
-theorem slotMov_of_pair {b : Lcmd} (hpair : elimPairB b = true) (hib : i ∈ b) {s : String}
+/-- A reload from a general-purpose name or an array slot that shares its destination and source
+    with a move of `slotMov?` of the body is that move. -/
+theorem slotMov_of_pair {b : Lcmd} (hpair : elimPairB slotArr b = true) (hib : i ∈ b)
+    {s : String} (hs : (gpNameB s || (slotArr s).isSome) = true)
     (hr : asReload i.li_i = some (d, s)) (hex : ∃ j ∈ b, slotMov? j.li_i = some (d, s)) :
     slotMov? i.li_i = some (d, s) := by
   have := List.all_eq_true.mp hpair i hib
@@ -398,13 +404,25 @@ theorem slotMov_of_pair {b : Lcmd} (hpair : elimPairB b = true) (hib : i ∈ b) 
     rw [Option.some.inj this]
   | none =>
     rw [hr, hm] at this
+    simp only [hs, Bool.not_true, Bool.false_or] at this
     obtain ⟨j, hj, hjm⟩ := hex
     have := List.all_eq_true.mp this j hj
     simp [hjm] at this
 
+/-- A move from `s` whose scan resolves to an array slot reads a general-purpose name or an
+    array slot. -/
+theorem movScan_src {W : Lcmd} {N : Nat} {s : String}
+    (h : ((movScan slotArr W N s).bind slotArr).isSome = true) :
+    (gpNameB s || (slotArr s).isSome) = true := by
+  unfold movScan at h
+  by_cases hg : gpNameB s = true
+  · simp [hg]
+  · rw [if_neg (by simp [hg])] at h
+    simpa [hg] using h
+
 /-- **One step of the scan of `elimReloads` keeps the invariant.** -/
 theorem elimInv_step {b P : Lcmd} {h : Held} (hW : W[N]? = some i)
-    (hj : i.li_i = .Lopn [.reg d] o ss) (hib : i ∈ b) (hpair : elimPairB b = true)
+    (hj : i.li_i = .Lopn [.reg d] o ss) (hib : i ∈ b) (hpair : elimPairB slotArr b = true)
     (hslot : (slotArr d).isSome = true → ∀ j ∈ P, slotSrcReloadB slotArr j = false)
     (hinv : ElimInv slotArr W b P N h) :
     ElimInv slotArr W b (P ++ [i]) (N + 1) (stepReload h i.li_i).2 := by
@@ -432,7 +450,7 @@ theorem elimInv_step {b P : Lcmd} {h : Held} (hW : W[N]? = some i)
         ((reloadOf slotArr W (N + 1) d).bind slotArr).isSome = true) := by
     intro s hr
     refine ⟨⟨i, by simp, hr⟩, fun hex hV => ?_⟩
-    have hm := slotMov_of_pair hpair hib hr hex
+    have hm := slotMov_of_pair hpair hib (movScan_src hV) hr hex
     rw [reloadOf_succ_mov hW hm]
     exact movScan_succ_mov hW hj hm hV
   have hset : ∀ s, asReload i.li_i = some (d, s) →
@@ -518,7 +536,7 @@ end ElimStep
 
 /-- Every instruction that the scan of `elimReloads` deletes from the rest `rest` of the segment
     `b = P ++ rest` of `A ++ b ++ C` is transparent. -/
-theorem elim_marks_transp {A b C : Lcmd} (hpair : elimPairB b = true) :
+theorem elim_marks_transp {A b C : Lcmd} (hpair : elimPairB slotArr b = true) :
     ∀ (rest P : Lcmd) (h : Held), b = P ++ rest → (∀ j ∈ rest, instrModeled j = true) →
       slotAfterSlotReloadFreeB slotArr (P.any (slotSrcReloadB slotArr)) rest = true →
       ElimInv slotArr (A ++ b ++ C) b P (A.length + P.length) h →
