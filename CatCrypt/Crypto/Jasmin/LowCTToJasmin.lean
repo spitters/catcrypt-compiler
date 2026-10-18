@@ -53,6 +53,11 @@ Both the `LowCT` and Jasmin ASTs can be emitted to disk from Lean:
 `repr` uses the auto-derived `Repr` instances (all constructors have
 `deriving Repr`). `writeJasminProg` calls `ppFunDecl` which emits
 human-readable Jasmin syntax.
+
+## Replacement
+
+The printer `ppJasminProg` of this module will be removed; Jasmin text is produced by the
+single printer `Jazz.print` (`Jasmin/JazzPrint.lean`). The lowering `toJasminCmd` stays.
 -/
 
 @[expose] public section

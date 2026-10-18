@@ -42,6 +42,13 @@ self-contained; replacing them with real NTT leaves (e.g. formosa) is the link
 step for a full bench. This closes the "verified pipeline's own text compiles
 through jasminc" gap for the NTT-multiply route; folding this ABI into
 `ppJasminProg` + SSA liveness is outside the scope of this module.
+
+## Replacement
+
+The orchestration modes and the register-arithmetic mode of this module will be replaced by
+storage choices of a `JazzUnit` printed by the single printer `Jazz.print`. The
+per-algorithm SIMD renderers are bench-only and are removed as owned emits cover their
+benches.
 -/
 
 @[expose] public section

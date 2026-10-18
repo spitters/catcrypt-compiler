@@ -14,9 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveRewrites
 The EllipticCurve dialect carries points as `ECPoint p = Option (ZMod p × ZMod p)`,
 the whole affine plane together with a point at infinity, and `ECParams.add` is
 defined on all of it.  `ECParams.add` is a group law only on the points of the
-curve, so a statement quantified over the whole carrier — `ECAssoc` of
-`Pairing/BLS12381ScalarMulEmit.lean` — has no model over a base field with more
-than four elements (`X86Backend/EcAssocAudit.not_ecAssoc`).
+curve: associativity over the whole carrier fails for every base field with more
+than four elements (the prose argument is in `X86Backend/EcAssocAudit.lean`).
 
 `IsEcPoint C v` is the predicate cutting the carrier down to the curve: `v` is
 the point at infinity, or an affine point satisfying `ECParams.onCurve` at which
@@ -27,8 +26,8 @@ on the coordinates, so it elaborates without the field structure of `ZMod p`.
 from `WeierstrassCurve.Affine.Point`, and that identification is what carries the
 group law over.  The curve points are closed under the identity, the group law,
 the scalar-mul fold, list folds and MSM, and the group axioms hold on them as
-theorems.  A consumer that took `ECAssoc C` as a hypothesis takes `IsEcPoint C P`
-on its base point instead and reaches associativity through `isEcPoint_assoc`.
+theorems; a consumer takes `IsEcPoint C P` on its base point and reaches
+associativity through `isEcPoint_assoc`.
 
 ## Main results
 
@@ -178,8 +177,7 @@ theorem isEcPoint_add (C : ECParams p) {u v : ECPoint p}
   obtain ⟨b, rfl⟩ := (isEcPoint_iff_curvePoint C v).mp hv
   exact (isEcPoint_iff_curvePoint C _).mpr ⟨a + b, ecCurvePoint_add_val C a b⟩
 
-/-- **The dialect group law is associative on the curve points.**  The
-    on-curve replacement for the hypothesis `ECAssoc C`. -/
+/-- **The dialect group law is associative on the curve points.** -/
 theorem isEcPoint_assoc (C : ECParams p) {u v w : ECPoint p}
     (hu : IsEcPoint C u) (hv : IsEcPoint C v) (hw : IsEcPoint C w) :
     C.add (C.add u v) w = C.add u (C.add v w) := by
@@ -247,8 +245,7 @@ theorem isEcPoint_msm (C : ECParams p) {terms : List (Nat × ECPoint p)}
 /-! ## 5. The scalar-mul fold at a curve base point -/
 
 /-- **`ECParams.smul` is additive in the exponent at a curve point.**  The
-    on-curve replacement for `BLS12381ScalarMulEmit.smul_add`, which takes
-    `ECAssoc`; the transported group supplies the associativity. -/
+    transported group supplies the associativity. -/
 theorem smul_add_of_isEcPoint (C : ECParams p) {P : ECPoint p} (hP : IsEcPoint C P)
     (m n : Nat) : C.smul (m + n) P = C.add (C.smul m P) (C.smul n P) := by
   induction n with

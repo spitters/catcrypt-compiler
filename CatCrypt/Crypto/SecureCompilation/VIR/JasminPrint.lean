@@ -70,6 +70,12 @@ a single named accumulator, the standard Jasmin idiom) is documented at
 
 Printer + smoke (`.jazz` text emitted, structural facts `decide`/`rfl`-checked)
 + bounded-for loop. All goals closed; standard axioms only.
+
+## Replacement
+
+The text functions of this module (`ppExportFn`, `emitJazz`, `JForProg.toJazzExport`) will be
+replaced by `emitJazzN`, the lowering `nfToJasmin` printed by the single printer `Jazz.print`;
+`lowerComToProg` and `JForProg` stay.
 -/
 
 @[expose] public section
